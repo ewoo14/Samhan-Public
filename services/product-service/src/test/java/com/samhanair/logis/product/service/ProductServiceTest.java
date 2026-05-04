@@ -252,4 +252,79 @@ class ProductServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT));
     }
+
+    @Test
+    void findByModelName_existing_returnsProduct() {
+        when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
+                .thenReturn(Optional.of(product));
+
+        ProductSummaryResponse summary = service.lookupSummaryByModelName("SHA-W15K");
+
+        assertThat(summary).isNotNull();
+        assertThat(summary.modelName()).isEqualTo("SHA-W15K");
+        assertThat(summary.id()).isEqualTo(productId);
+        assertThat(summary.sellingPrice()).isEqualByComparingTo(new BigDecimal("1500000.00"));
+    }
+
+    @Test
+    void findByModelName_existing_trimsWhitespace() {
+        when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
+                .thenReturn(Optional.of(product));
+
+        ProductSummaryResponse summary = service.lookupSummaryByModelName("  SHA-W15K  ");
+
+        assertThat(summary).isNotNull();
+        assertThat(summary.modelName()).isEqualTo("SHA-W15K");
+    }
+
+    @Test
+    void findByModelName_missing_throwsNotFound() {
+        when(productRepository.findByModelNameAndIsDeletedFalse("UNKNOWN-MODEL"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.lookupSummaryByModelName("UNKNOWN-MODEL"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
+    @Test
+    void findByModelName_blank_throwsInvalidInput() {
+        assertThatThrownBy(() -> service.lookupSummaryByModelName("   "))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void findByModelName_null_throwsInvalidInput() {
+        assertThatThrownBy(() -> service.lookupSummaryByModelName(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void getByModelName_existing_returnsFullResponse() {
+        when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
+                .thenReturn(Optional.of(product));
+
+        ProductResponse response = service.getByModelName("SHA-W15K");
+
+        assertThat(response).isNotNull();
+        assertThat(response.modelName()).isEqualTo("SHA-W15K");
+        assertThat(response.tags()).containsEntry("hp", "1.5");
+        assertThat(response.purchasePrice()).isEqualByComparingTo(new BigDecimal("1100000.00"));
+    }
+
+    @Test
+    void getByModelName_missing_throwsNotFound() {
+        when(productRepository.findByModelNameAndIsDeletedFalse("MISSING"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getByModelName("MISSING"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.NOT_FOUND));
+    }
 }

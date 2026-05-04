@@ -9,6 +9,8 @@ import com.samhanair.logis.product.web.dto.ProductResponse;
 import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
 import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +67,26 @@ public class ProductController {
     @GetMapping("/{id}")
     public ApiResponse<ProductResponse> getOne(@PathVariable UUID id) {
         return ApiResponse.ok(productService.getOne(id));
+    }
+
+    /**
+     * 모델명 정확 매칭 단건 조회 — gateway 경유 FE 호출용 (Slip 출력 슬라이스 modelName onBlur 흐름).
+     * 모든 비-developer-only role 이 조회 가능 (사용자가 직접 입력하는 시나리오, 개발책임자 Q3=B).
+     *
+     * @param modelName URL 인코딩된 모델명 (예: {@code AJ040RXH4BC1})
+     * @return 200, ProductResponse (audit + tags 포함 상세) / 404 NOT_FOUND
+     */
+    @Operation(summary = "모델명으로 제품 단건 조회",
+            description = "Slip 라인 입력 시 modelName onBlur 자동 채움용. 정확 매칭만 (대소문자 구분, 공백 trim).")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "인증/권한 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "모델명에 해당하는 제품이 없습니다")
+    })
+    @GetMapping("/by-model/{modelName}")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER','SALES','ACCOUNTANT','WAREHOUSE','INVENTORY')")
+    public ApiResponse<ProductResponse> getByModelName(@PathVariable String modelName) {
+        return ApiResponse.ok(productService.getByModelName(modelName));
     }
 
     @PostMapping("/lookup")

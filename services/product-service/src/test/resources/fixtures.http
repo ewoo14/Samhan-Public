@@ -1,0 +1,105 @@
+### Product Service — Slip Output Format Slice fixtures
+### 본 슬라이스에서 추가된 2 endpoint:
+###   1) POST /products/internal/lookup-by-model  (X-Internal-Token, 단건/404)
+###   2) GET  /products/by-model/{modelName}      (모든 인증 role 조회, 404 분기)
+###
+### 사용법:
+###   1) docker-compose up (api-gateway / auth-service / user-service / product-service / postgres / eureka)
+###   2) 토큰을 @salesToken 등에 채우고 (auth-service /auth/login 응답)
+###   3) ### 블록을 위에서 아래로 실행
+
+@host = http://localhost:8080
+@productServiceDirect = http://localhost:8084
+@internalToken = test-internal-token
+@masterToken = [테스트 환경 시드 후 주입]
+@managerToken = [테스트 환경 시드 후 주입]
+@salesToken = [테스트 환경 시드 후 주입]
+@warehouseToken = [테스트 환경 시드 후 주입]
+@accountantToken = [테스트 환경 시드 후 주입]
+
+### 기존 시드 모델명 (V2 시드 또는 IT setUp 에서 등록).
+@existingModel = SHA-W15K
+@missingModel = UNKNOWN-MODEL-9999
+
+###############################################################################
+### 시나리오 A1: internal lookup-by-model — 정상 (X-Internal-Token, 200)
+### 기대: 200 + ApiResponse<ProductSummaryResponse> ($.data.modelName == SHA-W15K)
+###############################################################################
+POST {{productServiceDirect}}/products/internal/lookup-by-model
+X-Internal-Token: {{internalToken}}
+Content-Type: application/json
+
+{
+  "modelName": "{{existingModel}}"
+}
+
+###############################################################################
+### 시나리오 A2: internal lookup-by-model — 미존재 모델명 → 404
+### 기대: 404 BusinessException(NOT_FOUND) + 한국어 에러 메시지 substring
+###############################################################################
+POST {{productServiceDirect}}/products/internal/lookup-by-model
+X-Internal-Token: {{internalToken}}
+Content-Type: application/json
+
+{
+  "modelName": "{{missingModel}}"
+}
+
+###############################################################################
+### 시나리오 A3: internal lookup-by-model — 토큰 누락 → 401
+### 기대: 401 (InternalTokenFilter 가 service 진입 차단)
+###############################################################################
+POST {{productServiceDirect}}/products/internal/lookup-by-model
+Content-Type: application/json
+
+{
+  "modelName": "{{existingModel}}"
+}
+
+###############################################################################
+### 시나리오 A4: internal lookup-by-model — 토큰 불일치 → 401
+###############################################################################
+POST {{productServiceDirect}}/products/internal/lookup-by-model
+X-Internal-Token: wrong-token
+Content-Type: application/json
+
+{
+  "modelName": "{{existingModel}}"
+}
+
+###############################################################################
+### 시나리오 B1: public by-model — SALES 조회 (gateway 경유)
+### 기대: 200 + ApiResponse<ProductResponse> ($.data.modelName)
+###############################################################################
+GET {{host}}/products/by-model/{{existingModel}}
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 B2: public by-model — MANAGER 조회
+###############################################################################
+GET {{host}}/products/by-model/{{existingModel}}
+Authorization: Bearer {{managerToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 B3: public by-model — WAREHOUSE 조회 (모든 role 조회 가능 검증)
+###############################################################################
+GET {{host}}/products/by-model/{{existingModel}}
+Authorization: Bearer {{warehouseToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 B4: public by-model — 미인증 → 403
+### 기대: 403 (HeaderAuthenticationFilter 가 SecurityContext 미설정)
+###############################################################################
+GET {{host}}/products/by-model/{{existingModel}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 B5: public by-model — 미존재 모델명 → 404
+### 기대: 404 BusinessException(NOT_FOUND), 메시지 한국어 substring
+###############################################################################
+GET {{host}}/products/by-model/{{missingModel}}
+Authorization: Bearer {{salesToken}}
+Accept: application/json

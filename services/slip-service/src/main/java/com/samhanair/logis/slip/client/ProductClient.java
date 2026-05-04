@@ -122,6 +122,68 @@ public class ProductClient {
         return lookup(List.of(productId)).get(0);
     }
 
+    /**
+     * 모델명 단건 조회 — Slip 출력 슬라이스의 modelName onBlur lookup 흐름.
+     * product-service 의 {@code POST /products/internal/lookup-by-model} 을 X-Internal-Token
+     * 으로 호출.
+     *
+     * <p>HTTP 상태 매핑:
+     * <ul>
+     *   <li>404 → {@link BusinessException}({@link ErrorCode#NOT_FOUND}) "모델명에 해당하는 제품이 없습니다"</li>
+     *   <li>그 외 4xx → {@link BusinessException}({@link ErrorCode#INVALID_INPUT})</li>
+     *   <li>5xx / 네트워크 실패 → {@link BusinessException}({@link ErrorCode#INTERNAL_ERROR})</li>
+     * </ul>
+     *
+     * @param modelName 정확 매칭할 제품 모델명 (null/blank 면 INVALID_INPUT)
+     * @return product-service 의 ProductSummary 단건
+     * @throws BusinessException(INVALID_INPUT) modelName null/blank 또는 product-service 가 4xx (404 외)
+     * @throws BusinessException(NOT_FOUND) product-service 가 404
+     * @throws BusinessException(INTERNAL_ERROR) 5xx / 네트워크 실패 / envelope 포맷 오류
+     */
+    public ProductSummary lookupByModel(String modelName) {
+        if (modelName == null || modelName.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "모델명이 비어있습니다");
+        }
+
+        Map<String, Object> body = Map.of("modelName", modelName.trim());
+
+        Map<String, Object> envelope;
+        try {
+            envelope = restClient.post()
+                    .uri("/products/internal/lookup-by-model")
+                    .header(INTERNAL_TOKEN_HEADER, requireToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
+                        if (res.getStatusCode().value() == 404) {
+                            throw new BusinessException(ErrorCode.NOT_FOUND,
+                                    "모델명에 해당하는 제품이 없습니다");
+                        }
+                        throw new BusinessException(ErrorCode.INVALID_INPUT,
+                                "product-service 모델명 조회 실패: " + res.getStatusCode());
+                    })
+                    .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                                "product-service 호출 실패: " + res.getStatusCode());
+                    })
+                    .body(new ParameterizedTypeReference<>() {});
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("ProductClient lookupByModel failed: {}", ex.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "product-service 호출 실패", ex);
+        }
+
+        Object data = envelope == null ? null : envelope.get("data");
+        if (data == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "product-service 응답 포맷 오류 (data 누락)");
+        }
+        return objectMapper.convertValue(data, ProductSummary.class);
+    }
+
     private String requireToken() {
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {

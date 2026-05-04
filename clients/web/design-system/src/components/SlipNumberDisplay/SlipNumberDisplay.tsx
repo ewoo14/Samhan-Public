@@ -14,11 +14,6 @@ export interface SlipNumberDisplayProps
    * - `lg` 상세 페이지 헤더
    */
   size?: 'sm' | 'md' | 'lg'
-  /**
-   * 전표 UUID — 호버 시 tooltip 으로 표시 (개발자/매니저 디버깅용).
-   * 일반 사용자에게는 노출되지 않으며, 미제공 시 tooltip 자체가 없다.
-   */
-  uuid?: string
 }
 
 /**
@@ -37,8 +32,10 @@ function formatDate(iso: string): string {
  * SlipNumberDisplay — 전표 번호 표시 컴포넌트.
  *
  * Plan §3.1 표시 형식 `YYYY/MM/DD - {seq}` 을 일관되게 적용한다.
- * UUID 는 비공개 원칙이며, 디버깅이 필요한 권한자에게는 호버 tooltip 으로
- * 보조 노출한다 (`uuid` prop 제공 시).
+ *
+ * UUID 비공개 가드 (`feedback_uuid_no_user_visibility.md`):
+ * 본 컴포넌트는 사용자에게 노출되는 비즈니스 식별자만 표시한다. 전표 UUID
+ * 같은 내부 식별자는 prop 으로 받지 않으며 화면 어디에도 노출하지 않는다.
  *
  * monospace 글꼴 + tabular-nums 로 목록에서 자릿수가 흔들리지 않도록 정렬.
  *
@@ -47,12 +44,12 @@ function formatDate(iso: string): string {
  * <SlipNumberDisplay slipDate="2026-05-04" seqNo={7} />
  * // -> "2026/05/04 - 7"
  *
- * <SlipNumberDisplay slipDate="2026-05-04" seqNo={7} size="lg" uuid="abc-..." />
+ * <SlipNumberDisplay slipDate="2026-05-04" seqNo={7} size="lg" />
  * ```
  */
 export const SlipNumberDisplay = forwardRef<HTMLSpanElement, SlipNumberDisplayProps>(
   function SlipNumberDisplay(
-    { slipDate, seqNo, size = 'md', uuid, className, title, ...rest },
+    { slipDate, seqNo, size = 'md', className, ...rest },
     ref,
   ) {
     const sizeClass = styles[`size-${size}`]
@@ -62,17 +59,10 @@ export const SlipNumberDisplay = forwardRef<HTMLSpanElement, SlipNumberDisplayPr
 
     const formatted = `${formatDate(slipDate)} - ${seqNo}`
 
-    /**
-     * uuid 가 있으면 디버깅용 tooltip 으로 노출.
-     * 호출자가 `title` 을 명시적으로 넘긴 경우 그대로 우선 적용.
-     */
-    const hoverTitle = title ?? (uuid ? `UUID: ${uuid}` : undefined)
-
     return (
       <span
         ref={ref}
         className={classes}
-        title={hoverTitle}
         data-slip-date={slipDate}
         data-seq-no={seqNo}
         {...rest}

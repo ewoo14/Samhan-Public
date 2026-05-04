@@ -56,6 +56,52 @@ public class ProductService {
         return ProductResponse.from(loadOrThrow(id));
     }
 
+    /**
+     * 모델명 정확 매칭 단건 조회 — Slip 출력 슬라이스의 modelName onBlur lookup 에서 사용.
+     * product-service 내부에서 Product 도메인 객체를 반환 (호출자가 ProductSummaryResponse /
+     * ProductResponse 변환 책임).
+     *
+     * @param modelName 정확 매칭할 모델명 (null/blank 면 INVALID_INPUT)
+     * @return 일치 Product 도메인 객체
+     * @throws BusinessException(INVALID_INPUT) modelName null/blank
+     * @throws BusinessException(NOT_FOUND) 매칭 제품 없음
+     */
+    @Transactional(readOnly = true)
+    public Product findByModelNameOrThrow(String modelName) {
+        if (modelName == null || modelName.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "모델명이 비어있습니다");
+        }
+        return productRepository.findByModelNameAndIsDeletedFalse(modelName.trim())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "모델명에 해당하는 제품이 없습니다"));
+    }
+
+    /**
+     * 모델명 정확 매칭 단건 조회 후 ProductSummaryResponse 로 변환.
+     * Internal endpoint 전용 경로 (slip-service ProductClient 가 호출).
+     *
+     * @param modelName 정확 매칭할 모델명
+     * @return ProductSummaryResponse (id/name/modelName/categoryId/sellingPrice/status)
+     * @throws BusinessException(NOT_FOUND) 매칭 제품 없음
+     */
+    @Transactional(readOnly = true)
+    public ProductSummaryResponse lookupSummaryByModelName(String modelName) {
+        return ProductSummaryResponse.from(findByModelNameOrThrow(modelName));
+    }
+
+    /**
+     * 모델명 정확 매칭 단건 조회 후 ProductResponse(상세) 로 변환.
+     * Public endpoint 전용 경로 (gateway 경유 FE 호출).
+     *
+     * @param modelName 정확 매칭할 모델명
+     * @return ProductResponse (audit + tags 포함 상세)
+     * @throws BusinessException(NOT_FOUND) 매칭 제품 없음
+     */
+    @Transactional(readOnly = true)
+    public ProductResponse getByModelName(String modelName) {
+        return ProductResponse.from(findByModelNameOrThrow(modelName));
+    }
+
     @Transactional(readOnly = true)
     public List<ProductSummaryResponse> lookup(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) {
