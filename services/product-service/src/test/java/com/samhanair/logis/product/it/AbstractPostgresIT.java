@@ -1,0 +1,72 @@
+package com.samhanair.logis.product.it;
+
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.DockerClientFactory;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/**
+ * product-service 통합 테스트의 베이스. **싱글턴 컨테이너 패턴**:
+ * static block 에서 한 번 start 하고 JVM 종료 시 자동 stop (Testcontainers Ryuk).
+ * 여러 IT 클래스가 abstract base 의 같은 컨테이너 인스턴스를 공유한다.
+ *
+ * <p>JUnit 의 {@code @Testcontainers} + {@code @Container} 패턴은 IT 클래스마다
+ * 별도 lifecycle 을 관리하려 시도해 race condition / Spring Context 캐시 stale URL
+ * 문제를 일으킨다 (PR #13 2차 CI 의 RepositoryIT 4건 connection refused 사고).
+ * 따라서 본 패턴은 {@code @Testcontainers} 사용 안 함.
+ *
+ * <p>Docker 가 호스트에서 사용 불가하면 {@link DockerAvailableCondition} 이
+ * 테스트를 fail 이 아닌 skip 으로 처리한다.
+ */
+@ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+public abstract class AbstractPostgresIT {
+
+    @SuppressWarnings("resource")
+    protected static final PostgreSQLContainer<?> POSTGRES =
+            new PostgreSQLContainer<>("postgres:16-alpine")
+                    .withDatabaseName("product_db")
+                    .withUsername("samhan")
+                    .withPassword("samhan_dev_pw");
+
+    static {
+        try {
+            POSTGRES.start();
+            // JVM shutdown 시 Testcontainers Ryuk 가 자동 stop. stop() 명시 호출 불필요.
+        } catch (Throwable ignored) {
+            // Docker 미가용 환경. DockerAvailableCondition 이 sub IT 들을 skip 처리.
+        }
+    }
+
+    @DynamicPropertySource
+    static void registerDatasource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        registry.add("eureka.client.enabled", () -> "false");
+        registry.add("eureka.client.register-with-eureka", () -> "false");
+        registry.add("eureka.client.fetch-registry", () -> "false");
+        registry.add("app.security.internal.token", () -> "test-internal-token");
+    }
+
+    /** Docker 데몬 미접근 시 테스트를 build fail 대신 skip 처리. */
+    static class DockerAvailableCondition implements
+            org.junit.jupiter.api.extension.ExecutionCondition {
+        @Override
+        public org.junit.jupiter.api.extension.ConditionEvaluationResult evaluateExecutionCondition(
+                org.junit.jupiter.api.extension.ExtensionContext context) {
+            try {
+                if (DockerClientFactory.instance().isDockerAvailable() && POSTGRES.isRunning()) {
+                    return org.junit.jupiter.api.extension.ConditionEvaluationResult
+                            .enabled("Docker is available + container running");
+                }
+            } catch (Throwable t) {
+                // fall through to disabled
+            }
+            return org.junit.jupiter.api.extension.ConditionEvaluationResult
+                    .disabled("Docker daemon not reachable - skipping Testcontainers IT");
+        }
+    }
+}

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Team-Product QA — 시나리오 + IT 작성 요약</title>
+<style>
+  body { font-family: -apple-system, "Malgun Gothic", sans-serif; margin: 32px; color: #222; max-width: 1200px; }
+  h1 { color: #1f6feb; border-bottom: 2px solid #d0d7de; padding-bottom: 8px; }
+  h2 { margin-top: 28px; color: #24292f; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-right: 6px; }
+  .badge-success { background: #d1f4d6; color: #1a7f37; }
+  .badge-info    { background: #d0e3ff; color: #1f6feb; }
+  .badge-warn    { background: #fff3cd; color: #b25f00; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  th, td { border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; font-size: 13px; vertical-align: top; }
+  th { background: #f6f8fa; }
+  code { background: #f6f8fa; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .summary { background: #f6f8fa; border-left: 4px solid #b25f00; padding: 14px 18px; margin: 16px 0; }
+  ul { margin: 6px 0 12px 24px; }
+</style>
+</head>
+<body>
+
+<h1>Team-Product QA — 시나리오 10건 + IT 코드 11건</h1>
+
+<div class="summary">
+  <span class="badge badge-info">IT 4 파일 (11 testcase)</span>
+  <span class="badge badge-info">시나리오 10건</span>
+  <span class="badge badge-info">fixtures.http</span>
+  <span class="badge badge-warn">컴파일 검증: BE PR (#7) 머지 후 가능</span>
+  <br><br>
+  <strong>본 PR 의 IT 는 BE 의 패키지/클래스 명세에 따라 import 작성됨.</strong> 본 worktree 에는 BE 산출물 없으므로 자체 컴파일 불가 (의도된 한계). BE PR (#7) 머지 후 PM 이 통합 시 컴파일 + 실행 + 스크린샷 10장 생성 예정.
+</div>
+
+<h2>IT 코드 4 파일 (11 testcase)</h2>
+<table>
+  <thead><tr><th>파일</th><th>테스트</th></tr></thead>
+  <tbody>
+    <tr><td><code>AbstractPostgresIT</code></td><td>Testcontainers postgres:16-alpine 베이스 (user-service 패턴, DockerAvailableCondition)</td></tr>
+    <tr><td><code>ProductRepositoryIT</code></td><td>partialUniqueIndex_modelName_allowsReuseAfterSoftDelete · gin_tags_contains_returnsMatchingProducts · sqlRestrictionFilter_hidesDeletedRowsFromFindAll · categoryFkConstraint_blocksOrphanProductInsert</td></tr>
+    <tr><td><code>CategoryRepositoryIT</code></td><td>partialUniqueIndex_code_allowsReuseAfterSoftDelete · selfFkAndDeleteSemantics</td></tr>
+    <tr><td><code>ProductControllerIT</code></td><td>unauthenticated_get_returns401 · salesRole_post_returns403 · managerRole_post_returns201_thenGet_returnsCreated · accountantRole_priceUpdate_succeeds_butFullUpdate_returns403 · discontinuedFilter_excludedFromActiveQuery</td></tr>
+  </tbody>
+</table>
+
+<h2>QA 시나리오 표 (10건, fixtures.http 와 1:1 매핑)</h2>
+<table>
+  <thead><tr><th>#</th><th>시나리오</th><th>입력</th><th>기대</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>카테고리 트리 조회 (SALES)</td><td>GET /categories</td><td>200, 7 노드 트리</td></tr>
+    <tr><td>2</td><td>품목 등록 happy (MANAGER)</td><td>POST /products (무풍 18평)</td><td>201, UUID 발급, ACTIVE</td></tr>
+    <tr><td>3</td><td>모델명 중복 차단</td><td>동일 modelName 재 POST</td><td>409 DUPLICATE_MODEL_NAME</td></tr>
+    <tr><td>4</td><td>단종 후 ACTIVE 필터</td><td>POST→discontinue→GET ?status=ACTIVE</td><td>해당 modelName 미포함</td></tr>
+    <tr><td>5</td><td>soft-delete 후 재등록</td><td>DELETE→POST 동일 modelName</td><td>재등록 201 (partial unique)</td></tr>
+    <tr><td>6</td><td>태그 contains 검색</td><td>GET /products?tagKey=전압&tagValue=220V</td><td>일치 제품만 반환 (jsonb GIN)</td></tr>
+    <tr><td>7</td><td>권한 검증 (SALES POST)</td><td>POST /products + X-User-Role: SALES</td><td>403 FORBIDDEN</td></tr>
+    <tr><td>8</td><td>가격 음수 차단</td><td>sellingPrice=-1000</td><td>400 INVALID_INPUT</td></tr>
+    <tr><td>9</td><td>카테고리 자식 존재 시 삭제 차단</td><td>DELETE /categories/{HVAC UUID}</td><td>409 CATEGORY_HAS_CHILDREN</td></tr>
+    <tr><td>10</td><td>lookup batch (미존재 ID 무시)</td><td>POST /products/lookup ids=[A, B, 미존재]</td><td>200, 길이 2</td></tr>
+  </tbody>
+</table>
+
+<h2>의도적 plan 변경</h2>
+<ul>
+  <li><strong>categoryFkConstraint_blocksOrphanProductInsert</strong>: detached Category 사용 → JPA layer 가 <code>TransientPropertyValueException</code> 또는 <code>InvalidDataAccessApiUsageException</code> 으로 감쌀 가능성 고려해 <code>isInstanceOfAny(...)</code> 로 3종 예외 허용. 순수 DB FK 검증 시 PM 통합 시 <code>entityManager.createNativeQuery(...)</code> 로 교체 권고</li>
+  <li><strong>CategoryRepositoryIT.selfFkAndDeleteSemantics</strong>: 동일하게 <code>JpaSystemException</code> / <code>ConstraintViolationException</code> 까지 허용</li>
+</ul>
+
+<h2>PM 통합 시 권고 절차</h2>
+<ol>
+  <li>BE PR (#7) 머지 → main 에 product-service src/main 배치</li>
+  <li>본 QA PR 머지 → main 에 IT 4 파일 + qa_report.md + fixtures.http 배치</li>
+  <li><code>./gradlew :services:product-service:compileTestJava</code> — import 일치 확인</li>
+  <li><code>./gradlew :services:product-service:test</code> — IT 11 testcase 실행 (Docker 가동 시)</li>
+  <li><code>docker compose up -d</code> + 풀스택 부팅 → fixtures.http 10 시나리오 시연 + 스크린샷 캡처</li>
+  <li><code>qa_report.md</code> 의 "[PM 통합 후 채움]" 칸 갱신 + 스크린샷 10장 첨부</li>
+</ol>
+
+<p style="margin-top:36px;color:#6e7781;font-size:12px;">
+  Generated by Team-Product QA 에이전트 · SamhanLogis Phase 2 본 작업 첫 슬라이스 · 2026-05-04 · 전체 리포트: <code>docs/qa/product-service-first-slice/qa_report.md</code>
+</p>
+
+</body>
+</html>
