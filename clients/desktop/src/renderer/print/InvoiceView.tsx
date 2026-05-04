@@ -100,10 +100,8 @@ export function InvoiceView() {
         {/* 상단: 좌(로고+타이틀+공급받는자) | 우(공급자 5행) */}
         <header className="invoice-top">
           <div className="invoice-top-left">
-            <div className="invoice-brand">
-              <span className="invoice-logo-placeholder">SAMSUNG</span>
-              <span className="invoice-title">거래명세서</span>
-            </div>
+            <span className="invoice-logo-placeholder">SAMSUNG</span>
+            <div className="invoice-title">거래명세서</div>
             <div className="invoice-receiver-box">
               <div className="invoice-receiver-name">{slip.partnerName ?? '-'}님 中</div>
               <div className="invoice-receiver-address">

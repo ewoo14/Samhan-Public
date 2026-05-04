@@ -446,29 +446,27 @@ button {
 .invoice-top-left {
   display: flex;
   flex-direction: column;
-  gap: 3mm;
+  gap: 1mm;
 }
 
-.invoice-brand {
-  display: flex;
-  align-items: center;
-  gap: 6mm;
-  background: #E3F2FD;
-  padding: 3mm 4mm;
-}
-
+/* 작은 SAMSUNG 로고 — 좌측 상단, 배경색 없음 */
 .invoice-logo-placeholder {
   font-weight: 700;
-  font-size: 24pt;
+  font-size: 11pt;
   letter-spacing: 0.05em;
   color: #1565C0;
+  display: inline-block;
+  padding: 0 0 1mm 0;
 }
 
+/* 거래명세서 타이틀 — 거래처명 박스 기준 좌우 가운데 정렬 */
 .invoice-title {
-  font-size: 28pt;
+  font-size: 22pt;
   font-weight: 700;
   letter-spacing: 0.15em;
   color: #000;
+  text-align: center;
+  padding: 1mm 0 2mm 0;
 }
 
 .invoice-receiver-box {
@@ -587,18 +585,17 @@ button {
   font-size: 13pt;
 }
 
-/* 라인 표 6-col (월/일|품목명|수량|단가|공급가액|부가세) */
+/* 라인 표 6-col (월/일|품목명|수량|단가|공급가액|부가세) — 가로 + 세로 구분선 모두 */
 .invoice-table {
   width: 100%;
   border-collapse: collapse;
-  border-top: 1px solid #000;
-  border-bottom: 1px solid #000;
+  border: 1px solid #000;
   font-size: 11pt;
 }
 
 .invoice-table th,
 .invoice-table td {
-  border-bottom: 1px solid #BBB;
+  border: 1px solid #BBB;
   padding: 1.5mm 3mm;
   vertical-align: middle;
 }
@@ -607,7 +604,7 @@ button {
   background: #F0F0F0;
   font-weight: 700;
   text-align: center;
-  border-bottom: 1px solid #000;
+  border: 1px solid #000;
   font-size: 10pt;
 }
 
@@ -707,27 +704,24 @@ button {
   padding: var(--print-page-margin, 12mm);
 }
 
-/* 상단 SAMSUNG 로고 스트립 (옅은 파랑 배경) */
+/* 상단 SAMSUNG 로고 — 작게, 배경색 없음 */
 .dispatch-logo-strip {
-  background: #E3F2FD;
-  padding: 3mm 4mm;
-  margin-bottom: 0;
+  padding: 2mm 0;
+  margin-bottom: 2mm;
 }
 
 .dispatch-logo-placeholder {
   font-weight: 700;
-  font-size: 22pt;
+  font-size: 13pt;
   letter-spacing: 0.05em;
   color: #1565C0;
 }
 
-/* 거래처명 박스 (좌, 큼) + 결재란 5칸 (우, 컴팩트) */
+/* 거래처명 박스 (좌, 넓음) + 여백 + 결재란 5칸 (우, 작음) — 분리된 두 영역 */
 .dispatch-header-row {
   display: grid;
-  grid-template-columns: 1fr 110mm;
-  gap: 0;
-  border: 1px solid #000;
-  border-top: none;
+  grid-template-columns: 1fr 90mm;
+  gap: 6mm;
   margin-bottom: 3mm;
 }
 
@@ -738,20 +732,21 @@ button {
   font-size: 22pt;
   font-weight: 700;
   padding: 6mm 4mm;
-  border-right: 1px solid #000;
+  border: 1px solid #000;
   text-align: center;
 }
 
 .dispatch-roles {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  border: 1px solid #000;
+  height: 14mm;
 }
 
 .dispatch-role-cell {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #000;
-  min-height: 18mm;
 }
 
 .dispatch-role-cell:last-child {
@@ -761,10 +756,10 @@ button {
 .dispatch-role-label {
   background: #F5F5F5;
   border-bottom: 1px solid #000;
-  font-size: 8pt;
+  font-size: 7pt;
   font-weight: 700;
   text-align: center;
-  padding: 1mm 0;
+  padding: 0.5mm 0;
 }
 
 .dispatch-role-value {
@@ -773,12 +768,12 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5mm;
-  padding: 1mm;
+  gap: 0.3mm;
+  padding: 0.5mm;
 }
 
 .dispatch-role-value .name {
-  font-size: 9pt;
+  font-size: 8pt;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -787,7 +782,7 @@ button {
 }
 
 .dispatch-role-value .time {
-  font-size: 7pt;
+  font-size: 6.5pt;
   color: #666;
   font-variant-numeric: tabular-nums;
 }
@@ -820,19 +815,18 @@ button {
   padding: 2mm 6mm;
 }
 
-/* 라인 표 4-col (모델명/품목명/규격/수량) — 행 구분선만, 깔끔 */
+/* 라인 표 4-col (모델명/품목명/규격/수량) — 가로 + 세로 구분선 모두 */
 .dispatch-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 0;
-  border-top: 1px solid #000;
-  border-bottom: 1px solid #000;
+  border: 1px solid #000;
   font-size: 11pt;
 }
 
 .dispatch-table th,
 .dispatch-table td {
-  border-bottom: 1px solid #BBB;
+  border: 1px solid #BBB;
   padding: 2mm 3mm;
   vertical-align: middle;
 }
@@ -842,7 +836,7 @@ button {
   font-weight: 700;
   text-align: center;
   font-size: 11pt;
-  border-bottom: 1px solid #000;
+  border: 1px solid #000;
 }
 
 .dispatch-table .col-model   { width: 38mm; text-align: left;  font-weight: 600; }
