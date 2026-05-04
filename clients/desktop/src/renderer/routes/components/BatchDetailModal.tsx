@@ -7,12 +7,12 @@
  * - 모달 헤더: 배송일자 + 기사명 + 기사 연락처 (PII 노출 — 사내 화면)
  * - signUrl + CopyButton (복사됨 토스트 3초)
  * - [토큰 재발행] ghost 버튼 — 클릭 시 confirm + regenerateBatchToken
- * - 슬립 리스트 표 (slipNo / 거래처 / 배송지 / 라인수 / [제거])
+ * - 전표 리스트 표 (slipNo / 거래처 / 배송지 / 라인수 / [제거])
  *   - SMS 미발송 상태에서만 [제거] 버튼 활성 (BE 가드와 동일)
- * - 하단 [슬립 추가] — slipId 입력 폼 (UUID 입력은 사내 사용 한정)
+ * - 하단 [전표 추가] — slipId 입력 폼 (UUID 입력은 사내 사용 한정)
  *
  * UUID 비공개 가드: batch.id / slipId 는 화면 표시 X — path 만 사용.
- * 슬립 추가 폼은 slipId 직접 입력 대신 slipNo 검색을 권장하나, 본 슬라이스는
+ * 전표 추가 폼은 slipId 직접 입력 대신 slipNo 검색을 권장하나, 본 슬라이스는
  * MVP 로 slipNo 입력 → BE 가 slipNo → slipId 변환을 담당 (또는 추후 UI 보강).
  */
 import { useState } from 'react'
@@ -87,7 +87,7 @@ export function BatchDetailModal({ open, onClose, batchId }: BatchDetailModalPro
   }
 
   const handleRemoveSlip = (slipId: string, slipNo: string) => {
-    if (!window.confirm(`슬립 [${slipNo}] 을 배치에서 제거하시겠습니까?`)) return
+    if (!window.confirm(`전표 [${slipNo}] 을 배치에서 제거하시겠습니까?`)) return
     removeMutation.mutate(slipId)
   }
 
@@ -126,7 +126,7 @@ export function BatchDetailModal({ open, onClose, batchId }: BatchDetailModalPro
               <span className="detail-value">{batch.driverPhone}</span>
             </div>
             <div>
-              <span className="detail-label">슬립 수</span>
+              <span className="detail-label">전표 수</span>
               <span className="detail-value">{batch.slipCount}건</span>
             </div>
             <div>
@@ -153,11 +153,11 @@ export function BatchDetailModal({ open, onClose, batchId }: BatchDetailModalPro
             </Button>
           </div>
 
-          <h4 style={{ marginTop: 24, marginBottom: 8 }}>묶인 슬립</h4>
+          <h4 style={{ marginTop: 24, marginBottom: 8 }}>묶인 전표</h4>
           <table className="batch-slip-table">
             <thead>
               <tr>
-                <th>슬립번호</th>
+                <th>전표번호</th>
                 <th>거래처</th>
                 <th>배송지</th>
                 <th>라인수</th>
@@ -168,7 +168,7 @@ export function BatchDetailModal({ open, onClose, batchId }: BatchDetailModalPro
               {batch.slips.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="batch-slip-empty">
-                    묶인 슬립이 없습니다.
+                    묶인 전표이 없습니다.
                   </td>
                 </tr>
               ) : (
@@ -200,7 +200,7 @@ export function BatchDetailModal({ open, onClose, batchId }: BatchDetailModalPro
               type="text"
               value={newSlipId}
               onChange={(e) => setNewSlipId(e.target.value)}
-              placeholder="추가할 슬립 ID (사내 운영자 전용)"
+              placeholder="추가할 전표 ID (사내 운영자 전용)"
               className="batch-add-slip-input"
             />
             <Button
@@ -210,18 +210,18 @@ export function BatchDetailModal({ open, onClose, batchId }: BatchDetailModalPro
               loading={addMutation.isPending}
               disabled={!newSlipId.trim()}
             >
-              슬립 추가
+              전표 추가
             </Button>
           </div>
 
           {addMutation.isError ? (
             <div className="error-banner" role="alert" style={{ marginTop: 8 }}>
-              슬립 추가에 실패했습니다.
+              전표 추가에 실패했습니다.
             </div>
           ) : null}
           {removeMutation.isError ? (
             <div className="error-banner" role="alert" style={{ marginTop: 8 }}>
-              슬립 제거에 실패했습니다.
+              전표 제거에 실패했습니다.
             </div>
           ) : null}
         </div>

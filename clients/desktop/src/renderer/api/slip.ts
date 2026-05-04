@@ -127,6 +127,15 @@ export interface SlipDetail extends SlipSummary {
   signatureShareToken?: string | null
   /** share 토큰 만료 ISO 8601 (+30일). */
   signatureShareExpiresAt?: string | null
+
+  /**
+   * Slice C2 (PR #23 follow-up) — 배송기사 서명 4 필드 (nullable).
+   * Slip.driverName 은 기존 Slice B 필드 재사용 (별도 driverSignerName X).
+   */
+  driverSignedAt?: string | null
+  driverSignaturePng?: string | null
+  driverSignatureHash?: string | null
+  driverSignatureChannel?: 'MOBILE_CANVAS' | 'PAPER_SCAN' | string | null
 }
 
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */

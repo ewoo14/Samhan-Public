@@ -231,6 +231,28 @@ public class Slip extends BaseEntity {
     @Column(name = "signature_share_expires_at")
     private LocalDateTime signatureShareExpiresAt;
 
+    // ---------- Slice C2 (PR #23 follow-up) — 배송기사 서명 4 필드 ----------
+    // 인수자 서명과 패턴 동일 (PNG bytea + SHA-256 + channel + signed timestamp).
+    // share token 은 인수자 share 토큰을 그대로 재사용 (1 개 share view 에 둘 다 표시).
+
+    /** 배송기사 서명 시각 — Slice C2. null 이면 기사 서명 미완료. */
+    @Column(name = "driver_signed_at")
+    private LocalDateTime driverSignedAt;
+
+    /** 배송기사 서명 PNG ≤50KB. */
+    @Lob
+    @Column(name = "driver_signature_png")
+    private byte[] driverSignaturePng;
+
+    /** SHA-256 hex 64자 — 무결성 검증용. */
+    @Column(name = "driver_signature_hash", length = 64)
+    private String driverSignatureHash;
+
+    /** 서명 채널. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "driver_signature_channel", length = 20)
+    private SignatureChannel driverSignatureChannel;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -692,6 +714,42 @@ public class Slip extends BaseEntity {
     /** 서명이 등록된 슬립인지 — admin 화면 / FE 표시 분기 헬퍼. */
     public boolean isSigned() {
         return this.signedAt != null;
+    }
+
+    /**
+     * 배송기사 서명 기록 — Slice C2 (PR #23 follow-up).
+     *
+     * 인수자 서명({@link #recordSignature})과 동일한 SIGNABLE_STATUSES 가드 + 검증 패턴.
+     * 차이: signerName 별도 입력 X (Slip.driverName 재사용), share token 발급 X
+     * (인수자 share 토큰이 둘 다 표시).
+     *
+     * @throws BusinessException(CONFLICT) 현재 상태가 SIGNABLE_STATUSES 안에 없을 때
+     * @throws IllegalArgumentException png/hash/channel null 또는 길이 위반
+     */
+    public void recordDriverSignature(byte[] png, String hash, SignatureChannel channel) {
+        if (!SIGNABLE_STATUSES.contains(this.status)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "기사 서명 가능한 단계가 아닙니다 (현재: " + this.status
+                            + ", 필요: INSPECTING/COMPLETED/SHIPPING)");
+        }
+        if (png == null || png.length == 0) {
+            throw new IllegalArgumentException("driverSignaturePng 은 필수입니다");
+        }
+        if (hash == null || hash.isBlank()) {
+            throw new IllegalArgumentException("driverSignatureHash 는 필수입니다");
+        }
+        if (channel == null) {
+            throw new IllegalArgumentException("driverSignatureChannel 은 필수입니다");
+        }
+        this.driverSignedAt = LocalDateTime.now();
+        this.driverSignaturePng = png;
+        this.driverSignatureHash = hash;
+        this.driverSignatureChannel = channel;
+    }
+
+    /** 기사 서명 등록 여부 — DispatchView 인쇄 분기 헬퍼. */
+    public boolean isDriverSigned() {
+        return this.driverSignedAt != null;
     }
 
     private static String generateShareToken() {

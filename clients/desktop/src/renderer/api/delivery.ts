@@ -3,10 +3,10 @@
  *
  * 노출 endpoint (BE notification-service / batch-service):
  * - `GET    /delivery-batches?date=&sent=`        — 날짜 + sent 필터 목록
- * - `GET    /delivery-batches/{id}`               — 배치 상세 (포함 슬립 N건)
+ * - `GET    /delivery-batches/{id}`               — 배치 상세 (포함 전표 N건)
  * - `POST   /delivery-batches/auto-group?date=`   — 같은 기사+같은 날짜 자동 그룹
- * - `POST   /delivery-batches/{id}/slips`         — 배치에 슬립 추가
- * - `DELETE /delivery-batches/{id}/slips/{slipId}` — 배치에서 슬립 제거
+ * - `POST   /delivery-batches/{id}/slips`         — 배치에 전표 추가
+ * - `DELETE /delivery-batches/{id}/slips/{slipId}` — 배치에서 전표 제거
  * - `POST   /delivery-batches/{id}/sms`           — 배치 SMS 일괄 발송 (e-sign URL 포함)
  * - `POST   /delivery-batches/{id}/regenerate-token` — 토큰 재발행 (URL 새로고침)
  *
@@ -26,17 +26,17 @@ export interface DeliveryBatchSummary {
   driverName: string
   /** 기사 휴대폰 — 표 3열 표시 (010-XXXX-XXXX). */
   driverPhone: string
-  /** 묶인 슬립 수 — 표 4열 표시. */
+  /** 묶인 전표 수 — 표 4열 표시. */
   slipCount: number
-  /** e-sign 단일 URL (전 슬립 묶음). */
+  /** e-sign 단일 URL (전 전표 묶음). */
   signUrl: string
   /** SMS 발송 시각 (ISO) — null 이면 미발송. 표 6열 ☑/[발송] 분기 키. */
   smsSentAt: string | null
 }
 
-/** 배치 상세에 포함되는 슬립 요약 — Designer wireframes.md § 2 인용. */
+/** 배치 상세에 포함되는 전표 요약 — Designer wireframes.md § 2 인용. */
 export interface DeliveryBatchSlip {
-  /** 슬립 UUID — 추가/제거 path 에만 사용, 화면 미노출. */
+  /** 전표 UUID — 추가/제거 path 에만 사용, 화면 미노출. */
   slipId: string
   /** 사용자 노출 식별자 (예: "2026/05/04-1"). */
   slipNo: string
@@ -50,7 +50,7 @@ export interface DeliveryBatchSlip {
 
 /** 배치 상세 응답 — BE `DeliveryBatchDetailResponse`. */
 export interface DeliveryBatchDetail extends DeliveryBatchSummary {
-  /** 묶인 슬립 N건 — 모달에서 리스트 표시. */
+  /** 묶인 전표 N건 — 모달에서 리스트 표시. */
   slips: DeliveryBatchSlip[]
   /** 토큰 발행 시각 (ISO). */
   tokenIssuedAt: string
@@ -86,7 +86,7 @@ export async function listBatches(
 }
 
 /**
- * 배치 단건 상세 (포함 슬립 N건).
+ * 배치 단건 상세 (포함 전표 N건).
  *
  * @param batchId 배치 UUID (path param 으로만 사용, 화면 표시 X)
  */
@@ -98,9 +98,9 @@ export async function getBatch(batchId: string): Promise<DeliveryBatchDetail> {
 }
 
 /**
- * 자동 그룹 — 같은 기사 + 같은 배송일자의 슬립을 묶어 신규 배치 N건 생성.
+ * 자동 그룹 — 같은 기사 + 같은 배송일자의 전표을 묶어 신규 배치 N건 생성.
  *
- * BE 가 이미 그룹된 슬립은 skip, 신규 그룹만 응답에 포함.
+ * BE 가 이미 그룹된 전표은 skip, 신규 그룹만 응답에 포함.
  * 응답은 생성된 배치 N건의 요약 list.
  *
  * @param date 그룹 대상 배송일자 (YYYY-MM-DD)
@@ -115,10 +115,10 @@ export async function autoGroup(date: string): Promise<DeliveryBatchSummary[]> {
 }
 
 /**
- * 배치에 슬립 추가 — DRAFT/SAVED 단계의 슬립만 BE 가 허용.
+ * 배치에 전표 추가 — DRAFT/SAVED 단계의 전표만 BE 가 허용.
  *
  * @param batchId 배치 UUID
- * @param slipId 추가할 슬립 UUID
+ * @param slipId 추가할 전표 UUID
  */
 export async function addSlipToBatch(
   batchId: string,
@@ -132,10 +132,10 @@ export async function addSlipToBatch(
 }
 
 /**
- * 배치에서 슬립 제거 — SMS 미발송 상태에서만 BE 가 허용.
+ * 배치에서 전표 제거 — SMS 미발송 상태에서만 BE 가 허용.
  *
  * @param batchId 배치 UUID
- * @param slipId 제거할 슬립 UUID
+ * @param slipId 제거할 전표 UUID
  */
 export async function removeSlipFromBatch(
   batchId: string,

@@ -189,8 +189,20 @@ export function DispatchView() {
               notification-slice-B: 기사명이 입력된 경우 라벨에 자동 노출 (괄호 안).
               인쇄 본문 디자인 자체는 변경 X (피드백 `feedback_print_design_iteration.md` 가드).
             */}
-            <div className="dispatch-sign-label-only">
+            <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
               용달기사 서명{slip.driverName ? ` (${slip.driverName})` : ''}
+              {slip.driverSignaturePng ? (
+                <>
+                  <img
+                    className="dispatch-role-signature-img"
+                    src={slip.driverSignaturePng}
+                    alt={`${slip.driverName ?? '기사'} 서명`}
+                  />
+                  <div className="dispatch-role-signature-meta">
+                    <span className="date">{slip.driverSignedAt?.slice(0, 10) ?? ''}</span>
+                  </div>
+                </>
+              ) : null}
             </div>
             {/*
               signature-slice-C 신규: 인수자 서명 셀 안에 signaturePng 있으면 <img> 렌더.

@@ -43,7 +43,7 @@ export interface RecordSignatureResponse {
 /**
  * 인수자 view 응답 — Designer `mobile-spec.md` §2.2.
  *
- * UUID 미포함 — 거래처명/슬립번호/배송지/배송일/라인명 등 비즈니스 식별자만 포함.
+ * UUID 미포함 — 거래처명/전표번호/배송지/배송일/라인명 등 비즈니스 식별자만 포함.
  */
 export interface SignatureShareView {
   slip: {
@@ -92,7 +92,7 @@ export interface SignatureAdminResponse {
  * 분리는 Phase 5. apiClient 의 baseURL 은 동일하나 path 가 `/public/...` 으로 분기.
  *
  * @param token   배치 토큰 (Slice B 발급)
- * @param slipNo  비즈니스 슬립번호 (예: "2026-05-05-1" — slug 형식)
+ * @param slipNo  비즈니스 전표번호 (예: "2026-05-05-1" — slug 형식)
  * @param body    서명자명 + PNG + 클라이언트 hash
  */
 export async function recordSignature(
@@ -102,6 +102,34 @@ export async function recordSignature(
 ): Promise<RecordSignatureResponse> {
   const res = await apiClient.post<ApiEnvelope<RecordSignatureResponse>>(
     `/public/batches/${encodeURIComponent(token)}/slips/${encodeURIComponent(slipNo)}/signature`,
+    body,
+  )
+  return res.data.data
+}
+
+/**
+ * 배송기사 서명 저장 (Slice C2, NO AUTH).
+ *
+ * 인수자 서명({@link recordSignature})과 다른 점: signerName 별도 입력 X
+ * (BE 가 Slip.driverName 재사용), shareToken 발급 X.
+ */
+export interface RecordDriverSignatureRequest {
+  signaturePngBase64: string
+  clientHash: string
+}
+
+export interface RecordDriverSignatureResponse {
+  driverSignedAt: string
+  driverSignatureHash: string
+}
+
+export async function recordDriverSignature(
+  token: string,
+  slipNo: string,
+  body: RecordDriverSignatureRequest,
+): Promise<RecordDriverSignatureResponse> {
+  const res = await apiClient.post<ApiEnvelope<RecordDriverSignatureResponse>>(
+    `/public/batches/${encodeURIComponent(token)}/slips/${encodeURIComponent(slipNo)}/driver-signature`,
     body,
   )
   return res.data.data

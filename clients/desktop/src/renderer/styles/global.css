@@ -563,7 +563,7 @@ button {
   display: inline-flex;
 }
 
-/* BatchDetailModal — 배치 상세 메타 + 슬립 표 + 추가 폼 */
+/* BatchDetailModal — 배치 상세 메타 + 전표 표 + 추가 폼 */
 .batch-detail {
   display: flex;
   flex-direction: column;

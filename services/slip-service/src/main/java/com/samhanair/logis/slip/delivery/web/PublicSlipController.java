@@ -110,6 +110,32 @@ public class PublicSlipController {
     }
 
     /**
+     * 배송기사 서명 등록 (no auth) — Slice C2 (PR #23 follow-up).
+     *
+     * <p>경로: {@code POST /public/batches/{token}/slips/{slipNo}/driver-signature}.
+     * 인수자 서명({@link #recordSignature})과 동일 패턴, 차이: signerName 입력 X
+     * (Slip.driverName 재사용), share token 발급 X.
+     */
+    @PostMapping("/batches/{token}/slips/{slipNo}/driver-signature")
+    public ResponseEntity<ApiResponse<com.samhanair.logis.slip.delivery.web.dto.PublicDriverSignatureResponse>>
+            recordDriverSignature(
+                    @PathVariable String token,
+                    @PathVariable String slipNo,
+                    @Valid @RequestBody com.samhanair.logis.slip.delivery.web.dto.PublicDriverSignatureRequest request) {
+        try {
+            var body = signatureService.recordDriverSignature(token, slipNo, request);
+            return ResponseEntity.ok(ApiResponse.ok(body));
+        } catch (BusinessException ex) {
+            if (ex.getErrorCode() == ErrorCode.CONFLICT && ex.getMessage() != null
+                    && ex.getMessage().contains("토큰이 만료")) {
+                return ResponseEntity.status(HttpStatus.GONE)
+                        .body(ApiResponse.fail(ErrorCode.CONFLICT, ex.getMessage()));
+            }
+            throw ex;
+        }
+    }
+
+    /**
      * 인수자 view 조회 (no auth) — Slice C (signature-slice-C Plan §2).
      *
      * <p>경로: {@code GET /public/signatures/{shareToken}}.

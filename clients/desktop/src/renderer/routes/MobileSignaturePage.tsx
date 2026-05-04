@@ -6,7 +6,7 @@
  * `wireframes.md` §1 + `mobile-spec.md` §2.1 / §3.5 / §4 충실 반영.
  *
  * 흐름 (Designer ux-flow.md):
- * 1) 입수: `/mobile/d/:token/s/:slipNo` 진입 → 슬립 헤더 + 라인 표시 (mock).
+ * 1) 입수: `/mobile/d/:token/s/:slipNo` 진입 → 전표 헤더 + 라인 표시 (mock).
  * 2) 인수자명 입력 (≥1자) + Canvas 서명 (≥1 stroke) → [서명 완료] enabled.
  * 3) [서명 완료] 누르면 SHA-256 해시 → POST `/public/.../signature` →
  *    응답 shareToken 으로 `/mobile/share/:shareToken?from=signed` 리다이렉트.
@@ -114,15 +114,15 @@ export function MobileSignaturePage() {
           ◀ 목록으로
         </a>
 
-        {/* 슬립 헤더 (mock — 실제 BE 는 GET /public/batches/{token} 로 슬립 정보 조회) */}
-        <section className="m-slip-card" aria-label="슬립 상세">
-          <h2 className="m-slip-card-title">슬립 상세</h2>
+        {/* 전표 헤더 (mock — 실제 BE 는 GET /public/batches/{token} 로 전표 정보 조회) */}
+        <section className="m-slip-card" aria-label="전표 상세">
+          <h2 className="m-slip-card-title">전표 상세</h2>
           <p className="m-slip-info">
             <span className="m-slip-info-label">거래처</span>
             ○○종합건설
           </p>
           <p className="m-slip-info">
-            <span className="m-slip-info-label">슬립번호</span>
+            <span className="m-slip-info-label">전표번호</span>
             <span className="m-slip-info-sm">{slipNo}</span>
           </p>
           <p className="m-slip-info">

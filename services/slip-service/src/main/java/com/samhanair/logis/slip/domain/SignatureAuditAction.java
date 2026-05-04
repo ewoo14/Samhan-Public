@@ -12,5 +12,7 @@ package com.samhanair.logis.slip.domain;
  */
 public enum SignatureAuditAction {
     RECORD,
-    INVALIDATE
+    INVALIDATE,
+    /** Slice C2 — 배송기사 서명 등록 (공개 mobile endpoint POST 시). */
+    RECORD_DRIVER
 }

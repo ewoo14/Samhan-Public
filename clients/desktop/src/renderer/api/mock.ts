@@ -93,7 +93,7 @@ const MOCK_SIGNATURE_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII='
 
 /**
- * Slice C: 서명된 슬립 1건의 시드 데이터 — slip-002 (CONFIRMED) 에 적용.
+ * Slice C: 서명된 전표 1건의 시드 데이터 — slip-002 (CONFIRMED) 에 적용.
  *
  * SlipDetailPage 의 "전자서명 정보" 카드 + DispatchView 인쇄 인수자 셀 PNG 양쪽 시연.
  */
@@ -817,7 +817,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
-  // POST /delivery-batches/{id}/slips — 슬립 추가
+  // POST /delivery-batches/{id}/slips — 전표 추가
   const batchAddSlipMatch = url.match(/\/delivery-batches\/([^/]+)\/slips$/)
   if (method === 'POST' && batchAddSlipMatch) {
     const id = batchAddSlipMatch[1]!

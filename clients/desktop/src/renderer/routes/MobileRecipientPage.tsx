@@ -135,7 +135,7 @@ export function MobileRecipientPage() {
             {slip.partnerName}
           </p>
           <p className="m-slip-info">
-            <span className="m-slip-info-label">슬립번호</span>
+            <span className="m-slip-info-label">전표번호</span>
             <span className="m-slip-info-sm">{slip.slipNo}</span>
           </p>
           <p className="m-slip-info">

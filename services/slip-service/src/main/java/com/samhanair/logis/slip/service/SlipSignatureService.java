@@ -126,6 +126,43 @@ public class SlipSignatureService {
     }
 
     /**
+     * 배송기사 서명 기록 — Slice C2 (PR #23 follow-up).
+     * 인수자 서명({@link #recordSignature})과 동일 패턴, 차이: signerName 입력 X (Slip.driverName 재사용),
+     * share token 발급 X (인수자 share 토큰을 그대로 재사용).
+     */
+    public com.samhanair.logis.slip.delivery.web.dto.PublicDriverSignatureResponse recordDriverSignature(
+            String batchToken, String slipNo,
+            com.samhanair.logis.slip.delivery.web.dto.PublicDriverSignatureRequest req) {
+        DeliveryBatch batch = batchRepository.findByBatchToken(batchToken)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "유효하지 않은 토큰입니다"));
+        if (batch.isExpired()) {
+            throw new BusinessException(ErrorCode.CONFLICT, "토큰이 만료되었습니다");
+        }
+        String canonicalSlipNo = canonicalSlipNo(slipNo);
+        Slip slip = findBatchSlip(batch.getId(), canonicalSlipNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "슬립을 찾을 수 없습니다"));
+
+        byte[] png = decodePng(req.signaturePngBase64());
+        if (png.length > PNG_MAX_BYTES) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "기사 서명 PNG 가 너무 큽니다 (" + png.length + " bytes, 최대 " + PNG_MAX_BYTES + ")");
+        }
+        String serverHash = sha256Hex(png);
+        if (!serverHash.equalsIgnoreCase(req.clientHash())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "기사 서명 무결성 검증 실패 — 클라이언트 hash 가 일치하지 않습니다");
+        }
+
+        applyMutation(() -> slip.recordDriverSignature(png, serverHash, SignatureChannel.MOBILE_CANVAS));
+        // audit: 기사 서명도 추적 — driverName + RECORD_DRIVER (별도 action)
+        auditRepository.save(SlipSignatureAudit.recordDriver(slip.getId(),
+                slip.getDriverName(), slip.getDriverSignatureHash()));
+
+        return new com.samhanair.logis.slip.delivery.web.dto.PublicDriverSignatureResponse(
+                slip.getDriverSignedAt(), slip.getDriverSignatureHash());
+    }
+
+    /**
      * 인수자 view 조회 — Plan §2 의 endpoint 2번. read-only.
      *
      * @param shareToken 인수자 share 토큰

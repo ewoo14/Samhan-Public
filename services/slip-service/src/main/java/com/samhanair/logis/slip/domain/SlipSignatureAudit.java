@@ -91,6 +91,15 @@ public class SlipSignatureAudit extends BaseEntity {
     }
 
     /**
+     * RECORD_DRIVER 이력 생성 — Slice C2 배송기사 서명 등록 시 적재.
+     * driverName 을 signerName 컬럼에 기록 (별도 driverName 컬럼 추가 회피).
+     */
+    public static SlipSignatureAudit recordDriver(UUID slipId, String driverName, String signatureHash) {
+        return new SlipSignatureAudit(slipId, SignatureAuditAction.RECORD_DRIVER,
+                driverName, signatureHash, null, null);
+    }
+
+    /**
      * INVALIDATE 이력 생성 — 관리자(MASTER) 무효화 시 적재.
      *
      * @param slipId 슬립 UUID (필수)
