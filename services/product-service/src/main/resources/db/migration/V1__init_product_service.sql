@@ -36,7 +36,7 @@ CREATE TABLE products (
     category_id     UUID           NOT NULL REFERENCES categories(id),
     selling_price   NUMERIC(15,2)  NOT NULL CHECK (selling_price  >= 0),
     purchase_price  NUMERIC(15,2)  NOT NULL CHECK (purchase_price >= 0),
-    currency        CHAR(3)        NOT NULL DEFAULT 'KRW',
+    currency        VARCHAR(3)     NOT NULL DEFAULT 'KRW',
     status          VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE',
     tags            JSONB,
     description     VARCHAR(1000),

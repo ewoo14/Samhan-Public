@@ -63,7 +63,7 @@ public class Product extends BaseEntity {
     @Column(name = "purchase_price", nullable = false, precision = 15, scale = 2)
     private BigDecimal purchasePrice;
 
-    @Column(name = "currency", nullable = false, length = 3, columnDefinition = "CHAR(3)")
+    @Column(name = "currency", nullable = false, length = 3)
     private String currency;
 
     @Enumerated(EnumType.STRING)
