@@ -16,13 +16,17 @@ import com.samhanair.logis.inventory.web.dto.AdjustRequest;
 import com.samhanair.logis.inventory.web.dto.DeductRequest;
 import com.samhanair.logis.inventory.web.dto.DeductionResponse;
 import com.samhanair.logis.inventory.web.dto.InboundRequest;
+import com.samhanair.logis.inventory.web.dto.ProductBalanceResponse;
 import com.samhanair.logis.inventory.web.dto.ReleaseRequest;
 import com.samhanair.logis.inventory.web.dto.ReservationResponse;
 import com.samhanair.logis.inventory.web.dto.ReserveRequest;
 import com.samhanair.logis.inventory.web.dto.StockLotResponse;
 import jakarta.persistence.OptimisticLockException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -224,6 +228,53 @@ public class StockService {
         return stockLotRepository.findAvailableLotsForFifo(productId, warehouseId).stream()
                 .mapToInt(StockLot::getQuantity)
                 .sum();
+    }
+
+    /** 다중 productId 일괄 잔량 조회 batch 한도 — product-service lookup 한도와 동일. */
+    public static final int BALANCE_LOOKUP_BATCH_MAX = 100;
+
+    /**
+     * 다중 productId × 모든 창고 잔량 일괄 조회 — Sales Form Polish 슬라이스의 다행 견적 입력용.
+     *
+     * <p>입력 productId 별로 활성 stock_balance row 를 모두 묶어 반환한다. 입력 순서를 보존하며,
+     * 한 번도 입고된 적이 없어 row 가 없는 (productId, warehouse) 조합은 응답에서 제외 (FE 가
+     * dash 표시). 가상창고 (VIRTUAL) row 도 포함하되 FE 가 별도 표시 분기.
+     *
+     * <p>{@link #BALANCE_LOOKUP_BATCH_MAX} 건을 초과하면 INVALID_INPUT. 입력이 null/empty 면
+     * INVALID_INPUT — Bean Validation 으로 1차 거르되 서비스 레이어 방어 호출.
+     *
+     * @param productIds 조회할 제품 UUID 컬렉션 (1 ~ {@value #BALANCE_LOOKUP_BATCH_MAX} 건)
+     * @return productId 별 ProductBalanceResponse 리스트 (입력 순서 유지, 모든 입력 ID 포함)
+     * @throws BusinessException(INVALID_INPUT) productIds 가 null/empty 또는 batch 한도 초과
+     */
+    @Transactional(readOnly = true)
+    public List<ProductBalanceResponse> findBalancesByProductIds(Collection<UUID> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "조회할 제품 ID가 비어있습니다");
+        }
+        if (productIds.size() > BALANCE_LOOKUP_BATCH_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "한 번에 조회할 수 있는 최대 제품 수는 "
+                            + BALANCE_LOOKUP_BATCH_MAX + "건입니다");
+        }
+
+        // 입력 순서 보존 + 중복 제거 — LinkedHashMap key set 을 그대로 응답 순서로 사용.
+        Map<UUID, List<StockBalance>> grouped = new LinkedHashMap<>();
+        for (UUID id : productIds) {
+            grouped.putIfAbsent(id, new ArrayList<>());
+        }
+
+        List<StockBalance> rows = stockBalanceRepository
+                .findAllByProductIdInAndIsDeletedFalse(grouped.keySet());
+        for (StockBalance row : rows) {
+            grouped.get(row.getProductId()).add(row);
+        }
+
+        List<ProductBalanceResponse> result = new ArrayList<>(grouped.size());
+        grouped.forEach((productId, balances) ->
+                result.add(ProductBalanceResponse.of(productId, balances)));
+        return result;
     }
 
     private StockBalance loadBalanceOrThrow(UUID productId, UUID warehouseId) {

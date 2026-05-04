@@ -243,6 +243,50 @@ export type TransferTransitionAction =
   | 'confirm'
   | 'cancel'
 
+// ---------------------------------------------------------------------------
+// StockBalance batch (sales-form-polish 슬라이스 신규)
+// ---------------------------------------------------------------------------
+
+/**
+ * batch 재고 조회 응답 row — BE `StockBalanceBatchResponse.Row` 와 1:1.
+ *
+ * UUID 비공개 가드: `productId` 는 React key 로만 사용, 화면 미노출.
+ * 화면에 표시되는 식별자는 `modelName` / `productName`.
+ */
+export interface StockBalanceBatchRow {
+  productId: string
+  modelName: string
+  productName: string
+  /** 창고 코드 → 수량 (재고 0 이면 0, 가상창고는 null). */
+  perWarehouse: Record<string, number | null>
+  /** 합계 (가상창고 제외). */
+  total: number
+}
+
+/** batch 응답 envelope. */
+export interface StockBalanceBatchResponse {
+  rows: StockBalanceBatchRow[]
+}
+
+/**
+ * 다건 productId 의 창고별 재고 + 합계 조회.
+ *
+ * SlipFormPage 의 [선택 항목 재고조회] 버튼에서 호출. N건을 1회 batch 로
+ * 가져오므로 100건 이하 가정 (Designer ux-flow.md § 8.3).
+ *
+ * @param productIds 조회 대상 product UUID 배열 (호출자가 선택 라인에서 추출)
+ * @return 모델명 × 창고 matrix + 합계 + 가상창고 null
+ */
+export async function fetchStockBalanceBatch(
+  productIds: string[],
+): Promise<StockBalanceBatchResponse> {
+  const res = await apiClient.post<ApiEnvelope<StockBalanceBatchResponse>>(
+    '/inventory/balances/batch',
+    { productIds },
+  )
+  return res.data.data
+}
+
 /**
  * 이동전표 라이프사이클 transition. reject 만 body (`reason`) 필요.
  */

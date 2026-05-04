@@ -116,6 +116,101 @@
   --bp-2xl: 1536px;
 }
 
+/* ==========================================================================
+ * sales-form-polish 슬라이스 — 모던 미니멀 alias (Designer tokens.md 인용)
+ *
+ * 본 슬라이스는 SlipFormPage / StockBalanceModal / DispatchView 만 신규 alias
+ * 사용 (Q5=B). 기존 16 컴포넌트는 후속 슬라이스에서 점진 migration.
+ * 기존 토큰은 그대로 두고, 의미적 alias 만 추가하여 호환성 유지.
+ * ========================================================================== */
+:root {
+  /* Surface — 배경 / 카드 / subtle */
+  --surface-app:       #FAFBFC;
+  --surface-card:      #FFFFFF;
+  --surface-subtle:    #F4F6F8;
+  --surface-hover:     #F4F6F8;
+  --surface-selected:  #EFF6FF;
+  --surface-selected-hover: #E0EAFB;
+
+  /* Border / line */
+  --line-default:      #E1E5EA;
+  --line-hover:        #C9D1D9;
+  --line-focus:        #3B82F6;
+  --line-selected:     #3B82F6;
+
+  /* Text — Pretendard 가독성 우선 */
+  --ink-primary:       #1A1F2E;
+  --ink-secondary:     #5C6773;
+  --ink-tertiary:      #8A95A4;
+  --ink-on-primary:    #FFFFFF;
+
+  /* Brand action — modern bold blue */
+  --action-brand:        #1E40AF;
+  --action-brand-hover:  #1D4ED8;
+  --action-brand-active: #1E3A8A;
+  --action-brand-subtle: #DBEAFE;
+
+  /* State */
+  --state-success:     #10B981;
+  --state-success-bg:  #D1FAE5;
+  --state-danger:      #EF4444;
+  --state-danger-bg:   #FEE2E2;
+  --state-warning:     #F59E0B;
+  --state-warning-bg:  #FEF3C7;
+  --state-info:        #3B82F6;
+  --state-info-bg:     #DBEAFE;
+
+  /* spacing semantic alias (4-base scale 그대로) */
+  --space-row-y:     8px;
+  --space-row-x:     12px;
+  --space-card:      24px;
+  --space-card-gap:  16px;
+  --space-section:   32px;
+
+  /* typography semantic alias */
+  --font-row:         14px;
+  --font-row-num:     14px;
+  --font-label:       12px;
+  --font-input:       14px;
+  --font-card-title:  16px;
+  --font-page-title:  24px;
+  --font-modal-title: 18px;
+  --font-feature-num: "tnum" 1, "lnum" 1;
+
+  /* radius semantic alias (4 / 8 / 12 만) */
+  --radius-input:  4px;
+  --radius-button: 4px;
+  --radius-card:   8px;
+  --radius-modal:  8px;
+  --radius-chip:   4px;
+
+  /* shadow — soft elevation */
+  --elev-card:    0 1px 3px rgba(0, 0, 0, 0.04);
+  --elev-popover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --elev-modal:   0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* dimensions — table row + 모달 */
+  --row-h:         40px;
+  --row-h-thead:   44px;
+  --col-checkbox:  40px;
+  --col-drag:      24px;
+  --col-line-no:   24px;
+  --col-qty:       80px;
+  --col-price:     120px;
+  --col-sum:       100px;
+  --col-delete:    32px;
+
+  --modal-max-w:   720px;
+  --modal-max-h:   80vh;
+  --overlay-bg:    rgba(0, 0, 0, 0.6);
+
+  /* motion — micro-interaction */
+  --motion-hover: 120ms ease-out;
+  --motion-focus: 120ms ease-out;
+  --motion-modal: 180ms ease-out;
+  --motion-drag:  200ms ease-out;
+}
+
 /* Minimal dark theme stub. Phase 2 will refine full palette. */
 [data-theme="dark"] {
   --color-brand-50:  #0F2939;

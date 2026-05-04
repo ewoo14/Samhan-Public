@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -214,6 +215,91 @@ class InventoryControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(deductBody)))
                 .andExpect(status().isConflict());
+    }
+
+    // ----- 다중 제품 일괄 잔량 조회 (Sales Form Polish 슬라이스) -----
+
+    @Test
+    void batchBalances_salesRole_returns200WithMultipleProducts() throws Exception {
+        // SALES 가 영업 견적 단계에서 사용 — 모든 role 조회 가능. 입고 후 batch 조회 시 데이터 반환.
+        UUID productA = UUID.randomUUID();
+        UUID productB = UUID.randomUUID();
+
+        // productA 만 사전 입고. productB 는 입고 안 한 상태 → balance 없음 → balances 빈 리스트.
+        Map<String, Object> inboundBody = new HashMap<>();
+        inboundBody.put("productId", productA.toString());
+        inboundBody.put("warehouseId", hqWarehouseId.toString());
+        inboundBody.put("quantity", 12);
+        inboundBody.put("unitCost", 100000);
+        inboundBody.put("lotNo", "BATCH-LOOKUP-001");
+
+        mockMvc.perform(post("/inventory/lots/inbound")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "WAREHOUSE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(inboundBody)))
+                .andExpect(status().isCreated());
+
+        Map<String, Object> batchBody = new HashMap<>();
+        batchBody.put("productIds", List.of(productA.toString(), productB.toString()));
+
+        mockMvc.perform(post("/inventory/balances/batch")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(batchBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                // 입력 순서 보존 — productA 먼저
+                .andExpect(jsonPath("$.data[0].productId").value(productA.toString()))
+                .andExpect(jsonPath("$.data[0].balances[0].warehouseCode").value("HQ-001"))
+                .andExpect(jsonPath("$.data[0].balances[0].availableQty").value(12))
+                .andExpect(jsonPath("$.data[0].balances[0].warehouseType").value("HEADQUARTERS"))
+                // productB 는 row 없음 → 빈 리스트
+                .andExpect(jsonPath("$.data[1].productId").value(productB.toString()))
+                .andExpect(jsonPath("$.data[1].balances.length()").value(0));
+    }
+
+    @Test
+    void batchBalances_unauthenticated_returns403() throws Exception {
+        Map<String, Object> body = new HashMap<>();
+        body.put("productIds", List.of(UUID.randomUUID().toString()));
+
+        mockMvc.perform(post("/inventory/balances/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void batchBalances_emptyProductIds_returns400() throws Exception {
+        // Bean Validation @NotEmpty → 400.
+        Map<String, Object> body = new HashMap<>();
+        body.put("productIds", List.of());
+
+        mockMvc.perform(post("/inventory/balances/batch")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void batchBalances_overLimit_returns400() throws Exception {
+        // 101건 → @Size(max=100) 위반 → 400.
+        List<String> tooMany = IntStream.range(0, 101)
+                .mapToObj(i -> UUID.randomUUID().toString())
+                .toList();
+        Map<String, Object> body = new HashMap<>();
+        body.put("productIds", tooMany);
+
+        mockMvc.perform(post("/inventory/balances/batch")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

@@ -214,3 +214,65 @@ Authorization: Bearer {{managerToken}}
 ### ship() 시 IN_TRANSIT 스킵 → 응답 $.data.status == "RECEIVED"
 POST {{host}}/inventory/transfers/{{virtualTransferId}}/ship
 Authorization: Bearer {{warehouseToken}}
+
+###############################################################################
+### 시나리오 9 (sales-form-polish 슬라이스): 재고 잔량 다건 batch 조회
+### 9-a) productIds 2~3건 정상 — SALES 도 200 (모든 인증 role 가능)
+###       응답: ApiResponse<List<ProductBalanceResponse>>
+###       jsonPath: $.data[*].balances[*]
+### 9-b) 미인증 — 403
+### 9-c) 빈 리스트 — 400 (NotEmpty)
+### 9-d) 한도 초과 (101건) — 400 (Size max=100)
+### 9-e) 잔량 0 창고 포함 검증 (사람 검토용)
+###############################################################################
+POST {{host}}/inventory/balances/batch
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "productIds": [
+    "{{testProductId}}",
+    "00000000-0000-0000-0000-000000003002",
+    "00000000-0000-0000-0000-000000003003"
+  ]
+}
+
+### 9-b) 미인증 → 403 (Authorization 헤더 제거)
+POST {{host}}/inventory/balances/batch
+Content-Type: application/json
+
+{
+  "productIds": ["{{testProductId}}"]
+}
+
+### 9-c) 빈 리스트 → 400 NotEmpty
+POST {{host}}/inventory/balances/batch
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "productIds": []
+}
+
+### 9-d) 한도 초과 (101건) → 400 Size(max=100)
+###       (실제 호출 시 101개 UUID 본문 작성 필요. 본 fixture 는 검증 의도만 표시.)
+POST {{host}}/inventory/balances/batch
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "productIds": [
+    "00000000-0000-0000-0000-000000004001",
+    "00000000-0000-0000-0000-000000004002",
+    "..."
+  ]
+}
+
+### 9-e) WAREHOUSE role 도 가능 — read-only 모든 role 가능 검증
+POST {{host}}/inventory/balances/batch
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "productIds": ["{{testProductId}}"]
+}

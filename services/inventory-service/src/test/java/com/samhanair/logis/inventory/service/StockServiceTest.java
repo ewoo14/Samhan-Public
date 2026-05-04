@@ -26,6 +26,7 @@ import com.samhanair.logis.inventory.web.dto.AdjustRequest;
 import com.samhanair.logis.inventory.web.dto.DeductRequest;
 import com.samhanair.logis.inventory.web.dto.DeductionResponse;
 import com.samhanair.logis.inventory.web.dto.InboundRequest;
+import com.samhanair.logis.inventory.web.dto.ProductBalanceResponse;
 import com.samhanair.logis.inventory.web.dto.ReleaseRequest;
 import com.samhanair.logis.inventory.web.dto.ReservationResponse;
 import com.samhanair.logis.inventory.web.dto.ReserveRequest;
@@ -33,9 +34,12 @@ import com.samhanair.logis.inventory.web.dto.StockLotResponse;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -273,6 +277,92 @@ class StockServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
+    // ----- 다중 제품 일괄 잔량 조회 (Sales Form Polish 슬라이스) -----
+
+    @Test
+    void findBalancesByProductIds_returnsBalancesGroupedAndPreservesInputOrder() {
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        Warehouse hq = warehouse;
+        Warehouse vh = Warehouse.create("VH-001", "1호차 차량재고", WarehouseType.VEHICLE, null, 2, null);
+        ReflectionTestUtils.setField(vh, "id", UUID.randomUUID());
+
+        StockBalance p1Hq = StockBalance.create(p1, hq);
+        ReflectionTestUtils.setField(p1Hq, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(p1Hq, "availableQty", 12);
+        ReflectionTestUtils.setField(p1Hq, "totalQty", 12);
+
+        StockBalance p1Vh = StockBalance.create(p1, vh);
+        ReflectionTestUtils.setField(p1Vh, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(p1Vh, "availableQty", 3);
+        ReflectionTestUtils.setField(p1Vh, "totalQty", 3);
+
+        StockBalance p2Hq = StockBalance.create(p2, hq);
+        ReflectionTestUtils.setField(p2Hq, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(p2Hq, "availableQty", 7);
+        ReflectionTestUtils.setField(p2Hq, "totalQty", 7);
+
+        when(stockBalanceRepository.findAllByProductIdInAndIsDeletedFalse(any(Collection.class)))
+                .thenReturn(List.of(p2Hq, p1Vh, p1Hq)); // DB 순서는 임의
+
+        List<ProductBalanceResponse> result = service.findBalancesByProductIds(List.of(p1, p2));
+
+        assertThat(result).hasSize(2);
+        // 입력 순서 (p1, p2) 보존
+        assertThat(result.get(0).productId()).isEqualTo(p1);
+        assertThat(result.get(0).balances()).hasSize(2);
+        assertThat(result.get(1).productId()).isEqualTo(p2);
+        assertThat(result.get(1).balances()).hasSize(1);
+        assertThat(result.get(1).balances().get(0).availableQty()).isEqualTo(7);
+    }
+
+    @Test
+    void findBalancesByProductIds_emptyDbResult_stillReturnsAllRequestedProductIds() {
+        // DB 에 row 가 없어도 요청한 productId 마다 빈 balances 리스트 반환 (FE 가 dash 표시).
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        when(stockBalanceRepository.findAllByProductIdInAndIsDeletedFalse(any(Collection.class)))
+                .thenReturn(Collections.emptyList());
+
+        List<ProductBalanceResponse> result = service.findBalancesByProductIds(List.of(p1, p2));
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).productId()).isEqualTo(p1);
+        assertThat(result.get(0).balances()).isEmpty();
+        assertThat(result.get(1).balances()).isEmpty();
+    }
+
+    @Test
+    void findBalancesByProductIds_emptyInput_throwsInvalidInput() {
+        assertThatThrownBy(() -> service.findBalancesByProductIds(Collections.emptyList()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void findBalancesByProductIds_nullInput_throwsInvalidInput() {
+        assertThatThrownBy(() -> service.findBalancesByProductIds(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void findBalancesByProductIds_overBatchLimit_throwsInvalidInput() {
+        List<UUID> tooMany = IntStream.range(0, 101)
+                .mapToObj(i -> UUID.randomUUID())
+                .toList();
+
+        assertThatThrownBy(() -> service.findBalancesByProductIds(tooMany))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    BusinessException be = (BusinessException) ex;
+                    assertThat(be.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+                    assertThat(be.getMessage()).contains("100");
+                });
     }
 
     // ----- helpers -----
