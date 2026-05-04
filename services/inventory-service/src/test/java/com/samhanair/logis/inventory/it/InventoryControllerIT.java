@@ -183,13 +183,30 @@ class InventoryControllerIT extends AbstractPostgresIT {
 
     @Test
     void deduct_insufficientStock_returns409() throws Exception {
-        // 재고 0 인 productId 로 출고 → BusinessException(CONFLICT) → 409.
-        UUID emptyProductId = UUID.randomUUID();
+        // 재고 부족 시나리오는 balance 는 존재하되 lot 합계만 모자란 경우 — 먼저 10개 입고로
+        // balance 를 생성하고 그 다음 50개 출고 시도 → BusinessException(CONFLICT) → 409.
+        // (balance 자체가 없으면 NOT_FOUND 404 반환되므로 CONFLICT 시나리오가 되려면 입고 필요.)
+        UUID productId = UUID.randomUUID();
+
+        Map<String, Object> inboundBody = new HashMap<>();
+        inboundBody.put("productId", productId.toString());
+        inboundBody.put("warehouseId", hqWarehouseId.toString());
+        inboundBody.put("quantity", 10);
+        inboundBody.put("unitCost", 100000);
+        inboundBody.put("lotNo", "INSUFFICIENT-PRE-001");
+
+        mockMvc.perform(post("/inventory/lots/inbound")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "WAREHOUSE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(inboundBody)))
+                .andExpect(status().isCreated());
+
         Map<String, Object> deductBody = new HashMap<>();
-        deductBody.put("productId", emptyProductId.toString());
+        deductBody.put("productId", productId.toString());
         deductBody.put("warehouseId", hqWarehouseId.toString());
-        deductBody.put("quantity", 10);
-        deductBody.put("note", "재고 부족 시나리오");
+        deductBody.put("quantity", 50);
+        deductBody.put("note", "재고 부족 시나리오 (10개만 있는데 50개 요청)");
 
         mockMvc.perform(post("/inventory/deduct")
                         .header("X-User-Id", UUID.randomUUID().toString())
