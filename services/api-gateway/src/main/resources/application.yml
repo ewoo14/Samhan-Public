@@ -43,6 +43,14 @@ spring:
             - StripPrefix=1
             - JwtAuthentication
 
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/api/products/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
         - id: inventory-service
           uri: lb://inventory-service
           predicates:
