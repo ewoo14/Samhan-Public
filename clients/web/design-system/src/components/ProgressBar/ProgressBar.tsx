@@ -33,22 +33,33 @@ import styles from './ProgressBar.module.css'
 import type { SlipStatus } from '../SlipStatusBadge/SlipStatusBadge'
 
 /**
- * 정상 진행 10단계 정의 (Designer components.md § 1.3).
- * DRAFT(작성) → SAVED(저장) → SENT(전송) → ACCEPTED(수락) → PROCESSING(처리)
- * → INSPECTING(검수) → COMPLETED(완료) → SHIPPING(배송) → DELIVERED(배송완료)
- * → CONFIRMED(확정).
+ * 정상 진행 6단계 정의 (PR #21 hotfix — 개발책임자 회신 단순화).
+ *
+ * 사용자 명시 단계: 작성 중 → 창고 전송 → 출고 중 → 검수 중 → 배송 중 → 배송완료.
+ *
+ * 내부 SlipStatus enum 10단계 → 6 stage 매핑:
+ * - 작성 중:   DRAFT, SAVED
+ * - 창고 전송: SENT, ACCEPTED
+ * - 출고 중:   PROCESSING
+ * - 검수 중:   INSPECTING
+ * - 배송 중:   COMPLETED, SHIPPING
+ * - 배송완료: DELIVERED, CONFIRMED
+ *
+ * `statuses` 첫 원소는 "stage 의 대표 status" (transition 시점 기준).
  */
-export const PROGRESS_STEPS: ReadonlyArray<{ status: SlipStatus; label: string }> = [
-  { status: 'DRAFT', label: '작성' },
-  { status: 'SAVED', label: '저장' },
-  { status: 'SENT', label: '전송' },
-  { status: 'ACCEPTED', label: '수락' },
-  { status: 'PROCESSING', label: '처리' },
-  { status: 'INSPECTING', label: '검수' },
-  { status: 'COMPLETED', label: '완료' },
-  { status: 'SHIPPING', label: '배송' },
-  { status: 'DELIVERED', label: '배송완료' },
-  { status: 'CONFIRMED', label: '확정' },
+export const PROGRESS_STEPS: ReadonlyArray<{
+  /** 대표 status — onStepClick 콜백에 전달. */
+  status: SlipStatus
+  label: string
+  /** 본 stage 가 포괄하는 SlipStatus enum 값들. */
+  statuses: ReadonlyArray<SlipStatus>
+}> = [
+  { status: 'DRAFT',      label: '작성 중',   statuses: ['DRAFT', 'SAVED'] },
+  { status: 'SENT',       label: '창고 전송', statuses: ['SENT', 'ACCEPTED'] },
+  { status: 'PROCESSING', label: '출고 중',   statuses: ['PROCESSING'] },
+  { status: 'INSPECTING', label: '검수 중',   statuses: ['INSPECTING'] },
+  { status: 'COMPLETED',  label: '배송 중',   statuses: ['COMPLETED', 'SHIPPING'] },
+  { status: 'DELIVERED',  label: '배송완료', statuses: ['DELIVERED', 'CONFIRMED'] },
 ]
 
 /** 단계별 시각 상태. */
@@ -90,13 +101,13 @@ function lastDoneIndexForBranch(
   if (history && history.length > 0) {
     let maxIdx = -1
     for (const h of history) {
-      const idx = PROGRESS_STEPS.findIndex((s) => s.status === h.status)
+      const idx = PROGRESS_STEPS.findIndex((s) => s.statuses.includes(h.status))
       if (idx > maxIdx) maxIdx = idx
     }
     if (maxIdx >= 0) return maxIdx
   }
-  // history 없을 때 보수적 default
-  return branchKind === 'rejected' ? 2 /* SENT */ : 0 /* DRAFT */
+  // history 없을 때 보수적 default — REJECTED 는 창고 전송(1) 까지, CANCELED 는 작성 중(0).
+  return branchKind === 'rejected' ? 1 : 0
 }
 
 /**
@@ -118,7 +129,7 @@ export const ProgressBar = forwardRef<HTMLDivElement, ProgressBarProps>(
           : null
 
     const currentIndex = branchKind === null
-      ? PROGRESS_STEPS.findIndex((s) => s.status === currentStatus)
+      ? PROGRESS_STEPS.findIndex((s) => s.statuses.includes(currentStatus))
       : -1
 
     const lastDoneIdx = branchKind !== null
@@ -205,8 +216,8 @@ export const ProgressBar = forwardRef<HTMLDivElement, ProgressBarProps>(
                     onClick={() => onStepClick?.(step.status)}
                     onKeyDown={(e) => handleNodeKey(e, step.status)}
                     title={
-                      history?.find((h) => h.status === step.status)?.actorFullName
-                        ? `${step.label} — ${history.find((h) => h.status === step.status)?.actorFullName}`
+                      history?.find((h) => step.statuses.includes(h.status))?.actorFullName
+                        ? `${step.label} — ${history.find((h) => step.statuses.includes(h.status))?.actorFullName}`
                         : step.label
                     }
                   >
