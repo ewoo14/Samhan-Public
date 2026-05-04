@@ -675,7 +675,7 @@ button {
   font-size: 13pt;
 }
 
-/* 라인 표 6-col (월/일|품목명|수량|단가|공급가액|부가세) — 가로 + 세로 구분선 모두 */
+/* 라인 표 6-col (월/일|품목명|수량|단가|공급가액|부가세) — 가로 + 세로 구분선 모두 (검은색) */
 .invoice-table {
   width: 100%;
   border-collapse: collapse;
@@ -685,7 +685,7 @@ button {
 
 .invoice-table th,
 .invoice-table td {
-  border: 1px solid #BBB;
+  border: 1px solid #000;
   padding: 1.5mm 3mm;
   vertical-align: middle;
 }
@@ -830,13 +830,14 @@ button {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   border: 1px solid #000;
-  height: 14mm;
+  /* 거래처명 박스 높이와 맞추기 위해 grid stretch 사용 — height 고정 제거 */
 }
 
 .dispatch-role-cell {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #000;
+  min-height: 0;
 }
 
 .dispatch-role-cell:last-child {
@@ -905,7 +906,7 @@ button {
   padding: 2mm 6mm;
 }
 
-/* 라인 표 4-col (모델명/품목명/규격/수량) — 가로 + 세로 구분선 모두 */
+/* 라인 표 4-col (모델명/품목명/규격/수량) — 가로 + 세로 구분선 모두 (검은색) */
 .dispatch-table {
   width: 100%;
   border-collapse: collapse;
@@ -916,7 +917,7 @@ button {
 
 .dispatch-table th,
 .dispatch-table td {
-  border: 1px solid #BBB;
+  border: 1px solid #000;
   padding: 2mm 3mm;
   vertical-align: middle;
 }
@@ -973,11 +974,15 @@ button {
   font-size: 13pt;
   font-weight: 700;
   min-width: 18mm;
+  flex-shrink: 0;
 }
 
+/* 라벨은 좌측 정렬 유지, 데이터는 우측 영역에서 가운데 정렬 (사용자 명시) */
 .dispatch-info-box .content {
+  flex: 1;
   font-size: 14pt;
   font-weight: 600;
+  text-align: center;
 }
 
 .dispatch-driver-call-notice {

@@ -21,8 +21,8 @@ body { background: #E5E7EB; padding: 24px; margin: 0; font-family: 'Pretendard',
   font-size: 22pt; font-weight: 700; padding: 6mm 4mm;
   border: 1px solid #000; text-align: center;
 }
-.dispatch-roles { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid #000; height: 14mm; }
-.dispatch-role-cell { display: flex; flex-direction: column; border-right: 1px solid #000; }
+.dispatch-roles { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid #000; }
+.dispatch-role-cell { display: flex; flex-direction: column; border-right: 1px solid #000; min-height: 0; }
 .dispatch-role-cell:last-child { border-right: none; }
 .dispatch-role-label {
   background: #F5F5F5; border-bottom: 1px solid #000; font-size: 7pt;
@@ -50,7 +50,7 @@ body { background: #E5E7EB; padding: 24px; margin: 0; font-family: 'Pretendard',
 
 /* 라인 표 — 가로 + 세로 구분선 모두 */
 .dispatch-table { width: 100%; border-collapse: collapse; margin-top: 0; border: 1px solid #000; font-size: 11pt; }
-.dispatch-table th, .dispatch-table td { border: 1px solid #BBB; padding: 2mm 3mm; vertical-align: middle; }
+.dispatch-table th, .dispatch-table td { border: 1px solid #000; padding: 2mm 3mm; vertical-align: middle; }
 .dispatch-table thead th {
   background: #F0F0F0; font-weight: 700; text-align: center; font-size: 11pt; border: 1px solid #000;
 }
@@ -73,8 +73,8 @@ body { background: #E5E7EB; padding: 24px; margin: 0; font-family: 'Pretendard',
   border: 1px solid #000; padding: 3mm 4mm; margin-bottom: 2mm;
   display: flex; align-items: baseline; gap: 6mm;
 }
-.dispatch-info-box .label { font-size: 13pt; font-weight: 700; min-width: 18mm; }
-.dispatch-info-box .content { font-size: 14pt; font-weight: 600; }
+.dispatch-info-box .label { font-size: 13pt; font-weight: 700; min-width: 18mm; flex-shrink: 0; }
+.dispatch-info-box .content { flex: 1; font-size: 14pt; font-weight: 600; text-align: center; }
 
 .dispatch-driver-call-notice { text-align: center; font-size: 12pt; font-weight: 600; margin: 4mm 0 2mm 0; }
 .dispatch-confirm-notice {
