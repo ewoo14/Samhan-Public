@@ -13,6 +13,7 @@ import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from 'axios'
+import { getMockResponse, isMockMode } from './mock'
 
 const BASE_URL =
   import.meta.env['VITE_API_BASE_URL'] ?? 'http://localhost:8080'
@@ -29,6 +30,21 @@ export const apiClient: AxiosInstance = axios.create({
 
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    // dev-only mock 모드 — VITE_MOCK_MODE=1 시 백엔드 호출을 fixture 로 대체 (PR #18 자동 캡처용).
+    if (isMockMode()) {
+      const mock = getMockResponse(config)
+      if (mock !== null) {
+        config.adapter = async () => ({
+          data: mock,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+          request: {},
+        })
+        return config
+      }
+    }
     try {
       const auth = await window.samhanAuth.getToken()
       if (auth?.token) {

@@ -10,6 +10,7 @@
  */
 import { create } from 'zustand'
 import type { AuthSnapshot } from '../types/electron'
+import { MOCK_AUTH, isMockMode } from '../api/mock'
 
 interface SessionState {
   /** 세션 부팅 완료 여부 — false 이면 splash/스피너 표시. */
@@ -28,6 +29,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   bootstrapped: false,
   auth: null,
   bootstrap: async () => {
+    // dev-only mock 모드 — IPC 우회하고 mock 토큰으로 자동 인증 (PR #18 자동 캡처용).
+    if (isMockMode()) {
+      set({ auth: MOCK_AUTH, bootstrapped: true })
+      return
+    }
     try {
       const auth = await window.samhanAuth.getToken()
       set({ auth, bootstrapped: true })

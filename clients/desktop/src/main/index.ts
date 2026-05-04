@@ -70,6 +70,14 @@ app.whenReady().then(() => {
   registerAuthIpcHandlers()
   createMainWindow()
 
+  // dev-only — CAPTURE_MODE=1 일 때 5 화면 자동 navigate + capturePage 후 종료.
+  // 동적 import 로 production 부팅 시 capture 모듈 로드 회피.
+  if (process.env['CAPTURE_MODE'] === '1' && mainWindow) {
+    import('./capture.js')
+      .then((mod) => mod.captureAllScreens(mainWindow!))
+      .catch((err) => console.error('[capture] 실행 실패', err))
+  }
+
   app.on('activate', () => {
     // macOS 호환성 코드 — 본 앱은 Windows 전용이지만 표준 패턴 유지.
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
