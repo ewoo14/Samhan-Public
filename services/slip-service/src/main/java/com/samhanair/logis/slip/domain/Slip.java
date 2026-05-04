@@ -215,7 +215,13 @@ public class Slip extends BaseEntity {
      * 인수자 share 토큰 — Slice C. base64url 64자, partial UNIQUE (NULL 허용).
      * 인수자 view 공개 endpoint {@code GET /public/signatures/{shareToken}} 진입 키.
      */
-    @Column(name = "signature_share_token", length = 64, unique = true)
+    /**
+     * NOTE: {@code unique=true} 미사용 — V5 SQL 은 partial UNIQUE INDEX
+     * ({@code WHERE signature_share_token IS NOT NULL}) 로 NULL 허용 + 발급 시
+     * 유일성 강제. JPA inline unique 는 full UNIQUE constraint 를 생성하라는
+     * 의미라 Hibernate {@code validate} 가 partial index 와 mismatch 로 거부.
+     */
+    @Column(name = "signature_share_token", length = 64)
     private String signatureShareToken;
 
     /**
