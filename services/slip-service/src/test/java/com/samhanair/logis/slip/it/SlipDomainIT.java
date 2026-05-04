@@ -45,11 +45,13 @@ class SlipDomainIT extends AbstractPostgresIT {
     }
 
     private Slip newDraftInbound() {
+        // 입고전표는 INBOUND direction 의 태그만 가능 (RETURN_TRIP/RETURN/BORROW).
+        // DAY 는 OUTBOUND 전용이라 BE 가 IllegalArgumentException 으로 거부 (PR #17 1차 fail 회고).
         return Slip.createInbound(
                 "2026/05/04-2", LocalDate.of(2026, 5, 4), 2,
                 UUID.randomUUID(),
                 UUID.randomUUID(), "테스트 거래처",
-                DeliveryTag.DAY, "입고 메모",
+                DeliveryTag.RETURN_TRIP, "입고 메모",
                 "user-sales-001"
         );
     }
@@ -156,9 +158,12 @@ class SlipDomainIT extends AbstractPostgresIT {
 
         slip.applyDeliveryTagAutoMemo();
 
-        // 자동 prepend 결과: "{date}상차" 가 memo 에 포함.
+        // 자동 prepend 결과 형식: "[야적] MM/dd 상차 MM/dd 하차 | 원본 메모" (yyyy 미포함, BE 의 MM/dd 포맷)
+        // PR #17 1차 fail 회고 — IT 가 yyyy("2026") 가정했으나 BE 는 MM/dd 만 사용
         assertThat(slip.getMemo())
-                .contains("2026")
+                .contains("[야적]")
+                .contains("05/04")
+                .contains("05/05")
                 .contains("상차")
                 .contains("하차")
                 .contains("원본 메모");

@@ -9,10 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.ProductClient;
+import com.samhanair.logis.slip.client.ProductSummary;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
@@ -57,6 +61,30 @@ class SlipControllerIT extends AbstractPostgresIT {
 
     @MockBean
     private InventoryClient inventoryClient;
+
+    /**
+     * ProductClient 도 @MockBean 으로 격리. SlipService.create 가 라인 productId 검증 시
+     * lookup 호출하므로 mock 누락하면 실제 product-service RestClient 호출 → 500.
+     * (CI hotfix: PR #17 1차 fail 회고 — IT 가 ProductClient 누락으로 10건 fail)
+     */
+    @MockBean
+    private ProductClient productClient;
+
+    @BeforeEach
+    void mockProductClient() {
+        Mockito.lenient().when(productClient.lookup(ArgumentMatchers.anyList()))
+                .thenAnswer(inv -> {
+                    List<UUID> ids = inv.getArgument(0);
+                    return ids.stream()
+                            .map(id -> new ProductSummary(id, "테스트 제품", "MOD-001",
+                                    UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"))
+                            .toList();
+                });
+        Mockito.lenient().when(productClient.requireExists(ArgumentMatchers.any()))
+                .thenAnswer(inv -> new ProductSummary(
+                        inv.getArgument(0), "테스트 제품", "MOD-001",
+                        UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"));
+    }
 
     /** SALES 권한으로 출고전표 1건 생성. 라이프사이클 테스트의 공통 셋업. */
     private String createOutboundSlipAsSales() throws Exception {

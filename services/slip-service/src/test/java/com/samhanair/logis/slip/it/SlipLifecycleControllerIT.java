@@ -8,13 +8,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.ProductClient;
+import com.samhanair.logis.slip.client.ProductSummary;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,15 +58,38 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
     @MockBean
     private InventoryClient inventoryClient;
 
+    /** ProductClient 도 @MockBean (PR #17 1차 fail 회고 — 누락 시 lookup 실제 호출 → 500). */
+    @MockBean
+    private ProductClient productClient;
+
+    @BeforeEach
+    void mockProductClient() {
+        Mockito.lenient().when(productClient.lookup(ArgumentMatchers.anyList()))
+                .thenAnswer(inv -> {
+                    List<UUID> ids = inv.getArgument(0);
+                    return ids.stream()
+                            .map(id -> new ProductSummary(id, "테스트 제품", "MOD-001",
+                                    UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"))
+                            .toList();
+                });
+        Mockito.lenient().when(productClient.requireExists(ArgumentMatchers.any()))
+                .thenAnswer(inv -> new ProductSummary(
+                        inv.getArgument(0), "테스트 제품", "MOD-001",
+                        UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"));
+    }
+
     private Map<String, Object> outboundBody() {
-        return slipBody("OUTBOUND", true);
+        // 출고전표 — DAY 태그 (OUTBOUND direction)
+        return slipBody("OUTBOUND", true, "DAY");
     }
 
     private Map<String, Object> inboundBody() {
-        return slipBody("INBOUND", false);
+        // 입고전표 — RETURN_TRIP 태그 (INBOUND direction). DAY 같은 OUTBOUND 태그 사용 시
+        // BE 가 IllegalArgumentException 으로 거부.
+        return slipBody("INBOUND", false, "RETURN_TRIP");
     }
 
-    private Map<String, Object> slipBody(String slipType, boolean withSource) {
+    private Map<String, Object> slipBody(String slipType, boolean withSource, String deliveryTag) {
         Map<String, Object> line = new HashMap<>();
         line.put("productId", UUID.randomUUID().toString());
         line.put("productName", "테스트 제품");
@@ -78,7 +107,7 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
         body.put("destinationWarehouseId", UUID.randomUUID().toString());
         body.put("partnerId", UUID.randomUUID().toString());
         body.put("partnerName", "테스트 거래처");
-        body.put("deliveryTag", "DAY");
+        body.put("deliveryTag", deliveryTag);
         body.put("memo", "메모");
         body.put("lines", List.of(line));
         return body;
