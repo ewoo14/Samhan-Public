@@ -12,7 +12,7 @@ provisioning REST surface for the SamhanLogis MSA.
   internal `/auth/internal/accounts` endpoints (saga-style — Auth first, compensation if
   the local persist fails).
 - Display-name propagation: when an employee's `fullName` is updated, the change is
-  synced into `auth-service.accounts.display_name` (Q2 — CEO-confirmed).
+  synced into `auth-service.accounts.display_name` (Q2 — 개발책임자 확정).
 
 ## Endpoints
 
@@ -35,12 +35,16 @@ All ingress is via the API Gateway, which strips `/api/users` to `/users` and fo
 
 The `OrgChartSeeder` provisions the 16 real employees of Samhan Logis on first boot when
 `app.user.seed-org=true`. Each account is created with the **default password
-`samhan!2026`** (CEO-confirmed Q1). Employees must change the password on first login.
+`samhan!2026`** (Q1 — 개발책임자 확정). Employees must change the password on first login.
 
 ## Internal service-to-service token
 
 Both `user-service` (caller) and `auth-service` (callee) share `app.security.internal.token`,
 overridable via env `INTERNAL_AUTH_TOKEN`. Default for dev: `dev-internal-token-change-me`.
+
+**보안 가드**: `prod` 프로파일이 활성화된 상태에서 토큰이 dev 기본값으로 남아있으면
+`InternalTokenGuard` 가 부팅을 거부한다. 운영 배포 전 반드시 `INTERNAL_AUTH_TOKEN` 환경변수로
+강력한 랜덤 문자열을 주입할 것. (참조: `infrastructure/.env.example`)
 
 ## DB
 

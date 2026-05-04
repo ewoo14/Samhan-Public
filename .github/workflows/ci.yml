@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write          # mikepenz/action-junit-report: check run 생성
+  pull-requests: write   # JUnit 결과 PR 코멘트 게시
+
+jobs:
+  build-and-test:
+    name: 빌드 + 테스트 (JDK 17 + Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설치 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 캐시 + Wrapper 검증
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.head_ref != 'main' }}
+
+      - name: gradlew 실행 권한 보장 (Windows 커밋 방어)
+        run: chmod +x ./gradlew
+
+      - name: Docker 가용성 확인 (Testcontainers 용)
+        run: |
+          docker version
+          docker ps
+
+      - name: assemble (전 모듈)
+        run: ./gradlew assemble --no-daemon
+
+      - name: test (전 모듈, Testcontainers IT 포함)
+        run: ./gradlew test --no-daemon
+
+      - name: 테스트 리포트 아티팩트 업로드 (실패 포함)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            services/*/build/reports/tests/test/
+            shared/*/build/reports/tests/test/
+          retention-days: 14
+
+      - name: JUnit 결과 PR 코멘트로 게시
+        if: always() && github.event_name == 'pull_request'
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+          require_tests: false
+          check_name: JUnit 테스트 결과
