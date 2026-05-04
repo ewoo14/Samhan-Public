@@ -457,3 +457,153 @@ client.global.set("draftSlipId", response.body.data.id);
 POST {{host}}/slips/{{draftSlipId}}/inspect
 Authorization: Bearer {{warehouseToken}}
 
+###############################################################################
+### 시나리오 13: Slice B (notification-slice-B) — 배송기사 배치 자동 그룹 + 토큰 + Solapi SMS
+### BE 신규 spec (plan §3, §4):
+###   - Slip.driverName/driverPhone/deliveryBatchId 3 필드 (nullable)
+###   - DeliveryBatch entity (id/batchToken/driverName/driverPhone/batchDate/tokenExpiresAt/smsSentAt/smsLastError)
+###   - SmsGateway 추상화 (Solapi production / Mock test) — slip-service 내부
+###   - 7 endpoints: /delivery-batches/{auto-group, GET list, GET one, send-sms, slips POST/DELETE, regenerate-token}
+###   - 3 공개 endpoints (no auth, 토큰만): /public/batches/{token}, /public/batches/{token}/slips/{slipId}, signature
+### 권한: MANAGER/MASTER (관리자). 공개 endpoint = NO AUTH.
+### UUID 가드: 공개 응답에 batch.id / slip.id / line.productId 모두 미노출.
+###############################################################################
+
+### 13-a: driverName/driverPhone 필드 포함 출고전표 신규 등록 (SAVED 까지)
+POST {{host}}/slips
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "slipType": "OUTBOUND",
+  "slipDate": "2026-05-10",
+  "sourceWarehouseId": "{{hqWarehouseId}}",
+  "destinationWarehouseId": "{{vehicleWarehouseId}}",
+  "partnerId": "{{testPartnerId}}",
+  "partnerName": "(주)윌리-정현수",
+  "deliveryTag": "DAY",
+  "memo": "Slice B driver fields 검증 — 슬립 1",
+  "driverName": "김기사",
+  "driverPhone": "010-1111-2222",
+  "lines": [
+    {
+      "productId": "{{testProductId}}",
+      "productName": "시스템에어컨 4Way",
+      "modelName": "AJ040RXH4BC1",
+      "quantity": 1,
+      "unitPrice": 1850000
+    }
+  ]
+}
+
+> {%
+client.global.set("driverSlip1Id", response.body.data.id);
+%}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/save
+Authorization: Bearer {{salesToken}}
+
+### 13-b: 같은 driver/date 두 번째 슬립 (auto-group 결과 1개 batch 안에 묶임 검증용)
+POST {{host}}/slips
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "slipType": "OUTBOUND",
+  "slipDate": "2026-05-10",
+  "sourceWarehouseId": "{{hqWarehouseId}}",
+  "destinationWarehouseId": "{{vehicleWarehouseId}}",
+  "partnerId": "{{testPartnerId}}",
+  "partnerName": "(주)정직 가전",
+  "deliveryTag": "DAY",
+  "memo": "Slice B 같은 기사 두 번째 슬립",
+  "driverName": "김기사",
+  "driverPhone": "010-1111-2222",
+  "lines": [
+    {
+      "productId": "{{testProductId}}",
+      "productName": "유선 리모컨",
+      "modelName": "MWR-WE10N",
+      "quantity": 2,
+      "unitPrice": 85000
+    }
+  ]
+}
+
+> {%
+client.global.set("driverSlip2Id", response.body.data.id);
+%}
+
+###
+POST {{host}}/slips/{{driverSlip2Id}}/save
+Authorization: Bearer {{salesToken}}
+
+###############################################################################
+### 시나리오 14: 자동 그룹화 (auto-group) — MANAGER 권한
+### 기대: 200 + ApiResponse<List<DeliveryBatchSummary>>
+###       두 슬립 (driverSlip1Id, driverSlip2Id) 가 batch 1개로 묶임 (slipCount == 2)
+###       UNIQUE (driverPhone, batchDate) partial index — 멱등성 보장
+###############################################################################
+POST {{host}}/delivery-batches/auto-group?date=2026-05-10
+Authorization: Bearer {{managerToken}}
+
+> {%
+client.global.set("batchToken", response.body.data[0].batchToken);
+client.global.set("batchId", response.body.data[0].id);
+%}
+
+### 14-b: 멱등성 검증 — 같은 날짜 재호출 → 같은 batch (token 동일)
+POST {{host}}/delivery-batches/auto-group?date=2026-05-10
+Authorization: Bearer {{managerToken}}
+
+### 14-c: 권한 매트릭스 — SALES 가 auto-group 시도 → 403
+POST {{host}}/delivery-batches/auto-group?date=2026-05-10
+Authorization: Bearer {{salesToken}}
+
+###############################################################################
+### 시나리오 15: SMS 발송 (Solapi 게이트웨이 호출)
+### 기대: 200 + $.data.smsSentAt != null, $.data.smsLastError == null
+###       (Solapi 미연동 환경에서는 MockSmsGateway → success 반환 후 smsSentAt 기록)
+###############################################################################
+POST {{host}}/delivery-batches/{{batchId}}/send-sms
+Authorization: Bearer {{managerToken}}
+
+### 15-b: 재발송 시 → 409 CONFLICT (오발송 방지). 강제 재발송은 별도 confirm UI 필요 (plan §7.2)
+POST {{host}}/delivery-batches/{{batchId}}/send-sms
+Authorization: Bearer {{managerToken}}
+
+###############################################################################
+### 시나리오 16: 공개 모바일 페이지 (no auth — 토큰만 검증)
+### 기대: 200 + $.data.driverName, $.data.slips[*].slipNo (UUID 미노출)
+###############################################################################
+
+### 16-a: 유효 토큰 — read-only 조회
+GET {{host}}/public/batches/{{batchToken}}
+
+### 16-b: 슬립 단건 상세 (서명 페이지 진입 — Slice C 후속 signature endpoint 위한 골격)
+GET {{host}}/public/batches/{{batchToken}}/slips/{{driverSlip1Id}}
+
+### 16-c: 임의 토큰 → 404
+GET {{host}}/public/batches/totally-invalid-token-zzz
+
+###############################################################################
+### 시나리오 17: 토큰 만료 + 재발급
+### 기대: 만료 후 GET → 410 GONE, regenerate-token → 200 + 새 토큰 + 새 expiresAt
+###############################################################################
+
+### 17-a: 토큰 재발급 (관리자 만료 임박 batch 재활성화)
+POST {{host}}/delivery-batches/{{batchId}}/regenerate-token
+Authorization: Bearer {{managerToken}}
+
+> {%
+client.global.set("newBatchToken", response.body.data.batchToken);
+%}
+
+### 17-b: 새 토큰으로 공개 페이지 다시 접근 → 200
+GET {{host}}/public/batches/{{newBatchToken}}
+
+### 17-c: (수동) DB 에서 token_expires_at 을 NOW() - INTERVAL '1 hour' 로 강제 갱신 후 GET → 410
+###       (IT PublicSlipControllerIT.expiredToken_returns410 자동 검증)
+GET {{host}}/public/batches/{{newBatchToken}}
+
