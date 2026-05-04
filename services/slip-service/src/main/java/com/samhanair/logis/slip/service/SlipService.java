@@ -108,7 +108,7 @@ public class SlipService {
                     ? lineReq.modelName()
                     : (summary != null ? summary.modelName() : null);
             slip.addLine(SlipLine.create(slip, lineReq.productId(),
-                    productName, modelName,
+                    productName, modelName, lineReq.specification(),
                     lineReq.quantity(), lineReq.unitPrice(), lineReq.note()));
         }
 
@@ -153,7 +153,7 @@ public class SlipService {
         String productName = req.productName() != null ? req.productName() : summary.name();
         String modelName = req.modelName() != null ? req.modelName() : summary.modelName();
         applyMutation(() -> slip.addLine(SlipLine.create(slip, req.productId(),
-                productName, modelName,
+                productName, modelName, req.specification(),
                 req.quantity(), req.unitPrice(), req.note())));
         return SlipDetailResponse.from(slip);
     }
@@ -217,8 +217,31 @@ public class SlipService {
     }
 
     /**
-     * 처리완료 — PROCESSING → COMPLETED. OUTBOUND 면 라인별 deduct(fromReservation=true),
+     * 처리중 → 검수중 — Slice A (sales-polish-2) 신규 단계.
+     * 검수자(WAREHOUSE/INSPECTOR/MANAGER/MASTER) 가 picking 결과 검증 시작 시 호출.
+     * inspectorUserId/inspectorSignedAt 자동 기입 (도메인 메서드 위임).
+     *
+     * <p>재고 영향 없음 — OUTBOUND 의 deduct 는 complete 시점에 유지 (검수는 단순 확인 단계).
+     *
+     * @param id 전표 ID
+     * @param inspectorUserId 검수자 user-id (X-User-Id 헤더)
+     * @return 갱신된 상세 응답 (status=INSPECTING, inspectorUserId/SignedAt 채워짐)
+     * @throws BusinessException(NOT_FOUND) 전표 미발견
+     * @throws BusinessException(CONFLICT) 현재 상태가 PROCESSING 이 아닐 때
+     */
+    public SlipDetailResponse inspect(UUID id, String inspectorUserId) {
+        Slip slip = loadOrThrow(id);
+        applyMutation(() -> slip.inspect(inspectorUserId));
+        return SlipDetailResponse.from(slip);
+    }
+
+    /**
+     * 처리완료 — INSPECTING → COMPLETED. OUTBOUND 면 라인별 deduct(fromReservation=true),
      * INBOUND 면 라인별 inbound 호출.
+     *
+     * <p>Slice A (sales-polish-2) 변경: 직전 단계가 PROCESSING → INSPECTING 으로 변경.
+     * 재고 차감 시점은 그대로 complete 시점 유지 — 검수는 단순 확인 단계, 재고는
+     * 이미 reserve 되어 있고 출고 완료 시점에 deduct 가 의미적으로 정확.
      *
      * @throws BusinessException(CONFLICT) 상태 불일치, 재고 부족
      * @throws BusinessException(INTERNAL_ERROR) inventory-service 호출 실패

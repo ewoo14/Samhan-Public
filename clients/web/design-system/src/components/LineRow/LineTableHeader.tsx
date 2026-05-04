@@ -1,8 +1,10 @@
 /**
- * `<LineTableHeader>` — `<LineRow>` 와 같은 9-column grid 의 thead 행.
+ * `<LineTableHeader>` — `<LineRow>` 와 같은 10-column grid 의 thead 행.
  *
- * Designer wireframes.md § 1.1 의 thead h-44px 사양 충실 반영.
+ * Designer wireframes.md § 1.1 의 thead h-44px 사양 + Slice A § 3.6 (규격 컬럼) 반영.
  * 헤더 체크박스로 전체 라인 선택/해제. drag/번호 컬럼은 빈 셀.
+ *
+ * Slice A: 모델명/품목명 사이에 "규격" 컬럼 신규 추가 (피드백 #4).
  */
 import styles from './LineRow.module.css'
 
@@ -38,6 +40,7 @@ export function LineTableHeader({
       <div className={`${styles['cell']} ${styles['cellLineNo']}`}>#</div>
       <div className={styles['cell']}>모델명</div>
       <div className={styles['cell']}>품목명</div>
+      <div className={`${styles['cell']} ${styles['cellSpec']}`}>규격</div>
       <div className={`${styles['cell']} ${styles['cellQty']}`}>수량</div>
       <div className={`${styles['cell']} ${styles['cellPrice']}`}>단가</div>
       <div className={`${styles['cell']} ${styles['cellSum']}`}>합계</div>

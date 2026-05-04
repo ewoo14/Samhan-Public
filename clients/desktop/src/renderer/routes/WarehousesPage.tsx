@@ -26,6 +26,7 @@ import {
   type WarehouseType,
 } from '../api/inventory'
 import { useSessionStore, hasAdminRole } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
 import axios from 'axios'
 
 /**
@@ -54,6 +55,7 @@ const TYPE_VARIANT: Record<
 }
 
 export function WarehousesPage() {
+  usePageTitle('창고 관리')
   const role = useSessionStore((s) => s.auth?.role)
   const canEdit = hasAdminRole(role)
   const [modalOpen, setModalOpen] = useState(false)

@@ -48,6 +48,14 @@ public class SlipLine extends BaseEntity {
     @Column(name = "model_name", length = 100)
     private String modelName;
 
+    /**
+     * 규격 — Slice A (sales-polish-2) 신규 필드 (사용자 피드백 #4).
+     * 예: "220V", "4HP", "Φ80×L1200". 사용자 자유 입력 (제품 마스터에서 자동 추출 X).
+     * 작업지시서 라인 표 7-col 의 "규격" 컬럼에 표시.
+     */
+    @Column(name = "specification", length = 50)
+    private String specification;
+
     @Column(name = "quantity", nullable = false)
     private int quantity;
 
@@ -61,13 +69,14 @@ public class SlipLine extends BaseEntity {
     private String note;
 
     private SlipLine(Slip slip, UUID productId, String productName, String modelName,
-                     int quantity, BigDecimal unitPrice, String note) {
+                     String specification, int quantity, BigDecimal unitPrice, String note) {
         validatePositive(quantity);
         validateUnitPrice(unitPrice);
         this.slip = slip;
         this.productId = productId;
         this.productName = productName;
         this.modelName = modelName;
+        this.specification = specification;
         this.quantity = quantity;
         this.unitPrice = unitPrice;
         this.note = note;
@@ -77,10 +86,14 @@ public class SlipLine extends BaseEntity {
     /**
      * 라인 1건 생성. quantity 양수 + unitPrice 비음수 검증 후 lineTotal 자동 계산.
      *
+     * <p>Slice A (sales-polish-2): {@code specification} 파라미터 신규 추가 (사용자 피드백 #4).
+     * 호환성을 위해 {@code specification} 은 nullable.
+     *
      * @param slip 헤더 (cascade ALL — 영속화 전이어도 무방)
      * @param productId 제품 UUID (서비스 레이어 ProductClient 사전 검증)
      * @param productName snapshot 명칭 (필수, 최대 200자)
      * @param modelName snapshot 모델명 (선택)
+     * @param specification 규격 (선택, 최대 50자) — 예: "220V", "4HP"
      * @param quantity 수량 (1 이상)
      * @param unitPrice 단가 (0 이상)
      * @param note 라인 메모 (선택, 최대 200자)
@@ -88,8 +101,10 @@ public class SlipLine extends BaseEntity {
      * @throws IllegalArgumentException 수량 0 이하 또는 unitPrice 가 음수일 때
      */
     public static SlipLine create(Slip slip, UUID productId, String productName, String modelName,
-                                  int quantity, BigDecimal unitPrice, String note) {
-        return new SlipLine(slip, productId, productName, modelName, quantity, unitPrice, note);
+                                  String specification, int quantity, BigDecimal unitPrice,
+                                  String note) {
+        return new SlipLine(slip, productId, productName, modelName, specification,
+                quantity, unitPrice, note);
     }
 
     /**
@@ -123,6 +138,16 @@ public class SlipLine extends BaseEntity {
      */
     public void changeNote(String newNote) {
         this.note = newNote;
+    }
+
+    /**
+     * 규격 변경 — Slice A (sales-polish-2) 신규 mutator (사용자 피드백 #4).
+     * null/공백 도 허용 (규격 제거). 헤더 상태 가드는 서비스 레이어 책임.
+     *
+     * @param newSpecification 새 규격 (최대 50자, 길이 검증은 DB constraint)
+     */
+    public void changeSpecification(String newSpecification) {
+        this.specification = newSpecification;
     }
 
     private static BigDecimal computeLineTotal(int quantity, BigDecimal unitPrice) {

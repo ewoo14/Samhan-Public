@@ -15,6 +15,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@samhan/design-system'
 import { getSlip, type SlipDetail } from '../api/slip'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 /** 숫자를 한글 금액으로 변환 (간단판 — 천/만/억 단위만). */
 function numberToKorean(n: number): string {
@@ -62,6 +63,9 @@ export function InvoiceView() {
     queryFn: () => getSlip(id),
     enabled: !!id,
   })
+
+  // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
+  usePageTitle('거래명세서', detailQuery.data?.slipNo)
 
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>

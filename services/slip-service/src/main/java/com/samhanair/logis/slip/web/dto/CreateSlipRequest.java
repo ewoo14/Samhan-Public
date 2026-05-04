@@ -28,11 +28,15 @@ public record CreateSlipRequest(
         @Size(max = 1000) String memo,
         @NotEmpty @Valid List<SlipLineRequest> lines) {
 
-    /** 전표 라인 — productId / 수량 / 단가 / 메모 + 표시용 snapshot 명칭. */
+    /**
+     * 전표 라인 — productId / 수량 / 단가 / 메모 + 표시용 snapshot 명칭.
+     * Slice A (sales-polish-2): {@code specification} 필드 신규 추가 (사용자 피드백 #4).
+     */
     public record SlipLineRequest(
             @NotNull UUID productId,
             @Size(max = 200) String productName,
             @Size(max = 100) String modelName,
+            @Size(max = 50) String specification,
             @NotNull @Positive Integer quantity,
             @NotNull @DecimalMin("0.00") BigDecimal unitPrice,
             @Size(max = 200) String note) {

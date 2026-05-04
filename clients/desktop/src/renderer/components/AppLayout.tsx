@@ -12,20 +12,31 @@
  *
  * 우상단에는 현재 사용자명 + 역할 + 로그아웃 버튼을 표시한다.
  * 인쇄 화면 (`/print/...`) 에서는 @media print CSS 가 사이드바/헤더를 숨긴다.
+ *
+ * Slice A (sales-polish-2-slice) 갱신 — Designer `wireframes.md` § 1 + `components.md` § 2:
+ * - 헤더 `<h2>업무 화면</h2>` 고정 → `usePageTitleStore` 의 동적 화면명 + meta bracket
+ * - 사용자 피드백 #2 ("상단 '업무 화면' 표시" 모호) 해결
+ * - 빈 title 시 "업무 화면" fallback 표시 (라우트 전환 race condition 호환)
  */
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Button } from '@samhan/design-system'
 import { useSessionStore } from '../stores/session'
+import { usePageTitleStore } from '../stores/pageTitle'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
   const logout = useSessionStore((s) => s.logout)
+  const title = usePageTitleStore((s) => s.title)
+  const meta = usePageTitleStore((s) => s.meta)
   const navigate = useNavigate()
 
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
   }
+
+  // race condition 호환 — 빈 title 시 "업무 화면" fallback (Designer § 2.7)
+  const displayTitle = title || '업무 화면'
 
   return (
     <div className="app-shell">
@@ -46,7 +57,10 @@ export function AppLayout() {
       </aside>
       <main className="app-main">
         <header className="app-header no-print">
-          <h2>업무 화면</h2>
+          <h2>
+            {displayTitle}
+            {meta ? <span className="app-header-meta">[{meta}]</span> : null}
+          </h2>
           <div className="app-header-actions">
             <span className="app-user-chip">
               {auth?.fullName ?? '사용자'} · {auth?.role ?? '-'}

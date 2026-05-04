@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>DispatchView — 라인 표 모델명/품목명 좌우 분리 (7-col)</title>
+<link rel="stylesheet" href="_dispatch_base.css"/>
+<style>
+  .annotation {
+    background: #FEF3C7;
+    color: #92400E;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 11pt;
+    margin: 8mm 0 4mm;
+    border-left: 4px solid #F59E0B;
+  }
+  .compare-box {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8mm;
+    margin-bottom: 6mm;
+  }
+  .compare-box h4 {
+    font-size: 11pt;
+    margin: 0 0 4mm;
+    color: #4A5365;
+  }
+  .compare-box .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9pt;
+    font-weight: 700;
+    margin-left: 6px;
+  }
+  .compare-box .badge.old {
+    background: #FEE2E2;
+    color: #991B1B;
+  }
+  .compare-box .badge.new {
+    background: #DBEAFE;
+    color: #1E40AF;
+  }
+</style>
+</head><body>
+<div class="dispatch">
+  <div class="dispatch-header">
+    <div>
+      <div class="logo">SAMSUNG</div>
+      <div class="partner">거래처: (주)윌리-정현수</div>
+    </div>
+    <div class="right">
+      <div>일련번호</div>
+      <div class="slip-no">2026/05/04-1</div>
+    </div>
+  </div>
+
+  <table class="approval-table">
+    <tr>
+      <td class="label">담당부서</td><td class="label">담당자</td>
+      <td class="label">출고인</td><td class="label">검수인</td>
+      <td class="label">결재</td>
+    </tr>
+    <tr>
+      <td><div class="name">영업1팀</div></td>
+      <td><div class="name">오병승</div></td>
+      <td><div class="name">홍지수</div><div class="timestamp">14:32</div></td>
+      <td><div class="name">김기철</div><div class="timestamp">16:45</div></td>
+      <td><div class="name" style="color:#1E40AF;font-size:24pt;">*</div></td>
+    </tr>
+  </table>
+
+  <div class="compare-box">
+    <div>
+      <h4>기존 (1차) <span class="badge old">2줄 셀 + 빈 열</span></h4>
+      <table class="lines-table">
+        <thead><tr>
+          <th class="col-month">월</th><th class="col-day">일</th>
+          <th>모델명 / 품목명</th><th class="col-spec">규격</th>
+          <th class="col-qty">수량</th><th></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="col-month">05</td><td class="col-day">04</td>
+            <td>AJ040RXH4BC1<br/>시스템에어컨 4Way 4HP</td>
+            <td class="col-spec">-</td>
+            <td class="col-qty">2</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h4>신규 (Slice A) <span class="badge new">7-col 좌우 분리</span></h4>
+      <table class="lines-table">
+        <thead><tr>
+          <th class="col-month">월</th><th class="col-day">일</th>
+          <th>모델명</th><th>품목명</th>
+          <th class="col-spec">규격</th><th class="col-qty">수량</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="col-month">05</td><td class="col-day">04</td>
+            <td class="col-model">AJ040RXH4BC1</td>
+            <td>시스템에어컨 4Way</td>
+            <td class="col-spec">4HP</td>
+            <td class="col-qty">2</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="annotation"><strong>변경:</strong> 모델명/품목명 한 셀 2줄 → 좌우 2개 컬럼 분리 + 마지막 빈 열 삭제 (7-col)</div>
+
+  <table class="lines-table">
+    <thead>
+      <tr>
+        <th class="col-month">월</th>
+        <th class="col-day">일</th>
+        <th>모델명</th>
+        <th>품목명</th>
+        <th class="col-spec">규격</th>
+        <th class="col-qty">수량</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-month">05</td><td class="col-day">04</td>
+        <td class="col-model">AJ040RXH4BC1</td>
+        <td>시스템에어컨 4Way</td>
+        <td class="col-spec">4HP</td>
+        <td class="col-qty">2</td>
+      </tr>
+      <tr>
+        <td class="col-month">05</td><td class="col-day">04</td>
+        <td class="col-model">MWR-WE10N</td>
+        <td>유선 리모컨</td>
+        <td class="col-spec">220V</td>
+        <td class="col-qty">2</td>
+      </tr>
+      <tr>
+        <td class="col-month">05</td><td class="col-day">04</td>
+        <td class="col-model">PC1NWSK3NW</td>
+        <td>WIFI판넬</td>
+        <td class="col-spec">-</td>
+        <td class="col-qty">1</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5" class="total-label">합계</td>
+        <td class="total-qty">5</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+</body></html>

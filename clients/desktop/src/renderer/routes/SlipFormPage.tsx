@@ -64,6 +64,7 @@ import {
   type SlipLineInput,
   type SlipType,
 } from '../api/slip'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 /**
  * 본 슬라이스용 OUTBOUND 배송태그 옵션 — BE `DeliveryTag` enum 의 OUTBOUND 8종.
@@ -88,6 +89,7 @@ const emptyLine = (): LineDraft => ({
   productId: null,
   modelName: '',
   productName: '',
+  specification: '', // Slice A 신규 (피드백 #4)
   quantity: '1',
   unitPrice: '0',
   lookupError: null,
@@ -113,6 +115,7 @@ function SortableLineRow(props: {
   onSelect: (s: boolean) => void
   onModelNameChange: (v: string) => void
   onModelNameBlur: (v: string) => void
+  onSpecificationChange: (v: string) => void
   onQuantityChange: (v: string) => void
   onUnitPriceChange: (v: string) => void
   onDelete: () => void
@@ -144,6 +147,7 @@ function SortableLineRow(props: {
       onSelect={props.onSelect}
       onModelNameChange={props.onModelNameChange}
       onModelNameBlur={props.onModelNameBlur}
+      onSpecificationChange={props.onSpecificationChange}
       onQuantityChange={props.onQuantityChange}
       onUnitPriceChange={props.onUnitPriceChange}
       onDelete={props.onDelete}
@@ -168,6 +172,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const isOutbound = mode === 'OUTBOUND'
   const listPath = isOutbound ? '/sales' : '/purchases'
   const titleLabel = isOutbound ? '새 출고전표' : '새 입고전표'
+
+  // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
+  usePageTitle(titleLabel)
 
   const [sourceWh, setSourceWh] = useState<string | null>(null)
   const [destWh, setDestWh] = useState<string | null>(null)
@@ -359,6 +366,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
             productId: l.productId!,
             productName: l.productName.trim() || undefined,
             modelName: l.modelName.trim() || undefined,
+            specification: l.specification.trim() || undefined,
             quantity: Number(l.quantity),
             unitPrice: l.unitPrice || '0',
           })),
@@ -514,6 +522,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                   onSelect={(s) => toggleSelect(line.id, s)}
                   onModelNameChange={(v) => updateLine(line.id, { modelName: v })}
                   onModelNameBlur={(v) => void handleModelNameBlur(line.id, v)}
+                  onSpecificationChange={(v) => updateLine(line.id, { specification: v })}
                   onQuantityChange={(v) => updateLine(line.id, { quantity: v })}
                   onUnitPriceChange={(v) => updateLine(line.id, { unitPrice: v })}
                   onDelete={() => removeLine(line.id)}

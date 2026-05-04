@@ -83,7 +83,13 @@ const MOCK_WAREHOUSES = [
 const HQ_ID = MOCK_WAREHOUSES[0]!.id
 const VH_ID = MOCK_WAREHOUSES[1]!.id
 
-/** 시연용 mock 전표 5건 */
+/**
+ * 시연용 mock 전표 7건.
+ * Slice A 신규 필드: `dispatcher` / `inspector` / `ownerDepartment` / `ownerFullName`
+ * / `shippingAddress` / `contactPhone` 모두 포함 (Designer README.md § 2.3).
+ *
+ * Slice A 신규: INSPECTING status mock 2건 (slip-006, slip-007).
+ */
 const MOCK_SLIPS = [
   {
     id: 'slip-001',
@@ -98,6 +104,16 @@ const MOCK_SLIPS = [
     destinationWarehouseId: null,
     deliveryTag: 'DAY',
     memo: '9시까지배송요망',
+    ownerDepartment: '영업1팀',
+    ownerFullName: '오병승',
+    shippingAddress: '서울특별시 강남구 테헤란로 152',
+    contactPhone: '010-1234-5678',
+    dispatcher: {
+      userId: '00000000-0000-0000-0000-000000020001',
+      fullName: '홍지수',
+      signedAt: '2026-05-04T14:32:18+09:00',
+    },
+    inspector: null,
   },
   {
     id: 'slip-002',
@@ -112,6 +128,20 @@ const MOCK_SLIPS = [
     destinationWarehouseId: null,
     deliveryTag: 'STACK',
     memo: '[야적] 05/04 상차 05/05 하차',
+    ownerDepartment: '영업1팀',
+    ownerFullName: '오병승',
+    shippingAddress: '경기도 성남시 분당구 판교로 235',
+    contactPhone: '031-987-6543',
+    dispatcher: {
+      userId: '00000000-0000-0000-0000-000000020001',
+      fullName: '홍지수',
+      signedAt: '2026-05-04T10:12:00+09:00',
+    },
+    inspector: {
+      userId: '00000000-0000-0000-0000-000000020002',
+      fullName: '김기철',
+      signedAt: '2026-05-04T11:45:30+09:00',
+    },
   },
   {
     id: 'slip-003',
@@ -126,6 +156,12 @@ const MOCK_SLIPS = [
     destinationWarehouseId: HQ_ID,
     deliveryTag: 'RETURN_TRIP',
     memo: '회차 입고',
+    ownerDepartment: '구매팀',
+    ownerFullName: '이정훈',
+    shippingAddress: null,
+    contactPhone: null,
+    dispatcher: null,
+    inspector: null,
   },
   {
     id: 'slip-004',
@@ -140,6 +176,16 @@ const MOCK_SLIPS = [
     destinationWarehouseId: null,
     deliveryTag: 'DAY',
     memo: '',
+    ownerDepartment: '영업1팀',
+    ownerFullName: '오병승',
+    shippingAddress: '서울특별시 송파구 올림픽로 300',
+    contactPhone: '010-9876-5432',
+    dispatcher: {
+      userId: '00000000-0000-0000-0000-000000020001',
+      fullName: '홍지수',
+      signedAt: '2026-05-03T09:15:00+09:00',
+    },
+    inspector: null,
   },
   {
     id: 'slip-005',
@@ -154,6 +200,69 @@ const MOCK_SLIPS = [
     destinationWarehouseId: null,
     deliveryTag: 'GYEONGDONG_FREIGHT',
     memo: '경동화물',
+    ownerDepartment: '영업2팀',
+    ownerFullName: '박서연',
+    shippingAddress: null,
+    contactPhone: null,
+    dispatcher: null,
+    inspector: null,
+  },
+  // Slice A 신규: INSPECTING status mock (검수 단계 시연용)
+  {
+    id: 'slip-006',
+    slipNo: '2026/05/04-3',
+    slipType: 'OUTBOUND',
+    slipDate: '2026-05-04',
+    seqNo: 3,
+    status: 'INSPECTING',
+    partnerId: 'p001',
+    partnerName: '주식회사 윌리-정현수',
+    sourceWarehouseId: HQ_ID,
+    destinationWarehouseId: null,
+    deliveryTag: 'DAY',
+    memo: '검수 진행 중',
+    ownerDepartment: '영업1팀',
+    ownerFullName: '오병승',
+    shippingAddress: '서울특별시 마포구 양화로 45',
+    contactPhone: '010-2222-3333',
+    dispatcher: {
+      userId: '00000000-0000-0000-0000-000000020001',
+      fullName: '홍지수',
+      signedAt: '2026-05-04T13:00:00+09:00',
+    },
+    inspector: {
+      userId: '00000000-0000-0000-0000-000000020002',
+      fullName: '김기철',
+      signedAt: '2026-05-04T16:45:02+09:00',
+    },
+  },
+  {
+    id: 'slip-007',
+    slipNo: '2026/05/04-4',
+    slipType: 'OUTBOUND',
+    slipDate: '2026-05-04',
+    seqNo: 4,
+    status: 'INSPECTING',
+    partnerId: 'p002',
+    partnerName: '○○종합건설',
+    sourceWarehouseId: HQ_ID,
+    destinationWarehouseId: null,
+    deliveryTag: 'STACK',
+    memo: '검수 대기 → 시작',
+    ownerDepartment: '영업2팀',
+    ownerFullName: '박서연',
+    shippingAddress: '인천광역시 연수구 송도과학로 32',
+    contactPhone: '032-555-7777',
+    dispatcher: {
+      userId: '00000000-0000-0000-0000-000000020001',
+      fullName: '홍지수',
+      signedAt: '2026-05-04T14:00:00+09:00',
+    },
+    inspector: {
+      userId: '00000000-0000-0000-0000-000000020002',
+      fullName: '김기철',
+      signedAt: '2026-05-04T17:20:00+09:00',
+    },
   },
 ]
 
@@ -288,13 +397,17 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
   },
 }
 
-/** 라인 1건 시연용 — 상세 화면 라인 표시. */
+/**
+ * 라인 시연용 — 상세 화면 라인 표시.
+ * Slice A: `specification` 필드 추가 (피드백 #4 / Designer components.md § 3).
+ */
 const SAMPLE_LINES = [
   {
     id: 'line-001',
     productId: 'p-aj040',
     productName: '시스템에어컨 4Way 4HP',
     modelName: 'AJ040RXH4BC1',
+    specification: '4HP', // Slice A
     quantity: 2,
     unitPrice: '1850000',
     lineTotal: '3700000',
@@ -305,9 +418,21 @@ const SAMPLE_LINES = [
     productId: 'p-mwr10',
     productName: '유선 리모컨 (WE10N)',
     modelName: 'MWR-WE10N',
+    specification: '220V', // Slice A
     quantity: 2,
     unitPrice: '85000',
     lineTotal: '170000',
+    note: null,
+  },
+  {
+    id: 'line-003',
+    productId: 'p-pc1nw',
+    productName: 'WIFI 판넬',
+    modelName: 'PC1NWSK3NW',
+    specification: null, // Slice A — 빈 값 허용 ('-' 표시)
+    quantity: 1,
+    unitPrice: '120000',
+    lineTotal: '120000',
     note: null,
   },
 ]
@@ -433,9 +558,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
-  // POST /slips/{id}/{action} — 라이프사이클 transition
+  // POST /slips/{id}/{action} — 라이프사이클 transition (Slice A: inspect 신규)
   const slipTransitionMatch = url.match(
-    /\/slips\/([^/]+)\/(save|send|accept|process|complete|ship|deliver|confirm|reject|cancel)$/,
+    /\/slips\/([^/]+)\/(save|send|accept|process|inspect|complete|ship|deliver|confirm|reject|cancel)$/,
   )
   if (method === 'POST' && slipTransitionMatch) {
     const id = slipTransitionMatch[1]!
@@ -446,6 +571,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       send: 'SENT',
       accept: 'ACCEPTED',
       process: 'PROCESSING',
+      inspect: 'INSPECTING', // Slice A 신규
       complete: 'COMPLETED',
       ship: 'SHIPPING',
       deliver: 'DELIVERED',
@@ -453,9 +579,29 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       reject: 'REJECTED',
       cancel: 'CANCELED',
     }
+    // accept 트랜지션 시 dispatcher 자동 채움 (Designer ux-flow.md § 2.1)
+    const dispatcher
+      = action === 'accept'
+        ? {
+          userId: '00000000-0000-0000-0000-000000020001',
+          fullName: '홍지수',
+          signedAt: new Date().toISOString(),
+        }
+        : found.dispatcher
+    // inspect 트랜지션 시 inspector 자동 채움 (Designer ux-flow.md § 2.2)
+    const inspector
+      = action === 'inspect'
+        ? {
+          userId: '00000000-0000-0000-0000-000000020002',
+          fullName: '김기철',
+          signedAt: new Date().toISOString(),
+        }
+        : found.inspector
     return envelope({
       ...found,
       status: nextStatus[action] ?? found.status,
+      dispatcher,
+      inspector,
       lines: SAMPLE_LINES,
     })
   }

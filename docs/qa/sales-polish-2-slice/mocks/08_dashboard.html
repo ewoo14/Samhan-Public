@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>Dashboard — 헤더 화면명 "대시보드"</title>
+<link rel="stylesheet" href="_tokens.css"/>
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .stat {
+    background: var(--surface-card);
+    border: 1px solid var(--line-default);
+    border-radius: 6px;
+    padding: 16px;
+    box-shadow: var(--elev-card);
+  }
+  .stat .label {
+    font-size: 12px;
+    color: var(--ink-tertiary);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .stat .value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--ink-primary);
+  }
+  .stat .delta {
+    font-size: 11px;
+    color: var(--state-success);
+    margin-top: 4px;
+    font-weight: 600;
+  }
+  .row-2 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .table th, .table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--line-default);
+    font-size: 13px;
+  }
+  .table thead {
+    background: var(--surface-subtle);
+  }
+  .table th {
+    font-size: 11px;
+    color: var(--ink-secondary);
+    font-weight: 600;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .pill.draft { background: #F1F5F9; color: #475569; }
+  .pill.processing { background: #FEF3C7; color: #92400E; }
+  .pill.inspecting { background: #DBEAFE; color: #1E40AF; }
+  .pill.completed { background: #D1FAE5; color: #065F46; }
+  .pill.confirmed { background: var(--action-brand-subtle); color: var(--action-brand); }
+</style>
+</head><body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <h1>삼한로지스</h1>
+    <nav>
+      <a class="active">대시보드</a>
+      <a>창고</a>
+      <a>판매조회</a>
+      <a>구매조회</a>
+      <a>재고이동</a>
+    </nav>
+  </aside>
+  <main>
+    <header class="app-header">
+      <h2>대시보드</h2>
+      <div class="right"><span>오병승</span><span class="role-badge">MANAGER</span><button>로그아웃</button></div>
+    </header>
+    <div class="page-body">
+
+      <div class="grid">
+        <div class="stat">
+          <div class="label">금일 출고전표</div>
+          <div class="value tabular">12</div>
+          <div class="delta">▲ 어제 대비 +3건</div>
+        </div>
+        <div class="stat">
+          <div class="label">검수 대기</div>
+          <div class="value tabular">4</div>
+          <div class="delta" style="color:var(--state-warning);">신규 단계</div>
+        </div>
+        <div class="stat">
+          <div class="label">이번 달 매출</div>
+          <div class="value tabular">₩142,800,000</div>
+          <div class="delta">▲ 전월 대비 +12%</div>
+        </div>
+        <div class="stat">
+          <div class="label">미수금</div>
+          <div class="value tabular">₩28,400,000</div>
+          <div class="delta" style="color:var(--state-danger);">▼ 회수 진행중</div>
+        </div>
+      </div>
+
+      <div class="row-2">
+        <div class="card">
+          <h3>최근 출고전표 (5건)</h3>
+          <table class="table">
+            <thead><tr>
+              <th>전표번호</th><th>거래처</th><th>금액</th><th>상태</th><th>담당</th>
+            </tr></thead>
+            <tbody>
+              <tr><td>2026/05/04-3</td><td>(주)현대중공업</td><td class="tabular">₩4,200,000</td><td><span class="pill confirmed">확정</span></td><td>오병승</td></tr>
+              <tr><td>2026/05/04-2</td><td>이엠에스</td><td class="tabular">₩2,150,000</td><td><span class="pill completed">완료</span></td><td>홍지수</td></tr>
+              <tr><td>2026/05/04-1</td><td>(주)윌리-정현수</td><td class="tabular">₩3,990,000</td><td><span class="pill inspecting">검수</span></td><td>김기철</td></tr>
+              <tr><td>2026/05/03-7</td><td>한화S&amp;C</td><td class="tabular">₩1,840,000</td><td><span class="pill processing">처리</span></td><td>오병승</td></tr>
+              <tr><td>2026/05/03-6</td><td>제일테크</td><td class="tabular">₩560,000</td><td><span class="pill draft">작성</span></td><td>홍지수</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>알림</h3>
+          <ul style="padding-left:16px;font-size:13px;color:var(--ink-secondary);">
+            <li>2026/05/04-1 검수 단계 대기 중 (15분)</li>
+            <li>4건 ACCEPTED → reserve 완료</li>
+            <li>이번 주 신규 거래처 2건 등록</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

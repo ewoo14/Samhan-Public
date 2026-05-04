@@ -1,0 +1,167 @@
+/* Slice A — Designer tokens.md 인용 (모던 미니멀 + dense ERP) */
+:root {
+  /* Surface */
+  --surface-app: #FAFBFC;
+  --surface-card: #FFFFFF;
+  --surface-subtle: #F7F9FB;
+  --surface-hover: #F4F6F8;
+  --surface-selected: #EFF6FF;
+
+  /* Line */
+  --line-default: #E1E5EB;
+  --line-hover: #C9D0DA;
+  --line-focus: #93C5FD;
+  --line-selected: #3B82F6;
+
+  /* Ink */
+  --ink-primary: #1A1F2E;
+  --ink-secondary: #4A5365;
+  --ink-tertiary: #8A95A4;
+
+  /* Action / Brand */
+  --action-brand: #1E40AF;
+  --action-brand-hover: #1E3A8A;
+  --action-brand-active: #172554;
+  --action-brand-subtle: #DBEAFE;
+
+  /* State */
+  --state-danger: #DC2626;
+  --state-warning: #F59E0B;
+  --state-success: #16A34A;
+
+  /* Progress */
+  --progress-step-bg-done: #1E40AF;
+  --progress-step-bg-current: #FFFFFF;
+  --progress-step-bg-todo: #FFFFFF;
+  --progress-line-color-done: #1E40AF;
+  --progress-line-color-todo: #E1E5EB;
+  --progress-fill-rejected: #DC2626;
+  --progress-fill-canceled: #8A95A4;
+
+  /* Layout */
+  --row-h: 40px;
+  --modal-max-w: 720px;
+  --page-header-h: 56px;
+  --page-title-size: 20px;
+  --page-title-weight: 600;
+  --print-text-md: 12pt;
+  --print-text-base: 14pt;
+
+  /* Elevation */
+  --elev-card: 0 1px 3px rgba(0,0,0,0.04);
+  --elev-popover: 0 4px 12px rgba(0,0,0,0.08);
+  --elev-modal: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-app);
+  color: var(--ink-primary);
+  font-family: 'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--surface-card);
+  border-right: 1px solid var(--line-default);
+  padding: 16px 0;
+}
+
+.sidebar h1 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 16px 24px;
+  color: var(--ink-primary);
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 10px 24px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+  text-decoration: none;
+  cursor: pointer;
+}
+.sidebar nav a.active {
+  background: var(--surface-selected);
+  color: var(--action-brand);
+  font-weight: 600;
+  border-left: 3px solid var(--line-selected);
+  padding-left: 21px;
+}
+
+.app-header {
+  height: var(--page-header-h);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--line-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+.app-header h2 {
+  font-size: var(--page-title-size);
+  font-weight: var(--page-title-weight);
+  margin: 0;
+}
+.app-header .meta {
+  font-size: 14px;
+  color: var(--ink-secondary);
+  margin-left: 8px;
+  font-weight: 400;
+}
+.app-header .right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+.app-header .role-badge {
+  padding: 2px 8px;
+  background: var(--action-brand-subtle);
+  color: var(--action-brand);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.app-header button {
+  border: 1px solid var(--line-default);
+  background: var(--surface-card);
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ink-secondary);
+}
+
+.page-body {
+  padding: 24px;
+}
+
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--line-default);
+  border-radius: 6px;
+  padding: 20px;
+  box-shadow: var(--elev-card);
+  margin-bottom: 16px;
+}
+.card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--ink-primary);
+}
+
+.tabular { font-variant-numeric: tabular-nums; }

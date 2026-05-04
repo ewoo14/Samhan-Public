@@ -1,0 +1,231 @@
+/*
+ * ProgressBar — sales-polish-2-slice (Designer components.md § 1 + tokens.md § 1.1)
+ *
+ * 10단계 + 분기 (REJECTED/CANCELED) 시각화.
+ * 노드 32px ●/○/⊗ + 연결선 2px + 라벨 12px.
+ */
+
+.progressBar {
+  background: var(--surface-card);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elev-card);
+  padding: var(--progress-section-pad);
+  font-family: var(--font-family-sans);
+  color: var(--ink-primary);
+}
+
+.header {
+  font-size: var(--font-card-title);
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin-bottom: 16px;
+}
+
+/*
+ * track — 10 stepWrapper (각 stepCol + 연결선) 가 row 로 배치.
+ * stepWrapper 도 inline flex 로 stepCol + line + (branch) 3-부분 row.
+ */
+.track {
+  display: flex;
+  align-items: flex-start;
+  min-width: 720px;
+  overflow-x: auto;
+}
+
+.stepWrapper {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+}
+
+.stepWrapper:last-child {
+  flex: 0 0 auto;
+}
+
+.stepCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--progress-step-gap);
+  flex-shrink: 0;
+  min-width: 56px;
+}
+
+/* ── 노드 (단계 원형) ────────────────────────────────────── */
+
+.step {
+  width: var(--progress-step-size);
+  height: var(--progress-step-size);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--progress-step-border) solid var(--progress-step-border-todo);
+  background: var(--progress-step-bg-todo);
+  transition: background-color 200ms ease-out, border-color 200ms ease-out;
+  cursor: default;
+  position: relative;
+}
+
+.step[role='button'] {
+  cursor: pointer;
+}
+
+.step[role='button']:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+
+.state-done {
+  background: var(--progress-step-bg-done);
+  border-color: var(--progress-step-border-done);
+}
+
+.state-current {
+  background: var(--progress-step-bg-current);
+  border-color: var(--progress-step-border-current);
+}
+
+.state-todo {
+  background: var(--progress-step-bg-todo);
+  border-color: var(--progress-step-border-todo);
+}
+
+/* 노드 안 채움 표시 (done) — 시각적 ● 효과를 위해 안쪽 dot */
+.nodeFilled {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-on-primary);
+}
+
+.state-current .nodeFilled {
+  background: var(--action-brand);
+}
+
+.nodeOutline {
+  display: none;
+}
+
+/* current 노드 pulse (Designer ux-flow.md § 5.2) */
+@keyframes progressCurrentPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(30, 64, 175, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(30, 64, 175, 0);
+  }
+}
+
+.current {
+  animation: progressCurrentPulse 2s ease-in-out infinite;
+}
+
+/* ── 라벨 ────────────────────────────────────────────────── */
+
+.label {
+  font-size: var(--progress-label-size);
+  margin-top: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.labelState-done {
+  color: var(--progress-label-color-done);
+  font-weight: 400;
+}
+
+.labelState-current {
+  color: var(--progress-label-color-current);
+  font-weight: var(--progress-label-current-weight);
+}
+
+.labelState-todo {
+  color: var(--progress-label-color-todo);
+  font-weight: 400;
+}
+
+/* ── 연결선 ──────────────────────────────────────────────── */
+
+.line {
+  flex: 1;
+  height: var(--progress-line-width);
+  margin-top: calc(var(--progress-step-size) / 2);
+  min-width: 16px;
+  transition: background-color 200ms ease-out;
+}
+
+.lineDone {
+  background: var(--progress-line-color-done);
+}
+
+.lineTodo {
+  background: var(--progress-line-color-todo);
+}
+
+.lineRejected {
+  background: var(--progress-fill-rejected);
+}
+
+.lineCanceled {
+  background: var(--progress-fill-canceled);
+}
+
+/* ── 분기 노드 (⊗) ───────────────────────────────────────── */
+
+.branchWrapper {
+  display: flex;
+  align-items: flex-start;
+  margin-left: 16px;
+}
+
+.branch-rejected {
+  background: var(--progress-fill-rejected);
+  border-color: var(--progress-fill-rejected);
+}
+
+.branch-canceled {
+  background: var(--progress-fill-canceled);
+  border-color: var(--progress-fill-canceled);
+}
+
+.branchIcon {
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.labelBranch-rejected {
+  color: var(--state-danger);
+  font-weight: 600;
+}
+
+.labelBranch-canceled {
+  color: var(--ink-tertiary);
+  font-weight: 600;
+}
+
+/* ── 분기 사유 ──────────────────────────────────────────── */
+
+.branchReason {
+  margin: 16px 0 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-input);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.branchReasonRejected {
+  background: var(--state-danger-bg);
+  color: #991B1B;
+  border-left: 3px solid var(--state-danger);
+}
+
+.branchReasonCanceled {
+  background: var(--surface-subtle);
+  color: var(--ink-secondary);
+  border-left: 3px solid var(--ink-tertiary);
+}

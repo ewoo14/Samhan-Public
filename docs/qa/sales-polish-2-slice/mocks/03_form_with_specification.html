@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>SlipFormPage — 라인 규격 컬럼 추가 (10-col)</title>
+<link rel="stylesheet" href="_tokens.css"/>
+<style>
+  .lines-grid {
+    display: grid;
+    grid-template-columns: 40px 24px 24px minmax(180px,2fr) minmax(180px,2fr) 100px 80px 120px 100px 32px;
+    align-items: center;
+    border: 1px solid var(--line-default);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .lines-grid > div {
+    padding: 0 8px;
+    height: var(--row-h);
+    line-height: var(--row-h);
+    font-size: 13px;
+    border-bottom: 1px solid var(--line-default);
+    background: var(--surface-card);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .lines-grid > div.head {
+    background: var(--surface-subtle);
+    color: var(--ink-secondary);
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .lines-grid > div.right { text-align: right; }
+  .lines-grid > div.center { text-align: center; }
+  .lines-grid > div input {
+    border: none;
+    background: transparent;
+    width: 100%;
+    font-size: 13px;
+    color: var(--ink-primary);
+    outline: none;
+  }
+  .lines-grid > div input::placeholder {
+    color: var(--ink-tertiary);
+  }
+  .drag { color: var(--ink-tertiary); cursor: grab; }
+  .delete-btn { color: var(--ink-tertiary); cursor: pointer; font-size: 16px; }
+  .totals-bar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 24px;
+    padding: 12px 16px;
+    background: var(--surface-subtle);
+    border-radius: 6px;
+    margin-top: 12px;
+    font-size: 13px;
+  }
+  .totals-bar strong { font-size: 16px; color: var(--action-brand); margin-left: 4px; }
+  .header-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .field-label {
+    font-size: 12px;
+    color: var(--ink-secondary);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .field-value {
+    border: 1px solid var(--line-default);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    background: var(--surface-card);
+  }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    border: 1px solid var(--line-default);
+    background: var(--surface-card);
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--action-brand);
+    color: #fff;
+    border-color: var(--action-brand);
+  }
+  .badge-new {
+    display: inline-block;
+    padding: 1px 6px;
+    background: var(--action-brand-subtle);
+    color: var(--action-brand);
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+</style>
+</head><body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <h1>삼한로지스</h1>
+    <nav>
+      <a>대시보드</a>
+      <a>창고</a>
+      <a class="active">판매조회</a>
+      <a>구매조회</a>
+      <a>재고이동</a>
+    </nav>
+  </aside>
+  <main>
+    <header class="app-header">
+      <h2>새 출고전표</h2>
+      <div class="right"><span>오병승</span><span class="role-badge">MANAGER</span><button>로그아웃</button></div>
+    </header>
+    <div class="page-body">
+      <div class="card">
+        <h3>헤더 정보</h3>
+        <div class="header-row">
+          <div><div class="field-label">전표일자</div><div class="field-value">2026-05-04</div></div>
+          <div><div class="field-label">출발 창고</div><div class="field-value">HQ-001 본사창고</div></div>
+          <div><div class="field-label">배송 태그</div><div class="field-value">DAY (당일)</div></div>
+        </div>
+        <div class="header-row" style="grid-template-columns:1fr 2fr;">
+          <div><div class="field-label">거래처</div><div class="field-value">(주)윌리-정현수</div></div>
+          <div><div class="field-label">메모</div><div class="field-value">9시까지 배송 요망</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>라인 (10-컬럼, 규격 추가<span class="badge-new">NEW</span>)</h3>
+        <div class="toolbar">
+          <button class="btn">+ 라인 추가</button>
+          <button class="btn">재고조회</button>
+          <button class="btn">⊗ 선택 삭제</button>
+        </div>
+        <div class="lines-grid">
+          <div class="head center">☐</div>
+          <div class="head center"></div>
+          <div class="head center">#</div>
+          <div class="head">모델명</div>
+          <div class="head">품목명</div>
+          <div class="head center">규격<span class="badge-new">NEW</span></div>
+          <div class="head right">수량</div>
+          <div class="head right">단가</div>
+          <div class="head right">합계</div>
+          <div class="head"></div>
+
+          <div class="center">☐</div>
+          <div class="center drag">⠿</div>
+          <div class="center">1</div>
+          <div><input value="AJ040RXH4BC1"/></div>
+          <div>시스템에어컨 4Way</div>
+          <div><input value="4HP" placeholder="예: 220V"/></div>
+          <div class="right tabular">2</div>
+          <div class="right tabular">1,850,000</div>
+          <div class="right tabular">3,700,000</div>
+          <div class="center delete-btn">⊗</div>
+
+          <div class="center">☐</div>
+          <div class="center drag">⠿</div>
+          <div class="center">2</div>
+          <div><input value="MWR-WE10N"/></div>
+          <div>유선 리모컨</div>
+          <div><input value="220V" placeholder="예: 220V"/></div>
+          <div class="right tabular">2</div>
+          <div class="right tabular">85,000</div>
+          <div class="right tabular">170,000</div>
+          <div class="center delete-btn">⊗</div>
+
+          <div class="center">☐</div>
+          <div class="center drag">⠿</div>
+          <div class="center">3</div>
+          <div><input value="PC1NWSK3NW"/></div>
+          <div>WIFI판넬</div>
+          <div><input value="" placeholder="예: 220V"/></div>
+          <div class="right tabular">1</div>
+          <div class="right tabular">120,000</div>
+          <div class="right tabular">120,000</div>
+          <div class="center delete-btn">⊗</div>
+
+          <div class="center" style="background:var(--surface-subtle);">☐</div>
+          <div class="center drag" style="background:var(--surface-subtle);">⠿</div>
+          <div class="center" style="background:var(--surface-subtle);color:var(--ink-tertiary);">4</div>
+          <div style="background:var(--surface-subtle);"><input placeholder="예: AJ040RXH4BC1"/></div>
+          <div style="background:var(--surface-subtle);color:var(--ink-tertiary);">(자동 추가 빈 행)</div>
+          <div style="background:var(--surface-subtle);"><input placeholder="예: 220V"/></div>
+          <div class="right tabular" style="background:var(--surface-subtle);"></div>
+          <div class="right tabular" style="background:var(--surface-subtle);"></div>
+          <div class="right tabular" style="background:var(--surface-subtle);"></div>
+          <div class="center delete-btn" style="background:var(--surface-subtle);">⊗</div>
+        </div>
+        <div class="totals-bar tabular">
+          <span>건수: <strong>3</strong></span>
+          <span>수량: <strong>5</strong></span>
+          <span>합계: <strong>3,990,000</strong></span>
+          <span>VAT 포함: <strong>4,389,000</strong></span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

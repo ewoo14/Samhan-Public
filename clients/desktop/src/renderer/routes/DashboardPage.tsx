@@ -12,8 +12,10 @@ import { useQuery } from '@tanstack/react-query'
 import { Button, Card } from '@samhan/design-system'
 import { listSlips } from '../api/slip'
 import { useSessionStore, canCreateSlip } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 export function DashboardPage() {
+  usePageTitle('대시보드')
   const auth = useSessionStore((s) => s.auth)
   const navigate = useNavigate()
 

@@ -1,13 +1,14 @@
 /**
- * `<LineRow>` — sales-form-polish 슬라이스 핵심 신규 컴포넌트.
+ * `<LineRow>` — sales-form-polish + sales-polish-2-slice (Slice A) 갱신.
  *
- * Designer `components.md` § 1 spec 충실 반영:
- * - 9-column CSS grid (체크박스 / drag / # / 모델명 / 품목명 / 수량 / 단가 / 합계 / 삭제)
+ * Designer `components.md` § 3 (Slice A) spec 충실 반영:
+ * - 10-column CSS grid (체크박스 / drag / # / 모델명 / 품목명 / **규격(NEW)** / 수량 / 단가 / 합계 / 삭제)
  * - 행 높이 40px (dense ERP 표준)
  * - 5 states: default / hover / selected / dragging / error
  * - 자동 라인 번호 (drag 시 자동 갱신)
  * - 모델명 입력 + onBlur lookup + 우측 spinner (lookup 중)
  * - 품목명 read-only display (lookup 후 fade-in)
+ * - **규격 input** (Slice A 신규 — 사용자 피드백 #4) — 100px 폭, placeholder "예: 220V"
  * - 수량 / 단가 / 합계 우측 정렬 + tabular-nums
  * - 합계 read-only computed (subtle bg)
  * - 삭제 버튼 (`⊗`) — hover 시 빨강
@@ -46,6 +47,11 @@ export interface LineDraft {
   modelName: string
   /** lookup 후 자동 fill 되는 품목명. */
   productName: string
+  /**
+   * 규격 (예: "220V", "4HP") — 사용자 직접 입력. Slice A 신규 (피드백 #4).
+   * 빈 값 허용. DB column varchar(50) 일치.
+   */
+  specification: string
   /** 수량 (string — input value 호환). */
   quantity: string
   /** 단가 (string — PriceField 호환). */
@@ -69,6 +75,8 @@ export interface LineRowProps {
   onModelNameChange: (value: string) => void
   /** 모델명 onBlur — 백엔드 lookup 호출 trigger. */
   onModelNameBlur: (value: string) => void
+  /** 규격 변경 (입력 도중 매 keystroke). Slice A 신규 (피드백 #4). */
+  onSpecificationChange: (value: string) => void
   /** 수량 변경. */
   onQuantityChange: (value: string) => void
   /** 단가 변경. */
@@ -115,6 +123,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
     onSelect,
     onModelNameChange,
     onModelNameBlur,
+    onSpecificationChange,
     onQuantityChange,
     onUnitPriceChange,
     onDelete,
@@ -128,6 +137,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
   const reactId = useId()
   const checkboxId = `lr-check-${reactId}`
   const modelId = `lr-model-${reactId}`
+  const specId = `lr-spec-${reactId}`
   const qtyId = `lr-qty-${reactId}`
   const priceId = `lr-price-${reactId}`
 
@@ -219,7 +229,23 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
           )}
         </div>
 
-        {/* 6. 수량 */}
+        {/* 6. 규격 (Slice A 신규 — 피드백 #4) */}
+        <div className={`${styles['cell']} ${styles['cellSpec']}`}>
+          <input
+            id={specId}
+            type="text"
+            className={`${styles['input']} ${styles['specInput']}`}
+            value={line.specification}
+            onChange={(e) => onSpecificationChange(e.target.value)}
+            placeholder="예: 220V"
+            maxLength={50}
+            aria-label={`라인 ${lineNumber} 규격`}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 7. 수량 */}
         <div className={`${styles['cell']} ${styles['cellQty']}`}>
           <input
             id={qtyId}
@@ -232,7 +258,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
           />
         </div>
 
-        {/* 7. 단가 */}
+        {/* 8. 단가 */}
         <div className={`${styles['cell']} ${styles['cellPrice']}`}>
           <input
             id={priceId}
@@ -248,12 +274,12 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
           />
         </div>
 
-        {/* 8. 합계 (read-only computed) */}
+        {/* 9. 합계 (read-only computed) */}
         <div className={`${styles['cell']} ${styles['cellSum']}`} aria-label={`라인 ${lineNumber} 합계`}>
           {sumDisplay}
         </div>
 
-        {/* 9. 삭제 */}
+        {/* 10. 삭제 */}
         <div className={`${styles['cell']} ${styles['cellDelete']}`}>
           <button
             type="button"

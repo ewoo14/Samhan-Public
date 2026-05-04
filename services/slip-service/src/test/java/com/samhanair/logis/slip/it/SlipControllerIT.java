@@ -225,6 +225,12 @@ class SlipControllerIT extends AbstractPostgresIT {
                 .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk());
 
+        // Slice A: PROCESSING → INSPECTING 단계 추가.
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk());
+
         // complete → InventoryClient.deduct(fromReservation=true) (Q2-A 결정).
         mockMvc.perform(post("/slips/" + slipId + "/complete")
                         .header("X-User-Id", UUID.randomUUID().toString())
@@ -287,6 +293,10 @@ class SlipControllerIT extends AbstractPostgresIT {
         mockMvc.perform(post("/slips/" + slipId + "/process")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+        // Slice A: INSPECTING 단계 추가.
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
         mockMvc.perform(post("/slips/" + slipId + "/complete")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
@@ -302,6 +312,113 @@ class SlipControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "ACCOUNTANT"))
                 .andExpect(status().isOk());
+    }
+
+    // -------- Slice A (sales-polish-2) — inspect endpoint --------
+
+    @Test
+    void warehouseRole_inspectSlip_returns200_andSetsInspectorUserId() throws Exception {
+        // PROCESSING → INSPECTING. inspectorUserId/SignedAt 자동 기입.
+        String slipId = createOutboundSlipAsSales();
+        String inspectorUuid = UUID.randomUUID().toString();
+
+        mockMvc.perform(post("/slips/" + slipId + "/save")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "SALES")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/send")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "SALES")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/accept")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/process")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
+                        .header("X-User-Id", inspectorUuid)
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("INSPECTING"))
+                .andExpect(jsonPath("$.data.inspectorUserId").value(inspectorUuid))
+                .andExpect(jsonPath("$.data.inspectorSignedAt").value(notNullValue()));
+    }
+
+    @Test
+    void salesRole_inspectSlip_returns403() throws Exception {
+        // inspect 는 WAREHOUSE/INVENTORY/MANAGER/MASTER. SALES 차단.
+        String slipId = createOutboundSlipAsSales();
+
+        mockMvc.perform(post("/slips/" + slipId + "/save")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "SALES")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/send")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "SALES")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/accept")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/process")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void warehouseRole_acceptSlip_returns200_andSetsDispatcherUserId() throws Exception {
+        // ACCEPTED → dispatcherUserId/SignedAt 자동 기입 (사용자 피드백 #9).
+        String slipId = createOutboundSlipAsSales();
+        String dispatcherUuid = UUID.randomUUID().toString();
+
+        mockMvc.perform(post("/slips/" + slipId + "/save")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "SALES")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/send")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "SALES")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/slips/" + slipId + "/accept")
+                        .header("X-User-Id", dispatcherUuid)
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.dispatcherUserId").value(dispatcherUuid))
+                .andExpect(jsonPath("$.data.dispatcherSignedAt").value(notNullValue()));
+    }
+
+    @Test
+    void createSlip_withSpecification_returnsSpecificationInResponse() throws Exception {
+        // 사용자 피드백 #4 — 라인 specification 필드 round-trip.
+        Map<String, Object> line = new HashMap<>();
+        line.put("productId", UUID.randomUUID().toString());
+        line.put("productName", "에어컨");
+        line.put("modelName", "MOD-220V");
+        line.put("specification", "220V 4HP");
+        line.put("quantity", 2);
+        line.put("unitPrice", 100000);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("slipType", "OUTBOUND");
+        body.put("slipDate", "2026-05-04");
+        body.put("sourceWarehouseId", UUID.randomUUID().toString());
+        body.put("destinationWarehouseId", UUID.randomUUID().toString());
+        body.put("partnerId", UUID.randomUUID().toString());
+        body.put("partnerName", "거래처");
+        body.put("deliveryTag", "DAY");
+        body.put("memo", "메모");
+        body.put("lines", List.of(line));
+
+        mockMvc.perform(post("/slips")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.lines[0].specification").value("220V 4HP"));
     }
 
     @Test

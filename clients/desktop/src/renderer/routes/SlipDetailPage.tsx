@@ -1,21 +1,27 @@
 /**
  * 전표 상세 + 라이프사이클 transition 화면 (출고/입고 공용).
  *
- * 본 슬라이스 (slip-output-format) Q8=A 결정에 따라 status 별 transition 버튼을
- * 모두 노출 (총 10 액션):
+ * Slice A (sales-polish-2-slice) 갱신 — Designer `wireframes.md` § 5 충실 반영:
+ * - 사용자 피드백 #1 ("라이프사이클" 모호) 해결 → `<ProgressBar>` 신규 컴포넌트로 대체
+ *   ProgressBar 헤더 정보 위에 위치 (사용자 진입 시 즉시 단계 확인)
+ *   기존 transition 버튼 영역은 "다음 단계 액션" 으로 ProgressBar 아래 유지
+ * - 사용자 피드백 #9 — 결재 정보 카드 (출고인/검수인 자동 채움) 신규 표시
+ * - INSPECTING 신규 단계 transition (`PROCESSING → INSPECTING → COMPLETED`) 지원
+ * - usePageTitle 로 AppHeader 동적 화면명 ("출고전표 상세 [2026/05/04-1]")
+ *
+ * status 별 transition (Slice A 갱신 — INSPECTING 신규):
  * - DRAFT      → save / cancel
  * - SAVED      → send / cancel
  * - SENT       → accept / reject / cancel
  * - ACCEPTED   → process / reject
- * - PROCESSING → complete
+ * - PROCESSING → inspect (Slice A 신규 — 기존 complete 대신)
+ * - INSPECTING → complete (Slice A 신규)
  * - COMPLETED  → ship (OUTBOUND) / confirm (INBOUND 즉시)
  * - SHIPPING   → deliver
  * - DELIVERED  → confirm (OUTBOUND)
  *
- * 권한 부족 액션은 button disable. 성공 시 React Query invalidate.
- *
  * UUID 비공개 가드: id 는 path param 으로만 사용. 화면 표시 영역에는 노출 X.
- * lineId / productId 도 화면 미노출 (모델명 + 품목명만).
+ * dispatcher.userId / inspector.userId 도 화면 미노출 (이름만 표시).
  */
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -28,8 +34,8 @@ import {
   Button,
   Card,
   DataTable,
+  ProgressBar,
   SlipNumberDisplay,
-  SlipStatusBadge,
   type DataTableColumn,
 } from '@samhan/design-system'
 import axios from 'axios'
@@ -42,6 +48,7 @@ import {
   type SlipType,
 } from '../api/slip'
 import { useSessionStore, canTransitionSlip } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 export interface SlipDetailPageProps {
   /** OUTBOUND 또는 INBOUND — 라우트별 listPath 결정 + ship/deliver 노출 여부. */
@@ -49,7 +56,7 @@ export interface SlipDetailPageProps {
 }
 
 /**
- * status 별 가능 transition 액션 목록.
+ * status 별 가능 transition 액션 목록 (Slice A 갱신 — INSPECTING 신규).
  * OUTBOUND/INBOUND 차이 (ship/deliver 는 출고전표 한정) 는 mode 로 필터.
  */
 function actionsForStatus(
@@ -66,7 +73,9 @@ function actionsForStatus(
     case 'ACCEPTED':
       return ['process', 'reject']
     case 'PROCESSING':
-      return ['complete']
+      return ['inspect'] // Slice A: complete → inspect (검수 단계 거침)
+    case 'INSPECTING':
+      return ['complete'] // Slice A 신규
     case 'COMPLETED':
       return mode === 'OUTBOUND' ? ['ship'] : ['confirm']
     case 'SHIPPING':
@@ -83,12 +92,21 @@ const ACTION_LABEL: Record<SlipTransitionAction, string> = {
   send: '전송',
   accept: '수락',
   process: '처리 시작',
+  inspect: '검수 시작', // Slice A 신규
   complete: '처리 완료',
   ship: '배송 시작',
   deliver: '배송 완료',
   confirm: '확정',
   reject: '반려',
   cancel: '취소',
+}
+
+/**
+ * "2026-05-04T14:32:18+09:00" → "14:32" — Designer print-spec.md § 3.4.
+ */
+function formatHHmm(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return iso.slice(11, 16)
 }
 
 export function SlipDetailPage({ mode }: SlipDetailPageProps) {
@@ -107,6 +125,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     queryFn: () => getSlip(id),
     enabled: !!id,
   })
+
+  // Slice A: AppHeader 동적 화면명 — slipNo bracket meta (Designer wireframes.md § 1.3)
+  usePageTitle(
+    isOutbound ? '출고전표 상세' : '입고전표 상세',
+    detailQuery.data?.slipNo,
+  )
 
   const transitionMutation = useMutation({
     mutationFn: (vars: { action: SlipTransitionAction; reason?: string }) =>
@@ -138,6 +162,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const lineColumns: DataTableColumn<SlipLineDetail>[] = [
     { key: 'modelName', header: '모델명', width: '180px', render: (l) => l.modelName ?? '-' },
     { key: 'productName', header: '품목명', render: (l) => l.productName ?? '-' },
+    {
+      key: 'specification',
+      header: '규격',
+      width: '100px',
+      render: (l) => l.specification ?? '-',
+    },
     {
       key: 'quantity',
       header: '수량',
@@ -184,6 +214,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     }
   }
 
+  // 분기 사유 (REJECTED 시 BE 가 응답에 reason 을 별도 필드로 줄 수 있음 — Slice A 는 memo 사용)
+  const branchReason
+    = slip.status === 'REJECTED' || slip.status === 'CANCELED'
+      ? slip.memo ?? undefined
+      : undefined
+
   return (
     <>
       <div
@@ -195,9 +231,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>{isOutbound ? '출고전표 상세' : '입고전표 상세'}</h3>
           <SlipNumberDisplay slipDate={slip.slipDate} seqNo={slip.seqNo} size="lg" />
-          <SlipStatusBadge status={slip.status} showStep />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {isOutbound ? (
@@ -222,6 +256,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             목록으로
           </Button>
         </div>
+      </div>
+
+      {/*
+        Slice A: 전표 진행 단계 ProgressBar (Designer wireframes.md § 2 + 5)
+        피드백 #1 ("라이프사이클" 모호) 해결.
+      */}
+      <div style={{ marginBottom: 16 }}>
+        <ProgressBar currentStatus={slip.status} branchReason={branchReason} />
       </div>
 
       <Card padding={4} shadow="sm">
@@ -253,8 +295,45 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         emptyMessage="라인이 없습니다."
       />
 
+      {/*
+        Slice A: 결재 정보 카드 — 출고인/검수인 자동 채움 (Designer wireframes.md § 5 + ux-flow.md § 2)
+        피드백 #9 해결.
+      */}
       <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
-        <h4 style={{ marginTop: 0 }}>라이프사이클</h4>
+        <h4 style={{ marginTop: 0 }}>결재 정보</h4>
+        <div className="detail-grid">
+          <div>
+            <span className="detail-label">출고인</span>
+            <span className="detail-value">
+              {slip.dispatcher?.fullName
+                ? `${slip.dispatcher.fullName} · ${formatHHmm(slip.dispatcher.signedAt)}`
+                : '미수락'}
+            </span>
+          </div>
+          <div>
+            <span className="detail-label">검수인</span>
+            <span className="detail-value">
+              {slip.inspector?.fullName
+                ? `${slip.inspector.fullName} · ${formatHHmm(slip.inspector.signedAt)}`
+                : '미검수'}
+            </span>
+          </div>
+          <div>
+            <span className="detail-label">담당부서</span>
+            <span className="detail-value">{slip.ownerDepartment ?? '-'}</span>
+          </div>
+          <div>
+            <span className="detail-label">담당자</span>
+            <span className="detail-value">{slip.ownerFullName ?? '-'}</span>
+          </div>
+        </div>
+      </Card>
+
+      {/*
+        다음 단계 액션 — ProgressBar 아래 (피드백 #1 — "전표 진행 단계" 헤더와 분리)
+      */}
+      <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
+        <h4 style={{ marginTop: 0 }}>다음 단계 액션</h4>
         {possibleActions.length === 0 ? (
           <p style={{ color: 'var(--color-neutral-500)', margin: 0 }}>
             현재 상태에서 가능한 전이가 없습니다.

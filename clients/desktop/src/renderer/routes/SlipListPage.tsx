@@ -24,6 +24,7 @@ import {
 } from '@samhan/design-system'
 import { listSlips, type SlipSummary, type SlipType } from '../api/slip'
 import { useSessionStore, canCreateSlip } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 export interface SlipListPageProps {
   /** OUTBOUND (판매조회) 또는 INBOUND (구매조회). */
@@ -37,6 +38,9 @@ export function SlipListPage({ mode }: SlipListPageProps) {
   const basePath = isOutbound ? '/sales' : '/purchases'
   const titleLabel = isOutbound ? '판매조회 (출고전표)' : '구매조회 (입고전표)'
   const newButtonLabel = isOutbound ? '새 출고전표' : '새 입고전표'
+
+  // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
+  usePageTitle(isOutbound ? '판매조회' : '구매조회')
 
   const query = useQuery({
     queryKey: ['slips', 'list', mode],

@@ -175,8 +175,26 @@ public class SlipController {
         return ApiResponse.ok(slipService.process(id));
     }
 
-    /** PROCESSING → COMPLETED. OUTBOUND 면 deduct, INBOUND 면 inbound. */
-    @Operation(summary = "처리 완료", description = "PROCESSING → COMPLETED. OUTBOUND deduct / INBOUND inbound")
+    /**
+     * PROCESSING → INSPECTING — Slice A (sales-polish-2) 신규 단계.
+     * 검수자가 picking 결과 검증 시작. inspectorUserId/SignedAt 자동 기입.
+     */
+    @Operation(summary = "검수 시작",
+            description = "PROCESSING → INSPECTING. inspectorUserId/SignedAt 자동 기입 (Slice A 신규)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "검수 시작 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "상태 불일치")
+    })
+    @PostMapping("/{id}/inspect")
+    @PreAuthorize("hasAnyRole('WAREHOUSE','INVENTORY','MANAGER','MASTER')")
+    public ApiResponse<SlipDetailResponse> inspect(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(slipService.inspect(id, callerOrSystem(callerHeader)));
+    }
+
+    /** INSPECTING → COMPLETED. OUTBOUND 면 deduct, INBOUND 면 inbound. */
+    @Operation(summary = "처리 완료", description = "INSPECTING → COMPLETED. OUTBOUND deduct / INBOUND inbound")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "완료 + 재고 갱신 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "상태 불일치 또는 재고 부족")
