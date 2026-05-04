@@ -30,8 +30,10 @@ import {
   Card,
   DeliveryTagSelector,
   FormField,
+  KOREAN_MOBILE_PHONE_PATTERN,
   LineRow,
   LineTableHeader,
+  PhoneInput,
   StockBalanceModal,
   WarehouseSelector,
   type DeliveryTagOption,
@@ -183,6 +185,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const [tag, setTag] = useState<DeliveryTagOption['code'] | null>(null)
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // notification-slice-B 신규 — 기사명 + 기사 휴대폰 (LinkDispatchListPage 자동 그룹의 키)
+  const [driverName, setDriverName] = useState('')
+  const [driverPhone, setDriverPhone] = useState('')
 
   // 재고조회 모달 state
   const [stockModalOpen, setStockModalOpen] = useState(false)
@@ -360,6 +365,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         partnerName: partnerName.trim() || undefined,
         deliveryTag: isOutbound ? tag ?? undefined : undefined,
         memo: memo.trim() || undefined,
+        // notification-slice-B — OUTBOUND 만 driver 정보 송신
+        driverName: isOutbound && driverName.trim() ? driverName.trim() : undefined,
+        driverPhone: isOutbound && driverPhone ? driverPhone : undefined,
         lines: lines
           .filter((l) => l.productId && Number(l.quantity) > 0)
           .map<SlipLineInput>((l) => ({
@@ -476,6 +484,40 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
             )}
           />
         </div>
+
+        {/*
+          notification-slice-B 신규: 기사명 + 기사 휴대폰 (OUTBOUND 만)
+          LinkDispatchListPage 자동 그룹의 키 (기사명 + 배송일자) 가 된다.
+        */}
+        {isOutbound ? (
+          <div className="sfp-form-grid sfp-form-grid--driver" style={{ marginTop: 16 }}>
+            <FormField
+              label="기사명"
+              hint="배송 기사 이름 (자동 그룹 키)"
+              render={({ id }) => (
+                <input
+                  id={id}
+                  value={driverName}
+                  onChange={(e) => setDriverName(e.target.value)}
+                  maxLength={50}
+                  className="sfp-input"
+                  placeholder="예: 홍길동"
+                />
+              )}
+            />
+            <PhoneInput
+              label="기사 연락처"
+              helperText="010-0000-0000 (자동 하이픈)"
+              value={driverPhone}
+              onChange={setDriverPhone}
+              error={
+                driverPhone && !KOREAN_MOBILE_PHONE_PATTERN.test(driverPhone)
+                  ? '올바른 휴대폰 번호 형식이 아닙니다'
+                  : undefined
+              }
+            />
+          </div>
+        ) : null}
       </Card>
 
       {/* 라인 카드 */}

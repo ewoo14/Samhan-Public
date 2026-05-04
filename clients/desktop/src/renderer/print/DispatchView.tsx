@@ -185,7 +185,13 @@ export function DispatchView() {
           </p>
 
           <div className="dispatch-signatures" aria-label="서명">
-            <div className="dispatch-sign-label-only">용달기사 서명</div>
+            {/*
+              notification-slice-B: 기사명이 입력된 경우 라벨에 자동 노출 (괄호 안).
+              인쇄 본문 디자인 자체는 변경 X (피드백 `feedback_print_design_iteration.md` 가드).
+            */}
+            <div className="dispatch-sign-label-only">
+              용달기사 서명{slip.driverName ? ` (${slip.driverName})` : ''}
+            </div>
             <div className="dispatch-sign-label-only">인수자 서명</div>
           </div>
 

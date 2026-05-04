@@ -22,6 +22,12 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void
   /** React key 추출자. 필수. */
   rowKey: (row: T) => string
+  /**
+   * 행 단위 추가 className 산출자 (옵션) — 행 단위 상태 시각화에 사용.
+   * 예) notification-slice-B 의 LinkDispatchListPage 에서 sent 행 옅은 파랑 배경.
+   * undefined 또는 빈 문자열 반환 시 추가 클래스 미부여.
+   */
+  rowClassName?: (row: T) => string | undefined
   className?: string
 }
 
@@ -54,6 +60,7 @@ export function DataTable<T>({
   emptyMessage = '데이터가 없습니다.',
   onRowClick,
   rowKey,
+  rowClassName,
   className,
 }: DataTableProps<T>) {
   const wrapperClasses = [styles['wrapper'], className]
@@ -102,9 +109,11 @@ export function DataTable<T>({
             ) : (
               rows.map((row) => {
                 const k = rowKey(row)
+                const extraClass = rowClassName?.(row)
                 const trClasses = [
                   styles['tr'],
                   isClickable ? styles['clickable'] : null,
+                  extraClass ? extraClass : null,
                 ]
                   .filter(Boolean)
                   .join(' ')
