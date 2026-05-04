@@ -1,38 +1,95 @@
-# Dependencies
-node_modules/
+# ----- Gradle -----
 .gradle/
 build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# ----- Maven (in case any module uses it) -----
 target/
+.mvn/wrapper/maven-wrapper.jar
 
-# IDE
+# ----- IDE -----
 .idea/
-.vscode/
 *.iml
-*.swp
+*.iws
+*.ipr
+.vscode/
+*.code-workspace
+.project
+.classpath
+.settings/
+out/
+bin/
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
 
-# Environment
-.env
-.env.local
-.env.*.local
-
-# OS
+# ----- OS -----
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Build outputs
+# ----- Java / Spring -----
+*.class
+hs_err_pid*
+replay_pid*
+HELP.md
+application-local.yml
+application-local.properties
+
+# ----- Build outputs -----
 dist/
-out/
-*.jar
 *.war
+*.ear
+*.nar
 
-# Logs
-logs/
-*.log
-
-# Docker volumes
-docker-data/
-
-# Test coverage
+# ----- Node / Frontend -----
+node_modules/
+dist-ssr/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vite/
+.turbo/
 coverage/
 .nyc_output/
+*.tsbuildinfo
+
+# ----- Env -----
+.env
+.env.local
+.env.*.local
+
+# ----- Electron -----
+release/
+
+# ----- Logs / Tmp -----
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+tmp/
+temp/
+
+# ----- Docker -----
+docker-compose.override.yml
+.docker-data/
+docker-data/
+
+# ----- Secrets (NEVER commit) -----
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+secrets/
+.secrets/
+
+# ----- Claude / Agent local state -----
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/.cache/

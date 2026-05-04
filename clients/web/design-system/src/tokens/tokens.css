@@ -1,0 +1,152 @@
+/**
+ * @samhan/design-system tokens (CSS custom properties)
+ *
+ * Mirror of src/tokens/index.ts. Import once at app root:
+ *   import '@samhan/design-system/tokens.css'
+ *
+ * Phase 1: minimal dark theme stub. Full dark theme is Phase 2.
+ */
+
+:root {
+  /* ---------- color: brand ---------- */
+  --color-brand-50:  #EFF6FB;
+  --color-brand-100: #D7E8F4;
+  --color-brand-200: #AECFE7;
+  --color-brand-300: #7FB1D5;
+  --color-brand-400: #5093C0;
+  --color-brand-500: #2D77A8;
+  --color-brand-600: #235F88;
+  --color-brand-700: #1B4A6B;
+  --color-brand-800: #15394F;
+  --color-brand-900: #0F2939;
+
+  /* ---------- color: neutral ---------- */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #F7F8FA;
+  --color-neutral-100: #EDF0F4;
+  --color-neutral-200: #D6DCE3;
+  --color-neutral-300: #B8C0CB;
+  --color-neutral-400: #8E97A4;
+  --color-neutral-500: #6B7280;
+  --color-neutral-600: #4D5562;
+  --color-neutral-700: #363D49;
+  --color-neutral-800: #22272F;
+  --color-neutral-900: #0F1216;
+
+  /* ---------- color: semantic ---------- */
+  --color-success: #2A9D8F;
+  --color-warning: #E9A53D;
+  --color-danger:  #D6504A;
+  --color-info:    #3F7DB8;
+
+  /* ---------- surfaces (semantic aliases) ---------- */
+  --color-bg:           var(--color-neutral-0);
+  --color-bg-subtle:    var(--color-neutral-50);
+  --color-bg-muted:     var(--color-neutral-100);
+  --color-border:       var(--color-neutral-200);
+  --color-border-strong:var(--color-neutral-300);
+  --color-text:         var(--color-neutral-900);
+  --color-text-muted:   var(--color-neutral-600);
+  --color-text-subtle:  var(--color-neutral-500);
+  --color-text-on-brand:var(--color-neutral-0);
+
+  /* ---------- typography ---------- */
+  --font-family-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+                       "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans KR", sans-serif;
+  --font-family-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas,
+                       "Liberation Mono", monospace;
+
+  --font-size-xs:   12px;
+  --font-size-sm:   13px;
+  --font-size-base: 14px; /* 한국어 본문 기본 */
+  --font-size-md:   15px;
+  --font-size-lg:   16px;
+  --font-size-xl:   18px;
+  --font-size-2xl:  22px;
+  --font-size-3xl:  28px;
+  --font-size-4xl:  34px;
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  --line-height-tight:   1.2;
+  --line-height-normal:  1.5;
+  --line-height-relaxed: 1.7;
+
+  /* ---------- spacing ---------- */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ---------- radii ---------- */
+  --radius-none: 0;
+  --radius-sm:   2px;
+  --radius-md:   4px;
+  --radius-lg:   8px;
+  --radius-xl:   12px;
+  --radius-full: 9999px;
+
+  /* ---------- shadows ---------- */
+  --shadow-sm:    0 1px 2px rgba(15, 18, 22, 0.06);
+  --shadow-md:    0 2px 6px rgba(15, 18, 22, 0.08);
+  --shadow-lg:    0 8px 20px rgba(15, 18, 22, 0.12);
+  --shadow-modal: 0 24px 48px rgba(15, 18, 22, 0.20);
+
+  /* ---------- durations ---------- */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+
+  /* ---------- breakpoints (informational; use in JS) ---------- */
+  --bp-sm:  640px;
+  --bp-md:  768px;
+  --bp-lg:  1024px;
+  --bp-xl:  1280px;
+  --bp-2xl: 1536px;
+}
+
+/* Minimal dark theme stub. Phase 2 will refine full palette. */
+[data-theme="dark"] {
+  --color-brand-50:  #0F2939;
+  --color-brand-100: #15394F;
+  --color-brand-200: #1B4A6B;
+  --color-brand-300: #235F88;
+  --color-brand-400: #2D77A8;
+  --color-brand-500: #5093C0;
+  --color-brand-600: #7FB1D5;
+  --color-brand-700: #AECFE7;
+  --color-brand-800: #D7E8F4;
+  --color-brand-900: #EFF6FB;
+
+  --color-neutral-0:   #0F1216;
+  --color-neutral-50:  #15191F;
+  --color-neutral-100: #1B2128;
+  --color-neutral-200: #22272F;
+  --color-neutral-300: #363D49;
+  --color-neutral-400: #4D5562;
+  --color-neutral-500: #6B7280;
+  --color-neutral-600: #8E97A4;
+  --color-neutral-700: #B8C0CB;
+  --color-neutral-800: #D6DCE3;
+  --color-neutral-900: #F7F8FA;
+
+  --color-bg:            var(--color-neutral-0);
+  --color-bg-subtle:     var(--color-neutral-50);
+  --color-bg-muted:      var(--color-neutral-100);
+  --color-border:        var(--color-neutral-200);
+  --color-border-strong: var(--color-neutral-300);
+  --color-text:          var(--color-neutral-900);
+  --color-text-muted:    var(--color-neutral-600);
+  --color-text-subtle:   var(--color-neutral-500);
+}

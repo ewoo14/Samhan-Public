@@ -1,0 +1,62 @@
+package com.samhanair.logis.log.messaging;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
+
+import com.samhanair.logis.log.domain.AuditLog;
+import com.samhanair.logis.log.repository.AuditLogRepository;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Consumes audit log events from RabbitMQ and persists them to Elasticsearch.
+ *
+ * Failures are rethrown so the broker can route to the configured DLQ
+ * ({@code samhan.audit.dlq} via DLX {@code samhan.audit.dlx}). This avoids
+ * a poison message stalling the queue while preserving the message for
+ * later inspection.
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class AuditLogConsumer {
+
+    private final AuditLogRepository repository;
+
+    @RabbitListener(queues = "samhan.audit.queue")
+    public void consume(AuditLogEvent event) {
+        try {
+            AuditLog entry = AuditLog.builder()
+                    .id(blankToUuid(event.id()))
+                    .serviceName(event.serviceName())
+                    .userId(event.userId())
+                    .userRole(event.userRole())
+                    .action(event.action())
+                    .resourceType(event.resourceType())
+                    .resourceId(event.resourceId())
+                    .description(event.description())
+                    .beforeData(event.beforeData())
+                    .afterData(event.afterData())
+                    .ipAddress(event.ipAddress())
+                    .userAgent(event.userAgent())
+                    .occurredAt(event.occurredAt() != null ? event.occurredAt() : Instant.now())
+                    .ingestedAt(Instant.now())
+                    .build();
+
+            repository.save(entry);
+            log.debug("audit log persisted: id={} service={} action={}",
+                    entry.getId(), entry.getServiceName(), entry.getAction());
+        } catch (RuntimeException ex) {
+            log.error("failed to persist audit log event (will be routed to DLQ): {}", event, ex);
+            throw ex;
+        }
+    }
+
+    private static String blankToUuid(String id) {
+        return (id == null || id.isBlank()) ? UUID.randomUUID().toString() : id;
+    }
+}

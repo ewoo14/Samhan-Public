@@ -1,0 +1,37 @@
+# SamhanLogis - Prometheus scrape config (Phase 1).
+# Targets resolve via Docker DNS on the samhan-net network.
+# NOTE: the Phase-1 services (eureka, gateway, auth, logging) are not yet
+# deployed onto samhan-net, so Prometheus will report them as DOWN until
+# their containers boot. This is expected during the infra-only stand-up.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: samhan-local
+    env: dev
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: eureka-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["eureka-server:8761"]
+
+  - job_name: api-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["api-gateway:8080"]
+
+  - job_name: auth-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["auth-service:8081"]
+
+  - job_name: logging-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["logging-service:8082"]

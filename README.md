@@ -45,6 +45,36 @@ SamhanLogis/
 개발자 → TM(팀장) 승인 → PM 승인 → 대표 최종 승인 → 개발 착수
 ```
 
+## 🛠 개발 환경 셋업
+
+### 사전 요구사항
+- **JDK 17** (Eclipse Temurin 권장) — `JAVA_HOME` 설정 필수
+- **Docker Desktop** — 인프라 스택 (PostgreSQL, Redis, RabbitMQ, Elasticsearch, MinIO, Prometheus, Grafana)
+- **Node.js 24+** — 프론트엔드 (Phase 2부터)
+- Gradle / Maven은 별도 설치 불필요 — 프로젝트 내 `gradlew` 사용
+
+### 빌드 & 실행
+
+```bash
+# 인프라 스택 기동
+docker compose -f infrastructure/docker-compose.yml up -d
+
+# 전체 모듈 빌드
+./gradlew build
+
+# 개별 서비스 실행
+./gradlew :services:eureka-server:bootRun     # http://localhost:8761
+./gradlew :services:api-gateway:bootRun       # http://localhost:8080
+./gradlew :services:auth-service:bootRun      # http://localhost:8081
+./gradlew :services:logging-service:bootRun   # http://localhost:8082
+```
+
+### 프로젝트 위치 권장
+
+이 프로젝트는 **`C:\dev\SamhanLogis`** 같은 ASCII 전용 경로에 두는 것을 권장합니다.
+한국어 경로(예: `바탕 화면`) 하위에 두면 JDK 17의 `@argfile` 인코딩 한계로
+일부 Gradle 작업(특히 테스트)이 `ClassNotFoundException`으로 실패할 수 있습니다.
+
 ## 📄 라이선스
 
 Proprietary - (주)삼한공조시스템 내부 사용 전용

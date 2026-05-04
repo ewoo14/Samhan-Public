@@ -1,0 +1,21 @@
+# SamhanLogis - Grafana dashboard provider.
+# Drops any *.json dashboards placed under this directory (recursively)
+# into the "SamhanLogis" folder of the Grafana UI on container start.
+#
+# Placeholder note: no dashboards are bundled yet. Each service team will
+# add its dashboard JSON (e.g. api-gateway.json, auth-service.json) into
+# this directory as the service is implemented during Phase 1+.
+
+apiVersion: 1
+
+providers:
+  - name: SamhanLogis
+    orgId: 1
+    folder: SamhanLogis
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

@@ -1,0 +1,142 @@
+/**
+ * @samhan/design-system tokens
+ *
+ * Single source of truth for SamhanLogis brand visual tokens.
+ * Mirrors `tokens.css` (CSS custom properties) for runtime theming.
+ *
+ * Brand palette derived from samhan-air.com (cool blue-grey, suitable for
+ * an HVAC + logistics enterprise tool).
+ */
+
+export const colors = {
+  brand: {
+    50:  '#EFF6FB',
+    100: '#D7E8F4',
+    200: '#AECFE7',
+    300: '#7FB1D5',
+    400: '#5093C0',
+    500: '#2D77A8', // primary
+    600: '#235F88',
+    700: '#1B4A6B',
+    800: '#15394F',
+    900: '#0F2939',
+  },
+  neutral: {
+    0:   '#FFFFFF',
+    50:  '#F7F8FA',
+    100: '#EDF0F4',
+    200: '#D6DCE3',
+    300: '#B8C0CB',
+    400: '#8E97A4',
+    500: '#6B7280',
+    600: '#4D5562',
+    700: '#363D49',
+    800: '#22272F',
+    900: '#0F1216',
+  },
+  semantic: {
+    success: '#2A9D8F',
+    warning: '#E9A53D',
+    danger:  '#D6504A',
+    info:    '#3F7DB8',
+  },
+} as const
+
+export const typography = {
+  fontFamily: {
+    sans: '"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans KR", sans-serif',
+    mono: 'ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace',
+  },
+  fontSize: {
+    xs:    '12px',
+    sm:    '13px',
+    base:  '14px', // 한국어 본문 기본
+    md:    '15px',
+    lg:    '16px',
+    xl:    '18px',
+    '2xl': '22px',
+    '3xl': '28px',
+    '4xl': '34px',
+  },
+  fontWeight: {
+    regular: 400,
+    medium: 500,
+    semibold: 600,
+    bold: 700,
+  },
+  lineHeight: {
+    tight: 1.2,
+    normal: 1.5,
+    relaxed: 1.7,
+  },
+} as const
+
+export const spacing = {
+  0:  '0',
+  1:  '4px',
+  2:  '8px',
+  3:  '12px',
+  4:  '16px',
+  5:  '20px',
+  6:  '24px',
+  8:  '32px',
+  10: '40px',
+  12: '48px',
+  16: '64px',
+  20: '80px',
+} as const
+
+export const radii = {
+  none: '0',
+  sm:   '2px',
+  md:   '4px',
+  lg:   '8px',
+  xl:   '12px',
+  full: '9999px',
+} as const
+
+export const shadows = {
+  sm:    '0 1px 2px rgba(15, 18, 22, 0.06)',
+  md:    '0 2px 6px rgba(15, 18, 22, 0.08)',
+  lg:    '0 8px 20px rgba(15, 18, 22, 0.12)',
+  modal: '0 24px 48px rgba(15, 18, 22, 0.20)',
+} as const
+
+export const durations = {
+  fast: '120ms',
+  base: '180ms',
+  slow: '280ms',
+} as const
+
+export const breakpoints = {
+  sm:    '640px',
+  md:    '768px',
+  lg:    '1024px',
+  xl:    '1280px',
+  '2xl': '1536px',
+} as const
+
+export type Tokens = {
+  colors: typeof colors
+  typography: typeof typography
+  spacing: typeof spacing
+  radii: typeof radii
+  shadows: typeof shadows
+  durations: typeof durations
+  breakpoints: typeof breakpoints
+}
+
+export const tokens: Tokens = {
+  colors,
+  typography,
+  spacing,
+  radii,
+  shadows,
+  durations,
+  breakpoints,
+}
+
+export type SpacingKey = keyof typeof spacing
+export type RadiusKey = keyof typeof radii
+export type ShadowKey = keyof typeof shadows
+export type FontSizeKey = keyof typeof typography.fontSize

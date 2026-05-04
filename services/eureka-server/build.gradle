@@ -1,0 +1,39 @@
+/*
+ * services:eureka-server — Netflix Eureka discovery server.
+ *
+ * Standalone Spring Boot app that all other Phase 1 services register with.
+ * Pulls Spring Cloud BOM for managed Netflix Eureka versions; root build
+ * already supplies Java 17 toolchain, JUnit Platform, and repositories.
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'eureka-server.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

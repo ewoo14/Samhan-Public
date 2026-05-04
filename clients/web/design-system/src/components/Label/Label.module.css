@@ -1,0 +1,35 @@
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  line-height: var(--line-height-normal);
+}
+
+.size-md {
+  font-size: var(--font-size-base);
+}
+
+.size-sm {
+  font-size: var(--font-size-sm);
+}
+
+.required {
+  color: var(--color-danger);
+  font-weight: var(--font-weight-semibold);
+  margin-left: 2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

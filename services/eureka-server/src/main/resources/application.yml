@@ -1,0 +1,104 @@
+# SamhanLogis — Eureka Server configuration.
+#
+# Multi-document YAML: defaults first, then profile-specific overrides
+# activated via spring.config.activate.on-profile.
+#
+#   default      — local dev, self-preservation OFF, standalone (no peer).
+#   local        — explicit local profile (matches default behavior).
+#   docker       — running inside docker-compose; hostname resolves via DNS.
+#   prod-peer1   — HA peer #1, registers with peer #2.
+#   prod-peer2   — HA peer #2, registers with peer #1.
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    enable-self-preservation: false
+  instance:
+    hostname: localhost
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    enable-self-preservation: false
+  instance:
+    hostname: localhost
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    enable-self-preservation: false
+  instance:
+    hostname: eureka-server
+    prefer-ip-address: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod-peer1
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_PEER_URL:http://eureka-peer:8761/eureka/}
+  server:
+    enable-self-preservation: true
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:eureka-peer1}
+    prefer-ip-address: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod-peer2
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_PEER_URL:http://eureka-peer:8761/eureka/}
+  server:
+    enable-self-preservation: true
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:eureka-peer2}
+    prefer-ip-address: false

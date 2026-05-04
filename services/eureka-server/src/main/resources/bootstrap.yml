@@ -1,0 +1,5 @@
+# Bootstrap context — loaded before application.yml.
+# Kept minimal; full configuration lives in application.yml.
+spring:
+  application:
+    name: eureka-server

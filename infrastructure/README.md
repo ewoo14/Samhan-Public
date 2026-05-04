@@ -1,0 +1,96 @@
+# SamhanLogis - Local Infrastructure Stack
+
+Local Docker Compose stack for the SamhanLogis MSA platform. Phase 1 brings up
+the **data services** (PostgreSQL, Redis, RabbitMQ, Elasticsearch, MinIO) and
+the **monitoring stack** (Prometheus, Grafana, Nginx reverse-proxy stub) on a
+single bridge network `samhan-net`.
+
+> All credentials in this directory are **DEV-ONLY**. Never reuse them in
+> staging or production environments.
+
+## Lifecycle
+
+| Action | Command |
+| ------ | ------- |
+| Start  | `docker compose -f infrastructure/docker-compose.yml up -d` |
+| Stop   | `docker compose -f infrastructure/docker-compose.yml down` |
+| Wipe (remove volumes) | `docker compose -f infrastructure/docker-compose.yml down -v` |
+| Logs   | `docker compose -f infrastructure/docker-compose.yml logs -f <service>` |
+| Status | `docker compose -f infrastructure/docker-compose.yml ps` |
+
+## Connection Reference (DEV-ONLY)
+
+### Data services
+
+| Service | Host:Port | User | Password | Notes |
+| ------- | --------- | ---- | -------- | ----- |
+| PostgreSQL    | `localhost:5432`  | `samhan` | `samhan_dev_pw` | 10 service DBs auto-created (see `postgres/init/`) |
+| Redis         | `localhost:6379`  | -        | -               | No auth in dev |
+| RabbitMQ AMQP | `localhost:5672`  | `samhan` | `samhan_dev_pw` | |
+| RabbitMQ UI   | http://localhost:15672 | `samhan` | `samhan_dev_pw` | Management plugin |
+| Elasticsearch | http://localhost:9200 | -    | -               | Security disabled (single-node) |
+| MinIO API     | http://localhost:9000 | `samhan` | `samhan_dev_pw` | S3-compatible |
+| MinIO Console | http://localhost:9001 | `samhan` | `samhan_dev_pw` | |
+
+### Monitoring stack
+
+| Service | Host:Port | User | Password | Notes |
+| ------- | --------- | ---- | -------- | ----- |
+| Prometheus | http://localhost:9090   | -       | -                 | Scrapes Spring Boot Actuator on samhan-net |
+| Grafana    | http://localhost:3100   | `admin` | `samhan_dev_pw`   | Container port 3000 mapped to host 3100 |
+| Nginx HTTP | http://localhost:80     | -       | -                 | Stub reverse proxy (see below) |
+| Nginx TLS  | `localhost:443`         | -       | -                 | Reserved; HTTP only in dev |
+
+## Auto-provisioned PostgreSQL databases
+
+Created on first container start (owned by `samhan`):
+
+`auth_db`, `user_db`, `product_db`, `inventory_db`, `slip_db`,
+`accounting_db`, `partner_db`, `groupware_db`, `dashboard_db`, `migration_db`.
+
+Extensions `uuid-ossp` and `pgcrypto` are enabled in each DB
+(see `postgres/init/02-extensions.sql`).
+
+## Monitoring notes
+
+- **Prometheus** scrapes `/actuator/prometheus` on `eureka-server:8761`,
+  `api-gateway:8080`, `auth-service:8081`, `logging-service:8082` over the
+  `samhan-net` bridge. Until those Phase-1 services are launched onto the
+  network, Prometheus will report them as `down` — expected behaviour.
+- **Grafana** auto-provisions Prometheus as the default datasource and loads
+  any dashboard JSON dropped into
+  `grafana/provisioning/dashboards/`. None are bundled yet — service teams
+  add their dashboards as services come online.
+
+## Nginx reverse proxy
+
+The Nginx container is **a stub today**. It serves only:
+
+- `GET /healthz` -> `200 ok` (used by the container healthcheck)
+- everything else -> `404`
+
+Per-subdomain server blocks for `samhan-air.com` (plan §4 — `app.`, `api.`,
+`auth.`, `admin.`, etc.) will be dropped into `nginx/conf.d/*.conf` and TLS
+certificates wired in at deployment time. Dev runs HTTP only.
+
+## File layout
+
+```
+infrastructure/
+  docker-compose.yml
+  .env.example
+  README.md
+  postgres/
+    init/
+      01-create-databases.sql
+      02-extensions.sql
+  prometheus/
+    prometheus.yml
+  grafana/
+    provisioning/
+      datasources/prometheus.yml
+      dashboards/dashboards.yml
+  nginx/
+    nginx.conf
+    conf.d/.gitkeep
+```

@@ -1,0 +1,50 @@
+/*
+ * services:logging-service — central audit log sink (Phase 1, plan §3.7).
+ *
+ * Consumes audit events from RabbitMQ exchange `samhan.audit.exchange`
+ * (queue `samhan.audit.queue`, routing pattern `audit.#`) and persists
+ * them into Elasticsearch index `samhan-audit-logs`. Exposes REST search
+ * endpoints for MASTER / MANAGER (role enforcement at the gateway).
+ *
+ * NOTE: testcontainers BOM is intentionally not imported here — versions
+ * are intentionally left off so they can be wired in later (or aligned with
+ * a project-wide testcontainers BOM when one is introduced).
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-amqp'
+    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    implementation project(':shared:common')
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.testcontainers:elasticsearch'
+    testImplementation 'org.testcontainers:rabbitmq'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'logging-service.jar'
+}

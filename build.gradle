@@ -1,0 +1,63 @@
+/*
+ * SamhanLogis — root build script
+ *
+ * Applies common conventions to every leaf subproject:
+ *   - Java 17 toolchain
+ *   - Spring Boot 3.3.5 / Spring Cloud 2023.0.3
+ *   - Maven Central + Spring milestone repos
+ *   - JUnit 5 test platform
+ *
+ * Subprojects override their own dependencies for service-specific libs.
+ * Aggregator parents (':shared', ':services') are NOT given the java plugin
+ * so they don't produce empty jars.
+ */
+
+plugins {
+    id 'io.spring.dependency-management' version '1.1.6' apply false
+    id 'org.springframework.boot' version '3.3.5' apply false
+}
+
+ext {
+    set('javaVersion', JavaVersion.VERSION_17)
+    set('springCloudVersion', '2023.0.3')
+    set('lombokVersion', '1.18.34')
+    set('jjwtVersion', '0.12.6')
+}
+
+allprojects {
+    group = 'com.samhanair.logis'
+    version = '0.1.0-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+        maven { url 'https://repo.spring.io/milestone' }
+    }
+}
+
+def leafProjects = [
+        ':shared:common',
+        ':services:eureka-server',
+        ':services:api-gateway',
+        ':services:auth-service',
+        ':services:logging-service',
+]
+
+configure(leafProjects.collect { project(it) }) {
+    apply plugin: 'java'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.compilerArgs += ['-parameters']
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        systemProperty 'file.encoding', 'UTF-8'
+    }
+}

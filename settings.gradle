@@ -1,0 +1,29 @@
+/*
+ * SamhanLogis — root multi-project Gradle settings
+ *
+ * Shared library:
+ *   shared:common              — BaseEntity, Role enum, JWT util, common DTO/exception
+ *
+ * Phase 1 services:
+ *   services:eureka-server     — service discovery
+ *   services:api-gateway       — Spring Cloud Gateway (reactive)
+ *   services:auth-service      — JWT issuer + accounts
+ *   services:logging-service   — Elasticsearch-backed audit log
+ *
+ * Add additional services here as `include 'services:<name>'` and ensure
+ * each service directory contains its own build.gradle.
+ */
+
+rootProject.name = 'samhan-logis'
+
+include 'shared:common'
+include 'services:eureka-server'
+include 'services:api-gateway'
+include 'services:auth-service'
+include 'services:logging-service'
+
+project(':shared:common').projectDir              = file('shared/common')
+project(':services:eureka-server').projectDir     = file('services/eureka-server')
+project(':services:api-gateway').projectDir       = file('services/api-gateway')
+project(':services:auth-service').projectDir      = file('services/auth-service')
+project(':services:logging-service').projectDir   = file('services/logging-service')

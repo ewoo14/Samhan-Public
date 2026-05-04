@@ -1,0 +1,93 @@
+# SamhanLogis — API Gateway configuration.
+#
+# Reactive Spring Cloud Gateway. All ingress traffic enters here; routes are
+# matched by path prefix and proxied to the corresponding Eureka-registered
+# service via load-balancer URIs (lb://).
+#
+# Each protected route applies the custom `JwtAuthentication` filter — see
+# `JwtAuthenticationGatewayFilterFactory`. The auth-service login endpoint
+# is intentionally exempt so users can obtain a token in the first place.
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        # Login / token endpoints — must be reachable WITHOUT a JWT filter.
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - StripPrefix=1
+
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
+        - id: slip-service
+          uri: lb://slip-service
+          predicates:
+            - Path=/api/slips/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
+        - id: inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/inventory/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
+        - id: accounting-service
+          uri: lb://accounting-service
+          predicates:
+            - Path=/api/accounting/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
+        # Logging service — restricted to MASTER + MANAGER per audit policy.
+        - id: logging-service
+          uri: lb://logging-service
+          predicates:
+            - Path=/api/logs/**
+          filters:
+            - StripPrefix=1
+            - name: JwtAuthentication
+              args:
+                allowedRoles:
+                  - MASTER
+                  - MANAGER
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev-secret-change-me-in-production-32bytes-min!}
+      ttl-seconds: 3600
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,gateway
+  metrics:
+    tags:
+      application: ${spring.application.name}
