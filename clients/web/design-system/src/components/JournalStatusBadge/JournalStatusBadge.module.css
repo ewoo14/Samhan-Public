@@ -1,0 +1,50 @@
+/* JournalStatusBadge — 분개 3종 상태 시각 구분.
+ *
+ * SlipStatusBadge 와 동일한 pill geometry. 색상 의미:
+ * - editable (DRAFT)    회색 (편집 가능, 마감 미반영)
+ * - posted   (POSTED)   녹색 (확정, 원장 반영)
+ * - reversed (REVERSED) 회색 + 취소선 (역분개로 무효화)
+ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* ---------- group: editable (DRAFT) ---------- */
+.group-editable {
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+/* ---------- group: posted (POSTED) ---------- */
+.group-posted {
+  background-color: rgba(42, 157, 143, 0.18);
+  border-color: rgba(42, 157, 143, 0.42);
+  color: #1F7A6F;
+  font-weight: var(--font-weight-semibold);
+}
+
+[data-theme='dark'] .group-posted {
+  color: var(--color-success);
+}
+
+/* ---------- group: reversed (REVERSED) ---------- */
+.group-reversed {
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-subtle);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
