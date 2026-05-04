@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>DispatchView v2 — 개발책임자 첨부 이미지 기준 (PR #21 hotfix v2)</title>
+<style>
+body {
+  background: #E5E7EB;
+  padding: 24px;
+  margin: 0;
+  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+}
+.dispatch-page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #FFF;
+  font-size: 11pt;
+  line-height: 1.4;
+  color: #000;
+  padding: 12mm;
+  box-sizing: border-box;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.dispatch-logo-strip { background: #E3F2FD; padding: 3mm 4mm; margin-bottom: 0; }
+.dispatch-logo-placeholder { font-weight: 700; font-size: 22pt; letter-spacing: 0.05em; color: #1565C0; }
+
+.dispatch-header-row {
+  display: grid;
+  grid-template-columns: 1fr 110mm;
+  border: 1px solid #000;
+  border-top: none;
+  margin-bottom: 3mm;
+}
+.dispatch-partner-name-box {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22pt; font-weight: 700; padding: 6mm 4mm;
+  border-right: 1px solid #000; text-align: center;
+}
+.dispatch-roles { display: grid; grid-template-columns: repeat(5, 1fr); }
+.dispatch-role-cell { display: flex; flex-direction: column; border-right: 1px solid #000; min-height: 18mm; }
+.dispatch-role-cell:last-child { border-right: none; }
+.dispatch-role-label { background: #F5F5F5; border-bottom: 1px solid #000; font-size: 8pt; font-weight: 700; text-align: center; padding: 1mm 0; }
+.dispatch-role-value { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5mm; padding: 1mm; }
+.dispatch-role-value .name { font-size: 9pt; font-weight: 600; }
+.dispatch-role-value .time { font-size: 7pt; color: #666; }
+
+.dispatch-meta-row {
+  display: grid; grid-template-columns: auto 1fr; align-items: center;
+  margin-bottom: 3mm; padding: 2mm 0;
+}
+.dispatch-slip-no-box {
+  border: 1px solid #000; padding: 2mm 6mm; font-size: 13pt; font-weight: 600;
+  font-variant-numeric: tabular-nums; display: inline-block; justify-self: start;
+}
+.dispatch-warehouse-emphasis {
+  justify-self: end; color: #D32F2F; font-size: 14pt; font-weight: 700;
+  border: 1.5pt solid #D32F2F; padding: 2mm 6mm;
+}
+
+.dispatch-table {
+  width: 100%; border-collapse: collapse; margin-top: 0;
+  border-top: 1px solid #000; border-bottom: 1px solid #000; font-size: 11pt;
+}
+.dispatch-table th, .dispatch-table td {
+  border-bottom: 1px solid #BBB; padding: 2mm 3mm; vertical-align: middle;
+}
+.dispatch-table thead th {
+  background: #F0F0F0; font-weight: 700; text-align: center; font-size: 11pt;
+  border-bottom: 1px solid #000;
+}
+.dispatch-table .col-model   { width: 38mm; text-align: left;  font-weight: 600; }
+.dispatch-table .col-product { text-align: left; }
+.dispatch-table .col-spec    { width: 36mm; text-align: center; font-size: 13pt; font-weight: 600; }
+.dispatch-table .col-qty     { width: 20mm; text-align: center; font-size: 13pt; font-weight: 600; }
+.dispatch-table tfoot td {
+  font-weight: 700; background: #FAFAFA; border-top: 1px solid #000; border-bottom: none;
+}
+.dispatch-table tfoot td.total-label { text-align: center; font-size: 12pt; }
+.dispatch-table tfoot td.total-qty   { text-align: center; font-size: 13pt; }
+
+.dispatch-bottom-group { margin-top: 4mm; }
+.dispatch-address-box {
+  border: 1px solid #000; padding: 4mm; font-size: 14pt; font-weight: 600;
+  text-align: center; margin-bottom: 2mm;
+}
+.dispatch-info-box {
+  border: 1px solid #000; padding: 3mm 4mm; margin-bottom: 2mm;
+  display: flex; align-items: baseline; gap: 6mm;
+}
+.dispatch-info-box .label { font-size: 13pt; font-weight: 700; min-width: 18mm; }
+.dispatch-info-box .content { font-size: 14pt; font-weight: 600; }
+
+.dispatch-driver-call-notice {
+  text-align: center; font-size: 12pt; font-weight: 600; margin: 4mm 0 2mm 0;
+}
+.dispatch-confirm-notice {
+  font-size: 12pt; font-weight: 700; margin: 3mm 0 2mm 0;
+  border-top: 1px solid #000; padding-top: 3mm;
+}
+.dispatch-signatures {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin: 4mm 0;
+}
+.dispatch-sign-label-only { font-size: 12pt; font-weight: 700; padding: 2mm 0; }
+.dispatch-liability-notice {
+  text-align: center; font-size: 11pt; font-weight: 600; margin-top: 4mm; line-height: 1.6;
+}
+</style>
+</head><body>
+<div class="dispatch-page">
+  <div class="dispatch-logo-strip">
+    <span class="dispatch-logo-placeholder">SAMSUNG</span>
+  </div>
+
+  <header class="dispatch-header-row">
+    <div class="dispatch-partner-name-box">주식회사 윌리-정현수</div>
+    <div class="dispatch-roles">
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">담당부서</div>
+        <div class="dispatch-role-value"><span class="name">영업1팀</span></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">담당자</div>
+        <div class="dispatch-role-value"><span class="name">오병승</span></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">출고인</div>
+        <div class="dispatch-role-value"></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">검수인</div>
+        <div class="dispatch-role-value"></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">결재</div>
+        <div class="dispatch-role-value"><span class="name">*</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="dispatch-meta-row">
+    <div class="dispatch-slip-no-box">2026/06/02 -4</div>
+    <div class="dispatch-warehouse-emphasis">삼성창고 (초월 무갑)</div>
+  </div>
+
+  <table class="dispatch-table">
+    <thead>
+      <tr>
+        <th class="col-model">모델명</th>
+        <th class="col-product">품목명</th>
+        <th class="col-spec">규격</th>
+        <th class="col-qty">수량</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="col-model">AJ040RXH4BC1</td><td class="col-product">RX다배관</td><td class="col-spec">-</td><td class="col-qty">1</td></tr>
+      <tr><td class="col-model">AJ020BN1PBC1</td><td class="col-product">홈-WIFI 모델</td><td class="col-spec">-</td><td class="col-qty">2</td></tr>
+      <tr><td class="col-model">AJ023BN1PBC1</td><td class="col-product">홈-WIFI 모델</td><td class="col-spec">-</td><td class="col-qty">1</td></tr>
+      <tr><td class="col-model">AJ072BN1PBC1</td><td class="col-product">홈-WIFI 모델</td><td class="col-spec">-</td><td class="col-qty">1</td></tr>
+      <tr><td class="col-model">PC1NWSK3NW</td><td class="col-product">WIFI판넬</td><td class="col-spec">-</td><td class="col-qty">3</td></tr>
+      <tr><td class="col-model">PC1BWSK3NW</td><td class="col-product">WIFI판넬</td><td class="col-spec">-</td><td class="col-qty">1</td></tr>
+      <tr><td class="col-model">AR-EC05</td><td class="col-product">-</td><td class="col-spec">-</td><td class="col-qty">4</td></tr>
+      <tr><td class="col-model">FH-LFHIF</td><td class="col-product">유연호스 I형 ★</td><td class="col-spec">-</td><td class="col-qty">4</td></tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" class="total-label">총합계</td>
+        <td class="col-qty total-qty">17</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="dispatch-bottom-group">
+    <div class="dispatch-address-box">경기 김포시 김포한강2로 273 청송마을모아미래도엘가 504동1803호</div>
+    <div class="dispatch-info-box">
+      <span class="label">연락처:</span><span class="content">이석중팀장 010-6888-8925</span>
+    </div>
+    <div class="dispatch-info-box">
+      <span class="label">특이사항:</span><span class="content">9시까지 배송 요망</span>
+    </div>
+
+    <p class="dispatch-driver-call-notice">기사님 출발전에 수요처에 전화주세요~ 감사합니다^^</p>
+    <p class="dispatch-confirm-notice">※ 제품수량 및 이상유무 확인 후 서명 必</p>
+
+    <div class="dispatch-signatures">
+      <div class="dispatch-sign-label-only">용달기사 서명</div>
+      <div class="dispatch-sign-label-only">인수자 서명</div>
+    </div>
+
+    <p class="dispatch-liability-notice">
+      제품 인수시 수량 제품상태 이상 유무 확인 후 서명 부탁드립니다.<br/>
+      서명 후 생긴 문제는 당사가 책임지지 않습니다.
+    </p>
+  </div>
+</div>
+</body></html>
