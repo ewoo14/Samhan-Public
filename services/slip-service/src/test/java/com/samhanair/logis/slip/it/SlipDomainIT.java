@@ -74,10 +74,11 @@ class SlipDomainIT extends AbstractPostgresIT {
         slip.process();
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.PROCESSING);
 
-        slip.inspect("user-inspector-001");
+        // PR #21 hotfix: complete = 출고 완료 → INSPECTING, inspect = 검수 완료 → COMPLETED.
+        slip.complete();
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
 
-        slip.complete();
+        slip.inspect("user-inspector-001");
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
 
         slip.ship();
@@ -97,8 +98,9 @@ class SlipDomainIT extends AbstractPostgresIT {
         slip.send();
         slip.accept("user-warehouse-001");
         slip.process();
-        slip.inspect("user-inspector-001");
+        // PR #21 hotfix: complete = PROCESSING→INSPECTING, inspect = INSPECTING→COMPLETED.
         slip.complete();
+        slip.inspect("user-inspector-001");
         // 입고는 ship/deliver 단계 스킵 — COMPLETED 에서 바로 confirm.
         slip.confirm();
 
@@ -131,8 +133,9 @@ class SlipDomainIT extends AbstractPostgresIT {
         slip.send();
         slip.accept("user-warehouse-001");
         slip.process();
-        slip.inspect("user-inspector-001");
+        // PR #21 hotfix: complete first then inspect.
         slip.complete();
+        slip.inspect("user-inspector-001");
         // COMPLETED 이후 reject 시도 → CONFLICT.
         assertThatThrownBy(() -> slip.reject("이미 완료된 전표를 거부 시도"))
                 .isInstanceOf(BusinessException.class);

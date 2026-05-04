@@ -225,13 +225,8 @@ class SlipControllerIT extends AbstractPostgresIT {
                 .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk());
 
-        // Slice A: PROCESSING → INSPECTING 단계 추가.
-        mockMvc.perform(post("/slips/" + slipId + "/inspect")
-                .header("X-User-Id", UUID.randomUUID().toString())
-                .header("X-User-Role", "WAREHOUSE"))
-                .andExpect(status().isOk());
-
-        // complete → InventoryClient.deduct(fromReservation=true) (Q2-A 결정).
+        // PR #21 hotfix: complete = PROCESSING→INSPECTING (출고 완료, 재고 deduct).
+        // 본 시나리오는 deduct 호출만 검증하므로 inspect (INSPECTING→COMPLETED) 까지 호출 불필요.
         mockMvc.perform(post("/slips/" + slipId + "/complete")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
@@ -293,11 +288,11 @@ class SlipControllerIT extends AbstractPostgresIT {
         mockMvc.perform(post("/slips/" + slipId + "/process")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
-        // Slice A: INSPECTING 단계 추가.
-        mockMvc.perform(post("/slips/" + slipId + "/inspect")
+        // PR #21 hotfix: complete (PROCESSING→INSPECTING) → inspect (INSPECTING→COMPLETED).
+        mockMvc.perform(post("/slips/" + slipId + "/complete")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
-        mockMvc.perform(post("/slips/" + slipId + "/complete")
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
         mockMvc.perform(post("/slips/" + slipId + "/ship")
@@ -318,7 +313,8 @@ class SlipControllerIT extends AbstractPostgresIT {
 
     @Test
     void warehouseRole_inspectSlip_returns200_andSetsInspectorUserId() throws Exception {
-        // PROCESSING → INSPECTING. inspectorUserId/SignedAt 자동 기입.
+        // PR #21 hotfix: complete (PROCESSING→INSPECTING) → inspect (INSPECTING→COMPLETED).
+        // inspectorUserId/SignedAt 자동 기입은 inspect() 시점.
         String slipId = createOutboundSlipAsSales();
         String inspectorUuid = UUID.randomUUID().toString();
 
@@ -334,12 +330,15 @@ class SlipControllerIT extends AbstractPostgresIT {
         mockMvc.perform(post("/slips/" + slipId + "/process")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/complete")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
 
         mockMvc.perform(post("/slips/" + slipId + "/inspect")
                         .header("X-User-Id", inspectorUuid)
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("INSPECTING"))
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.inspectorUserId").value(inspectorUuid))
                 .andExpect(jsonPath("$.data.inspectorSignedAt").value(notNullValue()));
     }
