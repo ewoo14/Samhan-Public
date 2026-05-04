@@ -16,6 +16,9 @@ import java.util.UUID;
 /**
  * 전표 생성 요청 — slipType 분기로 OUTBOUND/INBOUND 처리. slipDate 가 null 이면 서비스 레이어에서
  * {@code LocalDate.now()} 사용.
+ *
+ * <p>Slice B (notification-slice-B): {@code driverName}, {@code driverPhone} 2 필드 신규 추가 —
+ * 출고 슬립 생성 시 배송 기사 정보를 함께 입력 가능 (선택). 입력되지 않으면 추후 editHeader 로 갱신.
  */
 public record CreateSlipRequest(
         @NotNull SlipType slipType,
@@ -26,6 +29,8 @@ public record CreateSlipRequest(
         @Size(max = 100) String partnerName,
         DeliveryTag deliveryTag,
         @Size(max = 1000) String memo,
+        @Size(max = 50) String driverName,
+        @Size(max = 20) String driverPhone,
         @NotEmpty @Valid List<SlipLineRequest> lines) {
 
     /**

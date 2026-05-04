@@ -141,6 +141,30 @@ public class Slip extends BaseEntity {
     @Column(name = "inspector_signed_at")
     private LocalDateTime inspectorSignedAt;
 
+    /**
+     * 배송 기사명 — Slice B (notification-slice-B) 신규.
+     * DRAFT/SAVED 단계에서 입력. {@link #editHeader} 로 갱신.
+     * 같은 driverPhone + slipDate 슬립이 자동으로 단일 DeliveryBatch 로 그룹된다.
+     */
+    @Column(name = "driver_name", length = 50)
+    private String driverName;
+
+    /**
+     * 배송 기사 연락처 — Slice B (notification-slice-B) 신규.
+     * 한국 휴대폰 패턴 ({@code 010-XXXX-XXXX}) 권장 (FE PhoneInput 검증).
+     * DeliveryBatch 자동 그룹의 그룹 키.
+     */
+    @Column(name = "driver_phone", length = 20)
+    private String driverPhone;
+
+    /**
+     * 배송 배치 FK — Slice B (notification-slice-B) 신규. nullable.
+     * DeliveryBatch.addSlip / removeSlip 도메인 메서드를 통해서만 변경되어야 한다 (양방향 일관성).
+     * 본 슬립이 어떤 배송 배치(=기사 SMS 단위) 에 속하는지 식별.
+     */
+    @Column(name = "delivery_batch_id")
+    private UUID deliveryBatchId;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -255,14 +279,21 @@ public class Slip extends BaseEntity {
     /**
      * 헤더 부분 수정 — DRAFT 또는 SAVED 단계에서만 허용. null 이 아닌 인자만 적용.
      *
+     * <p>Slice B (notification-slice-B): {@code driverName}, {@code driverPhone} 2 인자 신규
+     * 추가 — 출고 슬립의 배송 기사 정보 입력. 같은 driverPhone + slipDate 슬립이 자동으로
+     * 단일 DeliveryBatch 로 그룹된다 (관리자 화면 "링크발송" 메뉴).
+     *
      * @param partnerId 거래처 UUID (null 이면 보존)
      * @param partnerName 거래처명 (null 이면 보존)
      * @param deliveryTag 배송 태그 (null 이면 보존). slipType 호환 검증.
      * @param memo 메모 (null 이면 보존)
+     * @param driverName 배송 기사명 (null 이면 보존, 빈 문자열은 그대로 저장)
+     * @param driverPhone 배송 기사 연락처 (null 이면 보존)
      * @throws BusinessException(CONFLICT) 현재 상태가 DRAFT/SAVED 가 아닐 때
      * @throws IllegalArgumentException deliveryTag 의 direction 이 slipType 과 불일치
      */
-    public void editHeader(UUID partnerId, String partnerName, DeliveryTag deliveryTag, String memo) {
+    public void editHeader(UUID partnerId, String partnerName, DeliveryTag deliveryTag, String memo,
+                           String driverName, String driverPhone) {
         if (!EDITABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "수정 가능한 상태가 아닙니다: " + this.status);
@@ -280,6 +311,43 @@ public class Slip extends BaseEntity {
         if (memo != null) {
             this.memo = memo;
         }
+        if (driverName != null) {
+            this.driverName = driverName;
+        }
+        if (driverPhone != null) {
+            this.driverPhone = driverPhone;
+        }
+    }
+
+    /**
+     * 슬립 생성 시 driver 정보 직접 설정 — 서비스 레이어에서 createOutbound/Inbound 직후 호출.
+     * 별도 mutation API 가 아닌 생성 시점 보조 setter (CreateSlipRequest 의 driverName/Phone 적용용).
+     * Slice B (notification-slice-B) 신규.
+     *
+     * @param driverName 배송 기사명
+     * @param driverPhone 배송 기사 연락처
+     */
+    public void setDriverContact(String driverName, String driverPhone) {
+        this.driverName = driverName;
+        this.driverPhone = driverPhone;
+    }
+
+    /**
+     * DeliveryBatch 연결 — DeliveryBatch.addSlip 내부에서만 호출 (package-private 의도).
+     * Slice B (notification-slice-B) 신규.
+     *
+     * @param batchId 배치 UUID
+     */
+    public void assignToBatch(UUID batchId) {
+        this.deliveryBatchId = batchId;
+    }
+
+    /**
+     * DeliveryBatch 연결 해제 — DeliveryBatch.removeSlip 내부에서만 호출.
+     * Slice B (notification-slice-B) 신규.
+     */
+    public void clearBatch() {
+        this.deliveryBatchId = null;
     }
 
     /**
