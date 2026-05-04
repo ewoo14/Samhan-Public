@@ -1,0 +1,117 @@
+/* SlipStatusBadge — 전표 상태 9단계 + 분기 2종 시각 구분.
+ *
+ * 기본 형태는 Badge 와 동일한 pill 모양. 색상 그룹별로 base hue 를
+ * 정해두고 tier-1/2/3 으로 같은 그룹 내 진행도에 따라 채도를 점증시킨다.
+ *
+ * - editable (1~3): neutral → brand 점증
+ * - process  (4~6): warning 계열 점증
+ * - delivery (7~9): success 계열 점증
+ * - rejected:       danger 단색
+ * - canceled:       neutral + line-through
+ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.step {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  opacity: 0.85;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---------- group: editable (DRAFT/SAVED/SENT) ---------- */
+.group-editable.tier-1 {
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+.group-editable.tier-2 {
+  background-color: var(--color-brand-50);
+  border-color: var(--color-brand-200);
+  color: var(--color-brand-700);
+}
+.group-editable.tier-3 {
+  background-color: var(--color-brand-100);
+  border-color: var(--color-brand-300);
+  color: var(--color-brand-800);
+}
+
+/* ---------- group: process (ACCEPTED/PROCESSING/COMPLETED) ---------- */
+.group-process.tier-1 {
+  background-color: rgba(233, 165, 61, 0.10);
+  border-color: rgba(233, 165, 61, 0.30);
+  color: #8A5A12;
+}
+.group-process.tier-2 {
+  background-color: rgba(233, 165, 61, 0.18);
+  border-color: rgba(233, 165, 61, 0.42);
+  color: #7A4A0A;
+}
+.group-process.tier-3 {
+  background-color: rgba(233, 165, 61, 0.28);
+  border-color: rgba(233, 165, 61, 0.55);
+  color: #6A3F08;
+}
+
+[data-theme='dark'] .group-process.tier-1,
+[data-theme='dark'] .group-process.tier-2,
+[data-theme='dark'] .group-process.tier-3 {
+  color: var(--color-warning);
+}
+
+/* ---------- group: delivery (SHIPPING/DELIVERED/CONFIRMED) ---------- */
+.group-delivery.tier-1 {
+  background-color: rgba(42, 157, 143, 0.10);
+  border-color: rgba(42, 157, 143, 0.30);
+  color: var(--color-success);
+}
+.group-delivery.tier-2 {
+  background-color: rgba(42, 157, 143, 0.18);
+  border-color: rgba(42, 157, 143, 0.42);
+  color: #1F7A6F;
+}
+.group-delivery.tier-3 {
+  background-color: rgba(42, 157, 143, 0.30);
+  border-color: rgba(42, 157, 143, 0.55);
+  color: #155C53;
+  font-weight: var(--font-weight-semibold);
+}
+
+[data-theme='dark'] .group-delivery.tier-2,
+[data-theme='dark'] .group-delivery.tier-3 {
+  color: var(--color-success);
+}
+
+/* ---------- group: rejected ---------- */
+.group-rejected {
+  background-color: rgba(214, 80, 74, 0.12);
+  border-color: rgba(214, 80, 74, 0.40);
+  color: var(--color-danger);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ---------- group: canceled ---------- */
+.group-canceled {
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-subtle);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}

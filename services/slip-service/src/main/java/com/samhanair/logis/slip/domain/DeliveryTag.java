@@ -1,0 +1,29 @@
+package com.samhanair.logis.slip.domain;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+/**
+ * 배송 태그 (Plan §3.3 11종). 각 태그는 적용 가능한 전표 종류({@link #direction})를 제한하며,
+ * {@link #autoMemo} 가 true 인 태그(야적/지방)는 {@code Slip.applyDeliveryTagAutoMemo()} 가
+ * 자동 메모를 prepend 한다.
+ */
+@Getter
+@RequiredArgsConstructor
+public enum DeliveryTag {
+    DAY("당일", SlipType.OUTBOUND, false),
+    STACK("야적", SlipType.OUTBOUND, true),
+    REGION("지방", SlipType.OUTBOUND, true),
+    LOGEN("로젠택배", SlipType.OUTBOUND, false),
+    GYEONGDONG_PARCEL("경동택배", SlipType.OUTBOUND, false),
+    GYEONGDONG_FREIGHT("경동화물", SlipType.OUTBOUND, false),
+    RETURN_TRIP("회차", SlipType.INBOUND, false),
+    RETURN("반품", SlipType.INBOUND, false),
+    BORROW("차용", SlipType.INBOUND, false),
+    RENTAL("대여", SlipType.OUTBOUND, false),
+    RETURN_RENTAL("반납", SlipType.OUTBOUND, false);
+
+    private final String displayName;
+    private final SlipType direction;
+    private final boolean autoMemo;
+}
