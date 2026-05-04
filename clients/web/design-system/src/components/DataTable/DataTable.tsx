@@ -1,0 +1,149 @@
+import { type ReactNode } from 'react'
+import styles from './DataTable.module.css'
+import { Spinner } from '../Spinner/Spinner'
+
+export interface DataTableColumn<T> {
+  /** row 의 key 또는 임의 식별자. */
+  key: keyof T | string
+  header: string
+  /** 셀 렌더러. 없으면 String(row[key]). */
+  render?: (row: T) => ReactNode
+  /** CSS width — 예: '120px', '20%'. */
+  width?: string
+  align?: 'left' | 'right' | 'center'
+}
+
+export interface DataTableProps<T> {
+  columns: DataTableColumn<T>[]
+  rows: T[]
+  loading?: boolean
+  /** rows 가 비어있을 때 표시할 메시지. 기본 "데이터가 없습니다." */
+  emptyMessage?: string
+  onRowClick?: (row: T) => void
+  /** React key 추출자. 필수. */
+  rowKey: (row: T) => string
+  className?: string
+}
+
+/**
+ * 기본 셀 값 추출 — render 가 없을 때.
+ * `noUncheckedIndexedAccess` 환경에서도 안전하도록 unknown 캐스팅.
+ */
+const defaultCell = <T,>(row: T, key: keyof T | string): ReactNode => {
+  const v = (row as Record<string, unknown>)[String(key)]
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+    return String(v)
+  }
+  return String(v)
+}
+
+/**
+ * DataTable — dumb 테이블. 정렬/페이지네이션은 외부 책임.
+ *
+ * - 헤더 sticky top
+ * - 행 hover 표시
+ * - onRowClick 있으면 cursor pointer + 행 클릭 가능
+ * - loading=true 면 Spinner 오버레이
+ * - rows 비어있으면 emptyMessage 셀 표시
+ */
+export function DataTable<T>({
+  columns,
+  rows,
+  loading = false,
+  emptyMessage = '데이터가 없습니다.',
+  onRowClick,
+  rowKey,
+  className,
+}: DataTableProps<T>) {
+  const wrapperClasses = [styles['wrapper'], className]
+    .filter(Boolean)
+    .join(' ')
+
+  const isEmpty = rows.length === 0 && !loading
+  const isClickable = Boolean(onRowClick)
+
+  return (
+    <div className={wrapperClasses}>
+      <div className={styles['scroll']}>
+        <table className={styles['table']}>
+          <thead className={styles['thead']}>
+            <tr>
+              {columns.map((col) => {
+                const alignClass =
+                  col.align === 'right'
+                    ? styles['alignRight']
+                    : col.align === 'center'
+                      ? styles['alignCenter']
+                      : styles['alignLeft']
+                const thClasses = [styles['th'], alignClass]
+                  .filter(Boolean)
+                  .join(' ')
+                return (
+                  <th
+                    key={String(col.key)}
+                    scope="col"
+                    className={thClasses}
+                    style={col.width ? { width: col.width } : undefined}
+                  >
+                    {col.header}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {isEmpty ? (
+              <tr className={styles['emptyRow']}>
+                <td className={styles['emptyCell']} colSpan={columns.length}>
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => {
+                const k = rowKey(row)
+                const trClasses = [
+                  styles['tr'],
+                  isClickable ? styles['clickable'] : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                return (
+                  <tr
+                    key={k}
+                    className={trClasses}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  >
+                    {columns.map((col) => {
+                      const alignClass =
+                        col.align === 'right'
+                          ? styles['alignRight']
+                          : col.align === 'center'
+                            ? styles['alignCenter']
+                            : styles['alignLeft']
+                      const tdClasses = [styles['td'], alignClass]
+                        .filter(Boolean)
+                        .join(' ')
+                      return (
+                        <td key={String(col.key)} className={tdClasses}>
+                          {col.render ? col.render(row) : defaultCell(row, col.key)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+      {loading ? (
+        <div className={styles['loadingOverlay']} role="status" aria-live="polite">
+          <Spinner size="md" tone="var(--color-brand-500)" label="데이터 로딩 중" />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export default DataTable
