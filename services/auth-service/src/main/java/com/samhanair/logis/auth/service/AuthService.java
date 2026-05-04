@@ -10,6 +10,7 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.common.security.JwtTokenProvider;
 import com.samhanair.logis.common.security.Role;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -45,13 +46,50 @@ public class AuthService {
     }
 
     public RegisterResponse register(String loginId, String rawPassword, String displayName, Role role) {
+        return registerWithId(UUID.randomUUID(), loginId, rawPassword, displayName, role);
+    }
+
+    /**
+     * Provisioning entry-point used by the internal endpoint. Persists the account with
+     * the caller-supplied {@code id} so the Auth and User services share the same
+     * principal identifier.
+     */
+    public RegisterResponse registerWithId(
+            UUID id, String loginId, String rawPassword, String displayName, Role role) {
         if (accountRepository.existsByLoginId(loginId)) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용중인 아이디입니다");
         }
 
         String passwordHash = passwordEncoder.encode(rawPassword);
-        Account account = accountRepository.save(Account.create(loginId, passwordHash, displayName, role));
+        Account account = accountRepository.save(
+                Account.createWithId(id, loginId, passwordHash, displayName, role));
 
         return new RegisterResponse(account.getId().toString(), account.getLoginId(), account.getRole().name());
+    }
+
+    public void updateAccountRole(UUID id, Role role) {
+        Account account = accountRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "계정을 찾을 수 없습니다"));
+        account.changeRole(role);
+    }
+
+    public void updateAccountDisplayName(UUID id, String displayName) {
+        Account account = accountRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "계정을 찾을 수 없습니다"));
+        account.changeDisplayName(displayName);
+    }
+
+    public void disableAccount(UUID id, String operatorId) {
+        Account account = accountRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "계정을 찾을 수 없습니다"));
+        account.disable();
+        account.markDeleted(operatorId);
+    }
+
+    public void deleteAccount(UUID id) {
+        Account account = accountRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "계정을 찾을 수 없습니다"));
+        account.disable();
+        account.markDeleted("system-internal");
     }
 }
