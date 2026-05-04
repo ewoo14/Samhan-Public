@@ -161,50 +161,52 @@ class SlipServiceTest {
 
     @Test
     void complete_outbound_callsInventoryDeduct_fromReservationTrue() {
-        // Slice A: complete 는 INSPECTING 에서만 가능.
-        Slip slip = preparedOutbound(SlipStatus.INSPECTING, 3, new BigDecimal("50.00"));
+        // Slice A hotfix: complete (출고 완료) = PROCESSING → INSPECTING + deduct.
+        Slip slip = preparedOutbound(SlipStatus.PROCESSING, 3, new BigDecimal("50.00"));
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         service.complete(slipId);
 
-        assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
+        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
         verify(inventoryClient, times(1))
                 .deduct(eq(productId), eq(sourceWh), eq(3), eq(true), anyString(), eq(slipId));
     }
 
     @Test
     void complete_inbound_callsInventoryInbound() {
-        // Slice A: 입고 전표도 INSPECTING 단계 거침.
-        Slip slip = preparedInbound(SlipStatus.INSPECTING);
+        // Slice A hotfix: 입고 PROCESSING → INSPECTING + inbound.
+        Slip slip = preparedInbound(SlipStatus.PROCESSING);
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         service.complete(slipId);
 
-        assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
+        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
         verify(inventoryClient, times(1))
                 .inbound(eq(productId), eq(destWh), anyInt(), anyString(), any(BigDecimal.class));
     }
 
-    // -------- Slice A (sales-polish-2) — inspect endpoint --------
+    // -------- Slice A hotfix — inspect (검수 완료) endpoint --------
 
     @Test
-    void inspect_fromProcessing_movesToInspecting_setsInspectorUserId() {
-        Slip slip = preparedOutbound(SlipStatus.PROCESSING, 1, new BigDecimal("10.00"));
+    void inspect_fromInspecting_movesToCompleted_setsInspectorUserId() {
+        // Slice A hotfix: inspect (검수 완료) = INSPECTING → COMPLETED + inspector.
+        Slip slip = preparedOutbound(SlipStatus.INSPECTING, 1, new BigDecimal("10.00"));
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         SlipDetailResponse res = service.inspect(slipId, "inspector-1");
 
-        assertThat(res.status()).isEqualTo(SlipStatus.INSPECTING);
+        assertThat(res.status()).isEqualTo(SlipStatus.COMPLETED);
         assertThat(res.inspectorUserId()).isEqualTo("inspector-1");
         assertThat(res.inspectorSignedAt()).isNotNull();
-        // 검수 단계는 inventory mutation 없음.
+        // 검수 완료는 inventory mutation 없음 (deduct 는 complete 시점에 이미).
         verify(inventoryClient, never())
                 .deduct(any(), any(), anyInt(), anyBoolean(), anyString(), any());
     }
 
     @Test
-    void inspect_fromAccepted_throwsConflict() {
-        Slip slip = preparedOutbound(SlipStatus.ACCEPTED, 1, new BigDecimal("10.00"));
+    void inspect_fromProcessing_throwsConflict() {
+        // PROCESSING 에서 inspect 시도 → 409 (PROCESSING → INSPECTING 은 complete 가, INSPECTING → COMPLETED 만 inspect)
+        Slip slip = preparedOutbound(SlipStatus.PROCESSING, 1, new BigDecimal("10.00"));
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         assertThatThrownBy(() -> service.inspect(slipId, "i"))

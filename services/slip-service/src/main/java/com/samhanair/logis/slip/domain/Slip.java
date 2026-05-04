@@ -331,31 +331,32 @@ public class Slip extends BaseEntity {
     }
 
     /**
-     * 처리중 → 검수중 전이. PROCESSING 에서만 허용. Slice A (sales-polish-2) 신규 단계.
-     * 검수자 (창고원/INSPECTOR) 가 picking 결과 (수량/모델/외관) 검증 시작 시 호출.
-     * inspectorUserId, inspectorSignedAt 자동 기입 (결재란 검수인 셀 자동 표시).
+     * 처리중 → 검수중 전이 (출고 완료). PROCESSING 에서만 허용. **Slice A hotfix**: 사용자 명시
+     * "출고 완료되면 검수 단계에 돌입" — 즉 complete() 가 출고 완료를 의미하며 검수 단계로 진입.
+     * InventoryClient.deduct 는 SlipService.complete 가 본 도메인 메서드 호출 직후 처리.
      *
-     * @param inspectorUserId 검수자 user-id (창고/검수/관리자/마스터). 4-eye 패턴이므로
-     *     일반적으로 dispatcherUserId 와 다른 사용자 (단, 도메인 강제 X — 운영 정책).
      * @throws BusinessException(CONFLICT) 현재 상태가 PROCESSING 이 아닐 때
      */
-    public void inspect(String inspectorUserId) {
+    public void complete() {
         requireStatus(SlipStatus.PROCESSING);
         this.status = SlipStatus.INSPECTING;
-        this.inspectorUserId = inspectorUserId;
-        this.inspectorSignedAt = LocalDateTime.now();
+        // completedAt 은 검수 완료(inspect) 시점에 기록 — "처리완료" 의미상 검수까지 통과해야 진정한 완료.
     }
 
     /**
-     * 검수중 → 처리완료 전이. INSPECTING 에서만 허용. completedAt 기록.
-     * Slice A (sales-polish-2) 변경: 이전에는 PROCESSING → COMPLETED 직행이었으나
-     * 검수 단계 도입으로 INSPECTING → COMPLETED 로 변경.
+     * 검수중 → 처리완료 전이 (검수 완료). INSPECTING 에서만 허용. **Slice A hotfix**: 사용자 명시
+     * "검수 단계 전표를 수락하고 확인 후 완료하면 검수 완료 처리" — 즉 inspect() 가 검수 완료를 의미.
+     * inspectorUserId, inspectorSignedAt 자동 기입 + completedAt 기록 (결재란 검수인 셀 + 완료 시각).
      *
+     * @param inspectorUserId 검수자 user-id (창고/검수/관리자/마스터). 4-eye 패턴 권장 —
+     *     일반적으로 dispatcherUserId 와 다른 사용자 (단, 도메인 강제 X — 운영 정책).
      * @throws BusinessException(CONFLICT) 현재 상태가 INSPECTING 이 아닐 때
      */
-    public void complete() {
+    public void inspect(String inspectorUserId) {
         requireStatus(SlipStatus.INSPECTING);
         this.status = SlipStatus.COMPLETED;
+        this.inspectorUserId = inspectorUserId;
+        this.inspectorSignedAt = LocalDateTime.now();
         this.completedAt = LocalDateTime.now();
     }
 

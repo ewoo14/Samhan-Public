@@ -72,8 +72,8 @@ class SlipDomainTest {
         slip.send();
         slip.accept("acc");
         slip.process();
-        slip.inspect("insp-1");
-        slip.complete();
+        slip.complete();         // PROCESSING → INSPECTING (출고 완료)
+        slip.inspect("insp-1");  // INSPECTING → COMPLETED (검수 완료)
         slip.ship();
         slip.deliver();
         slip.confirm();
@@ -94,8 +94,8 @@ class SlipDomainTest {
         slip.send();
         slip.accept("acc");
         slip.process();
-        slip.inspect("insp-1");
-        slip.complete();
+        slip.complete();         // 출고 완료 → INSPECTING
+        slip.inspect("insp-1");  // 검수 완료 → COMPLETED
         slip.confirm();
 
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.CONFIRMED);
@@ -108,8 +108,8 @@ class SlipDomainTest {
         slip.send();
         slip.accept("a");
         slip.process();
-        slip.inspect("insp");
         slip.complete();
+        slip.inspect("insp");
 
         assertThatThrownBy(slip::ship)
                 .isInstanceOf(BusinessException.class)
@@ -281,41 +281,14 @@ class SlipDomainTest {
     }
 
     @Test
-    void completeFromProcessing_throwsConflict_inspectingRequired() {
+    void inspectFromProcessing_throwsConflict_inspectingRequired() {
+        // Slice A hotfix: PROCESSING 에서 inspect 시도 → CONFLICT (검수 완료는 INSPECTING 필요).
         Slip slip = newOutbound();
         slip.save();
         slip.send();
         slip.accept("acc");
         slip.process();
 
-        // Slice A 변경: PROCESSING 에서 directly complete 호출 → CONFLICT.
-        assertThatThrownBy(slip::complete)
-                .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.CONFLICT));
-    }
-
-    @Test
-    void inspect_fromProcessing_setsInspectorAndMovesToInspecting() {
-        Slip slip = newOutbound();
-        slip.save();
-        slip.send();
-        slip.accept("warehouse-1");
-        slip.process();
-        slip.inspect("inspector-1");
-
-        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
-        assertThat(slip.getInspectorUserId()).isEqualTo("inspector-1");
-        assertThat(slip.getInspectorSignedAt()).isNotNull();
-    }
-
-    @Test
-    void inspect_fromAccepted_throwsConflict() {
-        Slip slip = newOutbound();
-        slip.save();
-        slip.send();
-        slip.accept("a");
-        // ACCEPTED 단계에서 inspect 시도 → CONFLICT (PROCESSING 필요).
         assertThatThrownBy(() -> slip.inspect("insp"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
@@ -323,17 +296,46 @@ class SlipDomainTest {
     }
 
     @Test
-    void completeFromInspecting_movesToCompleted_setsCompletedAt() {
+    void completeFromProcessing_movesToInspecting() {
+        // Slice A hotfix: complete (출고 완료) = PROCESSING → INSPECTING.
+        Slip slip = newOutbound();
+        slip.save();
+        slip.send();
+        slip.accept("warehouse-1");
+        slip.process();
+        slip.complete();
+
+        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
+    }
+
+    @Test
+    void completeFromAccepted_throwsConflict() {
+        Slip slip = newOutbound();
+        slip.save();
+        slip.send();
+        slip.accept("a");
+        // ACCEPTED 에서 complete 시도 → CONFLICT (PROCESSING 필요).
+        assertThatThrownBy(slip::complete)
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void inspectFromInspecting_movesToCompleted_setsInspectorAndCompletedAt() {
+        // Slice A hotfix: inspect (검수 완료) = INSPECTING → COMPLETED + inspector + completedAt.
         Slip slip = newOutbound();
         slip.save();
         slip.send();
         slip.accept("a");
         slip.process();
-        slip.inspect("i");
         slip.complete();
+        slip.inspect("inspector-1");
 
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
         assertThat(slip.getCompletedAt()).isNotNull();
+        assertThat(slip.getInspectorUserId()).isEqualTo("inspector-1");
+        assertThat(slip.getInspectorSignedAt()).isNotNull();
     }
 
     @Test
@@ -344,7 +346,7 @@ class SlipDomainTest {
         slip.send();
         slip.accept("a");
         slip.process();
-        slip.inspect("i");
+        slip.complete();  // PROCESSING → INSPECTING
         // Slice A: INSPECTING 단계에서 검수자 거부 가능.
         slip.reject("외관 불량");
 
@@ -359,7 +361,7 @@ class SlipDomainTest {
         slip.send();
         slip.accept("a");
         slip.process();
-        slip.inspect("i");
+        slip.complete();  // PROCESSING → INSPECTING
         // INSPECTING 에서 cancel 거부 — ACCEPTED 부터 cancel 차단 정책 그대로.
         assertThatThrownBy(slip::cancel)
                 .isInstanceOf(BusinessException.class)
