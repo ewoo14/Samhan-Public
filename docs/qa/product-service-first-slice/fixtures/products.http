@@ -1,0 +1,178 @@
+### Product Service First Slice — VS Code REST Client / IntelliJ HTTP Client fixtures
+### Plan §6.3 의 10개 시나리오를 즉시 실행 가능한 형태로 정리.
+###
+### 사용법:
+###   1) docker-compose up (api-gateway / auth-service / user-service / product-service / postgres / eureka)
+###   2) 아래 @masterToken / @managerToken / @salesToken / @accountantToken 변수를
+###      auth-service /auth/login 응답의 JWT 로 채워 넣는다.
+###   3) ### 블록을 위에서 아래로 순서대로 실행 (시나리오 3~5 는 시나리오 2 의 createdId 에 의존).
+###
+### 토큰 발급 예시:
+###   POST {{host}}/auth/login  body={"loginId":"manager01","password":"..."}
+###   → response.token 을 @managerToken 에 복사.
+
+@host = http://localhost:8080
+@masterToken = [테스트 환경 시드 후 주입]
+@managerToken = [테스트 환경 시드 후 주입]
+@salesToken = [테스트 환경 시드 후 주입]
+@accountantToken = [테스트 환경 시드 후 주입]
+
+### V2 시드의 INDOOR_WALL 카테고리 UUID. seed 패턴 0...001001 ~ 0...001007 중 INDOOR_WALL.
+@categoryIdIndoorWall = 00000000-0000-0000-0000-000000001005
+### V2 시드의 HVAC 루트 (자식 존재 시 삭제 차단 시나리오용).
+@categoryIdHvacRoot = 00000000-0000-0000-0000-000000001001
+
+###############################################################################
+### 시나리오 1: 카테고리 트리 조회 (SALES) — 200 + HVAC + 6 자식
+###############################################################################
+GET {{host}}/categories
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 2: 품목 등록 happy path (MANAGER, 무풍 18평)
+### 응답의 id 를 아래 시나리오 3~5 에서 재사용 — JetBrains HTTP Client 의 경우
+### `> {%  client.global.set("createdProductId", response.body.id);  %}` 활용.
+###############################################################################
+POST {{host}}/products
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "name": "무풍에어컨 18평",
+  "modelName": "AR18T9170WCN",
+  "categoryId": "{{categoryIdIndoorWall}}",
+  "sellingPrice": 1500000,
+  "purchasePrice": 1100000,
+  "currency": "KRW",
+  "tags": { "전압": "220V", "냉방평수": "18" },
+  "description": "무풍 갤러리 18평형, 220V 단상"
+}
+
+> {%
+client.global.set("createdProductId", response.body.id);
+%}
+
+###############################################################################
+### 시나리오 3: 모델명 중복 차단 (409 CONFLICT)
+### 시나리오 2 직후 동일 modelName 재등록.
+###############################################################################
+POST {{host}}/products
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "name": "무풍에어컨 18평 (중복 시도)",
+  "modelName": "AR18T9170WCN",
+  "categoryId": "{{categoryIdIndoorWall}}",
+  "sellingPrice": 1600000,
+  "purchasePrice": 1150000,
+  "currency": "KRW",
+  "tags": {},
+  "description": "중복이라 실패해야 함"
+}
+
+###############################################################################
+### 시나리오 4: 단종 후 신규 견적 노출 차단
+### 4-a) discontinue → 200
+### 4-b) GET ?status=ACTIVE → 단종된 modelName 미포함
+###############################################################################
+PATCH {{host}}/products/{{createdProductId}}/discontinue
+Authorization: Bearer {{managerToken}}
+
+###
+GET {{host}}/products?status=ACTIVE
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 5: soft-delete 후 동일 modelName 재등록
+### 5-a) DELETE → 204
+### 5-b) 동일 modelName 으로 신규 POST → 201 (partial unique 덕분)
+###############################################################################
+DELETE {{host}}/products/{{createdProductId}}
+Authorization: Bearer {{managerToken}}
+
+###
+POST {{host}}/products
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "name": "무풍에어컨 18평 (재등록)",
+  "modelName": "AR18T9170WCN",
+  "categoryId": "{{categoryIdIndoorWall}}",
+  "sellingPrice": 1700000,
+  "purchasePrice": 1200000,
+  "currency": "KRW",
+  "tags": { "전압": "220V" },
+  "description": "soft-delete 후 재등록 — partial unique index 검증"
+}
+
+###############################################################################
+### 시나리오 6: 태그 contains 검색 (전압=220V)
+### jsonb GIN 인덱스 + @> 연산 활용.
+###############################################################################
+GET {{host}}/products?tagKey=%EC%A0%84%EC%95%95&tagValue=220V
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 7: 권한 검증 (SALES POST → 403)
+###############################################################################
+POST {{host}}/products
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "name": "SALES 가 만들면 안 됨",
+  "modelName": "SALES-FORBIDDEN-001",
+  "categoryId": "{{categoryIdIndoorWall}}",
+  "sellingPrice": 1000000,
+  "purchasePrice": 800000,
+  "currency": "KRW",
+  "tags": {},
+  "description": "403 기대"
+}
+
+###############################################################################
+### 시나리오 8: 가격 음수 차단 (400 BAD_REQUEST)
+###############################################################################
+POST {{host}}/products
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "name": "음수 가격 테스트",
+  "modelName": "NEG-PRICE-001",
+  "categoryId": "{{categoryIdIndoorWall}}",
+  "sellingPrice": -1000,
+  "purchasePrice": 800000,
+  "currency": "KRW",
+  "tags": {},
+  "description": "validation error 기대"
+}
+
+###############################################################################
+### 시나리오 9: 카테고리 자식 존재 시 삭제 차단 (409 CONFLICT)
+### HVAC 루트 (자식 4개 존재) 삭제 시도 → CategoryService 가 BusinessException.
+###############################################################################
+DELETE {{host}}/categories/{{categoryIdHvacRoot}}
+Authorization: Bearer {{masterToken}}
+
+###############################################################################
+### 시나리오 10: lookup batch (3 ids → 2 summary, 미존재 ID 무시)
+### 사전: 시나리오 2 또는 5 의 createdProductId + 임의의 다른 product id 1개 생성 후 활용.
+### 미존재 ID 는 silently 누락 (404 아님).
+###############################################################################
+POST {{host}}/products/lookup
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "ids": [
+    "{{createdProductId}}",
+    "00000000-0000-0000-0000-000000099001",
+    "00000000-0000-0000-0000-999999999999"
+  ]
+}
