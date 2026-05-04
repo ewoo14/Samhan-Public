@@ -1,0 +1,176 @@
+/*
+ * 전역 스타일 — 디자인 시스템 토큰 import + 앱 전역 reset/typography.
+ *
+ * `@samhan/design-system/tokens.css` 는 :root 에 CSS 변수
+ * (`--color-brand-500`, `--space-4`, `--shadow-sm` 등) 를 정의하며,
+ * 디자인 시스템 컴포넌트의 module.css 들이 이 변수에 의존한다.
+ */
+@import '@samhan/design-system/tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-neutral-800);
+  background: var(--color-neutral-50);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--color-brand-600);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+}
+
+/** 앱 레이아웃 골격 — 사이드바 + 본문 2단. */
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  background: var(--color-neutral-0);
+  border-right: 1px solid var(--color-neutral-200);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.app-sidebar h1 {
+  font-size: var(--font-size-lg);
+  margin: 0 0 var(--space-4);
+  color: var(--color-brand-700);
+}
+
+.app-sidebar nav a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-700);
+}
+
+.app-sidebar nav a.active,
+.app-sidebar nav a:hover {
+  background: var(--color-brand-50);
+  color: var(--color-brand-700);
+  text-decoration: none;
+}
+
+.app-main {
+  padding: var(--space-6);
+  overflow: auto;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.app-header h2 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+}
+
+.app-header-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.app-user-chip {
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-600);
+}
+
+.login-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+}
+
+.login-card-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 360px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.stat-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-500);
+  margin: 0 0 var(--space-2);
+}
+
+.stat-value {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-brand-700);
+  margin: 0;
+}
+
+.error-banner {
+  background: #fdecec;
+  color: var(--color-semantic-danger);
+  border: 1px solid var(--color-semantic-danger);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.line-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 1fr auto;
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+  background: var(--color-neutral-0);
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}

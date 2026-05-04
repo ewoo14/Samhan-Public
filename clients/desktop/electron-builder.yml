@@ -1,0 +1,59 @@
+# SamhanLogis Desktop — electron-builder 설정
+#
+# 첫 슬라이스: Windows NSIS installer + portable .exe (Q6=A 사내 환경 Windows 우선).
+# auto-update 미도입 (운영 부채로 후속 슬라이스에 분리 — Q1/Q4 결정).
+#
+# 빌드 명령:
+#   npm run build:win    # electron-vite build → electron-builder --win
+# 결과물:
+#   release/<version>/삼한로지스-<version>-x64.exe              (NSIS installer)
+#   release/<version>/삼한로지스-<version>-x64-portable.exe     (portable)
+appId: com.samhanair.logis.desktop
+productName: 삼한로지스
+copyright: Copyright (c) 2026 (주)삼한공조시스템
+artifactName: ${productName}-${version}-${arch}.${ext}
+
+directories:
+  output: release/${version}
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+extraResources:
+  # 설치 후 사용자 머신에 함께 배포할 정적 리소스 (현재 비어있음).
+  # 후속 슬라이스에서 사내 매뉴얼 PDF / 한국어 폰트 등 추가 가능.
+  - from: ../../docs/PM/project_plan.md
+    to: docs/project_plan.md
+    filter: ["**/*"]
+
+asar: true
+asarUnpack:
+  - resources/**
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico  # 미존재 시 electron-builder default 아이콘 fallback
+  publisherName: Samhan Air Systems Co., Ltd.
+  requestedExecutionLevel: asInvoker  # 관리자 권한 불필요 (UAC 회피)
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false  # 사용자별 설치 — UAC 회피, 사내 일반 사원 권한 OK
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: 삼한로지스
+  installerLanguages:
+    - ko_KR
+  language: '1042'  # Korean
+
+portable:
+  artifactName: ${productName}-${version}-${arch}-portable.${ext}
+
+publish: null  # 자동 업데이트 미도입 (후속 슬라이스에서 GitHub Releases 또는 사내 호스팅 + electron-updater)
