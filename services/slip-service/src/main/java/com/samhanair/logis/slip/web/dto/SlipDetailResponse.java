@@ -11,9 +11,14 @@ import java.util.UUID;
 
 /**
  * 전표 상세 응답 — 라인 포함. 단건 GET 및 mutation 응답에 사용.
- * Slice A (sales-polish-2): {@code dispatcherUserId/SignedAt} +
+ *
+ * <p>Slice A (sales-polish-2): {@code dispatcherUserId/SignedAt} +
  * {@code inspectorUserId/SignedAt} 필드 신규 노출 (사용자 피드백 #9).
  * FE 가 진행 단계 progress bar + 작업지시서 결재란 출고인/검수인 셀 자동 표시에 사용.
+ *
+ * <p>Slice B (notification-slice-B): {@code driverName}, {@code driverPhone},
+ * {@code deliveryBatchId} 3 필드 신규 노출. 링크발송 화면 / SlipForm / DispatchView 결재란
+ * 용달기사 자동 표시에 사용.
  */
 public record SlipDetailResponse(
         UUID id,
@@ -37,6 +42,9 @@ public record SlipDetailResponse(
         LocalDateTime dispatcherSignedAt,
         String inspectorUserId,
         LocalDateTime inspectorSignedAt,
+        String driverName,
+        String driverPhone,
+        UUID deliveryBatchId,
         Long version,
         List<SlipLineResponse> lines) {
 
@@ -63,6 +71,9 @@ public record SlipDetailResponse(
                 slip.getDispatcherSignedAt(),
                 slip.getInspectorUserId(),
                 slip.getInspectorSignedAt(),
+                slip.getDriverName(),
+                slip.getDriverPhone(),
+                slip.getDeliveryBatchId(),
                 slip.getVersion(),
                 slip.getLines().stream().map(SlipLineResponse::from).toList());
     }

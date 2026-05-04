@@ -79,6 +79,17 @@ export interface SlipDetail extends SlipSummary {
   memo: string | null
   lines: SlipLineDetail[]
   /**
+   * 기사명 — notification-slice-B 신규 (Designer plan §7).
+   * DRAFT/SAVED 단계만 편집 가능 (BE 가드와 동일).
+   * SMS 발송 시 BE 가 driverPhone 으로 메시지 송신.
+   */
+  driverName?: string | null
+  /**
+   * 기사 휴대폰 (010-XXXX-XXXX 정규화) — notification-slice-B 신규.
+   * KOREAN_MOBILE_PHONE_PATTERN 검증.
+   */
+  driverPhone?: string | null
+  /**
    * ACCEPTED 트랜지션 시점 자동 채워지는 출고인 (피드백 #9).
    * 미도달 시 undefined / null. Designer ux-flow.md § 2.1 참고.
    */
@@ -123,6 +134,10 @@ export interface CreateSlipRequest {
   partnerName?: string
   deliveryTag?: DeliveryTagCode
   memo?: string
+  /** 기사명 — notification-slice-B 신규 (옵션). */
+  driverName?: string
+  /** 기사 휴대폰 — notification-slice-B 신규 (옵션, 010-XXXX-XXXX). */
+  driverPhone?: string
   lines: SlipLineInput[]
 }
 
@@ -187,6 +202,31 @@ export async function createSlip(
 }
 
 /**
+ * 기사 정보 부분 갱신 요청 — notification-slice-B 신규.
+ *
+ * BE `UpdateSlipDriverRequest` (PATCH /slips/{id}/driver).
+ * DRAFT/SAVED 단계만 허용 (BE 가드와 동일).
+ */
+export interface UpdateSlipDriverRequest {
+  driverName?: string | null
+  driverPhone?: string | null
+}
+
+/**
+ * 기사 정보 부분 갱신 — DRAFT/SAVED 단계만.
+ */
+export async function updateSlipDriver(
+  slipId: string,
+  body: UpdateSlipDriverRequest,
+): Promise<SlipDetail> {
+  const res = await apiClient.patch<ApiEnvelope<SlipDetail>>(
+    `/slips/${slipId}/driver`,
+    body,
+  )
+  return res.data.data
+}
+
+/**
  * 라인 추가 요청 body — BE `AddLineRequest`. DRAFT/SAVED 단계만 허용.
  */
 export interface AddLineRequest {
@@ -227,6 +267,8 @@ export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
     partnerName: source.partnerName ?? undefined,
     deliveryTag: source.deliveryTag ?? undefined,
     memo: source.memo ?? undefined,
+    driverName: source.driverName ?? undefined,
+    driverPhone: source.driverPhone ?? undefined,
     lines: source.lines.map((l) => ({
       productId: l.productId,
       productName: l.productName ?? undefined,

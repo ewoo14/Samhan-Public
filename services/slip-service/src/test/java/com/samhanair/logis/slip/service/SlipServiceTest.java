@@ -88,6 +88,7 @@ class SlipServiceTest {
         CreateSlipRequest req = new CreateSlipRequest(
                 SlipType.OUTBOUND, LocalDate.of(2026, 5, 4),
                 sourceWh, destWh, partnerId, "삼한공조", DeliveryTag.DAY, "메모",
+                null, null,
                 List.of(new CreateSlipRequest.SlipLineRequest(productId, "에어컨", "M-1", null,
                         2, new BigDecimal("100.00"), null)));
 
@@ -109,6 +110,7 @@ class SlipServiceTest {
         CreateSlipRequest req = new CreateSlipRequest(
                 SlipType.INBOUND, LocalDate.of(2026, 5, 4),
                 null, destWh, partnerId, "삼한", DeliveryTag.RETURN, null,
+                null, null,
                 List.of(new CreateSlipRequest.SlipLineRequest(productId, "p", null, null,
                         1, new BigDecimal("10.00"), null)));
 
@@ -294,7 +296,7 @@ class SlipServiceTest {
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         service.editHeader(slipId,
-                new EditHeaderRequest(null, "새거래처", null, "새메모"), "u");
+                new EditHeaderRequest(null, "새거래처", null, "새메모", null, null), "u");
 
         assertThat(slip.getPartnerName()).isEqualTo("새거래처");
         assertThat(slip.getMemo()).isEqualTo("새메모");
@@ -306,7 +308,7 @@ class SlipServiceTest {
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         assertThatThrownBy(() -> service.editHeader(slipId,
-                new EditHeaderRequest(null, "x", null, null), "u"))
+                new EditHeaderRequest(null, "x", null, null, null, null), "u"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.CONFLICT));

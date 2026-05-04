@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>링크발송 — 삼한물류</title>
+<style>
+  :root {
+    --surface-app:       #FAFBFC;
+    --surface-card:      #FFFFFF;
+    --surface-subtle:    #F4F6F8;
+    --surface-hover:     #F4F6F8;
+    --line-default:      #E1E5EA;
+    --line-hover:        #C9D1D9;
+    --ink-primary:       #1A1F2E;
+    --ink-secondary:     #5C6773;
+    --ink-tertiary:      #8A95A4;
+    --action-brand:      #1E40AF;
+    --action-brand-hover:#1D4ED8;
+    --action-brand-subtle:#DBEAFE;
+    --state-success:     #10B981;
+    --state-success-bg:  #D1FAE5;
+    --batch-list-row-sent-bg: #F0F9FF;
+    --batch-list-row-sent-bg-hover: #E0F2FE;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: var(--surface-app);
+    color: var(--ink-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .app-header {
+    height: 56px;
+    background: var(--surface-card);
+    border-bottom: 1px solid var(--line-default);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    justify-content: space-between;
+  }
+  .header-title {
+    font-size: 14px;
+    color: var(--ink-secondary);
+  }
+  .header-title strong {
+    color: var(--ink-primary);
+    font-weight: 600;
+    margin-left: 8px;
+  }
+  .header-user { font-size: 14px; color: var(--ink-secondary); }
+  .layout { display: flex; min-height: calc(100vh - 56px); }
+  .sidebar {
+    width: 220px;
+    background: var(--surface-card);
+    border-right: 1px solid var(--line-default);
+    padding: 16px 0;
+  }
+  .sidebar-item {
+    padding: 10px 24px;
+    font-size: 14px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+  }
+  .sidebar-item.active {
+    background: var(--action-brand-subtle);
+    color: var(--action-brand);
+    font-weight: 600;
+    border-left: 3px solid var(--action-brand);
+    padding-left: 21px;
+  }
+  .main {
+    flex: 1;
+    padding: 32px;
+    overflow: auto;
+  }
+  .page-title {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 24px;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: center;
+  }
+  .input,
+  .select {
+    height: 36px;
+    border: 1px solid var(--line-default);
+    background: var(--surface-card);
+    border-radius: 4px;
+    padding: 0 12px;
+    font-size: 14px;
+    color: var(--ink-primary);
+    min-width: 140px;
+  }
+  .btn-primary {
+    height: 36px;
+    background: var(--action-brand);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-primary:hover { background: var(--action-brand-hover); }
+  .table-wrap {
+    background: var(--surface-card);
+    border: 1px solid var(--line-default);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    height: 44px;
+    background: var(--surface-subtle);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-secondary);
+    text-align: left;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line-default);
+  }
+  tbody tr {
+    height: 40px;
+    border-bottom: 1px solid var(--line-default);
+    transition: background 120ms ease-out;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr.unsent { background: var(--surface-card); }
+  tbody tr.unsent:hover { background: var(--surface-hover); }
+  tbody tr.sent { background: var(--batch-list-row-sent-bg); }
+  tbody tr.sent:hover { background: var(--batch-list-row-sent-bg-hover); }
+  tbody td {
+    padding: 0 16px;
+    font-size: 14px;
+    color: var(--ink-primary);
+    vertical-align: middle;
+  }
+  .col-date { width: 140px; }
+  .col-driver { width: 120px; }
+  .col-phone { width: 180px; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 13px; }
+  .col-count { width: 80px; text-align: right; font-feature-settings: "tnum" 1, "lnum" 1; }
+  .col-link { width: 80px; text-align: center; }
+  .col-sms { width: 220px; text-align: center; }
+  .copy-btn {
+    background: transparent;
+    border: none;
+    color: var(--action-brand);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .copy-btn:hover { background: var(--action-brand-subtle); }
+  .send-btn {
+    height: 28px;
+    background: var(--action-brand);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .send-btn:hover { background: var(--action-brand-hover); }
+  .sent-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .sent-icon { color: var(--state-success); font-size: 14px; }
+  .sent-time { color: var(--ink-secondary); font-feature-settings: "tnum" 1; }
+  .resend-link {
+    color: var(--ink-tertiary);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .resend-link:hover { color: var(--action-brand); text-decoration: underline; }
+  .footer-meta {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--ink-tertiary);
+  }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-title">업무 화면 <strong>&gt; 링크발송</strong></div>
+    <div class="header-user">홍지수 ▾</div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-item">판매조회</div>
+      <div class="sidebar-item">구매조회</div>
+      <div class="sidebar-item">재고이동</div>
+      <div class="sidebar-item active">링크발송</div>
+    </aside>
+    <main class="main">
+      <h1 class="page-title">링크발송</h1>
+      <div class="controls">
+        <input class="input" type="date" value="2026-05-05" />
+        <select class="select">
+          <option>전체</option>
+          <option selected>미발송만</option>
+          <option>발송완료만</option>
+        </select>
+        <button class="btn-primary">날짜 자동 그룹</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-date">배송일</th>
+              <th class="col-driver">기사명</th>
+              <th class="col-phone">기사 연락처</th>
+              <th class="col-count">슬립 수</th>
+              <th class="col-link">링크</th>
+              <th class="col-sms">SMS 발송완료</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="sent">
+              <td>2026/05/05</td>
+              <td>김기사</td>
+              <td>010-XXXX-1234</td>
+              <td>3건</td>
+              <td><button class="copy-btn">📋 복사</button></td>
+              <td>
+                <span class="sent-cell">
+                  <span class="sent-icon">☑</span>
+                  <span class="sent-time">14:32</span>
+                  <a class="resend-link">재발송</a>
+                </span>
+              </td>
+            </tr>
+            <tr class="unsent">
+              <td>2026/05/05</td>
+              <td>박기사</td>
+              <td>010-XXXX-5678</td>
+              <td>1건</td>
+              <td><button class="copy-btn">📋 복사</button></td>
+              <td><button class="send-btn">SMS 발송</button></td>
+            </tr>
+            <tr class="unsent">
+              <td>2026/05/06</td>
+              <td>이기사</td>
+              <td>010-XXXX-9012</td>
+              <td>5건</td>
+              <td><button class="copy-btn">📋 복사</button></td>
+              <td><button class="send-btn">SMS 발송</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer-meta">총 3건 (발송 1 / 미발송 2)</div>
+    </main>
+  </div>
+</body>
+</html>

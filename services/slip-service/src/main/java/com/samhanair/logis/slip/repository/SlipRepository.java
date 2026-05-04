@@ -3,6 +3,8 @@ package com.samhanair.logis.slip.repository;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -26,4 +28,21 @@ public interface SlipRepository extends JpaRepository<Slip, UUID> {
 
     /** 활성 전체 페이지. soft-delete 제외. */
     Page<Slip> findAllByIsDeletedFalse(Pageable pageable);
+
+    // ---- Slice B (notification-slice-B) ----
+
+    /**
+     * 같은 driverPhone + slipDate 의 슬립 목록 — 자동 그룹화의 source.
+     * 미배치 (deliveryBatchId IS NULL) 슬립만 반환할지 여부는 호출자 (DeliveryBatchService) 결정.
+     */
+    List<Slip> findAllByDriverPhoneAndSlipDateAndIsDeletedFalse(String driverPhone, LocalDate slipDate);
+
+    /**
+     * 특정 배송일에 driverPhone 이 채워진 모든 슬립 — 자동 그룹화 candidate set.
+     * 같은 phone 끼리 묶어 batch 1건씩 생성. 호출자에서 phone 별 group by 후 처리.
+     */
+    List<Slip> findAllBySlipDateAndDriverPhoneIsNotNullAndIsDeletedFalse(LocalDate slipDate);
+
+    /** 특정 배치에 속한 슬립 목록 — 배치 상세 화면 / 공개 모바일 페이지 source. */
+    List<Slip> findAllByDeliveryBatchIdAndIsDeletedFalse(UUID deliveryBatchId);
 }

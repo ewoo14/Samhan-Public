@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>배치 상세 모달</title>
+<style>
+  :root {
+    --surface-app:       #FAFBFC;
+    --surface-card:      #FFFFFF;
+    --surface-subtle:    #F4F6F8;
+    --line-default:      #E1E5EA;
+    --ink-primary:       #1A1F2E;
+    --ink-secondary:     #5C6773;
+    --ink-tertiary:      #8A95A4;
+    --action-brand:      #1E40AF;
+    --action-brand-hover:#1D4ED8;
+    --action-brand-subtle:#DBEAFE;
+    --state-success:     #10B981;
+    --state-danger:      #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: rgba(0,0,0,0.6);
+    color: var(--ink-primary);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 64px;
+  }
+  .modal {
+    width: 720px;
+    max-height: 80vh;
+    background: var(--surface-card);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--line-default);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-title { font-size: 18px; font-weight: 600; }
+  .modal-close {
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    color: var(--ink-tertiary);
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+  }
+  .modal-close:hover { background: var(--surface-subtle); }
+  .modal-body { padding: 24px; overflow-y: auto; }
+  .info-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 12px 16px;
+    margin-bottom: 24px;
+  }
+  .info-label { color: var(--ink-secondary); font-size: 13px; }
+  .info-value { color: var(--ink-primary); font-size: 14px; }
+  .info-value .copy-btn {
+    background: transparent;
+    border: none;
+    color: var(--action-brand);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+  .info-value .copy-btn:hover { background: var(--action-brand-subtle); }
+  .info-value .resend-link {
+    color: var(--ink-tertiary);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+    margin-left: 12px;
+  }
+  .info-value .sent-icon { color: var(--state-success); font-weight: 600; }
+  .divider { border-top: 1px solid var(--line-default); margin: 16px 0 24px 0; }
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .section-title { font-size: 15px; font-weight: 600; }
+  .btn-add {
+    background: transparent;
+    color: var(--action-brand);
+    border: 1px solid var(--action-brand);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-add:hover { background: var(--action-brand-subtle); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--surface-subtle);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-secondary);
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-default);
+  }
+  tbody td {
+    padding: 10px 12px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--line-default);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { text-align: right; font-feature-settings: "tnum" 1, "lnum" 1; }
+  .remove-btn {
+    background: transparent;
+    color: var(--state-danger);
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .remove-btn:hover { background: #FEF2F2; }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--line-default);
+    text-align: right;
+  }
+  .btn-close-modal {
+    background: var(--surface-card);
+    color: var(--ink-primary);
+    border: 1px solid var(--line-default);
+    border-radius: 4px;
+    padding: 8px 20px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .btn-close-modal:hover { background: var(--surface-subtle); }
+</style>
+</head>
+<body>
+  <div class="modal">
+    <header class="modal-header">
+      <div class="modal-title">배치 상세 — 김기사 (010-XXXX-1234) — 2026/05/05</div>
+      <button class="modal-close">×</button>
+    </header>
+    <div class="modal-body">
+      <div class="info-grid">
+        <div class="info-label">배송일</div>
+        <div class="info-value">2026/05/05 (목)</div>
+        <div class="info-label">기사명</div>
+        <div class="info-value">김기사</div>
+        <div class="info-label">기사 연락처</div>
+        <div class="info-value">010-XXXX-1234</div>
+        <div class="info-label">배치 토큰</div>
+        <div class="info-value">
+          sign.samhan-air.com/d/aB3kLmN0pQ...
+          <button class="copy-btn">📋 복사</button>
+        </div>
+        <div class="info-label">토큰 만료</div>
+        <div class="info-value">2026/05/06 23:59 (D-1)</div>
+        <div class="info-label">SMS 발송</div>
+        <div class="info-value">
+          <span class="sent-icon">☑</span> 2026/05/05 14:32
+          <a class="resend-link">재발송</a>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="section-header">
+        <div class="section-title">슬립 N건 (3)</div>
+        <button class="btn-add">+ 슬립 추가</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40px;">#</th>
+            <th style="width: 140px;">슬립번호</th>
+            <th>거래처</th>
+            <th class="num" style="width: 120px;">합계금액</th>
+            <th style="width: 60px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>2026/05/05-1</td>
+            <td>한국전력</td>
+            <td class="num">1,250,000</td>
+            <td><button class="remove-btn">제거</button></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>2026/05/05-3</td>
+            <td>삼성전자</td>
+            <td class="num">850,000</td>
+            <td><button class="remove-btn">제거</button></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>2026/05/05-7</td>
+            <td>LG화학</td>
+            <td class="num">430,000</td>
+            <td><button class="remove-btn">제거</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <footer class="modal-footer">
+      <button class="btn-close-modal">닫기</button>
+    </footer>
+  </div>
+</body>
+</html>

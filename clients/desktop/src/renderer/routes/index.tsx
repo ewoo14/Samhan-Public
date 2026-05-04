@@ -10,6 +10,7 @@
  * - `/warehouses`   창고
  * - `/sales`        판매조회 (출고전표 목록)
  * - `/sales/new`    출고전표 작성
+ * - `/sales/link-dispatch`  링크발송 (배송 묶음 + e-sign URL SMS) — notification-slice-B
  * - `/sales/:id`    출고전표 상세 + lifecycle
  * - `/sales/:id/print/invoice`   거래명세서 인쇄 미리보기
  * - `/sales/:id/print/dispatch`  출고전표 작업지시서 인쇄
@@ -34,6 +35,7 @@ import { SlipDetailPage } from './SlipDetailPage'
 import { TransferListPage } from './TransferListPage'
 import { TransferFormPage } from './TransferFormPage'
 import { TransferDetailPage } from './TransferDetailPage'
+import { LinkDispatchListPage } from './LinkDispatchListPage'
 import { InvoiceView } from '../print/InvoiceView'
 import { DispatchView } from '../print/DispatchView'
 
@@ -52,6 +54,8 @@ const router = createHashRouter([
       // 판매조회 (출고전표)
       { path: '/sales', element: <SlipListPage mode="OUTBOUND" /> },
       { path: '/sales/new', element: <SlipFormPage mode="OUTBOUND" /> },
+      // notification-slice-B: 링크발송 (배송 묶음) — `/sales/:id` 보다 먼저 매칭되어야 함
+      { path: '/sales/link-dispatch', element: <LinkDispatchListPage /> },
       { path: '/sales/:id', element: <SlipDetailPage mode="OUTBOUND" /> },
       { path: '/sales/:id/print/invoice', element: <InvoiceView /> },
       { path: '/sales/:id/print/dispatch', element: <DispatchView /> },

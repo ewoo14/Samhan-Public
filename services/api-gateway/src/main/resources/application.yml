@@ -43,6 +43,24 @@ spring:
             - StripPrefix=1
             - JwtAuthentication
 
+        # Slice B (notification-slice-B) — 배송 배치 관리자 endpoint (slip-service 내부)
+        - id: slip-service-delivery-batches
+          uri: lb://slip-service
+          predicates:
+            - Path=/api/delivery-batches/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
+        # Slice B — 공개 모바일 endpoint (no auth, 토큰만 검증)
+        # JwtAuthentication 필터 미적용 — 기사 모바일 직접 접근.
+        - id: slip-service-public
+          uri: lb://slip-service
+          predicates:
+            - Path=/api/public/**
+          filters:
+            - StripPrefix=1
+
         - id: product-service
           uri: lb://product-service
           predicates:

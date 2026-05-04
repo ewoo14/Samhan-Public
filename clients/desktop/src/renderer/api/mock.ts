@@ -108,6 +108,8 @@ const MOCK_SLIPS = [
     ownerFullName: '오병승',
     shippingAddress: '서울특별시 강남구 테헤란로 152',
     contactPhone: '010-1234-5678',
+    driverName: '홍지수',
+    driverPhone: '010-1234-5678',
     dispatcher: {
       userId: '00000000-0000-0000-0000-000000020001',
       fullName: '홍지수',
@@ -602,6 +604,152 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       status: nextStatus[action] ?? found.status,
       dispatcher,
       inspector,
+      lines: SAMPLE_LINES,
+    })
+  }
+
+  // ==========================================================================
+  // notification-slice-B: 배송 묶음 (delivery-batch) mock
+  // LinkDispatchListPage 시연용 — 4 배치 (sent 2 / unsent 2)
+  // ==========================================================================
+  const MOCK_BATCHES = [
+    {
+      id: 'batch-001',
+      deliveryDate: '2026-05-04',
+      driverName: '홍지수',
+      driverPhone: '010-1234-5678',
+      slipCount: 3,
+      signUrl: 'https://sign.samhan-air.com/b/abcd1234',
+      smsSentAt: '2026-05-04T08:30:15+09:00',
+    },
+    {
+      id: 'batch-002',
+      deliveryDate: '2026-05-04',
+      driverName: '김기철',
+      driverPhone: '010-9876-5432',
+      slipCount: 2,
+      signUrl: 'https://sign.samhan-air.com/b/efgh5678',
+      smsSentAt: null,
+    },
+    {
+      id: 'batch-003',
+      deliveryDate: '2026-05-04',
+      driverName: '박서연',
+      driverPhone: '010-2222-3333',
+      slipCount: 5,
+      signUrl: 'https://sign.samhan-air.com/b/ijkl9012',
+      smsSentAt: '2026-05-04T09:15:42+09:00',
+    },
+    {
+      id: 'batch-004',
+      deliveryDate: '2026-05-04',
+      driverName: '이정훈',
+      driverPhone: '010-5555-7777',
+      slipCount: 1,
+      signUrl: 'https://sign.samhan-air.com/b/mnop3456',
+      smsSentAt: null,
+    },
+  ]
+
+  // GET /delivery-batches/{id}
+  const batchDetailMatch = url.match(/\/delivery-batches\/([^/?]+)$/)
+  if (method === 'GET' && batchDetailMatch && !url.includes('auto-group')) {
+    const id = batchDetailMatch[1]!
+    const found = MOCK_BATCHES.find((b) => b.id === id) ?? MOCK_BATCHES[0]!
+    return envelope({
+      ...found,
+      tokenIssuedAt: '2026-05-04T07:00:00+09:00',
+      tokenExpiresAt: null,
+      slips: [
+        {
+          slipId: 'slip-001',
+          slipNo: '2026/05/04-1',
+          partnerName: '주식회사 윌리-정현수',
+          shippingAddress: '서울특별시 강남구 테헤란로 152',
+          lineCount: 3,
+        },
+        {
+          slipId: 'slip-006',
+          slipNo: '2026/05/04-3',
+          partnerName: '주식회사 윌리-정현수',
+          shippingAddress: '서울특별시 마포구 양화로 45',
+          lineCount: 2,
+        },
+      ],
+    })
+  }
+
+  // POST /delivery-batches/auto-group?date=...
+  if (method === 'POST' && url.includes('/delivery-batches/auto-group')) {
+    return envelope([
+      {
+        id: 'batch-new-' + Date.now(),
+        deliveryDate: (config.params?.['date'] ?? '2026-05-04') as string,
+        driverName: '신규 자동그룹',
+        driverPhone: '010-0000-0000',
+        slipCount: 2,
+        signUrl: 'https://sign.samhan-air.com/b/newauto',
+        smsSentAt: null,
+      },
+    ])
+  }
+
+  // POST /delivery-batches/{id}/sms — SMS 발송
+  const batchSmsMatch = url.match(/\/delivery-batches\/([^/]+)\/sms$/)
+  if (method === 'POST' && batchSmsMatch) {
+    const id = batchSmsMatch[1]!
+    const found = MOCK_BATCHES.find((b) => b.id === id) ?? MOCK_BATCHES[0]!
+    return envelope({
+      ...found,
+      smsSentAt: new Date().toISOString(),
+    })
+  }
+
+  // POST /delivery-batches/{id}/regenerate-token — 토큰 재발행
+  const batchRegenMatch = url.match(/\/delivery-batches\/([^/]+)\/regenerate-token$/)
+  if (method === 'POST' && batchRegenMatch) {
+    const id = batchRegenMatch[1]!
+    const found = MOCK_BATCHES.find((b) => b.id === id) ?? MOCK_BATCHES[0]!
+    return envelope({
+      ...found,
+      signUrl: `https://sign.samhan-air.com/b/regen-${Date.now().toString(36)}`,
+      tokenIssuedAt: new Date().toISOString(),
+      tokenExpiresAt: null,
+      slips: [],
+    })
+  }
+
+  // POST /delivery-batches/{id}/slips — 슬립 추가
+  const batchAddSlipMatch = url.match(/\/delivery-batches\/([^/]+)\/slips$/)
+  if (method === 'POST' && batchAddSlipMatch) {
+    const id = batchAddSlipMatch[1]!
+    const found = MOCK_BATCHES.find((b) => b.id === id) ?? MOCK_BATCHES[0]!
+    return envelope({
+      ...found,
+      tokenIssuedAt: '2026-05-04T07:00:00+09:00',
+      tokenExpiresAt: null,
+      slips: [],
+    })
+  }
+
+  // GET /delivery-batches (목록)
+  if (method === 'GET' && url.includes('/delivery-batches')) {
+    return envelope(MOCK_BATCHES)
+  }
+
+  // PATCH /slips/{id}/driver — 기사 정보 부분 갱신
+  const driverPatchMatch = url.match(/\/slips\/([^/]+)\/driver$/)
+  if (method === 'PATCH' && driverPatchMatch) {
+    const id = driverPatchMatch[1]!
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      driverName?: string | null
+      driverPhone?: string | null
+    }
+    const found = MOCK_SLIPS.find((s) => s.id === id) ?? MOCK_SLIPS[0]!
+    return envelope({
+      ...found,
+      driverName: body.driverName ?? null,
+      driverPhone: body.driverPhone ?? null,
       lines: SAMPLE_LINES,
     })
   }

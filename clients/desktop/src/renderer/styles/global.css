@@ -495,6 +495,183 @@ button {
 }
 
 /* ==========================================================================
+   notification-slice-B — LinkDispatchListPage + BatchDetailModal + driver fields
+   Designer wireframes.md § 1-2 + tokens.md (--batch-list-row-sent-bg)
+   ========================================================================== */
+
+/* sent 행 옅은 파랑 배경 (Designer tokens.md `--batch-list-row-sent-bg: #F0F9FF`).
+ * DataTable 의 rowClassName prop 으로 부여된다. */
+:root {
+  --batch-list-row-sent-bg: #F0F9FF;
+}
+
+.batch-row-sent {
+  background-color: var(--batch-list-row-sent-bg) !important;
+}
+
+/* 배송일 input — DataTable header 옆 */
+.batch-date-input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.batch-date-input:focus {
+  outline: none;
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px rgba(45, 119, 168, 0.18);
+}
+
+/* LinkDispatchListPage 표 — 링크 셀 (URL truncate + 복사) */
+.link-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.link-cell-url {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* BatchStatusCell — 발송 완료 / 미발송 분기 */
+.batch-status-sent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-success);
+}
+.batch-status-icon {
+  font-size: 14px;
+}
+.batch-status-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+.batch-status-unsent {
+  display: inline-flex;
+}
+
+/* BatchDetailModal — 배치 상세 메타 + 슬립 표 + 추가 폼 */
+.batch-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.batch-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+}
+.batch-detail-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.batch-detail-url {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: var(--color-neutral-50);
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-neutral-200);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.batch-slip-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.batch-slip-table th,
+.batch-slip-table td {
+  border: 1px solid var(--color-neutral-200);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+.batch-slip-table thead th {
+  background: var(--color-neutral-100);
+  font-weight: 600;
+}
+.batch-slip-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.batch-slip-table .batch-slip-empty {
+  text-align: center;
+  color: var(--color-neutral-500);
+  font-style: italic;
+}
+
+.batch-add-slip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.batch-add-slip-input {
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.batch-add-slip-input:focus {
+  outline: none;
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px rgba(45, 119, 168, 0.18);
+}
+
+/* SlipFormPage / SlipDetailPage — driver 입력 그리드 (2-col) */
+.sfp-form-grid--driver {
+  grid-template-columns: 1fr 1fr;
+}
+.driver-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  align-items: end;
+}
+.driver-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.driver-edit-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ==========================================================================
    Print views — 거래명세서 / 작업지시서.
    화면(스크린)에서는 A4 미리보기 박스. 인쇄 시 사이드바/헤더 숨기고 양식만 출력.
    ========================================================================== */

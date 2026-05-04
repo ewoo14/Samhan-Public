@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>출고전표 — 운송 정보 입력</title>
+<style>
+  :root {
+    --surface-app:       #FAFBFC;
+    --surface-card:      #FFFFFF;
+    --surface-subtle:    #F4F6F8;
+    --line-default:      #E1E5EA;
+    --line-focus:        #3B82F6;
+    --ink-primary:       #1A1F2E;
+    --ink-secondary:     #5C6773;
+    --ink-tertiary:      #8A95A4;
+    --action-brand:      #1E40AF;
+    --action-brand-hover:#1D4ED8;
+    --action-brand-subtle:#DBEAFE;
+    --state-danger:      #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: var(--surface-app);
+    color: var(--ink-primary);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 32px;
+  }
+  .form-card {
+    background: var(--surface-card);
+    border: 1px solid var(--line-default);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .form-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--line-default);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .form-title { font-size: 18px; font-weight: 600; }
+  .form-title .tag {
+    background: var(--surface-subtle);
+    color: var(--ink-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 10px;
+    border-radius: 12px;
+    margin-left: 8px;
+  }
+  .form-actions { display: flex; gap: 8px; }
+  .btn {
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--line-default);
+    background: var(--surface-card);
+    color: var(--ink-primary);
+  }
+  .btn:hover { background: var(--surface-subtle); }
+  .btn.primary { background: var(--action-brand); color: #FFFFFF; border: none; }
+  .btn.primary:hover { background: var(--action-brand-hover); }
+  .form-body { padding: 24px; }
+  .form-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 16px;
+  }
+  .form-row label {
+    font-size: 13px;
+    color: var(--ink-secondary);
+    text-align: right;
+  }
+  .form-row label.required::after {
+    content: " *";
+    color: var(--state-danger);
+  }
+  .form-row input,
+  .form-row textarea,
+  .form-row select {
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--line-default);
+    border-radius: 4px;
+    background: var(--surface-card);
+    color: var(--ink-primary);
+    font-size: 14px;
+    width: 100%;
+    font-family: inherit;
+  }
+  .form-row input:focus,
+  .form-row textarea:focus {
+    outline: none;
+    border-color: var(--line-focus);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+  }
+  .form-row textarea { height: 60px; padding: 8px 12px; resize: vertical; }
+  .section-divider {
+    margin: 32px 0 24px 0;
+    padding-top: 24px;
+    border-top: 1px dashed var(--line-default);
+  }
+  .section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--action-brand);
+    margin-bottom: 16px;
+    padding-left: 136px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label .badge-new {
+    background: var(--action-brand);
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .phone-input-wrap { position: relative; max-width: 240px; }
+  .phone-input-wrap input {
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  }
+  .phone-input-wrap.error input {
+    border-color: var(--state-danger);
+    background: #FEF2F2;
+  }
+  .phone-error-msg {
+    color: var(--state-danger);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .lines-section {
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--surface-subtle);
+    border-radius: 4px;
+    color: var(--ink-tertiary);
+    font-size: 13px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="form-card">
+    <header class="form-header">
+      <div class="form-title">출고전표 <span class="tag">작성중</span></div>
+      <div class="form-actions">
+        <button class="btn">임시저장</button>
+        <button class="btn primary">저장</button>
+      </div>
+    </header>
+    <div class="form-body">
+      <div class="form-row">
+        <label class="required" for="partner">거래처</label>
+        <select id="partner">
+          <option>한국전력</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="addr">배송지</label>
+        <input id="addr" type="text" value="서울시 강남구 테헤란로 152" />
+      </div>
+      <div class="form-row">
+        <label for="contact">연락처</label>
+        <input id="contact" type="text" value="02-3456-7890" />
+      </div>
+      <div class="form-row">
+        <label for="memo">특이사항</label>
+        <textarea id="memo">오전 10시까지 도착 요망</textarea>
+      </div>
+
+      <div class="section-divider"></div>
+      <div class="section-label">
+        운송 정보 <span class="badge-new">NEW</span>
+      </div>
+
+      <div class="form-row">
+        <label for="driver-name">기사명</label>
+        <div style="max-width: 240px;">
+          <input id="driver-name" type="text" value="김기사" maxlength="50" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="driver-phone">기사 연락처</label>
+        <div class="phone-input-wrap">
+          <input
+            id="driver-phone"
+            type="tel"
+            inputmode="tel"
+            pattern="[0-9-]*"
+            maxlength="13"
+            value="010-1234-5678"
+            placeholder="010-1234-5678"
+          />
+        </div>
+      </div>
+
+      <div class="lines-section">
+        라인 영역 (기존 LineRow 10-col grid — 본 mock 에서는 생략)
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -115,6 +115,11 @@ public class SlipService {
         // 5. 자동 메모 (야적/지방 등)
         slip.applyDeliveryTagAutoMemo();
 
+        // 6. Slice B — driverName/driverPhone 생성 시점 적용 (모두 nullable, OUTBOUND 한정 의미)
+        if (req.driverName() != null || req.driverPhone() != null) {
+            slip.setDriverContact(req.driverName(), req.driverPhone());
+        }
+
         Slip saved = slipRepository.save(slip);
         return SlipDetailResponse.from(saved);
     }
@@ -132,7 +137,7 @@ public class SlipService {
     public SlipDetailResponse editHeader(UUID id, EditHeaderRequest req, String callerId) {
         Slip slip = loadOrThrow(id);
         applyMutation(() -> slip.editHeader(req.partnerId(), req.partnerName(),
-                req.deliveryTag(), req.memo()));
+                req.deliveryTag(), req.memo(), req.driverName(), req.driverPhone()));
         return SlipDetailResponse.from(slip);
     }
 
