@@ -65,9 +65,11 @@ class ProductControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void unauthenticated_get_returns401() throws Exception {
+    void unauthenticated_get_returns403() throws Exception {
+        // SecurityConfig 가 anonymous 요청을 deny → ExceptionTranslationFilter 의 default
+        // entry point 가 403 으로 처리 (HeaderAuthenticationFilter 가 헤더 없을 시 인증 미설정).
         mockMvc.perform(get("/products"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -102,24 +104,25 @@ class ProductControllerIT extends AbstractPostgresIT {
                 "tags", Map.of("전압", "220V"),
                 "description", "MANAGER 정상 등록");
 
+        // 모든 응답은 ApiResponse<T> 래핑이므로 jsonPath 는 $.data.* 로 접근.
         MvcResult result = mockMvc.perform(post("/products")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "MANAGER")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(notNullValue()))
+                .andExpect(jsonPath("$.data.id").value(notNullValue()))
                 .andReturn();
 
         String createdId = objectMapper.readTree(result.getResponse().getContentAsString())
-                .get("id").asText();
+                .get("data").get("id").asText();
 
         mockMvc.perform(get("/products/" + createdId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modelName").value("MANAGER-CREATE-001"))
-                .andExpect(jsonPath("$.sellingPrice").value(1500000));
+                .andExpect(jsonPath("$.data.modelName").value("MANAGER-CREATE-001"))
+                .andExpect(jsonPath("$.data.sellingPrice").value(1500000));
     }
 
     @Test
@@ -142,8 +145,9 @@ class ProductControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(createBody)))
                 .andExpect(status().isCreated())
                 .andReturn();
+        // ApiResponse<ProductResponse> 래핑이라 data.id 로 접근.
         String pid = objectMapper.readTree(created.getResponse().getContentAsString())
-                .get("id").asText();
+                .get("data").get("id").asText();
 
         // ACCOUNTANT 의 가격 PATCH → 200
         var pricePatch = Map.of("sellingPrice", "2200000", "purchasePrice", "1600000");
@@ -185,19 +189,20 @@ class ProductControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isCreated())
                 .andReturn();
         String pid = objectMapper.readTree(created.getResponse().getContentAsString())
-                .get("id").asText();
+                .get("data").get("id").asText();
 
-        // 2) 단종 처리
-        mockMvc.perform(patch("/products/" + pid + "/discontinue")
+        // 2) 단종 처리 — POST + @ResponseStatus(NO_CONTENT) 이므로 204.
+        mockMvc.perform(post("/products/" + pid + "/discontinue")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "MANAGER"))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
 
-        // 3) ACTIVE 필터로 전체 조회 — 방금 단종된 항목이 빠져 있어야 한다.
+        // 3) ACTIVE 필터로 전체 조회 — Page<ProductSummaryResponse> + ApiResponse 래핑.
+        // 방금 단종된 항목이 data.content 에 빠져 있어야 한다.
         mockMvc.perform(get("/products?status=ACTIVE")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.modelName=='DISC-001')]").isEmpty());
+                .andExpect(jsonPath("$.data.content[?(@.modelName=='DISC-001')]").isEmpty());
     }
 }
