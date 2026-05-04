@@ -27,6 +27,9 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' && github.head_ref != 'main' }}
 
+      - name: gradlew 실행 권한 보장 (Windows 커밋 방어)
+        run: chmod +x ./gradlew
+
       - name: Docker 가용성 확인 (Testcontainers 용)
         run: |
           docker version
