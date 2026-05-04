@@ -192,7 +192,28 @@ export function DispatchView() {
             <div className="dispatch-sign-label-only">
               용달기사 서명{slip.driverName ? ` (${slip.driverName})` : ''}
             </div>
-            <div className="dispatch-sign-label-only">인수자 서명</div>
+            {/*
+              signature-slice-C 신규: 인수자 서명 셀 안에 signaturePng 있으면 <img> 렌더.
+              CSS-only 추가 (Designer wireframes.md §4.3 / tokens.md §1.3 — max-width 100% +
+              max-height 18mm + object-fit contain). 셀 자체 grid / 폭 변경 없음.
+              PNG 미존재 시 기존 라벨 유지 (서명 없음 분기 — wireframes.md §4.2).
+            */}
+            <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
+              인수자 서명
+              {slip.signaturePng && slip.signerName ? (
+                <>
+                  <img
+                    className="dispatch-role-signature-img"
+                    src={slip.signaturePng}
+                    alt={`${slip.signerName} 인수자 서명`}
+                  />
+                  <div className="dispatch-role-signature-meta">
+                    <span className="name">{slip.signerName}</span>
+                    <span className="date">{slip.signedAt?.slice(0, 10) ?? ''}</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
 
           <p className="dispatch-liability-notice">

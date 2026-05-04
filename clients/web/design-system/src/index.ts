@@ -24,3 +24,6 @@ export * from './components/ProgressBar'
 // notification-slice-B 신규 컴포넌트 (PhoneInput / CopyButton)
 export * from './components/PhoneInput'
 export * from './components/CopyButton'
+// signature-slice-C (Slice C) 신규 컴포넌트 (SignaturePad / SignatureViewer)
+export * from './components/SignaturePad'
+export * from './components/SignatureViewer'

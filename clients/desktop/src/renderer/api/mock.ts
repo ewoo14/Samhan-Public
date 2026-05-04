@@ -84,6 +84,30 @@ const HQ_ID = MOCK_WAREHOUSES[0]!.id
 const VH_ID = MOCK_WAREHOUSES[1]!.id
 
 /**
+ * Slice C: 서명 mock fixture — 1×1 빨강 PNG dataURL.
+ *
+ * 실제 서명은 320×200 canvas + 사용자 stroke → 5~15KB PNG. 본 fixture 는 시연/스크린샷용
+ * 최소 PNG (브라우저가 비어있는 사각형으로 렌더). SignatureViewer 의 max-width fit 검증용.
+ */
+const MOCK_SIGNATURE_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII='
+
+/**
+ * Slice C: 서명된 슬립 1건의 시드 데이터 — slip-002 (CONFIRMED) 에 적용.
+ *
+ * SlipDetailPage 의 "전자서명 정보" 카드 + DispatchView 인쇄 인수자 셀 PNG 양쪽 시연.
+ */
+const MOCK_SIGNATURE_SEED = {
+  signedAt: '2026-05-04T15:42:18+09:00',
+  signerName: '김인수',
+  signaturePng: MOCK_SIGNATURE_PNG,
+  signatureHash: 'a3f2b1c9d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1',
+  signatureChannel: 'MOBILE_CANVAS' as const,
+  signatureShareToken: 'Xy7kP2mQrN4vL8wAbCdEfGhIjKlMnOp',
+  signatureShareExpiresAt: '2026-06-03T15:42:18+09:00',
+}
+
+/**
  * 시연용 mock 전표 7건.
  * Slice A 신규 필드: `dispatcher` / `inspector` / `ownerDepartment` / `ownerFullName`
  * / `shippingAddress` / `contactPhone` 모두 포함 (Designer README.md § 2.3).
@@ -144,6 +168,8 @@ const MOCK_SLIPS = [
       fullName: '김기철',
       signedAt: '2026-05-04T11:45:30+09:00',
     },
+    // signature-slice-C: 서명 완료 시드 — SlipDetailPage / DispatchView 인쇄 양쪽 시연
+    ...MOCK_SIGNATURE_SEED,
   },
   {
     id: 'slip-003',
@@ -521,6 +547,78 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       ...found,
       lines: SAMPLE_LINES,
     })
+  }
+
+  // ==========================================================================
+  // signature-slice-C: 전자서명 mock endpoint
+  // ==========================================================================
+
+  // POST /public/batches/{token}/slips/{slipNo}/signature — 모바일 서명 저장
+  const publicSignatureMatch = url.match(
+    /\/public\/batches\/([^/]+)\/slips\/([^/]+)\/signature$/,
+  )
+  if (method === 'POST' && publicSignatureMatch) {
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      signerName?: string
+      signaturePngBase64?: string
+      clientHash?: string
+    }
+    const now = new Date()
+    const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    return envelope({
+      signedAt: now.toISOString(),
+      shareToken: `mock-share-${Date.now().toString(36)}`,
+      shareTokenExpiresAt: expires.toISOString(),
+      signatureHash:
+        body.clientHash
+        ?? 'a3f2b1c9d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1',
+    })
+  }
+
+  // GET /public/signatures/{shareToken} — 인수자 view
+  const publicShareMatch = url.match(/\/public\/signatures\/([^/?]+)$/)
+  if (method === 'GET' && publicShareMatch) {
+    return envelope({
+      slip: {
+        slipNo: '2026-05-04-2',
+        partnerName: '○○종합건설',
+        deliveryAddress: '경기도 성남시 분당구 판교로 235',
+        deliveryDate: '2026-05-04',
+        lines: [
+          { itemName: '시스템에어컨 4Way 4HP (AJ040RXH4BC1)', quantity: 2, uom: 'EA' },
+          { itemName: '유선 리모컨 (MWR-WE10N)', quantity: 2, uom: 'EA' },
+          { itemName: 'WIFI 판넬 (PC1NWSK3NW)', quantity: 1, uom: 'EA' },
+        ],
+        totalAmount: 3990000,
+      },
+      signature: {
+        signerName: MOCK_SIGNATURE_SEED.signerName,
+        signedAt: MOCK_SIGNATURE_SEED.signedAt,
+        signaturePngBase64: MOCK_SIGNATURE_SEED.signaturePng,
+        signatureHashShort: MOCK_SIGNATURE_SEED.signatureHash.slice(0, 8),
+      },
+      shareTokenExpiresAt: MOCK_SIGNATURE_SEED.signatureShareExpiresAt,
+    })
+  }
+
+  // GET /api/slips/{id}/signature — 관리자 조회 (admin)
+  const adminSignatureGetMatch = url.match(/\/slips\/([^/]+)\/signature$/)
+  if (method === 'GET' && adminSignatureGetMatch) {
+    return envelope({
+      signedAt: MOCK_SIGNATURE_SEED.signedAt,
+      signerName: MOCK_SIGNATURE_SEED.signerName,
+      signaturePngBase64: MOCK_SIGNATURE_SEED.signaturePng,
+      signatureHash: MOCK_SIGNATURE_SEED.signatureHash,
+      signatureChannel: MOCK_SIGNATURE_SEED.signatureChannel,
+      shareToken: MOCK_SIGNATURE_SEED.signatureShareToken,
+      shareTokenExpiresAt: MOCK_SIGNATURE_SEED.signatureShareExpiresAt,
+    })
+  }
+
+  // DELETE /api/slips/{id}/signature?reason=... — 무효화 (MASTER only)
+  const adminSignatureDeleteMatch = url.match(/\/slips\/([^/]+)\/signature$/)
+  if (method === 'DELETE' && adminSignatureDeleteMatch) {
+    return envelope(null)
   }
 
   // GET /slips (페이지) — lookup-product / {id} 가 아닌 경우

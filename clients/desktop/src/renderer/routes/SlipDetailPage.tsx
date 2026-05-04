@@ -33,9 +33,12 @@ import {
 import {
   Button,
   Card,
+  CopyButton,
   KOREAN_MOBILE_PHONE_PATTERN,
+  Modal,
   PhoneInput,
   ProgressBar,
+  SignatureViewer,
   SlipNumberDisplay,
 } from '@samhan/design-system'
 import axios from 'axios'
@@ -50,6 +53,7 @@ import {
   type SlipType,
 } from '../api/slip'
 import { fetchStockBalanceBatch } from '../api/inventory'
+import { invalidateSignature } from '../api/signature'
 import { useSessionStore, canTransitionSlip } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -128,6 +132,9 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [editingDriver, setEditingDriver] = useState(false)
   const [draftDriverName, setDraftDriverName] = useState('')
   const [draftDriverPhone, setDraftDriverPhone] = useState('')
+  // signature-slice-C 신규: 서명 무효화 modal state (MASTER only)
+  const [invalidateOpen, setInvalidateOpen] = useState(false)
+  const [invalidateReason, setInvalidateReason] = useState('')
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -171,6 +178,20 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       setEditingDriver(false)
       void queryClient.invalidateQueries({ queryKey: ['slip', id] })
       void queryClient.invalidateQueries({ queryKey: ['delivery-batches'] })
+    },
+  })
+
+  /**
+   * signature-slice-C 신규: 서명 무효화 (DELETE /slips/{id}/signature?reason=...).
+   * MASTER only — BE 가 audit 로그 강제 기록. 200 응답 시 SlipDetail 재조회로 signature* 필드 null 화.
+   */
+  const invalidateSignatureMutation = useMutation({
+    mutationFn: (reason: string) => invalidateSignature(id, reason),
+    onSuccess: () => {
+      setInvalidateOpen(false)
+      setInvalidateReason('')
+      void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+      void queryClient.invalidateQueries({ queryKey: ['slips'] })
     },
   })
 
@@ -595,6 +616,146 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </div>
         </div>
       </Card>
+
+      {/*
+        signature-slice-C 신규: 전자서명 정보 카드 (Designer wireframes.md §3).
+        - signedAt 있을 때 SignatureViewer + 메타 + 공유링크 표시
+        - MASTER 권한일 때만 [무효화] 버튼 노출 (Designer §3.4 권한 매트릭스)
+        - 미서명 시 안내 메시지 (§3.2)
+      */}
+      <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
+        <h4 style={{ marginTop: 0 }}>전자서명 정보</h4>
+        {slip.signedAt && slip.signerName && slip.signaturePng ? (
+          <>
+            <SignatureViewer
+              signaturePngBase64={slip.signaturePng}
+              signerName={slip.signerName}
+              signedAt={slip.signedAt}
+              signatureHash={slip.signatureHash ?? null}
+              size="desktop"
+            />
+            <div className="slip-signature-card-meta">
+              <div>
+                <span className="label">채널:</span>
+                {slip.signatureChannel ?? 'MOBILE_CANVAS'}
+              </div>
+              {slip.signatureShareToken ? (
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+                >
+                  <span className="label">공유링크:</span>
+                  <code
+                    style={{
+                      fontSize: 12,
+                      background: 'var(--color-neutral-100)',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                    }}
+                  >
+                    /share/{slip.signatureShareToken.slice(0, 12)}…
+                  </code>
+                  <CopyButton
+                    text={`${window.location.origin}${window.location.pathname}#/mobile/share/${slip.signatureShareToken}`}
+                    label="복사"
+                  />
+                </div>
+              ) : null}
+              {slip.signatureShareExpiresAt ? (
+                <div>
+                  <span className="label">만료:</span>
+                  {slip.signatureShareExpiresAt.slice(0, 10)}
+                </div>
+              ) : null}
+            </div>
+            {role === 'MASTER' ? (
+              <div className="slip-signature-card-actions">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    setInvalidateReason('')
+                    setInvalidateOpen(true)
+                  }}
+                  aria-label="서명 무효화 (MASTER 권한)"
+                >
+                  서명 무효화
+                </Button>
+                <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>
+                  무효화 시 audit 로그에 영구 기록됩니다.
+                </span>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p className="slip-signature-empty">
+            아직 서명되지 않았습니다.
+            <br />
+            배송기사가 모바일 페이지에서 인수자 서명을 받으면 표시됩니다.
+          </p>
+        )}
+      </Card>
+
+      {/*
+        signature-slice-C 신규: 무효화 confirm modal (MASTER only).
+        Designer wireframes.md §3.3 — reason ≥10자 검증 + textarea + 카운터.
+      */}
+      <Modal
+        open={invalidateOpen}
+        onClose={() => {
+          if (!invalidateSignatureMutation.isPending) {
+            setInvalidateOpen(false)
+          }
+        }}
+        title="서명 무효화"
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setInvalidateOpen(false)}
+              disabled={invalidateSignatureMutation.isPending}
+            >
+              취소
+            </Button>
+            <Button
+              variant="danger"
+              loading={invalidateSignatureMutation.isPending}
+              disabled={invalidateReason.trim().length < 10}
+              onClick={() =>
+                invalidateSignatureMutation.mutate(invalidateReason.trim())
+              }
+            >
+              무효화
+            </Button>
+          </>
+        }
+      >
+        <div className="slip-signature-invalidate-modal-body">
+          <p style={{ margin: 0 }}>다음 서명을 무효화합니다.</p>
+          {slip.signerName ? (
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
+              <li>서명자: {slip.signerName}</li>
+              <li>시각: {slip.signedAt?.slice(0, 16).replace('T', ' ') ?? '-'}</li>
+            </ul>
+          ) : null}
+          <label htmlFor="invalidate-reason" style={{ fontSize: 13, fontWeight: 600 }}>
+            사유 (필수, 최소 10자)
+          </label>
+          <textarea
+            id="invalidate-reason"
+            value={invalidateReason}
+            onChange={(e) => setInvalidateReason(e.target.value.slice(0, 500))}
+            maxLength={500}
+            placeholder="무효화 사유를 입력해주세요 (감사 로그에 기록됩니다)"
+          />
+          <div className="reason-counter">{invalidateReason.length}/500</div>
+          {invalidateSignatureMutation.isError ? (
+            <div className="error-banner" role="alert">
+              무효화에 실패했습니다.
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       {/*
         반려 사유 입력 (필요 시) — 반려 가능 단계 (SENT/ACCEPTED) 에서 표시.
