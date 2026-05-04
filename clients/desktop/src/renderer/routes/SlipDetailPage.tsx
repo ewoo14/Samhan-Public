@@ -33,20 +33,20 @@ import {
 import {
   Button,
   Card,
-  DataTable,
   ProgressBar,
   SlipNumberDisplay,
-  type DataTableColumn,
 } from '@samhan/design-system'
 import axios from 'axios'
 import {
+  duplicateSlip,
   getSlip,
+  removeLine,
   transitionSlip,
   type SlipDetail,
-  type SlipLineDetail,
   type SlipTransitionAction,
   type SlipType,
 } from '../api/slip'
+import { fetchStockBalanceBatch } from '../api/inventory'
 import { useSessionStore, canTransitionSlip } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -119,6 +119,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const listPath = isOutbound ? '/sales' : '/purchases'
 
   const [rejectReason, setRejectReason] = useState('')
+  /** 좌측 넘버링 클릭으로 선택된 라인 ID — 선택 시 상단 툴바 표시. */
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -142,6 +144,28 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     },
   })
 
+  /** 라인 제거 (BE: DELETE /slips/{id}/lines/{lineId}). DRAFT/SAVED 만 허용. */
+  const removeLineMutation = useMutation({
+    mutationFn: (lineId: string) => removeLine(id, lineId),
+    onSuccess: () => {
+      setSelectedLineId(null)
+      void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+    },
+  })
+
+  /** 전표 복사 (DRAFT 신규 생성). 성공 시 신규 전표 상세로 이동. */
+  const duplicateMutation = useMutation({
+    mutationFn: () => {
+      if (!detailQuery.data) throw new Error('전표 데이터 없음')
+      return duplicateSlip(detailQuery.data)
+    },
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: ['slips'] })
+      const target = created.slipType === 'OUTBOUND' ? 'sales' : 'purchases'
+      navigate(`/${target}/${created.id}`)
+    },
+  })
+
   if (!id) return null
 
   if (detailQuery.isLoading) {
@@ -158,38 +182,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   const slip = detailQuery.data
   const possibleActions = actionsForStatus(slip.status, mode)
-
-  const lineColumns: DataTableColumn<SlipLineDetail>[] = [
-    { key: 'modelName', header: '모델명', width: '180px', render: (l) => l.modelName ?? '-' },
-    { key: 'productName', header: '품목명', render: (l) => l.productName ?? '-' },
-    {
-      key: 'specification',
-      header: '규격',
-      width: '100px',
-      render: (l) => l.specification ?? '-',
-    },
-    {
-      key: 'quantity',
-      header: '수량',
-      width: '80px',
-      align: 'right',
-      render: (l) => l.quantity.toLocaleString(),
-    },
-    {
-      key: 'unitPrice',
-      header: '단가',
-      width: '120px',
-      align: 'right',
-      render: (l) => Number(l.unitPrice).toLocaleString(),
-    },
-    {
-      key: 'lineTotal',
-      header: '합계',
-      width: '140px',
-      align: 'right',
-      render: (l) => Number(l.lineTotal).toLocaleString(),
-    },
-  ]
 
   const errorMessage = (() => {
     if (!transitionMutation.isError) return null
@@ -212,6 +204,74 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     } else {
       transitionMutation.mutate({ action })
     }
+  }
+
+  /** 라인 편집은 DRAFT/SAVED 만 허용 (BE 가드와 동일). */
+  const linesEditable = slip.status === 'DRAFT' || slip.status === 'SAVED'
+  const selectedLine = selectedLineId
+    ? slip.lines.find((l) => l.id === selectedLineId) ?? null
+    : null
+
+  /** 선택된 라인의 product 재고를 batch endpoint 로 조회 후 alert. */
+  const handleStockQuery = async () => {
+    if (!selectedLine) return
+    try {
+      const res = await fetchStockBalanceBatch([selectedLine.productId])
+      const row = res.rows[0]
+      if (!row) {
+        alert(`${selectedLine.modelName ?? '-'} 재고 정보 없음`)
+        return
+      }
+      const perWh = Object.entries(row.perWarehouse)
+        .map(([code, qty]) => `${code}: ${qty == null ? '가상' : qty.toLocaleString()}`)
+        .join('\n')
+      alert(`[재고 조회] ${row.modelName}\n총합: ${row.total.toLocaleString()}\n\n${perWh}`)
+    } catch (err) {
+      alert('재고 조회 실패')
+    }
+  }
+
+  /** 행 삭제 — 경고창 후 BE DELETE. */
+  const handleRemoveLine = () => {
+    if (!selectedLine) return
+    if (!linesEditable) {
+      alert(`라인 편집은 작성 중/저장 단계에서만 가능합니다. (현재: ${slip.status})`)
+      return
+    }
+    if (!window.confirm(`[${selectedLine.modelName ?? '-'}] 라인을 삭제하시겠습니까?`)) {
+      return
+    }
+    removeLineMutation.mutate(selectedLine.id)
+  }
+
+  /** 첫 가능한 정상 transition (reject/cancel 제외) — 하단 "완료" 버튼이 호출. */
+  const nextPrimaryAction
+    = possibleActions.find((a) => a !== 'reject' && a !== 'cancel') ?? null
+
+  /** 하단 "전표 복사" — 사용자 확인 후 신규 DRAFT 생성. */
+  const handleDuplicate = () => {
+    if (!window.confirm('현재 전표를 복사하여 새 작성중 전표를 생성합니다. 진행할까요?')) {
+      return
+    }
+    duplicateMutation.mutate()
+  }
+
+  /** 하단 "삭제" — 경고창 후 cancel transition (BE soft-delete). */
+  const handleDeleteSlip = () => {
+    if (!possibleActions.includes('cancel')) {
+      alert(`현재 단계(${slip.status})에서는 삭제(취소)할 수 없습니다.`)
+      return
+    }
+    if (!window.confirm('정말로 이 전표를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 전표가 취소 상태로 변경됩니다.')) {
+      return
+    }
+    transitionMutation.mutate({ action: 'cancel' })
+  }
+
+  /** 하단 "완료" — 다음 정상 단계 transition 실행. */
+  const handleAdvanceStage = () => {
+    if (!nextPrimaryAction) return
+    transitionMutation.mutate({ action: nextPrimaryAction })
   }
 
   // 분기 사유 (REJECTED 시 BE 가 응답에 reason 을 별도 필드로 줄 수 있음 — Slice A 는 memo 사용)
@@ -288,12 +348,102 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       </Card>
 
       <h4 style={{ marginTop: 24 }}>전표 라인</h4>
-      <DataTable
-        columns={lineColumns}
-        rows={slip.lines}
-        rowKey={(l) => l.id}
-        emptyMessage="라인이 없습니다."
-      />
+
+      {/*
+        선택된 라인 액션 툴바 — 좌측 넘버링 클릭으로 행 선택 시 표시.
+        재고조회 (모든 단계) / 행 추가·삭제·순서수정 (DRAFT/SAVED 만, BE 가드와 동일).
+      */}
+      {selectedLine ? (
+        <div className="slip-line-toolbar" role="toolbar" aria-label="선택 라인 액션">
+          <span className="slip-line-toolbar-label">
+            선택: <strong>#{slip.lines.findIndex((l) => l.id === selectedLine.id) + 1}</strong>{' '}
+            {selectedLine.modelName ?? '-'}
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => void handleStockQuery()}>
+            재고 조회
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!linesEditable}
+            onClick={() => alert('행 추가 — SlipFormPage 에서 편집해주세요 (DRAFT/SAVED 만 BE 허용).')}
+            title={linesEditable ? undefined : '작성 중/저장 단계에서만 가능'}
+          >
+            행 추가
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!linesEditable}
+            onClick={() => alert('행 순서 수정 — SlipFormPage 의 drag-and-drop 사용해주세요.')}
+            title={linesEditable ? undefined : '작성 중/저장 단계에서만 가능'}
+          >
+            순서 수정
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!linesEditable || removeLineMutation.isPending}
+            onClick={handleRemoveLine}
+            title={linesEditable ? undefined : '작성 중/저장 단계에서만 가능'}
+          >
+            행 삭제
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedLineId(null)}>
+            선택 해제
+          </Button>
+        </div>
+      ) : (
+        <p className="slip-line-hint">
+          좌측 번호를 클릭하면 해당 라인을 선택할 수 있습니다 (재고 조회 / 순서 수정 / 추가 / 삭제).
+        </p>
+      )}
+
+      <table className="slip-line-table">
+        <thead>
+          <tr>
+            <th className="col-no">#</th>
+            <th className="col-model">모델명</th>
+            <th className="col-product">품목명</th>
+            <th className="col-spec">규격</th>
+            <th className="col-qty">수량</th>
+            <th className="col-price">단가</th>
+            <th className="col-total">합계</th>
+          </tr>
+        </thead>
+        <tbody>
+          {slip.lines.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="slip-line-empty">라인이 없습니다.</td>
+            </tr>
+          ) : (
+            slip.lines.map((l, idx) => {
+              const selected = selectedLineId === l.id
+              return (
+                <tr key={l.id} className={selected ? 'is-selected' : undefined}>
+                  <td className="col-no">
+                    <button
+                      type="button"
+                      className={`slip-line-no-btn${selected ? ' is-selected' : ''}`}
+                      aria-pressed={selected}
+                      aria-label={`라인 ${idx + 1} 선택`}
+                      onClick={() => setSelectedLineId(selected ? null : l.id)}
+                    >
+                      {idx + 1}
+                    </button>
+                  </td>
+                  <td className="col-model">{l.modelName ?? '-'}</td>
+                  <td className="col-product">{l.productName ?? '-'}</td>
+                  <td className="col-spec">{l.specification ?? '-'}</td>
+                  <td className="col-qty">{l.quantity.toLocaleString()}</td>
+                  <td className="col-price">{Number(l.unitPrice).toLocaleString()}</td>
+                  <td className="col-total">{Number(l.lineTotal).toLocaleString()}</td>
+                </tr>
+              )
+            })
+          )}
+        </tbody>
+      </table>
 
       {/*
         Slice A: 결재 정보 카드 — 출고인/검수인 자동 채움 (Designer wireframes.md § 5 + ux-flow.md § 2)
@@ -330,65 +480,81 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       </Card>
 
       {/*
-        다음 단계 액션 — ProgressBar 아래 (피드백 #1 — "전표 진행 단계" 헤더와 분리)
+        반려 사유 입력 (필요 시) — 반려 가능 단계 (SENT/ACCEPTED) 에서 표시.
       */}
-      <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
-        <h4 style={{ marginTop: 0 }}>다음 단계 액션</h4>
-        {possibleActions.length === 0 ? (
-          <p style={{ color: 'var(--color-neutral-500)', margin: 0 }}>
-            현재 상태에서 가능한 전이가 없습니다.
-          </p>
-        ) : (
-          <>
-            {possibleActions.includes('reject') ? (
-              <div style={{ marginBottom: 12 }}>
-                <input
-                  type="text"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="반려 사유 (반려 시 필수)"
-                  maxLength={500}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    border: '1px solid var(--color-neutral-300)',
-                    fontSize: 14,
-                    width: '100%',
-                  }}
-                />
-              </div>
-            ) : null}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {possibleActions.map((action) => {
-                const allowed = canTransitionSlip(action, role)
-                const variant
-                  = action === 'reject' || action === 'cancel'
-                    ? 'ghost'
-                    : action === 'confirm'
-                      ? 'primary'
-                      : 'secondary'
-                return (
-                  <Button
-                    key={action}
-                    variant={variant}
-                    size="sm"
-                    disabled={!allowed || transitionMutation.isPending}
-                    onClick={() => handleTransition(action)}
-                  >
-                    {ACTION_LABEL[action]}
-                    {!allowed ? ' (권한 부족)' : ''}
-                  </Button>
-                )
-              })}
-            </div>
-          </>
-        )}
-        {errorMessage ? (
-          <div className="error-banner" role="alert" style={{ marginTop: 12 }}>
-            {errorMessage}
+      {possibleActions.includes('reject') ? (
+        <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
+          <h4 style={{ marginTop: 0 }}>반려 사유</h4>
+          <input
+            type="text"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="반려 사유 (반려 시 필수, 최대 500자)"
+            maxLength={500}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 6,
+              border: '1px solid var(--color-neutral-300)',
+              fontSize: 14,
+              width: '100%',
+            }}
+          />
+          <div style={{ marginTop: 8 }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!canTransitionSlip('reject', role) || transitionMutation.isPending}
+              onClick={() => handleTransition('reject')}
+            >
+              {ACTION_LABEL['reject']}
+              {!canTransitionSlip('reject', role) ? ' (권한 부족)' : ''}
+            </Button>
           </div>
-        ) : null}
-      </Card>
+        </Card>
+      ) : null}
+
+      {/*
+        하단 액션 버튼 (사용자 명시) — 전표 복사 / 삭제 (경고창 필수) / 완료 (다음 단계).
+      */}
+      <div className="slip-detail-footer-actions" role="toolbar" aria-label="전표 액션">
+        <Button
+          variant="secondary"
+          disabled={duplicateMutation.isPending}
+          onClick={handleDuplicate}
+        >
+          전표 복사
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={!possibleActions.includes('cancel') || transitionMutation.isPending}
+          onClick={handleDeleteSlip}
+          title={possibleActions.includes('cancel') ? undefined : '현재 단계에서는 삭제(취소) 불가'}
+        >
+          삭제
+        </Button>
+        <Button
+          variant="primary"
+          disabled={
+            !nextPrimaryAction
+            || !canTransitionSlip(nextPrimaryAction, role)
+            || transitionMutation.isPending
+          }
+          onClick={handleAdvanceStage}
+          title={
+            nextPrimaryAction
+              ? `다음 단계: ${ACTION_LABEL[nextPrimaryAction]}`
+              : '현재 단계에서 진행 가능한 다음 단계가 없습니다'
+          }
+        >
+          {nextPrimaryAction ? `완료 (${ACTION_LABEL[nextPrimaryAction]})` : '완료'}
+        </Button>
+      </div>
+
+      {errorMessage ? (
+        <div className="error-banner" role="alert" style={{ marginTop: 12 }}>
+          {errorMessage}
+        </div>
+      ) : null}
     </>
   )
 }

@@ -227,6 +227,96 @@ button {
   color: var(--color-neutral-800);
 }
 
+/* SlipDetailPage — 라인 표 + 좌측 넘버링 + 행 액션 툴바 + 하단 액션 */
+.slip-line-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+.slip-line-table th,
+.slip-line-table td {
+  border: 1px solid var(--color-neutral-300);
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+}
+.slip-line-table thead th {
+  background: var(--color-neutral-100);
+  font-weight: 600;
+  text-align: center;
+}
+.slip-line-table .col-no      { width: 44px;  text-align: center; padding: 0; }
+.slip-line-table .col-model   { width: 180px; }
+.slip-line-table .col-spec    { width: 100px; text-align: center; }
+.slip-line-table .col-qty     { width: 80px;  text-align: right; }
+.slip-line-table .col-price,
+.slip-line-table .col-total   { width: 130px; text-align: right; }
+.slip-line-table tr.is-selected {
+  background: var(--color-brand-50, #EFF6FF);
+}
+.slip-line-table .slip-line-empty {
+  text-align: center;
+  color: var(--color-neutral-500);
+  font-style: italic;
+}
+
+/** 좌측 넘버링 버튼 — 클릭 가능 visual */
+.slip-line-no-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-neutral-300);
+  background: var(--color-neutral-50);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.slip-line-no-btn:hover {
+  background: var(--color-brand-50, #EFF6FF);
+  border-color: var(--color-brand-500, #3B82F6);
+}
+.slip-line-no-btn.is-selected {
+  background: var(--color-brand-500, #3B82F6);
+  border-color: var(--color-brand-500, #3B82F6);
+  color: #FFF;
+}
+
+/** 행 액션 툴바 */
+.slip-line-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 6px;
+}
+.slip-line-toolbar-label {
+  margin-right: auto;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-700);
+}
+.slip-line-hint {
+  margin: var(--space-3) 0 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-500);
+  font-style: italic;
+}
+
+/** 하단 액션 — 전표 복사 / 삭제 / 완료 (사용자 명시) */
+.slip-detail-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-neutral-200);
+}
+
 /* ==========================================================================
    sales-form-polish 슬라이스 — SlipFormPage 모던 미니멀 스타일
    (Designer tokens.md / wireframes.md 인용)

@@ -187,6 +187,60 @@ export async function createSlip(
 }
 
 /**
+ * 라인 추가 요청 body — BE `AddLineRequest`. DRAFT/SAVED 단계만 허용.
+ */
+export interface AddLineRequest {
+  productId: string
+  productName?: string
+  modelName?: string
+  specification?: string
+  quantity: number
+  unitPrice: string
+  note?: string
+}
+
+/**
+ * 라인 추가 — DRAFT/SAVED 단계만. 다른 단계에서 호출 시 BE 가 409 반환.
+ */
+export async function addLine(slipId: string, body: AddLineRequest): Promise<SlipDetail> {
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>(`/slips/${slipId}/lines`, body)
+  return res.data.data
+}
+
+/**
+ * 라인 제거 — DRAFT/SAVED 단계만. orphan removal. 응답 없음 (204).
+ */
+export async function removeLine(slipId: string, lineId: string): Promise<void> {
+  await apiClient.delete(`/slips/${slipId}/lines/${lineId}`)
+}
+
+/**
+ * 전표 복사 — 기존 전표의 헤더 + 라인을 그대로 복사하여 신규 DRAFT 전표 생성.
+ * BE 별도 endpoint 없이 클라이언트에서 createSlip 으로 동등 본문 POST.
+ */
+export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
+  const body: CreateSlipRequest = {
+    slipType: source.slipType,
+    sourceWarehouseId: source.sourceWarehouseId ?? undefined,
+    destinationWarehouseId: source.destinationWarehouseId ?? undefined,
+    partnerId: source.partnerId ?? undefined,
+    partnerName: source.partnerName ?? undefined,
+    deliveryTag: source.deliveryTag ?? undefined,
+    memo: source.memo ?? undefined,
+    lines: source.lines.map((l) => ({
+      productId: l.productId,
+      productName: l.productName ?? undefined,
+      modelName: l.modelName ?? undefined,
+      specification: l.specification ?? undefined,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      note: l.note ?? undefined,
+    })),
+  }
+  return createSlip(body)
+}
+
+/**
  * 모델명 → product 요약 lookup. SlipFormPage 라인 입력 onBlur 시 호출.
  *
  * 200 응답 시 productName / sellingPrice 자동 fill 에 사용한다.
