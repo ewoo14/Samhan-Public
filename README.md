@@ -128,6 +128,26 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ./gradlew :services:slip-service:bootRun      # http://localhost:8086
 ```
 
+### 환경변수 (per-service)
+
+서비스별 런타임 환경변수는 `infrastructure/env-templates/<service>.env` 에서 복사:
+
+```bash
+cp infrastructure/env-templates/slip-service.env services/slip-service/.env
+```
+
+**slip-service** (Slice B / notification-slice-B 후속) 추가 env:
+
+| 변수 | 용도 | local (H2) | dev/staging/prod |
+|------|------|-----------|------------------|
+| `SOLAPI_API_KEY` | Solapi 인증 | 미사용 (Mock) | 필수 |
+| `SOLAPI_API_SECRET` | Solapi 시크릿 | 미사용 (Mock) | 필수 |
+| `SOLAPI_SENDER_PHONE` | 발신번호 (사전등록) | 미사용 (Mock) | 필수 |
+| `SOLAPI_BASE_URL` | Solapi API 엔드포인트 | 미사용 (Mock) | `https://api.solapi.com` 기본값 |
+
+H2 local 프로파일은 `MockSmsGateway` 자동 활성으로 SOLAPI 변수 미설정 가능.
+CI 의 `gradle test` 도 test 프로파일이 Mock 활성 → SOLAPI env 주입 불필요.
+
 ### 디자인 시스템 (Storybook)
 
 ```bash
