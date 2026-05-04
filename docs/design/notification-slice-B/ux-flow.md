@@ -145,7 +145,7 @@
 | step | actor | 액션 / 응답 |
 | ---- | ----- | ----------- |
 | A | 관리자 | LinkDispatchListPage 행 클릭 → BatchDetailModal |
-| B | 관리자 | "토큰 만료" 옆 [재발급] 버튼 클릭 |
+| B | 관리자 | "유효기간" 옆 [재발급] 버튼 클릭 |
 | C | FE | ConfirmDialog "새 링크를 발급하시겠습니까? 기존 링크는 무효 처리됩니다." |
 | D | 시스템 | POST `/delivery-batches/{id}/regenerate-token` |
 | E | BE | 새 batchToken 생성 + tokenExpiresAt 갱신 (now + 1일) |

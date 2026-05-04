@@ -125,7 +125,7 @@ export interface SlipDetail extends SlipSummary {
   signatureChannel?: 'MOBILE_CANVAS' | 'PAPER_SCAN' | string | null
   /** 인수자 share 토큰 (base64url) — 모바일 `/share/{token}` 라우트 경로. */
   signatureShareToken?: string | null
-  /** share 토큰 만료 ISO 8601 (+30일). */
+  /** share 유효기간 ISO 8601 (+30일). */
   signatureShareExpiresAt?: string | null
 
   /**

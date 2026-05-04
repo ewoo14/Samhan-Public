@@ -34,7 +34,7 @@ export interface RecordSignatureResponse {
   signedAt: string
   /** 인수자에게 공유할 share 토큰 (base64url, +30일 만료). */
   shareToken: string
-  /** share 토큰 만료 ISO 8601. */
+  /** share 유효기간 ISO 8601. */
   shareTokenExpiresAt: string
   /** BE 재계산 SHA-256 hex (clientHash 와 일치 보장). */
   signatureHash: string

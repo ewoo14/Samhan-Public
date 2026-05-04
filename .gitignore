@@ -96,3 +96,10 @@ secrets/
 .claude/.cache/
 # 에이전트 격리용 git worktrees — 머지 후 정리 대상, VCS 추적 금지 (PR #21 회고)
 .claude/worktrees/
+
+# PR/Issue body draft + TM/PM 승인 코멘트 임시 파일 — gh CLI body-file 일회용 (PR #26 회고)
+.pr-body*.md
+.issue-*.md
+.tm-*.md
+.pm-*.md
+.tmp/
