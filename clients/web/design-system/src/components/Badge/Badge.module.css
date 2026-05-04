@@ -1,0 +1,62 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---------- variants (token 기반: dark mode 자동 대응) ---------- */
+.variant-brand {
+  background-color: var(--color-brand-50);
+  border-color: var(--color-brand-200);
+  color: var(--color-brand-700);
+}
+
+.variant-neutral {
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.variant-success {
+  background-color: rgba(42, 157, 143, 0.12);
+  border-color: rgba(42, 157, 143, 0.32);
+  color: var(--color-success);
+}
+
+.variant-warning {
+  background-color: rgba(233, 165, 61, 0.14);
+  border-color: rgba(233, 165, 61, 0.36);
+  color: #8A5A12;
+}
+
+[data-theme='dark'] .variant-warning {
+  color: var(--color-warning);
+}
+
+.variant-danger {
+  background-color: rgba(214, 80, 74, 0.12);
+  border-color: rgba(214, 80, 74, 0.32);
+  color: var(--color-danger);
+}
