@@ -194,8 +194,11 @@ public class Slip extends BaseEntity {
     /**
      * 서명 PNG 바이너리 — Slice C. ≤50KB (서비스 레이어 가드).
      * Q2 결정: DB bytea (월 1만건 미만 단계) — Phase 6+ MinIO 마이그.
+     *
+     * NOTE: {@code @Lob} 미사용 — Hibernate 6 PostgreSQL 에서 {@code @Lob byte[]} 는
+     * {@code oid} (large object) 로 매핑되어 V5 의 {@code BYTEA} 컬럼과 mismatch
+     * → SchemaManagementException. byte[] + 명시 nothing 으로 BYTEA 매핑 위임.
      */
-    @Lob
     @Column(name = "signature_png")
     private byte[] signaturePng;
 
@@ -239,8 +242,7 @@ public class Slip extends BaseEntity {
     @Column(name = "driver_signed_at")
     private LocalDateTime driverSignedAt;
 
-    /** 배송기사 서명 PNG ≤50KB. */
-    @Lob
+    /** 배송기사 서명 PNG ≤50KB. NOTE: signaturePng 와 동일 — @Lob 미사용 (BYTEA 매핑). */
     @Column(name = "driver_signature_png")
     private byte[] driverSignaturePng;
 

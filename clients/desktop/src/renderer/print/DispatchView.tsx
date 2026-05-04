@@ -180,6 +180,9 @@ export function DispatchView() {
           <p className="dispatch-driver-call-notice">
             기사님 출발전에 수요처에 전화주세요~ 감사합니다^^
           </p>
+
+          {/* 사용자 명시 (Slice C2 follow-up): confirm + signatures + liability 한 박스로 묶기 */}
+          <div className="dispatch-liability-box">
           <p className="dispatch-confirm-notice">
             ※ 제품수량 및 이상유무 확인 후 서명 必
           </p>
@@ -190,13 +193,13 @@ export function DispatchView() {
               인쇄 본문 디자인 자체는 변경 X (피드백 `feedback_print_design_iteration.md` 가드).
             */}
             <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
-              용달기사 서명{slip.driverName ? ` (${slip.driverName})` : ''}
+              용달기사 서명
               {slip.driverSignaturePng ? (
                 <>
                   <img
                     className="dispatch-role-signature-img"
                     src={slip.driverSignaturePng}
-                    alt={`${slip.driverName ?? '기사'} 서명`}
+                    alt="용달기사 서명"
                   />
                   <div className="dispatch-role-signature-meta">
                     <span className="date">{slip.driverSignedAt?.slice(0, 10) ?? ''}</span>
@@ -212,15 +215,14 @@ export function DispatchView() {
             */}
             <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
               인수자 서명
-              {slip.signaturePng && slip.signerName ? (
+              {slip.signaturePng ? (
                 <>
                   <img
                     className="dispatch-role-signature-img"
                     src={slip.signaturePng}
-                    alt={`${slip.signerName} 인수자 서명`}
+                    alt="인수자 서명"
                   />
                   <div className="dispatch-role-signature-meta">
-                    <span className="name">{slip.signerName}</span>
                     <span className="date">{slip.signedAt?.slice(0, 10) ?? ''}</span>
                   </div>
                 </>
@@ -232,6 +234,7 @@ export function DispatchView() {
             제품 인수시 수량 제품상태 이상 유무 확인 후 서명 부탁드립니다.<br />
             서명 후 생긴 문제는 당사가 책임지지 않습니다.
           </p>
+          </div>
         </div>
       </div>
     </div>
