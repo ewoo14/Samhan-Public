@@ -1,0 +1,113 @@
+package com.samhanair.logis.inventory.web;
+
+import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.inventory.service.WarehouseService;
+import com.samhanair.logis.inventory.web.dto.CreateWarehouseRequest;
+import com.samhanair.logis.inventory.web.dto.UpdateWarehouseRequest;
+import com.samhanair.logis.inventory.web.dto.WarehouseResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 창고 마스터 CRUD. 권한 매트릭스:
+ * <ul>
+ *   <li>읽기 — 인증된 모든 역할</li>
+ *   <li>쓰기 (POST/PATCH/DELETE) — MASTER / MANAGER / DEVELOPER</li>
+ * </ul>
+ */
+@RestController
+@RequestMapping("/inventory/warehouses")
+@RequiredArgsConstructor
+public class WarehouseController {
+
+    private static final String CALLER_HEADER = "X-User-Id";
+
+    private final WarehouseService warehouseService;
+
+    /**
+     * 활성 창고 전체 조회 — displayOrder ASC. 인증된 모든 역할.
+     *
+     * @return 응답 envelope 안 List&lt;WarehouseResponse&gt; (200)
+     */
+    @Operation(summary = "창고 목록 조회", description = "displayOrder 오름차순으로 활성 창고 전체 반환")
+    @GetMapping
+    public ApiResponse<List<WarehouseResponse>> listAll() {
+        return ApiResponse.ok(warehouseService.listAll());
+    }
+
+    /**
+     * 단건 조회. 인증된 모든 역할.
+     *
+     * @param id 창고 UUID
+     * @return WarehouseResponse (200) / NOT_FOUND (404)
+     */
+    @Operation(summary = "창고 단건 조회")
+    @GetMapping("/{id}")
+    public ApiResponse<WarehouseResponse> getOne(@PathVariable UUID id) {
+        return ApiResponse.ok(warehouseService.getOne(id));
+    }
+
+    /**
+     * 새 창고 생성. MASTER/MANAGER/DEVELOPER 만 허용.
+     *
+     * @param request CreateWarehouseRequest (code/name/type/address/displayOrder/description)
+     * @return 생성된 WarehouseResponse (201) / 동일 code 시 CONFLICT (409)
+     */
+    @Operation(summary = "창고 생성", description = "code 중복 불가. MASTER/MANAGER/DEVELOPER 만 허용")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "code 중복")
+    })
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER')")
+    public ApiResponse<WarehouseResponse> create(@Valid @RequestBody CreateWarehouseRequest request) {
+        return ApiResponse.ok(warehouseService.create(request));
+    }
+
+    /**
+     * 창고 부분 수정 (PATCH). null 이 아닌 필드만 적용. MASTER/MANAGER/DEVELOPER 만 허용.
+     *
+     * @param id 창고 UUID
+     * @param request UpdateWarehouseRequest (모든 필드 null 가능)
+     * @return 갱신된 WarehouseResponse (200) / NOT_FOUND (404)
+     */
+    @Operation(summary = "창고 수정", description = "PATCH 시맨틱: null 이 아닌 필드만 적용")
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER')")
+    public ApiResponse<WarehouseResponse> update(@PathVariable UUID id,
+                                                 @Valid @RequestBody UpdateWarehouseRequest request) {
+        return ApiResponse.ok(warehouseService.update(id, request));
+    }
+
+    /**
+     * Soft delete. MASTER/MANAGER/DEVELOPER 만 허용. 204 No Content.
+     *
+     * @param id 창고 UUID
+     * @param callerHeader X-User-Id 헤더 (감사용)
+     */
+    @Operation(summary = "창고 삭제 (soft)", description = "is_deleted=true 마킹. row 는 보존")
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER')")
+    public void delete(@PathVariable UUID id,
+                       @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        warehouseService.delete(id, callerHeader);
+    }
+}
