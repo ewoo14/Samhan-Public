@@ -23,6 +23,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@samhan/design-system'
 import { getSlip, type SlipDetail } from '../api/slip'
+import { listWarehouses, type Warehouse } from '../api/inventory'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 /**
@@ -80,6 +81,11 @@ export function DispatchView() {
     queryFn: () => getSlip(id),
     enabled: !!id,
   })
+  // 출고창고 라벨 (피드백 #6: 붉은색 강조) — UUID 노출 안 하고 "코드 + 이름" 으로 (memory feedback_uuid_no_user_visibility)
+  const warehousesQuery = useQuery<Warehouse[]>({
+    queryKey: ['warehouses'],
+    queryFn: listWarehouses,
+  })
 
   // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
   usePageTitle('출고전표 작업지시서', detailQuery.data?.slipNo)
@@ -110,18 +116,23 @@ export function DispatchView() {
       </div>
 
       <div className="dispatch-page">
-        {/* 상단 헤더 — 브랜드 영역 (35mm budget 안에서 결재란 위) */}
+        {/*
+          상단 헤더 — 브랜드 영역. SAMSUNG 로고 + 가운데 거래처명 박스 (피드백 #4) +
+          일련번호 우측. 결재란은 헤더 하단에 1×5 (피드백 #7 — 컴팩트 폭).
+        */}
         <header className="dispatch-header">
           <div className="dispatch-brand">
             <span className="dispatch-logo-placeholder">SAMSUNG</span>
-            <span className="dispatch-partner-name">{slip.partnerName ?? '-'}</span>
+            <span className="dispatch-partner-name-box">
+              {slip.partnerName ?? '-'}
+            </span>
             <span className="dispatch-slip-no">
               {slip.slipDate} - {slip.seqNo}
             </span>
           </div>
 
           {/*
-            결재란 1×5 horizontal grid (Designer print-spec.md § 3.3 — 피드백 #7).
+            결재란 1×5 horizontal grid — 컴팩트 폭 (피드백 #7).
             출고인/검수인 셀은 BE 응답 dispatcher/inspector 자동 채움 (피드백 #9).
           */}
           <div className="dispatch-roles" aria-label="담당자 및 결재">
@@ -142,14 +153,12 @@ export function DispatchView() {
         </header>
 
         {/*
-          라인 표 7-col (월/일/모델명/품목명/규격/수량) — 빈 열 제거 (피드백 #5).
-          모델명/품목명 한 행 좌우 분리 (피드백 #3).
+          라인 표 4-col (모델명/품목명/규격/수량) — 월/일 열 제거 (피드백 #3),
+          규격 열 폭 확대 (피드백 #2/#3). 수량/합계 가운데 정렬 (피드백 #9/#10).
         */}
         <table className="dispatch-table">
           <thead>
             <tr>
-              <th className="col-month">월</th>
-              <th className="col-day">일</th>
               <th className="col-model">모델명</th>
               <th className="col-product">품목명</th>
               <th className="col-spec">규격</th>
@@ -159,8 +168,6 @@ export function DispatchView() {
           <tbody>
             {slip.lines.map((l) => (
               <tr key={l.id}>
-                <td className="col-month">{month}</td>
-                <td className="col-day">{day}</td>
                 <td className="col-model model-cell">{l.modelName ?? '-'}</td>
                 <td className="col-product product-cell">{l.productName ?? '-'}</td>
                 <td className="col-spec">{l.specification || '-'}</td>
@@ -170,15 +177,17 @@ export function DispatchView() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={5}>합계</td>
-              <td className="col-qty">{totalQty.toLocaleString()}</td>
+              <td colSpan={3} className="total-label">합계</td>
+              <td className="col-qty total-qty">{totalQty.toLocaleString()}</td>
             </tr>
           </tfoot>
         </table>
 
         {/*
-          배송지/연락처/특이사항/출발 안내 — 본문 14pt + 라벨 12pt 700 (피드백 #6).
-          서명 박스와 묶어서 page-break-inside: avoid (피드백 #8).
+          출고창고 (붉은색, 피드백 #6) → 배송지/연락처/특이사항 (14pt 본문, 피드백 #6) →
+          출발 전 안내 (피드백 #5: "출발 전 반드시 인수자 연락 필수!") →
+          서명 박스 (피드백 #7: 작게) — 푸터 삭제 (피드백 #8).
+          page-break-inside: avoid 로 묶음.
         */}
         <div className="dispatch-bottom-group">
           <section className="dispatch-section">
@@ -194,12 +203,18 @@ export function DispatchView() {
               <span className="label">특이사항:</span>
               <span className="content">{slip.memo ?? '-'}</span>
             </p>
-            <p className="depart-notice">출발 전 확인: 차량 / 적재 / 동선</p>
+            <p className="dispatch-warehouse-emphasis">
+              출하창고: {(() => {
+                const w = warehousesQuery.data?.find((x) => x.id === slip.sourceWarehouseId)
+                return w ? `${w.code} ${w.name}` : '-'
+              })()}
+            </p>
+            <p className="depart-notice">출발 전 반드시 인수자 연락 필수!</p>
           </section>
 
           {/*
-            서명 박스 80mm × 35mm × 2 — 가로 나란히 (피드백 #8).
-            Slice A: 빈 박스 + placeholder. Slice B 에서 모바일 서명 PNG 자동 삽입.
+            서명 박스 (피드백 #7: 작게) — 가로 나란히. Slice A: 빈 박스 + placeholder.
+            Slice C 에서 모바일 서명 PNG 자동 삽입.
           */}
           <div className="dispatch-signatures" aria-label="서명">
             <div className="dispatch-sign-box">
@@ -215,10 +230,6 @@ export function DispatchView() {
               </div>
             </div>
           </div>
-
-          <footer className="dispatch-footer">
-            (주)삼한로지스 · 서울특별시 · samhan-air.com
-          </footer>
         </div>
       </div>
     </div>

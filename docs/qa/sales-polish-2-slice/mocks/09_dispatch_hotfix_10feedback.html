@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>DispatchView — Hotfix 10 design feedback (PR #21)</title>
+<link rel="stylesheet" href="_tokens.css"/>
+<style>
+/* PR #21 hotfix: 디자인 피드백 10건 반영 — 작업지시서 세로 A4. 실제 global.css 와 동기화. */
+body {
+  background: #E5E7EB;
+  padding: 24px;
+  margin: 0;
+  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+}
+.dispatch-page {
+  width: 210mm;
+  min-height: 297mm;
+  background: #fff;
+  margin: 0 auto;
+  padding: 12mm;
+  box-sizing: border-box;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  color: #000;
+  font-size: 11pt;
+  line-height: 1.4;
+}
+
+/* 헤더 — 피드백 #4: 거래처명 가운데 박스 */
+.dispatch-header {
+  border-bottom: 1px solid #000;
+  padding-bottom: 4mm;
+  margin-bottom: 4mm;
+}
+.dispatch-brand {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  margin-bottom: 4mm;
+}
+.dispatch-logo-placeholder {
+  font-size: 22pt;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.dispatch-partner-name-box {
+  justify-self: center;
+  border: 1px solid #000;
+  padding: 3mm 8mm;
+  font-size: 14pt;
+  font-weight: 700;
+  background: #fff;
+}
+.dispatch-slip-no {
+  font-size: 14pt;
+  font-weight: 700;
+}
+
+/* 결재란 1×5 — 피드백 #1: 컴팩트 폭 (140mm), 피드백 #7 영향 */
+.dispatch-roles {
+  width: 140mm;
+  margin-left: auto;
+  display: grid;
+  grid-template-columns: repeat(5, 28mm);
+  border: 1px solid #000;
+}
+.dispatch-role-cell {
+  border-right: 1px solid #000;
+  height: 18mm;
+  display: flex;
+  flex-direction: column;
+}
+.dispatch-role-cell:last-child { border-right: none; }
+.dispatch-role-label {
+  background: #F0F0F0;
+  font-size: 9pt;
+  font-weight: 700;
+  text-align: center;
+  padding: 1mm 0;
+  border-bottom: 1px solid #000;
+}
+.dispatch-role-value {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1mm;
+}
+.dispatch-role-value .name {
+  font-size: 10pt;
+  font-weight: 700;
+}
+.dispatch-role-value .time {
+  font-size: 8pt;
+  color: #666;
+}
+
+/* 라인 표 — 피드백 #3: 월/일 제거, 규격 폭 확대; 피드백 #2: 규격/수량 13pt; 피드백 #9: 수량 가운데 */
+.dispatch-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4mm;
+  margin-bottom: 6mm;
+}
+.dispatch-table th, .dispatch-table td {
+  border: 1px solid #000;
+  padding: 2mm 3mm;
+  font-size: 11pt;
+}
+.dispatch-table thead th {
+  background: #F0F0F0;
+  font-weight: 700;
+  text-align: center;
+}
+.dispatch-table .col-model { width: 50mm; font-weight: 600; }
+.dispatch-table .col-product { }
+.dispatch-table .col-spec  { width: 38mm; font-size: 13pt; font-weight: 600; text-align: center; }
+.dispatch-table .col-qty   { width: 22mm; font-size: 13pt; text-align: center; }
+.dispatch-table tfoot td   { font-weight: 700; background: #F8F8F8; }
+/* 피드백 #10: 합계 라벨/수량 가운데 */
+.dispatch-table tfoot td.total-label { text-align: center; }
+.dispatch-table tfoot td.total-qty   { text-align: center; font-size: 13pt; }
+
+/* 배송지 / 연락처 / 특이사항 + 출하창고 (붉은색) + 출발 전 안내 */
+.dispatch-bottom-group {
+  page-break-inside: avoid;
+}
+.dispatch-section p {
+  margin: 0 0 3mm 0;
+  display: flex;
+  align-items: baseline;
+}
+.dispatch-section .label {
+  font-size: 12pt;
+  font-weight: 700;
+  display: inline-block;
+  min-width: 22mm;
+}
+.dispatch-section .content {
+  font-size: 14pt;
+}
+/* 피드백 #6: 출하창고 붉은색 강조 */
+.dispatch-section .dispatch-warehouse-emphasis {
+  color: #D32F2F;
+  font-size: 14pt;
+  font-weight: 700;
+  margin-top: 4mm;
+}
+/* 피드백 #5: 출발 전 안내 */
+.dispatch-section .depart-notice {
+  font-size: 13pt;
+  font-weight: 700;
+  margin-top: 4mm;
+}
+
+/* 서명 박스 — 피드백 #7: 작게 (60mm × 22mm) */
+.dispatch-signatures {
+  display: grid;
+  grid-template-columns: repeat(2, 60mm);
+  gap: 6mm;
+  margin-top: 6mm;
+}
+.dispatch-sign-box {
+  width: 60mm;
+  height: 22mm;
+  border: 1px solid #000;
+  position: relative;
+  background: #fff;
+}
+.dispatch-sign-label {
+  position: absolute;
+  top: 1mm;
+  left: 2mm;
+  font-size: 9pt;
+  font-weight: 700;
+}
+.dispatch-sign-area .placeholder {
+  position: absolute;
+  bottom: 1mm;
+  right: 2mm;
+  font-size: 8pt;
+  color: #999;
+  font-style: italic;
+}
+/* 피드백 #8: 푸터 삭제 — .dispatch-footer 정의 자체 제거됨 */
+</style>
+</head><body>
+<div class="dispatch-page">
+  <header class="dispatch-header">
+    <div class="dispatch-brand">
+      <span class="dispatch-logo-placeholder">SAMSUNG</span>
+      <span class="dispatch-partner-name-box">(주)윌리-정현수</span>
+      <span class="dispatch-slip-no">2026-05-04 - 1</span>
+    </div>
+    <div class="dispatch-roles" aria-label="담당자 및 결재">
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">담당부서</div>
+        <div class="dispatch-role-value"><span class="name">영업1팀</span></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">담당자</div>
+        <div class="dispatch-role-value"><span class="name">오병승</span></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">출고인</div>
+        <div class="dispatch-role-value"><span class="name">홍지수</span><span class="time">14:32</span></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">검수인</div>
+        <div class="dispatch-role-value"><span class="name">김기철</span><span class="time">16:45</span></div>
+      </div>
+      <div class="dispatch-role-cell">
+        <div class="dispatch-role-label">결재</div>
+        <div class="dispatch-role-value"><span class="name">*</span></div>
+      </div>
+    </div>
+  </header>
+
+  <table class="dispatch-table">
+    <thead>
+      <tr>
+        <th class="col-model">모델명</th>
+        <th class="col-product">품목명</th>
+        <th class="col-spec">규격</th>
+        <th class="col-qty">수량</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-model">AJ040RXH4BC1</td>
+        <td class="col-product">시스템에어컨 4Way</td>
+        <td class="col-spec">4HP</td>
+        <td class="col-qty">2</td>
+      </tr>
+      <tr>
+        <td class="col-model">MWR-WE10N</td>
+        <td class="col-product">유선 리모컨</td>
+        <td class="col-spec">220V</td>
+        <td class="col-qty">2</td>
+      </tr>
+      <tr>
+        <td class="col-model">PC1NWSK3NW</td>
+        <td class="col-product">WIFI판넬</td>
+        <td class="col-spec">-</td>
+        <td class="col-qty">1</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" class="total-label">합계</td>
+        <td class="col-qty total-qty">5</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="dispatch-bottom-group">
+    <section class="dispatch-section">
+      <p><span class="label">배송지:</span><span class="content">서울 강남구 테헤란로 123 윌리타워 5층</span></p>
+      <p><span class="label">연락처:</span><span class="content">010-1234-5678 (정현수 부장)</span></p>
+      <p><span class="label">특이사항:</span><span class="content">9시까지 배송 요망 — 엘리베이터 별도 예약</span></p>
+      <p class="dispatch-warehouse-emphasis">출하창고: HQ-01 본사 1창고</p>
+      <p class="depart-notice">출발 전 반드시 인수자 연락 필수!</p>
+    </section>
+
+    <div class="dispatch-signatures" aria-label="서명">
+      <div class="dispatch-sign-box">
+        <div class="dispatch-sign-label">용달기사 서명</div>
+        <div class="dispatch-sign-area"><span class="placeholder">(서명 대기 — Slice C)</span></div>
+      </div>
+      <div class="dispatch-sign-box">
+        <div class="dispatch-sign-label">인수자 서명</div>
+        <div class="dispatch-sign-area"><span class="placeholder">(서명 대기 — Slice C)</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

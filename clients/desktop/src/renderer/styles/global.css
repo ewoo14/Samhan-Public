@@ -564,10 +564,10 @@ button {
 }
 
 .dispatch-brand {
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
   gap: 6mm;
-  flex-wrap: wrap;
 }
 
 .dispatch-brand .dispatch-logo-placeholder {
@@ -577,33 +577,39 @@ button {
   border: 1px solid #000;
   padding: 1mm 4mm;
   display: inline-block;
+  justify-self: start;
 }
 
-.dispatch-brand .dispatch-partner-name {
-  font-size: var(--print-text-md, 12pt);
-  font-weight: 500;
+/* 거래처명 가운데 박스 (피드백 #4) — SAMSUNG 로고와 일련번호 사이 가운데 정렬 */
+.dispatch-brand .dispatch-partner-name-box {
+  font-size: var(--print-text-base, 14pt);
+  font-weight: 600;
+  border: 1px solid #000;
+  padding: 2mm 6mm;
+  text-align: center;
+  justify-self: center;
 }
 
 .dispatch-brand .dispatch-slip-no {
-  margin-left: auto;
   border: 1px solid #000;
   padding: 2mm 4mm;
   display: inline-block;
   font-size: var(--print-text-md, 12pt);
   font-variant-numeric: tabular-nums;
+  justify-self: end;
 }
 
 /*
- * 결재란 1×5 horizontal grid (피드백 #7 — Designer print-spec.md § 3.3).
- * 5칸 균등 ~37.2mm (186mm / 5).
- * 각 칸: 라벨 5mm (회색 배경) + 값 17mm = 22mm.
+ * 결재란 1×5 horizontal grid (피드백 #7 — 컴팩트 폭으로 축소).
+ * 우측 정렬 + 5칸 균등 28mm (총 140mm) — 우측으로 넘치지 않도록 (사용자 피드백).
  */
 .dispatch-roles {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  width: var(--print-content-w, 186mm);
-  height: var(--print-approval-h, 22mm);
+  grid-template-columns: repeat(5, 28mm);
+  width: 140mm;
+  height: 18mm;
   border: 1px solid #000;
+  margin-left: auto;
 }
 
 .dispatch-role-cell {
@@ -618,29 +624,29 @@ button {
 }
 
 .dispatch-role-label {
-  height: var(--print-approval-label-h, 5mm);
+  height: 5mm;
   background: var(--print-approval-label-bg, #F0F0F0);
   border-bottom: 1px solid #000;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--print-text-md, 12pt);
+  font-size: 9pt;
   font-weight: 600;
   flex-shrink: 0;
 }
 
 .dispatch-role-value {
-  height: var(--print-approval-value-h, 17mm);
+  height: 13mm;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 1mm 2mm;
+  padding: 0.5mm 1mm;
   overflow: hidden;
 }
 
 .dispatch-role-value .name {
-  font-size: var(--print-text-md, 12pt);
+  font-size: 10pt;
   font-weight: 600;
   max-width: 100%;
   overflow: hidden;
@@ -649,9 +655,9 @@ button {
 }
 
 .dispatch-role-value .time {
-  font-size: var(--print-text-xs, 9pt);
+  font-size: 8pt;
   color: #555;
-  margin-top: 1mm;
+  margin-top: 0.5mm;
   font-variant-numeric: tabular-nums;
 }
 
@@ -681,14 +687,20 @@ button {
   font-size: var(--print-text-sm, 11pt);
 }
 
-.dispatch-table .col-month   { width: 8mm; text-align: center; }
-.dispatch-table .col-day     { width: 8mm; text-align: center; }
-.dispatch-table .col-model   { text-align: left; font-weight: 600; }
+/* 월/일 열 삭제 (피드백 #3). 규격 폭 확대 + 글자 키움 (피드백 #2/#3) */
+.dispatch-table .col-model   { width: 50mm; text-align: left; font-weight: 600; }
 .dispatch-table .col-product { text-align: left; }
-.dispatch-table .col-spec    { width: 18mm; text-align: center; }
+.dispatch-table .col-spec    {
+  width: 38mm;
+  text-align: center;
+  font-size: 13pt;
+  font-weight: 600;
+}
 .dispatch-table .col-qty     {
-  width: 14mm;
-  text-align: right;
+  width: 22mm;
+  text-align: center;
+  font-size: 13pt;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -703,14 +715,20 @@ button {
   color: #333;
 }
 
+/* 합계 데이터 가운데 정렬 (피드백 #10) */
 .dispatch-table tfoot td {
   font-weight: 700;
   background: #FAFAFA;
-  text-align: right;
 }
 
-.dispatch-table tfoot td.col-qty {
-  text-align: right;
+.dispatch-table tfoot td.total-label {
+  text-align: center;
+  font-size: 12pt;
+}
+
+.dispatch-table tfoot td.total-qty {
+  text-align: center;
+  font-size: 13pt;
 }
 
 /*
@@ -757,25 +775,35 @@ button {
   line-height: 1.5;
 }
 
+/* 출하창고 강조 (피드백 #6) — 붉은색 + 굵게 */
+.dispatch-section .dispatch-warehouse-emphasis {
+  margin: 0;
+  text-align: center;
+  font-size: var(--print-text-base, 14pt);
+  font-weight: 700;
+  color: #D32F2F;
+}
+
+/* 출발 전 안내 문구 변경 (피드백 #5) */
 .dispatch-section .depart-notice {
   margin-top: auto;
   text-align: center;
-  font-size: var(--print-text-md, 12pt);
-  font-weight: 600;
+  font-size: 13pt;
+  font-weight: 700;
   color: #000;
 }
 
 /*
- * 서명 박스 — 80mm × 35mm × 2 가로 나란히, gap 6mm (피드백 #8).
- * Slice A: placeholder 표시. Slice B 에서 모바일 서명 PNG 자동 삽입.
+ * 서명 박스 — 60mm × 22mm × 2 가로 나란히 (피드백 #7: 작게).
+ * Slice A: placeholder 표시. Slice C 에서 모바일 서명 PNG 자동 삽입.
  */
 .dispatch-signatures {
   margin-top: var(--print-budget-gap, 4mm);
   display: grid;
-  grid-template-columns: repeat(2, var(--print-signature-w, 80mm));
-  gap: var(--print-signature-gap, 6mm);
+  grid-template-columns: repeat(2, 60mm);
+  gap: 6mm;
   justify-content: center;
-  height: var(--print-signature-h, 35mm);
+  height: 22mm;
   page-break-inside: avoid;
   break-inside: avoid;
 }
@@ -784,14 +812,14 @@ button {
   border: 1px solid #000;
   display: flex;
   flex-direction: column;
-  width: var(--print-signature-w, 80mm);
-  height: var(--print-signature-h, 35mm);
+  width: 60mm;
+  height: 22mm;
 }
 
 .dispatch-sign-label {
-  padding: 2mm 3mm;
+  padding: 1mm 2mm;
   border-bottom: 1px solid #000;
-  font-size: var(--print-text-md, 12pt);
+  font-size: 10pt;
   font-weight: 600;
   text-align: center;
   background: var(--print-thead-bg, #F0F0F0);
@@ -806,20 +834,12 @@ button {
 }
 
 .dispatch-sign-area .placeholder {
-  font-size: var(--print-text-xs, 9pt);
+  font-size: 8pt;
   color: #999;
   font-style: italic;
 }
 
-.dispatch-footer {
-  margin-top: var(--print-budget-gap, 4mm);
-  text-align: center;
-  font-size: var(--print-text-xs, 9pt);
-  color: #555;
-  border-top: 1px solid #000;
-  padding-top: 2mm;
-  height: var(--print-budget-footer, 30mm);
-}
+/* 푸터 삭제 (피드백 #8) — .dispatch-footer 클래스 사용 안 함 */
 
 /* @media print — 인쇄 시 사이드바/헤더/no-print 클래스 모두 숨김
  * (Designer print-spec.md § 1 인용)
