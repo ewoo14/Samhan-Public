@@ -42,6 +42,7 @@ def leafProjects = [
         ':services:user-service',
         ':services:product-service',
         ':services:inventory-service',
+        ':services:slip-service',
         ':services:logging-service',
 ]
 

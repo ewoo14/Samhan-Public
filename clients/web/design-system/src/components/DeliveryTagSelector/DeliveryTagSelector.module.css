@@ -1,0 +1,88 @@
+/* DeliveryTagSelector — 배송태그 single-select dropdown.
+ *
+ * WarehouseSelector 와 동일한 row 패턴 (select + 우측 보조 표시 영역).
+ * 야적/지방 (autoMemo) 선택 시 우측에 inline 자동 메모 미리보기 chip 을 표시.
+ */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.select {
+  display: block;
+  flex: 1 1 200px;
+  min-width: 200px;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  transition: border-color var(--duration-fast) ease,
+              box-shadow var(--duration-fast) ease,
+              background-color var(--duration-fast) ease;
+  appearance: auto;
+}
+
+.select:hover:not(:disabled):not(:focus) {
+  border-color: var(--color-border-strong);
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px rgba(45, 119, 168, 0.18);
+}
+
+.select:disabled {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.hasError {
+  border-color: var(--color-danger);
+}
+.hasError:focus {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 3px rgba(214, 80, 74, 0.18);
+}
+
+/* ---------- 자동 메모 미리보기 chip ---------- */
+.autoMemoPreview {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px var(--space-2);
+  border: 1px dashed var(--color-brand-300);
+  border-radius: var(--radius-md);
+  background-color: var(--color-brand-50);
+  color: var(--color-brand-700);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+}
+
+.autoMemoIcon {
+  font-size: var(--font-size-sm);
+  line-height: 1;
+}
+
+.autoMemoLabel {
+  font-weight: var(--font-weight-medium);
+}
+
+.autoMemoText {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}

@@ -1,4 +1,4 @@
-package com.samhanair.logis.inventory.config;
+package com.samhanair.logis.slip.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,27 +9,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * Stateless servlet security. 두 종류의 인증 진입점:
- * <ul>
- *   <li>{@link InternalTokenFilter} — X-Internal-Token 헤더가 있으면 system-internal/ROLE_MASTER
- *       로 인증 (slip-service 등 형제 서비스의 직접 호출용)</li>
- *   <li>{@link HeaderAuthenticationFilter} — X-User-Id / X-User-Role 헤더로 인증 (gateway 경유 일반 사용자)</li>
- * </ul>
- *
- * 우선순위: InternalTokenFilter 가 먼저, HeaderAuthenticationFilter 가 그 뒤. 토큰 미제시 시
- * InternalTokenFilter 는 no-op 으로 통과시켜 HeaderAuthenticationFilter 에 위임한다.
- */
+/** Stateless servlet security: trusts gateway-injected X-User-* headers, no public endpoints. */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
-
-    private final InternalAuthProperties internalAuthProperties;
-
-    public SecurityConfig(InternalAuthProperties internalAuthProperties) {
-        this.internalAuthProperties = internalAuthProperties;
-    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -40,9 +24,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(new InternalTokenFilter(internalAuthProperties),
-                        UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);
+                .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

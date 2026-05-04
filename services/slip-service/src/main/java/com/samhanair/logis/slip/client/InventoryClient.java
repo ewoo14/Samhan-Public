@@ -1,0 +1,180 @@
+package com.samhanair.logis.slip.client;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.config.InternalAuthProperties;
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+/**
+ * Internal-token-authenticated client to {@code inventory-service} 의 mutation 엔드포인트
+ * ({@code /inventory/reserve}, {@code /inventory/release}, {@code /inventory/deduct},
+ * {@code /inventory/lots/inbound}).
+ *
+ * <p>출고전표 lifecycle:
+ * <ul>
+ *   <li>accept → {@link #reserve} (라인별 1회)</li>
+ *   <li>complete → {@link #deduct} fromReservation=true (라인별 1회)</li>
+ *   <li>reject/cancel after ACCEPTED → {@link #release} (라인별 1회)</li>
+ * </ul>
+ * 입고전표 lifecycle: complete → {@link #inbound} (라인별 1회).
+ *
+ * <p>HTTP 상태 매핑:
+ * <ul>
+ *   <li>4xx (특히 409 재고 부족) → {@link BusinessException}({@link ErrorCode#CONFLICT})</li>
+ *   <li>5xx / 연결 실패 → {@link BusinessException}({@link ErrorCode#INTERNAL_ERROR})</li>
+ * </ul>
+ */
+@Component
+public class InventoryClient {
+
+    private static final Logger log = LoggerFactory.getLogger(InventoryClient.class);
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String INVENTORY_SERVICE_BASE = "http://inventory-service";
+
+    private final RestClient restClient;
+    private final InternalAuthProperties internalAuthProperties;
+
+    public InventoryClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
+                           InternalAuthProperties internalAuthProperties) {
+        this.restClient = builder.baseUrl(INVENTORY_SERVICE_BASE).build();
+        this.internalAuthProperties = internalAuthProperties;
+    }
+
+    /**
+     * 재고 예약 — 출고전표 accept() 시 라인별 호출. 가용재고에서 예약재고로 이동.
+     *
+     * @param productId 제품 UUID
+     * @param warehouseId 출고 창고 (Slip.sourceWarehouseId)
+     * @param quantity 예약 수량 (1 이상)
+     * @param refType 참조 유형 (예: "SLIP")
+     * @param refId 참조 식별자 (전표 UUID)
+     * @throws BusinessException(CONFLICT) inventory-service 가 4xx 반환 (재고 부족 등)
+     * @throws BusinessException(INTERNAL_ERROR) 5xx / 네트워크 실패
+     */
+    public void reserve(UUID productId, UUID warehouseId, int quantity, String refType, UUID refId) {
+        Map<String, Object> body = baseBody(productId, warehouseId, quantity, refType, refId);
+        post("/inventory/reserve", body);
+    }
+
+    /**
+     * 재고 예약 해제 — 출고전표가 ACCEPTED 단계에서 reject/cancel 될 때 라인별 호출.
+     *
+     * @param productId 제품 UUID
+     * @param warehouseId 출고 창고
+     * @param quantity 해제 수량
+     * @param refType 참조 유형
+     * @param refId 참조 식별자
+     * @throws BusinessException(CONFLICT) inventory-service 가 4xx 반환 (예약 부족 등)
+     * @throws BusinessException(INTERNAL_ERROR) 5xx / 네트워크 실패
+     */
+    public void release(UUID productId, UUID warehouseId, int quantity, String refType, UUID refId) {
+        Map<String, Object> body = baseBody(productId, warehouseId, quantity, refType, refId);
+        post("/inventory/release", body);
+    }
+
+    /**
+     * 재고 차감 — 출고전표 complete() 시 라인별 호출. fromReservation=true 면 예약재고에서 차감.
+     *
+     * @param productId 제품 UUID
+     * @param warehouseId 출고 창고
+     * @param quantity 차감 수량
+     * @param fromReservation true 면 예약재고에서, false 면 가용재고에서 직접 차감
+     * @param refType 참조 유형
+     * @param refId 참조 식별자
+     * @throws BusinessException(CONFLICT) inventory-service 가 4xx 반환 (재고/예약 부족)
+     * @throws BusinessException(INTERNAL_ERROR) 5xx / 네트워크 실패
+     */
+    public void deduct(UUID productId, UUID warehouseId, int quantity, boolean fromReservation,
+                       String refType, UUID refId) {
+        Map<String, Object> body = baseBody(productId, warehouseId, quantity, refType, refId);
+        body.put("fromReservation", fromReservation);
+        post("/inventory/deduct", body);
+    }
+
+    /**
+     * 재고 입고 — 입고전표 complete() 시 라인별 호출. 새 lot 생성 + balance 가산.
+     *
+     * @param productId 제품 UUID
+     * @param warehouseId 입고 창고 (Slip.destinationWarehouseId)
+     * @param quantity 입고 수량
+     * @param lotNo 외부 lot 번호 (보통 slipNo)
+     * @param unitCost 단위 원가 (slip line 의 unitPrice 사용)
+     * @throws BusinessException(CONFLICT) inventory-service 가 4xx 반환
+     * @throws BusinessException(INTERNAL_ERROR) 5xx / 네트워크 실패
+     */
+    public void inbound(UUID productId, UUID warehouseId, int quantity,
+                        String lotNo, BigDecimal unitCost) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("productId", productId.toString());
+        body.put("warehouseId", warehouseId.toString());
+        body.put("quantity", quantity);
+        if (lotNo != null) {
+            body.put("lotNo", lotNo);
+        }
+        if (unitCost != null) {
+            body.put("unitCost", unitCost);
+        }
+        post("/inventory/lots/inbound", body);
+    }
+
+    private static Map<String, Object> baseBody(UUID productId, UUID warehouseId, int quantity,
+                                                String refType, UUID refId) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("productId", productId.toString());
+        body.put("warehouseId", warehouseId.toString());
+        body.put("quantity", quantity);
+        if (refType != null) {
+            body.put("referenceType", refType);
+        }
+        if (refId != null) {
+            body.put("referenceId", refId.toString());
+        }
+        return body;
+    }
+
+    private void post(String path, Map<String, Object> body) {
+        try {
+            restClient.post()
+                    .uri(path)
+                    .header(INTERNAL_TOKEN_HEADER, requireToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.CONFLICT,
+                                "inventory-service 호출 실패: " + res.getStatusCode()
+                                        + " (재고 부족 등)");
+                    })
+                    .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                                "inventory-service 호출 실패: " + res.getStatusCode());
+                    })
+                    .toBodilessEntity();
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("InventoryClient {} failed: {}", path, ex.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "inventory-service 호출 실패", ex);
+        }
+    }
+
+    private String requireToken() {
+        String token = internalAuthProperties.getToken();
+        if (token == null || token.isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "app.security.internal.token 미설정");
+        }
+        return token;
+    }
+}
