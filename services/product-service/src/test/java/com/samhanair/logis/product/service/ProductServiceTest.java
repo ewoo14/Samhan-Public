@@ -1,0 +1,255 @@
+package com.samhanair.logis.product.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.product.domain.Category;
+import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductStatus;
+import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductRepository;
+import com.samhanair.logis.product.web.dto.CreateProductRequest;
+import com.samhanair.logis.product.web.dto.ProductResponse;
+import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
+import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
+import com.samhanair.logis.product.web.dto.UpdateProductRequest;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class ProductServiceTest {
+
+    @Mock
+    private ProductRepository productRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
+
+    @InjectMocks
+    private ProductService service;
+
+    private Category category;
+    private UUID categoryId;
+    private Product product;
+    private UUID productId;
+
+    @BeforeEach
+    void setUp() {
+        category = Category.create("INDOOR_WALL", "벽걸이형", null, 1);
+        categoryId = UUID.randomUUID();
+        ReflectionTestUtils.setField(category, "id", categoryId);
+
+        product = Product.create("스마트 벽걸이", "SHA-W15K",
+                category, new BigDecimal("1500000.00"), new BigDecimal("1100000.00"),
+                "KRW", Map.of("hp", "1.5"), "1.5마력 벽걸이형");
+        productId = UUID.randomUUID();
+        ReflectionTestUtils.setField(product, "id", productId);
+    }
+
+    @Test
+    void create_succeeds_withDefaultCurrency() {
+        when(productRepository.existsByModelNameAndIsDeletedFalse("SHA-W20K")).thenReturn(false);
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
+            Product saved = inv.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", UUID.randomUUID());
+            return saved;
+        });
+
+        ProductResponse response = service.create(new CreateProductRequest(
+                "스마트 벽걸이 2.0", "SHA-W20K", categoryId,
+                new BigDecimal("1800000.00"), new BigDecimal("1300000.00"),
+                null, Map.of("hp", "2.0"), null));
+
+        assertThat(response.modelName()).isEqualTo("SHA-W20K");
+        assertThat(response.currency()).isEqualTo("KRW");
+        assertThat(response.status()).isEqualTo(ProductStatus.ACTIVE);
+        assertThat(response.tags()).containsEntry("hp", "2.0");
+    }
+
+    @Test
+    void create_duplicateModelName_throwsConflict() {
+        when(productRepository.existsByModelNameAndIsDeletedFalse("SHA-W15K")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(new CreateProductRequest(
+                "중복", "SHA-W15K", categoryId,
+                BigDecimal.ONE, BigDecimal.ONE, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void create_unknownCategory_throwsNotFound() {
+        UUID missingCategoryId = UUID.randomUUID();
+        when(productRepository.existsByModelNameAndIsDeletedFalse("X")).thenReturn(false);
+        when(categoryRepository.findById(missingCategoryId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(new CreateProductRequest(
+                "X", "X", missingCategoryId,
+                BigDecimal.ONE, BigDecimal.ONE, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
+    @Test
+    void create_negativePrice_throwsInvalidInput() {
+        when(productRepository.existsByModelNameAndIsDeletedFalse("X")).thenReturn(false);
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+
+        assertThatThrownBy(() -> service.create(new CreateProductRequest(
+                "X", "X", categoryId,
+                new BigDecimal("-1.00"), BigDecimal.ONE, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void update_changesNameAndDescription() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        ProductResponse response = service.update(productId,
+                new UpdateProductRequest("새 이름", null, null, "새 설명"));
+
+        assertThat(response.name()).isEqualTo("새 이름");
+        assertThat(response.description()).isEqualTo("새 설명");
+        assertThat(response.modelName()).isEqualTo("SHA-W15K");
+    }
+
+    @Test
+    void update_modelNameChange_checksDuplication() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.existsByModelNameAndIsDeletedFalse("SHA-NEW")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.update(productId,
+                new UpdateProductRequest(null, "SHA-NEW", null, null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void updatePrice_repricesBoth() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        ProductResponse response = service.updatePrice(productId,
+                new UpdatePriceRequest(new BigDecimal("1700000.00"), new BigDecimal("1200000.00"), "USD"));
+
+        assertThat(response.sellingPrice()).isEqualByComparingTo(new BigDecimal("1700000.00"));
+        assertThat(response.purchasePrice()).isEqualByComparingTo(new BigDecimal("1200000.00"));
+        assertThat(response.currency()).isEqualTo("USD");
+    }
+
+    @Test
+    void updatePrice_negative_throwsInvalidInput() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> service.updatePrice(productId,
+                new UpdatePriceRequest(new BigDecimal("-1.00"), null, null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void replaceTags_overwritesEntireMap() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        ProductResponse response = service.replaceTags(productId, Map.of("color", "white", "wifi", "true"));
+
+        assertThat(response.tags()).hasSize(2)
+                .containsEntry("color", "white")
+                .containsEntry("wifi", "true")
+                .doesNotContainKey("hp");
+    }
+
+    @Test
+    void replaceTags_withNull_clearsTags() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        ProductResponse response = service.replaceTags(productId, null);
+
+        assertThat(response.tags()).isNull();
+    }
+
+    @Test
+    void discontinue_then_reactivate_togglesStatus() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        service.discontinue(productId);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.DISCONTINUED);
+
+        service.reactivate(productId);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.ACTIVE);
+    }
+
+    @Test
+    void delete_softDeletesWithCallerId() {
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        service.delete(productId, "user-1");
+
+        assertThat(product.getIsDeleted()).isTrue();
+        assertThat(product.getDeletedBy()).isEqualTo("user-1");
+    }
+
+    @Test
+    void getOne_notFound_throwsNotFound() {
+        UUID missing = UUID.randomUUID();
+        when(productRepository.findById(missing)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getOne(missing))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
+    @Test
+    void lookup_returnsSummaries() {
+        when(productRepository.findAllByIdIn(List.of(productId))).thenReturn(List.of(product));
+
+        List<ProductSummaryResponse> result = service.lookup(List.of(productId));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).modelName()).isEqualTo("SHA-W15K");
+        assertThat(result.get(0).sellingPrice()).isEqualByComparingTo(new BigDecimal("1500000.00"));
+    }
+
+    @Test
+    void lookup_overSizeLimit_throwsInvalidInput() {
+        List<UUID> tooMany = new ArrayList<>(IntStream.range(0, 101)
+                .mapToObj(i -> UUID.randomUUID())
+                .toList());
+
+        assertThatThrownBy(() -> service.lookup(tooMany))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void lookup_empty_throwsInvalidInput() {
+        assertThatThrownBy(() -> service.lookup(List.of()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+}
