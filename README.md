@@ -21,7 +21,7 @@
 - **전체 로드맵**: 33주 (Phase 1~7)
 - **GitHub 워크플로우**: 슬라이스당 팀별 PR/Issue 분리, TM·PM 자동 승인 + 개발책임자 머지
 
-## 📊 진척률 (2026-05-04 기준, main `b0a7982`)
+## 📊 진척률 (2026-05-04 기준, main `fe54d7e`)
 
 ### 마이크로서비스 인벤토리
 
@@ -33,7 +33,7 @@
 | 4 | User Service | 8083 | user_db | ✅ Phase 2 첫 슬라이스 (16명 시드, AuthClient 패턴) |
 | 5 | Product Service | 8084 | product_db | ✅ Phase 2 본 작업 첫 슬라이스 (Product/Category 도메인, 14 endpoint, jsonb 태그) |
 | 6 | Inventory Service | 8085 | inventory_db | ✅ Phase 2 본 작업 두 번째 슬라이스 (FIFO + 4-tier 창고 + 이동전표 22 endpoint, Plan §3.1 4-tier 채택, X-Internal-Token gateway 우회) |
-| 7 | Slip Service | 8086 | slip_db | ✅ Phase 3 첫 슬라이스 (출고+입고 STI, 9단계 라이프사이클, 11 배송태그, Inventory 연계 reserve/deduct/release, 16 endpoint) |
+| 7 | Slip Service | 8086 | slip_db | ✅ Phase 3 첫 슬라이스 + sales-polish-2 (10단계 라이프사이클 INSPECTING 신규, dispatcher/inspector 자동 서명, 라인 specification, 17 endpoint) |
 | 8 | Accounting Service | 8087 | accounting_db | ⬜ Phase 4 |
 | 9 | Partner Service | 8088 | partner_db | ⬜ Phase 4 |
 | 10 | Groupware Service | 8089 | groupware_db | ⬜ Phase 5 |
@@ -48,8 +48,8 @@
 
 | 항목 | 상태 |
 |------|------|
-| 디자인 시스템 (`clients/web/design-system`) | ✅ 16 컴포넌트 + 55 Storybook stories (Button, Card, FormField, Input, Label, Modal, Spinner + Badge, TagChip, TagInput, PriceField, DataTable + WarehouseSelector + SlipStatusBadge, DeliveryTagSelector, SlipNumberDisplay) |
-| Electron 데스크톱 앱 | ⬜ Phase 2 마무리 슬라이스 |
+| 디자인 시스템 (`clients/web/design-system`) | ✅ 17 컴포넌트 (+ ProgressBar 6단계 진행 시각화 — sales-polish-2 신규) |
+| Electron 데스크톱 앱 | ✅ Phase 2 마무리 + sales-polish-2 (출고/입고/이동 풀 라이프사이클, 13 라우트, 작업지시서/거래명세서 인쇄 양식 v3.1, 라인 넘버링 + 액션 + 하단 3 버튼) |
 | React 웹 앱 (외부 거래처용) | ⬜ Phase 6 |
 | React Native 모바일 (창고원/거래처 듀얼) | ⬜ Phase 6 |
 
