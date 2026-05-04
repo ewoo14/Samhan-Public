@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>AppHeader 동적 화면명 — 3 화면 비교</title>
+<link rel="stylesheet" href="_tokens.css"/>
+<style>
+  body { padding: 0; }
+  .collage {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+  }
+  .frame {
+    border: 1px solid var(--line-default);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--elev-card);
+  }
+  .frame .label {
+    background: var(--surface-subtle);
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--ink-secondary);
+    border-bottom: 1px solid var(--line-default);
+    font-weight: 600;
+  }
+</style>
+</head><body>
+<div class="collage">
+
+  <div class="frame">
+    <div class="label">/sales — 판매조회</div>
+    <header class="app-header">
+      <h2>판매조회</h2>
+      <div class="right">
+        <span>오병승</span><span class="role-badge">MANAGER</span>
+        <button>로그아웃</button>
+      </div>
+    </header>
+  </div>
+
+  <div class="frame">
+    <div class="label">/sales/new — 새 출고전표</div>
+    <header class="app-header">
+      <h2>새 출고전표</h2>
+      <div class="right">
+        <span>오병승</span><span class="role-badge">MANAGER</span>
+        <button>로그아웃</button>
+      </div>
+    </header>
+  </div>
+
+  <div class="frame">
+    <div class="label">/sales/:id — 출고전표 상세 (slipNo bracket)</div>
+    <header class="app-header">
+      <h2>출고전표 상세<span class="meta">[2026/05/04-1]</span></h2>
+      <div class="right">
+        <span>오병승</span><span class="role-badge">MANAGER</span>
+        <button>로그아웃</button>
+      </div>
+    </header>
+  </div>
+
+  <div class="frame">
+    <div class="label">/sales/:id/print/invoice — 거래명세서</div>
+    <header class="app-header">
+      <h2>거래명세서<span class="meta">[2026/05/04-1]</span></h2>
+      <div class="right">
+        <span>오병승</span><span class="role-badge">MANAGER</span>
+        <button>로그아웃</button>
+      </div>
+    </header>
+  </div>
+
+  <div class="frame">
+    <div class="label">/sales/:id/print/dispatch — 출고전표 작업지시서</div>
+    <header class="app-header">
+      <h2>출고전표 작업지시서<span class="meta">[2026/05/04-1]</span></h2>
+      <div class="right">
+        <span>오병승</span><span class="role-badge">MANAGER</span>
+        <button>로그아웃</button>
+      </div>
+    </header>
+  </div>
+
+</div>
+</body></html>

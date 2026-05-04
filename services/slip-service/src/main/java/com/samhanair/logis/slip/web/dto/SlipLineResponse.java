@@ -4,12 +4,16 @@ import com.samhanair.logis.slip.domain.SlipLine;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** 라인 응답 — id, product 정보, 수량, 단가, lineTotal, note. */
+/**
+ * 라인 응답 — id, product 정보, 규격, 수량, 단가, lineTotal, note.
+ * Slice A (sales-polish-2): {@code specification} 필드 신규 응답 (사용자 피드백 #4).
+ */
 public record SlipLineResponse(
         UUID id,
         UUID productId,
         String productName,
         String modelName,
+        String specification,
         int quantity,
         BigDecimal unitPrice,
         BigDecimal lineTotal,
@@ -21,6 +25,7 @@ public record SlipLineResponse(
                 line.getProductId(),
                 line.getProductName(),
                 line.getModelName(),
+                line.getSpecification(),
                 line.getQuantity(),
                 line.getUnitPrice(),
                 line.getLineTotal(),

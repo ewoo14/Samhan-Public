@@ -88,7 +88,7 @@ class SlipServiceTest {
         CreateSlipRequest req = new CreateSlipRequest(
                 SlipType.OUTBOUND, LocalDate.of(2026, 5, 4),
                 sourceWh, destWh, partnerId, "삼한공조", DeliveryTag.DAY, "메모",
-                List.of(new CreateSlipRequest.SlipLineRequest(productId, "에어컨", "M-1",
+                List.of(new CreateSlipRequest.SlipLineRequest(productId, "에어컨", "M-1", null,
                         2, new BigDecimal("100.00"), null)));
 
         SlipDetailResponse res = service.create(req, "user-1");
@@ -109,7 +109,7 @@ class SlipServiceTest {
         CreateSlipRequest req = new CreateSlipRequest(
                 SlipType.INBOUND, LocalDate.of(2026, 5, 4),
                 null, destWh, partnerId, "삼한", DeliveryTag.RETURN, null,
-                List.of(new CreateSlipRequest.SlipLineRequest(productId, "p", null,
+                List.of(new CreateSlipRequest.SlipLineRequest(productId, "p", null, null,
                         1, new BigDecimal("10.00"), null)));
 
         SlipDetailResponse res = service.create(req, "user-1");
@@ -161,26 +161,69 @@ class SlipServiceTest {
 
     @Test
     void complete_outbound_callsInventoryDeduct_fromReservationTrue() {
+        // Slice A hotfix: complete (출고 완료) = PROCESSING → INSPECTING + deduct.
         Slip slip = preparedOutbound(SlipStatus.PROCESSING, 3, new BigDecimal("50.00"));
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         service.complete(slipId);
 
-        assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
+        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
         verify(inventoryClient, times(1))
                 .deduct(eq(productId), eq(sourceWh), eq(3), eq(true), anyString(), eq(slipId));
     }
 
     @Test
     void complete_inbound_callsInventoryInbound() {
+        // Slice A hotfix: 입고 PROCESSING → INSPECTING + inbound.
         Slip slip = preparedInbound(SlipStatus.PROCESSING);
         when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
 
         service.complete(slipId);
 
-        assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
+        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
         verify(inventoryClient, times(1))
                 .inbound(eq(productId), eq(destWh), anyInt(), anyString(), any(BigDecimal.class));
+    }
+
+    // -------- Slice A hotfix — inspect (검수 완료) endpoint --------
+
+    @Test
+    void inspect_fromInspecting_movesToCompleted_setsInspectorUserId() {
+        // Slice A hotfix: inspect (검수 완료) = INSPECTING → COMPLETED + inspector.
+        Slip slip = preparedOutbound(SlipStatus.INSPECTING, 1, new BigDecimal("10.00"));
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+
+        SlipDetailResponse res = service.inspect(slipId, "inspector-1");
+
+        assertThat(res.status()).isEqualTo(SlipStatus.COMPLETED);
+        assertThat(res.inspectorUserId()).isEqualTo("inspector-1");
+        assertThat(res.inspectorSignedAt()).isNotNull();
+        // 검수 완료는 inventory mutation 없음 (deduct 는 complete 시점에 이미).
+        verify(inventoryClient, never())
+                .deduct(any(), any(), anyInt(), anyBoolean(), anyString(), any());
+    }
+
+    @Test
+    void inspect_fromProcessing_throwsConflict() {
+        // PROCESSING 에서 inspect 시도 → 409 (PROCESSING → INSPECTING 은 complete 가, INSPECTING → COMPLETED 만 inspect)
+        Slip slip = preparedOutbound(SlipStatus.PROCESSING, 1, new BigDecimal("10.00"));
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+
+        assertThatThrownBy(() -> service.inspect(slipId, "i"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void accept_setsDispatcherUserIdAndSignedAt_inResponse() {
+        Slip slip = preparedOutbound(SlipStatus.SENT, 1, new BigDecimal("10.00"));
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+
+        SlipDetailResponse res = service.accept(slipId, "warehouse-1");
+
+        assertThat(res.dispatcherUserId()).isEqualTo("warehouse-1");
+        assertThat(res.dispatcherSignedAt()).isNotNull();
     }
 
     // ---------- reject ----------
@@ -287,7 +330,7 @@ class SlipServiceTest {
         Slip slip = Slip.createOutbound("2026/05/04-001", LocalDate.of(2026, 5, 4), 1,
                 sourceWh, destWh, partnerId, "삼한공조", DeliveryTag.DAY, null, "u");
         ReflectionTestUtils.setField(slip, "id", slipId);
-        slip.addLine(SlipLine.create(slip, productId, "에어컨", "M-1", qty, unitPrice, null));
+        slip.addLine(SlipLine.create(slip, productId, "에어컨", "M-1", null, qty, unitPrice, null));
         forceStatus(slip, status);
         return slip;
     }
@@ -296,7 +339,7 @@ class SlipServiceTest {
         Slip slip = Slip.createInbound("2026/05/04-002", LocalDate.of(2026, 5, 4), 2,
                 destWh, partnerId, "삼한", DeliveryTag.RETURN, null, "u");
         ReflectionTestUtils.setField(slip, "id", slipId);
-        slip.addLine(SlipLine.create(slip, productId, "p", null, 1, new BigDecimal("10.00"), null));
+        slip.addLine(SlipLine.create(slip, productId, "p", null, null, 1, new BigDecimal("10.00"), null));
         forceStatus(slip, status);
         return slip;
     }

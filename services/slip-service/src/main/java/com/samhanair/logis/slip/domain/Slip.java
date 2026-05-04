@@ -33,12 +33,16 @@ import org.hibernate.annotations.UuidGenerator;
  *
  * <p>상태 머신 (Q5: 낙관적 락 + 상태 전이 가드):
  * <pre>
- *   DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → COMPLETED
+ *   DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → INSPECTING → COMPLETED
  *     - 출고: COMPLETED → SHIPPING → DELIVERED → CONFIRMED
  *     - 입고: COMPLETED → CONFIRMED (ship/deliver 단계 스킵)
- *   SENT/ACCEPTED → REJECTED 가능
+ *   SENT/ACCEPTED/INSPECTING → REJECTED 가능 (검수자 거부)
  *   DRAFT/SAVED/SENT → CANCELED 가능
  * </pre>
+ *
+ * <p>Slice A (sales-polish-2) 신규 단계 INSPECTING — 검수자(창고원/INSPECTOR)가 출고 picking
+ * 결과 확인 후 COMPLETED 로 전이. INSPECTING 트랜지션 시 inspectorUserId / inspectorSignedAt
+ * 자동 기입 (작업지시서 결재란 검수인 셀 자동 표시).
  *
  * <p>모든 잘못된 상태 전이는 {@link BusinessException}({@link ErrorCode#CONFLICT}) 으로 통일.
  *
@@ -113,6 +117,29 @@ public class Slip extends BaseEntity {
 
     @Column(name = "confirmed_at")
     private LocalDateTime confirmedAt;
+
+    /**
+     * 출고인 user-id — Slice A (sales-polish-2) ACCEPTED 트랜지션 시 자동 기입.
+     * 사용자 피드백 #9: 작업지시서 결재란 출고인 셀을 acceptedBy 와 별도로 정확히 표시하기 위함.
+     * 본 슬라이스 한정 도메인 명시 정책 예외 (Q4=A).
+     */
+    @Column(name = "dispatcher_user_id", length = 50)
+    private String dispatcherUserId;
+
+    /** 출고인 자동 서명 시각 (ACCEPTED 트랜지션 timestamp). */
+    @Column(name = "dispatcher_signed_at")
+    private LocalDateTime dispatcherSignedAt;
+
+    /**
+     * 검수인 user-id — Slice A (sales-polish-2) INSPECTING 트랜지션 시 자동 기입.
+     * 4-eye 검증 패턴: 출고인(PROCESSING 시작자) 과 다른 검수인이 picking 결과 확인.
+     */
+    @Column(name = "inspector_user_id", length = 50)
+    private String inspectorUserId;
+
+    /** 검수인 자동 서명 시각 (INSPECTING 트랜지션 timestamp). */
+    @Column(name = "inspector_signed_at")
+    private LocalDateTime inspectorSignedAt;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -276,16 +303,21 @@ public class Slip extends BaseEntity {
     }
 
     /**
-     * 전송완료 → 수락 전이. SENT 에서만 허용. acceptedBy, acceptedAt 기록.
+     * 전송완료 → 수락 전이. SENT 에서만 허용. acceptedBy, acceptedAt 기록 +
+     * Slice A (sales-polish-2): dispatcherUserId, dispatcherSignedAt 자동 기입
+     * (작업지시서 결재란 출고인 셀 자동 표시 — 사용자 피드백 #9).
      *
-     * @param acceptorUserId 수락자 user-id (창고/재고원)
+     * @param acceptorUserId 수락자 user-id (창고/재고원). 출고인 자동 기입에도 동일 사용.
      * @throws BusinessException(CONFLICT) 현재 상태가 SENT 가 아닐 때
      */
     public void accept(String acceptorUserId) {
         requireStatus(SlipStatus.SENT);
+        LocalDateTime now = LocalDateTime.now();
         this.status = SlipStatus.ACCEPTED;
         this.acceptedBy = acceptorUserId;
-        this.acceptedAt = LocalDateTime.now();
+        this.acceptedAt = now;
+        this.dispatcherUserId = acceptorUserId;
+        this.dispatcherSignedAt = now;
     }
 
     /**
@@ -299,13 +331,32 @@ public class Slip extends BaseEntity {
     }
 
     /**
-     * 처리중 → 처리완료 전이. PROCESSING 에서만 허용. completedAt 기록.
+     * 처리중 → 검수중 전이 (출고 완료). PROCESSING 에서만 허용. **Slice A hotfix**: 사용자 명시
+     * "출고 완료되면 검수 단계에 돌입" — 즉 complete() 가 출고 완료를 의미하며 검수 단계로 진입.
+     * InventoryClient.deduct 는 SlipService.complete 가 본 도메인 메서드 호출 직후 처리.
      *
      * @throws BusinessException(CONFLICT) 현재 상태가 PROCESSING 이 아닐 때
      */
     public void complete() {
         requireStatus(SlipStatus.PROCESSING);
+        this.status = SlipStatus.INSPECTING;
+        // completedAt 은 검수 완료(inspect) 시점에 기록 — "처리완료" 의미상 검수까지 통과해야 진정한 완료.
+    }
+
+    /**
+     * 검수중 → 처리완료 전이 (검수 완료). INSPECTING 에서만 허용. **Slice A hotfix**: 사용자 명시
+     * "검수 단계 전표를 수락하고 확인 후 완료하면 검수 완료 처리" — 즉 inspect() 가 검수 완료를 의미.
+     * inspectorUserId, inspectorSignedAt 자동 기입 + completedAt 기록 (결재란 검수인 셀 + 완료 시각).
+     *
+     * @param inspectorUserId 검수자 user-id (창고/검수/관리자/마스터). 4-eye 패턴 권장 —
+     *     일반적으로 dispatcherUserId 와 다른 사용자 (단, 도메인 강제 X — 운영 정책).
+     * @throws BusinessException(CONFLICT) 현재 상태가 INSPECTING 이 아닐 때
+     */
+    public void inspect(String inspectorUserId) {
+        requireStatus(SlipStatus.INSPECTING);
         this.status = SlipStatus.COMPLETED;
+        this.inspectorUserId = inspectorUserId;
+        this.inspectorSignedAt = LocalDateTime.now();
         this.completedAt = LocalDateTime.now();
     }
 
@@ -353,13 +404,19 @@ public class Slip extends BaseEntity {
     }
 
     /**
-     * 반려 — SENT 또는 ACCEPTED 에서만 허용. 사유 텍스트가 있으면 메모 앞에 prepend.
+     * 반려 — SENT, ACCEPTED 또는 INSPECTING 에서만 허용. 사유 텍스트가 있으면 메모 앞에 prepend.
+     *
+     * <p>Slice A (sales-polish-2): INSPECTING 단계도 reject 허용 — 검수자가 picking 결과 거부.
+     * cancel 은 ACCEPTED 부터는 거부되므로 (CANCELABLE_STATUSES 참조) INSPECTING 단계의
+     * 거부 경로는 reject 만 가능.
      *
      * @param reasonText 반려 사유 (null/blank 이면 메모 변경 없음)
-     * @throws BusinessException(CONFLICT) 현재 상태가 SENT/ACCEPTED 둘 다 아닐 때
+     * @throws BusinessException(CONFLICT) 현재 상태가 SENT/ACCEPTED/INSPECTING 셋 다 아닐 때
      */
     public void reject(String reasonText) {
-        if (this.status != SlipStatus.SENT && this.status != SlipStatus.ACCEPTED) {
+        if (this.status != SlipStatus.SENT
+                && this.status != SlipStatus.ACCEPTED
+                && this.status != SlipStatus.INSPECTING) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "반려 가능한 상태가 아닙니다: " + this.status);
         }

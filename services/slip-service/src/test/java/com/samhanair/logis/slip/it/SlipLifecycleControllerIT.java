@@ -1,5 +1,6 @@
 package com.samhanair.logis.slip.it;
 
+import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,10 +32,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 출고 전표 풀 9단계 라이프사이클 + 입고 전표 ship/deliver 스킵 검증 + slipNo 형식 검증.
+ * 출고 전표 풀 10단계 라이프사이클 + 입고 전표 ship/deliver 스킵 검증 + slipNo 형식 검증.
  *
- * <p>출고 라이프사이클 (BE PM 명시):
- * DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → COMPLETED → SHIPPING → DELIVERED → CONFIRMED.
+ * <p>출고 라이프사이클 (BE PM 명시, Slice A 갱신 — INSPECTING 신규):
+ * DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → INSPECTING → COMPLETED → SHIPPING → DELIVERED → CONFIRMED.
  *
  * <p>입고 라이프사이클: ship/deliver 스킵 → COMPLETED 후 바로 CONFIRMED.
  * 입고 전표에 ship() 호출 시 → 409 (직전 상태 COMPLETED 가 아닌 SHIPPING 으로의 전이 불가).
@@ -155,28 +156,38 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
-        // 6) COMPLETED (WAREHOUSE) — InventoryClient.deduct(fromReservation=true).
+        // 6) INSPECTING (WAREHOUSE) — PR #21 hotfix: complete() 가 PROCESSING→INSPECTING.
+        // InventoryClient.deduct(fromReservation=true) 도 complete() 시점.
         mockMvc.perform(post("/slips/" + slipId + "/complete")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.status").value("INSPECTING"));
 
-        // 7) SHIPPING (WAREHOUSE).
+        // 7) COMPLETED (WAREHOUSE) — inspect() 가 INSPECTING→COMPLETED, inspectorUserId 자동 기입.
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.inspectorUserId").value(notNullValue()))
+                .andExpect(jsonPath("$.data.inspectorSignedAt").value(notNullValue()));
+
+        // 8) SHIPPING (WAREHOUSE).
         mockMvc.perform(post("/slips/" + slipId + "/ship")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SHIPPING"));
 
-        // 8) DELIVERED (WAREHOUSE).
+        // 9) DELIVERED (WAREHOUSE).
         mockMvc.perform(post("/slips/" + slipId + "/deliver")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DELIVERED"));
 
-        // 9) CONFIRMED (ACCOUNTANT).
+        // 10) CONFIRMED (ACCOUNTANT).
         mockMvc.perform(post("/slips/" + slipId + "/confirm")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "ACCOUNTANT"))
@@ -197,7 +208,7 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
         String slipId = objectMapper.readTree(created.getResponse().getContentAsString())
                 .get("data").get("id").asText();
 
-        // save → send → accept → process → complete (입고 normal path).
+        // save → send → accept → process → complete → inspect (PR #21 hotfix: complete 먼저, inspect 나중).
         mockMvc.perform(post("/slips/" + slipId + "/save")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "SALES")).andExpect(status().isOk());
@@ -211,6 +222,9 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
         mockMvc.perform(post("/slips/" + slipId + "/complete")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
+        mockMvc.perform(post("/slips/" + slipId + "/inspect")
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "WAREHOUSE")).andExpect(status().isOk());
 

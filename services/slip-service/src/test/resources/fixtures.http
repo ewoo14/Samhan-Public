@@ -316,3 +316,144 @@ GET {{host}}/slips/lookup-product?modelName=UNKNOWN-MODEL-9999
 Authorization: Bearer {{salesToken}}
 Accept: application/json
 
+###############################################################################
+### 시나리오 10: Slice A (Sales Polish 2) — INSPECTING 단계 + dispatcher/inspector 자동 기입
+### BE 신규 spec:
+###   - SlipStatus.INSPECTING 신규 (PROCESSING → INSPECTING → COMPLETED)
+###   - Slip.dispatcherUserId/SignedAt/inspectorUserId/SignedAt 4 필드 자동 기입
+###   - SlipLine.specification VARCHAR(50) 신규 (선택)
+###   - POST /slips/{id}/inspect 신규 endpoint (WAREHOUSE/INVENTORY/MANAGER/MASTER)
+###############################################################################
+
+### 10-a: specification 필드 포함 출고전표 신규 등록
+POST {{host}}/slips
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "slipType": "OUTBOUND",
+  "slipDate": "2026-05-04",
+  "sourceWarehouseId": "{{hqWarehouseId}}",
+  "destinationWarehouseId": "{{vehicleWarehouseId}}",
+  "partnerId": "{{testPartnerId}}",
+  "partnerName": "(주)윌리-정현수",
+  "deliveryTag": "DAY",
+  "memo": "Slice A 인스펙트 풀 라이프사이클 검증",
+  "lines": [
+    {
+      "productId": "{{testProductId}}",
+      "productName": "시스템에어컨 4Way",
+      "modelName": "AJ040RXH4BC1",
+      "specification": "4HP",
+      "quantity": 2,
+      "unitPrice": 1850000,
+      "note": "메인 라인"
+    },
+    {
+      "productId": "{{testProductId}}",
+      "productName": "유선 리모컨",
+      "modelName": "MWR-WE10N",
+      "specification": "220V",
+      "quantity": 2,
+      "unitPrice": 85000,
+      "note": "리모컨"
+    },
+    {
+      "productId": "{{testProductId}}",
+      "productName": "WIFI판넬",
+      "modelName": "PC1NWSK3NW",
+      "quantity": 1,
+      "unitPrice": 120000,
+      "note": "specification 필드 누락 — null 허용 검증"
+    }
+  ]
+}
+
+> {%
+client.global.set("inspectSlipId", response.body.data.id);
+%}
+
+### 10-b: save → send (SALES)
+POST {{host}}/slips/{{inspectSlipId}}/save
+Authorization: Bearer {{salesToken}}
+
+###
+POST {{host}}/slips/{{inspectSlipId}}/send
+Authorization: Bearer {{salesToken}}
+
+### 10-c: accept (WAREHOUSE) — 응답에 dispatcherUserId/SignedAt 자동 기입 검증
+### 기대: $.data.dispatcherUserId == X-User-Id, $.data.dispatcherSignedAt != null
+POST {{host}}/slips/{{inspectSlipId}}/accept
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{inspectSlipId}}/process
+Authorization: Bearer {{warehouseToken}}
+
+### 10-d: complete (WAREHOUSE) — Slice A 신규: PROCESSING → INSPECTING (이전: COMPLETED)
+### 기대: $.data.status == "INSPECTING"
+POST {{host}}/slips/{{inspectSlipId}}/complete
+Authorization: Bearer {{warehouseToken}}
+
+### 10-e: inspect (WAREHOUSE) — INSPECTING → COMPLETED, inspectorUserId/SignedAt 자동 기입
+### 기대: $.data.status == "COMPLETED", $.data.inspectorUserId == X-User-Id
+POST {{host}}/slips/{{inspectSlipId}}/inspect
+Authorization: Bearer {{warehouseToken}}
+
+### 10-f: ship → deliver → confirm (출고전표 풀 10단계 마무리)
+POST {{host}}/slips/{{inspectSlipId}}/ship
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{inspectSlipId}}/deliver
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{inspectSlipId}}/confirm
+Authorization: Bearer {{accountantToken}}
+
+###############################################################################
+### 시나리오 11: inspect 권한/상태 가드 음성 검증
+###############################################################################
+
+### 11-a: SALES 가 inspect 시도 → 403 (WAREHOUSE/INVENTORY/MANAGER/MASTER 만 허용)
+### (10-d 이후 INSPECTING 상태 가정 — 실제 실행 시 별도 fixture 필요할 수 있음)
+POST {{host}}/slips/{{inspectSlipId}}/inspect
+Authorization: Bearer {{salesToken}}
+
+### 11-b: DRAFT 상태 전표에 inspect 시도 → 409 CONFLICT
+### 새 전표 만들고 즉시 inspect — INSPECTING 이 아니므로 거부
+POST {{host}}/slips
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "slipType": "OUTBOUND",
+  "slipDate": "2026-05-04",
+  "sourceWarehouseId": "{{hqWarehouseId}}",
+  "destinationWarehouseId": "{{vehicleWarehouseId}}",
+  "partnerId": "{{testPartnerId}}",
+  "partnerName": "음성 검증",
+  "deliveryTag": "DAY",
+  "memo": "잘못된 상태에서 inspect 시도",
+  "lines": [
+    {
+      "productId": "{{testProductId}}",
+      "productName": "테스트",
+      "modelName": "MOD-X",
+      "specification": "TEST",
+      "quantity": 1,
+      "unitPrice": 50000,
+      "note": ""
+    }
+  ]
+}
+
+> {%
+client.global.set("draftSlipId", response.body.data.id);
+%}
+
+### DRAFT → inspect 시도 → 409 (CONFLICT, NOT_FOUND 가 아님)
+POST {{host}}/slips/{{draftSlipId}}/inspect
+Authorization: Bearer {{warehouseToken}}
+

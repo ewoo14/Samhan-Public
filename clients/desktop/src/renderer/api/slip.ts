@@ -50,16 +50,52 @@ export interface SlipLineDetail {
   productId: string
   productName: string | null
   modelName: string | null
+  /**
+   * 규격 (예: "220V", "4HP") — Slice A 신규 (피드백 #4 / Designer components.md § 3).
+   * BE `SlipLineResponse.specification` (varchar 50, nullable).
+   */
+  specification: string | null
   quantity: number
   unitPrice: string
   lineTotal: string
   note: string | null
 }
 
+/**
+ * 결재란 출고인/검수인 응답 — Slice A 신규 (Designer README.md § 2.3 + ux-flow.md § 2.4).
+ * BE 가 user-service lookup 후 fullName 포함 (Option A 권장).
+ */
+export interface SlipApprovalActor {
+  /** 사용자 UUID — 화면 미노출 (UUID 비공개 가드). */
+  userId: string
+  /** 사용자 이름 — 결재란 셀에 표시. */
+  fullName: string
+  /** ISO 8601 timestamp — 결재란 셀에 HH:mm 부분만 표시. */
+  signedAt: string
+}
+
 /** 상세 응답 — BE `SlipDetailResponse`. */
 export interface SlipDetail extends SlipSummary {
   memo: string | null
   lines: SlipLineDetail[]
+  /**
+   * ACCEPTED 트랜지션 시점 자동 채워지는 출고인 (피드백 #9).
+   * 미도달 시 undefined / null. Designer ux-flow.md § 2.1 참고.
+   */
+  dispatcher?: SlipApprovalActor | null
+  /**
+   * INSPECTING 트랜지션 시점 자동 채워지는 검수인 (피드백 #9).
+   * 미도달 시 undefined / null. Designer ux-flow.md § 2.2 참고.
+   */
+  inspector?: SlipApprovalActor | null
+  /** 담당부서 (BE 가 사용자 부서 lookup 후 전달). */
+  ownerDepartment?: string | null
+  /** 담당자 (slip.createdBy 의 fullName). */
+  ownerFullName?: string | null
+  /** 배송지 — DispatchView 에서 14pt 본문으로 표시. */
+  shippingAddress?: string | null
+  /** 거래처 연락처 — DispatchView 에서 14pt 본문으로 표시. */
+  contactPhone?: string | null
 }
 
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */
@@ -67,6 +103,11 @@ export interface SlipLineInput {
   productId: string
   productName?: string
   modelName?: string
+  /**
+   * 규격 (Slice A 신규 — Designer components.md § 3).
+   * 빈 값 / undefined 모두 허용. DB column varchar(50).
+   */
+  specification?: string
   quantity: number
   unitPrice: string
   note?: string
@@ -146,6 +187,60 @@ export async function createSlip(
 }
 
 /**
+ * 라인 추가 요청 body — BE `AddLineRequest`. DRAFT/SAVED 단계만 허용.
+ */
+export interface AddLineRequest {
+  productId: string
+  productName?: string
+  modelName?: string
+  specification?: string
+  quantity: number
+  unitPrice: string
+  note?: string
+}
+
+/**
+ * 라인 추가 — DRAFT/SAVED 단계만. 다른 단계에서 호출 시 BE 가 409 반환.
+ */
+export async function addLine(slipId: string, body: AddLineRequest): Promise<SlipDetail> {
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>(`/slips/${slipId}/lines`, body)
+  return res.data.data
+}
+
+/**
+ * 라인 제거 — DRAFT/SAVED 단계만. orphan removal. 응답 없음 (204).
+ */
+export async function removeLine(slipId: string, lineId: string): Promise<void> {
+  await apiClient.delete(`/slips/${slipId}/lines/${lineId}`)
+}
+
+/**
+ * 전표 복사 — 기존 전표의 헤더 + 라인을 그대로 복사하여 신규 DRAFT 전표 생성.
+ * BE 별도 endpoint 없이 클라이언트에서 createSlip 으로 동등 본문 POST.
+ */
+export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
+  const body: CreateSlipRequest = {
+    slipType: source.slipType,
+    sourceWarehouseId: source.sourceWarehouseId ?? undefined,
+    destinationWarehouseId: source.destinationWarehouseId ?? undefined,
+    partnerId: source.partnerId ?? undefined,
+    partnerName: source.partnerName ?? undefined,
+    deliveryTag: source.deliveryTag ?? undefined,
+    memo: source.memo ?? undefined,
+    lines: source.lines.map((l) => ({
+      productId: l.productId,
+      productName: l.productName ?? undefined,
+      modelName: l.modelName ?? undefined,
+      specification: l.specification ?? undefined,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      note: l.note ?? undefined,
+    })),
+  }
+  return createSlip(body)
+}
+
+/**
  * 모델명 → product 요약 lookup. SlipFormPage 라인 입력 onBlur 시 호출.
  *
  * 200 응답 시 productName / sellingPrice 자동 fill 에 사용한다.
@@ -168,9 +263,10 @@ export async function lookupProductByModelName(
  *
  * - `save`     DRAFT → SAVED
  * - `send`     SAVED → SENT
- * - `accept`   SENT → ACCEPTED
+ * - `accept`   SENT → ACCEPTED (출고인 자동 채움)
  * - `process`  ACCEPTED → PROCESSING
- * - `complete` PROCESSING → COMPLETED
+ * - `inspect`  PROCESSING → INSPECTING (검수인 자동 채움) — Slice A 신규
+ * - `complete` INSPECTING → COMPLETED (Slice A 에서 PROCESSING → COMPLETED 가 INSPECTING 거침)
  * - `ship`     COMPLETED → SHIPPING (출고전표 한정)
  * - `deliver`  SHIPPING → DELIVERED (출고전표 한정)
  * - `confirm`  DELIVERED→CONFIRMED (출고) / COMPLETED→CONFIRMED (입고)
@@ -182,6 +278,7 @@ export type SlipTransitionAction =
   | 'send'
   | 'accept'
   | 'process'
+  | 'inspect'
   | 'complete'
   | 'ship'
   | 'deliver'

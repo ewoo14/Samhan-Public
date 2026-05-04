@@ -96,6 +96,7 @@ export function canTransitionSlip(
     | 'send'
     | 'accept'
     | 'process'
+    | 'inspect'
     | 'complete'
     | 'ship'
     | 'deliver'
@@ -115,6 +116,10 @@ export function canTransitionSlip(
     case 'complete':
     case 'ship':
     case 'deliver':
+      return ['WAREHOUSE', 'INVENTORY', 'MANAGER', 'MASTER'].includes(role)
+    case 'inspect':
+      // Slice A 신규 (Designer ux-flow.md § 3.3 권한 매트릭스).
+      // 검수원/창고원/MANAGER/MASTER. INSPECTOR role 미존재 시 WAREHOUSE 가 검수도 수행.
       return ['WAREHOUSE', 'INVENTORY', 'MANAGER', 'MASTER'].includes(role)
     case 'confirm':
       return ['ACCOUNTANT', 'MANAGER', 'MASTER'].includes(role)

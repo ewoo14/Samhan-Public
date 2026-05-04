@@ -9,7 +9,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** 전표 상세 응답 — 라인 포함. 단건 GET 및 mutation 응답에 사용. */
+/**
+ * 전표 상세 응답 — 라인 포함. 단건 GET 및 mutation 응답에 사용.
+ * Slice A (sales-polish-2): {@code dispatcherUserId/SignedAt} +
+ * {@code inspectorUserId/SignedAt} 필드 신규 노출 (사용자 피드백 #9).
+ * FE 가 진행 단계 progress bar + 작업지시서 결재란 출고인/검수인 셀 자동 표시에 사용.
+ */
 public record SlipDetailResponse(
         UUID id,
         SlipType slipType,
@@ -28,6 +33,10 @@ public record SlipDetailResponse(
         LocalDateTime acceptedAt,
         LocalDateTime completedAt,
         LocalDateTime confirmedAt,
+        String dispatcherUserId,
+        LocalDateTime dispatcherSignedAt,
+        String inspectorUserId,
+        LocalDateTime inspectorSignedAt,
         Long version,
         List<SlipLineResponse> lines) {
 
@@ -50,6 +59,10 @@ public record SlipDetailResponse(
                 slip.getAcceptedAt(),
                 slip.getCompletedAt(),
                 slip.getConfirmedAt(),
+                slip.getDispatcherUserId(),
+                slip.getDispatcherSignedAt(),
+                slip.getInspectorUserId(),
+                slip.getInspectorSignedAt(),
                 slip.getVersion(),
                 slip.getLines().stream().map(SlipLineResponse::from).toList());
     }

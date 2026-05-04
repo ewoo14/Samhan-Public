@@ -85,16 +85,38 @@ button {
   overflow: auto;
 }
 
+/*
+ * AppHeader — Slice A (sales-polish-2-slice) 갱신
+ * Designer wireframes.md § 1.4 + tokens.md § 1.2 인용:
+ * - 56px 고정 높이, 1px 하단 line, 24px x-padding
+ * - 화면명 20px 600 weight, slipNo bracket meta 14px secondary, gap 8px
+ */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-4);
+  height: var(--page-header-h, 56px);
+  background: var(--page-header-bg, #fff);
+  border-bottom: 1px solid var(--line-default);
+  padding: 0 var(--page-header-pad-x, 24px);
+  margin: calc(var(--space-6) * -1) calc(var(--space-6) * -1) var(--space-4);
 }
 
 .app-header h2 {
   margin: 0;
-  font-size: var(--font-size-2xl);
+  font-size: var(--page-title-size, 20px);
+  font-weight: var(--page-title-weight, 600);
+  color: var(--page-title-color, var(--ink-primary));
+  display: flex;
+  align-items: center;
+  gap: var(--page-title-meta-gap, 8px);
+}
+
+.app-header-meta {
+  font-size: var(--page-title-meta-size, 14px);
+  color: var(--page-title-meta-color, var(--ink-secondary));
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .app-header-actions {
@@ -203,6 +225,96 @@ button {
   display: block;
   font-size: var(--font-size-base);
   color: var(--color-neutral-800);
+}
+
+/* SlipDetailPage — 라인 표 + 좌측 넘버링 + 행 액션 툴바 + 하단 액션 */
+.slip-line-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+.slip-line-table th,
+.slip-line-table td {
+  border: 1px solid var(--color-neutral-300);
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+}
+.slip-line-table thead th {
+  background: var(--color-neutral-100);
+  font-weight: 600;
+  text-align: center;
+}
+.slip-line-table .col-no      { width: 44px;  text-align: center; padding: 0; }
+.slip-line-table .col-model   { width: 180px; }
+.slip-line-table .col-spec    { width: 100px; text-align: center; }
+.slip-line-table .col-qty     { width: 80px;  text-align: right; }
+.slip-line-table .col-price,
+.slip-line-table .col-total   { width: 130px; text-align: right; }
+.slip-line-table tr.is-selected {
+  background: var(--color-brand-50, #EFF6FF);
+}
+.slip-line-table .slip-line-empty {
+  text-align: center;
+  color: var(--color-neutral-500);
+  font-style: italic;
+}
+
+/** 좌측 넘버링 버튼 — 클릭 가능 visual */
+.slip-line-no-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-neutral-300);
+  background: var(--color-neutral-50);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.slip-line-no-btn:hover {
+  background: var(--color-brand-50, #EFF6FF);
+  border-color: var(--color-brand-500, #3B82F6);
+}
+.slip-line-no-btn.is-selected {
+  background: var(--color-brand-500, #3B82F6);
+  border-color: var(--color-brand-500, #3B82F6);
+  color: #FFF;
+}
+
+/** 행 액션 툴바 */
+.slip-line-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 6px;
+}
+.slip-line-toolbar-label {
+  margin-right: auto;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-700);
+}
+.slip-line-hint {
+  margin: var(--space-3) 0 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-500);
+  font-style: italic;
+}
+
+/** 하단 액션 — 전표 복사 / 삭제 / 완료 (사용자 명시) */
+.slip-detail-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-neutral-200);
 }
 
 /* ==========================================================================
@@ -398,342 +510,515 @@ button {
   color: black;
 }
 
-/* 거래명세서 */
-.invoice-page header.invoice-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 2px solid black;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-}
-
-.invoice-brand .invoice-logo-placeholder {
-  font-weight: bold;
-  font-size: 20px;
-  border: 1px solid black;
-  padding: 4px 12px;
-  display: inline-block;
-}
-
-.invoice-brand .invoice-title {
-  font-size: 24px;
-  font-weight: bold;
-  margin-top: 8px;
-  letter-spacing: 0.2em;
-}
-
-.invoice-meta {
-  text-align: right;
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.invoice-meta .invoice-seal {
-  margin-top: 4px;
-  border: 1px dashed black;
-  display: inline-block;
-  padding: 4px 8px;
-}
-
-.invoice-parties {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.invoice-party {
-  border: 1px solid black;
-  padding: 8px;
-}
-
-.invoice-party h4 {
-  margin: 0 0 4px;
-  font-size: 12px;
-  border-bottom: 1px solid black;
-  padding-bottom: 4px;
-}
-
-.invoice-party p {
-  margin: 2px 0;
-  font-size: 11px;
-}
-
-.invoice-amount {
-  border: 1px solid black;
-  padding: 8px;
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: space-between;
-  font-weight: bold;
-}
-
-.invoice-table,
-.dispatch-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 12px;
-}
-
-.invoice-table th,
-.invoice-table td,
-.dispatch-table th,
-.dispatch-table td {
-  border: 1px solid black;
-  padding: 4px 6px;
-  font-size: 11px;
-}
-
-.invoice-table th,
-.dispatch-table th {
-  background: #eee;
-  text-align: center;
-}
-
-.invoice-table td.num,
-.dispatch-table td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.invoice-table tfoot td,
-.dispatch-table tfoot td {
-  font-weight: bold;
-  background: #fafafa;
-}
-
-.invoice-footer {
-  border-top: 1px solid black;
-  padding-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* ==========================================================================
-   출고전표 작업지시서 (Designer print-spec.md § 2 인용 — A4 portrait)
-
-   세로 A4 (210mm × 297mm), 12mm 여백.
-   Pretendard 11pt 본문, 모델명+품목명 2줄 셀, 60mm × 40mm 서명 박스.
-   본 슬라이스 (sales-form-polish) 에서 가로→세로 정정 + 이미지 2 충실 반영.
-   ========================================================================== */
-
-.dispatch-page {
-  width: 186mm;            /* A4 width 210mm - 12mm * 2 */
+/* PR #21 hotfix v2 — 개발책임자 첨부 이미지 기준 거래명세서 큰 재디자인.
+ * A4 landscape, 좌측 SAMSUNG 로고 + 거래명세서 + 공급받는자 박스, 우측 공급자 4행 그리드,
+ * 배송지/금액 한 줄, 6-col 라인 표 (월/일|품목명|수량|단가|공급가액|부가세),
+ * 푸터 5칸 합계 (수량/공급가액/VAT/합계/인수), 예금주 + 은행 + 합계.
+ */
+.invoice-page {
+  width: 277mm;
   margin: 0 auto;
   font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', sans-serif;
   font-size: 11pt;
   line-height: 1.4;
   color: #000;
   background: #FFF;
-  padding: 12mm;
-  border: 1px solid var(--line-default);
+  padding: 10mm;
 }
 
-.dispatch-header {
+.invoice-top {
   display: grid;
-  grid-template-columns: 1fr 80mm;
-  align-items: start;
-  gap: 6mm;
-  margin-bottom: 6mm;
+  grid-template-columns: 1fr 165mm;
+  gap: 4mm;
+  margin-bottom: 3mm;
 }
 
-.dispatch-brand {
+.invoice-top-left {
   display: flex;
   flex-direction: column;
-  gap: 3mm;
+  gap: 1mm;
 }
 
-.dispatch-brand .dispatch-logo-placeholder {
+/* 작은 SAMSUNG 로고 — 좌측 상단, 배경색 없음 */
+.invoice-logo-placeholder {
   font-weight: 700;
-  font-size: 14pt;
-  letter-spacing: 0.05em;
-  border: 1px solid #000;
-  padding: 1mm 4mm;
-  display: inline-block;
-  width: fit-content;
-}
-
-.dispatch-brand .dispatch-partner-name {
-  font-size: 12pt;
-  font-weight: 500;
-  margin-top: 1mm;
-}
-
-.dispatch-brand .dispatch-slip-no {
-  margin-top: 3mm;
-  border: 1px solid #000;
-  padding: 2mm 4mm;
-  display: inline-block;
-  width: fit-content;
   font-size: 11pt;
-  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  color: #1565C0;
+  display: inline-block;
+  padding: 0 0 1mm 0;
 }
 
-.dispatch-brand .dispatch-warehouse {
-  margin-top: 2mm;
-  font-size: 10pt;
-  color: #333;
-}
-
-/* 우상단 5칸 담당 박스 */
-.dispatch-roles {
-  display: grid;
-  grid-template-columns: 40mm 40mm;
-  border: 1px solid #000;
-  width: 80mm;
-}
-
-.dispatch-role-box {
-  border: 1px solid #000;
-  padding: 2mm 3mm;
-  min-height: 12mm;
-  display: flex;
-  flex-direction: column;
-}
-
-.dispatch-role-box.full {
-  grid-column: 1 / -1;
-  min-height: 18mm;
-}
-
-.dispatch-role-label {
-  background: #F0F0F0;
-  font-size: 9pt;
-  color: #555;
-  margin: -2mm -3mm 1mm -3mm;
-  padding: 1mm 3mm;
+/* 거래명세서 타이틀 — 거래처명 박스 기준 좌우 가운데 정렬 */
+.invoice-title {
+  font-size: 22pt;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #000;
   text-align: center;
+  padding: 1mm 0 2mm 0;
+}
+
+.invoice-receiver-box {
+  border: 1px solid #000;
+  padding: 4mm;
+  text-align: center;
+}
+
+.invoice-receiver-name {
+  font-size: 13pt;
+  font-weight: 700;
+  margin-bottom: 2mm;
+}
+
+.invoice-receiver-address {
+  font-size: 10pt;
+  margin-bottom: 1mm;
+}
+
+.invoice-receiver-phone {
+  font-size: 10pt;
   font-weight: 600;
 }
 
-.dispatch-role-value {
+.invoice-supplier {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10pt;
+}
+
+.invoice-supplier td {
+  border: 1px solid #000;
+  padding: 2mm 3mm;
+  vertical-align: middle;
+}
+
+.invoice-supplier-side {
+  background: #F0F0F0;
+  text-align: center;
+  font-weight: 700;
+  width: 8mm;
   font-size: 11pt;
-  font-weight: 500;
-  flex: 1;
+  line-height: 1.3;
+}
+
+.invoice-supplier-label {
+  background: #F5F5F5;
+  font-weight: 700;
+  text-align: center;
+  width: 22mm;
+}
+
+.invoice-supplier-value {
+  font-weight: 600;
+}
+
+.invoice-supplier .seal-cell {
+  position: relative;
+}
+
+.invoice-supplier .invoice-seal {
+  display: inline-block;
+  margin-left: 6mm;
+  border: 1.5pt solid #C00;
+  border-radius: 50%;
+  padding: 1mm 3mm;
+  color: #C00;
+  font-size: 9pt;
+  font-weight: 700;
+  transform: rotate(-8deg);
+}
+
+.invoice-mid-row {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #000;
+  margin-bottom: 3mm;
+}
+
+.invoice-shipping {
+  padding: 2mm 4mm;
+  border-bottom: 1px solid #000;
+  font-size: 11pt;
+  display: flex;
+  align-items: baseline;
+  gap: 4mm;
+}
+
+.invoice-shipping .label {
+  font-weight: 700;
+  background: #FFF59D;
+  padding: 0 2mm;
+}
+
+.invoice-amount-row {
+  padding: 2mm 4mm;
+  font-size: 11pt;
+  display: flex;
+  align-items: baseline;
+  gap: 4mm;
+}
+
+.invoice-amount-row .label {
+  font-weight: 700;
+  background: #FFF59D;
+  padding: 0 2mm;
+}
+
+.invoice-amount-row .korean {
+  font-weight: 600;
+}
+
+.invoice-amount-row .number {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 13pt;
+}
+
+/* 라인 표 6-col (월/일|품목명|수량|단가|공급가액|부가세) — 가로 + 세로 구분선 모두 (검은색) */
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #000;
+  font-size: 11pt;
+}
+
+.invoice-table th,
+.invoice-table td {
+  border: 1px solid #000;
+  padding: 1.5mm 3mm;
+  vertical-align: middle;
+}
+
+.invoice-table thead th {
+  background: #F0F0F0;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid #000;
+  font-size: 10pt;
+}
+
+.invoice-table .col-date    { width: 16mm; text-align: center; font-variant-numeric: tabular-nums; }
+.invoice-table .col-product { text-align: left; font-weight: 600; }
+.invoice-table .col-qty     { width: 18mm; text-align: center; font-variant-numeric: tabular-nums; }
+.invoice-table .col-price   { width: 28mm; text-align: right;  font-variant-numeric: tabular-nums; }
+.invoice-table .col-supply  { width: 30mm; text-align: right;  font-variant-numeric: tabular-nums; }
+.invoice-table .col-vat     { width: 24mm; text-align: right;  font-variant-numeric: tabular-nums; }
+
+.invoice-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 합계 행 (5칸) */
+.invoice-totals {
+  display: grid;
+  grid-template-columns: 1fr 2fr 2fr 2fr 1fr;
+  border: 1px solid #000;
+  border-top: none;
+}
+
+.invoice-total-cell {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  border-right: 1px solid #000;
+  padding: 2mm 3mm;
+  gap: 3mm;
+}
+
+.invoice-total-cell:last-child {
+  border-right: none;
+}
+
+.invoice-total-cell .label {
+  background: #F0F0F0;
+  font-weight: 700;
+  font-size: 10pt;
+  padding: 1mm 3mm;
+}
+
+.invoice-total-cell .value {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 11pt;
+}
+
+.invoice-total-cell.strong .value {
+  font-weight: 700;
+  font-size: 12pt;
+}
+
+/* 예금주 + 은행 + 합계 */
+.invoice-bank-row {
+  margin-top: 3mm;
+  padding: 2mm 4mm;
+  background: #FFF59D;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+.invoice-bank-amount {
+  font-size: 13pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   출고전표 작업지시서 — sales-polish-2-slice (Slice A) 정정
+   Designer print-spec.md § 3 + tokens.md § 1.3 인용.
+
+   A4 portrait 210mm × 297mm, 12mm 여백 (본문 186mm × 273mm).
+   본문 14pt (배송지/연락처/특이사항 — 피드백 #6).
+   결재란 1×5 horizontal grid 38mm × 22mm (피드백 #7).
+   라인 표 7-col (월/일/모델명/품목명/규격/수량) — 빈 열 제거 (피드백 #5).
+   서명 박스 80mm × 35mm × 2 가로 나란히 (피드백 #8).
+   ========================================================================== */
+
+/* PR #21 hotfix v2 — 개발책임자 첨부 이미지 기준 작업지시서 큰 재디자인.
+ * 4-col 라인 표 (모델명/품목명/규격/수량), SAMSUNG 로고 스트립, 큰 거래처 박스 + 컴팩트 결재란,
+ * 일련번호/창고명(빨강) 한 줄, 박스 형태 배송지/연락처/특이사항, 라벨만 서명, 하단 책임 안내문.
+ */
+.dispatch-page {
+  width: var(--print-content-w, 186mm);
+  margin: 0 auto;
+  font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', sans-serif;
+  font-size: 11pt;
+  line-height: 1.4;
+  color: #000;
+  background: #FFF;
+  padding: var(--print-page-margin, 12mm);
+}
+
+/* 상단 SAMSUNG 로고 — 작게, 배경색 없음 */
+.dispatch-logo-strip {
+  padding: 2mm 0;
+  margin-bottom: 2mm;
+}
+
+.dispatch-logo-placeholder {
+  font-weight: 700;
+  font-size: 13pt;
+  letter-spacing: 0.05em;
+  color: #1565C0;
+}
+
+/* 거래처명 박스 (좌, 넓음) + 여백 + 결재란 5칸 (우, 작음) — 분리된 두 영역 */
+.dispatch-header-row {
+  display: grid;
+  grid-template-columns: 1fr 90mm;
+  gap: 6mm;
+  margin-bottom: 3mm;
+}
+
+.dispatch-partner-name-box {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 22pt;
+  font-weight: 700;
+  padding: 6mm 4mm;
+  border: 1px solid #000;
   text-align: center;
 }
 
-/* 라인 표 */
+.dispatch-roles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid #000;
+  /* 거래처명 박스 높이와 맞추기 위해 grid stretch 사용 — height 고정 제거 */
+}
+
+.dispatch-role-cell {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #000;
+  min-height: 0;
+}
+
+.dispatch-role-cell:last-child {
+  border-right: none;
+}
+
+.dispatch-role-label {
+  background: #F5F5F5;
+  border-bottom: 1px solid #000;
+  font-size: 7pt;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.5mm 0;
+}
+
+.dispatch-role-value {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3mm;
+  padding: 0.5mm;
+}
+
+.dispatch-role-value .name {
+  font-size: 8pt;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.dispatch-role-value .time {
+  font-size: 6.5pt;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 일련번호 박스 (좌) + 출하창고 빨강 (우) */
+.dispatch-meta-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  margin-bottom: 3mm;
+  padding: 2mm 0;
+}
+
+.dispatch-slip-no-box {
+  border: 1px solid #000;
+  padding: 2mm 6mm;
+  font-size: 13pt;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  justify-self: start;
+}
+
+.dispatch-warehouse-emphasis {
+  justify-self: end;
+  color: #D32F2F;
+  font-size: 14pt;
+  font-weight: 700;
+  border: 1.5pt solid #D32F2F;
+  padding: 2mm 6mm;
+}
+
+/* 라인 표 4-col (모델명/품목명/규격/수량) — 가로 + 세로 구분선 모두 (검은색) */
 .dispatch-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 4mm;
+  margin-top: 0;
+  border: 1px solid #000;
+  font-size: 11pt;
 }
 
 .dispatch-table th,
 .dispatch-table td {
   border: 1px solid #000;
   padding: 2mm 3mm;
-  font-size: 10pt;
   vertical-align: middle;
 }
 
-.dispatch-table th {
+.dispatch-table thead th {
   background: #F0F0F0;
-  font-weight: 600;
+  font-weight: 700;
   text-align: center;
+  font-size: 11pt;
+  border: 1px solid #000;
 }
 
-.dispatch-table .col-month  { width: 8mm; text-align: center; }
-.dispatch-table .col-day    { width: 8mm; text-align: center; }
-.dispatch-table .col-spec   { width: 24mm; text-align: center; }
-.dispatch-table .col-qty    { width: 18mm; text-align: right; font-variant-numeric: tabular-nums; }
-
-.dispatch-table .product-cell {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-}
-
-.dispatch-table .product-cell .model-name {
-  font-weight: 600;
-  font-size: 10pt;
-  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
-}
-
-.dispatch-table .product-cell .product-name {
-  color: #333;
-  font-size: 9pt;
-  margin-top: 0.5mm;
-}
+.dispatch-table .col-model   { width: 38mm; text-align: left;  font-weight: 600; }
+.dispatch-table .col-product { text-align: left; }
+.dispatch-table .col-spec    { width: 36mm; text-align: center; font-size: 13pt; font-weight: 600; }
+.dispatch-table .col-qty     { width: 20mm; text-align: center; font-size: 13pt; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .dispatch-table tfoot td {
   font-weight: 700;
   background: #FAFAFA;
+  border-top: 1px solid #000;
+  border-bottom: none;
 }
 
-.dispatch-table .num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+.dispatch-table tfoot td.total-label { text-align: center; font-size: 12pt; }
+.dispatch-table tfoot td.total-qty   { text-align: center; font-size: 13pt; }
 
-/* 배송지 / 연락처 / 특이사항 */
-.dispatch-section {
+/* 하단 묶음 — 배송지/연락처/특이사항 박스, 안내문, 서명 라벨, 책임 안내 */
+.dispatch-bottom-group {
+  page-break-inside: avoid;
+  break-inside: avoid;
   margin-top: 4mm;
+}
+
+.dispatch-address-box {
   border: 1px solid #000;
-  padding: 3mm;
-}
-
-.dispatch-section .label {
-  font-size: 9pt;
-  color: #555;
-  margin-bottom: 1mm;
+  padding: 4mm;
+  font-size: 14pt;
   font-weight: 600;
-}
-
-.dispatch-section .content {
-  font-size: 10pt;
-  line-height: 1.5;
-}
-
-/* 안내 / 경고 문구 */
-.dispatch-notice {
-  margin-top: 4mm;
   text-align: center;
-  font-size: 11pt;
-  color: #000;
-  line-height: 1.5;
+  margin-bottom: 2mm;
 }
 
-.dispatch-warning {
-  margin-top: 2mm;
+.dispatch-info-box {
+  border: 1px solid #000;
+  padding: 3mm 4mm;
+  margin-bottom: 2mm;
+  display: flex;
+  align-items: baseline;
+  gap: 6mm;
+}
+
+.dispatch-info-box .label {
+  font-size: 13pt;
+  font-weight: 700;
+  min-width: 18mm;
+  flex-shrink: 0;
+}
+
+/* 라벨은 좌측 정렬 유지, 데이터는 우측 영역에서 가운데 정렬 (사용자 명시) */
+.dispatch-info-box .content {
+  flex: 1;
+  font-size: 14pt;
+  font-weight: 600;
   text-align: center;
-  font-size: 10pt;
-  color: #C00;
-  font-weight: 500;
 }
 
-/* 서명 박스 (60mm × 40mm — 사용자 요구) */
+.dispatch-driver-call-notice {
+  text-align: center;
+  font-size: 12pt;
+  font-weight: 600;
+  margin: 4mm 0 2mm 0;
+}
+
+.dispatch-confirm-notice {
+  font-size: 12pt;
+  font-weight: 700;
+  margin: 3mm 0 2mm 0;
+  border-top: 1px solid #000;
+  padding-top: 3mm;
+}
+
 .dispatch-signatures {
-  margin-top: 6mm;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8mm;
-  page-break-inside: avoid;
+  margin: 4mm 0;
 }
 
-.dispatch-sign-box {
-  border: 1px solid #000;
+.dispatch-sign-label-only {
+  font-size: 12pt;
+  font-weight: 700;
+  padding: 2mm 0;
 }
 
-.dispatch-sign-label {
-  padding: 2mm 3mm;
-  border-bottom: 1px solid #000;
-  font-size: 10pt;
-  font-weight: 600;
+.dispatch-liability-notice {
   text-align: center;
-  background: #F0F0F0;
-}
-
-.dispatch-sign-area {
-  width: 60mm;
-  height: 40mm;
-  margin: 0 auto;
+  font-size: 11pt;
+  font-weight: 600;
+  margin-top: 4mm;
+  line-height: 1.6;
 }
 
 /* @media print — 인쇄 시 사이드바/헤더/no-print 클래스 모두 숨김
@@ -774,11 +1059,18 @@ button {
   thead { display: table-header-group; }
   tfoot { display: table-footer-group; }
 
-  /* DispatchView 는 세로 A4, 12mm 여백 */
+  /* DispatchView 는 세로 A4, 12mm 여백 (Slice A — Designer print-spec.md § 2.1) */
   .dispatch-page {
     border: none;
     padding: 0;
     width: 100%;
+  }
+
+  /* 서명 박스/하단 group 마지막 페이지에서 잘리지 않음 (피드백 #8) */
+  .dispatch-bottom-group,
+  .dispatch-signatures {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   @page {

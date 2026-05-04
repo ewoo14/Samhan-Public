@@ -8,6 +8,7 @@ const baseLine: LineDraft = {
   productId: 'p-aj040',
   modelName: 'AJ040RXH4BC1',
   productName: '시스템에어컨 4Way 4HP',
+  specification: '4HP', // Slice A 신규 (피드백 #4)
   quantity: '2',
   unitPrice: '1850000',
   lookupError: null,
@@ -18,6 +19,7 @@ const noopHandlers = {
   onSelect: () => undefined,
   onModelNameChange: () => undefined,
   onModelNameBlur: () => undefined,
+  onSpecificationChange: () => undefined,
   onQuantityChange: () => undefined,
   onUnitPriceChange: () => undefined,
   onDelete: () => undefined,
@@ -94,11 +96,26 @@ export const Empty: Story = {
       productId: null,
       modelName: '',
       productName: '',
+      specification: '',
       quantity: '1',
       unitPrice: '0',
       lookupError: null,
       lookupLoading: false,
     },
+  },
+}
+
+/** 규격 입력 — Slice A 신규 컬럼 동작 확인 (피드백 #4). */
+export const WithSpecification: Story = {
+  args: {
+    line: { ...baseLine, specification: '220V' },
+  },
+}
+
+/** 규격 빈 값 — placeholder "예: 220V" 표시. */
+export const EmptySpecification: Story = {
+  args: {
+    line: { ...baseLine, specification: '' },
   },
 }
 
@@ -116,6 +133,7 @@ export const FullTable: Story = {
           productId: 'p-mwr10',
           modelName: 'MWR-WE10N',
           productName: '유선 리모컨',
+          specification: '220V',
           quantity: '2',
           unitPrice: '85000',
           lookupError: null,
@@ -126,6 +144,7 @@ export const FullTable: Story = {
           productId: 'p-pc1',
           modelName: 'PC1NWSK3NW',
           productName: 'WIFI판넬',
+          specification: '',
           quantity: '1',
           unitPrice: '120000',
           lookupError: null,
@@ -165,6 +184,11 @@ export const FullTable: Story = {
                 )
               }
               onModelNameBlur={() => undefined}
+              onSpecificationChange={(v) =>
+                setLines((ls) =>
+                  ls.map((l, i) => (i === idx ? { ...l, specification: v } : l)),
+                )
+              }
               onQuantityChange={(v) =>
                 setLines((ls) =>
                   ls.map((l, i) => (i === idx ? { ...l, quantity: v } : l)),

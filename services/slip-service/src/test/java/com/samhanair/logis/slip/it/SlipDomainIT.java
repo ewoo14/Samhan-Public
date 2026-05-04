@@ -27,9 +27,10 @@ import org.springframework.boot.test.context.SpringBootTest;
  *   <li>{@code Slip.applyDeliveryTagAutoMemo()} — 야적/지방 태그면 memo 에 `{slipDate}상차 {slipDate+1}하차` prepend</li>
  * </ul>
  *
- * <p>SlipStatus: DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → COMPLETED → SHIPPING → DELIVERED → CONFIRMED.
+ * <p>SlipStatus (Slice A 갱신): DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → INSPECTING →
+ * COMPLETED → SHIPPING → DELIVERED → CONFIRMED.
  * 입고는 ship/deliver 스킵 → COMPLETED → CONFIRMED.
- * REJECTED / CANCELED 는 종착 상태.
+ * REJECTED / CANCELED 는 종착 상태. INSPECTING 단계도 reject 가능.
  */
 @SpringBootTest(classes = SlipServiceApplication.class)
 class SlipDomainIT extends AbstractPostgresIT {
@@ -73,7 +74,11 @@ class SlipDomainIT extends AbstractPostgresIT {
         slip.process();
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.PROCESSING);
 
+        // PR #21 hotfix: complete = 출고 완료 → INSPECTING, inspect = 검수 완료 → COMPLETED.
         slip.complete();
+        assertThat(slip.getStatus()).isEqualTo(SlipStatus.INSPECTING);
+
+        slip.inspect("user-inspector-001");
         assertThat(slip.getStatus()).isEqualTo(SlipStatus.COMPLETED);
 
         slip.ship();
@@ -93,7 +98,9 @@ class SlipDomainIT extends AbstractPostgresIT {
         slip.send();
         slip.accept("user-warehouse-001");
         slip.process();
+        // PR #21 hotfix: complete = PROCESSING→INSPECTING, inspect = INSPECTING→COMPLETED.
         slip.complete();
+        slip.inspect("user-inspector-001");
         // 입고는 ship/deliver 단계 스킵 — COMPLETED 에서 바로 confirm.
         slip.confirm();
 
@@ -126,7 +133,9 @@ class SlipDomainIT extends AbstractPostgresIT {
         slip.send();
         slip.accept("user-warehouse-001");
         slip.process();
+        // PR #21 hotfix: complete first then inspect.
         slip.complete();
+        slip.inspect("user-inspector-001");
         // COMPLETED 이후 reject 시도 → CONFLICT.
         assertThatThrownBy(() -> slip.reject("이미 완료된 전표를 거부 시도"))
                 .isInstanceOf(BusinessException.class);

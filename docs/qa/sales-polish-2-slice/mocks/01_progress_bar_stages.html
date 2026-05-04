@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>SlipDetailPage — ProgressBar 10단계</title>
+<link rel="stylesheet" href="_tokens.css"/>
+<style>
+  .progress {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 24px 16px 8px;
+    position: relative;
+  }
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    position: relative;
+    z-index: 1;
+  }
+  .node {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--progress-step-bg-todo);
+    border: 2px solid var(--line-default);
+    color: var(--ink-tertiary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .step.done .node {
+    background: var(--progress-step-bg-done);
+    border-color: var(--progress-step-bg-done);
+    color: #fff;
+  }
+  .step.current .node {
+    background: var(--progress-step-bg-current);
+    border-color: var(--action-brand);
+    color: var(--action-brand);
+    box-shadow: 0 0 0 4px rgba(30,64,175,0.12);
+  }
+  .step .label {
+    font-size: 12px;
+    color: var(--ink-tertiary);
+    margin-top: 8px;
+    white-space: nowrap;
+  }
+  .step.done .label {
+    color: var(--ink-primary);
+  }
+  .step.current .label {
+    color: var(--action-brand);
+    font-weight: 600;
+  }
+  .step.current::after {
+    content: '현재';
+    position: absolute;
+    top: 80px;
+    font-size: 11px;
+    color: var(--action-brand);
+    font-weight: 600;
+  }
+  .connector {
+    position: absolute;
+    top: 36px;
+    height: 2px;
+    background: var(--progress-line-color-todo);
+    z-index: 0;
+  }
+  .connector.done {
+    background: var(--progress-line-color-done);
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+    padding: 32px 16px 8px;
+  }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--line-default);
+    background: var(--surface-card);
+    color: var(--ink-primary);
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--action-brand);
+    color: #fff;
+    border-color: var(--action-brand);
+  }
+</style>
+</head><body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <h1>삼한로지스</h1>
+    <nav>
+      <a>대시보드</a>
+      <a>창고</a>
+      <a class="active">판매조회</a>
+      <a>구매조회</a>
+      <a>재고이동</a>
+    </nav>
+  </aside>
+  <main>
+    <header class="app-header">
+      <h2>출고전표 상세<span class="meta">[2026/05/04-1]</span></h2>
+      <div class="right">
+        <span>오병승</span><span class="role-badge">MANAGER</span>
+        <button>로그아웃</button>
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="card">
+        <h3>전표 진행 단계</h3>
+        <div class="progress" id="prog">
+          <div class="connector done" style="left:5%; width:11%"></div>
+          <div class="connector done" style="left:16%; width:11%"></div>
+          <div class="connector done" style="left:27%; width:11%"></div>
+          <div class="connector done" style="left:38%; width:11%"></div>
+          <div class="connector done" style="left:49%; width:11%"></div>
+          <div class="connector" style="left:60%; width:11%"></div>
+          <div class="connector" style="left:71%; width:11%"></div>
+          <div class="connector" style="left:82%; width:11%"></div>
+          <div class="connector" style="left:93%; width:2%"></div>
+
+          <div class="step done"><div class="node">✓</div><div class="label">작성</div></div>
+          <div class="step done"><div class="node">✓</div><div class="label">저장</div></div>
+          <div class="step done"><div class="node">✓</div><div class="label">전송</div></div>
+          <div class="step done"><div class="node">✓</div><div class="label">수락</div></div>
+          <div class="step done"><div class="node">✓</div><div class="label">처리</div></div>
+          <div class="step current"><div class="node">●</div><div class="label">검수</div></div>
+          <div class="step"><div class="node">7</div><div class="label">완료</div></div>
+          <div class="step"><div class="node">8</div><div class="label">배송</div></div>
+          <div class="step"><div class="node">9</div><div class="label">배송완료</div></div>
+          <div class="step"><div class="node">10</div><div class="label">확정</div></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary">완료 처리</button>
+          <button class="btn">반려</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

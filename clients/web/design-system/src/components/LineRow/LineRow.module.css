@@ -13,6 +13,7 @@
     var(--col-line-no)
     minmax(120px, 2fr)
     minmax(120px, 2fr)
+    100px /* 규격 — Slice A 신규 (피드백 #4) */
     var(--col-qty)
     var(--col-price)
     var(--col-sum)
@@ -106,6 +107,11 @@
   font-style: italic;
 }
 
+/* 규격 — Slice A 신규 (피드백 #4) */
+.cellSpec {
+  padding: 0 4px;
+}
+
 .cellQty,
 .cellPrice,
 .cellSum {
@@ -165,6 +171,15 @@
   letter-spacing: 0.02em;
 }
 
+/*
+ * 규격 input — Slice A 신규 (Designer components.md § 3.4).
+ * 100px 폭, placeholder "예: 220V", 좌측 정렬.
+ */
+.specInput {
+  text-align: left;
+  font-size: var(--font-input);
+}
+
 .numInput {
   text-align: right;
   font-variant-numeric: var(--font-feature-num);
@@ -215,7 +230,7 @@
 /* ── 에러 메시지 ────────────────────────────────────────── */
 
 .errorMessage {
-  grid-column: 4 / 6;
+  grid-column: 4 / 7; /* 모델명~규격 (Slice A 갱신: 4/6 → 4/7) */
   margin-top: -4px;
   margin-bottom: 4px;
   padding: 4px var(--space-row-y);
@@ -244,6 +259,7 @@
     var(--col-line-no)
     minmax(120px, 2fr)
     minmax(120px, 2fr)
+    100px /* 규격 — Slice A 신규 (피드백 #4) */
     var(--col-qty)
     var(--col-price)
     var(--col-sum)

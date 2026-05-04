@@ -22,6 +22,7 @@ import {
   type TransferSummary,
 } from '../api/inventory'
 import { useSessionStore, canCreateTransfer } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 const STATUS_VARIANT: Record<
   TransferStatus,
@@ -39,6 +40,7 @@ const STATUS_VARIANT: Record<
 }
 
 export function TransferListPage() {
+  usePageTitle('재고이동')
   const navigate = useNavigate()
   const role = useSessionStore((s) => s.auth?.role)
 

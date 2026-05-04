@@ -211,6 +211,108 @@
   --motion-drag:  200ms ease-out;
 }
 
+/* ==========================================================================
+ * sales-polish-2-slice — Slice A 신규 토큰 (Designer tokens.md § 1)
+ *
+ * 1차 슬라이스 토큰을 그대로 유지하고 Slice A 한정 alias 만 추가.
+ * 기존 화면 visual regression X.
+ *
+ * 그룹:
+ *   1) Progress Bar — `<ProgressBar>` 신규 컴포넌트 (10단계 + 분기)
+ *   2) Page Header  — AppLayout 동적 화면명 (피드백 #2)
+ *   3) Print        — DispatchView A4 portrait 정정 (피드백 #6/#7/#8)
+ * ========================================================================== */
+:root {
+  /* ── 1) Progress Bar ──────────────────────────────────────── */
+
+  /* 트랙 / 채움 */
+  --progress-track-bg:        var(--surface-subtle);
+  --progress-fill:            var(--action-brand);
+  --progress-fill-rejected:   var(--state-danger);
+  --progress-fill-canceled:   var(--ink-tertiary);
+
+  /* 단계 노드 */
+  --progress-step-size:       32px;
+  --progress-step-border:     2px;
+  --progress-step-bg-done:    var(--action-brand);
+  --progress-step-bg-current: var(--surface-card);
+  --progress-step-bg-todo:    var(--surface-card);
+  --progress-step-border-done:    var(--action-brand);
+  --progress-step-border-current: var(--action-brand);
+  --progress-step-border-todo:    var(--line-default);
+
+  /* 연결선 */
+  --progress-line-width:      2px;
+  --progress-line-color-done: var(--action-brand);
+  --progress-line-color-todo: var(--line-default);
+
+  /* 라벨 */
+  --progress-label-size:      12px;
+  --progress-label-current-weight: 600;
+  --progress-label-color-done:    var(--ink-primary);
+  --progress-label-color-current: var(--action-brand);
+  --progress-label-color-todo:    var(--ink-tertiary);
+
+  /* spacing */
+  --progress-step-gap:        4px;
+  --progress-section-pad:     24px;
+
+  /* ── 2) Page Header (AppLayout 갱신) ──────────────────────── */
+
+  --page-header-h:            56px;
+  --page-header-bg:           var(--surface-card);
+  --page-header-pad-x:        24px;
+
+  --page-title-size:          20px;
+  --page-title-weight:        600;
+  --page-title-color:         var(--ink-primary);
+
+  --page-title-meta-size:     14px;
+  --page-title-meta-color:    var(--ink-secondary);
+  --page-title-meta-gap:      8px;
+
+  /* ── 3) Print — DispatchView A4 portrait 정정 ─────────────── */
+
+  /* 본문 폰트 */
+  --print-text-base:          14pt;     /* 본문 (배송지/연락처/특이사항) — 피드백 #6 */
+  --print-text-sm:            11pt;     /* 라인 표 / 메타 */
+  --print-text-xs:            9pt;      /* 결재란 시각 small */
+  --print-text-md:            12pt;     /* 결재란 라벨 / bold label */
+  --print-text-lg:            18pt;     /* 일련번호 강조 */
+
+  /* 결재란 (1×5 horizontal) — 피드백 #7 */
+  --print-approval-w:         38mm;
+  --print-approval-w-actual:  36mm;     /* 실제 사용 폭 (본문 186mm / 5 ≈ 37.2) */
+  --print-approval-h:         22mm;
+  --print-approval-label-h:   5mm;
+  --print-approval-value-h:   17mm;
+
+  /* 용달기사/인수자 서명 — 피드백 #8 */
+  --print-signature-w:        80mm;
+  --print-signature-h:        35mm;
+  --print-signature-gap:      6mm;
+
+  /* A4 portrait 본문 영역 재배치 */
+  --print-page-w:             210mm;
+  --print-page-h:             297mm;
+  --print-page-margin:        12mm;
+  --print-content-w:          186mm;
+  --print-content-h:          273mm;
+
+  /* 섹션별 높이 budget (273mm 안에 모두) */
+  --print-budget-header:      35mm;
+  --print-budget-table:       80mm;
+  --print-budget-address:     50mm;
+  --print-budget-signatures:  35mm;     /* 실제 서명 박스 높이 */
+  --print-budget-footer:      30mm;
+  --print-budget-gap:         4mm;
+
+  /* 색상 (인쇄) */
+  --print-line-color:         #000;
+  --print-thead-bg:           #F0F0F0;
+  --print-approval-label-bg:  #F0F0F0;
+}
+
 /* Minimal dark theme stub. Phase 2 will refine full palette. */
 [data-theme="dark"] {
   --color-brand-50:  #0F2939;

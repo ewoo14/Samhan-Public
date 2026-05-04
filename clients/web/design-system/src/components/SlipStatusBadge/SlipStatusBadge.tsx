@@ -2,18 +2,19 @@ import { forwardRef, type HTMLAttributes } from 'react'
 import styles from './SlipStatusBadge.module.css'
 
 /**
- * 전표 상태 코드 (Plan §3.1 — 9단계 라이프사이클 + 분기 2종).
+ * 전표 상태 코드 (Plan §3.1 + sales-polish-2-slice INSPECTING 추가 = 10단계 + 분기 2종).
  *
- * 9단계 정상 흐름:
- * 1. `DRAFT`      작성중 — 사용자가 입력 중인 임시 저장 단계
- * 2. `SAVED`      저장완료 — 작성자가 저장만 한 상태 (전송 전)
- * 3. `SENT`       전송완료 — 거래처/내부 처리 담당자에게 전송됨
- * 4. `ACCEPTED`   수락 — 수신자가 접수 확인. 이 시점부터 작성자 수정 잠금
- * 5. `PROCESSING` 처리중 — 출고/입고 작업이 실제로 진행 중
- * 6. `COMPLETED`  처리완료 — 출고/입고 작업 종료. 배송 단계 진입 직전
- * 7. `SHIPPING`   배송중 — 운송 중 상태
- * 8. `DELIVERED`  배송완료 — 수령자가 물품을 받은 상태
- * 9. `CONFIRMED`  확정 — 회계 확정. 더 이상 변경 불가
+ * 10단계 정상 흐름 (Slice A 에서 INSPECTING 추가):
+ * 1.  `DRAFT`       작성중 — 사용자가 입력 중인 임시 저장 단계
+ * 2.  `SAVED`       저장완료 — 작성자가 저장만 한 상태 (전송 전)
+ * 3.  `SENT`        전송완료 — 거래처/내부 처리 담당자에게 전송됨
+ * 4.  `ACCEPTED`    수락 — 수신자가 접수 확인. 이 시점부터 작성자 수정 잠금
+ * 5.  `PROCESSING`  처리중 — 출고/입고 작업이 실제로 진행 중
+ * 6.  `INSPECTING`  검수중 — 검수원이 picking 결과 확인 (4-eye 검증) — Slice A 신규
+ * 7.  `COMPLETED`   처리완료 — 출고/입고 작업 종료. 배송 단계 진입 직전
+ * 8.  `SHIPPING`    배송중 — 운송 중 상태
+ * 9.  `DELIVERED`   배송완료 — 수령자가 물품을 받은 상태
+ * 10. `CONFIRMED`   확정 — 회계 확정. 더 이상 변경 불가
  *
  * 분기 (정상 흐름에서 빠져나가는 종결 상태):
  * - `REJECTED` 반려 — 수신자가 접수 거부 (작성자 재작성 필요)
@@ -25,6 +26,7 @@ export type SlipStatus =
   | 'SENT'
   | 'ACCEPTED'
   | 'PROCESSING'
+  | 'INSPECTING'
   | 'COMPLETED'
   | 'SHIPPING'
   | 'DELIVERED'
@@ -45,7 +47,7 @@ export interface SlipStatusBadgeProps
 }
 
 /**
- * 단계 번호 매핑 (1~9). 분기는 number 가 없으므로 `null`.
+ * 단계 번호 매핑 (1~10 — Slice A INSPECTING 추가). 분기는 number 가 없으므로 `null`.
  *
  * @internal — `showStep` 옵션 렌더링용.
  */
@@ -55,10 +57,11 @@ const STEP_NUMBER: Record<SlipStatus, number | null> = {
   SENT: 3,
   ACCEPTED: 4,
   PROCESSING: 5,
-  COMPLETED: 6,
-  SHIPPING: 7,
-  DELIVERED: 8,
-  CONFIRMED: 9,
+  INSPECTING: 6,
+  COMPLETED: 7,
+  SHIPPING: 8,
+  DELIVERED: 9,
+  CONFIRMED: 10,
   REJECTED: null,
   CANCELED: null,
 }
@@ -66,7 +69,7 @@ const STEP_NUMBER: Record<SlipStatus, number | null> = {
 /**
  * 한국어 표시 라벨 (사용자 노출 텍스트).
  *
- * @internal — Plan §3.1 표기와 동일.
+ * @internal — Plan §3.1 + Slice A INSPECTING 추가.
  */
 const STATUS_LABEL: Record<SlipStatus, string> = {
   DRAFT: '작성중',
@@ -74,6 +77,7 @@ const STATUS_LABEL: Record<SlipStatus, string> = {
   SENT: '전송완료',
   ACCEPTED: '수락',
   PROCESSING: '처리중',
+  INSPECTING: '검수중',
   COMPLETED: '처리완료',
   SHIPPING: '배송중',
   DELIVERED: '배송완료',
@@ -100,6 +104,7 @@ const COLOR_GROUP: Record<SlipStatus, ColorGroup> = {
   SENT: 'editable',
   ACCEPTED: 'process',
   PROCESSING: 'process',
+  INSPECTING: 'process',
   COMPLETED: 'process',
   SHIPPING: 'delivery',
   DELIVERED: 'delivery',
@@ -119,6 +124,7 @@ const TIER: Record<SlipStatus, 1 | 2 | 3> = {
   SENT: 3,
   ACCEPTED: 1,
   PROCESSING: 2,
+  INSPECTING: 3,
   COMPLETED: 3,
   SHIPPING: 1,
   DELIVERED: 2,

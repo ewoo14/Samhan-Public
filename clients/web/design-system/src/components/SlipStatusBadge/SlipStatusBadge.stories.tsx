@@ -17,6 +17,7 @@ const meta: Meta<typeof SlipStatusBadge> = {
         'SENT',
         'ACCEPTED',
         'PROCESSING',
+        'INSPECTING',
         'COMPLETED',
         'SHIPPING',
         'DELIVERED',
@@ -41,9 +42,12 @@ export const AllStatuses: Story = {
   render: () => {
     const groups: { title: string; statuses: SlipStatus[] }[] = [
       { title: '편집 가능 (1~3)', statuses: ['DRAFT', 'SAVED', 'SENT'] },
-      { title: '처리 (4~6)', statuses: ['ACCEPTED', 'PROCESSING', 'COMPLETED'] },
       {
-        title: '배송/완결 (7~9)',
+        title: '처리 (4~7) — Slice A INSPECTING 추가',
+        statuses: ['ACCEPTED', 'PROCESSING', 'INSPECTING', 'COMPLETED'],
+      },
+      {
+        title: '배송/완결 (8~10)',
         statuses: ['SHIPPING', 'DELIVERED', 'CONFIRMED'],
       },
       { title: '분기 (종결)', statuses: ['REJECTED', 'CANCELED'] },
@@ -80,6 +84,7 @@ export const WithStep: Story = {
       'SENT',
       'ACCEPTED',
       'PROCESSING',
+      'INSPECTING',
       'COMPLETED',
       'SHIPPING',
       'DELIVERED',

@@ -28,6 +28,7 @@ import {
   type TransferReason,
 } from '../api/inventory'
 import { lookupProductByModelName } from '../api/slip'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 interface TransferLineDraft {
   productId: string | null
@@ -57,6 +58,7 @@ const REASON_OPTIONS: TransferReason[] = [
 ]
 
 export function TransferFormPage() {
+  usePageTitle('새 재고이동')
   const navigate = useNavigate()
   const [sourceWh, setSourceWh] = useState<string | null>(null)
   const [destWh, setDestWh] = useState<string | null>(null)

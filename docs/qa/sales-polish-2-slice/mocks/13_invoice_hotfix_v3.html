@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>InvoiceView v3 — 로고 매우 작게 + 타이틀 중앙 + 세로선 (PR #21 hotfix v3)</title>
+<style>
+body { background: #E5E7EB; padding: 24px; margin: 0; font-family: 'Pretendard', 'Noto Sans KR', sans-serif; }
+.invoice-page {
+  width: 297mm; min-height: 210mm; background: #FFF; margin: 0 auto;
+  padding: 10mm; box-sizing: border-box; font-size: 11pt; line-height: 1.4;
+  color: #000; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.invoice-top { display: grid; grid-template-columns: 1fr 165mm; gap: 4mm; margin-bottom: 3mm; }
+.invoice-top-left { display: flex; flex-direction: column; gap: 1mm; }
+
+.invoice-logo-placeholder {
+  font-weight: 700; font-size: 11pt; letter-spacing: 0.05em; color: #1565C0;
+  display: inline-block; padding: 0 0 1mm 0;
+}
+.invoice-title {
+  font-size: 22pt; font-weight: 700; letter-spacing: 0.15em; color: #000;
+  text-align: center; padding: 1mm 0 2mm 0;
+}
+
+.invoice-receiver-box { border: 1px solid #000; padding: 4mm; text-align: center; }
+.invoice-receiver-name { font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
+.invoice-receiver-address { font-size: 10pt; margin-bottom: 1mm; }
+.invoice-receiver-phone { font-size: 10pt; font-weight: 600; }
+
+.invoice-supplier { width: 100%; border-collapse: collapse; font-size: 10pt; }
+.invoice-supplier td { border: 1px solid #000; padding: 2mm 3mm; vertical-align: middle; }
+.invoice-supplier-side { background: #F0F0F0; text-align: center; font-weight: 700; width: 8mm; font-size: 11pt; line-height: 1.3; }
+.invoice-supplier-label { background: #F5F5F5; font-weight: 700; text-align: center; width: 22mm; }
+.invoice-supplier-value { font-weight: 600; }
+.invoice-supplier .invoice-seal {
+  display: inline-block; margin-left: 6mm; border: 1.5pt solid #C00; border-radius: 50%;
+  padding: 1mm 3mm; color: #C00; font-size: 9pt; font-weight: 700; transform: rotate(-8deg);
+}
+
+.invoice-mid-row { display: flex; flex-direction: column; border: 1px solid #000; margin-bottom: 3mm; }
+.invoice-shipping {
+  padding: 2mm 4mm; border-bottom: 1px solid #000; font-size: 11pt;
+  display: flex; align-items: baseline; gap: 4mm;
+}
+.invoice-shipping .label { font-weight: 700; background: #FFF59D; padding: 0 2mm; }
+.invoice-amount-row { padding: 2mm 4mm; font-size: 11pt; display: flex; align-items: baseline; gap: 4mm; }
+.invoice-amount-row .label { font-weight: 700; background: #FFF59D; padding: 0 2mm; }
+.invoice-amount-row .korean { font-weight: 600; }
+.invoice-amount-row .number { margin-left: auto; font-weight: 700; font-size: 13pt; }
+
+/* 가로 + 세로 구분선 모두 (검은색) */
+.invoice-table { width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 11pt; }
+.invoice-table th, .invoice-table td { border: 1px solid #000; padding: 1.5mm 3mm; vertical-align: middle; }
+.invoice-table thead th { background: #F0F0F0; font-weight: 700; text-align: center; border: 1px solid #000; font-size: 10pt; }
+.invoice-table .col-date    { width: 16mm; text-align: center; }
+.invoice-table .col-product { text-align: left; font-weight: 600; }
+.invoice-table .col-qty     { width: 18mm; text-align: center; }
+.invoice-table .col-price   { width: 28mm; text-align: right; }
+.invoice-table .col-supply  { width: 30mm; text-align: right; }
+.invoice-table .col-vat     { width: 24mm; text-align: right; }
+
+.invoice-totals { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr 1fr; border: 1px solid #000; border-top: none; }
+.invoice-total-cell { display: grid; grid-template-columns: auto 1fr; align-items: center; border-right: 1px solid #000; padding: 2mm 3mm; gap: 3mm; }
+.invoice-total-cell:last-child { border-right: none; }
+.invoice-total-cell .label { background: #F0F0F0; font-weight: 700; font-size: 10pt; padding: 1mm 3mm; }
+.invoice-total-cell .value { text-align: right; font-weight: 600; font-size: 11pt; }
+.invoice-total-cell.strong .value { font-weight: 700; font-size: 12pt; }
+
+.invoice-bank-row {
+  margin-top: 3mm; padding: 2mm 4mm; background: #FFF59D;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11pt; font-weight: 600;
+}
+.invoice-bank-amount { font-size: 13pt; font-weight: 700; }
+</style>
+</head><body>
+<div class="invoice-page">
+  <header class="invoice-top">
+    <div class="invoice-top-left">
+      <span class="invoice-logo-placeholder">SAMSUNG</span>
+      <div class="invoice-title">거래명세서</div>
+      <div class="invoice-receiver-box">
+        <div class="invoice-receiver-name">주식회사 윌리-정현수님 中</div>
+        <div class="invoice-receiver-address">서울특별시 강서구 마곡중앙로 161-8 (마곡동) 4층 403호, 404호 (마곡동, 두산더랜드파크)</div>
+        <div class="invoice-receiver-phone">☎ 010-9920-3468</div>
+      </div>
+    </div>
+
+    <table class="invoice-supplier">
+      <tbody>
+        <tr>
+          <td class="invoice-supplier-side" rowspan="4">공<br/>급<br/>자</td>
+          <td class="invoice-supplier-label">일련번호</td>
+          <td class="invoice-supplier-value">2026/06/02 - 4</td>
+          <td class="invoice-supplier-label">TEL</td>
+          <td class="invoice-supplier-value">02-3461-XXXX</td>
+        </tr>
+        <tr>
+          <td class="invoice-supplier-label">사업자등록번호</td>
+          <td class="invoice-supplier-value">214-87-20659</td>
+          <td class="invoice-supplier-label">성명</td>
+          <td class="invoice-supplier-value seal-cell">김미선<span class="invoice-seal">[인]</span></td>
+        </tr>
+        <tr>
+          <td class="invoice-supplier-label">상호</td>
+          <td class="invoice-supplier-value" colspan="3">(주)삼한공조시스템</td>
+        </tr>
+        <tr>
+          <td class="invoice-supplier-label">주소</td>
+          <td class="invoice-supplier-value" colspan="3">서울특별시 서초구 마방로2길 9 (양재동) 삼한빌딩 4층</td>
+        </tr>
+      </tbody>
+    </table>
+  </header>
+
+  <div class="invoice-mid-row">
+    <div class="invoice-shipping">
+      <span class="label">배송지:</span>
+      <span class="content">이석중팀장 010-6888-8925 / 경기 김포시 김포한강2로 273 청송마을모아미래도엘가 504동1803호</span>
+    </div>
+    <div class="invoice-amount-row">
+      <span class="label">금액:</span>
+      <span class="korean">이백삼십팔만칠천오백이십팔원 정</span>
+      <span class="number">(₩ 2,387,528)</span>
+    </div>
+  </div>
+
+  <table class="invoice-table">
+    <thead>
+      <tr><th class="col-date">월/일</th><th class="col-product">품목명</th><th class="col-qty">수량</th><th class="col-price">단가</th><th class="col-supply">공급가액</th><th class="col-vat">부가세</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="col-date">06/02</td><td class="col-product">AJ040RXH4BC1 (RX다배관)</td><td class="col-qty">1</td><td class="col-price">772,200</td><td class="col-supply">702,000</td><td class="col-vat">70,200</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">AJ020BN1PBC1 [홈-WIFI 모델]</td><td class="col-qty">2</td><td class="col-price">263,120</td><td class="col-supply">478,400</td><td class="col-vat">47,840</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">AJ023BN1PBC1 [홈-WIFI 모델]</td><td class="col-qty">1</td><td class="col-price">268,840</td><td class="col-supply">244,400</td><td class="col-vat">24,440</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">AJ072BN1PBC1 [홈-WIFI 모델]</td><td class="col-qty">1</td><td class="col-price">415,212</td><td class="col-supply">377,520</td><td class="col-vat">37,752</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">PC1NWSK3NW (WIFI판넬)</td><td class="col-qty">3</td><td class="col-price">80,080</td><td class="col-supply">218,400</td><td class="col-vat">21,840</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">PC1BWSK3NW (WIFI판넬)</td><td class="col-qty">1</td><td class="col-price">112,112</td><td class="col-supply">101,920</td><td class="col-vat">10,192</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">AR-EC05</td><td class="col-qty">4</td><td class="col-price">13,156</td><td class="col-supply">47,840</td><td class="col-vat">4,784</td></tr>
+      <tr><td class="col-date">06/02</td><td class="col-product">FH-LFHIF 유연호스 I형 ★</td><td class="col-qty">4</td><td class="col-price">0</td><td class="col-supply">0</td><td class="col-vat">0</td></tr>
+    </tbody>
+  </table>
+
+  <div class="invoice-totals">
+    <div class="invoice-total-cell"><span class="label">수량</span><span class="value">17</span></div>
+    <div class="invoice-total-cell"><span class="label">공급가액</span><span class="value">2,170,480</span></div>
+    <div class="invoice-total-cell"><span class="label">VAT</span><span class="value">217,048</span></div>
+    <div class="invoice-total-cell strong"><span class="label">합계</span><span class="value">2,387,528</span></div>
+    <div class="invoice-total-cell"><span class="label">인수</span><span class="value">인</span></div>
+  </div>
+
+  <div class="invoice-bank-row">
+    <span>예금주: (주)삼한공조시스템 / 국민은행 750627-01-002557 &nbsp; 기업은행 010-3748-9937</span>
+    <span class="invoice-bank-amount">2,387,528원</span>
+  </div>
+</div>
+</body></html>

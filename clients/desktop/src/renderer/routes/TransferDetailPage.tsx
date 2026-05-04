@@ -36,6 +36,7 @@ import {
   type TransferTransitionAction,
 } from '../api/inventory'
 import { useSessionStore, canTransitionTransfer } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 function actionsForStatus(status: TransferStatus): TransferTransitionAction[] {
   switch (status) {
@@ -92,6 +93,9 @@ export function TransferDetailPage() {
     queryFn: () => getTransfer(id),
     enabled: !!id,
   })
+
+  // Slice A: AppHeader 동적 화면명 — transferNo bracket meta
+  usePageTitle('재고이동 상세', detailQuery.data?.transferNo)
 
   const transitionMutation = useMutation({
     mutationFn: (vars: { action: TransferTransitionAction; reason?: string }) =>

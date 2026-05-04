@@ -1,35 +1,63 @@
 /**
  * 출고전표 작업지시서 인쇄 미리보기 — `/sales/:id/print/dispatch`.
  *
- * sales-form-polish 슬라이스 (v2): **세로 A4 (portrait)** 로 정정.
- * Designer `print-spec.md` § 2 + `wireframes.md` § 3 + `components.md` § 4 인용.
+ * PR #21 hotfix v2 — 개발책임자 첨부 이미지 기준 큰 재디자인.
  *
- * 사용자 첨부 이미지 2 충실 반영:
- * - 좌측 SAMSUNG 로고 + 거래처명 + 일련번호 박스
- * - 우측 5칸 담당 박스 grid (담당부서/담당자/출고인/검수인/결재 full)
- * - 라인 표 — 모델명+품목명 2줄 셀 (image 2 매치)
- * - 배송지 / 연락처 / 특이사항 3 분리 섹션
- * - 안내: "기사님 출발전에 수요처에 전화주세요 ~ 감사합니다"
- * - 경고: "※ 제품 수량 및 이상 유무 확인 후 서명 必"
- * - 서명 박스 — 60mm × 40mm × 2 (용달기사 / 인수자)
+ * 변경 요점:
+ * - 라인 표 4-col (모델명/품목명/규격/수량) — 월/일 열 제거 (사용자 명시)
+ * - 헤더: SAMSUNG 로고 풀 스트립 + 큰 거래처명 박스 (좌) + 결재란 5칸 (우)
+ * - 일련번호 박스 (좌) + 출하창고 (우, 빨강) — 창고명만 (코드 X)
+ * - 배송지/연락처/특이사항 큰 박스
+ * - "기사님 출발전에 수요처에 전화주세요~ 감사합니다^^" 가운데 안내
+ * - "※ 제품수량 및 이상유무 확인 후 서명 必"
+ * - 용달기사 서명 / 인수자 서명 — 박스 X, 라벨만
+ * - 하단 안내문 "제품 인수시 ... 책임지지 않습니다."
  *
- * @page { size: A4 portrait; margin: 12mm } — global.css @media print 에 적용.
+ * @page A4 portrait 12mm 여백 — global.css @media print 에 적용.
  *
- * UUID 비공개: 일련번호는 `slipDate - seqNo` 만 노출. 창고 코드/이름은 BE 응답
- * 에 별도 필드가 없으므로 본 슬라이스는 fallback 표기 ('-').
+ * UUID 비공개: 일련번호 `slipDate - seqNo` 만 노출. dispatcher.userId / inspector.userId
+ * 는 부모로부터 받지만 화면 표시 X (이름만 표시). 출하창고 코드 미노출 (사용자 명시).
  */
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@samhan/design-system'
 import { getSlip, type SlipDetail } from '../api/slip'
+import { listWarehouses, type Warehouse } from '../api/inventory'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 /**
- * `2026-05-04` → `{ month: '05', day: '04' }`. 표 라인 좌측 2 컬럼용.
+ * "2026-05-04T14:32:18+09:00" → "14:32" (Designer print-spec.md § 3.4).
+ * 빈 ISO 시 빈 문자열.
  */
-function lineDateParts(slipDate: string): { month: string; day: string } {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(slipDate)
-  if (!m) return { month: '', day: '' }
-  return { month: m[2]!, day: m[3]! }
+function formatHHmm(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return iso.slice(11, 16)
+}
+
+/**
+ * `<RoleCell>` — 결재란 5칸 셀 (Designer components.md § 4.4).
+ *
+ * 출고인/검수인 셀은 value (이름) + time (HH:mm) 둘 다 표시.
+ * 그 외 (담당부서/담당자/결재) 는 value 만.
+ */
+function RoleCell({
+  label,
+  value,
+  time,
+}: {
+  label: string
+  value?: string | null
+  time?: string | null
+}) {
+  return (
+    <div className="dispatch-role-cell">
+      <div className="dispatch-role-label">{label}</div>
+      <div className="dispatch-role-value">
+        {value ? <span className="name">{value}</span> : null}
+        {time ? <span className="time">{formatHHmm(time)}</span> : null}
+      </div>
+    </div>
+  )
 }
 
 export function DispatchView() {
@@ -41,6 +69,12 @@ export function DispatchView() {
     queryFn: () => getSlip(id),
     enabled: !!id,
   })
+  const warehousesQuery = useQuery<Warehouse[]>({
+    queryKey: ['warehouses'],
+    queryFn: listWarehouses,
+  })
+
+  usePageTitle('출고전표 작업지시서', detailQuery.data?.slipNo)
 
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>
@@ -53,8 +87,9 @@ export function DispatchView() {
   }
 
   const slip: SlipDetail = detailQuery.data
-  const { month, day } = lineDateParts(slip.slipDate)
   const totalQty = slip.lines.reduce((sum, l) => sum + l.quantity, 0)
+  const sourceWarehouseName =
+    warehousesQuery.data?.find((w) => w.id === slip.sourceWarehouseId)?.name ?? '-'
 
   return (
     <div>
@@ -68,115 +103,97 @@ export function DispatchView() {
       </div>
 
       <div className="dispatch-page">
-        {/* 상단 헤더 — 좌측 브랜드/일련번호, 우측 5칸 담당 박스 */}
-        <header className="dispatch-header">
-          <div className="dispatch-brand">
-            <div className="dispatch-logo-placeholder">SAMSUNG</div>
-            <div className="dispatch-partner-name">{slip.partnerName ?? '-'}</div>
-            <div className="dispatch-slip-no">
-              {slip.slipDate} - {slip.seqNo}
-            </div>
-            <div className="dispatch-warehouse">
-              출하창고: {slip.sourceWarehouseId ? '본사창고' : '-'}
-            </div>
-          </div>
+        <div className="dispatch-logo-strip">
+          <span className="dispatch-logo-placeholder">SAMSUNG</span>
+        </div>
 
-          <section className="dispatch-roles" aria-label="담당자 및 결재">
-            <div className="dispatch-role-box">
-              <div className="dispatch-role-label">담당부서</div>
-              <div className="dispatch-role-value">영업1팀</div>
-            </div>
-            <div className="dispatch-role-box">
-              <div className="dispatch-role-label">담당자</div>
-              <div className="dispatch-role-value">오병승</div>
-            </div>
-            <div className="dispatch-role-box">
-              <div className="dispatch-role-label">출고인</div>
-              <div className="dispatch-role-value"></div>
-            </div>
-            <div className="dispatch-role-box">
-              <div className="dispatch-role-label">검수인</div>
-              <div className="dispatch-role-value"></div>
-            </div>
-            <div className="dispatch-role-box full">
-              <div className="dispatch-role-label">결재</div>
-              <div className="dispatch-role-value"></div>
-            </div>
-          </section>
+        <header className="dispatch-header-row">
+          <div className="dispatch-partner-name-box">
+            {slip.partnerName ?? '-'}
+          </div>
+          <div className="dispatch-roles" aria-label="담당자 및 결재">
+            <RoleCell label="담당부서" value={slip.ownerDepartment ?? null} />
+            <RoleCell label="담당자" value={slip.ownerFullName ?? null} />
+            <RoleCell
+              label="출고인"
+              value={slip.dispatcher?.fullName ?? null}
+              time={slip.dispatcher?.signedAt ?? null}
+            />
+            <RoleCell
+              label="검수인"
+              value={slip.inspector?.fullName ?? null}
+              time={slip.inspector?.signedAt ?? null}
+            />
+            <RoleCell label="결재" value="*" />
+          </div>
         </header>
 
-        {/* 라인 표 — 모델명/품목명 2줄 셀 */}
+        <div className="dispatch-meta-row">
+          <div className="dispatch-slip-no-box">
+            {slip.slipDate} -{slip.seqNo}
+          </div>
+          <div className="dispatch-warehouse-emphasis">
+            {sourceWarehouseName}
+          </div>
+        </div>
+
         <table className="dispatch-table">
           <thead>
             <tr>
-              <th className="col-month">월</th>
-              <th className="col-day">일</th>
-              <th>모델명 / 품목명</th>
+              <th className="col-model">모델명</th>
+              <th className="col-product">품목명</th>
               <th className="col-spec">규격</th>
               <th className="col-qty">수량</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
             {slip.lines.map((l) => (
               <tr key={l.id}>
-                <td className="col-month">{month}</td>
-                <td className="col-day">{day}</td>
-                <td>
-                  <div className="product-cell">
-                    <span className="model-name">{l.modelName ?? '-'}</span>
-                    <span className="product-name">{l.productName ?? ''}</span>
-                  </div>
-                </td>
-                <td className="col-spec">-</td>
-                <td className="col-qty num">{l.quantity.toLocaleString()}</td>
-                <td></td>
+                <td className="col-model">{l.modelName ?? '-'}</td>
+                <td className="col-product">{l.productName ?? '-'}</td>
+                <td className="col-spec">{l.specification || '-'}</td>
+                <td className="col-qty">{l.quantity.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4}>총합계</td>
-              <td className="col-qty num">{totalQty.toLocaleString()}</td>
-              <td></td>
+              <td colSpan={3} className="total-label">총합계</td>
+              <td className="col-qty total-qty">{totalQty.toLocaleString()}</td>
             </tr>
           </tfoot>
         </table>
 
-        {/* 배송지 / 연락처 / 특이사항 3 분리 섹션 */}
-        <section className="dispatch-section">
-          <div className="label">배송지</div>
-          <div className="content">-</div>
-        </section>
-        <section className="dispatch-section">
-          <div className="label">연락처</div>
-          <div className="content">-</div>
-        </section>
-        <section className="dispatch-section">
-          <div className="label">특이사항</div>
-          <div className="content">{slip.memo ?? '-'}</div>
-        </section>
-
-        {/* 안내 / 경고 문구 */}
-        <div className="dispatch-notice">
-          기사님 출발전에 수요처에 전화주세요
-          <br />~ 감사합니다 ^^
-        </div>
-        <div className="dispatch-warning">
-          ※ 제품 수량 및 이상 유무 확인 후 서명 必
-        </div>
-
-        {/* 서명 박스 — 60mm × 40mm × 2 */}
-        <section className="dispatch-signatures" aria-label="서명">
-          <div className="dispatch-sign-box">
-            <div className="dispatch-sign-label">용달기사 서명</div>
-            <div className="dispatch-sign-area"></div>
+        <div className="dispatch-bottom-group">
+          <div className="dispatch-address-box">
+            {slip.shippingAddress ?? '-'}
           </div>
-          <div className="dispatch-sign-box">
-            <div className="dispatch-sign-label">인수자 서명</div>
-            <div className="dispatch-sign-area"></div>
+          <div className="dispatch-info-box">
+            <span className="label">연락처:</span>
+            <span className="content">{slip.contactPhone ?? '-'}</span>
           </div>
-        </section>
+          <div className="dispatch-info-box">
+            <span className="label">특이사항:</span>
+            <span className="content">{slip.memo ?? '-'}</span>
+          </div>
+
+          <p className="dispatch-driver-call-notice">
+            기사님 출발전에 수요처에 전화주세요~ 감사합니다^^
+          </p>
+          <p className="dispatch-confirm-notice">
+            ※ 제품수량 및 이상유무 확인 후 서명 必
+          </p>
+
+          <div className="dispatch-signatures" aria-label="서명">
+            <div className="dispatch-sign-label-only">용달기사 서명</div>
+            <div className="dispatch-sign-label-only">인수자 서명</div>
+          </div>
+
+          <p className="dispatch-liability-notice">
+            제품 인수시 수량 제품상태 이상 유무 확인 후 서명 부탁드립니다.<br />
+            서명 후 생긴 문제는 당사가 책임지지 않습니다.
+          </p>
+        </div>
       </div>
     </div>
   )
