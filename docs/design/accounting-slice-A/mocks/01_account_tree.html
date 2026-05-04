@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>계정과목 — (주)삼한공조시스템</title>
+<style>
+  :root {
+    --surface-app: #FAFBFC;
+    --surface-card: #FFFFFF;
+    --surface-subtle: #F4F6F8;
+    --surface-hover: #F4F6F8;
+    --line-default: #E1E5EA;
+    --line-hover: #C9D1D9;
+    --ink-primary: #1A1F2E;
+    --ink-secondary: #5C6773;
+    --ink-tertiary: #8A95A4;
+    --action-brand: #1E40AF;
+    --action-brand-hover: #1D4ED8;
+    --action-brand-subtle: #DBEAFE;
+
+    /* 7-그룹 색상 */
+    --account-asset: #1E40AF;       --account-asset-bg: #DBEAFE;
+    --account-liability: #B91C1C;   --account-liability-bg: #FEE2E2;
+    --account-equity: #047857;      --account-equity-bg: #D1FAE5;
+    --account-revenue: #C2410C;     --account-revenue-bg: #FFEDD5;
+    --account-cogs: #4B5563;        --account-cogs-bg: #F3F4F6;
+    --account-sga: #6D28D9;         --account-sga-bg: #EDE9FE;
+    --account-other: #1F2937;      --account-other-bg: #F3F4F6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: var(--surface-app);
+    color: var(--ink-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .app-header {
+    height: 56px;
+    background: var(--surface-card);
+    border-bottom: 1px solid var(--line-default);
+    display: flex; align-items: center; padding: 0 24px;
+    justify-content: space-between;
+  }
+  .header-title { font-size: 14px; color: var(--ink-secondary); }
+  .header-title strong { color: var(--ink-primary); font-weight: 600; margin-left: 8px; }
+  .header-user { font-size: 14px; color: var(--ink-secondary); }
+  .layout { display: flex; min-height: calc(100vh - 56px); }
+  .sidebar {
+    width: 220px; background: var(--surface-card);
+    border-right: 1px solid var(--line-default); padding: 16px 0;
+  }
+  .sidebar-group {
+    padding: 8px 24px 4px; font-size: 11px; color: var(--ink-tertiary);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sidebar-item {
+    padding: 10px 24px; font-size: 14px; color: var(--ink-secondary);
+    cursor: pointer;
+  }
+  .sidebar-item:hover { background: var(--surface-hover); }
+  .sidebar-item.active {
+    background: var(--action-brand-subtle); color: var(--action-brand);
+    font-weight: 600; border-left: 3px solid var(--action-brand);
+    padding-left: 21px;
+  }
+  .main { flex: 1; padding: 32px; overflow: auto; }
+  .page-title { font-size: 24px; font-weight: 600; margin-bottom: 24px; }
+  .controls {
+    display: flex; gap: 12px; margin-bottom: 16px; align-items: center;
+  }
+  .input, .select {
+    height: 36px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px;
+    padding: 0 12px; font-size: 14px; color: var(--ink-primary);
+    min-width: 280px;
+  }
+  .btn {
+    height: 36px; background: var(--surface-card);
+    color: var(--ink-primary); border: 1px solid var(--line-default);
+    border-radius: 4px; padding: 0 14px; font-size: 13px;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-hover); }
+  .table-wrap {
+    background: var(--surface-card); border: 1px solid var(--line-default);
+    border-radius: 8px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    height: 44px; background: var(--surface-subtle);
+    font-weight: 600; font-size: 13px; color: var(--ink-secondary);
+    text-align: left; padding: 0 12px; border-bottom: 1px solid var(--line-default);
+  }
+  tbody td {
+    height: 40px; padding: 0 12px;
+    border-bottom: 1px solid var(--line-default);
+    font-size: 14px; vertical-align: middle;
+  }
+  tbody tr:hover { background: var(--surface-hover); }
+  .col-code { width: 70px; font-family: ui-monospace, "Cascadia Mono", monospace; color: var(--ink-secondary); }
+  .col-cat { width: 120px; }
+  .col-leaf { width: 60px; text-align: center; color: var(--ink-tertiary); }
+  .tree-toggle { display: inline-block; width: 16px; color: var(--ink-tertiary); cursor: pointer; }
+  .tree-name { display: inline-flex; align-items: center; gap: 8px; }
+  .tree-name.indent { padding-left: 24px; color: var(--ink-primary); }
+  .tree-name.indent::before {
+    content: ""; display: inline-block; width: 12px; height: 1px;
+    background: var(--line-default);
+  }
+  .group-row { font-weight: 600; }
+  .cat-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .cat-asset { background: var(--account-asset); }
+  .cat-liability { background: var(--account-liability); }
+  .cat-equity { background: var(--account-equity); }
+  .cat-revenue { background: var(--account-revenue); }
+  .cat-cogs { background: var(--account-cogs); }
+  .cat-sga { background: var(--account-sga); }
+  .cat-other { background: var(--account-other); }
+
+  .cat-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 9999px;
+    font-size: 12px; font-weight: 500; line-height: 1.2;
+    border: 1px solid;
+  }
+  .cat-pill.asset    { background: var(--account-asset-bg);    color: var(--account-asset);    border-color: var(--account-asset); }
+  .cat-pill.liability{ background: var(--account-liability-bg);color: var(--account-liability);border-color: var(--account-liability); }
+  .cat-pill.equity   { background: var(--account-equity-bg);   color: var(--account-equity);   border-color: var(--account-equity); }
+  .cat-pill.revenue  { background: var(--account-revenue-bg);  color: var(--account-revenue);  border-color: var(--account-revenue); }
+  .cat-pill.cogs     { background: var(--account-cogs-bg);     color: var(--account-cogs);     border-color: var(--account-cogs); }
+  .cat-pill.sga      { background: var(--account-sga-bg);      color: var(--account-sga);      border-color: var(--account-sga); }
+  .cat-pill.other    { background: var(--account-other-bg);    color: var(--account-other);    border-color: var(--account-other); }
+
+  .meta { margin-top: 12px; font-size: 13px; color: var(--ink-tertiary); }
+</style>
+</head>
+<body>
+  <div class="app-header">
+    <div class="header-title">업무 화면 / 회계 / <strong>계정과목</strong></div>
+    <div class="header-user">김미선 (대표) ▾</div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">영업</div>
+      <div class="sidebar-item">거래명세서</div>
+      <div class="sidebar-item">작업지시서</div>
+      <div class="sidebar-group">창고</div>
+      <div class="sidebar-item">재고</div>
+      <div class="sidebar-item">입출고</div>
+      <div class="sidebar-group">회계</div>
+      <div class="sidebar-item active">계정과목</div>
+      <div class="sidebar-item">분개장</div>
+      <div class="sidebar-item">시산표</div>
+      <div class="sidebar-group">시스템</div>
+      <div class="sidebar-item">사용자</div>
+    </aside>
+    <main class="main">
+      <h1 class="page-title">계정과목</h1>
+
+      <div class="controls">
+        <input class="input" placeholder="검색: 코드 또는 계정명" />
+        <button class="btn">그룹 펼침</button>
+        <button class="btn">그룹 접음</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-code">코드</th>
+              <th>계정명</th>
+              <th class="col-cat">카테고리</th>
+              <th class="col-leaf">잎</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 100 자산 -->
+            <tr class="group-row">
+              <td class="col-code">100</td>
+              <td><span class="tree-name"><span class="tree-toggle">▾</span><span class="cat-dot cat-asset"></span>자산</span></td>
+              <td><span class="cat-pill asset">자산</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+            <tr><td class="col-code">101</td><td><span class="tree-name indent">현금</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">102</td><td><span class="tree-name indent">보통예금</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">110</td><td><span class="tree-name indent">외상매출금</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">120</td><td><span class="tree-name indent">미수금</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">130</td><td><span class="tree-name indent">상품</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">141</td><td><span class="tree-name indent">토지</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">142</td><td><span class="tree-name indent">건물</span></td><td><span class="cat-pill asset">자산</span></td><td class="col-leaf">Y</td></tr>
+
+            <!-- 200 부채 -->
+            <tr class="group-row">
+              <td class="col-code">200</td>
+              <td><span class="tree-name"><span class="tree-toggle">▾</span><span class="cat-dot cat-liability"></span>부채</span></td>
+              <td><span class="cat-pill liability">부채</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+            <tr><td class="col-code">201</td><td><span class="tree-name indent">외상매입금</span></td><td><span class="cat-pill liability">부채</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">210</td><td><span class="tree-name indent">미지급금</span></td><td><span class="cat-pill liability">부채</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">220</td><td><span class="tree-name indent">부가세예수금</span></td><td><span class="cat-pill liability">부채</span></td><td class="col-leaf">Y</td></tr>
+            <tr><td class="col-code">230</td><td><span class="tree-name indent">단기차입금</span></td><td><span class="cat-pill liability">부채</span></td><td class="col-leaf">Y</td></tr>
+
+            <!-- 300 자본 -->
+            <tr class="group-row">
+              <td class="col-code">300</td>
+              <td><span class="tree-name"><span class="tree-toggle">▸</span><span class="cat-dot cat-equity"></span>자본</span></td>
+              <td><span class="cat-pill equity">자본</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+
+            <!-- 400 매출 -->
+            <tr class="group-row">
+              <td class="col-code">400</td>
+              <td><span class="tree-name"><span class="tree-toggle">▸</span><span class="cat-dot cat-revenue"></span>매출</span></td>
+              <td><span class="cat-pill revenue">매출</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+
+            <!-- 500 매출원가 -->
+            <tr class="group-row">
+              <td class="col-code">500</td>
+              <td><span class="tree-name"><span class="tree-toggle">▸</span><span class="cat-dot cat-cogs"></span>매출원가</span></td>
+              <td><span class="cat-pill cogs">매출원가</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+
+            <!-- 800 판관비 -->
+            <tr class="group-row">
+              <td class="col-code">800</td>
+              <td><span class="tree-name"><span class="tree-toggle">▸</span><span class="cat-dot cat-sga"></span>판매비와관리비</span></td>
+              <td><span class="cat-pill sga">판관비</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+
+            <!-- 900 영업외/법인세 -->
+            <tr class="group-row">
+              <td class="col-code">900</td>
+              <td><span class="tree-name"><span class="tree-toggle">▸</span><span class="cat-dot cat-other"></span>영업외 / 법인세비용</span></td>
+              <td><span class="cat-pill other">기타</span></td>
+              <td class="col-leaf">-</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="meta">총 50건 (한국 일반기업회계기준 표준 계정과목)</div>
+    </main>
+  </div>
+</body>
+</html>

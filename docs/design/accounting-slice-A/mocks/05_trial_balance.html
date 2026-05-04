@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>시산표 — (주)삼한공조시스템</title>
+<style>
+  :root {
+    --surface-app: #FAFBFC;
+    --surface-card: #FFFFFF;
+    --surface-subtle: #F4F6F8;
+    --surface-hover: #F4F6F8;
+    --line-default: #E1E5EA;
+    --ink-primary: #1A1F2E;
+    --ink-secondary: #5C6773;
+    --ink-tertiary: #8A95A4;
+    --action-brand: #1E40AF;
+    --action-brand-hover: #1D4ED8;
+    --action-brand-subtle: #DBEAFE;
+
+    --debit-color: #1A1F2E;
+    --credit-color: #1E40AF;
+    --balance-ok: #10B981;
+    --balance-ok-bg: #D1FAE5;
+
+    --account-asset: #1E40AF;       --account-asset-bg: #DBEAFE;
+    --account-liability: #B91C1C;   --account-liability-bg: #FEE2E2;
+    --account-equity: #047857;      --account-equity-bg: #D1FAE5;
+    --account-revenue: #C2410C;     --account-revenue-bg: #FFEDD5;
+    --account-cogs: #4B5563;        --account-cogs-bg: #F3F4F6;
+    --account-sga: #6D28D9;         --account-sga-bg: #EDE9FE;
+    --account-other: #1F2937;       --account-other-bg: #F3F4F6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: var(--surface-app); color: var(--ink-primary);
+    font-size: 14px; line-height: 1.5;
+  }
+  .app-header {
+    height: 56px; background: var(--surface-card);
+    border-bottom: 1px solid var(--line-default);
+    display: flex; align-items: center; padding: 0 24px;
+    justify-content: space-between;
+  }
+  .header-title { font-size: 14px; color: var(--ink-secondary); }
+  .header-title strong { color: var(--ink-primary); font-weight: 600; margin-left: 8px; }
+  .header-user { font-size: 14px; color: var(--ink-secondary); }
+  .layout { display: flex; min-height: calc(100vh - 56px); }
+  .sidebar {
+    width: 220px; background: var(--surface-card);
+    border-right: 1px solid var(--line-default); padding: 16px 0;
+  }
+  .sidebar-group {
+    padding: 8px 24px 4px; font-size: 11px; color: var(--ink-tertiary);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sidebar-item { padding: 10px 24px; font-size: 14px; color: var(--ink-secondary); cursor: pointer; }
+  .sidebar-item:hover { background: var(--surface-hover); }
+  .sidebar-item.active {
+    background: var(--action-brand-subtle); color: var(--action-brand);
+    font-weight: 600; border-left: 3px solid var(--action-brand); padding-left: 21px;
+  }
+  .main { flex: 1; padding: 32px; overflow: auto; }
+  .page-title { font-size: 24px; font-weight: 600; margin-bottom: 24px; }
+
+  .controls-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .controls { display: flex; gap: 12px; align-items: center; }
+  .label { font-size: 13px; color: var(--ink-secondary); }
+  .input, .select {
+    height: 36px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px;
+    padding: 0 12px; font-size: 14px; color: var(--ink-primary);
+  }
+  .select.month { min-width: 140px; }
+  .btn {
+    height: 36px; background: var(--surface-card);
+    color: var(--ink-primary); border: 1px solid var(--line-default);
+    border-radius: 4px; padding: 0 14px; font-size: 13px; cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-hover); }
+  .btn.print {
+    background: var(--action-brand); color: white; border-color: var(--action-brand); font-weight: 600;
+  }
+  .btn.print:hover { background: var(--action-brand-hover); }
+
+  .table-wrap {
+    background: var(--surface-card); border: 1px solid var(--line-default);
+    border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    height: 44px; background: var(--surface-subtle);
+    font-weight: 600; font-size: 13px; color: var(--ink-secondary);
+    text-align: left; padding: 0 12px; border-bottom: 1px solid var(--line-default);
+  }
+  thead th.right { text-align: right; }
+  tbody td {
+    height: 38px; padding: 0 12px;
+    border-bottom: 1px solid var(--line-default);
+    font-size: 14px; vertical-align: middle;
+  }
+  tbody tr:hover { background: var(--surface-hover); }
+
+  .col-code { width: 70px; font-family: ui-monospace, "Cascadia Mono", monospace; color: var(--ink-secondary); }
+  .col-name { }
+  .col-debit, .col-credit, .col-balance {
+    width: 130px; text-align: right;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+  .col-debit { color: var(--debit-color); }
+  .col-credit { color: var(--credit-color); }
+  .col-balance { color: var(--ink-primary); }
+
+  .group-row td {
+    font-weight: 600;
+    border-top: 1px solid var(--line-default);
+  }
+  .group-row.asset td:first-child + td { border-left: 3px solid var(--account-asset); padding-left: 9px; }
+  .group-row.liability td:first-child + td { border-left: 3px solid var(--account-liability); padding-left: 9px; }
+  .group-row.equity td:first-child + td { border-left: 3px solid var(--account-equity); padding-left: 9px; }
+  .group-row.revenue td:first-child + td { border-left: 3px solid var(--account-revenue); padding-left: 9px; }
+  .group-row.cogs td:first-child + td { border-left: 3px solid var(--account-cogs); padding-left: 9px; }
+  .group-row.sga td:first-child + td { border-left: 3px solid var(--account-sga); padding-left: 9px; }
+  .group-row.other td:first-child + td { border-left: 3px solid var(--account-other); padding-left: 9px; }
+
+  .leaf-name { padding-left: 24px; color: var(--ink-primary); position: relative; }
+  .leaf-name::before {
+    content: ""; display: inline-block; width: 12px; height: 1px;
+    background: var(--line-default); position: absolute; left: 6px; top: 50%;
+  }
+
+  .totals-row td {
+    height: 48px; padding: 0 12px; font-weight: 700;
+    background: var(--balance-ok-bg); color: var(--balance-ok);
+    border-top: 2px solid var(--balance-ok);
+  }
+  .totals-row td.right { text-align: right; font-feature-settings: "tnum" 1, "lnum" 1; }
+
+  .meta {
+    margin-top: 12px; font-size: 13px; color: var(--ink-tertiary);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .meta .ok { color: var(--balance-ok); font-weight: 500; }
+
+  .toggle { display: inline-block; width: 16px; color: var(--ink-tertiary); cursor: pointer; }
+</style>
+</head>
+<body>
+  <div class="app-header">
+    <div class="header-title">업무 화면 / 회계 / <strong>시산표</strong></div>
+    <div class="header-user">박지혜 (회계담당) ▾</div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">영업</div>
+      <div class="sidebar-item">거래명세서</div>
+      <div class="sidebar-item">작업지시서</div>
+      <div class="sidebar-group">창고</div>
+      <div class="sidebar-item">재고</div>
+      <div class="sidebar-item">입출고</div>
+      <div class="sidebar-group">회계</div>
+      <div class="sidebar-item">계정과목</div>
+      <div class="sidebar-item">분개장</div>
+      <div class="sidebar-item active">시산표</div>
+      <div class="sidebar-group">시스템</div>
+      <div class="sidebar-item">사용자</div>
+    </aside>
+    <main class="main">
+      <h1 class="page-title">시산표</h1>
+
+      <div class="controls-row">
+        <div class="controls">
+          <span class="label">기간</span>
+          <select class="select month">
+            <option>2026년 05월</option>
+            <option>2026년 04월</option>
+            <option>2026년 03월</option>
+          </select>
+          <button class="btn">그룹 펼침</button>
+          <button class="btn">그룹 접음</button>
+        </div>
+        <div class="controls">
+          <button class="btn">엑셀 (CSV)</button>
+          <button class="btn print">PDF 인쇄</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-code">코드</th>
+              <th class="col-name">계정명</th>
+              <th class="col-debit right">차변 (원)</th>
+              <th class="col-credit right">대변 (원)</th>
+              <th class="col-balance right">잔액 (원)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 100 자산 -->
+            <tr class="group-row asset">
+              <td class="col-code">100</td>
+              <td><span class="toggle">▾</span> 자산</td>
+              <td class="col-debit">4,820,000</td>
+              <td class="col-credit">320,000</td>
+              <td class="col-balance">4,500,000</td>
+            </tr>
+            <tr><td class="col-code">101</td><td><span class="leaf-name">현금</span></td><td class="col-debit">500,000</td><td class="col-credit">45,000</td><td class="col-balance">455,000</td></tr>
+            <tr><td class="col-code">102</td><td><span class="leaf-name">보통예금</span></td><td class="col-debit">3,400,000</td><td class="col-credit">275,000</td><td class="col-balance">3,125,000</td></tr>
+            <tr><td class="col-code">110</td><td><span class="leaf-name">외상매출금</span></td><td class="col-debit">920,000</td><td class="col-credit"></td><td class="col-balance">920,000</td></tr>
+
+            <!-- 200 부채 -->
+            <tr class="group-row liability">
+              <td class="col-code">200</td>
+              <td><span class="toggle">▾</span> 부채</td>
+              <td class="col-debit"></td>
+              <td class="col-credit">1,200,000</td>
+              <td class="col-balance">1,200,000</td>
+            </tr>
+            <tr><td class="col-code">201</td><td><span class="leaf-name">외상매입금</span></td><td class="col-debit"></td><td class="col-credit">400,000</td><td class="col-balance">400,000</td></tr>
+            <tr><td class="col-code">220</td><td><span class="leaf-name">부가세예수금</span></td><td class="col-debit"></td><td class="col-credit">800,000</td><td class="col-balance">800,000</td></tr>
+
+            <!-- 300 자본 -->
+            <tr class="group-row equity">
+              <td class="col-code">300</td>
+              <td><span class="toggle">▸</span> 자본</td>
+              <td class="col-debit"></td>
+              <td class="col-credit">3,000,000</td>
+              <td class="col-balance">3,000,000</td>
+            </tr>
+
+            <!-- 400 매출 -->
+            <tr class="group-row revenue">
+              <td class="col-code">400</td>
+              <td><span class="toggle">▸</span> 매출</td>
+              <td class="col-debit"></td>
+              <td class="col-credit">820,000</td>
+              <td class="col-balance">820,000</td>
+            </tr>
+
+            <!-- 500 매출원가 -->
+            <tr class="group-row cogs">
+              <td class="col-code">500</td>
+              <td><span class="toggle">▸</span> 매출원가</td>
+              <td class="col-debit">500,000</td>
+              <td class="col-credit"></td>
+              <td class="col-balance">500,000</td>
+            </tr>
+
+            <!-- 800 판관비 -->
+            <tr class="group-row sga">
+              <td class="col-code">800</td>
+              <td><span class="toggle">▸</span> 판매비와관리비</td>
+              <td class="col-debit">89,000</td>
+              <td class="col-credit"></td>
+              <td class="col-balance">89,000</td>
+            </tr>
+
+            <!-- 900 영업외/법인세 -->
+            <tr class="group-row other">
+              <td class="col-code">900</td>
+              <td><span class="toggle">▸</span> 영업외 / 법인세비용</td>
+              <td class="col-debit"></td>
+              <td class="col-credit"></td>
+              <td class="col-balance">0</td>
+            </tr>
+
+            <tr class="totals-row">
+              <td colspan="2" style="text-align:right;">총 합계</td>
+              <td class="right">5,409,000</td>
+              <td class="right">5,409,000</td>
+              <td class="right">✓ 0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="meta">
+        <span>※ 시산표 합계 (차변 = 대변) 검증:</span>
+        <span class="ok">✓ 정상 (회계 항등식 충족)</span>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

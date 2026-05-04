@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>분개장 — (주)삼한공조시스템</title>
+<style>
+  :root {
+    --surface-app: #FAFBFC;
+    --surface-card: #FFFFFF;
+    --surface-subtle: #F4F6F8;
+    --surface-hover: #F4F6F8;
+    --line-default: #E1E5EA;
+    --ink-primary: #1A1F2E;
+    --ink-secondary: #5C6773;
+    --ink-tertiary: #8A95A4;
+    --action-brand: #1E40AF;
+    --action-brand-hover: #1D4ED8;
+    --action-brand-subtle: #DBEAFE;
+
+    --journal-draft: #4D5562;       --journal-draft-bg: #EDF0F4;       --journal-draft-border: #D6DCE3;
+    --journal-posted: #047857;      --journal-posted-bg: #D1FAE5;      --journal-posted-border: #6EE7B7;
+    --journal-reversed: #6B7280;    --journal-reversed-bg: #EDF0F4;    --journal-reversed-border: #D6DCE3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: var(--surface-app); color: var(--ink-primary);
+    font-size: 14px; line-height: 1.5;
+  }
+  .app-header {
+    height: 56px; background: var(--surface-card);
+    border-bottom: 1px solid var(--line-default);
+    display: flex; align-items: center; padding: 0 24px;
+    justify-content: space-between;
+  }
+  .header-title { font-size: 14px; color: var(--ink-secondary); }
+  .header-title strong { color: var(--ink-primary); font-weight: 600; margin-left: 8px; }
+  .header-user { font-size: 14px; color: var(--ink-secondary); }
+  .layout { display: flex; min-height: calc(100vh - 56px); }
+  .sidebar {
+    width: 220px; background: var(--surface-card);
+    border-right: 1px solid var(--line-default); padding: 16px 0;
+  }
+  .sidebar-group {
+    padding: 8px 24px 4px; font-size: 11px; color: var(--ink-tertiary);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sidebar-item { padding: 10px 24px; font-size: 14px; color: var(--ink-secondary); cursor: pointer; }
+  .sidebar-item:hover { background: var(--surface-hover); }
+  .sidebar-item.active {
+    background: var(--action-brand-subtle); color: var(--action-brand);
+    font-weight: 600; border-left: 3px solid var(--action-brand); padding-left: 21px;
+  }
+  .main { flex: 1; padding: 32px; overflow: auto; }
+  .page-title { font-size: 24px; font-weight: 600; margin-bottom: 24px; }
+  .controls-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .controls { display: flex; gap: 12px; align-items: center; }
+  .input, .select {
+    height: 36px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px;
+    padding: 0 12px; font-size: 14px; color: var(--ink-primary);
+  }
+  .input.date { width: 140px; }
+  .select { min-width: 120px; }
+  .label { font-size: 13px; color: var(--ink-secondary); }
+  .btn-primary {
+    height: 36px; background: var(--action-brand); color: #FFFFFF;
+    border: none; border-radius: 4px; padding: 0 16px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .btn-primary:hover { background: var(--action-brand-hover); }
+  .table-wrap {
+    background: var(--surface-card); border: 1px solid var(--line-default);
+    border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    height: 44px; background: var(--surface-subtle);
+    font-weight: 600; font-size: 13px; color: var(--ink-secondary);
+    text-align: left; padding: 0 12px;
+    border-bottom: 1px solid var(--line-default);
+  }
+  thead th.right { text-align: right; }
+  tbody td {
+    height: 40px; padding: 0 12px;
+    border-bottom: 1px solid var(--line-default);
+    font-size: 14px; vertical-align: middle;
+  }
+  tbody tr:hover { background: var(--surface-hover); cursor: pointer; }
+  .col-jno { width: 110px; font-family: ui-monospace, "Cascadia Mono", monospace; color: var(--ink-secondary); }
+  .col-date { width: 70px; color: var(--ink-secondary); }
+  .col-source { width: 90px; }
+  .col-status { width: 100px; }
+  .col-amount {
+    width: 120px; text-align: right;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 9999px;
+    font-size: 12px; font-weight: 500; line-height: 1.2;
+    border: 1px solid;
+  }
+  .badge.draft    { background: var(--journal-draft-bg);    color: var(--journal-draft);    border-color: var(--journal-draft-border); }
+  .badge.posted   { background: var(--journal-posted-bg);   color: var(--journal-posted);   border-color: var(--journal-posted-border); font-weight: 600; }
+  .badge.reversed { background: var(--journal-reversed-bg); color: var(--journal-reversed); border-color: var(--journal-reversed-border); text-decoration: line-through; }
+  .reversed-row td { color: var(--ink-tertiary); }
+  .reversed-row td.text { text-decoration: line-through; }
+  .source-pill {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 12px; background: var(--surface-subtle); color: var(--ink-secondary);
+  }
+  .footer {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; font-size: 13px; color: var(--ink-tertiary);
+  }
+  .pagination { display: flex; gap: 8px; }
+  .page-btn {
+    width: 28px; height: 28px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px; cursor: pointer;
+    font-size: 13px;
+  }
+  .page-btn.active { background: var(--action-brand); color: white; border-color: var(--action-brand); }
+</style>
+</head>
+<body>
+  <div class="app-header">
+    <div class="header-title">업무 화면 / 회계 / <strong>분개장</strong></div>
+    <div class="header-user">박지혜 (회계담당) ▾</div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">영업</div>
+      <div class="sidebar-item">거래명세서</div>
+      <div class="sidebar-item">작업지시서</div>
+      <div class="sidebar-group">창고</div>
+      <div class="sidebar-item">재고</div>
+      <div class="sidebar-item">입출고</div>
+      <div class="sidebar-group">회계</div>
+      <div class="sidebar-item">계정과목</div>
+      <div class="sidebar-item active">분개장</div>
+      <div class="sidebar-item">시산표</div>
+      <div class="sidebar-group">시스템</div>
+      <div class="sidebar-item">사용자</div>
+    </aside>
+    <main class="main">
+      <h1 class="page-title">분개장</h1>
+
+      <div class="controls-row">
+        <div class="controls">
+          <span class="label">기간</span>
+          <input class="input date" value="2026-05-01" />
+          <span class="label">~</span>
+          <input class="input date" value="2026-05-04" />
+          <span class="label">상태</span>
+          <select class="select"><option>전체</option><option>DRAFT</option><option>POSTED</option><option>REVERSED</option></select>
+          <span class="label">출처</span>
+          <select class="select"><option>전체</option><option>수동</option><option>슬립연계</option></select>
+        </div>
+        <button class="btn-primary">+ 신규 분개</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-jno">분개번호</th>
+              <th class="col-date">일자</th>
+              <th>적요</th>
+              <th class="col-source">출처</th>
+              <th class="col-status">상태</th>
+              <th class="col-amount right">합계 (원)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-jno">20260504-3</td>
+              <td class="col-date">05-04</td>
+              <td>5월 임차료 지급</td>
+              <td><span class="source-pill">수동</span></td>
+              <td><span class="badge posted">POSTED</span></td>
+              <td class="col-amount">500,000</td>
+            </tr>
+            <tr>
+              <td class="col-jno">20260504-2</td>
+              <td class="col-date">05-04</td>
+              <td>매출 (거래명세 #20260504-001)</td>
+              <td><span class="source-pill">수동</span></td>
+              <td><span class="badge posted">POSTED</span></td>
+              <td class="col-amount">820,000</td>
+            </tr>
+            <tr>
+              <td class="col-jno">20260504-1</td>
+              <td class="col-date">05-04</td>
+              <td>사무용품 구매</td>
+              <td><span class="source-pill">수동</span></td>
+              <td><span class="badge draft">DRAFT</span></td>
+              <td class="col-amount">45,000</td>
+            </tr>
+            <tr>
+              <td class="col-jno">20260503-2</td>
+              <td class="col-date">05-03</td>
+              <td>통신비 (5월 KT)</td>
+              <td><span class="source-pill">수동</span></td>
+              <td><span class="badge posted">POSTED</span></td>
+              <td class="col-amount">89,000</td>
+            </tr>
+            <tr class="reversed-row">
+              <td class="col-jno">20260503-1</td>
+              <td class="col-date">05-03</td>
+              <td class="text">잘못된 분개 → 역분개됨</td>
+              <td><span class="source-pill">수동</span></td>
+              <td><span class="badge reversed">REVERSED</span></td>
+              <td class="col-amount">120,000</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer">
+        <div>총 5건</div>
+        <div class="pagination">
+          <button class="page-btn">‹</button>
+          <button class="page-btn active">1</button>
+          <button class="page-btn">2</button>
+          <button class="page-btn">3</button>
+          <button class="page-btn">›</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

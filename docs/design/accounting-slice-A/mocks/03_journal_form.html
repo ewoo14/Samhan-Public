@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>신규 분개 — (주)삼한공조시스템</title>
+<style>
+  :root {
+    --surface-app: #FAFBFC;
+    --surface-card: #FFFFFF;
+    --surface-subtle: #F4F6F8;
+    --surface-hover: #F4F6F8;
+    --line-default: #E1E5EA;
+    --ink-primary: #1A1F2E;
+    --ink-secondary: #5C6773;
+    --ink-tertiary: #8A95A4;
+    --action-brand: #1E40AF;
+    --action-brand-hover: #1D4ED8;
+    --action-brand-subtle: #DBEAFE;
+
+    --debit-color: #1A1F2E;
+    --credit-color: #1E40AF;
+
+    --balance-ok: #10B981;
+    --balance-ok-bg: #D1FAE5;
+    --balance-ng: #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: var(--surface-app); color: var(--ink-primary);
+    font-size: 14px; line-height: 1.5;
+  }
+  .app-header {
+    height: 56px; background: var(--surface-card);
+    border-bottom: 1px solid var(--line-default);
+    display: flex; align-items: center; padding: 0 24px;
+    justify-content: space-between;
+  }
+  .header-title { font-size: 14px; color: var(--ink-secondary); }
+  .header-title strong { color: var(--ink-primary); font-weight: 600; margin-left: 8px; }
+  .header-user { font-size: 14px; color: var(--ink-secondary); }
+  .layout { display: flex; min-height: calc(100vh - 56px); }
+  .sidebar {
+    width: 220px; background: var(--surface-card);
+    border-right: 1px solid var(--line-default); padding: 16px 0;
+  }
+  .sidebar-group {
+    padding: 8px 24px 4px; font-size: 11px; color: var(--ink-tertiary);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sidebar-item { padding: 10px 24px; font-size: 14px; color: var(--ink-secondary); cursor: pointer; }
+  .sidebar-item:hover { background: var(--surface-hover); }
+  .sidebar-item.active {
+    background: var(--action-brand-subtle); color: var(--action-brand);
+    font-weight: 600; border-left: 3px solid var(--action-brand); padding-left: 21px;
+  }
+  .main { flex: 1; padding: 32px; overflow: auto; }
+  .page-title {
+    font-size: 24px; font-weight: 600; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .page-subtitle { font-size: 13px; color: var(--ink-tertiary); margin-bottom: 24px; }
+
+  .card {
+    background: var(--surface-card); border: 1px solid var(--line-default);
+    border-radius: 8px; padding: 20px; margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .card-title {
+    font-size: 15px; font-weight: 600; margin-bottom: 12px;
+    color: var(--ink-primary);
+  }
+  .form-row { display: flex; gap: 16px; margin-bottom: 12px; }
+  .form-row:last-child { margin-bottom: 0; }
+  .form-field { display: flex; flex-direction: column; gap: 4px; }
+  .form-label {
+    font-size: 12px; color: var(--ink-secondary); font-weight: 500;
+  }
+  .input, .select, .textarea {
+    height: 36px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px;
+    padding: 0 12px; font-size: 14px; color: var(--ink-primary);
+  }
+  .form-field.flex-1 { flex: 1; }
+  .form-field.w-160 .input, .form-field.w-160 .select { width: 160px; }
+  .form-field.w-200 .input { width: 200px; }
+
+  .lines-table {
+    width: 100%; border-collapse: collapse;
+  }
+  .lines-table thead th {
+    height: 36px; background: var(--surface-subtle);
+    font-size: 12px; font-weight: 600; color: var(--ink-secondary);
+    text-align: left; padding: 0 10px; border-bottom: 1px solid var(--line-default);
+  }
+  .lines-table thead th.right { text-align: right; }
+  .lines-table thead th.center { text-align: center; }
+  .lines-table tbody td {
+    height: 44px; padding: 4px 8px; border-bottom: 1px solid var(--line-default);
+    vertical-align: middle;
+  }
+  .col-no { width: 28px; text-align: center; color: var(--ink-tertiary); font-size: 12px; }
+  .col-account { width: 200px; }
+  .col-debit, .col-credit { width: 140px; }
+  .col-partner { width: 160px; }
+  .col-memo { }
+  .col-del { width: 36px; text-align: center; }
+
+  .acct-select, .partner-input, .memo-input, .money-input {
+    width: 100%; height: 32px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px;
+    padding: 0 8px; font-size: 13px; color: var(--ink-primary);
+  }
+  .money-input {
+    text-align: right;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+  .money-input.debit { color: var(--debit-color); }
+  .money-input.credit { color: var(--credit-color); font-weight: 500; }
+  .money-input.disabled {
+    background: var(--surface-subtle); color: var(--ink-tertiary); cursor: not-allowed;
+  }
+  .acct-select.selected {
+    background: var(--surface-card);
+  }
+  .acct-code-mono { font-family: ui-monospace, monospace; color: var(--ink-secondary); font-size: 12px; }
+  .btn-icon {
+    width: 28px; height: 28px; border: 1px solid var(--line-default);
+    background: var(--surface-card); border-radius: 4px; cursor: pointer;
+    color: var(--ink-tertiary); font-size: 14px;
+  }
+  .btn-icon:hover { background: var(--surface-hover); color: var(--balance-ng); border-color: var(--balance-ng); }
+
+  .add-line-row td {
+    height: 40px; padding: 0; text-align: center;
+    background: var(--surface-subtle);
+    color: var(--action-brand); font-size: 13px; font-weight: 500;
+    cursor: pointer;
+  }
+  .add-line-row td:hover { background: var(--action-brand-subtle); }
+
+  .totals-row td {
+    height: 44px; padding: 0 10px; font-weight: 600;
+    background: var(--balance-ok-bg); color: var(--balance-ok);
+    border-top: 2px solid var(--balance-ok);
+  }
+  .totals-row td.right {
+    text-align: right;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+  .totals-row .balance-mark { padding-left: 8px; }
+
+  .form-actions {
+    display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;
+  }
+  .btn {
+    height: 38px; padding: 0 18px; border-radius: 4px; font-size: 14px;
+    font-weight: 600; cursor: pointer; border: 1px solid var(--line-default);
+    background: var(--surface-card); color: var(--ink-primary);
+  }
+  .btn:hover { background: var(--surface-hover); }
+  .btn.primary {
+    background: var(--action-brand); color: white; border-color: var(--action-brand);
+  }
+  .btn.primary:hover { background: var(--action-brand-hover); border-color: var(--action-brand-hover); }
+  .btn.success {
+    background: var(--balance-ok); color: white; border-color: var(--balance-ok);
+  }
+  .btn.success:hover { background: #059669; border-color: #059669; }
+</style>
+</head>
+<body>
+  <div class="app-header">
+    <div class="header-title">업무 화면 / 회계 / 분개장 / <strong>신규</strong></div>
+    <div class="header-user">박지혜 (회계담당) ▾</div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">영업</div>
+      <div class="sidebar-item">거래명세서</div>
+      <div class="sidebar-item">작업지시서</div>
+      <div class="sidebar-group">창고</div>
+      <div class="sidebar-item">재고</div>
+      <div class="sidebar-item">입출고</div>
+      <div class="sidebar-group">회계</div>
+      <div class="sidebar-item">계정과목</div>
+      <div class="sidebar-item active">분개장</div>
+      <div class="sidebar-item">시산표</div>
+      <div class="sidebar-group">시스템</div>
+      <div class="sidebar-item">사용자</div>
+    </aside>
+    <main class="main">
+      <h1 class="page-title">신규 분개</h1>
+      <div class="page-subtitle">DRAFT 저장 후 검토 → POST 확정. 확정 후엔 수정 불가, 역분개로만 정정 가능합니다.</div>
+
+      <!-- 헤더 -->
+      <div class="card">
+        <div class="card-title">분개 정보</div>
+        <div class="form-row">
+          <div class="form-field w-160">
+            <label class="form-label">일자</label>
+            <input class="input" type="date" value="2026-05-04" />
+          </div>
+          <div class="form-field w-160">
+            <label class="form-label">출처</label>
+            <select class="select"><option>수동</option></select>
+          </div>
+          <div class="form-field flex-1">
+            <label class="form-label">적요</label>
+            <input class="input" value="5월 임차료 지급" placeholder="분개 적요 입력" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 라인 -->
+      <div class="card">
+        <div class="card-title">분개 라인</div>
+        <table class="lines-table">
+          <thead>
+            <tr>
+              <th class="col-no center">#</th>
+              <th class="col-account">계정과목</th>
+              <th class="col-debit right">차변</th>
+              <th class="col-credit right">대변</th>
+              <th class="col-partner">거래처</th>
+              <th class="col-memo">메모</th>
+              <th class="col-del"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-no">1</td>
+              <td><div class="acct-select selected"><span class="acct-code-mono">805</span> 임차료</div></td>
+              <td><input class="money-input debit" value="500,000" /></td>
+              <td><input class="money-input disabled" value="" placeholder="0" disabled /></td>
+              <td><input class="partner-input" value="강남빌딩(주)" /></td>
+              <td><input class="memo-input" value="5월분" /></td>
+              <td><button class="btn-icon" title="라인 삭제">✕</button></td>
+            </tr>
+            <tr>
+              <td class="col-no">2</td>
+              <td><div class="acct-select selected"><span class="acct-code-mono">102</span> 보통예금</div></td>
+              <td><input class="money-input disabled" value="" placeholder="0" disabled /></td>
+              <td><input class="money-input credit" value="500,000" /></td>
+              <td><input class="partner-input" value="국민은행 1234-...-5678" /></td>
+              <td><input class="memo-input" value="" placeholder="(선택) 메모" /></td>
+              <td><button class="btn-icon" title="라인 삭제">✕</button></td>
+            </tr>
+            <tr>
+              <td class="col-no">3</td>
+              <td><div class="acct-select" style="color:var(--ink-tertiary);">계정과목 선택</div></td>
+              <td><input class="money-input" placeholder="0" /></td>
+              <td><input class="money-input" placeholder="0" /></td>
+              <td><input class="partner-input" placeholder="(선택)" /></td>
+              <td><input class="memo-input" placeholder="(선택)" /></td>
+              <td><button class="btn-icon" title="라인 삭제">✕</button></td>
+            </tr>
+            <tr class="add-line-row">
+              <td colspan="7">+ 라인 추가</td>
+            </tr>
+            <tr class="totals-row">
+              <td colspan="2" style="text-align:right;">합계</td>
+              <td class="right">500,000</td>
+              <td class="right">500,000</td>
+              <td colspan="3"><span class="balance-mark">✓ 차/대 합계 일치</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn">취소</button>
+        <button class="btn">저장 (DRAFT)</button>
+        <button class="btn success">확정 (POST)</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
