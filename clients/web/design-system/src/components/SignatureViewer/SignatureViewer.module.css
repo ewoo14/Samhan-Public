@@ -1,0 +1,88 @@
+/*
+ * SignatureViewer — Designer `tokens.md` § 1.2 (모바일) + (데스크톱) 인용.
+ *
+ * desktop: 150×80 PNG + 메타 우측. fluid: PNG 100% width + 메타 하단.
+ */
+.wrapper {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.wrapper.desktop {
+  grid-template-columns: 168px 1fr;
+}
+
+.wrapper.fluid {
+  grid-template-columns: 1fr;
+}
+
+.img-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--slip-signature-img-bg, #FFFFFF);
+  border: 1px solid var(--slip-signature-img-border, #E1E5EA);
+  border-radius: var(--radius-md, 4px);
+  overflow: hidden;
+}
+
+.wrapper.desktop .img-wrap {
+  width: var(--slip-signature-img-w, 150px);
+  height: var(--slip-signature-img-h, 80px);
+  padding: 4px;
+}
+
+.wrapper.fluid .img-wrap {
+  width: 100%;
+  max-height: 240px;
+  padding: 8px;
+}
+
+.img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.img-empty {
+  font-size: 12px;
+  color: var(--slip-signature-meta-label-color, #8A95A4);
+  text-align: center;
+}
+
+.meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.meta-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--slip-signature-meta-label-color, #8A95A4);
+}
+
+.meta-value {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slip-signature-meta-value-color, #1A1F2E);
+  font-weight: 500;
+}
+
+.meta-hash {
+  margin: 0;
+  font-size: 12px;
+  color: var(--slip-signature-hash-color, #5C6773);
+  font-family: var(--slip-signature-hash-font, "SF Mono", "Menlo", "Consolas", monospace);
+  letter-spacing: 0.5px;
+}

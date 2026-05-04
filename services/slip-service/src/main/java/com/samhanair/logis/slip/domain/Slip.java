@@ -11,13 +11,16 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -60,6 +63,16 @@ public class Slip extends BaseEntity {
             EnumSet.of(SlipStatus.DRAFT, SlipStatus.SAVED);
     private static final Set<SlipStatus> CANCELABLE_STATUSES =
             EnumSet.of(SlipStatus.DRAFT, SlipStatus.SAVED, SlipStatus.SENT);
+
+    /** Slice C — 인수자 서명을 받을 수 있는 단계 (Plan §1.3 라이프사이클 표). */
+    private static final Set<SlipStatus> SIGNABLE_STATUSES =
+            EnumSet.of(SlipStatus.INSPECTING, SlipStatus.COMPLETED, SlipStatus.SHIPPING);
+
+    /** Slice C — share token base64url 48 bytes = 64자 (DeliveryBatch 와 동일 룰). */
+    private static final SecureRandom SIGNATURE_RNG = new SecureRandom();
+    private static final int SIGNATURE_TOKEN_BYTE_LENGTH = 48;
+    /** Slice C — share token 만료: +30일 (Plan §7 Q4 결정). */
+    private static final int SIGNATURE_SHARE_EXPIRY_DAYS = 30;
 
     @Id
     @GeneratedValue
@@ -164,6 +177,83 @@ public class Slip extends BaseEntity {
      */
     @Column(name = "delivery_batch_id")
     private UUID deliveryBatchId;
+
+    // ---------- Slice C (signature-slice-C Plan §1.1) — 인수자 전자서명 7 필드 ----------
+
+    /**
+     * 인수자 서명 시각 — Slice C. {@link #recordSignature} 호출 시 서버 timestamp 로 기록.
+     * null 이면 서명 미완료 상태.
+     */
+    @Column(name = "signed_at")
+    private LocalDateTime signedAt;
+
+    /** 인수자명 — Slice C. 자유 입력 (1~50자). */
+    @Column(name = "signer_name", length = 50)
+    private String signerName;
+
+    /**
+     * 서명 PNG 바이너리 — Slice C. ≤50KB (서비스 레이어 가드).
+     * Q2 결정: DB bytea (월 1만건 미만 단계) — Phase 6+ MinIO 마이그.
+     *
+     * NOTE: {@code @Lob} 미사용 — Hibernate 6 PostgreSQL 에서 {@code @Lob byte[]} 는
+     * {@code oid} (large object) 로 매핑되어 V5 의 {@code BYTEA} 컬럼과 mismatch
+     * → SchemaManagementException. byte[] + 명시 nothing 으로 BYTEA 매핑 위임.
+     */
+    @Column(name = "signature_png")
+    private byte[] signaturePng;
+
+    /**
+     * SHA-256 hex 64자 — Slice C. 서버에서 PNG bytes 로 재계산하여 client hash 와 비교 검증.
+     * mismatch 면 INVALID_INPUT (400). 무결성 1차 수단.
+     */
+    @Column(name = "signature_hash", length = 64)
+    private String signatureHash;
+
+    /** 서명 채널 — Slice C. {@link SignatureChannel#MOBILE_CANVAS} / PAPER_SCAN. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "signature_channel", length = 20)
+    private SignatureChannel signatureChannel;
+
+    /**
+     * 인수자 share 토큰 — Slice C. base64url 64자, partial UNIQUE (NULL 허용).
+     * 인수자 view 공개 endpoint {@code GET /public/signatures/{shareToken}} 진입 키.
+     */
+    /**
+     * NOTE: {@code unique=true} 미사용 — V5 SQL 은 partial UNIQUE INDEX
+     * ({@code WHERE signature_share_token IS NOT NULL}) 로 NULL 허용 + 발급 시
+     * 유일성 강제. JPA inline unique 는 full UNIQUE constraint 를 생성하라는
+     * 의미라 Hibernate {@code validate} 가 partial index 와 mismatch 로 거부.
+     */
+    @Column(name = "signature_share_token", length = 64)
+    private String signatureShareToken;
+
+    /**
+     * Share 토큰 만료 시각 — Slice C. {@code signedAt + 30일} (Q4 결정).
+     * 만료 후 인수자 view 410 GONE.
+     */
+    @Column(name = "signature_share_expires_at")
+    private LocalDateTime signatureShareExpiresAt;
+
+    // ---------- Slice C2 (PR #23 follow-up) — 배송기사 서명 4 필드 ----------
+    // 인수자 서명과 패턴 동일 (PNG bytea + SHA-256 + channel + signed timestamp).
+    // share token 은 인수자 share 토큰을 그대로 재사용 (1 개 share view 에 둘 다 표시).
+
+    /** 배송기사 서명 시각 — Slice C2. null 이면 기사 서명 미완료. */
+    @Column(name = "driver_signed_at")
+    private LocalDateTime driverSignedAt;
+
+    /** 배송기사 서명 PNG ≤50KB. NOTE: signaturePng 와 동일 — @Lob 미사용 (BYTEA 매핑). */
+    @Column(name = "driver_signature_png")
+    private byte[] driverSignaturePng;
+
+    /** SHA-256 hex 64자 — 무결성 검증용. */
+    @Column(name = "driver_signature_hash", length = 64)
+    private String driverSignatureHash;
+
+    /** 서명 채널. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "driver_signature_channel", length = 20)
+    private SignatureChannel driverSignatureChannel;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -508,6 +598,166 @@ public class Slip extends BaseEntity {
                     "취소 가능한 상태가 아닙니다: " + this.status);
         }
         this.status = SlipStatus.CANCELED;
+    }
+
+    // ---------- Slice C (signature-slice-C) — 인수자 전자서명 라이프사이클 ----------
+
+    /**
+     * 인수자 서명 등록 — Slice C (signature-slice-C Plan §1.3 Layer 4 라이프사이클 표).
+     *
+     * <p>전이 가드: 현재 status 가 {@link SlipStatus#INSPECTING} / {@link SlipStatus#COMPLETED} /
+     * {@link SlipStatus#SHIPPING} 중 하나여야 함. 그 외 단계는 CONFLICT (409).
+     *
+     * <p>부수효과 (현재 트랜잭션 내):
+     * <ol>
+     *   <li>{@code signedAt = now()}</li>
+     *   <li>{@code signerName, signaturePng, signatureHash, signatureChannel} 갱신</li>
+     *   <li>{@code signatureShareToken} 신규 발급 (base64url 64자, 매 호출마다 재생성)</li>
+     *   <li>{@code signatureShareExpiresAt = signedAt + 30일} (Q4)</li>
+     *   <li>SlipStatus 자체는 **변경 없음** — 서명은 라이프사이클 직교 메타 (Q3)</li>
+     * </ol>
+     *
+     * <p>audit 적재는 service 레이어에서 별도로 처리 (도메인은 entity 만 반환, service 가 repository 로
+     * 저장). audit log 는 entity 가 아니라 service 에서 INSERT — 도메인은 순수 mutation 만.
+     *
+     * @param signerName 인수자명 (1~50자, 필수)
+     * @param png 서명 PNG bytes (필수, ≤50KB — service 레이어 가드)
+     * @param hash 서명 SHA-256 hex 64자 (서버 재계산값과 일치해야 함 — service 레이어 검증)
+     * @param channel 서명 채널 (필수)
+     * @throws BusinessException(CONFLICT) 현재 상태가 SIGNABLE_STATUSES 안에 없을 때
+     * @throws IllegalArgumentException signerName/png/hash/channel null/blank 또는 길이 위반
+     */
+    public void recordSignature(String signerName, byte[] png, String hash, SignatureChannel channel) {
+        if (!SIGNABLE_STATUSES.contains(this.status)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "서명 가능한 단계가 아닙니다 (현재: " + this.status
+                            + ", 필요: INSPECTING/COMPLETED/SHIPPING)");
+        }
+        if (signerName == null || signerName.isBlank()) {
+            throw new IllegalArgumentException("signerName 은 필수입니다");
+        }
+        if (signerName.length() > 50) {
+            throw new IllegalArgumentException("signerName 은 최대 50자입니다");
+        }
+        if (png == null || png.length == 0) {
+            throw new IllegalArgumentException("signaturePng 은 필수입니다");
+        }
+        if (hash == null || hash.isBlank()) {
+            throw new IllegalArgumentException("signatureHash 는 필수입니다");
+        }
+        if (channel == null) {
+            throw new IllegalArgumentException("signatureChannel 은 필수입니다");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        this.signedAt = now;
+        this.signerName = signerName;
+        this.signaturePng = png;
+        this.signatureHash = hash;
+        this.signatureChannel = channel;
+        this.signatureShareToken = generateShareToken();
+        this.signatureShareExpiresAt = now.plusDays(SIGNATURE_SHARE_EXPIRY_DAYS);
+    }
+
+    /**
+     * 인수자 서명 무효화 — Slice C (signature-slice-C Plan §1.3 라이프사이클 표).
+     * MASTER 권한자만 호출 (service 레이어 PreAuthorize 가드).
+     *
+     * <p>전이 가드: {@code signedAt != null} 일 때만 호출 가능. 미서명 상태에서 호출 시 CONFLICT.
+     *
+     * <p>부수효과:
+     * <ol>
+     *   <li>5필드 모두 NULL: signedAt / signerName / signaturePng / signatureHash / signatureChannel</li>
+     *   <li>share 토큰/만료 시각도 NULL — share URL 즉시 무효</li>
+     *   <li>SlipStatus 변경 없음</li>
+     *   <li>audit 적재는 service 레이어 (INVALIDATE action + reason + actorUserId)</li>
+     * </ol>
+     *
+     * <p>service 레이어가 audit INSERT 시 사용할 직전 hash/signerName 정보는 본 메서드 호출 **전에**
+     * 외부에서 snapshot 해야 함 (호출 후 NULL 이 됨). service 레이어에서 호출 순서 가드.
+     *
+     * @param reason 무효화 사유 (필수, ≤500자)
+     * @throws BusinessException(CONFLICT) signedAt 가 null 일 때
+     * @throws IllegalArgumentException reason null/blank 또는 500자 초과
+     */
+    public void invalidateSignature(String reason) {
+        if (this.signedAt == null) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "서명되지 않은 슬립은 무효화할 수 없습니다");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("reason 은 필수입니다");
+        }
+        if (reason.length() > 500) {
+            throw new IllegalArgumentException("reason 은 최대 500자입니다");
+        }
+
+        this.signedAt = null;
+        this.signerName = null;
+        this.signaturePng = null;
+        this.signatureHash = null;
+        this.signatureChannel = null;
+        this.signatureShareToken = null;
+        this.signatureShareExpiresAt = null;
+    }
+
+    /**
+     * 인수자 share 토큰이 만료되었는지 검증 — 인수자 view 공개 endpoint 가드.
+     *
+     * @return true 면 만료, false 이면 유효 또는 미서명 (token 자체가 null)
+     */
+    public boolean isSignatureShareExpired() {
+        if (this.signatureShareExpiresAt == null) {
+            return true;
+        }
+        return LocalDateTime.now().isAfter(this.signatureShareExpiresAt);
+    }
+
+    /** 서명이 등록된 슬립인지 — admin 화면 / FE 표시 분기 헬퍼. */
+    public boolean isSigned() {
+        return this.signedAt != null;
+    }
+
+    /**
+     * 배송기사 서명 기록 — Slice C2 (PR #23 follow-up).
+     *
+     * 인수자 서명({@link #recordSignature})과 동일한 SIGNABLE_STATUSES 가드 + 검증 패턴.
+     * 차이: signerName 별도 입력 X (Slip.driverName 재사용), share token 발급 X
+     * (인수자 share 토큰이 둘 다 표시).
+     *
+     * @throws BusinessException(CONFLICT) 현재 상태가 SIGNABLE_STATUSES 안에 없을 때
+     * @throws IllegalArgumentException png/hash/channel null 또는 길이 위반
+     */
+    public void recordDriverSignature(byte[] png, String hash, SignatureChannel channel) {
+        if (!SIGNABLE_STATUSES.contains(this.status)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "기사 서명 가능한 단계가 아닙니다 (현재: " + this.status
+                            + ", 필요: INSPECTING/COMPLETED/SHIPPING)");
+        }
+        if (png == null || png.length == 0) {
+            throw new IllegalArgumentException("driverSignaturePng 은 필수입니다");
+        }
+        if (hash == null || hash.isBlank()) {
+            throw new IllegalArgumentException("driverSignatureHash 는 필수입니다");
+        }
+        if (channel == null) {
+            throw new IllegalArgumentException("driverSignatureChannel 은 필수입니다");
+        }
+        this.driverSignedAt = LocalDateTime.now();
+        this.driverSignaturePng = png;
+        this.driverSignatureHash = hash;
+        this.driverSignatureChannel = channel;
+    }
+
+    /** 기사 서명 등록 여부 — DispatchView 인쇄 분기 헬퍼. */
+    public boolean isDriverSigned() {
+        return this.driverSignedAt != null;
+    }
+
+    private static String generateShareToken() {
+        byte[] bytes = new byte[SIGNATURE_TOKEN_BYTE_LENGTH];
+        SIGNATURE_RNG.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     /**

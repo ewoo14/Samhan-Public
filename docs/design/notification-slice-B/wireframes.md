@@ -176,7 +176,7 @@ DELETE `/delivery-batches/{id}/slips/{slipId}` → confirm dialog "이 슬립을
 
 ```
 ┌─────────────────────────────────┐
-│ ▒▒▒▒ 삼한물류 ▒▒▒▒              │  ← 상단 brand bar (40px, --action-brand 배경)
+│ ▒▒▒▒ (주)삼한공조시스템 ▒▒▒▒              │  ← 상단 brand bar (40px, --action-brand 배경)
 ├─────────────────────────────────┤
 │                                 │
 │  ┌───────────────────────────┐  │
@@ -222,7 +222,7 @@ DELETE `/delivery-batches/{id}/slips/{slipId}` → confirm dialog "이 슬립을
 
 ```
 ┌─────────────────────────────────┐
-│ ▒▒▒▒ 삼한물류 ▒▒▒▒              │
+│ ▒▒▒▒ (주)삼한공조시스템 ▒▒▒▒              │
 ├─────────────────────────────────┤
 │                                 │
 │         ⓘ                       │  ← info icon (48px, --ink-tertiary)

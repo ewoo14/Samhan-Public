@@ -180,6 +180,9 @@ export function DispatchView() {
           <p className="dispatch-driver-call-notice">
             기사님 출발전에 수요처에 전화주세요~ 감사합니다^^
           </p>
+
+          {/* 사용자 명시 (Slice C2 follow-up): confirm + signatures + liability 한 박스로 묶기 */}
+          <div className="dispatch-liability-box">
           <p className="dispatch-confirm-notice">
             ※ 제품수량 및 이상유무 확인 후 서명 必
           </p>
@@ -189,16 +192,49 @@ export function DispatchView() {
               notification-slice-B: 기사명이 입력된 경우 라벨에 자동 노출 (괄호 안).
               인쇄 본문 디자인 자체는 변경 X (피드백 `feedback_print_design_iteration.md` 가드).
             */}
-            <div className="dispatch-sign-label-only">
-              용달기사 서명{slip.driverName ? ` (${slip.driverName})` : ''}
+            <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
+              용달기사 서명
+              {slip.driverSignaturePng ? (
+                <>
+                  <img
+                    className="dispatch-role-signature-img"
+                    src={slip.driverSignaturePng}
+                    alt="용달기사 서명"
+                  />
+                  <div className="dispatch-role-signature-meta">
+                    <span className="date">{slip.driverSignedAt?.slice(0, 10) ?? ''}</span>
+                  </div>
+                </>
+              ) : null}
             </div>
-            <div className="dispatch-sign-label-only">인수자 서명</div>
+            {/*
+              signature-slice-C 신규: 인수자 서명 셀 안에 signaturePng 있으면 <img> 렌더.
+              CSS-only 추가 (Designer wireframes.md §4.3 / tokens.md §1.3 — max-width 100% +
+              max-height 18mm + object-fit contain). 셀 자체 grid / 폭 변경 없음.
+              PNG 미존재 시 기존 라벨 유지 (서명 없음 분기 — wireframes.md §4.2).
+            */}
+            <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
+              인수자 서명
+              {slip.signaturePng ? (
+                <>
+                  <img
+                    className="dispatch-role-signature-img"
+                    src={slip.signaturePng}
+                    alt="인수자 서명"
+                  />
+                  <div className="dispatch-role-signature-meta">
+                    <span className="date">{slip.signedAt?.slice(0, 10) ?? ''}</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
 
           <p className="dispatch-liability-notice">
             제품 인수시 수량 제품상태 이상 유무 확인 후 서명 부탁드립니다.<br />
             서명 후 생긴 문제는 당사가 책임지지 않습니다.
           </p>
+          </div>
         </div>
       </div>
     </div>

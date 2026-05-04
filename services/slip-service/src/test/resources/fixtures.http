@@ -607,3 +607,152 @@ GET {{host}}/public/batches/{{newBatchToken}}
 ###       (IT PublicSlipControllerIT.expiredToken_returns410 자동 검증)
 GET {{host}}/public/batches/{{newBatchToken}}
 
+###############################################################################
+### 시나리오 18: Slice C (signature-slice-C) — 인수자 전자서명 happy path (no auth)
+### BE 신규 spec (plan §3, §4):
+###   - Slip 7 신규 필드 (recipientSignerName/recipientSignedAt/signaturePngBase64/
+###     signatureHash/shareToken/shareExpiresAt/recipientSignatureMeta)
+###   - SlipSignatureAudit entity (무효화 이력)
+###   - 4 endpoints: POST /public/batches/{token}/slips/{slipId}/signature (no auth),
+###                  GET /public/signatures/{shareToken} (no auth, 공유 view),
+###                  GET /slips/{slipId}/signature (관리자 view, MANAGER/MASTER/AUDITOR),
+###                  DELETE /slips/{slipId}/signature (무효화, MASTER 전용)
+### 권한: 공개 endpoint 2개 = NO AUTH. 관리자 GET = MANAGER/MASTER/AUDITOR. DELETE = MASTER 전용.
+### UUID 가드: 공개 응답에 slipId/batchId/signatureId 모두 absent. 비즈니스 식별자 (slipNo/signerName/hashPrefix) 만 노출.
+### 전제: 시나리오 14 의 batchToken + 시나리오 13 의 driverSlip1Id (COMPLETED 단계까지 진행 가정)
+###############################################################################
+
+### 18-a: 슬립을 COMPLETED 단계까지 진행 (서명 가능 상태 만들기)
+### (사전: 시나리오 13~14 가 driverSlip1Id 생성 + batch 그룹 완료 가정)
+POST {{host}}/slips/{{driverSlip1Id}}/send
+Authorization: Bearer {{salesToken}}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/accept
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/process
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/complete
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/inspect
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/ship
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/slips/{{driverSlip1Id}}/deliver
+Authorization: Bearer {{warehouseToken}}
+
+### 18-b: 인수자 전자서명 happy path (no auth)
+### 기대: 201 + $.data.shareToken 존재, $.data.signerName, $.data.signedAt 존재
+###       UUID 가드: $.data.slipId / $.data.batchId / $.data.signatureId 부재
+### signaturePngBase64 는 1x1 투명 PNG 의 base64 (테스트용 dummy ~70 bytes)
+### clientHash 는 SHA-256(signaturePngBase64) hex 64자 — 서버가 동일 해시 재계산 후 비교
+POST {{host}}/public/batches/{{batchToken}}/slips/{{driverSlip1Id}}/signature
+Content-Type: application/json
+
+{
+  "signerName": "정수령",
+  "signaturePngBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "clientHash": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+}
+
+> {%
+client.global.set("shareToken", response.body.data.shareToken);
+%}
+
+###############################################################################
+### 시나리오 19: 잘못된 hash → 400 BAD_REQUEST (서버 재계산 mismatch)
+### 기대: 400, $.error.code == "INVALID_INPUT", slip.recipientSignedAt 미변경
+###############################################################################
+POST {{host}}/public/batches/{{batchToken}}/slips/{{driverSlip1Id}}/signature
+Content-Type: application/json
+
+{
+  "signerName": "정수령",
+  "signaturePngBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "clientHash": "0000000000000000000000000000000000000000000000000000000000000000"
+}
+
+###############################################################################
+### 시나리오 20: 만료된 shareToken → 410 GONE
+### 기대: 410, $.error.code == "CONFLICT" (PublicSlipController 와 동일 매핑)
+### (수동 검증: DB 에서 share_expires_at 을 NOW() - INTERVAL '1 hour' 로 강제 갱신 후 GET)
+###############################################################################
+
+### 20-a: 정상 토큰 GET → 200 + UUID 미노출 검증
+### 기대: $.data.slipNo 존재, $.data.signerName == "정수령", $.data.hashPrefix.length == 8
+###       UUID 가드: $.data.slipId / $.data.batchId / $.data.signatureId 부재
+GET {{host}}/public/signatures/{{shareToken}}
+
+### 20-b: 임의 토큰 → 404 NOT_FOUND
+GET {{host}}/public/signatures/totally-invalid-share-token-zzzzz
+
+### 20-c: (수동) 만료 시뮬레이션 후 → 410 GONE
+###       UPDATE slips SET share_expires_at = NOW() - INTERVAL '1 hour' WHERE id = '<driverSlip1Id>';
+GET {{host}}/public/signatures/{{shareToken}}
+
+###############################################################################
+### 시나리오 21: 관리자 서명 조회 (MANAGER/MASTER/AUDITOR 만 허용)
+### 기대: 200 + 풀해시 노출 ($.data.fullHash.length == 64), 관리자 view 는 UUID 노출 OK
+### 음성 검증: SALES → 403 FORBIDDEN
+###############################################################################
+
+### 21-a: MANAGER 가 서명 조회 → 200
+GET {{host}}/slips/{{driverSlip1Id}}/signature
+Authorization: Bearer {{managerToken}}
+
+### 21-b: MASTER 가 서명 조회 → 200
+GET {{host}}/slips/{{driverSlip1Id}}/signature
+Authorization: Bearer {{masterToken}}
+
+### 21-c: SALES 가 서명 조회 → 403 (권한 가드 명시 검증)
+GET {{host}}/slips/{{driverSlip1Id}}/signature
+Authorization: Bearer {{salesToken}}
+
+###############################################################################
+### 시나리오 22: 서명 무효화 (MASTER 전용 — 관리자 무효화도 거부)
+### 기대: 204 No Content + slip.signaturePngBase64 = null + audit log INSERT (1건)
+### 음성 검증: MANAGER 무효화 시도 → 403 (MASTER 전용)
+###############################################################################
+
+### 22-a: MANAGER 가 무효화 시도 → 403 (음성 검증)
+DELETE {{host}}/slips/{{driverSlip1Id}}/signature
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "reason": "MANAGER 시도 — 거부되어야 함"
+}
+
+### 22-b: MASTER 가 무효화 → 204 + audit log INSERT
+### 검증: SELECT * FROM slip_signature_audits WHERE slip_id = '<driverSlip1Id>' → 1 row
+###       slip.signature_png_base64 = NULL, slip.signature_hash = NULL, slip.share_token = NULL
+DELETE {{host}}/slips/{{driverSlip1Id}}/signature
+Authorization: Bearer {{masterToken}}
+Content-Type: application/json
+
+{
+  "reason": "오기재 — 인수자 서명 다시 받아야 함"
+}
+
+### 22-c: 무효화 후 GET share → 404 (shareToken null)
+GET {{host}}/public/signatures/{{shareToken}}
+
+### 22-d: 서명 안 된 슬립에 무효화 시도 → 404 (다른 슬립 사용)
+DELETE {{host}}/slips/{{draftSlipId}}/signature
+Authorization: Bearer {{masterToken}}
+Content-Type: application/json
+
+{
+  "reason": "서명 없는 슬립 — 404 기대"
+}
+

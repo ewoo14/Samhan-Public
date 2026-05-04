@@ -5,8 +5,8 @@
  *
  * Designer wireframes.md § 1 + ux-flow.md § 1 충실 반영:
  * - 상단 액션 바: 날짜 입력 + [날짜 자동 그룹] primary 버튼
- * - 표 6 컬럼 (배송일/기사명/연락처/슬립수/링크/SMS발송완료)
- * - 행 클릭 → BatchDetailModal (슬립 N건 + 추가/제거)
+ * - 표 6 컬럼 (배송일/기사명/연락처/전표수/링크/SMS발송완료)
+ * - 행 클릭 → BatchDetailModal (전표 N건 + 추가/제거)
  * - sent 행은 옅은 파랑 배경 (--batch-list-row-sent-bg #F0F9FF)
  *
  * 사용자 노출 식별자: driverName / slipCount / 날짜 / signUrl 만 (UUID 미노출).
@@ -75,7 +75,7 @@ export function LinkDispatchListPage() {
 
   const handleSendSms = (batch: DeliveryBatchSummary) => {
     const action = batch.smsSentAt ? '재발송' : '발송'
-    const msg = `${batch.driverName} (${batch.driverPhone}) 에게 SMS ${action} 합니다.\n\n슬립 ${batch.slipCount}건 e-sign URL 을 포함합니다.\n진행할까요?`
+    const msg = `${batch.driverName} (${batch.driverPhone}) 에게 SMS ${action} 합니다.\n\n전표 ${batch.slipCount}건 e-sign URL 을 포함합니다.\n진행할까요?`
     if (!window.confirm(msg)) return
     sendSmsMutation.mutate(batch.id)
   }
@@ -99,7 +99,7 @@ export function LinkDispatchListPage() {
       },
       {
         key: 'slipCount',
-        header: '슬립수',
+        header: '전표수',
         width: '80px',
         align: 'right',
         render: (row) => `${row.slipCount}건`,

@@ -1,0 +1,55 @@
+/*
+ * SignaturePad — Designer `tokens.md` § 1.1 인용.
+ *
+ * 디자인 시스템 토큰 우선 + 신규 prefix `--signature-canvas-*` 는 컴포넌트 로컬 fallback
+ * (모바일 mini bundle 와 동기화).
+ */
+.wrapper {
+  position: relative;
+  display: inline-block;
+  border: 2px dashed var(--signature-canvas-border, #C9D1D9);
+  border-radius: var(--signature-canvas-radius, 8px);
+  background: var(--signature-canvas-bg, #FFFFFF);
+  padding: 4px;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.wrapper.is-filled {
+  border-style: solid;
+  border-color: var(--signature-canvas-border-active, #1E40AF);
+}
+
+.wrapper.is-disabled {
+  pointer-events: none;
+  opacity: 0.6;
+  background: var(--signature-canvas-bg-disabled, #F4F6F8);
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  cursor: crosshair;
+  /* touch-action: none — pinch/zoom/scroll 모두 차단 (passive: false 와 중복 안전망) */
+  touch-action: none;
+}
+
+/*
+ * placeholder — wrapper 가 .is-empty 일 때만 표시.
+ * data-placeholder 속성을 ::before content 로 사용 (i18n 친화).
+ */
+.wrapper.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--signature-placeholder-color, #8A95A4);
+  font-size: 14px;
+  pointer-events: none;
+  user-select: none;
+}

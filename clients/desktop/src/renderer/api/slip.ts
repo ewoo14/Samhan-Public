@@ -107,6 +107,35 @@ export interface SlipDetail extends SlipSummary {
   shippingAddress?: string | null
   /** 거래처 연락처 — DispatchView 에서 14pt 본문으로 표시. */
   contactPhone?: string | null
+  /**
+   * signature-slice-C 신규 필드 7개 (모두 nullable, 미서명 시 null).
+   *
+   * BE Plan §3 V5__add_slip_signature.sql 의 컬럼과 1:1 대응. signaturePng 은 base64
+   * dataURL ("data:image/png;base64,...") 형태로 BE 가 인코딩하여 응답.
+   */
+  /** 서명 시점 ISO 8601 — 미서명 시 null. */
+  signedAt?: string | null
+  /** 인수자명 (≤50자) — 미서명 시 null. */
+  signerName?: string | null
+  /** PNG base64 dataURL — 미서명 시 null. SignatureViewer 의 signaturePngBase64 prop 으로 그대로 전달. */
+  signaturePng?: string | null
+  /** SHA-256 hex (64자) — 미서명 시 null. SignatureViewer 가 앞 8자만 표시. */
+  signatureHash?: string | null
+  /** 서명 채널 — MOBILE_CANVAS / PAPER_SCAN / 기타 (Phase 6+ 확장). */
+  signatureChannel?: 'MOBILE_CANVAS' | 'PAPER_SCAN' | string | null
+  /** 인수자 share 토큰 (base64url) — 모바일 `/share/{token}` 라우트 경로. */
+  signatureShareToken?: string | null
+  /** share 토큰 만료 ISO 8601 (+30일). */
+  signatureShareExpiresAt?: string | null
+
+  /**
+   * Slice C2 (PR #23 follow-up) — 배송기사 서명 4 필드 (nullable).
+   * Slip.driverName 은 기존 Slice B 필드 재사용 (별도 driverSignerName X).
+   */
+  driverSignedAt?: string | null
+  driverSignaturePng?: string | null
+  driverSignatureHash?: string | null
+  driverSignatureChannel?: 'MOBILE_CANVAS' | 'PAPER_SCAN' | string | null
 }
 
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */

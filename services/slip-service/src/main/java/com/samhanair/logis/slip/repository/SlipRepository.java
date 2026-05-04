@@ -45,4 +45,12 @@ public interface SlipRepository extends JpaRepository<Slip, UUID> {
 
     /** 특정 배치에 속한 슬립 목록 — 배치 상세 화면 / 공개 모바일 페이지 source. */
     List<Slip> findAllByDeliveryBatchIdAndIsDeletedFalse(UUID deliveryBatchId);
+
+    // ---- Slice C (signature-slice-C) ----
+
+    /**
+     * signatureShareToken 단건 조회 — 인수자 view 공개 endpoint source.
+     * partial UNIQUE INDEX (V5) 로 token 발급된 슬립만 유일성 보장.
+     */
+    Optional<Slip> findBySignatureShareTokenAndIsDeletedFalse(String signatureShareToken);
 }

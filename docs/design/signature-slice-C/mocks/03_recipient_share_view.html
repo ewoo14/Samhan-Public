@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>출고 인수증 — (주)삼한공조시스템</title>
+<style>
+  :root {
+    --m-bg:           #FAFBFC;
+    --m-card:         #FFFFFF;
+    --m-border:       #E1E5EA;
+    --m-ink-1:        #1A1F2E;
+    --m-ink-2:        #5C6773;
+    --m-ink-3:        #8A95A4;
+    --m-brand:        #1E40AF;
+    --m-success:      #10B981;
+    --m-pad-page:     16px;
+    --m-pad-card:     16px;
+    --m-radius-card:  8px;
+    --m-radius-btn:   4px;
+    --m-font-base:    16px;
+    --m-font-sm:      14px;
+    --m-font-xs:      12px;
+    --m-font-h-card:  18px;
+    --m-tap-min:      44px;
+    --m-elev-card:    0 1px 3px rgba(0, 0, 0, 0.06);
+    --signature-meta-color:        #5C6773;
+    --signature-meta-hash-color:   #8A95A4;
+    --signature-img-border:        #E1E5EA;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Noto Sans KR", Roboto, sans-serif;
+    background: var(--m-bg);
+    color: var(--m-ink-1);
+    font-size: var(--m-font-base);
+    line-height: 1.5;
+  }
+  .m-brand-bar {
+    background: var(--m-brand);
+    color: #FFFFFF;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--m-pad-page);
+    font-size: var(--m-font-sm);
+    font-weight: 600;
+  }
+  .m-page {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: var(--m-pad-page);
+  }
+  .m-card {
+    background: var(--m-card);
+    border: 1px solid var(--m-border);
+    border-radius: var(--m-radius-card);
+    padding: var(--m-pad-card);
+    box-shadow: var(--m-elev-card);
+    margin-bottom: 16px;
+  }
+  .m-card-title {
+    font-size: var(--m-font-h-card);
+    font-weight: 600;
+    margin: 0 0 12px 0;
+  }
+  .m-info { margin: 0 0 4px 0; font-size: var(--m-font-base); }
+  .m-info-sm { margin: 0 0 4px 0; font-size: var(--m-font-sm); color: var(--m-ink-2); }
+  .m-info-label {
+    color: var(--m-ink-3);
+    font-size: var(--m-font-sm);
+    display: inline-block;
+    width: 60px;
+  }
+  .m-divider {
+    border: 0;
+    border-top: 1px dashed var(--m-border);
+    margin: 12px 0;
+  }
+  .m-line-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--m-font-sm);
+    margin-bottom: 4px;
+  }
+  .m-line-name { flex: 1; }
+  .m-line-qty { width: 60px; text-align: right; color: var(--m-ink-2); }
+  .m-total {
+    text-align: right;
+    font-size: var(--m-font-base);
+    font-weight: 600;
+    margin-top: 8px;
+    font-feature-settings: "tnum" 1;
+  }
+  .m-section-label {
+    font-size: var(--m-font-sm);
+    color: var(--m-ink-2);
+    margin: 0 0 8px 0;
+    font-weight: 600;
+  }
+  .m-sig-img-wrap {
+    background: #FFFFFF;
+    border: 1px solid var(--signature-img-border);
+    border-radius: var(--m-radius-card);
+    padding: 8px;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .m-sig-img {
+    display: block;
+    width: 100%;
+    max-width: 360px;
+    height: auto;
+    margin: 0 auto;
+  }
+  .m-sig-meta { margin: 0; padding: 0; }
+  .m-sig-meta dt {
+    color: var(--m-ink-3);
+    font-size: var(--m-font-sm);
+    display: inline-block;
+    width: 80px;
+  }
+  .m-sig-meta dd {
+    color: var(--signature-meta-color);
+    font-size: var(--m-font-sm);
+    display: inline;
+    margin: 0 0 4px 0;
+  }
+  .m-sig-meta-row { margin-bottom: 4px; }
+  .m-sig-hash {
+    font-family: "SF Mono", "Menlo", "Consolas", "Courier New", monospace;
+    color: var(--signature-meta-hash-color);
+    font-size: var(--m-font-xs);
+    word-break: break-all;
+  }
+  .m-btn {
+    min-height: var(--m-tap-min);
+    line-height: var(--m-tap-min);
+    font-size: var(--m-font-base);
+    font-weight: 600;
+    border-radius: var(--m-radius-btn);
+    text-align: center;
+    text-decoration: none;
+    border: 1px solid;
+    display: block;
+  }
+  .m-btn-outline {
+    background: var(--m-card);
+    color: var(--m-brand);
+    border-color: var(--m-brand);
+  }
+  .m-footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--m-border);
+    font-size: var(--m-font-xs);
+    color: var(--m-ink-3);
+    text-align: center;
+  }
+  .m-footer p { margin: 4px 0; }
+  .m-footer a { color: var(--m-brand); text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+  <header class="m-brand-bar">(주)삼한공조시스템</header>
+  <div class="m-page">
+
+    <article class="m-card">
+      <h1 class="m-card-title">출고 인수증</h1>
+      <p class="m-info"><span class="m-info-label">거래처:</span>한국전력</p>
+      <p class="m-info-sm"><span class="m-info-label">전표번호:</span>2026/05/05-1</p>
+      <p class="m-info-sm"><span class="m-info-label">배송일:</span>2026/05/05</p>
+      <p class="m-info-sm"><span class="m-info-label">배송지:</span>서울시 강남구 테헤란로 152, 강남파이낸스센터 22층</p>
+
+      <hr class="m-divider" />
+      <div class="m-section-label">품목</div>
+      <div class="m-line-row"><span class="m-line-name">모터 220V</span><span class="m-line-qty">2 EA</span></div>
+      <div class="m-line-row"><span class="m-line-name">펌프 4HP</span><span class="m-line-qty">1 EA</span></div>
+      <hr class="m-divider" />
+      <p class="m-total">합계: 1,250,000 원</p>
+    </article>
+
+    <article class="m-card">
+      <div class="m-section-label">서명</div>
+      <div class="m-sig-img-wrap">
+        <!-- 서명 PNG mock — inline SVG 로 시뮬레이션 (실제는 <img src="data:image/png;base64,..."/>) -->
+        <svg class="m-sig-img" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="인수자 서명">
+          <path d="M 50 130 Q 80 60, 110 130 T 170 130 Q 200 80, 230 130"
+                fill="none" stroke="#000000" stroke-width="3"
+                stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M 240 110 Q 260 80, 280 110 Q 295 130, 310 100"
+                fill="none" stroke="#000000" stroke-width="3"
+                stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M 130 145 L 320 145"
+                fill="none" stroke="#000000" stroke-width="2.5"
+                stroke-linecap="round" />
+        </svg>
+      </div>
+
+      <dl class="m-sig-meta">
+        <div class="m-sig-meta-row"><dt>서명자</dt><dd>김인수</dd></div>
+        <div class="m-sig-meta-row"><dt>서명시각</dt><dd>2026/05/05 14:32</dd></div>
+        <div class="m-sig-meta-row"><dt>검증코드</dt><dd class="m-sig-hash">a3f2b1c9</dd></div>
+      </dl>
+    </article>
+
+    <a class="m-btn m-btn-outline" href="#" download="signature_2026-05-05-1.png">&#128229; PNG 다운로드</a>
+
+    <footer class="m-footer">
+      <p>공유 링크 만료: 2026/06/04 14:32</p>
+      <p>문의: <a href="tel:0212345678">02-XXXX-XXXX</a></p>
+    </footer>
+  </div>
+</body>
+</html>

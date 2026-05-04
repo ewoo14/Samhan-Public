@@ -38,9 +38,15 @@ import { TransferDetailPage } from './TransferDetailPage'
 import { LinkDispatchListPage } from './LinkDispatchListPage'
 import { InvoiceView } from '../print/InvoiceView'
 import { DispatchView } from '../print/DispatchView'
+// signature-slice-C 모바일 mock 라우트 (Phase 5 nginx 분리 전 시뮬레이션 — AuthGuard 외부)
+import { MobileSignaturePage } from './MobileSignaturePage'
+import { MobileRecipientPage } from './MobileRecipientPage'
 
 const router = createHashRouter([
   { path: '/login', element: <LoginPage /> },
+  // signature-slice-C 모바일 mock — AuthGuard / AppLayout 미적용 (NO AUTH 공개 endpoint 시뮬레이션)
+  { path: '/mobile/d/:token/s/:slipNo', element: <MobileSignaturePage /> },
+  { path: '/mobile/share/:shareToken', element: <MobileRecipientPage /> },
   {
     element: (
       <AuthGuard>
