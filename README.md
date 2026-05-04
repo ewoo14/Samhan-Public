@@ -21,7 +21,7 @@
 - **전체 로드맵**: 33주 (Phase 1~7)
 - **GitHub 워크플로우**: 슬라이스당 팀별 PR/Issue 분리, TM·PM 자동 승인 + 개발책임자 머지
 
-## 📊 진척률 (2026-05-04 기준, main `481db3d`)
+## 📊 진척률 (2026-05-04 기준, main `b0a7982`)
 
 ### 마이크로서비스 인벤토리
 
@@ -33,7 +33,7 @@
 | 4 | User Service | 8083 | user_db | ✅ Phase 2 첫 슬라이스 (16명 시드, AuthClient 패턴) |
 | 5 | Product Service | 8084 | product_db | ✅ Phase 2 본 작업 첫 슬라이스 (Product/Category 도메인, 14 endpoint, jsonb 태그) |
 | 6 | Inventory Service | 8085 | inventory_db | ✅ Phase 2 본 작업 두 번째 슬라이스 (FIFO + 4-tier 창고 + 이동전표 22 endpoint, Plan §3.1 4-tier 채택, X-Internal-Token gateway 우회) |
-| 7 | Slip Service | 8086 | slip_db | ⬜ Phase 3 (예정) |
+| 7 | Slip Service | 8086 | slip_db | ✅ Phase 3 첫 슬라이스 (출고+입고 STI, 9단계 라이프사이클, 11 배송태그, Inventory 연계 reserve/deduct/release, 16 endpoint) |
 | 8 | Accounting Service | 8087 | accounting_db | ⬜ Phase 4 |
 | 9 | Partner Service | 8088 | partner_db | ⬜ Phase 4 |
 | 10 | Groupware Service | 8089 | groupware_db | ⬜ Phase 5 |
@@ -42,13 +42,13 @@
 | 13 | Dashboard Service | 8091 | dashboard_db | ⬜ Phase 5 |
 | 14 | Migration Service | 8092 | migration_db | ⬜ Phase 7 (ECount 마이그레이션) |
 
-**완료 6 / 13 (46%)**.
+**완료 7 / 13 (54%)**.
 
 ### 클라이언트
 
 | 항목 | 상태 |
 |------|------|
-| 디자인 시스템 (`clients/web/design-system`) | ✅ 13 컴포넌트 + 36 Storybook stories (Button, Card, FormField, Input, Label, Modal, Spinner + Badge, TagChip, TagInput, PriceField, DataTable + WarehouseSelector) |
+| 디자인 시스템 (`clients/web/design-system`) | ✅ 16 컴포넌트 + 55 Storybook stories (Button, Card, FormField, Input, Label, Modal, Spinner + Badge, TagChip, TagInput, PriceField, DataTable + WarehouseSelector + SlipStatusBadge, DeliveryTagSelector, SlipNumberDisplay) |
 | Electron 데스크톱 앱 | ⬜ Phase 2 마무리 슬라이스 |
 | React 웹 앱 (외부 거래처용) | ⬜ Phase 6 |
 | React Native 모바일 (창고원/거래처 듀얼) | ⬜ Phase 6 |
@@ -70,12 +70,13 @@ SamhanLogis/
 │   ├── auth-service/        # JWT 발급, 계정, internal API
 │   ├── user-service/        # 직원/조직도, AuthClient 패턴
 │   ├── product-service/     # 품목/카테고리, jsonb 태그, GIN 인덱스 + internal API
-│   ├── inventory-service/   # 4-tier 창고/FIFO/이동전표, ProductClient
-│   └── ...                  # (Slip 부터 추가 예정)
+│   ├── inventory-service/   # 4-tier 창고/FIFO/이동전표, ProductClient + InternalTokenFilter
+│   ├── slip-service/        # 출고/입고 전표(STI), 9단계 라이프사이클, InventoryClient 연계
+│   └── ...                  # (Accounting 부터 추가 예정)
 ├── clients/                 # 클라이언트 앱
 │   ├── desktop/             # Electron (Phase 2 마무리)
 │   ├── web/
-│   │   └── design-system/   # ✅ 13 컴포넌트 + Storybook
+│   │   └── design-system/   # ✅ 16 컴포넌트 + Storybook
 │   └── mobile/              # Phase 6
 ├── infrastructure/          # Docker compose, Postgres init, Prometheus, Grafana
 ├── shared/
@@ -124,6 +125,7 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ./gradlew :services:user-service:bootRun      # http://localhost:8083
 ./gradlew :services:product-service:bootRun   # http://localhost:8084
 ./gradlew :services:inventory-service:bootRun # http://localhost:8085
+./gradlew :services:slip-service:bootRun      # http://localhost:8086
 ```
 
 ### 디자인 시스템 (Storybook)
