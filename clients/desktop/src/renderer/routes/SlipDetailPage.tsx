@@ -33,6 +33,8 @@ import {
 import {
   Button,
   Card,
+  KOREAN_MOBILE_PHONE_PATTERN,
+  PhoneInput,
   ProgressBar,
   SlipNumberDisplay,
 } from '@samhan/design-system'
@@ -42,6 +44,7 @@ import {
   getSlip,
   removeLine,
   transitionSlip,
+  updateSlipDriver,
   type SlipDetail,
   type SlipTransitionAction,
   type SlipType,
@@ -121,6 +124,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [rejectReason, setRejectReason] = useState('')
   /** 좌측 넘버링 클릭으로 선택된 라인 ID — 선택 시 상단 툴바 표시. */
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
+  // notification-slice-B 신규: driver 인라인 편집 state (DRAFT/SAVED 만 활성)
+  const [editingDriver, setEditingDriver] = useState(false)
+  const [draftDriverName, setDraftDriverName] = useState('')
+  const [draftDriverPhone, setDraftDriverPhone] = useState('')
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -150,6 +157,20 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     onSuccess: () => {
       setSelectedLineId(null)
       void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+    },
+  })
+
+  /** notification-slice-B: 기사 정보 부분 갱신 (PATCH /slips/{id}/driver). DRAFT/SAVED 만 허용. */
+  const driverMutation = useMutation({
+    mutationFn: () =>
+      updateSlipDriver(id, {
+        driverName: draftDriverName.trim() || null,
+        driverPhone: draftDriverPhone || null,
+      }),
+    onSuccess: () => {
+      setEditingDriver(false)
+      void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+      void queryClient.invalidateQueries({ queryKey: ['delivery-batches'] })
     },
   })
 
@@ -346,6 +367,102 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </div>
         </div>
       </Card>
+
+      {/*
+        notification-slice-B 신규: 기사 정보 카드 (driverName + driverPhone)
+        DRAFT/SAVED 단계만 [편집] 가능 — BE 가드와 동일 (PATCH /slips/{id}/driver).
+        OUTBOUND 만 표시 (입고전표는 거래처 측 기사 정보 무관).
+      */}
+      {isOutbound ? (
+        <Card padding={4} shadow="sm" style={{ marginTop: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}
+          >
+            <h4 style={{ margin: 0 }}>기사 정보 (배송)</h4>
+            {!editingDriver && linesEditable ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDraftDriverName(slip.driverName ?? '')
+                  setDraftDriverPhone(slip.driverPhone ?? '')
+                  setEditingDriver(true)
+                }}
+              >
+                편집
+              </Button>
+            ) : null}
+          </div>
+          {editingDriver ? (
+            <div className="driver-edit-grid">
+              <label className="driver-edit-field">
+                <span className="detail-label">기사명</span>
+                <input
+                  type="text"
+                  value={draftDriverName}
+                  onChange={(e) => setDraftDriverName(e.target.value)}
+                  maxLength={50}
+                  placeholder="예: 홍길동"
+                  className="sfp-input"
+                />
+              </label>
+              <PhoneInput
+                label="기사 연락처"
+                value={draftDriverPhone}
+                onChange={setDraftDriverPhone}
+                error={
+                  draftDriverPhone && !KOREAN_MOBILE_PHONE_PATTERN.test(draftDriverPhone)
+                    ? '올바른 휴대폰 번호 형식이 아닙니다'
+                    : undefined
+                }
+              />
+              <div className="driver-edit-actions">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingDriver(false)}
+                  disabled={driverMutation.isPending}
+                >
+                  취소
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={driverMutation.isPending}
+                  disabled={
+                    !!draftDriverPhone
+                    && !KOREAN_MOBILE_PHONE_PATTERN.test(draftDriverPhone)
+                  }
+                  onClick={() => driverMutation.mutate()}
+                >
+                  저장
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="detail-grid">
+              <div>
+                <span className="detail-label">기사명</span>
+                <span className="detail-value">{slip.driverName ?? '-'}</span>
+              </div>
+              <div>
+                <span className="detail-label">기사 연락처</span>
+                <span className="detail-value">{slip.driverPhone ?? '-'}</span>
+              </div>
+            </div>
+          )}
+          {driverMutation.isError ? (
+            <div className="error-banner" role="alert" style={{ marginTop: 8 }}>
+              기사 정보 저장에 실패했습니다.
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
 
       <h4 style={{ marginTop: 24 }}>전표 라인</h4>
 
