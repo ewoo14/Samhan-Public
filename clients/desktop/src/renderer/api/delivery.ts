@@ -54,7 +54,7 @@ export interface DeliveryBatchDetail extends DeliveryBatchSummary {
   slips: DeliveryBatchSlip[]
   /** 토큰 발행 시각 (ISO). */
   tokenIssuedAt: string
-  /** 토큰 만료 시각 (ISO) — null 이면 무제한 (정책에 따라). */
+  /** 유효기간 시각 (ISO) — null 이면 무제한 (정책에 따라). */
   tokenExpiresAt: string | null
 }
 

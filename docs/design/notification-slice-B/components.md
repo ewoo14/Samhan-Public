@@ -336,7 +336,7 @@ interface BatchStatusCellProps {
 | `.m-batch-card` | 배치 헤더 카드 (driverName + 슬립수 + 배송일) |
 | `.m-slip-card` | 슬립 카드 N건 (거래처 + 주소 + 슬립번호 + 합계 + [상세보기]) |
 | `.m-detail-btn` | [상세보기 →] 우측 정렬 액션 (Slice C 활성) |
-| `.m-footer` | 토큰 만료 + 문의 안내 |
+| `.m-footer` | 유효기간 + 문의 안내 |
 | `.m-error-page` | 410 GONE 화면 (만료 안내 + tap-to-call) |
 
 자세한 spec 은 `mobile-spec.md` §3.

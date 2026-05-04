@@ -4,7 +4,7 @@
 FE / BE / QA / DevOps 팀은 본 spec 의 wireframe / token / component / UX flow 를 인용하여 구현·검증합니다.
 
 > **상위 Plan**: `docs/dev-reports/notification-slice-B/plan.md` (PR #22 후보)
-> **사용자 결정 (확정)**: SMS 트리거 = 관리자 수동 클릭 / 그룹 = driverPhone+date 자동 + 분리·병합 / 게이트웨이 = Solapi / 인수자 공유 = Web Share API / 토큰 만료 = batchDate +1일.
+> **사용자 결정 (확정)**: SMS 트리거 = 관리자 수동 클릭 / 그룹 = driverPhone+date 자동 + 분리·병합 / 게이트웨이 = Solapi / 인수자 공유 = Web Share API / 유효기간 = batchDate +1일.
 
 ---
 
