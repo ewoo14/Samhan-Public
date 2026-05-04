@@ -22,6 +22,7 @@ include 'services:api-gateway'
 include 'services:auth-service'
 include 'services:user-service'
 include 'services:product-service'
+include 'services:inventory-service'
 include 'services:logging-service'
 
 project(':shared:common').projectDir              = file('shared/common')
@@ -30,4 +31,5 @@ project(':services:api-gateway').projectDir       = file('services/api-gateway')
 project(':services:auth-service').projectDir      = file('services/auth-service')
 project(':services:user-service').projectDir      = file('services/user-service')
 project(':services:product-service').projectDir   = file('services/product-service')
+project(':services:inventory-service').projectDir = file('services/inventory-service')
 project(':services:logging-service').projectDir   = file('services/logging-service')

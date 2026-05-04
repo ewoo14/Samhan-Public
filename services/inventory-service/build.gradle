@@ -1,16 +1,15 @@
 /*
- * services:product-service — Product + Category aggregate (plan §3.5 first slice).
+ * services:inventory-service — Warehouse + StockLot + StockBalance + StockMovement +
+ * StockTransfer 집합 (plan §3 Inventory first slice).
  *
- * Owns the `products` and `categories` tables in PostgreSQL (`product_db`).
- * Persists product master data (name / model / category / 가격 / 단종 상태 / 태그)
- * with self-referencing Category tree. 단종 처리는 별도 ProductStatus enum 으로
- * soft-delete 와 직교하게 운용한다 (개발책임자 결재 결정).
+ * Owns the `warehouses`, `stock_lots`, `stock_balances`, `stock_movements`,
+ * `stock_transfers`, `stock_transfer_lines` tables in PostgreSQL (`inventory_db`).
  *
- * 외부 서비스 호출이 없으므로 internal-token (X-Internal-Token) 의존성은 제외.
+ * Product 마스터 검증을 위해 product-service 의 internal endpoint 를 호출 — 공유
+ * {@code X-Internal-Token} 으로 서비스 간 신뢰. RestClient + Spring Cloud
+ * LoadBalancer 패턴은 user-service 와 동일.
  *
  * Flyway 는 day-one 부터 활성 — src/main/resources/db/migration 참조.
- * jsonb 매핑은 Hibernate 6 native 의 {@code @JdbcTypeCode(SqlTypes.JSON)} 를 사용
- * (별도 com.vladmihalcea hibernate-types 의존성 불필요).
  */
 
 plugins {
@@ -34,6 +33,7 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
 
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
 
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
@@ -57,7 +57,7 @@ dependencies {
 }
 
 bootJar {
-    archiveFileName = 'product-service.jar'
+    archiveFileName = 'inventory-service.jar'
 }
 
 tasks.named('test') {

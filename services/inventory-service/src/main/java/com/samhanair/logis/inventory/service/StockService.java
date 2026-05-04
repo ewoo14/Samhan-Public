@@ -1,0 +1,273 @@
+package com.samhanair.logis.inventory.service;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.inventory.client.ProductClient;
+import com.samhanair.logis.inventory.domain.MovementType;
+import com.samhanair.logis.inventory.domain.StockBalance;
+import com.samhanair.logis.inventory.domain.StockLot;
+import com.samhanair.logis.inventory.domain.StockMovement;
+import com.samhanair.logis.inventory.domain.Warehouse;
+import com.samhanair.logis.inventory.repository.StockBalanceRepository;
+import com.samhanair.logis.inventory.repository.StockLotRepository;
+import com.samhanair.logis.inventory.repository.StockMovementRepository;
+import com.samhanair.logis.inventory.repository.WarehouseRepository;
+import com.samhanair.logis.inventory.web.dto.AdjustRequest;
+import com.samhanair.logis.inventory.web.dto.DeductRequest;
+import com.samhanair.logis.inventory.web.dto.DeductionResponse;
+import com.samhanair.logis.inventory.web.dto.InboundRequest;
+import com.samhanair.logis.inventory.web.dto.ReleaseRequest;
+import com.samhanair.logis.inventory.web.dto.ReservationResponse;
+import com.samhanair.logis.inventory.web.dto.ReserveRequest;
+import com.samhanair.logis.inventory.web.dto.StockLotResponse;
+import jakarta.persistence.OptimisticLockException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 재고 입고 / 예약 / 해제 / 차감(FIFO) / 조정. balance 와 movement 를 동시에 갱신한다.
+ *
+ * <p>낙관적 락(version) 충돌 시 1회 재시도 후 그래도 실패하면 BusinessException(CONFLICT).
+ *
+ * <p>차감(FIFO): {@link StockLotRepository#findAvailableLotsForFifo} 로 received_at ASC 정렬된
+ * 가용 lot 들을 받아 quantity 가 모두 소진될 때까지 분배. 부족하면 BusinessException(CONFLICT).
+ */
+@Service
+@Transactional
+@RequiredArgsConstructor
+public class StockService {
+
+    private final StockLotRepository stockLotRepository;
+    private final StockBalanceRepository stockBalanceRepository;
+    private final StockMovementRepository stockMovementRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final ProductClient productClient;
+
+    /**
+     * 입고 — ProductClient 로 productId 존재 검증 후 단일 트랜잭션 안에서
+     * StockLot 생성 + StockBalance 가산 + StockMovement(INBOUND) 기록.
+     *
+     * @param req 입고 요청 (productId / warehouseId / quantity / lotNo / receivedAt / unitCost / note)
+     * @param actorUserId 행위자 user-id (gateway X-User-Id 또는 "system")
+     * @return 새로 생성된 lot 의 StockLotResponse
+     * @throws BusinessException(NOT_FOUND) productId 가 product-service 에 없거나 warehouseId 가 없을 때
+     * @throws BusinessException(CONFLICT) balance 갱신 시 낙관적 락 1회 재시도 후에도 실패할 때
+     * @throws BusinessException(INTERNAL_ERROR) product-service 호출 자체가 실패할 때
+     */
+    public StockLotResponse inbound(InboundRequest req, String actorUserId) {
+        productClient.requireExists(req.productId());
+        Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
+
+        StockLot lot = stockLotRepository.save(StockLot.create(
+                req.productId(), warehouse, req.lotNo(), req.quantity(),
+                req.receivedAt(), req.unitCost()));
+
+        StockBalance balance = loadOrCreateBalance(req.productId(), warehouse);
+        applyWithRetry(() -> balance.addInbound(req.quantity()));
+
+        stockMovementRepository.save(StockMovement.of(
+                lot.getId(), req.productId(), warehouse.getId(),
+                MovementType.INBOUND, req.quantity(),
+                "INBOUND", null, req.note(), actorUserId));
+
+        return StockLotResponse.from(lot);
+    }
+
+    /**
+     * 예약 — availableQty 에서 reservedQty 로 이동. RESERVE movement 기록.
+     *
+     * @param req 예약 요청 (productId / warehouseId / quantity / referenceType / referenceId / note)
+     * @param actorUserId 행위자 user-id
+     * @return 예약 후 잔량을 담은 ReservationResponse
+     * @throws BusinessException(NOT_FOUND) warehouse 또는 (productId, warehouseId) balance 가 없을 때
+     * @throws BusinessException(CONFLICT) 가용 재고 부족 또는 낙관적 락 1회 재시도 후에도 실패할 때
+     */
+    public ReservationResponse reserve(ReserveRequest req, String actorUserId) {
+        Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
+        StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
+
+        applyWithRetry(() -> balance.reserve(req.quantity()));
+
+        stockMovementRepository.save(StockMovement.of(
+                balance.getId(), req.productId(), warehouse.getId(),
+                MovementType.RESERVE, req.quantity(),
+                req.referenceType(), req.referenceId(), req.note(), actorUserId));
+
+        return new ReservationResponse(
+                req.productId(), req.warehouseId(), req.quantity(),
+                balance.getAvailableQty(), balance.getReservedQty(), actorUserId);
+    }
+
+    /**
+     * 예약 해제 — reservedQty 에서 availableQty 로 되돌림. RELEASE movement 기록.
+     *
+     * @param req 해제 요청 (productId / warehouseId / quantity / referenceType / referenceId / note)
+     * @param actorUserId 행위자 user-id
+     * @return 해제 후 잔량을 담은 ReservationResponse
+     * @throws BusinessException(NOT_FOUND) warehouse 또는 balance 가 없을 때
+     * @throws BusinessException(CONFLICT) 예약 재고 부족 또는 낙관적 락 1회 재시도 후에도 실패할 때
+     */
+    public ReservationResponse release(ReleaseRequest req, String actorUserId) {
+        Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
+        StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
+
+        applyWithRetry(() -> balance.release(req.quantity()));
+
+        stockMovementRepository.save(StockMovement.of(
+                balance.getId(), req.productId(), warehouse.getId(),
+                MovementType.RELEASE, req.quantity(),
+                req.referenceType(), req.referenceId(), req.note(), actorUserId));
+
+        return new ReservationResponse(
+                req.productId(), req.warehouseId(), req.quantity(),
+                balance.getAvailableQty(), balance.getReservedQty(), actorUserId);
+    }
+
+    /**
+     * FIFO 차감 — received_at ASC 정렬된 가용 lot 들을 순서대로 소진하고,
+     * StockBalance 의 available 또는 reserved 도 동시 차감 (총합 = 요청량).
+     *
+     * <p>각 lot 차감마다 DEDUCT movement 1건씩 기록 (quantityDelta 는 음수).
+     * 모든 lot 합계가 요청량 미만이면 차감 시도 전에 즉시 CONFLICT 반환.
+     *
+     * @param req 차감 요청 (productId / warehouseId / quantity / fromReservation / referenceType / referenceId / note)
+     * @param actorUserId 행위자 user-id
+     * @return 차감된 lot 들의 (lotId, qty) 리스트 + 차감 후 balance
+     * @throws BusinessException(NOT_FOUND) warehouse 또는 balance 가 없을 때
+     * @throws BusinessException(CONFLICT) 가용 lot 합계가 요청량보다 작거나, balance 낙관적 락
+     *         1회 재시도 후에도 실패할 때
+     */
+    public DeductionResponse deduct(DeductRequest req, String actorUserId) {
+        Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
+        StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
+
+        boolean fromReservation = req.fromReservationOrFalse();
+        int requested = req.quantity();
+        int totalAvailableAcrossLots = sumLotQuantities(req.productId(), req.warehouseId());
+        if (totalAvailableAcrossLots < requested) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "재고 부족: 요청 " + requested + ", 가용 " + totalAvailableAcrossLots);
+        }
+
+        List<StockLot> lots = stockLotRepository
+                .findAvailableLotsForFifo(req.productId(), req.warehouseId());
+        List<DeductionResponse.DeductedLotEntry> affected = new ArrayList<>();
+        int remaining = requested;
+        for (StockLot lot : lots) {
+            if (remaining == 0) {
+                break;
+            }
+            int take = Math.min(remaining, lot.getQuantity());
+            lot.deduct(take);
+            remaining -= take;
+            affected.add(new DeductionResponse.DeductedLotEntry(lot.getId(), take));
+
+            stockMovementRepository.save(StockMovement.of(
+                    lot.getId(), req.productId(), warehouse.getId(),
+                    MovementType.DEDUCT, -take,
+                    req.referenceType(), req.referenceId(), req.note(), actorUserId));
+        }
+
+        applyWithRetry(() -> balance.deduct(requested, fromReservation));
+
+        return new DeductionResponse(
+                req.productId(), req.warehouseId(), requested, requested,
+                balance.getAvailableQty(), balance.getReservedQty(), balance.getTotalQty(),
+                affected);
+    }
+
+    /**
+     * 실사 조정 — delta 부호에 따라 balance 만 가감하고 ADJUST movement 기록 (lot 단위 분배는 별도 운영 정책).
+     * balance 가 없으면 신규 생성 후 적용 (delta 양수 케이스).
+     *
+     * @param req 조정 요청 (productId / warehouseId / quantityDelta / reason)
+     * @param actorUserId 행위자 user-id
+     * @return 조정 후 balance 잔량 (DeductionResponse 형식 재사용, affected lot 리스트는 빈 리스트)
+     * @throws BusinessException(NOT_FOUND) warehouseId 가 없을 때
+     * @throws BusinessException(CONFLICT) 음수 조정으로 가용 재고가 음수가 되거나 낙관적 락 재시도 실패 시
+     */
+    public DeductionResponse adjust(AdjustRequest req, String actorUserId) {
+        Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
+        StockBalance balance = loadOrCreateBalance(req.productId(), warehouse);
+
+        int delta = req.quantityDelta();
+        applyWithRetry(() -> balance.adjust(delta));
+
+        // 조정은 단일 가상 lot 으로 movement 기록 (lotId = balance.id 로 대체).
+        stockMovementRepository.save(StockMovement.of(
+                balance.getId(), req.productId(), warehouse.getId(),
+                MovementType.ADJUST, delta,
+                "ADJUST", null, req.reason(), actorUserId));
+
+        return new DeductionResponse(
+                req.productId(), req.warehouseId(),
+                Math.abs(delta), Math.abs(delta),
+                balance.getAvailableQty(), balance.getReservedQty(), balance.getTotalQty(),
+                List.of());
+    }
+
+    /**
+     * (productId, warehouseId) 의 AVAILABLE lot 잔량 총합을 반환한다.
+     * 차감 사전 검증 + 운영 조회용 read-only.
+     *
+     * @param productId 제품 UUID
+     * @param warehouseId 창고 UUID
+     * @return AVAILABLE 상태 lot 들의 quantity 합계 (없으면 0)
+     */
+    @Transactional(readOnly = true)
+    public int sumLotQuantities(UUID productId, UUID warehouseId) {
+        return stockLotRepository.findAvailableLotsForFifo(productId, warehouseId).stream()
+                .mapToInt(StockLot::getQuantity)
+                .sum();
+    }
+
+    private StockBalance loadBalanceOrThrow(UUID productId, UUID warehouseId) {
+        return stockBalanceRepository
+                .findByProductIdAndWarehouse_IdAndIsDeletedFalse(productId, warehouseId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "해당 (제품, 창고) 조합의 재고가 없습니다"));
+    }
+
+    private StockBalance loadOrCreateBalance(UUID productId, Warehouse warehouse) {
+        return stockBalanceRepository
+                .findByProductIdAndWarehouse_IdAndIsDeletedFalse(productId, warehouse.getId())
+                .orElseGet(() -> stockBalanceRepository.save(
+                        StockBalance.create(productId, warehouse)));
+    }
+
+    private Warehouse loadWarehouseOrThrow(UUID id) {
+        return warehouseRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "창고를 찾을 수 없습니다"));
+    }
+
+    /**
+     * 낙관적 락 충돌 발생 시 1회 재시도. 도메인 메서드의 IllegalStateException 은 CONFLICT 로 변환.
+     */
+    private void applyWithRetry(Runnable mutation) {
+        try {
+            tryApply(mutation);
+        } catch (OptimisticLockException | OptimisticLockingFailureException firstFailure) {
+            try {
+                tryApply(mutation);
+            } catch (OptimisticLockException | OptimisticLockingFailureException secondFailure) {
+                throw new BusinessException(ErrorCode.CONFLICT,
+                        "재고 동시 수정 충돌 — 잠시 후 재시도하세요");
+            }
+        }
+    }
+
+    private void tryApply(Runnable mutation) {
+        try {
+            mutation.run();
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
+        }
+    }
+}

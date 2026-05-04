@@ -1,0 +1,216 @@
+### Inventory Service First Slice — VS Code REST Client / IntelliJ HTTP Client fixtures
+### Plan §4 권한 매트릭스 + §6 inventory spec 의 8개 시나리오를 즉시 실행 가능한 형태로 정리.
+###
+### 사용법:
+###   1) docker-compose up (api-gateway / auth-service / user-service / inventory-service / postgres / eureka)
+###   2) 아래 @masterToken / @managerToken / @warehouseToken / @salesToken 변수를
+###      auth-service /auth/login 응답의 JWT 로 채워 넣는다.
+###   3) ### 블록을 위에서 아래로 순서대로 실행. 시나리오 3 의 productId 가 4~6 에서 재사용됨.
+###
+### 토큰 발급 예시:
+###   POST {{host}}/auth/login  body={"loginId":"manager01","password":"..."}
+###   → response.token 을 @managerToken 에 복사.
+
+@host = http://localhost:8080
+@masterToken = [테스트 환경 시드 후 주입]
+@managerToken = [테스트 환경 시드 후 주입]
+@warehouseToken = [테스트 환경 시드 후 주입]
+@salesToken = [테스트 환경 시드 후 주입]
+
+### V2__seed_inventory_warehouses.sql 의 deterministic UUID (Plan §3.1 4-tier).
+###   HQ-001 본사창고      (HEADQUARTERS) — 본사 보유 메인 창고
+###   VH-001 1호차 차량재고 (VEHICLE)      — 출장 차량 이동 재고
+###   CS-001 거래처 위탁창고 (CONSIGNMENT)  — 거래처 위탁 (소유권 자사)
+###   VR-001 가상창고      (VIRTUAL)      — 삼성 직배/서비스 인보이스 (IN_TRANSIT 스킵)
+@hqWarehouseId = 11111111-1111-1111-1111-000000000001
+@vehicleWarehouseId = 11111111-1111-1111-1111-000000000002
+@consignmentWarehouseId = 11111111-1111-1111-1111-000000000003
+@virtualWarehouseId = 11111111-1111-1111-1111-000000000004
+
+### 테스트용 product UUID — product-service 가 발급한 실제 UUID 로 교체.
+@testProductId = 00000000-0000-0000-0000-000000003001
+
+###############################################################################
+### 시나리오 1: 창고 목록 조회 (SALES 가능 — 인증된 모든 역할)
+### 기대: 200 + 시드 4개 창고 (HQ-001/VH-001/CS-001/VR-001) 포함
+###############################################################################
+GET {{host}}/inventory/warehouses
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 2: 신규 창고 등록 (MANAGER) — Plan §4: 창고 등록은 MASTER/MANAGER/DEVELOPER
+### 기대: 201 + body $.data.id, code echo
+###############################################################################
+POST {{host}}/inventory/warehouses
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "code": "VH-002",
+  "name": "2호차 차량재고",
+  "type": "VEHICLE",
+  "address": null,
+  "displayOrder": 21,
+  "description": "추가 차량재고"
+}
+
+> {%
+client.global.set("createdWarehouseId", response.body.data.id);
+%}
+
+###############################################################################
+### 시나리오 3: 입고 (WAREHOUSE) — POST /inventory/lots/inbound, 201 Created
+### 기대: 201 + 신규 lot, StockBalance.totalQty += 100
+###############################################################################
+POST {{host}}/inventory/lots/inbound
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{testProductId}}",
+  "warehouseId": "{{hqWarehouseId}}",
+  "lotNo": "LOT-2026-05-001",
+  "quantity": 100,
+  "unitCost": 100000,
+  "note": "초도 입고"
+}
+
+###############################################################################
+### 시나리오 4: 출고 — FIFO (WAREHOUSE), POST /inventory/deduct, 200
+### 기대: 200 + 가장 오래된 lot 부터 30 차감, balance 70
+###############################################################################
+POST {{host}}/inventory/deduct
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{testProductId}}",
+  "warehouseId": "{{hqWarehouseId}}",
+  "quantity": 30,
+  "fromReservation": false,
+  "referenceType": "DEMO",
+  "note": "FIFO 출고 시연"
+}
+
+###############################################################################
+### 시나리오 5: 예약 → 해제 (WAREHOUSE)
+### 5-a) 예약 20개 → available 70-20=50, reserved 20
+### 5-b) 해제 20개 → available 70, reserved 0
+###############################################################################
+POST {{host}}/inventory/reserve
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{testProductId}}",
+  "warehouseId": "{{hqWarehouseId}}",
+  "quantity": 20,
+  "referenceType": "ORDER",
+  "note": "예약 시연"
+}
+
+###
+POST {{host}}/inventory/release
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{testProductId}}",
+  "warehouseId": "{{hqWarehouseId}}",
+  "quantity": 20,
+  "referenceType": "ORDER",
+  "note": "예약 해제 시연"
+}
+
+###############################################################################
+### 시나리오 6: 재고 조정 (INVENTORY) — 실사 차이 보정. POST /inventory/adjust
+### Plan §4: adjust 는 MASTER/MANAGER/INVENTORY 만. quantityDelta 는 부호 있는 정수.
+### 기대: 200 + total 70-5=65 (음수 delta)
+###############################################################################
+POST {{host}}/inventory/adjust
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{testProductId}}",
+  "warehouseId": "{{hqWarehouseId}}",
+  "quantityDelta": -5,
+  "reason": "월말 실사 결과 70 → 65 보정"
+}
+
+###############################################################################
+### 시나리오 7: 창고간 이동 — 전체 라이프사이클 (REQUESTED → APPROVED → SHIPPED → RECEIVED → CONFIRMED)
+### 7-a) REQUESTED 생성 (WAREHOUSE) — POST /inventory/transfers, 201
+### 7-b) APPROVED (MANAGER, WAREHOUSE 는 403) — POST /inventory/transfers/{id}/approve
+### 7-c) SHIPPED (WAREHOUSE) — POST /inventory/transfers/{id}/ship
+### 7-d) RECEIVED (WAREHOUSE) — POST /inventory/transfers/{id}/receive
+### 7-e) CONFIRMED (MANAGER) — POST /inventory/transfers/{id}/confirm
+###############################################################################
+POST {{host}}/inventory/transfers
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "sourceWarehouseId": "{{hqWarehouseId}}",
+  "destinationWarehouseId": "{{vehicleWarehouseId}}",
+  "reason": "REBALANCE",
+  "reasonDetail": "차량 출고용 10개 이동",
+  "lines": [
+    { "productId": "{{testProductId}}", "requestedQuantity": 10 }
+  ]
+}
+
+> {%
+client.global.set("transferId", response.body.data.id);
+%}
+
+###
+POST {{host}}/inventory/transfers/{{transferId}}/approve
+Authorization: Bearer {{managerToken}}
+
+###
+POST {{host}}/inventory/transfers/{{transferId}}/ship
+Authorization: Bearer {{warehouseToken}}
+
+###
+POST {{host}}/inventory/transfers/{{transferId}}/receive
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{}
+
+###
+POST {{host}}/inventory/transfers/{{transferId}}/confirm
+Authorization: Bearer {{managerToken}}
+
+###############################################################################
+### 시나리오 8: 가상창고 출고지 → ship() 즉시 RECEIVED 점프 (Plan §3.1 IN_TRANSIT 스킵)
+### VR-001 (VIRTUAL) 을 source 로 한 transfer 생성 → ship() 호출 시 status=RECEIVED 로 점프.
+### Plan §3.1 의 가상창고 정의: 비물리이므로 IN_TRANSIT 단계 의미 없음.
+###############################################################################
+POST {{host}}/inventory/transfers
+Authorization: Bearer {{warehouseToken}}
+Content-Type: application/json
+
+{
+  "sourceWarehouseId": "{{virtualWarehouseId}}",
+  "destinationWarehouseId": "{{hqWarehouseId}}",
+  "reason": "SAMSUNG_DIRECT",
+  "reasonDetail": "삼성 직배 — 가상창고 출고지",
+  "lines": [
+    { "productId": "{{testProductId}}", "requestedQuantity": 5 }
+  ]
+}
+
+> {%
+client.global.set("virtualTransferId", response.body.data.id);
+%}
+
+###
+POST {{host}}/inventory/transfers/{{virtualTransferId}}/approve
+Authorization: Bearer {{managerToken}}
+
+### ship() 시 IN_TRANSIT 스킵 → 응답 $.data.status == "RECEIVED"
+POST {{host}}/inventory/transfers/{{virtualTransferId}}/ship
+Authorization: Bearer {{warehouseToken}}
