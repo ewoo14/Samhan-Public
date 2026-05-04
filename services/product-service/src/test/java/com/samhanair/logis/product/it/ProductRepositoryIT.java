@@ -19,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -99,9 +101,11 @@ class ProductRepositoryIT extends AbstractPostgresIT {
         productRepository.flush();
         entityManager.clear(); // native 쿼리 결과가 1차 캐시와 충돌하지 않도록.
 
-        List<Product> matched = productRepository.findByTagsContaining("{\"전압\":\"220V\"}");
+        // BE 의 통합 search() 메서드를 사용 (Plan 의 findByTagsContaining 단일메서드는 BE 의도적 변경으로 search 로 합쳐짐).
+        // tagFilter 만 사용, 다른 필터는 null. PageRequest 는 충분히 큰 size.
+        Page<Product> matched = productRepository.search(null, null, null, "{\"전압\":\"220V\"}", PageRequest.of(0, 100));
 
-        assertThat(matched).extracting(Product::getModelName)
+        assertThat(matched.getContent()).extracting(Product::getModelName)
                 .containsExactlyInAnyOrder("WALL-220");
     }
 
