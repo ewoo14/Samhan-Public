@@ -1,0 +1,336 @@
+### Accounting Service Slice A (A1+A2 통합 MVP) — VS Code REST Client / IntelliJ HTTP Client fixtures
+### Plan: docs/dev-reports/accounting-slice-A/plan.md
+### QA Report: docs/qa/accounting-slice-A/qa-report.md
+###
+### 사용법:
+###   1) docker-compose up (api-gateway / auth-service / user-service / accounting-service / postgres / eureka)
+###   2) 아래 @accountantToken / @masterToken / @managerToken / @salesToken 변수를
+###      auth-service /auth/login 응답의 JWT 로 채워 넣는다.
+###   3) ### 블록을 위에서 아래로 순서대로 실행. 시나리오 2 의 journalId 가 3, 4 에서 재사용됨.
+###
+### 토큰 발급 예시:
+###   POST {{host}}/auth/login  body={"loginId":"accountant01","password":"..."}
+###   → response.token 을 @accountantToken 에 복사.
+###
+### 권한 매트릭스 (Plan §7 Q9):
+###   분개 작성/POST/REVERSE = ACCOUNTANT/MASTER 만
+###   계정과목/시산표 조회 = ACCOUNTANT/MASTER (+ AUDITOR — 감사 read-only)
+###   기타 role (MANAGER/SALES/WAREHOUSE/INVENTORY) = 403
+
+@host = http://localhost:8080
+@masterToken = [테스트 환경 시드 후 주입]
+@accountantToken = [테스트 환경 시드 후 주입]
+@managerToken = [테스트 환경 시드 후 주입]
+@salesToken = [테스트 환경 시드 후 주입]
+@auditorToken = [테스트 환경 시드 후 주입]
+
+### 한국 표준 계정 시드 코드 (Plan §3 — Flyway V1 시드)
+@accountCash = 101
+@accountBank = 102
+@accountReceivable = 110
+@accountPayable = 201
+@accountVatPayable = 220
+@accountCapital = 301
+@accountSalesRevenue = 401
+@accountCogs = 501
+@accountSalary = 801
+@accountRent = 805
+@accountInterestExpense = 951
+
+###############################################################################
+### 시나리오 1: 계정과목 트리 조회 (한국 표준 계정 50+ 시드 검증)
+### 기대: 200 + ApiResponse<List<ChartOfAccountResponse>> ($.data[*].code 50+)
+### 7-그룹 (자산/부채/자본/매출/매출원가/판관비/영업외) 모두 포함 검증
+###############################################################################
+GET {{host}}/accounting/accounts
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+### 1-b: 카테고리 필터 (자산만)
+GET {{host}}/accounting/accounts?category=ASSET
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+### 1-c: 계정과목 트리는 모든 인증 role 가능 (slip 작성 lookup 등)
+GET {{host}}/accounting/accounts
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 2: 분개 입력 (DRAFT) — ACCOUNTANT, 5월 임차료 500,000원 지급
+### 기대: 201 + $.data.status="DRAFT", $.data.journalNo (yyyyMMdd-N)
+### Designer ux-flow.md 시나리오 1 의 표준 케이스
+###############################################################################
+POST {{host}}/accounting/journals
+Authorization: Bearer {{accountantToken}}
+Content-Type: application/json
+
+{
+  "journalDate": "2026-05-04",
+  "sourceType": "MANUAL",
+  "memo": "5월 임차료 지급",
+  "lines": [
+    {
+      "lineNo": 1,
+      "accountCode": "{{accountRent}}",
+      "debitAmount": 500000,
+      "creditAmount": 0,
+      "partnerName": "강남빌딩",
+      "memo": "5월분"
+    },
+    {
+      "lineNo": 2,
+      "accountCode": "{{accountBank}}",
+      "debitAmount": 0,
+      "creditAmount": 500000,
+      "partnerName": "국민은행",
+      "memo": ""
+    }
+  ]
+}
+
+> {%
+client.global.set("draftJournalId", response.body.data.id);
+client.global.set("draftJournalNo", response.body.data.journalNo);
+%}
+
+###############################################################################
+### 시나리오 3: 분개 단건 조회 (DRAFT 검토)
+### 기대: 200 + $.data.lines[0].accountCode == "805", $.data.status == "DRAFT"
+###############################################################################
+GET {{host}}/accounting/journals/{{draftJournalId}}
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 4: 분개 확정 (POST) — DRAFT → POSTED
+### Layer 4: Journal.post() — 차/대 합계 강제 검증 + postedAt/By 기입 + AccountBalance refresh
+### 기대: 200 + $.data.status="POSTED", $.data.postedAt != null
+###############################################################################
+POST {{host}}/accounting/journals/{{draftJournalId}}/post
+Authorization: Bearer {{accountantToken}}
+
+###############################################################################
+### 시나리오 5: 시산표 조회 (월별, 7-그룹 합계)
+### 기대: 200 + $.data.length == 7 (그룹 수), 차변 합계 = 대변 합계
+###############################################################################
+GET {{host}}/accounting/balances?period=202605
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 6: 권한 가드 — SALES 가 분개 입력 시도 → 403 (Q9)
+### 기대: 403 + $.error.code == "FORBIDDEN"
+###############################################################################
+POST {{host}}/accounting/journals
+Authorization: Bearer {{salesToken}}
+Content-Type: application/json
+
+{
+  "journalDate": "2026-05-04",
+  "sourceType": "MANUAL",
+  "memo": "SALES 시도 — 거부 기대",
+  "lines": [
+    {
+      "lineNo": 1,
+      "accountCode": "{{accountRent}}",
+      "debitAmount": 100000,
+      "creditAmount": 0
+    },
+    {
+      "lineNo": 2,
+      "accountCode": "{{accountBank}}",
+      "debitAmount": 0,
+      "creditAmount": 100000
+    }
+  ]
+}
+
+### 6-b: MANAGER 도 분개 작성 불가 (Q9 — MANAGER 명시 제외)
+POST {{host}}/accounting/journals
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "journalDate": "2026-05-04",
+  "sourceType": "MANUAL",
+  "memo": "MANAGER 시도 — 거부 기대 (Q9)",
+  "lines": [
+    {
+      "lineNo": 1,
+      "accountCode": "{{accountRent}}",
+      "debitAmount": 100000,
+      "creditAmount": 0
+    },
+    {
+      "lineNo": 2,
+      "accountCode": "{{accountBank}}",
+      "debitAmount": 0,
+      "creditAmount": 100000
+    }
+  ]
+}
+
+### 6-c: AUDITOR 시산표 조회는 OK (감사 read-only)
+GET {{host}}/accounting/balances?period=202605
+Authorization: Bearer {{auditorToken}}
+Accept: application/json
+
+### 6-d: AUDITOR 분개 작성 시도 → 403 (감사는 read-only)
+POST {{host}}/accounting/journals
+Authorization: Bearer {{auditorToken}}
+Content-Type: application/json
+
+{
+  "journalDate": "2026-05-04",
+  "sourceType": "MANUAL",
+  "memo": "AUDITOR 시도 — 거부 기대",
+  "lines": [
+    {
+      "lineNo": 1,
+      "accountCode": "{{accountRent}}",
+      "debitAmount": 100000,
+      "creditAmount": 0
+    },
+    {
+      "lineNo": 2,
+      "accountCode": "{{accountBank}}",
+      "debitAmount": 0,
+      "creditAmount": 100000
+    }
+  ]
+}
+
+###############################################################################
+### 시나리오 7: 차/대 합계 mismatch → 400 BAD_REQUEST
+### Layer 4: JournalLine.requireBalanced() 검증
+### 기대: 400 + $.error.code == "INVALID_INPUT", message contains "차/대 합계"
+###############################################################################
+POST {{host}}/accounting/journals
+Authorization: Bearer {{accountantToken}}
+Content-Type: application/json
+
+{
+  "journalDate": "2026-05-04",
+  "sourceType": "MANUAL",
+  "memo": "차/대 mismatch 검증 — 차 100,000 vs 대 90,000",
+  "lines": [
+    {
+      "lineNo": 1,
+      "accountCode": "{{accountRent}}",
+      "debitAmount": 100000,
+      "creditAmount": 0
+    },
+    {
+      "lineNo": 2,
+      "accountCode": "{{accountBank}}",
+      "debitAmount": 0,
+      "creditAmount": 90000
+    }
+  ]
+}
+
+###############################################################################
+### 시나리오 8: 이미 POSTED 분개 재 POST → 409 CONFLICT
+### Layer 4: Journal.post() — from DRAFT 만 허용
+### 기대: 409 + $.error.code == "CONFLICT", message contains "이미 확정"
+### 사전: 시나리오 4 (draftJournalId 가 POSTED 상태)
+###############################################################################
+POST {{host}}/accounting/journals/{{draftJournalId}}/post
+Authorization: Bearer {{accountantToken}}
+
+###############################################################################
+### 시나리오 9: 역분개 (REVERSE) — POSTED → REVERSED
+### Layer 4: Journal.reverse() — 동일 일자에 차/대 swap 한 신규 분개 자동 생성
+### 기대: 200 + $.data.status="REVERSED", 응답에 신규 분개 메타 (reverseOfJournalId)
+### 사전: 시나리오 4 (draftJournalId POSTED 상태)
+###############################################################################
+POST {{host}}/accounting/journals/{{draftJournalId}}/reverse
+Authorization: Bearer {{accountantToken}}
+
+> {%
+client.global.set("reverseJournalId", response.body.data.reverseJournalId);
+client.global.set("reverseJournalNo", response.body.data.reverseJournalNo);
+%}
+
+### 9-b: 역분개 단건 조회 — 차/대 swap 검증 + 적요 prefix "REVERSE: {원journalNo}"
+GET {{host}}/accounting/journals/{{reverseJournalId}}
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 10: DRAFT 분개에 reverse 시도 → 409 CONFLICT
+### Layer 4: Journal.reverse() — POSTED 상태만 허용
+### 기대: 409 + $.error.code == "CONFLICT", message contains "POSTED 상태만"
+###############################################################################
+
+### 10-a: 새 DRAFT 분개 생성
+POST {{host}}/accounting/journals
+Authorization: Bearer {{accountantToken}}
+Content-Type: application/json
+
+{
+  "journalDate": "2026-05-04",
+  "sourceType": "MANUAL",
+  "memo": "DRAFT 상태 reverse 가드 검증",
+  "lines": [
+    {
+      "lineNo": 1,
+      "accountCode": "{{accountRent}}",
+      "debitAmount": 100000,
+      "creditAmount": 0
+    },
+    {
+      "lineNo": 2,
+      "accountCode": "{{accountBank}}",
+      "debitAmount": 0,
+      "creditAmount": 100000
+    }
+  ]
+}
+
+> {%
+client.global.set("draftOnlyJournalId", response.body.data.id);
+%}
+
+### 10-b: DRAFT 상태에 reverse → 409
+POST {{host}}/accounting/journals/{{draftOnlyJournalId}}/reverse
+Authorization: Bearer {{accountantToken}}
+
+###############################################################################
+### 시나리오 11: 미존재 분개 조회 → 404 NOT_FOUND
+### 기대: 404 + $.error.code == "NOT_FOUND"
+###############################################################################
+GET {{host}}/accounting/journals/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+### 11-b: 미존재 분개 POST 시도 → 404
+POST {{host}}/accounting/journals/00000000-0000-0000-0000-000000000000/post
+Authorization: Bearer {{accountantToken}}
+
+###############################################################################
+### 시나리오 12: 분개장 페이지 조회 (status filter)
+### 기대: 200 + ApiResponse<Page<JournalSummary>> ($.data.content[])
+###############################################################################
+GET {{host}}/accounting/journals?from=2026-05-01&to=2026-05-31&status=POSTED
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+### 12-b: status=DRAFT 필터
+GET {{host}}/accounting/journals?from=2026-05-01&to=2026-05-31&status=DRAFT
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+### 12-c: status=REVERSED 필터 (시나리오 9 결과 검증)
+GET {{host}}/accounting/journals?from=2026-05-01&to=2026-05-31&status=REVERSED
+Authorization: Bearer {{accountantToken}}
+Accept: application/json
+
+###############################################################################
+### 시나리오 13: 시산표 권한 가드 — SALES 시도 → 403
+### 기대: 403 + $.error.code == "FORBIDDEN"
+###############################################################################
+GET {{host}}/accounting/balances?period=202605
+Authorization: Bearer {{salesToken}}
+Accept: application/json
