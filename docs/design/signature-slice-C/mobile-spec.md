@@ -216,7 +216,7 @@ async function share(shareToken, slipNo) {
   const url = `${location.origin}/share/${shareToken}`;
   const shareData = {
     title: '출고 인수증',
-    text: `[삼한물류] 출고전표 ${slipNo} — 서명 완료`,
+    text: `[(주)삼한공조시스템] 출고전표 ${slipNo} — 서명 완료`,
     url
   };
 

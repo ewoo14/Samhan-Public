@@ -101,7 +101,7 @@ export function MobileSignaturePage() {
 
   return (
     <div className="m-mock-frame">
-      <div className="m-brand-bar">삼한물류</div>
+      <div className="m-brand-bar">(주)삼한공조시스템</div>
       <div className="m-page">
         <a
           className="m-back-link"

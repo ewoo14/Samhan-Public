@@ -51,7 +51,7 @@
 ┌─ 320~414px viewport ─────────────────┐
 │                                       │
 │ [상단 brand bar — 40px]               │
-│  ▒▒▒ 삼한물류 ▒▒▒                     │
+│  ▒▒▒ (주)삼한공조시스템 ▒▒▒                     │
 │                                       │
 │ [본문 — padding 16px]                 │
 │  ┌───────────────────────────────┐   │
@@ -232,7 +232,7 @@ body {
 ```
 ┌─ 320~414px viewport ─────────────────┐
 │ [상단 brand bar 40px]                 │
-│  ▒▒▒ 삼한물류 ▒▒▒                     │
+│  ▒▒▒ (주)삼한공조시스템 ▒▒▒                     │
 │                                       │
 │ [본문 — center, vertical padding 64px]│
 │                                       │
@@ -323,7 +323,7 @@ body {
 ```javascript
 // Slice C 후속
 async function shareToRecipient(slipPdfUrl, slipNo) {
-  const text = `[삼한물류] 출고전표 ${slipNo} — 서명 완료`;
+  const text = `[(주)삼한공조시스템] 출고전표 ${slipNo} — 서명 완료`;
   const url = slipPdfUrl;
 
   if (navigator.share) {
@@ -356,7 +356,7 @@ Slice B 에서는 [상세보기 →] 링크가 다음 placeholder 페이지로 �
 
 ```
 ┌────────────────────────────────────┐
-│ ▒▒▒ 삼한물류 ▒▒▒                   │
+│ ▒▒▒ (주)삼한공조시스템 ▒▒▒                   │
 ├────────────────────────────────────┤
 │                                    │
 │  슬립 상세                         │

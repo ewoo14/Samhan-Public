@@ -24,7 +24,7 @@
 | 8 | [서명 완료] tap | 1) `toDataURL()` → PNG base64<br>2) `sha256Hex(base64)` → 64자 hex<br>3) POST `/public/batches/{token}/slips/2026-05-05-1/signature` body `{signerName, signaturePngBase64, clientHash}` | 버튼 spinner |
 | 9 | (자동) | BE 200 응답 → `shareToken` 수신 → `/d/{token}/s/2026-05-05-1?signed=1` 또는 라우트 변경 | 서명 페이지 → 완료 페이지 |
 | 10 | (자동) | ✓ 아이콘 + "서명 완료됨" + 메타 + [공유] 버튼 표시 | 완료 페이지 (mock 02) |
-| 11 | [📤 인수자에게 공유] tap | `navigator.share({title:'출고전표 2026-05-05-1', text:'[삼한물류] 출고 인수증', url:'/share/{shareToken}'})` | 시스템 공유 시트 |
+| 11 | [📤 인수자에게 공유] tap | `navigator.share({title:'출고전표 2026-05-05-1', text:'[(주)삼한공조시스템] 출고 인수증', url:'/share/{shareToken}'})` | 시스템 공유 시트 |
 | 12 | 카톡 / SMS / AirDrop 등 선택 | 시스템 공유 완료 | 시스템 시트 |
 | 13 | (Web Share 미지원 시) | clipboard 복사 + 토스트 "링크가 복사되었습니다" | 토스트 2초 |
 | 14 | [목록으로] tap | `/d/{token}` 으로 돌아감, 한국전력 카드 옆에 ✓ 배지 표시 (Slice B 확장) | 배치 페이지 |

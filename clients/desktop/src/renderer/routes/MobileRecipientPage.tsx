@@ -29,7 +29,7 @@ import { getSignatureShare } from '../api/signature'
 function GoneView() {
   return (
     <div className="m-mock-frame">
-      <div className="m-brand-bar">삼한물류</div>
+      <div className="m-brand-bar">(주)삼한공조시스템</div>
       <div className="m-page" style={{ textAlign: 'center', paddingTop: 64 }}>
         <h2 style={{ marginBottom: 16 }}>링크가 만료되었습니다</h2>
         <p style={{ color: '#5C6773', fontSize: 14 }}>
@@ -62,7 +62,7 @@ export function MobileRecipientPage() {
   if (shareQuery.isLoading) {
     return (
       <div className="m-mock-frame">
-        <div className="m-brand-bar">삼한물류</div>
+        <div className="m-brand-bar">(주)삼한공조시스템</div>
         <div className="m-page">
           <p>불러오는 중...</p>
         </div>
@@ -84,7 +84,7 @@ export function MobileRecipientPage() {
     setShareError(null)
     const data = {
       title: '출고 인수증',
-      text: `[삼한물류] 출고전표 ${slip.slipNo} — 서명 완료`,
+      text: `[(주)삼한공조시스템] 출고전표 ${slip.slipNo} — 서명 완료`,
       url: shareUrl,
     }
     if (typeof navigator !== 'undefined' && navigator.share) {
@@ -107,7 +107,7 @@ export function MobileRecipientPage() {
 
   return (
     <div className="m-mock-frame">
-      <div className="m-brand-bar">삼한물류</div>
+      <div className="m-brand-bar">(주)삼한공조시스템</div>
       <div className="m-page">
         {fromSigned ? (
           <section
@@ -177,7 +177,7 @@ export function MobileRecipientPage() {
             인수자에게 공유
           </Button>
           <CopyButton
-            text={`[삼한물류] 출고전표 ${slip.slipNo} — 서명 완료\n${shareUrl}`}
+            text={`[(주)삼한공조시스템] 출고전표 ${slip.slipNo} — 서명 완료\n${shareUrl}`}
             label="링크 복사"
           />
           {fromSigned ? (
