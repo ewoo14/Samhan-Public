@@ -169,6 +169,48 @@ class ProductControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void byModel_salesRole_returns200() throws Exception {
+        // SALES role 도 by-model 조회 가능 (Q3=B 결정 — 모든 사용자 입력 가능 시나리오)
+        var createBody = Map.of(
+                "name", "by-model 시나리오",
+                "modelName", "BY-MODEL-OK-001",
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "1500000",
+                "purchasePrice", "1100000",
+                "currency", "KRW",
+                "tags", Map.of("hp", "1.5"),
+                "description", "modelName onBlur lookup 대상");
+
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createBody)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/products/by-model/BY-MODEL-OK-001")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.modelName").value("BY-MODEL-OK-001"))
+                .andExpect(jsonPath("$.data.sellingPrice").value(1500000));
+    }
+
+    @Test
+    void byModel_unauthenticated_returns403() throws Exception {
+        mockMvc.perform(get("/products/by-model/SOMETHING"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void byModel_missing_returns404() throws Exception {
+        mockMvc.perform(get("/products/by-model/THIS-MODEL-DOES-NOT-EXIST")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void discontinuedFilter_excludedFromActiveQuery() throws Exception {
         // 1) 활성 제품 등록
         var createBody = Map.of(

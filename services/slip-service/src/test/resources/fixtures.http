@@ -291,3 +291,28 @@ Content-Type: application/json
 }
 
 ### 응답 검증: $.data.memo 가 "2026/05/04상차 2026/05/05하차" 로 시작하고 "원본 메모" 포함
+
+###############################################################################
+### 시나리오 9: lookup-product (slip-output-format-slice 추가)
+### facade endpoint — 모든 인증 role 이 모델명으로 ProductSummary 단건 조회.
+### slip-service 의 ProductClient.lookupByModel → product-service /products/internal/lookup-by-model 위임.
+### 기대: 200 + ApiResponse<ProductSummary> ($.data.modelName == 입력값)
+###############################################################################
+GET {{host}}/slips/lookup-product?modelName=SHA-W15K
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+
+### 9-b: WAREHOUSE 조회 (모든 role 가능 검증 — 재고이동 작성 시 라인 lookup)
+GET {{host}}/slips/lookup-product?modelName=SHA-W15K
+Authorization: Bearer {{warehouseToken}}
+Accept: application/json
+
+### 9-c: 미인증 → 403
+GET {{host}}/slips/lookup-product?modelName=SHA-W15K
+Accept: application/json
+
+### 9-d: 미존재 모델명 → 404 (ProductClient.lookupByModel 의 NOT_FOUND propagate)
+GET {{host}}/slips/lookup-product?modelName=UNKNOWN-MODEL-9999
+Authorization: Bearer {{salesToken}}
+Accept: application/json
+

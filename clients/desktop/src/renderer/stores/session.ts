@@ -69,3 +69,80 @@ export function canCreateSlip(role: string | undefined | null): boolean {
   if (!role) return false
   return role === 'SALES' || role === 'MANAGER' || role === 'MASTER'
 }
+
+/**
+ * 이동전표 작성 권한 — BE `StockTransferController#create` 와 동일 매핑.
+ * MASTER / MANAGER / WAREHOUSE / INVENTORY.
+ */
+export function canCreateTransfer(role: string | undefined | null): boolean {
+  if (!role) return false
+  return (
+    role === 'MASTER'
+    || role === 'MANAGER'
+    || role === 'WAREHOUSE'
+    || role === 'INVENTORY'
+  )
+}
+
+/**
+ * 전표 라이프사이클 transition 권한 — action 별 BE `@PreAuthorize` 와 동일.
+ *
+ * @param action transition 액션 코드
+ * @param role 현재 사용자 role
+ */
+export function canTransitionSlip(
+  action:
+    | 'save'
+    | 'send'
+    | 'accept'
+    | 'process'
+    | 'complete'
+    | 'ship'
+    | 'deliver'
+    | 'confirm'
+    | 'reject'
+    | 'cancel',
+  role: string | undefined | null,
+): boolean {
+  if (!role) return false
+  switch (action) {
+    case 'save':
+    case 'send':
+    case 'cancel':
+      return ['SALES', 'MANAGER', 'MASTER'].includes(role)
+    case 'accept':
+    case 'process':
+    case 'complete':
+    case 'ship':
+    case 'deliver':
+      return ['WAREHOUSE', 'INVENTORY', 'MANAGER', 'MASTER'].includes(role)
+    case 'confirm':
+      return ['ACCOUNTANT', 'MANAGER', 'MASTER'].includes(role)
+    case 'reject':
+      return ['MANAGER', 'MASTER'].includes(role)
+    default:
+      return false
+  }
+}
+
+/**
+ * 이동전표 라이프사이클 transition 권한.
+ */
+export function canTransitionTransfer(
+  action: 'approve' | 'reject' | 'ship' | 'receive' | 'confirm' | 'cancel',
+  role: string | undefined | null,
+): boolean {
+  if (!role) return false
+  switch (action) {
+    case 'approve':
+    case 'reject':
+    case 'confirm':
+    case 'cancel':
+      return ['MASTER', 'MANAGER', 'INVENTORY'].includes(role)
+    case 'ship':
+    case 'receive':
+      return ['MASTER', 'MANAGER', 'WAREHOUSE', 'INVENTORY'].includes(role)
+    default:
+      return false
+  }
+}

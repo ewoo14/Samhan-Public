@@ -162,6 +162,16 @@ button {
   background: var(--color-neutral-0);
 }
 
+/** v2 라인 — 모델명 + 품목명 + 수량 + 단가 + 삭제 (5 columns). */
+.line-row-v2 {
+  grid-template-columns: 1.2fr 1.6fr 0.6fr 1fr auto;
+}
+
+/** 이동전표 라인 — 모델명 + 품목명 + 수량 + 삭제 (4 columns). */
+.line-row-transfer {
+  grid-template-columns: 1.2fr 1.6fr 0.6fr auto;
+}
+
 .form-section {
   display: flex;
   flex-direction: column;
@@ -173,4 +183,280 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.detail-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-500);
+  margin-bottom: var(--space-1);
+}
+
+.detail-value {
+  display: block;
+  font-size: var(--font-size-base);
+  color: var(--color-neutral-800);
+}
+
+/* ==========================================================================
+   Print views — 거래명세서 / 작업지시서.
+   화면(스크린)에서는 A4 미리보기 박스. 인쇄 시 사이드바/헤더 숨기고 양식만 출력.
+   ========================================================================== */
+
+.print-page {
+  background: white;
+  border: 1px solid var(--color-neutral-300);
+  padding: 24px;
+  margin: 0 auto;
+  max-width: 800px;
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  color: black;
+}
+
+/* 거래명세서 */
+.invoice-page header.invoice-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid black;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.invoice-brand .invoice-logo-placeholder {
+  font-weight: bold;
+  font-size: 20px;
+  border: 1px solid black;
+  padding: 4px 12px;
+  display: inline-block;
+}
+
+.invoice-brand .invoice-title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-top: 8px;
+  letter-spacing: 0.2em;
+}
+
+.invoice-meta {
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.invoice-meta .invoice-seal {
+  margin-top: 4px;
+  border: 1px dashed black;
+  display: inline-block;
+  padding: 4px 8px;
+}
+
+.invoice-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.invoice-party {
+  border: 1px solid black;
+  padding: 8px;
+}
+
+.invoice-party h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  border-bottom: 1px solid black;
+  padding-bottom: 4px;
+}
+
+.invoice-party p {
+  margin: 2px 0;
+  font-size: 11px;
+}
+
+.invoice-amount {
+  border: 1px solid black;
+  padding: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+}
+
+.invoice-table,
+.dispatch-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.invoice-table th,
+.invoice-table td,
+.dispatch-table th,
+.dispatch-table td {
+  border: 1px solid black;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.invoice-table th,
+.dispatch-table th {
+  background: #eee;
+  text-align: center;
+}
+
+.invoice-table td.num,
+.dispatch-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.invoice-table tfoot td,
+.dispatch-table tfoot td {
+  font-weight: bold;
+  background: #fafafa;
+}
+
+.invoice-footer {
+  border-top: 1px solid black;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 출고전표 작업지시서 */
+.dispatch-page header.dispatch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid black;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.dispatch-brand .dispatch-logo-placeholder {
+  font-weight: bold;
+  font-size: 20px;
+  border: 1px solid black;
+  padding: 4px 12px;
+  display: inline-block;
+}
+
+.dispatch-brand .dispatch-title {
+  font-size: 22px;
+  font-weight: bold;
+  margin-top: 8px;
+}
+
+.dispatch-meta {
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.dispatch-roles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid black;
+  margin-bottom: 12px;
+}
+
+.dispatch-role-box {
+  border-right: 1px solid black;
+  display: flex;
+  flex-direction: column;
+}
+
+.dispatch-role-box:last-child {
+  border-right: none;
+}
+
+.dispatch-role-label {
+  background: #eee;
+  border-bottom: 1px solid black;
+  padding: 4px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 11px;
+}
+
+.dispatch-role-value {
+  min-height: 36px;
+  padding: 4px;
+}
+
+.dispatch-delivery {
+  border: 1px solid black;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.dispatch-notice {
+  text-align: center;
+  font-weight: bold;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.dispatch-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dispatch-sign-box {
+  border: 1px solid black;
+}
+
+.dispatch-sign-label {
+  background: #eee;
+  border-bottom: 1px solid black;
+  padding: 4px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 11px;
+}
+
+.dispatch-sign-area {
+  min-height: 80px;
+}
+
+/* @media print — 인쇄 시 사이드바/헤더/no-print 클래스 모두 숨김 */
+@media print {
+  body {
+    background: white;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .app-shell {
+    display: block;
+  }
+  .app-main {
+    padding: 0;
+    overflow: visible;
+  }
+  .print-page {
+    border: none;
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+    max-width: none;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
 }

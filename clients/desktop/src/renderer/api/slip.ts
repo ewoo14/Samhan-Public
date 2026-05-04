@@ -1,13 +1,16 @@
 /**
- * 전표 도메인 API 클라이언트 (출고/입고 한정 — 첫 슬라이스 범위).
+ * 전표 도메인 API 클라이언트 (출고 / 입고).
  *
- * 노출 endpoint (슬라이스 범위):
- * - `GET  /slips`        — Page<SlipSummary> 페이지 조회 (필터 옵션)
- * - `POST /slips`        — 신규 전표 생성 (DRAFT)
+ * 노출 endpoint:
+ * - `GET    /slips`                — Page<SlipSummary> 페이지 조회 (slipType / status 필터)
+ * - `GET    /slips/{id}`           — 라인 포함 상세 (`SlipDetail`)
+ * - `POST   /slips`                — 신규 전표 생성 (DRAFT)
+ * - `GET    /slips/lookup-product` — 모델명 → product 요약 (onBlur lookup)
+ * - `POST   /slips/{id}/{action}`  — 라이프사이클 transition (save/send/accept/...)
  *
- * 라이프사이클 transition (`/save`, `/send`, ... `/confirm`) 는 본 슬라이스에서
- * 호출하지 않으나, 후속 슬라이스 확장을 위해 endpoint URL 패턴은
- * `services/slip-service/.../web/SlipController.java` 와 일치시킨다.
+ * UUID 비공개 가드: 응답 객체의 `id`/`partnerId`/`sourceWarehouseId` 등 UUID
+ * 필드는 axios body 안 / URL path param 으로만 사용한다. 화면 표시 영역에는
+ * 절대 노출하지 않는다 (`feedback_uuid_no_user_visibility.md`).
  */
 import {
   apiClient,
@@ -41,6 +44,24 @@ export interface SlipSummary {
   version: number
 }
 
+/** 라인 응답 — BE `SlipLineResponse`. */
+export interface SlipLineDetail {
+  id: string
+  productId: string
+  productName: string | null
+  modelName: string | null
+  quantity: number
+  unitPrice: string
+  lineTotal: string
+  note: string | null
+}
+
+/** 상세 응답 — BE `SlipDetailResponse`. */
+export interface SlipDetail extends SlipSummary {
+  memo: string | null
+  lines: SlipLineDetail[]
+}
+
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */
 export interface SlipLineInput {
   productId: string
@@ -72,6 +93,14 @@ export interface ListSlipsOptions {
   size?: number
 }
 
+/** 모델명 lookup 응답 — BE `ProductSummary` (slip-service facade). */
+export interface ProductLookupResult {
+  productId: string
+  modelName: string
+  productName: string
+  sellingPrice: string
+}
+
 /**
  * 전표 페이지 조회. 빈 필터 시 전체.
  *
@@ -95,14 +124,86 @@ export async function listSlips(
 }
 
 /**
- * 신규 전표 생성. 응답은 라인 포함 상세 (`SlipDetailResponse`) 지만
- * 본 슬라이스 LoginPage/SlipFormPage 흐름에서는 id/status 만 사용한다.
+ * 전표 단건 상세 조회 — 라인 포함.
+ *
+ * @param id 전표 UUID (path param 으로만 사용, 화면 표시 X)
+ */
+export async function getSlip(id: string): Promise<SlipDetail> {
+  const res = await apiClient.get<ApiEnvelope<SlipDetail>>(`/slips/${id}`)
+  return res.data.data
+}
+
+/**
+ * 신규 전표 생성. 응답은 라인 포함 상세 (`SlipDetailResponse`).
  *
  * @return 생성된 전표 (status=DRAFT)
  */
 export async function createSlip(
   body: CreateSlipRequest,
-): Promise<SlipSummary> {
-  const res = await apiClient.post<ApiEnvelope<SlipSummary>>('/slips', body)
+): Promise<SlipDetail> {
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>('/slips', body)
+  return res.data.data
+}
+
+/**
+ * 모델명 → product 요약 lookup. SlipFormPage 라인 입력 onBlur 시 호출.
+ *
+ * 200 응답 시 productName / sellingPrice 자동 fill 에 사용한다.
+ * 미존재 (404) 는 axios error 로 던지며 호출자가 "찾을 수 없음" 메시지 처리.
+ *
+ * @param modelName 사용자가 입력한 모델명 (예: AJ040RXH4BC1)
+ */
+export async function lookupProductByModelName(
+  modelName: string,
+): Promise<ProductLookupResult> {
+  const res = await apiClient.get<ApiEnvelope<ProductLookupResult>>(
+    '/slips/lookup-product',
+    { params: { modelName } },
+  )
+  return res.data.data
+}
+
+/**
+ * 전표 라이프사이클 transition action 코드 — BE `SlipController` POST endpoint suffix 와 1:1.
+ *
+ * - `save`     DRAFT → SAVED
+ * - `send`     SAVED → SENT
+ * - `accept`   SENT → ACCEPTED
+ * - `process`  ACCEPTED → PROCESSING
+ * - `complete` PROCESSING → COMPLETED
+ * - `ship`     COMPLETED → SHIPPING (출고전표 한정)
+ * - `deliver`  SHIPPING → DELIVERED (출고전표 한정)
+ * - `confirm`  DELIVERED→CONFIRMED (출고) / COMPLETED→CONFIRMED (입고)
+ * - `reject`   SENT/ACCEPTED → REJECTED (사유 필수)
+ * - `cancel`   DRAFT/SAVED/SENT → CANCELED
+ */
+export type SlipTransitionAction =
+  | 'save'
+  | 'send'
+  | 'accept'
+  | 'process'
+  | 'complete'
+  | 'ship'
+  | 'deliver'
+  | 'confirm'
+  | 'reject'
+  | 'cancel'
+
+/**
+ * 라이프사이클 transition 호출. reject 만 body (`reason`) 필요.
+ *
+ * @param id 전표 UUID
+ * @param action transition 액션 코드
+ * @param body reject 사유 (그 외 transition 은 미사용)
+ */
+export async function transitionSlip(
+  id: string,
+  action: SlipTransitionAction,
+  body?: { reason?: string },
+): Promise<SlipDetail> {
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>(
+    `/slips/${id}/${action}`,
+    body ?? {},
+  )
   return res.data.data
 }

@@ -53,18 +53,6 @@ export const SmallMediumLarge: Story = {
 }
 
 /**
- * UUID 호버 tooltip — 마우스를 올리면 `UUID: ...` 표시.
- * 권한 있는 개발자/매니저 디버깅용.
- */
-export const WithUUID: Story = {
-  name: 'UUID hover tooltip',
-  args: {
-    uuid: '01H8XK3T-ABCD-1234-5678-9F0123456789',
-    size: 'lg',
-  },
-}
-
-/**
  * 큰 순번 (`2026/05/04 - 999`) — tabular-nums 가 자릿수 정렬을 유지하는지 확인.
  */
 export const LongSequence: Story = {

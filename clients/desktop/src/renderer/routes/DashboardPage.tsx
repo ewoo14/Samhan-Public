@@ -65,16 +65,22 @@ export function DashboardPage() {
 
       <Card padding={4} shadow="sm">
         <h3 style={{ marginTop: 0 }}>빠른 액션</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button
             variant="primary"
-            onClick={() => navigate('/slips/new')}
+            onClick={() => navigate('/sales/new')}
             disabled={!canCreateSlip(auth?.role)}
           >
             새 출고전표
           </Button>
-          <Button variant="secondary" onClick={() => navigate('/slips')}>
-            전표 목록 보기
+          <Button variant="secondary" onClick={() => navigate('/sales')}>
+            판매조회
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/purchases')}>
+            구매조회
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/transfers')}>
+            재고이동
           </Button>
           <Button variant="ghost" onClick={() => navigate('/warehouses')}>
             창고 관리

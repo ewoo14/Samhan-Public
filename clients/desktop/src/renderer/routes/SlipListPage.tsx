@@ -1,9 +1,16 @@
 /**
- * 출고전표 목록 화면 — `DataTable` + `SlipNumberDisplay` + `SlipStatusBadge`.
+ * 전표 목록 화면 (출고/입고 공용) — slip-output-format 슬라이스 v2.
  *
- * - 1 페이지 (size=20) 만 조회 — 페이지네이션은 후속 슬라이스
- * - 행 클릭 시 alert 안내 (상세 페이지 미구현)
- * - 우상단 "새 출고전표" 버튼 → `/slips/new`
+ * 변경사항 (PR #18 → 본 슬라이스):
+ * - 단일 `/slips` 라우트 폐기, mode prop 으로 OUTBOUND (`/sales`) / INBOUND (`/purchases`) 분리
+ * - DataTable 컬럼에서 ID 컬럼 미포함 (UUID 비공개 가드)
+ * - 행 클릭 시 alert 가 아닌 상세 페이지로 navigate (`/sales/:id` 또는 `/purchases/:id`)
+ *
+ * 사용 컴포넌트:
+ * - `DataTable` (rows + columns)
+ * - `SlipNumberDisplay` (uuid prop 제거됨 — 비즈니스 식별자만)
+ * - `SlipStatusBadge`
+ * - `Badge` (구분: 출고/입고)
  */
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -15,16 +22,25 @@ import {
   SlipStatusBadge,
   type DataTableColumn,
 } from '@samhan/design-system'
-import { listSlips, type SlipSummary } from '../api/slip'
+import { listSlips, type SlipSummary, type SlipType } from '../api/slip'
 import { useSessionStore, canCreateSlip } from '../stores/session'
 
-export function SlipListPage() {
+export interface SlipListPageProps {
+  /** OUTBOUND (판매조회) 또는 INBOUND (구매조회). */
+  mode: SlipType
+}
+
+export function SlipListPage({ mode }: SlipListPageProps) {
   const navigate = useNavigate()
   const role = useSessionStore((s) => s.auth?.role)
+  const isOutbound = mode === 'OUTBOUND'
+  const basePath = isOutbound ? '/sales' : '/purchases'
+  const titleLabel = isOutbound ? '판매조회 (출고전표)' : '구매조회 (입고전표)'
+  const newButtonLabel = isOutbound ? '새 출고전표' : '새 입고전표'
 
   const query = useQuery({
-    queryKey: ['slips', 'list'],
-    queryFn: () => listSlips({ page: 0, size: 20 }),
+    queryKey: ['slips', 'list', mode],
+    queryFn: () => listSlips({ slipType: mode, page: 0, size: 20 }),
   })
 
   const columns: DataTableColumn<SlipSummary>[] = [
@@ -37,7 +53,6 @@ export function SlipListPage() {
           slipDate={row.slipDate}
           seqNo={row.seqNo}
           size="sm"
-          uuid={row.id}
         />
       ),
     },
@@ -70,10 +85,10 @@ export function SlipListPage() {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>출고전표 목록</h3>
+        <h3 style={{ margin: 0 }}>{titleLabel}</h3>
         {canCreateSlip(role) ? (
-          <Button variant="primary" onClick={() => navigate('/slips/new')}>
-            새 출고전표
+          <Button variant="primary" onClick={() => navigate(`${basePath}/new`)}>
+            {newButtonLabel}
           </Button>
         ) : null}
       </div>
@@ -83,9 +98,7 @@ export function SlipListPage() {
         rows={query.data?.content ?? []}
         loading={query.isLoading}
         rowKey={(slip) => slip.id}
-        onRowClick={(slip) =>
-          alert(`상세 화면은 후속 슬라이스에서 제공됩니다.\n전표 ID: ${slip.id}`)
-        }
+        onRowClick={(slip) => navigate(`${basePath}/${slip.id}`)}
         emptyMessage="등록된 전표가 없습니다."
       />
 

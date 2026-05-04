@@ -4,6 +4,7 @@ import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductStatus;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +19,17 @@ import org.springframework.data.repository.query.Param;
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     boolean existsByModelNameAndIsDeletedFalse(String modelName);
+
+    /**
+     * 모델명 정확 매칭 단건 조회 (대소문자 구분, 삭제되지 않은 제품만).
+     * Slip 출력 슬라이스의 {@code POST /products/internal/lookup-by-model} 및
+     * {@code GET /products/by-model/{modelName}} 에서 사용. modelName 컬럼은
+     * partial unique index 가 걸려 있어 단건 보장.
+     *
+     * @param modelName 정확히 일치할 제품 모델명 (예: {@code AJ040RXH4BC1})
+     * @return 일치 제품 Optional. 없으면 {@link Optional#empty()}
+     */
+    Optional<Product> findByModelNameAndIsDeletedFalse(String modelName);
 
     List<Product> findAllByIdIn(Collection<UUID> ids);
 

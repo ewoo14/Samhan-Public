@@ -1,15 +1,21 @@
 /**
- * 출고전표 작성 화면 — 디자인 시스템 6 종 컴포넌트 통합 시연.
+ * 전표 작성 화면 (출고/입고 공용) — slip-output-format 슬라이스 v2.
+ *
+ * 변경사항 (PR #18 → 본 슬라이스):
+ * - "제품 ID UUID" 입력 필드 ❌ 제거 (Q6=A — `feedback_uuid_no_user_visibility.md`)
+ * - "모델명" 입력 필드 + onBlur lookup (Q3=B — `GET /slips/lookup-product`)
+ *   → 200 시 productName / sellingPrice 자동 fill (사용자가 단가 수정 가능)
+ *   → 404 시 빨간 경고 메시지
+ * - 화면 어디에도 UUID 노출 X (창고 코드 + 모델명 + 품목명 등 비즈니스 식별자만)
+ *
+ * 본 컴포넌트는 `mode` prop 으로 OUTBOUND / INBOUND 양쪽 화면에서 재사용된다.
  *
  * 사용 컴포넌트:
- * - `WarehouseSelector` × 2 (출발/도착)
- * - `DeliveryTagSelector` (direction=OUTBOUND, hideVirtual)
- * - `FormField` + native input (거래처명/메모)
- * - `PriceField` (라인 단가)
+ * - `WarehouseSelector` (출발/도착) — id 가 옵션 라벨에 노출되지 않음 (코드+이름만)
+ * - `DeliveryTagSelector` (OUTBOUND 만)
+ * - `FormField` + native input (모델명 / 거래처명 / 메모)
+ * - `PriceField` (라인 단가 — lookup 후 자동 fill)
  * - `Button` (라인 추가/삭제/저장)
- *
- * 본 슬라이스에서는 product 검색 미구현 — 사용자가 productId(UUID) 와
- * 표시명을 수동 입력한다. 후속 슬라이스에서 product autocomplete 추가 예정.
  */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -27,7 +33,9 @@ import axios from 'axios'
 import { listWarehouses } from '../api/inventory'
 import {
   createSlip,
+  lookupProductByModelName,
   type SlipLineInput,
+  type SlipType,
 } from '../api/slip'
 
 /**
@@ -47,23 +55,51 @@ const OUTBOUND_TAG_OPTIONS: DeliveryTagOption[] = [
   { code: 'RETURN_RENTAL', displayName: '반납', direction: 'OUTBOUND', autoMemo: false },
 ]
 
-/** 라인 입력 폼 상태 — onChange 마다 부분 갱신. */
+/**
+ * 라인 입력 폼 상태.
+ *
+ * - `productId` 는 lookup 성공 시 내부적으로 채워지는 UUID — 화면 미노출
+ * - `modelName` 이 사용자 입력 / 표시 식별자
+ * - `lookupError` onBlur lookup 실패 메시지 (라인별)
+ */
 interface LineDraft {
-  productId: string
+  productId: string | null
+  modelName: string
   productName: string
   quantity: string
   unitPrice: string
+  lookupError: string | null
+  lookupLoading: boolean
 }
 
 const emptyLine = (): LineDraft => ({
-  productId: '',
+  productId: null,
+  modelName: '',
   productName: '',
   quantity: '1',
   unitPrice: '0',
+  lookupError: null,
+  lookupLoading: false,
 })
 
-export function SlipFormPage() {
+export interface SlipFormPageProps {
+  /** OUTBOUND (판매/출고) 또는 INBOUND (구매/입고). */
+  mode: SlipType
+}
+
+/**
+ * 출고/입고 공용 작성 화면.
+ *
+ * mode 별 차이:
+ * - OUTBOUND: 출발/도착 창고 + 배송태그, 저장 후 `/sales` 로 이동
+ * - INBOUND: 도착 창고 (출발은 거래처 측), 배송태그 미노출, 저장 후 `/purchases` 로 이동
+ */
+export function SlipFormPage({ mode }: SlipFormPageProps) {
   const navigate = useNavigate()
+  const isOutbound = mode === 'OUTBOUND'
+  const listPath = isOutbound ? '/sales' : '/purchases'
+  const titleLabel = isOutbound ? '새 출고전표' : '새 입고전표'
+
   const [sourceWh, setSourceWh] = useState<string | null>(null)
   const [destWh, setDestWh] = useState<string | null>(null)
   const [partnerName, setPartnerName] = useState('')
@@ -81,25 +117,26 @@ export function SlipFormPage() {
   const mutation = useMutation({
     mutationFn: () => {
       const payload: Parameters<typeof createSlip>[0] = {
-        slipType: 'OUTBOUND',
+        slipType: mode,
         slipDate: today,
         sourceWarehouseId: sourceWh ?? undefined,
         destinationWarehouseId: destWh ?? undefined,
         partnerName: partnerName.trim() || undefined,
-        deliveryTag: tag ?? undefined,
+        deliveryTag: isOutbound ? tag ?? undefined : undefined,
         memo: memo.trim() || undefined,
         lines: lines
-          .filter((l) => l.productId.trim() && Number(l.quantity) > 0)
+          .filter((l) => l.productId && Number(l.quantity) > 0)
           .map<SlipLineInput>((l) => ({
-            productId: l.productId.trim(),
+            productId: l.productId!,
             productName: l.productName.trim() || undefined,
+            modelName: l.modelName.trim() || undefined,
             quantity: Number(l.quantity),
             unitPrice: l.unitPrice || '0',
           })),
       }
       return createSlip(payload)
     },
-    onSuccess: () => navigate('/slips'),
+    onSuccess: () => navigate(listPath),
   })
 
   const addLine = () => setLines((ls) => [...ls, emptyLine()])
@@ -109,6 +146,42 @@ export function SlipFormPage() {
     setLines((ls) =>
       ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
     )
+
+  /**
+   * 모델명 onBlur lookup 핸들러 — `GET /slips/lookup-product?modelName=...` 호출.
+   *
+   * - 빈 값이면 lookup 생략
+   * - 200 시 productId/productName/sellingPrice fill
+   * - 404 등 실패 시 lookupError 메시지 + productId null 유지
+   */
+  const handleModelNameBlur = async (idx: number, modelName: string) => {
+    const trimmed = modelName.trim()
+    if (!trimmed) {
+      updateLine(idx, { productId: null, lookupError: null, productName: '' })
+      return
+    }
+    updateLine(idx, { lookupLoading: true, lookupError: null })
+    try {
+      const product = await lookupProductByModelName(trimmed)
+      updateLine(idx, {
+        productId: product.productId,
+        productName: product.productName,
+        unitPrice: product.sellingPrice,
+        lookupError: null,
+        lookupLoading: false,
+      })
+    } catch (err) {
+      const msg = axios.isAxiosError(err) && err.response?.status === 404
+        ? '해당 모델명을 찾을 수 없습니다'
+        : '모델명 조회에 실패했습니다'
+      updateLine(idx, {
+        productId: null,
+        productName: '',
+        lookupError: msg,
+        lookupLoading: false,
+      })
+    }
+  }
 
   const errorMessage = (() => {
     if (!mutation.isError) return null
@@ -121,9 +194,10 @@ export function SlipFormPage() {
   })()
 
   const validLines = lines.filter(
-    (l) => l.productId.trim() && Number(l.quantity) > 0,
+    (l) => l.productId && Number(l.quantity) > 0,
   )
-  const canSubmit = sourceWh && validLines.length > 0 && !mutation.isPending
+  const requiredWh = isOutbound ? sourceWh : destWh
+  const canSubmit = !!requiredWh && validLines.length > 0 && !mutation.isPending
 
   return (
     <>
@@ -135,8 +209,8 @@ export function SlipFormPage() {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>새 출고전표</h3>
-        <Button variant="ghost" onClick={() => navigate('/slips')}>
+        <h3 style={{ margin: 0 }}>{titleLabel}</h3>
+        <Button variant="ghost" onClick={() => navigate(listPath)}>
           목록으로
         </Button>
       </div>
@@ -145,15 +219,16 @@ export function SlipFormPage() {
         <div className="form-section">
           <div className="form-row">
             <WarehouseSelector
-              label="출발 창고"
-              required
+              label={isOutbound ? '출발 창고' : '입고 창고'}
+              required={isOutbound}
               warehouses={warehousesQuery.data ?? []}
               value={sourceWh}
               onChange={(id) => setSourceWh(id)}
               hideVirtual
             />
             <WarehouseSelector
-              label="도착 창고"
+              label={isOutbound ? '도착 창고' : '출발 창고 (옵션)'}
+              required={!isOutbound}
               warehouses={warehousesQuery.data ?? []}
               value={destWh}
               onChange={(id) => setDestWh(id)}
@@ -161,13 +236,15 @@ export function SlipFormPage() {
             />
           </div>
 
-          <DeliveryTagSelector
-            options={OUTBOUND_TAG_OPTIONS}
-            value={tag}
-            onChange={(code) => setTag(code)}
-            direction="OUTBOUND"
-            slipDate={today}
-          />
+          {isOutbound ? (
+            <DeliveryTagSelector
+              options={OUTBOUND_TAG_OPTIONS}
+              value={tag}
+              onChange={(code) => setTag(code)}
+              direction="OUTBOUND"
+              slipDate={today}
+            />
+          ) : null}
 
           <div className="form-row">
             <FormField
@@ -199,19 +276,33 @@ export function SlipFormPage() {
 
         <h4 style={{ marginTop: 0 }}>전표 라인</h4>
         {lines.map((line, idx) => (
-          <div className="line-row" key={idx}>
+          <div className="line-row line-row-v2" key={idx}>
             <FormField
-              label={`라인 ${idx + 1} - 제품 ID (UUID)`}
+              label={`라인 ${idx + 1} - 모델명`}
               required
+              error={line.lookupError ?? undefined}
               render={({ id }) => (
                 <input
                   id={id}
-                  value={line.productId}
+                  value={line.modelName}
                   onChange={(e) =>
-                    updateLine(idx, { productId: e.target.value })
+                    updateLine(idx, { modelName: e.target.value })
                   }
-                  placeholder="UUID"
+                  onBlur={(e) => void handleModelNameBlur(idx, e.target.value)}
+                  placeholder="예: AJ040RXH4BC1"
                   style={inputStyle}
+                />
+              )}
+            />
+            <FormField
+              label="품목명"
+              render={({ id }) => (
+                <input
+                  id={id}
+                  value={line.productName}
+                  readOnly
+                  placeholder={line.lookupLoading ? '조회중...' : '모델명 조회 후 자동입력'}
+                  style={{ ...inputStyle, background: 'var(--color-neutral-50)' }}
                 />
               )}
             />
@@ -269,7 +360,7 @@ export function SlipFormPage() {
             marginTop: 24,
           }}
         >
-          <Button variant="ghost" onClick={() => navigate('/slips')}>
+          <Button variant="ghost" onClick={() => navigate(listPath)}>
             취소
           </Button>
           <Button

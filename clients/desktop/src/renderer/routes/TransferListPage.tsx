@@ -1,0 +1,117 @@
+/**
+ * 재고이동 목록 화면 — `/transfers`.
+ *
+ * BE `GET /inventory/transfers` (status 필터 옵션) 호출. 행 클릭 시 상세로.
+ *
+ * UUID 비공개: transferNo / source code / destination code / status / 사유
+ * 만 컬럼에 노출. id 는 navigate 의 path param 으로만 사용.
+ */
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import {
+  Badge,
+  Button,
+  DataTable,
+  type DataTableColumn,
+} from '@samhan/design-system'
+import {
+  listTransfers,
+  TRANSFER_STATUS_LABEL,
+  TRANSFER_REASON_LABEL,
+  type TransferStatus,
+  type TransferSummary,
+} from '../api/inventory'
+import { useSessionStore, canCreateTransfer } from '../stores/session'
+
+const STATUS_VARIANT: Record<
+  TransferStatus,
+  'brand' | 'neutral' | 'success' | 'warning' | 'danger'
+> = {
+  REQUESTED: 'neutral',
+  PENDING_APPROVAL: 'warning',
+  APPROVED: 'brand',
+  SHIPPED: 'brand',
+  IN_TRANSIT: 'brand',
+  RECEIVED: 'success',
+  CONFIRMED: 'success',
+  REJECTED: 'danger',
+  CANCELED: 'neutral',
+}
+
+export function TransferListPage() {
+  const navigate = useNavigate()
+  const role = useSessionStore((s) => s.auth?.role)
+
+  const query = useQuery({
+    queryKey: ['transfers', 'list'],
+    queryFn: () => listTransfers({ page: 0, size: 20 }),
+  })
+
+  const columns: DataTableColumn<TransferSummary>[] = [
+    { key: 'transferNo', header: '이동번호', width: '180px' },
+    {
+      key: 'sourceWarehouseCode',
+      header: '출발 창고',
+      width: '120px',
+      render: (r) => r.sourceWarehouseCode,
+    },
+    {
+      key: 'destinationWarehouseCode',
+      header: '도착 창고',
+      width: '120px',
+      render: (r) => r.destinationWarehouseCode,
+    },
+    {
+      key: 'reason',
+      header: '사유',
+      width: '120px',
+      render: (r) => TRANSFER_REASON_LABEL[r.reason],
+    },
+    {
+      key: 'status',
+      header: '상태',
+      width: '120px',
+      render: (r) => (
+        <Badge variant={STATUS_VARIANT[r.status]}>
+          {TRANSFER_STATUS_LABEL[r.status]}
+        </Badge>
+      ),
+    },
+    { key: 'reasonDetail', header: '상세', render: (r) => r.reasonDetail ?? '-' },
+  ]
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>재고이동 목록</h3>
+        {canCreateTransfer(role) ? (
+          <Button variant="primary" onClick={() => navigate('/transfers/new')}>
+            새 이동전표
+          </Button>
+        ) : null}
+      </div>
+
+      <DataTable
+        columns={columns}
+        rows={query.data?.content ?? []}
+        loading={query.isLoading}
+        rowKey={(t) => t.id}
+        onRowClick={(t) => navigate(`/transfers/${t.id}`)}
+        emptyMessage="등록된 이동전표가 없습니다."
+      />
+
+      {query.isError ? (
+        <div className="error-banner" role="alert" style={{ marginTop: 16 }}>
+          이동전표 목록을 불러오지 못했습니다. 백엔드 연결을 확인하세요.
+        </div>
+      ) : null}
+    </>
+  )
+}

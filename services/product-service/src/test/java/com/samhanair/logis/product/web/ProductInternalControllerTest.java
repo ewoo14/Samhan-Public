@@ -7,11 +7,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.product.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.product.config.InternalAuthProperties;
 import com.samhanair.logis.product.config.InternalTokenFilter;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.service.ProductService;
+import com.samhanair.logis.product.web.GlobalExceptionHandler;
+import com.samhanair.logis.product.web.dto.LookupByModelRequest;
 import com.samhanair.logis.product.web.dto.LookupRequest;
 import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
 import java.math.BigDecimal;
@@ -46,6 +50,7 @@ class ProductInternalControllerTest {
 
         mockMvc = MockMvcBuilders.standaloneSetup(new ProductInternalController(productService))
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())
+                .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
 
@@ -100,5 +105,74 @@ class ProductInternalControllerTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getContentAsString()).contains("SHA-W15K");
         verify(productService).lookup(List.of(id));
+    }
+
+    @Test
+    void lookupByModel_existing_returns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
+        var body = new LookupByModelRequest("AJ040RXH4BC1");
+
+        when(productService.lookupSummaryByModelName("AJ040RXH4BC1")).thenReturn(
+                new ProductSummaryResponse(id, "벽걸이 무풍에어컨", "AJ040RXH4BC1", categoryId,
+                        new BigDecimal("1500000.00"), ProductStatus.ACTIVE));
+
+        MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders
+                        .post("/products/internal/lookup-by-model")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getContentAsString()).contains("AJ040RXH4BC1");
+        verify(productService).lookupSummaryByModelName("AJ040RXH4BC1");
+    }
+
+    @Test
+    void lookupByModel_missing_returns404() throws Exception {
+        var body = new LookupByModelRequest("UNKNOWN-MODEL");
+
+        when(productService.lookupSummaryByModelName("UNKNOWN-MODEL"))
+                .thenThrow(new BusinessException(ErrorCode.NOT_FOUND, "모델명에 해당하는 제품이 없습니다"));
+
+        MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders
+                        .post("/products/internal/lookup-by-model")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(404);
+        verify(productService).lookupSummaryByModelName("UNKNOWN-MODEL");
+    }
+
+    @Test
+    void lookupByModel_wrongToken_returns401() throws Exception {
+        var body = new LookupByModelRequest("AJ040RXH4BC1");
+
+        MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders
+                        .post("/products/internal/lookup-by-model")
+                        .header("X-Internal-Token", "wrong-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(productService, never()).lookupSummaryByModelName(any());
+    }
+
+    @Test
+    void lookupByModel_missingToken_returns401() throws Exception {
+        var body = new LookupByModelRequest("AJ040RXH4BC1");
+
+        MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders
+                        .post("/products/internal/lookup-by-model")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(productService, never()).lookupSummaryByModelName(any());
     }
 }
