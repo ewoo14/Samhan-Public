@@ -1,35 +1,35 @@
 /**
  * MobileSignaturePage — `/mobile/d/:token/s/:slipNo` (signature-slice-C 모바일 mock).
  *
- * 본 슬라이스는 sign.samhan-air.com 분리 (Phase 5 nginx) deferred — desktop 앱 라우트 안에
- * **375×812 viewport mock** 으로 모바일 서명 페이지를 시뮬레이션합니다. Designer
- * `wireframes.md` §1 + `mobile-spec.md` §2.1 / §3.5 / §4 충실 반영.
+ * Slice C2-UX (2026-05-05) — 2-step 흐름 + 캔버스 fullscreen UX.
+ * - 1단계: **기사 서명** (POST `/driver-signature`)
+ * - 2단계: **인수자 서명** (인수자명 입력 + POST `/signature`) → share 페이지 이동
+ * - 캔버스 클릭 시 자동 전체화면 → 하단 [다시 서명] / [완료] 버튼 → 닫으면 서명 보존
  *
- * 흐름 (Designer ux-flow.md):
- * 1) 입수: `/mobile/d/:token/s/:slipNo` 진입 → 전표 헤더 + 라인 표시 (mock).
- * 2) 인수자명 입력 (≥1자) + Canvas 서명 (≥1 stroke) → [서명 완료] enabled.
- * 3) [서명 완료] 누르면 SHA-256 해시 → POST `/public/.../signature` →
- *    응답 shareToken 으로 `/mobile/share/:shareToken?from=signed` 리다이렉트.
- * 4) [다시 서명] 누르면 캔버스 clear + 입력값 보존.
- *
- * UUID 비공개:
- * - URL 은 `{token}/{slipNo}` 만 (UUID 없음).
- * - 응답 객체 안에서 받는 값도 비즈니스 식별자만 표시.
- *
- * Web Crypto API (`crypto.subtle.digest`) — iOS 14+ / Android Chrome 90+ 지원.
- * 미지원 환경 fallback 은 본 슬라이스 범위 외 (이후 Phase 5 nginx 로 분리 시 polyfill 검토).
+ * UUID 비공개: URL 은 `{token}/{slipNo}` 만. 응답값도 비즈니스 식별자만.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, SignaturePad, type SignaturePadHandle } from '@samhan/design-system'
-import { recordSignature } from '../api/signature'
+import { recordDriverSignature, recordSignature } from '../api/signature'
 
-/** Canvas 사이즈 — innerWidth ≥375 시 wide (400×200), 아니면 narrow (320×200). */
-function pickCanvasSize(): { width: number; height: number } {
+type Stage = 'driver' | 'recipient'
+
+/** Canvas 사이즈 — embed (innerWidth ≥375 이면 wide 400×200, 아니면 narrow 320×200) */
+function pickEmbedSize(): { width: number; height: number } {
   if (typeof window === 'undefined') return { width: 320, height: 200 }
   return window.innerWidth >= 375
     ? { width: 400, height: 200 }
     : { width: 320, height: 200 }
+}
+
+/** Canvas 사이즈 — fullscreen (viewport 의 ~90% × 60%) */
+function pickFullscreenSize(): { width: number; height: number } {
+  if (typeof window === 'undefined') return { width: 320, height: 400 }
+  return {
+    width: Math.floor(window.innerWidth * 0.92),
+    height: Math.floor(window.innerHeight * 0.6),
+  }
 }
 
 /** dataURL 의 base64 부분 → SHA-256 hex (Web Crypto API). */
@@ -48,26 +48,45 @@ export function MobileSignaturePage() {
   const params = useParams<{ token: string; slipNo: string }>()
   const navigate = useNavigate()
   const padRef = useRef<SignaturePadHandle>(null)
+  const [stage, setStage] = useState<Stage>('driver')
   const [signerName, setSignerName] = useState('')
   const [empty, setEmpty] = useState(true)
-  const [size, setSize] = useState<{ width: number; height: number }>(pickCanvasSize())
+  const [embedSize, setEmbedSize] = useState(pickEmbedSize())
+  const [fullscreenSize, setFullscreenSize] = useState(pickFullscreenSize())
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const token = params.token ?? ''
   const slipNo = params.slipNo ?? ''
+  const size = isFullscreen ? fullscreenSize : embedSize
 
   // 화면 크기 변경 (회전 등) 대응
   useEffect(() => {
-    const onResize = () => setSize(pickCanvasSize())
+    const onResize = () => {
+      setEmbedSize(pickEmbedSize())
+      setFullscreenSize(pickFullscreenSize())
+    }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  const submitDisabled
-    = empty || signerName.trim().length === 0 || submitting
+  // fullscreen 진입/해제 시 body scroll 막기
+  useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden'
+      return () => { document.body.style.overflow = '' }
+    }
+    return undefined
+  }, [isFullscreen])
 
-  /** [서명 완료] — SHA-256 해시 + POST. 성공 시 share 페이지로 이동. */
+  /** 단계별 submit 가능 여부 */
+  const submitDisabled
+    = empty
+    || submitting
+    || (stage === 'recipient' && signerName.trim().length === 0)
+
+  /** [완료] 버튼 — 단계별 BE 호출. */
   const handleSubmit = async () => {
     const pad = padRef.current
     if (!pad) return
@@ -80,24 +99,53 @@ export function MobileSignaturePage() {
     setErrorMsg(null)
     try {
       const hash = await sha256OfDataURL(dataURL)
-      const res = await recordSignature(token, slipNo, {
-        signerName: signerName.trim(),
-        signaturePngBase64: dataURL,
-        clientHash: hash,
-      })
-      navigate(`/mobile/share/${res.shareToken}?from=signed`)
+      if (stage === 'driver') {
+        await recordDriverSignature(token, slipNo, {
+          signaturePngBase64: dataURL,
+          clientHash: hash,
+        })
+        // 단계 전환 — 인수자 서명으로 진행
+        pad.clear()
+        setEmpty(true)
+        setStage('recipient')
+        setIsFullscreen(false)
+        setSubmitting(false)
+      } else {
+        const res = await recordSignature(token, slipNo, {
+          signerName: signerName.trim(),
+          signaturePngBase64: dataURL,
+          clientHash: hash,
+        })
+        navigate(`/mobile/share/${res.shareToken}?from=signed`)
+      }
     } catch (err) {
-      console.error('[signature] 서명 저장 실패', err)
+      console.error('[signature] 저장 실패', err)
       setErrorMsg('전송에 실패했습니다. 잠시 후 다시 시도해주세요.')
       setSubmitting(false)
     }
   }
 
-  /** [다시 서명] — 캔버스 비우기 (인수자명 보존). */
+  /** [다시 서명] — 캔버스 비우기. */
   const handleClear = () => {
     padRef.current?.clear()
+    setEmpty(true)
     setErrorMsg(null)
   }
+
+  /** 캔버스 영역 클릭 → fullscreen 진입 (이미 fullscreen 이면 무시). */
+  const handleEnterFullscreen = () => {
+    if (isFullscreen) return
+    setIsFullscreen(true)
+  }
+
+  /** Fullscreen 의 [완료] — 서명 보존 + 모달 닫기 (실제 BE 전송은 embed 의 [완료]). */
+  const handleConfirmFullscreen = () => {
+    // 서명 데이터는 같은 SignaturePad ref 에 보존됨
+    setIsFullscreen(false)
+  }
+
+  const stageLabel = stage === 'driver' ? '배송기사 서명' : '인수자 서명'
+  const completeLabel = stage === 'driver' ? '서명 완료 (다음: 인수자)' : '서명 완료'
 
   return (
     <div className="m-mock-frame">
@@ -114,7 +162,18 @@ export function MobileSignaturePage() {
           ◀ 목록으로
         </a>
 
-        {/* 전표 헤더 (mock — 실제 BE 는 GET /public/batches/{token} 로 전표 정보 조회) */}
+        {/* 단계 표시 */}
+        <div className="m-stage-indicator" aria-label="진행 단계">
+          <span className={stage === 'driver' ? 'is-active' : 'is-done'}>
+            ① 배송기사 서명
+          </span>
+          <span className="m-stage-arrow">→</span>
+          <span className={stage === 'recipient' ? 'is-active' : ''}>
+            ② 인수자 서명
+          </span>
+        </div>
+
+        {/* 전표 헤더 (mock) */}
         <section className="m-slip-card" aria-label="전표 상세">
           <h2 className="m-slip-card-title">전표 상세</h2>
           <p className="m-slip-info">
@@ -130,42 +189,44 @@ export function MobileSignaturePage() {
             <span className="m-slip-info-sm">경기도 성남시 분당구 판교로 235</span>
           </p>
           <hr className="m-slip-divider" />
-          <p className="m-slip-info-sm">
-            시스템에어컨 4Way 4HP &nbsp;·&nbsp; 2EA
-          </p>
-          <p className="m-slip-info-sm">
-            유선 리모컨 (WE10N) &nbsp;·&nbsp; 2EA
-          </p>
-          <p className="m-slip-info-sm">
-            WIFI 판넬 (PC1NWSK3NW) &nbsp;·&nbsp; 1EA
-          </p>
+          <p className="m-slip-info-sm">시스템에어컨 4Way 4HP · 2EA</p>
+          <p className="m-slip-info-sm">유선 리모컨 (WE10N) · 2EA</p>
+          <p className="m-slip-info-sm">WIFI 판넬 (PC1NWSK3NW) · 1EA</p>
           <hr className="m-slip-divider" />
           <p className="m-slip-info">
             <strong>합계: 3,990,000 원</strong>
           </p>
         </section>
 
-        {/* 인수자명 */}
-        <label className="m-input-label" htmlFor="signer-name">
-          인수자 정보
-        </label>
-        <input
-          id="signer-name"
-          type="text"
-          className="m-input"
-          value={signerName}
-          onChange={(e) => setSignerName(e.target.value)}
-          maxLength={50}
-          placeholder="인수자 성함"
-          disabled={submitting}
-          autoComplete="off"
-        />
+        {/* 인수자명 — recipient 단계만 */}
+        {stage === 'recipient' ? (
+          <>
+            <label className="m-input-label" htmlFor="signer-name">
+              인수자 정보
+            </label>
+            <input
+              id="signer-name"
+              type="text"
+              className="m-input"
+              value={signerName}
+              onChange={(e) => setSignerName(e.target.value)}
+              maxLength={50}
+              placeholder="인수자 성함"
+              disabled={submitting}
+              autoComplete="off"
+            />
+          </>
+        ) : null}
 
-        {/* 서명 캔버스 */}
-        <label className="m-input-label" htmlFor="signature-canvas">
-          서명
-        </label>
-        <div id="signature-canvas">
+        {/* 서명 캔버스 — embed (클릭 시 fullscreen) */}
+        <label className="m-input-label">{stageLabel}</label>
+        <div
+          className={`m-canvas-wrap${isFullscreen ? ' is-fullscreen' : ' is-embed'}`}
+          onClick={isFullscreen ? undefined : handleEnterFullscreen}
+          role="button"
+          tabIndex={isFullscreen ? -1 : 0}
+          aria-label={isFullscreen ? '서명 캔버스 (전체화면)' : '서명 캔버스 (클릭하여 전체화면)'}
+        >
           <SignaturePad
             ref={padRef}
             width={size.width}
@@ -173,26 +234,37 @@ export function MobileSignaturePage() {
             disabled={submitting}
             onChange={setEmpty}
           />
+          {!isFullscreen && empty ? (
+            <div className="m-canvas-hint">손가락으로 서명하시려면 클릭하세요</div>
+          ) : null}
+          {isFullscreen ? (
+            <div className="m-canvas-fullscreen-actions">
+              <Button variant="secondary" onClick={handleClear} disabled={empty || submitting}>
+                다시 서명
+              </Button>
+              <Button variant="primary" onClick={handleConfirmFullscreen} disabled={empty || submitting}>
+                완료
+              </Button>
+            </div>
+          ) : null}
         </div>
 
-        {/* 액션 버튼 */}
-        <div className="m-actions-grid">
-          <Button
-            variant="secondary"
-            onClick={handleClear}
-            disabled={empty || submitting}
-          >
-            다시 서명
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => void handleSubmit()}
-            disabled={submitDisabled}
-            loading={submitting}
-          >
-            서명 완료
-          </Button>
-        </div>
+        {/* 임베드 액션 버튼 (실제 BE 전송) */}
+        {!isFullscreen ? (
+          <div className="m-actions-grid">
+            <Button variant="secondary" onClick={handleClear} disabled={empty || submitting}>
+              다시 서명
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSubmit()}
+              disabled={submitDisabled}
+              loading={submitting}
+            >
+              {completeLabel}
+            </Button>
+          </div>
+        ) : null}
 
         {errorMsg ? (
           <div className="m-error" role="alert">
