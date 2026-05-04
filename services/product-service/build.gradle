@@ -1,0 +1,62 @@
+/*
+ * services:product-service — Product + Category aggregate (plan §3.5 first slice).
+ *
+ * Owns the `products` and `categories` tables in PostgreSQL (`product_db`).
+ * Persists product master data (name / model / category / 가격 / 단종 상태 / 태그)
+ * with self-referencing Category tree. 단종 처리는 별도 ProductStatus enum 으로
+ * soft-delete 와 직교하게 운용한다 (개발책임자 결재 결정).
+ *
+ * 외부 서비스 호출이 없으므로 internal-token (X-Internal-Token) 의존성은 제외.
+ *
+ * Flyway 는 day-one 부터 활성 — src/main/resources/db/migration 참조.
+ * jsonb 매핑은 Hibernate 6 native 의 {@code @JdbcTypeCode(SqlTypes.JSON)} 를 사용
+ * (별도 com.vladmihalcea hibernate-types 의존성 불필요).
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    implementation project(':shared:common')
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.testcontainers:postgresql:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'product-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

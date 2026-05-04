@@ -1,0 +1,61 @@
+package com.samhanair.logis.product.web;
+
+import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.product.service.CategoryService;
+import com.samhanair.logis.product.web.dto.CategoryResponse;
+import com.samhanair.logis.product.web.dto.CreateCategoryRequest;
+import com.samhanair.logis.product.web.dto.UpdateCategoryRequest;
+import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+/** 카테고리 트리 CRUD. 모든 mutation 은 MASTER/MANAGER/DEVELOPER 한정. */
+@RestController
+@RequestMapping("/products/categories")
+@RequiredArgsConstructor
+public class CategoryController {
+
+    private static final String CALLER_HEADER = "X-User-Id";
+
+    private final CategoryService categoryService;
+
+    @GetMapping
+    public ApiResponse<List<CategoryResponse>> tree() {
+        return ApiResponse.ok(categoryService.getTree());
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER')")
+    public ApiResponse<CategoryResponse> create(@Valid @RequestBody CreateCategoryRequest request) {
+        return ApiResponse.ok(categoryService.create(request));
+    }
+
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER')")
+    public ApiResponse<CategoryResponse> update(@PathVariable UUID id,
+                                                @Valid @RequestBody UpdateCategoryRequest request) {
+        return ApiResponse.ok(categoryService.update(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER')")
+    public void delete(@PathVariable UUID id,
+                       @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        categoryService.delete(id, callerHeader);
+    }
+}
