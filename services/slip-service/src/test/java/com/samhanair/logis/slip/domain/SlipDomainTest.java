@@ -132,7 +132,7 @@ class SlipDomainTest {
         slip.save();
         slip.send();
 
-        assertThatThrownBy(() -> slip.editHeader(null, "변경", null, null))
+        assertThatThrownBy(() -> slip.editHeader(null, "변경", null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.CONFLICT));
@@ -141,7 +141,7 @@ class SlipDomainTest {
     @Test
     void editHeader_inDraft_appliesPartial() {
         Slip slip = newOutbound();
-        slip.editHeader(null, "새거래처", DeliveryTag.STACK, "새메모");
+        slip.editHeader(null, "새거래처", DeliveryTag.STACK, "새메모", null, null);
 
         assertThat(slip.getPartnerName()).isEqualTo("새거래처");
         assertThat(slip.getDeliveryTag()).isEqualTo(DeliveryTag.STACK);
@@ -174,7 +174,7 @@ class SlipDomainTest {
     @Test
     void reject_fromSent_movesToRejected_andPrependsReason() {
         Slip slip = newOutbound();
-        slip.editHeader(null, null, null, "원본메모");
+        slip.editHeader(null, null, null, "원본메모", null, null);
         slip.save();
         slip.send();
         slip.reject("재고 부족");
@@ -341,7 +341,7 @@ class SlipDomainTest {
     @Test
     void rejectFromInspecting_movesToRejected_andPrependsReason() {
         Slip slip = newOutbound();
-        slip.editHeader(null, null, null, "원본");
+        slip.editHeader(null, null, null, "원본", null, null);
         slip.save();
         slip.send();
         slip.accept("a");
