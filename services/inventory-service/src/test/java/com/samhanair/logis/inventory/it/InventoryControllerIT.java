@@ -11,6 +11,7 @@ import com.samhanair.logis.inventory.InventoryServiceApplication;
 import com.samhanair.logis.inventory.client.ProductClient;
 import com.samhanair.logis.inventory.client.ProductSummary;
 import com.samhanair.logis.inventory.repository.WarehouseRepository;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,10 +73,20 @@ class InventoryControllerIT extends AbstractPostgresIT {
                         "HQ-001 시드 누락 — V2__seed_inventory_warehouses.sql 확인"))
                 .getId();
 
-        // ProductClient.requireExists 는 no-op (예외 없음 = 존재로 간주).
-        Mockito.doNothing().when(productClient).requireExists(Mockito.any());
-        Mockito.when(productClient.lookup(Mockito.anyList()))
-                .thenReturn(List.<ProductSummary>of());
+        // ProductClient.requireExists 는 ProductSummary 를 반환 (void 아님) →
+        // when().thenReturn() 패턴으로 mock. lookup 도 동일하게 임의 ProductSummary 반환.
+        Mockito.lenient().when(productClient.requireExists(Mockito.any()))
+                .thenAnswer(inv -> new ProductSummary(
+                        inv.getArgument(0), "테스트 제품", "TEST-001",
+                        UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"));
+        Mockito.lenient().when(productClient.lookup(Mockito.anyList()))
+                .thenAnswer(inv -> {
+                    List<UUID> ids = inv.getArgument(0);
+                    return ids.stream()
+                            .map(id -> new ProductSummary(id, "테스트 제품", "TEST-001",
+                                    UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"))
+                            .toList();
+                });
     }
 
     @Test
