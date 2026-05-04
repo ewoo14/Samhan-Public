@@ -21,7 +21,7 @@
 - **전체 로드맵**: 33주 (Phase 1~7)
 - **GitHub 워크플로우**: 슬라이스당 팀별 PR/Issue 분리, TM·PM 자동 승인 + 개발책임자 머지
 
-## 📊 진척률 (2026-05-05 기준, main `3280d0f`)
+## 📊 진척률 (2026-05-05 기준, main `6fdc61b`)
 
 ### 마이크로서비스 인벤토리
 
@@ -49,7 +49,7 @@
 | 항목 | 상태 |
 |------|------|
 | 디자인 시스템 (`clients/web/design-system`) | ✅ 21 컴포넌트 (+ SignaturePad, SignatureViewer — signature-slice-C 신규) |
-| Electron 데스크톱 앱 | ✅ + signature-slice-C (16 라우트 / 모바일 서명 페이지 + 인수자 share view + DispatchView 양측 서명 PNG 자동 통합) |
+| Electron 데스크톱 앱 | ✅ + signature-slice-C/C2-UX (16 라우트 / 모바일 서명 2-step 흐름 (기사→인수자) + 캔버스 fullscreen UX + 인수자 share view + DispatchView 양측 서명 PNG 자동 통합) |
 | React 웹 앱 (외부 거래처용) | ⬜ Phase 6 |
 | React Native 모바일 (창고원/거래처 듀얼) | ⬜ Phase 6 |
 
