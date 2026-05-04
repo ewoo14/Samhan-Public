@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  checks: write          # mikepenz/action-junit-report: check run 생성
+  pull-requests: write   # JUnit 결과 PR 코멘트 게시
+
 jobs:
   build-and-test:
     name: 빌드 + 테스트 (JDK 17 + Docker)
