@@ -15,3 +15,7 @@ export * from './components/Spinner'
 export * from './components/TagChip'
 export * from './components/TagInput'
 export * from './components/WarehouseSelector'
+// sales-form-polish 슬라이스 신규 컴포넌트
+export * from './components/DragHandle'
+export * from './components/LineRow'
+export * from './components/StockBalanceModal'

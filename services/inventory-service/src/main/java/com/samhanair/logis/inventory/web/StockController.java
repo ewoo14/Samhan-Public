@@ -6,9 +6,11 @@ import com.samhanair.logis.inventory.repository.StockLotRepository;
 import com.samhanair.logis.inventory.repository.StockMovementRepository;
 import com.samhanair.logis.inventory.service.StockService;
 import com.samhanair.logis.inventory.web.dto.AdjustRequest;
+import com.samhanair.logis.inventory.web.dto.BatchBalanceRequest;
 import com.samhanair.logis.inventory.web.dto.DeductRequest;
 import com.samhanair.logis.inventory.web.dto.DeductionResponse;
 import com.samhanair.logis.inventory.web.dto.InboundRequest;
+import com.samhanair.logis.inventory.web.dto.ProductBalanceResponse;
 import com.samhanair.logis.inventory.web.dto.ReleaseRequest;
 import com.samhanair.logis.inventory.web.dto.ReservationResponse;
 import com.samhanair.logis.inventory.web.dto.ReserveRequest;
@@ -18,6 +20,7 @@ import com.samhanair.logis.inventory.web.dto.StockMovementResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -40,6 +43,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>권한 매트릭스 (Plan §4 표):
  * <ul>
  *   <li>잔량/로트/이동 조회 — MASTER/MANAGER/DEVELOPER/WAREHOUSE/INVENTORY</li>
+ *   <li>다중 제품 일괄 잔량 조회 (balances/batch) — 모든 인증 role (영업원 견적 단계 사용)</li>
  *   <li>입고 (lots/inbound) — MASTER/MANAGER/WAREHOUSE/INVENTORY</li>
  *   <li>예약/해제/차감 (reserve/release/deduct) — MASTER/MANAGER/DEVELOPER/SALES/WAREHOUSE/INVENTORY</li>
  *   <li>조정 (adjust) — MASTER/MANAGER/INVENTORY</li>
@@ -78,6 +82,36 @@ public class StockController {
         return ApiResponse.ok(stockBalanceRepository
                 .findAllByProductIdAndIsDeletedFalse(productId, pageable)
                 .map(StockBalanceResponse::from));
+    }
+
+    /**
+     * 다중 productId 일괄 잔량 조회 — Sales Form Polish 슬라이스의 영업원 견적/주문 라인 입력에서
+     * 다행 동시 재고 조회용. 요청 productId 별 모든 창고 (가상창고 포함) 의 활성 stock_balance row
+     * 를 묶어 반환한다.
+     *
+     * <p>잔량 0인 (productId, warehouse) 조합은 DB row 자체가 없으므로 응답에서 제외 (FE 가
+     * 없는 창고를 dash 표시). 가상창고 (VIRTUAL) row 도 그대로 포함되며 표시 분기는 FE 책임.
+     *
+     * <p>모든 role 이 조회 가능 — 영업원 (SALES) 이 견적 단계에서 직접 사용.
+     *
+     * @param request productIds 리스트 (1 ~ 100건)
+     * @return ApiResponse&lt;List&lt;ProductBalanceResponse&gt;&gt; — 입력 순서 유지
+     */
+    @Operation(summary = "다중 제품 재고 일괄 조회",
+            description = "1~100건 productId × 모든 창고 (가상창고 포함) 잔량을 한 번에 조회")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+                    description = "productIds 비어있음 또는 100건 초과"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+                    description = "권한 없음 (인증 미설정 등)")
+    })
+    @PostMapping("/balances/batch")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER','SALES','ACCOUNTANT','WAREHOUSE','INVENTORY')")
+    public ApiResponse<List<ProductBalanceResponse>> batchBalances(
+            @Valid @RequestBody BatchBalanceRequest request) {
+        return ApiResponse.ok(stockService.findBalancesByProductIds(request.productIds()));
     }
 
     /**

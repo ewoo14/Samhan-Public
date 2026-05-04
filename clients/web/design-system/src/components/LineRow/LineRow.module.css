@@ -1,0 +1,278 @@
+/*
+ * LineRow — sales-form-polish 슬라이스 (Designer components.md § 1 인용)
+ *
+ * 9-column CSS grid: 체크박스 / drag / # / 모델명 / 품목명 / 수량 / 단가 / 합계 / 삭제
+ * 행 높이 40px (dense ERP 표준), 자동 라인 번호, 우측 정렬 + tabular-nums.
+ */
+
+.lineRow {
+  display: grid;
+  grid-template-columns:
+    var(--col-checkbox)
+    var(--col-drag)
+    var(--col-line-no)
+    minmax(120px, 2fr)
+    minmax(120px, 2fr)
+    var(--col-qty)
+    var(--col-price)
+    var(--col-sum)
+    var(--col-delete);
+  align-items: center;
+  height: var(--row-h);
+  padding: 0 var(--space-row-x);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--line-default);
+  border-left: 4px solid transparent;
+  transition: background var(--motion-hover), border-color var(--motion-hover);
+  position: relative;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-row);
+  color: var(--ink-primary);
+}
+
+.lineRow:hover:not(.dragging) {
+  background: var(--surface-hover);
+}
+
+.lineRow.selected {
+  background: var(--surface-selected);
+  border-left-color: var(--line-selected);
+}
+
+.lineRow.selected:hover:not(.dragging) {
+  background: var(--surface-selected-hover);
+}
+
+.lineRow.dragging {
+  opacity: 0.6;
+  box-shadow: var(--elev-popover);
+  z-index: 1;
+}
+
+.lineRow.error .modelInput {
+  border-color: var(--state-danger);
+}
+
+.lineRow.error .modelInput:focus {
+  outline: 2px solid var(--state-danger);
+  outline-offset: -1px;
+  border-color: var(--state-danger);
+}
+
+/* ── 셀 ───────────────────────────────────────────────── */
+
+.cell {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+
+.cellCheckbox {
+  justify-content: center;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--action-brand);
+  cursor: pointer;
+  margin: 0;
+}
+
+.cellLineNo {
+  justify-content: center;
+  font-size: 12px;
+  color: var(--ink-tertiary);
+  font-variant-numeric: var(--font-feature-num);
+}
+
+.cellModel {
+  position: relative;
+  padding-right: var(--space-row-x);
+}
+
+.cellProduct {
+  padding-left: var(--space-row-y);
+  color: var(--ink-secondary);
+  font-size: var(--font-row);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.productPlaceholder {
+  color: var(--ink-tertiary);
+  font-style: italic;
+}
+
+.cellQty,
+.cellPrice,
+.cellSum {
+  justify-content: flex-end;
+  font-variant-numeric: var(--font-feature-num);
+  font-feature-settings: 'tnum' 1;
+}
+
+.cellSum {
+  background: var(--surface-subtle);
+  height: calc(var(--row-h) - 8px);
+  margin: 4px 0;
+  border-radius: var(--radius-input);
+  padding: 0 var(--space-row-y);
+  color: var(--ink-primary);
+  font-weight: 500;
+}
+
+.cellDelete {
+  justify-content: center;
+}
+
+/* ── input 공통 ────────────────────────────────────────── */
+
+.input {
+  width: 100%;
+  height: calc(var(--row-h) - 12px);
+  padding: 0 var(--space-row-y);
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--radius-input);
+  font-family: inherit;
+  font-size: var(--font-input);
+  color: var(--ink-primary);
+  transition: border-color var(--motion-focus), background var(--motion-focus);
+  min-width: 0;
+}
+
+.input::placeholder {
+  color: var(--ink-tertiary);
+}
+
+.input:hover {
+  border-color: var(--line-hover);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--line-focus);
+  background: var(--surface-card);
+  box-shadow: 0 0 0 1px var(--line-focus);
+}
+
+.modelInput {
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.numInput {
+  text-align: right;
+  font-variant-numeric: var(--font-feature-num);
+  font-feature-settings: 'tnum' 1;
+}
+
+.modelSpinner {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  pointer-events: none;
+}
+
+/* ── 삭제 버튼 ──────────────────────────────────────────── */
+
+.deleteBtn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-input);
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--motion-hover), background var(--motion-hover);
+}
+
+.deleteBtn:hover:not(:disabled) {
+  color: var(--state-danger);
+  background: var(--state-danger-bg);
+}
+
+.deleteBtn:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+
+.deleteBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* ── 에러 메시지 ────────────────────────────────────────── */
+
+.errorMessage {
+  grid-column: 4 / 6;
+  margin-top: -4px;
+  margin-bottom: 4px;
+  padding: 4px var(--space-row-y);
+  font-size: 12px;
+  color: var(--state-danger);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── thead 스타일 (LineRow 사용 사이트 공유) ───────────── */
+
+.lineTable {
+  width: 100%;
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+  overflow: hidden;
+}
+
+.lineHeader {
+  display: grid;
+  grid-template-columns:
+    var(--col-checkbox)
+    var(--col-drag)
+    var(--col-line-no)
+    minmax(120px, 2fr)
+    minmax(120px, 2fr)
+    var(--col-qty)
+    var(--col-price)
+    var(--col-sum)
+    var(--col-delete);
+  align-items: center;
+  height: var(--row-h-thead);
+  padding: 0 var(--space-row-x);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--line-default);
+  border-left: 4px solid transparent;
+  font-size: var(--font-label);
+  font-weight: 600;
+  color: var(--ink-secondary);
+  letter-spacing: 0.02em;
+}
+
+.lineHeader .cellQty,
+.lineHeader .cellPrice,
+.lineHeader .cellSum {
+  background: transparent;
+  margin: 0;
+  height: 100%;
+  border-radius: 0;
+  font-weight: 600;
+}
+
+.lineEmpty {
+  padding: var(--space-card);
+  text-align: center;
+  color: var(--ink-tertiary);
+  font-size: var(--font-row);
+}

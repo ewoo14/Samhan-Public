@@ -1,0 +1,42 @@
+/*
+ * DragHandle — sales-form-polish 슬라이스
+ *
+ * 24×40 영역의 ⠿ Braille pattern 핸들. `@dnd-kit/sortable` 의 listeners +
+ * attributes 를 그대로 부착하여 drag 활성화. 키보드 접근성을 위해 별도
+ * activator ref 를 받는다 (dnd-kit 권장 패턴).
+ */
+.dragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--col-drag);
+  height: var(--row-h);
+  color: var(--ink-tertiary);
+  cursor: grab;
+  user-select: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: var(--font-family-sans);
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: -2px;
+  transition: color var(--motion-hover);
+  touch-action: none;
+}
+
+.dragHandle:hover {
+  color: var(--ink-secondary);
+}
+
+.dragHandle:active,
+.dragHandle.dragging {
+  cursor: grabbing;
+  color: var(--ink-primary);
+}
+
+.dragHandle:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
+  border-radius: 2px;
+}
