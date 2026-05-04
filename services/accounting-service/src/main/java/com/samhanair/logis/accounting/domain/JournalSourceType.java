@@ -1,0 +1,17 @@
+package com.samhanair.logis.accounting.domain;
+
+/**
+ * 분개 출처 — Slice A 는 SLIP / MANUAL / CLOSING 만. SLIP/CLOSING 은 향후 슬라이스에서 활용
+ * (A3 slip 자동 분개, Phase 5+ 결산).
+ */
+public enum JournalSourceType {
+
+    /** 영업/창고 슬립에서 자동 생성된 분개 (A3 진입 시 활용). */
+    SLIP,
+
+    /** 회계 담당자 수동 입력 분개 (Slice A 본 슬라이스 기본 경로). */
+    MANUAL,
+
+    /** 결산 분개 (Phase 5+). */
+    CLOSING
+}
