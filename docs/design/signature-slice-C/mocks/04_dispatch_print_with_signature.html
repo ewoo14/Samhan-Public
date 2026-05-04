@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DispatchView 인쇄 — 서명 통합 — 삼한물류</title>
+<style>
+  /*
+   * DispatchView 인쇄 양식 mock — A4 portrait (210×297mm)
+   * 인수자 결재 셀 안에 서명 PNG 조건부 표시 (Slice C 신규)
+   */
+  :root {
+    --print-ink-1:        #1A1F2E;
+    --print-ink-2:        #5C6773;
+    --print-border:       #1A1F2E;
+    --print-border-soft:  #5C6773;
+    --print-signature-meta-color:    #1A1F2E;
+    --print-signature-meta-size:     8pt;
+    --print-signature-meta-date-size: 7pt;
+    --print-signature-img-max-w:     55mm;
+    --print-signature-img-max-h:     18mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #E5E7EB;
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    color: var(--print-ink-1);
+    padding: 20px;
+  }
+  .print-page {
+    width: 210mm;
+    min-height: 297mm;
+    background: #FFFFFF;
+    margin: 0 auto;
+    padding: 15mm 12mm;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    font-size: 10pt;
+    line-height: 1.4;
+  }
+  .print-header {
+    text-align: center;
+    border-bottom: 2px solid var(--print-border);
+    padding-bottom: 6mm;
+    margin-bottom: 6mm;
+  }
+  .print-company {
+    font-size: 14pt;
+    font-weight: 700;
+    margin-bottom: 2mm;
+  }
+  .print-doc-title {
+    font-size: 18pt;
+    font-weight: 700;
+    letter-spacing: 8px;
+    margin-bottom: 3mm;
+  }
+  .print-meta {
+    font-size: 9pt;
+    color: var(--print-ink-2);
+    text-align: right;
+  }
+  .print-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6mm;
+  }
+  .print-info-table th,
+  .print-info-table td {
+    border: 1px solid var(--print-border-soft);
+    padding: 2mm 3mm;
+    font-size: 9pt;
+    text-align: left;
+  }
+  .print-info-table th {
+    background: #F4F6F8;
+    width: 22mm;
+    font-weight: 600;
+  }
+  .print-line-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6mm;
+    font-size: 9pt;
+  }
+  .print-line-table th,
+  .print-line-table td {
+    border: 1px solid var(--print-border-soft);
+    padding: 2mm 3mm;
+  }
+  .print-line-table th {
+    background: #F4F6F8;
+    text-align: center;
+    font-weight: 600;
+  }
+  .print-line-table td.num { text-align: right; font-feature-settings: "tnum" 1; }
+  .print-line-table td.center { text-align: center; }
+  .print-total-row td {
+    background: #FAFBFC;
+    font-weight: 700;
+  }
+  .print-approval {
+    margin-top: 8mm;
+    page-break-inside: avoid;
+  }
+  .print-approval-title {
+    font-size: 9pt;
+    color: var(--print-ink-2);
+    margin-bottom: 2mm;
+  }
+  .print-approval-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border: 1px solid var(--print-border);
+    width: 100%;
+    max-width: 186mm;  /* 210mm A4 - 12mm*2 padding */
+  }
+  .print-approval-cell {
+    border-right: 1px solid var(--print-border);
+    height: 30mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: stretch;
+    position: relative;
+  }
+  .print-approval-cell:last-child {
+    border-right: none;
+  }
+  .print-approval-label {
+    background: #F4F6F8;
+    border-bottom: 1px solid var(--print-border-soft);
+    padding: 1.5mm 2mm;
+    font-size: 8pt;
+    font-weight: 600;
+    text-align: center;
+  }
+  .print-approval-body {
+    flex: 1;
+    padding: 2mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+  }
+  .print-approval-name {
+    font-size: 10pt;
+    font-weight: 600;
+  }
+  /* 서명 PNG 통합 (Slice C 신규) */
+  .print-signature-cell .print-approval-body {
+    padding: 1mm;
+    justify-content: space-between;
+  }
+  .print-signature-img {
+    display: block;
+    max-width: 100%;
+    max-height: var(--print-signature-img-max-h);
+    object-fit: contain;
+    margin: 0 auto;
+  }
+  .print-signature-meta {
+    margin-top: 1mm;
+    text-align: center;
+    line-height: 1.2;
+  }
+  .print-signature-meta-name {
+    font-size: var(--print-signature-meta-size);
+    color: var(--print-signature-meta-color);
+    font-weight: 600;
+  }
+  .print-signature-meta-date {
+    font-size: var(--print-signature-meta-date-size);
+    color: var(--print-ink-2);
+    font-feature-settings: "tnum" 1;
+  }
+  .print-screen-note {
+    background: #FFFBEB;
+    border: 1px dashed #F59E0B;
+    color: #92400E;
+    padding: 6px 12px;
+    font-size: 11px;
+    margin-bottom: 12px;
+    border-radius: 4px;
+    max-width: 210mm;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  @media print {
+    body { background: #FFFFFF; padding: 0; }
+    .print-page { box-shadow: none; margin: 0; }
+    .print-screen-note { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="print-screen-note">화면 미리보기 — 실제 인쇄 시 회색 배경/안내문 미표시. 인수자 셀 안에 서명 PNG 가 자동 삽입됩니다.</div>
+
+  <div class="print-page">
+    <header class="print-header">
+      <div class="print-company">㈜ 삼한물류</div>
+      <div class="print-doc-title">출 고 전 표</div>
+      <div class="print-meta">슬립번호: 2026/05/05-1 &nbsp;|&nbsp; 발행일: 2026/05/05</div>
+    </header>
+
+    <table class="print-info-table">
+      <tr>
+        <th>거래처</th><td>한국전력</td>
+        <th>배송일</th><td>2026/05/05 (목)</td>
+      </tr>
+      <tr>
+        <th>배송지</th><td colspan="3">서울시 강남구 테헤란로 152, 강남파이낸스센터 22층</td>
+      </tr>
+      <tr>
+        <th>운전자</th><td>김기사</td>
+        <th>차량</th><td>12가3456</td>
+      </tr>
+    </table>
+
+    <table class="print-line-table">
+      <thead>
+        <tr>
+          <th style="width: 14mm;">No.</th>
+          <th>품목</th>
+          <th style="width: 22mm;">규격</th>
+          <th style="width: 16mm;">수량</th>
+          <th style="width: 22mm;">단가</th>
+          <th style="width: 28mm;">금액</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="center">1</td>
+          <td>모터 220V</td>
+          <td class="center">3HP / 단상</td>
+          <td class="num">2</td>
+          <td class="num">300,000</td>
+          <td class="num">600,000</td>
+        </tr>
+        <tr>
+          <td class="center">2</td>
+          <td>펌프 4HP</td>
+          <td class="center">3상 380V</td>
+          <td class="num">1</td>
+          <td class="num">650,000</td>
+          <td class="num">650,000</td>
+        </tr>
+        <tr class="print-total-row">
+          <td colspan="5" class="num">합&nbsp;&nbsp;&nbsp;&nbsp;계</td>
+          <td class="num">1,250,000</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <section class="print-approval">
+      <div class="print-approval-title">결재선</div>
+      <div class="print-approval-grid">
+        <div class="print-approval-cell">
+          <div class="print-approval-label">작성자</div>
+          <div class="print-approval-body"><div class="print-approval-name">홍길동</div></div>
+        </div>
+        <div class="print-approval-cell">
+          <div class="print-approval-label">검토자</div>
+          <div class="print-approval-body"><div class="print-approval-name">김부장</div></div>
+        </div>
+        <div class="print-approval-cell">
+          <div class="print-approval-label">승인자</div>
+          <div class="print-approval-body"><div class="print-approval-name">이팀장</div></div>
+        </div>
+        <div class="print-approval-cell">
+          <div class="print-approval-label">운전자</div>
+          <div class="print-approval-body"><div class="print-approval-name">김기사</div></div>
+        </div>
+        <!-- Slice C 신규: 인수자 셀 안에 서명 PNG + 메타 -->
+        <div class="print-approval-cell print-signature-cell">
+          <div class="print-approval-label">인수자</div>
+          <div class="print-approval-body">
+            <svg class="print-signature-img" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="인수자 서명">
+              <path d="M 50 130 Q 80 60, 110 130 T 170 130 Q 200 80, 230 130"
+                    fill="none" stroke="#000000" stroke-width="3"
+                    stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M 240 110 Q 260 80, 280 110 Q 295 130, 310 100"
+                    fill="none" stroke="#000000" stroke-width="3"
+                    stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M 130 145 L 320 145"
+                    fill="none" stroke="#000000" stroke-width="2.5"
+                    stroke-linecap="round" />
+            </svg>
+            <div class="print-signature-meta">
+              <div class="print-signature-meta-name">김인수</div>
+              <div class="print-signature-meta-date">2026/05/05</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>서명 완료 — 삼한물류</title>
+<style>
+  :root {
+    --m-bg:           #FAFBFC;
+    --m-card:         #FFFFFF;
+    --m-border:       #E1E5EA;
+    --m-ink-1:        #1A1F2E;
+    --m-ink-2:        #5C6773;
+    --m-ink-3:        #8A95A4;
+    --m-brand:        #1E40AF;
+    --m-success:      #10B981;
+    --m-pad-page:     16px;
+    --m-radius-btn:   4px;
+    --m-font-base:    16px;
+    --m-font-sm:      14px;
+    --m-font-xs:      12px;
+    --m-font-h-card:  18px;
+    --m-tap-min:      44px;
+    --signature-complete-icon-color:  #10B981;
+    --signature-complete-icon-size:   48px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Noto Sans KR", Roboto, sans-serif;
+    background: var(--m-bg);
+    color: var(--m-ink-1);
+    font-size: var(--m-font-base);
+    line-height: 1.5;
+  }
+  .m-brand-bar {
+    background: var(--m-brand);
+    color: #FFFFFF;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--m-pad-page);
+    font-size: var(--m-font-sm);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .m-page {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: var(--m-pad-page);
+  }
+  .m-complete {
+    text-align: center;
+    padding: 64px var(--m-pad-page) 16px;
+  }
+  .m-complete-icon {
+    width: var(--signature-complete-icon-size);
+    height: var(--signature-complete-icon-size);
+    margin: 0 auto 24px;
+    background: #D1FAE5;
+    color: var(--signature-complete-icon-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+  }
+  .m-complete-title {
+    font-size: var(--m-font-h-card);
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .m-complete-meta {
+    font-size: var(--m-font-base);
+    color: var(--m-ink-2);
+    margin-bottom: 4px;
+  }
+  .m-complete-time {
+    font-size: var(--m-font-sm);
+    color: var(--m-ink-3);
+    font-feature-settings: "tnum" 1;
+  }
+  .m-actions {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .m-btn {
+    min-height: var(--m-tap-min);
+    line-height: var(--m-tap-min);
+    font-size: var(--m-font-base);
+    font-weight: 600;
+    border-radius: var(--m-radius-btn);
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid;
+    display: inline-block;
+  }
+  .m-btn-primary {
+    background: var(--m-brand);
+    color: #FFFFFF;
+    border-color: var(--m-brand);
+  }
+  .m-btn-outline {
+    background: var(--m-card);
+    color: var(--m-brand);
+    border-color: var(--m-brand);
+  }
+  .m-toast {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 32px;
+    background: rgba(26, 31, 46, 0.92);
+    color: #FFFFFF;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: var(--m-font-sm);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    display: none;
+  }
+  .m-footer {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--m-border);
+    font-size: var(--m-font-xs);
+    color: var(--m-ink-3);
+    text-align: center;
+  }
+  .m-footer p { margin: 4px 0; }
+  .m-footer a { color: var(--m-brand); text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+  <header class="m-brand-bar">삼한물류</header>
+  <div class="m-page">
+    <section class="m-complete">
+      <div class="m-complete-icon" aria-hidden="true">&#10003;</div>
+      <h1 class="m-complete-title">서명 완료됨</h1>
+      <p class="m-complete-meta">인수자: 김인수</p>
+      <p class="m-complete-time">2026/05/05 14:32</p>
+
+      <div class="m-actions">
+        <a class="m-btn m-btn-primary" href="#">&#128228; 인수자에게 공유</a>
+        <a class="m-btn m-btn-outline" href="#">목록으로</a>
+      </div>
+    </section>
+
+    <div class="m-toast">링크가 복사되었습니다</div>
+
+    <footer class="m-footer">
+      <p>공유 링크 만료: 2026/06/04 14:32</p>
+      <p>문의: <a href="tel:0212345678">02-XXXX-XXXX</a></p>
+    </footer>
+  </div>
+</body>
+</html>
