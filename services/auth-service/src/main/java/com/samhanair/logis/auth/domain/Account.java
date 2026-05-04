@@ -62,7 +62,30 @@ public class Account extends BaseEntity {
         return new Account(loginId, passwordHash, displayName, role);
     }
 
+    /**
+     * Factory used by the internal provisioning flow when the caller (User Service)
+     * has already minted the canonical UUID. Bypasses {@code @GeneratedValue} by
+     * pre-setting {@link #id} so Hibernate persists with the supplied identifier.
+     */
+    public static Account createWithId(UUID id, String loginId, String passwordHash, String displayName, Role role) {
+        Account account = new Account(loginId, passwordHash, displayName, role);
+        account.id = id;
+        return account;
+    }
+
     public void markLogin(LocalDateTime now) {
         this.lastLoginAt = now;
+    }
+
+    public void changeRole(Role role) {
+        this.role = role;
+    }
+
+    public void changeDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public void disable() {
+        this.enabled = false;
     }
 }

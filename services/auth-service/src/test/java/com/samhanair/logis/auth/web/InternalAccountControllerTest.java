@@ -1,0 +1,170 @@
+package com.samhanair.logis.auth.web;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.auth.config.HeaderAuthenticationFilter;
+import com.samhanair.logis.auth.config.InternalAuthProperties;
+import com.samhanair.logis.auth.config.InternalTokenFilter;
+import com.samhanair.logis.auth.service.AuthService;
+import com.samhanair.logis.auth.service.dto.RegisterResponse;
+import com.samhanair.logis.auth.web.dto.internal.CreateAccountInternalRequest;
+import com.samhanair.logis.auth.web.dto.internal.UpdateDisplayNameInternalRequest;
+import com.samhanair.logis.auth.web.dto.internal.UpdateRoleInternalRequest;
+import com.samhanair.logis.common.security.Role;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+/**
+ * Verifies internal-token enforcement and that the controller dispatches to the right
+ * service methods. Wires the controller through MockMvc with our actual filters so the
+ * 401 path is exercised end-to-end.
+ */
+class InternalAccountControllerTest {
+
+    private static final String VALID_TOKEN = "test-internal-token";
+
+    private AuthService authService;
+    private MockMvc mockMvc;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() {
+        authService = Mockito.mock(AuthService.class);
+        InternalAuthProperties props = new InternalAuthProperties();
+        props.setToken(VALID_TOKEN);
+
+        mockMvc = MockMvcBuilders.standaloneSetup(new InternalAccountController(authService))
+                .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())
+                .build();
+    }
+
+    @Test
+    void create_withMissingToken_returns401AndDoesNotCallService() throws Exception {
+        UUID id = UUID.randomUUID();
+        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES);
+
+        MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(authService, never()).registerWithId(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_withWrongToken_returns401() throws Exception {
+        UUID id = UUID.randomUUID();
+        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES);
+
+        MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts")
+                        .header("X-Internal-Token", "wrong")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(authService, never()).registerWithId(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_withValidToken_invokesRegisterWithIdAndReturns201() throws Exception {
+        UUID id = UUID.randomUUID();
+        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES);
+        when(authService.registerWithId(eq(id), eq("alice"), eq("password123"), eq("Alice"), eq(Role.SALES)))
+                .thenReturn(new RegisterResponse(id.toString(), "alice", "SALES"));
+
+        MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(201);
+        ArgumentCaptor<UUID> idCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(authService).registerWithId(idCaptor.capture(), eq("alice"), eq("password123"),
+                eq("Alice"), eq(Role.SALES));
+        assertThat(idCaptor.getValue()).isEqualTo(id);
+    }
+
+    @Test
+    void updateRole_withValidToken_invokesService() throws Exception {
+        UUID id = UUID.randomUUID();
+        var body = new UpdateRoleInternalRequest(Role.MANAGER);
+
+        MockHttpServletResponse response = mockMvc.perform(patch("/auth/internal/accounts/" + id + "/role")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(204);
+        verify(authService).updateAccountRole(id, Role.MANAGER);
+    }
+
+    @Test
+    void updateDisplayName_withValidToken_invokesService() throws Exception {
+        UUID id = UUID.randomUUID();
+        var body = new UpdateDisplayNameInternalRequest("새이름");
+
+        MockHttpServletResponse response = mockMvc.perform(patch("/auth/internal/accounts/" + id + "/display-name")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(204);
+        verify(authService).updateAccountDisplayName(id, "새이름");
+    }
+
+    @Test
+    void disable_withValidToken_invokesService() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        MockHttpServletResponse response = mockMvc.perform(patch("/auth/internal/accounts/" + id + "/disable")
+                        .header("X-Internal-Token", VALID_TOKEN))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(204);
+        verify(authService).disableAccount(eq(id), eq(InternalTokenFilter.INTERNAL_PRINCIPAL));
+    }
+
+    @Test
+    void delete_withValidToken_invokesService() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        MockHttpServletResponse response = mockMvc.perform(delete("/auth/internal/accounts/" + id)
+                        .header("X-Internal-Token", VALID_TOKEN))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(204);
+        verify(authService).deleteAccount(id);
+    }
+
+    private static MockHttpServletRequestBuilder post(String url) {
+        return MockMvcRequestBuilders.post(url);
+    }
+
+    private static MockHttpServletRequestBuilder patch(String url) {
+        return MockMvcRequestBuilders.patch(url);
+    }
+
+    private static MockHttpServletRequestBuilder delete(String url) {
+        return MockMvcRequestBuilders.delete(url);
+    }
+}

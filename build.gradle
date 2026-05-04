@@ -39,6 +39,7 @@ def leafProjects = [
         ':services:eureka-server',
         ':services:api-gateway',
         ':services:auth-service',
+        ':services:user-service',
         ':services:logging-service',
 ]
 

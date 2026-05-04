@@ -1,0 +1,59 @@
+/*
+ * services:user-service — Employee + Department / org-chart aggregate (plan §3.4 + Section 4 first slice).
+ *
+ * Owns the `employees` and `departments` tables in PostgreSQL (`user_db`). Persists employee
+ * profile data (name / position / department / hire date) and snapshots the role from
+ * Auth Service. Provisioning flows through the internal endpoints on auth-service and uses
+ * a shared {@code X-Internal-Token} for service-to-service trust.
+ *
+ * Flyway is enabled from day one — see src/main/resources/db/migration.
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    implementation project(':shared:common')
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.testcontainers:postgresql:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'user-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

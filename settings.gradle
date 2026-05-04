@@ -20,10 +20,12 @@ include 'shared:common'
 include 'services:eureka-server'
 include 'services:api-gateway'
 include 'services:auth-service'
+include 'services:user-service'
 include 'services:logging-service'
 
 project(':shared:common').projectDir              = file('shared/common')
 project(':services:eureka-server').projectDir     = file('services/eureka-server')
 project(':services:api-gateway').projectDir       = file('services/api-gateway')
 project(':services:auth-service').projectDir      = file('services/auth-service')
+project(':services:user-service').projectDir      = file('services/user-service')
 project(':services:logging-service').projectDir   = file('services/logging-service')
