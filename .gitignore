@@ -65,6 +65,8 @@ coverage/
 
 # ----- Electron -----
 release/
+# legacy webview build 산출물 — Phase 6 v4, build-legacy-estimate.cjs 가 빌드 시 생성
+clients/desktop/legacy-assets/estimate/*.html
 
 # ----- Logs / Tmp -----
 logs/

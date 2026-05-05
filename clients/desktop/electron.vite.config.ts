@@ -28,8 +28,17 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       outDir: 'out/preload',
-      lib: {
-        entry: resolve(__dirname, 'src/preload/index.ts'),
+      // [Phase 6 v4] preload 2 entry — main BrowserWindow 용 (index) + legacy
+      // estimate webview 전용 (legacyShim, contextBridge 로 google.script.run 주입).
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          legacyShim: resolve(__dirname, 'src/preload/legacyShim.ts'),
+        },
+        output: {
+          entryFileNames: '[name].mjs',
+          format: 'es',
+        },
       },
     },
   },

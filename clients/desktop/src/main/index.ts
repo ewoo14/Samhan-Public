@@ -12,10 +12,11 @@
  * - `nodeIntegration: false` — 렌더러 프로세스에서 require/process 차단
  * - preload 스크립트만 IPC 게이트웨이 역할 수행
  */
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { registerAuthIpcHandlers } from './ipc/auth-token.js'
+import { getLegacyEstimateUrl } from './legacy-asset.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -46,6 +47,10 @@ function createMainWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // [Phase 6 v4] webview tag 활성 — legacy estimate index.html 을 격리된
+      // 컨텍스트에서 로드하고 별도 preload (legacyShim.mjs) 가 google.script.run
+      // shim 을 주입한다. webview 자체는 contextIsolation 활성 + sandbox 분리.
+      webviewTag: true,
     },
   })
 
@@ -68,6 +73,9 @@ function createMainWindow(): void {
 
 app.whenReady().then(() => {
   registerAuthIpcHandlers()
+  // [Phase 6 v4] legacy estimate webview asset URL 조회 IPC.
+  // renderer 의 EstimateLegacyWebviewPage 가 src 속성에 사용한다.
+  ipcMain.handle('legacy:get-estimate-url', () => getLegacyEstimateUrl())
   createMainWindow()
 
   // dev-only — CAPTURE_MODE=1 일 때 5 화면 자동 navigate + capturePage 후 종료.

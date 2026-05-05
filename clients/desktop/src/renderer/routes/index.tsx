@@ -56,6 +56,13 @@ import { JournalListPage } from './JournalListPage'
 import { JournalFormPage } from './JournalFormPage'
 import { JournalDetailPage } from './JournalDetailPage'
 import { TrialBalancePage } from './TrialBalancePage'
+// [Phase 6 v4] 판매 sub-route 5종 (legacy webview 견적 + SamhanLogis 신규 메뉴 4)
+import { SalesEstimateListPage } from './SalesEstimateListPage'
+import { EstimateLegacyWebviewPage } from './EstimateLegacyWebviewPage'
+import { SalesPartnerOrderListPage } from './SalesPartnerOrderListPage'
+import { SalesPartnerOrderDetailPage } from './SalesPartnerOrderDetailPage'
+import { SalesOrderApprovalsPage } from './SalesOrderApprovalsPage'
+import { SalesPartnerDcConfigPage } from './SalesPartnerDcConfigPage'
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
@@ -80,6 +87,17 @@ const router = createHashRouter([
       { path: '/sales/new', element: <SlipFormPage mode="OUTBOUND" /> },
       // notification-slice-B: 링크발송 (배송 묶음) — `/sales/:id` 보다 먼저 매칭되어야 함
       { path: '/sales/link-dispatch', element: <LinkDispatchListPage /> },
+
+      // [Phase 6 v4] 판매 sub-route — legacy webview 견적 + SamhanLogis 신규 메뉴 4종.
+      // `/sales/:id` 보다 먼저 매칭되어야 함 (정적 path 우선).
+      { path: '/sales/estimates', element: <SalesEstimateListPage /> },
+      { path: '/sales/estimates/legacy', element: <EstimateLegacyWebviewPage /> },
+      { path: '/sales/estimates/new', element: <EstimateLegacyWebviewPage /> },
+      { path: '/sales/partner-orders', element: <SalesPartnerOrderListPage /> },
+      { path: '/sales/partner-orders/:id', element: <SalesPartnerOrderDetailPage /> },
+      { path: '/sales/order-approvals', element: <SalesOrderApprovalsPage /> },
+      { path: '/sales/partner-dc-config', element: <SalesPartnerDcConfigPage /> },
+
       { path: '/sales/:id', element: <SlipDetailPage mode="OUTBOUND" /> },
       { path: '/sales/:id/print/invoice', element: <InvoiceView /> },
       { path: '/sales/:id/print/dispatch', element: <DispatchView /> },

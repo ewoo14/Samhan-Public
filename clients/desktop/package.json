@@ -6,12 +6,14 @@
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "npm run build:legacy && electron-vite dev",
+    "build": "npm run build:legacy && electron-vite build",
+    "build:legacy": "node scripts/build-legacy-estimate.cjs",
     "preview": "electron-vite preview",
-    "build:win": "electron-vite build && electron-builder --win",
+    "build:win": "npm run build:legacy && electron-vite build && electron-builder --win",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "capture:v4": "node scripts/capture-v4-sales.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

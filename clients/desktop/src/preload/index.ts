@@ -40,3 +40,18 @@ const samhanAuth = {
 }
 
 contextBridge.exposeInMainWorld('samhanAuth', samhanAuth)
+
+/**
+ * [Phase 6 v4] legacy estimate webview 자산 URL 조회 — main 프로세스의
+ * `legacy:get-estimate-url` IPC 와 1:1.
+ *
+ * <p>renderer 의 EstimateLegacyWebviewPage 가 mount 시 호출 → webview src 에 주입.
+ * dev / packaged 환경 모두 main 프로세스가 file:// 경로를 결정 (resolveLegacyAssetUrl).</p>
+ */
+const samhanLegacy = {
+  /** legacy estimate index.built.html 의 file:// URL. */
+  getEstimateUrl: (): Promise<string> =>
+    ipcRenderer.invoke('legacy:get-estimate-url'),
+}
+
+contextBridge.exposeInMainWorld('samhanLegacy', samhanLegacy)
