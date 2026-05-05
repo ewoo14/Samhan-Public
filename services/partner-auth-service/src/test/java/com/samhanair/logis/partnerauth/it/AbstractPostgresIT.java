@@ -16,12 +16,13 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
 public abstract class AbstractPostgresIT {
 
+    // ggignore - Testcontainers dev-only credentials (random ephemeral container)
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("partner_auth_db")
-                    .withUsername("samhan")
-                    .withPassword("samhan_dev_pw");
+                    .withUsername("test-user")
+                    .withPassword("test-pw-ephemeral");
 
     static {
         try {
