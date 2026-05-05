@@ -170,17 +170,22 @@ export const samhanApi = {
    * 부트스트랩 prefetch — legacy 의 `<?!= var ?>` 16종 (homemulti / singleSets / ... / config)
    * 에 해당하는 데이터를 단일 endpoint 에서 한 번에 받음.
    *
-   * <p>endpoint: `GET /api/v1/partner-orders/bootstrap` (TODO M4 backend 신규).
-   * 백엔드 미구현 시 빈 객체 반환 → legacy 동작은 빈 카탈로그로 graceful (UI 진입 가능).
+   * <p>endpoint: `GET /api/v1/partner-orders/bootstrap` (M4 PartnerOrderBootstrapController, PR #76).
+   * 호출 실패 (네트워크 / 5xx) 는 호출자에게 throw 전파 — 빈 카탈로그 silent fallback 은
+   * Phase 6 backend 머지 후 폐기 (회귀 위험 차단).
+   *
+   * <p>BE 응답이 ApiResponse&lt;BootstrapResponse&gt; envelope 이므로 `data` 만 추출.
    */
   fetchBootstrap(): Promise<Record<string, unknown>> {
     const cfg: AxiosRequestConfig = { timeout: 8000 }
     return http
       .get('/partner-orders/bootstrap', cfg)
-      .then((r) => r.data as Record<string, unknown>)
-      .catch((err: unknown) => {
-        console.warn('[v4 shim] bootstrap prefetch fail — 빈 객체 fallback', err)
-        return {}
+      .then((r) => {
+        const body = r.data as { data?: Record<string, unknown> } | Record<string, unknown>
+        if (body && typeof body === 'object' && 'data' in body && body.data) {
+          return body.data as Record<string, unknown>
+        }
+        return body as Record<string, unknown>
       })
   },
 }

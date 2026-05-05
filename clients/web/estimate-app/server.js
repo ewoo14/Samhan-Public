@@ -53,7 +53,7 @@ if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`[estimate-app] v2 listening on http://localhost:${PORT}`);
     console.log(`[estimate-app] SAMHAN_API_BASE_URL=${process.env.SAMHAN_API_BASE_URL || '(default)'}`);
-    console.log(`[estimate-app] USE_MOCK_FALLBACK=${process.env.USE_MOCK_FALLBACK || 'true'}`);
+    console.log(`[estimate-app] SLIP_SERVICE_URL=${process.env.SLIP_SERVICE_URL || '(default :8086)'}`);
   });
 }
 

@@ -11,9 +11,12 @@
  *    (즉시 출고전표 자동 생성) — legacy 가 e-Count /sale 호출했던 동작 그대로"
  *
  * 환경변수:
- *   - SLIP_SERVICE_URL: slip-service base URL (기본 http://localhost:8084)
+ *   - SLIP_SERVICE_URL: slip-service base URL (기본 http://localhost:8086)
  *   - SAMHAN_API_BASE_URL: gateway URL (SLIP_SERVICE_URL 미지정시 fallback)
- *   - USE_MOCK_FALLBACK: 'true' 면 endpoint 미구현시 mock slipNo 반환 (dev only)
+ *
+ * Phase 6 M5 (slip-service 통합 발행 endpoint, PR #76 머지) 가용성 가정.
+ * USE_MOCK_FALLBACK 분기는 폐기 — non-2xx / 네트워크 오류는 호출자에게
+ * 그대로 전파해 사용자 alert 로 처리한다.
  */
 
 'use strict';
@@ -24,8 +27,7 @@ const { Logger } = require('./apps-script-shim');
 const SLIP_BASE =
   process.env.SLIP_SERVICE_URL ||
   process.env.SAMHAN_API_BASE_URL ||
-  'http://localhost:8084';
-const USE_MOCK = String(process.env.USE_MOCK_FALLBACK || 'true').toLowerCase() === 'true';
+  'http://localhost:8086';
 
 /**
  * legacy SaleList[].BulkDatas 형태의 row 들을 slip-service POST body 로 변환.
@@ -123,19 +125,9 @@ async function postSlip(legacyOrder, saleList) {
       return { ok: true, slipNo: String(slipNo), body: resp.data };
     }
     Logger.log(`[slip-bridge] non-2xx status=${resp.status} body=${JSON.stringify(resp.data)}`);
-    if (USE_MOCK) {
-      const mockSlip = `MOCK-${Date.now()}`;
-      Logger.log(`[slip-bridge] USE_MOCK_FALLBACK → returning mock slipNo=${mockSlip}`);
-      return { ok: true, slipNo: mockSlip, body: { mock: true, originalStatus: resp.status } };
-    }
     return { ok: false, error: `HTTP ${resp.status}`, body: resp.data };
   } catch (err) {
     Logger.log(`[slip-bridge] axios error ${err.message}`);
-    if (USE_MOCK) {
-      const mockSlip = `MOCK-${Date.now()}`;
-      Logger.log(`[slip-bridge] USE_MOCK_FALLBACK (network error) → returning mock slipNo=${mockSlip}`);
-      return { ok: true, slipNo: mockSlip, body: { mock: true, error: err.message } };
-    }
     return { ok: false, error: err.message, body: null };
   }
 }
