@@ -125,11 +125,11 @@ public class SlipPublishService {
             return handleIdempotencyRaceCondition(idempotencyKey, fingerprint, ex);
         }
 
-        // 6. 감사 로그 적재
+        // 6. 감사 로그 적재 (request fingerprint 동봉 — replay 비교용)
         String dcSnapshot = serializeDiscount(req.discountInfo(), req.paymentDueLabel());
         SlipPublishAudit audit = SlipPublishAudit.create(saved.getId(), SlipSourceType.ESTIMATE,
                 req.estimateNumber(), idempotencyKey,
-                resolved.totalSupplyAmount, resolved.totalVatAmount, dcSnapshot);
+                resolved.totalSupplyAmount, resolved.totalVatAmount, dcSnapshot, fingerprint);
         auditRepository.save(audit);
 
         log.info("[Phase 6 M5] estimate {} → slip {} 발행 완료 (idem={})",
@@ -181,7 +181,7 @@ public class SlipPublishService {
         String dcSnapshot = serializeDiscount(req.discountInfo(), req.paymentDueLabel());
         SlipPublishAudit audit = SlipPublishAudit.create(saved.getId(), SlipSourceType.PARTNER_ORDER,
                 req.partnerOrderId(), idempotencyKey,
-                resolved.totalSupplyAmount, resolved.totalVatAmount, dcSnapshot);
+                resolved.totalSupplyAmount, resolved.totalVatAmount, dcSnapshot, fingerprint);
         auditRepository.save(audit);
 
         log.info("[Phase 6 M5] partner-order {} → slip {} 발행 완료 (idem={})",
@@ -214,11 +214,11 @@ public class SlipPublishService {
     }
 
     private PublishSlipResponse assertReplayOrConflict(Slip existing, String newFingerprint) {
-        // 기존 audit 의 idempotencyKey 와 fingerprint 비교는 (현재 fingerprint 가
-        // request 자체 함수이므로) 같은 idem 키로 들어온 신규 fingerprint 와
-        // 같은 슬립의 audit 에 저장된 supply/vat 합계로 cross-check.
-        // 정확 비교를 위해 audit 의 dcSnapshot 까지 fingerprint 화.
-        String existingFingerprint = computeFingerprintFromAudit(existing);
+        // audit 에 저장된 request_fingerprint 와 신규 요청 fingerprint 를 strict 비교.
+        // 같은 알고리즘으로 만든 SHA-256 이므로 본문이 동일하면 정확히 일치.
+        // legacy audit row (V9 migration 이전) 는 fingerprint 가 null 이므로 비교 skip
+        // (운영 데이터 호환성 — 본 분기는 실제로는 마이그레이션 이후 발생하지 않음).
+        String existingFingerprint = lookupFingerprintFromAudit(existing);
         if (existingFingerprint != null && !existingFingerprint.equals(newFingerprint)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "동일 Idempotency-Key 로 다른 본문이 도착했습니다. 키를 새로 발급하세요. "
@@ -229,23 +229,15 @@ public class SlipPublishService {
         return PublishSlipResponse.replay(existing);
     }
 
-    private String computeFingerprintFromAudit(Slip existing) {
-        // audit 1행 조회 → supplyAmount + vatAmount + dcSnapshot 으로 재현 fingerprint 생성.
-        // 이 값은 createFingerprint 와 동일 알고리즘으로 만들어진 것이 아니므로 strict 비교 X.
-        // 본 슬라이스 정책: audit 가 있으면 라인 합계 + dcSnapshot SHA-256, 없으면 null (비교 skip).
+    private String lookupFingerprintFromAudit(Slip existing) {
+        // audit 1행 조회 → 저장된 request_fingerprint 그대로 반환.
+        // 정상 경로에서는 발행 시점에 동일 SHA-256 알고리즘으로 저장되었으므로 같은 본문 재호출 시
+        // strict equals 매치. legacy null 행 방어 로직 포함.
         List<SlipPublishAudit> audits = auditRepository.findAllBySlipIdAndIsDeletedFalse(existing.getId());
         if (audits.isEmpty()) {
             return null;
         }
-        SlipPublishAudit a = audits.get(0);
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("sourceType", a.getSourceType().name());
-        map.put("sourceId", a.getSourceId());
-        map.put("supplyAmount", a.getSupplyAmount());
-        map.put("vatAmount", a.getVatAmount());
-        map.put("dcSnapshot", a.getAppliedDcSnapshot());
-        map.put("lineCount", existing.getLines().size());
-        return sha256(toJsonOrThrow(map));
+        return audits.get(0).getRequestFingerprint();
     }
 
     private PublishSlipResponse handleIdempotencyRaceCondition(String idempotencyKey,

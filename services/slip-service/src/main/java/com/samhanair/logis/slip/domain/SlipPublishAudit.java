@@ -78,9 +78,19 @@ public class SlipPublishAudit extends BaseEntity {
     @Column(name = "applied_dc_snapshot", columnDefinition = "jsonb")
     private String appliedDcSnapshot;
 
+    /**
+     * 발행 요청 본문 SHA-256 fingerprint (hex). idempotency replay 비교 전용.
+     *
+     * <p>같은 idempotency-key 로 동일 본문이 다시 들어왔는지 정확히 판정한다 (PR #76 회고:
+     * supplyAmount/vatAmount 합으로 만든 후행 fingerprint 와 사전 요청 본문 fingerprint 가
+     * 다른 알고리즘이라 항상 충돌하던 문제 해결).
+     */
+    @Column(name = "request_fingerprint", length = 64)
+    private String requestFingerprint;
+
     private SlipPublishAudit(UUID slipId, SlipSourceType sourceType, String sourceId,
                              String idempotencyKey, BigDecimal supplyAmount, BigDecimal vatAmount,
-                             String appliedDcSnapshot) {
+                             String appliedDcSnapshot, String requestFingerprint) {
         if (slipId == null) {
             throw new IllegalArgumentException("slipId 는 필수입니다");
         }
@@ -94,6 +104,7 @@ public class SlipPublishAudit extends BaseEntity {
         this.supplyAmount = supplyAmount;
         this.vatAmount = vatAmount;
         this.appliedDcSnapshot = appliedDcSnapshot;
+        this.requestFingerprint = requestFingerprint;
     }
 
     /**
@@ -106,12 +117,14 @@ public class SlipPublishAudit extends BaseEntity {
      * @param supplyAmount 공급가액 합계 (legacy SUPPLY_AMT 합)
      * @param vatAmount 세액 합계 (legacy VAT_AMT 합)
      * @param appliedDcSnapshot DC/할인 정보 jsonb 문자열 (선택)
+     * @param requestFingerprint 발행 요청 본문 SHA-256 fingerprint (idempotency replay 비교용, 선택)
      * @return persist 직전 인스턴스
      */
     public static SlipPublishAudit create(UUID slipId, SlipSourceType sourceType, String sourceId,
                                           String idempotencyKey, BigDecimal supplyAmount,
-                                          BigDecimal vatAmount, String appliedDcSnapshot) {
+                                          BigDecimal vatAmount, String appliedDcSnapshot,
+                                          String requestFingerprint) {
         return new SlipPublishAudit(slipId, sourceType, sourceId, idempotencyKey,
-                supplyAmount, vatAmount, appliedDcSnapshot);
+                supplyAmount, vatAmount, appliedDcSnapshot, requestFingerprint);
     }
 }

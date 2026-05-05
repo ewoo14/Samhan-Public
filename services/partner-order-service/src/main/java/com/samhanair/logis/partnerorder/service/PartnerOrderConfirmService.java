@@ -53,7 +53,8 @@ import org.springframework.transaction.annotation.Transactional;
  *          └ Scheduler 5분 retry (max 24시간 → FAILED_PERMANENT + alert)
  * </pre>
  *
- * <p>Idempotency-Key {@code PO-CONF-{draftSeq}} — 재시도 시 동일 키 재사용으로 slip-service 중복 차단.
+ * <p>Idempotency-Key {@code PO-CONF-{partnerCode}-{draftSeq}} — 재시도 시 동일 키 재사용으로
+ * slip-service 중복 차단. partnerCode 를 포함시켜 거래처별 draftSeq 시퀀스 격리를 보존.
  *
  * <p>UUID 비공개 가드 — 응답 ConfirmResponse 는 orderNo / slipNo 만 노출.
  */
@@ -100,8 +101,11 @@ public class PartnerOrderConfirmService {
         }
 
         // 1) draft 검증 + draftSeq 추출 (idempotencyKey 시드)
+        // partnerCode 별 draftSeq 시퀀스가 독립이므로 idempotencyKey 도 partnerCode 로 격리
+        // (PR #76 회고 — 다른 partner 의 동일 draftSeq 가 동일 idemKey 로 collide 되어 IT
+        // race condition 발생).
         long draftSeq = resolveDraftSeq(partnerCode, draftId);
-        String idempotencyKey = "PO-CONF-" + draftSeq;
+        String idempotencyKey = "PO-CONF-" + partnerCode + "-" + draftSeq;
 
         // Idempotency 검사 — 이미 확정된 키면 기존 결과 반환 (재호출 가드)
         var existing = orderRepository.findByIdempotencyKey(idempotencyKey);

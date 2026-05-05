@@ -27,7 +27,7 @@ import org.springframework.web.client.RestClient;
  *
  * <p>설계서 §3.6 + §6 (Sync REST + outbox) 의 Idempotency-Key 정책:
  * <ul>
- *   <li>최초 호출: {@code PO-CONF-{draftSeq}}</li>
+ *   <li>최초 호출: {@code PO-CONF-{partnerCode}-{draftSeq}}</li>
  *   <li>5xx 후 outbox 재시도: 동일 키 재사용 (slip-service 가 중복 차단)</li>
  * </ul>
  */
