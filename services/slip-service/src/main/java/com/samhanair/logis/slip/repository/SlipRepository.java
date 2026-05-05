@@ -1,6 +1,7 @@
 package com.samhanair.logis.slip.repository;
 
 import com.samhanair.logis.slip.domain.Slip;
+import com.samhanair.logis.slip.domain.SlipSourceType;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
 import java.time.LocalDate;
@@ -53,4 +54,20 @@ public interface SlipRepository extends JpaRepository<Slip, UUID> {
      * partial UNIQUE INDEX (V5) 로 token 발급된 슬립만 유일성 보장.
      */
     Optional<Slip> findBySignatureShareTokenAndIsDeletedFalse(String signatureShareToken);
+
+    // ---- Phase 6 M5 (slip-service-integration) — 발행 출처 + idempotency 조회 ----
+
+    /**
+     * idempotencyKey 단건 조회 — Sync REST 발행 endpoint 의 1단계 가드.
+     * partial UNIQUE INDEX (V7) 로 token 발급된 슬립만 유일성 보장.
+     * 같은 키 + 같은 본문 → 200 (기존 slipNo). 같은 키 + 다른 본문 → 409 Conflict.
+     */
+    Optional<Slip> findByIdempotencyKeyAndIsDeletedFalse(String idempotencyKey);
+
+    /**
+     * 발행 출처 기준 조회 — {@code GET /api/v1/slips/by-source} endpoint source.
+     * 같은 estimateNumber/partnerOrderId 의 슬립 목록 (정상적으로는 1건, 재시도 충돌 시 0건 또는 1건).
+     */
+    List<Slip> findAllBySourceTypeAndSourceIdAndIsDeletedFalse(
+            SlipSourceType sourceType, String sourceId);
 }

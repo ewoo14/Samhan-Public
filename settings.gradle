@@ -27,15 +27,19 @@ include 'services:slip-service'
 include 'services:accounting-service'
 include 'services:logging-service'
 include 'services:partner-auth-service'
+include 'services:dc-config-service'
+include 'services:partner-order-service'
 
-project(':shared:common').projectDir                  = file('shared/common')
-project(':services:eureka-server').projectDir         = file('services/eureka-server')
-project(':services:api-gateway').projectDir           = file('services/api-gateway')
-project(':services:auth-service').projectDir          = file('services/auth-service')
-project(':services:user-service').projectDir          = file('services/user-service')
-project(':services:product-service').projectDir       = file('services/product-service')
-project(':services:inventory-service').projectDir     = file('services/inventory-service')
-project(':services:slip-service').projectDir          = file('services/slip-service')
-project(':services:accounting-service').projectDir    = file('services/accounting-service')
-project(':services:logging-service').projectDir       = file('services/logging-service')
-project(':services:partner-auth-service').projectDir  = file('services/partner-auth-service')
+project(':shared:common').projectDir                   = file('shared/common')
+project(':services:eureka-server').projectDir          = file('services/eureka-server')
+project(':services:api-gateway').projectDir            = file('services/api-gateway')
+project(':services:auth-service').projectDir           = file('services/auth-service')
+project(':services:user-service').projectDir           = file('services/user-service')
+project(':services:product-service').projectDir        = file('services/product-service')
+project(':services:inventory-service').projectDir      = file('services/inventory-service')
+project(':services:slip-service').projectDir           = file('services/slip-service')
+project(':services:accounting-service').projectDir     = file('services/accounting-service')
+project(':services:logging-service').projectDir        = file('services/logging-service')
+project(':services:partner-auth-service').projectDir   = file('services/partner-auth-service')
+project(':services:dc-config-service').projectDir      = file('services/dc-config-service')
+project(':services:partner-order-service').projectDir  = file('services/partner-order-service')

@@ -1,0 +1,39 @@
+package com.samhanair.logis.slip.publish;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
+import java.util.List;
+
+/**
+ * Phase 6 M5 (slip-service-integration) — partner-order-service M4 의 협력사 주문 승인 →
+ * 출고전표 발행 요청.
+ *
+ * <p>endpoint: {@code POST /api/v1/slips/from-partner-order}
+ *
+ * <p>호출자: partner-order-service M4 의 SlipServiceClient (별도 PR — 본 슬라이스에서는 endpoint
+ * 만 노출).
+ *
+ * <p>설계 §3 헤더 매핑은 estimate 와 거의 동일하지만 차이점:
+ * <ul>
+ *   <li>{@code partnerOrderId} (UUID 문자열) → {@code Slip.sourceId}</li>
+ *   <li>{@code orderApprovedAt} (선택) → 메모에 prepend 할 정보 (서비스 레이어 결정)</li>
+ *   <li>나머지 필드는 estimate 와 동일 — partner-order-service 가 이미 매핑 변환을 마친 상태로 호출</li>
+ * </ul>
+ */
+public record PublishFromPartnerOrderRequest(
+        @NotBlank @Size(max = 64) String partnerOrderId,
+        String ioDate,
+        @Size(max = 100) String partnerCode,
+        @Size(max = 100) String partnerName,
+        @Size(max = 50) String employeeCode,
+        @NotBlank @Size(max = 50) String warehouseCode,
+        @Size(max = 500) String shippingAddress,
+        @Size(max = 100) String receiverPhone,
+        @Size(max = 500) String memo,
+        @Size(max = 200) String paymentDueLabel,
+        @Size(max = 200) String discountInfo,
+        String orderApprovedAt,
+        @NotEmpty @Valid List<PublishLineRequest> lines) {
+}
