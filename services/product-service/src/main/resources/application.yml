@@ -31,6 +31,12 @@ app:
     internal:
       token: ${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}
 
+# Phase 6 M1a 시드 스크립트 — dry-run mode 우선 (G13)
+seed:
+  dry-run: ${SEED_DRY_RUN_MODE:true}
+  report-dir: ${SEED_REPORT_DIR:docs/dev-reports}
+  sheet-dir: ${SEED_SHEET_DIR:../../migration/source/sheet}
+
 management:
   endpoints:
     web:
