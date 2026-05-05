@@ -49,9 +49,15 @@ contextBridge.exposeInMainWorld('samhanAuth', samhanAuth)
  * dev / packaged 환경 모두 main 프로세스가 file:// 경로를 결정 (resolveLegacyAssetUrl).</p>
  */
 const samhanLegacy = {
-  /** legacy estimate index.built.html 의 file:// URL. */
+  /** legacy estimate index.built.html 의 file:// URL. (보존 — 미사용) */
   getEstimateUrl: (): Promise<string> =>
     ipcRenderer.invoke('legacy:get-estimate-url'),
+  /**
+   * [Phase 6 v4 정정 #22] 종합견적서 외부 link 진입.
+   * shell.openExternal 로 default browser 에서 estimate-app web 열기.
+   */
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke('legacy:open-external', url),
 }
 
 contextBridge.exposeInMainWorld('samhanLegacy', samhanLegacy)
