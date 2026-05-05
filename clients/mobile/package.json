@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "capture:home": "node scripts/capture-home.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",

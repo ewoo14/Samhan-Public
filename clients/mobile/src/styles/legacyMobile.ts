@@ -191,14 +191,19 @@ export const legacyGateStyles = StyleSheet.create({
  * `.select-big { width:100%; height:150px; border:1px solid var(--c-line); border-radius:18px; font-weight:800; font-size:36px; align-items:center; justify-content:center; text-align:center; line-height:1.2 }`
  */
 export const legacyMobileGateStyles = StyleSheet.create({
-  /** `.mobile-gate` 컨테이너 */
+  /**
+   * `.mobile-gate` 컨테이너 — legacy `.mobile-gate { display:flex; flex-direction:column;
+   * gap:16px; margin:20px 0 12px }` 1:1.
+   *
+   * [PR #66 회고] 이전 paddingBottom: 30 은 legacy 미존재 — extraMenuSection 위 여백 과다 원인.
+   * 제거 후 legacy `margin: 20px 0 12px` 일관 (paddingHorizontal 만 모바일 안전 여백).
+   */
   mobileGate: {
     flexDirection: 'column',
     gap: 16,
     marginTop: 20,
     marginBottom: 12,
     paddingHorizontal: 16,
-    paddingBottom: 30,
   },
   /** `.select-big` 공통 */
   selectBig: {
@@ -210,11 +215,16 @@ export const legacyMobileGateStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /**
+   * `.select-big` 텍스트 — legacy `font-weight:800; font-size:36px; color:var(--c-strong) (#111827)`.
+   * [PR #66 회고] 카테고리별 textColor (보라/청록/주황/자주) 폐기 → legacy `--c-strong` 일관.
+   */
   selectBigText: {
     fontSize: 36,
     fontWeight: '800',
     lineHeight: 36 * 1.2,
     textAlign: 'center',
+    color: legacyVars.cStrong,
   },
   selectHome: {
     backgroundColor: legacyCategoryColors.home.bg,
