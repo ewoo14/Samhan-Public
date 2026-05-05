@@ -1,0 +1,186 @@
+/**
+ * SamhanLogis MS API client (axios) — order-app v4 shim 의 백엔드 호출 entry.
+ *
+ * <p>역할: legacy `google.script.run.<fnName>(...args)` → 본 모듈의 `samhanApi.call(fnName, args)`
+ * → 함수명 → SamhanLogis MS REST endpoint 매핑 테이블 (RPC_MAP) 조회 → axios fetch.
+ *
+ * <p>매핑 표 출처: docs/dev-reports/legacy-rpc-mapping-partner-order.md (RPC 12 site).
+ * 신규 RPC 추가 시 RPC_MAP 보강 + 매핑 표 동기화 의무.
+ *
+ * <p>외부 호출 (e-Count UrlFetchApp / Notion API) 은 본 모듈 범위 밖 — Code.js 의 외부 호출은
+ * SamhanLogis 백엔드 (slip-service / partner-service 등) 가 대체. 클라이언트는 noop + warn.
+ */
+import axios, { type AxiosRequestConfig } from 'axios'
+
+/** dev 환경 BASE URL (vite proxy / nginx) — `VITE_API_BASE_URL` 로 override. */
+const BASE_URL: string = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+/** 세션 토큰 저장소 (sessionStorage 키). */
+const TOKEN_KEY = 'samhan-partner-token'
+
+/** axios 인스턴스 — JWT bearer 자동 첨부 + 5초 timeout. */
+const http = axios.create({
+  baseURL: BASE_URL,
+  timeout: 5000,
+})
+
+http.interceptors.request.use((cfg) => {
+  const token = sessionStorage.getItem(TOKEN_KEY)
+  if (token) {
+    cfg.headers.Authorization = `Bearer ${token}`
+  }
+  return cfg
+})
+
+/** 함수명 → SamhanLogis MS endpoint 매핑 (RPC 12 site + 외부 호출 대체).
+ *
+ * <p>각 entry 는 axios 호출을 만들어 반환. arguments 는 legacy Apps Script 시그니처와 동일.
+ *
+ * <p>**legacy 함수명 → SamhanLogis 매핑** (전체 표는 docs/dev-reports/legacy-rpc-mapping-partner-order.md):
+ *
+ * - `getGateImages()` → `GET /api/v1/partner-orders/gate-images` (이미지 base64 prefetch)
+ * - `checkAuthStatus(bizNo)` → `GET /api/v1/auth/partner-status?bizNo=...`
+ * - `requestAuthApproval(bizNo, ...)` → `POST /api/v1/auth/partner-register` (M2)
+ * - `setAuthPassword(bizNo, pw)` → `PATCH /api/v1/auth/partner-password`
+ * - `tryLogin(bizNo, pw)` → `POST /api/v1/auth/partner-login` (M2 PartnerAuth)
+ * - `getAccessExpiration(bizNo)` → `GET /api/v1/auth/partner-expiration?bizNo=...`
+ * - `getOrderHistory(bizCode, dateRange)` → `GET /api/v1/partner-orders/history?bizCode=...`
+ * - `logFrontEvent(action, detail)` → `POST /api/v1/partner-orders/log` (frontend audit)
+ * - `saveOrderSnapshot(payload)` → `POST /api/v1/partner-orders/drafts` (M4, 30일 expiry)
+ * - `getOrderSnapshotHistory()` → `GET /api/v1/partner-orders/drafts`
+ * - `sendOrderFromUi(payload)` → `POST /api/v1/partner-orders/{id}/confirm` + slip-service Event (M4)
+ * - `saveTutorialState(state)` → `PATCH /api/v1/auth/partner-tutorial`
+ *
+ * 추가 (legacy index.html 외부 호출 대응 — Code.js 분석 §1):
+ * - `getCustomerData(partnerCode)` → `GET /api/v1/partners/{partnerCode}` (M2)
+ * - `getProducts(category)` → `GET /api/v1/products?usageScope=PARTNER_ORDER&category=...` (M1a 완료)
+ * - `applyConfigFromServer(partnerCode)` → `GET /api/v1/partner-dc-configs/{partnerCode}` (M2 보강)
+ * - `requestTempPassword(bizNo)` → `POST /api/v1/auth/partner-temp-password` (M2)
+ * - `register(payload)` → `POST /api/v1/auth/partner-register` (M2)
+ * - `saveDraft(payload)` → `POST /api/v1/partner-orders/drafts` (M4) — saveOrderSnapshot 별칭
+ * - `getDraftList()` → `GET /api/v1/partner-orders/drafts` (M4) — getOrderSnapshotHistory 별칭
+ */
+type RpcHandler = (args: unknown[]) => Promise<unknown>
+
+const RPC_MAP: Record<string, RpcHandler> = {
+  // ─── 인증 / 등록 / 잠금 (RPC §S 카테고리) ───────────────────────────────
+  checkAuthStatus: ([bizNo]) =>
+    http
+      .get('/auth/partner-status', { params: { bizNo } })
+      .then((r) => r.data),
+  requestAuthApproval: ([payload]) =>
+    http.post('/auth/partner-register', payload).then((r) => r.data),
+  register: ([payload]) =>
+    http.post('/auth/partner-register', payload).then((r) => r.data),
+  setAuthPassword: ([bizNo, pw]) =>
+    http.patch('/auth/partner-password', { bizNo, password: pw }).then((r) => r.data),
+  tryLogin: ([bizNo, pw]) =>
+    http
+      .post('/auth/partner-login', { bizNo, password: pw })
+      .then((r) => {
+        const data = r.data as { token?: string }
+        if (data?.token) sessionStorage.setItem(TOKEN_KEY, data.token)
+        return data
+      }),
+  requestTempPassword: ([bizNo]) =>
+    http.post('/auth/partner-temp-password', { bizNo }).then((r) => r.data),
+  getAccessExpiration: ([bizNo]) =>
+    http
+      .get('/auth/partner-expiration', { params: { bizNo } })
+      .then((r) => r.data),
+
+  // ─── 게이트 이미지 (RPC §R 카테고리) ───────────────────────────────────
+  getGateImages: () =>
+    http.get('/partner-orders/gate-images').then((r) => r.data),
+
+  // ─── 주문이력 / 로그 (RPC §T 카테고리) ────────────────────────────────
+  getOrderHistory: ([bizCode, dateRange]) =>
+    http
+      .get('/partner-orders/history', { params: { bizCode, ...(dateRange || {}) } })
+      .then((r) => r.data),
+  logFrontEvent: ([action, detail]) =>
+    http
+      .post('/partner-orders/log', { action, detail })
+      .then((r) => r.data)
+      .catch((err: unknown) => {
+        // 로그 실패는 swallow (legacy 동작 — sendLog 도 silent)
+        console.warn('[v4 shim] logFrontEvent silent fail', err)
+        return null
+      }),
+
+  // ─── 임시저장 / 스냅샷 (RPC §U/§V 카테고리) ──────────────────────────
+  saveOrderSnapshot: ([payload]) =>
+    http.post('/partner-orders/drafts', payload).then((r) => r.data),
+  saveDraft: ([payload]) =>
+    http.post('/partner-orders/drafts', payload).then((r) => r.data),
+  getOrderSnapshotHistory: () =>
+    http.get('/partner-orders/drafts').then((r) => r.data),
+  getDraftList: () =>
+    http.get('/partner-orders/drafts').then((r) => r.data),
+
+  // ─── 최종 주문 전송 (RPC §O buildSendRows + §X sendOrderFromUi) ─────
+  sendOrderFromUi: ([payload]) => {
+    const p = (payload || {}) as { id?: string }
+    const id = p.id || 'new'
+    return http
+      .post(`/partner-orders/${encodeURIComponent(id)}/confirm`, payload)
+      .then((r) => r.data)
+  },
+
+  // ─── 튜토리얼 상태 (RPC §W 카테고리) ──────────────────────────────────
+  saveTutorialState: ([state]) =>
+    http.patch('/auth/partner-tutorial', { state }).then((r) => r.data),
+
+  // ─── 거래처 마스터 / 카탈로그 / DC 설정 (Code.js 외부 호출 대체) ─────
+  getCustomerData: ([partnerCode]) =>
+    http.get(`/partners/${encodeURIComponent(String(partnerCode))}`).then((r) => r.data),
+  getProducts: ([category]) =>
+    http
+      .get('/products', { params: { usageScope: 'PARTNER_ORDER', category } })
+      .then((r) => r.data),
+  applyConfigFromServer: ([partnerCode]) =>
+    http
+      .get(`/partner-dc-configs/${encodeURIComponent(String(partnerCode))}`)
+      .then((r) => r.data),
+}
+
+/**
+ * legacy 함수명 → SamhanLogis MS endpoint 호출 dispatcher.
+ *
+ * <p>매핑 누락 시 console.warn + Promise.resolve(null) (legacy 동작 graceful — withFailureHandler
+ * 가 호출되지 않고 withSuccessHandler 가 null 로 호출됨).
+ */
+export const samhanApi = {
+  /**
+   * @param fnName legacy `google.script.run.<fnName>` 의 fnName
+   * @param args   legacy 호출 시 전달된 args (Array)
+   */
+  call(fnName: string, args: unknown[]): Promise<unknown> {
+    const handler = RPC_MAP[fnName]
+    if (!handler) {
+      console.warn(
+        `[v4 shim] unmapped RPC '${fnName}' — noop. RPC_MAP 보강 + dev-reports/legacy-rpc-mapping-partner-order.md 동기화 필요`,
+      )
+      return Promise.resolve(null)
+    }
+    return handler(args)
+  },
+
+  /**
+   * 부트스트랩 prefetch — legacy 의 `<?!= var ?>` 16종 (homemulti / singleSets / ... / config)
+   * 에 해당하는 데이터를 단일 endpoint 에서 한 번에 받음.
+   *
+   * <p>endpoint: `GET /api/v1/partner-orders/bootstrap` (TODO M4 backend 신규).
+   * 백엔드 미구현 시 빈 객체 반환 → legacy 동작은 빈 카탈로그로 graceful (UI 진입 가능).
+   */
+  fetchBootstrap(): Promise<Record<string, unknown>> {
+    const cfg: AxiosRequestConfig = { timeout: 8000 }
+    return http
+      .get('/partner-orders/bootstrap', cfg)
+      .then((r) => r.data as Record<string, unknown>)
+      .catch((err: unknown) => {
+        console.warn('[v4 shim] bootstrap prefetch fail — 빈 객체 fallback', err)
+        return {}
+      })
+  },
+}
