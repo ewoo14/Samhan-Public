@@ -154,14 +154,14 @@ class DeliveryBatchServiceTest {
         when(slipRepository.findAllByDeliveryBatchIdAndIsDeletedFalse(batchId))
                 .thenReturn(List.of(slip));
         when(smsGateway.sendSms(anyString(), anyString()))
-                .thenReturn(SmsResult.failure("Solapi 4xx"));
+                .thenReturn(SmsResult.failure("Aligo 4xx"));
 
         assertThatThrownBy(() -> service.sendSms(batchId))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.INTERNAL_ERROR));
         assertThat(batch.isSent()).isFalse();
-        assertThat(batch.getSmsLastError()).isEqualTo("Solapi 4xx");
+        assertThat(batch.getSmsLastError()).isEqualTo("Aligo 4xx");
     }
 
     @Test

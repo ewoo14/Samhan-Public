@@ -160,7 +160,7 @@ class DeliveryBatchControllerIT extends AbstractPostgresIT {
     void sendSms_failure_returns500_andRecordsError() throws Exception {
         Mockito.reset(smsGateway);
         Mockito.when(smsGateway.sendSms(ArgumentMatchers.anyString(), ArgumentMatchers.anyString()))
-                .thenReturn(SmsResult.failure("Solapi 인증 실패"));
+                .thenReturn(SmsResult.failure("Aligo 인증 실패"));
 
         createSlipWithDriver("실패기사", "010-9999-7777");
         MvcResult grouped = mockMvc.perform(post("/delivery-batches/auto-group")
