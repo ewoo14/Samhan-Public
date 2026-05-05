@@ -762,8 +762,8 @@ public class Slip extends BaseEntity {
      * estimate-app / partner-order-service 가 호출한 신규 endpoint 만 이 값을 변경한다.
      */
     @Enumerated(EnumType.STRING)
-    @Column(name = "source_type", length = 32)
-    private SlipSourceType sourceType;
+    @Column(name = "source_type", length = 32, nullable = false)
+    private SlipSourceType sourceType = SlipSourceType.MANUAL;
 
     /**
      * 출처 비즈니스 식별자 — Phase 6 M5 신규.
