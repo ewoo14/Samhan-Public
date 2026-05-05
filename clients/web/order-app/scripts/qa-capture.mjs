@@ -59,21 +59,25 @@ async function main() {
       await page.close()
     }
 
-    // ─── 2. mobile-gate 4 카테고리 (BizGate 숨김 + mobileGate 표시) ───
-    console.log('[qa 2/6] mobile-gate 4 카테고리')
+    // ─── 2. mobile-gate 4 카테고리 (BizGate 숨김, body.no-active 유지) ───
+    // legacy 초기 상태: <body class="no-active"> → mobile-gate 표시 + view-group/btnPreview/btnSaveSnapshot/
+    // btnLoadSnapshot/btnHistory/.grid 모두 hide CSS 적용. BizGate 만 숨겨 그 아래 mobile-gate 노출.
+    console.log('[qa 2/6] mobile-gate 4 카테고리 (body.no-active 유지)')
     {
-      const page = await newPage(browser, { width: 1366, height: 900 })
+      // 모바일 viewport 권장: legacy isMobileNow() 가 1280px 이하 기준으로 분기 (mobile-mode 활성)
+      const page = await newPage(browser, { width: 768, height: 1024 })
       await page.goto(URL_BASE, { waitUntil: 'networkidle2', timeout: 15000 })
       await sleep(500)
-      // BizGate 숨김 + body class 적용 → mobileGate 노출
+      // BizGate 만 숨김 — body.no-active 는 그대로 유지하여 hide CSS 가 정상 동작하게 함.
       await page.evaluate(() => {
         const gate = document.getElementById('pageBizGate')
         if (gate) gate.classList.add('hidden')
-        document.body.classList.remove('no-active')
-        const mg = document.getElementById('mobileGate')
-        if (mg) mg.style.display = 'flex'
+        // mobileGate 는 body.no-active CSS 가 자동으로 display:flex 처리하므로 inline style 불필요.
       })
       await sleep(300)
+      // 검증: body.no-active 유지 확인 (legacy hide CSS 활성)
+      const ok = await page.evaluate(() => document.body.classList.contains('no-active'))
+      if (!ok) throw new Error('[qa 2] body.no-active 가 비활성 — hide CSS 미적용 위험')
       await capture(page, '02-order-app-main-legacy.png')
       await page.close()
     }
