@@ -32,3 +32,12 @@ export * from './components/AccountCodeSelect'
 export * from './components/JournalStatusBadge'
 export * from './components/MoneyInput'
 export * from './components/JournalLineRow'
+// legacy-migration DS 사전 작업 (feature/migration-ds-extension) — 6 신규 컴포넌트
+// 출처: migration/analysis/06-frontend-design.md §3.2
+export * from './components/EstimateLineRow'
+export * from './components/BundleExpandToggle'
+export * from './components/ProductSpecList'
+export * from './components/CategoryTabs'
+// SpecAddModal 은 CategoryTabs 의 EstimateCategory 를 재사용 (중복 export 방지)
+export * from './components/SpecAddModal'
+export * from './components/PrintPreview'

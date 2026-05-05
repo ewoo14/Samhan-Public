@@ -1,0 +1,80 @@
+/*
+ * <CategoryTabs> — 5 카테고리 탭 + count badge.
+ */
+
+.tablist {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--line-default, var(--color-border));
+  font-family: var(--font-family-sans);
+  background-color: var(--surface-card, var(--color-bg));
+}
+
+.tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--ink-secondary, var(--color-text-muted));
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* underline overlap */
+  transition:
+    color var(--motion-hover, var(--duration-fast)) ease,
+    border-color var(--motion-hover, var(--duration-fast)) ease;
+}
+
+.tab:hover:not(:disabled):not(.tabActive) {
+  color: var(--ink-primary, var(--color-text));
+}
+
+.tabActive {
+  color: var(--action-brand, var(--color-brand-700));
+  border-bottom-color: var(--action-brand, var(--color-brand-600));
+  font-weight: var(--font-weight-semibold);
+}
+
+.tabDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--line-focus, var(--color-brand-500));
+  outline-offset: -2px;
+}
+
+.tabLabel {
+  white-space: nowrap;
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-full, 9999px);
+  background-color: var(--surface-subtle, var(--color-bg-subtle));
+  color: var(--ink-secondary, var(--color-text-muted));
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabActive .tabBadge {
+  background-color: var(--action-brand-subtle, var(--color-brand-100));
+  color: var(--action-brand, var(--color-brand-700));
+}
+
+.tabBadge[data-empty='true'] {
+  opacity: 0.55;
+}
