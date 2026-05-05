@@ -1,0 +1,33 @@
+{
+  "name": "@samhan/mobile-staff",
+  "version": "0.3.0",
+  "private": true,
+  "description": "SamhanLogis 영업직원용 견적 React Native (Expo SDK 53). v3 = v2 (WebView only) 코드 보존 + 캡처 script 재작성. PM 의 estimate-app v2 dev server (port 5183) 에 직접 진입 (mock HTML overlay 폐기). 사용자 첨부 캡처 (docs/qa/legacy-original/estimate/) 1:1 비교 검증. 인증은 WebView 안 legacy estimate checkUserAuth (Apps Script 1:1) 가 처리. RN wrapper = SafeAreaProvider + StatusBar + WebView + Android BackHandler.",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "doctor": "expo-doctor",
+    "export:web": "expo export --platform web",
+    "capture:v3": "node scripts/capture-v3.cjs"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~5.0.5",
+    "expo": "~53.0.0",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.6",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-web": "^0.20.0",
+    "react-native-webview": "13.13.5"
+  },
+  "devDependencies": {
+    "@types/react": "~19.0.10",
+    "playwright": "^1.59.1",
+    "typescript": "~5.8.3"
+  }
+}
