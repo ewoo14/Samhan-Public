@@ -1,8 +1,8 @@
 {
-  "name": "@samhan/mobile",
-  "version": "0.5.0",
+  "name": "@samhan/mobile-staff",
+  "version": "0.3.0",
   "private": true,
-  "description": "SamhanLogis 거래처 주문서 React Native (Expo SDK 53). v4 (회고 #2 정정) = SafeAreaProvider + StatusBar + 단일 MobileOrderWebViewScreen. 모든 RN native screen + navigation + store + api 폐기 → react-native-webview 가 order-legacy v4 (Node + Express + EJS, port 5185) 직접 임베드. mobile-mode CSS 분기 / 모바일 게이트 / 페이지 메뉴 drawer / 4 카테고리 / 임시저장 / 확정 모두 WebView 안 legacy 가 처리. mobile-staff v3 패턴 1:1 적용.",
+  "description": "SamhanLogis 영업직원용 견적 React Native (Expo SDK 53). v3 = v2 (WebView only) 코드 보존 + 캡처 script 재작성. PM 의 estimate-app v2 dev server (port 5183) 에 직접 진입 (mock HTML overlay 폐기). 사용자 첨부 캡처 (docs/qa/legacy-original/estimate/) 1:1 비교 검증. 인증은 WebView 안 legacy estimate checkUserAuth (Apps Script 1:1) 가 처리. RN wrapper = SafeAreaProvider + StatusBar + WebView + Android BackHandler.",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "export:web": "expo export --platform web",
-    "capture:v4": "node scripts/capture-v4.cjs"
+    "capture:v3": "node scripts/capture-v3.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",

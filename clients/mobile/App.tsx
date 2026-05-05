@@ -1,39 +1,26 @@
 /**
- * SamhanLogis Mobile — 루트 진입.
+ * App.tsx — Mobile v4 entry (회고 #2 정정).
  *
- * - QueryClientProvider (react-query)
- * - SafeAreaProvider (insets)
- * - NavigationContainer (react-navigation v7)
- * - RootNavigator (auth 상태 기반 분기)
+ * 회고 #2 (2026-05-05) — 사용자 명시:
+ *   "주문서는 ... 처음 모바일 게이트를 제외한 나머지는 모두 다름을 확인."
  *
- * 출처: 06-frontend-design.md §2.3 clients/mobile.
+ * 정정 결정 (mobile-staff v3 의 `App.tsx` 패턴 1:1 적용):
+ *   - 이전 v4 = QueryClientProvider + NavigationContainer + RootNavigator (AuthStack + BottomTab + 7+ screen).
+ *   - 신규 v4 = SafeAreaProvider + StatusBar + 단일 MobileOrderWebViewScreen.
+ *
+ * 인증 / RPC / mobile-mode 활성 / 뒤로가기 모두 MobileOrderWebViewScreen + WebView 안 order-legacy v4
+ * 가 처리. RN 측 코드는 wrapper 만.
  */
 
-import { NavigationContainer } from '@react-navigation/native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { RootNavigator } from '@/navigation/RootNavigator';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+import MobileOrderWebViewScreen from './src/screens/MobileOrderWebViewScreen';
 
 export default function App(): JSX.Element {
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <NavigationContainer>
-          <RootNavigator />
-          <StatusBar style="auto" />
-        </NavigationContainer>
-      </QueryClientProvider>
+      <StatusBar style="dark" />
+      <MobileOrderWebViewScreen />
     </SafeAreaProvider>
   );
 }

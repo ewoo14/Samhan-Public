@@ -1,415 +1,270 @@
 /**
- * Playwright capture script — Phase 6 Mobile v4 QA 캡처 6장.
+ * Playwright capture script — Mobile v4 QA 캡처 5장 (회고 #2 정정).
  *
- * v4 = react-native-webview 로 legacy partner-order/index.html 임베드.
- * playwright 로 expo web export (dist) 를 띄워 BizGate native + Bottom Tab + WebView placeholder
- * 진입 흐름을 캡처. WebView 내부 (legacy index.html) 는 hosted/dev 가용 여부에 따라
- * placeholder 렌더 또는 실제 로드.
+ * 회고 #2 (2026-05-05) — 사용자 명시:
+ *   "주문서는 ... 처음 모바일 게이트를 제외한 나머지는 모두 다름을 확인."
  *
- * 산출물 (390x844, iPhone 14 Pro):
- *   docs/qa/migration-fe-mobile-v4/01-mobile-bizgate-native.png
- *   docs/qa/migration-fe-mobile-v4/02-mobile-home-webview-loading.png
- *   docs/qa/migration-fe-mobile-v4/03-mobile-order-form-webview-legacy.png
- *   docs/qa/migration-fe-mobile-v4/04-mobile-cardOrderInfo-webview.png
- *   docs/qa/migration-fe-mobile-v4/05-mobile-bottom-tab-with-webview.png
- *   docs/qa/migration-fe-mobile-v4/06-mobile-bizgate-token-webview-bridge.png
+ * 정정 결정 (mobile-staff v3 의 `capture-v3.cjs` 패턴 1:1 적용):
+ *   - 이전 v4 = `capture-home.cjs` (mock HTML overlay 4장 + expo export bundle 1장 — homeMockHtml /
+ *     webviewMockHtml 함수 가 별도 mock 카드 grid 를 내장).
+ *   - 신규 v4 = mock HTML overlay 일체 폐기. PM 의 order-app v4 preview server (port 4173) 에 직접
+ *     진입, react-native-webview 환경 (iPhone UA + 390x844 viewport) 으로 가장.
  *
- * 실행:
- *   1) npx expo export --platform web   (dist 생성)
- *   2) npx http-server dist -p 4173 -s &  (백그라운드 web server)
- *   3) node scripts/capture-v4.cjs
+ * 정정 #2 (2026-05-05 PR #70 revert 후속):
+ *   - PR #70 으로 legacy-v2 (clients/web/order-legacy 의 Express + EJS 포팅, port 5185) 가 main 에서 제거됨.
+ *   - 본 capture script 는 main 에 존재하는 order-app v4 (Vite + PWA + legacy partner-order/index.html
+ *     9427 라인 그대로 임베드) 의 dev/preview server 를 진입 대상으로 삼음.
+ *   - default port 4173 = vite preview --strictPort (PM 환경에서 가동 중인 포트). vite dev (`npm run dev`)
+ *     사용 시 5180 (vite.config.ts server.port). 환경변수 QA_ORDER_BASE_URL 로 override 가능.
  *
- * 본 worktree 환경에서는 expo web 의 react-native-webview 가 iframe fallback 으로 렌더되며,
- * legacy hosted URL 미가용 시 mock HTML 을 iframe.srcdoc 로 주입하여 캡처 진행.
+ * 사용자 첨부 캡처 1:1 매핑 (docs/qa/legacy-original/partner-order/):
+ *   01-mobile-gate.png       → Screenshot 20.17.37 (모바일 게이트 4 카테고리 큰 진입 버튼)
+ *   02-page-menu.png         → Screenshot 20.17.55 (▼ 페이지 메뉴 drawer — 4 카테고리 보기 + 견적/주문하기 +
+ *                                                   과거 발송내역 + 자동 로그아웃 timer)
+ *   03-home-active.png       → 홈멀티 진입 직후 (4 카테고리 중 home 진입 — 라인 grid + 옵션·필터 sidebar)
+ *   04-page-history.png      → 과거 발송내역 페이지 (#pageHistory 활성)
+ *   05-bizgate.png           → 인증 게이트 (#pageBizGate — biz-box 로그인 form, 미인증 default 화면)
+ *
+ * 산출물 (390x844, iPhone 14 Pro viewport):
+ *   docs/qa/migration-fe-mobile-v4-design-audit/01-mobile-gate.png
+ *   docs/qa/migration-fe-mobile-v4-design-audit/02-page-menu.png
+ *   docs/qa/migration-fe-mobile-v4-design-audit/03-home-active.png
+ *   docs/qa/migration-fe-mobile-v4-design-audit/04-page-history.png
+ *   docs/qa/migration-fe-mobile-v4-design-audit/05-bizgate.png
+ *
+ * 실행 (PM 의 order-app v4 dev/preview server 가 port 4173 에서 가동 중이어야 함):
+ *   cd clients/web/order-app && npm run build && npm run preview -- --port 4173 --strictPort
+ *   # 또는 vite dev (port 5180): cd clients/web/order-app && npm run dev
+ *   # 또는 환경변수 override: QA_ORDER_BASE_URL=http://localhost:5180 node scripts/capture-v4.cjs
+ *   curl http://localhost:4173/         # 200 + "주문서 | 삼한공조시스템" title = 가동 중
+ *   node scripts/capture-v4.cjs         # 캡처 진행
+ *
+ * 미가동 시:
+ *   abort + 사용자 안내. 본 스크립트는 dev server 자동 시작 시도하지 않음 — port lock 충돌 방지.
  */
 
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 const VIEWPORT = { width: 390, height: 844 };
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4173/';
-const OUT_DIR = path.resolve(__dirname, '../../../docs/qa/migration-fe-mobile-v4');
-const DIST_INDEX = path.resolve(__dirname, '../dist/index.html');
+const ORDER_BASE = process.env.QA_ORDER_BASE_URL || 'http://localhost:4173';
+const OUT_DIR = path.resolve(__dirname, '../../../docs/qa/migration-fe-mobile-v4-design-audit');
 
-/**
- * dist/index.html 의 `<script ... defer>` → `<script ... type="module" defer>` 패치.
- *
- * Expo SDK 53 + zustand 4 가 metro 출력 안 `import.meta.env` 를 포함하지만
- * dist 의 index.html 은 type="module" 누락 → browser pageerror.
- * 캡처 환경 한정 일회성 패치 (idempotent).
- */
-function patchDistForESM() {
-  if (!fs.existsSync(DIST_INDEX)) return;
-  let html = fs.readFileSync(DIST_INDEX, 'utf8');
-  if (html.includes('type="module"')) return; // 이미 패치됨
-  html = html.replace(/<script\s+src="([^"]+)"\s+defer><\/script>/g, '<script type="module" src="$1"></script>');
-  fs.writeFileSync(DIST_INDEX, html);
-  console.log('  patched dist/index.html → type="module"');
-}
+// react-native-webview 가 order-legacy 진입 시 보내는 user agent — App.tsx 의
+// `applicationNameForUserAgent = ' SamhanMobileApp/0.5.0 (samhan-mobile-v4-webview)'` 와 동일.
+const MOBILE_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+  'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 ' +
+  'Safari/604.1 SamhanMobileApp/0.5.0 (samhan-mobile-v4-webview)';
 
-const json = (status, body) => ({
-  status,
-  contentType: 'application/json',
-  body: JSON.stringify(body),
-});
-
-/**
- * Mock /api/v1/auth/biz-gate — BizGate native 인증 OK + token 발급.
- * Mock /api/v1/partners/{code}/config — DC config noop.
- */
-async function mockApi(page) {
-  await page.route(/\/api\/v1\/auth\/biz-gate$/, (route) =>
-    route.fulfill(
-      json(200, {
-        status: 'OK',
-        partnerCode: '1234567890',
-        partnerName: '주식회사 샘플상사',
-        token: 'mock-token-v4-bizgate',
-      }),
-    ),
-  );
-
-  await page.route(/\/api\/v1\/partners\/[^/]+\/config$/, (route) =>
-    route.fulfill(
-      json(200, {
-        partnerCode: '1234567890',
-        homeMultiDc: 0.12,
-        commercialMultiDc: 0.08,
-      }),
-    ),
-  );
-
-  // legacy 가 호출하게 될 가짜 endpoint 들 — WebView 에서 fetch 가 실행되지 않더라도 안전망.
-  await page.route(/\/api\/v1\/products(\?.*)?$/, (route) => route.fulfill(json(200, [])));
-  await page.route(/\/api\/v1\/partner-orders(\/snapshots)?(\?.*)?$/, (route) => route.fulfill(json(200, [])));
-
-  // legacy hosted URL 인터셉트 — mock HTML 응답 (실제 hosted 가 미가용일 때).
-  await page.route(/order\.samhan-air\.com\/legacy\/index\.html.*/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'text/html; charset=utf-8',
-      body: legacyMockHtml(route.request().url()),
-    }),
-  );
-  await page.route(/localhost:5180\/legacy\/index\.html.*/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'text/html; charset=utf-8',
-      body: legacyMockHtml(route.request().url()),
-    }),
-  );
-}
-
-/**
- * legacy index.html 의 모바일 mobile-gate / 주문 화면 1:1 모방 mock HTML.
- *
- * 실제 9427 라인 legacy 가 hosted 되었을 때는 iframe 이 그것을 직접 로드하지만,
- * 본 캡처 환경에서는 mock 으로 시각적 렌더 확인.
- */
-function legacyMockHtml(url) {
-  const u = new URL(url);
-  const cat = u.hash.includes('category=') ? u.hash.split('category=')[1] : '';
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>삼한공조시스템 주문서 (legacy)</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;font-family:-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#fff;color:#111}
-  .top{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e5e7eb}
-  .top .title{font-size:18px;font-weight:800}
-  .partner{font-size:12px;color:#6b7280}
-  .mobile-gate{display:${cat ? 'none' : 'flex'};flex-direction:column;gap:14px;padding:20px 16px}
-  .select-big{width:100%;height:130px;border:1px solid #cbd5e1;border-radius:18px;font-weight:800;font-size:34px;background:#fff;color:#111;cursor:pointer}
-  .select-home{background:#EEF2FF;color:#3730A3;border-color:#A5B4FC}
-  .select-single{background:#ECFEFF;color:#0E7490;border-color:#67E8F9}
-  .select-comm{background:#FFF7ED;color:#9A3412;border-color:#FDBA74}
-  .select-old{background:#FAF5FF;color:#6B21A8;border-color:#D8B4FE}
-  .est-table{display:${cat ? 'block' : 'none'};margin:14px 16px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
-  .est-table .row{display:grid;grid-template-columns:1.4fr 0.6fr 0.8fr 0.8fr;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px}
-  .est-table .row.head{background:#f8fafc;font-weight:700;color:#475569}
-  .est-table .row .price{text-align:right;color:#2563eb;font-weight:700}
-  .card-order-info{display:${cat ? 'flex' : 'none'};flex-direction:column;gap:10px;margin:14px 16px;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc}
-  .card-order-info .title{font-size:14px;font-weight:800;color:#0f172a}
-  .card-order-info .field{display:flex;gap:8px;align-items:center;font-size:13px}
-  .card-order-info input{flex:1;height:36px;border:1px solid #cbd5e1;border-radius:6px;padding:0 8px;font-size:13px}
-  .badge{display:inline-block;padding:2px 8px;border-radius:9999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:700}
-</style></head>
-<body>
-<div class="top"><div class="title">삼한공조시스템 주문서</div><div class="partner">주식회사 샘플상사 (1234567890) <span class="badge">legacy</span></div></div>
-<div class="mobile-gate" id="mobileGate">
-  <button class="select-big select-home" id="btnEnterHome">홈멀티</button>
-  <button class="select-big select-single" id="btnEnterSingle">싱글 세트</button>
-  <button class="select-big select-comm" id="btnEnterComm">상업멀티</button>
-  <button class="select-big select-old" id="btnGoOld">구형</button>
-</div>
-<div class="est-table">
-  <div class="row head"><div>모델</div><div>수량</div><div class="price">단가</div><div class="price">합계</div></div>
-  <div class="row"><div>AVXH130VR4DH (홈3in1 13평+9평+9평)</div><div>1</div><div class="price">2,450,000</div><div class="price">2,450,000</div></div>
-  <div class="row"><div>분기관 1/4 (3 way)</div><div>3</div><div class="price">38,000</div><div class="price">114,000</div></div>
-</div>
-<div class="card-order-info" id="cardOrderInfo">
-  <div class="title">주문정보 입력</div>
-  <div class="field"><label>납기희망일</label><input value="2026-05-12"></div>
-  <div class="field"><label>요청사항</label><input value="현장 도착 1시간 전 연락 부탁드립니다"></div>
-</div>
-<script>
-  // shim (RN 가 inject 한 google.script.run) 가 동작하면 success 핸들러 호출.
-  if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({type:'legacy-loaded',payload:{url:location.href}}));
-  }
-  document.querySelectorAll('.select-big').forEach(btn=>btn.addEventListener('click',function(){
-    document.getElementById('mobileGate').style.display='none';
-    document.querySelectorAll('.est-table,.card-order-info').forEach(el=>el.style.display='block');
-  }));
-</script>
-</body></html>`;
-}
-
-/**
- * legacy index.html 모바일 모방 mock — 캡처 환경에서 LegacyOrderWebViewScreen 위 overlay 로 표시.
- *
- * 실제 운영에서는 react-native-webview 가 hosted legacy index.html (9427 라인) 직접 로드.
- * 본 mock 은 web fallback 환경에서 legacy 시각 검증을 위한 placeholder.
- */
-function mobileLegacyMockHtml(category, showLines, showInfo) {
-  const linesHtml = showLines
-    ? `<div class="est-table">
-  <div class="row head"><div>모델</div><div>수량</div><div class="price">단가</div><div class="price">합계</div></div>
-  <div class="row"><div>AVXH130VR4DH (홈3in1 13평+9평+9평)</div><div>1</div><div class="price">2,450,000</div><div class="price">2,450,000</div></div>
-  <div class="row"><div>분기관 1/4 (3 way)</div><div>3</div><div class="price">38,000</div><div class="price">114,000</div></div>
-  <div class="row"><div>실외기 받침대</div><div>1</div><div class="price">85,000</div><div class="price">85,000</div></div>
-</div>`
-    : '';
-  const infoHtml = showInfo
-    ? `<div class="card-order-info">
-  <div class="title">주문정보 입력</div>
-  <div class="field"><label>납기희망일</label><input value="2026-05-12"></div>
-  <div class="field"><label>요청사항</label><input value="현장 도착 1시간 전 연락 부탁드립니다"></div>
-  <div class="field"><label>배송지</label><input value="서울시 강남구 테헤란로 152"></div>
-  <button class="send-btn">발주 전송</button>
-</div>`
-    : '';
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;font-family:-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#fff;color:#111}
-  .legacy-tag{position:fixed;top:6px;right:6px;background:#fbbf24;color:#78350f;font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;z-index:10}
-  .top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e5e7eb;background:#f8fafc}
-  .top .title{font-size:15px;font-weight:800}
-  .partner{font-size:11px;color:#6b7280}
-  .est-table{margin:10px 12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff}
-  .est-table .row{display:grid;grid-template-columns:1.5fr 0.5fr 0.9fr 0.9fr;padding:9px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;align-items:center}
-  .est-table .row:last-child{border-bottom:none}
-  .est-table .row.head{background:#f1f5f9;font-weight:700;color:#475569;font-size:11px}
-  .est-table .row .price{text-align:right;color:#1d4ed8;font-weight:700}
-  .card-order-info{margin:10px 12px;padding:12px;border:1px solid #94a3b8;border-radius:10px;background:#fef9c3}
-  .card-order-info .title{font-size:13px;font-weight:800;color:#854d0e;margin-bottom:8px}
-  .card-order-info .field{display:flex;gap:8px;align-items:center;font-size:12px;margin-bottom:6px}
-  .card-order-info label{width:62px;color:#475569;font-weight:600}
-  .card-order-info input{flex:1;height:30px;border:1px solid #cbd5e1;border-radius:6px;padding:0 8px;font-size:12px;background:#fff}
-  .send-btn{margin-top:10px;width:100%;height:38px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px}
-  .mobile-active-banner{margin:10px 12px;padding:8px 10px;background:#dbeafe;border-left:4px solid #2563eb;border-radius:6px;color:#1e3a8a;font-size:12px}
-</style></head>
-<body>
-<div class="legacy-tag">LEGACY (mock)</div>
-<div class="top"><div class="title">삼한공조시스템 주문서</div><div class="partner">주식회사 샘플상사</div></div>
-<div class="mobile-active-banner">카테고리 <b>${category === 'home' ? '홈멀티' : category}</b> 활성 — legacy <code>enterMobile('${category}')</code> 호출됨</div>
-${linesHtml}
-${infoHtml}
-</body></html>`;
-}
-
-async function ensureDir(dir) {
+function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-async function withPage(browser, fn) {
-  const ctx = await browser.newContext({
-    viewport: VIEWPORT,
-    deviceScaleFactor: 1,
-    userAgent:
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 SamhanMobileApp/0.4.0 (samhan-mobile)',
+/**
+ * dev server alive 확인 — order-app v4 (Vite) 의 root 진입 (200 + 주문서 title) 검증.
+ *
+ * Vite preview 는 SPA fallback 이라 모든 path 가 200 + index.html 이므로 /healthz 로
+ * 가동 검증 불가. root 진입 후 응답 본문에 "주문서 | 삼한공조시스템" title 존재 여부로 판정.
+ */
+function checkDevServer(baseUrl) {
+  return new Promise((resolve) => {
+    const req = http.get(baseUrl + '/', { timeout: 2000 }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        const ok = res.statusCode === 200 && /주문서.*삼한공조/.test(body);
+        resolve(ok);
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
   });
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log('  [pageerror]', e.message));
-  await mockApi(page);
+}
+
+async function launchBrowser() {
   try {
-    await fn(page);
-  } finally {
-    await ctx.close();
+    return await chromium.launch({ channel: 'msedge', headless: true });
+  } catch (_e) {
+    console.log('  [info] msedge channel 미설치 → chromium fallback');
+    return await chromium.launch({ headless: true });
   }
 }
 
 async function snapshot(page, file) {
   const out = path.join(OUT_DIR, file);
   await page.screenshot({ path: out, fullPage: false });
-  console.log('  saved →', out);
+  const sizeKb = (fs.statSync(out).size / 1024).toFixed(1);
+  console.log(`  saved → ${file} (${sizeKb} KB)`);
 }
 
-async function gotoApp(page) {
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+/**
+ * order-app v4 의 인증 게이트 (#pageBizGate) 강제 닫음 — 캡처 02~04 용.
+ * 실 운영에서는 tryLogin (Apps Script 1:1) 가 cookie 로 자동 통과시키지만,
+ * dev 환경에서는 게이트가 잠시 노출될 수 있으므로 캡처 직전 정리.
+ */
+async function dismissBizGate(page) {
+  await page
+    .evaluate(() => {
+      const ids = ['pageBizGate'];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) {
+          el.classList.add('hidden');
+          el.style.display = 'none';
+          el.setAttribute('aria-hidden', 'true');
+        }
+      }
+      // legacy 의 모바일 분기 안전망 — body.no-active 강제 (모바일 게이트 노출).
+      document.body.classList.remove(
+        'orderInfo-active',
+        'home-active',
+        'single-active',
+        'comm-active',
+        'old-active',
+        'history-active',
+      );
+      document.body.classList.add('mobile-mode', 'no-active');
+    })
+    .catch(() => {});
+}
+
+/**
+ * order-app v4 진입 — 모바일 viewport + iPhone UA 가 자동으로 mobile-mode 활성.
+ * (index.html line 4491 / 8435: `document.body.classList.toggle('mobile-mode', isMobile)`).
+ */
+async function gotoOrderApp(page) {
+  console.log(`  [info] navigating ${ORDER_BASE}/`);
+  await page.goto(`${ORDER_BASE}/`, { waitUntil: 'load', timeout: 60000 });
+  // legacy order 의 init / 인증 / mobile-mode toggle 안정화 대기.
   await page.waitForTimeout(2500);
 }
 
-async function performBizGate(page) {
-  // BizGate native — RN web `testID` → `data-testid` 자동 변환.
-  const input = page.locator('[data-testid="biz-no-input"]');
-  if ((await input.count()) > 0) {
-    await input.first().fill('1234567890');
-    await page.waitForTimeout(200);
-    const submit = page.locator('[data-testid="biz-submit"]');
-    if (await submit.count()) {
-      await submit.first().click();
-      await page.waitForTimeout(1500);
-    }
-  }
-}
-
-async function expandViewport(page, h = 1700) {
-  await page.evaluate(() => {
-    document.documentElement.style.overflow = 'visible';
-    document.body.style.overflow = 'visible';
-    document.querySelectorAll('div').forEach((d) => {
-      if (d.style && d.style.overflow === 'scroll') d.style.overflow = 'visible';
-    });
-  });
-  await page.setViewportSize({ width: 390, height: h });
-  await page.waitForTimeout(300);
-}
-
-async function restoreViewport(page) {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(150);
-}
-
-async function clickMenuTab(page, label) {
-  // BottomTab label 은 react-navigation v7 가 button role 으로 노출.
-  const candidates = [
-    page.getByRole('button', { name: label }),
-    page.getByRole('tab', { name: label }),
-    page.getByText(label, { exact: true }),
-  ];
-  for (const loc of candidates) {
-    if ((await loc.count()) > 0) {
-      try {
-        await loc.first().click();
-        await page.waitForTimeout(800);
-        return true;
-      } catch (_e) { /* try next */ }
-    }
-  }
-  return false;
-}
-
-async function launchBrowser() {
-  // v3 capture 와 동일하게 msedge 채널 우선 — chromium 의 import.meta 이슈 회피.
-  try {
-    return await chromium.launch({ channel: 'msedge', headless: true });
-  } catch (_e) {
-    console.log('  msedge 미가용 → chromium fallback');
-    return await chromium.launch({ headless: true });
-  }
-}
-
 (async () => {
-  await ensureDir(OUT_DIR);
-  patchDistForESM();
+  ensureDir(OUT_DIR);
+
+  console.log('Mobile v4 — 실 dev server 캡처 시작 (회고 #2)');
+  console.log(`  order-app v4 base = ${ORDER_BASE}`);
+
+  const alive = await checkDevServer(ORDER_BASE);
+  if (!alive) {
+    console.error(
+      `\n[abort] order-app v4 dev/preview server 미가동: ${ORDER_BASE}/ 진입 실패.\n` +
+        `        먼저 다음 명령으로 dev/preview server 를 시작하세요:\n` +
+        `        cd c:/dev/SamhanLogis/clients/web/order-app && npm install\n` +
+        `        npm run build && npm run preview -- --port 4173 --strictPort\n` +
+        `        (또는 npm run dev — port 5180, 이 경우 QA_ORDER_BASE_URL=http://localhost:5180)`,
+    );
+    process.exit(2);
+  }
+  console.log('  [ok] dev server alive (root 200 + 주문서 title 검증)');
+
   const browser = await launchBrowser();
 
-  // 01 — BizGate native (어두운 layout)
-  await withPage(browser, async (page) => {
-    await gotoApp(page);
-    await snapshot(page, '01-mobile-bizgate-native.png');
-  });
-
-  // 02 — Home (legacy 4 카테고리 + 추가 5 메뉴 native UI)
-  await withPage(browser, async (page) => {
-    await gotoApp(page);
-    await performBizGate(page);
-    // 홈 화면 — RN ScrollView 안 9 메뉴 — 전체 보이게 viewport 확장.
-    await expandViewport(page, 1500);
-    await snapshot(page, '02-mobile-home-webview-loading.png');
-    await restoreViewport(page);
-  });
-
-  // 03 — 주문 탭 진입 → LegacyOrderWebViewScreen (legacy mobile-gate active)
-  // web fallback 환경에서 legacy iframe 직접 렌더 불가 → mock HTML 을 화면 안에 overlay 로 주입.
-  await withPage(browser, async (page) => {
-    await gotoApp(page);
-    await performBizGate(page);
-    const enterHome = page.locator('[data-testid="enter-home"]');
-    if ((await enterHome.count()) > 0) {
-      await enterHome.first().click();
-      await page.waitForTimeout(1500);
-    } else {
-      await clickMenuTab(page, '주문');
-    }
-    // legacy iframe overlay — RN web 환경에서도 legacy 시각 검증.
-    await page.evaluate((mockHtml) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText =
-        'position:fixed;left:0;right:0;top:44px;bottom:64px;width:100%;height:calc(100% - 108px);border:none;z-index:99998;background:#fff;';
-      iframe.srcdoc = mockHtml;
-      document.body.appendChild(iframe);
-    }, mobileLegacyMockHtml('home', /* showLines */ false, /* showInfo */ false));
-    await page.waitForTimeout(600);
-    await snapshot(page, '03-mobile-order-form-webview-legacy.png');
-  });
-
-  // 04 — cardOrderInfo (라인 추가 후 자동 표시) — mock overlay 에 라인 + cardOrderInfo
-  await withPage(browser, async (page) => {
-    await gotoApp(page);
-    await performBizGate(page);
-    const enterHome = page.locator('[data-testid="enter-home"]');
-    if ((await enterHome.count()) > 0) {
-      await enterHome.first().click();
-      await page.waitForTimeout(1500);
-    } else {
-      await clickMenuTab(page, '주문');
-    }
-    await page.evaluate((mockHtml) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText =
-        'position:fixed;left:0;right:0;top:44px;bottom:64px;width:100%;height:calc(100% - 108px);border:none;z-index:99998;background:#fff;';
-      iframe.srcdoc = mockHtml;
-      document.body.appendChild(iframe);
-    }, mobileLegacyMockHtml('home', true, true));
-    await page.waitForTimeout(600);
-    await snapshot(page, '04-mobile-cardOrderInfo-webview.png');
-  });
-
-  // 05 — Bottom Tab (홈/주문/알림/프로필) + 주문 탭 활성
-  await withPage(browser, async (page) => {
-    await gotoApp(page);
-    await performBizGate(page);
-    await clickMenuTab(page, '주문');
-    await snapshot(page, '05-mobile-bottom-tab-with-webview.png');
-  });
-
-  // 06 — BizGate → WebView token 전달 흐름 (디버그 overlay 시각화)
-  await withPage(browser, async (page) => {
-    await gotoApp(page);
-    await performBizGate(page);
-    await clickMenuTab(page, '주문');
-    await page.evaluate(() => {
-      const div = document.createElement('div');
-      div.style.cssText =
-        'position:fixed;left:8px;right:8px;bottom:80px;padding:10px 12px;background:#0f172a;color:#fff;border-radius:10px;font-size:12px;z-index:99999;line-height:1.5;font-family:-apple-system,sans-serif;border:1px solid #1e293b;box-shadow:0 8px 30px rgba(0,0,0,0.4);';
-      div.innerHTML =
-        '<b style="color:#60a5fa">[Bridge]</b> 1. BizGate (RN native) → token 발급<br>' +
-        '<span style="color:#34d399">2. webViewRef.injectJavaScript(setAuthScript)</span><br>' +
-        '<span style="color:#fbbf24">3. WebView 안 __SAMHAN_AUTH__.token 갱신</span><br>' +
-        '<span style="color:#f87171">4. 모든 fetch → Authorization Bearer 자동 첨부</span>';
-      document.body.appendChild(div);
+  try {
+    const ctx = await browser.newContext({
+      viewport: VIEWPORT,
+      deviceScaleFactor: 2,
+      userAgent: MOBILE_USER_AGENT,
+      locale: 'ko-KR',
+      timezoneId: 'Asia/Seoul',
     });
-    await page.waitForTimeout(300);
-    await snapshot(page, '06-mobile-bizgate-token-webview-bridge.png');
-  });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => console.log('  [pageerror]', e.message));
 
-  await browser.close();
-  console.log('\nMobile v4 QA capture 6장 완료 →', OUT_DIR);
+    // -------- 05 — 인증 게이트 (#pageBizGate — 미인증 default) --------
+    // 사용자 첨부에는 없지만 v4 진입 흐름 첫 화면 — biz-box 어두운 카드 layout.
+    await gotoOrderApp(page);
+    // 게이트 우선 캡처 (dismiss 전).
+    await snapshot(page, '05-bizgate.png');
+
+    // -------- 01 — 모바일 게이트 4 카테고리 (홈멀티/싱글세트/상업멀티/구형) --------
+    // 사용자 첨부: Screenshot 20.17.37.JPG (홈멀티/싱글 세트/상업멀티/구형 4 큰 진입 버튼).
+    await dismissBizGate(page);
+    await page.waitForTimeout(600);
+    await snapshot(page, '01-mobile-gate.png');
+
+    // -------- 03 — 홈멀티 진입 직후 (라인 grid + 옵션·필터 sidebar) --------
+    // (캡처 순서 03 → 02 — drawer 가 home-active 상태에서만 사용자 첨부와 일치하므로 03 먼저 진입.)
+    // legacy `el('#btnEnterHome').click()` → enterMobile('home') → home-active body class.
+    await page.evaluate(() => {
+      const btn = document.getElementById('btnEnterHome') || document.getElementById('btnGoHome');
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(1200);
+    // 안전망 — home-active body class 강제.
+    await page.evaluate(() => {
+      document.body.classList.remove(
+        'no-active',
+        'orderInfo-active',
+        'single-active',
+        'comm-active',
+        'old-active',
+        'history-active',
+      );
+      document.body.classList.add('mobile-mode', 'home-active');
+    });
+    await page.waitForTimeout(400);
+    await snapshot(page, '03-home-active.png');
+
+    // -------- 02 — ▼ 페이지 메뉴 drawer (싱글세트 보기 + 상업멀티 보기 + 구형 보기 + 견적/주문하기 +
+    //                                       과거 발송내역 + 자동 로그아웃 timer + 닫기 ▲) --------
+    // 사용자 첨부: Screenshot 20.17.55.JPG (홈멀티 활성 상태에서 페이지 메뉴 drawer 활성).
+    // legacy 의 #handleTop click → toggleDrawer('top') → #drawerTop.active 가 위에서 슬라이드.
+    await page.evaluate(() => {
+      // toggleDrawer('top') 직접 호출 — handleTop click 보다 결정적.
+      if (typeof toggleDrawer === 'function') {
+        toggleDrawer('top');
+      }
+      const drawer = document.getElementById('drawerTop');
+      if (drawer) {
+        drawer.classList.add('active');
+        // 안전망 — relocateUI 가 #mobileTopContent 에 .top-actions 를 동적 inject 하므로 visibility 보장.
+        drawer.style.zIndex = '99999';
+      }
+    });
+    await page.waitForTimeout(900);
+    await snapshot(page, '02-page-menu.png');
+
+    // -------- 04 — 과거 발송내역 (#pageHistory 활성) --------
+    // 02 의 drawer 닫고 #btnHistory click → history-active body class.
+    await page.evaluate(() => {
+      const drawer = document.getElementById('drawerTop');
+      if (drawer) drawer.classList.remove('active');
+      const btn = document.getElementById('btnHistory');
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(1000);
+    // 안전망 — history-active body class 강제.
+    await page.evaluate(() => {
+      document.body.classList.remove(
+        'no-active',
+        'orderInfo-active',
+        'home-active',
+        'single-active',
+        'comm-active',
+        'old-active',
+      );
+      document.body.classList.add('mobile-mode', 'history-active');
+      const ph = document.getElementById('pageHistory');
+      if (ph) {
+        ph.classList.remove('hidden');
+        ph.style.display = 'flex';
+      }
+    });
+    await page.waitForTimeout(400);
+    await snapshot(page, '04-page-history.png');
+
+    await ctx.close();
+    console.log('\nMobile v4 QA capture 5장 완료 (회고 #2) →', OUT_DIR);
+  } finally {
+    await browser.close();
+  }
 })().catch((err) => {
   console.error(err);
   process.exit(1);
