@@ -13,22 +13,31 @@
  * legacy 출처 (`migration/source/scripts/partner-order/index.html`):
  *   - line 119  : `.mobile-gate { display:flex; flex-direction:column; gap:16px; margin:20px 0 12px }`
  *   - line 121  : `.select-big { width:100%; height:150px; ... }`
+ *   - line 195  : `body.mobile-mode .top { display:none !important }` → titleBar 미표시 (WebView 안 표시)
  *   - line 685~689 : `<div class="mobile-gate"><button class="select-big select-home">홈멀티</button>...</div>`
  *   - JS line 4467~4469 : `el('#btnEnterHome').addEventListener('click', ()=>enterMobile('home'))`
  *
- * UUID 미노출 — partnerName + partnerCode 만 노출.
+ * [PR #66 회고 — 통합 fix 2026-05-05]
+ *   - P0 #1 : 4 카테고리 textColor 통일 (#111827, legacy `--c-strong` 일관) — array entry 제거,
+ *             selectBigText stylesheet 1곳에서만 정의.
+ *   - P0 #2 : DC notice/error View 완전 제거 (dcConfigStore 의 error 는 console.warn 만).
+ *   - P0 #3 : 상단 titleBar 삭제 (legacy `body.mobile-mode .top { display:none !important }` 일관).
+ *             거래처명/사업자번호는 WebView 안 legacy 가 표시.
+ *   - P0 #4 : mobile-gate paddingBottom 제거 (legacy `margin: 20px 0 12px` 일관) — legacyMobile.ts.
+ *   - P1 : 추가 메뉴 5개 (extraMenuSection) 보존 (정정 #17 의도).
+ *
+ * UUID 미노출 — partnerName/partnerCode 는 본 화면에서 표시하지 않음 (WebView 안 legacy 표시).
  */
 
+import { useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '@/stores/authStore';
 import { useDcConfigStore } from '@/stores/dcConfigStore';
 import { legacyMobileGateStyles, legacyVars } from '@/styles/legacyMobile';
-import { colors, fontSize, fontWeight } from '@/tokens/tokens';
 import type { LegacyCategory, OrderStackParamList, RootTabParamList } from '@/navigation/types';
 
 type Nav = CompositeNavigationProp<
@@ -36,25 +45,30 @@ type Nav = CompositeNavigationProp<
   NativeStackNavigationProp<OrderStackParamList>
 >;
 
-/** legacy 4 카테고리 button label (index.html line 686~689) */
+/** legacy 4 카테고리 button label (index.html line 686~689) — textColor 는 styles.selectBigText 에서 일괄. */
 const CATEGORIES: Array<{
   key: 'home' | 'single' | 'comm' | 'old';
   label: string;
   styleKey: 'selectHome' | 'selectSingle' | 'selectComm' | 'selectOld';
-  textColor: string;
 }> = [
-  { key: 'home', label: '홈멀티', styleKey: 'selectHome', textColor: '#3730A3' },
-  { key: 'single', label: '싱글 세트', styleKey: 'selectSingle', textColor: '#0E7490' },
-  { key: 'comm', label: '상업멀티', styleKey: 'selectComm', textColor: '#9A3412' },
-  { key: 'old', label: '구형', styleKey: 'selectOld', textColor: '#6B21A8' },
+  { key: 'home', label: '홈멀티', styleKey: 'selectHome' },
+  { key: 'single', label: '싱글 세트', styleKey: 'selectSingle' },
+  { key: 'comm', label: '상업멀티', styleKey: 'selectComm' },
+  { key: 'old', label: '구형', styleKey: 'selectOld' },
 ];
 
 export function HomeScreen(): JSX.Element {
   const nav = useNavigation<Nav>();
-  const partnerName = useAuthStore((s) => s.partnerName);
-  const partnerCode = useAuthStore((s) => s.partnerCode);
-  const dcConfig = useDcConfigStore((s) => s.config);
+  // PM 결정 U3 — dcConfigStore 는 backend 적용 그대로 유지, RN 시각만 제거.
+  // error 는 사용자 노출 X, console.warn 으로만 통지.
   const dcError = useDcConfigStore((s) => s.error);
+
+  useEffect(() => {
+    if (dcError) {
+      // eslint-disable-next-line no-console
+      console.warn('[HomeScreen] dcConfig load error (silent):', dcError);
+    }
+  }, [dcError]);
 
   /** legacy `enterMobile(which)` → WebView 안에서 카테고리 사전 진입. */
   const handleEnter = (key: LegacyCategory): void => {
@@ -69,24 +83,6 @@ export function HomeScreen(): JSX.Element {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* legacy `.top .title` (line 1006) — 주문서 타이틀 */}
-        <View style={styles.titleBar}>
-          <Text style={styles.titleText}>주문서</Text>
-          {partnerCode ? (
-            <Text style={styles.partnerCode} testID="partner-code">
-              {partnerName ?? '거래처'} ({partnerCode})
-            </Text>
-          ) : null}
-        </View>
-
-        {/* [정정 PR #60 회고] DC 안내 표시 삭제 — 거래처 입장에서 부적절 (사용자 명시).
-            DC 자동 적용 자체는 backend (calcDcPrice) 에서 그대로 동작. 거래처는 최종가만 표시. */}
-        {dcError ? (
-          <View style={styles.dcErrorBox}>
-            <Text style={styles.dcErrorText}>{dcError}</Text>
-          </View>
-        ) : null}
-
         {/* legacy `.mobile-gate` 4 카테고리 큰 진입 버튼 (line 685~689) */}
         <View style={legacyMobileGateStyles.mobileGate} testID="mobile-gate">
           {CATEGORIES.map((cat) => (
@@ -100,12 +96,12 @@ export function HomeScreen(): JSX.Element {
               onPress={() => handleEnter(cat.key)}
               testID={`enter-${cat.key}`}
             >
-              <Text style={[legacyMobileGateStyles.selectBigText, { color: cat.textColor }]}>{cat.label}</Text>
+              <Text style={legacyMobileGateStyles.selectBigText}>{cat.label}</Text>
             </Pressable>
           ))}
         </View>
 
-        {/* 정정 #17 — legacy partner-order 모바일 분기 추가 5 메뉴 */}
+        {/* 정정 #17 — legacy partner-order 모바일 분기 추가 5 메뉴 (PM 결정 U1: 보존) */}
         <View style={styles.extraMenuSection}>
           <Text style={styles.extraMenuHeader}>추가 메뉴</Text>
 
@@ -162,48 +158,6 @@ export function HomeScreen(): JSX.Element {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: legacyVars.cBg },
   scroll: { paddingBottom: 30 },
-  titleBar: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  titleText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: legacyVars.cStrong,
-  },
-  partnerCode: {
-    marginTop: 4,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-  },
-  dcNotice: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  dcNoticeText: {
-    fontSize: fontSize.sm,
-    color: '#9A3412',
-    fontWeight: fontWeight.semibold,
-    textAlign: 'center',
-  },
-  dcErrorBox: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  dcErrorText: { fontSize: fontSize.sm, color: '#991B1B', textAlign: 'center' },
   pressed: { opacity: 0.85 },
 
   extraMenuSection: {
