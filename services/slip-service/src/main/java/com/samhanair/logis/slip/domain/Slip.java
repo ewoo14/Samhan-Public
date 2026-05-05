@@ -754,6 +754,62 @@ public class Slip extends BaseEntity {
         return this.driverSignedAt != null;
     }
 
+    // ---------- Phase 6 M5 (slip-service-integration) — 발행 출처 + idempotency ----------
+
+    /**
+     * 전표 발행 출처 — Phase 6 M5 신규. {@link SlipSourceType} 참고.
+     * 기본값 {@link SlipSourceType#MANUAL} (V7 migration 의 DB DEFAULT).
+     * estimate-app / partner-order-service 가 호출한 신규 endpoint 만 이 값을 변경한다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", length = 32)
+    private SlipSourceType sourceType;
+
+    /**
+     * 출처 비즈니스 식별자 — Phase 6 M5 신규.
+     * <ul>
+     *   <li>ESTIMATE → estimateNumber (legacy 견적 번호 문자열)</li>
+     *   <li>PARTNER_ORDER → partnerOrderId (UUID 문자열)</li>
+     *   <li>MIGRATED_ECOUNT → 원본 ecount 전표 번호</li>
+     *   <li>MANUAL → null</li>
+     * </ul>
+     * {@code (source_type, source_id)} 복합 인덱스로 idempotency 보조 조회 ({@code GET /by-source}).
+     */
+    @Column(name = "source_id", length = 64)
+    private String sourceId;
+
+    /**
+     * 호출자 발급 idempotency 키 — Phase 6 M5 신규.
+     * 같은 키 + 같은 본문 → 200 (기존 slipNo). 같은 키 + 다른 본문 → 409 Conflict.
+     * partial UNIQUE INDEX ({@code WHERE idempotency_key IS NOT NULL AND is_deleted=FALSE})
+     * 가 동시 충돌을 DB 레벨에서 차단 (3중 격리의 1단계).
+     */
+    @Column(name = "idempotency_key", length = 128)
+    private String idempotencyKey;
+
+    /**
+     * 발행 출처 메타데이터 일괄 설정 — SlipPublishService 가 신규 슬립 생성 후 호출.
+     * 본 메서드는 1회성 setter (재호출 시 IllegalStateException) — 출처는 발행 시점에 확정.
+     *
+     * @param sourceType 출처 유형 (필수)
+     * @param sourceId 비즈니스 식별자 (estimate/order 인 경우 필수, MANUAL 이면 null 허용)
+     * @param idempotencyKey 호출자 발급 키 (선택, null 이면 idempotency 보호 없이 일반 슬립으로 저장)
+     * @throws IllegalStateException 이미 sourceType 이 설정되어 있고 MANUAL 이 아닐 때
+     * @throws IllegalArgumentException sourceType 이 null 일 때
+     */
+    public void assignPublishSource(SlipSourceType sourceType, String sourceId, String idempotencyKey) {
+        if (sourceType == null) {
+            throw new IllegalArgumentException("sourceType 은 필수입니다");
+        }
+        if (this.sourceType != null && this.sourceType != SlipSourceType.MANUAL) {
+            throw new IllegalStateException(
+                    "이미 발행 출처가 설정된 슬립입니다: " + this.sourceType);
+        }
+        this.sourceType = sourceType;
+        this.sourceId = sourceId;
+        this.idempotencyKey = idempotencyKey;
+    }
+
     private static String generateShareToken() {
         byte[] bytes = new byte[SIGNATURE_TOKEN_BYTE_LENGTH];
         SIGNATURE_RNG.nextBytes(bytes);

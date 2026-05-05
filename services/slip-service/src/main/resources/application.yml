@@ -40,6 +40,14 @@ app:
   # Slice B — 공개 모바일 페이지 base URL (SMS 본문 토큰 링크용)
   public:
     base-url: ${PUBLIC_BASE_URL:https://sign.samhan-air.com}
+  # Phase 6 M5 (slip-service-integration) — legacy ecount warehouseCode → 내부 warehouse UUID 매핑.
+  # 본 dev 기본값은 IT/local 용 placeholder UUID (실 운영은 환경 변수로 교체).
+  publish:
+    warehouse-code-map:
+      "[00003]": ${WAREHOUSE_UUID_HQ:11111111-1111-1111-1111-111111111111}
+      "[2]":     ${WAREHOUSE_UUID_HUBAL:22222222-2222-2222-2222-222222222222}
+      "[14]":    ${WAREHOUSE_UUID_ANSEONG:33333333-3333-3333-3333-333333333333}
+      "[1]":     ${WAREHOUSE_UUID_CHANGWON:44444444-4444-4444-4444-444444444444}
 
 management:
   endpoints:
