@@ -79,15 +79,8 @@ export function HomeScreen(): JSX.Element {
           ) : null}
         </View>
 
-        {/* DC 적용 알림 (정정 #12) */}
-        {dcConfig && (dcConfig.homeMultiDc || dcConfig.commercialMultiDc) ? (
-          <View style={styles.dcNotice} testID="dc-notice">
-            <Text style={styles.dcNoticeText}>
-              거래처 DC 자동 적용 — 홈멀티 {((dcConfig.homeMultiDc ?? 0) * 100).toFixed(0)}% / 상업멀티{' '}
-              {((dcConfig.commercialMultiDc ?? 0) * 100).toFixed(0)}%
-            </Text>
-          </View>
-        ) : null}
+        {/* [정정 PR #60 회고] DC 안내 표시 삭제 — 거래처 입장에서 부적절 (사용자 명시).
+            DC 자동 적용 자체는 backend (calcDcPrice) 에서 그대로 동작. 거래처는 최종가만 표시. */}
         {dcError ? (
           <View style={styles.dcErrorBox}>
             <Text style={styles.dcErrorText}>{dcError}</Text>
