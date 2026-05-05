@@ -143,12 +143,21 @@ public class ProductSheetSyncService {
     /**
      * tab 1개 sync — read sheet → upsert 매트릭스. 별도 트랜잭션.
      * row hash 비교: 신규 / 변경 / 동일 / 시트에서 사라진 row 4-way 분기.
+     *
+     * <p><b>render mode</b> (개발책임자 정정 2026-05-05 — legacy 1:1 보존):
+     * legacy estimate Code.js + partner-order Code.js 의 모든 6 tab read 가
+     * {@code getDisplayValues()} 사용 (lines 384/507/968/1040/1122/1199 + partner-order 동등).
+     * 가격 컬럼이 천단위 콤마/통화 포맷 ({@code "1,500,000"}) 으로 표시되며,
+     * legacy {@code parseKRNumber_()} 가 콤마 제거 후 파싱 → 본 service 의
+     * {@link #parseDecimal(String)} 도 동일하게 콤마/₩ 제거. 따라서
+     * {@link GoogleSheetsClient#readSheetDisplay} ({@code FORMATTED_VALUE}) 사용.
      */
     @Transactional
     public TabSyncResult syncTab(SheetTabMapping mapping, Category defaultCategory) throws Exception {
         TabSyncResult result = new TabSyncResult();
         String range = mapping.tabName + "!A1:Z";
-        List<List<Object>> rows = sheetsClient.readSheet(sheetId, range);
+        // legacy getDisplayValues() 1:1 — formatted value (천단위 콤마/통화 포함).
+        List<List<Object>> rows = sheetsClient.readSheetDisplay(sheetId, range);
         if (rows == null || rows.isEmpty()) {
             log.warn("[ProductSheetSync] tab '{}' 빈 시트 — skip", mapping.tabName);
             return result;

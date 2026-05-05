@@ -34,16 +34,33 @@ import org.springframework.stereotype.Component;
  * <p><b>인증</b>: Google Service Account (JWT). JSON key 경로는 환경변수
  * {@code GOOGLE_SERVICE_ACCOUNT_KEY} (default {@code /etc/samhan/sa-key.json}).
  * 시크릿은 .env / SSH 직접 배포; 본 코드 path placeholder 만 보유.
+ * (개발책임자 정정 2026-05-05: "구글 서비스 계정을 통해 데이터를 불러올것" — SA 인증 변경 X.)
  *
  * <p><b>캐시</b>: Caffeine 5분 TTL — sync scheduler 1시간 주기 + admin trigger 동시
- * 호출 시 시트 API quota (per-minute 60 read) 가드. cache key = {@code sheetId|range}.
+ * 호출 시 시트 API quota (per-minute 60 read) 가드. cache key = {@code sheetId|range|renderOption}
+ * (3 mode 별 별도 캐시 — UNFORMATTED / FORMATTED / FORMULA).
  *
  * <p><b>endpoint override</b>: {@code google.sheets.endpoint-override} (테스트 시 WireMock URL).
  * 비어있으면 default {@code https://sheets.googleapis.com}.
  *
- * <p>본 client 는 {@link RestClient} 가 아닌 official google-api-client SDK 사용 —
+ * <p>본 client 는 {@link com.google.api.services.sheets.v4.Sheets} SDK 사용 —
  * Service Account JWT exchange / retry / token refresh 가 SDK 에 내장. WireMock IT 는
  * SDK 의 {@code rootUrl} override 로 격리.
+ *
+ * <p><b>legacy Apps Script 1:1 매핑</b> (개발책임자 정정 2026-05-05):
+ * <table border="1">
+ *   <caption>Apps Script ↔ Sheets v4 API render mode 동등</caption>
+ *   <tr><th>legacy SpreadsheetApp</th><th>본 client method</th><th>setValueRenderOption</th></tr>
+ *   <tr><td>{@code Range.getValues()}</td><td>{@link #readSheet(String, String)}</td><td>{@code UNFORMATTED_VALUE} (default)</td></tr>
+ *   <tr><td>{@code Range.getDisplayValues()}</td><td>{@link #readSheetDisplay(String, String)}</td><td>{@code FORMATTED_VALUE}</td></tr>
+ *   <tr><td>{@code Range.getFormulas()}</td><td>{@link #readSheetFormulas(String, String)}</td><td>{@code FORMULA}</td></tr>
+ * </table>
+ *
+ * <p>legacy 의 가격 컬럼은 통화/천단위 포맷 (예: {@code "1,500,000"}) 으로 표시되며,
+ * Apps Script 측 코드는 {@code getDisplayValues()} 로 읽어 {@code parseKRNumber_()} 로 파싱하므로
+ * 1:1 보존을 위해 가격 의존 시트는 {@link #readSheetDisplay(String, String)} 사용.
+ * 시트의 cell formula 자체 (예: {@code =$D$7*L2}) 가 비즈니스 분기를 결정하는 경우
+ * (싱글 세트의 {@code matKey}, 홈멀티의 {@code useK2}) 는 {@link #readSheetFormulas(String, String)} 사용.
  */
 @Component
 public class GoogleSheetsClient {
@@ -51,6 +68,25 @@ public class GoogleSheetsClient {
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsClient.class);
 
     private static final String APPLICATION_NAME = "samhanair-product-service";
+
+    /**
+     * 시트 cell value render mode — legacy SpreadsheetApp Range API 의 3 method 와 1:1 대응.
+     *
+     * <p>Sheets v4 API 의 {@code spreadsheets.values.get?valueRenderOption=...} query parameter 로 매핑:
+     * <ul>
+     *     <li>{@link #UNFORMATTED} → {@code UNFORMATTED_VALUE} (legacy {@code getValues()})</li>
+     *     <li>{@link #FORMATTED} → {@code FORMATTED_VALUE} (legacy {@code getDisplayValues()})</li>
+     *     <li>{@link #FORMULA} → {@code FORMULA} (legacy {@code getFormulas()})</li>
+     * </ul>
+     */
+    public enum ValueRenderMode {
+        /** legacy {@code Range.getValues()} 동등 — raw cell value (number/string), 포맷 미적용. */
+        UNFORMATTED,
+        /** legacy {@code Range.getDisplayValues()} 동등 — 사용자 표시 그대로 (천단위 콤마/통화 포함). */
+        FORMATTED,
+        /** legacy {@code Range.getFormulas()} 동등 — formula 문자열 자체 (없으면 빈 문자열). */
+        FORMULA
+    }
 
     @Value("${google.sheets.service-account-key-path:/etc/samhan/sa-key.json}")
     private String serviceAccountKeyPath;
@@ -61,7 +97,7 @@ public class GoogleSheetsClient {
     @Value("${google.sheets.cache-ttl-minutes:5}")
     private long cacheTtlMinutes;
 
-    /** 캐시: key = "{sheetId}|{range}", value = ValueRange (cell 값 2D). */
+    /** 캐시: key = "{sheetId}|{range}|{renderOption}", value = ValueRange. 3 mode 별 별도 캐시. */
     private Cache<String, ValueRange> cache;
 
     private Sheets sheets;
@@ -76,17 +112,36 @@ public class GoogleSheetsClient {
     }
 
     /**
-     * 시트 단일 range 의 값 2D 반환 — Caffeine 캐시 5분 TTL.
+     * 시트 단일 range 의 값 2D 반환 — render mode 별 (legacy SpreadsheetApp 의
+     * {@code getValues / getDisplayValues / getFormulas} 동등). Caffeine 캐시 5분 TTL.
+     *
+     * <p>Sheets v4 API 의 {@code setValueRenderOption(...)} 으로 매핑:
+     * <ul>
+     *     <li>{@link ValueRenderMode#UNFORMATTED} → {@code UNFORMATTED_VALUE}</li>
+     *     <li>{@link ValueRenderMode#FORMATTED} → {@code FORMATTED_VALUE}</li>
+     *     <li>{@link ValueRenderMode#FORMULA} → {@code FORMULA}</li>
+     * </ul>
      *
      * @param sheetId 구글 시트 ID (예: legacy {@code 1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ})
      * @param range A1 표기 (예: {@code 홈멀티!A1:Z}), 시트명 + 범위
+     * @param mode {@link ValueRenderMode#UNFORMATTED} (default, legacy {@code getValues}) /
+     *             {@link ValueRenderMode#FORMATTED} (legacy {@code getDisplayValues}) /
+     *             {@link ValueRenderMode#FORMULA} (legacy {@code getFormulas})
      * @return cell value 2D ({@link List}<{@link List}<{@link Object}>>). 빈 시트 = empty list.
      * @throws IOException 시트 read 실패 (인증 / network / quota)
      * @throws GeneralSecurityException SDK transport 초기화 실패
      */
-    public List<List<Object>> readSheet(String sheetId, String range)
+    public List<List<Object>> readSheet(String sheetId, String range, ValueRenderMode mode)
             throws IOException, GeneralSecurityException {
-        String cacheKey = sheetId + "|" + range;
+        if (mode == null) {
+            mode = ValueRenderMode.UNFORMATTED;
+        }
+        String renderOption = switch (mode) {
+            case UNFORMATTED -> "UNFORMATTED_VALUE";
+            case FORMATTED -> "FORMATTED_VALUE";
+            case FORMULA -> "FORMULA";
+        };
+        String cacheKey = sheetId + "|" + range + "|" + renderOption;
         ValueRange cached = cache.getIfPresent(cacheKey);
         if (cached != null) {
             log.debug("[GoogleSheetsClient] cache hit: {}", cacheKey);
@@ -94,14 +149,71 @@ public class GoogleSheetsClient {
         }
 
         Sheets svc = sheetsService();
-        ValueRange resp = svc.spreadsheets().values().get(sheetId, range).execute();
+        ValueRange resp = svc.spreadsheets().values().get(sheetId, range)
+                .setValueRenderOption(renderOption)
+                .execute();
         cache.put(cacheKey, resp);
-        log.info("[GoogleSheetsClient] sheet read: id={}, range={}, rows={}",
-                sheetId, range, resp.getValues() == null ? 0 : resp.getValues().size());
+        log.info("[GoogleSheetsClient] sheet read: id={}, range={}, render={}, rows={}",
+                sheetId, range, renderOption, resp.getValues() == null ? 0 : resp.getValues().size());
         return resp.getValues() == null ? Collections.emptyList() : resp.getValues();
     }
 
-    /** 캐시 강제 무효화 — admin trigger 시 호출 (옵션 C-3 결합). */
+    /**
+     * legacy {@code Range.getValues()} 호환 — 기본 {@link ValueRenderMode#UNFORMATTED}.
+     *
+     * <p>시그니처 호환 보존 (PR #68 IT mock 영향 X). 신규 호출은 가능한
+     * {@link #readSheet(String, String, ValueRenderMode)} 를 명시 사용 권장.
+     *
+     * @param sheetId 구글 시트 ID
+     * @param range A1 표기
+     * @return cell value 2D (raw)
+     * @throws IOException 시트 read 실패
+     * @throws GeneralSecurityException SDK transport 초기화 실패
+     */
+    public List<List<Object>> readSheet(String sheetId, String range)
+            throws IOException, GeneralSecurityException {
+        return readSheet(sheetId, range, ValueRenderMode.UNFORMATTED);
+    }
+
+    /**
+     * legacy {@code Range.getDisplayValues()} 호환 — {@link ValueRenderMode#FORMATTED}.
+     *
+     * <p>천단위 콤마/통화/날짜 포맷 등 사용자 표시 그대로의 문자열 cell 반환.
+     * legacy estimate Code.js:507 / partner-order Code.js:736 (싱글 세트 read),
+     * estimate Code.js:384 / partner-order Code.js:615 (홈멀티 read) 와 동등.
+     *
+     * @param sheetId 구글 시트 ID
+     * @param range A1 표기
+     * @return cell display value 2D (formatted string)
+     * @throws IOException 시트 read 실패
+     * @throws GeneralSecurityException SDK transport 초기화 실패
+     */
+    public List<List<Object>> readSheetDisplay(String sheetId, String range)
+            throws IOException, GeneralSecurityException {
+        return readSheet(sheetId, range, ValueRenderMode.FORMATTED);
+    }
+
+    /**
+     * legacy {@code Range.getFormulas()} 호환 — {@link ValueRenderMode#FORMULA}.
+     *
+     * <p>cell 의 formula 문자열 자체 (예: {@code "=$D$7*L2"}) 반환. formula 가 없는
+     * cell 은 빈 문자열. legacy estimate Code.js:508 / partner-order Code.js:737
+     * (싱글 세트 {@code matKey} 분기 — {@code $D$4 / $D$7 / $D$8} 검출),
+     * estimate Code.js:385 / partner-order Code.js:616 (홈멀티 {@code useK2} 분기 —
+     * {@code $L$2} 검출) 와 동등.
+     *
+     * @param sheetId 구글 시트 ID
+     * @param range A1 표기
+     * @return cell formula 2D (빈 문자열 = formula 없음)
+     * @throws IOException 시트 read 실패
+     * @throws GeneralSecurityException SDK transport 초기화 실패
+     */
+    public List<List<Object>> readSheetFormulas(String sheetId, String range)
+            throws IOException, GeneralSecurityException {
+        return readSheet(sheetId, range, ValueRenderMode.FORMULA);
+    }
+
+    /** 캐시 강제 무효화 — admin trigger 시 호출 (옵션 C-3 결합). 3 mode 모두 invalidate. */
     public void invalidateCache() {
         if (cache != null) {
             cache.invalidateAll();
