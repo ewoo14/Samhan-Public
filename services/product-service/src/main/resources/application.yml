@@ -30,8 +30,22 @@ app:
   security:
     internal:
       token: ${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}
+  scheduling:
+    # 옵션 C-2 (개발책임자 결정 2026-05-05): 시트 → DB cron 1시간 주기 sync
+    enabled: ${PRODUCT_SYNC_SCHEDULING_ENABLED:true}
+    product-sync-cron: ${PRODUCT_SYNC_CRON:0 0 * * * *}
+
+# Google Sheets 연동 (옵션 C-2 sync source-of-truth)
+# 시크릿: GOOGLE_SERVICE_ACCOUNT_KEY 환경변수 → JSON path. 본 코드 placeholder 만 보유 (.env 별도)
+google:
+  sheets:
+    sheet-id: ${GOOGLE_SHEETS_SHEET_ID:1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ}
+    service-account-key-path: ${GOOGLE_SERVICE_ACCOUNT_KEY:/etc/samhan/sa-key.json}
+    cache-ttl-minutes: ${GOOGLE_SHEETS_CACHE_TTL_MIN:5}
+    endpoint-override: ${GOOGLE_SHEETS_ENDPOINT_OVERRIDE:}
 
 # Phase 6 M1a 시드 스크립트 — dry-run mode 우선 (G13)
+# (legacy 보존: cron 가용 전 fallback. ProductSheetSyncService 가 1회 sync 후 시트 데이터로 덮어쓰기)
 seed:
   dry-run: ${SEED_DRY_RUN_MODE:true}
   report-dir: ${SEED_REPORT_DIR:docs/dev-reports}
@@ -70,3 +84,8 @@ eureka:
     enabled: false
     register-with-eureka: false
     fetch-registry: false
+
+# local profile 에서는 시트 sync 비활성 (Service Account JSON 부재 가능)
+app:
+  scheduling:
+    enabled: false
