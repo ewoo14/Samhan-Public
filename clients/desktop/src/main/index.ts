@@ -12,7 +12,7 @@
  * - `nodeIntegration: false` — 렌더러 프로세스에서 require/process 차단
  * - preload 스크립트만 IPC 게이트웨이 역할 수행
  */
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { registerAuthIpcHandlers } from './ipc/auth-token.js'
@@ -76,6 +76,13 @@ app.whenReady().then(() => {
   // [Phase 6 v4] legacy estimate webview asset URL 조회 IPC.
   // renderer 의 EstimateLegacyWebviewPage 가 src 속성에 사용한다.
   ipcMain.handle('legacy:get-estimate-url', () => getLegacyEstimateUrl())
+  // [Phase 6 v4 정정 #22] 종합견적서 외부 web app (clients/web/estimate-app) 진입.
+  ipcMain.handle('legacy:open-external', async (_event, url: string) => {
+    if (typeof url !== 'string' || !url.startsWith('https://')) {
+      throw new Error('Invalid URL — https:// 만 허용')
+    }
+    await shell.openExternal(url)
+  })
   createMainWindow()
 
   // dev-only — CAPTURE_MODE=1 일 때 5 화면 자동 navigate + capturePage 후 종료.

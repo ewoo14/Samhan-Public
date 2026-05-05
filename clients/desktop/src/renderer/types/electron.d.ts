@@ -54,6 +54,7 @@ declare global {
      */
     samhanLegacy: {
       getEstimateUrl: () => Promise<string>
+      openExternal: (url: string) => Promise<void>
     }
   }
 }

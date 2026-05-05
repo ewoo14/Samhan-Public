@@ -61,14 +61,17 @@ export function SalesEstimateListPage() {
             <span className={styles['badge']}>전체 {query.data?.totalElements ?? 0}건</span>
           </div>
           <div className={styles['topActions']}>
-            {/* [Phase 6 v4] legacy estimate index.html (18614 라인) 을 webview 로 그대로
-                임베드한 화면으로 진입. shim 이 google.script.run → SamhanLogis MS 라우팅. */}
+            {/* [Phase 6 v4 정정 #22] 종합견적서 = 별도 web app (clients/web/estimate-app).
+                Desktop 임베드 시 의도와 다른 양식으로 변경 → external link 로 estimate-app 진입.
+                window.samhanLegacy.openExternal — main 의 shell.openExternal 로 default browser. */}
             <button
               type="button"
               className={styles['btn']}
-              onClick={() => navigate('/sales/estimates/legacy')}
+              onClick={() =>
+                window.samhanLegacy.openExternal('https://estimate.samhan-air.com/')
+              }
             >
-              + 새 견적 (legacy)
+              + 새 견적 (외부 web)
             </button>
           </div>
         </div>
