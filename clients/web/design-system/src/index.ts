@@ -27,3 +27,8 @@ export * from './components/CopyButton'
 // signature-slice-C (Slice C) 신규 컴포넌트 (SignaturePad / SignatureViewer)
 export * from './components/SignaturePad'
 export * from './components/SignatureViewer'
+// accounting-slice-A (Phase 4 회계 Slice A) 신규 컴포넌트 4종
+export * from './components/AccountCodeSelect'
+export * from './components/JournalStatusBadge'
+export * from './components/MoneyInput'
+export * from './components/JournalLineRow'

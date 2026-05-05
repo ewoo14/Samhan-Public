@@ -977,5 +977,482 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // ==========================================================================
+  // accounting-slice-A: 회계 mock endpoint
+  // ==========================================================================
+
+  // GET /accounting/accounts — 한국 일반기업회계기준 표준 계정과목
+  if (method === 'GET' && url.endsWith('/accounting/accounts')) {
+    return envelope(MOCK_ACCOUNTS)
+  }
+
+  // GET /accounting/journals/{id} — 단건 상세 (라인 포함)
+  const journalDetailMatch = url.match(/\/accounting\/journals\/([^/?]+)$/)
+  if (method === 'GET' && journalDetailMatch) {
+    const id = journalDetailMatch[1]!
+    const found = MOCK_JOURNALS.find((j) => j.id === id) ?? MOCK_JOURNALS[0]!
+    return envelope(found)
+  }
+
+  // GET /accounting/journals (페이지)
+  if (method === 'GET' && url.includes('/accounting/journals')) {
+    const summaries = MOCK_JOURNALS.map((j) => ({
+      id: j.id,
+      journalNo: j.journalNo,
+      journalDate: j.journalDate,
+      status: j.status,
+      description: j.description,
+      totalDebit: j.totalDebit,
+      totalCredit: j.totalCredit,
+      createdByName: j.createdByName,
+    }))
+    return envelope({
+      content: summaries,
+      totalElements: summaries.length,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
+    })
+  }
+
+  // POST /accounting/journals → 신규 분개 1건
+  if (method === 'POST' && url.endsWith('/accounting/journals')) {
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      journalDate?: string
+      description?: string
+      lines?: Array<{
+        accountCode: string
+        debit: string
+        credit: string
+        partnerName?: string
+        note?: string
+      }>
+    }
+    const lines = body.lines ?? []
+    const totalDebit = lines.reduce(
+      (sum, l) => sum + Number.parseInt(l.debit || '0', 10),
+      0,
+    )
+    const totalCredit = lines.reduce(
+      (sum, l) => sum + Number.parseInt(l.credit || '0', 10),
+      0,
+    )
+    return envelope({
+      id: 'jv-new-' + Date.now(),
+      journalNo: 'JV-2026/05-099',
+      journalDate: body.journalDate ?? '2026-05-04',
+      status: 'DRAFT',
+      description: body.description ?? null,
+      totalDebit: String(totalDebit),
+      totalCredit: String(totalCredit),
+      createdByName: MOCK_AUTH.fullName,
+      createdAt: new Date().toISOString(),
+      postedAt: null,
+      reversedAt: null,
+      reverseReason: null,
+      lines: lines.map((l, i) => ({
+        id: 'jl-new-' + i,
+        lineNo: i,
+        accountCode: l.accountCode,
+        accountName:
+          MOCK_ACCOUNTS.find((a) => a.code === l.accountCode)?.name ?? null,
+        debit: l.debit,
+        credit: l.credit,
+        partnerName: l.partnerName ?? null,
+        note: l.note ?? null,
+      })),
+      version: 0,
+    })
+  }
+
+  // POST /accounting/journals/{id}/post — 확정
+  const journalPostMatch = url.match(
+    /\/accounting\/journals\/([^/]+)\/post$/,
+  )
+  if (method === 'POST' && journalPostMatch) {
+    const id = journalPostMatch[1]!
+    const found = MOCK_JOURNALS.find((j) => j.id === id) ?? MOCK_JOURNALS[0]!
+    return envelope({
+      ...found,
+      status: 'POSTED' as const,
+      postedAt: new Date().toISOString(),
+    })
+  }
+
+  // POST /accounting/journals/{id}/reverse — 역분개
+  const journalReverseMatch = url.match(
+    /\/accounting\/journals\/([^/]+)\/reverse$/,
+  )
+  if (method === 'POST' && journalReverseMatch) {
+    const id = journalReverseMatch[1]!
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      reason?: string
+    }
+    const found = MOCK_JOURNALS.find((j) => j.id === id) ?? MOCK_JOURNALS[0]!
+    return envelope({
+      ...found,
+      status: 'REVERSED' as const,
+      reversedAt: new Date().toISOString(),
+      reverseReason: body.reason ?? '사유 미기재',
+    })
+  }
+
+  // GET /accounting/balances?period=YYYYMM — 시산표
+  if (method === 'GET' && url.includes('/accounting/balances')) {
+    const period = (config.params?.['period'] ?? '202605') as string
+    return envelope({
+      ...MOCK_TRIAL_BALANCE,
+      period,
+    })
+  }
+
   return null
+}
+
+// ============================================================================
+// accounting-slice-A: 회계 mock seed data
+// ============================================================================
+
+/**
+ * 한국 일반기업회계기준 표준 계정과목 시드 (~50개).
+ * BE 시드와 동일한 4자리 코드 + 한국어 라벨 + 카테고리 prefix.
+ *
+ * 카테고리:
+ * - `100` 자산 (현금성 / 매출채권 / 재고 / 유형자산)
+ * - `200` 부채 (매입채무 / 예수금 / 차입금)
+ * - `300` 자본
+ * - `400` 매출
+ * - `500` 매출원가
+ * - `800` 판매관리비
+ * - `900` 영업외 (수익 / 비용)
+ */
+const MOCK_ACCOUNTS = [
+  // 100 자산
+  { code: '1010', name: '현금', category: '100' },
+  { code: '1020', name: '보통예금', category: '100' },
+  { code: '1030', name: '당좌예금', category: '100' },
+  { code: '1040', name: '정기예금', category: '100' },
+  { code: '1110', name: '외상매출금', category: '100' },
+  { code: '1120', name: '받을어음', category: '100' },
+  { code: '1130', name: '미수금', category: '100' },
+  { code: '1200', name: '단기대여금', category: '100' },
+  { code: '1310', name: '선급금', category: '100' },
+  { code: '1320', name: '선급비용', category: '100' },
+  { code: '1410', name: '부가세대급금', category: '100' },
+  { code: '1500', name: '제품', category: '100' },
+  { code: '1510', name: '상품', category: '100' },
+  { code: '1520', name: '원재료', category: '100' },
+  { code: '1700', name: '비품', category: '100' },
+  { code: '1710', name: '차량운반구', category: '100' },
+  { code: '1720', name: '기계장치', category: '100' },
+  { code: '1800', name: '건물', category: '100' },
+  // 200 부채
+  { code: '2010', name: '외상매입금', category: '200' },
+  { code: '2020', name: '지급어음', category: '200' },
+  { code: '2030', name: '미지급금', category: '200' },
+  { code: '2040', name: '미지급비용', category: '200' },
+  { code: '2110', name: '예수금', category: '200' },
+  { code: '2120', name: '선수금', category: '200' },
+  { code: '2210', name: '부가세예수금', category: '200' },
+  { code: '2300', name: '단기차입금', category: '200' },
+  { code: '2310', name: '장기차입금', category: '200' },
+  // 300 자본
+  { code: '3010', name: '자본금', category: '300' },
+  { code: '3020', name: '이익잉여금', category: '300' },
+  // 400 매출
+  { code: '4010', name: '제품매출', category: '400' },
+  { code: '4020', name: '상품매출', category: '400' },
+  { code: '4030', name: '서비스매출', category: '400' },
+  // 500 매출원가
+  { code: '5010', name: '제품매출원가', category: '500' },
+  { code: '5020', name: '상품매출원가', category: '500' },
+  // 800 판매관리비
+  { code: '8010', name: '급여', category: '800' },
+  { code: '8020', name: '복리후생비', category: '800' },
+  { code: '8030', name: '퇴직급여', category: '800' },
+  { code: '8110', name: '지급수수료', category: '800' },
+  { code: '8120', name: '임차료', category: '800' },
+  { code: '8130', name: '보험료', category: '800' },
+  { code: '8210', name: '광고선전비', category: '800' },
+  { code: '8220', name: '접대비', category: '800' },
+  { code: '8310', name: '여비교통비', category: '800' },
+  { code: '8320', name: '운반비', category: '800' },
+  { code: '8410', name: '소모품비', category: '800' },
+  { code: '8420', name: '수선비', category: '800' },
+  { code: '8500', name: '감가상각비', category: '800' },
+  // 900 영업외
+  { code: '9010', name: '이자수익', category: '900' },
+  { code: '9020', name: '잡이익', category: '900' },
+  { code: '9510', name: '이자비용', category: '900' },
+  { code: '9520', name: '잡손실', category: '900' },
+]
+
+/**
+ * 시연용 mock 분개 5건 (DRAFT 1 / POSTED 3 / REVERSED 1).
+ *
+ * BE 응답 형태와 1:1 (라인 포함). 라인은 차변/대변 합계가 일치 (분개 균형 검증 통과).
+ */
+const MOCK_JOURNALS = [
+  // 1. POSTED: 보통예금 입금 (제품매출 대금)
+  {
+    id: 'jv-001',
+    journalNo: 'JV-2026/05-001',
+    journalDate: '2026-05-04',
+    status: 'POSTED' as const,
+    description: '5월 1주차 제품매출 대금 입금 (윌리)',
+    totalDebit: '3700000',
+    totalCredit: '3700000',
+    createdByName: '오병승',
+    createdAt: '2026-05-04T09:30:00+09:00',
+    postedAt: '2026-05-04T10:00:00+09:00',
+    reversedAt: null,
+    reverseReason: null,
+    version: 1,
+    lines: [
+      {
+        id: 'jl-001-1',
+        lineNo: 0,
+        accountCode: '1020',
+        accountName: '보통예금',
+        debit: '3700000',
+        credit: '0',
+        partnerName: '주식회사 윌리',
+        note: '국민은행 입금',
+      },
+      {
+        id: 'jl-001-2',
+        lineNo: 1,
+        accountCode: '4010',
+        accountName: '제품매출',
+        debit: '0',
+        credit: '3700000',
+        partnerName: '주식회사 윌리',
+        note: '시스템에어컨 4Way 4HP 2EA',
+      },
+    ],
+  },
+  // 2. POSTED: 급여 지급
+  {
+    id: 'jv-002',
+    journalNo: 'JV-2026/05-002',
+    journalDate: '2026-05-03',
+    status: 'POSTED' as const,
+    description: '4월 급여 지급',
+    totalDebit: '12000000',
+    totalCredit: '12000000',
+    createdByName: '이정훈',
+    createdAt: '2026-05-03T16:00:00+09:00',
+    postedAt: '2026-05-03T16:30:00+09:00',
+    reversedAt: null,
+    reverseReason: null,
+    version: 1,
+    lines: [
+      {
+        id: 'jl-002-1',
+        lineNo: 0,
+        accountCode: '8010',
+        accountName: '급여',
+        debit: '12000000',
+        credit: '0',
+        partnerName: null,
+        note: '4월분 정규직 급여',
+      },
+      {
+        id: 'jl-002-2',
+        lineNo: 1,
+        accountCode: '2110',
+        accountName: '예수금',
+        debit: '0',
+        credit: '1080000',
+        partnerName: null,
+        note: '소득세 + 4대보험 원천징수',
+      },
+      {
+        id: 'jl-002-3',
+        lineNo: 2,
+        accountCode: '1020',
+        accountName: '보통예금',
+        debit: '0',
+        credit: '10920000',
+        partnerName: null,
+        note: '실지급액 이체',
+      },
+    ],
+  },
+  // 3. POSTED: 임차료 지급
+  {
+    id: 'jv-003',
+    journalNo: 'JV-2026/05-003',
+    journalDate: '2026-05-02',
+    status: 'POSTED' as const,
+    description: '5월 사무실 임차료',
+    totalDebit: '2000000',
+    totalCredit: '2000000',
+    createdByName: '이정훈',
+    createdAt: '2026-05-02T10:00:00+09:00',
+    postedAt: '2026-05-02T10:15:00+09:00',
+    reversedAt: null,
+    reverseReason: null,
+    version: 1,
+    lines: [
+      {
+        id: 'jl-003-1',
+        lineNo: 0,
+        accountCode: '8120',
+        accountName: '임차료',
+        debit: '2000000',
+        credit: '0',
+        partnerName: '한일빌딩',
+        note: '5월분',
+      },
+      {
+        id: 'jl-003-2',
+        lineNo: 1,
+        accountCode: '1020',
+        accountName: '보통예금',
+        debit: '0',
+        credit: '2000000',
+        partnerName: '한일빌딩',
+        note: '계좌이체',
+      },
+    ],
+  },
+  // 4. DRAFT: 광고비 (작성중)
+  {
+    id: 'jv-004',
+    journalNo: 'JV-2026/05-004',
+    journalDate: '2026-05-04',
+    status: 'DRAFT' as const,
+    description: '5월 네이버 광고 (검토중)',
+    totalDebit: '500000',
+    totalCredit: '500000',
+    createdByName: '오병승',
+    createdAt: '2026-05-04T14:00:00+09:00',
+    postedAt: null,
+    reversedAt: null,
+    reverseReason: null,
+    version: 0,
+    lines: [
+      {
+        id: 'jl-004-1',
+        lineNo: 0,
+        accountCode: '8210',
+        accountName: '광고선전비',
+        debit: '500000',
+        credit: '0',
+        partnerName: '네이버',
+        note: '5월 검색광고',
+      },
+      {
+        id: 'jl-004-2',
+        lineNo: 1,
+        accountCode: '2030',
+        accountName: '미지급금',
+        debit: '0',
+        credit: '500000',
+        partnerName: '네이버',
+        note: '카드 후불',
+      },
+    ],
+  },
+  // 5. REVERSED: 잘못 등록한 매출 (역분개됨)
+  {
+    id: 'jv-005',
+    journalNo: 'JV-2026/05-005',
+    journalDate: '2026-05-01',
+    status: 'REVERSED' as const,
+    description: '오등록 매출 (월말 정정)',
+    totalDebit: '1500000',
+    totalCredit: '1500000',
+    createdByName: '오병승',
+    createdAt: '2026-05-01T11:00:00+09:00',
+    postedAt: '2026-05-01T11:30:00+09:00',
+    reversedAt: '2026-05-04T17:00:00+09:00',
+    reverseReason: '거래처 변경으로 분개 재작성 필요',
+    version: 2,
+    lines: [
+      {
+        id: 'jl-005-1',
+        lineNo: 0,
+        accountCode: '1110',
+        accountName: '외상매출금',
+        debit: '1500000',
+        credit: '0',
+        partnerName: '○○종합건설',
+        note: '5/1 출고분',
+      },
+      {
+        id: 'jl-005-2',
+        lineNo: 1,
+        accountCode: '4010',
+        accountName: '제품매출',
+        debit: '0',
+        credit: '1500000',
+        partnerName: '○○종합건설',
+        note: '시스템에어컨 4Way 5HP 1EA (오등록)',
+      },
+    ],
+  },
+]
+
+/**
+ * 시연용 mock 시산표 1건 (period=202605).
+ *
+ * 위 MOCK_JOURNALS 의 POSTED 분개 (jv-001/002/003) 합산을 단순화한 시드.
+ * 실제 BE 는 ledger_balance 테이블을 PIVOT 하여 동적 계산.
+ */
+const MOCK_TRIAL_BALANCE = {
+  period: '202605',
+  closed: false,
+  totalDebit: '17700000',
+  totalCredit: '17700000',
+  rows: [
+    {
+      accountCode: '1020',
+      accountName: '보통예금',
+      category: '100',
+      openingBalance: '50000000',
+      periodDebit: '3700000',
+      periodCredit: '12920000',
+      closingBalance: '40780000',
+    },
+    {
+      accountCode: '2110',
+      accountName: '예수금',
+      category: '200',
+      openingBalance: '0',
+      periodDebit: '0',
+      periodCredit: '1080000',
+      closingBalance: '1080000',
+    },
+    {
+      accountCode: '4010',
+      accountName: '제품매출',
+      category: '400',
+      openingBalance: '0',
+      periodDebit: '0',
+      periodCredit: '3700000',
+      closingBalance: '3700000',
+    },
+    {
+      accountCode: '8010',
+      accountName: '급여',
+      category: '800',
+      openingBalance: '0',
+      periodDebit: '12000000',
+      periodCredit: '0',
+      closingBalance: '12000000',
+    },
+    {
+      accountCode: '8120',
+      accountName: '임차료',
+      category: '800',
+      openingBalance: '0',
+      periodDebit: '2000000',
+      periodCredit: '0',
+      closingBalance: '2000000',
+    },
+  ],
 }

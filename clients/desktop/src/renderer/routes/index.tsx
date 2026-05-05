@@ -21,11 +21,20 @@
  * - `/transfers/new` 재고이동 작성
  * - `/transfers/:id` 재고이동 상세 + lifecycle
  *
+ * accounting-slice-A 신규 라우트 (ACCOUNTANT/MASTER 만 — RoleGuard):
+ * - `/accounting/accounts`              계정과목 트리
+ * - `/accounting/journals`              분개장 목록
+ * - `/accounting/journals/new`          분개 작성
+ * - `/accounting/journals/:id/edit`     분개 편집 (DRAFT 만)
+ * - `/accounting/journals/:id`          분개 상세 + 확정/역분개
+ * - `/accounting/balances`              시산표 (월별)
+ *
  * 기존 PR #18 의 `/slips`, `/slips/new` 라우트는 폐기.
  */
 import { createHashRouter, RouterProvider } from 'react-router-dom'
 import { AuthGuard } from '../components/AuthGuard'
 import { AppLayout } from '../components/AppLayout'
+import { RoleGuard } from '../components/RoleGuard'
 import { LoginPage } from './LoginPage'
 import { DashboardPage } from './DashboardPage'
 import { WarehousesPage } from './WarehousesPage'
@@ -41,6 +50,15 @@ import { DispatchView } from '../print/DispatchView'
 // signature-slice-C 모바일 mock 라우트 (Phase 5 nginx 분리 전 시뮬레이션 — AuthGuard 외부)
 import { MobileSignaturePage } from './MobileSignaturePage'
 import { MobileRecipientPage } from './MobileRecipientPage'
+// accounting-slice-A 회계 라우트 5종 (ACCOUNTANT/MASTER 만 — RoleGuard 적용)
+import { AccountTreePage } from './AccountTreePage'
+import { JournalListPage } from './JournalListPage'
+import { JournalFormPage } from './JournalFormPage'
+import { JournalDetailPage } from './JournalDetailPage'
+import { TrialBalancePage } from './TrialBalancePage'
+
+/** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
+const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
 
 const router = createHashRouter([
   { path: '/login', element: <LoginPage /> },
@@ -75,6 +93,56 @@ const router = createHashRouter([
       { path: '/transfers', element: <TransferListPage /> },
       { path: '/transfers/new', element: <TransferFormPage /> },
       { path: '/transfers/:id', element: <TransferDetailPage /> },
+
+      // accounting-slice-A — 회계 라우트 5종 (ACCOUNTANT/MASTER 만)
+      {
+        path: '/accounting/accounts',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <AccountTreePage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/journals',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <JournalListPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/journals/new',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <JournalFormPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/journals/:id/edit',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <JournalFormPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/journals/:id',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <JournalDetailPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/balances',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <TrialBalancePage />
+          </RoleGuard>
+        ),
+      },
     ],
   },
 ])
