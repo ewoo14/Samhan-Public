@@ -1,12 +1,15 @@
 package com.samhanair.logis.product.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.product.client.GoogleSheetsClient;
+import com.samhanair.logis.product.client.GoogleSheetsClient.ValueRenderMode;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.repository.ProductRepository;
@@ -67,10 +70,10 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Test
     void sync_첫실행_insert_only() throws Exception {
-        // given: 홈멀티 시트 1 row 만 mock 응답
-        when(sheetsClient.readSheet(anyString(), anyString())).thenReturn(List.of());
-        when(sheetsClient.readSheet("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
-                row("Hi-Multi 4-Way", "AJ040RXH4BC1", "", "1500000", "", "1200000")
+        // given: 홈멀티 시트 1 row 만 mock 응답 (legacy getDisplayValues 1:1 → readSheetDisplay)
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi 4-Way", "AJ040RXH4BC1", "", "1,500,000", "", "1,200,000")
         ));
 
         // when
@@ -90,11 +93,11 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Test
     void sync_재실행_rowHash_동일이면_update_없음() throws Exception {
-        when(sheetsClient.readSheet(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         List<List<Object>> homeMulti = homeMultiRows(
-                row("Hi-Multi", "MODEL_HASH_TEST", "", "1000000", "", "900000")
+                row("Hi-Multi", "MODEL_HASH_TEST", "", "1,000,000", "", "900,000")
         );
-        when(sheetsClient.readSheet("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMulti);
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMulti);
 
         // 1차 sync — insert
         syncService.syncAll();
@@ -110,15 +113,15 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Test
     void sync_가격변경시_update_발생() throws Exception {
-        when(sheetsClient.readSheet(anyString(), anyString())).thenReturn(List.of());
-        when(sheetsClient.readSheet("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
-                row("Hi-Multi", "PRICE_CHANGE_MODEL", "", "1000000", "", "900000")
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi", "PRICE_CHANGE_MODEL", "", "1,000,000", "", "900,000")
         ));
         syncService.syncAll();
 
         // 가격 변경 시트 응답으로 swap
-        when(sheetsClient.readSheet("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
-                row("Hi-Multi", "PRICE_CHANGE_MODEL", "", "1100000", "", "950000")
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi", "PRICE_CHANGE_MODEL", "", "1,100,000", "", "950,000")
         ));
         ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
 
@@ -131,21 +134,67 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Test
     void sync_시트에서_사라진_row_softDelete() throws Exception {
-        when(sheetsClient.readSheet(anyString(), anyString())).thenReturn(List.of());
-        when(sheetsClient.readSheet("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
-                row("Hi-Multi", "WILL_VANISH", "", "1000000", "", "900000")
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi", "WILL_VANISH", "", "1,000,000", "", "900,000")
         ));
         syncService.syncAll();
         assertThat(productRepository.findByModelCodeAndIsDeletedFalse("WILL_VANISH")).isPresent();
 
         // 시트에서 해당 row 제거 — 빈 응답
-        when(sheetsClient.readSheet("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows());
         ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
 
         ProductSheetSyncService.TabSyncResult homeTab = summary.byTab.get("홈멀티");
         assertThat(homeTab.softDeleted).isEqualTo(1);
         // soft delete 후 active 조회 X
         assertThat(productRepository.findByModelCodeAndIsDeletedFalse("WILL_VANISH")).isEmpty();
+    }
+
+    /**
+     * legacy 1:1 보존 가드 (개발책임자 정정 2026-05-05) — sync 가
+     * {@link GoogleSheetsClient#readSheetDisplay} 만 호출 (legacy {@code getDisplayValues()} 동등)
+     * 하고, raw {@link GoogleSheetsClient#readSheet(String, String)}
+     * (legacy {@code getValues()}) 는 사용 X.
+     */
+    @Test
+    void sync_시트read는_readSheetDisplay만_호출한다_legacy_getDisplayValues_1to1() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi", "RENDER_MODE_GUARD", "", "1,000,000", "", "900,000")
+        ));
+
+        syncService.syncAll();
+
+        // 6 tab 전체에 대해 readSheetDisplay 가 호출되어야 함 (FORMATTED — legacy getDisplayValues 1:1)
+        verify(sheetsClient, times(6)).readSheetDisplay(eq("test-sheet-id"), anyString());
+    }
+
+    /**
+     * 3 mode delegation 가드 — {@link GoogleSheetsClient#readSheetDisplay} 와
+     * {@link GoogleSheetsClient#readSheetFormulas} 가 mock 으로도 정상 stub 가능함을 검증
+     * (Mockito @MockBean 이 신규 method 까지 감지함을 확인).
+     */
+    @Test
+    void mockBean_은_3_render_mode_method_모두_stub_가능() throws Exception {
+        List<List<Object>> dummyDisplay = List.of(List.of("display"));
+        List<List<Object>> dummyFormula = List.of(List.of("=$L$2"));
+        List<List<Object>> dummyRaw = List.of(List.of(123));
+
+        when(sheetsClient.readSheetDisplay("any-id", "any-range"))
+                .thenReturn(dummyDisplay);
+        when(sheetsClient.readSheetFormulas("any-id", "any-range"))
+                .thenReturn(dummyFormula);
+        when(sheetsClient.readSheet("any-id", "any-range"))
+                .thenReturn(dummyRaw);
+        when(sheetsClient.readSheet("any-id", "any-range", ValueRenderMode.FORMATTED))
+                .thenReturn(dummyDisplay);
+
+        assertThat(sheetsClient.readSheetDisplay("any-id", "any-range")).isEqualTo(dummyDisplay);
+        assertThat(sheetsClient.readSheetFormulas("any-id", "any-range")).isEqualTo(dummyFormula);
+        assertThat(sheetsClient.readSheet("any-id", "any-range")).isEqualTo(dummyRaw);
+        assertThat(sheetsClient.readSheet("any-id", "any-range", ValueRenderMode.FORMATTED))
+                .isEqualTo(dummyDisplay);
     }
 
     /** 홈멀티 시트 헤더 + data row 를 ValueRange.values() 형태로 생성. */
