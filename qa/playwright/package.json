@@ -1,0 +1,25 @@
+{
+  "name": "@samhan/qa-playwright",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SamhanLogis Phase 7 QA — Playwright (web + electron + mobile emul) e2e 시나리오 30개. 5 project: web order-app / web estimate-app / electron desktop / mobile chrome / mobile safari.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:list": "playwright test --reporter=list",
+    "test:html": "playwright test --reporter=html",
+    "test:web-order": "playwright test --project=web-order-app",
+    "test:web-estimate": "playwright test --project=web-estimate-app",
+    "test:electron": "playwright test --project=electron-desktop",
+    "test:mobile-chrome": "playwright test --project=mobile-chrome",
+    "test:mobile-safari": "playwright test --project=mobile-safari",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install --with-deps",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^20.16.0",
+    "typescript": "^5.6.3"
+  }
+}

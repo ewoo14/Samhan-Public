@@ -1,0 +1,16 @@
+# dependencies
+**/node_modules/
+
+# Playwright
+playwright/playwright-report/
+playwright/test-results/
+playwright/blob-report/
+playwright/.last-run.json
+
+# Detox
+detox/artifacts/
+detox/.detoxrc.local.js
+
+# OS
+.DS_Store
+Thumbs.db

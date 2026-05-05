@@ -1,0 +1,49 @@
+{
+  "partners": [
+    {
+      "id": "P0001",
+      "code": "BIZ-001",
+      "name": "테스트거래처A",
+      "bizNo": "123-45-67890",
+      "status": "ACTIVE",
+      "passwordType": "BIZGATE",
+      "tempPassword": null
+    },
+    {
+      "id": "P0002",
+      "code": "BIZ-002",
+      "name": "테스트거래처B",
+      "bizNo": "234-56-78901",
+      "status": "ACTIVE",
+      "passwordType": "PASSWORD",
+      "password": "test1234"
+    },
+    {
+      "id": "P0003",
+      "code": "BIZ-003",
+      "name": "테스트거래처C-임시PW",
+      "bizNo": "345-67-89012",
+      "status": "TEMP_PASSWORD",
+      "passwordType": "TEMP",
+      "tempPassword": "TEMP-A1B2C3"
+    },
+    {
+      "id": "P0004",
+      "code": "BIZ-004",
+      "name": "테스트거래처D-차단",
+      "bizNo": "456-78-90123",
+      "status": "BLOCKED",
+      "passwordType": "BIZGATE",
+      "tempPassword": null
+    },
+    {
+      "id": "P0005",
+      "code": "BIZ-005",
+      "name": "테스트거래처E-만료",
+      "bizNo": "567-89-01234",
+      "status": "EXPIRED",
+      "passwordType": "BIZGATE",
+      "tempPassword": null
+    }
+  ]
+}
