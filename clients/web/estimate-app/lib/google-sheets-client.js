@@ -1,0 +1,129 @@
+/**
+ * Google Sheets 직접 read 클라이언트 (estimate-app v2 전용).
+ *
+ * 개발책임자 결정 (2026-05-05):
+ *   "견적서와 주문서의 경우에만 기존 구글 스크립트처럼 구글 스프레드 시트에서
+ *    그대로 가져오는 것으로 하자"
+ *
+ * 본 모듈은 legacy Apps Script 의 다음 호출과 동등 결과를 반환한다:
+ *   SpreadsheetApp.openById(SRC_SHEET_ID)
+ *     .getSheetByName(name)
+ *     .getDataRange()
+ *     .getValues()
+ *
+ * 구현은 estimate-legacy 의 동명 모듈 (PR #67) 과 동등 — Service Account JWT
+ * 인증 + in-memory cache (TTL 5분).
+ *
+ * 환경변수:
+ *  - GOOGLE_SERVICE_ACCOUNT_KEY: Service Account JSON 키 파일 절대 경로 (권장)
+ *  - GOOGLE_SA_KEY_JSON_BASE64 : 옵션 — JSON 전체를 base64 단일 문자열
+ *  - SHEET_CACHE_TTL_SEC      : 시트 caching TTL 초 (기본 300 = 5분)
+ *
+ * 캐시 정책:
+ *  - TTL 5분 (단가 / 품목은 분 단위 변경 빈도 낮음)
+ *  - 메모리 한계: 시트 27탭 * 평균 1MB ≈ 30MB (카페24 1G 한도 안전)
+ *  - 무효화: clearCache() (POST /rpc/clearSheetCache)
+ *
+ * 운영 주의:
+ *  - Service Account 키 미설정 시 readSheet() 호출이 throw → 호출자가 catch
+ *    하여 빈 [[]] 반환 또는 graceful 에러 메시지 처리해야 한다.
+ *  - 본 PR scope: legacy 1:1 시트 read 환원만. 부분 시트 read / range API 등
+ *    legacy 가 사용하지 않는 호출은 후속 PR.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const { google } = require('googleapis');
+
+const TTL_MS = (parseInt(process.env.SHEET_CACHE_TTL_SEC || '300', 10) || 300) * 1000;
+
+const cache = new Map(); // key=`${spreadsheetId}!${range}` → { value, expireAt }
+let _sheetsClient = null;
+let _authClient = null;
+
+/**
+ * Service Account JWT 인증 클라이언트 (singleton).
+ * 우선순위: GOOGLE_SERVICE_ACCOUNT_KEY (파일 path) → GOOGLE_SA_KEY_JSON_BASE64.
+ */
+function _getAuth() {
+  if (_authClient) return _authClient;
+
+  let credentials;
+  const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  const keyB64 = process.env.GOOGLE_SA_KEY_JSON_BASE64;
+
+  if (keyPath && fs.existsSync(keyPath)) {
+    credentials = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+  } else if (keyB64) {
+    credentials = JSON.parse(Buffer.from(keyB64, 'base64').toString('utf8'));
+  } else {
+    throw new Error(
+      '[google-sheets-client] Service Account 키 미설정 — GOOGLE_SERVICE_ACCOUNT_KEY 또는 GOOGLE_SA_KEY_JSON_BASE64 필요',
+    );
+  }
+
+  _authClient = new google.auth.JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
+  return _authClient;
+}
+
+function _getSheets() {
+  if (_sheetsClient) return _sheetsClient;
+  _sheetsClient = google.sheets({ version: 'v4', auth: _getAuth() });
+  return _sheetsClient;
+}
+
+/**
+ * 시트 read — `getDataRange().getValues()` 와 동등.
+ *
+ * @param {string} spreadsheetId Google Sheet ID (URL `/d/<id>/`).
+ * @param {string} sheetName     탭 이름 (legacy 의 SheetByName 인자).
+ * @returns {Promise<Array<Array<any>>>} 2차원 배열 (legacy values 와 shape 동일).
+ */
+async function readSheet(spreadsheetId, sheetName) {
+  const range = `'${sheetName}'!A1:ZZ`;
+  const cacheKey = `${spreadsheetId}!${range}`;
+  const now = Date.now();
+
+  const hit = cache.get(cacheKey);
+  if (hit && hit.expireAt > now) return hit.value;
+
+  const sheets = _getSheets();
+  const resp = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+    valueRenderOption: 'UNFORMATTED_VALUE',
+    dateTimeRenderOption: 'FORMATTED_STRING',
+  });
+  const values = resp.data.values || [[]];
+
+  cache.set(cacheKey, { value: values, expireAt: now + TTL_MS });
+  return values;
+}
+
+/**
+ * 캐시 전체 무효화 (sheet schema 변경 시).
+ */
+function clearCache() {
+  cache.clear();
+}
+
+/**
+ * 헬스체크 — Service Account 키 존재 여부 + 클라이언트 초기화 가능 여부.
+ *
+ * @returns {{ok:boolean, cacheSize?:number, ttlMs?:number, error?:string}}
+ */
+function healthz() {
+  try {
+    _getAuth();
+    return { ok: true, cacheSize: cache.size, ttlMs: TTL_MS };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+module.exports = { readSheet, clearCache, healthz };
