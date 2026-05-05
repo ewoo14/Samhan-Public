@@ -1,14 +1,24 @@
 /**
  * Apps Script 호환 shim — Node.js 환경에서 legacy Code.js 가 의존하는
- * Google Apps Script global API 들을 1:1 흉내내며, 실제 데이터 호출은
- * SamhanLogis MSA endpoint (axios) 또는 in-memory mock 으로 대체한다.
+ * Google Apps Script global API 들을 1:1 흉내낸다.
+ *
+ * 데이터 출처 (개발책임자 결정 2026-05-05):
+ *  - **품목 / 거래처 / 담당자 / 추천 등 SpreadsheetApp 데이터** → google-sheets-client
+ *    (Service Account JWT 로 구글 스프레드 시트 직접 read — legacy Apps Script 동작
+ *    그대로). 옵션 C 채택으로 estimate-app v2 / order-app v4 의 frontend 는 시트
+ *    직접 read 환원.
+ *  - **출고전표 발송 (sendOrderFromUi)** → SamhanLogis slip-service POST 위임
+ *    (lib/slip-bridge.js). e-Count proxy 직접 호출은 폐기.
+ *  - **외부 노출 API 호출 (Notion 등)** → noop + warn (SamhanLogis MS DB 가 흡수).
  *
  * 본 모듈은 legacy Code.js (2837 라인) 의 logic 을 변경하지 않고도
  * Node.js 에서 그대로 require 가능하게 만들기 위한 호환 layer 다.
  *
  * 다루는 API:
- *  - SpreadsheetApp / Sheet (getDataRange / getValues 등) — product-service 응답으로 가짜 시트 구성
- *  - DriveApp.getFolderById — files-service 응답
+ *  - SpreadsheetApp / Sheet (getDataRange / getValues 등) — google-sheets-client
+ *    응답으로 시트 모형 구성. bootstrap 단계 preloadSheets() 로 prefetch 후 동기 read.
+ *  - DriveApp.getFolderById — noop + warn (legacy 가 logo/gate 이미지 폴더 read;
+ *    public/assets 자산 사용 권장).
  *  - UrlFetchApp.fetch — axios 위임 (e-Count URL 식별 시 noop+warn → slip-bridge 로 우회)
  *  - HtmlService.createTemplateFromFile — Express EJS 가 직접 처리하므로 본 shim 은 noop stub 만 제공
  *  - HtmlService.createHtmlOutputFromFile — include() 보조용 (public/ 자산 read)
@@ -19,9 +29,11 @@
  *  - Logger.log — console.log 위임
  *
  * 환경변수:
- *  - SAMHAN_API_BASE_URL: 모든 SamhanLogis MS endpoint base URL
- *  - USE_MOCK_FALLBACK: 'true' 면 endpoint 미구현시 mock 반환
- *  - DEFAULT_USER_EMAIL: Session.getActiveUser().getEmail() 대체
+ *  - SAMHAN_API_BASE_URL    : SamhanLogis MS endpoint base URL (slip-bridge 만 사용)
+ *  - USE_MOCK_FALLBACK      : 'true' 면 endpoint 미구현시 mock 반환 (slip-bridge)
+ *  - DEFAULT_USER_EMAIL     : Session.getActiveUser().getEmail() 대체
+ *  - GOOGLE_SERVICE_ACCOUNT_KEY: Google Service Account JSON 키 파일 path
+ *    (lib/google-sheets-client.js 가 사용; 미설정 시 SpreadsheetApp 호출 실패).
  */
 
 'use strict';
@@ -29,6 +41,8 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+
+const sheetsClient = require('./google-sheets-client');
 
 const BASE_URL = process.env.SAMHAN_API_BASE_URL || 'http://localhost:8080';
 const USE_MOCK = String(process.env.USE_MOCK_FALLBACK || 'true').toLowerCase() === 'true';
@@ -229,35 +243,70 @@ const UrlFetchApp = {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────
- * SpreadsheetApp / Sheet — product-service 응답으로 sheet 모형 구성
+ * SpreadsheetApp / Sheet — google-sheets-client 위임
  *
- * legacy Code.js 가 호출하는 시트 27탭 의 raw row data 는, M1a 에서
- * product-service 가 흡수한 ProductMaster + ProductSpec + PriceHistory 로부터
- * GET /api/v1/products?sheetName=<탭이름> 형태로 재구성한다.
+ * 개발책임자 결정 (2026-05-05):
+ *   "견적서와 주문서의 경우에만 기존 구글 스크립트처럼 구글 스프레드 시트에서
+ *    그대로 가져오는 것으로 하자"
  *
- * Mock fallback (USE_MOCK_FALLBACK=true) 시 빈 헤더 + 0행 반환 →
- * 견적 화면 진입은 가능하나 카탈로그가 비어있게 된다.
+ * legacy 의 SpreadsheetApp.openById(SRC_SHEET_ID).getSheetByName(name)
+ *   .getDataRange().getValues() 는 Apps Script 에서 동기 호출이지만,
+ *   Node.js 에서는 sheet read 가 비동기.
+ *
+ * 해결: bootstrap 단계 preloadSheets(spreadsheetId, [name1, name2, ...]) 로
+ *   사전에 모든 탭을 in-memory 로 채운 뒤, 이후 동기 호출 사이트는 즉시 반환.
+ *
+ * 미 prefetch 탭 접근 시: 빈 [[]] 반환 + warn (legacy 동작과 동등; Apps Script
+ *   도 존재하지 않는 탭에서는 빈 결과 반환).
+ *
+ * Service Account 키 미설정 시: preloadSheet() 가 throw → bootstrap caller 가
+ *   try/catch 로 감싸 graceful 처리 (legacy 빈 카탈로그 진입과 동일).
  * ──────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Apps Script `Sheet` 호환 모형. google-sheets-client 가 read 한 2D 배열을 보관.
+ *
+ * 지원 메서드:
+ *  - getName / getDataRange / getRange / getLastRow / getLastColumn
+ *  - getDataRange().getValues() / .getDisplayValues() (legacy 가 모두 사용)
+ *  - getDataRange().getFormulas() — 빈 수식 배열 (Sheets API readonly 에서는 미수신)
+ *
+ * legacy 가 priceFormula 검사 (`/\$L\$2/i.test(priceFormula)` 등) 를 하더라도
+ * 모두 false 로 떨어져도 시트 raw 단가 (납품가) 로 graceful 작동한다.
+ */
 class FakeSheet {
   constructor(name, values) {
     this._name = name;
-    this._values = values || [[]];
+    this._values = values && values.length ? values : [[]];
   }
   getName() { return this._name; }
   getDataRange() {
-    return { getValues: () => this._values };
+    const vals = this._values;
+    return {
+      getValues: () => vals,
+      // legacy 는 getDisplayValues 로 string 형 결과를 기대 — 시트 client 가 이미
+      // FORMATTED_STRING/UNFORMATTED_VALUE 혼용으로 받지만, 본 호출 사이트는
+      // 모두 문자열 trim/정규화를 다시 수행하므로 raw getValues 와 동등.
+      getDisplayValues: () => vals.map((r) => r.map((v) => (v == null ? '' : String(v)))),
+      getFormulas: () => vals.map((r) => r.map(() => '')),
+      getNumRows: () => vals.length,
+      getNumColumns: () => vals.reduce((m, r) => Math.max(m, r.length), 0),
+    };
   }
   getRange(r1, c1, rows, cols) {
     const slice = [];
-    for (let i = 0; i < rows; i++) {
+    const _rows = rows || 1;
+    const _cols = cols || 1;
+    for (let i = 0; i < _rows; i++) {
       const row = this._values[r1 - 1 + i] || [];
       const out = [];
-      for (let j = 0; j < cols; j++) out.push(row[c1 - 1 + j]);
+      for (let j = 0; j < _cols; j++) out.push(row[c1 - 1 + j]);
       slice.push(out);
     }
     return {
       getValues: () => slice,
+      getDisplayValues: () => slice.map((r) => r.map((v) => (v == null ? '' : String(v)))),
+      getValue: () => (slice[0] ? slice[0][0] : null),
       getFormulas: () => slice.map((r) => r.map(() => '')),
     };
   }
@@ -275,40 +324,81 @@ class FakeSpreadsheet {
   getId() { return this._id; }
   getSheetByName(name) {
     if (this._sheets[name]) return this._sheets[name];
-    Logger.log(`[shim] SpreadsheetApp.getSheetByName(${name}) → mock empty`);
+    Logger.log(`[shim] SpreadsheetApp.getSheetByName(${name}) → not preloaded, returning empty sheet`);
     const empty = new FakeSheet(name, [[]]);
     this._sheets[name] = empty;
     return empty;
   }
 }
 
-const _sheetCache = new Map();
+const _spreadCache = new Map();
 
 const SpreadsheetApp = {
   /**
-   * legacy 의 SpreadsheetApp.openById(SRC_SHEET_ID) 호출을 가로채서,
-   * SamhanLogis product-service 의 sheet 호환 endpoint 응답으로 sheet 모형을 만든다.
-   *
-   * SamhanLogis MS 가 본 endpoint 를 미구현한 단계에서는 mock 빈 sheet 반환.
+   * Apps Script 동기 시그니처 보존. 본 호출 전에 반드시 preloadSheets() 로 prefetch.
+   * prefetch 누락 시 getSheetByName 이 빈 sheet 반환 (legacy 동작과 동일).
    */
   openById(id) {
-    if (_sheetCache.has(id)) return _sheetCache.get(id);
+    if (_spreadCache.has(id)) return _spreadCache.get(id);
     const ss = new FakeSpreadsheet(id, {});
-    _sheetCache.set(id, ss);
+    _spreadCache.set(id, ss);
     return ss;
   },
   getActiveSpreadsheet: () => null,
 };
 
 /**
- * 외부에서 product-service 로부터 받은 시트 dump 를 주입할 때 사용 (옵션).
- * 예: bootstrap 단계에서 모든 27탭 prefetch → SpreadsheetApp.openById 가 즉시 hit.
+ * Sheet 명 단건 prefetch — bootstrap 단계에서 호출.
+ *
+ * @param {string} spreadsheetId
+ * @param {string} sheetName
+ * @returns {Promise<Array<Array<any>>>} legacy values 와 동일 shape (2차원 배열).
  */
-function injectSheet(spreadsheetId, sheetName, values) {
-  let ss = _sheetCache.get(spreadsheetId);
+async function preloadSheet(spreadsheetId, sheetName) {
+  const values = await sheetsClient.readSheet(spreadsheetId, sheetName);
+  let ss = _spreadCache.get(spreadsheetId);
   if (!ss) {
     ss = new FakeSpreadsheet(spreadsheetId, {});
-    _sheetCache.set(spreadsheetId, ss);
+    _spreadCache.set(spreadsheetId, ss);
+  }
+  ss._sheets[sheetName] = new FakeSheet(sheetName, values);
+  return values;
+}
+
+/**
+ * 다수 sheet prefetch (병렬). 일부 탭 read 실패해도 나머지 탭은 가능한 만큼 채우고,
+ * 실패한 탭은 빈 sheet 로 대체된다 (Apps Script 동작과 동일).
+ *
+ * @param {string} spreadsheetId
+ * @param {string[]} sheetNames
+ */
+async function preloadSheets(spreadsheetId, sheetNames) {
+  const results = await Promise.allSettled(
+    sheetNames.map((n) => preloadSheet(spreadsheetId, n)),
+  );
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      Logger.log(`[shim] preloadSheet 실패 sheet=${sheetNames[i]} error=${r.reason && r.reason.message}`);
+    }
+  });
+}
+
+/**
+ * 캐시 강제 무효화 — POST /rpc/clearSheetCache.
+ */
+function clearSheetCache() {
+  _spreadCache.clear();
+  sheetsClient.clearCache();
+}
+
+/**
+ * 외부에서 시트 dump 를 직접 주입할 때 사용 (테스트 보조).
+ */
+function injectSheet(spreadsheetId, sheetName, values) {
+  let ss = _spreadCache.get(spreadsheetId);
+  if (!ss) {
+    ss = new FakeSpreadsheet(spreadsheetId, {});
+    _spreadCache.set(spreadsheetId, ss);
   }
   ss._sheets[sheetName] = new FakeSheet(sheetName, values);
 }
@@ -409,6 +499,9 @@ module.exports = {
   DriveApp,
   HtmlService,
   injectSheet,
+  preloadSheet,
+  preloadSheets,
+  clearSheetCache,
   // 헬퍼 (lib/code.js 안에서 직접 참조)
   _config: {
     BASE_URL,

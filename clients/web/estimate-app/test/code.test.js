@@ -43,17 +43,22 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     expect(code.hpFromText_('패널')).toBe(0);
   });
 
-  test('classifyHome_ 분류', () => {
-    expect(code.classifyHome_('실외기 18HP').kind).toBe('실외기');
-    expect(code.classifyHome_('실내기').kind).toBe('실내기');
-    expect(code.classifyHome_('리모컨').kind).toBe('리모컨');
-    expect(code.classifyHome_('패널').kind).toBe('패널');
+  test('classifyHome_ 대분류 (estimate-legacy 1:1 포팅)', () => {
+    // estimate-legacy 시그니처: { catL, catM, catS, disp }
+    expect(code.classifyHome_('실외기 18HP').catL).toBe('실외기');
+    expect(code.classifyHome_('실내기 4WAY').catL).toBe('실내기');
+    expect(code.classifyHome_('리모컨').catL).toBe('리모컨');
+    expect(code.classifyHome_('판넬 정사각형').catL).toBe('판넬');
+    expect(code.classifyHome_('기타 부품').catL).toBe('부자재');
   });
 
-  test('classifySingleSetLM_ AC/AP/AR/AF prefix', () => {
-    expect(code.classifySingleSetLM_('AC181HKW')).toBe('AC');
-    expect(code.classifySingleSetLM_('AP200KW')).toBe('AP');
-    expect(code.classifySingleSetLM_('xxx')).toBe('OTHER');
+  test('classifySingleSetLM_ L/M 분류 (estimate-legacy 1:1 포팅)', () => {
+    // estimate-legacy 시그니처: { L, M } — 텍스트 키워드 매칭 (모델 prefix 가 아님)
+    expect(code.classifySingleSetLM_({ name: '4WAY 천장형', model: 'AC181' }).L).toBe('4w');
+    expect(code.classifySingleSetLM_({ name: '1WAY 천장형', model: 'AP200' }).L).toBe('1w');
+    expect(code.classifySingleSetLM_({ name: '벽걸이형', model: 'XX' }).L).toBe('wall');
+    expect(code.classifySingleSetLM_({ name: '리모컨', model: 'YY' }).L).toBe('acc');
+    expect(code.classifySingleSetLM_({ name: '냉방전용', model: 'ZZ' }).M).toBe('cool');
   });
 
   test('decideWarehouseCode_ 싱글 → 00003 / 그외 → 2', () => {
