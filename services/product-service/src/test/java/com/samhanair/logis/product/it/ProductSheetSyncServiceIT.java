@@ -11,6 +11,7 @@ import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.service.ProductSheetSyncService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * ProductSheetSyncService IT — 외부 GoogleSheetsClient {@code @MockBean} 격리
@@ -43,6 +45,7 @@ import org.springframework.test.annotation.DirtiesContext;
 })
 @DirtiesContext
 @WithMockUser(username = "test-sync")
+@Transactional
 class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @MockBean
@@ -55,8 +58,10 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     private ProductRepository productRepository;
 
     @BeforeEach
-    void resetMocks() {
-        // 캐시 invalidate (mock 이라 noop 이지만 호출 자체는 검증 가능)
+    void resetState() {
+        // 메모리 hash 캐시 초기화 — 테스트 간 격리 (Spring 싱글턴 bean 의 in-memory state)
+        syncService.clearHashCacheForTest();
+        // 캐시 invalidate mock — 호출 검증용
         lenient().doNothing().when(sheetsClient).invalidateCache();
     }
 
@@ -79,7 +84,8 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         Optional<Product> p = productRepository.findByModelCodeAndIsDeletedFalse("AJ040RXH4BC1");
         assertThat(p).isPresent();
         assertThat(p.get().getProductCategory()).isEqualTo(ProductCategory.HOME_MULTI);
-        assertThat(p.get().getReleasePrice().toPlainString()).isEqualTo("1500000");
+        // BigDecimal 비교는 compareTo 로 — Hibernate scale (NUMERIC(12,2)) 무관
+        assertThat(p.get().getReleasePrice()).isEqualByComparingTo(new BigDecimal("1500000"));
     }
 
     @Test
@@ -120,7 +126,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(homeTab.updated).isEqualTo(1);
         Optional<Product> p = productRepository.findByModelCodeAndIsDeletedFalse("PRICE_CHANGE_MODEL");
         assertThat(p).isPresent();
-        assertThat(p.get().getReleasePrice().toPlainString()).isEqualTo("1100000");
+        assertThat(p.get().getReleasePrice()).isEqualByComparingTo(new BigDecimal("1100000"));
     }
 
     @Test

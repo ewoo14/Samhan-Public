@@ -265,6 +265,14 @@ public class ProductSheetSyncService {
         }
     }
 
+    /**
+     * 테스트 전용 — 메모리 hash 캐시 초기화.
+     * IT 에서 @BeforeEach 로 호출하여 테스트 간 격리 보장. 운영 코드에서 호출 금지.
+     */
+    public void clearHashCacheForTest() {
+        lastKnownRowHash.clear();
+    }
+
     /** 시트 tab → 도메인 매핑 record. */
     public record SheetTabMapping(String tabName,
                                    ProductCategory productCategory,
