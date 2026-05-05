@@ -27,6 +27,7 @@ include 'services:slip-service'
 include 'services:accounting-service'
 include 'services:logging-service'
 include 'services:partner-auth-service'
+include 'services:dc-config-service'
 
 project(':shared:common').projectDir                  = file('shared/common')
 project(':services:eureka-server').projectDir         = file('services/eureka-server')
@@ -39,3 +40,4 @@ project(':services:slip-service').projectDir          = file('services/slip-serv
 project(':services:accounting-service').projectDir    = file('services/accounting-service')
 project(':services:logging-service').projectDir       = file('services/logging-service')
 project(':services:partner-auth-service').projectDir  = file('services/partner-auth-service')
+project(':services:dc-config-service').projectDir     = file('services/dc-config-service')
