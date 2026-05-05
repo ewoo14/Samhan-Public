@@ -129,7 +129,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: design-system 사전 빌드 (file: dependency)
+      - name: "design-system 사전 빌드 (file: dependency)"
         working-directory: clients/web/design-system
         run: |
           npm ci
