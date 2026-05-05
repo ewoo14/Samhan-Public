@@ -1108,6 +1108,151 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // ==========================================================================
+  // [Phase 6 v4] 판매 메뉴 mock — 캡처용 최소 시드
+  // ==========================================================================
+
+  // GET /api/v1/estimates — 견적 목록
+  if (method === 'GET' && url.includes('/api/v1/estimates')) {
+    return envelope({
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+  }
+
+  // GET /api/v1/partner-orders — 주문서 조회
+  if (method === 'GET' && url.includes('/api/v1/partner-orders')) {
+    return envelope({
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+  }
+
+  // GET /api/v1/partner-approvals — 주문서 승인 (status 6종)
+  if (method === 'GET' && url.includes('/api/v1/partner-approvals')) {
+    const sample = [
+      {
+        partnerCode: '1234567890',
+        partnerName: '엘에이시스템에어',
+        status: 'APPROVED' as const,
+        approvedAt: '2026-04-12T10:23:00+09:00',
+        approvedBy: '오병승',
+        passwordRequestedAt: null,
+        pcTutorialCompleted: true,
+        mobileTutorialCompleted: false,
+      },
+      {
+        partnerCode: '2345678901',
+        partnerName: '강남에어솔루션',
+        status: 'UNAPPROVED' as const,
+        approvedAt: null,
+        approvedBy: null,
+        passwordRequestedAt: null,
+        pcTutorialCompleted: false,
+        mobileTutorialCompleted: false,
+      },
+      {
+        partnerCode: '3456789012',
+        partnerName: '한빛쾌적',
+        status: 'PASSWORD_RESET_PENDING' as const,
+        approvedAt: '2026-03-01T09:00:00+09:00',
+        approvedBy: '오병승',
+        passwordRequestedAt: '2026-05-04T14:21:00+09:00',
+        pcTutorialCompleted: true,
+        mobileTutorialCompleted: true,
+      },
+      {
+        partnerCode: '4567890123',
+        partnerName: '미래시스템',
+        status: 'PASSWORD_ERROR' as const,
+        approvedAt: '2026-02-21T11:30:00+09:00',
+        approvedBy: '강현구',
+        passwordRequestedAt: null,
+        pcTutorialCompleted: true,
+        mobileTutorialCompleted: false,
+      },
+      {
+        partnerCode: '5678901234',
+        partnerName: '대박종합건설',
+        status: 'ACCESS_DENIED' as const,
+        approvedAt: '2026-01-10T16:45:00+09:00',
+        approvedBy: '강현구',
+        passwordRequestedAt: null,
+        pcTutorialCompleted: true,
+        mobileTutorialCompleted: true,
+      },
+      {
+        partnerCode: '6789012345',
+        partnerName: '경기냉난방',
+        status: 'LONG_PENDING' as const,
+        approvedAt: '2025-12-05T08:15:00+09:00',
+        approvedBy: '오병승',
+        passwordRequestedAt: null,
+        pcTutorialCompleted: true,
+        mobileTutorialCompleted: true,
+      },
+    ]
+    return envelope({
+      content: sample,
+      totalElements: sample.length,
+      totalPages: 1,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+  }
+
+  // GET /api/v1/partner-dc-configs — 거래처 DC 설정 (222 row 시뮬레이션)
+  if (method === 'GET' && url.includes('/api/v1/partner-dc-configs')) {
+    const partners = [
+      ['1234567890', '엘에이시스템에어'],
+      ['2345678901', '강남에어솔루션'],
+      ['3456789012', '한빛쾌적'],
+      ['4567890123', '미래시스템'],
+      ['5678901234', '대박종합건설'],
+      ['6789012345', '경기냉난방'],
+      ['7890123456', '서초에어월드'],
+      ['8901234567', '도매콘'],
+      ['9012345678', '파주냉동공조'],
+      ['0123456789', '안양시스템'],
+    ]
+    const sample = partners.map(([code, name], idx) => ({
+      partnerCode: code,
+      partnerName: name,
+      homeMultiDc: idx % 2 === 0 ? 0.12 : 0.15,
+      commercialMultiDc: idx % 3 === 0 ? 0.18 : null,
+      flexibleHoseI: idx % 4 === 0,
+      option360: 0.05,
+      option4way: 0.04,
+      option1way: null,
+      optionStand: 0.03,
+      optionDeluxe: idx % 2 === 0 ? 0.06 : null,
+      option1Grade: 0.07,
+      unitProcessing: idx % 3 === 0 ? 1500 : null,
+      note: idx === 0 ? '주거래처 — VIP' : null,
+    }))
+    return envelope({
+      content: sample,
+      totalElements: 222,
+      totalPages: 23,
+      number: 0,
+      size: 250,
+      first: true,
+      last: false,
+    })
+  }
+
   return null
 }
 

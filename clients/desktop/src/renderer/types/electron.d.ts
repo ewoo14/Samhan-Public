@@ -13,6 +13,31 @@ export interface AuthSnapshot {
 }
 
 declare global {
+  /**
+   * [Phase 6 v4] Electron `<webview>` tag JSX intrinsic — React 표준 HTML element 가 아님.
+   * legacy estimate index.html 임베드 (EstimateLegacyWebviewPage) 에서 사용.
+   *
+   * <p>Electron 의 webview attribute spec:
+   * https://www.electronjs.org/docs/latest/api/webview-tag</p>
+   */
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        src?: string
+        preload?: string
+        /** Electron webview boolean attribute — React 표준 `allowpopups: boolean` 와 호환. */
+        allowpopups?: boolean
+        partition?: string
+        httpreferrer?: string
+        useragent?: string
+        disablewebsecurity?: string
+        nodeintegration?: string
+        plugins?: string
+        webpreferences?: string
+      }
+    }
+  }
+
   interface Window {
     /**
      * 메인 프로세스 인증 토큰 게이트웨이.
@@ -22,6 +47,13 @@ declare global {
       getToken: () => Promise<AuthSnapshot | null>
       setToken: (payload: AuthSnapshot) => Promise<void>
       clearToken: () => Promise<void>
+    }
+    /**
+     * [Phase 6 v4] legacy estimate webview 자산 URL gateway — main 프로세스의
+     * `legacy:get-estimate-url` IPC 와 1:1. EstimateLegacyWebviewPage 가 사용.
+     */
+    samhanLegacy: {
+      getEstimateUrl: () => Promise<string>
     }
   }
 }
