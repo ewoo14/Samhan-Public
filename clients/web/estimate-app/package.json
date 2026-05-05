@@ -1,0 +1,27 @@
+{
+  "name": "@samhan/estimate-app",
+  "version": "2.0.0",
+  "private": true,
+  "description": "삼한공조시스템 종합견적서 web app v2 — Apps Script 1:1 포팅 (Node.js + Express + EJS), legacy estimate Code.js 2837라인 + index.html 18614라인 100% 보존",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "jest --passWithNoTests",
+    "qa:capture": "node scripts/qa-capture.mjs"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "playwright": "^1.48.0"
+  }
+}
