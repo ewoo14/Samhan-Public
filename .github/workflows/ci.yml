@@ -63,3 +63,87 @@ jobs:
           report_paths: '**/build/test-results/test/TEST-*.xml'
           require_tests: false
           check_name: JUnit 테스트 결과
+
+  frontend-ds:
+    name: Frontend DS (typecheck + lint + build + storybook)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: clients/web/design-system
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: clients/web/design-system/package-lock.json
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: typecheck (build config)
+        run: npx tsc -p tsconfig.build.json --noEmit
+
+      - name: typecheck (dev config — stories/tests 포함)
+        run: npx tsc -p tsconfig.json --noEmit
+
+      - name: lint
+        run: npm run lint
+        continue-on-error: true   # legacy 코드 사전 존재 오류 허용 — feature 브랜치별 신규 코드 검증은 PR 검토에서
+
+      - name: vite build
+        run: npm run build
+
+      - name: storybook 정적 빌드
+        run: npm run build-storybook
+
+      - name: storybook 정적 산출 업로드 (PR 미리보기)
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-static-${{ github.run_number }}
+          path: clients/web/design-system/storybook-static
+          retention-days: 7
+
+  frontend-desktop:
+    name: Frontend Desktop (typecheck + lint + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [frontend-ds]   # design-system 빌드 후 desktop (file: dependency)
+    defaults:
+      run:
+        working-directory: clients/desktop
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: design-system 사전 빌드 (file: dependency)
+        working-directory: clients/web/design-system
+        run: |
+          npm ci
+          npm run build
+
+      - name: desktop 의존성 설치
+        run: npm install
+
+      - name: typecheck (Electron node + web)
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+        continue-on-error: true   # legacy 코드 사전 존재 오류 허용
+
+      - name: build (electron-vite)
+        run: npm run build
