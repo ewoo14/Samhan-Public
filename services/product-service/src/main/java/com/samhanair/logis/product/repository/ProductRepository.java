@@ -1,7 +1,9 @@
 package com.samhanair.logis.product.repository;
 
+import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductStatus;
+import com.samhanair.logis.product.domain.UsageScope;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -68,4 +70,27 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                          @Param("q") String q,
                          @Param("tagFilter") String tagFilter,
                          Pageable pageable);
+
+    // ============================================================
+    // V3 마이그 신규 — modelCode + usageScope/estimateCategory 필터
+    // ============================================================
+
+    Optional<Product> findByModelCodeAndIsDeletedFalse(String modelCode);
+
+    boolean existsByModelCodeAndIsDeletedFalse(String modelCode);
+
+    /**
+     * 카탈로그 endpoint 필터 — usageScope/estimateCategory 조합 검색.
+     * GET /api/v1/products?usageScope={enum}&category={enum}.
+     */
+    @Query("SELECT p FROM Product p WHERE p.isDeleted = false "
+            + "AND (:usageScope IS NULL OR p.usageScope = :usageScope) "
+            + "AND (:estimateCategory IS NULL OR p.estimateCategory = :estimateCategory)")
+    Page<Product> searchByUsageScope(@Param("usageScope") UsageScope usageScope,
+                                     @Param("estimateCategory") EstimateCategory estimateCategory,
+                                     Pageable pageable);
+
+    List<Product> findByUsageScopeAndIsDeletedFalse(UsageScope usageScope);
+
+    List<Product> findByParentBundleSetModelAndIsDeletedFalse(String parentBundleSetModel);
 }
