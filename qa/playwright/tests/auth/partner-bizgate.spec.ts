@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * 거래처 BizGate SSO 로그인 — 8 status enum 시나리오.
@@ -16,7 +16,7 @@ test.describe('partner BizGate SSO — auth', () => {
   });
 
   test('happy: ACTIVE BizGate SSO 로그인 → 메인 진입', async ({ page }) => {
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
     await page.goto('/');
     await expect(page).toHaveTitle(/주문|samhan/i);
@@ -27,7 +27,7 @@ test.describe('partner BizGate SSO — auth', () => {
   });
 
   test('edge: BLOCKED 거래처 → 차단 메시지', async ({ page }) => {
-    const partner = getPartner({ status: 'BLOCKED' });
+    const partner = Partners.blocked();
     await mockPartnerAuth(page, partner);
     await page.goto('/');
     // legacy 는 status 검증 → alert 또는 차단 화면

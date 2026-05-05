@@ -5,7 +5,7 @@ export type PartnerFixture = (typeof partners.partners)[number];
 
 /**
  * 거래처 fixture 조회 helper.
- * status (ACTIVE / BLOCKED / EXPIRED / TEMP_PASSWORD) 필터.
+ * status (ACTIVE / BLOCKED / EXPIRED / TEMP_CREDENTIAL) 필터.
  */
 export function getPartner(filter: Partial<PartnerFixture>): PartnerFixture {
   const found = partners.partners.find((p) =>
@@ -16,6 +16,15 @@ export function getPartner(filter: Partial<PartnerFixture>): PartnerFixture {
   }
   return found;
 }
+
+/** Pre-built selector helpers — 시나리오 spec 에서 string literal 분산 회피 */
+export const Partners = {
+  activeBizgate: () => getPartner({ status: 'ACTIVE', credentialType: 'BIZGATE' }),
+  activeStandard: () => getPartner({ status: 'ACTIVE', credentialType: 'STANDARD' }),
+  tempCredential: () => getPartner({ status: 'TEMP_CREDENTIAL' }),
+  blocked: () => getPartner({ status: 'BLOCKED' }),
+  expired: () => getPartner({ status: 'EXPIRED' }),
+};
 
 /**
  * JWT mock helper — backend 미가동 시 cookie/sessionStorage 직접 주입.

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * 임시저장 (draft) 생성 — 거래처 주문서 작성 중 저장.
@@ -12,7 +12,7 @@ test.describe('draft — save', () => {
     const apiBase = process.env.QA_API_BASE_URL ?? 'http://localhost:8080';
     const ok = await isBackendAvailable(apiBase);
     test.skip(!ok, 'partner-order-service 미가동 — IT skip');
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
   });
 

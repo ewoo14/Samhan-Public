@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * CommercialMulti 카탈로그 — 상업용 멀티 (PUMA-*).
@@ -12,7 +12,7 @@ test.describe('catalog — COMMERCIAL_MULTI', () => {
     const apiBase = process.env.QA_API_BASE_URL ?? 'http://localhost:8080';
     const ok = await isBackendAvailable(apiBase);
     test.skip(!ok, 'product-service 미가동 — IT skip');
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
   });
 

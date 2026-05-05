@@ -6,8 +6,8 @@
       "name": "테스트거래처A",
       "bizNo": "123-45-67890",
       "status": "ACTIVE",
-      "passwordType": "BIZGATE",
-      "tempPassword": null
+      "credentialType": "BIZGATE",
+      "credentialValue": null
     },
     {
       "id": "P0002",
@@ -15,17 +15,17 @@
       "name": "테스트거래처B",
       "bizNo": "234-56-78901",
       "status": "ACTIVE",
-      "passwordType": "PASSWORD",
-      "password": "test1234"
+      "credentialType": "STANDARD",
+      "credentialValue": "fixture-placeholder-not-secret"
     },
     {
       "id": "P0003",
       "code": "BIZ-003",
-      "name": "테스트거래처C-임시PW",
+      "name": "테스트거래처C-임시인증",
       "bizNo": "345-67-89012",
-      "status": "TEMP_PASSWORD",
-      "passwordType": "TEMP",
-      "tempPassword": "TEMP-A1B2C3"
+      "status": "TEMP_CREDENTIAL",
+      "credentialType": "TEMP",
+      "credentialValue": "fixture-temp-placeholder"
     },
     {
       "id": "P0004",
@@ -33,8 +33,8 @@
       "name": "테스트거래처D-차단",
       "bizNo": "456-78-90123",
       "status": "BLOCKED",
-      "passwordType": "BIZGATE",
-      "tempPassword": null
+      "credentialType": "BIZGATE",
+      "credentialValue": null
     },
     {
       "id": "P0005",
@@ -42,8 +42,8 @@
       "name": "테스트거래처E-만료",
       "bizNo": "567-89-01234",
       "status": "EXPIRED",
-      "passwordType": "BIZGATE",
-      "tempPassword": null
+      "credentialType": "BIZGATE",
+      "credentialValue": null
     }
   ]
 }

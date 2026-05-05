@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * 단종 모델 (OLD_PRODUCT) — active=false 격리 카탈로그.
@@ -12,7 +12,7 @@ test.describe('catalog — OLD_PRODUCT (단종)', () => {
     const apiBase = process.env.QA_API_BASE_URL ?? 'http://localhost:8080';
     const ok = await isBackendAvailable(apiBase);
     test.skip(!ok, 'product-service 미가동 — IT skip');
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
   });
 

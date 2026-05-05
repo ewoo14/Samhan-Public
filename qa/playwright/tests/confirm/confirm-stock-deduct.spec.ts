@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 import { ApiClient } from '../../utils/api-clients';
 
 /**
@@ -15,7 +15,7 @@ test.describe('confirm — inventory deduct', () => {
     const ok = await isBackendAvailable(apiBase);
     test.skip(!ok, 'inventory-service 미가동 — IT skip');
     api = new ApiClient({ baseUrl: apiBase });
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
   });
 

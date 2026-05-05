@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * 거래처 주문 이력 — 본인 주문만 조회 (격리).
@@ -12,7 +12,7 @@ test.describe('history — partner order', () => {
     const apiBase = process.env.QA_API_BASE_URL ?? 'http://localhost:8080';
     const ok = await isBackendAvailable(apiBase);
     test.skip(!ok, 'slip-service 미가동 — IT skip');
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
   });
 

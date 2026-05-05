@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * SingleSet 카탈로그 — 단일 set (실내+실외 일체) 그리드.
@@ -12,7 +12,7 @@ test.describe('catalog — SINGLE_SET grid', () => {
     const apiBase = process.env.QA_API_BASE_URL ?? 'http://localhost:8080';
     const ok = await isBackendAvailable(apiBase);
     test.skip(!ok, 'product-service 미가동 — IT skip');
-    const partner = getPartner({ status: 'ACTIVE', passwordType: 'BIZGATE' });
+    const partner = Partners.activeBizgate();
     await mockPartnerAuth(page, partner);
   });
 

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getPartner, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
+import { Partners, isBackendAvailable, mockPartnerAuth } from '../../fixtures/auth';
 
 /**
  * 거래처 임시 비밀번호 로그인 → 강제 변경 흐름.
@@ -15,14 +15,14 @@ test.describe('partner TEMP_PASSWORD — auth', () => {
   });
 
   test('happy: 임시 PW 입력 → 비밀번호 변경 화면 노출', async ({ page }) => {
-    const partner = getPartner({ status: 'TEMP_PASSWORD' });
+    const partner = Partners.tempCredential();
     await mockPartnerAuth(page, partner);
     await page.goto('/');
     await expect(page.locator('body')).toContainText(/비밀번호.*변경|임시/, { timeout: 5_000 });
   });
 
   test('edge: 변경 미완료 → 다른 화면 차단', async ({ page }) => {
-    const partner = getPartner({ status: 'TEMP_PASSWORD' });
+    const partner = Partners.tempCredential();
     await mockPartnerAuth(page, partner);
     await page.goto('/order');
     // 강제 redirect 또는 alert
