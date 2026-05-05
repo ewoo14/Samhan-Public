@@ -1,8 +1,8 @@
 {
   "name": "@samhan/mobile",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "SamhanLogis 거래처 주문서 React Native (Expo SDK 53). v4 = react-native-webview 로 legacy partner-order/index.html 임베드 + RN 최소 wrapper (BizGate native + Bottom Tab + Safe Area).",
+  "description": "SamhanLogis 거래처 주문서 React Native (Expo SDK 53). v4 (회고 #2 정정) = SafeAreaProvider + StatusBar + 단일 MobileOrderWebViewScreen. 모든 RN native screen + navigation + store + api 폐기 → react-native-webview 가 order-legacy v4 (Node + Express + EJS, port 5185) 직접 임베드. mobile-mode CSS 분기 / 모바일 게이트 / 페이지 메뉴 drawer / 4 카테고리 / 임시저장 / 확정 모두 WebView 안 legacy 가 처리. mobile-staff v3 패턴 1:1 적용.",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
@@ -12,26 +12,18 @@
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "export:web": "expo export --platform web",
-    "capture:home": "node scripts/capture-home.cjs"
+    "capture:v4": "node scripts/capture-v4.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",
-    "@react-native-async-storage/async-storage": "2.1.2",
-    "@react-navigation/bottom-tabs": "^7.0.0",
-    "@react-navigation/native": "^7.0.0",
-    "@react-navigation/native-stack": "^7.0.0",
-    "@tanstack/react-query": "^5.59.0",
-    "axios": "^1.7.0",
     "expo": "~53.0.0",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.6",
     "react-native-safe-area-context": "5.4.0",
-    "react-native-screens": "~4.11.1",
     "react-native-web": "^0.20.0",
-    "react-native-webview": "13.13.5",
-    "zustand": "^4.5.0"
+    "react-native-webview": "13.13.5"
   },
   "devDependencies": {
     "@types/react": "~19.0.10",

@@ -157,3 +157,121 @@ PR #66 은 `HomeScreen.tsx` 의 4 카테고리 textColor 만 한 줄(line) 단�
 - `feedback_korean_commits.md` — 한국어 commit/PR 본문
 - `feedback_role_naming_full.md` — role 풀네임
 - `feedback_powershell_utf8_writes.md` — PR body Write tool 만
+
+---
+
+## §11. 회고 #2 — Mobile v4 RN UI 최소화 (2026-05-05)
+
+### 11.1 사용자 피드백 (개발책임자)
+
+> "종합견적서 모바일용 앱은 구글 스크립트를 거의 그대로 계승한 것으로 보이나,
+> 주문서는 여전히 구글 스크립트 모바일 버전의 UI와 처음 모바일 게이트를 제외한
+> 나머지는 모두 다름을 확인."
+
+이전 §1~§10 의 통합 fix (4 카테고리 textColor / DC notice / titleBar / mobile-gate paddingBottom)
+는 **모바일 게이트의 4 카테고리 큰 진입 버튼 시각만** 일치시킴. 그 외 화면 (extra-menu 5개 /
+BottomTab 4 탭 / RN HomeScreen 자체) 은 legacy 미존재 → 전체 일치 위반.
+
+### 11.2 원인 분석
+
+| 영역 | 이전 v4 | 사용자 첨부 (legacy) | 일치 여부 |
+|---|---|---|---|
+| 모바일 게이트 4 카테고리 | RN HomeScreen + legacyMobile.ts | `body.no-active .mobile-gate` 4 카테고리 | 시각만 일치 (entry path 다름) |
+| 페이지 메뉴 drawer (▼) | RN extra-menu 5 Pressable (정정 #17) | `#drawerTop` + 자동 로그아웃 timer | **불일치** (legacy 미존재 5 메뉴) |
+| BottomTab 4 탭 | RN BottomTab (홈/주문/알림/프로필) | legacy 미존재 | **불일치** (legacy 모두 단일 화면) |
+| BizGate 인증 | RN AuthStack (BizGate/TempPassword/Register) 3 screen | `#pageBizGate` biz-box (legacy 안) | **불일치** (RN 측이 legacy 인증 전 추가 layer) |
+| 과거 발송내역 | extra-menu 1개 (placeholder) | `#pageHistory` (legacy 안) | **불일치** (RN 측에서 진입 라우팅) |
+
+→ mobile-staff v3 (영업직원 견적서) 와 본질 차이:
+- mobile-staff v3 = `App.tsx` → `<EstimateWebViewScreen />` 단일 (RN wrapper 만)
+- Mobile v4 (이전) = `App.tsx` → NavigationContainer → RootNavigator → AuthStack/BottomTab → 7+ screen
+
+### 11.3 정정 결정 — 옵션 A 전면 폐기 + WebView 단일화
+
+mobile-staff v3 의 `EstimateWebViewScreen` 패턴 1:1 적용:
+
+| 영역 | 신규 v4 |
+|---|---|
+| `App.tsx` | `SafeAreaProvider + StatusBar + <MobileOrderWebViewScreen />` |
+| 단일 메인 screen | `MobileOrderWebViewScreen` = `<WebView source={{uri: 'http://localhost:5185/'}} />` |
+| WebView shim | `legacyOrderShim.ts` = fetch monkey-patch + mobile-mode 검증 + postMessage bridge (google.script.run 폐기 — order-legacy v4 가 자체 제공) |
+| WebView source | `legacyOrderSource.ts` = dev `:5185/` / prod `https://order.samhan-air.com/` |
+
+dev URL 변경: `http://localhost:5180/legacy/index.html` (web/order-app v4 Vite) →
+`http://localhost:5185/` (web/order-legacy v4 Express + EJS — `migration/source/scripts/partner-order/index.html`
+9427 라인 1:1 포팅).
+
+근거: order-legacy v4 가 인증 / RPC / mobile-mode CSS 분기 / 모바일 게이트 / 페이지 메뉴 drawer /
+4 카테고리 진입 / 임시저장 / 확정 / 과거 발송내역 / 자동 로그아웃 timer 모두 자체 처리.
+
+### 11.4 폐기 파일 + 신규 파일
+
+| 변경 | 파일 |
+|---|---|
+| **신규** | `clients/mobile/src/screens/MobileOrderWebViewScreen.tsx` |
+| **신규** | `clients/mobile/src/webview/legacyOrderShim.ts` |
+| **신규** | `clients/mobile/src/webview/legacyOrderSource.ts` |
+| **신규** | `clients/mobile/scripts/capture-v4.cjs` |
+| **수정** | `clients/mobile/App.tsx` (전면 rewrite — 5라인 wrapper) |
+| **수정** | `clients/mobile/package.json` (deps 폐기 — react-query / axios / react-navigation / async-storage / zustand) |
+| **수정** | `clients/mobile/README.md` (v4 회고 #2 갱신) |
+| **폐기** | `clients/mobile/src/screens/home/HomeScreen.tsx` |
+| **폐기** | `clients/mobile/src/screens/auth/{BizGate,TempPassword,Register}Screen.tsx` |
+| **폐기** | `clients/mobile/src/screens/notifications/NotificationListScreen.tsx` |
+| **폐기** | `clients/mobile/src/screens/order/LegacyOrderWebViewScreen.tsx` |
+| **폐기** | `clients/mobile/src/screens/profile/{Profile,Settings}Screen.tsx` |
+| **폐기** | `clients/mobile/src/navigation/{Root,AuthStack,BottomTab}Navigator.tsx` + `types.ts` |
+| **폐기** | `clients/mobile/src/webview/legacyShim.ts` |
+| **폐기** | `clients/mobile/src/webview/legacySource.ts` |
+| **폐기** | `clients/mobile/src/styles/legacyMobile.ts` |
+| **폐기** | `clients/mobile/src/stores/{auth,dcConfig}Store.ts` |
+| **폐기** | `clients/mobile/src/api/{auth,client}.ts` |
+| **폐기** | `clients/mobile/src/components/{RNBadge,RNButton,RNCard,RNFormField,ScreenContainer}.tsx` |
+| **폐기** | `clients/mobile/src/tokens/tokens.ts` |
+| **폐기** | `clients/mobile/src/utils/{calcDcPrice,formatSlipNumber}.ts` |
+| **폐기** | `clients/mobile/scripts/capture-home.cjs` (mock HTML overlay 6장 — homeMockHtml/webviewMockHtml 함수) |
+| **폐기** | `clients/mobile/scripts/capture.cjs` |
+
+### 11.5 mobile-staff v3 와 1:1 일치 검증
+
+| 영역 | mobile-staff v3 | Mobile v4 (회고 #2) | 일치 |
+|---|---|---|---|
+| `App.tsx` 라인 수 | 25 | 25 | ✓ |
+| 단일 main screen | `EstimateWebViewScreen` | `MobileOrderWebViewScreen` | ✓ |
+| WebView shim 패턴 | `buildShim()` (default null token) | `buildOrderShim()` (default null token) | ✓ |
+| WebView source 패턴 | `getEstimateAppUrl()` (env / dev 5183 / prod estimate.samhan-air.com) | `getOrderAppUrl()` (env / dev 5185 / prod order.samhan-air.com) | ✓ |
+| Android BackHandler | hardware back → `webview.goBack()` | hardware back → `webview.goBack()` | ✓ |
+| `package.json` deps | 9 (expo / RN / safe-area / webview / web) | 9 (동일) | ✓ |
+| capture script | `capture-v3.cjs` (실 dev server, 3장) | `capture-v4.cjs` (실 dev server, 5장) | ✓ |
+| dev-reports | `migration-fe-mobile-staff-v3.md` | `mobile-design-integration-scope.md §11` | ✓ |
+
+### 11.6 사용자 첨부 캡처 vs 신규 캡처 매핑
+
+`docs/qa/legacy-original/partner-order/`:
+
+| 사용자 첨부 | 신규 캡처 | 100% 일치 의무 |
+|---|---|---|
+| Screenshot 2026-05-05 at 20.17.37.JPG (모바일 게이트 4 카테고리) | `01-mobile-gate.png` | ✓ |
+| Screenshot 2026-05-05 at 20.17.55.JPG (페이지 메뉴 drawer + 자동 로그아웃) | `02-page-menu.png` | ✓ |
+
+추가 캡처 (사용자 첨부 외):
+- `03-home-active.png` (홈멀티 진입 직후 라인 grid + 옵션·필터 sidebar)
+- `04-page-history.png` (과거 발송내역 페이지)
+- `05-bizgate.png` (인증 게이트 #pageBizGate)
+
+### 11.7 검증
+
+- `npm install --legacy-peer-deps` (Mobile v4) — 의존성 9개 (이전 19개에서 -10)
+- `npx tsc --noEmit` (Mobile v4) — PASS (타입 에러 0)
+- `npx expo export --platform web` (Mobile v4) — PASS (dist/index.html 생성)
+- `node scripts/capture-v4.cjs` — 5장 모두 정상 생성 (dev server 5185 가동 시)
+- 라인 수: 이전 v4 약 1500 (HomeScreen 220 + nav 4 + auth 3 + comp 5 + store 2 + api 2 + util 2 + token 1 + style 1 + shim 280 + screen 285) → 신규 v4 약 350 (App 25 + screen 105 + shim 200 + source 100)
+
+### 11.8 회고 가드
+
+본 회고 #2 추가 commit + push 시:
+- `feedback_integrated_pr_pattern.md` — 본 fix 는 PR #69 추가 commit (단편 PR 발행 X)
+- `feedback_pr_qa_screenshots.md` — 신규 5장 + mobile-staff v3 reference 3장 + 사용자 첨부 비교 2장 인라인 첨부
+- `feedback_pr_ci_monitoring.md` — push 후 즉시 `gh pr checks --watch`
+- `feedback_korean_commits.md` — 한국어 commit + PR 본문 갱신
+- `feedback_powershell_utf8_writes.md` — PR body Write tool 만
