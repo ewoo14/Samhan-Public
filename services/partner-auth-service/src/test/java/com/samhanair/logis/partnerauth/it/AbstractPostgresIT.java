@@ -1,0 +1,66 @@
+package com.samhanair.logis.partnerauth.it;
+
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.DockerClientFactory;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/**
+ * partner-auth-service 통합 테스트 베이스. Singleton-container 패턴
+ * (product-service AbstractPostgresIT 와 동일 — PR #13 race condition 회고).
+ *
+ * <p>Docker 미가용 환경에서는 {@link DockerAvailableCondition} 이 IT 를 skip
+ * (memory feedback_testcontainers_windows_docker.md).
+ */
+@ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+public abstract class AbstractPostgresIT {
+
+    @SuppressWarnings("resource")
+    protected static final PostgreSQLContainer<?> POSTGRES =
+            new PostgreSQLContainer<>("postgres:16-alpine")
+                    .withDatabaseName("partner_auth_db")
+                    .withUsername("samhan")
+                    .withPassword("samhan_dev_pw");
+
+    static {
+        try {
+            POSTGRES.start();
+        } catch (Throwable ignored) {
+            // Docker 미가용. DockerAvailableCondition 이 sub IT 를 skip.
+        }
+    }
+
+    @DynamicPropertySource
+    static void registerDatasource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        registry.add("eureka.client.enabled", () -> "false");
+        registry.add("eureka.client.register-with-eureka", () -> "false");
+        registry.add("eureka.client.fetch-registry", () -> "false");
+        registry.add("samhan.jwt.secret", () -> "test-only-secret-32bytes-minimum-key!!");
+        registry.add("samhan.jwt.expiration-hours", () -> "8");
+    }
+
+    /** Docker 미가용 시 IT 를 fail 대신 skip. */
+    static class DockerAvailableCondition implements
+            org.junit.jupiter.api.extension.ExecutionCondition {
+        @Override
+        public org.junit.jupiter.api.extension.ConditionEvaluationResult evaluateExecutionCondition(
+                org.junit.jupiter.api.extension.ExtensionContext context) {
+            try {
+                if (DockerClientFactory.instance().isDockerAvailable() && POSTGRES.isRunning()) {
+                    return org.junit.jupiter.api.extension.ConditionEvaluationResult
+                            .enabled("Docker is available + container running");
+                }
+            } catch (Throwable t) {
+                // fall through
+            }
+            return org.junit.jupiter.api.extension.ConditionEvaluationResult
+                    .disabled("Docker daemon not reachable - skipping Testcontainers IT");
+        }
+    }
+}

@@ -1,0 +1,72 @@
+/*
+ * services:partner-auth-service — Phase 6 M2 (BE).
+ *
+ * 거래처(파트너) 전용 인증/세션 서비스. 자체 PostgreSQL DB(`partner_auth_db`)에
+ * 다음 3 entity 를 보관한다:
+ *   - PartnerAuth          (파트너 1건 = 비밀번호 + 상태 + 사용 이력)
+ *   - PartnerLoginAttempt  (로그인 시도 audit — IP/UA/모바일 여부)
+ *   - PartnerSession       (JWT JTI + 만료/취소)
+ *
+ * 거래처 마스터(법인등록번호/대표자/품목 옵션 등)의 owner 는 M3 dc-config-service
+ * 이며, 본 서비스는 M3 internal RPC ({@code DcConfigClient}) 로만 위임 조회한다.
+ *
+ * 임시 비밀번호 발급은 sms-service (Phase 7 예정) 에 큐잉 — 본 PR 에서는
+ * {@code SmsClient} stub 만 노출.
+ *
+ * Flyway day-one 활성. JWT 는 shared:common 의 {@link com.samhanair.logis.common.security.JwtTokenProvider} 사용.
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    // springdoc-openapi — /v3/api-docs + /swagger-ui.html 자동 생성
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    implementation project(':shared:common')
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
+    runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
+    runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.testcontainers:postgresql:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'partner-auth-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
