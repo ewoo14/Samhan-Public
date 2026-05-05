@@ -1,0 +1,61 @@
+name: Deploy order-app v4 to Cloudflare Pages
+
+# clients/web/order-app (vite + PWA SPA, dist 산출) auto-deploy.
+# main 푸시 또는 수동 dispatch 시 build → Cloudflare Pages publish → smoke test.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'clients/web/order-app/**'
+      - '.github/workflows/deploy-order-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Build + Deploy (Cloudflare Pages)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: clients/web/order-app
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: clients/web/order-app/package-lock.json
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: vite build (dist 산출)
+        run: npm run build
+
+      - name: Cloudflare Pages 배포
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: samhan-order-app
+          directory: clients/web/order-app/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 배포 후 smoke test
+        # CDN 전파 대기 후 root HTML 안에 "주문서" 문자열 존재 검증.
+        run: |
+          sleep 30
+          curl -fsS "https://order.samhan-air.com/" -o /tmp/index.html
+          grep -q "주문서" /tmp/index.html || { echo "smoke test FAIL — 주문서 문자열 없음"; exit 1; }
+          echo "smoke test PASS"

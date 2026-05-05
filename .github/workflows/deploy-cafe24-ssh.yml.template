@@ -1,0 +1,70 @@
+name: Deploy to Cafe24 via SSH (template — 활성 X)
+
+# 카페24 SSH 배포 template — D6/D7/D8 답변 (대상 앱 / 디렉토리 / pm2 process 명) 확정 후 활성.
+# 카페24 호스트: 1 vCPU / 1G RAM / 30G HDD (현재 samhan 공식 홈페이지 pm2 운영).
+#
+# 활성화 절차:
+#   1. `.template` suffix 제거
+#   2. 아래 placeholder (TARGET_PATH / PM2_NAME / DEPLOY_PATHS) 실제 값으로 교체
+#   3. GitHub Secrets 등록: CAFE24_SSH_KEY, CAFE24_HOST, CAFE24_USER
+#   4. push 트리거 주석 해제
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     # D6/D7/D8 답변 후 실제 경로로 교체:
+  #     - 'TBD/**'
+  #     - '.github/workflows/deploy-cafe24-ssh.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: SSH rsync + pm2 reload
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # samhan 공식 홈페이지 + 추가 앱 1G RAM 한계 — 동시 배포 직렬화.
+    concurrency:
+      group: cafe24-ssh-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      # === D6/D7/D8 답변 후 활성 ===
+      # - name: 빌드 (대상 앱이 build step 필요한 경우)
+      #   working-directory: TBD
+      #   run: |
+      #     npm ci
+      #     npm run build
+
+      # - name: rsync 업로드 (SSH key 등록 후)
+      #   uses: easingthemes/ssh-deploy@main
+      #   env:
+      #     SSH_PRIVATE_KEY: ${{ secrets.CAFE24_SSH_KEY }}
+      #     REMOTE_HOST: ${{ secrets.CAFE24_HOST }}
+      #     REMOTE_USER: ${{ secrets.CAFE24_USER }}
+      #     SOURCE: 'TBD/'
+      #     TARGET: '/home/samhan/apps/TBD/'
+      #     EXCLUDE: 'node_modules,.git,test'
+
+      # - name: 원격 의존성 설치 + pm2 reload
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.CAFE24_HOST }}
+      #     username: ${{ secrets.CAFE24_USER }}
+      #     key: ${{ secrets.CAFE24_SSH_KEY }}
+      #     # 1G RAM 한계 — npm install 동시 실행 회피, --max-old-space-size=512 강제
+      #     script: |
+      #       cd /home/samhan/apps/TBD
+      #       NODE_OPTIONS=--max-old-space-size=512 npm ci --omit=dev
+      #       pm2 reload TBD || pm2 start server.js --name TBD --max-memory-restart 400M
+
+      # - name: 배포 후 smoke test
+      #   run: |
+      #     sleep 10
+      #     curl -fsS "https://TBD.samhan-air.com/health" || exit 1
