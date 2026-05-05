@@ -1,0 +1,162 @@
+/*
+ * <EstimateLineRow> styles — legacy migration DS 6 신규 컴포넌트.
+ * 12-column grid (라인번호 / 모델 / 품목명 / 규격 / 수량 / 출고가 / 인도가 / 할인 / 소계 / 액션)
+ */
+
+.row {
+  display: grid;
+  grid-template-columns:
+    var(--col-line-no, 32px) /* # */
+    minmax(120px, 1.4fr) /* model */
+    minmax(140px, 2fr)   /* productName */
+    minmax(120px, 1.6fr) /* spec */
+    var(--col-qty, 72px) /* qty */
+    var(--col-price, 110px) /* releasePrice */
+    var(--col-price, 110px) /* deliveryPrice */
+    72px                 /* discount */
+    minmax(110px, 1fr)   /* amount */
+    96px;                /* actions */
+  align-items: center;
+  min-height: var(--row-h, 40px);
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--line-default, var(--color-border));
+  font-size: var(--font-row, var(--font-size-base));
+  color: var(--ink-primary, var(--color-text));
+  background-color: var(--surface-card, var(--color-bg));
+  transition: background-color var(--motion-hover, var(--duration-fast)) ease;
+  box-sizing: border-box;
+}
+
+.row:hover {
+  background-color: var(--surface-hover, var(--color-bg-subtle));
+}
+
+.readOnly {
+  background-color: var(--surface-subtle, var(--color-bg-subtle));
+}
+
+.cell {
+  padding: 0 var(--space-2);
+  min-width: 0; /* grid overflow 방지 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cellLineNo {
+  text-align: center;
+  color: var(--ink-tertiary, var(--color-text-subtle));
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-sm);
+}
+
+.cellModel {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--ink-primary, var(--color-text));
+}
+
+.cellProduct {
+  color: var(--ink-primary, var(--color-text));
+}
+
+.cellSpec {
+  color: var(--ink-secondary, var(--color-text-muted));
+  font-size: var(--font-size-sm);
+}
+
+.cellQty {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellPrice,
+.cellAmount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellAmount {
+  font-weight: var(--font-weight-semibold);
+}
+
+.cellDiscount {
+  text-align: right;
+  color: var(--state-danger, var(--color-danger));
+  font-size: var(--font-size-sm);
+}
+
+.cellActions {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.placeholder {
+  color: var(--ink-tertiary, var(--color-text-subtle));
+}
+
+.numDisplay {
+  font-variant-numeric: tabular-nums;
+}
+
+.qtyInput {
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-default, var(--color-border));
+  border-radius: var(--radius-input, var(--radius-md));
+  background-color: var(--surface-card, var(--color-bg));
+  color: var(--ink-primary, var(--color-text));
+  font: inherit;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+.qtyInput:focus {
+  outline: 2px solid var(--line-focus, var(--color-brand-500));
+  outline-offset: -1px;
+  border-color: var(--line-focus, var(--color-brand-500));
+}
+
+.specBtn,
+.deleteBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-default, var(--color-border));
+  border-radius: var(--radius-button, var(--radius-md));
+  background-color: var(--surface-card, var(--color-bg));
+  color: var(--ink-secondary, var(--color-text-muted));
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition:
+    color var(--motion-hover, var(--duration-fast)) ease,
+    border-color var(--motion-hover, var(--duration-fast)) ease,
+    background-color var(--motion-hover, var(--duration-fast)) ease;
+}
+
+.specBtn:hover:not(:disabled) {
+  color: var(--action-brand, var(--color-brand-600));
+  border-color: var(--action-brand, var(--color-brand-600));
+}
+
+.deleteBtn {
+  width: 26px;
+  padding: 0;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  color: var(--state-danger, var(--color-danger));
+  border-color: var(--state-danger, var(--color-danger));
+}
+
+.specBtn:disabled,
+.deleteBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

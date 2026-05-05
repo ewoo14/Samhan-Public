@@ -1,0 +1,116 @@
+/*
+ * <PrintPreview> — react-pdf 또는 브라우저 print wrapper.
+ *
+ * F1 하이브리드: 외곽 (toolbar / stage / paper border) 만 SamhanLogis DS,
+ * 본문 (children) 의 인쇄 양식 디자인은 Sub-team A 에서 legacy CSS 보존 + iteration.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-family: var(--font-family-sans);
+  color: var(--ink-primary, var(--color-text));
+  box-sizing: border-box;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-default, var(--color-border));
+  border-radius: var(--radius-md);
+  background-color: var(--surface-card, var(--color-bg));
+}
+
+.meta {
+  font-size: var(--font-size-sm);
+  color: var(--ink-secondary, var(--color-text-muted));
+}
+
+.printBtn {
+  appearance: none;
+  background-color: var(--action-brand, var(--color-brand-600));
+  color: var(--ink-on-primary, var(--color-text-on-brand));
+  border: 1px solid var(--action-brand, var(--color-brand-600));
+  border-radius: var(--radius-button, var(--radius-md));
+  padding: 6px 14px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--motion-hover, var(--duration-fast)) ease;
+}
+
+.printBtn:hover {
+  background-color: var(--action-brand-hover, var(--color-brand-700));
+}
+
+.printBtn:focus-visible {
+  outline: 2px solid var(--line-focus, var(--color-brand-500));
+  outline-offset: 2px;
+}
+
+.stage {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+  background-color: var(--surface-subtle, var(--color-bg-subtle));
+  border-radius: var(--radius-md);
+  overflow: auto;
+}
+
+.pdfFrame {
+  width: 100%;
+  min-height: 400px;
+}
+
+.pdfFrame > * {
+  width: 100% !important;
+  min-height: 400px !important;
+  border: 1px solid var(--line-default, var(--color-border));
+  border-radius: var(--radius-md);
+}
+
+.paper {
+  background-color: #fff;
+  color: #000;
+  box-shadow: var(--elev-card, 0 1px 3px rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--line-default, var(--color-border));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* ── 브라우저 print 모드 시 paper 만 인쇄 (toolbar / stage 배경 등 제거) ── */
+@media print {
+  .toolbar,
+  .stage {
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  .toolbar {
+    display: none !important;
+  }
+
+  .root[data-mode='browser'] .paper {
+    box-shadow: none !important;
+    border: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
+  /* @page 룰 — paperSize/orientation 별 */
+  .root[data-paper='A4'][data-orientation='portrait'] {
+    page-break-after: always;
+  }
+}
+
+/* @page 자체는 selector 안에 못 씀 — root 가 넣어주려면 page rule 별도 */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}

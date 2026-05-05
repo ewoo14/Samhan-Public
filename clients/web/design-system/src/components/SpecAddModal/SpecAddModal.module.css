@@ -1,0 +1,111 @@
+/*
+ * <SpecAddModal> — 추천 키 chip + 자유 입력 폼.
+ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  color: var(--ink-primary, var(--color-text));
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sectionLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--ink-secondary, var(--color-text-muted));
+}
+
+.empty {
+  color: var(--ink-tertiary, var(--color-text-subtle));
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.chipGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-default, var(--color-border));
+  border-radius: var(--radius-chip, var(--radius-md));
+  background-color: var(--surface-card, var(--color-bg));
+  color: var(--ink-secondary, var(--color-text-muted));
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-hover, var(--duration-fast)) ease,
+    color var(--motion-hover, var(--duration-fast)) ease,
+    border-color var(--motion-hover, var(--duration-fast)) ease;
+}
+
+.chip:hover:not(:disabled):not(.chipSelected) {
+  background-color: var(--surface-hover, var(--color-bg-subtle));
+  border-color: var(--line-hover, var(--color-border-strong));
+  color: var(--ink-primary, var(--color-text));
+}
+
+.chipSelected {
+  background-color: var(--action-brand-subtle, var(--color-brand-50));
+  border-color: var(--action-brand, var(--color-brand-600));
+  color: var(--action-brand, var(--color-brand-700));
+  font-weight: var(--font-weight-semibold);
+}
+
+.chipDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.chipUnit {
+  font-size: var(--font-size-xs);
+  color: var(--ink-tertiary, var(--color-text-subtle));
+  font-variant-numeric: tabular-nums;
+}
+
+.inputRow {
+  display: grid;
+  grid-template-columns: 1.5fr 1.5fr 1fr;
+  gap: var(--space-3);
+}
+
+.inputCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.error {
+  color: var(--state-danger, var(--color-danger));
+  font-size: var(--font-size-xs);
+  margin-top: 2px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .inputRow {
+    grid-template-columns: 1fr;
+  }
+}

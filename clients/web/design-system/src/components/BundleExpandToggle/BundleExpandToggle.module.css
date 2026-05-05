@@ -1,0 +1,57 @@
+/*
+ * <BundleExpandToggle> — segmented 2-button toggle.
+ */
+
+.wrapper {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line-default, var(--color-border));
+  border-radius: var(--radius-button, var(--radius-md));
+  overflow: hidden;
+  background-color: var(--surface-card, var(--color-bg));
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  user-select: none;
+}
+
+.btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 4px 10px;
+  height: 24px;
+  color: var(--ink-secondary, var(--color-text-muted));
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-hover, var(--duration-fast)) ease,
+    color var(--motion-hover, var(--duration-fast)) ease;
+}
+
+.btn + .btn {
+  border-left: 1px solid var(--line-default, var(--color-border));
+}
+
+.btn:hover:not(:disabled):not(.active) {
+  background-color: var(--surface-hover, var(--color-bg-subtle));
+  color: var(--ink-primary, var(--color-text));
+}
+
+.btn.active {
+  background-color: var(--action-brand, var(--color-brand-600));
+  color: var(--ink-on-primary, var(--color-text-on-brand));
+  font-weight: var(--font-weight-semibold);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--line-focus, var(--color-brand-500));
+  outline-offset: -2px;
+}
+
+.disabled {
+  opacity: 0.55;
+}
+
+.disabled .btn {
+  cursor: not-allowed;
+}
