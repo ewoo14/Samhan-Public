@@ -106,8 +106,10 @@ class ProductSpecServiceIT extends AbstractPostgresIT {
 
     @Test
     void applyToExisting_dryRun_INSERT_안함() {
+        // V4 시드 53 row (HOME_MULTI 14 + SINGLE 21 + COMM 16 + LEGACY 2) 와 충돌 회피
+        // IT 전용 specKey 사용 — V4 시드 키 목록과 중복 보장 X
         SpecKeyTemplate tmpl = templateRepository.save(SpecKeyTemplate.create(
-                EstimateCategory.HOME_MULTI, "냉매가스", null, 99, true));
+                EstimateCategory.HOME_MULTI, "_it_dryrun_key", null, 99, true));
         templateRepository.flush();
 
         var result = specService.applyTemplateToExisting(tmpl.getId(), true);
@@ -116,18 +118,19 @@ class ProductSpecServiceIT extends AbstractPostgresIT {
         // SPEC001 (HOME_MULTI 카테고리) 가 후보로 잡혔어야 함
         assertThat(result.previewModelCodes()).contains("SPEC001");
         // 실제 INSERT 안 됨 검증
-        assertThat(specRepository.existsByProductIdAndSpecKey(fixture.getId(), "냉매가스")).isFalse();
+        assertThat(specRepository.existsByProductIdAndSpecKey(fixture.getId(), "_it_dryrun_key")).isFalse();
     }
 
     @Test
     void applyToExisting_실행_시_INSERT됨() {
+        // V4 시드와 충돌 회피 — IT 전용 specKey
         SpecKeyTemplate tmpl = templateRepository.save(SpecKeyTemplate.create(
-                EstimateCategory.HOME_MULTI, "차단기", "A", 99, true));
+                EstimateCategory.HOME_MULTI, "_it_apply_key", "A", 99, true));
         templateRepository.flush();
 
         var result = specService.applyTemplateToExisting(tmpl.getId(), false);
         assertThat(result.dryRun()).isFalse();
         assertThat(result.actuallyAdded()).isGreaterThanOrEqualTo(1);
-        assertThat(specRepository.existsByProductIdAndSpecKey(fixture.getId(), "차단기")).isTrue();
+        assertThat(specRepository.existsByProductIdAndSpecKey(fixture.getId(), "_it_apply_key")).isTrue();
     }
 }
