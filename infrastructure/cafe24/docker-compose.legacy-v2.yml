@@ -1,0 +1,66 @@
+# 카페24 SSD 가상서버 일반형 (RAM 1G / IP 203.245.41.148) 배포용 docker-compose.
+#
+# 옵션 X1 (M-LEGACY-V2 §6) 채택 — samhan 공식 홈페이지 server.js 가 443 직접 점유 +
+# host header 분기 reverse proxy. 따라서 estimate-legacy / order-legacy 컨테이너는
+# 호스트의 127.0.0.1 만 노출 (외부 직접 접근 차단, samhan server.js 가 proxy 호출).
+#
+# mem_limit 강제 (카페24 1G 한계):
+#  - estimate-legacy: 256m (legacy index.html 18,614 라인 + sheet 캐시 30MB 안전마진)
+#  - order-legacy:    128m (legacy index.html 9,427 라인, 데이터량 estimate 절반)
+#  - 합계 384m + samhan 공식 홈페이지 + Postgres + OS 600m → 1G 한도 내 안전
+#
+# 시크릿: ./.env (file 옆에 사용자가 SSH 직접 작성). docker compose 가 env_file 로 주입.
+
+version: '3.9'
+
+services:
+  estimate-legacy:
+    build:
+      context: ../../clients/web/estimate-legacy
+      dockerfile: Dockerfile
+    image: samhan/estimate-legacy:v2.0.0
+    container_name: samhan-estimate-legacy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5184:5184"   # localhost 만 노출 (samhan server.js 가 proxy)
+    mem_limit: 256m
+    memswap_limit: 256m
+    env_file: ./.env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5184/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  order-legacy:
+    build:
+      context: ../../clients/web/order-legacy
+      dockerfile: Dockerfile
+    image: samhan/order-legacy:v2.0.0
+    container_name: samhan-order-legacy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5185:5185"   # localhost 만 노출
+    mem_limit: 128m
+    memswap_limit: 128m
+    env_file: ./.env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5185/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# samhan 공식 홈페이지의 samhan_db (Postgres 15) 와 별도 docker-compose 분리 → networks 공유 불요.
+# 두 컨테이너간 통신 X (각자 독립) → 기본 bridge network 자동 사용.
