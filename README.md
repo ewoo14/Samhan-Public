@@ -21,7 +21,7 @@
 - **전체 로드맵**: 33주 (Phase 1~7)
 - **GitHub 워크플로우**: 슬라이스당 팀별 PR/Issue 분리, TM·PM 자동 승인 + 개발책임자 머지
 
-## 📊 진척률 (2026-05-05 기준, main `6fdc61b`)
+## 📊 진척률 (2026-05-05 기준, main `40c8f9d`)
 
 ### 마이크로서비스 인벤토리
 
@@ -34,7 +34,7 @@
 | 5 | Product Service | 8084 | product_db | ✅ Phase 2 본 작업 첫 슬라이스 (Product/Category 도메인, 14 endpoint, jsonb 태그) |
 | 6 | Inventory Service | 8085 | inventory_db | ✅ Phase 2 본 작업 두 번째 슬라이스 (FIFO + 4-tier 창고 + 이동전표 22 endpoint, Plan §3.1 4-tier 채택, X-Internal-Token gateway 우회) |
 | 7 | Slip Service | 8086 | slip_db | ✅ Phase 3 + sales-polish-2 + notification-slice-B + signature-slice-C/C2 (10단계 라이프사이클, dispatcher/inspector 자동 서명, 라인 specification, DeliveryBatch + Solapi SMS, 모바일 전자서명 (Canvas + SHA-256, 인수자/기사 양측 캡처), DispatchView 인쇄 통합, 30 endpoint) |
-| 8 | Accounting Service | 8087 | accounting_db | ⬜ Phase 4 |
+| 8 | Accounting Service | 8087 | accounting_db | ✅ Phase 4 첫 슬라이스 (한국 일반기업회계기준 65 row 시드, ChartOfAccount + Journal + JournalLine + 시산표, 7 endpoint, audit safe reverse 분개) |
 | 9 | Partner Service | 8088 | partner_db | ⬜ Phase 4 |
 | 10 | Groupware Service | 8089 | groupware_db | ⬜ Phase 5 |
 | 11 | Notification Service | 8090 | (Redis) | ⬜ Phase 5 |
@@ -42,7 +42,7 @@
 | 13 | Dashboard Service | 8091 | dashboard_db | ⬜ Phase 5 |
 | 14 | Migration Service | 8092 | migration_db | ⬜ Phase 7 (ECount 마이그레이션) |
 
-**완료 7 / 13 (54%)**.
+**완료 8 / 13 (62%)**.
 
 ### 클라이언트
 
