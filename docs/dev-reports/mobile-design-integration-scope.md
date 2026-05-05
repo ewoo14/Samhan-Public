@@ -193,16 +193,24 @@ mobile-staff v3 의 `EstimateWebViewScreen` 패턴 1:1 적용:
 | 영역 | 신규 v4 |
 |---|---|
 | `App.tsx` | `SafeAreaProvider + StatusBar + <MobileOrderWebViewScreen />` |
-| 단일 메인 screen | `MobileOrderWebViewScreen` = `<WebView source={{uri: 'http://localhost:5185/'}} />` |
-| WebView shim | `legacyOrderShim.ts` = fetch monkey-patch + mobile-mode 검증 + postMessage bridge (google.script.run 폐기 — order-legacy v4 가 자체 제공) |
-| WebView source | `legacyOrderSource.ts` = dev `:5185/` / prod `https://order.samhan-air.com/` |
+| 단일 메인 screen | `MobileOrderWebViewScreen` = `<WebView source={{uri: 'http://localhost:4173'}} />` |
+| WebView shim | `legacyOrderShim.ts` = fetch monkey-patch + mobile-mode 검증 + postMessage bridge (google.script.run 폐기 — order-app v4 의 main.ts/legacyShim.ts 가 자체 제공) |
+| WebView source | `legacyOrderSource.ts` = dev `:4173` / prod `https://order.samhan-air.com` |
 
-dev URL 변경: `http://localhost:5180/legacy/index.html` (web/order-app v4 Vite) →
-`http://localhost:5185/` (web/order-legacy v4 Express + EJS — `migration/source/scripts/partner-order/index.html`
-9427 라인 1:1 포팅).
+dev URL 변경: `http://localhost:5180/legacy/index.html` (web/order-app v4 Vite, sub-path 임베드) →
+`http://localhost:4173` (web/order-app v4 root 직접 진입 — `index.html` 자체가
+`migration/source/scripts/partner-order/index.html` 9427 라인 그대로 +
+`<script type="module" src="/src/main.ts">` 한 줄 (shim) 만 추가).
 
-근거: order-legacy v4 가 인증 / RPC / mobile-mode CSS 분기 / 모바일 게이트 / 페이지 메뉴 drawer /
-4 카테고리 진입 / 임시저장 / 확정 / 과거 발송내역 / 자동 로그아웃 timer 모두 자체 처리.
+정정 #2 (2026-05-05 PR #70 revert 후속) — 이전 #Z 가 `:5185` (legacy-v2 의 order-legacy Express + EJS 포팅,
+별도 디렉토리) 채택했으나 PR #70 머지로 main 에서 제거되어 운영 시 작동 X. main 에 존재하는
+order-app v4 (Vite + PWA) 로 정정. default port 4173 = `vite preview --strictPort` (PM 환경 가동 중 포트).
+vite dev (`npm run dev`) 사용 시 5180 — 환경변수 `EXPO_PUBLIC_ORDER_APP_URL` 또는 `QA_ORDER_BASE_URL` 로 override.
+
+근거: order-app v4 의 root `index.html` 이 legacy partner-order/index.html 그대로 임베드 → 인증 / RPC /
+mobile-mode CSS 분기 / 모바일 게이트 / 페이지 메뉴 drawer / 4 카테고리 진입 / 임시저장 / 확정 /
+과거 발송내역 / 자동 로그아웃 timer 모두 legacy 자체 처리. order-app v4 의 `main.ts` 가
+`google.script.run` shim → samhanApi axios 호출로 RPC dispatch (Apps Script → SamhanLogis MS REST 변환).
 
 ### 11.4 폐기 파일 + 신규 파일
 
@@ -239,7 +247,7 @@ dev URL 변경: `http://localhost:5180/legacy/index.html` (web/order-app v4 Vite
 | `App.tsx` 라인 수 | 25 | 25 | ✓ |
 | 단일 main screen | `EstimateWebViewScreen` | `MobileOrderWebViewScreen` | ✓ |
 | WebView shim 패턴 | `buildShim()` (default null token) | `buildOrderShim()` (default null token) | ✓ |
-| WebView source 패턴 | `getEstimateAppUrl()` (env / dev 5183 / prod estimate.samhan-air.com) | `getOrderAppUrl()` (env / dev 5185 / prod order.samhan-air.com) | ✓ |
+| WebView source 패턴 | `getEstimateAppUrl()` (env / dev 5183 / prod estimate.samhan-air.com) | `getOrderAppUrl()` (env / dev 4173 / prod order.samhan-air.com) | ✓ |
 | Android BackHandler | hardware back → `webview.goBack()` | hardware back → `webview.goBack()` | ✓ |
 | `package.json` deps | 9 (expo / RN / safe-area / webview / web) | 9 (동일) | ✓ |
 | capture script | `capture-v3.cjs` (실 dev server, 3장) | `capture-v4.cjs` (실 dev server, 5장) | ✓ |
@@ -264,7 +272,7 @@ dev URL 변경: `http://localhost:5180/legacy/index.html` (web/order-app v4 Vite
 - `npm install --legacy-peer-deps` (Mobile v4) — 의존성 9개 (이전 19개에서 -10)
 - `npx tsc --noEmit` (Mobile v4) — PASS (타입 에러 0)
 - `npx expo export --platform web` (Mobile v4) — PASS (dist/index.html 생성)
-- `node scripts/capture-v4.cjs` — 5장 모두 정상 생성 (dev server 5185 가동 시)
+- `node scripts/capture-v4.cjs` — 5장 모두 정상 생성 (order-app v4 dev/preview server 4173 가동 시)
 - 라인 수: 이전 v4 약 1500 (HomeScreen 220 + nav 4 + auth 3 + comp 5 + store 2 + api 2 + util 2 + token 1 + style 1 + shim 280 + screen 285) → 신규 v4 약 350 (App 25 + screen 105 + shim 200 + source 100)
 
 ### 11.8 회고 가드

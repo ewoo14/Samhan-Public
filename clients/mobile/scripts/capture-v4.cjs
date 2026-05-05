@@ -7,8 +7,15 @@
  * 정정 결정 (mobile-staff v3 의 `capture-v3.cjs` 패턴 1:1 적용):
  *   - 이전 v4 = `capture-home.cjs` (mock HTML overlay 4장 + expo export bundle 1장 — homeMockHtml /
  *     webviewMockHtml 함수 가 별도 mock 카드 grid 를 내장).
- *   - 신규 v4 = mock HTML overlay 일체 폐기. PM 의 order-legacy v4 dev server (port 5185) 에 직접
+ *   - 신규 v4 = mock HTML overlay 일체 폐기. PM 의 order-app v4 preview server (port 4173) 에 직접
  *     진입, react-native-webview 환경 (iPhone UA + 390x844 viewport) 으로 가장.
+ *
+ * 정정 #2 (2026-05-05 PR #70 revert 후속):
+ *   - PR #70 으로 legacy-v2 (clients/web/order-legacy 의 Express + EJS 포팅, port 5185) 가 main 에서 제거됨.
+ *   - 본 capture script 는 main 에 존재하는 order-app v4 (Vite + PWA + legacy partner-order/index.html
+ *     9427 라인 그대로 임베드) 의 dev/preview server 를 진입 대상으로 삼음.
+ *   - default port 4173 = vite preview --strictPort (PM 환경에서 가동 중인 포트). vite dev (`npm run dev`)
+ *     사용 시 5180 (vite.config.ts server.port). 환경변수 QA_ORDER_BASE_URL 로 override 가능.
  *
  * 사용자 첨부 캡처 1:1 매핑 (docs/qa/legacy-original/partner-order/):
  *   01-mobile-gate.png       → Screenshot 20.17.37 (모바일 게이트 4 카테고리 큰 진입 버튼)
@@ -25,13 +32,15 @@
  *   docs/qa/migration-fe-mobile-v4-design-audit/04-page-history.png
  *   docs/qa/migration-fe-mobile-v4-design-audit/05-bizgate.png
  *
- * 실행 (PM 의 order-legacy v4 dev server 가 port 5185 에서 가동 중이어야 함):
- *   curl http://localhost:5185/healthz   # 200 = 가동 중
- *   node scripts/capture-v4.cjs          # 캡처 진행
+ * 실행 (PM 의 order-app v4 dev/preview server 가 port 4173 에서 가동 중이어야 함):
+ *   cd clients/web/order-app && npm run build && npm run preview -- --port 4173 --strictPort
+ *   # 또는 vite dev (port 5180): cd clients/web/order-app && npm run dev
+ *   # 또는 환경변수 override: QA_ORDER_BASE_URL=http://localhost:5180 node scripts/capture-v4.cjs
+ *   curl http://localhost:4173/         # 200 + "주문서 | 삼한공조시스템" title = 가동 중
+ *   node scripts/capture-v4.cjs         # 캡처 진행
  *
  * 미가동 시:
- *   abort + 사용자 안내 (cd c:/dev/SamhanLogis/clients/web/order-legacy && node server.js).
- *   본 스크립트는 dev server 자동 시작 시도하지 않음 — port lock / DB seed 충돌 방지.
+ *   abort + 사용자 안내. 본 스크립트는 dev server 자동 시작 시도하지 않음 — port lock 충돌 방지.
  */
 
 const { chromium } = require('playwright');
@@ -40,7 +49,7 @@ const fs = require('fs');
 const http = require('http');
 
 const VIEWPORT = { width: 390, height: 844 };
-const ORDER_BASE = process.env.QA_ORDER_BASE_URL || 'http://localhost:5185';
+const ORDER_BASE = process.env.QA_ORDER_BASE_URL || 'http://localhost:4173';
 const OUT_DIR = path.resolve(__dirname, '../../../docs/qa/migration-fe-mobile-v4-design-audit');
 
 // react-native-webview 가 order-legacy 진입 시 보내는 user agent — App.tsx 의
@@ -55,15 +64,20 @@ function ensureDir(dir) {
 }
 
 /**
- * dev server healthz 확인. 미가동 시 false 리턴.
+ * dev server alive 확인 — order-app v4 (Vite) 의 root 진입 (200 + 주문서 title) 검증.
+ *
+ * Vite preview 는 SPA fallback 이라 모든 path 가 200 + index.html 이므로 /healthz 로
+ * 가동 검증 불가. root 진입 후 응답 본문에 "주문서 | 삼한공조시스템" title 존재 여부로 판정.
  */
 function checkDevServer(baseUrl) {
   return new Promise((resolve) => {
-    const req = http.get(baseUrl + '/healthz', { timeout: 2000 }, (res) => {
+    const req = http.get(baseUrl + '/', { timeout: 2000 }, (res) => {
       let body = '';
       res.on('data', (chunk) => (body += chunk));
-      res.on('end', () => resolve(res.statusCode === 200 || res.statusCode === 503));
-      // 503 = 의존성 (Sheets/Notion/eCount) 일부 down — Express 서버 자체는 살아있음.
+      res.on('end', () => {
+        const ok = res.statusCode === 200 && /주문서.*삼한공조/.test(body);
+        resolve(ok);
+      });
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => {
@@ -90,7 +104,7 @@ async function snapshot(page, file) {
 }
 
 /**
- * order-legacy v4 의 인증 게이트 (#pageBizGate) 강제 닫음 — 캡처 02~04 용.
+ * order-app v4 의 인증 게이트 (#pageBizGate) 강제 닫음 — 캡처 02~04 용.
  * 실 운영에서는 tryLogin (Apps Script 1:1) 가 cookie 로 자동 통과시키지만,
  * dev 환경에서는 게이트가 잠시 노출될 수 있으므로 캡처 직전 정리.
  */
@@ -121,8 +135,8 @@ async function dismissBizGate(page) {
 }
 
 /**
- * order-legacy v4 진입 — 모바일 viewport + iPhone UA 가 자동으로 mobile-mode 활성.
- * (index.ejs line 4480 / 8424: `document.body.classList.toggle('mobile-mode', isMobile)`).
+ * order-app v4 진입 — 모바일 viewport + iPhone UA 가 자동으로 mobile-mode 활성.
+ * (index.html line 4491 / 8435: `document.body.classList.toggle('mobile-mode', isMobile)`).
  */
 async function gotoOrderApp(page) {
   console.log(`  [info] navigating ${ORDER_BASE}/`);
@@ -135,19 +149,20 @@ async function gotoOrderApp(page) {
   ensureDir(OUT_DIR);
 
   console.log('Mobile v4 — 실 dev server 캡처 시작 (회고 #2)');
-  console.log(`  order-legacy v4 base = ${ORDER_BASE}`);
+  console.log(`  order-app v4 base = ${ORDER_BASE}`);
 
   const alive = await checkDevServer(ORDER_BASE);
   if (!alive) {
     console.error(
-      `\n[abort] order-legacy v4 dev server 미가동: ${ORDER_BASE}/healthz 응답 없음.\n` +
-        `        먼저 다음 명령으로 dev server 를 시작하세요:\n` +
-        `        cd c:/dev/SamhanLogis/clients/web/order-legacy && node server.js\n` +
-        `        (또는 npm run dev)`,
+      `\n[abort] order-app v4 dev/preview server 미가동: ${ORDER_BASE}/ 진입 실패.\n` +
+        `        먼저 다음 명령으로 dev/preview server 를 시작하세요:\n` +
+        `        cd c:/dev/SamhanLogis/clients/web/order-app && npm install\n` +
+        `        npm run build && npm run preview -- --port 4173 --strictPort\n` +
+        `        (또는 npm run dev — port 5180, 이 경우 QA_ORDER_BASE_URL=http://localhost:5180)`,
     );
     process.exit(2);
   }
-  console.log('  [ok] dev server alive (healthz 200/503)');
+  console.log('  [ok] dev server alive (root 200 + 주문서 title 검증)');
 
   const browser = await launchBrowser();
 

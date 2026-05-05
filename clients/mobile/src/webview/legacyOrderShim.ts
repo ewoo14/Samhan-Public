@@ -1,17 +1,24 @@
 /**
- * Mobile v4 — order-legacy v4 WebView shim 스크립트 (회고 #2 정정).
+ * Mobile v4 — order-app v4 WebView shim 스크립트 (회고 #2 정정).
  *
  * 회고 #2 (2026-05-05) — 사용자 명시:
  *   "주문서는 ... 처음 모바일 게이트를 제외한 나머지는 모두 다름을 확인."
  *
  * 정정 결정 (mobile-staff v3 의 `legacyEstimateShim.ts` 패턴 1:1 적용):
  *   - 이전 v4 = `legacyShim.ts` 가 `google.script.run` Proxy + 12 RPC 매핑 + axios fetch monkey-patch
- *     를 RN 측에서 직접 정의 → order-legacy v4 가 자체적으로 google.script.run shim 을 제공함에도 중복.
- *   - 신규 v4 = order-legacy v4 의 `views/index.ejs` 안 inline shim 이 모든 RPC 처리 → RN shim 은
+ *     를 RN 측에서 직접 정의 → order-app v4 가 자체적으로 google.script.run shim
+ *     (`clients/web/order-app/src/legacyShim.ts` + `samhanApi.ts`) 을 제공함에도 중복.
+ *   - 신규 v4 = order-app v4 의 root `index.html` (legacy partner-order/index.html 9427 라인 그대로) +
+ *     `<script type="module" src="/src/main.ts">` (shim 자동 주입) 가 모든 RPC 처리 → RN shim 은
  *     단순 fetch monkey-patch (X-Samhan-Partner header 첨부) + mobile-mode 자동 활성 검증 + postMessage
  *     bridge 만 담당.
  *
- * order-legacy v4 의 12 RPC site (lib/code.js export §):
+ * 정정 #2 (2026-05-05 PR #70 revert 후속):
+ *   - PR #70 으로 legacy-v2 (clients/web/order-legacy 의 Express + EJS 포팅) 가 main 에서 제거됨.
+ *   - 본 shim 은 운영 시 작동하지 않는 order-legacy 가 아니라, main 에 존재하는 order-app v4 위에 동작.
+ *   - shim 자체의 동작 (fetch monkey-patch + postMessage) 은 양 환경 모두 호환.
+ *
+ * order-app v4 의 12 RPC site (samhanApi.ts RPC_MAP §):
  *   - getProducts / getCustomers / getManagers / saveOrderSnapshot / getOrderSnapshotHistory
  *   - sendOrderFromUi / requestAuthApproval / setAuthPassword / tryLogin / applyConfigFromServer
  *   - logFrontEvent / getGateImages / getLogoImage
@@ -20,7 +27,7 @@
  *   - WebView → RN: `window.ReactNativeWebView.postMessage(JSON.stringify({type, payload}))`
  *
  * UUID 미노출:
- *   - order-legacy v4 의 EJS 자체가 사업자번호/거래처코드/모델명 만 노출 (UUID X).
+ *   - order-app v4 의 임베드된 legacy partner-order/index.html 자체가 사업자번호/거래처코드/모델명 만 노출 (UUID X).
  *   - shim 의 X-Samhan-Partner header 값도 거래처코드 (e.g. "P001") — UUID 회피.
  */
 
@@ -34,7 +41,7 @@ export interface LegacyOrderShimConfig {
 }
 
 /**
- * order-legacy v4 의 index.ejs 첫 로드 직전에 주입되는 shim (mobile-staff v3 패턴 1:1).
+ * order-app v4 의 index.html 첫 로드 직전에 주입되는 RN-side shim (mobile-staff v3 패턴 1:1).
  *
  * v4 에서는 default config 으로 호출되며, 실제 인증은 WebView 안 legacy 가 자체 처리.
  *
@@ -78,9 +85,10 @@ export function getInjectedOrderShim(config: LegacyOrderShimConfig): string {
   };
 
   // -------- fetch monkey-patch — /rpc/* 와 SamhanLogis API 호출에 X-Samhan-Partner 첨부 --------
-  // order-legacy v4 의 inline google.script.run shim 가 모든 RPC 를 fetch("/rpc/" prop, {...}) 형태로 호출.
-  // 본 shim 이 그 fetch 의 headers 에 (있다면) Bearer token + 거래처코드 추가.
-  // v4 default = token/partnerCode null 이므로 header 첨부 skip — WebView 안 legacy 의 cookie 가 인증.
+  // order-app v4 의 main.ts 가 주입하는 google.script.run shim (legacyShim.ts) 이 모든 RPC 를
+  // samhanApi.call() → axios → /api/v1/... 형태로 dispatch. 본 RN shim 은 그 fetch 의 headers 에
+  // (있다면) Bearer token + 거래처코드 추가. v4 default = token/partnerCode null → header 첨부 skip
+  // (WebView 안 legacy 의 cookie / tryLogin 결과로 인증 처리).
   var origFetch = window.fetch;
   if (typeof origFetch === 'function') {
     window.fetch = function(input, init) {
@@ -120,9 +128,9 @@ export function getInjectedOrderShim(config: LegacyOrderShimConfig): string {
   }
 
   // -------- 모바일 분기 자동 활성 검증 --------
-  // order-legacy v4 의 index.ejs:
-  //  - line 4480: document.body.classList.toggle('mobile-mode', isMobile);
-  //  - line 8424: document.body.classList.toggle('mobile-mode', isMobile);
+  // order-app v4 의 index.html (legacy partner-order/index.html 1:1):
+  //  - line 4491: document.body.classList.toggle('mobile-mode', isMobile);
+  //  - line 8435: document.body.classList.toggle('mobile-mode', isMobile);
   // → react-native-webview 의 device width (iPhone/Galaxy 모두 < 1280) → mobile-mode 자동 추가.
   document.addEventListener('DOMContentLoaded', function() {
     if (!document.querySelector('meta[name="viewport"]')) {
@@ -144,7 +152,7 @@ export function getInjectedOrderShim(config: LegacyOrderShimConfig): string {
   postToRN('shim-installed', {
     apiBaseUrl: window.__SAMHAN_AUTH__.apiBaseUrl,
     hasToken: !!window.__SAMHAN_AUTH__.token,
-    target: 'order-legacy-v4-partner-webview-only'
+    target: 'order-app-v4-partner-webview-only'
   });
 })();
 true; // RN WebView injected JS 마지막 표현식 truthy 권장
@@ -195,7 +203,7 @@ export function buildOrderShim(): string {
 }
 
 /**
- * order-legacy v4 가 사용하는 12 RPC 함수 inventory — TM 검토 / 디버깅용.
+ * order-app v4 가 사용하는 12 RPC 함수 inventory — TM 검토 / 디버깅용.
  */
 export const ORDER_RPC_INVENTORY = [
   'getProducts',
