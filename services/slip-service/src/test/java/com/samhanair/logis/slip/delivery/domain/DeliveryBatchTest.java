@@ -97,9 +97,9 @@ class DeliveryBatchTest {
     @Test
     void markSmsFailed_recordsError() {
         DeliveryBatch batch = newBatch();
-        batch.markSmsFailed("Solapi 4xx");
+        batch.markSmsFailed("Aligo 4xx");
 
-        assertThat(batch.getSmsLastError()).isEqualTo("Solapi 4xx");
+        assertThat(batch.getSmsLastError()).isEqualTo("Aligo 4xx");
         assertThat(batch.getSmsSentAt()).isNull();  // 실패는 sent 표시 X
     }
 

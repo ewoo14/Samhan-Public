@@ -458,11 +458,11 @@ POST {{host}}/slips/{{draftSlipId}}/inspect
 Authorization: Bearer {{warehouseToken}}
 
 ###############################################################################
-### 시나리오 13: Slice B (notification-slice-B) — 배송기사 배치 자동 그룹 + 토큰 + Solapi SMS
+### 시나리오 13: Slice B (notification-slice-B) — 배송기사 배치 자동 그룹 + 토큰 + Aligo SMS
 ### BE 신규 spec (plan §3, §4):
 ###   - Slip.driverName/driverPhone/deliveryBatchId 3 필드 (nullable)
 ###   - DeliveryBatch entity (id/batchToken/driverName/driverPhone/batchDate/tokenExpiresAt/smsSentAt/smsLastError)
-###   - SmsGateway 추상화 (Solapi production / Mock test) — slip-service 내부
+###   - SmsGateway 추상화 (Aligo production / Mock test) — slip-service 내부
 ###   - 7 endpoints: /delivery-batches/{auto-group, GET list, GET one, send-sms, slips POST/DELETE, regenerate-token}
 ###   - 3 공개 endpoints (no auth, 토큰만): /public/batches/{token}, /public/batches/{token}/slips/{slipId}, signature
 ### 권한: MANAGER/MASTER (관리자). 공개 endpoint = NO AUTH.
@@ -562,9 +562,9 @@ POST {{host}}/delivery-batches/auto-group?date=2026-05-10
 Authorization: Bearer {{salesToken}}
 
 ###############################################################################
-### 시나리오 15: SMS 발송 (Solapi 게이트웨이 호출)
+### 시나리오 15: SMS 발송 (Aligo 게이트웨이 호출)
 ### 기대: 200 + $.data.smsSentAt != null, $.data.smsLastError == null
-###       (Solapi 미연동 환경에서는 MockSmsGateway → success 반환 후 smsSentAt 기록)
+###       (Aligo 미연동 환경에서는 MockSmsGateway → success 반환 후 smsSentAt 기록)
 ###############################################################################
 POST {{host}}/delivery-batches/{{batchId}}/send-sms
 Authorization: Bearer {{managerToken}}

@@ -30,13 +30,13 @@ app:
   security:
     internal:
       token: ${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}
-  # Slice B (notification-slice-B Plan §6) — SMS 게이트웨이
+  # Slice B SMS 게이트웨이 — Aligo (한국 SMS 게이트웨이, Solapi 에서 마이그)
   sms:
-    vendor: ${SMS_VENDOR:solapi}
-    api-key: ${SOLAPI_API_KEY:dev-key}
-    api-secret: ${SOLAPI_API_SECRET:dev-secret}
-    sender-phone: ${SOLAPI_SENDER_PHONE:01000000000}
-    base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
+    vendor: ${SMS_VENDOR:aligo}
+    api-key: ${ALIGO_API_KEY:dev-key}
+    user-id: ${ALIGO_USER_ID:dev-user}
+    sender-phone: ${ALIGO_SENDER_PHONE:01000000000}
+    base-url: ${ALIGO_BASE_URL:https://apis.aligo.in}
   # Slice B — 공개 모바일 페이지 base URL (SMS 본문 토큰 링크용)
   public:
     base-url: ${PUBLIC_BASE_URL:https://sign.samhan-air.com}
