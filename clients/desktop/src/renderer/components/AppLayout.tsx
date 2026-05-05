@@ -9,6 +9,11 @@
  * - 재고이동 (`/transfers`) — 창고 간 이동, 창고원/재고원
  * - 링크발송 (`/sales/link-dispatch`) — 배송 묶음 + e-sign URL SMS 발송 (notification-slice-B)
  *
+ * accounting-slice-A 신규 그룹 "회계" — ACCOUNTANT/MASTER 만 가시:
+ * - 계정과목 (`/accounting/accounts`)
+ * - 분개장   (`/accounting/journals`)
+ * - 시산표   (`/accounting/balances`)
+ *
  * 기존 PR #18 의 `/slips` IA 는 폐기. 영업/회계/창고 흐름 분리.
  *
  * 우상단에는 현재 사용자명 + 역할 + 로그아웃 버튼을 표시한다.
@@ -23,6 +28,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Button } from '@samhan/design-system'
 import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
+import { canAccessAccounting } from '../api/accounting'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -39,6 +45,9 @@ export function AppLayout() {
   // race condition 호환 — 빈 title 시 "업무 화면" fallback (Designer § 2.7)
   const displayTitle = title || '업무 화면'
 
+  // accounting-slice-A — 회계 그룹은 ACCOUNTANT/MASTER 만 가시
+  const showAccounting = canAccessAccounting(auth?.role)
+
   return (
     <div className="app-shell">
       <aside className="app-sidebar no-print">
@@ -52,6 +61,29 @@ export function AppLayout() {
           <NavLink to="/purchases">구매조회</NavLink>
           <NavLink to="/transfers">재고이동</NavLink>
           <NavLink to="/sales/link-dispatch">링크발송</NavLink>
+
+          {showAccounting ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                회계
+              </div>
+              <NavLink to="/accounting/accounts">계정과목</NavLink>
+              <NavLink to="/accounting/journals">분개장</NavLink>
+              <NavLink to="/accounting/balances">시산표</NavLink>
+            </>
+          ) : null}
         </nav>
         <div style={{ marginTop: 'auto', fontSize: 12, color: '#6B7280' }}>
           v0.1.0 · 사내 전용
