@@ -15,6 +15,8 @@ test.describe('visual — estimate form (영업직원)', () => {
 
   test('견적 form 첫 화면 snapshot', async ({ page }) => {
     await page.goto('/');
+    // Phase 7 5/6차 정정 — 폰트 로드 race 방지 가드 (self-host 적용 후에도 woff2 fetch 비동기).
+    await page.evaluate(() => document.fonts.ready);
     // estimate-app v2 의 메인 form 컨테이너 (page-level snapshot)
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => null);
     // Phase 7 3차 정정 (Designer P1) — fullPage:true 로 viewport 외 form 영역까지 baseline 보존.

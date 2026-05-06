@@ -14,6 +14,7 @@ require('dotenv').config();
 
 const path = require('path');
 const express = require('express');
+const helmet = require('helmet');
 
 const app = express();
 
@@ -21,37 +22,48 @@ const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// 보안 헤더 (Phase 7 2차 DevOps) — order-app 의 _headers 와 동일 정책.
-// HSTS / CSP / X-Frame-Options / Referrer-Policy / X-Content-Type-Options / Permissions-Policy.
+// 보안 헤더 (Phase 7 5/6차 정식 — helmet middleware 도입).
 //
-// Phase 7 3차 정정 (DevOps Critical):
-//   - script-src 에 카카오 우편번호 (https://t1.kakaocdn.net) + html2canvas (https://cdnjs.cloudflare.com)
-//     누락 → legacy 의존 외부 스크립트 모두 차단되어 운영 white-screen. order-app/_headers 와 정합.
-//   - connect-src 의 NODE_ENV 분기 — production 외에는 localhost API 호출 허용 (dev/QA 가용성 확보).
+// Phase 7 2~3차 의 inline CSP middleware → helmet contentSecurityPolicy directive 로 정식화.
+// 효과:
+//   - HSTS / CSP / X-Frame-Options / Referrer-Policy / X-Content-Type-Options /
+//     Permissions-Policy / X-DNS-Prefetch-Control / X-Download-Options / X-Permitted-Cross-Domain-Policies
+//     까지 helmet 기본 묶음 적용 (이전 inline middleware 보다 보강).
+//   - CSP directive 는 order-app 의 _headers (Cloudflare Pages) 와 1:1 정합.
+//   - script-src: 카카오 우편번호 (t1.kakaocdn.net) + html2canvas/jspdf (cdnjs.cloudflare.com).
+//   - font-src 'self' data: — Phase 7 5/6차 self-host @font-face 로 외부 도메인 의존 제거.
+//   - connect-src: dev 에서는 localhost API 호출 허용, production 은 *.samhan-air.com 만.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        'https://t1.kakaocdn.net',
+        'https://cdnjs.cloudflare.com',
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: process.env.NODE_ENV === 'production'
+        ? ["'self'", 'https://*.samhan-air.com']
+        : ["'self'", 'https://*.samhan-air.com', 'http://localhost:*', 'http://127.0.0.1:*'],
+      frameAncestors: ["'self'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  frameguard: { action: 'sameorigin' },
+  // helmet 기본값 외 추가 헤더 — 인쇄 / 카메라 / 마이크 / 위치 정보 권한 차단.
+  crossOriginEmbedderPolicy: false, // legacy 외부 script (카카오/cdnjs) 호환
+}));
+
+// helmet 이 처리하지 않는 잔여 헤더 (Permissions-Policy 는 5.x 부터 지원).
 app.use((req, res, next) => {
-  res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-
-  const cspConnectSrc = process.env.NODE_ENV === 'production'
-    ? "'self' https://*.samhan-air.com"
-    : "'self' https://*.samhan-air.com http://localhost:* http://127.0.0.1:*";
-
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://t1.kakaocdn.net https://cdnjs.cloudflare.com",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https:",
-      "font-src 'self' data: https:",
-      `connect-src ${cspConnectSrc}`,
-      "frame-ancestors 'self'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; '),
-  );
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();
 });

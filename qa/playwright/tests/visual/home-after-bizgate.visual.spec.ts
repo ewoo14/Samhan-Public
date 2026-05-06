@@ -16,6 +16,8 @@ test.describe('visual — home after BizGate', () => {
 
   test('Home 진입 snapshot', async ({ page }) => {
     await page.goto('/');
+    // Phase 7 5/6차 정정 — 폰트 로드 race 방지 가드 (self-host 적용 후에도 woff2 fetch 비동기).
+    await page.evaluate(() => document.fonts.ready);
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => null);
     await expect(page).toHaveScreenshot('home-after-bizgate.png', {
       maxDiffPixelRatio: 0.02,
