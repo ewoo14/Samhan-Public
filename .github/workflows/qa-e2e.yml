@@ -17,7 +17,8 @@ jobs:
   playwright:
     name: Playwright (web + electron + mobile emul)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 시나리오 30 → 60 cell 확장 (DC 3 + 재고 3 + 이력 3 + 튜토리얼 3 추가) → 약 2배 시간
+    timeout-minutes: 60
 
     steps:
       - name: 저장소 체크아웃

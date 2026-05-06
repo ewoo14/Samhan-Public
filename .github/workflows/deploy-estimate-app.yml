@@ -1,0 +1,57 @@
+name: Deploy estimate-app v2 (Render)
+
+# clients/web/estimate-app v2 = Node.js + Express + EJS server-side rendering.
+# 호스팅: Render.com Web Service Starter ($7/mo, Singapore region, always-on, 512MB RAM)
+# Blueprint 정의: infrastructure/render/render.yaml
+#
+# === 워크플로우 역할 분담 ===
+#  - Render auto-deploy : main push 시 자동 빌드 + 배포 (Render 측 webhook)
+#  - GitHub Actions     : 빌드 검증 + 단위 테스트 + syntax 게이트 (PR 시점)
+#
+# 본 workflow 는 Render 측 배포를 trigger 하지 않는다.
+# Render 의 auto-deploy 가 main push 를 자동 감지하므로 secret 노출 없이 분리된다.
+
+on:
+  pull_request:
+    paths:
+      - 'clients/web/estimate-app/**'
+      - 'infrastructure/render/**'
+      - '.github/workflows/deploy-estimate-app.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'clients/web/estimate-app/**'
+      - '.github/workflows/deploy-estimate-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 빌드 검증 + 단위 테스트
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: clients/web/estimate-app
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: clients/web/estimate-app/package-lock.json
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 단위 테스트
+        run: npm test
+
+      - name: server.js syntax 검증 (실 기동 X)
+        run: node --check server.js

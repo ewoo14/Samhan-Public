@@ -1,13 +1,20 @@
-name: Deploy to Cafe24 via SSH (template — 활성 X)
+name: Deploy to Cafe24 via SSH (template — 활성 X / 테스트만)
 
 # 카페24 SSH 배포 template — D6/D7/D8 답변 (대상 앱 / 디렉토리 / pm2 process 명) 확정 후 활성.
 # 카페24 호스트: 1 vCPU / 1G RAM / 30G HDD (현재 samhan 공식 홈페이지 pm2 운영).
 #
-# 활성화 절차:
+# === 현재 상태 (Phase 7 1차) ===
+# 본 단계는 "테스트만 진행"이며 실 배포는 활성화하지 않는다.
+# SSH 연결 검증은 infrastructure/cafe24/test-ssh-connection.sh 로 로컬 dry-run 실행한다.
+# 본 workflow 는 .template suffix 가 붙어 있으므로 GitHub Actions 가 인식하지 않는다.
+#
+# === 활성화 절차 (D6/D7/D8 답변 + 활성 결정 후) ===
 #   1. `.template` suffix 제거
 #   2. 아래 placeholder (TARGET_PATH / PM2_NAME / DEPLOY_PATHS) 실제 값으로 교체
 #   3. GitHub Secrets 등록: CAFE24_SSH_KEY, CAFE24_HOST, CAFE24_USER
 #   4. push 트리거 주석 해제
+#   5. 활성화 직전 `infrastructure/cafe24/test-ssh-connection.sh` 결과로
+#      free -m / pm2 list 1G RAM 여유 + 기존 samhan 공식 홈페이지 pm2 영향 없음 확인
 
 on:
   workflow_dispatch:
