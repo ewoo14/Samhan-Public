@@ -1,0 +1,79 @@
+/*
+ * services:notification-service — Phase 9 W3
+ *
+ * 푸시 / 이메일 / SMS 통합 라우터 — 발송 요청 + 이력 + 3 channel adapter (FCM / SES placeholder / Aligo).
+ * 외부 의존성 = user-service (수신자 정보 lookup), ServiceDiscoveryClient 세 번째 소비자.
+ *
+ * 주요 책임:
+ *   - NotificationRequest (발송 요청)
+ *   - NotificationLog (발송 이력)
+ *   - 3 channel adapter (PushAdapter / EmailAdapter / SmsAdapter)
+ *   - NotificationGateway 공통 인터페이스 + strategy pattern
+ *   - Aligo SMS 흡수 (Phase 5 SmsGateway 참조 → notification 으로 일원화)
+ *   - Internal endpoint (X-Internal-Token, 형제 service 발송 요청 용)
+ *   - Admin endpoint (관리자 권한, 발송 + 이력 + 재시도)
+ *
+ * Owns the `notification_db` schema in PostgreSQL.
+ * Flyway 는 day-one 부터 활성 — src/main/resources/db/migration 참조.
+ *
+ * Phase 8 2차 정착 — `shared:discovery-abstraction` 의존성 추가 (provider toggle = eureka default).
+ * Phase 9 W3 — Caffeine cache (UserClient bulk verify TTL 60s, BE backlog #4 채택).
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // Phase 9 W3 — Caffeine cache (UserClient bulk verify TTL 60s)
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+
+    // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    implementation project(':shared:common')
+    // Phase 8 2차 — vendor 추상화 wrapper (provider=eureka default, Phase 10 시점 aws-cloud-map 토글)
+    implementation project(':shared:discovery-abstraction')
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.testcontainers:postgresql:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'notification-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

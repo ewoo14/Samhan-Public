@@ -1,0 +1,169 @@
+package com.samhanair.logis.notification.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.notification.adapter.NotificationGateway;
+import com.samhanair.logis.notification.adapter.NotificationGatewayResult;
+import com.samhanair.logis.notification.client.UserClient;
+import com.samhanair.logis.notification.domain.NotificationChannel;
+import com.samhanair.logis.notification.domain.NotificationRequest;
+import com.samhanair.logis.notification.domain.NotificationStatus;
+import com.samhanair.logis.notification.domain.RecipientType;
+import com.samhanair.logis.notification.dto.NotificationSendRequest;
+import com.samhanair.logis.notification.repository.NotificationLogRepository;
+import com.samhanair.logis.notification.repository.NotificationRequestRepository;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * NotificationService 단위 테스트 — Spring 부팅 없음, JDK 17 한글 path 환경에서도 PASS.
+ *
+ * <p>커버 6 case:
+ * <ol>
+ *   <li>send 정상 — 게이트웨이 success → status=SENT, attemptCount=1</li>
+ *   <li>send 실패 (gateway failure) → status=FAILED, attemptCount=1</li>
+ *   <li>send USER + 수신자 미존재 → 404 BusinessException</li>
+ *   <li>retry — FAILED 상태 → 정상 호출 가능, 재시도 후 SENT</li>
+ *   <li>retry — SENT 상태 → 409 BusinessException</li>
+ *   <li>findById — 미존재 → 404 BusinessException</li>
+ * </ol>
+ */
+class NotificationServiceTest {
+
+    private NotificationRequestRepository requestRepository;
+    private NotificationLogRepository logRepository;
+    private UserClient userClient;
+    private NotificationService service;
+    private TestGateway pushGateway;
+    private Map<NotificationChannel, NotificationGateway> gatewayMap;
+
+    @BeforeEach
+    void setup() {
+        requestRepository = mock(NotificationRequestRepository.class);
+        logRepository = mock(NotificationLogRepository.class);
+        userClient = mock(UserClient.class);
+        pushGateway = new TestGateway(NotificationChannel.PUSH);
+        gatewayMap = new HashMap<>();
+        gatewayMap.put(NotificationChannel.PUSH, pushGateway);
+        gatewayMap.put(NotificationChannel.SMS, new TestGateway(NotificationChannel.SMS));
+        service = new NotificationService(requestRepository, logRepository, gatewayMap, userClient);
+
+        // repository.save 는 입력 그대로 반환
+        lenient().when(requestRepository.save(any(NotificationRequest.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(userClient.exists(any())).thenReturn(true);
+    }
+
+    @Test
+    void send_success_returns_status_sent() {
+        NotificationSendRequest req = new NotificationSendRequest(
+                RecipientType.EXTERNAL_PHONE, null, "01012345678",
+                NotificationChannel.SMS, null, null, "본문", null);
+
+        NotificationRequest result = service.send(req);
+
+        assertThat(result.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(result.getAttemptCount()).isEqualTo(1);
+        assertThat(result.getLastAttemptedAt()).isNotNull();
+    }
+
+    @Test
+    void send_failure_returns_status_failed() {
+        pushGateway.nextResult = NotificationGatewayResult.failure("FAILURE_TEST", "{\"error\":\"forced\"}");
+        NotificationSendRequest req = new NotificationSendRequest(
+                RecipientType.USER, UUID.randomUUID(), null,
+                NotificationChannel.PUSH, null, "안내", "본문", null);
+
+        NotificationRequest result = service.send(req);
+
+        assertThat(result.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(result.getAttemptCount()).isEqualTo(1);
+    }
+
+    @Test
+    void send_missing_user_recipient_throws_404() {
+        when(userClient.exists(any())).thenReturn(false);
+        NotificationSendRequest req = new NotificationSendRequest(
+                RecipientType.USER, UUID.randomUUID(), null,
+                NotificationChannel.PUSH, null, "안내", "본문", null);
+
+        assertThatThrownBy(() -> service.send(req))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("수신자(USER) 미존재");
+    }
+
+    @Test
+    void retry_after_failed_state_invokes_gateway_again() {
+        // fixture: 이미 FAILED 상태 entity
+        NotificationRequest entity = NotificationRequest.open(
+                RecipientType.EXTERNAL_PHONE, null, "01099998888",
+                NotificationChannel.SMS, null, null, "재시도", null);
+        entity.markFailed(false);
+        UUID id = UUID.randomUUID();
+        when(requestRepository.findById(id)).thenReturn(Optional.of(entity));
+
+        NotificationRequest result = service.retry(id);
+
+        assertThat(result.getStatus()).isEqualTo(NotificationStatus.SENT);
+        // 1차 markFailed → attemptCount=1, retry 후 markSent → attemptCount=2
+        assertThat(result.getAttemptCount()).isEqualTo(2);
+    }
+
+    @Test
+    void retry_when_status_sent_throws_conflict() {
+        // 이미 SENT — retry 거부
+        NotificationRequest entity = NotificationRequest.open(
+                RecipientType.EXTERNAL_PHONE, null, "01099998888",
+                NotificationChannel.SMS, null, null, "재시도", null);
+        entity.markSent();
+        UUID id = UUID.randomUUID();
+        when(requestRepository.findById(id)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.retry(id))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("FAILED / RETRYING 상태에서만");
+    }
+
+    @Test
+    void find_by_id_missing_throws_not_found() {
+        UUID id = UUID.randomUUID();
+        when(requestRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.findById(id))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("발송 요청을 찾을 수 없습니다");
+    }
+
+    /** 단위 테스트용 가변 게이트웨이 — nextResult 로 success / failure 토글. */
+    static class TestGateway implements NotificationGateway {
+        final NotificationChannel channel;
+        NotificationGatewayResult nextResult;
+
+        TestGateway(NotificationChannel channel) {
+            this.channel = channel;
+        }
+
+        @Override
+        public NotificationChannel channel() {
+            return channel;
+        }
+
+        @Override
+        public NotificationGatewayResult send(NotificationRequest request) {
+            if (nextResult != null) {
+                return nextResult;
+            }
+            return NotificationGatewayResult.success("test-" + request.getId(), "{\"ok\":true}");
+        }
+    }
+}

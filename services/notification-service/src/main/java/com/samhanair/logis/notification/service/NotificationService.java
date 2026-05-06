@@ -1,0 +1,150 @@
+package com.samhanair.logis.notification.service;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.notification.adapter.NotificationGateway;
+import com.samhanair.logis.notification.adapter.NotificationGatewayResult;
+import com.samhanair.logis.notification.client.UserClient;
+import com.samhanair.logis.notification.domain.NotificationChannel;
+import com.samhanair.logis.notification.domain.NotificationLog;
+import com.samhanair.logis.notification.domain.NotificationRequest;
+import com.samhanair.logis.notification.domain.NotificationStatus;
+import com.samhanair.logis.notification.domain.RecipientType;
+import com.samhanair.logis.notification.dto.NotificationSendRequest;
+import com.samhanair.logis.notification.repository.NotificationLogRepository;
+import com.samhanair.logis.notification.repository.NotificationRequestRepository;
+import java.util.Map;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 발송 라이프사이클 service — 생성 / 조회 / 게이트웨이 호출 / 재시도.
+ *
+ * <p>흐름:
+ * <ol>
+ *   <li>{@link #send} — 요청 생성 + 채널 어댑터 호출 + log 적재 + status 전이.</li>
+ *   <li>{@link #findById} — 단건 조회.</li>
+ *   <li>{@link #retry} — admin 재시도 (FAILED/RETRYING 만 허용) + 어댑터 재호출.</li>
+ *   <li>{@link #findAll} — 채널 / 상태 필터 페이지.</li>
+ * </ol>
+ *
+ * <p>USER / PARTNER recipient 의 경우 user-service / partner-service 의 verify 호출 (UserClient).
+ * EXTERNAL_PHONE 은 verify skip (외부 번호 — 수신자 등록 데이터 없음).
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class NotificationService {
+
+    private final NotificationRequestRepository requestRepository;
+    private final NotificationLogRepository logRepository;
+    private final Map<NotificationChannel, NotificationGateway> gatewayMap;
+    private final UserClient userClient;
+
+    /**
+     * 발송 요청 생성 + 즉시 1회 게이트웨이 호출 + status 전이.
+     *
+     * @param req 발송 요청 DTO
+     * @return 영속화된 NotificationRequest (status = SENT 또는 FAILED)
+     */
+    @Transactional
+    public NotificationRequest send(NotificationSendRequest req) {
+        NotificationRequest entity = NotificationRequest.open(
+                req.recipientType(),
+                req.recipientId(),
+                req.recipientAddress(),
+                req.channel(),
+                req.templateCode(),
+                req.subject(),
+                req.body(),
+                req.payload());
+
+        // 수신자 검증 (USER / PARTNER 만)
+        if (req.recipientType() == RecipientType.USER && req.recipientId() != null) {
+            if (!userClient.exists(req.recipientId())) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "수신자(USER) 미존재: " + req.recipientId());
+            }
+        }
+        // PARTNER verify 는 partner-service client (W4 / Phase 10 시점 통합) — W3 시점 skip.
+
+        NotificationRequest saved = requestRepository.save(entity);
+        invokeGateway(saved);
+        return saved;
+    }
+
+    /** 단건 조회. 미존재 시 404. */
+    @Transactional(readOnly = true)
+    public NotificationRequest findById(UUID requestId) {
+        return requestRepository.findById(requestId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "발송 요청을 찾을 수 없습니다: " + requestId));
+    }
+
+    /**
+     * admin 재시도 — FAILED/RETRYING 상태에서만 허용.
+     */
+    @Transactional
+    public NotificationRequest retry(UUID requestId) {
+        NotificationRequest req = findById(requestId);
+        try {
+            req.requeueForRetry();
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
+        }
+        invokeGateway(req);
+        return req;
+    }
+
+    /** 페이지 조회 — 채널 / 상태 필터. */
+    @Transactional(readOnly = true)
+    public Page<NotificationRequest> findAll(NotificationChannel channel,
+                                             NotificationStatus status,
+                                             Pageable pageable) {
+        if (channel != null && status != null) {
+            return requestRepository.findAllByChannelAndStatus(channel, status, pageable);
+        }
+        if (channel != null) {
+            return requestRepository.findAllByChannel(channel, pageable);
+        }
+        if (status != null) {
+            return requestRepository.findAllByStatus(status, pageable);
+        }
+        return requestRepository.findAll(pageable);
+    }
+
+    /** 채널 어댑터 호출 + 결과에 따라 status 전이 + log 기록. caller 가 트랜잭션 보유 의무. */
+    private void invokeGateway(NotificationRequest req) {
+        NotificationGateway gateway = gatewayMap.get(req.getChannel());
+        if (gateway == null) {
+            req.markFailed(false);
+            logRepository.save(NotificationLog.record(req, req.getAttemptCount() + 1,
+                    "FAILURE_NO_ADAPTER", null,
+                    "{\"error\":\"채널 어댑터 미등록: " + req.getChannel() + "\"}"));
+            return;
+        }
+        NotificationGatewayResult result;
+        try {
+            result = gateway.send(req);
+        } catch (Exception ex) {
+            log.warn("[NotificationService] gateway 예외 channel={} requestId={} msg={}",
+                    req.getChannel(), req.getId(), ex.getMessage());
+            result = NotificationGatewayResult.failure("FAILURE_EXCEPTION", ex.getMessage());
+        }
+        if (result.success()) {
+            req.markSent();
+        } else {
+            req.markFailed(result.retryable());
+        }
+        logRepository.save(NotificationLog.record(
+                req,
+                req.getAttemptCount(),
+                result.gatewayStatus(),
+                result.messageId(),
+                result.rawResponse()));
+    }
+}
