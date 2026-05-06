@@ -45,8 +45,12 @@ test.describe('edge — api 5xx fallback', () => {
       }),
     );
     await page.goto('/');
-    // 일부 client (estimate-app 등) 는 alert 표시 — body 텍스트로는 검증이 어려움.
-    // 핵심 가드: page 자체가 unhandled exception 으로 crash 하지 않음
-    expect(page.url()).toBeTruthy();
+    // Phase 7 3차 정정 — 503 케이스와 동일 가드 (tautology page.url() 제거).
+    // 일부 client 는 alert 로 안내해 본문에 메시지가 노출되지 않을 수 있으나,
+    // body 자체가 비어있지 않고 내부 식별자/스택트레이스가 노출되지 않음을 검증.
+    const bodyText = await page.locator('body').innerText();
+    expect(bodyText.length).toBeGreaterThan(0);
+    expect(bodyText).not.toMatch(/at\s+\w+\.\w+:\d+/);
+    expect(bodyText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
   });
 });

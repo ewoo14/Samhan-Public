@@ -32,4 +32,25 @@ test.describe('visual — dark mode toggle', () => {
       animations: 'disabled',
     });
   });
+
+  test('dark: body[data-theme="dark"] 토큰 적용 검증', async ({ page }) => {
+    // Phase 7 3차 정정 — 시각적 회귀(snapshot) 만으로는 DS 토큰 전환 여부 알 수 없음.
+    // body 의 data-theme 속성 + computed background 색상 검증.
+    // design-system tokens.css 의 [data-theme="dark"] 셀렉터가 적용되어야 함.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/');
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => null);
+
+    // data-theme 미구현 환경에서는 skip — order-app/estimate-app 의 dark-mode 도입 후 활성화.
+    const hasDataTheme = await page.locator('body[data-theme]').count();
+    if (hasDataTheme === 0) {
+      test.skip(true, 'body[data-theme] 미구현 — order-app/estimate-app dark-mode 도입 후 활성화');
+    }
+    const theme = await page.locator('body').getAttribute('data-theme');
+    expect(theme).toBe('dark');
+    const bgColor = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    // light 기본(흰색) 이 아님 — dark 토큰이 실제로 적용
+    expect(bgColor).not.toBe('rgb(255, 255, 255)');
+    expect(bgColor).not.toBe('rgba(0, 0, 0, 0)'); // 미적용 fallback 도 차단
+  });
 });
