@@ -30,7 +30,7 @@
 | 11 | dc-config-service | 8089 | 6 |
 | 12 | partner-order-service | (8090 reserved) | 6 |
 
-> Phase 9 추가 예정 — partner-service / groupware-service / notification-service / dashboard-service (4건). 본 가드는 12 + 4 = 14 final 기준 적용.
+> Phase 9 추가 예정 — partner-service (8095, 8088 충돌 회피) / groupware-service (8092) / notification-service (8093) / dashboard-service (8094). 본 가드는 12 + 4 = 14 final 기준 적용. (Phase 10 migration-service = 8096)
 
 ### 12-factor 준수 검증
 
@@ -164,7 +164,7 @@ Flyway migration `services/*/src/main/resources/db/migration/V*.sql` (전체 22 
 | docker-compose RabbitMQ 3.13 | AWS MQ (RabbitMQ engine 3.13) | OK | spring-boot-starter-amqp 호환 |
 | docker-compose Elasticsearch 8.15 | AWS OpenSearch Service 2.x | OK (마이너 차이) | OpenSearch = Elasticsearch 7.10 fork — index API 일부 차이 검증 필요 |
 | docker-compose MinIO | AWS S3 | OK | S3 SDK API 일관 (endpoint 만 변경) |
-| Eureka (Spring Cloud) | AWS Cloud Map / Service Discovery | wrapper 필요 | 또는 Eureka cluster 자체를 EC2 에 운영 (자체 호스팅) |
+| Eureka (Spring Cloud) | Eureka cluster 자체 EC2 운영 (권장) 또는 AWS Cloud Map | **wrapper 불필요 (자체 EC2 운영)** | Cloud Map 도입 시 wrapper 필요하나 자체 운영 권장 — 단순 |
 | Resilience4j (in-process) | 그대로 | OK | library, infra 의존 X |
 | Spring Cloud Gateway (api-gateway) | 그대로 (EC2/ECS) 또는 AWS API Gateway | OK | 그대로 권장 (JWT filter custom 보존) |
 | Cloudflare DNS | AWS Route 53 | OK | DNS only — record 이전 |
@@ -173,14 +173,20 @@ Flyway migration `services/*/src/main/resources/db/migration/V*.sql` (전체 22 
 | Prometheus + Grafana | AWS Managed Prometheus + Managed Grafana | OK | 또는 EC2 자체 운영 그대로 |
 | `*.samhan-air.com` | Route 53 hosted zone | OK | NS record 이전 + ACM (TLS cert) |
 
-### 4-1. wrapper 필요 항목 (1건)
+### 4-1. AWS 매핑 분류 (16건 호환 + 1건 자체 운영)
 
-**Eureka → AWS Cloud Map**
+**16건 호환 (endpoint / 설정 변경만)**:
+Cloudflare Pages, Render, 카페24 VPS, Postgres 16, Redis 7, RabbitMQ 3.13, Elasticsearch 8.15, MinIO, Resilience4j, Spring Cloud Gateway, Cloudflare DNS, Cloudflare WAF, GitHub Actions CI, Prometheus + Grafana, `*.samhan-air.com`, ACM (TLS).
+
+**1건 자체 EC2 운영 (wrapper 부재)**:
+
+**Eureka cluster — 자체 EC2 운영 권장**
 - 현재 = Spring Cloud Eureka (`eureka.client.service-url.defaultZone`)
-- AWS Cloud Map 사용 시 = `spring-cloud-aws-discovery` starter + 추상화 wrapper
-- 단순한 옵션 = Eureka cluster 자체를 EC2 에 운영 (현재 그대로) → wrapper 불필요
+- 권장 = Eureka cluster 자체를 EC2 에 운영 (다중 노드, AZ-aware) → **wrapper 불필요**
+- 이유 = AWS Cloud Map wrapper 작성 부담 회피 + Spring Cloud Eureka 그대로 보존 + 단순
+- AWS Cloud Map 도입 시 = `spring-cloud-aws-discovery` starter + 추상화 wrapper 필요 (선택지로만 보존, 본 plan 비채택)
 
-권장 = **Eureka 자체 운영** (Phase 10). wrapper 도입은 향후 필요 시 진행.
+→ wrapper 작성 의무 = **0건** (Eureka 자체 운영 시).
 
 ---
 

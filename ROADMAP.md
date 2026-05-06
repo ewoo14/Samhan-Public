@@ -269,10 +269,15 @@
 ## Phase 9 — 잔여 도메인 (대기)
 
 ### 예정 산출물
-- `services/partner-service` (8088, 거래처 마스터 + 신용한도 + 거래내역)
+- `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피
 - `services/groupware-service` (8092, 결재선 + 메신저 + 일정)
 - `services/notification-service` (8093, 푸시/이메일/SMS 통합 라우터)
 - `services/dashboard-service` (8094, KPI / 실시간 재고 / 매출)
+
+**기존 14 service 포트 매핑 (Cross-check)**:
+- 8080 api-gateway / 8081 auth / 8082 logging / 8083 user / 8084 product / 8085 inventory
+- 8086 slip / 8087 accounting / 8088 partner-order / 8089 dc-config / 8091 partner-auth / 8761 eureka
+- 신규 추가: 8092 groupware / 8093 notification / 8094 dashboard / **8095 partner**
 
 ### 진입 조건
 - Phase 8 호환성 가드 + 운영 가드 정착
@@ -288,7 +293,7 @@
 ### 예정 산출물
 - AWS 인프라 cutover — RDS PostgreSQL 16 + EC2/ECS Fargate + ElastiCache + AWS MQ + S3 + Route 53 + ACM
 - Secrets Manager rotation lambda + Parameter Store
-- `services/migration-service` (8095, ECount 일괄 데이터 이관)
+- `services/migration-service` (8096, ECount 일괄 데이터 이관) — Phase 9 partner-service (8095) 충돌 회피
 - 장기미수 마이그레이션 일괄 처리
 - 운영 안정화 (장애 복구 / 백업 / DR)
 - 환경변수 통일 정정 (`INTERNAL_TOKEN` → `INTERNAL_AUTH_TOKEN`, `<NAME>_HOST` → `<NAME>_SERVICE_URL`)
