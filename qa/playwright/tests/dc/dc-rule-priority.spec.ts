@@ -26,7 +26,8 @@ test.describe('dc — rule priority', () => {
     // 실 rate 값이 % 형태로 렌더되는지 검증.
     const text = await rateBadge.first().textContent();
     expect(text, 'rate badge 텍스트 비어있음').toBeTruthy();
-    expect(text!).toMatch(/\d+\s*%/);
+    // Phase 7 종합 TM 정정 — 소수 % (예: 15.5%) 호환. 이전 /\d+\s*%/ 는 정수만 매칭 → 부분 일치 통과 가능.
+    expect(text!).toMatch(/\d+(\.\d+)?\s*%/);
   });
 
   test('edge: 모델별 DC 미설정 → 카테고리 fallback', async ({ page }) => {

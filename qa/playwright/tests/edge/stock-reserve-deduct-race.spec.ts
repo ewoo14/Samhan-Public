@@ -38,9 +38,11 @@ test.describe('edge — stock reserve/deduct race', () => {
     const before = await api.getStock(productId!).catch(() => fallback);
 
     // 동시 reserve 5회 (각 1qty)
+    // Phase 7 종합 TM 정정 — getStock 의 prefix (/inventory) 와 일관 (이전 /api/inventory/* 는 path 불일치 → 404 silent skip).
+    // inventory-service 의 실 endpoint 는 StockController @RequestMapping("/inventory") + @PostMapping("/reserve"|"/release").
     const reserveResults = await Promise.allSettled(
       Array.from({ length: 5 }, () =>
-        api.post('/api/inventory/reserve', { productId, qty: 1 }),
+        api.post('/inventory/reserve', { productId, qty: 1 }),
       ),
     );
     const reserveOk = reserveResults.filter((r) => r.status === 'fulfilled').length;
@@ -62,7 +64,7 @@ test.describe('edge — stock reserve/deduct race', () => {
     // cleanup — release 로 reserve 만큼 원복 (테스트 격리)
     await Promise.allSettled(
       Array.from({ length: reserveOk }, () =>
-        api.post('/api/inventory/release', { productId, qty: 1 }),
+        api.post('/inventory/release', { productId, qty: 1 }),
       ),
     );
     const afterRelease = await api.getStock(productId!).catch(() => afterReserve);

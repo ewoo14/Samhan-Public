@@ -99,6 +99,17 @@ class ProductByCodeControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void byCode_customerRole_returns403() throws Exception {
+        // Phase 7 종합 TM — @PreAuthorize 7-tier 화이트리스트 (MASTER/MANAGER/DEVELOPER/SALES/
+        // ACCOUNTANT/WAREHOUSE/INVENTORY) 거부 검증. CUSTOMER role 은 by-code 조회 권한 X.
+        // 인증은 통과 (X-User-Id + X-User-Role 헤더 → SecurityContext) 하나 권한 단계에서 거부 → 403.
+        mockMvc.perform(get("/api/products/by-code/" + CODE_PRESENT)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "CUSTOMER"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void byCode_softDeleted_returns404() throws Exception {
         // soft-deleted 시드 — markDeleted 후 동일 code 조회 시 @SQLRestriction 으로 미노출.
         Product toDelete = Product.seedFromSheet(

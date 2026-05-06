@@ -48,6 +48,8 @@ export default defineConfig({
       name: 'web-order-app',
       // Phase 7 3차 정정 — desktop 은 tutorial-mobile.spec.ts 제외, tutorial-pc/staff/state 만.
       // mobile-chrome / mobile-safari 의 testMatch 와 직교성 보장 (tutorial-mobile 은 mobile 만).
+      // Phase 7 종합 TM 보강 — tutorial-mobile 은 mobile project 전담, tutorial-staff/state 는
+      // PC + mobile 양쪽 실행하여 역할 (영업원/창고/Stateful 흐름) 직교성을 양 viewport 에서 검증.
       testMatch: [
         /.*\/(auth|catalog|draft|confirm|history|dc|stock|edge|visual)\/.*\.spec\.ts/,
         /.*\/tutorial\/tutorial-(pc|staff|state)\.spec\.ts/,

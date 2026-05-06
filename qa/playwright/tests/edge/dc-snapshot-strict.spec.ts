@@ -45,24 +45,30 @@ test.describe('edge — dc snapshot strict', () => {
     expect(value1).toBeGreaterThanOrEqual(0);
     expect(value1).toBeLessThanOrEqual(1); // dc_rate 는 0.0 ~ 1.0 (legacy 0~100 % 환산 비교 시 별도 정규화)
 
-    // Phase 7 3차 정정 — dc_rate config 변경 시뮬레이션 (admin endpoint 가 있을 때만).
-    // 변경 후 동일 slipNo 재조회 → snapshot 이 그대로(immutable) 인지 검증.
-    // admin endpoint 미가용 환경에서는 단순 재조회로 idempotent 만 확인.
+    // Phase 7 종합 TM 정정 — admin override 시뮬레이션 후 immutable 비교.
+    // 이전 `.catch(() => null)` silent fail 패턴은 override 가 실패해도 단순 재조회로 통과 → tautology.
+    // override 가용 시에만 immutable 검증, 미가용 시 명시적 skip (silent pass X).
     const partnerCode =
       ((slip1 as Record<string, unknown>).partnerCode as string | undefined) ??
       ((slip1 as Record<string, unknown>).partner_code as string | undefined);
-    if (partnerCode) {
-      await api
-        .post('/api/admin/dc-config/override', { partnerCode, dcRate: 0.99 })
-        .catch(() => null);
+    if (!partnerCode) {
+      test.skip(true, 'partnerCode 미노출 — admin override 호출 불가, immutable 검증 skip');
+      return;
+    }
+    try {
+      await api.post('/api/admin/dc-config/override', { partnerCode, dcRate: 0.99 });
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const reason = status ?? (err instanceof Error ? err.message : String(err));
+      test.skip(true, `admin override 미가용 (${reason}) — immutable 검증 불가`);
+      return; // skip 후 비교 X (silent pass 회피)
     }
 
-    const slip2 = await api.getSlip(slipNo!).catch(() => null);
-    if (!slip2) return; // 재조회 실패 시 skip
+    const slip2 = await api.getSlip(slipNo!);
     const snapshot2 =
       (slip2 as Record<string, unknown>).dc_rate_snapshot ??
       (slip2 as Record<string, unknown>).dcRateSnapshot;
-    // immutable — config override 가 발생했더라도 슬립의 snapshot 은 발행 시점 값 보존.
+    // immutable — admin override 성공 후에도 슬립 snapshot 은 발행 시점 값 보존.
     expect(Number(snapshot2)).toBe(value1);
   });
 });
