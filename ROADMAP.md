@@ -20,7 +20,7 @@
 | 6     | 22 ~ 27 주차| legacy 마이그레이션 본격 구현 (M1a / M2 / M3 / M4 / M5 + 5 client)   | 완료       |
 | 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | 완료 (PR #87) |
 | 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **완료 (PR #88 / #89 / 본 PR)** |
-| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **진입 준비 완료** |
+| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **1차 진행 (W1 partner-service skeleton)** |
 | 10    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기       |
 
 ---
@@ -278,7 +278,7 @@
 
 ---
 
-## Phase 9 — 잔여 도메인 (진입 준비 완료)
+## Phase 9 — 잔여 도메인 (1차 진행)
 
 ### 예정 산출물
 - `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피
@@ -291,8 +291,20 @@
 - 8086 slip / 8087 accounting / 8088 partner-order / 8089 dc-config / 8091 partner-auth / 8761 eureka
 - 신규 추가: 8092 groupware / 8093 notification / 8094 dashboard / **8095 partner**
 
+### 산출물 (1차 — 본 PR)
+- `services/partner-service` (8095) skeleton — 2 entity (Partner / PartnerCreditHistory) + 2 enum (PartnerStatus / CreditEventType) + 2 repository + 2 service + 2 controller (Internal lookup / Admin CRUD) + 4 dto + 4 config + 1 exception handler
+- Flyway V1 (`partners` + `partner_credit_history`, BaseEntity 7 audit + Soft Delete + partial unique index)
+- IT 2 (`PartnerInternalControllerIT` + `PartnerAdminControllerIT`) + 단위 테스트 1 (`PartnerServiceTest` 8 case)
+- M5 의존성 해소 endpoint = `GET /internal/partners/{partnerCode}` (X-Internal-Token, slip-service 측 client 구현은 W5 또는 Phase 10 위임)
+- ServiceDiscoveryClient 도입 (`shared:discovery-abstraction` 의존성 + `samhan.discovery.provider=eureka` default)
+- 환경변수 표준 (`SAMHAN_PARTNER_DB_*` chained-default + `SAMHAN_INTERNAL_TOKEN` + `SAMHAN_PARTNER_SERVICE_URL` + `SAMHAN_DISCOVERY_PROVIDER`)
+- `infrastructure/env-templates/partner-service.env` 신규
+- `services/partner-service/README.md` + `docs/dev-reports/phase9-step-1-partner-service.md` 신규
+- DECISIONS D-P9-03 / D-P9-04 / D-P9-05 추가
+- ROADMAP / DECISIONS / M-PHASE-9-readiness 갱신
+
 ### 진입 조건
-- Phase 8 호환성 가드 + 운영 가드 정착 (PR #88 / #89 / 본 PR 머지 시 충족)
+- Phase 8 호환성 가드 + 운영 가드 정착 (PR #88 / #89 / #90 머지 시 충족)
 
 ### 가드
 - Phase 8 환경변수 표준 적용 (`SAMHAN_<SERVICE>_<KEY>` prefix, `<NAME>_SERVICE_URL` 패턴, `.env.example` 의무)
@@ -388,7 +400,8 @@
 | #87| 7     | Phase 7 마무리 (self-host font + helmet+CSP + desktop CSP + QA fonts.ready + 회고 + Phase 8 plan) |
 | #88| 8     | Phase 8 1차 (AWS 호환성 가드 + 12-factor 검증 + 환경변수 표준 + ROADMAP/DECISIONS 갱신) |
 | #89| 8     | Phase 8 2차 (ServiceDiscoveryClient interface + Eureka wrapper + AWS placeholder + 환경변수 통일 chained-default + Secrets Manager spec) |
-| 본 PR | 8 | Phase 8 3차 (AWS 마이그레이션 dry-run + Phase 8 회고 + Phase 9 진입 plan + ROADMAP/DECISIONS 갱신) |
+| #90| 8     | Phase 8 3차 (AWS 마이그레이션 dry-run + Phase 8 회고 + Phase 9 진입 plan + ROADMAP/DECISIONS 갱신) |
+| 본 PR | 9 | Phase 9 1차 W1 (partner-service skeleton — port 8095, M5 partnerId lookup endpoint + 2 entity + Admin CRUD + ServiceDiscoveryClient 도입) |
 
 ---
 
@@ -408,6 +421,7 @@
 | `services/partner-auth-service`      | 6          | M2 운영           |
 | `services/dc-config-service`         | 6          | M3 운영           |
 | `services/partner-order-service`     | 6          | M4 운영           |
+| `services/partner-service`           | 9          | W1 skeleton (8095, 거래처 마스터 + M5 partnerCode lookup endpoint, ServiceDiscoveryClient 도입) |
 | `clients/desktop`                    | 2 / 6      | v4                |
 | `clients/web/design-system`          | 2          | 21 컴포넌트       |
 | `clients/web/order-app`              | 6          | v4 (Vite + 임베드)|
@@ -438,5 +452,6 @@
 - Phase 8 3차 dev report: `docs/dev-reports/phase8-step-3-completion-phase-9-readiness.md`
 - Phase 8 회고: `docs/dev-reports/phase8-retrospective.md`
 - Phase 9 진입 plan: `docs/migration/phase9/M-PHASE-9-readiness.md`
+- Phase 9 1차 dev report: `docs/dev-reports/phase9-step-1-partner-service.md`
 - Phase 10 dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
 - 본 문서 갱신 보고: `docs/dev-reports/docs-roadmap-update.md`

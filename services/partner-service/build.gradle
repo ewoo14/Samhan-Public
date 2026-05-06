@@ -1,0 +1,75 @@
+/*
+ * services:partner-service — Phase 9 W1
+ *
+ * 거래처 마스터 도메인 (Partner + PartnerCreditHistory). 본 service 도입의 1차 목적은
+ * slip-service M5 가 partnerCode → partnerId lookup 을 외부 호출 없이 처리할 수 있도록
+ * /internal/partners/{partnerCode} endpoint 를 제공하는 것.
+ *
+ * 주요 책임:
+ *   - Partner (거래처 마스터: 코드 / 사업자번호 / 상호 / 주소 / 신용한도 / 미수금 / 상태)
+ *   - PartnerCreditHistory (신용 거래 이력: SLIP_ISSUED / PAYMENT / CREDIT_LIMIT_CHANGE)
+ *   - PartnerStatus enum (ACTIVE / SUSPENDED / TERMINATED)
+ *   - Internal endpoint (X-Internal-Token, M5 slip-service 의존성 해소용)
+ *   - Admin CRUD endpoint (관리자 권한)
+ *
+ * 외부 의존성: 없음 (self-contained, M-PHASE-9-readiness §6 의존성 매트릭스 일관)
+ *
+ * Owns the `partner_db` schema in PostgreSQL.
+ * Flyway 는 day-one 부터 활성 — src/main/resources/db/migration 참조.
+ *
+ * Phase 8 2차 정착 — `shared:discovery-abstraction` 의존성 추가 (provider toggle = eureka default).
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    implementation project(':shared:common')
+    // Phase 8 2차 — vendor 추상화 wrapper (provider=eureka default, Phase 10 시점 aws-cloud-map 토글)
+    implementation project(':shared:discovery-abstraction')
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.testcontainers:postgresql:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'partner-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

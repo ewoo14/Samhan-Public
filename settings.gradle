@@ -11,6 +11,9 @@
  *   services:auth-service      — JWT issuer + accounts
  *   services:logging-service   — Elasticsearch-backed audit log
  *
+ * Phase 9 services (W1 ~):
+ *   services:partner-service   — 거래처 마스터 + M5 partnerId lookup endpoint
+ *
  * Add additional services here as `include 'services:<name>'` and ensure
  * each service directory contains its own build.gradle.
  */
@@ -31,6 +34,7 @@ include 'services:logging-service'
 include 'services:partner-auth-service'
 include 'services:dc-config-service'
 include 'services:partner-order-service'
+include 'services:partner-service'
 
 project(':shared:common').projectDir                   = file('shared/common')
 project(':shared:discovery-abstraction').projectDir    = file('shared/discovery-abstraction')
@@ -46,3 +50,4 @@ project(':services:logging-service').projectDir        = file('services/logging-
 project(':services:partner-auth-service').projectDir   = file('services/partner-auth-service')
 project(':services:dc-config-service').projectDir      = file('services/dc-config-service')
 project(':services:partner-order-service').projectDir  = file('services/partner-order-service')
+project(':services:partner-service').projectDir        = file('services/partner-service')
