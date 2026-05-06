@@ -36,6 +36,7 @@ allprojects {
 
 def leafProjects = [
         ':shared:common',
+        ':shared:discovery-abstraction',
         ':services:eureka-server',
         ':services:api-gateway',
         ':services:auth-service',

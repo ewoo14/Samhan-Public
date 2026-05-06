@@ -240,18 +240,26 @@
 - `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` (12-factor / 환경변수 / standard SQL / AWS 서비스 매핑)
 - `docs/migration/phase8/M-ENV-STANDARDIZATION.md` (환경변수 표준화)
 
-### 산출물 (1차 — 본 PR)
+### 산출물 (1차 — PR #88)
 - AWS 호환성 가드 plan (12-factor 12/12 OK, RDS 호환 22 file 검증, AWS 서비스 매핑 표 17건)
 - 환경변수 표준화 plan (12 service 환경변수 grep + secrets/config 분리 + AWS Secrets Manager 마이그레이션 plan)
 - ROADMAP 재정의 (Phase 8 = 호환성 가드, Phase 10 = AWS cutover)
 - DECISIONS D-P8-03 ~ D-P8-06 추가
 - dev-report `phase8-step-1-aws-readiness.md`
 
-### 예정 산출물 (2차 ~)
-- 2차 — Eureka cluster prod 설정 (다중 노드, AZ-aware 옵션은 Phase 10)
-- 3차 — Resilience4j prod 임계치 정착 + AWS 마이그레이션 dry-run plan (선택)
-- 4차 — API Gateway production routing + rate limit (현재 인프라 기준)
-- 5차 — 모니터링 alert (Prometheus → Grafana → Slack/SMS)
+### 산출물 (2차 — 본 PR)
+- ServiceDiscoveryClient interface + Eureka wrapper + AWS Cloud Map placeholder (`shared:discovery-abstraction` 신규 모듈, 단위 테스트 13 case PASS)
+- 환경변수 표준 적용 (`SAMHAN_INTERNAL_TOKEN` / `SAMHAN_JWT_SECRET` / `SAMHAN_<SERVICE>_SERVICE_URL`) — chained-default fallback 패턴 (legacy 호환 100%)
+- 12 service `infrastructure/env-templates/<service>.env` 보유 (10 신규 + 2 갱신)
+- AWS Secrets Manager rotation lambda spec (`docs/migration/phase8/M-SECRETS-ROTATION-spec.md`) — Phase 10 cutover 시점 활성
+- DECISIONS D-P8-07 ~ D-P8-09 추가
+- dev-report `phase8-step-2-discovery-secrets.md`
+
+### 예정 산출물 (3차 ~)
+- 3차 — AWS 마이그레이션 dry-run plan + Phase 8 회고 + Phase 9 진입 plan
+- 4차 — Resilience4j prod 임계치 정착 (선택)
+- 5차 — API Gateway production routing + rate limit (현재 인프라 기준)
+- 6차 — 모니터링 alert (Prometheus → Grafana → Slack/SMS)
 
 ### 진입 조건
 - Phase 7 완료 (PR #87 머지) → 충족

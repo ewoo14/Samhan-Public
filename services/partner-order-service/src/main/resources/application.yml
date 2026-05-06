@@ -34,7 +34,8 @@ eureka:
 
 # samhan.* — partner-order-service 전용 옵션 (PartnerOrderProperties / OutboxProperties / InternalAuthProperties)
 samhan:
-  internal-token: ${INTERNAL_TOKEN:dev-only-token-replace}
+  # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
+  internal-token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-only-token-replace}}
   draft:
     ttl-days: 30
     cleanup-cron: "0 0 3 * * *"
@@ -81,12 +82,13 @@ resilience4j:
         timeoutDuration: 3s
 
 # 외부 서비스 base URL (Eureka 비활성 환경 fallback. 일반적으로는 lb:// + service-id 사용).
+# Phase 8 2차 — full URL 표준 (SAMHAN_<SERVICE>_SERVICE_URL 우선, <NAME>_HOST legacy fallback (host only) — Phase 10 cutover 시점 단일화).
 external:
-  product-service: http://${PRODUCT_HOST:product-service}:8084
-  inventory-service: http://${INVENTORY_HOST:inventory-service}:8085
-  slip-service: http://${SLIP_HOST:slip-service}:8086
-  dc-config-service: http://${DC_CONFIG_HOST:dc-config-service}:8089
-  partner-auth-service: http://${PARTNER_AUTH_HOST:partner-auth-service}:8091
+  product-service: ${SAMHAN_PRODUCT_SERVICE_URL:http://${PRODUCT_HOST:product-service}:8084}
+  inventory-service: ${SAMHAN_INVENTORY_SERVICE_URL:http://${INVENTORY_HOST:inventory-service}:8085}
+  slip-service: ${SAMHAN_SLIP_SERVICE_URL:http://${SLIP_HOST:slip-service}:8086}
+  dc-config-service: ${SAMHAN_DC_CONFIG_SERVICE_URL:http://${DC_CONFIG_HOST:dc-config-service}:8089}
+  partner-auth-service: ${SAMHAN_PARTNER_AUTH_SERVICE_URL:http://${PARTNER_AUTH_HOST:partner-auth-service}:8091}
 
 management:
   endpoints:
