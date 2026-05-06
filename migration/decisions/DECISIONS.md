@@ -235,3 +235,62 @@ chained-default 패턴 = 기존 배포 환경 (`INTERNAL_AUTH_TOKEN` 등 설정�
 PR 시점은 D-P8-08 의 환경변수 표준 (SAMHAN_*) 만 보유, lambda 코드 X, AWS 리소스 X.
 
 ---
+
+## Phase 8 3차 결정 (2026-05-05)
+
+### D-P8-10. Phase 8 3차 = AWS 마이그레이션 dry-run + 회고 + Phase 9 진입 plan (본 PR)
+
+- 산출물 4건 = AWS 마이그레이션 dry-run plan + Phase 8 회고 + Phase 9 진입 plan + dev-report
+- 코드 변경 0 file (docs only)
+- ROADMAP 갱신 = Phase 8 "진입 준비" → "완료" / Phase 9 "대기" → "진입 준비 완료" / Phase 10 dry-run plan 위치 명시
+- DECISIONS 갱신 = D-P8-10 / D-P8-11 + D-P9-01 / D-P9-02
+
+영향: Phase 8 3차 머지 후 Phase 9 진입 가능. Phase 9 1차 (partner-service skeleton) 시점부터
+4 신규 service 슬라이스 진행. Phase 10 cutover 는 Phase 9 완료 + AWS account 발급 후.
+
+### D-P8-11. AWS 마이그레이션 dry-run 위치 = `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
+
+- phase10/ 디렉토리 신규 생성 (Phase 10 cutover 산출물 위치)
+- 14 section 구성 = 개요 / RDS Postgres / S3 endpoint override / Eureka cluster / ALB+WAF / CloudWatch alert / Route 53 / Secrets rotation / ServiceDiscoveryClient 활성 / 부트스트랩 순서 / 점진 cutover / roll-back / dry-run 시나리오 / timeline
+- Section 4 = Eureka 자체 EC2 운영 (multi-AZ 2 노드) → AWS Cloud Map wrapper 활성 보류 (Phase 8 2차 결정 보강)
+- Section 11 = canary 10% → 50% → 100% 점진 cutover + DNS TTL 60s 사전 단축
+- Section 12 = roll-back 트리거 = 5xx > 5% (10분) 또는 p99 > 1s
+
+영향: Phase 10 진입 시 본 dry-run plan 을 reference 로 사용. 14 section 모두 staging
+dry-run → canary 10% → full cutover 3단계로 진행. 신규 결정 (예: AWS Cloud Map 활성 시점)
+은 Phase 11 또는 운영 부담 임계 도달 시점 결정.
+
+---
+
+## Phase 9 진입 결정 (2026-05-05)
+
+### D-P9-01. Phase 9 4 신규 service 포트 확정 (partner=8095 / groupware=8092 / notification=8093 / dashboard=8094)
+
+- partner-service = 8095 (8088 partner-order-service 와 충돌 회피)
+- groupware-service = 8092 (결재선 + 메신저 + 일정)
+- notification-service = 8093 (push/email/sms 통합 라우터, Phase 5 SMS Aligo 흡수)
+- dashboard-service = 8094 (KPI + 실시간 재고 + 매출 + materialized view)
+
+기존 14 service 포트 cross-check:
+- 8080 api-gateway / 8081 auth / 8082 logging / 8083 user / 8084 product / 8085 inventory
+- 8086 slip / 8087 accounting / 8088 partner-order / 8089 dc-config / 8091 partner-auth / 8761 eureka
+
+Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
+
+영향: Phase 9 W1 ~ W4 슬라이스 진행 시 본 포트 매핑 일관 적용. 환경변수 표준 = `SAMHAN_PARTNER_SERVICE_URL` / `SAMHAN_GROUPWARE_SERVICE_URL` / `SAMHAN_NOTIFICATION_SERVICE_URL` / `SAMHAN_DASHBOARD_SERVICE_URL`.
+
+### D-P9-02. Phase 9 진입 = Phase 8 완료 + 호환성 가드 검증
+
+- 진입 조건 = Phase 8 (PR #88 / #89 / 본 PR) 머지 + 호환성 가드 12-factor 12/12 OK + 14 service 환경변수 통일
+- 진입 plan = `docs/migration/phase9/M-PHASE-9-readiness.md`
+- 5주 roadmap = W1 partner / W2 groupware / W3 notification / W4 dashboard / W5 회고 + Phase 10 진입 plan
+- 각 service 신규 시 가드 = BaseEntity 7 audit + Soft Delete + IT mockbean 외부 client 격리 + 환경변수 표준 + ServiceDiscoveryClient 도입 (Phase 10 활성 대비) + 한국어 commit + Javadoc + dev-reports
+
+후속 결정 가능 항목 (D-P9 시리즈 추가 가능):
+- 4 service 도메인 모델 확정 (W1 ~ W4 진행 시점)
+- materialized view 구조 (W4 dashboard-service)
+- notification adapter 추상화 (W3)
+
+영향: Phase 9 1차 (partner-service skeleton) 부터 본 가드 일관 적용. Phase 10 cutover 시점에 14 + 4 = 18 service 모두 AWS 마이그 대상.
+
+---
