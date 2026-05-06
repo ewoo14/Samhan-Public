@@ -18,7 +18,8 @@ public interface ScheduleRepository extends JpaRepository<Schedule, UUID> {
      *
      * <p>겹침 = !(eventEnd < windowStart || eventStart > windowEnd) → eventEnd >= from AND eventStart <= to.
      */
-    @Query("select s from Schedule s where s.ownerId = :ownerId "
+    @Query("select distinct s from Schedule s left join fetch s.participants "
+            + "where s.ownerId = :ownerId "
             + "and s.endsAt >= :from and s.startsAt <= :to "
             + "order by s.startsAt asc")
     List<Schedule> findOwnedInRange(@Param("ownerId") UUID ownerId,
