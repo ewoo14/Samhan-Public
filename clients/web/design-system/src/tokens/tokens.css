@@ -403,3 +403,84 @@ html, body {
   color: var(--color-text-primary);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+/* ==========================================================================
+ * Phase 7 4차 잔여 — 통일 톤/폰트 alias 토큰 (5 client 통일)
+ *
+ * 1차~3차에서 추가된 토큰 (`--font-family-sans`, `--space-N`, `--radius-{sm,md,lg,xl,full}`,
+ * `--shadow-{sm,md,lg,modal}`) 와 별개로, 5 client (estimate-app v2 / order-app v4 /
+ * desktop / mobile / mobile-staff) wrapper/shim UI 가 직접 참조하는 일관된 alias 추가.
+ *
+ * 기존 토큰은 그대로 보존 — 본 alias 는 새 wrapper 만 사용하며,
+ * 기존 컴포넌트 / legacy 임베드 inline CSS 는 변형 X.
+ * ========================================================================== */
+:root {
+  /* 폰트 family — Pretendard 우선, 한국어 fallback (Noto Sans KR), system 안전망 */
+  --font-family-base: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont,
+                      'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans KR', sans-serif;
+  --font-family-mono-base: 'D2Coding', ui-monospace, 'SFMono-Regular', 'Cascadia Mono',
+                            Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* 폰트 size alias — 6 단계 (xs/sm/base/lg/xl/2xl) */
+  --font-size-alias-xs:   12px;
+  --font-size-alias-sm:   14px;
+  --font-size-alias-base: 16px;
+  --font-size-alias-lg:   18px;
+  --font-size-alias-xl:   22px;
+  --font-size-alias-2xl:  28px;
+
+  /* 폰트 weight alias — normal(400) / medium(500) / semibold(600) / bold(700) */
+  --font-weight-normal:   400;
+  --font-weight-medium-alias: 500;
+  --font-weight-semibold-alias: 600;
+  --font-weight-bold-alias: 700;
+
+  /* line-height alias — tight / base / relaxed */
+  --line-height-tight-alias:   1.25;
+  --line-height-base:          1.5;
+  --line-height-relaxed-alias: 1.75;
+
+  /* spacing alias — 4px 기반 (1/2/3/4/5/6/8/10) */
+  --spacing-1:  4px;
+  --spacing-2:  8px;
+  --spacing-3:  12px;
+  --spacing-4:  16px;
+  --spacing-5:  20px;
+  --spacing-6:  24px;
+  --spacing-8:  32px;
+  --spacing-10: 40px;
+
+  /* radius alias — sm/md/lg/xl/full */
+  --radius-alias-sm:   4px;
+  --radius-alias-md:   8px;
+  --radius-alias-lg:   12px;
+  --radius-alias-xl:   16px;
+  --radius-alias-full: 9999px;
+
+  /* shadow alias — soft elevation 3 단계 (sm/md/lg) */
+  --shadow-alias-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-alias-md: 0 4px 6px -1px rgba(0, 0, 0, 0.10), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-alias-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.10), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/*
+ * 다크 모드 grayscale 그림자 보강 — light 보다 강도 ~4-5x.
+ * (light 의 alpha 0.05~0.10 → dark 의 alpha 0.30~0.50)
+ */
+html[data-theme="dark"], body[data-theme="dark"] {
+  --shadow-alias-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.40);
+  --shadow-alias-md: 0 4px 6px -1px rgba(0, 0, 0, 0.40), 0 2px 4px -1px rgba(0, 0, 0, 0.30);
+  --shadow-alias-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.50), 0 4px 6px -2px rgba(0, 0, 0, 0.30);
+}
+
+/*
+ * font-family 글로벌 base — html 레벨에 적용해 cascade 최하위 위치.
+ * legacy 임베드 가 자체 `body { font-family: ... }` 명시 시 (order-app / estimate-app)
+ * legacy 가 우선 (selector specificity 동일 + cascade 순서 = 후순위 declaration).
+ * 신규 wrapper / shim UI (root 직속, body font 미명시) 는 본 declaration 적용.
+ */
+html {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-alias-base);
+  line-height: var(--line-height-base);
+}
