@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * dashboard-service 도메인 예외 → {@link ApiResponse} 봉투 매핑.
@@ -41,6 +42,19 @@ public class DashboardExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
                 .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, ex.getMessage()));
+    }
+
+    /**
+     * @PathVariable / @RequestParam 의 enum / 타입 변환 실패 (예: 잘못된 KpiCategory 값) → 400.
+     * Spring 기본 mapping (HttpMessageNotReadableException 외) 으로 500 으로 빠지는 경로를 명시 차단.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String name = ex.getName();
+        String value = String.valueOf(ex.getValue());
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT,
+                        "잘못된 파라미터 값: " + name + "=" + value));
     }
 
     @ExceptionHandler(IllegalStateException.class)
