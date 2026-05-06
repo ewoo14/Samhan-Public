@@ -77,6 +77,7 @@ docker build -t samhanlogis/partner-auth-service:0.1.0 services/partner-auth-ser
 - IT 10건 (PartnerAuthControllerIT) — Testcontainers PostgreSQL + `@MockBean` (DcConfigClient + SmsClient)
 - Docker 미가용 시 IT 자동 skip (`AbstractPostgresIT.DockerAvailableCondition`)
 
-## 후속 작업 (W3 / W4 / W5)
+## 후속 작업
 
-자세한 매트릭스는 `docs/dev-reports/migration-be-m2-partner-auth-service.md` §7 참조.
+- Phase 7 — `qa/playwright/auth/` 3 spec (BizGate / 비밀번호 / 임시 PW) 가 본 서비스에 대해 happy + edge 시나리오 자동 검증
+- 자세한 매트릭스는 `docs/dev-reports/migration-be-m2-partner-auth-service.md` §7 참조

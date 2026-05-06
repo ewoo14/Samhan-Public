@@ -4,10 +4,17 @@
 
 ## 채택 이유 (B2 옵션)
 
-DECISIONS Phase 6 v4 후속 정정 § 결정 — Apps Script 와 가장 가까운 환경 (Node.js + Express + EJS) 으로 1:1 마이그레이션.
+DECISIONS Phase 6 § B2 옵션 — Apps Script 와 가장 가까운 환경 (Node.js + Express + EJS) 으로 1:1 마이그레이션.
 
 - **v1 (Vite/React) 폐기 사유**: server-side template 변환 + Vite bundling 결과가 legacy server-side render 와 시각/동작 차이 발생.
 - **v2 (Node.js/Express/EJS) 채택 사유**: legacy 백엔드 (Code.js) + 프론트엔드 (index.html with `<?!= ?>`) + UI/UX 100% 보존 가능.
+
+## 호스팅 (Phase 7)
+
+- 채택 옵션: Render Starter $7/mo (always-on, 512MB RAM)
+- Blueprint: `infrastructure/render/render.yaml`
+- 절차: `infrastructure/render/deploy-checklist.md`
+- 1차 estimate-app 활성, order-app 은 mirror 정의만 (Cloudflare Pages 가 owner)
 
 ## 디렉토리 구조
 
@@ -113,8 +120,15 @@ node scripts/qa-capture.mjs                  # docs/qa/migration-fe-estimate-app
 | views/index.ejs | 18,614 (legacy index.html 1:1 변환) |
 | test/code.test.js | ~180 (17 테스트) |
 
+## QA (Phase 7)
+
+- `qa/playwright/` `web-estimate-app` project 가 본 dev server (port 5183) 에 대해
+  auth / catalog / draft / confirm / history 시나리오 (15 spec × happy/edge) 자동 검증.
+- `qa/detox/e2e/mobile-staff/` 가 mobile-staff v3 (estimate-app v2 임베드) 의 iOS sim
+  빌드에 대해 estimate-form / line-grid / confirm 3 시나리오 검증.
+
 ## 한계 / 모호 항목
 
-- product-service 의 `/api/v1/products` 응답 shape 가 legacy SpreadsheetApp 의 row format 과 다르면 클라이언트 측 데이터 바인딩 코드 (`HM_RAW.map(...)` 등) 가 잘 동작하지 않을 수 있음 → backend 가 legacy `getHomeMulti()` 의 정규화 출력 (object array — model/name/spec/price 등) 을 그대로 emit 하도록 M1a 후속에서 매퍼 추가 필요.
+- product-service 의 `/api/v1/products` 응답 shape 가 legacy SpreadsheetApp 의 row format 과 다르면 클라이언트 측 데이터 바인딩 코드 (`HM_RAW.map(...)` 등) 가 잘 동작하지 않을 수 있음 — M1a 후속에서 매퍼 보강 필요.
 - 관리자 화면 (예: 야적/지방 적용, 단위 처리) 은 client-side 로직만으로 동작 — server 변경 불필요.
-- 현재 mock fallback 은 빈 catalog 반환으로 진입 시 화면이 비어보이는 문제 — staging 환경에서 product-service 가 가동되면 자연 해결.
+- mock fallback 폐기 (PR #79) 후 backend 미가동 환경에서는 RPC 가 5xx/네트워크 오류로 명확히 실패한다.

@@ -1,37 +1,50 @@
 # product-service
 
-SamhanLogis Product 마스터 + Category 트리 서비스 (plan §3.5 first slice).
+SamhanLogis Product 마스터 + Category 트리 + Google Sheets 동기화 서비스.
 
 - 포트: **8084**
 - DB: PostgreSQL `product_db` (service-per-DB), Flyway 자동 마이그레이션
 - 인증: gateway 가 주입하는 `X-User-Id` / `X-User-Role` 헤더 신뢰 (HeaderAuthenticationFilter)
 - 외부 서비스 호출 없음 (internal-token guard 미사용)
 
-## 5대 핵심 결정 (개발책임자 결재 완료)
+## 5대 핵심 결정
 
 1. **Category 모델링**: 별도 엔티티 + 단일 부모 자기참조 트리. 깊이 무제한 (코드 강제 X)
 2. **태그 저장**: PostgreSQL `jsonb` + Hibernate 6 native `@JdbcTypeCode(SqlTypes.JSON)` + GIN 인덱스
 3. **가격 자료형**: `BigDecimal` + `NUMERIC(15,2)` + `currency CHAR(3) NOT NULL DEFAULT 'KRW'`
 4. **단종 처리**: 별도 `ProductStatus` enum {`ACTIVE`, `DISCONTINUED`} (soft-delete 와 직교)
-5. **unique 제약**: `(model_name)` 단독 unique partial: `is_deleted = false`
+5. **unique 제약**: `(model_name)` 단독 unique partial: `is_deleted = false`. Google Sheets sync
+   대응 `model_code` 컬럼은 V3 마이그에서 추가, partial unique (`is_deleted = false`).
 
-## REST endpoints (16)
+## REST endpoints
 
 | Method | Path | 권한 |
 |---|---|---|
 | GET | `/products` | 인증 |
 | GET | `/products/{id}` | 인증 |
+| GET | `/api/products/by-code/{modelCode}` | 인증 (Phase 7 3차 추가) |
 | POST | `/products/lookup` | 인증 |
-| POST | `/products` | M/M/D |
-| PATCH | `/products/{id}` | M/M/D |
-| PATCH | `/products/{id}/price` | M/M/D/A |
-| PUT | `/products/{id}/tags` | M/M/D |
-| POST | `/products/{id}/discontinue` | M/M/D |
-| POST | `/products/{id}/reactivate` | M/M/D |
-| DELETE | `/products/{id}` | M/M/D (soft-delete) |
+| POST | `/products` | MASTER / MANAGER / DEVELOPER |
+| PATCH | `/products/{id}` | MASTER / MANAGER / DEVELOPER |
+| PATCH | `/products/{id}/price` | MASTER / MANAGER / DEVELOPER / ACCOUNTANT |
+| PUT | `/products/{id}/tags` | MASTER / MANAGER / DEVELOPER |
+| POST | `/products/{id}/discontinue` | MASTER / MANAGER / DEVELOPER |
+| POST | `/products/{id}/reactivate` | MASTER / MANAGER / DEVELOPER |
+| DELETE | `/products/{id}` | MASTER / MANAGER / DEVELOPER (soft-delete) |
 | GET | `/products/categories` | 인증 |
-| POST | `/products/categories` | M/M/D |
-| PATCH | `/products/categories/{id}` | M/M/D |
-| DELETE | `/products/categories/{id}` | M/M/D (자식 존재 시 409) |
+| POST | `/products/categories` | MASTER / MANAGER / DEVELOPER |
+| PATCH | `/products/categories/{id}` | MASTER / MANAGER / DEVELOPER |
+| DELETE | `/products/categories/{id}` | MASTER / MANAGER / DEVELOPER (자식 존재 시 409) |
 
-권한 약어: M=MASTER, M=MANAGER, D=DEVELOPER, A=ACCOUNTANT (price patch 한정)
+## Google Sheets 동기화 (Phase 6)
+
+- PR #68 / #75 — google sheets cron 동기화. `getDisplayValues` / `getFormulas` 로 표시값과 수식을 모두 채취하여 model 정보 정확화.
+- 환경변수: `GOOGLE_SERVICE_ACCOUNT_KEY` (JSON 파일 경로 또는 base64 `GOOGLE_SA_KEY_JSON_BASE64`), `SRC_SHEET_ID` (legacy 견적 spreadsheet ID).
+
+## by-code endpoint (Phase 7 3차)
+
+`GET /api/products/by-code/{modelCode}` — 사용자 노출 식별자 modelCode 로 productId (UUID) 조회.
+- DTO: `web/dto/ProductByCodeResponse.java` (record — `id` + `modelCode` + `name`)
+- repository 재사용: `ProductRepository.findByModelCodeAndIsDeletedFalse(String)`
+- IT 3 case (happy / not-found / soft-deleted)
+- Client `qa/playwright/utils/api-clients.ts` `lookupProductIdByCode(code)` 가 본 endpoint 호출.
