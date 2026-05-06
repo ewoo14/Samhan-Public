@@ -19,9 +19,14 @@ test.describe('stock — deduct on slip publish', () => {
     await mockPartnerAuth(page, partner);
   });
 
-  test('happy: slip publish → on_hand + reserved 동시 차감', async ({ page }) => {
-    const fallback = { on_hand: 0, reserved: 0, available: 0 };
-    const before = await api.getStock('RAS-070AHM').catch(() => fallback);
+  test('happy: slip publish → totalQty + reservedQty 동시 차감', async ({ page }) => {
+    // Phase 7 3차 정정 (BE Critical) — inventory-service 의 실 schema (availableQty/reservedQty/totalQty) 적용.
+    const productId = await api.lookupProductIdByCode('RAS-070AHM');
+    if (!productId) {
+      test.skip(true, 'productId 매핑 미가용 — by-code lookup 미구현');
+    }
+    const fallback = { availableQty: 0, reservedQty: 0, totalQty: 0 };
+    const before = await api.getStock(productId!).catch(() => fallback);
     await page.goto('/');
     const publishBtn = page.locator('button:has-text("발행"), button:has-text("슬립")').first();
     if ((await publishBtn.count()) === 0) {
@@ -29,10 +34,10 @@ test.describe('stock — deduct on slip publish', () => {
     }
     await publishBtn.click();
     await page.waitForTimeout(1000);
-    const after = await api.getStock('RAS-070AHM').catch(() => before);
-    // deduct 의 schema 의미: on_hand 감소 + reserved 감소 (reserve → 출고 전환)
-    expect(after.on_hand).toBeLessThanOrEqual(before.on_hand);
-    expect(after.reserved).toBeLessThanOrEqual(before.reserved);
+    const after = await api.getStock(productId!).catch(() => before);
+    // deduct 의 schema 의미: totalQty 감소 + reservedQty 감소 (reserve → 출고 전환)
+    expect(after.totalQty).toBeLessThanOrEqual(before.totalQty);
+    expect(after.reservedQty).toBeLessThanOrEqual(before.reservedQty);
   });
 
   test('edge: publish 후 safety_stock 미만 → 알림', async ({ page }) => {

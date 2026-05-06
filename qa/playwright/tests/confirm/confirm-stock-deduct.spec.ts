@@ -19,9 +19,14 @@ test.describe('confirm — inventory deduct', () => {
     await mockPartnerAuth(page, partner);
   });
 
-  test('happy: 확정 → 재고 차감 (available 감소)', async ({ page }) => {
-    const fallback = { on_hand: 0, reserved: 0, available: 0 };
-    const before = await api.getStock('RAS-070AHM').catch(() => fallback);
+  test('happy: 확정 → 재고 차감 (availableQty 감소)', async ({ page }) => {
+    // Phase 7 3차 정정 (BE Critical) — inventory-service 의 실 schema (availableQty/reservedQty/totalQty) 적용.
+    const productId = await api.lookupProductIdByCode('RAS-070AHM');
+    if (!productId) {
+      test.skip(true, 'productId 매핑 미가용 — by-code lookup 미구현');
+    }
+    const fallback = { availableQty: 0, reservedQty: 0, totalQty: 0 };
+    const before = await api.getStock(productId!).catch(() => fallback);
     await page.goto('/');
     const confirmBtn = page.locator('button:has-text("확정")').first();
     if ((await confirmBtn.count()) === 0) {
@@ -29,10 +34,10 @@ test.describe('confirm — inventory deduct', () => {
     }
     await confirmBtn.click();
     await page.waitForTimeout(1000);
-    const after = await api.getStock('RAS-070AHM').catch(() => before);
-    // 확정 시점 = reserve 단계 → available 감소, on_hand 불변
-    expect(after.available).toBeLessThanOrEqual(before.available);
-    expect(after.on_hand).toBe(before.on_hand);
+    const after = await api.getStock(productId!).catch(() => before);
+    // 확정 시점 = reserve 단계 → availableQty 감소, totalQty 불변
+    expect(after.availableQty).toBeLessThanOrEqual(before.availableQty);
+    expect(after.totalQty).toBe(before.totalQty);
   });
 
   test('edge: 재고 부족 → 확정 차단', async ({ page }) => {

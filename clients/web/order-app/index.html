@@ -689,7 +689,7 @@ button.tut-highlight { filter: brightness(1.6); }
       </div>
     </div>
 
-    <div class="mobile-gate" id="mobileGate">
+    <div class="mobile-gate" id="mobileGate" data-testid="mobile-gate">
       <button id="btnEnterHome"   class="select-big select-home">홈멀티</button>
       <button id="btnEnterSingle" class="select-big select-single">싱글 세트</button>
       <button id="btnEnterComm"   class="select-big select-comm">상업멀티</button>
@@ -1202,8 +1202,8 @@ button.tut-highlight { filter: brightness(1.6); }
     <button class="btn-drawer-close" onclick="toggleDrawer('top')">닫기 ▲</button>
   </div>
 
-  <div id="handleLeft" class="mobile-handle-side" onclick="toggleDrawer('left')">옵션</div>
-  <div id="drawerLeft" class="mobile-drawer-side left">
+  <div id="handleLeft" class="mobile-handle-side" data-testid="page-menu-drawer-toggle" onclick="toggleDrawer('left')">옵션</div>
+  <div id="drawerLeft" class="mobile-drawer-side left" data-testid="page-menu-drawer">
     <div class="drawer-title">설정 옵션</div>
     <div id="mobileLeftContent"></div>
     <div style="flex:1"></div>

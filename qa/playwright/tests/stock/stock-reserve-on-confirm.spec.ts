@@ -19,9 +19,15 @@ test.describe('stock — reserve on confirm', () => {
     await mockPartnerAuth(page, partner);
   });
 
-  test('happy: 확정 → reserved 증가 + available 감소 + on_hand 불변', async ({ page }) => {
-    const fallback = { on_hand: 0, reserved: 0, available: 0 };
-    const before = await api.getStock('RAS-070AHM').catch(() => fallback);
+  test('happy: 확정 → reservedQty 증가 + availableQty 감소 + totalQty 불변', async ({ page }) => {
+    // Phase 7 3차 정정 (BE Critical) — inventory-service 의 실 schema (availableQty/reservedQty/totalQty) 적용.
+    // productId UUID 는 lookupProductIdByCode 로 확보 (fixture id 는 placeholder 라 backend 매칭 불가).
+    const productId = await api.lookupProductIdByCode('RAS-070AHM');
+    if (!productId) {
+      test.skip(true, 'productId 매핑 미가용 — by-code lookup 미구현');
+    }
+    const fallback = { availableQty: 0, reservedQty: 0, totalQty: 0 };
+    const before = await api.getStock(productId!).catch(() => fallback);
     await page.goto('/');
     const confirmBtn = page.locator('button:has-text("확정")').first();
     if ((await confirmBtn.count()) === 0) {
@@ -29,11 +35,11 @@ test.describe('stock — reserve on confirm', () => {
     }
     await confirmBtn.click();
     await page.waitForTimeout(1000);
-    const after = await api.getStock('RAS-070AHM').catch(() => before);
-    // reserve 의 schema 의미: reserved 증가, available 감소, on_hand 불변
-    expect(after.reserved).toBeGreaterThanOrEqual(before.reserved);
-    expect(after.available).toBeLessThanOrEqual(before.available);
-    expect(after.on_hand).toBe(before.on_hand);
+    const after = await api.getStock(productId!).catch(() => before);
+    // reserve 의 schema 의미: reservedQty 증가, availableQty 감소, totalQty 불변
+    expect(after.reservedQty).toBeGreaterThanOrEqual(before.reservedQty);
+    expect(after.availableQty).toBeLessThanOrEqual(before.availableQty);
+    expect(after.totalQty).toBe(before.totalQty);
   });
 
   test('edge: 확정 취소 → reserved_qty 복원', async ({ page }) => {

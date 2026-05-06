@@ -17,10 +17,11 @@ test.describe('visual — estimate form (영업직원)', () => {
     await page.goto('/');
     // estimate-app v2 의 메인 form 컨테이너 (page-level snapshot)
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => null);
+    // Phase 7 3차 정정 (Designer P1) — fullPage:true 로 viewport 외 form 영역까지 baseline 보존.
     await expect(page).toHaveScreenshot('estimate-form.png', {
       maxDiffPixelRatio: 0.02,
       animations: 'disabled',
-      fullPage: false,
+      fullPage: true,
     });
   });
 });

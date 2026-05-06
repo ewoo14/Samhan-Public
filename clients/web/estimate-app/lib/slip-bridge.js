@@ -150,17 +150,20 @@ async function postSlip(legacyOrder, saleList) {
     }
     Logger.log(`[slip-bridge] non-2xx status=${resp.status} body=${JSON.stringify(resp.data)}`);
     if (resp.status >= 500) {
-      // 5xx 만 Slack alert (4xx 는 사용자 입력 오류 — 운영 alert 불필요)
-      await postSlackAlert(
+      // 5xx 만 Slack alert (4xx 는 사용자 입력 오류 — 운영 alert 불필요).
+      // Phase 7 3차 정정 (BE P1) — fire-and-forget: alert 대기로 사용자 응답이 5초 지연되는 것을
+      // 막기 위해 await 제거. 실패는 console.error 로 기록만 하고 호출자 응답에 영향 X.
+      postSlackAlert(
         `[samhan-estimate-app] slip-service 5xx 발생\nstatus=${resp.status}\nestimate=${legacyOrder.estimateNumber || 'N/A'}\nbody=${JSON.stringify(resp.data).slice(0, 500)}`,
-      );
+      ).catch((err) => console.error('[slack-alert] failed', err.message));
     }
     return { ok: false, error: `HTTP ${resp.status}`, body: resp.data };
   } catch (err) {
     Logger.log(`[slip-bridge] axios error ${err.message}`);
-    await postSlackAlert(
+    // fire-and-forget — 사용자 알람 차단 회피.
+    postSlackAlert(
       `[samhan-estimate-app] slip-service 네트워크 오류\nerror=${err.message}\nestimate=${legacyOrder.estimateNumber || 'N/A'}`,
-    );
+    ).catch((slackErr) => console.error('[slack-alert] failed', slackErr.message));
     return { ok: false, error: err.message, body: null };
   }
 }

@@ -23,17 +23,27 @@ app.set('views', path.join(__dirname, 'views'));
 
 // 보안 헤더 (Phase 7 2차 DevOps) — order-app 의 _headers 와 동일 정책.
 // HSTS / CSP / X-Frame-Options / Referrer-Policy / X-Content-Type-Options / Permissions-Policy.
+//
+// Phase 7 3차 정정 (DevOps Critical):
+//   - script-src 에 카카오 우편번호 (https://t1.kakaocdn.net) + html2canvas (https://cdnjs.cloudflare.com)
+//     누락 → legacy 의존 외부 스크립트 모두 차단되어 운영 white-screen. order-app/_headers 와 정합.
+//   - connect-src 의 NODE_ENV 분기 — production 외에는 localhost API 호출 허용 (dev/QA 가용성 확보).
 app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+
+  const cspConnectSrc = process.env.NODE_ENV === 'production'
+    ? "'self' https://*.samhan-air.com"
+    : "'self' https://*.samhan-air.com http://localhost:* http://127.0.0.1:*";
+
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://t1.kakaocdn.net https://cdnjs.cloudflare.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
       "font-src 'self' data: https:",
-      "connect-src 'self' https://*.samhan-air.com",
+      `connect-src ${cspConnectSrc}`,
       "frame-ancestors 'self'",
       "base-uri 'self'",
       "form-action 'self'",

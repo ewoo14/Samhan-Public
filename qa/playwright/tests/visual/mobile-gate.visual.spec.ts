@@ -18,8 +18,9 @@ test.describe('visual — mobile gate 4 카테고리', () => {
 
   test('mobile gate snapshot — 4 button 노출', async ({ page }) => {
     await page.goto('/');
-    // 게이트가 노출될 때까지 대기 (PWA 부트스트랩 완료)
-    const gate = page.locator('.page-gate, [data-testid="mobile-gate"]').first();
+    // Phase 7 3차 정정 (Designer P1) — testid 단일화로 selector 의존 일관화.
+    // legacy DOM 보존 + #mobileGate 에 data-testid 만 추가 (clients/web/order-app/index.html).
+    const gate = page.locator('[data-testid="mobile-gate"]');
     if ((await gate.count()) === 0) {
       test.skip(true, '게이트 UI 미노출 — skip');
     }
