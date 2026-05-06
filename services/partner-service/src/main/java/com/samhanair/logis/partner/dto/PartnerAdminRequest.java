@@ -20,8 +20,8 @@ import java.math.BigDecimal;
  * @param creditLimit 신용한도 (0 이상)
  */
 public record PartnerAdminRequest(
-        @Size(max = 50) String partnerCode,
-        @Size(max = 20) String bizNo,
+        @NotBlank @Size(max = 50) String partnerCode,
+        @NotBlank @Size(max = 20) String bizNo,
         @NotBlank @Size(max = 200) String name,
         @Size(max = 500) String address,
         @Size(max = 30) String phone,

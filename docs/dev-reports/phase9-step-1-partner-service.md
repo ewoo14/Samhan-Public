@@ -199,3 +199,62 @@ BUILD SUCCESSFUL in 21s
 - `migration/decisions/DECISIONS.md` D-P9-03 / D-P9-04 / D-P9-05
 - `shared/discovery-abstraction/` (Phase 8 2차 도입, 본 PR 첫 소비자)
 - `infrastructure/env-templates/partner-service.env`
+
+---
+
+## 8. 후속 fix (5 reviewer 토론 종합 적용)
+
+본 PR 1차 CI 5/5 PASS 후 5 reviewer (BE/FE/Designer/QA/DevOps) 토론을 진행, 모두 채택 권장 + docs 누락 0 결과를 받았다. BE 측에서 보안 / Bean Validation / OpenAPI 정합 3 항목을 후속 fix 로 채택하여 본 PR 에 추가 commit 적용한다.
+
+### 8-1. Fix 1 — InternalTokenFilter `/internal/**` prefix 한정 (보안)
+
+**파일**: `services/partner-service/src/main/java/com/samhanair/logis/partner/config/InternalTokenFilter.java`
+
+**기술적 이유**:
+- 변경 전 InternalTokenFilter 는 모든 요청에 X-Internal-Token 검사. 토큰 보유자가 `/admin/**` 경로로 요청해도 필터가 SecurityContext 에 ROLE_MASTER 를 적재 → admin endpoint 우회 통과 가능.
+- 변경 후 `request.getRequestURI()` 가 `/internal/` prefix 일 때만 토큰 검사. 그 외 경로는 즉시 `chain.doFilter` → `HeaderAuthenticationFilter` 가 X-User-* 헤더로 정상 권한 가드.
+- 참고 패턴: `services/product-service/.../config/InternalTokenFilter.java` 의 `INTERNAL_PATH_PREFIX = "/products/internal/"` 동일 구조. partner-service 는 path 가 `/internal/partners/**` 이므로 prefix 를 `/internal/` 로 설정.
+
+**IT 영향 검증**:
+- `PartnerInternalControllerIT` 4 case (토큰 누락 403 / 불일치 401 / 일치+lookup 200 / 일치+미존재 404) 동작 보존. 토큰 누락 403 은 prefix 매칭 후 토큰 부재 → no-op → AuthorizationFilter AccessDeniedException 흐름 유지.
+- `PartnerAdminControllerIT` 5 case (403 익명 / 403 SALES / 200 MANAGER / 409 중복 / DELETE soft) 영향 0. admin 경로는 prefix 미일치로 InternalTokenFilter no-op → 기존 HeaderAuthenticationFilter + @PreAuthorize 가드 그대로.
+
+### 8-2. Fix 2 — PartnerAdminRequest `@NotBlank` 강화
+
+**파일**: `services/partner-service/src/main/java/com/samhanair/logis/partner/dto/PartnerAdminRequest.java`
+
+**기술적 이유**:
+- 변경 전 `partnerCode` / `bizNo` 는 `@Size(max = N)` 만 적용 → `null` 또는 `""` 입력 시 검증 통과 후 service 레이어 `IllegalArgumentException` 으로 떨어짐.
+- 변경 후 `@NotBlank` 추가 → 컨트롤러 진입 시점에 `MethodArgumentNotValidException` 으로 400 + 필드 메시지 (`PartnerExceptionHandler` 가 ApiResponse 봉투 변환). 사용자 친화적 검증 메시지 노출.
+- `name` 의 기존 `@NotBlank` 적용 패턴과 일관.
+- 컨트롤러 `PartnerAdminController.create` / `.update` 모두 이미 `@Valid @RequestBody` 적용되어 있어 추가 변경 불요.
+
+### 8-3. Fix 3 — OpenAPI / Javadoc 401 ↔ 403 일관 정정
+
+**파일**: `services/partner-service/src/main/java/com/samhanair/logis/partner/controller/PartnerInternalController.java`
+
+**기술적 이유**:
+- 변경 전 `@ApiResponse(responseCode = "401", description = "내부 토큰 누락/불일치")` 단일 표기 → 실제 동작 (누락=403, 불일치=401) 과 불일치.
+- 변경 후 두 응답 코드 분리:
+  - `401` = "내부 토큰 불일치 (InternalTokenFilter 직접 응답)" — InternalTokenFilter 가 prefix 매칭 + 토큰 값 비교 실패 시 직접 401 응답
+  - `403` = "내부 토큰 누락 (Spring Security AccessDeniedException)" — 토큰 미제시 → 익명 요청 → AuthorizationFilter AccessDeniedException
+- Javadoc 클래스 / 메서드 본문도 동일 문구로 정정.
+- 본 PR 의 a287b5e commit (`PartnerInternalControllerIT` 의 토큰 누락 case 401→403 정정) 과 OpenAPI 명세 일관 확보.
+
+### 8-4. 검증 결과
+
+```text
+> ./gradlew :services:partner-service:compileJava :services:partner-service:compileTestJava
+BUILD SUCCESSFUL
+
+> ./gradlew :services:partner-service:test --tests *PartnerServiceTest
+BUILD SUCCESSFUL — 단위 8 case PASS
+```
+
+IT 9 case (Internal 4 + Admin 5) 는 GitHub Actions Linux runner 에서 검증 (한글 path JDK 트랩 회피).
+
+### 8-5. 보류 / 후속 위임
+
+FE FYI 1건 — `clients/web/estimate-app/.env.example` 의 `PARTNER_SERVICE_URL=8082` (M2 partner-auth 의미) ↔ 본 PR 신규 partner-service (8095 거래처 마스터) 간 명칭 혼선. 본 PR scope 외, W5 client 통합 PR 시점에 README 구분 표기로 처리.
+
+

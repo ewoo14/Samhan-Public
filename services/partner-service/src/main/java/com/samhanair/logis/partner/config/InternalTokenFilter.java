@@ -13,16 +13,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * X-Internal-Token 헤더 인증 — slip-service 의 partnerCode → partnerId lookup 호출 또는
- * 운영 admin 도구가 사용. 토큰 미제시 → no-op (downstream {@link HeaderAuthenticationFilter}
- * 가 X-User-* 헤더로 일반 사용자 흐름을 처리).
+ * 운영 admin 도구가 사용. 본 필터는 {@code /internal/**} prefix 요청만 검사하고,
+ * 그 외 경로 (admin / actuator 등) 는 즉시 통과시켜 downstream
+ * {@link HeaderAuthenticationFilter} 가 X-User-* 헤더로 일반 사용자 흐름을 처리.
  *
- * <p>토큰 일치 → ROLE_MASTER 권한으로 모든 {@code /internal/**} endpoint 통과.
- * 일치하지 않는 값이 제시된 경우 = 잘못된 호출자 → 401 즉시 응답 (downstream 필터 진입 차단).
+ * <p>토큰 일치 → ROLE_MASTER 권한으로 {@code /internal/**} endpoint 통과.
+ * 토큰 미제시 → no-op (downstream 필터 처리). 토큰 불일치 → 401 즉시 응답
+ * (filter chain 단절). prefix 외 요청에서 토큰을 제시해도 ROLE_MASTER 가 부여되지 않으므로
+ * 토큰 보유자가 admin endpoint 를 우회 통과할 수 없다.
  *
- * <p>partner-order-service 의 동일 패턴 (PR #76 M4) 을 가져왔다.
+ * <p>product-service 의 동일 prefix-한정 패턴과 일관.
  */
 public class InternalTokenFilter extends OncePerRequestFilter {
 
+    private static final String INTERNAL_PATH_PREFIX = "/internal/";
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
     public static final String INTERNAL_PRINCIPAL = "system-internal";
 
@@ -35,6 +39,12 @@ public class InternalTokenFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        String path = request.getRequestURI();
+        if (path == null || !path.startsWith(INTERNAL_PATH_PREFIX)) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String supplied = request.getHeader(INTERNAL_TOKEN_HEADER);
         if (supplied == null || supplied.isBlank()) {
             chain.doFilter(request, response);
