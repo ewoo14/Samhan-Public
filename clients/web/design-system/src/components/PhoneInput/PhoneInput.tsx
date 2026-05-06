@@ -1,7 +1,7 @@
 /**
  * PhoneInput — 한국 휴대폰 번호 전용 입력 컴포넌트.
  *
- * notification-slice-B (LinkDispatchListPage) 의 기사 연락처 입력에 사용된다.
+ * link-dispatch-slice (LinkDispatchListPage) 의 기사 연락처 입력에 사용된다.
  * Designer `components.md` 의 PhoneInput spec 그대로 반영.
  *
  * 주요 동작:

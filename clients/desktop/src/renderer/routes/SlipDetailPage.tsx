@@ -128,7 +128,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [rejectReason, setRejectReason] = useState('')
   /** 좌측 넘버링 클릭으로 선택된 라인 ID — 선택 시 상단 툴바 표시. */
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
-  // notification-slice-B 신규: driver 인라인 편집 state (DRAFT/SAVED 만 활성)
+  // link-dispatch-slice 신규: driver 인라인 편집 state (DRAFT/SAVED 만 활성)
   const [editingDriver, setEditingDriver] = useState(false)
   const [draftDriverName, setDraftDriverName] = useState('')
   const [draftDriverPhone, setDraftDriverPhone] = useState('')
@@ -167,7 +167,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     },
   })
 
-  /** notification-slice-B: 기사 정보 부분 갱신 (PATCH /slips/{id}/driver). DRAFT/SAVED 만 허용. */
+  /** link-dispatch-slice: 기사 정보 부분 갱신 (PATCH /slips/{id}/driver). DRAFT/SAVED 만 허용. */
   const driverMutation = useMutation({
     mutationFn: () =>
       updateSlipDriver(id, {
@@ -390,7 +390,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       </Card>
 
       {/*
-        notification-slice-B 신규: 기사 정보 카드 (driverName + driverPhone)
+        link-dispatch-slice 신규: 기사 정보 카드 (driverName + driverPhone)
         DRAFT/SAVED 단계만 [편집] 가능 — BE 가드와 동일 (PATCH /slips/{id}/driver).
         OUTBOUND 만 표시 (입고전표는 거래처 측 기사 정보 무관).
       */}

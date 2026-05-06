@@ -21,7 +21,7 @@ export * from './components/LineRow'
 export * from './components/StockBalanceModal'
 // sales-polish-2-slice (Slice A) 신규 컴포넌트
 export * from './components/ProgressBar'
-// notification-slice-B 신규 컴포넌트 (PhoneInput / CopyButton)
+// link-dispatch-slice 신규 컴포넌트 (PhoneInput / CopyButton)
 export * from './components/PhoneInput'
 export * from './components/CopyButton'
 // signature-slice-C (Slice C) 신규 컴포넌트 (SignaturePad / SignatureViewer)

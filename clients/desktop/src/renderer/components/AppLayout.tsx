@@ -7,7 +7,7 @@
  * - 판매조회 (`/sales`)     — 출고전표, 영업원 메인
  * - 구매조회 (`/purchases`) — 입고전표, 회계원 메인
  * - 재고이동 (`/transfers`) — 창고 간 이동, 창고원/재고원
- * - 링크발송 (`/sales/link-dispatch`) — 배송 묶음 + e-sign URL SMS 발송 (notification-slice-B)
+ * - 링크발송 (`/sales/link-dispatch`) — 배송 묶음 + e-sign URL SMS 발송 (link-dispatch-slice)
  *
  * accounting-slice-A 신규 그룹 "회계" — ACCOUNTANT/MASTER 만 가시:
  * - 계정과목 (`/accounting/accounts`)

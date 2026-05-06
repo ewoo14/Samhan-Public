@@ -79,13 +79,13 @@ export interface SlipDetail extends SlipSummary {
   memo: string | null
   lines: SlipLineDetail[]
   /**
-   * 기사명 — notification-slice-B 신규 (Designer plan §7).
+   * 기사명 — link-dispatch-slice 신규 (Designer plan §7).
    * DRAFT/SAVED 단계만 편집 가능 (BE 가드와 동일).
    * SMS 발송 시 BE 가 driverPhone 으로 메시지 송신.
    */
   driverName?: string | null
   /**
-   * 기사 휴대폰 (010-XXXX-XXXX 정규화) — notification-slice-B 신규.
+   * 기사 휴대폰 (010-XXXX-XXXX 정규화) — link-dispatch-slice 신규.
    * KOREAN_MOBILE_PHONE_PATTERN 검증.
    */
   driverPhone?: string | null
@@ -163,9 +163,9 @@ export interface CreateSlipRequest {
   partnerName?: string
   deliveryTag?: DeliveryTagCode
   memo?: string
-  /** 기사명 — notification-slice-B 신규 (옵션). */
+  /** 기사명 — link-dispatch-slice 신규 (옵션). */
   driverName?: string
-  /** 기사 휴대폰 — notification-slice-B 신규 (옵션, 010-XXXX-XXXX). */
+  /** 기사 휴대폰 — link-dispatch-slice 신규 (옵션, 010-XXXX-XXXX). */
   driverPhone?: string
   lines: SlipLineInput[]
 }
@@ -231,7 +231,7 @@ export async function createSlip(
 }
 
 /**
- * 기사 정보 부분 갱신 요청 — notification-slice-B 신규.
+ * 기사 정보 부분 갱신 요청 — link-dispatch-slice 신규.
  *
  * BE `UpdateSlipDriverRequest` (PATCH /slips/{id}/driver).
  * DRAFT/SAVED 단계만 허용 (BE 가드와 동일).

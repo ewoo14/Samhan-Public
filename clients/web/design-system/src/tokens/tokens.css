@@ -484,3 +484,18 @@ html {
   font-size: var(--font-size-alias-base);
   line-height: var(--line-height-base);
 }
+
+/*
+ * Phase 9 W4 — 3 channel badge 토큰 (W3 Designer backlog #2 채택).
+ *
+ * notification-service 의 3 channel (PUSH / EMAIL / SMS) + dashboard 의
+ * channel filter 시각 일관성용. Google Material 컬러 (Blue / Red / Green) 1:1.
+ *
+ * 사용:
+ *   <span class="b-channel-push">PUSH</span>
+ *   <span class="b-channel-email">EMAIL</span>
+ *   <span class="b-channel-sms">SMS</span>
+ */
+.b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }

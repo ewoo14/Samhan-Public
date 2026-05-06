@@ -1,7 +1,7 @@
 /**
  * CopyButton — 클립보드 복사 + "복사됨" 토스트 (3초) 컴포넌트.
  *
- * notification-slice-B (LinkDispatchListPage / BatchDetailModal) 의 e-sign URL
+ * link-dispatch-slice (LinkDispatchListPage / BatchDetailModal) 의 e-sign URL
  * 복사 등에 사용된다.
  *
  * 동작:
