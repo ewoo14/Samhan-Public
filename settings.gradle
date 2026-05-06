@@ -2,7 +2,8 @@
  * SamhanLogis — root multi-project Gradle settings
  *
  * Shared library:
- *   shared:common              — BaseEntity, Role enum, JWT util, common DTO/exception
+ *   shared:common                 — BaseEntity, Role enum, JWT util, common DTO/exception
+ *   shared:discovery-abstraction  — ServiceDiscoveryClient interface (Eureka default + AWS Cloud Map placeholder)
  *
  * Phase 1 services:
  *   services:eureka-server     — service discovery
@@ -17,6 +18,7 @@
 rootProject.name = 'samhan-logis'
 
 include 'shared:common'
+include 'shared:discovery-abstraction'
 include 'services:eureka-server'
 include 'services:api-gateway'
 include 'services:auth-service'
@@ -31,6 +33,7 @@ include 'services:dc-config-service'
 include 'services:partner-order-service'
 
 project(':shared:common').projectDir                   = file('shared/common')
+project(':shared:discovery-abstraction').projectDir    = file('shared/discovery-abstraction')
 project(':services:eureka-server').projectDir          = file('services/eureka-server')
 project(':services:api-gateway').projectDir            = file('services/api-gateway')
 project(':services:auth-service').projectDir           = file('services/auth-service')

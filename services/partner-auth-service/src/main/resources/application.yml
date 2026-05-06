@@ -29,10 +29,12 @@ eureka:
 
 samhan:
   jwt:
-    secret: ${JWT_SECRET:dev-only-partner-jwt-secret-replace-in-prod-32bytes-min!!}
+    # Phase 8 2차 — SAMHAN_JWT_SECRET 우선, JWT_SECRET legacy fallback (Phase 10 cutover 시점 단일화)
+    secret: ${SAMHAN_JWT_SECRET:${JWT_SECRET:dev-only-partner-jwt-secret-replace-in-prod-32bytes-min!!}}
     expiration-hours: 8
   dc-config:
-    url: ${DC_CONFIG_URL:http://dc-config-service:8089}
+    # Phase 8 2차 — full URL 표준 (SAMHAN_DC_CONFIG_SERVICE_URL 우선, DC_CONFIG_URL legacy fallback)
+    url: ${SAMHAN_DC_CONFIG_SERVICE_URL:${DC_CONFIG_URL:http://dc-config-service:8089}}
     timeout-ms: 3000
 
 management:
