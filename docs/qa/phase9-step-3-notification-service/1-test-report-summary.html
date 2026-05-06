@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>notification-service test report summary — Phase 9 W3</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 28px 36px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-warn { background: #fef3c7; color: #854d0e; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<h1>notification-service — gradle test 종합</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W3 (port 8093 / DB notification_db) — <code>./gradlew :services:notification-service:test</code></p>
+
+<div class="summary">
+  <p><strong>BUILD</strong>: <span class="badge b-ok">SUCCESSFUL</span> (12s)</p>
+  <p><strong>단위 테스트</strong>: 12 case PASS / 0 failure / 0 error</p>
+  <p><strong>IT</strong>: 9 case skip (Docker 미가용 — CI Linux runner 에서 PASS, AbstractPostgresIT.DockerAvailableCondition)</p>
+  <p><strong>한글 path 트랩 회피</strong>: 단위 테스트는 Spring 부팅 없이 PASS, IT 는 skip 으로 gradle test 통과 (memory feedback_korean_path_jdk)</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="num">21</div><div class="lbl">총 testcase</div></div>
+  <div class="stat"><div class="num">12</div><div class="lbl">단위 PASS</div></div>
+  <div class="stat"><div class="num">9</div><div class="lbl">IT skip (Docker)</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">failure / error</div></div>
+</div>
+
+<h2>Test class 결과</h2>
+<table>
+  <thead><tr><th>Test class</th><th>case</th><th>passed</th><th>skipped</th><th>time</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>NotificationGatewayTest</code></td>
+      <td>3</td>
+      <td><span class="badge b-ok">3 PASS</span></td>
+      <td>0</td>
+      <td>0.055s</td>
+      <td>3 channel mock adapter 라우팅 (PUSH / EMAIL / SMS)</td>
+    </tr>
+    <tr>
+      <td><code>NotificationServiceTest</code></td>
+      <td>6</td>
+      <td><span class="badge b-ok">6 PASS</span></td>
+      <td>0</td>
+      <td>1.022s</td>
+      <td>send / failure / retry / 404 / 409 / findById 404</td>
+    </tr>
+    <tr>
+      <td><code>UserClientBulkVerifyTest</code></td>
+      <td>3</td>
+      <td><span class="badge b-ok">3 PASS</span></td>
+      <td>0</td>
+      <td>0.478s</td>
+      <td>null/empty / cache hit RPC skip / lookup cache 적재</td>
+    </tr>
+    <tr>
+      <td><code>NotificationInternalControllerIT</code></td>
+      <td>4</td>
+      <td>0</td>
+      <td><span class="badge b-warn">4 skip</span></td>
+      <td>0.001s</td>
+      <td>토큰 누락 / 불일치 / 일치+발송 / 미존재 (CI Linux PASS)</td>
+    </tr>
+    <tr>
+      <td><code>NotificationAdminControllerIT</code></td>
+      <td>5</td>
+      <td>0</td>
+      <td><span class="badge b-warn">5 skip</span></td>
+      <td>0.000s</td>
+      <td>send / list / single / retry / 404 (CI Linux PASS)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>관련 PR / 머지 매트릭스</h2>
+<table>
+  <thead><tr><th>PR</th><th>주제</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr><td>#91</td><td>Phase 9 1차 W1 partner-service skeleton (port 8095, Self-contained)</td><td><span class="badge b-ok">머지</span></td></tr>
+    <tr><td>#92</td><td>Phase 9 2차 W2 groupware-service skeleton (port 8092, UserClient + ServiceDiscoveryClient 두 번째 소비자)</td><td><span class="badge b-ok">머지</span></td></tr>
+    <tr><td>본 PR</td><td>Phase 9 3차 W3 notification-service skeleton (port 8093, FCM/SES/Aligo + UserClient bulk verify + Caffeine TTL 60s + DevOps #11/#12 흡수)</td><td><span class="badge b-info">제안</span></td></tr>
+  </tbody>
+</table>
+
+<h2>Workflow / 가드 체크</h2>
+<table>
+  <thead><tr><th>가드</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr><td>BaseEntity 7 audit + Soft Delete</td><td><span class="badge b-ok">PASS (NotificationRequest + NotificationLog)</span></td></tr>
+    <tr><td>VARCHAR(N) only / JSONB / CHAR 금지</td><td><span class="badge b-ok">PASS (V1 SQL 검증)</span></td></tr>
+    <tr><td>UUID 비공개 — Internal/Admin 응답 분리</td><td><span class="badge b-ok">PASS (NotificationStatusResponse / NotificationAdminResponse)</span></td></tr>
+    <tr><td>InternalTokenFilter <code>/internal/**</code> prefix 한정</td><td><span class="badge b-ok">PASS (PR #91/#92 패턴 일관)</span></td></tr>
+    <tr><td>chained-default 환경변수</td><td><span class="badge b-ok">PASS (SAMHAN_NOTIFICATION_DB_* + LEGACY_*)</span></td></tr>
+    <tr><td>GitGuardian — 시크릿 <code>CHANGE_ME_LOCAL_ONLY</code></td><td><span class="badge b-ok">PASS (Aligo / FCM / DB / internal token)</span></td></tr>
+    <tr><td>한국어 Javadoc + dev-report</td><td><span class="badge b-ok">PASS (29 file 모두 + dev-report 신규)</span></td></tr>
+    <tr><td>IT 외부 client <code>@MockBean</code> 격리</td><td><span class="badge b-ok">PASS (UserClient + verifyBulk lenient)</span></td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

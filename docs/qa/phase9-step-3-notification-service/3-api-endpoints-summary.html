@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>notification-service API endpoint matrix — Phase 9 W3</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 24px 32px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  tr:hover { background: #f1f5f9; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .method { font-weight: 700; color: #0f9d58; }
+  .method.post { color: #1a73e8; }
+  .method.put { color: #f9ab00; }
+  .method.delete { color: #d93025; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-warn { background: #fef3c7; color: #854d0e; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; }
+  .qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+  .qa-card { background: #fff; border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .qa-card h3 { margin: 0 0 6px 0; font-size: 14px; color: #0f172a; }
+  ul { margin: 4px 0 0 18px; padding: 0; }
+  li { font-size: 12.5px; line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<h1>notification-service — REST endpoint matrix</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W3 (port 8093 / DB notification_db) — 푸시 / 이메일 / SMS 통합 라우터. ServiceDiscoveryClient 세 번째 소비자 (W1 partner / W2 groupware → W3 notification), UserClient → user-service Internal API + bulk verify (BE backlog #4 채택).</p>
+
+<div class="summary">
+  <p><strong>Internal endpoint</strong> = <code>X-Internal-Token</code> + <code>ROLE_MASTER</code> (InternalTokenFilter, <code>/internal/**</code> prefix 한정 — PR #91/#92 fix 패턴 일관)</p>
+  <p><strong>Admin endpoint</strong> = JWT Bearer / X-User-* (gateway 경유) + <code>@PreAuthorize</code> 권한 가드 (MASTER / MANAGER)</p>
+  <p><strong>인증 가드 결과</strong> = 토큰 누락 → 403 (Spring Security 기본), 토큰 불일치 → 401 (InternalTokenFilter 직접 응답)</p>
+</div>
+
+<h2>Internal API (2 endpoint)</h2>
+<table>
+  <thead><tr><th style="width: 65px;">Method</th><th>Path</th><th>권한</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td class="method post">POST</td><td><code>/internal/notifications/send</code></td><td>ROLE_MASTER (token)</td><td>backend service-to-service 발송 요청 — groupware (결재 알림) / partner-order (주문 상태) / slip (배송 SMS) 등이 호출</td></tr>
+    <tr><td class="method">GET</td><td><code>/internal/notifications/{requestId}/status</code></td><td>ROLE_MASTER (token)</td><td>발송 상태 조회 — 형제 service polling / 재시도 결정 용</td></tr>
+  </tbody>
+</table>
+
+<h2>Admin API (4 endpoint)</h2>
+<table>
+  <thead><tr><th style="width: 65px;">Method</th><th>Path</th><th>권한</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td class="method post">POST</td><td><code>/admin/notifications/send</code></td><td>MASTER / MANAGER</td><td>admin 직접 발송 (대량 안내). recipientType + channel + body</td></tr>
+    <tr><td class="method">GET</td><td><code>/admin/notifications?channel&amp;status&amp;page&amp;size</code></td><td>MASTER / MANAGER</td><td>발송 이력 페이지 — channel / status filter (default 50건)</td></tr>
+    <tr><td class="method">GET</td><td><code>/admin/notifications/{id}</code></td><td>MASTER / MANAGER</td><td>단건 조회 (admin 패널 디테일)</td></tr>
+    <tr><td class="method post">POST</td><td><code>/admin/notifications/{id}/retry</code></td><td>MASTER / MANAGER</td><td>실패 발송 재시도 — FAILED/RETRYING 만 허용</td></tr>
+  </tbody>
+</table>
+
+<h2>Channel adapter (3 channel — strategy pattern)</h2>
+<table>
+  <thead><tr><th>Channel</th><th>운영 어댑터</th><th>test 어댑터</th><th>특이</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge b-info">PUSH</span></td><td><code>FcmPushAdapter</code></td><td><code>MockPushAdapter</code></td><td>credentials placeholder 시 stub-success. Phase 10 SDK 통합</td></tr>
+    <tr><td><span class="badge b-info">EMAIL</span></td><td><code>SesEmailAdapter</code></td><td><code>MockEmailAdapter</code></td><td>placeholder — Phase 10 cutover 시 AWS SES SDK 통합</td></tr>
+    <tr><td><span class="badge b-info">SMS</span></td><td><code>AligoSmsAdapter</code></td><td><code>MockSmsAdapter</code></td><td>Phase 5 form-urlencoded 호출 모델 흡수 (key/user_id/sender/receiver/msg)</td></tr>
+  </tbody>
+</table>
+
+<h2>인증 가드 — Internal endpoint 검증 (IT 4 case)</h2>
+<table>
+  <thead><tr><th>case</th><th>X-Internal-Token</th><th>응답</th><th>처리 위치</th></tr></thead>
+  <tbody>
+    <tr><td>토큰 누락</td><td>(미제시)</td><td><span class="badge b-warn">403 Forbidden</span></td><td>Spring Security AuthorizationFilter (AccessDeniedException)</td></tr>
+    <tr><td>토큰 불일치</td><td><code>wrong-token</code></td><td><span class="badge b-warn">401 Unauthorized</span></td><td>InternalTokenFilter 직접 응답 (filter chain 단절)</td></tr>
+    <tr><td>토큰 일치 + 발송 (PUSH)</td><td><code>test-internal-token</code></td><td><span class="badge b-ok">201 Created</span></td><td>controller → service → FcmPushAdapter stub-success → status=SENT</td></tr>
+    <tr><td>토큰 일치 + 미존재 status</td><td><code>test-internal-token</code></td><td><span class="badge b-warn">404 Not Found</span></td><td>BusinessException(NOT_FOUND) → ApiResponse 봉투</td></tr>
+  </tbody>
+</table>
+
+<h2>Admin endpoint 흐름 검증 (IT 5 case)</h2>
+<table>
+  <thead><tr><th>case</th><th>endpoint</th><th>응답</th><th>검증</th></tr></thead>
+  <tbody>
+    <tr><td>발송 (SMS)</td><td>POST /admin/notifications/send</td><td><span class="badge b-ok">201</span></td><td>status=SENT + channel=SMS + Aligo stub-success</td></tr>
+    <tr><td>이력 조회 (filter)</td><td>GET /admin/notifications?channel=PUSH</td><td><span class="badge b-ok">200</span></td><td>1건 PUSH 발송 후 페이지 1건 검출</td></tr>
+    <tr><td>단건 조회</td><td>GET /admin/notifications/{id}</td><td><span class="badge b-ok">200</span></td><td>requestId 일치</td></tr>
+    <tr><td>재시도 (FAILED→retry)</td><td>POST /admin/notifications/{id}/retry</td><td><span class="badge b-ok">200</span></td><td>success=true + 어댑터 재호출</td></tr>
+    <tr><td>미존재 단건</td><td>GET /admin/notifications/{missing}</td><td><span class="badge b-warn">404</span></td><td>BusinessException → NOT_FOUND</td></tr>
+  </tbody>
+</table>
+
+<h2>UserClient bulk verify — BE backlog #4 채택</h2>
+<table>
+  <thead><tr><th>변경</th><th>대상</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td>신규 endpoint</td><td>user-service <code>POST /internal/users/verify-bulk</code></td><td>한 번의 RPC 로 N user 검증 (Repository.findAllByIdIn 1 query)</td></tr>
+    <tr><td>UserClient.verifyBulk</td><td>notification-service + groupware-service</td><td>Caffeine cache (TTL 60s, max 10000) — cache hit ID 는 RPC skip</td></tr>
+    <tr><td>fan-out 해소</td><td>groupware ApprovalLineService.create</td><td>직렬 N+1 RPC → 1 RPC + cache hit (W2 backlog #4 처리)</td></tr>
+    <tr><td>InternalTokenFilter 신규</td><td>user-service config</td><td>Phase 9 W1/W2 의 UserClient 가 호출하는 endpoint 의 실 보호 — 본 PR 시점 첫 endpoint 활성</td></tr>
+  </tbody>
+</table>
+
+<h2>QA 종합</h2>
+<div class="qa-grid">
+  <div class="qa-card">
+    <h3>단위 테스트 12 case (Spring 부팅 X — 한글 path 환경 PASS)</h3>
+    <ul>
+      <li>NotificationGatewayTest <strong>3 case</strong> — PUSH / EMAIL / SMS mock adapter 라우팅 검증</li>
+      <li>NotificationServiceTest <strong>6 case</strong> — send 정상 / 실패 / 404 / retry / 409 / findById 404</li>
+      <li>UserClientBulkVerifyTest <strong>3 case</strong> — null/empty / cache hit RPC skip / lookup cache 적재</li>
+    </ul>
+  </div>
+  <div class="qa-card">
+    <h3>IT 9 case (Linux runner — Testcontainers PostgreSQL 16)</h3>
+    <ul>
+      <li>NotificationInternalControllerIT <strong>4 case</strong> — 토큰 누락 / 불일치 / 일치+발송 / 미존재</li>
+      <li>NotificationAdminControllerIT <strong>5 case</strong> — send / list / single / retry / 404</li>
+      <li>UserClient <code>@MockBean</code> 격리 (verifyBulk lenient setup, memory feedback_it_mockbean_external_clients)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>가드 일관 적용</h2>
+<table>
+  <thead><tr><th>가드</th><th>적용</th></tr></thead>
+  <tbody>
+    <tr><td>BaseEntity 7 audit</td><td>2 entity 모두 <code>extends BaseEntity</code></td></tr>
+    <tr><td>Soft Delete</td><td><code>@SQLRestriction("is_deleted = false")</code> 2 entity</td></tr>
+    <tr><td>VARCHAR(N) + JSONB</td><td>CHAR / bpchar 0건. body / subject = VARCHAR. payload = JSONB (Postgres standard, RDS 호환)</td></tr>
+    <tr><td>UUID 비공개</td><td>Internal/Admin 응답 분리. Internal status response = recipientId 만 (caller = 형제 service)</td></tr>
+    <tr><td>한국어 Javadoc</td><td>2 entity + 3 enum + 3 dto + 1 service + 2 controller + 9 config + 1 client + 6 adapter 모두 적용</td></tr>
+    <tr><td>InternalTokenFilter prefix 한정</td><td><code>/internal/**</code> 만 검사 (PR #91/#92 fix 패턴)</td></tr>
+    <tr><td>partial unique index</td><td>notification_logs (request_id+attempt_no) 활성 행 한정</td></tr>
+    <tr><td>chained-default 환경변수</td><td>SAMHAN_NOTIFICATION_DB_* + LEGACY_DB_* fallback</td></tr>
+    <tr><td>GitGuardian</td><td>모든 시크릿 <code>CHANGE_ME_LOCAL_ONLY</code> placeholder (Aligo + FCM + DB + internal token)</td></tr>
+    <tr><td>Caffeine cache</td><td>UserClient bulk verify TTL 60초 / max 10000 — 짧은 시간 반복 lookup RPC 회피</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>
