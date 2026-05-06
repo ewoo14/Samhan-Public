@@ -50,6 +50,7 @@ def leafProjects = [
         ':services:dc-config-service',
         ':services:partner-order-service',
         ':services:partner-service',
+        ':services:groupware-service',
 ]
 
 configure(leafProjects.collect { project(it) }) {

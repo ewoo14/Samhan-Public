@@ -1,0 +1,69 @@
+package com.samhanair.logis.groupware.service;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.groupware.client.UserClient;
+import com.samhanair.logis.groupware.domain.Message;
+import com.samhanair.logis.groupware.domain.MessageStatus;
+import com.samhanair.logis.groupware.dto.MessageSendRequest;
+import com.samhanair.logis.groupware.repository.MessageRepository;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 메신저 service — 발송 / 수신함 / 미열람 카운트 / 읽음 처리.
+ */
+@Service
+@RequiredArgsConstructor
+public class MessageService {
+
+    private final MessageRepository repository;
+    private final UserClient userClient;
+
+    /** 메신저 발송. 송신자/수신자 사용자 존재 검증 후 row 적재. */
+    @Transactional
+    public Message send(MessageSendRequest req) {
+        if (!userClient.exists(req.senderId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "송신자 미존재: " + req.senderId());
+        }
+        if (!userClient.exists(req.recipientId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "수신자 미존재: " + req.recipientId());
+        }
+        try {
+            Message msg = Message.send(req.senderId(), req.recipientId(), req.body());
+            return repository.save(msg);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
+        }
+    }
+
+    /** 수신자 inbox — 발송 시각 역순. */
+    @Transactional(readOnly = true)
+    public Page<Message> inbox(UUID recipientId, Pageable pageable) {
+        return repository.findAllByRecipientIdOrderBySentAtDesc(recipientId, pageable);
+    }
+
+    /** 미열람 카운트 (Internal API + admin 화면 공용). */
+    @Transactional(readOnly = true)
+    public long unreadCount(UUID userId) {
+        return repository.countByRecipientIdAndStatus(userId, MessageStatus.UNREAD);
+    }
+
+    /** 읽음 처리 — 수신자 본인만 호출 허용 (도메인 가드). */
+    @Transactional
+    public Message markRead(UUID messageId, UUID actorUserId) {
+        Message msg = repository.findById(messageId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "메신저를 찾을 수 없습니다: " + messageId));
+        try {
+            msg.markRead(actorUserId);
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, ex.getMessage());
+        }
+        return msg;
+    }
+}

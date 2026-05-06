@@ -1,0 +1,20 @@
+package com.samhanair.logis.groupware.repository;
+
+import com.samhanair.logis.groupware.domain.Message;
+import com.samhanair.logis.groupware.domain.MessageStatus;
+import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+/** 메신저 저장소 — 수신함 + 미열람 카운트. */
+@Repository
+public interface MessageRepository extends JpaRepository<Message, UUID> {
+
+    /** 수신자 inbox — 발송 시각 역순. */
+    Page<Message> findAllByRecipientIdOrderBySentAtDesc(UUID recipientId, Pageable pageable);
+
+    /** 미열람 카운트 — 알림 배지 / Internal API 조회. */
+    long countByRecipientIdAndStatus(UUID recipientId, MessageStatus status);
+}
