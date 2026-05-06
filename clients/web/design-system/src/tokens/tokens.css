@@ -313,8 +313,38 @@
   --print-approval-label-bg:  #F0F0F0;
 }
 
-/* Minimal dark theme stub. Phase 2 will refine full palette. */
-[data-theme="dark"] {
+/* ==========================================================================
+ * Phase 7 4차 — light/dark bg/surface/text/border 정식 토큰 (10 신규)
+ *
+ * :root 는 light 기본값. body[data-theme="dark"] 가 적용되면 동일 변수를
+ * dark 색상으로 override. body 자체에 background-color/color 를 바인딩하여
+ * legacy 화면도 토큰 변경만으로 dark 전환 가능 (legacy DOM 변형 없음).
+ * ========================================================================== */
+:root {
+  /* bg — 페이지 배경 (3단계) */
+  --color-bg-primary:   #ffffff;
+  --color-bg-secondary: #f5f5f5;
+  --color-bg-tertiary:  #ebebeb;
+  /* surface — 카드/패널 표면 (2단계) */
+  --color-surface-primary:   #ffffff;
+  --color-surface-secondary: #f9f9f9;
+  /* text — 본문/보조/약함 (3단계) */
+  --color-text-primary:   #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary:  #6b7280;
+  /* border (2단계) */
+  --color-border-primary:   #e5e7eb;
+  --color-border-secondary: #d1d5db;
+}
+
+/*
+ * Phase 7 4차 — dark theme 정식 도입 (이전 stub 보강 + bg/surface 신규)
+ *
+ * Phase 7 5차 reviewer 종합 — selector cascade 호환:
+ *   html[data-theme="dark"] OR body[data-theme="dark"] 어느 쪽에 attribute 가
+ *   설정되어 있어도 동일하게 dark 토큰 적용 (FOUC 방지 + legacy 호환).
+ */
+html[data-theme="dark"], body[data-theme="dark"] {
   --color-brand-50:  #0F2939;
   --color-brand-100: #15394F;
   --color-brand-200: #1B4A6B;
@@ -346,4 +376,30 @@
   --color-text:          var(--color-neutral-900);
   --color-text-muted:    var(--color-neutral-600);
   --color-text-subtle:   var(--color-neutral-500);
+
+  /* Phase 7 4차 신규 — 정식 dark 토큰 10종 */
+  --color-bg-primary:   #1a1a1a;
+  --color-bg-secondary: #242424;
+  --color-bg-tertiary:  #2d2d2d;
+  --color-surface-primary:   #2d2d2d;
+  --color-surface-secondary: #383838;
+  --color-text-primary:   #f5f5f5;
+  --color-text-secondary: #c0c0c0;
+  /* Phase 7 5차 reviewer 종합 — Designer P1: WCAG AA 대비비 4.5:1 충족 (이전 #888 = 3.6:1) */
+  --color-text-tertiary:  #9a9a9a;
+  --color-border-primary:   #404040;
+  /* Phase 7 5차 reviewer 종합 — Designer P1: border-primary 보다 밝은 보조 border (이전 #303030 < #404040) */
+  --color-border-secondary: #4a4a4a;
+}
+
+/*
+ * 토큰 바인딩 — data-theme 변경만으로 즉시 전환, transition 으로 부드럽게.
+ * Phase 7 5차 reviewer 종합 — html, body 둘 다 적용 (FOUC 방지):
+ *   html 에 data-theme 가 설정되면 html 배경/색상이 즉시 적용되어,
+ *   body 가 렌더되기 전에 light 배경이 깜빡이는 현상 차단.
+ */
+html, body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
