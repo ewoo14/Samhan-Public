@@ -14,6 +14,7 @@ import com.samhanair.logis.groupware.repository.ApprovalLineRepository;
 import com.samhanair.logis.groupware.repository.MessageRepository;
 import com.samhanair.logis.groupware.repository.ScheduleRepository;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -168,10 +169,12 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
     @Test
     void find_schedules_in_range_returns_200() throws Exception {
         UUID owner = UUID.randomUUID();
+        // 시간을 분 단위로 잘라 nanos 직렬화 차이를 회피 — @DateTimeFormat ISO.DATE_TIME 호환 보장.
+        LocalDateTime base = LocalDateTime.now().withNano(0);
         ScheduleRequest req = new ScheduleRequest(
                 owner, "조회 fixture", null,
-                LocalDateTime.now().plusDays(1),
-                LocalDateTime.now().plusDays(1).plusHours(2),
+                base.plusDays(1),
+                base.plusDays(1).plusHours(2),
                 null, null);
         mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/schedules")
                         .header("X-User-Id", "user-mgr")
@@ -180,8 +183,9 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(MockMvcResultMatchers.status().isCreated());
 
-        String from = LocalDateTime.now().toString();
-        String to = LocalDateTime.now().plusDays(2).toString();
+        // window [base-1h, base+3d] — 본 fixture (base+1d ~ base+1d+2h) 가 반드시 포함.
+        String from = base.minusHours(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        String to = base.plusDays(3).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         mockMvc.perform(MockMvcRequestBuilders.get("/admin/groupware/schedules")
                         .param("ownerId", owner.toString())
                         .param("from", from)
