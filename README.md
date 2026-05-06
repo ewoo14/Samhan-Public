@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 진입 준비 완료                      |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 1차 진행 (W1 partner-service 신규)   |
 
 ---
 
@@ -61,8 +61,9 @@ SamhanLogis/
 │   ├── partner-auth-service/  # Phase 6 M2 (8091)
 │   ├── dc-config-service/     # Phase 6 M3 (8089)
 │   ├── partner-order-service/ # Phase 6 M4 (8088)
+│   ├── partner-service/       # Phase 9 W1 (8095) — 거래처 마스터 + M5 lookup endpoint
 │   ├── logging-service/       # Phase 1 (8082)
-│   └── ...                    # Phase 9 신규: groupware (8092) / notification (8093) / dashboard (8094) / partner (8095)
+│   └── ...                    # Phase 9 잔여: groupware (8092) / notification (8093) / dashboard (8094)
 │                              # Phase 10 신규: migration (8096)
 ├── clients/
 │   ├── desktop/               # Electron + electron-vite + React 18
@@ -120,7 +121,7 @@ SamhanLogis/
 | **groupware-service**    | **8092** | **groupware_db** | **결재선 + 메신저 + 일정**                | **Phase 9 예정** |
 | **notification-service** | **8093** | **notification_db** | **푸시/이메일/SMS 통합 라우터**         | **Phase 9 예정** |
 | **dashboard-service**    | **8094** | **dashboard_db** | **KPI + 실시간 재고 + 매출**              | **Phase 9 예정** |
-| **partner-service**      | **8095** | **partner_db**   | **거래처 마스터 + 신용한도 + 거래내역**    | **Phase 9 예정** |
+| **partner-service**      | **8095** | **partner_db**   | **거래처 마스터 + 신용한도 + 거래내역 + M5 partnerCode lookup endpoint** | **Phase 9 1차 신규** |
 | **migration-service**    | **8096** | (별도 결정)       | **ECount 일괄 이관 + 장기미수**            | **Phase 10 예정**|
 
 > Phase 9 신규 4 service 의 포트 / DB 확정은 `migration/decisions/DECISIONS.md` D-P9-01 참조.
@@ -149,6 +150,7 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ./gradlew :services:accounting-service:bootRun      # http://localhost:8087
 ./gradlew :services:partner-auth-service:bootRun    # http://localhost:8091
 ./gradlew :services:dc-config-service:bootRun       # http://localhost:8089
+./gradlew :services:partner-service:bootRun         # http://localhost:8095
 ```
 
 ### Client 빌드
@@ -198,7 +200,7 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | 6     | 완료       | #38 ~ #80              | legacy 마이그레이션 (M1a / M2 / M3 / M4 / M5 + 5 client)            |
 | 7     | 완료       | #81 ~ #87              | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                        |
 | 8     | **완료**   | **#88 / #89 / #90**    | AWS 호환성 가드 (12-factor + chained-default + ServiceDiscoveryClient + Secrets rotation spec + Phase 10 dry-run plan) |
-| 9     | 진입 준비 | -                      | 잔여 도메인 (partner / groupware / notification / dashboard)        |
+| 9     | **1차 진행** | **W1 partner-service** | 잔여 도메인 (partner / groupware / notification / dashboard)        |
 | 10    | 대기       | -                      | AWS 마이그레이션 + Migration Service (8096) + 운영 안정화           |
 
 자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.

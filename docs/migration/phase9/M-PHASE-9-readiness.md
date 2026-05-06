@@ -43,13 +43,13 @@
 
 ## 3. 5주 roadmap
 
-| 주차 | 산출물 |
-|---|---|
-| W1 | partner-service skeleton + 환경변수 + IT |
-| W2 | groupware-service skeleton (결재선 도메인 모델 + 메신저 entity) |
-| W3 | notification-service skeleton (push/email/sms adapter) |
-| W4 | dashboard-service skeleton (실시간 KPI 집계 + materialized view) |
-| W5 | Phase 9 회고 + Phase 10 진입 plan |
+| 주차 | 산출물 | 상태 |
+|---|---|---|
+| W1 | partner-service skeleton + 환경변수 + IT | **완료 (본 PR — 2 entity + 2 controller + 2 service + 4 dto + 4 config + 1 exception handler + IT 2 + 단위 테스트 1)** |
+| W2 | groupware-service skeleton (결재선 도메인 모델 + 메신저 entity) | 예정 |
+| W3 | notification-service skeleton (push/email/sms adapter) | 예정 |
+| W4 | dashboard-service skeleton (실시간 KPI 집계 + materialized view) | 예정 |
+| W5 | Phase 9 회고 + Phase 10 진입 plan | 예정 |
 
 ### 3-1. W1 — partner-service
 
@@ -146,4 +146,6 @@
 - Phase 10 dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
 - Phase 8 환경변수 표준: `docs/migration/phase8/M-ENV-STANDARDIZATION.md`
 - Phase 8 ServiceDiscoveryClient: `shared/discovery-abstraction/`
-- 누적 결정: `migration/decisions/DECISIONS.md` (D-P9-01 ~ D-P9-02)
+- 누적 결정: `migration/decisions/DECISIONS.md` (D-P9-01 ~ D-P9-05)
+- W1 완료 dev-report: `docs/dev-reports/phase9-step-1-partner-service.md`
+- W1 service README: `services/partner-service/README.md`

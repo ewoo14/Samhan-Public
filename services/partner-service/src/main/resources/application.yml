@@ -1,0 +1,75 @@
+server:
+  port: 8095
+
+spring:
+  application:
+    name: partner-service
+  datasource:
+    # 시크릿 placeholder — DB 자격증명은 반드시 환경변수로 주입.
+    # default 값은 로컬 docker-compose 와의 호환을 위한 자리 표시자이며 실제 환경에서는 override 필수.
+    # Phase 8 2차 chained-default — SAMHAN_PARTNER_DB_* 우선, LEGACY_DB_* legacy fallback (Phase 10 cutover 시점 단일화).
+    url: jdbc:postgresql://${SAMHAN_PARTNER_DB_HOST:${LEGACY_DB_HOST:localhost}}:${SAMHAN_PARTNER_DB_PORT:${LEGACY_DB_PORT:5432}}/${SAMHAN_PARTNER_DB_NAME:${LEGACY_DB_NAME:partner_db}}
+    username: ${SAMHAN_PARTNER_DB_USER:${LEGACY_DB_USER:CHANGE_ME_LOCAL_ONLY}}
+    password: ${SAMHAN_PARTNER_DB_PASSWORD:${LEGACY_DB_PASSWORD:CHANGE_ME_LOCAL_ONLY}}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+
+# Phase 8 2차 — ServiceDiscoveryClient provider toggle. eureka default (Phase 10 시점 aws-cloud-map 으로 전환).
+samhan:
+  discovery:
+    provider: ${SAMHAN_DISCOVERY_PROVIDER:eureka}
+
+app:
+  security:
+    internal:
+      # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 표준, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화).
+      token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:mem:partner_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
