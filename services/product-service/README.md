@@ -48,3 +48,22 @@ SamhanLogis Product 마스터 + Category 트리 + Google Sheets 동기화 서비
 - repository 재사용: `ProductRepository.findByModelCodeAndIsDeletedFalse(String)`
 - IT 3 case (happy / not-found / soft-deleted)
 - Client `qa/playwright/utils/api-clients.ts` `lookupProductIdByCode(code)` 가 본 endpoint 호출.
+
+## Phase 8 호환성 가드 (PR #88 / #89 / #90)
+
+- **chained-default 환경변수** — `SAMHAN_<KEY>:${LEGACY_KEY:default}` 패턴 적용 (legacy 호환 100%, 무중단 cutover 가능)
+- **12-factor 12/12 OK** + RDS 호환 (jsonb GIN index 등 standard PostgreSQL feature 만 사용 — RDS 미지원 extension 부재)
+- **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조
+- **env-template** — `infrastructure/env-templates/product-service.env` 보유 (`GOOGLE_SERVICE_ACCOUNT_KEY` 포함, `CHANGE_ME_LOCAL_ONLY` placeholder)
+- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점
+
+## Phase 9 신규 service 매트릭스 (참조)
+
+| Service                | Port | DB                | 도메인                              |
+| ---------------------- | ---- | ----------------- | ----------------------------------- |
+| partner-service        | 8095 | partner_db        | 거래처 마스터 + 신용한도 + 거래내역 |
+| groupware-service      | 8092 | groupware_db      | 결재선 + 메신저 + 일정              |
+| notification-service   | 8093 | notification_db   | 푸시/이메일/SMS 통합 라우터         |
+| dashboard-service      | 8094 | dashboard_db      | KPI + 실시간 재고 + 매출            |
+
+dashboard-service 는 본 product-service 의 카탈로그 / 재고 데이터를 inventory-service 와 함께 집계 source 로 사용 예정. 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

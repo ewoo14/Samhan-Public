@@ -3,7 +3,7 @@
 (주)삼한공조시스템 자체 물류·회계·견적·주문 통합 플랫폼의 단계별 로드맵.
 본 문서는 origin/main 머지 사실 기준이며, PR 진행 상황과 1:1 동기화된다.
 
-> 갱신 기준 commit: 본 PR 머지 시점 (Phase 7 완료 PR #87 + Phase 8 1차 AWS 호환성 가드)
+> 갱신 기준 commit: 본 PR 머지 시점 (Phase 7 완료 PR #87 + Phase 8 완료 PR #88 / #89 / 본 PR)
 
 ---
 
@@ -19,9 +19,9 @@
 | 5     | 18 ~ 21 주차| Solapi SMS 알림 + signature-slice + sales-form polish                | 완료       |
 | 6     | 22 ~ 27 주차| legacy 마이그레이션 본격 구현 (M1a / M2 / M3 / M4 / M5 + 5 client)   | 완료       |
 | 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | 완료 (PR #87) |
-| 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **진입 (1차 본 PR)** |
-| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | 대기       |
-| 10    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) | 대기       |
+| 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **완료 (PR #88 / #89 / 본 PR)** |
+| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **진입 준비 완료** |
+| 10    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기       |
 
 ---
 
@@ -231,7 +231,7 @@
 
 ---
 
-## Phase 8 — AWS 호환성 가드 (테스트 단계 유지) (진입)
+## Phase 8 — AWS 호환성 가드 (테스트 단계 유지) (완료)
 
 목표 = AWS (EC2 + RDS) 마이그레이션 가능성을 열어두는 호환성 가드 + 운영 가드 (현재 인프라 = 카페24 + Cloudflare + Render 그대로 유지). 직접 cutover 는 Phase 10 (모든 개발 완료 후).
 
@@ -255,11 +255,15 @@
 - DECISIONS D-P8-07 ~ D-P8-09 추가
 - dev-report `phase8-step-2-discovery-secrets.md`
 
-### 예정 산출물 (3차 ~)
-- 3차 — AWS 마이그레이션 dry-run plan + Phase 8 회고 + Phase 9 진입 plan
-- 4차 — Resilience4j prod 임계치 정착 (선택)
-- 5차 — API Gateway production routing + rate limit (현재 인프라 기준)
-- 6차 — 모니터링 alert (Prometheus → Grafana → Slack/SMS)
+### 산출물 (3차 — 본 PR)
+- AWS 마이그레이션 dry-run plan (`docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`, 14 section)
+- Phase 8 회고 보고서 (`docs/dev-reports/phase8-retrospective.md`)
+- Phase 9 진입 plan (`docs/migration/phase9/M-PHASE-9-readiness.md`, 4 service skeleton + 5주 roadmap)
+- ROADMAP / DECISIONS Phase 8 마무리 + Phase 9 진입 항목
+- DECISIONS D-P8-10 / D-P8-11 + D-P9-01 / D-P9-02 추가
+- dev-report `phase8-step-3-completion-phase-9-readiness.md` + `phase8-retrospective.md`
+
+### Phase 8 위임 (Phase 10) — Resilience4j prod / API Gateway production / monitoring alert 등은 Phase 10 dry-run 산출물 (section 5/6/11) 에 흡수 위임
 
 ### 진입 조건
 - Phase 7 완료 (PR #87 머지) → 충족
@@ -274,7 +278,7 @@
 
 ---
 
-## Phase 9 — 잔여 도메인 (대기)
+## Phase 9 — 잔여 도메인 (진입 준비 완료)
 
 ### 예정 산출물
 - `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피
@@ -288,11 +292,15 @@
 - 신규 추가: 8092 groupware / 8093 notification / 8094 dashboard / **8095 partner**
 
 ### 진입 조건
-- Phase 8 호환성 가드 + 운영 가드 정착
+- Phase 8 호환성 가드 + 운영 가드 정착 (PR #88 / #89 / 본 PR 머지 시 충족)
 
 ### 가드
 - Phase 8 환경변수 표준 적용 (`SAMHAN_<SERVICE>_<KEY>` prefix, `<NAME>_SERVICE_URL` 패턴, `.env.example` 의무)
 - 12-factor 준수 + standard SQL + AWS 호환성 가드 일관 적용
+- 신규 service 모두 `shared:discovery-abstraction` 의존성 도입 (Phase 10 cutover 시점 활성 대비)
+
+### plan 위치
+- `docs/migration/phase9/M-PHASE-9-readiness.md` (4 service skeleton + 5주 roadmap)
 
 ---
 
@@ -309,6 +317,9 @@
 ### 진입 조건
 - Phase 9 도메인 완료
 - AWS account 발급 + IAM baseline 정의
+
+### dry-run plan 위치
+- `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` (14 section + 5주 timeline)
 
 ---
 
@@ -375,7 +386,9 @@
 | #85| 7     | Phase 7 5차 docs (README + ROADMAP + DECISIONS Phase 7) |
 | #86| 7     | Phase 7 4차 잔여 (통일 토큰 + Pretendard + RN graceful) |
 | #87| 7     | Phase 7 마무리 (self-host font + helmet+CSP + desktop CSP + QA fonts.ready + 회고 + Phase 8 plan) |
-| 본 PR | 8 | Phase 8 1차 (AWS 호환성 가드 + 12-factor 검증 + 환경변수 표준 + ROADMAP/DECISIONS 갱신) |
+| #88| 8     | Phase 8 1차 (AWS 호환성 가드 + 12-factor 검증 + 환경변수 표준 + ROADMAP/DECISIONS 갱신) |
+| #89| 8     | Phase 8 2차 (ServiceDiscoveryClient interface + Eureka wrapper + AWS placeholder + 환경변수 통일 chained-default + Secrets Manager spec) |
+| 본 PR | 8 | Phase 8 3차 (AWS 마이그레이션 dry-run + Phase 8 회고 + Phase 9 진입 plan + ROADMAP/DECISIONS 갱신) |
 
 ---
 
@@ -405,6 +418,8 @@
 | `qa/detox`                           | 7          | 6 시나리오        |
 | `infrastructure/cafe24`              | 7          | SSH 테스트만      |
 | `infrastructure/render`              | 7          | Blueprint 정의 (1차 estimate-app, autoDeploy false) |
+| `shared/discovery-abstraction`       | 8          | ServiceDiscoveryClient wrapper (Eureka default + AWS Cloud Map placeholder), Phase 10 활성 대기 |
+| `infrastructure/env-templates`       | 8          | 12/12 service env-template 보유 (10 신규 + 2 갱신, chained-default fallback) |
 
 ---
 
@@ -419,4 +434,9 @@
 - AWS 호환성 가드: `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md`
 - 환경변수 표준: `docs/migration/phase8/M-ENV-STANDARDIZATION.md`
 - Phase 8 1차 dev report: `docs/dev-reports/phase8-step-1-aws-readiness.md`
+- Phase 8 2차 dev report: `docs/dev-reports/phase8-step-2-discovery-secrets.md`
+- Phase 8 3차 dev report: `docs/dev-reports/phase8-step-3-completion-phase-9-readiness.md`
+- Phase 8 회고: `docs/dev-reports/phase8-retrospective.md`
+- Phase 9 진입 plan: `docs/migration/phase9/M-PHASE-9-readiness.md`
+- Phase 10 dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
 - 본 문서 갱신 보고: `docs/dev-reports/docs-roadmap-update.md`

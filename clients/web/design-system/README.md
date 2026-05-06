@@ -99,6 +99,27 @@ dist/
 - 접근성 우선: `role`, `aria-*`, 키보드 인터랙션 (포커스 트랩, ESC 등) 명시
 - 한국어 ARIA 라벨 기본값 (`'닫기'`, `'로딩 중'` 등)
 
+## 환경변수 표준 (Phase 8 / Phase 9 일관)
+
+본 패키지 (Vite library + Storybook) 는 Vite 의 표준 prefix `VITE_*` 만 사용한다.
+
+| 변수                          | 기본값                  | 용도                                              | 사용 위치               |
+| ----------------------------- | ----------------------- | ------------------------------------------------- | ----------------------- |
+| `VITE_STORYBOOK_API_BASE_URL` | `http://localhost:8080` | Storybook 안 demo 컴포넌트의 API mock target      | `src/stories/*.stories.tsx` (옵션) |
+| `VITE_DESIGN_SYSTEM_THEME`    | `light`                 | Storybook 기본 theme (Phase 7 4차 dark-mode 추가) | `.storybook/preview.ts` |
+
+### Phase 8 가드
+
+- **`VITE_*` prefix 의무** — Vite 환경변수 표준. 본 패키지는 라이브러리 publish 대상이므로 환경변수는 Storybook + 빌드 검증 용도로만 사용.
+- **컴포넌트 자체는 환경변수 비의존** — design-system 컴포넌트는 순수 prop-driven (no `import.meta.env` 읽기). 환경변수는 Storybook story 의 demo 데이터 mock 만 사용.
+- **AWS Route 53 cutover 무관** — 본 패키지는 빌드 산출물 (`dist/`) 이 호스팅 owner 와 무관 (npm workspace local + 다른 client 가 dependency 로 사용).
+
+### Phase 9 영향
+
+신규 service (partner / groupware / notification / dashboard) 의 화면 컴포넌트가 본 design-system 의 Button / Input / Modal / FormField / Card 등을 dependency 로 사용 예정. 추가 컴포넌트 (예: dashboard 의 Chart / Sparkline) 는 W4 진입 시점 신규 작성 + Storybook story 추가 의무.
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.
+
 ## 라이선스
 
 내부 패키지 (`private: true`). SamhanLogis 전용.

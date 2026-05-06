@@ -50,3 +50,36 @@ npm run test:android
 
 - WebView 안 legacy (estimate-app v2 / order-app v4) 의 DOM 인터랙션은 detox 의 `by.web.*` matcher 로 가능하나 iOS 안정성이 더 높음. Android 는 가시성 + native bridge 레벨 검증을 우선.
 - backend 미가동 시 happy path 시나리오는 timeout 발생 — CI 에서는 backend up 후 실행.
+
+## 구조 (`.detoxrc.js` + jest config)
+
+```
+qa/detox/
+├─ .detoxrc.js            # 4 config (ios.sim.{release,debug} + android.emu.{release,debug})
+├─ package.json           # detox 20+ + jest 29+
+├─ tsconfig.json
+├─ e2e/
+│  ├─ jest.config.js      # detox jest preset + setupFilesAfterEach
+│  ├─ mobile-staff/       # iOS 시나리오 (3)
+│  │  ├─ estimate-form.test.ts
+│  │  ├─ line-grid.test.ts
+│  │  └─ confirm.test.ts
+│  └─ mobile-v4/          # Android 시나리오 (3)
+│     ├─ partner-bizgate.test.ts
+│     ├─ mobile-gate-4-categories.test.ts
+│     └─ webview-order-confirm.test.ts
+└─ README.md              # 본 파일
+```
+
+`.detoxrc.js` 의 4 config 는 client `expo prebuild` 결과 디렉토리 (`clients/mobile/ios/*.app` / `clients/mobile/android/app/build/outputs/apk/release/*.apk`) 를 참조한다. Expo SDK 53 의 `dev-client` 모드에서는 release / debug build 모두 detox 호환 — `dev-client` 의 RN bundler 는 native bridge 레벨에서 detox sync 와 충돌 없음.
+
+## Phase 9 신규 시나리오 (예정)
+
+| Service              | client                | 시나리오                                                          |
+| -------------------- | --------------------- | ----------------------------------------------------------------- |
+| notification-service | mobile-v4 (Android)   | **push 시나리오 신규** (FCM mock + foreground/background routing) |
+| notification-service | mobile-staff (iOS)    | **push 시나리오 신규** (APNs mock + permission grant flow)        |
+
+푸시 시나리오는 detox 의 `device.sendUserNotification()` API 와 RN 측 `expo-notifications` permission flow 를 결합. notification-service 의 push adapter (FCM / APNs) 가 staging 가동된 후 실 e2e 검증 진행.
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.
