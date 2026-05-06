@@ -3,7 +3,8 @@
 > 거래처 주문서 web app. v4 는 legacy `migration/source/scripts/partner-order/index.html` (9427 라인) 을 그대로 임베드 + shim + PWA 보존.
 
 ## 결정 출처
-- `migration/decisions/DECISIONS.md` Phase 6 v4 (`b15fa12`) §"frontend 방향 최종 확정 — legacy 코드 임베드 (v4)"
+- `migration/decisions/DECISIONS.md` Phase 6 § frontend 방향 — legacy 코드 임베드 (v4)
+- 호스팅: Cloudflare Pages (PR #77 deploy workflow), Render mirror 정의 보존 (autoDeploy false)
 
 ## 핵심 구조
 ```
@@ -45,12 +46,19 @@ npm run preview      # http://localhost:5181 (build 결과 미리보기)
 node scripts/qa-capture.mjs   # → docs/qa/migration-fe-order-app-v4/*.png 6장
 ```
 
-## 제한 (TODO M4 backend)
-- `/api/v1/partner-orders/bootstrap` 미구현 → 부트스트랩 빈 객체. legacy 카탈로그 (홈멀티/싱글/상업) 는 비어있는 상태로 진입. BizGate / 로그인 / mobile-gate 는 정상 동작.
-- M2 partner-service / M4 partner-order-service 머지 후 RPC 응답 정상화 + bootstrap endpoint 추가.
+## Backend 연계 (Phase 6 머지 후 활성)
+- M2 partner-auth-service `POST /api/v1/auth/partner-login` — BizGate 인증
+- M3 dc-config-service — DC 노출 5겹 가드 + Partner master
+- M4 partner-order-service — `/api/v1/partner-orders/bootstrap` (16종) + confirm + outbox
+- M5 slip-service `/from-*` endpoint — 견적 / 주문 → 출고 전표 발행
+- M1a product-service — Google Sheets cron 동기화 + Phase 7 3차 추가된 `GET /api/products/by-code/{modelCode}` (modelCode → productId 변환)
 
 ## v3 → v4 변경
 - React 18 / react-router / @tanstack/react-query / @dnd-kit / zustand 의존성 모두 폐기
 - `@samhan/design-system` 의존성 폐기 (legacy 가 자체 CSS 보유)
 - 약 30개 React 컴포넌트 / 페이지 / store / api 폐기
 - shim + axios + 매핑 표 만 유지
+
+## QA (Phase 7)
+- `qa/playwright/` `web-order-app` project 가 본 dev server (port 5184) 에 대해
+  auth / catalog / draft / confirm / history / tutorial 시나리오 (15 spec × happy/edge) 자동 검증.

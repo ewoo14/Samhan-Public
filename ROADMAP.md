@@ -1,0 +1,348 @@
+# SamhanLogis ROADMAP
+
+(주)삼한공조시스템 자체 물류·회계·견적·주문 통합 플랫폼의 단계별 로드맵.
+본 문서는 origin/main 머지 사실 기준이며, PR 진행 상황과 1:1 동기화된다.
+
+> 갱신 기준 commit: `1b9f0fd` (PR #83 머지, Phase 7 3차 완료)
+
+---
+
+## Phase 개요
+
+| Phase | 기간 (목표) | 목표                                                                 | 상태       |
+| ----- | ----------- | -------------------------------------------------------------------- | ---------- |
+| 0     | -           | 저장소 / Gradle multi-project / 가드 정립                            | 완료       |
+| 1     | 1 ~ 3 주차  | infrastructure + auth-service + eureka + api-gateway + logging       | 완료       |
+| 2     | 4 ~ 8 주차  | user / product / inventory + Electron Desktop 첫 슬라이스            | 완료       |
+| 3     | 9 ~ 13 주차 | slip-service (출고/입고 10단계 라이프사이클 + 모바일 전자서명)       | 완료       |
+| 4     | 14 ~ 17 주차| accounting-service (한국 일반기업회계기준 65 row 시드 + 시산표)      | 완료       |
+| 5     | 18 ~ 21 주차| Solapi SMS 알림 + signature-slice + sales-form polish                | 완료       |
+| 6     | 22 ~ 27 주차| legacy 마이그레이션 본격 구현 (M1a / M2 / M3 / M4 / M5 + 5 client)   | 완료       |
+| 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | **진행 중** |
+| 8     | 32 주차 ~   | 14 backend MSA 운영 호스팅 결정 + production cutover                 | 대기       |
+| 9     | -           | partner-service 외 잔여 도메인 (groupware / notification / dashboard) | 대기       |
+| 10    | -           | migration-service (ECount 일괄 이관) + 운영 안정화                   | 대기       |
+
+---
+
+## Phase 0 — 저장소·가드 정립
+
+### 산출물
+- Gradle multi-project (`shared/common` + `services/*` + `clients/*`)
+- BaseEntity 7 audit 컬럼 + Soft-delete 전용 (`@SQLRestriction("is_deleted = false")`) 가드
+- DB 컬럼 타입 가드 (`VARCHAR(N)` 만 허용, `CHAR(N)` 금지)
+- gradlew 실행 권한 가드 (`git update-index --chmod=+x gradlew`)
+- 한국어 commit / PR / Issue 의무
+
+### 완료 조건
+- 모든 후속 슬라이스가 위 가드 적용 (CI assemble PASS).
+
+---
+
+## Phase 1 — Infrastructure + Auth + Eureka + Logging
+
+### 산출물
+- `infrastructure/docker-compose.yml` — PostgreSQL 10 DB / Redis / RabbitMQ / Elasticsearch / MinIO / Prometheus / Grafana
+- `services/eureka-server` (8761), `services/api-gateway` (8080, reactive)
+- `services/auth-service` (8081, JWT HS256 + internal API)
+- `services/logging-service` (8082, RabbitMQ consumer + Elasticsearch)
+- gateway HeaderAuthenticationFilter 패턴 정립
+
+### 머지 PR
+- #2 auth + user-service 첫 슬라이스
+- #3 team/auth (auth-service 정상화)
+- #5 devops post-phase2-cleanup
+
+### 완료 조건
+- gateway 8080 → 각 서비스 routing OK, JWT 검증 OK, RabbitMQ → Elasticsearch 흐름 OK.
+
+---
+
+## Phase 2 — User + Product + Inventory + Electron 첫 슬라이스
+
+### 산출물
+- `services/user-service` (8083, 16명 시드 + AuthClient 패턴)
+- `services/product-service` (8084, jsonb 태그 + GIN 인덱스 + Internal API)
+- `services/inventory-service` (8085, FIFO + 4-tier 창고 + 22 endpoint, X-Internal-Token gateway 우회)
+- `clients/desktop` Electron 첫 슬라이스 (electron-vite + React + 16 컴포넌트 디자인 시스템 적용)
+- `clients/web/design-system` 16 + 1 (SignaturePad/Viewer 후속) 컴포넌트 + Storybook
+
+### 머지 PR
+- #7 product BE 도메인 + API
+- #9 product FE 디자인 시스템 컴포넌트
+- #11 product DevOps gateway routing
+- #13 product QA 테스트 + 리포트
+- #15 product hotfix (currency bpchar)
+- #16 inventory 첫 슬라이스 (4-tier)
+- #17 slip 첫 슬라이스 (Phase 3 진입)
+- #18 desktop electron skeleton
+
+### 완료 조건
+- 4-tier 창고 + FIFO + 이동전표 22 endpoint 가 IT 통과, Electron desktop 4 화면 동작.
+
+---
+
+## Phase 3 — Slip Service (출고/입고 10단계 + 전자서명)
+
+### 산출물
+- `services/slip-service` (8086, 10단계 라이프사이클, dispatcher/inspector 자동 서명, 라인 specification, DeliveryBatch)
+- 전자서명 (Canvas + SHA-256, 인수자/기사 양측 캡처, DispatchView 인쇄 통합)
+
+### 머지 PR
+- #19 sales output-format
+- #20 sales form-polish
+- #21 sales polish-2 (인쇄 양식)
+- #22 notification-slice-B (Solapi SMS)
+- #23 signature-slice-C (Canvas + SHA-256)
+- #26 signature-mobile-ux
+
+### 완료 조건
+- slip-service 30 endpoint, 모바일 전자서명 2-step (기사 → 인수자) UX 통과.
+
+---
+
+## Phase 4 — Accounting Service
+
+### 산출물
+- `services/accounting-service` (8087, 한국 일반기업회계기준 65 row 시드, ChartOfAccount + Journal + JournalLine + 시산표, 7 endpoint, audit-safe reverse 분개)
+
+### 머지 PR
+- #28 accounting-slice-A
+
+### 완료 조건
+- 시드 65 row + 시산표 endpoint + reverse 분개 IT 통과.
+
+---
+
+## Phase 5 — SMS Aligo 마이그레이션
+
+### 산출물
+- Solapi → 알리고 SMS 게이트웨이 마이그레이션 + Mock 게이트웨이
+
+### 머지 PR
+- #30 sms-aligo-migration
+
+### 완료 조건
+- 발송번호 사전등록 + Mock 활성 (test/local 프로파일) 검증.
+
+---
+
+## Phase 6 — Legacy Migration 본격 구현
+
+### 산출물 (backend 5 슬라이스)
+- M1a — `services/product-service` 시드 + Google Sheets cron 동기화 + by-code endpoint (Phase 7 3차 추가)
+- M2 — `services/partner-auth-service` (8091, 거래처 자체 인증 7 endpoint, password_history 5 FIFO)
+- M3 — `services/dc-config-service` (8089, Partner master owner + DC 노출 5겹 가드)
+- M4 — `services/partner-order-service` (confirm 흐름 + outbox + 16종 bootstrap)
+- M5 — `services/slip-service` `/from-*` endpoint + idempotency 3중 격리
+
+### 산출물 (client 5종)
+- `clients/web/order-app` v4 — Vite + React + legacy `partner-order/index.html` 9427 라인 임베드 (PWA 보존)
+- `clients/web/estimate-app` v2 — Node.js + Express + EJS + legacy estimate 18614 라인 1:1 변환 (B2 옵션)
+- `clients/desktop` v4 — Electron + electron-vite + 16 + signature 라우트
+- `clients/mobile` v4 — Expo + RN WebView + order-app v4 임베드 (dev URL `http://localhost:5185/`)
+- `clients/mobile-staff` v3 — Expo + RN WebView + estimate-app v2 임베드 (dev URL `http://localhost:5183/`)
+
+### 머지 PR
+- #38 M1a product-service 시드
+- #50 / #53 web order-app v4 (Vite SPA + PWA)
+- #51 / #54 desktop v4
+- #52 mobile v4 (RN WebView)
+- #58 estimate-app v2 (Node.js + Express + EJS, B2 옵션)
+- #61 mobile DC notice 삭제 (UUID 노출 회피)
+- #67 / #70 legacy-v2 import + revert (별 프로젝트 분리)
+- #68 / #75 product-service google sheets cron + 정정
+- #69 RN client 통합 (Mobile v4 + mobile-staff v3)
+- #71 (close) M3 단독 → #76 통합
+- #72 M2 partner-auth-service
+- #73 estimate-app google sheets 직접 연동
+- #74 (close) M4 단독 → #76 통합
+- #76 Phase 6 backend 통합 (M2 GG fix + M3 + M4 fix + M5)
+- #77 DEVOPS — Cloudflare Pages deploy workflow (order-app 활성)
+- #78 QA — Playwright + Detox 셋업 + CI workflow
+- #79 client mock 일괄 제거 (`USE_MOCK_FALLBACK` 폐기)
+- #80 Phase 6 마무리 (회고 + DECISIONS + dev URL 검증 + estimate-app 호스팅 + Phase 7 readiness)
+
+### 완료 조건
+- backend 5 슬라이스 + client 5종 모두 origin/main 머지, 회고 보고서 + DECISIONS 등록.
+
+### 회고
+- `docs/dev-reports/phase6-retrospective.md` 참조
+- 통합 PR 패턴 정착 (PR #66 / #71 / #74 / #77 / #78 / #79 close 후 통합 재구성)
+- GitGuardian 패턴 정리 (placeholder + fixture 키 이름 + Testcontainers default)
+
+---
+
+## Phase 7 — 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합 (진행 중)
+
+### 산출물 (1차 — PR #81)
+- `infrastructure/cafe24/test-ssh-connection.sh` — SSH dry-run script (배포 X)
+- `infrastructure/render/render.yaml` + `deploy-checklist.md` — Render Blueprint (estimate-app 활성, order-app autoDeploy false)
+- `qa/playwright/tests/` — 60+ cell 시나리오 (5 project × 15 spec × happy/edge)
+
+### 산출물 (2차 — PR #82)
+- QA edge — `api-5xx-fallback` / `stock-reserve-deduct-race` / `dc-snapshot-strict`
+- Designer — visual regression `dark-mode-toggle.visual.spec.ts`
+- FE — schema/selector 정밀화
+- DevOps — CSP script-src 보안, alert rotation, Slack 비동기
+- Detox 6 시나리오 (mobile-staff 3 + mobile v4 3, iOS/Android)
+
+### 산출물 (3차 — PR #83)
+- BE — `services/product-service` `GET /api/products/by-code/{code}` (사용자 노출 식별자 modelCode → productId)
+- QA — tautology / race delta / immutable 정정 (3 spec)
+- FE — selector 정밀 + testMatch 직교 (2 항목)
+- DevOps — render.yaml mirror 헤더 6 + order-app vitest 도입
+- Designer — dark-mode body[data-theme] assertion 보강
+
+### 머지 PR
+- #81 Phase 7 1차 (env 이름 정정 + OOM 가드 + autoDeploy 비활성 + action SHA pin)
+- #82 Phase 7 2차 (CSP / getStock schema / Slack 비동기 / visual selector)
+- #83 Phase 7 3차 (product by-code + QA tautology fix + FE selector + DevOps render+vitest + Designer dark-mode)
+
+### 진행 중 / 다음 단계
+- 4차 — UI 통합 디자인 (estimate-app v2 / order-app v4 / desktop / mobile / mobile-staff 통일된 톤 / 다크모드 / 폰트)
+- 5차 — backend 운영 호스팅 결정 답변 (X1 ~ X4 옵션 — `docs/migration/phase7/M-PHASE-7-readiness.md` § 4)
+- 6차 — Render production cutover (estimate-app v2 + DNS 연결 + smoke test)
+
+### 완료 조건
+- Render production cutover OK, 14 backend MSA 호스팅 결정 확정, 60+ cell e2e 시나리오 happy path 가 staging stack 에서 PASS.
+
+---
+
+## Phase 8 — 14 backend MSA 운영 호스팅 + Production Cutover (대기)
+
+### 예정 산출물
+- 14 backend MSA 호스팅 옵션 채택 후 deploy workflow 활성
+- DB migration (Flyway) staging → production 점진 적용
+- Eureka cluster + Resilience4j circuit breaker prod 설정
+- 모니터링 알림 (Prometheus → Grafana → Slack) 활성
+
+### 진입 조건
+- Phase 7 6차 완료
+- 호스팅 결정 (D9) 확정
+
+---
+
+## Phase 9 — 잔여 도메인 (대기)
+
+### 예정 산출물
+- `services/partner-service` (8088, 거래처 마스터 + 신용한도 + 거래내역)
+- `services/groupware-service` (8089, 결재선 + 메신저 + 일정)
+- `services/notification-service` (8090, 푸시/이메일/SMS 통합 라우터)
+- `services/dashboard-service` (8091, KPI / 실시간 재고 / 매출)
+
+### 진입 조건
+- Phase 8 운영 안정화
+
+---
+
+## Phase 10 — Migration Service + 운영 안정화 (대기)
+
+### 예정 산출물
+- `services/migration-service` (8092, ECount 일괄 데이터 이관)
+- 장기미수 마이그레이션 일괄 처리
+- 운영 안정화 (장애 복구 / 백업 / DR)
+
+### 진입 조건
+- Phase 9 도메인 완료
+
+---
+
+## 미결 결정 항목 (D-시리즈)
+
+| ID  | 주제                                       | 상태       | 결정 시점          |
+| --- | ------------------------------------------ | ---------- | ------------------ |
+| D6  | 카페24 SSH 배포 대상 앱                    | 보류       | Phase 7 진입 후    |
+| D7  | 카페24 호스트 내 배포 디렉토리             | 보류       | D6 답변 후         |
+| D8  | 카페24 pm2 process 명명 규약               | 보류       | D6 / D7 답변 후    |
+| D9  | 14 backend MSA 운영 호스팅 옵션 (X1 ~ X4) | 진행 중    | Phase 7 5차        |
+
+---
+
+## 머지 PR ↔ Phase 매트릭스
+
+| PR | Phase | 설명                                              |
+| -- | ----- | ------------------------------------------------- |
+| #2 | 1     | auth + user-service 첫 슬라이스                   |
+| #3 | 1     | team/auth                                         |
+| #5 | 1     | devops post-phase2-cleanup                        |
+| #7 | 2     | product BE 도메인 + API                           |
+| #9 | 2     | product FE 디자인 시스템                          |
+| #11| 2     | product DevOps gateway routing                    |
+| #13| 2     | product QA                                        |
+| #15| 2     | product hotfix (currency bpchar)                  |
+| #16| 2     | inventory 첫 슬라이스                             |
+| #17| 2/3   | slip 첫 슬라이스                                  |
+| #18| 2     | desktop electron skeleton                         |
+| #19| 3     | sales output-format                               |
+| #20| 3     | sales form-polish                                 |
+| #21| 3     | sales polish-2 (인쇄 양식)                        |
+| #22| 3     | notification-slice-B (SMS)                        |
+| #23| 3     | signature-slice-C                                 |
+| #26| 3     | signature-mobile-ux                               |
+| #28| 4     | accounting-slice-A                                |
+| #30| 5     | sms-aligo-migration                               |
+| #34| 2     | DS extension                                      |
+| #36| 2     | CI frontend jobs                                  |
+| #38| 6     | M1a product-service 시드                          |
+| #50| 6     | order-app v4 (Vite SPA + PWA)                     |
+| #51| 6     | desktop v4                                        |
+| #52| 6     | mobile v4 (RN WebView)                            |
+| #53| 6     | order-app v4 정정                                 |
+| #54| 6     | desktop v4 정정                                   |
+| #58| 6     | estimate-app v2 (Express + EJS)                   |
+| #61| 6     | mobile DC notice 삭제                             |
+| #67| 6     | legacy-v2 import (revert 됨)                     |
+| #68| 6     | product google sheets cron 1차                   |
+| #69| 6     | RN client 통합                                    |
+| #70| 6     | #67 revert                                        |
+| #72| 6     | M2 partner-auth-service                           |
+| #73| 6     | estimate-app google sheets 직접                  |
+| #75| 6     | #68 정정                                          |
+| #76| 6     | Phase 6 backend 통합 (M2/M3/M4/M5)                |
+| #77| 6     | DEVOPS Cloudflare Pages workflow                  |
+| #78| 6     | QA Playwright + Detox 셋업                        |
+| #79| 6     | client mock 일괄 제거                             |
+| #80| 6     | Phase 6 마무리 + Phase 7 readiness                |
+| #81| 7     | Phase 7 1차 (카페24 SSH + Render Blueprint + QA)  |
+| #82| 7     | Phase 7 2차 (CSP + visual + Slack 비동기)         |
+| #83| 7     | Phase 7 3차 (by-code + tautology + render mirror) |
+
+---
+
+## 디렉토리 ↔ Phase 매트릭스
+
+| 디렉토리                             | Phase 도입 | 현재 상태         |
+| ------------------------------------ | ---------- | ----------------- |
+| `services/eureka-server`             | 1          | 운영              |
+| `services/api-gateway`               | 1          | 운영              |
+| `services/auth-service`              | 1          | 운영              |
+| `services/logging-service`           | 1          | 운영              |
+| `services/user-service`              | 2          | 운영              |
+| `services/product-service`           | 2 / 6      | by-code endpoint 추가 (Phase 7 3차) |
+| `services/inventory-service`         | 2          | 운영              |
+| `services/slip-service`              | 2 / 3 / 6  | M5 `/from-*` endpoint 추가 |
+| `services/accounting-service`        | 4          | 운영              |
+| `services/partner-auth-service`      | 6          | M2 운영           |
+| `services/dc-config-service`         | 6          | M3 운영           |
+| `services/partner-order-service`     | 6          | M4 운영           |
+| `clients/desktop`                    | 2 / 6      | v4                |
+| `clients/web/design-system`          | 2          | 21 컴포넌트       |
+| `clients/web/order-app`              | 6          | v4 (Vite + 임베드)|
+| `clients/web/estimate-app`           | 6          | v2 (Express + EJS)|
+| `clients/mobile`                     | 6          | v4 (WebView)      |
+| `clients/mobile-staff`               | 6          | v3 (WebView)      |
+| `qa/playwright`                      | 7          | 60+ cell          |
+| `qa/detox`                           | 7          | 6 시나리오        |
+| `infrastructure/cafe24`              | 7          | SSH 테스트만      |
+| `infrastructure/render`              | 7          | Blueprint 정의 (1차 estimate-app, autoDeploy false) |
+
+---
+
+## 참조 문서
+
+- 누적 결정: `migration/decisions/DECISIONS.md`
+- Phase 6 회고: `docs/dev-reports/phase6-retrospective.md`
+- Phase 7 진입 평가: `docs/migration/phase7/M-PHASE-7-readiness.md`
+- estimate-app 호스팅 결정: `docs/migration/phase7/M-ESTIMATE-APP-hosting-decision.md`
+- 본 문서 갱신 보고: `docs/dev-reports/docs-roadmap-update.md`

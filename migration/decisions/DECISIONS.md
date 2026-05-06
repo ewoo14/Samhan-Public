@@ -57,3 +57,51 @@
 영향: SamhanLogis 의 client 5개 (order-app v4 / Desktop v4 / Mobile v4 / mobile-staff v3 / estimate-app v2) 는 모두 SamhanLogis 자체 stack (Vite + React 또는 Express + EJS) 으로 통일.
 
 ---
+
+## Phase 7 진행 결정 (2026-05-06)
+
+### D-P7-01. PR 발행 가드 — 통합 PR 의무
+
+- TM 종합 dev report + reviewer 5 토론 (BE / FE / Designer / QA / DevOps) + TM/PM 승인 의무
+- 단편 PR 발행 회피 (Phase 6 PR #66 / #71 / #74 / #77 / #78 / #79 close 회고 후속)
+- 단독 PR 발행 회피 — TM 자체 1 통합 PR 으로 발행
+- 통합 PR 의 historic commit 도 GitGuardian 검사 대상 → `git merge --squash` x N (sub 별 단일 commit) 권장
+
+영향: Phase 7 1차 ~ 3차 모두 단일 통합 PR 으로 발행 (PR #81 / #82 / #83). 본 docs 통합 PR 도 동일 패턴.
+
+### D-P7-02. legacy-v2 폐기 확정
+
+- D-P6-06 (legacy-v2 분리) 의 보강
+- legacy-v2 (이카운트 / 노션 살린 변종) 는 SamhanLogis 범위에서 영구 제외
+- 별 프로젝트로 이전, SamhanLogis 저장소 / docs 에서 후속 언급 X
+
+영향: legacy-v2 관련 코드 / 문서 / branch 가 SamhanLogis 에 잔존하지 않는다.
+
+### D-P7-03. 카페24 SSH 배포 보류 — 테스트만 진행
+
+- `infrastructure/cafe24/test-ssh-connection.sh` (SSH 인증 + 자원 + 도구 dry-run) 만 사용
+- `.github/workflows/deploy-cafe24-ssh.yml.template` 의 `.template` suffix 보존 (workflow 비활성)
+- D6 (배포 대상) / D7 (디렉토리) / D8 (pm2 명명) 답변 + 활성화 결정 후 활성
+
+영향: Phase 7 동안 카페24 환경은 SSH 연결 검증만 수행, 실 배포는 D6/D7/D8 답변 후속에 위임.
+
+### D-P7-04. estimate-app v2 호스팅 = Render Starter
+
+- `docs/migration/phase7/M-ESTIMATE-APP-hosting-decision.md` 의 3안 비교 (A Cloudflare Workers / B Render / C 카페24 SSH) → **B 옵션 채택**
+- Render Starter $7/mo (always-on, 512MB RAM)
+- Blueprint: `infrastructure/render/render.yaml` (estimate-app 활성, order-app autoDeploy false 미러)
+- 절차: `infrastructure/render/deploy-checklist.md`
+- DNS: 카페24 또는 Cloudflare DNS → CNAME `quote.samhan-air.com` → `samhan-estimate-app.onrender.com`
+
+영향: estimate-app v2 production cutover 가 Render dashboard "Manual Deploy" 또는 GitHub Actions workflow_dispatch 로 진행 가능. 1차 estimate-app 만 활성, order-app 은 Cloudflare Pages 가 owner.
+
+### D-P7-05. 14 backend MSA Phase 8 별도 호스팅 결정 위임
+
+- `docs/migration/phase7/M-PHASE-7-readiness.md` § 4 의 X1 ~ X4 옵션 (D9 미결)
+- Phase 7 동안 backend 는 staging stack (로컬 Docker Compose) 만 가동
+- production cutover 는 Phase 8 진입 + D9 답변 후 진행
+- Render 의 `SAMHAN_API_BASE_URL` 실 값은 D9 답변 후 확정
+
+영향: Phase 7 6차 (Render production cutover) 시점에는 estimate-app 이 정적 + Google Sheets 직접 연동만 동작. backend 호출 endpoint 는 D9 답변 후 추가.
+
+---

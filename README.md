@@ -1,190 +1,241 @@
-# SamhanLogis - (주)삼한공조시스템 자체 물류 프로그램
+# SamhanLogis — (주)삼한공조시스템 자체 통합 플랫폼
 
-> 삼성 시스템에어컨 공식 파트너사 (주)삼한공조시스템의 자체 물류·회계·그룹웨어 통합 플랫폼
+> 삼성 시스템에어컨 공식 파트너사 (주)삼한공조시스템의 자체 물류·회계·견적·주문 통합 플랫폼.
+> 14 backend MSA + 5 client (web 2 / desktop 1 / mobile 2) + legacy 마이그레이션 (견적서 / 주문서 / 장기미수) 으로 구성된다.
 
 ---
 
-## 📋 프로젝트 개요
+## 프로젝트 개요
 
-| 항목 | 내용 |
-|------|------|
-| **프로젝트명** | SamhanLogis (삼한로지스) |
-| **아키텍처** | MSA (Microservices Architecture) |
-| **인프라** | 분산 Docker 서버, Eureka Gateway, Load Balancing |
-| **배포 형태** | 내부: EXE (Electron), 외부: Web/App |
-| **기술 스택** | Java 17 / Spring Boot 3, PostgreSQL, React + TypeScript, Electron |
+| 항목       | 내용                                                                               |
+| ---------- | ---------------------------------------------------------------------------------- |
+| 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
+| 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
+| 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
+| 진척률     | Phase 0 ~ 6 완료, Phase 7 진행 중 (3차 머지 완료)                                  |
 
-## 🏗️ 시스템 구성
+---
 
-- **13개 마이크로서비스** (각각 독립 PostgreSQL DB, Eureka 등록)
-- **마이크로서비스별 4-team 에이전트 구성**: TM(팀장) + BE + FE + QA, 총괄 PM 1명
-- **전체 로드맵**: 33주 (Phase 1~7)
-- **GitHub 워크플로우**: 슬라이스당 팀별 PR/Issue 분리, TM·PM 자동 승인 + 개발책임자 머지
+## 기술 스택
 
-## 📊 진척률 (2026-05-05 기준, main `40c8f9d`)
+### Backend
+- Java 17 (Eclipse Temurin) + Spring Boot 3 + Spring Cloud
+- PostgreSQL 15 (service-per-DB) + Flyway 마이그레이션
+- Redis (세션/캐시) + RabbitMQ (이벤트 스트림) + Elasticsearch (로그)
+- Resilience4j circuit breaker + Solapi/알리고 SMS 게이트웨이
 
-### 마이크로서비스 인벤토리
+### Frontend / Client
+- `clients/desktop` — Electron 33 + electron-vite + React 18 + zustand
+- `clients/web/design-system` — Vite + TypeScript + Storybook (21 컴포넌트)
+- `clients/web/order-app` v4 — Vite + React + legacy `partner-order/index.html` 9427 라인 임베드 + PWA
+- `clients/web/estimate-app` v2 — Node.js + Express + EJS + legacy estimate 18614 라인 1:1 변환 (B2 옵션)
+- `clients/mobile` v4 — Expo SDK 53 + react-native-webview (order-app v4 임베드)
+- `clients/mobile-staff` v3 — Expo SDK 53 + react-native-webview (estimate-app v2 임베드)
 
-| # | 서비스 | 포트 | DB | 상태 |
-|---|-------|-----|----|----|
-| 1 | API Gateway | 8080 | — | ✅ Phase 1 |
-| 2 | Eureka Server | 8761 | — | ✅ Phase 1 |
-| 3 | Auth Service | 8081 | auth_db | ✅ Phase 1 + Internal API (Phase 2 후속 정리에서 Flyway 정상화) |
-| 4 | User Service | 8083 | user_db | ✅ Phase 2 첫 슬라이스 (16명 시드, AuthClient 패턴) |
-| 5 | Product Service | 8084 | product_db | ✅ Phase 2 본 작업 첫 슬라이스 (Product/Category 도메인, 14 endpoint, jsonb 태그) |
-| 6 | Inventory Service | 8085 | inventory_db | ✅ Phase 2 본 작업 두 번째 슬라이스 (FIFO + 4-tier 창고 + 이동전표 22 endpoint, Plan §3.1 4-tier 채택, X-Internal-Token gateway 우회) |
-| 7 | Slip Service | 8086 | slip_db | ✅ Phase 3 + sales-polish-2 + notification-slice-B + signature-slice-C/C2 (10단계 라이프사이클, dispatcher/inspector 자동 서명, 라인 specification, DeliveryBatch + Solapi SMS, 모바일 전자서명 (Canvas + SHA-256, 인수자/기사 양측 캡처), DispatchView 인쇄 통합, 30 endpoint) |
-| 8 | Accounting Service | 8087 | accounting_db | ✅ Phase 4 첫 슬라이스 (한국 일반기업회계기준 65 row 시드, ChartOfAccount + Journal + JournalLine + 시산표, 7 endpoint, audit safe reverse 분개) |
-| 9 | Partner Service | 8088 | partner_db | ⬜ Phase 4 |
-| 10 | Groupware Service | 8089 | groupware_db | ⬜ Phase 5 |
-| 11 | Notification Service | 8090 | (Redis) | ⬜ Phase 5 |
-| 12 | Logging Service | 8082 | (Elasticsearch) | ✅ Phase 1 (RabbitMQ consumer 패턴) |
-| 13 | Dashboard Service | 8091 | dashboard_db | ⬜ Phase 5 |
-| 14 | Migration Service | 8092 | migration_db | ⬜ Phase 7 (ECount 마이그레이션) |
+### DevOps / QA
+- Docker / Docker Compose (인프라) + GitHub Actions (CI)
+- Cloudflare Pages (order-app v4) / Render (estimate-app v2 + order-app mirror 정의) / 카페24 (테스트만, 배포 보류)
+- Playwright (web + electron + mobile emul, 60+ cell)
+- Detox (mobile / mobile-staff, iOS sim + Android emul)
 
-**완료 8 / 13 (62%)**.
+---
 
-### 클라이언트
-
-| 항목 | 상태 |
-|------|------|
-| 디자인 시스템 (`clients/web/design-system`) | ✅ 21 컴포넌트 (+ SignaturePad, SignatureViewer — signature-slice-C 신규) |
-| Electron 데스크톱 앱 | ✅ + signature-slice-C/C2-UX (16 라우트 / 모바일 서명 2-step 흐름 (기사→인수자) + 캔버스 fullscreen UX + 인수자 share view + DispatchView 양측 서명 PNG 자동 통합) |
-| React 웹 앱 (외부 거래처용) | ⬜ Phase 6 |
-| React Native 모바일 (창고원/거래처 듀얼) | ⬜ Phase 6 |
-
-## 📁 프로젝트 구조
+## 디렉토리 구조
 
 ```
 SamhanLogis/
-├── docs/                    # 전체 문서
-│   ├── PM/                  # PM 총괄 문서 + 프로젝트 plan
-│   ├── backend/             # 백엔드 팀 문서
-│   ├── frontend/            # 프론트엔드 팀 문서
-│   ├── uiux/                # UI/UX 팀 문서
-│   ├── devops/              # DevOps 팀 검토 리포트 (per-service)
-│   └── qa/                  # QA 리포트 + 스크린샷 (per-slice)
-├── services/                # 13개 백엔드 마이크로서비스
-│   ├── api-gateway/         # Spring Cloud Gateway (reactive)
-│   ├── eureka-server/       # Service discovery
-│   ├── auth-service/        # JWT 발급, 계정, internal API
-│   ├── user-service/        # 직원/조직도, AuthClient 패턴
-│   ├── product-service/     # 품목/카테고리, jsonb 태그, GIN 인덱스 + internal API
-│   ├── inventory-service/   # 4-tier 창고/FIFO/이동전표, ProductClient + InternalTokenFilter
-│   ├── slip-service/        # 출고/입고 전표(STI), 9단계 라이프사이클, InventoryClient 연계
-│   └── ...                  # (Accounting 부터 추가 예정)
-├── clients/                 # 클라이언트 앱
-│   ├── desktop/             # Electron (Phase 2 마무리)
-│   ├── web/
-│   │   └── design-system/   # ✅ 16 컴포넌트 + Storybook
-│   └── mobile/              # Phase 6
-├── infrastructure/          # Docker compose, Postgres init, Prometheus, Grafana
+├── README.md                  # 본 파일
+├── ROADMAP.md                 # 단계별 로드맵 (Phase 0 ~ 10)
+├── settings.gradle / build.gradle / gradlew
 ├── shared/
-│   └── common/              # BaseEntity, Role enum 7-tier, JwtTokenProvider, ApiResponse, BusinessException
-└── .github/workflows/       # CI (assemble + test + Testcontainers)
+│   └── common/                # BaseEntity, Role enum 7-tier, JwtTokenProvider, ApiResponse, BusinessException
+├── services/                  # 14 backend MSA (Spring Boot 3 / Java 17)
+│   ├── eureka-server/
+│   ├── api-gateway/
+│   ├── auth-service/
+│   ├── user-service/
+│   ├── product-service/
+│   ├── inventory-service/
+│   ├── slip-service/
+│   ├── accounting-service/
+│   ├── partner-auth-service/  # Phase 6 M2
+│   ├── dc-config-service/     # Phase 6 M3
+│   ├── partner-order-service/ # Phase 6 M4
+│   ├── logging-service/
+│   └── ...                    # partner / groupware / notification / dashboard / migration (Phase 9 / 10)
+├── clients/
+│   ├── desktop/               # Electron + electron-vite + React 18
+│   ├── web/
+│   │   ├── design-system/     # Storybook + 21 컴포넌트
+│   │   ├── order-app/         # Vite + legacy partner-order 임베드 (v4)
+│   │   └── estimate-app/      # Express + EJS + legacy estimate 임베드 (v2)
+│   ├── mobile/                # Expo + RN WebView (order-app v4)
+│   └── mobile-staff/          # Expo + RN WebView (estimate-app v2)
+├── qa/
+│   ├── playwright/            # web + electron + mobile emul e2e (60+ cell)
+│   └── detox/                 # iOS/Android e2e (6 시나리오)
+├── infrastructure/
+│   ├── docker-compose.yml     # PostgreSQL + Redis + RabbitMQ + Elasticsearch + MinIO + Prometheus + Grafana
+│   ├── postgres/init/         # 10 service DB 자동 생성 + extension
+│   ├── prometheus/ + grafana/
+│   ├── nginx/                 # 서브도메인 stub
+│   ├── render/                # Render Blueprint (estimate-app + order-app mirror)
+│   ├── cafe24/                # SSH 테스트 script (배포 X 보류)
+│   ├── env-templates/
+│   └── security/
+├── migration/
+│   └── decisions/DECISIONS.md # 누적 결정 기록
+└── docs/                      # PM / backend / frontend / uiux / devops / qa / migration / dev-reports
 ```
 
-## 📌 의사결정 체인 (워크플로우)
+---
 
-```
-4-team 에이전트(BE/FE/QA/DevOps) → TM 자동 승인 → PM 자동 승인 → 개발책임자 최종 승인(머지)
-```
-
-- **TM(팀장)** 과 **PM** 은 모두 Claude 에이전트가 수행 (자동 승인 코멘트)
-- **개발책임자** 는 GitHub PR 머지 버튼 = 유일한 최종 승인
-- 슬라이스 1건당 **팀별 PR 4건 분리** + 필요 시 hotfix PR
-- 모든 PR/Issue/commit 한국어, 권한은 풀네임(MASTER/MANAGER/...)
-
-## 🛠 개발 환경 셋업
+## 빠른 시작
 
 ### 사전 요구사항
-- **JDK 17** (Eclipse Temurin 권장) — `JAVA_HOME` 설정 필수
-- **Docker Desktop** — 인프라 스택 + Testcontainers IT
-- **Node.js 24+** — 디자인 시스템 / Storybook
-- **gh CLI 2.92+** — GitHub Issue/PR 자동화
-- **Claude Max 구독** + 모바일 Claude 앱 — Remote Control 원격 지시 (옵션)
-- Gradle / Maven은 별도 설치 불필요 — 프로젝트 내 `gradlew` 사용
 
-### 빌드 & 실행
+- JDK 17 (Eclipse Temurin) — `JAVA_HOME` 설정 필수
+- Docker Desktop — 인프라 stack + Testcontainers IT
+- Node.js 20+ (권장 22+) — client 빌드
+- gh CLI 2.92+ — GitHub Issue/PR
+- 영문 경로 권장 (`C:\dev\SamhanLogis`) — 한글 path 는 JDK 17 `@argfile` 인코딩 한계로 일부 Gradle 작업이 실패할 수 있음
+
+### 인프라 + backend 빌드
 
 ```bash
-# 인프라 스택 기동 (PostgreSQL/Redis/RabbitMQ/Elasticsearch/MinIO + Prometheus/Grafana)
+# 1) 인프라 stack
 docker compose -f infrastructure/docker-compose.yml up -d
 
-# 전체 모듈 빌드 + 단위 테스트
-./gradlew build
+# 2) 전체 모듈 컴파일 (테스트 제외)
+./gradlew assemble
 
-# Testcontainers IT 포함 전체 테스트 (Docker 가동 필수)
+# 3) 단위 + IT (Docker 가용 환경)
 ./gradlew test
 
-# 개별 서비스 실행
-./gradlew :services:eureka-server:bootRun     # http://localhost:8761
-./gradlew :services:api-gateway:bootRun       # http://localhost:8080
-./gradlew :services:auth-service:bootRun      # http://localhost:8081
-./gradlew :services:logging-service:bootRun   # http://localhost:8082
-./gradlew :services:user-service:bootRun      # http://localhost:8083
-./gradlew :services:product-service:bootRun   # http://localhost:8084
-./gradlew :services:inventory-service:bootRun # http://localhost:8085
-./gradlew :services:slip-service:bootRun      # http://localhost:8086
+# 4) 개별 서비스 실행
+./gradlew :services:eureka-server:bootRun           # http://localhost:8761
+./gradlew :services:api-gateway:bootRun             # http://localhost:8080
+./gradlew :services:auth-service:bootRun            # http://localhost:8081
+./gradlew :services:user-service:bootRun            # http://localhost:8083
+./gradlew :services:product-service:bootRun         # http://localhost:8084
+./gradlew :services:inventory-service:bootRun       # http://localhost:8085
+./gradlew :services:slip-service:bootRun            # http://localhost:8086
+./gradlew :services:accounting-service:bootRun      # http://localhost:8087
+./gradlew :services:partner-auth-service:bootRun    # http://localhost:8091
+./gradlew :services:dc-config-service:bootRun       # http://localhost:8089
 ```
 
-### 환경변수 (per-service)
-
-서비스별 런타임 환경변수는 `infrastructure/env-templates/<service>.env` 에서 복사:
+### Client 빌드
 
 ```bash
-cp infrastructure/env-templates/slip-service.env services/slip-service/.env
+# 디자인 시스템 + Storybook
+cd clients/web/design-system && npm install && npm run storybook   # http://localhost:6006
+
+# order-app v4 (Vite + 임베드)
+cd clients/web/order-app && npm install && npm run dev             # http://localhost:5180
+
+# estimate-app v2 (Express + EJS)
+cd clients/web/estimate-app && npm install && npm run dev          # http://localhost:5183
+
+# desktop (Electron)
+cd clients/desktop && npm install && npm run dev
+
+# mobile v4 (Expo, order-app 임베드)
+cd clients/mobile && npm install --legacy-peer-deps && npm run start
+
+# mobile-staff v3 (Expo, estimate-app 임베드)
+cd clients/mobile-staff && npm install --legacy-peer-deps && npm run start
 ```
 
-**slip-service** (Slice B / notification-slice-B 후속) 추가 env:
-
-| 변수 | 용도 | local (H2) | dev/staging/prod |
-|------|------|-----------|------------------|
-| `SOLAPI_API_KEY` | Solapi 인증 | 미사용 (Mock) | 필수 |
-| `SOLAPI_API_SECRET` | Solapi 시크릿 | 미사용 (Mock) | 필수 |
-| `SOLAPI_SENDER_PHONE` | 발신번호 (사전등록) | 미사용 (Mock) | 필수 |
-| `SOLAPI_BASE_URL` | Solapi API 엔드포인트 | 미사용 (Mock) | `https://api.solapi.com` 기본값 |
-
-H2 local 프로파일은 `MockSmsGateway` 자동 활성으로 SOLAPI 변수 미설정 가능.
-CI 의 `gradle test` 도 test 프로파일이 Mock 활성 → SOLAPI env 주입 불필요.
-
-### 디자인 시스템 (Storybook)
+### QA 실행
 
 ```bash
-cd clients/web/design-system
-npm install
-npm run storybook    # http://localhost:6006
-npm run build        # tsc + vite + dts
+# Playwright (web + electron + mobile emul)
+cd qa/playwright && npm install && npx playwright install --with-deps && npm test
+
+# Detox (iOS / Android)
+cd qa/detox && npm install && npm run build:ios && npm run test:ios
 ```
 
-### CI
+---
 
-`.github/workflows/ci.yml` 가 PR / main push 마다 자동 실행:
-- JDK 17 Temurin + Gradle 캐시
-- assemble + test (Testcontainers IT 포함)
-- 테스트 리포트 아티팩트 14일 보존
-- JUnit 결과 PR check run 자동 표시
+## Phase 진행 상태
 
-### 프로젝트 위치 권장
+| Phase | 상태       | 머지 PR 범위        | 비고                                                     |
+| ----- | ---------- | ------------------- | -------------------------------------------------------- |
+| 0     | 완료       | -                   | 가드 정립                                                |
+| 1     | 완료       | #2 / #3 / #5        | infrastructure + auth + eureka + logging + gateway        |
+| 2     | 완료       | #7 ~ #18 / #34 / #36| user + product + inventory + Electron desktop 첫 슬라이스 |
+| 3     | 완료       | #19 ~ #26           | slip-service 10단계 + 전자서명                            |
+| 4     | 완료       | #28                 | accounting-service                                       |
+| 5     | 완료       | #30                 | SMS Aligo 마이그레이션                                   |
+| 6     | 완료       | #38 ~ #80           | legacy 마이그레이션 (M1a / M2 / M3 / M4 / M5 + 5 client) |
+| 7     | **진행 중**| #81 ~ #83           | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합              |
+| 8     | 대기       | -                   | 14 backend MSA 운영 호스팅 + production cutover          |
+| 9     | 대기       | -                   | 잔여 도메인 (partner / groupware / notification / dashboard) |
+| 10    | 대기       | -                   | migration-service (ECount 일괄 이관)                     |
 
-이 프로젝트는 **`C:\dev\SamhanLogis`** 같은 ASCII 전용 경로에 두는 것을 권장합니다.
-한국어 경로(예: `바탕 화면`) 하위에 두면 JDK 17의 `@argfile` 인코딩 한계로
-일부 Gradle 작업(특히 테스트)이 `ClassNotFoundException`으로 실패할 수 있습니다.
+자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.
 
-## 🧰 운영 가드 / 컨벤션
+---
 
-다음 가드들이 메모리(`~/.claude/projects/.../memory/`)에 영구 저장돼 모든 슬라이스에 자동 적용:
+## Phase 6 ~ 7 머지된 주요 PR
 
-- **BaseEntity 7 audit 컬럼 필수** — created_at/by, modified_at/by, deleted_at/by, is_deleted
+### Phase 6 (legacy 마이그레이션 본격 구현)
+- #38 M1a product-service 시드
+- #50 / #53 web order-app v4 (Vite SPA + PWA)
+- #51 / #54 desktop v4
+- #52 mobile v4 (RN WebView)
+- #58 estimate-app v2 (Express + EJS, B2 옵션)
+- #67 / #70 legacy-v2 import + revert (별 프로젝트 분리)
+- #68 / #75 product google sheets cron + 정정
+- #69 RN client 통합 (Mobile + mobile-staff)
+- #72 M2 partner-auth-service
+- #73 estimate-app google sheets 직접 연동
+- #76 Phase 6 backend 통합 (M2 + M3 + M4 + M5)
+- #77 DEVOPS Cloudflare Pages workflow (order-app)
+- #78 QA Playwright + Detox 셋업
+- #79 client mock 일괄 제거
+- #80 Phase 6 마무리 (회고 + DECISIONS + Phase 7 readiness)
+
+### Phase 7 (진행 중)
+- #81 Phase 7 1차 (카페24 SSH script + Render Blueprint + Playwright 60 cell)
+- #82 Phase 7 2차 (CSP / Slack 비동기 / visual regression / Detox 6)
+- #83 Phase 7 3차 (product by-code + QA tautology fix + render mirror + dark-mode)
+
+---
+
+## 운영 가드 / 컨벤션
+
+다음 가드들은 메모리에 영구 저장되어 모든 슬라이스에 자동 적용된다.
+
+- **BaseEntity 7 audit 컬럼** — created_at/by, modified_at/by, deleted_at/by, is_deleted
 - **Soft-delete 전용** — `@SQLRestriction("is_deleted = false")`, hard delete 금지
-- **권한 7단계 풀네임** — MASTER/MANAGER/DEVELOPER/SALES/ACCOUNTANT/WAREHOUSE/INVENTORY
-- **DB 컬럼 타입 가드** — 짧은 문자열은 모두 `VARCHAR(N)`, `CHAR(N)` 금지 (PostgreSQL bpchar mismatch 회피)
-- **Internal token 가드** — prod 프로파일에서 `dev-internal-token-change-me` 사용 시 부팅 거부 (`InternalTokenGuard`)
-- **PowerShell 파일 쓰기 금지** — PR/Issue body 는 Write tool 또는 heredoc (UTF-16 BOM 한글 깨짐 회피)
+- **권한 7단계 풀네임** — MASTER / MANAGER / DEVELOPER / SALES / ACCOUNTANT / WAREHOUSE / INVENTORY
+- **DB 컬럼 타입 가드** — `VARCHAR(N)` 만 허용, `CHAR(N)` 금지 (PostgreSQL bpchar mismatch 회피)
+- **Internal token 가드** — prod 프로파일에서 `dev-internal-token-change-me` 사용 시 부팅 거부
+- **PowerShell 파일 쓰기 금지** — PR/Issue body 는 Write tool 또는 heredoc 사용 (UTF-16 BOM 한글 깨짐 회피)
 - **PR 본문 commit-pinned 스크린샷** — `https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<path>` 형식
 - **gradlew 실행 권한** — Windows 커밋 시 `git update-index --chmod=+x gradlew` 필수
-- **PM 통합 풀빌드 사전 검증** — 4-team PR 발행 전 BE+QA 풀빌드 + IT 컨텍스트 부팅(Hibernate validate) + 시나리오 시연 3 layer 의무
+- **UUID 비공개** — 모든 클라이언트 화면에서 UUID 노출 금지, 비즈니스 식별자 (slipNo / 창고 코드 / modelCode / partnerName) 만 노출
+- **한국어 commit / PR / Issue 의무** — prefix 와 trailer 만 영문 예외
 
-## 📄 라이선스
+---
 
-Proprietary - (주)삼한공조시스템 내부 사용 전용
+## 참조 문서
+
+| 분류       | 위치                                                                |
+| ---------- | ------------------------------------------------------------------- |
+| 로드맵     | `ROADMAP.md`                                                        |
+| 누적 결정  | `migration/decisions/DECISIONS.md`                                  |
+| Phase 6 회고 | `docs/dev-reports/phase6-retrospective.md`                        |
+| Phase 7 readiness | `docs/migration/phase7/M-PHASE-7-readiness.md`               |
+| estimate-app 호스팅 결정 | `docs/migration/phase7/M-ESTIMATE-APP-hosting-decision.md` |
+| Phase 7 dev report | `docs/dev-reports/phase7-step-{1,2,3}.md`                  |
+| dev-reports 누적 | `docs/dev-reports/`                                            |
+
+---
+
+## 라이선스
+
+Proprietary — (주)삼한공조시스템 내부 사용 전용.

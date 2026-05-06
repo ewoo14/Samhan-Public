@@ -71,9 +71,16 @@ npm run build:win
 - 렌더러는 `window.samhanAuth.{getToken,setToken,clearToken}` IPC 만 사용
 - 401 응답 시 axios 인터셉터가 토큰 클리어 + `/login` 자동 이동
 
-## 알려진 제한사항 (후속 슬라이스 예정)
+## v4 후속 (Phase 6 / 7)
 
-- 전표 작성 시 productId 를 사용자가 직접 UUID 로 입력 (product autocomplete 미구현)
-- 전표 상세 화면 미구현 — 목록 행 클릭 시 alert 만 표시
-- 페이지네이션 미구현 (1 페이지 size=20 고정)
+- Phase 6 PR #51 / #54 — 16 라우트 + 모바일 서명 2-step 흐름 (기사 → 인수자) + 캔버스 fullscreen UX + DispatchView 양측 서명 PNG 자동 통합
+- Phase 7 — `qa/playwright/` `electron-desktop` project 가 packaged binary 에 대해
+  auth / catalog / confirm 시나리오 자동 검증
+
+## 알려진 제한사항 (후속)
+
+- 전표 작성 시 productId 직접 UUID 입력 → Phase 7 3차 추가된 product-service
+  `GET /api/products/by-code/{modelCode}` 로 modelCode autocomplete 전환 후속.
+- 전표 상세 화면 일부 placeholder
+- 페이지네이션 size=20 고정
 - 결재선/메신저/저재고 알림 카드 placeholder
