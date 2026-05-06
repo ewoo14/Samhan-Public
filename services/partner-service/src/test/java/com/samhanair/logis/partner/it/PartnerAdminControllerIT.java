@@ -20,7 +20,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  *
  * <p>커버:
  * <ol>
- *   <li>인증 미적재 → 401</li>
+ *   <li>인증 미적재 → 403 (Spring Security 기본 — protected endpoint)</li>
  *   <li>X-User-Role = SALES (관리자 아님) → 403 FORBIDDEN</li>
  *   <li>X-User-Role = MANAGER → 200, 신규 거래처 등록 OK</li>
  *   <li>중복 partnerCode → 409 CONFLICT</li>
@@ -46,12 +46,13 @@ class PartnerAdminControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void create_without_authentication_returns_401() throws Exception {
+    void create_without_authentication_returns_403() throws Exception {
+        // Spring Security 기본 — 인증 미적재 + protected endpoint 시 AccessDeniedException → 403
         PartnerAdminRequest req = sampleRequest("P-2026-0010", "999-88-77777");
         mockMvc.perform(MockMvcRequestBuilders.post("/admin/partners")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(MockMvcResultMatchers.status().isUnauthorized());
+                .andExpect(MockMvcResultMatchers.status().isForbidden());
     }
 
     @Test

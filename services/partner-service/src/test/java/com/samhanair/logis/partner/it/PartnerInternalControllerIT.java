@@ -22,11 +22,14 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  *
  * <p>커버:
  * <ol>
- *   <li>X-Internal-Token 누락 → 401</li>
- *   <li>X-Internal-Token 불일치 → 401</li>
+ *   <li>X-Internal-Token 누락 → 403 (Spring Security 기본 — 인증 미적재 + protected endpoint)</li>
+ *   <li>X-Internal-Token 불일치 → 401 (InternalTokenFilter 가 직접 401 응답)</li>
  *   <li>X-Internal-Token 일치 + 존재하는 partnerCode → 200, partnerId / 마스터 / 신용 정보</li>
  *   <li>X-Internal-Token 일치 + 미존재 partnerCode → 404</li>
  * </ol>
+ *
+ * <p>토큰 누락 = 익명 요청 → AuthorizationFilter 가 AccessDeniedException → 403.
+ * 토큰 불일치 = InternalTokenFilter 가 직접 401 status + ApiResponse 본문 전송 (filter chain 단절).
  *
  * <p>외부 client 의존성 없음 (self-contained service) — {@code @MockBean} 격리 불요.
  * (memory feedback_it_mockbean_external_clients 가드 = 외부 client 가 있을 때만 적용)
@@ -50,13 +53,15 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void lookup_without_internal_token_returns_401() throws Exception {
+    void lookup_without_internal_token_returns_403() throws Exception {
+        // 토큰 누락 = 익명 요청 → AuthorizationFilter 의 AccessDeniedException → 403
         mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/P-2026-0001"))
-                .andExpect(MockMvcResultMatchers.status().isUnauthorized());
+                .andExpect(MockMvcResultMatchers.status().isForbidden());
     }
 
     @Test
     void lookup_with_invalid_internal_token_returns_401() throws Exception {
+        // 토큰 불일치 = InternalTokenFilter 가 직접 401 응답 (filter chain 단절)
         mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/P-2026-0001")
                         .header("X-Internal-Token", "wrong-token"))
                 .andExpect(MockMvcResultMatchers.status().isUnauthorized());

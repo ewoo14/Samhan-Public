@@ -71,8 +71,8 @@ slip-service 측 client (PartnerClient) 구현 시점은 Phase 9 W5 또는 Phase
 | 테스트 | 비고 |
 |---|---|
 | `PartnerServiceTest` | Partner 도메인 단위 (8 case) — register / changeCreditLimit / increase·decreaseBalance / canIssueSlip / 상태 전이 |
-| `PartnerInternalControllerIT` | Internal endpoint (4 case) — 토큰 누락/불일치/일치+lookup/일치+미존재 |
-| `PartnerAdminControllerIT` | Admin CRUD (5 case) — 401 / 403 SALES / 200 MANAGER 등록 / 409 중복 / DELETE soft |
+| `PartnerInternalControllerIT` | Internal endpoint (4 case) — 토큰 누락(403)/불일치(401)/일치+lookup(200)/일치+미존재(404) |
+| `PartnerAdminControllerIT` | Admin CRUD (5 case) — 403 익명 / 403 SALES / 200 MANAGER 등록 / 409 중복 / DELETE soft |
 
 IT 베이스 = `AbstractPostgresIT` (Testcontainers PostgreSQL 16 + Docker 미가용 환경 skip).
 

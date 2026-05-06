@@ -53,8 +53,8 @@ services/partner-service/
     ├── service/PartnerServiceTest.java              (단위, 8 case)
     └── it/
         ├── AbstractPostgresIT.java                  (Testcontainers PostgreSQL + Docker 미가용 skip)
-        ├── PartnerInternalControllerIT.java         (4 case — 토큰 누락/불일치/일치+lookup/일치+미존재)
-        └── PartnerAdminControllerIT.java            (5 case — 401 / 403 SALES / 200 MANAGER / 409 중복 / DELETE soft)
+        ├── PartnerInternalControllerIT.java         (4 case — 토큰 누락(403)/불일치(401)/일치+lookup(200)/일치+미존재(404))
+        └── PartnerAdminControllerIT.java            (5 case — 403 익명 / 403 SALES / 200 MANAGER / 409 중복 / DELETE soft)
 ```
 
 ### 1-2. 기존 파일 갱신
