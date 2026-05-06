@@ -1,0 +1,101 @@
+# Render.com Blueprint — SamhanLogis Phase 7 client 호스팅
+# =========================================================
+#
+# estimate-app v2 (Node.js Web Service Starter $7/mo) + order-app v4 (Static Site Free) 동시 정의.
+#
+# 적용 절차:
+#   1. Render dashboard → "New +" → "Blueprint" → 본 저장소 연결 + render.yaml 인식
+#   2. 각 service 별 sync:false 환경변수 dashboard 에서 직접 등록 (secret)
+#   3. DNS quote.samhan-air.com / order.samhan-air.com → Render 가 발급하는 endpoint CNAME
+#   4. estimate-app autoDeploy: false — main 머지 즉시 배포 회피.
+#      신규 deploy 는 Render dashboard "Manual Deploy" 또는 GitHub Actions
+#      workflow_dispatch 로 수동 trigger (deploy-checklist.md 참조).
+#
+# 비용 (월):
+#   - samhan-estimate-app : Starter $7 (always-on, 512MB RAM, 한국 사용자 ~150ms Singapore)
+#   - samhan-order-app    : Free (정적, CDN 전송)
+#
+# Phase 7 backend staging endpoint (SAMHAN_API_BASE_URL 등 5종) 결정 후
+# Render dashboard 에서 secret 등록한다 (현재 sync:false placeholder).
+
+services:
+  # ----------------------------------------------------------
+  # estimate-app v2 — Express + EJS server-side rendering
+  # ----------------------------------------------------------
+  - type: web
+    name: samhan-estimate-app
+    runtime: node
+    repo: https://github.com/ewoo14/SamhanLogis
+    branch: main
+    rootDir: clients/web/estimate-app
+    plan: starter
+    region: singapore
+    # autoDeploy 비활성 — main 머지 즉시 production 배포 회피.
+    # cutover 절차는 infrastructure/render/deploy-checklist.md 의 "수동 deploy" step 참조.
+    autoDeploy: false
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      # Render Starter 512MB RAM 한계 — V8 heap 400MB 로 cap 하여 OOM-kill 회피.
+      # cafe24 deploy template 의 --max-old-space-size=512 가드와 동일 정책.
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=400"
+      # PORT 는 Render 가 auto-inject 하므로 hardcode 제거.
+      # server.js:50 에 process.env.PORT || '5183' fallback 보유.
+      # === Phase 7 backend staging endpoint (호스팅 결정 후 등록) ===
+      # 이름은 clients/web/estimate-app/.env.example + lib/code.js + server.js 의
+      # process.env.* read 와 1:1 일치한다 (BE Reviewer #1 fix).
+      - key: SAMHAN_API_BASE_URL
+        sync: false
+      - key: PARTNER_SERVICE_URL
+        sync: false
+      - key: ESTIMATE_SERVICE_URL
+        sync: false
+      - key: AUDIT_LOG_URL
+        sync: false
+      - key: SLIP_SERVICE_URL
+        sync: false
+      # === Google Sheets 직접 연동 (legacy v2 보존) ===
+      - key: GOOGLE_SERVICE_ACCOUNT_KEY
+        sync: false
+      - key: SRC_SHEET_ID
+        sync: false
+    domains:
+      - quote.samhan-air.com
+
+  # ----------------------------------------------------------
+  # order-app v4 — Vite SPA + PWA (정적 빌드)
+  # ----------------------------------------------------------
+  # 현재 production 호스팅은 Cloudflare Pages (PR #77) 가 활성 상태이다.
+  # 본 정의는 Render 로 단일 호스팅 통합을 검토하는 경우의 mirror 후보로 보존한다.
+  # 실제 cutover 결정 시 Cloudflare Pages workflow 와 disable 충돌 회피 절차 별도 진행.
+  - type: web
+    name: samhan-order-app
+    runtime: static
+    repo: https://github.com/ewoo14/SamhanLogis
+    branch: main
+    rootDir: clients/web/order-app
+    autoDeploy: false
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: VITE_SAMHAN_BACKEND_BASE_URL
+        sync: false

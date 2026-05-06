@@ -40,7 +40,7 @@ export default defineConfig({
   projects: [
     {
       name: 'web-order-app',
-      testMatch: /.*\/(auth|catalog|draft|confirm|history|tutorial)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|draft|confirm|history|tutorial|dc|stock)\/.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
@@ -48,7 +48,7 @@ export default defineConfig({
     },
     {
       name: 'web-estimate-app',
-      testMatch: /.*\/(auth|catalog|draft|confirm|history)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|draft|confirm|history|dc)\/.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.QA_ESTIMATE_APP_URL ?? 'http://localhost:5183',
@@ -56,14 +56,14 @@ export default defineConfig({
     },
     {
       name: 'electron-desktop',
-      testMatch: /.*\/(auth|catalog|confirm)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|confirm|stock)\/.*\.spec\.ts/,
       use: {
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
       },
     },
     {
       name: 'mobile-chrome',
-      testMatch: /.*\/(auth|catalog|draft|confirm)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|draft|confirm|tutorial)\/.*\.spec\.ts/,
       use: {
         ...devices['Pixel 7'],
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
@@ -71,7 +71,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-safari',
-      testMatch: /.*\/(auth|catalog|draft|confirm)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|draft|confirm|tutorial)\/.*\.spec\.ts/,
       use: {
         ...devices['iPhone 14'],
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
