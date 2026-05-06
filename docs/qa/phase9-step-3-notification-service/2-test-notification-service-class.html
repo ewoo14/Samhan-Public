@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>NotificationServiceTest 클래스 디테일 — Phase 9 W3</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 28px 36px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-warn { background: #fef3c7; color: #854d0e; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<h1>NotificationServiceTest — case 6/6 PASS</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W3 단위 테스트 — Spring 부팅 없음, mock repository + TestGateway. JDK 17 한글 path 환경에서도 PASS.</p>
+
+<div class="summary">
+  <p><strong>Test class</strong>: <code>com.samhanair.logis.notification.service.NotificationServiceTest</code></p>
+  <p><strong>대상</strong>: <code>NotificationService</code> (생성 / 게이트웨이 호출 / 재시도 / 페이지)</p>
+  <p><strong>결과</strong>: <span class="badge b-ok">6 PASS</span> / 0 fail / 0 error / time 1.022s</p>
+</div>
+
+<h2>case 디테일</h2>
+<table>
+  <thead><tr><th>#</th><th>case</th><th>검증</th><th>결과</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td><code>send_success_returns_status_sent</code></td>
+      <td>SMS + EXTERNAL_PHONE → TestGateway success → status=SENT, attemptCount=1, lastAttemptedAt 비-null</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><code>send_failure_returns_status_failed</code></td>
+      <td>PUSH + nextResult=failure 강제 → markFailed(false) → status=FAILED, attemptCount=1</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><code>send_missing_user_recipient_throws_404</code></td>
+      <td>USER + UserClient.exists=false → BusinessException(NOT_FOUND) "수신자(USER) 미존재"</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><code>retry_after_failed_state_invokes_gateway_again</code></td>
+      <td>FAILED entity → retry → requeueForRetry → gateway 재호출 → markSent → status=SENT, attempt=2</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><code>retry_when_status_sent_throws_conflict</code></td>
+      <td>SENT entity → retry → requeueForRetry IllegalStateException → CONFLICT "FAILED / RETRYING 상태에서만"</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td><code>find_by_id_missing_throws_not_found</code></td>
+      <td>repository.findById empty → BusinessException(NOT_FOUND) "발송 요청을 찾을 수 없습니다"</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>도메인 invariant 가드</h2>
+<table>
+  <thead><tr><th>가드</th><th>적용 (entity / service)</th></tr></thead>
+  <tbody>
+    <tr><td>recipientType + recipientId / recipientAddress 정합성</td><td>NotificationRequest 생성자 — EXTERNAL_PHONE 은 address 의무, USER/PARTNER 는 id 의무</td></tr>
+    <tr><td>status 라이프사이클</td><td>open → markSent / markFailed → requeueForRetry → markSent (FAILED/RETRYING 만 retry)</td></tr>
+    <tr><td>attemptCount 단조 증가</td><td>markSent / markFailed 모두 +1, retry 시 어댑터 재호출 후 다시 +1</td></tr>
+    <tr><td>채널 어댑터 미등록 fallback</td><td>gatewayMap.get(channel) null → markFailed(false) + log "FAILURE_NO_ADAPTER"</td></tr>
+    <tr><td>외부 게이트웨이 예외 격리</td><td>try/catch 후 NotificationGatewayResult.failure → status 전이 + log 적재 (예외 전파 X)</td></tr>
+  </tbody>
+</table>
+
+<h2>BE backlog #4 채택 — UserClient bulk verify 영향</h2>
+<table>
+  <thead><tr><th>변경</th><th>NotificationServiceTest 영향</th></tr></thead>
+  <tbody>
+    <tr><td>UserClient.exists(any) → true</td><td>case 1, 2, 4 통과 (수신자 검증 skip)</td></tr>
+    <tr><td>UserClient.exists(any) → false</td><td>case 3 — 404 검증</td></tr>
+    <tr><td>UserClient.verifyBulk</td><td>본 service 미사용 (notification-service send 단건 발송 — bulk 는 groupware ApprovalLineService 한정)</td></tr>
+    <tr><td>Caffeine cache</td><td>UserClientBulkVerifyTest 별도 검증 (3 case PASS)</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

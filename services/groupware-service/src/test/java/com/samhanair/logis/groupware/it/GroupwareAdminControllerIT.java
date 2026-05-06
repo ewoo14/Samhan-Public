@@ -1,6 +1,7 @@
 package com.samhanair.logis.groupware.it;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +65,15 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
     @BeforeEach
     void cleanup() {
         lenient().when(userClient.exists(any())).thenReturn(true);
+        // Phase 9 W3 — bulk verify 채택. 모든 입력 ID 를 true 매핑하여 통과시킨다.
+        lenient().when(userClient.verifyBulk(anyList())).thenAnswer(inv -> {
+            java.util.List<java.util.UUID> ids = inv.getArgument(0);
+            java.util.Map<java.util.UUID, Boolean> result = new java.util.HashMap<>();
+            for (java.util.UUID id : ids) {
+                result.put(id, true);
+            }
+            return result;
+        });
         approvalLineRepository.deleteAll();
         messageRepository.deleteAll();
         scheduleRepository.deleteAll();

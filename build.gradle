@@ -51,6 +51,7 @@ def leafProjects = [
         ':services:partner-order-service',
         ':services:partner-service',
         ':services:groupware-service',
+        ':services:notification-service',
 ]
 
 configure(leafProjects.collect { project(it) }) {

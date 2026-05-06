@@ -35,3 +35,15 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     static_configs:
       - targets: ["logging-service:8082"]
+
+  # Phase 9 W2 — DevOps Follow-up #12 (W3 통합 PR 시점 채택)
+  - job_name: groupware-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["groupware-service:8092"]
+
+  # Phase 9 W3
+  - job_name: notification-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["notification-service:8093"]

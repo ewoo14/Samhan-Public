@@ -20,7 +20,7 @@
 | 6     | 22 ~ 27 주차| legacy 마이그레이션 본격 구현 (M1a / M2 / M3 / M4 / M5 + 5 client)   | 완료       |
 | 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | 완료 (PR #87) |
 | 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **완료 (PR #88 / #89 / 본 PR)** |
-| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **2차 진행 (W1 partner #91 + W2 groupware skeleton 본 PR)** |
+| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **3차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification skeleton 본 PR)** |
 | 10    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기       |
 
 ---
@@ -278,12 +278,12 @@
 
 ---
 
-## Phase 9 — 잔여 도메인 (2차 진행)
+## Phase 9 — 잔여 도메인 (3차 진행)
 
 ### 예정 산출물
 - `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피 — **완료 (PR #91)**
-- `services/groupware-service` (8092, 결재선 + 메신저 + 일정 + UserClient) — **완료 (본 PR)**
-- `services/notification-service` (8093, 푸시/이메일/SMS 통합 라우터) — W3 예정
+- `services/groupware-service` (8092, 결재선 + 메신저 + 일정 + UserClient) — **완료 (PR #92)**
+- `services/notification-service` (8093, 푸시/이메일/SMS 통합 라우터 + UserClient bulk verify) — **완료 (본 PR)**
 - `services/dashboard-service` (8094, KPI / 실시간 재고 / 매출) — W4 예정
 
 **기존 14 service 포트 매핑 (Cross-check)**:
@@ -313,6 +313,21 @@
 - `infrastructure/env-templates/groupware-service.env` 신규
 - `services/groupware-service/README.md` + `docs/dev-reports/phase9-step-2-groupware-service.md` 신규
 - DECISIONS D-P9-06 / D-P9-07 / D-P9-08 추가
+- ROADMAP / DECISIONS / M-PHASE-9-readiness 갱신
+
+### 산출물 (3차 — 본 PR)
+- `services/notification-service` (8093) skeleton — 2 entity (NotificationRequest / NotificationLog) + 3 enum (NotificationChannel / NotificationStatus / RecipientType) + 3 channel adapter (PushAdapter+FcmPushAdapter+MockPushAdapter / EmailAdapter+SesEmailAdapter+MockEmailAdapter / SmsAdapter+AligoSmsAdapter+MockSmsAdapter) + 2 repository + 1 service + 2 controller (Internal send/status / Admin send-list-single-retry) + 3 dto + 9 config (InternalAuthProperties / InternalTokenFilter / InternalTokenGuard / SecurityConfig / WebClientConfig / AligoProperties / FcmProperties / NotificationGatewayConfig / UserCacheProperties + HeaderAuthenticationFilter) + 1 client (UserClient + bulk verify + Caffeine TTL 60s) + 1 exception handler
+- Flyway V1 (`notification_requests` + `notification_logs`, BaseEntity 7 audit + Soft Delete + JSONB payload + partial unique index `request_id+attempt_no`)
+- IT 2 (`NotificationInternalControllerIT` 4 case + `NotificationAdminControllerIT` 5 case, UserClient @MockBean) + 단위 테스트 3 (`NotificationGatewayTest` 3 + `NotificationServiceTest` 6 + `UserClientBulkVerifyTest` 3 = 12 case)
+- ServiceDiscoveryClient **세 번째 소비자** (W1 partner / W2 groupware → W3 notification) — `shared:discovery-abstraction` 의존성 + `samhan.discovery.provider=eureka` default
+- UserClient bulk verify (BE backlog #4 채택) — user-service 신규 endpoint `POST /internal/users/verify-bulk` + Caffeine cache TTL 60s + groupware ApprovalLineService bulk 1회 호출 전환 (영향 file 5)
+- Aligo 흡수 — Phase 5 `slip-service.delivery.sms.AligoSmsGateway` 의 form-urlencoded 호출 모델 흡수 (key/user_id/sender/receiver/msg/testmode_yn)
+- 환경변수 표준 (`SAMHAN_NOTIFICATION_DB_*` chained-default + `SAMHAN_INTERNAL_TOKEN` + `SAMHAN_USER_SERVICE_URL` + `SAMHAN_DISCOVERY_PROVIDER` + `SAMHAN_ALIGO_*` + `SAMHAN_FCM_*` + `SAMHAN_USER_CACHE_*`)
+- `infrastructure/env-templates/notification-service.env` 신규
+- `infrastructure/postgres/init/01-create-databases.sql` `notification_db` 추가
+- `infrastructure/prometheus/prometheus.yml` `notification-service:8093` + `groupware-service:8092` scrape target 추가 (DevOps Follow-up #11/#12 흡수)
+- `services/notification-service/README.md` + `docs/dev-reports/phase9-step-3-notification-service.md` 신규
+- DECISIONS D-P9-09 / D-P9-10 / D-P9-11 추가
 - ROADMAP / DECISIONS / M-PHASE-9-readiness 갱신
 
 ### 진입 조건
@@ -414,7 +429,8 @@
 | #89| 8     | Phase 8 2차 (ServiceDiscoveryClient interface + Eureka wrapper + AWS placeholder + 환경변수 통일 chained-default + Secrets Manager spec) |
 | #90| 8     | Phase 8 3차 (AWS 마이그레이션 dry-run + Phase 8 회고 + Phase 9 진입 plan + ROADMAP/DECISIONS 갱신) |
 | #91 | 9 | Phase 9 1차 W1 (partner-service skeleton — port 8095, M5 partnerId lookup endpoint + 2 entity + Admin CRUD + ServiceDiscoveryClient 도입) |
-| 본 PR | 9 | Phase 9 2차 W2 (groupware-service skeleton — port 8092, 결재선 chain + 메신저 + 일정 + UserClient + ServiceDiscoveryClient 두 번째 소비자) |
+| #92 | 9 | Phase 9 2차 W2 (groupware-service skeleton — port 8092, 결재선 chain + 메신저 + 일정 + UserClient + ServiceDiscoveryClient 두 번째 소비자) |
+| 본 PR | 9 | Phase 9 3차 W3 (notification-service skeleton — port 8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s + ServiceDiscoveryClient 세 번째 소비자 + DevOps #11/#12 흡수) |
 
 ---
 
@@ -436,6 +452,7 @@
 | `services/partner-order-service`     | 6          | M4 운영           |
 | `services/partner-service`           | 9          | W1 skeleton (8095, 거래처 마스터 + M5 partnerCode lookup endpoint, ServiceDiscoveryClient 도입) |
 | `services/groupware-service`         | 9          | W2 skeleton (8092, 결재선 chain + 메신저 + 일정 + UserClient, ServiceDiscoveryClient 두 번째 소비자) |
+| `services/notification-service`      | 9          | W3 skeleton (8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s, ServiceDiscoveryClient 세 번째 소비자) |
 | `clients/desktop`                    | 2 / 6      | v4                |
 | `clients/web/design-system`          | 2          | 21 컴포넌트       |
 | `clients/web/order-app`              | 6          | v4 (Vite + 임베드)|
@@ -468,5 +485,6 @@
 - Phase 9 진입 plan: `docs/migration/phase9/M-PHASE-9-readiness.md`
 - Phase 9 1차 dev report: `docs/dev-reports/phase9-step-1-partner-service.md`
 - Phase 9 2차 dev report: `docs/dev-reports/phase9-step-2-groupware-service.md`
+- Phase 9 3차 dev report: `docs/dev-reports/phase9-step-3-notification-service.md`
 - Phase 10 dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
 - 본 문서 갱신 보고: `docs/dev-reports/docs-roadmap-update.md`

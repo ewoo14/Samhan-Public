@@ -12,8 +12,9 @@
  *   services:logging-service   — Elasticsearch-backed audit log
  *
  * Phase 9 services (W1 ~):
- *   services:partner-service     — 거래처 마스터 + M5 partnerId lookup endpoint (W1)
- *   services:groupware-service   — 결재선 + 메신저 + 일정 (W2)
+ *   services:partner-service       — 거래처 마스터 + M5 partnerId lookup endpoint (W1)
+ *   services:groupware-service     — 결재선 + 메신저 + 일정 (W2)
+ *   services:notification-service  — 푸시 / 이메일 / SMS 통합 라우터 (W3, FCM + SES + Aligo)
  *
  * Add additional services here as `include 'services:<name>'` and ensure
  * each service directory contains its own build.gradle.
@@ -37,6 +38,7 @@ include 'services:dc-config-service'
 include 'services:partner-order-service'
 include 'services:partner-service'
 include 'services:groupware-service'
+include 'services:notification-service'
 
 project(':shared:common').projectDir                   = file('shared/common')
 project(':shared:discovery-abstraction').projectDir    = file('shared/discovery-abstraction')
@@ -54,3 +56,4 @@ project(':services:dc-config-service').projectDir      = file('services/dc-confi
 project(':services:partner-order-service').projectDir  = file('services/partner-order-service')
 project(':services:partner-service').projectDir        = file('services/partner-service')
 project(':services:groupware-service').projectDir      = file('services/groupware-service')
+project(':services:notification-service').projectDir   = file('services/notification-service')
