@@ -22,8 +22,11 @@ test.describe('dc — rule priority', () => {
     if ((await rateBadge.count()) === 0) {
       test.skip(true, 'dc-applied-rate testid 미노출');
     }
-    // 모델별 rule 적용 시 badge 자체가 갱신되어야 함 (정확한 % 비교는 backend 가동 시)
-    await expect(rateBadge.first()).toBeAttached();
+    // Phase 7 3차 정정 — toBeAttached() 는 testid 존재만 확인 (tautology, count() > 0 시 항상 통과).
+    // 실 rate 값이 % 형태로 렌더되는지 검증.
+    const text = await rateBadge.first().textContent();
+    expect(text, 'rate badge 텍스트 비어있음').toBeTruthy();
+    expect(text!).toMatch(/\d+\s*%/);
   });
 
   test('edge: 모델별 DC 미설정 → 카테고리 fallback', async ({ page }) => {
