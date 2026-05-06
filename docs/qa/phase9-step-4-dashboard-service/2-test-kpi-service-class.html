@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>KpiServiceTest 단위 테스트 디테일 — Phase 9 W4</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 28px 36px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px 16px; border-radius: 4px; font-size: 12px; line-height: 1.5; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>KpiServiceTest — 단위 테스트 디테일</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W4 dashboard-service / 6 case PASS / 1.039s</p>
+
+<div class="summary">
+  <p><strong>대상</strong>: <code>com.samhanair.logis.dashboard.service.KpiService</code></p>
+  <p><strong>커버</strong>: 입력 검증 + repository delegate + Caffeine cache evict + upsert (insert / update)</p>
+  <p><strong>Mocking</strong>: <code>KpiSnapshotRepository</code> @Mock + <code>@MockitoSettings(LENIENT)</code></p>
+</div>
+
+<h2>Case 결과 (6 / 6 PASS)</h2>
+<table>
+  <thead><tr><th style="width: 380px;">Test method</th><th>검증</th><th>결과</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>findByCategoryAndDateRange_with_null_category_throws_400</code></td>
+      <td>category null → BusinessException + INVALID_INPUT (400) + "category 필수"</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>findByCategoryAndDateRange_with_from_after_to_throws_400</code></td>
+      <td>from > to → BusinessException + "from 이 to 보다 이후"</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>findByCategoryAndDateRange_delegates_to_repository</code></td>
+      <td>정상 입력 → <code>findAllByCategoryAndSnapshotDateBetweenOrderBySnapshotDateAsc</code> 호출 + 결과 반환</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>findByDateRange_returns_all_categories</code></td>
+      <td>category 없이 범위 조회 → <code>findAllBySnapshotDateBetweenOrderBySnapshotDateAsc</code> 호출 verify times(1)</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>upsert_inserts_when_missing</code></td>
+      <td>기존 row 없음 → <code>repository.save</code> 호출 + 반환 entity 의 category/value 검증</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>upsert_updates_when_existing</code></td>
+      <td>기존 row 있음 → <code>updateValue</code> 호출 + save 미호출 (verify times(0))</td>
+      <td><span class="badge b-ok">PASS</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>관련 가드 / 정책</h2>
+<ul>
+  <li>Caffeine cache annotation (<code>@Cacheable("dashboard-kpi", key=...)</code>) — 단위 테스트는 cache 미관여 (실 cache 검증은 IT 또는 별도 spring-test)</li>
+  <li>Cache evict (<code>@CacheEvict allEntries=true</code>) — upsert/invalidateCache 호출 시 KPI 응답 cache 일관성 보존 (D-P9-12)</li>
+  <li>BusinessException → DashboardExceptionHandler 가 400/500 등 ApiResponse 봉투로 매핑</li>
+</ul>
+
+<h2>실행 명령</h2>
+<pre>./gradlew :services:dashboard-service:test --tests com.samhanair.logis.dashboard.service.KpiServiceTest</pre>
+
+<h2>출처</h2>
+<ul>
+  <li><code>services/dashboard-service/src/test/java/com/samhanair/logis/dashboard/service/KpiServiceTest.java</code></li>
+  <li><code>services/dashboard-service/src/main/java/com/samhanair/logis/dashboard/service/KpiService.java</code></li>
+  <li>회귀 영향 0 — notification-service / groupware-service 의 12 + 16 단위 PASS 유지</li>
+</ul>
+
+</body>
+</html>
