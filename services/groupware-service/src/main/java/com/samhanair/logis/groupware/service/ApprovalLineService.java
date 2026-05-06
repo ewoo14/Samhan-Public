@@ -6,6 +6,9 @@ import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;
 import com.samhanair.logis.groupware.repository.ApprovalLineRepository;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,12 +43,18 @@ public class ApprovalLineService {
         if (req.approverIds() == null || req.approverIds().isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "결재자 1명 이상 필요");
         }
-        if (!userClient.exists(req.requesterId())) {
+        // Phase 9 W3 — BE backlog #4 채택. 요청자 + 결재자 N 명을 1회 bulk RPC 로 검증
+        // (이전: 직렬 N+1 RPC, 현재: 1 RPC + cache hit 기대).
+        List<UUID> idsToVerify = new ArrayList<>();
+        idsToVerify.add(req.requesterId());
+        idsToVerify.addAll(req.approverIds());
+        Map<UUID, Boolean> existsMap = userClient.verifyBulk(idsToVerify);
+        if (!Boolean.TRUE.equals(existsMap.get(req.requesterId()))) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "요청자 미존재: " + req.requesterId());
         }
         ApprovalLine line = ApprovalLine.open(req.requesterId(), req.title(), req.content());
         for (UUID approverId : req.approverIds()) {
-            if (!userClient.exists(approverId)) {
+            if (!Boolean.TRUE.equals(existsMap.get(approverId))) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "결재자 미존재: " + approverId);
             }
             line.appendStep(approverId);

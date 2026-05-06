@@ -9,11 +9,20 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/** Stateless servlet security: trusts gateway-injected X-User-* headers, no public endpoints. */
+/**
+ * Stateless servlet security: trusts gateway-injected X-User-* headers + Phase 9 W3 신규 InternalTokenFilter
+ * ({@code /internal/**} prefix 한정, X-Internal-Token 인증).
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    private final InternalAuthProperties internalAuthProperties;
+
+    public SecurityConfig(InternalAuthProperties internalAuthProperties) {
+        this.internalAuthProperties = internalAuthProperties;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -23,7 +32,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new InternalTokenFilter(internalAuthProperties),
+                        UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);
         return http.build();
     }
 }
