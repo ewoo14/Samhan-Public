@@ -60,8 +60,24 @@ export class ApiClient {
     return this.get<Record<string, unknown>>(`/api/slips/${slipNo}`);
   }
 
-  /** inventory-service: 재고 조회 */
-  getStock(productCode: string): Promise<{ qty: number }> {
-    return this.get<{ qty: number }>(`/api/inventory/stock/${productCode}`);
+  /**
+   * inventory-service: 재고 조회.
+   *
+   * Phase 7 2차 정정 — backend Stock entity 의 실 schema 와 1:1 정합:
+   *   - on_hand   : 물리적 보유 수량
+   *   - reserved  : 주문 확정 시 예약된 수량 (출고 전)
+   *   - available : on_hand - reserved (할당 가능 수량)
+   *
+   * reserve = reserved 증가 + available 감소 (on_hand 불변)
+   * deduct  = on_hand 감소 + reserved 감소 (slip publish 시점)
+   */
+  getStock(productCode: string): Promise<StockSnapshot> {
+    return this.get<StockSnapshot>(`/api/inventory/stock/${productCode}`);
   }
+}
+
+export interface StockSnapshot {
+  on_hand: number;
+  reserved: number;
+  available: number;
 }

@@ -1424,7 +1424,7 @@ body.history-snapshot-open .mobile-drawer-side {
               <tr class="sumrow">
                 <td colspan="6"></td>
                 <td><strong>합계</strong></td>
-                <td><strong id="homeTotal">0</strong></td>
+                <td><strong id="homeTotal" data-testid="dc-final-price">0</strong></td>
               </tr>
             </tfoot>
           </table>
@@ -8443,6 +8443,8 @@ function refreshSelectedBadge() {
     rateBadge = document.createElement('span');
     rateBadge.id = 'selectedRateBadge';
     rateBadge.className = 'badge';
+    // QA Phase 7 2차 — DC 적용 단가/할인율 식별 selector (광범위 body 매칭 회피)
+    rateBadge.setAttribute('data-testid', 'dc-applied-rate');
     const titleEl = document.querySelector('.title');
     if (titleEl) titleEl.appendChild(rateBadge);
   }

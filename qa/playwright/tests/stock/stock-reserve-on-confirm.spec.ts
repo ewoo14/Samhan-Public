@@ -19,8 +19,9 @@ test.describe('stock — reserve on confirm', () => {
     await mockPartnerAuth(page, partner);
   });
 
-  test('happy: 확정 → reserved_qty 증가', async ({ page }) => {
-    const before = await api.getStock('RAS-070AHM').catch(() => ({ qty: 0 }));
+  test('happy: 확정 → reserved 증가 + available 감소 + on_hand 불변', async ({ page }) => {
+    const fallback = { on_hand: 0, reserved: 0, available: 0 };
+    const before = await api.getStock('RAS-070AHM').catch(() => fallback);
     await page.goto('/');
     const confirmBtn = page.locator('button:has-text("확정")').first();
     if ((await confirmBtn.count()) === 0) {
@@ -28,9 +29,11 @@ test.describe('stock — reserve on confirm', () => {
     }
     await confirmBtn.click();
     await page.waitForTimeout(1000);
-    const after = await api.getStock('RAS-070AHM').catch(() => ({ qty: before.qty }));
-    // reserved_qty 증가 → available_qty 감소 (qty 가 available 의미인 경우)
-    expect(after.qty).toBeLessThanOrEqual(before.qty);
+    const after = await api.getStock('RAS-070AHM').catch(() => before);
+    // reserve 의 schema 의미: reserved 증가, available 감소, on_hand 불변
+    expect(after.reserved).toBeGreaterThanOrEqual(before.reserved);
+    expect(after.available).toBeLessThanOrEqual(before.available);
+    expect(after.on_hand).toBe(before.on_hand);
   });
 
   test('edge: 확정 취소 → reserved_qty 복원', async ({ page }) => {

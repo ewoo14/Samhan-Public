@@ -19,8 +19,9 @@ test.describe('stock — deduct on slip publish', () => {
     await mockPartnerAuth(page, partner);
   });
 
-  test('happy: slip publish → on_hand 차감', async ({ page }) => {
-    const before = await api.getStock('RAS-070AHM').catch(() => ({ qty: 0 }));
+  test('happy: slip publish → on_hand + reserved 동시 차감', async ({ page }) => {
+    const fallback = { on_hand: 0, reserved: 0, available: 0 };
+    const before = await api.getStock('RAS-070AHM').catch(() => fallback);
     await page.goto('/');
     const publishBtn = page.locator('button:has-text("발행"), button:has-text("슬립")').first();
     if ((await publishBtn.count()) === 0) {
@@ -28,8 +29,10 @@ test.describe('stock — deduct on slip publish', () => {
     }
     await publishBtn.click();
     await page.waitForTimeout(1000);
-    const after = await api.getStock('RAS-070AHM').catch(() => ({ qty: before.qty }));
-    expect(after.qty).toBeLessThanOrEqual(before.qty);
+    const after = await api.getStock('RAS-070AHM').catch(() => before);
+    // deduct 의 schema 의미: on_hand 감소 + reserved 감소 (reserve → 출고 전환)
+    expect(after.on_hand).toBeLessThanOrEqual(before.on_hand);
+    expect(after.reserved).toBeLessThanOrEqual(before.reserved);
   });
 
   test('edge: publish 후 safety_stock 미만 → 알림', async ({ page }) => {

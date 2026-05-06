@@ -40,6 +40,10 @@ jobs:
       - name: typecheck (tsc --noEmit)
         run: npm run typecheck
 
+      - name: 단위 테스트 gate (있는 경우만)
+        # Phase 7 2차 — deploy 직전 test gate. test script 미정의 시 silent skip.
+        run: npm test --if-present
+
       - name: vite build (dist 산출)
         run: npm run build
 

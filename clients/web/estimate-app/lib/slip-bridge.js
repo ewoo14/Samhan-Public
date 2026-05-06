@@ -29,6 +29,30 @@ const SLIP_BASE =
   process.env.SAMHAN_API_BASE_URL ||
   'http://localhost:8086';
 
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || '';
+
+/**
+ * Slack incoming webhook POST — slip-service 5xx 발생 시 운영 alert.
+ *
+ * SLACK_WEBHOOK_URL 미설정 시 silent no-op (정상 동작 영향 X).
+ * Phase 7 2차 — 실 webhook 등록 후 운영 alert 활성화.
+ *
+ * @param {string} text — Slack 메시지 본문
+ * @returns {Promise<void>}
+ */
+async function postSlackAlert(text) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    await axios.post(
+      SLACK_WEBHOOK_URL,
+      { text },
+      { timeout: 5000, validateStatus: () => true },
+    );
+  } catch (err) {
+    Logger.log(`[slip-bridge] slack webhook 실패 (silent): ${err.message}`);
+  }
+}
+
 /**
  * legacy SaleList[].BulkDatas 형태의 row 들을 slip-service POST body 로 변환.
  *
@@ -125,9 +149,18 @@ async function postSlip(legacyOrder, saleList) {
       return { ok: true, slipNo: String(slipNo), body: resp.data };
     }
     Logger.log(`[slip-bridge] non-2xx status=${resp.status} body=${JSON.stringify(resp.data)}`);
+    if (resp.status >= 500) {
+      // 5xx 만 Slack alert (4xx 는 사용자 입력 오류 — 운영 alert 불필요)
+      await postSlackAlert(
+        `[samhan-estimate-app] slip-service 5xx 발생\nstatus=${resp.status}\nestimate=${legacyOrder.estimateNumber || 'N/A'}\nbody=${JSON.stringify(resp.data).slice(0, 500)}`,
+      );
+    }
     return { ok: false, error: `HTTP ${resp.status}`, body: resp.data };
   } catch (err) {
     Logger.log(`[slip-bridge] axios error ${err.message}`);
+    await postSlackAlert(
+      `[samhan-estimate-app] slip-service 네트워크 오류\nerror=${err.message}\nestimate=${legacyOrder.estimateNumber || 'N/A'}`,
+    );
     return { ok: false, error: err.message, body: null };
   }
 }
@@ -135,4 +168,5 @@ async function postSlip(legacyOrder, saleList) {
 module.exports = {
   buildSlipRequest,
   postSlip,
+  postSlackAlert,
 };
