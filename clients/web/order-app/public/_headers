@@ -13,9 +13,13 @@
 # 운영 주의:
 #   CSP 는 카카오 우편번호 (//t1.kakaocdn.net) + html2canvas (cdnjs.cloudflare.com) 를
 #   script-src 에 명시 — index.html 의 외부 스크립트 의존과 1:1 정합.
+#
+# Phase 7 5/6차 정정:
+#   font-src 에서 'https:' 제거 → 'self' data: 만 허용 (Pretendard self-host 적용 후
+#   외부 font CDN 의존 0). estimate-app 의 helmet CSP 와 1:1 정합.
 /*
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://t1.kakaocdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https://*.samhan-air.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://t1.kakaocdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.samhan-air.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   X-Content-Type-Options: nosniff

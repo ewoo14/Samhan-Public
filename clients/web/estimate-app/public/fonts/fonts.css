@@ -1,0 +1,34 @@
+/**
+ * Pretendard self-host @font-face — estimate-app v2.
+ *
+ * 미러본: design-system 의 src/styles/fonts.css 와 동일 정책.
+ * Express static serve 경로 = `/fonts/fonts.css`.
+ *
+ * woff2 binary 는 `scripts/download-pretendard-fonts.sh` 로 받아 본 디렉토리에 배치.
+ */
+
+/* Variable (font-weight 100 ~ 900 가변) — 우선 */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/PretendardVariable.woff2') format('woff2-variations');
+}
+
+/* Static fallback — Variable 미지원 환경 (구형 Safari / 웹뷰) */
+@font-face {
+  font-family: 'Pretendard';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/Pretendard-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/Pretendard-Bold.woff2') format('woff2');
+}

@@ -22,6 +22,10 @@ test.describe('visual — dark mode toggle', () => {
     });
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto('/');
+    // Phase 7 5/6차 정정 — 폰트 로드 race 방지 가드.
+    // self-host Pretendard 적용 후에도 woff2 fetch + decode 비동기 완료 대기 필수.
+    // 미적용 시 system-ui fallback 으로 1차 렌더 → baseline 폭/높이 미스매치 발생.
+    await page.evaluate(() => document.fonts.ready);
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => null);
     // light baseline — body 의 data-theme 가 light/dark 중 하나
     await expect(page.locator('body')).toHaveAttribute('data-theme', /^(light|dark)$/);
@@ -44,6 +48,8 @@ test.describe('visual — dark mode toggle', () => {
     // design-system tokens.css 의 [data-theme="dark"] 셀렉터가 body 에 직접 적용되며,
     // body { background-color: var(--color-bg-primary); } 바인딩으로 즉시 dark 색상 반영.
     await page.goto('/');
+    // Phase 7 5/6차 정정 — 폰트 로드 race 방지 가드 (self-host 적용 후에도 비동기 fetch).
+    await page.evaluate(() => document.fonts.ready);
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => null);
 
     // 정식 도입 — data-theme 가 light/dark 중 하나로 반드시 존재

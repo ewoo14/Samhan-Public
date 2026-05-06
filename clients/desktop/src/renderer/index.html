@@ -2,7 +2,14 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data:;" />
+    <!--
+      Phase 7 5/6차 정정 — Electron renderer CSP 정식 갱신.
+      - font-src 'self' data: 추가 (self-host Pretendard 적용 시 'self' 충족, data: 는 inline svg/icon font 호환)
+      - img-src 에 https: 추가 (제품 이미지 / 거래처 로고 등 외부 https URL 허용)
+      - connect-src 에 https://*.samhan-air.com 추가 (production endpoint 호출)
+      - script-src 'unsafe-inline' (electron-vite dev HMR 호환, build 후에는 hash 적용 가능)
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' https://*.samhan-air.com http://localhost:* http://127.0.0.1:*;" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>삼한로지스 데스크톱</title>
   </head>

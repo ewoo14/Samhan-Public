@@ -3,7 +3,7 @@
 (주)삼한공조시스템 자체 물류·회계·견적·주문 통합 플랫폼의 단계별 로드맵.
 본 문서는 origin/main 머지 사실 기준이며, PR 진행 상황과 1:1 동기화된다.
 
-> 갱신 기준 commit: `1b9f0fd` (PR #83 머지, Phase 7 3차 완료)
+> 갱신 기준 commit: 본 PR 머지 시점 (Phase 7 5/6차 완료, Phase 8 진입 준비)
 
 ---
 
@@ -18,8 +18,8 @@
 | 4     | 14 ~ 17 주차| accounting-service (한국 일반기업회계기준 65 row 시드 + 시산표)      | 완료       |
 | 5     | 18 ~ 21 주차| Solapi SMS 알림 + signature-slice + sales-form polish                | 완료       |
 | 6     | 22 ~ 27 주차| legacy 마이그레이션 본격 구현 (M1a / M2 / M3 / M4 / M5 + 5 client)   | 완료       |
-| 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | **진행 중** |
-| 8     | 32 주차 ~   | 14 backend MSA 운영 호스팅 결정 + production cutover                 | 대기       |
+| 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | **완료**   |
+| 8     | 32 주차 ~   | 14 backend MSA 운영 호스팅 결정 + production cutover                 | **진입 준비 (D9 답변 대기)** |
 | 9     | -           | partner-service 외 잔여 도메인 (groupware / notification / dashboard) | 대기       |
 | 10    | -           | migration-service (ECount 일괄 이관) + 운영 안정화                   | 대기       |
 
@@ -173,7 +173,7 @@
 
 ---
 
-## Phase 7 — 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합 (진행 중)
+## Phase 7 — 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합 (완료)
 
 ### 산출물 (1차 — PR #81)
 - `infrastructure/cafe24/test-ssh-connection.sh` — SSH dry-run script (배포 X)
@@ -194,32 +194,68 @@
 - DevOps — render.yaml mirror 헤더 6 + order-app vitest 도입
 - Designer — dark-mode body[data-theme] assertion 보강
 
+### 산출물 (4차 — PR #84)
+- design-system tokens.css 의 light/dark 정식 토큰 10종 + body 바인딩 + toggleTheme + visual baseline 6 spec
+- WCAG AA 대비비 4.5:1 충족 (dark text-tertiary #888 → #9a9a9a)
+- FOUC 방지 — `html[data-theme="dark"], body[data-theme="dark"]` selector
+
+### 산출물 (5차 docs — PR #85)
+- README.md 신규 + ROADMAP.md 신규
+- 각 client / service README 갱신
+- DECISIONS.md Phase 7 항목 (D-P7-01 ~ D-P7-05)
+
+### 산출물 (4차 잔여 — PR #86)
+- 통일 alias 토큰 (폰트 family/size/weight/line-height + spacing + radius + shadow)
+- Pretendard web font (jsdelivr 1차)
+- mobile / mobile-staff RN graceful 폰트 hook
+
+### 산출물 (5/6차 — 본 PR)
+- DevOps self-host font (jsdelivr SPOF 회피) — `scripts/download-pretendard-fonts.sh` + `public/fonts/` + `design-system/src/styles/fonts.css`
+- DevOps helmet + CSP 정식 도입 (estimate-app v2)
+- DevOps desktop CSP 갱신 (font-src / connect-src / img-src 보강)
+- QA visual baseline `document.fonts.ready` 가드 5 spec 일관 적용
+- Phase 7 회고 보고서 + Phase 8 진입 plan + DECISIONS Phase 7 마무리 + Phase 8 진입 항목
+
 ### 머지 PR
 - #81 Phase 7 1차 (env 이름 정정 + OOM 가드 + autoDeploy 비활성 + action SHA pin)
 - #82 Phase 7 2차 (CSP / getStock schema / Slack 비동기 / visual selector)
 - #83 Phase 7 3차 (product by-code + QA tautology fix + FE selector + DevOps render+vitest + Designer dark-mode)
-
-### 진행 중 / 다음 단계
-- 4차 — UI 통합 디자인 (estimate-app v2 / order-app v4 / desktop / mobile / mobile-staff 통일된 톤 / 다크모드 / 폰트)
-- 5차 — backend 운영 호스팅 결정 답변 (X1 ~ X4 옵션 — `docs/migration/phase7/M-PHASE-7-readiness.md` § 4)
-- 6차 — Render production cutover (estimate-app v2 + DNS 연결 + smoke test)
+- #84 Phase 7 4차 (DS 토큰 + body 바인딩 + toggleTheme + visual baseline)
+- #85 Phase 7 5차 docs (README + ROADMAP 신규 + DECISIONS Phase 7)
+- #86 Phase 7 4차 잔여 (통일 토큰 + Pretendard + RN graceful 폰트 hook)
+- 본 PR Phase 7 5/6차 (self-host font + helmet+CSP + desktop CSP + QA fonts.ready + 회고 + Phase 8 plan)
 
 ### 완료 조건
-- Render production cutover OK, 14 backend MSA 호스팅 결정 확정, 60+ cell e2e 시나리오 happy path 가 staging stack 에서 PASS.
+- Phase 7 4~6차 산출물 모두 머지, 60+ cell e2e 시나리오 staging stack 검증, UI 통합 (다크모드 + Pretendard 통일) 정착, Phase 8 진입 plan 정립.
+- Render production cutover 자체는 D9 답변 후 Phase 8 위임.
 
 ---
 
-## Phase 8 — 14 backend MSA 운영 호스팅 + Production Cutover (대기)
+## Phase 8 — 14 backend MSA 운영 호스팅 + Production Cutover (진입 준비)
 
-### 예정 산출물
-- 14 backend MSA 호스팅 옵션 채택 후 deploy workflow 활성
-- DB migration (Flyway) staging → production 점진 적용
-- Eureka cluster + Resilience4j circuit breaker prod 설정
-- 모니터링 알림 (Prometheus → Grafana → Slack) 활성
+상세 plan: `docs/migration/phase8/M-PHASE-8-readiness.md`.
+
+### 예정 산출물 (8 작업 — 5주)
+1. 호스팅 인프라 — D9 답변 옵션 (X1 카페24 업그레이드 / X2 Hetzner Cloud / X3 AWS EC2+RDS / X4 하이브리드)
+2. DB migration — Flyway staging → production 점진 적용 (V1~V8 검증)
+3. Eureka cluster — 다중 노드 + AZ 분산
+4. Resilience4j prod 설정 — Circuit Breaker + Retry + Bulkhead 운영 임계치
+5. API Gateway — production routing + rate limit + WAF
+6. 모니터링 alert — Prometheus → Grafana → Slack/SMS (에러율 > 1% / 응답시간 > 500ms)
+7. DNS cutover — `*.samhan-air.com` (api / app / sign / chat / files / monitor / quote / order)
+8. production smoke — `curl + grep` + Playwright Visual Regression 6 baseline 활성
 
 ### 진입 조건
-- Phase 7 6차 완료
-- 호스팅 결정 (D9) 확정
+- Phase 7 5/6차 완료 (본 PR 머지)
+- D9 답변 (14 backend MSA 호스팅 옵션) 확정
+- D6/D7/D8 답변 (카페24 SSH 활성 — X1 옵션 시 필수)
+
+### 주차별 plan
+- W1 — 호스팅 결정 + DB 준비
+- W2 — Eureka cluster + Resilience4j prod
+- W3 — API Gateway + 모니터링
+- W4 — DNS cutover + smoke
+- W5 — 운영 안정화 + 회고
 
 ---
 
@@ -252,10 +288,10 @@
 
 | ID  | 주제                                       | 상태       | 결정 시점          |
 | --- | ------------------------------------------ | ---------- | ------------------ |
-| D6  | 카페24 SSH 배포 대상 앱                    | 보류       | Phase 7 진입 후    |
+| D6  | 카페24 SSH 배포 대상 앱                    | 보류       | Phase 8 1주차 (X1 옵션 시 필수) |
 | D7  | 카페24 호스트 내 배포 디렉토리             | 보류       | D6 답변 후         |
 | D8  | 카페24 pm2 process 명명 규약               | 보류       | D6 / D7 답변 후    |
-| D9  | 14 backend MSA 운영 호스팅 옵션 (X1 ~ X4) | 진행 중    | Phase 7 5차        |
+| D9  | 14 backend MSA 운영 호스팅 옵션 (X1 ~ X4) | 답변 대기   | Phase 8 진입 전    |
 
 ---
 
@@ -307,6 +343,10 @@
 | #81| 7     | Phase 7 1차 (카페24 SSH + Render Blueprint + QA)  |
 | #82| 7     | Phase 7 2차 (CSP + visual + Slack 비동기)         |
 | #83| 7     | Phase 7 3차 (by-code + tautology + render mirror) |
+| #84| 7     | Phase 7 4차 (DS 토큰 + body 바인딩 + visual baseline) |
+| #85| 7     | Phase 7 5차 docs (README + ROADMAP + DECISIONS Phase 7) |
+| #86| 7     | Phase 7 4차 잔여 (통일 토큰 + Pretendard + RN graceful) |
+| 본 PR | 7 | Phase 7 5/6차 (self-host font + helmet+CSP + desktop CSP + QA fonts.ready + 회고 + Phase 8 plan) |
 
 ---
 

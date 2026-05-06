@@ -1,0 +1,9 @@
+# self-host Pretendard woff2 binary 는 저장소 외부 — `scripts/download-pretendard-fonts.sh` 로 받는다.
+# README.md / .gitignore / fonts.css 자체는 보존.
+*.woff2
+*.woff
+*.ttf
+*.otf
+!.gitignore
+!README.md
+!fonts.css

@@ -105,3 +105,38 @@
 영향: Phase 7 6차 (Render production cutover) 시점에는 estimate-app 이 정적 + Google Sheets 직접 연동만 동작. backend 호출 endpoint 는 D9 답변 후 추가.
 
 ---
+
+## Phase 7 완료 + Phase 8 진입 결정 (2026-05-05)
+
+### D-P7-06. Phase 7 6차 production cutover 보류
+
+- estimate-app v2 의 Render production cutover 는 D9 (14 backend MSA 호스팅 옵션) 답변에 의존
+- D9 답변 X 시 estimate-app 만 단독 cutover 시 backend 호출 endpoint 가 미가동 → 정적 + Google Sheets 직접 연동만 동작
+- Phase 8 진입 후 D9 답변과 함께 일관 cutover
+
+영향: Phase 7 6차 production cutover = Phase 8 4주차 (DNS cutover) 작업으로 위임.
+
+### D-P7-07. 후속 PR 4건 본 PR 통합 발행
+
+- DevOps 후속 3건 (self-host font + helmet+CSP + desktop CSP) + QA 후속 1건 (visual baseline `document.fonts.ready` 가드)
+- 단편 PR 4건 발행 회피 (D-P7-01 가드 일관 적용)
+- 본 PR = Phase 7 회고 + Phase 8 진입 plan + DECISIONS Phase 7 마무리 + Phase 8 진입 항목까지 통합
+
+영향: Phase 7 마무리 작업 = 1 통합 PR 으로 일관. Phase 8 진입 plan 도 동일 PR 에 첨부.
+
+### D-P8-01. Phase 8 진입 조건
+
+- 필수 — D9 답변 (14 backend MSA 호스팅 옵션 X1 ~ X4 중 1택)
+- (X1 옵션 시) 추가 — D6/D7/D8 답변 (카페24 SSH 활성)
+- 선택 — 카페24 plan 업그레이드 X 가정 시 X2 (Hetzner) / X3 (AWS) / X4 (하이브리드) 중 1택으로 진행 가능
+
+영향: D9 답변만으로 Phase 8 진입 가능. D6/D7/D8 은 X1 옵션 채택 시에 한해 필수.
+
+### D-P8-02. Phase 8 plan 위치
+
+- `docs/migration/phase8/M-PHASE-8-readiness.md`
+- W1 ~ W5 5주 plan + 8 작업 분해 + 호스팅 옵션 비교 + DNS cutover 8 서브도메인 매핑
+
+영향: Phase 8 작업 시작 시 본 plan 을 reference 로 사용. 8 작업 모두 Phase 8 슬라이스의 input.
+
+---

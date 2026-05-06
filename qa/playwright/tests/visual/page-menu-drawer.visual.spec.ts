@@ -16,6 +16,8 @@ test.describe('visual — page menu drawer', () => {
 
   test('drawer 펼침 snapshot', async ({ page }) => {
     await page.goto('/');
+    // Phase 7 5/6차 정정 — 폰트 로드 race 방지 가드 (self-host 적용 후에도 woff2 fetch 비동기).
+    await page.evaluate(() => document.fonts.ready);
     // Phase 7 3차 정정 (Designer P1) — testid 단일화. legacy 의 옵션/필터 모바일 handle 에
     // data-testid="page-menu-drawer-toggle" 추가 (clients/web/order-app/index.html).
     const trigger = page.locator('[data-testid="page-menu-drawer-toggle"]');
