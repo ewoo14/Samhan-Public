@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 3차 진행 (W1 partner #91 / W2 groupware #92 / W3 notification 본 PR)   |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 4차 진행 (W1 partner #91 / W2 groupware #92 / W3 notification #93 / W4 dashboard 본 PR)   |
 
 ---
 
@@ -48,7 +48,9 @@ SamhanLogis/
 ├── ROADMAP.md                 # 단계별 로드맵 (Phase 0 ~ 10)
 ├── settings.gradle / build.gradle / gradlew
 ├── shared/
-│   └── common/                # BaseEntity, Role enum 7-tier, JwtTokenProvider, ApiResponse, BusinessException
+│   ├── common/                # BaseEntity, Role enum 7-tier, JwtTokenProvider, ApiResponse, BusinessException
+│   ├── discovery-abstraction/ # ServiceDiscoveryClient (Eureka default + AWS Cloud Map placeholder, Phase 8 2차)
+│   └── user-client-abstraction/ # UserVerifier interface + DefaultUserVerifier (Caffeine TTL 60s, Phase 9 W4 신규)
 ├── services/                  # 14 backend MSA (Spring Boot 3 / Java 17)
 │   ├── eureka-server/
 │   ├── api-gateway/
@@ -64,9 +66,9 @@ SamhanLogis/
 │   ├── partner-service/       # Phase 9 W1 (8095) — 거래처 마스터 + M5 lookup endpoint
 │   ├── groupware-service/     # Phase 9 W2 (8092) — 결재선 + 메신저 + 일정 + UserClient
 │   ├── notification-service/  # Phase 9 W3 (8093) — 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify
+│   ├── dashboard-service/     # Phase 9 W4 (8094) — 3 entity + 2 materialized view + 4 client + KPI Caffeine cache
 │   ├── logging-service/       # Phase 1 (8082)
-│   └── ...                    # Phase 9 잔여: dashboard (8094)
-│                              # Phase 10 신규: migration (8096)
+│   └── ...                    # Phase 10 신규: migration (8096)
 ├── clients/
 │   ├── desktop/               # Electron + electron-vite + React 18
 │   ├── web/
@@ -122,7 +124,7 @@ SamhanLogis/
 | partner-auth-service     | 8091 | partner_auth_db     | 거래처 자체 인증 7 endpoint                | Phase 6 (운영)   |
 | **groupware-service**    | **8092** | **groupware_db** | **결재선 + 메신저 + 일정 + UserClient (user-service Internal API) — ServiceDiscoveryClient 두 번째 소비자** | **Phase 9 2차 신규** |
 | **notification-service** | **8093** | **notification_db** | **푸시/이메일/SMS 통합 라우터 (FCM/SES/Aligo) — UserClient bulk verify (BE backlog #4) + Caffeine TTL 60s, ServiceDiscoveryClient 세 번째 소비자** | **Phase 9 3차 신규** |
-| **dashboard-service**    | **8094** | **dashboard_db** | **KPI + 실시간 재고 + 매출**              | **Phase 9 예정** |
+| **dashboard-service**    | **8094** | **dashboard_db** | **KPI + 실시간 재고 + 매출 — 3 entity + 2 materialized view (CONCURRENTLY refresh) + 4 client (Inventory/Accounting/PartnerOrder/Partner) + Caffeine KPI cache, ServiceDiscoveryClient 네 번째 소비자** | **Phase 9 4차 신규** |
 | **partner-service**      | **8095** | **partner_db**   | **거래처 마스터 + 신용한도 + 거래내역 + M5 partnerCode lookup endpoint** | **Phase 9 1차 신규** |
 | **migration-service**    | **8096** | (별도 결정)       | **ECount 일괄 이관 + 장기미수**            | **Phase 10 예정**|
 
@@ -155,6 +157,7 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ./gradlew :services:partner-service:bootRun         # http://localhost:8095
 ./gradlew :services:groupware-service:bootRun       # http://localhost:8092
 ./gradlew :services:notification-service:bootRun    # http://localhost:8093
+./gradlew :services:dashboard-service:bootRun       # http://localhost:8094
 ```
 
 ### Client 빌드
@@ -204,7 +207,7 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | 6     | 완료       | #38 ~ #80              | legacy 마이그레이션 (M1a / M2 / M3 / M4 / M5 + 5 client)            |
 | 7     | 완료       | #81 ~ #87              | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                        |
 | 8     | **완료**   | **#88 / #89 / #90**    | AWS 호환성 가드 (12-factor + chained-default + ServiceDiscoveryClient + Secrets rotation spec + Phase 10 dry-run plan) |
-| 9     | **3차 진행** | **W1 partner-service (#91) / W2 groupware-service (#92) / W3 notification-service (본 PR)** | 잔여 도메인 (partner / groupware / notification / dashboard)        |
+| 9     | **4차 진행** | **W1 partner-service (#91) / W2 groupware-service (#92) / W3 notification-service (#93) / W4 dashboard-service (본 PR)** | 잔여 도메인 (partner / groupware / notification / dashboard)        |
 | 10    | 대기       | -                      | AWS 마이그레이션 + Migration Service (8096) + 운영 안정화           |
 
 자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.
