@@ -31,9 +31,9 @@ test.describe('edge — api 5xx fallback', () => {
     // white-screen 방지 — body 가 비어있지 않음
     const body = (await page.textContent('body')) ?? '';
     expect(body.length).toBeGreaterThan(10);
-    // 스택트레이스 / UUID 노출 X
+    // 스택트레이스 / UUID 풀형식 노출 X (Phase 7 4차 — 502 와 가드 강도 통일)
     expect(body).not.toMatch(/at .+\.(?:js|ts):\d+/);
-    expect(body).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/);
+    expect(body).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   });
 
   test('5xx: 502 → 재시도 안내 또는 정상 종료', async ({ page }) => {
@@ -45,12 +45,13 @@ test.describe('edge — api 5xx fallback', () => {
       }),
     );
     await page.goto('/');
-    // Phase 7 3차 정정 — 503 케이스와 동일 가드 (tautology page.url() 제거).
-    // 일부 client 는 alert 로 안내해 본문에 메시지가 노출되지 않을 수 있으나,
-    // body 자체가 비어있지 않고 내부 식별자/스택트레이스가 노출되지 않음을 검증.
-    const bodyText = await page.locator('body').innerText();
-    expect(bodyText.length).toBeGreaterThan(0);
-    expect(bodyText).not.toMatch(/at\s+\w+\.\w+:\d+/);
-    expect(bodyText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
+    // Phase 7 4차 정정 — 503 케이스와 동일 가드 강도로 통일.
+    //   1) length > 10 (이전 > 0): 의미 있는 안내 문구가 렌더 (white-screen + 단문 모두 차단)
+    //   2) UUID 풀형식 차단 (이전 {8}-{4} 부분만 → {8}-{4}-{4}-{4}-{12})
+    //   3) 스택트레이스 비노출 가드 동일
+    const bodyText502 = await page.locator('body').innerText();
+    expect(bodyText502.length).toBeGreaterThan(10);
+    expect(bodyText502).not.toMatch(/at\s+\w+\.\w+:\d+/);
+    expect(bodyText502).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   });
 });

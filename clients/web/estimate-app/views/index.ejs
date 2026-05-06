@@ -1282,8 +1282,33 @@ body.history-snapshot-open .mobile-drawer-side {
 })();
 </script>
 
+<!-- Phase 7 4차 — dark-mode 정식 도입: data-theme 초기화 (body 렌더 전 동기 적용) -->
+<script>
+  (function() {
+    try {
+      var saved = localStorage.getItem('samhan.theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = (saved === 'dark' || saved === 'light') ? saved : (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme-preload', theme);
+    } catch (e) { /* localStorage 차단 환경 — light 기본값 */ }
+  })();
+</script>
 </head>
-<body class="no-active">
+<body class="no-active" data-theme="light">
+  <script>
+    // body 가 만들어진 직후 preload 값을 data-theme 에 반영 + toggle helper 등록
+    (function() {
+      var pre = document.documentElement.getAttribute('data-theme-preload');
+      if (pre === 'dark' || pre === 'light') {
+        document.body.setAttribute('data-theme', pre);
+      }
+      window.toggleTheme = function() {
+        var next = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', next);
+        try { localStorage.setItem('samhan.theme', next); } catch (e) {}
+      };
+    })();
+  </script>
 
   <div id="pageBizGate" class="page-gate">
     <div class="biz-box">
