@@ -52,24 +52,30 @@ Phase 6 마무리 (PR #80 머지) 완료 직후 Phase 7 진입 1차 작업 통�
 
 | service | type | plan | region | autoDeploy |
 |---|---|---|---|---|
-| `samhan-estimate-app` | web (Node.js) | starter ($7/mo, 512MB) | singapore | true |
+| `samhan-estimate-app` | web (Node.js) | starter ($7/mo, 512MB) | singapore | false (manual) |
 | `samhan-order-app` | static | free | (CDN) | false (mirror only) |
 
 `samhan-order-app` 은 현재 Cloudflare Pages (PR #77) 가 production owner 이므로
 Blueprint 정의에는 mirror 후보로 보존하되 autoDeploy 비활성으로 충돌 회피.
 
+estimate-app 의 `autoDeploy: false` 는 DevOps Reviewer 의견 (main 머지 즉시
+production 배포 회피) 반영. 신규 deploy 는 Render dashboard "Manual Deploy"
+또는 `deploy-estimate-app.yml` workflow_dispatch 로 수동 trigger.
+
 ### 3.2 환경변수 (sync: false placeholder)
+
+키 이름은 `clients/web/estimate-app/.env.example` + `lib/code.js` + `server.js` 의
+`process.env.*` read 와 1:1 일치한다 (BE Reviewer 의견 반영, PR #81 fix commit):
 
 | Key | 등록 시점 |
 |---|---|
-| `SAMHAN_BACKEND_BASE_URL` | 14 backend MSA 호스팅 결정 후 |
-| `PARTNER_AUTH_SERVICE_URL` | 동상 |
-| `PARTNER_ORDER_SERVICE_URL` | 동상 |
-| `SLIP_SERVICE_URL` | 동상 |
-| `PRODUCT_SERVICE_URL` | 동상 |
-| `DC_CONFIG_SERVICE_URL` | 동상 |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Cloud Console 발급 |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | legacy 견적 spreadsheet URL |
+| `SAMHAN_API_BASE_URL` | 14 backend MSA 호스팅 결정 후 (gateway base) |
+| `PARTNER_SERVICE_URL` | 동상 (M3 dc-config-service) |
+| `ESTIMATE_SERVICE_URL` | 동상 (estimate-service) |
+| `AUDIT_LOG_URL` | 동상 (audit-log endpoint) |
+| `SLIP_SERVICE_URL` | 동상 (M5 slip-service) |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Cloud Console 발급 (JSON 경로 또는 base64) |
+| `SRC_SHEET_ID` | legacy 견적 spreadsheet ID |
 
 모든 secret 은 Render dashboard 에서 직접 등록하며, 본 저장소에는 placeholder 만 보관한다.
 
@@ -82,9 +88,10 @@ Blueprint 정의에는 mirror 후보로 보존하되 autoDeploy 비활성으로 
 
 ### 3.4 GitHub Actions 분담
 
-- Render auto-deploy: main push 자동 감지 → 빌드 + 배포
-- `.github/workflows/deploy-estimate-app.yml`: PR 시점 빌드 + 단위 테스트 + `node --check server.js`
-  syntax 검증 게이트 (Render 측 trigger X — secret 노출 회피)
+- Render manual deploy: dashboard "Manual Deploy" 또는 workflow_dispatch 로 수동 trigger
+  (`autoDeploy: false` — main 머지 즉시 production 배포 회피)
+- `.github/workflows/deploy-estimate-app.yml`: PR / push 시점 빌드 + 단위 테스트 +
+  `node --check server.js` syntax 검증 게이트 (Render 측 trigger X — secret 노출 회피)
 
 ## 4. QA 시나리오 30 → 60 cell 확장
 

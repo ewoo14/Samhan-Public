@@ -1,7 +1,11 @@
 # Render cutover 체크리스트 — estimate-app v2
 
 본 체크리스트는 Render Blueprint 활성화 시 1회 실행한다.
-이후 main push 시 Render auto-deploy 가 동작하므로 본 체크리스트는 cutover 전후 1회만 적용.
+
+`render.yaml` 의 estimate-app `autoDeploy: false` 정책에 따라, 이후 main push 시
+자동 배포는 동작하지 않는다. 신규 deploy 는 Render dashboard 의 "Manual Deploy"
+버튼으로 trigger 하거나, GitHub Actions 의 deploy-estimate-app workflow 를
+`workflow_dispatch` 로 수동 실행한다.
 
 ## 사전 준비
 
@@ -18,16 +22,18 @@
 
 ## 환경변수 등록 (sync: false 항목)
 
+키 이름은 `clients/web/estimate-app/.env.example` + `lib/code.js` + `server.js` 의
+`process.env.*` read 와 1:1 일치한다 (BE Reviewer 의견 반영, PR #81 fix commit).
+
 | Key | 출처 | 등록 |
 |---|---|---|
-| `SAMHAN_BACKEND_BASE_URL` | backend 호스팅 결정 | [ ] |
-| `PARTNER_AUTH_SERVICE_URL` | backend 호스팅 결정 | [ ] |
-| `PARTNER_ORDER_SERVICE_URL` | backend 호스팅 결정 | [ ] |
-| `SLIP_SERVICE_URL` | backend 호스팅 결정 | [ ] |
-| `PRODUCT_SERVICE_URL` | backend 호스팅 결정 | [ ] |
-| `DC_CONFIG_SERVICE_URL` | backend 호스팅 결정 | [ ] |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Cloud Console | [ ] |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | legacy 견적 spreadsheet URL | [ ] |
+| `SAMHAN_API_BASE_URL` | backend 호스팅 결정 (gateway base) | [ ] |
+| `PARTNER_SERVICE_URL` | backend 호스팅 결정 (dc-config-service M3) | [ ] |
+| `ESTIMATE_SERVICE_URL` | backend 호스팅 결정 (estimate-service) | [ ] |
+| `AUDIT_LOG_URL` | backend 호스팅 결정 (audit-log endpoint) | [ ] |
+| `SLIP_SERVICE_URL` | backend 호스팅 결정 (slip-service M5) | [ ] |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Cloud Console (JSON 파일 경로 또는 base64) | [ ] |
+| `SRC_SHEET_ID` | legacy 견적 spreadsheet ID | [ ] |
 
 ## DNS 연결
 
@@ -35,6 +41,13 @@
 - [ ] DNS CNAME 등록: `quote.samhan-air.com` → `samhan-estimate-app.onrender.com`
 - [ ] Render dashboard custom domain 등록 + DNS 검증 PASS
 - [ ] SSL 자동 발급 (Let's Encrypt) PASS
+
+## 수동 deploy trigger (autoDeploy: false 정책)
+
+- [ ] Render dashboard → samhan-estimate-app → "Manual Deploy" → "Deploy latest commit"
+- [ ] 또는 GitHub Actions → `Deploy estimate-app to Render` workflow → `Run workflow` (workflow_dispatch)
+- [ ] 빌드 log 에서 `npm ci` PASS + `node server.js` 부팅 메시지 확인
+- [ ] Render 측 `samhan-estimate-app.onrender.com/healthz` 200 응답 확인
 
 ## 1차 smoke test
 
@@ -52,5 +65,6 @@
 배포 직후 critical 결함 발견 시:
 
 1. Render dashboard → samhan-estimate-app → Manual Deploy → 직전 commit hash 선택
-2. 또는 main 의 git revert 커밋 push → Render auto-deploy 가 직전 상태로 복원
-3. 1G RAM 한계와 무관하므로 rollback latency = 빌드 1회 (~2~3분)
+2. (autoDeploy: false 이므로 git revert push 만으로는 rollback 되지 않음 — 위 manual deploy 필수)
+3. Starter 512MB RAM + NODE_OPTIONS=--max-old-space-size=400 가드로 OOM-kill 회피.
+   rollback latency = 빌드 1회 (~2~3분).

@@ -50,7 +50,10 @@ jobs:
       #     npm run build
 
       # - name: rsync 업로드 (SSH key 등록 후)
-      #   uses: easingthemes/ssh-deploy@main
+      #   # 3rd-party action — supply-chain 가드로 정식 release tag pin (mutable @main 금지).
+      #   # 활성화 시 commit SHA 로 한 단계 더 강화 권장:
+      #   #   uses: easingthemes/ssh-deploy@<full-commit-sha>  # v5.0.0 기준
+      #   uses: easingthemes/ssh-deploy@v5.0.0
       #   env:
       #     SSH_PRIVATE_KEY: ${{ secrets.CAFE24_SSH_KEY }}
       #     REMOTE_HOST: ${{ secrets.CAFE24_HOST }}
@@ -60,7 +63,10 @@ jobs:
       #     EXCLUDE: 'node_modules,.git,test'
 
       # - name: 원격 의존성 설치 + pm2 reload
-      #   uses: appleboy/ssh-action@v1
+      #   # 3rd-party action — patch version pin (mutable @v1 금지).
+      #   # 활성화 시 commit SHA 로 한 단계 더 강화 권장:
+      #   #   uses: appleboy/ssh-action@<full-commit-sha>  # v1.2.0 기준
+      #   uses: appleboy/ssh-action@v1.2.0
       #   with:
       #     host: ${{ secrets.CAFE24_HOST }}
       #     username: ${{ secrets.CAFE24_USER }}

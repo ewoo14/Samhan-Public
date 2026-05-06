@@ -27,18 +27,19 @@ implementation 산출물이다.
 
 3. **Secret 환경변수 등록 (Render dashboard → service → Environment)**
 
-   `sync: false` 로 지정된 항목은 Blueprint 가 등록하지 않는다. dashboard 에서 직접 등록한다:
+   `sync: false` 로 지정된 항목은 Blueprint 가 등록하지 않는다. dashboard 에서 직접 등록한다.
+   키 이름은 `clients/web/estimate-app/.env.example` + `lib/code.js` + `server.js` 의
+   `process.env.*` read 와 1:1 일치한다 (BE Reviewer 의견 반영, PR #81 fix commit):
 
    | Key | 값 (출처) |
    |---|---|
-   | `SAMHAN_BACKEND_BASE_URL` | Phase 7 backend staging endpoint (호스팅 결정 후) |
-   | `PARTNER_AUTH_SERVICE_URL` | M2 partner-auth-service staging URL |
-   | `PARTNER_ORDER_SERVICE_URL` | M4 partner-order-service staging URL |
+   | `SAMHAN_API_BASE_URL` | Phase 7 backend gateway base URL (호스팅 결정 후) |
+   | `PARTNER_SERVICE_URL` | M3 dc-config-service staging URL (partner master + DC config) |
+   | `ESTIMATE_SERVICE_URL` | estimate-service staging URL (snapshot 임시저장 + history) |
+   | `AUDIT_LOG_URL` | audit-log endpoint (logFrontEvent 대체, 예: `<host>/api/v1/audit-logs/front`) |
    | `SLIP_SERVICE_URL` | M5 slip-service staging URL |
-   | `PRODUCT_SERVICE_URL` | M1a product-service staging URL |
-   | `DC_CONFIG_SERVICE_URL` | M3 dc-config-service staging URL |
-   | `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Cloud service account JSON (legacy estimate-app v2 google sheets 연동) |
-   | `GOOGLE_SHEETS_SPREADSHEET_ID` | legacy 견적 spreadsheet ID |
+   | `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Cloud service account JSON 파일 경로 또는 base64 (`GOOGLE_SA_KEY_JSON_BASE64`) |
+   | `SRC_SHEET_ID` | legacy 견적 spreadsheet ID |
 
 4. **DNS 연결**
    - 카페24 또는 Cloudflare DNS 콘솔에서 `quote.samhan-air.com` CNAME → Render 가 발급하는
@@ -52,13 +53,16 @@ implementation 산출물이다.
 
 ## CI workflow 활성화
 
-`.github/workflows/deploy-estimate-app.yml.template` 를
-`deploy-estimate-app.yml` 로 rename 하여 활성. Render 의 main push 자동 deploy 가
-`autoDeploy: true` 로 동작하므로, GitHub Actions 의 역할은 빌드 검증 + 단위 테스트 PASS 게이트 만이다.
+`.github/workflows/deploy-estimate-app.yml` 는 PR/push 시점에 빌드 검증 +
+단위 테스트 + syntax 게이트만 수행한다. 실 배포는 트리거하지 않는다.
+
+`render.yaml` 의 estimate-app `autoDeploy: false` 정책에 따라, 신규 deploy 는
+Render dashboard "Manual Deploy" 또는 GitHub Actions workflow_dispatch 로
+수동 trigger 한다. 절차는 `deploy-checklist.md` "수동 deploy trigger" 섹션 참조.
 
 ## 미결 항목
 
-- `SAMHAN_BACKEND_BASE_URL` 의 실 값은 14 backend MSA 호스팅 결정 (`M-PHASE-7-readiness.md` § 4) 의
+- `SAMHAN_API_BASE_URL` 의 실 값은 14 backend MSA 호스팅 결정 (`M-PHASE-7-readiness.md` § 4) 의
   X1~X4 중 1건 채택 후 확정한다. 그 전까지는 Render 측에서 estimate-app 의 backend 호출
   endpoint 미구성 상태로 둔다 (frontend 정적 + Google Sheets 직접 연동만 동작).
 - `samhan-order-app` Render 활성화는 Cloudflare Pages 와의 단일 owner 결정 후. 현재는 mirror 정의만 보관.

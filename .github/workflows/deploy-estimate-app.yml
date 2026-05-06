@@ -5,11 +5,13 @@ name: Deploy estimate-app v2 (Render)
 # Blueprint 정의: infrastructure/render/render.yaml
 #
 # === 워크플로우 역할 분담 ===
-#  - Render auto-deploy : main push 시 자동 빌드 + 배포 (Render 측 webhook)
-#  - GitHub Actions     : 빌드 검증 + 단위 테스트 + syntax 게이트 (PR 시점)
+#  - Render manual deploy : dashboard 또는 workflow_dispatch 로 수동 trigger
+#                            (render.yaml autoDeploy: false — main 머지 즉시 배포 회피)
+#  - GitHub Actions       : 빌드 검증 + 단위 테스트 + syntax 게이트 (PR 시점)
 #
-# 본 workflow 는 Render 측 배포를 trigger 하지 않는다.
-# Render 의 auto-deploy 가 main push 를 자동 감지하므로 secret 노출 없이 분리된다.
+# 본 workflow 는 Render 측 배포를 trigger 하지 않는다 (빌드 검증만).
+# 실 배포는 Render dashboard "Manual Deploy" 또는 별도 workflow_dispatch 로 수행한다.
+# 절차: infrastructure/render/deploy-checklist.md "수동 deploy trigger" 섹션 참조.
 
 on:
   pull_request:
