@@ -26,8 +26,12 @@ public class MaterializedViewRefreshConfig {
 
     /**
      * 5분 (= 300_000ms) 간격 REFRESH. delay 60초 — 부팅 직후 race 회피.
+     *
+     * <p>SpEL 변환 (PR #94 W4 종합 TM 채택 fix) — env {@code SAMHAN_DASHBOARD_REFRESH_INTERVAL}
+     * (=property {@code samhan.dashboard.refresh.interval-minutes}) 가 schedule 에 반영되도록
+     * application.yml + env-template + DECISIONS D-P9-13 와 key 일관성 유지.
      */
-    @Scheduled(initialDelay = 60_000L, fixedRateString = "${samhan.dashboard.refresh.interval-millis:300000}")
+    @Scheduled(initialDelay = 60_000L, fixedRateString = "#{${samhan.dashboard.refresh.interval-minutes:5} * 60 * 1000}")
     public void scheduledRefresh() {
         MaterializedViewRefreshService.RefreshResult r = refreshService.refreshAll();
         log.info("Materialized view scheduled refresh — stock={} sales={}",

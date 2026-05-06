@@ -146,7 +146,7 @@ shared:user-client-abstraction `DefaultUserVerifierTest` 6 case 별도 PASS — 
 | 4 | DevOps | Caffeine vs Redis 트레이드오프 검토 | ✅ § 6 + D-P9-12 + `samhan.cache.provider` 토글 |
 | 5 | FE | `notification-slice-B` → `link-dispatch-slice` rename | ✅ desktop 12 file + design-system 4 file + 3 README |
 
-## § 후속 backlog (W5 회고 대상)
+## § 후속 backlog (W5 회고 대상 — 사전 누적분)
 
 - Inventory / Accounting / PartnerOrder Internal API 정착 후 client 응답 파싱 + DTO 매핑 (Phase 10 cutover)
 - KPI 산출 batch job (Spring Batch / Quartz, 별도 PR scope)
@@ -158,6 +158,32 @@ shared:user-client-abstraction `DefaultUserVerifierTest` 6 case 별도 PASS — 
 - W3 BE backlog #3 (NotificationGatewayResult 자동 재시도 큐) — Phase 10 cutover
 - W3 DevOps #6 (Resilience4j) / #7 (FCM secrets manager) / #10 (Micrometer counter/timer)
 - W3 QA #11/#12/#13 (재시도 한도 / payload size / fail-mode IT)
+
+## § Phase 10 cutover 약속 (BE 의견 3 채택)
+
+- **PartnerClient.findByCodes(List<String>) bulk endpoint 약속** — `DashboardAdminController.salesAggregate` 의 partner 정보 lookup 시 N 회 직렬 RPC 회피용. partner-service 측 `POST /internal/partners/find-by-codes` endpoint 추가 + `samhan.dashboard.partner-bulk.enabled` 토글로 점진 전환. 현재 응답은 `"(미매핑)"` placeholder 라 사용자 노출 0이지만, Phase 10 production 진입 시 응답 정확성 의무.
+
+## § 후속 backlog 매트릭스 (5 reviewer 토론 종합 — PR #94)
+
+| # | 카테고리 | 항목 | 위임 | 출처 |
+|---|---|---|---|---|
+| 1 | 디자인 컴포넌트화 | channel badge font-size 분기 (`b-channel-*` 12px / `b-channel-*-sm` 11px) 또는 `<ChannelBadge size>` prop | W5 | Designer (D-W4-1) |
+| 2 | 디자인 storybook | `<ChannelBadge>` storybook story 등재 | W5 | Designer (D-W4-2) |
+| 3 | PR template | § 5 적용 예시 보강 (method selector + status badge + Pretendard import 1줄) | W5 | Designer (D-W4-3) |
+| 4 | FE 컴포넌트 | `<ChannelBadge channel="push\|email\|sms" />` 컴포넌트 + Storybook story | W5 | FE (FE-W4-1) |
+| 5 | FE 토큰 | `--color-channel-push/email/sms` CSS variable 토큰화 | W5 | FE (FE-W4-2) |
+| 6 | FE 모듈 | `tokens.css` 의 3 utility class → `<ChannelBadge>` CSS Module 이동 | W5 | FE (FE-W4-3) |
+| 7 | DevOps 가시성 | `CacheConfig` redis 분기 없이 무조건 Caffeine 반환 → `@ConditionalOnProperty` 또는 warn log 1줄 추가 | W5 또는 follow-up | DevOps (DV-W4-2) |
+| 8 | DevOps 확장 | multi-instance `REFRESH MATERIALIZED VIEW CONCURRENTLY` race → ShedLock / Quartz cluster / dedicated cron worker | Phase 10 multi-instance scaling | DevOps (DV-W4-3) |
+| 9 | QA 운영 | prod 첫 REFRESH MATERIALIZED VIEW — view 미충전 상태 CONCURRENTLY 호출 동작 detail 로그 추가 | W5 회고 | QA (Q-W4-1) |
+| 10 | QA UUID 비공개 | `DashboardAdminController.salesAggregate` `@RequestParam UUID partnerId` → partnerCode 입력 + service-side resolve 전환 | W5 또는 후속 | QA (Q-W4-2) |
+| 11 | QA 일관성 | partner / groupware / notification 도 `MethodArgumentTypeMismatchException` 핸들러 추가 (fix commit 본문 권고) | W5 또는 후속 | QA (Q-W4-3) |
+| 12 | BE skeleton | 4 client `body(String.class)` + length 로그만 + 항상 default 반환 → `samhan.dashboard.client.skeleton-mode` 토글 또는 `.toBodilessEntity()` | Phase 10 cutover | BE (의견 2 보류) |
+
+본 PR 채택 fix (W4 종합 TM 적용):
+1. **MaterializedViewRefreshConfig schedule key 일관성** — `${samhan.dashboard.refresh.interval-millis:300000}` → SpEL `#{${samhan.dashboard.refresh.interval-minutes:5} * 60 * 1000}` (BE + DevOps 일치 우려)
+2. **dev-report § Phase 10 cutover — PartnerClient.findByCodes bulk endpoint 약속** (BE 의견 3 채택)
+3. 본 backlog 섹션 명시 (별도 docs PR X, `feedback_continuous_docs_sync.md` 일관)
 
 ## 12. 5 reviewer 토론 준비 (TM 발행 후)
 
