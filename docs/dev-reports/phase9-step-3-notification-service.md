@@ -115,6 +115,33 @@ chained-default 표준: `SAMHAN_NOTIFICATION_*` 우선 / `LEGACY_*` legacy fallb
 - **Phase 10 cutover 진입 사항**: FCM SDK 통합 / SES SDK 통합 / Aligo 운영 secrets / aws-cloud-map provider toggle / UserClient fail-fast 정책.
 - **W4 dashboard-service 진입 시점 회고**: bulk verify 패턴이 partner / inventory / accounting 다중 client 통합 패턴으로 일반화 가능 — TM 검토.
 
+### § 후속 backlog 종합 매트릭스 (5 reviewer 토론 — PR #93)
+
+본 PR 머지 영향 0. 위임 시점에 각 항목 처리. 5 reviewer (BE / FE / Designer / QA / DevOps) 모두 머지 동의 + 채택 fix 0건 (minimal-change 원칙, PR #92 패턴 학습).
+
+| # | 카테고리 | 항목 | 위임 시점 | 출처 |
+|---|---|---|---|---|
+| 1 | shared module | UserClient cache 일관성 — groupware 측 Caffeine 미적용 → `shared:user-client-abstraction` 모듈 통합 | W4 | BE |
+| 2 | 정책 | UserClient.verifyBulk fail-fast 토글 (`samhan.user-client.fail-fast=true`) + DECISIONS D-P9-11 보강 | Phase 10 cutover | BE |
+| 3 | 자동화 | NotificationGatewayResult.failure → 자동 재시도 큐 (현재 admin 수동 retry 의존, 5xx/timeout 도 retryable=false) | Phase 10 cutover | BE |
+| 4 | 디자인 토큰 | 3 channel adapter 시각 일관성 — `.b-channel-push / .b-channel-email / .b-channel-sms` 3종 토큰 신설 + RGB 값 정의 | W4 dashboard 진입 | Designer (D-W3-1) |
+| 5 | 디자인 baseline | W4+ API matrix HTML method 컬러 baseline = W3 (Google Material `#0f9d58/#1a73e8/#f9ab00/#d93025`) — PR template 색상 reference 갱신 | W4 진입 시점 | Designer |
+| 6 | 보안/회로 | AligoSmsAdapter / FcmPushAdapter Resilience4j (timeout / circuit breaker / retry) | Phase 10 cutover | DevOps |
+| 7 | 시크릿 | FCM credentials path → secrets manager mount 모델 표준화 | Phase 10 cutover | DevOps |
+| 8 | 캐시 | Caffeine in-process cache vs Redis 공유 캐시 트레이드오프 검토 | W4 시점 | DevOps |
+| 9 | 정책 | UserClient.verifyBulk fail-soft → fail-fast 전환 약속 추적 (D-P9-11 보강) | Phase 10 cutover | DevOps |
+| 10 | 모니터링 | NotificationGateway adapter 별 Micrometer counter/timer 노출 | Phase 10 cutover | DevOps |
+| 11 | IT 가드 | 재시도 한도 미설정 — `samhan.notification.retry.max-attempts` property + IT 1건 (`markFailed(true) → requeueForRetry() → invokeGateway` 무한 chain 가드) | Phase 10 cutover 전 | QA |
+| 12 | IT 가드 | JSONB payload size 무제한 — DTO `payload` `@Size(4000)` 추가 + 4001byte 차단 IT (Postgres TOAST 임계 우회 가능) | Phase 10 cutover 전 | QA |
+| 13 | 정책 IT | UserClient `fail-mode=OPEN/STRICT` property + STRICT 모드 IT 2건 (Phase 10 fail-fast 전환 시 회귀 가드) | Phase 10 cutover 전 | QA |
+| 14 | 모바일 | 모바일 push 화면 — RN FCM SDK 통합 + Detox e2e 2종 (`mobile-v4/notification-push.test.ts` Android + `mobile-staff/notification-push.test.ts` iOS+APNs+permission) | W5 또는 Phase 10 client 통합 PR | FE |
+| 15 | 명칭 정정 | client 영역 `notification-slice-B` ↔ 신규 `notification-service` (8093) 충돌 — slice 코드명 rename (예: `link-dispatch-slice`) + `clients/desktop/src/renderer/api/delivery.ts:4` 주석 정정 | W4 또는 다음 client 통합 PR | FE |
+
+위임 시점 분포:
+- **W4 진입**: 5건 (BE-1 / Designer-1 / Designer-2 / DevOps-3 / FE-3)
+- **Phase 10 cutover 전**: 9건 (BE-2/3 / DevOps-1/2/4/5 / QA-1/2/3)
+- **W5 또는 Phase 10 client 통합 PR**: 1건 (FE-2)
+
 ## 산출물 요약
 
 - 신규 file 28 (`services/notification-service/**`)
