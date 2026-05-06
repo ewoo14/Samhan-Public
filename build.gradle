@@ -37,6 +37,7 @@ allprojects {
 def leafProjects = [
         ':shared:common',
         ':shared:discovery-abstraction',
+        ':shared:user-client-abstraction',
         ':services:eureka-server',
         ':services:api-gateway',
         ':services:auth-service',
@@ -52,6 +53,7 @@ def leafProjects = [
         ':services:partner-service',
         ':services:groupware-service',
         ':services:notification-service',
+        ':services:dashboard-service',
 ]
 
 configure(leafProjects.collect { project(it) }) {

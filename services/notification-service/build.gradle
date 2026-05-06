@@ -56,6 +56,8 @@ dependencies {
     implementation project(':shared:common')
     // Phase 8 2차 — vendor 추상화 wrapper (provider=eureka default, Phase 10 시점 aws-cloud-map 토글)
     implementation project(':shared:discovery-abstraction')
+    // Phase 9 W4 — UserVerifier 표준 abstraction (W3 backlog #1 채택, Caffeine TTL 60s 일원화)
+    implementation project(':shared:user-client-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 
