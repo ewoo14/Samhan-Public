@@ -65,6 +65,11 @@ services:
         sync: false
       - key: SRC_SHEET_ID
         sync: false
+      # === 운영 alert (Phase 7 2차) ===
+      # slip-bridge 의 5xx 응답 시 Slack incoming webhook 으로 알림 POST.
+      # 미설정 시 alert silent skip — 정상 동작 영향 X.
+      - key: SLACK_WEBHOOK_URL
+        sync: false
     domains:
       - quote.samhan-air.com
 

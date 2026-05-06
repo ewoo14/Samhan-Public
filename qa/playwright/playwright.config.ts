@@ -28,6 +28,12 @@ export default defineConfig({
   timeout: 30_000,
   expect: {
     timeout: 5_000,
+    // 시각적 회귀 baseline (Phase 7 2차 Designer)
+    // 3 project (mobile-chrome / mobile-safari / electron-desktop) 별 baseline 별도.
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+      animations: 'disabled',
+    },
   },
   use: {
     actionTimeout: 10_000,
@@ -40,7 +46,7 @@ export default defineConfig({
   projects: [
     {
       name: 'web-order-app',
-      testMatch: /.*\/(auth|catalog|draft|confirm|history|tutorial|dc|stock)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|draft|confirm|history|tutorial|dc|stock|edge|visual)\/.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
@@ -48,7 +54,7 @@ export default defineConfig({
     },
     {
       name: 'web-estimate-app',
-      testMatch: /.*\/(auth|catalog|draft|confirm|history|dc)\/.*\.spec\.ts/,
+      testMatch: /.*\/(auth|catalog|draft|confirm|history|dc|edge|visual)\/.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.QA_ESTIMATE_APP_URL ?? 'http://localhost:5183',
@@ -56,14 +62,22 @@ export default defineConfig({
     },
     {
       name: 'electron-desktop',
-      testMatch: /.*\/(auth|catalog|confirm|stock)\/.*\.spec\.ts/,
+      // tutorial 은 PC 전용 spec 만 (tutorial-pc.spec.ts)
+      testMatch: [
+        /.*\/(auth|catalog|confirm|stock|visual)\/.*\.spec\.ts/,
+        /.*\/tutorial\/tutorial-pc\.spec\.ts/,
+      ],
       use: {
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
       },
     },
     {
       name: 'mobile-chrome',
-      testMatch: /.*\/(auth|catalog|draft|confirm|tutorial)\/.*\.spec\.ts/,
+      // mobile 은 PC 전용 (tutorial-pc.spec.ts) 제외 — 명시적 mobile/staff/state 시나리오만
+      testMatch: [
+        /.*\/(auth|catalog|draft|confirm|visual)\/.*\.spec\.ts/,
+        /.*\/tutorial\/tutorial-(mobile|staff|state)\.spec\.ts/,
+      ],
       use: {
         ...devices['Pixel 7'],
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
@@ -71,7 +85,10 @@ export default defineConfig({
     },
     {
       name: 'mobile-safari',
-      testMatch: /.*\/(auth|catalog|draft|confirm|tutorial)\/.*\.spec\.ts/,
+      testMatch: [
+        /.*\/(auth|catalog|draft|confirm|visual)\/.*\.spec\.ts/,
+        /.*\/tutorial\/tutorial-(mobile|staff|state)\.spec\.ts/,
+      ],
       use: {
         ...devices['iPhone 14'],
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
