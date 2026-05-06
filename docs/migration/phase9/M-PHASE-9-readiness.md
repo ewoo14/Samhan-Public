@@ -47,7 +47,7 @@
 |---|---|---|
 | W1 | partner-service skeleton + 환경변수 + IT | **완료 (PR #91 — 2 entity + 2 controller + 2 service + 4 dto + 4 config + 1 exception handler + IT 2 + 단위 테스트 1)** |
 | W2 | groupware-service skeleton (결재선 도메인 모델 + 메신저 entity) | **완료 (본 PR — 5 entity + 2 controller + 3 service + 9 dto + 5 config + 1 exception handler + 1 client (UserClient) + IT 2 + 단위 테스트 3)** |
-| W3 | notification-service skeleton (push/email/sms adapter) | 예정 |
+| W3 | notification-service skeleton (push/email/sms adapter) | **완료 (본 PR — 2 entity + 3 enum + 3 channel adapter (인터페이스+운영+mock) + 2 controller + 1 service + N dto + N config + UserClient bulk verify (BE backlog #4 채택) + IT 2 + 단위 테스트 3)** |
 | W4 | dashboard-service skeleton (실시간 KPI 집계 + materialized view) | 예정 |
 | W5 | Phase 9 회고 + Phase 10 진입 plan | 예정 |
 
@@ -151,3 +151,5 @@
 - W1 service README: `services/partner-service/README.md`
 - W2 완료 dev-report: `docs/dev-reports/phase9-step-2-groupware-service.md`
 - W2 service README: `services/groupware-service/README.md`
+- W3 완료 dev-report: `docs/dev-reports/phase9-step-3-notification-service.md`
+- W3 service README: `services/notification-service/README.md`
