@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>groupware-service API endpoint matrix — Phase 9 W2</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 24px 32px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  tr:hover { background: #f1f5f9; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .method { font-weight: 700; color: #2563eb; }
+  .method.post { color: #16a34a; }
+  .method.put { color: #d97706; }
+  .method.delete { color: #dc2626; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-warn { background: #fef3c7; color: #854d0e; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .summary { background: #fff; border-left: 4px solid #2563eb; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; }
+  .qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+  .qa-card { background: #fff; border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .qa-card h3 { margin: 0 0 6px 0; font-size: 14px; color: #0f172a; }
+  ul { margin: 4px 0 0 18px; padding: 0; }
+  li { font-size: 12.5px; line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<h1>groupware-service — REST endpoint matrix</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W2 (port 8092 / DB groupware_db) — 결재선 + 메신저 + 일정. ServiceDiscoveryClient 두 번째 소비자 (W1 partner-service 첫 소비자), UserClient → user-service Internal API.</p>
+
+<div class="summary">
+  <p><strong>Internal endpoint</strong> = <code>X-Internal-Token</code> + <code>ROLE_MASTER</code> (InternalTokenFilter, <code>/internal/**</code> prefix 한정 — PR #91 fix 패턴)</p>
+  <p><strong>Admin endpoint</strong> = JWT Bearer / X-User-* (gateway 경유) + <code>@PreAuthorize</code> 권한 가드</p>
+  <p><strong>인증 가드 결과</strong> = 토큰 누락 → 403 (Spring Security 기본), 토큰 불일치 → 401 (InternalTokenFilter 직접 응답)</p>
+</div>
+
+<h2>Internal API (2 endpoint)</h2>
+<table>
+  <thead><tr><th style="width: 65px;">Method</th><th>Path</th><th>권한</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td class="method">GET</td><td><code>/internal/groupware/approvals/{approvalId}</code></td><td>ROLE_MASTER (token)</td><td>결재선 단건 lookup (요청자 / 제목 / 종합 상태). 형제 service (notification / dashboard) 가 결재 상태 polling 시 호출</td></tr>
+    <tr><td class="method">GET</td><td><code>/internal/groupware/messages/unread-count?userId=&#123;UUID&#125;</code></td><td>ROLE_MASTER (token)</td><td>미열람 메신저 수 — 알림 / 배지 / dashboard KPI 용</td></tr>
+  </tbody>
+</table>
+
+<h2>Admin API (9 endpoint)</h2>
+<table>
+  <thead><tr><th style="width: 65px;">Method</th><th>Path</th><th>권한</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td class="method post">POST</td><td><code>/admin/groupware/approvals</code></td><td>MASTER / MANAGER</td><td>결재선 생성 + chain 등록 (1명 이상 결재자, 요청자 본인 차단)</td></tr>
+    <tr><td class="method put">PUT</td><td><code>/admin/groupware/approvals/{id}/approve</code></td><td>MASTER / MANAGER</td><td>현재 step 결재자 승인. 모든 step 승인 시 → APPROVED</td></tr>
+    <tr><td class="method put">PUT</td><td><code>/admin/groupware/approvals/{id}/reject</code></td><td>MASTER / MANAGER</td><td>현재 step 결재자 반려. 즉시 → REJECTED</td></tr>
+    <tr><td class="method post">POST</td><td><code>/admin/groupware/messages</code></td><td>전체 ROLE</td><td>메신저 발송 (status=UNREAD)</td></tr>
+    <tr><td class="method">GET</td><td><code>/admin/groupware/messages/inbox?userId=&#123;UUID&#125;</code></td><td>전체 ROLE</td><td>수신함 — 발송 시각 역순</td></tr>
+    <tr><td class="method post">POST</td><td><code>/admin/groupware/schedules</code></td><td>전체 ROLE</td><td>일정 등록 + 참여자 초기 등록 (status default=DRAFT)</td></tr>
+    <tr><td class="method">GET</td><td><code>/admin/groupware/schedules?ownerId=&#123;UUID&#125;&amp;from&amp;to</code></td><td>전체 ROLE</td><td>소유자 + 기간 겹침 일정 조회 (시작 시간 ASC)</td></tr>
+    <tr><td class="method put">PUT</td><td><code>/admin/groupware/schedules/{id}</code></td><td>전체 ROLE</td><td>일정 수정 + 참여자 전체 교체</td></tr>
+    <tr><td class="method delete">DELETE</td><td><code>/admin/groupware/schedules/{id}</code></td><td>MASTER / MANAGER</td><td>soft-delete (BaseEntity markDeleted)</td></tr>
+  </tbody>
+</table>
+
+<h2>인증 가드 — Internal endpoint 검증 (IT 4 case)</h2>
+<table>
+  <thead><tr><th>case</th><th>X-Internal-Token</th><th>응답</th><th>처리 위치</th></tr></thead>
+  <tbody>
+    <tr><td>토큰 누락</td><td>(미제시)</td><td><span class="badge b-warn">403 Forbidden</span></td><td>Spring Security AuthorizationFilter (AccessDeniedException)</td></tr>
+    <tr><td>토큰 불일치</td><td><code>wrong-token</code></td><td><span class="badge b-warn">401 Unauthorized</span></td><td>InternalTokenFilter 직접 응답 (filter chain 단절)</td></tr>
+    <tr><td>토큰 일치 + 결재선 존재</td><td><code>test-internal-token</code></td><td><span class="badge b-ok">200 OK</span></td><td>controller → service → ApprovalLineInternalResponse</td></tr>
+    <tr><td>토큰 일치 + 미존재</td><td><code>test-internal-token</code></td><td><span class="badge b-warn">404 Not Found</span></td><td>BusinessException(NOT_FOUND) → ApiResponse 봉투</td></tr>
+  </tbody>
+</table>
+
+<h2>Admin endpoint 흐름 검증 (IT 6 case)</h2>
+<table>
+  <thead><tr><th>case</th><th>endpoint</th><th>응답</th><th>검증</th></tr></thead>
+  <tbody>
+    <tr><td>결재선 생성</td><td>POST /admin/groupware/approvals</td><td><span class="badge b-ok">201</span></td><td>status=PENDING + chain 2단계</td></tr>
+    <tr><td>결재 승인 (1/2 step)</td><td>PUT /approvals/{id}/approve</td><td><span class="badge b-ok">200</span></td><td>chain 일부 승인 → IN_PROGRESS</td></tr>
+    <tr><td>결재 반려</td><td>PUT /approvals/{id}/reject</td><td><span class="badge b-ok">200</span></td><td>즉시 종료 → REJECTED + reason 적재</td></tr>
+    <tr><td>메신저 발송</td><td>POST /messages</td><td><span class="badge b-ok">201</span></td><td>status=UNREAD + body 적재</td></tr>
+    <tr><td>일정 등록</td><td>POST /schedules</td><td><span class="badge b-ok">201</span></td><td>status default=DRAFT + 참여자 초기 등록</td></tr>
+    <tr><td>일정 조회 (기간)</td><td>GET /schedules?ownerId&amp;from&amp;to</td><td><span class="badge b-ok">200</span></td><td>겹침 1건 검출</td></tr>
+  </tbody>
+</table>
+
+<h2>QA 종합</h2>
+<div class="qa-grid">
+  <div class="qa-card">
+    <h3>단위 테스트 16 case (Spring 부팅 X — 한글 path 환경 PASS)</h3>
+    <ul>
+      <li>ApprovalLineServiceTest <strong>8 case</strong> — chain 흐름 / 종료 가드 / 본인 결재자 차단 / 회수 / chain 순서</li>
+      <li>MessageServiceTest <strong>4 case</strong> — 발송 / self-send 거부 / 읽음 처리 / 비수신자 거부</li>
+      <li>ScheduleServiceTest <strong>4 case</strong> — 등록 / 시간 검증 / 참여자 idempotent / cancel</li>
+    </ul>
+  </div>
+  <div class="qa-card">
+    <h3>IT 10 case (Linux runner — Testcontainers PostgreSQL 16)</h3>
+    <ul>
+      <li>GroupwareInternalControllerIT <strong>4 case</strong> — 토큰 누락 / 불일치 / 일치 / 미존재</li>
+      <li>GroupwareAdminControllerIT <strong>6 case</strong> — 결재 생성·승인·반려 / 메신저 발송 / 일정 등록·조회</li>
+      <li>UserClient <code>@MockBean</code> 격리 (memory feedback_it_mockbean_external_clients)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>가드 일관 적용</h2>
+<table>
+  <thead><tr><th>가드</th><th>적용</th></tr></thead>
+  <tbody>
+    <tr><td>BaseEntity 7 audit</td><td>5 entity 모두 <code>extends BaseEntity</code></td></tr>
+    <tr><td>Soft Delete</td><td><code>@SQLRestriction("is_deleted = false")</code> 5 entity</td></tr>
+    <tr><td>VARCHAR(N) only</td><td>CHAR / bpchar 0건. body / description / content = VARCHAR(2000)</td></tr>
+    <tr><td>UUID 비공개</td><td>Internal/Admin 응답 분리. Internal 만 UUID 노출 (caller = 형제 service)</td></tr>
+    <tr><td>한국어 Javadoc</td><td>3 entity + 5 dto + 3 service + 2 controller + 5 config 모두 적용</td></tr>
+    <tr><td>InternalTokenFilter prefix 한정</td><td><code>/internal/**</code> 만 검사 (PR #91 fix 패턴)</td></tr>
+    <tr><td>partial unique index</td><td>schedule_participants (schedule_id+participant_id) / approval_steps (line+sequence) 활성 행 한정</td></tr>
+    <tr><td>chained-default 환경변수</td><td>SAMHAN_GROUPWARE_DB_* + LEGACY_DB_* fallback</td></tr>
+    <tr><td>GitGuardian</td><td>모든 시크릿 <code>CHANGE_ME_LOCAL_ONLY</code> placeholder</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>
