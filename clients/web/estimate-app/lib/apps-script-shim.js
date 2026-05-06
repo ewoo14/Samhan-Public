@@ -30,10 +30,12 @@
  *
  * 환경변수:
  *  - SAMHAN_API_BASE_URL    : SamhanLogis MS endpoint base URL (slip-bridge 만 사용)
- *  - USE_MOCK_FALLBACK      : 'true' 면 endpoint 미구현시 mock 반환 (slip-bridge)
  *  - DEFAULT_USER_EMAIL     : Session.getActiveUser().getEmail() 대체
  *  - GOOGLE_SERVICE_ACCOUNT_KEY: Google Service Account JSON 키 파일 path
  *    (lib/google-sheets-client.js 가 사용; 미설정 시 SpreadsheetApp 호출 실패).
+ *
+ * Phase 6 backend (PR #76) 머지 후 USE_MOCK_FALLBACK 환경변수는 폐기되었으며
+ * 모든 SamhanLogis MS 호출은 실 endpoint 를 호출한다.
  */
 
 'use strict';
@@ -45,7 +47,6 @@ const axios = require('axios');
 const sheetsClient = require('./google-sheets-client');
 
 const BASE_URL = process.env.SAMHAN_API_BASE_URL || 'http://localhost:8080';
-const USE_MOCK = String(process.env.USE_MOCK_FALLBACK || 'true').toLowerCase() === 'true';
 const DEFAULT_EMAIL = process.env.DEFAULT_USER_EMAIL || 'dev@samhan-air.com';
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -505,7 +506,6 @@ module.exports = {
   // 헬퍼 (lib/code.js 안에서 직접 참조)
   _config: {
     BASE_URL,
-    USE_MOCK,
     DEFAULT_EMAIL,
   },
 };

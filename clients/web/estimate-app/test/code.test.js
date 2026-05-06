@@ -4,14 +4,45 @@
  * Apps Script 시절에는 `Logger.log` 만으로 verify 했으나,
  * Node.js 포팅 후에는 jest 로 logic 보존을 검증한다.
  *
- * 본 테스트는 외부 endpoint 미가동 (USE_MOCK_FALLBACK=true) 환경 기준이며,
- * 모든 함수가 mock fallback 응답으로 정상 동작함을 보장한다.
+ * Phase 6 backend (PR #76) 머지 후 USE_MOCK_FALLBACK silent fallback 은 폐기되어
+ * RPC 가 실 endpoint 를 호출하므로, 본 테스트는 axios 를 mock 해 endpoint 응답을
+ * 직접 주입한다. 순수 utility / 캐시 / RPC dispatch 인벤토리는 endpoint 와
+ * 무관하므로 그대로 동작한다.
  */
 
 'use strict';
 
-process.env.USE_MOCK_FALLBACK = 'true';
 process.env.DEFAULT_USER_EMAIL = 'test@samhan-air.com';
+
+// axios mock — 실 endpoint 호출을 가로채 200/임의 페이로드로 응답.
+// (USE_MOCK_FALLBACK silent fallback 폐기 후 RPC fallback 응답 대체용)
+jest.mock('axios', () => {
+  const ok = (data) => Promise.resolve({ status: 200, data });
+  const get = jest.fn().mockImplementation((url) => {
+    if (/\/api\/v1\/auth\/me/.test(url)) {
+      return ok({ authorized: true, managerName: '테스트담당자', managerCode: 'TST-001', ecountId: '', ecountApi: '' });
+    }
+    if (/\/api\/v1\/partner-orders($|\?|\/$)/.test(url)) return ok([]);
+    if (/\/api\/v1\/estimates\/snapshots/.test(url)) return ok([]);
+    if (/\/dc-config$/.test(url)) return ok(null);
+    return ok({});
+  });
+  const post = jest.fn().mockImplementation((url) => {
+    if (/\/api\/v1\/slips$/.test(url)) {
+      return Promise.resolve({ status: 200, data: { slipNo: 'TEST-SLIP-1' } });
+    }
+    if (/\/api\/v1\/estimates\/snapshots/.test(url)) {
+      return ok({ ok: true, snapshotId: 'TEST-SNAP-1' });
+    }
+    if (/\/api\/v1\/audit-logs\/front/.test(url)) return ok({ ok: true });
+    return ok({ ok: true });
+  });
+  return {
+    create: jest.fn(() => ({ get, post })),
+    get,
+    post,
+  };
+});
 
 const code = require('../lib/code');
 const slipBridge = require('../lib/slip-bridge');
@@ -90,7 +121,7 @@ describe('캐시 유틸', () => {
   });
 });
 
-describe('부트스트랩 (mock fallback)', () => {
+describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
   test('bootstrap 빈 카탈로그 반환', async () => {
     const bs = await code.bootstrap('test@samhan-air.com');
     expect(bs.userEmail).toBe('test@samhan-air.com');
@@ -99,10 +130,10 @@ describe('부트스트랩 (mock fallback)', () => {
     expect(JSON.parse(bs.config).homeDiscount).toBe(0.45);
   }, 15000);
 
-  test('checkUserAuth mock authorized', async () => {
+  test('checkUserAuth — axios mock 응답 통과', async () => {
     const auth = await code.checkUserAuth('test@samhan-air.com');
     expect(auth.authorized).toBe(true);
-    expect(auth.managerCode).toBe('DEV-001');
+    expect(auth.managerCode).toBe('TST-001');
   });
 });
 
@@ -130,12 +161,12 @@ describe('slip-bridge — 견적 finalize → slip-service POST', () => {
     expect(body.lines[0].unitPriceVat).toBe(550000);
   });
 
-  test('postSlip mock fallback 시 slipNo 반환', async () => {
+  test('postSlip — slip-service 200 응답 시 slipNo 반환 (axios mock)', async () => {
     const order = { estimateNumber: 'EST-2' };
     const saleList = [{ BulkDatas: { CUST: 'C1', PROD_CD: 'AC1', QTY: '1', PRICE: '100', USER_PRICE_VAT: '110' } }];
     const r = await slipBridge.postSlip(order, saleList);
     expect(r.ok).toBe(true);
-    expect(r.slipNo).toMatch(/^MOCK-/);
+    expect(r.slipNo).toBe('TEST-SLIP-1');
   });
 });
 

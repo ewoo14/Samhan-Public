@@ -61,35 +61,47 @@ const BASE_URL = process.env.SAMHAN_API_BASE_URL || 'http://localhost:8080';
 const PARTNER_BASE = process.env.PARTNER_SERVICE_URL || BASE_URL;
 const ESTIMATE_BASE = process.env.ESTIMATE_SERVICE_URL || BASE_URL;
 const AUDIT_LOG_URL = process.env.AUDIT_LOG_URL || `${BASE_URL}/api/v1/audit-logs/front`;
-const USE_MOCK = String(process.env.USE_MOCK_FALLBACK || 'true').toLowerCase() === 'true';
 
 const ax = axios.create({ timeout: 15000, validateStatus: () => true });
 
 /**
- * SamhanLogis MS GET — 공통 helper. 실패 또는 USE_MOCK 시 fallbackValue 반환.
+ * SamhanLogis MS GET — 공통 helper. 실패 시 throw (silent fallback 폐기).
+ *
+ * Phase 6 backend (PR #76: M2 partner-auth / M3 dc-config / M4 partner-order /
+ * M5 slip-service + product-service google sheets sync) 머지 후 실 endpoint
+ * 가용성이 보장되므로 USE_MOCK_FALLBACK 분기를 완전 제거한다. silent fallback
+ * 회귀 위험 (잘못된 mock 데이터로 진행) 차단을 위함.
+ *
+ * @param {string} url   호출 URL
+ * @param {object} [params] query string
+ * @param {*} [_unused]  legacy 시그니처 호환용 — 무시
  */
-async function _msGet(url, params, fallbackValue) {
+async function _msGet(url, params, _unused) {
+  void _unused;
   try {
     const resp = await ax.get(url, { params });
     if (resp.status >= 200 && resp.status < 300) return resp.data;
-    Logger.log(`[ms] GET ${url} → ${resp.status} (mock fallback)`);
+    Logger.log(`[ms] GET ${url} → ${resp.status}`);
+    throw new Error(`SamhanLogis MS GET 실패: ${url} (HTTP ${resp.status})`);
   } catch (e) {
-    Logger.log(`[ms] GET ${url} error: ${e.message} (mock fallback)`);
+    if (e && e.message && e.message.startsWith('SamhanLogis MS GET 실패')) throw e;
+    Logger.log(`[ms] GET ${url} error: ${e.message}`);
+    throw new Error(`SamhanLogis MS GET 실패: ${url} (${e.message})`);
   }
-  if (USE_MOCK) return fallbackValue;
-  throw new Error(`SamhanLogis MS GET 실패: ${url}`);
 }
 
-async function _msPost(url, body, fallbackValue) {
+async function _msPost(url, body, _unused) {
+  void _unused;
   try {
     const resp = await ax.post(url, body);
     if (resp.status >= 200 && resp.status < 300) return resp.data;
-    Logger.log(`[ms] POST ${url} → ${resp.status} (mock fallback)`);
+    Logger.log(`[ms] POST ${url} → ${resp.status}`);
+    throw new Error(`SamhanLogis MS POST 실패: ${url} (HTTP ${resp.status})`);
   } catch (e) {
-    Logger.log(`[ms] POST ${url} error: ${e.message} (mock fallback)`);
+    if (e && e.message && e.message.startsWith('SamhanLogis MS POST 실패')) throw e;
+    Logger.log(`[ms] POST ${url} error: ${e.message}`);
+    throw new Error(`SamhanLogis MS POST 실패: ${url} (${e.message})`);
   }
-  if (USE_MOCK) return fallbackValue;
-  throw new Error(`SamhanLogis MS POST 실패: ${url}`);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1422,19 +1434,24 @@ function getManagersForInput(input) {
 /**
  * legacy initDcConfigFromNotion(bizno) — 거래처별 DC config 로드.
  *
- * 본 PR scope: 시트 데이터만 직접 read 환원. Notion DB 위임 부분은 SamhanLogis MS
- * (PARTNER_BASE) 위임 유지 — 기존 mock fallback 흐름 그대로.
+ * Phase 6 M3 (dc-config-service) 가용성 가정. endpoint 호출 실패 (네트워크 / 5xx / 404)
+ * 는 default DC config 환원 — DC config 미설정 거래처는 default 율로 진행하는 것이
+ * legacy 동작이다 (silent mock fallback 이 아닌 정상 비즈니스 로직).
  */
 async function initDcConfigFromNotion(bizno) {
   const biznoDigits = String(bizno || '').replace(/[^\d]/g, '');
   if (!biznoDigits) return buildDefaultDcConfig_();
 
   const cust = searchCustomerByBizOrCode(biznoDigits);
-  const data = await _msGet(
-    `${PARTNER_BASE}/api/v1/partners/${biznoDigits}/dc-config`,
-    null,
-    null,
-  );
+  let data = null;
+  try {
+    data = await _msGet(
+      `${PARTNER_BASE}/api/v1/partners/${biznoDigits}/dc-config`,
+      null,
+    );
+  } catch (e) {
+    Logger.log(`[initDcConfigFromNotion] dc-config 조회 실패 → default 환원 (${e.message})`);
+  }
   if (!data) return Object.assign(buildDefaultDcConfig_(), { customer: cust });
   return Object.assign(buildDefaultDcConfig_(), data, { customer: cust });
 }
@@ -1654,7 +1671,6 @@ async function getNotionHistory(startDate, endDate) {
   const data = await _msGet(
     `${BASE_URL}/api/v1/partner-orders`,
     { startDate, endDate, userEmail: email },
-    [],
   );
   return Array.isArray(data) ? data : data?.items || [];
 }
@@ -1677,7 +1693,6 @@ async function saveQuoteSnapshot(payload) {
   const result = await _msPost(
     `${ESTIMATE_BASE}/api/v1/estimates/snapshots`,
     body,
-    { ok: true, mock: true, snapshotId: `MOCK-${Date.now()}` },
   );
   return result;
 }
@@ -1691,7 +1706,6 @@ async function getQuoteHistory(startDate, endDate) {
   const data = await _msGet(
     `${ESTIMATE_BASE}/api/v1/estimates/snapshots`,
     { startDate, endDate, userEmail: email },
-    [],
   );
   return Array.isArray(data) ? data : data?.items || [];
 }
@@ -1708,13 +1722,6 @@ async function checkUserAuth(email) {
   const data = await _msGet(
     `${BASE_URL}/api/v1/auth/me`,
     { email: email || Session.getActiveUser().getEmail() },
-    {
-      authorized: USE_MOCK ? true : false,
-      managerName: USE_MOCK ? '개발담당자' : '',
-      managerCode: USE_MOCK ? 'DEV-001' : '',
-      ecountId: '',
-      ecountApi: '',
-    },
   );
   return data;
 }
@@ -1734,7 +1741,12 @@ async function logFrontEvent(group, msg, isMobile, mgrName) {
     group, message: msg, device: isMobile ? '모바일' : 'PC',
     managerName: mgrName, userEmail: email, occurredAt: new Date().toISOString(),
   };
-  await _msPost(AUDIT_LOG_URL, body, { ok: true, mock: true });
+  // 감사 로그 전송 실패는 swallow — 사용자 흐름 차단 회피 (legacy sendLog 동작 보존).
+  try {
+    await _msPost(AUDIT_LOG_URL, body);
+  } catch (e) {
+    Logger.log(`[logFrontEvent] audit-log 전송 실패 (무시): ${e.message}`);
+  }
   return { ok: true };
 }
 

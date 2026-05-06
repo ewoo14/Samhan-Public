@@ -15,9 +15,10 @@
  *   `DOMContentLoaded` 시점에 실행 → 본 모듈의 sync 부분이 그 전에 완료됨
  * - shim 의 sync 부분 (window.google + window.__SAMHAN_BOOTSTRAP__={}) 만 보장하면 OK
  *
- * <p>제한 (TODO M4 backend):
- * - `/api/v1/partner-orders/bootstrap` 미구현 → 부트스트랩은 빈 객체. legacy 카탈로그 (홈멀티/싱글/상업) 는
- *   비어있는 상태로 진입. BizGate / 로그인 / mobile-gate 는 정상 동작 (RPC 12 site shim 만 의존).
+ * <p>backend 가용성:
+ * - `/api/v1/partner-orders/bootstrap` 은 M4 PartnerOrderBootstrapController (PR #76) 가 제공.
+ * - prefetch 실패 (네트워크 / 5xx) 는 본 entry 의 `.catch` 가 console.warn 후 진입 — 카탈로그 없이도
+ *   BizGate / 로그인 / mobile-gate 는 RPC 12 site shim 만으로 동작한다.
  */
 import { installLegacyShim } from './legacyShim'
 import { samhanApi } from './samhanApi'

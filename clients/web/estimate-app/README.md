@@ -43,7 +43,7 @@ npm install
 npm run dev                # http://localhost:5183
 ```
 
-기본값 (USE_MOCK_FALLBACK=true) 으로 SamhanLogis MS endpoint 미가동 환경에서도 진입 가능 — 모든 catalog/auth/snapshot RPC 가 mock 응답 반환.
+Phase 6 backend (PR #76 — M2 partner-auth / M3 dc-config / M4 partner-order / M5 slip-service + product-service google sheets sync) 머지 후 모든 catalog/auth/snapshot RPC 는 실 endpoint 를 호출한다. backend 미가동 환경에서는 RPC 가 5xx/네트워크 오류로 실패한다.
 
 ## 변환 룰 (Apps Script → EJS)
 
@@ -82,7 +82,7 @@ legacy `sendOrderFromUi` (Code.js line 1762) 가 `e-Count /proxy/ecount/sale` �
 4. slip-service 가 즉시 출고전표 생성, `slipNo` 응답
 5. 응답을 sendOrderFromUi 결과로 클라이언트에 반환
 
-slip-service 미가동 환경 (`USE_MOCK_FALLBACK=true`) 에서는 `MOCK-{ts}` slipNo 를 반환하여 UI 흐름을 끊지 않는다.
+slip-service 호출 실패 (네트워크/5xx) 는 `{ ok: false, error }` 응답으로 호출자에게 전파되며, UI 가 사용자에게 alert 한다 (silent mock 환원 폐기).
 
 ## 외부 의존성 폐기
 
