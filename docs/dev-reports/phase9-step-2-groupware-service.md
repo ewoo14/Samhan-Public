@@ -273,3 +273,30 @@ GitGuardian 회피 — 모든 시크릿 `CHANGE_ME_LOCAL_ONLY` placeholder + `de
 - `shared/discovery-abstraction/` (Phase 8 2차 도입, 본 PR 두 번째 소비자)
 - `infrastructure/env-templates/groupware-service.env`
 - `docs/dev-reports/phase9-step-1-partner-service.md` (W1 1:1 패턴 참고)
+
+---
+
+## 11. 후속 단계 backlog (5 reviewer 토론 종합)
+
+본 PR 머지 영향 0. 후속 PR 또는 W3/W4/W5 통합 PR 시점에 처리.
+
+| # | 카테고리 | 항목 | 위임 시점 | 출처 reviewer |
+|---|---|---|---|---|
+| 1 | IT 시나리오 | 메신저 self-send 400 controller 망 가드 | W3 또는 후속 PR | QA |
+| 2 | IT 시나리오 | 결재 본인 결재자 IT 가드 | W3 또는 후속 PR | QA |
+| 3 | IT 시나리오 | 일정 기간 겹침 boundary case (>= / <= 경계) | W3 또는 후속 PR | QA |
+| 4 | 성능 | UserClient bulk verify endpoint or 짧은 TTL 캐시 (결재자 fan-out 직렬 RPC) | W3 (notification-service 합류 시점 user-service 부하 누적) | BE |
+| 5 | client 노출 | groupware admin 화면 — clients/desktop 단일 흡수 (admin-portal 분리 비권장) | W5 또는 Phase 10 | FE |
+| 6 | edge case | Message body XSS 가드 (`@Size(2000)` 만 적용 중) | 후속 PR | QA |
+| 7 | edge case | Schedule timezone (`LocalDateTime.now()` server TZ 의존) | 후속 PR | QA |
+| 8 | edge case | 결재선 동시성 race lock (현재 sequence ASC 강제로 위험 낮음) | 후속 PR | QA |
+| 9 | edge case | Playwright e2e 매핑 — `qa/playwright/README.md` 15 spec 에 groupware 도메인 신규 추가 | W5 | QA |
+| 10 | 디자인 토큰 일관 | W3/W4 통합 PR dev-report 에 "API matrix HTML slate / method / badge 토큰 1:1 복제" 1줄 가이드 | W3 통합 PR (별도 PR X) | Designer |
+| 11 | DevOps 운영 | `infrastructure/postgres/init/01-create-databases.sql` 에 `groupware_db` 추가 | W3+W4 와 묶어 운영 PR | DevOps |
+| 12 | DevOps 운영 | `infrastructure/prometheus/prometheus.yml` scrape target — `groupware-service:8092/actuator/prometheus` job 추가 | W3+W4 일괄 | DevOps |
+| 13 | DevOps 운영 | `UserClient.exists()` fail-soft → fail-fast 전환 시점을 D-P9-NN 으로 등록 (Phase 10 cutover plan 추적용) | Phase 10 진입 시점 | DevOps |
+
+본 PR 채택 fix (W2 종합 TM 적용):
+1. ApprovalLineRepository 모든 find* 에 `@EntityGraph(attributePaths = "steps")` 적용 — BE+QA 일치 우려 (LazyInit + N+1 회귀 방지)
+2. ScheduleRepository.findById 에 `@EntityGraph(attributePaths = "participants")` 적용 — QA 식별 (update path lucky pass 명시적 fix)
+3. 본 backlog 섹션 명시 (별도 docs PR X, `feedback_continuous_docs_sync.md` 일관)
