@@ -1,0 +1,24 @@
+{
+  "name": "@samhan/qa-detox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SamhanLogis Phase 7 QA — Detox e2e (RN). 2 config: mobile-staff iOS / mobile v4 Android. WebView 안 legacy 흐름 검증.",
+  "scripts": {
+    "test:ios": "detox test --configuration ios.sim.release",
+    "test:android": "detox test --configuration android.emu.release",
+    "build:ios": "detox build --configuration ios.sim.release",
+    "build:android": "detox build --configuration android.emu.release",
+    "test:ios-debug": "detox test --configuration ios.sim.debug",
+    "test:android-debug": "detox test --configuration android.emu.debug",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.13",
+    "@types/node": "^20.16.0",
+    "detox": "^20.27.0",
+    "jest": "^29.7.0",
+    "jest-circus": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
+  }
+}

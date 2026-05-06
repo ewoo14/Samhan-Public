@@ -1,0 +1,94 @@
+{
+  "products": [
+    {
+      "id": "PROD-001",
+      "model": "RAS-070AHM",
+      "category": "HOME_MULTI",
+      "type": "INDOOR",
+      "btu": 7000,
+      "price": 1200000,
+      "active": true
+    },
+    {
+      "id": "PROD-002",
+      "model": "RAS-100AHM",
+      "category": "HOME_MULTI",
+      "type": "INDOOR",
+      "btu": 10000,
+      "price": 1450000,
+      "active": true
+    },
+    {
+      "id": "PROD-003",
+      "model": "RAS-3PAHM-OUT",
+      "category": "HOME_MULTI",
+      "type": "OUTDOOR",
+      "btu": 0,
+      "price": 2800000,
+      "active": true
+    },
+    {
+      "id": "PROD-004",
+      "model": "PSA-15HSC",
+      "category": "SINGLE_SET",
+      "type": "SET",
+      "btu": 15000,
+      "price": 1850000,
+      "active": true
+    },
+    {
+      "id": "PROD-005",
+      "model": "PUMA-200CM",
+      "category": "COMMERCIAL_MULTI",
+      "type": "INDOOR",
+      "btu": 20000,
+      "price": 3200000,
+      "active": true
+    },
+    {
+      "id": "PROD-006",
+      "model": "PUMA-5PCM-OUT",
+      "category": "COMMERCIAL_MULTI",
+      "type": "OUTDOOR",
+      "btu": 0,
+      "price": 4800000,
+      "active": true
+    },
+    {
+      "id": "PROD-007",
+      "model": "OLD-AC-2010",
+      "category": "OLD_PRODUCT",
+      "type": "SET",
+      "btu": 12000,
+      "price": 980000,
+      "active": false
+    },
+    {
+      "id": "PROD-008",
+      "model": "ACC-HOSE-3M",
+      "category": "ACCESSORY",
+      "type": "PART",
+      "btu": 0,
+      "price": 35000,
+      "active": true
+    },
+    {
+      "id": "PROD-009",
+      "model": "RAS-140AHM",
+      "category": "HOME_MULTI",
+      "type": "INDOOR",
+      "btu": 14000,
+      "price": 1700000,
+      "active": true
+    },
+    {
+      "id": "PROD-010",
+      "model": "PSA-23HSC",
+      "category": "SINGLE_SET",
+      "type": "SET",
+      "btu": 23000,
+      "price": 2450000,
+      "active": true
+    }
+  ]
+}
