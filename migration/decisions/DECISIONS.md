@@ -140,3 +140,44 @@
 영향: Phase 8 작업 시작 시 본 plan 을 reference 로 사용. 8 작업 모두 Phase 8 슬라이스의 input.
 
 ---
+
+## Phase 8 진입 결정 (2026-05-05)
+
+### D-P8-03. 호스팅 = AWS (EC2 + RDS) 향후 예정 (Phase 10 cutover 시점)
+
+- 14 backend MSA 운영 호스팅 = AWS (EC2 + RDS) 채택
+- D9 미결 항목 (X1 카페24 / X2 Hetzner / X3 AWS / X4 하이브리드) 중 X3 AWS 옵션 확정
+- cutover 시점 = Phase 10 (모든 개발 완료 후)
+- 현재 시점 = AWS 리소스 생성 X, account 발급 X, terraform 코드 생성 X
+
+영향: Phase 8 ~ 9 동안 AWS 호환성 유지가 의무. Phase 10 진입 시 RDS / EC2 / S3 / Route 53 일괄 cutover 진행.
+
+### D-P8-04. 현재 = 테스트 단계, 카페24 + Cloudflare + Render 그대로 유지
+
+- 모든 개발 진행 동안 (Phase 8 ~ 9) 현재 인프라 그대로
+- 카페24 SSH (D6/D7/D8 답변 후 활성), Cloudflare Pages (order-app), Render (estimate-app) 보존
+- production cutover X = AWS 마이그레이션 시점에 일괄 진행
+
+영향: 현재 단계의 호스팅 결정 (Phase 7 D-P7-04 Render 채택 등) 그대로 유지. AWS 마이그레이션은 코드 변경 X, infra 변경만으로 진행.
+
+### D-P8-05. AWS 마이그레이션 가능성을 열어두는 호환성 가드 검증 의무
+
+- 12-factor app 준수 (모든 service)
+- 환경변수 추상화 (`${ENV:default}` 패턴 의무)
+- PostgreSQL standard SQL (RDS PostgreSQL 16 호환, RDS 미지원 extension 부재)
+- AWS 서비스 매핑 표 보유 (`docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md`)
+- vendor lock-in 회피 (Cloudflare Workers / Render-specific feature 의존 X, S3 SDK 사용 시 endpoint override 패턴)
+
+영향: 모든 후속 슬라이스 (Phase 8 2차 ~ Phase 9) 에서 본 가드 일관 적용. 위반 시 PR 단계 reviewer 가드.
+
+### D-P8-06. Phase 8 1차 = AWS 호환성 가드 plan + 검증 (본 PR)
+
+- 산출물 5건 = AWS 호환성 가드 plan + 환경변수 표준 + ROADMAP 갱신 + DECISIONS 갱신 + dev-report
+- 코드 변경 0 file (docs only)
+- 12-factor 검증 결과 = 12/12 OK (IX 만 Phase 10 개선 항목 1건 = `server.shutdown=graceful`)
+- standard SQL 검증 결과 = 22 file Flyway migration 모두 RDS 호환
+- 환경변수 추상화 검증 결과 = 12 service 모두 OK, 통일 권장 3건 (`INTERNAL_TOKEN` / `<NAME>_HOST` / `.env.example`) 은 Phase 9 위임
+
+영향: Phase 8 1차 머지 후 2차 (Eureka cluster prod) 진입 가능. AWS 마이그레이션 dry-run plan 은 Phase 8 3차 또는 Phase 10 진입 시점에 작성.
+
+---
