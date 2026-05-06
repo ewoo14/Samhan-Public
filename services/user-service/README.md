@@ -60,3 +60,24 @@ gradlew :services:user-service:bootRun
 
 Requires `eureka-server` and `auth-service` running, and `user_db` reachable on the
 default datasource (or the `local` profile for H2).
+
+## Phase 8 호환성 가드 (PR #88 / #89 / #90)
+
+- **chained-default 환경변수** — `SAMHAN_<KEY>:${LEGACY_KEY:default}` 패턴 적용 (legacy 호환 100%, 무중단 cutover 가능)
+- **12-factor 12/12 OK** + RDS 호환 (standard SQL 만, RDS 미지원 extension 부재)
+- **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조
+- **env-template** — `infrastructure/env-templates/user-service.env` 보유
+- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점 (현재 Eureka 자체 EC2 운영 채택 — D-P8-07 보강)
+
+## Phase 9 신규 service 매트릭스 (참조)
+
+본 service 와 향후 연동될 Phase 9 신규 4 service:
+
+| Service                | Port | DB                | 도메인                              |
+| ---------------------- | ---- | ----------------- | ----------------------------------- |
+| partner-service        | 8095 | partner_db        | 거래처 마스터 + 신용한도 + 거래내역 |
+| groupware-service      | 8092 | groupware_db      | 결재선 + 메신저 + 일정              |
+| notification-service   | 8093 | notification_db   | 푸시/이메일/SMS 통합 라우터         |
+| dashboard-service      | 8094 | dashboard_db      | KPI + 실시간 재고 + 매출            |
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조. user-service 는 groupware-service 의 직원 정보 / notification-service 의 수신자 정보 lookup 의 source-of-truth 로 동작 예정.

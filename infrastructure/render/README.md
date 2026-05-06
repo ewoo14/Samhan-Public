@@ -66,3 +66,33 @@ Render dashboard "Manual Deploy" 또는 GitHub Actions workflow_dispatch 로
   X1~X4 중 1건 채택 후 확정한다. 그 전까지는 Render 측에서 estimate-app 의 backend 호출
   endpoint 미구성 상태로 둔다 (frontend 정적 + Google Sheets 직접 연동만 동작).
 - `samhan-order-app` Render 활성화는 Cloudflare Pages 와의 단일 owner 결정 후. 현재는 mirror 정의만 보관.
+
+## Phase 10 cutover 가이드 (D-P9-01 cascade)
+
+Phase 8 호환성 가드 (`docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md`) 의 X3 AWS 옵션 채택 (D-P8-03) 결과,
+다음 두 도메인은 Phase 10 cutover 시점에 호스팅 owner 변경이 의무이다.
+
+### `quote.samhan-air.com` cutover
+
+- **현재 owner**: Render Starter ($7/mo, `samhan-estimate-app`)
+- **Phase 10 cutover 후**: AWS CloudFront + ALB (또는 S3 정적 호스팅 + CloudFront)
+- **결정**: **owner 변경 의무** — D-P7-04 의 Render Starter 채택은 Phase 7 임시 결정. AWS X3 옵션 채택 후 Render 운영비 절감 + 단일 AWS account 관리 일관.
+- **사전 조건**: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` § 5 (ALB 구성) + § 7 (Route 53 DNS cutover) 모두 staging dry-run PASS.
+- **roll-back 옵션**: cutover 직전 Render service 보존 (deployment 삭제 X). DNS TTL 60s 단축 후 cutover, 트래픽 회귀 시 5분 내 record 원복.
+
+### `order.samhan-air.com` cutover
+
+- **현재 owner**: Cloudflare Pages (PR #77 의 deploy workflow)
+- **Phase 10 cutover 후**: AWS CloudFront → S3 (정적 호스팅, order-app v4 의 build 결과물)
+- **결정 옵션**:
+  - (a) **CloudFront 이전** — 단일 AWS account 일관, $1~$5/월 (트래픽 의존)
+  - (b) **Cloudflare Pages 유지** — DNS 만 Route 53 으로 가져오고 origin 은 Cloudflare 그대로 (multi-cloud, $0)
+- **결정 시점**: Phase 10 W3 (cutover 직전). 본 시점은 옵션 (b) 가 비용 절감 + 무중단 가능성 우세 — Cloudflare Pages 의 SLA 가 Phase 6/7 운영 중 안정적.
+- **owner 미결**: D-P10-XX 별도 결정 (Phase 10 진입 시점 대표 보고 후 확정).
+
+### Render Starter 운영 종료 시점
+
+- D-P7-04 (Render Starter $7/mo) → Phase 10 ALB cutover 완료 후 Render service 정지 + Blueprint 보관 (roll-back 대비 30일 유지)
+- 본 README 의 Render dashboard secret 환경변수는 cutover 후 Secrets Manager (`docs/migration/phase8/M-SECRETS-ROTATION-spec.md`) 로 이전.
+
+상세 cutover 절차는 `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` § 7.2 참조.

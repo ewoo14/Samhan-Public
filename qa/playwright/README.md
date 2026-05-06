@@ -81,3 +81,26 @@ npm run test:html && npm run report
 ## CI
 
 `.github/workflows/qa-e2e.yml` 의 `playwright` job 이 PR 에서 자동 실행. 본 셋업 PR 은 typecheck + dry-run (it.skip) 까지 검증, 실 e2e 는 backend stack 가동 후속 PR.
+
+## 가드 (Phase 7 정착 + Phase 8 / 9 일관 적용)
+
+- **skip 가드** — backend up 실패 시 모든 happy 시나리오는 `it.skip` 으로 자동 스킵 (CI 레드 회피). 각 spec 의 setup 단계에서 `gateway/health` 200 응답 + 의존 service health 검증 후 본 시나리오 진입.
+- **`document.fonts.ready`** — visual regression spec 은 모든 캡처 직전 `await page.evaluate(() => document.fonts.ready)` 호출 의무 (Phase 7 4차 PR #84 학습 — 폰트 로딩 race 회피). `qa/playwright/utils/visual.ts` 의 `waitForFontsReady(page)` helper 사용.
+- **`data-testid`** — selector 는 `data-testid` 우선, CSS selector / XPath 는 비상용. 한국어 텍스트 기반 selector 는 i18n 변경 시 race 발생 → 회피.
+- **UUID 미노출 검증** — Phase 6 학습 가드 (UUID 사용자 비공개 원칙) 일관 적용. 모든 화면 캡처 후 `await expect(page.locator('text=/[0-9a-f]{8}-[0-9a-f]{4}-/')).toHaveCount(0)` 의무 (PR #18 회고).
+- **Internal-Token 헤더 격리** — `utils/api-clients.ts` 의 helper 가 `X-Internal-Token` 헤더 자동 주입. spec 측에서는 직접 호출 금지.
+
+## Phase 9 신규 e2e 위치 (예정)
+
+Phase 9 4 신규 service 가 시작되면 본 디렉토리에 다음 시나리오가 추가된다:
+
+| Service              | 위치                                | 시나리오 카테고리                                |
+| -------------------- | ----------------------------------- | ------------------------------------------------ |
+| partner-service      | `qa/playwright/tests/partner/`      | master CRUD / lookup-by-code / credit-limit     |
+| groupware-service    | `qa/playwright/tests/groupware/`    | 결재선 / 메신저 / 일정                           |
+| notification-service | `qa/playwright/tests/notification/` | push 발송 / SMS 발송 / 이메일 발송 / 재시도      |
+| dashboard-service    | `qa/playwright/tests/dashboard/`    | KPI 조회 / 실시간 재고 / 매출 집계 / **visual baseline 신규** |
+
+dashboard-service 는 시각화 컴포넌트 다수 → Designer 와 협업으로 visual regression baseline 신규 작성 의무 (Phase 7 4차 학습 — `dark-mode-toggle.visual.spec.ts` 패턴 1:1 적용).
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

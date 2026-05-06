@@ -62,3 +62,29 @@ node scripts/qa-capture.mjs   # → docs/qa/migration-fe-order-app-v4/*.png 6장
 ## QA (Phase 7)
 - `qa/playwright/` `web-order-app` project 가 본 dev server (port 5184) 에 대해
   auth / catalog / draft / confirm / history / tutorial 시나리오 (15 spec × happy/edge) 자동 검증.
+
+## 환경변수 표준 (Phase 8 / Phase 9 일관)
+
+본 client (Vite + React) 는 Vite 의 표준 prefix `VITE_*` 만 사용한다 (런타임 노출 가능 변수만).
+
+| 변수                     | 기본값                          | 용도                                            | 사용 위치                       |
+| ------------------------ | ------------------------------- | ----------------------------------------------- | ------------------------------- |
+| `VITE_API_BASE_URL`      | `http://localhost:8080`         | api-gateway base URL (Phase 9 신규 service 포함) | `src/samhanApi.ts` axios baseURL |
+| `VITE_PWA_ENABLED`       | `true`                          | PWA service worker 등록 여부                    | `src/main.ts`                   |
+
+### Phase 8 가드
+
+- **`VITE_*` prefix 의무** — Vite 가 빌드 타임에 `import.meta.env.VITE_*` 만 client bundle 에 inline. prefix 미준수 시 `undefined`.
+- **`.env.production` / `.env.staging` 분리** — Cloudflare Pages deploy workflow (PR #77) + Phase 10 AWS CloudFront cutover 모두 build 단계에서 환경변수 주입.
+- **AWS Route 53 cutover 호환** — `https://api.samhan-air.com` (Phase 10 ALB) 으로 `VITE_API_BASE_URL` override 만으로 무중단 cutover 가능.
+
+### Phase 9 신규 service 의 client 노출
+
+| service              | client 호출 | 환경변수             | 비고                                                            |
+| -------------------- | ----------- | -------------------- | --------------------------------------------------------------- |
+| partner-service      | 간접        | `VITE_API_BASE_URL`  | dc-config-service / partner-order-service 경유 lookup 만 사용   |
+| notification-service | (없음)      | -                    | 거래처 측 푸시는 mobile v4 만 (web 직접 호출 없음)              |
+| dashboard-service    | (없음)      | -                    | 거래처 화면 비노출                                              |
+| groupware-service    | (없음)      | -                    | 거래처 화면 비노출                                              |
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

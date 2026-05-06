@@ -23,3 +23,22 @@ SamhanLogis MSA 의 재고 도메인 마이크로서비스 (plan §3 첫 슬라�
 
 - 기본 (`default`) — PostgreSQL `inventory_db` + Flyway + Eureka 활성
 - `local` — H2 in-memory + Eureka 비활성 (단위 테스트용)
+
+## Phase 8 호환성 가드 (PR #88 / #89 / #90)
+
+- **chained-default 환경변수** — `SAMHAN_<KEY>:${LEGACY_KEY:default}` 패턴 적용 (legacy 호환 100%, 무중단 cutover 가능)
+- **12-factor 12/12 OK** + RDS 호환 (낙관적 락 등 standard SQL/JPA feature 만 사용)
+- **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조
+- **env-template** — `infrastructure/env-templates/inventory-service.env` 보유
+- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점
+
+## Phase 9 신규 service 매트릭스 (참조)
+
+| Service                | Port | DB                | 도메인                              |
+| ---------------------- | ---- | ----------------- | ----------------------------------- |
+| partner-service        | 8095 | partner_db        | 거래처 마스터 + 신용한도 + 거래내역 |
+| groupware-service      | 8092 | groupware_db      | 결재선 + 메신저 + 일정              |
+| notification-service   | 8093 | notification_db   | 푸시/이메일/SMS 통합 라우터         |
+| dashboard-service      | 8094 | dashboard_db      | KPI + 실시간 재고 + 매출            |
+
+dashboard-service 는 본 inventory-service 의 stock_balances + stock_movements 를 실시간 KPI 집계 source 로 사용 예정. 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

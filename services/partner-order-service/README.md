@@ -95,3 +95,22 @@ Scheduler (5분):
 - Phase 7 — `qa/playwright/confirm/` (3 spec, 6 case) 가 본 서비스의 confirm 흐름을 e2e 검증
   (slip 발행 + idempotency + inventory 차감)
 - 자세한 매트릭스는 `docs/dev-reports/migration-be-m4-partner-order-service.md` 참조
+
+## Phase 8 호환성 가드 (PR #88 / #89 / #90)
+
+- **chained-default 환경변수** — `SAMHAN_<KEY>:${LEGACY_KEY:default}` 패턴 적용 (legacy 호환 100%, 무중단 cutover 가능)
+- **12-factor 12/12 OK** + RDS 호환 (V1~V4 standard SQL 만)
+- **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조 (Resilience4j circuit breaker → CloudWatch alarm 매핑)
+- **env-template** — `infrastructure/env-templates/partner-order-service.env` 보유 (`SAMHAN_DC_CONFIG_SERVICE_URL` / `SAMHAN_PRODUCT_SERVICE_URL` / `SAMHAN_INVENTORY_SERVICE_URL` / `SAMHAN_SLIP_SERVICE_URL` / `SAMHAN_PARTNER_AUTH_SERVICE_URL` 5종)
+- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점 (현재는 Eureka 직접 등록)
+
+## Phase 9 신규 service 매트릭스 (참조)
+
+| Service                | Port | DB                | 도메인                              | 본 service 와의 관계                                            |
+| ---------------------- | ---- | ----------------- | ----------------------------------- | --------------------------------------------------------------- |
+| partner-service        | 8095 | partner_db        | 거래처 마스터 + 신용한도 + 거래내역 | partnerCode → partnerId 정규화 (master vs 주문 도메인 분리)     |
+| groupware-service      | 8092 | groupware_db      | 결재선 + 메신저 + 일정              | (직접 의존 없음)                                                |
+| notification-service   | 8093 | notification_db   | 푸시/이메일/SMS 통합 라우터         | confirm 후 거래처 측 푸시/SMS 발송 routing                      |
+| dashboard-service      | 8094 | dashboard_db      | KPI + 실시간 재고 + 매출            | 본 service 의 주문 데이터를 매출 KPI 집계 source 로 사용 예정   |
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조. 본 service 와 Phase 9 partner-service 는 도메인이 분리됨 (master vs 주문) — 8088 / 8095 포트 분리는 D-P9-01 의 핵심 결정.

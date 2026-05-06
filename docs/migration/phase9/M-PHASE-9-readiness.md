@@ -56,7 +56,8 @@
 - 도메인: Partner (거래처 마스터) / CreditLimit (신용한도) / TransactionLedger (거래내역)
 - Flyway V1: partner + credit_limit + transaction_ledger 테이블 (BaseEntity 7 audit + Soft Delete)
 - API: CRUD + lookup by-code (사용자 노출 식별자)
-- IT: Internal API token guard + Eureka 등록 + by-code lookup PASS
+- **Backend IT** (`services/partner-service/src/test/java/.../PartnerServiceIT.java`): Internal API token guard + Eureka 등록 + by-code lookup PASS + 외부 client `@MockBean` 격리 (현재 직접 의존 없음 — self-contained)
+- **e2e 위치 (Playwright)**: `qa/playwright/tests/partner/` — master CRUD / lookup-by-code / credit-limit (각 happy + edge)
 - ServiceDiscoveryClient 도입 (Phase 10 활성 대비)
 - env-template 보유 (`SAMHAN_PARTNER_SERVICE_URL`)
 
@@ -65,7 +66,8 @@
 - 도메인: ApprovalLine (결재선) / Message (메신저) / Schedule (일정)
 - Flyway V1: 3 테이블
 - API: 결재선 생성/승인 + 메신저 send/receive + 일정 CRUD
-- IT: Internal API + 결재선 흐름 PASS
+- **Backend IT** (`services/groupware-service/src/test/java/.../GroupwareServiceIT.java`): Internal API + 결재선 흐름 PASS + UserClient `@MockBean` 격리 (직원 정보 lookup)
+- **e2e 위치 (Playwright)**: `qa/playwright/tests/groupware/` — 결재선 생성/승인 / 메신저 / 일정 (각 happy + edge)
 - ServiceDiscoveryClient 도입
 
 ### 3-3. W3 — notification-service
@@ -75,7 +77,9 @@
 - Flyway V1: 2 테이블
 - API: send / status / retry
 - 기존 SMS Aligo 마이그레이션 (Phase 5) 흡수
-- IT: 3 channel adapter PASS (mock gateway)
+- **Backend IT** (`services/notification-service/src/test/java/.../NotificationServiceIT.java`): 3 channel adapter PASS (mock gateway) + UserClient `@MockBean` 격리 (수신자 정보 lookup)
+- **e2e 위치 (Playwright)**: `qa/playwright/tests/notification/` — 채널별 발송 / 재시도 / status 조회
+- **e2e 위치 (Detox)**: `qa/detox/e2e/mobile-v4/notification-push.test.ts` (Android + FCM mock) + `qa/detox/e2e/mobile-staff/notification-push.test.ts` (iOS + APNs mock + permission grant flow)
 - ServiceDiscoveryClient 도입
 
 ### 3-4. W4 — dashboard-service
@@ -85,7 +89,8 @@
 - 다른 service (inventory / accounting / partner-order) 의 데이터 집계
 - Flyway V1: 3 테이블 + materialized view
 - API: KPI 조회 + 실시간 재고 + 매출 집계
-- IT: 외부 service @MockBean + 집계 PASS
+- **Backend IT** (`services/dashboard-service/src/test/java/.../DashboardServiceIT.java`): 외부 service `@MockBean` 격리 (InventoryClient / AccountingClient / PartnerOrderClient / PartnerClient) + 집계 PASS + materialized view refresh PASS
+- **e2e 위치 (Playwright)**: `qa/playwright/tests/dashboard/` — KPI 조회 / 실시간 재고 / 매출 집계 + **visual baseline 신규 작성 의무** (Phase 7 4차 dark-mode 패턴 1:1 적용 — Designer 협업)
 - ServiceDiscoveryClient 도입
 
 ### 3-5. W5 — Phase 9 회고 + Phase 10 진입

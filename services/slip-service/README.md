@@ -88,3 +88,23 @@ H2 local 프로파일은 `MockSmsGateway` 자동 활성으로 SOLAPI 변수 미�
 
 - Phase 7 — `qa/playwright/confirm/confirm-slip-publish.spec.ts` 가 본 endpoint 의 idempotency 를 e2e 검증
 - 자세한 매트릭스는 `docs/dev-reports/migration-be-m5-slip-service-integration.md` 참조
+
+## Phase 8 호환성 가드 (PR #88 / #89 / #90)
+
+- **chained-default 환경변수** — `SAMHAN_<KEY>:${LEGACY_KEY:default}` 패턴 적용 (legacy 호환 100%, 무중단 cutover 가능). `SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-internal-token-change-me}` 형태.
+- **12-factor 12/12 OK** + RDS 호환 (V1~V8 standard SQL 만 — Flyway baseline PASS 검증 결과 22 file 중 본 service 7 file 포함)
+- **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조 (S3 endpoint override 대상 — signature PNG)
+- **env-template** — `infrastructure/env-templates/slip-service.env` 보유 (`SOLAPI_*` 포함)
+- **Secrets Manager rotation 대상** — `SAMHAN_INTERNAL_TOKEN` (90일) / `RABBIT_PASSWORD` / `SOLAPI_API_SECRET` 은 Phase 10 cutover 시점 `docs/migration/phase8/M-SECRETS-ROTATION-spec.md` 의 lambda 로 자동 rotation
+- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점
+
+## Phase 9 신규 service 매트릭스 (참조)
+
+| Service                | Port | DB                | 도메인                              |
+| ---------------------- | ---- | ----------------- | ----------------------------------- |
+| partner-service        | 8095 | partner_db        | 거래처 마스터 + 신용한도 + 거래내역 |
+| groupware-service      | 8092 | groupware_db      | 결재선 + 메신저 + 일정              |
+| notification-service   | 8093 | notification_db   | 푸시/이메일/SMS 통합 라우터         |
+| dashboard-service      | 8094 | dashboard_db      | KPI + 실시간 재고 + 매출            |
+
+partner-service 도입 후 본 service 의 `/from-*` endpoint 가 사용하는 partnerCode → partnerId lookup 의존성이 정규화 예정. notification-service 도입 후 SMS Aligo 통합도 본 service → notification-service routing 으로 이전. 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

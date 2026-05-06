@@ -212,6 +212,51 @@ samhan:
 7. 트래픽 전환 모니터링 (CloudWatch + Slack)
 8. roll-back 트리거 시 record 즉시 원복 (TTL 60s)
 
+### 7-3. estimate-app v2 호스팅 옵션 비교 (D-P10-XX 별도 결정 — Phase 10 W1 진입 전)
+
+estimate-app v2 (Node.js + Express + EJS, B2 옵션) 는 현재 Render Starter ($7/mo) 운영. Phase 10 cutover 시점 두 AWS 옵션 비교:
+
+#### 옵션 A — AWS Amplify Hosting
+
+| 항목 | 값 |
+|---|---|
+| 호스팅 형태 | 정적 + SSR 양립 (Next.js / Express compatible) |
+| 비용 | $0~ (Free tier: 1000 build min/월 + 15GB serve/월), 초과분 $0.01/build min + $0.15/GB |
+| 빌드 방식 | git push 자동 trigger (GitHub repo 연결) — Cloudflare Pages / Render 와 동일 UX |
+| SSR runtime | Node.js 18/20 lambda function |
+| 커스텀 도메인 | ACM 자동 발급 + Route 53 통합 |
+| 적합도 | **estimate-app v2 (Express + EJS) 직접 호스팅 가능** — Render 대체 후보 1순위 |
+| 단점 | SSR cold start (lambda) — 초기 응답 200~500ms 추가 |
+
+#### 옵션 B — AWS App Runner
+
+| 항목 | 값 |
+|---|---|
+| 호스팅 형태 | 컨테이너 기반 SSR (Docker image 또는 git source 직접) |
+| 비용 | $5/월 ~ (vCPU 0.25 + RAM 0.5GB 최소), 트래픽 기반 추가 |
+| 빌드 방식 | git push 또는 ECR image push 자동 trigger |
+| SSR runtime | 항상 활성 컨테이너 (cold start 없음) |
+| 커스텀 도메인 | ACM + Route 53 통합 |
+| 적합도 | **Render 의 always-on 컨테이너 패턴과 1:1** — 운영 패턴 변경 최소 |
+| 단점 | $5/월 minimum (Amplify Free tier 대비) |
+
+#### 비교 요약
+
+| 항목 | Amplify | App Runner |
+|---|---|---|
+| 비용 (월) | $0 ~ $5 | $5 ~ $15 |
+| cold start | 있음 (lambda) | 없음 |
+| Render 대비 운영 패턴 | 다름 (Cloudflare Pages 패턴) | 동일 |
+| 단일 AWS account 통합 | OK | OK |
+| Phase 10 cutover 난이도 | 중 (SSR 패턴 검증 필요) | 저 (컨테이너 1:1 이전) |
+
+#### 결정 시점 + 위임
+
+- **Phase 10 W1 진입 전 별도 결정** — 본 dry-run plan 시점에는 옵션만 제시.
+- **결정 항목**: D-P10-XX (DECISIONS 미부여) — 대표 보고 후 비용 / 운영 패턴 / cold start 허용 여부 종합 판단.
+- **현재 추천 (PM 시점)**: **App Runner** — Render 패턴 1:1 이전 + cold start 회피 + 대표 운영 부담 최소. 비용 $5~$15/월 = Render Starter 와 동등.
+- **roll-back 가능성**: cutover 후 Render service 30일 보존 (D-P9-01 cascade — `infrastructure/render/README.md` 참조).
+
 ---
 
 ## 8. Secrets Manager rotation 활성 (Phase 8 2차 spec → 실 lambda 배포)

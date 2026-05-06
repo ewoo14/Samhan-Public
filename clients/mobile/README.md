@@ -88,3 +88,30 @@ UUID 가 필요한 backend 호출 (예: stock 조회) 은 Phase 7 3차 추가된
 
 worktree path 가 한글이면 npm install / Metro bundler 실패 가능 — JDK 17 `@argfile`
 인코딩 한계의 RN 변형. ASCII 전용 경로 (예: `C:\dev\SamhanLogis`) 사용 권장.
+
+## 환경변수 표준 (Phase 8 / Phase 9 일관)
+
+본 client (Expo SDK 53) 는 Expo 의 표준 prefix `EXPO_PUBLIC_*` 만 사용한다 (런타임 노출 가능 변수만).
+
+| 변수                               | 기본값                          | 용도                                            | 사용 위치                                               |
+| ---------------------------------- | ------------------------------- | ----------------------------------------------- | ------------------------------------------------------- |
+| `EXPO_PUBLIC_API_BASE_URL`         | `http://localhost:8080`         | api-gateway base URL (Phase 9 신규 service 포함) | `src/api/client.ts` (현재 `__DEV__` 하드코딩 — Phase 9 W1 정정 위임) |
+| `EXPO_PUBLIC_ORDER_APP_URL`        | `http://localhost:5185`         | order-app v4 dev server URL                     | `src/webview/legacyOrderSource.ts` `dev` 분기            |
+| `EXPO_PUBLIC_ORDER_APP_PROD_URL`   | `https://order.samhan-air.com`  | order-app v4 prod URL                           | `src/webview/legacyOrderSource.ts` `prod` 분기           |
+
+### Phase 8 가드
+
+- **`EXPO_PUBLIC_*` prefix 의무** — Expo 가 빌드 타임에 `process.env.EXPO_PUBLIC_*` 만 RN bundle 에 inline. prefix 미준수 시 `undefined`.
+- **하드코딩 회피** — 현재 `src/api/client.ts:18-20` 의 `__DEV__` 분기 + 하드코딩 호스트는 Phase 9 W1 (partner-service skeleton 진입) 시점에 `EXPO_PUBLIC_API_BASE_URL` override 패턴으로 정정 위임.
+- **AWS Route 53 cutover 호환** — `*.samhan-air.com` 8 subdomain (Phase 10 cutover) 모두 `EXPO_PUBLIC_*` 환경변수로 주입 가능. `.env.production` / `.env.staging` 분리는 Phase 9 W1 시점 `EAS Build` profile 구성 시 도입.
+
+### Phase 9 신규 service 의 client 노출
+
+| service              | client 호출 | 환경변수                              | 비고                                       |
+| -------------------- | ----------- | ------------------------------------- | ------------------------------------------ |
+| partner-service      | (없음)      | -                                     | backend internal lookup (slip-service 경유) |
+| notification-service | 직접 호출   | `EXPO_PUBLIC_API_BASE_URL` 의 prefix  | push token 등록 + permission grant flow 만 |
+| dashboard-service    | (없음)      | -                                     | 거래처 화면 비노출 (직원용 only)            |
+| groupware-service    | (없음)      | -                                     | 거래처 화면 비노출 (직원용 only)            |
+
+상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

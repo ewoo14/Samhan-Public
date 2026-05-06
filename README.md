@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 6 완료, Phase 7 진행 중 (3차 머지 완료)                                  |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 진입 준비 완료                      |
 
 ---
 
@@ -58,11 +58,12 @@ SamhanLogis/
 │   ├── inventory-service/
 │   ├── slip-service/
 │   ├── accounting-service/
-│   ├── partner-auth-service/  # Phase 6 M2
-│   ├── dc-config-service/     # Phase 6 M3
-│   ├── partner-order-service/ # Phase 6 M4
-│   ├── logging-service/
-│   └── ...                    # partner / groupware / notification / dashboard / migration (Phase 9 / 10)
+│   ├── partner-auth-service/  # Phase 6 M2 (8091)
+│   ├── dc-config-service/     # Phase 6 M3 (8089)
+│   ├── partner-order-service/ # Phase 6 M4 (8088)
+│   ├── logging-service/       # Phase 1 (8082)
+│   └── ...                    # Phase 9 신규: groupware (8092) / notification (8093) / dashboard (8094) / partner (8095)
+│                              # Phase 10 신규: migration (8096)
 ├── clients/
 │   ├── desktop/               # Electron + electron-vite + React 18
 │   ├── web/
@@ -99,6 +100,31 @@ SamhanLogis/
 - Node.js 20+ (권장 22+) — client 빌드
 - gh CLI 2.92+ — GitHub Issue/PR
 - 영문 경로 권장 (`C:\dev\SamhanLogis`) — 한글 path 는 JDK 17 `@argfile` 인코딩 한계로 일부 Gradle 작업이 실패할 수 있음
+
+### Service 인벤토리 + 포트 (Phase 8 기준 + Phase 9/10 예정 포함)
+
+| Service                  | Port | DB                  | 도메인 / 비고                              | 상태             |
+| ------------------------ | ---- | ------------------- | ------------------------------------------ | ---------------- |
+| eureka-server            | 8761 | -                   | service discovery                          | Phase 1 (운영)   |
+| api-gateway              | 8080 | -                   | reactive routing + HeaderAuthenticationFilter | Phase 1 (운영) |
+| auth-service             | 8081 | auth_db             | JWT issuer + account                       | Phase 1 (운영)   |
+| logging-service          | 8082 | logging_db          | RabbitMQ → Elasticsearch                   | Phase 1 (운영)   |
+| user-service             | 8083 | user_db             | 16명 시드 + AuthClient saga                | Phase 2 (운영)   |
+| product-service          | 8084 | product_db          | jsonb 태그 + GIN + Google Sheets cron + by-code | Phase 2 (운영) |
+| inventory-service        | 8085 | inventory_db        | 4-tier 창고 + FIFO + 22 endpoint           | Phase 2 (운영)   |
+| slip-service             | 8086 | slip_db             | 10단계 라이프사이클 + 전자서명 + M5 `/from-*` | Phase 3 (운영) |
+| accounting-service       | 8087 | accounting_db       | 한국 일반기업회계기준 65 row 시드          | Phase 4 (운영)   |
+| partner-order-service    | 8088 | partner_order_db    | confirm 흐름 + outbox + 16종 bootstrap     | Phase 6 (운영)   |
+| dc-config-service        | 8089 | dc_config_db        | DC 5겹 가드 + Partner master owner         | Phase 6 (운영)   |
+| partner-auth-service     | 8091 | partner_auth_db     | 거래처 자체 인증 7 endpoint                | Phase 6 (운영)   |
+| **groupware-service**    | **8092** | **groupware_db** | **결재선 + 메신저 + 일정**                | **Phase 9 예정** |
+| **notification-service** | **8093** | **notification_db** | **푸시/이메일/SMS 통합 라우터**         | **Phase 9 예정** |
+| **dashboard-service**    | **8094** | **dashboard_db** | **KPI + 실시간 재고 + 매출**              | **Phase 9 예정** |
+| **partner-service**      | **8095** | **partner_db**   | **거래처 마스터 + 신용한도 + 거래내역**    | **Phase 9 예정** |
+| **migration-service**    | **8096** | (별도 결정)       | **ECount 일괄 이관 + 장기미수**            | **Phase 10 예정**|
+
+> Phase 9 신규 4 service 의 포트 / DB 확정은 `migration/decisions/DECISIONS.md` D-P9-01 참조.
+> Phase 10 migration-service (8096) 는 partner-service (8095) 와 충돌 회피한 신규 포트 — D-P9-01 cascade.
 
 ### 인프라 + backend 빌드
 
@@ -161,25 +187,25 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 
 ## Phase 진행 상태
 
-| Phase | 상태       | 머지 PR 범위        | 비고                                                     |
-| ----- | ---------- | ------------------- | -------------------------------------------------------- |
-| 0     | 완료       | -                   | 가드 정립                                                |
-| 1     | 완료       | #2 / #3 / #5        | infrastructure + auth + eureka + logging + gateway        |
-| 2     | 완료       | #7 ~ #18 / #34 / #36| user + product + inventory + Electron desktop 첫 슬라이스 |
-| 3     | 완료       | #19 ~ #26           | slip-service 10단계 + 전자서명                            |
-| 4     | 완료       | #28                 | accounting-service                                       |
-| 5     | 완료       | #30                 | SMS Aligo 마이그레이션                                   |
-| 6     | 완료       | #38 ~ #80           | legacy 마이그레이션 (M1a / M2 / M3 / M4 / M5 + 5 client) |
-| 7     | **진행 중**| #81 ~ #83           | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합              |
-| 8     | 대기       | -                   | 14 backend MSA 운영 호스팅 + production cutover          |
-| 9     | 대기       | -                   | 잔여 도메인 (partner / groupware / notification / dashboard) |
-| 10    | 대기       | -                   | migration-service (ECount 일괄 이관)                     |
+| Phase | 상태       | 머지 PR 범위           | 비고                                                                |
+| ----- | ---------- | ---------------------- | ------------------------------------------------------------------- |
+| 0     | 완료       | -                      | 가드 정립                                                           |
+| 1     | 완료       | #2 / #3 / #5           | infrastructure + auth + eureka + logging + gateway                  |
+| 2     | 완료       | #7 ~ #18 / #34 / #36   | user + product + inventory + Electron desktop 첫 슬라이스           |
+| 3     | 완료       | #19 ~ #26              | slip-service 10단계 + 전자서명                                      |
+| 4     | 완료       | #28                    | accounting-service (한국 일반기업회계기준 65 row 시드)              |
+| 5     | 완료       | #30                    | SMS Aligo 마이그레이션                                              |
+| 6     | 완료       | #38 ~ #80              | legacy 마이그레이션 (M1a / M2 / M3 / M4 / M5 + 5 client)            |
+| 7     | 완료       | #81 ~ #87              | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                        |
+| 8     | **완료**   | **#88 / #89 / #90**    | AWS 호환성 가드 (12-factor + chained-default + ServiceDiscoveryClient + Secrets rotation spec + Phase 10 dry-run plan) |
+| 9     | 진입 준비 | -                      | 잔여 도메인 (partner / groupware / notification / dashboard)        |
+| 10    | 대기       | -                      | AWS 마이그레이션 + Migration Service (8096) + 운영 안정화           |
 
 자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.
 
 ---
 
-## Phase 6 ~ 7 머지된 주요 PR
+## Phase 6 ~ 8 머지된 주요 PR
 
 ### Phase 6 (legacy 마이그레이션 본격 구현)
 - #38 M1a product-service 시드
@@ -198,10 +224,19 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 - #79 client mock 일괄 제거
 - #80 Phase 6 마무리 (회고 + DECISIONS + Phase 7 readiness)
 
-### Phase 7 (진행 중)
+### Phase 7 (완료)
 - #81 Phase 7 1차 (카페24 SSH script + Render Blueprint + Playwright 60 cell)
 - #82 Phase 7 2차 (CSP / Slack 비동기 / visual regression / Detox 6)
 - #83 Phase 7 3차 (product by-code + QA tautology fix + render mirror + dark-mode)
+- #84 Phase 7 4차 (DS 토큰 + body 바인딩 + toggleTheme + visual baseline)
+- #85 Phase 7 5차 docs (README + ROADMAP + DECISIONS Phase 7)
+- #86 Phase 7 4차 잔여 (통일 토큰 + Pretendard + RN graceful 폰트 hook)
+- #87 Phase 7 5/6차 (self-host font + helmet+CSP + desktop CSP + 회고 + Phase 8 plan)
+
+### Phase 8 (완료 — AWS 호환성 가드)
+- #88 Phase 8 1차 (12-factor 12/12 + RDS 호환 22 file 검증 + 환경변수 표준 plan + AWS 서비스 매핑 17건)
+- #89 Phase 8 2차 (`shared:discovery-abstraction` 신규 + chained-default 환경변수 + Secrets Manager rotation lambda spec)
+- #90 Phase 8 3차 (AWS 마이그레이션 dry-run plan 14 section + Phase 8 회고 + Phase 9 진입 plan + 본 docs 누락 8 영역 보강)
 
 ---
 
@@ -224,15 +259,21 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 
 ## 참조 문서
 
-| 분류       | 위치                                                                |
-| ---------- | ------------------------------------------------------------------- |
-| 로드맵     | `ROADMAP.md`                                                        |
-| 누적 결정  | `migration/decisions/DECISIONS.md`                                  |
-| Phase 6 회고 | `docs/dev-reports/phase6-retrospective.md`                        |
-| Phase 7 readiness | `docs/migration/phase7/M-PHASE-7-readiness.md`               |
-| estimate-app 호스팅 결정 | `docs/migration/phase7/M-ESTIMATE-APP-hosting-decision.md` |
-| Phase 7 dev report | `docs/dev-reports/phase7-step-{1,2,3}.md`                  |
-| dev-reports 누적 | `docs/dev-reports/`                                            |
+| 분류                       | 위치                                                                |
+| -------------------------- | ------------------------------------------------------------------- |
+| 로드맵                     | `ROADMAP.md`                                                        |
+| 누적 결정                  | `migration/decisions/DECISIONS.md`                                  |
+| Phase 6 회고               | `docs/dev-reports/phase6-retrospective.md`                          |
+| Phase 7 readiness          | `docs/migration/phase7/M-PHASE-7-readiness.md`                      |
+| estimate-app 호스팅 결정    | `docs/migration/phase7/M-ESTIMATE-APP-hosting-decision.md`          |
+| Phase 7 dev report         | `docs/dev-reports/phase7-step-{1,2,3}.md`                           |
+| Phase 8 readiness / guards | `docs/migration/phase8/M-PHASE-8-readiness.md` + `M-AWS-COMPATIBILITY-guards.md` |
+| Phase 8 환경변수 표준       | `docs/migration/phase8/M-ENV-STANDARDIZATION.md`                    |
+| Phase 8 Secrets rotation 스펙 | `docs/migration/phase8/M-SECRETS-ROTATION-spec.md`               |
+| Phase 8 회고               | `docs/dev-reports/phase8-retrospective.md`                          |
+| Phase 9 readiness          | `docs/migration/phase9/M-PHASE-9-readiness.md`                      |
+| Phase 10 AWS dry-run plan  | `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`                 |
+| dev-reports 누적           | `docs/dev-reports/`                                                 |
 
 ---
 
