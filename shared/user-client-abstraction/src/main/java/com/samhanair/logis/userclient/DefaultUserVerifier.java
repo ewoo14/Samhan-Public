@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -45,6 +46,22 @@ public class DefaultUserVerifier implements UserVerifier {
         this.existsCache = Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofSeconds(props.getTtlSeconds()))
                 .maximumSize(props.getMaxSize())
+                .build();
+    }
+
+    /**
+     * 본 instance 의 RestClient 1회 생성 helper — connectTimeout / readTimeout 적용.
+     *
+     * <p>post-W5 종합 fix (QA-2, D-P9-21) — props 의 timeout 설정을 RestClient 에 명시 적용.
+     * 가용 X 포트 ({@code 127.0.0.1:1}) 호출 시 OS 기본 timeout (Linux ~ 75s, Windows ~ 21s)
+     * 까지 기다리는 회귀 회피 (단위 테스트 + production fail-fast).
+     */
+    private RestClient buildClient() {
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout(props.getConnectTimeoutMs());
+        rf.setReadTimeout(props.getReadTimeoutMs());
+        return builder.baseUrl(props.getBaseUrl())
+                .requestFactory(rf)
                 .build();
     }
 
@@ -84,7 +101,7 @@ public class DefaultUserVerifier implements UserVerifier {
             return result;
         }
         try {
-            RestClient client = builder.baseUrl(props.getBaseUrl()).build();
+            RestClient client = buildClient();
             String response = client.post()
                     .uri("/internal/users/verify-bulk")
                     .header("X-Internal-Token", props.getInternalToken())
@@ -135,7 +152,7 @@ public class DefaultUserVerifier implements UserVerifier {
 
     private boolean callExists(UUID userId) {
         try {
-            RestClient client = builder.baseUrl(props.getBaseUrl()).build();
+            RestClient client = buildClient();
             client.get()
                     .uri("/internal/users/{id}", userId)
                     .header("X-Internal-Token", props.getInternalToken())

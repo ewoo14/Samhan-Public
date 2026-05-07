@@ -3,6 +3,7 @@ package com.samhanair.logis.notification.service;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.notification.adapter.NotificationGateway;
+import com.samhanair.logis.notification.adapter.NotificationGatewayMetrics;
 import com.samhanair.logis.notification.adapter.NotificationGatewayResult;
 import com.samhanair.logis.notification.client.UserClient;
 import com.samhanair.logis.notification.domain.NotificationChannel;
@@ -15,8 +16,8 @@ import com.samhanair.logis.notification.repository.NotificationLogRepository;
 import com.samhanair.logis.notification.repository.NotificationRequestRepository;
 import java.util.Map;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -38,13 +39,43 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class NotificationService {
 
     private final NotificationRequestRepository requestRepository;
     private final NotificationLogRepository logRepository;
     private final Map<NotificationChannel, NotificationGateway> gatewayMap;
     private final UserClient userClient;
+
+    /**
+     * 발송 재시도 최대 횟수 — post-W5 backlog cleanup (Q-W3-1 채택, D-P9-21).
+     *
+     * <p>{@link #retry} 호출 시점에 entity.attemptCount 가 본 임계 이상이면 영구 FAILED 처리
+     * (retryable=false) — DEAD_LETTER 의미. 기본 5회 (production cutover 시 trial-and-error 학습 후 조정).
+     *
+     * <p>property: {@code samhan.notification.retry.max-attempts}, env: {@code SAMHAN_NOTIFICATION_RETRY_MAX_ATTEMPTS}.
+     */
+    private final int maxRetryAttempts;
+
+    /**
+     * 채널 × result 발송 결과 Micrometer counter — post-W5 backlog cleanup (DevOps, D-P9-21).
+     * nullable — 단위 테스트는 metrics 주입 없이도 동작 (기존 회귀 안전).
+     */
+    private final NotificationGatewayMetrics gatewayMetrics;
+
+    public NotificationService(NotificationRequestRepository requestRepository,
+                               NotificationLogRepository logRepository,
+                               Map<NotificationChannel, NotificationGateway> gatewayMap,
+                               UserClient userClient,
+                               @Value("${samhan.notification.retry.max-attempts:5}") int maxRetryAttempts,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false)
+                               NotificationGatewayMetrics gatewayMetrics) {
+        this.requestRepository = requestRepository;
+        this.logRepository = logRepository;
+        this.gatewayMap = gatewayMap;
+        this.userClient = userClient;
+        this.maxRetryAttempts = maxRetryAttempts;
+        this.gatewayMetrics = gatewayMetrics;
+    }
 
     /**
      * 발송 요청 생성 + 즉시 1회 게이트웨이 호출 + status 전이.
@@ -87,10 +118,31 @@ public class NotificationService {
 
     /**
      * admin 재시도 — FAILED/RETRYING 상태에서만 허용.
+     *
+     * <p>post-W5 backlog cleanup (Q-W3-1, D-P9-21) — {@link #maxRetryAttempts} 임계 초과 시
+     * 영구 FAILED 처리 + DEAD_LETTER 의미 log 기록. 게이트웨이 호출 skip + retryable=false 고정.
+     *
+     * <p>post-W5 종합 fix (BE-2, D-P9-21) — DEAD_LETTER 분기에서도 {@link #gatewayMetrics}
+     * recordFailure() 호출. 운영 단계에서 DEAD_LETTER 누적이 Grafana
+     * {@code notification_gateway_send_total{result="failure"}} counter 로 가시화 (이전: 게이트웨이
+     * 호출 skip 으로 metrics 증가 X → DEAD_LETTER 운영 누락 회피).
      */
     @Transactional
     public NotificationRequest retry(UUID requestId) {
         NotificationRequest req = findById(requestId);
+        if (req.getAttemptCount() >= maxRetryAttempts) {
+            log.warn("[NotificationService] requestId={} 최대 재시도 횟수({}) 초과 — DEAD_LETTER 영구 FAILED 처리",
+                    req.getId(), maxRetryAttempts);
+            req.markFailed(false);
+            logRepository.save(NotificationLog.record(req, req.getAttemptCount(),
+                    "FAILURE_MAX_ATTEMPTS_EXCEEDED", null,
+                    "{\"error\":\"최대 재시도 횟수 초과 (max=" + maxRetryAttempts
+                            + ")\",\"deadLetter\":true}"));
+            if (gatewayMetrics != null) {
+                gatewayMetrics.recordFailure(req.getChannel());
+            }
+            return req;
+        }
         try {
             req.requeueForRetry();
         } catch (IllegalStateException ex) {
@@ -117,7 +169,13 @@ public class NotificationService {
         return requestRepository.findAll(pageable);
     }
 
-    /** 채널 어댑터 호출 + 결과에 따라 status 전이 + log 기록. caller 가 트랜잭션 보유 의무. */
+    /**
+     * 채널 어댑터 호출 + 결과에 따라 status 전이 + log 기록. caller 가 트랜잭션 보유 의무.
+     *
+     * <p>post-W5 backlog cleanup (DevOps, D-P9-21) — {@link NotificationGatewayMetrics} 가
+     * 주입된 경우 channel × result 별 counter increment ({@code notification_gateway_send_total}
+     * actuator/prometheus 노출).
+     */
     private void invokeGateway(NotificationRequest req) {
         NotificationGateway gateway = gatewayMap.get(req.getChannel());
         if (gateway == null) {
@@ -125,6 +183,9 @@ public class NotificationService {
             logRepository.save(NotificationLog.record(req, req.getAttemptCount() + 1,
                     "FAILURE_NO_ADAPTER", null,
                     "{\"error\":\"채널 어댑터 미등록: " + req.getChannel() + "\"}"));
+            if (gatewayMetrics != null) {
+                gatewayMetrics.recordFailure(req.getChannel());
+            }
             return;
         }
         NotificationGatewayResult result;
@@ -137,8 +198,14 @@ public class NotificationService {
         }
         if (result.success()) {
             req.markSent();
+            if (gatewayMetrics != null) {
+                gatewayMetrics.recordSuccess(req.getChannel());
+            }
         } else {
             req.markFailed(result.retryable());
+            if (gatewayMetrics != null) {
+                gatewayMetrics.recordFailure(req.getChannel());
+            }
         }
         logRepository.save(NotificationLog.record(
                 req,

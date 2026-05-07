@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>post-W5 backlog cleanup — 회귀 검증 5 영역 PASS</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 28px 36px; color: #0f172a; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-new  { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .qa-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+  @media (max-width: 768px) { .qa-table-wrapper table { min-width: 600px; } }
+</style>
+</head>
+<body>
+
+<h1>post-W5 backlog cleanup — 회귀 검증 5 영역 PASS</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 위임 backlog 중 즉시 처리 가능 7건 본 PR 채택 (D-P9-21) — <code>./gradlew :shared:user-client-abstraction:test :services:notification-service:test :services:user-service:test :services:groupware-service:test :services:dashboard-service:test</code></p>
+
+<div class="stats">
+  <div class="stat"><div class="num">7</div><div class="lbl">채택 fix (Designer 2 / QA 3 / DevOps 2)</div></div>
+  <div class="stat"><div class="num">5</div><div class="lbl">신규 IT (Q-W3-1/2/3 + DevOps 2)</div></div>
+  <div class="stat"><div class="num">5</div><div class="lbl">회귀 검증 영역 (4 service + 1 shared)</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">회귀 (모든 영역 PASS)</div></div>
+  <div class="stat"><div class="num">9+</div><div class="lbl">docs 동기화</div></div>
+</div>
+
+<div class="summary">
+  <p><strong>슬라이스</strong> post-W5 backlog cleanup (Phase 9 5/5 머지 직후) — 사용자 가드 (`feedback_integrated_pr_pattern.md` § fix 후속 PR/Phase 위임 금지) 일관 적용으로 환경 의존이 없는 7건 본 PR 채택.</p>
+  <p><strong>Base</strong> main HEAD <code>2d07c12</code> Merge PR #95. <strong>Branch</strong> <code>feature/post-w5-backlog-cleanup</code>.</p>
+  <p><strong>회귀 검증</strong> 5 영역 모두 PASS. 회귀 위험 = 0 (모든 변경 = 옵션 토글 default 보존 + 신규 IT 추가 + 신규 컴포넌트 nullable 주입 패턴).</p>
+</div>
+
+<h2>1. 회귀 검증 매트릭스 (4 service + 1 shared module)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>영역</th><th>테스트 수</th><th>상태</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>:shared:user-client-abstraction:test</code></td>
+      <td>8 (기존 6 + 신규 2)</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>fail-mode (OPEN/STRICT) alias IT 2건 신규 (Q-W3-3)</td>
+    </tr>
+    <tr>
+      <td><code>:services:notification-service:test</code></td>
+      <td>15 단위 + 10 IT</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>NotificationServiceTest 6 → 7 + NotificationGatewayMetricsTest 2 신규 + Admin IT 5 → 6 (Q-W3-1/2 + DevOps)</td>
+    </tr>
+    <tr>
+      <td><code>:services:user-service:test</code></td>
+      <td>기존</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>Employee.DEFAULT_HIRE_DATE 의도 주석만 — 코드 동작 변경 0</td>
+    </tr>
+    <tr>
+      <td><code>:services:groupware-service:test</code></td>
+      <td>기존</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>UserClient fail-mode 회귀 0 (failFast 동작 1:1 보존)</td>
+    </tr>
+    <tr>
+      <td><code>:services:dashboard-service:test</code></td>
+      <td>기존</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>UserClient fail-mode 회귀 0 (failFast 동작 1:1 보존)</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. 신규 IT 매트릭스 (5건)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>IT</th><th>출처</th><th>검증 시나리오</th><th>상태</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>requeueForRetry_exceedsMaxAttempts_marksFailedPermanent</code></td>
+      <td><span class="b-info">Q-W3-1</span></td>
+      <td>maxRetryAttempts=5 + attemptCount=6 → 게이트웨이 호출 skip + 영구 FAILED + DEAD_LETTER log</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>send_payloadOver4000Bytes_returns400</code></td>
+      <td><span class="b-info">Q-W3-2</span></td>
+      <td>4001 byte payload 입력 → @Size(max=4000) bean validation 위반 → 400 INVALID_INPUT</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>verify_strictMode_failFast_returnsFalseOnGatewayError</code></td>
+      <td><span class="b-info">Q-W3-3</span></td>
+      <td>setFailMode(STRICT) → failFast=true 자동 동기화 + gateway 실패 시 false 반환</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>verify_openMode_failSoft_returnsTrueOnGatewayError</code></td>
+      <td><span class="b-info">Q-W3-3</span></td>
+      <td>setFailMode(OPEN) → failFast=false 자동 동기화 + gateway 실패 시 true 반환 (default 보존)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td><code>NotificationGatewayMetricsTest</code> (2 case)</td>
+      <td><span class="b-info">DevOps</span></td>
+      <td>recordSuccess(PUSH) → counter 1.0 / recordFailure(SMS) × 3 → counter 3.0 / EMAIL 격리 0.0</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. 가드 일관 적용</h2>
+<ul>
+  <li><strong>사용자 가드</strong> (`feedback_integrated_pr_pattern.md` § fix 후속 PR/Phase 위임 금지) — 7건 본 PR 일괄 채택, 단편 PR 분리 0</li>
+  <li><strong>회귀 안전성</strong> — 모든 변경 옵션 토글 default 보존 + 신규 IT 추가 + 신규 컴포넌트 nullable 주입 패턴</li>
+  <li><strong>한국어 commit + Javadoc + dev-report</strong> — 일관 적용</li>
+  <li><strong>"개발책임자" 단어 + 변형 0회</strong> — PR 본문 가드 일관 적용</li>
+  <li><strong>continuous_docs_sync</strong> — 본 작업 PR 에 9+ 영역 docs 갱신 포함 (별도 docs PR 패턴 회피)</li>
+  <li><strong>slip-service 시간 의존 일관 검토</strong> — Employee.DEFAULT_HIRE_DATE 는 만료 비교 패턴 부재 (회귀 영향 없음 검증)</li>
+</ul>
+
+</body>
+</html>

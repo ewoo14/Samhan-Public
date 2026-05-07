@@ -14,15 +14,68 @@ import lombok.Data;
  *   <li>{@code internalToken} — user-service Internal API X-Internal-Token</li>
  *   <li>{@code ttlSeconds} — Caffeine TTL (기본 60)</li>
  *   <li>{@code maxSize} — Caffeine maximumSize (기본 10000)</li>
- *   <li>{@code failFast} — Phase 10 cutover 시점 strict 모드 토글 (기본 false = fail-soft)</li>
+ *   <li>{@code failFast} — legacy 부울 토글 (기본 false = fail-soft) — {@link #failMode} 와 동기화</li>
+ *   <li>{@code failMode} — post-W5 backlog cleanup (Q-W3-3, D-P9-21) — 의미 명시 alias.
+ *     OPEN = fail-soft (legacy default), STRICT = fail-fast (Phase 10 cutover 활성)</li>
  * </ul>
+ *
+ * <p>두 토글의 우선순위: {@link #failMode} 가 명시 setter 호출되면 {@link #failFast} 자동 동기화.
+ * 둘 다 미설정 시 OPEN / failFast=false (fail-soft) 기본값 — 회귀 안전.
  */
 @Data
 public class UserVerifierProperties {
+
+    /**
+     * fail-mode (post-W5 backlog cleanup, Q-W3-3, D-P9-21).
+     *
+     * <ul>
+     *   <li>{@link #OPEN} — fail-soft. 네트워크 / discovery / gateway 5xx 실패 시 검증 통과 반환
+     *     (skeleton 단계 default).</li>
+     *   <li>{@link #STRICT} — fail-fast. 실패 시 throw 또는 false 반환. Phase 10 cutover 시점 활성.</li>
+     * </ul>
+     */
+    public enum FailMode {
+        OPEN,
+        STRICT
+    }
 
     private String baseUrl = "http://localhost:8083";
     private String internalToken = "";
     private long ttlSeconds = 60L;
     private long maxSize = 10000L;
     private boolean failFast = false;
+
+    /**
+     * connect timeout (ms) — post-W5 종합 fix (QA-2, D-P9-21).
+     *
+     * <p>RestClient 의 {@code SimpleClientHttpRequestFactory.setConnectTimeout(int)} 에 적용.
+     * 단위 테스트에서 가용 X 포트 ({@code 127.0.0.1:1}) 호출 시 OS 기본 timeout (Linux ~ 75s,
+     * Windows ~ 21s) 까지 기다리는 회귀 회피. 기본 1000ms (1s) — production 도 fail-fast 정합.
+     */
+    private int connectTimeoutMs = 1000;
+
+    /**
+     * read timeout (ms) — post-W5 종합 fix (QA-2, D-P9-21).
+     *
+     * <p>응답 수신 단계 timeout. 기본 5000ms (5s) — user-service Internal API 평균 응답 대비 충분.
+     */
+    private int readTimeoutMs = 5000;
+
+    /**
+     * fail-mode (post-W5 backlog cleanup) — 의미 명시 alias. 기본 OPEN (failFast=false 와 일관).
+     * setter 호출 시 {@link #failFast} 자동 동기화 (FailMode.STRICT → failFast=true).
+     */
+    private FailMode failMode = FailMode.OPEN;
+
+    /** failMode setter — failFast 자동 동기화 (post-W5 cleanup, Q-W3-3 일관). */
+    public void setFailMode(FailMode failMode) {
+        this.failMode = failMode == null ? FailMode.OPEN : failMode;
+        this.failFast = (this.failMode == FailMode.STRICT);
+    }
+
+    /** failFast setter — failMode 자동 동기화 (legacy 호환). */
+    public void setFailFast(boolean failFast) {
+        this.failFast = failFast;
+        this.failMode = failFast ? FailMode.STRICT : FailMode.OPEN;
+    }
 }

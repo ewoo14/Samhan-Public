@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>post-W5 backlog cleanup — Phase 10 위임 잔존 backlog</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 28px 36px; color: #0f172a; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  /* Status badge */
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  /* Slice accent (post-W5 신규) */
+  .slice-accent-success  { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+  th { background: #1e293b; color: #fff; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .qa-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+  @media (max-width: 768px) { .qa-table-wrapper table { min-width: 600px; } }
+</style>
+</head>
+<body>
+
+<h1>post-W5 backlog cleanup — Phase 10 위임 잔존 backlog</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">본 PR 채택 7건 제외 후 잔존 backlog = 환경 의존 (AWS account / Redis / Aurora) 항목만</p>
+
+<div class="summary">
+  <p><strong>Phase 9 = 완료 + post-W5 cleanup 완료 상태로 종료.</strong> 본 PR 머지 후 Phase 10 진입 준비 완료.</p>
+  <p><strong>잔존 backlog 누적 0</strong> — 환경 의존 X 항목은 모두 본 PR 채택 (사용자 가드 일관 적용).</p>
+</div>
+
+<h2>1. Phase 10 위임 잔존 backlog (환경 의존 항목만)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>#</th><th>영역</th><th>출처</th><th>위임 사유</th><th>처리 시점</th><th>상태</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>design-system</td>
+      <td><span class="b-info">Designer #1</span></td>
+      <td>정식 React <code>&lt;SliceAccent&gt;</code> 컴포넌트 — Storybook + ChannelBadge 일관성</td>
+      <td>W6 client 통합 슬라이스</td>
+      <td><span class="slice-accent-pending">진행 예정</span></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>QA</td>
+      <td><span class="b-info">Q-P10-1</span></td>
+      <td>skeleton-mode IT sweep — Caffeine→Redis testcontainer / aws-cloud-map mock</td>
+      <td>Phase 10 P10-1</td>
+      <td><span class="slice-accent-deferred">위임</span></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>DevOps</td>
+      <td><span class="b-info">DevOps backlog</span></td>
+      <td><code>partner_client_fail_total</code> Micrometer counter — Resilience4j @CircuitBreaker 통합 시점에 추가</td>
+      <td>Phase 10 P10-2 (Resilience4j 슬라이스)</td>
+      <td><span class="slice-accent-deferred">위임</span></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>infrastructure</td>
+      <td><span class="b-info">P10-1</span></td>
+      <td>Secrets Manager + Cache 전환 — AWS Secrets Manager spring.config.import + Caffeine→Redis</td>
+      <td>Phase 10 P10-1 (AWS account 발급 후)</td>
+      <td><span class="slice-accent-deferred">위임</span></td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>infrastructure</td>
+      <td><span class="b-info">P10-2</span></td>
+      <td>Discovery + Resilience — aws-cloud-map provider 활성 + Resilience4j 4 client adapter</td>
+      <td>Phase 10 P10-2 (P10-1 머지 후)</td>
+      <td><span class="slice-accent-deferred">위임</span></td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>infrastructure</td>
+      <td><span class="b-info">P10-3</span></td>
+      <td>RDS migration + Cutover — Aurora PostgreSQL 16 cluster + 14 schema + ALB + Route 53</td>
+      <td>Phase 10 P10-3 (P10-1 + P10-2 머지 후)</td>
+      <td><span class="slice-accent-deferred">위임</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. 본 PR 머지 후 Phase 10 진입 준비 상태</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>항목</th><th>상태</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>14 service skeleton 완료</td><td><span class="slice-accent-success">OK</span></td><td>Phase 0 ~ 9 (PR #91 ~ #95 + post-W5 cleanup)</td></tr>
+    <tr><td>ServiceDiscoveryClient 추상화 + 4 service 소비자</td><td><span class="slice-accent-success">OK</span></td><td>partner / groupware / notification / dashboard, samhan.discovery.provider toggle</td></tr>
+    <tr><td>shared:user-client-abstraction + fail-mode alias</td><td><span class="slice-accent-success">OK</span></td><td>SAMHAN_USER_CLIENT_FAIL_MODE=OPEN default, STRICT cutover 약속 (D-P9-11 보강)</td></tr>
+    <tr><td>NotificationGateway Micrometer counter</td><td><span class="slice-accent-success">OK</span></td><td>actuator/prometheus 노출 + DEAD_LETTER 영구 FAILED 처리</td></tr>
+    <tr><td>JSONB payload @Size(max=4000)</td><td><span class="slice-accent-success">OK</span></td><td>Postgres TOAST 임계 회피 + 비정상 페이로드 입력 차단</td></tr>
+    <tr><td>Caffeine vs Redis 결정</td><td><span class="slice-accent-success">OK</span></td><td>D-P9-12, samhan.cache.provider=caffeine|redis</td></tr>
+    <tr><td>AWS RDS 호환 Postgres 표준 SQL</td><td><span class="slice-accent-success">OK</span></td><td>Phase 8 22 file 검증 + Phase 9 Flyway V1 일관</td></tr>
+    <tr><td>QA 캡처 + raw URL HEAD 가드</td><td><span class="slice-accent-success">OK</span></td><td>본 PR 캡처 3종 commit-pinned</td></tr>
+    <tr><td>사용자 가드 (fix 본 PR 채택)</td><td><span class="slice-accent-success">OK</span></td><td>W4+W5+post-W5 정착 (feedback_integrated_pr_pattern.md)</td></tr>
+    <tr><td>AWS account + IAM baseline</td><td><span class="slice-accent-pending">대기</span></td><td>Phase 10 진입 시점 발급</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. 마무리</h2>
+<ul>
+  <li>Phase 9 = 완료 + post-W5 cleanup 완료 상태로 종료</li>
+  <li>Phase 10 진입 시점 backlog 누적 0 (환경 의존 항목만 잔존)</li>
+  <li>사용자 가드 정착 + 통합 PR 패턴 일관 적용 + 회귀 0 — Phase 10 P10-1 슬라이스 진입 직전 baseline 안정화</li>
+  <li>본 PR 머지 후 사용자 결정 시점 (AWS account + IAM + Aurora + ALB + Route 53 인프라 준비) 에 P10-1 슬라이스 진입</li>
+</ul>
+
+</body>
+</html>

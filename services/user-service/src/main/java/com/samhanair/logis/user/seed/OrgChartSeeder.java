@@ -1,10 +1,10 @@
 package com.samhanair.logis.user.seed;
 
 import com.samhanair.logis.common.security.Role;
+import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.service.EmployeeProvisioningService;
 import com.samhanair.logis.user.web.dto.CreateEmployeeRequest;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -25,7 +25,10 @@ public class OrgChartSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(OrgChartSeeder.class);
 
     private static final String DEFAULT_PASSWORD = "samhan!2026";
-    private static final LocalDate DEFAULT_HIRE_DATE = LocalDate.of(2026, 1, 1);
+    /*
+     * post-W5 종합 fix (BE-3, D-P9-21) — Employee.DEFAULT_HIRE_DATE 인용 (DRY 정합).
+     * 기존 별도 LocalDate.of(2026,1,1) 상수 중복 제거 — Employee domain 의 의도 주석을 단일 출처로.
+     */
 
     private static final UUID DEPT_EXEC       = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID DEPT_SALES_1    = UUID.fromString("00000000-0000-0000-0000-000000000002");
@@ -77,7 +80,7 @@ public class OrgChartSeeder implements CommandLineRunner {
                         row.role(),
                         row.departmentId(),
                         row.teamLead(),
-                        DEFAULT_HIRE_DATE,
+                        Employee.DEFAULT_HIRE_DATE,
                         null,
                         null), null);
                 created++;

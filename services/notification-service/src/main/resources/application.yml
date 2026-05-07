@@ -51,6 +51,10 @@ samhan:
     user-cache:
       ttl-seconds: ${SAMHAN_USER_CACHE_TTL:60}
       max-size: ${SAMHAN_USER_CACHE_MAX:10000}
+    # post-W5 backlog cleanup (Q-W3-1 채택, D-P9-21) — 발송 재시도 최대 횟수.
+    # NotificationService.retry() 시점에 본 임계 초과 시 영구 FAILED 처리 (DEAD_LETTER 의미).
+    retry:
+      max-attempts: ${SAMHAN_NOTIFICATION_RETRY_MAX_ATTEMPTS:5}
 
 app:
   security:

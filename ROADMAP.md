@@ -278,7 +278,7 @@
 
 ---
 
-## Phase 9 — 잔여 도메인 (완료, 5차 W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수)
+## Phase 9 — 잔여 도메인 (완료 + post-W5 cleanup, 5차 W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수 + post-W5 backlog cleanup 7건)
 
 ### 예정 산출물
 - `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피 — **완료 (PR #91)**
@@ -348,13 +348,27 @@
 - 3 client README (`clients/desktop/README.md` / `clients/web/design-system/README.md` / `clients/mobile/README.md`) — slice 명 정정 + 채널 토큰 안내
 - DECISIONS D-P9-12 / D-P9-13 / D-P9-14 / D-P9-15 추가
 
-### 산출물 (5차 — 본 PR W5)
+### 산출물 (5차 — PR #95 W5)
 - **Phase 9 회고 보고서** (`docs/dev-reports/phase9-retrospective.md`) 신규 — 10 섹션 (요약 / 통계 / 19 결정 / 25 backlog 채택 / 7 success + 6 학습 / 진입 준비 / Phase 10 요약 / 잔존 backlog / 참조 / 마무리)
 - **Phase 10 진입 plan** (`docs/migration/phase10/M-PHASE-10-readiness.md`) 신규 — 6 섹션 (P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover 슬라이스 분해)
 - **잔존 backlog 1건 흡수 (D-P9-16, BE 의견 3 채택)** — partner-service `POST /internal/partners/find-by-codes` bulk endpoint + dashboard-service `PartnerCodeResolver.resolveAll(List<String>)` bulk 전환 (cache hit/miss 분리 + miss 만 1회 RPC)
 - partner-service IT 4건 신규 (정상 / 빈 / 일부 미존재 / 토큰 누락) + dashboard-service 단위 4건 신규 (PartnerCodeResolverTest)
 - W5 dev-report (`docs/dev-reports/phase9-step-5-retrospective.md`) 신규
 - DECISIONS D-P9-16 / D-P9-17 / D-P9-18 / D-P9-19 / D-P9-20 추가
+
+### 산출물 (post-W5 backlog cleanup — 본 PR, D-P9-21)
+- **Phase 10 위임 backlog 중 즉시 처리 가능 7건 본 PR 채택** (사용자 가드 `feedback_integrated_pr_pattern.md` § fix 후속 PR/Phase 위임 금지 일관 적용)
+- Fix 1 (D-W4-3 보강) — `docs/templates/PR-template-color-reference.md` § 5.2 mobile responsive table wrapper 추가 (W6+ 전 PR QA HTML 일관 적용 의무)
+- Fix 2 (D-W5-2 채택) — `clients/web/design-system/src/tokens/tokens.css` slice accent 3색 토큰 신설 (`--color-slice-{success,pending,deferred}` Google Material Green/Yellow/Gray)
+- Fix 3 (Q-W3-1) — `notification-service` retry max-attempts property + IT (samhan.notification.retry.max-attempts default 5, DEAD_LETTER 영구 FAILED)
+- Fix 4 (Q-W3-2) — `NotificationSendRequest.payload` `@Size(max=4000)` + IT (Postgres TOAST 임계 회피)
+- Fix 5 (Q-W3-3) — `UserVerifierProperties` FailMode enum (OPEN/STRICT) alias + IT 2건 (failFast 양방향 자동 동기화)
+- Fix 6 (DevOps) — `NotificationGatewayMetrics` 신규 (3 channel × 2 result = 6 Micrometer counter) + service 통합
+- Fix 7 (DevOps user-service) — `Employee.DEFAULT_HIRE_DATE` 의도 주석 (W4 slip-service 시간 의존 회귀 학습 적용)
+- IT 추가 5건 — `requeueForRetry_exceedsMaxAttempts_marksFailedPermanent` / `send_payloadOver4000Bytes_returns400` / `verify_strictMode_failFast_returnsFalseOnGatewayError` / `verify_openMode_failSoft_returnsTrueOnGatewayError` / `NotificationGatewayMetricsTest` 2 case
+- 회귀 검증 — `:shared:user-client-abstraction:test` + `:services:notification-service:test` + `:services:user-service:test` + `:services:groupware-service:test` + `:services:dashboard-service:test` 모두 PASS
+- env-template 갱신 — `notification-service.env` (SAMHAN_NOTIFICATION_RETRY_MAX_ATTEMPTS / SAMHAN_USER_CLIENT_FAIL_MODE) + `groupware-service.env` (SAMHAN_USER_CLIENT_FAIL_MODE)
+- DECISIONS D-P9-11 보강 (fail-mode 토글) + D-P9-21 신규 (post-W5 backlog cleanup, 7건 채택)
 
 ### 진입 조건
 - Phase 8 호환성 가드 + 운영 가드 정착 (PR #88 / #89 / #90 머지 시 충족)
@@ -369,7 +383,7 @@
 
 ---
 
-## Phase 10 — AWS 마이그레이션 + Migration Service + 운영 안정화 (진입 준비 완료)
+## Phase 10 — AWS 마이그레이션 + Migration Service + 운영 안정화 (진입 준비 완료, post-W5 cleanup 7건 흡수 후)
 
 ### 예정 산출물
 - AWS 인프라 cutover — RDS PostgreSQL 16 + EC2/ECS Fargate + ElastiCache + AWS MQ + S3 + Route 53 + ACM

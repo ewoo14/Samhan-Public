@@ -13,8 +13,20 @@ import org.springframework.web.client.RestClient;
  *
  * <p>네트워크 실패 시 fail-soft / fail-fast 분기 + null/empty 입력 + cache invalidate 동작 검증.
  * 실 RPC 검증은 각 service 의 IT 에서 {@code @MockBean UserClient} 로 격리.
+ *
+ * <p>post-W5 종합 fix (QA-2, D-P9-21) — 가용 X 포트 ({@code 127.0.0.1:1}) 호출 시 OS 기본 timeout
+ * 회귀 회피용으로 connectTimeout 100ms / readTimeout 200ms 명시. RestClient 의 timeout 미설정 시
+ * Linux ~ 75s, Windows ~ 21s 까지 기다림 — fail-fast 단위 테스트 의도와 정합 X.
+ *
+ * <p>WireMock 의존성 추가 대안보다 가벼움 — props.connectTimeoutMs / readTimeoutMs 토글 자체가
+ * production fail-fast 효과 (Phase 10 cutover 시 STRICT 모드 + 짧은 timeout 권장).
  */
 class DefaultUserVerifierTest {
+
+    /** 단위 테스트 전용 짧은 connect timeout — OS 기본 timeout 회귀 회피 (post-W5 종합 fix QA-2). */
+    private static final int TEST_CONNECT_TIMEOUT_MS = 100;
+    /** 단위 테스트 전용 짧은 read timeout. */
+    private static final int TEST_READ_TIMEOUT_MS = 200;
 
     private DefaultUserVerifier newVerifier(boolean failFast) {
         UserVerifierProperties p = new UserVerifierProperties();
@@ -23,6 +35,8 @@ class DefaultUserVerifierTest {
         p.setTtlSeconds(60L);
         p.setMaxSize(100L);
         p.setFailFast(failFast);
+        p.setConnectTimeoutMs(TEST_CONNECT_TIMEOUT_MS);
+        p.setReadTimeoutMs(TEST_READ_TIMEOUT_MS);
         return new DefaultUserVerifier(RestClient.builder(), p);
     }
 
@@ -82,5 +96,63 @@ class DefaultUserVerifierTest {
 
         // 후속 호출은 다시 cache miss → RPC 시도 (네트워크 실패 → fail-soft true) — exception 없음
         assertThat(v.exists(id)).isTrue();
+    }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-3, D-P9-21) — fail-mode alias 매핑 검증.
+     *
+     * <p>{@code failMode = STRICT} setter 호출 시 {@code failFast = true} 자동 동기화.
+     * gateway 실패 시 fail-fast 동작 (false 반환) — 기존 failFast=true 와 동일 결과.
+     */
+    @Test
+    void verify_strictMode_failFast_returnsFalseOnGatewayError() {
+        UserVerifierProperties p = new UserVerifierProperties();
+        p.setBaseUrl("http://127.0.0.1:1");
+        p.setInternalToken("test-token");
+        p.setFailMode(UserVerifierProperties.FailMode.STRICT);
+        // post-W5 종합 fix (QA-2) — 짧은 timeout 명시 (OS 기본 timeout 회귀 회피)
+        p.setConnectTimeoutMs(TEST_CONNECT_TIMEOUT_MS);
+        p.setReadTimeoutMs(TEST_READ_TIMEOUT_MS);
+
+        // STRICT 설정 시 failFast 자동 true 동기화 검증
+        assertThat(p.isFailFast()).isTrue();
+        assertThat(p.getFailMode()).isEqualTo(UserVerifierProperties.FailMode.STRICT);
+
+        DefaultUserVerifier v = new DefaultUserVerifier(
+                org.springframework.web.client.RestClient.builder(), p);
+        UUID id = UUID.randomUUID();
+
+        // STRICT 모드 — 네트워크 실패 시 fail-fast → false (검증 실패)
+        boolean result = v.exists(id);
+        assertThat(result).isFalse();
+    }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-3, D-P9-21) — fail-mode OPEN (default) 동작 검증.
+     *
+     * <p>{@code failMode = OPEN} (default) 시 {@code failFast = false} 자동 동기화.
+     * gateway 실패 시 fail-soft 동작 (true 반환, 기존 default 동작 보존).
+     */
+    @Test
+    void verify_openMode_failSoft_returnsTrueOnGatewayError() {
+        UserVerifierProperties p = new UserVerifierProperties();
+        p.setBaseUrl("http://127.0.0.1:1");
+        p.setInternalToken("test-token");
+        p.setFailMode(UserVerifierProperties.FailMode.OPEN);
+        // post-W5 종합 fix (QA-2) — 짧은 timeout 명시 (OS 기본 timeout 회귀 회피)
+        p.setConnectTimeoutMs(TEST_CONNECT_TIMEOUT_MS);
+        p.setReadTimeoutMs(TEST_READ_TIMEOUT_MS);
+
+        // OPEN 설정 시 failFast 자동 false 동기화 검증
+        assertThat(p.isFailFast()).isFalse();
+        assertThat(p.getFailMode()).isEqualTo(UserVerifierProperties.FailMode.OPEN);
+
+        DefaultUserVerifier v = new DefaultUserVerifier(
+                org.springframework.web.client.RestClient.builder(), p);
+        UUID id = UUID.randomUUID();
+
+        // OPEN 모드 — 네트워크 실패 시 fail-soft → true (검증 통과, default 보존)
+        boolean result = v.exists(id);
+        assertThat(result).isTrue();
     }
 }

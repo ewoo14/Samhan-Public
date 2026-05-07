@@ -167,4 +167,31 @@ class NotificationAdminControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.status().isNotFound())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.code").value("NOT_FOUND"));
     }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-2, D-P9-21) — payload @Size(max=4000) 검증.
+     *
+     * <p>4001 byte payload 입력 → @Valid binding 실패 → 400 INVALID_INPUT 반환.
+     * Postgres TOAST 임계 회피 + 비정상 페이로드 입력 차단 일관.
+     *
+     * <p>post-W5 종합 fix (QA-1, D-P9-21) — 4001 byte fixture 1줄 압축.
+     * ASCII 'a' 만 사용하므로 char length == byte length (UTF-8 1 byte) → 4001 char = 4001 byte.
+     */
+    @Test
+    void send_payloadOver4000Bytes_returns400() throws Exception {
+        // post-W5 종합 fix (QA-1) — 4001 byte oversize payload (ASCII 'a' 4001 char = 4001 byte UTF-8)
+        String oversize = "a".repeat(4001);
+
+        NotificationSendRequest req = new NotificationSendRequest(
+                RecipientType.EXTERNAL_PHONE, null, "010-9999-0000",
+                NotificationChannel.SMS, null, null, "payload size case", oversize);
+
+        mockMvc.perform(MockMvcRequestBuilders.post("/admin/notifications/send")
+                        .header("X-User-Id", "user-mgr")
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.code").value("INVALID_INPUT"));
+    }
 }
