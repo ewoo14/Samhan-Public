@@ -95,8 +95,8 @@ H2 local 프로파일은 `MockSmsGateway` 자동 활성으로 SOLAPI 변수 미�
 - **12-factor 12/12 OK** + RDS 호환 (V1~V8 standard SQL 만 — Flyway baseline PASS 검증 결과 22 file 중 본 service 7 file 포함)
 - **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조 (S3 endpoint override 대상 — signature PNG)
 - **env-template** — `infrastructure/env-templates/slip-service.env` 보유 (`SOLAPI_*` 포함)
-- **Secrets Manager rotation 대상** — `SAMHAN_INTERNAL_TOKEN` (90일) / `RABBIT_PASSWORD` / `SOLAPI_API_SECRET` 은 Phase 10 cutover 시점 `docs/migration/phase8/M-SECRETS-ROTATION-spec.md` 의 lambda 로 자동 rotation
-- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점
+- **Secrets Manager rotation 대상** — `SAMHAN_INTERNAL_TOKEN` (90일) / `RABBIT_PASSWORD` / `SOLAPI_API_SECRET` 은 Phase 11 cutover 시점 `docs/migration/phase8/M-SECRETS-ROTATION-spec.md` 의 lambda 로 자동 rotation
+- **ServiceDiscoveryClient (Phase 11 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 11 cutover 시점
 
 ## Phase 9 신규 service 매트릭스 (참조)
 

@@ -10,7 +10,7 @@ Phase 9 W1 — 거래처 마스터 도메인.
 
 slip-service M5 (`/from-*` endpoint) 가 현재 partnerCode 만 받고 partnerId 정규화를 자체 보유한 lookup 없이 처리하고 있다. partner-service 가 `GET /internal/partners/{partnerCode}` endpoint 를 제공함으로써 형제 service 가 partnerCode → partnerId / 마스터 / 신용 정보를 단일 호출로 획득할 수 있도록 한다.
 
-slip-service 측 client (PartnerClient) 구현 시점은 Phase 9 W5 또는 Phase 10 cutover 시점에 별도 PR 로 진행 (본 PR scope 외).
+slip-service 측 client (PartnerClient) 구현 시점은 Phase 9 W5 또는 Phase 11 cutover 시점에 별도 PR 로 진행 (본 PR scope 외).
 
 ## Domain (2 entity + 2 enum)
 
@@ -65,7 +65,7 @@ dashboard-service `PartnerCodeResolver.resolveAll(List<String>)` 가 본 endpoin
 | `SAMHAN_PARTNER_DB_HOST` / `PORT` / `NAME` / `USER` / `PASSWORD` | LEGACY_DB_* | DataSource (chained-default) |
 | `SAMHAN_INTERNAL_TOKEN` | `INTERNAL_AUTH_TOKEN` | X-Internal-Token expected 값 |
 | `SAMHAN_PARTNER_SERVICE_URL` | (신규 표준만) | 형제 service 가 본 service 호출 시 base URL |
-| `SAMHAN_DISCOVERY_PROVIDER` | `eureka` default | Phase 10 cutover 시점 `aws-cloud-map` 으로 전환 |
+| `SAMHAN_DISCOVERY_PROVIDER` | `eureka` default | Phase 11 cutover 시점 `aws-cloud-map` 으로 전환 |
 | `EUREKA_URL` | (legacy) | service discovery |
 
 `InternalTokenGuard` 가 부팅 시 prod 프로파일 + dev 기본값 조합을 거부.
@@ -88,7 +88,7 @@ dashboard-service `PartnerCodeResolver.resolveAll(List<String>)` 가 본 endpoin
 
 IT 베이스 = `AbstractPostgresIT` (Testcontainers PostgreSQL 16 + Docker 미가용 환경 skip).
 
-## Phase 10 cutover 영향
+## Phase 11 cutover 영향
 
 - `SAMHAN_DISCOVERY_PROVIDER=aws-cloud-map` 으로 토글 시 `shared:discovery-abstraction` 의 `AwsCloudMapServiceDiscoveryClient` 활성. 본 service 코드 변경 없음 (build.gradle / yml 한 줄 수준).
 - DataSource 는 chained-default 패턴이므로 RDS 호환. AWS Secrets Manager 마이그레이션 시 `spring.config.import: aws-secretsmanager:samhan/<env>/...` 추가만 (코드 변경 없음).

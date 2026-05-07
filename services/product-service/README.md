@@ -55,7 +55,7 @@ SamhanLogis Product 마스터 + Category 트리 + Google Sheets 동기화 서비
 - **12-factor 12/12 OK** + RDS 호환 (jsonb GIN index 등 standard PostgreSQL feature 만 사용 — RDS 미지원 extension 부재)
 - **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조
 - **env-template** — `infrastructure/env-templates/product-service.env` 보유 (`GOOGLE_SERVICE_ACCOUNT_KEY` 포함, `CHANGE_ME_LOCAL_ONLY` placeholder)
-- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점
+- **ServiceDiscoveryClient (Phase 11 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 11 cutover 시점
 
 ## Phase 9 신규 service 매트릭스 (참조)
 

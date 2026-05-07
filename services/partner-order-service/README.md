@@ -102,7 +102,7 @@ Scheduler (5분):
 - **12-factor 12/12 OK** + RDS 호환 (V1~V4 standard SQL 만)
 - **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조 (Resilience4j circuit breaker → CloudWatch alarm 매핑)
 - **env-template** — `infrastructure/env-templates/partner-order-service.env` 보유 (`SAMHAN_DC_CONFIG_SERVICE_URL` / `SAMHAN_PRODUCT_SERVICE_URL` / `SAMHAN_INVENTORY_SERVICE_URL` / `SAMHAN_SLIP_SERVICE_URL` / `SAMHAN_PARTNER_AUTH_SERVICE_URL` 5종)
-- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점 (현재는 Eureka 직접 등록)
+- **ServiceDiscoveryClient (Phase 11 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 11 cutover 시점 (현재는 Eureka 직접 등록)
 
 ## Phase 9 신규 service 매트릭스 (참조)
 
