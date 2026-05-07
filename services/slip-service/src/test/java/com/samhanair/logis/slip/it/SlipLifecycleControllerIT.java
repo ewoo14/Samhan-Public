@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.slip.SlipServiceApplication;
-import com.samhanair.logis.slip.client.InventoryClient;
-import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -25,7 +23,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -56,12 +53,7 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
-    private InventoryClient inventoryClient;
-
-    /** ProductClient 도 @MockBean (PR #17 1차 fail 회고 — 누락 시 lookup 실제 호출 → 500). */
-    @MockBean
-    private ProductClient productClient;
+    // 5차 fix: InventoryClient + ProductClient = AbstractPostgresIT base superset
 
     @BeforeEach
     void mockProductClient() {

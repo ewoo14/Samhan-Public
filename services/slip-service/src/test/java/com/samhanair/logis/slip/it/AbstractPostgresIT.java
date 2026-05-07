@@ -1,6 +1,11 @@
 package com.samhanair.logis.slip.it;
 
+import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.PartnerInternalClient;
+import com.samhanair.logis.slip.client.ProductClient;
+import com.samhanair.logis.slip.delivery.sms.SmsGateway;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.DockerClientFactory;
@@ -18,9 +23,20 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *
  * <p>Docker 데몬이 호스트에서 사용 불가하면 {@link DockerAvailableCondition} 이
  * 테스트를 fail 이 아닌 skip 으로 처리한다.
+ *
+ * <p><b>5차 fix — Spring Context superset {@code @MockBean}</b>:
+ * 모든 sub IT 가 동일한 외부 client 4종 ({@link InventoryClient}, {@link ProductClient},
+ * {@link SmsGateway}, {@link PartnerInternalClient}) 을 공유하도록 base 에 superset 으로 선언.
+ * 직전 PR #99 v3 = 14 IT × 8가지 @MockBean 변형 → ApplicationContext 8회 신축 (~5-10분 손실).
+ * 본 fix 로 캐시 키 동일화 → Context 1회만 신축. sub IT 들의 자체 @MockBean 은 모두 제거.
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
 public abstract class AbstractPostgresIT {
+
+    @MockBean protected InventoryClient inventoryClient;
+    @MockBean protected ProductClient productClient;
+    @MockBean protected SmsGateway smsGateway;
+    @MockBean protected PartnerInternalClient partnerInternalClient;
 
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =

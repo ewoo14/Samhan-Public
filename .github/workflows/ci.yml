@@ -56,7 +56,7 @@ jobs:
           java-version: '17'
 
       - name: Gradle 캐시 + Wrapper 검증
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4   # 5차 fix: v3 cache-restore HTTP 400 회피
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' && github.head_ref != 'main' }}
 
@@ -68,11 +68,12 @@ jobs:
           docker version
           docker ps
 
+      # 5차 fix: --no-daemon 제거 — assemble→test 사이 JVM 워밍업 재활용 (52s 절약).
       - name: assemble (전 모듈)
-        run: ./gradlew assemble --no-daemon
+        run: ./gradlew assemble
 
       - name: test (${{ matrix.group.name }})
-        run: ./gradlew ${{ matrix.group.test-tasks }} --no-daemon
+        run: ./gradlew ${{ matrix.group.test-tasks }}
 
       - name: 테스트 리포트 아티팩트 업로드 (실패 포함)
         if: always()

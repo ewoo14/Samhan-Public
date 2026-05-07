@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.slip.SlipServiceApplication;
-import com.samhanair.logis.slip.client.InventoryClient;
-import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -23,7 +21,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -59,16 +56,8 @@ class SlipControllerIT extends AbstractPostgresIT {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
-    private InventoryClient inventoryClient;
-
-    /**
-     * ProductClient 도 @MockBean 으로 격리. SlipService.create 가 라인 productId 검증 시
-     * lookup 호출하므로 mock 누락하면 실제 product-service RestClient 호출 → 500.
-     * (CI hotfix: PR #17 1차 fail 회고 — IT 가 ProductClient 누락으로 10건 fail)
-     */
-    @MockBean
-    private ProductClient productClient;
+    // 5차 fix: InventoryClient + ProductClient @MockBean = AbstractPostgresIT base superset 으로 통일
+    // (Spring Context 캐시 키 동일화 — 14 IT × 8 변형 → 1 컨텍스트 재사용)
 
     @BeforeEach
     void mockProductClient() {

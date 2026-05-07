@@ -10,10 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.samhanair.logis.slip.SlipServiceApplication;
-import com.samhanair.logis.slip.client.InventoryClient;
-import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
-import com.samhanair.logis.slip.delivery.sms.SmsGateway;
 import com.samhanair.logis.slip.delivery.sms.SmsResult;
 import com.samhanair.logis.slip.domain.SignatureAuditAction;
 import com.samhanair.logis.slip.repository.SlipSignatureAuditRepository;
@@ -32,7 +29,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,9 +56,7 @@ class SlipSignatureAdminIT extends AbstractPostgresIT {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private SlipSignatureAuditRepository auditRepository;
 
-    @MockBean private InventoryClient inventoryClient;
-    @MockBean private ProductClient productClient;
-    @MockBean private SmsGateway smsGateway;
+    // 5차 fix: 3 client (Inv+Prod+Sms) = AbstractPostgresIT base superset
 
     @BeforeEach
     void mockClients() {

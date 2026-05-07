@@ -9,12 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.samhanair.logis.slip.SlipServiceApplication;
-import com.samhanair.logis.slip.client.InventoryClient;
-import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.delivery.domain.DeliveryBatch;
 import com.samhanair.logis.slip.delivery.repository.DeliveryBatchRepository;
-import com.samhanair.logis.slip.delivery.sms.SmsGateway;
 import com.samhanair.logis.slip.delivery.sms.SmsResult;
 import com.samhanair.logis.slip.it.AbstractPostgresIT;
 import com.samhanair.logis.slip.repository.SlipRepository;
@@ -34,7 +31,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -65,10 +61,7 @@ class PublicSignatureControllerIT extends AbstractPostgresIT {
     @Autowired private DeliveryBatchRepository batchRepository;
     @Autowired private SlipRepository slipRepository;
 
-    // 회고 feedback_it_mockbean_external_clients.md — 모든 외부 client @MockBean
-    @MockBean private InventoryClient inventoryClient;
-    @MockBean private ProductClient productClient;
-    @MockBean private SmsGateway smsGateway;
+    // 5차 fix: 3 client (Inv+Prod+Sms) = AbstractPostgresIT base superset
 
     @BeforeEach
     void mockClients() {
