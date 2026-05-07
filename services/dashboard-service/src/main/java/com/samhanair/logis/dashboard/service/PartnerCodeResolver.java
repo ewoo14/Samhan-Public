@@ -37,12 +37,18 @@ public class PartnerCodeResolver {
     /**
      * partnerCode 로 partnerId UUID 를 조회. cache hit 시 RPC 회피.
      *
+     * <p>PR #94 W4 후속 fix (IT 1건 fail 정정) — Spring Cache 가 {@code Optional} 반환 타입을
+     * 자동 unwrap 하여 {@code #result} SpEL 변수에는 unwrap 된 UUID (또는 null) 가 바인딩됨.
+     * 따라서 {@code unless} 표현식에서 {@code #result.isPresent()} 호출 시 UUID 에 해당 메서드가
+     * 없어 {@code SpelEvaluationException} 발생하고 controller 호출이 500 으로 실패한다.
+     * unwrap 된 값이 null (= 원래 Optional.empty) 인 케이스만 캐시 회피하면 충분.
+     *
      * @param partnerCode 거래처 코드 (사용자 노출 식별자, nullable / blank 시 empty)
      * @return partnerId UUID (있으면 Optional.of, skeleton-mode / 미존재 / 호출 실패 시 empty)
      */
     @Cacheable(cacheNames = CacheConfig.CACHE_PARTNER_RESOLVE,
             key = "#partnerCode == null ? '__null__' : #partnerCode",
-            unless = "#result == null || !#result.isPresent()")
+            unless = "#result == null")
     public Optional<UUID> resolve(String partnerCode) {
         if (partnerCode == null || partnerCode.isBlank()) {
             return Optional.empty();
