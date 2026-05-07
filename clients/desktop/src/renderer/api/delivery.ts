@@ -1,5 +1,5 @@
 /**
- * 배송 묶음 (delivery batch) 도메인 API 클라이언트 — notification-slice-B.
+ * 배송 묶음 (delivery batch) 도메인 API 클라이언트 — link-dispatch-slice.
  *
  * 노출 endpoint (BE notification-service / batch-service):
  * - `GET    /delivery-batches?date=&sent=`        — 날짜 + sent 필터 목록

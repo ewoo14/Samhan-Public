@@ -47,3 +47,9 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     static_configs:
       - targets: ["notification-service:8093"]
+
+  # Phase 9 W4
+  - job_name: dashboard-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["dashboard-service:8094"]

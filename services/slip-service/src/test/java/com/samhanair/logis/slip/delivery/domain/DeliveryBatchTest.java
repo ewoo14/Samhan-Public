@@ -29,7 +29,8 @@ class DeliveryBatchTest {
     private static final UUID SOURCE_WH = UUID.randomUUID();
     private static final UUID DEST_WH = UUID.randomUUID();
     private static final UUID PARTNER = UUID.randomUUID();
-    private static final LocalDate BATCH_DATE = LocalDate.of(2026, 5, 5);
+    // 시간 의존 회귀 회피 — 항상 오늘 날짜 사용 (PR #94 fix, 2026-05-05 하드코딩 → 만료)
+    private static final LocalDate BATCH_DATE = LocalDate.now();
 
     @Test
     void create_setsTokenAndExpiry() {

@@ -24,7 +24,7 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string
   /**
    * 행 단위 추가 className 산출자 (옵션) — 행 단위 상태 시각화에 사용.
-   * 예) notification-slice-B 의 LinkDispatchListPage 에서 sent 행 옅은 파랑 배경.
+   * 예) link-dispatch-slice 의 LinkDispatchListPage 에서 sent 행 옅은 파랑 배경.
    * undefined 또는 빈 문자열 반환 시 추가 클래스 미부여.
    */
   rowClassName?: (row: T) => string | undefined

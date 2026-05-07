@@ -21,9 +21,11 @@ export * from './components/LineRow'
 export * from './components/StockBalanceModal'
 // sales-polish-2-slice (Slice A) 신규 컴포넌트
 export * from './components/ProgressBar'
-// notification-slice-B 신규 컴포넌트 (PhoneInput / CopyButton)
+// link-dispatch-slice 신규 컴포넌트 (PhoneInput / CopyButton)
 export * from './components/PhoneInput'
 export * from './components/CopyButton'
+// Phase 9 W4 후속 fix (Designer D-W4-2 + FE-W4-1/2/3 통합) — ChannelBadge 컴포넌트
+export * from './components/ChannelBadge'
 // signature-slice-C (Slice C) 신규 컴포넌트 (SignaturePad / SignatureViewer)
 export * from './components/SignaturePad'
 export * from './components/SignatureViewer'

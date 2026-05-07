@@ -20,7 +20,7 @@
 | 6     | 22 ~ 27 주차| legacy 마이그레이션 본격 구현 (M1a / M2 / M3 / M4 / M5 + 5 client)   | 완료       |
 | 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | 완료 (PR #87) |
 | 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **완료 (PR #88 / #89 / 본 PR)** |
-| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **3차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification skeleton 본 PR)** |
+| 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **4차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification #93 + W4 dashboard skeleton 본 PR)** |
 | 10    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기       |
 
 ---
@@ -278,13 +278,13 @@
 
 ---
 
-## Phase 9 — 잔여 도메인 (3차 진행)
+## Phase 9 — 잔여 도메인 (4차 진행)
 
 ### 예정 산출물
 - `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피 — **완료 (PR #91)**
 - `services/groupware-service` (8092, 결재선 + 메신저 + 일정 + UserClient) — **완료 (PR #92)**
-- `services/notification-service` (8093, 푸시/이메일/SMS 통합 라우터 + UserClient bulk verify) — **완료 (본 PR)**
-- `services/dashboard-service` (8094, KPI / 실시간 재고 / 매출) — W4 예정
+- `services/notification-service` (8093, 푸시/이메일/SMS 통합 라우터 + UserClient bulk verify) — **완료 (PR #93)**
+- `services/dashboard-service` (8094, KPI / 실시간 재고 / 매출 + 4 client + materialized view) — **완료 (본 PR)**
 
 **기존 14 service 포트 매핑 (Cross-check)**:
 - 8080 api-gateway / 8081 auth / 8082 logging / 8083 user / 8084 product / 8085 inventory
@@ -329,6 +329,24 @@
 - `services/notification-service/README.md` + `docs/dev-reports/phase9-step-3-notification-service.md` 신규
 - DECISIONS D-P9-09 / D-P9-10 / D-P9-11 추가
 - ROADMAP / DECISIONS / M-PHASE-9-readiness 갱신
+
+### 산출물 (4차 — 본 PR)
+- `services/dashboard-service` (8094) skeleton — 3 entity (KpiSnapshot / RealTimeStock / SalesAggregate) + 2 enum (KpiCategory / AggregateInterval) + 4 client (InventoryClient / AccountingClient / PartnerOrderClient / PartnerClient) + 3 repository + 4 service (KpiService / RealTimeStockService / SalesAggregateService / MaterializedViewRefreshService) + 2 controller (Internal KPI / Admin KPI+Stock+Sales+Refresh) + 3 dto + 7 config (InternalAuthProperties / InternalTokenFilter / InternalTokenGuard / SecurityConfig / WebClientConfig / DashboardCacheProperties / CacheConfig / DashboardRefreshProperties / MaterializedViewRefreshConfig + HeaderAuthenticationFilter) + 1 exception handler
+- Flyway V1 (`kpi_snapshots` + `realtime_stocks` + `sales_aggregates` + `mv_realtime_stock_summary` + `mv_sales_daily_summary`, BaseEntity 7 audit + Soft Delete + partial unique index 3종 + materialized view CONCURRENTLY refresh 의무 unique index 2종)
+- IT 2 (`DashboardInternalControllerIT` 4 case + `DashboardAdminControllerIT` 5 case, 4 client @MockBean) + 단위 테스트 4 (`KpiServiceTest` 6 + `RealTimeStockServiceTest` 4 + `SalesAggregateServiceTest` 5 + `MaterializedViewRefreshTest` 2 = 17 case)
+- ServiceDiscoveryClient **네 번째 소비자** (W1 partner / W2 groupware / W3 notification → W4 dashboard) — `shared:discovery-abstraction` 의존성 + `samhan.discovery.provider=eureka` default
+- `shared/user-client-abstraction/` **신규 모듈** (W3 BE backlog #1 채택) — `UserVerifier` interface + `DefaultUserVerifier` impl + `UserVerifierProperties` + 6 case 단위 테스트. notification-service / groupware-service `UserClient` 가 본 abstraction 의 thin delegate 로 전환 (회귀 0)
+- Caffeine cache (KPI 응답 60s TTL, max 5000 entries) — D-P9-12 (DevOps W3 backlog #4 채택, `samhan.cache.provider=caffeine\|redis` 토글)
+- Materialized view CONCURRENTLY refresh — 5분 간격 scheduled (`MaterializedViewRefreshConfig`) + admin 수동 트리거 endpoint (D-P9-13)
+- 환경변수 표준 (`SAMHAN_DASHBOARD_DB_*` chained-default + `SAMHAN_INTERNAL_TOKEN` + 4 외부 service URL + `SAMHAN_DISCOVERY_PROVIDER` + `SAMHAN_CACHE_PROVIDER` + `SAMHAN_DASHBOARD_KPI_CACHE_*` + `SAMHAN_DASHBOARD_REFRESH_INTERVAL`)
+- `infrastructure/env-templates/dashboard-service.env` 신규
+- `infrastructure/prometheus/prometheus.yml` `dashboard-service:8094` scrape target 추가
+- `services/dashboard-service/README.md` + `docs/dev-reports/phase9-step-4-dashboard-service.md` 신규
+- W3 backlog 5건 흡수 (BE-1 user-client-abstraction / Designer-1 channel badge tokens / Designer-2 W4+ baseline + PR template 신규 / DevOps-3 Caffeine vs Redis / FE-3 notification-slice-B → link-dispatch-slice rename 16 file)
+- `clients/web/design-system/src/tokens/tokens.css` `b-channel-push/email/sms` 3종 토큰 신설 (Google Material — Blue/Red/Green)
+- `docs/templates/PR-template-color-reference.md` 신규 — W4+ baseline = W3 Google Material method 컬러 1:1 표준 명시
+- 3 client README (`clients/desktop/README.md` / `clients/web/design-system/README.md` / `clients/mobile/README.md`) — slice 명 정정 + 채널 토큰 안내
+- DECISIONS D-P9-12 / D-P9-13 / D-P9-14 / D-P9-15 추가
 
 ### 진입 조건
 - Phase 8 호환성 가드 + 운영 가드 정착 (PR #88 / #89 / #90 머지 시 충족)
@@ -430,7 +448,8 @@
 | #90| 8     | Phase 8 3차 (AWS 마이그레이션 dry-run + Phase 8 회고 + Phase 9 진입 plan + ROADMAP/DECISIONS 갱신) |
 | #91 | 9 | Phase 9 1차 W1 (partner-service skeleton — port 8095, M5 partnerId lookup endpoint + 2 entity + Admin CRUD + ServiceDiscoveryClient 도입) |
 | #92 | 9 | Phase 9 2차 W2 (groupware-service skeleton — port 8092, 결재선 chain + 메신저 + 일정 + UserClient + ServiceDiscoveryClient 두 번째 소비자) |
-| 본 PR | 9 | Phase 9 3차 W3 (notification-service skeleton — port 8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s + ServiceDiscoveryClient 세 번째 소비자 + DevOps #11/#12 흡수) |
+| #93 | 9 | Phase 9 3차 W3 (notification-service skeleton — port 8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s + ServiceDiscoveryClient 세 번째 소비자 + DevOps #11/#12 흡수) |
+| 본 PR | 9 | Phase 9 4차 W4 (dashboard-service skeleton — port 8094, 3 entity + 2 materialized view (CONCURRENTLY refresh) + 4 client (Inventory/Accounting/PartnerOrder/Partner) + Caffeine KPI cache + ServiceDiscoveryClient 네 번째 소비자 + shared:user-client-abstraction 신규 + W3 backlog 5건 흡수) |
 
 ---
 
@@ -453,6 +472,8 @@
 | `services/partner-service`           | 9          | W1 skeleton (8095, 거래처 마스터 + M5 partnerCode lookup endpoint, ServiceDiscoveryClient 도입) |
 | `services/groupware-service`         | 9          | W2 skeleton (8092, 결재선 chain + 메신저 + 일정 + UserClient, ServiceDiscoveryClient 두 번째 소비자) |
 | `services/notification-service`      | 9          | W3 skeleton (8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s, ServiceDiscoveryClient 세 번째 소비자) |
+| `services/dashboard-service`         | 9          | W4 skeleton (8094, 3 entity + 2 materialized view + 4 client + Caffeine KPI cache, ServiceDiscoveryClient 네 번째 소비자) |
+| `shared/user-client-abstraction`     | 9          | W4 신규 — UserVerifier interface + DefaultUserVerifier impl (Caffeine TTL 60s, W3 backlog #1 채택) |
 | `clients/desktop`                    | 2 / 6      | v4                |
 | `clients/web/design-system`          | 2          | 21 컴포넌트       |
 | `clients/web/order-app`              | 6          | v4 (Vite + 임베드)|
@@ -486,5 +507,7 @@
 - Phase 9 1차 dev report: `docs/dev-reports/phase9-step-1-partner-service.md`
 - Phase 9 2차 dev report: `docs/dev-reports/phase9-step-2-groupware-service.md`
 - Phase 9 3차 dev report: `docs/dev-reports/phase9-step-3-notification-service.md`
+- Phase 9 4차 dev report: `docs/dev-reports/phase9-step-4-dashboard-service.md`
+- Phase 9 4차 PR template color reference: `docs/templates/PR-template-color-reference.md`
 - Phase 10 dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
 - 본 문서 갱신 보고: `docs/dev-reports/docs-roadmap-update.md`

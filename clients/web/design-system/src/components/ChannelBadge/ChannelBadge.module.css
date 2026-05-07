@@ -1,0 +1,30 @@
+/* ChannelBadge — 알림 채널 3종 (PUSH / EMAIL / SMS) Badge.
+ *
+ * 색상 토큰은 tokens.css 의 :root --color-channel-* CSS variable 을 그대로 인용 →
+ * React 컴포넌트 / 비-React utility class (`.b-channel-*`) 양쪽이 동일 색상 일관.
+ *
+ * size:
+ *   - md (12px) — design-system 기본
+ *   - sm (11px) — QA HTML matrix inline 호환
+ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* ---------- channel ---------- */
+.channel-push  { background: var(--color-channel-push,  #4285f4); }
+.channel-email { background: var(--color-channel-email, #ea4335); }
+.channel-sms   { background: var(--color-channel-sms,   #34a853); }
+
+/* ---------- size ---------- */
+.size-md { font-size: var(--badge-channel-font-size,    12px); }
+.size-sm { font-size: var(--badge-channel-font-size-sm, 11px); }

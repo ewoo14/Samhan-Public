@@ -118,6 +118,27 @@ dist/
 
 신규 service (partner / groupware / notification / dashboard) 의 화면 컴포넌트가 본 design-system 의 Button / Input / Modal / FormField / Card 등을 dependency 로 사용 예정. 추가 컴포넌트 (예: dashboard 의 Chart / Sparkline) 는 W4 진입 시점 신규 작성 + Storybook story 추가 의무.
 
+#### W4 신규 — 3 channel badge 토큰 (W3 Designer backlog #2 채택)
+
+`b-channel-push` / `b-channel-email` / `b-channel-sms` 3종 토큰 신설 (Google Material — Blue / Red / Green). dashboard QA `3-api-endpoints-summary.html` 에서 1차 사용.
+
+#### W4 후속 fix — `<ChannelBadge>` 정식 컴포넌트 (Designer D-W4-2 + FE-W4-1/2/3 통합)
+
+| 컴포넌트 | 설명 | 도입 슬라이스 |
+| --- | --- | --- |
+| `ChannelBadge` | 알림 채널 (`PUSH` / `EMAIL` / `SMS`) badge — Google Material 컬러 + size (`md` / `sm`) variant + 커스텀 `label` prop. CSS Module + `--color-channel-*` CSS variable 토큰화. | W4 후속 fix (PR #94) |
+
+- `src/components/ChannelBadge/ChannelBadge.tsx` — `forwardRef` + `HTMLSpanElement` 호환 + `data-channel/size` 속성.
+- `src/components/ChannelBadge/ChannelBadge.module.css` — `--color-channel-{push,email,sms}` / `--badge-channel-font-size{,-sm}` 인용. `tokens.css` utility class (`.b-channel-*`) 와 색상 일관.
+- `src/components/ChannelBadge/ChannelBadge.stories.tsx` — Storybook 7 story (3 channel × 2 size grid + Push/Email/Sms 단건 + SmallSize + KoreanLabel).
+- `src/index.ts` 에 `ChannelBadge` / `ChannelType` / `ChannelBadgeSize` / `ChannelBadgeProps` 정식 export.
+
+#### slice 명 정정 (W3 FE backlog #5 채택)
+
+- 기존 `notification-slice-B` → `link-dispatch-slice` 일괄 정정.
+- 신규 `notification-service` (backend) 와 단어 충돌 회피.
+- 영향 file: `src/components/CopyButton/CopyButton.tsx` 외 4개 (DataTable / PhoneInput / index.ts).
+
 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.
 
 ## 라이선스

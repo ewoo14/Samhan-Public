@@ -189,7 +189,7 @@ export function DispatchView() {
 
           <div className="dispatch-signatures" aria-label="서명">
             {/*
-              notification-slice-B: 기사명이 입력된 경우 라벨에 자동 노출 (괄호 안).
+              link-dispatch-slice: 기사명이 입력된 경우 라벨에 자동 노출 (괄호 안).
               인쇄 본문 디자인 자체는 변경 X (피드백 `feedback_print_design_iteration.md` 가드).
             */}
             <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">

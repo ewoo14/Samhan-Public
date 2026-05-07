@@ -1,7 +1,7 @@
 /**
  * BatchDetailModal — LinkDispatchListPage 행 클릭 시 열리는 배치 상세 모달.
  *
- * notification-slice-B Designer wireframes.md § 2 + ux-flow.md § 1.
+ * link-dispatch-slice Designer wireframes.md § 2 + ux-flow.md § 1.
  *
  * 표시:
  * - 모달 헤더: 배송일자 + 기사명 + 기사 연락처 (PII 노출 — 사내 화면)

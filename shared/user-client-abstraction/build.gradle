@@ -1,0 +1,48 @@
+/*
+ * shared:user-client-abstraction — Phase 9 W4 신규 모듈.
+ *
+ * Phase 9 W3 BE backlog #1 채택 — notification-service / groupware-service / dashboard-service
+ * 의 UserClient 가 사실상 같은 책임 (user-service `/internal/users/{id}` + `/verify-bulk`
+ * Caffeine TTL 60s) 을 중복 구현 → 단일 abstraction 으로 일관 통합.
+ *
+ * 본 모듈 산출:
+ *   - {@code UserVerifier} interface — 단건 / bulk verify 표준 API
+ *   - {@code DefaultUserVerifier} impl — RestClient + Caffeine cache (TTL 60s, max 10000)
+ *   - {@code UserVerifierProperties} — TTL / max-size / fail-fast 토글 표준
+ *
+ * Java library only — Spring Boot 플러그인 미적용 (소비자가 fat jar 로 묶지 않도록).
+ *
+ * 회귀 안전성: notification-service / groupware-service 의 기존 {@code UserClient} 는
+ * 본 모듈의 {@link com.samhanair.logis.userclient.UserVerifier} 를 internal field 로
+ * 보유 + delegate. {@code @MockBean UserClient} 패턴의 기존 IT 21 case 회귀 0.
+ */
+
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+    }
+}
+
+dependencies {
+    api 'org.springframework.boot:spring-boot-starter'
+    api 'org.springframework.boot:spring-boot-autoconfigure'
+    api 'org.springframework:spring-web'
+
+    api 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    api 'com.fasterxml.jackson.core:jackson-databind'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    testCompileOnly "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+}

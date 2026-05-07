@@ -114,4 +114,8 @@ worktree path 가 한글이면 npm install / Metro bundler 실패 가능 — JDK
 | dashboard-service    | (없음)      | -                                     | 거래처 화면 비노출 (직원용 only)            |
 | groupware-service    | (없음)      | -                                     | 거래처 화면 비노출 (직원용 only)            |
 
+### slice 명 정정 (Phase 9 W4 — W3 FE backlog #5 채택)
+
+데스크톱의 `notification-slice-B` (배송 묶음 + e-sign URL SMS 발송 슬라이스) 가 backend 신규 `notification-service` (8093) 와 명칭 충돌하여 `link-dispatch-slice` 로 일괄 정정. 본 mobile client 는 해당 slice 직접 의존 없음 — 단어 충돌 회피 인지 + 향후 push 통합 시 `notification-service` (backend) 와 `link-dispatch-slice` (frontend) 명확 구분.
+
 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.

@@ -84,3 +84,9 @@ npm run build:win
 - 전표 상세 화면 일부 placeholder
 - 페이지네이션 size=20 고정
 - 결재선/메신저/저재고 알림 카드 placeholder
+
+## 슬라이스 코드명 정정 (Phase 9 W4 — W3 FE backlog #5 채택)
+
+- 기존 `notification-slice-B` (배송 묶음 + e-sign URL SMS 발송 슬라이스) → `link-dispatch-slice` 로 일괄 정정.
+- 신규 `notification-service` (8093, FCM/SES/Aligo 통합 라우터) 와 명칭 충돌 회피 — `notification` 단어는 backend service 전용으로 예약.
+- 본 정정 영향 file: `src/renderer/api/delivery.ts` 외 11개 (slip / mock / routes / styles / components 일괄).

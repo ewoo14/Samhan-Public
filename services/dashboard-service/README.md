@@ -1,0 +1,150 @@
+# dashboard-service (Phase 9 W4)
+
+> KPI 일/주/월 스냅샷 + 실시간 재고 캐시 + 매출 집계 + 2 PostgreSQL materialized view — `dashboard_db`, port `8094`.
+
+## 1. 도입 배경
+
+운영 admin / 거래처 admin 화면에서 일별 매출 / 활성 거래처 / 재고 회전율 등 KPI 시계열 + 창고별 실시간 재고 + 매출 집계를 단일 진입점으로 노출하기 위해 Phase 9 W4 에서 신규 service 분리.
+
+- W1 partner-service (8095) / W2 groupware-service (8092) / W3 notification-service (8093) 에 이은 **4 번째 신규 service**.
+- ServiceDiscoveryClient **네 번째 소비자** (W1 partner / W2 groupware / W3 notification → W4 dashboard).
+- 4 외부 service (inventory / accounting / partner-order / partner) 의존성 — 모두 fail-soft 정책 (skeleton 단계).
+- Phase 10 cutover 시점에 inventory / accounting endpoint 정착 후 실 데이터 집계 활성.
+
+## 2. Domain (3 entity + 2 enum + 2 materialized view)
+
+### 2-1. Entity
+
+| Entity | 설명 | 핵심 필드 |
+|---|---|---|
+| `KpiSnapshot` | KPI 일/주/월 스냅샷 | snapshotDate / category / value (NUMERIC(20,4)) |
+| `RealTimeStock` | 실시간 재고 캐시 (inventory-service 동기) | productId / warehouseCode / quantity / refreshedAt |
+| `SalesAggregate` | 일별/거래처별 매출 집계 | aggregateDate / partnerId / amount / itemCount |
+
+BaseEntity 7 audit (`created_at` / `created_by` / `modified_at` / `modified_by` / `deleted_at` / `deleted_by` / `is_deleted`) + `@SQLRestriction("is_deleted = false")` 의무.
+
+### 2-2. Enum
+
+| Enum | 값 |
+|---|---|
+| `KpiCategory` | DAILY_SALES / WEEKLY_SALES / MONTHLY_SALES / ORDER_COUNT / ACTIVE_PARTNERS / STOCK_TURNOVER |
+| `AggregateInterval` | DAILY / WEEKLY / MONTHLY |
+
+### 2-3. Materialized view
+
+| View | 설명 |
+|---|---|
+| `mv_realtime_stock_summary` | 창고별 SKU 수 + 총수량 합 + latest_refreshed_at |
+| `mv_sales_daily_summary` | 일별 거래처 수 + 총금액 + 총항목수 |
+
+REFRESH MATERIALIZED VIEW CONCURRENTLY 지원 (unique index 의무 보유, V1 SQL).
+
+## 3. REST API
+
+### Internal API (X-Internal-Token + ROLE_MASTER, `/internal/**` prefix 한정)
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/internal/dashboard/kpi/{category}?from=&to=` | 형제 service 가 KPI 시계열 조회 |
+
+### Admin API (JWT/Header + ROLE_MANAGER 이상)
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/admin/dashboard/kpi?category=&from=&to=` | KPI 조회 (category 선택, Caffeine cache 60s) |
+| GET | `/admin/dashboard/realtime-stock?warehouseCode=&productCode=` | 실시간 재고 (UUID 비공개 가드 — code 만 노출) |
+| GET | `/admin/dashboard/sales-aggregate?from=&to=&interval=DAILY&partnerCode=` | 매출 집계 (UUID 비공개 가드 — partnerCode 입력 + service-side resolve, W4 fix Q-W4-2) |
+| POST | `/admin/dashboard/refresh` | Materialized view REFRESH 트리거 + KPI cache invalidate |
+
+## 4. 4 외부 client (ServiceDiscoveryClient 네 번째 소비자)
+
+| Client | Target service | 호출 endpoint | 정책 |
+|---|---|---|---|
+| `InventoryClient` | inventory-service:8085 | `GET /internal/stock?productId=&warehouseCode=` | fail-soft (실패 → empty Optional) |
+| `AccountingClient` | accounting-service:8087 | `GET /internal/sales?partnerId=&from=&to=` | fail-soft (실패 → BigDecimal.ZERO) |
+| `PartnerOrderClient` | partner-order-service:8088 | `GET /internal/orders/count?partnerId=&from=&to=` | fail-soft (실패 → 0) |
+| `PartnerClient` | partner-service:8095 (W1) | `GET /internal/partners/{partnerCode}` | W1 endpoint 활용 (운영, `PartnerSummary` 응답) |
+
+본 슬라이스는 skeleton — 응답 파싱 / DTO 매핑은 Phase 10 cutover 시점.
+
+### 4-1. skeleton-mode 토글 (PR #94 W4 후속 fix — BE 의견 2 채택)
+
+`samhan.dashboard.client.skeleton-mode` (default `true`) 환경변수로 4 client 의 외부 호출을 일관 토글:
+
+- `true` (W4 default) — 4 client 가 외부 RPC 회피, default 반환 (`Optional.empty` / `BigDecimal.ZERO` / `0`). skeleton 의도 명확화 + outbound traffic 0.
+- `false` (Phase 10 cutover) — 외부 호출 활성. 본문 파싱 미구현 client 는 `UnsupportedOperationException` 으로 명시 실패 (Phase 10 BE 슬라이스에서 구현 의무).
+
+env: `SAMHAN_DASHBOARD_CLIENT_SKELETON_MODE=true|false`
+
+## 5. shared:user-client-abstraction (W3 backlog #1 채택)
+
+본 PR 에서 `shared/user-client-abstraction/` 모듈 신규:
+
+- `UserVerifier` interface (단건 / bulk verify)
+- `DefaultUserVerifier` impl (RestClient + Caffeine TTL 60s, max 10000)
+- `UserVerifierProperties` (baseUrl / internalToken / TTL / failFast 토글)
+
+notification-service / groupware-service 의 기존 `UserClient` 구현을 본 abstraction 의 delegate 로 전환 (회귀 0 — IT mock 패턴 보존). dashboard-service 도 의존성 등록 (실 사용은 후속).
+
+## 6. 캐시 전략 (D-P9-12 — DevOps W3 backlog #4 채택)
+
+| 항목 | 결정 |
+|---|---|
+| Provider | Caffeine (in-process, single-instance 적합) |
+| KPI 응답 TTL | 60초 (`samhan.cache.kpi.ttl-seconds`) |
+| KPI 응답 max-size | 5000 entries |
+| Redis 토글 | `samhan.cache.provider=caffeine\|redis` (Phase 10 multi-instance scaling 시점 활성) |
+| Cache eviction | upsert / refresh / invalidateCache 호출 시 allEntries=true |
+
+## 7. Materialized view REFRESH (D-P9-13)
+
+- `samhan.dashboard.refresh.interval-minutes` (default 5)
+- `MaterializedViewRefreshConfig` `@Scheduled` initialDelay 60s + fixedRate 5분
+- `POST /admin/dashboard/refresh` 수동 트리거 가능
+- fail-soft — REFRESH 실패 시 silent skip + warn log (다음 주기 재시도)
+
+## 8. 환경변수 (chained-default 표준)
+
+`SAMHAN_DASHBOARD_*` 표준, `LEGACY_*` legacy fallback 보유 (Phase 8 2차 표준 일관).
+
+| 변수 | 기본값 | 비고 |
+|---|---|---|
+| `SAMHAN_DASHBOARD_PORT` | 8094 | |
+| `SAMHAN_DASHBOARD_DB_*` | localhost:5432/dashboard_db | |
+| `SAMHAN_INTERNAL_TOKEN` | dev-internal-token-change-me | prod 부팅 거부 가드 |
+| `SAMHAN_DISCOVERY_PROVIDER` | eureka | aws-cloud-map (Phase 10) |
+| `SAMHAN_INVENTORY_SERVICE_URL` | http://inventory-service:8085 | |
+| `SAMHAN_ACCOUNTING_SERVICE_URL` | http://accounting-service:8087 | |
+| `SAMHAN_PARTNER_ORDER_SERVICE_URL` | http://partner-order-service:8088 | |
+| `SAMHAN_PARTNER_SERVICE_URL` | http://partner-service:8095 | |
+| `SAMHAN_CACHE_PROVIDER` | caffeine | caffeine\|redis |
+| `SAMHAN_DASHBOARD_KPI_CACHE_TTL` | 60 | 초 |
+| `SAMHAN_DASHBOARD_KPI_CACHE_MAX` | 5000 | entries |
+| `SAMHAN_DASHBOARD_REFRESH_INTERVAL` | 5 | 분 |
+| `SAMHAN_DASHBOARD_CLIENT_SKELETON_MODE` | true | W4 fix BE 의견 2 — 4 client 외부 호출 토글 |
+| `SAMHAN_DASHBOARD_PARTNER_RESOLVE_TTL` | 300 | W4 fix Q-W4-2 — partnerCode resolve 캐시 TTL (초) |
+| `SAMHAN_DASHBOARD_PARTNER_RESOLVE_MAX` | 1000 | W4 fix Q-W4-2 — partnerCode resolve 캐시 max 엔트리 |
+
+전체는 `infrastructure/env-templates/dashboard-service.env` 참조.
+
+## 9. 테스트
+
+| Test | 종류 | 케이스 |
+|---|---|---|
+| `KpiServiceTest` | 단위 | 6 (null/range/repository/upsert insert+update) |
+| `RealTimeStockServiceTest` | 단위 | 4 (filter/refreshOne fail-soft/400) |
+| `SalesAggregateServiceTest` | 단위 | 5 (range/partner filter/aggregate fail-soft) |
+| `MaterializedViewRefreshTest` | 단위 | 2 (concurrent / fail-soft) |
+| `DashboardInternalControllerIT` | IT | 4 (401 / 403 / 200 / 400) |
+| `DashboardAdminControllerIT` | IT | 5 (KPI / stock / sales / refresh / 400) |
+
+총 **17 단위 PASS** + **9 IT** (Docker 미가용 환경 skip, CI Linux PASS). 4 외부 client 모두 `@MockBean` 격리 의무.
+
+## 10. Phase 10 cutover 진입 사항
+
+- Inventory / Accounting / PartnerOrder Internal API 응답 파싱 + DTO 매핑
+- Caffeine → Redis 토글 (multi-instance scaling)
+- KPI 산출 batch job (현 슬라이스 미포함, 별도 PR scope)
+- Dashboard 화면 — design-system Chart / Sparkline 컴포넌트 신규 + visual baseline (Designer 협업)
+- Materialized view 성능 모니터링 + Resilience4j circuit breaker (REFRESH 5분 초과 시 회피)
+- ServiceDiscoveryClient `aws-cloud-map` 토글 활성

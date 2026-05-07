@@ -1,7 +1,7 @@
 /**
  * BatchStatusCell — LinkDispatchListPage 표 6열 (SMS 발송완료) 전용 셀.
  *
- * notification-slice-B Designer wireframes.md § 1 + components.md § BatchStatusCell.
+ * link-dispatch-slice Designer wireframes.md § 1 + components.md § BatchStatusCell.
  *
  * 표시 분기:
  * - smsSentAt === null → primary 버튼 [SMS 발송] (행 클릭 이벤트는 stopPropagation)

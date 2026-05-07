@@ -185,7 +185,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const [tag, setTag] = useState<DeliveryTagOption['code'] | null>(null)
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  // notification-slice-B 신규 — 기사명 + 기사 휴대폰 (LinkDispatchListPage 자동 그룹의 키)
+  // link-dispatch-slice 신규 — 기사명 + 기사 휴대폰 (LinkDispatchListPage 자동 그룹의 키)
   const [driverName, setDriverName] = useState('')
   const [driverPhone, setDriverPhone] = useState('')
 
@@ -365,7 +365,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         partnerName: partnerName.trim() || undefined,
         deliveryTag: isOutbound ? tag ?? undefined : undefined,
         memo: memo.trim() || undefined,
-        // notification-slice-B — OUTBOUND 만 driver 정보 송신
+        // link-dispatch-slice — OUTBOUND 만 driver 정보 송신
         driverName: isOutbound && driverName.trim() ? driverName.trim() : undefined,
         driverPhone: isOutbound && driverPhone ? driverPhone : undefined,
         lines: lines
@@ -486,7 +486,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         </div>
 
         {/*
-          notification-slice-B 신규: 기사명 + 기사 휴대폰 (OUTBOUND 만)
+          link-dispatch-slice 신규: 기사명 + 기사 휴대폰 (OUTBOUND 만)
           LinkDispatchListPage 자동 그룹의 키 (기사명 + 배송일자) 가 된다.
         */}
         {isOutbound ? (

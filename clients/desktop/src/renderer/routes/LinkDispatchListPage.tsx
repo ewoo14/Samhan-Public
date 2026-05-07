@@ -1,5 +1,5 @@
 /**
- * 링크발송 (배송 묶음) 목록 — notification-slice-B FE 메인 화면.
+ * 링크발송 (배송 묶음) 목록 — link-dispatch-slice FE 메인 화면.
  *
  * 라우트: `/sales/link-dispatch` (사이드바 메뉴 "링크발송").
  *

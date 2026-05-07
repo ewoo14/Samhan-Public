@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>dashboard-service test report summary — Phase 9 W4</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 28px 36px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-warn { background: #fef3c7; color: #854d0e; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<h1>dashboard-service — gradle test 종합</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W4 (port 8094 / DB dashboard_db) — <code>./gradlew :services:dashboard-service:test</code></p>
+
+<div class="summary">
+  <p><strong>BUILD</strong>: <span class="badge b-ok">SUCCESSFUL</span> (6s)</p>
+  <p><strong>단위 테스트</strong>: 17 case PASS / 0 failure / 0 error</p>
+  <p><strong>IT</strong>: 9 case skip (Docker 미가용 — CI Linux runner 에서 PASS, AbstractPostgresIT.DockerAvailableCondition)</p>
+  <p><strong>shared:user-client-abstraction</strong>: 6 case PASS (DefaultUserVerifierTest — null/empty/network fail-soft/fail-fast/cache invalidate)</p>
+  <p><strong>회귀 검증</strong>: notification-service / groupware-service test 100% PASS (UserClient delegate 전환 후)</p>
+  <p><strong>한글 path 트랩 회피</strong>: 단위 테스트 부팅 PASS, IT 는 skip 으로 gradle test 통과 (memory feedback_korean_path_jdk)</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="num">26</div><div class="lbl">총 testcase (dashboard)</div></div>
+  <div class="stat"><div class="num">17</div><div class="lbl">단위 PASS</div></div>
+  <div class="stat"><div class="num">9</div><div class="lbl">IT skip (Docker)</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">failure / error</div></div>
+</div>
+
+<h2>Test class 결과 (dashboard-service)</h2>
+<table>
+  <thead><tr><th>Test class</th><th>case</th><th>passed</th><th>skipped</th><th>time</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>KpiServiceTest</code></td>
+      <td>6</td>
+      <td><span class="badge b-ok">6 PASS</span></td>
+      <td>0</td>
+      <td>1.039s</td>
+      <td>category null / range / repository delegate / upsert insert + update / cache evict</td>
+    </tr>
+    <tr>
+      <td><code>RealTimeStockServiceTest</code></td>
+      <td>4</td>
+      <td><span class="badge b-ok">4 PASS</span></td>
+      <td>0</td>
+      <td>0.111s</td>
+      <td>전체 list / warehouse 필터 / refreshOne (inventory client mock) / 400</td>
+    </tr>
+    <tr>
+      <td><code>SalesAggregateServiceTest</code></td>
+      <td>5</td>
+      <td><span class="badge b-ok">5 PASS</span></td>
+      <td>0</td>
+      <td>0.082s</td>
+      <td>range 400 / partner 필터 / aggregateOne fail-soft (4 client ZERO/0)</td>
+    </tr>
+    <tr>
+      <td><code>MaterializedViewRefreshTest</code></td>
+      <td>2</td>
+      <td><span class="badge b-ok">2 PASS</span></td>
+      <td>0</td>
+      <td>0.111s</td>
+      <td>concurrent refresh / fail-soft (예외 미전파)</td>
+    </tr>
+    <tr>
+      <td><code>DashboardInternalControllerIT</code></td>
+      <td>4</td>
+      <td>0</td>
+      <td><span class="badge b-warn">4 skip</span></td>
+      <td>0.001s</td>
+      <td>토큰 누락 403 / 불일치 401 / 정상 200 / 잘못된 enum 400 (CI Linux PASS)</td>
+    </tr>
+    <tr>
+      <td><code>DashboardAdminControllerIT</code></td>
+      <td>5</td>
+      <td>0</td>
+      <td><span class="badge b-warn">5 skip</span></td>
+      <td>0.000s</td>
+      <td>KPI / stock / sales / refresh / range 400 (CI Linux PASS)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>shared:user-client-abstraction 테스트 (W3 backlog #1 채택)</h2>
+<table>
+  <thead><tr><th>Test class</th><th>case</th><th>passed</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>DefaultUserVerifierTest</code></td>
+      <td>6</td>
+      <td><span class="badge b-ok">6 PASS</span></td>
+      <td>null/empty 입력 / 네트워크 실패 fail-soft / fail-fast / bulk 모두 통과 / cache invalidate</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>관련 PR / 머지 매트릭스</h2>
+<table>
+  <thead><tr><th>PR</th><th>주제</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr><td>#91</td><td>Phase 9 1차 W1 partner-service skeleton (port 8095, Self-contained)</td><td><span class="badge b-ok">머지</span></td></tr>
+    <tr><td>#92</td><td>Phase 9 2차 W2 groupware-service skeleton (port 8092, UserClient + ServiceDiscoveryClient 두 번째 소비자)</td><td><span class="badge b-ok">머지</span></td></tr>
+    <tr><td>#93</td><td>Phase 9 3차 W3 notification-service skeleton (port 8093, FCM/SES/Aligo + UserClient bulk verify + Caffeine TTL 60s)</td><td><span class="badge b-ok">머지</span></td></tr>
+    <tr><td>본 PR</td><td>Phase 9 4차 W4 dashboard-service skeleton (port 8094, KPI/실시간재고/매출 + 4 client + materialized view + ServiceDiscoveryClient 네 번째 소비자) + W3 backlog 5건 흡수</td><td><span class="badge b-info">제안</span></td></tr>
+  </tbody>
+</table>
+
+<h2>W3 backlog 흡수 검증 (5건 채택)</h2>
+<table>
+  <thead><tr><th>#</th><th>출처</th><th>항목</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>BE</td><td><code>shared:user-client-abstraction</code> 모듈 신규 + notification/groupware delegate 전환</td><td><span class="badge b-ok">흡수 완료</span></td></tr>
+    <tr><td>2</td><td>Designer</td><td>3 channel badge 토큰 (b-channel-push/email/sms) — design-system tokens.css 신설</td><td><span class="badge b-ok">흡수 완료</span></td></tr>
+    <tr><td>3</td><td>Designer</td><td>W4+ baseline = W3 Google Material method 컬러 1:1 + PR template 신규</td><td><span class="badge b-ok">흡수 완료</span></td></tr>
+    <tr><td>4</td><td>DevOps</td><td>Caffeine vs Redis 트레이드오프 검토 + dev-report § 캐시 전략 + samhan.cache.provider 토글</td><td><span class="badge b-ok">흡수 완료 (D-P9-12)</span></td></tr>
+    <tr><td>5</td><td>FE</td><td>notification-slice-B → link-dispatch-slice rename (delivery.ts:4 + 16 file 일괄)</td><td><span class="badge b-ok">흡수 완료</span></td></tr>
+  </tbody>
+</table>
+
+<h2>Workflow / 가드 체크</h2>
+<table>
+  <thead><tr><th>가드</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr><td>BaseEntity 7 audit + Soft Delete</td><td><span class="badge b-ok">PASS (KpiSnapshot + RealTimeStock + SalesAggregate)</span></td></tr>
+    <tr><td>VARCHAR(N) only / NUMERIC(20,4) / CHAR 금지</td><td><span class="badge b-ok">PASS (V1 SQL 검증)</span></td></tr>
+    <tr><td>UUID 비공개 — DTO 는 productCode/partnerCode 만 노출</td><td><span class="badge b-ok">PASS (Realtime/Sales response from())</span></td></tr>
+    <tr><td>InternalTokenFilter <code>/internal/**</code> prefix 한정</td><td><span class="badge b-ok">PASS (PR #91/#92/#93 패턴 일관)</span></td></tr>
+    <tr><td>chained-default 환경변수</td><td><span class="badge b-ok">PASS (SAMHAN_DASHBOARD_DB_* + LEGACY_*)</span></td></tr>
+    <tr><td>GitGuardian — 시크릿 <code>CHANGE_ME_LOCAL_ONLY</code></td><td><span class="badge b-ok">PASS (DB / internal token)</span></td></tr>
+    <tr><td>한국어 Javadoc + dev-report + DECISIONS</td><td><span class="badge b-ok">PASS (33 file + dev-report + D-P9-12 ~ D-P9-15)</span></td></tr>
+    <tr><td>IT 외부 client <code>@MockBean</code> 격리 (4 client 모두)</td><td><span class="badge b-ok">PASS (Inventory + Accounting + PartnerOrder + Partner)</span></td></tr>
+    <tr><td>Materialized view CONCURRENTLY refresh + fail-soft</td><td><span class="badge b-ok">PASS (D-P9-13)</span></td></tr>
+    <tr><td>Caffeine cache (KPI 60s TTL) + Redis 토글 약속</td><td><span class="badge b-ok">PASS (D-P9-12)</span></td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

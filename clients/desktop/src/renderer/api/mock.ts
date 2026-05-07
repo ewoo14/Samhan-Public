@@ -707,7 +707,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   }
 
   // ==========================================================================
-  // notification-slice-B: 배송 묶음 (delivery-batch) mock
+  // link-dispatch-slice: 배송 묶음 (delivery-batch) mock
   // LinkDispatchListPage 시연용 — 4 배치 (sent 2 / unsent 2)
   // ==========================================================================
   const MOCK_BATCHES = [

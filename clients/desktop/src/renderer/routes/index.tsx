@@ -10,7 +10,7 @@
  * - `/warehouses`   창고
  * - `/sales`        판매조회 (출고전표 목록)
  * - `/sales/new`    출고전표 작성
- * - `/sales/link-dispatch`  링크발송 (배송 묶음 + e-sign URL SMS) — notification-slice-B
+ * - `/sales/link-dispatch`  링크발송 (배송 묶음 + e-sign URL SMS) — link-dispatch-slice
  * - `/sales/:id`    출고전표 상세 + lifecycle
  * - `/sales/:id/print/invoice`   거래명세서 인쇄 미리보기
  * - `/sales/:id/print/dispatch`  출고전표 작업지시서 인쇄
@@ -85,7 +85,7 @@ const router = createHashRouter([
       // 판매조회 (출고전표)
       { path: '/sales', element: <SlipListPage mode="OUTBOUND" /> },
       { path: '/sales/new', element: <SlipFormPage mode="OUTBOUND" /> },
-      // notification-slice-B: 링크발송 (배송 묶음) — `/sales/:id` 보다 먼저 매칭되어야 함
+      // link-dispatch-slice: 링크발송 (배송 묶음) — `/sales/:id` 보다 먼저 매칭되어야 함
       { path: '/sales/link-dispatch', element: <LinkDispatchListPage /> },
 
       // [Phase 6 v4] 판매 sub-route — legacy webview 견적 + SamhanLogis 신규 메뉴 4종.
