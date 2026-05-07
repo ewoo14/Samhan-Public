@@ -126,10 +126,11 @@ public class PartnerCodeResolver {
             }
             result.put(s.partnerCode(), s.partnerId());
             if (cache != null) {
-                // 단건 resolve 와 동일하게 Optional<UUID> 형태로 적재 — Spring Cache 가 단건 SpEL
-                // {@code unless = "#result == null"} 로 unwrap UUID null 만 회피. 본 직접 적재는
-                // 사용 시 wrap 일관성을 위해 Optional 로 감싸 둔다.
-                cache.put(s.partnerCode(), Optional.of(s.partnerId()));
+                // W5 후속 fix BE-2 채택 — 단건 {@link #resolve(String)} 의 {@code @Cacheable} 은
+                // 반환 타입 {@code Optional<UUID>} 를 Spring Cache 가 자동 unwrap 하여 cache 에는
+                // UUID 가 저장된다. 본 bulk 적재도 동일하게 단건 form (UUID) 로 통일하여
+                // {@link #readCacheUuid} 가 양쪽 wrapper 형태를 처리해야 하는 비대칭 제거.
+                cache.put(s.partnerCode(), s.partnerId());
             }
         }
         return result;

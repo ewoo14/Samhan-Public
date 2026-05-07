@@ -89,6 +89,12 @@
 6. **D-P9-01 cascade**: partner-service 8095 → migration-service 8096 (Phase 10 신규) 충돌 회피 cascade — 포트 결정 사전 정렬.
 7. **UUID 비공개 가드 (Q-W4-2)**: dashboard-service `salesAggregate` 의 입력 시그니처 `UUID partnerId` → `String partnerCode` 전환 + service-side resolve. `feedback_uuid_no_user_visibility.md` 일관.
 
+### 5-1-1. Frontend 안정성 (Phase 9 회고 — FE-W5-2 보강)
+
+- **clients/* 코드 0줄 변경 + README 3건만 갱신** (5 슬라이스 W1~W5): backend skeleton 슬라이스 일관성 = 본 Phase 의 핵심 학습 자산. design-system / desktop / mobile 회귀 0 검증 (CI Frontend DS / Frontend Desktop / Playwright / Detox).
+- **W4 ChannelBadge 도입 + tokens.css 흡수**: 3 channel badge 토큰 (Google Material Blue/Red/Green) 신설 + `<ChannelBadge>` 정식 컴포넌트 + Storybook 7 story. design-system 첫 W4 진입 시점 흡수 패턴 정착.
+- **5 reviewer (BE/FE/Designer/QA/DevOps) 토론 패턴 일관 적용**: FE 관점 명칭 충돌 (notification-slice-B → link-dispatch-slice rename, W3 → W4 채택) 발견 사례 = reviewer 토론 효과 검증.
+
 ### 5-2. 학습 / 개선
 
 1. **W2 LazyInitializationException** (`Schedule.participants` lazy + DTO 변환): JOIN FETCH + distinct 정공법 fix → 다른 service lazy 일관 검토 패턴 정착 (W4 까지 일관 적용).

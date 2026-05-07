@@ -73,9 +73,11 @@ W4 시점에는 1건 잔존 (`feedback_integrated_pr_pattern.md` § fix 후속 P
 
 - cache hit / miss 분리 — Caffeine 캐시 직접 조회 (Spring Cache 가 자동 unwrap 한 UUID 또는 Optional<UUID> 모두 안전 정규화)
 - miss 만 `partnerClient.findByCodes(miss)` 1회 bulk RPC
-- 응답을 `Optional.of(uuid)` wrapper 형태로 cache 적재 (단건 resolve 패턴 일관)
+- 응답을 단건 form (`cache.put(code, partnerId)`) 으로 cache 적재 (W5 후속 fix BE-2 채택 — Spring Cache 단건 `@Cacheable` unwrap 결과와 wrapper 형태 일관)
 - 빈/null 입력 short-circuit
 - 미존재 partnerCode 는 결과 Map 에 누락 (호출 측이 Map containsKey 분기)
+
+> **인프라 선제 도입 (W5)**: `resolveAll(List<String>)` 의 실 호출자 (`DashboardAdminController.salesAggregate`) 는 W5 시점 단건 partnerCode 입력 유지. fan-out consumer 전환 (예: 매출 집계 응답에 partner 정보 batch 첨부) = Phase 10 또는 W6+ 시점 도입. 본 PR 의 bulk endpoint + resolveAll 메서드는 운영 진입 전 인프라 보강 (W5 reviewer BE 의견 1 채택).
 
 #### 2-3-3. PartnerCodeResolverTest 신규 4 case
 

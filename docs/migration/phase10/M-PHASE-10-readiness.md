@@ -127,6 +127,35 @@
 
 ---
 
+## 5-1. frontend cutover (P10-1/2/3 통합)
+
+> Phase 9 W5 reviewer FE 의견 1 채택 — frontend client 측 P10 cutover 사전 plan 명시. clients/* 코드 변경 없이 빌드/배포 매트릭스만 정리.
+
+### P10-1 frontend 영역
+- **외부 CDN self-host 또는 SPOF 회피 약속**: `clients/web/order-app/index.html` 의 외부 CDN 2건 (kakaocdn / cdnjs cloudflare) → P10-1 진입 시 self-host 또는 Cloudflare Pages 자체 배포 매핑
+- **Pretendard 폰트 self-host 정식 도입**: 현재 `clients/web/design-system/src/styles/tokens.css` 시스템 fallback (`font-family: 'Pretendard', system-ui, sans-serif`). P10-1 시점 `clients/web/design-system/public/fonts/` 에 self-host + jsdelivr CDN 회피 (Phase 7 패턴 일관)
+
+### P10-2 frontend 영역
+- **VITE_API_BASE_URL build-time toggle 매트릭스**:
+  - `dev`: `http://localhost:8080` (gateway)
+  - `staging`: AWS staging 환경 + Cloudflare Pages preview URL
+  - `prod`: `https://api.samhan-air.com` (samhan-air.com subdomain — Phase 0 Domain Strategy 일관)
+- **Cloudflare Pages 환경 분리**: dev / staging / prod 별 `wrangler.toml` 또는 `_routes.json` 분기
+
+### P10-3 frontend 영역
+- **production cutover dry-run**: dev → staging → prod 단계적 전환 (frontend client 3종 — desktop / web / mobile)
+- **rollback 전략**: Cloudflare Pages 이전 deployment 즉시 rollback + DNS TTL 60s 유지 (cutover 1시간 동안)
+
+### Phase 10 흡수 backlog (Designer / QA / DevOps)
+
+본 § frontend cutover 와 짝을 이루는 추가 backlog (Phase 9 W5 reviewer 식별, 본 PR scope 외):
+
+- **Designer #1 ~ #3** (Phase 10 W1) — ChannelBadge 일관성 / slice accent 토큰 정식화 / QA2 mobile overflow 정정
+- **QA Q-P10-1** (Phase 10 plan slice 명시 의무) — skeleton-mode IT sweep / Caffeine→Redis testcontainer / aws-cloud-map mock
+- **DevOps #2 / 추가 backlog** — `partner_client_fail_total` Micrometer counter / find-by-codes 호출 사이즈 metric / user-service `DEFAULT_HIRE_DATE` 의도 주석 (Phase 10 운영 진입 후 또는 별도 user-service 슬라이스)
+
+---
+
 ## 6. 참조
 
 - Phase 9 회고: `docs/dev-reports/phase9-retrospective.md` (본 PR 신규)
