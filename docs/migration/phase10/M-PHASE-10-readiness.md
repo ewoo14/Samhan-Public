@@ -150,9 +150,25 @@
 
 본 § frontend cutover 와 짝을 이루는 추가 backlog (Phase 9 W5 reviewer 식별, 본 PR scope 외):
 
-- **Designer #1 ~ #3** (Phase 10 W1) — ChannelBadge 일관성 / slice accent 토큰 정식화 / QA2 mobile overflow 정정
+#### 5-1-1. post-W5 backlog cleanup 본 PR 채택 7건 (D-P9-21, 2026-05-07)
+
+Phase 9 W5 머지 직후 post-W5 backlog cleanup PR 에서 환경 의존이 없는 7건 채택. 본 § 5-1-1 의 잔존 backlog 는 환경 의존 (AWS account / Redis / Aurora) 항목만 명시.
+
+| # | 영역 | 본 PR 채택 / Phase 10 위임 |
+|---|---|---|
+| 1 | Designer D-W4-3 (mobile responsive table wrapper) | post-W5 cleanup 채택 |
+| 2 | Designer D-W5-2 (slice accent 3색 토큰 utility) | post-W5 cleanup 채택 |
+| 3 | QA Q-W3-1 (notification retry max-attempts) | post-W5 cleanup 채택 |
+| 4 | QA Q-W3-2 (JSONB payload @Size) | post-W5 cleanup 채택 |
+| 5 | QA Q-W3-3 (UserClient fail-mode alias) | post-W5 cleanup 채택 |
+| 6 | DevOps NotificationGateway Micrometer counter | post-W5 cleanup 채택 |
+| 7 | DevOps user-service DEFAULT_HIRE_DATE 의도 주석 | post-W5 cleanup 채택 |
+
+#### 5-1-2. Phase 10 잔존 backlog (환경 의존 항목만)
+
+- **Designer #1** (Phase 10 W1) — ChannelBadge 일관성 (정식 React `<SliceAccent>` 컴포넌트 — W6 client 통합 슬라이스 시점)
 - **QA Q-P10-1** (Phase 10 plan slice 명시 의무) — skeleton-mode IT sweep / Caffeine→Redis testcontainer / aws-cloud-map mock
-- **DevOps #2 / 추가 backlog** — `partner_client_fail_total` Micrometer counter / find-by-codes 호출 사이즈 metric / user-service `DEFAULT_HIRE_DATE` 의도 주석 (Phase 10 운영 진입 후 또는 별도 user-service 슬라이스)
+- **DevOps Resilience4j 통합 backlog** — `partner_client_fail_total` Micrometer counter / find-by-codes 호출 사이즈 metric (Phase 10 W2 Resilience4j 통합 시점)
 
 ---
 

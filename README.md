@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), **Phase 9 완료** (W1 partner #91 / W2 groupware #92 / W3 notification #93 / W4 dashboard #94 / W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수 본 PR), Phase 10 진입 준비 완료 |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), **Phase 9 완료 + post-W5 cleanup** (W1 partner #91 / W2 groupware #92 / W3 notification #93 / W4 dashboard #94 / W5 #95 / **post-W5 backlog cleanup 본 PR — Phase 10 위임 backlog 중 즉시 처리 가능 7건 채택**), Phase 10 진입 준비 완료 |
 
 ---
 
@@ -252,7 +252,8 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 - #92 Phase 9 W2 (groupware-service skeleton port 8092 + 결재선/메신저/일정 + UserClient + ServiceDiscoveryClient 두 번째 소비자)
 - #93 Phase 9 W3 (notification-service skeleton port 8093 + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + ServiceDiscoveryClient 세 번째 소비자)
 - #94 Phase 9 W4 (dashboard-service skeleton port 8094 + 3 entity + 2 materialized view + 4 client + Caffeine KPI cache + ServiceDiscoveryClient 네 번째 소비자 + shared:user-client-abstraction 신규 + W3 backlog 5건 + 사용자 가드 후속 fix 11건 본 PR 채택 + slip-service 시간 의존 회귀 정공법 fix)
-- 본 PR Phase 9 W5 (회고 보고서 + Phase 10 진입 plan + 잔존 backlog 1건 흡수 — partner-service findByCodes bulk endpoint + dashboard-service PartnerCodeResolver bulk 전환)
+- #95 Phase 9 W5 (회고 보고서 + Phase 10 진입 plan + 잔존 backlog 1건 흡수 — partner-service findByCodes bulk endpoint + dashboard-service PartnerCodeResolver bulk 전환)
+- 본 PR post-W5 backlog cleanup (Phase 10 위임 backlog 중 즉시 처리 가능 7건 채택 — notification retry max-attempts / JSONB payload @Size / UserClient fail-mode / NotificationGateway Micrometer counter / Employee DEFAULT_HIRE_DATE 의도 주석 / design-system slice accent 토큰 / PR template mobile responsive 보강)
 
 ---
 

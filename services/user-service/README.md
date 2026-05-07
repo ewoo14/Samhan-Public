@@ -81,3 +81,15 @@ default datasource (or the `local` profile for H2).
 | dashboard-service      | 8094 | dashboard_db      | KPI + 실시간 재고 + 매출            |
 
 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조. user-service 는 groupware-service 의 직원 정보 / notification-service 의 수신자 정보 lookup 의 source-of-truth 로 동작 예정.
+
+## post-W5 backlog cleanup — Employee.DEFAULT_HIRE_DATE 의도 주석 (D-P9-21, DevOps user-service backlog 채택)
+
+`Employee.java` 에 `DEFAULT_HIRE_DATE = LocalDate.of(2026, 1, 1)` 상수 + 한국어 의도 주석 추가 (코드 동작 변경 0):
+
+- W4 slip-service 시간 의존 회귀 회피 학습 적용
+- 입사일 ({@code hireDate}) 미입력 시 fixture 용 default placeholder
+- entity 의 `hireDate` 자체는 NotNull DB column — 입력 의무 보존
+- 만료 비교 패턴 부재 보장 — 시간 진행에 따른 테스트 회귀 발생 X
+- production 진입 시점에는 입사일 입력 의무 또는 사용자 입력 화면 추가 (Phase 10 user-service 화면 슬라이스 시점 정식 처리)
+
+상세 결정은 `migration/decisions/DECISIONS.md` D-P9-21 참조.

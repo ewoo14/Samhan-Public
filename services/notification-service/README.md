@@ -83,6 +83,8 @@ W3 통합 PR 시점에 PR #92 BE Reviewer 의 후속 backlog #4 (UserClient fan-
 | `SAMHAN_FCM_*` | placeholder | project-id / credentials-path |
 | `SAMHAN_USER_CACHE_TTL` | 60 | Caffeine TTL (초) |
 | `SAMHAN_USER_CACHE_MAX` | 10000 | Caffeine max entries |
+| `SAMHAN_NOTIFICATION_RETRY_MAX_ATTEMPTS` | 5 | post-W5 (Q-W3-1) — retry 최대 횟수, 초과 시 DEAD_LETTER 영구 FAILED |
+| `SAMHAN_USER_CLIENT_FAIL_MODE` | OPEN | post-W5 (Q-W3-3) — UserClient fail-mode (OPEN fail-soft / STRICT fail-fast) |
 
 전체는 `infrastructure/env-templates/notification-service.env` 참조.
 
@@ -91,17 +93,41 @@ W3 통합 PR 시점에 PR #92 BE Reviewer 의 후속 backlog #4 (UserClient fan-
 | Test | 종류 | 케이스 |
 |---|---|---|
 | `NotificationGatewayTest` | 단위 | 3 (PUSH / EMAIL / SMS mock adapter) |
-| `NotificationServiceTest` | 단위 | 6 (send / failure / retry / 404 / 409) |
+| `NotificationServiceTest` | 단위 | 7 (send / failure / retry / 404 / 409 + post-W5 maxAttempts DEAD_LETTER) |
 | `UserClientBulkVerifyTest` | 단위 | 3 (null/empty / cache hit / lookup cache 적재) |
+| `NotificationGatewayMetricsTest` | 단위 | 2 (post-W5 — channel × result counter increment) |
 | `NotificationInternalControllerIT` | IT | 4 (인증 — 401 / 403 / 200 / 404) |
-| `NotificationAdminControllerIT` | IT | 5 (send / list / single / retry / 404) |
+| `NotificationAdminControllerIT` | IT | 6 (send / list / single / retry / 404 + post-W5 payload over 4000 byte 400) |
 
-총 12 단위 PASS + 9 IT (Docker 미가용 환경 skip, CI Linux PASS).
+총 15 단위 PASS + 10 IT (Docker 미가용 환경 skip, CI Linux PASS).
 
-## 8. Phase 10 cutover 진입 사항
+## 8. post-W5 backlog cleanup 산출 (D-P9-21)
+
+Phase 10 위임 backlog 중 즉시 처리 가능 4건 본 service 채택 (사용자 가드 일관 적용):
+
+### 8-1. retry max-attempts (Q-W3-1)
+- `samhan.notification.retry.max-attempts` (env `SAMHAN_NOTIFICATION_RETRY_MAX_ATTEMPTS`, default 5) 토글 추가
+- `NotificationService.retry()` — `attemptCount >= maxRetryAttempts` 시 영구 FAILED + log `FAILURE_MAX_ATTEMPTS_EXCEEDED` (DEAD_LETTER 의미)
+- 게이트웨이 호출 skip + `retryable=false` 고정
+
+### 8-2. JSONB payload @Size(max=4000) (Q-W3-2)
+- `NotificationSendRequest.payload` 에 `@Size(max=4000)` (Postgres TOAST 임계 회피)
+- 4001 byte 이상 payload 입력 시 `400 INVALID_INPUT` 반환
+
+### 8-3. NotificationGatewayMetrics (DevOps)
+- `NotificationGatewayMetrics` 신규 — 3 channel × 2 result = 6 Micrometer counter 사전 등록
+- metric: `notification_gateway_send_total{channel,result}` — actuator/prometheus endpoint 노출
+- `NotificationService.invokeGateway()` 시점에 success / failure counter increment (gateway 예외 / 어댑터 미등록 / 결과 success/failure 모두 분기)
+
+### 8-4. UserClient fail-mode (Q-W3-3, shared:user-client-abstraction 영역)
+- `UserVerifierProperties.FailMode` enum (OPEN / STRICT) — `failFast` 부울 토글의 의미 명시 alias
+- 환경변수 `SAMHAN_USER_CLIENT_FAIL_MODE=OPEN` 표준 (Phase 10 cutover 시점 STRICT 전환 약속, D-P9-11 보강)
+
+## 9. Phase 10 cutover 진입 사항
 
 - FCM Admin SDK 통합 (모바일 staff app + push 활성)
 - AWS SES SDK 통합 (이메일 발송 활성, S3 첨부 옵션)
 - Aligo → 운영 secrets 주입 (현재 placeholder → stub-success)
 - `samhan.discovery.provider=aws-cloud-map` 토글 + Phase 8 wrapper 활성
-- UserClient skeleton 통과 정책 → fail-fast 정책 강화
+- UserClient `SAMHAN_USER_CLIENT_FAIL_MODE=STRICT` 전환 (post-W5 cleanup 도입 alias 활용)
+- Resilience4j 통합 시점에 `partner_client_fail_total` 등 추가 Micrometer counter 도입 (Phase 10 W2 위임)

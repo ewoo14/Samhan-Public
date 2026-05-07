@@ -556,3 +556,43 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 영향: Phase 10 진입 시점 = 본 PR 머지 직후. AWS account 준비 시점에 P10-1 슬라이스 시작.
 
 ---
+
+## post-W5 backlog cleanup 결정 (2026-05-07)
+
+### D-P9-11 보강. UserVerifierProperties fail-mode (OPEN/STRICT) alias 토글 (Q-W3-3 채택)
+
+- 본 보강은 D-P9-11 의 `failFast` 부울 토글에 대한 의미 명시 alias 도입이며, 동작 변경 없음 (회귀 안전)
+- `UserVerifierProperties.FailMode` enum 신설 — `OPEN` (fail-soft, default) / `STRICT` (fail-fast, Phase 10 cutover 시점 활성)
+- `setFailMode` / `setFailFast` 양방향 alias setter — 한 쪽 변경 시 다른 쪽 자동 동기화 (legacy `failFast` 호출자 / 신규 `failMode` 호출자 모두 호환)
+- 환경변수 `SAMHAN_USER_CLIENT_FAIL_MODE=OPEN` 표준 — `notification-service.env` + `groupware-service.env` 신규 추가
+- Phase 10 cutover 시점 = `SAMHAN_USER_CLIENT_FAIL_MODE=STRICT` 전환 약속 명시 (P10-1 슬라이스 산출물)
+- 회귀 검증 — `DefaultUserVerifierTest` 8 case (기존 6 + IT 2 신규 OPEN/STRICT alias) 모두 PASS
+
+근거: Phase 10 cutover 시점에 fail-mode 의미 명시 토글 필요. 부울 `failFast` 만 보유한 상태에서는 환경변수 명/문서/코드 일관성이 약화 (`fail-fast=true` vs `fail-mode=STRICT` 의미 동일하지만 리뷰어 인지 비용). post-W5 backlog cleanup 시점에 의미 명시 alias 추가하여 향후 Phase 10 P10-1 슬라이스 진입 시 환경변수 단일 표준 (`SAMHAN_USER_CLIENT_FAIL_MODE=OPEN|STRICT`) 만 보유.
+
+영향: 기존 `failFast` 호출자 (4 service `UserClient` + IT) 변경 없이 호환. 신규 `failMode` setter 호출자 (Phase 10 P10-1 시점 cutover) 만 신설.
+
+---
+
+### D-P9-21. post-W5 backlog cleanup — Phase 10 위임 backlog 중 즉시 처리 가능 7건 본 PR 채택
+
+- 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지") 일관 적용 — Phase 10 위임 backlog 중 환경 의존성이 없는 7건 본 PR 채택
+- 채택 매트릭스:
+  | # | 영역 | 출처 | 산출 |
+  |---|---|---|---|
+  | 1 | design-system PR template | Designer D-W4-3 보강 | QA HTML mobile responsive table wrapper (`.qa-table-wrapper` + `@media max-width 768px`) |
+  | 2 | design-system tokens | Designer D-W5-2 채택 | slice accent 3색 토큰 (`--color-slice-{success,pending,deferred}` Google Material Green/Yellow/Gray) + utility class |
+  | 3 | notification-service | QA Q-W3-1 채택 | retry max-attempts property (`samhan.notification.retry.max-attempts` default 5) + `requeueForRetry_exceedsMaxAttempts_marksFailedPermanent` IT |
+  | 4 | notification-service | QA Q-W3-2 채택 | `NotificationSendRequest.payload` `@Size(max=4000)` (Postgres TOAST 임계 회피) + `send_payloadOver4000Bytes_returns400` IT |
+  | 5 | shared:user-client-abstraction | QA Q-W3-3 채택 | `UserVerifierProperties.FailMode` enum (OPEN/STRICT) alias + 양방향 자동 동기화 + IT 2건 |
+  | 6 | notification-service | DevOps backlog 채택 | `NotificationGatewayMetrics` 신규 (3 channel × 2 result = 6 Micrometer counter) — `notification_gateway_send_total{channel,result}` actuator/prometheus 노출 + IT 2건 |
+  | 7 | user-service | DevOps backlog 채택 | `Employee.DEFAULT_HIRE_DATE = 2026-01-01` 의도 주석 + 한국어 Javadoc — W4 slip-service 시간 의존 회귀 학습 적용 (코드 동작 변경 0) |
+- IT 신규 5건 합계 — `requeueForRetry_exceedsMaxAttempts_marksFailedPermanent` (NotificationServiceTest) + `send_payloadOver4000Bytes_returns400` (NotificationAdminControllerIT) + `verify_strictMode_failFast_returnsFalseOnGatewayError` + `verify_openMode_failSoft_returnsTrueOnGatewayError` (DefaultUserVerifierTest) + `NotificationGatewayMetricsTest` 2 case
+- 회귀 검증 5 영역 — `:shared:user-client-abstraction:test` + `:services:notification-service:test` + `:services:user-service:test` + `:services:groupware-service:test` + `:services:dashboard-service:test` 모두 PASS
+- 잔존 Phase 10 위임 backlog (환경 의존 항목만) — Designer #1 ChannelBadge 일관성 (Phase 10 W1) / QA Q-P10-1 skeleton-mode IT sweep / DevOps `partner_client_fail_total` Micrometer counter (Phase 10 W2 Resilience4j 통합 시점) / Phase 10 P10-1 ~ P10-3 슬라이스 본격 작업
+
+근거: Phase 9 W5 머지 직후 (PR #95) 시점에 Phase 10 위임 backlog 매트릭스 재검토 결과, 7건은 환경 의존 (AWS account / Redis / Aurora) 없이 main 직접 작업 가능. 단편 PR 분리 시 backlog 누적 + 가드 위반 (사용자 명시 가드). 통합 PR 1건 시 9+ docs 영역 동기화 + QA 캡처 3종 + CI 7/7 검증 패턴으로 Phase 10 진입 시점 backlog 0 보장.
+
+영향: Phase 9 = 완료 + post-W5 cleanup 완료 상태로 종료. Phase 10 진입 시점 = 본 PR 머지 직후. notification-service 의 retry max-attempts / payload @Size / Micrometer counter 3건은 production 진입 직전 보강 (운영 안정성 향상). user-client-abstraction 의 fail-mode alias 는 Phase 10 P10-1 slice cutover 진입 시점 단일 환경변수 표준 (`SAMHAN_USER_CLIENT_FAIL_MODE`) 활용 가능. design-system slice accent + PR template mobile wrapper 는 W6+ 전 PR 일관 적용 의무.
+
+---
