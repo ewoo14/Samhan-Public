@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-3 — GPS 권한 flow + 거부 차단 화면</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 24px 32px; color: #1A1F2E; background: #FAFBFC; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #1A1F2E; margin-bottom: 4px; }
+  h2 { color: #1A1F2E; border-bottom: 2px solid #E1E5EA; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  th { background: #1E3A8A; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E1E5EA; font-size: 13px; vertical-align: top; }
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-channel-push { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-success { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .summary { background: #fff; border-left: 4px solid #f9ab00; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .device-frame { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .phone { width: 360px; background: #FAFBFC; border: 8px solid #1A1F2E; border-radius: 36px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+  .phone-status { background: #1A1F2E; color: #fff; padding: 8px 16px; font-size: 11px; display: flex; justify-content: space-between; }
+  .screen-pad { padding: 24px; }
+  .h1 { font-size: 24px; font-weight: 700; color: #1A1F2E; margin: 0 0 8px; }
+  .subtitle { font-size: 14px; color: #5C6773; margin: 0 0 20px; line-height: 1.5; }
+  .card { background: #fff; border: 1px solid #E1E5EA; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: 16px; font-weight: 600; color: #1A1F2E; margin-bottom: 12px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 0.5px solid #E1E5EA; }
+  .label { font-size: 13px; color: #5C6773; }
+  .infoCard { background: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .infoTitle { font-size: 14px; font-weight: 600; color: #1A1F2E; margin-bottom: 8px; }
+  .infoText { font-size: 13px; color: #1A1F2E; padding: 4px 0; }
+  .btn { background: #1E40AF; color: #fff; padding: 12px 20px; border-radius: 4px; text-align: center; font-size: 14px; font-weight: 600; margin-top: 12px; }
+  .prompt-overlay { position: relative; }
+  .prompt { background: #fff; border-radius: 12px; padding: 20px; margin: 24px 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.16); }
+  .prompt h3 { margin: 0 0 12px; font-size: 16px; color: #1A1F2E; }
+  .prompt p { margin: 0 0 16px; font-size: 13px; color: #5C6773; line-height: 1.5; }
+  .prompt-actions { display: flex; gap: 8px; }
+  .prompt-btn { flex: 1; padding: 10px; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 600; }
+  .prompt-allow { background: #1E40AF; color: #fff; }
+  .prompt-deny { background: #F4F6F8; color: #5C6773; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-3 — GPS 권한 flow + 거부 차단 화면</h1>
+<p style="color: #5C6773; font-size: 14px; margin-top: 0;">
+  사용자 결정 4 GPS 하이브리드 (2026-05-07) — foreground 권한 의무 + background 선택 + 거부 fallback 어플 사용 불가.
+</p>
+
+<div class="summary">
+  <p><strong>hook</strong>: <code>useGpsPermission</code> (clients/mobile-staff/src/hooks/)</p>
+  <p><strong>차단 화면</strong>: <code>GpsBlockedScreen</code> (DriverTabNavigator 진입 차단)</p>
+  <p><strong>의존성</strong>: expo-location 18.0 (foreground + background API)</p>
+  <p><strong>상태</strong>: <span class="b-ok">PASS</span> 정책 적용 + graceful guard (expo-location 미설치 환경 unavailable 처리)</p>
+</div>
+
+<h2>1. 권한 정책 매트릭스</h2>
+<table>
+  <thead><tr><th style="width: 22%;">권한</th><th style="width: 18%;">정책</th><th>fallback</th><th style="width: 18%;">본 PR 처리</th></tr></thead>
+  <tbody>
+    <tr><td>foreground</td><td><span class="b-warn">의무</span></td><td>거부 시 어플 사용 불가</td><td><span class="b-ok">GpsBlockedScreen</span></td></tr>
+    <tr><td>background</td><td><span class="b-info">선택</span></td><td>거부 시 graceful — foreground 만으로 진행</td><td><span class="slice-accent-success">graceful</span></td></tr>
+    <tr><td>expo-location 미설치</td><td><span class="slice-accent-deferred">unavailable</span></td><td>차단 화면 노출 (어플 사용 불가)</td><td><span class="b-warn">차단</span></td></tr>
+  </tbody>
+</table>
+
+<h2>2. 권한 flow 비교 — 허용 vs 거부</h2>
+
+<div class="device-frame">
+
+<div class="phone">
+  <div class="phone-status"><span>09:42 — 권한 요청</span><span>iOS</span></div>
+  <div class="prompt-overlay">
+    <div style="padding: 24px 16px 16px; opacity: 0.4;">
+      <div class="h1">GPS 위치 추적</div>
+      <div class="subtitle">30초 간격 본 어플 GPS 위치를 보고합니다.</div>
+    </div>
+    <div class="prompt">
+      <h3>"삼한공조 견적+배차"이(가) 사용자의 위치 정보에 접근하고자 합니다</h3>
+      <p>배송 도중 위치를 arologis-service 에 보고합니다 (foreground = 의무, 거부 시 driver tab 사용 불가, 사용자 결정 4 GPS 하이브리드).</p>
+      <div class="prompt-actions">
+        <div class="prompt-btn prompt-deny">허용 안 함</div>
+        <div class="prompt-btn prompt-allow">앱을 사용하는 동안 허용</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="phone">
+  <div class="phone-status"><span>09:43 — 거부 fallback</span><span>iOS</span></div>
+  <div class="screen-pad">
+    <div style="margin-bottom: 16px;"><span class="b-warn">GPS 권한 필요</span></div>
+    <div class="h1">어플 사용이 차단되었습니다</div>
+    <div class="subtitle">driver tab 사용을 위해서는 GPS foreground 권한이 의무로 필요합니다.</div>
+
+    <div class="card">
+      <div class="card-title">권한 정책 (사용자 결정 2026-05-07)</div>
+      <div class="row"><span class="label">foreground</span><span class="b-warn">의무</span></div>
+      <div class="row"><span class="label">background</span><span class="b-info">선택</span></div>
+      <div class="row" style="border-bottom: none;"><span class="label">거부 fallback</span><span class="slice-accent-deferred">어플 사용 불가</span></div>
+    </div>
+
+    <div class="infoCard">
+      <div class="infoTitle">해결 방법</div>
+      <div class="infoText">1. 아래 "설정 열기" 버튼을 누릅니다.</div>
+      <div class="infoText">2. 위치 권한을 "사용 중인 동안 허용" 이상으로 변경합니다.</div>
+      <div class="infoText">3. 어플로 돌아와 재시작합니다.</div>
+    </div>
+
+    <div class="btn">설정 열기</div>
+  </div>
+</div>
+
+<div style="flex: 1; min-width: 360px;">
+
+<h2>3. useGpsPermission 상태 머신</h2>
+<table>
+  <thead><tr><th style="width: 24%;">상태</th><th style="width: 12%;">blocked</th><th>UI</th></tr></thead>
+  <tbody>
+    <tr><td>unknown (loading)</td><td><span class="slice-accent-pending">false</span></td><td>"GPS 권한 확인 중…"</td></tr>
+    <tr><td>granted (foreground OK)</td><td><span class="slice-accent-success">false</span></td><td>DriverTabNavigator 3 화면 활성</td></tr>
+    <tr><td>denied (foreground 거부)</td><td><span class="b-warn">true</span></td><td><strong>GpsBlockedScreen 노출</strong></td></tr>
+    <tr><td>unavailable (expo-location 미설치)</td><td><span class="b-warn">true</span></td><td><strong>GpsBlockedScreen 노출</strong></td></tr>
+  </tbody>
+</table>
+
+<h2>4. iOS Info.plist + Android permissions</h2>
+<table>
+  <thead><tr><th style="width: 30%;">platform</th><th>설정</th></tr></thead>
+  <tbody>
+    <tr><td>iOS Info.plist</td><td><code>NSLocationWhenInUseUsageDescription</code> + <code>NSLocationAlwaysAndWhenInUseUsageDescription</code> + <code>UIBackgroundModes: ['location']</code></td></tr>
+    <tr><td>Android permissions</td><td><code>ACCESS_COARSE_LOCATION</code> + <code>ACCESS_FINE_LOCATION</code> + <code>ACCESS_BACKGROUND_LOCATION</code></td></tr>
+    <tr><td>app.json plugins</td><td><code>expo-location</code> (locationAlwaysAndWhenInUsePermission 한국어 설명)</td></tr>
+  </tbody>
+</table>
+
+<h2>5. backend GPS source enum 매핑</h2>
+<table>
+  <thead><tr><th style="width: 36%;">DriverLocationSource</th><th style="width: 24%;">활성 시점</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td>EXTERNAL_INSUNG_LBS</td><td><span class="slice-accent-pending">W10-2</span></td><td>인성 LBS callback (W10-2 시점 활성)</td></tr>
+    <tr><td>APP_GPS_ACTIVE</td><td><span class="b-channel-push">W10-3 (본 PR)</span></td><td>본 어플 foreground 권한 O</td></tr>
+    <tr><td>APP_GPS_BACKGROUND</td><td><span class="slice-accent-pending">운영 시점</span></td><td>본 어플 background 권한 O (선택)</td></tr>
+    <tr><td>MANUAL</td><td><span class="b-info">상시</span></td><td>admin 수동 입력 fallback</td></tr>
+  </tbody>
+</table>
+
+</div>
+</div>
+
+</body>
+</html>

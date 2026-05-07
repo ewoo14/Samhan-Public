@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-3 — DriverDashboardScreen</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 24px 32px; color: #1A1F2E; background: #FAFBFC; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #1A1F2E; margin-bottom: 4px; }
+  h2 { color: #1A1F2E; border-bottom: 2px solid #E1E5EA; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  th { background: #1E3A8A; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E1E5EA; font-size: 13px; vertical-align: top; }
+  /* W3 dashboard status badge */
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-new  { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  /* W4 channel badge */
+  .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  /* post-W5 slice accent */
+  .slice-accent-success  { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  /* W10-1 unparsed */
+  .b-unparsed { background: #f6c89e; color: #5a3a17; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .summary { background: #fff; border-left: 4px solid #34a853; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  /* RN screen mockup */
+  .device-frame { display: flex; gap: 20px; flex-wrap: wrap; }
+  .phone { width: 360px; background: #FAFBFC; border: 8px solid #1A1F2E; border-radius: 36px; padding: 0; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+  .phone-status { background: #1A1F2E; color: #fff; padding: 8px 16px; font-size: 11px; display: flex; justify-content: space-between; }
+  .mode-bar { background: #fff; padding: 12px 16px; border-bottom: 1px solid #E1E5EA; display: flex; gap: 8px; }
+  .mode-btn { padding: 6px 16px; border-radius: 4px; border: 1px solid #E1E5EA; font-size: 13px; }
+  .mode-btn.active { background: #1E40AF; color: #fff; border-color: #1E3A8A; }
+  .screen-header { background: #fff; padding: 16px; border-bottom: 1px solid #E1E5EA; }
+  .screen-header h2 { font-size: 24px; margin: 0; border: none; padding: 0; color: #1A1F2E; }
+  .screen-header p { font-size: 13px; color: #5C6773; margin: 4px 0 0; }
+  .vehicle-card { background: #fff; border: 1px solid #E1E5EA; border-radius: 8px; padding: 16px; margin: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .card-title { font-size: 16px; font-weight: 600; color: #1A1F2E; }
+  .card-row { display: flex; justify-content: space-between; padding: 8px 0; }
+  .card-row .label { font-size: 13px; color: #5C6773; }
+  .card-row .value { font-size: 14px; color: #1A1F2E; font-weight: 500; }
+  .tab-bar { background: #fff; border-top: 1px solid #E1E5EA; padding: 8px; display: flex; }
+  .tab-btn { flex: 1; padding: 12px; text-align: center; font-size: 13px; color: #5C6773; border-radius: 4px; }
+  .tab-btn.active { background: #DBEAFE; color: #1E3A8A; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-3 — DriverDashboardScreen 캡처</h1>
+<p style="color: #5C6773; font-size: 14px; margin-top: 0;">
+  clients/mobile-staff 내부 driver tab — 오늘의 dispatch 목록 화면. mock 데이터 4 vehicle 표시.
+  사용자 결정 (2026-05-07) — mobile-staff 내부 driver tab 채택, W3+W4+W5+post-W5+W10-1 토큰 1:1 복제.
+</p>
+
+<div class="summary">
+  <p><strong>화면</strong>: DriverDashboardScreen (clients/mobile-staff/src/screens/driver/)</p>
+  <p><strong>endpoint</strong>: GET <code>/driver-app/arologis/dispatches/today</code> (W10-1 PR #97 정의)</p>
+  <p><strong>토큰</strong>: post-W5 surface/ink/line + W3 status badge + post-W5 slice accent + W4 channel + W10-1 unparsed</p>
+  <p><strong>상태</strong>: <span class="b-ok">PASS</span> typecheck PASS, RN UI 구조 검증, 토큰 1:1 동등 확인</p>
+</div>
+
+<h2>1. RN 화면 mockup (Expo dev client / Galaxy S22 viewport)</h2>
+
+<div class="device-frame">
+
+<div class="phone">
+  <div class="phone-status"><span>09:42</span><span>SamhanStaffApp v0.4.0</span></div>
+  <div class="mode-bar">
+    <div class="mode-btn">영업견적</div>
+    <div class="mode-btn active">배송기사</div>
+  </div>
+  <div class="screen-header">
+    <h2>오늘의 배차</h2>
+    <p>본인 배정 vehicle 4대</p>
+  </div>
+  <div class="vehicle-card">
+    <div class="card-head">
+      <span class="card-title">차량 #1</span>
+      <span class="b-channel-push">배정완료</span>
+    </div>
+    <div class="card-row"><span class="label">톤수</span><span class="value">1톤</span></div>
+    <div class="card-row"><span class="label">상태</span><span class="value">배정완료</span></div>
+  </div>
+  <div class="vehicle-card">
+    <div class="card-head">
+      <span class="card-title">차량 #2</span>
+      <span class="b-channel-email">출발</span>
+    </div>
+    <div class="card-row"><span class="label">톤수</span><span class="value">1.4톤</span></div>
+    <div class="card-row"><span class="label">상태</span><span class="value">출발</span></div>
+  </div>
+  <div class="vehicle-card">
+    <div class="card-head">
+      <span class="card-title">차량 #3</span>
+      <span class="slice-accent-success">배송완료</span>
+    </div>
+    <div class="card-row"><span class="label">톤수</span><span class="value">1톤</span></div>
+    <div class="card-row"><span class="label">상태</span><span class="value">배송완료</span></div>
+  </div>
+  <div class="vehicle-card">
+    <div class="card-head">
+      <span class="card-title">차량 #4</span>
+      <span class="slice-accent-pending">대기</span>
+    </div>
+    <div class="card-row"><span class="label">톤수</span><span class="value">2.5톤</span></div>
+    <div class="card-row"><span class="label">상태</span><span class="value">대기</span></div>
+  </div>
+  <div class="tab-bar">
+    <div class="tab-btn active">배차</div>
+    <div class="tab-btn">GPS</div>
+    <div class="tab-btn">서명</div>
+  </div>
+</div>
+
+<div style="flex: 1; min-width: 480px;">
+
+<h2>2. 정차 상태 5종 badge 매핑</h2>
+<table>
+  <thead><tr><th style="width: 18%;">정차 상태</th><th style="width: 15%;">badge</th><th>토큰 출처</th><th style="width: 12%;">RGB</th></tr></thead>
+  <tbody>
+    <tr><td>PENDING (대기)</td><td><span class="slice-accent-pending">대기</span></td><td>post-W5 slice-accent-pending</td><td>#f9ab00</td></tr>
+    <tr><td>ARRIVED (도착)</td><td><span class="b-info">도착</span></td><td>W3 dashboard b-info</td><td>#1a73e8</td></tr>
+    <tr><td>DELIVERED (완료)</td><td><span class="slice-accent-success">완료</span></td><td>post-W5 slice-accent-success</td><td>#34a853</td></tr>
+    <tr><td>FAILED (실패)</td><td><span class="slice-accent-deferred">실패</span></td><td>post-W5 slice-accent-deferred</td><td>#5f6368</td></tr>
+    <tr><td>UNPARSED (미해석)</td><td><span class="b-unparsed">미해석</span></td><td>W10-1 b-unparsed peach</td><td>#f6c89e</td></tr>
+  </tbody>
+</table>
+
+<h2>3. vehicle 상태 6종 badge 매핑</h2>
+<table>
+  <thead><tr><th style="width: 22%;">vehicle 상태</th><th style="width: 18%;">badge</th><th>토큰 출처</th></tr></thead>
+  <tbody>
+    <tr><td>PENDING (대기)</td><td><span class="slice-accent-pending">대기</span></td><td>post-W5 slice-accent-pending</td></tr>
+    <tr><td>MATCHING (매칭중)</td><td><span class="b-info">매칭중</span></td><td>W3 b-info</td></tr>
+    <tr><td>ASSIGNED (배정완료)</td><td><span class="b-channel-push">배정완료</span></td><td>W4 channel push</td></tr>
+    <tr><td>DEPARTED (출발)</td><td><span class="b-channel-email">출발</span></td><td>W4 channel email</td></tr>
+    <tr><td>DELIVERED (배송완료)</td><td><span class="slice-accent-success">배송완료</span></td><td>post-W5 slice-accent-success</td></tr>
+    <tr><td>CANCELLED (취소)</td><td><span class="slice-accent-deferred">취소</span></td><td>post-W5 slice-accent-deferred</td></tr>
+  </tbody>
+</table>
+
+<h2>4. UUID 비공개 가드</h2>
+<p style="font-size: 13px; color: #5C6773;">
+  화면에 노출되는 식별자는 vehicleSequence (1, 2, 3, 4) + tonnage label (1톤 / 1.4톤 / 2.5톤) + status label
+  + parsed identifier (driverCode / partnerCode) 만이며, dispatchId / driverId UUID 는 path/header 만 사용
+  (UI 미노출 — `feedback_uuid_no_user_visibility.md` 일관 가드 적용).
+</p>
+
+</div>
+</div>
+
+</body>
+</html>
