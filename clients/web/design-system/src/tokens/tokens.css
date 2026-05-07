@@ -491,11 +491,32 @@ html {
  * notification-service 의 3 channel (PUSH / EMAIL / SMS) + dashboard 의
  * channel filter 시각 일관성용. Google Material 컬러 (Blue / Red / Green) 1:1.
  *
+ * PR #94 W4 후속 fix (Designer D-W4-1) — font-size 분기.
+ * QA HTML inline 11px 일관 + design-system 12px 기본 양립을 위해 `-sm` size variant 추가.
+ *   - 기본 (12px) — `b-channel-push / b-channel-email / b-channel-sms`
+ *   - small (11px) — `b-channel-push-sm / b-channel-email-sm / b-channel-sms-sm`
+ * CSS variable `--badge-channel-font-size` 도 함께 노출 (size override 가능).
+ *
  * 사용:
- *   <span class="b-channel-push">PUSH</span>
- *   <span class="b-channel-email">EMAIL</span>
- *   <span class="b-channel-sms">SMS</span>
+ *   <span class="b-channel-push">PUSH</span>            <!-- 12px (기본) -->
+ *   <span class="b-channel-push b-channel-sm">PUSH</span> <!-- 11px (sm modifier) -->
+ *   <span class="b-channel-push-sm">PUSH</span>         <!-- 11px (alias) -->
  */
-.b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-.b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-.b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+:root {
+  --color-channel-push:  #4285f4;
+  --color-channel-email: #ea4335;
+  --color-channel-sms:   #34a853;
+  --badge-channel-font-size: 12px;
+  --badge-channel-font-size-sm: 11px;
+}
+.b-channel-push  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.b-channel-email { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.b-channel-sms   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+
+/* small size modifier — utility class. `b-channel-push b-channel-sm` 결합 사용. */
+.b-channel-sm    { font-size: var(--badge-channel-font-size-sm, 11px); }
+
+/* small alias (단일 class 사용 — QA HTML inline 11px 호환) */
+.b-channel-push-sm  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
+.b-channel-email-sm { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
+.b-channel-sms-sm   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }

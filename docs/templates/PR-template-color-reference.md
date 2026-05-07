@@ -63,6 +63,50 @@
 </style>
 ```
 
+### 5.1 적용 예시 (HTML 1:1 복제 ready) — Designer D-W4-3 채택
+
+PR #94 W4 후속 fix — W5 / Phase 10 신규 PR 의 QA HTML 작성 시 아래 블록 그대로 복붙 가능.
+method selector + status badge + channel badge + Pretendard import 1줄을 모두 포함.
+
+```html
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <style>
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont,
+                       'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+           color: #0f172a; background: #f8fafc; }
+    /* HTTP method (Material) */
+    .m-get    { color: #0f9d58; font-weight: 700; }
+    .m-post   { color: #1a73e8; font-weight: 700; }
+    .m-put    { color: #f9ab00; font-weight: 700; }
+    .m-delete { color: #d93025; font-weight: 700; }
+    /* Status badge */
+    .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    /* Channel badge (Phase 9 W4) — QA HTML 11px 일관 (`-sm` variant) */
+    .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    /* Slate palette baseline */
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+    th { background: #f1f5f9; color: #334155; }
+  </style>
+</head>
+<body>
+  <!-- ... -->
+</body>
+</html>
+```
+
+> 12px 기본 (admin 화면 inline) 이 필요한 경우 `font-size: 12px` 으로 단일 라인 변경.
+> design-system 사용 (React) 환경에서는 `<ChannelBadge channel="push" size="sm" />` 컴포넌트 우선.
+
 ---
 
 ## 6. 출처 / 회고
@@ -70,3 +114,4 @@
 - W3 (notification-service) Designer 권고 — `3-api-endpoints-summary.html` 슬레이트 + Google method 컬러 적용
 - W3 reviewer 토론 backlog #2 (channel badge) + #3 (W4+ baseline 갱신) 본 W4 PR 시점 채택
 - 향후 모든 PR 의 QA HTML 은 본 컬러 표를 reference 로 1:1 복제 의무
+- PR #94 W4 후속 fix (Designer D-W4-3) — § 5.1 적용 예시 (HTML 1:1 복제 ready) 추가 — W5 / Phase 10 PR 작성 시 복붙 즉시 사용
