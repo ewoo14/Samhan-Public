@@ -26,10 +26,18 @@ jobs:
           - name: user+product+inventory+logging
             timeout: 30
             test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
-          - name: slip
-            # slip-service 단독 — IT 12 case (W10-4 신규) + Phase 6 IT 다수 + Flyway V11 CONCURRENTLY = 30분 timeout 부족 (2회 fail) → 60분 단독 적용
-            timeout: 60
-            test-tasks: ':services:slip-service:test'
+          - name: slip-units
+            # slip-service 단위 + 빠른 client mock 만 (큰 IT 제외)
+            timeout: 30
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.service.*"'
+          - name: slip-it-public
+            # slip-service public + delivery IT (5 파일)
+            timeout: 30
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
+          - name: slip-it-core
+            # slip-service core IT (it/ 9 파일 — SlipController/Lifecycle/Inspect/Internal/Lookup/SignatureAdmin/NumberService/Domain)
+            timeout: 30
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.it.*"'
           - name: accounting+partner
             timeout: 30
             test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
