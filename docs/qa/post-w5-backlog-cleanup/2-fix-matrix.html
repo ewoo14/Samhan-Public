@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>post-W5 backlog cleanup — 채택 fix 7건 매트릭스</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 28px 36px; color: #0f172a; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  /* HTTP method (Material) */
+  .m-get    { color: #0f9d58; font-weight: 700; }
+  .m-post   { color: #1a73e8; font-weight: 700; }
+  .m-put    { color: #f9ab00; font-weight: 700; }
+  .m-delete { color: #d93025; font-weight: 700; }
+  /* Status badge */
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  /* Channel badge (W3 디자인 토큰 1:1 — Phase 9 W4 baseline 일관) */
+  .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  /* Slice accent (post-W5 신규 — Designer D-W5-2 채택) */
+  .slice-accent-success  { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  /* Slate baseline */
+  th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+  th { background: #1e293b; color: #fff; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .qa-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+  @media (max-width: 768px) { .qa-table-wrapper table { min-width: 600px; } }
+</style>
+</head>
+<body>
+
+<h1>post-W5 backlog cleanup — 채택 fix 7건 매트릭스</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 10 위임 backlog 중 즉시 처리 가능 7건 본 PR 채택 (D-P9-21) — Designer 2 / QA 3 / DevOps 2</p>
+
+<div class="summary">
+  <p><strong>가드 적용</strong> 사용자 가드 (`feedback_integrated_pr_pattern.md` § fix 후속 PR/Phase 위임 금지) 일관 적용. 환경 의존 (AWS / Redis / Aurora) 항목만 Phase 10 잔존 위임.</p>
+  <p><strong>색상 토큰</strong> W3+W4+W5 디자인 토큰 1:1 (Pretendard / slate / Google Material method / b-ok/b-warn/b-info / channel badge). 본 캡처에서 신규 slice accent (post-W5 D-W5-2) 컬러도 demo.</p>
+</div>
+
+<h2>1. 채택 7건 매트릭스</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>#</th><th>영역</th><th>출처</th><th>산출 / 변경</th><th>IT 추가</th><th>상태</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>design-system PR template</td>
+      <td><span class="b-info">Designer D-W4-3 보강</span></td>
+      <td>QA HTML mobile responsive table wrapper — <code>.qa-table-wrapper</code> + <code>@media max-width 768px</code></td>
+      <td>0 (template)</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>design-system tokens</td>
+      <td><span class="b-info">Designer D-W5-2</span></td>
+      <td>slice accent 3색 토큰 — <code>--color-slice-{success,pending,deferred}</code> Google Material Green/Yellow/Gray + utility class</td>
+      <td>0 (CSS only)</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>notification-service</td>
+      <td><span class="b-info">QA Q-W3-1</span></td>
+      <td>retry max-attempts property — <code>samhan.notification.retry.max-attempts</code> default 5 + DEAD_LETTER 영구 FAILED</td>
+      <td>1</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>notification-service</td>
+      <td><span class="b-info">QA Q-W3-2</span></td>
+      <td><code>NotificationSendRequest.payload</code> <code>@Size(max=4000)</code> — Postgres TOAST 임계 회피</td>
+      <td>1</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>shared:user-client-abstraction</td>
+      <td><span class="b-info">QA Q-W3-3</span></td>
+      <td><code>UserVerifierProperties.FailMode</code> enum (OPEN/STRICT) alias + 양방향 자동 동기화</td>
+      <td>2</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>notification-service</td>
+      <td><span class="b-info">DevOps</span></td>
+      <td><code>NotificationGatewayMetrics</code> 신규 — 3 channel × 2 result Micrometer counter / metric <code>notification_gateway_send_total{channel,result}</code></td>
+      <td>2</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>user-service</td>
+      <td><span class="b-info">DevOps</span></td>
+      <td><code>Employee.DEFAULT_HIRE_DATE = 2026-01-01</code> 의도 주석 + 한국어 Javadoc — W4 slip-service 시간 의존 학습 적용</td>
+      <td>0 (주석만)</td>
+      <td><span class="slice-accent-success">완료</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. 채널 별 영향</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>채널</th><th>영향 fix</th><th>설명</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="b-channel-push">PUSH</span></td>
+      <td>#3 / #4 / #6</td>
+      <td>FCM 발송 — retry max-attempts + payload @Size + Micrometer counter</td>
+    </tr>
+    <tr>
+      <td><span class="b-channel-email">EMAIL</span></td>
+      <td>#3 / #4 / #6</td>
+      <td>SES 발송 (Phase 10 활성) — 동일 토글 적용</td>
+    </tr>
+    <tr>
+      <td><span class="b-channel-sms">SMS</span></td>
+      <td>#3 / #4 / #6</td>
+      <td>Aligo 발송 — 동일 토글 적용</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. 코드 변경 endpoint 매트릭스</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>Method</th><th>Path</th><th>변경</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="m-post">POST</span></td>
+      <td><code>/admin/notifications/send</code></td>
+      <td>payload @Size(max=4000) 추가</td>
+      <td>4001 byte 이상 → 400 INVALID_INPUT (Q-W3-2)</td>
+    </tr>
+    <tr>
+      <td><span class="m-post">POST</span></td>
+      <td><code>/admin/notifications/{id}/retry</code></td>
+      <td>maxRetryAttempts 임계 체크 추가</td>
+      <td>attemptCount &gt;= 5 시 영구 FAILED + DEAD_LETTER (Q-W3-1)</td>
+    </tr>
+    <tr>
+      <td><span class="m-get">GET</span></td>
+      <td><code>/actuator/prometheus</code></td>
+      <td>notification_gateway_send_total 신규 6 counter 노출</td>
+      <td>3 channel × 2 result (DevOps)</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</body>
+</html>
