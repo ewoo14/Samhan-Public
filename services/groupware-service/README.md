@@ -11,7 +11,7 @@ Phase 9 W2 — 결재선 + 메신저 + 일정 도메인.
 
 Phase 9 W2 — `M-PHASE-9-readiness §3-2` 일관. 결재선 (전자결재 chain) + 메신저 (1:1) + 일정 (참여자 포함) 의 3 도메인을 단일 service 로 묶어 그룹웨어 영역의 단일 진입점을 형성한다. 전사 결재 / 사내 메신저 / 캘린더는 사용 흐름이 인접하므로 도메인을 함께 보유한다 (M-PHASE-9-readiness §6 의존성 매트릭스).
 
-`UserClient` 는 user-service 의 `/internal/users/{userId}` Internal endpoint 를 호출하여 요청자 / 결재자 / 송수신자 / 일정 참여자가 실제 존재하는지 검증한다. 본 PR (W2 skeleton) 시점에는 lenient fail-open 정책 — Phase 10 cutover 시점에 fail-fast 로 강화.
+`UserClient` 는 user-service 의 `/internal/users/{userId}` Internal endpoint 를 호출하여 요청자 / 결재자 / 송수신자 / 일정 참여자가 실제 존재하는지 검증한다. 본 PR (W2 skeleton) 시점에는 lenient fail-open 정책 — Phase 11 cutover 시점에 fail-fast 로 강화.
 
 ## Domain (3 entity + 2 부속 entity + 3 enum)
 
@@ -66,7 +66,7 @@ Phase 9 W2 — `M-PHASE-9-readiness §3-2` 일관. 결재선 (전자결재 chain
 | `SAMHAN_INTERNAL_TOKEN` | `INTERNAL_AUTH_TOKEN` | X-Internal-Token expected 값 |
 | `SAMHAN_USER_SERVICE_URL` | (신규 표준만) | UserClient base URL |
 | `SAMHAN_GROUPWARE_SERVICE_URL` | (신규 표준만) | 형제 service 가 본 service 호출 시 base URL |
-| `SAMHAN_DISCOVERY_PROVIDER` | `eureka` default | Phase 10 cutover 시점 `aws-cloud-map` 으로 전환 |
+| `SAMHAN_DISCOVERY_PROVIDER` | `eureka` default | Phase 11 cutover 시점 `aws-cloud-map` 으로 전환 |
 | `EUREKA_URL` | (legacy) | service discovery |
 
 `InternalTokenGuard` 가 부팅 시 prod 프로파일 + dev 기본값 조합을 거부.
@@ -91,7 +91,7 @@ Phase 9 W2 — `M-PHASE-9-readiness §3-2` 일관. 결재선 (전자결재 chain
 
 IT 베이스 = `AbstractPostgresIT` (Testcontainers PostgreSQL 16 + Docker 미가용 환경 skip). UserClient 는 IT 에서 `@MockBean` 격리 (memory feedback_it_mockbean_external_clients).
 
-## Phase 10 cutover 영향
+## Phase 11 cutover 영향
 
 - `SAMHAN_DISCOVERY_PROVIDER=aws-cloud-map` 으로 토글 시 `shared:discovery-abstraction` 의 `AwsCloudMapServiceDiscoveryClient` 활성. 본 service 코드 변경 없음 (build.gradle / yml 한 줄 수준).
 - DataSource 는 chained-default 패턴이므로 RDS 호환. AWS Secrets Manager 마이그레이션 시 `spring.config.import: aws-secretsmanager:samhan/<env>/...` 추가만 (코드 변경 없음).

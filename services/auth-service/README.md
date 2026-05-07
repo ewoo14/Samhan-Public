@@ -61,7 +61,7 @@ docker build -t samhanlogis/auth-service:0.1.0 services/auth-service
 - **12-factor 12/12 OK** + RDS 호환 (standard SQL 만, RDS 미지원 extension 부재)
 - **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조
 - **env-template** — `infrastructure/env-templates/auth-service.env` 보유
-- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점 (현재 Eureka 자체 EC2 운영 채택 — D-P8-07 보강)
+- **ServiceDiscoveryClient (Phase 11 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 11 cutover 시점 (현재 Eureka 자체 EC2 운영 채택 — D-P8-07 보강)
 
 ## Phase 9 신규 service 매트릭스 (참조)
 

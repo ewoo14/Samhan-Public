@@ -8,7 +8,7 @@
 
 - W1 partner-service (8095) / W2 groupware-service (8092) 에 이은 **3 번째 신규 service**.
 - ServiceDiscoveryClient **세 번째 소비자** (W1 partner / W2 groupware → W3 notification).
-- Phase 10 cutover 시점에 SES (이메일) / FCM (push) / Aligo (SMS) 운영 secrets 주입 → 본격 외부 호출 활성.
+- Phase 11 cutover 시점에 SES (이메일) / FCM (push) / Aligo (SMS) 운영 secrets 주입 → 본격 외부 호출 활성.
 
 ## 2. Domain (2 entity + 3 enum)
 
@@ -54,7 +54,7 @@ BaseEntity 7 audit (`created_at` / `created_by` / `modified_at` / `modified_by` 
 | Channel | Adapter (운영) | Adapter (test) | 비고 |
 |---|---|---|---|
 | PUSH | `FcmPushAdapter` (Firebase) | `MockPushAdapter` | credentials placeholder 인 경우 stub-success |
-| EMAIL | `SesEmailAdapter` (Phase 10 활성) | `MockEmailAdapter` | placeholder — Phase 10 cutover 시 SDK 통합 |
+| EMAIL | `SesEmailAdapter` (Phase 11 활성) | `MockEmailAdapter` | placeholder — Phase 11 cutover 시 SDK 통합 |
 | SMS | `AligoSmsAdapter` (apis.aligo.in/send/ form-urlencoded) | `MockSmsAdapter` | Phase 5 `AligoSmsGateway` 흡수 |
 
 `NotificationGatewayConfig` 가 Spring 발견 bean 을 EnumMap 으로 라우팅. service 레이어에서 `gatewayMap.get(channel)` 1회 lookup.
@@ -121,9 +121,9 @@ Phase 10 위임 backlog 중 즉시 처리 가능 4건 본 service 채택 (사용
 
 ### 8-4. UserClient fail-mode (Q-W3-3, shared:user-client-abstraction 영역)
 - `UserVerifierProperties.FailMode` enum (OPEN / STRICT) — `failFast` 부울 토글의 의미 명시 alias
-- 환경변수 `SAMHAN_USER_CLIENT_FAIL_MODE=OPEN` 표준 (Phase 10 cutover 시점 STRICT 전환 약속, D-P9-11 보강)
+- 환경변수 `SAMHAN_USER_CLIENT_FAIL_MODE=OPEN` 표준 (Phase 11 cutover 시점 STRICT 전환 약속, D-P9-11 보강)
 
-## 9. Phase 10 cutover 진입 사항
+## 9. Phase 11 cutover 진입 사항
 
 - FCM Admin SDK 통합 (모바일 staff app + push 활성)
 - AWS SES SDK 통합 (이메일 발송 활성, S3 첨부 옵션)

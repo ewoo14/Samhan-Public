@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), **Phase 9 완료 + post-W5 cleanup** (W1 partner #91 / W2 groupware #92 / W3 notification #93 / W4 dashboard #94 / W5 #95 / **post-W5 backlog cleanup 본 PR — Phase 10 위임 backlog 중 즉시 처리 가능 7건 채택**), Phase 10 진입 준비 완료 |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 완료 + post-W5 cleanup (W1 #91 / W2 #92 / W3 #93 / W4 #94 / W5 #95 / post-W5 #96), **Phase 10 W10-1 진행 중 — arologis-service skeleton 본 PR (Phase 10/11 renumber, D-P10-05)** |
 
 ---
 
@@ -67,6 +67,7 @@ SamhanLogis/
 │   ├── groupware-service/     # Phase 9 W2 (8092) — 결재선 + 메신저 + 일정 + UserClient
 │   ├── notification-service/  # Phase 9 W3 (8093) — 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify
 │   ├── dashboard-service/     # Phase 9 W4 (8094) — 3 entity + 2 materialized view + 4 client + KPI Caffeine cache
+│   ├── arologis-service/      # Phase 10 W10-1 (8097) — 5 entity + DriverLocation GPS + KakaoDispatchParser + DriverMatcher 추상화 (Mock + Insung Quick) + 4 client + ShedLock 30일 cleanup
 │   ├── logging-service/       # Phase 1 (8082)
 │   └── ...                    # Phase 10 신규: migration (8096)
 ├── clients/
@@ -126,10 +127,12 @@ SamhanLogis/
 | **notification-service** | **8093** | **notification_db** | **푸시/이메일/SMS 통합 라우터 (FCM/SES/Aligo) — UserClient bulk verify (BE backlog #4) + Caffeine TTL 60s, ServiceDiscoveryClient 세 번째 소비자** | **Phase 9 3차 신규** |
 | **dashboard-service**    | **8094** | **dashboard_db** | **KPI + 실시간 재고 + 매출 — 3 entity + 2 materialized view (CONCURRENTLY refresh) + 4 client (Inventory/Accounting/PartnerOrder/Partner) + Caffeine KPI cache, ServiceDiscoveryClient 네 번째 소비자** | **Phase 9 4차 신규** |
 | **partner-service**      | **8095** | **partner_db**   | **거래처 마스터 + 신용한도 + 거래내역 + M5 partnerCode lookup endpoint** | **Phase 9 1차 신규** |
-| **migration-service**    | **8096** | (별도 결정)       | **ECount 일괄 이관 + 장기미수**            | **Phase 10 예정**|
+| **migration-service**    | **8096** | (별도 결정)       | **ECount 일괄 이관 + 장기미수**            | **Phase 11 예정 (renumber)**|
+| **arologis-service**     | **8097** | **arologis_db**   | **배차 마이크로서비스 — Dispatch / Vehicle / Stop / Driver / Signature + GPS 추적 + KakaoDispatchParser + DriverMatcher 추상화 (Mock + Insung Quick) + 4 client (partner/user/slip/notification) + ShedLock daily 30일 cleanup** | **Phase 10 W10-1 신규** |
 
 > Phase 9 신규 4 service 의 포트 / DB 확정은 `migration/decisions/DECISIONS.md` D-P9-01 참조.
-> Phase 10 migration-service (8096) 는 partner-service (8095) 와 충돌 회피한 신규 포트 — D-P9-01 cascade.
+> Phase 10 (renumber) = arologis-service (8097, D-P10-01 ~ D-P10-05).
+> Phase 11 (renumber) = AWS migration cutover + migration-service (8096, partner-service 8095 / arologis-service 8097 충돌 회피).
 
 ### 인프라 + backend 빌드
 
@@ -157,6 +160,7 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ./gradlew :services:partner-service:bootRun         # http://localhost:8095
 ./gradlew :services:groupware-service:bootRun       # http://localhost:8092
 ./gradlew :services:notification-service:bootRun    # http://localhost:8093
+./gradlew :services:arologis-service:bootRun        # http://localhost:8097 (Phase 10 W10-1 신규)
 ./gradlew :services:dashboard-service:bootRun       # http://localhost:8094
 ```
 
@@ -208,7 +212,8 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | 7     | 완료       | #81 ~ #87              | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                        |
 | 8     | **완료**   | **#88 / #89 / #90**    | AWS 호환성 가드 (12-factor + chained-default + ServiceDiscoveryClient + Secrets rotation spec + Phase 10 dry-run plan) |
 | 9     | **완료** | **W1 partner-service (#91) / W2 groupware-service (#92) / W3 notification-service (#93) / W4 dashboard-service (#94) / W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수 (본 PR)** | 잔여 도메인 4 신규 service + 1 shared module 완료, 사용자 가드 정착 |
-| 10    | **진입 준비 완료** | -                      | AWS 마이그레이션 (P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover) + Migration Service (8096) + 운영 안정화 |
+| 10    | **진행 중** | **W10-1 arologis-service skeleton (본 PR)** | **arologis-service (8097) — 배차 마이크로서비스 (Phase 10/11 renumber, D-P10-05). 5 슬라이스 W10-1 ~ W10-5 (skeleton / 인성데이타 vendor / 모바일 / slip 통합 / 회고).** |
+| 11    | 진입 대기 | -                      | AWS 마이그레이션 (renumber, 기존 Phase 10) — RDS + EC2/ECS + Secrets Manager + Migration Service (8096) + 운영 안정화 |
 
 자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.
 
@@ -290,8 +295,9 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | Phase 8 회고               | `docs/dev-reports/phase8-retrospective.md`                          |
 | Phase 9 readiness          | `docs/migration/phase9/M-PHASE-9-readiness.md`                      |
 | Phase 9 회고               | `docs/dev-reports/phase9-retrospective.md`                          |
-| Phase 10 readiness         | `docs/migration/phase10/M-PHASE-10-readiness.md`                    |
-| Phase 10 AWS dry-run plan  | `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`                 |
+| Phase 10 readiness (arologis) | `docs/migration/phase10/M-PHASE-10-readiness.md` (renumber, arologis-service 5 슬라이스) |
+| Phase 11 readiness (AWS cutover) | `docs/migration/phase11/M-PHASE-11-readiness.md` (renumber, 기존 phase10) |
+| Phase 11 AWS dry-run plan  | `docs/migration/phase11/M-AWS-MIGRATION-DRY-RUN.md` (renumber, 기존 phase10) |
 | dev-reports 누적           | `docs/dev-reports/`                                                 |
 
 ---

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-1 — arologis-service REST API endpoint matrix</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 28px 36px; color: #0f172a; background: #f8fafc; max-width: 1280px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); font-size: 12.5px; }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  .b-ok    { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info  { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-channel-internal { background: #1a73e8; color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-channel-admin    { background: #34a853; color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-channel-driver   { background: #fbbc04; color: #0f172a; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-method-get    { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .b-method-post   { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .b-method-put    { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .summary { background: #fff; border-left: 4px solid #34a853; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .qa-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+  @media (max-width: 768px) { .qa-table-wrapper table { min-width: 1000px; } }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+  .slice-success { border-left-color: #34a853; }
+  .slice-pending { border-left-color: #f9ab00; }
+  .slice-deferred { border-left-color: #5f6368; }
+</style>
+</head>
+<body>
+
+<h1>arologis-service REST API endpoint matrix (Phase 10 W10-1)</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">
+  Internal (X-Internal-Token + ROLE_MASTER) + Admin (JWT + ROLE_MANAGER) + Driver-app (JWT + ROLE_DRIVER, W10-3 활성).
+</p>
+
+<div class="stats">
+  <div class="stat"><div class="num">12</div><div class="lbl">총 endpoint</div></div>
+  <div class="stat"><div class="num">1</div><div class="lbl"><span class="b-channel-internal">Internal</span> (vendor callback)</div></div>
+  <div class="stat"><div class="num">8</div><div class="lbl"><span class="b-channel-admin">Admin</span> (parse + CRUD + match)</div></div>
+  <div class="stat"><div class="num">3</div><div class="lbl"><span class="b-channel-driver">Driver-app</span> (W10-3 활성)</div></div>
+</div>
+
+<div class="summary slice-success">
+  <p><strong>Internal endpoint</strong> — <code>/internal/**</code> prefix 한정 (PR #91 fix 패턴 일관). InternalTokenFilter 가 X-Internal-Token 검증 → ROLE_MASTER 부여.</p>
+  <p><strong>Admin endpoint</strong> — Gateway 가 X-User-Id / X-User-Role 헤더 주입 → HeaderAuthenticationFilter 가 SecurityContext 적재 → @PreAuthorize MASTER/MANAGER.</p>
+  <p><strong>Driver-app endpoint</strong> — W10-3 RN Expo 어플 통합 시점 본격 활성. 본 PR (W10-1) 은 endpoint 정의 + 기본 동작 (X-User-Id 기반 Driver 매핑) 만 보유.</p>
+</div>
+
+<h2>1. Internal API (X-Internal-Token + ROLE_MASTER)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>Method</th><th>Path</th><th>책임</th><th>활성 시점</th><th>채널</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/internal/arologis/dispatches/sync</code></td>
+      <td>외부 vendor 배차 상태 동기화 callback (W10-1 = ack only, W10-2 시점 실 처리 활성)</td>
+      <td><span class="b-warn">W10-2 활성</span></td>
+      <td><span class="b-channel-internal">Internal</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. Admin API (JWT + ROLE_MASTER/MANAGER)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>Method</th><th>Path</th><th>책임</th><th>활성</th><th>채널</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/admin/arologis/dispatches/parse-kakao</code></td>
+      <td>카톡 텍스트 파싱 미리보기 (저장 X) — KakaoDispatchParser 호출</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/admin/arologis/dispatches</code></td>
+      <td>Dispatch 저장 (수동 보정 후) — kakaoText 재파싱 후 5 entity 영속화</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-get">GET</span></td>
+      <td><code>/admin/arologis/dispatches?date=&type=</code></td>
+      <td>Dispatch 목록 조회 (날짜 + 유형 필터)</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-get">GET</span></td>
+      <td><code>/admin/arologis/dispatches/{id}</code></td>
+      <td>Dispatch 상세 조회 — vehicles + stops + driverCode 포함</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/admin/arologis/dispatches/{id}/auto-match</code></td>
+      <td>자동 매칭 — 활성 DriverMatcher 호출 + assignedDriverId 반영 + 알림 trigger</td>
+      <td><span class="b-ok">W10-1 (Mock)</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/admin/arologis/dispatches/{id}/vehicles/{seq}/match-external</code></td>
+      <td>특정 차량 외부 매칭 trigger (W10-2 시점 단건 매칭으로 분리)</td>
+      <td><span class="b-warn">W10-2 활성</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/admin/arologis/dispatches/{id}/vehicles/{seq}/assign-driver</code></td>
+      <td>수동 기사 배정 — driverCode 로 lookup → vehicle.assignDriver(MANUAL)</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-put">PUT</span></td>
+      <td><code>/admin/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/status</code></td>
+      <td>정차 상태 갱신 (ARRIVED / DELIVERED / FAILED)</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-get">GET</span></td>
+      <td><code>/admin/arologis/drivers?source=&phoneNumber=&appInstalled=</code></td>
+      <td>Driver 목록 조회 (source / phoneNumber / appInstalled 필터)</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-put">PUT</span></td>
+      <td><code>/admin/arologis/dispatches/{id}/delete</code></td>
+      <td>Dispatch Soft Delete (BaseEntity.markDeleted)</td>
+      <td><span class="b-ok">W10-1</span></td>
+      <td><span class="b-channel-admin">Admin</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. Driver-app API (JWT + ROLE_DRIVER, W10-3 활성)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>Method</th><th>Path</th><th>책임</th><th>활성</th><th>채널</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="b-method-get">GET</span></td>
+      <td><code>/driver-app/arologis/dispatches/today</code></td>
+      <td>본인에게 배정된 dispatch 목록 — X-User-Id 기반 Driver 매핑 (appUserId)</td>
+      <td><span class="b-warn">W10-3 활성</span></td>
+      <td><span class="b-channel-driver">Driver-app</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/driver-app/arologis/locations</code></td>
+      <td>GPS 위치 보고 — DriverLocation 적재 (NUMERIC(10,7) ~1.1cm)</td>
+      <td><span class="b-warn">W10-3 활성</span></td>
+      <td><span class="b-channel-driver">Driver-app</span></td>
+    </tr>
+    <tr>
+      <td><span class="b-method-post">POST</span></td>
+      <td><code>/driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign</code></td>
+      <td>전자서명 등록 — Signature (source=APP) + GPS 캡처 (W10-4 slip-service 통합)</td>
+      <td><span class="b-warn">W10-3+4 활성</span></td>
+      <td><span class="b-channel-driver">Driver-app</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>4. 4 외부 client (skeleton-mode default)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>Client</th><th>호출 endpoint</th><th>활성 시점</th></tr></thead>
+  <tbody>
+    <tr><td><code>PartnerClient</code></td><td><code>POST /internal/partners/find-by-codes</code> (W5)</td><td>W10-2 자동 매칭 단계</td></tr>
+    <tr><td><code>UserClient</code></td><td><code>GET /internal/users/{userId}</code></td><td>W10-3 driver-app 인증</td></tr>
+    <tr><td><code>SlipClient</code></td><td><code>POST /internal/slips/{slipId}/signatures</code> (W10-4 신규)</td><td>W10-4 slip 통합</td></tr>
+    <tr><td><code>NotificationClient</code></td><td><code>POST /internal/notifications/send</code> (W3)</td><td>자동 매칭 알림</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>5. 가드 일관 (W3+W4+W5+post-W5 패턴 적용)</h2>
+<ul>
+  <li>InternalTokenFilter — <code>/internal/**</code> prefix 한정 (PR #91 fix 패턴)</li>
+  <li>HeaderAuthenticationFilter — Gateway 주입 X-User-* 헤더 신뢰</li>
+  <li>@PreAuthorize MASTER/MANAGER/DRIVER 권한 가드 모든 endpoint</li>
+  <li>UUID 비공개 가드 — driverCode / partnerCode 노출, UUID 비공개 (dispatchId 만 admin routing)</li>
+  <li>한국어 ApiResponse + 한국어 Javadoc + dev-report</li>
+  <li>4 외부 client skeleton-mode default + chained-default 환경변수 표준 (D-P8-08)</li>
+  <li>DriverMatcher 추상화 + provider 토글 (mock | insung-quick) — vendor 교체 가능 design</li>
+  <li>ShedLock daily 30일 GPS cleanup — multi-instance race 가드 (W4 패턴 일관)</li>
+</ul>
+
+</body>
+</html>

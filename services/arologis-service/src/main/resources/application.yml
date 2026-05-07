@@ -1,0 +1,100 @@
+server:
+  port: ${SAMHAN_AROLOGIS_PORT:8097}
+
+spring:
+  application:
+    name: arologis-service
+  datasource:
+    # 시크릿 placeholder — DB 자격증명은 반드시 환경변수로 주입.
+    # Phase 10 W10-1 chained-default — SAMHAN_AROLOGIS_DB_* 우선, LEGACY_DB_* legacy fallback.
+    url: jdbc:postgresql://${SAMHAN_AROLOGIS_DB_HOST:${LEGACY_DB_HOST:localhost}}:${SAMHAN_AROLOGIS_DB_PORT:${LEGACY_DB_PORT:5432}}/${SAMHAN_AROLOGIS_DB_NAME:${LEGACY_DB_NAME:arologis_db}}
+    username: ${SAMHAN_AROLOGIS_DB_USER:${LEGACY_DB_USER:CHANGE_ME_LOCAL_ONLY}}
+    password: ${SAMHAN_AROLOGIS_DB_PASSWORD:${LEGACY_DB_PASSWORD:CHANGE_ME_LOCAL_ONLY}}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    out-of-order: false
+    locations: classpath:db/migration
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+
+samhan:
+  discovery:
+    provider: ${SAMHAN_DISCOVERY_PROVIDER:eureka}
+  partner-service:
+    url: ${SAMHAN_PARTNER_SERVICE_URL:http://localhost:8095}
+  user-service:
+    url: ${SAMHAN_USER_SERVICE_URL:http://localhost:8083}
+  slip-service:
+    url: ${SAMHAN_SLIP_SERVICE_URL:http://localhost:8084}
+  notification-service:
+    url: ${SAMHAN_NOTIFICATION_SERVICE_URL:http://localhost:8093}
+  arologis:
+    # Phase 10 W10-1 — 4 client skeleton-mode 토글. true (default) 시 외부 호출 회피.
+    # W10-2 시점 인성데이타 vendor 통합 + W10-4 시점 slip 통합 시점에 false 활성.
+    client:
+      skeleton-mode: ${SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE:true}
+    matcher:
+      # mock (W10-1 default) | insung-quick (W10-2 통합 시점)
+      provider: ${SAMHAN_AROLOGIS_MATCHER_PROVIDER:mock}
+      insung-quick:
+        api-url: ${SAMHAN_INSUNG_QUICK_API_URL:CHANGE_ME_LOCAL_ONLY}
+        api-key: ${SAMHAN_INSUNG_QUICK_API_KEY:CHANGE_ME_LOCAL_ONLY}
+        partner-id: ${SAMHAN_INSUNG_QUICK_PARTNER_ID:CHANGE_ME_LOCAL_ONLY}
+    location-cleanup:
+      retention-days: ${SAMHAN_AROLOGIS_LOCATION_RETENTION_DAYS:30}
+    # Phase 10 W10-1 BE-1 / QA-3 / Designer-2 통합 채택 fix (사용자 결정 4 GPS 하이브리드, 2026-05-07).
+    # W10-2 진입 시점에 인성 LBS 우선 + 본 어플 GPS 보강 + 수동 fallback (값 = comma-separated source 우선순위).
+    gps:
+      priority: ${SAMHAN_AROLOGIS_GPS_PRIORITY:insung-lbs,app-gps,manual}
+
+app:
+  security:
+    internal:
+      # Phase 10 — SAMHAN_INTERNAL_TOKEN 표준 (chained-default).
+      token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:mem:arologis_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

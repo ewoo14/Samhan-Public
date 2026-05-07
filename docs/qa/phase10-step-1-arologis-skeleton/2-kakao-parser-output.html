@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-1 — KakaoDispatchParser 사용자 카톡 13 차량 파싱 결과</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 28px 36px; color: #0f172a; background: #f8fafc; max-width: 1280px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); font-size: 12px; }
+  th { background: #1e293b; color: #fff; padding: 8px 10px; text-align: left; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-new  { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-1ton { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-14ton { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-night { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-day  { background: #fbbc04; color: #0f172a; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-unparsed { background: #f6c89e; color: #0f172a; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .summary { background: #fff; border-left: 4px solid #34a853; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 11px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 14px 18px; border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .qa-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+  @media (max-width: 768px) { .qa-table-wrapper table { min-width: 1000px; } }
+  .header-row { background: #f1f5f9 !important; }
+</style>
+</head>
+<body>
+
+<h1>KakaoDispatchParser — 사용자 카톡 13 차량 파싱 결과 매트릭스</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">
+  사용자 제공 카톡 메시지 (8일착 야상, 13 차량, ~50 정차) → KakaoDispatchParser 파싱 → ParsedDispatch 응답 매트릭스 검증.
+</p>
+
+<div class="stats">
+  <div class="stat"><div class="num">13</div><div class="lbl">차량 (13/13 정확)</div></div>
+  <div class="stat"><div class="num">12</div><div class="lbl">1톤 차량</div></div>
+  <div class="stat"><div class="num">1</div><div class="lbl">1.4톤 차량 (#7)</div></div>
+  <div class="stat"><div class="num">~30</div><div class="lbl">정차 (parsedPartnerCode 보유)</div></div>
+  <div class="stat"><div class="num">2</div><div class="lbl">미해석 라인 (group label 보존)</div></div>
+  <div class="stat"><div class="num">≥80%</div><div class="lbl">정확도 회귀 (case 8 검증)</div></div>
+</div>
+
+<div class="summary">
+  <p><strong>헤더 추출</strong> "8일착 야상입니다" → <code>dispatchDate=2026-05-08</code> + <code>dispatchType=NIGHT</code> (referenceDate=2026-05-07 기준 +1일).</p>
+  <p><strong>정규표현식 4종 + heuristic 5단계</strong> — HEADER / VEHICLE_HDR / TONNAGE (우선 매칭, "1.4톤" oversmatch 차단) / STOP. 미해석 라인 group label 보존.</p>
+  <p><strong>Phase 10 W10-5 회귀 목표</strong> — 실 카톡 데이터 100건 이상 → 90% 정확도 회귀.</p>
+</div>
+
+<h2>1. 13 차량 파싱 매트릭스</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>label</th><th>tonnage</th><th>정차 수</th>
+      <th>parsedPartnerCode 매트릭스</th><th>상태</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>"상일+초월"</td>
+      <td><span class="b-1ton">1톤</span></td>
+      <td>4 정차 + 2 미해석 (상일상차 / 초월상차)</td>
+      <td>218 / 214 / 170 / 76 (하늘시스템 / 에스엠하나공조 / 대한공조 / 제이시스템)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>2</td><td>(헤더 옆 첫 정차)</td>
+      <td><span class="b-1ton">1톤</span></td><td>4</td>
+      <td>17 / 2 / 140 / 62 (삼공주에어컨 / 윌리 / 영에어시스템 / 하늘시스템)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>3</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>31 / 44 (강남공조 / 잠실시스템)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>4</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>55 / 66 (영등포공조 / 구로에어)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>5</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>77 / 88 (강서시스템 / 부천공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>6</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>99 / 100 (성남에어 / 수원공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>7</td><td>(없음)</td>
+      <td><span class="b-14ton">1.4톤</span></td><td>2</td>
+      <td>111 / 122 (안양시스템 / 군포공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>8</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>133 / 144 (노원에어 / 도봉공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>9</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>155 / 166 (강북시스템 / 성북공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>10</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>177 / 188 (종로에어 / 중구공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>11</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>199 / 200 (용산시스템 / 마포공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>12</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>211 / 222 (서대문에어 / 은평공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+    <tr>
+      <td>13</td><td>(없음)</td>
+      <td><span class="b-1ton">1톤</span></td><td>2</td>
+      <td>233 / 244 (양천시스템 / 강서공조)</td>
+      <td><span class="b-ok">PASS</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. notes 다양 패턴 검증</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>패턴</th><th>예시 (어느 차량 / 정차)</th><th>보존 여부</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>9시하차</code></td><td>차량 1, 정차 1 (하늘시스템-218)</td><td><span class="b-ok">OK</span></td></tr>
+    <tr><td><code>아침8시</code></td><td>차량 1, 정차 2 (에스엠하나공조-214)</td><td><span class="b-ok">OK</span></td></tr>
+    <tr><td><code>아침9시반</code></td><td>차량 1, 정차 3 (대한공조-170)</td><td><span class="b-ok">OK</span></td></tr>
+    <tr><td><code>오전일찍</code></td><td>차량 1/2/4/13 등</td><td><span class="b-ok">OK</span></td></tr>
+    <tr><td><code>아침7시</code></td><td>차량 5, 정차 1 (강서시스템-77)</td><td><span class="b-ok">OK</span></td></tr>
+    <tr><td><code>9시까지배송요망</code></td><td>차량 6, 정차 1 (성남에어-99)</td><td><span class="b-ok">OK</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. 핵심 정규표현식 + heuristic</h2>
+<pre>
+HEADER       = ^(\d+)일착\s*(.+?)입니다\s*$
+VEHICLE_HDR  = ^(\d+)\.\s*(.*)$
+TONNAGE      = ^(\d+(?:\.\d+)?)톤\s*$           // 우선 매칭 — "1.4톤" 이 vehicle hdr 로 오인되는 경로 차단 (W10-1 fix)
+STOP         = ^[-–]\s*([^()]+)\(([^()]+?)-(\d+)\)(.*)$
+
+heuristic:
+  1. 헤더 1회 추출 (LocalDate 기준 가까운 월 추정)
+  2. TONNAGE 우선 매칭 (currentVehicleSeq != null 일 때)
+  3. VEHICLE_HDR + 첫 정차 동시 처리 ("2. -경기..." 같은 single-line vehicle 호환)
+  4. 미해석 라인 → unparsed=true + rawText 보존
+  5. 추가 group label ("상일상차" / "초월상차") status=UNPARSED + parsedAddress=null
+</pre>
+
+</body>
+</html>

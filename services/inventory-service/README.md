@@ -30,7 +30,7 @@ SamhanLogis MSA 의 재고 도메인 마이크로서비스 (plan §3 첫 슬라�
 - **12-factor 12/12 OK** + RDS 호환 (낙관적 락 등 standard SQL/JPA feature 만 사용)
 - **AWS 서비스 매핑** — `docs/migration/phase8/M-AWS-COMPATIBILITY-guards.md` 본 service 항목 참조
 - **env-template** — `infrastructure/env-templates/inventory-service.env` 보유
-- **ServiceDiscoveryClient (Phase 10 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 10 cutover 시점
+- **ServiceDiscoveryClient (Phase 11 활성 대비)** — `shared:discovery-abstraction` 의존성 도입은 Phase 11 cutover 시점
 
 ## Phase 9 신규 service 매트릭스 (참조)
 

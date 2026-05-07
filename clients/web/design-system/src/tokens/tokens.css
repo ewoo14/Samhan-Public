@@ -563,3 +563,8 @@ html {
 .slice-accent-deferred { background: var(--color-slice-deferred); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
 /* small modifier — QA HTML inline 11px 일관성 (b-channel-sm 와 동일 패턴). */
 .slice-accent-sm       { font-size: var(--badge-channel-font-size-sm, 11px); }
+
+/* W10-1 종합 TM 후속 (PR #97 Fix 8) — b-unparsed peach 토큰 (Designer-1 채택).
+ * KakaoDispatchParser 미해석 라인 (group label "상일상차" / "초월상차" 등) 표시용.
+ * b-channel-* / slice-accent-* 와 일관 CSS variable 인용 (border-radius 4px / font-size 12px). */
+.b-unparsed { background: #f6c89e; color: #5a3a17; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }

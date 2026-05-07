@@ -9,7 +9,7 @@
 - W1 partner-service (8095) / W2 groupware-service (8092) / W3 notification-service (8093) 에 이은 **4 번째 신규 service**.
 - ServiceDiscoveryClient **네 번째 소비자** (W1 partner / W2 groupware / W3 notification → W4 dashboard).
 - 4 외부 service (inventory / accounting / partner-order / partner) 의존성 — 모두 fail-soft 정책 (skeleton 단계).
-- Phase 10 cutover 시점에 inventory / accounting endpoint 정착 후 실 데이터 집계 활성.
+- Phase 11 cutover 시점에 inventory / accounting endpoint 정착 후 실 데이터 집계 활성.
 
 ## 2. Domain (3 entity + 2 enum + 2 materialized view)
 
@@ -65,14 +65,14 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY 지원 (unique index 의무 보유, V1 SQ
 | `PartnerOrderClient` | partner-order-service:8088 | `GET /internal/orders/count?partnerId=&from=&to=` | fail-soft (실패 → 0) |
 | `PartnerClient` | partner-service:8095 (W1) | `GET /internal/partners/{partnerCode}` + `POST /internal/partners/find-by-codes` (W5, D-P9-16) | 단건 + bulk 둘 다 활용 (skeleton-mode 토글 일관) |
 
-본 슬라이스는 skeleton — 응답 파싱 / DTO 매핑은 Phase 10 cutover 시점.
+본 슬라이스는 skeleton — 응답 파싱 / DTO 매핑은 Phase 11 cutover 시점.
 
 ### 4-1. skeleton-mode 토글 (PR #94 W4 후속 fix — BE 의견 2 채택)
 
 `samhan.dashboard.client.skeleton-mode` (default `true`) 환경변수로 4 client 의 외부 호출을 일관 토글:
 
 - `true` (W4 default) — 4 client 가 외부 RPC 회피, default 반환 (`Optional.empty` / `BigDecimal.ZERO` / `0`). skeleton 의도 명확화 + outbound traffic 0.
-- `false` (Phase 10 cutover) — 외부 호출 활성. 본문 파싱 미구현 client 는 `UnsupportedOperationException` 으로 명시 실패 (Phase 10 BE 슬라이스에서 구현 의무).
+- `false` (Phase 11 cutover) — 외부 호출 활성. 본문 파싱 미구현 client 는 `UnsupportedOperationException` 으로 명시 실패 (Phase 10 BE 슬라이스에서 구현 의무).
 
 env: `SAMHAN_DASHBOARD_CLIENT_SKELETON_MODE=true|false`
 
@@ -162,7 +162,7 @@ notification-service / groupware-service 의 기존 `UserClient` 구현을 본 a
 
 총 **21 단위 PASS** + **9 IT** (Docker 미가용 환경 skip, CI Linux PASS). 4 외부 client 모두 `@MockBean` 격리 의무.
 
-## 10. Phase 10 cutover 진입 사항
+## 10. Phase 11 cutover 진입 사항
 
 - Inventory / Accounting / PartnerOrder Internal API 응답 파싱 + DTO 매핑
 - Caffeine → Redis 토글 (multi-instance scaling)
