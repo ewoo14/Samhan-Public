@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>partner + dashboard test report summary — Phase 9 W5</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 28px 36px; color: #1f2937; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-warn { background: #fef3c7; color: #854d0e; }
+  .b-info { background: #dbeafe; color: #1e40af; }
+  .b-new { background: #ede9fe; color: #6d28d9; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<h1>Phase 9 W5 — partner-service + dashboard-service test 종합</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">Phase 9 W5 회고 슬라이스 (잔존 backlog 1건 D-P9-16 채택) — <code>./gradlew :services:partner-service:test :services:dashboard-service:test</code></p>
+
+<div class="stats">
+  <div class="stat"><div class="num">8</div><div class="lbl">partner-service IT (W1 4 + W5 +4)</div></div>
+  <div class="stat"><div class="num">21</div><div class="lbl">dashboard-service 단위 (W4 17 + W5 +4)</div></div>
+  <div class="stat"><div class="num">9</div><div class="lbl">dashboard-service IT (W4 9 보존)</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">회귀 (전체 14 service assemble PASS)</div></div>
+</div>
+
+<div class="summary">
+  <p><strong>슬라이스</strong> Phase 9 W5 (5차, 마지막) — 회고 보고서 + Phase 10 진입 plan + 잔존 backlog 1건 (BE 의견 3 — partner-service findByCodes bulk endpoint) 흡수.</p>
+  <p><strong>Base</strong> main HEAD <code>b2f38ea</code> Merge PR #94. <strong>Branch</strong> <code>feature/integrated-phase-9-step-5-retrospective-and-phase10</code>.</p>
+  <p><strong>회귀 검증</strong> assemble PASS (14 service) + partner / dashboard test PASS. 사용자 가드 적용 — 잔존 backlog 1건 본 PR 채택, Phase 10 위임 X.</p>
+</div>
+
+<h2>1. partner-service 테스트 매트릭스</h2>
+<table>
+  <thead>
+    <tr><th>Test</th><th>케이스</th><th>상태</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>PartnerServiceTest</code></td>
+      <td>8 (도메인 단위)</td>
+      <td><span class="badge b-ok">PASS</span></td>
+      <td>register / changeCreditLimit / increase·decreaseBalance / canIssueSlip / 상태 전이 — W1 보존</td>
+    </tr>
+    <tr>
+      <td><code>PartnerInternalControllerIT</code></td>
+      <td>4 → 8 <span class="badge b-new">+4 W5</span></td>
+      <td><span class="badge b-ok">PASS</span></td>
+      <td>W1 단건 (403/401/200/404) + W5 bulk (정상/빈/일부 미존재 누락/토큰 누락 403)</td>
+    </tr>
+    <tr>
+      <td><code>PartnerAdminControllerIT</code></td>
+      <td>5 (CRUD)</td>
+      <td><span class="badge b-ok">PASS</span></td>
+      <td>403 익명 / 403 SALES / 200 MANAGER 등록 / 409 중복 / DELETE soft — W1 보존</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>2. dashboard-service 테스트 매트릭스</h2>
+<table>
+  <thead>
+    <tr><th>Test</th><th>케이스</th><th>상태</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>KpiServiceTest</code></td><td>6</td><td><span class="badge b-ok">PASS</span></td><td>W4 보존</td></tr>
+    <tr><td><code>RealTimeStockServiceTest</code></td><td>4</td><td><span class="badge b-ok">PASS</span></td><td>W4 보존</td></tr>
+    <tr><td><code>SalesAggregateServiceTest</code></td><td>5</td><td><span class="badge b-ok">PASS</span></td><td>W4 보존</td></tr>
+    <tr><td><code>MaterializedViewRefreshTest</code></td><td>2</td><td><span class="badge b-ok">PASS</span></td><td>W4 보존</td></tr>
+    <tr><td><code>PartnerCodeResolverTest</code> <span class="badge b-new">W5 신규</span></td><td>4</td><td><span class="badge b-ok">PASS</span></td><td>빈 / 전체 miss bulk / hit+miss 분리 / 일부 미존재 누락</td></tr>
+    <tr><td><code>DashboardInternalControllerIT</code></td><td>4</td><td><span class="badge b-info">SKIP (Docker 미가용)</span></td><td>CI Linux PASS 예정 — W4 보존</td></tr>
+    <tr><td><code>DashboardAdminControllerIT</code></td><td>5</td><td><span class="badge b-info">SKIP (Docker 미가용)</span></td><td>CI Linux PASS 예정 — W4 보존</td></tr>
+  </tbody>
+</table>
+
+<h2>3. 가드 일관 적용 (W5 본 PR)</h2>
+<table>
+  <thead><tr><th>가드</th><th>적용</th></tr></thead>
+  <tbody>
+    <tr><td>BaseEntity 7 audit + Soft Delete</td><td><code>findAllByPartnerCodeIn</code> 자동 <code>@SQLRestriction</code> 가드</td></tr>
+    <tr><td>UUID 비공개 (Q-W4-2 일관)</td><td>응답 DTO partnerCode 만 사용자 노출 — partnerId 는 internal endpoint 한정</td></tr>
+    <tr><td>한국어 Javadoc + dev-report</td><td>본 PR 9 영역 docs 동기화</td></tr>
+    <tr><td>IT 외부 client <code>@MockBean</code></td><td>partner-service self-contained (외부 client 0)</td></tr>
+    <tr><td>InternalTokenFilter <code>/internal/**</code> prefix 한정</td><td>bulk endpoint 도 단건 lookup 패턴 일관</td></tr>
+    <tr><td>사용자 가드 (fix 본 PR 채택)</td><td>잔존 backlog 1건 (BE 의견 3) 본 PR D-P9-16 채택</td></tr>
+    <tr><td>slip-service 시간 의존 fix grep 가드</td><td>다른 service test 의 단순 fixture (LocalDate.of(2026,1,1)) 는 회귀 영향 없음 검증</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

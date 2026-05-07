@@ -3,10 +3,16 @@ package com.samhanair.logis.dashboard.service;
 import com.samhanair.logis.dashboard.client.PartnerClient;
 import com.samhanair.logis.dashboard.client.PartnerSummary;
 import com.samhanair.logis.dashboard.config.CacheConfig;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
@@ -29,10 +35,20 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PartnerCodeResolver {
 
     private final PartnerClient partnerClient;
+    private final CacheManager cacheManager;
+
+    /**
+     * Constructor — Spring 이 PartnerClient + CacheManager 자동 주입. cacheManager 는 W5 신규
+     * {@link #resolveAll(List)} 의 cache hit/miss 분리용 (단건 {@link #resolve(String)} 은 기존
+     * {@code @Cacheable} 패턴 유지).
+     */
+    public PartnerCodeResolver(PartnerClient partnerClient, CacheManager cacheManager) {
+        this.partnerClient = partnerClient;
+        this.cacheManager = cacheManager;
+    }
 
     /**
      * partnerCode 로 partnerId UUID 를 조회. cache hit 시 RPC 회피.
@@ -59,5 +75,89 @@ public class PartnerCodeResolver {
             return Optional.empty();
         }
         return Optional.ofNullable(summary.get().partnerId());
+    }
+
+    /**
+     * partnerCode N건 bulk resolve — Phase 9 W5 신규 (D-P9-16, BE 의견 3 채택).
+     *
+     * <p>fan-out N회 직렬 RPC 회피용. 처리 흐름:
+     * <ol>
+     *   <li>입력 코드를 cache hit / miss 로 분리 (Caffeine 캐시 직접 조회).</li>
+     *   <li>miss 코드만 {@link PartnerClient#findByCodes(List)} 1회 호출 → bulk RPC.</li>
+     *   <li>응답 row 를 cache 에 적재 (단건 {@link #resolve(String)} 와 동일 cache name 공유).</li>
+     *   <li>hit + 신규 응답 합쳐 partnerCode → UUID Map 반환.</li>
+     * </ol>
+     *
+     * <p>skeleton-mode 환경에서는 client 가 빈 리스트를 반환하므로 본 메서드도 hit 결과만 반환 (실 운영
+     * 진입 시점 cache 가 비어있으면 빈 Map). 미존재 partnerCode 는 결과 Map 에 누락 — 호출 측이
+     * Map containsKey 로 분기.
+     *
+     * @param partnerCodes 조회할 partnerCode 모음 (null/empty → 빈 Map)
+     * @return partnerCode → UUID Map (매칭된 항목만 포함)
+     */
+    public Map<String, UUID> resolveAll(List<String> partnerCodes) {
+        if (partnerCodes == null || partnerCodes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Cache cache = cacheManager.getCache(CacheConfig.CACHE_PARTNER_RESOLVE);
+        Map<String, UUID> result = new HashMap<>();
+        List<String> miss = new ArrayList<>();
+
+        for (String code : partnerCodes) {
+            if (code == null || code.isBlank()) {
+                continue;
+            }
+            UUID hit = readCacheUuid(cache, code);
+            if (hit != null) {
+                result.put(code, hit);
+            } else {
+                miss.add(code);
+            }
+        }
+
+        if (miss.isEmpty()) {
+            return result;
+        }
+
+        List<PartnerSummary> summaries = partnerClient.findByCodes(miss);
+        for (PartnerSummary s : summaries) {
+            if (s == null || s.partnerCode() == null || s.partnerId() == null) {
+                continue;
+            }
+            result.put(s.partnerCode(), s.partnerId());
+            if (cache != null) {
+                // W5 후속 fix BE-2 채택 — 단건 {@link #resolve(String)} 의 {@code @Cacheable} 은
+                // 반환 타입 {@code Optional<UUID>} 를 Spring Cache 가 자동 unwrap 하여 cache 에는
+                // UUID 가 저장된다. 본 bulk 적재도 동일하게 단건 form (UUID) 로 통일하여
+                // {@link #readCacheUuid} 가 양쪽 wrapper 형태를 처리해야 하는 비대칭 제거.
+                cache.put(s.partnerCode(), s.partnerId());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * cache 단건 read — Spring Cache 가 단건 {@link #resolve(String)} 진입 시 unwrap 한 UUID 또는
+     * Optional<UUID> 를 보유할 수 있다. 두 형태 모두 안전하게 UUID 로 정규화.
+     */
+    private UUID readCacheUuid(Cache cache, String code) {
+        if (cache == null) {
+            return null;
+        }
+        Cache.ValueWrapper wrapper = cache.get(code);
+        if (wrapper == null) {
+            return null;
+        }
+        Object value = wrapper.get();
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        if (value instanceof Optional<?> opt && opt.isPresent() && opt.get() instanceof UUID uuid) {
+            return uuid;
+        }
+        return null;
     }
 }

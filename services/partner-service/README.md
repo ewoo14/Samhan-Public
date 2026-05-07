@@ -31,6 +31,18 @@ slip-service 측 client (PartnerClient) 구현 시점은 Phase 9 W5 또는 Phase
 | Method | Path | 권한 | 설명 |
 |---|---|---|---|
 | GET | `/internal/partners/{partnerCode}` | ROLE_MASTER (token) | partnerCode → 마스터 + partnerId UUID lookup. M5 의존성 해소 |
+| POST | `/internal/partners/find-by-codes` | ROLE_MASTER (token) | partnerCode N건 동시 조회 batch endpoint (W5 신규, D-P9-16 — fan-out 직렬 RPC 회피용) |
+
+#### bulk endpoint (W5 신규, D-P9-16)
+
+`POST /internal/partners/find-by-codes` 입력 = JSON 배열 (`["P-2026-0001","P-2026-0002"]`).
+
+- 빈 배열 → 200 + 빈 리스트 (DB 조회 회피)
+- 미존재 코드는 응답에서 누락 (호출 측이 응답 partnerCode 매칭으로 분기)
+- distinct 정규화 + blank/null 항목 제거 (service 계층)
+- 토큰 누락 → 403, 토큰 불일치 → 401 (단건 lookup 패턴 일관)
+
+dashboard-service `PartnerCodeResolver.resolveAll(List<String>)` 가 본 endpoint 의 첫 소비자 — cache hit / miss 분리 + miss 만 1회 bulk RPC.
 
 ### Admin (X-User-* 헤더, gateway 경유)
 
@@ -71,7 +83,7 @@ slip-service 측 client (PartnerClient) 구현 시점은 Phase 9 W5 또는 Phase
 | 테스트 | 비고 |
 |---|---|
 | `PartnerServiceTest` | Partner 도메인 단위 (8 case) — register / changeCreditLimit / increase·decreaseBalance / canIssueSlip / 상태 전이 |
-| `PartnerInternalControllerIT` | Internal endpoint (4 case) — 토큰 누락(403)/불일치(401)/일치+lookup(200)/일치+미존재(404) |
+| `PartnerInternalControllerIT` | Internal endpoint (8 case) — 토큰 누락(403)/불일치(401)/단건 lookup(200)/단건 미존재(404) + W5 bulk endpoint 정상/빈/일부 미존재 누락/토큰 누락 403 |
 | `PartnerAdminControllerIT` | Admin CRUD (5 case) — 403 익명 / 403 SALES / 200 MANAGER 등록 / 409 중복 / DELETE soft |
 
 IT 베이스 = `AbstractPostgresIT` (Testcontainers PostgreSQL 16 + Docker 미가용 환경 skip).
@@ -85,5 +97,7 @@ IT 베이스 = `AbstractPostgresIT` (Testcontainers PostgreSQL 16 + Docker 미�
 ## 관련 문서
 
 - `docs/migration/phase9/M-PHASE-9-readiness.md` — Phase 9 진입 plan
-- `docs/dev-reports/phase9-step-1-partner-service.md` — 본 슬라이스 dev report
-- `migration/decisions/DECISIONS.md` D-P9-03 / D-P9-04 / D-P9-05
+- `docs/dev-reports/phase9-step-1-partner-service.md` — W1 dev report
+- `docs/dev-reports/phase9-step-5-retrospective.md` — W5 dev report (findByCodes bulk endpoint 채택)
+- `docs/dev-reports/phase9-retrospective.md` — Phase 9 종합 회고
+- `migration/decisions/DECISIONS.md` D-P9-03 / D-P9-04 / D-P9-05 / D-P9-16

@@ -63,7 +63,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY 지원 (unique index 의무 보유, V1 SQ
 | `InventoryClient` | inventory-service:8085 | `GET /internal/stock?productId=&warehouseCode=` | fail-soft (실패 → empty Optional) |
 | `AccountingClient` | accounting-service:8087 | `GET /internal/sales?partnerId=&from=&to=` | fail-soft (실패 → BigDecimal.ZERO) |
 | `PartnerOrderClient` | partner-order-service:8088 | `GET /internal/orders/count?partnerId=&from=&to=` | fail-soft (실패 → 0) |
-| `PartnerClient` | partner-service:8095 (W1) | `GET /internal/partners/{partnerCode}` | W1 endpoint 활용 (운영, `PartnerSummary` 응답) |
+| `PartnerClient` | partner-service:8095 (W1) | `GET /internal/partners/{partnerCode}` + `POST /internal/partners/find-by-codes` (W5, D-P9-16) | 단건 + bulk 둘 다 활용 (skeleton-mode 토글 일관) |
 
 본 슬라이스는 skeleton — 응답 파싱 / DTO 매핑은 Phase 10 cutover 시점.
 
@@ -75,6 +75,27 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY 지원 (unique index 의무 보유, V1 SQ
 - `false` (Phase 10 cutover) — 외부 호출 활성. 본문 파싱 미구현 client 는 `UnsupportedOperationException` 으로 명시 실패 (Phase 10 BE 슬라이스에서 구현 의무).
 
 env: `SAMHAN_DASHBOARD_CLIENT_SKELETON_MODE=true|false`
+
+### 4-2. PartnerCodeResolver bulk 전환 (W5 신규, D-P9-16, BE 의견 3 채택)
+
+기존 `PartnerCodeResolver.resolve(String)` 단건 + Spring `@Cacheable` 패턴에 더해 W5 본 PR 에서 bulk 전환:
+
+```java
+public Map<String, UUID> resolveAll(List<String> partnerCodes) {
+    // 1. cache hit / miss 분리 (Caffeine 캐시 직접 조회)
+    // 2. miss 만 partnerClient.findByCodes(miss) 1회 bulk RPC
+    // 3. 응답을 Optional<UUID> wrapper 형태로 cache 적재 (단건 resolve 와 일관)
+    // 4. hit + 신규 응답 합쳐 partnerCode → UUID Map 반환
+}
+```
+
+- skeleton-mode 환경에서는 client 가 빈 리스트 반환 → hit 결과만 반환 (실 운영 진입 시점 첫 호출은 빈 Map)
+- 미존재 partnerCode 는 결과 Map 에 누락 — 호출 측이 `Map.containsKey` 분기 책임
+- Cache 명 = `dashboard-partner-resolve` (단건 resolve 와 공유)
+
+향후 매출 집계 / KPI 화면이 partnerCode N건 동시 노출 시 fan-out 직렬 RPC → 1회 batch 호출.
+
+`PartnerCodeResolverTest` 4 case 신규 — 빈 / 전체 miss / hit+miss 분리 / 일부 미존재.
 
 ## 5. shared:user-client-abstraction (W3 backlog #1 채택)
 
@@ -135,10 +156,11 @@ notification-service / groupware-service 의 기존 `UserClient` 구현을 본 a
 | `RealTimeStockServiceTest` | 단위 | 4 (filter/refreshOne fail-soft/400) |
 | `SalesAggregateServiceTest` | 단위 | 5 (range/partner filter/aggregate fail-soft) |
 | `MaterializedViewRefreshTest` | 단위 | 2 (concurrent / fail-soft) |
+| `PartnerCodeResolverTest` (W5 신규) | 단위 | 4 (빈 / 전체 miss bulk / hit+miss 분리 / 일부 미존재 누락) |
 | `DashboardInternalControllerIT` | IT | 4 (401 / 403 / 200 / 400) |
 | `DashboardAdminControllerIT` | IT | 5 (KPI / stock / sales / refresh / 400) |
 
-총 **17 단위 PASS** + **9 IT** (Docker 미가용 환경 skip, CI Linux PASS). 4 외부 client 모두 `@MockBean` 격리 의무.
+총 **21 단위 PASS** + **9 IT** (Docker 미가용 환경 skip, CI Linux PASS). 4 외부 client 모두 `@MockBean` 격리 의무.
 
 ## 10. Phase 10 cutover 진입 사항
 
