@@ -2,9 +2,12 @@ package com.samhanair.logis.arologis.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.arologis.ArologisServiceApplication;
@@ -190,7 +193,66 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
     }
 
     /**
-     * Case 3 — stop 미존재 → 404. (정상 가드 회귀 검증)
+     * Case 3 (QA-2 채택 fix) — happy-path: SlipResolver 가 slip-service 매핑 성공 → SlipClient
+     * registerSignature 호출 (mock true) → slipBridged=true 응답.
+     *
+     * <p>SlipClient.findRecentSlipIdByPartnerCode mock 이 임의 UUID 반환하도록 설정 → SlipResolver
+     * 가 slipId 를 반환 → controller 가 SlipClient.registerSignature 호출. 응답 schema slipBridged=true.
+     */
+    @Test
+    void sign_partnerMapped_savesArologisSignature_slipBridgedTrue() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID resolvedSlipId = UUID.randomUUID();
+        // SlipClient mock 활성: by-partner-code lookup 성공 + registerSignature 성공
+        when(slipClient.findRecentSlipIdByPartnerCode(anyString()))
+                .thenReturn(Optional.of(resolvedSlipId));
+        when(slipClient.registerSignature(eq(resolvedSlipId), any())).thenReturn(true);
+
+        driverRepository.save(Driver.of(
+                "DR-W10-4-004", "010-7777-8888", "1톤",
+                DriverSource.INTERNAL, true, userId));
+
+        Dispatch dispatch = dispatchRepository.save(
+                Dispatch.of(LocalDate.now(), DispatchType.NIGHT, "W10-4 happy-path"));
+        Vehicle vehicle = vehicleRepository.save(
+                Vehicle.of(dispatch.getId(), 1, VehicleTonnage.TONNAGE_1, "차량4"));
+        VehicleStop stop = stopRepository.save(VehicleStop.of(
+                vehicle.getId(), 1, "정차 4", "서울시 영등포구",
+                "에스엠하나공조", 214L, null, StopStatus.PENDING));
+
+        String body = objectMapper.writeValueAsString(Map.of(
+                "imageRef", "s3://samhan-prod/sig-happy.png",
+                "latitude", "37.5",
+                "longitude", "127.05",
+                "driverCode", "INSUNG-002"));
+
+        mockMvc.perform(MockMvcRequestBuilders.post(
+                        "/driver-app/arologis/dispatches/" + dispatch.getId()
+                                + "/vehicles/1/stops/1/sign")
+                        .header("X-User-Id", userId.toString())
+                        .header("X-User-Role", "DRIVER")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").exists())
+                // QA-2 채택 핵심 검증 — slipBridged=true (slip-service 양쪽 저장 성공)
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.slipBridged").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.capturedAt").exists());
+
+        // arologis 자체 signatures source=APP 검증 (양쪽 저장 모두 보장)
+        var saved = signatureRepository.findAllByStopIdOrderByCapturedAtDesc(stop.getId());
+        assertThat(saved).hasSize(1);
+        assertThat(saved.get(0).getSource()).isEqualTo(SignatureSource.APP);
+        assertThat(saved.get(0).getImageRef()).isEqualTo("s3://samhan-prod/sig-happy.png");
+
+        // SlipClient 호출 검증 — 1회 호출, payload driverCode 보존
+        verify(slipClient, times(1)).findRecentSlipIdByPartnerCode("214");
+        verify(slipClient, times(1)).registerSignature(eq(resolvedSlipId), any());
+    }
+
+    /**
+     * Case 4 — stop 미존재 → 404. (정상 가드 회귀 검증)
      */
     @Test
     void sign_stopNotFound_returns404() throws Exception {

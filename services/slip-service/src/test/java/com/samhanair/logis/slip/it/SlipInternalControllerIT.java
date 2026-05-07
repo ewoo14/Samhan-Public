@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.PartnerInternalClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.delivery.sms.SmsGateway;
@@ -69,6 +70,7 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
     @MockBean private InventoryClient inventoryClient;
     @MockBean private ProductClient productClient;
     @MockBean private SmsGateway smsGateway;
+    @MockBean private PartnerInternalClient partnerInternalClient;
 
     @BeforeEach
     void mockClients() {
@@ -87,6 +89,9 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
         Mockito.lenient().when(smsGateway.sendSms(ArgumentMatchers.anyString(),
                         ArgumentMatchers.anyString()))
                 .thenReturn(SmsResult.success("mock-id"));
+        // PartnerInternalClient 기본 mock — empty (개별 case 가 override)
+        Mockito.lenient().when(partnerInternalClient.resolvePartnerId(ArgumentMatchers.anyString()))
+                .thenReturn(java.util.Optional.empty());
     }
 
     // ---------- POST /internal/slips/{slipId}/signatures ----------
@@ -235,6 +240,44 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
         mockMvc.perform(get("/internal/slips/by-partner/" + unknownPartnerId + "/recent")
                         .header("X-Internal-Token", INTERNAL_TOKEN))
                 .andExpect(status().isNotFound());
+    }
+
+    // ---------- GET /internal/slips/by-partner-code/{code}/recent (W10-4 종합 TM BE-1 채택) ----------
+
+    @Test
+    void findRecentByPartnerCode_partnerMappedAndSlipExists_returnsApiResponseWrapper() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        String slipId = createInspectingSlipForPartner(partnerId);
+        // partner-service mock: partnerCode "214" → partnerId UUID
+        Mockito.when(partnerInternalClient.resolvePartnerId("214"))
+                .thenReturn(java.util.Optional.of(partnerId));
+
+        MvcResult result = mockMvc.perform(get("/internal/slips/by-partner-code/214/recent")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.slipId").value(slipId))
+                .andExpect(jsonPath("$.data.slipNo").exists())
+                .andExpect(jsonPath("$.data.status").value("INSPECTING"))
+                .andReturn();
+        String raw = result.getResponse().getContentAsString();
+        assertThat(raw).contains("\"success\":true");
+    }
+
+    @Test
+    void findRecentByPartnerCode_partnerNotMapped_returnsApiResponse200WithNullData() throws Exception {
+        // partner-service mock 기본 empty — graceful 200 + data=null (404 아님)
+        mockMvc.perform(get("/internal/slips/by-partner-code/UNKNOWN/recent")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void findRecentByPartnerCode_missingInternalToken_returns403() throws Exception {
+        mockMvc.perform(get("/internal/slips/by-partner-code/214/recent"))
+                .andExpect(status().isForbidden());
     }
 
     // ---------- helpers ----------
