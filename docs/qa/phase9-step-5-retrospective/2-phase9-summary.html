@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 9 종합 매트릭스 (W1~W5) — 회고</title>
+<style>
+  body { font-family: 'Segoe UI', Pretendard, system-ui, sans-serif; padding: 28px 36px; color: #1f2937; background: #f8fafc; max-width: 1240px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 12.5px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 12.5px; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .b-ok { background: #dcfce7; color: #166534; }
+  .b-blue { background: #dbeafe; color: #1e40af; }
+  .b-red { background: #fee2e2; color: #991b1b; }
+  .b-green { background: #dcfce7; color: #166534; }
+  .b-purple { background: #ede9fe; color: #6d28d9; }
+  .b-amber { background: #fef3c7; color: #854d0e; }
+  .summary { background: #fff; border-left: 4px solid #1a73e8; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 11.5px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12px; font-family: 'Cascadia Mono', Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<h1>Phase 9 — 잔여 도메인 5 슬라이스 종합 매트릭스 (W1~W5)</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">2026-05-05 (W1 PR #91 머지) ~ 2026-05-07 (W5 본 PR 발행)</p>
+
+<div class="stats">
+  <div class="stat"><div class="num">4</div><div class="lbl">신규 service</div></div>
+  <div class="stat"><div class="num">1</div><div class="lbl">신규 shared module</div></div>
+  <div class="stat"><div class="num">19</div><div class="lbl">DECISIONS D-P9-NN</div></div>
+  <div class="stat"><div class="num">25</div><div class="lbl">backlog 채택</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">잔존 backlog</div></div>
+</div>
+
+<div class="summary">
+  <p><strong>Phase 9 종합 = 완료</strong>. 4 신규 service (partner / groupware / notification / dashboard) + 1 shared module (user-client-abstraction) + 회고 보고서 + Phase 10 진입 plan.</p>
+  <p><strong>핵심 학습</strong>: W4 부터 사용자 가드 (fix 본 PR 채택) 정착 → W5 시점 잔존 backlog 0. Phase 10 진입 시점 backlog 누적 0.</p>
+  <p><strong>다음</strong> Phase 10 (P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover) — AWS account 발급 후 진입.</p>
+</div>
+
+<h2>1. 슬라이스 매트릭스</h2>
+<table>
+  <thead>
+    <tr><th>W</th><th>산출</th><th>PR</th><th>핵심</th><th>backlog 채택</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="badge b-blue">W1</span></td>
+      <td>partner-service skeleton (port 8095)</td>
+      <td>#91</td>
+      <td>거래처 마스터 + ServiceDiscoveryClient 첫 소비자 + M5 의존성 해소 endpoint</td>
+      <td><span class="badge b-amber">0</span></td>
+    </tr>
+    <tr>
+      <td><span class="badge b-blue">W2</span></td>
+      <td>groupware-service skeleton (port 8092)</td>
+      <td>#92</td>
+      <td>결재선/메신저/일정 + UserClient + LazyInitializationException 회고 + ServiceDiscoveryClient 두 번째 소비자</td>
+      <td><span class="badge b-amber">0</span></td>
+    </tr>
+    <tr>
+      <td><span class="badge b-blue">W3</span></td>
+      <td>notification-service skeleton (port 8093)</td>
+      <td>#93</td>
+      <td>3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s + DevOps backlog #11/#12 흡수 + ServiceDiscoveryClient 세 번째 소비자</td>
+      <td><span class="badge b-green">1</span> (W2 BE #4)</td>
+    </tr>
+    <tr>
+      <td><span class="badge b-blue">W4</span></td>
+      <td>dashboard-service skeleton (port 8094)</td>
+      <td>#94</td>
+      <td>3 entity + 2 materialized view + 4 client + Caffeine KPI cache + shared:user-client-abstraction 신규 + 사용자 가드 후속 fix 11건 + slip-service 시간 의존 회귀 정공법 fix + ServiceDiscoveryClient 네 번째 소비자</td>
+      <td><span class="badge b-green">5+13</span> (W3+사용자 가드)</td>
+    </tr>
+    <tr>
+      <td><span class="badge b-purple">W5</span></td>
+      <td>회고 + Phase 10 plan + 잔존 backlog 1건 흡수</td>
+      <td>본 PR</td>
+      <td>partner-service findByCodes bulk endpoint + dashboard-service PartnerCodeResolver bulk 전환 (D-P9-16 BE 의견 3) + Phase 9 종합 회고 + Phase 10 진입 plan</td>
+      <td><span class="badge b-green">1</span> (W4 BE 의견 3)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>2. 핵심 결정 (D-P9-02 ~ D-P9-20, 19건)</h2>
+<table>
+  <thead><tr><th>ID</th><th>결정</th><th>W</th></tr></thead>
+  <tbody>
+    <tr><td>D-P9-02</td><td>partner-service skeleton (port 8095)</td><td>W1</td></tr>
+    <tr><td>D-P9-03</td><td>partner-service W1 산출물 매트릭스</td><td>W1</td></tr>
+    <tr><td>D-P9-04</td><td>slip-service M5 client = W5 또는 Phase 10 위임</td><td>W1</td></tr>
+    <tr><td>D-P9-05</td><td>ServiceDiscoveryClient default = eureka, Phase 10 aws-cloud-map 토글</td><td>W1</td></tr>
+    <tr><td>D-P9-06</td><td>groupware-service 도메인 (결재선/메신저/일정)</td><td>W2</td></tr>
+    <tr><td>D-P9-07</td><td>결재선 chain = ApprovalLine + ApprovalStep + 5상태</td><td>W2</td></tr>
+    <tr><td>D-P9-08</td><td>ServiceDiscoveryClient 두 번째 소비자</td><td>W2</td></tr>
+    <tr><td>D-P9-09</td><td>notification-service 도메인 + 3 channel adapter</td><td>W3</td></tr>
+    <tr><td>D-P9-10</td><td>Aligo SMS 흡수 + FCM/SES placeholder</td><td>W3</td></tr>
+    <tr><td>D-P9-11</td><td>UserClient bulk verify + Caffeine TTL 60s</td><td>W3</td></tr>
+    <tr><td>D-P9-12</td><td>Caffeine 일관 + Redis 토글 약속</td><td>W4</td></tr>
+    <tr><td>D-P9-13</td><td>materialized view 5분 CONCURRENTLY REFRESH</td><td>W4</td></tr>
+    <tr><td>D-P9-14</td><td>4 외부 client + ServiceDiscoveryClient 네 번째 소비자</td><td>W4</td></tr>
+    <tr><td>D-P9-15</td><td>shared:user-client-abstraction 통합</td><td>W4</td></tr>
+    <tr><td><strong>D-P9-16</strong></td><td><strong>partner-service findByCodes + dashboard PartnerCodeResolver bulk 전환</strong></td><td><span class="badge b-purple">W5</span></td></tr>
+    <tr><td><strong>D-P9-17</strong></td><td><strong>slip-service 시간 의존 fix (LocalDate.now())</strong></td><td><span class="badge b-purple">W4+W5</span></td></tr>
+    <tr><td><strong>D-P9-18</strong></td><td><strong>사용자 가드 적용 (fix 후속 PR/Phase 위임 금지)</strong></td><td><span class="badge b-purple">W4+W5</span></td></tr>
+    <tr><td><strong>D-P9-19</strong></td><td><strong>Phase 10 진입 준비 완료 + cutover plan 채택</strong></td><td><span class="badge b-purple">W5</span></td></tr>
+    <tr><td><strong>D-P9-20</strong></td><td><strong>Phase 9 회고 종합</strong></td><td><span class="badge b-purple">W5</span></td></tr>
+  </tbody>
+</table>
+
+<h2>3. 산출 통계 (누적)</h2>
+<table>
+  <thead><tr><th>영역</th><th>W1</th><th>W2</th><th>W3</th><th>W4</th><th>W5</th><th>누적</th></tr></thead>
+  <tbody>
+    <tr><td>신규 service</td><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td><td><strong>4</strong></td></tr>
+    <tr><td>신규 shared module</td><td>0</td><td>0</td><td>0</td><td>1 (user-client)</td><td>0</td><td><strong>1</strong></td></tr>
+    <tr><td>Flyway V1 (init)</td><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td><td><strong>4</strong></td></tr>
+    <tr><td>Materialized view</td><td>0</td><td>0</td><td>0</td><td>2</td><td>0</td><td><strong>2</strong></td></tr>
+    <tr><td>ServiceDiscoveryClient 소비자</td><td>1</td><td>2</td><td>3</td><td>4</td><td>4</td><td><strong>4</strong></td></tr>
+    <tr><td>외부 client</td><td>0</td><td>1</td><td>1 bulk</td><td>4</td><td>+1 method</td><td>-</td></tr>
+    <tr><td>dev-report</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td><strong>5</strong></td></tr>
+    <tr><td>QA 캡처 PNG</td><td>3</td><td>3</td><td>3</td><td>3</td><td>3</td><td><strong>15</strong></td></tr>
+    <tr><td>DECISIONS D-P9-NN</td><td>02→05</td><td>06→08</td><td>09→11</td><td>12→15</td><td>16→20</td><td><strong>19</strong></td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>
