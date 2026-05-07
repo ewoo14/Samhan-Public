@@ -9,8 +9,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
-import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -55,13 +54,15 @@ public class PartnerInternalClient {
     public PartnerInternalClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
                                  InternalAuthProperties internalAuthProperties,
                                  ObjectMapper objectMapper) {
-        // DV-1 채택 일관 — connect 2s / read 3s (partner-service hang SLA 가드)
+        // DV-1 채택 일관 — connect 2s / read 3s (partner-service hang SLA 가드).
+        // Spring Boot 3.3 + JDK SimpleClientHttpRequestFactory 표준 setter 사용
+        // (Spring Boot 3.4 의 ClientHttpRequestFactories 표준 키는 미지원 단계).
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout((int) Duration.ofSeconds(2).toMillis());
+        rf.setReadTimeout((int) Duration.ofSeconds(3).toMillis());
         this.restClient = builder
                 .baseUrl(PARTNER_SERVICE_BASE)
-                .requestFactory(ClientHttpRequestFactories.get(
-                        ClientHttpRequestFactorySettings.DEFAULTS
-                                .withConnectTimeout(Duration.ofSeconds(2))
-                                .withReadTimeout(Duration.ofSeconds(3))))
+                .requestFactory(rf)
                 .build();
         this.internalAuthProperties = internalAuthProperties;
         this.objectMapper = objectMapper;

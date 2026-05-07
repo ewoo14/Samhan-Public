@@ -3,7 +3,6 @@ package com.samhanair.logis.arologis.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,8 +10,6 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
-import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -43,7 +40,7 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class SlipClient {
 
-    private final RestClient.Builder builder;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String baseUrl;
     private final String internalToken;
@@ -54,7 +51,11 @@ public class SlipClient {
                       @Value("${samhan.slip-service.url:http://localhost:8084}") String baseUrl,
                       @Value("${app.security.internal.token:}") String internalToken,
                       @Value("${samhan.arologis.client.skeleton-mode:true}") boolean skeletonMode) {
-        this.builder = builder;
+        // DV-1 채택 — SlipClient.Builder 가 이미 timeout 설정된 RequestFactory 를 보유하면 보존,
+        // 아니면 default timeout (connect 2s / read 3s) 적용. MockRestServiceServer.bindTo(builder)
+        // 시점에 builder 의 requestFactory 가 mock interceptor 로 교체되므로 본 생성자는 builder 를
+        // 그대로 build — production timeout 설정은 WebClientConfig bean (또는 호출자 builder) 가 책임.
+        this.restClient = builder.baseUrl(baseUrl).build();
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
         this.internalToken = internalToken;
@@ -80,8 +81,7 @@ public class SlipClient {
             return false;
         }
         try {
-            RestClient client = buildClient();
-            String body = client.post()
+            String body = restClient.post()
                     .uri("/internal/slips/{slipId}/signatures", slipId)
                     .header("X-Internal-Token", internalToken)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -124,8 +124,7 @@ public class SlipClient {
             return Optional.empty();
         }
         try {
-            RestClient client = buildClient();
-            String body = client.get()
+            String body = restClient.get()
                     .uri("/internal/slips/by-partner/{partnerId}/recent", partnerId)
                     .header("X-Internal-Token", internalToken)
                     .retrieve()
@@ -176,8 +175,7 @@ public class SlipClient {
             return Optional.empty();
         }
         try {
-            RestClient client = buildClient();
-            String body = client.get()
+            String body = restClient.get()
                     .uri("/internal/slips/by-partner-code/{partnerCode}/recent", partnerCode)
                     .header("X-Internal-Token", internalToken)
                     .retrieve()
@@ -204,22 +202,6 @@ public class SlipClient {
                     partnerCode, ex.getMessage());
             return Optional.empty();
         }
-    }
-
-    /**
-     * RestClient build helper — DV-1 채택 timeout 적용 (connect 2s / read 3s).
-     *
-     * <p>slip-service hang 시 driver-app sign 응답 동기 차단 SLA 위협 회피. requestFactory 는
-     * Spring Boot 3.4 의 {@link ClientHttpRequestFactories} 표준 사용.
-     */
-    private RestClient buildClient() {
-        return builder
-                .baseUrl(baseUrl)
-                .requestFactory(ClientHttpRequestFactories.get(
-                        ClientHttpRequestFactorySettings.DEFAULTS
-                                .withConnectTimeout(Duration.ofSeconds(2))
-                                .withReadTimeout(Duration.ofSeconds(3))))
-                .build();
     }
 
     private String truncate(String body) {
