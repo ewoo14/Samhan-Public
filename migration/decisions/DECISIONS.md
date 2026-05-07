@@ -737,3 +737,39 @@ EAS Build 진입 시점 (W10-5 또는 운영 진입) 의무:
 근거: 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지") 일관 적용. W10-3 종합 TM 5 reviewer 채택 fix 7건 중 Designer-2 / FE-2 / B-DEVOPS-1 통합 — Pretendard OTF 4 weight 본 PR 의무 + 9 weight 운영 진입 시점 의무 + `useState(false)` 정정은 OTF 정식 배치 시점 동시 처리.
 
 영향: 본 PR (W10-3) 시점 = 4 weight 자산 누락 시 graceful guard 가 RN UI 미차단. EAS Build 진입 시점 = 본 결정에 따라 9 weight 배치 + `useState(false)` 정정 + splash guard 도입 의무. ROADMAP `W10-5` 또는 `Phase 10 운영 진입` task 로 추적.
+
+### D-P10-11. signature_source 컬럼 추가 + LINK/APP 통합 (2026-05-07)
+
+slip-service Phase 10 W10-4 (PR #99) 시점에 `signatures` 관련 컬럼군에 `signature_source` 컬럼 3개 추가:
+- `slips.signature_source` VARCHAR(20) NOT NULL DEFAULT 'LINK' (인수자 서명)
+- `slips.driver_signature_source` VARCHAR(20) NOT NULL DEFAULT 'LINK' (기사 서명)
+- `slip_signature_audit.signature_source` VARCHAR(20) NULL (audit 행, INVALIDATE 시 NULL)
+
+근거:
+- arologis-service 의 driver-app 직접 캡처 (source=APP) 가 W10-3 부터 활성, slip-service 에 전파 시 source 식별 의무
+- 기존 SMS/Aligo 공개 모바일 endpoint 발급 (LINK) 데이터는 backfill DEFAULT 'LINK' 로 호환 보존
+- 전자서명법 시행령 §17 무결성 입증 — audit 테이블에도 source 보존 의무
+- `SignatureSource` enum (LINK/APP) 은 기존 `SignatureChannel` enum (MOBILE_CANVAS/PAPER_SCAN) 과 직교 (입력 매체 vs 발급 경로)
+
+영향:
+- 기존 `Slip.recordSignature` / `recordDriverSignature` 4-arg / 3-arg 시그니처 보존 + source overload 추가 (LINK 자동 위임)
+- `SlipSignatureAudit.record` / `recordDriver` 도 source overload — RECORD/RECORD_DRIVER 행에 LINK/APP 보존
+- 기존 데이터 / 호출자 영향 0 (DEFAULT 'LINK' backfill + 시그니처 호환)
+- 본 PR 신규 endpoint `POST /internal/slips/{slipId}/signatures` 는 APP source 만 허용 (LINK 는 기존 공개 모바일 endpoint 전용 — 400 가드)
+- Phase 11 cutover 시점 — APP source 슬립의 imageRef 가 S3 placeholder 에서 실 S3 업로드로 전환 (현 PR 은 placeholder bytes + hash 보존)
+
+### D-P10-12. ApiResponse wrapper IT 의무화 (W10-3 F-3 채택, 2026-05-07)
+
+W10-3 PR #98 backlog F-3 (ApiResponse wrapper IT 검증) 을 W10-4 (PR #99) 시점에 정식 채택.
+
+근거:
+- W10-3 회고에서 mobile-staff 가 `response.data.data.*` 처럼 wrapper 안 안 데이터를 직접 접근하는 패턴이 정착
+- BE 측 IT 가 wrapper schema 를 명시적으로 검증하지 않으면, controller 응답 형식 회귀 (예: 직접 `Map` 반환) 시 mobile-staff 가 런타임 깨짐
+- W10-4 신규 endpoint 2종 (slip-service `/internal/slips/{slipId}/signatures` + `/internal/slips/by-partner/{partnerId}/recent`) + arologis sign 응답 schema 확장 모두 mobile-staff 호출 경로 → IT schema 검증 의무
+- PR #92 raw URL 회고 가드 일관 — schema mismatch fail-fast 패턴
+
+영향:
+- `SlipInternalControllerIT` (slip-service 신규 9 case) — 모든 200 OK 응답에 `success`/`data.*` schema 검증 의무
+- `SignatureIntegrationIT` (arologis 신규 3 case) — 동일 schema 검증 의무
+- 향후 모든 신규 IT 도 ApiResponse wrapper schema 검증 의무 (Phase 11 cutover 진입 시 운영 가드 일관 보존)
+- 기존 IT 는 점진 보강 (회귀 영향 없는 변경)

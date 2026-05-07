@@ -21,7 +21,7 @@
 | 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | 완료 (PR #87) |
 | 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **완료 (PR #88 / #89 / 본 PR)** |
 | 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **4차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification #93 + W4 dashboard skeleton 본 PR)** |
-| 10    | -           | arologis-service (배차 마이크로서비스) + 모바일 어플 driver tab + slip 통합 (renumber, D-P10-05) | **W10-1 PR #97 + W10-3 본 PR (mobile-staff 내부 driver tab + arologis API client + GPS hook + Pretendard self-host + 토큰 1:1 복제) — D-P10-07 / D-P10-08 / D-P10-09** |
+| 10    | -           | arologis-service (배차 마이크로서비스) + 모바일 어플 driver tab + slip 통합 (renumber, D-P10-05) | **W10-1 PR #97 + W10-3 PR #98 + W10-4 본 PR (slip-service 전자서명 LINK+APP source 통합, V10 Flyway, ApiResponse wrapper IT 의무화) — D-P10-11 / D-P10-12** |
 | 11    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기 |
 
 ---
@@ -400,9 +400,11 @@
 
 ### 슬라이스 분해
 - **W10-1** (PR #97 머지 `a98048e`) — arologis-service skeleton + parser + matcher + 4 client + 31 case + Phase 10/11 renumber
+- **W10-3** (PR #98 머지 `4b2c077`) — mobile-staff 내부 driver tab (Dashboard / Tracking / Signature) + arologis API client + Pretendard self-host + 토큰 1:1 복제
+- **W10-4** (본 PR #99) — slip-service 전자서명 LINK+APP source 통합 + V10 Flyway + InternalTokenFilter slip-service 신규 + arologis SlipClient 실 호출 분기 + SlipResolver + 양쪽 저장 패턴 + ApiResponse wrapper IT 의무화 (W10-3 F-3 채택, D-P10-12) + signature_source 컬럼 분리 (D-P10-11)
 - **W10-2** (대기) — 인성데이타 vendor 통합 (InsungQuickDriverMatcher 실 구현 + callback 활성), 인성데이타 협약 정보 사용자 trigger 대기
-- **W10-3** (본 PR) — 모바일 어플 driver tab (`clients/mobile-staff` 내부) + arologis API client + GPS hook + 3 화면 + Pretendard self-host + 토큰 1:1 복제
-- **W10-4** — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출, imageRef → file-server / S3 업로드)
+- **W10-3** (PR #98 머지 `4b2c077`) — 모바일 어플 driver tab (`clients/mobile-staff` 내부) + arologis API client + GPS hook + 3 화면 + Pretendard self-host + 토큰 1:1 복제
+- **W10-4** (본 PR #99) — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출, signature_source 컬럼 분리 LINK/APP, V10 Flyway, ApiResponse wrapper IT 의무화)
 - **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검 + **Pretendard 9 weight 정식 운영 배치** (W10-3 종합 TM Designer-2 / FE-2 / B-DEVOPS-1 통합 + D-P10-10)
 
 ### Pretendard 9 weight 정식 운영 배치 (W10-3 종합 TM 채택 — D-P10-10)

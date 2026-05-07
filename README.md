@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 완료 + post-W5 cleanup (W1 #91 / W2 #92 / W3 #93 / W4 #94 / W5 #95 / post-W5 #96), **Phase 10 진행 중 — W10-1 arologis-service skeleton (PR #97 머지 `a98048e`) + W10-3 모바일 어플 driver tab (`clients/mobile-staff` 내부, 본 PR — D-P10-07/08/09)** |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 완료 + post-W5 cleanup (W1 #91 / W2 #92 / W3 #93 / W4 #94 / W5 #95 / post-W5 #96), **Phase 10 진행 중 — W10-1 arologis-service skeleton (PR #97 `a98048e`) + W10-3 모바일 어플 driver tab (PR #98 `4b2c077`) + W10-4 slip-service 전자서명 통합 (본 PR #99 — D-P10-11/D-P10-12)** |
 
 ---
 
@@ -212,7 +212,7 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | 7     | 완료       | #81 ~ #87              | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                        |
 | 8     | **완료**   | **#88 / #89 / #90**    | AWS 호환성 가드 (12-factor + chained-default + ServiceDiscoveryClient + Secrets rotation spec + Phase 10 dry-run plan) |
 | 9     | **완료** | **W1 partner-service (#91) / W2 groupware-service (#92) / W3 notification-service (#93) / W4 dashboard-service (#94) / W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수 (본 PR)** | 잔여 도메인 4 신규 service + 1 shared module 완료, 사용자 가드 정착 |
-| 10    | **진행 중** | **W10-1 arologis-service skeleton (본 PR)** | **arologis-service (8097) — 배차 마이크로서비스 (Phase 10/11 renumber, D-P10-05). 5 슬라이스 W10-1 ~ W10-5 (skeleton / 인성데이타 vendor / 모바일 / slip 통합 / 회고).** |
+| 10    | **진행 중** | **W10-1 (#97) / W10-3 (#98) / W10-4 (본 PR #99)** | **arologis-service (8097) — 배차 마이크로서비스 (Phase 10/11 renumber, D-P10-05). 5 슬라이스 W10-1 (skeleton, #97) / W10-2 (인성데이타 vendor, 대기) / W10-3 (모바일 driver tab, #98) / W10-4 (slip-service 전자서명 통합 LINK+APP, 본 PR #99) / W10-5 (회고).** |
 | 11    | 진입 대기 | -                      | AWS 마이그레이션 (renumber, 기존 Phase 10) — RDS + EC2/ECS + Secrets Manager + Migration Service (8096) + 운영 안정화 |
 
 자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.
