@@ -31,12 +31,12 @@ jobs:
             timeout: 30
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.service.*"'
           - name: slip-it-public
-            # slip-service public + delivery IT (5 파일)
-            timeout: 30
+            # slip-service public + delivery IT (5 파일) — Testcontainers per-class spin-up 부담으로 60분 상향 (3차 fix)
+            timeout: 60
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
           - name: slip-it-core
-            # slip-service core IT (it/ 9 파일 — SlipController/Lifecycle/Inspect/Internal/Lookup/SignatureAdmin/NumberService/Domain)
-            timeout: 30
+            # slip-service core IT (it/ 9 파일 — SlipController/Lifecycle/Inspect/Internal/Lookup/SignatureAdmin/NumberService/Domain) — 60분 상향 (3차 fix)
+            timeout: 60
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.it.*"'
           - name: accounting+partner
             timeout: 30
