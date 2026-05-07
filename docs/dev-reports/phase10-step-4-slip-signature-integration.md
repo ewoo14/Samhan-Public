@@ -223,3 +223,89 @@ arologis driver-app
 | arologis-service compileJava + compileTestJava | PASS | SlipClientTest 6 case 신규 + SignatureIntegrationIT 4 case |
 | mobile-staff `pnpm typecheck` | PASS | FE-2 schema assert + FE-3 slipBridged UX |
 | partner-service / user-service | 0 회귀 | 기존 endpoint 재사용만 |
+
+## 10. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건
+
+기존 `feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지" (2026-05-07) 가드의 강화 적용. 종합 TM 시점 W10-5/Phase 11 로 위임된 backlog 4건도 본 PR 채택 의무.
+
+| # | 잔존 fix | 본 PR 추가 채택 commit |
+|---|---|---|
+| 1 | DV-3 — `shared/security` module 추출 + 13 service refactor | commit `fix(W10-4): DV-3 채택 — shared/security module 추출` |
+| 2 | DV-2 운영 가드 흡수 — Flyway V11 `CREATE INDEX CONCURRENTLY` 변형 | commit `fix(W10-4): DV-2 흡수 — Flyway V11 CONCURRENTLY 운영 lock 회피` |
+| 3 | Grafana dashboard JSON — slipBridged 운영 모니터링 4 panel | commit `feat(W10-4): Grafana dashboard JSON — arologis slip bridge` |
+| 4 | dev-report § 11 — 운영 진입 검증 plan 명시 | 본 commit (`docs(W10-4): § 11 운영 진입 검증 plan + D-P10-15`) |
+
+근거: 사용자 강화 가드는 통합 PR 의 backlog 흩뿌리기 패턴을 차단하기 위함. `shared/security` 추출은 13 service 회귀 위험이 크지만 본 PR 의 InternalTokenFilter 신규 (slip-service) 와 동시 진입이 추후 follow-up 분리보다 회귀 검증 비용 누적 측면에서 유리.
+
+## 11. 운영 진입 검증 plan (Phase 11 cutover 진입 의무)
+
+본 § 는 Phase 11 운영 진입 (RDS Aurora + Grafana + production traffic) 시점 의무 검증 항목 — cutover 직전 dev/staging 환경에서 모두 시뮬레이션 후 진행.
+
+### 11-1. signature_source 운영 데이터 분류 검증
+
+V10 ALTER 적용 후 의무 검증 — 기존 데이터 backfill 정합성 확인.
+
+```sql
+-- 기대: LINK = 기존 N rows / APP = 0 (W10-4 cutover 직후)
+SELECT signature_source, COUNT(*) FROM slips GROUP BY signature_source;
+SELECT driver_signature_source, COUNT(*) FROM slips GROUP BY driver_signature_source;
+
+-- 기대: signature_source 컬럼 존재 + COMMENT 존재
+SELECT column_name, data_type, is_nullable, column_default
+  FROM information_schema.columns
+ WHERE table_name = 'slips'
+   AND column_name IN ('signature_source', 'driver_signature_source');
+
+-- audit 신규 행 source 분류 — APP 행 발생 후 1주 누적
+SELECT signature_source, COUNT(*) FROM slip_signature_audit GROUP BY signature_source;
+```
+
+검증 임계치 — APP source 행 발생 후 24h 시점 LINK : APP 비율이 7:3 미만이면 SlipResolver 매칭 누락 의심 → roll-back 절차.
+
+### 11-2. slipBridged Grafana 모니터링
+
+본 PR 추가 채택 (Fix 3) — Dashboard `infrastructure/grafana/dashboards/arologis-slip-bridge.json` 4 panel:
+
+| panel | metric | 의미 |
+|---|---|---|
+| 1 | `arologis_signature_total{slipBridged="true"}` rate | 양쪽 저장 성공 비율 |
+| 2 | `arologis_signature_total{slipBridged="false"}` rate | SlipResolver fallback (자체 저장만) |
+| 3 | `slip_service_signature_create_total` | slip-service wrapper IT 검증 (양쪽 저장 일관성) |
+| 4 | `arologis_slip_client_request_duration_seconds` P95 | DV-1 timeout 검증 (P95 < 1s 목표) |
+
+알림 — `slipBridged_false_ratio > 30% (5분 평균)` Slack 알림.
+
+### 11-3. Flyway V10/V11 lock 영향 시뮬레이션
+
+dev/staging 환경 pgbench 시뮬레이션 — production 진입 전 의무.
+
+| 단계 | 명령 | 기대 |
+|---|---|---|
+| 1 | 1M+ row signatures fixture 생성 | seed 완료 |
+| 2 | V10 ALTER + V11 CONCURRENTLY 적용 + `lock_acquired` 모니터링 | V10 metadata-only (PG 11+ DEFAULT 'LINK' 신속) + V11 CONCURRENTLY = ACCESS EXCLUSIVE 회피 |
+| 3 | 동시 INSERT/UPDATE 부하 (pgbench 100 client) | hang 0 |
+
+V11 = `executeInTransaction = false` 의무 — Flyway transaction 내부에서 `CREATE INDEX CONCURRENTLY` 실행 불가 (Postgres 제약).
+
+### 11-4. SlipClient SLA 검증
+
+DV-1 채택 timeout (connect 2s + read 3s) production traffic 검증:
+
+| 시나리오 | 기대 |
+|---|---|
+| 100 RPS production traffic | P95 < 1s |
+| arologis driver-app sign endpoint 응답 시간 SLO | < 5s |
+| timeout 발생 빈도 | < 0.1% (1000건당 1건 이하) |
+
+timeout 빈도 > 1% 시 Phase 11 추가 가드 — `RetryTemplate` exponential backoff 1회 retry 적용 검토.
+
+### 11-5. shared/security 13 service 회귀 검증 (Fix 1 채택 부수)
+
+DV-3 채택으로 13 service 가 `shared:security` module 의존. cutover 전 의무:
+
+| 항목 | 검증 |
+|---|---|
+| 13 service compileJava | PASS (CI 8/8) |
+| 13 service IT (Docker 환경) | PASS (CI Docker 환경) |
+| `shared/security` 단위 테스트 | 4 case (filter prefix / 토큰 누락 / 불일치 / 일치) |
+| auth-service prefix 차이 (`/auth/internal/` + ROLE_INTERNAL) 호환 | InternalSecurityProperties `pathPrefix` + `role` properties 분리로 수용 |

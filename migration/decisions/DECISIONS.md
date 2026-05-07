@@ -808,3 +808,19 @@ W10-4 (PR #99) 5 reviewer 토론 종합 시점에 DV-1 채택. arologis SlipClie
 - arologis `SlipClient.buildClient()` helper — connect 2s / read 3s 적용
 - slip-service `PartnerInternalClient` 생성자 — 동일 timeout 적용 (cross-service 일관)
 - 운영 모니터링 backlog 추가 — Grafana 에서 SlipClient timeout 빈도 추적 (Phase 11 cutover 시점)
+
+### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
+
+W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
+
+근거:
+- 기존 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지", 2026-05-07) 강화 — 통합 PR 의 backlog 흩뿌리기 패턴 차단
+- `shared/security` module 추출 (DV-3) 은 13 service 회귀 위험 큼 — 본 PR 의 InternalTokenFilter 신규 (slip-service) 와 동시 진입이 follow-up 분리보다 회귀 검증 비용 누적 측면 유리
+- Flyway V11 CONCURRENTLY (DV-2) — V10 + V11 한 PR 동시 채택이 production cutover 시점 `executeInTransaction = false` 운영 가드 학습 비용 최소화
+- Grafana JSON dashboard — Phase 11 진입 시점 즉시 사용 가능
+
+영향:
+- DV-3 — `shared/security` 신규 module + 13 service refactor (auth/user/product/inventory/slip/accounting/partner/partner-order/dc-config/dashboard/groupware/notification/arologis)
+- DV-2 흡수 — `services/slip-service/src/main/resources/db/migration/V11__concurrently_signature_indexes.sql` 신규 (`-- ${flyway:executeInTransaction:false}` 명시)
+- Grafana — `infrastructure/grafana/dashboards/arologis-slip-bridge.json` 신규 (4 panel + alert 1)
+- dev-report § 11 — 운영 진입 검증 plan 5 case 명시 (signature_source 분류 / Grafana / Flyway lock 시뮬레이션 / SlipClient SLA / shared/security 회귀)
