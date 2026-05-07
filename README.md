@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 완료 + post-W5 cleanup (W1 #91 / W2 #92 / W3 #93 / W4 #94 / W5 #95 / post-W5 #96), **Phase 10 W10-1 진행 중 — arologis-service skeleton 본 PR (Phase 10/11 renumber, D-P10-05)** |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 완료 + post-W5 cleanup (W1 #91 / W2 #92 / W3 #93 / W4 #94 / W5 #95 / post-W5 #96), **Phase 10 진행 중 — W10-1 arologis-service skeleton (PR #97 머지 `a98048e`) + W10-3 모바일 어플 driver tab (`clients/mobile-staff` 내부, 본 PR — D-P10-07/08/09)** |
 
 ---
 
@@ -30,7 +30,7 @@
 - `clients/web/order-app` v4 — Vite + React + legacy `partner-order/index.html` 9427 라인 임베드 + PWA
 - `clients/web/estimate-app` v2 — Node.js + Express + EJS + legacy estimate 18614 라인 1:1 변환 (B2 옵션)
 - `clients/mobile` v4 — Expo SDK 53 + react-native-webview (order-app v4 임베드)
-- `clients/mobile-staff` v3 — Expo SDK 53 + react-native-webview (estimate-app v2 임베드)
+- `clients/mobile-staff` v4 — Expo SDK 53 + react-native-webview (estimate WebView, v2/v3 보존) + **driver tab (W10-3 신규 — Dashboard / GPS Tracking / Signature, arologis-service 8097 통합, D-P10-07/08/09)**
 
 ### DevOps / QA
 - Docker / Docker Compose (인프라) + GitHub Actions (CI)
@@ -77,7 +77,7 @@ SamhanLogis/
 │   │   ├── order-app/         # Vite + legacy partner-order 임베드 (v4)
 │   │   └── estimate-app/      # Express + EJS + legacy estimate 임베드 (v2)
 │   ├── mobile/                # Expo + RN WebView (order-app v4)
-│   └── mobile-staff/          # Expo + RN WebView (estimate-app v2)
+│   └── mobile-staff/          # Expo + RN WebView (estimate-app v2) + driver tab (W10-3 — arologis-service 8097 통합)
 ├── qa/
 │   ├── playwright/            # web + electron + mobile emul e2e (60+ cell)
 │   └── detox/                 # iOS/Android e2e (6 시나리오)

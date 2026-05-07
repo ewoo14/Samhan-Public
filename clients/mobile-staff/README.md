@@ -1,16 +1,78 @@
-# @samhan/mobile-staff — SamhanLogis 영업직원 견적 (React Native Expo) — v3
+# @samhan/mobile-staff — SamhanLogis 영업직원 + 배송기사 (React Native Expo) — v4 (Phase 10 W10-3)
 
-> Phase 6 frontend mobile client (영업직원용). Expo SDK 53 + react-native-webview 단일 screen.
+> Phase 6 frontend mobile client (영업직원용 — v2/v3) + Phase 10 W10-3 driver tab (배송기사용 — v4).
+> Expo SDK 53. AppRootNavigator 의 `mode='estimate' | 'driver'` 분기 로 두 역할 통합.
 
 ## 개요
 
-(주)삼한공조시스템 **영업직원** 이 모바일에서 estimate-app v2 (Express + EJS 임베드된 legacy
-estimate 18614 라인) 를 그대로 사용. **react-native-webview** 단일 screen 으로 estimate-app v2 를
-모바일 viewport 임베드.
+(주)삼한공조시스템 **영업직원 + 배송기사 통합 어플**. v3 까지 영업직원 단일 화면이었으나, Phase 10 W10-3
+(2026-05-07 사용자 결정) 부터 **mobile-staff 내부에 driver tab 통합** (별도 mobile-driver 신규 X).
+
+- **estimate mode** (default — v2/v3 100% 보존)
+  영업직원이 estimate-app v2 (Express + EJS 임베드된 legacy estimate 18614 라인) 를 그대로 사용.
+  react-native-webview 단일 screen 으로 estimate-app v2 를 모바일 viewport 임베드.
+- **driver mode** (Phase 10 W10-3 신규)
+  배송기사가 arologis-service (port 8097) 의 driver-app 3 endpoint (today / locations / sign) 를 호출.
+  RN native UI — 오늘 배차 / GPS 30초 추적 / 전자서명 + GPS 캡처.
 
 - RN 측은 SafeAreaProvider + StatusBar + WebView wrapper 만 책임.
 - 캡처 script 는 estimate-app v2 dev server (port 5183) 에 직접 진입하여 실 화면을 캡처
   (mock HTML overlay 미사용).
+
+## driver tab (Phase 10 W10-3 신규)
+
+> 사용자 결정 (2026-05-07) — `clients/mobile-staff` 내부 driver tab 채택 (별도 mobile-driver 신규 X).
+
+### 화면 구성
+
+```
+AppRootNavigator (mode bar 우상단 토글)
+├── mode='estimate' (default) → EstimateWebViewScreen (v2/v3 보존)
+└── mode='driver' (W10-3 신규) → DriverTabNavigator
+    ├── (GPS 권한 거부 / 미가용) → GpsBlockedScreen (어플 사용 불가)
+    └── (GPS OK)
+        ├── tab='dashboard'  → DriverDashboardScreen   (오늘 배차 vehicle 목록)
+        ├── tab='tracking'   → DriverLocationTrackingScreen (30초 GPS 보고)
+        └── tab='signature'  → DriverSignatureScreen   (전자서명 + GPS 캡처)
+```
+
+### GPS 권한 정책 (사용자 결정 4 GPS 하이브리드, 2026-05-07)
+
+| 항목 | 정책 |
+|---|---|
+| **foreground 권한** | **의무** (`expo-location.requestForegroundPermissionsAsync`) |
+| **background 권한** | 선택 (`requestBackgroundPermissionsAsync`, graceful) |
+| **거부 fallback** | **어플 사용 불가** (`GpsBlockedScreen` 노출, driver tab 진입 차단) |
+| **본 PR (W10-3) source** | `APP_GPS_ACTIVE` 만 활성 (인성 LBS 통합은 W10-2 시점) |
+
+### arologis-service 3 endpoint (`src/api/arologis.ts`)
+
+| 함수 | endpoint | 설명 |
+|---|---|---|
+| `fetchTodayDispatches(token)` | GET `/driver-app/arologis/dispatches/today` | 본인 배정 vehicle 목록 |
+| `reportLocation(token, payload)` | POST `/driver-app/arologis/locations` | 30초 주기 GPS 위치 보고 |
+| `submitSignature(token, dispatchId, vehicleSeq, stopSeq, payload)` | POST `/driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign` | 전자서명 + GPS 동시 등록 |
+
+base URL = `EXPO_PUBLIC_API_BASE_URL` (default `http://localhost:8080` = api-gateway 진입). gateway 가
+JWT verify + ROLE_DRIVER 확인 + X-User-* 주입 후 arologis-service 8097 으로 forward.
+
+### theme/tokens.ts — W3+W4+W5+post-W5+W10-1 토큰 1:1 복제 (Designer-2 채택)
+
+`src/theme/tokens.ts` 가 `clients/web/design-system/src/tokens/tokens.css` 의 RGB 값을 1:1 복제:
+- post-W5 surface / ink / line / action / state (sales-form-polish-slice)
+- W3 dashboard — Google Material method + status badge (ok/warn/info/new)
+- W4 notification — 3 channel badge (push/email/sms)
+- post-W5 D-W5-2 — slice accent (success/pending/deferred)
+- W10-1 — unparsed peach (b-unparsed)
+
+`badgeStyle(kind)` 헬퍼 = RN inline style 객체 반환 (CSS class `b-channel-push` / `slice-accent-success`
+1:1 매핑).
+
+### Pretendard self-host (Designer-2 채택)
+
+- jsdelivr CDN 회피 + 정식 도입 (`assets/fonts/Pretendard-*.otf` 4 weight).
+- `app.json` `plugins.expo-font` 정식 등록.
+- `usePretendardFontGuarded()` = useFonts hook 정식 활성 + try/catch graceful (asset 미배치 환경 RN UI 미차단).
 
 ## 주요 화면 캡처 매핑
 
