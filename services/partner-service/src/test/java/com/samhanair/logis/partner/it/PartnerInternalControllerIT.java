@@ -94,4 +94,64 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(false))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.code").value("NOT_FOUND"));
     }
+
+    /**
+     * Phase 9 W5 신규 (D-P9-16, BE 의견 3 채택) — bulk endpoint 정상 응답.
+     *
+     * <p>fixture 1건 + 추가 1건 등록 후 두 코드 동시 조회 시 2건 매칭 검증.
+     */
+    @Test
+    void find_by_codes_with_valid_token_returns_matched_partners() throws Exception {
+        Partner extra = Partner.register("P-2026-0002", "222-33-44444", "추가 거래처",
+                null, null, new BigDecimal("3000000"));
+        partnerRepository.save(extra);
+
+        mockMvc.perform(MockMvcRequestBuilders.post("/internal/partners/find-by-codes")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[\"P-2026-0001\",\"P-2026-0002\"]"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.length()").value(2));
+    }
+
+    /**
+     * 빈 배열 입력 시 200 + 빈 리스트 (DB 조회 회피, service 계층에서 short-circuit).
+     */
+    @Test
+    void find_by_codes_with_empty_list_returns_200_empty() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.post("/internal/partners/find-by-codes")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.length()").value(0));
+    }
+
+    /**
+     * 일부 미존재 코드 + 일부 존재 코드 혼합 — 존재 코드만 응답에 포함, 미존재 코드는 누락.
+     */
+    @Test
+    void find_by_codes_with_partial_missing_returns_only_existing() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.post("/internal/partners/find-by-codes")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[\"P-2026-0001\",\"P-NOT-EXIST\"]"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.length()").value(1))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].partnerCode").value("P-2026-0001"));
+    }
+
+    /**
+     * bulk endpoint 도 토큰 누락 → 403 (Spring Security AccessDeniedException 일관).
+     */
+    @Test
+    void find_by_codes_without_internal_token_returns_403() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.post("/internal/partners/find-by-codes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[\"P-2026-0001\"]"))
+                .andExpect(MockMvcResultMatchers.status().isForbidden());
+    }
 }

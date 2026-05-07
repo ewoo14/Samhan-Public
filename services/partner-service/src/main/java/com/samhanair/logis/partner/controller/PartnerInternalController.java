@@ -5,10 +5,13 @@ import com.samhanair.logis.partner.dto.PartnerInternalResponse;
 import com.samhanair.logis.partner.service.PartnerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -50,5 +53,29 @@ public class PartnerInternalController {
     @PreAuthorize("hasRole('MASTER')")
     public ApiResponse<PartnerInternalResponse> lookup(@PathVariable String partnerCode) {
         return ApiResponse.ok(PartnerInternalResponse.from(partnerService.findByCode(partnerCode)));
+    }
+
+    /**
+     * partnerCode N건 bulk lookup — Phase 9 W5 신규 (D-P9-16, BE 의견 3 채택).
+     *
+     * <p>dashboard-service 의 매출 집계 fan-out 단계에서 직렬 N회 RPC 회피용 batch endpoint.
+     * 입력은 partnerCode 문자열 리스트 (JSON array) — 빈 배열 시 빈 결과 (200), null body 시
+     * Spring 가 400 처리. 응답은 매칭된 PartnerInternalResponse 만 포함 (미존재 코드는 누락,
+     * 호출 측이 응답 partnerCode 로 매칭하여 누락 분기 처리).
+     *
+     * @param partnerCodes 조회할 partnerCode JSON 배열 (예: {@code ["P-2026-0001","P-2026-0002"]})
+     * @return 200 + 매칭된 PartnerInternalResponse 리스트 ; 토큰 누락 시 403 ; 토큰 불일치 시 401
+     */
+    @Operation(summary = "partnerCode N건 bulk lookup",
+            description = "dashboard-service 매출 집계 fan-out 직렬 RPC 회피. X-Internal-Token 필수.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "매칭 결과 (미존재 코드는 누락)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "내부 토큰 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "내부 토큰 누락")
+    })
+    @PostMapping("/find-by-codes")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<List<PartnerInternalResponse>> findByCodes(@RequestBody List<String> partnerCodes) {
+        return ApiResponse.ok(partnerService.findByCodes(partnerCodes));
     }
 }
