@@ -253,6 +253,8 @@ class PublicSignatureControllerIT extends AbstractPostgresIT {
 
     /** 슬립 + 배치 자동 그룹화 — 토큰 + slipNo + slipId 묶음 반환. */
     private Context createBatchedSlip() throws Exception {
+        // 시간 의존 회귀 회피 — 항상 오늘 날짜 사용 (PR #94 fix, 2026-05-05 하드코딩 → batch token 만료)
+        String today = LocalDate.now().toString();
         Map<String, Object> line = new HashMap<>();
         line.put("productId", UUID.randomUUID().toString());
         line.put("productName", "테스트");
@@ -262,7 +264,7 @@ class PublicSignatureControllerIT extends AbstractPostgresIT {
 
         Map<String, Object> body = new HashMap<>();
         body.put("slipType", "OUTBOUND");
-        body.put("slipDate", "2026-05-05");
+        body.put("slipDate", today);
         body.put("sourceWarehouseId", UUID.randomUUID().toString());
         body.put("destinationWarehouseId", UUID.randomUUID().toString());
         body.put("partnerId", UUID.randomUUID().toString());
@@ -285,7 +287,7 @@ class PublicSignatureControllerIT extends AbstractPostgresIT {
 
         // 자동 그룹화
         MvcResult grouped = mockMvc.perform(post("/delivery-batches/auto-group")
-                        .param("date", "2026-05-05")
+                        .param("date", today)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "MANAGER"))
                 .andExpect(status().isOk())

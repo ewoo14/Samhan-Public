@@ -57,8 +57,10 @@ class SlipServiceSignatureTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // 시간 의존 회귀 회피 — 항상 오늘 날짜 사용 (PR #94 fix, 2026-05-05 하드코딩 → batch token 만료)
+        LocalDate today = LocalDate.now();
         // 미리 INSPECTING 까지 진행한 슬립 1건
-        slip = Slip.createOutbound("2026/05/05-1", LocalDate.of(2026, 5, 5), 1,
+        slip = Slip.createOutbound("2026/05/05-1", today, 1,
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "삼한",
                 DeliveryTag.DAY, null, "user");
         slip.save();
@@ -70,7 +72,7 @@ class SlipServiceSignatureTest {
         setIdField(slip, UUID.randomUUID());
 
         // batch — 같은 slipNo 의 슬립을 들고 있는 배치
-        batch = DeliveryBatch.create("기사", "010-1111-2222", LocalDate.of(2026, 5, 5), List.of());
+        batch = DeliveryBatch.create("기사", "010-1111-2222", today, List.of());
         setIdField(batch, UUID.randomUUID());
 
         pngBytes = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -209,7 +211,7 @@ class SlipServiceSignatureTest {
     @Test
     void recordSignature_processingStageSlip_throwsConflict() throws Exception {
         // PROCESSING 단계 슬립 — 도메인이 CONFLICT 던짐
-        Slip processingSlip = Slip.createOutbound("2026/05/05-2", LocalDate.of(2026, 5, 5), 2,
+        Slip processingSlip = Slip.createOutbound("2026/05/05-2", LocalDate.now(), 2,
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "p",
                 DeliveryTag.DAY, null, "u");
         processingSlip.save();

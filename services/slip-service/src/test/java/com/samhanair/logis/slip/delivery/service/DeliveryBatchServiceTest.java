@@ -47,7 +47,8 @@ class DeliveryBatchServiceTest {
 
     @InjectMocks private DeliveryBatchService service;
 
-    private final LocalDate date = LocalDate.of(2026, 5, 5);
+    // 시간 의존 회귀 회피 — 항상 오늘 날짜 사용 (PR #94 fix, 2026-05-05 하드코딩 → batch token 만료)
+    private final LocalDate date = LocalDate.now();
     private UUID batchId;
     private UUID slipId;
     private UUID sourceWh;

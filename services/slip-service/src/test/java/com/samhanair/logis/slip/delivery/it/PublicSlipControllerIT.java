@@ -78,10 +78,12 @@ class PublicSlipControllerIT extends AbstractPostgresIT {
 
     @Test
     void getBatch_validToken_returns200_noAuth_andHidesUuids() throws Exception {
+        // 시간 의존 회귀 회피 — 항상 오늘 날짜 사용 (PR #94 fix, 2026-05-05 하드코딩 → batch token 만료)
+        String today = LocalDate.now().toString();
         // 1. driver 정보 채워 슬립 생성 + 그룹화
         createSlipWithDriver("김기사", "010-1111-2222");
         MvcResult grouped = mockMvc.perform(post("/delivery-batches/auto-group")
-                        .param("date", "2026-05-05")
+                        .param("date", today)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "MANAGER"))
                 .andExpect(status().isOk())
@@ -93,7 +95,7 @@ class PublicSlipControllerIT extends AbstractPostgresIT {
         mockMvc.perform(get("/public/batches/" + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.driverName").value("김기사"))
-                .andExpect(jsonPath("$.data.batchDate").value("2026-05-05"))
+                .andExpect(jsonPath("$.data.batchDate").value(today))
                 .andExpect(jsonPath("$.data.slips").isArray())
                 .andExpect(jsonPath("$.data.slips[0].slipNo").exists())
                 // UUID 비공개 가드 — slip.id / batch.id 응답 본문에 없음
@@ -138,7 +140,8 @@ class PublicSlipControllerIT extends AbstractPostgresIT {
 
         Map<String, Object> body = new HashMap<>();
         body.put("slipType", "OUTBOUND");
-        body.put("slipDate", "2026-05-05");
+        // 시간 의존 회귀 회피 — 오늘 날짜 사용 (PR #94 fix)
+        body.put("slipDate", LocalDate.now().toString());
         body.put("sourceWarehouseId", UUID.randomUUID().toString());
         body.put("destinationWarehouseId", UUID.randomUUID().toString());
         body.put("partnerId", UUID.randomUUID().toString());

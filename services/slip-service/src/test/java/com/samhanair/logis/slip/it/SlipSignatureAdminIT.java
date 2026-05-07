@@ -19,6 +19,7 @@ import com.samhanair.logis.slip.domain.SignatureAuditAction;
 import com.samhanair.logis.slip.repository.SlipSignatureAuditRepository;
 import java.math.BigDecimal;
 import java.security.MessageDigest;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -239,7 +240,8 @@ class SlipSignatureAdminIT extends AbstractPostgresIT {
 
         Map<String, Object> body = new HashMap<>();
         body.put("slipType", "OUTBOUND");
-        body.put("slipDate", "2026-05-05");
+        // 시간 의존 회귀 회피 — 오늘 날짜 사용 (PR #94 fix, 2026-05-05 하드코딩 → batch token 만료)
+        body.put("slipDate", LocalDate.now().toString());
         body.put("sourceWarehouseId", UUID.randomUUID().toString());
         body.put("destinationWarehouseId", UUID.randomUUID().toString());
         body.put("partnerId", UUID.randomUUID().toString());
@@ -272,7 +274,7 @@ class SlipSignatureAdminIT extends AbstractPostgresIT {
         Context ctx = createInspectingSlip();
         // 자동 그룹화 → batch token 획득
         MvcResult grouped = mockMvc.perform(post("/delivery-batches/auto-group")
-                        .param("date", "2026-05-05")
+                        .param("date", LocalDate.now().toString())
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "MANAGER"))
                 .andExpect(status().isOk())
