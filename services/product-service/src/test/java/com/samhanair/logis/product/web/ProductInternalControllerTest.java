@@ -47,6 +47,10 @@ class ProductInternalControllerTest {
         productService = Mockito.mock(ProductService.class);
         InternalAuthProperties props = new InternalAuthProperties();
         props.setToken(VALID_TOKEN);
+        // W10-4 (PR #99) DV-3 — product-service application.yml 호환
+        props.setPathPrefix("/products/internal/");
+        props.setRole("INTERNAL");
+        props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new ProductInternalController(productService))
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())

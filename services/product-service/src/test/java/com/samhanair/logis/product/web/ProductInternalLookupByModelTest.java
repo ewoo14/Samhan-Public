@@ -60,6 +60,10 @@ class ProductInternalLookupByModelTest {
         productService = Mockito.mock(ProductService.class);
         InternalAuthProperties props = new InternalAuthProperties();
         props.setToken(VALID_TOKEN);
+        // W10-4 (PR #99) DV-3 — product-service application.yml 호환
+        props.setPathPrefix("/products/internal/");
+        props.setRole("INTERNAL");
+        props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new ProductInternalController(productService))
                 .setControllerAdvice(new com.samhanair.logis.product.web.GlobalExceptionHandler())

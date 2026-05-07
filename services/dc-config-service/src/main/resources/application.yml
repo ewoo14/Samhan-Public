@@ -33,6 +33,8 @@ app:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-only-token-replace}}
+      # W10-4 (PR #99) DV-3 — dc-config 도 missing 토큰 즉시 401 (auth/product 와 동일 가드)
+      allow-missing-token: false
 
 management:
   endpoints:

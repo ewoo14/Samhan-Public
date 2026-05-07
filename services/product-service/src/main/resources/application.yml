@@ -31,6 +31,10 @@ app:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+      # W10-4 (PR #99) DV-3 — product-service 자체 prefix /products/internal/ + ROLE_INTERNAL + missing 토큰 즉시 401
+      path-prefix: /products/internal/
+      role: INTERNAL
+      allow-missing-token: false
   scheduling:
     # 옵션 C-2 (개발책임자 결정 2026-05-05): 시트 → DB cron 1시간 주기 sync
     enabled: ${PRODUCT_SYNC_SCHEDULING_ENABLED:true}
