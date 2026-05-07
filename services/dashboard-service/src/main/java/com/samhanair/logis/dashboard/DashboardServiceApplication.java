@@ -3,7 +3,6 @@ package com.samhanair.logis.dashboard;
 import com.samhanair.logis.common.audit.JpaAuditingConfig;
 import com.samhanair.logis.dashboard.config.DashboardCacheProperties;
 import com.samhanair.logis.dashboard.config.DashboardRefreshProperties;
-import com.samhanair.logis.dashboard.config.InternalAuthProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -30,7 +29,6 @@ import org.springframework.context.annotation.Import;
 @EnableCaching
 @Import(JpaAuditingConfig.class)
 @EnableConfigurationProperties({
-        InternalAuthProperties.class,
         DashboardCacheProperties.class,
         DashboardRefreshProperties.class
 })

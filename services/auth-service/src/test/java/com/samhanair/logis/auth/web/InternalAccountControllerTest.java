@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.auth.config.HeaderAuthenticationFilter;
-import com.samhanair.logis.auth.config.InternalAuthProperties;
-import com.samhanair.logis.auth.config.InternalTokenFilter;
+import com.samhanair.logis.security.InternalAuthProperties;
+import com.samhanair.logis.security.InternalTokenFilter;
 import com.samhanair.logis.auth.service.AuthService;
 import com.samhanair.logis.auth.service.dto.RegisterResponse;
 import com.samhanair.logis.auth.web.dto.internal.CreateAccountInternalRequest;

@@ -2,7 +2,7 @@ package com.samhanair.logis.slip.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.samhanair.logis.slip.config.InternalAuthProperties;
+import com.samhanair.logis.security.InternalAuthProperties;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;

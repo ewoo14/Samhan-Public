@@ -2,7 +2,6 @@ package com.samhanair.logis.arologis;
 
 import com.samhanair.logis.arologis.config.ArologisMatcherProperties;
 import com.samhanair.logis.arologis.config.ArologisLocationCleanupProperties;
-import com.samhanair.logis.arologis.config.InternalAuthProperties;
 import com.samhanair.logis.common.audit.JpaAuditingConfig;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -30,7 +29,6 @@ import org.springframework.context.annotation.Import;
 @EnableDiscoveryClient
 @Import(JpaAuditingConfig.class)
 @EnableConfigurationProperties({
-        InternalAuthProperties.class,
         ArologisMatcherProperties.class,
         ArologisLocationCleanupProperties.class
 })

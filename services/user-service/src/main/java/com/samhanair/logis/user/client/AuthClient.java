@@ -3,7 +3,7 @@ package com.samhanair.logis.user.client;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.common.security.Role;
-import com.samhanair.logis.user.config.InternalAuthProperties;
+import com.samhanair.logis.security.InternalAuthProperties;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;

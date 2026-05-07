@@ -5,6 +5,8 @@
  *   shared:common                  — BaseEntity, Role enum, JWT util, common DTO/exception
  *   shared:discovery-abstraction   — ServiceDiscoveryClient interface (Eureka default + AWS Cloud Map placeholder)
  *   shared:user-client-abstraction — UserVerifier interface + DefaultUserVerifier impl (Caffeine TTL 60s, W3 backlog #1 채택, Phase 9 W4)
+ *   shared:security                — X-Internal-Token InternalTokenFilter + InternalAuthProperties + InternalTokenGuard
+ *                                     (Phase 10 W10-4 PR #99 DV-3 채택, 13 service 통합)
  *
  * Phase 1 services:
  *   services:eureka-server     — service discovery
@@ -31,6 +33,7 @@ rootProject.name = 'samhan-logis'
 include 'shared:common'
 include 'shared:discovery-abstraction'
 include 'shared:user-client-abstraction'
+include 'shared:security'
 include 'services:eureka-server'
 include 'services:api-gateway'
 include 'services:auth-service'
@@ -52,6 +55,7 @@ include 'services:arologis-service'
 project(':shared:common').projectDir                    = file('shared/common')
 project(':shared:discovery-abstraction').projectDir     = file('shared/discovery-abstraction')
 project(':shared:user-client-abstraction').projectDir   = file('shared/user-client-abstraction')
+project(':shared:security').projectDir                  = file('shared/security')
 project(':services:eureka-server').projectDir           = file('services/eureka-server')
 project(':services:api-gateway').projectDir             = file('services/api-gateway')
 project(':services:auth-service').projectDir            = file('services/auth-service')

@@ -36,6 +36,7 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
 
     implementation project(':shared:common')
+    implementation project(':shared:security')
 
     runtimeOnly 'org.postgresql:postgresql'
 

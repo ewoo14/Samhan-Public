@@ -1,5 +1,6 @@
 package com.samhanair.logis.arologis.config;
 
+import com.samhanair.logis.security.InternalTokenFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -14,20 +15,17 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *
  * <p>partner-service / dashboard-service 와 동일한 2단 filter chain (InternalTokenFilter +
  * HeaderAuthenticationFilter). actuator / swagger 공개.
+ *
+ * <p>Phase 10 W10-4 DV-3 (PR #99): InternalTokenFilter 는 {@code shared:security} module 통합 자동 설정에서 주입.
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private final InternalAuthProperties internalAuthProperties;
-
-    public SecurityConfig(InternalAuthProperties internalAuthProperties) {
-        this.internalAuthProperties = internalAuthProperties;
-    }
-
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, InternalTokenFilter internalTokenFilter)
+            throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -35,8 +33,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(new InternalTokenFilter(internalAuthProperties),
-                        UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);
         return http.build();
     }

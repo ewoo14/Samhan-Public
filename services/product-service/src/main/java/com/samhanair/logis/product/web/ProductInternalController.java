@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 서비스 간 internal endpoint. {@link com.samhanair.logis.product.config.InternalTokenFilter}
+ * 서비스 간 internal endpoint. {@link com.samhanair.logis.security.InternalTokenFilter}
  * 가 X-Internal-Token 으로 인증하므로 별도 @PreAuthorize 불필요.
  */
 @RestController

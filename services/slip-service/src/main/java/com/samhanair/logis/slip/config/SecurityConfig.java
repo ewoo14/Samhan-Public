@@ -1,5 +1,6 @@
 package com.samhanair.logis.slip.config;
 
+import com.samhanair.logis.security.InternalTokenFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,20 +16,19 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * <p>Slice B (notification-slice-B): {@code /public/**} 는 인증 우회 (no auth) — 공개 모바일
  * endpoint 가 토큰만 검증한다. API Gateway 의 {@code /api/public/**} 라우트도 동일하게
  * JwtAuthentication 필터 미적용 (Plan §4.2 + §8).
+ *
+ * <p>Phase 10 W10-4 DV-3 (PR #99): InternalTokenFilter 는 {@code shared:security} module 의 통합
+ * 자동 설정 ({@link com.samhanair.logis.security.InternalSecurityAutoConfiguration}) 에서 bean 으로 등록 —
+ * 본 클래스는 주입 받아 filter chain 에 명시 등록만.
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private final InternalAuthProperties internalAuthProperties;
-
-    public SecurityConfig(InternalAuthProperties internalAuthProperties) {
-        this.internalAuthProperties = internalAuthProperties;
-    }
-
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, InternalTokenFilter internalTokenFilter)
+            throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -38,9 +38,8 @@ public class SecurityConfig {
                         // Slice B (notification-slice-B): 공개 모바일 endpoint — 토큰만 검증
                         .requestMatchers("/public/**").permitAll()
                         .anyRequest().authenticated())
-                // W10-4 (PR #99): InternalTokenFilter 등록 — /internal/** 한정 X-Internal-Token 인증
-                .addFilterBefore(new InternalTokenFilter(internalAuthProperties),
-                        UsernamePasswordAuthenticationFilter.class)
+                // W10-4 (PR #99) DV-3: shared:security InternalTokenFilter 등록
+                .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);
         return http.build();
     }

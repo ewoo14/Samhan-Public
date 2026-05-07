@@ -1,10 +1,8 @@
 package com.samhanair.logis.slip;
 
 import com.samhanair.logis.common.audit.JpaAuditingConfig;
-import com.samhanair.logis.slip.config.InternalAuthProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.Import;
 
@@ -12,7 +10,6 @@ import org.springframework.context.annotation.Import;
 @SpringBootApplication
 @EnableDiscoveryClient
 @Import(JpaAuditingConfig.class)
-@EnableConfigurationProperties(InternalAuthProperties.class)
 public class SlipServiceApplication {
 
     public static void main(String[] args) {

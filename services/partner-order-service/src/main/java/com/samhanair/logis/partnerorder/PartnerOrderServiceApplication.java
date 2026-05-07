@@ -1,7 +1,6 @@
 package com.samhanair.logis.partnerorder;
 
 import com.samhanair.logis.common.audit.JpaAuditingConfig;
-import com.samhanair.logis.partnerorder.config.InternalAuthProperties;
 import com.samhanair.logis.partnerorder.config.OutboxProperties;
 import com.samhanair.logis.partnerorder.config.PartnerOrderProperties;
 import org.springframework.boot.SpringApplication;
@@ -28,7 +27,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @Import(JpaAuditingConfig.class)
 @EnableConfigurationProperties({
-        InternalAuthProperties.class,
         PartnerOrderProperties.class,
         OutboxProperties.class
 })

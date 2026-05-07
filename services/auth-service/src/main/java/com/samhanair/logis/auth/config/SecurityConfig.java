@@ -1,5 +1,6 @@
 package com.samhanair.logis.auth.config;
 
+import com.samhanair.logis.security.InternalTokenFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -11,14 +12,21 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/** Stateless servlet security: gateway-trusted header auth + BCrypt for local password checks. */
+/**
+ * Stateless servlet security: gateway-trusted header auth + BCrypt for local password checks.
+ *
+ * <p>Phase 10 W10-4 DV-3 (PR #99): InternalTokenFilter 는 {@code shared:security} module 의 통합
+ * 자동 설정 ({@link com.samhanair.logis.security.InternalSecurityAutoConfiguration}) 에서 bean 으로 주입.
+ * auth-service 는 {@code application.yml} 에서 path-prefix=/auth/internal/ + role=INTERNAL +
+ * allow-missing-token=false 로 service-prefixed 패턴 보존.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, InternalAuthProperties internalAuthProperties)
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, InternalTokenFilter internalTokenFilter)
             throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -27,8 +35,7 @@ public class SecurityConfig {
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(new InternalTokenFilter(internalAuthProperties),
-                        UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
