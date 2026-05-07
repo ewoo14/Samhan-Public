@@ -15,21 +15,26 @@ jobs:
   build-and-test:
     name: 빌드 + 테스트 (${{ matrix.group.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # W10-4 (PR #99) D 옵션 적용 — matrix 4 group 병렬 분할 (이전 60분 단일 → group 30분 병렬)
+    timeout-minutes: ${{ matrix.group.timeout }}  # group 별 timeout (slip 60분, 그 외 30분)
     strategy:
       fail-fast: false  # 1 group fail 시 다른 group 도 결과 확인
       matrix:
         group:
           - name: shared+auth+gateway
+            timeout: 30
             test-tasks: ':shared:common:test :shared:security:test :shared:user-client-abstraction:test :shared:discovery-abstraction:test :services:eureka-server:test :services:api-gateway:test :services:auth-service:test'
           - name: user+product+inventory+logging
+            timeout: 30
             test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
           - name: slip
-            # slip-service 단독 — 12 IT case + 기존 Phase 6 IT 다수로 다른 service 보다 큼 (1차 시도 30분 timeout fail)
+            # slip-service 단독 — IT 12 case (W10-4 신규) + Phase 6 IT 다수 + Flyway V11 CONCURRENTLY = 30분 timeout 부족 (2회 fail) → 60분 단독 적용
+            timeout: 60
             test-tasks: ':services:slip-service:test'
           - name: accounting+partner
+            timeout: 30
             test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
           - name: phase9-10 (groupware+notification+dashboard+arologis)
+            timeout: 30
             test-tasks: ':services:groupware-service:test :services:notification-service:test :services:dashboard-service:test :services:arologis-service:test'
 
     steps:
