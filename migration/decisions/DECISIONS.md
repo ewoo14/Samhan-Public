@@ -669,3 +669,14 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 근거: 사용자 우선순위 변경 — arologis 가 즉시 사업 가치 (실 카톡 배차 자동화 + 5만 프리랜서 매칭 + 어플 GPS 추적) 산출. AWS migration 은 Phase 11 으로 미뤄 안정성 검증 후 cutover.
 
 영향: 기존 Phase 10 인용 (DECISIONS 본문 / service README / env-template 코멘트) 은 향후 PR 시점에 점진 정정. 본 PR 은 readiness / ROADMAP / README 핵심 docs 만 정정 (모든 코드 코멘트 즉시 정정 시 본 PR 부담 과다 — 사용자 가드 일관 후속 PR 미루지 않고 본 PR 채택 가능 영역만 일괄).
+
+### D-P10-06. 알림 분담 정책 (2026-05-07)
+
+- 배차 단계 알림 = **인성 알림톡** (W10-2 시점 인성 vendor 직접 호출, notification-service 우회)
+- 본 시스템 알림 (어플 설치 invite / 일반 사용자 push) = **notification-service Aligo**
+- W10-1 시점: notification-service skeleton-mode 토글 (`samhan.arologis.client.skeleton-mode=true`) 로 호출 차단
+- W10-2 진입 시점: 인성 알림톡 직접 호출 + notification-service 호출 = 어플 설치 invite 만 (분리 정책)
+
+근거: 사용자 결정 2026-05-07 — vendor 가 자체 알림톡 채널 보유, notification-service 의존 회피로 vendor 통합 시점에 통신 단순화. 본 시스템 알림은 자체 운영 통제 일관 (Aligo, D-W3 표준).
+
+영향: W10-2 진입 시점 InsungQuickDriverMatcher 가 매칭 직후 인성 알림톡 직접 호출 (notification-service 호출 X). 본 PR (W10-1) 은 docs 명시만.

@@ -2,6 +2,8 @@ package com.samhanair.logis.arologis.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -53,12 +55,18 @@ public class DriverLocation {
     @Column(name = "captured_date", nullable = false)
     private LocalDate capturedDate;
 
-    /** 보고 source (예: "DRIVER_APP" / "INSUNG_QUICK_CALLBACK"). */
+    /**
+     * 보고 source — {@link DriverLocationSource} enum string 매핑.
+     *
+     * <p>BE-1 / QA-3 / Designer-2 통합 채택 fix (2026-05-07) — string 자유 입력 제거 → 4값 enum.
+     * VARCHAR(30) 컬럼 유지 (Flyway 변경 0).
+     */
+    @Enumerated(EnumType.STRING)
     @Column(name = "source", nullable = false, length = 30)
-    private String source;
+    private DriverLocationSource source;
 
     private DriverLocation(UUID driverId, BigDecimal latitude, BigDecimal longitude,
-                           LocalDateTime capturedAt, String source) {
+                           LocalDateTime capturedAt, DriverLocationSource source) {
         if (driverId == null) {
             throw new IllegalArgumentException("driverId 필수");
         }
@@ -68,7 +76,7 @@ public class DriverLocation {
         if (capturedAt == null) {
             throw new IllegalArgumentException("capturedAt 필수");
         }
-        if (source == null || source.isBlank()) {
+        if (source == null) {
             throw new IllegalArgumentException("source 필수");
         }
         this.driverId = driverId;
@@ -86,10 +94,10 @@ public class DriverLocation {
      * @param latitude 위도 (NUMERIC(10,7))
      * @param longitude 경도 (NUMERIC(10,7))
      * @param capturedAt 캡처 시각
-     * @param source 보고 source ("DRIVER_APP" / "INSUNG_QUICK_CALLBACK" 등)
+     * @param source 보고 source enum ({@link DriverLocationSource})
      */
     public static DriverLocation of(UUID driverId, BigDecimal latitude, BigDecimal longitude,
-                                    LocalDateTime capturedAt, String source) {
+                                    LocalDateTime capturedAt, DriverLocationSource source) {
         return new DriverLocation(driverId, latitude, longitude, capturedAt, source);
     }
 }

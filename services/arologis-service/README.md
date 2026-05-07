@@ -91,7 +91,41 @@ SAMHAN_AROLOGIS_LOCATION_RETENTION_DAYS=30
 - IT 13 case — ArologisInternalControllerIT (4) + ArologisAdminControllerIT (9). Docker 가용 환경 PASS.
 - KakaoDispatchParserTest 는 사용자 제공 카톡 예시 (13 차량 / ~50 정차 / 1톤 12 + 1.4톤 1) 80% 정확도 회귀 검증.
 
-## 6. Phase 11 AWS cutover 영향
+## 6. GPS 하이브리드 정책 (사용자 결정 4, 2026-05-07)
+
+W10-1 BE-1 / QA-3 / Designer-2 통합 채택 fix — `DriverLocationSource` enum 4값 + `samhan.arologis.gps.priority` env (default `insung-lbs,app-gps,manual`).
+
+| Source | 의미 | 활성 시점 |
+|---|---|---|
+| `EXTERNAL_INSUNG_LBS` | 인성 LBS (W10-2 통합 시점 활성) | 우선순위 1 (default) |
+| `APP_GPS_ACTIVE` | 본 어플, 활성 사용 중 (foreground 권한 O) | 우선순위 2 |
+| `APP_GPS_BACKGROUND` | 본 어플, 백그라운드 (foreground 권한 X 시점) | 우선순위 2 (보강) |
+| `MANUAL` | 수동 입력 fallback (admin 보정) | 우선순위 3 |
+
+W10-3 모바일 어플 권한 정책:
+
+- **foreground 권한 = 의무** (배송 도중 위치 추적)
+- **background 권한 = 선택** (운영 시점 결정)
+- 거부 fallback = 어플 사용 불가 (사용자 명시 2026-05-07)
+- 인성 LBS 우선 + 본 어플 GPS 보강 (`samhan.arologis.gps.priority=insung-lbs,app-gps,manual`)
+
+W10-1 시점 = 본 어플 endpoint (`POST /driver-app/arologis/locations`) 만 활성 — `APP_GPS_ACTIVE` 으로 적재. W10-2 진입 시점에 Insung LBS callback endpoint 활성 + `EXTERNAL_INSUNG_LBS` 적재.
+
+## 7. 알림 분담 정책 (사용자 결정 3, 2026-05-07)
+
+W10-1 BE-2 / QA-3 통합 채택 fix — 배차 단계 알림과 본 시스템 알림 분리.
+
+| 알림 종류 | 채널 | 활성 시점 |
+|---|---|---|
+| **배차 단계 알림** (vendor 매칭 / 배송 진행) | **인성 알림톡** (W10-2 시점 인성 vendor 직접 호출, notification-service 우회) | W10-2 진입 시점 |
+| **본 시스템 알림** (어플 설치 invite / 일반 사용자 push) | **notification-service Aligo** | 즉시 (W3 활성) |
+
+W10-1 시점: notification-service skeleton-mode 토글 (`samhan.arologis.client.skeleton-mode=true`) 로 호출 차단.
+W10-2 진입 시점: 인성 알림톡 직접 호출 + notification-service 호출 = 어플 설치 invite 만 (분리 정책).
+
+DECISIONS — `D-P10-06` (2026-05-07).
+
+## 8. Phase 11 AWS cutover 영향
 
 - arologis_db RDS 호환 (Postgres standard SQL only — VARCHAR + NUMERIC + partial unique index 의무)
 - ShedLock 클러스터 — Phase 11 W11-2 시점에 통합 (DB 단일 lock 테이블 그대로 사용)

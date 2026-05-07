@@ -143,7 +143,32 @@ heuristic 핵심:
 | `infrastructure/prometheus/prometheus.yml` | `arologis-service:8097` scrape target 추가 |
 | `settings.gradle` + 루트 `build.gradle` | `:services:arologis-service` 추가 |
 
-## 9. 가드 체크리스트
+## 9. § GPS 하이브리드 정책 (사용자 결정 4, 2026-05-07)
+
+W10-1 BE-1 / QA-3 / Designer-2 통합 채택 fix — `DriverLocationSource` enum 4값 (`APP_GPS_BACKGROUND` / `APP_GPS_ACTIVE` / `EXTERNAL_INSUNG_LBS` / `MANUAL`) + `samhan.arologis.gps.priority` env (default `insung-lbs,app-gps,manual`).
+
+W10-3 모바일 어플 권한 정책:
+
+- foreground 권한 = 의무 (배송 도중 위치 추적)
+- background 권한 = 선택 (운영 시점 결정)
+- 거부 fallback = 어플 사용 불가 (사용자 명시 2026-05-07)
+- 인성 LBS 우선 + 본 어플 GPS 보강
+
+V1 SQL `driver_locations.source` 컬럼 = VARCHAR(30) 보존 (Flyway 변경 0). `@Enumerated(EnumType.STRING)` 으로 enum 이름 그대로 string 매핑.
+
+## 10. § 알림 분담 (사용자 결정 3, 2026-05-07)
+
+W10-1 BE-2 / QA-3 통합 채택 fix — 배차 단계 알림과 본 시스템 알림 분리.
+
+배차 단계 알림 = **인성 알림톡** (W10-2 시점 인성 vendor 직접 호출, notification-service 우회)
+본 시스템 알림 (어플 설치 invite / 일반 사용자 push) = **notification-service Aligo**
+
+W10-1 시점: notification-service skeleton-mode 토글 (`samhan.arologis.client.skeleton-mode=true`) 로 호출 차단.
+W10-2 진입 시점: 인성 알림톡 직접 호출 + notification-service 호출 = 어플 설치 invite 만 (분리 정책).
+
+DECISIONS — `D-P10-06`.
+
+## 11. 가드 체크리스트
 
 - [x] worktree origin/main 동기화 (HEAD `5d6609f Merge PR #96`)
 - [x] BaseEntity 7 audit + Soft Delete + 한국어 comment

@@ -2,6 +2,7 @@ package com.samhanair.logis.arologis.controller;
 
 import com.samhanair.logis.arologis.domain.Driver;
 import com.samhanair.logis.arologis.domain.DriverLocation;
+import com.samhanair.logis.arologis.domain.DriverLocationSource;
 import com.samhanair.logis.arologis.domain.Signature;
 import com.samhanair.logis.arologis.domain.SignatureSource;
 import com.samhanair.logis.arologis.domain.Vehicle;
@@ -117,8 +118,10 @@ public class ArologisDriverAppController {
         BigDecimal lat = new BigDecimal(body.getOrDefault("latitude", "0"));
         BigDecimal lng = new BigDecimal(body.getOrDefault("longitude", "0"));
         LocalDateTime now = LocalDateTime.now();
+        // BE-1 / QA-3 / Designer-2 통합 채택 fix — DriverLocationSource.APP_GPS_ACTIVE
+        // (driver-app POST = 활성 사용 중 = foreground GPS).
         DriverLocation saved = locationRepository.save(
-                DriverLocation.of(self.getId(), lat, lng, now, "DRIVER_APP"));
+                DriverLocation.of(self.getId(), lat, lng, now, DriverLocationSource.APP_GPS_ACTIVE));
         return ApiResponse.ok(Map.of("locationId", saved.getId().toString(), "capturedAt", now.toString()));
     }
 
