@@ -46,6 +46,22 @@ public class UserVerifierProperties {
     private boolean failFast = false;
 
     /**
+     * connect timeout (ms) — post-W5 종합 fix (QA-2, D-P9-21).
+     *
+     * <p>RestClient 의 {@code SimpleClientHttpRequestFactory.setConnectTimeout(int)} 에 적용.
+     * 단위 테스트에서 가용 X 포트 ({@code 127.0.0.1:1}) 호출 시 OS 기본 timeout (Linux ~ 75s,
+     * Windows ~ 21s) 까지 기다리는 회귀 회피. 기본 1000ms (1s) — production 도 fail-fast 정합.
+     */
+    private int connectTimeoutMs = 1000;
+
+    /**
+     * read timeout (ms) — post-W5 종합 fix (QA-2, D-P9-21).
+     *
+     * <p>응답 수신 단계 timeout. 기본 5000ms (5s) — user-service Internal API 평균 응답 대비 충분.
+     */
+    private int readTimeoutMs = 5000;
+
+    /**
      * fail-mode (post-W5 backlog cleanup) — 의미 명시 alias. 기본 OPEN (failFast=false 와 일관).
      * setter 호출 시 {@link #failFast} 자동 동기화 (FailMode.STRICT → failFast=true).
      */

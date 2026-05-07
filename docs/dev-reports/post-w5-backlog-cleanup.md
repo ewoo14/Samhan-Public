@@ -103,7 +103,7 @@ EMAIL/failure = 0.0 (다른 채널 격리 검증)
 
 - **사용자 가드** (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지") — 7건 본 PR 일괄 채택
 - **회귀 안전성** — 모든 변경은 옵션 토글 default 보존 + 신규 IT 추가 패턴 (기존 IT 영향 0)
-- **slip-service 시간 의존 회피 일관 검토** — Employee.DEFAULT_HIRE_DATE 는 만료 비교 패턴 부재 (단순 fixture default 만, `LocalDate.of(2026,1,1)`) — slip-service 회고 패턴 (시간 흐름에 따른 회귀) 영향 없음 검증
+- **slip-service 시간 의존 회피 일관 검토** — Employee.DEFAULT_HIRE_DATE 는 **fixture 회귀 패턴 0건 검증** (W4 학습 trigger 패턴). `LocalDateTime.now().isAfter(tokenExpiresAt)` 도메인 의도 비교는 `services/slip-service/.../domain/Slip.java:713` + `DeliveryBatch.java:195` 2건 정상 (production 만료 검증 로직, 테스트는 동적 fixture `LocalDateTime.now().minusHours(1)` + `ReflectionTestUtils.setField` 적용). Employee 는 단순 fixture default `LocalDate.of(2026,1,1)` 만 — slip-service 회고 패턴 (시간 흐름에 따른 회귀) 영향 없음 검증
 - **한국어 commit + Javadoc + dev-report** — 일관 적용
 - **InternalTokenFilter `/internal/**` prefix 한정** — 변경 없음 (기존 가드 보존)
 - **GitGuardian** — 모든 시크릿 `CHANGE_ME_LOCAL_ONLY` 보존 (env-template 신규 entry 도 동일)
@@ -133,6 +133,40 @@ EMAIL/failure = 0.0 (다른 채널 격리 검증)
 
 ---
 
+## 9. 종합 TM fix 8건 (5 reviewer 토론 종합, 사용자 가드 일관 적용)
+
+PR #96 발행 후 5 reviewer (BE / FE / Designer / QA / DevOps) 토론을 종합하여 8건을 본 PR 에 추가 채택. 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지", 2026-05-07) 일관 적용 — 8 fix 즉시 본 PR commit, W6 / Phase 10 위임 거의 0.
+
+| # | reviewer | 분류 | 산출 |
+|---|---|---|---|
+| FE-1 | FE | slice-accent CSS variable 일관 | `--badge-radius` (4px) + `--badge-channel-font-size` (12px) 변수 인용. `b-channel-*` 와 `slice-accent-*` 양쪽 동일 token (`var(--badge-radius, 4px)` / `var(--badge-channel-font-size, 12px)`). `.slice-accent-sm` modifier 추가 (11px). |
+| FE-2 | FE | qa-table-wrapper 3단계 변수 | `--qa-table-min-width-{sm,md,lg}` 600/800/1000px. PR-template-color-reference.md § 5.2 컬럼 수별 가이드 1줄 추가 (4 이하 / 5~6 / 7 이상). |
+| BE-1 | BE | payload byte 검증 | `NotificationSendRequest.isPayloadByteSizeValid()` `@AssertTrue` — UTF-8 byte length ≤ 4000 검증. multi-byte 문자 (한국어 / 이모지) 정합 보장. 기존 `@Size(max=4000)` (char length) 보존 + 추가. |
+| BE-2 | BE | DEAD_LETTER metrics | `NotificationService.retry()` DEAD_LETTER 분기 `gatewayMetrics.recordFailure(channel)` 호출. Grafana `notification_gateway_send_total{result="failure"}` 가시화. |
+| BE-3 | BE | OrgChartSeeder DRY | `LocalDate.of(2026,1,1)` 중복 상수 제거 + `Employee.DEFAULT_HIRE_DATE` 인용 (단일 출처). |
+| QA-1 | QA | IT fixture 압축 | `send_payloadOver4000Bytes_returns400` 의 4001 byte fixture 빌드 로직 → `"a".repeat(4001)` 1줄 (dead code 제거, ASCII 1 byte/char 정합). |
+| QA-2 | QA | timeout 명시 (WireMock 대안) | `UserVerifierProperties.connectTimeoutMs` (1000ms) + `readTimeoutMs` (5000ms) 추가. `DefaultUserVerifier.buildClient()` 에 `SimpleClientHttpRequestFactory` timeout 적용. 테스트는 100ms/200ms 명시 — 가용 X 포트 호출 시 OS 기본 timeout (Linux ~ 75s, Windows ~ 21s) 회귀 회피. WireMock 의존성 추가 대안 보다 가벼움 + production fail-fast 효과. |
+| QA-3 | QA | 문서 정합 | dev-report § 6 + DECISIONS D-P9-21 + Employee Javadoc 모두 "만료 비교 패턴 부재" → "fixture 회귀 패턴 0 + 도메인 의도 비교 (`Slip.java:713` + `DeliveryBatch.java:195`) 2건 정상" 정정. |
+
+### 9-1. 종합 fix 회귀 검증
+
+```
+:shared:user-client-abstraction:test  PASS (DefaultUserVerifierTest 8 case + connectTimeout 명시)
+:services:notification-service:test   PASS (NotificationServiceTest + NotificationGatewayMetricsTest + IT fixture 압축)
+:services:user-service:test           PASS (OrgChartSeeder DRY 정합 후 회귀 0)
+```
+
+### 9-2. 종합 fix 잔존 위임 (W6 / Phase 10)
+
+본 PR 채택 후 W6 / Phase 10 잔존 위임 항목은 환경 의존 / 본격 컴포넌트화 / 운영 첫 주차 학습 의존 항목만:
+
+- W6 client 통합 슬라이스: 정식 React `<SliceAccent>` 컴포넌트 + Storybook
+- Phase 10 W2 Resilience4j 통합 시점: `partner_client_fail_total` Micrometer counter
+- Phase 10 P10-1 운영 첫 주차 후: `recipient_type` tag 추가
+- Phase 10 user-service 화면 슬라이스: Employee.DEFAULT_HIRE_DATE 호출자 입력 화면
+
+---
+
 ## 마무리
 
-Phase 9 = 완료 + post-W5 cleanup 완료 상태로 종료. Phase 10 진입 시점 backlog 누적 0. 사용자 가드 정착 + 통합 PR 패턴 일관 적용 + 회귀 0 — Phase 10 P10-1 슬라이스 진입 직전 baseline 안정화.
+Phase 9 = 완료 + post-W5 cleanup 완료 상태로 종료. Phase 10 진입 시점 backlog 누적 0. 사용자 가드 정착 + 통합 PR 패턴 일관 적용 + 회귀 0 — Phase 10 P10-1 슬라이스 진입 직전 baseline 안정화. PR #96 = 1차 채택 7건 + 종합 TM 채택 8건 = **합계 15건 본 PR 일괄 처리**.

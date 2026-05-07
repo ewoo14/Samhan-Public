@@ -173,22 +173,14 @@ class NotificationAdminControllerIT extends AbstractPostgresIT {
      *
      * <p>4001 byte payload 입력 → @Valid binding 실패 → 400 INVALID_INPUT 반환.
      * Postgres TOAST 임계 회피 + 비정상 페이로드 입력 차단 일관.
+     *
+     * <p>post-W5 종합 fix (QA-1, D-P9-21) — 4001 byte fixture 1줄 압축.
+     * ASCII 'a' 만 사용하므로 char length == byte length (UTF-8 1 byte) → 4001 char = 4001 byte.
      */
     @Test
     void send_payloadOver4000Bytes_returns400() throws Exception {
-        // 4001 byte JSON payload — @Size(max=4000) 위반
-        StringBuilder sb = new StringBuilder("{\"data\":\"");
-        sb.append("a".repeat(4000 - sb.length() - 2));  // 4000 byte 직전까지 채움
-        // 본 시점 길이 < 4000. 안전하게 4001 byte 보장 위해 추가 padding
-        while (sb.length() < 3998) {
-            sb.append("a");
-        }
-        sb.append("\"}");
-        String oversize = sb.toString();
-        // 정확히 4001+ byte 보장
-        while (oversize.length() <= 4000) {
-            oversize = oversize + "x";
-        }
+        // post-W5 종합 fix (QA-1) — 4001 byte oversize payload (ASCII 'a' 4001 char = 4001 byte UTF-8)
+        String oversize = "a".repeat(4001);
 
         NotificationSendRequest req = new NotificationSendRequest(
                 RecipientType.EXTERNAL_PHONE, null, "010-9999-0000",

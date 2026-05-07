@@ -508,18 +508,20 @@ html {
   --color-channel-sms:   #34a853;
   --badge-channel-font-size: 12px;
   --badge-channel-font-size-sm: 11px;
+  /* post-W5 종합 fix (FE-1) — badge radius 표준 token. b-channel-* 와 slice-accent-* 양쪽 1:1 일관. */
+  --badge-radius: 4px;
 }
-.b-channel-push  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
-.b-channel-email { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
-.b-channel-sms   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.b-channel-push  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.b-channel-email { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.b-channel-sms   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
 
 /* small size modifier — utility class. `b-channel-push b-channel-sm` 결합 사용. */
 .b-channel-sm    { font-size: var(--badge-channel-font-size-sm, 11px); }
 
 /* small alias (단일 class 사용 — QA HTML inline 11px 호환) */
-.b-channel-push-sm  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
-.b-channel-email-sm { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
-.b-channel-sms-sm   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
+.b-channel-push-sm  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
+.b-channel-email-sm { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
+.b-channel-sms-sm   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
 
 /* ==========================================================================
  * post-W5 backlog cleanup — slice accent 3색 토큰 (Designer D-W5-2 채택)
@@ -541,7 +543,23 @@ html {
   --color-slice-success:  #34a853;  /* Google Material Green */
   --color-slice-pending:  #f9ab00;  /* Google Material Yellow */
   --color-slice-deferred: #5f6368;  /* Google Material Gray */
+
+  /* post-W5 종합 fix (FE-2) — qa-table-wrapper 컬럼 수별 권장 min-width.
+   * 4 이하 = sm (600px), 5~6 = md (800px), 7 이상 = lg (1000px, fix matrix 등).
+   * mobile (≤ 768px) viewport 가로 overflow 회피용 wrapper 의 본문 표 최소 폭. */
+  --qa-table-min-width-sm: 600px;
+  --qa-table-min-width-md: 800px;
+  --qa-table-min-width-lg: 1000px;
 }
-.slice-accent-success  { background: var(--color-slice-success);  color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
-.slice-accent-pending  { background: var(--color-slice-pending);  color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
-.slice-accent-deferred { background: var(--color-slice-deferred); color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+/*
+ * post-W5 종합 fix (FE-1) — `--badge-radius` / `--badge-channel-font-size` 변수로 일관.
+ * b-channel-* 와 slice-accent-* 양쪽 동일 token 인용 (4px / 12px 기본, sm modifier 11px).
+ *
+ * 기본 값 (12px) 유지. QA HTML inline 11px 일관이 필요하면 `slice-accent-* slice-accent-sm`
+ * 결합 사용 (또는 향후 `slice-accent-*-sm` alias 도입).
+ */
+.slice-accent-success  { background: var(--color-slice-success);  color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.slice-accent-pending  { background: var(--color-slice-pending);  color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+.slice-accent-deferred { background: var(--color-slice-deferred); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+/* small modifier — QA HTML inline 11px 일관성 (b-channel-sm 와 동일 패턴). */
+.slice-accent-sm       { font-size: var(--badge-channel-font-size-sm, 11px); }

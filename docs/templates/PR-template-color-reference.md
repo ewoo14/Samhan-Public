@@ -122,7 +122,7 @@ QA HTML matrix 표 (`<table>`) 가 mobile (≤ 768px) viewport 에서 가로 ove
     margin: 16px 0;
   }
   @media (max-width: 768px) {
-    .qa-table-wrapper table { min-width: 600px; }
+    .qa-table-wrapper table { min-width: var(--qa-table-min-width-sm, 600px); }
   }
 </style>
 
@@ -133,7 +133,9 @@ QA HTML matrix 표 (`<table>`) 가 mobile (≤ 768px) viewport 에서 가로 ove
 </div>
 ```
 
-> 출처: Designer D-W4-3 보강 (post-W5 backlog cleanup PR). W6+ 전 PR 일관 적용.
+> **컬럼 수별 권장 min-width** (post-W5 종합 fix FE-2 보강): 4 이하 = `var(--qa-table-min-width-sm)` (600px) / 5~6 = `var(--qa-table-min-width-md)` (800px) / 7 이상 = `var(--qa-table-min-width-lg)` (1000px, fix matrix 등).
+>
+> 출처: Designer D-W4-3 보강 (post-W5 backlog cleanup PR) + 종합 TM FE-2 채택 (3단계 CSS 변수). W6+ 전 PR 일관 적용.
 
 ---
 

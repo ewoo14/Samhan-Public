@@ -595,4 +595,14 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 
 영향: Phase 9 = 완료 + post-W5 cleanup 완료 상태로 종료. Phase 10 진입 시점 = 본 PR 머지 직후. notification-service 의 retry max-attempts / payload @Size / Micrometer counter 3건은 production 진입 직전 보강 (운영 안정성 향상). user-client-abstraction 의 fail-mode alias 는 Phase 10 P10-1 slice cutover 진입 시점 단일 환경변수 표준 (`SAMHAN_USER_CLIENT_FAIL_MODE`) 활용 가능. design-system slice accent + PR template mobile wrapper 는 W6+ 전 PR 일관 적용 의무.
 
+종합 TM fix 8건 (사용자 가드 일관 적용, 5 reviewer 토론 종합):
+- **FE-1** slice-accent CSS variable 일관 (`--badge-radius` / `--badge-channel-font-size` `b-channel-*` 와 동등 token)
+- **FE-2** `--qa-table-min-width-{sm,md,lg}` 3단계 변수 + PR-template-color-reference.md § 5.2 컬럼 수별 가이드 (4 이하 sm 600px / 5~6 md 800px / 7 이상 lg 1000px)
+- **BE-1** `NotificationSendRequest.payload` `@AssertTrue` byte 검증 (UTF-8 byte length ≤ 4000 — multi-byte 문자 정합)
+- **BE-2** `NotificationService.retry()` DEAD_LETTER 분기 `gatewayMetrics.recordFailure()` 호출 (Grafana dead-letter 가시성)
+- **BE-3** `OrgChartSeeder.DEFAULT_HIRE_DATE` 중복 상수 제거 + `Employee.DEFAULT_HIRE_DATE` 인용 (DRY 정합)
+- **QA-1** IT 4001 byte oversize fixture 1줄 압축 (`"a".repeat(4001)` — ASCII 1 byte/char)
+- **QA-2** `UserVerifierProperties.connectTimeoutMs` / `readTimeoutMs` 추가 + `DefaultUserVerifier.buildClient()` 적용 + 테스트 100ms/200ms 명시 (가용 X 포트 호출 시 OS 기본 timeout 회귀 회피, WireMock 의존 추가 대안보다 가벼움)
+- **QA-3** 문서 정합 — slip-service "만료 비교 패턴 부재" → "fixture 회귀 패턴 0 + 도메인 의도 비교 {`Slip.java:713` + `DeliveryBatch.java:195`} 2건 정상" 정정 (production 만료 검증 + 동적 테스트 fixture 패턴 명시)
+
 ---

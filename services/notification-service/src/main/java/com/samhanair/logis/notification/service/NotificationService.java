@@ -121,6 +121,11 @@ public class NotificationService {
      *
      * <p>post-W5 backlog cleanup (Q-W3-1, D-P9-21) — {@link #maxRetryAttempts} 임계 초과 시
      * 영구 FAILED 처리 + DEAD_LETTER 의미 log 기록. 게이트웨이 호출 skip + retryable=false 고정.
+     *
+     * <p>post-W5 종합 fix (BE-2, D-P9-21) — DEAD_LETTER 분기에서도 {@link #gatewayMetrics}
+     * recordFailure() 호출. 운영 단계에서 DEAD_LETTER 누적이 Grafana
+     * {@code notification_gateway_send_total{result="failure"}} counter 로 가시화 (이전: 게이트웨이
+     * 호출 skip 으로 metrics 증가 X → DEAD_LETTER 운영 누락 회피).
      */
     @Transactional
     public NotificationRequest retry(UUID requestId) {
@@ -133,6 +138,9 @@ public class NotificationService {
                     "FAILURE_MAX_ATTEMPTS_EXCEEDED", null,
                     "{\"error\":\"최대 재시도 횟수 초과 (max=" + maxRetryAttempts
                             + ")\",\"deadLetter\":true}"));
+            if (gatewayMetrics != null) {
+                gatewayMetrics.recordFailure(req.getChannel());
+            }
             return req;
         }
         try {
