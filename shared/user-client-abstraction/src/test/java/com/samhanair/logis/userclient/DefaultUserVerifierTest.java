@@ -83,4 +83,56 @@ class DefaultUserVerifierTest {
         // 후속 호출은 다시 cache miss → RPC 시도 (네트워크 실패 → fail-soft true) — exception 없음
         assertThat(v.exists(id)).isTrue();
     }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-3, D-P9-21) — fail-mode alias 매핑 검증.
+     *
+     * <p>{@code failMode = STRICT} setter 호출 시 {@code failFast = true} 자동 동기화.
+     * gateway 실패 시 fail-fast 동작 (false 반환) — 기존 failFast=true 와 동일 결과.
+     */
+    @Test
+    void verify_strictMode_failFast_returnsFalseOnGatewayError() {
+        UserVerifierProperties p = new UserVerifierProperties();
+        p.setBaseUrl("http://127.0.0.1:1");
+        p.setInternalToken("test-token");
+        p.setFailMode(UserVerifierProperties.FailMode.STRICT);
+
+        // STRICT 설정 시 failFast 자동 true 동기화 검증
+        assertThat(p.isFailFast()).isTrue();
+        assertThat(p.getFailMode()).isEqualTo(UserVerifierProperties.FailMode.STRICT);
+
+        DefaultUserVerifier v = new DefaultUserVerifier(
+                org.springframework.web.client.RestClient.builder(), p);
+        UUID id = UUID.randomUUID();
+
+        // STRICT 모드 — 네트워크 실패 시 fail-fast → false (검증 실패)
+        boolean result = v.exists(id);
+        assertThat(result).isFalse();
+    }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-3, D-P9-21) — fail-mode OPEN (default) 동작 검증.
+     *
+     * <p>{@code failMode = OPEN} (default) 시 {@code failFast = false} 자동 동기화.
+     * gateway 실패 시 fail-soft 동작 (true 반환, 기존 default 동작 보존).
+     */
+    @Test
+    void verify_openMode_failSoft_returnsTrueOnGatewayError() {
+        UserVerifierProperties p = new UserVerifierProperties();
+        p.setBaseUrl("http://127.0.0.1:1");
+        p.setInternalToken("test-token");
+        p.setFailMode(UserVerifierProperties.FailMode.OPEN);
+
+        // OPEN 설정 시 failFast 자동 false 동기화 검증
+        assertThat(p.isFailFast()).isFalse();
+        assertThat(p.getFailMode()).isEqualTo(UserVerifierProperties.FailMode.OPEN);
+
+        DefaultUserVerifier v = new DefaultUserVerifier(
+                org.springframework.web.client.RestClient.builder(), p);
+        UUID id = UUID.randomUUID();
+
+        // OPEN 모드 — 네트워크 실패 시 fail-soft → true (검증 통과, default 보존)
+        boolean result = v.exists(id);
+        assertThat(result).isTrue();
+    }
 }

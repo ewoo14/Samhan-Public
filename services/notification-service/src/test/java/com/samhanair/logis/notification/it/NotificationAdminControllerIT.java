@@ -167,4 +167,39 @@ class NotificationAdminControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.status().isNotFound())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.code").value("NOT_FOUND"));
     }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-2, D-P9-21) — payload @Size(max=4000) 검증.
+     *
+     * <p>4001 byte payload 입력 → @Valid binding 실패 → 400 INVALID_INPUT 반환.
+     * Postgres TOAST 임계 회피 + 비정상 페이로드 입력 차단 일관.
+     */
+    @Test
+    void send_payloadOver4000Bytes_returns400() throws Exception {
+        // 4001 byte JSON payload — @Size(max=4000) 위반
+        StringBuilder sb = new StringBuilder("{\"data\":\"");
+        sb.append("a".repeat(4000 - sb.length() - 2));  // 4000 byte 직전까지 채움
+        // 본 시점 길이 < 4000. 안전하게 4001 byte 보장 위해 추가 padding
+        while (sb.length() < 3998) {
+            sb.append("a");
+        }
+        sb.append("\"}");
+        String oversize = sb.toString();
+        // 정확히 4001+ byte 보장
+        while (oversize.length() <= 4000) {
+            oversize = oversize + "x";
+        }
+
+        NotificationSendRequest req = new NotificationSendRequest(
+                RecipientType.EXTERNAL_PHONE, null, "010-9999-0000",
+                NotificationChannel.SMS, null, null, "payload size case", oversize);
+
+        mockMvc.perform(MockMvcRequestBuilders.post("/admin/notifications/send")
+                        .header("X-User-Id", "user-mgr")
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.code").value("INVALID_INPUT"));
+    }
 }

@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 /**
  * NotificationService 단위 테스트 — Spring 부팅 없음, JDK 17 한글 path 환경에서도 PASS.
  *
- * <p>커버 6 case:
+ * <p>커버 7 case:
  * <ol>
  *   <li>send 정상 — 게이트웨이 success → status=SENT, attemptCount=1</li>
  *   <li>send 실패 (gateway failure) → status=FAILED, attemptCount=1</li>
@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test;
  *   <li>retry — FAILED 상태 → 정상 호출 가능, 재시도 후 SENT</li>
  *   <li>retry — SENT 상태 → 409 BusinessException</li>
  *   <li>findById — 미존재 → 404 BusinessException</li>
+ *   <li>retry — attemptCount &gt;= maxRetryAttempts → 영구 FAILED (DEAD_LETTER, post-W5 Q-W3-1)</li>
  * </ol>
  */
 class NotificationServiceTest {
@@ -56,7 +57,8 @@ class NotificationServiceTest {
         gatewayMap = new HashMap<>();
         gatewayMap.put(NotificationChannel.PUSH, pushGateway);
         gatewayMap.put(NotificationChannel.SMS, new TestGateway(NotificationChannel.SMS));
-        service = new NotificationService(requestRepository, logRepository, gatewayMap, userClient);
+        // post-W5 backlog cleanup (Q-W3-1) — maxRetryAttempts default 5 (테스트 기본).
+        service = new NotificationService(requestRepository, logRepository, gatewayMap, userClient, 5);
 
         // repository.save 는 입력 그대로 반환
         lenient().when(requestRepository.save(any(NotificationRequest.class)))
@@ -142,6 +144,36 @@ class NotificationServiceTest {
         assertThatThrownBy(() -> service.findById(id))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("발송 요청을 찾을 수 없습니다");
+    }
+
+    /**
+     * post-W5 backlog cleanup (Q-W3-1, D-P9-21) — maxRetryAttempts 임계 초과 시 영구 FAILED.
+     *
+     * <p>maxRetryAttempts=5 설정 + attemptCount=6 fixture → retry() 시점에 게이트웨이 호출 skip,
+     * status=FAILED 영구 처리, log 에 FAILURE_MAX_ATTEMPTS_EXCEEDED 기록.
+     */
+    @Test
+    void requeueForRetry_exceedsMaxAttempts_marksFailedPermanent() {
+        // maxRetryAttempts=5 로 service 재구성
+        NotificationService strict = new NotificationService(
+                requestRepository, logRepository, gatewayMap, userClient, 5);
+
+        // attemptCount=6 fixture (이미 한도 초과)
+        NotificationRequest entity = NotificationRequest.open(
+                RecipientType.EXTERNAL_PHONE, null, "01077778888",
+                NotificationChannel.SMS, null, null, "max retry case", null);
+        for (int i = 0; i < 6; i++) {
+            entity.markFailed(false);
+        }
+        UUID id = UUID.randomUUID();
+        when(requestRepository.findById(id)).thenReturn(Optional.of(entity));
+
+        NotificationRequest result = strict.retry(id);
+
+        // 영구 FAILED + retryable=false (markFailed(false) 결과 = FAILED)
+        assertThat(result.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        // 게이트웨이 호출 skip — pushGateway 의 nextResult 변경 없이 markFailed 1회 추가 → attemptCount=7
+        assertThat(result.getAttemptCount()).isGreaterThanOrEqualTo(6);
     }
 
     /** 단위 테스트용 가변 게이트웨이 — nextResult 로 success / failure 토글. */
