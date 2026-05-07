@@ -141,6 +141,25 @@ dist/
 
 상세는 `docs/migration/phase9/M-PHASE-9-readiness.md` 참조.
 
+#### post-W5 backlog cleanup — slice accent 3색 토큰 (Designer D-W5-2 채택)
+
+post-W5 backlog cleanup PR (D-P9-21) 에서 slice accent 3색 토큰 신설 — Phase 10 W1 흡수 예정 항목 본 PR 선반영.
+
+| Token / Class | 용도 | Hex |
+| --- | --- | --- |
+| `--color-slice-success` / `.slice-accent-success` | 완료 / 통과 | `#34a853` (Google Material Green) |
+| `--color-slice-pending` / `.slice-accent-pending` | 진행 / 대기 | `#f9ab00` (Google Material Yellow) |
+| `--color-slice-deferred` / `.slice-accent-deferred` | 위임 / backlog | `#5f6368` (Google Material Gray) |
+
+본 PR 시점에는 utility class + CSS variable 만 export 하며, 정식 React `<SliceAccent>` 컴포넌트 (Storybook 포함) 는 W6 client 통합 슬라이스 시점에 `<ChannelBadge>` 패턴과 동일하게 도입한다.
+
+사용:
+```html
+<span class="slice-accent-success">완료</span>
+<span class="slice-accent-pending">진행</span>
+<span class="slice-accent-deferred">위임</span>
+```
+
 ## 라이선스
 
 내부 패키지 (`private: true`). SamhanLogis 전용.

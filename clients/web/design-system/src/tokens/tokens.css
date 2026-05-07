@@ -520,3 +520,28 @@ html {
 .b-channel-push-sm  { background: var(--color-channel-push);  color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
 .b-channel-email-sm { background: var(--color-channel-email); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
 .b-channel-sms-sm   { background: var(--color-channel-sms);   color: #fff; padding: 2px 8px; border-radius: 4px; font-size: var(--badge-channel-font-size-sm, 11px); font-weight: 600; }
+
+/* ==========================================================================
+ * post-W5 backlog cleanup — slice accent 3색 토큰 (Designer D-W5-2 채택)
+ *
+ * Phase 10 W1 흡수 예정이었던 slice accent 토큰 본 PR 에 utility class 단계로 선반영.
+ * 정식 React `<SliceAccent>` 컴포넌트는 W6 client 통합 슬라이스 시점에 도입.
+ *
+ * Google Material 컬러 1:1 — slice progression / status 표기 통일성용.
+ *   - success  : Google Material Green  (#34a853) — 완료 / 통과
+ *   - pending  : Google Material Yellow (#f9ab00) — 진행 / 대기
+ *   - deferred : Google Material Gray   (#5f6368) — 위임 / backlog
+ *
+ * 사용:
+ *   <span class="slice-accent-success">완료</span>
+ *   <span class="slice-accent-pending">진행</span>
+ *   <span class="slice-accent-deferred">위임</span>
+ * ========================================================================== */
+:root {
+  --color-slice-success:  #34a853;  /* Google Material Green */
+  --color-slice-pending:  #f9ab00;  /* Google Material Yellow */
+  --color-slice-deferred: #5f6368;  /* Google Material Gray */
+}
+.slice-accent-success  { background: var(--color-slice-success);  color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.slice-accent-pending  { background: var(--color-slice-pending);  color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.slice-accent-deferred { background: var(--color-slice-deferred); color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
