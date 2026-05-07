@@ -47,6 +47,11 @@ class InternalAccountControllerTest {
         authService = Mockito.mock(AuthService.class);
         InternalAuthProperties props = new InternalAuthProperties();
         props.setToken(VALID_TOKEN);
+        // auth-service 호환 — application.yml 의 path-prefix=/auth/internal/ + role=INTERNAL +
+        // allow-missing-token=false 와 동일한 standalone 환경 명시
+        props.setPathPrefix("/auth/internal/");
+        props.setRole("INTERNAL");
+        props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new InternalAccountController(authService))
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())
