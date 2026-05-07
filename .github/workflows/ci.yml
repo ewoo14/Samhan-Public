@@ -24,8 +24,11 @@ jobs:
             test-tasks: ':shared:common:test :shared:security:test :shared:user-client-abstraction:test :shared:discovery-abstraction:test :services:eureka-server:test :services:api-gateway:test :services:auth-service:test'
           - name: user+product+inventory+logging
             test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
-          - name: slip+accounting+partner
-            test-tasks: ':services:slip-service:test :services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
+          - name: slip
+            # slip-service 단독 — 12 IT case + 기존 Phase 6 IT 다수로 다른 service 보다 큼 (1차 시도 30분 timeout fail)
+            test-tasks: ':services:slip-service:test'
+          - name: accounting+partner
+            test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
           - name: phase9-10 (groupware+notification+dashboard+arologis)
             test-tasks: ':services:groupware-service:test :services:notification-service:test :services:dashboard-service:test :services:arologis-service:test'
 
