@@ -172,6 +172,24 @@ Phase 9 W5 머지 직후 post-W5 backlog cleanup PR 에서 환경 의존이 없�
 - **QA Q-P10-1** (Phase 10 plan slice 명시 의무) — skeleton-mode IT sweep / Caffeine→Redis testcontainer / aws-cloud-map mock
 - **DevOps Resilience4j 통합 backlog** — `partner_client_fail_total` Micrometer counter / find-by-codes 호출 사이즈 metric (Phase 10 W2 Resilience4j 통합 시점)
 
+#### 5-1-3. Phase 10 W10-4 (PR #99) 종합 TM 채택 backlog (Phase 11 cutover 진입 의무)
+
+본 backlog 는 W10-4 (PR #99) 5 reviewer 토론 종합 시점에 QA-3 / DV-2 채택. 본 PR 본 commit 이 아닌 Phase 11 운영 cutover 진입 시점에 검증 의무.
+
+- **신규 W10-4 (PR #99) Phase 11 cutover 진입 의무** (QA-3 채택):
+  - `signature_source` 컬럼 운영 데이터 분류 검증 — V10 마이그 backfill 후 모든 기존 데이터가 'LINK' 자동 분류되었는지 정합 검사
+  - SlipResolver 실 활성 후 `slipBridged=true` 운영 모니터링 — Grafana 대시보드에서 일별 slipBridged true/false 비율 추적 (목표: ≥80%)
+  - SlipClient timeout 설정 검증 (RDS Aurora SLA 정합) — connect 2s / read 3s 가 운영 P99 latency 보다 큰지 확인 후 필요시 조정
+  - PartnerInternalClient timeout 검증 (DV-1 일관) — partner-service hang 시 slip-service by-partner-code endpoint 가 driver-app 응답 차단 회피 검증
+
+- **Flyway V10 운영 RDS 진입 가드** (DV-2 채택):
+  - **`ADD COLUMN ... DEFAULT 'LINK'`** — PG 11+ metadata-only (lock 최소). 운영 RDS Aurora 진입 시 신속 적용 가능 (수 초 이내)
+  - **`CREATE INDEX` (CONCURRENTLY 부재)** — ACCESS EXCLUSIVE lock. 대용량 signatures 테이블 (~1M+ rows) 시 영향 큼
+    - 권장: 운영 진입 전 `CREATE INDEX CONCURRENTLY` Flyway V11 추가 (V10 partial unique index 2종 → CONCURRENTLY 변형) 또는 maintenance window 진입
+    - 대안: signatures 테이블 row 수 모니터링 결과 100K 미만이면 V10 그대로 진입 (lock 영향 1초 미만)
+  - **lock 영향 사전 검증** — Phase 11 cutover dry-run 단계에서 `pg_stat_activity` 의 lock_acquired 모니터링, `pg_locks` 에서 ACCESS EXCLUSIVE 보유 시간 측정
+  - **rollback 시나리오** — V10 적용 후 재시도 가능 (NOT NULL DEFAULT 컬럼은 `ALTER TABLE DROP COLUMN` 으로 즉시 회복 가능)
+
 ---
 
 ## 6. 참조

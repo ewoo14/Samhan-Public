@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-4 — Signature Flow Diagram (2x2 Matrix)</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 24px 32px; color: #1A1F2E; background: #FAFBFC; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #1A1F2E; margin-bottom: 4px; }
+  h2 { color: #1A1F2E; border-bottom: 2px solid #E1E5EA; padding-bottom: 6px; margin-top: 28px; }
+  h3 { color: #1E3A8A; margin-top: 20px; margin-bottom: 8px; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  th { background: #1E3A8A; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E1E5EA; font-size: 13px; vertical-align: top; }
+  td.code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px; color: #1A1F2E; }
+  /* W3 status badge */
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  /* W4 channel badge */
+  .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  /* post-W5 slice accent */
+  .slice-accent-success  { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .qa-table-wrapper { background: #fff; padding: 18px 22px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
+  .summary { background: #fff; border-left: 4px solid #1E3A8A; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  /* 2x2 matrix grid */
+  .matrix-grid { display: grid; grid-template-columns: 110px 1fr 1fr; grid-gap: 0; margin: 18px 0 26px; background: #E1E5EA; padding: 1px; border-radius: 8px; overflow: hidden; }
+  .matrix-grid > div { background: #fff; padding: 14px 16px; }
+  .matrix-grid .corner { background: #1A1F2E; color: #fff; font-weight: 600; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+  .matrix-grid .col-head { background: #1E3A8A; color: #fff; font-weight: 600; text-align: center; font-size: 14px; }
+  .matrix-grid .row-head { background: #5C6773; color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center; font-size: 13px; text-align: center; }
+  .matrix-cell { min-height: 110px; }
+  .matrix-cell .label { font-size: 12px; color: #5C6773; margin-bottom: 6px; }
+  .matrix-cell .endpoint { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #1A1F2E; background: #F1F5F9; padding: 4px 6px; border-radius: 3px; display: inline-block; margin-bottom: 6px; }
+  .matrix-cell .desc { font-size: 12px; color: #1A1F2E; line-height: 1.5; margin-top: 4px; }
+  /* arrow path */
+  .flow-path { background: #fff; padding: 16px 20px; border-radius: 6px; margin: 8px 0; border: 1px solid #E1E5EA; }
+  .flow-path .arrow { color: #1E3A8A; font-weight: 700; margin: 0 6px; }
+  .flow-path code { background: #F1F5F9; padding: 2px 6px; border-radius: 3px; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-4 — Signature Flow Diagram (2×2 Matrix)</h1>
+<p style="color: #5C6773; font-size: 14px; margin-top: 0;">
+  Designer-2 채택 — 2x2 직교 매트릭스 (가로 = source, 세로 = 저장 위치). 4 cell 모두 명시 + slice-accent 3 path 색상 (success / pending / deferred).
+</p>
+
+<h2>1. 4 cell 직교 매트릭스</h2>
+
+<div class="matrix-grid">
+  <div class="corner">source × store</div>
+  <div class="col-head">source: LINK<br><small style="font-weight: 400; font-size: 11px;">(SMS/Aligo 공개 모바일)</small></div>
+  <div class="col-head">source: APP<br><small style="font-weight: 400; font-size: 11px;">(arologis driver-app)</small></div>
+
+  <div class="row-head">slip-service<br>(8086)</div>
+  <div class="matrix-cell">
+    <div class="label">cell A — LINK / slip-service</div>
+    <div class="endpoint">POST /public/batches/{token}/signatures</div>
+    <span class="slice-accent-success">기존 정상 path</span>
+    <div class="desc">기존 batch token 모바일 endpoint. SignatureSource = LINK (V10 default). audit RECORD source=LINK.</div>
+  </div>
+  <div class="matrix-cell">
+    <div class="label">cell B — APP / slip-service</div>
+    <div class="endpoint">POST /internal/slips/{slipId}/signatures</div>
+    <span class="b-channel-push">W10-4 신규</span>
+    <div class="desc">arologis driver-app 캡처 → SlipClient 위임. SignatureSource = APP. audit RECORD source=APP.</div>
+  </div>
+
+  <div class="row-head">arologis-service<br>(8097)</div>
+  <div class="matrix-cell">
+    <div class="label">cell C — LINK / arologis</div>
+    <span class="slice-accent-deferred">미사용</span>
+    <div class="desc">LINK 는 slip-service 단독 보관. arologis 는 driver-app 직접 캡처만 보유 (driver 차원의 정차 증빙).</div>
+  </div>
+  <div class="matrix-cell">
+    <div class="label">cell D — APP / arologis</div>
+    <div class="endpoint">POST /driver-app/arologis/.../sign</div>
+    <span class="slice-accent-success">양쪽 저장 1단계</span>
+    <div class="desc">arologis signatures INSERT (자체 보관, source=APP). 직후 SlipResolver → SlipClient 로 cell B 호출.</div>
+  </div>
+</div>
+
+<h2>2. 3 path slice-accent 색상</h2>
+
+<div class="qa-table-wrapper">
+<div class="flow-path">
+  <span class="slice-accent-success">success</span>
+  <strong style="margin-left: 8px;">Path 1 — 양쪽 저장 성공 (slipBridged=true)</strong>
+  <div style="margin-top: 8px; font-size: 13px; line-height: 1.7;">
+    driver-app sign <span class="arrow">→</span> arologis <code>signatures INSERT</code> (cell D)
+    <span class="arrow">→</span> SlipResolver <code>resolveByPartnerCode</code>
+    <span class="arrow">→</span> SlipClient <code>findRecentSlipIdByPartnerCode</code> (200, slipId 반환)
+    <span class="arrow">→</span> SlipClient <code>registerSignature</code>
+    <span class="arrow">→</span> slip-service <code>/internal/slips/{id}/signatures</code> (cell B)
+    <span class="arrow">→</span> 응답 <code>slipBridged=true</code>
+  </div>
+</div>
+
+<div class="flow-path">
+  <span class="slice-accent-pending">pending</span>
+  <strong style="margin-left: 8px;">Path 2 — 매핑 실패 graceful fallback (slipBridged=false)</strong>
+  <div style="margin-top: 8px; font-size: 13px; line-height: 1.7;">
+    driver-app sign <span class="arrow">→</span> arologis <code>signatures INSERT</code> (cell D 정상)
+    <span class="arrow">→</span> SlipResolver
+    <span class="arrow">→</span> slip-service <code>by-partner-code</code> (200 + data=null, partner-service 매핑 실패)
+    <span class="arrow">→</span> SlipClient <code>registerSignature</code> 미호출
+    <span class="arrow">→</span> 응답 <code>slipBridged=false</code> (UX 시각화 — slice-accent-pending 배지)
+  </div>
+</div>
+
+<div class="flow-path">
+  <span class="slice-accent-deferred">deferred</span>
+  <strong style="margin-left: 8px;">Path 3 — slip-service down 또는 timeout (graceful fallback)</strong>
+  <div style="margin-top: 8px; font-size: 13px; line-height: 1.7;">
+    driver-app sign <span class="arrow">→</span> arologis <code>signatures INSERT</code> (cell D 정상)
+    <span class="arrow">→</span> SlipResolver
+    <span class="arrow">→</span> slip-service 5xx / timeout (DV-1 connect 2s / read 3s)
+    <span class="arrow">→</span> SlipClient <code>Optional.empty</code>
+    <span class="arrow">→</span> registerSignature 미호출 또는 false
+    <span class="arrow">→</span> 응답 <code>slipBridged=false</code> + warn log (Phase 11 cutover 시 재동기화 가능)
+  </div>
+</div>
+</div>
+
+<h2>3. signatureSource enum 매핑 (slip-service)</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>enum</th><th>저장 컬럼</th><th>발급 path</th><th>도메인 메서드</th><th>audit action</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>LINK</strong></td>
+      <td>signature_source / driver_signature_source</td>
+      <td>SMS/Aligo 발급 링크 → 공개 모바일 endpoint</td>
+      <td class="code">recordSignature(...) / recordDriverSignature(...)</td>
+      <td>RECORD / RECORD_DRIVER (source=LINK)</td>
+    </tr>
+    <tr>
+      <td><strong>APP</strong></td>
+      <td>signature_source / driver_signature_source</td>
+      <td>arologis driver-app 직접 캡처 → SlipClient</td>
+      <td class="code">recordSignature(... SignatureSource.APP)</td>
+      <td>RECORD / RECORD_DRIVER (source=APP)</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="summary">
+  <p><strong>2x2 직교성 의미</strong>: source (LINK/APP) 와 저장 위치 (slip/arologis) 는 독립 — APP source 가 항상 양쪽 저장이 보장되는 것은 아니며, slip-service down 시 arologis 만 보관 (cell D 단독). cell C 는 운영상 미사용 (LINK 는 slip 단독, arologis 는 driver-app 만).</p>
+</div>
+
+</body>
+</html>

@@ -773,3 +773,38 @@ W10-3 PR #98 backlog F-3 (ApiResponse wrapper IT 검증) 을 W10-4 (PR #99) 시�
 - `SignatureIntegrationIT` (arologis 신규 3 case) — 동일 schema 검증 의무
 - 향후 모든 신규 IT 도 ApiResponse wrapper schema 검증 의무 (Phase 11 cutover 진입 시 운영 가드 일관 보존)
 - 기존 IT 는 점진 보강 (회귀 영향 없는 변경)
+
+
+### D-P10-13. SlipResolver 실 활성 + slip-service /internal/slips/by-partner-code/{code}/recent endpoint (2026-05-07)
+
+W10-4 (PR #99) 5 reviewer 토론 종합 시점에 BE-1 채택. SlipResolver.resolveByPartnerCode 가 항상 empty 반환하던 fallback 을 실 활성으로 전환 — slipBridged=true 운영 0건 갭 해소.
+
+근거:
+- W10-4 초기 구현은 partnerCode → partnerId UUID 매핑 부재로 SlipClient 호출 자체가 막힘 (slipBridged 항상 false)
+- 운영 시점에 양쪽 저장 패턴이 동작하지 않으면 W10-4 통합 의미 상실 (driver-app 캡처가 slip 인수자/기사 서명에 반영 X)
+- partner-service 의 기존 `GET /internal/partners/{partnerCode}` 응답 (PartnerInternalResponse) 이 partnerId UUID 를 포함 — 추가 API 변경 0
+- slip-service 가 자체 PartnerInternalClient 로 partnerCode → partnerId resolve 후 slips 테이블 lookup → graceful 200 + data=null 패턴 (404 미반환)
+
+영향:
+- slip-service 신규 `PartnerInternalClient` (timeout DV-1 일관 적용)
+- slip-service `SlipInternalController` 신규 `GET /internal/slips/by-partner-code/{partnerCode}/recent` endpoint
+- slip-service `SlipSignatureService.findRecentByPartnerCode(String)` Optional 반환 메서드
+- arologis `SlipResolver.resolveByPartnerCode` 실 호출로 전환 (PartnerClient 의존 제거 — slip-service 가 흡수)
+- arologis `SlipClient.findRecentSlipIdByPartnerCode(String)` 신규
+- IT 보강: SlipInternalControllerIT 3 case 신규 (BE-1 검증) + SignatureIntegrationIT happy-path case 1 신규 (QA-2 검증)
+
+
+### D-P10-14. SlipClient connect/read timeout 설정 (2026-05-07)
+
+W10-4 (PR #99) 5 reviewer 토론 종합 시점에 DV-1 채택. arologis SlipClient + slip-service PartnerInternalClient 모두 connect 2s / read 3s timeout 명시.
+
+근거:
+- driver-app sign endpoint 가 동기 호출 — slip-service hang 시 driver UX 차단 (앱 응답 없음)
+- 양쪽 저장 패턴은 graceful fallback 보장 의무 (자체 INSERT 보존, slip 호출 실패 시 false 반환)
+- Spring Boot 3.4 표준 `ClientHttpRequestFactories` + `ClientHttpRequestFactorySettings` 사용
+- Phase 11 운영 진입 시 RDS Aurora SLA 정합 — read timeout 3s 가 SLA 95% (요청당 1.5s) 의 2배 안전 마진
+
+영향:
+- arologis `SlipClient.buildClient()` helper — connect 2s / read 3s 적용
+- slip-service `PartnerInternalClient` 생성자 — 동일 timeout 적용 (cross-service 일관)
+- 운영 모니터링 backlog 추가 — Grafana 에서 SlipClient timeout 빈도 추적 (Phase 11 cutover 시점)

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-4 — API Endpoints Summary</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 24px 32px; color: #1A1F2E; background: #FAFBFC; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #1A1F2E; margin-bottom: 4px; }
+  h2 { color: #1A1F2E; border-bottom: 2px solid #E1E5EA; padding-bottom: 6px; margin-top: 28px; }
+  h3 { color: #1E3A8A; margin-top: 20px; margin-bottom: 8px; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  th { background: #1E3A8A; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E1E5EA; font-size: 13px; vertical-align: top; }
+  td.code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px; color: #1A1F2E; }
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-new  { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-success  { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .qa-table-wrapper { background: #fff; padding: 18px 22px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
+  .summary { background: #fff; border-left: 4px solid #1E3A8A; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .endpoint-method-post { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .endpoint-method-get  { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .endpoint-method-del  { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .endpoint-method-put  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-4 — API Endpoints Summary</h1>
+<p style="color: #5C6773; font-size: 14px; margin-top: 0;">
+  signature 통합 endpoint 매트릭스 — slip-service (LINK 기존 + APP 신규 + by-partner-code BE-1 채택) + arologis-service driver-app sign + 인증 / source / 가드 1:1.
+</p>
+
+<h2>1. slip-service signature endpoint 매트릭스</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>method</th><th>path</th><th>인증</th><th>source</th><th>비고</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="endpoint-method-post">POST</span></td>
+      <td class="code">/public/batches/{token}/slips/{slipNo}/signature</td>
+      <td>batch token (공개)</td>
+      <td><span class="slice-accent-success">LINK</span></td>
+      <td>기존 인수자 모바일 endpoint (Slice C)</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-post">POST</span></td>
+      <td class="code">/public/batches/{token}/slips/{slipNo}/driver-signature</td>
+      <td>batch token (공개)</td>
+      <td><span class="slice-accent-success">LINK</span></td>
+      <td>기존 기사 모바일 endpoint (Slice C2)</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-get">GET</span></td>
+      <td class="code">/public/signatures/{shareToken}</td>
+      <td>share token (공개)</td>
+      <td>—</td>
+      <td>인수자 view (read-only)</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-get">GET</span></td>
+      <td class="code">/api/slips/{slipId}/signature</td>
+      <td>JWT (MANAGER/MASTER)</td>
+      <td>—</td>
+      <td>관리자 단건 조회</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-del">DELETE</span></td>
+      <td class="code">/api/slips/{slipId}/signature</td>
+      <td>JWT (MASTER)</td>
+      <td>—</td>
+      <td>관리자 무효화 + audit INVALIDATE</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-post">POST</span></td>
+      <td class="code">/internal/slips/{slipId}/signatures</td>
+      <td>X-Internal-Token (ROLE_MASTER)</td>
+      <td><span class="b-channel-push">APP</span></td>
+      <td>arologis driver-app 캡처 전파 (SlipClient)</td>
+      <td><span class="b-channel-push">W10-4 신규</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-get">GET</span></td>
+      <td class="code">/internal/slips/by-partner/{partnerId}/recent</td>
+      <td>X-Internal-Token (ROLE_MASTER)</td>
+      <td>—</td>
+      <td>partnerId UUID 직접 lookup (admin/cache)</td>
+      <td><span class="b-channel-push">W10-4 신규</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-get">GET</span></td>
+      <td class="code">/internal/slips/by-partner-code/{code}/recent</td>
+      <td>X-Internal-Token (ROLE_MASTER)</td>
+      <td>—</td>
+      <td>partnerCode → partnerId resolve 후 lookup (BE-1 채택, graceful 200 + data=null)</td>
+      <td><span class="b-info">BE-1 채택</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. arologis-service driver-app endpoint</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>method</th><th>path</th><th>인증</th><th>비고</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="endpoint-method-get">GET</span></td>
+      <td class="code">/driver-app/arologis/dispatches/today</td>
+      <td>JWT (DRIVER/MASTER/MANAGER)</td>
+      <td>본인 vehicle 목록 (W10-1)</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-post">POST</span></td>
+      <td class="code">/driver-app/arologis/locations</td>
+      <td>JWT (DRIVER/MASTER/MANAGER)</td>
+      <td>GPS 위치 보고 (W10-3 BE-1/BE-2 source/capturedAt)</td>
+      <td><span class="b-ok">기존</span></td>
+    </tr>
+    <tr>
+      <td><span class="endpoint-method-post">POST</span></td>
+      <td class="code">/driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign</td>
+      <td>JWT (DRIVER/MASTER/MANAGER)</td>
+      <td>전자서명 등록 — arologis INSERT + SlipResolver → slip-service bridge (W10-4)<br><strong>응답 추가</strong>: slipBridged (FE-3 UX 시각화)</td>
+      <td><span class="b-channel-push">W10-4 통합</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. partner-service / arologis 의존성 (lookup 위임)</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>caller</th><th>callee</th><th>endpoint</th><th>용도</th><th>인증</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>arologis SlipClient</td>
+      <td>slip-service</td>
+      <td class="code">GET /internal/slips/by-partner-code/{code}/recent</td>
+      <td>SlipResolver 매핑 (W10-4 BE-1 신규 호출)</td>
+      <td>X-Internal-Token</td>
+    </tr>
+    <tr>
+      <td>arologis SlipClient</td>
+      <td>slip-service</td>
+      <td class="code">POST /internal/slips/{slipId}/signatures</td>
+      <td>전자서명 양쪽 저장 (W10-4 기존)</td>
+      <td>X-Internal-Token</td>
+    </tr>
+    <tr>
+      <td>slip-service PartnerInternalClient</td>
+      <td>partner-service</td>
+      <td class="code">GET /internal/partners/{partnerCode}</td>
+      <td>by-partner-code endpoint 의 partnerId UUID resolve (BE-1 채택, partner-service 응답 변경 0)</td>
+      <td>X-Internal-Token</td>
+    </tr>
+    <tr>
+      <td>arologis PartnerClient</td>
+      <td>partner-service</td>
+      <td class="code">POST /internal/partners/find-by-codes</td>
+      <td>자동 매칭 단계 N건 lookup (W10-2 기존)</td>
+      <td>X-Internal-Token</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>4. 가드 / SLA / 환경변수</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>항목</th><th>값 / 동작</th><th>관련 fix</th></tr></thead>
+  <tbody>
+    <tr><td>SlipClient timeout</td><td>connect 2s / read 3s (Spring Boot 3.4 표준)</td><td>DV-1</td></tr>
+    <tr><td>PartnerInternalClient timeout</td><td>connect 2s / read 3s</td><td>DV-1 일관</td></tr>
+    <tr><td>InternalTokenFilter prefix</td><td>/internal/** 한정 (slip / arologis / partner)</td><td>SecurityConfig</td></tr>
+    <tr><td>graceful fallback</td><td>4xx/5xx → false / empty (자체 INSERT 보존)</td><td>SlipClient + SlipResolver</td></tr>
+    <tr><td>SAMHAN_INTERNAL_TOKEN</td><td>slip / arologis / partner 공통 (Phase 8 cutover)</td><td>application.yml</td></tr>
+    <tr><td>SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE</td><td>false (W10-4 시점 활성)</td><td>SlipClient</td></tr>
+    <tr><td>signature_source 컬럼</td><td>VARCHAR(20) NOT NULL DEFAULT 'LINK'</td><td>Flyway V10</td></tr>
+    <tr><td>partial unique index</td><td>ix_slips_signature_source_app + ix_slips_driver_signature_source_app</td><td>Flyway V10</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="summary">
+  <p><strong>endpoint 추가 / 변경 요약</strong>: slip-service 3 endpoint 추가 (POST /internal/.../signatures + GET /by-partner/{partnerId}/recent + GET /by-partner-code/{code}/recent BE-1 채택), arologis driver-app sign endpoint 응답 schema 확장 (slipBridged 추가).</p>
+</div>
+
+</body>
+</html>

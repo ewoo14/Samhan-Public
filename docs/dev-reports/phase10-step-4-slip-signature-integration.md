@@ -188,3 +188,38 @@ arologis driver-app
 - [x] W10-3 F-3 backlog 채택 (ApiResponse wrapper IT 의무화)
 - [x] Flyway out-of-order 비활성 일관 (V10 = V9 + 1)
 - [x] SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=false (W10-4 시점 활성, env-templates 갱신)
+
+## 9. 5 reviewer 토론 종합 채택 13 fix 매트릭스 (PR #99 추가 commit)
+
+본 PR 발행 후 5 reviewer 코멘트 토론 종합 시점에 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지", 2026-05-07) 일관 적용 → 13 fix 모두 본 PR 채택. DV-3 (6 service refactor) 만 W10-5/Phase 11 위임.
+
+| 그룹 | fix | 요약 | 적용 위치 | 검증 |
+|---|---|---|---|---|
+| A 핵심 backend | BE-1 | SlipResolver 실 활성 + slip-service `/by-partner-code/{code}/recent` endpoint | slip + arologis | IT 3 case + happy-path IT |
+| A 핵심 backend | QA-1 | SlipClient unit test 6 case (skeleton/200/null/5xx) | arologis test | `MockRestServiceServer` PASS |
+| A 핵심 backend | QA-2 | SignatureIntegrationIT happy-path (slipBridged=true) | arologis test | IT PASS |
+| A 핵심 backend | DV-1 | SlipClient + PartnerInternalClient connect 2s / read 3s timeout | SlipClient + slip PartnerInternalClient | Spring Boot 3.4 표준 |
+| B Designer | D-1 | QA 캡처 3종 재작성 — 토큰 1:1 (W3+W4+W5+post-W5+W10-1) | docs/qa/phase10-step-4-* | PNG >=100KB (177/158/176 KB) |
+| B Designer | D-2 | signature flow 2x2 직교 매트릭스 — source x store, slice-accent 3 path | 2-signature-flow-diagram | 4 cell 명시 |
+| B Designer | D-3 | HTML 원본 3종 + Edge headless 캡처 | docs/qa | 3 짝 모두 commit |
+| C micro | BE-2 | UTF-8 charset 명시 (한글 imageRef 회귀 가드) | SlipSignatureService | `getBytes(StandardCharsets.UTF_8)` |
+| C micro | BE-3 | Slip 생성자 signatureSource init 명시 (NULL INSERT 가드) | Slip domain | private 생성자 보강 |
+| D FE | FE-2 | mobile-staff fallback 제거 + assertApiResponseSuccess | arologis.ts | 3 endpoint 일관 |
+| D FE | FE-3 | DriverSignatureScreen slipBridged UX 시각화 (slice-accent badge) | DriverSignatureScreen.tsx | typecheck PASS |
+| E docs | QA-3 | Phase 11 cutover 진입 backlog 등록 | M-PHASE-11-readiness §5-1-3 | signature_source 분류 / Grafana / SLA |
+| E docs | DV-2 | Flyway V10 운영 lock 영향 분석 명시 | M-PHASE-11-readiness §5-1-3 | ADD COLUMN / CREATE INDEX 영향 |
+| F DECISIONS | D-P10-13 | SlipResolver 실 활성 + by-partner-code endpoint 결정 | DECISIONS.md | 신규 §D-P10-13 |
+| F DECISIONS | D-P10-14 | SlipClient connect/read timeout 결정 | DECISIONS.md | 신규 §D-P10-14 |
+
+### 후속 위임 (Phase 11 또는 W10-5)
+
+- **DV-3** (6 service refactor) — RestClient builder 공통화 (slip-service + arologis-service + future services). 본 PR scope 외 — Phase 11 cutover 진입 시점 또는 W10-5 별도 슬라이스에서 처리.
+
+### 회귀 영향 (5 reviewer fix 후)
+
+| 영역 | 결과 | 비고 |
+|---|---|---|
+| slip-service compileJava + compileTestJava | PASS | PartnerInternalClient + IT 3 case 신규 |
+| arologis-service compileJava + compileTestJava | PASS | SlipClientTest 6 case 신규 + SignatureIntegrationIT 4 case |
+| mobile-staff `pnpm typecheck` | PASS | FE-2 schema assert + FE-3 slipBridged UX |
+| partner-service / user-service | 0 회귀 | 기존 endpoint 재사용만 |
