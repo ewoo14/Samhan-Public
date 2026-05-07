@@ -21,6 +21,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private final InternalAuthProperties internalAuthProperties;
+
+    public SecurityConfig(InternalAuthProperties internalAuthProperties) {
+        this.internalAuthProperties = internalAuthProperties;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -32,7 +38,10 @@ public class SecurityConfig {
                         // Slice B (notification-slice-B): 공개 모바일 endpoint — 토큰만 검증
                         .requestMatchers("/public/**").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                // W10-4 (PR #99): InternalTokenFilter 등록 — /internal/** 한정 X-Internal-Token 인증
+                .addFilterBefore(new InternalTokenFilter(internalAuthProperties),
+                        UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);
         return http.build();
     }
 }
