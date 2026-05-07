@@ -67,6 +67,7 @@ public class NotificationService {
                                Map<NotificationChannel, NotificationGateway> gatewayMap,
                                UserClient userClient,
                                @Value("${samhan.notification.retry.max-attempts:5}") int maxRetryAttempts,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false)
                                NotificationGatewayMetrics gatewayMetrics) {
         this.requestRepository = requestRepository;
         this.logRepository = logRepository;
@@ -74,17 +75,6 @@ public class NotificationService {
         this.userClient = userClient;
         this.maxRetryAttempts = maxRetryAttempts;
         this.gatewayMetrics = gatewayMetrics;
-    }
-
-    /**
-     * 단위 테스트 호환 ctor — metrics 미주입 (기존 회귀 안전성 보존).
-     */
-    public NotificationService(NotificationRequestRepository requestRepository,
-                               NotificationLogRepository logRepository,
-                               Map<NotificationChannel, NotificationGateway> gatewayMap,
-                               UserClient userClient,
-                               int maxRetryAttempts) {
-        this(requestRepository, logRepository, gatewayMap, userClient, maxRetryAttempts, null);
     }
 
     /**

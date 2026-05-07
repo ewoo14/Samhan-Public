@@ -57,8 +57,8 @@ class NotificationServiceTest {
         gatewayMap = new HashMap<>();
         gatewayMap.put(NotificationChannel.PUSH, pushGateway);
         gatewayMap.put(NotificationChannel.SMS, new TestGateway(NotificationChannel.SMS));
-        // post-W5 backlog cleanup (Q-W3-1) — maxRetryAttempts default 5 (테스트 기본).
-        service = new NotificationService(requestRepository, logRepository, gatewayMap, userClient, 5);
+        // post-W5 backlog cleanup (Q-W3-1) — maxRetryAttempts default 5 (테스트 기본), metrics null (회귀 안전).
+        service = new NotificationService(requestRepository, logRepository, gatewayMap, userClient, 5, null);
 
         // repository.save 는 입력 그대로 반환
         lenient().when(requestRepository.save(any(NotificationRequest.class)))
@@ -154,9 +154,9 @@ class NotificationServiceTest {
      */
     @Test
     void requeueForRetry_exceedsMaxAttempts_marksFailedPermanent() {
-        // maxRetryAttempts=5 로 service 재구성
+        // maxRetryAttempts=5 로 service 재구성 (metrics null 회귀 안전)
         NotificationService strict = new NotificationService(
-                requestRepository, logRepository, gatewayMap, userClient, 5);
+                requestRepository, logRepository, gatewayMap, userClient, 5, null);
 
         // attemptCount=6 fixture (이미 한도 초과)
         NotificationRequest entity = NotificationRequest.open(
