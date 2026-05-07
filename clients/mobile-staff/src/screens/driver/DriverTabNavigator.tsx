@@ -1,0 +1,163 @@
+/**
+ * DriverTabNavigator — Phase 10 W10-3 신규 (mobile-staff 내부 driver tab).
+ *
+ * 사용자 결정 (2026-05-07) — `clients/mobile-staff` 내부 driver tab 채택 (별도 mobile-driver 신규 X).
+ *
+ * 본 navigator 는 react-navigation 의존성 미설치 환경에서도 동작하도록 자체 minimal tab 구현 — 3 화면
+ * (Dashboard / LocationTracking / Signature) state-machine 으로 분기.
+ *
+ * 후속 (선택):
+ *   - `@react-navigation/native` + `@react-navigation/bottom-tabs` 정식 도입 시 본 파일을
+ *     `createBottomTabNavigator` 로 치환 — 인터페이스 동등.
+ *
+ * 가드:
+ *   - GPS 권한 거부 / 미가용 → `<GpsBlockedScreen>` 노출 (driver 화면 진입 차단).
+ *   - foreground 권한 OK → 3 tab 활성.
+ */
+
+import { useMemo, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useGpsPermission } from '../../hooks/useGpsPermission';
+import { colors, radii, spacing, typography } from '../../theme/tokens';
+import DriverDashboardScreen from './DriverDashboardScreen';
+import DriverLocationTrackingScreen from './DriverLocationTrackingScreen';
+import DriverSignatureScreen from './DriverSignatureScreen';
+import GpsBlockedScreen from './GpsBlockedScreen';
+
+type Tab = 'dashboard' | 'tracking' | 'signature';
+
+interface Props {
+  /** JWT access token — driver tab 진입 직전 user-service `/auth/me` 로 ROLE_DRIVER 확인 후 보관. */
+  token: string | null;
+  /**
+   * 서명 캡처 대상 (Dashboard 에서 vehicle/stop 선택 후 라우팅하는 흐름이 정식 — 본 PR 단계는
+   * Mock dispatchId 사용. 정식 navigation library 도입 시 deeplink param 전달).
+   */
+  selectedStop?: {
+    dispatchId: string;
+    vehicleSeq: number;
+    stopSeq: number;
+    label?: string;
+  };
+}
+
+/**
+ * mock 정차 식별자 — 본 PR 진입 시점 backend 응답 = vehicleSequence + tonnage + status (W10-1
+ * 단순화). dispatchId / stopSeq 는 후속 W10-3 backend 확장 시 dashboard → signature deeplink
+ * 으로 전달. 본 PR 단계는 placeholder UUID + seq=1 로 화면 동작 검증만.
+ */
+const MOCK_STOP_FOR_PR = {
+  dispatchId: '00000000-0000-0000-0000-000000000000',
+  vehicleSeq: 1,
+  stopSeq: 1,
+  label: 'mock 정차 (W10-3 진입 시점 placeholder, 실 deeplink = 후속)',
+};
+
+export default function DriverTabNavigator({ token, selectedStop }: Props): JSX.Element {
+  const gps = useGpsPermission();
+  const [tab, setTab] = useState<Tab>('dashboard');
+
+  const stopForSignature = useMemo(() => selectedStop ?? MOCK_STOP_FOR_PR, [selectedStop]);
+
+  if (gps.blocked) {
+    return <GpsBlockedScreen />;
+  }
+
+  if (gps.status === 'unknown') {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.loadingText}>GPS 권한 확인 중…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.screen}>
+        {tab === 'dashboard' && <DriverDashboardScreen token={token} />}
+        {tab === 'tracking' && (
+          <DriverLocationTrackingScreen
+            token={token}
+            backgroundGranted={gps.backgroundGranted}
+          />
+        )}
+        {tab === 'signature' && (
+          <DriverSignatureScreen
+            token={token}
+            dispatchId={stopForSignature.dispatchId}
+            vehicleSeq={stopForSignature.vehicleSeq}
+            stopSeq={stopForSignature.stopSeq}
+            stopLabel={stopForSignature.label}
+          />
+        )}
+      </View>
+      <View style={styles.tabBar}>
+        <TabButton label="배차" active={tab === 'dashboard'} onPress={() => setTab('dashboard')} testID="driver-tab-dashboard" />
+        <TabButton label="GPS" active={tab === 'tracking'} onPress={() => setTab('tracking')} testID="driver-tab-tracking" />
+        <TabButton label="서명" active={tab === 'signature'} onPress={() => setTab('signature')} testID="driver-tab-signature" />
+      </View>
+    </View>
+  );
+}
+
+interface TabButtonProps {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  testID?: string;
+}
+
+function TabButton({ label, active, onPress, testID }: TabButtonProps): JSX.Element {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.tabBtn, active && styles.tabBtnActive]}
+      testID={testID}
+    >
+      <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface.app },
+  screen: { flex: 1 },
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surface.app,
+  },
+  loadingText: {
+    fontSize: typography.fontSize.base,
+    color: colors.ink.secondary,
+    fontFamily: typography.fontFamily.sans,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface.card,
+    borderTopWidth: 1,
+    borderTopColor: colors.line.default,
+    paddingVertical: spacing[2],
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: spacing[3],
+    alignItems: 'center',
+    marginHorizontal: spacing[1],
+    borderRadius: radii.button,
+  },
+  tabBtnActive: {
+    backgroundColor: colors.action.brandSubtle,
+  },
+  tabLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.ink.secondary,
+    fontWeight: typography.fontWeight.medium,
+    fontFamily: typography.fontFamily.sans,
+  },
+  tabLabelActive: {
+    color: colors.action.brandActive,
+    fontWeight: typography.fontWeight.semibold,
+  },
+});
