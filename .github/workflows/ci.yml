@@ -15,7 +15,7 @@ jobs:
   build-and-test:
     name: 빌드 + 테스트 (JDK 17 + Docker)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60  # W10-4 (PR #99) shared/security refactor 13 service IT 누적 시간 증가 — 30 → 60 (fix CI timeout cancel)
 
     steps:
       - name: 저장소 체크아웃
