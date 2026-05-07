@@ -1,56 +1,223 @@
 package com.samhanair.logis.arologis.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
- * slip-service 호출 client — Phase 10 W10-1 arologis-service.
+ * slip-service 호출 client — Phase 10 W10-1 (skeleton) → W10-4 (PR #99) 실 호출 활성.
  *
- * <p>전자서명 통합은 W10-4 시점. 본 PR (W10-1) 은 client skeleton 만 보유 — 실 endpoint 호출은
- * W10-4 통합 PR 에서 구현.
- *
- * <p>예상 endpoint (W10-4):
+ * <p>endpoint 2종 (slip-service SlipInternalController):
  * <ul>
- *   <li>POST {@code /internal/slips/{slipId}/signatures} — 정차 완료 시 전자서명 imageRef 등록</li>
+ *   <li>POST {@code /internal/slips/{slipId}/signatures} — 정차 완료 시 전자서명 imageRef 전파
+ *       (arologis driver-app 직접 캡처 → slip-service signature_source=APP 컬럼 저장)</li>
+ *   <li>GET {@code /internal/slips/by-partner/{partnerId}/recent} — partnerId 의 최근 활성 슬립
+ *       lookup (SlipResolver 의 partnerCode → slipId 매핑 단계).</li>
  * </ul>
+ *
+ * <p>skeleton-mode 토글 ({@code samhan.arologis.client.skeleton-mode}):
+ * <ul>
+ *   <li>true (W10-1 default) — 외부 호출 회피 (Optional.empty / false 반환)</li>
+ *   <li>false (W10-4 시점 활성) — 실 호출. 환경변수 SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=false</li>
+ * </ul>
+ *
+ * <p>오류 처리: 4xx/5xx 응답은 false / Optional.empty (호출자가 graceful fallback). slip-service 가
+ * down 이어도 arologis-service 가 자체 signatures 테이블에는 INSERT 완료 상태라 운영 영향 0
+ * (양쪽 저장 패턴 — Phase 11 cutover 시 재동기화 가능).
  */
 @Slf4j
 @Component
 public class SlipClient {
 
     private final RestClient.Builder builder;
+    private final ObjectMapper objectMapper;
     private final String baseUrl;
     private final String internalToken;
     private final boolean skeletonMode;
 
     public SlipClient(RestClient.Builder builder,
+                      ObjectMapper objectMapper,
                       @Value("${samhan.slip-service.url:http://localhost:8084}") String baseUrl,
                       @Value("${app.security.internal.token:}") String internalToken,
                       @Value("${samhan.arologis.client.skeleton-mode:true}") boolean skeletonMode) {
         this.builder = builder;
+        this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
         this.internalToken = internalToken;
         this.skeletonMode = skeletonMode;
     }
 
     /**
-     * 전자서명 등록 — W10-4 통합 시점 활성. 본 PR (W10-1) 은 skeleton-mode 강제 + 항상 false.
+     * 전자서명 등록 — Phase 10 W10-4 (PR #99) 활성.
      *
-     * @param slipId 전표 UUID (정차의 parsedPartnerCode → slip-service slipId 매핑)
-     * @param imageRef 이미지 reference (file-server 경로)
-     * @return 성공 시 true. W10-1 단계 / skeleton-mode 시 항상 false.
+     * <p>arologis-service 의 SignatureService 가 정차 완료 시 자체 signatures INSERT 직후 본 메서드 호출.
+     * slip-service 는 슬립의 signature_source=APP 컬럼 갱신 + slip_signature_audit 적재.
+     *
+     * <p>skeleton-mode true 시 무조건 false (W10-1 단계 default). false 일 때만 실 호출.
+     *
+     * @param slipId 전표 UUID (SlipResolver 가 partnerCode 로 resolve)
+     * @param payload 등록 페이로드 (source / imageRef / capturedAt / driverCode / GPS 등)
+     * @return 성공 시 true (slip-service 200 + ApiResponse.success=true). 실패 시 false.
      */
-    public boolean registerSignature(UUID slipId, String imageRef) {
+    public boolean registerSignature(UUID slipId, SignaturePayload payload) {
         if (skeletonMode) {
-            log.debug("SlipClient.registerSignature skeleton-mode — slipId={} imageRef={} (W10-4 통합 시점 활성)",
-                    slipId, imageRef);
+            log.debug("SlipClient.registerSignature skeleton-mode — slipId={} (W10-4 환경변수 SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=false 로 활성화)",
+                    slipId);
             return false;
         }
-        // W10-4 통합 시점 실 호출 구현 의무
-        log.warn("SlipClient.registerSignature — W10-4 통합 시점에 구현 예정. 현재 호출은 무시.");
-        return false;
+        try {
+            RestClient client = builder.baseUrl(baseUrl).build();
+            String body = client.post()
+                    .uri("/internal/slips/{slipId}/signatures", slipId)
+                    .header("X-Internal-Token", internalToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload.toRequestBody())
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                log.warn("SlipClient.registerSignature 응답 비어있음 — slipId={}", slipId);
+                return false;
+            }
+            JsonNode root = objectMapper.readTree(body);
+            boolean ok = root.has("success") && root.get("success").asBoolean(false);
+            if (!ok) {
+                log.warn("SlipClient.registerSignature 응답 success=false — slipId={}, body={}",
+                        slipId, truncate(body));
+            }
+            return ok;
+        } catch (RestClientResponseException ex) {
+            log.warn("SlipClient.registerSignature 4xx/5xx — slipId={}, status={}",
+                    slipId, ex.getStatusCode());
+            return false;
+        } catch (Exception ex) {
+            log.warn("SlipClient.registerSignature 호출 실패 — slipId={}, msg={}",
+                    slipId, ex.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * partnerId → 최근 활성 slipId lookup — Phase 10 W10-4 (PR #99) 신규.
+     *
+     * <p>SlipResolver 의 매핑 단계: PartnerClient.findByCode 로 partnerCode → partnerId resolve 후
+     * 본 메서드로 partnerId → slipId 변환.
+     *
+     * @param partnerId 거래처 UUID
+     * @return 매칭 슬립 UUID Optional (없거나 skeleton-mode 또는 호출 실패 시 empty)
+     */
+    public Optional<UUID> findRecentSlipIdByPartner(UUID partnerId) {
+        if (skeletonMode || partnerId == null) {
+            return Optional.empty();
+        }
+        try {
+            RestClient client = builder.baseUrl(baseUrl).build();
+            String body = client.get()
+                    .uri("/internal/slips/by-partner/{partnerId}/recent", partnerId)
+                    .header("X-Internal-Token", internalToken)
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                return Optional.empty();
+            }
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root.get("data");
+            if (data == null || data.isNull()) {
+                return Optional.empty();
+            }
+            JsonNode slipIdNode = data.get("slipId");
+            if (slipIdNode == null || slipIdNode.isNull()) {
+                return Optional.empty();
+            }
+            return Optional.of(UUID.fromString(slipIdNode.asText()));
+        } catch (RestClientResponseException ex) {
+            log.debug("SlipClient.findRecentSlipIdByPartner — partnerId={}, status={} (404 = 매칭 슬립 없음, 정상)",
+                    partnerId, ex.getStatusCode());
+            return Optional.empty();
+        } catch (Exception ex) {
+            log.warn("SlipClient.findRecentSlipIdByPartner 호출 실패 — partnerId={}, msg={}",
+                    partnerId, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private String truncate(String body) {
+        if (body == null) {
+            return "";
+        }
+        return body.length() > 200 ? body.substring(0, 200) + "..." : body;
+    }
+
+    /**
+     * /internal/slips/{slipId}/signatures POST request payload — slip-service 의
+     * InternalSignatureRegistrationRequest record 와 1:1 매핑.
+     *
+     * <p>UUID 비공개 가드 — slipId 는 본 record 외부 (URL path) 로 전달, 본 payload 에는 미포함.
+     *
+     * @param signatureSource "APP" 또는 "LINK" (slip-service SignatureSource enum 직렬화 형식)
+     * @param imageRef 이미지 reference (S3 placeholder, 1~500자)
+     * @param signatureHash SHA-256 hex (선택)
+     * @param signerName 인수자명 (선택)
+     * @param driverCode 기사 식별 코드 (선택, 있으면 기사 서명 분기)
+     * @param capturedAt 캡처 시각 (LocalDateTime ISO)
+     * @param capturedLatitude GPS 위도 (선택)
+     * @param capturedLongitude GPS 경도 (선택)
+     */
+    public record SignaturePayload(
+            String signatureSource,
+            String imageRef,
+            String signatureHash,
+            String signerName,
+            String driverCode,
+            LocalDateTime capturedAt,
+            BigDecimal capturedLatitude,
+            BigDecimal capturedLongitude
+    ) {
+        /** 정적 factory — APP source + driverCode (기사 서명 분기). */
+        public static SignaturePayload appDriver(String imageRef, String driverCode,
+                                                 LocalDateTime capturedAt,
+                                                 BigDecimal lat, BigDecimal lng) {
+            return new SignaturePayload("APP", imageRef, null, null, driverCode, capturedAt, lat, lng);
+        }
+
+        /** 정적 factory — APP source + 인수자 서명. */
+        public static SignaturePayload appReceiver(String imageRef, String signerName,
+                                                   LocalDateTime capturedAt,
+                                                   BigDecimal lat, BigDecimal lng) {
+            return new SignaturePayload("APP", imageRef, null, signerName, null, capturedAt, lat, lng);
+        }
+
+        Map<String, Object> toRequestBody() {
+            Map<String, Object> body = new HashMap<>();
+            body.put("signatureSource", signatureSource);
+            body.put("imageRef", imageRef);
+            if (signatureHash != null) {
+                body.put("signatureHash", signatureHash);
+            }
+            if (signerName != null) {
+                body.put("signerName", signerName);
+            }
+            if (driverCode != null) {
+                body.put("driverCode", driverCode);
+            }
+            body.put("capturedAt", capturedAt != null ? capturedAt.toString() : null);
+            if (capturedLatitude != null) {
+                body.put("capturedLatitude", capturedLatitude);
+            }
+            if (capturedLongitude != null) {
+                body.put("capturedLongitude", capturedLongitude);
+            }
+            return body;
+        }
     }
 }
