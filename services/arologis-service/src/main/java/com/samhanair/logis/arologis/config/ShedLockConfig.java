@@ -1,5 +1,6 @@
 package com.samhanair.logis.arologis.config;
 
+import java.time.Clock;
 import javax.sql.DataSource;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
@@ -27,5 +28,14 @@ public class ShedLockConfig {
                         .usingDbTime()
                         .build()
         );
+    }
+
+    /**
+     * Clock Bean — QA-4 nit (Fix 10) 채택. DriverLocationCleanupScheduler 에 주입하여 자정 race 회피.
+     * 단위 테스트 시 Clock.fixed(...) mock 으로 결정성 확보 가능.
+     */
+    @Bean
+    public Clock clock() {
+        return Clock.systemDefaultZone();
     }
 }

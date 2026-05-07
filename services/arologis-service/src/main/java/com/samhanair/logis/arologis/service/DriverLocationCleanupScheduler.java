@@ -2,6 +2,7 @@ package com.samhanair.logis.arologis.service;
 
 import com.samhanair.logis.arologis.config.ArologisLocationCleanupProperties;
 import com.samhanair.logis.arologis.repository.DriverLocationRepository;
+import java.time.Clock;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class DriverLocationCleanupScheduler {
 
     private final DriverLocationRepository repository;
     private final ArologisLocationCleanupProperties properties;
+    private final Clock clock;  // QA-4 nit (Fix 10): 자정 race 회피용 — test 시 Clock.fixed 주입
 
     /**
      * 매일 03:00 cleanup 실행. ShedLock 으로 multi-instance 동시 실행 회피.
@@ -41,7 +43,7 @@ public class DriverLocationCleanupScheduler {
     @Transactional
     public void cleanupOldLocations() {
         int retention = Math.max(properties.getRetentionDays(), 1);
-        LocalDate threshold = LocalDate.now().minusDays(retention);
+        LocalDate threshold = LocalDate.now(clock).minusDays(retention);
         int deleted = repository.deleteOlderThan(threshold);
         log.info("DriverLocation 30일 cleanup 완료 — threshold={} retentionDays={} deleted={}",
                 threshold, retention, deleted);
@@ -55,7 +57,7 @@ public class DriverLocationCleanupScheduler {
     @Transactional
     public int cleanupNow() {
         int retention = Math.max(properties.getRetentionDays(), 1);
-        LocalDate threshold = LocalDate.now().minusDays(retention);
+        LocalDate threshold = LocalDate.now(clock).minusDays(retention);
         return repository.deleteOlderThan(threshold);
     }
 }

@@ -61,11 +61,20 @@
 ### 2-3. W10-3: 모바일 어플 (RN Expo, mobile-staff 패턴 일관)
 
 **범위**:
-- `clients/mobile-staff` 패턴 일관 — 기존 mobile-staff 와 별도 RN Expo 어플 또는 mobile-staff 내부 tab 추가
+- `clients/mobile-staff` 패턴 일관 — **mobile-staff 내부 driver tab 채택** (사용자 명시 2026-05-07 — 별도 mobile-driver 신규 X, FE-1 + Designer-2 채택)
 - Driver-app 인증 (user-service 통합 — JWT)
 - Driver-app endpoint 활성 (오늘의 dispatch / GPS 보고 / 전자서명)
 - 본 어플 사용자 driver = INTERNAL Driver upsert
-- 사용자 결정 — `clients/mobile-staff` 내부 driver tab 추가 vs 신규 `clients/mobile-driver` (W10-3 진입 시점 결정)
+
+**GPS 권한 정책 (사용자 결정 4 GPS 하이브리드, 2026-05-07)**:
+- foreground 권한 = **의무** (배송 도중 위치 추적)
+- background 권한 = 선택 (운영 시점 결정)
+- 거부 fallback = **어플 사용 불가** (사용자 명시 — 권한 거부 시 차단)
+- 인성 LBS 우선 + 본 어플 GPS 보강 (`samhan.arologis.gps.priority=insung-lbs,app-gps,manual` 환경변수, W10-2 시점 활성)
+
+**Design baseline (Designer-2 채택, 2026-05-07)**:
+- **Pretendard self-host 정식 도입** — jsdelivr CDN 회피 + `clients/mobile-staff/src/theme/usePretendardFontGuarded.ts` 1:1 복제 (Phase 7 패턴 일관)
+- **W3+W4+W5+post-W5+W10-1 토큰 1:1 복제 의무** — slate / Google Material method / b-ok/b-warn/b-info / Pretendard / channel badge / slice accent / qa-table-wrapper / b-unparsed (W10-1 신규)
 
 **진입 조건**: W10-2 완료. user-service ROLE_DRIVER 활성.
 
