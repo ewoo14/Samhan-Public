@@ -12,7 +12,7 @@
 | 아키텍처   | MSA (service-per-DB), Spring Cloud Gateway + Eureka + Resilience4j 회로차단        |
 | 인증       | JWT HS256 (auth-service) + gateway HeaderAuthenticationFilter + Internal-Token     |
 | 배포 형태  | 내부: Electron (Windows .exe) / 외부: Web (estimate / order) + Mobile (Expo)       |
-| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), Phase 9 4차 진행 (W1 partner #91 / W2 groupware #92 / W3 notification #93 / W4 dashboard 본 PR)   |
+| 진척률     | Phase 0 ~ 8 완료 (PR #88 / #89 / #90), **Phase 9 완료** (W1 partner #91 / W2 groupware #92 / W3 notification #93 / W4 dashboard #94 / W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수 본 PR), Phase 10 진입 준비 완료 |
 
 ---
 
@@ -207,8 +207,8 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | 6     | 완료       | #38 ~ #80              | legacy 마이그레이션 (M1a / M2 / M3 / M4 / M5 + 5 client)            |
 | 7     | 완료       | #81 ~ #87              | 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                        |
 | 8     | **완료**   | **#88 / #89 / #90**    | AWS 호환성 가드 (12-factor + chained-default + ServiceDiscoveryClient + Secrets rotation spec + Phase 10 dry-run plan) |
-| 9     | **4차 진행** | **W1 partner-service (#91) / W2 groupware-service (#92) / W3 notification-service (#93) / W4 dashboard-service (본 PR)** | 잔여 도메인 (partner / groupware / notification / dashboard)        |
-| 10    | 대기       | -                      | AWS 마이그레이션 + Migration Service (8096) + 운영 안정화           |
+| 9     | **완료** | **W1 partner-service (#91) / W2 groupware-service (#92) / W3 notification-service (#93) / W4 dashboard-service (#94) / W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수 (본 PR)** | 잔여 도메인 4 신규 service + 1 shared module 완료, 사용자 가드 정착 |
+| 10    | **진입 준비 완료** | -                      | AWS 마이그레이션 (P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover) + Migration Service (8096) + 운영 안정화 |
 
 자세한 단계별 산출물 / 완료 조건 / PR 매트릭스는 `ROADMAP.md` 참조.
 
@@ -247,6 +247,13 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 - #89 Phase 8 2차 (`shared:discovery-abstraction` 신규 + chained-default 환경변수 + Secrets Manager rotation lambda spec)
 - #90 Phase 8 3차 (AWS 마이그레이션 dry-run plan 14 section + Phase 8 회고 + Phase 9 진입 plan + 본 docs 누락 8 영역 보강)
 
+### Phase 9 (완료 — 잔여 도메인)
+- #91 Phase 9 W1 (partner-service skeleton port 8095 + M5 partnerCode lookup endpoint + ServiceDiscoveryClient 첫 소비자)
+- #92 Phase 9 W2 (groupware-service skeleton port 8092 + 결재선/메신저/일정 + UserClient + ServiceDiscoveryClient 두 번째 소비자)
+- #93 Phase 9 W3 (notification-service skeleton port 8093 + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + ServiceDiscoveryClient 세 번째 소비자)
+- #94 Phase 9 W4 (dashboard-service skeleton port 8094 + 3 entity + 2 materialized view + 4 client + Caffeine KPI cache + ServiceDiscoveryClient 네 번째 소비자 + shared:user-client-abstraction 신규 + W3 backlog 5건 + 사용자 가드 후속 fix 11건 본 PR 채택 + slip-service 시간 의존 회귀 정공법 fix)
+- 본 PR Phase 9 W5 (회고 보고서 + Phase 10 진입 plan + 잔존 backlog 1건 흡수 — partner-service findByCodes bulk endpoint + dashboard-service PartnerCodeResolver bulk 전환)
+
 ---
 
 ## 운영 가드 / 컨벤션
@@ -281,6 +288,8 @@ cd qa/detox && npm install && npm run build:ios && npm run test:ios
 | Phase 8 Secrets rotation 스펙 | `docs/migration/phase8/M-SECRETS-ROTATION-spec.md`               |
 | Phase 8 회고               | `docs/dev-reports/phase8-retrospective.md`                          |
 | Phase 9 readiness          | `docs/migration/phase9/M-PHASE-9-readiness.md`                      |
+| Phase 9 회고               | `docs/dev-reports/phase9-retrospective.md`                          |
+| Phase 10 readiness         | `docs/migration/phase10/M-PHASE-10-readiness.md`                    |
 | Phase 10 AWS dry-run plan  | `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`                 |
 | dev-reports 누적           | `docs/dev-reports/`                                                 |
 

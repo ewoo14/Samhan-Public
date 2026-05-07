@@ -278,7 +278,7 @@
 
 ---
 
-## Phase 9 — 잔여 도메인 (4차 진행)
+## Phase 9 — 잔여 도메인 (완료, 5차 W5 회고 + Phase 10 plan + 잔존 backlog 1건 흡수)
 
 ### 예정 산출물
 - `services/partner-service` (8095, 거래처 마스터 + 신용한도 + 거래내역) — 8088 (partner-order-service) 충돌 회피 — **완료 (PR #91)**
@@ -348,6 +348,14 @@
 - 3 client README (`clients/desktop/README.md` / `clients/web/design-system/README.md` / `clients/mobile/README.md`) — slice 명 정정 + 채널 토큰 안내
 - DECISIONS D-P9-12 / D-P9-13 / D-P9-14 / D-P9-15 추가
 
+### 산출물 (5차 — 본 PR W5)
+- **Phase 9 회고 보고서** (`docs/dev-reports/phase9-retrospective.md`) 신규 — 10 섹션 (요약 / 통계 / 19 결정 / 25 backlog 채택 / 7 success + 6 학습 / 진입 준비 / Phase 10 요약 / 잔존 backlog / 참조 / 마무리)
+- **Phase 10 진입 plan** (`docs/migration/phase10/M-PHASE-10-readiness.md`) 신규 — 6 섹션 (P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover 슬라이스 분해)
+- **잔존 backlog 1건 흡수 (D-P9-16, BE 의견 3 채택)** — partner-service `POST /internal/partners/find-by-codes` bulk endpoint + dashboard-service `PartnerCodeResolver.resolveAll(List<String>)` bulk 전환 (cache hit/miss 분리 + miss 만 1회 RPC)
+- partner-service IT 4건 신규 (정상 / 빈 / 일부 미존재 / 토큰 누락) + dashboard-service 단위 4건 신규 (PartnerCodeResolverTest)
+- W5 dev-report (`docs/dev-reports/phase9-step-5-retrospective.md`) 신규
+- DECISIONS D-P9-16 / D-P9-17 / D-P9-18 / D-P9-19 / D-P9-20 추가
+
 ### 진입 조건
 - Phase 8 호환성 가드 + 운영 가드 정착 (PR #88 / #89 / #90 머지 시 충족)
 
@@ -361,7 +369,7 @@
 
 ---
 
-## Phase 10 — AWS 마이그레이션 + Migration Service + 운영 안정화 (대기)
+## Phase 10 — AWS 마이그레이션 + Migration Service + 운영 안정화 (진입 준비 완료)
 
 ### 예정 산출물
 - AWS 인프라 cutover — RDS PostgreSQL 16 + EC2/ECS Fargate + ElastiCache + AWS MQ + S3 + Route 53 + ACM
@@ -377,6 +385,9 @@
 
 ### dry-run plan 위치
 - `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` (14 section + 5주 timeline)
+
+### 진입 plan 위치
+- `docs/migration/phase10/M-PHASE-10-readiness.md` (Phase 9 W5 본 PR 신규 — P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover 슬라이스 분해)
 
 ---
 
@@ -449,7 +460,8 @@
 | #91 | 9 | Phase 9 1차 W1 (partner-service skeleton — port 8095, M5 partnerId lookup endpoint + 2 entity + Admin CRUD + ServiceDiscoveryClient 도입) |
 | #92 | 9 | Phase 9 2차 W2 (groupware-service skeleton — port 8092, 결재선 chain + 메신저 + 일정 + UserClient + ServiceDiscoveryClient 두 번째 소비자) |
 | #93 | 9 | Phase 9 3차 W3 (notification-service skeleton — port 8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s + ServiceDiscoveryClient 세 번째 소비자 + DevOps #11/#12 흡수) |
-| 본 PR | 9 | Phase 9 4차 W4 (dashboard-service skeleton — port 8094, 3 entity + 2 materialized view (CONCURRENTLY refresh) + 4 client (Inventory/Accounting/PartnerOrder/Partner) + Caffeine KPI cache + ServiceDiscoveryClient 네 번째 소비자 + shared:user-client-abstraction 신규 + W3 backlog 5건 흡수) |
+| #94 | 9 | Phase 9 4차 W4 (dashboard-service skeleton — port 8094, 3 entity + 2 materialized view (CONCURRENTLY refresh) + 4 client (Inventory/Accounting/PartnerOrder/Partner) + Caffeine KPI cache + ServiceDiscoveryClient 네 번째 소비자 + shared:user-client-abstraction 신규 + W3 backlog 5건 + 사용자 가드 후속 fix 11건 본 PR 채택 + slip-service 시간 의존 회귀 정공법 fix) |
+| 본 PR | 9 | Phase 9 5차 W5 (회고 보고서 + Phase 10 진입 plan + 잔존 backlog 1건 흡수 — partner-service POST /internal/partners/find-by-codes bulk endpoint + dashboard-service PartnerCodeResolver.resolveAll bulk 전환, D-P9-16 ~ D-P9-20 추가) |
 
 ---
 
@@ -469,10 +481,10 @@
 | `services/partner-auth-service`      | 6          | M2 운영           |
 | `services/dc-config-service`         | 6          | M3 운영           |
 | `services/partner-order-service`     | 6          | M4 운영           |
-| `services/partner-service`           | 9          | W1 skeleton (8095, 거래처 마스터 + M5 partnerCode lookup endpoint, ServiceDiscoveryClient 도입) |
+| `services/partner-service`           | 9          | W1 skeleton (8095, 거래처 마스터 + M5 partnerCode lookup endpoint, ServiceDiscoveryClient 도입) + W5 findByCodes bulk endpoint (D-P9-16) |
 | `services/groupware-service`         | 9          | W2 skeleton (8092, 결재선 chain + 메신저 + 일정 + UserClient, ServiceDiscoveryClient 두 번째 소비자) |
 | `services/notification-service`      | 9          | W3 skeleton (8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s, ServiceDiscoveryClient 세 번째 소비자) |
-| `services/dashboard-service`         | 9          | W4 skeleton (8094, 3 entity + 2 materialized view + 4 client + Caffeine KPI cache, ServiceDiscoveryClient 네 번째 소비자) |
+| `services/dashboard-service`         | 9          | W4 skeleton (8094, 3 entity + 2 materialized view + 4 client + Caffeine KPI cache, ServiceDiscoveryClient 네 번째 소비자) + W5 PartnerCodeResolver.resolveAll bulk 전환 (D-P9-16) |
 | `shared/user-client-abstraction`     | 9          | W4 신규 — UserVerifier interface + DefaultUserVerifier impl (Caffeine TTL 60s, W3 backlog #1 채택) |
 | `clients/desktop`                    | 2 / 6      | v4                |
 | `clients/web/design-system`          | 2          | 21 컴포넌트       |
@@ -509,5 +521,8 @@
 - Phase 9 3차 dev report: `docs/dev-reports/phase9-step-3-notification-service.md`
 - Phase 9 4차 dev report: `docs/dev-reports/phase9-step-4-dashboard-service.md`
 - Phase 9 4차 PR template color reference: `docs/templates/PR-template-color-reference.md`
+- Phase 9 5차 dev report: `docs/dev-reports/phase9-step-5-retrospective.md`
+- Phase 9 회고 보고서: `docs/dev-reports/phase9-retrospective.md`
+- Phase 10 진입 plan: `docs/migration/phase10/M-PHASE-10-readiness.md`
 - Phase 10 dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md`
 - 본 문서 갱신 보고: `docs/dev-reports/docs-roadmap-update.md`

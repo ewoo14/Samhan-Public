@@ -497,3 +497,62 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 영향: 회귀 검증 — notification 12 + groupware 16 단위 + 각 IT 9 + 11 = 21 case 모두 PASS 유지. 향후 신규 service 의 user lookup 도입 시 본 abstraction 1 줄 의존성 추가 + UserVerifier 주입만으로 정착.
 
 ---
+
+## Phase 9 W5 결정 (2026-05-07)
+
+### D-P9-16. partner-service `POST /internal/partners/find-by-codes` bulk endpoint + dashboard PartnerCodeResolver bulk 전환 (W4 BE 의견 3 채택)
+
+- partner-service 신규 `POST /internal/partners/find-by-codes` — partnerCode N건 동시 조회 batch endpoint (X-Internal-Token + ROLE_MASTER)
+- `PartnerService.findByCodes(Collection<String>)` — distinct 정규화 + 빈 입력 short-circuit + IN 절 1회 query
+- `PartnerRepository.findAllByPartnerCodeIn(Collection<String>)` — Spring Data JPA 자동 query (Soft Delete `@SQLRestriction` 가드 자동 적용)
+- IT 4건 신규 (정상 / 빈 / 일부 미존재 누락 / 토큰 누락 403)
+- dashboard-service 측 `PartnerClient.findByCodes(List<String>)` — partner-service POST 호출 + skeleton-mode 토글 일관 + fail-soft 빈 리스트 반환
+- `PartnerCodeResolver.resolveAll(List<String>)` — cache hit/miss 분리 + miss 만 1회 bulk RPC + cache 적재 (단건 resolve 와 cache name `dashboard-partner-resolve` 공유)
+- `PartnerCodeResolverTest` 단위 4건 신규 (빈 / 전체 miss / hit+miss 분리 / 일부 미존재)
+
+근거: PR #94 dev-report § Phase 10 cutover 약속 (BE 의견 3) — `DashboardAdminController.salesAggregate` 의 partner 정보 lookup fan-out 시 N 회 직렬 RPC 회피용 backing endpoint. W4 시점 사용자 가드 (`feedback_integrated_pr_pattern.md` § fix 후속 PR/Phase 위임 금지) 명시 후 11건은 본 PR 채택, 1건 (BE 의견 3) 만 W5 위임 → 본 W5 PR 채택으로 잔존 backlog 0 으로 정리.
+
+영향: 향후 매출 집계 / KPI 화면이 partnerCode N건 동시 노출 시 fan-out 직렬 RPC → 1회 batch 호출. partner-service 자체 IT 4 + dashboard-service 단위 4 추가 (회귀 0 — 기존 12 + 16 + 17 단위 + 9 IT 모두 PASS 유지).
+
+### D-P9-17. slip-service 시간 의존 design fix (LocalDate.now()) — main 도 영향 받았을 회귀 사전 예방
+
+- PR #94 후속 fix `cde6db9` — slip-service 24 case IT/단위 fail
+- 원인 — 6 file × `LocalDate.of(2026, 5, 5)` 하드코딩 + DeliveryBatch 토큰 만료 비교 (`tokenExpiresAt = 2026-05-06 23:59:59`) 가 2026-05-07 시점 만료 영향으로 fail
+- fix — 6 file 모두 `LocalDate.now()` 동적 값으로 정정 (DeliveryBatchTest / DeliveryBatchServiceTest / SlipServiceSignatureTest / PublicSignatureControllerIT / PublicSlipControllerIT / SlipSignatureAdminIT)
+
+근거: 본 PR 변경 영향이 아닌 시간 흐름 (날짜 변경) 회귀이지만, main 도 동일 영향 받았을 패턴이며 사용자 가드 적용 (Phase 10/W5 위임 X 정공법 fix). W5 시점 grep 가드로 다른 service 의 단순 fixture 데이터 (`LocalDate.of(2026,1,1)` user 입사일 등) 는 회귀 영향 없음 추가 검증.
+
+영향: CI 7/7 PASS 회복. 회귀 0 — dashboard / notification / groupware / partner / user 모두 PASS 유지.
+
+### D-P9-18. 사용자 가드 적용 — `feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지"
+
+- W4 PR #94 시점 사용자 명시 — reviewer 식별 fix 12건 매트릭스 중 11건 본 PR 채택 + 1건 (BE 의견 3) W5 위임
+- W5 본 PR 시점 잔존 1건도 채택 — backlog 누적 0 으로 종료
+
+근거: 단편 fix 후속 PR / Phase 위임 시 backlog 누적 → 후속 슬라이스 부담 + 가드 위반 (단편 PR 회피). 본 가드 적용 후 W4 + W5 모두 reviewer 식별 fix 본 PR 일괄 채택 패턴 정착. memory `feedback_integrated_pr_pattern.md` 갱신 후속 진행.
+
+영향: Phase 9 W4 → W5 backlog 위임 패턴 1건 (BE 의견 3) 만 잔존 → 본 PR 채택. Phase 10 진입 시점 backlog 누적 0.
+
+### D-P9-19. Phase 10 진입 준비 완료 — AWS migration cutover plan 채택
+
+- `docs/migration/phase10/M-PHASE-10-readiness.md` 신규 — 6 섹션 (진입 조건 / 작업 분해 / 가드 / 일정 / roll-back / 참조)
+- 작업 분해 — P10-1 (Secrets + Cache) / P10-2 (Discovery + Resilience) / P10-3 (RDS + Cutover) 3 슬라이스
+- Phase 10 dry-run plan (`M-AWS-MIGRATION-DRY-RUN.md`, Phase 8 도입) 14 section 과 짝
+- AWS 4 큰 변화 (Secrets Manager / aws-cloud-map / Redis / Aurora PostgreSQL) 모두 Phase 8/9 추상화로 사전 흡수 (코드 변경 1줄 ~ 1 모듈 수준)
+
+근거: Phase 9 회고 (`phase9-retrospective.md` § 6) 기준 — 14 service skeleton + 4 추상화 모듈 + 12-factor + chained-default + ShedLock 가드 모두 OK. AWS account + IAM + Aurora + ALB + Route 53 인프라 준비 시점에 P10-1 진입 가능.
+
+영향: Phase 10 cutover 회귀 위험 최소화 + roll-back 단위 명확. 사용자 결정 (`AWS account 발급 시점` + `cutover 슬라이스 분할 합의`) 후 P10-1 진입.
+
+### D-P9-20. Phase 9 회고 종합 + Phase 10 시점 결정
+
+- `docs/dev-reports/phase9-retrospective.md` 신규 (10 섹션) — Phase 9 5 슬라이스 (W1~W5) 종합
+- 산출 통계 매트릭스 — 4 service + 1 shared module + 2 materialized view + 4 외부 client + 19 결정 + 25 backlog 채택
+- 핵심 회고 7 success + 6 학습 — 사용자 가드 정착 / shared abstraction 통합 / slip-service 시간 의존 사전 예방 / W2 Lazy fix / W3 raw URL pin / W4 backlog 누적 → W5 압박 / 임시 브랜치 회피
+- 누적 backlog 채택 결과 — Phase 10 위임 N건 (W3 BE backlog #2/#3, W3 DevOps #6/#7/#10, W3 QA #11/#12/#13)
+
+근거: Phase 9 = "잔여 도메인" phase 의 마무리. 14 service skeleton 완료 + Phase 10 진입 준비 완료 시점 명시.
+
+영향: Phase 10 진입 시점 = 본 PR 머지 직후. AWS account 준비 시점에 P10-1 슬라이스 시작.
+
+---

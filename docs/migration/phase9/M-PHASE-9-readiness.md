@@ -2,6 +2,8 @@
 
 본 문서는 Phase 9 (잔여 도메인 — partner / groupware / notification / dashboard) 진입을 위한 전제 조건, 작업 분해, 5주 roadmap, 가드를 정리한다.
 
+> **Phase 9 종합 = 완료 (2026-05-07, W5 본 PR 머지 시점)**. 본 plan 의 5 슬라이스 (W1~W5) 모두 산출 + 사용자 가드 정착 + 잔존 backlog 0. Phase 10 진입 준비 완료 (`docs/migration/phase10/M-PHASE-10-readiness.md` + `docs/dev-reports/phase9-retrospective.md` 참조).
+
 ---
 
 ## 1. 진입 조건
@@ -49,7 +51,7 @@
 | W2 | groupware-service skeleton (결재선 도메인 모델 + 메신저 entity) | **완료 (본 PR — 5 entity + 2 controller + 3 service + 9 dto + 5 config + 1 exception handler + 1 client (UserClient) + IT 2 + 단위 테스트 3)** |
 | W3 | notification-service skeleton (push/email/sms adapter) | **완료 (PR #93 — 2 entity + 3 enum + 3 channel adapter (인터페이스+운영+mock) + 2 controller + 1 service + N dto + N config + UserClient bulk verify (BE backlog #4 채택) + IT 2 + 단위 테스트 3)** |
 | W4 | dashboard-service skeleton (실시간 KPI 집계 + materialized view) | **완료 (본 PR — 3 entity + 2 enum + 2 materialized view + 4 client + 2 controller + 4 service + 3 dto + 7 config + 1 exception handler + IT 2 + 단위 테스트 4 + shared:user-client-abstraction 신규 모듈 + W3 backlog 5건 흡수)** |
-| W5 | Phase 9 회고 + Phase 10 진입 plan | 예정 |
+| W5 | Phase 9 회고 + Phase 10 진입 plan + 잔존 backlog 1건 흡수 (D-P9-16 partner-service findByCodes bulk endpoint + dashboard PartnerCodeResolver.resolveAll bulk 전환) | **완료 (본 PR — 회고 보고서 + Phase 10 plan + 잔존 backlog 1건 흡수, partner-service 1 controller method + 1 service method + 1 repository method + IT 4건 + dashboard-service 1 client method + 1 resolver method + 단위 4건)** |
 
 ### 3-1. W1 — partner-service
 
@@ -93,11 +95,13 @@
 - **e2e 위치 (Playwright)**: `qa/playwright/tests/dashboard/` — KPI 조회 / 실시간 재고 / 매출 집계 + **visual baseline 신규 작성 의무** (Phase 7 4차 dark-mode 패턴 1:1 적용 — Designer 협업)
 - ServiceDiscoveryClient 도입
 
-### 3-5. W5 — Phase 9 회고 + Phase 10 진입
+### 3-5. W5 — Phase 9 회고 + Phase 10 진입 (완료, 본 PR)
 
-- Phase 9 회고 보고서 (`docs/dev-reports/phase9-retrospective.md`)
-- Phase 10 진입 plan (`docs/migration/phase10/M-PHASE-10-readiness.md`)
-- DECISIONS D-P9 시리즈 추가 (4 service 도입 결정 + Phase 10 cutover 시점)
+- Phase 9 회고 보고서 (`docs/dev-reports/phase9-retrospective.md`) — 10 섹션, 19 결정 + 25 backlog 채택 종합
+- Phase 10 진입 plan (`docs/migration/phase10/M-PHASE-10-readiness.md`) — 6 섹션, P10-1/2/3 슬라이스 분해
+- DECISIONS D-P9-16 ~ D-P9-20 추가 (5건 신규 — bulk endpoint / slip-service 시간 의존 fix / 사용자 가드 / Phase 10 진입 / 회고 종합)
+- 잔존 backlog 1건 흡수 (D-P9-16) — partner-service `POST /internal/partners/find-by-codes` + dashboard-service `PartnerCodeResolver.resolveAll`
+- W5 dev-report (`docs/dev-reports/phase9-step-5-retrospective.md`)
 
 ---
 
@@ -153,3 +157,8 @@
 - W2 service README: `services/groupware-service/README.md`
 - W3 완료 dev-report: `docs/dev-reports/phase9-step-3-notification-service.md`
 - W3 service README: `services/notification-service/README.md`
+- W4 완료 dev-report: `docs/dev-reports/phase9-step-4-dashboard-service.md`
+- W4 service README: `services/dashboard-service/README.md`
+- W5 완료 dev-report: `docs/dev-reports/phase9-step-5-retrospective.md`
+- Phase 9 회고 보고서 (W5 본 PR 신규): `docs/dev-reports/phase9-retrospective.md`
+- Phase 10 진입 plan (W5 본 PR 신규): `docs/migration/phase10/M-PHASE-10-readiness.md`
