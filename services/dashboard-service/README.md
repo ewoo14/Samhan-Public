@@ -53,7 +53,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY 지원 (unique index 의무 보유, V1 SQ
 |---|---|---|
 | GET | `/admin/dashboard/kpi?category=&from=&to=` | KPI 조회 (category 선택, Caffeine cache 60s) |
 | GET | `/admin/dashboard/realtime-stock?warehouseCode=&productCode=` | 실시간 재고 (UUID 비공개 가드 — code 만 노출) |
-| GET | `/admin/dashboard/sales-aggregate?from=&to=&interval=DAILY` | 매출 집계 |
+| GET | `/admin/dashboard/sales-aggregate?from=&to=&interval=DAILY&partnerCode=` | 매출 집계 (UUID 비공개 가드 — partnerCode 입력 + service-side resolve, W4 fix Q-W4-2) |
 | POST | `/admin/dashboard/refresh` | Materialized view REFRESH 트리거 + KPI cache invalidate |
 
 ## 4. 4 외부 client (ServiceDiscoveryClient 네 번째 소비자)
@@ -63,9 +63,18 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY 지원 (unique index 의무 보유, V1 SQ
 | `InventoryClient` | inventory-service:8085 | `GET /internal/stock?productId=&warehouseCode=` | fail-soft (실패 → empty Optional) |
 | `AccountingClient` | accounting-service:8087 | `GET /internal/sales?partnerId=&from=&to=` | fail-soft (실패 → BigDecimal.ZERO) |
 | `PartnerOrderClient` | partner-order-service:8088 | `GET /internal/orders/count?partnerId=&from=&to=` | fail-soft (실패 → 0) |
-| `PartnerClient` | partner-service:8095 (W1) | `GET /internal/partners/{partnerCode}` | W1 endpoint 활용 (운영) |
+| `PartnerClient` | partner-service:8095 (W1) | `GET /internal/partners/{partnerCode}` | W1 endpoint 활용 (운영, `PartnerSummary` 응답) |
 
 본 슬라이스는 skeleton — 응답 파싱 / DTO 매핑은 Phase 10 cutover 시점.
+
+### 4-1. skeleton-mode 토글 (PR #94 W4 후속 fix — BE 의견 2 채택)
+
+`samhan.dashboard.client.skeleton-mode` (default `true`) 환경변수로 4 client 의 외부 호출을 일관 토글:
+
+- `true` (W4 default) — 4 client 가 외부 RPC 회피, default 반환 (`Optional.empty` / `BigDecimal.ZERO` / `0`). skeleton 의도 명확화 + outbound traffic 0.
+- `false` (Phase 10 cutover) — 외부 호출 활성. 본문 파싱 미구현 client 는 `UnsupportedOperationException` 으로 명시 실패 (Phase 10 BE 슬라이스에서 구현 의무).
+
+env: `SAMHAN_DASHBOARD_CLIENT_SKELETON_MODE=true|false`
 
 ## 5. shared:user-client-abstraction (W3 backlog #1 채택)
 
@@ -112,6 +121,9 @@ notification-service / groupware-service 의 기존 `UserClient` 구현을 본 a
 | `SAMHAN_DASHBOARD_KPI_CACHE_TTL` | 60 | 초 |
 | `SAMHAN_DASHBOARD_KPI_CACHE_MAX` | 5000 | entries |
 | `SAMHAN_DASHBOARD_REFRESH_INTERVAL` | 5 | 분 |
+| `SAMHAN_DASHBOARD_CLIENT_SKELETON_MODE` | true | W4 fix BE 의견 2 — 4 client 외부 호출 토글 |
+| `SAMHAN_DASHBOARD_PARTNER_RESOLVE_TTL` | 300 | W4 fix Q-W4-2 — partnerCode resolve 캐시 TTL (초) |
+| `SAMHAN_DASHBOARD_PARTNER_RESOLVE_MAX` | 1000 | W4 fix Q-W4-2 — partnerCode resolve 캐시 max 엔트리 |
 
 전체는 `infrastructure/env-templates/dashboard-service.env` 참조.
 

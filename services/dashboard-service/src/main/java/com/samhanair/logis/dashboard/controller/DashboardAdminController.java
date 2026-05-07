@@ -1,6 +1,8 @@
 package com.samhanair.logis.dashboard.controller;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.dashboard.domain.AggregateInterval;
 import com.samhanair.logis.dashboard.domain.KpiCategory;
 import com.samhanair.logis.dashboard.dto.KpiSnapshotResponse;
@@ -8,6 +10,7 @@ import com.samhanair.logis.dashboard.dto.RealTimeStockResponse;
 import com.samhanair.logis.dashboard.dto.SalesAggregateResponse;
 import com.samhanair.logis.dashboard.service.KpiService;
 import com.samhanair.logis.dashboard.service.MaterializedViewRefreshService;
+import com.samhanair.logis.dashboard.service.PartnerCodeResolver;
 import com.samhanair.logis.dashboard.service.RealTimeStockService;
 import com.samhanair.logis.dashboard.service.SalesAggregateService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,6 +43,7 @@ public class DashboardAdminController {
     private final RealTimeStockService realTimeStockService;
     private final SalesAggregateService salesAggregateService;
     private final MaterializedViewRefreshService refreshService;
+    private final PartnerCodeResolver partnerCodeResolver;
 
     /**
      * KPI 조회 (filter — category 선택). category null 인 경우 전체 카테고리 시계열 반환.
@@ -80,7 +84,13 @@ public class DashboardAdminController {
     }
 
     /**
-     * 매출 집계 조회 — 기간 + interval (DAILY/WEEKLY/MONTHLY) + (선택) partnerId.
+     * 매출 집계 조회 — 기간 + interval (DAILY/WEEKLY/MONTHLY) + (선택) partnerCode.
+     *
+     * <p>PR #94 W4 후속 fix (QA Q-W4-2 채택) — UUID 비공개 가드 일관. 입력 파라미터에서
+     * partnerId UUID 를 제거하고 partnerCode (사용자 노출 식별자) 만 받음. service 가
+     * {@link PartnerCodeResolver} 로 내부 UUID 변환. partnerCode 가 미존재인 경우 400 응답.
+     *
+     * <p>backward-compat — partnerCode 미지정 시 전체 거래처 합계 (이전 동작 보존).
      */
     @Operation(summary = "매출 집계 조회 (Admin)")
     @GetMapping("/sales-aggregate")
@@ -89,9 +99,16 @@ public class DashboardAdminController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false, defaultValue = "DAILY") AggregateInterval interval,
-            @RequestParam(required = false) UUID partnerId) {
+            @RequestParam(required = false) String partnerCode) {
+        UUID partnerId = null;
+        if (partnerCode != null && !partnerCode.isBlank()) {
+            partnerId = partnerCodeResolver.resolve(partnerCode)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
+                            "거래처 코드 미존재 또는 미해소 (skeleton-mode 환경 포함): " + partnerCode));
+        }
+        String displayCode = partnerCode != null && !partnerCode.isBlank() ? partnerCode : "(미매핑)";
         return ApiResponse.ok(salesAggregateService.findAggregates(from, to, interval, partnerId).stream()
-                .map(s -> SalesAggregateResponse.from(s, "(미매핑)"))
+                .map(s -> SalesAggregateResponse.from(s, displayCode))
                 .toList());
     }
 

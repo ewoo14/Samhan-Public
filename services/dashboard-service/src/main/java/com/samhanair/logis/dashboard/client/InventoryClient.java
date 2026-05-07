@@ -22,6 +22,10 @@ import org.springframework.web.client.RestClientResponseException;
  * 가 실 RPC 로 전환 (현 시점 stub).
  *
  * <p>IT 에서는 {@code @MockBean InventoryClient} 격리 의무 (memory feedback_it_mockbean_external_clients).
+ *
+ * <p>PR #94 W4 후속 fix (BE 의견 2 채택) — {@code samhan.dashboard.client.skeleton-mode} 토글.
+ * skeleton-mode true (W4 default) 시 외부 호출 회피 + default 반환 (skeleton 의도 명확화).
+ * false 시 Phase 10 cutover — 실 호출 + 응답 파싱은 cutover 시점 BE 슬라이스에서 구현.
  */
 @Slf4j
 @Component
@@ -31,15 +35,18 @@ public class InventoryClient {
     private final ServiceDiscoveryClient discoveryClient;
     private final String baseUrl;
     private final String internalToken;
+    private final boolean skeletonMode;
 
     public InventoryClient(RestClient.Builder builder,
                            ServiceDiscoveryClient discoveryClient,
                            @Value("${samhan.inventory-service.url:http://localhost:8085}") String baseUrl,
-                           @Value("${app.security.internal.token:}") String internalToken) {
+                           @Value("${app.security.internal.token:}") String internalToken,
+                           @Value("${samhan.dashboard.client.skeleton-mode:true}") boolean skeletonMode) {
         this.builder = builder;
         this.discoveryClient = discoveryClient;
         this.baseUrl = baseUrl;
         this.internalToken = internalToken;
+        this.skeletonMode = skeletonMode;
     }
 
     /**
@@ -54,6 +61,11 @@ public class InventoryClient {
         if (productId == null || warehouseCode == null || warehouseCode.isBlank()) {
             return Optional.empty();
         }
+        if (skeletonMode) {
+            log.debug("InventoryClient skeleton-mode — productId={}, warehouseCode={} (외부 호출 회피, empty 반환)",
+                    productId, warehouseCode);
+            return Optional.empty();
+        }
         try {
             RestClient client = builder.baseUrl(baseUrl).build();
             String body = client.get()
@@ -61,16 +73,18 @@ public class InventoryClient {
                     .header("X-Internal-Token", internalToken)
                     .retrieve()
                     .body(String.class);
-            // skeleton 단계 — 응답 파싱은 Phase 10 시점에 inventory-service Internal API 정착 시점에 구현.
-            log.debug("InventoryClient stock lookup body length={} (parsing deferred to Phase 10)",
-                    body == null ? 0 : body.length());
-            return Optional.empty();
+            // Phase 10 cutover 시점 응답 파싱 활성 (현재는 미구현).
+            log.debug("InventoryClient stock lookup body length={}", body == null ? 0 : body.length());
+            throw new UnsupportedOperationException(
+                    "InventoryClient body 파싱은 Phase 10 cutover 시점에 활성됩니다 (skeleton-mode=false 진입 전 BE 슬라이스 구현 의무).");
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode().value() == 404) {
                 return Optional.empty();
             }
             log.warn("InventoryClient lookup 예외 — productId={}, status={}", productId, ex.getStatusCode());
             return Optional.empty();
+        } catch (UnsupportedOperationException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.warn("InventoryClient lookup 실패 — productId={}, warehouse={}, msg={}",
                     productId, warehouseCode, ex.getMessage());

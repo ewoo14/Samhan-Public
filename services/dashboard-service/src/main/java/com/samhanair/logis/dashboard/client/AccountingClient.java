@@ -13,11 +13,15 @@ import org.springframework.web.client.RestClient;
  * accounting-service (8087) 호출 client — 매출 데이터 집계용.
  *
  * <p>Phase 9 W4 — skeleton fail-soft 정책. accounting-service 가 dashboard 전용 매출 집계
- * endpoint 를 노출하기 전까지는 BigDecimal.ZERO 반환 (호출 자체는 발생).
+ * endpoint 를 노출하기 전까지는 BigDecimal.ZERO 반환.
  *
  * <p>Phase 10 cutover 시점에 accounting-service 의 trial-balance + journal 합계 API 와 통합.
  *
  * <p>IT 에서는 {@code @MockBean AccountingClient} 격리 의무.
+ *
+ * <p>PR #94 W4 후속 fix (BE 의견 2 채택) — skeleton-mode 토글.
+ * skeleton-mode true (W4 default) 시 외부 호출 회피 + ZERO 반환.
+ * false 시 Phase 10 cutover — 실 호출 + 응답 파싱은 cutover 시점 BE 슬라이스에서 구현.
  */
 @Slf4j
 @Component
@@ -27,15 +31,18 @@ public class AccountingClient {
     private final ServiceDiscoveryClient discoveryClient;
     private final String baseUrl;
     private final String internalToken;
+    private final boolean skeletonMode;
 
     public AccountingClient(RestClient.Builder builder,
                              ServiceDiscoveryClient discoveryClient,
                              @Value("${samhan.accounting-service.url:http://localhost:8087}") String baseUrl,
-                             @Value("${app.security.internal.token:}") String internalToken) {
+                             @Value("${app.security.internal.token:}") String internalToken,
+                             @Value("${samhan.dashboard.client.skeleton-mode:true}") boolean skeletonMode) {
         this.builder = builder;
         this.discoveryClient = discoveryClient;
         this.baseUrl = baseUrl;
         this.internalToken = internalToken;
+        this.skeletonMode = skeletonMode;
     }
 
     /**
@@ -50,6 +57,11 @@ public class AccountingClient {
         if (partnerId == null || from == null || to == null) {
             return BigDecimal.ZERO;
         }
+        if (skeletonMode) {
+            log.debug("AccountingClient skeleton-mode — partnerId={}, from={}, to={} (외부 호출 회피, ZERO 반환)",
+                    partnerId, from, to);
+            return BigDecimal.ZERO;
+        }
         try {
             RestClient client = builder.baseUrl(baseUrl).build();
             String body = client.get()
@@ -58,9 +70,12 @@ public class AccountingClient {
                     .header("X-Internal-Token", internalToken)
                     .retrieve()
                     .body(String.class);
-            log.debug("AccountingClient sales lookup body length={} (parsing deferred to Phase 10)",
-                    body == null ? 0 : body.length());
-            return BigDecimal.ZERO;
+            // Phase 10 cutover 시점 응답 파싱 활성 (현재는 미구현).
+            log.debug("AccountingClient sales lookup body length={}", body == null ? 0 : body.length());
+            throw new UnsupportedOperationException(
+                    "AccountingClient body 파싱은 Phase 10 cutover 시점에 활성됩니다 (skeleton-mode=false 진입 전 BE 슬라이스 구현 의무).");
+        } catch (UnsupportedOperationException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.warn("AccountingClient sales lookup 실패 — partnerId={}, msg={}", partnerId, ex.getMessage());
             return BigDecimal.ZERO;

@@ -15,6 +15,10 @@ import org.springframework.web.client.RestClient;
  * dashboard 가 집계 lookup. 실 endpoint 통합은 Phase 10 cutover 시점.
  *
  * <p>IT 에서는 {@code @MockBean PartnerOrderClient} 격리 의무.
+ *
+ * <p>PR #94 W4 후속 fix (BE 의견 2 채택) — skeleton-mode 토글.
+ * skeleton-mode true (W4 default) 시 외부 호출 회피 + 0 반환.
+ * false 시 Phase 10 cutover — 실 호출 + 응답 파싱은 cutover 시점 BE 슬라이스에서 구현.
  */
 @Slf4j
 @Component
@@ -24,15 +28,18 @@ public class PartnerOrderClient {
     private final ServiceDiscoveryClient discoveryClient;
     private final String baseUrl;
     private final String internalToken;
+    private final boolean skeletonMode;
 
     public PartnerOrderClient(RestClient.Builder builder,
                                ServiceDiscoveryClient discoveryClient,
                                @Value("${samhan.partner-order-service.url:http://localhost:8088}") String baseUrl,
-                               @Value("${app.security.internal.token:}") String internalToken) {
+                               @Value("${app.security.internal.token:}") String internalToken,
+                               @Value("${samhan.dashboard.client.skeleton-mode:true}") boolean skeletonMode) {
         this.builder = builder;
         this.discoveryClient = discoveryClient;
         this.baseUrl = baseUrl;
         this.internalToken = internalToken;
+        this.skeletonMode = skeletonMode;
     }
 
     /**
@@ -47,6 +54,11 @@ public class PartnerOrderClient {
         if (partnerId == null || from == null || to == null) {
             return 0;
         }
+        if (skeletonMode) {
+            log.debug("PartnerOrderClient skeleton-mode — partnerId={}, from={}, to={} (외부 호출 회피, 0 반환)",
+                    partnerId, from, to);
+            return 0;
+        }
         try {
             RestClient client = builder.baseUrl(baseUrl).build();
             String body = client.get()
@@ -55,9 +67,12 @@ public class PartnerOrderClient {
                     .header("X-Internal-Token", internalToken)
                     .retrieve()
                     .body(String.class);
-            log.debug("PartnerOrderClient count lookup body length={} (parsing deferred to Phase 10)",
-                    body == null ? 0 : body.length());
-            return 0;
+            // Phase 10 cutover 시점 응답 파싱 활성 (현재는 미구현).
+            log.debug("PartnerOrderClient count lookup body length={}", body == null ? 0 : body.length());
+            throw new UnsupportedOperationException(
+                    "PartnerOrderClient body 파싱은 Phase 10 cutover 시점에 활성됩니다 (skeleton-mode=false 진입 전 BE 슬라이스 구현 의무).");
+        } catch (UnsupportedOperationException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.warn("PartnerOrderClient count 실패 — partnerId={}, msg={}", partnerId, ex.getMessage());
             return 0;

@@ -185,6 +185,21 @@ shared:user-client-abstraction `DefaultUserVerifierTest` 6 case 별도 PASS — 
 2. **dev-report § Phase 10 cutover — PartnerClient.findByCodes bulk endpoint 약속** (BE 의견 3 채택)
 3. 본 backlog 섹션 명시 (별도 docs PR X, `feedback_continuous_docs_sync.md` 일관)
 
+후속 fix 그룹 추가 채택 (12건 중 11건 — backlog #8 = ShedLock 만 Phase 10 multi-instance scaling 시점에서 채택):
+
+4. **DV-W4-2 (CacheConfig redis 가시성)** — `@PostConstruct verifyProvider()` warn log 1줄 (그룹 1 commit)
+5. **D-W4-1 + FE-W4-1/2/3 (channel badge -sm + ChannelBadge 컴포넌트 + CSS Module)** — `tokens.css` `b-channel-*-sm` variant + `<ChannelBadge channel size>` (그룹 1+2 commit)
+6. **D-W4-2 (Storybook story)** — ChannelBadge.stories.tsx (그룹 2 commit)
+7. **D-W4-3 (PR template § 5.1 적용 예시)** — PR-template-color-reference.md 갱신 (그룹 1 commit)
+8. **DV-W4-3 (ShedLock multi-instance race 가드)** — `services/dashboard-service` 에 ShedLock 5.13.0 의존 + Flyway V2 + `ShedLockConfig` Bean + `@SchedulerLock` (그룹 3 commit)
+9. **Q-W4-3 (3 service typeMismatch 핸들러 일관)** — partner / groupware / notification ExceptionHandler 에 `MethodArgumentTypeMismatchException` 핸들러 추가 (그룹 3 commit)
+10. **BE 의견 2 (4 client skeleton-mode 토글)** — `samhan.dashboard.client.skeleton-mode` (default true) 환경변수로 4 client 외부 호출 일관 토글, Phase 10 cutover 시점 false 전환 (그룹 4 commit)
+11. **Q-W4-2 (UUID 비공개 — partnerCode resolve)** — `PartnerSummary` record + `PartnerCodeResolver` (Caffeine `dashboard-partner-resolve` 캐시) + `DashboardAdminController.salesAggregate` 입력 시그니처 `UUID partnerId` → `String partnerCode` (UUID 비공개 가드 일관, `feedback_uuid_no_user_visibility.md`) (그룹 4 commit)
+
+잔여 backlog (Phase 10 또는 W5 회고):
+- **Q-W4-1** — prod 첫 REFRESH MATERIALIZED VIEW detail 로그 (W5 회고)
+- **BE 의견 3** — `PartnerClient.findByCodes` bulk endpoint (Phase 10 cutover, partner-service 측 endpoint 추가 필요)
+
 ## 12. 5 reviewer 토론 준비 (TM 발행 후)
 
 본 PR 은 TM 자체 발행 후 BE / FE / Designer / QA / DevOps 5 reviewer 가 PR comment 로 토론. TM 이 종합하여 후속 commit 발행 (W2/W3 패턴 일관). 본 W4 통합 PR 시점에 W3 backlog 5건 흡수 완료 — 잔여 backlog 는 Phase 10 cutover 또는 W5 회고 시점 처리.

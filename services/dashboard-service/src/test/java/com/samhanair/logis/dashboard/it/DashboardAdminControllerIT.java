@@ -1,6 +1,7 @@
 package com.samhanair.logis.dashboard.it;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 
 import com.samhanair.logis.dashboard.DashboardServiceApplication;
@@ -8,12 +9,14 @@ import com.samhanair.logis.dashboard.client.AccountingClient;
 import com.samhanair.logis.dashboard.client.InventoryClient;
 import com.samhanair.logis.dashboard.client.PartnerClient;
 import com.samhanair.logis.dashboard.client.PartnerOrderClient;
+import com.samhanair.logis.dashboard.client.PartnerSummary;
 import com.samhanair.logis.dashboard.repository.KpiSnapshotRepository;
 import com.samhanair.logis.dashboard.repository.RealTimeStockRepository;
 import com.samhanair.logis.dashboard.repository.SalesAggregateRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -100,6 +103,43 @@ class DashboardAdminControllerIT extends AbstractPostgresIT {
                         .param("to", LocalDate.now().toString())
                         .param("interval", "DAILY"))
                 .andExpect(MockMvcResultMatchers.status().isOk());
+    }
+
+    /**
+     * PR #94 W4 후속 fix (QA Q-W4-2 채택) — partnerCode 입력 시 service-side resolve.
+     * partnerClient mock 응답 활성 케이스에서 200 + 정상 동작 검증.
+     */
+    @Test
+    void sales_aggregate_with_partner_code_returns_200() throws Exception {
+        UUID resolvedId = UUID.randomUUID();
+        lenient().when(partnerClient.findByCode(eq("PA-0001")))
+                .thenReturn(Optional.of(new PartnerSummary(resolvedId, "PA-0001", "테스트거래처")));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/dashboard/sales-aggregate")
+                        .header("X-User-Id", "test-admin")
+                        .header("X-User-Role", "MANAGER")
+                        .param("from", LocalDate.now().minusDays(7).toString())
+                        .param("to", LocalDate.now().toString())
+                        .param("interval", "DAILY")
+                        .param("partnerCode", "PA-0001"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true));
+    }
+
+    /**
+     * partnerCode 가 미존재 (resolver empty) 시 400 응답 — UUID 비공개 가드 일관.
+     */
+    @Test
+    void sales_aggregate_with_unknown_partner_code_returns_400() throws Exception {
+        // mock default = Optional.empty (BeforeEach 에서 설정)
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/dashboard/sales-aggregate")
+                        .header("X-User-Id", "test-admin")
+                        .header("X-User-Role", "MANAGER")
+                        .param("from", LocalDate.now().minusDays(7).toString())
+                        .param("to", LocalDate.now().toString())
+                        .param("interval", "DAILY")
+                        .param("partnerCode", "PA-NONEXISTENT"))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest());
     }
 
     @Test

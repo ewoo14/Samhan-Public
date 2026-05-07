@@ -27,6 +27,7 @@ import org.springframework.context.annotation.Configuration;
  * <p>관리되는 cache:
  * <ul>
  *   <li>{@code dashboard-kpi} — KPI 응답 (TTL = {@link DashboardCacheProperties.Kpi#getTtlSeconds()})</li>
+ *   <li>{@code dashboard-partner-resolve} — partnerCode → UUID resolve 결과 (PR #94 W4 후속 fix Q-W4-2)</li>
  * </ul>
  */
 @Slf4j
@@ -35,6 +36,8 @@ import org.springframework.context.annotation.Configuration;
 public class CacheConfig {
 
     public static final String CACHE_KPI = "dashboard-kpi";
+    /** PR #94 W4 후속 fix (QA Q-W4-2 채택) — partnerCode → UUID resolve 결과 캐시 명. */
+    public static final String CACHE_PARTNER_RESOLVE = "dashboard-partner-resolve";
 
     private final DashboardCacheProperties props;
 
@@ -56,7 +59,10 @@ public class CacheConfig {
 
     @Bean
     public CacheManager cacheManager(DashboardCacheProperties cacheProps) {
-        CaffeineCacheManager mgr = new CaffeineCacheManager(CACHE_KPI);
+        // KPI cache 와 partner-resolve cache 를 동일 manager 에 등록.
+        // Caffeine spec 은 가장 보수적 정책 (KPI TTL) 적용 — partner-resolve 캐시는 별도 spec 필요 시
+        // Phase 10 시점에 다중 manager 또는 cache-specific spec 으로 분리.
+        CaffeineCacheManager mgr = new CaffeineCacheManager(CACHE_KPI, CACHE_PARTNER_RESOLVE);
         mgr.setCaffeine(Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofSeconds(cacheProps.getKpi().getTtlSeconds()))
                 .maximumSize(cacheProps.getKpi().getMaxSize()));
