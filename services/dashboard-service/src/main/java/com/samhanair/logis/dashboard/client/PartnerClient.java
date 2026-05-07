@@ -3,10 +3,14 @@ package com.samhanair.logis.dashboard.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.discovery.ServiceDiscoveryClient;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -120,6 +124,83 @@ public class PartnerClient {
             log.warn("PartnerClient response 파싱 실패 — bodyLen={}, msg={}",
                     body.length(), ex.getMessage());
             return Optional.empty();
+        }
+    }
+
+    /**
+     * partnerCode N건 bulk lookup — Phase 9 W5 신규 (D-P9-16, BE 의견 3 채택).
+     *
+     * <p>partner-service `POST /internal/partners/find-by-codes` 호출 (직렬 N회 RPC → 1회 batch).
+     * 입력 비어있거나 skeleton-mode 시 빈 리스트 반환 (외부 호출 회피). 응답 파싱은 단건 lookup 의
+     * {@link #parseSummary(String)} 패턴 일관 — ApiResponse wrapper 의 {@code data} 배열에서 각 row
+     * 를 PartnerSummary 로 변환. 네트워크 / 4xx / 5xx 실패 시 빈 리스트 (fail-soft, 단건 lookup 의
+     * Optional.empty 일관).
+     *
+     * @param partnerCodes 조회할 partnerCode 모음 (null/empty → 빈 리스트)
+     * @return 매칭된 PartnerSummary 리스트 (skeleton-mode / 실패 시 빈 리스트)
+     */
+    public List<PartnerSummary> findByCodes(List<String> partnerCodes) {
+        if (partnerCodes == null || partnerCodes.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (skeletonMode) {
+            log.debug("PartnerClient.findByCodes skeleton-mode — codes={} (외부 호출 회피)",
+                    partnerCodes.size());
+            return Collections.emptyList();
+        }
+        try {
+            RestClient client = builder.baseUrl(baseUrl).build();
+            String body = client.post()
+                    .uri("/internal/partners/find-by-codes")
+                    .header("X-Internal-Token", internalToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(partnerCodes)
+                    .retrieve()
+                    .body(String.class);
+            return parseSummaryList(body);
+        } catch (RestClientResponseException ex) {
+            log.warn("PartnerClient.findByCodes lookup 예외 — codes={}, status={}",
+                    partnerCodes.size(), ex.getStatusCode());
+            return Collections.emptyList();
+        } catch (Exception ex) {
+            log.warn("PartnerClient.findByCodes lookup 실패 — codes={}, msg={}",
+                    partnerCodes.size(), ex.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * partner-service ApiResponse wrapper 내부 {@code data} 배열에서 PartnerSummary 리스트 추출.
+     * 형식이 다르거나 파싱 실패 시 빈 리스트.
+     */
+    private List<PartnerSummary> parseSummaryList(String body) {
+        if (body == null || body.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root.has("data") ? root.get("data") : root;
+            if (data == null || !data.isArray()) {
+                return Collections.emptyList();
+            }
+            List<PartnerSummary> out = new ArrayList<>(data.size());
+            for (JsonNode node : data) {
+                JsonNode idNode = node.get("partnerId");
+                JsonNode codeNode = node.get("partnerCode");
+                JsonNode nameNode = node.get("name");
+                if (idNode == null || idNode.isNull() || codeNode == null || codeNode.isNull()) {
+                    continue;
+                }
+                out.add(new PartnerSummary(
+                        UUID.fromString(idNode.asText()),
+                        codeNode.asText(),
+                        nameNode == null || nameNode.isNull() ? null : nameNode.asText()));
+            }
+            return out;
+        } catch (Exception ex) {
+            log.warn("PartnerClient.findByCodes response 파싱 실패 — bodyLen={}, msg={}",
+                    body.length(), ex.getMessage());
+            return Collections.emptyList();
         }
     }
 
