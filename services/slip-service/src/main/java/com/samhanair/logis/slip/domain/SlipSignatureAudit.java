@@ -66,15 +66,25 @@ public class SlipSignatureAudit extends BaseEntity {
     @Column(name = "actor_user_id", length = 50)
     private String actorUserId;
 
+    /**
+     * 서명 발급 source — Phase 10 W10-4 (PR #99) 신규.
+     * RECORD/RECORD_DRIVER 시점 LINK 또는 APP 명시. INVALIDATE 시 NULL 허용 (직전 source 의미 X).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "signature_source", length = 20)
+    private SignatureSource signatureSource;
+
     private SlipSignatureAudit(UUID slipId, SignatureAuditAction action,
                                String signerName, String signatureHash,
-                               String reason, String actorUserId) {
+                               String reason, String actorUserId,
+                               SignatureSource signatureSource) {
         this.slipId = slipId;
         this.action = action;
         this.signerName = signerName;
         this.signatureHash = signatureHash;
         this.reason = reason;
         this.actorUserId = actorUserId;
+        this.signatureSource = signatureSource;
     }
 
     /**
@@ -86,8 +96,16 @@ public class SlipSignatureAudit extends BaseEntity {
      * @return 신규 RECORD 이력 (id 는 save 후 채번)
      */
     public static SlipSignatureAudit record(UUID slipId, String signerName, String signatureHash) {
+        return record(slipId, signerName, signatureHash, SignatureSource.LINK);
+    }
+
+    /**
+     * RECORD 이력 생성 (W10-4 source overload) — 기존 3-arg 시그니처 보존 + source 명시.
+     */
+    public static SlipSignatureAudit record(UUID slipId, String signerName, String signatureHash,
+                                            SignatureSource source) {
         return new SlipSignatureAudit(slipId, SignatureAuditAction.RECORD,
-                signerName, signatureHash, null, null);
+                signerName, signatureHash, null, null, source);
     }
 
     /**
@@ -95,8 +113,16 @@ public class SlipSignatureAudit extends BaseEntity {
      * driverName 을 signerName 컬럼에 기록 (별도 driverName 컬럼 추가 회피).
      */
     public static SlipSignatureAudit recordDriver(UUID slipId, String driverName, String signatureHash) {
+        return recordDriver(slipId, driverName, signatureHash, SignatureSource.LINK);
+    }
+
+    /**
+     * RECORD_DRIVER 이력 생성 (W10-4 source overload).
+     */
+    public static SlipSignatureAudit recordDriver(UUID slipId, String driverName, String signatureHash,
+                                                  SignatureSource source) {
         return new SlipSignatureAudit(slipId, SignatureAuditAction.RECORD_DRIVER,
-                driverName, signatureHash, null, null);
+                driverName, signatureHash, null, null, source);
     }
 
     /**
@@ -112,6 +138,6 @@ public class SlipSignatureAudit extends BaseEntity {
     public static SlipSignatureAudit invalidate(UUID slipId, String signerName, String signatureHash,
                                                 String reason, String actorUserId) {
         return new SlipSignatureAudit(slipId, SignatureAuditAction.INVALIDATE,
-                signerName, signatureHash, reason, actorUserId);
+                signerName, signatureHash, reason, actorUserId, null);
     }
 }
