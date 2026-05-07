@@ -76,6 +76,12 @@ export default function DriverLocationTrackingScreen({ token, backgroundGranted 
 
   const start = () => {
     if (tracking) return;
+    // FE-1 채택 fix (W10-3 종합 TM) — race 가드. React strict mode double-invoke 또는 빠른 토글
+    // (start → stop → start) 시 timerRef 가 leak 되어 중복 setInterval 이 등록되는 회귀 차단.
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     setTracking(true);
     // 즉시 1회 + 30초 주기.
     reportOnce('APP_GPS_ACTIVE');

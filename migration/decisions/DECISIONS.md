@@ -722,3 +722,18 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 근거: 사용자 결정 2026-05-07 — Designer-2 채택. 5 client (estimate / order / desktop / mobile / mobile-staff) 디자인 통일성 + 신규 driver tab UI 가 web/design-system 과 동등 시각 인상 의무.
 
 영향: 본 PR (W10-3) `theme/tokens.ts` + 5 화면 (Dashboard / LocationTracking / Signature / GpsBlocked / TabNavigator) 모두 본 토큰 인용. web `tokens.css` 변경 시 본 파일도 동기화 의무 (후속 슬라이스 가드 추가 권장).
+
+### D-P10-10. Pretendard 9 weight 운영 배치 약속 (2026-05-07)
+
+본 PR (W10-3) 시점 = 4 weight (Regular / Medium / SemiBold / Bold) 의무 + graceful guard 보호 (`usePretendardFontGuarded` `useState(true)` 기본값).
+
+EAS Build 진입 시점 (W10-5 또는 운영 진입) 의무:
+
+- `clients/mobile-staff/assets/fonts/Pretendard-{Thin,ExtraLight,Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.otf` 9 weight 정식 배치
+- `app.json` `plugins.expo-font` 의 9 weight asset 등록
+- `usePretendardFontGuarded` 기본값 정정 — `useState(false)` + `useFonts` complete 후 `setReady(true)` 패턴
+- splash screen guard 도입 — OTF load 완료 전 RN UI 렌더 차단 회피
+
+근거: 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지") 일관 적용. W10-3 종합 TM 5 reviewer 채택 fix 7건 중 Designer-2 / FE-2 / B-DEVOPS-1 통합 — Pretendard OTF 4 weight 본 PR 의무 + 9 weight 운영 진입 시점 의무 + `useState(false)` 정정은 OTF 정식 배치 시점 동시 처리.
+
+영향: 본 PR (W10-3) 시점 = 4 weight 자산 누락 시 graceful guard 가 RN UI 미차단. EAS Build 진입 시점 = 본 결정에 따라 9 weight 배치 + `useState(false)` 정정 + splash guard 도입 의무. ROADMAP `W10-5` 또는 `Phase 10 운영 진입` task 로 추적.

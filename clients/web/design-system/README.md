@@ -182,6 +182,20 @@ post-W5 backlog cleanup PR (D-P9-21) 에서 slice accent 3색 토큰 신설 — 
 <span class="slice-accent-deferred">위임</span>
 ```
 
+#### W10-3 — HTTP method 컬러 + b-info 정식 등재 (Designer-1 채택)
+
+W3+ 도입 시점부터 `.GET`/`.POST`/`.PUT`/`.DELETE` 클래스로 사용해 온 method 컬러 + status info 컬러를 `tokens.css` 에 정식 변수 + utility class 로 등재.
+
+| Token / Class | 용도 | Hex |
+| --- | --- | --- |
+| `--color-method-get` / `.method-get` | HTTP GET | `#0f9d58` (Google Material Green) |
+| `--color-method-post` / `.method-post` | HTTP POST | `#1a73e8` (Google Material Blue) |
+| `--color-method-put` / `.method-put` | HTTP PUT | `#f9ab00` (Google Material Yellow) |
+| `--color-method-delete` / `.method-delete` | HTTP DELETE | `#d93025` (Google Material Red) |
+| `--color-badge-info` / `.b-info` | 정보 badge (status) | `#1a73e8` (Google Material Blue) |
+
+`b-channel-*` / `slice-accent-*` 와 일관 변수 인용 (`--badge-radius`, `--badge-channel-font-size`). dispatch trace UI / API 문서 일관성용.
+
 ## 라이선스
 
 내부 패키지 (`private: true`). SamhanLogis 전용.

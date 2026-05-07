@@ -403,7 +403,18 @@
 - **W10-2** (대기) — 인성데이타 vendor 통합 (InsungQuickDriverMatcher 실 구현 + callback 활성), 인성데이타 협약 정보 사용자 trigger 대기
 - **W10-3** (본 PR) — 모바일 어플 driver tab (`clients/mobile-staff` 내부) + arologis API client + GPS hook + 3 화면 + Pretendard self-host + 토큰 1:1 복제
 - **W10-4** — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출, imageRef → file-server / S3 업로드)
-- **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검
+- **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검 + **Pretendard 9 weight 정식 운영 배치** (W10-3 종합 TM Designer-2 / FE-2 / B-DEVOPS-1 통합 + D-P10-10)
+
+### Pretendard 9 weight 정식 운영 배치 (W10-3 종합 TM 채택 — D-P10-10)
+
+W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful guard 보호 (`useState(true)` 기본값).
+
+**EAS Build 진입 시점 (W10-5 또는 운영 진입) 의무**:
+- `clients/mobile-staff/assets/fonts/Pretendard-{Thin,ExtraLight,Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.otf` 9 weight 정식 배치
+- `app.json` `plugins.expo-font` 의 9 weight asset 등록
+- `usePretendardFontGuarded` 정정 — `useState(false)` + `useFonts` complete 후 `setReady(true)` + splash screen guard 도입
+
+근거 = `migration/decisions/DECISIONS.md` D-P10-10. 본 PR (W10-3) 시점 = 4 weight 자산 누락 시 graceful guard 가 RN UI 미차단. EAS Build 시점 = `useState(false)` 정정과 9 weight 자산 정식 배치 동시 처리.
 
 ### 진입 조건 (W10-3 정정)
 - W10-3 = W10-1 완료 후 진입 가능 (W10-2 의존 X) — 본 어플 GPS only 활성, 인성 LBS 통합은 W10-2 시점
