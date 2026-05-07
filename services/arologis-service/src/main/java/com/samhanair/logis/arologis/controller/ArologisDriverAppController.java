@@ -70,11 +70,8 @@ public class ArologisDriverAppController {
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "X-User-Id 형식 무효: " + userIdHeader);
         }
-        // INTERNAL driver 인 본인 driver 찾기 (appUserId 일치)
-        Driver self = driverRepository.findAll().stream()
-                .filter(d -> userId.equals(d.getAppUserId()))
-                .findFirst()
-                .orElse(null);
+        // QA-2 채택 fix — 풀스캔 회피. V2 partial unique index `ux_drivers_app_user_active` 가드.
+        Driver self = driverRepository.findByAppUserId(userId).orElse(null);
         if (self == null) {
             return ApiResponse.ok(List.of());
         }
@@ -108,9 +105,8 @@ public class ArologisDriverAppController {
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "X-User-Id 형식 무효: " + userIdHeader);
         }
-        Driver self = driverRepository.findAll().stream()
-                .filter(d -> userId.equals(d.getAppUserId()))
-                .findFirst()
+        // QA-2 채택 fix — 풀스캔 회피. V2 partial unique index 가드.
+        Driver self = driverRepository.findByAppUserId(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "본 어플 driver 미등록"));
         if (body == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "body 필수");

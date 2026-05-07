@@ -23,7 +23,9 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -112,13 +114,16 @@ public class ArologisAdminController {
     @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
     public ApiResponse<DispatchDetailResponse> findById(@PathVariable UUID id) {
         DispatchService.DispatchAggregate agg = dispatchService.findById(id);
-        Map<String, String> driverIdToCode = new HashMap<>();
-        for (Vehicle v : agg.vehicles()) {
-            if (v.getAssignedDriverId() != null) {
-                driverRepository.findById(v.getAssignedDriverId())
-                        .ifPresent(d -> driverIdToCode.put(d.getId().toString(), d.getDriverCode()));
-            }
-        }
+        // QA-1 채택 fix — N round-trip → batch findAllById (N+1 → 1 query).
+        List<UUID> driverIds = agg.vehicles().stream()
+                .map(Vehicle::getAssignedDriverId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<String, String> driverIdToCode = driverIds.isEmpty()
+                ? new HashMap<>()
+                : driverRepository.findAllById(driverIds).stream()
+                        .collect(Collectors.toMap(d -> d.getId().toString(), Driver::getDriverCode));
         return ApiResponse.ok(DispatchDetailResponse.from(
                 agg.dispatch(), agg.vehicles(), agg.stops(), driverIdToCode));
     }
