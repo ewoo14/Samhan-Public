@@ -13,9 +13,21 @@ permissions:
 
 jobs:
   build-and-test:
-    name: 빌드 + 테스트 (JDK 17 + Docker)
+    name: 빌드 + 테스트 (${{ matrix.group.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # W10-4 (PR #99) shared/security refactor 13 service IT 누적 시간 증가 — 30 → 60 (fix CI timeout cancel)
+    timeout-minutes: 30  # W10-4 (PR #99) D 옵션 적용 — matrix 4 group 병렬 분할 (이전 60분 단일 → group 30분 병렬)
+    strategy:
+      fail-fast: false  # 1 group fail 시 다른 group 도 결과 확인
+      matrix:
+        group:
+          - name: shared+auth+gateway
+            test-tasks: ':shared:common:test :shared:security:test :shared:user-client-abstraction:test :shared:discovery-abstraction:test :services:eureka-server:test :services:api-gateway:test :services:auth-service:test'
+          - name: user+product+inventory+logging
+            test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
+          - name: slip+accounting+partner
+            test-tasks: ':services:slip-service:test :services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
+          - name: phase9-10 (groupware+notification+dashboard+arologis)
+            test-tasks: ':services:groupware-service:test :services:notification-service:test :services:dashboard-service:test :services:arologis-service:test'
 
     steps:
       - name: 저장소 체크아웃
@@ -43,14 +55,14 @@ jobs:
       - name: assemble (전 모듈)
         run: ./gradlew assemble --no-daemon
 
-      - name: test (전 모듈, Testcontainers IT 포함)
-        run: ./gradlew test --no-daemon
+      - name: test (${{ matrix.group.name }})
+        run: ./gradlew ${{ matrix.group.test-tasks }} --no-daemon
 
       - name: 테스트 리포트 아티팩트 업로드 (실패 포함)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports
+          name: test-reports-${{ matrix.group.name }}
           path: |
             services/*/build/reports/tests/test/
             shared/*/build/reports/tests/test/
@@ -62,7 +74,7 @@ jobs:
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
           require_tests: false
-          check_name: JUnit 테스트 결과
+          check_name: JUnit 테스트 결과 (${{ matrix.group.name }})
 
   frontend-ds:
     name: Frontend DS (typecheck + lint + build + storybook)
