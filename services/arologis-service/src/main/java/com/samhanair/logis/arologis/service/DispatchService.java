@@ -1,6 +1,7 @@
 package com.samhanair.logis.arologis.service;
 
 import com.samhanair.logis.arologis.client.NotificationClient;
+import com.samhanair.logis.arologis.client.UserClient;
 import com.samhanair.logis.arologis.domain.Dispatch;
 import com.samhanair.logis.arologis.domain.DispatchType;
 import com.samhanair.logis.arologis.domain.Driver;
@@ -47,6 +48,12 @@ public class DispatchService {
     private final DriverRepository driverRepository;
     private final DriverMatcher driverMatcher;
     private final NotificationClient notificationClient;
+    /**
+     * BE-3 채택 fix — UserClient.exists 위임 (UserVerifier 5번째 소비자 활성).
+     * 본 PR 시점 = skeleton-mode true → 항상 true (검증 통과). W10-3 driver-app 인증 시점에
+     * 비-skeleton 토글 → 본인 / 배차담당자 user-service lookup 활성.
+     */
+    private final UserClient userClient;
 
     /**
      * Parsed dispatch → 영속화. dispatch + vehicles + stops 일괄 저장.
