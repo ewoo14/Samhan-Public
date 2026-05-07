@@ -1,0 +1,88 @@
+/*
+ * services:arologis-service — Phase 10 W10-1
+ *
+ * 배차 마이크로서비스 — 카톡 메시지 파싱 → 차량/정차 추출 → 기사 매칭 (Mock + Insung Quick) →
+ * 전자서명 (slip-service 연동, W10-4 시점) → GPS 추적 (DriverLocation 30일 cleanup).
+ *
+ * Phase 10 = arologis (renumber, 사용자 결정 2026-05-07). 기존 Phase 10 (AWS migration cutover) → Phase 11 이동.
+ *
+ * 외부 의존성 = 4 service:
+ *   - partner-service (8095, W1) — partnerCode 매핑 검증
+ *   - user-service (8083) — 배차담당자 인증 + Driver-app 인증 (W10-3)
+ *   - slip-service (8084) — 전자서명 통합 (W10-4 시점, 본 PR scope 외)
+ *   - notification-service (8093, W3) — 배차 완료 / 기사 매칭 알림
+ *
+ * 주요 책임:
+ *   - Dispatch (배차 1건 = 카톡 1 메시지)
+ *   - Vehicle (차량 1대 = 카톡 "1." 그룹)
+ *   - VehicleStop (정차 1건 = 카톡 라인)
+ *   - Driver (배송기사) + Signature (전자서명) + DriverLocation (GPS 추적)
+ *   - KakaoDispatchParser (정규표현식 + heuristic 80% 정확도 목표)
+ *   - DriverMatcher 추상화 (Mock + Insung placeholder)
+ *   - Internal endpoint (X-Internal-Token, dispatch sync)
+ *   - Admin endpoint (parse-kakao 미리보기 + dispatch CRUD + auto-match + 수동 배정 + stop status)
+ *   - Driver-app endpoint (W10-3 시점 활성, 본 PR 은 endpoint 정의만)
+ *   - Daily scheduled — DriverLocation 30일 자동 cleanup (ShedLock 가드)
+ *
+ * Owns the `arologis_db` schema in PostgreSQL.
+ * Flyway 는 day-one 부터 활성 — src/main/resources/db/migration 참조.
+ */
+
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // Phase 10 W10-1 — multi-instance race 가드 (DriverLocation 30일 cleanup scheduler).
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:5.13.0'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:5.13.0'
+
+    // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    implementation project(':shared:common')
+    implementation project(':shared:discovery-abstraction')
+    // Phase 10 W10-1 — UserVerifier 5번째 소비자 (notification + groupware + dashboard + partner + arologis).
+    implementation project(':shared:user-client-abstraction')
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.testcontainers:postgresql:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+bootJar {
+    archiveFileName = 'arologis-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

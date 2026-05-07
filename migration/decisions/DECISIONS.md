@@ -606,3 +606,66 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 - **QA-3** 문서 정합 — slip-service "만료 비교 패턴 부재" → "fixture 회귀 패턴 0 + 도메인 의도 비교 {`Slip.java:713` + `DeliveryBatch.java:195`} 2건 정상" 정정 (production 만료 검증 + 동적 테스트 fixture 패턴 명시)
 
 ---
+
+## Phase 10 결정 (arologis-service 배차 마이크로서비스, 2026-05-07 ~)
+
+### D-P10-01. arologis-service 도입 결정 (배차 마이크로서비스 신규)
+
+- 신규 service `services/arologis-service/` (port 8097, DB `arologis_db`) — 카톡 메시지 파싱 → 차량/정차/기사 매칭 → 전자서명 → GPS 추적 통합
+- 5 entity (Dispatch / Vehicle / VehicleStop / Driver / Signature) + DriverLocation GPS 추적
+- 7 enum (DispatchType / VehicleTonnage / VehicleStatus / StopStatus / DriverSource / MatchSource / SignatureSource)
+- W10-1 (본 PR) = skeleton (parser + matcher 추상화 + 4 client + 3 controller + 31 case)
+- W10-2 ~ W10-5 = vendor 통합 / 모바일 / slip 통합 / 회고
+
+근거: 기존 14 service 와 별도 도메인 (배차 = 외부 vendor + 모바일 어플 + GPS) — 단일 service-per-DB 격리 + 향후 외부 vendor 교체 가능 (DriverMatcher 추상화) 의도. 사용자 결정 2026-05-07.
+
+영향: 14 service → 15 service. Phase 11 cutover 시점 RDS arologis_db 추가 + Prometheus scrape target 1건 추가.
+
+### D-P10-02. port 8097 + arologis_db 표준 채택
+
+- 포트 = 8097 (기존 14 service 8081~8095 + 8096 migration 예약 다음)
+- DB = `arologis_db` (service-per-DB 표준 일관)
+- 환경변수 = `SAMHAN_AROLOGIS_*` (chained-default 패턴 D-P8-08 일관)
+
+근거: 기존 service 포트 인벤토리 일관 + service-per-DB 격리 + 환경변수 표준.
+
+영향: `infrastructure/postgres/init/01-create-databases.sql` `arologis_db` 추가. `infrastructure/prometheus/prometheus.yml` `arologis-service:8097` scrape 추가.
+
+### D-P10-03. DriverMatcher 추상화 + Mock + Insung Quick 토글
+
+- `DriverMatcher` interface + `DriverMatchResult` record
+- W10-1 default = `MockDriverMatcher` (`samhan.arologis.matcher.provider=mock`) — MOCK-001 / 010-0000-0000 driver 매칭 (DB 자동 upsert)
+- W10-2 prod = `InsungQuickDriverMatcher` (`provider=insung-quick`) — 본 PR 은 placeholder (UnsupportedOperationException), W10-2 시점 실 vendor API 통합
+- 외부 vendor 5만 프리랜서 풀 (인성데이타 퀵프로그램, 사용자 결정 2026-05-07)
+- 향후 SMS / Kakao 추가 vendor 시 `MatchSource` enum 확장만으로 통합 가능
+
+근거: vendor lock-in 회피 + vendor 교체 가능 design + dev/test 환경 mock 일관. Phase 8 ServiceDiscoveryClient 추상화 패턴 일관.
+
+영향: W10-2 인성데이타 통합 시점에 InsungQuickDriverMatcher 만 변경 — DispatchService / Controller 등 호출 코드 영향 0.
+
+### D-P10-04. 모바일 어플 stack = RN Expo (`clients/mobile-staff` 패턴 일관)
+
+- W10-3 시점 RN Expo 어플 도입 — 기존 `clients/mobile-staff` 패턴 일관 (`clients/mobile-staff` 내부 driver tab 추가 vs 신규 `clients/mobile-driver` — W10-3 진입 시점 결정)
+- Driver-app endpoint = `/driver-app/arologis/**` (인증 = X-User-Id + X-User-Role=DRIVER)
+- 본 어플 사용 driver = INTERNAL Driver (`source=INTERNAL`, `appUserId=user-service userId`, `appInstalled=true`)
+- 외부 vendor 매칭 driver = LINK 기반 카톡/SMS 서명 (어플 미설치, `source=EXTERNAL_*`)
+
+근거: 사용자 결정 2026-05-07 — 신규 native stack 도입보다 기존 RN Expo 일관성 + cross-platform 운영 부담 최소화.
+
+영향: W10-3 시점 `clients/mobile-staff` 또는 `clients/mobile-driver` 신규 폴더 + RN Expo 패키지 (사용자 결정 시점).
+
+### D-P10-05. Phase 10/11 renumber — arologis = Phase 10 / AWS migration cutover = Phase 11
+
+- 사용자 결정 2026-05-07 — 기존 Phase 10 (AWS migration cutover) → **Phase 11 으로 이동**
+- 신규 **Phase 10 = arologis-service** (배차 마이크로서비스, 5 슬라이스 W10-1 ~ W10-5)
+- docs 동기화:
+  - `docs/migration/phase10/M-PHASE-10-readiness.md` **재작성** (arologis 5 슬라이스 plan)
+  - `docs/migration/phase11/M-PHASE-11-readiness.md` **신규** — 기존 phase10 readiness 의 AWS migration cutover plan 이동
+  - `docs/migration/phase11/M-AWS-MIGRATION-DRY-RUN.md` 이동 (기존 phase10 → phase11)
+  - 루트 `README.md` + `ROADMAP.md` Phase 매트릭스 갱신
+  - 모든 service `README.md` 의 "Phase 10 cutover" 인용 → "Phase 11 cutover" 정정
+- DECISIONS 의 "Phase 10 cutover" 인용은 향후 D-P11-* 신규 결정 시점에 정정 (본 결정만 phase10/11 boundary 명시)
+
+근거: 사용자 우선순위 변경 — arologis 가 즉시 사업 가치 (실 카톡 배차 자동화 + 5만 프리랜서 매칭 + 어플 GPS 추적) 산출. AWS migration 은 Phase 11 으로 미뤄 안정성 검증 후 cutover.
+
+영향: 기존 Phase 10 인용 (DECISIONS 본문 / service README / env-template 코멘트) 은 향후 PR 시점에 점진 정정. 본 PR 은 readiness / ROADMAP / README 핵심 docs 만 정정 (모든 코드 코멘트 즉시 정정 시 본 PR 부담 과다 — 사용자 가드 일관 후속 PR 미루지 않고 본 PR 채택 가능 영역만 일괄).

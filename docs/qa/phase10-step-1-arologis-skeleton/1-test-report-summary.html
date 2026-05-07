@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-1 — arologis-service skeleton 테스트 종합</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 28px 36px; color: #0f172a; background: #f8fafc; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #0f172a; margin-bottom: 4px; }
+  h2 { color: #0f172a; border-bottom: 2px solid #94a3b8; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th { background: #1e293b; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-new  { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-pending { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .summary { background: #fff; border-left: 4px solid #34a853; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin: 12px 0 20px; }
+  .stat { background: #fff; border-radius: 6px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .stat .num { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+  .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+  code { background: #e2e8f0; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; font-family: 'Cascadia Mono', Consolas, monospace; }
+  .qa-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+  @media (max-width: 768px) { .qa-table-wrapper table { min-width: 800px; } }
+  .slice-success { border-left-color: #34a853; }
+  .slice-pending { border-left-color: #f9ab00; }
+  .slice-deferred { border-left-color: #5f6368; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-1 — arologis-service skeleton 테스트 종합</h1>
+<p style="color: #64748b; font-size: 14px; margin-top: 0;">
+  arologis-service 신규 도메인 (배차 마이크로서비스) 8097 + KakaoDispatchParser + DriverMatcher 추상화 + 4 client + ShedLock daily cleanup —
+  <code>./gradlew :services:arologis-service:test</code>
+</p>
+
+<div class="stats">
+  <div class="stat"><div class="num">20</div><div class="lbl">단위 테스트 (parser 8 + matcher 5 + service 5 + cleanup 2)</div></div>
+  <div class="stat"><div class="num">13</div><div class="lbl">IT 시나리오 (Internal 4 + Admin 9, Docker 가용 시)</div></div>
+  <div class="stat"><div class="num">5</div><div class="lbl">entity (Dispatch / Vehicle / Stop / Driver / Signature) + DriverLocation</div></div>
+  <div class="stat"><div class="num">7</div><div class="lbl">enum (DispatchType / VehicleTonnage / Status × 2 / Source × 3)</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">회귀 (다른 7 영역 모두 PASS)</div></div>
+</div>
+
+<div class="summary slice-success">
+  <p><strong>슬라이스</strong> Phase 10 W10-1 (arologis-service skeleton) — 신규 도메인 마이크로서비스 (배차) 신규 도입.</p>
+  <p><strong>Base</strong> main HEAD <code>5d6609f</code> Merge PR #96 (post-W5 backlog cleanup). <strong>Branch</strong> <code>feature/integrated-phase-10-step-1-arologis-skeleton</code>.</p>
+  <p><strong>Phase renumber</strong> D-P10-05 적용 — 신규 Phase 10 = arologis / 기존 Phase 10 (AWS migration cutover) → Phase 11 으로 이동.</p>
+  <p><strong>회귀 검증</strong> partner / notification / groupware / dashboard / user / slip / shared:user-client-abstraction 7 영역 모두 PASS — 회귀 위험 = 0.</p>
+</div>
+
+<h2>1. arologis-service 단위 테스트 매트릭스 (20 case)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>테스트 클래스</th><th>case</th><th>상태</th><th>핵심 검증</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>KakaoDispatchParserTest</code></td>
+      <td>8</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>사용자 카톡 13 차량 / ~50 정차 — 헤더 / 차량 그룹 / 톤수 (1톤 12 + 1.4톤 1) / 정차 / 미해석 라인 / notes / edge / 80% 정확도</td>
+    </tr>
+    <tr>
+      <td><code>MockDriverMatcherTest</code></td>
+      <td>3</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>새 mock driver 생성 / 기존 재사용 / vehicle null fail-soft</td>
+    </tr>
+    <tr>
+      <td><code>InsungQuickDriverMatcherTest</code></td>
+      <td>2</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>placeholder UnsupportedOperationException + source enum (W10-2 통합 시점 활성)</td>
+    </tr>
+    <tr>
+      <td><code>DispatchServiceTest</code></td>
+      <td>5</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>parsed → 영속화 / 단건 조회 / 자동 매칭 (Mock matcher) / 수동 배정 / 미존재 NOT_FOUND</td>
+    </tr>
+    <tr>
+      <td><code>DriverLocationCleanupSchedulerTest</code></td>
+      <td>2</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>30일 cleanup threshold 검증 / retentionDays 0 → 1 fallback</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. IT 시나리오 (13 case, Docker 가용 시 PASS)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>IT 클래스</th><th>case</th><th>핵심 검증</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ArologisInternalControllerIT</code></td>
+      <td>4</td>
+      <td>X-Internal-Token 누락 403 / 불일치 401 / 일치 200 / 빈 body 200 — InternalTokenFilter <code>/internal/**</code> prefix 한정 일관 (PR #91 fix 패턴)</td>
+    </tr>
+    <tr>
+      <td><code>ArologisAdminControllerIT</code></td>
+      <td>9</td>
+      <td>parse-kakao / 잘못된 텍스트 400 / dispatch 저장 / list / 미존재 404 / auto-match (Mock matcher) / unknown driver 404 / stop-status missing 404 / drivers list</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. 회귀 검증 매트릭스 (7 영역 PASS)</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>영역</th><th>상태</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>:services:partner-service:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0 — W5 findByCodes endpoint 호환</td></tr>
+    <tr><td><code>:services:notification-service:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0 — W3 send endpoint 호환</td></tr>
+    <tr><td><code>:services:groupware-service:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0</td></tr>
+    <tr><td><code>:services:dashboard-service:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0 — W4 ShedLock 패턴 일관 활용</td></tr>
+    <tr><td><code>:services:user-service:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0</td></tr>
+    <tr><td><code>:services:slip-service:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0 — W10-4 통합 대상 (현재 호출 없음)</td></tr>
+    <tr><td><code>:shared:user-client-abstraction:test</code></td><td><span class="b-ok">PASS</span></td><td>회귀 0 — 5번째 소비자 (arologis) 추가</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>4. 가드 결과</h2>
+<div class="qa-table-wrapper">
+<table>
+  <thead>
+    <tr><th>가드</th><th>상태</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>BaseEntity 7 audit + Soft Delete + 한국어 comment</td><td><span class="b-ok">OK</span></td><td>5 entity (DriverLocation 제외 — 30일 hard DELETE 정책)</td></tr>
+    <tr><td>VARCHAR(N) only / NUMERIC GPS / partial unique index</td><td><span class="b-ok">OK</span></td><td>V1 SQL 6 테이블 검증, RDS PostgreSQL 16 호환</td></tr>
+    <tr><td>UUID 사용자 비공개 (driverCode / partnerCode 노출)</td><td><span class="b-ok">OK</span></td><td>응답 DTO 모두 driverCode / sequence 노출, UUID 비공개 (dispatchId 만 admin routing 노출)</td></tr>
+    <tr><td>InternalTokenFilter <code>/internal/**</code> prefix 한정</td><td><span class="b-ok">OK</span></td><td>IT 4 case 검증</td></tr>
+    <tr><td>IT 외부 client <code>@MockBean</code> 격리 (4 client 모두)</td><td><span class="b-ok">OK</span></td><td>partner / user / slip / notification</td></tr>
+    <tr><td>한국어 Javadoc + dev-report</td><td><span class="b-ok">OK</span></td><td>모든 entity / config / service / parser / matcher</td></tr>
+    <tr><td>GitGuardian — 모든 시크릿 <code>CHANGE_ME_LOCAL_ONLY</code></td><td><span class="b-ok">OK</span></td><td>env-template 6 시크릿 placeholder</td></tr>
+    <tr><td>Phase 10/11 renumber 적용 (D-P10-05)</td><td><span class="b-ok">OK</span></td><td>README / ROADMAP / DECISIONS / readiness 갱신</td></tr>
+  </tbody>
+</table>
+</div>
+
+</body>
+</html>

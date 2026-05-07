@@ -1,0 +1,105 @@
+package com.samhanair.logis.arologis.domain;
+
+import com.samhanair.logis.common.entity.BaseEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.annotations.UuidGenerator;
+
+/**
+ * 배송기사 — Phase 10 W10-1.
+ *
+ * <p>외부 vendor 매칭 기사 또는 본 어플 사용자. driverCode (사용자 노출 식별자) 와 phoneNumber 가
+ * 활성 행 기준 unique. UUID 비공개 가드 — id 는 사용자 화면 노출 X.
+ *
+ * <p>BaseEntity 7 audit + Soft Delete (`@SQLRestriction`) 의무.
+ */
+@Entity
+@Getter
+@Table(name = "drivers")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@SQLRestriction("is_deleted = false")
+public class Driver extends BaseEntity {
+
+    @Id
+    @GeneratedValue
+    @UuidGenerator
+    @Column(name = "id", updatable = false, nullable = false)
+    private UUID id;
+
+    /** 사용자 노출 식별자 — 활성 행 기준 unique. UUID 노출 회피. */
+    @Column(name = "driver_code", nullable = false, length = 50)
+    private String driverCode;
+
+    @Column(name = "phone_number", nullable = false, length = 20)
+    private String phoneNumber;
+
+    @Column(name = "vehicle_type", length = 20)
+    private String vehicleType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 30)
+    private DriverSource source;
+
+    @Column(name = "app_installed", nullable = false)
+    private Boolean appInstalled;
+
+    /** 본 어플 (RN Expo) 사용 시점 user-service userId — INTERNAL 기사일 때만 설정. */
+    @Column(name = "app_user_id")
+    private UUID appUserId;
+
+    private Driver(String driverCode, String phoneNumber, String vehicleType,
+                   DriverSource source, Boolean appInstalled, UUID appUserId) {
+        if (driverCode == null || driverCode.isBlank()) {
+            throw new IllegalArgumentException("driverCode 필수");
+        }
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            throw new IllegalArgumentException("phoneNumber 필수");
+        }
+        if (source == null) {
+            throw new IllegalArgumentException("source 필수");
+        }
+        this.driverCode = driverCode;
+        this.phoneNumber = phoneNumber;
+        this.vehicleType = vehicleType;
+        this.source = source;
+        this.appInstalled = appInstalled == null ? Boolean.FALSE : appInstalled;
+        this.appUserId = appUserId;
+    }
+
+    /**
+     * 신규 Driver 생성.
+     *
+     * @param driverCode 사용자 노출 식별자
+     * @param phoneNumber 전화번호 (010-XXXX-XXXX)
+     * @param vehicleType 차량 종류 (옵션)
+     * @param source 기사 소스
+     * @param appInstalled 본 어플 설치 여부
+     * @param appUserId user-service userId (INTERNAL 일 때만)
+     * @return 영속화 가능한 신규 인스턴스
+     */
+    public static Driver of(String driverCode, String phoneNumber, String vehicleType,
+                            DriverSource source, Boolean appInstalled, UUID appUserId) {
+        return new Driver(driverCode, phoneNumber, vehicleType, source, appInstalled, appUserId);
+    }
+
+    /** 어플 설치 상태 갱신 (어플 설치/삭제 트리거). */
+    public void updateAppInstalled(Boolean appInstalled, UUID appUserId) {
+        this.appInstalled = appInstalled == null ? Boolean.FALSE : appInstalled;
+        this.appUserId = appUserId;
+    }
+
+    /** 차량 종류 갱신. */
+    public void updateVehicleType(String vehicleType) {
+        this.vehicleType = vehicleType;
+    }
+}

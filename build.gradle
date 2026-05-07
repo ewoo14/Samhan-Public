@@ -54,6 +54,7 @@ def leafProjects = [
         ':services:groupware-service',
         ':services:notification-service',
         ':services:dashboard-service',
+        ':services:arologis-service',
 ]
 
 configure(leafProjects.collect { project(it) }) {

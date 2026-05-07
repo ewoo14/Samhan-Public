@@ -13,3 +13,4 @@ CREATE DATABASE groupware_db   OWNER samhan;
 CREATE DATABASE notification_db OWNER samhan;
 CREATE DATABASE dashboard_db   OWNER samhan;
 CREATE DATABASE migration_db   OWNER samhan;
+CREATE DATABASE arologis_db    OWNER samhan;

@@ -383,25 +383,55 @@
 
 ---
 
-## Phase 10 — AWS 마이그레이션 + Migration Service + 운영 안정화 (진입 준비 완료, post-W5 cleanup 7건 흡수 후)
+## Phase 10 — arologis-service (배차 마이크로서비스, W10-1 진행 중) — Phase 번호 renumber 적용 (D-P10-05, 사용자 결정 2026-05-07)
+
+> **renumber 의도** — 기존 Phase 10 (AWS migration cutover) → Phase 11 으로 이동. 신규 Phase 10 = arologis-service (5 슬라이스 W10-1 ~ W10-5).
+
+### 예정 산출물
+- `services/arologis-service` (8097, DB `arologis_db`) — 배차 마이크로서비스
+- KakaoDispatchParser (정규표현식 + heuristic, 사용자 카톡 예시 13 차량 80% 정확도 → W10-5 시점 90% 회귀)
+- DriverMatcher 추상화 + Mock + InsungQuick (W10-2 시점 인성데이타 5만 프리랜서 풀 통합)
+- 5 entity (Dispatch / Vehicle / VehicleStop / Driver / Signature) + DriverLocation GPS 추적 (NUMERIC(10,7))
+- 4 외부 client (partner / user / slip / notification, skeleton-mode → W10-2 / W10-4 시점 활성)
+- Driver-app endpoint (W10-3 RN Expo 어플 통합 시점 활성)
+- ShedLock daily 30일 GPS cleanup scheduler
+
+### 슬라이스 분해
+- **W10-1** (본 PR) — arologis-service skeleton + parser + matcher + 4 client + 31 case + Phase 10/11 renumber
+- **W10-2** — 인성데이타 vendor 통합 (InsungQuickDriverMatcher 실 구현 + callback 활성)
+- **W10-3** — 모바일 어플 (RN Expo, `clients/mobile-staff` 패턴 일관, Driver-app endpoint 활성)
+- **W10-4** — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출)
+- **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검
+
+### 진입 조건
+- Phase 9 완료 (PR #96 머지, 14 service skeleton)
+- 사용자 카톡 메시지 예시 (13 차량) 보유
+
+### 진입 plan 위치
+- `docs/migration/phase10/M-PHASE-10-readiness.md` (본 PR 재작성 — arologis 5 슬라이스 plan)
+
+---
+
+## Phase 11 — AWS 마이그레이션 + Migration Service + 운영 안정화 (renumber, 기존 Phase 10)
 
 ### 예정 산출물
 - AWS 인프라 cutover — RDS PostgreSQL 16 + EC2/ECS Fargate + ElastiCache + AWS MQ + S3 + Route 53 + ACM
 - Secrets Manager rotation lambda + Parameter Store
-- `services/migration-service` (8096, ECount 일괄 데이터 이관) — Phase 9 partner-service (8095) 충돌 회피
+- `services/migration-service` (8096, ECount 일괄 데이터 이관) — partner-service (8095) / arologis-service (8097) 충돌 회피
 - 장기미수 마이그레이션 일괄 처리
 - 운영 안정화 (장애 복구 / 백업 / DR)
 - 환경변수 통일 정정 (`INTERNAL_TOKEN` → `INTERNAL_AUTH_TOKEN`, `<NAME>_HOST` → `<NAME>_SERVICE_URL`)
+- arologis_db RDS 추가 (Phase 10 신규 service 영향)
 
 ### 진입 조건
-- Phase 9 도메인 완료
+- Phase 10 (arologis) 완료 — 5 슬라이스 머지 + 회고
 - AWS account 발급 + IAM baseline 정의
 
 ### dry-run plan 위치
-- `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` (14 section + 5주 timeline)
+- `docs/migration/phase11/M-AWS-MIGRATION-DRY-RUN.md` (14 section + 5주 timeline, 본 PR phase10→phase11 이동)
 
 ### 진입 plan 위치
-- `docs/migration/phase10/M-PHASE-10-readiness.md` (Phase 9 W5 본 PR 신규 — P10-1 Secrets+Cache / P10-2 Discovery+Resilience / P10-3 RDS+Cutover 슬라이스 분해)
+- `docs/migration/phase11/M-PHASE-11-readiness.md` (본 PR 이동 — 기존 phase10 readiness 의 P10-1/P10-2/P10-3 슬라이스 분해 → 향후 P11-1/P11-2/P11-3 으로 정정 예정)
 
 ---
 

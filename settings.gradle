@@ -18,6 +18,10 @@
  *   services:notification-service  — 푸시 / 이메일 / SMS 통합 라우터 (W3, FCM + SES + Aligo)
  *   services:dashboard-service     — KPI / 실시간 재고 / 매출 + 4 client + materialized view (W4)
  *
+ * Phase 10 services (W10-1 ~) — arologis 배차 마이크로서비스 (Phase 10/11 renumber, 사용자 결정 2026-05-07):
+ *   services:arologis-service      — 배차 (Dispatch/Vehicle/Stop) + KakaoDispatchParser + DriverMatcher 추상화 +
+ *                                    GPS 추적 + 4 client (partner/user/slip/notification) (W10-1)
+ *
  * Add additional services here as `include 'services:<name>'` and ensure
  * each service directory contains its own build.gradle.
  */
@@ -43,6 +47,7 @@ include 'services:partner-service'
 include 'services:groupware-service'
 include 'services:notification-service'
 include 'services:dashboard-service'
+include 'services:arologis-service'
 
 project(':shared:common').projectDir                    = file('shared/common')
 project(':shared:discovery-abstraction').projectDir     = file('shared/discovery-abstraction')
@@ -63,3 +68,4 @@ project(':services:partner-service').projectDir         = file('services/partner
 project(':services:groupware-service').projectDir       = file('services/groupware-service')
 project(':services:notification-service').projectDir    = file('services/notification-service')
 project(':services:dashboard-service').projectDir       = file('services/dashboard-service')
+project(':services:arologis-service').projectDir        = file('services/arologis-service')
