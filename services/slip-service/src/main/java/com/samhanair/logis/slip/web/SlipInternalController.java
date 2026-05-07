@@ -1,6 +1,8 @@
 package com.samhanair.logis.slip.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.service.SlipSignatureService;
 import com.samhanair.logis.slip.web.dto.InternalSignatureRegistrationRequest;
@@ -8,6 +10,7 @@ import com.samhanair.logis.slip.web.dto.InternalSignatureResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -106,6 +109,46 @@ public class SlipInternalController {
     @PreAuthorize("hasRole('MASTER')")
     public ApiResponse<LookupResponse> findRecentByPartner(@PathVariable UUID partnerId) {
         Slip slip = signatureService.findRecentByPartnerId(partnerId);
+        return ApiResponse.ok(new LookupResponse(
+                slip.getId(),
+                slip.getSlipNo(),
+                slip.getStatus().name()));
+    }
+
+    /**
+     * partnerCode 기준 최근 활성 슬립 lookup — Phase 10 W10-4 종합 TM (BE-1 채택) 신규.
+     *
+     * <p>arologis-service 의 SlipResolver 가 카톡 파싱 partnerCode (사용자 노출 식별자) 로 직접 호출.
+     * slip-service 가 자체 PartnerInternalClient 로 partner-service 의
+     * {@code GET /internal/partners/{partnerCode}} 를 호출하여 partnerId UUID resolve 후 lookup.
+     *
+     * <p>graceful empty 패턴 (404 미반환) — partner-service 매핑 실패 또는 슬립 미존재 시 200 + data=null.
+     * 호출자(arologis SlipResolver) 가 자체 INSERT 만 graceful skip (slipBridged=false) 처리.
+     *
+     * @param partnerCode 사용자 노출 식별자
+     * @return ApiResponse wrapper 안 LookupResponse (매핑 실패 시 data=null)
+     */
+    @Operation(summary = "Internal partnerCode 최근 활성 슬립 lookup (W10-4 종합 TM — arologis SlipResolver)",
+            description = "X-Internal-Token 인증. partner-service /internal/partners/{partnerCode} 위임 후 slipId resolve. "
+                    + "매핑 실패 시 200 + data=null (404 미반환, graceful fallback).")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "lookup 성공 (data) 또는 매핑 실패 (data=null)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
+                    description = "X-Internal-Token 누락/불일치")
+    })
+    @GetMapping("/by-partner-code/{partnerCode}/recent")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<LookupResponse> findRecentByPartnerCode(@PathVariable String partnerCode) {
+        if (partnerCode == null || partnerCode.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "partnerCode 필수");
+        }
+        Optional<Slip> slipOpt = signatureService.findRecentByPartnerCode(partnerCode);
+        if (slipOpt.isEmpty()) {
+            // graceful empty — 200 + data=null (BE-1 채택, 호출자 자체 fallback 보존)
+            return ApiResponse.ok(null);
+        }
+        Slip slip = slipOpt.get();
         return ApiResponse.ok(new LookupResponse(
                 slip.getId(),
                 slip.getSlipNo(),

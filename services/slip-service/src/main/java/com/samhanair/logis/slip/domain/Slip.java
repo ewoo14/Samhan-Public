@@ -303,6 +303,9 @@ public class Slip extends BaseEntity {
         this.requesterId = requesterId;
         this.status = SlipStatus.DRAFT;
         this.version = 0L;
+        // BE-3 채택 fix — signatureSource init 명시 (NULL INSERT 회귀 가드, V10 NOT NULL 가드와 일관)
+        this.signatureSource = SignatureSource.LINK;
+        this.driverSignatureSource = SignatureSource.LINK;
     }
 
     /**

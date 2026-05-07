@@ -2,6 +2,7 @@ package com.samhanair.logis.slip.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.client.PartnerInternalClient;
 import com.samhanair.logis.slip.delivery.domain.DeliveryBatch;
 import com.samhanair.logis.slip.delivery.repository.DeliveryBatchRepository;
 import com.samhanair.logis.slip.delivery.web.dto.PublicSignatureRequest;
@@ -19,10 +20,12 @@ import com.samhanair.logis.slip.web.dto.InternalSignatureRegistrationRequest;
 import com.samhanair.logis.slip.web.dto.InternalSignatureResponse;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -63,6 +66,7 @@ public class SlipSignatureService {
     private final SlipRepository slipRepository;
     private final DeliveryBatchRepository batchRepository;
     private final SlipSignatureAuditRepository auditRepository;
+    private final PartnerInternalClient partnerInternalClient;
 
     /**
      * 공개 모바일 서명 등록 — Plan §2 의 4 endpoint 중 1번.
@@ -294,7 +298,8 @@ public class SlipSignatureService {
 
         boolean isDriver = req.driverCode() != null && !req.driverCode().isBlank();
         // imageRef placeholder bytes — V11 cutover 전까지 PNG bytes 자체는 보존 X.
-        byte[] placeholderPng = ("imageRef:" + req.imageRef()).getBytes();
+        // BE-2 채택 fix — UTF-8 charset 명시 (한글 imageRef 회귀 가드)
+        byte[] placeholderPng = ("imageRef:" + req.imageRef()).getBytes(StandardCharsets.UTF_8);
         String hash = (req.signatureHash() != null && !req.signatureHash().isBlank())
                 ? req.signatureHash()
                 : sha256Hex(placeholderPng);
@@ -336,6 +341,34 @@ public class SlipSignatureService {
                     "해당 partnerId 의 활성 슬립을 찾을 수 없습니다");
         }
         return page.getContent().get(0);
+    }
+
+    /**
+     * partnerCode 의 최근 활성 슬립 lookup — Phase 10 W10-4 종합 TM (BE-1 채택) 신규.
+     *
+     * <p>arologis-service 의 SlipResolver 가 카톡 파싱 partnerCode (사용자 노출 식별자) 로 직접 호출.
+     * slip-service 는 자체 PartnerInternalClient 로 partner-service 의 {@code GET /internal/partners/{partnerCode}}
+     * 를 호출하여 partnerId UUID 를 resolve 후 {@link #findRecentByPartnerId} 위임.
+     *
+     * <p>graceful empty 패턴 — partner-service 매핑 실패 (4xx/5xx/timeout) 또는 슬립 없음 시 empty
+     * Optional 반환 (NOT_FOUND 던지지 않음). 호출자(arologis SlipResolver) 가 자체 INSERT 만 graceful
+     * skip + warn log.
+     *
+     * @param partnerCode 사용자 노출 식별자 (카톡 파싱 결과 또는 dispatch stop.parsedPartnerCode)
+     * @return 매칭된 Slip Optional. 매칭 실패 시 empty (NOT_FOUND 미반환).
+     */
+    @Transactional(readOnly = true)
+    public Optional<Slip> findRecentByPartnerCode(String partnerCode) {
+        if (partnerCode == null || partnerCode.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<UUID> partnerIdOpt = partnerInternalClient.resolvePartnerId(partnerCode);
+        if (partnerIdOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        var page = slipRepository.findAllByPartnerIdAndIsDeletedFalseOrderBySlipDateDescSeqNoDesc(
+                partnerIdOpt.get(), org.springframework.data.domain.PageRequest.of(0, 1));
+        return page.isEmpty() ? Optional.empty() : Optional.of(page.getContent().get(0));
     }
 
     public AdminSignatureResponse invalidateSignature(UUID slipId, String reason, String actorUserId) {

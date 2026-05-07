@@ -3,6 +3,7 @@ package com.samhanair.logis.arologis.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -10,6 +11,8 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.ClientHttpRequestFactories;
+import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -77,7 +80,7 @@ public class SlipClient {
             return false;
         }
         try {
-            RestClient client = builder.baseUrl(baseUrl).build();
+            RestClient client = buildClient();
             String body = client.post()
                     .uri("/internal/slips/{slipId}/signatures", slipId)
                     .header("X-Internal-Token", internalToken)
@@ -121,7 +124,7 @@ public class SlipClient {
             return Optional.empty();
         }
         try {
-            RestClient client = builder.baseUrl(baseUrl).build();
+            RestClient client = buildClient();
             String body = client.get()
                     .uri("/internal/slips/by-partner/{partnerId}/recent", partnerId)
                     .header("X-Internal-Token", internalToken)
@@ -149,6 +152,74 @@ public class SlipClient {
                     partnerId, ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    /**
+     * partnerCode → 최근 활성 slipId lookup — Phase 10 W10-4 종합 TM (BE-1 채택) 신규.
+     *
+     * <p>SlipResolver.resolveByPartnerCode 의 실 활성 분기. slip-service 측
+     * {@code GET /internal/slips/by-partner-code/{code}/recent} 가 partner-service 호출하여 partnerId
+     * resolve 후 자체 slips 테이블 lookup. 매핑 실패 시 graceful 200 + data=null 반환.
+     *
+     * <p>응답 schema (slip-service):
+     * <pre>{@code
+     * { "success": true, "data": { "slipId": "uuid", "slipNo": "...", "status": "INSPECTING" } }
+     *   또는
+     * { "success": true, "data": null }   // graceful empty (매핑 실패)
+     * }</pre>
+     *
+     * @param partnerCode 사용자 노출 식별자 (카톡 파싱 결과 또는 stop.parsedPartnerCode)
+     * @return 매칭 슬립 UUID Optional. 미매핑 / skeleton-mode / 호출 실패 시 empty.
+     */
+    public Optional<UUID> findRecentSlipIdByPartnerCode(String partnerCode) {
+        if (skeletonMode || partnerCode == null || partnerCode.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            RestClient client = buildClient();
+            String body = client.get()
+                    .uri("/internal/slips/by-partner-code/{partnerCode}/recent", partnerCode)
+                    .header("X-Internal-Token", internalToken)
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                return Optional.empty();
+            }
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root.get("data");
+            if (data == null || data.isNull()) {
+                return Optional.empty();
+            }
+            JsonNode slipIdNode = data.get("slipId");
+            if (slipIdNode == null || slipIdNode.isNull()) {
+                return Optional.empty();
+            }
+            return Optional.of(UUID.fromString(slipIdNode.asText()));
+        } catch (RestClientResponseException ex) {
+            log.debug("SlipClient.findRecentSlipIdByPartnerCode — partnerCode={}, status={} (404/4xx = 매핑 실패, 정상)",
+                    partnerCode, ex.getStatusCode());
+            return Optional.empty();
+        } catch (Exception ex) {
+            log.warn("SlipClient.findRecentSlipIdByPartnerCode 호출 실패 — partnerCode={}, msg={}",
+                    partnerCode, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * RestClient build helper — DV-1 채택 timeout 적용 (connect 2s / read 3s).
+     *
+     * <p>slip-service hang 시 driver-app sign 응답 동기 차단 SLA 위협 회피. requestFactory 는
+     * Spring Boot 3.4 의 {@link ClientHttpRequestFactories} 표준 사용.
+     */
+    private RestClient buildClient() {
+        return builder
+                .baseUrl(baseUrl)
+                .requestFactory(ClientHttpRequestFactories.get(
+                        ClientHttpRequestFactorySettings.DEFAULTS
+                                .withConnectTimeout(Duration.ofSeconds(2))
+                                .withReadTimeout(Duration.ofSeconds(3))))
+                .build();
     }
 
     private String truncate(String body) {
