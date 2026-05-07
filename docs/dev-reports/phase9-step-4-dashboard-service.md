@@ -200,6 +200,15 @@ shared:user-client-abstraction `DefaultUserVerifierTest` 6 case 별도 PASS — 
 - **Q-W4-1** — prod 첫 REFRESH MATERIALIZED VIEW detail 로그 (W5 회고)
 - **BE 의견 3** — `PartnerClient.findByCodes` bulk endpoint (Phase 10 cutover, partner-service 측 endpoint 추가 필요)
 
+후속 추가 채택 fix (PR #94 CI 회귀 — slip-service 시간 의존):
+
+12. **slip-service 24 case 시간 의존 회귀** (commit `cde6db9`) — `LocalDate.of(2026, 5, 5)` 하드코딩 6 test 파일이 2026-05-07 시점 `DeliveryBatch.tokenExpiresAt = 2026-05-06 23:59:59` 만료 영향으로 24 case fail. 정공법 fix — 6 파일 모두 `LocalDate.now()` 동적 값으로 정정 (DeliveryBatchTest / DeliveryBatchServiceTest / SlipServiceSignatureTest / PublicSignatureControllerIT / PublicSlipControllerIT / SlipSignatureAdminIT). 본 PR 변경 영향이 아닌 시간 흐름 (날짜 변경) 회귀이지만 사용자 가드 적용 — 본 PR 즉시 fix (Phase 10/W5 위임 X). 회귀 0 — dashboard / notification / groupware / partner / user 모두 PASS 유지. CI 7/7 PASS 회복.
+
+후속 backlog 매트릭스 12건 모두 ✅ 채택:
+- ✅ #1~#7 — 후속 fix 그룹 1+2 (`ccb3e4d`, `9876640`, `5411045`)
+- ✅ #8~#11 — 후속 fix 그룹 3+4 (`445a1a0`, `a36bf44`, `03194b5`)
+- ✅ #12 — 후속 fix 그룹 4 (`a36bf44`) — BE 의견 2 skeleton-mode 토글
+
 ## 12. 5 reviewer 토론 준비 (TM 발행 후)
 
 본 PR 은 TM 자체 발행 후 BE / FE / Designer / QA / DevOps 5 reviewer 가 PR comment 로 토론. TM 이 종합하여 후속 commit 발행 (W2/W3 패턴 일관). 본 W4 통합 PR 시점에 W3 backlog 5건 흡수 완료 — 잔여 backlog 는 Phase 10 cutover 또는 W5 회고 시점 처리.
