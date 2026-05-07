@@ -1,8 +1,8 @@
 {
   "name": "@samhan/mobile-staff",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "SamhanLogis 영업직원용 견적 React Native (Expo SDK 53). v3 = v2 (WebView only) 코드 보존 + 캡처 script 재작성. PM 의 estimate-app v2 dev server (port 5183) 에 직접 진입 (mock HTML overlay 폐기). 사용자 첨부 캡처 (docs/qa/legacy-original/estimate/) 1:1 비교 검증. 인증은 WebView 안 legacy estimate checkUserAuth (Apps Script 1:1) 가 처리. RN wrapper = SafeAreaProvider + StatusBar + WebView + Android BackHandler.",
+  "description": "SamhanLogis 영업직원 + 배송기사 React Native (Expo SDK 53). v4 (Phase 10 W10-3) = AppRootNavigator (estimate / driver mode 분기). estimate mode = v2/v3 영업직원 견적 WebView 100% 보존. driver mode = arologis-service 3 endpoint (today/locations/sign) + GPS foreground 추적 + 전자서명 캡처. GPS 권한 거부 fallback = 어플 사용 불가 (사용자 결정 4 GPS 하이브리드 2026-05-07). Pretendard self-host (Designer-2 채택). W3+W4+W5+post-W5+W10-1 토큰 1:1 복제 (theme/tokens.ts).",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
@@ -17,6 +17,8 @@
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",
     "expo": "~53.0.0",
+    "expo-font": "~13.0.0",
+    "expo-location": "~18.0.0",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-dom": "19.0.0",

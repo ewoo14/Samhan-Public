@@ -58,25 +58,34 @@
 
 **진입 조건**: 인성데이타 API 키 + partner-id 발급, vendor 문서 사용자 제공.
 
-### 2-3. W10-3: 모바일 어플 (RN Expo, mobile-staff 패턴 일관)
+### 2-3. W10-3: 모바일 어플 (RN Expo, mobile-staff 내부 driver tab) — **완료 (본 PR)**
 
-**범위**:
-- `clients/mobile-staff` 패턴 일관 — **mobile-staff 내부 driver tab 채택** (사용자 명시 2026-05-07 — 별도 mobile-driver 신규 X, FE-1 + Designer-2 채택)
-- Driver-app 인증 (user-service 통합 — JWT)
-- Driver-app endpoint 활성 (오늘의 dispatch / GPS 보고 / 전자서명)
-- 본 어플 사용자 driver = INTERNAL Driver upsert
+> **진입 조건 정정 (2026-05-07)** — W10-2 (인성데이타 협약) 의존 X. W10-1 완료 후 진입 가능.
+> 본 어플 GPS only 활성 (인성 LBS 통합은 W10-2 시점).
 
-**GPS 권한 정책 (사용자 결정 4 GPS 하이브리드, 2026-05-07)**:
-- foreground 권한 = **의무** (배송 도중 위치 추적)
-- background 권한 = 선택 (운영 시점 결정)
-- 거부 fallback = **어플 사용 불가** (사용자 명시 — 권한 거부 시 차단)
-- 인성 LBS 우선 + 본 어플 GPS 보강 (`samhan.arologis.gps.priority=insung-lbs,app-gps,manual` 환경변수, W10-2 시점 활성)
+**산출 (본 PR)**:
+- `clients/mobile-staff` 내부 driver tab 채택 (별도 mobile-driver 신규 X) — `AppRootNavigator` 의 estimate / driver mode 분기로 통합
+- Driver-app endpoint 3 종 client 통합 — `src/api/arologis.ts` (today / locations / sign)
+- JWT 인증 (user-service 발급, Bearer header) + base URL = `EXPO_PUBLIC_API_BASE_URL` (default gateway 8080)
+- driver tab 3 화면:
+  - `DriverDashboardScreen` — 오늘 배정 vehicle 목록 + 톤수/상태 badge (b-channel-* / slice-accent-* 일관)
+  - `DriverLocationTrackingScreen` — 30초 주기 GPS 보고 (foreground = APP_GPS_ACTIVE)
+  - `DriverSignatureScreen` — 전자서명 + GPS 동시 캡처 (NUMERIC(10,7))
+- GPS 권한 거부 차단 화면 — `GpsBlockedScreen` (foreground 거부 fallback = 어플 사용 불가)
 
-**Design baseline (Designer-2 채택, 2026-05-07)**:
-- **Pretendard self-host 정식 도입** — jsdelivr CDN 회피 + `clients/mobile-staff/src/theme/usePretendardFontGuarded.ts` 1:1 복제 (Phase 7 패턴 일관)
-- **W3+W4+W5+post-W5+W10-1 토큰 1:1 복제 의무** — slate / Google Material method / b-ok/b-warn/b-info / Pretendard / channel badge / slice accent / qa-table-wrapper / b-unparsed (W10-1 신규)
+**GPS 권한 정책 (사용자 결정 4 GPS 하이브리드, 2026-05-07) — 본 PR 적용 완료**:
+- foreground 권한 = **의무** (배송 도중 위치 추적, `useGpsPermission` hook 처리)
+- background 권한 = 선택 (운영 시점 결정, `requestBackgroundPermissionsAsync` graceful)
+- 거부 fallback = **어플 사용 불가** (`GpsBlockedScreen` 노출, driver tab 차단)
+- 본 PR (W10-3) 시점 = **본 어플 GPS only 활성** (`APP_GPS_ACTIVE`)
+- 인성 LBS 통합 = W10-2 시점 별도 callback endpoint 활성 (`EXTERNAL_INSUNG_LBS`)
 
-**진입 조건**: W10-2 완료. user-service ROLE_DRIVER 활성.
+**Design baseline (Designer-2 채택, 2026-05-07) — 본 PR 적용 완료**:
+- **Pretendard self-host 정식 도입** — jsdelivr CDN 회피 + `usePretendardFontGuarded()` 정식 활성 (graceful guard 보존)
+- `app.json` plugin = `expo-font` + `expo-location` 정식 등록 + iOS NSLocation* + Android permissions
+- **W3+W4+W5+post-W5+W10-1 토큰 1:1 복제** — `src/theme/tokens.ts` 신규 (`web/design-system/tokens.css` RGB 1:1)
+
+**진입 조건 (정정)**: W10-1 완료 (PR #97 머지 `a98048e`). W10-2 의존 X.
 
 ### 2-4. W10-4: slip-service 전자서명 통합 (1 통합 PR)
 

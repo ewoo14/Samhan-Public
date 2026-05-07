@@ -1,22 +1,50 @@
 {
   "expo": {
-    "name": "삼한공조 견적",
+    "name": "삼한공조 견적+배차",
     "slug": "samhan-estimate",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.samhan.estimate"
+      "bundleIdentifier": "com.samhan.estimate",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "배송 도중 위치를 arologis-service 에 보고합니다 (foreground = 의무, 거부 시 driver tab 사용 불가, 사용자 결정 4 GPS 하이브리드).",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "background 위치 추적은 운영 시점 결정 — 본 PR (W10-3) 시점은 선택입니다.",
+        "UIBackgroundModes": ["location"]
+      }
     },
     "android": {
-      "package": "com.samhan.estimate"
+      "package": "com.samhan.estimate",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro"
     },
-    "plugins": []
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "배송 도중 위치를 arologis-service 에 보고합니다 (foreground = 의무, background = 선택)."
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Pretendard-Regular.otf",
+            "./assets/fonts/Pretendard-Medium.otf",
+            "./assets/fonts/Pretendard-SemiBold.otf",
+            "./assets/fonts/Pretendard-Bold.otf"
+          ]
+        }
+      ]
+    ]
   }
 }

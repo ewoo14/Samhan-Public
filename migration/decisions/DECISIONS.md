@@ -680,3 +680,60 @@ Phase 10 신규: 8096 migration-service (ECount 일괄 이관)
 근거: 사용자 결정 2026-05-07 — vendor 가 자체 알림톡 채널 보유, notification-service 의존 회피로 vendor 통합 시점에 통신 단순화. 본 시스템 알림은 자체 운영 통제 일관 (Aligo, D-W3 표준).
 
 영향: W10-2 진입 시점 InsungQuickDriverMatcher 가 매칭 직후 인성 알림톡 직접 호출 (notification-service 호출 X). 본 PR (W10-1) 은 docs 명시만.
+
+### D-P10-07. 모바일 어플 driver tab = mobile-staff 내부 채택 + GPS 권한 정책 (2026-05-07)
+
+- 모바일 어플 옵션 = **`clients/mobile-staff` 내부 driver tab** 채택 (별도 `mobile-driver` 신규 X)
+- 진입 흐름 = `AppRootNavigator` 의 `mode='estimate' | 'driver'` 분기 — 기존 v2/v3 EstimateWebViewScreen 100% 보존
+- GPS 권한 정책:
+  - foreground 권한 = **의무** (배송 도중 위치 추적)
+  - background 권한 = 선택 (운영 시점 결정)
+  - 거부 fallback = **어플 사용 불가** (`GpsBlockedScreen` 노출, driver tab 차단)
+- W10-3 진입 조건 = W10-1 완료 (W10-2 의존 X) — 본 어플 GPS only 활성, 인성 LBS 통합은 W10-2 시점
+- W10-3 GPS source = `APP_GPS_ACTIVE` (foreground 권한 O), `APP_GPS_BACKGROUND` (선택, 운영 시점 활성)
+
+근거: 사용자 결정 2026-05-07 — FE-1 + Designer-2 채택. 별도 mobile-driver client 신규 시 5 client 통합 부담 + 영업직원/배송기사 같은 사람 가능성 (사용자 명시) → 동일 어플 안 mode 분기로 단순화.
+
+영향: 본 PR (W10-3) `clients/mobile-staff/src/screens/driver/` 5 화면 (Dashboard / LocationTracking / Signature / GpsBlocked / TabNavigator) + `AppRootNavigator` 신규. 기존 EstimateWebViewScreen 변경 0.
+
+### D-P10-08. Pretendard self-host 정식 도입 (2026-05-07)
+
+- mobile-staff Pretendard 폰트 = **self-host 정식** (jsdelivr CDN 회피, Phase 7 4차 통일 폰트 패턴 일관)
+- `clients/mobile-staff/assets/fonts/Pretendard-*.otf` 4~9 weight 배치 (본 PR 진입 시점 = graceful guard, 후속 fix 정식 배치)
+- `app.json` `plugins.expo-font` 정식 등록 — `Regular / Medium / SemiBold / Bold` 4 weight
+- `usePretendardFontGuarded()` = useFonts hook 정식 활성 + try/catch graceful (asset 미배치 환경 RN UI 미차단)
+
+근거: 사용자 결정 2026-05-07 — Designer-2 채택. jsdelivr CDN 의존성 회피 (오프라인 환경 / 한국 망 latency / vendor 차단 위험) + Phase 7 4차 통일 폰트 패턴 일관 (5 client 동등).
+
+영향: 본 PR (W10-3) `clients/mobile-staff/src/theme/usePretendardFontGuarded.ts` 정식 활성. driver tab RN native UI 의 `fontFamily.sans = 'Pretendard'` 적용. WebView 안 legacy estimate 는 자체 web font (변경 0).
+
+### D-P10-09. mobile theme 토큰 = web/design-system 1:1 복제 (2026-05-07)
+
+- `clients/mobile-staff/src/theme/tokens.ts` 신규 — `clients/web/design-system/src/tokens/tokens.css` 의 RGB 값을 1:1 복제
+- 복제 대상 (W3+W4+W5+post-W5+W10-1):
+  - post-W5 sales-form-polish-slice — surface / ink / line / action / state
+  - W3 dashboard — Google Material method (GET/POST/PUT/DELETE) + status badge (ok/warn/info/new)
+  - W4 notification — 3 channel badge (push/email/sms)
+  - post-W5 D-W5-2 — slice accent (success/pending/deferred)
+  - W10-1 — unparsed peach (b-unparsed)
+- `badgeStyle(kind)` 헬퍼 = RN inline style 객체 반환 (CSS class `b-channel-push` / `slice-accent-success` 1:1 매핑)
+- spacing (4-base) / radii (badge 4 / card 8 / button 4 / modal 8) / typography (Pretendard family + 8 size + 4 weight + 3 line-height) 동등 export
+
+근거: 사용자 결정 2026-05-07 — Designer-2 채택. 5 client (estimate / order / desktop / mobile / mobile-staff) 디자인 통일성 + 신규 driver tab UI 가 web/design-system 과 동등 시각 인상 의무.
+
+영향: 본 PR (W10-3) `theme/tokens.ts` + 5 화면 (Dashboard / LocationTracking / Signature / GpsBlocked / TabNavigator) 모두 본 토큰 인용. web `tokens.css` 변경 시 본 파일도 동기화 의무 (후속 슬라이스 가드 추가 권장).
+
+### D-P10-10. Pretendard 9 weight 운영 배치 약속 (2026-05-07)
+
+본 PR (W10-3) 시점 = 4 weight (Regular / Medium / SemiBold / Bold) 의무 + graceful guard 보호 (`usePretendardFontGuarded` `useState(true)` 기본값).
+
+EAS Build 진입 시점 (W10-5 또는 운영 진입) 의무:
+
+- `clients/mobile-staff/assets/fonts/Pretendard-{Thin,ExtraLight,Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.otf` 9 weight 정식 배치
+- `app.json` `plugins.expo-font` 의 9 weight asset 등록
+- `usePretendardFontGuarded` 기본값 정정 — `useState(false)` + `useFonts` complete 후 `setReady(true)` 패턴
+- splash screen guard 도입 — OTF load 완료 전 RN UI 렌더 차단 회피
+
+근거: 사용자 가드 (`feedback_integrated_pr_pattern.md` § "fix 후속 PR/Phase 위임 금지") 일관 적용. W10-3 종합 TM 5 reviewer 채택 fix 7건 중 Designer-2 / FE-2 / B-DEVOPS-1 통합 — Pretendard OTF 4 weight 본 PR 의무 + 9 weight 운영 진입 시점 의무 + `useState(false)` 정정은 OTF 정식 배치 시점 동시 처리.
+
+영향: 본 PR (W10-3) 시점 = 4 weight 자산 누락 시 graceful guard 가 RN UI 미차단. EAS Build 진입 시점 = 본 결정에 따라 9 weight 배치 + `useState(false)` 정정 + splash guard 도입 의무. ROADMAP `W10-5` 또는 `Phase 10 운영 진입` task 로 추적.

@@ -21,7 +21,8 @@
 | 7     | 28 ~ 31 주차| 호스팅 인프라 + e2e QA + 운영 가드 + UI 통합                         | 완료 (PR #87) |
 | 8     | 32 주차 ~   | AWS 호환성 가드 (테스트 단계 유지) — 직접 cutover 보류              | **완료 (PR #88 / #89 / 본 PR)** |
 | 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **4차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification #93 + W4 dashboard skeleton 본 PR)** |
-| 10    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기       |
+| 10    | -           | arologis-service (배차 마이크로서비스) + 모바일 어플 driver tab + slip 통합 (renumber, D-P10-05) | **W10-1 PR #97 + W10-3 본 PR (mobile-staff 내부 driver tab + arologis API client + GPS hook + Pretendard self-host + 토큰 1:1 복제) — D-P10-07 / D-P10-08 / D-P10-09** |
+| 11    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기 |
 
 ---
 
@@ -383,7 +384,7 @@
 
 ---
 
-## Phase 10 — arologis-service (배차 마이크로서비스, W10-1 진행 중) — Phase 번호 renumber 적용 (D-P10-05, 사용자 결정 2026-05-07)
+## Phase 10 — arologis-service (배차 마이크로서비스) + 모바일 어플 driver tab — Phase 번호 renumber 적용 (D-P10-05, 사용자 결정 2026-05-07)
 
 > **renumber 의도** — 기존 Phase 10 (AWS migration cutover) → Phase 11 으로 이동. 신규 Phase 10 = arologis-service (5 슬라이스 W10-1 ~ W10-5).
 
@@ -394,21 +395,32 @@
 - 5 entity (Dispatch / Vehicle / VehicleStop / Driver / Signature) + DriverLocation GPS 추적 (NUMERIC(10,7))
 - 4 외부 client (partner / user / slip / notification, skeleton-mode → W10-2 / W10-4 시점 활성)
 - Driver-app endpoint (W10-3 RN Expo 어플 통합 시점 활성)
+- **clients/mobile-staff 내부 driver tab (W10-3, 본 PR) — D-P10-07 / D-P10-08 / D-P10-09**
 - ShedLock daily 30일 GPS cleanup scheduler
 
 ### 슬라이스 분해
-- **W10-1** (본 PR) — arologis-service skeleton + parser + matcher + 4 client + 31 case + Phase 10/11 renumber
-- **W10-2** — 인성데이타 vendor 통합 (InsungQuickDriverMatcher 실 구현 + callback 활성)
-- **W10-3** — 모바일 어플 (RN Expo, `clients/mobile-staff` 패턴 일관, Driver-app endpoint 활성)
-- **W10-4** — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출)
-- **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검
+- **W10-1** (PR #97 머지 `a98048e`) — arologis-service skeleton + parser + matcher + 4 client + 31 case + Phase 10/11 renumber
+- **W10-2** (대기) — 인성데이타 vendor 통합 (InsungQuickDriverMatcher 실 구현 + callback 활성), 인성데이타 협약 정보 사용자 trigger 대기
+- **W10-3** (본 PR) — 모바일 어플 driver tab (`clients/mobile-staff` 내부) + arologis API client + GPS hook + 3 화면 + Pretendard self-host + 토큰 1:1 복제
+- **W10-4** — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출, imageRef → file-server / S3 업로드)
+- **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검 + **Pretendard 9 weight 정식 운영 배치** (W10-3 종합 TM Designer-2 / FE-2 / B-DEVOPS-1 통합 + D-P10-10)
 
-### 진입 조건
-- Phase 9 완료 (PR #96 머지, 14 service skeleton)
-- 사용자 카톡 메시지 예시 (13 차량) 보유
+### Pretendard 9 weight 정식 운영 배치 (W10-3 종합 TM 채택 — D-P10-10)
+
+W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful guard 보호 (`useState(true)` 기본값).
+
+**EAS Build 진입 시점 (W10-5 또는 운영 진입) 의무**:
+- `clients/mobile-staff/assets/fonts/Pretendard-{Thin,ExtraLight,Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.otf` 9 weight 정식 배치
+- `app.json` `plugins.expo-font` 의 9 weight asset 등록
+- `usePretendardFontGuarded` 정정 — `useState(false)` + `useFonts` complete 후 `setReady(true)` + splash screen guard 도입
+
+근거 = `migration/decisions/DECISIONS.md` D-P10-10. 본 PR (W10-3) 시점 = 4 weight 자산 누락 시 graceful guard 가 RN UI 미차단. EAS Build 시점 = `useState(false)` 정정과 9 weight 자산 정식 배치 동시 처리.
+
+### 진입 조건 (W10-3 정정)
+- W10-3 = W10-1 완료 후 진입 가능 (W10-2 의존 X) — 본 어플 GPS only 활성, 인성 LBS 통합은 W10-2 시점
 
 ### 진입 plan 위치
-- `docs/migration/phase10/M-PHASE-10-readiness.md` (본 PR 재작성 — arologis 5 슬라이스 plan)
+- `docs/migration/phase10/M-PHASE-10-readiness.md` (W10-3 = 완료 (본 PR) 표기)
 
 ---
 

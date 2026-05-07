@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-3 — 전자서명 캡처 + GPS 동시</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 24px 32px; color: #1A1F2E; background: #FAFBFC; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #1A1F2E; margin-bottom: 4px; }
+  h2 { color: #1A1F2E; border-bottom: 2px solid #E1E5EA; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  th { background: #1E3A8A; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E1E5EA; font-size: 13px; vertical-align: top; }
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-success { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .summary { background: #fff; border-left: 4px solid #34a853; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .device-frame { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .phone { width: 360px; background: #FAFBFC; border: 8px solid #1A1F2E; border-radius: 36px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+  .phone-status { background: #1A1F2E; color: #fff; padding: 8px 16px; font-size: 11px; display: flex; justify-content: space-between; }
+  .screen-pad { padding: 16px; }
+  .h1 { font-size: 24px; font-weight: 700; color: #1A1F2E; margin: 0 0 8px; }
+  .subtitle { font-size: 13px; color: #5C6773; margin: 0 0 16px; line-height: 1.5; }
+  .labelCard { background: #F4F6F8; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .labelHead { font-size: 11px; color: #8A95A4; font-weight: 600; }
+  .labelBody { font-size: 14px; color: #1A1F2E; margin-top: 4px; }
+  .canvas { height: 180px; background: #fff; border: 2px dashed #E1E5EA; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .canvas svg { width: 220px; height: 100px; }
+  .card { background: #fff; border: 1px solid #E1E5EA; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: 16px; font-weight: 600; color: #1A1F2E; margin-bottom: 8px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 0.5px solid #E1E5EA; }
+  .row:last-child { border-bottom: none; }
+  .label { font-size: 13px; color: #5C6773; }
+  .valueMono { font-size: 13px; color: #1A1F2E; font-family: 'D2Coding', Consolas, monospace; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn { padding: 12px 16px; border-radius: 4px; text-align: center; font-size: 14px; font-weight: 600; flex: 1; }
+  .btn-primary { background: #1E40AF; color: #fff; }
+  .btn-secondary { background: #DBEAFE; color: #1E3A8A; border: 1px solid #1E40AF; }
+  .btn-ghost { background: transparent; color: #5C6773; border: 1px solid #E1E5EA; }
+  .successCard { background: #D1FAE5; border-left: 4px solid #10B981; border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-3 — 전자서명 캡처 + GPS 동시 캡처</h1>
+<p style="color: #5C6773; font-size: 14px; margin-top: 0;">
+  DriverSignatureScreen — 정차 도착 시 전자서명 PNG 캡처 + 동시 GPS 위치 캡처 + POST 등록.
+  사용자 결정 5 — W3+W4+W5+post-W5+W10-1 토큰 1:1 복제 일관.
+</p>
+
+<div class="summary">
+  <p><strong>화면</strong>: DriverSignatureScreen (clients/mobile-staff/src/screens/driver/)</p>
+  <p><strong>endpoint</strong>: POST <code>/driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign</code></p>
+  <p><strong>signatureSource</strong>: <span class="b-channel-push">APP</span> (LINK = 외부 링크 서명, APP = 본 어플)</p>
+  <p><strong>GPS 정확도</strong>: NUMERIC(10,7) — 약 1.1cm</p>
+  <p><strong>상태</strong>: <span class="b-ok">PASS</span> typecheck PASS, graceful guard (canvas 미설치 환경 placeholder 동작)</p>
+</div>
+
+<h2>1. 서명 캡처 + GPS 동시 캡처 화면</h2>
+
+<div class="device-frame">
+
+<div class="phone">
+  <div class="phone-status"><span>09:55 — 캡처 직후</span><span>Galaxy S22</span></div>
+  <div class="screen-pad">
+    <div class="h1">전자서명</div>
+    <div class="subtitle">정차 #1 (차량 #1) — 인수자 서명 + GPS 위치 동시 캡처</div>
+
+    <div class="labelCard">
+      <div class="labelHead">정차 정보</div>
+      <div class="labelBody">에스엠하나공조 (전표 #214) — 인천 남동구 구월동, 아침8시</div>
+    </div>
+
+    <!-- 서명 placeholder (production = react-native-signature-canvas) -->
+    <div class="canvas">
+      <svg viewBox="0 0 220 100">
+        <path d="M 20 70 Q 35 30, 50 60 T 80 50 Q 95 25, 110 55 T 145 45 Q 165 30, 180 65 T 200 55"
+              stroke="#1A1F2E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>
+      <span class="slice-accent-success">서명 캡처됨</span>
+      <span style="font-size: 11px; color: #8A95A4;">imageRef = base64 PNG dataURL</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">캡처 시점 GPS</div>
+      <div class="row"><span class="label">위도</span><span class="valueMono">37.4419872</span></div>
+      <div class="row"><span class="label">경도</span><span class="valueMono">126.7117234</span></div>
+      <div class="row"><span class="label">캡처 시각</span><span class="valueMono">2026-05-07T09:55:18Z</span></div>
+      <div class="row"><span class="label">signatureSource</span><span class="b-channel-push">APP</span></div>
+    </div>
+
+    <div class="actions">
+      <div class="btn btn-primary">서명 캡처 + GPS</div>
+      <div class="btn btn-secondary">등록</div>
+    </div>
+  </div>
+</div>
+
+<div class="phone">
+  <div class="phone-status"><span>09:55 — 등록 완료</span><span>Galaxy S22</span></div>
+  <div class="screen-pad">
+    <div class="h1">전자서명</div>
+    <div class="subtitle">정차 #1 (차량 #1) — 등록 완료</div>
+
+    <div class="successCard">
+      <span class="slice-accent-success">등록 완료</span>
+      <span style="font-size: 13px; color: #1A1F2E;">signatureId: 0c4d3e2f-...</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">서버 응답</div>
+      <div class="row"><span class="label">HTTP</span><span class="b-ok">200 OK</span></div>
+      <div class="row"><span class="label">endpoint</span><span class="valueMono" style="font-size: 11px;">POST /driver-app/arologis/.../sign</span></div>
+      <div class="row"><span class="label">응답 시각</span><span class="valueMono">2026-05-07T09:55:19Z</span></div>
+      <div class="row"><span class="label">backend table</span><span class="valueMono">arologis.signatures</span></div>
+      <div class="row"><span class="label">GPS NUMERIC</span><span class="b-channel-email">10,7</span></div>
+    </div>
+
+    <div class="actions">
+      <div class="btn btn-ghost">다시</div>
+      <div class="btn btn-primary">다음 정차</div>
+    </div>
+  </div>
+</div>
+
+<div style="flex: 1; min-width: 360px;">
+
+<h2>2. 캡처 + 등록 시퀀스</h2>
+<table>
+  <thead><tr><th style="width: 8%;">단계</th><th style="width: 36%;">동작</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>"서명 캡처 + GPS" 버튼</td><td>UI onPress</td></tr>
+    <tr><td>2</td><td>getCurrentPositionAsync() 1회 호출</td><td>useGpsPermission 헬퍼</td></tr>
+    <tr><td>3</td><td>signature canvas → base64 PNG dataURL</td><td>react-native-signature-canvas (graceful = placeholder)</td></tr>
+    <tr><td>4</td><td>state 보관 — imageRef + lat + lng + capturedAt</td><td>useState</td></tr>
+    <tr><td>5</td><td>"등록" 버튼 → POST /sign</td><td>arologis.ts submitSignature</td></tr>
+    <tr><td>6</td><td>backend Signature 저장 — source=APP</td><td>ArologisDriverAppController.sign()</td></tr>
+    <tr><td>7</td><td>응답 signatureId 노출 + 성공 카드</td><td>UI</td></tr>
+  </tbody>
+</table>
+
+<h2>3. 토큰 사용 (W3+W4+W5+post-W5+W10-1 1:1 복제)</h2>
+<table>
+  <thead><tr><th style="width: 30%;">UI 요소</th><th style="width: 18%;">badge</th><th>토큰 출처</th></tr></thead>
+  <tbody>
+    <tr><td>signatureSource = APP</td><td><span class="b-channel-push">APP</span></td><td>W4 channel push #4285f4</td></tr>
+    <tr><td>등록 완료 (success card)</td><td><span class="slice-accent-success">완료</span></td><td>post-W5 slice-accent #34a853</td></tr>
+    <tr><td>HTTP 200</td><td><span class="b-ok">200</span></td><td>W3 b-ok #34a853</td></tr>
+    <tr><td>대기 / pending</td><td><span class="slice-accent-pending">대기</span></td><td>post-W5 slice-accent #f9ab00</td></tr>
+    <tr><td>GPS NUMERIC(10,7)</td><td><span class="b-channel-email">10,7</span></td><td>W4 channel email #ea4335</td></tr>
+  </tbody>
+</table>
+
+<h2>4. UUID 비공개 가드</h2>
+<p style="font-size: 13px; color: #5C6773; line-height: 1.5;">
+  UI 노출:
+  <strong>partnerName</strong> "에스엠하나공조" + <strong>partnerCode</strong> "전표 #214" + parsedAddress + notes.
+  UUID 미노출 — dispatchId / signatureId 는 path 또는 응답 dev 가시성용 (사용자 화면 식별자 X).
+  signatureId 는 등록 완료 직후 dev 검증 메시지로만 노출하고, 일반 운영 흐름에서는 화면 미노출.
+</p>
+
+<h2>5. W10-4 후속 (slip-service 통합)</h2>
+<p style="font-size: 13px; color: #5C6773; line-height: 1.5;">
+  본 PR (W10-3) = imageRef 가 base64 dataURL 그대로 backend `arologis.signatures` 테이블에 적재.
+  W10-4 시점 slip-service 통합 — file-server / S3 imageRef 업로드 + slip-service `POST /internal/slips/{slipId}/signatures` 활성.
+  현재 backend `SlipClient.registerSignature()` = skeleton-mode (W10-1 default true).
+</p>
+
+</div>
+</div>
+
+</body>
+</html>

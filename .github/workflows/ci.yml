@@ -150,3 +150,41 @@ jobs:
 
       - name: build (electron-vite)
         run: npm run build
+
+  frontend-mobile-staff:
+    name: Frontend Mobile-Staff (typecheck + expo doctor + prebuild dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: clients/mobile-staff
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: clients/mobile-staff/package-lock.json
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      # W10-3 종합 TM 채택 fix (O-DEVOPS-1) — Expo plugin 정합 사전 가드.
+      # 본 PR (W10-3) 시점 4 weight Pretendard OTF 실배치 + app.json plugins 등록 검증.
+      # continue-on-error = true — graceful guard (asset 부분 누락 회귀 시 워크플로우 fail 회피).
+      - name: Expo doctor (plugin 정합 점검)
+        run: npx expo-doctor
+        continue-on-error: true
+
+      # Expo prebuild dry-run — native 코드 생성 가능성 사전 가드 (EAS Build 진입 전 회귀 방지).
+      # --no-install --clean = node_modules 미변형 + native 디렉토리 임시 생성.
+      - name: Expo prebuild dry-run
+        run: npx expo prebuild --no-install --clean
+        continue-on-error: true

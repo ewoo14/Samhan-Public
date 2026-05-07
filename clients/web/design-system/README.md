@@ -38,6 +38,28 @@ function Example() {
 import { colors, spacing } from '@samhan/design-system/tokens'
 ```
 
+## mobile-staff theme 1:1 복제 (Phase 10 W10-3, D-P10-09)
+
+> Designer-2 채택 (사용자 결정 2026-05-07) — 5 client (estimate / order / desktop / mobile / mobile-staff) 디자인 통일성.
+
+`clients/mobile-staff/src/theme/tokens.ts` 는 본 패키지의 `tokens.css` RGB 값을 RN StyleSheet 친화적
+JS 객체로 1:1 복제한다 (W3+W4+W5+post-W5+W10-1 토큰 그룹 전부).
+
+| 출처 layer (tokens.css) | mobile-staff `theme/tokens.ts` |
+|---|---|
+| post-W5 sales-form-polish-slice — `--surface-*` / `--ink-*` / `--line-*` / `--action-*` / `--state-*` | `colors.surface` / `colors.ink` / `colors.line` / `colors.action` / `colors.state` |
+| W3 dashboard — Google Material method (`#0f9d58` GET / `#1a73e8` POST / ...) | `colors.method` |
+| W3 dashboard — status badge `b-ok` / `b-warn` / `b-info` / `b-new` | `colors.badge` |
+| W4 notification — 3 channel `b-channel-push/email/sms` | `colors.channel` |
+| post-W5 D-W5-2 — slice accent `slice-accent-success/pending/deferred` | `colors.sliceAccent` |
+| W10-1 — unparsed peach `b-unparsed` (`#f6c89e` / `#5a3a17`) | `colors.unparsed` |
+
+`badgeStyle(kind)` 헬퍼 = CSS class `b-channel-push` / `slice-accent-success` / `b-unparsed` 등과
+1:1 매핑되는 RN inline style 객체 반환 (border-radius 4 / font-size 12 / font-weight 600 동등).
+
+본 `tokens.css` 변경 시 mobile-staff `theme/tokens.ts` 도 RGB 1:1 동기화 의무. 가드 = 후속 슬라이스에서
+self-test 추가 권장 (현재는 dev-report `phase10-step-3-mobile-driver-tab.md` § 4 매트릭스로 추적).
+
 또는 CSS 변수로:
 
 ```css
@@ -159,6 +181,20 @@ post-W5 backlog cleanup PR (D-P9-21) 에서 slice accent 3색 토큰 신설 — 
 <span class="slice-accent-pending">진행</span>
 <span class="slice-accent-deferred">위임</span>
 ```
+
+#### W10-3 — HTTP method 컬러 + b-info 정식 등재 (Designer-1 채택)
+
+W3+ 도입 시점부터 `.GET`/`.POST`/`.PUT`/`.DELETE` 클래스로 사용해 온 method 컬러 + status info 컬러를 `tokens.css` 에 정식 변수 + utility class 로 등재.
+
+| Token / Class | 용도 | Hex |
+| --- | --- | --- |
+| `--color-method-get` / `.method-get` | HTTP GET | `#0f9d58` (Google Material Green) |
+| `--color-method-post` / `.method-post` | HTTP POST | `#1a73e8` (Google Material Blue) |
+| `--color-method-put` / `.method-put` | HTTP PUT | `#f9ab00` (Google Material Yellow) |
+| `--color-method-delete` / `.method-delete` | HTTP DELETE | `#d93025` (Google Material Red) |
+| `--color-badge-info` / `.b-info` | 정보 badge (status) | `#1a73e8` (Google Material Blue) |
+
+`b-channel-*` / `slice-accent-*` 와 일관 변수 인용 (`--badge-radius`, `--badge-channel-font-size`). dispatch trace UI / API 문서 일관성용.
 
 ## 라이선스
 

@@ -17,7 +17,10 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -86,9 +89,15 @@ public class ArologisDriverAppController {
     }
 
     /**
-     * GPS 위치 보고. body = {latitude, longitude, capturedAt} (capturedAt 은 ISO8601).
+     * GPS 위치 보고. body = {latitude, longitude, capturedAt, source} (capturedAt 은 ISO8601 UTC).
      *
      * <p>본 PR (W10-1) 은 INTERNAL driver (본 어플 사용자) 만 — appUserId = X-User-Id 매칭 필수.
+     *
+     * <p>W10-3 종합 TM 채택 fix:
+     * <ul>
+     *   <li>BE-1 — body.source 파싱 (APP_GPS_ACTIVE/APP_GPS_BACKGROUND 구분, fallback APP_GPS_ACTIVE)</li>
+     *   <li>BE-2 — body.capturedAt Instant.parse (mobile new Date().toISOString() 정합), fallback Instant.now()</li>
+     * </ul>
      */
     @Operation(summary = "GPS 위치 보고 (Driver-app)")
     @PostMapping("/locations")
@@ -113,12 +122,38 @@ public class ArologisDriverAppController {
         }
         BigDecimal lat = new BigDecimal(body.getOrDefault("latitude", "0"));
         BigDecimal lng = new BigDecimal(body.getOrDefault("longitude", "0"));
-        LocalDateTime now = LocalDateTime.now();
-        // BE-1 / QA-3 / Designer-2 통합 채택 fix — DriverLocationSource.APP_GPS_ACTIVE
-        // (driver-app POST = 활성 사용 중 = foreground GPS).
+
+        // BE-2 채택 fix — capturedAt Instant.parse (mobile new Date().toISOString() ISO 8601 UTC 정합).
+        String capturedAtStr = body.get("capturedAt");
+        Instant capturedAtInstant;
+        if (capturedAtStr != null && !capturedAtStr.isBlank()) {
+            try {
+                capturedAtInstant = Instant.parse(capturedAtStr);
+            } catch (DateTimeParseException ex) {
+                log.warn("DriverLocation capturedAt 파싱 실패 — server now() fallback (input: {})", capturedAtStr);
+                capturedAtInstant = Instant.now();
+            }
+        } else {
+            capturedAtInstant = Instant.now();
+        }
+        LocalDateTime capturedAt = LocalDateTime.ofInstant(capturedAtInstant, ZoneId.systemDefault());
+
+        // BE-1 채택 fix — body.source 파싱 (APP_GPS_ACTIVE/APP_GPS_BACKGROUND 구분, fallback APP_GPS_ACTIVE).
+        String sourceStr = body.getOrDefault("source", "APP_GPS_ACTIVE");
+        DriverLocationSource source;
+        try {
+            source = DriverLocationSource.valueOf(sourceStr);
+        } catch (IllegalArgumentException ex) {
+            log.warn("DriverLocation source 파싱 실패 — APP_GPS_ACTIVE fallback (input: {})", sourceStr);
+            source = DriverLocationSource.APP_GPS_ACTIVE;
+        }
+
         DriverLocation saved = locationRepository.save(
-                DriverLocation.of(self.getId(), lat, lng, now, DriverLocationSource.APP_GPS_ACTIVE));
-        return ApiResponse.ok(Map.of("locationId", saved.getId().toString(), "capturedAt", now.toString()));
+                DriverLocation.of(self.getId(), lat, lng, capturedAt, source));
+        return ApiResponse.ok(Map.of(
+                "locationId", saved.getId().toString(),
+                "capturedAt", capturedAt.toString(),
+                "source", source.name()));
     }
 
     /**

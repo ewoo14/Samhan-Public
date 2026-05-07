@@ -568,3 +568,34 @@ html {
  * KakaoDispatchParser 미해석 라인 (group label "상일상차" / "초월상차" 등) 표시용.
  * b-channel-* / slice-accent-* 와 일관 CSS variable 인용 (border-radius 4px / font-size 12px). */
 .b-unparsed { background: #f6c89e; color: #5a3a17; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
+
+/* ==========================================================================
+ * W10-3 종합 TM 채택 (Designer-1) — HTTP method 컬러 + b-info 정식 등재
+ *
+ * W3+ 도입 시점부터 사용해 온 method 색 (.GET/.POST/.PUT/.DELETE) 와 status info
+ * 컬러를 design-system tokens 으로 정식 등재. 기존 hard-coded RGB 보존하되,
+ * CSS variable 우선 인용 (override 가능 + Storybook docs 일관).
+ *
+ * Google Material 컬러 1:1 — Google REST API explorer / Cloud Console 패턴 일관:
+ *   GET    : Material Green (#0f9d58)
+ *   POST   : Material Blue  (#1a73e8)
+ *   PUT    : Material Yellow (#f9ab00)
+ *   DELETE : Material Red   (#d93025)
+ *   info   : Material Blue  (#1a73e8) — semantic status badge
+ * ========================================================================== */
+:root {
+  --color-method-get:    #0f9d58;
+  --color-method-post:   #1a73e8;
+  --color-method-put:    #f9ab00;
+  --color-method-delete: #d93025;
+  --color-badge-info:    #1a73e8;
+}
+
+/* utility class — method 표기 (badge/inline). dispatch trace UI / API doc 일관. */
+.method-get    { background: var(--color-method-get,    #0f9d58); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 700; letter-spacing: 0.04em; }
+.method-post   { background: var(--color-method-post,   #1a73e8); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 700; letter-spacing: 0.04em; }
+.method-put    { background: var(--color-method-put,    #f9ab00); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 700; letter-spacing: 0.04em; }
+.method-delete { background: var(--color-method-delete, #d93025); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 700; letter-spacing: 0.04em; }
+
+/* status badge info — b-channel-* / slice-accent-* 와 일관 패턴. */
+.b-info        { background: var(--color-badge-info,    #1a73e8); color: #fff; padding: 2px 8px; border-radius: var(--badge-radius, 4px); font-size: var(--badge-channel-font-size, 12px); font-weight: 600; }
