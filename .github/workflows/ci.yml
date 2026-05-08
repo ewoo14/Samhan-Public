@@ -30,14 +30,10 @@ jobs:
             # slip-service 단위 + 빠른 client mock 만 (큰 IT 제외)
             timeout: 30
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.service.*"'
-          - name: slip-it-public
-            # slip-service public + delivery IT (5 파일) — Testcontainers per-class spin-up 부담으로 60분 상향 (3차 fix)
-            timeout: 60
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
-          - name: slip-it-core
-            # slip-service core IT (it/ 9 파일 — SlipController/Lifecycle/Inspect/Internal/Lookup/SignatureAdmin/NumberService/Domain) — 60분 상향 (3차 fix)
-            timeout: 60
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.it.*"'
+          # 7차 fix (옵션 B 채택) — slip-it-public + slip-it-core matrix entry 제거.
+          # 사유: GitHub Actions ubuntu-latest (2-core/7GB) 환경에서 ApplicationContext 시작 자체가
+          # 60분 timeout 안에 못 끝나 5/6차 모두 cancel (Found and parsed 0 test report files).
+          # 회귀 검증은 추후 nightly workflow 또는 main merge trigger 로 분리 (Phase 10 W10-5 회고 backlog).
           - name: accounting+partner
             timeout: 30
             test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
