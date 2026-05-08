@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.slip.SlipServiceApplication;
+import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.it.AbstractPostgresIT;
 import java.math.BigDecimal;
@@ -23,6 +25,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -66,7 +69,11 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
     @Autowired
     private ObjectMapper objectMapper;
 
-    // 5차 fix: ProductClient + InventoryClient = AbstractPostgresIT base superset
+    @MockBean
+    private ProductClient productClient;
+
+    @MockBean
+    private InventoryClient inventoryClient;
 
     @BeforeEach
     void setupMocks() {

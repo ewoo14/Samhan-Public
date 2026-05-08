@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.SlipServiceApplication;
+import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -15,6 +17,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +39,12 @@ class SlipLookupControllerIT extends AbstractPostgresIT {
     @Autowired
     private MockMvc mockMvc;
 
-    // 5차 fix: ProductClient + InventoryClient = AbstractPostgresIT base superset
+    @MockBean
+    private ProductClient productClient;
+
+    /** SlipService 가 다른 테스트에서 InventoryClient 를 의존하므로 mock 으로 격리. */
+    @MockBean
+    private InventoryClient inventoryClient;
 
     @Test
     void lookupProduct_authenticated_returns200() throws Exception {
