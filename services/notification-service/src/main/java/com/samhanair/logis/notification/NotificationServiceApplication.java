@@ -3,7 +3,6 @@ package com.samhanair.logis.notification;
 import com.samhanair.logis.common.audit.JpaAuditingConfig;
 import com.samhanair.logis.notification.config.AligoProperties;
 import com.samhanair.logis.notification.config.FcmProperties;
-import com.samhanair.logis.notification.config.InternalAuthProperties;
 import com.samhanair.logis.notification.config.UserCacheProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -29,7 +28,6 @@ import org.springframework.context.annotation.Import;
 @EnableCaching
 @Import(JpaAuditingConfig.class)
 @EnableConfigurationProperties({
-        InternalAuthProperties.class,
         AligoProperties.class,
         FcmProperties.class,
         UserCacheProperties.class

@@ -10,8 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.product.config.HeaderAuthenticationFilter;
-import com.samhanair.logis.product.config.InternalAuthProperties;
-import com.samhanair.logis.product.config.InternalTokenFilter;
+import com.samhanair.logis.security.InternalAuthProperties;
+import com.samhanair.logis.security.InternalTokenFilter;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.service.ProductService;
 import com.samhanair.logis.product.web.GlobalExceptionHandler;
@@ -47,6 +47,10 @@ class ProductInternalControllerTest {
         productService = Mockito.mock(ProductService.class);
         InternalAuthProperties props = new InternalAuthProperties();
         props.setToken(VALID_TOKEN);
+        // W10-4 (PR #99) DV-3 — product-service application.yml 호환
+        props.setPathPrefix("/products/internal/");
+        props.setRole("INTERNAL");
+        props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new ProductInternalController(productService))
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())

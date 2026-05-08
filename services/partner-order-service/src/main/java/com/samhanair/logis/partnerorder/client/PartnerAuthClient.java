@@ -2,7 +2,7 @@ package com.samhanair.logis.partnerorder.client;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
-import com.samhanair.logis.partnerorder.config.InternalAuthProperties;
+import com.samhanair.logis.security.InternalAuthProperties;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,7 +96,7 @@ public class PartnerAuthClient {
     }
 
     private String requireToken() {
-        String token = internalAuthProperties.getInternalToken();
+        String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                     "samhan.internal-token 미설정");

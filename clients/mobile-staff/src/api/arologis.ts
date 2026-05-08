@@ -65,9 +65,10 @@ export async function fetchTodayDispatches(token: string | null): Promise<Dispat
   if (!res.ok) {
     throw new ArologisApiError(res.status, `today fetch failed: HTTP ${res.status}`);
   }
+  // FE-2 채택 fix — ApiResponse<T> wrapper 명시 + schema assert (silent fall-through 제거)
   const json = await res.json();
-  // ApiResponse<T> wrapper → data
-  return (json?.data ?? json) as DispatchVehicleSummary[];
+  assertApiResponseSuccess(json, 'today');
+  return (json.data ?? []) as DispatchVehicleSummary[];
 }
 
 /**
@@ -107,8 +108,10 @@ export async function reportLocation(
   if (!res.ok) {
     throw new ArologisApiError(res.status, `location report failed: HTTP ${res.status}`);
   }
+  // FE-2 채택 fix — ApiResponse wrapper 명시 + schema assert
   const json = await res.json();
-  return (json?.data ?? json) as { locationId: string; capturedAt: string };
+  assertApiResponseSuccess(json, 'location');
+  return json.data as { locationId: string; capturedAt: string };
 }
 
 /**
@@ -124,13 +127,25 @@ export interface SignaturePayload {
   longitude?: number;
 }
 
+/**
+ * 전자서명 등록 응답 — Phase 10 W10-4 (PR #99) 종합 TM (FE-3 채택) 통합:
+ * - signatureId — arologis 자체 signatures INSERT id
+ * - slipBridged — slip-service 양쪽 저장 성공 여부 (true = 동기화 OK / false = 자체 저장만)
+ * - capturedAt — 서명 캡처 시각 ISO
+ */
+export interface SignatureSubmitResult {
+  signatureId: string;
+  slipBridged: boolean;
+  capturedAt: string;
+}
+
 export async function submitSignature(
   token: string | null,
   dispatchId: string,
   vehicleSeq: number,
   stopSeq: number,
   payload: SignaturePayload,
-): Promise<{ signatureId: string }> {
+): Promise<SignatureSubmitResult> {
   const url = `${API_BASE_URL}/driver-app/arologis/dispatches/${dispatchId}/vehicles/${vehicleSeq}/stops/${stopSeq}/sign`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -148,8 +163,36 @@ export async function submitSignature(
   if (!res.ok) {
     throw new ArologisApiError(res.status, `signature submit failed: HTTP ${res.status}`);
   }
+  // FE-2 채택 fix — ApiResponse wrapper 명시 + schema assert
   const json = await res.json();
-  return (json?.data ?? json) as { signatureId: string };
+  assertApiResponseSuccess(json, 'signature');
+  const data = json.data as Partial<SignatureSubmitResult> | null | undefined;
+  return {
+    signatureId: data?.signatureId ?? '',
+    slipBridged: Boolean(data?.slipBridged),
+    capturedAt: data?.capturedAt ?? '',
+  };
+}
+
+/**
+ * ApiResponse wrapper schema assert — FE-2 채택 fix (silent fall-through 제거).
+ *
+ * backend ApiResponse: `{ success: boolean, data: T | null, code?: string, message?: string }`
+ * — `success !== true` 또는 wrapper 부재 시 ArologisApiError throw.
+ */
+function assertApiResponseSuccess(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  json: any,
+  endpointLabel: string,
+): asserts json is { success: true; data: unknown; code?: string; message?: string } {
+  if (json == null || typeof json !== 'object') {
+    throw new ArologisApiError(0, `${endpointLabel} 응답 schema 위반 — body 가 객체가 아닙니다`);
+  }
+  if (json.success !== true) {
+    const code = typeof json.code === 'string' ? json.code : 'UNKNOWN';
+    const message = typeof json.message === 'string' ? json.message : `${endpointLabel} 실패`;
+    throw new ArologisApiError(0, `${endpointLabel} ApiResponse.success=false (code=${code}, message=${message})`);
+  }
 }
 
 export class ArologisApiError extends Error {

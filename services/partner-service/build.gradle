@@ -50,6 +50,7 @@ dependencies {
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 
     implementation project(':shared:common')
+    implementation project(':shared:security')
     // Phase 8 2차 — vendor 추상화 wrapper (provider=eureka default, Phase 10 시점 aws-cloud-map 토글)
     implementation project(':shared:discovery-abstraction')
 

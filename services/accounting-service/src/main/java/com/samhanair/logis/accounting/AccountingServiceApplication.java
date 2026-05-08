@@ -1,10 +1,8 @@
 package com.samhanair.logis.accounting;
 
-import com.samhanair.logis.accounting.config.InternalAuthProperties;
 import com.samhanair.logis.common.audit.JpaAuditingConfig;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.Import;
 
@@ -17,7 +15,6 @@ import org.springframework.context.annotation.Import;
 @SpringBootApplication
 @EnableDiscoveryClient
 @Import(JpaAuditingConfig.class)
-@EnableConfigurationProperties(InternalAuthProperties.class)
 public class AccountingServiceApplication {
 
     public static void main(String[] args) {

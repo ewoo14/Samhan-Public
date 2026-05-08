@@ -60,7 +60,7 @@
 
 - `GET /driver-app/arologis/dispatches/today` — 본인에게 배정된 dispatch 목록
 - `POST /driver-app/arologis/locations` — GPS 위치 보고 (DriverLocation 적재)
-- `POST /driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign` — 전자서명
+- `POST /driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign` — 전자서명 + slip-service bridge (W10-4)
 
 **W10-3 (`clients/mobile-staff` 내부 driver tab) client 통합 — D-P10-07 / D-P10-08 / D-P10-09 (2026-05-07)**:
 - 본 어플 client = `clients/mobile-staff/src/api/arologis.ts` (3 endpoint 1:1 호출)
@@ -68,6 +68,15 @@
 - GPS source = `APP_GPS_ACTIVE` (foreground 권한 O) / `APP_GPS_BACKGROUND` (선택) — 인성 LBS 통합 (`EXTERNAL_INSUNG_LBS`) 은 W10-2 시점
 - 권한 거부 fallback = 어플 사용 불가 (`GpsBlockedScreen` 노출)
 - IT 활성 (`ArologisDriverAppControllerIT` 6 case) 은 후속 fix 또는 W10-4 슬라이스에서 일괄 도입 권장 (본 PR 시점 backend 변경 0)
+
+**W10-4 (PR #99) — slip-service 통합 활성**:
+- `SlipClient.registerSignature` 시그니처 변경 (UUID + SignaturePayload) + skeleton-mode 실 호출 분기
+- `SlipResolver` 신규 service — partnerCode → slipId 매핑 (UUID 비공개 가드 fallback) + partnerId 직접 lookup
+- `ArologisDriverAppController.sign` 통합 호출 — 양쪽 저장 + slipBridged 응답 schema
+- 응답 schema 확장: `signatureId` / `slipBridged` / `capturedAt` 3 필드
+- graceful fallback: skeleton-mode true / PartnerClient empty / slip-service 5xx 모두 자체 INSERT 유지 (운영 영향 0)
+- `SignatureIntegrationIT` 신규 — 양쪽 저장 시나리오 IT (SlipClient @MockBean 격리, PR #17 회고)
+- 환경변수 `SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=false` (W10-4 시점 활성)
 
 ## 4. 환경변수 (chained-default 표준)
 
@@ -84,7 +93,7 @@ SAMHAN_PARTNER_SERVICE_URL=http://localhost:8095
 SAMHAN_USER_SERVICE_URL=http://localhost:8083
 SAMHAN_SLIP_SERVICE_URL=http://localhost:8084
 SAMHAN_NOTIFICATION_SERVICE_URL=http://localhost:8093
-SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=true        # W10-1 default. W10-2/W10-4 시점 false 전환
+SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=false       # W10-4 (PR #99) 시점 활성 — slip-service 양쪽 저장 활성
 SAMHAN_AROLOGIS_MATCHER_PROVIDER=mock            # mock (W10-1) | insung-quick (W10-2)
 SAMHAN_INSUNG_QUICK_API_URL=...                  # W10-2 활성
 SAMHAN_INSUNG_QUICK_API_KEY=...                  # W10-2 활성

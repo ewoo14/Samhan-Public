@@ -1,6 +1,6 @@
 package com.samhanair.logis.auth.web;
 
-import com.samhanair.logis.auth.config.InternalTokenFilter;
+import com.samhanair.logis.security.InternalTokenFilter;
 import com.samhanair.logis.auth.service.AuthService;
 import com.samhanair.logis.auth.service.dto.RegisterResponse;
 import com.samhanair.logis.auth.web.dto.internal.CreateAccountInternalRequest;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Internal service-to-service endpoints used by User Service to provision Account
- * aggregates. Security is enforced by {@link com.samhanair.logis.auth.config.InternalTokenFilter}.
+ * aggregates. Security is enforced by {@link com.samhanair.logis.security.InternalTokenFilter}.
  */
 @RestController
 @RequestMapping("/auth/internal/accounts")

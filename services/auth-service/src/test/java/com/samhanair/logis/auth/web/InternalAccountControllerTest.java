@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.auth.config.HeaderAuthenticationFilter;
-import com.samhanair.logis.auth.config.InternalAuthProperties;
-import com.samhanair.logis.auth.config.InternalTokenFilter;
+import com.samhanair.logis.security.InternalAuthProperties;
+import com.samhanair.logis.security.InternalTokenFilter;
 import com.samhanair.logis.auth.service.AuthService;
 import com.samhanair.logis.auth.service.dto.RegisterResponse;
 import com.samhanair.logis.auth.web.dto.internal.CreateAccountInternalRequest;
@@ -47,6 +47,11 @@ class InternalAccountControllerTest {
         authService = Mockito.mock(AuthService.class);
         InternalAuthProperties props = new InternalAuthProperties();
         props.setToken(VALID_TOKEN);
+        // auth-service 호환 — application.yml 의 path-prefix=/auth/internal/ + role=INTERNAL +
+        // allow-missing-token=false 와 동일한 standalone 환경 명시
+        props.setPathPrefix("/auth/internal/");
+        props.setRole("INTERNAL");
+        props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new InternalAccountController(authService))
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())

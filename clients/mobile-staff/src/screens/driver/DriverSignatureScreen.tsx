@@ -42,6 +42,8 @@ interface SignatureCaptureState {
   longitude: number | null;
   submitted: boolean;
   signatureId: string | null;
+  /** Phase 10 W10-4 종합 TM (FE-3 채택) — slip-service 양쪽 저장 성공 여부. */
+  slipBridged: boolean | null;
   error: string | null;
 }
 
@@ -55,6 +57,7 @@ export default function DriverSignatureScreen({
     longitude: null,
     submitted: false,
     signatureId: null,
+    slipBridged: null,
     error: null,
   });
 
@@ -94,8 +97,20 @@ export default function DriverSignatureScreen({
         latitude: state.latitude ?? undefined,
         longitude: state.longitude ?? undefined,
       });
-      setState((s) => ({ ...s, submitted: true, signatureId: res.signatureId, error: null }));
-      Alert.alert('전자서명 등록 완료', `signatureId = ${res.signatureId}`);
+      setState((s) => ({
+        ...s,
+        submitted: true,
+        signatureId: res.signatureId,
+        slipBridged: res.slipBridged,
+        error: null,
+      }));
+      // FE-3 채택 fix — slipBridged 시각화 alert 분기
+      Alert.alert(
+        '전자서명 등록 완료',
+        res.slipBridged
+          ? `signatureId = ${res.signatureId}\nslip-service 동기화 완료`
+          : `signatureId = ${res.signatureId}\n자체 저장만 완료 (slip-service 미연동)`,
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setState((s) => ({ ...s, error: msg }));
@@ -110,6 +125,7 @@ export default function DriverSignatureScreen({
       longitude: null,
       submitted: false,
       signatureId: null,
+      slipBridged: null,
       error: null,
     });
   };
@@ -170,6 +186,12 @@ export default function DriverSignatureScreen({
           <View style={styles.successCard}>
             <Text style={badgeStyle('sliceSuccess')}>등록 완료</Text>
             <Text style={styles.successText}>signatureId: {state.signatureId}</Text>
+            {/* FE-3 채택 fix — slipBridged UX 시각화 (slice-accent success/pending 토큰) */}
+            {state.slipBridged === true ? (
+              <Text style={badgeStyle('sliceSuccess')}>slip-service 동기화 완료</Text>
+            ) : (
+              <Text style={badgeStyle('slicePending')}>slip-service 미연동 (자체 저장만)</Text>
+            )}
           </View>
         )}
 

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phase 10 W10-4 — Test Report Summary</title>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+         padding: 24px 32px; color: #1A1F2E; background: #FAFBFC; max-width: 1180px; margin: 0 auto; }
+  h1 { color: #1A1F2E; margin-bottom: 4px; }
+  h2 { color: #1A1F2E; border-bottom: 2px solid #E1E5EA; padding-bottom: 6px; margin-top: 28px; }
+  h3 { color: #1E3A8A; margin-top: 24px; margin-bottom: 8px; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  th { background: #1E3A8A; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E1E5EA; font-size: 13px; vertical-align: top; }
+  td.code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px; color: #1A1F2E; }
+  /* W3 status badge */
+  .b-ok   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-warn { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-info { background: #1a73e8; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .b-new  { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  /* W4 channel badge */
+  .b-channel-push  { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-email { background: #ea4335; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-channel-sms   { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  /* post-W5 slice accent */
+  .slice-accent-success  { background: #34a853; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-pending  { background: #f9ab00; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .slice-accent-deferred { background: #5f6368; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .qa-table-wrapper { background: #fff; padding: 18px 22px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
+  .summary { background: #fff; border-left: 4px solid #34a853; padding: 14px 18px; margin: 12px 0 20px; border-radius: 4px; }
+  .summary p { margin: 4px 0; font-size: 13px; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .meta-card { background: #fff; padding: 14px 18px; border-radius: 6px; border-left: 3px solid #1E3A8A; }
+  .meta-card .label { color: #5C6773; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .meta-card .value { font-size: 14px; font-weight: 500; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Phase 10 W10-4 — Test Report Summary</h1>
+<p style="color: #5C6773; font-size: 14px; margin-top: 0;">
+  slip-service 전자서명 통합 (LINK + APP signatureSource) — 5 reviewer 토론 종합 후 Designer-1/2/3 + BE-1/2/3 + DV-1/2 + QA-1/2/3 + FE-2/3 채택 13건 적용. W3+W4+W5+post-W5+W10-1 토큰 1:1 복제.
+</p>
+
+<div class="meta-grid">
+  <div class="meta-card">
+    <div class="label">PR</div>
+    <div class="value">#99 — Phase 10 W10-4 slip-signature-integration</div>
+  </div>
+  <div class="meta-card">
+    <div class="label">관련 결정</div>
+    <div class="value">D-P10-11 / D-P10-12 / D-P10-13 / D-P10-14</div>
+  </div>
+  <div class="meta-card">
+    <div class="label">대상 service</div>
+    <div class="value">slip-service + arologis-service + partner-service (lookup 위임)</div>
+  </div>
+  <div class="meta-card">
+    <div class="label">신규 endpoint</div>
+    <div class="value">POST /internal/slips/{id}/signatures + GET /by-partner-code/{code}/recent</div>
+  </div>
+</div>
+
+<h2>1. 회귀 검증 매트릭스 (slip-service + arologis-service)</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>영역</th><th>케이스 수</th><th>결과</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>slip-service compileJava</td>
+      <td>—</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>BE-1/BE-2/BE-3 채택 — PartnerInternalClient + UTF-8 + 생성자 init</td>
+    </tr>
+    <tr>
+      <td>slip-service SlipInternalControllerIT</td>
+      <td>10 → 13 case</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>by-partner-code endpoint 3 case 신규 (BE-1 채택)</td>
+    </tr>
+    <tr>
+      <td>arologis-service compileJava</td>
+      <td>—</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>SlipResolver 실 활성 + SlipClient timeout (DV-1) + findRecentSlipIdByPartnerCode</td>
+    </tr>
+    <tr>
+      <td>arologis-service SlipClientTest (신규)</td>
+      <td>6 case</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>QA-1 채택 — MockRestServiceServer 단위 검증</td>
+    </tr>
+    <tr>
+      <td>arologis-service SignatureIntegrationIT</td>
+      <td>3 → 4 case</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>QA-2 채택 — happy-path slipBridged=true case 신규</td>
+    </tr>
+    <tr>
+      <td>partner-service 회귀</td>
+      <td>—</td>
+      <td><span class="b-ok">0건</span></td>
+      <td>기존 /internal/partners/{partnerCode} endpoint 재사용 (변경 없음)</td>
+    </tr>
+    <tr>
+      <td>mobile-staff typecheck</td>
+      <td>—</td>
+      <td><span class="b-ok">PASS</span></td>
+      <td>FE-2 schema assert + FE-3 slipBridged UX 시각화</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2. 5 reviewer 채택 13 fix 매트릭스</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>그룹</th><th>fix</th><th>요약</th><th>적용 위치</th><th>상태</th></tr></thead>
+  <tbody>
+    <tr><td>A 핵심 backend</td><td>BE-1</td><td>SlipResolver 실 활성 + by-partner-code endpoint</td><td>slip + arologis</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>A 핵심 backend</td><td>QA-1</td><td>SlipClient unit test 6 case</td><td>arologis test</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>A 핵심 backend</td><td>QA-2</td><td>SignatureIntegrationIT happy-path</td><td>arologis test</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>A 핵심 backend</td><td>DV-1</td><td>connect 2s / read 3s timeout</td><td>SlipClient + PartnerInternalClient</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>B Designer</td><td>D-1/2/3</td><td>QA 캡처 3종 재작성 + HTML 원본</td><td>docs/qa</td><td><span class="b-info">진행</span></td></tr>
+    <tr><td>C micro</td><td>BE-2</td><td>UTF-8 charset 명시</td><td>SlipSignatureService</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>C micro</td><td>BE-3</td><td>signatureSource 생성자 init</td><td>Slip domain</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>D FE</td><td>FE-2</td><td>ApiResponse fallback 제거 + assert</td><td>arologis.ts</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>D FE</td><td>FE-3</td><td>slipBridged UX 시각화</td><td>DriverSignatureScreen.tsx</td><td><span class="b-ok">반영</span></td></tr>
+    <tr><td>E docs</td><td>QA-3</td><td>Phase 11 cutover backlog 등록</td><td>readiness</td><td><span class="b-info">진행</span></td></tr>
+    <tr><td>E docs</td><td>DV-2</td><td>Flyway V10 운영 lock 영향 분석</td><td>readiness</td><td><span class="b-info">진행</span></td></tr>
+    <tr><td>F DECISIONS</td><td>D-P10-13</td><td>SlipResolver 실 활성 + by-partner-code endpoint</td><td>DECISIONS.md</td><td><span class="b-info">진행</span></td></tr>
+    <tr><td>F DECISIONS</td><td>D-P10-14</td><td>SlipClient connect/read timeout</td><td>DECISIONS.md</td><td><span class="b-info">진행</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. 연계 가드 — UUID 비공개 / VARCHAR(20) / partial unique</h2>
+
+<div class="qa-table-wrapper">
+<table>
+  <thead><tr><th>가드</th><th>검증</th><th>결과</th></tr></thead>
+  <tbody>
+    <tr><td>UUID 비공개 (FE 화면)</td><td>응답 schema slipNo / partnerCode / signatureId 만, partnerId UUID 비노출</td><td><span class="b-ok">PASS</span></td></tr>
+    <tr><td>VARCHAR(20) 컨벤션</td><td>signature_source / driver_signature_source — VARCHAR(20) NOT NULL DEFAULT 'LINK'</td><td><span class="b-ok">PASS</span></td></tr>
+    <tr><td>partial index (V10)</td><td>ix_slips_signature_source_app + ix_slips_driver_signature_source_app — soft-delete + APP 한정</td><td><span class="b-ok">PASS</span></td></tr>
+    <tr><td>InternalTokenFilter prefix</td><td>/internal/** 한정 (slip / arologis / partner 일관)</td><td><span class="b-ok">PASS</span></td></tr>
+    <tr><td>graceful fallback</td><td>SlipClient 4xx/5xx → false / empty (자체 INSERT 보존, 운영 영향 0)</td><td><span class="b-ok">PASS</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="summary">
+  <p><strong>종합</strong>: <span class="b-ok">PASS</span> 5 reviewer 토론 13 fix 모두 본 PR 채택 + 회귀 검증 모든 영역 통과. 사용자 가드 (fix 후속 PR/Phase 위임 금지) 일관 적용 — DV-3 (6 service refactor) 만 W10-5/Phase 11 위임.</p>
+</div>
+
+</body>
+</html>

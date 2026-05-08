@@ -36,6 +36,48 @@ SamhanLogis 출고/입고 전표 (STI) 서비스 — 10단계 라이프사이클
 
 영구 보존 (soft-delete 만 허용). 회계 cross-check + supply/vat 합계 round-trip 검증.
 
+### Phase 10 W10-4 (PR #99) — 전자서명 source 분리 (LINK + APP) + 신규 internal endpoint
+
+전자서명 발급 source 분리:
+- `SignatureSource.LINK` — 기존 SMS/Aligo 공개 모바일 endpoint 발급 (`/public/batches/.../signature`)
+- `SignatureSource.APP` — arologis 모바일 어플 직접 캡처 (W10-3 driver-app)
+
+`SignatureChannel` (입력 매체) 과 직교:
+
+| | SignatureChannel (V5) | SignatureSource (V10) |
+|---|---|---|
+| 의미 | 입력 매체 | 발급 경로 |
+| 값 | MOBILE_CANVAS / PAPER_SCAN | LINK / APP |
+
+신규 endpoint (`/internal/**` prefix, `InternalTokenFilter` + ROLE_MASTER):
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/internal/slips/{slipId}/signatures` | APP source 등록 (arologis 어플 전파) — driverCode 명시 시 기사 서명 분기 |
+| GET | `/internal/slips/by-partner/{partnerId}/recent` | partnerId 의 최근 활성 슬립 lookup (arologis SlipResolver 매핑 단계용) |
+
+응답 schema (W10-3 F-3 채택 — ApiResponse wrapper IT 의무):
+```json
+{
+  "success": true,
+  "data": {
+    "slipId": "<uuid>",
+    "slipNo": "yyyy/MM/dd-N",
+    "signatureSource": "APP",
+    "signedAt": "2026-05-07T14:30:00",
+    "driverSignedAt": null,
+    "signatureHash": "<sha256>",
+    "signed": true,
+    "driverSigned": false
+  }
+}
+```
+
+가드:
+- POST endpoint 는 `signatureSource=APP` 만 허용 (LINK 는 기존 공개 모바일 endpoint 사용 — 400 가드)
+- `Slip.recordSignature` / `recordDriverSignature` 4-arg / 3-arg 시그니처 보존 + source overload (LINK 자동 위임) — 기존 호출자 영향 0
+- Flyway V10 — DEFAULT 'LINK' backfill, partial index 2종 (APP source 운영 통계용)
+
 ## 30 endpoint
 
 기존 Phase 2 / 3 endpoint 23 + Phase 6 M5 endpoint 3 + 부가 4 = **30 endpoint**.
@@ -49,12 +91,14 @@ SamhanLogis 출고/입고 전표 (STI) 서비스 — 10단계 라이프사이클
 | `SlipSourceType` enum 신규 | 출처 분류 |
 | `SlipPublishAudit` 신규 entity | 회계 영구 보존 |
 
-## Flyway 마이그레이션 (Phase 6)
+## Flyway 마이그레이션 (Phase 6 + 10)
 
 | 버전 | 내용 |
 |---|---|
 | V7 | Slip 3 컬럼 + partial UNIQUE INDEX + composite INDEX |
 | V8 | slip_publish_audit 테이블 + jsonb 컬럼 |
+| V9 | slip_publish_audit fingerprint 컬럼 추가 |
+| V10 | (Phase 10 W10-4) signature_source 컬럼 3개 — slips 인수자 + 기사 + slip_signature_audit, NOT NULL DEFAULT 'LINK' backfill, APP partial index 2종 |
 
 ## Environment variables
 

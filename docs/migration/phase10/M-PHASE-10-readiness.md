@@ -87,16 +87,29 @@
 
 **진입 조건 (정정)**: W10-1 완료 (PR #97 머지 `a98048e`). W10-2 의존 X.
 
-### 2-4. W10-4: slip-service 전자서명 통합 (1 통합 PR)
+### 2-4. W10-4: slip-service 전자서명 통합 (1 통합 PR) — **완료 (본 PR #99)**
 
-**범위**:
-- slip-service 신규 endpoint `POST /internal/slips/{slipId}/signatures` 활성
-- arologis SlipClient.registerSignature 실 호출 활성
-- signatures 테이블 → slip-service 저장 매핑 (parsed_partner_code → slipId 변환)
-- file-server / S3 imageRef 업로드 (별도 결정 — Phase 11 cutover 시점 S3 권장)
-- IT 시나리오 강화 — 전자서명 → slip-service 통합 전체 시나리오
+**산출 (본 PR)**:
+- slip-service Flyway V10 — `signature_source` 컬럼 3개 (slips 인수자 + 기사 + audit) 추가, NOT NULL DEFAULT 'LINK' backfill, APP source partial index 2종
+- slip-service `SignatureSource` enum 신규 (LINK / APP) — Channel(MOBILE_CANVAS/PAPER_SCAN) 과 직교
+- slip-service `Slip.recordSignature` / `recordDriverSignature` 5-arg overload (source 명시) — 기존 4-arg 시그니처 보존 (LINK 자동 위임)
+- slip-service `SlipSignatureAudit.record` / `recordDriver` source overload — RECORD/RECORD_DRIVER 행에 LINK/APP 보존
+- slip-service `SlipInternalController` 신규 — `POST /internal/slips/{slipId}/signatures` (APP 등록) + `GET /internal/slips/by-partner/{partnerId}/recent` (lookup)
+- slip-service `InternalTokenFilter` 신규 — arologis / partner 와 일관된 `/internal/**` prefix 한정 패턴 + ROLE_MASTER 통과
+- arologis-service `SlipClient` 시그니처 변경 (UUID + SignaturePayload) + skeleton-mode 실 호출 분기
+- arologis-service `SlipResolver` 신규 — partnerCode → slipId 매핑 (UUID 비공개 가드 fallback) + partnerId 직접 lookup
+- arologis-service `ArologisDriverAppController.sign` 통합 호출 — 양쪽 저장 + slipBridged 응답
+- IT 시나리오 강화 — slip-service `SlipInternalControllerIT` (9 case) + arologis `SignatureIntegrationIT` (3 case)
+- W10-3 F-3 backlog 채택 — ApiResponse wrapper IT schema 의무화 (모든 신규 IT)
+- 환경변수 — `SAMHAN_AROLOGIS_CLIENT_SKELETON_MODE=false` (W10-4 시점 활성)
 
-**진입 조건**: W10-3 완료. slip-service 사용자 노출 식별자 lookup 완성.
+**graceful fallback 가드**:
+- skeleton-mode true → SlipClient 즉시 false (W10-1 default)
+- PartnerClient empty → SlipResolver Optional.empty
+- slip-service 4xx/5xx → SlipClient false + warn log
+- 모든 케이스에서 arologis 자체 INSERT 유지 — 운영 영향 0 (Phase 11 cutover 시 재동기화 가능)
+
+**진입 조건**: W10-3 완료 (PR #98 머지 `4b2c077`).
 
 ### 2-5. W10-5: 회고 + 통합 운영 안정화 (1 통합 PR)
 

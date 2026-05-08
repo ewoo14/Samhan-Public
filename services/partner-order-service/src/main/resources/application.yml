@@ -32,9 +32,17 @@ eureka:
     service-url:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
 
-# samhan.* — partner-order-service 전용 옵션 (PartnerOrderProperties / OutboxProperties / InternalAuthProperties)
+# W10-4 (PR #99) DV-3 — shared:security InternalAuthProperties 통합 (app.security.internal.token).
+# samhan.internal-token 은 legacy 보존 (PartnerOrder 외 client 가 system 호출용으로 직접 참조 가능).
+app:
+  security:
+    internal:
+      # SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_TOKEN legacy fallback
+      token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-only-token-replace}}
+
+# samhan.* — partner-order-service 전용 옵션 (PartnerOrderProperties / OutboxProperties)
 samhan:
-  # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
+  # legacy 호환 (Phase 11 cutover 시점 제거 가능)
   internal-token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-only-token-replace}}
   draft:
     ttl-days: 30

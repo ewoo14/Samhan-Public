@@ -215,6 +215,19 @@ public class Slip extends BaseEntity {
     private SignatureChannel signatureChannel;
 
     /**
+     * 서명 발급 source — Phase 10 W10-4 (PR #99) 신규.
+     *
+     * <p>{@link SignatureSource#LINK} = 기존 SMS/Aligo 공개 모바일 endpoint 발급 (V5 이전 데이터 기본값).
+     * {@link SignatureSource#APP} = arologis 모바일 어플 직접 캡처 (W10-4 신규 endpoint).
+     *
+     * <p>V10 migration: NOT NULL DEFAULT 'LINK' — 기존 데이터 backfill + 신규 데이터는 service 가 명시.
+     * 본 entity field 는 매핑 시 null 이 들어오면 LINK 로 보강 ({@link #recordSignature} 가드).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "signature_source", nullable = false, length = 20)
+    private SignatureSource signatureSource = SignatureSource.LINK;
+
+    /**
      * 인수자 share 토큰 — Slice C. base64url 64자, partial UNIQUE (NULL 허용).
      * 인수자 view 공개 endpoint {@code GET /public/signatures/{shareToken}} 진입 키.
      */
@@ -255,6 +268,16 @@ public class Slip extends BaseEntity {
     @Column(name = "driver_signature_channel", length = 20)
     private SignatureChannel driverSignatureChannel;
 
+    /**
+     * 기사 서명 발급 source — Phase 10 W10-4 (PR #99) 신규.
+     *
+     * <p>인수자 {@link #signatureSource} 와 별도 — 한 슬립에서 인수자=LINK / 기사=APP 같은 혼합 가능.
+     * V10 migration: NOT NULL DEFAULT 'LINK'.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "driver_signature_source", nullable = false, length = 20)
+    private SignatureSource driverSignatureSource = SignatureSource.LINK;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -280,6 +303,9 @@ public class Slip extends BaseEntity {
         this.requesterId = requesterId;
         this.status = SlipStatus.DRAFT;
         this.version = 0L;
+        // BE-3 채택 fix — signatureSource init 명시 (NULL INSERT 회귀 가드, V10 NOT NULL 가드와 일관)
+        this.signatureSource = SignatureSource.LINK;
+        this.driverSignatureSource = SignatureSource.LINK;
     }
 
     /**
@@ -628,6 +654,24 @@ public class Slip extends BaseEntity {
      * @throws IllegalArgumentException signerName/png/hash/channel null/blank 또는 길이 위반
      */
     public void recordSignature(String signerName, byte[] png, String hash, SignatureChannel channel) {
+        recordSignature(signerName, png, hash, channel, SignatureSource.LINK);
+    }
+
+    /**
+     * 인수자 서명 등록 (W10-4 source overload) — 기존 4-arg 시그니처 보존 + source 명시.
+     *
+     * <p>본 4+1 arg 메서드가 1차 도메인 진입점. 기존 4-arg 메서드는 source=LINK 로 본 메서드 위임.
+     *
+     * @param signerName 인수자명 (1~50자, 필수)
+     * @param png 서명 PNG bytes (필수, ≤50KB)
+     * @param hash 서명 SHA-256 hex 64자
+     * @param channel 서명 채널 (필수)
+     * @param source 서명 발급 source (필수) — LINK (공개 모바일) 또는 APP (arologis 어플)
+     * @throws BusinessException(CONFLICT) 현재 상태가 SIGNABLE_STATUSES 안에 없을 때
+     * @throws IllegalArgumentException signerName/png/hash/channel/source null/blank 또는 길이 위반
+     */
+    public void recordSignature(String signerName, byte[] png, String hash, SignatureChannel channel,
+                                SignatureSource source) {
         if (!SIGNABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "서명 가능한 단계가 아닙니다 (현재: " + this.status
@@ -648,6 +692,9 @@ public class Slip extends BaseEntity {
         if (channel == null) {
             throw new IllegalArgumentException("signatureChannel 은 필수입니다");
         }
+        if (source == null) {
+            throw new IllegalArgumentException("signatureSource 는 필수입니다");
+        }
 
         LocalDateTime now = LocalDateTime.now();
         this.signedAt = now;
@@ -655,6 +702,7 @@ public class Slip extends BaseEntity {
         this.signaturePng = png;
         this.signatureHash = hash;
         this.signatureChannel = channel;
+        this.signatureSource = source;
         this.signatureShareToken = generateShareToken();
         this.signatureShareExpiresAt = now.plusDays(SIGNATURE_SHARE_EXPIRY_DAYS);
     }
@@ -699,6 +747,8 @@ public class Slip extends BaseEntity {
         this.signatureChannel = null;
         this.signatureShareToken = null;
         this.signatureShareExpiresAt = null;
+        // W10-4: source 는 NOT NULL DEFAULT 'LINK' — invalidate 시 LINK 로 reset (신규 발급 가능 상태).
+        this.signatureSource = SignatureSource.LINK;
     }
 
     /**
@@ -729,6 +779,21 @@ public class Slip extends BaseEntity {
      * @throws IllegalArgumentException png/hash/channel null 또는 길이 위반
      */
     public void recordDriverSignature(byte[] png, String hash, SignatureChannel channel) {
+        recordDriverSignature(png, hash, channel, SignatureSource.LINK);
+    }
+
+    /**
+     * 기사 서명 등록 (W10-4 source overload) — 기존 3-arg 시그니처 보존 + source 명시.
+     *
+     * <p>arologis driver-app 직접 캡처 호출 시 source=APP. SMS/Aligo 공개 모바일 endpoint 시 LINK.
+     *
+     * @param png 서명 PNG bytes (필수)
+     * @param hash 서명 SHA-256 hex 64자
+     * @param channel 서명 채널 (필수)
+     * @param source 서명 발급 source (필수) — LINK 또는 APP
+     */
+    public void recordDriverSignature(byte[] png, String hash, SignatureChannel channel,
+                                      SignatureSource source) {
         if (!SIGNABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "기사 서명 가능한 단계가 아닙니다 (현재: " + this.status
@@ -743,10 +808,14 @@ public class Slip extends BaseEntity {
         if (channel == null) {
             throw new IllegalArgumentException("driverSignatureChannel 은 필수입니다");
         }
+        if (source == null) {
+            throw new IllegalArgumentException("driverSignatureSource 는 필수입니다");
+        }
         this.driverSignedAt = LocalDateTime.now();
         this.driverSignaturePng = png;
         this.driverSignatureHash = hash;
         this.driverSignatureChannel = channel;
+        this.driverSignatureSource = source;
     }
 
     /** 기사 서명 등록 여부 — DispatchView 인쇄 분기 헬퍼. */

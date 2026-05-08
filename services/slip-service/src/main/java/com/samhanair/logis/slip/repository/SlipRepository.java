@@ -70,4 +70,17 @@ public interface SlipRepository extends JpaRepository<Slip, UUID> {
      */
     List<Slip> findAllBySourceTypeAndSourceIdAndIsDeletedFalse(
             SlipSourceType sourceType, String sourceId);
+
+    // ---- Phase 10 W10-4 (PR #99) — partnerId 기반 최근 활성 슬립 lookup ----
+
+    /**
+     * 특정 partnerId 의 활성 슬립 중 최근 슬립 페이지 조회 — 어플 driver-app 정차 완료 시
+     * arologis-service 가 partnerCode → partnerId resolve 후 본 메서드로 slipId 매핑.
+     *
+     * <p>order by slipDate DESC, seqNo DESC — 같은 날짜 내 마지막 슬립 우선. status 필터 없이
+     * soft-delete 만 제외 (운영 정책상 어떤 단계의 슬립이든 매핑 가능 — 실제 가드는 service 레이어
+     * SIGNABLE_STATUSES 에서).
+     */
+    org.springframework.data.domain.Page<Slip> findAllByPartnerIdAndIsDeletedFalseOrderBySlipDateDescSeqNoDesc(
+            UUID partnerId, org.springframework.data.domain.Pageable pageable);
 }

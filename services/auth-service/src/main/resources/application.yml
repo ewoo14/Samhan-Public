@@ -35,6 +35,10 @@ app:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+      # W10-4 (PR #99) DV-3 — auth-service 만 /auth/internal/ prefix + ROLE_INTERNAL + 토큰 누락 시 즉시 401
+      path-prefix: /auth/internal/
+      role: INTERNAL
+      allow-missing-token: false
 
 management:
   endpoints:

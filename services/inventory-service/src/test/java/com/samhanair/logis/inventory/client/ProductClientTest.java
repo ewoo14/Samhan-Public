@@ -11,7 +11,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
-import com.samhanair.logis.inventory.config.InternalAuthProperties;
+import com.samhanair.logis.security.InternalAuthProperties;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,16 +1,20 @@
 package com.samhanair.logis.arologis.controller;
 
+import com.samhanair.logis.arologis.client.SlipClient;
+import com.samhanair.logis.arologis.client.SlipClient.SignaturePayload;
 import com.samhanair.logis.arologis.domain.Driver;
 import com.samhanair.logis.arologis.domain.DriverLocation;
 import com.samhanair.logis.arologis.domain.DriverLocationSource;
 import com.samhanair.logis.arologis.domain.Signature;
 import com.samhanair.logis.arologis.domain.SignatureSource;
 import com.samhanair.logis.arologis.domain.Vehicle;
+import com.samhanair.logis.arologis.domain.VehicleStop;
 import com.samhanair.logis.arologis.repository.DriverLocationRepository;
 import com.samhanair.logis.arologis.repository.DriverRepository;
 import com.samhanair.logis.arologis.repository.SignatureRepository;
 import com.samhanair.logis.arologis.repository.VehicleRepository;
 import com.samhanair.logis.arologis.repository.VehicleStopRepository;
+import com.samhanair.logis.arologis.service.SlipResolver;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -53,6 +57,8 @@ public class ArologisDriverAppController {
     private final VehicleStopRepository stopRepository;
     private final SignatureRepository signatureRepository;
     private final DriverLocationRepository locationRepository;
+    private final SlipClient slipClient;
+    private final SlipResolver slipResolver;
 
     /**
      * 본인에게 배정된 dispatch 목록 — X-User-Id 헤더 기반.
@@ -157,18 +163,33 @@ public class ArologisDriverAppController {
     }
 
     /**
-     * 전자서명 등록. body = {imageRef, latitude, longitude}.
+     * 전자서명 등록 — Phase 10 W10-4 (PR #99) 통합:
+     * <ol>
+     *   <li>arologis 자체 signatures 테이블 INSERT (기존)</li>
+     *   <li>SlipResolver 로 stop.parsedPartnerCode → slipId 매핑 (없으면 graceful skip)</li>
+     *   <li>매핑 성공 시 SlipClient.registerSignature 로 slip-service 전파 (양쪽 저장)</li>
+     * </ol>
+     *
+     * <p>slip-service 호출 실패 시 (skeleton-mode / 매핑 실패 / 4xx-5xx) arologis 자체 signatures 는
+     * 정상 INSERT 유지 — 운영 영향 0 (Phase 11 cutover 시 재동기화 가능).
+     *
+     * <p>응답에 slipBridged 플래그 추가 — true 면 slip-service 양쪽 저장 성공, false 면 자체 저장만.
+     *
+     * @param id dispatch UUID
+     * @param seq 차량 sequence
+     * @param stopSeq 정차 sequence
+     * @param body {imageRef, latitude, longitude, driverCode}
      */
-    @Operation(summary = "전자서명 등록 (Driver-app)")
+    @Operation(summary = "전자서명 등록 (Driver-app, W10-4 — slip-service 양쪽 저장)")
     @PostMapping("/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign")
     @PreAuthorize("hasAnyRole('DRIVER','MASTER','MANAGER')")
-    public ApiResponse<Map<String, String>> sign(
+    public ApiResponse<Map<String, Object>> sign(
             @PathVariable UUID id, @PathVariable Integer seq, @PathVariable Integer stopSeq,
             @RequestBody Map<String, String> body) {
         Vehicle vehicle = vehicleRepository.findFirstByDispatchIdAndSequence(id, seq)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "vehicle 미존재 — dispatchId=" + id + " seq=" + seq));
-        var stop = stopRepository.findFirstByVehicleIdAndSequence(vehicle.getId(), stopSeq)
+        VehicleStop stop = stopRepository.findFirstByVehicleIdAndSequence(vehicle.getId(), stopSeq)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "stop 미존재 — vehicleId=" + vehicle.getId() + " seq=" + stopSeq));
         String imageRef = body == null ? null : body.get("imageRef");
@@ -176,8 +197,35 @@ public class ArologisDriverAppController {
                 ? null : new BigDecimal(body.get("latitude"));
         BigDecimal lng = body == null || body.get("longitude") == null
                 ? null : new BigDecimal(body.get("longitude"));
+        String driverCode = body == null ? null : body.get("driverCode");
+        LocalDateTime capturedAt = LocalDateTime.now();
+
+        // 1. arologis 자체 signatures INSERT (기존)
         Signature saved = signatureRepository.save(
-                Signature.of(stop.getId(), SignatureSource.APP, imageRef, LocalDateTime.now(), lat, lng));
-        return ApiResponse.ok(Map.of("signatureId", saved.getId().toString()));
+                Signature.of(stop.getId(), SignatureSource.APP, imageRef, capturedAt, lat, lng));
+
+        // 2-3. SlipResolver → SlipClient 양쪽 저장 시도 (W10-4 신규)
+        boolean slipBridged = false;
+        java.util.Optional<UUID> slipIdOpt = slipResolver.resolveByPartnerCode(stop.getParsedPartnerCode());
+        if (slipIdOpt.isPresent()) {
+            SignaturePayload payload = SignaturePayload.appDriver(
+                    imageRef != null ? imageRef : "s3://samhan-prod/signatures/" + saved.getId() + ".png",
+                    driverCode != null ? driverCode : "DRIVER-" + (vehicle.getAssignedDriverId() != null
+                            ? vehicle.getAssignedDriverId() : "UNKNOWN"),
+                    capturedAt, lat, lng);
+            slipBridged = slipClient.registerSignature(slipIdOpt.get(), payload);
+            if (!slipBridged) {
+                log.warn("W10-4 slip-service bridge 실패 — slipId={}, signatureId={} (자체 저장은 OK)",
+                        slipIdOpt.get(), saved.getId());
+            }
+        } else {
+            log.debug("W10-4 slip-service bridge skip — partnerCode={} 매핑 실패 (자체 저장만)",
+                    stop.getParsedPartnerCode());
+        }
+
+        return ApiResponse.ok(Map.of(
+                "signatureId", saved.getId().toString(),
+                "slipBridged", slipBridged,
+                "capturedAt", capturedAt.toString()));
     }
 }

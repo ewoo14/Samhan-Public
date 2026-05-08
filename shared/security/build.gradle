@@ -1,0 +1,57 @@
+/*
+ * shared:security — internal-token X-Internal-Token 필터 + InternalAuthProperties + InternalTokenGuard 통합 module.
+ *
+ * Phase 10 W10-4 (PR #99) DV-3 채택 — 13 service (auth/user/product/inventory/slip/accounting/partner/
+ * partner-order/dc-config/dashboard/groupware/notification/arologis) 가 동일 logic 의 InternalTokenFilter
+ * 자체 보유하던 코드 중복을 본 module 로 통합.
+ *
+ * 호환 properties:
+ *   * `app.security.internal.token` (필수) — shared secret
+ *   * `app.security.internal.path-prefix` (default `/internal/`) — 11 service 표준 / auth-service 만 `/auth/internal/`
+ *   * `app.security.internal.role` (default `MASTER`) — 12 service 표준 / auth-service 만 `INTERNAL`
+ *   * `app.security.internal.allow-missing-token` (default true) — 11 service 표준 (downstream 처리) /
+ *     auth-service 만 false (즉시 401)
+ *
+ * Java library only — `org.springframework.boot` plugin 미적용 (compileOnly Spring Boot starter, runtime 은
+ * 소비자 service 가 제공). shared:common 패턴 일관.
+ */
+
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+    }
+}
+
+dependencies {
+    // Spring Boot autoconfiguration + ConfigurationProperties + servlet filter
+    api 'org.springframework.boot:spring-boot-autoconfigure'
+    api 'org.springframework.boot:spring-boot'
+    api 'org.springframework.security:spring-security-web'
+    api 'org.springframework.security:spring-security-core'
+    api 'jakarta.servlet:jakarta.servlet-api'
+    api 'jakarta.annotation:jakarta.annotation-api'
+    api 'org.slf4j:slf4j-api'
+
+    // ConfigurationProcessor for `META-INF/spring-configuration-metadata.json`
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-security'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    testCompileOnly "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
