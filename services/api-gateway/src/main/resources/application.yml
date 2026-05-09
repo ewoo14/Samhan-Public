@@ -121,6 +121,15 @@ spring:
           filters:
             - StripPrefix=2
 
+        # Legacy /auth/** routing — desktop renderer 의 axios 가 baseURL=http://localhost:8080
+        # + path=/auth/login (PR #100 BE controller @RequestMapping("/auth")) 호출 시 매핑.
+        # PR #110 (manual Stage 2) capture-desktop.js 의 auth 자동 로그인 navigation fix 의무.
+        # StripPrefix=0 으로 그대로 auth-service 에 전달 (controller 가 /auth prefix 보유).
+        - id: auth-service-legacy
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/**
+
         - id: user-service-v1
           uri: lb://user-service
           predicates:
