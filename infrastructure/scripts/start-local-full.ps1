@@ -183,6 +183,24 @@ if (-not $SkipDocker) {
     }
     Write-Host '   인프라 healthy 대기 (~30초) ...' -ForegroundColor DarkGray
     Start-Sleep -Seconds 30
+
+    # MinIO 버킷 멱등 초기화 — partner-attachments (P0-3) + slip-attachments (P1-8)
+    # 매뉴얼 출처: docs/manual/04-모바일/04-사진-첨부.md §4-2
+    Write-Host ''
+    Write-Host '   MinIO 버킷 초기화 (partner-attachments + slip-attachments) ...' -ForegroundColor DarkGray
+    $bucketScript = Join-Path $PSScriptRoot 'setup-minio-buckets.ps1'
+    if (Test-Path $bucketScript) {
+        try {
+            & $bucketScript
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning '   MinIO 버킷 초기화 일부 실패 — 첨부 기능 사용 시 setup-minio-buckets.ps1 수동 재실행'
+            }
+        } catch {
+            Write-Warning "   MinIO 버킷 초기화 예외 — $($_.Exception.Message). 첨부 기능 미사용 시 무시 가능."
+        }
+    } else {
+        Write-Warning "   setup-minio-buckets.ps1 미발견 — 버킷 수동 생성 필요 ($bucketScript)"
+    }
 } else {
     Write-Host ''
     Write-Host '[1/6] 인프라 기동 단계 생략 (-SkipDocker)' -ForegroundColor DarkGray

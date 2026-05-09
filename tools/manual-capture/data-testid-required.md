@@ -115,6 +115,152 @@ Stage 3 (`capture.config.json` v3) 가 14 desktop + 4 mobile 화면을 정의했
 
 (Stage 2 에서 mobile-staff 화면 정의가 capture.config.json 에 추가될 때 본 섹션 갱신.)
 
+## 우선순위 4 — Phase 10 step-8 9 슬라이스 (사전 spec)
+
+> 9 슬라이스 통합 PR (`feature/integrated-phase-10-step-8-ui-9-slice`) 의 신규 페이지에 대한 data-testid 사전 명세. 각 슬라이스 PR 의 frontend-engineer agent 가 본 표를 기준으로 testid 부여 + 후속 PR 의 `capture-desktop.js` / `capture-mobile.js` 가 박스 어노테이션 자동 합성.
+
+### 슬라이스 1 — 비밀번호 재설정 (P0-2, auth-service + desktop)
+
+매뉴얼 출처: `docs/manual/06-트러블슈팅/01-로그인-실패.md` §1-3
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="password-reset-request-email"]` | reset 요청 이메일 input | `/login/reset` |
+| `[data-testid="password-reset-request-submit"]` | reset 요청 제출 버튼 | `/login/reset` |
+| `[data-testid="password-reset-confirm-token"]` | 토큰 hidden input (URL query) | `/login/reset/confirm?token=` |
+| `[data-testid="password-reset-confirm-new"]` | 신규 비밀번호 input | `/login/reset/confirm` |
+| `[data-testid="password-reset-confirm-new-repeat"]` | 신규 비밀번호 재입력 | `/login/reset/confirm` |
+| `[data-testid="password-reset-confirm-submit"]` | 변경 확정 버튼 | `/login/reset/confirm` |
+| `[data-testid="password-policy-hint"]` | 정책 힌트 (8자/특수문자) | `/login/reset/confirm` + `/admin/profile/password` |
+| `[data-testid="profile-password-change-current"]` | 본인 비밀번호 변경 — 현재 PW | `/admin/profile/password` |
+| `[data-testid="profile-password-change-new"]` | 본인 비밀번호 변경 — 신규 PW | `/admin/profile/password` |
+| `[data-testid="profile-password-change-submit"]` | 본인 비밀번호 변경 — 제출 | `/admin/profile/password` |
+| `[data-testid="account-locked-banner"]` | 5회 실패 잠금 배너 | login page (잠금 시) |
+| `[data-testid="master-account-unlock-button"]` | MASTER unlock 버튼 (per row) | `/admin/users` (P0-5 의존) |
+
+### 슬라이스 2 — 회계 17 보고서 (P0-1, accounting-service + desktop)
+
+매뉴얼 출처: `docs/manual/02-회계/02-보고서.md`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="report-list-side-tree"]` | 17 보고서 좌측 트리 (경영자료 9 / 장부 11 / 재무제표 5) | `/accounting/reports` |
+| `[data-testid="report-balance-sheet-print"]` | 재무상태표 인쇄 버튼 | `/accounting/reports/balance-sheet` |
+| `[data-testid="report-income-statement-print"]` | 손익계산서 인쇄 버튼 | `/accounting/reports/income-statement` |
+| `[data-testid="report-trial-balance-period-select"]` | 시산표 기간 select (월/분기/년) | `/accounting/reports/trial-balance` |
+| `[data-testid="report-cash-daily-table"]` | 자금일보 table | `/accounting/reports/cash-daily` |
+| `[data-testid="report-account-ledger-account-select"]` | 계정별원장 — 계정 선택 | `/accounting/reports/account-ledger` |
+| `[data-testid="report-partner-ledger-partner-search"]` | 거래처별원장 — 거래처 검색 | `/accounting/reports/partner-ledger` |
+| `[data-testid="report-export-excel"]` | Excel export 버튼 (모든 보고서 공통) | `/accounting/reports/*` |
+
+### 슬라이스 3 — 거래처 등록 4 탭 (P0-6, desktop)
+
+매뉴얼 출처: `docs/manual/01-영업/02-거래처-조회.md`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="partner-form-tab-basic"]` | 탭 1 — 기본 | `/admin/partners/new` |
+| `[data-testid="partner-form-tab-info"]` | 탭 2 — 거래처정보 | 동일 |
+| `[data-testid="partner-form-tab-credit"]` | 탭 3 — 여신/단가 | 동일 |
+| `[data-testid="partner-form-tab-extra"]` | 탭 4 — 부가정보 | 동일 |
+| `[data-testid="partner-form-business-no"]` | 사업자등록번호 input | 탭 2 |
+| `[data-testid="partner-form-credit-limit"]` | 여신한도 input | 탭 3 |
+| `[data-testid="partner-form-pay-due-day"]` | 수금/지급예정일 select | 탭 3 |
+| `[data-testid="partner-form-submit"]` | 거래처 등록 제출 | 탭 1~4 footer |
+
+### 슬라이스 4 — 품목 등록 7 탭 (P0-7, desktop)
+
+매뉴얼 출처: `docs/manual/01-영업/01-품목조회.md`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="product-form-tab-basic"]` | 탭 1 — 기본 | `/admin/products/new` |
+| `[data-testid="product-form-tab-info"]` | 탭 2 — 품목정보 | 동일 |
+| `[data-testid="product-form-tab-quantity"]` | 탭 3 — 수량 | 동일 |
+| `[data-testid="product-form-tab-price"]` | 탭 4 — 단가 | 동일 |
+| `[data-testid="product-form-tab-cost"]` | 탭 5 — 원가 | 동일 |
+| `[data-testid="product-form-tab-extra"]` | 탭 6 — 부가정보 | 동일 |
+| `[data-testid="product-form-tab-managed"]` | 탭 7 — 관리대상 | 동일 |
+| `[data-testid="product-form-vat-rate-sales"]` | 매출 부가세율 input | 탭 2 |
+| `[data-testid="product-form-vat-rate-purchase"]` | 매입 부가세율 input | 탭 2 |
+| `[data-testid="product-form-safety-stock"]` | 안전재고 input | 탭 3 |
+
+### 슬라이스 5 — 사용자 / 권한 관리 화면 (P0-5, desktop)
+
+매뉴얼 출처: `docs/manual/00-시작하기/03-역할별-권한.md`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="users-admin-table"]` | 직원 목록 table | `/admin/users` |
+| `[data-testid="users-admin-add-button"]` | 신규 직원 등록 | `/admin/users` |
+| `[data-testid="users-admin-disable-button"]` | 계정 비활성화 토글 (per row) | `/admin/users` |
+| `[data-testid="users-admin-enable-button"]` | 계정 활성화 토글 (per row) | `/admin/users` |
+| `[data-testid="users-admin-role-select"]` | ROLE 변경 select | `/admin/users/{id}/role` |
+| `[data-testid="role-matrix-table"]` | 권한 매트릭스 (9 ROLE × endpoint) | `/admin/roles` |
+| `[data-testid="org-chart-tree"]` | 조직도 트리 | `/admin/org-chart` |
+
+### 슬라이스 6 — 모바일 사진 첨부 (P1-8, mobile-staff RN Expo)
+
+매뉴얼 출처: `docs/manual/04-모바일/04-사진-첨부.md`
+
+| selector | element | screen |
+|----------|---------|--------|
+| `[data-testid="mobile-photo-camera-button"]` | [사진 첨부] 버튼 (정차 도착 후 노출) | DriverStopDetail |
+| `[data-testid="mobile-photo-gallery-button"]` | 갤러리에서 선택 버튼 | DriverStopDetail |
+| `[data-testid="mobile-photo-preview-list"]` | 촬영된 사진 thumbnail list | DriverStopDetail |
+| `[data-testid="mobile-photo-delete-button"]` | thumbnail 삭제 (per item, 24h 내 본인만) | DriverStopDetail |
+| `[data-testid="mobile-photo-upload-progress"]` | 업로드 progress bar | DriverStopDetail |
+| `[data-testid="mobile-photo-retry-button"]` | 업로드 실패 재시도 | DriverStopDetail |
+| `[data-testid="mobile-camera-permission-prompt"]` | iOS/Android 카메라 권한 요청 dialog | EarlyOnboarding |
+
+### 슬라이스 7 — 슬립 검수 UI (P0-9, desktop + mobile-staff)
+
+매뉴얼 출처: `docs/manual/03-창고/02-입고-검수.md`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="slip-inspect-page"]` | 검수 page root | `/slips/{id}/inspect` |
+| `[data-testid="slip-inspect-line-row-{lineNo}"]` | 라인별 row | 동일 |
+| `[data-testid="slip-inspect-line-status-normal"]` | 정상 radio | per row |
+| `[data-testid="slip-inspect-line-status-defect"]` | 불량 radio | per row |
+| `[data-testid="slip-inspect-line-status-missing"]` | 누락 radio | per row |
+| `[data-testid="slip-inspect-photo-attach"]` | 검수 사진 첨부 (P0-3 + P1-8 의존) | per row |
+| `[data-testid="slip-inspect-confirm-button"]` | 검수 완료 → DELIVERED 트리거 | footer |
+
+### 슬라이스 8 — 알림 UI 통합 (P1-1, desktop AppLayout)
+
+매뉴얼 출처: `docs/manual/00-시작하기/02-메인-화면.md` §3-5 (예정)
+
+| selector | element | location |
+|----------|---------|----------|
+| `[data-testid="header-notification-bell"]` | 🔔 알림 벨 | `AppLayout` 헤더 우상단 |
+| `[data-testid="header-notification-badge"]` | 미확인 카운트 뱃지 | bell 우상단 |
+| `[data-testid="notification-dropdown"]` | 알림 dropdown | bell 클릭 시 |
+| `[data-testid="notification-dropdown-item-{id}"]` | 알림 row | dropdown 내 |
+| `[data-testid="notification-mark-read-all"]` | 모두 읽음 처리 | dropdown footer |
+| `[data-testid="notification-go-to-list"]` | 알림 전체 목록 이동 | dropdown footer |
+| `[data-testid="notification-list-page"]` | 알림 전체 page | `/admin/notifications` |
+| `[data-testid="notification-settings-button"]` | 사용자별 알림 설정 | `/admin/profile/notifications` |
+
+### 슬라이스 9 — arologis 배차 화면 보강 (P1-5, desktop)
+
+매뉴얼 출처: `docs/manual/05-arologis/01-수동-배정.md`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="arologis-dispatch-list-table"]` | 배차 목록 table | `/arologis/dispatches` |
+| `[data-testid="arologis-dispatch-add-button"]` | 수동 배차 등록 | `/arologis/dispatches/new` |
+| `[data-testid="arologis-driver-assign-select"]` | 기사 배정 select (drag 미지원 시 폴백) | per row |
+| `[data-testid="arologis-driver-auto-assign-button"]` | 자동 배정 (DriverMatcher) 버튼 | per row |
+| `[data-testid="arologis-gps-map-container"]` | GPS 지도 컨테이너 (관리자 view) | `/arologis/gps` |
+| `[data-testid="arologis-gps-driver-marker-{driverId}"]` | 기사 marker | 지도 내 |
+| `[data-testid="arologis-vendor-sync-button"]` | 인성데이타 vendor 양방향 sync 버튼 | `/arologis/vendor` |
+| `[data-testid="arologis-dispatch-print-button"]` | 배차 지시서 인쇄 양식 | per row + detail page |
+
+### 슬라이스별 spec 갱신 protocol
+
+각 슬라이스 PR 발행 시 frontend-engineer agent 가 본 표의 "상태" 컬럼 (현재는 `누락` 가정) 을 `완료 (PR #N)` 로 갱신. 누락 selector 가 `[warn]` 출력되면 PR 머지 전 fix 의무.
+
 ## 추가 가이드
 
 - `data-testid` 값은 **kebab-case**, **slice-prefix** (`sidebar-*`, `slip-list-*`, `warehouse-*`).
