@@ -3,7 +3,7 @@
 본 매뉴얼은 일반 운영자(영업/창고/회계 직원, 모바일 기사, 배차 담당)가 Samhan Public 시스템을 처음 사용하거나 일상 업무에 활용할 때 참조하는 한국어 사용 설명서입니다. 모든 시나리오는 실제 화면 스크린샷과 단계별 안내를 포함합니다.
 
 > 작성 가이드: 신규 매뉴얼 추가 시 본 색인에 링크를 등록하고, 스크린샷은 [스크린샷 가이드](screenshots/README.md) 표준에 따라 캡처합니다.
-> **Stage 3 (W10-7c) 완료** — 본 색인의 모든 항목 (총 32 docs) 링크 활성화. 미구현 기능은 별도 "Stage 3 placeholder/안내" 항목 (견적서/매출 마감/재고 실사/세금계산서/월말 마감/영업 모바일/사진 첨부/카카오 UI/기사 배정)에서 backend 상태와 우회 절차를 설명합니다.
+> **Stage 3 (W10-7c) 완료** — 본 색인의 모든 항목 (총 33 docs) 링크 활성화. 미구현 기능은 별도 "Stage 3 placeholder/안내" 항목 (견적서/매출 마감/재고 실사/세금계산서/월말 마감/영업 모바일/사진 첨부/카카오 UI/기사 배정)에서 backend 상태와 우회 절차를 설명합니다.
 
 ---
 
@@ -121,7 +121,7 @@
 
 | 항목 | 정보 |
 |---|---|
-| 매뉴얼 본문 docs 총 개수 | **32** (Stage 1 = 3 + Stage 2 = 9 + Stage 3 = 20 — 영업 견적서 1 + 창고 placeholder 2 + 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3) |
+| 매뉴얼 본문 docs 총 개수 | **33** (Stage 1 = 3 + Stage 2 = 9 + Stage 3 = 21 — 영업 견적서 1 + 창고 placeholder 2 + 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3) |
 | Stage 진행 | Stage 1 ✅ / Stage 2 ✅ / Stage 3 ✅ (본 PR — `feature/integrated-phase-10-step-7c-operator-manual-final`) |
 | 사용자 검증 산출물 | [`docs/qa/manual-verification/`](../qa/manual-verification/) (Stage 1 31 + Stage 2 74 + Stage 3 120 = 225 검증 항목) |
 | 누락 기능 종합 | [`inventory/missing-features-catalog.md`](inventory/missing-features-catalog.md) (P0/P1/P2/P3 누계 171 sub) |
