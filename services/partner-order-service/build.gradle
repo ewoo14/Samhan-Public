@@ -54,6 +54,16 @@ dependencies {
     // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 
+    // PR-D Part 1 — Google Sheets 직접 read (BootstrapService 부팅 prefetch).
+    // product-service 와 동일 SA + 동일 client 패턴 (legacy estimate-app 시트 source-of-truth 유지).
+    // Samhan Public 자체 service 안에서 시트 read — 외부 시스템 호출 X.
+    implementation 'com.google.api-client:google-api-client:2.4.0'
+    implementation 'com.google.apis:google-api-services-sheets:v4-rev20240514-2.0.0'
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.23.0'
+
+    // Caffeine — 시트 응답 캐시 (5분 TTL). product-service GoogleSheetsClient 1:1 복제.
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+
     implementation project(':shared:common')
     implementation project(':shared:security')
 

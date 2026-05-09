@@ -16,8 +16,11 @@ import org.springframework.stereotype.Component;
  * 옵션 C-1 (실시간 read) 부하 / 시트 API quota 한계 → 기각.
  * 옵션 C-3 (admin endpoint) 는 본 scheduler 와 결합 (수동 trigger).
  *
- * <p><b>주기</b>: {@code app.scheduling.product-sync-cron} (default {@code 0 0 * * * *} —
- * 매시 정각). spring scheduler cron 6-필드 (sec/min/hour/dom/month/dow).
+ * <p><b>주기</b>: {@code app.scheduling.product-sync-cron} (default {@code 0 *&#47;5 * * * *} —
+ * 매 5분, PR-D Part 1 정정). spring scheduler cron 6-필드 (sec/min/hour/dom/month/dow).
+ *
+ * <p><b>quota 검증</b>: 6 tab × 12회/시간 = 72 read/시간 = 1.2/min. Sheets API quota 60 read/min/user
+ * 안전 (50배 마진). 1시간 → 5분 단축으로 시트 갱신 반영 지연 평균 30분 → 2.5분 단축.
  *
  * <p><b>부팅 시 1회</b>: {@link ApplicationReadyEvent} 시 즉시 sync 실행.
  * 시트 API / Service Account 미가용 환경에서는 catch + log (부팅 차단 X).
@@ -40,10 +43,11 @@ public class ProductSheetSyncScheduler {
     }
 
     /**
-     * cron 1시간 주기 sync — 매시 정각.
+     * cron 5분 주기 sync — 매 5분 (PR-D Part 1 정정).
      * cron expression 은 application.yml 에서 override 가능.
+     * 6 tab × 12회/시간 = 72 read/시간 → 시트 API quota 60 read/min 안전 마진 50배.
      */
-    @Scheduled(cron = "${app.scheduling.product-sync-cron:0 0 * * * *}")
+    @Scheduled(cron = "${app.scheduling.product-sync-cron:0 */5 * * * *}")
     public void scheduledSync() {
         if (!schedulingEnabled) {
             log.debug("[ProductSheetSyncScheduler] scheduling 비활성 — skip");

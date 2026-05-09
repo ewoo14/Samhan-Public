@@ -36,9 +36,10 @@ app:
       role: INTERNAL
       allow-missing-token: false
   scheduling:
-    # 옵션 C-2 (개발책임자 결정 2026-05-05): 시트 → DB cron 1시간 주기 sync
+    # 옵션 C-2 (PR-D Part 1 정정): 시트 → DB cron 5분 주기 sync.
+    # 6 tab × 12회/시간 = 72 read/시간 → Sheets API quota 60 read/min 안전 마진 50배.
     enabled: ${PRODUCT_SYNC_SCHEDULING_ENABLED:true}
-    product-sync-cron: ${PRODUCT_SYNC_CRON:0 0 * * * *}
+    product-sync-cron: ${PRODUCT_SYNC_CRON:0 */5 * * * *}
   # Stage 1 local-test seed (HvacProductSeeder) toggle. dev profile + 본 toggle 모두 true 인 경우만
   # Samsung HVAC 100건 seed. 운영 / staging 데이터 오염 방지 — default false.
   product:

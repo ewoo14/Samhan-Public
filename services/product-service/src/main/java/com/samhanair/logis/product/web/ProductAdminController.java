@@ -5,7 +5,10 @@ import com.samhanair.logis.product.client.GoogleSheetsClient;
 import com.samhanair.logis.product.service.ProductSheetSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,8 +16,13 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 제품 admin endpoint — 옵션 C-3 결합 (시트 → DB 수동 sync trigger).
  *
- * <p><b>출처</b>: 개발책임자 결정 2026-05-05 — 옵션 C-2 (cron 1시간) + C-3 (admin trigger)
- * 결합. 시트 변경 즉시 반영이 필요한 경우 본 endpoint 호출 → 캐시 invalidate + sync 실행.
+ * <p><b>출처</b>: 개발책임자 결정 2026-05-05 — 옵션 C-2 (cron 5분, PR-D Part 1) +
+ * C-3 (admin trigger) 결합. 시트 변경 즉시 반영이 필요한 경우 본 endpoint 호출 →
+ * 캐시 invalidate + sync 실행.
+ *
+ * <p><b>PR-D Part 1 보강</b>: 마지막 sync 시각 + SyncSummary 조회 endpoint
+ * ({@link #lastSync()}) 추가. admin UI 가 trigger 결과 + 직전 sync 메타 데이터를
+ * 한 화면에서 확인할 수 있도록 분리. 메모리 보관 (bean field, 영속 X — V6 별도 PR).
  *
  * <p><b>인증</b>: 본 path 는 {@code /products/internal/} prefix 가 아니므로
  * {@link com.samhanair.logis.product.config.HeaderAuthenticationFilter} 가 gateway 헤더
@@ -30,14 +38,21 @@ public class ProductAdminController {
     private final GoogleSheetsClient sheetsClient;
 
     /**
+     * 마지막 sync 메타 데이터 (시각 + summary). 메모리 보관 — 부팅 시 초기화 (영속 X).
+     * V6 별도 PR 에서 sync_history 테이블로 영속화 예정.
+     */
+    private final AtomicReference<LastSyncSnapshot> lastSnapshot = new AtomicReference<>(LastSyncSnapshot.empty());
+
+    /**
      * 시트 → DB 수동 sync trigger (옵션 C-3).
-     * 캐시 invalidate 후 sync 실행 — 시트 최신값 즉시 반영.
+     * 캐시 invalidate 후 sync 실행 — 시트 최신값 즉시 반영. 실행 후 lastSnapshot 갱신.
      *
      * @return 응답 envelope 안 SyncSummary (총 inserted/updated/softDeleted/skipped + tab 별 분포)
      */
     @Operation(summary = "구글 시트 → DB 수동 sync trigger (옵션 C-3)",
-            description = "cron 1시간 주기 (옵션 C-2) 와 별개로 시트 변경 즉시 반영이 필요할 때 호출. "
-                    + "Caffeine 캐시 invalidate 후 sync 실행 — 시트 read 1회 추가 발생.")
+            description = "cron 5분 주기 (옵션 C-2, PR-D Part 1) 와 별개로 시트 변경 즉시 반영이 필요할 때 호출. "
+                    + "Caffeine 캐시 invalidate 후 sync 실행 — 시트 read 1회 추가 발생. "
+                    + "실행 후 마지막 sync 시각 + summary 메모리 보관 (GET /sync/last 로 조회).")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "sync 성공 (per-tab 결과)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패"),
@@ -47,6 +62,37 @@ public class ProductAdminController {
     public ApiResponse<ProductSheetSyncService.SyncSummary> triggerSync() {
         sheetsClient.invalidateCache();
         ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
+        lastSnapshot.set(new LastSyncSnapshot(Instant.now(), summary));
         return ApiResponse.ok(summary);
+    }
+
+    /**
+     * 마지막 sync 메타 데이터 조회 (PR-D Part 1 — admin UI 마지막 sync 시각 표시용).
+     * 부팅 후 1번도 trigger 가 없으면 {@code lastSyncAt = null, summary = null}.
+     *
+     * @return 응답 envelope 안 LastSyncSnapshot (lastSyncAt + summary)
+     */
+    @Operation(summary = "마지막 시트 sync 메타 데이터 조회 (PR-D Part 1)",
+            description = "직전 admin trigger sync (또는 cron 자동 sync 후 trigger) 의 시각 + SyncSummary 반환. "
+                    + "메모리 보관 — service 재기동 시 초기화. 영속화는 V6 별도 PR.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공 (sync 1회도 없으면 lastSyncAt=null)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    @GetMapping("/sync/last")
+    public ApiResponse<LastSyncSnapshot> lastSync() {
+        return ApiResponse.ok(lastSnapshot.get());
+    }
+
+    /**
+     * 마지막 sync 메타 데이터 — 메모리 보관용 record.
+     *
+     * @param lastSyncAt 마지막 sync 시각 (1번도 없으면 null)
+     * @param summary 마지막 sync 결과 (1번도 없으면 null)
+     */
+    public record LastSyncSnapshot(Instant lastSyncAt, ProductSheetSyncService.SyncSummary summary) {
+        public static LastSyncSnapshot empty() {
+            return new LastSyncSnapshot(null, null);
+        }
     }
 }

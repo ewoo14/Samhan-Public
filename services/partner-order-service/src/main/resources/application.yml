@@ -44,6 +44,23 @@ app:
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-only-token-replace}}
   partner-order:
     seed-test-data: ${SAMHAN_PARTNER_ORDER_SEED_TEST_DATA:false}
+  # PR-D Part 1 — BootstrapService 부팅 prefetch 시 시트 직접 read.
+  # 매핑이 있는 cacheKey 만 시트 read; 매핑 없거나 read 실패 시 V2 seed fallback.
+  # legacy estimate-app 과 동일 sheet ID. 운영에서는 BOOTSTRAP_SHEET_ID 로 override.
+  bootstrap:
+    sheet-id: ${BOOTSTRAP_SHEET_ID:1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ}
+    sheet-prefetch-enabled: ${BOOTSTRAP_SHEET_PREFETCH_ENABLED:true}
+    # cacheKey → A1 range 매핑. legacy 16종 중 시트 source-of-truth 가 명확한 키만 우선 매핑.
+    # SpEL Map literal — 빈 매핑 시 prefetch skip (V2 seed fallback only).
+    range-map: "{homemulti:'홈멀티!A1:Z',singleSets:'싱글 세트!A1:Z',singleParts:'싱글 구성품!A1:Z',commercialMulti:'상업멀티!A1:Z',commercialParts:'상업멀티 구성!A1:Z',oldProducts:'구형!A1:Z',config:'설정!A1:Z'}"
+
+# PR-D Part 1 — Google Sheets 연동 (BootstrapService 부팅 prefetch + 5분 TTL 캐시).
+# 시크릿: GOOGLE_SERVICE_ACCOUNT_KEY 환경변수 → JSON path. 본 코드 placeholder 만 보유 (.env 별도)
+google:
+  sheets:
+    service-account-key-path: ${GOOGLE_SERVICE_ACCOUNT_KEY:/etc/samhan/sa-key.json}
+    cache-ttl-minutes: ${GOOGLE_SHEETS_CACHE_TTL_MIN:5}
+    endpoint-override: ${GOOGLE_SHEETS_ENDPOINT_OVERRIDE:}
 
 # samhan.* — partner-order-service 전용 옵션 (PartnerOrderProperties / OutboxProperties)
 samhan:
@@ -136,3 +153,8 @@ eureka:
     enabled: false
     register-with-eureka: false
     fetch-registry: false
+
+# PR-D Part 1 — local profile 에서는 시트 prefetch 비활성 (Service Account JSON 부재 가능)
+app:
+  bootstrap:
+    sheet-prefetch-enabled: false
