@@ -68,6 +68,8 @@ import { SalesPartnerOrderListPage } from './SalesPartnerOrderListPage'
 import { SalesPartnerOrderDetailPage } from './SalesPartnerOrderDetailPage'
 import { SalesOrderApprovalsPage } from './SalesOrderApprovalsPage'
 import { SalesPartnerDcConfigPage } from './SalesPartnerDcConfigPage'
+// Phase 10 P0-2 — 본인 비밀번호 변경 페이지 (재로그인 강제)
+import { PasswordChangePage } from './PasswordChangePage'
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
@@ -123,6 +125,9 @@ const router = createHashRouter([
       { path: '/transfers', element: <TransferListPage /> },
       { path: '/transfers/new', element: <TransferFormPage /> },
       { path: '/transfers/:id', element: <TransferDetailPage /> },
+
+      // Phase 10 P0-2 — 본인 비밀번호 변경 (모든 인증 사용자 접근 가능)
+      { path: '/password/change', element: <PasswordChangePage /> },
 
       // accounting-slice-A — 회계 라우트 5종 (ACCOUNTANT/MASTER 만)
       {
