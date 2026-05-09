@@ -1,6 +1,6 @@
 {
   "$schema": "./capture.config.schema.json",
-  "comment": "SamhanLogis 운영자 매뉴얼용 화면 캡처 정의. screens 배열에 화면을 추가하면 capture-desktop.js / capture-mobile.js 가 자동으로 캡처 + annotate.js 가 박스/화살표 합성.",
+  "comment": "SamhanLogis 운영자 매뉴얼용 화면 캡처 정의. screens 배열에 화면을 추가하면 capture-desktop.js / capture-mobile.js 가 자동으로 캡처 + annotate.js 가 박스/화살표 합성. Stage 3 = 인증 후 가능 화면 12 + mobile 4 종 일괄 추가.",
   "defaults": {
     "desktop": {
       "viewport": { "width": 1280, "height": 900 },
@@ -52,6 +52,194 @@
         { "type": "box", "selector": "[data-testid='sidebar-sales']", "label": "1. 판매조회 메뉴" },
         { "type": "box", "selector": "[data-testid='sidebar-warehouses']", "label": "2. 창고 메뉴" },
         { "type": "box", "selector": "[data-testid='sidebar-logout']", "label": "3. 로그아웃 버튼" }
+      ]
+    },
+    {
+      "id": "01-warehouses",
+      "category": "02-창고",
+      "name": "창고 목록 조회",
+      "client": "desktop",
+      "url": "/#/warehouses",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='warehouse-list-table']", "label": "1. 창고 목록 (코드/명/위치)" },
+        { "type": "box", "selector": "[data-testid='warehouse-add-button']", "label": "2. 창고 추가" }
+      ]
+    },
+    {
+      "id": "02-sales-list",
+      "category": "01-영업",
+      "name": "판매조회 (출고전표 목록)",
+      "client": "desktop",
+      "url": "/#/sales",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='slip-list-table']", "label": "1. 출고전표 목록" },
+        { "type": "box", "selector": "[data-testid='slip-list-add-button']", "label": "2. 신규 작성" },
+        { "type": "box", "selector": "[data-testid='slip-list-status-filter']", "label": "3. 상태 필터" }
+      ]
+    },
+    {
+      "id": "03-purchases-list",
+      "category": "02-창고",
+      "name": "구매조회 (입고전표 목록)",
+      "client": "desktop",
+      "url": "/#/purchases",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='slip-list-table']", "label": "1. 입고전표 목록" },
+        { "type": "box", "selector": "[data-testid='slip-list-add-button']", "label": "2. 신규 작성" }
+      ]
+    },
+    {
+      "id": "04-transfers-list",
+      "category": "02-창고",
+      "name": "재고이동 목록",
+      "client": "desktop",
+      "url": "/#/transfers",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='transfer-list-table']", "label": "1. 재고이동 목록" },
+        { "type": "box", "selector": "[data-testid='transfer-list-add-button']", "label": "2. 신규 이동" }
+      ]
+    },
+    {
+      "id": "05-link-dispatch",
+      "category": "01-영업",
+      "name": "링크발송 (배송 묶음 e-sign)",
+      "client": "desktop",
+      "url": "/#/sales/link-dispatch",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='link-dispatch-table']", "label": "1. 배송 묶음 목록" },
+        { "type": "box", "selector": "[data-testid='link-dispatch-send-button']", "label": "2. SMS 일괄 발송" }
+      ]
+    },
+    {
+      "id": "06-sales-estimates",
+      "category": "01-영업",
+      "name": "견적서 (legacy webview 진입)",
+      "client": "desktop",
+      "url": "/#/sales/estimates",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='estimate-list-new-button']", "label": "1. 견적서 신규 작성" },
+        { "type": "box", "selector": "[data-testid='estimate-legacy-webview']", "label": "2. legacy webview" }
+      ]
+    },
+    {
+      "id": "07-sales-partner-orders",
+      "category": "01-영업",
+      "name": "주문서 조회 (거래처)",
+      "client": "desktop",
+      "url": "/#/sales/partner-orders",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='partner-order-list-table']", "label": "1. 주문서 목록" }
+      ]
+    },
+    {
+      "id": "08-sales-order-approvals",
+      "category": "01-영업",
+      "name": "주문서 승인",
+      "client": "desktop",
+      "url": "/#/sales/order-approvals",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='order-approvals-table']", "label": "1. 승인 대기 주문서" },
+        { "type": "box", "selector": "[data-testid='order-approve-button']", "label": "2. 승인 버튼" }
+      ]
+    },
+    {
+      "id": "09-sales-partner-dc-config",
+      "category": "01-영업",
+      "name": "거래처 DC 설정",
+      "client": "desktop",
+      "url": "/#/sales/partner-dc-config",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='partner-dc-config-table']", "label": "1. 거래처별 DC 설정" }
+      ]
+    },
+    {
+      "id": "10-accounting-accounts",
+      "category": "03-회계",
+      "name": "계정과목 트리",
+      "client": "desktop",
+      "url": "/#/accounting/accounts",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='account-tree-root']", "label": "1. 계정과목 트리 (100/200/300/400/500/800/900)" }
+      ]
+    },
+    {
+      "id": "11-accounting-journals",
+      "category": "03-회계",
+      "name": "분개장 목록",
+      "client": "desktop",
+      "url": "/#/accounting/journals",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='journal-list-table']", "label": "1. 분개장 목록" },
+        { "type": "box", "selector": "[data-testid='journal-list-add-button']", "label": "2. 분개 신규 작성" }
+      ]
+    },
+    {
+      "id": "12-accounting-balances",
+      "category": "03-회계",
+      "name": "시산표 (월별)",
+      "client": "desktop",
+      "url": "/#/accounting/balances",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='trial-balance-month-select']", "label": "1. 월 선택" },
+        { "type": "box", "selector": "[data-testid='trial-balance-table']", "label": "2. 시산표 (차변/대변 합계)" }
+      ]
+    },
+    {
+      "id": "20-mobile-driver-dashboard",
+      "category": "04-모바일",
+      "name": "Driver 대시보드 (mobile-staff)",
+      "client": "mobile",
+      "url": "/",
+      "auth": null,
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='driver-dashboard-list']", "label": "1. 배차 목록" },
+        { "type": "box", "selector": "[data-testid='driver-dashboard-refresh']", "label": "2. 새로고침" }
+      ]
+    },
+    {
+      "id": "21-mobile-driver-signature",
+      "category": "04-모바일",
+      "name": "Driver 서명 화면",
+      "client": "mobile",
+      "url": "/signature",
+      "auth": null,
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='driver-signature-canvas']", "label": "1. 서명 캔버스" },
+        { "type": "box", "selector": "[data-testid='driver-signature-submit']", "label": "2. 제출" }
+      ]
+    },
+    {
+      "id": "22-mobile-driver-location",
+      "category": "04-모바일",
+      "name": "Driver 위치 추적",
+      "client": "mobile",
+      "url": "/location",
+      "auth": null,
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='driver-location-map']", "label": "1. 실시간 위치 지도" }
+      ]
+    },
+    {
+      "id": "23-mobile-estimate-webview",
+      "category": "04-모바일",
+      "name": "영업원 견적 WebView",
+      "client": "mobile",
+      "url": "/estimate",
+      "auth": null,
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='estimate-webview-root']", "label": "1. legacy 견적 WebView" }
       ]
     }
   ]
