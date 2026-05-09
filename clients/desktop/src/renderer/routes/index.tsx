@@ -47,6 +47,11 @@ import { TransferDetailPage } from './TransferDetailPage'
 import { LinkDispatchListPage } from './LinkDispatchListPage'
 import { InvoiceView } from '../print/InvoiceView'
 import { DispatchView } from '../print/DispatchView'
+// P0-4 인쇄 양식 5건 1차 mock — Designer 단계 신규 (출고/입고/견적/세금계산서)
+import { OutboundView } from '../print/OutboundView'
+import { InboundView } from '../print/InboundView'
+import { QuoteView } from '../print/QuoteView'
+import { TaxInvoiceView } from '../print/TaxInvoiceView'
 // signature-slice-C 모바일 mock 라우트 (Phase 5 nginx 분리 전 시뮬레이션 — AuthGuard 외부)
 import { MobileSignaturePage } from './MobileSignaturePage'
 import { MobileRecipientPage } from './MobileRecipientPage'
@@ -101,11 +106,18 @@ const router = createHashRouter([
       { path: '/sales/:id', element: <SlipDetailPage mode="OUTBOUND" /> },
       { path: '/sales/:id/print/invoice', element: <InvoiceView /> },
       { path: '/sales/:id/print/dispatch', element: <DispatchView /> },
+      // P0-4 신규 — 출고전표 (88mm/A4 분기) + 세금계산서 (e-Tax 표준)
+      { path: '/sales/:id/print/outbound', element: <OutboundView /> },
+      { path: '/sales/:id/print/tax-invoice', element: <TaxInvoiceView /> },
+      // P0-4 신규 — 견적서 인쇄 (estimateNumber path param)
+      { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
 
       // 구매조회 (입고전표)
       { path: '/purchases', element: <SlipListPage mode="INBOUND" /> },
       { path: '/purchases/new', element: <SlipFormPage mode="INBOUND" /> },
       { path: '/purchases/:id', element: <SlipDetailPage mode="INBOUND" /> },
+      // P0-4 신규 — 입고전표 (A4/88mm 분기)
+      { path: '/purchases/:id/print/inbound', element: <InboundView /> },
 
       // 재고이동
       { path: '/transfers', element: <TransferListPage /> },
