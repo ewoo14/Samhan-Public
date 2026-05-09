@@ -95,6 +95,12 @@ import { SheetSyncPage as AdminSheetSyncPage } from './admin/SheetSyncPage'
 // [PR-D Phase B FE-B] arologis 가배차 지역 분류 admin UI — MASTER/MANAGER (DISPATCH backlog)
 import { RegionsPage as AdminRegionsPage } from './admin/RegionsPage'
 import { ARO_REGIONS_ADMIN_ROLES } from '../api/regionApi'
+// [PR-D Phase B FE-E] 발송금지 거래처 admin (MASTER 전용 — partner-service /api/v1/partners/admin/blocks)
+import { BlockedPartnersPage as AdminBlockedPartnersPage } from './admin/BlockedPartnersPage'
+// [PR-D Phase B FE-D] 단톡방 매핑 admin — MASTER/MANAGER (BE @PreAuthorize 일치)
+// AdminLayout 은 MASTER 전용이므로 별도 RoleGuard 로 MASTER/MANAGER 진입 허용.
+import { ChatRoomsPage as AdminChatRoomsPage } from './admin/ChatRoomsPage'
+import { CHAT_ROOM_ADMIN_ROLES } from '../api/chatRoomApi'
 // [Phase 10 P2-6 / slice 9] 재고 실사 3 페이지 (WAREHOUSE/MASTER)
 import { InventoryAuditListPage } from './InventoryAuditListPage'
 import { InventoryAuditFormPage } from './InventoryAuditFormPage'
@@ -290,6 +296,8 @@ const router = createHashRouter([
           { path: 'departments', element: <AdminDepartmentsPage /> },
           // [PR-D Phase B FE-A] 구글 시트 동기화
           { path: 'sheet-sync', element: <AdminSheetSyncPage /> },
+          // [PR-D Phase B FE-E] 발송금지 거래처 (BE 가 MASTER 강제 — AdminLayout MASTER 가드와 일치)
+          { path: 'blocked-partners', element: <AdminBlockedPartnersPage /> },
         ],
       },
 
@@ -300,6 +308,17 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={ARO_REGIONS_ADMIN_ROLES}>
             <AdminRegionsPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
+      // AdminLayout (MASTER 전용) 외부에 배치하여 MANAGER 도 접근 가능 — 자체 RoleGuard 적용.
+      {
+        path: '/admin/chat-rooms',
+        element: (
+          <RoleGuard allow={CHAT_ROOM_ADMIN_ROLES}>
+            <AdminChatRoomsPage />
           </RoleGuard>
         ),
       },

@@ -11,6 +11,9 @@
  * - 창고    (`/admin/warehouses`)
  * - 부서    (`/admin/departments`)
  * - 시트 동기화 (`/admin/sheet-sync`) — PR-D Phase B FE-A
+ * - 지역 분류 (`/admin/regions`) — PR-D Phase B FE-B (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
+ * - 발송금지 거래처 (`/admin/blocked-partners`) — PR-D Phase B FE-E (MASTER, 민감)
+ * - 단톡방 매핑 (`/admin/chat-rooms`) — PR-D Phase B FE-D (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
  *
  * memory feedback_uuid_no_user_visibility — admin 화면도 비즈니스 식별자만 노출.
  * memory feedback_role_naming_full — entry 라벨/가드 표기 풀네임 사용.
@@ -83,6 +86,25 @@ export function AdminLayout() {
           */}
           <AdminNav to="/admin/regions" testId="admin-nav-regions">
             지역 분류
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-E] 발송금지 거래처 — partner-service /api/v1/partners/admin/blocks.
+            BE 가 MASTER 강제 (delete/import) + read 도 MANAGER 까지지만 AdminLayout 자체가
+            MASTER 전용이므로 본 entry 는 MASTER 만 노출. UUID 비공개 (사용자 노출 = partnerCode + 상호).
+          */}
+          <AdminNav
+            to="/admin/blocked-partners"
+            testId="admin-nav-blocked-partners"
+          >
+            발송금지 거래처
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-D] 단톡방 매핑 — 라우트 자체는 MASTER/MANAGER 허용.
+            AdminLayout 은 MASTER 전용이므로 본 entry 는 MASTER 시점만 노출되며,
+            MANAGER 는 직접 URL (/admin/chat-rooms) 또는 AppLayout 좌측 메뉴로 접근.
+          */}
+          <AdminNav to="/admin/chat-rooms" testId="admin-nav-chat-rooms">
+            단톡방 매핑
           </AdminNav>
         </aside>
         <section className="admin-main">
