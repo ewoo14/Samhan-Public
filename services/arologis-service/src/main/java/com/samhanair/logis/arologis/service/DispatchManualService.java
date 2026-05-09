@@ -47,6 +47,8 @@ public class DispatchManualService {
     private final VehicleStopRepository stopRepository;
     private final DriverRepository driverRepository;
     private final DriverMatcher driverMatcher;
+    /** PR-D 2-1 — 수동 입력 정차도 RegionClassifier 매칭하여 classified_region_group 채움. */
+    private final RegionClassifier regionClassifier;
 
     /**
      * 수동 입력 → Dispatch + Vehicle + VehicleStop 일괄 저장.
@@ -79,6 +81,7 @@ public class DispatchManualService {
             Vehicle vehicle = vehicleRepository.save(
                     Vehicle.of(dispatch.getId(), mv.sequence(), mv.tonnage(), mv.label()));
             for (ManualDispatchRequest.ManualStop ms : mv.stops()) {
+                String regionGroup = safeClassify(ms.address());
                 stopRepository.save(VehicleStop.of(
                         vehicle.getId(),
                         ms.sequence(),
@@ -87,7 +90,8 @@ public class DispatchManualService {
                         ms.partnerName(),
                         ms.partnerCode(),
                         ms.notes(),
-                        StopStatus.PENDING));
+                        StopStatus.PENDING,
+                        regionGroup));
             }
 
             // driver 배정 (수동 또는 자동).
@@ -188,6 +192,19 @@ public class DispatchManualService {
             sb.append(" ").append(ms.notes());
         }
         return sb.toString();
+    }
+
+    /** RegionClassifier null-safe wrapper — 미주입 또는 매칭 실패 시 null. */
+    private String safeClassify(String address) {
+        if (regionClassifier == null || address == null || address.isBlank()) {
+            return null;
+        }
+        try {
+            return regionClassifier.classify(address);
+        } catch (Exception ex) {
+            log.warn("RegionClassifier 호출 실패 (fail-soft) — address={}, msg={}", address, ex.getMessage());
+            return null;
+        }
     }
 
     /** 자동 매칭 시도 — 매칭 실패 시 PENDING 그대로 (fail-soft). */

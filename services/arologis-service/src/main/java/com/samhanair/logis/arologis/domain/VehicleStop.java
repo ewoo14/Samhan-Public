@@ -59,6 +59,13 @@ public class VehicleStop extends BaseEntity {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    /**
+     * PR-D 2-1 — 가배차 지역 분류 그룹명 (RegionClassifier 매칭 결과). 미매칭/미해석 시 null.
+     * 사용자 노출 식별자 = group_name (예: "서울특별시" / "경기동부").
+     */
+    @Column(name = "classified_region_group", length = 50)
+    private String classifiedRegionGroup;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private StopStatus status;
@@ -71,7 +78,7 @@ public class VehicleStop extends BaseEntity {
 
     private VehicleStop(UUID vehicleId, Integer sequence, String rawText,
                         String parsedAddress, String parsedPartnerName, Long parsedPartnerCode,
-                        String notes, StopStatus status) {
+                        String notes, StopStatus status, String classifiedRegionGroup) {
         if (vehicleId == null) {
             throw new IllegalArgumentException("vehicleId 필수");
         }
@@ -92,10 +99,11 @@ public class VehicleStop extends BaseEntity {
         this.parsedPartnerCode = parsedPartnerCode;
         this.notes = notes;
         this.status = status;
+        this.classifiedRegionGroup = classifiedRegionGroup;
     }
 
     /**
-     * 신규 VehicleStop 생성.
+     * 신규 VehicleStop 생성 (8-인자 호환 — regionGroup 미설정).
      *
      * @param vehicleId 소속 vehicle UUID
      * @param sequence 차량 내 정차 순서 (1, 2, 3, ...)
@@ -110,7 +118,24 @@ public class VehicleStop extends BaseEntity {
                                  String parsedAddress, String parsedPartnerName, Long parsedPartnerCode,
                                  String notes, StopStatus status) {
         return new VehicleStop(vehicleId, sequence, rawText, parsedAddress, parsedPartnerName,
-                parsedPartnerCode, notes, status);
+                parsedPartnerCode, notes, status, null);
+    }
+
+    /**
+     * 신규 VehicleStop 생성 (PR-D 2-1 — classified_region_group 포함).
+     *
+     * @param classifiedRegionGroup RegionClassifier 매칭 그룹명 (옵션, 미매칭 시 null)
+     */
+    public static VehicleStop of(UUID vehicleId, Integer sequence, String rawText,
+                                 String parsedAddress, String parsedPartnerName, Long parsedPartnerCode,
+                                 String notes, StopStatus status, String classifiedRegionGroup) {
+        return new VehicleStop(vehicleId, sequence, rawText, parsedAddress, parsedPartnerName,
+                parsedPartnerCode, notes, status, classifiedRegionGroup);
+    }
+
+    /** RegionClassifier 후속 갱신 (parser 미주입 환경에서 batch 분류 시). */
+    public void updateClassifiedRegionGroup(String classifiedRegionGroup) {
+        this.classifiedRegionGroup = classifiedRegionGroup;
     }
 
     /** 도착 (PENDING → ARRIVED). */

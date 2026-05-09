@@ -2,12 +2,14 @@ package com.samhanair.logis.arologis.parser;
 
 import com.samhanair.logis.arologis.domain.DispatchType;
 import com.samhanair.logis.arologis.domain.VehicleTonnage;
+import com.samhanair.logis.arologis.service.RegionClassifier;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,6 +32,23 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class KakaoDispatchParser {
+
+    /**
+     * PR-D 2-1 — RegionClassifier 통합 (옵션). 미주입 환경 (단위 테스트) regionGroup=null.
+     * Spring 환경에서는 자동 주입.
+     */
+    private final RegionClassifier regionClassifier;
+
+    /** Spring DI 생성자 — RegionClassifier 자동 주입. */
+    @Autowired
+    public KakaoDispatchParser(RegionClassifier regionClassifier) {
+        this.regionClassifier = regionClassifier;
+    }
+
+    /** 단위 테스트용 no-arg 생성자 — regionGroup=null. */
+    public KakaoDispatchParser() {
+        this.regionClassifier = null;
+    }
 
     /** "8일착 야상입니다" / "10일착 주간입니다" 헤더. */
     private static final Pattern HEADER = Pattern.compile("^(\\d+)일착\\s*(.+?)입니다\\s*$");
@@ -199,7 +218,23 @@ public class KakaoDispatchParser {
         if (notes != null && notes.isBlank()) {
             notes = null;
         }
-        return new ParsedDispatch.ParsedStop(seq, rawLine, address, partnerName, partnerCode, notes, false);
+        // PR-D 2-1 — RegionClassifier 통합 (주입 시) parsedAddress → regionGroup 매칭
+        String regionGroup = classifyRegion(address);
+        return new ParsedDispatch.ParsedStop(seq, rawLine, address, partnerName, partnerCode,
+                notes, false, regionGroup);
+    }
+
+    /** RegionClassifier 호출 wrapper — null-safe. 단위 테스트 (classifier=null) 환경 fail-safe. */
+    private String classifyRegion(String address) {
+        if (regionClassifier == null || address == null || address.isBlank()) {
+            return null;
+        }
+        try {
+            return regionClassifier.classify(address);
+        } catch (Exception ex) {
+            log.warn("RegionClassifier 호출 실패 (fail-soft) — address={}, msg={}", address, ex.getMessage());
+            return null;
+        }
     }
 
     private Long parsePartnerCode(String raw) {
