@@ -25,7 +25,18 @@ public class NoopPartnerLookupClient {
     @ConditionalOnMissingBean(PartnerLookupClient.class)
     public PartnerLookupClient noopPartnerLookupClient() {
         log.warn("PartnerLookupClient 실 구현체 미등록 — Noop placeholder 활성. "
-                + "BE-E 의 GET /api/v1/partners/by-name endpoint 머지 후 RestClient impl 등록 필요.");
-        return businessName -> Optional.empty();
+                + "BE-E 의 GET /api/v1/partners/by-name + GET /api/v1/partners/{partnerCode} "
+                + "endpoint 머지 후 RestClient impl 등록 필요.");
+        return new PartnerLookupClient() {
+            @Override
+            public Optional<String> findPartnerCodeByName(String businessName) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<String> verifyPartnerCode(String partnerCode) {
+                return Optional.empty();
+            }
+        };
     }
 }

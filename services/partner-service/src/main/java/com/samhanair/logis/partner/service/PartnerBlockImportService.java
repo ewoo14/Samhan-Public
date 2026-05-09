@@ -27,17 +27,25 @@ import org.springframework.stereotype.Service;
  * Phase 10 PR-D Part B — Notion 발송금지 CSV (이카운트 사업자명 + 생성 일시) → BlockedPartner row import.
  *
  * <p>5 거래처 (Samhan Public legacy) — Notion export = UTF-8 BOM + 한국어 datetime ("2026년 4월 26일
- * 오전 7:36") 포맷. {@link BOMInputStream} 으로 BOM 제거 후 OpenCSV 로 파싱, 각 row 의 사업자명을
- * {@link PartnerService#findByNameForLookup(String)} 으로 partnerCode 역추적.
+ * 오전 7:36") 포맷. {@link BOMInputStream} 으로 BOM 제거 후 OpenCSV 로 파싱.
+ *
+ * <p>매핑 우선순위 (TM PR-D Part 3 — 사용자 명시 "거래처명이 아니라 거래처코드로 매핑"):
+ * <ol>
+ *   <li>{@code 거래처코드} 컬럼이 있으면 {@link PartnerService#findByCodeForLookup(String)} 로 즉시
+ *       검증 (LIKE 모호성 회피, 정확 매칭).</li>
+ *   <li>코드가 비거나 검증 실패 시 {@code 이카운트 사업자명} →
+ *       {@link PartnerService#findByNameForLookup(String)} fallback.</li>
+ *   <li>둘 다 실패 시 reject (LOOKUP_MISS).</li>
+ * </ol>
  *
  * <p>흐름 (row 단위):
  * <ol>
- *   <li>"이카운트 사업자명" + "생성 일시" 추출</li>
- *   <li>partnerService.findByNameForLookup → 0건/2건+ 시 reject (LOOKUP_MISS / AMBIGUOUS)</li>
+ *   <li>"이카운트 사업자명" + "생성 일시" + (옵션) "거래처코드" 추출</li>
+ *   <li>코드 우선 → 사업자명 fallback 으로 Partner resolve</li>
  *   <li>한국어 datetime 파싱 실패 시 reject (PARSE_ERROR), 성공 시 LocalDateTime</li>
  *   <li>이미 차단된 partnerCode 는 alreadyBlocked++ 로 분류 (skip — idempotent)</li>
  *   <li>신규 row → {@link PartnerBlockService#block(String, String, LocalDateTime, String, String)}
- *       호출, source=NOTION_IMPORT, snapshot=CSV 입력 사업자명</li>
+ *       호출, source=NOTION_IMPORT, snapshot=CSV 입력 사업자명 (없으면 partnerCode placeholder)</li>
  * </ol>
  *
  * <p>row-level transaction 분리 — 한 row 의 CONFLICT 가 다른 row 의 import 를 차단하지 않도록 본
@@ -55,6 +63,10 @@ public class PartnerBlockImportService {
 
     private static final String COL_BUSINESS_NAME = "이카운트 사업자명";
     private static final String COL_CREATED_AT = "생성 일시";
+    /** TM PR-D Part 3 — 거래처코드 우선 매핑 컬럼 (한국어 헤더). 옵션 (미존재 시 사업자명 fallback). */
+    private static final String COL_PARTNER_CODE = "거래처코드";
+    /** TM PR-D Part 3 — 거래처코드 우선 매핑 컬럼 (영문 헤더 대안). */
+    private static final String COL_PARTNER_CODE_EN = "partner_code";
 
     private final PartnerService partnerService;
     private final PartnerBlockService blockService;
@@ -88,6 +100,11 @@ public class PartnerBlockImportService {
             }
             int colName = indexOf(header, COL_BUSINESS_NAME);
             int colCreated = indexOf(header, COL_CREATED_AT);
+            // TM PR-D Part 3 — 거래처코드 컬럼은 옵션 (없으면 -1 → 사업자명 fallback only).
+            int colCode = indexOf(header, COL_PARTNER_CODE);
+            if (colCode < 0) {
+                colCode = indexOf(header, COL_PARTNER_CODE_EN);
+            }
             if (colName < 0 || colCreated < 0) {
                 throw new BusinessException(ErrorCode.INVALID_INPUT,
                         "CSV 헤더 형식 불일치 — '이카운트 사업자명' / '생성 일시' 필요");
@@ -100,10 +117,14 @@ public class PartnerBlockImportService {
                 total++;
                 String businessName = safeGet(row, colName);
                 String createdAtRaw = safeGet(row, colCreated);
+                String inputPartnerCode = colCode >= 0 ? safeGet(row, colCode) : null;
+                if (inputPartnerCode != null && inputPartnerCode.isBlank()) {
+                    inputPartnerCode = null;
+                }
 
-                if (businessName == null || businessName.isBlank()) {
+                if ((businessName == null || businessName.isBlank()) && inputPartnerCode == null) {
                     rejected.add(new BlockedPartnerImportResult.RejectedRow(
-                            rowNum, businessName, "PARSE_ERROR: 사업자명 누락"));
+                            rowNum, businessName, "PARSE_ERROR: 사업자명/거래처코드 모두 누락"));
                     continue;
                 }
 
@@ -116,10 +137,22 @@ public class PartnerBlockImportService {
                     continue;
                 }
 
-                Optional<Partner> lookup = partnerService.findByNameForLookup(businessName);
+                // TM PR-D Part 3 — 거래처코드 우선, 미공급/검증실패 시 사업자명 fallback.
+                Optional<Partner> lookup = Optional.empty();
+                String lookupVia = null;
+                if (inputPartnerCode != null) {
+                    lookup = partnerService.findByCodeForLookup(inputPartnerCode);
+                    lookupVia = "거래처코드";
+                }
+                if (lookup.isEmpty() && businessName != null && !businessName.isBlank()) {
+                    lookup = partnerService.findByNameForLookup(businessName);
+                    lookupVia = inputPartnerCode != null
+                            ? "거래처코드 미매칭 → 사업자명 fallback" : "사업자명";
+                }
                 if (lookup.isEmpty()) {
                     rejected.add(new BlockedPartnerImportResult.RejectedRow(
-                            rowNum, businessName, "LOOKUP_MISS: partnerCode 매핑 실패"));
+                            rowNum, businessName,
+                            "LOOKUP_MISS: partnerCode 매핑 실패 (코드=" + inputPartnerCode + ")"));
                     continue;
                 }
 
@@ -129,10 +162,15 @@ public class PartnerBlockImportService {
                     continue;
                 }
 
+                // snapshot — 사업자명 우선, 미공급 시 partnerCode placeholder.
+                String snapshot = (businessName != null && !businessName.isBlank())
+                        ? businessName : ("[" + partner.getPartnerCode() + "]");
                 try {
                     blockService.block(partner.getPartnerCode(), null, blockedAt,
-                            "NOTION_IMPORT", businessName);
+                            "NOTION_IMPORT", snapshot);
                     imported++;
+                    log.debug("BLOCK row={} partner_code={} via={}",
+                            rowNum, partner.getPartnerCode(), lookupVia);
                 } catch (BusinessException ex) {
                     // 동시 import / race condition 등 — CONFLICT 시 alreadyBlocked 분류
                     if (ex.getErrorCode() == ErrorCode.CONFLICT) {

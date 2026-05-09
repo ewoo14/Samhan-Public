@@ -162,6 +162,24 @@ public class PartnerService {
     }
 
     /**
+     * TM PR-D Part 3 — partnerCode 직접 검증 (CSV import 거래처코드 컬럼 우선 매핑용).
+     *
+     * <p>{@link #findByCode(String)} 와 동일하되 throw 대신 {@link Optional} 반환. CSV import 에서
+     * 사업자명 lookup 보다 우선 호출하여 모호한 LIKE 매칭을 회피한다 (사용자 명시: "거래처명이 아니라
+     * 거래처코드로 매핑").
+     *
+     * @param partnerCode 거래처코드 (예: "P-2026-0001")
+     * @return 활성 거래처 존재 시 Partner, 미존재 시 empty
+     */
+    @Transactional(readOnly = true)
+    public Optional<Partner> findByCodeForLookup(String partnerCode) {
+        if (partnerCode == null || partnerCode.isBlank()) {
+            return Optional.empty();
+        }
+        return partnerRepository.findByPartnerCode(partnerCode.trim());
+    }
+
+    /**
      * Phase 10 PR-D Part A — null-safe lookup (CSV import / batch 용).
      *
      * <p>{@link #findByName(String)} 와 동일 정확/LIKE 흐름이지만 throw 대신 {@link Optional} 반환.

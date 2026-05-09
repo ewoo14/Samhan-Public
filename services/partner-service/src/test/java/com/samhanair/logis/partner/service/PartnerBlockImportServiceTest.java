@@ -174,4 +174,76 @@ class PartnerBlockImportServiceTest {
 
         assertThat(parsed).isNotNull();
     }
+
+    @Test
+    void importCsv_partnerCodeColumn_takesPrecedenceOverName() {
+        // TM PR-D Part 3 — 거래처코드 우선 매핑 검증.
+        String csv = "거래처코드,이카운트 사업자명,생성 일시\n"
+                + "P-2026-0099,(주)에어뱅크,2026년 4월 26일 오전 7:36\n";
+        when(partnerService.findByCodeForLookup("P-2026-0099"))
+                .thenReturn(Optional.of(stub("P-2026-0099", "(주)에어뱅크")));
+        when(blockService.isBlocked("P-2026-0099")).thenReturn(false);
+
+        BlockedPartnerImportResult result = service.importCsv(csvStream(csv, true), "admin-1");
+
+        assertThat(result.imported()).isEqualTo(1);
+        assertThat(result.rejected()).isEmpty();
+        // 사업자명 lookup 은 호출되면 안 됨 (코드 우선 정확 매칭 성공 시).
+        verify(partnerService, org.mockito.Mockito.never()).findByNameForLookup(anyString());
+        verify(partnerService).findByCodeForLookup("P-2026-0099");
+        verify(blockService).block(eq("P-2026-0099"), any(), any(LocalDateTime.class),
+                eq("NOTION_IMPORT"), eq("(주)에어뱅크"));
+    }
+
+    @Test
+    void importCsv_partnerCodeMiss_fallbacksToBusinessName() {
+        // TM PR-D Part 3 — 코드 검증 실패 시 사업자명 fallback 검증.
+        String csv = "거래처코드,이카운트 사업자명,생성 일시\n"
+                + "P-INVALID,(주)에어뱅크,2026년 4월 26일 오전 7:36\n";
+        when(partnerService.findByCodeForLookup("P-INVALID")).thenReturn(Optional.empty());
+        when(partnerService.findByNameForLookup("(주)에어뱅크"))
+                .thenReturn(Optional.of(stub("P-2026-0005", "(주)에어뱅크")));
+        when(blockService.isBlocked("P-2026-0005")).thenReturn(false);
+
+        BlockedPartnerImportResult result = service.importCsv(csvStream(csv, true), "admin-1");
+
+        assertThat(result.imported()).isEqualTo(1);
+        assertThat(result.rejected()).isEmpty();
+        verify(partnerService).findByCodeForLookup("P-INVALID");
+        verify(partnerService).findByNameForLookup("(주)에어뱅크");
+        verify(blockService).block(eq("P-2026-0005"), any(), any(LocalDateTime.class),
+                eq("NOTION_IMPORT"), eq("(주)에어뱅크"));
+    }
+
+    @Test
+    void importCsv_partnerCodeOnly_snapshotPlaceholder() {
+        // TM PR-D Part 3 — 코드만 공급 + 사업자명 미공급 시 snapshot=[partnerCode] placeholder.
+        String csv = "거래처코드,이카운트 사업자명,생성 일시\n"
+                + "P-2026-0010,,2026년 4월 26일 오전 7:36\n";
+        when(partnerService.findByCodeForLookup("P-2026-0010"))
+                .thenReturn(Optional.of(stub("P-2026-0010", "코드전용거래처")));
+        when(blockService.isBlocked("P-2026-0010")).thenReturn(false);
+
+        BlockedPartnerImportResult result = service.importCsv(csvStream(csv, true), "admin-1");
+
+        assertThat(result.imported()).isEqualTo(1);
+        verify(blockService).block(eq("P-2026-0010"), any(), any(LocalDateTime.class),
+                eq("NOTION_IMPORT"), eq("[P-2026-0010]"));
+    }
+
+    @Test
+    void importCsv_partnerCodeAndNameBothMiss_rejects() {
+        // TM PR-D Part 3 — 코드/사업자명 둘 다 매칭 실패 시 reject.
+        String csv = "거래처코드,이카운트 사업자명,생성 일시\n"
+                + "P-MISS,미등록상호,2026년 4월 26일 오전 7:36\n";
+        when(partnerService.findByCodeForLookup("P-MISS")).thenReturn(Optional.empty());
+        when(partnerService.findByNameForLookup("미등록상호")).thenReturn(Optional.empty());
+
+        BlockedPartnerImportResult result = service.importCsv(csvStream(csv, true), "admin-1");
+
+        assertThat(result.imported()).isZero();
+        assertThat(result.rejected()).hasSize(1);
+        assertThat(result.rejected().get(0).reason()).contains("LOOKUP_MISS");
+        assertThat(result.rejected().get(0).reason()).contains("P-MISS");
+    }
 }

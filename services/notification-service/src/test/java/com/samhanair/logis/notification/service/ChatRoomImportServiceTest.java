@@ -215,4 +215,76 @@ class ChatRoomImportServiceTest {
                 .isEqualTo(LocalDateTime.of(2026, Month.APRIL, 26, 7, 34));
     }
 
+    @Test
+    @DisplayName("TM Part 3 — 거래처코드 컬럼 우선 매핑 (사업자명 lookup 회피)")
+    void importCsv_partnerCodeColumn_takesPrecedence() throws IOException {
+        when(lookupClient.verifyPartnerCode("P-2026-0001")).thenReturn(Optional.of("P-2026-0001"));
+
+        String csv = "﻿거래처코드,이카운트 사업자명,카톡방,생성 일시\n"
+                + "P-2026-0001,거래처A,A 발주방,2026년 4월 26일 오전 7:34\n";
+        InputStream stream = new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8));
+
+        ChatRoomImportResult result = service.importCsv(stream);
+
+        assertThat(result.inserted()).isEqualTo(1);
+        assertThat(result.rejected()).isEmpty();
+        // 사업자명 lookup 은 호출되지 않아야 함 (코드 우선 정확 매칭)
+        verify(lookupClient, org.mockito.Mockito.never()).findPartnerCodeByName(anyString());
+        verify(lookupClient).verifyPartnerCode("P-2026-0001");
+    }
+
+    @Test
+    @DisplayName("TM Part 3 — 거래처코드 미매칭 시 사업자명 fallback")
+    void importCsv_partnerCodeMiss_fallbackToBusinessName() throws IOException {
+        when(lookupClient.verifyPartnerCode("P-INVALID")).thenReturn(Optional.empty());
+        when(lookupClient.findPartnerCodeByName("거래처B")).thenReturn(Optional.of("P-B-RESOLVED"));
+
+        String csv = "﻿거래처코드,이카운트 사업자명,카톡방,생성 일시\n"
+                + "P-INVALID,거래처B,B 발주방,2026년 4월 26일 오전 7:34\n";
+        InputStream stream = new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8));
+
+        ChatRoomImportResult result = service.importCsv(stream);
+
+        assertThat(result.inserted()).isEqualTo(1);
+        assertThat(result.rejected()).isEmpty();
+        verify(lookupClient).verifyPartnerCode("P-INVALID");
+        verify(lookupClient).findPartnerCodeByName("거래처B");
+
+        ArgumentCaptor<PartnerChatRoomMapping> captor = ArgumentCaptor.forClass(PartnerChatRoomMapping.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getPartnerCode()).isEqualTo("P-B-RESOLVED");
+    }
+
+    @Test
+    @DisplayName("TM Part 3 — 거래처코드만 공급 + 사업자명 미공급 → snapshot placeholder")
+    void importCsv_partnerCodeOnly_snapshotPlaceholder() throws IOException {
+        when(lookupClient.verifyPartnerCode("P-CODE-ONLY")).thenReturn(Optional.of("P-CODE-ONLY"));
+
+        String csv = "﻿거래처코드,이카운트 사업자명,카톡방,생성 일시\n"
+                + "P-CODE-ONLY,,코드전용 발주방,2026년 4월 26일 오전 7:34\n";
+        InputStream stream = new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8));
+
+        ChatRoomImportResult result = service.importCsv(stream);
+
+        assertThat(result.inserted()).isEqualTo(1);
+        ArgumentCaptor<PartnerChatRoomMapping> captor = ArgumentCaptor.forClass(PartnerChatRoomMapping.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getPartnerBusinessNameSnapshot()).isEqualTo("[P-CODE-ONLY]");
+    }
+
+    @Test
+    @DisplayName("TM Part 3 — partner_code 영문 헤더 지원")
+    void importCsv_englishPartnerCodeHeader_works() throws IOException {
+        when(lookupClient.verifyPartnerCode("P-EN")).thenReturn(Optional.of("P-EN"));
+
+        String csv = "﻿partner_code,이카운트 사업자명,카톡방,생성 일시\n"
+                + "P-EN,거래처EN,EN 발주방,2026년 4월 26일 오전 7:34\n";
+        InputStream stream = new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8));
+
+        ChatRoomImportResult result = service.importCsv(stream);
+
+        assertThat(result.inserted()).isEqualTo(1);
+        verify(lookupClient).verifyPartnerCode("P-EN");
+    }
+
 }

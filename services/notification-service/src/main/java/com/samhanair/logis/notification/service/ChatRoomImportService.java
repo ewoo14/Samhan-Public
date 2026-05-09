@@ -28,18 +28,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Notion CSV import 서비스 (PR-D Part 2-3).
+ * Notion CSV import 서비스 (PR-D Part 2-3, TM Part 3 매핑 정정).
  *
  * <p>Notion DB "단톡방리스트" export CSV (111 row) 를 partner_chat_room_mappings 테이블로 적재.
- * 컬럼 헤더 = {@code "이카운트 사업자명"}, {@code "카톡방"}, {@code "생성 일시"} (순서 무관 — header-aware).
+ * 컬럼 헤더는 순서 무관 (header-aware) 이며, 다음 두 형식을 동시 지원:
+ * <ul>
+ *   <li>기본 (Notion export 원본) — {@code "이카운트 사업자명"}, {@code "카톡방"}, {@code "생성 일시"}</li>
+ *   <li>코드 우선 (운영자 보강) — 위 컬럼 + {@code "거래처코드"} (또는 {@code "partner_code"})</li>
+ * </ul>
+ *
+ * <p>매핑 우선순위 (TM PR-D Part 3 — 사용자 명시 "거래처명이 아니라 거래처코드로 매핑"):
+ * <ol>
+ *   <li>{@code 거래처코드} 컬럼 값이 있으면 {@link PartnerLookupClient#verifyPartnerCode(String)}
+ *       로 존재 검증 후 즉시 사용 — 사업자명 lookup 회피 (모호한 LIKE 매칭 제거).</li>
+ *   <li>코드가 비어 있거나 검증 실패 시 {@code 이카운트 사업자명} 으로
+ *       {@link PartnerLookupClient#findPartnerCodeByName(String)} fallback.</li>
+ *   <li>둘 다 실패 시 reject 누적 (row 번호 + 코드 + 사업자명 + reason).</li>
+ * </ol>
  *
  * <p>처리 절차:
  * <ol>
  *   <li>UTF-8 BOM 제거 ({@link BOMInputStream})</li>
  *   <li>{@link CSVReaderHeaderAware} 로 row 단위 Map 추출</li>
- *   <li>{@code 이카운트 사업자명} → {@link PartnerLookupClient#findPartnerCodeByName(String)} lookup</li>
+ *   <li>코드 우선 → 사업자명 fallback 매핑 (위 정책)</li>
  *   <li>match 시 활성 (partner_code, chat_room_name) 중복 체크 → insert 또는 snapshot 갱신</li>
- *   <li>miss 시 reject 누적 (row 번호 + 사업자명 + reason)</li>
  *   <li>{@code 생성 일시} 한국어 포맷 ("2026년 4월 26일 오전 7:34") 파싱 → {@link LocalDateTime}</li>
  * </ol>
  *
@@ -55,6 +67,10 @@ public class ChatRoomImportService {
     private static final String COL_BUSINESS_NAME = "이카운트 사업자명";
     private static final String COL_CHAT_ROOM = "카톡방";
     private static final String COL_NOTION_CREATED_AT = "생성 일시";
+    /** TM PR-D Part 3 — 거래처코드 우선 매핑 컬럼 (한국어 헤더). */
+    private static final String COL_PARTNER_CODE = "거래처코드";
+    /** TM PR-D Part 3 — 거래처코드 우선 매핑 컬럼 (영문 헤더 대안). */
+    private static final String COL_PARTNER_CODE_EN = "partner_code";
 
     /**
      * Notion 한국어 datetime 포맷터 — "2026년 4월 26일 오전 7:34".
@@ -93,19 +109,42 @@ public class ChatRoomImportService {
                 String businessName = trimToNull(values.get(COL_BUSINESS_NAME));
                 String chatRoomName = trimToNull(values.get(COL_CHAT_ROOM));
                 String createdAtRaw = trimToNull(values.get(COL_NOTION_CREATED_AT));
+                // TM PR-D Part 3 — 거래처코드 컬럼 우선 (한국어 / 영문 헤더 모두 허용).
+                String inputPartnerCode = trimToNull(values.get(COL_PARTNER_CODE));
+                if (inputPartnerCode == null) {
+                    inputPartnerCode = trimToNull(values.get(COL_PARTNER_CODE_EN));
+                }
 
-                if (businessName == null || chatRoomName == null) {
+                if (chatRoomName == null) {
+                    rejected.add(new RejectedRow(rowNumber, businessName, chatRoomName,
+                            "필수 컬럼 누락 (카톡방)"));
+                    continue;
+                }
+                if (inputPartnerCode == null && businessName == null) {
                     rejected.add(new RejectedRow(rowNumber, businessName, chatRoomName,
                             "필수 컬럼 누락 (이카운트 사업자명 / 카톡방)"));
                     continue;
                 }
 
                 Optional<String> partnerCodeOpt;
+                String lookupVia;
                 try {
-                    partnerCodeOpt = partnerLookupClient.findPartnerCodeByName(businessName);
+                    if (inputPartnerCode != null) {
+                        // TM PR-D Part 3 — 코드 우선 검증 (정확 매칭, LIKE 모호성 제거).
+                        partnerCodeOpt = partnerLookupClient.verifyPartnerCode(inputPartnerCode);
+                        lookupVia = "거래처코드";
+                        if (partnerCodeOpt.isEmpty() && businessName != null) {
+                            // 코드 검증 실패 시 사업자명 fallback (코드 오타 / 미등록 대비).
+                            partnerCodeOpt = partnerLookupClient.findPartnerCodeByName(businessName);
+                            lookupVia = "거래처코드 미매칭 → 사업자명 fallback";
+                        }
+                    } else {
+                        partnerCodeOpt = partnerLookupClient.findPartnerCodeByName(businessName);
+                        lookupVia = "사업자명";
+                    }
                 } catch (Exception e) {
-                    log.warn("partner-service lookup 실패 row={} name={} : {}",
-                            rowNumber, businessName, e.getMessage());
+                    log.warn("partner-service lookup 실패 row={} code={} name={} : {}",
+                            rowNumber, inputPartnerCode, businessName, e.getMessage());
                     rejected.add(new RejectedRow(rowNumber, businessName, chatRoomName,
                             "partner-service lookup 호출 실패: " + e.getMessage()));
                     continue;
@@ -113,10 +152,11 @@ public class ChatRoomImportService {
 
                 if (partnerCodeOpt.isEmpty()) {
                     rejected.add(new RejectedRow(rowNumber, businessName, chatRoomName,
-                            "partner_code lookup miss (신규 거래처 또는 사업자명 오타 추정)"));
+                            "partner_code lookup miss (코드/사업자명 모두 미매칭, 신규 거래처 또는 오타 추정)"));
                     continue;
                 }
                 String partnerCode = partnerCodeOpt.get();
+                log.debug("CHAT row={} partner_code={} via={}", rowNumber, partnerCode, lookupVia);
 
                 LocalDateTime notionCreatedAt = null;
                 if (createdAtRaw != null) {
@@ -132,13 +172,19 @@ public class ChatRoomImportService {
                 Optional<PartnerChatRoomMapping> existing =
                         repository.findByPartnerCodeAndChatRoomName(partnerCode, chatRoomName);
                 if (existing.isPresent()) {
-                    // snapshot 사업자명만 갱신 (재import 시 partner-service 측 리네임 반영)
-                    existing.get().updateBusinessNameSnapshot(businessName);
+                    // snapshot 사업자명만 갱신 (재import 시 partner-service 측 리네임 반영).
+                    // 코드 우선 매핑으로 사업자명 누락된 경우 기존 snapshot 유지 (덮어쓰기 회피).
+                    if (businessName != null) {
+                        existing.get().updateBusinessNameSnapshot(businessName);
+                    }
                     repository.save(existing.get());
                     updated++;
                 } else {
+                    // snapshot 필수 — 코드 우선 매핑으로 사업자명 미공급 시 partnerCode placeholder 사용
+                    // (entity invariant 보호, 운영자가 admin UI 에서 추후 사업자명 갱신).
+                    String snapshot = businessName != null ? businessName : ("[" + partnerCode + "]");
                     PartnerChatRoomMapping entity = PartnerChatRoomMapping.fromNotionImport(
-                            partnerCode, businessName, chatRoomName, notionCreatedAt);
+                            partnerCode, snapshot, chatRoomName, notionCreatedAt);
                     repository.save(entity);
                     inserted++;
                 }

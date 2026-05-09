@@ -76,6 +76,8 @@ class ChatRoomMappingAdminControllerIT extends AbstractPostgresIT {
         });
         // 기본 lookup 미스 (각 테스트가 필요 시 stub 추가)
         lenient().when(partnerLookupClient.findPartnerCodeByName(anyString())).thenReturn(Optional.empty());
+        // TM PR-D Part 3 — verifyPartnerCode 도 기본 미스 (코드 우선 매핑 시나리오 테스트가 별도 stub).
+        lenient().when(partnerLookupClient.verifyPartnerCode(anyString())).thenReturn(Optional.empty());
 
         repository.deleteAll();
     }
