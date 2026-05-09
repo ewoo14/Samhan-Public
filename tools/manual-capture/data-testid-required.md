@@ -32,7 +32,9 @@
 | `[data-testid="header-user-name"]` | 우상단 사용자명 표시 | 누락 |
 | `[data-testid="header-page-title"]` | 동적 페이지 제목 (`usePageTitleStore`) | 누락 |
 
-## 우선순위 2 — Stage 2 캡처 화면 예정
+## 우선순위 2 — Stage 3 캡처 화면 (annotation 박스 미해석 — 즉시 필요)
+
+Stage 3 (`capture.config.json` v3) 가 14 desktop + 4 mobile 화면을 정의했으나, 아래 selector 들이 모두 `[warn] 미발견` 으로 skip 되었다. PNG 원본은 캡처되었으나 annotation 박스(붉은 박스) 가 합성되지 않으므로 매뉴얼 가이드 효과가 떨어진다. 본 우선순위 2 의 testid 를 추가하면 `node capture-desktop.js` 재실행만으로 박스 합성이 자동 적용된다.
 
 ### `SlipListPage` (출고전표 / 입고전표 목록)
 
@@ -73,11 +75,31 @@
 | selector | element |
 |----------|---------|
 | `[data-testid="journal-list-table"]` | 분개장 목록 |
+| `[data-testid="journal-list-add-button"]` | 분개 신규 작성 |
 | `[data-testid="journal-form-debit-line"]` | 차변 라인 input |
 | `[data-testid="journal-form-credit-line"]` | 대변 라인 input |
 | `[data-testid="journal-form-confirm"]` | 확정 버튼 |
 | `[data-testid="trial-balance-month-select"]` | 월 선택 |
 | `[data-testid="trial-balance-table"]` | 시산표 table |
+| `[data-testid="account-tree-root"]` | 계정과목 트리 root (100/200/.../900) |
+
+### `TransferListPage` / `LinkDispatchListPage` (Stage 3 신규)
+
+| selector | element |
+|----------|---------|
+| `[data-testid="transfer-list-table"]` | 재고이동 목록 |
+| `[data-testid="transfer-list-add-button"]` | 재고이동 신규 |
+| `[data-testid="link-dispatch-table"]` | 링크발송 배송 묶음 목록 |
+| `[data-testid="link-dispatch-send-button"]` | SMS 일괄 발송 |
+
+### `SalesPartnerOrderListPage` / `SalesOrderApprovalsPage` / `SalesPartnerDcConfigPage` (Phase 6 v4)
+
+| selector | element |
+|----------|---------|
+| `[data-testid="partner-order-list-table"]` | 거래처 주문서 목록 |
+| `[data-testid="order-approvals-table"]` | 주문서 승인 목록 |
+| `[data-testid="order-approve-button"]` | 주문서 승인 버튼 |
+| `[data-testid="partner-dc-config-table"]` | 거래처 DC 설정 table |
 
 ## 우선순위 3 — mobile-staff (Expo)
 

@@ -79,13 +79,20 @@ node capture-mobile.js
 
 (Stage 1 의 `capture.config.json` 은 mobile 화면 0개 — Stage 2 에서 추가 예정.)
 
-### Step 5: 매뉴얼 디렉토리로 복사
+### Step 5: 매뉴얼 디렉토리로 sync (Stage 3 자동화)
 
 ```powershell
-Copy-Item tools\manual-capture\output\*.annotated.png docs\manual\screenshots\
+node tools\manual-capture\sync-screenshots.js
 ```
 
-(자동 복사 스크립트는 Stage 2 에서 추가.)
+`sync-screenshots.js` 동작:
+
+1. `docs/manual/**/*.md` 의 모든 `../screenshots/<섹션>/<file>.png` link 추출 (55 개 ref)
+2. `sync-screenshots.js` 의 `CAPTURE_MAP` 에 따라 `output/<id>.png` → `docs/manual/screenshots/<섹션>/<file>.png` 복사
+3. 매핑 없는 매뉴얼 image 는 `_placeholder-screenshot-pending.png` 로 폴백
+4. 보고: 실 캡처 적용 / placeholder 적용 / 미사용 capture / link 검증 결과
+
+새 화면을 캡처에 추가하면 `CAPTURE_MAP` 도 갱신해야 한다 (미갱신 시 `[미사용 capture]` 로 보고됨).
 
 ## 화면 추가 절차
 
@@ -163,6 +170,8 @@ Copy-Item tools\manual-capture\output\*.annotated.png docs\manual\screenshots\
 
 ## Stage 로드맵
 
-- **Stage 1 (현재)** — 인프라 setup + 예제 2 화면 (00-login, 00-main-sidebar)
-- **Stage 2** — 매뉴얼 전체 화면 정의 (~30 화면) + 자동 복사 스크립트 + selector 기반 화살표
-- **Stage 3** — CI 통합 (PR QA 캡처 자동화) + diff 비교 (시각 회귀 테스트)
+- **Stage 1** — 인프라 setup + 예제 2 화면 (00-login, 00-main-sidebar)
+- **Stage 2** — 매뉴얼 전체 화면 정의 + 자동 복사 스크립트
+- **Stage 3 (현재)** — desktop 14 화면 + mobile 4 화면 정의 + `sync-screenshots.js` (CAPTURE_MAP + placeholder 폴백) + 매뉴얼 link 검증
+- **Stage 4** — frontend-engineer 가 `data-testid-required.md` 의 testid 추가 → annotation 박스 활성화
+- **Stage 5** — CI 통합 (PR QA 캡처 자동화) + diff 비교 (시각 회귀 테스트)
