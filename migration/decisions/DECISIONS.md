@@ -864,6 +864,22 @@ PR (`feature/integrated-phase-10-step-9-sheet-notion-import`) — PR #114 머지
 - R2 — KakaoDispatchParser 의 카톡 슬립번호 vs partner-service partner_code 명칭 충돌 정리 (entity 컬럼 rename + 마이그레이션 동시 진행)
 - BE-E — partner-service 의 실 RestClient `PartnerLookupClient` 구현체 등록 (현재 NoopPartnerLookupClient placeholder)
 
+#### TM 종합 fix — PR #115 5-team 리뷰 + CI fail (2026-05-10)
+
+5-team 리뷰 결과 — Designer ✅ / DevOps ✅ / FE ✅(3 minor) / QA ✅(2 권고) / BE Critical (CI fail 1건). TM 단일 commit 종합 fix:
+
+1. **BE Critical** — notification-service IT 15건 `BeanDefinitionOverrideException` 회귀. `NoopPartnerLookupClient` 의 `@Configuration` + `@Bean` + `@ConditionalOnMissingBean` 가 `@MockBean` 보다 늦게 평가되어 noop bean + mock bean 동시 등록 시도. `@Component` + `PartnerLookupClient` 직접 구현 + class-level `@ConditionalOnMissingBean(PartnerLookupClient.class)` 로 재설계 — component scan 단계에서 안정적 평가. (memory `feedback_it_mockbean_external_clients` 일관)
+2. **FE C/F/I minor** — `BlockedPartnersPage` testid `${b.id}` → `${b.partnerCode}` (UUID 비공개), invalidate 위치 `onClose` → `onUpload` resolve (타 3 admin CSV 페이지 패턴 일관). `SalesPartnerDcConfigPage` testid prefix `dc-config-*` → `admin-dcconfig-*` (admin 페이지 일관성).
+3. **QA 권고** — `RegionClassifier` 광역 prefix 가중치 알고리즘 추가 ("중구" 4 그룹 모호 키워드 회귀 회피). 1차 광역 prefix 매칭 → 2차 sort_order keywords → 3차 group_name fallback. 회귀 테스트 case 6/7 추가 (7 PASS).
+4. **AdminLayout DC 설정 entry** — `/sales/partner-dc-config` link, MASTER 가드 (sales 라우트지만 CSV 일괄 업로드 MASTER 전용 → admin 사이드바에도 진입 편의 노출).
+
+검증:
+- `./gradlew :services:notification-service:assemble` → BUILD SUCCESSFUL
+- `./gradlew :services:arologis-service:test --tests "*RegionClassifierTest"` → 7 PASS
+- `./gradlew assemble -x test` → BUILD SUCCESSFUL (95 actionable)
+- `clients/desktop` typecheck → 무에러
+- notification IT 15건 — Windows 로컬 Docker 미가용 → Testcontainers skip (정상). CI Linux runner 에서 BeanDefinition 충돌 해소 후 실 IT 동작 확인 (CI 재실행 자동).
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.

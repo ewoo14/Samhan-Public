@@ -152,7 +152,7 @@ export function SalesPartnerDcConfigPage() {
                 type="button"
                 className={styles['btnMini']}
                 onClick={() => setImportDialogOpen(true)}
-                data-testid="dc-config-import-button"
+                data-testid="admin-dcconfig-import-button"
                 style={{
                   background: '#1d4ed8',
                   color: '#fff',
@@ -264,7 +264,7 @@ export function SalesPartnerDcConfigPage() {
         )}
 
         {canImportCsv ? (
-          <div data-testid="dc-config-import-dialog">
+          <div data-testid="admin-dcconfig-import-dialog">
             <CsvUploadDialog
               open={importDialogOpen}
               onClose={() => setImportDialogOpen(false)}

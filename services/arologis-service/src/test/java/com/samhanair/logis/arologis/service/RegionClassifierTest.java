@@ -14,13 +14,20 @@ import org.junit.jupiter.api.Test;
 /**
  * RegionClassifier 단위 테스트 — Phase 10 W10-1 PR-D Part 2-1.
  *
- * <p>주소 → 그룹명 매칭 정확성 검증. 5 case.
+ * <p>주소 → 그룹명 매칭 정확성 검증.
+ *
+ * <h2>광역 prefix 가중치 회귀 (TM PR #115 추가)</h2>
+ * <p>"중구"가 서울/대구/부산/인천 다중 그룹에 동시 존재하므로, address 의 광역 prefix
+ * (예: "대구") 적중 시 해당 광역 그룹의 keywords 안에서만 한정 매칭되어야 한다.
+ *
  * <ul>
  *   <li>case 1 — "서울 송파구..." → "서울특별시"</li>
  *   <li>case 2 — "수원시 영통구..." → "경기남부"</li>
  *   <li>case 3 — "인천 남동구..." → "인천광역시"</li>
  *   <li>case 4 — "대구 수성구..." → "대구광역시"</li>
  *   <li>case 5 — 매칭 안 됨 → null (외국 주소 / blank)</li>
+ *   <li>case 6 — 모호 "중구" 다중 그룹 광역 prefix 가중치 (회귀 방지)</li>
+ *   <li>case 7 — 광역 prefix 만 존재 (시군구 미특정) → 광역 그룹</li>
  * </ul>
  */
 class RegionClassifierTest {
@@ -64,7 +71,7 @@ class RegionClassifierTest {
     }
 
     @Test
-    @DisplayName("case 2 — 수원시 영통구 → 경기남부")
+    @DisplayName("case 2 — 수원시 영통구 → 경기남부 (광역 prefix 미존재 fallback)")
     void classifyGyeonggiSouth() {
         assertThat(classifier.classify("수원시 영통구 매탄동")).isEqualTo("경기남부");
         assertThat(classifier.classify("경기 화성시 동탄")).isEqualTo("경기남부");
@@ -92,5 +99,40 @@ class RegionClassifierTest {
         assertThat(classifier.classify(null)).isNull();
         assertThat(classifier.classify("")).isNull();
         assertThat(classifier.classify("   ")).isNull();
+    }
+
+    /**
+     * TM PR #115 회귀 — "중구"는 서울/인천/대구/부산 4 그룹 동시 보유.
+     * 광역 prefix 가중치 적용 전 (sort_order 우선) 모두 "서울특별시" 로 잘못 분류됐다.
+     */
+    @Test
+    @DisplayName("case 6 — 모호 \"중구\" 다중 그룹 광역 prefix 가중치 (회귀)")
+    void classifyAmbiguousJunggu() {
+        // 대구 중구 → 대구광역시 (서울이 sort_order 1 이지만 광역 "대구" 가중치 적용)
+        assertThat(classifier.classify("대구 중구 동인동")).isEqualTo("대구광역시");
+        assertThat(classifier.classify("대구광역시 중구 봉산동")).isEqualTo("대구광역시");
+
+        // 부산 중구 → 부산광역시
+        assertThat(classifier.classify("부산 중구 광복동")).isEqualTo("부산광역시");
+        assertThat(classifier.classify("부산광역시 중구 중앙동")).isEqualTo("부산광역시");
+
+        // 인천 중구 → 인천광역시
+        assertThat(classifier.classify("인천 중구 신흥동")).isEqualTo("인천광역시");
+
+        // 서울 중구 → 서울특별시 (광역 "서울" 가중치 정상 적용)
+        assertThat(classifier.classify("서울 중구 명동")).isEqualTo("서울특별시");
+        assertThat(classifier.classify("서울특별시 중구 을지로")).isEqualTo("서울특별시");
+    }
+
+    /**
+     * TM PR #115 회귀 — 광역 prefix 만 존재하고 시군구 미특정 케이스도 광역 그룹으로 분류.
+     */
+    @Test
+    @DisplayName("case 7 — 광역 prefix 만 존재 (시군구 미특정) → 광역 그룹")
+    void classifyMetropolitanPrefixOnly() {
+        // "서울 어딘가" 처럼 시군구 미상이지만 광역 prefix 적중
+        assertThat(classifier.classify("서울특별시 어딘가")).isEqualTo("서울특별시");
+        // "대구 OO" 처럼 키워드 미스이지만 광역 prefix 적중
+        assertThat(classifier.classify("대구 어딘가동 999-1")).isEqualTo("대구광역시");
     }
 }

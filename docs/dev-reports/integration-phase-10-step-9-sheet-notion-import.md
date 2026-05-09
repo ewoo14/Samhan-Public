@@ -138,3 +138,62 @@ PR #114 (W10-step-8) 머지 후 두 가지 우려 처리:
 | 1 | BE-E 실 RestClient `PartnerLookupClient` 구현체 등록 | partner-service 측 `GET /api/v1/partners/by-name` + `GET /api/v1/partners/{partnerCode}` endpoint 발행 + 인증 정책 + 캐시 TTL 결정 |
 | 2 | R2 — KakaoDispatchParser 슬립번호 vs partner_code 명칭 충돌 정리 | `VehicleStop.parsed_partner_code` (Long, 슬립번호) → 별도 컬럼명 또는 partner_code (String) 분리, V Flyway + entity 마이그레이션 |
 | 3 | 운영자 가이드 — CSV 거래처코드 컬럼 사용법 | admin UI 의 CSV upload dialog 에 거래처코드 컬럼 우선 매핑 안내 추가 |
+
+## 8. TM 종합 fix — PR #115 5-team 리뷰 + CI fail 반영
+
+### 8-1. 처리 대상 (4 카테고리)
+
+| # | 분류 | 증상 / 권고 | fix 위치 |
+|---|---|---|---|
+| 1 | BE Critical (CI fail) | notification-service IT 15건 fail — `BeanDefinitionOverrideException` (`@Configuration`+`@Bean`+`@ConditionalOnMissingBean` 가 `@MockBean` 보다 늦게 평가) | `services/notification-service/.../client/NoopPartnerLookupClient.java` |
+| 2 | FE C minor | `BlockedPartnersPage` `admin-blocked-unblock-${id}` testid 가 UUID 노출 | `clients/desktop/.../routes/admin/BlockedPartnersPage.tsx` |
+| 3 | FE F minor | `SalesPartnerDcConfigPage` testid prefix `dc-config-*` → `admin-dcconfig-*` 일관 | `clients/desktop/.../routes/SalesPartnerDcConfigPage.tsx` |
+| 4 | FE I minor | `BlockedPartnersPage` invalidate 위치 `onClose` → `onUpload` resolve | `clients/desktop/.../routes/admin/BlockedPartnersPage.tsx` |
+| 5 | QA 권고 1 | `RegionClassifier` 모호 키워드 ("중구" 4 그룹) 광역 prefix 가중치 | `services/arologis-service/.../service/RegionClassifier.java` + `RegionClassifierTest.java` |
+| 6 | QA 권고 2 | `AdminLayout` "DC 설정" entry 누락 | `clients/desktop/.../components/AdminLayout.tsx` |
+
+### 8-2. BE Critical 상세 — `NoopPartnerLookupClient` 재설계
+
+**원인**: `@Configuration` 의 `@Bean` 메서드는 component scan 후 평가되어 `@ConditionalOnMissingBean` 이 `@MockBean` 의 mock bean 보다 **늦게 평가** → noop bean 과 mock bean 동시 등록 시도 → `BeanDefinitionOverrideException` (`spring.main.allow-bean-definition-overriding=false` 기본).
+
+**fix**: `@Configuration`+`@Bean` → `@Component` + `PartnerLookupClient` 직접 구현 + class-level `@ConditionalOnMissingBean(PartnerLookupClient.class)`. component scan 단계에서 안정적으로 평가되어 `@MockBean` 우선 등록 시 noop component 자체가 등록되지 않는다.
+
+```java
+@Component
+@ConditionalOnMissingBean(PartnerLookupClient.class)
+public class NoopPartnerLookupClient implements PartnerLookupClient { ... }
+```
+
+### 8-3. RegionClassifier 광역 prefix 가중치 알고리즘
+
+**회귀**: "대구 중구 동인동" → 기존 sort_order 우선 매칭은 서울특별시 (sort_order=1) 의 keywords "중구" 적중 → 잘못 분류. ("중구"는 서울/인천/대구/부산 4 그룹 동시 보유)
+
+**fix**: 3-단 매칭으로 재구성.
+1. **광역 prefix 매칭 (1차, 신규 최우선)** — `address.contains(stripCityPrefix(groupName))` 적중 시 해당 광역 그룹의 keywords 안에서만 한정 검색. 시군구 미상이라도 광역 그룹으로 분류.
+2. sort_order 우선 keywords 매칭 (2차, 광역 prefix 미존재 시 — "수원시 영통구" 등)
+3. group_name 자체 substring fallback (3차, legacy 호환)
+
+**회귀 테스트 추가** — case 6 ("대구 중구"/"부산 중구"/"인천 중구"/"서울 중구"), case 7 (광역 prefix 만 존재) — 7/7 PASS.
+
+### 8-4. 빌드 / 테스트 검증 (TM 종합 fix 후)
+
+```
+./gradlew :services:notification-service:assemble
+→ BUILD SUCCESSFUL
+
+./gradlew :services:arologis-service:test --tests "*RegionClassifierTest"
+→ BUILD SUCCESSFUL (7 tests, 0 failures, 0 skipped)
+
+./gradlew assemble -x test
+→ BUILD SUCCESSFUL (95 actionable)
+
+cd clients/desktop && npx tsc --noEmit
+→ 무에러
+```
+
+**notification IT 15건** — 로컬 환경 Docker 미가용 → Testcontainers `DockerAvailableCondition` skip (정상, memory `feedback_testcontainers_windows_docker`). CI Linux runner 에서 BeanDefinition 충돌 해소 후 실 IT 동작 확인 (CI 재실행 자동).
+
+### 8-5. 무시 (이미 처리됨)
+
+- DevOps SA key 마운트 보강 권고 → Phase 11 production manifest 시점 처리 (이번 PR 범위 외)
+- d05c0ae commit 메시지 오류 → git rebase 회피 + PR body 명시 OK (DevOps 승인)

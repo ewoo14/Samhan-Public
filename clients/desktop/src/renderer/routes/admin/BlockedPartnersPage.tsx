@@ -22,7 +22,7 @@
  *   <li>{@code admin-blocked-row} (각 행의 partnerCode 셀)</li>
  *   <li>{@code admin-blocked-add-button}</li>
  *   <li>{@code admin-blocked-import-button}</li>
- *   <li>{@code admin-blocked-unblock-{id}}</li>
+ *   <li>{@code admin-blocked-unblock-{partnerCode}} — UUID 비공개 가드 (TM PR #115 정정)</li>
  * </ul>
  *
  * <p>UUID 비공개 — 화면 표시는 partnerCode + businessName + reason. id 는 액션
@@ -164,7 +164,7 @@ export function BlockedPartnersPage() {
           <button
             type="button"
             onClick={() => setUnblockTarget(b)}
-            data-testid={`admin-blocked-unblock-${b.id}`}
+            data-testid={`admin-blocked-unblock-${b.partnerCode}`}
             style={{
               height: 28,
               padding: '0 10px',
@@ -281,14 +281,17 @@ export function BlockedPartnersPage() {
 
       <CsvUploadDialog
         open={importOpen}
-        onClose={() => {
-          setImportOpen(false)
-          // 성공 후 목록 새로고침 (취소/실패도 안전).
-          invalidateList()
-        }}
+        onClose={() => setImportOpen(false)}
         title="발송금지 거래처 CSV 업로드"
         description="이카운트 사업자명 → 거래처코드 자동 매핑. 매핑 실패는 reject 보고서."
-        onUpload={importBlockedPartnersCsv}
+        onUpload={async (file) => {
+          // TM PR #115 정정 — invalidate 위치를 onUpload resolve 시점으로 이동
+          // (타 3 admin CSV 페이지 패턴 일관 — SalesPartnerDcConfigPage / SheetSyncPage / RegionsPage).
+          // onClose 위치는 dialog 닫힘만 처리, 업로드 결과 반영은 mutation 직후 invalidate.
+          const result = await importBlockedPartnersCsv(file)
+          invalidateList()
+          return result
+        }}
       />
 
       <UnblockConfirmDialog

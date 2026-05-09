@@ -14,11 +14,21 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>KakaoDispatchParser 가 stop.parsedAddress 를 본 classifier 에 통과시켜 regionGroup 을
  * 결정. 매칭 안 됨 시 null 반환 (저장은 진행, classified_region_group 만 NULL).
  *
- * <p>매칭 알고리즘 (단순 substring contains, sort_order 우선):
+ * <h2>매칭 알고리즘 — TM PR #115 광역 prefix 가중치 정정</h2>
+ *
+ * <p>키워드 모호성 회귀 방지: "중구"가 서울/대구/부산/인천 등 다중 그룹에 존재하므로 단순 sort_order
+ * 우선 매칭은 첫 번째 sort_order 그룹으로 잘못 분류된다 (예: "대구 중구..." → 서울특별시).
+ * 따라서 광역 prefix 가중치를 1차 우선 적용:
+ *
  * <ol>
- *   <li>전체 활성 분류 목록을 sort_order 오름차순 + group_name 보조 정렬로 로드</li>
- *   <li>각 분류의 keywords (콤마 split) 중 하나라도 address 에 포함되면 해당 group_name 반환</li>
- *   <li>"서울"/"인천"/"경기" 같은 광역 키워드는 keywords 에 없으나 group_name 자체로 fallback 매칭</li>
+ *   <li><strong>1차 — 광역 prefix 매칭 (최우선)</strong> — address 가 group_name 의 광역 prefix
+ *       (서울/인천/대구/부산/광주/대전/울산/세종/제주) 를 포함하면 해당 광역 그룹의 keywords 로 한정 매칭.
+ *       → "대구 중구..." → 광역 = 대구 → 대구광역시의 keywords 안에서 "중구" 매칭 → "대구광역시"</li>
+ *   <li><strong>2차 — sort_order 우선 keywords 매칭 (광역 prefix 미존재 시 fallback)</strong> —
+ *       전체 활성 분류 sort_order 오름차순 + group_name 보조 정렬 후 keywords substring 검색.
+ *       → "수원시 영통구..." → "수원" → 경기남부</li>
+ *   <li><strong>3차 — group_name 자체 substring fallback</strong> ("서울특별시" → "서울" prefix 만으로
+ *       매칭 — 기존 동작 유지)</li>
  *   <li>모두 실패 시 null</li>
  * </ol>
  */
@@ -43,7 +53,33 @@ public class RegionClassifier {
         String normalized = address.replace(" ", "");
         List<RegionDispatchClassification> all = repository.findAllByOrderBySortOrderAscGroupNameAsc();
 
-        // 1차 — keywords 정확 매칭 (sort_order 우선)
+        // 1차 — 광역 prefix 가중치 매칭 (TM PR #115 정정).
+        // address 에 광역 prefix (예: "대구") 가 포함되어 있으면 해당 광역 그룹의 keywords 로 한정 검색.
+        // → "중구" 같은 모호 키워드의 다중 그룹 충돌 방지.
+        for (RegionDispatchClassification rdc : all) {
+            String prefix = stripCityPrefix(rdc.getGroupName());
+            if (prefix == null || prefix.isBlank()) {
+                continue;
+            }
+            if (!normalized.contains(prefix)) {
+                continue;
+            }
+            // 광역 prefix 적중 — 본 그룹의 keywords 안에서만 매칭 시도
+            for (String kw : rdc.splitKeywords()) {
+                if (kw.isBlank()) {
+                    continue;
+                }
+                String kwNormalized = kw.replace(" ", "");
+                if (normalized.contains(kwNormalized)) {
+                    return rdc.getGroupName();
+                }
+            }
+            // 광역 prefix 만 존재하고 시군구 미특정 — 그래도 그 광역 그룹으로 분류
+            // (예: "서울 어딘가" 같이 시군구 미상)
+            return rdc.getGroupName();
+        }
+
+        // 2차 — sort_order 우선 keywords 정확 매칭 (광역 prefix 미존재 시 — "수원시 영통구..." 등)
         for (RegionDispatchClassification rdc : all) {
             for (String kw : rdc.splitKeywords()) {
                 if (kw.isBlank()) {
@@ -56,7 +92,7 @@ public class RegionClassifier {
             }
         }
 
-        // 2차 — group_name 자체 substring fallback ("서울특별시" → "서울")
+        // 3차 — group_name 자체 substring fallback (legacy 호환)
         for (RegionDispatchClassification rdc : all) {
             String prefix = stripCityPrefix(rdc.getGroupName());
             if (prefix != null && !prefix.isBlank() && normalized.contains(prefix)) {

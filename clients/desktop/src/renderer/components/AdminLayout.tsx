@@ -14,6 +14,7 @@
  * - 지역 분류 (`/admin/regions`) — PR-D Phase B FE-B (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
  * - 발송금지 거래처 (`/admin/blocked-partners`) — PR-D Phase B FE-E (MASTER, 민감)
  * - 단톡방 매핑 (`/admin/chat-rooms`) — PR-D Phase B FE-D (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
+ * - DC 설정 (`/sales/partner-dc-config`) — PR-D Phase B FE-C (MASTER 만 CSV 일괄 업로드)
  *
  * memory feedback_uuid_no_user_visibility — admin 화면도 비즈니스 식별자만 노출.
  * memory feedback_role_naming_full — entry 라벨/가드 표기 풀네임 사용.
@@ -105,6 +106,17 @@ export function AdminLayout() {
           */}
           <AdminNav to="/admin/chat-rooms" testId="admin-nav-chat-rooms">
             단톡방 매핑
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-C] 거래처 DC율 설정 — sales 라우트 그룹이지만 CSV 일괄 업로드는
+            MASTER 전용 (BE @PreAuthorize). MASTER 진입 편의를 위해 admin 사이드바에도 노출
+            (TM PR #115 권고 — DC AdminLayout entry 누락 fix).
+          */}
+          <AdminNav
+            to="/sales/partner-dc-config"
+            testId="admin-nav-dc-config"
+          >
+            DC 설정
           </AdminNav>
         </aside>
         <section className="admin-main">
