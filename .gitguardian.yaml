@@ -8,11 +8,14 @@
 version: 2
 
 secret:
-  # 무시할 파일 경로 패턴 (dev-only 인프라 + docs 한정)
+  # 무시할 파일 경로 패턴 (dev-only 인프라 + docs + service application.yml 한정)
   ignored-paths:
     - "infrastructure/scripts/start-local-full.ps1"
     - "infrastructure/scripts/stop-local-full.ps1"
     - "infrastructure/env-templates/.env.dev-seed"
+    - "infrastructure/docker-compose.yml"
+    - "services/*/src/main/resources/application*.yml"   # W10-5 추가: chained-default fallback (samhan/samhan_dev_pw)
+    - "services/*/src/main/resources/application*.yaml"
     - "docs/migration/ecount-reference/**"
     - "docs/qa/**"
     - "docs/dev-reports/**"

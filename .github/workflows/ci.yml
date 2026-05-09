@@ -37,10 +37,10 @@ jobs:
           # regression 2-track 패턴 (PR #99 5/6/7차 회고 정착).
           - name: slip-it-public
             timeout: 30
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.web.public_.*" --tests "com.samhanair.logis.slip.web.openapi.*"'
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
           - name: slip-it-core
             timeout: 30
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.web.core.*" --tests "com.samhanair.logis.slip.web.internal.*"'
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.it.*"'
           - name: accounting+partner
             timeout: 30
             test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
