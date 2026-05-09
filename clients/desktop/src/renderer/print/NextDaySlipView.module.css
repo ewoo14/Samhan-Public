@@ -1,0 +1,247 @@
+/*
+ * NextDaySlipView 전용 CSS Module — PR-E1 Designer 1차 mock.
+ *
+ * Legacy GAS 6번 "내일자 전표 이미지 생성" 의 단톡방별 이미지 컨셉을
+ * print view 한 페이지 + 단톡방 섹션 분리 + page-break 옵션으로 재현.
+ *
+ * 폰트: Malgun Gothic (맑은 고딕) — 한국어 인쇄 가독성 우선.
+ *
+ * Iteration 가드 (memory feedback_print_design_iteration):
+ * - 본 mock 은 placeholder. 사용자 Edge 캡처 → 2~5차 미세 조정 필수.
+ * - 색상 / 여백 / 라인 두께 모두 사용자 피드백 기반 재조정 대상.
+ */
+
+/* ============================================================
+ * 페이지 root — A4 세로 (210 × 297mm) 기준 안전 여백.
+ * ============================================================
+ */
+.page {
+  font-family: 'Malgun Gothic', '맑은 고딕', system-ui, -apple-system, sans-serif;
+  color: #111827;
+  background: #ffffff;
+  padding: 8mm 6mm;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+
+/* ============================================================
+ * 상단 헤더 — 회사 표기 + 타이틀 + 발행일.
+ * ============================================================
+ */
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 2px solid #111827;
+  padding-bottom: 4mm;
+  margin-bottom: 6mm;
+}
+
+.brand {
+  font-size: 12pt;
+  color: #374151;
+  margin-bottom: 1mm;
+  letter-spacing: 0.5px;
+}
+
+.title {
+  font-size: 22pt;
+  font-weight: 700;
+  margin: 0 0 2mm;
+  letter-spacing: 6px;
+}
+
+.targetDate {
+  font-size: 13pt;
+  font-weight: 600;
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+
+.metaRow {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 3mm;
+  font-size: 9pt;
+  color: #6b7280;
+}
+
+/* ============================================================
+ * 단톡방 섹션 — chatRoom 1건 = 1 섹션. 인쇄 시 분기 옵션.
+ * ============================================================
+ */
+.section {
+  margin-bottom: 8mm;
+  border: 1px solid #d1d5db;
+  border-radius: 2mm;
+  overflow: hidden;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f3f4f6;
+  border-bottom: 1px solid #d1d5db;
+  padding: 2.5mm 4mm;
+}
+
+.sectionTitle {
+  font-size: 12pt;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.sectionTitle::before {
+  content: '단톡방: ';
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 10pt;
+  margin-right: 1mm;
+}
+
+.sectionMeta {
+  font-size: 9pt;
+  color: #4b5563;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * 거래처/슬립 표 — partnerCode + 거래처명 + 주소 + 품목 + 수량 + 시간.
+ * ============================================================
+ */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+}
+
+.table thead th {
+  background: #fafafa;
+  border-bottom: 1px solid #d1d5db;
+  padding: 2mm 2.5mm;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+}
+
+.table tbody td {
+  border-top: 1px solid #e5e7eb;
+  padding: 2mm 2.5mm;
+  vertical-align: top;
+}
+
+.table tbody tr:first-child td {
+  border-top: none;
+}
+
+/* row hover/강조 — 화면 미리보기 한정 (인쇄 시 비활성). */
+.table tbody tr:hover {
+  background: #fff7ed;
+}
+
+/* 거래처 행 강조 — partnerCode + 거래처명 ink primary. */
+.partnerCell {
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.partnerCode {
+  display: block;
+  font-size: 8.5pt;
+  color: #6b7280;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.5mm;
+}
+
+.addressCell {
+  color: #4b5563;
+  font-size: 9pt;
+}
+
+.itemCell {
+  color: #1f2937;
+}
+
+.qtyCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.timeCell {
+  text-align: right;
+  color: #6b7280;
+  font-size: 9pt;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 컬럼 너비 — 4mm 여유 padding 포함. */
+.colPartner { width: 32mm; }
+.colAddress { width: 50mm; }
+.colItem { width: auto; }
+.colQty { width: 14mm; }
+.colTime { width: 18mm; }
+
+/* ============================================================
+ * 빈 단톡방 안내 — 다음날 출고전표 0건일 때.
+ * ============================================================
+ */
+.empty {
+  padding: 6mm;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 9.5pt;
+  background: #fafafa;
+}
+
+/* ============================================================
+ * 발송금지 안내 footer.
+ * ============================================================
+ */
+.footer {
+  margin-top: 6mm;
+  padding: 3mm 4mm;
+  border-top: 1px dashed #9ca3af;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9pt;
+  color: #6b7280;
+}
+
+.blockedNote {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+/* ============================================================
+ * @media print — A4 세로 + 단톡방별 page-break 옵션.
+ * ============================================================
+ */
+@media print {
+  .page {
+    padding: 8mm 6mm;
+  }
+
+  /* 단톡방별 분리 인쇄 옵션 — pageBreakPerRoom prop 활성 시 적용. */
+  .sectionPageBreak {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .sectionPageBreak:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /* hover 효과 / 화면 색감 인쇄 비활성. */
+  .table tbody tr:hover {
+    background: transparent;
+  }
+}
