@@ -310,7 +310,7 @@ function BrowserModePreviewPrint(): JSX.Element {
         종합견적서 (legacy index.html) — 인쇄 미리보기 (`pageFinal`)
       </div>
       <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
-        legacy `pageFinal` 양식 그대로 — A4 종이 1장 + NanumGothic font + 삼한로지스 logo + 인감
+        legacy `pageFinal` 양식 그대로 — A4 종이 1장 + NanumGothic font + Samhan Public logo + 인감
       </div>
       <div
         style={{
@@ -349,7 +349,7 @@ function BrowserModePreviewPrint(): JSX.Element {
           </tbody>
         </table>
         <div style={{ marginTop: 18, fontSize: 11, color: '#475569' }}>
-          상기와 같이 견적합니다. — (주)삼한로지스
+          상기와 같이 견적합니다. — (주)삼한공조시스템
         </div>
         <div style={{ marginTop: 18, textAlign: 'right', fontSize: 11, color: '#1e40af' }}>
           (인감)

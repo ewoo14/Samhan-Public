@@ -2,7 +2,7 @@
 
 > **슬라이스**: slip-first-slice | **base commit**: c6c0f9a | **머지 PR**: (PM 통합 후 기재)
 
-본 슬라이스는 SamhanLogis 의 7번째 마이크로서비스(`slip-service`)를 도입한다. Plan §3.1
+본 슬라이스는 Samhan Public 의 7번째 마이크로서비스(`slip-service`)를 도입한다. Plan §3.1
 전표 관리 시스템의 첫 컷으로 **출고전표(OUTBOUND) + 입고전표(INBOUND)** 만 구현하며,
 입금/출금/이동 전표는 후속 슬라이스에서 추가한다 (Q3=B 결정 사항).
 

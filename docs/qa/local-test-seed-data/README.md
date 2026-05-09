@@ -1,7 +1,7 @@
 # 로컬 풀-수준 테스트 시나리오 가이드 (local-test-seed-data)
 
 > **branch**: `feature/local-test-setup`
-> **목적**: SamhanLogis 14 backend MSA 의 시드 데이터 + end-to-end 시나리오 검증 plan
+> **목적**: Samhan Public 14 backend MSA 의 시드 데이터 + end-to-end 시나리오 검증 plan
 > **선행 산출물**: `infrastructure/env-templates/.env.dev-seed` (시드 toggle 일괄 활성화)
 > **대상**: 로컬 검증 → PR QA → Phase 11 cutover dry-run
 > **본 문서 범위**: 시나리오 명세 + curl/HTTP 예제 + 기대값 + psql 검증 SQL.

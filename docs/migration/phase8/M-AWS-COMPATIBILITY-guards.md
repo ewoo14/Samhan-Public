@@ -1,6 +1,6 @@
 # M-AWS-COMPATIBILITY-guards — AWS 마이그레이션 가능성을 열어두는 호환성 가드
 
-본 문서는 SamhanLogis 가 향후 AWS (EC2 + RDS) 로 마이그레이션 가능하도록, 현재 코드베이스가 cloud-agnostic 패턴을 유지하고 있는지 검증한다. **현재 인프라 = 카페24 + Cloudflare Pages + Render 그대로 유지**, 본 가드는 단순 호환성 검증 only — 직접 cutover 가 아님.
+본 문서는 Samhan Public 가 향후 AWS (EC2 + RDS) 로 마이그레이션 가능하도록, 현재 코드베이스가 cloud-agnostic 패턴을 유지하고 있는지 검증한다. **현재 인프라 = 카페24 + Cloudflare Pages + Render 그대로 유지**, 본 가드는 단순 호환성 검증 only — 직접 cutover 가 아님.
 
 마이그레이션 timeline:
 - **현재 = 테스트 단계** (모든 개발 진행)
@@ -85,7 +85,7 @@
 
 ### 2-2. S3 / MinIO 추상화 (현재 X, Phase 10 추가)
 
-현재 SamhanLogis 는 file storage 직접 사용 service 없음 (signature image = base64 inline DB column). 향후 file storage 도입 시:
+현재 Samhan Public 는 file storage 직접 사용 service 없음 (signature image = base64 inline DB column). 향후 file storage 도입 시:
 
 - `S3_ENDPOINT` — MinIO `http://minio:9000` / AWS `https://s3.<region>.amazonaws.com`
 - `S3_REGION` — MinIO `us-east-1` (default) / AWS `ap-northeast-2`

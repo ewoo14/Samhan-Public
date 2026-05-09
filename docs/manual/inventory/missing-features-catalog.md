@@ -1,4 +1,4 @@
-# SamhanLogis 누락 기능 종합 Catalog
+# Samhan Public 누락 기능 종합 Catalog
 
 > **branch** — `feature/integrated-phase-10-step-7b-operator-manual-stage2` (Stage 1 = `feature/integrated-phase-10-step-7-operator-manual`)
 > **작성일** — 2026-05-09 (Stage 1 초안 → Stage 2 갱신)
@@ -26,7 +26,7 @@
 ### P0-1. 회계 17 보고서 (이카운트 091847 캡처 기준)
 
 > **이카운트 reference** — `docs/migration/ecount-reference/20260509_091847.png` 의 17 보고서 카테고리 (경영자료 9 + 장부 11 + 주요재무제표 5).
-> **현재 SamhanLogis** — `accounting-service` `/accounting/balances` (월 시산표 1건) 만 구현. 16건 미구현.
+> **현재 Samhan Public** — `accounting-service` `/accounting/balances` (월 시산표 1건) 만 구현. 16건 미구현.
 > **연관 메모리** — `project_korean_accounting.md` (한국 일반기업회계기준 표준 계정과목 코드 100/200/300/400/500/800/900 seed required).
 
 | # | 보고서 | 카테고리 | 상태 | 비고 |
@@ -123,7 +123,7 @@
 ### P0-6. 거래처 등록 4 탭 화면 (이카운트 091522 / 091541 / 091555 / 091604)
 
 > **이카운트 reference** — 4 탭 (기본 / 거래처정보 / 여신단가 / 부가정보). 사업자등록번호, 종사업장번호, 종목, 업태, 통화, 영업단가그룹, 출하조정률, 여신한도, 수금/지급예정일.
-> **현재 SamhanLogis** — `partner-service` backend `PartnerAdminController` (POST/GET/PUT/DELETE) 완성. desktop UI **부재**.
+> **현재 Samhan Public** — `partner-service` backend `PartnerAdminController` (POST/GET/PUT/DELETE) 완성. desktop UI **부재**.
 
 | # | 탭 | 항목 | 상태 |
 |---|---|---|---|
@@ -137,7 +137,7 @@
 ### P0-7. 품목 등록 화면 (이카운트 091955 / 092006 / 092016)
 
 > **이카운트 reference** — 7 탭 (기본 / 품목정보 / 수량 / 단가 / 원가 / 부가정보 / 관리대상). 품목구분(원재료/부재료/제품/반제품/상품/무형상품) / 세트여부 / 안전재고 / 부가세율(매출/매입) / 입고/출고/싱글/실외기/멀티 50%/48%/45% / 단풍 35% / 추가수량당수량 / 안전재고관리 (주문서/판매/생산불출/생산입고/창고이동/자가사용/불량처리 7 항목).
-> **현재 SamhanLogis** — `product-service` backend (`ProductAdminController` POST/sync 만 / `ProductController` GET / `ProductCatalogController`). desktop UI **부재**.
+> **현재 Samhan Public** — `product-service` backend (`ProductAdminController` POST/sync 만 / `ProductController` GET / `ProductCatalogController`). desktop UI **부재**.
 
 | # | 탭 | 항목 | 상태 |
 |---|---|---|---|

@@ -2,7 +2,7 @@
 
 > **슬라이스**: electron-skeleton-slice | **base commit**: 4fc23a1 | **머지 PR**: (PM 통합 후 기재)
 
-본 슬라이스는 SamhanLogis 의 첫 데스크톱 클라이언트 (`clients/desktop/`) 를
+본 슬라이스는 Samhan Public 의 첫 데스크톱 클라이언트 (`clients/desktop/`) 를
 도입한다. 백엔드 7 마이크로서비스가 main 에 머지된 직후 시점이며,
 디자인 시스템 (`@samhan/design-system`) 16 컴포넌트의 **첫 실사용처** 이기도 하다.
 
@@ -106,8 +106,8 @@
 - `clients/desktop/electron-builder.yml` 신규 — Windows NSIS installer + portable .exe 2 타겟
 - 한국어 installer (`installerLanguages: [ko_KR]`, `language: '1042'`)
 - `perMachine: false` + `requestedExecutionLevel: asInvoker` — 사내 일반 사원 권한으로 설치 (UAC 회피)
-- `appId: com.samhanair.logis.desktop`, `productName: 삼한로지스`
-- 빌드: `npm run build:win` → `release/0.1.0/삼한로지스-0.1.0-x64.exe` + portable.exe
+- `appId: com.samhanair.logis.desktop`, `productName: Samhan Public`
+- 빌드: `npm run build:win` → `release/0.1.0/Samhan Public-0.1.0-x64.exe` + portable.exe
 - 자동 업데이트 미도입 (`publish: null`) — 후속 슬라이스 권고
 
 ### API Gateway CORS 보강

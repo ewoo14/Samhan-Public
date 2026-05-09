@@ -180,7 +180,7 @@ docker exec samhan-postgres psql -U samhan -l
 
 ```powershell
 git clone <repo>
-cd SamhanLogis
+cd Samhan Public
 .\infrastructure\scripts\start-local-full.ps1
 # → 5분 후 마스터 로그인 가능 (CEO 김미선)
 ```

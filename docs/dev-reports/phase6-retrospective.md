@@ -23,7 +23,7 @@ Phase 6 (legacy migration 본격 구현 단계) 의 모든 슬라이스가 main 
 | #61 | mobile DC notice 삭제 (UUID 노출 회피 가드 적용) | 머지 | 단편 hotfix |
 | #66 | (단편 hotfix 발행) | **close** | 단편 PR 정리 계기 |
 | #67 | legacy-v2 import (이카운트/노션 살린 버전) | 머지 | 후 별 프로젝트 분리로 결정 |
-| #70 | #67 revert (legacy-v2 → 다른 프로젝트 이전) | 머지 | SamhanLogis 범위 정리 |
+| #70 | #67 revert (legacy-v2 → 다른 프로젝트 이전) | 머지 | Samhan Public 범위 정리 |
 | #68 | BE 버전 1 — product-service google sheets cron | 머지 | 후 #75 정정 |
 | #69 | RN client 통합 (Mobile v4 + mobile-staff v3) | 머지 | 통합 발행 첫 적용 |
 | #71 | M3 단독 발행 | **close** | 통합 PR 합류 (#76) |

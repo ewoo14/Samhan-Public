@@ -2,7 +2,7 @@
 
 > **슬라이스**: inventory-first-slice | **base commit**: eb611bf | **머지 PR**: (PM 통합 후 기재)
 
-본 슬라이스는 SamhanLogis 의 6번째 마이크로서비스(`inventory-service`)를 처음 도입하면서
+본 슬라이스는 Samhan Public 의 6번째 마이크로서비스(`inventory-service`)를 처음 도입하면서
 `product-service` 에 internal-token 기반 service-to-service 보안 채널을 함께 추가한다.
 3-layer 함수 단위 문서화 체계(Javadoc + springdoc-openapi + dev-reports)는 본 슬라이스부터
 의무 적용한다 (memory: `feedback_function_documentation.md`).

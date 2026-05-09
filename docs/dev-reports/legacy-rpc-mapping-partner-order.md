@@ -1,16 +1,16 @@
-# legacy partner-order/index.html — google.script.run RPC → SamhanLogis MS endpoint 매핑 (v4)
+# legacy partner-order/index.html — google.script.run RPC → Samhan Public MS endpoint 매핑 (v4)
 
 > 본 문서는 `clients/web/order-app/src/samhanApi.ts` 의 `RPC_MAP` 과 1:1 동기화 의무.
 > 신규 RPC 추가 시 본 표 보강 + RPC_MAP 보강 동시.
 >
 > 출처:
 > - `migration/source/scripts/partner-order/index.html` (9427 라인) §1.2 카테고리 §S/§T/§U/§V/§N/§R/§O 등의 RPC 12 site (분석 doc `migration/analysis/01-script-analysis-partner-order.md` §1)
-> - SamhanLogis MS 의사결정: `migration/decisions/DECISIONS.md` Phase 6 v4 (`b15fa12`) §"함수명 → SamhanLogis MS endpoint 매핑 표"
+> - Samhan Public MS 의사결정: `migration/decisions/DECISIONS.md` Phase 6 v4 (`b15fa12`) §"함수명 → Samhan Public MS endpoint 매핑 표"
 > - Phase 6 backend slice: M1a (product-service 완료, PR #38 머지) / M2 (partner-service planned) / M4 (partner-order-service planned)
 
 ## 1. RPC 12 site (legacy index.html → google.script.run)
 
-| # | legacy fnName | 호출 라인 | 컨텍스트 | SamhanLogis MS endpoint | 백엔드 slice | 비고 |
+| # | legacy fnName | 호출 라인 | 컨텍스트 | Samhan Public MS endpoint | 백엔드 slice | 비고 |
 |---|---|---|---|---|---|---|
 | 1 | `getGateImages()` | 7244 | 게이트 진입 이미지 (DOMContentLoaded → prepareGateImages) | `GET /api/v1/partner-orders/gate-images` | M4 partner-order-service | base64 image[] 반환 |
 | 2 | `checkAuthStatus(bizNo)` | 7549 | 사업자번호 입력 → 상태 분기 (onAuthStatus §S 카테고리) | `GET /api/v1/auth/partner-status?bizNo={n}` | M2 partner-service | response: `{status: 'PENDING'\|'APPROVED'\|'LOCKED'\|'NEW'}` |
@@ -25,9 +25,9 @@
 | 11 | `sendOrderFromUi(payload)` | 6074 | **최종 주문 전송** (모달 확인 후) | `POST /api/v1/partner-orders/{id}/confirm` | M4 partner-order-service + slip-service Event | trigger: slip-service 자동 출고전표 + 카카오 알림톡 |
 | 12 | `saveTutorialState(state)` | 9423 | 튜토리얼 완료 체크박스 (endTut) | `PATCH /api/v1/auth/partner-tutorial` | M2 partner-service | sessionStorage fallback 도 가능 (서버 저장은 cross-device 동기화) |
 
-## 2. legacy Code.js 외부 호출 → SamhanLogis 대체 (RPC 매핑 외)
+## 2. legacy Code.js 외부 호출 → Samhan Public 대체 (RPC 매핑 외)
 
-legacy `Code.js` 의 google.script.run 외 외부 호출 (UrlFetchApp / Notion / Spreadsheet) 은 클라이언트 직접 호출 X. SamhanLogis 백엔드 가 대체. shim 의 RPC_MAP 에 다음 추가 (v3 React route 와 동일):
+legacy `Code.js` 의 google.script.run 외 외부 호출 (UrlFetchApp / Notion / Spreadsheet) 은 클라이언트 직접 호출 X. Samhan Public 백엔드 가 대체. shim 의 RPC_MAP 에 다음 추가 (v3 React route 와 동일):
 
 | 기능 | shim fnName | endpoint | 백엔드 slice | 비고 |
 |---|---|---|---|---|

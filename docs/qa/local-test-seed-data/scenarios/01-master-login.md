@@ -534,7 +534,7 @@ curl http://localhost:9090/api/v1/query?query=http_server_requests_seconds_count
 
 ### 9.3 Grafana dashboard 검증
 
-`http://localhost:3100` (admin / samhan_dev_pw) → Dashboard "SamhanLogis Auth" → "Login Rate" 그래프에 시점이 표시되는지 확인.
+`http://localhost:3100` (admin / samhan_dev_pw) → Dashboard "Samhan Public Auth" → "Login Rate" 그래프에 시점이 표시되는지 확인.
 
 ### 9.4 Distributed tracing (Sleuth + Zipkin)
 

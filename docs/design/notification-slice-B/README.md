@@ -1,6 +1,6 @@
 # Notification Slice B — Designer 산출물 (배송기사 배치 링크 + 자동 SMS)
 
-본 디렉토리는 SamhanLogis **Notification Slice B** 의 **Designer (5-team)** 산출물입니다.
+본 디렉토리는 Samhan Public **Notification Slice B** 의 **Designer (5-team)** 산출물입니다.
 FE / BE / QA / DevOps 팀은 본 spec 의 wireframe / token / component / UX flow 를 인용하여 구현·검증합니다.
 
 > **상위 Plan**: `docs/dev-reports/notification-slice-B/plan.md` (PR #22 후보)

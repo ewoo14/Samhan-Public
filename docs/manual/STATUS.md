@@ -1,4 +1,4 @@
-# SamhanLogis 운영자 매뉴얼 작성 진행 (STATUS)
+# Samhan Public 운영자 매뉴얼 작성 진행 (STATUS)
 
 > **branch (현재)** — `feature/integrated-phase-10-step-7b-operator-manual-stage2`
 > **branch (이전 Stage 1)** — `feature/integrated-phase-10-step-7-operator-manual`
@@ -221,7 +221,7 @@
 |---|---|
 | 트러블슈팅 5 항목 | scenarios §1.1 R7 정정 후 작성 |
 | FAQ 종합 | 3 stage docs 의 FAQ 통합 |
-| 용어집 | 한국 회계 / ERP 용어 + SamhanLogis 도메인 메서드 명 |
+| 용어집 | 한국 회계 / ERP 용어 + Samhan Public 도메인 메서드 명 |
 | 단축키 일람 | desktop electron-vite 단축키 정리 |
 | 백업 / 복원 운영자 가이드 | P0-8 의존 — Phase 11 RDS auto backup 정책 결정 후 |
 | 매출 마감 정식 docs (replace `01-영업/05` 안내) | P2-4 구현 후 |

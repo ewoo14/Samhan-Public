@@ -21,7 +21,7 @@ v3 (React 변환) → v4 (legacy 코드 그대로 임베드) 전환.
 - `clients/desktop/scripts/capture-v4-sales.cjs` — Edge headless 캡처 스크립트 (6 화면)
 - `clients/desktop/src/main/legacy-asset.ts` — webview src 용 file:// URL 해석
 - `clients/desktop/src/preload/legacyShim.ts` — webview preload, `google.script.run` Proxy
-- `clients/desktop/src/preload/samhanApi.ts` — fnName → SamhanLogis MS endpoint 매핑 + fetch
+- `clients/desktop/src/preload/samhanApi.ts` — fnName → Samhan Public MS endpoint 매핑 + fetch
 - `clients/desktop/src/renderer/routes/EstimateLegacyWebviewPage.tsx` — `<webview>` 컴포넌트 wrapper + browser-mode placeholder
 
 ### v3 cherry-pick (변경 없음)
@@ -81,8 +81,8 @@ estimate `index.html` 의 `google.script.run.<fnName>` 호출 11 site → 9 dist
 2. `02-desktop-estimate-legacy-webview-init.png` — 견적서 진입 (placeholder, 4 카드 grid + cardFinal + cardOrderInfo 영역 표시)
 3. `03-desktop-estimate-legacy-webview-after-add.png` — 라인 3건 추가 후 (홈멀티 활성 + 합계 4,850,000 + cardOrderInfo 자동 채움 + shim 활성 표시)
 4. `04-desktop-estimate-legacy-print.png` — legacy `pageFinal` 인쇄 미리보기 (NanumGothic + 인감)
-5. `05-desktop-order-approvals.png` — SamhanLogis React 신규 메뉴 (status 6종 + 비밀번호 초기화 + 상태 dropdown)
-6. `06-desktop-partner-dc-config.png` — SamhanLogis React 신규 메뉴 (DC 222 row + 인라인 입력 + 검색)
+5. `05-desktop-order-approvals.png` — Samhan Public React 신규 메뉴 (status 6종 + 비밀번호 초기화 + 상태 dropdown)
+6. `06-desktop-partner-dc-config.png` — Samhan Public React 신규 메뉴 (DC 222 row + 인라인 입력 + 검색)
 
 ## 모호 항목 (후속 작업 / 검토 필요)
 

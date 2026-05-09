@@ -41,7 +41,7 @@ function createMainWindow(): void {
     minHeight: 720,
     show: false,
     autoHideMenuBar: true,
-    title: '삼한로지스',
+    title: 'Samhan Public',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,

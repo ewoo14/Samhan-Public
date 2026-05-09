@@ -1,6 +1,6 @@
 # Frontend 3 Client 기능 Inventory (W10-7 Stage 1)
 
-> **목적** — SamhanLogis 3 client (web/desktop/mobile) 의 모든 화면 / 컴포넌트 / 사용자 흐름 / API 의존을 한눈에 파악하여 운영 매뉴얼 작성의 기반으로 사용. **누락 UI 기능을 한눈에 확인** 가능.
+> **목적** — Samhan Public 3 client (web/desktop/mobile) 의 모든 화면 / 컴포넌트 / 사용자 흐름 / API 의존을 한눈에 파악하여 운영 매뉴얼 작성의 기반으로 사용. **누락 UI 기능을 한눈에 확인** 가능.
 >
 > **branch** — `feature/integrated-phase-10-step-7-operator-manual`
 > **작성일** — 2026-05-09
@@ -112,12 +112,12 @@
 | 8 | `/sales/:id/print/invoice` | `print/InvoiceView.tsx` | 인증 모두 | `GET /slips/{id}` (캐시 재사용) | ✅ |
 | 9 | `/sales/:id/print/dispatch` | `print/DispatchView.tsx` | 인증 모두 | `GET /slips/{id}` | ✅ |
 
-#### 2.1.3 판매 v4 — Phase 6 sub-route (legacy webview 견적 + SamhanLogis 신규 4종)
+#### 2.1.3 판매 v4 — Phase 6 sub-route (legacy webview 견적 + Samhan Public 신규 4종)
 
 | # | Route | 컴포넌트 | 권한 | 백엔드 API | 구현 상태 |
 |---|---|---|---|---|---|
 | 10 | `/sales/estimates` | `SalesEstimateListPage.tsx` | 인증 모두 | `GET /api/v1/estimates` (M5) | ✅ |
-| 11 | `/sales/estimates/legacy` | `EstimateLegacyWebviewPage.tsx` (Electron `<webview>` + preload shim) | 인증 모두 | legacy `migration/source/scripts/estimate/index.html` (18614 라인) + `legacyShim.mjs` 가 `google.script.run` → SamhanLogis MS axios fetch 매핑 | ✅ (legacy 100% 보존) |
+| 11 | `/sales/estimates/legacy` | `EstimateLegacyWebviewPage.tsx` (Electron `<webview>` + preload shim) | 인증 모두 | legacy `migration/source/scripts/estimate/index.html` (18614 라인) + `legacyShim.mjs` 가 `google.script.run` → Samhan Public MS axios fetch 매핑 | ✅ (legacy 100% 보존) |
 | 12 | `/sales/estimates/new` | `EstimateLegacyWebviewPage.tsx` (동일) | 인증 모두 | (legacy 그대로) | ✅ |
 | 13 | `/sales/partner-orders` | `SalesPartnerOrderListPage.tsx` | 인증 모두 | `GET /api/v1/partner-orders?status=` | ✅ |
 | 14 | `/sales/partner-orders/:id` | `SalesPartnerOrderDetailPage.tsx` | 인증 모두 | `GET /api/v1/partner-orders/{orderNumber}` | ✅ |
@@ -282,7 +282,7 @@
 ## 5. 누락 후보 (이카운트 ERP 비교)
 
 > **출처** — `docs/migration/ecount-reference/*.png` (16장 캡처, 2026-05-09 09:15~09:21 촬영).
-> **방법** — 이카운트 표준 ERP 화면 16장 vs SamhanLogis desktop 27 라우트 + mobile-staff 6 화면 매핑.
+> **방법** — 이카운트 표준 ERP 화면 16장 vs Samhan Public desktop 27 라우트 + mobile-staff 6 화면 매핑.
 
 ### 5.1 명백한 누락 (개발책임자 확인 필요)
 

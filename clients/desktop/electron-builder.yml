@@ -6,10 +6,10 @@
 # 빌드 명령:
 #   npm run build:win    # electron-vite build → electron-builder --win
 # 결과물:
-#   release/<version>/삼한로지스-<version>-x64.exe              (NSIS installer)
-#   release/<version>/삼한로지스-<version>-x64-portable.exe     (portable)
+#   release/<version>/Samhan Public-<version>-x64.exe              (NSIS installer)
+#   release/<version>/Samhan Public-<version>-x64-portable.exe     (portable)
 appId: com.samhanair.logis.desktop
-productName: 삼한로지스
+productName: Samhan Public
 copyright: Copyright (c) 2026 (주)삼한공조시스템
 artifactName: ${productName}-${version}-${arch}.${ext}
 
@@ -48,7 +48,7 @@ nsis:
   perMachine: false  # 사용자별 설치 — UAC 회피, 사내 일반 사원 권한 OK
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: 삼한로지스
+  shortcutName: Samhan Public
   installerLanguages:
     - ko_KR
   language: '1042'  # Korean

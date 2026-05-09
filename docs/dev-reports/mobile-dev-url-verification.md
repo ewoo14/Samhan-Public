@@ -37,9 +37,9 @@ dev default 는 `:4173` (vite preview 명시 override). vite config 의 `server.
 
 production 도메인은 `order.samhan-air.com` (DECISIONS Phase 6 Section 4 sub-domain).
 
-## 3. SamhanLogis 자체 stack 일관성 검증
+## 3. Samhan Public 자체 stack 일관성 검증
 
-PR #67 머지 → PR #70 revert 로 legacy-v2 (이카운트/노션 살린 변종 — clients/web/order-legacy 의 Express + EJS 포팅, port 5185) 가 main 에서 제거됨. 본 PR 시점 기준 SamhanLogis 의 client 5개는 모두 자체 stack:
+PR #67 머지 → PR #70 revert 로 legacy-v2 (이카운트/노션 살린 변종 — clients/web/order-legacy 의 Express + EJS 포팅, port 5185) 가 main 에서 제거됨. 본 PR 시점 기준 Samhan Public 의 client 5개는 모두 자체 stack:
 
 | client | stack | 비고 |
 |---|---|---|
@@ -49,7 +49,7 @@ PR #67 머지 → PR #70 revert 로 legacy-v2 (이카운트/노션 살린 변종
 | mobile-staff v3 | Expo RN + WebView | estimate-app v2 wrapper |
 | estimate-app v2 | Node.js + Express + EJS | legacy Code.js 76 함수 1:1 포팅 |
 
-legacy-v2 변종 (이카운트/노션 살린 버전) 은 별도 프로젝트로 이전 — 본 SamhanLogis 범위 외.
+legacy-v2 변종 (이카운트/노션 살린 버전) 은 별도 프로젝트로 이전 — 본 Samhan Public 범위 외.
 
 ## 4. 자동 모바일 분기 (코드 변경 0)
 

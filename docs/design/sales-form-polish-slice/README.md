@@ -1,6 +1,6 @@
 # Sales Form UX Polish — Designer 산출물
 
-본 디렉토리는 SamhanLogis Sales Form Polish 슬라이스의 **Designer (5-team 신규)** 산출물입니다.
+본 디렉토리는 Samhan Public Sales Form Polish 슬라이스의 **Designer (5-team 신규)** 산출물입니다.
 FE 팀은 본 산출물의 spec 을 인용해 구현하며, BE/QA/DevOps 팀도 wireframe / interaction flow 를 참고합니다.
 
 > 사용자 (개발책임자) 강조: **"디자인 좀 잘 부탁해"**
