@@ -31,7 +31,11 @@
  *
  * 기존 PR #18 의 `/slips`, `/slips/new` 라우트는 폐기.
  */
-import { createHashRouter, RouterProvider } from 'react-router-dom'
+import {
+  createHashRouter,
+  RouterProvider,
+  useSearchParams,
+} from 'react-router-dom'
 import { AuthGuard } from '../components/AuthGuard'
 import { AppLayout } from '../components/AppLayout'
 import { RoleGuard } from '../components/RoleGuard'
@@ -81,6 +85,9 @@ import { PasswordChangePage } from './PasswordChangePage'
 // [Phase 10 P1-5] arologis 수동 배차 admin UI (DISPATCH/MASTER 가드 — backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
 import { ArologisManualDispatchPage } from './ArologisManualDispatchPage'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
+// [Phase 10 PR-E1 FE-2] arologis 가배차 분류 admin UI (REGION 권역 + 시도 광역 2-탭, MASTER/MANAGER/DISPATCH)
+import { ArologisPreClassifyPage } from './ArologisPreClassifyPage'
+import { ARO_PRECLASSIFY_ROLES } from '../api/arologisDispatchApi'
 // [Phase 10 P2-4 / slice 8] 매출 마감 — 일별/월별 (ACCOUNTANT/MASTER 진입, 역마감은 MASTER 만)
 import { MonthEndClosingPage } from './MonthEndClosingPage'
 // [Phase 10 P0-5 / slice 4] 관리자 통합 admin (MASTER 전용 5 페이지)
@@ -111,6 +118,26 @@ import { SLIP_CLEANUP_ROLES } from '../api/slipCleanupApi'
 // [PR-E1 FE-1] DPS 입고 비교 (legacy GAS 1번/16번 native 이식 — WAREHOUSE/MASTER/MANAGER/INVENTORY)
 import { InventoryDpsComparePage } from './InventoryDpsComparePage'
 import { DPS_COMPARE_ROLES } from '../api/dpsCompareApi'
+// [PR-E1 FE-6] 배차안내 SMS 발송 (preview + send 2-step) — DISPATCH / MANAGER / MASTER 가드
+import { DispatchSmsPage } from './DispatchSmsPage'
+import { DISPATCH_SMS_ROLES } from '../api/dispatchSmsApi'
+// [Phase 10 PR-E1 FE-3] arologis 미배차 리스트 — 일자 필터 + 수동 배차로 이동 link (MASTER/MANAGER/DISPATCH)
+import { ArologisUnassignedPage } from './ArologisUnassignedPage'
+import { ARO_UNASSIGNED_ROLES } from '../api/arologisDispatchApi'
+// [PR-E1 FE-4] 내일자 전표 이미지 페이지 + Designer NextDaySlipView 통합 print route
+import { NextDaySlipPage } from './NextDaySlipPage'
+import { NEXT_DAY_SLIP_ROLES } from '../api/nextDaySlipApi'
+import { NextDaySlipView } from '../print/NextDaySlipView'
+
+/**
+ * Print route wrapper — `?perRoom=1` query 시 Designer NextDaySlipView 의
+ * pageBreakPerRoom prop 활성. NextDaySlipView 자체 보존 (Designer 산출물 무수정).
+ */
+function NextDaySlipPrintRoute() {
+  const [params] = useSearchParams()
+  const perRoom = params.get('perRoom') === '1'
+  return <NextDaySlipView pageBreakPerRoom={perRoom} />
+}
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
@@ -138,6 +165,27 @@ const router = createHashRouter([
       { path: '/sales/new', element: <SlipFormPage mode="OUTBOUND" /> },
       // link-dispatch-slice: 링크발송 (배송 묶음) — `/sales/:id` 보다 먼저 매칭되어야 함
       { path: '/sales/link-dispatch', element: <LinkDispatchListPage /> },
+
+      // [PR-E1 FE-4] 내일자 전표 이미지 — SALES/MANAGER/MASTER (BE @PreAuthorize 일치).
+      // `/sales/:id` 보다 먼저 매칭되어야 함 (정적 path 우선).
+      {
+        path: '/sales/next-day-slip',
+        element: (
+          <RoleGuard allow={NEXT_DAY_SLIP_ROLES}>
+            <NextDaySlipPage />
+          </RoleGuard>
+        ),
+      },
+      // [PR-E1 FE-4] 내일자 전표 인쇄 미리보기 — Designer commit 1f85605 NextDaySlipView 통합.
+      // `?date=YYYY-MM-DD` 필수, `?perRoom=1` 시 단톡방별 page-break-after 활성.
+      {
+        path: '/print/next-day-slip',
+        element: (
+          <RoleGuard allow={NEXT_DAY_SLIP_ROLES}>
+            <NextDaySlipPrintRoute />
+          </RoleGuard>
+        ),
+      },
 
       // P2-1 견적서 SamhanLogis 도메인 (slip-service `/slips/estimates`).
       // legacy webview (EstimateLegacyWebviewPage) 폐기. 정적 path 우선 매칭 의무.
@@ -242,6 +290,39 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={ARO_MANUAL_DISPATCH_ROLES}>
             <ArologisManualDispatchPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 10 PR-E1 FE-2] arologis 가배차 분류 admin UI — MASTER / MANAGER / DISPATCH.
+      // 출고전표 자동 조회 → 권역 (REGION 마스터) + 시도 (광역 prefix) 2-탭 통합.
+      {
+        path: '/arologis/pre-classify',
+        element: (
+          <RoleGuard allow={ARO_PRECLASSIFY_ROLES}>
+            <ArologisPreClassifyPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 10 PR-E1 FE-3] arologis 미배차 리스트 — MASTER / MANAGER / DISPATCH.
+      // 일자 단일 필터 + dispatch 미할당 슬립 표 + "수동 배차로 이동" link (/arologis/manual 자동 채움).
+      {
+        path: '/arologis/unassigned',
+        element: (
+          <RoleGuard allow={ARO_UNASSIGNED_ROLES}>
+            <ArologisUnassignedPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 10 PR-E1 FE-6] 배차안내 SMS 발송 (preview + send 2-step) — DISPATCH / MANAGER / MASTER.
+      // 출고전표 자동 조회 + 단톡방 매핑 + blocked 가드 + 안내 SMS 발송.
+      {
+        path: '/arologis/dispatch-sms',
+        element: (
+          <RoleGuard allow={DISPATCH_SMS_ROLES}>
+            <DispatchSmsPage />
           </RoleGuard>
         ),
       },
@@ -363,6 +444,17 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={AUDIT_ROLES}>
             <InventoryAuditDetailPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY.
+      // BE: inventory-service `/warehouse/audit/dps-compare` (commit 4b14084).
+      {
+        path: '/warehouse/dps-compare',
+        element: (
+          <RoleGuard allow={DPS_COMPARE_ROLES}>
+            <InventoryDpsComparePage />
           </RoleGuard>
         ),
       },

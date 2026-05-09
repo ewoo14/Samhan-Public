@@ -34,12 +34,21 @@ import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { canAccessAccounting } from '../api/accounting'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
+// [Phase 10 PR-E1 FE-2/FE-3] arologis 가배차 분류 + 미배차 리스트 — MASTER/MANAGER/DISPATCH
+import {
+  ARO_PRECLASSIFY_ROLES,
+  ARO_UNASSIGNED_ROLES,
+} from '../api/arologisDispatchApi'
 import { canAccessAdmin } from '../api/adminApi'
 import { canAccessAudit } from '../api/auditApi'
 import { canAccessChatRoomAdmin } from '../api/chatRoomApi'
 import { SLIP_CLEANUP_ROLES } from '../api/slipCleanupApi'
 // [PR-E1 FE-4] 내일자 전표 이미지 — SALES / MANAGER / MASTER (BE @PreAuthorize 일치)
 import { canAccessNextDaySlip } from '../api/nextDaySlipApi'
+// [PR-E1 FE-6] 배차안내 SMS 발송 — DISPATCH / MANAGER / MASTER (BE @PreAuthorize 일치)
+import { canAccessDispatchSms } from '../api/dispatchSmsApi'
+// [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY (BE @PreAuthorize 일치)
+import { canAccessDpsCompare } from '../api/dpsCompareApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -92,18 +101,38 @@ export function AppLayout() {
   const showAccounting = canAccessAccounting(auth?.role)
 
   // [Phase 10 P1-5] arologis 수동 배차 — DISPATCH/MASTER 가드 (현재 backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
-  const showArologis = !!auth?.role
+  const showArologisManual = !!auth?.role
     && (ARO_MANUAL_DISPATCH_ROLES as readonly string[]).includes(auth.role)
+  // [Phase 10 PR-E1 FE-2] arologis 가배차 분류 — MASTER / MANAGER / DISPATCH (BE 와 동일 화이트리스트)
+  const showArologisPreClassify = !!auth?.role
+    && (ARO_PRECLASSIFY_ROLES as readonly string[]).includes(auth.role)
+  // [PR-E1 FE-6] 배차안내 SMS — DISPATCH / MANAGER / MASTER
+  const showDispatchSms = canAccessDispatchSms(auth?.role)
+  // [Phase 10 PR-E1 FE-3] arologis 미배차 리스트 — MASTER / MANAGER / DISPATCH
+  const showArologisUnassigned = !!auth?.role
+    && (ARO_UNASSIGNED_ROLES as readonly string[]).includes(auth.role)
+  // arologis 그룹 가시성 — 수동 배차 / 가배차 분류 / 미배차 리스트 / 배차안내 SMS 중 하나라도 보이면 그룹 노출
+  const showArologis
+    = showArologisManual
+    || showArologisPreClassify
+    || showArologisUnassigned
+    || showDispatchSms
 
   // [Phase 10 P0-5] 관리자 admin 메뉴 — MASTER 만 가시
   const showAdmin = canAccessAdmin(auth?.role)
   // [Phase 10 P2-6] 재고 실사 메뉴 — WAREHOUSE / MASTER 만 가시
   const showAudit = canAccessAudit(auth?.role)
+  // [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY 가시
+  const showDpsCompare = canAccessDpsCompare(auth?.role)
+  // 창고 운영 그룹 가시성 — 재고 실사 또는 DPS 입고 비교 중 하나라도 보이면 그룹 노출
+  const showWarehouseOps = showAudit || showDpsCompare
   // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
   // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
   // [PR-E1 FE-5] 전표 정리 entry — SALES / MANAGER / MASTER / ACCOUNTANT
   const showSlipCleanup = !!auth?.role
     && (SLIP_CLEANUP_ROLES as readonly string[]).includes(auth.role)
+  // [PR-E1 FE-4] 내일자 전표 이미지 entry — SALES / MANAGER / MASTER
+  const showNextDaySlip = canAccessNextDaySlip(auth?.role)
   const showChatRoomAdmin = canAccessChatRoomAdmin(auth?.role)
 
   return (
@@ -146,6 +175,14 @@ export function AppLayout() {
               data-testid="sidebar-sales-slip-cleanup"
             >
               전표 정리
+            </NavLink>
+          ) : null}
+          {showNextDaySlip ? (
+            <NavLink
+              to="/sales/next-day-slip"
+              data-testid="sidebar-sales-next-day-slip"
+            >
+              내일자 전표 이미지
             </NavLink>
           ) : null}
 
@@ -191,15 +228,46 @@ export function AppLayout() {
               >
                 arologis
               </div>
-              <NavLink to="/arologis/manual">수동 배차</NavLink>
+              {showArologisManual ? (
+                <NavLink to="/arologis/manual">수동 배차</NavLink>
+              ) : null}
+              {/* [Phase 10 PR-E1 FE-2] 가배차 분류 — MASTER/MANAGER/DISPATCH 가시. */}
+              {showArologisPreClassify ? (
+                <NavLink
+                  to="/arologis/pre-classify"
+                  data-testid="sidebar-arologis-preclassify"
+                >
+                  가배차 분류
+                </NavLink>
+              ) : null}
+              {/* [Phase 10 PR-E1 FE-3] 미배차 리스트 — MASTER/MANAGER/DISPATCH 가시. */}
+              {showArologisUnassigned ? (
+                <NavLink
+                  to="/arologis/unassigned"
+                  data-testid="sidebar-arologis-unassigned"
+                >
+                  미배차 리스트
+                </NavLink>
+              ) : null}
+              {/* [PR-E1 FE-6] 배차안내 SMS — DISPATCH/MANAGER/MASTER 가시. */}
+              {showDispatchSms ? (
+                <NavLink
+                  to="/arologis/dispatch-sms"
+                  data-testid="sidebar-arologis-dispatch-sms"
+                >
+                  배차안내 SMS
+                </NavLink>
+              ) : null}
               {/* [PR-D Phase B FE-B] 가배차 지역 분류 — MASTER/MANAGER 가시 (현재 ARO_MANUAL_DISPATCH_ROLES 와 동일 집합). */}
-              <NavLink to="/admin/regions" data-testid="sidebar-arologis-regions">
-                지역 분류
-              </NavLink>
+              {showArologisManual ? (
+                <NavLink to="/admin/regions" data-testid="sidebar-arologis-regions">
+                  지역 분류
+                </NavLink>
+              ) : null}
             </>
           ) : null}
 
-          {showAudit ? (
+          {showWarehouseOps ? (
             <>
               <div
                 className="app-sidebar-group"
@@ -216,7 +284,17 @@ export function AppLayout() {
               >
                 창고 운영
               </div>
-              <NavLink to="/warehouse/audit">재고 실사</NavLink>
+              {showAudit ? (
+                <NavLink to="/warehouse/audit">재고 실사</NavLink>
+              ) : null}
+              {showDpsCompare ? (
+                <NavLink
+                  to="/warehouse/dps-compare"
+                  data-testid="sidebar-warehouse-dps-compare"
+                >
+                  DPS 입고 비교
+                </NavLink>
+              ) : null}
             </>
           ) : null}
 
