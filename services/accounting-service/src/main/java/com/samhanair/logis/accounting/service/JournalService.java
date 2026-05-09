@@ -39,14 +39,27 @@ public class JournalService {
     private final JournalRepository journalRepository;
     private final JournalNumberService journalNumberService;
     private final AccountService accountService;
+    private final MonthEndCloseService monthEndCloseService;
 
     /**
      * 분개 신규 생성 (DRAFT). 라인 1개 이상 + accountCode leaf 검증 + 라인별 debit/credit 도메인 가드.
      *
+     * <p>마감 가드 (Phase 10 Step 8 — P2-4): {@code journalDate} 가 CLOSED 회계 기간에 속하면
+     * {@link ErrorCode#CONFLICT} 로 차단. {@code AccountingPeriodGuard} interceptor 와 동일
+     * 의미를 service 레이어에서도 강제 (servlet filter 의존 없이 IT/단위테스트 안전).
+     *
      * @param request 헤더 + 라인 묶음
      * @return DRAFT 신규 분개 단건
+     * @throws BusinessException(CONFLICT) 마감된 기간 일자 입력
      */
     public JournalDetailResponse create(CreateJournalRequest request) {
+        monthEndCloseService.findClosedPeriodCovering(request.journalDate())
+                .ifPresent(p -> {
+                    throw new BusinessException(ErrorCode.CONFLICT,
+                            "마감된 회계 기간입니다 — 해당 일자(" + request.journalDate()
+                                    + ")는 변경할 수 없습니다");
+                });
+
         String journalNo = journalNumberService.next(request.journalDate());
         Journal journal = Journal.create(journalNo, request.journalDate(), request.description(),
                 JournalSourceType.MANUAL, null);

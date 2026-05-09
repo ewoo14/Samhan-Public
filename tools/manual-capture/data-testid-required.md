@@ -125,18 +125,17 @@ Stage 3 (`capture.config.json` v3) 가 14 desktop + 4 mobile 화면을 정의했
 
 | selector | element | route |
 |----------|---------|-------|
-| `[data-testid="password-reset-request-email"]` | reset 요청 이메일 input | `/login/reset` |
-| `[data-testid="password-reset-request-submit"]` | reset 요청 제출 버튼 | `/login/reset` |
-| `[data-testid="password-reset-confirm-token"]` | 토큰 hidden input (URL query) | `/login/reset/confirm?token=` |
-| `[data-testid="password-reset-confirm-new"]` | 신규 비밀번호 input | `/login/reset/confirm` |
-| `[data-testid="password-reset-confirm-new-repeat"]` | 신규 비밀번호 재입력 | `/login/reset/confirm` |
-| `[data-testid="password-reset-confirm-submit"]` | 변경 확정 버튼 | `/login/reset/confirm` |
-| `[data-testid="password-policy-hint"]` | 정책 힌트 (8자/특수문자) | `/login/reset/confirm` + `/admin/profile/password` |
-| `[data-testid="profile-password-change-current"]` | 본인 비밀번호 변경 — 현재 PW | `/admin/profile/password` |
-| `[data-testid="profile-password-change-new"]` | 본인 비밀번호 변경 — 신규 PW | `/admin/profile/password` |
-| `[data-testid="profile-password-change-submit"]` | 본인 비밀번호 변경 — 제출 | `/admin/profile/password` |
+| `[data-testid="password-reset-email-input"]` | reset 요청 이메일 input | LoginPage `PasswordResetDialog` STEP 1 |
+| `[data-testid="password-reset-token-input"]` | 토큰 input (이메일 본문 복사) | `PasswordResetDialog` STEP 2 |
+| `[data-testid="password-reset-new-password-input"]` | 신규 비밀번호 input | `PasswordResetDialog` STEP 2 |
+| `[data-testid="password-reset-submit-button"]` | STEP 1/STEP 2 공통 제출 버튼 | `PasswordResetDialog` |
+| `[data-testid="password-policy-hint"]` | 정책 힌트 (8자/특수문자) | `PasswordResetDialog` + `/password/change` |
+| `[data-testid="password-change-current"]` | 본인 비밀번호 변경 — 현재 PW | `/password/change` (`PasswordChangePage`) |
+| `[data-testid="password-change-new"]` | 본인 비밀번호 변경 — 신규 PW | `/password/change` |
+| `[data-testid="password-change-submit"]` | 본인 비밀번호 변경 — 제출 | `/password/change` |
 | `[data-testid="account-locked-banner"]` | 5회 실패 잠금 배너 | login page (잠금 시) |
 | `[data-testid="master-account-unlock-button"]` | MASTER unlock 버튼 (per row) | `/admin/users` (P0-5 의존) |
+| `[data-testid="header-user-menu-password-change"]` | 헤더 메뉴 — 비밀번호 변경 navigate | AppLayout 헤더 |
 
 ### 슬라이스 2 — 회계 17 보고서 (P0-1, accounting-service + desktop)
 
@@ -191,11 +190,11 @@ Stage 3 (`capture.config.json` v3) 가 14 desktop + 4 mobile 화면을 정의했
 
 | selector | element | route |
 |----------|---------|-------|
-| `[data-testid="users-admin-table"]` | 직원 목록 table | `/admin/users` |
-| `[data-testid="users-admin-add-button"]` | 신규 직원 등록 | `/admin/users` |
-| `[data-testid="users-admin-disable-button"]` | 계정 비활성화 토글 (per row) | `/admin/users` |
-| `[data-testid="users-admin-enable-button"]` | 계정 활성화 토글 (per row) | `/admin/users` |
-| `[data-testid="users-admin-role-select"]` | ROLE 변경 select | `/admin/users/{id}/role` |
+| `[data-testid="admin-users-table"]` | 직원 목록 table | `/admin/users` |
+| `[data-testid="admin-users-add-button"]` | 신규 직원 등록 | `/admin/users` |
+| `[data-testid="admin-users-disable-button"]` | 계정 비활성화 토글 (per row) | `/admin/users` |
+| `[data-testid="admin-users-enable-button"]` | 계정 활성화 토글 (per row) | `/admin/users` |
+| `[data-testid="admin-users-role-select"]` | ROLE 변경 select | `/admin/users/{id}/role` |
 | `[data-testid="role-matrix-table"]` | 권한 매트릭스 (9 ROLE × endpoint) | `/admin/roles` |
 | `[data-testid="org-chart-tree"]` | 조직도 트리 | `/admin/org-chart` |
 
@@ -205,13 +204,16 @@ Stage 3 (`capture.config.json` v3) 가 14 desktop + 4 mobile 화면을 정의했
 
 | selector | element | screen |
 |----------|---------|--------|
-| `[data-testid="mobile-photo-camera-button"]` | [사진 첨부] 버튼 (정차 도착 후 노출) | DriverStopDetail |
-| `[data-testid="mobile-photo-gallery-button"]` | 갤러리에서 선택 버튼 | DriverStopDetail |
-| `[data-testid="mobile-photo-preview-list"]` | 촬영된 사진 thumbnail list | DriverStopDetail |
-| `[data-testid="mobile-photo-delete-button"]` | thumbnail 삭제 (per item, 24h 내 본인만) | DriverStopDetail |
-| `[data-testid="mobile-photo-upload-progress"]` | 업로드 progress bar | DriverStopDetail |
-| `[data-testid="mobile-photo-retry-button"]` | 업로드 실패 재시도 | DriverStopDetail |
-| `[data-testid="mobile-camera-permission-prompt"]` | iOS/Android 카메라 권한 요청 dialog | EarlyOnboarding |
+| `[testID="attachment-camera-button"]` | [사진 첨부] 버튼 (정차 도착 후 노출) | `PhotoAttachmentCapture` (driver `SignaturePhotoScreen` 내) |
+| `[testID="attachment-gallery-button"]` | 갤러리에서 선택 버튼 | `PhotoAttachmentCapture` |
+| `[testID="attachment-file-button"]` | 파일 선택 버튼 (Android) | `PhotoAttachmentCapture` |
+| `[testID="attachment-preview-{i}"]` | 촬영된 사진 thumbnail (index 별) | `PhotoAttachmentCapture` |
+| `[testID="attachment-delete-{i}"]` | thumbnail 삭제 (per item, 24h 내 본인만) | `PhotoAttachmentCapture` |
+| `[testID="attachment-upload-progress"]` | 업로드 progress bar | `PhotoAttachmentCapture` |
+| `[testID="attachment-enable-toggle"]` | 사진 첨부 toggle | `SignaturePhotoScreen` |
+| `[testID="attachment-type-delivery"]` | 배송 사진 타입 | `SignaturePhotoScreen` |
+| `[testID="attachment-type-inspection"]` | 검수 사진 타입 | `SignaturePhotoScreen` |
+| `[testID="attachment-upload-button"]` | 업로드 버튼 | `SignaturePhotoScreen` |
 
 ### 슬라이스 7 — 슬립 검수 UI (P0-9, desktop + mobile-staff)
 
@@ -256,6 +258,43 @@ Stage 3 (`capture.config.json` v3) 가 14 desktop + 4 mobile 화면을 정의했
 | `[data-testid="arologis-gps-driver-marker-{driverId}"]` | 기사 marker | 지도 내 |
 | `[data-testid="arologis-vendor-sync-button"]` | 인성데이타 vendor 양방향 sync 버튼 | `/arologis/vendor` |
 | `[data-testid="arologis-dispatch-print-button"]` | 배차 지시서 인쇄 양식 | per row + detail page |
+
+### 슬라이스 10 — 매출 마감 (P2-4, accounting-service + desktop) — TM 추가
+
+매뉴얼 출처: `docs/manual/02-회계/04-매출-마감.md`
+실 FE: `clients/desktop/src/renderer/routes/MonthEndClosingPage.tsx`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="closing-new-button"]` | 신규 마감 (DAILY/MONTHLY 모달 진입) | `/accounting/closings` |
+| `[data-testid="closing-list-table"]` | 마감 목록 table | `/accounting/closings` |
+| `[data-testid="closing-reverse-button"]` | 역마감 버튼 (MASTER 만 노출) | `/accounting/closings` per row |
+| `[data-testid="period-lock-banner-locked"]` | 마감 일자 변경 차단 배너 (시산표 등) | `/accounting/reports/*` |
+
+### 슬라이스 11 — 재고 실사 (P2-6, inventory-service + desktop) — TM 추가
+
+매뉴얼 출처: `docs/manual/03-창고/05-재고-실사.md`
+실 FE: `clients/desktop/src/renderer/routes/InventoryAudit*.tsx`
+
+| selector | element | route |
+|----------|---------|-------|
+| `[data-testid="audit-list-table"]` | 실사 목록 table | `/inventory/audits` |
+| `[data-testid="audit-list-new-button"]` | 신규 실사 등록 navigate | `/inventory/audits` |
+| `[data-testid="audit-list-warehouse-filter"]` | 창고 필터 select | `/inventory/audits` |
+| `[data-testid="audit-list-year-filter"]` | 연도 필터 select | `/inventory/audits` |
+| `[data-testid="audit-list-status-filter"]` | 상태 필터 select (PLANNED/IN_PROGRESS/COMPLETED/CANCELLED) | `/inventory/audits` |
+| `[data-testid="audit-form-warehouse-select"]` | 폼 — 창고 select | `/inventory/audits/new` |
+| `[data-testid="audit-form-date-input"]` | 폼 — 실사 일자 input | `/inventory/audits/new` |
+| `[data-testid="audit-form-submit"]` | 폼 — 등록 (PLANNED + snapshot 자동) | `/inventory/audits/new` |
+| `[data-testid="audit-detail-header"]` | detail 헤더 (실사번호 / 창고 / 상태) | `/inventory/audits/{id}` |
+| `[data-testid="audit-start-button"]` | PLANNED → IN_PROGRESS | detail |
+| `[data-testid="audit-complete-button"]` | IN_PROGRESS → COMPLETED + 차이 분개 trigger | detail |
+| `[data-testid="audit-cancel-button"]` | PLANNED/IN_PROGRESS → CANCELLED | detail |
+| `[data-testid="audit-line-barcode-input"]` | 라인 입력 — 바코드 input | detail |
+| `[data-testid="audit-line-actual-input"]` | 라인 입력 — 실사 수량 input | detail |
+| `[data-testid="audit-line-record-button"]` | 라인 입력 — 저장 버튼 | detail |
+| `[data-testid="audit-detail-lines-table"]` | 라인 list table (snapshot + actual + diff) | detail |
+| `[data-testid="audit-journal-link"]` | 차이 분개 link (150/919) | detail |
 
 ### 슬라이스별 spec 갱신 protocol
 

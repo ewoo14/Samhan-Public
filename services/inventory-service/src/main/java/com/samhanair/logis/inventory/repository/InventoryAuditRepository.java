@@ -23,6 +23,10 @@ public interface InventoryAuditRepository extends JpaRepository<InventoryAudit, 
     /**
      * 필터 조회 — warehouseId / 연도 / status 모두 nullable. 누락 시 해당 조건 무시.
      *
+     * <p>PostgreSQL JDBC 는 {@code (? IS NULL OR ...)} 패턴에서 파라미터 타입 추론에 실패해
+     * {@code SQLState 42P18 — could not determine data type of parameter} 를 던진다.
+     * 이를 우회하기 위해 boolean flag 파라미터로 NULL 여부를 명시 (CI fix).
+     *
      * @param warehouseId 창고 필터 (null 가능)
      * @param fromDate    auditDate 시작 (null 가능)
      * @param toDate      auditDate 종료 (null 가능, inclusive)
@@ -32,16 +36,20 @@ public interface InventoryAuditRepository extends JpaRepository<InventoryAudit, 
      */
     @Query("""
             SELECT a FROM InventoryAudit a
-            WHERE (:warehouseId IS NULL OR a.warehouse.id = :warehouseId)
-              AND (:fromDate IS NULL OR a.auditDate >= :fromDate)
-              AND (:toDate IS NULL OR a.auditDate <= :toDate)
-              AND (:status IS NULL OR a.status = :status)
+            WHERE (:hasWarehouse = false OR a.warehouse.id = :warehouseId)
+              AND (:hasFromDate = false OR a.auditDate >= :fromDate)
+              AND (:hasToDate = false OR a.auditDate <= :toDate)
+              AND (:hasStatus = false OR a.status = :status)
             ORDER BY a.auditDate DESC, a.createdAt DESC
             """)
     Page<InventoryAudit> findByFilters(
+            @Param("hasWarehouse") boolean hasWarehouse,
             @Param("warehouseId") UUID warehouseId,
+            @Param("hasFromDate") boolean hasFromDate,
             @Param("fromDate") LocalDate fromDate,
+            @Param("hasToDate") boolean hasToDate,
             @Param("toDate") LocalDate toDate,
+            @Param("hasStatus") boolean hasStatus,
             @Param("status") AuditStatus status,
             Pageable pageable);
 }

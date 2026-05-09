@@ -282,9 +282,29 @@ public class InventoryAuditService {
     @Transactional(readOnly = true)
     public Page<AuditResponse> list(UUID warehouseId, Integer year, AuditStatus status,
                                     Pageable pageable) {
-        LocalDate from = year == null ? null : LocalDate.of(year, 1, 1);
-        LocalDate to = year == null ? null : LocalDate.of(year, 12, 31);
-        return auditRepository.findByFilters(warehouseId, from, to, status, pageable)
+        // PostgreSQL 타입 추론 가드 — 모든 파라미터에 non-null sentinel 부여 (boolean flag 가
+        // false 면 WHERE 절이 short-circuit). null 값은 PostgreSQL JDBC 가 SQLState 42P18 발생.
+        boolean hasWarehouse = warehouseId != null;
+        boolean hasStatus = status != null;
+        int yearValue;
+        boolean hasYear;
+        if (year == null) {
+            hasYear = false;
+            yearValue = 1970;
+        } else {
+            hasYear = true;
+            yearValue = year.intValue();
+        }
+        UUID warehouseSentinel = hasWarehouse ? warehouseId : new UUID(0L, 0L);
+        LocalDate fromSentinel = LocalDate.of(yearValue, 1, 1);
+        LocalDate toSentinel = LocalDate.of(yearValue, 12, 31);
+        AuditStatus statusSentinel = hasStatus ? status : AuditStatus.PLANNED;
+        return auditRepository.findByFilters(
+                        hasWarehouse, warehouseSentinel,
+                        hasYear, fromSentinel,
+                        hasYear, toSentinel,
+                        hasStatus, statusSentinel,
+                        pageable)
                 .map(AuditResponse::from);
     }
 

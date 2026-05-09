@@ -51,11 +51,11 @@
 
 ---
 
-## 1. 슬라이스 1 — 비밀번호 재설정 (P0-2) — 21 case 🔴
+## 1. 슬라이스 1 — 비밀번호 재설정 (P0-2) — 22 case 🔴
 
-**의존 backend**: `auth-service` `/api/auth/password/reset/request` + `/api/auth/password/reset/confirm` + `/api/auth/account/unlock`
-**의존 frontend**: `clients/desktop` `/login/reset` + `/login/reset/confirm` + `/admin/users` + `PasswordResetDialog`
-**testid 의존**: `password-reset-email-input` / `password-reset-token-input` / `password-reset-new-password-input` / `password-reset-submit-button` / `password-policy-hint` / `account-locked-banner` / `master-account-unlock-button` / `login-id-input` / `login-password-input` / `login-submit-button`
+**의존 backend**: `auth-service` `/api/auth/password/reset/request` + `/api/auth/password/reset/confirm` + `/api/auth/password/change` + `/api/auth/account/unlock`
+**의존 frontend**: `clients/desktop` LoginPage `PasswordResetDialog` (modal STEP1/STEP2) + `/password/change` (`PasswordChangePage`) + `/admin/users`
+**testid 의존 (실 FE 표준 — TM 정합)**: `password-reset-email-input` / `password-reset-token-input` / `password-reset-new-password-input` / `password-reset-submit-button` / `password-change-current` / `password-change-new` / `password-change-submit` / `password-policy-hint` / `account-locked-banner` / `master-account-unlock-button` / `login-id-input` / `login-password-input` / `login-submit-button`
 
 ### 1.1 5회 로그인 실패 → 잠금 → 사용자 메시지 (10 case)
 
@@ -72,15 +72,16 @@
 | 1.1.9 | 배송 기사 | 🟠 | seed `driver01` mobile-staff WebView | 5회 실패 → mobile WebView 잠금 메시지 | mobile 도 동일 banner 노출 (responsive) | mobile 회귀 |
 | 1.1.10 | 신입 영업 | 🔴 | 1.1.2 잠금 상태 | DB 직접 검증 — `SELECT failed_login_attempts, account_locked_at FROM auth_users WHERE login_id='sales'` | failed_login_attempts=5 + account_locked_at NOT NULL | DB 도메인 일치 |
 
-### 1.2 재설정 토큰 발송 → 30분 만료 → 새 비밀번호 (5 case)
+### 1.2 재설정 토큰 발송 → 30분 만료 → 새 비밀번호 + 본인 변경 (6 case)
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 | 회귀 차단 |
 |---|---|---|---|---|---|---|
-| 1.2.1 | 신입 영업 | 🔴 | seed `sales@samhan.test` | login 화면 → testid `login-forgot-password-link` 클릭 → reset 화면 → `password-reset-email-input` 입력 → `password-reset-submit-button` | 응답 200 + 이메일 발송 (SMTP NoOp 모드 시 backend 로그 검증) + DB `password_reset_tokens` 1 row insert | 토큰 발급 흐름 |
-| 1.2.2 | 신입 영업 | 🔴 | 1.2.1 토큰 발급 | reset confirm URL `?token=<token>` → `password-reset-new-password-input` 입력 (정책 통과 PW) → submit | 응답 200 + 토큰 used=true + 신규 PW 로 즉시 로그인 가능 | 정상 reset 흐름 |
+| 1.2.1 | 신입 영업 | 🔴 | seed `sales@samhan.test` | LoginPage → "비밀번호 찾기" link 클릭 → `PasswordResetDialog` modal STEP 1 → `password-reset-email-input` 입력 → `password-reset-submit-button` | 응답 200 + 이메일 발송 (SMTP NoOp 모드 시 backend 로그 검증) + DB `password_reset_tokens` 1 row insert | 토큰 발급 흐름 |
+| 1.2.2 | 신입 영업 | 🔴 | 1.2.1 토큰 발급 | modal STEP 2 → `password-reset-token-input` (이메일 본문 토큰 복사) + `password-reset-new-password-input` (정책 통과 PW) → `password-reset-submit-button` | 응답 200 + 토큰 used=true + 신규 PW 로 즉시 로그인 가능 | 정상 reset 흐름 |
 | 1.2.3 | 신입 영업 | 🔴 | 1.2.1 토큰 발급 | 토큰 발급 31분 후 confirm 시도 (시간 mock 또는 DB `expires_at` 임의 -31m) | 응답 410 Gone + "토큰이 만료되었습니다" 메시지 + reset 다시 요청 안내 | TTL 가드 |
 | 1.2.4 | 신입 영업 | 🟠 | 1.2.2 사용 후 토큰 | 동일 토큰으로 confirm 재시도 | 응답 410 + "이미 사용된 토큰" 메시지 (reuse 차단) | 토큰 1회용 |
-| 1.2.5 | 신입 영업 | 🟡 | reset 요청 화면 | 미등록 이메일 입력 → submit | 응답 200 (이메일 enumeration 차단 — 항상 200) + DB insert 없음 | 보안 가드 |
+| 1.2.5 | 신입 영업 | 🟡 | modal STEP 1 | 미등록 이메일 입력 → submit | 응답 200 (이메일 enumeration 차단 — 항상 200) + DB insert 없음 | 보안 가드 |
+| 1.2.6 | 신입 영업 | 🟡 | login 후 본인 변경 | `/password/change` 진입 → `password-change-current` + `password-change-new` 입력 → `password-change-submit` | 응답 200 + DB `auth_users.password` 업데이트 + 다음 로그인 신규 PW 통과 | 본인 변경 흐름 |
 
 ### 1.3 history reuse 금지 (직전 5개 비밀번호 reuse 시 reject) (3 case)
 
@@ -98,7 +99,7 @@
 | 1.4.2 | 회계 외주 | 🔴 | accountant 로그인 + 잠긴 sales 존재 | `/admin/users` 진입 시도 | 응답 403 Forbidden + redirect `/` 또는 unauthorized 화면 (testid `master-account-unlock-button` 자체 미노출) | MASTER 외 reject |
 | 1.4.3 | 신입 영업 | 🔴 | sales 로그인 | API 직접 호출 `POST /api/auth/account/unlock {loginId:"driver01"}` | 응답 403 + audit_log insert (시도 기록) | API 우회 차단 |
 
-**슬라이스 1 합계: 21 case (🔴 14 / 🟠 4 / 🟡 3)**
+**슬라이스 1 합계: 22 case (🔴 14 / 🟠 4 / 🟡 4)**
 
 ---
 
@@ -193,7 +194,7 @@
 
 **의존 backend**: `user-service` + `partner-service` + `warehouse-service` admin endpoint (commit `e9ad461`)
 **의존 frontend**: `clients/desktop` `/admin/users` / `/admin/partners` / `/admin/warehouses` / `/admin/roles` / `/admin/org-chart`
-**testid 의존**: `users-admin-table` / `users-admin-disable-button` / `users-admin-enable-button` / `users-admin-role-select` / `role-matrix-table` / `org-chart-tree`
+**testid 의존 (실 FE 표준 — TM 정합)**: `admin-users-table` / `admin-users-disable-button` / `admin-users-enable-button` / `admin-users-role-select` / `role-matrix-table` / `org-chart-tree`
 
 ### 4.1 MASTER 가드 (5 case)
 
@@ -203,17 +204,17 @@
 | 4.1.2 | 신입 영업 | 🔴 | sales 로그인 | `/admin/partners` 직접 진입 | 동일 redirect |
 | 4.1.3 | 신입 창고 | 🔴 | warehouse 로그인 | `/admin/warehouses` 직접 진입 | 동일 redirect |
 | 4.1.4 | 배송 기사 | 🔴 | driver 로그인 | `/admin/*` 모두 직접 진입 | 동일 redirect (mobile-staff 도 동일) |
-| 4.1.5 | 개발책임자 / IT 관리자 | 🔴 | master 로그인 | 5 admin 페이지 모두 진입 | `users-admin-table` `role-matrix-table` `org-chart-tree` 등 testid 모두 visible |
+| 4.1.5 | 개발책임자 / IT 관리자 | 🔴 | master 로그인 | 5 admin 페이지 모두 진입 | `admin-users-table` `role-matrix-table` `org-chart-tree` 등 testid 모두 visible |
 
 ### 4.2 사용자 disable/enable + role 변경 + history (8 case)
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
-| 4.2.1 | 개발책임자 / IT 관리자 | 🔴 | master 로그인 + sales row | `users-admin-disable-button` 클릭 → 확정 | DB `enabled=false` + 로그인 시도 시 401 + audit_log insert |
-| 4.2.2 | 개발책임자 / IT 관리자 | 🔴 | 4.2.1 disable 후 | `users-admin-enable-button` | enabled=true + 로그인 가능 + audit_log insert |
-| 4.2.3 | 개발책임자 / IT 관리자 | 🔴 | sales row | `users-admin-role-select` → ACCOUNTANT 변경 | DB role=ACCOUNTANT + JWT 재발급 시 새 권한 + audit_log insert |
+| 4.2.1 | 개발책임자 / IT 관리자 | 🔴 | master 로그인 + sales row | `admin-users-disable-button` 클릭 → 확정 | DB `enabled=false` + 로그인 시도 시 401 + audit_log insert |
+| 4.2.2 | 개발책임자 / IT 관리자 | 🔴 | 4.2.1 disable 후 | `admin-users-enable-button` | enabled=true + 로그인 가능 + audit_log insert |
+| 4.2.3 | 개발책임자 / IT 관리자 | 🔴 | sales row | `admin-users-role-select` → ACCOUNTANT 변경 | DB role=ACCOUNTANT + JWT 재발급 시 새 권한 + audit_log insert |
 | 4.2.4 | 신입 영업 | 🔴 | 4.2.3 직후 sales 로그인 | accounting 메뉴 진입 | 정상 진입 (변경된 ROLE 즉시 반영) |
-| 4.2.5 | 개발책임자 / IT 관리자 | 🟠 | sales row | `users-admin-role-select` → MASTER 변경 시도 | 추가 확인 dialog "MASTER 권한 부여" + 한 번 더 확인 |
+| 4.2.5 | 개발책임자 / IT 관리자 | 🟠 | sales row | `admin-users-role-select` → MASTER 변경 시도 | 추가 확인 dialog "MASTER 권한 부여" + 한 번 더 확인 |
 | 4.2.6 | 개발책임자 / IT 관리자 | 🔴 | master row (본인) | self disable 시도 | 422 + "본인 계정은 비활성화 불가" 메시지 |
 | 4.2.7 | 개발책임자 / IT 관리자 | 🔴 | master row (본인) | self role 변경 시도 (MASTER → SALES) | 422 + "본인 ROLE 변경 불가" |
 | 4.2.8 | 개발책임자 / IT 관리자 | 🟡 | history 화면 | 4.2.1~4.2.5 변경 history 조회 | audit_log table 5건 모두 조회 + 시간 역순 |
@@ -279,14 +280,14 @@
 
 **의존 backend**: `slip-service` `/api/slip-attachments` (S3 presigned URL TTL 5분, MinIO `slip-attachments` 버킷)
 **의존 mobile**: `clients/mobile-staff` (RN Expo) — Camera + ImagePicker + EXIF + 압축
-**testid 의존**: `mobile-photo-camera-button` / `mobile-photo-gallery-button` / `mobile-photo-preview-list` / `mobile-photo-delete-button` / `mobile-photo-upload-progress` / `mobile-photo-retry-button` / `mobile-camera-permission-prompt`
+**testid 의존**: `attachment-camera-button` / `attachment-gallery-button` / `attachment-preview-list` / `attachment-delete-button` / `attachment-upload-progress` / `attachment-retry-button` / `attachment-camera-permission-prompt`
 
 ### 6.1 카메라 권한 거부 시 fallback (3 case)
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
-| 6.1.1 | 배송 기사 | 🟠 | 첫 진입 | DriverStopDetail 진입 → camera 버튼 탭 → 권한 prompt → 거부 | `mobile-camera-permission-prompt` reject 후 `mobile-photo-gallery-button` 만 활성 (camera 버튼 disabled + 안내 토스트) |
-| 6.1.2 | 배송 기사 | 🟠 | 6.1.1 거부 후 | 갤러리 선택 fallback 정상 동작 | 갤러리 선택 → `mobile-photo-preview-list` 1건 추가 |
+| 6.1.1 | 배송 기사 | 🟠 | 첫 진입 | DriverStopDetail 진입 → camera 버튼 탭 → 권한 prompt → 거부 | `attachment-camera-permission-prompt` reject 후 `attachment-gallery-button` 만 활성 (camera 버튼 disabled + 안내 토스트) |
+| 6.1.2 | 배송 기사 | 🟠 | 6.1.1 거부 후 | 갤러리 선택 fallback 정상 동작 | 갤러리 선택 → `attachment-preview-list` 1건 추가 |
 | 6.1.3 | 배송 기사 | 🟡 | 6.1.1 거부 후 | 설정 진입 → 권한 재허용 → 앱 복귀 | camera 버튼 재활성 + 정상 사용 가능 |
 
 ### 6.2 압축 + EXIF + 업로드 progress (5 case)
@@ -294,10 +295,10 @@
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
 | 6.2.1 | 배송 기사 | 🟠 | seed 배차 + 정차 도착 상태 | 사진 1장 촬영 (4032×3024 — iPhone 기본) | 클라이언트 압축 (max 1920px 또는 800KB 이하) + EXIF GPS 포함 + S3 업로드 |
-| 6.2.2 | 배송 기사 | 🟠 | 6.2.1 직후 | `mobile-photo-upload-progress` 0~100% 표기 | progress bar 실시간 갱신 + 완료 시 `mobile-photo-preview-list` thumbnail 노출 |
-| 6.2.3 | 배송 기사 | 🟠 | 약한 4G 환경 (네트워크 throttle) | 업로드 → 5초 timeout 후 fail | `mobile-photo-retry-button` 노출 + 재시도 시 정상 업로드 |
+| 6.2.2 | 배송 기사 | 🟠 | 6.2.1 직후 | `attachment-upload-progress` 0~100% 표기 | progress bar 실시간 갱신 + 완료 시 `attachment-preview-list` thumbnail 노출 |
+| 6.2.3 | 배송 기사 | 🟠 | 약한 4G 환경 (네트워크 throttle) | 업로드 → 5초 timeout 후 fail | `attachment-retry-button` 노출 + 재시도 시 정상 업로드 |
 | 6.2.4 | 배송 기사 | 🔴 | 6.2.1 업로드 후 | DB `slip_attachments` 1 row | UUID 대신 slip 번호 + 파일명 + EXIF JSON column 저장 + presigned URL TTL 5분 |
-| 6.2.5 | 배송 기사 | 🟠 | 24h 이내 본인 업로드 사진 | `mobile-photo-delete-button` 탭 | 응답 200 + DB soft delete + thumbnail 즉시 제거 |
+| 6.2.5 | 배송 기사 | 🟠 | 24h 이내 본인 업로드 사진 | `attachment-delete-button` 탭 | 응답 200 + DB soft delete + thumbnail 즉시 제거 |
 
 ### 6.3 public token 인증 (3 case)
 
@@ -349,15 +350,15 @@
 
 ## 8. 슬라이스 8 — 매출 마감 (P2-4) — 10 case 🔴
 
-**의존 backend**: `accounting-service` `/api/period-locks/sales` (POST=lock, DELETE=unlock MASTER 만)
-**의존 frontend**: `clients/desktop` `/accounting/period-locks/sales` + `/accounting/reports/trial-balance` link
-**testid 의존**: `period-lock-sales-month-select` / `period-lock-sales-lock-button` / `period-lock-sales-unlock-button` / `period-lock-banner-locked`
+**의존 backend**: `accounting-service` `/api/accounting/closings` (POST=close DAILY/MONTHLY, POST `/{id}/reverse` MASTER 만) + `AccountingPeriodGuard` interceptor + `JournalService` service-layer guard
+**의존 frontend**: `clients/desktop` `/accounting/closings` (`MonthEndClosingPage`) + `/accounting/reports/trial-balance` link
+**testid 의존 (실 FE 표준 — TM 정합)**: `closing-new-button` / `closing-list-table` / `closing-reverse-button` / `period-lock-banner-locked`
 
 ### 8.1 마감 → 변경 차단 (5 case)
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
-| 8.1.1 | 회계 외주 | 🔴 | seed 2026-04 분개 5건 + tax-invoice 3건 | `period-lock-sales-month-select` → 2026-04 → `period-lock-sales-lock-button` | DB period_locks 1 row + locked_at + locked_by + status=LOCKED |
+| 8.1.1 | 회계 외주 | 🔴 | seed 2026-04 분개 5건 + tax-invoice 3건 | `closing-new-button` → 2026-04 → `closing-new-button` | DB period_locks 1 row + locked_at + locked_by + status=LOCKED |
 | 8.1.2 | 회계 외주 | 🔴 | 8.1.1 lock 후 | 2026-04 분개 entry 신규 시도 | 422 + "2026-04 마감 완료, 신규 분개 불가" 메시지 |
 | 8.1.3 | 회계 외주 | 🔴 | 8.1.1 lock 후 | 2026-04 기존 분개 수정 시도 | 422 + 동일 메시지 |
 | 8.1.4 | 회계 외주 | 🔴 | 8.1.1 lock 후 | 2026-04 tax-invoice 발행/취소 시도 | 422 + 동일 메시지 |
@@ -367,7 +368,7 @@
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
-| 8.2.1 | 개발책임자 / IT 관리자 | 🔴 | 8.1.1 LOCKED | master 로그인 → `period-lock-sales-unlock-button` 클릭 → 사유 입력 → 확정 | DB status=UNLOCKED + audit_log + 분개 신규/수정 다시 가능 |
+| 8.2.1 | 개발책임자 / IT 관리자 | 🔴 | 8.1.1 LOCKED | master 로그인 → `closing-reverse-button` 클릭 → 사유 입력 → 확정 | DB status=UNLOCKED + audit_log + 분개 신규/수정 다시 가능 |
 | 8.2.2 | 회계 외주 | 🔴 | 8.1.1 LOCKED | accountant 로그인 → unlock 시도 | 403 + 버튼 자체 미노출 |
 | 8.2.3 | 개발책임자 / IT 관리자 | 🟠 | 8.2.1 unlock 후 재 lock | 다시 lock → 다시 unlock → audit_log 2회 기록 | history 표 2건 + 시간 역순 |
 
@@ -384,17 +385,17 @@
 
 ## 9. 슬라이스 9 — 재고 실사 (P2-6) — 18 case 🔴
 
-**의존 backend**: `inventory-service` `/api/stock-takes` (POST=PLANNED, PATCH `/start` `/complete` `/cancel`)
-**의존 frontend**: `clients/desktop` `/inventory/stock-takes/new` + `/inventory/stock-takes/{number}` + barcode scan UI
-**testid 의존**: `stock-take-form-warehouse-select` / `stock-take-line-barcode-input` / `stock-take-line-counted-qty` / `stock-take-start-button` / `stock-take-complete-button`
+**의존 backend**: `inventory-service` `/api/inventory/audits` (POST=PLANNED + snapshot 라인 자동 생성, POST `/{id}/start` `/complete` `/cancel`, POST `/{id}/lines` 바코드/수동 입력) + accounting webhook `AccountingClient` (150 재고자산 / 919 재고감모손실 — V4 seed)
+**의존 frontend**: `clients/desktop` `/inventory/audits` (`InventoryAuditListPage`) + `/inventory/audits/new` (`InventoryAuditFormPage`) + `/inventory/audits/{id}` (`InventoryAuditDetailPage` + barcode scan UI)
+**testid 의존 (실 FE 표준 — TM 정합)**: `audit-form-warehouse-select` / `audit-form-date-input` / `audit-form-submit` / `audit-list-new-button` / `audit-list-warehouse-filter` / `audit-list-year-filter` / `audit-list-status-filter` / `audit-list-table` / `audit-detail-header` / `audit-start-button` / `audit-cancel-button` / `audit-complete-button` / `audit-journal-link` / `audit-line-barcode-input` / `audit-line-actual-input` / `audit-line-record-button` / `audit-detail-lines-table`
 
 ### 9.1 PLANNED → IN_PROGRESS → COMPLETED (5 case)
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
-| 9.1.1 | 신입 창고 | 🔴 | seed 창고 W-01 + 품목 100건 | `/inventory/stock-takes/new` → W-01 선택 → 저장 | DB stock_takes 1 row + status=PLANNED + lines 100건 (품목 × 시스템 재고 snapshot) + 실사번호 ST-2026-0001 |
-| 9.1.2 | 신입 창고 | 🔴 | 9.1.1 PLANNED | `stock-take-start-button` 클릭 | status=IN_PROGRESS + started_at + lines counted_qty=null |
-| 9.1.3 | 신입 창고 | 🔴 | 9.1.2 IN_PROGRESS + 라인 100건 모두 counted_qty 입력 | `stock-take-complete-button` 클릭 | status=COMPLETED + completed_at |
+| 9.1.1 | 신입 창고 | 🔴 | seed 창고 W-01 + 품목 100건 | `/inventory/audits/new` → W-01 선택 → 저장 | DB inventory_audits 1 row + status=PLANNED + inventory_audit_lines 100건 (품목 × 시스템 재고 snapshot) + 실사번호 AU-20260509-001 |
+| 9.1.2 | 신입 창고 | 🔴 | 9.1.1 PLANNED | `audit-start-button` 클릭 | status=IN_PROGRESS + started_at + lines counted_qty=null |
+| 9.1.3 | 신입 창고 | 🔴 | 9.1.2 IN_PROGRESS + 라인 100건 모두 counted_qty 입력 | `audit-complete-button` 클릭 | status=COMPLETED + completed_at |
 | 9.1.4 | 신입 창고 | 🟠 | 9.1.2 IN_PROGRESS + 라인 일부만 입력 (50건) | complete 시도 | 422 + "라인 50건 미입력" 메시지 + 미입력 row 강조 |
 | 9.1.5 | 신입 창고 | 🟡 | 9.1.1 PLANNED | start 없이 complete 시도 | 422 + "PLANNED 상태에서 complete 불가, start 필수" |
 
@@ -412,7 +413,7 @@
 
 | # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 |
 |---|---|---|---|---|---|
-| 9.3.1 | 신입 창고 | 🟠 | 9.1.2 IN_PROGRESS | `stock-take-line-barcode-input` focus → 바코드 스캔 (PROD-001) | 해당 row 자동 highlight + counted_qty input focus |
+| 9.3.1 | 신입 창고 | 🟠 | 9.1.2 IN_PROGRESS | `audit-line-barcode-input` focus → 바코드 스캔 (PROD-001) | 해당 row 자동 highlight + counted_qty input focus |
 | 9.3.2 | 신입 창고 | 🟠 | 9.3.1 highlight 후 | counted_qty 50 입력 → Enter | DB lines.counted_qty=50 + diff_qty 자동 계산 |
 | 9.3.3 | 신입 창고 | 🟠 | 9.3.1 후 다음 바코드 (PROD-002) | 동일 동작 | 다음 row 이동 + 1번 row 입력 유지 |
 | 9.3.4 | 신입 창고 | 🟡 | 9.3.1 후 | 모르는 바코드 (UNKNOWN-999) 스캔 | 토스트 "해당 품목 없음" + row 변동 0 |
@@ -434,7 +435,7 @@
 
 | 슬라이스 | 합계 | 🔴 | 🟠 | 🟡 | 🟢 |
 |---|---|---|---|---|---|
-| 1. 비밀번호 재설정 (P0-2) | 21 | 14 | 4 | 3 | 0 |
+| 1. 비밀번호 재설정 (P0-2) | 22 | 14 | 4 | 4 | 0 |
 | 2. 세금계산서 (P0-4) | 15 | 11 | 3 | 1 | 0 |
 | 3. 인쇄 5건 (P0-4) | 30 | 17 | 8 | 5 | 0 |
 | 4. 관리자 UI (P0-5) | 28 | 18 | 7 | 3 | 0 |
@@ -443,9 +444,9 @@
 | 7. 견적서 (P2-1) | 11 | 2 | 6 | 2 | 1 |
 | 8. 매출 마감 (P2-4) | 10 | 7 | 2 | 1 | 0 |
 | 9. 재고 실사 (P2-6) | 18 | 9 | 6 | 3 | 0 |
-| **합계** | **160** | **83** | **55** | **21** | **1** |
+| **합계** | **161** | **83** | **55** | **22** | **1** |
 
-> **주**: Stage 3 매뉴얼 검증 120 항 + 본 9 슬라이스 acceptance 160 case = 총 **280 case** 의 검증 자산. 본 PR 은 9 슬라이스 부분 (160 case) 만 신규.
+> **주**: Stage 3 매뉴얼 검증 120 항 + 본 9 슬라이스 acceptance 161 case = 총 **281 case** 의 검증 자산. 본 PR 은 9 슬라이스 부분 (161 case) 만 신규. (TM 정합 후 1.2.6 본인 변경 흐름 1 case 추가)
 
 ---
 

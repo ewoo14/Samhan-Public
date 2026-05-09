@@ -809,6 +809,28 @@ W10-4 (PR #99) 5 reviewer 토론 종합 시점에 DV-1 채택. arologis SlipClie
 - slip-service `PartnerInternalClient` 생성자 — 동일 timeout 적용 (cross-service 일관)
 - 운영 모니터링 backlog 추가 — Grafana 에서 SlipClient timeout 빈도 추적 (Phase 11 cutover 시점)
 
+### D-P10-16. step-8 9 슬라이스 통합 PR — Flyway V 번호 sequence + 단일 PR 채택 + inventory 차이 분개 코드 (2026-05-09)
+
+PR #114 (`feature/integrated-phase-10-step-8-ui-9-slice`) — 매뉴얼 안내 미구현 UI 9 슬라이스 통합. 5-team (BE/FE/Designer/QA/DevOps) 병렬 + TM 종합 fix.
+
+근거:
+- 9 슬라이스 = 모두 Phase 10 step 8 범위 — 9 개 PR 분리 시 cross-slice 회귀 검증 비용 폭증, 단일 통합 PR 채택 (`feedback_integrated_pr_pattern.md`)
+- accounting Flyway V 번호 sequence — V1 (init+seed) + V2 (tax_invoice) + V3 (accounting_period) + V4 (재고감모 seed) — V4 = inventory AccountingClient 호환 시드 (150 재고자산 / 919 재고감모손실, 한국 일반기업회계기준)
+- inventory 차이 자동 분개 — 차이 (+) 차변 150 / 대변 919, 차이 (-) 차변 919 / 대변 150 (한국 일반기업회계기준 표준 대로 영업외비용 919 환입)
+- service-layer 마감 가드 — `JournalService.create` 안에서 `MonthEndCloseService.findClosedPeriodCovering` 호출 (interceptor `AccountingPeriodGuard` + filter `CachedBodyFilter` 의 MockMvc 비호환 회피, IT 안전성 우선)
+- inventory `findByFilters` 쿼리 — PostgreSQL JDBC 의 `(? IS NULL OR ...)` 패턴은 SQLState 42P18 → boolean flag + non-null sentinel 패턴으로 우회
+
+영향:
+- `services/accounting-service/src/main/resources/db/migration/V4__seed_inventory_audit_accounts.sql` 신규
+- `services/accounting-service/src/main/java/.../service/JournalService.java` — MonthEndCloseService 의존 추가 + `create` 가드 호출
+- `services/inventory-service/src/main/java/.../repository/InventoryAuditRepository.java` — boolean flag 시그너처 변경
+- `services/inventory-service/src/main/java/.../service/InventoryAuditService.java` — sentinel 부여 + boolean flag 전달
+- `services/accounting-service/src/test/java/.../service/JournalServiceTest.java` — MonthEndCloseService mock 추가 + 기본 stub
+- `docs/qa/integration-pr-9-slice/scenarios.md` — testid 명명 정합 (실 FE 표준), 1.2.6 본인 변경 case 신규 (총 161 case)
+- `tools/manual-capture/data-testid-required.md` — slice 1/4/6 정정 + slice 10 (매출 마감) + slice 11 (재고 실사) 신규 명세
+- `ROADMAP.md` — Phase 10 W10-step-8 row 추가
+- `docs/dev-reports/integration-phase-10-step-8-ui-9-slice.md` 신규
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
