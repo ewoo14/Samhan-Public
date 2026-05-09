@@ -1,0 +1,471 @@
+/*
+ * CsvUploadDialog — PR-D Phase B 신규 (4 admin 페이지 공통)
+ *
+ * 디자인 시스템 일관:
+ * - tokens.css 의 --color-* / --space-* / --radius-* / --shadow-* 사용
+ * - Modal/StockBalanceModal 와 동일한 portal + backdrop pattern
+ * - lg size (max-width 720px) — reject 표 가독성 우선
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 18, 22, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 1000;
+  animation: csv-upload-fade var(--duration-base, 200ms) ease-out;
+}
+
+.dialog {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal, 0 12px 32px rgba(15, 18, 22, 0.18));
+  max-width: 720px;
+  max-height: calc(100vh - var(--space-8));
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  font-family: var(--font-family-sans);
+  animation: csv-upload-pop var(--duration-base, 200ms) ease-out;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.description {
+  margin: 0;
+  padding: var(--space-3) var(--space-5) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+}
+
+.body {
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  flex: 1;
+  min-height: 0;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-bg-subtle);
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  flex-shrink: 0;
+}
+
+.closeBtn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color var(--duration-fast, 120ms) ease,
+    color var(--duration-fast, 120ms) ease;
+}
+
+.closeBtn:hover {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text);
+}
+
+.closeBtn:focus-visible {
+  outline: 2px solid var(--color-brand-400);
+  outline-offset: 2px;
+}
+
+/* ── 단계 1: drop zone ───────────────────────────────────── */
+
+.dropZone {
+  position: relative;
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-bg-subtle);
+  padding: var(--space-8) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--duration-fast, 120ms) ease,
+    background-color var(--duration-fast, 120ms) ease;
+  outline: none;
+}
+
+.dropZone:hover {
+  border-color: var(--color-brand-400);
+  background-color: var(--color-bg-muted);
+}
+
+.dropZone:focus-visible {
+  outline: 2px solid var(--color-brand-400);
+  outline-offset: 2px;
+}
+
+.dropZoneActive {
+  border-color: var(--color-brand-500);
+  background-color: var(--color-brand-50);
+}
+
+.dropZoneFilled {
+  padding: var(--space-4) var(--space-5);
+  border-style: solid;
+  border-color: var(--color-brand-300);
+  background-color: var(--color-bg);
+  cursor: default;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dropIcon {
+  font-size: 32px;
+  color: var(--color-brand-500);
+  margin-bottom: var(--space-3);
+  line-height: 1;
+}
+
+.dropPrimary {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+}
+
+.dropSecondary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.dropHint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-subtle);
+}
+
+.fileSelected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.fileIcon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-brand-100);
+  color: var(--color-brand-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.04em;
+}
+
+.fileMeta {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.fileName {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSize {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-subtle);
+  margin-top: 2px;
+}
+
+.errorBanner {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background-color: rgba(214, 80, 74, 0.08);
+  color: #991B1B;
+  font-size: var(--font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.successBanner {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-success);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background-color: rgba(42, 157, 143, 0.08);
+  color: #115E59;
+  font-size: var(--font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sampleLinkRow {
+  margin-top: var(--space-3);
+  text-align: right;
+}
+
+.sampleLink {
+  font-size: var(--font-size-sm);
+  color: var(--color-brand-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sampleLink:hover {
+  color: var(--color-brand-700);
+}
+
+.sampleLink:focus-visible {
+  outline: 2px solid var(--color-brand-400);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── 단계 2: uploading ───────────────────────────────────── */
+
+.uploadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4);
+}
+
+.uploadingLabel {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.progressTrack {
+  width: 100%;
+  max-width: 480px;
+  height: 8px;
+  background-color: var(--color-bg-muted);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-top: var(--space-2);
+}
+
+.progressFill {
+  height: 100%;
+  background-color: var(--color-brand-500);
+  border-radius: var(--radius-full);
+  transition: width 200ms ease-out;
+}
+
+.progressPct {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.uploadingFileMeta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-subtle);
+  margin-top: var(--space-2);
+}
+
+/* ── 단계 3: result ──────────────────────────────────────── */
+
+.resultState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.resultStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.statBox {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg-subtle);
+  text-align: center;
+}
+
+.statBoxRejected {
+  border-color: var(--color-danger);
+  background-color: rgba(214, 80, 74, 0.05);
+}
+
+.statValue {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.statBoxRejected .statValue {
+  color: var(--color-danger);
+}
+
+.statLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+  letter-spacing: 0.02em;
+}
+
+.resultSummary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+}
+
+.rejectedSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rejectedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.rejectedTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.rejectedTableWrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.rejectedTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.rejectedTable thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--color-bg-muted);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  letter-spacing: 0.02em;
+  z-index: 1;
+}
+
+.rejectedTable tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+  color: var(--color-text);
+}
+
+.rejectedTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rejectedRowNum {
+  width: 64px;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.rejectedInputCell {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.rejectedReasonCell {
+  color: #991B1B;
+  font-weight: var(--font-weight-medium);
+  word-break: keep-all;
+}
+
+@keyframes csv-upload-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes csv-upload-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .dialog, .progressFill { animation: none; transition: none; }
+}

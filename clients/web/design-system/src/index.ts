@@ -43,3 +43,5 @@ export * from './components/CategoryTabs'
 // SpecAddModal 은 CategoryTabs 의 EstimateCategory 를 재사용 (중복 export 방지)
 export * from './components/SpecAddModal'
 export * from './components/PrintPreview'
+// PR-D Phase B 신규 — 4 admin 페이지 (Regions/DcConfig/ChatRooms/BlockedPartners) 공통 CSV 일괄 등록 다이얼로그
+export * from './components/CsvUploadDialog'
