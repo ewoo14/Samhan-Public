@@ -126,7 +126,10 @@ Write-Host "   $loaded 개 환경변수 로드 완료" -ForegroundColor Green
 if (-not $env:DB_HOST)     { $env:DB_HOST     = 'localhost' }
 if (-not $env:DB_PORT)     { $env:DB_PORT     = '5432' }
 if (-not $env:DB_USER)     { $env:DB_USER     = 'samhan' }
-if (-not $env:DB_PASSWORD) { $env:DB_PASSWORD = 'samhan_dev_pw' }
+if (-not $env:DB_PASSWORD) {
+    if ($env:POSTGRES_PASSWORD) { $env:DB_PASSWORD = $env:POSTGRES_PASSWORD }
+    else { $env:DB_PASSWORD = '<set DB_PASSWORD env or see infrastructure/docker-compose.yml>' }
+}
 
 # Phase 8 chained-default 패턴 — service 별 *_DB_USER / *_DB_PASSWORD 자동 매핑
 $dbAlias = @(
@@ -289,7 +292,7 @@ Write-Host '[6/6] 사용 가이드' -ForegroundColor Yellow
 Write-Host ''
 Write-Host ' 마스터 로그인 (CEO 김미선):' -ForegroundColor Cyan
 Write-Host '   POST http://localhost:8080/api/auth/login'
-Write-Host '   body: {"loginId":"kimmiseon","password":"samhan!2026"}'
+Write-Host '   body: {"loginId":"kimmiseon","password":"<see services/user-service/.../OrgChartSeeder.java>"}'
 Write-Host ''
 Write-Host ' 모니터링:' -ForegroundColor Cyan
 Write-Host '   Eureka       → http://localhost:8761'
