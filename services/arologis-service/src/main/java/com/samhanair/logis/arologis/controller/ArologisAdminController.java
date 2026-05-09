@@ -11,12 +11,18 @@ import com.samhanair.logis.arologis.dto.DriverResponse;
 import com.samhanair.logis.arologis.dto.ManualDispatchPreviewResponse;
 import com.samhanair.logis.arologis.dto.ManualDispatchRequest;
 import com.samhanair.logis.arologis.dto.ParsedDispatchResponse;
+import com.samhanair.logis.arologis.dto.PreClassifyResponse;
+import com.samhanair.logis.arologis.dto.RegionalDispatchResponse;
+import com.samhanair.logis.arologis.dto.UnassignedSlipResponse;
 import com.samhanair.logis.arologis.parser.KakaoDispatchParser;
 import com.samhanair.logis.arologis.parser.ParsedDispatch;
 import com.samhanair.logis.arologis.repository.DriverRepository;
 import com.samhanair.logis.arologis.service.DispatchManualService;
 import com.samhanair.logis.arologis.service.DispatchService;
 import com.samhanair.logis.arologis.service.DriverService;
+import com.samhanair.logis.arologis.service.PreClassifyService;
+import com.samhanair.logis.arologis.service.RegionalService;
+import com.samhanair.logis.arologis.service.UnassignedService;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -62,6 +68,10 @@ public class ArologisAdminController {
     private final DispatchManualService manualService;
     private final DriverService driverService;
     private final DriverRepository driverRepository;
+    // PR-E1 BE-3 — 출고전표 자동 조회 기반 가배차/미배차/지방가배차 3 서비스
+    private final PreClassifyService preClassifyService;
+    private final UnassignedService unassignedService;
+    private final RegionalService regionalService;
 
     /**
      * 카톡 메시지 파싱 미리보기 — 저장 X.
@@ -237,5 +247,69 @@ public class ArologisAdminController {
         String userId = request.getHeader("X-User-Id");
         dispatchService.softDelete(id, userId == null ? "system" : userId);
         return ApiResponse.ok(Map.of("dispatchId", id.toString(), "deleted", "true"));
+    }
+
+    // ========== PR-E1 BE-3 — 출고전표 자동 조회 기반 가배차 분류 3 endpoint (Samhan Public 이식) ==========
+
+    /**
+     * 가배차 분류 리스트 — Phase 10 PR-E1 BE-A2 (legacy GAS 2번 이식).
+     *
+     * <p>출고전표 → 거래처 주소 → REGION 마스터 매칭 → 권역 그룹별 그룹핑. 미매칭 슬립은
+     * unclassified 영역에 별도 분리.
+     *
+     * <p>graceful empty — slip-service skeleton-mode 시 빈 응답 (regionGroups + unclassified 모두 빈
+     * 컨테이너) 으로 admin 화면 정상 렌더링.
+     *
+     * <p>UUID 비공개 가드 — 응답 entry 의 식별자는 slipNo / partnerCode / partnerName / regionGroup 만.
+     * dispatchPlanned 플래그는 vehicle_stops.parsed_partner_code (PR-E1 lookup 결과) 매칭으로 결정.
+     *
+     * @param from 조회 시작일 (ISO YYYY-MM-DD, 필수)
+     * @param to 조회 종료일 (ISO YYYY-MM-DD, 필수, from 이후)
+     */
+    @Operation(summary = "가배차 분류 리스트 (Admin, PR-E1 BE-A2)",
+            description = "출고전표 → 주소 → REGION 매칭 → 권역 그룹핑")
+    @GetMapping("/dispatches/pre-classify")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DISPATCH')")
+    public ApiResponse<PreClassifyResponse> preClassify(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.ok(preClassifyService.classify(from, to));
+    }
+
+    /**
+     * 미배차 출고전표 리스트 — Phase 10 PR-E1 BE-A3 (legacy GAS 7번 이식).
+     *
+     * <p>출고전표 중 dispatch 미할당 (slip_no 가 어떤 활성 VehicleStop 의 parsed_partner_code 와도
+     * 매칭 안 됨) 슬립 목록.
+     *
+     * <p>service-per-DB 패턴 — arologis 의 vehicle_stops 와 slip-service 의 slips 는 별도 schema.
+     * 따라서 SQL 직접 LEFT JOIN 불가 — UnassignedService 가 application-level 매칭으로 시뮬레이션.
+     *
+     * @param date 조회 일자 (ISO YYYY-MM-DD, 필수)
+     */
+    @Operation(summary = "미배차 출고전표 리스트 (Admin, PR-E1 BE-A3)",
+            description = "출고전표 - dispatch left join 미할당 슬립")
+    @GetMapping("/dispatches/unassigned")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DISPATCH')")
+    public ApiResponse<UnassignedSlipResponse> unassigned(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ApiResponse.ok(unassignedService.findUnassigned(date));
+    }
+
+    /**
+     * 지방 가배차 시도별 분류 — Phase 10 PR-E1 BE-A4 (legacy GAS 15번 이식).
+     *
+     * <p>출고전표 → 거래처 주소의 광역 prefix (서울/부산/대구/.../제주 17 시도) 추출 → 시도별 그룹핑.
+     * REGION 마스터 의존 X — 코드 내부 상수 기반 (legacy GAS 15번 호환).
+     *
+     * @param date 조회 일자 (ISO YYYY-MM-DD, 필수)
+     */
+    @Operation(summary = "지방 가배차 시도별 분류 (Admin, PR-E1 BE-A4)",
+            description = "출고전표 → 광역 prefix 시도 분류 (REGION 마스터 의존 X)")
+    @GetMapping("/dispatches/regional")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DISPATCH')")
+    public ApiResponse<RegionalDispatchResponse> regional(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ApiResponse.ok(regionalService.classifyBySido(date));
     }
 }
