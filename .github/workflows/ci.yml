@@ -30,10 +30,17 @@ jobs:
             # slip-service 단위 + 빠른 client mock 만 (큰 IT 제외)
             timeout: 30
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.service.*"'
-          # 7차 fix (옵션 B 채택) — slip-it-public + slip-it-core matrix entry 제거.
-          # 사유: GitHub Actions ubuntu-latest (2-core/7GB) 환경에서 ApplicationContext 시작 자체가
-          # 60분 timeout 안에 못 끝나 5/6차 모두 cancel (Found and parsed 0 test report files).
-          # 회귀 검증은 추후 nightly workflow 또는 main merge trigger 로 분리 (Phase 10 W10-5 회고 backlog).
+          # W10-5 회고 — slip-it-public + slip-it-core PR matrix 재활성.
+          # 사유: PR #102 V11 CONCURRENTLY 제거 fix 로 idle in transaction deadlock 근본 차단 →
+          # 30분 안에 통과 예상. 보강 회귀 검증은 nightly-slip-it.yml (60분 timeout, 매일 02:00 KST)
+          # 가 main + 활성 feature branch 에 대해 별도로 수행. PR fast-feedback + nightly deep
+          # regression 2-track 패턴 (PR #99 5/6/7차 회고 정착).
+          - name: slip-it-public
+            timeout: 30
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
+          - name: slip-it-core
+            timeout: 30
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.it.*"'
           - name: accounting+partner
             timeout: 30
             test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'

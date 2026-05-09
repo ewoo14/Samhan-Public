@@ -34,7 +34,8 @@ app:
   inventory:
     # feature/local-test-setup Stage 2 — StockBalance 200건 시드 (100 product × 2 warehouse).
     # dev profile + true 시에만 활성. CI/prod 기본 OFF (idempotent — 안전 재실행).
-    seed-test-data: ${INVENTORY_SEED_TEST_DATA:false}
+    # W10-5 회고 — env 변수 prefix 통일 (SAMHAN_INVENTORY_SEED_TEST_DATA 우선, INVENTORY_SEED_TEST_DATA legacy fallback).
+    seed-test-data: ${SAMHAN_INVENTORY_SEED_TEST_DATA:${INVENTORY_SEED_TEST_DATA:false}}
 
 management:
   endpoints:
