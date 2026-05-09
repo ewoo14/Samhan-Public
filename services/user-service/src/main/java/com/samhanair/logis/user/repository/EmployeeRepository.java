@@ -6,8 +6,12 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.lang.NonNull;
 
 /**
@@ -44,4 +48,21 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
 
     @EntityGraph(attributePaths = "department")
     List<Employee> findAllByDepartment_IdAndRoleSnapshot(UUID departmentId, Role role);
+
+    /**
+     * Phase 10 P0-5 — admin 사용자 목록 페이지 조회 (q / role / dept 필터).
+     *
+     * <p>q 는 fullName / loginId / email LIKE 부분 일치 (대소문자 무시). null/blank 시 필터 미적용.
+     * role / departmentId 도 null 시 필터 미적용. 4 필터 조합 모두 본 query 1개로 처리.
+     */
+    @Query("SELECT e FROM Employee e JOIN FETCH e.department d "
+            + "WHERE (:q IS NULL OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', :q, '%')) "
+            + "       OR LOWER(e.loginId) LIKE LOWER(CONCAT('%', :q, '%')) "
+            + "       OR LOWER(COALESCE(e.email, '')) LIKE LOWER(CONCAT('%', :q, '%'))) "
+            + "AND (:role IS NULL OR e.roleSnapshot = :role) "
+            + "AND (:departmentId IS NULL OR d.id = :departmentId)")
+    Page<Employee> searchAdmin(@Param("q") String q,
+                                @Param("role") Role role,
+                                @Param("departmentId") UUID departmentId,
+                                Pageable pageable);
 }

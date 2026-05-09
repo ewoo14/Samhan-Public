@@ -2,6 +2,7 @@ package com.samhanair.logis.inventory.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.inventory.service.WarehouseService;
+import com.samhanair.logis.inventory.web.dto.AdminWarehouseListResponse;
 import com.samhanair.logis.inventory.web.dto.CreateWarehouseRequest;
 import com.samhanair.logis.inventory.web.dto.UpdateWarehouseRequest;
 import com.samhanair.logis.inventory.web.dto.WarehouseResponse;
@@ -11,6 +12,9 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -49,6 +54,25 @@ public class WarehouseController {
     @GetMapping
     public ApiResponse<List<WarehouseResponse>> listAll() {
         return ApiResponse.ok(warehouseService.listAll());
+    }
+
+    /**
+     * 창고 admin 검색 — Phase 10 P0-5 (q + 페이지네이션).
+     *
+     * <p>frontend {@code /admin/warehouses} 화면 backing — q (code/name/address LIKE) +
+     * page/size. 응답은 {@link AdminWarehouseListResponse} (items / total / page / size).
+     * 권한: 일반 조회와 동일 — 인증된 모든 역할 (창고 마스터는 운영 정보 외 민감 데이터 없음).
+     */
+    @Operation(summary = "창고 admin 검색 (Phase 10 P0-5)",
+            description = "q (code/name/address LIKE) + page/size. items/total/page/size 응답.")
+    @GetMapping("/search")
+    public ApiResponse<AdminWarehouseListResponse> search(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String q) {
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.ASC, "displayOrder"));
+        return ApiResponse.ok(warehouseService.searchAdmin(q, pageable));
     }
 
     /**

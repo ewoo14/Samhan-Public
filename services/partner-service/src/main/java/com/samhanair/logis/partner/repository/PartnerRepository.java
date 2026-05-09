@@ -9,6 +9,8 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 /** 거래처 마스터 저장소 — partnerCode lookup (M5 의존성 해소) + 관리자 검색. */
@@ -38,4 +40,21 @@ public interface PartnerRepository extends JpaRepository<Partner, UUID> {
 
     /** 거래처명 부분 일치 검색 (admin 검색, 대소문자 무시). */
     List<Partner> findAllByNameContainingIgnoreCase(String namePart);
+
+    /**
+     * Phase 10 P0-5 — admin 거래처 목록 페이지 조회 (q / status 필터).
+     *
+     * <p>q 는 partnerCode / name / bizNo / phone LIKE 부분 일치. null/blank 시 q 필터 미적용.
+     * status 필터도 null 시 미적용. UUID 비공개 가드 — 응답 변환은 controller 책임.
+     */
+    @Query("SELECT p FROM Partner p WHERE "
+            + "(:q IS NULL "
+            + " OR LOWER(p.partnerCode) LIKE LOWER(CONCAT('%', :q, '%')) "
+            + " OR LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%')) "
+            + " OR LOWER(COALESCE(p.bizNo, '')) LIKE LOWER(CONCAT('%', :q, '%')) "
+            + " OR LOWER(COALESCE(p.phone, '')) LIKE LOWER(CONCAT('%', :q, '%')) ) "
+            + "AND (:status IS NULL OR p.status = :status)")
+    Page<Partner> searchAdmin(@Param("q") String q,
+                              @Param("status") PartnerStatus status,
+                              Pageable pageable);
 }

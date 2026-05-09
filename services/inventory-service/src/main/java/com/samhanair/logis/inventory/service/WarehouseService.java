@@ -4,12 +4,14 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.inventory.domain.Warehouse;
 import com.samhanair.logis.inventory.repository.WarehouseRepository;
+import com.samhanair.logis.inventory.web.dto.AdminWarehouseListResponse;
 import com.samhanair.logis.inventory.web.dto.CreateWarehouseRequest;
 import com.samhanair.logis.inventory.web.dto.UpdateWarehouseRequest;
 import com.samhanair.logis.inventory.web.dto.WarehouseResponse;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,23 @@ public class WarehouseService {
         return warehouseRepository.findAllByIsDeletedFalseOrderByDisplayOrderAsc().stream()
                 .map(WarehouseResponse::from)
                 .toList();
+    }
+
+    /**
+     * 창고 admin 검색 — Phase 10 P0-5.
+     *
+     * <p>q (code / name / address LIKE) + 페이지네이션. q 가 null/blank 시 미적용.
+     * 활성 창고만 ({@code @SQLRestriction("is_deleted = false")}) 자동 필터.
+     *
+     * @param q 검색어 (옵션)
+     * @param pageable 페이지 / 정렬
+     * @return AdminWarehouseListResponse — items / total / page / size
+     */
+    @Transactional(readOnly = true)
+    public AdminWarehouseListResponse searchAdmin(String q, Pageable pageable) {
+        String normalized = (q == null || q.isBlank()) ? null : q.trim();
+        return AdminWarehouseListResponse.from(
+                warehouseRepository.searchAdmin(normalized, pageable));
     }
 
     /**

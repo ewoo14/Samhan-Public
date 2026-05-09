@@ -3,6 +3,7 @@ package com.samhanair.logis.partner.service;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.partner.domain.Partner;
+import com.samhanair.logis.partner.domain.PartnerStatus;
 import com.samhanair.logis.partner.dto.PartnerAdminRequest;
 import com.samhanair.logis.partner.dto.PartnerInternalResponse;
 import com.samhanair.logis.partner.repository.PartnerRepository;
@@ -100,6 +101,19 @@ public class PartnerService {
     @Transactional(readOnly = true)
     public Page<Partner> findAll(Pageable pageable) {
         return partnerRepository.findAll(pageable);
+    }
+
+    /**
+     * 거래처 admin 검색 — Phase 10 P0-5.
+     *
+     * <p>q (partnerCode / name / bizNo / phone LIKE) + status 필터. q 가 null/blank 시 미적용,
+     * status 가 null 시 미적용. {@link #findAll(Pageable)} 와 별도 — frontend 검색창 + dropdown
+     * 동작 backing.
+     */
+    @Transactional(readOnly = true)
+    public Page<Partner> searchAdmin(String q, PartnerStatus status, Pageable pageable) {
+        String normalized = (q == null || q.isBlank()) ? null : q.trim();
+        return partnerRepository.searchAdmin(normalized, status, pageable);
     }
 
     /**

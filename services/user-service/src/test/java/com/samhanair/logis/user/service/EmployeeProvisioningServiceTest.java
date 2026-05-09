@@ -18,6 +18,7 @@ import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.repository.DepartmentRepository;
 import com.samhanair.logis.user.repository.EmployeeRepository;
+import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
 import com.samhanair.logis.user.web.dto.CreateEmployeeRequest;
 import com.samhanair.logis.user.web.dto.UpdateEmployeeRequest;
 import java.time.LocalDate;
@@ -40,6 +41,9 @@ class EmployeeProvisioningServiceTest {
 
     @Mock
     private DepartmentRepository departmentRepository;
+
+    @Mock
+    private RoleChangeHistoryRepository roleHistoryRepository;
 
     @Mock
     private AuthClient authClient;
