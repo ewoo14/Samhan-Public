@@ -18,9 +18,12 @@
  * - 마감 row 의 `id` 는 reverse 호출 path 에만 사용. 화면 표시는 periodType+periodDate.
  *
  * data-testid:
- * - `closing-list-table`     — 마감 list table
- * - `closing-new-button`     — 마감 실행 버튼
- * - `closing-reverse-button` — 역마감 버튼 (per row, MASTER 만)
+ * - `closing-list-table`             — 마감 list table
+ * - `closing-new-button`             — 마감 실행 버튼
+ * - `closing-reverse-button`         — 역마감 버튼 (per row, MASTER 만)
+ * - `closing-daily-detail-table`     — 일별 detail 표 (PR-E2 BE-A12)
+ * - `closing-daily-detail-row-{seq}` — 일별 detail 표 row (seq = 1-based index)
+ * - `closing-daily-detail-csv-button` — 일별 detail CSV 다운로드 버튼
  */
 import { useMemo, useState, type CSSProperties } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -35,11 +38,14 @@ import {
   canExecuteClosing,
   canReverseClosing,
   createClosing,
+  getDailyClosingDetail,
   listClosings,
   PERIOD_STATUS_LABEL,
   PERIOD_TYPE_LABEL,
   reverseClosing,
   type AccountingPeriod,
+  type DailyClosingDetail,
+  type DailyTaxInvoiceRow,
   type PeriodType,
 } from '../api/closingApi'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -81,6 +87,49 @@ function fmtTimestamp(iso: string | null | undefined): string {
   const h = String(d.getHours()).padStart(2, '0')
   const m = String(d.getMinutes()).padStart(2, '0')
   return `${Y}-${M}-${D} ${h}:${m}`
+}
+
+/** CSV 셀 escape — 콤마/줄바꿈/큰따옴표 포함 시 큰따옴표 wrap + 내부 큰따옴표 2배. */
+function csvCell(v: string | number | null | undefined): string {
+  if (v === null || v === undefined) return ''
+  const s = String(v)
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+/**
+ * 일별 detail CSV 다운로드 (UTF-8 BOM — Excel 한글 호환).
+ *
+ * 컬럼: 순번 / 세금계산서번호 / 거래처명 / 공급가액 / 세액 / 합계
+ * 마지막 row 는 합계 (전체 supply / vat / total).
+ */
+function downloadDailyDetailCsv(detail: DailyClosingDetail): void {
+  const header = ['순번', '세금계산서번호', '거래처명', '공급가액', '세액', '합계']
+  const rows = detail.taxInvoices.map((r, idx) =>
+    [idx + 1, r.taxInvoiceNo, r.partnerName, r.supplyAmount, r.vatAmount, r.totalAmount]
+      .map(csvCell)
+      .join(','),
+  )
+  const totalRow = [
+    '합계',
+    '',
+    '',
+    detail.totalSupply,
+    detail.totalVat,
+    detail.totalAmount,
+  ]
+    .map(csvCell)
+    .join(',')
+  const body = [header.map(csvCell).join(','), ...rows, totalRow].join('\r\n')
+  const blob = new Blob(['﻿', body], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `closing-daily-detail_${detail.date}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 const inputStyle: CSSProperties = {
@@ -139,8 +188,22 @@ export function MonthEndClosingPage() {
     },
   })
 
+  /**
+   * 일별 detail (PR-E2 BE-A12) — DAILY 탭 + 유효 일자일 때만 호출.
+   *
+   * legacy GAS 12번 "일마감 프로그램" — 발행된 세금계산서 + 모델별 매출 detail.
+   * read-only 이므로 마감 OPEN/CLOSED 무관 호출.
+   */
+  const dailyDetailQuery = useQuery({
+    queryKey: ['closings', 'daily-detail', periodDate],
+    queryFn: () => getDailyClosingDetail(periodDate),
+    enabled:
+      periodType === 'DAILY' && /^\d{4}-\d{2}-\d{2}$/.test(periodDate) && canExecute,
+  })
+
   const closeError = closeMutation.error as Error | null
   const reverseError = reverseMutation.error as Error | null
+  const dailyDetailError = dailyDetailQuery.error as Error | null
 
   const columns: DataTableColumn<AccountingPeriod>[] = useMemo(
     () => [
@@ -239,6 +302,71 @@ export function MonthEndClosingPage() {
       },
     ],
     [canReverse, reverseMutation],
+  )
+
+  /**
+   * 일별 detail 표 column — seq / 세금계산서번호 / 거래처 / 공급/세액/합계.
+   *
+   * UUID 비공개 가드: 식별자는 `taxInvoiceNo` (발행번호) + `partnerName`.
+   * row key 는 (taxInvoiceNo + idx) — BE 미보장 unique 회피.
+   */
+  type DailyDetailRow = DailyTaxInvoiceRow & { seq: number }
+
+  const detailRows: DailyDetailRow[] = useMemo(
+    () =>
+      (dailyDetailQuery.data?.taxInvoices ?? []).map((r, idx) => ({
+        ...r,
+        seq: idx + 1,
+      })),
+    [dailyDetailQuery.data],
+  )
+
+  const detailColumns: DataTableColumn<DailyDetailRow>[] = useMemo(
+    () => [
+      {
+        key: 'seq',
+        header: '순번',
+        width: '60px',
+        align: 'right',
+        // testid 는 row 의 seq cell 에 부여 — DataTable 이 rowProps 미지원.
+        render: (r) => (
+          <span data-testid={`closing-daily-detail-row-${r.seq}`}>{r.seq}</span>
+        ),
+      },
+      {
+        key: 'taxInvoiceNo',
+        header: '세금계산서번호',
+        width: '160px',
+        render: (r) => r.taxInvoiceNo,
+      },
+      {
+        key: 'partnerName',
+        header: '거래처명',
+        render: (r) => r.partnerName,
+      },
+      {
+        key: 'supplyAmount',
+        header: '공급가액',
+        width: '140px',
+        align: 'right',
+        render: (r) => fmtKrw(r.supplyAmount),
+      },
+      {
+        key: 'vatAmount',
+        header: '세액',
+        width: '120px',
+        align: 'right',
+        render: (r) => fmtKrw(r.vatAmount),
+      },
+      {
+        key: 'totalAmount',
+        header: '합계',
+        width: '140px',
+        align: 'right',
+        render: (r) => fmtKrw(r.totalAmount),
+      },
+    ],
+    [],
   )
 
   return (
@@ -363,6 +491,87 @@ export function MonthEndClosingPage() {
           </div>
         ) : null}
       </Card>
+
+      {/* 일별 detail (PR-E2 BE-A12) — DAILY 탭 + 권한 보유 시 노출 */}
+      {periodType === 'DAILY' && canExecute ? (
+        <Card style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <h3 style={{ margin: 0 }}>
+              일별 세금계산서 detail — {periodDate}
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="closing-daily-detail-csv-button"
+              disabled={!dailyDetailQuery.data || detailRows.length === 0}
+              onClick={() => {
+                if (dailyDetailQuery.data) {
+                  downloadDailyDetailCsv(dailyDetailQuery.data)
+                }
+              }}
+              title={
+                detailRows.length === 0
+                  ? '내려받을 detail 데이터가 없습니다'
+                  : 'UTF-8 BOM CSV — Excel 한글 호환'
+              }
+            >
+              CSV 다운로드
+            </Button>
+          </div>
+
+          {dailyDetailQuery.isLoading ? (
+            <div style={{ display: 'grid', placeItems: 'center', minHeight: 120 }}>
+              <Spinner size="md" label="일별 detail 불러오는 중" />
+            </div>
+          ) : dailyDetailError ? (
+            <div className="error-banner" role="alert">
+              일별 detail 을 불러오지 못했습니다: {dailyDetailError.message}
+            </div>
+          ) : (
+            <>
+              <div data-testid="closing-daily-detail-table">
+                <DataTable
+                  columns={detailColumns}
+                  rows={detailRows}
+                  rowKey={(r) => `${r.seq}-${r.taxInvoiceNo}`}
+                  emptyMessage="해당 일자에 발행된 세금계산서가 없습니다."
+                />
+              </div>
+
+              {/* 합계 row — 표 footer */}
+              {dailyDetailQuery.data && detailRows.length > 0 ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: 24,
+                    marginTop: 12,
+                    paddingTop: 8,
+                    borderTop: '1px solid #E5E7EB',
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                  data-testid="closing-daily-detail-totals"
+                >
+                  <span>건수: {dailyDetailQuery.data.totalTaxInvoiceCount}</span>
+                  <span>공급가액: {fmtKrw(dailyDetailQuery.data.totalSupply)}</span>
+                  <span>세액: {fmtKrw(dailyDetailQuery.data.totalVat)}</span>
+                  <span>합계: {fmtKrw(dailyDetailQuery.data.totalAmount)}</span>
+                </div>
+              ) : null}
+            </>
+          )}
+        </Card>
+      ) : null}
 
       {/* 마감 list */}
       <Card>
