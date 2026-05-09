@@ -281,6 +281,40 @@ docker compose -f infrastructure/docker-compose.yml up -d
 - **PowerShell 인코딩** — `.env.dev-seed` 는 UTF-8 (BOM X) 필수. `Set-Content` 기본값 UTF-16 LE 사용 시 한글 주석 깨짐 (메모리 가드 `feedback_powershell_utf8_writes.md`)
 - **service log** — `start-local-full.ps1` 가 띄운 background job 의 stdout 은 `.local-logs/<service-name>.log` 에 누적
 
+### 트러블슈팅
+
+#### `FATAL: sorry, too many clients already` (PostgreSQL)
+
+증상 — 14 service 동시 startup 또는 IT/E2E 동시 실행 중 서비스 일부가 `org.postgresql.util.PSQLException: FATAL: sorry, too many clients already` 로 fail.
+
+원인 — PostgreSQL `max_connections` 가 default 100. 14 service × HikariCP default `maximum-pool-size=10` = **140 connection 요구** → 한도 초과 (W10-6 회고).
+
+해결 — `infrastructure/docker-compose.yml` 의 `postgres.command` 가 `max_connections=300` 으로 override 되어 있어야 함 (본 fix 후 default).
+
+```yaml
+postgres:
+  image: postgres:16-alpine
+  command:
+    - "postgres"
+    - "-c"
+    - "max_connections=300"
+    - "-c"
+    - "shared_buffers=256MB"
+```
+
+이미 인프라가 떠 있는 상태에서 적용하려면:
+
+```powershell
+# volume 보존 — 시드 데이터 유지
+docker compose -f infrastructure/docker-compose.yml up -d --force-recreate postgres
+
+# 검증
+docker exec samhan-postgres psql -U samhan -c "SHOW max_connections;"
+# → 300
+```
+
+`start-local-full.ps1` 의 `[1a/6]` step 이 인프라 startup 직후 자동 검증 — 200 미만 시 경고.
+
 ### Client 빌드
 
 ```bash

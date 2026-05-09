@@ -24,6 +24,16 @@ services:
     image: postgres:16-alpine
     container_name: samhan-postgres
     restart: unless-stopped
+    # W10-6 회고 — default max_connections=100 부족.
+    # 14 service × Hikari default 10 = 140 → "FATAL: sorry, too many clients already".
+    # 300 으로 상향하여 14 service 동시 startup + IT/E2E + psql 검증 동시 진행 시 여유 확보.
+    # shared_buffers 256MB — alpine default 128MB 대비 query plan cache hit 향상 (개발 편의).
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
+      - "-c"
+      - "shared_buffers=256MB"
     environment:
       POSTGRES_USER: samhan
       POSTGRES_PASSWORD: samhan_dev_pw   # DEV-ONLY

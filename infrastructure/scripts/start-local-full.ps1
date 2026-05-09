@@ -188,6 +188,34 @@ if (-not $SkipDocker) {
     Write-Host '[1/6] 인프라 기동 단계 생략 (-SkipDocker)' -ForegroundColor DarkGray
 }
 
+# W10-6 회고 — PostgreSQL max_connections 사전 검증.
+# default 100 → 14 service × Hikari default 10 = 140 → "FATAL: sorry, too many clients already".
+# docker-compose.yml 의 postgres.command 가 300 으로 override 되어 있어야 함.
+# 본 검증은 인프라 startup 직후 / 14 service startup 전에 수행하여 cascade fail 사전 차단.
+Write-Host ''
+Write-Host '[1a/6] PostgreSQL max_connections 사전 검증' -ForegroundColor Yellow
+$maxConnRaw = $null
+try {
+    $maxConnRaw = docker exec samhan-postgres psql -U samhan -d postgres -tA -c "SHOW max_connections;" 2>$null
+} catch {
+    # docker exec 실패 — 미기동 가능성. 하단에서 안내.
+}
+if (-not $maxConnRaw) {
+    Write-Warning '   PostgreSQL 미응답 — max_connections 검증 생략. 인프라 startup 진행 상황 확인 필요.'
+} else {
+    $maxConn = ([string]$maxConnRaw).Trim()
+    $maxConnInt = 0
+    if ([int]::TryParse($maxConn, [ref]$maxConnInt) -and $maxConnInt -ge 200) {
+        Write-Host "   max_connections=$maxConnInt — OK (14 service × Hikari 10 여유)" -ForegroundColor Green
+    } else {
+        Write-Warning "   PostgreSQL max_connections=$maxConn 부족 — 14 service 동시 startup 시 'too many clients already' 위험"
+        Write-Host '   해결:' -ForegroundColor Yellow
+        Write-Host '     1) infrastructure/docker-compose.yml 의 postgres.command 에 -c max_connections=300 설정' -ForegroundColor DarkGray
+        Write-Host '     2) docker compose -f infrastructure/docker-compose.yml up -d --force-recreate postgres' -ForegroundColor DarkGray
+        Write-Host '     (volume 보존 — 시드 데이터 유지)' -ForegroundColor DarkGray
+    }
+}
+
 # -----------------------------------------------------------------------------
 # 2. .env.dev-seed 환경변수 일괄 로드
 # -----------------------------------------------------------------------------
