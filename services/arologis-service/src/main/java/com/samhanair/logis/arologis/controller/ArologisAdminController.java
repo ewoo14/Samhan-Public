@@ -8,10 +8,13 @@ import com.samhanair.logis.arologis.domain.Vehicle;
 import com.samhanair.logis.arologis.dto.DispatchDetailResponse;
 import com.samhanair.logis.arologis.dto.DispatchResponse;
 import com.samhanair.logis.arologis.dto.DriverResponse;
+import com.samhanair.logis.arologis.dto.ManualDispatchPreviewResponse;
+import com.samhanair.logis.arologis.dto.ManualDispatchRequest;
 import com.samhanair.logis.arologis.dto.ParsedDispatchResponse;
 import com.samhanair.logis.arologis.parser.KakaoDispatchParser;
 import com.samhanair.logis.arologis.parser.ParsedDispatch;
 import com.samhanair.logis.arologis.repository.DriverRepository;
+import com.samhanair.logis.arologis.service.DispatchManualService;
 import com.samhanair.logis.arologis.service.DispatchService;
 import com.samhanair.logis.arologis.service.DriverService;
 import com.samhanair.logis.common.dto.ApiResponse;
@@ -19,6 +22,7 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +59,7 @@ public class ArologisAdminController {
 
     private final KakaoDispatchParser parser;
     private final DispatchService dispatchService;
+    private final DispatchManualService manualService;
     private final DriverService driverService;
     private final DriverRepository driverRepository;
 
@@ -90,6 +95,36 @@ public class ArologisAdminController {
         ParsedDispatch parsed = parser.parse(kakaoText, LocalDate.now());
         UUID id = dispatchService.create(parsed, kakaoText);
         return ApiResponse.ok(Map.of("dispatchId", id.toString()));
+    }
+
+    /**
+     * 수동 배차 저장 — Phase 10 P1-5 (매뉴얼 §2 정식 admin 폼).
+     *
+     * <p>카톡 텍스트 우회 ({@link #create}) 와 별도. 본 endpoint 는 admin UI 직접 입력 경로 —
+     * 차량/정차 동적 schema + Bean Validation. driverCode 미지정 시 MockDriverMatcher 자동 매칭
+     * (매뉴얼 §6-2).
+     */
+    @Operation(summary = "수동 배차 저장 (Admin)",
+            description = "카톡 우회 외 admin UI 직접 입력. driverCode 미지정 시 자동 매칭.")
+    @PostMapping("/dispatches/manual")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<Map<String, String>> manualCreate(@Valid @RequestBody ManualDispatchRequest req) {
+        UUID id = manualService.manualCreate(req);
+        return ApiResponse.ok(Map.of("dispatchId", id.toString()));
+    }
+
+    /**
+     * 수동 배차 미리보기 — 저장 X. Phase 10 P1-5.
+     *
+     * <p>frontend confirm 단계 (입력 → preview → 사용자 확인 → 저장) 에서 호출. 입력 검증 통과 시
+     * echo + 합계 정보 응답, driverCode 검증만 수행.
+     */
+    @Operation(summary = "수동 배차 미리보기 (Admin)", description = "검증만 + echo, 저장 X")
+    @PostMapping("/dispatches/manual/preview")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<ManualDispatchPreviewResponse> manualPreview(
+            @Valid @RequestBody ManualDispatchRequest req) {
+        return ApiResponse.ok(manualService.manualPreview(req));
     }
 
     /**
