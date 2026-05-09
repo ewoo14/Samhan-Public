@@ -7,19 +7,24 @@
  *   <li>DC 컬럼 11개 인라인 수정 (홈멀티DC/상업멀티DC/유연호스I형/360/4way/1way/스탠드/디럭스/1등급/단위처리/특이사항).</li>
  *   <li>저장 — 변경된 행만 PATCH (단건 단위).</li>
  *   <li>csv 시드 222 row (`거래처별 DC리스트 *.csv`) 표시.</li>
+ *   <li>CSV 일괄 업로드 (PR-D Phase B FE-C, MASTER 전용) — Notion 다운로드 CSV 를
+ *       {@code POST /api/v1/dc-config/admin/import} 로 일괄 upsert.</li>
  * </ul>
  *
  * <p>UUID 비공개 가드 — 사용자 노출 식별자는 partnerCode + companyName 만.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CsvUploadDialog } from '@samhan/design-system'
 import {
   PARTNER_DC_CONFIG_COLUMNS,
   type PartnerDcConfig,
   listPartnerDcConfigs,
   updatePartnerDcConfig,
 } from '../api/sales'
+import { importDcConfigCsv } from '../api/dcConfigImportApi'
 import { usePageTitleStore } from '../stores/pageTitle'
+import { useSessionStore } from '../stores/session'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
 import styles from '../components/sales/sales.module.css'
 
@@ -30,7 +35,11 @@ export function SalesPartnerDcConfigPage() {
   const [keyword, setKeyword] = useState('')
   const [committedKeyword, setCommittedKeyword] = useState('')
   const [dirty, setDirty] = useState<DirtyMap>({})
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const queryClient = useQueryClient()
+  // PR-D Phase B FE-C — CSV 일괄 업로드는 MASTER role 만 노출 (BE @PreAuthorize 와 일치).
+  const role = useSessionStore((s) => s.auth?.role)
+  const canImportCsv = role === 'MASTER'
 
   useEffect(() => {
     setPageTitle({ title: '거래처 DC율 설정', meta: '판매' })
@@ -138,6 +147,22 @@ export function SalesPartnerDcConfigPage() {
             >
               검색
             </button>
+            {canImportCsv ? (
+              <button
+                type="button"
+                className={styles['btnMini']}
+                onClick={() => setImportDialogOpen(true)}
+                data-testid="dc-config-import-button"
+                style={{
+                  background: '#1d4ed8',
+                  color: '#fff',
+                  borderColor: '#1d4ed8',
+                }}
+                title="Notion CSV 일괄 업로드 (MASTER 전용)"
+              >
+                CSV 일괄 업로드
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -237,6 +262,23 @@ export function SalesPartnerDcConfigPage() {
             </table>
           </div>
         )}
+
+        {canImportCsv ? (
+          <div data-testid="dc-config-import-dialog">
+            <CsvUploadDialog
+              open={importDialogOpen}
+              onClose={() => setImportDialogOpen(false)}
+              title="거래처 DC 정보 CSV 일괄 업로드"
+              description="노션에서 다운로드 받은 CSV 파일을 업로드합니다. 거래처코드 컬럼이 있어 자동으로 매핑됩니다."
+              onUpload={async (file) => {
+                const result = await importDcConfigCsv(file)
+                // 업로드 성공 시 거래처 DC 목록 refetch.
+                void queryClient.invalidateQueries({ queryKey: ['partner-dc-configs'] })
+                return result
+              }}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )
