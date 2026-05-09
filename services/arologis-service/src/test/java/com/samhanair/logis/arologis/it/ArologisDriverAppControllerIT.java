@@ -8,6 +8,7 @@ import com.samhanair.logis.arologis.ArologisServiceApplication;
 import com.samhanair.logis.arologis.client.NotificationClient;
 import com.samhanair.logis.arologis.client.PartnerClient;
 import com.samhanair.logis.arologis.client.SlipClient;
+import com.samhanair.logis.arologis.client.SlipServiceClient;
 import com.samhanair.logis.arologis.client.UserClient;
 import com.samhanair.logis.arologis.domain.Dispatch;
 import com.samhanair.logis.arologis.domain.DispatchType;
@@ -82,6 +83,9 @@ class ArologisDriverAppControllerIT extends AbstractPostgresIT {
     private SlipClient slipClient;
     @MockBean
     private NotificationClient notificationClient;
+    /** PR-E1 BE-3 — 출고전표 자동 조회 client (가배차/미배차/지방 분류 source). */
+    @MockBean
+    private SlipServiceClient slipServiceClient;
 
     @BeforeEach
     void setUp() {
@@ -90,6 +94,7 @@ class ArologisDriverAppControllerIT extends AbstractPostgresIT {
         lenient().when(userClient.findById(any())).thenReturn(Optional.empty());
         lenient().when(slipClient.registerSignature(any(), any())).thenReturn(false);
         lenient().when(notificationClient.send(any(), any(), any(), any())).thenReturn(true);
+        lenient().when(slipServiceClient.getOutboundSlips(any(), any())).thenReturn(java.util.List.of());
 
         // FK 순서 cleanup
         signatureRepository.deleteAll();

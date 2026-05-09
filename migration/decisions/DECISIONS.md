@@ -910,6 +910,33 @@ PR (`feature/integrated-pre-rename-partnerlookup`) — D-P10-17 후속 backlog 2
 - arologis V4 의 신규 String 컬럼 `parsed_partner_code` 를 RegionClassifier + PartnerLookupClient 결과로 채우는 batch / parser 통합
 - slip-service 의 `/internal/slips/by-partner-code/{code}/recent` endpoint 의 path variable 명칭 정합 (kakaoSeq vs partnerCode 의미 분리) — 본 PR scope 외, slip 측 PR 별도 진행
 
+### D-P10-19. step-10 (PR-E1) GAS B 11건 이식 — 이카운트 엑셀 → 출고전표 자동 조회 + DPS 엑셀 업로드 보존 + REGION 활용 + SMS 2-step (2026-05-10)
+
+PR (`feature/integrated-phase-10-step-10-gas-b-ecount-auto`) — Samhan Public 운영 GAS 11 도구 (사용자 분류 B) 중 7건 (DPS비교 / 가배차 / 미배차 / 지방가배차 / 내일자전표 / 전표정리 / 배차안내 SMS) 을 단일 통합 PR 로 native 이식. 잔여 4건 (원장 / 거래명세서 / 계산서 / 일마감) = accounting-service 도메인 PR-E2 위임.
+
+근거:
+- **출고전표 자동 조회 (이카운트 의존 0)** — slip-service `slips` 테이블이 PR #99 (W10-4 전자서명 통합) + PR #115 (W10-step-9 시트 흐름 보강) 시점 partner_code / driver_phone / region 컬럼 구비. PR #116 (R2 + BE-E) 시점 명칭 정합 + PartnerLookupClient 실 호출 활성. step-10 PR-E1 시점 = GAS 의 이카운트 엑셀 업로드 가공 패턴을 자체 자동 조회로 전면 격상 가능.
+- **DPS 입고 비교 만 사용자 명시 보존** — 창고 측 표준 운영 절차 (DPS 시스템에서 받은 엑셀 → 자체 슬립 비교) 가 이미 정착되어 있어 자동 조회 격상보다 엑셀 업로드 + 매칭 알고리즘 native 이식이 적합. `DpsExcelParser` + `DpsCompareService` (SLIP/ITEM 단위 매칭) + `RowMismatch` 분류 (QUANTITY=주황 / PARTNER=빨강 / NOT_FOUND=회색).
+- **REGION / CHAT / BLOCK 활용 (PR #115 산출)** — 가배차 = `RegionClassifier` 광역 prefix 17 시도 + 권역 그룹핑. 내일자 전표 이미지 = 단톡방별 섹션 + 발송금지 자동 제외 (5 way join: slips × chat × block × region × partner). 배차안내 SMS = 단톡방 매핑 + blocked 가드.
+- **SMS preview/send 2-step** — 배차안내는 운영 사고 영향 큼 (잘못 발송 시 거래처 다수 동시 영향). preview 단계에서 단톡방 그룹핑 + 발송금지 가드 검증 후 send 단계 별 도 trigger. dryRun 패턴으로 single-call 사고 회피.
+- **Phase B FE 6 ↔ Phase A BE 4 + Designer 1 1:1 매핑** — 11 commits (실 10 + FE-1 두 분할 1) 단일 PR 로 통합. 다중 FE agent race 결과 d163caa commit 메시지가 "FE-1 DPS" 표기이지만 실제 변경 = FE-1+2+6 통합 (사이드바/라우트/가배차/SMS) — rebase 정정 회피, PR body 명시 보완 (`feedback_integrated_pr_pattern` 의 fix 후속 PR 금지 일관).
+
+영향:
+- `services/slip-service/src/main/resources/db/migration/V15__add_slip_partner_code_region.sql` 신규 — slips.partner_code (VARCHAR(50)) + classified_region_group (VARCHAR(50)) + 인덱스 3종 (partner_code/region/driver_phone × slip_date partial active)
+- `services/slip-service` — `Slip` entity 2 필드 추가 + `SlipRepository extends JpaSpecificationExecutor` + `SlipService.list` 7-arg overload + `SlipController` 5 query param + `NextDaySlipImageService` (5 way join) + `SlipCleanupService` (정합성 flag 4종) + `NotificationChatRoomClient` + `PartnerBlockClient` (Feign + graceful fallback)
+- `services/inventory-service` — `DpsCompareController` (multipart + template) + `DpsCompareService` (매칭 알고리즘) + `DpsExcelParser` + `SlipServiceClient` (Feign) + `DpsCompareResponse` / `RowMismatch` DTO
+- `services/notification-service` — `DispatchBatchAdminController` (preview + send) + `DispatchBatchPreview/Send/MessageTemplateService` + `SlipServiceClient` / `BlockedPartnerLookupClient` interface + Noop placeholder + 4 DTO (Preview/Send Request/Response)
+- `services/arologis-service` — `ArologisAdminController` 3 endpoint (`/dispatches/pre-classify`, `/unassigned`, `/regional`) + `PreClassify/Regional/UnassignedService` + `SlipServiceClient` (skeleton-mode 토글) + `VehicleStopRepository` 활성 dispatch 조회 + 3 DTO + IT 4 파일 SlipServiceClient `@MockBean` 격리 추가
+- `clients/desktop` Phase B 6 page — `arologisDispatchApi` / `dispatchSmsApi` / `dpsCompareApi` / `nextDaySlipApi` / `slipCleanupApi` + `ArologisPreClassifyPage` / `ArologisUnassignedPage` / `DispatchSmsPage` / `InventoryDpsComparePage` / `NextDaySlipPage` / `SlipCleanupPage` + `AppLayout` 사이드바 entry 6건 + `routes/index.tsx` 라우트 + `ArologisManualDispatchPage` query 자동 채움
+- `clients/desktop/src/renderer/print/NextDaySlipView.tsx` (+CSS Module) Designer 1차 mock — 단톡방별 섹션 + 거래처/슬립 표 + @media print A4 세로 + page-break-after 옵션 (Malgun Gothic, 사용자 Edge 캡처 검토 후 2~5차 iteration)
+- 단위 테스트 56 case 신규 (slip 16 + inventory 14 + notification 12 + arologis 14)
+- `ROADMAP.md` Phase 10 step-10 row 추가
+- `docs/dev-reports/integration-phase-10-step-10-gas-b-ecount-auto.md` 신규
+
+후속 (PR-E2):
+- accounting-service 4 도메인 (ledger / statement / tax invoice / daily close) = GAS B 8~11번 native 이식
+- NextDaySlipView 인쇄 양식 2~5차 iteration (사용자 Edge 캡처 → CSS-only 미세 조정, `feedback_print_design_iteration`)
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.

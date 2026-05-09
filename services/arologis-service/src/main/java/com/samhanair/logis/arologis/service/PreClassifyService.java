@@ -1,0 +1,118 @@
+package com.samhanair.logis.arologis.service;
+
+import com.samhanair.logis.arologis.client.SlipServiceClient;
+import com.samhanair.logis.arologis.client.SlipServiceClient.OutboundSlipSummary;
+import com.samhanair.logis.arologis.domain.VehicleStop;
+import com.samhanair.logis.arologis.dto.PreClassifyResponse;
+import com.samhanair.logis.arologis.dto.PreClassifyResponse.Entry;
+import com.samhanair.logis.arologis.repository.VehicleStopRepository;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 가배차 분류 서비스 — Phase 10 PR-E1 BE-A2 (legacy GAS 2번 이식).
+ *
+ * <p>출고전표 → 거래처 주소 → {@link RegionClassifier} 매칭 → 권역 그룹별 그룹핑.
+ *
+ * <h2>처리 흐름</h2>
+ * <ol>
+ *   <li>{@link SlipServiceClient#getOutboundSlips(LocalDate, LocalDate)} 호출 — 기간 OUTBOUND 슬립 조회</li>
+ *   <li>각 슬립의 거래처 주소 → {@link RegionClassifier#classify(String)} 매칭</li>
+ *   <li>매칭된 권역 그룹별 그룹핑 + 미매칭 슬립 별도 unclassified 영역</li>
+ *   <li>각 entry 의 {@code dispatchPlanned} 플래그는 vehicle_stops 의 parsed_partner_code (PR-D
+ *       parsed_kakao_seq R2 후 partner_code) / slipNo 매칭 결과로 설정</li>
+ * </ol>
+ *
+ * <p>Samhan Public 이식 강조 — 출고전표 자동 조회 + REGION (PR-D) 활용. 이카운트 의존 0.
+ *
+ * <p>graceful empty 패턴 — slip-service skeleton-mode / 호출 실패 시 빈 응답 (regionGroups + unclassified
+ * 모두 빈 컨테이너) 으로 admin 화면 정상 렌더링.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class PreClassifyService {
+
+    private final SlipServiceClient slipServiceClient;
+    private final RegionClassifier regionClassifier;
+    private final VehicleStopRepository vehicleStopRepository;
+
+    /**
+     * 가배차 권역 분류 조회.
+     *
+     * @param from 조회 시작일 (inclusive, 필수)
+     * @param to 조회 종료일 (inclusive, 필수, from 이후)
+     * @return 권역 그룹별 분류된 출고전표 응답
+     * @throws BusinessException(INVALID_INPUT) from/to null 또는 to&lt;from
+     */
+    @Transactional(readOnly = true)
+    public PreClassifyResponse classify(LocalDate from, LocalDate to) {
+        validateRange(from, to);
+        List<OutboundSlipSummary> slips = slipServiceClient.getOutboundSlips(from, to);
+        log.info("PreClassifyService — from={}, to={}, slipsFetched={}", from, to, slips.size());
+
+        // 본 PR 시점 dispatchPlanned 매칭 = vehicle_stops 의 parsed_partner_code 컬럼이 슬립의
+        // partnerCode 와 일치하면 true. 본 컬럼은 PR-E1 lookup 활성 후에 채워지므로, 빈 set 일 때는
+        // 모든 entry 의 dispatchPlanned=false (정상 fail-soft).
+        Set<String> plannedPartnerCodes = collectPlannedPartnerCodes(slips);
+
+        Map<String, List<Entry>> regionGroups = new LinkedHashMap<>();
+        List<Entry> unclassified = new ArrayList<>();
+
+        for (OutboundSlipSummary slip : slips) {
+            String regionGroup = regionClassifier.classify(slip.address());
+            boolean planned = slip.partnerCode() != null && plannedPartnerCodes.contains(slip.partnerCode());
+            Entry entry = new Entry(
+                    slip.slipNo(),
+                    slip.partnerCode(),
+                    slip.partnerName(),
+                    slip.address(),
+                    regionGroup,
+                    planned);
+            if (regionGroup == null) {
+                unclassified.add(entry);
+            } else {
+                regionGroups.computeIfAbsent(regionGroup, k -> new ArrayList<>()).add(entry);
+            }
+        }
+        return new PreClassifyResponse(regionGroups, unclassified);
+    }
+
+    /** 본 기간 슬립의 partnerCode 집합 → vehicle_stops.parsed_partner_code 매칭 → 이미 배차된 코드만 set 반환. */
+    private Set<String> collectPlannedPartnerCodes(List<OutboundSlipSummary> slips) {
+        List<String> codes = slips.stream()
+                .map(OutboundSlipSummary::partnerCode)
+                .filter(c -> c != null && !c.isBlank())
+                .distinct()
+                .toList();
+        if (codes.isEmpty()) {
+            return Set.of();
+        }
+        // VehicleStopRepository 의 partner_code 기반 활성 행 조회 — 인덱스
+        // ix_vehicle_stops_partner_code_active 활용 (V4 migration 신규).
+        return vehicleStopRepository.findAllByParsedPartnerCodeIn(codes).stream()
+                .map(VehicleStop::getParsedPartnerCode)
+                .filter(c -> c != null && !c.isBlank())
+                .collect(Collectors.toSet());
+    }
+
+    private void validateRange(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "from/to 는 필수입니다");
+        }
+        if (to.isBefore(from)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "to 는 from 이후여야 합니다");
+        }
+    }
+}

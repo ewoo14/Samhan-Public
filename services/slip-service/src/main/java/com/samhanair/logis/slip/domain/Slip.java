@@ -103,6 +103,31 @@ public class Slip extends BaseEntity {
     @Column(name = "partner_name", length = 100)
     private String partnerName;
 
+    /**
+     * 거래처코드 snapshot — PR-E1 BE-1 (V15 migration) 신규.
+     *
+     * <p>partner_id (UUID) 와 별도 — UUID 비공개 가드 의무 (memory feedback_uuid_no_user_visibility).
+     * 사용자 노출 식별자로 GAS B 이식 endpoint (BE-A0/A5/A6) 의 query filter / 이미지 그룹핑에 사용.
+     *
+     * <p>채움 정책: 본 슬라이스는 컬럼 + setter 만 추가. 실 채움 (partner-service 의 partnerId →
+     * partnerCode resolve) 은 후속 슬라이스 (slip 생성/갱신 시점에 partner-service Feign 호출)
+     * 또는 PR-D 별도 backfill 작업으로 진행. 기존 row 는 NULL 유지 (legacy 호환).
+     */
+    @Column(name = "partner_code", length = 50)
+    private String partnerCode;
+
+    /**
+     * 가배차 지역 그룹명 snapshot — PR-E1 BE-1 (V15 migration) 신규.
+     *
+     * <p>arologis-service RegionClassifier 가 결정한 그룹명 ("서울특별시" / "경기남부" 등) 을
+     * slip 생성/갱신 시 snapshot. 다음날자 전표 이미지 endpoint (BE-A5) 의 지역별 그룹핑에 사용.
+     *
+     * <p>본 슬라이스는 컬럼 + setter 만 추가. 실 채움은 후속 슬라이스에서 RegionClassifier 호출
+     * 또는 arologis-service Feign lookup. 기존 row 는 NULL 유지.
+     */
+    @Column(name = "classified_region_group", length = 50)
+    private String classifiedRegionGroup;
+
     @Column(name = "source_warehouse_id")
     private UUID sourceWarehouseId;
 
@@ -473,6 +498,30 @@ public class Slip extends BaseEntity {
      */
     public void assignToBatch(UUID batchId) {
         this.deliveryBatchId = batchId;
+    }
+
+    /**
+     * partner_code snapshot 갱신 — PR-E1 BE-1 (V15) 신규. partner-service Feign lookup 결과
+     * 또는 admin 화면 직접 입력 경로에서 호출.
+     *
+     * <p>본 메서드는 라이프사이클 단계 가드 없음 (어떤 단계에서도 snapshot 갱신 가능 — 사용자 명시
+     * "추후 partner_code 매핑" backfill 정책). Slice B 의 setDriverContact 패턴과 동일 — 도메인
+     * 단순 setter.
+     *
+     * @param partnerCode partner-service partners.partner_code (예: "P-2026-0001")
+     */
+    public void setPartnerCode(String partnerCode) {
+        this.partnerCode = partnerCode;
+    }
+
+    /**
+     * 가배차 지역 그룹 snapshot 갱신 — PR-E1 BE-1 (V15) 신규. arologis RegionClassifier 결과
+     * 또는 admin 직접 분류 경로에서 호출. partner_code 와 동일하게 단순 setter.
+     *
+     * @param classifiedRegionGroup arologis vehicle_stops.classified_region_group 동일 그룹명
+     */
+    public void setClassifiedRegionGroup(String classifiedRegionGroup) {
+        this.classifiedRegionGroup = classifiedRegionGroup;
     }
 
     /**

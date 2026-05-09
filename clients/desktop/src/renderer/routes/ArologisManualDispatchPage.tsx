@@ -23,6 +23,10 @@
  * driverAutoMatch 안내 (매뉴얼 §6-2):
  * - driverCode 비워두면 BE 가 MockDriverMatcher 로 자동 매칭 (현재 mock = MOCK-001 단일)
  *
+ * /arologis/unassigned 연계 (Phase 10 PR-E1 FE-3):
+ * - query param (date / slipNo / partnerCode / partnerName / address) 가 있으면
+ *   첫 차량 첫 정차에 자동 채움. slipNo 는 정차 메모에 보존.
+ *
  * data-testid (slice 명세):
  * - arologis-manual-kakao-input / arologis-manual-preview-button
  * - arologis-manual-vehicle-input / arologis-manual-stop-add / arologis-manual-item-add
@@ -33,9 +37,9 @@
  *       원칙에 따라 정차당 메모(notes) 에 품목 자유 기술 + arologis-manual-item-add testid 는
  *       backlog placeholder 로 hidden 토글 button 에 부여하여 명세 준수.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, FormField } from '@samhan/design-system'
 import axios from 'axios'
 import {
@@ -173,14 +177,48 @@ export function ArologisManualDispatchPage() {
   usePageTitle('arologis 수동 배차')
   const navigate = useNavigate()
 
+  // ---- /arologis/unassigned 등 외부 화면에서 query param 으로 전달된 ------
+  // 자동 채움 데이터 (FE-3 연계). 본 page mount 시 1회 적용.
+  const [searchParams] = useSearchParams()
+  const prefill = useMemo(
+    () => ({
+      date: searchParams.get('date'),
+      slipNo: searchParams.get('slipNo'),
+      partnerCode: searchParams.get('partnerCode'),
+      partnerName: searchParams.get('partnerName'),
+      address: searchParams.get('address'),
+    }),
+    [searchParams],
+  )
+
   // ---- 좌측 카톡 텍스트 ---------------------------------------------------
   const [kakaoText, setKakaoText] = useState('')
 
   // ---- 우측 폼 ------------------------------------------------------------
-  const [dispatchDate, setDispatchDate] = useState<string>(todayIso())
+  const [dispatchDate, setDispatchDate] = useState<string>(
+    prefill.date ?? todayIso(),
+  )
   const [dispatchType, setDispatchType] = useState<ArologisDispatchType>('DAY')
   const [driverCode, setDriverCode] = useState('')
-  const [vehicles, setVehicles] = useState<VehicleDraft[]>([emptyVehicle(1)])
+  const [vehicles, setVehicles] = useState<VehicleDraft[]>(() => {
+    // /arologis/unassigned 에서 진입 시 첫 차량 첫 정차에 prefill 적용.
+    if (prefill.slipNo || prefill.address || prefill.partnerName) {
+      const vehicle = emptyVehicle(1)
+      const stop = vehicle.stops[0]!
+      if (prefill.partnerName) stop.partnerName = prefill.partnerName
+      if (prefill.address) stop.address = prefill.address
+      if (prefill.slipNo) {
+        // slipNo 는 W10-4 prefix 등 비숫자 포함 가능 → numeric 부분만 partnerCode 시도.
+        const numeric = prefill.slipNo.replace(/[^0-9]/g, '')
+        if (numeric) stop.partnerCode = numeric
+        // 메모에 원본 slipNo 보존 — 사용자가 추적 가능하도록.
+        stop.notes = `미배차 슬립 ${prefill.slipNo}`
+            + (prefill.partnerCode ? ` / 거래처코드 ${prefill.partnerCode}` : '')
+      }
+      return [vehicle]
+    }
+    return [emptyVehicle(1)]
+  })
 
   // ---- 미리보기 결과 (좌측 하단 표시) -------------------------------------
   const [preview, setPreview] = useState<ManualDispatchPreviewResponse | null>(

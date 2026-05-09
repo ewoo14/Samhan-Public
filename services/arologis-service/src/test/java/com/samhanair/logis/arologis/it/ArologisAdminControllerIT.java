@@ -8,6 +8,8 @@ import com.samhanair.logis.arologis.ArologisServiceApplication;
 import com.samhanair.logis.arologis.client.NotificationClient;
 import com.samhanair.logis.arologis.client.PartnerClient;
 import com.samhanair.logis.arologis.client.SlipClient;
+import com.samhanair.logis.arologis.client.SlipServiceClient;
+import com.samhanair.logis.arologis.client.SlipServiceClient.OutboundSlipSummary;
 import com.samhanair.logis.arologis.client.UserClient;
 import com.samhanair.logis.arologis.repository.DispatchRepository;
 import com.samhanair.logis.arologis.repository.DriverLocationRepository;
@@ -72,6 +74,9 @@ class ArologisAdminControllerIT extends AbstractPostgresIT {
     private SlipClient slipClient;
     @MockBean
     private NotificationClient notificationClient;
+    /** PR-E1 BE-3 — 출고전표 자동 조회 client (가배차/미배차/지방 endpoint source). */
+    @MockBean
+    private SlipServiceClient slipServiceClient;
 
     private static final String SAMPLE_KAKAO = """
             8일착 야상입니다
@@ -88,6 +93,8 @@ class ArologisAdminControllerIT extends AbstractPostgresIT {
         lenient().when(userClient.findById(any())).thenReturn(Optional.empty());
         lenient().when(slipClient.registerSignature(any(), any())).thenReturn(false);
         lenient().when(notificationClient.send(any(), any(), any(), any())).thenReturn(true);
+        // PR-E1 BE-3 — 기본 빈 리스트 (graceful empty). 개별 테스트가 override 가능.
+        lenient().when(slipServiceClient.getOutboundSlips(any(), any())).thenReturn(java.util.List.of());
 
         // signatures → vehicle_stops → vehicles → dispatches FK 순서로 cleanup
         signatureRepository.deleteAll();
@@ -217,5 +224,67 @@ class ArologisAdminControllerIT extends AbstractPostgresIT {
                         .header("X-User-Role", "MANAGER"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data").isArray());
+    }
+
+    // ---- PR-E1 BE-3 — 가배차/미배차/지방가배차 3 endpoint 시나리오 ----
+
+    @Test
+    void preClassify_returns_200_with_region_groups() throws Exception {
+        org.mockito.Mockito.when(slipServiceClient.getOutboundSlips(
+                java.time.LocalDate.parse("2026-05-10"),
+                java.time.LocalDate.parse("2026-05-10")))
+                .thenReturn(java.util.List.of(
+                        new OutboundSlipSummary("id-1", "2026/05/10-001", "P-2026-0001",
+                                "에스엠하나공조", "서울 강남구 역삼동")
+                ));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/arologis/dispatches/pre-classify")
+                        .param("from", "2026-05-10")
+                        .param("to", "2026-05-10")
+                        .header("X-User-Id", "test-admin")
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.regionGroups").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.unclassified").isArray());
+    }
+
+    @Test
+    void unassigned_returns_200_with_entries() throws Exception {
+        org.mockito.Mockito.when(slipServiceClient.getOutboundSlips(
+                java.time.LocalDate.parse("2026-05-10"),
+                java.time.LocalDate.parse("2026-05-10")))
+                .thenReturn(java.util.List.of(
+                        new OutboundSlipSummary("id-1", "2026/05/10-001", "P-2026-0001",
+                                "미배차공조", "서울 강남구 역삼동")
+                ));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/arologis/dispatches/unassigned")
+                        .param("date", "2026-05-10")
+                        .header("X-User-Id", "test-admin")
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.totalOutbound").value(1))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.unassignedCount").value(1))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.entries[0].slipNo").value("2026/05/10-001"));
+    }
+
+    @Test
+    void regional_returns_200_with_sido_groups() throws Exception {
+        org.mockito.Mockito.when(slipServiceClient.getOutboundSlips(
+                java.time.LocalDate.parse("2026-05-10"),
+                java.time.LocalDate.parse("2026-05-10")))
+                .thenReturn(java.util.List.of(
+                        new OutboundSlipSummary("id-1", "2026/05/10-001", "P-2026-0001",
+                                "부산공조", "부산 해운대구")
+                ));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/arologis/dispatches/regional")
+                        .param("date", "2026-05-10")
+                        .header("X-User-Id", "test-admin")
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.sidoGroups").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.sidoGroups.부산[0].slipNo").value("2026/05/10-001"));
     }
 }

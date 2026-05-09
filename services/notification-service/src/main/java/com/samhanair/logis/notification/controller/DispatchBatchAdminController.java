@@ -1,0 +1,69 @@
+package com.samhanair.logis.notification.controller;
+
+import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.notification.dto.DispatchBatchPreviewRequest;
+import com.samhanair.logis.notification.dto.DispatchBatchPreviewResponse;
+import com.samhanair.logis.notification.dto.DispatchBatchSendRequest;
+import com.samhanair.logis.notification.dto.DispatchBatchSendResponse;
+import com.samhanair.logis.notification.service.DispatchBatchPreviewService;
+import com.samhanair.logis.notification.service.DispatchBatchSendService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 배차안내 SMS batch 발송 admin endpoint — PR-E1 BE-4 (Samhan Public 이식).
+ *
+ * <p>legacy GAS 8번 (배차안내문자) 의 수동 워크플로우 (Excel 업로드 + 단톡방 매핑 + 멘트 편집 +
+ * 단톡방별 그룹핑 후 복사 발송) 를 자동화. 2-step:
+ * <ol>
+ *   <li>POST /preview — dryRun (slip 자동 조회 + 단톡방/blocked 라우팅 + 메시지 조립)</li>
+ *   <li>POST /send — 실 발송 (FE 가 수정한 메시지 포함 entry 목록)</li>
+ * </ol>
+ *
+ * <p>권한 가드 — DISPATCH (배차담당) / MANAGER / MASTER 풀네임. 2-step 모두 동일.
+ */
+@RestController
+@RequestMapping("/admin/notifications/dispatch-batch")
+@RequiredArgsConstructor
+@Tag(name = "Notification - Dispatch Batch (Admin)",
+        description = "배차안내 SMS batch 발송 (preview + send)")
+public class DispatchBatchAdminController {
+
+    private final DispatchBatchPreviewService previewService;
+    private final DispatchBatchSendService sendService;
+
+    /**
+     * dryRun 미리보기 — 출고전표 자동 조회 + 단톡방 그룹핑 + blocked 가드.
+     *
+     * @return 200, ChatRoomGroup 목록 + unmapped 목록
+     */
+    @Operation(summary = "배차안내 SMS 미리보기 (Admin)",
+            description = "DISPATCH / MANAGER / MASTER 권한. 출고전표 + 단톡방 매핑 + blocked 가드 + 메시지 템플릿 dryRun.")
+    @PostMapping("/preview")
+    @PreAuthorize("hasAnyRole('DISPATCH','MANAGER','MASTER')")
+    public ApiResponse<DispatchBatchPreviewResponse> preview(
+            @Valid @RequestBody DispatchBatchPreviewRequest req) {
+        return ApiResponse.ok(previewService.preview(req));
+    }
+
+    /**
+     * 실 발송 — preview 결과 + 운영자 수정 메시지 entry 목록을 SmsAdapter 로 일괄 발송.
+     *
+     * @return 200, sent / failed / blocked 카운트 + 상세
+     */
+    @Operation(summary = "배차안내 SMS 실 발송 (Admin)",
+            description = "DISPATCH / MANAGER / MASTER 권한. preview 결과 confirm 후 entry 별 SmsAdapter 호출.")
+    @PostMapping("/send")
+    @PreAuthorize("hasAnyRole('DISPATCH','MANAGER','MASTER')")
+    public ApiResponse<DispatchBatchSendResponse> send(
+            @Valid @RequestBody DispatchBatchSendRequest req) {
+        return ApiResponse.ok(sendService.send(req));
+    }
+}
