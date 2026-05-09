@@ -37,6 +37,9 @@ import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
 import { canAccessAdmin } from '../api/adminApi'
 import { canAccessAudit } from '../api/auditApi'
 import { canAccessChatRoomAdmin } from '../api/chatRoomApi'
+import { SLIP_CLEANUP_ROLES } from '../api/slipCleanupApi'
+// [PR-E1 FE-4] 내일자 전표 이미지 — SALES / MANAGER / MASTER (BE @PreAuthorize 일치)
+import { canAccessNextDaySlip } from '../api/nextDaySlipApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -98,6 +101,9 @@ export function AppLayout() {
   const showAudit = canAccessAudit(auth?.role)
   // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
   // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
+  // [PR-E1 FE-5] 전표 정리 entry — SALES / MANAGER / MASTER / ACCOUNTANT
+  const showSlipCleanup = !!auth?.role
+    && (SLIP_CLEANUP_ROLES as readonly string[]).includes(auth.role)
   const showChatRoomAdmin = canAccessChatRoomAdmin(auth?.role)
 
   return (
@@ -134,6 +140,14 @@ export function AppLayout() {
           <NavLink to="/sales/partner-orders">주문서 조회</NavLink>
           <NavLink to="/sales/order-approvals">주문서 승인</NavLink>
           <NavLink to="/sales/partner-dc-config">거래처 DC 설정</NavLink>
+          {showSlipCleanup ? (
+            <NavLink
+              to="/sales/slip-cleanup"
+              data-testid="sidebar-sales-slip-cleanup"
+            >
+              전표 정리
+            </NavLink>
+          ) : null}
 
           {showAccounting ? (
             <>

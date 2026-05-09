@@ -105,6 +105,12 @@ import { CHAT_ROOM_ADMIN_ROLES } from '../api/chatRoomApi'
 import { InventoryAuditListPage } from './InventoryAuditListPage'
 import { InventoryAuditFormPage } from './InventoryAuditFormPage'
 import { InventoryAuditDetailPage } from './InventoryAuditDetailPage'
+// [PR-E1 FE-5] 전표 정리 리스트 (legacy GAS 13번 자동 조회 이식) — SALES/MANAGER/MASTER + ACCOUNTANT
+import { SlipCleanupPage } from './SlipCleanupPage'
+import { SLIP_CLEANUP_ROLES } from '../api/slipCleanupApi'
+// [PR-E1 FE-1] DPS 입고 비교 (legacy GAS 1번/16번 native 이식 — WAREHOUSE/MASTER/MANAGER/INVENTORY)
+import { InventoryDpsComparePage } from './InventoryDpsComparePage'
+import { DPS_COMPARE_ROLES } from '../api/dpsCompareApi'
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
@@ -147,6 +153,17 @@ const router = createHashRouter([
       { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
       { path: '/sales/estimates/:id/edit', element: <EstimateFormPage /> },
       { path: '/sales/estimates/:id', element: <EstimateDetailPage /> },
+
+      // [PR-E1 FE-5] 전표 정리 리스트 — `/sales/:id` 보다 먼저 매칭되어야 함.
+      // BE: slip-service `GET /slips/cleanup` (commit 281415f). SALES/MANAGER/MASTER + ACCOUNTANT.
+      {
+        path: '/sales/slip-cleanup',
+        element: (
+          <RoleGuard allow={SLIP_CLEANUP_ROLES}>
+            <SlipCleanupPage />
+          </RoleGuard>
+        ),
+      },
 
       { path: '/sales/:id', element: <SlipDetailPage mode="OUTBOUND" /> },
       { path: '/sales/:id/print/invoice', element: <InvoiceView /> },
