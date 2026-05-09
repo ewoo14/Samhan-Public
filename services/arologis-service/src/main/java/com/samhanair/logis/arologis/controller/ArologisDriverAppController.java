@@ -166,7 +166,7 @@ public class ArologisDriverAppController {
      * 전자서명 등록 — Phase 10 W10-4 (PR #99) 통합:
      * <ol>
      *   <li>arologis 자체 signatures 테이블 INSERT (기존)</li>
-     *   <li>SlipResolver 로 stop.parsedPartnerCode → slipId 매핑 (없으면 graceful skip)</li>
+     *   <li>SlipResolver 로 stop.parsedKakaoSeq → slipId 매핑 (없으면 graceful skip)</li>
      *   <li>매핑 성공 시 SlipClient.registerSignature 로 slip-service 전파 (양쪽 저장)</li>
      * </ol>
      *
@@ -206,7 +206,7 @@ public class ArologisDriverAppController {
 
         // 2-3. SlipResolver → SlipClient 양쪽 저장 시도 (W10-4 신규)
         boolean slipBridged = false;
-        java.util.Optional<UUID> slipIdOpt = slipResolver.resolveByPartnerCode(stop.getParsedPartnerCode());
+        java.util.Optional<UUID> slipIdOpt = slipResolver.resolveByKakaoSeq(stop.getParsedKakaoSeq());
         if (slipIdOpt.isPresent()) {
             SignaturePayload payload = SignaturePayload.appDriver(
                     imageRef != null ? imageRef : "s3://samhan-prod/signatures/" + saved.getId() + ".png",
@@ -219,8 +219,8 @@ public class ArologisDriverAppController {
                         slipIdOpt.get(), saved.getId());
             }
         } else {
-            log.debug("W10-4 slip-service bridge skip — partnerCode={} 매핑 실패 (자체 저장만)",
-                    stop.getParsedPartnerCode());
+            log.debug("W10-4 slip-service bridge skip — kakaoSeq={} 매핑 실패 (자체 저장만)",
+                    stop.getParsedKakaoSeq());
         }
 
         return ApiResponse.ok(Map.of(

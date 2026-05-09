@@ -167,7 +167,7 @@ public class SlipClient {
      * { "success": true, "data": null }   // graceful empty (매핑 실패)
      * }</pre>
      *
-     * @param partnerCode 사용자 노출 식별자 (카톡 파싱 결과 또는 stop.parsedPartnerCode)
+     * @param partnerCode 사용자 노출 식별자 — 카톡 파싱 결과 (stop.parsedKakaoSeq 의 String 변환값). slip-service 측 endpoint 의 경로 변수명 호환을 위해 본 client 는 partnerCode 명칭 유지 (PR-E1 시점 endpoint 측 정정 별도 진행).
      * @return 매칭 슬립 UUID Optional. 미매핑 / skeleton-mode / 호출 실패 시 empty.
      */
     public Optional<UUID> findRecentSlipIdByPartnerCode(String partnerCode) {

@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  *   <li>헤더 라인 — "8일착 야상입니다" → dispatchDate (월 추정 — 입력 시점 기준 가까운 월/년) + dispatchType</li>
  *   <li>차량 그룹 — "1." / "2." / "13." 시작 라인 → 신규 vehicle</li>
  *   <li>톤수 라인 — 그룹 끝 "1톤" / "2.5톤" → VehicleTonnage</li>
- *   <li>정차 라인 — "-인천 남동구 구월동(에스엠하나공조-214)아침8시" → parsedAddress / partnerName / partnerCode / notes</li>
+ *   <li>정차 라인 — "-인천 남동구 구월동(에스엠하나공조-214)아침8시" → parsedAddress / partnerName / kakaoSeq / notes</li>
  *   <li>미해석 라인 — "상일상차" 등 정차 패턴 미매칭 라인 → unparsed group label 로 보존</li>
  * </ol>
  */
@@ -209,18 +209,23 @@ public class KakaoDispatchParser {
         vehicles.add(new ParsedDispatch.ParsedVehicle(seq, finalTonnage, label, stops));
     }
 
-    /** 정차 라인 정규표현식 매칭 결과 → {@link ParsedDispatch.ParsedStop}. */
+    /**
+     * 정차 라인 정규표현식 매칭 결과 → {@link ParsedDispatch.ParsedStop}.
+     *
+     * <p>PR-E 진입 전 선행 R2 — 카톡 "(에스엠하나공조-214)" 의 214 는 카톡 슬립번호 (kakaoSeq).
+     * partner-service 의 partner_code (P-2026-0001) 와는 별개 식별자.
+     */
     private ParsedDispatch.ParsedStop toParsedStop(int seq, String rawLine, Matcher m) {
         String address = m.group(1) == null ? null : m.group(1).trim();
         String partnerName = m.group(2) == null ? null : m.group(2).trim();
-        Long partnerCode = parsePartnerCode(m.group(3));
+        Long kakaoSeq = parseKakaoSeq(m.group(3));
         String notes = m.group(4) == null ? null : m.group(4).trim();
         if (notes != null && notes.isBlank()) {
             notes = null;
         }
         // PR-D 2-1 — RegionClassifier 통합 (주입 시) parsedAddress → regionGroup 매칭
         String regionGroup = classifyRegion(address);
-        return new ParsedDispatch.ParsedStop(seq, rawLine, address, partnerName, partnerCode,
+        return new ParsedDispatch.ParsedStop(seq, rawLine, address, partnerName, kakaoSeq,
                 notes, false, regionGroup);
     }
 
@@ -237,7 +242,12 @@ public class KakaoDispatchParser {
         }
     }
 
-    private Long parsePartnerCode(String raw) {
+    /**
+     * 카톡 슬립번호 (예: "(에스엠하나공조-214)" 의 214) 파싱 — Long.
+     *
+     * <p>PR-E 진입 전 선행 R2 — 명칭 분리. partner-service partner_code (String) 와 다름.
+     */
+    private Long parseKakaoSeq(String raw) {
         if (raw == null) {
             return null;
         }

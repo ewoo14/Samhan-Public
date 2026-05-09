@@ -110,18 +110,18 @@ class KakaoDispatchParserTest {
     }
 
     @Test
-    @DisplayName("case 3 — 정차 라인 정규표현식 (전체 정차 추출 + partnerCode)")
+    @DisplayName("case 3 — 정차 라인 정규표현식 (전체 정차 추출 + kakaoSeq)")
     void parseStops() {
         ParsedDispatch parsed = parser.parse(SAMPLE_KAKAO, REFERENCE);
         // 첫 차량 — 상일상차/초월상차 group label 2 + 정차 4 = 6 element
         ParsedDispatch.ParsedVehicle v1 = parsed.vehicles().get(0);
         assertThat(v1.stops()).hasSize(6);
-        // 정차 중 첫 정차 — "(하늘시스템-218)" → partnerCode=218
+        // 정차 중 첫 정차 — "(하늘시스템-218)" → kakaoSeq=218 (PR-E 진입 전 선행 R2 — partnerCode → kakaoSeq rename)
         ParsedDispatch.ParsedStop firstStop = v1.stops().stream()
                 .filter(s -> !s.unparsed())
                 .findFirst()
                 .orElseThrow();
-        assertThat(firstStop.parsedPartnerCode()).isEqualTo(218L);
+        assertThat(firstStop.parsedKakaoSeq()).isEqualTo(218L);
         assertThat(firstStop.parsedPartnerName()).isEqualTo("하늘시스템");
         assertThat(firstStop.parsedAddress()).contains("인천남동구논현동");
         assertThat(firstStop.notes()).contains("9시하차");
@@ -195,7 +195,7 @@ class KakaoDispatchParserTest {
         // 정상 정차 라인 합 (unparsed 제외) 약 26+ 개 (2*13 = 26 per vehicle 평균)
         long totalParsedStops = parsed.vehicles().stream()
                 .flatMap(v -> v.stops().stream())
-                .filter(s -> !s.unparsed() && s.parsedPartnerCode() != null)
+                .filter(s -> !s.unparsed() && s.parsedKakaoSeq() != null)
                 .count();
         assertThat(totalParsedStops).isGreaterThanOrEqualTo(20L);
     }

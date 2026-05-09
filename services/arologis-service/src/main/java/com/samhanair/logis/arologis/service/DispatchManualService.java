@@ -88,7 +88,7 @@ public class DispatchManualService {
                         rawStopText(ms),
                         ms.address(),
                         ms.partnerName(),
-                        ms.partnerCode(),
+                        ms.kakaoSeq(),
                         ms.notes(),
                         StopStatus.PENDING,
                         regionGroup));
@@ -131,7 +131,7 @@ public class DispatchManualService {
                         mv.stops().stream()
                                 .map(ms -> new ManualDispatchPreviewResponse.PreviewStop(
                                         ms.sequence(), ms.partnerName(), ms.address(),
-                                        ms.partnerCode(), ms.notes()))
+                                        ms.kakaoSeq(), ms.notes()))
                                 .toList()))
                 .toList();
 
@@ -183,8 +183,8 @@ public class DispatchManualService {
         sb.append(ms.address());
         if (ms.partnerName() != null && !ms.partnerName().isBlank()) {
             sb.append("(").append(ms.partnerName());
-            if (ms.partnerCode() != null) {
-                sb.append("-").append(ms.partnerCode());
+            if (ms.kakaoSeq() != null) {
+                sb.append("-").append(ms.kakaoSeq());
             }
             sb.append(")");
         }

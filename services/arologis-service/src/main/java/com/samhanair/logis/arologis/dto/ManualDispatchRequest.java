@@ -56,17 +56,20 @@ public record ManualDispatchRequest(
     /**
      * 정차 1건 입력.
      *
+     * <p>PR-E 진입 전 선행 R2 — {@code kakaoSeq} (Long, 카톡 슬립번호) 로 rename.
+     * partner-service 의 partner_code (String) 는 PR-E1 lookup 결과로 별도 채워지며 본 요청 DTO 에는 미포함.
+     *
      * @param sequence 정차 순서 (1 이상)
      * @param partnerName 거래처명 (옵션 — 입력 시 검색 키워드)
      * @param address 주소 (필수, 매뉴얼 §2-2 입력 폼)
-     * @param partnerCode 슬립번호 (옵션, W10-4 자동 brige 용)
+     * @param kakaoSeq 카톡 슬립번호 (Long, 옵션 — W10-4 자동 brige 용)
      * @param notes 도착시각 / 특이사항 (옵션)
      */
     public record ManualStop(
             @NotNull @Min(1) Integer sequence,
             @Size(max = 200) String partnerName,
             @NotBlank(message = "address 필수") @Size(max = 500) String address,
-            Long partnerCode,
+            Long kakaoSeq,
             @Size(max = 1000) String notes
     ) {}
 }

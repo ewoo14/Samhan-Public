@@ -45,12 +45,26 @@ public record ParsedDispatchResponse(
         }
     }
 
+    /**
+     * 정차 1건 미리보기 응답.
+     *
+     * <p>PR-E 진입 전 선행 R2 — {@code parsedKakaoSeq} 로 rename. partner_code (String) 는 parser
+     * 단계에서는 미수록 (PR-E1 lookup 후 별도 응답 필드로 보강 예정).
+     *
+     * @param sequence 정차 순서
+     * @param rawText 카톡 원본 라인
+     * @param parsedAddress 파싱된 주소
+     * @param parsedPartnerName 파싱된 사업자명
+     * @param parsedKakaoSeq 카톡 슬립번호 (Long, 옵션)
+     * @param notes 특이사항
+     * @param unparsed 미해석 라인 여부
+     */
     public record ParsedStopDto(
             int sequence,
             String rawText,
             String parsedAddress,
             String parsedPartnerName,
-            Long parsedPartnerCode,
+            Long parsedKakaoSeq,
             String notes,
             boolean unparsed
     ) {
@@ -60,7 +74,7 @@ public record ParsedDispatchResponse(
                     ps.rawText(),
                     ps.parsedAddress(),
                     ps.parsedPartnerName(),
-                    ps.parsedPartnerCode(),
+                    ps.parsedKakaoSeq(),
                     ps.notes(),
                     ps.unparsed());
         }

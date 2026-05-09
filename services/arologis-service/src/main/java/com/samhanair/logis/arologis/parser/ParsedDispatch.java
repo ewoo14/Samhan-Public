@@ -51,11 +51,16 @@ public record ParsedDispatch(
     /**
      * 정차 1건 파싱 결과.
      *
+     * <p>PR-E 진입 전 선행 R2 — 기존 {@code parsedPartnerCode} (Long) 는 카톡 슬립번호 식별자로
+     * partner-service 의 partner_code (String) 와 의미가 달라 {@code parsedKakaoSeq} 로 rename.
+     * partner_code 컬럼은 PR-E1 의 PartnerLookupClient 통합 시점에 채워질 예정 (본 record 시점에서는
+     * 미수록 — parser 단계는 카톡 raw 데이터만 추출).
+     *
      * @param sequence 차량 내 정차 순서
      * @param rawText 카톡 원본 라인
      * @param parsedAddress 파싱된 주소 (옵션)
      * @param parsedPartnerName 사업자명 (옵션)
-     * @param parsedPartnerCode 전표번호 (옵션)
+     * @param parsedKakaoSeq 카톡 슬립번호 (Long, 옵션 — "(에스엠하나공조-214)" 의 214)
      * @param notes 특이사항 (옵션)
      * @param unparsed 미해석 라인 여부 ("상일상차" 등 group label)
      * @param regionGroup 가배차 지역 분류 그룹명 (PR-D 2-1 — RegionClassifier 매칭, 미매칭 시 null)
@@ -65,7 +70,7 @@ public record ParsedDispatch(
             String rawText,
             String parsedAddress,
             String parsedPartnerName,
-            Long parsedPartnerCode,
+            Long parsedKakaoSeq,
             String notes,
             boolean unparsed,
             String regionGroup
@@ -73,9 +78,9 @@ public record ParsedDispatch(
 
         /** 7-인자 호환 생성자 — RegionClassifier 미주입 환경 (단위 테스트) regionGroup=null. */
         public ParsedStop(int sequence, String rawText, String parsedAddress,
-                          String parsedPartnerName, Long parsedPartnerCode,
+                          String parsedPartnerName, Long parsedKakaoSeq,
                           String notes, boolean unparsed) {
-            this(sequence, rawText, parsedAddress, parsedPartnerName, parsedPartnerCode,
+            this(sequence, rawText, parsedAddress, parsedPartnerName, parsedKakaoSeq,
                     notes, unparsed, null);
         }
     }

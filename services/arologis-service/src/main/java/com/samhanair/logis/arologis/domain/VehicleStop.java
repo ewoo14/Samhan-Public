@@ -20,9 +20,20 @@ import org.hibernate.annotations.UuidGenerator;
  * 정차 1건 = 카톡 라인 — Phase 10 W10-1.
  *
  * <p>(vehicleId, sequence) 가 활성 행 기준 unique. rawText 는 원본 카톡 라인 보존.
- * parsedAddress / parsedPartnerName / parsedPartnerCode / notes 는 KakaoDispatchParser 결과.
+ * parsedAddress / parsedPartnerName / parsedKakaoSeq / parsedPartnerCode / notes 는
+ * KakaoDispatchParser 결과.
  *
  * <p>미해석 라인 ("상일상차" / "초월상차") 은 status=UNPARSED + rawText 만 보존.
+ *
+ * <h2>PR-E 진입 전 선행 R2 — parsedPartnerCode 명칭 분리 (2026-05-10)</h2>
+ * <p>이전 단일 {@code parsed_partner_code} (Long, 카톡 슬립번호 "-214") 는 partner-service 의
+ * {@code partner_code} (String, "P-2026-0001") 와 동일 명칭이라 의미 혼동 위험이 있었다.
+ * 본 분리로:
+ * <ul>
+ *   <li>{@link #parsedKakaoSeq} (Long) — 카톡 원본 식별자 (예: 214). KakaoDispatchParser 직접 추출.</li>
+ *   <li>{@link #parsedPartnerCode} (String) — partner-service 의 partner_code (예: "P-2026-0001").
+ *       PR-E1 의 PartnerLookupClient 호출 결과. 본 PR 시점에는 lookup 미실행 → 모두 NULL.</li>
+ * </ul>
  */
 @Entity
 @Getter
@@ -52,9 +63,23 @@ public class VehicleStop extends BaseEntity {
     @Column(name = "parsed_partner_name", length = 200)
     private String parsedPartnerName;
 
-    /** 전표번호 (사용자 노출 식별자, 카톡 "(에스엠하나공조-214)" 의 214). */
-    @Column(name = "parsed_partner_code")
-    private Long parsedPartnerCode;
+    /**
+     * 카톡 슬립번호 (사용자 노출 식별자, 카톡 "(에스엠하나공조-214)" 의 214).
+     *
+     * <p>PR-E 진입 전 선행 R2 — 기존 {@code parsedPartnerCode} 에서 의미 명확화 위해 rename.
+     * partner-service 의 partner_code (String, "P-2026-0001") 와 다름.
+     */
+    @Column(name = "parsed_kakao_seq")
+    private Long parsedKakaoSeq;
+
+    /**
+     * partner-service 의 partner_code (String, 예: "P-2026-0001") — PR-E1 lookup 결과.
+     *
+     * <p>본 PR (R2) 단독으로는 항상 NULL — KakaoDispatchParser 가 카톡 슬립번호만 추출하고,
+     * partner_code lookup 은 PR-E1 의 RegionClassifier + PartnerLookupClient 통합 시 채움.
+     */
+    @Column(name = "parsed_partner_code", length = 50)
+    private String parsedPartnerCode;
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
@@ -77,8 +102,9 @@ public class VehicleStop extends BaseEntity {
     private LocalDateTime actualDeliveryTime;
 
     private VehicleStop(UUID vehicleId, Integer sequence, String rawText,
-                        String parsedAddress, String parsedPartnerName, Long parsedPartnerCode,
-                        String notes, StopStatus status, String classifiedRegionGroup) {
+                        String parsedAddress, String parsedPartnerName, Long parsedKakaoSeq,
+                        String notes, StopStatus status, String classifiedRegionGroup,
+                        String parsedPartnerCode) {
         if (vehicleId == null) {
             throw new IllegalArgumentException("vehicleId 필수");
         }
@@ -96,10 +122,11 @@ public class VehicleStop extends BaseEntity {
         this.rawText = rawText;
         this.parsedAddress = parsedAddress;
         this.parsedPartnerName = parsedPartnerName;
-        this.parsedPartnerCode = parsedPartnerCode;
+        this.parsedKakaoSeq = parsedKakaoSeq;
         this.notes = notes;
         this.status = status;
         this.classifiedRegionGroup = classifiedRegionGroup;
+        this.parsedPartnerCode = parsedPartnerCode;
     }
 
     /**
@@ -110,15 +137,15 @@ public class VehicleStop extends BaseEntity {
      * @param rawText 카톡 원본 라인
      * @param parsedAddress 파싱된 주소 (옵션, 미해석 시 null)
      * @param parsedPartnerName 파싱된 사업자명 (옵션)
-     * @param parsedPartnerCode 파싱된 전표번호 (옵션)
+     * @param parsedKakaoSeq 파싱된 카톡 슬립번호 (옵션)
      * @param notes 특이사항 (옵션)
      * @param status 초기 상태 (PENDING 또는 UNPARSED)
      */
     public static VehicleStop of(UUID vehicleId, Integer sequence, String rawText,
-                                 String parsedAddress, String parsedPartnerName, Long parsedPartnerCode,
+                                 String parsedAddress, String parsedPartnerName, Long parsedKakaoSeq,
                                  String notes, StopStatus status) {
         return new VehicleStop(vehicleId, sequence, rawText, parsedAddress, parsedPartnerName,
-                parsedPartnerCode, notes, status, null);
+                parsedKakaoSeq, notes, status, null, null);
     }
 
     /**
@@ -127,15 +154,37 @@ public class VehicleStop extends BaseEntity {
      * @param classifiedRegionGroup RegionClassifier 매칭 그룹명 (옵션, 미매칭 시 null)
      */
     public static VehicleStop of(UUID vehicleId, Integer sequence, String rawText,
-                                 String parsedAddress, String parsedPartnerName, Long parsedPartnerCode,
+                                 String parsedAddress, String parsedPartnerName, Long parsedKakaoSeq,
                                  String notes, StopStatus status, String classifiedRegionGroup) {
         return new VehicleStop(vehicleId, sequence, rawText, parsedAddress, parsedPartnerName,
-                parsedPartnerCode, notes, status, classifiedRegionGroup);
+                parsedKakaoSeq, notes, status, classifiedRegionGroup, null);
+    }
+
+    /**
+     * 신규 VehicleStop 생성 (PR-E 진입 전 선행 R2 — partner_code lookup 결과 포함).
+     *
+     * @param parsedPartnerCode partner-service partner_code lookup 결과 (옵션, lookup 실패 시 null)
+     */
+    public static VehicleStop of(UUID vehicleId, Integer sequence, String rawText,
+                                 String parsedAddress, String parsedPartnerName, Long parsedKakaoSeq,
+                                 String notes, StopStatus status, String classifiedRegionGroup,
+                                 String parsedPartnerCode) {
+        return new VehicleStop(vehicleId, sequence, rawText, parsedAddress, parsedPartnerName,
+                parsedKakaoSeq, notes, status, classifiedRegionGroup, parsedPartnerCode);
     }
 
     /** RegionClassifier 후속 갱신 (parser 미주입 환경에서 batch 분류 시). */
     public void updateClassifiedRegionGroup(String classifiedRegionGroup) {
         this.classifiedRegionGroup = classifiedRegionGroup;
+    }
+
+    /**
+     * partner-service partner_code lookup 결과 후속 갱신 — PR-E1 PartnerLookupClient 통합 시.
+     *
+     * @param parsedPartnerCode partner_code (예: "P-2026-0001"), 미매칭 시 null 호출 무시
+     */
+    public void updateParsedPartnerCode(String parsedPartnerCode) {
+        this.parsedPartnerCode = parsedPartnerCode;
     }
 
     /** 도착 (PENDING → ARRIVED). */
