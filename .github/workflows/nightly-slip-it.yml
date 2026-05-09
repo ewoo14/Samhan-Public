@@ -1,0 +1,180 @@
+# =============================================================================
+# Nightly slip-service Integration Test (slip-it-public + slip-it-core)
+# =============================================================================
+#
+# 목적:
+#   PR CI 의 slip-it-* matrix 가 ubuntu-latest (2-core/7GB) 환경에서 60분
+#   timeout 회귀 (PR #99 옵션 B → matrix 제거) 한 사실을 보강하기 위해,
+#   nightly 시점에 별도 workflow 로 slip-service IT 회귀 검증을 수행한다.
+#
+# 회귀 차단 흐름:
+#   - PR CI (ci.yml) — slip-it-public + slip-it-core matrix 재활성 (timeout 30분).
+#     PR #102 V11 fix (CONCURRENTLY 제거 → idle in transaction deadlock 차단)
+#     이후 30분 안에 통과 예상.
+#   - nightly (본 workflow) — 매일 02:00 KST (= 17:00 UTC) main + 활성 feature
+#     branch 에 대해 60분 timeout 으로 보강 검증. fail 시 GitHub Issue 자동 생성.
+#
+# W10-5 회고 반영:
+#   - PR #99 5/6/7차 fix 회고 — slip IT 가 60분 timeout 도 빠듯한 정황.
+#     본 nightly 분리로 PR fast-feedback (30분) + 야간 deep regression (60분)
+#     2-track 회귀 차단 패턴 도입.
+#   - feedback_pr_ci_monitoring 메모리 가드 — fail 시 자동 Issue 생성.
+# =============================================================================
+
+name: Nightly slip-service IT
+
+on:
+  schedule:
+    # 매일 17:00 UTC = 02:00 KST (다음날). 사용자 활동이 거의 없는 시간대.
+    - cron: '0 17 * * *'
+  workflow_dispatch:
+    # 수동 trigger — 회귀 의심 시 즉시 실행 가능.
+
+permissions:
+  contents: read
+  checks: write          # mikepenz/action-junit-report: check run 생성
+  issues: write          # fail 시 GitHub Issue 자동 생성
+
+jobs:
+  # 활성 branch 자동 탐색 — main + feature/integrated-* + feature/legacy-* 등
+  # 모든 활성 long-lived branch 에 대해 nightly matrix 실행.
+  discover-branches:
+    name: 활성 branch 탐색
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      branches: ${{ steps.list.outputs.branches }}
+    steps:
+      - name: 저장소 체크아웃 (전체 branch fetch)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 활성 branch 목록 산출 (main + feature/integrated-* + feature/legacy-*)
+        id: list
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # main 은 항상 포함. feature/integrated-* / feature/legacy-* 패턴의
+          # remote branch 만 추가 (단편 fix branch 는 PR CI 로 충분, nightly 미대상).
+          BRANCHES=$(git branch -r | \
+            grep -E 'origin/(main|feature/integrated-.*|feature/legacy-.*)$' | \
+            sed 's|origin/||' | tr -d ' ' | sort -u | jq -R -s -c 'split("\n") | map(select(length>0))')
+          echo "branches=$BRANCHES" >> "$GITHUB_OUTPUT"
+          echo "탐색된 branch: $BRANCHES"
+
+  slip-it-nightly:
+    name: slip-it nightly (${{ matrix.branch }} / ${{ matrix.group.name }})
+    needs: [discover-branches]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # PR CI (30분) 대비 deep timeout — IT context 가 무거운 정황 대비
+    strategy:
+      fail-fast: false   # 1 group fail 시 다른 group / branch 도 결과 확인
+      matrix:
+        branch: ${{ fromJson(needs.discover-branches.outputs.branches) }}
+        group:
+          # PR #99 옵션 B 시점 matrix 분할안 그대로 유지.
+          - name: slip-it-public
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.web.public_.*" --tests "com.samhanair.logis.slip.web.openapi.*"'
+          - name: slip-it-core
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.web.core.*" --tests "com.samhanair.logis.slip.web.internal.*"'
+
+    steps:
+      - name: 저장소 체크아웃 (${{ matrix.branch }})
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: JDK 17 설치 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 캐시 + Wrapper 검증
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # nightly 는 main 외 feature branch 도 기록 — write 허용 (read-only false).
+          cache-read-only: false
+
+      - name: gradlew 실행 권한 보장 (Windows 커밋 방어)
+        run: chmod +x ./gradlew
+
+      - name: Docker 가용성 확인 (Testcontainers 용)
+        run: |
+          docker version
+          docker ps
+
+      - name: assemble (전 모듈)
+        run: ./gradlew assemble
+
+      - name: test (slip-service ${{ matrix.group.name }})
+        run: ./gradlew ${{ matrix.group.test-tasks }}
+
+      - name: 테스트 리포트 아티팩트 업로드 (실패 포함)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-slip-it-${{ matrix.branch }}-${{ matrix.group.name }}-${{ github.run_number }}
+          path: |
+            services/slip-service/build/reports/tests/test/
+            services/slip-service/build/test-results/test/
+          retention-days: 14
+
+      - name: JUnit check run 등록
+        if: always()
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: 'services/slip-service/build/test-results/test/TEST-*.xml'
+          require_tests: false
+          check_name: 'nightly slip-it (${{ matrix.branch }} / ${{ matrix.group.name }})'
+
+  # nightly 실패 집계 — 1개 이상 matrix fail 시 GitHub Issue 1건 자동 생성.
+  # feedback_pr_ci_monitoring 가드: fail 시 즉시 issue 발행으로 PM 알림.
+  open-issue-on-failure:
+    name: nightly 실패 시 Issue 자동 생성
+    needs: [slip-it-nightly]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: nightly fail Issue 생성
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          DATE_KST=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          gh issue create \
+            --title "[nightly] slip-service IT 실패 — ${DATE_KST}" \
+            --label "ci,nightly,slip-service" \
+            --body "## 개요
+
+nightly slip-service IT workflow 가 실패했습니다. 본 Issue 는 자동 생성되었으며, fix 후 close 의무.
+
+## 실행 정보
+
+- workflow: \`.github/workflows/nightly-slip-it.yml\`
+- run URL: ${RUN_URL}
+- 실행 시간 (KST): ${DATE_KST} 02:00
+- 대상 matrix: slip-it-public + slip-it-core × (main + 활성 feature branch)
+
+## 점검 체크리스트
+
+- [ ] 실패 matrix 의 어떤 branch / group 인지 run URL 에서 확인
+- [ ] 60분 timeout 도달 (resource 부족) 인지, assertion fail (회귀) 인지 분류
+- [ ] 회귀이면 즉시 fix PR (영향 branch 우선)
+- [ ] timeout 이면 PR #99/#102 회고 참조하여 추가 split 또는 self-hosted runner 검토
+- [ ] PR fix 머지 후 nightly workflow 재실행 (\`workflow_dispatch\`) 로 회복 확인
+- [ ] 본 Issue close
+
+## 참고
+
+- PR #99 (5/6/7차 fix 회고): slip-it 60분 timeout 회귀 사 (옵션 B = matrix 제거)
+- PR #102: V11 CONCURRENTLY 제거 — idle in transaction deadlock 차단 fix
+- W10-5 회고: nightly 분리 + PR matrix 재활성 (timeout 30분) 패턴 도입"

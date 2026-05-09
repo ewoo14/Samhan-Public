@@ -7,15 +7,20 @@
     를 의존 순서대로 기동하고 시드 데이터 row count 를 검증한다.
 
     동작 순서:
+        0) Pre-flight — 필수 도구 검증 + 8080~8200 port 점유 검사 + 충돌 안내
         1) docker-compose up -d (인프라 + 모니터링 stack)
         2) infrastructure/env-templates/.env.dev-seed 환경변수 일괄 로드
+           + LEGACY_DB_USER / LEGACY_DB_PASSWORD 자동 export (chained-default 호환)
         3) 14 service 의존순 startup (Gradle bootRun, background job)
            eureka -> auth -> user -> product -> inventory -> slip -> accounting
                   -> partner -> partner-order -> arologis -> groupware
                   -> notification -> dashboard -> api-gateway
-        4) 각 service 별 health check (~30초 대기, /actuator/health 200 폴링)
+           각 service health check (~5분 timeout, /actuator/health 200 폴링)
+           — 특히 auth-service health UP 확인 후 user-service 시작 (OrgChartSeeder
+             의 auth-service.createAccount RPC 사전 ready 의무)
+        4) 각 service health 종합 요약
         5) 시드 데이터 row count psql 검증
-        6) 결과 요약 출력 (16 user / 50 partner / 100 product / 100 slip / ...)
+        6) 사용 가이드 출력
 
 .PARAMETER SkipDocker
     docker-compose up -d 단계 생략 (인프라가 이미 떠 있는 경우).
@@ -24,7 +29,10 @@
     backend service 기동 단계 생략 (인프라 + 시드 검증만).
 
 .PARAMETER ServiceTimeoutSec
-    각 service 기동 health check 최대 대기 (기본 60초).
+    각 service 기동 health check 최대 대기 (기본 300초 = 5분).
+
+.PARAMETER SkipPortCheck
+    Pre-flight port 점유 검사 생략 (외부 의존 서비스 사전 가동 인지 시).
 
 .EXAMPLE
     .\infrastructure\scripts\start-local-full.ps1
@@ -33,23 +41,28 @@
     .\infrastructure\scripts\start-local-full.ps1 -SkipDocker
 
 .NOTES
-    - Windows PowerShell 5.1 / PowerShell 7+ 호환
+    - Windows PowerShell 5.1 / PowerShell 7+ 호환 (?? null-coalescing 미사용)
     - JDK 17 + Docker Desktop 사전 설치 필수
     - 영문 경로 권장 (C:\dev\SamhanLogis) — 한글 path 는 JDK 17 @argfile 인코딩 한계
     - UTF-8 로 저장 — 한글 주석 보존
+    - W10-5 회고: PR #100 머지 후 회귀 정정 — health-gated startup 의무
+      (auth-service 미 ready 상태에서 user-service 가 시작 시 OrgChartSeeder 16명
+       모두 fail. 본 PR 에서 각 service 의 health check 통과 확인 후 다음 service
+       시작하도록 sequential gate 적용)
 #>
 
 [CmdletBinding()]
 param(
     [switch] $SkipDocker,
     [switch] $SkipServices,
-    [int]    $ServiceTimeoutSec = 60
+    [int]    $ServiceTimeoutSec = 300,
+    [switch] $SkipPortCheck
 )
 
 $ErrorActionPreference = 'Stop'
 
 # -----------------------------------------------------------------------------
-# 0. 사전 준비 — 경로 + 환경 검증
+# 0. Pre-flight — 경로 + 환경 + port 충돌 검증
 # -----------------------------------------------------------------------------
 $ProjectRoot = (Resolve-Path "$PSScriptRoot\..\..").Path
 $InfraDir    = Join-Path $ProjectRoot 'infrastructure'
@@ -76,10 +89,90 @@ if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
 $gradleW = Join-Path $ProjectRoot 'gradlew.bat'
 if (-not (Test-Path $gradleW)) { throw "gradlew.bat 을 찾을 수 없습니다: $gradleW" }
 
+# Docker 가용성 검증 — 인프라 startup 전 미리 fail-fast
+if (-not $SkipDocker) {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw 'docker 명령을 찾을 수 없습니다. Docker Desktop 을 설치/시작하세요.'
+    }
+    try {
+        $null = docker info 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Docker daemon 미응답. Docker Desktop 이 시작되어 있는지 확인하세요.'
+        }
+    } catch {
+        throw "Docker daemon 미응답: $($_.Exception.Message)"
+    }
+}
+
+Write-Host '[0/6] Pre-flight — port 점유 검사 (8080 ~ 8200, 8761)' -ForegroundColor Yellow
+
+# 14 service + eureka 가 사용하는 port 범위.
+# 각 service 의 port 와 충돌 안내 메시지 사전 매핑.
+$expectedPorts = @{
+    8080 = 'api-gateway'
+    8081 = 'auth-service'
+    8083 = 'user-service'
+    8084 = 'product-service'
+    8085 = 'inventory-service'
+    8086 = 'slip-service          (주의: InfluxDB 기본 port — 충돌 시 SERVER_PORT=8186 권장)'
+    8087 = 'accounting-service'
+    8088 = 'partner-order-service'
+    8092 = 'groupware-service'
+    8093 = 'notification-service'
+    8094 = 'dashboard-service'
+    8095 = 'partner-service'
+    8097 = 'arologis-service'
+    8761 = 'eureka-server'
+}
+
+if (-not $SkipPortCheck) {
+    $occupied = @()
+    foreach ($p in $expectedPorts.Keys) {
+        try {
+            $conn = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+            if ($conn) {
+                $procName = '?'
+                try {
+                    $procId = $conn[0].OwningProcess
+                    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+                    if ($proc) { $procName = "$($proc.ProcessName) (PID $procId)" }
+                } catch { }
+                $occupied += [pscustomobject]@{
+                    Port    = $p
+                    Service = $expectedPorts[$p]
+                    Holder  = $procName
+                }
+            }
+        } catch {
+            # Get-NetTCPConnection 미가용 환경 — silent skip
+        }
+    }
+    if ($occupied.Count -gt 0) {
+        Write-Host ''
+        Write-Host '   다음 port 가 이미 점유 중입니다 — 기동 시 충돌 가능:' -ForegroundColor Yellow
+        $occupied | Format-Table -AutoSize
+        # 8086 InfluxDB 특수 안내
+        if ($occupied | Where-Object { $_.Port -eq 8086 }) {
+            Write-Host '   [안내] port 8086 충돌 — InfluxDB 가 점유 중일 가능성이 높습니다.' -ForegroundColor Yellow
+            Write-Host '          slip-service 의 SERVER_PORT 환경변수를 8186 으로 변경 후 재시도 권장:' -ForegroundColor Yellow
+            Write-Host '            $env:SERVER_PORT = 8186' -ForegroundColor DarkGray
+            Write-Host '          또는 InfluxDB 컨테이너 종료 후 재시도.' -ForegroundColor Yellow
+        }
+        Write-Host '   계속 진행 시 점유 process 가 우선이며 신규 service 가 기동 실패할 수 있습니다.' -ForegroundColor Yellow
+        Write-Host '   회피: stop-local-full.ps1 또는 -SkipPortCheck 옵션.' -ForegroundColor DarkGray
+        Write-Host ''
+    } else {
+        Write-Host '   port 충돌 없음 — 진행' -ForegroundColor Green
+    }
+} else {
+    Write-Host '   port 검사 생략 (-SkipPortCheck)' -ForegroundColor DarkGray
+}
+
 # -----------------------------------------------------------------------------
 # 1. 인프라 기동 (docker-compose up -d)
 # -----------------------------------------------------------------------------
 if (-not $SkipDocker) {
+    Write-Host ''
     Write-Host '[1/6] 인프라 stack 기동 (postgres + redis + rabbitmq + elasticsearch + minio + monitoring)' -ForegroundColor Yellow
     Push-Location $InfraDir
     try {
@@ -91,6 +184,7 @@ if (-not $SkipDocker) {
     Write-Host '   인프라 healthy 대기 (~30초) ...' -ForegroundColor DarkGray
     Start-Sleep -Seconds 30
 } else {
+    Write-Host ''
     Write-Host '[1/6] 인프라 기동 단계 생략 (-SkipDocker)' -ForegroundColor DarkGray
 }
 
@@ -131,6 +225,14 @@ if (-not $env:DB_PASSWORD) {
     else { $env:DB_PASSWORD = '<set DB_PASSWORD env or see infrastructure/docker-compose.yml>' }
 }
 
+# W10-5 회고 — LEGACY_DB_* chained-default 호환.
+# application.yml 의 datasource 가 SAMHAN_<X>_DB_USER → LEGACY_DB_USER → DB_USER → samhan 순으로
+# resolve. partner-service 등 일부 service 가 LEGACY_DB_* 명시 의존 → 자동 export 보완.
+if (-not $env:LEGACY_DB_HOST)     { $env:LEGACY_DB_HOST     = $env:DB_HOST }
+if (-not $env:LEGACY_DB_PORT)     { $env:LEGACY_DB_PORT     = $env:DB_PORT }
+if (-not $env:LEGACY_DB_USER)     { $env:LEGACY_DB_USER     = $env:DB_USER }
+if (-not $env:LEGACY_DB_PASSWORD) { $env:LEGACY_DB_PASSWORD = $env:DB_PASSWORD }
+
 # Phase 8 chained-default 패턴 — service 별 *_DB_USER / *_DB_PASSWORD 자동 매핑
 $dbAlias = @(
     'SAMHAN_PARTNER', 'SAMHAN_PRODUCT', 'SAMHAN_INVENTORY', 'SAMHAN_SLIP',
@@ -151,7 +253,7 @@ foreach ($p in $dbAlias) {
 # -----------------------------------------------------------------------------
 # 의존 그래프:
 #   tier 0: eureka-server                          (service discovery)
-#   tier 1: auth-service                            (JWT issuer)
+#   tier 1: auth-service                            (JWT issuer — user-service.OrgChartSeeder 의 사전 의존)
 #   tier 2: user-service, product-service, partner-service
 #   tier 3: inventory-service, accounting-service
 #   tier 4: slip-service, partner-order-service, arologis-service
@@ -160,33 +262,46 @@ foreach ($p in $dbAlias) {
 #   tier 7: api-gateway                             (모든 service registry 후 라우팅)
 #
 # 의존순 sequential 기동 — 각 service 가 health check 통과 후 다음 service 시작.
+# W10-5 회고 — health-gated startup 의무. 특히 auth-service UP 확인 후 user-service 시작
+# (미준수 시 OrgChartSeeder 16명 모두 createAccount RPC fail).
 
 $services = @(
-    @{ name = 'eureka-server';         port = 8761 },
-    @{ name = 'auth-service';          port = 8081 },
-    @{ name = 'user-service';          port = 8083 },
-    @{ name = 'product-service';       port = 8084 },
-    @{ name = 'partner-service';       port = 8095 },
-    @{ name = 'inventory-service';     port = 8085 },
-    @{ name = 'accounting-service';    port = 8087 },
-    @{ name = 'slip-service';          port = 8086 },
-    @{ name = 'partner-order-service'; port = 8088 },
-    @{ name = 'arologis-service';      port = 8097 },
-    @{ name = 'groupware-service';     port = 8092 },
-    @{ name = 'notification-service';  port = 8093 },
-    @{ name = 'dashboard-service';     port = 8094 },
-    @{ name = 'api-gateway';           port = 8080 }
+    @{ name = 'eureka-server';         port = 8761; required = $true  },  # tier 0 — discovery 필수
+    @{ name = 'auth-service';          port = 8081; required = $true  },  # tier 1 — user OrgChartSeeder 의 사전 의존
+    @{ name = 'user-service';          port = 8083; required = $false },
+    @{ name = 'product-service';       port = 8084; required = $false },
+    @{ name = 'partner-service';       port = 8095; required = $false },
+    @{ name = 'inventory-service';     port = 8085; required = $false },
+    @{ name = 'accounting-service';    port = 8087; required = $false },
+    @{ name = 'slip-service';          port = 8086; required = $false },
+    @{ name = 'partner-order-service'; port = 8088; required = $false },
+    @{ name = 'arologis-service';      port = 8097; required = $false },
+    @{ name = 'groupware-service';     port = 8092; required = $false },
+    @{ name = 'notification-service';  port = 8093; required = $false },
+    @{ name = 'dashboard-service';     port = 8094; required = $false },
+    @{ name = 'api-gateway';           port = 8080; required = $false }
 )
+
+$startupResults = @()
+$abortRemaining = $false
 
 if (-not $SkipServices) {
     Write-Host ''
     Write-Host "[3/6] 14 service 의존순 기동 (timeout = ${ServiceTimeoutSec}s/service)" -ForegroundColor Yellow
 
-    $jobs = @()
     foreach ($svc in $services) {
-        $name = $svc.name
-        $port = $svc.port
-        $logFile = Join-Path $LogsDir "$name.log"
+        $name     = $svc.name
+        $port     = $svc.port
+        $required = $svc.required
+        $logFile  = Join-Path $LogsDir "$name.log"
+
+        if ($abortRemaining) {
+            Write-Host "   ▶ $name (port $port) — SKIP (선행 필수 service 미 healthy)" -ForegroundColor DarkYellow
+            $startupResults += [pscustomobject]@{
+                Service = $name; Port = $port; Status = 'SKIPPED'; Required = $required; Log = $logFile
+            }
+            continue
+        }
 
         Write-Host "   ▶ $name (port $port) 기동 ..." -ForegroundColor Cyan
 
@@ -197,14 +312,18 @@ if (-not $SkipServices) {
             & "$root\gradlew.bat" ":services:${module}:bootRun" --console=plain *>&1 |
                 Out-File -FilePath $log -Encoding utf8
         } -ArgumentList $ProjectRoot, $name, $logFile
-        $jobs += [pscustomobject]@{ Name = $name; Port = $port; Job = $job; Log = $logFile }
 
-        # health check polling
+        # health check polling — 다음 service 시작 전 본 service 의 healthy 통과 의무.
         $healthUrl = "http://localhost:${port}/actuator/health"
         $deadline  = (Get-Date).AddSeconds($ServiceTimeoutSec)
         $up = $false
         while ((Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 3
+            # job 실패 사전 감지
+            $jobState = (Get-Job -Id $job.Id -ErrorAction SilentlyContinue).State
+            if ($jobState -eq 'Failed' -or $jobState -eq 'Stopped') {
+                break
+            }
             try {
                 $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
                 if ($r.StatusCode -eq 200) { $up = $true; break }
@@ -212,13 +331,30 @@ if (-not $SkipServices) {
                 # 미기동 — 계속 폴링
             }
         }
+
         if ($up) {
             Write-Host "     OK ($name healthy)" -ForegroundColor Green
+            $startupResults += [pscustomobject]@{
+                Service = $name; Port = $port; Status = 'UP'; Required = $required; Log = $logFile
+            }
         } else {
-            Write-Host "     WARN — $name 가 ${ServiceTimeoutSec}s 안에 healthy 미달성. log: $logFile" -ForegroundColor Yellow
+            $msg = "WARN — $name 가 ${ServiceTimeoutSec}s 안에 healthy 미달성. log: $logFile"
+            Write-Host "     $msg" -ForegroundColor Yellow
+            $startupResults += [pscustomobject]@{
+                Service = $name; Port = $port; Status = 'TIMEOUT'; Required = $required; Log = $logFile
+            }
+            if ($required) {
+                Write-Host ''
+                Write-Host "   [중단] 필수 service '$name' health check 실패 — 후속 service 기동 중단." -ForegroundColor Red
+                Write-Host "          (이후 service 는 본 service 에 의존 — 기동 시 cascade fail)" -ForegroundColor Red
+                Write-Host "          log 확인: $logFile" -ForegroundColor DarkGray
+                Write-Host ''
+                $abortRemaining = $true
+            }
         }
     }
 } else {
+    Write-Host ''
     Write-Host '[3/6] backend service 기동 단계 생략 (-SkipServices)' -ForegroundColor DarkGray
 }
 
@@ -308,6 +444,19 @@ Write-Host ''
 Write-Host ' 종료:' -ForegroundColor Cyan
 Write-Host '   .\infrastructure\scripts\stop-local-full.ps1'
 Write-Host ''
-Write-Host '==============================================================' -ForegroundColor Cyan
-Write-Host ' 완료' -ForegroundColor Green
-Write-Host '==============================================================' -ForegroundColor Cyan
+
+# 필수 service fail 시 종합 안내
+$failedRequired = $startupResults | Where-Object { $_.Required -and $_.Status -ne 'UP' }
+if ($failedRequired) {
+    Write-Host '==============================================================' -ForegroundColor Red
+    Write-Host ' 경고 — 필수 service 기동 실패' -ForegroundColor Red
+    Write-Host '==============================================================' -ForegroundColor Red
+    foreach ($f in $failedRequired) {
+        Write-Host "   $($f.Service) (port $($f.Port)): $($f.Status) — log: $($f.Log)" -ForegroundColor Red
+    }
+    Write-Host ''
+} else {
+    Write-Host '==============================================================' -ForegroundColor Cyan
+    Write-Host ' 완료' -ForegroundColor Green
+    Write-Host '==============================================================' -ForegroundColor Cyan
+}
