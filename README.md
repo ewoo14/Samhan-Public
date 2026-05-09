@@ -315,6 +315,57 @@ docker exec samhan-postgres psql -U samhan -c "SHOW max_connections;"
 
 `start-local-full.ps1` 의 `[1a/6]` step 이 인프라 startup 직후 자동 검증 — 200 미만 시 경고.
 
+### MinIO 버킷 — partner-attachments + slip-attachments
+
+`infrastructure/scripts/setup-minio-buckets.ps1` 가 `samhan-minio` 컨테이너에 다음 2 버킷을 멱등 생성한다 (start-local-full.ps1 `[1/6]` step 이 자동 호출).
+
+| 버킷 | 용도 | presigned TTL | 매뉴얼 출처 |
+| ---- | ---- | ------------- | ----------- |
+| `partner-attachments` | 거래처 첨부 (P0-3, PartnerAttachmentService) | 3600s (1시간) | `docs/manual/01-영업/02-거래처-조회.md` |
+| `slip-attachments`    | 슬립 / 모바일 현장 사진 (P1-8) | 300s (5분) | `docs/manual/04-모바일/04-사진-첨부.md` §4 |
+
+수동 재실행:
+
+```powershell
+.\infrastructure\scripts\setup-minio-buckets.ps1
+```
+
+각 버킷은 `private` 정책 (anonymous read 차단). 다운로드는 service 가 발급하는 presigned URL 만 가능. lifecycle (90일 후 STANDARD_IA tier 전환) 은 운영 시점에 별도 활성 — 본 스크립트 끝 가이드 참조.
+
+### SMTP — 비밀번호 재설정 이메일 (P0-2 슬라이스 1)
+
+`notification-service` 가 비밀번호 재설정 link 를 SMTP 로 발송한다 (매뉴얼 출처 `docs/manual/06-트러블슈팅/01-로그인-실패.md` §1-3).
+
+local dev 안전 동작:
+
+- `SMTP_USERNAME` 비어있으면 `SmtpEmailAdapter` 가 NoOp (수신자 / 본문 로그만 출력, 실 발송 X)
+- 따라서 별도 secret 설정 없이 컴파일 + 단위 테스트 + IT 통과 가능
+
+운영 등록 (DevOps 사전 작업 — 본 PR 이 secret 값을 hardcode 하지 않음):
+
+| 환경 | 등록 위치 | secret name |
+| ---- | --------- | ----------- |
+| **local dev** | `infrastructure/.env.example` 복사 → `.env` (git ignore) | `SMTP_*` |
+| **CI (GitHub Actions)** | repository → Settings → Secrets → Actions | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM` |
+| **Phase 11 cutover (AWS)** | AWS Secrets Manager | `samhan/notification/smtp` (5 key json) |
+
+권장 SMTP 공급자: cafe24 메일 호스팅 (`smtp.cafe24.com:587 STARTTLS`) 또는 AWS SES (Phase 11 cutover 시 `SesEmailAdapter` 로 전환). 개발 단계 secret 미보유 시 NoOp 동작이므로 추가 작업 불필요.
+
+```yaml
+# notification-service/application.yml — 본 PR 추가 분
+samhan:
+  notification:
+    smtp:
+      host: ${SMTP_HOST:smtp.cafe24.com}
+      port: ${SMTP_PORT:587}
+      username: ${SMTP_USERNAME:}        # 비어있으면 NoOp
+      password: ${SMTP_PASSWORD:}
+      from: ${SMTP_FROM:noreply@samhan-air.com}
+      starttls: ${SMTP_STARTTLS:true}
+```
+
+GitGuardian 가드: `.gitguardian.yaml` 의 `services/*/src/main/resources/application*.yml` ignored-paths 가 chained-default fallback 의 dev placeholder 를 자동 false-positive 처리한다. SMTP 실 자격증명은 위 표의 secret store 외 어디에도 commit 금지 (memory `feedback_gitguardian_false_positive`).
+
 ### Client 빌드
 
 ```bash

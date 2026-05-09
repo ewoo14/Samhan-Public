@@ -1,0 +1,404 @@
+/**
+ * 세금계산서 상세 화면 — `/accounting/tax-invoices/:id` (P0-4 #3).
+ *
+ * <p>표시:
+ * <ul>
+ *   <li>헤더: taxInvoiceNo + 거래처 + 작성일 + 상태</li>
+ *   <li>거래처 snapshot (사업자번호 / 주소)</li>
+ *   <li>라인 표 (read-only) — 품명 / 규격 / 수량 / 단가 / 공급가액 / 부가세</li>
+ *   <li>합계 박스 — 공급가액 / 부가세 / 총합</li>
+ *   <li>자동 분개 link — journalId 가 있으면 새 탭으로 분개 상세 link</li>
+ * </ul>
+ *
+ * <p>액션:
+ * <ul>
+ *   <li>DRAFT — "편집" → FormPage 로 이동</li>
+ *   <li>DRAFT — "발행" → ISSUED 전이 (자동 분개 알림)</li>
+ *   <li>ISSUED — "취소" → CANCELLED 전이 (역분개 알림)</li>
+ *   <li>ISSUED / CANCELLED — "인쇄" → window.open(`/sales/:id/print/tax-invoice`) 새 창
+ *       (Designer commit 5dcbbef 의 print view 재사용 — window.print() 자동)</li>
+ * </ul>
+ *
+ * <p>UUID 비공개 가드 — id 표시 X, taxInvoiceNo / partnerName 만 노출.
+ */
+import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Badge,
+  Button,
+  Card,
+  DataTable,
+  Spinner,
+  type DataTableColumn,
+} from '@samhan/design-system'
+import {
+  TAX_INVOICE_STATUS_LABEL,
+  cancelTaxInvoice,
+  canAccessTaxInvoice,
+  getTaxInvoice,
+  issueTaxInvoice,
+  type TaxInvoiceLine,
+  type TaxInvoiceStatus,
+} from '../api/taxInvoiceApi'
+import { useSessionStore } from '../stores/session'
+import { usePageTitle } from '../hooks/usePageTitle'
+
+const STATUS_VARIANT: Record<TaxInvoiceStatus, 'neutral' | 'success' | 'danger'> = {
+  DRAFT: 'neutral',
+  ISSUED: 'success',
+  CANCELLED: 'danger',
+}
+
+/** KRW string → 천단위 콤마. */
+const fmt = (raw: string): string => {
+  const n = Number.parseFloat(raw)
+  if (!Number.isFinite(n)) return raw
+  return Math.trunc(n).toLocaleString('ko-KR')
+}
+
+export function TaxInvoiceDetailPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const params = useParams<{ id: string }>()
+  const id = params['id']!
+  const role = useSessionStore((s) => s.auth?.role)
+
+  const query = useQuery({
+    queryKey: ['accounting', 'tax-invoice', id],
+    queryFn: () => getTaxInvoice(id),
+  })
+
+  usePageTitle('세금계산서 상세', query.data?.taxInvoiceNo ?? undefined)
+
+  const [topError, setTopError] = useState<string>('')
+
+  const issueMutation = useMutation({
+    mutationFn: () => issueTaxInvoice(id),
+    onSuccess: (issued) => {
+      queryClient.invalidateQueries({
+        queryKey: ['accounting', 'tax-invoices'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['accounting', 'tax-invoice', id],
+      })
+      alert(
+        `발행 완료: ${issued.taxInvoiceNo}\n\n자동 분개가 생성되었습니다.\n분개장 메뉴에서 확인할 수 있습니다.`,
+      )
+    },
+    onError: (err: Error) => setTopError(`발행 실패: ${err.message}`),
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelTaxInvoice(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['accounting', 'tax-invoices'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['accounting', 'tax-invoice', id],
+      })
+      alert('취소 완료\n\n자동 역분개가 생성되었습니다.')
+    },
+    onError: (err: Error) => setTopError(`취소 실패: ${err.message}`),
+  })
+
+  if (query.isLoading) {
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}>
+        <Spinner size="lg" label="세금계산서 불러오는 중" />
+      </div>
+    )
+  }
+
+  if (query.isError || !query.data) {
+    return (
+      <div className="error-banner" role="alert">
+        세금계산서 상세를 불러오지 못했습니다.
+      </div>
+    )
+  }
+
+  const t = query.data
+  const isDraft = t.status === 'DRAFT'
+  const isIssued = t.status === 'ISSUED'
+  const canMutate = canAccessTaxInvoice(role)
+
+  const handleIssue = () => {
+    setTopError('')
+    if (
+      !confirm(
+        '이 세금계산서를 발행하시겠습니까?\n발행 시 자동 분개 (110/255/400) 가 생성되고 더 이상 수정할 수 없습니다.',
+      )
+    )
+      return
+    issueMutation.mutate()
+  }
+
+  const handleCancel = () => {
+    setTopError('')
+    if (
+      !confirm(
+        '이 세금계산서를 취소하시겠습니까?\n자동 역분개가 생성됩니다 (원본 분개는 보존).',
+      )
+    )
+      return
+    cancelMutation.mutate()
+  }
+
+  const handlePrint = () => {
+    // Designer commit 5dcbbef — TaxInvoiceView 는 `/sales/:id/print/tax-invoice` path 에 mount.
+    // 본 mock 시점에 아직 해당 print view 가 slip-id 기반이라 견적 id 와 다름.
+    // 후속 iteration 에서 `/accounting/tax-invoices/:id/print` 신규 라우트 추가 예정.
+    // 현재는 새 창에서 print view 를 열고 사용자가 window.print() 호출.
+    const url = `${window.location.origin}/#/accounting/tax-invoices/${id}/print`
+    window.open(url, '_blank', 'width=900,height=1200')
+  }
+
+  const lineColumns: DataTableColumn<TaxInvoiceLine>[] = [
+    {
+      key: 'lineNo',
+      header: '#',
+      width: '40px',
+      align: 'center',
+      render: (l) => l.lineNo + 1,
+    },
+    {
+      key: 'itemName',
+      header: '품명',
+    },
+    {
+      key: 'spec',
+      header: '규격',
+      width: '120px',
+      render: (l) => l.spec ?? '—',
+    },
+    {
+      key: 'quantity',
+      header: '수량',
+      width: '100px',
+      align: 'right',
+      render: (l) => fmt(l.quantity),
+    },
+    {
+      key: 'unitPrice',
+      header: '단가',
+      width: '120px',
+      align: 'right',
+      render: (l) => fmt(l.unitPrice),
+    },
+    {
+      key: 'supplyAmount',
+      header: '공급가액',
+      width: '140px',
+      align: 'right',
+      render: (l) => fmt(l.supplyAmount),
+    },
+    {
+      key: 'vatAmount',
+      header: '부가세',
+      width: '120px',
+      align: 'right',
+      render: (l) => fmt(l.vatAmount),
+    },
+  ]
+
+  return (
+    <>
+      <Card>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 16,
+            marginBottom: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h3
+                style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}
+                data-testid="tax-invoice-detail-no"
+              >
+                {t.taxInvoiceNo ?? '(미발행)'}
+              </h3>
+              <Badge variant={STATUS_VARIANT[t.status]}>
+                {TAX_INVOICE_STATUS_LABEL[t.status]}
+              </Badge>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 13, color: '#6B7280' }}>
+              공급일자: {t.supplyDate}
+              {t.issuedAt
+                ? ` · 발행: ${new Date(t.issuedAt).toLocaleString('ko-KR')}`
+                : ''}
+              {t.issuedBy ? ` (${t.issuedBy})` : ''}
+              {t.cancelledAt
+                ? ` · 취소: ${new Date(t.cancelledAt).toLocaleString('ko-KR')}`
+                : ''}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 14 }}>
+              <div>
+                <strong>거래처</strong>: {t.partnerName}
+                {t.partnerBusinessNo ? (
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      color: '#6B7280',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    ({t.partnerBusinessNo})
+                  </span>
+                ) : null}
+              </div>
+              {t.partnerAddress ? (
+                <div style={{ marginTop: 4, color: '#374151' }}>
+                  <strong>주소</strong>: {t.partnerAddress}
+                </div>
+              ) : null}
+              {t.description ? (
+                <div style={{ marginTop: 4, color: '#374151' }}>
+                  <strong>비고</strong>: {t.description}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {isDraft && canMutate ? (
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  navigate(`/accounting/tax-invoices/${t.id}/edit`)
+                }
+                data-testid="tax-invoice-detail-edit-button"
+              >
+                편집
+              </Button>
+            ) : null}
+            {isDraft && canMutate ? (
+              <Button
+                variant="primary"
+                onClick={handleIssue}
+                disabled={issueMutation.isPending}
+                data-testid="tax-invoice-detail-issue-button"
+              >
+                {issueMutation.isPending ? '발행 중...' : '발행'}
+              </Button>
+            ) : null}
+            {isIssued && canMutate ? (
+              <Button
+                variant="ghost"
+                onClick={handleCancel}
+                disabled={cancelMutation.isPending}
+                data-testid="tax-invoice-detail-cancel-button"
+              >
+                {cancelMutation.isPending ? '취소 중...' : '취소'}
+              </Button>
+            ) : null}
+            {(isIssued || t.status === 'CANCELLED') ? (
+              <Button
+                variant="ghost"
+                onClick={handlePrint}
+                data-testid="tax-invoice-detail-print-button"
+              >
+                인쇄
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* 자동 분개 link */}
+        {t.journalId || t.reverseJournalId ? (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 16px',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 6,
+              fontSize: 13,
+              display: 'flex',
+              gap: 16,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <strong style={{ color: '#1E40AF' }}>자동 분개</strong>
+            {t.journalId ? (
+              <a
+                href={`${window.location.origin}/#/accounting/journals/${t.journalId}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#1D4ED8', textDecoration: 'underline' }}
+                data-testid="tax-invoice-detail-journal-link"
+              >
+                매출 분개 보기 →
+              </a>
+            ) : null}
+            {t.reverseJournalId ? (
+              <a
+                href={`${window.location.origin}/#/accounting/journals/${t.reverseJournalId}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#B91C1C', textDecoration: 'underline' }}
+                data-testid="tax-invoice-detail-reverse-journal-link"
+              >
+                역분개 보기 →
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
+        <DataTable
+          columns={lineColumns}
+          rows={t.lines}
+          rowKey={(l) => l.lineId}
+          emptyMessage="라인이 없습니다."
+        />
+
+        {/* 합계 */}
+        <div
+          style={{
+            marginTop: 16,
+            padding: '12px 16px',
+            background: '#F9FAFB',
+            borderRadius: 6,
+            display: 'grid',
+            gridTemplateColumns: '1fr 160px 160px 200px',
+            gap: 16,
+            fontSize: 14,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+          data-testid="tax-invoice-detail-totals"
+        >
+          <div style={{ fontWeight: 600 }}>합계</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: '#6B7280' }}>공급가액</div>
+            <strong>{fmt(t.supplyAmount)}</strong>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: '#6B7280' }}>부가세</div>
+            <strong>{fmt(t.vatAmount)}</strong>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: '#6B7280' }}>총합</div>
+            <strong style={{ fontSize: 18 }}>{fmt(t.totalAmount)}</strong>
+          </div>
+        </div>
+      </Card>
+
+      {topError ? (
+        <div
+          className="error-banner"
+          role="alert"
+          style={{ marginTop: 16, padding: 12, color: '#DC2626' }}
+        >
+          {topError}
+        </div>
+      ) : null}
+    </>
+  )
+}

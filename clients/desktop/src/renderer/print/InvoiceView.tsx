@@ -1,65 +1,30 @@
 /**
  * 거래명세서 인쇄 미리보기 — `/sales/:id/print/invoice`.
  *
- * PR #21 hotfix v2 — 개발책임자 첨부 이미지 기준 큰 재디자인.
+ * P0-4 인쇄 양식 5건 1차 mock — Designer 단계 rewrite.
  *
- * 변경 요점:
- * - 상단 좌: SAMSUNG 로고 + "거래명세서" 타이틀 + 공급받는자 박스 (파트너 정보)
- * - 상단 우: 공급자 5행 그리드 (일련번호/TEL/사업자등록번호/성명+직인/상호/주소)
- * - 중간: 배송지 + 금액 (한글 + 숫자)
- * - 라인 표 6-col (월/일|품목명|수량|단가|공급가액|부가세) — 작업지시서와 다르게 월/일 유지
- * - 푸터 합계 행: 수량 / 공급가액 / VAT / 합계 / 인수
- * - 예금주 + 은행 계좌 + 합계 한 줄
+ * 구성 (A4 세로):
+ * - 상단 좌: 회사 로고 (`/print-logo.svg`) + 회사 정보 (상호/주소/사업자번호/대표/TEL)
+ * - 상단 우: 발행일 + 거래처 정보 박스 (거래처명/주소/연락처)
+ * - 본문 타이틀: "거래명세서" (큰 활자, 가운데)
+ * - 라인 표 6-col: 품목 / 규격 / 수량 / 단가 / 공급가 / 부가세
+ * - 합계 행: 공급가액 / 부가세 / 합계 (한글 금액 별도 표기)
+ * - 하단: 발행자 사인란 (담당자 / 인수자 — 인 도장)
  *
- * @page A4 landscape 12mm 여백 — global.css @media print 에 적용.
+ * 출처: `docs/manual/06-트러블슈팅/03-인쇄-안됨.md` §1 표 (P0-4).
+ *
+ * Iteration 가드 (memory `feedback_print_design_iteration.md`):
+ * 본 1차 mock — 사용자 Edge 캡처 검토 후 2~5차 갱신 예정.
  */
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Button } from '@samhan/design-system'
 import { getSlip, type SlipDetail } from '../api/slip'
 import { usePageTitle } from '../hooks/usePageTitle'
-
-/** 숫자를 한글 금액으로 변환 (간단판 — 천/만/억 단위만). */
-function numberToKorean(n: number): string {
-  if (n === 0) return '영원'
-  const units = ['', '만', '억', '조']
-  const digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구']
-  const positions = ['', '십', '백', '천']
-  let result = ''
-  let unitIndex = 0
-  let value = n
-  while (value > 0) {
-    const chunk = value % 10000
-    if (chunk > 0) {
-      let chunkStr = ''
-      const chunkDigits = String(chunk).split('').reverse()
-      for (let i = 0; i < chunkDigits.length; i += 1) {
-        const d = Number(chunkDigits[i])
-        if (d > 0) {
-          const digitChar = digits[d] ?? ''
-          const positionChar = positions[i] ?? ''
-          chunkStr = digitChar + positionChar + chunkStr
-        }
-      }
-      const unitChar = units[unitIndex] ?? ''
-      result = chunkStr + unitChar + result
-    }
-    value = Math.floor(value / 10000)
-    unitIndex += 1
-  }
-  return result + '원 정'
-}
-
-function lineDateParts(slipDate: string): { month: string; day: string } {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(slipDate)
-  if (!m) return { month: '', day: '' }
-  return { month: m[2]!, day: m[3]! }
-}
+import { PrintLayout, COMPANY, krw, krDate, toKoreanAmount, calcAmounts } from './PrintLayout'
 
 export function InvoiceView() {
   const params = useParams<{ id: string }>()
   const id = params.id ?? ''
-  const navigate = useNavigate()
   const detailQuery = useQuery({
     queryKey: ['slip', id],
     queryFn: () => getSlip(id),
@@ -79,89 +44,80 @@ export function InvoiceView() {
   }
 
   const slip: SlipDetail = detailQuery.data
-  const { month, day } = lineDateParts(slip.slipDate)
-  const totalQty = slip.lines.reduce((sum, l) => sum + l.quantity, 0)
   const totalSupply = slip.lines.reduce((sum, l) => sum + Number(l.lineTotal), 0)
-  const totalVat = Math.floor(totalSupply * 0.1)
-  const grandTotal = totalSupply + totalVat
+  const { supply, vat, total } = calcAmounts(totalSupply)
 
   return (
-    <div>
-      <div className="no-print" style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-        <Button variant="ghost" onClick={() => navigate(`/sales/${id}`)}>
-          상세로 돌아가기
-        </Button>
-        <Button variant="primary" onClick={() => window.print()}>
-          인쇄
-        </Button>
-      </div>
+    <PrintLayout paper="a4-portrait" backTo={`/sales/${id}`}>
+      <div className="invoice-v2" data-testid="invoice-print-area">
+        {/* 헤더: 좌(로고 + 회사 정보) | 우(발행일 + 거래처) */}
+        <header className="invoice-v2-header">
+          <div className="invoice-v2-supplier">
+            <img className="invoice-v2-logo" src={COMPANY.logoPath} alt={COMPANY.legalName} />
+            <table className="invoice-v2-supplier-table">
+              <tbody>
+                <tr>
+                  <th>상호</th>
+                  <td>{COMPANY.legalName}</td>
+                </tr>
+                <tr>
+                  <th>대표자</th>
+                  <td>{COMPANY.ceo}</td>
+                </tr>
+                <tr>
+                  <th>사업자번호</th>
+                  <td className="num">{COMPANY.businessRegNo}</td>
+                </tr>
+                <tr>
+                  <th>주소</th>
+                  <td>{COMPANY.address}</td>
+                </tr>
+                <tr>
+                  <th>TEL</th>
+                  <td className="num">{COMPANY.tel}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-      <div className="invoice-page">
-        {/* 상단: 좌(로고+타이틀+공급받는자) | 우(공급자 5행) */}
-        <header className="invoice-top">
-          <div className="invoice-top-left">
-            <span className="invoice-logo-placeholder">SAMSUNG</span>
-            <div className="invoice-title">거래명세서</div>
-            <div className="invoice-receiver-box">
-              <div className="invoice-receiver-name">{slip.partnerName ?? '-'}님 中</div>
-              <div className="invoice-receiver-address">
-                서울특별시 강서구 마곡중앙로 161-8 (마곡동) 4층 403호, 404호
+          <div className="invoice-v2-meta">
+            <div className="invoice-v2-issue">
+              <span className="label">발행일</span>
+              <span className="value">{krDate(slip.slipDate)}</span>
+            </div>
+            <div className="invoice-v2-slip-no">
+              <span className="label">전표번호</span>
+              <span className="value">{slip.slipNo}</span>
+            </div>
+            <div className="invoice-v2-partner">
+              <div className="invoice-v2-partner-name">{slip.partnerName ?? '-'}님 귀하</div>
+              <div className="invoice-v2-partner-address">
+                {slip.shippingAddress ?? '주소 정보 없음'}
               </div>
-              <div className="invoice-receiver-phone">☎ 010-9920-3468</div>
+              <div className="invoice-v2-partner-phone">
+                ☎ {slip.contactPhone ?? '-'}
+              </div>
             </div>
           </div>
-
-          <table className="invoice-supplier">
-            <tbody>
-              <tr>
-                <td className="invoice-supplier-side" rowSpan={4}>공<br />급<br />자</td>
-                <td className="invoice-supplier-label">일련번호</td>
-                <td className="invoice-supplier-value">{slip.slipDate} - {slip.seqNo}</td>
-                <td className="invoice-supplier-label">TEL</td>
-                <td className="invoice-supplier-value">02-3461-XXXX</td>
-              </tr>
-              <tr>
-                <td className="invoice-supplier-label">사업자등록번호</td>
-                <td className="invoice-supplier-value">214-87-20659</td>
-                <td className="invoice-supplier-label">성명</td>
-                <td className="invoice-supplier-value seal-cell">
-                  김미선
-                  <span className="invoice-seal">[인]</span>
-                </td>
-              </tr>
-              <tr>
-                <td className="invoice-supplier-label">상호</td>
-                <td className="invoice-supplier-value" colSpan={3}>(주)삼한공조시스템</td>
-              </tr>
-              <tr>
-                <td className="invoice-supplier-label">주소</td>
-                <td className="invoice-supplier-value" colSpan={3}>
-                  서울특별시 서초구 마방로2길 9 (양재동) 삼한빌딩 4층
-                </td>
-              </tr>
-            </tbody>
-          </table>
         </header>
 
-        {/* 배송지 / 금액 */}
-        <div className="invoice-mid-row">
-          <div className="invoice-shipping">
-            <span className="label">배송지:</span>
-            <span className="content">{slip.contactPhone ?? '010-0000-0000'} / {slip.shippingAddress ?? '-'}</span>
-          </div>
-          <div className="invoice-amount-row">
-            <span className="label">금액:</span>
-            <span className="korean">{numberToKorean(grandTotal)}</span>
-            <span className="number">(₩ {grandTotal.toLocaleString()})</span>
-          </div>
+        {/* 타이틀 */}
+        <h1 className="invoice-v2-title">거 래 명 세 서</h1>
+
+        {/* 합계 한글 금액 (요약) */}
+        <div className="invoice-v2-amount-summary">
+          <span className="label">합계금액</span>
+          <span className="korean">{toKoreanAmount(total)}</span>
+          <span className="number">(₩ {krw(total)})</span>
         </div>
 
         {/* 라인 표 6-col */}
-        <table className="invoice-table">
+        <table className="invoice-v2-table">
           <thead>
             <tr>
-              <th className="col-date">월/일</th>
-              <th className="col-product">품목명</th>
+              <th className="col-no">No.</th>
+              <th className="col-product">품목</th>
+              <th className="col-spec">규격</th>
               <th className="col-qty">수량</th>
               <th className="col-price">단가</th>
               <th className="col-supply">공급가액</th>
@@ -169,56 +125,79 @@ export function InvoiceView() {
             </tr>
           </thead>
           <tbody>
-            {slip.lines.map((l) => {
-              const supply = Number(l.lineTotal)
-              const vat = Math.floor(supply * 0.1)
+            {slip.lines.map((l, idx) => {
+              const lineSupply = Number(l.lineTotal)
+              const lineVat = Math.floor(lineSupply * 0.1)
               const productLabel = l.modelName
                 ? `${l.modelName}${l.productName ? ` (${l.productName})` : ''}`
                 : (l.productName ?? '-')
               return (
                 <tr key={l.id}>
-                  <td className="col-date">{month}/{day}</td>
+                  <td className="col-no">{idx + 1}</td>
                   <td className="col-product">{productLabel}</td>
+                  <td className="col-spec">{l.specification ?? '-'}</td>
                   <td className="col-qty num">{l.quantity.toLocaleString()}</td>
-                  <td className="col-price num">{Number(l.unitPrice).toLocaleString()}</td>
-                  <td className="col-supply num">{supply.toLocaleString()}</td>
-                  <td className="col-vat num">{vat.toLocaleString()}</td>
+                  <td className="col-price num">{krw(l.unitPrice)}</td>
+                  <td className="col-supply num">{krw(lineSupply)}</td>
+                  <td className="col-vat num">{krw(lineVat)}</td>
                 </tr>
               )
             })}
+            {/* 빈 행 padding — 라인 < 5 시 시각 균형 */}
+            {Array.from({ length: Math.max(0, 5 - slip.lines.length) }).map((_, i) => (
+              <tr key={`pad-${i}`} className="pad-row">
+                <td className="col-no">&nbsp;</td>
+                <td className="col-product">&nbsp;</td>
+                <td className="col-spec">&nbsp;</td>
+                <td className="col-qty">&nbsp;</td>
+                <td className="col-price">&nbsp;</td>
+                <td className="col-supply">&nbsp;</td>
+                <td className="col-vat">&nbsp;</td>
+              </tr>
+            ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={5} className="totals-label">합계</td>
+              <td className="col-supply num strong">{krw(supply)}</td>
+              <td className="col-vat num strong">{krw(vat)}</td>
+            </tr>
+            <tr>
+              <td colSpan={5} className="totals-label strong">총계 (공급가액 + 부가세)</td>
+              <td colSpan={2} className="num strong total-grand">{krw(total)}</td>
+            </tr>
+          </tfoot>
         </table>
 
-        {/* 합계 행 (수량 / 공급가액 / VAT / 합계 / 인수) */}
-        <div className="invoice-totals">
-          <div className="invoice-total-cell">
-            <span className="label">수량</span>
-            <span className="value">{totalQty.toLocaleString()}</span>
+        {/* 발행자 사인란 */}
+        <footer className="invoice-v2-footer">
+          <div className="invoice-v2-sign-box">
+            <div className="invoice-v2-sign-label">담당자</div>
+            <div className="invoice-v2-sign-value">
+              <span>{slip.ownerFullName ?? '-'}</span>
+              <span className="invoice-v2-seal">[인]</span>
+            </div>
           </div>
-          <div className="invoice-total-cell">
-            <span className="label">공급가액</span>
-            <span className="value">{totalSupply.toLocaleString()}</span>
+          <div className="invoice-v2-sign-box">
+            <div className="invoice-v2-sign-label">인수자</div>
+            <div className="invoice-v2-sign-value">
+              <span>{slip.signerName ?? ' '}</span>
+              {slip.signaturePng ? (
+                <img className="invoice-v2-sign-png" src={slip.signaturePng} alt="인수자 서명" />
+              ) : (
+                <span className="invoice-v2-seal">[인]</span>
+              )}
+            </div>
           </div>
-          <div className="invoice-total-cell">
-            <span className="label">VAT</span>
-            <span className="value">{totalVat.toLocaleString()}</span>
+          <div className="invoice-v2-issuer">
+            <div className="issuer-name">{COMPANY.legalName}</div>
+            <div className="issuer-meta">
+              사업자번호 {COMPANY.businessRegNo} / 대표 {COMPANY.ceo}
+            </div>
+            <div className="issuer-seal">[직인]</div>
           </div>
-          <div className="invoice-total-cell strong">
-            <span className="label">합계</span>
-            <span className="value">{grandTotal.toLocaleString()}</span>
-          </div>
-          <div className="invoice-total-cell">
-            <span className="label">인수</span>
-            <span className="value">인</span>
-          </div>
-        </div>
-
-        {/* 예금주 + 은행 계좌 + 합계 */}
-        <div className="invoice-bank-row">
-          <span>예금주: (주)삼한공조시스템 / 국민은행 750627-01-002557 &nbsp; 기업은행 010-3748-9937</span>
-          <span className="invoice-bank-amount">{grandTotal.toLocaleString()}원</span>
-        </div>
+        </footer>
       </div>
-    </div>
+    </PrintLayout>
   )
 }

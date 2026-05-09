@@ -47,6 +47,7 @@ class JournalServiceTest {
     @Mock private JournalRepository journalRepository;
     @Mock private JournalNumberService journalNumberService;
     @Mock private AccountService accountService;
+    @Mock private MonthEndCloseService monthEndCloseService;
 
     @InjectMocks private JournalService journalService;
 
@@ -55,6 +56,9 @@ class JournalServiceTest {
     @BeforeEach
     void common() {
         lenient().when(journalNumberService.next(any(LocalDate.class))).thenReturn("20260504-1");
+        // 마감 가드 — 기본 stub 으로 "마감 없음" 반환 (Phase 10 Step 8 P2-4 service-layer guard).
+        lenient().when(monthEndCloseService.findClosedPeriodCovering(any(LocalDate.class)))
+                .thenReturn(Optional.empty());
         // accountService.requireLeafAccount 는 void — 기본 no-op (Mockito).
     }
 

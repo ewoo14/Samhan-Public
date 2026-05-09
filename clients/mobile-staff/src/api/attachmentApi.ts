@@ -1,0 +1,259 @@
+/**
+ * slip-service attachment API client — P1-8 (Stage 4) mobile-staff 사진 첨부.
+ *
+ * BE 출처: commit `59232bd` slip-service
+ *   - {@code POST /slips/{slipId}/attachments} (admin / 인증 사용자)
+ *   - {@code POST /public/batches/{token}/slips/{slipNo}/attachments} (mobile-staff 기사 — no auth)
+ *   - {@code GET  /slips/{slipId}/attachments}
+ *   - {@code DELETE /slips/{slipId}/attachments/{id}}
+ *
+ * 매뉴얼: {@code docs/manual/04-모바일/04-사진-첨부.md}.
+ *
+ * 본 client 의 mobile-staff 진입 시점 = **public token 기반 업로드만 사용** (기사 driver mode).
+ * 인증 기반 endpoint 는 향후 estimate mode 영업 사진 (P2 — Phase 12) 시 활성.
+ *
+ * UUID 비공개 가드:
+ *   - 응답 schema 의 `id` (attachment UUID), `slipId` 는 mobile-staff 자체 사용 (사용자 화면 노출 X).
+ *   - 사용자에게는 fileName + uploadedAt + capturedAt 만 노출.
+ */
+
+import { API_BASE_URL } from './arologis';
+
+// ----------------------------------------------------------------------
+// 응답 타입 — backend SlipAttachmentResponse record 와 1:1.
+// ----------------------------------------------------------------------
+
+export type SlipAttachmentTypeApi = 'DELIVERY' | 'INSPECTION' | 'ESTIMATE';
+
+export interface SlipAttachmentResponseDto {
+  id: string;                      // UUID — UI 노출 X
+  slipId: string;                  // UUID — UI 노출 X
+  attachmentType: SlipAttachmentTypeApi;
+  fileName: string;
+  fileSize: number;                // bytes
+  contentType: string;
+  exifGpsLat: string | null;       // BigDecimal → string (정밀도 보존)
+  exifGpsLng: string | null;
+  capturedAt: string | null;       // ISO-8601
+  uploadedBy: string;
+  uploadedAt: string;              // ISO-8601
+  downloadUrl: string | null;      // presigned URL (1시간 유효, 캐시)
+}
+
+// ----------------------------------------------------------------------
+// 업로드 입력 — RN 환경 (expo-image-picker / expo-image-manipulator) 결과 정규화.
+// ----------------------------------------------------------------------
+
+export interface AttachmentUploadInput {
+  /** local file URI (file:// 접두) — image-picker / image-manipulator 결과. */
+  uri: string;
+  /** 파일명 (확장자 포함). picker.assets[].fileName 또는 자동 생성 (capture-{ts}.jpg). */
+  fileName: string;
+  /** MIME — image/jpeg | image/png | application/pdf */
+  mimeType: string;
+  /** EXIF GPS 위도 (옵션). */
+  exifGpsLat?: number | null;
+  /** EXIF GPS 경도 (옵션). */
+  exifGpsLng?: number | null;
+  /** 촬영 시각 ISO-8601 (옵션). image-picker EXIF DateTimeOriginal 또는 RN `new Date()`. */
+  capturedAt?: string | null;
+}
+
+// ----------------------------------------------------------------------
+// public token 기반 업로드 (driver mode) — no auth, multipart/form-data.
+// ----------------------------------------------------------------------
+
+/**
+ * 기사 사진 업로드 (DeliveryBatch token + slipNo 검증).
+ *
+ * <p>BE = {@code POST /public/batches/{token}/slips/{slipNo}/attachments}
+ * <p>BE 가 attachmentType=DELIVERY 강제 (기사는 배송 사진만).
+ *
+ * @param token DeliveryBatch token (URL safe)
+ * @param slipNo 슬립 번호 (e.g. S-2026-00321)
+ * @param input 업로드 파일 정규화 결과
+ * @param onProgress 0~1 진행률 callback (선택, fetch 미지원 → polyfill 시점만 사용)
+ * @returns 업로드 성공 응답
+ */
+export async function uploadAttachmentByToken(
+  token: string,
+  slipNo: string,
+  input: AttachmentUploadInput,
+  onProgress?: (ratio: number) => void,
+): Promise<SlipAttachmentResponseDto> {
+  const url = `${API_BASE_URL}/public/batches/${encodeURIComponent(token)}/slips/${encodeURIComponent(slipNo)}/attachments`;
+  const body = buildMultipart(input);
+  return uploadWithRetry(url, body, undefined, onProgress);
+}
+
+// ----------------------------------------------------------------------
+// 인증 기반 업로드 (estimate mode P2 stub — Phase 12 활성).
+// ----------------------------------------------------------------------
+
+/**
+ * 인증 사용자 사진 업로드 — estimate mode (P2 — Phase 12) 활성 예정.
+ *
+ * <p>BE = {@code POST /slips/{slipId}/attachments} (Bearer + role guard).
+ * <p>본 함수는 향후 SalesEstimatePhotoScreen 진입 시 사용 — 현재 stub TODO.
+ *
+ * @param token JWT access token (Bearer)
+ * @param slipId 슬립 UUID (estimate → slip 변환 후 ID 확보)
+ * @param attachmentType DELIVERY | INSPECTION | ESTIMATE
+ * @param input 업로드 파일
+ */
+export async function uploadAttachmentAuthenticated(
+  token: string | null,
+  slipId: string,
+  attachmentType: SlipAttachmentTypeApi,
+  input: AttachmentUploadInput,
+  onProgress?: (ratio: number) => void,
+): Promise<SlipAttachmentResponseDto> {
+  const url = `${API_BASE_URL}/slips/${encodeURIComponent(slipId)}/attachments`;
+  const body = buildMultipart(input, attachmentType);
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return uploadWithRetry(url, body, headers, onProgress);
+}
+
+// ----------------------------------------------------------------------
+// 내부 — multipart 빌드 + 재시도 (3회) + 응답 파싱.
+// ----------------------------------------------------------------------
+
+function buildMultipart(
+  input: AttachmentUploadInput,
+  attachmentType?: SlipAttachmentTypeApi,
+): FormData {
+  const form = new FormData();
+  // RN FormData — { uri, name, type } literal 객체 append.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  form.append('file', {
+    uri: input.uri,
+    name: input.fileName,
+    type: input.mimeType,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  if (attachmentType) form.append('type', attachmentType);
+  if (input.exifGpsLat != null) form.append('exifGpsLat', String(input.exifGpsLat));
+  if (input.exifGpsLng != null) form.append('exifGpsLng', String(input.exifGpsLng));
+  if (input.capturedAt) form.append('capturedAt', input.capturedAt);
+  return form;
+}
+
+const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = [500, 1500, 3500]; // 1차 즉시 실패 후 0.5s / 1.5s / 3.5s
+
+async function uploadWithRetry(
+  url: string,
+  body: FormData,
+  headers: Record<string, string> | undefined,
+  onProgress?: (ratio: number) => void,
+): Promise<SlipAttachmentResponseDto> {
+  let lastErr: AttachmentApiError | null = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    try {
+      // RN fetch 는 multipart upload progress event 미지원 — 시작/완료 2단계만 보고.
+      onProgress?.(0);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          ...(headers ?? {}),
+        },
+        body,
+      });
+      if (!res.ok) {
+        const text = await safeText(res);
+        const err = new AttachmentApiError(res.status, friendlyMessage(res.status, text));
+        // 4xx (400/404/410/413) = client 오류 → 재시도 의미 없음, 즉시 throw.
+        if (res.status >= 400 && res.status < 500) {
+          throw err;
+        }
+        lastErr = err;
+      } else {
+        onProgress?.(1);
+        const json = await res.json();
+        assertApiResponseSuccess(json);
+        return json.data as SlipAttachmentResponseDto;
+      }
+    } catch (e) {
+      // network 단절 / timeout → 재시도. AttachmentApiError 의 4xx 는 위에서 즉시 throw.
+      if (e instanceof AttachmentApiError && e.status >= 400 && e.status < 500) {
+        throw e;
+      }
+      lastErr = e instanceof AttachmentApiError
+        ? e
+        : new AttachmentApiError(0, networkFriendlyMessage(e));
+    }
+    // backoff 후 재시도 (마지막 attempt 후에는 sleep 생략).
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await sleep(RETRY_BACKOFF_MS[attempt]);
+    }
+  }
+  throw lastErr ?? new AttachmentApiError(0, '사진 업로드에 반복 실패했습니다 (3회 재시도).');
+}
+
+async function safeText(res: Response): Promise<string> {
+  try { return await res.text(); } catch { return ''; }
+}
+
+function friendlyMessage(status: number, text: string): string {
+  switch (status) {
+    case 400:
+      return '파일 형식이 허용되지 않거나 크기가 5MB 를 초과합니다. 다시 촬영하거나 다른 사진을 선택해주세요.';
+    case 404:
+      return '대상 슬립을 찾을 수 없습니다. 배차 토큰 / 슬립 번호를 확인해주세요.';
+    case 410:
+      return '배송 토큰이 만료되었습니다. 영업 / 배차 담당에게 새 링크를 요청해주세요.';
+    case 413:
+      return '파일이 너무 큽니다. 압축 후 다시 시도해주세요 (최대 5MB).';
+    case 401:
+    case 403:
+      return '권한이 없습니다. 다시 로그인해주세요.';
+    case 500:
+    case 502:
+    case 503:
+    case 504:
+      return '서버 일시 오류입니다. 잠시 후 자동으로 재시도합니다.';
+    default:
+      return `사진 업로드 실패 (HTTP ${status})${text ? ` — ${text.slice(0, 80)}` : ''}`;
+  }
+}
+
+function networkFriendlyMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/network|fetch|timeout|abort/i.test(raw)) {
+    return '네트워크 연결이 불안정합니다. Wi-Fi / LTE 상태를 확인하고 자동 재시도를 기다려주세요.';
+  }
+  return `사진 업로드 중 오류가 발생했습니다 — ${raw}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ----------------------------------------------------------------------
+// ApiResponse wrapper schema assert — arologis client 패턴 일관 (silent fall-through 제거).
+// ----------------------------------------------------------------------
+
+function assertApiResponseSuccess(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  json: any,
+): asserts json is { success: true; data: SlipAttachmentResponseDto; code?: string; message?: string } {
+  if (json == null || typeof json !== 'object') {
+    throw new AttachmentApiError(0, '서버 응답 형식 오류 — 본문이 객체가 아닙니다.');
+  }
+  if (json.success !== true) {
+    const code = typeof json.code === 'string' ? json.code : 'UNKNOWN';
+    const message = typeof json.message === 'string' ? json.message : '사진 업로드 응답이 실패로 표시되었습니다.';
+    throw new AttachmentApiError(0, `${message} (code=${code})`);
+  }
+}
+
+export class AttachmentApiError extends Error {
+  public readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'AttachmentApiError';
+    this.status = status;
+  }
+}

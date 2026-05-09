@@ -406,6 +406,7 @@
 - **W10-3** (PR #98 머지 `4b2c077`) — 모바일 어플 driver tab (`clients/mobile-staff` 내부) + arologis API client + GPS hook + 3 화면 + Pretendard self-host + 토큰 1:1 복제
 - **W10-4** (본 PR #99) — slip-service 전자서명 통합 (SlipClient.registerSignature 실 호출, signature_source 컬럼 분리 LINK/APP, V10 Flyway, ApiResponse wrapper IT 의무화)
 - **W10-5** — 회고 + 정확도 90% 회귀 + Phase 11 진입 가드 점검 + **Pretendard 9 weight 정식 운영 배치** (W10-3 종합 TM Designer-2 / FE-2 / B-DEVOPS-1 통합 + D-P10-10)
+- **W10-step-8** (본 PR #114) — **매뉴얼 안내 미구현 UI 9 슬라이스 통합** (P0×4 + P1×2 + P2×3) — 비밀번호 재설정 + 세금계산서 + 인쇄 5건 + 관리자 UI + arologis 수동 배차 + 모바일 사진 + 견적서 + 매출 마감 + 재고 실사. accounting V3/V4 + inventory V3 신규 Flyway. 161 QA case (TM 정합 후 +1). TM 종합 fix — accounting V4 seed (150/919) + JournalService service-layer 마감 가드 + InventoryAuditRepository PostgreSQL `IS NULL` 타입 추론 우회 + testid 명명 정합 (실 FE 표준)
 
 ### Pretendard 9 weight 정식 운영 배치 (W10-3 종합 TM 채택 — D-P10-10)
 

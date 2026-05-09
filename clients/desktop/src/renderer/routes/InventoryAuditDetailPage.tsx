@@ -1,0 +1,521 @@
+/**
+ * 재고 실사 상세 (`/warehouse/audit/:id`).
+ *
+ * Phase 10 P2-6 슬라이스 9. BE `GET /inventory/audits/{id}` + transition + 라인 입력.
+ *
+ * 화면 구성:
+ * - 헤더: auditNo / 창고 / 일자 / 상태 / 차이금액
+ * - 액션 버튼 (status 별):
+ *   - PLANNED      → [시작] / [취소]
+ *   - IN_PROGRESS  → [완료] / [취소]
+ *   - COMPLETED    → 차이 자동 분개 link 안내
+ *   - CANCELLED    → 액션 없음
+ * - 바코드 입력 form: productId 입력 + 수량 + scanned flag (모바일=true, 수동=false)
+ * - 라인 테이블: productName / expected / actual / diff / 단가 / 차이금액
+ *
+ * UUID 비공개 — 화면에는 productName 만 노출. productId 는 라인 매칭용 hidden input.
+ *
+ * data-testid:
+ * - audit-detail-header
+ * - audit-detail-lines-table
+ * - audit-line-barcode-input
+ * - audit-line-actual-input
+ * - audit-line-record-button
+ * - audit-start-button
+ * - audit-complete-button
+ * - audit-cancel-button
+ */
+import { useState, type FormEvent } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import axios from 'axios'
+import {
+  Badge,
+  Button,
+  Card,
+  DataTable,
+  FormField,
+  type DataTableColumn,
+} from '@samhan/design-system'
+import {
+  AUDIT_STATUS_LABEL,
+  cancelAudit,
+  canManageAudit,
+  canRecordAuditLine,
+  completeAudit,
+  getAudit,
+  recordAuditLine,
+  startAudit,
+  type AuditDetail,
+  type AuditLine,
+  type AuditStatus,
+} from '../api/auditApi'
+import { usePageTitle } from '../hooks/usePageTitle'
+import { useSessionStore } from '../stores/session'
+
+const STATUS_VARIANT: Record<
+  AuditStatus,
+  'brand' | 'neutral' | 'success' | 'warning' | 'danger'
+> = {
+  PLANNED: 'neutral',
+  IN_PROGRESS: 'brand',
+  COMPLETED: 'success',
+  CANCELLED: 'danger',
+}
+
+/** KRW 정수 (string) → "₩1,234,567" 표시 (음수 ▼). */
+function formatKrw(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined) return '—'
+  const n = typeof raw === 'string' ? Number.parseFloat(raw) : raw
+  if (!Number.isFinite(n)) return '—'
+  if (n === 0) return '₩0'
+  const formatted = '₩' + Math.abs(Math.round(n))
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return n < 0 ? `▼ ${formatted}` : formatted
+}
+
+export function InventoryAuditDetailPage() {
+  const params = useParams<{ id: string }>()
+  const id = params.id ?? ''
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const role = useSessionStore((s) => s.auth?.role)
+
+  const detailQuery = useQuery({
+    queryKey: ['inventory', 'audit', id],
+    queryFn: () => getAudit(id),
+    enabled: !!id,
+  })
+
+  usePageTitle('재고 실사 상세', detailQuery.data?.auditNo)
+
+  const startMutation = useMutation({
+    mutationFn: () => startAudit(id),
+    onSuccess: invalidate,
+  })
+
+  const completeMutation = useMutation({
+    mutationFn: () => completeAudit(id),
+    onSuccess: invalidate,
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelAudit(id),
+    onSuccess: invalidate,
+  })
+
+  function invalidate() {
+    void queryClient.invalidateQueries({
+      queryKey: ['inventory', 'audit', id],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['inventory', 'audits'],
+    })
+  }
+
+  if (detailQuery.isLoading) {
+    return <p style={{ padding: 24 }}>불러오는 중...</p>
+  }
+
+  const audit = detailQuery.data
+  if (!audit) {
+    return (
+      <div style={{ padding: 24 }}>
+        <p>실사 정보를 찾을 수 없습니다.</p>
+        <Button variant="ghost" onClick={() => navigate('/warehouse/audit')}>
+          목록으로
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card>
+        <div data-testid="audit-detail-header">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 12,
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <h3 style={{ margin: 0 }}>{audit.auditNo}</h3>
+            <Badge variant={STATUS_VARIANT[audit.status]}>
+              {AUDIT_STATUS_LABEL[audit.status]}
+            </Badge>
+          </div>
+          <DetailGrid audit={audit} />
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            marginTop: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          {audit.status === 'PLANNED' && canManageAudit(role) ? (
+            <>
+              <Button
+                variant="primary"
+                data-testid="audit-start-button"
+                loading={startMutation.isPending}
+                onClick={() => startMutation.mutate()}
+              >
+                시작
+              </Button>
+              <Button
+                variant="ghost"
+                data-testid="audit-cancel-button"
+                loading={cancelMutation.isPending}
+                onClick={() => {
+                  if (window.confirm('실사를 취소합니다.')) {
+                    cancelMutation.mutate()
+                  }
+                }}
+              >
+                취소
+              </Button>
+            </>
+          ) : null}
+          {audit.status === 'IN_PROGRESS' && canManageAudit(role) ? (
+            <>
+              <Button
+                variant="primary"
+                data-testid="audit-complete-button"
+                loading={completeMutation.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      '실사를 완료합니다. 차이 분개가 자동 생성되고 재고가 조정됩니다.',
+                    )
+                  ) {
+                    completeMutation.mutate()
+                  }
+                }}
+              >
+                완료
+              </Button>
+              <Button
+                variant="ghost"
+                data-testid="audit-cancel-button"
+                loading={cancelMutation.isPending}
+                onClick={() => {
+                  if (window.confirm('진행 중인 실사를 취소합니다.')) {
+                    cancelMutation.mutate()
+                  }
+                }}
+              >
+                취소
+              </Button>
+            </>
+          ) : null}
+          {audit.status === 'COMPLETED' ? (
+            <a
+              href="#/accounting/journals"
+              style={{
+                fontSize: 13,
+                color: 'var(--color-brand-700)',
+                textDecoration: 'underline',
+              }}
+              data-testid="audit-journal-link"
+            >
+              차이 자동 분개 보기 →
+            </a>
+          ) : null}
+        </div>
+
+        {startMutation.isError || completeMutation.isError || cancelMutation.isError ? (
+          <div
+            className="error-banner"
+            role="alert"
+            style={{ marginTop: 12 }}
+          >
+            상태 변경에 실패했습니다.
+          </div>
+        ) : null}
+      </Card>
+
+      {audit.status === 'IN_PROGRESS' && canRecordAuditLine(role) ? (
+        <BarcodeInput audit={audit} onRecorded={invalidate} />
+      ) : null}
+
+      <Card>
+        <h4 style={{ margin: '0 0 12px' }}>실사 라인</h4>
+        <LinesTable audit={audit} />
+      </Card>
+    </div>
+  )
+}
+
+interface DetailGridProps {
+  audit: AuditDetail
+}
+
+function DetailGrid({ audit }: DetailGridProps) {
+  return (
+    <dl
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '120px 1fr 120px 1fr',
+        gap: 8,
+        margin: 0,
+        fontSize: 13,
+      }}
+    >
+      <dt style={dtStyle}>창고</dt>
+      <dd style={ddStyle}>
+        {audit.warehouseCode} · {audit.warehouseName}
+      </dd>
+      <dt style={dtStyle}>실사일자</dt>
+      <dd style={ddStyle}>{audit.auditDate}</dd>
+      <dt style={dtStyle}>차이금액</dt>
+      <dd style={ddStyle}>{formatKrw(audit.totalDiffAmount)}</dd>
+      <dt style={dtStyle}>시작</dt>
+      <dd style={ddStyle}>
+        {audit.startedAt ? audit.startedAt.replace('T', ' ').slice(0, 19) : '—'}
+      </dd>
+      <dt style={dtStyle}>완료</dt>
+      <dd style={ddStyle}>
+        {audit.completedAt
+          ? audit.completedAt.replace('T', ' ').slice(0, 19)
+          : '—'}
+      </dd>
+      <dt style={dtStyle}>취소</dt>
+      <dd style={ddStyle}>
+        {audit.cancelledAt
+          ? audit.cancelledAt.replace('T', ' ').slice(0, 19)
+          : '—'}
+      </dd>
+    </dl>
+  )
+}
+
+const dtStyle: React.CSSProperties = {
+  color: '#6B7280',
+  fontWeight: 600,
+  margin: 0,
+}
+
+const ddStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#111827',
+}
+
+interface BarcodeInputProps {
+  audit: AuditDetail
+  onRecorded: () => void
+}
+
+function BarcodeInput({ audit, onRecorded }: BarcodeInputProps) {
+  const [productId, setProductId] = useState('')
+  const [actualQty, setActualQty] = useState('')
+  const [scanned, setScanned] = useState(false)
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      recordAuditLine(audit.id, {
+        productId: productId.trim(),
+        actualQty: Number.parseInt(actualQty, 10),
+        scanned,
+      }),
+    onSuccess: () => {
+      setProductId('')
+      setActualQty('')
+      setScanned(false)
+      onRecorded()
+    },
+  })
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (mutation.isPending) return
+    if (!productId.trim()) return
+    const qty = Number.parseInt(actualQty, 10)
+    if (!Number.isFinite(qty) || qty < 0) return
+    mutation.mutate()
+  }
+
+  const errorMessage = (() => {
+    if (!mutation.isError) return null
+    const err = mutation.error
+    if (axios.isAxiosError(err)) {
+      const data = err.response?.data as { message?: string } | undefined
+      return data?.message ?? '라인 입력에 실패했습니다.'
+    }
+    return '알 수 없는 오류'
+  })()
+
+  return (
+    <Card>
+      <h4 style={{ margin: '0 0 12px' }}>바코드 / 수동 입력</h4>
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 160px auto auto',
+          gap: 8,
+          alignItems: 'end',
+        }}
+      >
+        <FormField
+          label="제품 ID (바코드 스캔 또는 수동 입력)"
+          required
+          render={({ id }) => (
+            <input
+              id={id}
+              type="text"
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              data-testid="audit-line-barcode-input"
+              autoFocus
+              style={inputStyle}
+              placeholder="UUID 또는 스캔 결과"
+            />
+          )}
+        />
+        <FormField
+          label="실물 수량"
+          required
+          render={({ id }) => (
+            <input
+              id={id}
+              type="number"
+              min={0}
+              value={actualQty}
+              onChange={(e) => setActualQty(e.target.value)}
+              data-testid="audit-line-actual-input"
+              style={inputStyle}
+            />
+          )}
+        />
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 13,
+            paddingBottom: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={scanned}
+            onChange={(e) => setScanned(e.target.checked)}
+          />
+          스캔
+        </label>
+        <Button
+          type="submit"
+          variant="primary"
+          data-testid="audit-line-record-button"
+          loading={mutation.isPending}
+          disabled={!productId.trim() || !actualQty}
+        >
+          입력
+        </Button>
+      </form>
+      {errorMessage ? (
+        <div className="error-banner" role="alert" style={{ marginTop: 12 }}>
+          {errorMessage}
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
+interface LinesTableProps {
+  audit: AuditDetail
+}
+
+function LinesTable({ audit }: LinesTableProps) {
+  const columns: DataTableColumn<AuditLine>[] = [
+    {
+      key: 'productName',
+      header: '제품',
+      render: (l) => l.productName,
+    },
+    {
+      key: 'expectedQty',
+      header: '장부수량',
+      width: '100px',
+      align: 'right',
+      render: (l) => l.expectedQty.toLocaleString(),
+    },
+    {
+      key: 'actualQty',
+      header: '실물수량',
+      width: '100px',
+      align: 'right',
+      render: (l) => (l.actualQty === null ? '—' : l.actualQty.toLocaleString()),
+    },
+    {
+      key: 'diffQty',
+      header: '차이수량',
+      width: '100px',
+      align: 'right',
+      render: (l) => {
+        if (l.actualQty === null) return '—'
+        if (l.diffQty === 0) return '0'
+        return l.diffQty > 0 ? `+${l.diffQty}` : String(l.diffQty)
+      },
+    },
+    {
+      key: 'unitCost',
+      header: '단가',
+      width: '120px',
+      align: 'right',
+      render: (l) => formatKrw(l.unitCost),
+    },
+    {
+      key: 'diffAmount',
+      header: '차이금액',
+      width: '140px',
+      align: 'right',
+      render: (l) => (l.actualQty === null ? '—' : formatKrw(l.diffAmount)),
+    },
+    {
+      key: 'barcodeScanned',
+      header: '입력',
+      width: '90px',
+      render: (l) =>
+        l.actualQty === null ? (
+          <Badge variant="neutral">대기</Badge>
+        ) : l.barcodeScanned ? (
+          <Badge variant="brand">스캔</Badge>
+        ) : (
+          <Badge variant="success">수동</Badge>
+        ),
+    },
+  ]
+
+  return (
+    <div data-testid="audit-detail-lines-table">
+      <DataTable
+        columns={columns}
+        rows={audit.lines}
+        rowKey={(l) => l.id}
+        emptyMessage="snapshot 라인이 없습니다."
+      />
+    </div>
+  )
+}
+
+const inputStyle: React.CSSProperties = {
+  height: 36,
+  padding: '0 10px',
+  border: '1px solid #D1D5DB',
+  borderRadius: 6,
+  fontSize: 14,
+  width: '100%',
+}

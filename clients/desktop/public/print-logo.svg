@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  (주)삼한공조시스템 인쇄 양식용 placeholder 로고.
+  P0-4 인쇄 양식 5건 1차 mock — Designer 단계.
+  실제 회사 PNG 로고 교체 시 동일 경로 (`/print-logo.svg` 또는 `/print-logo.png`) 로 교체.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60" width="240" height="60">
+  <rect x="0" y="0" width="240" height="60" fill="#FFFFFF"/>
+  <text x="0" y="22" font-family="'Malgun Gothic','맑은 고딕',sans-serif"
+        font-size="20" font-weight="700" fill="#1565C0" letter-spacing="1">
+    SAMHAN
+  </text>
+  <text x="0" y="44" font-family="'Malgun Gothic','맑은 고딕',sans-serif"
+        font-size="13" font-weight="600" fill="#0D47A1">
+    (주)삼한공조시스템
+  </text>
+  <text x="0" y="58" font-family="'Malgun Gothic','맑은 고딕',sans-serif"
+        font-size="8" font-weight="400" fill="#5C6773">
+    SAMHAN AIR-CONDITIONING SYSTEMS CO., LTD.
+  </text>
+</svg>

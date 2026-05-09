@@ -1,0 +1,237 @@
+package com.samhanair.logis.slip.estimate.service;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.client.ProductClient;
+import com.samhanair.logis.slip.client.ProductSummary;
+import com.samhanair.logis.slip.domain.Slip;
+import com.samhanair.logis.slip.estimate.domain.Estimate;
+import com.samhanair.logis.slip.estimate.domain.EstimateLine;
+import com.samhanair.logis.slip.estimate.domain.EstimateStatus;
+import com.samhanair.logis.slip.estimate.repository.EstimateRepository;
+import com.samhanair.logis.slip.estimate.web.dto.CreateEstimateRequest;
+import com.samhanair.logis.slip.estimate.web.dto.EstimateDetailResponse;
+import com.samhanair.logis.slip.estimate.web.dto.EstimateResponse;
+import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
+import jakarta.persistence.OptimisticLockException;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 견적서 워크플로우 — P2-1 (Stage 4) 영업 견적서 도메인.
+ *
+ * <p>API:
+ * <ul>
+ *   <li>create — DRAFT 상태로 생성, ProductClient 라인 검증, 채번</li>
+ *   <li>update — DRAFT/SENT 단계만, 라인 replace</li>
+ *   <li>send / accept / reject — 상태 전이</li>
+ *   <li>convert — ACCEPTED → CONVERTED 전이 + EstimateToSlipConverter 호출</li>
+ *   <li>list / getOne — 필터 페이지 / 단건 상세</li>
+ * </ul>
+ *
+ * <p>도메인 mutation 의 IllegalState/OptimisticLock 은 모두 BusinessException(CONFLICT) 으로 매핑.
+ */
+@Service
+@Transactional
+@RequiredArgsConstructor
+public class EstimateService {
+
+    private final EstimateRepository estimateRepository;
+    private final EstimateNumberService estimateNumberService;
+    private final ProductClient productClient;
+    private final EstimateToSlipConverter slipConverter;
+
+    /**
+     * 견적서 신규 생성 — DRAFT 상태로 출발.
+     *
+     * @param req 생성 요청 (라인 1건 이상 필수)
+     * @param requesterId 작성자 user-id (gateway X-User-Id)
+     * @return 상세 응답 (lines 포함)
+     * @throws BusinessException(INVALID_INPUT) productId 미존재
+     */
+    public EstimateDetailResponse create(CreateEstimateRequest req, String requesterId) {
+        // 1. 라인 productId 일괄 검증 + snapshot 보강
+        List<UUID> productIds = req.lines().stream()
+                .map(CreateEstimateRequest.EstimateLineRequest::productId)
+                .distinct()
+                .toList();
+        List<ProductSummary> summaries = productClient.lookup(productIds);
+        Map<UUID, ProductSummary> byId = new HashMap<>();
+        for (ProductSummary s : summaries) {
+            byId.put(s.id(), s);
+        }
+
+        // 2. 채번
+        LocalDate estimateDate = req.estimateDate() == null ? LocalDate.now() : req.estimateDate();
+        String estimateNo = estimateNumberService.next(estimateDate);
+        int seqNo = estimateNumberService.extractSeqNo(estimateNo);
+
+        // 3. 헤더 생성
+        Estimate estimate = Estimate.create(estimateNo, estimateDate, seqNo,
+                req.partnerId(), req.partnerName(), req.partnerBusinessNo(),
+                req.partnerAddress(), req.validUntil(), req.memo(), requesterId);
+
+        // 4. 라인 추가 (snapshot 명칭은 요청값 우선, 없으면 ProductSummary 보강)
+        int lineNo = 1;
+        for (CreateEstimateRequest.EstimateLineRequest lineReq : req.lines()) {
+            ProductSummary summary = byId.get(lineReq.productId());
+            String productName = lineReq.productName() != null
+                    ? lineReq.productName()
+                    : (summary != null ? summary.name() : null);
+            String modelName = lineReq.modelName() != null
+                    ? lineReq.modelName()
+                    : (summary != null ? summary.modelName() : null);
+            estimate.addLine(EstimateLine.create(estimate, lineNo++, lineReq.productId(),
+                    productName, modelName, lineReq.specification(),
+                    lineReq.quantity(), lineReq.unitPrice(), lineReq.note()));
+        }
+
+        Estimate saved = estimateRepository.save(estimate);
+        return EstimateDetailResponse.from(saved);
+    }
+
+    /**
+     * 견적서 수정 — DRAFT/SENT 단계만. lines 가 null 이 아니면 기존 라인 모두 replace.
+     */
+    public EstimateDetailResponse update(UUID id, UpdateEstimateRequest req, String callerId) {
+        Estimate estimate = loadOrThrow(id);
+        applyMutation(() -> estimate.editHeader(req.partnerId(), req.partnerName(),
+                req.partnerBusinessNo(), req.partnerAddress(), req.validUntil(), req.memo()));
+
+        if (req.lines() != null) {
+            // 기존 라인 모두 제거 (orphan removal)
+            estimate.requireEditable();
+            List<EstimateLine> existing = List.copyOf(estimate.getLines());
+            for (EstimateLine line : existing) {
+                estimate.removeLine(line);
+            }
+
+            // 신규 라인 productId 검증
+            List<UUID> productIds = req.lines().stream()
+                    .map(UpdateEstimateRequest.EstimateLineUpdate::productId)
+                    .distinct()
+                    .toList();
+            List<ProductSummary> summaries = productClient.lookup(productIds);
+            Map<UUID, ProductSummary> byId = new HashMap<>();
+            for (ProductSummary s : summaries) {
+                byId.put(s.id(), s);
+            }
+
+            int lineNo = 1;
+            for (UpdateEstimateRequest.EstimateLineUpdate lineReq : req.lines()) {
+                ProductSummary summary = byId.get(lineReq.productId());
+                String productName = lineReq.productName() != null
+                        ? lineReq.productName()
+                        : (summary != null ? summary.name() : null);
+                String modelName = lineReq.modelName() != null
+                        ? lineReq.modelName()
+                        : (summary != null ? summary.modelName() : null);
+                estimate.addLine(EstimateLine.create(estimate, lineNo++, lineReq.productId(),
+                        productName, modelName, lineReq.specification(),
+                        lineReq.quantity(), lineReq.unitPrice(), lineReq.note()));
+            }
+        }
+
+        return EstimateDetailResponse.from(estimate);
+    }
+
+    /** DRAFT → SENT. */
+    public EstimateDetailResponse send(UUID id, String callerId) {
+        Estimate estimate = loadOrThrow(id);
+        applyMutation(estimate::send);
+        return EstimateDetailResponse.from(estimate);
+    }
+
+    /** SENT → ACCEPTED. */
+    public EstimateDetailResponse accept(UUID id, String callerId) {
+        Estimate estimate = loadOrThrow(id);
+        applyMutation(estimate::accept);
+        return EstimateDetailResponse.from(estimate);
+    }
+
+    /** SENT → REJECTED. */
+    public EstimateDetailResponse reject(UUID id, String callerId) {
+        Estimate estimate = loadOrThrow(id);
+        applyMutation(estimate::reject);
+        return EstimateDetailResponse.from(estimate);
+    }
+
+    /**
+     * ACCEPTED → CONVERTED — Slip(OUTBOUND DRAFT) 자동 발행 + estimate.markConverted(slipId).
+     *
+     * @return 변환 후 견적 상세 (convertedSlipId / convertedAt 채워짐)
+     * @throws BusinessException(CONFLICT) ACCEPTED 가 아닐 때
+     */
+    public EstimateDetailResponse convert(UUID id, String callerId) {
+        Estimate estimate = loadOrThrow(id);
+        if (estimate.getStatus() != EstimateStatus.QUOTE_ACCEPTED) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "변환 가능한 상태가 아닙니다: " + estimate.getStatus() + " (필요: QUOTE_ACCEPTED)");
+        }
+        Slip slip = slipConverter.convert(estimate);
+        applyMutation(() -> estimate.markConverted(slip.getId()));
+        return EstimateDetailResponse.from(estimate);
+    }
+
+    /** 단건 조회. */
+    @Transactional(readOnly = true)
+    public EstimateDetailResponse getOne(UUID id) {
+        return EstimateDetailResponse.from(loadOrThrow(id));
+    }
+
+    /**
+     * 페이지 조회 — status / partnerId / 기간 필터.
+     */
+    @Transactional(readOnly = true)
+    public Page<EstimateResponse> list(EstimateStatus status, UUID partnerId,
+                                       LocalDate startDate, LocalDate endDate, Pageable pageable) {
+        Page<Estimate> page;
+        if (status != null && partnerId != null) {
+            page = estimateRepository.findAllByStatusAndPartnerIdAndIsDeletedFalse(
+                    status, partnerId, pageable);
+        } else if (status != null && startDate != null && endDate != null) {
+            page = estimateRepository.findAllByStatusAndEstimateDateBetweenAndIsDeletedFalse(
+                    status, startDate, endDate, pageable);
+        } else if (status != null) {
+            page = estimateRepository.findAllByStatusAndIsDeletedFalse(status, pageable);
+        } else if (partnerId != null) {
+            page = estimateRepository.findAllByPartnerIdAndIsDeletedFalse(partnerId, pageable);
+        } else if (startDate != null && endDate != null) {
+            page = estimateRepository.findAllByEstimateDateBetweenAndIsDeletedFalse(
+                    startDate, endDate, pageable);
+        } else {
+            page = estimateRepository.findAllByIsDeletedFalse(pageable);
+        }
+        return page.map(EstimateResponse::from);
+    }
+
+    private Estimate loadOrThrow(UUID id) {
+        return estimateRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "견적서를 찾을 수 없습니다"));
+    }
+
+    private void applyMutation(Runnable mutation) {
+        try {
+            mutation.run();
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (OptimisticLockException | OptimisticLockingFailureException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "견적서 동시 수정 충돌 — 새로고침 후 재시도하세요");
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
+        }
+    }
+}

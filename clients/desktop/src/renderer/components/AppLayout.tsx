@@ -16,19 +16,26 @@
  *
  * 기존 PR #18 의 `/slips` IA 는 폐기. 영업/회계/창고 흐름 분리.
  *
- * 우상단에는 현재 사용자명 + 역할 + 로그아웃 버튼을 표시한다.
+ * 우상단에는 현재 사용자명 + 역할 + 사용자 dropdown 메뉴 (비밀번호 변경 / 로그아웃) 를 표시한다.
  * 인쇄 화면 (`/print/...`) 에서는 @media print CSS 가 사이드바/헤더를 숨긴다.
  *
  * Slice A (sales-polish-2-slice) 갱신 — Designer `wireframes.md` § 1 + `components.md` § 2:
  * - 헤더 `<h2>업무 화면</h2>` 고정 → `usePageTitleStore` 의 동적 화면명 + meta bracket
  * - 사용자 피드백 #2 ("상단 '업무 화면' 표시" 모호) 해결
  * - 빈 title 시 "업무 화면" fallback 표시 (라우트 전환 race condition 호환)
+ *
+ * Phase 10 P0-2 갱신:
+ * - 우상단 사용자 chip → dropdown 토글 (비밀번호 변경 link 추가)
+ * - 외부 클릭 / Esc 키 dropdown 자동 닫기
  */
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Button } from '@samhan/design-system'
 import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { canAccessAccounting } from '../api/accounting'
+import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
+import { canAccessAdmin } from '../api/adminApi'
+import { canAccessAudit } from '../api/auditApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -37,9 +44,41 @@ export function AppLayout() {
   const meta = usePageTitleStore((s) => s.meta)
   const navigate = useNavigate()
 
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // 외부 클릭 시 dropdown 닫기
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      const node = userMenuRef.current
+      if (node && !node.contains(e.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [userMenuOpen])
+
+  // Esc 키 dropdown 닫기
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setUserMenuOpen(false)
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [userMenuOpen])
+
   const handleLogout = async () => {
+    setUserMenuOpen(false)
     await logout()
     navigate('/login', { replace: true })
+  }
+
+  const handlePasswordChange = () => {
+    setUserMenuOpen(false)
+    navigate('/password/change')
   }
 
   // race condition 호환 — 빈 title 시 "업무 화면" fallback (Designer § 2.7)
@@ -47,6 +86,15 @@ export function AppLayout() {
 
   // accounting-slice-A — 회계 그룹은 ACCOUNTANT/MASTER 만 가시
   const showAccounting = canAccessAccounting(auth?.role)
+
+  // [Phase 10 P1-5] arologis 수동 배차 — DISPATCH/MASTER 가드 (현재 backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
+  const showArologis = !!auth?.role
+    && (ARO_MANUAL_DISPATCH_ROLES as readonly string[]).includes(auth.role)
+
+  // [Phase 10 P0-5] 관리자 admin 메뉴 — MASTER 만 가시
+  const showAdmin = canAccessAdmin(auth?.role)
+  // [Phase 10 P2-6] 재고 실사 메뉴 — WAREHOUSE / MASTER 만 가시
+  const showAudit = canAccessAudit(auth?.role)
 
   return (
     <div className="app-shell">
@@ -62,7 +110,7 @@ export function AppLayout() {
           <NavLink to="/transfers">재고이동</NavLink>
           <NavLink to="/sales/link-dispatch">링크발송</NavLink>
 
-          {/* [Phase 6 v4] 판매 그룹 — legacy webview 견적 + SamhanLogis 신규 메뉴 4종. */}
+          {/* [Phase 6 v4 → P2-1] 판매 그룹 — 견적서 SamhanLogis 도메인 (legacy webview 폐기) + 4종 sub. */}
           <div
             className="app-sidebar-group"
             aria-hidden="true"
@@ -102,7 +150,95 @@ export function AppLayout() {
               </div>
               <NavLink to="/accounting/accounts">계정과목</NavLink>
               <NavLink to="/accounting/journals">분개장</NavLink>
+              <NavLink to="/accounting/tax-invoices">세금계산서</NavLink>
               <NavLink to="/accounting/balances">시산표</NavLink>
+              <NavLink to="/warehouse/closing">매출 마감</NavLink>
+            </>
+          ) : null}
+
+          {showArologis ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                arologis
+              </div>
+              <NavLink to="/arologis/manual">수동 배차</NavLink>
+            </>
+          ) : null}
+
+          {showAudit ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                창고 운영
+              </div>
+              <NavLink to="/warehouse/audit">재고 실사</NavLink>
+            </>
+          ) : null}
+
+          {showAdmin ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                관리자
+              </div>
+              <NavLink to="/admin/users" data-testid="sidebar-admin-users">
+                사용자
+              </NavLink>
+              <NavLink to="/admin/roles" data-testid="sidebar-admin-roles">
+                권한
+              </NavLink>
+              <NavLink
+                to="/admin/partners"
+                data-testid="sidebar-admin-partners"
+              >
+                거래처
+              </NavLink>
+              <NavLink
+                to="/admin/warehouses"
+                data-testid="sidebar-admin-warehouses"
+              >
+                창고
+              </NavLink>
+              <NavLink
+                to="/admin/departments"
+                data-testid="sidebar-admin-departments"
+              >
+                부서
+              </NavLink>
             </>
           ) : null}
         </nav>
@@ -117,12 +253,114 @@ export function AppLayout() {
             {meta ? <span className="app-header-meta">[{meta}]</span> : null}
           </h2>
           <div className="app-header-actions">
-            <span className="app-user-chip">
-              {auth?.fullName ?? '사용자'} · {auth?.role ?? '-'}
-            </span>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              로그아웃
-            </Button>
+            <div
+              ref={userMenuRef}
+              style={{ position: 'relative', display: 'inline-block' }}
+            >
+              <button
+                type="button"
+                className="app-user-chip"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                data-testid="header-user-name"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--color-neutral-200, #E5E7EB)',
+                  borderRadius: 6,
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                {auth?.fullName ?? '사용자'} · {auth?.role ?? '-'}
+                <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 10 }}>
+                  ▼
+                </span>
+              </button>
+              {userMenuOpen ? (
+                <div
+                  role="menu"
+                  data-testid="header-user-menu"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 4px)',
+                    right: 0,
+                    minWidth: 180,
+                    background: '#fff',
+                    border: '1px solid var(--color-neutral-200, #E5E7EB)',
+                    borderRadius: 6,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    padding: 4,
+                    zIndex: 1000,
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handlePasswordChange}
+                    data-testid="header-user-menu-password-change"
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: 'var(--color-neutral-800, #1F2937)',
+                    }}
+                    onMouseEnter={(e) => {
+                      ;(e.currentTarget as HTMLButtonElement).style.background
+                        = 'var(--color-neutral-100, #F3F4F6)'
+                    }}
+                    onMouseLeave={(e) => {
+                      ;(e.currentTarget as HTMLButtonElement).style.background
+                        = 'transparent'
+                    }}
+                  >
+                    비밀번호 변경
+                  </button>
+                  <div
+                    style={{
+                      height: 1,
+                      background: 'var(--color-neutral-200, #E5E7EB)',
+                      margin: '4px 0',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleLogout}
+                    data-testid="sidebar-logout"
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: 'var(--color-neutral-800, #1F2937)',
+                    }}
+                    onMouseEnter={(e) => {
+                      ;(e.currentTarget as HTMLButtonElement).style.background
+                        = 'var(--color-neutral-100, #F3F4F6)'
+                    }}
+                    onMouseLeave={(e) => {
+                      ;(e.currentTarget as HTMLButtonElement).style.background
+                        = 'transparent'
+                    }}
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
         <Outlet />

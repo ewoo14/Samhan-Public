@@ -1,0 +1,403 @@
+/**
+ * 매출 마감 화면 (`/warehouse/closing`).
+ *
+ * P2-4 매출 마감 (Phase 10 Step 8 — slice 8).
+ * 매뉴얼 출처: `docs/manual/02-창고/04-매출-마감.md`.
+ *
+ * 화면 구성:
+ * - 상단: 일별/월별 toggle + 기간 일자 선택 + [마감 실행] 버튼
+ * - 시산표 link (새 탭) + 마감 후 변경 차단 안내
+ * - 마감 list table — periodType / periodDate / status / totalSales / closedAt / closedBy
+ *   - row 별 [역마감] 버튼 (CLOSED + MASTER 만)
+ *
+ * 권한 (BE `@PreAuthorize` 와 동일):
+ * - 마감 실행: ACCOUNTANT / MASTER
+ * - 역마감:    MASTER 만
+ *
+ * UUID 비공개 가드 (`feedback_uuid_no_user_visibility.md`):
+ * - 마감 row 의 `id` 는 reverse 호출 path 에만 사용. 화면 표시는 periodType+periodDate.
+ *
+ * data-testid:
+ * - `closing-list-table`     — 마감 list table
+ * - `closing-new-button`     — 마감 실행 버튼
+ * - `closing-reverse-button` — 역마감 버튼 (per row, MASTER 만)
+ */
+import { useMemo, useState, type CSSProperties } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Button,
+  Card,
+  DataTable,
+  Spinner,
+  type DataTableColumn,
+} from '@samhan/design-system'
+import {
+  canExecuteClosing,
+  canReverseClosing,
+  createClosing,
+  listClosings,
+  PERIOD_STATUS_LABEL,
+  PERIOD_TYPE_LABEL,
+  reverseClosing,
+  type AccountingPeriod,
+  type PeriodType,
+} from '../api/closingApi'
+import { usePageTitle } from '../hooks/usePageTitle'
+import { useSessionStore } from '../stores/session'
+
+/** YYYY-MM-DD 오늘 날짜 (한국 시간 클라이언트 local). */
+function today(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** YYYY-MM-DD → "YYYY-MM" (월별 input value). */
+function toMonth(iso: string): string {
+  return iso.slice(0, 7)
+}
+
+/** "YYYY-MM" → "YYYY-MM-01". */
+function monthToFirstDay(month: string): string {
+  return `${month}-01`
+}
+
+/** KRW BigDecimal string → "1,234,567" (NaN 시 "—"). */
+function fmtKrw(raw: string | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') return '—'
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return raw
+  if (n === 0) return '—'
+  return Math.round(n).toLocaleString('ko-KR')
+}
+
+/** ISO 8601 → "YYYY-MM-DD HH:mm" (Asia/Seoul 가정). */
+function fmtTimestamp(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const Y = d.getFullYear()
+  const M = String(d.getMonth() + 1).padStart(2, '0')
+  const D = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  return `${Y}-${M}-${D} ${h}:${m}`
+}
+
+const inputStyle: CSSProperties = {
+  height: 32,
+  padding: '0 8px',
+  borderRadius: 6,
+  border: '1px solid #D1D5DB',
+  fontSize: 13,
+}
+
+const noticeStyle: CSSProperties = {
+  margin: 0,
+  padding: '8px 12px',
+  borderRadius: 6,
+  background: '#FEF3C7',
+  color: '#92400E',
+  fontSize: 12,
+  lineHeight: 1.5,
+}
+
+export function MonthEndClosingPage() {
+  const role = useSessionStore((s) => s.auth?.role)
+  const canExecute = canExecuteClosing(role)
+  const canReverse = canReverseClosing(role)
+  const queryClient = useQueryClient()
+
+  const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY')
+  const [periodDate, setPeriodDate] = useState<string>(today())
+  const [description, setDescription] = useState<string>('')
+
+  usePageTitle('매출 마감')
+
+  const listQuery = useQuery({
+    queryKey: ['closings', periodType],
+    queryFn: () => listClosings({ periodType }),
+  })
+
+  const closeMutation = useMutation({
+    mutationFn: () =>
+      createClosing({
+        periodType,
+        periodDate:
+          periodType === 'MONTHLY' ? monthToFirstDay(toMonth(periodDate)) : periodDate,
+        description: description.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setDescription('')
+      void queryClient.invalidateQueries({ queryKey: ['closings'] })
+    },
+  })
+
+  const reverseMutation = useMutation({
+    mutationFn: (id: string) => reverseClosing(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['closings'] })
+    },
+  })
+
+  const closeError = closeMutation.error as Error | null
+  const reverseError = reverseMutation.error as Error | null
+
+  const columns: DataTableColumn<AccountingPeriod>[] = useMemo(
+    () => [
+      {
+        key: 'periodType',
+        header: '구분',
+        width: '70px',
+        render: (r) => PERIOD_TYPE_LABEL[r.periodType],
+      },
+      {
+        key: 'periodDate',
+        header: '기간 일자',
+        width: '130px',
+        render: (r) =>
+          r.periodType === 'MONTHLY' ? r.periodDate.slice(0, 7) : r.periodDate,
+      },
+      {
+        key: 'status',
+        header: '상태',
+        width: '70px',
+        render: (r) => (
+          <span
+            style={{
+              fontWeight: 600,
+              color: r.status === 'CLOSED' ? '#DC2626' : '#059669',
+            }}
+          >
+            {PERIOD_STATUS_LABEL[r.status]}
+          </span>
+        ),
+      },
+      {
+        key: 'totalSales',
+        header: '매출 합계',
+        width: '140px',
+        align: 'right',
+        render: (r) => fmtKrw(r.totalSales),
+      },
+      {
+        key: 'totalPurchase',
+        header: '매입 합계',
+        width: '140px',
+        align: 'right',
+        render: (r) => fmtKrw(r.totalPurchase),
+      },
+      {
+        key: 'totalExpense',
+        header: '판관비',
+        width: '120px',
+        align: 'right',
+        render: (r) => fmtKrw(r.totalExpense),
+      },
+      {
+        key: 'lockedSlipCount',
+        header: '잠금 슬립',
+        width: '90px',
+        align: 'right',
+        render: (r) => r.lockedSlipCount.toLocaleString(),
+      },
+      {
+        key: 'closedAt',
+        header: '마감 시각',
+        width: '140px',
+        render: (r) => fmtTimestamp(r.closedAt),
+      },
+      {
+        key: 'closedBy',
+        header: '실행자',
+        width: '120px',
+        render: (r) => r.closedBy ?? '—',
+      },
+      {
+        key: 'reverseAction',
+        header: '',
+        width: '110px',
+        render: (r) =>
+          r.status === 'CLOSED' && canReverse ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="closing-reverse-button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `${PERIOD_TYPE_LABEL[r.periodType]} ${r.periodDate.slice(0, r.periodType === 'MONTHLY' ? 7 : 10)} 마감을 역마감 처리합니다.\n역마감 후 슬립/분개 변경이 다시 허용됩니다. 진행하시겠습니까?`,
+                  )
+                ) {
+                  reverseMutation.mutate(r.id)
+                }
+              }}
+              disabled={reverseMutation.isPending}
+            >
+              역마감
+            </Button>
+          ) : null,
+      },
+    ],
+    [canReverse, reverseMutation],
+  )
+
+  return (
+    <>
+      {/* 상단: 마감 실행 카드 */}
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 12px 0' }}>마감 실행</h3>
+        <p style={noticeStyle}>
+          ⚠ 마감 실행 시 해당 기간의 모든 CONFIRMED 슬립이 LOCKED 상태로 전환되며,
+          이후 분개/슬립 입력이 차단됩니다. 변경이 필요하면 MASTER 권한자에게 역마감을
+          요청하십시오.
+        </p>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            flexWrap: 'wrap',
+            marginTop: 12,
+          }}
+        >
+          {/* 일별/월별 toggle */}
+          <div role="tablist" aria-label="마감 유형" style={{ display: 'inline-flex', gap: 4 }}>
+            {(['DAILY', 'MONTHLY'] as const).map((t) => (
+              <Button
+                key={t}
+                variant={periodType === t ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => setPeriodType(t)}
+                role="tab"
+                aria-selected={periodType === t}
+              >
+                {PERIOD_TYPE_LABEL[t]}
+              </Button>
+            ))}
+          </div>
+
+          {/* 기간 일자 input — 일별/월별 분기 */}
+          <label style={{ fontSize: 13, color: '#374151' }}>
+            기간 일자:&nbsp;
+            {periodType === 'MONTHLY' ? (
+              <input
+                type="month"
+                value={toMonth(periodDate)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (/^\d{4}-\d{2}$/.test(v)) setPeriodDate(monthToFirstDay(v))
+                }}
+                style={inputStyle}
+              />
+            ) : (
+              <input
+                type="date"
+                value={periodDate}
+                onChange={(e) => setPeriodDate(e.target.value)}
+                style={inputStyle}
+              />
+            )}
+          </label>
+
+          {/* 메모 (옵션) */}
+          <label style={{ fontSize: 13, color: '#374151', flexGrow: 1, minWidth: 200 }}>
+            메모(옵션):&nbsp;
+            <input
+              type="text"
+              value={description}
+              maxLength={500}
+              placeholder="마감 사유 등 (선택)"
+              onChange={(e) => setDescription(e.target.value)}
+              style={{ ...inputStyle, width: '100%', maxWidth: 320 }}
+            />
+          </label>
+
+          {/* 마감 실행 버튼 */}
+          <Button
+            variant="primary"
+            data-testid="closing-new-button"
+            onClick={() => closeMutation.mutate()}
+            disabled={!canExecute || closeMutation.isPending}
+            title={!canExecute ? 'ACCOUNTANT / MASTER 권한이 필요합니다' : undefined}
+          >
+            {closeMutation.isPending ? '처리 중...' : '마감 실행'}
+          </Button>
+
+          {/* 시산표 link (새 탭) */}
+          <a
+            href={`#/accounting/balances`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 13,
+              color: '#2563EB',
+              textDecoration: 'underline',
+            }}
+          >
+            시산표 열기 ↗
+          </a>
+        </div>
+
+        {!canExecute ? (
+          <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#DC2626' }}>
+            마감 실행 권한이 없습니다 — ACCOUNTANT / MASTER 권한 보유자만 가능합니다.
+          </p>
+        ) : null}
+
+        {closeMutation.isSuccess ? (
+          <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#059669' }}>
+            마감이 완료되었습니다.
+          </p>
+        ) : null}
+
+        {closeError ? (
+          <div className="error-banner" role="alert" style={{ marginTop: 8 }}>
+            마감 실행 실패: {closeError.message}
+          </div>
+        ) : null}
+
+        {reverseError ? (
+          <div className="error-banner" role="alert" style={{ marginTop: 8 }}>
+            역마감 실패: {reverseError.message}
+          </div>
+        ) : null}
+      </Card>
+
+      {/* 마감 list */}
+      <Card>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>
+            마감 이력 — {PERIOD_TYPE_LABEL[periodType]}
+          </h3>
+        </div>
+
+        {listQuery.isLoading ? (
+          <div style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}>
+            <Spinner size="lg" label="마감 목록 불러오는 중" />
+          </div>
+        ) : listQuery.isError ? (
+          <div className="error-banner" role="alert">
+            마감 목록을 불러오지 못했습니다. 백엔드 연결을 확인하세요.
+          </div>
+        ) : (
+          <div data-testid="closing-list-table">
+            <DataTable
+              columns={columns}
+              rows={listQuery.data ?? []}
+              rowKey={(r) => r.id}
+              emptyMessage="해당 유형의 마감 이력이 없습니다."
+            />
+          </div>
+        )}
+      </Card>
+    </>
+  )
+}

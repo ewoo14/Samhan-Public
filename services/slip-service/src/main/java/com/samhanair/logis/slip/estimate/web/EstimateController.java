@@ -1,0 +1,155 @@
+package com.samhanair.logis.slip.estimate.web;
+
+import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.slip.estimate.domain.EstimateStatus;
+import com.samhanair.logis.slip.estimate.service.EstimateService;
+import com.samhanair.logis.slip.estimate.web.dto.CreateEstimateRequest;
+import com.samhanair.logis.slip.estimate.web.dto.EstimateDetailResponse;
+import com.samhanair.logis.slip.estimate.web.dto.EstimateResponse;
+import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
+import java.time.LocalDate;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 견적서 REST endpoint — P2-1 (Stage 4).
+ *
+ * <p>매뉴얼 출처: {@code docs/manual/01-영업/06-견적서.md}.
+ *
+ * <p>권한 매트릭스 (매뉴얼 §3 권한 표 일관):
+ * <ul>
+ *   <li>작성 / 수정 / 발송 — SALES, MANAGER, MASTER</li>
+ *   <li>수락 / 거절 (거래처 의사 대리 입력) — SALES, MANAGER, MASTER</li>
+ *   <li>변환 (견적 → 슬립) — SALES, MANAGER, MASTER</li>
+ *   <li>조회 — 모든 인증 사용자</li>
+ * </ul>
+ */
+@RestController
+@RequestMapping("/slips/estimates")
+@RequiredArgsConstructor
+public class EstimateController {
+
+    private static final String CALLER_HEADER = "X-User-Id";
+
+    private final EstimateService estimateService;
+
+    /** 견적서 페이지 조회 — status / partnerId / 기간 필터 (모두 옵션). */
+    @Operation(summary = "견적서 페이지 조회",
+            description = "status / partnerId / 기간(start-end) 필터 조합")
+    @GetMapping
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<Page<EstimateResponse>> list(
+            @RequestParam(required = false) EstimateStatus status,
+            @RequestParam(required = false) UUID partnerId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ApiResponse.ok(estimateService.list(status, partnerId, startDate, endDate, pageable));
+    }
+
+    /** 견적서 단건 상세 조회. */
+    @Operation(summary = "견적서 단건 상세", description = "라인 포함")
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<EstimateDetailResponse> getOne(@PathVariable UUID id) {
+        return ApiResponse.ok(estimateService.getOne(id));
+    }
+
+    /** 견적서 신규 생성 (DRAFT 상태). */
+    @Operation(summary = "견적서 생성", description = "DRAFT 상태로 생성. 라인 productId 일괄 검증")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "라인/입력 검증 실패")
+    })
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<EstimateDetailResponse> create(
+            @Valid @RequestBody CreateEstimateRequest request,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(estimateService.create(request, callerOrSystem(callerHeader)));
+    }
+
+    /** 견적서 수정 — DRAFT/SENT 단계만. */
+    @Operation(summary = "견적서 수정", description = "DRAFT/SENT 단계만. lines 가 있으면 기존 라인 replace")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<EstimateDetailResponse> update(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateEstimateRequest request,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(estimateService.update(id, request, callerOrSystem(callerHeader)));
+    }
+
+    /** DRAFT → SENT. */
+    @Operation(summary = "견적서 발송", description = "QUOTE_DRAFT → QUOTE_SENT")
+    @PostMapping("/{id}/send")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<EstimateDetailResponse> send(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(estimateService.send(id, callerOrSystem(callerHeader)));
+    }
+
+    /** SENT → ACCEPTED. */
+    @Operation(summary = "견적서 수주", description = "QUOTE_SENT → QUOTE_ACCEPTED")
+    @PostMapping("/{id}/accept")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<EstimateDetailResponse> accept(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(estimateService.accept(id, callerOrSystem(callerHeader)));
+    }
+
+    /** SENT → REJECTED. */
+    @Operation(summary = "견적서 거절", description = "QUOTE_SENT → QUOTE_REJECTED")
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<EstimateDetailResponse> reject(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(estimateService.reject(id, callerOrSystem(callerHeader)));
+    }
+
+    /** ACCEPTED → CONVERTED — Slip(OUTBOUND DRAFT) 자동 발행. */
+    @Operation(summary = "견적 → 슬립 자동 변환",
+            description = "QUOTE_ACCEPTED → QUOTE_CONVERTED + Slip(OUTBOUND DRAFT) 자동 발행")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "변환 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "ACCEPTED 가 아님")
+    })
+    @PostMapping("/{id}/convert")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<EstimateDetailResponse> convert(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(estimateService.convert(id, callerOrSystem(callerHeader)));
+    }
+
+    private String callerOrSystem(String header) {
+        return (header == null || header.isBlank()) ? "system" : header;
+    }
+}

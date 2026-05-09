@@ -1,0 +1,313 @@
+/**
+ * 관리자 통합 admin API 클라이언트 — Phase 10 P0-5 슬라이스 4.
+ *
+ * BE endpoint (commit e9ad461):
+ * - user-service
+ *   - GET    /admin/users               — q/role/dept 필터 + 페이지네이션
+ *   - GET    /admin/users/roles         — 전체 ROLE 목록
+ *   - PATCH  /admin/users/{id}/disable  — 사용자 비활성화 (MASTER 만)
+ *   - PATCH  /admin/users/{id}/enable   — 사용자 재활성화 (MASTER 만)
+ *   - PATCH  /admin/users/{id}/role     — 역할 변경 + 이력 적재 (MASTER 만)
+ *   - GET    /admin/users/{id}/role-history — 역할 변경 이력 조회
+ *   - GET    /users/departments         — 부서 목록 (read-only, 인증된 모든 역할)
+ * - partner-service
+ *   - GET    /admin/partners/search     — q + status 필터 + 페이지네이션
+ *   - POST   /admin/partners            — 신규 등록
+ *   - PUT    /admin/partners/{partnerCode}    — 프로필 수정
+ *   - DELETE /admin/partners/{partnerCode}    — soft-delete
+ * - inventory-service
+ *   - GET    /inventory/warehouses/search — q + 페이지네이션
+ *   - POST   /inventory/warehouses      — 신규 등록 (기존 createWarehouse 재사용 권장)
+ *
+ * UUID 비공개 가드: 응답 DTO 의 id 는 mutation path key 전용. 사용자 노출 식별자는
+ * loginId / fullName / partnerCode / warehouseCode 등 비즈니스 식별자.
+ *
+ * 권한 체계: MASTER 가드는 라우트 단의 RoleGuard 가 담당 (본 모듈은 horizontal HTTP 만).
+ */
+import { apiClient, type ApiEnvelope } from './client'
+
+// ---------------------------------------------------------------------------
+// 공통 타입
+// ---------------------------------------------------------------------------
+
+/**
+ * 7-tier ROLE 풀네임 (BE Role enum 과 동일).
+ *
+ * memory feedback_role_naming_full — UI/PR/문서 모두 풀네임 의무 (M/M/D 약어 금지).
+ */
+export type AdminRole =
+  | 'MASTER'
+  | 'DEVELOPER'
+  | 'MANAGER'
+  | 'SALES'
+  | 'ACCOUNTANT'
+  | 'WAREHOUSE'
+  | 'INVENTORY'
+
+/** ROLE 풀네임 → 한국어 표시 라벨 (BE Role enum.displayName 과 1:1). */
+export const ADMIN_ROLE_LABEL: Record<AdminRole, string> = {
+  MASTER: '마스터',
+  DEVELOPER: '개발자',
+  MANAGER: '매니저',
+  SALES: '영업원',
+  ACCOUNTANT: '회계원',
+  WAREHOUSE: '창고원',
+  INVENTORY: '재고원',
+}
+
+/** items / total / page / size 형식 admin 페이지 응답. */
+export interface AdminPage<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+// ---------------------------------------------------------------------------
+// 사용자 (user-service)
+// ---------------------------------------------------------------------------
+
+/** BE `EmployeeResponse` 와 1:1. */
+export interface AdminUser {
+  /** 사용자 UUID — mutation path key 전용, 화면 미노출. */
+  id: string
+  loginId: string
+  fullName: string
+  position: string | null
+  role: AdminRole
+  departmentId: string
+  departmentName: string
+  teamLead: boolean
+  hireDate: string
+  /** terminationDate 가 set 되어 있으면 비활성 (잠금) 상태. */
+  terminationDate: string | null
+  email: string | null
+  phone: string | null
+}
+
+/** 사용자 목록 조회 옵션. */
+export interface ListAdminUsersOptions {
+  /** fullName / loginId / email LIKE 검색어. */
+  q?: string
+  role?: AdminRole
+  /** 부서 UUID. */
+  departmentId?: string
+  /** 0-based 페이지 번호. */
+  page?: number
+  /** 페이지 크기 (기본 20). */
+  size?: number
+}
+
+/**
+ * 사용자 목록 조회 — `/admin/users`.
+ *
+ * @return AdminPage<AdminUser>
+ */
+export async function listAdminUsers(
+  options: ListAdminUsersOptions = {},
+): Promise<AdminPage<AdminUser>> {
+  const params: Record<string, string | number> = {
+    page: options.page ?? 0,
+    size: options.size ?? 20,
+  }
+  if (options.q && options.q.trim()) params['q'] = options.q.trim()
+  if (options.role) params['role'] = options.role
+  if (options.departmentId) params['departmentId'] = options.departmentId
+
+  const res = await apiClient.get<ApiEnvelope<AdminPage<AdminUser>>>(
+    '/admin/users',
+    { params },
+  )
+  return res.data.data
+}
+
+/**
+ * 전체 ROLE 목록 — `/admin/users/roles`.
+ *
+ * @return AdminRole[]
+ */
+export async function listAdminRoles(): Promise<AdminRole[]> {
+  const res = await apiClient.get<ApiEnvelope<AdminRole[]>>(
+    '/admin/users/roles',
+  )
+  return res.data.data
+}
+
+/** 사용자 비활성화 (terminationDate = today). MASTER 만 호출 가능. */
+export async function disableAdminUser(id: string): Promise<AdminUser> {
+  const res = await apiClient.patch<ApiEnvelope<AdminUser>>(
+    `/admin/users/${id}/disable`,
+  )
+  return res.data.data
+}
+
+/** 사용자 재활성화 (terminationDate = null). MASTER 만 호출 가능. */
+export async function enableAdminUser(id: string): Promise<AdminUser> {
+  const res = await apiClient.patch<ApiEnvelope<AdminUser>>(
+    `/admin/users/${id}/enable`,
+  )
+  return res.data.data
+}
+
+/** 역할 변경 요청 body — BE `UpdateRoleRequest` 와 1:1. */
+export interface UpdateAdminUserRoleRequest {
+  role: AdminRole
+  reason?: string
+}
+
+/** 역할 변경 + 이력 적재. MASTER 만 호출 가능. */
+export async function updateAdminUserRole(
+  id: string,
+  body: UpdateAdminUserRoleRequest,
+): Promise<AdminUser> {
+  const res = await apiClient.patch<ApiEnvelope<AdminUser>>(
+    `/admin/users/${id}/role`,
+    body,
+  )
+  return res.data.data
+}
+
+/** 역할 변경 이력 1행 — BE `RoleHistoryResponse` 와 1:1. */
+export interface RoleHistoryEntry {
+  id: string
+  previousRole: AdminRole | null
+  newRole: AdminRole
+  reason: string | null
+  changedAt: string
+  changedBy: string | null
+}
+
+/** 역할 변경 이력 조회 (시간 역순). */
+export async function listRoleHistory(
+  id: string,
+): Promise<RoleHistoryEntry[]> {
+  const res = await apiClient.get<ApiEnvelope<RoleHistoryEntry[]>>(
+    `/admin/users/${id}/role-history`,
+  )
+  return res.data.data
+}
+
+// ---------------------------------------------------------------------------
+// 부서 (user-service)
+// ---------------------------------------------------------------------------
+
+/** BE `DepartmentResponse` 와 1:1. */
+export interface Department {
+  id: string
+  code: string
+  name: string
+  displayOrder: number
+}
+
+/** 부서 목록 조회 — `/users/departments` (read-only). */
+export async function listDepartments(): Promise<Department[]> {
+  const res = await apiClient.get<ApiEnvelope<Department[]>>(
+    '/users/departments',
+  )
+  return res.data.data
+}
+
+// ---------------------------------------------------------------------------
+// 거래처 (partner-service)
+// ---------------------------------------------------------------------------
+
+/** BE `PartnerStatus` enum 과 1:1. */
+export type PartnerStatus = 'ACTIVE' | 'SUSPENDED' | 'TERMINATED'
+
+/** PartnerStatus → 한국어 표시 라벨. */
+export const PARTNER_STATUS_LABEL: Record<PartnerStatus, string> = {
+  ACTIVE: '거래중',
+  SUSPENDED: '거래중지',
+  TERMINATED: '거래종료',
+}
+
+/** BE `PartnerSummaryResponse` 와 1:1 (UUID 비공개). */
+export interface PartnerSummary {
+  partnerCode: string
+  name: string
+  bizNo: string
+  phone: string | null
+  status: PartnerStatus
+  creditLimit: string | number
+  outstandingBalance: string | number
+}
+
+/** 거래처 검색 옵션. */
+export interface ListAdminPartnersOptions {
+  q?: string
+  type?: PartnerStatus
+  page?: number
+  size?: number
+}
+
+/**
+ * 거래처 admin 검색 — `/admin/partners/search` (q + type 필터).
+ */
+export async function listAdminPartners(
+  options: ListAdminPartnersOptions = {},
+): Promise<AdminPage<PartnerSummary>> {
+  const params: Record<string, string | number> = {
+    page: options.page ?? 0,
+    size: options.size ?? 20,
+  }
+  if (options.q && options.q.trim()) params['q'] = options.q.trim()
+  if (options.type) params['type'] = options.type
+
+  const res = await apiClient.get<ApiEnvelope<AdminPage<PartnerSummary>>>(
+    '/admin/partners/search',
+    { params },
+  )
+  return res.data.data
+}
+
+// ---------------------------------------------------------------------------
+// 창고 (inventory-service)
+// ---------------------------------------------------------------------------
+
+/** BE `WarehouseResponse` 와 1:1 (admin 화면용 요약). */
+export interface AdminWarehouse {
+  id: string
+  code: string
+  name: string
+  type: 'HEADQUARTERS' | 'VEHICLE' | 'CONSIGNMENT' | 'VIRTUAL'
+  address: string | null
+  displayOrder: number
+  description: string | null
+  createdAt: string
+  modifiedAt: string
+}
+
+/** 창고 검색 옵션. */
+export interface ListAdminWarehousesOptions {
+  q?: string
+  page?: number
+  size?: number
+}
+
+/**
+ * 창고 admin 검색 — `/inventory/warehouses/search` (q LIKE code/name/address).
+ */
+export async function listAdminWarehouses(
+  options: ListAdminWarehousesOptions = {},
+): Promise<AdminPage<AdminWarehouse>> {
+  const params: Record<string, string | number> = {
+    page: options.page ?? 0,
+    size: options.size ?? 20,
+  }
+  if (options.q && options.q.trim()) params['q'] = options.q.trim()
+
+  const res = await apiClient.get<ApiEnvelope<AdminPage<AdminWarehouse>>>(
+    '/inventory/warehouses/search',
+    { params },
+  )
+  return res.data.data
+}
+
+// ---------------------------------------------------------------------------
+// 권한 헬퍼
+// ---------------------------------------------------------------------------
+
+/** admin 메뉴 (사용자/거래처/창고/부서/권한 통합) 접근 가능 — MASTER 만. */
+export function canAccessAdmin(role: string | undefined | null): boolean {
+  return role === 'MASTER'
+}

@@ -6,8 +6,10 @@ import com.samhanair.logis.common.security.Role;
 import com.samhanair.logis.user.client.AuthClient;
 import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
+import com.samhanair.logis.user.domain.RoleChangeHistory;
 import com.samhanair.logis.user.repository.DepartmentRepository;
 import com.samhanair.logis.user.repository.EmployeeRepository;
+import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
 import com.samhanair.logis.user.web.dto.CreateEmployeeRequest;
 import com.samhanair.logis.user.web.dto.EmployeeResponse;
 import com.samhanair.logis.user.web.dto.UpdateEmployeeRequest;
@@ -37,6 +39,7 @@ public class EmployeeProvisioningService {
 
     private final EmployeeRepository employeeRepository;
     private final DepartmentRepository departmentRepository;
+    private final RoleChangeHistoryRepository roleHistoryRepository;
     private final AuthClient authClient;
 
     public EmployeeResponse create(CreateEmployeeRequest req, UUID callerId) {
@@ -103,11 +106,28 @@ public class EmployeeProvisioningService {
     }
 
     public EmployeeResponse updateRole(UUID id, Role role, UUID callerId) {
+        return updateRole(id, role, null, callerId);
+    }
+
+    /**
+     * 역할 변경 + Phase 10 P0-5 변경 이력 적재.
+     *
+     * <p>Employee.roleSnapshot 갱신 + auth-service 동기화 + {@link RoleChangeHistory} append-only.
+     * reason 은 옵션 (null 허용). 본 메서드를 통해 admin endpoint 가 호출 시 frontend 변경 이력 화면에
+     * 즉시 반영.
+     */
+    public EmployeeResponse updateRole(UUID id, Role role, String reason, UUID callerId) {
         Employee employee = employeeRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "직원을 찾을 수 없습니다"));
 
+        Role previous = employee.getRoleSnapshot();
+        if (previous == role) {
+            // 동일 role 재요청은 history append 회피 — 매뉴얼 §4 (변경 이력) 깨끗함 유지.
+            return EmployeeResponse.from(employee);
+        }
         employee.updateRoleSnapshot(role);
         authClient.updateRole(id, role);
+        roleHistoryRepository.save(RoleChangeHistory.record(id, previous, role, reason));
         return EmployeeResponse.from(employee);
     }
 
@@ -119,5 +139,34 @@ public class EmployeeProvisioningService {
         employee.markDeleted(callerId == null ? "system" : callerId.toString());
 
         authClient.disable(id);
+    }
+
+    /**
+     * 사용자 비활성화 — Phase 10 P0-5 admin endpoint.
+     *
+     * <p>terminate 와 구분: terminate 는 영구 퇴사 + soft-delete + auth-service disable 까지 수행.
+     * 본 메서드는 일시 비활성화 — Employee.terminationDate = today 로 표시만 (soft-delete X).
+     * 향후 enable 호출 시 즉시 복구 가능. auth-service 토큰 무효화는 W11 backlog.
+     */
+    public EmployeeResponse disable(UUID id, UUID callerId) {
+        Employee employee = employeeRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "직원을 찾을 수 없습니다"));
+        employee.terminate(LocalDate.now());
+        log.info("Employee disabled — id={} callerId={}", id, callerId);
+        return EmployeeResponse.from(employee);
+    }
+
+    /**
+     * 사용자 재활성화 — Phase 10 P0-5 admin endpoint.
+     *
+     * <p>{@link #disable(UUID, UUID)} 의 역연산. terminationDate 만 null 로 복원. 영구 퇴사
+     * (soft-delete) 된 직원은 본 메서드로 복구 불가 — 별도 SQL 필요.
+     */
+    public EmployeeResponse enable(UUID id, UUID callerId) {
+        Employee employee = employeeRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "직원을 찾을 수 없습니다"));
+        employee.terminate(null);
+        log.info("Employee enabled — id={} callerId={}", id, callerId);
+        return EmployeeResponse.from(employee);
     }
 }

@@ -105,6 +105,18 @@ export default defineConfig({
         baseURL: process.env.QA_ORDER_APP_URL ?? 'http://localhost:5184',
       },
     },
+    {
+      // Phase 10 Step 8 — 9 슬라이스 통합 PR smoke
+      // (P0-2/P0-4/P0-5/P1-5/P1-8/P2-1/P2-4/P2-6 + 인쇄 5건 — 시나리오 ~160 case)
+      // 본 project 는 typecheck + backend health gate + spec inventory 검증만 수행.
+      // 실제 case 별 spec 은 후속 DevOps PR 에서 점진 추가.
+      name: 'nine-slice-smoke',
+      testMatch: [/.*\/nine-slice\/.*\.spec\.ts/],
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.QA_DESKTOP_URL ?? 'http://localhost:5173',
+      },
+    },
   ],
 
   outputDir: 'test-results/',

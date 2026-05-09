@@ -1,0 +1,152 @@
+package com.samhanair.logis.accounting.it;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.accounting.AccountingServiceApplication;
+import com.samhanair.logis.accounting.client.SlipServiceClient;
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * MonthEndCloseController IT (Phase 10 Step 8 — P2-4 매출 마감).
+ *
+ * <p>3 시나리오:
+ *
+ * <ol>
+ *   <li>open/closed 상태: DAILY 마감 → 201 + status CLOSED</li>
+ *   <li>마감 후 분개 입력 차단: 동일 일자 분개 POST → 409 (AccountingPeriodGuard)</li>
+ *   <li>reverse 권한: ACCOUNTANT 403, MASTER 200</li>
+ * </ol>
+ *
+ * <p>외부 client (SlipServiceClient) {@code @MockBean} 격리 — lockedCount=10 stub.
+ */
+@SpringBootTest(classes = AccountingServiceApplication.class)
+@AutoConfigureMockMvc
+@Transactional
+class MonthEndCloseControllerIT extends AbstractPostgresIT {
+
+    @Autowired private MockMvc mockMvc;
+    @Autowired private ObjectMapper objectMapper;
+
+    @MockBean private SlipServiceClient slipServiceClient;
+
+    @Test
+    @DisplayName("close — DAILY 정상 201, slip-service 호출 + lockedCount stamp")
+    void closeDaily() throws Exception {
+        Mockito.when(slipServiceClient.lockByPeriod(Mockito.any(), Mockito.any())).thenReturn(10);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("periodType", "DAILY");
+        body.put("periodDate", "2026-05-09");
+        body.put("description", "5월 9일 일별 마감");
+
+        mockMvc.perform(post("/accounting/closings")
+                        .header("X-User-Id", "accountant-1")
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("CLOSED"))
+                .andExpect(jsonPath("$.data.closedBy").value("accountant-1"))
+                .andExpect(jsonPath("$.data.lockedSlipCount").value(10));
+    }
+
+    @Test
+    @DisplayName("마감 후 동일 일자 분개 입력 차단 — AccountingPeriodGuard 409 CONFLICT")
+    void postClosingBlocksJournal() throws Exception {
+        Mockito.when(slipServiceClient.lockByPeriod(Mockito.any(), Mockito.any())).thenReturn(0);
+
+        // 1) DAILY 마감
+        Map<String, Object> closingBody = new HashMap<>();
+        closingBody.put("periodType", "DAILY");
+        closingBody.put("periodDate", "2026-05-08");
+        mockMvc.perform(post("/accounting/closings")
+                        .header("X-User-Id", "accountant-1")
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(closingBody)))
+                .andExpect(status().isCreated());
+
+        // 2) 같은 일자 분개 POST → guard 가 409
+        mockMvc.perform(post("/accounting/journals")
+                        .header("X-User-Id", "accountant-1")
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(balancedJournal("2026-05-08"))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("reverse — ACCOUNTANT 403, MASTER 200")
+    void reverseAuthMatrix() throws Exception {
+        Mockito.when(slipServiceClient.lockByPeriod(Mockito.any(), Mockito.any())).thenReturn(0);
+
+        // 1) 마감 1건 생성
+        Map<String, Object> closingBody = new HashMap<>();
+        closingBody.put("periodType", "MONTHLY");
+        closingBody.put("periodDate", "2026-04-01");
+        MvcResult cr = mockMvc.perform(post("/accounting/closings")
+                        .header("X-User-Id", "accountant-1")
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(closingBody)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String id = objectMapper.readTree(cr.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        // 2) ACCOUNTANT reverse → 403
+        mockMvc.perform(post("/accounting/closings/" + id + "/reverse")
+                        .header("X-User-Id", "accountant-1")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isForbidden());
+
+        // 3) MASTER reverse → 200, status OPEN
+        mockMvc.perform(post("/accounting/closings/" + id + "/reverse")
+                        .header("X-User-Id", "master-1")
+                        .header("X-User-Role", "MASTER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("OPEN"))
+                .andExpect(jsonPath("$.data.reversedBy").value("master-1"));
+    }
+
+    private Map<String, Object> balancedJournal(String date) {
+        Map<String, Object> debitLine = new HashMap<>();
+        debitLine.put("accountCode", "101");
+        debitLine.put("debitAmount", new BigDecimal("10000"));
+        debitLine.put("creditAmount", BigDecimal.ZERO);
+
+        Map<String, Object> creditLine = new HashMap<>();
+        creditLine.put("accountCode", "401");
+        creditLine.put("debitAmount", BigDecimal.ZERO);
+        creditLine.put("creditAmount", new BigDecimal("10000"));
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("journalDate", date);
+        body.put("description", "마감 차단 테스트");
+        body.put("lines", List.of(debitLine, creditLine));
+        return body;
+    }
+
+    @SuppressWarnings("unused")
+    private static UUID anyUuid() {
+        return UUID.randomUUID();
+    }
+}

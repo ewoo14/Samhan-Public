@@ -1,6 +1,8 @@
 package com.samhanair.logis.partner.controller;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.partner.domain.PartnerStatus;
+import com.samhanair.logis.partner.dto.AdminPartnerListResponse;
 import com.samhanair.logis.partner.dto.CreditHistoryResponse;
 import com.samhanair.logis.partner.dto.PartnerAdminRequest;
 import com.samhanair.logis.partner.dto.PartnerAdminResponse;
@@ -14,7 +16,9 @@ import java.security.Principal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -83,6 +88,30 @@ public class PartnerAdminController {
         Page<PartnerSummaryResponse> page = partnerService.findAll(pageable)
                 .map(PartnerSummaryResponse::from);
         return ApiResponse.ok(page);
+    }
+
+    /**
+     * 거래처 admin 검색 — Phase 10 P0-5 (q + status 필터 + 페이지네이션).
+     *
+     * <p>frontend {@code /admin/partners} 화면 backing — q (partnerCode/name/bizNo/phone LIKE) +
+     * type (PartnerStatus 필터). UUID 비공개 — 응답은 {@link AdminPartnerListResponse} (items =
+     * partnerCode 등 비즈니스 식별자만).
+     *
+     * <p>{@code GET /admin/partners} (위 {@link #findAll(Pageable)}) 와 별도 — 본 endpoint 는
+     * 검색 / 필터 화면용, 위 endpoint 는 Spring Data {@link Page} raw 응답.
+     */
+    @Operation(summary = "거래처 admin 검색 (Phase 10 P0-5)",
+            description = "q + type(status) 필터. items / total / page / size 형식 응답.")
+    @GetMapping("/search")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<AdminPartnerListResponse> search(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) PartnerStatus type) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "partnerCode"));
+        return ApiResponse.ok(AdminPartnerListResponse.from(
+                partnerService.searchAdmin(q, type, pageable)));
     }
 
     /**
