@@ -49,7 +49,7 @@ export function InvoiceView() {
 
   return (
     <PrintLayout paper="a4-portrait" backTo={`/sales/${id}`}>
-      <div className="invoice-v2">
+      <div className="invoice-v2" data-testid="invoice-print-area">
         {/* 헤더: 좌(로고 + 회사 정보) | 우(발행일 + 거래처) */}
         <header className="invoice-v2-header">
           <div className="invoice-v2-supplier">

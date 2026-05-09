@@ -144,6 +144,7 @@ export function AppLayout() {
               <NavLink to="/accounting/accounts">계정과목</NavLink>
               <NavLink to="/accounting/journals">분개장</NavLink>
               <NavLink to="/accounting/balances">시산표</NavLink>
+              <NavLink to="/warehouse/closing">매출 마감</NavLink>
             </>
           ) : null}
 

@@ -64,7 +64,7 @@ export function QuoteView() {
 
   return (
     <PrintLayout paper="a4-portrait" backTo={`/sales/estimates/${estimateNumber}`}>
-      <div className="quote-page">
+      <div className="quote-page" data-testid="quote-print-area">
         <header className="quote-header">
           <div className="quote-supplier">
             <img className="quote-logo" src={COMPANY.logoPath} alt={COMPANY.legalName} />

@@ -73,6 +73,8 @@ import { PasswordChangePage } from './PasswordChangePage'
 // [Phase 10 P1-5] arologis 수동 배차 admin UI (DISPATCH/MASTER 가드 — backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
 import { ArologisManualDispatchPage } from './ArologisManualDispatchPage'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
+// [Phase 10 P2-4 / slice 8] 매출 마감 — 일별/월별 (ACCOUNTANT/MASTER 진입, 역마감은 MASTER 만)
+import { MonthEndClosingPage } from './MonthEndClosingPage'
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
@@ -111,9 +113,8 @@ const router = createHashRouter([
       { path: '/sales/:id', element: <SlipDetailPage mode="OUTBOUND" /> },
       { path: '/sales/:id/print/invoice', element: <InvoiceView /> },
       { path: '/sales/:id/print/dispatch', element: <DispatchView /> },
-      // P0-4 신규 — 출고전표 (88mm/A4 분기) + 세금계산서 (e-Tax 표준)
+      // P0-4 신규 — 출고전표 (88mm/A4 분기). 세금계산서는 별도 accounting-service id 라우트로 이전.
       { path: '/sales/:id/print/outbound', element: <OutboundView /> },
-      { path: '/sales/:id/print/tax-invoice', element: <TaxInvoiceView /> },
       // P0-4 신규 — 견적서 인쇄 (estimateNumber path param)
       { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
 
@@ -188,6 +189,27 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={ARO_MANUAL_DISPATCH_ROLES}>
             <ArologisManualDispatchPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 10 P2-4 / slice 8] 매출 마감 — 매뉴얼 docs/manual/02-창고/04-매출-마감.md 경로 일치.
+      // 진입 가드 ACCOUNTANT/MASTER (역마감 버튼은 페이지 내부에서 MASTER 만 노출).
+      {
+        path: '/warehouse/closing',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <MonthEndClosingPage />
+          </RoleGuard>
+        ),
+      },
+
+      // P0-4 신규 — 세금계산서 인쇄 미리보기 (accounting-service tax-invoice id, slice 3 BE 연결).
+      {
+        path: '/accounting/tax-invoices/:id/print',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <TaxInvoiceView />
           </RoleGuard>
         ),
       },

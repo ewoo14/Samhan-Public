@@ -67,7 +67,7 @@ export function InboundView() {
       showFormatToggle
       onToggleFormat={() => setPaper((p) => (p === 'receipt-88mm' ? 'a4-portrait' : 'receipt-88mm'))}
     >
-      <div className={`inbound-page inbound-${variant}`}>
+      <div className={`inbound-page inbound-${variant}`} data-testid="inbound-print-area">
         <header className="inbound-header">
           <div className="inbound-company-row">
             <img className="inbound-logo" src={COMPANY.logoPath} alt={COMPANY.legalName} />

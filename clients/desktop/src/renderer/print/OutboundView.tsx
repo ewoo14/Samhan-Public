@@ -70,7 +70,7 @@ export function OutboundView() {
       showFormatToggle
       onToggleFormat={() => setPaper((p) => (p === 'receipt-88mm' ? 'a4-portrait' : 'receipt-88mm'))}
     >
-      <div className={`outbound-page outbound-${variant}`}>
+      <div className={`outbound-page outbound-${variant}`} data-testid="outbound-print-area">
         <header className="outbound-header">
           <div className="outbound-company">{COMPANY.legalName}</div>
           <h1 className="outbound-title">출 고 전 표</h1>
