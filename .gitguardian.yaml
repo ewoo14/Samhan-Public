@@ -1,0 +1,27 @@
+# GitGuardian config — dev-only test 비밀번호 자동 ignore
+# 가드: feedback_gitguardian_false_positive (메모리)
+#
+# 본 config 는 dev-only test 비밀번호 (이미 main 의 docker-compose.yml /
+# OrgChartSeeder.java 등에 평문 존재) 를 PR 신규 commit 에서 재언급 시 자동 ignore.
+# Phase 11 AWS cutover 시점에 모든 dev secret rotation 의무.
+
+version: 2
+
+secret:
+  # 무시할 파일 경로 패턴 (dev-only 인프라 + docs 한정)
+  ignored-paths:
+    - "infrastructure/scripts/start-local-full.ps1"
+    - "infrastructure/scripts/stop-local-full.ps1"
+    - "infrastructure/env-templates/.env.dev-seed"
+    - "docs/migration/ecount-reference/**"
+    - "docs/qa/**"
+    - "docs/dev-reports/**"
+
+  # 무시할 secret pattern (dev-only test password)
+  ignored-matches:
+    - name: "DB dev password (samhan_dev_pw) — docker-compose default"
+      match: "samhan_dev_pw"
+    - name: "Master seed dev password (samhan!2026) — OrgChartSeeder"
+      match: "samhan!2026"
+    - name: "Internal token dev placeholder"
+      match: "dev-internal-token-change-me"
