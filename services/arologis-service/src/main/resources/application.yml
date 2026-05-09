@@ -8,8 +8,9 @@ spring:
     # 시크릿 placeholder — DB 자격증명은 반드시 환경변수로 주입.
     # Phase 10 W10-1 chained-default — SAMHAN_AROLOGIS_DB_* 우선, LEGACY_DB_* legacy fallback.
     url: jdbc:postgresql://${SAMHAN_AROLOGIS_DB_HOST:${LEGACY_DB_HOST:localhost}}:${SAMHAN_AROLOGIS_DB_PORT:${LEGACY_DB_PORT:5432}}/${SAMHAN_AROLOGIS_DB_NAME:${LEGACY_DB_NAME:arologis_db}}
-    username: ${SAMHAN_AROLOGIS_DB_USER:${LEGACY_DB_USER:CHANGE_ME_LOCAL_ONLY}}
-    password: ${SAMHAN_AROLOGIS_DB_PASSWORD:${LEGACY_DB_PASSWORD:CHANGE_ME_LOCAL_ONLY}}
+    # W10-5 회고 — chained-default + samhan default fallback (env 미설정 시 connection refused 회피)
+    username: ${SAMHAN_AROLOGIS_DB_USER:${LEGACY_DB_USER:${DB_USER:samhan}}}
+    password: ${SAMHAN_AROLOGIS_DB_PASSWORD:${LEGACY_DB_PASSWORD:${DB_PASSWORD:samhan_dev_pw}}}
   jpa:
     hibernate:
       ddl-auto: validate

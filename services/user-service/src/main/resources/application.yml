@@ -32,7 +32,8 @@ app:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
   user:
-    seed-org: ${USER_SEED_ORG:false}
+    # W10-5 회고 — env 변수 prefix 통일 (SAMHAN_USER_SEED_ORG 우선, USER_SEED_ORG legacy fallback).
+    seed-org: ${SAMHAN_USER_SEED_ORG:${USER_SEED_ORG:false}}
 
 management:
   endpoints:
