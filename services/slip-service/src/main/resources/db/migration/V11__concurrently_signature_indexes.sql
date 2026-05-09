@@ -1,31 +1,39 @@
 -- V11__concurrently_signature_indexes.sql
 -- Slip Service — Phase 10 W10-4 잔존 fix (PR #99) — DV-2 운영 가드 흡수 (D-P10-15 사용자 강화 가드 채택)
 --
--- 목적:
---   V10 의 ix_slips_signature_source_app / ix_slips_driver_signature_source_app 2종 partial index 를
---   CONCURRENTLY 변형으로 재생성한다. ACCESS EXCLUSIVE lock 회피 + 대용량 slips 테이블 (~1M+ rows)
---   영향 최소화 (Phase 11 cutover 진입 시점 운영 RDS Aurora 부하 안전성).
+-- ⚠️ HOTFIX (2026-05-09): CONCURRENTLY 제거 — `idle in transaction` deadlock 회귀 차단.
 --
--- 운영 진입 시 Flyway 동작:
---   * Flyway 는 기본적으로 transaction 내부에서 마이그레이션 실행 — Postgres 의 CREATE INDEX
---     CONCURRENTLY 는 transaction block 내부 실행 불가.
---   * 본 파일과 동일 디렉토리의 V11__concurrently_signature_indexes.sql.conf 가 executeInTransaction=false
---     설정으로 본 SQL 의 transaction 진입을 차단한다 (Flyway 9.x+ script-config 표준 패턴).
+-- 회귀 사고 history:
+--   * PR #99 CI: slip-it-* group 60분 timeout (3차/4차/5차/6차 모두 fail) — V11 적용 후 발생
+--   * PR #100 머지 후 로컬 docker-compose 환경 검증: V11 hang 47분 (slip-service fail)
+--   * 진단: PostgreSQL CREATE INDEX CONCURRENTLY 가 다른 connection 의 idle transaction 을 무한 대기
+--           (virtualxid lock). Flyway 의 schema check connection (PID N) 이 transaction 을 잡고
+--           release 안 하면 V11 의 CONCURRENTLY connection 이 deadlock.
+--
+-- 본 fix:
+--   * CONCURRENTLY 제거 → 일반 CREATE INDEX 사용
+--   * 일반 CREATE INDEX = ACCESS EXCLUSIVE lock 잠시 (~ms 수준, 인덱스 빌드 동안)
+--   * 운영 cutover 시점 slips 테이블 row 수에 따라 lock 시간 비례 (~1M rows 시 1-3초 추정)
+--   * 1M rows 누적 전까지는 무시할 수준의 lock 영향
+--
+-- 운영 lock 영향 (production 시점):
+--   * Phase 11 AWS cutover 시점 → slips 테이블 ~10K rows 추정 → lock < 100ms
+--   * 1M+ rows 누적 시 → 별도 maintenance window 또는 V<후속> 으로 CONCURRENTLY 재시도
+--   * V10 의 partial index 와 동일 효과, 다만 빌드 시간만 차이
 --
 -- 회귀 영향:
---   * V10 의 partial WHERE 절 (is_deleted = FALSE AND signature_source = 'APP' AND signed_at IS NOT NULL) 보존.
---   * IF EXISTS / IF NOT EXISTS 가드 — 신규 환경 (V10 적용 직후) 과 운영 환경 (V10 + 대용량 데이터) 모두 호환.
---   * dev/staging 환경에서는 partial index 가 대용량 lock 영향이 거의 없으므로 본 마이그레이션이
---     의미 있는 차이를 만드는 시점은 production cutover (signatures 테이블 ~1M rows 누적 후).
+--   * V10 의 partial WHERE 절 (is_deleted = FALSE AND signature_source = 'APP' AND signed_at IS NOT NULL) 보존
+--   * IF EXISTS / IF NOT EXISTS 가드 — 신규 환경 (V10 적용 직후) 과 운영 환경 모두 호환
+--   * V11.sql.conf (executeInTransaction=false) 는 유지 — 향후 CONCURRENTLY 재도입 시 활용
 --
--- dev-report § 11-3 (Flyway V10/V11 lock 영향 시뮬레이션) + § 11-1 (signature_source 운영 데이터 분류 검증) 참조.
+-- dev-report § 11-3 (Flyway V10/V11 lock 영향 시뮬레이션) 갱신 의무.
 
 ----------------------------------------------------------------------
 -- 1) ix_slips_signature_source_app — 인수자 APP 서명 partial index 재생성
 ----------------------------------------------------------------------
 DROP INDEX IF EXISTS ix_slips_signature_source_app;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_slips_signature_source_app
+CREATE INDEX IF NOT EXISTS ix_slips_signature_source_app
     ON slips (signed_at DESC)
     WHERE is_deleted = FALSE AND signature_source = 'APP' AND signed_at IS NOT NULL;
 
@@ -34,6 +42,6 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_slips_signature_source_app
 ----------------------------------------------------------------------
 DROP INDEX IF EXISTS ix_slips_driver_signature_source_app;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_slips_driver_signature_source_app
+CREATE INDEX IF NOT EXISTS ix_slips_driver_signature_source_app
     ON slips (driver_signed_at DESC)
     WHERE is_deleted = FALSE AND driver_signature_source = 'APP' AND driver_signed_at IS NOT NULL;
