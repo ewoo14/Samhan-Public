@@ -1,0 +1,91 @@
+package com.samhanair.logis.slip.estimate.service;
+
+import com.samhanair.logis.slip.domain.Slip;
+import com.samhanair.logis.slip.domain.SlipLine;
+import com.samhanair.logis.slip.domain.SlipSourceType;
+import com.samhanair.logis.slip.estimate.domain.Estimate;
+import com.samhanair.logis.slip.estimate.domain.EstimateLine;
+import com.samhanair.logis.slip.repository.SlipRepository;
+import com.samhanair.logis.slip.service.SlipNumberService;
+import java.time.LocalDate;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+/**
+ * 견적서 → 슬립 자동 변환 — P2-1 (Stage 4) EstimateService.convert 가 호출.
+ *
+ * <p>변환 정책:
+ * <ul>
+ *   <li>EstimateStatus.ACCEPTED → 본 converter 호출 → Slip(OUTBOUND DRAFT) 자동 발행</li>
+ *   <li>견적의 partnerId / partnerName / memo 를 Slip 으로 그대로 snapshot</li>
+ *   <li>견적의 estimate_lines (lineNo 순) → slip_lines 1:1 매핑</li>
+ *   <li>Slip.assignPublishSource(ESTIMATE, estimateNo) — 발행 출처 추적 (Phase 6 M5 패턴 일관)</li>
+ *   <li>Slip 채번 = SlipNumberService (slip 채번 시퀀스 사용)</li>
+ *   <li>sourceWarehouseId 는 기본 null — 영업이 SlipForm 수정 시 채움 (현 슬라이스 정책)</li>
+ * </ul>
+ *
+ * <p>본 service 는 단순 mapping 만 담당 — Estimate.markConverted(slipId) 호출은 EstimateService.
+ */
+@Service
+@RequiredArgsConstructor
+public class EstimateToSlipConverter {
+
+    private final SlipRepository slipRepository;
+    private final SlipNumberService slipNumberService;
+
+    /**
+     * 견적 → Slip(OUTBOUND DRAFT) 변환.
+     *
+     * <p>변환된 슬립은 {@link SlipSourceType#ESTIMATE} 발행 출처로 기록되며 sourceId 에
+     * 견적번호({@link Estimate#getEstimateNo}) 가 들어간다.
+     *
+     * @param estimate 변환 대상 (status == ACCEPTED 가드는 호출자 EstimateService 책임)
+     * @return 영속화된 Slip(OUTBOUND DRAFT)
+     */
+    public Slip convert(Estimate estimate) {
+        LocalDate slipDate = LocalDate.now();
+        String slipNo = slipNumberService.next(slipDate);
+        int seqNo = slipNumberService.extractSeqNo(slipNo);
+
+        // sourceWarehouseId 는 nullable 허용 안 함 (Slip.createOutbound 가드) — 임시 placeholder UUID
+        // 사용. 영업이 SlipForm 으로 정확한 창고 지정 후 SAVED 단계 진행. 현재 슬라이스 정책.
+        // 운영 cutover 시점 default warehouse 정책 도입 가능 (별도 설정).
+        java.util.UUID defaultWarehouseId = java.util.UUID.fromString(
+                "00000000-0000-0000-0000-000000000001");
+
+        Slip slip = Slip.createOutbound(slipNo, slipDate, seqNo,
+                defaultWarehouseId,
+                null,
+                estimate.getPartnerId(),
+                estimate.getPartnerName(),
+                null,
+                buildSlipMemo(estimate),
+                estimate.getRequesterId());
+
+        // estimate_lines → slip_lines 1:1 copy (lineNo 순)
+        for (EstimateLine line : estimate.getLines()) {
+            slip.addLine(SlipLine.create(slip,
+                    line.getProductId(),
+                    line.getProductName(),
+                    line.getModelName(),
+                    line.getSpecification(),
+                    line.getQuantity(),
+                    line.getUnitPrice(),
+                    line.getNote()));
+        }
+
+        // 발행 출처 — Phase 6 M5 패턴 일관 (sourceType=ESTIMATE, sourceId=견적번호)
+        slip.assignPublishSource(SlipSourceType.ESTIMATE, estimate.getEstimateNo(), null);
+
+        return slipRepository.save(slip);
+    }
+
+    private String buildSlipMemo(Estimate estimate) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[견적변환: ").append(estimate.getEstimateNo()).append("]");
+        if (estimate.getMemo() != null && !estimate.getMemo().isBlank()) {
+            sb.append(" ").append(estimate.getMemo());
+        }
+        return sb.toString();
+    }
+}

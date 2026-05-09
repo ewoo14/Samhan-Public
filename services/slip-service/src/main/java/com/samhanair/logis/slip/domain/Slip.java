@@ -278,6 +278,23 @@ public class Slip extends BaseEntity {
     @Column(name = "driver_signature_source", nullable = false, length = 20)
     private SignatureSource driverSignatureSource = SignatureSource.LINK;
 
+    /**
+     * 회계 마감 lock — V14 migration 신규.
+     *
+     * <p>accounting-service 가 {@code POST /slips/lock-by-period} Feign 호출 시 해당 기간
+     * CONFIRMED 슬립을 일괄 lock_flag=true 로 update. lock 된 슬립은 reject/cancel 도메인 메서드가
+     * CONFLICT 던짐 (마감 후 매출 정정 차단).
+     *
+     * <p>정책:
+     * <ul>
+     *   <li>lock_flag = true → 도메인 mutation (reject / cancel) 차단</li>
+     *   <li>lock_flag = false (DEFAULT) → 정상 도메인 라이프사이클</li>
+     *   <li>lock 해제는 별도 admin endpoint 필요 (현 슬라이스 미구현 — 정식 cutover 시점 결정)</li>
+     * </ul>
+     */
+    @Column(name = "lock_flag", nullable = false)
+    private Boolean lockFlag = Boolean.FALSE;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -604,6 +621,7 @@ public class Slip extends BaseEntity {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "반려 가능한 상태가 아닙니다: " + this.status);
         }
+        requireNotLocked();
         this.status = SlipStatus.REJECTED;
         if (reasonText != null && !reasonText.isBlank()) {
             String prefix = "[반려: " + reasonText + "] ";
@@ -623,7 +641,38 @@ public class Slip extends BaseEntity {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "취소 가능한 상태가 아닙니다: " + this.status);
         }
+        requireNotLocked();
         this.status = SlipStatus.CANCELED;
+    }
+
+    /**
+     * 회계 마감 lock 적용 — V14 migration 신규.
+     *
+     * <p>accounting-service Feign 호출 ({@code POST /slips/lock-by-period}) 시점에 SlipService 가
+     * 일괄 호출. CONFIRMED 슬립만 lock 권장 (운영 정책 — 도메인 강제 X, service 레이어 가드).
+     * 이미 lock 된 슬립은 재호출 idempotent (no-op).
+     */
+    public void lock() {
+        this.lockFlag = Boolean.TRUE;
+    }
+
+    /**
+     * 회계 마감 lock 해제 — 운영 권한자 한정 (현 슬라이스 미공개 endpoint).
+     */
+    public void unlock() {
+        this.lockFlag = Boolean.FALSE;
+    }
+
+    /**
+     * 마감 lock 가드 — reject / cancel 등 mutation 직전에 호출.
+     *
+     * @throws BusinessException(CONFLICT) lock_flag = true 일 때
+     */
+    private void requireNotLocked() {
+        if (Boolean.TRUE.equals(this.lockFlag)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "마감 처리된 슬립은 변경할 수 없습니다 (lock_flag=true)");
+        }
     }
 
     // ---------- Slice C (signature-slice-C) — 인수자 전자서명 라이프사이클 ----------

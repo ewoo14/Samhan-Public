@@ -83,4 +83,19 @@ public interface SlipRepository extends JpaRepository<Slip, UUID> {
      */
     org.springframework.data.domain.Page<Slip> findAllByPartnerIdAndIsDeletedFalseOrderBySlipDateDescSeqNoDesc(
             UUID partnerId, org.springframework.data.domain.Pageable pageable);
+
+    // ---- P1-8 (Stage 4) — accounting-service lock-by-period 의존 ----
+
+    /**
+     * 기간 + 상태 + lock_flag 조합 조회 — POST /slips/lock-by-period 의 source.
+     * accounting-service 가 마감 기간 CONFIRMED 슬립을 일괄 lock 처리할 때 본 메서드로 lookup.
+     *
+     * @param startDate 기간 시작일 (포함)
+     * @param endDate 기간 종료일 (포함)
+     * @param status 대상 상태 (일반적으로 CONFIRMED)
+     * @return 기간 내 해당 status + lock_flag=false 슬립 (이미 lock 된 슬립은 idempotent 제외)
+     */
+    List<Slip> findAllBySlipDateBetweenAndStatusAndLockFlagFalseAndIsDeletedFalse(
+            java.time.LocalDate startDate, java.time.LocalDate endDate,
+            SlipStatus status);
 }

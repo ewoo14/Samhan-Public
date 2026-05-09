@@ -372,6 +372,36 @@ public class SlipService {
         return page.map(SlipResponse::from);
     }
 
+    /**
+     * 기간 마감 lock — accounting-service Feign 호출용 (P1-8 Stage 4 신규).
+     *
+     * <p>기간(startDate~endDate, 포함) 내 지정 status 의 slip 중 lock_flag=false 인 슬립을
+     * 일괄 lock_flag=true 로 update. 이미 lock 된 슬립은 자동 제외 (idempotent).
+     *
+     * <p>일반적으로 status=CONFIRMED 호출 — 회계 마감 후 매출 정정 차단.
+     *
+     * @param startDate 기간 시작일 (포함)
+     * @param endDate 기간 종료일 (포함)
+     * @param status 대상 상태 (default CONFIRMED — service 호출자 책임)
+     * @return lock 된 슬립 건수
+     */
+    public int lockByPeriod(LocalDate startDate, LocalDate endDate, SlipStatus status) {
+        if (startDate == null || endDate == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "startDate/endDate 는 필수입니다");
+        }
+        if (status == null) {
+            status = SlipStatus.CONFIRMED;
+        }
+        List<Slip> targets = slipRepository
+                .findAllBySlipDateBetweenAndStatusAndLockFlagFalseAndIsDeletedFalse(
+                        startDate, endDate, status);
+        for (Slip slip : targets) {
+            slip.lock();
+        }
+        return targets.size();
+    }
+
     private Slip loadOrThrow(UUID id) {
         return slipRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "전표를 찾을 수 없습니다"));

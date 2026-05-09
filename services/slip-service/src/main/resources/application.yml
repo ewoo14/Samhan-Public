@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: slip-service
+  servlet:
+    multipart:
+      # P1-8 (Stage 4) 슬립 첨부 사진 — 단일 파일 ≤5MB, 배송 사진 자동 압축 권장
+      max-file-size: 5MB
+      max-request-size: 6MB
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:slip_db}
     username: ${DB_USER:samhan}
@@ -32,6 +37,15 @@ app:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
   slip:
+    # P1-8 (Stage 4) — 슬립 첨부 MinIO bucket. default false → NoopSlipAttachmentStorage fallback.
+    # DevOps 가 별도 dispatch 로 bucket `slip-attachments` 생성. 활성 시 MinioSlipAttachmentStorage 주입.
+    minio:
+      enabled: ${SAMHAN_SLIP_MINIO_ENABLED:false}
+      endpoint: ${SAMHAN_SLIP_MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${SAMHAN_SLIP_MINIO_ACCESS_KEY:samhan}
+      secret-key: ${SAMHAN_SLIP_MINIO_SECRET_KEY:samhan_dev_pw}
+      bucket: ${SAMHAN_SLIP_MINIO_BUCKET:slip-attachments}
+      presigned-expiry-seconds: 3600
     # feature/local-test-setup Stage 2 — Slip 100건 + SlipLine ~300건 + DeliveryBatch 30건 시드.
     # SlipSeeder + DeliveryBatchSeeder 가 동일 toggle 공유 (slip → batch 순서, @Order 20/30).
     # dev profile + true 시에만 활성. CI/prod 기본 OFF (idempotent — 안전 재실행).
