@@ -65,6 +65,29 @@ public class SlipLine extends BaseEntity {
     @Column(name = "line_total", nullable = false, precision = 17, scale = 2)
     private BigDecimal lineTotal;
 
+    /**
+     * VAT 포함 단가 — feature/local-test-setup Stage 2 이카운트 판매입력 매핑 신규 필드 (V12 migration).
+     * {@code unitPrice * 1.1} (VAT 10%). 모바일 판매입력 화면 "VAT포함단가" 컬럼 1:1.
+     * nullable — 기존 라인 row 호환 (Stage 2 시드/신규 라인만 채움).
+     */
+    @Column(name = "unit_price_with_vat", precision = 15, scale = 2)
+    private BigDecimal unitPriceWithVat;
+
+    /**
+     * 공급가액 — feature/local-test-setup Stage 2 이카운트 판매입력 매핑 신규 필드 (V12 migration).
+     * {@code unitPrice * quantity} (VAT 미포함). nullable — 기존 라인 row 호환.
+     * lineTotal 과 동일 값이지만 의미 상 별도 컬럼 보존 (이카운트 회계 매핑 의도 명시).
+     */
+    @Column(name = "supply_amount", precision = 17, scale = 2)
+    private BigDecimal supplyAmount;
+
+    /**
+     * 부가세 — feature/local-test-setup Stage 2 이카운트 판매입력 매핑 신규 필드 (V12 migration).
+     * {@code supplyAmount * 0.1} (VAT 10%). nullable — 기존 라인 row 호환.
+     */
+    @Column(name = "vat_amount", precision = 15, scale = 2)
+    private BigDecimal vatAmount;
+
     @Column(name = "note", length = 200)
     private String note;
 
@@ -81,6 +104,9 @@ public class SlipLine extends BaseEntity {
         this.unitPrice = unitPrice;
         this.note = note;
         this.lineTotal = computeLineTotal(quantity, unitPrice);
+        this.supplyAmount = this.lineTotal;
+        this.vatAmount = computeVat(this.lineTotal);
+        this.unitPriceWithVat = computeUnitPriceWithVat(unitPrice);
     }
 
     /**
@@ -117,6 +143,8 @@ public class SlipLine extends BaseEntity {
         validatePositive(newQuantity);
         this.quantity = newQuantity;
         this.lineTotal = computeLineTotal(newQuantity, this.unitPrice);
+        this.supplyAmount = this.lineTotal;
+        this.vatAmount = computeVat(this.lineTotal);
     }
 
     /**
@@ -129,6 +157,9 @@ public class SlipLine extends BaseEntity {
         validateUnitPrice(newUnitPrice);
         this.unitPrice = newUnitPrice;
         this.lineTotal = computeLineTotal(this.quantity, newUnitPrice);
+        this.supplyAmount = this.lineTotal;
+        this.vatAmount = computeVat(this.lineTotal);
+        this.unitPriceWithVat = computeUnitPriceWithVat(newUnitPrice);
     }
 
     /**
@@ -152,6 +183,22 @@ public class SlipLine extends BaseEntity {
 
     private static BigDecimal computeLineTotal(int quantity, BigDecimal unitPrice) {
         return unitPrice.multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * 부가세 계산 — Stage 2 이카운트 매핑. {@code supplyAmount * 0.1} (VAT 10%).
+     * 한국 부가세 표준 (HALF_UP rounding, scale 2).
+     */
+    private static BigDecimal computeVat(BigDecimal supplyAmount) {
+        return supplyAmount.multiply(new BigDecimal("0.1")).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * VAT 포함 단가 계산 — Stage 2 이카운트 매핑. {@code unitPrice * 1.1}.
+     * 한국 부가세 표준 (HALF_UP rounding, scale 2).
+     */
+    private static BigDecimal computeUnitPriceWithVat(BigDecimal unitPrice) {
+        return unitPrice.multiply(new BigDecimal("1.1")).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static void validatePositive(int quantity) {
