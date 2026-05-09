@@ -2,8 +2,8 @@ package com.samhanair.logis.discovery;
 
 import com.netflix.discovery.EurekaClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +26,13 @@ import org.springframework.context.annotation.Bean;
  * {@code META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports}
  * 등록. 신규 service (groupware/notification/dashboard) 가 별도 {@code @Import}
  * 없이도 ServiceDiscoveryClient bean 을 자동 주입받는다.
+ *
+ * <p><b>PR #105 회고 fix</b>: 직전 PR #104 의 {@code @ConditionalOnBean(EurekaClient.class)}
+ * 가드는 Spring Boot 의 조기 평가 단계에서 EurekaClient bean 미생성 (lazy init) 으로 판정 →
+ * autoconfig 활성 안 됨 → 정상 startup (eureka.client.enabled=true) 환경에서도 회귀 fail.
+ * 본 fix — {@code @ConditionalOnProperty(eureka.client.enabled, matchIfMissing=true)} 패턴 채택:
+ * - 정상 startup (eureka.client.enabled 미설정 default true 또는 명시 true): 활성 → bean 등록
+ * - IT (eureka.client.enabled=false 명시): 비활성 → bean 미등록 → @MockBean UserClient 패턴 동작
  */
 @AutoConfiguration
 public class DiscoveryConfiguration {
@@ -33,8 +40,7 @@ public class DiscoveryConfiguration {
     @Bean
     @ConditionalOnMissingBean(ServiceDiscoveryClient.class)
     @ConditionalOnClass(name = "com.netflix.discovery.EurekaClient")
-    @ConditionalOnBean(EurekaClient.class)
-    @ConditionalOnProperty(name = "samhan.discovery.provider", havingValue = "eureka", matchIfMissing = true)
+    @ConditionalOnExpression("${eureka.client.enabled:true} and '${samhan.discovery.provider:eureka}'.equals('eureka')")
     public ServiceDiscoveryClient eurekaServiceDiscoveryClient(EurekaClient eurekaClient) {
         return new EurekaServiceDiscoveryClient(eurekaClient);
     }
