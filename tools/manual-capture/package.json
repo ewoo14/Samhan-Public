@@ -1,0 +1,20 @@
+{
+  "name": "@samhan/manual-capture",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SamhanLogis 운영자 매뉴얼용 Playwright 자동 캡처 + Sharp 박스/화살표 어노테이션 인프라 (Phase 10 Step 7).",
+  "type": "commonjs",
+  "scripts": {
+    "capture:desktop": "node capture-desktop.js",
+    "capture:mobile": "node capture-mobile.js",
+    "annotate": "node annotate.js",
+    "all": "node capture-desktop.js && node capture-mobile.js"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "sharp": "^0.33.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
