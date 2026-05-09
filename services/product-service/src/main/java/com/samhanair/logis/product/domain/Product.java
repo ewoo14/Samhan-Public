@@ -168,6 +168,105 @@ public class Product extends BaseEntity {
     @Column(name = "parent_bundle_set_model", length = 64)
     private String parentBundleSetModel;
 
+    // ============================================================
+    // Stage 1 local-test seed — 이카운트 품목 + HVAC 특화 단가 6종 (V5 migration)
+    // 출처: docs/migration/ecount-reference/091955~092016
+    // ============================================================
+
+    /** 이카운트 품목코드 (5자리, 01XXXX). 사용자 노출 식별자 (modelCode 와 별도 — 시트 vs 이카운트). */
+    @Column(name = "product_code", length = 20)
+    private String productCode;
+
+    /** 규격 (예: "13평형 / R32 / 인버터"). */
+    @Column(name = "specification", length = 255)
+    private String specification;
+
+    /** 단위 (EA/SET/M/BOX/KG). default EA. */
+    @Column(name = "unit", length = 20, nullable = false)
+    private String unit = "EA";
+
+    /** 품목구분 (상품/제품/원재료). 도매상은 모두 "상품". */
+    @Column(name = "product_business_type", length = 20, nullable = false)
+    private String productBusinessType = "상품";
+
+    /** 수량관리 여부. */
+    @Column(name = "inventory_qty_mgmt", nullable = false)
+    private Boolean inventoryQtyMgmt = Boolean.TRUE;
+
+    /** 바코드 (한국 EAN-13 13자리 — 880 prefix). */
+    @Column(name = "barcode", length = 20)
+    private String barcode;
+
+    /** 매출 부가세율 (10% = 0.10). */
+    @Column(name = "vat_rate_on_sales", precision = 5, scale = 4, nullable = false)
+    private BigDecimal vatRateOnSales = new BigDecimal("0.10");
+
+    /** 매입 부가세율 (10% = 0.10). */
+    @Column(name = "vat_rate_on_purchase", precision = 5, scale = 4, nullable = false)
+    private BigDecimal vatRateOnPurchase = new BigDecimal("0.10");
+
+    /** VAT 포함 여부 (이카운트 default true). */
+    @Column(name = "price_includes_vat", nullable = false)
+    private Boolean priceIncludesVat = Boolean.TRUE;
+
+    /** 안전재고. */
+    @Column(name = "safety_stock_qty", nullable = false)
+    private Integer safetyStockQty = 0;
+
+    /** 조달기간 (일). default 7. */
+    @Column(name = "lead_time_days", nullable = false)
+    private Integer leadTimeDays = 7;
+
+    /** 최소주문수량. default 1. */
+    @Column(name = "min_order_unit", nullable = false)
+    private Integer minOrderUnit = 1;
+
+    /** 구매처 (예: "삼성전자(주)"). */
+    @Column(name = "purchase_source", length = 100)
+    private String purchaseSource;
+
+    /** 분류1 (Samsung 에어컨 / Samsung 부속). */
+    @Column(name = "product_group1", length = 50)
+    private String productGroup1;
+
+    /** 분류2 (벽걸이/스탠드/시스템/천장형/공기청정기/부속). */
+    @Column(name = "product_group2", length = 50)
+    private String productGroup2;
+
+    // === HVAC 특화 단가 6종 (이카운트 발견 — Stage 1 핵심 보강) ===
+
+    /** 입고단가 — 매입 기준가. */
+    @Column(name = "inbound_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal inboundPrice = BigDecimal.ZERO;
+
+    /** 출고단가 — 일반 출하 기준가. inbound * 1.20. */
+    @Column(name = "outbound_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal outboundPrice = BigDecimal.ZERO;
+
+    /** ⭐ 싱글 단가 — 벽걸이 단일 거래. inbound * 1.50. */
+    @Column(name = "single_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal singlePrice = BigDecimal.ZERO;
+
+    /** ⭐ 실외기 단가 — 원형/스탠드 실외기 교체. inbound * 1.40. */
+    @Column(name = "outdoor_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal outdoorPrice = BigDecimal.ZERO;
+
+    /** ⭐ 멀티 50% 할인가. inbound * 1.10. */
+    @Column(name = "multi_50_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal multi50Price = BigDecimal.ZERO;
+
+    /** ⭐ 멀티 48% 할인가. inbound * 1.12. */
+    @Column(name = "multi_48_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal multi48Price = BigDecimal.ZERO;
+
+    /** ⭐ 멀티 45% 할인가. inbound * 1.15. */
+    @Column(name = "multi_45_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal multi45Price = BigDecimal.ZERO;
+
+    /** ⭐ 단품 35% 할인가. inbound * 1.30. */
+    @Column(name = "item_35_price", precision = 15, scale = 2, nullable = false)
+    private BigDecimal item35Price = BigDecimal.ZERO;
+
     private Product(String name, String modelName, Category category,
                     BigDecimal sellingPrice, BigDecimal purchasePrice, String currency,
                     Map<String, String> tags, String description) {
@@ -328,6 +427,104 @@ public class Product extends BaseEntity {
             validateNonNegative(deliveryPrice, "납품가");
             this.deliveryPrice = deliveryPrice;
         }
+    }
+
+    // ============================================================
+    // Stage 1 — 이카운트 + HVAC 특화 단가 보강 setter
+    // (seed + admin 운영 변경. reflection 직접 접근 금지 가드)
+    // ============================================================
+
+    /** 이카운트 품목 메타 갱신 (productCode/specification/unit/business type/inventoryQty). */
+    public void updateEcountMeta(String productCode, String specification, String unit,
+                                 String productBusinessType, boolean inventoryQtyMgmt,
+                                 String barcode) {
+        this.productCode = productCode;
+        this.specification = specification;
+        if (unit != null && !unit.isBlank()) this.unit = unit;
+        if (productBusinessType != null && !productBusinessType.isBlank()) {
+            this.productBusinessType = productBusinessType;
+        }
+        this.inventoryQtyMgmt = inventoryQtyMgmt;
+        this.barcode = barcode;
+    }
+
+    /** 부가세율 / VAT 포함 여부 갱신. */
+    public void updateVatPolicy(BigDecimal vatRateOnSales, BigDecimal vatRateOnPurchase,
+                                boolean priceIncludesVat) {
+        if (vatRateOnSales != null) {
+            validateNonNegative(vatRateOnSales, "매출 부가세율");
+            this.vatRateOnSales = vatRateOnSales;
+        }
+        if (vatRateOnPurchase != null) {
+            validateNonNegative(vatRateOnPurchase, "매입 부가세율");
+            this.vatRateOnPurchase = vatRateOnPurchase;
+        }
+        this.priceIncludesVat = priceIncludesVat;
+    }
+
+    /** 재고 정책 갱신 (안전재고/조달기간/최소주문/구매처). */
+    public void updateInventoryPolicy(int safetyStockQty, int leadTimeDays,
+                                      int minOrderUnit, String purchaseSource) {
+        if (safetyStockQty < 0) {
+            throw new IllegalArgumentException("safetyStockQty 는 0 이상 필수");
+        }
+        if (leadTimeDays < 0) {
+            throw new IllegalArgumentException("leadTimeDays 는 0 이상 필수");
+        }
+        if (minOrderUnit <= 0) {
+            throw new IllegalArgumentException("minOrderUnit 은 1 이상 필수");
+        }
+        this.safetyStockQty = safetyStockQty;
+        this.leadTimeDays = leadTimeDays;
+        this.minOrderUnit = minOrderUnit;
+        this.purchaseSource = purchaseSource;
+    }
+
+    /** 분류 갱신 (group1 / group2). */
+    public void updateGroups(String productGroup1, String productGroup2) {
+        this.productGroup1 = productGroup1;
+        this.productGroup2 = productGroup2;
+    }
+
+    /**
+     * HVAC 특화 단가 6종 일괄 갱신 (이카운트 매트릭스 룰 적용).
+     *
+     * <p>비즈니스 룰 (Stage 1 dev-report §HVAC 단가 6종 적용 비즈니스 룰):
+     * <ul>
+     *     <li>{@code outbound = inbound * 1.20} (일반 출하)</li>
+     *     <li>{@code single  = inbound * 1.50} (벽걸이 단일 거래)</li>
+     *     <li>{@code outdoor = inbound * 1.40} (실외기 교체)</li>
+     *     <li>{@code multi50 = inbound * 1.10} (멀티 50% 할인)</li>
+     *     <li>{@code multi48 = inbound * 1.12} (멀티 48% 할인)</li>
+     *     <li>{@code multi45 = inbound * 1.15} (멀티 45% 할인)</li>
+     *     <li>{@code item35  = inbound * 1.30} (단품 35% 할인)</li>
+     * </ul>
+     */
+    public void updateHvacPriceMatrix(BigDecimal inboundPrice, BigDecimal outboundPrice,
+                                      BigDecimal singlePrice, BigDecimal outdoorPrice,
+                                      BigDecimal multi50Price, BigDecimal multi48Price,
+                                      BigDecimal multi45Price, BigDecimal item35Price) {
+        validateNonNegative(inboundPrice, "입고단가");
+        validateNonNegative(outboundPrice, "출고단가");
+        validateNonNegative(singlePrice, "싱글단가");
+        validateNonNegative(outdoorPrice, "실외기단가");
+        validateNonNegative(multi50Price, "멀티50단가");
+        validateNonNegative(multi48Price, "멀티48단가");
+        validateNonNegative(multi45Price, "멀티45단가");
+        validateNonNegative(item35Price, "단품35단가");
+        this.inboundPrice = inboundPrice;
+        this.outboundPrice = outboundPrice;
+        this.singlePrice = singlePrice;
+        this.outdoorPrice = outdoorPrice;
+        this.multi50Price = multi50Price;
+        this.multi48Price = multi48Price;
+        this.multi45Price = multi45Price;
+        this.item35Price = item35Price;
+    }
+
+    /** seed/단종 처리 — status 직접 변경 (DISCONTINUED). */
+    public void markDiscontinued() {
+        this.status = ProductStatus.DISCONTINUED;
     }
 
     private static void validateNonNegative(BigDecimal value, String fieldLabel) {

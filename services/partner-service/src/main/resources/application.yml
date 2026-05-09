@@ -39,6 +39,10 @@ app:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 표준, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화).
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+  # Stage 1 local-test seed (PartnerSeeder) toggle. dev profile + 본 toggle 모두 true 인 경우만 50건 seed.
+  # 운영 / staging 데이터 오염 방지 — default false.
+  partner:
+    seed-test-data: ${SAMHAN_PARTNER_SEED_TEST_DATA:false}
 
 management:
   endpoints:

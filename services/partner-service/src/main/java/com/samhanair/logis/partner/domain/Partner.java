@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -25,6 +26,10 @@ import org.hibernate.annotations.UuidGenerator;
  *
  * <p>신용 거래 정보 ({@link #creditLimit} / {@link #outstandingBalance}) 는 {@link PartnerCreditHistory}
  * 의 누적과 본 row 의 캐시값이 일관 보존되어야 한다 (서비스 레이어에서 동일 transaction 으로 갱신).
+ *
+ * <p><b>Stage 1 local-test seed 보강</b> — 이카운트 27 필드 호환 (V2 migration).
+ * 출처: docs/migration/ecount-reference/091522~091604 (거래처 4 탭 캡처).
+ * 신규 필드는 모두 NULLable 또는 기본값 — legacy register() factory 비파괴.
  */
 @Entity
 @Getter
@@ -70,6 +75,126 @@ public class Partner extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private PartnerStatus status;
+
+    // ============================================================
+    // Stage 1 local-test seed — 이카운트 27 필드 보강 (V2 migration)
+    // ============================================================
+
+    /** 종사업장번호 (4자리). 본사외 사업장 보유 시만. */
+    @Column(name = "sub_biz_no", length = 20)
+    private String subBizNo;
+
+    /** 대표자명. */
+    @Column(name = "representative", length = 50)
+    private String representative;
+
+    /** 업태 (제조업/도소매/건설업 등). */
+    @Column(name = "business_type", length = 50)
+    private String businessType;
+
+    /** 종목 (공조설비/냉난방기기 등). */
+    @Column(name = "industry", length = 50)
+    private String industry;
+
+    /** FAX 번호. */
+    @Column(name = "fax", length = 30)
+    private String fax;
+
+    /** email 1 (대표). */
+    @Column(name = "email", length = 120)
+    private String email;
+
+    /** email 2 (보조 — 정산/세무 담당). */
+    @Column(name = "email2", length = 120)
+    private String email2;
+
+    /** 휴대전화. */
+    @Column(name = "mobile", length = 30)
+    private String mobile;
+
+    /** 우편번호 1 (본사). */
+    @Column(name = "zip_code1", length = 10)
+    private String zipCode1;
+
+    /** 주소 1 (본사). 기존 {@link #address} 와 별도 — V2 migration 호환 보존. */
+    @Column(name = "address1", length = 500)
+    private String address1;
+
+    /** 우편번호 2 (배송지). */
+    @Column(name = "zip_code2", length = 10)
+    private String zipCode2;
+
+    /** 주소 2 (배송지). */
+    @Column(name = "address2", length = 500)
+    private String address2;
+
+    /** 검색용 키워드 ("{name} {bizNo} {phone}"). */
+    @Column(name = "search_keyword", length = 500)
+    private String searchKeyword;
+
+    /** 거래처분류1 (VIP거래처/일반거래처/신규거래처). */
+    @Column(name = "partner_group1", length = 50)
+    private String partnerGroup1;
+
+    /** 거래처분류2 (수도권/영남권/호남권/충청권). */
+    @Column(name = "partner_group2", length = 50)
+    private String partnerGroup2;
+
+    /** 홈페이지. */
+    @Column(name = "website", length = 255)
+    private String website;
+
+    /** 통화 (default KRW). */
+    @Column(name = "currency", length = 8, nullable = false)
+    private String currency = "KRW";
+
+    /** 출하 대상 여부 (재고 차감 대상). */
+    @Column(name = "shipment_target", nullable = false)
+    private Boolean shipmentTarget = Boolean.TRUE;
+
+    /** 판매유형 (이카운트 default '기본설정'). */
+    @Column(name = "sales_type", length = 20, nullable = false)
+    private String salesType = "기본설정";
+
+    /** 구매유형 (이카운트 default '기본설정'). */
+    @Column(name = "purchase_type", length = 20, nullable = false)
+    private String purchaseType = "기본설정";
+
+    /** 매출계정 관리 (이카운트 default '기본설정'). */
+    @Column(name = "receivable_no_mgmt", length = 20, nullable = false)
+    private String receivableNoMgmt = "기본설정";
+
+    /** 매입계정 관리 (이카운트 default '기본설정'). */
+    @Column(name = "payable_no_mgmt", length = 20, nullable = false)
+    private String payableNoMgmt = "기본설정";
+
+    /** 출고조정률 (0 ~ 0.05 = 0~5%). */
+    @Column(name = "outbound_adjustment_rate", precision = 5, scale = 4, nullable = false)
+    private BigDecimal outboundAdjustmentRate = BigDecimal.ZERO;
+
+    /** 입고조정률 (0 ~ 0.05 = 0~5%). */
+    @Column(name = "inbound_adjustment_rate", precision = 5, scale = 4, nullable = false)
+    private BigDecimal inboundAdjustmentRate = BigDecimal.ZERO;
+
+    /** 판매단가그룹 (VIP단가/일반단가/신규단가). */
+    @Column(name = "sales_price_group", length = 50)
+    private String salesPriceGroup;
+
+    /** 구매단가그룹 (기본구매단가). */
+    @Column(name = "purchase_price_group", length = 50)
+    private String purchasePriceGroup;
+
+    /** 여신기간 (일) — 30/60/90 분포. */
+    @Column(name = "credit_period_days")
+    private Integer creditPeriodDays;
+
+    /** 결제기한 (일) — 30/45/60 분포. */
+    @Column(name = "payment_due_days")
+    private Integer paymentDueDays;
+
+    /** 등록일자 (회계상 거래시작일 — audit created_at 와 별도). */
+    @Column(name = "registration_date")
+    private LocalDate registrationDate;
 
     private Partner(String partnerCode, String bizNo, String name, String address, String phone,
                     BigDecimal creditLimit) {
@@ -194,5 +319,89 @@ public class Partner extends BaseEntity {
         if (amount == null || amount.signum() <= 0) {
             throw new IllegalArgumentException("amount 는 양수 필수");
         }
+    }
+
+    // ============================================================
+    // Stage 1 — 이카운트 27 필드 보강 메서드 (seed + admin 운영 변경)
+    // ============================================================
+
+    /**
+     * 사업자 정보 보강 (대표자/업태/종목/종사업장).
+     * 회계 신고 / 세금계산서 발행에 필요.
+     */
+    public void updateBusinessProfile(String representative, String businessType,
+                                      String industry, String subBizNo) {
+        this.representative = representative;
+        this.businessType = businessType;
+        this.industry = industry;
+        this.subBizNo = subBizNo;
+    }
+
+    /**
+     * 연락처 채널 갱신 (FAX/email/mobile/email2).
+     */
+    public void updateContactChannels(String fax, String email, String email2, String mobile) {
+        this.fax = fax;
+        this.email = email;
+        this.email2 = email2;
+        this.mobile = mobile;
+    }
+
+    /**
+     * 본사 + 배송지 주소 갱신. 기존 {@link #address} (legacy) 는 호환을 위해 보존.
+     */
+    public void updateAddresses(String zipCode1, String address1,
+                                String zipCode2, String address2) {
+        this.zipCode1 = zipCode1;
+        this.address1 = address1;
+        this.zipCode2 = zipCode2;
+        this.address2 = address2;
+    }
+
+    /** 검색 키워드 직접 설정 ("{name} {bizNo} {phone}" 형식 권장). */
+    public void updateSearchKeyword(String searchKeyword) {
+        this.searchKeyword = searchKeyword;
+    }
+
+    /** 분류 / website 갱신. */
+    public void updateClassification(String partnerGroup1, String partnerGroup2, String website) {
+        this.partnerGroup1 = partnerGroup1;
+        this.partnerGroup2 = partnerGroup2;
+        this.website = website;
+    }
+
+    /**
+     * 여신/단가 정책 갱신 (sales/purchase 그룹 + 여신기간 + 결제기한 + 조정률).
+     */
+    public void updateCreditPolicy(String salesType, String purchaseType,
+                                   String receivableNoMgmt, String payableNoMgmt,
+                                   String salesPriceGroup, String purchasePriceGroup,
+                                   BigDecimal outboundAdjustmentRate, BigDecimal inboundAdjustmentRate,
+                                   Integer creditPeriodDays, Integer paymentDueDays) {
+        if (salesType != null) this.salesType = salesType;
+        if (purchaseType != null) this.purchaseType = purchaseType;
+        if (receivableNoMgmt != null) this.receivableNoMgmt = receivableNoMgmt;
+        if (payableNoMgmt != null) this.payableNoMgmt = payableNoMgmt;
+        this.salesPriceGroup = salesPriceGroup;
+        this.purchasePriceGroup = purchasePriceGroup;
+        if (outboundAdjustmentRate != null) this.outboundAdjustmentRate = outboundAdjustmentRate;
+        if (inboundAdjustmentRate != null) this.inboundAdjustmentRate = inboundAdjustmentRate;
+        this.creditPeriodDays = creditPeriodDays;
+        this.paymentDueDays = paymentDueDays;
+    }
+
+    /** 통화 변경 (KRW 기본). */
+    public void changeCurrency(String currency) {
+        this.currency = (currency == null || currency.isBlank()) ? "KRW" : currency;
+    }
+
+    /** 출하 대상 토글. */
+    public void changeShipmentTarget(boolean shipmentTarget) {
+        this.shipmentTarget = shipmentTarget;
+    }
+
+    /** 회계상 거래시작일 (등록일자) 설정. */
+    public void changeRegistrationDate(LocalDate registrationDate) {
+        this.registrationDate = registrationDate;
     }
 }
