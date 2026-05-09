@@ -1,0 +1,17 @@
+# notification-service test profile override
+#
+# 목적: SpringBootTest IT 환경 한정 설정. main/resources/application.yml 의 모든 설정은
+# Spring Boot 의 test classpath 우선 규칙에 의해 본 파일이 override.
+#
+# 핵심: spring.main.allow-bean-definition-overriding=true
+# - NoopPartnerLookupClient (@Configuration + @Bean + @ConditionalOnMissingBean) 가
+#   @MockBean PartnerLookupClient 보다 먼저 평가되어 동일 type 두 번째 등록 시
+#   BeanDefinitionOverrideException 발생 (Spring Boot 2.1+ default override=false).
+# - test profile 에서만 override 허용 → @MockBean 이 noop bean 을 정상 override.
+# - production application.yml 영향 0.
+#
+# 회고: PR #115 CI run 25605365243 phase9-10 — 553d201 fix 후 15건 IT 추가 회귀
+#   (NotificationAdmin 6 + NotificationInternal 4 + ChatRoomMappingAdmin 5).
+spring:
+  main:
+    allow-bean-definition-overriding: true
