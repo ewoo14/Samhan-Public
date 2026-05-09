@@ -56,4 +56,66 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, UUID> 
             """)
     List<AccountTotal> aggregatePostedByAccount(@Param("from") LocalDate from,
                                                 @Param("to") LocalDate to);
+
+    /**
+     * 거래처 + 계정코드 별 차/대 합계 — PR-E2 BE-A8 매출/수금/채권 집계용.
+     *
+     * <p>POSTED 분개의 라인만 집계. {@code partnerId} 가 NULL 인 라인은 제외 (집계 대상이 아님).
+     * 응답 row 는 [partnerId, accountCode, debitTotal, creditTotal].
+     */
+    @Query("""
+            SELECT l.partnerId AS partnerId,
+                   l.accountCode AS accountCode,
+                   COALESCE(SUM(l.debitAmount), 0) AS debitTotal,
+                   COALESCE(SUM(l.creditAmount), 0) AS creditTotal
+            FROM JournalLine l
+            WHERE l.journal.journalDate >= :from
+              AND l.journal.journalDate <= :to
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+              AND l.partnerId IS NOT NULL
+            GROUP BY l.partnerId, l.accountCode
+            """)
+    List<PartnerAccountTotal> aggregatePostedByPartnerAccount(@Param("from") LocalDate from,
+                                                              @Param("to") LocalDate to);
+
+    /** Spring Data JPA projection — 거래처 + 계정코드 별 차/대 합계. */
+    interface PartnerAccountTotal {
+        UUID getPartnerId();
+        String getAccountCode();
+        BigDecimal getDebitTotal();
+        BigDecimal getCreditTotal();
+    }
+
+    /**
+     * 거래처별 110(외상매출금) 누적 잔액 — A9 원장 데이터의 잔액 컬럼용.
+     *
+     * <p>POSTED 분개 라인만 합. 잔액 = SUM(debit) - SUM(credit).
+     * caller 가 partnerId 별로 호출하거나 batch 로 partnerId IN (..) 을 사용.
+     */
+    @Query("""
+            SELECT l FROM JournalLine l
+            WHERE l.partnerId = :partnerId
+              AND l.accountCode = :accountCode
+              AND l.journal.journalDate <= :asOf
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            ORDER BY l.journal.journalDate ASC, l.journal.journalNo ASC, l.lineNo ASC
+            """)
+    List<JournalLine> findLinesUpTo(@Param("partnerId") UUID partnerId,
+                                    @Param("accountCode") String accountCode,
+                                    @Param("asOf") LocalDate asOf);
+
+    /**
+     * 거래처별 기간 분개 라인 — A9 원장 데이터 (전 계정 통합). POSTED 분개만.
+     */
+    @Query("""
+            SELECT l FROM JournalLine l
+            WHERE l.partnerId = :partnerId
+              AND l.journal.journalDate >= :from
+              AND l.journal.journalDate <= :to
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            ORDER BY l.journal.journalDate ASC, l.journal.journalNo ASC, l.lineNo ASC
+            """)
+    List<JournalLine> findPartnerLinesInRange(@Param("partnerId") UUID partnerId,
+                                              @Param("from") LocalDate from,
+                                              @Param("to") LocalDate to);
 }

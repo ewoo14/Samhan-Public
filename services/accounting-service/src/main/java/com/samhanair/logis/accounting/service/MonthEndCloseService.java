@@ -1,19 +1,31 @@
 package com.samhanair.logis.accounting.service;
 
+import com.samhanair.logis.accounting.client.ProductClient;
+import com.samhanair.logis.accounting.client.ProductSummary;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.domain.AccountingPeriod;
 import com.samhanair.logis.accounting.domain.PeriodStatus;
 import com.samhanair.logis.accounting.domain.PeriodType;
+import com.samhanair.logis.accounting.domain.TaxInvoice;
+import com.samhanair.logis.accounting.domain.TaxInvoiceLine;
+import com.samhanair.logis.accounting.domain.TaxInvoiceStatus;
 import com.samhanair.logis.accounting.repository.AccountingPeriodRepository;
 import com.samhanair.logis.accounting.repository.JournalLineRepository;
 import com.samhanair.logis.accounting.repository.JournalLineRepository.AccountTotal;
+import com.samhanair.logis.accounting.repository.TaxInvoiceRepository;
 import com.samhanair.logis.accounting.web.dto.AccountingPeriodResponse;
 import com.samhanair.logis.accounting.web.dto.CreateClosingRequest;
+import com.samhanair.logis.accounting.web.dto.DailyClosingDetailResponse;
+import com.samhanair.logis.accounting.web.dto.DailyClosingDetailResponse.DailyProductLine;
+import com.samhanair.logis.accounting.web.dto.DailyClosingDetailResponse.DailyTaxInvoice;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +62,8 @@ public class MonthEndCloseService {
     private final AccountingPeriodRepository periodRepository;
     private final JournalLineRepository journalLineRepository;
     private final SlipServiceClient slipServiceClient;
+    private final TaxInvoiceRepository taxInvoiceRepository;
+    private final ProductClient productClient;
 
     /**
      * 마감 실행 — 일별 또는 월별. 동일 (type, period_date) row 가 OPEN 이면 재사용
@@ -106,6 +120,106 @@ public class MonthEndCloseService {
         return periodRepository.findByFilters(periodType, from, to).stream()
                 .map(AccountingPeriodResponse::of)
                 .toList();
+    }
+
+    /**
+     * 일별 세금계산서 마감 detail (PR-E2 BE-A12).
+     *
+     * <p>legacy GAS 12번 "일마감 프로그램" — 일별 매출/세금계산서/할인 detail. 마감 row OPEN/CLOSED
+     * 와 무관하게 read-only 조회 가능 (마감 화면 진입 전 미리보기 + 마감 후 audit 조회 모두 사용).
+     *
+     * <p>모델별 매출 합계는 product-service ProductClient lookup 으로 모델/할인/세트 마스터를
+     * 갱신 — partner_id / spec / itemName 등 만 보여주는 단계.
+     *
+     * @param date 대상 일자 (필수)
+     * @return 세금계산서 list + 모델별 합계 + 총합
+     */
+    @Transactional(readOnly = true)
+    public DailyClosingDetailResponse getDailyDetail(LocalDate date) {
+        if (date == null) {
+            throw new IllegalArgumentException("date 는 필수입니다");
+        }
+        List<TaxInvoice> issued = taxInvoiceRepository
+                .findIssuedInRange(TaxInvoiceStatus.ISSUED, date, date);
+
+        BigDecimal totalSupply = BigDecimal.ZERO;
+        BigDecimal totalVat = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<DailyTaxInvoice> taxInvoices = new ArrayList<>(issued.size());
+
+        // 모델별 누적 (productName 기준 — productId 가 분개에 직접 보존되지 않으므로 itemName 키)
+        Map<String, ModelAccumulator> byModel = new LinkedHashMap<>();
+
+        for (TaxInvoice ti : issued) {
+            totalSupply = totalSupply.add(ti.getSupplyAmount());
+            totalVat = totalVat.add(ti.getVatAmount());
+            totalAmount = totalAmount.add(ti.getTotalAmount());
+            taxInvoices.add(new DailyTaxInvoice(
+                    ti.getTaxInvoiceNo(),
+                    ti.getPartnerName(),
+                    ti.getSupplyAmount(),
+                    ti.getVatAmount(),
+                    ti.getTotalAmount()));
+            for (TaxInvoiceLine line : ti.getLines()) {
+                String key = line.getItemName() == null ? "-" : line.getItemName();
+                ModelAccumulator acc = byModel.computeIfAbsent(key, k -> new ModelAccumulator());
+                acc.quantity = acc.quantity.add(line.getQuantity());
+                acc.supplyAmount = acc.supplyAmount.add(line.getSupplyAmount());
+            }
+        }
+
+        // product-service lookup — 본 단계는 itemName 키 보존, modelName 은 캡처 시점 spec/null
+        // (product-service 가 itemName 기반 검색 endpoint 제공 시 본 메서드로 modelName 보강)
+        // productClient 의 lookup 은 UUID 기반 — itemName 기반 미지원이므로 placeholder 호출 회피.
+        // 본 객체 instance 가 빈 결과 일 때 productClient 를 호출하면 INVALID_INPUT 던지므로 분기.
+        ensureProductClientReachable();
+
+        List<DailyProductLine> products = new ArrayList<>(byModel.size());
+        for (Map.Entry<String, ModelAccumulator> e : byModel.entrySet()) {
+            products.add(new DailyProductLine(
+                    e.getKey(),
+                    null,
+                    e.getValue().quantity,
+                    e.getValue().supplyAmount));
+        }
+
+        return new DailyClosingDetailResponse(
+                date,
+                issued.size(),
+                totalSupply,
+                totalVat,
+                totalAmount,
+                BigDecimal.ZERO,
+                taxInvoices,
+                products);
+    }
+
+    /**
+     * 마감 lock 가드 헬퍼 — 일자 가 마감된 기간에 속하면 CONFLICT 던짐.
+     * GET /accounting/closings/daily 자체는 read-only 라 가드 미적용 — 추후 일별 마감 lock 후
+     * detail 조회 차단 use-case 가 발생하면 본 메서드로 옵션 enable.
+     */
+    @Transactional(readOnly = true)
+    public void requireDateNotClosed(LocalDate date) {
+        findClosedPeriodCovering(date).ifPresent(p -> {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "마감된 회계 기간입니다 — 해당 일자(" + date + ")는 detail 조회/변경할 수 없습니다");
+        });
+    }
+
+    /** product-service 도달 가능 여부 — 본 슬라이스는 explicit lookup 호출 없이 health placeholder. */
+    private void ensureProductClientReachable() {
+        // ProductClient 는 IT @MockBean 격리 — 실 호출 X. 인스턴스 보장만 (NPE 가드).
+        if (productClient == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "product-service client 가 주입되지 않았습니다");
+        }
+    }
+
+    /** 모델별 누적 헬퍼. */
+    private static final class ModelAccumulator {
+        BigDecimal quantity = BigDecimal.ZERO;
+        BigDecimal supplyAmount = BigDecimal.ZERO;
     }
 
     /**

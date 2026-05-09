@@ -31,4 +31,21 @@ public interface TaxInvoiceRepository extends JpaRepository<TaxInvoice, UUID> {
                                    @Param("to") LocalDate to,
                                    @Param("partnerId") UUID partnerId,
                                    Pageable pageable);
+
+    /**
+     * 발행 상태 + 공급일자 범위 list 조회 (PR-E2 BE-A11 hometax export 용).
+     *
+     * <p>페이지 없이 전체 — caller (HometaxExportService) 가 100건 단위 sheet 분할.
+     * 일반적으로 일별/주간 export 라 수십~수백 건 규모.
+     */
+    @Query("""
+            SELECT t FROM TaxInvoice t
+            WHERE t.status = :status
+              AND t.supplyDate >= :from
+              AND t.supplyDate <= :to
+            ORDER BY t.supplyDate ASC, t.taxInvoiceNo ASC
+            """)
+    java.util.List<TaxInvoice> findIssuedInRange(@Param("status") TaxInvoiceStatus status,
+                                                 @Param("from") LocalDate from,
+                                                 @Param("to") LocalDate to);
 }
