@@ -1,7 +1,7 @@
 # dev-report — migration-fe-google-sheets-data-source
 
 - 작성일: 2026-05-05
-- 슬라이스: estimate-app v2 + order-app v4 의 품목 데이터 출처를 SamhanLogis backend → Google Sheets 직접으로 환원
+- 슬라이스: estimate-app v2 + order-app v4 의 품목 데이터 출처를 Samhan Public backend → Google Sheets 직접으로 환원
 - 브랜치: `feature/migration-fe-google-sheets-data-source`
 - 관련 PR: 본 PR (FE) + 별도 spawn `feature/migration-be-product-google-sheets-sync` (BE 옵션 C-2 cron 동기화)
 
@@ -10,8 +10,8 @@
 > "견적서와 주문서의 경우에만 기존 구글 스크립트처럼 구글 스프레드 시트에서 그대로 가져오는 것으로 하자"
 
 기존 estimate-app v2 (PR #58) + order-app v4 (PR #50/#53) 의 품목 데이터:
-- estimate-app v2: legacy estimate Code.js 1:1 port + `lib/apps-script-shim.js` 의 `SpreadsheetApp` 가 SamhanLogis backend (product-service) 위임
-- order-app v4: shim `src/samhanApi.ts` 의 `getProducts/fetchBootstrap/getGateImages` 등이 SamhanLogis backend 호출
+- estimate-app v2: legacy estimate Code.js 1:1 port + `lib/apps-script-shim.js` 의 `SpreadsheetApp` 가 Samhan Public backend (product-service) 위임
+- order-app v4: shim `src/samhanApi.ts` 의 `getProducts/fetchBootstrap/getGateImages` 등이 Samhan Public backend 호출
 
 본 작업은 그 출처를 **Google Sheets 직접 read** 로 환원한다.
 
@@ -123,9 +123,9 @@ singleSets: []
 
 `getSpecDetailMap_` 는 estimate-legacy 의 1100라인 scanHome/scanSingle/scanComm 중 핵심 골격만 (모델 키 + 슬롯 보장) 컴팩트 포팅. 상세 spec 필드 전체 매핑은 후속 PR.
 
-### 4.5 SamhanLogis MS 위임 잔존 부분
+### 4.5 Samhan Public MS 위임 잔존 부분
 
-본 PR 은 **시트 데이터만 직접 read**. 다음은 그대로 SamhanLogis MS 위임 유지:
+본 PR 은 **시트 데이터만 직접 read**. 다음은 그대로 Samhan Public MS 위임 유지:
 
 | 함수 | endpoint | 비고 |
 |---|---|---|
@@ -141,7 +141,7 @@ singleSets: []
 
 ### 4.6 mock fallback 잔존
 
-`USE_MOCK_FALLBACK=true` (기본값) 시 SamhanLogis MS 미가동 환경에서 인증/snapshot/감사로그/slip 발송 mock 응답으로 진입 가능 (legacy 동작 유지). mock 제거는 별도 PR (`feedback_integrated_pr_pattern.md` 일관).
+`USE_MOCK_FALLBACK=true` (기본값) 시 Samhan Public MS 미가동 환경에서 인증/snapshot/감사로그/slip 발송 mock 응답으로 진입 가능 (legacy 동작 유지). mock 제거는 별도 PR (`feedback_integrated_pr_pattern.md` 일관).
 
 ## 5. 검증
 

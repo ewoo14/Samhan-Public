@@ -63,7 +63,7 @@ export function LoginPage() {
       <Card padding={6} shadow="lg">
         <form className="login-card-inner" onSubmit={handleSubmit}>
           <h2 style={{ margin: 0, color: 'var(--color-brand-700)' }}>
-            삼한로지스 로그인
+            Samhan Public 로그인
           </h2>
           <FormField
             label="사용자 ID"

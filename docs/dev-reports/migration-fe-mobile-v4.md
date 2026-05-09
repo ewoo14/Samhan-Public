@@ -59,7 +59,7 @@ window.google.script.run
 
 **12 RPC site (Web v4 의 `legacy-rpc-mapping-partner-order.md` 와 1:1 동일)**:
 
-| legacy 함수 | SamhanLogis MS endpoint | service |
+| legacy 함수 | Samhan Public MS endpoint | service |
 |---|---|---|
 | `getProducts` | `GET /api/v1/products?all=true` | product-service (M1a) |
 | `getHomeMulti` | `GET /api/v1/products?category=HOME_MULTI` | product-service |

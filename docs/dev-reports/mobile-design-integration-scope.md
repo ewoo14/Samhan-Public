@@ -210,7 +210,7 @@ vite dev (`npm run dev`) 사용 시 5180 — 환경변수 `EXPO_PUBLIC_ORDER_APP
 근거: order-app v4 의 root `index.html` 이 legacy partner-order/index.html 그대로 임베드 → 인증 / RPC /
 mobile-mode CSS 분기 / 모바일 게이트 / 페이지 메뉴 drawer / 4 카테고리 진입 / 임시저장 / 확정 /
 과거 발송내역 / 자동 로그아웃 timer 모두 legacy 자체 처리. order-app v4 의 `main.ts` 가
-`google.script.run` shim → samhanApi axios 호출로 RPC dispatch (Apps Script → SamhanLogis MS REST 변환).
+`google.script.run` shim → samhanApi axios 호출로 RPC dispatch (Apps Script → Samhan Public MS REST 변환).
 
 ### 11.4 폐기 파일 + 신규 파일
 

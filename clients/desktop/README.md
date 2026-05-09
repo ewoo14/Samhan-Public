@@ -1,6 +1,6 @@
 # @samhan/desktop
 
-삼한로지스 사내 직원용 데스크톱 앱 (Electron + React + Vite).
+Samhan Public 사내 직원용 데스크톱 앱 (Electron + React + Vite).
 
 본 앱은 디자인 시스템 (`@samhan/design-system`) 의 16 개 컴포넌트를 처음으로
 실제 도메인 화면에 적용하는 첫 슬라이스입니다. 메인 프로세스는

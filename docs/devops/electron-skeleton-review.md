@@ -15,7 +15,7 @@
 - 한국어 installer (`installerLanguages: [ko_KR]`, `language: '1042'`)
 - `perMachine: false` + `requestedExecutionLevel: asInvoker` — 사내 일반 사원 권한으로
   설치 가능 (UAC 회피). 데스크톱/시작메뉴 바로가기 자동 생성.
-- `appId: com.samhanair.logis.desktop`, `productName: 삼한로지스`
+- `appId: com.samhanair.logis.desktop`, `productName: Samhan Public`
 - `extraResources` 로 `docs/PM/project_plan.md` 동봉 (사내 참조용 placeholder —
   후속에 사내 매뉴얼 PDF / 한국어 폰트 등으로 교체)
 
@@ -23,8 +23,8 @@
 - 개발: `npm run dev` (electron-vite dev server, Vite 기본 포트 5173)
 - Windows 프로덕션: `npm run build:win` → electron-vite build → electron-builder --win
 - 결과물 경로:
-  - `release/0.1.0/삼한로지스-0.1.0-x64.exe` (NSIS installer)
-  - `release/0.1.0/삼한로지스-0.1.0-x64-portable.exe` (portable)
+  - `release/0.1.0/Samhan Public-0.1.0-x64.exe` (NSIS installer)
+  - `release/0.1.0/Samhan Public-0.1.0-x64-portable.exe` (portable)
 
 ### 1.3 자동 업데이트 (후속 권고)
 - 본 슬라이스 미도입 (`publish: null`)

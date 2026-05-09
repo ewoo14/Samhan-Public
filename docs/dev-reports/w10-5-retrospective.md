@@ -41,7 +41,7 @@ PR #100 시점 BE 4-team agent 들이 service 별 application.yml 에 seed toggl
 
 **표준 통일 규칙**: `SAMHAN_<SERVICE>_SEED_TEST_DATA` (모두 `SAMHAN_` prefix). 이유:
 1. DevOps `start-local-full.ps1` 의 chained-default 패턴 (Phase 8 표준) 일관
-2. production 침입 차단 명확화 — `SAMHAN_` prefix = 명시적 SamhanLogis 환경 (다른 namespace 와 충돌 차단)
+2. production 침입 차단 명확화 — `SAMHAN_` prefix = 명시적 Samhan Public 환경 (다른 namespace 와 충돌 차단)
 3. user-service 의 `seed-org` 도 동일 패턴 적용 (`SAMHAN_USER_SEED_ORG`)
 
 **chained-default fallback** — 기존 변수도 fallback 으로 유지 (운영 외부 wrapper 가 전환 전 안전):

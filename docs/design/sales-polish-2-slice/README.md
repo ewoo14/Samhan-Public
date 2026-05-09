@@ -1,6 +1,6 @@
 # Sales Form UX Polish — 2nd Round (Slice A) — Designer 산출물
 
-본 디렉토리는 SamhanLogis Sales Form Polish **2차 라운드 / Slice A** 의 **Designer (5-team)** 산출물입니다.
+본 디렉토리는 Samhan Public Sales Form Polish **2차 라운드 / Slice A** 의 **Designer (5-team)** 산출물입니다.
 FE 팀은 본 산출물의 spec 을 인용해 구현하며, BE/QA/DevOps 팀도 wireframe / interaction flow / 신규 도메인 필드를 참고합니다.
 
 > 사용자 (개발책임자) 강조: **"PR #20 의 디자인 polish 가 부족했으니 본 Slice A 의 spec 충실 적용 의무."**

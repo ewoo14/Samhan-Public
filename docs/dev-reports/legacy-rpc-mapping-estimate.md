@@ -1,7 +1,7 @@
 # legacy estimate index.html — google.script.run RPC 매핑 표 (Phase 6 v4)
 
 본 문서는 `migration/source/scripts/estimate/index.html` (18,614 라인) 의
-`google.script.run.<fnName>(args)` 호출을 SamhanLogis MS 의 endpoint 로 매핑한 표.
+`google.script.run.<fnName>(args)` 호출을 Samhan Public MS 의 endpoint 로 매핑한 표.
 
 Electron `<webview>` preload (`clients/desktop/src/preload/legacyShim.ts`) 의
 `samhanApi.call(fnName, args)` 가 본 표를 사용하여 fetch 라우팅한다.
@@ -22,7 +22,7 @@ Electron `<webview>` preload (`clients/desktop/src/preload/legacyShim.ts`) 의
 | 16434    | `getQuoteHistory`       | `(sDate, eDate)`                  | 견적 저장내역 조회 |
 | 16717    | `saveQuoteSnapshot`     | `({ data, summary, image })`      | 현재 견적 저장 |
 
-## 함수명 → SamhanLogis MS endpoint 매핑
+## 함수명 → Samhan Public MS endpoint 매핑
 
 | fnName                 | method | path                                                                | M-단계 | 응답 변환                                          |
 |------------------------|--------|---------------------------------------------------------------------|--------|----------------------------------------------------|
@@ -42,10 +42,10 @@ Electron `<webview>` preload (`clients/desktop/src/preload/legacyShim.ts`) 의
 
 legacy estimate Code.js 의 server-side 외부 호출 — webview client-side 코드 (`index.html` inline script) 에서는 발생 안 함. 그러나 안전망으로 shim 의 매핑 표에 등록되지 않은 임의 fnName 호출은 noop + console.warn 으로 처리.
 
-| 외부 의존    | legacy 위치 (Code.js)                                                   | SamhanLogis 대체                              |
+| 외부 의존    | legacy 위치 (Code.js)                                                   | Samhan Public 대체                              |
 |--------------|--------------------------------------------------------------------------|-----------------------------------------------|
 | **e-Count**  | `UrlFetchApp.fetch('http://152.69.228.109:3000/proxy/ecount/...')`       | slip-service 자동 출고전표 생성 (M4 EventListener) |
-| **Notion**   | `UrlFetchApp.fetch('https://api.notion.com/...')` (9 token)              | SamhanLogis MS DB 직접 (M2~M5)                |
+| **Notion**   | `UrlFetchApp.fetch('https://api.notion.com/...')` (9 token)              | Samhan Public MS DB 직접 (M2~M5)                |
 
 ## shim 동작 흐름
 
@@ -64,7 +64,7 @@ legacy estimate Code.js 의 server-side 외부 호출 — webview client-side �
    | fetch(GET 'http://localhost:8080/api/v1/auth/me?email=user@samhan.com',
    |        { Authorization: Bearer <token from auth-store IPC> })
    v
-[SamhanLogis api-gateway → user-service]
+[Samhan Public api-gateway → user-service]
    |
    v
 { data: { authorized: true, managerName: "오병승" } }

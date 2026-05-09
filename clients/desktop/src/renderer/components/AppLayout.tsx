@@ -51,7 +51,7 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <aside className="app-sidebar no-print">
-        <h1>삼한로지스</h1>
+        <h1>Samhan Public</h1>
         <nav>
           <NavLink to="/" end>
             대시보드

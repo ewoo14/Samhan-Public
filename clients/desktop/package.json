@@ -2,7 +2,7 @@
   "name": "@samhan/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "삼한로지스 사내 직원용 데스크톱 앱 (Electron)",
+  "description": "Samhan Public 사내 직원용 데스크톱 앱 (Electron)",
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {

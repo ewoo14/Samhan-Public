@@ -57,9 +57,26 @@ async function performLogin(page, baseUrl, creds) {
 
   await page.fill(idSelector, creds.loginId);
   await page.fill(pwSelector, creds.password);
+
+  // PR #111 회고 fix — mutation response + navigation 둘 다 대기.
+  // 1) /auth/login 응답 (gateway 경유, status 200) 대기
+  // 2) hash router 의 location.hash 가 '#/login' 에서 벗어날 때까지 대기 (navigate('/') 효과)
+  const responsePromise = page.waitForResponse(
+    (resp) => resp.url().includes('/auth/login') && resp.status() < 400,
+    { timeout: 10000 }
+  ).catch(() => null);
   await page.click(submitSelector);
-  // login mutation → navigate('/') 까지 대기.
-  await page.waitForTimeout(2000);
+  await responsePromise;
+  // window.samhanAuth IPC + zustand setAuth + react-router navigate 시간 여유.
+  try {
+    await page.waitForFunction(
+      () => !window.location.hash.includes('/login'),
+      { timeout: 8000 }
+    );
+  } catch (_e) {
+    console.log('  [warn] login navigation timeout — 메인 진입 안 됨 (LoginPage 캡처 가능성)');
+  }
+  await page.waitForTimeout(800);  // 메인 화면 ready (사이드바 mount 등)
 }
 
 /**
@@ -85,6 +102,19 @@ async function captureScreen(ctx, defaults, auth, screen) {
   const baseUrl = defaults.baseUrl;
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log(`  [pageerror:${screen.id}]`, e.message));
+
+  // Vite dev 단독 환경에서 Electron preload (window.samhanAuth) 부재 → setToken IPC fail
+  // → LoginPage mutation 의 setAuth 에서 throw → navigate 미실행 회피.
+  // PR #112 회귀 fix — preload IPC stub 주입.
+  await page.addInitScript(() => {
+    if (!window.samhanAuth) {
+      window.samhanAuth = {
+        setToken: async () => undefined,
+        getToken: async () => null,
+        clearToken: async () => undefined,
+      };
+    }
+  });
 
   try {
     if (screen.auth) {

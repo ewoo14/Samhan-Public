@@ -55,7 +55,7 @@
 ## 3. 핵심 결정 인용 (DECISIONS / DOMAIN-EXTENSIONS)
 
 ### F1 하이브리드 (DECISIONS.md)
-- **PrintPreview**: 외곽 wrapper (toolbar / paper / shadow) 는 SamhanLogis DS 토큰 기반. 본문 (`children`) 의 인쇄 양식 디자인은 Sub-team A (estimate-service Frontend) 가 legacy CSS 보존 + iteration. F1 하이브리드를 컴포넌트 경계에서 구현.
+- **PrintPreview**: 외곽 wrapper (toolbar / paper / shadow) 는 Samhan Public DS 토큰 기반. 본문 (`children`) 의 인쇄 양식 디자인은 Sub-team A (estimate-service Frontend) 가 legacy CSS 보존 + iteration. F1 하이브리드를 컴포넌트 경계에서 구현.
 
 ### F3 react-pdf (DECISIONS.md)
 - **PrintPreview** 의 `pdfRenderer` prop pattern: design-system 패키지는 `react-pdf` 직접 import 안함 (peerDep 회피 + 번들 크기 가드). 호출자 (Sub-team A) 가 `pdfRenderer={(node) => <PDFViewer>{node}</PDFViewer>}` 로 주입. 미주입 시 자동 브라우저 print fallback (toolbar 메타에 "fallback" 표시).

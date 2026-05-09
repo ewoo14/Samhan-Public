@@ -75,7 +75,7 @@ gateway 라우트 수정은 일절 필요 없다. CORS 도 데스크톱 origin �
 | `@dnd-kit/sortable` | ^8.0.0 | MIT | core 의 dependant. peer dep core ^6 |
 | `@dnd-kit/utilities` | ^3.2.2 | MIT | 가벼움 (~2kB) |
 
-라이선스 호환 OK — MIT 3건 모두 SamhanLogis 사내 사용에 제약 없음.
+라이선스 호환 OK — MIT 3건 모두 Samhan Public 사내 사용에 제약 없음.
 패키지 supply chain 위험: 모두 npm registry verified publisher
 (@clauderic). 별도 SCA (Snyk / Dependabot) 도입은 후속 슬라이스에서 일괄
 처리 권고.
