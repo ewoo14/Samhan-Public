@@ -1,11 +1,11 @@
 package com.samhanair.logis.discovery;
 
 import com.netflix.discovery.EurekaClient;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * {@link ServiceDiscoveryClient} bean 자동 구성.
@@ -21,10 +21,12 @@ import org.springframework.context.annotation.Configuration;
  * 경우). 그렇지 않으면 자동 구성 자체가 스킵되어 본 모듈을 단순 의존하는 것이
  * Eureka 동작을 강제하지 않는다.
  *
- * <p>본 구성은 Phase 8 2차 시점 = 컴파일 가능성 + 단위 테스트 가능성 보장만, 14 service
- * 의 build.gradle 의존성 추가는 Phase 10 cutover 시점 위임.
+ * <p>Phase 9 W2~W4 회고 — 본 클래스를 {@link AutoConfiguration} 으로 승격 +
+ * {@code META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports}
+ * 등록. 신규 service (groupware/notification/dashboard) 가 별도 {@code @Import}
+ * 없이도 ServiceDiscoveryClient bean 을 자동 주입받는다.
  */
-@Configuration(proxyBeanMethods = false)
+@AutoConfiguration
 public class DiscoveryConfiguration {
 
     @Bean
