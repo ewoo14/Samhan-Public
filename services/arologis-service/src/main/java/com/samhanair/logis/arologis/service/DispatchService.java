@@ -75,6 +75,7 @@ public class DispatchService {
                     Vehicle.of(dispatch.getId(), pv.sequence(), pv.tonnage(), pv.label()));
             for (ParsedDispatch.ParsedStop ps : pv.stops()) {
                 StopStatus initial = ps.unparsed() ? StopStatus.UNPARSED : StopStatus.PENDING;
+                // PR-D 2-1 — RegionClassifier 매칭 결과 (regionGroup) 함께 저장
                 stopRepository.save(VehicleStop.of(
                         vehicle.getId(),
                         ps.sequence(),
@@ -83,7 +84,8 @@ public class DispatchService {
                         ps.parsedPartnerName(),
                         ps.parsedPartnerCode(),
                         ps.notes(),
-                        initial));
+                        initial,
+                        ps.regionGroup()));
             }
         }
         log.info("Dispatch 저장 완료 — dispatchId={}, date={}, type={}, vehicles={}",

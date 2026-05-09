@@ -2,10 +2,12 @@ package com.samhanair.logis.notification.it;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.notification.NotificationServiceApplication;
+import com.samhanair.logis.notification.client.PartnerLookupClient;
 import com.samhanair.logis.notification.client.UserClient;
 import com.samhanair.logis.notification.domain.NotificationChannel;
 import com.samhanair.logis.notification.domain.RecipientType;
@@ -15,6 +17,7 @@ import com.samhanair.logis.notification.repository.NotificationRequestRepository
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +42,13 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  *   <li>미존재 단건 조회 → 404</li>
  * </ol>
  *
- * <p>UserClient = {@code @MockBean} 격리.
+ * <p>{@link UserClient} 및 {@link PartnerLookupClient} = {@code @MockBean} 격리
+ * (memory feedback_it_mockbean_external_clients — IT 외부 client @MockBean 격리 패턴).
+ *
+ * <p>{@link PartnerLookupClient} 격리 — PR-D Part 2-3 의 {@code ChatRoomImportService} 가 본
+ * client 를 inject 하므로, IT ApplicationContext load 시 본 빈이 필요하다. {@code @MockBean} 명시
+ * 등록으로 외부 의존성 격리 + {@code NoopPartnerLookupClient} 의 {@code @ConditionalOnMissingBean}
+ * 와의 잠재적 race 회피 (CI run 25605160833 회귀 fix 후속).
  */
 @SpringBootTest(classes = NotificationServiceApplication.class)
 @AutoConfigureMockMvc
@@ -56,6 +65,8 @@ class NotificationAdminControllerIT extends AbstractPostgresIT {
 
     @MockBean
     private UserClient userClient;
+    @MockBean
+    private PartnerLookupClient partnerLookupClient;
 
     @BeforeEach
     void cleanup() {
@@ -68,6 +79,10 @@ class NotificationAdminControllerIT extends AbstractPostgresIT {
             }
             return r;
         });
+        // PartnerLookupClient 기본 stub — 본 IT 는 단톡방 import 를 호출하지 않으므로 모두 empty.
+        lenient().when(partnerLookupClient.findPartnerCodeByName(anyString())).thenReturn(Optional.empty());
+        lenient().when(partnerLookupClient.verifyPartnerCode(anyString())).thenReturn(Optional.empty());
+
         logRepository.deleteAll();
         requestRepository.deleteAll();
     }

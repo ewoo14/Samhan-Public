@@ -48,8 +48,12 @@ class DispatchManualServiceTest {
     private final DriverRepository driverRepository = mock(DriverRepository.class);
     private final DriverMatcher driverMatcher = mock(DriverMatcher.class);
 
+    /** PR-D 2-1 — RegionClassifier mock (단위 테스트는 분류 비대상). */
+    private final RegionClassifier regionClassifier = mock(RegionClassifier.class);
+
     private final DispatchManualService service = new DispatchManualService(
-            dispatchRepository, vehicleRepository, stopRepository, driverRepository, driverMatcher);
+            dispatchRepository, vehicleRepository, stopRepository, driverRepository, driverMatcher,
+            regionClassifier);
 
     private static void setId(Object entity, String fieldName, UUID id) throws Exception {
         Field f = entity.getClass().getDeclaredField(fieldName);

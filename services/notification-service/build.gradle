@@ -50,6 +50,10 @@ dependencies {
     // Phase 9 W3 — Caffeine cache (UserClient bulk verify TTL 60s)
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
 
+    // PR-D Part 2-3 — Notion CHAT 단톡방 매핑 import (OpenCSV + Apache Commons IO BOMInputStream)
+    implementation 'com.opencsv:opencsv:5.9'
+    implementation 'commons-io:commons-io:2.16.1'
+
     // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 

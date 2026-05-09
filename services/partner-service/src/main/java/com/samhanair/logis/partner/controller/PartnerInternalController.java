@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -77,5 +78,40 @@ public class PartnerInternalController {
     @PreAuthorize("hasRole('MASTER')")
     public ApiResponse<List<PartnerInternalResponse>> findByCodes(@RequestBody List<String> partnerCodes) {
         return ApiResponse.ok(partnerService.findByCodes(partnerCodes));
+    }
+
+    /**
+     * Phase 10 PR-D Part A — 거래처 상호 (이카운트 사업자명) 로 partnerCode lookup (Critical Path).
+     *
+     * <p>BE-D ChatRoom 매핑 + BLOCK 발송금지 CSV import 가 본 endpoint 의존. Notion / 이카운트
+     * export 데이터는 거래처 상호만 보유 — partnerCode 가 사용자 노출 식별자이므로 호출 측은
+     * 본 endpoint 로 partnerCode 를 역추적해야 한다.
+     *
+     * <p>Lookup 흐름 ({@link PartnerService#findByName(String)} 참고):
+     * <ol>
+     *   <li>정확 일치 → 200 + PartnerInternalResponse</li>
+     *   <li>LIKE 1건만 매칭 → 200 + PartnerInternalResponse</li>
+     *   <li>LIKE 0건 → 404 NOT_FOUND</li>
+     *   <li>LIKE 2건 이상 → 409 CONFLICT (lookup 모호 — 호출 측이 정확한 상호로 재시도)</li>
+     * </ol>
+     *
+     * <p>인증 = X-Internal-Token (ROLE_MASTER), Feign client (chat-service 등) 가 호출.
+     *
+     * @param name 거래처 상호 (query parameter)
+     * @return 200 + PartnerInternalResponse (partnerId + partnerCode + name + creditLimit + ...)
+     */
+    @Operation(summary = "거래처 상호로 partnerCode lookup (Phase 10 PR-D Part A)",
+            description = "BE-D ChatRoom + BLOCK 발송금지 의 의존 endpoint. X-Internal-Token 필수.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "단일 매칭 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "내부 토큰 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "내부 토큰 누락"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상호로 거래처를 찾을 수 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "동일 상호 다중 매칭 (lookup 모호)")
+    })
+    @GetMapping("/by-name")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<PartnerInternalResponse> lookupByName(@RequestParam("name") String name) {
+        return ApiResponse.ok(PartnerInternalResponse.from(partnerService.findByName(name)));
     }
 }

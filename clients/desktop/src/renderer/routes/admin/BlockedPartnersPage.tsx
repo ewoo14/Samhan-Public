@@ -1,0 +1,551 @@
+/**
+ * 관리자 — 발송금지 거래처 (`/admin/blocked-partners`).
+ *
+ * Phase 10 PR-D Phase B FE-E. BE-E (commit d05c0ae) {@code partner-service}
+ * `/api/v1/partners/admin/blocks` 4 endpoint backing.
+ *
+ * <h2>접근 제어</h2>
+ * MASTER 만 (사용자 명시: "발송금지는 민감"). AdminLayout 의 RoleGuard(MASTER) 가
+ * 1차 가드, 본 페이지의 mutation 자체도 BE 가 MASTER 강제.
+ *
+ * <h2>UI 구성</h2>
+ * <ul>
+ *   <li>표 columns: partnerCode / 상호 snapshot / 차단 사유 / 차단 시점 / 출처 / 액션</li>
+ *   <li>"단건 차단" 버튼 → form 다이얼로그 (partner_code + reason)</li>
+ *   <li>"CSV 업로드" 버튼 → CsvUploadDialog (이카운트 사업자명 → 거래처코드 자동 매핑)</li>
+ *   <li>행 액션: "차단 해제" 버튼 (확인 후 soft-delete) — MASTER 가 본 화면 진입한 사용자이므로 노출</li>
+ * </ul>
+ *
+ * <h2>data-testid</h2>
+ * <ul>
+ *   <li>{@code admin-blocked-table}</li>
+ *   <li>{@code admin-blocked-row} (각 행의 partnerCode 셀)</li>
+ *   <li>{@code admin-blocked-add-button}</li>
+ *   <li>{@code admin-blocked-import-button}</li>
+ *   <li>{@code admin-blocked-unblock-{partnerCode}} — UUID 비공개 가드 (TM PR #115 정정)</li>
+ * </ul>
+ *
+ * <p>UUID 비공개 — 화면 표시는 partnerCode + businessName + reason. id 는 액션
+ * data-testid 와 unblock path variable 전용 (사용자 시각 노출 X).
+ */
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Badge,
+  Button,
+  CsvUploadDialog,
+  DataTable,
+  Modal,
+  type DataTableColumn,
+} from '@samhan/design-system'
+import {
+  addBlockedPartner,
+  BLOCK_SOURCE_LABEL,
+  importBlockedPartnersCsv,
+  listBlockedPartners,
+  unblockPartner,
+  type BlockedPartner,
+  type BlockedPartnerSource,
+} from '../../api/blockedPartnerApi'
+import { usePageTitle } from '../../hooks/usePageTitle'
+
+/** source enum → Badge variant 매핑. */
+const SOURCE_VARIANT: Record<
+  BlockedPartnerSource,
+  'brand' | 'neutral' | 'success' | 'warning' | 'danger'
+> = {
+  NOTION_IMPORT: 'brand',
+  MANUAL: 'neutral',
+  LEGACY_GAS: 'warning',
+}
+
+/** ISO 시각 → "YYYY-MM-DD HH:mm" (BE LocalDateTime 직렬화 — timezone 없음). */
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  if (iso.length >= 16) {
+    return `${iso.substring(0, 10)} ${iso.substring(11, 16)}`
+  }
+  return iso
+}
+
+/** axios/Error 객체에서 표시 가능한 메시지 추출. */
+function extractMessage(err: unknown): string | null {
+  if (!err) return null
+  const anyErr = err as {
+    response?: { data?: { message?: string } }
+    message?: string
+  }
+  return (
+    anyErr.response?.data?.message ??
+    anyErr.message ??
+    '요청 처리 중 오류가 발생했습니다.'
+  )
+}
+
+export function BlockedPartnersPage() {
+  usePageTitle('발송금지 거래처')
+
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(0)
+  const [addOpen, setAddOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [unblockTarget, setUnblockTarget] = useState<BlockedPartner | null>(
+    null,
+  )
+
+  const query = useQuery({
+    queryKey: ['admin', 'blocked-partners', page],
+    queryFn: () => listBlockedPartners({ page, size: 20 }),
+  })
+
+  const totalPages = query.data ? Math.max(1, query.data.totalPages) : 1
+
+  const invalidateList = () =>
+    queryClient.invalidateQueries({ queryKey: ['admin', 'blocked-partners'] })
+
+  const addMutation = useMutation({
+    mutationFn: addBlockedPartner,
+    onSuccess: () => {
+      invalidateList()
+      setAddOpen(false)
+    },
+  })
+
+  const unblockMutation = useMutation({
+    mutationFn: unblockPartner,
+    onSuccess: () => {
+      invalidateList()
+      setUnblockTarget(null)
+    },
+  })
+
+  const columns: DataTableColumn<BlockedPartner>[] = useMemo(
+    () => [
+      {
+        key: 'partnerCode',
+        header: '거래처 코드',
+        width: '140px',
+        render: (b) => (
+          <span data-testid="admin-blocked-row" data-partner-code={b.partnerCode}>
+            {b.partnerCode}
+          </span>
+        ),
+      },
+      {
+        key: 'businessNameSnapshot',
+        header: '상호',
+      },
+      {
+        key: 'blockReason',
+        header: '차단 사유',
+        render: (b) => b.blockReason ?? '—',
+      },
+      {
+        key: 'blockedAt',
+        header: '차단 시점',
+        width: '160px',
+        render: (b) => formatDateTime(b.blockedAt),
+      },
+      {
+        key: 'source',
+        header: '출처',
+        width: '120px',
+        render: (b) => (
+          <Badge variant={SOURCE_VARIANT[b.source]}>
+            {BLOCK_SOURCE_LABEL[b.source]}
+          </Badge>
+        ),
+      },
+      {
+        key: 'action',
+        header: '액션',
+        width: '110px',
+        render: (b) => (
+          <button
+            type="button"
+            onClick={() => setUnblockTarget(b)}
+            data-testid={`admin-blocked-unblock-${b.partnerCode}`}
+            style={{
+              height: 28,
+              padding: '0 10px',
+              border: '1px solid var(--color-danger-300, #FCA5A5)',
+              borderRadius: 4,
+              background: 'var(--color-danger-50, #FEF2F2)',
+              color: 'var(--color-danger-700, #B91C1C)',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            차단 해제
+          </button>
+        ),
+      },
+    ],
+    [],
+  )
+
+  return (
+    <>
+      <h3 style={{ margin: '0 0 16px' }}>발송금지 거래처 (MASTER 전용)</h3>
+
+      <p
+        style={{
+          margin: '0 0 16px',
+          fontSize: 13,
+          color: 'var(--color-neutral-700, #374151)',
+        }}
+      >
+        본 화면에 등록된 거래처는 알림(SMS/카카오톡) 발송 대상에서 제외됩니다.
+        partnerCode 가 source-of-truth 이며, 상호는 차단 시점 snapshot 입니다.
+      </p>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button
+          variant="primary"
+          onClick={() => setAddOpen(true)}
+          data-testid="admin-blocked-add-button"
+        >
+          단건 차단
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => setImportOpen(true)}
+          data-testid="admin-blocked-import-button"
+        >
+          CSV 업로드
+        </Button>
+      </div>
+
+      <div data-testid="admin-blocked-table">
+        <DataTable
+          columns={columns}
+          rows={query.data?.content ?? []}
+          loading={query.isLoading}
+          rowKey={(b) => b.id}
+          emptyMessage="등록된 발송금지 거래처가 없습니다."
+        />
+      </div>
+
+      {query.data && totalPages > 1 ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 12,
+            marginTop: 16,
+            fontSize: 13,
+          }}
+        >
+          <button
+            type="button"
+            disabled={page <= 0}
+            onClick={() => setPage((p) => p - 1)}
+            style={pagerBtnStyle}
+          >
+            이전
+          </button>
+          <span>
+            {page + 1} / {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={page + 1 >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+            style={pagerBtnStyle}
+          >
+            다음
+          </button>
+        </div>
+      ) : null}
+
+      <AddBlockedPartnerDialog
+        open={addOpen}
+        submitting={addMutation.isPending}
+        errorMessage={extractMessage(addMutation.error)}
+        onClose={() => {
+          if (!addMutation.isPending) {
+            setAddOpen(false)
+            addMutation.reset()
+          }
+        }}
+        onSubmit={(req) => addMutation.mutate(req)}
+      />
+
+      <CsvUploadDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="발송금지 거래처 CSV 업로드"
+        description="이카운트 사업자명 → 거래처코드 자동 매핑. 매핑 실패는 reject 보고서."
+        onUpload={async (file) => {
+          // TM PR #115 정정 — invalidate 위치를 onUpload resolve 시점으로 이동
+          // (타 3 admin CSV 페이지 패턴 일관 — SalesPartnerDcConfigPage / SheetSyncPage / RegionsPage).
+          // onClose 위치는 dialog 닫힘만 처리, 업로드 결과 반영은 mutation 직후 invalidate.
+          const result = await importBlockedPartnersCsv(file)
+          invalidateList()
+          return result
+        }}
+      />
+
+      <UnblockConfirmDialog
+        target={unblockTarget}
+        submitting={unblockMutation.isPending}
+        errorMessage={extractMessage(unblockMutation.error)}
+        onClose={() => {
+          if (!unblockMutation.isPending) {
+            setUnblockTarget(null)
+            unblockMutation.reset()
+          }
+        }}
+        onConfirm={(id) => unblockMutation.mutate(id)}
+      />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 단건 차단 다이얼로그
+// ---------------------------------------------------------------------------
+
+interface AddBlockedPartnerDialogProps {
+  open: boolean
+  submitting: boolean
+  errorMessage: string | null
+  onClose: () => void
+  onSubmit: (req: { partnerCode: string; blockReason?: string }) => void
+}
+
+function AddBlockedPartnerDialog({
+  open,
+  submitting,
+  errorMessage,
+  onClose,
+  onSubmit,
+}: AddBlockedPartnerDialogProps) {
+  const [partnerCode, setPartnerCode] = useState('')
+  const [blockReason, setBlockReason] = useState('')
+
+  // open 토글 시 입력 reset
+  useEffect(() => {
+    if (open) {
+      setPartnerCode('')
+      setBlockReason('')
+    }
+  }, [open])
+
+  const canSubmit = partnerCode.trim().length > 0 && !submitting
+
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    const req: { partnerCode: string; blockReason?: string } = {
+      partnerCode: partnerCode.trim(),
+    }
+    if (blockReason.trim()) req.blockReason = blockReason.trim()
+    onSubmit(req)
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="발송금지 거래처 단건 등록"
+      description="partnerCode 직접 입력. partnerCode 를 모를 경우 거래처 관리 화면에서 검색 후 코드를 복사하세요."
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
+            취소
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+          >
+            {submitting ? '등록 중…' : '차단 등록'}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <label style={fieldLabelStyle}>
+          거래처 코드 (필수)
+          <input
+            type="text"
+            value={partnerCode}
+            onChange={(e) => setPartnerCode(e.target.value)}
+            placeholder="예: P001234"
+            autoFocus
+            data-testid="admin-blocked-add-partner-code-input"
+            style={fieldInputStyle}
+          />
+        </label>
+        <label style={fieldLabelStyle}>
+          차단 사유 (선택, 최대 500자)
+          <textarea
+            value={blockReason}
+            onChange={(e) => setBlockReason(e.target.value)}
+            maxLength={500}
+            rows={3}
+            placeholder="예: 장기 미수금 / 분쟁 중"
+            data-testid="admin-blocked-add-reason-input"
+            style={{
+              ...fieldInputStyle,
+              height: 'auto',
+              padding: '8px 10px',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+            }}
+          />
+        </label>
+        {errorMessage ? (
+          <p
+            style={{
+              margin: 0,
+              padding: '8px 10px',
+              fontSize: 13,
+              color: 'var(--color-danger-700, #B91C1C)',
+              background: 'var(--color-danger-50, #FEF2F2)',
+              border: '1px solid var(--color-danger-200, #FECACA)',
+              borderRadius: 4,
+            }}
+            role="alert"
+          >
+            {errorMessage}
+          </p>
+        ) : null}
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 차단 해제 확인 다이얼로그
+// ---------------------------------------------------------------------------
+
+interface UnblockConfirmDialogProps {
+  target: BlockedPartner | null
+  submitting: boolean
+  errorMessage: string | null
+  onClose: () => void
+  onConfirm: (id: string) => void
+}
+
+function UnblockConfirmDialog({
+  target,
+  submitting,
+  errorMessage,
+  onClose,
+  onConfirm,
+}: UnblockConfirmDialogProps) {
+  return (
+    <Modal
+      open={target !== null}
+      onClose={onClose}
+      title="차단 해제 확인"
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
+            취소
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (target) onConfirm(target.id)
+            }}
+            disabled={submitting || !target}
+          >
+            {submitting ? '해제 중…' : '차단 해제'}
+          </Button>
+        </>
+      }
+    >
+      {target ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 14 }}>
+            아래 거래처의 차단을 해제합니다. 해제 후 알림(SMS/카카오톡) 발송이
+            재개됩니다.
+          </p>
+          <dl
+            style={{
+              margin: 0,
+              padding: '12px',
+              border: '1px solid var(--color-neutral-200, #E5E7EB)',
+              borderRadius: 6,
+              background: 'var(--color-neutral-50, #F9FAFB)',
+              display: 'grid',
+              gridTemplateColumns: '110px 1fr',
+              rowGap: 6,
+              fontSize: 13,
+            }}
+          >
+            <dt style={{ color: 'var(--color-neutral-600, #4B5563)' }}>
+              거래처 코드
+            </dt>
+            <dd style={{ margin: 0, fontWeight: 600 }}>{target.partnerCode}</dd>
+            <dt style={{ color: 'var(--color-neutral-600, #4B5563)' }}>상호</dt>
+            <dd style={{ margin: 0 }}>{target.businessNameSnapshot}</dd>
+            <dt style={{ color: 'var(--color-neutral-600, #4B5563)' }}>
+              차단 사유
+            </dt>
+            <dd style={{ margin: 0 }}>{target.blockReason ?? '—'}</dd>
+          </dl>
+          {errorMessage ? (
+            <p
+              style={{
+                margin: 0,
+                padding: '8px 10px',
+                fontSize: 13,
+                color: 'var(--color-danger-700, #B91C1C)',
+                background: 'var(--color-danger-50, #FEF2F2)',
+                border: '1px solid var(--color-danger-200, #FECACA)',
+                borderRadius: 4,
+              }}
+              role="alert"
+            >
+              {errorMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 스타일 상수
+// ---------------------------------------------------------------------------
+
+const fieldLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  fontSize: 13,
+  color: 'var(--color-neutral-700, #374151)',
+  fontWeight: 500,
+}
+
+const fieldInputStyle: React.CSSProperties = {
+  height: 32,
+  padding: '0 10px',
+  border: '1px solid var(--color-neutral-300, #D1D5DB)',
+  borderRadius: 6,
+  fontSize: 13,
+}
+
+const pagerBtnStyle: React.CSSProperties = {
+  height: 28,
+  padding: '0 12px',
+  border: '1px solid #D1D5DB',
+  borderRadius: 4,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 13,
+}

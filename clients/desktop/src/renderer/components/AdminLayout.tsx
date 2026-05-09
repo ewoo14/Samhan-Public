@@ -10,6 +10,11 @@
  * - 거래처 (`/admin/partners`)
  * - 창고    (`/admin/warehouses`)
  * - 부서    (`/admin/departments`)
+ * - 시트 동기화 (`/admin/sheet-sync`) — PR-D Phase B FE-A
+ * - 지역 분류 (`/admin/regions`) — PR-D Phase B FE-B (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
+ * - 발송금지 거래처 (`/admin/blocked-partners`) — PR-D Phase B FE-E (MASTER, 민감)
+ * - 단톡방 매핑 (`/admin/chat-rooms`) — PR-D Phase B FE-D (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
+ * - DC 설정 (`/sales/partner-dc-config`) — PR-D Phase B FE-C (MASTER 만 CSV 일괄 업로드)
  *
  * memory feedback_uuid_no_user_visibility — admin 화면도 비즈니스 식별자만 노출.
  * memory feedback_role_naming_full — entry 라벨/가드 표기 풀네임 사용.
@@ -71,6 +76,47 @@ export function AdminLayout() {
           </AdminNav>
           <AdminNav to="/admin/departments" testId="admin-nav-departments">
             부서
+          </AdminNav>
+          <AdminNav to="/admin/sheet-sync" testId="admin-nav-sheet-sync">
+            시트 동기화
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-B] arologis 지역 분류 — 라우트 자체는 MASTER/MANAGER (DISPATCH backlog)
+            허용. AdminLayout 은 MASTER 전용이므로 본 entry 는 MASTER 시점에서만 노출되며,
+            MANAGER 는 직접 URL (/admin/regions) 또는 AppLayout 좌측 arologis 그룹으로 접근.
+          */}
+          <AdminNav to="/admin/regions" testId="admin-nav-regions">
+            지역 분류
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-E] 발송금지 거래처 — partner-service /api/v1/partners/admin/blocks.
+            BE 가 MASTER 강제 (delete/import) + read 도 MANAGER 까지지만 AdminLayout 자체가
+            MASTER 전용이므로 본 entry 는 MASTER 만 노출. UUID 비공개 (사용자 노출 = partnerCode + 상호).
+          */}
+          <AdminNav
+            to="/admin/blocked-partners"
+            testId="admin-nav-blocked-partners"
+          >
+            발송금지 거래처
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-D] 단톡방 매핑 — 라우트 자체는 MASTER/MANAGER 허용.
+            AdminLayout 은 MASTER 전용이므로 본 entry 는 MASTER 시점만 노출되며,
+            MANAGER 는 직접 URL (/admin/chat-rooms) 또는 AppLayout 좌측 메뉴로 접근.
+          */}
+          <AdminNav to="/admin/chat-rooms" testId="admin-nav-chat-rooms">
+            단톡방 매핑
+          </AdminNav>
+          {/*
+            [PR-D Phase B FE-C] 거래처 DC율 설정 — sales 라우트 그룹이지만 CSV 일괄 업로드는
+            MASTER 전용 (BE @PreAuthorize). MASTER 진입 편의를 위해 admin 사이드바에도 노출
+            (TM PR #115 권고 — DC AdminLayout entry 누락 fix).
+          */}
+          <AdminNav
+            to="/sales/partner-dc-config"
+            testId="admin-nav-dc-config"
+          >
+            DC 설정
           </AdminNav>
         </aside>
         <section className="admin-main">

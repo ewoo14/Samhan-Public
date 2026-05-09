@@ -10,9 +10,11 @@ import com.samhanair.logis.partner.repository.PartnerRepository;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -114,6 +116,95 @@ public class PartnerService {
     public Page<Partner> searchAdmin(String q, PartnerStatus status, Pageable pageable) {
         String normalized = (q == null || q.isBlank()) ? null : q.trim();
         return partnerRepository.searchAdmin(normalized, status, pageable);
+    }
+
+    /**
+     * Phase 10 PR-D Part A — 거래처 상호 lookup (정확 일치 우선, 미발견 시 LIKE 1건만 허용).
+     *
+     * <p>BE-D ChatRoom 매핑 + BLOCK 발송금지 CSV import 의 lookup 핵심 메서드. 흐름:
+     * <ol>
+     *   <li>{@code findByName(name)} 정확 일치 시도 — 발견 시 즉시 반환</li>
+     *   <li>정확 일치 미발견 시 LIKE %name% 으로 fallback (size=2 로 검색)</li>
+     *   <li>fallback 결과가 0건 → 404 NOT_FOUND</li>
+     *   <li>fallback 결과가 2건 이상 → 409 CONFLICT (lookup 모호)</li>
+     *   <li>fallback 결과가 정확히 1건 → 해당 Partner 반환</li>
+     * </ol>
+     *
+     * <p>{@link #findByNameForLookup(String)} 와 별도 — 본 메서드는 호출 측이 거래처 상호로
+     * partnerCode 를 확정해야 하는 admin 작업 (BLOCK 등록, ChatRoom 생성 등) 에서 사용.
+     *
+     * @param name 거래처 상호
+     * @return 정확 일치 또는 1건만 매칭되는 Partner
+     * @throws BusinessException NOT_FOUND (0건) / CONFLICT (2건 이상)
+     */
+    @Transactional(readOnly = true)
+    public Partner findByName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "name 필수");
+        }
+        String trimmed = name.trim();
+        Optional<Partner> exact = partnerRepository.findByName(trimmed);
+        if (exact.isPresent()) {
+            return exact.get();
+        }
+        List<Partner> candidates = partnerRepository
+                .findAllByNameContaining(trimmed, PageRequest.of(0, 2))
+                .getContent();
+        if (candidates.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "해당 상호의 거래처를 찾을 수 없습니다: " + trimmed);
+        }
+        if (candidates.size() > 1) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "동일 상호로 여러 거래처가 매칭됩니다 (LIKE 검색): " + trimmed);
+        }
+        return candidates.get(0);
+    }
+
+    /**
+     * TM PR-D Part 3 — partnerCode 직접 검증 (CSV import 거래처코드 컬럼 우선 매핑용).
+     *
+     * <p>{@link #findByCode(String)} 와 동일하되 throw 대신 {@link Optional} 반환. CSV import 에서
+     * 사업자명 lookup 보다 우선 호출하여 모호한 LIKE 매칭을 회피한다 (사용자 명시: "거래처명이 아니라
+     * 거래처코드로 매핑").
+     *
+     * @param partnerCode 거래처코드 (예: "P-2026-0001")
+     * @return 활성 거래처 존재 시 Partner, 미존재 시 empty
+     */
+    @Transactional(readOnly = true)
+    public Optional<Partner> findByCodeForLookup(String partnerCode) {
+        if (partnerCode == null || partnerCode.isBlank()) {
+            return Optional.empty();
+        }
+        return partnerRepository.findByPartnerCode(partnerCode.trim());
+    }
+
+    /**
+     * Phase 10 PR-D Part A — null-safe lookup (CSV import / batch 용).
+     *
+     * <p>{@link #findByName(String)} 와 동일 정확/LIKE 흐름이지만 throw 대신 {@link Optional} 반환.
+     * 모호한 다중결과는 lookup 실패로 간주 (empty). CSV import 에서 reject row 로 분류 시 사용.
+     *
+     * @param name 거래처 상호
+     * @return 단일 매칭 시 Partner, 0건/2건+ 시 empty
+     */
+    @Transactional(readOnly = true)
+    public Optional<Partner> findByNameForLookup(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = name.trim();
+        Optional<Partner> exact = partnerRepository.findByName(trimmed);
+        if (exact.isPresent()) {
+            return exact;
+        }
+        List<Partner> candidates = partnerRepository
+                .findAllByNameContaining(trimmed, PageRequest.of(0, 2))
+                .getContent();
+        if (candidates.size() == 1) {
+            return Optional.of(candidates.get(0));
+        }
+        return Optional.empty();
     }
 
     /**

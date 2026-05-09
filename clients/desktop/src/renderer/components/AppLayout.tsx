@@ -36,6 +36,7 @@ import { canAccessAccounting } from '../api/accounting'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
 import { canAccessAdmin } from '../api/adminApi'
 import { canAccessAudit } from '../api/auditApi'
+import { canAccessChatRoomAdmin } from '../api/chatRoomApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -95,6 +96,9 @@ export function AppLayout() {
   const showAdmin = canAccessAdmin(auth?.role)
   // [Phase 10 P2-6] 재고 실사 메뉴 — WAREHOUSE / MASTER 만 가시
   const showAudit = canAccessAudit(auth?.role)
+  // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
+  // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
+  const showChatRoomAdmin = canAccessChatRoomAdmin(auth?.role)
 
   return (
     <div className="app-shell">
@@ -174,6 +178,10 @@ export function AppLayout() {
                 arologis
               </div>
               <NavLink to="/arologis/manual">수동 배차</NavLink>
+              {/* [PR-D Phase B FE-B] 가배차 지역 분류 — MASTER/MANAGER 가시 (현재 ARO_MANUAL_DISPATCH_ROLES 와 동일 집합). */}
+              <NavLink to="/admin/regions" data-testid="sidebar-arologis-regions">
+                지역 분류
+              </NavLink>
             </>
           ) : null}
 
@@ -238,6 +246,46 @@ export function AppLayout() {
                 data-testid="sidebar-admin-departments"
               >
                 부서
+              </NavLink>
+              {/*
+                [PR-D Phase B FE-D] MASTER 시점: 관리자 그룹 안에서 단톡방 매핑 노출.
+                MANAGER 시점은 아래 별도 분기 (showChatRoomAdmin && !showAdmin).
+              */}
+              <NavLink
+                to="/admin/chat-rooms"
+                data-testid="sidebar-admin-chat-rooms"
+              >
+                단톡방 매핑
+              </NavLink>
+            </>
+          ) : null}
+
+          {/*
+            [PR-D Phase B FE-D] MANAGER 전용 — MASTER 가 아닌 MANAGER 가 관리자 그룹
+            전체를 못 보지만 단톡방 매핑은 BE 가 허용하므로 entry 만 단독 노출.
+          */}
+          {showChatRoomAdmin && !showAdmin ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                알림 매핑
+              </div>
+              <NavLink
+                to="/admin/chat-rooms"
+                data-testid="sidebar-admin-chat-rooms"
+              >
+                단톡방 매핑
               </NavLink>
             </>
           ) : null}

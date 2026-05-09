@@ -105,3 +105,8 @@ secrets/
 .tm-*.md
 .pm-*.md
 .tmp/
+.tmp-*
+
+# legacy GAS 운영 데이터 (Notion CSV export, GAS 스크립트 백업) — VCS 추적 금지 (PR-D Phase 10)
+# 사용자 운영 환경 의존 데이터, dev-env 에 placeholder 만 둘 것
+tools/legacy-gas/

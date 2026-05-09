@@ -45,6 +45,10 @@ dependencies {
     // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 
+    // PR-D Part 2-2 — Notion CSV import (BOM 처리 + 헤더 매핑)
+    implementation 'com.opencsv:opencsv:5.9'
+    implementation 'commons-io:commons-io:2.16.1'
+
     implementation project(':shared:common')
     implementation project(':shared:security')
 

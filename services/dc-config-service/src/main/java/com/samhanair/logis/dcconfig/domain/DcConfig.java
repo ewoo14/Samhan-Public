@@ -94,6 +94,15 @@ public class DcConfig extends BaseEntity {
     @Column(name = "unit_round_to")
     private Integer unitRoundTo;
 
+    /**
+     * 단위처리 여부 — Notion 시트 "단위처리" Yes/No 플래그 native 보존 (V2).
+     *
+     * <p>{@link #unitRoundTo} (반올림 단위) 와는 의미가 다르다 — 본 필드는 단위처리 자체의
+     * 활성/비활성 토글이며, legacy CSV 의 빈 셀은 false 로 매핑된다.
+     */
+    @Column(name = "unit_processing_enabled", nullable = false)
+    private Boolean unitProcessingEnabled = Boolean.FALSE;
+
     /** 단가 반올림 모드 (legacy UNIT_ROUND_MODE). */
     @Enumerated(EnumType.STRING)
     @Column(name = "unit_round_mode", length = 10)
@@ -145,6 +154,11 @@ public class DcConfig extends BaseEntity {
         }
         this.unitRoundTo = unitRoundTo;
         this.unitRoundMode = unitRoundMode == null ? UnitRoundMode.ROUND : unitRoundMode;
+    }
+
+    /** Notion CSV "단위처리" Yes/No 플래그 변경 (V2). */
+    public void changeUnitProcessingEnabled(boolean enabled) {
+        this.unitProcessingEnabled = enabled;
     }
 
     public void changeNote(String note) {

@@ -831,6 +831,55 @@ PR #114 (`feature/integrated-phase-10-step-8-ui-9-slice`) — 매뉴얼 안내 �
 - `ROADMAP.md` — Phase 10 W10-step-8 row 추가
 - `docs/dev-reports/integration-phase-10-step-8-ui-9-slice.md` 신규
 
+### D-P10-17. step-9 시트 흐름 보강 + 노션 4 CSV 이식 + partner_code 매핑 정정 (2026-05-10)
+
+PR (`feature/integrated-phase-10-step-9-sheet-notion-import`) — PR #114 머지 후 사용자 우려 (시트 비동기 회귀) + 노션 운영 4 CSV (REGION/DC/CHAT/BLOCK) 의 Samhan Public native 이식.
+
+근거:
+- 시트 흐름 보강 (Part 1) — `partner-order-service` + `product-service` 가 Phase 10 W10-step-8 머지 후 시트 동기화 누락 회귀 — 본 슬라이스 PR-D Part A (사용자 옵션 C 의도 완성) 으로 5분 cron 재활성
+- 노션 4 CSV 이식 (Part 2) — REGION (가배차 지역별 분류) / DC (거래처 할인 정보) / CHAT (단톡방리스트) / BLOCK (발송금지리스트) — Notion DB export → arologis V3 / dc-config V2 / notification V2 / partner V4 Flyway + 서비스 레이어 import 로 native 이식 (Notion 의존성 제거)
+- **partner_code 매핑 정정 (TM Part 3)** — 사용자 명시 (2026-05-10): "단톡방리스트와 발송금지리스트의 경우 추후 거래처명이 아니라 거래처코드로 매핑할 수 있도록". import 시 모호한 LIKE 매칭 회피 + source-of-truth 일관성 확보:
+  - `PartnerLookupClient.verifyPartnerCode(String)` 신규 (notification-service)
+  - `PartnerService.findByCodeForLookup(String)` 신규 (partner-service)
+  - `ChatRoomImportService` + `PartnerBlockImportService` 양쪽에서 거래처코드 컬럼 (`거래처코드` 또는 `partner_code`) 우선, 없으면 사업자명 fallback
+  - 사업자명 미공급 시 snapshot 은 `[partnerCode]` placeholder (entity invariant 보호 + admin UI 후속 보완 경로)
+- **R2 backlog 보존** — KakaoDispatchParser 의 "-214" 카톡 식별자 vs partner-service 의 partner_code (예: "P-2026-0001") 명칭 충돌은 본 PR 범위 외 (별도 PR 위임 — 사용자 명시 격리)
+- ManualDispatchRequest 의 `Long partnerCode` (= 카톡 슬립번호) 는 본 PR 미변경 — R2 별도 PR 시 String partner_code 분리 + entity 마이그레이션 동시 진행
+
+영향:
+- `services/notification-service/src/main/java/.../client/PartnerLookupClient.java` — `verifyPartnerCode` 메서드 추가
+- `services/notification-service/src/main/java/.../client/NoopPartnerLookupClient.java` — Lambda → Anonymous class 변환 (2 메서드 구현)
+- `services/notification-service/src/main/java/.../service/ChatRoomImportService.java` — 거래처코드 컬럼 우선 매핑 분기 추가
+- `services/partner-service/src/main/java/.../service/PartnerService.java` — `findByCodeForLookup` Optional 형 추가
+- `services/partner-service/src/main/java/.../service/PartnerBlockImportService.java` — 거래처코드 컬럼 우선 매핑 분기 추가
+- `services/notification-service/src/test/java/.../service/ChatRoomImportServiceTest.java` — 코드 우선 / fallback / placeholder / 영문 헤더 4 case 추가
+- `services/partner-service/src/test/java/.../service/PartnerBlockImportServiceTest.java` — 코드 우선 / fallback / placeholder / 모두 miss 4 case 추가
+- `services/notification-service/src/test/java/.../it/ChatRoomMappingAdminControllerIT.java` — `verifyPartnerCode` lenient mock 추가
+- `services/notification-service/build.gradle` — OpenCSV + commons-io 의존성 추가 (BE-D commit 누락 보강)
+- `.gitignore` — `tools/legacy-gas/` + `.tmp-*` 추가
+- `ROADMAP.md` — Phase 10 W10-step-9 row 추가
+- `docs/dev-reports/integration-phase-10-step-9-sheet-notion-import.md` 신규
+
+후속 (별도 PR 위임):
+- R2 — KakaoDispatchParser 의 카톡 슬립번호 vs partner-service partner_code 명칭 충돌 정리 (entity 컬럼 rename + 마이그레이션 동시 진행)
+- BE-E — partner-service 의 실 RestClient `PartnerLookupClient` 구현체 등록 (현재 NoopPartnerLookupClient placeholder)
+
+#### TM 종합 fix — PR #115 5-team 리뷰 + CI fail (2026-05-10)
+
+5-team 리뷰 결과 — Designer ✅ / DevOps ✅ / FE ✅(3 minor) / QA ✅(2 권고) / BE Critical (CI fail 1건). TM 단일 commit 종합 fix:
+
+1. **BE Critical** — notification-service IT 15건 `BeanDefinitionOverrideException` 회귀. `NoopPartnerLookupClient` 의 `@Configuration` + `@Bean` + `@ConditionalOnMissingBean` 가 `@MockBean` 보다 늦게 평가되어 noop bean + mock bean 동시 등록 시도. `@Component` + `PartnerLookupClient` 직접 구현 + class-level `@ConditionalOnMissingBean(PartnerLookupClient.class)` 로 재설계 — component scan 단계에서 안정적 평가. (memory `feedback_it_mockbean_external_clients` 일관)
+2. **FE C/F/I minor** — `BlockedPartnersPage` testid `${b.id}` → `${b.partnerCode}` (UUID 비공개), invalidate 위치 `onClose` → `onUpload` resolve (타 3 admin CSV 페이지 패턴 일관). `SalesPartnerDcConfigPage` testid prefix `dc-config-*` → `admin-dcconfig-*` (admin 페이지 일관성).
+3. **QA 권고** — `RegionClassifier` 광역 prefix 가중치 알고리즘 추가 ("중구" 4 그룹 모호 키워드 회귀 회피). 1차 광역 prefix 매칭 → 2차 sort_order keywords → 3차 group_name fallback. 회귀 테스트 case 6/7 추가 (7 PASS).
+4. **AdminLayout DC 설정 entry** — `/sales/partner-dc-config` link, MASTER 가드 (sales 라우트지만 CSV 일괄 업로드 MASTER 전용 → admin 사이드바에도 진입 편의 노출).
+
+검증:
+- `./gradlew :services:notification-service:assemble` → BUILD SUCCESSFUL
+- `./gradlew :services:arologis-service:test --tests "*RegionClassifierTest"` → 7 PASS
+- `./gradlew assemble -x test` → BUILD SUCCESSFUL (95 actionable)
+- `clients/desktop` typecheck → 무에러
+- notification IT 15건 — Windows 로컬 Docker 미가용 → Testcontainers skip (정상). CI Linux runner 에서 BeanDefinition 충돌 해소 후 실 IT 동작 확인 (CI 재실행 자동).
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
