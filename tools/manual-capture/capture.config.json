@@ -1,0 +1,58 @@
+{
+  "$schema": "./capture.config.schema.json",
+  "comment": "SamhanLogis 운영자 매뉴얼용 화면 캡처 정의. screens 배열에 화면을 추가하면 capture-desktop.js / capture-mobile.js 가 자동으로 캡처 + annotate.js 가 박스/화살표 합성.",
+  "defaults": {
+    "desktop": {
+      "viewport": { "width": 1280, "height": 900 },
+      "deviceScaleFactor": 1,
+      "baseUrl": "http://localhost:5173",
+      "waitMs": 1500
+    },
+    "mobile": {
+      "viewport": { "width": 390, "height": 844 },
+      "deviceScaleFactor": 2,
+      "baseUrl": "http://localhost:8081",
+      "waitMs": 1500
+    }
+  },
+  "auth": {
+    "kimmiseon": {
+      "comment": "MASTER 권한 — 김미선 대표. service 가 seed 한 계정 (start-local-full.ps1).",
+      "loginId": "kimmiseon",
+      "password": "Pass1234!"
+    },
+    "salesUser": {
+      "comment": "SALES 권한 — 영업원. 매뉴얼 영업 흐름용.",
+      "loginId": "salesuser",
+      "password": "Pass1234!"
+    }
+  },
+  "screens": [
+    {
+      "id": "00-login",
+      "category": "00-시작",
+      "name": "로그인 화면",
+      "client": "desktop",
+      "url": "/#/login",
+      "auth": null,
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='login-id-input']", "label": "1. 로그인 ID 입력" },
+        { "type": "box", "selector": "[data-testid='login-password-input']", "label": "2. 비밀번호 입력" },
+        { "type": "box", "selector": "[data-testid='login-submit-button']", "label": "3. 로그인 버튼 클릭" }
+      ]
+    },
+    {
+      "id": "00-main-sidebar",
+      "category": "00-시작",
+      "name": "메인 화면 사이드바",
+      "client": "desktop",
+      "url": "/#/",
+      "auth": "kimmiseon",
+      "annotations": [
+        { "type": "box", "selector": "[data-testid='sidebar-sales']", "label": "1. 판매조회 메뉴" },
+        { "type": "box", "selector": "[data-testid='sidebar-warehouses']", "label": "2. 창고 메뉴" },
+        { "type": "box", "selector": "[data-testid='sidebar-logout']", "label": "3. 로그아웃 버튼" }
+      ]
+    }
+  ]
+}
