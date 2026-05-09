@@ -76,6 +76,14 @@ export function AdminLayout() {
           <AdminNav to="/admin/sheet-sync" testId="admin-nav-sheet-sync">
             시트 동기화
           </AdminNav>
+          {/*
+            [PR-D Phase B FE-B] arologis 지역 분류 — 라우트 자체는 MASTER/MANAGER (DISPATCH backlog)
+            허용. AdminLayout 은 MASTER 전용이므로 본 entry 는 MASTER 시점에서만 노출되며,
+            MANAGER 는 직접 URL (/admin/regions) 또는 AppLayout 좌측 arologis 그룹으로 접근.
+          */}
+          <AdminNav to="/admin/regions" testId="admin-nav-regions">
+            지역 분류
+          </AdminNav>
         </aside>
         <section className="admin-main">
           <Outlet />

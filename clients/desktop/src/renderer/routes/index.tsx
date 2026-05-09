@@ -92,6 +92,9 @@ import { WarehousesPage as AdminWarehousesPage } from './admin/WarehousesPage'
 import { DepartmentsPage as AdminDepartmentsPage } from './admin/DepartmentsPage'
 // [PR-D Phase B FE-A] 구글 시트 동기화 admin (MASTER 전용 — AdminLayout 가드)
 import { SheetSyncPage as AdminSheetSyncPage } from './admin/SheetSyncPage'
+// [PR-D Phase B FE-B] arologis 가배차 지역 분류 admin UI — MASTER/MANAGER (DISPATCH backlog)
+import { RegionsPage as AdminRegionsPage } from './admin/RegionsPage'
+import { ARO_REGIONS_ADMIN_ROLES } from '../api/regionApi'
 // [Phase 10 P2-6 / slice 9] 재고 실사 3 페이지 (WAREHOUSE/MASTER)
 import { InventoryAuditListPage } from './InventoryAuditListPage'
 import { InventoryAuditFormPage } from './InventoryAuditFormPage'
@@ -288,6 +291,17 @@ const router = createHashRouter([
           // [PR-D Phase B FE-A] 구글 시트 동기화
           { path: 'sheet-sync', element: <AdminSheetSyncPage /> },
         ],
+      },
+
+      // [PR-D Phase B FE-B] arologis 가배차 지역 분류 — MASTER / MANAGER (DISPATCH backlog).
+      // AdminLayout (MASTER 전용) 외부에 배치하여 MANAGER 도 접근 가능 — 자체 RoleGuard 적용.
+      {
+        path: '/admin/regions',
+        element: (
+          <RoleGuard allow={ARO_REGIONS_ADMIN_ROLES}>
+            <AdminRegionsPage />
+          </RoleGuard>
+        ),
       },
 
       // [Phase 10 P2-6 / slice 9] 재고 실사 — WAREHOUSE / MASTER 만.

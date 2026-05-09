@@ -174,6 +174,10 @@ export function AppLayout() {
                 arologis
               </div>
               <NavLink to="/arologis/manual">수동 배차</NavLink>
+              {/* [PR-D Phase B FE-B] 가배차 지역 분류 — MASTER/MANAGER 가시 (현재 ARO_MANUAL_DISPATCH_ROLES 와 동일 집합). */}
+              <NavLink to="/admin/regions" data-testid="sidebar-arologis-regions">
+                지역 분류
+              </NavLink>
             </>
           ) : null}
 
