@@ -164,6 +164,123 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ./gradlew :services:dashboard-service:bootRun       # http://localhost:8094
 ```
 
+---
+
+## 🛠 풀 수준 로컬 테스트 환경 구동
+
+전 14 service + 인프라 + 시드 데이터를 한 번에 기동하여 마스터 로그인부터 KPI dashboard 까지 end-to-end 흐름을 검증할 수 있다.
+
+### 빠른 시작 (한 줄)
+
+```powershell
+# Windows PowerShell — 인프라 + 14 service + 시드 + 검증 일괄 실행
+.\infrastructure\scripts\start-local-full.ps1
+```
+
+종료:
+
+```powershell
+.\infrastructure\scripts\stop-local-full.ps1
+# 인프라 + volume 까지 완전 초기화 (시드 + 사용자 데이터 일체 소실)
+.\infrastructure\scripts\stop-local-full.ps1 -RemoveVolumes
+```
+
+### 단계별 (수동 — 디버깅 / 스크립트 분해)
+
+1. **인프라 기동**
+
+   ```powershell
+   cd infrastructure
+   docker compose up -d postgres redis rabbitmq elasticsearch minio
+   ```
+
+2. **시드 환경변수 일괄 로드**
+
+   ```powershell
+   Get-Content infrastructure/env-templates/.env.dev-seed | ForEach-Object {
+       if ($_ -and -not $_.StartsWith('#')) {
+           $name, $value = $_ -split '=', 2
+           if ($name) { Set-Item "env:$name" $value }
+       }
+   }
+   ```
+
+3. **14 service 의존순 시작**
+
+   | Tier | Service | Port | 비고 |
+   | ---- | ------- | ---- | ---- |
+   | 0 | eureka-server | 8761 | service discovery |
+   | 1 | auth-service | 8081 | JWT issuer (16 user 시드 의존) |
+   | 2 | user-service | 8083 | 16명 사원 시드 (`USER_SEED_ORG=true`) |
+   | 2 | product-service | 8084 | 100건 제품 (`PRODUCT_SEED_TEST_DATA=true`) |
+   | 2 | partner-service | 8095 | 50건 거래처 (`PARTNER_SEED_TEST_DATA=true`) |
+   | 3 | inventory-service | 8085 | 200건 재고 (`INVENTORY_SEED_TEST_DATA=true`) |
+   | 3 | accounting-service | 8087 | 한국 표준 65 row + 30 전표 |
+   | 4 | slip-service | 8086 | 100건 전표 (11 status 균등) |
+   | 4 | partner-order-service | 8088 | 30건 주문 (confirm 흐름) |
+   | 4 | arologis-service | 8097 | 20건 배차 (Mock DriverMatcher) |
+   | 5 | groupware-service | 8092 | 결재선 5 / 메신저 10 / 일정 20 |
+   | 5 | notification-service | 8093 | 채널 매트릭스 시드 |
+   | 6 | dashboard-service | 8094 | KPI + materialized view refresh |
+   | 7 | api-gateway | 8080 | 모든 서비스 라우팅 |
+
+4. **시드 데이터 검증**
+
+   ```powershell
+   # 사원 16명 (CEO 김미선 외)
+   docker exec samhan-postgres psql -U samhan -d user_db -c "SELECT count(*) FROM employees;"
+   # 거래처 50건
+   docker exec samhan-postgres psql -U samhan -d partner_db -c "SELECT count(*) FROM partners;"
+   # 제품 100건
+   docker exec samhan-postgres psql -U samhan -d product_db -c "SELECT count(*) FROM products;"
+   # 전표 100건
+   docker exec samhan-postgres psql -U samhan -d slip_db -c "SELECT count(*) FROM slips;"
+   ```
+
+5. **마스터 로그인 검증** (CEO 김미선 — JWT 발급)
+
+   ```powershell
+   $body = '{"loginId":"kimmiseon","password":"samhan!2026"}'
+   Invoke-RestMethod -Uri http://localhost:8080/api/auth/login -Method POST `
+                     -ContentType 'application/json' -Body $body
+   ```
+
+### 시나리오 시드 데이터
+
+| Service | 데이터 | 수량 | toggle env |
+| ------- | ------ | ---- | ---------- |
+| user-service | 사원 (CEO 김미선 등) | 16명 | `USER_SEED_ORG=true` |
+| partner-service | 거래처 (한국 HVAC 협력사) | 50건 | `PARTNER_SEED_TEST_DATA=true` |
+| product-service | 제품 (Samsung HVAC, 6 단가 tier) | 100건 | `PRODUCT_SEED_TEST_DATA=true` |
+| inventory-service | 재고 잔액 (100 product × 2 warehouse) | 200건 | `INVENTORY_SEED_TEST_DATA=true` |
+| slip-service | 전표 (11 status 균등 분포) | 100건 | `SLIP_SEED_TEST_DATA=true` |
+| partner-order-service | 거래처 주문 (confirm 흐름 + outbox) | 30건 | `PARTNER_ORDER_SEED_TEST_DATA=true` |
+| arologis-service | 배차 (Mock DriverMatcher) | 20건 | `AROLOGIS_SEED_TEST_DATA=true` |
+| accounting-service | 한국 표준 + 회계 전표 | 65 + 30 | `ACCOUNTING_SEED_TEST_DATA=true` |
+| groupware-service | 결재선 / 메신저 / 일정 | 5 / 10 / 20 | `GROUPWARE_SEED_TEST_DATA=true` |
+| notification-service | 채널 매트릭스 (FCM/SES/Aligo) | 3 | `NOTIFICATION_SEED_TEST_DATA=true` |
+| dashboard-service | KPI 캐시 + 2 materialized view | 1 | `DASHBOARD_SEED_TEST_DATA=true` |
+
+### 모니터링 / 운영 화면
+
+| 화면 | URL | 자격증명 |
+| ---- | --- | -------- |
+| Eureka Dashboard | http://localhost:8761 | - |
+| API Gateway | http://localhost:8080 | JWT (마스터 로그인) |
+| Prometheus | http://localhost:9090 | - |
+| Grafana | http://localhost:3100 | admin / samhan_dev_pw |
+| RabbitMQ Management | http://localhost:15672 | samhan / samhan_dev_pw |
+| MinIO Console | http://localhost:9001 | samhan / samhan_dev_pw |
+
+### 주의사항
+
+- **production 침입 방지** — 모든 시드는 `@Profile("dev")` + `@ConditionalOnProperty` 이중 가드
+- **Phase 11 AWS cutover 시점** 모든 `*_SEED_TEST_DATA` env 미설정 (default false) 필수 — `.env.prod` 에 본 변수 절대 포함 금지
+- **idempotency** — seeder 재실행 시 row 중복 추가 안 됨 (`existsBy*` 검증)
+- **DB 자동 생성** — `infrastructure/postgres/init/01-create-databases.sql` 가 16개 service DB 를 1회 생성. 변경 시 `docker compose down -v && docker compose up -d postgres` 으로 재초기화
+- **PowerShell 인코딩** — `.env.dev-seed` 는 UTF-8 (BOM X) 필수. `Set-Content` 기본값 UTF-16 LE 사용 시 한글 주석 깨짐 (메모리 가드 `feedback_powershell_utf8_writes.md`)
+- **service log** — `start-local-full.ps1` 가 띄운 background job 의 stdout 은 `.local-logs/<service-name>.log` 에 누적
+
 ### Client 빌드
 
 ```bash

@@ -39,6 +39,20 @@ app:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 표준, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화).
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+  # Stage 1 local-test seed (PartnerSeeder) toggle. dev profile + 본 toggle 모두 true 인 경우만 50건 seed.
+  # 운영 / staging 데이터 오염 방지 — default false.
+  partner:
+    seed-test-data: ${SAMHAN_PARTNER_SEED_TEST_DATA:false}
+    # 거래처 첨부 placeholder seed (PartnerAttachmentSeeder) toggle — 30 partner × ~2.5 = 75건.
+    seed-test-attachments: ${SAMHAN_PARTNER_SEED_TEST_ATTACHMENTS:false}
+    # MinIO (S3 호환) — partner-attachments 버킷. enabled=false 시 NoopAttachmentStorage fallback.
+    minio:
+      enabled: ${SAMHAN_PARTNER_MINIO_ENABLED:false}
+      endpoint: ${SAMHAN_PARTNER_MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${SAMHAN_PARTNER_MINIO_ACCESS_KEY:samhan}
+      secret-key: ${SAMHAN_PARTNER_MINIO_SECRET_KEY:samhan_dev_pw}
+      bucket: ${SAMHAN_PARTNER_MINIO_BUCKET:partner-attachments}
+      presigned-expiry-seconds: ${SAMHAN_PARTNER_MINIO_PRESIGNED_EXPIRY:3600}
 
 management:
   endpoints:

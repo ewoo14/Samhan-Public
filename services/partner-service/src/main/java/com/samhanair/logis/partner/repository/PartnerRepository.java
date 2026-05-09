@@ -18,6 +18,9 @@ public interface PartnerRepository extends JpaRepository<Partner, UUID> {
     /** 거래처 코드 lookup — slip-service /internal/partners/{partnerCode} 호출의 핵심 query. */
     Optional<Partner> findByPartnerCode(String partnerCode);
 
+    /** 거래처 코드 중복 검사 — Stage 1 PartnerSeeder idempotency 가드. */
+    boolean existsByPartnerCode(String partnerCode);
+
     /**
      * 거래처 코드 bulk lookup — Phase 9 W5 신규 (D-P9-16).
      *

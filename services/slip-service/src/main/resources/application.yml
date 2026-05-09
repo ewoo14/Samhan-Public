@@ -31,6 +31,11 @@ app:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+  slip:
+    # feature/local-test-setup Stage 2 — Slip 100건 + SlipLine ~300건 + DeliveryBatch 30건 시드.
+    # SlipSeeder + DeliveryBatchSeeder 가 동일 toggle 공유 (slip → batch 순서, @Order 20/30).
+    # dev profile + true 시에만 활성. CI/prod 기본 OFF (idempotent — 안전 재실행).
+    seed-test-data: ${SLIP_SEED_TEST_DATA:false}
   # Slice B SMS 게이트웨이 — Aligo (한국 SMS 게이트웨이, Solapi 에서 마이그)
   sms:
     vendor: ${SMS_VENDOR:aligo}
