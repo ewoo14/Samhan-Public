@@ -4,6 +4,7 @@ import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.partner.dto.CreditHistoryResponse;
 import com.samhanair.logis.partner.dto.PartnerAdminRequest;
 import com.samhanair.logis.partner.dto.PartnerAdminResponse;
+import com.samhanair.logis.partner.dto.PartnerSummaryResponse;
 import com.samhanair.logis.partner.service.PartnerCreditService;
 import com.samhanair.logis.partner.service.PartnerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -58,6 +59,30 @@ public class PartnerAdminController {
     @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
     public ApiResponse<PartnerAdminResponse> create(@Valid @RequestBody PartnerAdminRequest req) {
         return ApiResponse.ok(PartnerAdminResponse.from(partnerService.register(req)));
+    }
+
+    /**
+     * 거래처 페이지 조회 (admin 목록).
+     *
+     * <p>Phase 10 W10-6 — 50 partner 시드 검증을 위해 도입. 권한은 MASTER / MANAGER 만 (memory
+     * feedback_uuid_no_user_visibility 가드 — 응답은 partnerCode/name/bizNo 등 비즈니스 식별자만,
+     * 내부 UUID 미노출). 페이지 / 정렬은 표준 Spring {@link Pageable} 규약 (예:
+     * {@code ?page=0&size=3&sort=partnerCode,asc}).
+     *
+     * @return {@code ApiResponse<Page<PartnerSummaryResponse>>}
+     */
+    @Operation(summary = "거래처 페이지 조회 (admin 목록)",
+            description = "MASTER / MANAGER 권한 필요. UUID 비공개 — partnerCode 만 응답.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "권한 없음")
+    })
+    @GetMapping
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<Page<PartnerSummaryResponse>> findAll(Pageable pageable) {
+        Page<PartnerSummaryResponse> page = partnerService.findAll(pageable)
+                .map(PartnerSummaryResponse::from);
+        return ApiResponse.ok(page);
     }
 
     /**

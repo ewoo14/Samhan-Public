@@ -11,6 +11,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,6 +85,21 @@ public class PartnerService {
         return partnerRepository.findAllByPartnerCodeIn(distinct).stream()
                 .map(PartnerInternalResponse::from)
                 .toList();
+    }
+
+    /**
+     * 활성 거래처 페이지 조회 — admin 목록 화면 ({@code GET /admin/partners}) 전용.
+     *
+     * <p>Phase 10 W10-6 — 50 partner 시드 검증을 위한 페이지네이션 조회. 본 메서드는 활성 row
+     * (BaseEntity 의 {@code @SQLRestriction("is_deleted = false")}) 만 반환. 정렬 / 페이지 크기는
+     * 호출 측 {@link Pageable} 에 위임.
+     *
+     * @param pageable 페이지 / 정렬 (예: page=0&size=3)
+     * @return 활성 거래처 페이지 (UUID 비공개 가드 — 후속 controller 변환 시 partnerCode 만 노출)
+     */
+    @Transactional(readOnly = true)
+    public Page<Partner> findAll(Pageable pageable) {
+        return partnerRepository.findAll(pageable);
     }
 
     /**

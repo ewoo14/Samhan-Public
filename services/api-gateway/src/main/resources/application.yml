@@ -19,6 +19,12 @@ spring:
         locator:
           enabled: false
       routes:
+        # ============================================================
+        # Legacy `/api/*` routes (Phase 1~9). 단일 prefix `/api`. StripPrefix=1
+        # 후 controller `/{service}/...` 와 매칭. 기존 client 호환을 위해 보존.
+        # 신규 client 는 아래 `/api/v1/*` 표준화 routing 사용 권장.
+        # ============================================================
+
         # Login / token endpoints — must be reachable WITHOUT a JWT filter.
         - id: auth-service
           uri: lb://auth-service
@@ -97,6 +103,128 @@ spring:
                 allowedRoles:
                   - MASTER
                   - MANAGER
+
+        # ============================================================
+        # `/api/v1/*` 표준 routing (Phase 10 W10-6 도입). 14 service 일관.
+        # StripPrefix=2 ('api', 'v1') 후 controller `/{service}/...` 매칭.
+        # 일부 controller (partner-order-service, slip-service SlipPublishController
+        # 등) 는 `/api/v1/...` 풀패스로 등록 → 본 gateway 에서 StripPrefix=2 후
+        # 다시 controller 측 prefix 적용 필요. 해당 service 는 별도 route 분기
+        # (NoStripPrefix). 기본 14 service routing 은 아래.
+        # ============================================================
+
+        # auth-service — login/token endpoint, JWT 필터 미적용
+        - id: auth-service-v1
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - StripPrefix=2
+
+        - id: user-service-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        # partner-service — Phase 10 W10-6 신규 GET /admin/partners 검증 entry
+        - id: partner-service-v1
+          uri: lb://partner-service
+          predicates:
+            - Path=/api/v1/partners/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: product-service-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: inventory-service-v1
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/inventory/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: slip-service-v1
+          uri: lb://slip-service
+          predicates:
+            - Path=/api/v1/slips/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: accounting-service-v1
+          uri: lb://accounting-service
+          predicates:
+            - Path=/api/v1/accounting/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: groupware-service-v1
+          uri: lb://groupware-service
+          predicates:
+            - Path=/api/v1/groupware/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: notification-service-v1
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notification/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: dashboard-service-v1
+          uri: lb://dashboard-service
+          predicates:
+            - Path=/api/v1/dashboard/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        - id: arologis-service-v1
+          uri: lb://arologis-service
+          predicates:
+            - Path=/api/v1/arologis/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
+
+        # partner-order-service — controller 측 `/api/v1/partner-orders` 풀패스 보유 → StripPrefix=0
+        - id: partner-order-service-v1
+          uri: lb://partner-order-service
+          predicates:
+            - Path=/api/v1/partner-orders/**
+          filters:
+            - JwtAuthentication
+
+        # partner-auth-service — controller `/api/v1/auth` 풀패스 (거래처 인증) → StripPrefix=0, JWT 필터 미적용
+        - id: partner-auth-service-v1
+          uri: lb://partner-auth-service
+          predicates:
+            - Path=/api/v1/partner-auth/**
+          filters:
+            - StripPrefix=2
+
+        - id: dc-config-service-v1
+          uri: lb://dc-config-service
+          predicates:
+            - Path=/api/v1/dc-config/**
+          filters:
+            - StripPrefix=2
+            - JwtAuthentication
 
 eureka:
   client:
