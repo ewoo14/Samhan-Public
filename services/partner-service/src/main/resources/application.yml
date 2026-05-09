@@ -43,6 +43,16 @@ app:
   # 운영 / staging 데이터 오염 방지 — default false.
   partner:
     seed-test-data: ${SAMHAN_PARTNER_SEED_TEST_DATA:false}
+    # 거래처 첨부 placeholder seed (PartnerAttachmentSeeder) toggle — 30 partner × ~2.5 = 75건.
+    seed-test-attachments: ${SAMHAN_PARTNER_SEED_TEST_ATTACHMENTS:false}
+    # MinIO (S3 호환) — partner-attachments 버킷. enabled=false 시 NoopAttachmentStorage fallback.
+    minio:
+      enabled: ${SAMHAN_PARTNER_MINIO_ENABLED:false}
+      endpoint: ${SAMHAN_PARTNER_MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${SAMHAN_PARTNER_MINIO_ACCESS_KEY:samhan}
+      secret-key: ${SAMHAN_PARTNER_MINIO_SECRET_KEY:samhan_dev_pw}
+      bucket: ${SAMHAN_PARTNER_MINIO_BUCKET:partner-attachments}
+      presigned-expiry-seconds: ${SAMHAN_PARTNER_MINIO_PRESIGNED_EXPIRY:3600}
 
 management:
   endpoints:
