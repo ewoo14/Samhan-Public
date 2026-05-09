@@ -11,9 +11,15 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
-/** Slip 헤더 — 단건/필터 페이지 조회. partial unique 는 {@code slip_no} 컬럼에 적용 (V1 SQL). */
-public interface SlipRepository extends JpaRepository<Slip, UUID> {
+/**
+ * Slip 헤더 — 단건/필터 페이지 조회. partial unique 는 {@code slip_no} 컬럼에 적용 (V1 SQL).
+ *
+ * <p>PR-E1 BE-A0 신규: {@link JpaSpecificationExecutor} 추가 — 5 query param (date range / partner_code
+ * / driver_phone like / region_group / status) 동적 조합용. 기존 named query 들은 유지 (회귀 가드).
+ */
+public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificationExecutor<Slip> {
 
     /** 전표번호({@code yyyy/MM/dd-NNN}) 단건 조회. soft-delete 제외. */
     Optional<Slip> findBySlipNo(String slipNo);
@@ -98,4 +104,25 @@ public interface SlipRepository extends JpaRepository<Slip, UUID> {
     List<Slip> findAllBySlipDateBetweenAndStatusAndLockFlagFalseAndIsDeletedFalse(
             java.time.LocalDate startDate, java.time.LocalDate endDate,
             SlipStatus status);
+
+    // ---- PR-E1 BE-A5/A6 — 다음날자 이미지 / 정리 리스트 ----
+
+    /**
+     * 특정 slipDate 의 활성 슬립 전체 — BE-A5 next-day-image-data 의 source.
+     * partner_code / region 정렬 + 그룹핑은 service 레이어 책임.
+     *
+     * @param slipDate 조회 대상 날짜 (legacy GAS "내일자" = 호출자가 today+1 로 지정)
+     * @return slipDate 일치 + 활성 (출고/입고 모두 포함, FE 가 slipType 분기)
+     */
+    List<Slip> findAllBySlipDateAndIsDeletedFalse(java.time.LocalDate slipDate);
+
+    /**
+     * 기간 + 활성 슬립 — BE-A6 cleanup 리스트의 source. status 필터는 service 레이어에서 추가.
+     *
+     * @param startDate 기간 시작 (포함)
+     * @param endDate 기간 종료 (포함)
+     * @return 기간 내 활성 슬립 전체 (정리/검증 flag 계산은 service 가 수행)
+     */
+    List<Slip> findAllBySlipDateBetweenAndIsDeletedFalse(
+            java.time.LocalDate startDate, java.time.LocalDate endDate);
 }

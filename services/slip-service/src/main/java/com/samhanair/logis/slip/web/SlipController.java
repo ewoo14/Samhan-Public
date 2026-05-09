@@ -3,23 +3,29 @@ package com.samhanair.logis.slip.web;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.service.NextDaySlipImageService;
+import com.samhanair.logis.slip.service.SlipCleanupService;
 import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.web.dto.AddLineRequest;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
 import com.samhanair.logis.slip.web.dto.EditHeaderRequest;
 import com.samhanair.logis.slip.web.dto.LockByPeriodRequest;
 import com.samhanair.logis.slip.web.dto.LockByPeriodResponse;
+import com.samhanair.logis.slip.web.dto.NextDaySlipImageResponse;
 import com.samhanair.logis.slip.web.dto.RejectRequest;
+import com.samhanair.logis.slip.web.dto.SlipCleanupResponse;
 import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
 import com.samhanair.logis.slip.web.dto.SlipResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -54,21 +60,41 @@ public class SlipController {
     private static final String CALLER_HEADER = "X-User-Id";
 
     private final SlipService slipService;
+    private final NextDaySlipImageService nextDaySlipImageService;
+    private final SlipCleanupService slipCleanupService;
 
     /**
-     * 전표 페이지 조회 — slipType / status 옵션 필터.
+     * 전표 페이지 조회 — PR-E1 BE-A0 (PR #117) 확장: 5 query param 신규 추가.
      *
-     * @return 200, Page&lt;SlipResponse&gt;
+     * <p>지원 query (모두 선택, 비어있으면 무시):
+     * <ul>
+     *   <li>{@code slipType} OUTBOUND / INBOUND</li>
+     *   <li>{@code status} DRAFT/SAVED/...</li>
+     *   <li>{@code from} / {@code to} 날짜 범위 (ISO {@code YYYY-MM-DD}) — slip_date BETWEEN.
+     *       한쪽만 지정해도 작동 (>= from 또는 &lt;= to)</li>
+     *   <li>{@code partnerCode} 정확 일치 (V15 신규 컬럼)</li>
+     *   <li>{@code driverPhone} like 매칭 ({@code %phone%})</li>
+     *   <li>{@code regionGroup} 정확 일치 (V15 신규 컬럼, arologis 가배차 그룹명)</li>
+     * </ul>
+     *
+     * @return 200, Page&lt;SlipResponse&gt; — slip 요약 응답 (라인 미포함)
      */
-    @Operation(summary = "전표 페이지 조회", description = "slipType + status 조합 필터 페이지")
+    @Operation(summary = "전표 페이지 조회 (5 param 확장)",
+            description = "PR-E1 BE-A0 — slipType/status + 날짜 범위 + partnerCode + driverPhone + regionGroup 동적 조합 필터")
     @GetMapping
     public ApiResponse<Page<SlipResponse>> list(
             @RequestParam(required = false) SlipType slipType,
             @RequestParam(required = false) SlipStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String partnerCode,
+            @RequestParam(required = false) String driverPhone,
+            @RequestParam(required = false) String regionGroup,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return ApiResponse.ok(slipService.list(slipType, status, pageable));
+        return ApiResponse.ok(slipService.list(slipType, status, from, to,
+                partnerCode, driverPhone, regionGroup, pageable));
     }
 
     /**
@@ -282,6 +308,67 @@ public class SlipController {
         String statusName = request.status() == null ? "CONFIRMED" : request.status().name();
         return ApiResponse.ok(new LockByPeriodResponse(
                 request.startDate(), request.endDate(), statusName, locked));
+    }
+
+    /**
+     * PR-E1 BE-A5 — 다음날자 전표 이미지 데이터 조회.
+     *
+     * <p>legacy GAS 6번 "내일자 전표 이미지 생성" 의 자체 자동 조회 이식 (이카운트 의존 0).
+     * FE 가 응답을 받아 이미지 렌더링 (window.print 또는 html2canvas).
+     *
+     * <p>5 way 정보 동봉:
+     * <ul>
+     *   <li>slip — 다음날자 (date+1) 활성 슬립 전체</li>
+     *   <li>partner_code — slip.partnerCode (V15 snapshot)</li>
+     *   <li>chat_room — notification-service GET /api/v1/notification/admin/chat-rooms?partnerCode= (Feign)</li>
+     *   <li>block — partner-service GET /api/v1/partners/admin/blocks (Feign, Set bulk)</li>
+     *   <li>region — slip.classifiedRegionGroup (V15 snapshot)</li>
+     * </ul>
+     *
+     * <p>외부 service 실패 시 graceful fallback (chat=empty / blocked=false).
+     *
+     * @param date 기준 날짜 (선택, 미입력 시 today). 응답의 targetDate = date+1.
+     * @return 200, NextDaySlipImageResponse (지역 그룹별 묶음)
+     */
+    @Operation(summary = "다음날자 전표 이미지 데이터 (BE-A5)",
+            description = "GAS B 이식 — 자체 출고전표 자동 조회 + 단톡방/발송금지/지역 5 way join")
+    @GetMapping("/next-day-image-data")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<NextDaySlipImageResponse> nextDayImageData(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        return ApiResponse.ok(nextDaySlipImageService.buildImageData(date));
+    }
+
+    /**
+     * PR-E1 BE-A6 — 전표정리리스트 조회 (legacy GAS 13번).
+     *
+     * <p>기간 내 활성 슬립 전체 + 정합성 검증 flag 4종 + status/partner 그룹핑.
+     *
+     * <p>flag 4종 (각 슬립별 boolean):
+     * <ul>
+     *   <li>partnerCodeMissing — partner_code NULL</li>
+     *   <li>amountZero — 라인 합계 = 0</li>
+     *   <li>linesMissing — 라인 0건</li>
+     *   <li>regionMissing — classified_region_group NULL</li>
+     * </ul>
+     *
+     * @param from 기간 시작일 (필수, ISO YYYY-MM-DD)
+     * @param to 기간 종료일 (필수, ISO YYYY-MM-DD)
+     * @return 200, SlipCleanupResponse (status/partner 카운트 + 슬립별 flag)
+     */
+    @Operation(summary = "전표정리리스트 (BE-A6)",
+            description = "GAS B 이식 — 기간 내 활성 슬립 + 정합성 flag (4종) + status/partner 그룹핑")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "from/to 누락 또는 to < from")
+    })
+    @GetMapping("/cleanup")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','MASTER')")
+    public ApiResponse<SlipCleanupResponse> cleanup(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
+        return ApiResponse.ok(slipCleanupService.buildCleanupReport(from, to));
     }
 
     private String callerOrSystem(String header) {

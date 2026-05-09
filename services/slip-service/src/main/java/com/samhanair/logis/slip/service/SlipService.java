@@ -16,7 +16,9 @@ import com.samhanair.logis.slip.web.dto.EditHeaderRequest;
 import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
 import com.samhanair.logis.slip.web.dto.SlipResponse;
 import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -352,6 +355,9 @@ public class SlipService {
     /**
      * 페이지 조회 — slipType, status 필터 (둘 다 null 이면 전체).
      *
+     * <p>PR-E1 BE-A0 (PR #117) 호환 — 기존 2 param + 신규 5 query param overload 가
+     * 본 2 param 메서드 위임. FE/Feign 호환 가드.
+     *
      * @param slipType 필터 (null 가능)
      * @param status 필터 (null 가능)
      * @param pageable 페이지 정보
@@ -359,17 +365,77 @@ public class SlipService {
      */
     @Transactional(readOnly = true)
     public Page<SlipResponse> list(SlipType slipType, SlipStatus status, Pageable pageable) {
-        Page<Slip> page;
-        if (slipType != null && status != null) {
-            page = slipRepository.findAllBySlipTypeAndStatusAndIsDeletedFalse(slipType, status, pageable);
-        } else if (slipType != null) {
-            page = slipRepository.findAllBySlipTypeAndIsDeletedFalse(slipType, pageable);
-        } else if (status != null) {
-            page = slipRepository.findAllByStatusAndIsDeletedFalse(status, pageable);
-        } else {
-            page = slipRepository.findAllByIsDeletedFalse(pageable);
-        }
-        return page.map(SlipResponse::from);
+        return list(slipType, status, null, null, null, null, null, pageable);
+    }
+
+    /**
+     * 페이지 조회 (PR-E1 BE-A0 확장 — 7 param 동적 필터). 모든 param null 이면 전체 활성 슬립 페이지.
+     *
+     * <p>{@link Specification} 기반 동적 query — 인자가 비어있지 않은 조건만 AND 결합.
+     * 기존 named query (findAllBySlipTypeAndStatusAndIsDeletedFalse 등) 는 보존 — Slice B / lock-by-period
+     * 등 다른 호출자 회귀 가드.
+     *
+     * <p>지원 필터:
+     * <ul>
+     *   <li>{@code slipType} (정확 일치)</li>
+     *   <li>{@code status} (정확 일치)</li>
+     *   <li>{@code from} ~ {@code to} 날짜 범위 (slip_date BETWEEN, 둘 다 또는 한쪽만 가능)</li>
+     *   <li>{@code partnerCode} 정확 일치 (V15 신규 컬럼)</li>
+     *   <li>{@code driverPhone} like 매칭 ({@code %phone%})</li>
+     *   <li>{@code regionGroup} 정확 일치 (V15 신규 컬럼)</li>
+     * </ul>
+     *
+     * <p>is_deleted=false 자동 (entity {@link org.hibernate.annotations.SQLRestriction} 가 적용).
+     * 단, JPA Criteria 는 SQLRestriction 을 자동 적용하지 못하는 경우가 있어 명시 predicate 추가.
+     *
+     * @return 요약 응답 페이지
+     */
+    @Transactional(readOnly = true)
+    public Page<SlipResponse> list(SlipType slipType, SlipStatus status,
+                                   LocalDate from, LocalDate to,
+                                   String partnerCode, String driverPhone,
+                                   String regionGroup, Pageable pageable) {
+        Specification<Slip> spec = buildListSpec(slipType, status, from, to,
+                partnerCode, driverPhone, regionGroup);
+        return slipRepository.findAll(spec, pageable).map(SlipResponse::from);
+    }
+
+    /**
+     * 7 param 동적 Specification 빌더 — list 메서드 추출. 본 메서드는 정적 헬퍼이지만
+     * cleanup / next-day-image 등 다른 service 가 같은 빌더를 재사용 시 확장 여지 보존.
+     */
+    private Specification<Slip> buildListSpec(SlipType slipType, SlipStatus status,
+                                              LocalDate from, LocalDate to,
+                                              String partnerCode, String driverPhone,
+                                              String regionGroup) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            // SQLRestriction 보강 — Criteria query 에서도 명시 가드
+            predicates.add(cb.isFalse(root.get("isDeleted")));
+            if (slipType != null) {
+                predicates.add(cb.equal(root.get("slipType"), slipType));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (from != null && to != null) {
+                predicates.add(cb.between(root.get("slipDate"), from, to));
+            } else if (from != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("slipDate"), from));
+            } else if (to != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("slipDate"), to));
+            }
+            if (partnerCode != null && !partnerCode.isBlank()) {
+                predicates.add(cb.equal(root.get("partnerCode"), partnerCode.trim()));
+            }
+            if (driverPhone != null && !driverPhone.isBlank()) {
+                predicates.add(cb.like(root.get("driverPhone"), "%" + driverPhone.trim() + "%"));
+            }
+            if (regionGroup != null && !regionGroup.isBlank()) {
+                predicates.add(cb.equal(root.get("classifiedRegionGroup"), regionGroup.trim()));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     /**
