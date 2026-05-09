@@ -90,6 +90,8 @@ import { RolesPage as AdminRolesPage } from './admin/RolesPage'
 import { PartnersPage as AdminPartnersPage } from './admin/PartnersPage'
 import { WarehousesPage as AdminWarehousesPage } from './admin/WarehousesPage'
 import { DepartmentsPage as AdminDepartmentsPage } from './admin/DepartmentsPage'
+// [PR-D Phase B FE-A] 구글 시트 동기화 admin (MASTER 전용 — AdminLayout 가드)
+import { SheetSyncPage as AdminSheetSyncPage } from './admin/SheetSyncPage'
 // [Phase 10 P2-6 / slice 9] 재고 실사 3 페이지 (WAREHOUSE/MASTER)
 import { InventoryAuditListPage } from './InventoryAuditListPage'
 import { InventoryAuditFormPage } from './InventoryAuditFormPage'
@@ -283,6 +285,8 @@ const router = createHashRouter([
           { path: 'partners', element: <AdminPartnersPage /> },
           { path: 'warehouses', element: <AdminWarehousesPage /> },
           { path: 'departments', element: <AdminDepartmentsPage /> },
+          // [PR-D Phase B FE-A] 구글 시트 동기화
+          { path: 'sheet-sync', element: <AdminSheetSyncPage /> },
         ],
       },
 

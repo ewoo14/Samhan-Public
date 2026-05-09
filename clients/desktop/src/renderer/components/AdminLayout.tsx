@@ -10,6 +10,7 @@
  * - 거래처 (`/admin/partners`)
  * - 창고    (`/admin/warehouses`)
  * - 부서    (`/admin/departments`)
+ * - 시트 동기화 (`/admin/sheet-sync`) — PR-D Phase B FE-A
  *
  * memory feedback_uuid_no_user_visibility — admin 화면도 비즈니스 식별자만 노출.
  * memory feedback_role_naming_full — entry 라벨/가드 표기 풀네임 사용.
@@ -71,6 +72,9 @@ export function AdminLayout() {
           </AdminNav>
           <AdminNav to="/admin/departments" testId="admin-nav-departments">
             부서
+          </AdminNav>
+          <AdminNav to="/admin/sheet-sync" testId="admin-nav-sheet-sync">
+            시트 동기화
           </AdminNav>
         </aside>
         <section className="admin-main">
