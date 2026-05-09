@@ -61,9 +61,17 @@ import { JournalListPage } from './JournalListPage'
 import { JournalFormPage } from './JournalFormPage'
 import { JournalDetailPage } from './JournalDetailPage'
 import { TrialBalancePage } from './TrialBalancePage'
-// [Phase 6 v4] 판매 sub-route 5종 (legacy webview 견적 + SamhanLogis 신규 메뉴 4)
-import { SalesEstimateListPage } from './SalesEstimateListPage'
-import { EstimateLegacyWebviewPage } from './EstimateLegacyWebviewPage'
+// P0-4 세금계산서 라우트 3종 (ACCOUNTANT/MASTER — RoleGuard).
+// BE: accounting-service `/accounting/tax-invoices/*` (commit f8b8b49).
+import { TaxInvoiceListPage } from './TaxInvoiceListPage'
+import { TaxInvoiceFormPage } from './TaxInvoiceFormPage'
+import { TaxInvoiceDetailPage } from './TaxInvoiceDetailPage'
+// P2-1 견적서 라우트 3종 — slip-service `/slips/estimates/*` (commit 59232bd) 신규 BE 연결.
+// legacy webview (EstimateLegacyWebviewPage) 폐기 후 SamhanLogis 도메인 견적 화면으로 교체.
+import { EstimateListPage } from './EstimateListPage'
+import { EstimateFormPage } from './EstimateFormPage'
+import { EstimateDetailPage } from './EstimateDetailPage'
+// [Phase 6 v4] 판매 sub-route 4종 (견적은 신규 EstimateListPage — legacy webview 폐기)
 import { SalesPartnerOrderListPage } from './SalesPartnerOrderListPage'
 import { SalesPartnerOrderDetailPage } from './SalesPartnerOrderDetailPage'
 import { SalesOrderApprovalsPage } from './SalesOrderApprovalsPage'
@@ -75,9 +83,23 @@ import { ArologisManualDispatchPage } from './ArologisManualDispatchPage'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
 // [Phase 10 P2-4 / slice 8] 매출 마감 — 일별/월별 (ACCOUNTANT/MASTER 진입, 역마감은 MASTER 만)
 import { MonthEndClosingPage } from './MonthEndClosingPage'
+// [Phase 10 P0-5 / slice 4] 관리자 통합 admin (MASTER 전용 5 페이지)
+import { AdminLayout } from '../components/AdminLayout'
+import { UsersPage as AdminUsersPage } from './admin/UsersPage'
+import { RolesPage as AdminRolesPage } from './admin/RolesPage'
+import { PartnersPage as AdminPartnersPage } from './admin/PartnersPage'
+import { WarehousesPage as AdminWarehousesPage } from './admin/WarehousesPage'
+import { DepartmentsPage as AdminDepartmentsPage } from './admin/DepartmentsPage'
+// [Phase 10 P2-6 / slice 9] 재고 실사 3 페이지 (WAREHOUSE/MASTER)
+import { InventoryAuditListPage } from './InventoryAuditListPage'
+import { InventoryAuditFormPage } from './InventoryAuditFormPage'
+import { InventoryAuditDetailPage } from './InventoryAuditDetailPage'
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
+
+/** 재고 실사 권한 — WAREHOUSE / MASTER (사용자 요구). */
+const AUDIT_ROLES = ['WAREHOUSE', 'MASTER'] as const
 
 const router = createHashRouter([
   { path: '/login', element: <LoginPage /> },
@@ -100,23 +122,26 @@ const router = createHashRouter([
       // link-dispatch-slice: 링크발송 (배송 묶음) — `/sales/:id` 보다 먼저 매칭되어야 함
       { path: '/sales/link-dispatch', element: <LinkDispatchListPage /> },
 
-      // [Phase 6 v4] 판매 sub-route — legacy webview 견적 + SamhanLogis 신규 메뉴 4종.
-      // `/sales/:id` 보다 먼저 매칭되어야 함 (정적 path 우선).
-      { path: '/sales/estimates', element: <SalesEstimateListPage /> },
-      { path: '/sales/estimates/legacy', element: <EstimateLegacyWebviewPage /> },
-      { path: '/sales/estimates/new', element: <EstimateLegacyWebviewPage /> },
+      // P2-1 견적서 SamhanLogis 도메인 (slip-service `/slips/estimates`).
+      // legacy webview (EstimateLegacyWebviewPage) 폐기. 정적 path 우선 매칭 의무.
+      { path: '/sales/estimates', element: <EstimateListPage /> },
+      { path: '/sales/estimates/new', element: <EstimateFormPage /> },
       { path: '/sales/partner-orders', element: <SalesPartnerOrderListPage /> },
       { path: '/sales/partner-orders/:id', element: <SalesPartnerOrderDetailPage /> },
       { path: '/sales/order-approvals', element: <SalesOrderApprovalsPage /> },
       { path: '/sales/partner-dc-config', element: <SalesPartnerDcConfigPage /> },
+
+      // P0-4 견적서 인쇄 (estimateNumber path param) — Designer commit 5dcbbef QuoteView 재사용.
+      // P2-1 견적서 상세/편집 (id UUID path param) — `/sales/:id` 보다 먼저 매칭되어야 함.
+      { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
+      { path: '/sales/estimates/:id/edit', element: <EstimateFormPage /> },
+      { path: '/sales/estimates/:id', element: <EstimateDetailPage /> },
 
       { path: '/sales/:id', element: <SlipDetailPage mode="OUTBOUND" /> },
       { path: '/sales/:id/print/invoice', element: <InvoiceView /> },
       { path: '/sales/:id/print/dispatch', element: <DispatchView /> },
       // P0-4 신규 — 출고전표 (88mm/A4 분기). 세금계산서는 별도 accounting-service id 라우트로 이전.
       { path: '/sales/:id/print/outbound', element: <OutboundView /> },
-      // P0-4 신규 — 견적서 인쇄 (estimateNumber path param)
-      { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
 
       // 구매조회 (입고전표)
       { path: '/purchases', element: <SlipListPage mode="INBOUND" /> },
@@ -204,12 +229,86 @@ const router = createHashRouter([
         ),
       },
 
-      // P0-4 신규 — 세금계산서 인쇄 미리보기 (accounting-service tax-invoice id, slice 3 BE 연결).
+      // P0-4 세금계산서 — accounting-service `/accounting/tax-invoices/*` (commit f8b8b49).
+      // ACCOUNTANT / MASTER 만. 정적 path (`/new`) 우선, 다음 print, 마지막 `:id`.
+      {
+        path: '/accounting/tax-invoices',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <TaxInvoiceListPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/tax-invoices/new',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <TaxInvoiceFormPage />
+          </RoleGuard>
+        ),
+      },
       {
         path: '/accounting/tax-invoices/:id/print',
         element: (
           <RoleGuard allow={ACCOUNTING_ROLES}>
             <TaxInvoiceView />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/tax-invoices/:id/edit',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <TaxInvoiceFormPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/tax-invoices/:id',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <TaxInvoiceDetailPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 10 P0-5 / slice 4] 관리자 통합 admin — MASTER 전용 5 페이지.
+      // AdminLayout 자체에 RoleGuard(MASTER) 가 있으므로 outlet children 은 별도 가드 불필요.
+      {
+        path: '/admin',
+        element: <AdminLayout />,
+        children: [
+          { path: 'users', element: <AdminUsersPage /> },
+          { path: 'roles', element: <AdminRolesPage /> },
+          { path: 'partners', element: <AdminPartnersPage /> },
+          { path: 'warehouses', element: <AdminWarehousesPage /> },
+          { path: 'departments', element: <AdminDepartmentsPage /> },
+        ],
+      },
+
+      // [Phase 10 P2-6 / slice 9] 재고 실사 — WAREHOUSE / MASTER 만.
+      // 매뉴얼 docs/manual/02-창고/05-재고-실사.md 와 경로 일치.
+      {
+        path: '/warehouse/audit',
+        element: (
+          <RoleGuard allow={AUDIT_ROLES}>
+            <InventoryAuditListPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/warehouse/audit/new',
+        element: (
+          <RoleGuard allow={AUDIT_ROLES}>
+            <InventoryAuditFormPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/warehouse/audit/:id',
+        element: (
+          <RoleGuard allow={AUDIT_ROLES}>
+            <InventoryAuditDetailPage />
           </RoleGuard>
         ),
       },

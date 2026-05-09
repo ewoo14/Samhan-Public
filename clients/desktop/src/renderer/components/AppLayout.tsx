@@ -34,6 +34,8 @@ import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { canAccessAccounting } from '../api/accounting'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
+import { canAccessAdmin } from '../api/adminApi'
+import { canAccessAudit } from '../api/auditApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -89,6 +91,11 @@ export function AppLayout() {
   const showArologis = !!auth?.role
     && (ARO_MANUAL_DISPATCH_ROLES as readonly string[]).includes(auth.role)
 
+  // [Phase 10 P0-5] 관리자 admin 메뉴 — MASTER 만 가시
+  const showAdmin = canAccessAdmin(auth?.role)
+  // [Phase 10 P2-6] 재고 실사 메뉴 — WAREHOUSE / MASTER 만 가시
+  const showAudit = canAccessAudit(auth?.role)
+
   return (
     <div className="app-shell">
       <aside className="app-sidebar no-print">
@@ -103,7 +110,7 @@ export function AppLayout() {
           <NavLink to="/transfers">재고이동</NavLink>
           <NavLink to="/sales/link-dispatch">링크발송</NavLink>
 
-          {/* [Phase 6 v4] 판매 그룹 — legacy webview 견적 + SamhanLogis 신규 메뉴 4종. */}
+          {/* [Phase 6 v4 → P2-1] 판매 그룹 — 견적서 SamhanLogis 도메인 (legacy webview 폐기) + 4종 sub. */}
           <div
             className="app-sidebar-group"
             aria-hidden="true"
@@ -143,6 +150,7 @@ export function AppLayout() {
               </div>
               <NavLink to="/accounting/accounts">계정과목</NavLink>
               <NavLink to="/accounting/journals">분개장</NavLink>
+              <NavLink to="/accounting/tax-invoices">세금계산서</NavLink>
               <NavLink to="/accounting/balances">시산표</NavLink>
               <NavLink to="/warehouse/closing">매출 마감</NavLink>
             </>
@@ -166,6 +174,71 @@ export function AppLayout() {
                 arologis
               </div>
               <NavLink to="/arologis/manual">수동 배차</NavLink>
+            </>
+          ) : null}
+
+          {showAudit ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                창고 운영
+              </div>
+              <NavLink to="/warehouse/audit">재고 실사</NavLink>
+            </>
+          ) : null}
+
+          {showAdmin ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                관리자
+              </div>
+              <NavLink to="/admin/users" data-testid="sidebar-admin-users">
+                사용자
+              </NavLink>
+              <NavLink to="/admin/roles" data-testid="sidebar-admin-roles">
+                권한
+              </NavLink>
+              <NavLink
+                to="/admin/partners"
+                data-testid="sidebar-admin-partners"
+              >
+                거래처
+              </NavLink>
+              <NavLink
+                to="/admin/warehouses"
+                data-testid="sidebar-admin-warehouses"
+              >
+                창고
+              </NavLink>
+              <NavLink
+                to="/admin/departments"
+                data-testid="sidebar-admin-departments"
+              >
+                부서
+              </NavLink>
             </>
           ) : null}
         </nav>
