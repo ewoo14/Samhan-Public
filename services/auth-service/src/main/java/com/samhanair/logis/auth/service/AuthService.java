@@ -12,11 +12,18 @@ import com.samhanair.logis.common.security.Role;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Authentication + registration use-cases. All errors are surfaced as {@link BusinessException}. */
+/**
+ * 인증 + 등록 use-case. 모든 오류는 {@link BusinessException} 으로 surface.
+ *
+ * <p>Phase 10 P0-2 갱신 — login 실패 시 {@link Account#incrementFailedLogin(LocalDateTime)} 으로
+ * 카운터 증가 + 5 회 누적 시 자동 잠금. 잠긴 계정은 비밀번호 일치해도 거절.
+ */
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -31,7 +38,26 @@ public class AuthService {
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다"));
 
+        // P0-2 — 잠긴 계정은 비밀번호 일치 여부와 무관하게 즉시 거절 (계정 노출 최소화)
+        if (account.isLocked()) {
+            throw new BusinessException(
+                    ErrorCode.UNAUTHORIZED, "계정이 잠겼습니다. 관리자에게 잠금 해제를 요청해주세요");
+        }
+
+        if (!account.isEnabled()) {
+            throw new BusinessException(
+                    ErrorCode.UNAUTHORIZED, "비활성화된 계정입니다. 관리자에게 문의해주세요");
+        }
+
         if (!passwordEncoder.matches(rawPassword, account.getPasswordHash())) {
+            boolean lockedNow = account.incrementFailedLogin(LocalDateTime.now());
+            if (lockedNow) {
+                log.warn("[AuthService] account locked due to repeated failures — loginId={}", loginId);
+                throw new BusinessException(
+                        ErrorCode.UNAUTHORIZED,
+                        String.format("비밀번호 %d 회 연속 실패로 계정이 잠겼습니다. 관리자에게 문의해주세요",
+                                Account.MAX_FAILED_LOGIN_ATTEMPTS));
+            }
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다");
         }
 
