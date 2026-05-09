@@ -115,6 +115,27 @@ public class PartnerAdminController {
     }
 
     /**
+     * Phase 10 PR-D Part A — 거래처 상호로 partnerCode lookup (admin 화면 backing).
+     *
+     * <p>BLOCK 발송금지 등록 화면에서 관리자가 거래처 상호를 입력하면 본 endpoint 로 partnerCode 를
+     * 역추적한다. {@link PartnerInternalController#lookupByName(String)} 와 흐름은 동일하지만
+     * 본 endpoint 는 X-User-Role 헤더 인증 (MASTER/MANAGER) 사용. UUID 비공개 가드 유지 —
+     * 응답은 {@link PartnerAdminResponse} (partnerCode + name + bizNo + ...).
+     */
+    @Operation(summary = "거래처 상호로 partnerCode lookup (admin 화면)",
+            description = "MASTER / MANAGER 권한 필요. 정확 일치 우선, 미발견 시 LIKE 1건만 허용.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "단일 매칭"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "미발견"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "다중 매칭 (lookup 모호)")
+    })
+    @GetMapping("/by-name")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<PartnerAdminResponse> lookupByName(@RequestParam("name") String name) {
+        return ApiResponse.ok(PartnerAdminResponse.from(partnerService.findByName(name)));
+    }
+
+    /**
      * partnerCode 로 거래처 단건 조회.
      */
     @Operation(summary = "거래처 단건 조회 (partnerCode)")

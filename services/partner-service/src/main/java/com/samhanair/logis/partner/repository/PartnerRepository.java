@@ -42,6 +42,33 @@ public interface PartnerRepository extends JpaRepository<Partner, UUID> {
     List<Partner> findAllByNameContainingIgnoreCase(String namePart);
 
     /**
+     * Phase 10 PR-D Part A — 거래처 상호 (이카운트 사업자명) 정확 일치 lookup.
+     *
+     * <p>BE-D ChatRoom 의 partner 매핑 + BLOCK 발송금지 CSV import 의 lookup 핵심 query.
+     * Notion / 이카운트에서 export 된 거래처명은 partnerCode 가 아닌 상호 (name) 만 보유하므로
+     * 본 메서드로 partnerCode 를 역추적한다. {@code @SQLRestriction("is_deleted = false")}
+     * 이 활성 행만 자동 필터링하므로 메서드 시그니처에 별도 isDeleted 조건 불필요.
+     *
+     * @param name 거래처 상호 (예: "주식회사 삼성이엔지 (윤정희)")
+     * @return 매칭된 활성 Partner 또는 empty
+     */
+    Optional<Partner> findByName(String name);
+
+    /**
+     * Phase 10 PR-D Part A — 거래처 상호 부분 일치 페이지 검색 (lookup fallback / autocomplete).
+     *
+     * <p>{@link #findByName(String)} 으로 정확 일치 미발견 시 LIKE 검색으로 fallback. Pageable
+     * 로 결과 크기 제한 (lookup 용도는 size=2 로 다중결과 검출). 대소문자는 한국어이므로 의미 없음 —
+     * 명시적 IgnoreCase 미적용 (한국어 + 영문 혼용 거래처명에 한해 IgnoreCase 적용은
+     * {@link #findAllByNameContainingIgnoreCase(String)} 사용).
+     *
+     * @param keyword 부분 일치 검색어
+     * @param pageable 페이지 크기 / 정렬
+     * @return 매칭 페이지
+     */
+    Page<Partner> findAllByNameContaining(String keyword, Pageable pageable);
+
+    /**
      * Phase 10 P0-5 — admin 거래처 목록 페이지 조회 (q / status 필터).
      *
      * <p>q 는 partnerCode / name / bizNo / phone LIKE 부분 일치. null/blank 시 q 필터 미적용.

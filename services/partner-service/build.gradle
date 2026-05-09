@@ -51,6 +51,11 @@ dependencies {
     // Phase 11 AWS 마이그레이션 시 동일 S3 API 호환으로 endpoint/credentials 만 교체 가능.
     implementation 'io.minio:minio:8.5.12'
 
+    // OpenCSV — Phase 10 PR-D Part B BLOCK 발송금지 CSV import (Notion export 5 row).
+    // commons-io = UTF-8 BOM 제거 (BOMInputStream wrap, Notion export 가 UTF-8 BOM 포함).
+    implementation 'com.opencsv:opencsv:5.9'
+    implementation 'commons-io:commons-io:2.16.1'
+
     // springdoc-openapi — /v3/api-docs (JSON) + /swagger-ui.html (대화형 UI) 자동 노출
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 

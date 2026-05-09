@@ -1,0 +1,182 @@
+package com.samhanair.logis.partner.service;
+
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvValidationException;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partner.domain.Partner;
+import com.samhanair.logis.partner.dto.BlockedPartnerImportResult;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.input.BOMInputStream;
+import org.springframework.stereotype.Service;
+
+/**
+ * Phase 10 PR-D Part B — Notion 발송금지 CSV (이카운트 사업자명 + 생성 일시) → BlockedPartner row import.
+ *
+ * <p>5 거래처 (Samhan Public legacy) — Notion export = UTF-8 BOM + 한국어 datetime ("2026년 4월 26일
+ * 오전 7:36") 포맷. {@link BOMInputStream} 으로 BOM 제거 후 OpenCSV 로 파싱, 각 row 의 사업자명을
+ * {@link PartnerService#findByNameForLookup(String)} 으로 partnerCode 역추적.
+ *
+ * <p>흐름 (row 단위):
+ * <ol>
+ *   <li>"이카운트 사업자명" + "생성 일시" 추출</li>
+ *   <li>partnerService.findByNameForLookup → 0건/2건+ 시 reject (LOOKUP_MISS / AMBIGUOUS)</li>
+ *   <li>한국어 datetime 파싱 실패 시 reject (PARSE_ERROR), 성공 시 LocalDateTime</li>
+ *   <li>이미 차단된 partnerCode 는 alreadyBlocked++ 로 분류 (skip — idempotent)</li>
+ *   <li>신규 row → {@link PartnerBlockService#block(String, String, LocalDateTime, String, String)}
+ *       호출, source=NOTION_IMPORT, snapshot=CSV 입력 사업자명</li>
+ * </ol>
+ *
+ * <p>row-level transaction 분리 — 한 row 의 CONFLICT 가 다른 row 의 import 를 차단하지 않도록 본
+ * service 자체는 {@code @Transactional} 을 메서드 단위로 걸지 않고, 각 block() 호출이 자체 transaction
+ * 으로 격리된다 (PartnerBlockService.block 의 @Transactional 가 row 단위).
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class PartnerBlockImportService {
+
+    /** Notion export datetime pattern — "2026년 4월 26일 오전 7:36" (Locale.KOREAN). */
+    private static final DateTimeFormatter NOTION_DATETIME =
+            DateTimeFormatter.ofPattern("yyyy년 M월 d일 a h:mm", Locale.KOREAN);
+
+    private static final String COL_BUSINESS_NAME = "이카운트 사업자명";
+    private static final String COL_CREATED_AT = "생성 일시";
+
+    private final PartnerService partnerService;
+    private final PartnerBlockService blockService;
+
+    /**
+     * CSV 스트림을 읽어 BLOCK row 일괄 등록.
+     *
+     * @param csv UTF-8 CSV 입력 스트림 (BOM 포함 가능). 호출 측에서 close 책임.
+     * @param actorUserId 작업자 (audit created_by — Spring Data Auditing 가 헤더로 자동 적용되므로
+     *                    참고용)
+     * @return 4 카테고리 결과 (totalRows / imported / alreadyBlocked / rejected)
+     */
+    public BlockedPartnerImportResult importCsv(InputStream csv, String actorUserId) {
+        if (csv == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "CSV 파일 필수");
+        }
+
+        int total = 0;
+        int imported = 0;
+        int alreadyBlocked = 0;
+        List<BlockedPartnerImportResult.RejectedRow> rejected = new ArrayList<>();
+
+        try (BOMInputStream bomFree = BOMInputStream.builder().setInputStream(csv).get();
+             InputStreamReader isr = new InputStreamReader(bomFree, StandardCharsets.UTF_8);
+             BufferedReader br = new BufferedReader(isr);
+             CSVReader reader = new CSVReader(br)) {
+
+            String[] header = reader.readNext();
+            if (header == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "CSV 헤더 누락");
+            }
+            int colName = indexOf(header, COL_BUSINESS_NAME);
+            int colCreated = indexOf(header, COL_CREATED_AT);
+            if (colName < 0 || colCreated < 0) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "CSV 헤더 형식 불일치 — '이카운트 사업자명' / '생성 일시' 필요");
+            }
+
+            String[] row;
+            int rowNum = 0;
+            while ((row = reader.readNext()) != null) {
+                rowNum++;
+                total++;
+                String businessName = safeGet(row, colName);
+                String createdAtRaw = safeGet(row, colCreated);
+
+                if (businessName == null || businessName.isBlank()) {
+                    rejected.add(new BlockedPartnerImportResult.RejectedRow(
+                            rowNum, businessName, "PARSE_ERROR: 사업자명 누락"));
+                    continue;
+                }
+
+                LocalDateTime blockedAt;
+                try {
+                    blockedAt = parseNotionDateTime(createdAtRaw);
+                } catch (DateTimeParseException ex) {
+                    rejected.add(new BlockedPartnerImportResult.RejectedRow(
+                            rowNum, businessName, "PARSE_ERROR: 생성 일시 형식 오류 (" + createdAtRaw + ")"));
+                    continue;
+                }
+
+                Optional<Partner> lookup = partnerService.findByNameForLookup(businessName);
+                if (lookup.isEmpty()) {
+                    rejected.add(new BlockedPartnerImportResult.RejectedRow(
+                            rowNum, businessName, "LOOKUP_MISS: partnerCode 매핑 실패"));
+                    continue;
+                }
+
+                Partner partner = lookup.get();
+                if (blockService.isBlocked(partner.getPartnerCode())) {
+                    alreadyBlocked++;
+                    continue;
+                }
+
+                try {
+                    blockService.block(partner.getPartnerCode(), null, blockedAt,
+                            "NOTION_IMPORT", businessName);
+                    imported++;
+                } catch (BusinessException ex) {
+                    // 동시 import / race condition 등 — CONFLICT 시 alreadyBlocked 분류
+                    if (ex.getErrorCode() == ErrorCode.CONFLICT) {
+                        alreadyBlocked++;
+                    } else {
+                        rejected.add(new BlockedPartnerImportResult.RejectedRow(
+                                rowNum, businessName, "DUPLICATE: " + ex.getMessage()));
+                    }
+                }
+            }
+        } catch (IOException | CsvValidationException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "CSV 파싱 실패: " + ex.getMessage(), ex);
+        }
+
+        log.info("BLOCK CSV import 완료 — total={}, imported={}, alreadyBlocked={}, rejected={}, actor={}",
+                total, imported, alreadyBlocked, rejected.size(), actorUserId);
+        return new BlockedPartnerImportResult(total, imported, alreadyBlocked, rejected);
+    }
+
+    /**
+     * Notion datetime 파싱 ("2026년 4월 26일 오전 7:36" → LocalDateTime). 빈 문자열 시 now() fallback.
+     *
+     * <p>visibility = package-private — 테스트 직접 호출용.
+     */
+    LocalDateTime parseNotionDateTime(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return LocalDateTime.now();
+        }
+        return LocalDateTime.parse(raw.trim(), NOTION_DATETIME);
+    }
+
+    private int indexOf(String[] header, String column) {
+        for (int i = 0; i < header.length; i++) {
+            if (header[i] != null && column.equals(header[i].trim())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private String safeGet(String[] row, int idx) {
+        if (idx < 0 || idx >= row.length) {
+            return null;
+        }
+        return row[idx] == null ? null : row[idx].trim();
+    }
+}
