@@ -49,6 +49,8 @@ import { canAccessNextDaySlip } from '../api/nextDaySlipApi'
 import { canAccessDispatchSms } from '../api/dispatchSmsApi'
 // [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY (BE @PreAuthorize 일치)
 import { canAccessDpsCompare } from '../api/dpsCompareApi'
+// [PR-E2 FE-7] 거래처별 원장 생성 — ACCOUNTANT / MANAGER / MASTER (사용자 명세 — MANAGER read-only 허용)
+import { canAccessPartnerLedger } from '../api/partnerLedgerApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -99,6 +101,9 @@ export function AppLayout() {
 
   // accounting-slice-A — 회계 그룹은 ACCOUNTANT/MASTER 만 가시
   const showAccounting = canAccessAccounting(auth?.role)
+  // [PR-E2 FE-7] 거래처 원장 entry — ACCOUNTANT / MANAGER / MASTER 가시.
+  // showAccounting 이 false 인 MANAGER 도 entry 단독 노출 가능 (별도 분기).
+  const showPartnerLedger = canAccessPartnerLedger(auth?.role)
 
   // [Phase 10 P1-5] arologis 수동 배차 — DISPATCH/MASTER 가드 (현재 backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
   const showArologisManual = !!auth?.role
@@ -208,6 +213,44 @@ export function AppLayout() {
               <NavLink to="/accounting/tax-invoices">세금계산서</NavLink>
               <NavLink to="/accounting/balances">시산표</NavLink>
               <NavLink to="/warehouse/closing">매출 마감</NavLink>
+              {/* [PR-E2 FE-7] 거래처 원장 — ACCOUNTANT/MASTER 시점 (회계 그룹 안). */}
+              <NavLink
+                to="/accounting/partner-ledger"
+                data-testid="sidebar-accounting-partner-ledger"
+              >
+                거래처 원장
+              </NavLink>
+            </>
+          ) : null}
+
+          {/*
+            [PR-E2 FE-7] MANAGER 전용 — MASTER/ACCOUNTANT 가 아닌 MANAGER 가
+            회계 그룹 전체를 못 보지만 거래처 원장은 FE 명세가 허용하므로
+            entry 만 단독 노출 (BE 가 403 시 화면 안내).
+          */}
+          {showPartnerLedger && !showAccounting ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                회계
+              </div>
+              <NavLink
+                to="/accounting/partner-ledger"
+                data-testid="sidebar-accounting-partner-ledger"
+              >
+                거래처 원장
+              </NavLink>
             </>
           ) : null}
 
