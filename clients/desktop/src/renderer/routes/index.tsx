@@ -70,6 +70,9 @@ import { SalesOrderApprovalsPage } from './SalesOrderApprovalsPage'
 import { SalesPartnerDcConfigPage } from './SalesPartnerDcConfigPage'
 // Phase 10 P0-2 — 본인 비밀번호 변경 페이지 (재로그인 강제)
 import { PasswordChangePage } from './PasswordChangePage'
+// [Phase 10 P1-5] arologis 수동 배차 admin UI (DISPATCH/MASTER 가드 — backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
+import { ArologisManualDispatchPage } from './ArologisManualDispatchPage'
+import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
 
 /** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
 const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
@@ -175,6 +178,16 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={ACCOUNTING_ROLES}>
             <TrialBalancePage />
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 10 P1-5] arologis 수동 배차 admin UI — MASTER / MANAGER (backlog DISPATCH).
+      {
+        path: '/arologis/manual',
+        element: (
+          <RoleGuard allow={ARO_MANUAL_DISPATCH_ROLES}>
+            <ArologisManualDispatchPage />
           </RoleGuard>
         ),
       },

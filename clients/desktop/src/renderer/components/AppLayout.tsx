@@ -33,6 +33,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { canAccessAccounting } from '../api/accounting'
+import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -83,6 +84,10 @@ export function AppLayout() {
 
   // accounting-slice-A — 회계 그룹은 ACCOUNTANT/MASTER 만 가시
   const showAccounting = canAccessAccounting(auth?.role)
+
+  // [Phase 10 P1-5] arologis 수동 배차 — DISPATCH/MASTER 가드 (현재 backlog DISPATCH role 부재로 MASTER/MANAGER 매핑)
+  const showArologis = !!auth?.role
+    && (ARO_MANUAL_DISPATCH_ROLES as readonly string[]).includes(auth.role)
 
   return (
     <div className="app-shell">
@@ -139,6 +144,27 @@ export function AppLayout() {
               <NavLink to="/accounting/accounts">계정과목</NavLink>
               <NavLink to="/accounting/journals">분개장</NavLink>
               <NavLink to="/accounting/balances">시산표</NavLink>
+            </>
+          ) : null}
+
+          {showArologis ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                arologis
+              </div>
+              <NavLink to="/arologis/manual">수동 배차</NavLink>
             </>
           ) : null}
         </nav>
