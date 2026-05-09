@@ -63,7 +63,7 @@ import org.springframework.transaction.annotation.Transactional;
  * </ul>
  *
  * <p>이 IT 는 SlipResolver 를 실제로 사용하지만 PartnerClient mock 이 empty 를 반환하므로
- * resolveByPartnerCode 가 항상 empty — 실 slip-service 호출 분기는 별도 unit test (SlipClientTest) 필요.
+ * resolveByKakaoSeq 가 항상 empty — 실 slip-service 호출 분기는 별도 unit test (SlipClientTest) 필요.
  * 본 IT 는 매핑 fallback 시 자체 저장 graceful 케이스 + bridge skip log 검증.
  */
 @SpringBootTest(classes = ArologisServiceApplication.class)
@@ -104,7 +104,7 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
 
     /**
      * Case 1 — sign 정상 시나리오: arologis 자체 signatures INSERT + slip-service bridge skip
-     * (PartnerClient empty → resolveByPartnerCode empty → slipClient.registerSignature 미호출).
+     * (PartnerClient empty → resolveByKakaoSeq empty → slipClient.registerSignature 미호출).
      * 응답 schema: ApiResponse wrapper + slipBridged=false + signatureId 존재.
      */
     @Test
@@ -148,7 +148,7 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
         assertThat(saved.get(0).getSource()).isEqualTo(SignatureSource.APP);
         assertThat(saved.get(0).getImageRef()).isEqualTo("s3://samhan-prod/sig.png");
 
-        // SlipClient 미호출 검증 (PartnerClient empty → resolveByPartnerCode empty → bridge skip)
+        // SlipClient 미호출 검증 (PartnerClient empty → resolveByKakaoSeq empty → bridge skip)
         verify(slipClient, times(0)).registerSignature(any(), any());
     }
 

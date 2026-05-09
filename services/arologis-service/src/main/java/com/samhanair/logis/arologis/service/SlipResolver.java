@@ -29,26 +29,30 @@ public class SlipResolver {
     private final SlipClient slipClient;
 
     /**
-     * partnerCode 로 slipId 매핑 — arologis 정차 완료 시 호출.
+     * 카톡 슬립번호 (kakaoSeq) 로 slipId 매핑 — arologis 정차 완료 시 호출.
      *
      * <p>W10-4 종합 TM (BE-1 채택) — slip-service 신규 by-partner-code endpoint 위임. slip-service
      * 가 자체 partner-service lookup 으로 partnerId resolve 후 자체 slips lookup. graceful empty
      * 패턴 — 매핑 실패 시 200 + data=null → SlipClient 가 empty Optional 반환.
      *
-     * @param parsedPartnerCode 카톡 파싱 partnerCode (Long, 사용자 노출 식별자)
+     * <p>PR-E 진입 전 선행 R2 — 파라미터 명칭 분리 (parsedPartnerCode → parsedKakaoSeq). 본 메서드의
+     * 의미는 변경 없음 — slip-service 측 endpoint 가 카톡 슬립번호 String 형태를 그대로 받아 자체 매핑
+     * (slip-service 측 리팩터링은 PR-E1 별도 진행).
+     *
+     * @param parsedKakaoSeq 카톡 슬립번호 (Long, 사용자 노출 식별자, 예: 214)
      * @return 매칭된 slipId Optional. 매칭 실패 시 empty.
      */
-    public Optional<UUID> resolveByPartnerCode(Long parsedPartnerCode) {
-        if (parsedPartnerCode == null) {
+    public Optional<UUID> resolveByKakaoSeq(Long parsedKakaoSeq) {
+        if (parsedKakaoSeq == null) {
             return Optional.empty();
         }
-        Optional<UUID> slipIdOpt = slipClient.findRecentSlipIdByPartnerCode(String.valueOf(parsedPartnerCode));
+        Optional<UUID> slipIdOpt = slipClient.findRecentSlipIdByPartnerCode(String.valueOf(parsedKakaoSeq));
         if (slipIdOpt.isPresent()) {
-            log.info("SlipResolver — partnerCode={} → slipId={} 매핑 성공 (slip-service by-partner-code)",
-                    parsedPartnerCode, slipIdOpt.get());
+            log.info("SlipResolver — kakaoSeq={} → slipId={} 매핑 성공 (slip-service by-partner-code)",
+                    parsedKakaoSeq, slipIdOpt.get());
         } else {
-            log.debug("SlipResolver — partnerCode={} 매핑 실패 (slip-service 200 + data=null 또는 skeleton-mode)",
-                    parsedPartnerCode);
+            log.debug("SlipResolver — kakaoSeq={} 매핑 실패 (slip-service 200 + data=null 또는 skeleton-mode)",
+                    parsedKakaoSeq);
         }
         return slipIdOpt;
     }

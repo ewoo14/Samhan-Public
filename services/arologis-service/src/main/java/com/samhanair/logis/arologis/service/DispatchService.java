@@ -82,7 +82,7 @@ public class DispatchService {
                         ps.rawText(),
                         ps.parsedAddress(),
                         ps.parsedPartnerName(),
-                        ps.parsedPartnerCode(),
+                        ps.parsedKakaoSeq(),
                         ps.notes(),
                         initial,
                         ps.regionGroup()));

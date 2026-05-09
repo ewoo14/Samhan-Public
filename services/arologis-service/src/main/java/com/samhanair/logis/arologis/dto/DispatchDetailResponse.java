@@ -69,12 +69,29 @@ public record DispatchDetailResponse(
         }
     }
 
+    /**
+     * 정차 1건 상세 응답.
+     *
+     * <p>PR-E 진입 전 선행 R2 — {@code parsedKakaoSeq} (Long, 카톡 슬립번호) 와 {@code parsedPartnerCode}
+     * (String, partner-service partner_code) 를 분리. parsedPartnerCode 는 PR-E1 의 PartnerLookupClient
+     * 통합 시점에 채워지며 본 PR (R2) 시점에는 항상 null.
+     *
+     * @param sequence 정차 순서
+     * @param rawText 카톡 원본 라인
+     * @param parsedAddress 파싱된 주소
+     * @param parsedPartnerName 파싱된 사업자명
+     * @param parsedKakaoSeq 카톡 슬립번호 (Long, "(에스엠하나공조-214)" 의 214)
+     * @param parsedPartnerCode partner-service partner_code (String, 예: "P-2026-0001"). PR-E1 lookup 결과.
+     * @param notes 특이사항
+     * @param status 정차 상태
+     */
     public record StopDetail(
             int sequence,
             String rawText,
             String parsedAddress,
             String parsedPartnerName,
-            Long parsedPartnerCode,
+            Long parsedKakaoSeq,
+            String parsedPartnerCode,
             String notes,
             StopStatus status
     ) {
@@ -84,6 +101,7 @@ public record DispatchDetailResponse(
                     s.getRawText(),
                     s.getParsedAddress(),
                     s.getParsedPartnerName(),
+                    s.getParsedKakaoSeq(),
                     s.getParsedPartnerCode(),
                     s.getNotes(),
                     s.getStatus());

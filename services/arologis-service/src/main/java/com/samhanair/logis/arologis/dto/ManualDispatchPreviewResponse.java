@@ -34,11 +34,23 @@ public record ManualDispatchPreviewResponse(
             List<PreviewStop> stops
     ) {}
 
+    /**
+     * 정차 1건 미리보기.
+     *
+     * <p>PR-E 진입 전 선행 R2 — {@code kakaoSeq} (Long, 카톡 슬립번호) 로 rename.
+     * partner-service 의 partner_code (String) 와 의미 분리.
+     *
+     * @param sequence 정차 순서
+     * @param partnerName 거래처명
+     * @param address 주소
+     * @param kakaoSeq 카톡 슬립번호 (Long, 옵션 — W10-4 자동 bridge 용)
+     * @param notes 특이사항
+     */
     public record PreviewStop(
             int sequence,
             String partnerName,
             String address,
-            Long partnerCode,
+            Long kakaoSeq,
             String notes
     ) {}
 }

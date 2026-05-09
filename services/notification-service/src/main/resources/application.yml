@@ -39,6 +39,9 @@ samhan:
     provider: ${SAMHAN_DISCOVERY_PROVIDER:eureka}
   user-service:
     url: ${SAMHAN_USER_SERVICE_URL:http://localhost:8083}
+  # PR-E 진입 전 선행 BE-E — RestClientPartnerLookupClient 활성. partner-service base URL.
+  partner-service:
+    url: ${SAMHAN_PARTNER_SERVICE_URL:http://localhost:8095}
   notification:
     aligo:
       api-url: ${SAMHAN_ALIGO_API_URL:https://apis.aligo.in/send/}
@@ -66,6 +69,10 @@ samhan:
     # NotificationService.retry() 시점에 본 임계 초과 시 영구 FAILED 처리 (DEAD_LETTER 의미).
     retry:
       max-attempts: ${SAMHAN_NOTIFICATION_RETRY_MAX_ATTEMPTS:5}
+    # PR-E 진입 전 선행 BE-E — RestClientPartnerLookupClient 토글. default true.
+    # false 시 RestClient 빈 비활성 → NoopPartnerLookupClient (@Profile("!test")) 만 활성.
+    partner-lookup:
+      enabled: ${SAMHAN_NOTIFICATION_PARTNER_LOOKUP_ENABLED:true}
 
 app:
   security:

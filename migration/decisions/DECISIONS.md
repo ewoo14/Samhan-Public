@@ -880,6 +880,36 @@ PR (`feature/integrated-phase-10-step-9-sheet-notion-import`) — PR #114 머지
 - `clients/desktop` typecheck → 무에러
 - notification IT 15건 — Windows 로컬 Docker 미가용 → Testcontainers skip (정상). CI Linux runner 에서 BeanDefinition 충돌 해소 후 실 IT 동작 확인 (CI 재실행 자동).
 
+### D-P10-18. PR-E 진입 전 선행 — R2 parsedPartnerCode rename + BE-E PartnerLookupClient 실 구현 (2026-05-10)
+
+PR (`feature/integrated-pre-rename-partnerlookup`) — D-P10-17 후속 backlog 2건 (R2 + BE-E) 을 PR-E1 (slip+arologis+inventory 7건) 진입 전 선행 단일 PR 로 정리. Critical Path = arologis 의 partnerCode 명칭 충돌 해소 + notification 의 partner-service 실 호출 활성.
+
+근거:
+- **R2** — KakaoDispatchParser 의 `parsed_partner_code` (Long, 카톡 슬립번호 "(에스엠하나공조-214)" 의 214) 와 partner-service 의 `partner_code` (String, "P-2026-0001" 비즈니스 식별자) 가 동일 명칭으로 PR-E1 의 RegionClassifier + PartnerLookupClient 통합 시점에 의미 혼동 위험. PR-E1 진입 전 entity / DTO / service 명칭을 분리해야 lookup 결과 컬럼 신설 시 충돌 0.
+- **BE-E** — D-P10-17 시점 NoopPartnerLookupClient (placeholder) 가 production 에서 활성되어 ChatRoom/BlockedPartner CSV import 가 noop empty 반환 → 모든 row reject 회귀. PR-E1 의 import 운영 활성 전에 partner-service 실 호출 RestClient 구현체 등록 의무.
+- **단일 PR 통합** — 두 작업 모두 PR-E1 의 선행 의존성이며, 동일 도메인 (arologis ↔ notification ↔ partner-service) 의 partner_code 명칭 정합 작업이라 통합 PR 회귀 비용이 분리 PR 보다 낮음.
+
+영향:
+- `services/arologis-service/src/main/resources/db/migration/V4__rename_parsed_partner_code.sql` 신규 — `parsed_partner_code` (BIGINT) → `parsed_kakao_seq` rename + 신규 `parsed_partner_code` (VARCHAR(50)) 컬럼 + 인덱스 rename + 신규 partial index
+- `services/arologis-service/src/main/java/.../domain/VehicleStop.java` — `parsedKakaoSeq` (Long) + `parsedPartnerCode` (String) 분리, 9-인자 factory 추가, `updateParsedPartnerCode` setter (PR-E1 lookup 후속 갱신용)
+- `services/arologis-service/src/main/java/.../parser/ParsedDispatch.java` (record) — `parsedPartnerCode` → `parsedKakaoSeq` (Long) rename, 7-인자 호환 생성자 보존
+- `services/arologis-service/src/main/java/.../parser/KakaoDispatchParser.java` — `parsePartnerCode` → `parseKakaoSeq` 메서드 rename + Javadoc 정정
+- `services/arologis-service/src/main/java/.../service/SlipResolver.java` — `resolveByPartnerCode(Long)` → `resolveByKakaoSeq(Long)` rename (의미 동일, naming 만)
+- `services/arologis-service/src/main/java/.../controller/ArologisDriverAppController.java` — SlipResolver 호출 이름 정합
+- `services/arologis-service/src/main/java/.../dto/{ManualDispatchRequest, ManualDispatchPreviewResponse, DispatchDetailResponse, ParsedDispatchResponse}.java` — Long 카톡 식별자 필드 `partnerCode`/`parsedPartnerCode` → `kakaoSeq`/`parsedKakaoSeq` rename. DispatchDetailResponse.StopDetail 은 `parsedPartnerCode` (String) 추가 (PR-E1 lookup 결과 응답)
+- `services/arologis-service/src/main/java/.../service/{DispatchService, DispatchManualService}.java` — VehicleStop 저장 시 `kakaoSeq` 전달
+- `services/arologis-service/src/test/java/.../parser/KakaoDispatchParserTest.java` — case 3/8 정정 (`parsedKakaoSeq()`)
+- `services/arologis-service/src/test/java/.../it/SignatureIntegrationIT.java` — 코멘트 정정 (`resolveByKakaoSeq`)
+- `services/notification-service/src/main/java/.../client/RestClientPartnerLookupClient.java` 신규 — partner-service `GET /internal/partners/{partnerCode}` + `GET /internal/partners/by-name?name=` 호출, X-Internal-Token 인증, 404/409/5xx fail-soft
+- `services/notification-service/src/main/resources/application.yml` — `samhan.partner-service.url` (default `http://localhost:8095`) + `samhan.notification.partner-lookup.enabled` (default true) 토글 신규
+- `services/notification-service/src/test/java/.../client/RestClientPartnerLookupClientTest.java` 신규 — MockRestServiceServer 5 case (200 정상 / 404 / 409 / 한글 query encode / token 미설정)
+- `ROADMAP.md` — Phase 10 PR-E 진입 전 선행 row 추가
+- `docs/dev-reports/integration-pre-pr-rename-partnerlookup.md` 신규
+
+후속 (PR-E1):
+- arologis V4 의 신규 String 컬럼 `parsed_partner_code` 를 RegionClassifier + PartnerLookupClient 결과로 채우는 batch / parser 통합
+- slip-service 의 `/internal/slips/by-partner-code/{code}/recent` endpoint 의 path variable 명칭 정합 (kakaoSeq vs partnerCode 의미 분리) — 본 PR scope 외, slip 측 PR 별도 진행
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
