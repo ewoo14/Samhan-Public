@@ -39,4 +39,21 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, UUID> 
         BigDecimal getDebitTotal();
         BigDecimal getCreditTotal();
     }
+
+    /**
+     * 마감 합계 집계용 — 계정 대분류(앞 1자리 = 1/2/3/4/5/8/9) prefix 로 그룹핑.
+     * 본 슬라이스에서는 service 가 호출 후 prefix 그룹별로 합산. POSTED 분개만 집계.
+     */
+    @Query("""
+            SELECT l.accountCode AS accountCode,
+                   COALESCE(SUM(l.debitAmount), 0) AS debitTotal,
+                   COALESCE(SUM(l.creditAmount), 0) AS creditTotal
+            FROM JournalLine l
+            WHERE l.journal.journalDate >= :from
+              AND l.journal.journalDate <= :to
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            GROUP BY l.accountCode
+            """)
+    List<AccountTotal> aggregatePostedByAccount(@Param("from") LocalDate from,
+                                                @Param("to") LocalDate to);
 }

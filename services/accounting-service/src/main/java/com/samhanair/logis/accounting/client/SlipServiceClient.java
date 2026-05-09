@@ -1,0 +1,142 @@
+package com.samhanair.logis.accounting.client;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.security.InternalAuthProperties;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+/**
+ * Internal-token 인증 client to {@code slip-service} 의 마감 잠금 endpoint
+ * ({@code POST /slips/lock-by-period}).
+ *
+ * <p>매출 마감 (P2-4) 단계에서 호출:
+ *
+ * <ol>
+ *   <li>회계담당자가 {@code POST /accounting/closings} 실행 (DAILY 또는 MONTHLY)</li>
+ *   <li>service 가 본 client 호출 → slip-service 가 [from, to] 범위의
+ *       CONFIRMED 슬립 일괄 LOCKED 전이 + 잠금 건수 반환</li>
+ *   <li>service 가 잠금 건수를 {@link com.samhanair.logis.accounting.domain.AccountingPeriod#close} 에 stamp</li>
+ * </ol>
+ *
+ * <p>본 client 는 Layer 4 외부 client 로서 IT 에서 {@code @MockBean} 격리 의무
+ * (메모리 가드 {@code feedback_it_mockbean_external_clients.md}).
+ *
+ * <p>HTTP 상태 매핑:
+ *
+ * <ul>
+ *   <li>4xx → {@link BusinessException}({@link ErrorCode#CONFLICT})</li>
+ *   <li>5xx / 연결 실패 → {@link BusinessException}({@link ErrorCode#INTERNAL_ERROR})</li>
+ * </ul>
+ *
+ * <p>slip-service 에 본 endpoint 가 추가되기 전까지는 slip-service 가 404 반환 가능 →
+ * service 는 이를 CONFLICT 로 surface (마감 절차상 명시적 fail).
+ */
+@Component
+public class SlipServiceClient {
+
+    private static final Logger log = LoggerFactory.getLogger(SlipServiceClient.class);
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String SLIP_SERVICE_BASE = "http://slip-service";
+    private static final String LOCK_BY_PERIOD_PATH = "/slips/lock-by-period";
+
+    private final RestClient restClient;
+    private final InternalAuthProperties internalAuthProperties;
+
+    public SlipServiceClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
+                             InternalAuthProperties internalAuthProperties) {
+        this.restClient = builder.baseUrl(SLIP_SERVICE_BASE).build();
+        this.internalAuthProperties = internalAuthProperties;
+    }
+
+    /**
+     * 기간 잠금 — slip-service 가 [from, to] (inclusive) 범위의 CONFIRMED 슬립을 LOCKED 로 전이.
+     *
+     * @param from 시작 일자 (inclusive)
+     * @param to 종료 일자 (inclusive)
+     * @return 잠근 슬립 건수 ({@code lockedCount} 응답 필드)
+     * @throws BusinessException(CONFLICT) slip-service 4xx (endpoint 부재 / 잠금 충돌)
+     * @throws BusinessException(INTERNAL_ERROR) slip-service 5xx / 네트워크 실패
+     */
+    public int lockByPeriod(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("from/to 는 필수입니다");
+        }
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("to 는 from 이후여야 합니다");
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("from", from.toString());
+        body.put("to", to.toString());
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resp = restClient.post()
+                    .uri(LOCK_BY_PERIOD_PATH)
+                    .header(INTERNAL_TOKEN_HEADER, requireToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.CONFLICT,
+                                "slip-service lock-by-period 호출 실패: " + res.getStatusCode());
+                    })
+                    .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                                "slip-service lock-by-period 호출 실패: " + res.getStatusCode());
+                    })
+                    .body(Map.class);
+            return extractLockedCount(resp);
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("SlipServiceClient {} failed: {}", LOCK_BY_PERIOD_PATH, ex.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "slip-service 호출 실패", ex);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static int extractLockedCount(Map<String, Object> resp) {
+        if (resp == null) {
+            return 0;
+        }
+        // ApiResponse 래핑 — { success, code, data: { lockedCount: N } }
+        Object data = resp.get("data");
+        Map<String, Object> payload;
+        if (data instanceof Map<?, ?> dataMap) {
+            payload = (Map<String, Object>) dataMap;
+        } else {
+            payload = resp;
+        }
+        Object count = payload.get("lockedCount");
+        if (count instanceof Number n) {
+            return n.intValue();
+        }
+        if (count instanceof String s) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException ignore) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    private String requireToken() {
+        String token = internalAuthProperties.getToken();
+        if (token == null || token.isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "app.security.internal.token 미설정");
+        }
+        return token;
+    }
+}

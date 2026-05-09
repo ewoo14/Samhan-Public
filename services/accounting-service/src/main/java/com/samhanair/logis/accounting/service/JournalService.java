@@ -134,6 +134,78 @@ public class JournalService {
         return JournalDetailResponse.of(savedReversal);
     }
 
+    /**
+     * 자동 분개 게시 — 세금계산서 발행/마감 등 service 모듈이 호출. POSTED 상태로 즉시 저장.
+     *
+     * <p>호출자 책임: 라인은 사전 차/대 일치하도록 구성. accountCode 는 leaf 검증을 호출자가
+     * 미리 수행 (또는 본 메서드에서 위임). sourceType / sourceRefId 는 출처 추적용 (SLIP/CLOSING).
+     *
+     * @param journalDate 분개 일자
+     * @param description 적요
+     * @param sourceType 출처 (SLIP/CLOSING/MANUAL)
+     * @param sourceRefId 출처 참조 (TaxInvoice UUID 등)
+     * @param actorUserId 게시자 user-id
+     * @param lineSpecs 라인 spec 리스트 (accountCode, debit, credit, partnerId, memo)
+     * @return POSTED 신규 Journal entity (ID 부여 완료)
+     */
+    public Journal postAutoJournal(java.time.LocalDate journalDate, String description,
+                                   JournalSourceType sourceType, UUID sourceRefId,
+                                   String actorUserId,
+                                   java.util.List<AutoJournalLineSpec> lineSpecs) {
+        if (lineSpecs == null || lineSpecs.isEmpty()) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "자동 분개 라인이 1개 이상 필요합니다");
+        }
+        String journalNo = journalNumberService.next(journalDate);
+        Journal journal = Journal.create(journalNo, journalDate, description, sourceType, sourceRefId);
+        int lineNo = 1;
+        for (AutoJournalLineSpec spec : lineSpecs) {
+            accountService.requireLeafAccount(spec.accountCode());
+            JournalLine line = JournalLine.create(journal, lineNo++, spec.accountCode(),
+                    spec.debitAmount(), spec.creditAmount(), spec.partnerId(), spec.memo());
+            journal.addLine(line);
+        }
+        journal.post(actorUserId);
+        return journalRepository.save(journal);
+    }
+
+    /**
+     * 자동 역분개 — 원분개를 REVERSED 마킹하고 차/대 swap 한 신규 POSTED Journal 을 자동 생성.
+     * 세금계산서 cancel 등 호출. 기존 {@link #reverse} 와 동작 동일하지만 entity 반환.
+     */
+    public Journal autoReverse(UUID originalJournalId, String actorUserId) {
+        Journal original = findOrThrow(originalJournalId);
+        String reverseNo = journalNumberService.next(original.getJournalDate());
+        String reverseDesc = "[역분개] "
+                + (original.getDescription() == null ? original.getJournalNo() : original.getDescription());
+        Journal reversal = Journal.create(reverseNo, original.getJournalDate(), reverseDesc,
+                original.getSourceType(), original.getId());
+        int lineNo = 1;
+        for (JournalLine origLine : original.getLines()) {
+            JournalLine swapped = JournalLine.create(reversal, lineNo++, origLine.getAccountCode(),
+                    origLine.getCreditAmount(),
+                    origLine.getDebitAmount(),
+                    origLine.getPartnerId(),
+                    "[역분개] " + (origLine.getMemo() == null ? "" : origLine.getMemo()));
+            reversal.addLine(swapped);
+        }
+        reversal.post(actorUserId);
+        Journal saved = journalRepository.save(reversal);
+        original.markReversed();
+        original.linkReversal(saved.getId());
+        return saved;
+    }
+
+    /**
+     * 자동 분개 라인 spec — {@link #postAutoJournal} 입력. record 로 immutable.
+     */
+    public record AutoJournalLineSpec(
+            String accountCode,
+            java.math.BigDecimal debitAmount,
+            java.math.BigDecimal creditAmount,
+            UUID partnerId,
+            String memo) {}
+
     private Journal findOrThrow(UUID id) {
         return journalRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,

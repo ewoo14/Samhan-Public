@@ -1,0 +1,179 @@
+package com.samhanair.logis.accounting.service;
+
+import com.samhanair.logis.accounting.domain.Journal;
+import com.samhanair.logis.accounting.domain.JournalSourceType;
+import com.samhanair.logis.accounting.domain.TaxInvoice;
+import com.samhanair.logis.accounting.domain.TaxInvoiceLine;
+import com.samhanair.logis.accounting.domain.TaxInvoiceStatus;
+import com.samhanair.logis.accounting.repository.TaxInvoiceRepository;
+import com.samhanair.logis.accounting.web.dto.CreateTaxInvoiceLineRequest;
+import com.samhanair.logis.accounting.web.dto.CreateTaxInvoiceRequest;
+import com.samhanair.logis.accounting.web.dto.TaxInvoiceDetailResponse;
+import com.samhanair.logis.accounting.web.dto.TaxInvoiceResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 세금계산서 service (Phase 10 Step 8 — P0-4 #3).
+ *
+ * <p>매뉴얼 출처: {@code docs/manual/03-회계/03-세금계산서.md}.
+ *
+ * <p>라이프사이클 표 (Layer 4 의무):
+ *
+ * <pre>
+ *   create        : (없음) → DRAFT
+ *   update        : DRAFT mutation 만 허용
+ *   issue         : DRAFT → ISSUED + tax_invoice_no 채번 + 자동 분개 (110/255/400)
+ *   cancel        : ISSUED → CANCELLED + 자동 역분개
+ *   list / getOne : 조회
+ * </pre>
+ *
+ * <p>자동 분개 패턴 (한국 일반기업회계기준 + 매뉴얼 §1-4):
+ *
+ * <pre>
+ *   (차) 110 외상매출금        totalAmount
+ *   (대) 255 부가세예수금                 vatAmount
+ *   (대) 400 매출                         supplyAmount
+ * </pre>
+ *
+ * <p>partnerId 는 분개 라인 partnerId 로 전파 → AR/AP 추적 (A4 의존). source_ref_id 는
+ * TaxInvoice UUID — 추후 분개 → 세금계산서 역추적.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class TaxInvoiceService {
+
+    /** 외상매출금 — 한국 표준 코드 110 (V1 시드). */
+    public static final String ACCOUNT_RECEIVABLES = "110";
+    /** 부가세예수금 — 한국 표준 코드 255 (V2 시드 신규). */
+    public static final String ACCOUNT_VAT_PAYABLE = "255";
+    /** 매출 — 한국 표준 코드 400 (V1 시드, 통제 계정 → 401 상품매출 라인 코드 사용). */
+    public static final String ACCOUNT_REVENUE = "401";
+
+    private final TaxInvoiceRepository taxInvoiceRepository;
+    private final TaxInvoiceNumberService taxInvoiceNumberService;
+    private final JournalService journalService;
+
+    /**
+     * 신규 세금계산서 생성 (DRAFT). 라인 1개 이상 필수, 금액 자동 계산.
+     */
+    public TaxInvoiceDetailResponse create(CreateTaxInvoiceRequest request) {
+        TaxInvoice ti = TaxInvoice.create(request.partnerId(), request.partnerBusinessNo(),
+                request.partnerName(), request.partnerAddress(), request.supplyDate(),
+                request.description());
+        int lineNo = 1;
+        for (CreateTaxInvoiceLineRequest lineReq : request.lines()) {
+            TaxInvoiceLine line = TaxInvoiceLine.create(ti, lineNo++, lineReq.itemName(),
+                    lineReq.spec(), lineReq.quantity(), lineReq.unitPrice(), lineReq.memo());
+            ti.addLine(line);
+        }
+        TaxInvoice saved = taxInvoiceRepository.save(ti);
+        return TaxInvoiceDetailResponse.of(saved);
+    }
+
+    /**
+     * 수정 — DRAFT 상태에서 헤더 + 라인 일괄 교체.
+     */
+    public TaxInvoiceDetailResponse update(UUID id, CreateTaxInvoiceRequest request) {
+        TaxInvoice ti = findOrThrow(id);
+        ti.updateBasic(request.partnerBusinessNo(), request.partnerName(),
+                request.partnerAddress(), request.supplyDate(), request.description());
+        // 라인 교체 — orphan removal 로 기존 라인 영속화 제거.
+        List<TaxInvoiceLine> newLines = new ArrayList<>();
+        int lineNo = 1;
+        for (CreateTaxInvoiceLineRequest lineReq : request.lines()) {
+            newLines.add(TaxInvoiceLine.create(ti, lineNo++, lineReq.itemName(),
+                    lineReq.spec(), lineReq.quantity(), lineReq.unitPrice(), lineReq.memo()));
+        }
+        ti.replaceLines(newLines);
+        return TaxInvoiceDetailResponse.of(ti);
+    }
+
+    /**
+     * 발행 — DRAFT → ISSUED. 발행번호 채번 + 자동 분개 게시 + journalId 연결.
+     *
+     * <p>자동 분개: (차) 110 / (대) 255+401. partnerId 라인 전파.
+     */
+    public TaxInvoiceDetailResponse issue(UUID id, String actorUserId) {
+        TaxInvoice ti = findOrThrow(id);
+        // 채번 (DB UNIQUE 백업).
+        String taxInvoiceNo = taxInvoiceNumberService.next(ti.getSupplyDate());
+        ti.issue(taxInvoiceNo, actorUserId);
+
+        // 자동 분개 라인 구성: 110 차 / 255 대 / 401 대.
+        List<JournalService.AutoJournalLineSpec> lineSpecs = new ArrayList<>();
+        lineSpecs.add(new JournalService.AutoJournalLineSpec(
+                ACCOUNT_RECEIVABLES,
+                ti.getTotalAmount(),
+                java.math.BigDecimal.ZERO,
+                ti.getPartnerId(),
+                "세금계산서 " + taxInvoiceNo + " 외상매출금"));
+        if (ti.getVatAmount().signum() > 0) {
+            lineSpecs.add(new JournalService.AutoJournalLineSpec(
+                    ACCOUNT_VAT_PAYABLE,
+                    java.math.BigDecimal.ZERO,
+                    ti.getVatAmount(),
+                    ti.getPartnerId(),
+                    "세금계산서 " + taxInvoiceNo + " 부가세예수금"));
+        }
+        lineSpecs.add(new JournalService.AutoJournalLineSpec(
+                ACCOUNT_REVENUE,
+                java.math.BigDecimal.ZERO,
+                ti.getSupplyAmount(),
+                ti.getPartnerId(),
+                "세금계산서 " + taxInvoiceNo + " 매출"));
+
+        Journal journal = journalService.postAutoJournal(
+                ti.getSupplyDate(),
+                "세금계산서 발행 " + taxInvoiceNo + " (" + ti.getPartnerName() + ")",
+                JournalSourceType.SLIP,
+                ti.getId(),
+                actorUserId,
+                lineSpecs);
+        ti.linkJournal(journal.getId());
+        return TaxInvoiceDetailResponse.of(ti);
+    }
+
+    /**
+     * 취소 — ISSUED → CANCELLED. 원분개 자동 역분개 + reverse_journal_id 연결.
+     */
+    public TaxInvoiceDetailResponse cancel(UUID id, String actorUserId) {
+        TaxInvoice ti = findOrThrow(id);
+        ti.cancel(actorUserId);
+        if (ti.getJournalId() != null) {
+            Journal reversal = journalService.autoReverse(ti.getJournalId(), actorUserId);
+            ti.linkReverseJournal(reversal.getId());
+        }
+        return TaxInvoiceDetailResponse.of(ti);
+    }
+
+    /** 페이지 조회 — 4 필터 (status, from, to, partnerId). */
+    @Transactional(readOnly = true)
+    public Page<TaxInvoiceResponse> list(TaxInvoiceStatus status, LocalDate from, LocalDate to,
+                                         UUID partnerId, Pageable pageable) {
+        return taxInvoiceRepository.findByFilters(status, from, to, partnerId, pageable)
+                .map(TaxInvoiceResponse::of);
+    }
+
+    /** 단건 조회 (라인 포함). */
+    @Transactional(readOnly = true)
+    public TaxInvoiceDetailResponse getOne(UUID id) {
+        return TaxInvoiceDetailResponse.of(findOrThrow(id));
+    }
+
+    private TaxInvoice findOrThrow(UUID id) {
+        return taxInvoiceRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "존재하지 않는 세금계산서입니다: " + id));
+    }
+}
