@@ -68,24 +68,42 @@
 
 ## 2. Stage 2 (현재 PR — W10-7b) 산출물 — 🟡 진행 중
 
+> **agent 분담 메모** — Stage 2 PR 은 4 agent 병렬:
+> - **TM agent** — `stage2-scenarios.md` (74 항목) + `missing-features-catalog.md` 갱신 (150 sub) + `STATUS.md` 갱신 (본 표)
+> - **Designer agent (writer)** — 9 시나리오 본문 작성 (영업 5 + 창고 3 + 권한 1) — **본 § 2.1 / 2.2 / 2.6 작성**
+> - **Backend agent** — API ↔ 매뉴얼 mapping 검증 (별도 commit)
+> - **Frontend agent** — UI 흐름 ↔ 매뉴얼 mapping 검증 (별도 commit)
+> - **QA agent** — `stage2-scenarios.md` 검증 결과 commit
+
 ### 2.1 매뉴얼 본문 (영업 5 docs)
 
-| # | 파일 | 의존 | 본 PR 상태 | 메모 |
+> 본 task (Designer/writer agent) 가 실제 작성한 파일명은 task spec 기준이며, TM 의 초기 plan (`02-슬립-발행.md` 등) 과 일부 차이가 있습니다 (slug 통일 — `-처리` / `-조회` / `-라인` 접미 추가).
+
+| # | 파일 (writer agent 산출) | 의존 | 본 PR 상태 | 메모 |
 |---|---|---|---|---|
-| 1 | `01-영업/01-거래처-등록.md` | **🔴 P0-6 차단** — desktop 4 탭 UI 부재 | ⏳ Designer agent 병렬 작업 | 매뉴얼만 약속 시 운영 실패. UI 신규 PR 의존 |
-| 2 | `01-영업/02-슬립-발행.md` | ✅ 9 transition 가능 | ⏳ Designer agent 병렬 작업 | 캡처 우선 (`stage2-scenarios.md` §1.2) |
-| 3 | `01-영업/03-견적서.md` | ✅ legacy webview | ⏳ Designer agent 병렬 작업 | 임베드 한계 안내 |
-| 4 | `01-영업/04-주문서.md` | ✅ desktop / **❌ mobile** | ⏳ Designer agent 병렬 작업 | mobile 부분은 Stage 3 |
-| 5 | `01-영업/05-매출-마감.md` | **❌ 미구현** (P2-4) | ⏳ 미구현 안내 docs (Designer 작성) | Stage 4 보류 권고 / 본 PR 은 안내 docs 만 |
+| 1 | `01-영업/01-거래처-등록.md` | **🔴 P0-6 차단** — desktop 4 탭 UI 부재 | ✅ writer agent 작성 완료 | 매뉴얼만 약속 시 운영 실패. UI 부재 시 backend API / DB 직접 INSERT 우회 절차 §4 명시 |
+| 2 | `01-영업/02-거래처-조회.md` | ✅ list backend / ⏳ 4 탭 상세 dialog ❌ (P0-6) | ✅ writer agent 작성 완료 | 검색 / 페이지네이션 / 신용 history 포함 |
+| 3 | `01-영업/03-슬립-발행.md` | ✅ 11 status backend / ⏳ legacy v4 webview | ✅ writer agent 작성 완료 | 11 status 흐름 도표 + 헤더/라인 + 인쇄 / 모바일 서명 |
+| 4 | `01-영업/04-슬립-결재-라인.md` | ✅ button-level RBAC | ✅ writer agent 작성 완료 | 권한 매트릭스 (SALES vs WAREHOUSE vs MANAGER vs ACCOUNTANT) + 거절 / 취소 / 자동 분개 |
+| 5 | `01-영업/05-거래처-주문.md` | ✅ partner-order-service / ⏳ 거래처 native 앱 ❌ (P1-4) | ✅ writer agent 작성 완료 | idempotency-key 동작 + draft → confirm → slip 자동 발행 + retry |
 
-### 2.2 매뉴얼 본문 (창고 4 docs)
+> ⚠️ TM 의 초기 plan 의 `03-견적서` / `04-주문서` / `05-매출-마감` 항목은 writer agent task spec 의 5 항목과 매핑이 다릅니다. 견적서 / 매출 마감 docs 는 향후 Stage 3 또는 별도 보강 PR 로 추가 예정. 거래처 주문서 (`05-거래처-주문.md`) 는 writer agent 가 partner-order-service 시점에서 작성.
 
-| # | 파일 | 의존 | 본 PR 상태 |
+### 2.2 매뉴얼 본문 (창고 3 docs)
+
+| # | 파일 (writer agent 산출) | 의존 | 본 PR 상태 |
 |---|---|---|---|
-| 1 | `02-창고/01-입고.md` | ✅ slip INBOUND / ⏳ 검수 UI ❌ (P0-9 신규) | ⏳ Designer agent 병렬 작업 |
-| 2 | `02-창고/02-출고.md` | ✅ slip OUTBOUND / ⏳ 창고원 모바일 ❌ | ⏳ Designer agent 병렬 작업 |
-| 3 | `02-창고/03-재고.md` | ✅ `/warehouses` + `/transfers` | ⏳ Designer agent 병렬 작업 |
-| 4 | `02-창고/04-실사.md` | **❌ 미구현** (P2-6 신규) | ⏳ 미구현 안내 docs (Designer 작성) |
+| 1 | `02-창고/01-입고-처리.md` | ✅ slip INBOUND / ⏳ 검수 UI ❌ (P0-9 신규) | ✅ writer agent 작성 완료 |
+| 2 | `02-창고/02-출고-처리.md` | ✅ slip OUTBOUND / ⏳ 창고원 모바일 ❌ (P2-1) | ✅ writer agent 작성 완료 |
+| 3 | `02-창고/03-재고-조회.md` | ✅ `/balances` + `/transfers` + `/movements` + `/lots` | ✅ writer agent 작성 완료 |
+
+> ⚠️ TM 의 초기 plan 의 `04-실사.md` 는 writer agent task spec 에서 제외 (P2-6 미구현 — Stage 4 보류 권고). 본 PR 의 §2.6 도 동일하게 backlog 처리.
+
+### 2.6 시작하기 backlog 처리 (Stage 2 추가)
+
+| # | 파일 (writer agent 산출) | 의존 | 본 PR 상태 |
+|---|---|---|---|
+| 1 | `00-시작하기/03-역할별-권한.md` | ✅ 9 ROLE × 14 service 매트릭스 + 슬립 11 status × ROLE | ✅ writer agent 작성 완료 (Stage 1 backlog 해소) |
 
 ### 2.3 QA plan / Catalog 갱신 / STATUS — ✅ 본 task 산출
 
@@ -233,3 +251,4 @@
 |---|---|---|---|
 | 2026-05-09 | Stage 1 | 색인 + 로그인 + 메인 + Inventory 4 docs + Catalog (131 sub) + Scenarios (31 항목) + STATUS 작성 | W10-7 |
 | 2026-05-09 | Stage 2 | QA plan stage2-scenarios.md (74 항목) + Catalog 갱신 (131 → 150 sub, +P0-9 +P2-6) + STATUS Stage 2 진행 갱신. Designer agent 8~9 docs 매뉴얼 본문 병렬 작성 (별도 task). | W10-7b |
+| 2026-05-09 | Stage 2 | **writer agent 9 docs 작성 완료** — 영업 5 (`01-거래처-등록` / `02-거래처-조회` / `03-슬립-발행` / `04-슬립-결재-라인` / `05-거래처-주문`) + 창고 3 (`01-입고-처리` / `02-출고-처리` / `03-재고-조회`) + 시작하기 1 (`03-역할별-권한`). UI 부재 부분 placeholder + "구현 예정" 안내 (P0-6 / P0-7 / P0-9 / P1-3 / P2-1 / P2-4 mapping). | W10-7b |
