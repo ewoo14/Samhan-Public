@@ -2,10 +2,12 @@ package com.samhanair.logis.partner.seed;
 
 import com.samhanair.logis.partner.domain.Partner;
 import com.samhanair.logis.partner.repository.PartnerRepository;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -118,6 +120,9 @@ public class PartnerSeeder implements CommandLineRunner {
             }
             try {
                 Partner partner = buildPartner(row, partnerCode);
+                // PM 통합 fix — Stage 2/3/4 seeder 와 cross-service join 위해 deterministic UUID 강제 주입.
+                // 이는 slip.partnerId / journal.partnerId 등이 partnerCode 기반 결정 UUID 와 매칭 되도록 함.
+                forceId(partner, deterministicId("partner", partnerCode));
                 partnerRepository.save(partner);
                 created++;
             } catch (RuntimeException ex) {
@@ -286,6 +291,26 @@ public class PartnerSeeder implements CommandLineRunner {
 
         String partnerGroup2() {
             return region;
+        }
+    }
+
+    /**
+     * {@code samhan-seed:<type>:<key>} 결정적 UUID 도출 — Stage 1/2/3/4 seeder
+     * 모두 동일 namespace 패턴 사용 (cross-stage 참조 정합).
+     */
+    private static UUID deterministicId(String type, String key) {
+        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+    }
+
+    /** Hibernate 의 {@code @UuidGenerator} 가 random UUID 부여하기 전에 결정 UUID 강제 주입. */
+    private static void forceId(Object entity, UUID id) {
+        try {
+            Field f = entity.getClass().getDeclaredField("id");
+            f.setAccessible(true);
+            f.set(entity, id);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to set deterministic id on "
+                    + entity.getClass().getSimpleName(), e);
         }
     }
 }

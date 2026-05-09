@@ -7,11 +7,13 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -111,6 +113,9 @@ public class HvacProductSeeder implements CommandLineRunner {
             }
             try {
                 Product product = buildProduct(row, catCache);
+                // PM 통합 fix — Stage 2/3/4 seeder 와 cross-service join 위해 deterministic UUID 강제 주입.
+                // slip_line.product_id 가 modelName 기반 결정 UUID 와 매칭 되도록 함.
+                forceId(product, deterministicId("product", row.modelName()));
                 productRepository.save(product);
                 created++;
             } catch (RuntimeException ex) {
@@ -334,6 +339,26 @@ public class HvacProductSeeder implements CommandLineRunner {
         /** dummy ProductCategory mapping (현재 entity 비필수 — null fallback). */
         ProductCategory productCategory() {
             return null;
+        }
+    }
+
+    /**
+     * {@code samhan-seed:<type>:<key>} 결정적 UUID 도출 — Stage 1/2/3/4 seeder
+     * 모두 동일 namespace 패턴 사용 (cross-stage 참조 정합).
+     */
+    private static UUID deterministicId(String type, String key) {
+        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+    }
+
+    /** Hibernate 의 {@code @UuidGenerator} 가 random UUID 부여하기 전에 결정 UUID 강제 주입. */
+    private static void forceId(Object entity, UUID id) {
+        try {
+            Field f = entity.getClass().getDeclaredField("id");
+            f.setAccessible(true);
+            f.set(entity, id);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to set deterministic id on "
+                    + entity.getClass().getSimpleName(), e);
         }
     }
 }
