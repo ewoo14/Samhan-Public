@@ -2,6 +2,7 @@ package com.samhanair.logis.discovery;
 
 import com.netflix.discovery.EurekaClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -32,6 +33,7 @@ public class DiscoveryConfiguration {
     @Bean
     @ConditionalOnMissingBean(ServiceDiscoveryClient.class)
     @ConditionalOnClass(name = "com.netflix.discovery.EurekaClient")
+    @ConditionalOnBean(EurekaClient.class)
     @ConditionalOnProperty(name = "samhan.discovery.provider", havingValue = "eureka", matchIfMissing = true)
     public ServiceDiscoveryClient eurekaServiceDiscoveryClient(EurekaClient eurekaClient) {
         return new EurekaServiceDiscoveryClient(eurekaClient);
