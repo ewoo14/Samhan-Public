@@ -64,6 +64,10 @@ app:
     internal:
       # Phase 10 — SAMHAN_INTERNAL_TOKEN 표준 (chained-default).
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+  # Stage 3 local-test seed toggle (DriverSeeder + DispatchSeeder).
+  # 운영/CI 에서는 반드시 false (또는 미설정) 유지. dev profile + 본 토글 양쪽 활성 시에만 시드 진입.
+  arologis:
+    seed-test-data: ${SAMHAN_AROLOGIS_SEED_TEST_DATA:false}
 
 management:
   endpoints:

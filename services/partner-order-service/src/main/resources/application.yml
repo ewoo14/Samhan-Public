@@ -34,11 +34,15 @@ eureka:
 
 # W10-4 (PR #99) DV-3 — shared:security InternalAuthProperties 통합 (app.security.internal.token).
 # samhan.internal-token 은 legacy 보존 (PartnerOrder 외 client 가 system 호출용으로 직접 참조 가능).
+# app.partner-order.* — Stage 3 local-test seed toggle (PartnerOrderSeeder).
+#   운영/CI 에서는 반드시 false (또는 미설정) 유지. dev profile + 본 토글 양쪽 활성 시에만 30건 시드 진입.
 app:
   security:
     internal:
       # SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_TOKEN legacy fallback
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-only-token-replace}}
+  partner-order:
+    seed-test-data: ${SAMHAN_PARTNER_ORDER_SEED_TEST_DATA:false}
 
 # samhan.* — partner-order-service 전용 옵션 (PartnerOrderProperties / OutboxProperties)
 samhan:
