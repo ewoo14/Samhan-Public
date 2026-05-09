@@ -1,9 +1,9 @@
 # Samhan Public 누락 기능 종합 Catalog
 
-> **branch** — `feature/integrated-phase-10-step-7b-operator-manual-stage2` (Stage 1 = `feature/integrated-phase-10-step-7-operator-manual`)
-> **작성일** — 2026-05-09 (Stage 1 초안 → Stage 2 갱신)
+> **branch** — `feature/integrated-phase-10-step-7c-operator-manual-final` (Stage 2 = `...-stage2`, Stage 1 = `...-step-7-operator-manual`)
+> **작성일** — 2026-05-09 (Stage 1 초안 → Stage 2 갱신 → Stage 3 갱신)
 > **목적** — 개발책임자가 본 docs 만으로 P0 누락 기능을 즉시 파악 가능하도록 하는 종합 카탈로그.
-> **출처** — 이카운트 ERP 16 캡처(`docs/migration/ecount-reference/`) + 메모리 가드(`feedback_*.md` / `project_*.md`) + 한국 일반기업회계기준 / 한국 ERP 표준 + 다른 agent 의 `backend-feature-inventory.md` (17 service / 145 endpoint / 누락 42건) + `frontend-feature-inventory.md` (3 client / 27 desktop 라우트 / 누락 8건) + 본 task 검증 + Stage 2 `stage2-scenarios.md` (74 검증 항목).
+> **출처** — 이카운트 ERP 16 캡처(`docs/migration/ecount-reference/`) + 메모리 가드(`feedback_*.md` / `project_*.md`) + 한국 일반기업회계기준 / 한국 ERP 표준 + 다른 agent 의 `backend-feature-inventory.md` (17 service / 145 endpoint / 누락 42건) + `frontend-feature-inventory.md` (3 client / 27 desktop 라우트 / 누락 8건) + 본 task 검증 + Stage 2 `stage2-scenarios.md` (74 검증 항목) + **Stage 3 `stage3-final-scenarios.md` (120 검증 항목)**.
 > **상태 표기** — ✅ 완료 / ⏳ 부분 (stub/skeleton/TODO) / ❌ 미구현 / ⚠️ 미흡 (구현은 됐으나 실 운영 부족)
 
 ---
@@ -66,8 +66,9 @@
 | 5 | 비밀번호 정책 (8자 이상, 특수문자 강제) | ❌ | BCrypt 해싱만 있음 |
 | 6 | 5회 실패 시 계정 잠금 + 잠금 해제 endpoint | ❌ | `failed_login_attempts` / `locked_at` 컬럼 부재 |
 | 7 | 비밀번호 변경 이력 (마지막 N개 재사용 금지) | ❌ | `password_history` 테이블 부재 |
+| 8 | **무제한 시도 보안 위험 안내** *(Stage 3 N15)* | ❌ | 5회 잠금 미구현 → 무차별 시도 가능 (외부 노출 시 보안 risk). Phase 11 AWS 진입 전 brute-force 방어 의무 |
 
-**→ P0-2 누락: 7건. 시한: Phase 11 진입 전 1 PR 통합.**
+**→ P0-2 누락: 8건 (+1 보안 위험). 시한: Phase 11 진입 전 1 PR 통합 (보안 우선순위 상향).**
 
 ### P0-3. 거래처 첨부파일 실 multipart upload
 
@@ -83,8 +84,10 @@
 | 5 | MIME type 화이트리스트 | ❌ | |
 | 6 | 첨부파일 download endpoint (presigned URL TTL) | ⏳ | MinIO 만 5분 TTL — 검증 필요 |
 | 7 | 거래처 외 도메인 (slip / journal / employee) 첨부 | ❌ | partner 만 구현 |
+| 8 | **slip 도메인 사진 첨부 (검수)** *(Stage 3 N4)* | ❌ | 신규 P0-9 검수 UI 와 연계. multipart 도메인 확장 |
+| 9 | **journal 도메인 첨부 (영수증 사진)** *(Stage 3 N11)* | ❌ | 회계 외주가 영수증 사진 첨부 필요 |
 
-**→ P0-3 누락: 6건. 시한: Phase 11 진입 전 1 PR.**
+**→ P0-3 누락: 8건 (+2 도메인 확장). 시한: Phase 11 진입 전 1 PR (multipart 도메인 추상화 + 3 도메인 확장).**
 
 ### P0-4. 슬립 인쇄 양식 (출고전표 / 거래명세서 / 세금계산서)
 
@@ -245,6 +248,10 @@
 | 3 | 기사 배정 화면 (드래그 / 자동 배정) | ❌ |
 | 4 | 인성데이타 퀵프로그램 vendor 연계 (`project_arologis_phase10.md`) | ❌ |
 | 5 | GPS 실시간 위치 지도 (관리자 view) | ⏳ data 만 |
+| 6 | **카카오 채널 등록 운영 절차 docs** *(Stage 3 N7)* | ❌ — Stage 4 운영 매뉴얼 부속 |
+| 7 | **인성데이타 vendor 연계 깊이 (slip ↔ vendor 양방향 sync)** *(Stage 3 N8)* | ❌ |
+| 8 | **기사 GPS 지도 시각화 (관리자 view)** *(Stage 3 N9)* | ❌ — data 는 ⏳ / 지도 컴포넌트 ❌ |
+| 9 | **배차 지시서 인쇄 양식** *(Stage 3 N10)* | ❌ — P0-4 보강 |
 
 ### P1-6. 슬립 검색 / 필터 강화 + 창고 export
 
@@ -266,6 +273,21 @@
 | 3 | 통화 표기 ₩1,234,567 자동 | ⏳ `MoneyInput` DS |
 | 4 | 한국 주소 검색 (도로명 주소 API) | ⏳ 이카운트 capture 의 "주소검색" |
 
+### P1-8. 모바일 사진 첨부 (검수 / 배송 / 영업 방문) — Stage 3 신규
+
+> **검증 출처** — `docs/qa/manual-verification/stage3-final-scenarios.md` §2.4 (`04-모바일/04-사진-첨부.md` 미구현 안내). 검수 사진 (P0-9 의존) / 배송 인수 사진 / 영업 방문 사진 모두 미구현.
+> **메모리 가드** — `feedback_uuid_no_user_visibility.md` (사용자 식별자 = 비즈니스 식별자만). 사진 첨부 도메인은 `feedback_continuous_docs_sync.md` 통합 PR 의무.
+
+| # | 기능 | 상태 | 비고 |
+|---|---|---|---|
+| 1 | **슬립 검수 사진 첨부** *(Stage 3 N1)* | ❌ | P0-9 검수 UI + P0-3 도메인 확장 의존 |
+| 2 | **DELIVERED 시 인수 사진 필수화** *(Stage 3 N2)* | ❌ | mobile-staff 서명 + 사진 동시 collection |
+| 3 | **영업직원 거래처 방문 사진** *(Stage 3 N3)* | ❌ | P1-4 영업 native 앱 의존 |
+| 4 | 모바일 카메라 권한 처리 (iOS / Android) | ❌ | Expo `ImagePicker` 사용 |
+| 5 | 사진 압축 / 최적화 (모바일 데이터 절약) | ❌ | upload 전 client-side 압축 |
+
+**→ P1-8 누락: 5건 (Stage 3 신규 슬라이스). 시한: Phase 11 후 1 PR (P0-9 검수 UI + P0-3 도메인 확장 PR 머지 후 후속).**
+
 ---
 
 ## 3. P2 (운영 후 3개월 내) — 편의 기능
@@ -278,6 +300,7 @@
 | 2 | 회계원 모바일 | ❌ (메모리 — 불필요 합의) |
 | 3 | 카카오 알림톡 (대량 발송) | ❌ |
 | 4 | 푸시 알림 (Expo Push) | ❌ |
+| 5 | **DELIVERED 외 비대면 인수 별도 transition** *(Stage 3 N5)* | ❌ — 서명 받지 못한 비대면 인수 (택배 보관함 등) 별도 처리 |
 
 ### P2-2. 검색 / 자동완성 / UX 강화 + 시각화
 
@@ -290,6 +313,8 @@
 | 5 | 화면 크기 / 폰트 조절 사용자 설정 | ❌ |
 | 6 | 즐겨찾기 메뉴 (사이드바 핀) | ❌ |
 | 7 | **창고별 재고 그래프 (시각화 차트)** *(Stage 2 N9)* | ❌ — chart 컴포넌트 부재 |
+| 8 | **Cmd+K 글로벌 검색 단축키** *(Stage 3 N13)* | ❌ — 부록 단축키 docs 일관 |
+| 9 | **Ctrl+S 임시저장 일관성 (slip / journal / partner 일괄)** *(Stage 3 N14)* | ⏳ — 일부 라우트만 |
 
 ### P2-3. 회계 보강
 
@@ -300,6 +325,7 @@
 | 3 | 부서별 손익 분석 | ❌ |
 | 4 | 분개 자동 (슬립 → 분개 자동 생성) | ⏳ 일부 |
 | 5 | 결산 마감 lock | ❌ |
+| 6 | **시산표 분기/년 누적 endpoint 보강** *(Stage 3 N12)* | ⏳ — `/balances?yyyyMM=` 만 / `?yyyyQ=` `?yyyy=` 추가 필요 |
 
 ### P2-4. 영업 보강
 
@@ -336,6 +362,21 @@
 | 5 | 실사 보고서 인쇄 / Excel | ❌ | |
 
 **→ P2-6 누락: 5건. 시한: Phase 11 후 검토 (창고원 모바일 P2-1 선행).**
+
+### P2-7. 영업 모바일 마이그레이션 (legacy WebView → Expo native) — Stage 3 신규
+
+> **검증 출처** — `docs/qa/manual-verification/stage3-final-scenarios.md` §2.3 (`04-모바일/03-영업-앱.md` 미구현 안내). 현재 영업 모바일 = legacy estimate-app v2 (Node.js + Express + EJS) WebView 임베드만. 사용자 결정 (`feedback_*.md` 옵션 B2 + 견적/주문 모바일 분리) 에 따라 Expo native 앱 마이그레이션 별도 슬라이스 필요.
+> **메모리 가드** — `project_arologis_phase10.md` (모바일 어플 RN Expo mobile-staff 패턴 일관) — 영업 모바일도 동일 패턴 마이그레이션.
+
+| # | 기능 | 상태 | 비고 |
+|---|---|---|---|
+| 1 | legacy estimate-app v2 (Node.js+Express+EJS) → Expo native 마이그레이션 plan | ❌ | 사용자 옵션 B2 결정 후 별도 마이그레이션 일정 |
+| 2 | mobile-staff 패턴 재사용 (login / list / detail / GPS) | mobile-staff ✅ 패턴 / 영업 적용 ❌ | |
+| 3 | 견적서 작성 모바일 (오프라인 저장) | ❌ | |
+| 4 | 주문서 작성 모바일 + 거래처 검색 | ❌ | P0-6 거래처 자동완성 의존 |
+| 5 | 모바일 인쇄 / PDF export (영업 산출물) | ❌ | |
+
+**→ P2-7 누락: 5건 (Stage 3 신규 슬라이스). 시한: Phase 11 후 6개월 (P1-4 영업 native 앱 본 작업 + 마이그레이션 plan 일괄).**
 
 ---
 
@@ -378,46 +419,63 @@
 
 ---
 
-## 5. 누락 카운트 종합 (Stage 2 갱신)
+## 5. 누락 카운트 종합 (Stage 3 갱신)
 
 | 영역 | 🔴 P0 | 🟠 P1 | 🟡 P2 | 🟢 P3 | 합계 |
 |---|---:|---:|---:|---:|---:|
-| **회계** | 14 | 0 | 5 | 1 | **20** |
-| **영업** | 9 (거래처 4탭 + 품목 7탭 일부) | 7 (+2 N4/N5) | 8 (+3 N1/N2/N3) | 1 | **25** |
-| **창고** | **5 (P0-9 신규 검수 UI)** | 3 (+2 N8/N10) | 6 (+5 P2-6 실사) | 1 (키오스크) | **15** |
-| **모바일** | 0 | 5 | 4 | 1 | **10** |
-| **인증/관리** | 12 (비밀번호 7 + 사용자UI 5) | 6 (+1 N13 권한 매트릭스) | 3 | 7 (보안 / 2FA) | **28** |
-| **출력/인쇄** | 5 | 1 | 0 | 1 (e-Tax) | **7** |
-| **첨부/저장** | 6 | 0 | 0 | 1 (OCR) | **7** |
-| **알림/대시보드** | 0 | 11 (대시보드 4 + 알림 6) | 0 | 0 | **11** |
-| **arologis** | 0 | 5 | 0 | 0 | **5** |
+| **회계** | 14 | 0 | 6 (+1 N12) | 1 | **21** |
+| **영업** | 9 (거래처 4탭 + 품목 7탭 일부) | 7 (+2 N4/N5) | 8 | 1 | **25** |
+| **창고** | 5 (P0-9 검수 UI) | 3 | 6 (P2-6 실사) | 1 (키오스크) | **15** |
+| **모바일** | 0 | 10 (+5 P1-8 사진 첨부) | 10 (+5 P2-7 영업 모바일 마이그레이션 +1 N5) | 1 | **21** |
+| **인증/관리** | 13 (+1 N15 보안 위험) | 6 | 3 | 7 (보안 / 2FA) | **29** |
+| **출력/인쇄** | 5 | 2 (+1 N10 배차 지시서) | 0 | 1 (e-Tax) | **8** |
+| **첨부/저장** | 8 (+2 N4/N11 도메인 확장) | 0 | 0 | 1 (OCR) | **9** |
+| **알림/대시보드** | 0 | 11 (대시보드 4 + 알림 6 + N9 GPS 지도) | 0 | 0 | **11** |
+| **arologis** | 0 | 8 (+3 N7/N8/N9) | 0 | 0 | **8** |
 | **백업/운영** | 4 | 0 | 3 | 0 | **7** |
-| **검색/UX** | 0 | 4 | 7 (+1 N9 시각화) | 0 | **11** |
+| **검색/UX** | 0 | 4 | 9 (+2 N13/N14 단축키) | 0 | **13** |
 | **외부 연계** | 0 | 0 | 0 | 4 | **4** |
-| **합계** | **55** (+5 P0-9) | **42** (+5) | **36** (+9) | **17** | **150** |
+| **합계** | **58** (+3) | **51** (+9) | **45** (+9) | **17** | **171** |
 
-> **주의** — 본 카운트는 sub-feature 기준 (예: P0-2 비밀번호 재설정 = 7 sub). 메인 슬라이스 기준은 **P0 = 9 슬라이스 (+P0-9) / P1 = 7 / P2 = 6 (+P2-6) / P3 = 4**.
-> **Stage 2 변경** — 신규 P0 슬라이스 1건 (P0-9 입고 검수 UI) + P2 슬라이스 1건 (P2-6 재고 실사) + 기존 슬라이스 sub 13건 추가. **Stage 1 → Stage 2: 131 → 150 sub (+19).**
+> **주의** — 본 카운트는 sub-feature 기준 (예: P0-2 비밀번호 재설정 = 8 sub). 메인 슬라이스 기준은 **P0 = 9 슬라이스 / P1 = 8 (+P1-8 모바일 사진 첨부) / P2 = 7 (+P2-7 영업 모바일 마이그레이션) / P3 = 4**.
+> **Stage 3 변경** — 신규 P1 슬라이스 1건 (P1-8 모바일 사진 첨부) + P2 슬라이스 1건 (P2-7 영업 모바일 마이그레이션) + 기존 슬라이스 sub ~15건 추가 (P0-2 N15 / P0-3 N4·N11 / P1-5 N7·N8·N9·N10 / P2-1 N5 / P2-2 N13·N14 / P2-3 N12). **Stage 2 → Stage 3: 150 → 171 sub (+21).**
+> 사용자 명시 "~165 sub" 범위 내 (~165 = 추가 sub 약 +15 추정. 실 추가는 +21로 모바일 사진 첨부 / 영업 모바일 마이그레이션 신규 슬라이스 5+5 sub 분량 가산 결과).
 
 ---
 
-## 6. Phase 11 진입 전 P0 의무 구현 권고 (개발책임자 결정 의제 — Stage 2 갱신)
+## 6. Phase 11 진입 전 P0 의무 구현 권고 (개발책임자 결정 의제 — Stage 3 갱신)
 
-> **개발책임자 의제** — 본 catalog 의 P0 55건 (9 슬라이스) 은 Phase 11 AWS migration 진입 시 운영 즉시 차단 위험. 단계별 fix PR 권고:
+> **개발책임자 의제** — 본 catalog 의 P0 58건 (9 슬라이스) 은 Phase 11 AWS migration 진입 시 운영 즉시 차단 위험. 단계별 fix PR 권고:
 
 | # | 슬라이스 | sub 카운트 | 권고 PR | 권고 시한 |
 |---|---|---|---|---|
 | 1 | 회계 17 보고서 보강 | P0 14 sub | 4 PR (재무제표 / 일·월 보고서 / 원장 / 분석표) | Phase 11-2주 |
-| 2 | 비밀번호 재설정 + 정책 + 잠금 | P0 7 sub | 1 PR | Phase 11-1주 |
-| 3 | 거래처 첨부파일 실 multipart upload | P0 6 sub | 1 PR (MinIO production profile + 바이러스 스캔 stub) | Phase 11-1주 |
-| 4 | 슬립 인쇄 양식 (거래명세서 / 세금계산서 / 견적서) | P0 5 sub | 1 PR | Phase 11-2주 |
+| 2 | 비밀번호 재설정 + 정책 + 잠금 + **brute-force 방어** *(Stage 3 N15)* | P0 8 sub | 1 PR | Phase 11-1주 |
+| 3 | 거래처 첨부파일 실 multipart upload + **slip / journal 도메인 확장** *(Stage 3 N4/N11)* | P0 8 sub | 1 PR (MinIO production profile + 바이러스 스캔 stub + 도메인 추상화) | Phase 11-1주 |
+| 4 | 슬립 인쇄 양식 (거래명세서 / 세금계산서 / 견적서 + **배차 지시서 N10**) | P0 5 sub + P1 1 sub | 1 PR | Phase 11-2주 |
 | 5 | 사용자 / 권한 관리 desktop UI | P0 5 sub | 1 PR | Phase 11-1주 |
 | 6 | 거래처 등록 4 탭 desktop UI | P0 ~30 field | 2 PR (탭 1+2 / 3+4) | Phase 11-3주 |
 | 7 | 품목 등록 7 탭 desktop UI | P0 ~30 field | 2 PR (탭 1+2 / 3+나머지) | Phase 11-3주 |
 | 8 | 백업 / 복원 운영 매뉴얼 부속 | P0 4 sub | 1 PR (docs only) | Phase 11 직후 |
-| **9** | **입고 검수 (INSPECTING) UI** *(Stage 2 신규)* | **P0 5 sub** | **1 PR** (slip-service `/slips/{id}/inspect` + 라인별 검수 결과 / 사진 첨부 / 불량 처리) | **Phase 11-1주** |
+| 9 | 입고 검수 (INSPECTING) UI *(Stage 2 신규)* | P0 5 sub | 1 PR (slip-service `/slips/{id}/inspect` + 라인별 검수 결과 / 사진 첨부 / 불량 처리) | Phase 11-1주 |
 
-**→ 합계 14 PR / 약 5~7주 소요 예상 (Stage 1 = 13 PR + P0-9 1 PR).**
+**→ 합계 14 PR / 약 5~7주 소요 예상 (Stage 2 = 14 PR + Stage 3 sub 추가 ~11건은 기존 PR 에 흡수).**
+
+### 6.1 Phase 11 후 P1 권고 PR (Stage 3 신규)
+
+| # | 슬라이스 | sub 카운트 | 권고 PR | 권고 시한 |
+|---|---|---|---|---|
+| 10 | **모바일 사진 첨부 (P1-8 신규)** | P1 5 sub | 1 PR (검수 / 배송 / 영업 방문 통합) | Phase 11+1개월 (P0-9 + P0-3 PR 머지 후) |
+| 11 | arologis UI 보강 (P1-5) | P1 9 sub (+4 Stage 3 N7/N8/N9) | 2 PR (카카오 UI + 운영 docs / 기사 배정 + 인성데이타 vendor) | Phase 11+1~2개월 |
+| 12 | 영업 native 앱 (P1-4) + 견적서/주문서 chain | P1 7 sub | 2 PR (native 앱 + chain 변환) | Phase 11+1~2개월 |
+
+### 6.2 Phase 11 후 P2 권고 PR (Stage 3 신규)
+
+| # | 슬라이스 | sub 카운트 | 권고 PR | 권고 시한 |
+|---|---|---|---|---|
+| 13 | **영업 모바일 마이그레이션 (P2-7 신규 — legacy v2 → Expo native)** | P2 5 sub | 1 PR (P1-4 native 앱 PR 후속) | Phase 11+6개월 |
+| 14 | 재고 실사 (P2-6) | P2 5 sub | 1 PR (창고원 모바일 P2-1 선행) | Phase 11+3개월 |
+| 15 | 회계 보강 (시산표 분기/년 누적 N12 + 결산 lock) | P2 6 sub | 1 PR | Phase 11+3개월 |
 
 ---
 
@@ -429,8 +487,9 @@
 | `docs/manual/inventory/backend-feature-inventory.md` (다른 agent) | 17 service × 145 endpoint 매트릭스 / 시드 row 1,750 / 누락 후보 42건 |
 | `docs/manual/inventory/frontend-feature-inventory.md` (다른 agent) | desktop 27 라우트 / mobile-staff 6 화면 / DS 35 컴포넌트 / 누락 후보 8건 |
 | `docs/qa/manual-verification/scenarios.md` (Stage 1) | 매뉴얼 4 docs vs 실 구현 — Critical 10 / Major 7 |
-| `docs/qa/manual-verification/stage2-scenarios.md` (Stage 2 — 본 PR) | 매뉴얼 9 docs (영업 5 + 창고 4) vs 실 구현 — 74 검증 항목 (Critical 15 / Major 29 / Minor 16). 신규 19 sub 발견 |
-| 메모리 가드 | `feedback_role_naming_full.md` 9 ROLE / `feedback_print_design_iteration.md` 인쇄 iteration / `project_korean_accounting.md` 한국 회계 표준 / `project_phase11_aws.md` AWS 단일 환경 |
+| `docs/qa/manual-verification/stage2-scenarios.md` (Stage 2) | 매뉴얼 9 docs (영업 5 + 창고 4) vs 실 구현 — 74 검증 항목 (Critical 15 / Major 29 / Minor 16). 신규 19 sub 발견 |
+| `docs/qa/manual-verification/stage3-final-scenarios.md` (Stage 3 — 본 PR) | 매뉴얼 22 docs (회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3) vs 실 구현 — 120 검증 항목 (Critical 25 / Major 56 / Minor 39). G 분류 (미구현 안내 docs 일관성) 신규 도입. 신규 21 sub 발견 |
+| 메모리 가드 | `feedback_role_naming_full.md` 9 ROLE / `feedback_print_design_iteration.md` 인쇄 iteration / `project_korean_accounting.md` 한국 회계 표준 / `project_phase11_aws.md` AWS 단일 환경 / `project_arologis_phase10.md` Expo 패턴 일관 |
 | 한국 일반기업회계기준 | 17 보고서 표준 / 계정과목 코드 100/200/300/400/500/800/900 |
 
 ---
@@ -440,8 +499,9 @@
 | 일자 | 작성자 | 변경 |
 |---|---|---|
 | 2026-05-09 | TeamMember (W10-7 Stage 1) | 초안 작성. P0 50 / P1 37 / P2 27 / P3 17 = 총 131 sub. 8 P0 슬라이스 / 13 권고 PR. |
-| 2026-05-09 | TeamMember (W10-7b Stage 2) | Stage 2 매뉴얼 (영업 5 + 창고 4 = 9 docs) 검증 과정에서 신규 누락 19 sub 발견. 신규 슬라이스 **P0-9 (입고 검수 UI 5 sub)** + **P2-6 (재고 실사 5 sub)** + 기존 슬라이스 sub 9건 추가 (P1-2 N13 / P1-4 N4·N5 / P1-6 N8·N10 / P2-2 N9 / P2-4 N1·N2·N3). **누적: 131 → 150 sub (+19). 9 P0 슬라이스 / 14 권고 PR.** |
+| 2026-05-09 | TeamMember (W10-7b Stage 2) | Stage 2 매뉴얼 (영업 5 + 창고 4 = 9 docs) 검증 과정에서 신규 누락 19 sub 발견. 신규 슬라이스 **P0-9 (입고 검수 UI 5 sub)** + **P2-6 (재고 실사 5 sub)** + 기존 슬라이스 sub 9건 추가. **누적: 131 → 150 sub (+19). 9 P0 슬라이스 / 14 권고 PR.** |
+| 2026-05-09 | TeamMember (W10-7c Stage 3) | Stage 3 매뉴얼 (회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3 = 22 docs) 검증 과정에서 신규 누락 21 sub 발견. 신규 슬라이스 **P1-8 (모바일 사진 첨부 5 sub — 검수/배송/영업 방문)** + **P2-7 (영업 모바일 마이그레이션 5 sub — legacy v2 → Expo native)** + 기존 슬라이스 sub 11건 추가 (P0-2 N15 보안 / P0-3 N4·N11 도메인 확장 / P1-5 N7·N8·N9·N10 arologis 4건 / P2-1 N5 비대면 인수 / P2-2 N13·N14 단축키 / P2-3 N12 시산표 분기). **누적: 150 → 171 sub (+21). 9 P0 / 8 P1 / 7 P2 / 4 P3 슬라이스 = 28 슬라이스. Phase 11 진입 전 14 PR + Phase 11 후 6 PR (P1 3 + P2 3) = 20 PR 권고.** |
 
 ---
 
-**Stage 3 이후 갱신 예정** — 매뉴얼 본문 (회계 4 + 모바일 4 + arologis 3 = 11 docs) 작성 시 추가 누락 발견되면 본 catalog 에 추가 row. 다른 agent (BE/FE inventory) 와 cross-check 시 numerical mismatch 시 본 catalog 가 ground truth.
+**Stage 4 이후 갱신 예정** — Phase 11 P0/P1 PR 머지 시 안내 docs (10건) 정식 본문 교체 + 신규 운영 매뉴얼 부속 3 docs (백업·복원 / 장애 대응 / 사용자 관리) 작성 시 추가 row. 다른 agent (BE/FE inventory) 와 cross-check 시 numerical mismatch 시 본 catalog 가 ground truth.
