@@ -1,0 +1,351 @@
+package com.samhanair.logis.inventory.service;
+
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.inventory.client.AccountingClient;
+import com.samhanair.logis.inventory.client.ProductClient;
+import com.samhanair.logis.inventory.client.ProductSummary;
+import com.samhanair.logis.inventory.domain.AuditStatus;
+import com.samhanair.logis.inventory.domain.InventoryAudit;
+import com.samhanair.logis.inventory.domain.InventoryAuditLine;
+import com.samhanair.logis.inventory.domain.MovementType;
+import com.samhanair.logis.inventory.domain.StockBalance;
+import com.samhanair.logis.inventory.domain.StockLot;
+import com.samhanair.logis.inventory.domain.StockMovement;
+import com.samhanair.logis.inventory.domain.Warehouse;
+import com.samhanair.logis.inventory.repository.InventoryAuditLineRepository;
+import com.samhanair.logis.inventory.repository.InventoryAuditRepository;
+import com.samhanair.logis.inventory.repository.StockBalanceRepository;
+import com.samhanair.logis.inventory.repository.StockLotRepository;
+import com.samhanair.logis.inventory.repository.StockMovementRepository;
+import com.samhanair.logis.inventory.repository.WarehouseRepository;
+import com.samhanair.logis.inventory.web.dto.AuditDetailResponse;
+import com.samhanair.logis.inventory.web.dto.AuditLineRequest;
+import com.samhanair.logis.inventory.web.dto.AuditResponse;
+import com.samhanair.logis.inventory.web.dto.CreateAuditRequest;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 재고 실사 워크플로우 (Phase 10 P2-6 슬라이스 9). 한국 일반기업회계기준 연 1회 의무 실사.
+ *
+ * <p>라이프사이클:
+ * <ol>
+ *   <li>{@link #create} — PLANNED 생성 + 해당 창고 모든 product 의 expected_qty snapshot</li>
+ *   <li>{@link #start} — IN_PROGRESS 전이</li>
+ *   <li>{@link #recordLine} / {@link #updateLine} — 실사자 actual_qty 입력 (바코드 / 수동)</li>
+ *   <li>{@link #complete} — COMPLETED 전이 + 차이 자동 분개 trigger + Stock 조정</li>
+ *   <li>{@link #cancel} — CANCELLED 전이 (PLANNED/IN_PROGRESS 단계만)</li>
+ * </ol>
+ *
+ * <p>차이 자동 분개 (한국 일반기업회계기준 코드):
+ * <ul>
+ *   <li>차이 (+) — 차변 150 재고자산 / 대변 919 재고감모손실 (환입)</li>
+ *   <li>차이 (-) — 차변 919 재고감모손실 / 대변 150 재고자산</li>
+ *   <li>차이 = 0 — 분개 생략 (no-op)</li>
+ * </ul>
+ *
+ * <p>Stock 조정 — 라인의 actual_qty 로 stock_balance 직접 update. 차이만큼 ADJUST movement 기록.
+ * Lot 단위 분배는 별도 운영 정책 (현 슬라이스 미구현 — balance 만 보정).
+ *
+ * <p>Phase 11 후 Kafka 이벤트 기반으로 InventoryAuditCommittedEvent publish 권고. 본 슬라이스는
+ * AccountingClient Feign 동기 호출 (outbox stub fallback).
+ */
+@Service
+@Transactional
+@RequiredArgsConstructor
+public class InventoryAuditService {
+
+    private static final Logger log = LoggerFactory.getLogger(InventoryAuditService.class);
+    private static final DateTimeFormatter NO_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    private final InventoryAuditRepository auditRepository;
+    private final InventoryAuditLineRepository auditLineRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final StockBalanceRepository stockBalanceRepository;
+    private final StockLotRepository stockLotRepository;
+    private final StockMovementRepository stockMovementRepository;
+    private final ProductClient productClient;
+    private final AccountingClient accountingClient;
+
+    /**
+     * 재고 실사 신규 등록 — PLANNED 상태로 생성. 해당 창고의 모든 활성 stock_balance 를 조회하여
+     * snapshot 라인을 자동 생성한다. product_name / unit_cost 는 ProductClient 일괄 조회로 채움.
+     *
+     * <p>해당 창고에 stock_balance row 가 없으면 빈 라인으로 생성 (이후 manual 추가 가능).
+     *
+     * @param req         CreateAuditRequest (warehouseId / auditDate)
+     * @param requesterId 신청자 user-id (audit log)
+     * @return 신규 생성된 실사 상세 (라인 snapshot 포함)
+     * @throws BusinessException(NOT_FOUND) warehouseId 미발견
+     */
+    public AuditDetailResponse create(CreateAuditRequest req, String requesterId) {
+        Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
+
+        String auditNo = nextAuditNo(LocalDate.now());
+        InventoryAudit audit = InventoryAudit.create(auditNo, warehouse, req.auditDate());
+
+        // 해당 창고의 모든 활성 stock_balance snapshot
+        Page<StockBalance> firstPage = stockBalanceRepository
+                .findAllByWarehouse_IdAndIsDeletedFalse(warehouse.getId(), Pageable.unpaged());
+        List<StockBalance> balances = firstPage.getContent();
+
+        Map<UUID, ProductSummary> productMap = new HashMap<>();
+        if (!balances.isEmpty()) {
+            List<UUID> productIds = balances.stream().map(StockBalance::getProductId).distinct().toList();
+            // ProductClient 가 batch 한도 100건이므로 분할 호출
+            for (int from = 0; from < productIds.size(); from += 100) {
+                int to = Math.min(from + 100, productIds.size());
+                List<ProductSummary> chunk = productClient.lookup(productIds.subList(from, to));
+                for (ProductSummary p : chunk) {
+                    productMap.put(p.id(), p);
+                }
+            }
+        }
+
+        for (StockBalance balance : balances) {
+            ProductSummary product = productMap.get(balance.getProductId());
+            String name = product == null ? "(미상)" : product.name();
+            BigDecimal unitCost = resolveUnitCost(balance.getProductId(), warehouse.getId(), product);
+            int expected = balance.getTotalQty();
+            audit.addLine(InventoryAuditLine.snapshot(
+                    audit, balance.getProductId(), name, expected, unitCost));
+        }
+
+        InventoryAudit saved = auditRepository.save(audit);
+        log.info("재고 실사 생성 — auditNo={}, warehouse={}, lineCount={}, requester={}",
+                saved.getAuditNo(), warehouse.getCode(), saved.getLines().size(), requesterId);
+        return AuditDetailResponse.from(saved);
+    }
+
+    /**
+     * 실사 시작 — PLANNED → IN_PROGRESS.
+     *
+     * @param id 실사 UUID
+     * @return 갱신된 실사 상세
+     * @throws BusinessException(NOT_FOUND) 실사 미발견
+     * @throws BusinessException(CONFLICT) 현재 상태가 PLANNED 가 아닐 때
+     */
+    public AuditDetailResponse start(UUID id) {
+        InventoryAudit audit = loadOrThrow(id);
+        audit.start();
+        return AuditDetailResponse.from(audit);
+    }
+
+    /**
+     * 라인 입력 (POST) — productId 로 snapshot 라인을 검색해 actual_qty set.
+     * snapshot 시점에 없던 productId 는 INVALID_INPUT (snapshot 누락 보정은 별도 기능).
+     *
+     * @param id  실사 UUID
+     * @param req AuditLineRequest (productId / actualQty / scanned)
+     * @return 갱신된 실사 상세
+     * @throws BusinessException(NOT_FOUND)     실사 미발견
+     * @throws BusinessException(CONFLICT)      현재 상태가 IN_PROGRESS 가 아닐 때
+     * @throws BusinessException(INVALID_INPUT) snapshot 라인에 해당 productId 없음
+     */
+    public AuditDetailResponse recordLine(UUID id, AuditLineRequest req) {
+        InventoryAudit audit = loadOrThrow(id);
+        audit.requireInProgressForLineInput();
+
+        InventoryAuditLine line = audit.getLines().stream()
+                .filter(l -> l.getProductId().equals(req.productId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
+                        "snapshot 라인에 해당 제품이 없습니다 (productId=" + req.productId() + ")"));
+        line.recordActual(req.actualQty(), req.scannedOrFalse());
+        return AuditDetailResponse.from(audit);
+    }
+
+    /**
+     * 라인 수정 (PUT) — lineId path 직접 수정. audit-line 매핑 검증 포함.
+     *
+     * @param id     실사 UUID
+     * @param lineId 라인 UUID
+     * @param req    AuditLineRequest (productId 는 검증용으로 line.productId 와 일치 필요)
+     * @return 갱신된 실사 상세
+     * @throws BusinessException(NOT_FOUND)     실사 또는 라인 미발견
+     * @throws BusinessException(CONFLICT)      현재 상태가 IN_PROGRESS 가 아닐 때
+     * @throws BusinessException(INVALID_INPUT) productId mismatch
+     */
+    public AuditDetailResponse updateLine(UUID id, UUID lineId, AuditLineRequest req) {
+        InventoryAudit audit = loadOrThrow(id);
+        audit.requireInProgressForLineInput();
+
+        InventoryAuditLine line = auditLineRepository.findByIdAndAudit_Id(lineId, id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "라인을 찾을 수 없습니다"));
+        if (!line.getProductId().equals(req.productId())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "productId 불일치 — path 의 lineId 와 body 의 productId 가 다릅니다");
+        }
+        line.recordActual(req.actualQty(), req.scannedOrFalse());
+        return AuditDetailResponse.from(audit);
+    }
+
+    /**
+     * 실사 완료 — IN_PROGRESS → COMPLETED + 차이 자동 분개 trigger + Stock 조정.
+     *
+     * <p>처리 순서 (단일 트랜잭션):
+     * <ol>
+     *   <li>도메인 {@code complete()} 호출 (totalDiffAmount 산출)</li>
+     *   <li>각 라인 차이 만큼 stock_balance.adjust(diff) + ADJUST movement 기록</li>
+     *   <li>totalDiffAmount != 0 이면 AccountingClient.createAuditAdjustmentJournal 동기 호출</li>
+     * </ol>
+     *
+     * <p>actual_qty 가 null 인 라인은 차이 0 으로 간주 (입력 누락 = 시스템 재고 그대로).
+     *
+     * @param id          실사 UUID
+     * @param actorUserId 완료 처리자 user-id
+     * @return COMPLETED 실사 상세
+     * @throws BusinessException(NOT_FOUND) 실사 미발견
+     * @throws BusinessException(CONFLICT)  현재 상태가 IN_PROGRESS 가 아닐 때
+     */
+    public AuditDetailResponse complete(UUID id, String actorUserId) {
+        InventoryAudit audit = loadOrThrow(id);
+        audit.complete();
+
+        // Stock 조정 — 각 라인 차이 만큼 stock_balance.adjust + ADJUST movement
+        for (InventoryAuditLine line : audit.getLines()) {
+            if (line.getActualQty() == null || line.getDiffQty() == 0) {
+                continue;
+            }
+            adjustStockForLine(audit, line, actorUserId);
+        }
+
+        // 차이 자동 분개 trigger
+        BigDecimal total = audit.getTotalDiffAmount();
+        if (total != null && total.signum() != 0) {
+            try {
+                accountingClient.createAuditAdjustmentJournal(
+                        audit.getId(), audit.getAuditNo(), audit.getAuditDate(), total);
+                log.info("실사 차이 자동 분개 발행 — auditNo={}, total={}",
+                        audit.getAuditNo(), total);
+            } catch (BusinessException ex) {
+                // accounting-service 5xx fallback — outbox stub 미발행 시 본 PR 에서는 로그 + 재발행 필요 표기.
+                // Phase 11 Kafka 전환 시 여기서 outbox row insert 로 대체.
+                log.error("실사 차이 분개 발행 실패 (수동 재발행 필요) — auditNo={}, total={}, err={}",
+                        audit.getAuditNo(), total, ex.getMessage());
+                throw ex;
+            }
+        }
+
+        return AuditDetailResponse.from(audit);
+    }
+
+    /**
+     * 실사 취소 — PLANNED 또는 IN_PROGRESS → CANCELLED. Stock 조정 / 분개는 발행 안 함.
+     *
+     * @param id 실사 UUID
+     * @return CANCELLED 실사 상세
+     * @throws BusinessException(NOT_FOUND) 실사 미발견
+     * @throws BusinessException(CONFLICT)  현재 상태가 취소 가능 단계 밖일 때
+     */
+    public AuditDetailResponse cancel(UUID id) {
+        InventoryAudit audit = loadOrThrow(id);
+        audit.cancel();
+        return AuditDetailResponse.from(audit);
+    }
+
+    /**
+     * 단건 조회 — 라인 포함 상세.
+     *
+     * @param id 실사 UUID
+     * @return AuditDetailResponse
+     * @throws BusinessException(NOT_FOUND) 실사 미발견
+     */
+    @Transactional(readOnly = true)
+    public AuditDetailResponse getOne(UUID id) {
+        return AuditDetailResponse.from(loadOrThrow(id));
+    }
+
+    /**
+     * 페이지 조회 — warehouse / year / status 필터.
+     *
+     * @param warehouseId 창고 필터 (null 가능)
+     * @param year        연도 필터 (null 가능 — 해당 연도 1/1 ~ 12/31 범위)
+     * @param status      상태 필터 (null 가능)
+     * @param pageable    페이지 정보
+     * @return AuditResponse 요약 페이지
+     */
+    @Transactional(readOnly = true)
+    public Page<AuditResponse> list(UUID warehouseId, Integer year, AuditStatus status,
+                                    Pageable pageable) {
+        LocalDate from = year == null ? null : LocalDate.of(year, 1, 1);
+        LocalDate to = year == null ? null : LocalDate.of(year, 12, 31);
+        return auditRepository.findByFilters(warehouseId, from, to, status, pageable)
+                .map(AuditResponse::from);
+    }
+
+    /**
+     * {@code AU-YYYYMMDD-NNN} 채번 — 그날 prefix 의 발행 건수 +1.
+     *
+     * @param date 채번 기준 날짜
+     * @return 채번된 auditNo
+     */
+    String nextAuditNo(LocalDate date) {
+        String prefix = "AU-" + date.format(NO_DATE_FMT) + "-";
+        long seq = auditRepository.countByAuditNoStartingWith(prefix) + 1;
+        return prefix + String.format("%03d", seq);
+    }
+
+    private void adjustStockForLine(InventoryAudit audit, InventoryAuditLine line, String actorUserId) {
+        StockBalance balance = stockBalanceRepository
+                .findByProductIdAndWarehouse_IdAndIsDeletedFalse(
+                        line.getProductId(), audit.getWarehouse().getId())
+                .orElse(null);
+        if (balance == null) {
+            // snapshot 이후 row 가 사라진 케이스 — 이 슬라이스에서는 신규 생성하지 않고 skip + log
+            log.warn("실사 완료 시 stock_balance 누락 — auditNo={}, productId={} (skip)",
+                    audit.getAuditNo(), line.getProductId());
+            return;
+        }
+        balance.adjust(line.getDiffQty());
+        stockMovementRepository.save(StockMovement.of(
+                balance.getId(), line.getProductId(), audit.getWarehouse().getId(),
+                MovementType.ADJUST, line.getDiffQty(),
+                "AUDIT", audit.getId(),
+                "재고 실사 조정 (" + audit.getAuditNo() + ")",
+                actorUserId));
+    }
+
+    /**
+     * snapshot 단가 결정 — FIFO lot 의 가장 최근 unit_cost 우선, 없으면 product 의 sellingPrice 차선,
+     * 둘 다 null 이면 0.
+     */
+    private BigDecimal resolveUnitCost(UUID productId, UUID warehouseId, ProductSummary product) {
+        List<StockLot> lots = stockLotRepository.findAvailableLotsForFifo(productId, warehouseId);
+        for (StockLot lot : lots) {
+            if (lot.getUnitCost() != null) {
+                return lot.getUnitCost();
+            }
+        }
+        if (product != null && product.sellingPrice() != null) {
+            return product.sellingPrice();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private InventoryAudit loadOrThrow(UUID id) {
+        return auditRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "실사를 찾을 수 없습니다"));
+    }
+
+    private Warehouse loadWarehouseOrThrow(UUID id) {
+        return warehouseRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "창고를 찾을 수 없습니다"));
+    }
+}
