@@ -63,6 +63,10 @@ dependencies {
     implementation project(':shared:security')
     // Phase 8 2차 — vendor 추상화 wrapper (provider=eureka default, Phase 10 시점 aws-cloud-map 토글)
     implementation project(':shared:discovery-abstraction')
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction 활용. SSE broker / audit overlay /
+    // edit-request lock 정책 통합. Partner / BlockedPartner mutation 시 audit_log 1행 + SSE
+    // broadcast + 잠금 가드 (BLOCKED 상태 잠금).
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 

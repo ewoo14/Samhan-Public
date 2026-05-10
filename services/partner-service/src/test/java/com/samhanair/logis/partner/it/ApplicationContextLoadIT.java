@@ -3,6 +3,10 @@ package com.samhanair.logis.partner.it;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.samhanair.logis.partner.PartnerServiceApplication;
+import com.samhanair.logis.partner.audit.service.PartnerAuditLogService;
+import com.samhanair.logis.partner.editrequest.service.PartnerEditRequestService;
+import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.lock.EditLockGuard;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +31,15 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Autowired
     private ApplicationContext applicationContext;
 
+    @Autowired
+    private RealtimeBroker realtimeBroker;
+    @Autowired
+    private EditLockGuard editLockGuard;
+    @Autowired
+    private PartnerAuditLogService partnerAuditLogService;
+    @Autowired
+    private PartnerEditRequestService partnerEditRequestService;
+
     /**
      * Spring ApplicationContext 가 BeanDefinitionOverrideException / NoSuchBeanDefinitionException
      * 없이 정상 부팅하는지만 검증.
@@ -34,5 +47,17 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Test
     void contextLoads() {
         assertThat(applicationContext).isNotNull();
+    }
+
+    /**
+     * PR-H4b BE-A — shared:realtime-abstraction 의 RealtimeBroker / EditLockGuard 가 자동 설정으로
+     * 등록되었고, partner-service 의 audit / edit-request bean 도 정상 주입되는지 확인.
+     */
+    @Test
+    void realtimeBeansAreWired() {
+        assertThat(realtimeBroker).isNotNull();
+        assertThat(editLockGuard).isNotNull();
+        assertThat(partnerAuditLogService).isNotNull();
+        assertThat(partnerEditRequestService).isNotNull();
     }
 }

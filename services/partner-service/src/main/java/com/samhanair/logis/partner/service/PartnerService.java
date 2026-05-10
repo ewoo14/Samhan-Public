@@ -7,9 +7,11 @@ import com.samhanair.logis.partner.domain.PartnerStatus;
 import com.samhanair.logis.partner.dto.PartnerAdminRequest;
 import com.samhanair.logis.partner.dto.PartnerInternalResponse;
 import com.samhanair.logis.partner.repository.PartnerRepository;
+import com.samhanair.logis.shared.realtime.audit.AuditLogRecorder;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class PartnerService {
 
     private final PartnerRepository partnerRepository;
+    /**
+     * shared:realtime-abstraction audit recorder — PR-H4b. PartnerAuditLogService 가 본 interface
+     * 를 구현. {@code @Autowired(required=false)} setter 주입 — 기존 단위 테스트 (constructor mock)
+     * 회귀 0 보장.
+     */
+    private AuditLogRecorder auditRecorder;
+
+    /** Spring DI 가 PartnerAuditLogService 를 자동 주입 (required=false 로 단위 테스트 안전). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAuditRecorder(AuditLogRecorder auditRecorder) {
+        this.auditRecorder = auditRecorder;
+    }
 
     /**
      * 신규 거래처 등록.
@@ -209,12 +223,56 @@ public class PartnerService {
 
     /**
      * 거래처 프로필 수정 (name / address / phone 만). partnerCode / bizNo 는 식별자 — 변경 불가.
+     *
+     * <p>PR-H4b — shared audit recorder 가 등록되어 있으면 변경된 필드별로 audit_log 1행 + SSE
+     * broadcast 자동 발행 ("partner.name" / "partner.address" / "partner.phone" 필드명). 호출자
+     * X-User-Id / X-User-Name 헤더는 controller 에서 callerUserId/callerName 로 전달.
      */
     @Transactional
     public Partner updateProfile(String partnerCode, PartnerAdminRequest req) {
+        return updateProfile(partnerCode, req, null, null);
+    }
+
+    /**
+     * 거래처 프로필 수정 — audit actor 명시 overload (PR-H4b).
+     *
+     * @param actorUserId 수정자 UUID (audit/감사용, null 가능)
+     * @param actorName 수정자 표시명 (UUID 비공개 가드, null 가능)
+     */
+    @Transactional
+    public Partner updateProfile(String partnerCode, PartnerAdminRequest req,
+                                 java.util.UUID actorUserId, String actorName) {
         Partner partner = findByCode(partnerCode);
+        // diff snapshot for audit
+        String oldName = partner.getName();
+        String oldAddress = partner.getAddress();
+        String oldPhone = partner.getPhone();
+
         partner.updateProfile(req.name(), req.address(), req.phone());
+
+        // audit overlay 기록 — recorder bean 등록된 환경 (Spring 부팅) 만 동작.
+        if (auditRecorder != null) {
+            recordIfChanged(partner.getId(), actorUserId, actorName, "partner.name", oldName, partner.getName());
+            recordIfChanged(partner.getId(), actorUserId, actorName, "partner.address", oldAddress, partner.getAddress());
+            recordIfChanged(partner.getId(), actorUserId, actorName, "partner.phone", oldPhone, partner.getPhone());
+        }
         return partner;
+    }
+
+    /** 변경된 경우만 audit row 1행 INSERT — UUID 비공개 가드 (actorName 표시). */
+    private void recordIfChanged(java.util.UUID entityId, java.util.UUID actorUserId,
+                                 String actorName, String fieldName, String oldVal, String newVal) {
+        if (Objects.equals(oldVal, newVal)) {
+            return;
+        }
+        java.util.UUID safeActorId = actorUserId == null ? new java.util.UUID(0L, 0L) : actorUserId;
+        String safeActorName = (actorName == null || actorName.isBlank()) ? "system" : actorName;
+        try {
+            auditRecorder.recordOverlayPatch(entityId, safeActorId, safeActorName, null,
+                    fieldName, oldVal, newVal);
+        } catch (RuntimeException ex) {
+            // graceful — audit 실패가 비즈니스 mutation 차단하지 않음
+        }
     }
 
     /**

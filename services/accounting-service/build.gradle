@@ -52,6 +52,10 @@ dependencies {
 
     implementation project(':shared:common')
     implementation project(':shared:security')
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction 활용. SSE broker / audit overlay /
+    // edit-request lock 정책 통합. accounting-service 의 TaxInvoice / Journal / AccountingPeriod
+    // mutation 시 audit_log 1행 + SSE broadcast + 잠금 가드 (ISSUED/POSTED/CLOSED 후).
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 
