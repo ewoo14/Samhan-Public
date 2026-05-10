@@ -1023,6 +1023,49 @@ PR (`feature/integrated-phase-10-step-12-gas-cd-vendor`) — PR #117 (PR-E1) + #
 - **인쇄 양식 iteration** — 운송사 reconcile 결과 CSV 외 PDF / 인쇄 양식 도입 권고 (사용자 Edge 캡처 → CSS-only 미세 조정 `feedback_print_design_iteration`).
 - **동일 vendor 다중 파일 합산 정책** — `CJ_2026-05.xlsx` + `CJ_2026-06.xlsx` 동시 업로드 시 vendor 식별자 합산 vs 분리 정책 미정의 — 운영 도입 시 결정 후 case 추가.
 
+### D-P10-22. step-13 (PR-F2) vendor 발주 OCR 이식 — 에어디자이너 + 제이시스템 (Tesseract) + 종합견적서 시트 단가 일원화 (2026-05-10)
+
+PR (`feature/integrated-phase-10-step-13-vendor-ocr`) — PR #119 (PR-F1) 머지로 GAS C/D 6건 중 4건 native 이식 완성 후, 사용자 분류 잔여 OCR 의존 2건 (D 10번 에어디자이너 발주서 OCR + D 14번 제이시스템 발주서 OCR) 단일 통합 PR 이식. OCR 엔진 = Tesseract 4.x + tess4j 5.13 (D-P10-21 결정 재확인 + 본 PR 시점 production setup 완성). 흡수 위치 = `partner-order-service` (발주 도메인 일관성) — 신규 `services/ocr-service` 분리 보류.
+
+근거:
+- **Tesseract 흡수 위치 = `partner-order-service`** — D-P10-21 시점 미결 (`arologis-service` 또는 신규 `services/ocr-service` 8098). 본 PR-F2 진입 시점 결정 = `partner-order-service` 흡수. 사유: (1) vendor 발주서 OCR 결과는 즉시 `PartnerOrder` draft 등록으로 이어짐 — 발주 도메인 entity / repository / Controller / 권한 가드 (`SALES/MANAGER/MASTER`) 모두 동일 service 내부 호출 가능, (2) 별도 service 분리 시 OCR 결과 → PartnerOrder draft 의 transactional consistency 가 RestClient + 분산 트랜잭션 회피 패턴 (Saga / Outbox) 필요 → 운영 진입 비용 큼, (3) Tesseract 호출량 = 일 평균 vendor 발주서 ~10건 (현 사용량 기준) 으로 별도 service scaling 불요. 운영 호출량 폭증 시점 (일 100건 이상) 별도 service 분리 + 비동기 큐 도입 검토 (PR-F3 이후 backlog).
+- **OcrEngine 추상화 + `@ConditionalOnProperty` 양분기** — `MockOcrEngine` (preset key 매처, dev/test/CI fallback, `samhan.ocr.engine=mock` default) ↔ `TesseractOcrEngine` (tess4j JNI binding, `samhan.ocr.engine=tesseract` 운영). Tesseract native 라이브러리 미설치 환경 (Windows dev / macOS dev / 한글 경로 JDK 17) 에서 ApplicationContext 부팅 실패 회귀 차단 의무 — `@ConditionalOnProperty(name="samhan.ocr.engine", havingValue="tesseract")` 가 미설치 시 자동 비활성 + 운영자 503 graceful 안내. PR-F1 회귀 가드 `*Bean` suffix 일관 (`mockOcrEngineBean` / `tesseractOcrEngineBean`).
+- **vendor parser 분리 패턴 + 자동 detect** — `VendorOrderParser` interface + `AirDesignerOrderParser` (keyword "에어디자이너" + 라인 정규식 `^\d+\.\s*(.+)\s*\[(.+)\]\s*(\d+)개\s*([\d,]+)원`) + `JSystemOrderParser` (keyword "제이시스템" + 표 형식 row 매처). `VendorParserRegistry` 가 자동 detect (첫 5줄 keyword score) + `vendorHint` 명시 시 우회. 신규 vendor 양식 추가 시 `VendorOrderParser` interface + `register()` 만 구현하면 자동 detect 진입 — vendor 양식 다양화 운영 진입 비용 최소화.
+- **단가 lookup 우선순위 = CATALOG (시트) > OCR > MANUAL** — `VendorOrderService` 가 OCR parser 결과 라인 → `ProductCatalogLookupClient` (모델 코드 lookup) → 시트 단가 (`source="CATALOG"`) → 시트 미존재 시 OCR 단가 (`source="OCR"`) → FE inline edit 시 (`source="MANUAL"`). DC 적용 = `DcConfigClient.findHomeDiscount(partnerCode)` (PR #115 산출 활용). 합계 불일치 (OCR 합계 vs 라인 합산) 시 `suggestions` 메시지 노출 — 운영자 인지 동선 확보.
+- **종합견적서 시트 단가 일원화** — 본 PR 시점 `ProductCatalogLookupClient` 가 호출하는 시트 단가 source 가 운영상 다중 시트 (가정용 / 업소용 / 종합견적서) 분산 → **종합견적서 시트 단가로 일원화** 결정. 사유: 사용자 운영 표준 = 거래처 견적 / 계산서 / 발주 모두 종합견적서 단가 기준. PR-F2 시점 = client 인터페이스만 정착, 실제 시트 source 통합은 PR-G2 (예정) 또는 product-service `ProductCatalogClient` 의 시트 ID 환경변수 (`samhan.product.catalog-sheet-id`) 정정 시점 동시 진입.
+- **단일 통합 PR (5 commits) — 별도 docs PR 회피** — Phase A (DevOps 1 + Designer 1 + BE 1 = 3 commits) + Phase B (FE 1 + QA 1 = 2 commits). ROADMAP / DECISIONS / dev-report 본 PR 동시 갱신 (memory `feedback_continuous_docs_sync` 일관). 별도 docs PR 폐기 패턴.
+
+영향:
+- `services/partner-order-service/src/main/java/.../partnerorder/vendor/ocr/{OcrEngine,MockOcrEngine,TesseractOcrEngine,OcrEngineConfig,OcrProperties,OcrException}.java` 신규 — OCR engine 추상화 + Tesseract 4.x JNI binding (tess4j 5.13) + 503 graceful fallback
+- `services/partner-order-service/src/main/java/.../partnerorder/vendor/parser/{VendorOrderParser,AirDesignerOrderParser,JSystemOrderParser,ParsedVendorOrder,VendorParserRegistry}.java` 신규 — vendor parser interface + 2 구현체 + 자동 detect registry
+- `services/partner-order-service/src/main/java/.../partnerorder/vendor/service/VendorOrderService.java` 신규 — multipart → OCR → parser → catalog lookup → DC 적용 → response, 단위 7 case PASS
+- `services/partner-order-service/src/main/java/.../partnerorder/vendor/client/{PartnerLookupClient,PartnerSummary,ProductCatalogLookupClient}.java` 신규 — RestClient + X-Internal-Token + fail-soft empty Map
+- `services/partner-order-service/src/main/java/.../partnerorder/vendor/web/VendorOrderController.java` + `dto/{VendorOrderUploadResponse,VendorOrderConfirmRequest,VendorOrderConfirmResponse}.java` 신규 — `POST /api/v1/admin/partner-order/vendor/{upload,confirm}` (SALES/MANAGER/MASTER + multipart)
+- `services/partner-order-service/build.gradle` — tess4j 5.13.0 의존성 추가
+- `services/partner-order-service/src/main/resources/application.yml` — Tesseract 설정 4종 (`samhan.ocr.{engine,tessdata-path,languages,timeout-ms}`)
+- `services/partner-order-service/src/test/java/.../it/{ApplicationContextLoadIT,VendorOrderControllerIT}.java` 신규 — Spring context 부팅 검증 + 외부 client `@MockBean` 격리 (PR-F1 회귀 가드 일관)
+- `clients/desktop/src/renderer/api/vendorOrderApi.ts` 신규 — multipart 업로드 + 확정 등록 2 endpoint client
+- `clients/desktop/src/renderer/routes/SalesVendorOrderUploadPage.tsx` + `.module.css` 신규 — 3-step wizard (`/sales/vendor-order/upload`, SALES/MANAGER/MASTER)
+- `clients/desktop/src/renderer/components/AppLayout.tsx` "영업 (SALES)" 그룹 entry "발주서 OCR 업로드" 신규 + `routes/index.tsx` 라우트 1건
+- `clients/desktop/src/renderer/api/mock.ts` vendor OCR fixture 4 preset 추가 (capture 자동화 의존)
+- `tools/manual-capture/capture-pr-f2.js` 신규 — Playwright headless 캡처 자동화 (msedge → chromium fallback)
+- `docs/qa/phase-10-step-13-vendor-ocr/scenarios.md` 신규 — 15 case (1.x 5 + 2.x 5 + 3.x 1 + 4.x 4) + 단위 30 case 매핑 + 페르소나 5 + 회귀 위험 + 후속 backlog
+- `docs/qa/phase-10-step-13-vendor-ocr/working-vendor-order-step{1-upload,2-preview,3-confirm}.png` 신규 — Playwright 작동 캡처 3 PNG (한국어 100% + UUID 비공개 통과)
+- `.github/workflows/ci.yml` — Linux runner Tesseract 설치 step 추가 (CI IT 가능)
+- `docs/dev-environment/tesseract-setup.md` 신규 — Windows / macOS / Ubuntu / Docker / EC2 m5.xlarge 5 환경 설치 절차 + `kor.traineddata` 다운로드
+- `.gitignore` — traineddata 대용량 binary 7건 무시
+- `README.md` — Tesseract 설치 안내 link 추가
+- `ROADMAP.md` Phase 10 step-13 row 추가
+- `docs/dev-reports/integration-phase-10-step-13-vendor-ocr.md` 신규
+
+후속 (PR-G1 이후):
+- **PR-G1 — slip-service e-Count schema 보강 + API 제거** — 본 PR 머지 후 즉시 진입 (사용자 명시). 자체 분개 + 출고전표 자동 조회 + accounting-service native 이식 (PR #117 + #118) 완성 후 schema 정리 단계.
+- **종합견적서 시트 단가 일원화 — `samhan.product.catalog-sheet-id` 환경변수 정정** — PR-G2 (예정) 또는 product-service `ProductCatalogClient` 정정 시점. 본 PR 시점 = client 인터페이스만 정착, 실제 시트 source 통합은 후속 PR 진입.
+- **OCR 후처리 정규화 보강** — 운송장번호 12자 hyphen 표준 / 모델코드 대소문자 / 단가 천단위 콤마 정규화. 운영 진입 시 OCR fail rate 측정 후 보강.
+- **신규 vendor 양식 추가 시 parser 등록 패턴 정착** — `VendorOrderParser` interface + `VendorParserRegistry.register()` 만 구현하면 자동 detect 진입 (등록 절차 dev-report § 4 명시).
+- **`services/ocr-service` 분리 검토** — 운영 호출량 폭증 시점 (일 100건 이상) 별도 service (8098, 미정) 분리 + 비동기 큐 도입 검토.
+- **인쇄 양식 — 발주서 확정 후 vendor 회신용 PDF / 인쇄 양식** — 사용자 Edge 캡처 → CSS-only 미세 조정 (`feedback_print_design_iteration`) iteration.
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
