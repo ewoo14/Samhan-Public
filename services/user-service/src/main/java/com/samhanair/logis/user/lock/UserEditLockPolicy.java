@@ -23,9 +23,16 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class UserEditLockPolicy {
 
-    /** {@link EditLockPolicy} bean — 호출자가 EditLockGuard 와 함께 주입받아 사용. */
+    /**
+     * {@link EditLockPolicy} bean — 호출자가 EditLockGuard 와 함께 주입받아 사용.
+     *
+     * <p><b>{@code *Bean} suffix 가드</b> (memory feedback_it_mockbean_external_clients):
+     * 클래스명 {@code UserEditLockPolicy} 와 동일한 메서드명 {@code userEditLockPolicy()} 사용 시
+     * Spring 이 두 bean 을 동일 이름으로 등록 시도 → BeanDefinitionOverrideException 회귀 (PR #119
+     * commit 4c98ed2 패턴). {@code Bean} suffix 로 이름 격리.
+     */
     @Bean
-    public EditLockPolicy<UserStatus> userEditLockPolicy() {
+    public EditLockPolicy<UserStatus> userEditLockPolicyBean() {
         return EditLockPolicy.<UserStatus>builder()
                 .freeStatuses(UserStatus.ACTIVE)
                 .lockedRequiresApproval(UserStatus.DEACTIVATED)

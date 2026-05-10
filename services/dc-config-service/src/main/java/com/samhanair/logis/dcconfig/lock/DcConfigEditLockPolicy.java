@@ -19,8 +19,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class DcConfigEditLockPolicy {
 
+    /**
+     * {@code *Bean} suffix 가드 (memory feedback): 클래스명과 동일한 메서드명 사용 시
+     * BeanDefinitionOverrideException 회귀 (PR #119 commit 4c98ed2 패턴). 이름 격리.
+     */
     @Bean
-    public EditLockPolicy<DcConfigStatus> dcConfigEditLockPolicy() {
+    public EditLockPolicy<DcConfigStatus> dcConfigEditLockPolicyBean() {
         return EditLockPolicy.<DcConfigStatus>builder()
                 .freeStatuses(DcConfigStatus.DRAFT)
                 .lockedRequiresApproval(DcConfigStatus.IN_USE)
