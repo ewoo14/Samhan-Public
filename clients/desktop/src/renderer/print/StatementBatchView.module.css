@@ -1,0 +1,379 @@
+/*
+ * StatementBatchView 전용 CSS Module — PR-E2 Designer 1차 mock.
+ *
+ * Legacy GAS 4번 "거래처별 일괄 거래명세서" 의 거래처별 PDF batch 컨셉을
+ * print view 거래처별 섹션 + page-break-after: always 로 재현.
+ *
+ * 폰트: Malgun Gothic (맑은 고딕) — 한국어 인쇄 가독성 우선.
+ *
+ * Iteration 가드 (memory feedback_print_design_iteration):
+ * - 본 mock 은 placeholder. 사용자 Edge 캡처 → 2~5차 미세 조정 필수.
+ * - 색상 / 여백 / 사인란 / 한글 금액 표시 모두 사용자 피드백 기반 재조정 대상.
+ */
+
+/* ============================================================
+ * 거래처 1건 = 1 페이지 (A4 세로 210 × 297mm).
+ * page-break-after: always 로 거래처당 1페이지 분리 인쇄.
+ * ============================================================
+ */
+.page {
+  font-family: 'Malgun Gothic', '맑은 고딕', system-ui, -apple-system, sans-serif;
+  color: #111827;
+  background: #ffffff;
+  padding: 8mm 6mm;
+  font-size: 10pt;
+  line-height: 1.4;
+  /* 화면 미리보기 시 페이지 구분 시각화 */
+  border-bottom: 2px dashed #d1d5db;
+  margin-bottom: 6mm;
+}
+
+/* 마지막 거래처는 화면 미리보기에서도 dashed border 제거. */
+.page:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+/* ============================================================
+ * 상단 헤더 — 회사 표기 + "거래명세서" 타이틀 + 발행일 + 기간.
+ * ============================================================
+ */
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 2px solid #111827;
+  padding-bottom: 4mm;
+  margin-bottom: 5mm;
+}
+
+.brand {
+  font-size: 12pt;
+  color: #374151;
+  margin-bottom: 1mm;
+  letter-spacing: 0.5px;
+}
+
+.title {
+  font-size: 24pt;
+  font-weight: 700;
+  margin: 0 0 2mm;
+  letter-spacing: 10px;
+}
+
+.metaRow {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 2mm;
+  font-size: 10pt;
+  color: #1f2937;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * 공급자 / 공급받는자 박스 — 좌우 배치.
+ * ============================================================
+ */
+.partyRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  margin-bottom: 5mm;
+}
+
+.partyTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+  border: 1px solid #d1d5db;
+}
+
+.partyTable th,
+.partyTable td {
+  padding: 1.8mm 2.5mm;
+  text-align: left;
+  vertical-align: middle;
+  border: 1px solid #e5e7eb;
+}
+
+.partyHeader {
+  background: #1f2937 !important;
+  color: #ffffff !important;
+  text-align: center !important;
+  font-weight: 700;
+  font-size: 10.5pt;
+  padding: 2.5mm !important;
+  letter-spacing: 2px;
+}
+
+.partyTable tbody th {
+  background: #f3f4f6;
+  font-weight: 600;
+  color: #374151;
+  width: 22mm;
+  white-space: nowrap;
+}
+
+.partnerCode {
+  margin-left: 2mm;
+  font-size: 8.5pt;
+  color: #6b7280;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * 합계 한글 금액 박스.
+ * ============================================================
+ */
+.amountSummary {
+  display: grid;
+  grid-template-columns: 22mm 1fr auto;
+  align-items: center;
+  gap: 4mm;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 1mm;
+  padding: 3mm 4mm;
+  margin-bottom: 5mm;
+  font-size: 11pt;
+}
+
+.amountLabel {
+  font-weight: 700;
+  color: #92400e;
+}
+
+.amountKorean {
+  font-weight: 600;
+  color: #111827;
+  letter-spacing: 0.5px;
+}
+
+.amountNumber {
+  font-weight: 700;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ============================================================
+ * 슬립 list 표 — No / 일자 / 전표번호 / 품목 / 규격 / 수량 / 단가 / 공급가액 / 부가세 / 합계.
+ * ============================================================
+ */
+.slipTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin-bottom: 5mm;
+}
+
+.slipTable thead th {
+  background: #1f2937;
+  color: #ffffff;
+  border: 1px solid #1f2937;
+  padding: 2mm 2mm;
+  text-align: center;
+  font-weight: 600;
+}
+
+.slipTable tbody td {
+  border: 1px solid #e5e7eb;
+  padding: 1.6mm 2mm;
+  vertical-align: top;
+}
+
+.slipTable tfoot td {
+  border: 1px solid #d1d5db;
+  padding: 2.2mm 2mm;
+}
+
+/* zebra row — 화면 미리보기 가독성. */
+.slipTable tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+/* row hover — 화면 미리보기 한정. */
+.slipTable tbody tr:hover {
+  background: #fff7ed;
+}
+
+/* 컬럼 너비 — A4 세로 합계 ≈ 198mm. */
+.colNo { width: 8mm; }
+.colDate { width: 20mm; }
+.colSlipNo { width: 30mm; }
+.colItem { width: auto; }
+.colSpec { width: 22mm; }
+.colQty { width: 12mm; }
+.colPrice { width: 20mm; }
+.colSupply { width: 22mm; }
+.colVat { width: 18mm; }
+.colTotal { width: 24mm; }
+
+.slipTable thead .colNo,
+.slipTable tbody .colNo {
+  text-align: center;
+}
+
+.dateCell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.slipNoCell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.itemCell {
+  color: #1f2937;
+}
+
+.specCell {
+  color: #4b5563;
+  font-size: 8.5pt;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qtyCell {
+  font-weight: 600;
+}
+
+.totalCell {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #111827;
+}
+
+.strong {
+  font-weight: 700;
+}
+
+/* ============================================================
+ * 합계 row 강조.
+ * ============================================================
+ */
+.totalRow td {
+  background: #f3f4f6;
+}
+
+.totalLabel {
+  text-align: right;
+  font-weight: 700;
+  color: #111827;
+  padding-right: 3mm !important;
+}
+
+/* ============================================================
+ * 사인 footer.
+ * ============================================================
+ */
+.footer {
+  margin-top: 8mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+}
+
+.signBox {
+  border: 1px solid #d1d5db;
+  border-radius: 1mm;
+  padding: 4mm;
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+  min-height: 24mm;
+}
+
+.signLabel {
+  font-size: 9pt;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 1px dashed #d1d5db;
+  padding-bottom: 1.5mm;
+}
+
+.signValue {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11pt;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+}
+
+.seal {
+  font-size: 10pt;
+  font-weight: 700;
+  color: #b91c1c;
+  border: 1.5px solid #b91c1c;
+  border-radius: 50%;
+  width: 14mm;
+  height: 14mm;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================================
+ * 빈 거래처 / 빈 슬립 안내.
+ * ============================================================
+ */
+.empty {
+  margin: 8mm 6mm;
+  padding: 8mm;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 10pt;
+  background: #fafafa;
+  border: 1px dashed #d1d5db;
+  border-radius: 1mm;
+}
+
+/* ============================================================
+ * @media print — A4 세로 + 거래처별 page-break.
+ * ============================================================
+ */
+@media print {
+  /* 거래처당 1 페이지 — 마지막 거래처 제외. */
+  .pageBreak {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .page {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding: 8mm 6mm;
+  }
+
+  /* hover / zebra 인쇄 비활성. */
+  .slipTable tbody tr:hover {
+    background: transparent;
+  }
+
+  .slipTable tbody tr:nth-child(even) {
+    background: transparent;
+  }
+
+  /* 헤더 / 합계 / 한글 금액 / 사인 색감 인쇄 시 보존. */
+  .partyHeader,
+  .slipTable thead th,
+  .totalRow td,
+  .totalCell,
+  .amountSummary,
+  .seal {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

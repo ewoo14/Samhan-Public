@@ -1,0 +1,303 @@
+/*
+ * PartnerLedgerView 전용 CSS Module — PR-E2 Designer 1차 mock.
+ *
+ * Legacy GAS 3번 "거래처별 원장생성" 의 거래처 원장 이미지 컨셉을
+ * print view 표 + 기초/기말 잔액 강조 + 합계 row 로 재현.
+ *
+ * 폰트: Malgun Gothic (맑은 고딕) — 한국어 인쇄 가독성 우선.
+ *
+ * Iteration 가드 (memory feedback_print_design_iteration):
+ * - 본 mock 은 placeholder. 사용자 Edge 캡처 → 2~5차 미세 조정 필수.
+ * - 색상 / 여백 / 잔액 부호 표시 모두 사용자 피드백 기반 재조정 대상.
+ */
+
+/* ============================================================
+ * 페이지 root — A4 세로 (210 × 297mm) 기준 안전 여백.
+ * ============================================================
+ */
+.page {
+  font-family: 'Malgun Gothic', '맑은 고딕', system-ui, -apple-system, sans-serif;
+  color: #111827;
+  background: #ffffff;
+  padding: 8mm 6mm;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+
+/* ============================================================
+ * 상단 헤더 — 회사 표기 + "거래처 원장" 타이틀 + 기간.
+ * ============================================================
+ */
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 2px solid #111827;
+  padding-bottom: 4mm;
+  margin-bottom: 5mm;
+}
+
+.brand {
+  font-size: 12pt;
+  color: #374151;
+  margin-bottom: 1mm;
+  letter-spacing: 0.5px;
+}
+
+.title {
+  font-size: 22pt;
+  font-weight: 700;
+  margin: 0 0 2mm;
+  letter-spacing: 8px;
+}
+
+.period {
+  font-size: 11pt;
+  font-weight: 600;
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * 거래처 정보 박스 — partnerCode + 사업자번호 + 거래처명 + 단톡방.
+ * ============================================================
+ */
+.partnerBox {
+  margin-bottom: 5mm;
+  border: 1px solid #d1d5db;
+  border-radius: 1mm;
+  overflow: hidden;
+}
+
+.partnerTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10pt;
+}
+
+.partnerTable th,
+.partnerTable td {
+  padding: 2mm 3mm;
+  text-align: left;
+  vertical-align: middle;
+  border: 1px solid #e5e7eb;
+}
+
+.partnerTable th {
+  background: #f3f4f6;
+  font-weight: 600;
+  color: #374151;
+  width: 22mm;
+  white-space: nowrap;
+}
+
+.partnerName {
+  font-weight: 600;
+  color: #111827;
+}
+
+.partnerCode {
+  margin-left: 2mm;
+  font-size: 9pt;
+  color: #6b7280;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * 분개 line 표 — 일자 / 전표번호 / 적요 / 차변 / 대변 / 잔액.
+ * ============================================================
+ */
+.ledgerTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+}
+
+.ledgerTable thead th {
+  background: #1f2937;
+  color: #ffffff;
+  border: 1px solid #1f2937;
+  padding: 2mm 2.5mm;
+  text-align: center;
+  font-weight: 600;
+}
+
+.ledgerTable tbody td {
+  border: 1px solid #e5e7eb;
+  padding: 1.8mm 2.5mm;
+  vertical-align: top;
+}
+
+.ledgerTable tfoot td {
+  border: 1px solid #d1d5db;
+  padding: 2.2mm 2.5mm;
+}
+
+/* row hover — 화면 미리보기 한정 (인쇄 시 비활성). */
+.ledgerTable tbody tr:hover {
+  background: #fff7ed;
+}
+
+/* zebra row — 화면 미리보기 가독성 */
+.ledgerTable tbody tr:nth-child(even of tr:not(.openingRow)) {
+  background: #fafafa;
+}
+
+/* 컬럼 너비 — A4 세로 기준 합계 ≈ 198mm (페이지 padding 제외). */
+.colDate { width: 22mm; }
+.colSlipNo { width: 36mm; }
+.colDesc { width: auto; }
+.colDebit { width: 26mm; }
+.colCredit { width: 26mm; }
+.colBalance { width: 28mm; }
+
+.dateCell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.slipNoCell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.descCell {
+  color: #1f2937;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.debitCell {
+  color: #1d4ed8;
+}
+
+.creditCell {
+  color: #b91c1c;
+}
+
+.balanceCell {
+  color: #111827;
+  font-weight: 600;
+  background: #f9fafb;
+}
+
+.strong {
+  font-weight: 700;
+}
+
+/* ============================================================
+ * 기초 잔액 row 강조 — 합계 위 별도 색감.
+ * ============================================================
+ */
+.openingRow td {
+  background: #eef2ff;
+  font-weight: 500;
+  color: #3730a3;
+}
+
+.openingLabel {
+  text-align: left;
+  font-size: 9pt;
+  color: #4338ca;
+}
+
+/* ============================================================
+ * 합계 / 기말 잔액 row 강조.
+ * ============================================================
+ */
+.totalRow td {
+  background: #f3f4f6;
+}
+
+.totalLabel {
+  text-align: right;
+  font-weight: 700;
+  color: #111827;
+  padding-right: 4mm !important;
+}
+
+.closingRow td {
+  background: #fef3c7;
+  font-size: 10.5pt;
+}
+
+.closingLabel {
+  text-align: right;
+  font-weight: 700;
+  color: #92400e;
+  padding-right: 4mm !important;
+}
+
+/* ============================================================
+ * 빈 기간 안내.
+ * ============================================================
+ */
+.empty {
+  padding: 8mm;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 10pt;
+  background: #fafafa;
+  border: 1px dashed #d1d5db;
+  border-radius: 1mm;
+}
+
+/* ============================================================
+ * 발행자 footer.
+ * ============================================================
+ */
+.footer {
+  margin-top: 8mm;
+  padding: 3mm 4mm;
+  border-top: 1px dashed #9ca3af;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9pt;
+  color: #6b7280;
+}
+
+.issuer {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * @media print — A4 세로.
+ * ============================================================
+ */
+@media print {
+  .page {
+    padding: 8mm 6mm;
+  }
+
+  /* hover 효과 / 화면 색감 인쇄 비활성. */
+  .ledgerTable tbody tr:hover {
+    background: transparent;
+  }
+
+  .ledgerTable tbody tr:nth-child(even of tr:not(.openingRow)) {
+    background: transparent;
+  }
+
+  /* 잔액 셀은 인쇄 시 회색 배경 유지 (가독성). */
+  .balanceCell {
+    background: #f3f4f6 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 헤더 / 기초 / 합계 / 기말 색감 인쇄 시 보존. */
+  .ledgerTable thead th,
+  .openingRow td,
+  .totalRow td,
+  .closingRow td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

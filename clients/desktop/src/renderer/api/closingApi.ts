@@ -8,6 +8,7 @@
  * - `POST /accounting/closings`            — 마감 실행 (DAILY/MONTHLY, ACCOUNTANT/MASTER)
  * - `GET  /accounting/closings`            — 마감 list (periodType / year filter, ACCOUNTANT/MASTER)
  * - `POST /accounting/closings/{id}/reverse` — 역마감 (MASTER 만)
+ * - `GET  /accounting/closings/daily?date=` — 일별 세금계산서 detail (PR-E2 BE-A12, ACCOUNTANT/MASTER)
  *
  * BE Java 와의 매핑 (`AccountingPeriodResponse` record):
  * - `periodType`: DAILY / MONTHLY
@@ -125,6 +126,83 @@ export async function reverseClosing(id: string): Promise<AccountingPeriod> {
   const res = await apiClient.post<ApiEnvelope<AccountingPeriod>>(
     `/accounting/closings/${id}/reverse`,
     {},
+  )
+  return res.data.data
+}
+
+/**
+ * 일별 세금계산서 detail 1건 — BE `DailyClosingDetailResponse.DailyTaxInvoice` record.
+ *
+ * UUID 비공개 가드: 식별자는 `taxInvoiceNo` (세금계산서 발행번호) — 사용자 노출 OK.
+ */
+export interface DailyTaxInvoiceRow {
+  /** 세금계산서 발행번호 (사용자 노출 식별자). */
+  taxInvoiceNo: string
+  /** 거래처명 (사용자 노출). */
+  partnerName: string
+  /** 공급가액 (KRW BigDecimal — string). */
+  supplyAmount: string
+  /** 세액. */
+  vatAmount: string
+  /** 합계. */
+  totalAmount: string
+}
+
+/**
+ * 일별 모델별 매출 detail — BE `DailyClosingDetailResponse.DailyProductLine` record.
+ *
+ * product-service 마스터 lookup 결과 (productName + modelName 사용자 노출).
+ */
+export interface DailyProductLine {
+  /** 품명 — product-service 마스터 lookup. */
+  productName: string
+  /** 모델명. */
+  modelName: string
+  /** 수량 (BigDecimal — string). */
+  quantity: string
+  /** 공급가액 합. */
+  supplyAmount: string
+}
+
+/**
+ * 일별 마감 detail 응답 — BE `DailyClosingDetailResponse` record.
+ *
+ * legacy GAS 12번 "일마감 프로그램" — 일별 매출/세금계산서/할인 detail.
+ * 마감 OPEN/CLOSED 무관 (read-only).
+ */
+export interface DailyClosingDetail {
+  /** 대상 일자 (LocalDate "YYYY-MM-DD"). */
+  date: string
+  /** 발행된 세금계산서 건수 (ISSUED 상태). */
+  totalTaxInvoiceCount: number
+  /** 공급가액 합. */
+  totalSupply: string
+  /** 세액 합. */
+  totalVat: string
+  /** 합계. */
+  totalAmount: string
+  /** 할인 합 (BE placeholder 0 — 본 단계 reference). */
+  totalDiscount: string
+  /** 일별 세금계산서 detail (slipNo + 거래처 + 합계). */
+  taxInvoices: DailyTaxInvoiceRow[]
+  /** 모델별 매출 합계 (top N — BE 정렬 기준 따름). */
+  productSummaries: DailyProductLine[]
+}
+
+/**
+ * 일별 세금계산서 마감 detail 조회 — BE-A12.
+ *
+ * BE 동작: ISSUED 상태 세금계산서 + line 모델별 누적 합계 (product-service join).
+ *
+ * @param date "YYYY-MM-DD" (LocalDate ISO).
+ * @return 일별 detail (taxInvoices + productSummaries + 합계).
+ */
+export async function getDailyClosingDetail(
+  date: string,
+): Promise<DailyClosingDetail> {
+  const res = await apiClient.get<ApiEnvelope<DailyClosingDetail>>(
+    '/accounting/closings/daily',
+    { params: { date } },
   )
   return res.data.data
 }

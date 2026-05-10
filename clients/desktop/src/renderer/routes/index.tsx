@@ -128,6 +128,21 @@ import { ARO_UNASSIGNED_ROLES } from '../api/arologisDispatchApi'
 import { NextDaySlipPage } from './NextDaySlipPage'
 import { NEXT_DAY_SLIP_ROLES } from '../api/nextDaySlipApi'
 import { NextDaySlipView } from '../print/NextDaySlipView'
+// [PR-E2 FE-9] 홈택스 일괄 등록 양식 export — ACCOUNTANT/MANAGER/MASTER (BE c48e156).
+import { HometaxExportPage } from './HometaxExportPage'
+import { HOMETAX_EXPORT_ROLES } from '../api/hometaxExportApi'
+// [PR-E2 FE-8] 거래명세서 일괄 페이지 + Designer StatementBatchView 통합 print route.
+// BE: accounting-service `GET /accounting/statements/batch-data` (commit c48e156).
+// 인쇄 view 는 Designer commit 69fd8f0 의 page-break per partner 활용.
+import { StatementBatchPage } from './StatementBatchPage'
+import { STATEMENT_BATCH_ROLES } from '../api/statementBatchApi'
+import { StatementBatchView } from '../print/StatementBatchView'
+// [PR-E2 FE-7] 거래처별 원장 페이지 + Designer PartnerLedgerView 통합 print route.
+// BE: accounting-service `GET /accounting/sales/aggregate` + `/accounting/journals/ledger-data` (commit c48e156).
+// 인쇄 view 는 Designer commit 69fd8f0 의 PartnerLedgerView 재사용.
+import { PartnerLedgerPage } from './PartnerLedgerPage'
+import { PARTNER_LEDGER_ROLES } from '../api/partnerLedgerApi'
+import { PartnerLedgerView } from '../print/PartnerLedgerView'
 
 /**
  * Print route wrapper — `?perRoom=1` query 시 Designer NextDaySlipView 의
@@ -280,6 +295,62 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={ACCOUNTING_ROLES}>
             <TrialBalancePage />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-E2 FE-9] 홈택스 일괄 등록 양식 — ACCOUNTANT / MANAGER / MASTER.
+      // BE: accounting-service `GET /accounting/tax-invoice/hometax-export` (commit c48e156).
+      {
+        path: '/accounting/hometax-export',
+        element: (
+          <RoleGuard allow={HOMETAX_EXPORT_ROLES}>
+            <HometaxExportPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-E2 FE-8] 거래명세서 일괄 — ACCOUNTANT / MASTER.
+      // BE: accounting-service `GET /accounting/statements/batch-data` (commit c48e156).
+      // 다중 선택 → /print/statement-batch 진입 (page-break per partner).
+      {
+        path: '/accounting/statement-batch',
+        element: (
+          <RoleGuard allow={STATEMENT_BATCH_ROLES}>
+            <StatementBatchPage />
+          </RoleGuard>
+        ),
+      },
+      // [PR-E2 FE-8] 거래명세서 일괄 인쇄 미리보기 — Designer commit 69fd8f0 StatementBatchView 통합.
+      // `?from=&to=&partnerCodes=A,B,C` (partnerCodes 미지정 시 전체).
+      {
+        path: '/print/statement-batch',
+        element: (
+          <RoleGuard allow={STATEMENT_BATCH_ROLES}>
+            <StatementBatchView />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-E2 FE-7] 거래처별 원장 생성 — ACCOUNTANT / MANAGER / MASTER.
+      // BE: accounting-service `GET /accounting/sales/aggregate` (BE-A8) +
+      //     `GET /accounting/journals/ledger-data` (BE-A9) (commit c48e156).
+      // 집계 → 원장 detail → 인쇄 / 일괄 인쇄 / CSV 다운로드 통합.
+      {
+        path: '/accounting/partner-ledger',
+        element: (
+          <RoleGuard allow={PARTNER_LEDGER_ROLES}>
+            <PartnerLedgerPage />
+          </RoleGuard>
+        ),
+      },
+      // [PR-E2 FE-7] 거래처 원장 인쇄 미리보기 — Designer commit 69fd8f0 PartnerLedgerView 통합.
+      // `?partnerCode=&from=&to=` 필수.
+      {
+        path: '/print/partner-ledger',
+        element: (
+          <RoleGuard allow={PARTNER_LEDGER_ROLES}>
+            <PartnerLedgerView />
           </RoleGuard>
         ),
       },
