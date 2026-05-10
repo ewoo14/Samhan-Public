@@ -1,0 +1,7 @@
+spring:
+  main:
+    # CI 종합 fix (PR #119 회귀, run 25615955037) — IT 시점 동일 type bean 등록 충돌 안전 마진.
+    # 우선 fix 는 Noop / Mock @Configuration 의 @Bean 메서드명에 *Bean suffix 부여
+    # (mockAligoAddressBookClient → mockAligoAddressBookClientBean 등) 로 클래스 빈 이름과 메서드 빈
+    # 이름 충돌 회피. 본 override 허용은 후속 슬라이스의 동일 type 빈 추가 시 회귀 가드.
+    allow-bean-definition-overriding: true
