@@ -104,6 +104,12 @@ import { RegionsPage as AdminRegionsPage } from './admin/RegionsPage'
 import { ARO_REGIONS_ADMIN_ROLES } from '../api/regionApi'
 // [PR-D Phase B FE-E] 발송금지 거래처 admin (MASTER 전용 — partner-service /api/v1/partners/admin/blocks)
 import { BlockedPartnersPage as AdminBlockedPartnersPage } from './admin/BlockedPartnersPage'
+// [PR-F1 Designer mock] 알리고 주소록 자동 동기화 — MASTER 전용 (AdminLayout 가드).
+// legacy GAS 9번 이식, BE FE-1 슬라이스 endpoint 연결 예정.
+import { AligoAddressBookPage as AdminAligoAddressBookPage } from './admin/AligoAddressBookPage'
+// [PR-F1 Designer mock] arologis 운송사 실배차 비교 — DISPATCH/MANAGER/MASTER (DISPATCH backlog → MANAGER/MASTER).
+// legacy GAS 11번 이식, BE FE-2 슬라이스 endpoint 연결 예정.
+import { ArologisDispatchReconcilePage } from './ArologisDispatchReconcilePage'
 // [PR-D Phase B FE-D] 단톡방 매핑 admin — MASTER/MANAGER (BE @PreAuthorize 일치)
 // AdminLayout 은 MASTER 전용이므로 별도 RoleGuard 로 MASTER/MANAGER 진입 허용.
 import { ChatRoomsPage as AdminChatRoomsPage } from './admin/ChatRoomsPage'
@@ -159,6 +165,12 @@ const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
 
 /** 재고 실사 권한 — WAREHOUSE / MASTER (사용자 요구). */
 const AUDIT_ROLES = ['WAREHOUSE', 'MASTER'] as const
+
+/**
+ * PR-F1 Designer mock 단계 임시 권한 (DISPATCH / MANAGER / MASTER).
+ * BE FE-2 슬라이스에서 정식 `ARO_DISPATCH_RECONCILE_ROLES` 가 export 되면 교체.
+ */
+const ARO_DISPATCH_RECONCILE_ROLES = ['DISPATCH', 'MANAGER', 'MASTER'] as const
 
 const router = createHashRouter([
   { path: '/login', element: <LoginPage /> },
@@ -398,6 +410,18 @@ const router = createHashRouter([
         ),
       },
 
+      // [PR-F1 Designer mock] arologis 운송사 실배차 비교 — DISPATCH / MANAGER / MASTER.
+      // legacy GAS 11번 이식 mock. BE FE-2 (multipart `POST /api/v1/arologis/dispatch/reconcile`)
+      // 연결 시점에 실 API 통합. ARO_DISPATCH_RECONCILE_ROLES 는 BE-2 슬라이스에서 정식 export 예정.
+      {
+        path: '/arologis/dispatch-reconcile',
+        element: (
+          <RoleGuard allow={ARO_DISPATCH_RECONCILE_ROLES}>
+            <ArologisDispatchReconcilePage />
+          </RoleGuard>
+        ),
+      },
+
       // [Phase 10 P2-4 / slice 8] 매출 마감 — 매뉴얼 docs/manual/02-창고/04-매출-마감.md 경로 일치.
       // 진입 가드 ACCOUNTANT/MASTER (역마감 버튼은 페이지 내부에서 MASTER 만 노출).
       {
@@ -467,6 +491,8 @@ const router = createHashRouter([
           { path: 'sheet-sync', element: <AdminSheetSyncPage /> },
           // [PR-D Phase B FE-E] 발송금지 거래처 (BE 가 MASTER 강제 — AdminLayout MASTER 가드와 일치)
           { path: 'blocked-partners', element: <AdminBlockedPartnersPage /> },
+          // [PR-F1 Designer mock] 알리고 주소록 자동 동기화 (MASTER, AdminLayout 가드)
+          { path: 'aligo-address-book', element: <AdminAligoAddressBookPage /> },
         ],
       },
 

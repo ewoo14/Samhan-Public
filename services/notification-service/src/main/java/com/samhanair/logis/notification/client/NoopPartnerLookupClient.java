@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 
 /**
  * {@link PartnerLookupClient} 의 fail-soft 기본 구현 — BE-E 의 by-name endpoint 머지 전까지의 placeholder.
@@ -29,18 +28,23 @@ import org.springframework.context.annotation.Profile;
  * 등록 시 이 noop bean 이 자동 비활성화된다. {@code @MockBean} 사용 IT 는 mock 이 우선 등록되어
  * conditional 이 false 평가 → noop bean skip (BeanDefinitionOverrideException 회피).
  *
- * <h2>3차 fix — {@code @Profile("!test")} 분리 (PR #115 CI run 25605365243 회귀)</h2>
- * <p>fix #1 (553d201) {@code @Configuration} + {@code @Bean} 복원 → BeanDefinitionOverrideException 15건.
- * fix #2 (e63a6a3) test resources {@code spring.main.allow-bean-definition-overriding=true} 추가 →
- * BeanDefinitionStoreException 동일 15건 (override 허용해도 {@code @MockBean} 의 동일 type 두 번째 등록
- * 충돌 회피 실패). 본 3차 fix 는 단순화 — test profile 에서 본 noop {@code @Configuration} 자체를
- * 비활성화하여 {@code @MockBean PartnerLookupClient} 가 단독 등록되도록 한다.
- * production 영향 0 (test 외 모든 profile 에서 활성).
+ * <h2>4차 fix — bean name 충돌 회피 (PR #119 CI run 25615955037 회귀 종합)</h2>
+ * <p>이전 3차 fix ({@code @Profile("!test")} 분리) 는 IT 가 active profile 을 명시하지 않아
+ * (no {@code @ActiveProfiles("test")}) {@code !test} 가 항상 true 평가 → noop {@code @Configuration}
+ * 활성. PR-F1 슬라이스에서 동일 패턴의 {@link MockAligoAddressBookClient} 추가 시점에 처음으로
+ * BeanDefinitionOverrideException 표면화: {@code @Configuration} 클래스가 component scan 으로
+ * lowercase first letter 빈 이름 ({@code mockAligoAddressBookClient}) 등록 → 동일 이름의
+ * {@code @Bean} 메서드 ({@code mockAligoAddressBookClient()}) 두 번째 등록 시도 → 충돌.
+ *
+ * <p>본 종합 fix — {@code @Bean} 메서드 이름에 {@code Bean} suffix 를 추가하여 클래스 빈 이름과
+ * 메서드 빈 이름의 정합성 충돌을 원천 회피 ({@code noopPartnerLookupClient} →
+ * {@code noopPartnerLookupClientBean}). {@code @Profile("!test")} 가드는 제거 (실효 없음 +
+ * test profile 에서 dependency injection 필요한 service bean 의 외부 client placeholder 보존).
+ * 안전 마진으로 test resources {@code spring.main.allow-bean-definition-overriding=true} 유지.
  *
  * <p>(memory feedback_it_mockbean_external_clients — IT 외부 client @MockBean 격리 패턴 일관)
  */
 @Configuration
-@Profile("!test")
 public class NoopPartnerLookupClient {
 
     private static final Logger log = LoggerFactory.getLogger(NoopPartnerLookupClient.class);
@@ -53,7 +57,7 @@ public class NoopPartnerLookupClient {
      */
     @Bean
     @ConditionalOnMissingBean(PartnerLookupClient.class)
-    public PartnerLookupClient noopPartnerLookupClient() {
+    public PartnerLookupClient noopPartnerLookupClientBean() {
         log.warn("PartnerLookupClient 실 구현체 미등록 — Noop placeholder 활성. "
                 + "BE-E 의 GET /api/v1/partners/by-name + GET /api/v1/partners/{partnerCode} "
                 + "endpoint 머지 후 RestClient impl 등록 필요.");

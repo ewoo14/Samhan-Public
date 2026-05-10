@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: arologis-service
+  servlet:
+    multipart:
+      # PR-F1 BE-2 — 운송사 실배차 비교 multi-vendor .xlsx 업로드 (Plan 명시 50MB).
+      # 단일 vendor 엑셀 ≤50MB, 전체 multipart 합산 ≤300MB (6 vendor 동시 가정).
+      max-file-size: 50MB
+      max-request-size: 300MB
   datasource:
     # 시크릿 placeholder — DB 자격증명은 반드시 환경변수로 주입.
     # Phase 10 W10-1 chained-default — SAMHAN_AROLOGIS_DB_* 우선, LEGACY_DB_* legacy fallback.

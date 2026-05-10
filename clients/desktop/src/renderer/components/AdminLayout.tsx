@@ -15,6 +15,7 @@
  * - 발송금지 거래처 (`/admin/blocked-partners`) — PR-D Phase B FE-E (MASTER, 민감)
  * - 단톡방 매핑 (`/admin/chat-rooms`) — PR-D Phase B FE-D (MASTER/MANAGER, 본 entry 는 MASTER 만 가시)
  * - DC 설정 (`/sales/partner-dc-config`) — PR-D Phase B FE-C (MASTER 만 CSV 일괄 업로드)
+ * - 알리고 주소록 (`/admin/aligo-address-book`) — PR-F1 Designer mock (MASTER, FE-1 BE 연결 예정)
  *
  * memory feedback_uuid_no_user_visibility — admin 화면도 비즈니스 식별자만 노출.
  * memory feedback_role_naming_full — entry 라벨/가드 표기 풀네임 사용.
@@ -117,6 +118,17 @@ export function AdminLayout() {
             testId="admin-nav-dc-config"
           >
             DC 설정
+          </AdminNav>
+          {/*
+            [PR-F1 Designer mock] 알리고 주소록 자동 동기화 — MASTER 전용.
+            legacy GAS 9번 이식, 거래처 → 알리고 발송 vendor 주소록 sync.
+            BE FE-1 endpoint 연결 예정.
+          */}
+          <AdminNav
+            to="/admin/aligo-address-book"
+            testId="admin-nav-aligo-address-book"
+          >
+            알리고 주소록
           </AdminNav>
         </aside>
         <section className="admin-main">
