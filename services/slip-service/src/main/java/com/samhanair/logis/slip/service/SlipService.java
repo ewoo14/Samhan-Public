@@ -10,6 +10,8 @@ import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.editrequest.domain.SlipEditRequest;
+import com.samhanair.logis.slip.editrequest.service.SlipEditRequestService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.web.dto.AddLineRequest;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -59,6 +62,8 @@ public class SlipService {
     private final ProductClient productClient;
     private final InventoryClient inventoryClient;
     private final SlipAuditLogService auditLogService;
+    /** PR-H3 — 사용자 명시 잠금 정책 mutation 가드 + APPROVED 1회 소진. */
+    private final SlipEditRequestService editRequestService;
 
     /**
      * 새 전표를 DRAFT 상태로 생성한다 — slipType 분기로 createOutbound/createInbound 호출,
@@ -199,6 +204,8 @@ public class SlipService {
     public SlipDetailResponse applyOverlayPatch(UUID id, String fieldName, String newValue,
                                                 String callerId, String callerName) {
         Slip slip = loadOrThrow(id);
+        // PR-H3 — 사용자 명시 잠금 정책 가드 (status 별 분기, APPROVED 1회 소진)
+        Optional<SlipEditRequest> consumedApproval = guardLockPolicy(slip, callerId);
         String oldValue = slip.readOverlayField(fieldName);
         applyMutation(() -> slip.applyOverlayPatch(fieldName, newValue));
         String actualNew = slip.readOverlayField(fieldName);
@@ -210,7 +217,72 @@ public class SlipService {
             auditLogService.recordOverlayPatch(id, actorId, actorName, null,
                     fieldName, oldValue, actualNew);
         }
+        // PR-H3 — APPROVED 요청 소진 (재사용 차단)
+        consumedApproval.ifPresent(approval ->
+                editRequestService.consumeApproval(approval.getId(), callerId));
         return SlipDetailResponse.from(slip);
+    }
+
+    /**
+     * 슬립 soft-delete — PR-H3 신규. 사용자 명시 잠금 정책 가드 후 BaseEntity.markDeleted 적용.
+     *
+     * <p>DRAFT/SAVED — 작성자 자유 삭제. CONFIRMED/ACCEPTED/PROCESSING — APPROVED 요청 1건 필요.
+     * INSPECTING/SHIPPING/DELIVERED — 완전 잠금 (CONFLICT).
+     *
+     * @param id 전표 ID
+     * @param callerId 삭제 수행자 user-id
+     * @throws BusinessException(NOT_FOUND) 전표 미발견
+     * @throws BusinessException(CONFLICT) 잠금 정책 위반 (APPROVED 부재 또는 완전 잠금)
+     */
+    public void softDelete(UUID id, String callerId) {
+        Slip slip = loadOrThrow(id);
+        Optional<SlipEditRequest> consumedApproval = guardLockPolicy(slip, callerId);
+        applyMutation(() -> slip.markDeleted(callerId == null ? "system" : callerId));
+        consumedApproval.ifPresent(approval ->
+                editRequestService.consumeApproval(approval.getId(), callerId));
+    }
+
+    /**
+     * PR-H3 잠금 정책 가드 — slip.status 별 분기.
+     *
+     * <ul>
+     *   <li>DRAFT/SAVED/SENT — 자유 (return empty, 소진 없음)</li>
+     *   <li>{@link SlipEditRequestService#LOCKED_REQUIRES_APPROVAL} (CONFIRMED/ACCEPTED/PROCESSING) —
+     *       APPROVED 요청 1건 lookup → 없으면 CONFLICT, 있으면 호출자에게 반환 (mutation 후 소진)</li>
+     *   <li>{@link SlipEditRequestService#FULLY_LOCKED} (INSPECTING/SHIPPING/DELIVERED) —
+     *       항상 CONFLICT</li>
+     *   <li>REJECTED/CANCELED — 의미 없음, CONFLICT (이미 종결된 슬립)</li>
+     * </ul>
+     *
+     * @param slip 대상 슬립
+     * @param callerId 호출자 user-id (현재는 audit 로그용, 향후 작성자 본인 가드 확장 여지)
+     * @return 소진 대상 APPROVED 요청 (mutation 후 호출자가 consumeApproval 호출), 없으면 empty
+     * @throws BusinessException(CONFLICT) 잠금 정책 위반
+     */
+    private Optional<SlipEditRequest> guardLockPolicy(Slip slip, String callerId) {
+        SlipStatus s = slip.getStatus();
+        // 자유 단계 — 작성자 직접 가능
+        if (s == SlipStatus.DRAFT || s == SlipStatus.SAVED || s == SlipStatus.SENT) {
+            return Optional.empty();
+        }
+        // 완전 잠금 단계 — 어떤 채널로도 mutation 불가
+        if (SlipEditRequestService.FULLY_LOCKED.contains(s)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "현 단계 (" + s + ") 는 완전 잠금 — 수정/삭제 불가 (사용자 명시 정책)");
+        }
+        // 종결 단계 — REJECTED/CANCELED 슬립은 mutation 의미 없음
+        if (s == SlipStatus.REJECTED || s == SlipStatus.CANCELED) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "현 단계 (" + s + ") 는 종결됨 — 수정/삭제 불가");
+        }
+        // 잠금 단계 — APPROVED 요청 1건 필요
+        if (SlipEditRequestService.LOCKED_REQUIRES_APPROVAL.contains(s)) {
+            return Optional.of(editRequestService.findActiveApproval(slip.getId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.CONFLICT,
+                            "현 단계 (" + s + ") 는 창고 인계 후 — 수정/삭제 요청 + 권한자 수락 필요")));
+        }
+        // 그 외 (COMPLETED 등) — 본 PR 범위 밖, 자유 진행 (향후 정책 확장 여지)
+        return Optional.empty();
     }
 
     private UUID parseActorId(String callerId) {

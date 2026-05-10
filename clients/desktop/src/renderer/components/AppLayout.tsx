@@ -53,6 +53,8 @@ import { canAccessDpsCompare } from '../api/dpsCompareApi'
 import { canAccessHometaxExport } from '../api/hometaxExportApi'
 // [PR-E2 FE-7] 거래처별 원장 생성 — ACCOUNTANT / MANAGER / MASTER (사용자 명세 — MANAGER read-only 허용)
 import { canAccessPartnerLedger } from '../api/partnerLedgerApi'
+// [PR-H3 FE-1] 전표 수정/삭제 요청 처리 대시보드 — WAREHOUSE / MANAGER / MASTER (BE @PreAuthorize 일치)
+import { SLIP_EDIT_REQUEST_REVIEWER_ROLES } from '../api/slipEditRequest'
 
 /**
  * [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES / MANAGER / MASTER.
@@ -141,8 +143,11 @@ export function AppLayout() {
   const showAudit = canAccessAudit(auth?.role)
   // [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY 가시
   const showDpsCompare = canAccessDpsCompare(auth?.role)
-  // 창고 운영 그룹 가시성 — 재고 실사 또는 DPS 입고 비교 중 하나라도 보이면 그룹 노출
-  const showWarehouseOps = showAudit || showDpsCompare
+  // [PR-H3 FE-1] 전표 수정/삭제 요청 대시보드 — WAREHOUSE / MANAGER / MASTER 가시
+  const showSlipEditRequests = !!auth?.role
+    && (SLIP_EDIT_REQUEST_REVIEWER_ROLES as readonly string[]).includes(auth.role)
+  // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 전표 요청 중 하나라도 보이면 그룹 노출
+  const showWarehouseOps = showAudit || showDpsCompare || showSlipEditRequests
   // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
   // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
   // [PR-E1 FE-5] 전표 정리 entry — SALES / MANAGER / MASTER / ACCOUNTANT
@@ -384,6 +389,15 @@ export function AppLayout() {
                   data-testid="sidebar-warehouse-dps-compare"
                 >
                   DPS 입고 비교
+                </NavLink>
+              ) : null}
+              {/* [PR-H3 FE-1] 전표 수정/삭제 요청 대시보드 — WAREHOUSE/MANAGER/MASTER 가시. */}
+              {showSlipEditRequests ? (
+                <NavLink
+                  to="/admin/slip-edit-requests"
+                  data-testid="sidebar-warehouse-slip-edit-requests"
+                >
+                  전표 수정 요청
                 </NavLink>
               ) : null}
             </>

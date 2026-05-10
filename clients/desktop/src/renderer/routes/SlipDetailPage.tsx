@@ -32,6 +32,7 @@ import {
 } from '@tanstack/react-query'
 import {
   AuditOverlay,
+  Badge,
   Button,
   Card,
   CopyButton,
@@ -40,8 +41,10 @@ import {
   PhoneInput,
   ProgressBar,
   SignatureViewer,
+  SlipEditRequestDialog,
   SlipNumberDisplay,
   type AuditLogEntry,
+  type SlipEditRequestType as SlipEditRequestUiType,
 } from '@samhan/design-system'
 import axios from 'axios'
 import {
@@ -66,6 +69,13 @@ import {
   revertToRevision,
   type SlipAuditLogEntry,
 } from '../api/slipAudit'
+import {
+  createSlipEditRequest,
+  SLIP_EDIT_REQUEST_AUTHOR_ROLES,
+  SLIP_EDIT_REQUEST_STATUS_LABEL,
+  type SlipEditRequest,
+  type SlipEditRequestType,
+} from '../api/slipEditRequest'
 import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
 import { useSessionStore, canTransitionSlip } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -150,6 +160,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [invalidateReason, setInvalidateReason] = useState('')
   // PR-H1: 코멘트 입력 state
   const [commentInput, setCommentInput] = useState('')
+  // PR-H3: 수정/삭제 요청 다이얼로그 state — null 이면 미오픈, 'EDIT'/'DELETE' 면 해당 type 으로 오픈.
+  const [editRequestDialogType, setEditRequestDialogType]
+    = useState<SlipEditRequestType | null>(null)
+  // PR-H3: 가장 최근 본인 요청 (mutation 결과 + SSE decided 갱신). null = 요청 이력 없음.
+  // BE 가 SlipDetail 응답에 latestEditRequest 필드 합류 시 그것으로 교체 가능.
+  const [latestEditRequest, setLatestEditRequest]
+    = useState<SlipEditRequest | null>(null)
+  // PR-H3: 수락/거절 결과 toast (SSE slip:edit-request:decided 수신 시 표시).
+  const [decisionToast, setDecisionToast]
+    = useState<{ kind: 'success' | 'danger'; text: string } | null>(null)
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -172,7 +192,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     enabled: !!id,
   })
 
-  // PR-H1+PR-H2: SSE 구독 — 진입 시 1회, unmount 시 abort.
+  // PR-H1+PR-H2+PR-H3: SSE 구독 — 진입 시 1회, unmount 시 abort.
   // 이벤트 수신 시 슬립 본체/코멘트/audit-logs 모두 invalidate.
   useEffect(() => {
     if (!id) return
@@ -184,6 +204,43 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       // PR-H2: slip:edit event → audit-logs 재조회 (수정 횟수 + overlay 갱신)
       if (evt.event === 'slip:edit' || evt.event === 'message') {
         void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+      }
+      // PR-H3: 수정/삭제 요청 결정 SSE — 작성자에게 toast + latestEditRequest 갱신.
+      if (evt.event === 'slip:edit-request:decided') {
+        const payload = evt.data as Partial<SlipEditRequest> | null
+        if (payload && (payload.status === 'APPROVED' || payload.status === 'REJECTED')) {
+          setLatestEditRequest((prev) => {
+            // 본인 요청만 갱신 — id 일치하거나 prev 가 없을 때 (BE broadcast 모드 호환)
+            if (!prev || (payload.id && prev.id === payload.id)) {
+              return { ...(prev ?? ({} as SlipEditRequest)), ...payload } as SlipEditRequest
+            }
+            return prev
+          })
+          const typeLabel
+            = payload.type === 'DELETE' ? '삭제' : '수정'
+          if (payload.status === 'APPROVED') {
+            setDecisionToast({
+              kind: 'success',
+              text: `${typeLabel} 요청이 수락되었습니다.${
+                payload.decidedByName ? ` (담당: ${payload.decidedByName})` : ''
+              }`,
+            })
+          } else {
+            setDecisionToast({
+              kind: 'danger',
+              text: `${typeLabel} 요청이 거절되었습니다.${
+                payload.decisionReason ? ` 사유: ${payload.decisionReason}` : ''
+              }`,
+            })
+          }
+        }
+      }
+      // PR-H3: 본인 요청 created SSE (BE 가 발행 시) — latestEditRequest 동기화.
+      if (evt.event === 'slip:edit-request:created') {
+        const payload = evt.data as Partial<SlipEditRequest> | null
+        if (payload && payload.slipId === id) {
+          setLatestEditRequest(payload as SlipEditRequest)
+        }
       }
     })
     return () => {
@@ -223,6 +280,19 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     onSuccess: () => {
       setCommentInput('')
       void queryClient.invalidateQueries({ queryKey: ['slipComments', id] })
+    },
+  })
+
+  // PR-H3: CONFIRMED 단계 수정/삭제 요청 mutation. 성공 시 dialog 닫기 + latestEditRequest 갱신.
+  const editRequestMutation = useMutation({
+    mutationFn: (vars: { type: SlipEditRequestType; reason: string }) =>
+      createSlipEditRequest(id, { type: vars.type, reason: vars.reason }),
+    onSuccess: (created) => {
+      setEditRequestDialogType(null)
+      setLatestEditRequest(created)
+      // BE 가 본 요청 결정 시 SSE slip:edit-request:decided 발행 → SlipDetail 의 status 도 변경 가능.
+      // 즉시 detail/list cache 도 한번 invalidate 해 둠 (정합성 안전망).
+      void queryClient.invalidateQueries({ queryKey: ['slip', id] })
     },
   })
 
@@ -323,6 +393,43 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   const slip = detailQuery.data
   const possibleActions = actionsForStatus(slip.status, mode)
+
+  /**
+   * PR-H3: 창고/관리자 수락이 필요한 단계 (LOCKED_REQUIRES_APPROVAL).
+   * BE {@code SlipEditRequestService.LOCKED_REQUIRES_APPROVAL} 와 정확히 일치 —
+   * CONFIRMED/ACCEPTED/PROCESSING. "수정/삭제 요청" UI 노출 + 요청 후 창고 수락 필요.
+   * 사용자 명시 정책 정합 (QA Major 회귀 가드).
+   */
+  const isApprovalRequired
+    = slip.status === 'CONFIRMED'
+    || slip.status === 'ACCEPTED'
+    || slip.status === 'PROCESSING'
+
+  /**
+   * PR-H3: 변경 자체를 차단해야 하는 단계 (FULLY_LOCKED + 종료 단계).
+   * BE {@code SlipEditRequestService.FULLY_LOCKED} (INSPECTING/SHIPPING/DELIVERED) 정합.
+   * COMPLETED 는 검수 직후 ship 대기 단계로 본 FE 에서 동일 차단 처리 (기존 정책 보존).
+   * 사용자에게 "현재 변경 불가" 안내 + 모든 액션 disabled.
+   */
+  const isLocked
+    = slip.status === 'INSPECTING'
+    || slip.status === 'COMPLETED'
+    || slip.status === 'SHIPPING'
+    || slip.status === 'DELIVERED'
+
+  /**
+   * PR-H3: 수정/삭제 요청 권한 (작성자 그룹 — SALES/MANAGER/MASTER).
+   * MANAGER/MASTER 도 본인 작성/소속 전표에 대해 사용 가능.
+   */
+  const canRequestEdit = !!role
+    && (SLIP_EDIT_REQUEST_AUTHOR_ROLES as readonly string[]).includes(role)
+
+  /**
+   * PR-H3: 현재 PENDING 본인 요청이 있는지.
+   * 두 번째 요청은 BE 가 막거나 사용자에게 "이미 요청 진행 중" 안내.
+   */
+  const hasPendingRequest = !!latestEditRequest
+    && latestEditRequest.status === 'PENDING'
 
   const errorMessage = (() => {
     if (!transitionMutation.isError) return null
@@ -564,6 +671,166 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       <div style={{ marginBottom: 16 }}>
         <ProgressBar currentStatus={slip.status} branchReason={branchReason} />
       </div>
+
+      {/*
+        PR-H3: SSE 결정 toast — 수락/거절 결과 안내 (사용자 닫기 가능).
+      */}
+      {decisionToast ? (
+        <div
+          role="status"
+          data-testid="slip-detail-edit-request-decision-toast"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '10px 12px',
+            marginBottom: 12,
+            borderRadius: 6,
+            border: '1px solid',
+            borderColor:
+              decisionToast.kind === 'success'
+                ? 'var(--color-success-300, #6EE7B7)'
+                : 'var(--color-danger-300, #FCA5A5)',
+            background:
+              decisionToast.kind === 'success'
+                ? 'var(--color-success-50, #ECFDF5)'
+                : 'var(--color-danger-50, #FEF2F2)',
+            color:
+              decisionToast.kind === 'success'
+                ? 'var(--color-success-800, #065F46)'
+                : 'var(--color-danger-800, #991B1B)',
+            fontSize: 13,
+          }}
+        >
+          <span>{decisionToast.text}</span>
+          <button
+            type="button"
+            onClick={() => setDecisionToast(null)}
+            aria-label="알림 닫기"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 16,
+              lineHeight: 1,
+              color: 'inherit',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      {/*
+        PR-H3: 단계별 안내 + 수정/삭제 요청 버튼.
+        - DRAFT/SAVED/SENT: 본인 직접 수정/삭제 가능 → 별도 안내 없음
+        - CONFIRMED/ACCEPTED/PROCESSING: 직접 변경 차단, "수정/삭제 요청" 버튼 노출 (창고 수락 필요)
+        - INSPECTING/COMPLETED/SHIPPING/DELIVERED: 모든 변경 차단 안내
+      */}
+      {isApprovalRequired && canRequestEdit ? (
+        <Card
+          padding={4}
+          shadow="sm"
+          style={{ marginBottom: 16 }}
+          data-testid="slip-detail-edit-request-banner"
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: 14 }}>창고 인계 후 — 수락 필요</strong>
+              <span style={{ fontSize: 13, color: 'var(--color-neutral-700)' }}>
+                직접 수정/삭제가 잠겼습니다. 창고 직원에게 처리를 요청할 수 있습니다.
+              </span>
+              {latestEditRequest ? (
+                <Badge
+                  variant={
+                    latestEditRequest.status === 'PENDING'
+                      ? 'warning'
+                      : latestEditRequest.status === 'APPROVED'
+                        ? 'success'
+                        : 'danger'
+                  }
+                  data-testid="slip-detail-edit-request-status-badge"
+                >
+                  요청 {SLIP_EDIT_REQUEST_STATUS_LABEL[latestEditRequest.status]}
+                </Badge>
+              ) : null}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={hasPendingRequest || editRequestMutation.isPending}
+                onClick={() => setEditRequestDialogType('EDIT')}
+                title={
+                  hasPendingRequest
+                    ? '이미 처리 대기 중인 요청이 있습니다.'
+                    : undefined
+                }
+                data-testid="slip-detail-edit-request-button"
+              >
+                수정 요청
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={hasPendingRequest || editRequestMutation.isPending}
+                onClick={() => setEditRequestDialogType('DELETE')}
+                title={
+                  hasPendingRequest
+                    ? '이미 처리 대기 중인 요청이 있습니다.'
+                    : undefined
+                }
+                data-testid="slip-detail-delete-request-button"
+              >
+                삭제 요청
+              </Button>
+            </div>
+          </div>
+          {/* PENDING 요청의 사유 미리보기 */}
+          {hasPendingRequest && latestEditRequest ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: 8,
+                borderRadius: 4,
+                background: 'var(--color-neutral-50, #F9FAFB)',
+                fontSize: 12,
+                color: 'var(--color-neutral-700)',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              요청 사유: {latestEditRequest.reason}
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {/* PR-H3: 변경 자체 차단 단계 안내 — 검수 ~ 배송 완료. */}
+      {isLocked ? (
+        <div
+          role="alert"
+          data-testid="slip-detail-locked-banner"
+          style={{
+            padding: '10px 12px',
+            marginBottom: 12,
+            borderRadius: 6,
+            border: '1px solid var(--color-warning-300, #FCD34D)',
+            background: 'var(--color-warning-50, #FFFBEB)',
+            color: 'var(--color-warning-800, #92400E)',
+            fontSize: 13,
+          }}
+        >
+          현재 단계({slip.status})에서는 전표 변경이 차단됩니다. 처리가 끝나면 확정 후 수정/삭제 요청이 가능합니다.
+        </div>
+      ) : null}
 
       <Card padding={4} shadow="sm">
         <div className="detail-grid">
@@ -1152,6 +1419,37 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           {errorMessage}
         </div>
       ) : null}
+
+      {/*
+        PR-H3: CONFIRMED 전표 수정/삭제 요청 사유 입력 다이얼로그.
+        type=null 이면 미오픈. mutation 진행 중이면 백드롭/Esc 차단 (이중 호출 방지).
+      */}
+      <SlipEditRequestDialog
+        open={editRequestDialogType !== null}
+        onClose={() => setEditRequestDialogType(null)}
+        type={(editRequestDialogType ?? 'EDIT') as SlipEditRequestUiType}
+        slipNo={slip.slipNo}
+        submitting={editRequestMutation.isPending}
+        errorMessage={
+          editRequestMutation.isError
+            ? (() => {
+                const err = editRequestMutation.error
+                if (axios.isAxiosError(err)) {
+                  const data = err.response?.data as { message?: string } | undefined
+                  return data?.message ?? '요청 전송에 실패했습니다.'
+                }
+                return '요청 전송에 실패했습니다.'
+              })()
+            : null
+        }
+        onSubmit={(reason) => {
+          if (editRequestDialogType === null) return
+          editRequestMutation.mutate({
+            type: editRequestDialogType,
+            reason,
+          })
+        }}
+      />
     </>
   )
 }
