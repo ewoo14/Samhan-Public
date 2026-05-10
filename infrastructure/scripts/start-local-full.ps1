@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     SamhanLogis 풀 수준 로컬 테스트 환경 일괄 기동 스크립트.
 
@@ -90,17 +90,25 @@ $gradleW = Join-Path $ProjectRoot 'gradlew.bat'
 if (-not (Test-Path $gradleW)) { throw "gradlew.bat 을 찾을 수 없습니다: $gradleW" }
 
 # Docker 가용성 검증 — 인프라 startup 전 미리 fail-fast
+#
+# PS 5.1 native exe 가드 (memory feedback_powershell_utf8_writes — "Avoid 2>&1 on native executables"):
+#   $ErrorActionPreference='Stop' 환경에서 native exe (docker) 의 stderr 한 줄이라도 발생하면
+#   PS 가 ErrorRecord 로 wrap 하여 NativeCommandError throw → script abort.
+#   본 스크립트는 docker daemon ready 여부만 검증하면 되므로 ErrorActionPreference 를 scope 로 풀고
+#   stderr 무시 + $LASTEXITCODE 만 검사. 2>&1 redirect 는 사용 금지 (NativeCommandError 유발).
 if (-not $SkipDocker) {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw 'docker 명령을 찾을 수 없습니다. Docker Desktop 을 설치/시작하세요.'
     }
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        $null = docker info 2>&1
+        $null = docker info 2>$null
         if ($LASTEXITCODE -ne 0) {
             throw 'Docker daemon 미응답. Docker Desktop 이 시작되어 있는지 확인하세요.'
         }
-    } catch {
-        throw "Docker daemon 미응답: $($_.Exception.Message)"
+    } finally {
+        $ErrorActionPreference = $prevEAP
     }
 }
 
@@ -175,10 +183,19 @@ if (-not $SkipDocker) {
     Write-Host ''
     Write-Host '[1/6] 인프라 stack 기동 (postgres + redis + rabbitmq + elasticsearch + minio + monitoring)' -ForegroundColor Yellow
     Push-Location $InfraDir
+    # PS 5.1 native exe 가드 — docker compose pull 진행 메시지가 stderr 로 흐르며
+    # ErrorActionPreference='Stop' + 미가공 ErrorRecord wrap 시 NativeCommandError 로 script abort.
+    # ErrorActionPreference 를 scope 로 풀고 $LASTEXITCODE 로만 결과 판정. 2>&1 redirect 금지.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         docker compose -f docker-compose.yml up -d
-        if ($LASTEXITCODE -ne 0) { throw 'docker compose up 실패' }
+        if ($LASTEXITCODE -ne 0) {
+            $ErrorActionPreference = $prevEAP
+            throw 'docker compose up 실패'
+        }
     } finally {
+        $ErrorActionPreference = $prevEAP
         Pop-Location
     }
     Write-Host '   인프라 healthy 대기 (~30초) ...' -ForegroundColor DarkGray
@@ -213,10 +230,16 @@ if (-not $SkipDocker) {
 Write-Host ''
 Write-Host '[1a/6] PostgreSQL max_connections 사전 검증' -ForegroundColor Yellow
 $maxConnRaw = $null
+# PS 5.1 native exe 가드 — docker exec stderr (psql 미접속 등) 가 ErrorRecord wrap 되어
+# script abort 되지 않도록 ErrorActionPreference scope 로 풀고 stderr 만 무시 ($null redirect).
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 try {
     $maxConnRaw = docker exec samhan-postgres psql -U samhan -d postgres -tA -c "SHOW max_connections;" 2>$null
 } catch {
     # docker exec 실패 — 미기동 가능성. 하단에서 안내.
+} finally {
+    $ErrorActionPreference = $prevEAP
 }
 if (-not $maxConnRaw) {
     Write-Warning '   PostgreSQL 미응답 — max_connections 검증 생략. 인프라 startup 진행 상황 확인 필요.'
@@ -446,23 +469,31 @@ $seedQueries = @(
 )
 
 $rowSummary = @()
-foreach ($q in $seedQueries) {
-    $sql = "SELECT count(*)::text FROM $($q.table);"
-    $count = '?'
-    try {
-        $raw = docker exec samhan-postgres psql -U samhan -d $q.db -tAc $sql 2>$null
-        if ($LASTEXITCODE -eq 0 -and $raw) { $count = ($raw | Out-String).Trim() }
-    } catch { }
-    $verdict = if ($count -eq '?') { 'SKIP (table 미생성)' }
-               elseif ([int]::TryParse($count, [ref]$null) -and ([int]$count -ge $q.expected)) { 'OK' }
-               else { 'LOW' }
-    $rowSummary += [pscustomobject]@{
-        DB       = $q.db
-        Table    = $q.table
-        Expected = $q.expected
-        Actual   = $count
-        Verdict  = $verdict
+# PS 5.1 native exe 가드 — docker exec psql 호출이 stderr 로 ErrorRecord 를 throw 하지 않도록
+# 반복 외곽에서 ErrorActionPreference scope 풀고 finally 로 복원.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    foreach ($q in $seedQueries) {
+        $sql = "SELECT count(*)::text FROM $($q.table);"
+        $count = '?'
+        try {
+            $raw = docker exec samhan-postgres psql -U samhan -d $q.db -tAc $sql 2>$null
+            if ($LASTEXITCODE -eq 0 -and $raw) { $count = ($raw | Out-String).Trim() }
+        } catch { }
+        $verdict = if ($count -eq '?') { 'SKIP (table 미생성)' }
+                   elseif ([int]::TryParse($count, [ref]$null) -and ([int]$count -ge $q.expected)) { 'OK' }
+                   else { 'LOW' }
+        $rowSummary += [pscustomobject]@{
+            DB       = $q.db
+            Table    = $q.table
+            Expected = $q.expected
+            Actual   = $count
+            Verdict  = $verdict
+        }
     }
+} finally {
+    $ErrorActionPreference = $prevEAP
 }
 $rowSummary | Format-Table -AutoSize
 

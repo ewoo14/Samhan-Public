@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     SamhanLogis MinIO 버킷 초기화 스크립트 (P0-3 거래처 첨부 + P1-8 슬립 모바일 사진).
 
@@ -68,7 +68,16 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw 'docker 명령을 찾을 수 없습니다. Docker Desktop 을 시작하세요.'
 }
 
-$running = docker ps --filter "name=$MinioContainer" --format '{{.Names}}' 2>$null
+# PS 5.1 native exe 가드 (memory feedback_powershell_utf8_writes — 동일 가드 패턴):
+#   docker ps stderr 가 ErrorRecord 로 wrap → NativeCommandError → ErrorActionPreference='Stop'
+#   상태에서 script abort. ErrorActionPreference 를 scope 로 풀고 stderr 만 무시 ($null).
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $running = docker ps --filter "name=$MinioContainer" --format '{{.Names}}' 2>$null
+} finally {
+    $ErrorActionPreference = $prevEAP
+}
 if (-not $running) {
     throw "MinIO 컨테이너 '$MinioContainer' 가 가동되어 있지 않습니다. 먼저 docker-compose up -d 실행 (infrastructure/docker-compose.yml)."
 }
@@ -97,6 +106,10 @@ $buckets = @(
 # -----------------------------------------------------------------------------
 # mc 명령을 single-shot 컨테이너로 실행 — 호스트에 mc 설치 의존 0.
 # samhan-net 네트워크에 join 하여 samhan-minio 와 직접 통신.
+#
+# PS 5.1 native exe 가드 — `& docker ... 2>&1` 은 stderr 를 stdout 으로 합치되 ErrorRecord 로
+# wrap 하여 NativeCommandError 를 발생시킨다 (memory feedback_powershell_utf8_writes).
+# 본 함수는 stdout 만 반환하고 stderr 는 PS 콘솔로 그대로 흘려보낸다 ($LASTEXITCODE 로 결과 판정).
 function Invoke-Mc {
     param([string[]] $McArgs)
 
@@ -107,7 +120,13 @@ function Invoke-Mc {
         'minio/mc:latest'
     ) + $McArgs
 
-    & docker $dockerArgs 2>&1
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & docker $dockerArgs
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
     return $LASTEXITCODE
 }
 
@@ -115,8 +134,10 @@ Write-Host ''
 Write-Host '[1/3] MinIO alias 등록 (samhan-minio)' -ForegroundColor Yellow
 # mc alias set 은 ~/.mc 에 저장되나 --rm 컨테이너이므로 매 호출마다 재등록 필요.
 # 본 호출은 검증 목적 — 실 작업은 각 mb / anonymous / policy 명령 시점에 alias 인자로 직접 전달.
-$aliasResult = Invoke-Mc @('alias', 'set', 'minio', $Endpoint, $AccessKey, $SecretKey)
-Write-Host ($aliasResult | Out-String).Trim() -ForegroundColor DarkGray
+# Invoke-Mc 는 stdout pipeline + 마지막 return $LASTEXITCODE 를 함께 emit 하므로
+# 마지막 element 가 exit code, 그 앞이 docker stdout. 본 단계는 결과 표시 목적이라 단순히 합쳐 표시.
+$aliasOut = Invoke-Mc @('alias', 'set', 'minio', $Endpoint, $AccessKey, $SecretKey)
+Write-Host (($aliasOut | Out-String).Trim()) -ForegroundColor DarkGray
 
 # -----------------------------------------------------------------------------
 # 3. 각 버킷 멱등 생성 + private 정책
@@ -140,17 +161,29 @@ foreach ($b in $buckets) {
     # mc 작업 1 컨테이너에 묶어 alias + mb + anonymous 일괄 실행 (alias 휘발성 우회).
     # `mb --ignore-existing` 으로 멱등성 확보.
     # `anonymous set none` = private (모든 anonymous access 차단, presigned URL 만 다운로드 가능).
-    $script = @"
+    #
+    # CRLF 가드 — Windows here-string 은 CRLF 로 emit 되어 컨테이너 안 sh 가 `$'\r': command not found`
+    # 에러를 stderr 로 throw → NativeCommandError noise. \r 를 제거하여 LF only 로 정규화.
+    $script = (@"
 mc alias set minio $Endpoint $AccessKey $SecretKey > /dev/null && \
 mc mb --ignore-existing minio/$name && \
 mc anonymous set none minio/$name
-"@
+"@) -replace "`r", ""
 
-    $output = & docker run --rm `
-        --network $Network `
-        --entrypoint sh `
-        minio/mc:latest `
-        -c $script 2>&1
+    # PS 5.1 native exe 가드 — `2>&1` 는 docker stderr 를 ErrorRecord wrap 하여
+    # NativeCommandError 발생 (memory feedback_powershell_utf8_writes).
+    # ErrorActionPreference 를 scope 로 풀고 stderr 는 PS 콘솔로 그대로 흘려보낸다.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & docker run --rm `
+            --network $Network `
+            --entrypoint sh `
+            minio/mc:latest `
+            -c $script
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
 
     $exit = $LASTEXITCODE
     if ($exit -eq 0) {
@@ -158,7 +191,7 @@ mc anonymous set none minio/$name
         $results += [pscustomobject]@{ Bucket = $name; Status = 'OK'; TtlSec = $ttl }
     } else {
         Write-Host "     FAIL ($name)" -ForegroundColor Red
-        Write-Host ($output | Out-String).Trim() -ForegroundColor DarkGray
+        Write-Host (($output | Out-String).Trim()) -ForegroundColor DarkGray
         $results += [pscustomobject]@{ Bucket = $name; Status = 'FAIL'; TtlSec = $ttl }
     }
 }
