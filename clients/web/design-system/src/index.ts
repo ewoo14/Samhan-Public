@@ -45,3 +45,6 @@ export * from './components/SpecAddModal'
 export * from './components/PrintPreview'
 // PR-D Phase B 신규 — 4 admin 페이지 (Regions/DcConfig/ChatRooms/BlockedPartners) 공통 CSV 일괄 등록 다이얼로그
 export * from './components/CsvUploadDialog'
+// Phase 12 시리즈 공유 자산 — userId → HSL 색상 deterministic hash util
+// 사용처: PR-H2 audit overlay 수정자 색상 dot, PR-H3 코멘트 author avatar 배경색
+export * from './utils'
