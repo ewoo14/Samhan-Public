@@ -110,6 +110,10 @@ import { AligoAddressBookPage as AdminAligoAddressBookPage } from './admin/Aligo
 // [PR-F1 Designer mock] arologis 운송사 실배차 비교 — DISPATCH/MANAGER/MASTER (DISPATCH backlog → MANAGER/MASTER).
 // legacy GAS 11번 이식, BE FE-2 슬라이스 endpoint 연결 예정.
 import { ArologisDispatchReconcilePage } from './ArologisDispatchReconcilePage'
+// [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES/MANAGER/MASTER (영업 그룹).
+// legacy GAS #10 (에어디자이너) + #14 (제이시스템) 운송장/발주서 OCR native 이식.
+// BE 미연결 (Tesseract OCR endpoint backlog), mock state 로 3-step UX 시뮬레이션.
+import { SalesVendorOrderUploadPage } from './SalesVendorOrderUploadPage'
 // [PR-D Phase B FE-D] 단톡방 매핑 admin — MASTER/MANAGER (BE @PreAuthorize 일치)
 // AdminLayout 은 MASTER 전용이므로 별도 RoleGuard 로 MASTER/MANAGER 진입 허용.
 import { ChatRoomsPage as AdminChatRoomsPage } from './admin/ChatRoomsPage'
@@ -171,6 +175,13 @@ const AUDIT_ROLES = ['WAREHOUSE', 'MASTER'] as const
  * BE FE-2 슬라이스에서 정식 `ARO_DISPATCH_RECONCILE_ROLES` 가 export 되면 교체.
  */
 const ARO_DISPATCH_RECONCILE_ROLES = ['DISPATCH', 'MANAGER', 'MASTER'] as const
+
+/**
+ * PR-F2 Designer mock 단계 임시 권한 (SALES / MANAGER / MASTER).
+ * BE Tesseract OCR endpoint 합류 시 정식 `VENDOR_ORDER_OCR_ROLES` 로 교체.
+ * 영업 그룹 메뉴 — 거래처 (vendor) 발주서를 영업 직원이 받아 처리.
+ */
+const VENDOR_ORDER_OCR_ROLES = ['SALES', 'MANAGER', 'MASTER'] as const
 
 const router = createHashRouter([
   { path: '/login', element: <LoginPage /> },
@@ -236,6 +247,19 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={SLIP_CLEANUP_ROLES}>
             <SlipCleanupPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES / MANAGER / MASTER.
+      // legacy GAS #10 (에어디자이너) + #14 (제이시스템) 운송장/발주서 OCR native 이식.
+      // 정적 path (`/sales/vendor-order-upload`) → `/sales/:id` 보다 먼저 매칭되어야 함.
+      // BE Tesseract OCR endpoint 미구현 — Designer mock state 만 3-step UX 시뮬레이션.
+      {
+        path: '/sales/vendor-order-upload',
+        element: (
+          <RoleGuard allow={VENDOR_ORDER_OCR_ROLES}>
+            <SalesVendorOrderUploadPage />
           </RoleGuard>
         ),
       },

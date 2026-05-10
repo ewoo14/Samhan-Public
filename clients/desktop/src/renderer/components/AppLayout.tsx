@@ -54,6 +54,13 @@ import { canAccessHometaxExport } from '../api/hometaxExportApi'
 // [PR-E2 FE-7] 거래처별 원장 생성 — ACCOUNTANT / MANAGER / MASTER (사용자 명세 — MANAGER read-only 허용)
 import { canAccessPartnerLedger } from '../api/partnerLedgerApi'
 
+/**
+ * [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES / MANAGER / MASTER.
+ * legacy GAS #10 (에어디자이너) + #14 (제이시스템) 운송장/발주서 OCR native 이식.
+ * BE Tesseract OCR endpoint 합류 시 정식 가드 export 로 교체. 영업 그룹 메뉴.
+ */
+const VENDOR_ORDER_OCR_SIDEBAR_ROLES = ['SALES', 'MANAGER', 'MASTER'] as const
+
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
   const logout = useSessionStore((s) => s.logout)
@@ -143,6 +150,9 @@ export function AppLayout() {
     && (SLIP_CLEANUP_ROLES as readonly string[]).includes(auth.role)
   // [PR-E1 FE-4] 내일자 전표 이미지 entry — SALES / MANAGER / MASTER
   const showNextDaySlip = canAccessNextDaySlip(auth?.role)
+  // [PR-F2 Designer mock] vendor 발주서 OCR 업로드 entry — SALES / MANAGER / MASTER (영업 그룹).
+  const showVendorOrderOcr = !!auth?.role
+    && (VENDOR_ORDER_OCR_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
   const showChatRoomAdmin = canAccessChatRoomAdmin(auth?.role)
 
   return (
@@ -193,6 +203,15 @@ export function AppLayout() {
               data-testid="sidebar-sales-next-day-slip"
             >
               내일자 전표 이미지
+            </NavLink>
+          ) : null}
+          {/* [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES/MANAGER/MASTER. */}
+          {showVendorOrderOcr ? (
+            <NavLink
+              to="/sales/vendor-order-upload"
+              data-testid="sidebar-sales-vendor-order-upload"
+            >
+              vendor 발주 OCR
             </NavLink>
           ) : null}
 

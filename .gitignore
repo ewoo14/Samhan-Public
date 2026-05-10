@@ -110,3 +110,10 @@ secrets/
 # legacy GAS 운영 데이터 (Notion CSV export, GAS 스크립트 백업) — VCS 추적 금지 (PR-D Phase 10)
 # 사용자 운영 환경 의존 데이터, dev-env 에 placeholder 만 둘 것
 tools/legacy-gas/
+
+# Tesseract OCR (PR-F2) — 로컬 다운로드 traineddata 무시.
+# 한국어 모델 (kor.traineddata) 약 50MB; 환경별 설치 가이드 docs/dev-environment/tesseract-setup.md 참조.
+# system 경로 (C:\Program Files\Tesseract-OCR\tessdata, /usr/share/tesseract-ocr/...) 사용 권장이며,
+# 프로젝트 root 에 별도 다운로드 시 본 규칙으로 VCS 격리.
+tessdata/
+**/tessdata/*.traineddata
