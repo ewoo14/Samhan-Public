@@ -29,6 +29,11 @@
  * - `/accounting/journals/:id`          분개 상세 + 확정/역분개
  * - `/accounting/balances`              시산표 (월별)
  *
+ * P0-1 Slice A 신규 라우트 (ACCOUNTANT/MANAGER/MASTER — RoleGuard, BE @PreAuthorize 일치):
+ * - `/accounting/reports`                    재무 보고서 목록 (3개 카드)
+ * - `/accounting/reports/income-statement`   손익계산서 (월별)
+ * - `/accounting/reports/balance-sheet`      재무상태표 (기준일)
+ *
  * 기존 PR #18 의 `/slips`, `/slips/new` 라우트는 폐기.
  */
 import {
@@ -157,6 +162,15 @@ import { PartnerLedgerView } from '../print/PartnerLedgerView'
 // BE: slip-service `GET/POST /api/v1/slips/edit-requests*` (PR-H3 BE-1 슬라이스).
 import { SlipEditRequestsPage } from './admin/SlipEditRequestsPage'
 import { SLIP_EDIT_REQUEST_REVIEWER_ROLES } from '../api/slipEditRequest'
+// [P0-1 Slice A] 재무 보고서 3개 (ACCOUNTANT/MASTER — RoleGuard).
+// BE: accounting-service `/accounting/reports/income-statement` + `/balance-sheet`
+import { ReportListPage } from './ReportListPage'
+import { IncomeStatementPage } from './IncomeStatementPage'
+import { BalanceSheetPage } from './BalanceSheetPage'
+// [P0-1 Slice A] D5 fix — 인쇄 전용 컴포넌트 분리 (새 창 열기 패턴).
+// REPORTS-DESIGN.md § 7~8 spec 준수.
+import { IncomeStatementPrintLayout } from './accounting/print/IncomeStatementPrintLayout'
+import { BalanceSheetPrintLayout } from './accounting/print/BalanceSheetPrintLayout'
 
 /**
  * Print route wrapper — `?perRoom=1` query 시 Designer NextDaySlipView 의
@@ -168,8 +182,11 @@ function NextDaySlipPrintRoute() {
   return <NextDaySlipView pageBreakPerRoom={perRoom} />
 }
 
-/** 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md). */
-const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MASTER'] as const
+/**
+ * 회계 권한 풀네임 화이트리스트 (feedback_role_naming_full.md).
+ * ACCOUNTANT / MANAGER / MASTER — BE @PreAuthorize 와 1:1 일치 (PR #134 BE+QA 결함 fix).
+ */
+const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MANAGER', 'MASTER'] as const
 
 /** 재고 실사 권한 — WAREHOUSE / MASTER (사용자 요구). */
 const AUDIT_ROLES = ['WAREHOUSE', 'MASTER'] as const
@@ -335,6 +352,51 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={ACCOUNTING_ROLES}>
             <TrialBalancePage />
+          </RoleGuard>
+        ),
+      },
+
+      // [P0-1 Slice A] 재무 보고서 — 손익계산서 / 재무상태표 / 보고서 목록.
+      // ACCOUNTANT / MASTER 만. 정적 path 우선 매칭 필수.
+      {
+        path: '/accounting/reports',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <ReportListPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/income-statement',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <IncomeStatementPage />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/balance-sheet',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <BalanceSheetPage />
+          </RoleGuard>
+        ),
+      },
+      // [P0-1 Slice A D5] 인쇄 전용 라우트 — 새 창 열기 패턴. AuthGuard 안쪽 유지.
+      // `/income-statement` 보다 먼저 매칭되도록 정적 `/print` suffix 먼저 등록.
+      {
+        path: '/accounting/reports/income-statement/print',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <IncomeStatementPrintLayout />
+          </RoleGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/balance-sheet/print',
+        element: (
+          <RoleGuard allow={ACCOUNTING_ROLES}>
+            <BalanceSheetPrintLayout />
           </RoleGuard>
         ),
       },

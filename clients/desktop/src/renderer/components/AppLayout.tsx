@@ -241,6 +241,29 @@ export function AppLayout() {
               <NavLink to="/accounting/journals">분개장</NavLink>
               <NavLink to="/accounting/tax-invoices">세금계산서</NavLink>
               <NavLink to="/accounting/balances">시산표</NavLink>
+              {/* [P0-1 Slice A] 재무 보고서 서브메뉴 — 손익계산서 / 재무상태표 진입점. */}
+              {/* F1: end prop — 자식 라우트 진입 시 부모 active 강조 회피 */}
+              <NavLink
+                to="/accounting/reports"
+                end
+                data-testid="sidebar-accounting-reports"
+              >
+                재무 보고서
+              </NavLink>
+              <NavLink
+                to="/accounting/reports/income-statement"
+                data-testid="sidebar-accounting-income-statement"
+                style={{ paddingLeft: 20, fontSize: 13 }}
+              >
+                손익계산서
+              </NavLink>
+              <NavLink
+                to="/accounting/reports/balance-sheet"
+                data-testid="sidebar-accounting-balance-sheet"
+                style={{ paddingLeft: 20, fontSize: 13 }}
+              >
+                재무상태표
+              </NavLink>
               <NavLink to="/warehouse/closing">매출 마감</NavLink>
               {/* [PR-E2 FE-8] 거래명세서 일괄 — ACCOUNTANT/MASTER (회계 그룹 안). */}
               <NavLink
