@@ -2,6 +2,7 @@ package com.samhanair.logis.auth.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -61,7 +62,8 @@ class InternalAccountControllerTest {
     @Test
     void create_withMissingToken_returns401AndDoesNotCallService() throws Exception {
         UUID id = UUID.randomUUID();
-        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES);
+        // passwordChangeRequired = false (기본값)
+        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES, false);
 
         MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -69,13 +71,13 @@ class InternalAccountControllerTest {
                 .andReturn().getResponse();
 
         assertThat(response.getStatus()).isEqualTo(401);
-        verify(authService, never()).registerWithId(any(), any(), any(), any(), any());
+        verify(authService, never()).registerWithId(any(), any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
     void create_withWrongToken_returns401() throws Exception {
         UUID id = UUID.randomUUID();
-        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES);
+        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES, false);
 
         MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts")
                         .header("X-Internal-Token", "wrong")
@@ -84,14 +86,14 @@ class InternalAccountControllerTest {
                 .andReturn().getResponse();
 
         assertThat(response.getStatus()).isEqualTo(401);
-        verify(authService, never()).registerWithId(any(), any(), any(), any(), any());
+        verify(authService, never()).registerWithId(any(), any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
     void create_withValidToken_invokesRegisterWithIdAndReturns201() throws Exception {
         UUID id = UUID.randomUUID();
-        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES);
-        when(authService.registerWithId(eq(id), eq("alice"), eq("password123"), eq("Alice"), eq(Role.SALES)))
+        var body = new CreateAccountInternalRequest(id, "alice", "password123", "Alice", Role.SALES, false);
+        when(authService.registerWithId(eq(id), eq("alice"), eq("password123"), eq("Alice"), eq(Role.SALES), eq(false)))
                 .thenReturn(new RegisterResponse(id.toString(), "alice", "SALES"));
 
         MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts")
@@ -103,7 +105,7 @@ class InternalAccountControllerTest {
         assertThat(response.getStatus()).isEqualTo(201);
         ArgumentCaptor<UUID> idCaptor = ArgumentCaptor.forClass(UUID.class);
         verify(authService).registerWithId(idCaptor.capture(), eq("alice"), eq("password123"),
-                eq("Alice"), eq(Role.SALES));
+                eq("Alice"), eq(Role.SALES), eq(false));
         assertThat(idCaptor.getValue()).isEqualTo(id);
     }
 
@@ -159,6 +161,41 @@ class InternalAccountControllerTest {
 
         assertThat(response.getStatus()).isEqualTo(204);
         verify(authService).deleteAccount(id);
+    }
+
+    // -------------------------------------------------------------------------
+    // unlock (POST /auth/internal/accounts/{id}/unlock)
+    // -------------------------------------------------------------------------
+
+    /**
+     * unlock — 유효 토큰 시 authService.unlockAccount 호출 (204 No Content).
+     *
+     * <p>Phase 10 P0-5 — MASTER 가 사용자 관리 화면에서 잠금 해제 호출 시 경로 검증.
+     */
+    @Test
+    void unlock_withValidToken_invokesService() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts/" + id + "/unlock")
+                        .header("X-Internal-Token", VALID_TOKEN))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(204);
+        verify(authService).unlockAccount(id);
+    }
+
+    /**
+     * unlock — 토큰 누락 시 401 반환 + authService 미호출.
+     */
+    @Test
+    void unlock_withMissingToken_returns401AndDoesNotCallService() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        MockHttpServletResponse response = mockMvc.perform(post("/auth/internal/accounts/" + id + "/unlock"))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(authService, never()).unlockAccount(any());
     }
 
     private static MockHttpServletRequestBuilder post(String url) {

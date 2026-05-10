@@ -79,7 +79,10 @@ export interface AdminUser {
   departmentName: string
   teamLead: boolean
   hireDate: string
-  /** terminationDate 가 set 되어 있으면 비활성 (잠금) 상태. */
+  /**
+   * terminationDate 가 set 되어 있으면 DISABLED 상태.
+   * auth-service locked 상태(LOCKED)는 추후 연동 슬라이스에서 별도 필드로 추가.
+   */
   terminationDate: string | null
   email: string | null
   phone: string | null
@@ -90,12 +93,58 @@ export interface ListAdminUsersOptions {
   /** fullName / loginId / email LIKE 검색어. */
   q?: string
   role?: AdminRole
+  /**
+   * 상태 필터 — BE EmployeeRepository.searchAdmin 의 :status 파라미터.
+   * ACTIVE: terminationDate IS NULL / LOCKED: terminationDate IS NOT NULL.
+   */
+  status?: 'ACTIVE' | 'LOCKED'
   /** 부서 UUID. */
   departmentId?: string
   /** 0-based 페이지 번호. */
   page?: number
   /** 페이지 크기 (기본 20). */
   size?: number
+}
+
+/** 신규 사용자 등록 요청 — BE `CreateEmployeeRequest` 와 1:1. */
+export interface CreateAdminUserRequest {
+  loginId: string
+  fullName: string
+  email: string
+  role: AdminRole
+  departmentId?: string
+  phoneNumber?: string
+}
+
+/**
+ * 신규 사용자 등록 응답 — BE `AdminUserCreateResponse` record 와 1:1 (flat).
+ *
+ * <p>임시 비밀번호 평문은 이 응답에서만 1회 노출. {@link AdminUser} 와 동일한 컬럼 +
+ * {@code temporaryPassword} / {@code passwordChangeRequired} 추가. UUID 비공개 가드는
+ * 기존과 동일 — id 는 routing key, 화면 라벨은 fullName / loginId.
+ */
+export interface CreateAdminUserResponse {
+  /** 직원 UUID — routing key 전용. */
+  id: string
+  loginId: string
+  fullName: string
+  role: AdminRole
+  departmentId: string
+  departmentName: string
+  email: string | null
+  phoneNumber: string | null
+  /** 임시 비밀번호 평문 (1회 노출). */
+  temporaryPassword: string
+  /** 첫 로그인 시 비밀번호 변경 강제 여부 (BE 항상 true). */
+  passwordChangeRequired: boolean
+}
+
+/** 사용자 정보 수정 요청 — BE `AdminUserUpdateRequest` 와 1:1. */
+export interface UpdateAdminUserRequest {
+  fullName?: string
+  email?: string
+  phoneNumber?: string
+  departmentId?: string
 }
 
 /**
@@ -112,6 +161,7 @@ export async function listAdminUsers(
   }
   if (options.q && options.q.trim()) params['q'] = options.q.trim()
   if (options.role) params['role'] = options.role
+  if (options.status) params['status'] = options.status
   if (options.departmentId) params['departmentId'] = options.departmentId
 
   const res = await apiClient.get<ApiEnvelope<AdminPage<AdminUser>>>(
@@ -133,25 +183,64 @@ export async function listAdminRoles(): Promise<AdminRole[]> {
   return res.data.data
 }
 
-/** 사용자 비활성화 (terminationDate = today). MASTER 만 호출 가능. */
-export async function disableAdminUser(id: string): Promise<AdminUser> {
-  const res = await apiClient.patch<ApiEnvelope<AdminUser>>(
-    `/admin/users/${id}/disable`,
+/**
+ * 신규 사용자 등록 — `POST /admin/users`. MASTER 만 호출 가능.
+ *
+ * @return CreateAdminUserResponse (user + temporaryPassword)
+ */
+export async function createAdminUser(
+  body: CreateAdminUserRequest,
+): Promise<CreateAdminUserResponse> {
+  const res = await apiClient.post<ApiEnvelope<CreateAdminUserResponse>>(
+    '/admin/users',
+    body,
   )
   return res.data.data
 }
 
-/** 사용자 재활성화 (terminationDate = null). MASTER 만 호출 가능. */
-export async function enableAdminUser(id: string): Promise<AdminUser> {
+/**
+ * 사용자 정보 수정 — `PATCH /admin/users/{id}`. MASTER 만 호출 가능.
+ *
+ * @return AdminUser (updated)
+ */
+export async function updateAdminUser(
+  id: string,
+  body: UpdateAdminUserRequest,
+): Promise<AdminUser> {
   const res = await apiClient.patch<ApiEnvelope<AdminUser>>(
-    `/admin/users/${id}/enable`,
+    `/admin/users/${id}`,
+    body,
   )
   return res.data.data
+}
+
+/**
+ * 사용자 탈퇴(영구 퇴사 처리) — `POST /admin/users/{id}/disable`. MASTER 만 호출 가능.
+ *
+ * <p>BE 응답: HTTP 204 No Content (body 없음). 사유는 본 슬라이스에서 미적재 —
+ * UX 검증 (사용자 사유 입력 UX) 만 frontend 측에서 강제. 추후 audit 로그 슬라이스에서
+ * 사유를 별도 endpoint 로 적재 예정.
+ *
+ * @return Promise<void>
+ */
+export async function disableAdminUser(id: string): Promise<void> {
+  await apiClient.post<void>(`/admin/users/${id}/disable`)
+}
+
+/**
+ * 사용자 잠금 해제 — `POST /admin/users/{id}/unlock`. MASTER 만 호출 가능.
+ *
+ * <p>BE 응답: HTTP 204 No Content (body 없음). 호출 후 query invalidate 로 목록 재조회.
+ *
+ * @return Promise<void>
+ */
+export async function unlockAdminUser(id: string): Promise<void> {
+  await apiClient.post<void>(`/admin/users/${id}/unlock`)
 }
 
 /** 역할 변경 요청 body — BE `UpdateRoleRequest` 와 1:1. */
 export interface UpdateAdminUserRoleRequest {
-  role: AdminRole
+  newRole: AdminRole
   reason?: string
 }
 
