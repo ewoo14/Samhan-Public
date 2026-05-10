@@ -153,6 +153,10 @@ import { StatementBatchView } from '../print/StatementBatchView'
 import { PartnerLedgerPage } from './PartnerLedgerPage'
 import { PARTNER_LEDGER_ROLES } from '../api/partnerLedgerApi'
 import { PartnerLedgerView } from '../print/PartnerLedgerView'
+// [PR-H3 FE-1] 전표 수정/삭제 요청 처리 대시보드 — WAREHOUSE/MANAGER/MASTER.
+// BE: slip-service `GET/POST /api/v1/slips/edit-requests*` (PR-H3 BE-1 슬라이스).
+import { SlipEditRequestsPage } from './admin/SlipEditRequestsPage'
+import { SLIP_EDIT_REQUEST_REVIEWER_ROLES } from '../api/slipEditRequest'
 
 /**
  * Print route wrapper — `?perRoom=1` query 시 Designer NextDaySlipView 의
@@ -538,6 +542,18 @@ const router = createHashRouter([
         element: (
           <RoleGuard allow={CHAT_ROOM_ADMIN_ROLES}>
             <AdminChatRoomsPage />
+          </RoleGuard>
+        ),
+      },
+
+      // [PR-H3 FE-1] 전표 수정/삭제 요청 대시보드 — WAREHOUSE / MANAGER / MASTER.
+      // AdminLayout (MASTER 전용) 외부에 배치 — WAREHOUSE 도 접근 가능 (자체 RoleGuard).
+      // BE: slip-service `GET /api/v1/slips/edit-requests?status=PENDING`.
+      {
+        path: '/admin/slip-edit-requests',
+        element: (
+          <RoleGuard allow={SLIP_EDIT_REQUEST_REVIEWER_ROLES}>
+            <SlipEditRequestsPage />
           </RoleGuard>
         ),
       },

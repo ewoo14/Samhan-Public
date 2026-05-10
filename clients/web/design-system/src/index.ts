@@ -50,3 +50,5 @@ export * from './components/CsvUploadDialog'
 export * from './utils'
 // PR-H2 신규 — SlipDetailPage audit overlay 컴포넌트 (취소선 + 색상 + 수정자)
 export * from './components/AuditOverlay'
+// PR-H3 신규 — CONFIRMED 전표 수정/삭제 요청 사유 입력 다이얼로그
+export * from './components/SlipEditRequestDialog'
