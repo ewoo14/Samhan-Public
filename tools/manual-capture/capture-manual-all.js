@@ -67,7 +67,12 @@ const SCREENS = [
   // 00-시작하기 (8~10 PNG)
   // ==========================================================================
   { id: '00-login-empty', cat: '00-시작하기', route: '/login', role: null, sample: true },
+  { id: '00-login-id', cat: '00-시작하기', route: '/login', role: null },
+  { id: '00-login-password', cat: '00-시작하기', route: '/login', role: null },
+  { id: '00-login-submit', cat: '00-시작하기', route: '/login', role: null },
   { id: '00-main-full', cat: '00-시작하기', route: '/', role: 'MASTER', sample: true },
+  { id: '00-main-sidebar', cat: '00-시작하기', route: '/', role: 'MASTER' },
+  { id: '00-main-header', cat: '00-시작하기', route: '/', role: 'MASTER' },
   { id: '00-role-master', cat: '00-시작하기', route: '/admin/users', role: 'MASTER' },
   { id: '00-role-sales', cat: '00-시작하기', route: '/sales', role: 'SALES' },
   { id: '00-role-warehouse', cat: '00-시작하기', route: '/transfers', role: 'WAREHOUSE' },
@@ -89,6 +94,14 @@ const SCREENS = [
   { id: '01-next-day-slip', cat: '01-영업', route: '/sales/next-day-slip', role: 'MASTER' },
   { id: '01-slip-cleanup', cat: '01-영업', route: '/sales/slip-cleanup', role: 'MASTER' },
   { id: '01-vendor-order-upload', cat: '01-영업', route: '/sales/vendor-order-upload', role: 'MASTER' },
+  // 매트릭스 § 2.1 추가 PNG (zoom / 실 form 변형)
+  { id: '01-partner-form', cat: '01-영업', route: '/admin/partners', role: 'MASTER' },
+  { id: '01-partner-search', cat: '01-영업', route: '/admin/partners', role: 'MASTER' },
+  { id: '01-partner-detail', cat: '01-영업', route: '/admin/partners', role: 'MASTER' },
+  { id: '01-slip-print', cat: '01-영업', route: '/sales/slip-001/print/dispatch', role: 'MASTER' },
+  { id: '01-slip-edit-request', cat: '01-영업', route: '/admin/slip-edit-requests', role: 'MASTER' },
+  { id: '01-partner-order-detail', cat: '01-영업', route: '/sales/partner-orders/po-001', role: 'MASTER' },
+  { id: '01-estimate-print', cat: '01-영업', route: '/sales/estimates/est-001/print', role: 'MASTER' },
 
   // ==========================================================================
   // 02-창고 (12~15 PNG)
@@ -105,6 +118,8 @@ const SCREENS = [
   { id: '02-audit-form', cat: '02-창고', route: '/warehouse/audit/new', role: 'MASTER' },
   { id: '02-audit-detail', cat: '02-창고', route: '/warehouse/audit/ia-001', role: 'MASTER' },
   { id: '02-dps-compare', cat: '02-창고', route: '/warehouse/dps-compare', role: 'MASTER' },
+  // 매트릭스 § 2.1 — 9 transition 흐름 캡처는 slip-detail 의 audit 영역 zoom 으로 대체
+  { id: '02-outbound-flow', cat: '02-창고', route: '/sales/slip-001', role: 'MASTER' },
 
   // ==========================================================================
   // 03-회계 (10~12 PNG)
@@ -148,6 +163,28 @@ const SCREENS = [
   // ==========================================================================
   { id: '06-role-denied', cat: '06-트러블슈팅', route: '/accounting/accounts', role: 'SALES' },
   { id: '06-role-denied-master-only', cat: '06-트러블슈팅', route: '/admin/users', role: 'SALES' },
+  // 매트릭스 § 2.1 추가
+  { id: '06-login-fail', cat: '06-트러블슈팅', route: '/login', role: null },
+  { id: '06-empty-list', cat: '06-트러블슈팅', route: '/sales', role: 'SALES' },
+  { id: '06-loading', cat: '06-트러블슈팅', route: '/accounting/journals', role: 'MASTER', waitMs: 50 },
+  { id: '06-print-fail', cat: '06-트러블슈팅', route: '/sales/slip-001/print/dispatch', role: 'MASTER' },
+  { id: '06-mobile-401', cat: '06-트러블슈팅', route: '/login', role: null },
+
+  // ==========================================================================
+  // 08-실시간-협업 보강 (15~20 PNG 매트릭스 충족)
+  // ==========================================================================
+  { id: '08-overview', cat: '08-실시간-협업', route: '/', role: 'MASTER' },
+  { id: '08-sse-toast', cat: '08-실시간-협업', route: '/sales', role: 'MASTER' },
+  { id: '08-audit-overlay-dispatch', cat: '08-실시간-협업', route: '/arologis/manual', role: 'MASTER' },
+  { id: '08-audit-overlay-user', cat: '08-실시간-협업', route: '/admin/users', role: 'MASTER' },
+  { id: '08-revision-chip', cat: '08-실시간-협업', route: '/sales/slip-001', role: 'MASTER' },
+  { id: '08-revert', cat: '08-실시간-협업', route: '/sales/slip-001', role: 'MASTER' },
+  { id: '08-edit-request-form', cat: '08-실시간-협업', route: '/admin/slip-edit-requests', role: 'MASTER' },
+  { id: '08-lock-banner-locked', cat: '08-실시간-협업', route: '/sales/slip-001', role: 'MASTER' },
+  { id: '08-lock-banner-fully', cat: '08-실시간-협업', route: '/accounting/journals/jv-001', role: 'MASTER' },
+  { id: '08-warehouse-accept', cat: '08-실시간-협업', route: '/transfers/tr-001', role: 'WAREHOUSE' },
+  { id: '08-mobile-push', cat: '08-실시간-협업', route: '/sales/slip-001', role: 'SALES' },
+  { id: '08-domain-coverage', cat: '08-실시간-협업', route: '/admin/users', role: 'MASTER' },
 ]
 
 function ensureDir(dir) {

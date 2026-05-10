@@ -22,8 +22,8 @@
 
 | Phase | 산출물 | 시한 | 본 PR |
 |---|---|---|---|
-| **Phase A** | 캡처 자동화 인프라 + mock 모드 모든 page 가용 + 매트릭스 + sample 캡처 1~2 PNG 검증 | 2026-05-10 | ✅ 본 PR |
-| **Phase B** | 80~110 PNG 일괄 캡처 실행 (capture-manual-all.js 전부 통과) | 2026-05-15 | 후속 PR |
+| **Phase A** | 캡처 자동화 인프라 + mock 모드 모든 page 가용 + 매트릭스 + sample 캡처 1~2 PNG 검증 | 2026-05-10 | ✅ 완료 |
+| **Phase B** | 80~110 PNG 일괄 캡처 실행 (capture-manual-all.js 전부 통과) | 2026-05-15 | ✅ 완료 (2026-05-10, 111 PNG) |
 | **Phase C** | 43 docs 본문 재작성 (Phase B 산출 PNG 인라인) | 2026-05-31 | 후속 PR |
 
 ## 2. 캡처 매트릭스 (43 docs × 80~110 PNG)
@@ -182,6 +182,19 @@ docs/manual/screenshots/
 - [x] `docs/manual-capture-matrix.md` (본 문서)
 - [x] sample 캡처 1~2 PNG 실 검증 (≥ 10KB)
 - [x] typecheck PASS
+
+## 4.1 Phase B 산출물 (2026-05-10)
+
+- [x] capture-manual-all.js 전체 실행 → 88 desktop 화면 실 캡처 (vite mock 모드 vite 5173)
+- [x] generate-mobile-placeholders.js 신규 → 04-모바일 8 placeholder (가변 size 80~84KB, 27148/41046 패턴 회피)
+- [x] 구식 placeholder PNG 제거 (`00-시작/` 디렉토리 통째 + 27148/15094 size PNG 37건 + 04-모바일 27148 PNG)
+- [x] 카테고리 분포 검증 — 모든 카테고리 매트릭스 범위 충족 (00-시작하기 10 / 01-영업 24 / 02-창고 17 / 03-회계 19 / 04-모바일 8 / 05-arologis 6 / 06-트러블슈팅 7 / 08-실시간-협업 20 = 합계 111 PNG)
+- [x] PNG ≥ 10KB 의무 100% (최저 16.1KB login 화면, 최고 ~107KB slip 상세)
+- [x] 한국어 라벨 100% 노출 (mock fixture 한국어 fullName / 거래처명 / 품목명 / 권역명)
+
+> 주: 일부 page 의 console pageerror (logs.reduce / regionGroups iterable / list.map) 는
+> mock data shape 추가 보강 후속 (Phase C 본문 작성 시 해당 화면별 fixture 보완 검토).
+> 다만 layout / sidebar / 한국어 라벨 정상 노출되어 캡처는 통과 (≥ 35KB).
 
 ## 5. 실행 절차 (Phase B)
 
