@@ -16,6 +16,14 @@
  *   <li>행 액션: "차단 해제" 버튼 (확인 후 soft-delete) — MASTER 가 본 화면 진입한 사용자이므로 노출</li>
  * </ul>
  *
+ * <h2>PR-H4c FE-C 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling — 다중 워크스테이션 동시 차단/해제 결과 자동 반영.</li>
+ *   <li>partner-service SSE (PR-H4b BE-A): {@code GET /admin/partners/{entityId}/realtime}
+ *       — entity-id 단위. PartnersPage 와 동일 broker 채널 — 거래처 본 화면 등록/해제가
+ *       PartnersPage 에도 polling 으로 자동 반영됨.</li>
+ * </ul>
+ *
  * <h2>data-testid</h2>
  * <ul>
  *   <li>{@code admin-blocked-table}</li>
@@ -23,6 +31,7 @@
  *   <li>{@code admin-blocked-add-button}</li>
  *   <li>{@code admin-blocked-import-button}</li>
  *   <li>{@code admin-blocked-unblock-{partnerCode}} — UUID 비공개 가드 (TM PR #115 정정)</li>
+ *   <li>{@code admin-blocked-realtime-indicator}</li>
  * </ul>
  *
  * <p>UUID 비공개 — 화면 표시는 partnerCode + businessName + reason. id 는 액션
@@ -96,6 +105,8 @@ export function BlockedPartnersPage() {
   const query = useQuery({
     queryKey: ['admin', 'blocked-partners', page],
     queryFn: () => listBlockedPartners({ page, size: 20 }),
+    // PR-H4c FE-C: 30초 polling — 멀티 워크스테이션 동기화 안전망 (BE broadcast SSE 합류 전 단계).
+    refetchInterval: 30_000,
   })
 
   const totalPages = query.data ? Math.max(1, query.data.totalPages) : 1
@@ -186,7 +197,22 @@ export function BlockedPartnersPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>발송금지 거래처 (MASTER 전용)</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          margin: '0 0 16px',
+        }}
+      >
+        <h3 style={{ margin: 0 }}>발송금지 거래처 (MASTER 전용)</h3>
+        <span
+          data-testid="admin-blocked-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500, #6B7280)' }}
+        >
+          실시간 자동 갱신 · 30초
+        </span>
+      </div>
 
       <p
         style={{

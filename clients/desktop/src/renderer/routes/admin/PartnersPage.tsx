@@ -5,11 +5,20 @@
  *
  * UUID 비공개 — 모든 식별자는 partnerCode (사업자번호 / 상호 / 전화번호 표시 가능).
  *
+ * <h2>PR-H4c FE-C 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling — 거래처 신규/상태 변경/발송금지 등록 결과 자동 반영.</li>
+ *   <li>partner-service SSE (PR-H4b BE-A): {@code GET /admin/partners/{entityId}/realtime}
+ *       (entity-id 단위). admin list 화면은 broadcast endpoint 합류 전까지 polling fallback.</li>
+ *   <li>BlockedPartnersPage 와 cache 공유 — 양쪽 화면 변경이 서로 반영됨.</li>
+ * </ul>
+ *
  * data-testid:
  * - admin-partners-table
  * - admin-partners-search-input
  * - admin-partners-status-filter
  * - admin-partners-row-{partnerCode}
+ * - admin-partners-realtime-indicator
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -59,6 +68,8 @@ export function PartnersPage() {
         page,
         size: 20,
       }),
+    // PR-H4c FE-C: 30초 polling — 멀티 워크스테이션 동기화 안전망 (BE broadcast SSE 합류 전 단계).
+    refetchInterval: 30_000,
   })
 
   const totalPages = query.data
@@ -111,7 +122,22 @@ export function PartnersPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>거래처 관리</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 16,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>거래처 관리</h3>
+        <span
+          data-testid="admin-partners-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+        >
+          실시간 자동 갱신 · 30초
+        </span>
+      </div>
 
       <div
         style={{

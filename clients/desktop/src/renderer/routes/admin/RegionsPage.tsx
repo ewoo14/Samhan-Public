@@ -19,6 +19,14 @@
  *
  * <p>풀네임 ROLE 가드: MASTER / MANAGER (DISPATCH backlog) — RoleGuard 는 routes/index.tsx 에서.
  *
+ * <p><b>PR-H4c FE-C 보강 — 실시간 동기화</b>:
+ * <ul>
+ *   <li>30초 polling — 다중 워크스테이션이 같은 region table 을 수정 시 자동 반영.</li>
+ *   <li>arologis-service SSE (PR-H4b BE-B): {@code GET /admin/arologis/dispatches/{id}/realtime}
+ *       — entity-id 단위 dispatch SSE. region table 변경은 별도 broadcast endpoint
+ *       합류 시 SSE 직접 구독으로 전환 가능.</li>
+ * </ul>
+ *
  * <p>data-testid:
  * - admin-regions-table
  * - admin-regions-row-{groupName}
@@ -27,6 +35,7 @@
  * - admin-regions-edit-{groupName}
  * - admin-regions-delete-{groupName}
  * - admin-regions-form-modal
+ * - admin-regions-realtime-indicator
  */
 import { useMemo, useState, type FormEvent } from 'react'
 import {
@@ -88,6 +97,8 @@ export function RegionsPage() {
   const regionsQuery = useQuery({
     queryKey: ['admin', 'regions'],
     queryFn: listRegions,
+    // PR-H4c FE-C: 30초 polling — 멀티 워크스테이션 동기화 안전망 (BE broadcast SSE 합류 전 단계).
+    refetchInterval: 30_000,
   })
 
   const createMutation = useMutation({
@@ -236,7 +247,22 @@ export function RegionsPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>지역 분류 (가배차)</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 8,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>지역 분류 (가배차)</h3>
+        <span
+          data-testid="admin-regions-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+        >
+          실시간 자동 갱신 · 30초
+        </span>
+      </div>
       <p style={{ marginTop: 0, color: '#6B7280', fontSize: 13 }}>
         시군구 검색어로 가배차 정차 자동 매칭. 정렬 순서가 낮을수록 우선 평가됩니다.
       </p>

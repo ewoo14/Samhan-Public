@@ -20,6 +20,13 @@
  *   <li>UUID 비공개 — 사용자 노출 = partnerCode + businessName(snapshot) + chatRoomName.</li>
  * </ul>
  *
+ * <h2>PR-H4c FE-C 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling — 다중 워크스테이션 동시 매핑 등록/삭제 결과 자동 반영.</li>
+ *   <li>notification-service SSE (PR-H4b BE-D) audit broker 합류 시 SSE 직접 구독으로 전환 가능
+ *       (현재는 broker 만, /realtime endpoint 미존재).</li>
+ * </ul>
+ *
  * <h2>data-testid</h2>
  * <ul>
  *   <li>{@code admin-chatrooms-table}</li>
@@ -27,6 +34,7 @@
  *   <li>{@code admin-chatrooms-add-button}</li>
  *   <li>{@code admin-chatrooms-import-button}</li>
  *   <li>{@code admin-chatrooms-delete-{id}}</li>
+ *   <li>{@code admin-chatrooms-realtime-indicator}</li>
  * </ul>
  */
 import { useMemo, useState, type FormEvent } from 'react'
@@ -113,6 +121,8 @@ export function ChatRoomsPage() {
             : { chatRoomName: committedKeyword }
           : {},
       ),
+    // PR-H4c FE-C: 30초 polling — 멀티 워크스테이션 동기화 안전망 (BE broadcast SSE 합류 전 단계).
+    refetchInterval: 30_000,
   })
 
   const groups: ChatRoomGroup[] = useMemo(
@@ -145,19 +155,34 @@ export function ChatRoomsPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>
-        단톡방 매핑
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          margin: '0 0 16px',
+        }}
+      >
+        <h3 style={{ margin: 0 }}>
+          단톡방 매핑
+          <span
+            style={{
+              marginLeft: 12,
+              fontSize: 12,
+              color: 'var(--color-neutral-500, #6B7280)',
+              fontWeight: 400,
+            }}
+          >
+            전체 {totalRows}건 / 단톡방 {groups.length}개
+          </span>
+        </h3>
         <span
-          style={{
-            marginLeft: 12,
-            fontSize: 12,
-            color: 'var(--color-neutral-500, #6B7280)',
-            fontWeight: 400,
-          }}
+          data-testid="admin-chatrooms-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500, #6B7280)' }}
         >
-          전체 {totalRows}건 / 단톡방 {groups.length}개
+          실시간 자동 갱신 · 30초
         </span>
-      </h3>
+      </div>
 
       <div
         style={{
