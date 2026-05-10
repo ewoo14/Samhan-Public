@@ -7,6 +7,7 @@ import com.samhanair.logis.partner.dto.CreditHistoryResponse;
 import com.samhanair.logis.partner.dto.PartnerAdminRequest;
 import com.samhanair.logis.partner.dto.PartnerAdminResponse;
 import com.samhanair.logis.partner.dto.PartnerSummaryResponse;
+import com.samhanair.logis.partner.service.PartnerAligoExportService;
 import com.samhanair.logis.partner.service.PartnerCreditService;
 import com.samhanair.logis.partner.service.PartnerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -47,6 +50,7 @@ public class PartnerAdminController {
 
     private final PartnerService partnerService;
     private final PartnerCreditService creditService;
+    private final PartnerAligoExportService aligoExportService;
 
     /**
      * 신규 거래처 등록.
@@ -173,6 +177,37 @@ public class PartnerAdminController {
         String actor = principal != null ? principal.getName() : "system";
         partnerService.delete(partnerCode, actor);
         return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    /**
+     * Phase 10 PR-F1 BE-1 — 알리고 SF벤더 그룹 CSV (UTF-8 BOM) 다운로드.
+     *
+     * <p>활성 거래처 + 차단 거래처 제외 + 휴대폰 정규화. legacy GAS 9번 "알리고 자동 업로드" 의
+     * 자체 구현 — 운영자가 알리고 콘솔에 직접 업로드 (현 단계). PR-F1 BE-2 의 native API sync 로
+     * 후속 격상 (수동 → 자동).
+     *
+     * <p>응답 = {@code text/csv; charset=UTF-8} + {@code Content-Disposition: attachment; filename=...}.
+     * 모든 응답 byte 는 UTF-8 BOM 으로 시작 (Excel / 알리고 콘솔 한국어 인식).
+     *
+     * @return 200 + binary CSV (UTF-8 BOM 포함)
+     */
+    @Operation(summary = "알리고 SF벤더 그룹 CSV 다운로드 (Phase 10 PR-F1 BE-1)",
+            description = "활성 거래처 + 차단 제외 + 휴대폰 정규화. UTF-8 BOM 포함 CSV. MASTER / MANAGER 권한.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "CSV binary 응답 (text/csv; charset=UTF-8, BOM 포함)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "권한 없음")
+    })
+    @GetMapping("/export/aligo-csv")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ResponseEntity<byte[]> exportAligoCsv() {
+        byte[] csv = aligoExportService.exportAligoCsv();
+        String filename = "aligo-address-book-" + java.time.LocalDate.now() + ".csv";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .body(csv);
     }
 
     /**
