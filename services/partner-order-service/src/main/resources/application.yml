@@ -44,6 +44,10 @@ app:
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_TOKEN:dev-only-token-replace}}
   partner-order:
     seed-test-data: ${SAMHAN_PARTNER_ORDER_SEED_TEST_DATA:false}
+    # PR-H4b (Phase 12 Step 4b BE-C) — 거래처 주문 수정/삭제 요청 자동 만료 (시간 단위, default 24h).
+    # PartnerOrderEditRequest.requestedAt + expires-hours < now() → status = EXPIRED 전환 (스케줄러 1h 주기).
+    edit-request:
+      expires-hours: ${SAMHAN_PARTNER_ORDER_EDIT_REQUEST_EXPIRES_HOURS:24}
   # PR-D Part 1 — BootstrapService 부팅 prefetch 시 시트 직접 read.
   # 매핑이 있는 cacheKey 만 시트 read; 매핑 없거나 read 실패 시 V2 seed fallback.
   # legacy estimate-app 과 동일 sheet ID. 운영에서는 BOOTSTRAP_SHEET_ID 로 override.

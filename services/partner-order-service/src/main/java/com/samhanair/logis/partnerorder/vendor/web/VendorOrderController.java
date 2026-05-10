@@ -40,6 +40,12 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <p>OCR 미사용 fallback: {@link OcrEngine} bean 미등록 (Tesseract 미설치) 시 503 SERVICE_UNAVAILABLE
  * 응답 (DevOps setup 안내).
+ *
+ * <p><b>PR-H4b 통합 안내</b>: vendor 발주서 confirm 흐름이 PartnerOrder entity 등록까지 완료되는
+ * 후속 슬라이스에서는 본 endpoint 도 {@link com.samhanair.logis.partnerorder.audit.service.PartnerOrderAuditLogService}
+ * 의 audit overlay 자동 기록 + SSE broadcast 가 적용된다. 현 단계는 OCR + parser 결과 응답까지만
+ * 책임 (별도 entity 미생성). 실시간 SSE 구독은 PartnerOrder entity 발급 후
+ * {@code GET /api/v1/partner-orders/{partnerOrderId}/realtime} 활용.
  */
 @RestController
 @RequestMapping("/api/v1/admin/partner-order/vendor")
