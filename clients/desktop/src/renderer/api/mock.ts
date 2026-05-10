@@ -607,6 +607,81 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(list)
   }
 
+  // ==========================================================================
+  // PR-H2: slip audit-log mock (in-memory per-context — capture-pr-h2.js 지원)
+  // - 화면 노출 = actorName (UUID 비공개 가드, actorId 는 색상 hash 입력 전용)
+  // - addInitScript 로 globalThis.__SAMHAN_MOCK_AUDIT_LOGS_SEED 사전 주입 가능
+  //   (B context 가 "A 가 메모 수정 → SSE 로 audit row 수신" 시뮬레이션)
+  // ==========================================================================
+  type MockSlipAuditLog = {
+    revisionNo: number
+    field: string
+    beforeValue: string | null
+    afterValue: string | null
+    actorId: string
+    actorName: string
+    changedAt: string
+  }
+  const ga = globalThis as unknown as {
+    __SAMHAN_MOCK_AUDIT_LOGS?: Record<string, MockSlipAuditLog[]>
+    __SAMHAN_MOCK_AUDIT_LOGS_SEED?: Record<string, MockSlipAuditLog[]>
+  }
+  if (!ga.__SAMHAN_MOCK_AUDIT_LOGS) {
+    ga.__SAMHAN_MOCK_AUDIT_LOGS = {}
+    if (ga.__SAMHAN_MOCK_AUDIT_LOGS_SEED) {
+      for (const [k, v] of Object.entries(ga.__SAMHAN_MOCK_AUDIT_LOGS_SEED)) {
+        ga.__SAMHAN_MOCK_AUDIT_LOGS[k] = [...v]
+      }
+    }
+  }
+  const auditLogsStore = ga.__SAMHAN_MOCK_AUDIT_LOGS
+
+  // GET /api/v1/slips/{slipId}/audit-logs — audit timeline 백필 (revisionNo 내림차순)
+  const auditLogsGetMatch = url.match(/\/slips\/([^/?]+)\/audit-logs(\?.*)?$/)
+  if (method === 'GET' && auditLogsGetMatch) {
+    const slipId = auditLogsGetMatch[1]!
+    const list = (auditLogsStore[slipId] ?? []).slice().sort(
+      (a, b) => b.revisionNo - a.revisionNo,
+    )
+    return envelope(list)
+  }
+
+  // PATCH /api/v1/slips/{slipId}/audit/overlay — 단일 필드 수정 + audit row INSERT
+  const auditOverlayMatch = url.match(/\/slips\/([^/?]+)\/audit\/overlay$/)
+  if (method === 'PATCH' && auditOverlayMatch) {
+    const slipId = auditOverlayMatch[1]!
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      fieldName?: string
+      newValue?: string
+    }
+    const list = auditLogsStore[slipId] ?? []
+    const nextRevision = list.length === 0 ? 1 : Math.max(...list.map((l) => l.revisionNo)) + 1
+    // 현 mock slip 에서 oldValue 추출 (없으면 빈 문자열)
+    const slip = MOCK_SLIPS.find((s) => s.id === slipId) as Record<string, unknown> | undefined
+    const oldValue = slip ? (slip[body.fieldName ?? ''] as string | null | undefined) ?? null : null
+    const created: MockSlipAuditLog = {
+      revisionNo: nextRevision,
+      field: body.fieldName ?? '',
+      beforeValue: oldValue,
+      afterValue: body.newValue ?? null,
+      actorId: MOCK_AUTH.userId,
+      actorName: MOCK_AUTH.fullName,
+      changedAt: new Date().toISOString(),
+    }
+    if (!auditLogsStore[slipId]) auditLogsStore[slipId] = []
+    auditLogsStore[slipId].push(created)
+    return envelope({ revisionNo: nextRevision, message: '수정되었습니다' })
+  }
+
+  // POST /api/v1/slips/{slipId}/revert/{revisionNo} — 특정 revision 으로 복원
+  const auditRevertMatch = url.match(/\/slips\/([^/?]+)\/revert\/(\d+)$/)
+  if (method === 'POST' && auditRevertMatch) {
+    const slipId = auditRevertMatch[1]!
+    const list = auditLogsStore[slipId] ?? []
+    const nextRevision = list.length === 0 ? 1 : Math.max(...list.map((l) => l.revisionNo)) + 1
+    return envelope({ newRevisionNo: nextRevision, message: '복원되었습니다' })
+  }
+
   // GET /slips/{id} (단건 상세) — UUID-like 또는 'slip-001' 패턴
   const slipDetailMatch = url.match(/\/slips\/([^/?]+)$/)
   if (method === 'GET' && slipDetailMatch && !url.includes('lookup-product')) {
