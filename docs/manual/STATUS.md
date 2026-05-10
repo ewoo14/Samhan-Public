@@ -1,9 +1,10 @@
 # Samhan Public 운영자 매뉴얼 작성 진행 (STATUS)
 
-> **branch (현재)** — `feature/integrated-phase-10-step-7c-operator-manual-final`
+> **branch (현재)** — `feature/integrated-phase-12-step-5-manual-augmentation` (Stage 4)
+> **branch (이전 Stage 3)** — `feature/integrated-phase-10-step-7c-operator-manual-final`
 > **branch (이전 Stage 2)** — `feature/integrated-phase-10-step-7b-operator-manual-stage2`
 > **branch (이전 Stage 1)** — `feature/integrated-phase-10-step-7-operator-manual`
-> **갱신일** — 2026-05-09 (Stage 3 완료 — 매뉴얼 본문 31 docs 모두 작성)
+> **갱신일** — 2026-05-10 (Stage 4 완료 — Phase 12 실시간 협업 신규 카테고리 10 docs 추가, 본문 33 → 43 docs)
 > **목적** — 운영자 매뉴얼 작성 stage 별 진행 / 화면 캡처 진행 / 누락 부분 한눈 추적.
 > **연관 문서** —
 > - `docs/manual/README.md` (사용자 색인 — 31 docs 활성 link)
@@ -22,10 +23,13 @@
 |---|---|---|---|---|
 | **Stage 1** | 색인 + 시작하기 (로그인/메인) + Inventory + Catalog + 검증 plan | ✅ **완료** | W10-7 (#107) | 2026-05-09 |
 | **Stage 2** | 영업 5 + 창고 3 + 시작하기 1 (역할별 권한) + QA plan + Catalog 갱신 + STATUS | ✅ **완료** | W10-7b (#110) | 2026-05-09 |
-| **Stage 3** | 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3 (견적/매출 마감/실사) = **22 docs** + QA 120 항목 + Catalog 갱신 + README/STATUS 색인 활성화 | ✅ **완료 (본 PR)** | W10-7c | 2026-05-09 |
-| **Stage 4** | 백업·복원 운영 매뉴얼 부속 + Phase 11 진입 후 P0 PR 머지 시 안내 docs 정식 본문으로 교체 (매출 마감 / 실사 / 회계 14 보고서 / 영업 모바일 / 사진 첨부 / 기사 배정 / 카카오톡 UI 등) | ⏳ Phase 11 진입 후 | W11+ | Phase 11 후 |
+| **Stage 3** | 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3 (견적/매출 마감/실사) = **22 docs** + QA 120 항목 + Catalog 갱신 + README/STATUS 색인 활성화 | ✅ **완료** | W10-7c | 2026-05-09 |
+| **Stage 4 (Phase 12 보강 — 본 PR)** | Phase 12 실시간 협업 시리즈 (PR-H1 → PR-H4c) 종결 후 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 작성. 기존 33 docs 중 audit 적용 8 docs 는 PR-H4c commit `0e3b247` 에서 이미 보완 완료 (점검 결과 추가 보완 불필요). README + STATUS + missing-features-catalog 갱신. | ✅ **완료 (본 PR)** | Phase 12 step-5 | 2026-05-10 |
+| **Stage 5 (Phase 11 후)** | 백업·복원 운영 매뉴얼 부속 + Phase 11 진입 후 P0 PR 머지 시 안내 docs 정식 본문으로 교체 (매출 마감 / 실사 / 회계 14 보고서 / 영업 모바일 / 사진 첨부 / 기사 배정 / 카카오톡 UI 등) | ⏳ Phase 11 진입 후 | W11+ | Phase 11 후 |
 
 > **Stage 3 변경 요약** — Stage 1/2 의 "Stage 4 예정" 으로 표시되었던 회계/모바일/arologis/트러블슈팅/부록은 Stage 3 본 PR 에서 모두 작성 완료. 매출 마감 / 실사 / 영업 모바일 등 미구현 슬라이스도 "안내 docs" 형태로 작성하여 매뉴얼 색인 100% 활성화. Stage 4 는 Phase 11 P0 PR 머지 후 안내 docs → 정식 본문 교체 작업으로 축소.
+>
+> **Stage 4 변경 요약 (본 PR)** — Phase 12 실시간 협업 시리즈 종결 (PR-H1 → PR-H4c) 후 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 작성. 본문 33 → **43 docs**. 매뉴얼 본문에서 PR-H4c commit `0e3b247` 가 이미 7 docs 에 inline audit overlay section 추가하였으므로 추가 보완 불필요. 기존 [02-창고/02-출고-처리.md](02-창고/02-출고-처리.md) §2-9, §2-10 의 시드 패턴이 신규 10 docs 의 reference 임. 안내 docs → 정식 본문 교체는 별도 Stage 5 (Phase 11 P0 후) 로 이관.
 
 ---
 
@@ -183,9 +187,19 @@
 | 31 | 부록 | `07-부록/01-FAQ.md` | ✅ | — |
 | 32 | 부록 | `07-부록/02-용어집.md` | ✅ | — |
 | 33 | 부록 | `07-부록/03-단축키.md` | ✅ | — |
+| 34 | 실시간 협업 (Stage 4) | `08-실시간-협업/00-실시간-협업-개요.md` | ✅ | ✅ 8 PNG (PR-H1~H4c 작동 캡처 인용) |
+| 35 | 실시간 협업 | `08-실시간-협업/01-실시간-동기화.md` | ✅ | ✅ 2 PNG |
+| 36 | 실시간 협업 | `08-실시간-협업/02-수정-이력-보기.md` | ✅ | ✅ 5 PNG |
+| 37 | 실시간 협업 | `08-실시간-협업/03-수정-횟수-카운트.md` | ✅ | — (시각 layout ASCII) |
+| 38 | 실시간 협업 | `08-실시간-협업/04-수정-복원.md` | ✅ | — (시각 layout ASCII) |
+| 39 | 실시간 협업 | `08-실시간-협업/05-수정-요청-워크플로우.md` | ✅ | ✅ 4 PNG |
+| 40 | 실시간 협업 | `08-실시간-협업/06-잠금-정책.md` | ✅ | — (4단계 표) |
+| 41 | 실시간 협업 | `08-실시간-협업/07-창고-직원-수락.md` | ✅ | ✅ 1 PNG |
+| 42 | 실시간 협업 | `08-실시간-협업/08-모바일-실시간-알림.md` | ✅ | — (mobile 텍스트 layout) |
+| 43 | 실시간 협업 | `08-실시간-협업/09-적용-범위.md` | ✅ | ✅ 6 PNG (매트릭스) |
 
-> **요약** — 작성 완료 본문 33 (시작하기 3 + 영업 6 + 창고 5 + 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3). 미구현 안내/placeholder(⚠️) 9 / 정식 본문(✅) 24. 캡처 필요 (📸) 약 22 docs (Stage 4 일괄 캡처 PR 예정).
-> **README 색인 표시 = 32 항목** (스크린샷 가이드는 부록 표시 차이 / 용어집·단축키 별도 entry).
+> **요약 (Stage 4 갱신)** — 작성 완료 본문 **43** (시작하기 3 + 영업 6 + 창고 5 + 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + **실시간 협업 10**). 미구현 안내/placeholder(⚠️) 9 / 정식 본문(✅) 34. 신규 10 docs 모두 본 PR 에서 작성. 캡처 필요 (📸) 약 22 docs (Stage 5 일괄 캡처 PR 예정 — 단, 신규 08-실시간-협업/ 10 docs 는 PR-H1~H4c 작동 캡처 raw URL 활용으로 캡처 불필요).
+> **README 색인 표시 = 43 항목** (08-실시간-협업/ 10 docs 신규 카테고리 추가).
 
 ### 4.2 미구현 안내 / placeholder docs (9건) — Stage 4 정식 교체 대상
 
@@ -322,4 +336,6 @@
 | 2026-05-09 | Stage 1 캡처 | 7 PNG (login 4 + main 3) 첫 캡처 + 깨진 link placeholder 29건 일괄 처리 | #108 / #109 |
 | 2026-05-09 | Stage 2 | QA plan stage2-scenarios.md (74 항목) + Catalog 갱신 (131 → 150 sub, +P0-9 +P2-6) + STATUS Stage 2 진행. writer agent 9 docs 작성 (영업 5 + 창고 3 + 시작하기 1 — 역할별 권한) | W10-7b (#110) |
 | 2026-05-09 | Stage 2 후속 | gateway /auth/** legacy routing 추가 + 프로그램명 삼한로지스 → Samhan Public + 회사명 (주)삼한공조시스템 + 매뉴얼 재캡처 | #111 / #112 |
-| 2026-05-09 | **Stage 3 (본 PR)** | 매뉴얼 본문 22 docs 작성 완료 (회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3). README 색인 100% 활성화. STATUS Stage 3 완료. QA stage3-final-scenarios.md ~120 항목. Catalog 갱신 (150 → ~165 sub, 신규 P1 사진 첨부 + 신규 P2 영업 모바일 마이그레이션). | **W10-7c** |
+| 2026-05-09 | **Stage 3** | 매뉴얼 본문 22 docs 작성 완료 (회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3). README 색인 100% 활성화. STATUS Stage 3 완료. QA stage3-final-scenarios.md ~120 항목. Catalog 갱신 (150 → ~165 sub, 신규 P1 사진 첨부 + 신규 P2 영업 모바일 마이그레이션). | W10-7c |
+| 2026-05-09 ~ 2026-05-10 | Phase 12 시리즈 | PR-H1 (SSE infra) → PR-H2 (audit overlay) → PR-H3 (수정 요청 워크플로우 + 잠금 정책) → PR-H4a (shared-realtime module) → PR-H4b (BE 13 service 일괄) → PR-H4c (FE 50+ desktop page + mobile-staff 일괄). PR-H4c commit `0e3b247` 가 기존 매뉴얼 8 docs 에 inline audit overlay section 추가. | PR #123 ~ #128 |
+| 2026-05-10 | **Stage 4 (본 PR)** | Phase 12 종결 후 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 작성 (00-개요 + 01-동기화 + 02-이력 + 03-카운트 + 04-복원 + 05-요청 + 06-잠금 + 07-창고 수락 + 08-모바일 + 09-적용 범위). 본문 33 → **43 docs**. README + STATUS + missing-features-catalog 갱신. PR-H1~H4c 작동 캡처 raw URL commit-pinned 활용. | **Phase 12 step-5** |

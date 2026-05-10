@@ -4,16 +4,18 @@
 
 > 작성 가이드: 신규 매뉴얼 추가 시 본 색인에 링크를 등록하고, 스크린샷은 [스크린샷 가이드](screenshots/README.md) 표준에 따라 캡처합니다.
 > **Stage 3 (W10-7c) 완료** — 본 색인의 모든 항목 (총 33 docs) 링크 활성화. 미구현 기능은 별도 "Stage 3 placeholder/안내" 항목 (견적서/매출 마감/재고 실사/세금계산서/월말 마감/영업 모바일/사진 첨부/카카오 UI/기사 배정)에서 backend 상태와 우회 절차를 설명합니다.
+> **Stage 4 (Phase 12 step-5) 신규** — Phase 12 실시간 협업 시리즈 종결 (PR-H1 → PR-H4c) 에 맞춰 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 추가. 17 service 중 13 service / 50+ desktop page / mobile-staff 일괄 적용된 SSE 동기화 + audit overlay + 수정 횟수 + 복원 + 잠금/요청 5종 패턴을 운영자 관점으로 안내. **본 색인 총 43 docs**.
 
 ---
 
 ## 빠른 시작
 
-처음 사용하는 직원은 아래 3개 매뉴얼을 순서대로 읽으세요.
+처음 사용하는 직원은 아래 4개 매뉴얼을 순서대로 읽으세요.
 
 1. [로그인하기](00-시작하기/01-로그인.md)
 2. [메인 화면 살펴보기](00-시작하기/02-메인-화면.md)
 3. [역할별 화면 차이](00-시작하기/03-역할별-권한.md)
+4. [실시간 협업 개요](08-실시간-협업/00-실시간-협업-개요.md) *(Stage 4 — Phase 12 시리즈 적용 후 모든 화면 공통 패턴 1회 통독 권장)*
 
 ---
 
@@ -75,6 +77,23 @@
 
 ---
 
+## 실시간 협업 (Stage 4 신규)
+
+Phase 12 시리즈 (PR-H1 → PR-H4c) 적용 후 모든 service / 모든 화면에 공통 노출되는 5종 패턴. ROLE 무관 모든 운영자 1회 통독 권장.
+
+- [실시간 협업 개요](08-실시간-협업/00-실시간-협업-개요.md) *(Stage 4)*
+- [실시간 동기화](08-실시간-협업/01-실시간-동기화.md) *(Stage 4 — SSE 1초 이내 자동 갱신)*
+- [수정 이력 보기](08-실시간-협업/02-수정-이력-보기.md) *(Stage 4 — 취소선 + 색상 dot + 풀네임)*
+- [수정 횟수 카운트](08-실시간-협업/03-수정-횟수-카운트.md) *(Stage 4 — 0/1~4/5~9/10+ 색상 임계)*
+- [수정 복원](08-실시간-협업/04-수정-복원.md) *(Stage 4 — MASTER + MANAGER 권한)*
+- [수정 요청 워크플로우](08-실시간-협업/05-수정-요청-워크플로우.md) *(Stage 4 — 잠금 후 사유 입력 → 권한자 수락)*
+- [잠금 정책](08-실시간-협업/06-잠금-정책.md) *(Stage 4 — 0/1/2/영구 4단계)*
+- [창고 직원 수락](08-실시간-협업/07-창고-직원-수락.md) *(Stage 4 — picking 중 수정 요청 처리)*
+- [모바일 실시간 알림](08-실시간-협업/08-모바일-실시간-알림.md) *(Stage 4 — mobile-staff 푸시 + 토스트)*
+- [적용 범위](08-실시간-협업/09-적용-범위.md) *(Stage 4 — 13 service / 50+ desktop page / mobile-staff 매트릭스)*
+
+---
+
 ## 트러블슈팅
 
 문제 발생 시 우선 본 항목을 참조하고, 해결되지 않으면 IT 관리자에게 문의하세요.
@@ -110,6 +129,10 @@
 | 기사 앱 사용 | [기사 앱](04-모바일/01-기사-앱.md) → [전자 서명](04-모바일/02-전자-서명.md) |
 | 배차 등록 | [수동 배차](05-arologis/02-수동-배차.md) |
 | 권한 / ROLE | [역할별 권한](00-시작하기/03-역할별-권한.md) |
+| 다른 사람 변경이 내 화면에 즉시 반영 / 색상 dot 의미 | [실시간 동기화](08-실시간-협업/01-실시간-동기화.md) → [수정 이력 보기](08-실시간-협업/02-수정-이력-보기.md) |
+| 잠금 / 수정 요청 / 권한자 수락 | [잠금 정책](08-실시간-협업/06-잠금-정책.md) → [수정 요청 워크플로우](08-실시간-협업/05-수정-요청-워크플로우.md) |
+| 모바일 알림 / 푸시 / 검토 | [모바일 실시간 알림](08-실시간-협업/08-모바일-실시간-알림.md) |
+| 어느 화면에 실시간 협업 적용? | [적용 범위](08-실시간-협업/09-적용-범위.md) |
 | 기타 트러블슈팅 (권한·세션 등) | [기타](06-트러블슈팅/05-기타.md) |
 | 용어 모름 | [용어집](07-부록/02-용어집.md) |
 | 단축키 | [단축키 일람](07-부록/03-단축키.md) |
@@ -121,13 +144,14 @@
 
 | 항목 | 정보 |
 |---|---|
-| 매뉴얼 본문 docs 총 개수 | **33** (Stage 1 = 3 + Stage 2 = 9 + Stage 3 = 21 — 영업 견적서 1 + 창고 placeholder 2 + 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3) |
-| Stage 진행 | Stage 1 ✅ / Stage 2 ✅ / Stage 3 ✅ (본 PR — `feature/integrated-phase-10-step-7c-operator-manual-final`) |
-| 사용자 검증 산출물 | [`docs/qa/manual-verification/`](../qa/manual-verification/) (Stage 1 31 + Stage 2 74 + Stage 3 120 = 225 검증 항목) |
-| 누락 기능 종합 | [`inventory/missing-features-catalog.md`](inventory/missing-features-catalog.md) (P0/P1/P2/P3 누계 171 sub) |
+| 매뉴얼 본문 docs 총 개수 | **43** (Stage 1 = 3 + Stage 2 = 9 + Stage 3 = 21 + **Stage 4 = 10 신규 카테고리 08-실시간-협업/**) |
+| Stage 진행 | Stage 1 ✅ / Stage 2 ✅ / Stage 3 ✅ / **Stage 4 ✅ (본 PR — `feature/integrated-phase-12-step-5-manual-augmentation` — Phase 12 실시간 협업 보강)** |
+| 사용자 검증 산출물 | [`docs/qa/manual-verification/`](../qa/manual-verification/) (Stage 1 31 + Stage 2 74 + Stage 3 120 + Stage 4 후속 캡처 = 225+ 검증 항목) |
+| 누락 기능 종합 | [`inventory/missing-features-catalog.md`](inventory/missing-features-catalog.md) (P0/P1/P2/P3 누계 171 sub — Phase 12 실시간 협업 ✅ 완성 row 추가) |
 | 매뉴얼 진행 표 | [`STATUS.md`](STATUS.md) |
 | 캡처 표준 | [`screenshots/README.md`](screenshots/README.md) |
-| Stage 4 정식 docs 교체 후보 | 매출 마감 placeholder → 정식 본문 (P2-4 PR 후) / 재고 실사 placeholder → 정식 본문 (P2-6 PR 후) / 회계 14 보고서 / 세금계산서 / 월말 마감 / 영업 모바일 / 사진 첨부 / 카카오 UI / 기사 배정 (Phase 11 후 P0/P1 PR 머지 시점 일괄) |
+| Stage 4 정식 docs 교체 후보 (Phase 11 후) | 매출 마감 placeholder → 정식 본문 (P2-4 PR 후) / 재고 실사 placeholder → 정식 본문 (P2-6 PR 후) / 회계 14 보고서 / 세금계산서 / 월말 마감 / 영업 모바일 / 사진 첨부 / 카카오 UI / 기사 배정 (Phase 11 후 P0/P1 PR 머지 시점 일괄) |
+| Stage 4 신규 카테고리 (본 PR) | [08-실시간-협업/](08-실시간-협업/) 10 docs — Phase 12 시리즈 (PR-H1 → PR-H4c) 운영자 가이드 종합 |
 
 ---
 
