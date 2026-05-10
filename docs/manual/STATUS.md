@@ -1,10 +1,11 @@
 # Samhan Public 운영자 매뉴얼 작성 진행 (STATUS)
 
-> **branch (현재)** — `feature/integrated-phase-12-step-5-manual-augmentation` (Stage 4)
+> **branch (현재)** — `feature/integrated-phase-12-step-6-manual-rewrite` (Phase 12 step-6 — 매뉴얼 전체 재작성 ✅)
+> **branch (이전 Stage 4)** — `feature/integrated-phase-12-step-5-manual-augmentation`
 > **branch (이전 Stage 3)** — `feature/integrated-phase-10-step-7c-operator-manual-final`
 > **branch (이전 Stage 2)** — `feature/integrated-phase-10-step-7b-operator-manual-stage2`
 > **branch (이전 Stage 1)** — `feature/integrated-phase-10-step-7-operator-manual`
-> **갱신일** — 2026-05-10 (Stage 4 완료 — Phase 12 실시간 협업 신규 카테고리 10 docs 추가, 본문 33 → 43 docs)
+> **갱신일** — 2026-05-10 (Phase 12 step-6 ✅ — 9 카테고리 × 43 docs 본문 모두 7-section 패턴 일관 재작성 + 111 신규 PNG inline)
 > **목적** — 운영자 매뉴얼 작성 stage 별 진행 / 화면 캡처 진행 / 누락 부분 한눈 추적.
 > **연관 문서** —
 > - `docs/manual/README.md` (사용자 색인 — 31 docs 활성 link)
@@ -24,7 +25,8 @@
 | **Stage 1** | 색인 + 시작하기 (로그인/메인) + Inventory + Catalog + 검증 plan | ✅ **완료** | W10-7 (#107) | 2026-05-09 |
 | **Stage 2** | 영업 5 + 창고 3 + 시작하기 1 (역할별 권한) + QA plan + Catalog 갱신 + STATUS | ✅ **완료** | W10-7b (#110) | 2026-05-09 |
 | **Stage 3** | 회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3 (견적/매출 마감/실사) = **22 docs** + QA 120 항목 + Catalog 갱신 + README/STATUS 색인 활성화 | ✅ **완료** | W10-7c | 2026-05-09 |
-| **Stage 4 (Phase 12 보강 — 본 PR)** | Phase 12 실시간 협업 시리즈 (PR-H1 → PR-H4c) 종결 후 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 작성. 기존 33 docs 중 audit 적용 8 docs 는 PR-H4c commit `0e3b247` 에서 이미 보완 완료 (점검 결과 추가 보완 불필요). README + STATUS + missing-features-catalog 갱신. | ✅ **완료 (본 PR)** | Phase 12 step-5 | 2026-05-10 |
+| **Stage 4 (Phase 12 보강)** | Phase 12 실시간 협업 시리즈 (PR-H1 → PR-H4c) 종결 후 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 작성. 기존 33 docs 중 audit 적용 8 docs 는 PR-H4c commit `0e3b247` 에서 이미 보완 완료 (점검 결과 추가 보완 불필요). README + STATUS + missing-features-catalog 갱신. | ✅ 완료 | Phase 12 step-5 | 2026-05-10 |
+| **Phase 12 step-6 (매뉴얼 전체 재작성 — 본 PR)** | 9 카테고리 × **43 docs 본문 모두 7-section 패턴 일관 재작성** (1.구현 상태 / 2.대상 독자 / 3.학습 내용 / 4.본문 / 5.화면 미리보기 / 6.FAQ / 7.관련 매뉴얼). placeholder 안내 톤 → 실 사용자 가이드 톤 전환. **111 신규 PNG inline** (Phase B 산출 — `docs/manual/screenshots/<카테고리>/`, mock 모드 한국어 라벨 100% / placeholder 47건 모두 교체). README + STATUS + catalog 갱신. | ✅ **완료 (본 PR)** | Phase 12 step-6 | 2026-05-10 |
 | **Stage 5 (Phase 11 후)** | 백업·복원 운영 매뉴얼 부속 + Phase 11 진입 후 P0 PR 머지 시 안내 docs 정식 본문으로 교체 (매출 마감 / 실사 / 회계 14 보고서 / 영업 모바일 / 사진 첨부 / 기사 배정 / 카카오톡 UI 등) | ⏳ Phase 11 진입 후 | W11+ | Phase 11 후 |
 
 > **Stage 3 변경 요약** — Stage 1/2 의 "Stage 4 예정" 으로 표시되었던 회계/모바일/arologis/트러블슈팅/부록은 Stage 3 본 PR 에서 모두 작성 완료. 매출 마감 / 실사 / 영업 모바일 등 미구현 슬라이스도 "안내 docs" 형태로 작성하여 매뉴얼 색인 100% 활성화. Stage 4 는 Phase 11 P0 PR 머지 후 안내 docs → 정식 본문 교체 작업으로 축소.

@@ -4,7 +4,8 @@
 
 > 작성 가이드: 신규 매뉴얼 추가 시 본 색인에 링크를 등록하고, 스크린샷은 [스크린샷 가이드](screenshots/README.md) 표준에 따라 캡처합니다.
 > **Stage 3 (W10-7c) 완료** — 본 색인의 모든 항목 (총 33 docs) 링크 활성화. 미구현 기능은 별도 "Stage 3 placeholder/안내" 항목 (견적서/매출 마감/재고 실사/세금계산서/월말 마감/영업 모바일/사진 첨부/카카오 UI/기사 배정)에서 backend 상태와 우회 절차를 설명합니다.
-> **Stage 4 (Phase 12 step-5) 신규** — Phase 12 실시간 협업 시리즈 종결 (PR-H1 → PR-H4c) 에 맞춰 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 추가. 17 service 중 13 service / 50+ desktop page / mobile-staff 일괄 적용된 SSE 동기화 + audit overlay + 수정 횟수 + 복원 + 잠금/요청 5종 패턴을 운영자 관점으로 안내. **본 색인 총 43 docs**.
+> **Stage 4 (Phase 12 step-5) 완료** — Phase 12 실시간 협업 시리즈 종결 (PR-H1 → PR-H4c) 에 맞춰 신규 카테고리 [08-실시간-협업/](08-실시간-협업/) 10 docs 추가. 17 service 중 13 service / 50+ desktop page / mobile-staff 일괄 적용된 SSE 동기화 + audit overlay + 수정 횟수 + 복원 + 잠금/요청 5종 패턴을 운영자 관점으로 안내. **본 색인 총 43 docs**.
+> **Phase 12 step-6 (본 PR — 매뉴얼 전체 재작성 ✅)** — **9 카테고리 × 43 docs 본문 모두 7-section 패턴 일관 재작성** (1. 구현 상태 / 2. 대상 독자 / 3. 학습 내용 / 4. 본문 / 5. 화면 미리보기 / 6. FAQ / 7. 관련 매뉴얼). placeholder 안내 톤 → 실 사용자 가이드 톤 전환. **111 신규 PNG inline** (Phase B 산출 — mock 모드 캡처로 한국어 라벨 100%, placeholder 47건 모두 교체). 캡처 표시 ✅ 0 placeholder.
 
 ---
 
@@ -144,8 +145,9 @@ Phase 12 시리즈 (PR-H1 → PR-H4c) 적용 후 모든 service / 모든 화면�
 
 | 항목 | 정보 |
 |---|---|
-| 매뉴얼 본문 docs 총 개수 | **43** (Stage 1 = 3 + Stage 2 = 9 + Stage 3 = 21 + **Stage 4 = 10 신규 카테고리 08-실시간-협업/**) |
-| Stage 진행 | Stage 1 ✅ / Stage 2 ✅ / Stage 3 ✅ / **Stage 4 ✅ (본 PR — `feature/integrated-phase-12-step-5-manual-augmentation` — Phase 12 실시간 협업 보강)** |
+| 매뉴얼 본문 docs 총 개수 | **43** (Stage 1 = 3 + Stage 2 = 9 + Stage 3 = 21 + Stage 4 = 10 — Phase 12 step-6 본 PR 에서 **모두 재작성 ✅**) |
+| Stage 진행 | Stage 1 ✅ / Stage 2 ✅ / Stage 3 ✅ / Stage 4 ✅ / **Phase 12 step-6 ✅ 본 PR — `feature/integrated-phase-12-step-6-manual-rewrite` — 43 docs 7-section 일관 재작성 + 111 PNG inline** |
+| 캡처 표시 | ✅ **0 placeholder** (Phase B 111 신규 PNG inline 완료 — mock 모드 한국어 라벨 100%) |
 | 사용자 검증 산출물 | [`docs/qa/manual-verification/`](../qa/manual-verification/) (Stage 1 31 + Stage 2 74 + Stage 3 120 + Stage 4 후속 캡처 = 225+ 검증 항목) |
 | 누락 기능 종합 | [`inventory/missing-features-catalog.md`](inventory/missing-features-catalog.md) (P0/P1/P2/P3 누계 171 sub — Phase 12 실시간 협업 ✅ 완성 row 추가) |
 | 매뉴얼 진행 표 | [`STATUS.md`](STATUS.md) |
