@@ -68,6 +68,10 @@ class InventoryAuditServiceTest {
     @Mock private StockMovementRepository stockMovementRepository;
     @Mock private ProductClient productClient;
     @Mock private AccountingClient accountingClient;
+    // PR-H4b — shared:realtime-abstraction inject (단위 테스트는 mock 으로 격리, 실 audit 동작 검증은 별도 IT)
+    @Mock private com.samhanair.logis.shared.realtime.lock.EditLockGuard editLockGuard;
+    @Mock private com.samhanair.logis.inventory.realtime.service.InventoryEditRequestService editRequestService;
+    @Mock private com.samhanair.logis.inventory.realtime.service.InventoryAuditLogRecorder auditLogRecorder;
 
     @InjectMocks
     private InventoryAuditService service;

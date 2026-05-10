@@ -16,6 +16,10 @@ import com.samhanair.logis.arologis.dto.RegionalDispatchResponse;
 import com.samhanair.logis.arologis.dto.UnassignedSlipResponse;
 import com.samhanair.logis.arologis.parser.KakaoDispatchParser;
 import com.samhanair.logis.arologis.parser.ParsedDispatch;
+import com.samhanair.logis.arologis.realtime.service.ArologisAuditLogRecorder;
+import com.samhanair.logis.arologis.realtime.service.ArologisEditRequestService;
+import com.samhanair.logis.arologis.realtime.web.dto.ArologisAuditLogResponse;
+import com.samhanair.logis.arologis.realtime.web.dto.ArologisEditRequestResponse;
 import com.samhanair.logis.arologis.repository.DriverRepository;
 import com.samhanair.logis.arologis.service.DispatchManualService;
 import com.samhanair.logis.arologis.service.DispatchService;
@@ -23,6 +27,9 @@ import com.samhanair.logis.arologis.service.DriverService;
 import com.samhanair.logis.arologis.service.PreClassifyService;
 import com.samhanair.logis.arologis.service.RegionalService;
 import com.samhanair.logis.arologis.service.UnassignedService;
+import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.editrequest.EditRequestType;
+import com.samhanair.logis.shared.realtime.editrequest.EditTargetRole;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -39,15 +46,18 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Admin endpoint — Phase 10 W10-1 arologis-service.
@@ -72,6 +82,10 @@ public class ArologisAdminController {
     private final PreClassifyService preClassifyService;
     private final UnassignedService unassignedService;
     private final RegionalService regionalService;
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction 활성
+    private final ArologisAuditLogRecorder auditLogRecorder;
+    private final ArologisEditRequestService editRequestService;
+    private final RealtimeBroker realtimeBroker;
 
     /**
      * 카톡 메시지 파싱 미리보기 — 저장 X.
@@ -311,5 +325,125 @@ public class ArologisAdminController {
     public ApiResponse<RegionalDispatchResponse> regional(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ApiResponse.ok(regionalService.classifyBySido(date));
+    }
+
+    // ============================================================
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction 활성
+    // ============================================================
+
+    /**
+     * Dispatch audit timeline — FE timeline 표시용. 최신 revision 우선, soft-deleted 자동 제외.
+     */
+    @Operation(summary = "Dispatch audit timeline (PR-H4b)",
+            description = "Dispatch/VehicleStop 변경 이력 (최신 revision 우선)")
+    @GetMapping("/dispatches/{id}/audit-logs")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DISPATCH')")
+    public ApiResponse<List<ArologisAuditLogResponse>> listAuditLogs(@PathVariable UUID id) {
+        return ApiResponse.ok(auditLogRecorder.listByEntity(id).stream()
+                .map(ArologisAuditLogResponse::from).toList());
+    }
+
+    /**
+     * Dispatch SSE realtime — entity 별 audit / edit-request event 구독.
+     */
+    @Operation(summary = "Dispatch SSE realtime 구독 (PR-H4b)",
+            description = "audit/edit-request event SSE stream — heartbeat 30s")
+    @GetMapping(value = "/dispatches/{id}/realtime", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DISPATCH')")
+    public SseEmitter subscribeRealtime(@PathVariable UUID id) {
+        return realtimeBroker.subscribe(id);
+    }
+
+    /**
+     * 수정/삭제 요청 생성 — Dispatch DISPATCHED/DELIVERED derived status 단계.
+     */
+    @Operation(summary = "Dispatch 수정/삭제 요청 생성 (PR-H4b)",
+            description = "DISPATCHED/DELIVERED 후 MANAGER 수락 1회 소진 후 mutation 가능")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "요청 생성 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "PLANNED 단계 (요청 불필요)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Dispatch 미존재")
+    })
+    @PostMapping("/dispatches/{id}/edit-requests")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DISPATCH')")
+    public ApiResponse<ArologisEditRequestResponse> createEditRequest(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "X-User-Id", required = false) String callerId,
+            @RequestHeader(value = "X-User-Name", required = false) String callerName) {
+        EditRequestType requestType = parseRequestType(body == null ? null : body.get("requestType"));
+        String reason = body == null ? null : body.get("reason");
+        return ApiResponse.ok(ArologisEditRequestResponse.from(
+                editRequestService.request(id, requestType, reason,
+                        parseActorId(callerId), resolveActorName(callerId, callerName))));
+    }
+
+    /** 권한자 그룹 PENDING 대시보드. */
+    @Operation(summary = "PENDING 요청 대시보드 (PR-H4b)")
+    @GetMapping("/edit-requests/pending")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<List<ArologisEditRequestResponse>> listPending(
+            @RequestParam(defaultValue = "MANAGER") EditTargetRole targetRole) {
+        return ApiResponse.ok(editRequestService.listPendingForRole(targetRole).stream()
+                .map(ArologisEditRequestResponse::from).toList());
+    }
+
+    /** 요청 수락. */
+    @Operation(summary = "수정/삭제 요청 수락 (PR-H4b)")
+    @PostMapping("/edit-requests/{requestId}/approve")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<ArologisEditRequestResponse> approveEditRequest(
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestHeader(value = "X-User-Id", required = false) String callerId,
+            @RequestHeader(value = "X-User-Name", required = false) String callerName) {
+        String note = body == null ? null : body.get("note");
+        return ApiResponse.ok(ArologisEditRequestResponse.from(
+                editRequestService.approve(requestId,
+                        parseActorId(callerId), resolveActorName(callerId, callerName), note)));
+    }
+
+    /** 요청 거절. */
+    @Operation(summary = "수정/삭제 요청 거절 (PR-H4b)")
+    @PostMapping("/edit-requests/{requestId}/reject")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    public ApiResponse<ArologisEditRequestResponse> rejectEditRequest(
+            @PathVariable UUID requestId,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "X-User-Id", required = false) String callerId,
+            @RequestHeader(value = "X-User-Name", required = false) String callerName) {
+        String reason = body == null ? null : body.get("decisionReason");
+        return ApiResponse.ok(ArologisEditRequestResponse.from(
+                editRequestService.reject(requestId,
+                        parseActorId(callerId), resolveActorName(callerId, callerName), reason)));
+    }
+
+    private EditRequestType parseRequestType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "requestType 필수 (EDIT/DELETE)");
+        }
+        try {
+            return EditRequestType.valueOf(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "잘못된 requestType: " + raw);
+        }
+    }
+
+    private UUID parseActorId(String callerId) {
+        if (callerId == null || callerId.isBlank()) {
+            return new UUID(0L, 0L);
+        }
+        try {
+            return UUID.fromString(callerId);
+        } catch (IllegalArgumentException ex) {
+            return new UUID(0L, 0L);
+        }
+    }
+
+    private String resolveActorName(String callerId, String callerName) {
+        if (callerName != null && !callerName.isBlank()) {
+            return callerName;
+        }
+        return (callerId == null || callerId.isBlank()) ? "system" : callerId;
     }
 }
