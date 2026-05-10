@@ -1,149 +1,51 @@
 /**
  * 관리자 — 알리고 주소록 자동 동기화 (`/admin/aligo-address-book`).
  *
- * Phase 10 step-12 PR-F1 Designer mock — legacy GAS 9번 (알리고 자동 업로드) 이식 1차 mock.
+ * Phase 10 PR-F1 FE-1 — Designer mock (commit 2a1f11f) → 실 API 연결.
  *
  * <h2>용도</h2>
  * 거래처 마스터 → 알리고 (SMS/카카오톡 발송 vendor) 주소록 자동 sync.
- * 사용자가 알리고 콘솔을 직접 열지 않고 우리 desktop UI 에서 단일 클릭으로 동기화.
+ * 사용자가 알리고 콘솔을 직접 열지 않고 우리 desktop UI 에서 단일 클릭으로 실행:
+ * <ol>
+ *   <li>"거래처 CSV 다운로드" — partner-service 가 SF벤더 그룹 CSV (UTF-8 BOM) 생성
+ *       → 한국어 파일명 {@code 알리고_주소록_YYYY-MM-DD.csv} 로 사용자 저장</li>
+ *   <li>"주소록 동기화 실행" — notification-service mock dryRun (PR-F1) →
+ *       4 카테고리 chip 표시 (added / updated / skipped / failed)</li>
+ * </ol>
  *
- * <h2>UX 흐름</h2>
- * <pre>
- *   1) 그룹 선택 dropdown — 전체 / SF벤더 / 신용정보 / 일반
- *   2) 거래처 미리보기 표 (mock) — partnerCode / partnerName / phone / group / status / blocked
- *   3) "동기화 실행" 버튼 → BE 실 호출 (FE 단계에서 연결)
- *   4) 결과 4분 색상 chip — added(brand) / updated(success) / skipped(neutral) / failed(danger)
- * </pre>
- *
- * <h2>BE 의존</h2>
- * FE-1 슬라이스 (BE-1 endpoint) 의존. 본 단계는 mock data UI 만, FE 단계에서
- * `POST /api/v1/notify/aligo/address-book/sync?group=` 실 API 연결 예정.
+ * <h2>BE 연결</h2>
+ * <ul>
+ *   <li>GET {@code /admin/partners/export/aligo-csv} — partner-service commit f3b313a</li>
+ *   <li>POST {@code /admin/notification/aligo/address-book/sync} —
+ *       notification-service commit f3b313a (mock dryRun)</li>
+ * </ul>
  *
  * <h2>설계 노트</h2>
  * <ul>
- *   <li>UUID 비공개 (feedback_uuid_no_user_visibility) — 비즈니스 식별자만 노출.
- *       사용자 노출 = partnerCode / partnerName / phone / group.</li>
+ *   <li>UUID 비공개 (feedback_uuid_no_user_visibility) — 본 도메인 UUID 노출 없음
+ *       (CSV / sync 응답 모두 비즈니스 식별자만).</li>
  *   <li>풀네임 ROLE (feedback_role_naming_full) — MASTER 가드 (AdminLayout 가드).</li>
  *   <li>한국어 라벨 100% — 영문 라벨 금지.</li>
- *   <li>PR-D admin 패턴 일관 — SheetSyncPage / BlockedPartnersPage 와 동일한 헤더 + chip + table 구조.</li>
- *   <li>blocked 거래처 표시 — Badge "발송금지" (danger). BE sync 시 자동 제외 가정.</li>
+ *   <li>한국어 파일명 의무 — {@code 알리고_주소록_YYYY-MM-DD.csv} (BE filename 무시).</li>
+ *   <li>Designer mock 색상 / 4분 chip / UX 보존 — CSS 무수정.</li>
  * </ul>
  *
  * <h2>data-testid</h2>
  * <ul>
- *   <li>{@code admin-aligo-group-filter}</li>
+ *   <li>{@code admin-aligo-csv-btn}</li>
  *   <li>{@code admin-aligo-sync-btn}</li>
- *   <li>{@code admin-aligo-preview-table}</li>
- *   <li>{@code admin-aligo-row-{partnerCode}}</li>
  *   <li>{@code admin-aligo-result-added / updated / skipped / failed}</li>
  * </ul>
  */
-import { useMemo, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { Button, Spinner } from '@samhan/design-system'
 import {
-  Badge,
-  Button,
-  DataTable,
-  Spinner,
-  type DataTableColumn,
-} from '@samhan/design-system'
+  buildAligoCsvFilename,
+  exportAligoCsv,
+  syncAligoAddressBook,
+  type AligoAddressBookSyncResponse,
+} from '../../api/aligoAddressBookApi'
 import { usePageTitle } from '../../hooks/usePageTitle'
-
-// ---------------------------------------------------------------------------
-// Mock 도메인 타입 (FE 단계에 실 API 타입으로 교체 예정)
-// ---------------------------------------------------------------------------
-
-/** 알리고 주소록 그룹. legacy GAS 9번 group 컬럼 그대로 이식. */
-type AligoGroup = 'SF_VENDOR' | 'CREDIT' | 'GENERAL'
-
-const GROUP_LABEL: Record<AligoGroup, string> = {
-  SF_VENDOR: 'SF벤더',
-  CREDIT: '신용정보',
-  GENERAL: '일반',
-}
-
-/** 거래처 sync 미리보기 1행 (mock). */
-interface AligoPartnerPreview {
-  partnerCode: string
-  partnerName: string
-  phone: string
-  group: AligoGroup
-  status: 'ACTIVE' | 'SUSPENDED'
-  blocked: boolean
-}
-
-/** sync 결과 4분 통계. BE response shape 가정 (FE 단계에서 실 API 타입 교체). */
-interface AligoSyncResult {
-  added: number
-  updated: number
-  skipped: number
-  failed: number
-  durationMs: number
-}
-
-// ---------------------------------------------------------------------------
-// Mock 데이터 — FE 단계에 BE API 호출로 교체
-// ---------------------------------------------------------------------------
-
-/** TODO(FE-1): BE 연결 시점에 `GET /api/v1/notify/aligo/address-book/preview?group=` 호출로 교체. */
-const MOCK_PARTNERS: AligoPartnerPreview[] = [
-  {
-    partnerCode: 'P001234',
-    partnerName: '동부수산',
-    phone: '010-1234-5678',
-    group: 'SF_VENDOR',
-    status: 'ACTIVE',
-    blocked: false,
-  },
-  {
-    partnerCode: 'P001235',
-    partnerName: '대한물류',
-    phone: '010-2345-6789',
-    group: 'CREDIT',
-    status: 'ACTIVE',
-    blocked: false,
-  },
-  {
-    partnerCode: 'P001236',
-    partnerName: '한일유통',
-    phone: '010-3456-7890',
-    group: 'GENERAL',
-    status: 'ACTIVE',
-    blocked: false,
-  },
-  {
-    partnerCode: 'P001237',
-    partnerName: '서해무역',
-    phone: '010-4567-8901',
-    group: 'SF_VENDOR',
-    status: 'SUSPENDED',
-    blocked: false,
-  },
-  {
-    partnerCode: 'P001238',
-    partnerName: '남해상사',
-    phone: '010-5678-9012',
-    group: 'GENERAL',
-    status: 'ACTIVE',
-    blocked: true, // 발송금지 — sync 시 skip 대상
-  },
-  {
-    partnerCode: 'P001239',
-    partnerName: '북부창고',
-    phone: '010-6789-0123',
-    group: 'CREDIT',
-    status: 'ACTIVE',
-    blocked: false,
-  },
-]
-
-/** TODO(FE-1): BE 연결 시점에 `POST /api/v1/notify/aligo/address-book/sync` 결과로 교체. */
-const MOCK_RESULT: AligoSyncResult = {
-  added: 2,
-  updated: 3,
-  skipped: 1, // blocked 거래처
-  failed: 0,
-  durationMs: 1340,
-}
 
 // ---------------------------------------------------------------------------
 // 컴포넌트
@@ -152,72 +54,32 @@ const MOCK_RESULT: AligoSyncResult = {
 export function AligoAddressBookPage() {
   usePageTitle('알리고 주소록 자동 동기화')
 
-  const [group, setGroup] = useState<AligoGroup | ''>('')
-  // mock — 실제로는 useMutation pending state
-  const [syncing, setSyncing] = useState(false)
-  const [result, setResult] = useState<AligoSyncResult | null>(null)
+  // CSV 다운로드 mutation — Blob 응답 → anchor click.
+  const csvMutation = useMutation({
+    mutationFn: async () => {
+      const blob = await exportAligoCsv()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = buildAligoCsvFilename()
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
+  })
 
-  const filteredPartners = useMemo<AligoPartnerPreview[]>(() => {
-    if (!group) return MOCK_PARTNERS
-    return MOCK_PARTNERS.filter((p) => p.group === group)
-  }, [group])
+  // 주소록 sync mutation — 4 카테고리 응답.
+  // TODO(PR-F2): 알리고 실 spec 후 dryRun=false 활성. 현 BE 는 MockAligoAddressBookClient
+  // 가 항상 dryRun 으로 동작 (chunk 별 sample memo + dryRun=true 누적).
+  const syncMutation = useMutation({
+    mutationFn: syncAligoAddressBook,
+  })
 
-  const handleSync = () => {
-    // TODO(FE-1): BE 연결 시점에 실 API 호출 + react-query useMutation 으로 교체.
-    setSyncing(true)
-    setResult(null)
-    setTimeout(() => {
-      setResult(MOCK_RESULT)
-      setSyncing(false)
-    }, 800)
-  }
-
-  const columns: DataTableColumn<AligoPartnerPreview>[] = useMemo(
-    () => [
-      {
-        key: 'partnerCode',
-        header: '거래처 코드',
-        width: '120px',
-        render: (p) => (
-          <span data-testid={`admin-aligo-row-${p.partnerCode}`}>
-            {p.partnerCode}
-          </span>
-        ),
-      },
-      { key: 'partnerName', header: '상호' },
-      { key: 'phone', header: '전화', width: '140px' },
-      {
-        key: 'group',
-        header: '그룹',
-        width: '110px',
-        render: (p) => (
-          <Badge variant={GROUP_VARIANT[p.group]}>{GROUP_LABEL[p.group]}</Badge>
-        ),
-      },
-      {
-        key: 'status',
-        header: '상태',
-        width: '90px',
-        render: (p) => (
-          <Badge variant={p.status === 'ACTIVE' ? 'success' : 'warning'}>
-            {p.status === 'ACTIVE' ? '활성' : '정지'}
-          </Badge>
-        ),
-      },
-      {
-        key: 'blocked',
-        header: '발송 가능',
-        width: '110px',
-        render: (p) =>
-          p.blocked ? (
-            <Badge variant="danger">발송금지</Badge>
-          ) : (
-            <Badge variant="neutral">가능</Badge>
-          ),
-      },
-    ],
-    [],
-  )
+  const csvPending = csvMutation.isPending
+  const syncPending = syncMutation.isPending
+  const result: AligoAddressBookSyncResponse | null =
+    syncMutation.data ?? null
 
   return (
     <>
@@ -239,12 +101,12 @@ export function AligoAddressBookPage() {
               color: 'var(--color-neutral-600)',
             }}
           >
-            거래처 마스터 → 알리고 주소록 group 별 sync. 발송금지 거래처는 자동
+            거래처 마스터 → 알리고 주소록 동기화. 발송금지 거래처는 자동
             제외됩니다.
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {syncing ? (
+          {syncPending ? (
             <Spinner
               size="sm"
               tone="var(--color-brand-500)"
@@ -253,12 +115,21 @@ export function AligoAddressBookPage() {
           ) : null}
           <Button
             type="button"
+            variant="secondary"
+            data-testid="admin-aligo-csv-btn"
+            disabled={csvPending}
+            onClick={() => csvMutation.mutate()}
+          >
+            {csvPending ? '내려받는 중…' : '거래처 CSV 다운로드'}
+          </Button>
+          <Button
+            type="button"
             variant="primary"
             data-testid="admin-aligo-sync-btn"
-            disabled={syncing}
-            onClick={handleSync}
+            disabled={syncPending}
+            onClick={() => syncMutation.mutate()}
           >
-            {syncing ? '동기화 중…' : '동기화 실행'}
+            {syncPending ? '동기화 중…' : '주소록 동기화 실행'}
           </Button>
         </div>
       </header>
@@ -274,72 +145,75 @@ export function AligoAddressBookPage() {
           borderRadius: 4,
         }}
       >
-        본 화면은 PR-F1 1차 mock 입니다. BE 연결 시점에 실 API 호출로 교체
-        예정입니다 (TODO FE-1).
+        주소록 동기화는 현재 mock dryRun 모드입니다 (실 알리고 호출 없음). 알리고
+        실 API 스펙 확정 후 dryRun=false 로 격상 예정입니다 (TODO PR-F2).
       </p>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <label
-          htmlFor="admin-aligo-group-filter"
+      {csvMutation.isError ? (
+        <div
+          role="alert"
           style={{
-            fontSize: 13,
-            color: 'var(--color-neutral-700, #374151)',
-            fontWeight: 500,
-          }}
-        >
-          그룹
-        </label>
-        <select
-          id="admin-aligo-group-filter"
-          value={group}
-          onChange={(e) => setGroup(e.target.value as AligoGroup | '')}
-          data-testid="admin-aligo-group-filter"
-          style={{
-            height: 32,
-            padding: '0 10px',
-            border: '1px solid #D1D5DB',
+            marginBottom: 12,
+            padding: '8px 12px',
+            border: '1px solid var(--color-danger-300, #fca5a5)',
+            background: 'var(--color-danger-50, #fef2f2)',
+            color: 'var(--color-danger-700, #b91c1c)',
             borderRadius: 6,
             fontSize: 13,
           }}
         >
-          <option value="">전체</option>
-          <option value="SF_VENDOR">{GROUP_LABEL.SF_VENDOR}</option>
-          <option value="CREDIT">{GROUP_LABEL.CREDIT}</option>
-          <option value="GENERAL">{GROUP_LABEL.GENERAL}</option>
-        </select>
-        <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>
-          미리보기 {filteredPartners.length}건
-        </span>
-      </div>
+          CSV 다운로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.
+        </div>
+      ) : null}
+
+      {syncMutation.isError ? (
+        <div
+          role="alert"
+          style={{
+            marginBottom: 12,
+            padding: '8px 12px',
+            border: '1px solid var(--color-danger-300, #fca5a5)',
+            background: 'var(--color-danger-50, #fef2f2)',
+            color: 'var(--color-danger-700, #b91c1c)',
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          동기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.
+        </div>
+      ) : null}
 
       {result ? <ResultChips result={result} /> : null}
 
-      <div data-testid="admin-aligo-preview-table">
-        <DataTable
-          columns={columns}
-          rows={filteredPartners}
-          rowKey={(p) => p.partnerCode}
-          emptyMessage="해당 그룹에 거래처가 없습니다."
-        />
-      </div>
+      {result && result.failed.length > 0 ? (
+        <FailedList failures={result.failed} />
+      ) : null}
+
+      {!result && !syncPending ? (
+        <div
+          style={{
+            padding: 24,
+            textAlign: 'center',
+            color: 'var(--color-neutral-500, #6B7280)',
+            fontSize: 13,
+            border: '1px dashed var(--color-neutral-300, #D1D5DB)',
+            borderRadius: 6,
+            background: 'var(--color-neutral-50, #F9FAFB)',
+          }}
+        >
+          상단의 "주소록 동기화 실행" 버튼을 눌러 sync 를 시작하세요.
+        </div>
+      ) : null}
     </>
   )
 }
 
 // ---------------------------------------------------------------------------
-// 결과 4분 chip — added / updated / skipped / failed
+// 결과 4분 chip — added / updated / skipped / failed (Designer mock 보존)
 // ---------------------------------------------------------------------------
 
 interface ResultChipsProps {
-  result: AligoSyncResult
+  result: AligoAddressBookSyncResponse
 }
 
 function ResultChips({ result }: ResultChipsProps) {
@@ -373,14 +247,9 @@ function ResultChips({ result }: ResultChipsProps) {
       />
       <ResultChip
         label="실패"
-        value={result.failed}
+        value={result.failed.length}
         tone="danger"
         testId="admin-aligo-result-failed"
-      />
-      <ResultChip
-        label="소요"
-        value={`${result.durationMs}ms`}
-        tone="neutral"
       />
     </div>
   )
@@ -427,14 +296,46 @@ function ResultChip({ label, value, tone, testId }: ResultChipProps) {
 }
 
 // ---------------------------------------------------------------------------
-// 그룹 → Badge tone
+// 실패 chunk 메시지 리스트
 // ---------------------------------------------------------------------------
 
-const GROUP_VARIANT: Record<
-  AligoGroup,
-  'brand' | 'neutral' | 'success' | 'warning'
-> = {
-  SF_VENDOR: 'brand',
-  CREDIT: 'success',
-  GENERAL: 'neutral',
+interface FailedListProps {
+  failures: string[]
+}
+
+function FailedList({ failures }: FailedListProps) {
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: '12px 16px',
+        border: '1px solid var(--color-danger-300, #fca5a5)',
+        background: 'var(--color-danger-50, #fef2f2)',
+        borderRadius: 6,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-danger-700, #b91c1c)',
+          marginBottom: 6,
+        }}
+      >
+        실패한 chunk ({failures.length}건)
+      </div>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 18,
+          fontSize: 12,
+          color: 'var(--color-danger-700, #b91c1c)',
+        }}
+      >
+        {failures.map((f, i) => (
+          <li key={i}>{f}</li>
+        ))}
+      </ul>
+    </div>
+  )
 }

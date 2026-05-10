@@ -1,48 +1,46 @@
 /**
  * arologis 운송사 실배차 비교 (`/arologis/dispatch-reconcile`).
  *
- * Phase 10 step-12 PR-F1 Designer mock — legacy GAS 11번 ("운송사-실배차 비교") 이식 1차 mock.
+ * Phase 10 PR-F1 FE-2 — Designer mock (commit 2a1f11f) → 실 API 연결.
  *
  * <h2>용도</h2>
- * 운송사가 발행한 vendor 엑셀 (CJ대한통운 / 롯데 / 한진 등 다중 vendor) 과
- * 우리 시스템 내부 dispatch 기록을 비교하여 누락 / 시간 오차를 식별.
+ * 운송사가 발행한 vendor 엑셀 (CJ대한통운 / 롯데 / 한진 등 다중 vendor) 과 우리
+ * 시스템 내부 dispatch 기록을 비교하여 누락 / 시간 오차를 식별. 운송사 콘솔 외부
+ * 접속 불요.
  *
  * <h2>UX 흐름</h2>
  * <pre>
  *   1) 다중 drag-drop 업로드 영역 (.xlsx 다수 — vendor 별 1 파일)
- *   2) from / to 날짜 선택 + "비교 실행" 버튼
+ *   2) from / to 날짜 선택 + "비교 실행" 버튼 → BE multipart POST
  *   3) 결과 비교 테이블 — 상태 색상 cell:
- *      - TRUE         (초록) — 양쪽 모두 일치
+ *      - TRUE         (초록) — 양쪽 모두 일치 (matchedCount 만, 행 미포함)
  *      - FALSE_LEFT   (주황) — 우리 측엔 있으나 운송사엔 없음
  *      - FALSE_RIGHT  (빨강) — 운송사 측엔 있으나 우리에겐 없음
  *   4) 컬럼 필터 popup (상태 별 필터)
- *   5) "결과 CSV 다운로드" 버튼 (BOM 포함, Excel 한글 호환)
+ *   5) "결과 CSV 다운로드" 버튼 (UTF-8 BOM 포함, Excel 한글 호환, 로컬 직렬화)
  * </pre>
  *
- * <h2>BE 의존</h2>
- * FE-2 슬라이스 (BE-2 endpoint) 의존. 본 단계는 mock data UI 만,
- * FE 단계에서 `POST /api/v1/arologis/dispatch/reconcile` (multipart) 실 API 연결 예정.
+ * <h2>BE 연결</h2>
+ * POST {@code /admin/arologis/dispatch/reconcile} (multipart 다중) — arologis-service
+ * commit bb30725. 응답은 매칭 통계 + mismatch 행 (TRUE 행은 응답에서 제거되고
+ * matchedCount 로만 카운트되므로 화면 "일치" 라벨은 별도 SummaryChip 으로 노출).
  *
  * <h2>설계 노트</h2>
  * <ul>
- *   <li>UUID 비공개 (feedback_uuid_no_user_visibility) — 사용자 노출 = slipNo / vendorName / partnerName.</li>
- *   <li>풀네임 ROLE (feedback_role_naming_full) — DISPATCH / MANAGER / MASTER 가드 (route 정의 측).</li>
+ *   <li>UUID 비공개 (feedback_uuid_no_user_visibility) — 사용자 노출 = slipNo /
+ *       vendorName / partnerName.</li>
+ *   <li>풀네임 ROLE (feedback_role_naming_full) — DISPATCH / MANAGER / MASTER 가드.</li>
  *   <li>한국어 라벨 100% — 영문 라벨 금지.</li>
- *   <li>PR-D CsvUploadDialog (commit fa42fdf) drag-drop UX 일관 + 다중 파일 확장.</li>
- *   <li>5MB / .xlsx 가드 (vendor 별).</li>
- *   <li>외부 의존 0 — 우리 desktop UI 내부에서 모든 reconcile 진행.</li>
+ *   <li>5MB / .xlsx 가드 (vendor 별, FE 사전 검증). BE 도 50MB / .xlsx 강제.</li>
+ *   <li>Designer mock 색상 cell / 상태 chip / drag-drop UX 보존 — CSS 무수정.</li>
  * </ul>
  *
  * <h2>data-testid</h2>
  * <ul>
- *   <li>{@code reconcile-upload-area}</li>
- *   <li>{@code reconcile-file-input}</li>
- *   <li>{@code reconcile-from / reconcile-to}</li>
- *   <li>{@code reconcile-run-btn}</li>
- *   <li>{@code reconcile-status-filter}</li>
- *   <li>{@code reconcile-csv-btn}</li>
- *   <li>{@code reconcile-result-table}</li>
- *   <li>{@code reconcile-row-{slipNo}}</li>
+ *   <li>{@code reconcile-upload-area / reconcile-file-input}</li>
+ *   <li>{@code reconcile-from / reconcile-to / reconcile-run-btn}</li>
+ *   <li>{@code reconcile-status-filter / reconcile-csv-btn}</li>
+ *   <li>{@code reconcile-result-table / reconcile-row-{slipNo}}</li>
  * </ul>
  */
 import {
@@ -53,21 +51,20 @@ import {
   type ChangeEvent,
   type DragEvent as ReactDragEvent,
 } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Badge, Button } from '@samhan/design-system'
 import { usePageTitle } from '../hooks/usePageTitle'
+import {
+  reconcileDispatch,
+  RECONCILE_STATUS_LABEL,
+  type DispatchReconcileResponse,
+  type MismatchedRow,
+  type ReconcileStatus,
+} from '../api/dispatchReconcileApi'
 
 // ---------------------------------------------------------------------------
-// 도메인 타입 (FE 단계에 실 BE 타입으로 교체)
+// 도메인 표시 매핑 (Designer mock 보존)
 // ---------------------------------------------------------------------------
-
-/** 비교 결과 1행의 상태. legacy GAS 11번 의 TRUE/FALSE_LEFT/FALSE_RIGHT 그대로 이식. */
-type ReconcileStatus = 'TRUE' | 'FALSE_LEFT' | 'FALSE_RIGHT'
-
-const STATUS_LABEL: Record<ReconcileStatus, string> = {
-  TRUE: '일치',
-  FALSE_LEFT: '운송사 누락',
-  FALSE_RIGHT: '우리 누락',
-}
 
 const STATUS_VARIANT: Record<ReconcileStatus, 'success' | 'warning' | 'danger'> = {
   TRUE: 'success',
@@ -75,90 +72,17 @@ const STATUS_VARIANT: Record<ReconcileStatus, 'success' | 'warning' | 'danger'> 
   FALSE_RIGHT: 'danger',
 }
 
-/** 비교 결과 1행 (mock). */
-interface ReconcileRow {
-  slipNo: string
-  dispatchDate: string // YYYY-MM-DD
-  vendorName: string
-  ourTime: string | null // HH:mm
-  vendorTime: string | null // HH:mm
-  status: ReconcileStatus
-  remark: string
-}
-
-/** 업로드 파일 1건. */
+/** 업로드 파일 1건 (FE 사전 검증 + vendor 명 추정). */
 interface UploadedFile {
   file: File
-  vendorGuess: string // 파일명 prefix 추정 vendor 명
+  vendorGuess: string
 }
-
-// ---------------------------------------------------------------------------
-// Mock 데이터
-// ---------------------------------------------------------------------------
 
 const MAX_FILE_SIZE_MB = 5
 const ACCEPT_EXT = ['.xlsx']
 
-/** TODO(FE-2): BE 연결 시점에 실 reconcile response rows 로 교체. */
-const MOCK_ROWS: ReconcileRow[] = [
-  {
-    slipNo: 'S20260510-0001',
-    dispatchDate: '2026-05-10',
-    vendorName: 'CJ대한통운',
-    ourTime: '09:30',
-    vendorTime: '09:32',
-    status: 'TRUE',
-    remark: '시각 차이 2분 (허용 범위)',
-  },
-  {
-    slipNo: 'S20260510-0002',
-    dispatchDate: '2026-05-10',
-    vendorName: '롯데택배',
-    ourTime: '10:15',
-    vendorTime: '10:15',
-    status: 'TRUE',
-    remark: '—',
-  },
-  {
-    slipNo: 'S20260510-0003',
-    dispatchDate: '2026-05-10',
-    vendorName: 'CJ대한통운',
-    ourTime: '11:00',
-    vendorTime: null,
-    status: 'FALSE_LEFT',
-    remark: '운송사 엑셀에 누락 — 발송 확인 필요',
-  },
-  {
-    slipNo: 'S20260510-0004',
-    dispatchDate: '2026-05-10',
-    vendorName: '한진택배',
-    ourTime: null,
-    vendorTime: '13:45',
-    status: 'FALSE_RIGHT',
-    remark: '우리 시스템에 dispatch 기록 누락 — 수기 추가 필요',
-  },
-  {
-    slipNo: 'S20260510-0005',
-    dispatchDate: '2026-05-10',
-    vendorName: '롯데택배',
-    ourTime: '14:20',
-    vendorTime: '14:22',
-    status: 'TRUE',
-    remark: '—',
-  },
-  {
-    slipNo: 'S20260510-0006',
-    dispatchDate: '2026-05-10',
-    vendorName: 'CJ대한통운',
-    ourTime: '15:00',
-    vendorTime: null,
-    status: 'FALSE_LEFT',
-    remark: '운송사 엑셀에 누락',
-  },
-]
-
 // ---------------------------------------------------------------------------
-// CSV 다운로드 헬퍼 (UTF-8 BOM, Excel 호환)
+// CSV 다운로드 헬퍼 (UTF-8 BOM, Excel 호환) — Designer mock 보존
 // ---------------------------------------------------------------------------
 
 function csvCell(value: string | null | undefined): string {
@@ -213,10 +137,17 @@ export function ArologisDispatchReconcilePage() {
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<ReconcileStatus | ''>('')
-  const [running, setRunning] = useState(false)
-  const [rows, setRows] = useState<ReconcileRow[] | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 비교 실행 mutation — 다중 multipart POST → 매칭 + mismatch 응답.
+  const reconcileMutation = useMutation({
+    mutationFn: (params: { files: File[]; from: string; to: string }) =>
+      reconcileDispatch(params.files, params.from, params.to),
+  })
+
+  const response: DispatchReconcileResponse | null = reconcileMutation.data ?? null
+  const running = reconcileMutation.isPending
 
   // ----- 파일 추가 -----
 
@@ -274,61 +205,70 @@ export function ArologisDispatchReconcilePage() {
     setFiles((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  // ----- 비교 실행 (mock) -----
+  // ----- 비교 실행 (실 API) -----
 
   const handleRun = () => {
     if (files.length === 0) {
       setError('vendor 엑셀 파일을 1개 이상 업로드하세요.')
       return
     }
+    if (!from || !to) {
+      setError('조회 기간 (시작일 / 종료일) 을 입력하세요.')
+      return
+    }
+    if (from > to) {
+      setError('시작일은 종료일보다 빨라야 합니다.')
+      return
+    }
     setError(null)
-    setRunning(true)
-    setRows(null)
-    // TODO(FE-2): BE 연결 시점에 실 API 호출로 교체
-    //   const formData = new FormData()
-    //   files.forEach((f) => formData.append('files', f.file))
-    //   formData.append('from', from); formData.append('to', to)
-    //   const result = await api.post('/api/v1/arologis/dispatch/reconcile', formData)
-    setTimeout(() => {
-      setRows(MOCK_ROWS)
-      setRunning(false)
-    }, 800)
+    reconcileMutation.mutate({
+      files: files.map((f) => f.file),
+      from,
+      to,
+    })
   }
 
   // ----- 결과 필터링 -----
 
-  const filteredRows = useMemo<ReconcileRow[]>(() => {
-    if (!rows) return []
-    if (!statusFilter) return rows
-    return rows.filter((r) => r.status === statusFilter)
-  }, [rows, statusFilter])
+  const mismatchedRows: MismatchedRow[] = response?.mismatchedRows ?? []
+
+  const filteredRows = useMemo<MismatchedRow[]>(() => {
+    if (!response) return []
+    if (!statusFilter) return mismatchedRows
+    // BE 응답엔 TRUE 행이 미포함 — TRUE 필터 시 빈 배열 (matchedCount 는 SummaryChip 으로 별도 노출).
+    return mismatchedRows.filter((r) => r.status === statusFilter)
+  }, [response, mismatchedRows, statusFilter])
 
   const counts = useMemo(() => {
-    if (!rows) return { TRUE: 0, FALSE_LEFT: 0, FALSE_RIGHT: 0 }
-    const c = { TRUE: 0, FALSE_LEFT: 0, FALSE_RIGHT: 0 } as Record<
-      ReconcileStatus,
-      number
-    >
-    for (const r of rows) c[r.status] += 1
+    if (!response) return { TRUE: 0, FALSE_LEFT: 0, FALSE_RIGHT: 0 }
+    const c: Record<ReconcileStatus, number> = {
+      TRUE: response.matchedCount,
+      FALSE_LEFT: 0,
+      FALSE_RIGHT: 0,
+    }
+    for (const r of mismatchedRows) {
+      if (r.status === 'FALSE_LEFT') c.FALSE_LEFT += 1
+      else if (r.status === 'FALSE_RIGHT') c.FALSE_RIGHT += 1
+    }
     return c
-  }, [rows])
+  }, [response, mismatchedRows])
 
-  // ----- CSV 다운로드 -----
+  // ----- CSV 다운로드 (BE mismatch 행 + matchedCount 헤더) -----
 
   const handleCsv = () => {
-    if (!rows) return
+    if (!response) return
     const out: string[][] = [
       ['상태', 'slipNo', '일자', 'vendor', '우리 시간', '운송사 시간', '비고'],
     ]
     for (const r of filteredRows) {
       out.push([
-        STATUS_LABEL[r.status],
+        RECONCILE_STATUS_LABEL[r.status],
         r.slipNo,
         r.dispatchDate,
-        r.vendorName,
-        r.ourTime ?? '',
-        r.vendorTime ?? '',
-        r.remark,
+        r.vendorName ?? '',
+        r.actualTime ?? '',
+        r.expectedTime ?? '',
+        r.reason,
       ])
     }
     downloadCsv(`reconcile_${from}_${to}.csv`, out)
@@ -351,22 +291,7 @@ export function ArologisDispatchReconcilePage() {
         </div>
       </header>
 
-      <p
-        style={{
-          margin: 0,
-          padding: '8px 12px',
-          fontSize: 12,
-          color: 'var(--color-warning-700, #b45309)',
-          background: 'var(--color-warning-50, #fffbeb)',
-          border: '1px solid var(--color-warning-200, #fde68a)',
-          borderRadius: 4,
-        }}
-      >
-        본 화면은 PR-F1 1차 mock 입니다. BE 연결 시점에 실 API 호출로 교체
-        예정입니다 (TODO FE-2).
-      </p>
-
-      {/* ───── 다중 drag-drop 업로드 영역 ───── */}
+      {/* ───── 다중 drag-drop 업로드 영역 (Designer mock 보존) ───── */}
       <div
         data-testid="reconcile-upload-area"
         onDrop={handleDrop}
@@ -439,7 +364,24 @@ export function ArologisDispatchReconcilePage() {
         </div>
       ) : null}
 
-      {/* ───── 업로드 파일 목록 ───── */}
+      {reconcileMutation.isError ? (
+        <div
+          role="alert"
+          style={{
+            padding: '8px 12px',
+            border: '1px solid var(--color-danger-300, #fca5a5)',
+            background: 'var(--color-danger-50, #fef2f2)',
+            color: 'var(--color-danger-700, #b91c1c)',
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          비교 실행 중 오류가 발생했습니다. 파일 형식 / 기간 / 권한을 확인 후 다시
+          시도해 주세요.
+        </div>
+      ) : null}
+
+      {/* ───── 업로드 파일 목록 (Designer mock 보존) ───── */}
       {files.length > 0 ? (
         <div
           style={{
@@ -577,8 +519,8 @@ export function ArologisDispatchReconcilePage() {
         </Button>
       </div>
 
-      {/* ───── 결과 요약 + 필터 + CSV ───── */}
-      {rows ? (
+      {/* ───── 결과 요약 + 필터 + CSV (Designer mock 보존) ───── */}
+      {response ? (
         <div
           style={{
             display: 'flex',
@@ -590,17 +532,17 @@ export function ArologisDispatchReconcilePage() {
         >
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <SummaryChip
-              label={STATUS_LABEL.TRUE}
+              label={RECONCILE_STATUS_LABEL.TRUE}
               value={counts.TRUE}
               tone="success"
             />
             <SummaryChip
-              label={STATUS_LABEL.FALSE_LEFT}
+              label={RECONCILE_STATUS_LABEL.FALSE_LEFT}
               value={counts.FALSE_LEFT}
               tone="warning"
             />
             <SummaryChip
-              label={STATUS_LABEL.FALSE_RIGHT}
+              label={RECONCILE_STATUS_LABEL.FALSE_RIGHT}
               value={counts.FALSE_RIGHT}
               tone="danger"
             />
@@ -632,9 +574,8 @@ export function ArologisDispatchReconcilePage() {
               style={inputStyle}
             >
               <option value="">전체</option>
-              <option value="TRUE">{STATUS_LABEL.TRUE}</option>
-              <option value="FALSE_LEFT">{STATUS_LABEL.FALSE_LEFT}</option>
-              <option value="FALSE_RIGHT">{STATUS_LABEL.FALSE_RIGHT}</option>
+              <option value="FALSE_LEFT">{RECONCILE_STATUS_LABEL.FALSE_LEFT}</option>
+              <option value="FALSE_RIGHT">{RECONCILE_STATUS_LABEL.FALSE_RIGHT}</option>
             </select>
             <Button
               variant="secondary"
@@ -647,8 +588,8 @@ export function ArologisDispatchReconcilePage() {
         </div>
       ) : null}
 
-      {/* ───── 결과 비교 테이블 ───── */}
-      {rows ? (
+      {/* ───── 결과 비교 테이블 (Designer mock 색상 cell 보존) ───── */}
+      {response ? (
         <div
           data-testid="reconcile-result-table"
           style={{
@@ -694,13 +635,15 @@ export function ArologisDispatchReconcilePage() {
                   >
                     {statusFilter
                       ? '해당 상태에 결과가 없습니다.'
-                      : '비교 결과가 없습니다.'}
+                      : mismatchedRows.length === 0
+                        ? '모든 라인이 일치합니다 — mismatch 없음.'
+                        : '비교 결과가 없습니다.'}
                   </td>
                 </tr>
               ) : (
                 filteredRows.map((r) => (
                   <tr
-                    key={r.slipNo}
+                    key={`${r.slipNo}-${r.dispatchDate}-${r.status}`}
                     data-testid={`reconcile-row-${r.slipNo}`}
                     style={{
                       borderTop: '1px solid var(--color-neutral-100, #F3F4F6)',
@@ -714,21 +657,21 @@ export function ArologisDispatchReconcilePage() {
                       }}
                     >
                       <Badge variant={STATUS_VARIANT[r.status]}>
-                        {STATUS_LABEL[r.status]}
+                        {RECONCILE_STATUS_LABEL[r.status]}
                       </Badge>
                     </td>
                     <td style={tdStyle}>{r.slipNo}</td>
                     <td style={tdStyle}>{r.dispatchDate}</td>
-                    <td style={tdStyle}>{r.vendorName}</td>
-                    <td style={tdStyle}>{r.ourTime ?? '—'}</td>
-                    <td style={tdStyle}>{r.vendorTime ?? '—'}</td>
+                    <td style={tdStyle}>{r.vendorName ?? '—'}</td>
+                    <td style={tdStyle}>{r.actualTime ?? '—'}</td>
+                    <td style={tdStyle}>{r.expectedTime ?? '—'}</td>
                     <td
                       style={{
                         ...tdStyle,
                         color: 'var(--color-neutral-600, #4B5563)',
                       }}
                     >
-                      {r.remark}
+                      {r.reason}
                     </td>
                   </tr>
                 ))
@@ -742,7 +685,7 @@ export function ArologisDispatchReconcilePage() {
 }
 
 // ---------------------------------------------------------------------------
-// Summary chip (상태별 카운트)
+// Summary chip (상태별 카운트) — Designer mock 보존
 // ---------------------------------------------------------------------------
 
 interface SummaryChipProps {
@@ -781,7 +724,8 @@ function SummaryChip({ label, value, tone }: SummaryChipProps) {
 }
 
 // ---------------------------------------------------------------------------
-// 결과 행 status cell 배경 색상 (TRUE=초록 / FALSE_LEFT=주황 / FALSE_RIGHT=빨강)
+// 결과 행 status cell 배경 색상 (Designer mock 보존)
+// TRUE=초록 (응답 미포함이지만 매핑 보존) / FALSE_LEFT=주황 / FALSE_RIGHT=빨강
 // ---------------------------------------------------------------------------
 
 const STATUS_CELL_BG: Record<ReconcileStatus, string> = {
@@ -791,7 +735,7 @@ const STATUS_CELL_BG: Record<ReconcileStatus, string> = {
 }
 
 // ---------------------------------------------------------------------------
-// 공통 스타일
+// 공통 스타일 (Designer mock 보존)
 // ---------------------------------------------------------------------------
 
 const inputStyle: React.CSSProperties = {
