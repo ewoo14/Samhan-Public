@@ -8,19 +8,21 @@
 
     동작 순서:
         1) 14 service /actuator/health 200 검증 (+ dc-config-service 선택)
-        2) kimmiseon (MASTER) 로그인 → JWT 발급
-        3) 7 endpoint smoke test:
-            - GET /api/v1/users/me                          (user-service via gateway)
-            - GET /api/v1/products?page=0&size=10           (product-service)
-            - GET /api/v1/inventory/balances?page=0&size=10 (inventory-service)
-            - GET /api/v1/slips?page=0&size=10              (slip-service)
-            - GET /api/v1/partners/admin?page=0&size=10     (partner-service)
-            - GET /api/v1/notifications?page=0&size=10      (notification-service)
-            - GET /api/v1/dashboard/kpi/today               (dashboard-service)
+        2) kimmiseon (MASTER) 로그인 → JWT 발급 + claims 디코드 (sub/role)
+        3) 7 endpoint smoke test (gateway 경유 + service port 직접 혼합):
+            - GET /api/v1/auth/me                          (auth-service via gateway, controller /auth/me)
+            - GET /api/v1/products?page=0&size=10          (product-service via gateway, controller /products)
+            - GET /api/v1/inventory/balances?page=0&size=10 (inventory-service via gateway, controller /inventory/balances)
+            - GET /api/v1/slips?page=0&size=10             (slip-service via gateway, controller /slips)
+            - GET http://localhost:8095/admin/partners?page=0&size=10  (partner-service direct)
+            - GET http://localhost:8093/admin/notifications?page=0&size=10  (notification-service direct)
+            - GET http://localhost:8094/admin/dashboard/kpi?from=...&to=... (dashboard-service direct)
         4) 종합 합격/불합격 판정
 
 .PARAMETER GatewayUrl
-    API Gateway base URL (default http://localhost:8080).
+    API Gateway base URL (default http://localhost:8080). 일부 admin endpoint 는
+    controller @RequestMapping 이 gateway StripPrefix=2 와 정합되지 않아 service port
+    직접 호출 (Authorization + X-User-Id + X-User-Role 헤더 동시 전달). 로그인은 gateway 경유.
 
 .PARAMETER LoginId
     JWT 발급용 loginId (default kimmiseon).
@@ -39,8 +41,10 @@
 
 .NOTES
     - Windows PowerShell 5.1 / PowerShell 7+ 호환
-    - UTF-8 (BOM 없음) 으로 저장 — feedback_powershell_utf8_writes 준수
+    - UTF-8 (BOM 있음, PowerShell 5.1 한글 호환) 으로 저장 — feedback_powershell_utf8_writes 준수
     - secret hardcode 금지 — kimmiseon 비밀번호는 OrgChartSeeder seed (dev only)
+    - Endpoint path 는 controller @RequestMapping 실측 + gateway routing (PR #122 BE 리뷰 정합 fix).
+      gateway StripPrefix=2 와 mismatch 인 경우 service port 직접 호출 + JWT 헤더 위임.
     - 사전 의존 — start-local-full.ps1 부팅 + 14 service UP
 #>
 
@@ -84,6 +88,25 @@ $services = @(
 )
 if (-not $SkipDcConfig) {
     $services += @{ name = 'dc-config-service'; port = 8089 }
+}
+
+# -----------------------------------------------------------------------------
+# 0-1. JWT base64url payload 디코드 (X-User-Id / X-User-Role 추출 헬퍼)
+# -----------------------------------------------------------------------------
+function Get-JwtClaims {
+    param([string] $Token)
+    $parts = $Token -split '\.'
+    if ($parts.Length -lt 2) {
+        throw "JWT 형식 오류 (segment 부족): $Token"
+    }
+    $payload = $parts[1].Replace('-', '+').Replace('_', '/')
+    switch ($payload.Length % 4) {
+        2 { $payload += '==' }
+        3 { $payload += '=' }
+    }
+    $bytes = [System.Convert]::FromBase64String($payload)
+    $json  = [System.Text.Encoding]::UTF8.GetString($bytes)
+    return ($json | ConvertFrom-Json)
 }
 
 # -----------------------------------------------------------------------------
@@ -139,6 +162,8 @@ Write-Host '[2/3] JWT 발급 (kimmiseon = MASTER)' -ForegroundColor Yellow
 $loginUrl  = "$GatewayUrl/api/auth/login"
 $loginBody = @{ loginId = $LoginId; password = $Password } | ConvertTo-Json -Compress
 $token     = $null
+$userId    = $null
+$roleName  = $null
 try {
     $loginResp = Invoke-RestMethod -Uri $loginUrl -Method POST `
         -ContentType 'application/json' -Body $loginBody -TimeoutSec 10
@@ -146,7 +171,13 @@ try {
     if (-not $token) {
         throw "응답에 accessToken 부재"
     }
-    Write-Host "   OK — JWT 발급 (length=$($token.Length))" -ForegroundColor Green
+    $claims   = Get-JwtClaims -Token $token
+    $userId   = $claims.sub
+    $roleName = $claims.role
+    if (-not $userId -or -not $roleName) {
+        throw "JWT claims 부재 (sub / role)"
+    }
+    Write-Host "   OK — JWT 발급 (length=$($token.Length), sub=$userId, role=$roleName)" -ForegroundColor Green
 } catch {
     Write-Host "   FAIL — 로그인 실패: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host '   smoke test step 3 생략 (token 부재).' -ForegroundColor Yellow
@@ -161,22 +192,33 @@ try {
 # 3. 주요 endpoint smoke test
 # -----------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[3/3] 주요 endpoint smoke test (gateway 경유)' -ForegroundColor Yellow
+Write-Host '[3/3] 주요 endpoint smoke test (gateway 경유 + service port 직접 혼합)' -ForegroundColor Yellow
 
+# dashboard /admin/dashboard/kpi 는 from / to 필수 query param — 오늘 날짜 사용
+$today    = (Get-Date).ToString('yyyy-MM-dd')
+$kpiQuery = "from=$today&to=$today"
+
+# transport = 'gateway' (Authorization 만) | 'direct' (Authorization + X-User-Id + X-User-Role)
+# direct 는 controller @RequestMapping 이 gateway StripPrefix=2 와 mismatch 인 경우 사용 (PR #122 BE 리뷰 fix).
 $smokeEndpoints = @(
-    @{ name = 'user-service';         path = '/api/v1/users/me' },
-    @{ name = 'product-service';      path = '/api/v1/products?page=0&size=10' },
-    @{ name = 'inventory-service';    path = '/api/v1/inventory/balances?page=0&size=10' },
-    @{ name = 'slip-service';         path = '/api/v1/slips?page=0&size=10' },
-    @{ name = 'partner-service';      path = '/api/v1/partners/admin?page=0&size=10' },
-    @{ name = 'notification-service'; path = '/api/v1/notifications?page=0&size=10' },
-    @{ name = 'dashboard-service';    path = '/api/v1/dashboard/kpi/today' }
+    @{ name = 'auth-service /auth/me';                transport = 'gateway'; url = "$GatewayUrl/api/v1/auth/me" },
+    @{ name = 'product-service /products';            transport = 'gateway'; url = "$GatewayUrl/api/v1/products?page=0&size=10" },
+    @{ name = 'inventory-service /inventory/balances';transport = 'gateway'; url = "$GatewayUrl/api/v1/inventory/balances?page=0&size=10" },
+    @{ name = 'slip-service /slips';                  transport = 'gateway'; url = "$GatewayUrl/api/v1/slips?page=0&size=10" },
+    @{ name = 'partner-service /admin/partners';      transport = 'direct';  url = 'http://localhost:8095/admin/partners?page=0&size=10' },
+    @{ name = 'notification-service /admin/notifications'; transport = 'direct'; url = 'http://localhost:8093/admin/notifications?page=0&size=10' },
+    @{ name = 'dashboard-service /admin/dashboard/kpi';    transport = 'direct'; url = "http://localhost:8094/admin/dashboard/kpi?$kpiQuery" }
 )
 
 $smokeResults = @()
-$headers = @{ Authorization = "Bearer $token" }
 foreach ($ep in $smokeEndpoints) {
-    $url = "$GatewayUrl$($ep.path)"
+    $url = $ep.url
+    $headers = @{ Authorization = "Bearer $token" }
+    if ($ep.transport -eq 'direct') {
+        $headers['X-User-Id']   = $userId
+        $headers['X-User-Role'] = $roleName
+    }
+
     $status   = 'EXCEPTION'
     $note     = ''
     $verdict  = 'FAIL'
@@ -200,11 +242,11 @@ foreach ($ep in $smokeEndpoints) {
         if ($msg.Length -gt 50) { $note = $msg.Substring(0, 50) + '...' } else { $note = $msg }
     }
     $smokeResults += [pscustomobject]@{
-        Service  = $ep.name
-        Path     = $ep.path
-        Status   = $status
-        Verdict  = $verdict
-        Note     = $note
+        Service   = $ep.name
+        Transport = $ep.transport
+        Status    = $status
+        Verdict   = $verdict
+        Note      = $note
     }
 }
 $smokeResults | Format-Table -AutoSize

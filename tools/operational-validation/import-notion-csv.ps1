@@ -7,17 +7,20 @@
     tools/legacy-gas/_notion-export/ 의 4 CSV 를 admin endpoint 4 회 POST 호출.
 
     동작 순서:
-        1) kimmiseon (MASTER) 로그인 → JWT 발급
+        1) kimmiseon (MASTER) 로그인 → JWT 발급 + claims 디코드 (userId / role)
         2) 4 CSV 를 multipart/form-data 로 admin endpoint 호출
-            - REGION : POST /api/v1/arologis/admin/regions/import         (arologis-service)
-            - DC     : POST /api/v1/dc-config/admin/import                (dc-config-service)
-            - CHAT   : POST /api/v1/notification/admin/chat-rooms/import  (notification-service)
-            - BLOCK  : POST /api/v1/partners/admin/blocks/import          (partner-service)
+            - REGION : POST http://localhost:8097/admin/arologis/regions/import         (arologis-service)
+            - DC     : POST http://localhost:8089/api/v1/dc-config/admin/import         (dc-config-service)
+            - CHAT   : POST http://localhost:8093/api/v1/notification/admin/chat-rooms/import  (notification-service)
+            - BLOCK  : POST http://localhost:8095/api/v1/partners/admin/blocks/import   (partner-service)
         3) 각 응답 (inserted/updated/rejected/skipped) 표 출력
         4) 종합 합격/불합격 판정
 
 .PARAMETER GatewayUrl
-    API Gateway base URL (default http://localhost:8080).
+    API Gateway base URL (default http://localhost:8080). 본 script 는 admin endpoint
+    의 controller @RequestMapping 이 gateway StripPrefix=2 와 정합되지 않아 service
+    port 직접 호출 (Authorization + X-User-Id + X-User-Role 헤더 동시 전달). 로그인은
+    gateway 경유.
 
 .PARAMETER LoginId
     JWT 발급용 loginId (default kimmiseon).
@@ -39,8 +42,10 @@
 
 .NOTES
     - Windows PowerShell 5.1 / PowerShell 7+ 호환
-    - UTF-8 (BOM 없음) 으로 저장 — feedback_powershell_utf8_writes 준수
+    - UTF-8 (BOM 있음, PowerShell 5.1 한글 호환) 으로 저장 — feedback_powershell_utf8_writes 준수
     - secret hardcode 금지 — kimmiseon 비밀번호는 OrgChartSeeder seed (dev only)
+    - Endpoint path 는 controller @RequestMapping 실측 + gateway routing (PR #122 BE 리뷰 정합 fix).
+      gateway StripPrefix=2 와 mismatch 인 경우 service port 직접 호출 + JWT 헤더 위임.
     - 사전 의존 — start-local-full.ps1 부팅 + 4 service UP
         - arologis-service     (8097)
         - dc-config-service    (8089) — 14 service 외 별도 부팅 필요
@@ -83,36 +88,56 @@ if (-not (Test-Path $NotionExportRoot)) {
 
 # 4 CSV import 정의
 # 디렉토리 이름은 한글 + Notion 의 base CSV 만 사용 (_all.csv 제외).
+# url 은 service port 직접 — controller @RequestMapping 과 gateway StripPrefix=2 정합 (PR #122 BE 리뷰 fix).
 $imports = @(
     @{
         name           = 'REGION (19)'
         dirName        = '가배차용 지역별 분류표'
-        endpoint       = '/api/v1/arologis/admin/regions/import'
+        url            = 'http://localhost:8097/admin/arologis/regions/import'
         expectedRows   = 19
         formField      = 'file'
     },
     @{
         name           = 'DC (221)'
         dirName        = '거래처 DC정보'
-        endpoint       = '/api/v1/dc-config/admin/import'
+        url            = 'http://localhost:8089/api/v1/dc-config/admin/import'
         expectedRows   = 221
         formField      = 'file'
     },
     @{
         name           = 'CHAT (111)'
         dirName        = '단톡방리스트'
-        endpoint       = '/api/v1/notification/admin/chat-rooms/import'
+        url            = 'http://localhost:8093/api/v1/notification/admin/chat-rooms/import'
         expectedRows   = 111
         formField      = 'file'
     },
     @{
         name           = 'BLOCK (5)'
         dirName        = '발송금지리스트'
-        endpoint       = '/api/v1/partners/admin/blocks/import'
+        url            = 'http://localhost:8095/api/v1/partners/admin/blocks/import'
         expectedRows   = 5
         formField      = 'file'
     }
 )
+
+# -----------------------------------------------------------------------------
+# 0-1. JWT base64url payload 디코드 (X-User-Id / X-User-Role 추출 헬퍼)
+# -----------------------------------------------------------------------------
+function Get-JwtClaims {
+    param([string] $Token)
+    $parts = $Token -split '\.'
+    if ($parts.Length -lt 2) {
+        throw "JWT 형식 오류 (segment 부족): $Token"
+    }
+    $payload = $parts[1].Replace('-', '+').Replace('_', '/')
+    switch ($payload.Length % 4) {
+        2 { $payload += '==' }
+        3 { $payload += '=' }
+    }
+    $bytes = [System.Convert]::FromBase64String($payload)
+    $json  = [System.Text.Encoding]::UTF8.GetString($bytes)
+    return ($json | ConvertFrom-Json)
+}
 
 # -----------------------------------------------------------------------------
 # 1. JWT 발급 (kimmiseon)
@@ -122,6 +147,8 @@ Write-Host '[1/3] JWT 발급 (kimmiseon = MASTER)' -ForegroundColor Yellow
 $loginUrl  = "$GatewayUrl/api/auth/login"
 $loginBody = @{ loginId = $LoginId; password = $Password } | ConvertTo-Json -Compress
 $token     = $null
+$userId    = $null
+$roleName  = $null
 try {
     $loginResp = Invoke-RestMethod -Uri $loginUrl -Method POST `
         -ContentType 'application/json' -Body $loginBody -TimeoutSec 10
@@ -129,7 +156,13 @@ try {
     if (-not $token) {
         throw "응답에 accessToken 부재 — body=$($loginResp | ConvertTo-Json -Compress)"
     }
-    Write-Host "   OK — JWT 발급 (length=$($token.Length))" -ForegroundColor Green
+    $claims   = Get-JwtClaims -Token $token
+    $userId   = $claims.sub
+    $roleName = $claims.role
+    if (-not $userId -or -not $roleName) {
+        throw "JWT claims 부재 (sub / role) — claims=$($claims | ConvertTo-Json -Compress)"
+    }
+    Write-Host "   OK — JWT 발급 (length=$($token.Length), sub=$userId, role=$roleName)" -ForegroundColor Green
 } catch {
     Write-Host "   FAIL — 로그인 실패: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "   확인 사항:" -ForegroundColor Yellow
@@ -143,12 +176,12 @@ try {
 # 2. 4 CSV import 호출
 # -----------------------------------------------------------------------------
 Write-Host ''
-Write-Host '[2/3] 4 CSV import 호출' -ForegroundColor Yellow
+Write-Host '[2/3] 4 CSV import 호출 (service port 직접 — gateway StripPrefix=2 mismatch 우회)' -ForegroundColor Yellow
 
 $results = @()
 foreach ($imp in $imports) {
     Write-Host ''
-    Write-Host "   ▶ $($imp.name) — $($imp.endpoint)" -ForegroundColor Cyan
+    Write-Host "   ▶ $($imp.name) — $($imp.url)" -ForegroundColor Cyan
 
     # CSV 파일 탐색 — _all.csv 제외, 첫 .csv 1 개 사용
     $dirPath = Join-Path $NotionExportRoot $imp.dirName
@@ -156,7 +189,7 @@ foreach ($imp in $imports) {
         Write-Host "     SKIP — 디렉토리 부재: $dirPath" -ForegroundColor Yellow
         $results += [pscustomobject]@{
             DB        = $imp.name
-            Endpoint  = $imp.endpoint
+            Url       = $imp.url
             Expected  = $imp.expectedRows
             Inserted  = '?'
             Updated   = '?'
@@ -173,7 +206,7 @@ foreach ($imp in $imports) {
         Write-Host "     SKIP — .csv 파일 부재: $dirPath" -ForegroundColor Yellow
         $results += [pscustomobject]@{
             DB        = $imp.name
-            Endpoint  = $imp.endpoint
+            Url       = $imp.url
             Expected  = $imp.expectedRows
             Inserted  = '?'
             Updated   = '?'
@@ -187,8 +220,14 @@ foreach ($imp in $imports) {
 
     # multipart/form-data 호출
     # PowerShell 5.1 호환 — Invoke-WebRequest -Form 미지원 → 수동 multipart body 구성
-    $url     = "$GatewayUrl$($imp.endpoint)"
-    $headers = @{ Authorization = "Bearer $token" }
+    # gateway 미경유 → JWT (Authorization) + X-User-Id + X-User-Role 동시 전달.
+    # downstream HeaderAuthenticationFilter 가 X-User-* 신뢰 → @PreAuthorize 통과.
+    $url = $imp.url
+    $headers = @{
+        Authorization   = "Bearer $token"
+        'X-User-Id'     = $userId
+        'X-User-Role'   = $roleName
+    }
 
     $boundary = [System.Guid]::NewGuid().ToString()
     $LF       = "`r`n"
@@ -267,7 +306,7 @@ foreach ($imp in $imports) {
         if (-not $ContinueOnError) {
             $results += [pscustomobject]@{
                 DB        = $imp.name
-                Endpoint  = $imp.endpoint
+                Url       = $imp.url
                 Expected  = $imp.expectedRows
                 Inserted  = $inserted
                 Updated   = $updated
@@ -283,7 +322,7 @@ foreach ($imp in $imports) {
 
     $results += [pscustomobject]@{
         DB        = $imp.name
-        Endpoint  = $imp.endpoint
+        Url       = $imp.url
         Expected  = $imp.expectedRows
         Inserted  = $inserted
         Updated   = $updated
