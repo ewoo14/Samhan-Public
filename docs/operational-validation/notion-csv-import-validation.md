@@ -1,0 +1,130 @@
+# 항목 4 — 4 CSV import 실 데이터 (Notion export) 검증
+
+> **선행 산출물** — `tools/legacy-gas/_notion-export/` (사용자 노션 export)
+> **본 문서** — 4 CSV 일괄 import + DB row count 검증 + reject 보고 절차
+> **자동화** — `tools/operational-validation/import-notion-csv.ps1`
+
+---
+
+## 1. 4 CSV + 매핑 service / endpoint
+
+| Notion DB | CSV 위치 (legacy-gas/_notion-export 하위) | 대상 service | endpoint | 기대 row | 인증 |
+| --------- | ----------------------------------------- | ------------ | -------- | -------- | ---- |
+| 가배차용 지역별 분류표 | `가배차용 지역별 분류표/*.csv` | arologis-service (8097) | `POST /api/v1/arologis/admin/regions/import` | 19 | MASTER/MANAGER |
+| 거래처 DC정보 | `거래처 DC정보/*.csv` | dc-config-service (8089) | `POST /api/v1/dc-config/admin/import` | 221 | MASTER |
+| 단톡방리스트 | `단톡방리스트/*.csv` | notification-service (8093) | `POST /api/v1/notification/admin/chat-rooms/import` | 111 | MASTER/MANAGER |
+| 발송금지리스트 | `발송금지리스트/*.csv` | partner-service (8095) | `POST /api/v1/partners/admin/blocks/import` | 5 | MASTER |
+
+> 각 CSV 디렉토리에는 동일 내용의 `_all.csv` 도 존재 — 본 검증은 base CSV 1 건만 사용.
+>
+> 응답 schema 는 service 별 ImportResult DTO. 공통 필드: `inserted` / `updated` / `rejected[]` / `skipped` (일부 service 만).
+
+---
+
+## 2. 사용자 작업 단계
+
+### 2-1. start-local-full.ps1 부팅 + healthy 확인
+
+```powershell
+.\infrastructure\scripts\start-local-full.ps1
+```
+
+다음 4 service 가 UP 상태 의무:
+- arologis-service (8097)
+- dc-config-service (8089) ← 14 service 외 추가 service. 별도 부팅 필요 시 `gradlew :services:dc-config-service:bootRun` 수동 기동
+- notification-service (8093)
+- partner-service (8095)
+
+### 2-2. import 자동화 스크립트 실행
+
+```powershell
+.\tools\operational-validation\import-notion-csv.ps1
+```
+
+스크립트 동작:
+1. kimmiseon (MASTER) 로그인 → JWT 발급
+2. 4 CSV 파일을 multipart 로 admin endpoint 4 회 호출
+3. 각 응답을 표 형식으로 표시 (inserted / updated / rejected / skipped)
+4. 종합 표 + 합격/불합격 판정
+
+### 2-3. 결과 검증
+
+스크립트 종료 시 다음 표 출력 기대:
+
+```
+DB              endpoint                                         expected  actual  rejected  verdict
+-----           ----------                                       --------  ------  --------  -------
+REGION (19)     POST /api/v1/arologis/admin/regions/import       19        19      0         OK
+DC (221)        POST /api/v1/dc-config/admin/import              221       221     0         OK
+CHAT (111)      POST /api/v1/notification/admin/chat-rooms/import 111      111     0         OK
+BLOCK (5)       POST /api/v1/partners/admin/blocks/import        5         5       0         OK
+```
+
+### 2-4. DB row count 직접 검증 (선택 — psql)
+
+```powershell
+docker exec samhan-postgres psql -U samhan -d arologis_db        -c "SELECT count(*) FROM regions;"
+docker exec samhan-postgres psql -U samhan -d dc_config_db       -c "SELECT count(*) FROM dc_configs;"
+docker exec samhan-postgres psql -U samhan -d notification_db    -c "SELECT count(*) FROM chat_room_mappings;"
+docker exec samhan-postgres psql -U samhan -d partner_db         -c "SELECT count(*) FROM blocked_partners;"
+```
+
+---
+
+## 3. 합격 기준
+
+| 항목 | 기대 결과 | 합격 |
+| ---- | --------- | ---- |
+| 4 endpoint 모두 HTTP 200 | 응답 body 정상 JSON | ✅ |
+| inserted+updated ≥ expected | row count 매칭 | ✅ |
+| rejected 배열 길이 0 | lookup miss 없음 | ✅ (부분 통과 시 reject 보고서 검토 의무) |
+| DB row count = expected | psql 직접 확인 | ✅ |
+
+---
+
+## 4. reject 보고서 (lookup miss) 분석
+
+Notion CSV 에는 **사업자명 텍스트** 만 있어, 우리 partner_db 의 `partners.name` 과 fuzzy 매칭 실패 가능. 각 service 의 import 응답 `rejected` 배열 검토:
+
+```json
+{
+  "inserted": 218,
+  "updated": 0,
+  "rejected": [
+    { "row": 5, "reason": "partner not found", "name": "구) 한솔물류" },
+    { "row": 47, "reason": "partner not found", "name": "동방운수(폐업)" },
+    { "row": 102, "reason": "phone format invalid", "value": "010-1234-567" }
+  ]
+}
+```
+
+해결:
+- partner not found → 거래처 마스터에 사전 등록 후 재 import
+- format invalid → CSV 수정 후 재 import (idempotent — 동일 데이터는 update 처리)
+
+---
+
+## 5. 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+| ---- | ---- | ---- |
+| HTTP 401 | JWT 발급 실패 | kimmiseon 비밀번호 `samhan!2026` 확인, auth-service UP 확인 |
+| HTTP 403 | 토큰 role MASTER/MANAGER 아님 | `kimmiseon` 가 MASTER 인지 OrgChartSeeder 확인 |
+| HTTP 400 (CSV 파싱) | UTF-8 BOM 누락 / 구분자 차이 | Notion export 원본 그대로 사용 (수동 가공 금지) |
+| HTTP 400 (필드 누락) | CSV 헤더 변경 | service ImportService 의 expected header 와 비교 |
+| dc-config-service down | 14 service 부팅 스크립트에서 누락 | `gradlew :services:dc-config-service:bootRun` 수동 기동 |
+| 일부 row rejected | partner_db lookup miss | reject 보고서 → partner 등록 → 재 import |
+
+---
+
+## 6. AWS 진입 (Phase 11) 영향
+
+- 본 항목 = **production 부팅 직후 1 회 import** 의무 (실 데이터 cutover)
+- production EC2 에서도 동일 endpoint 호출 가능 — `start-local-full.ps1` 대신 systemd unit 부팅 후 `import-notion-csv.ps1` 의 PowerShell 명령을 bash + curl 로 변환 (Phase 11 cutover 슬라이스 별도)
+- 주의 — production 에서는 `kimmiseon` 비밀번호 cutover 직후 변경 후 import 작업 진행 (기본 비밀번호 `samhan!2026` 노출 위험)
+
+---
+
+## 7. 검증 완료 시 update
+
+`docs/operational-validation/README.md` 의 §2 진행 상황 chart 의 항목 4 를 ✅ + 검증 일자 + 4 endpoint 응답 row count 비고에 명시.
