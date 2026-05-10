@@ -34,6 +34,13 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     implementation project(':shared:common')
+    // PR-H4b (Phase 12 Step 4b) BE-E — shared:realtime-abstraction module 의존 추가.
+    // logging-service 는 audit log sink (Elasticsearch) 역할이라 본 PR 범위는 broker bean 만 활성
+    // (다른 service 의 SSE 이벤트를 본 service 가 소비하는 향후 시나리오 대비).
+    // audit_log/edit_request 도메인 entity 는 본 service 에서는 등록 X (Postgres JPA 미사용).
+    // shared module 이 transitive 로 spring-boot-starter-data-jpa 를 가져오지만 application.yml
+    // 에서 DataSource/JPA autoconfig 를 명시 exclude → 정상 startup.
+    implementation project(':shared:realtime-abstraction')
 
     compileOnly "org.projectlombok:lombok:${lombokVersion}"
     annotationProcessor "org.projectlombok:lombok:${lombokVersion}"

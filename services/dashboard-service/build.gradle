@@ -68,6 +68,12 @@ dependencies {
     implementation project(':shared:discovery-abstraction')
     // Phase 9 W4 — UserVerifier 표준 abstraction (W3 backlog #1 채택)
     implementation project(':shared:user-client-abstraction')
+    // PR-H4b (Phase 12 Step 4b) BE-E — shared:realtime-abstraction module 의존 추가.
+    // dashboard-service 는 read-only 위주 (KPI/매출/실시간재고 집계) — 본 PR 범위는 broker bean 만
+    // 활성. 향후 PR 에서 다른 service (slip-service / inventory-service 등) 의 SSE 이벤트 구독 →
+    // 대시보드 위젯 실시간 갱신 가능. 본 service 자체의 audit_log/edit_request 도메인 entity 는 등록 X
+    // (read-only 라 mutation 가드 불필요).
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 
