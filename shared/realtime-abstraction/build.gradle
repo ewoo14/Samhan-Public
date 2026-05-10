@@ -1,0 +1,69 @@
+/*
+ * shared:realtime-abstraction — PR-H4a (Phase 12 Step 4a) 통합 module.
+ *
+ * 14 service 가 공통으로 사용하는 실시간 협업 인프라 추출:
+ *   * broker      — RealtimeBroker interface + InMemoryRealtimeBroker default impl + RedisRealtimeBroker 옵션
+ *   * audit       — AuditLogRecorder interface + AuditLogEntry @MappedSuperclass + ChangeEntry record
+ *   * lock        — EditLockGuard interface + EditLockPolicy enum + LockedException
+ *   * editrequest — EditRequestService interface + EditRequestRecord @MappedSuperclass + EditRequestStatus enum
+ *
+ * AutoConfiguration 패턴 (shared:security 일관) — 의존만 추가하면 InMemoryRealtimeBroker bean 자동 등록.
+ * Redis broker 는 {@code app.realtime.broker=redis} 시점만 활성 (Conditional).
+ *
+ * PR-H4b 에서 product/inventory/partner/groupware/dashboard 등 다른 13 service 가 본 module 의존만
+ * 추가하여 자체 슬라이스의 audit/realtime 활성 가능 — slip-service 가 시범 활용 사례.
+ *
+ * Java library only — Spring Boot plugin 미적용. shared:common / shared:security 패턴 일관.
+ */
+
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+    }
+}
+
+dependencies {
+    // Spring Boot autoconfiguration + ConfigurationProperties + servlet (SseEmitter)
+    api 'org.springframework.boot:spring-boot-autoconfigure'
+    api 'org.springframework.boot:spring-boot'
+    api 'org.springframework:spring-web'
+    api 'org.springframework:spring-webmvc'
+    api 'org.springframework:spring-context'
+    api 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // SseEmitter + @Scheduled — webmvc + context 만으로 충분 (servlet API 는 webmvc 가 transitive)
+    api 'jakarta.annotation:jakarta.annotation-api'
+    api 'org.slf4j:slf4j-api'
+
+    // Jackson — Redis 직렬화/역직렬화. core 만 (databind 는 Spring Boot 가 transitive 제공)
+    api 'com.fasterxml.jackson.core:jackson-databind'
+
+    // BaseEntity / BusinessException / ErrorCode — shared:common 으로 일관
+    api project(':shared:common')
+
+    // Redis broker 옵션 — compileOnly. consumer service 가 starter-data-redis 의존 시만 활성.
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // ConfigurationProcessor for `META-INF/spring-configuration-metadata.json`
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    testCompileOnly "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

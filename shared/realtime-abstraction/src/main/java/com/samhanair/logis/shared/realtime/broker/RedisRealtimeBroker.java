@@ -1,4 +1,4 @@
-package com.samhanair.logis.slip.realtime;
+package com.samhanair.logis.shared.realtime.broker;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,58 +9,54 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import org.springframework.stereotype.Component;
 
 /**
- * Redis pub/sub 기반 cross-node realtime broker — PR-H2 (Phase 12 Step 2) TM 보완 #3.
+ * Redis pub/sub 기반 cross-node realtime broker — PR-H4a (Phase 12 Step 4a) 통합 구현.
  *
- * <p><b>활성 조건</b>: {@code SAMHAN_REALTIME_BROKER=redis} (또는
- * {@code app.realtime.broker=redis}) 환경 변수 설정 시만 bean 등록.
- * default (= "in-memory") 단일 노드 환경에서는 본 broker bean 미등록 →
- * {@link SlipRealtimeBroker} 만 작동 (in-memory).
+ * <p><b>활성 조건</b>: {@code SAMHAN_REALTIME_BROKER=redis} (또는 {@code app.realtime.broker=redis})
+ * 환경 변수 설정 시만 bean 등록 ({@link com.samhanair.logis.shared.realtime.RealtimeAutoConfiguration}
+ * 의 {@code @ConditionalOnProperty} 가드). default (= "in-memory") 단일 노드 환경에서는 본 broker
+ * bean 미등록 → {@link InMemoryRealtimeBroker} 만 작동.
  *
- * <p><b>topic 패턴</b>: {@code slip:realtime:*} — 모든 슬립의 cross-node SSE event.
- * payload 형식 = JSON {@code {"slipId":"uuid","eventName":"slip:edit","data":{...}}}.
+ * <p><b>topic 패턴</b>: {@code samhan:realtime:*} — 모든 entity 의 cross-node SSE event.
+ * payload 형식 = JSON {@code {"entityId":"uuid","eventName":"...","data":{...}}}.
  *
- * <p><b>infinite loop 방지</b>: Redis 에서 메시지 수신 시 {@link SlipRealtimeBroker#publishLocal}
+ * <p><b>infinite loop 방지</b>: Redis 에서 메시지 수신 시 {@link RealtimeBroker#publishLocal}
  * 만 호출 (publish 가 아닌 — publish 는 다시 Redis 로 전파됨).
  *
  * <p><b>외부 의존</b>: Redis 단독. 미연결 시 startup 정상 (auto-config dependency-only,
  * bean 활성 시에만 connection lazy 초기화 — Spring Data Redis 의 LettuceConnectionFactory 패턴).
  *
- * <p><b>사용 시나리오</b>: 다중 EC2/ECS 노드로 slip-service 수평 확장 시 — 모든 노드가 같은
- * Redis 에 pub/sub 하면 사용자가 어느 노드에 SSE 구독해도 다른 노드의 mutation 신호 수신.
+ * <p><b>사용 시나리오</b>: 다중 EC2/ECS 노드로 service 수평 확장 시 — 모든 노드가 같은 Redis 에
+ * pub/sub 하면 사용자가 어느 노드에 SSE 구독해도 다른 노드의 mutation 신호 수신.
  */
 @Slf4j
-@Component
-@ConditionalOnProperty(name = "app.realtime.broker", havingValue = "redis")
 public class RedisRealtimeBroker implements RealtimePublishHook {
 
-    /** Redis pub/sub topic prefix. {@code slip:realtime:{slipId}} 패턴. */
-    public static final String TOPIC_PREFIX = "slip:realtime:";
+    /** Redis pub/sub topic prefix. {@code samhan:realtime:{entityId}} 패턴. */
+    public static final String TOPIC_PREFIX = "samhan:realtime:";
 
-    /** Redis 메시지 수신 시 모든 슬립을 cover 하는 pattern subscribe. */
+    /** Redis 메시지 수신 시 모든 entity 를 cover 하는 pattern subscribe. */
     public static final String TOPIC_PATTERN = TOPIC_PREFIX + "*";
 
     private final StringRedisTemplate redisTemplate;
     private final RedisMessageListenerContainer listenerContainer;
-    private final SlipRealtimeBroker localBroker;
+    private final RealtimeBroker localBroker;
     private final ObjectMapper objectMapper;
 
     /**
-     * 명시 생성자 — {@code @Lazy} 가 SlipRealtimeBroker 의 publishHook setter 와 본 broker 의
-     * SlipRealtimeBroker 필드 사이의 circular dependency 회피 (broker → hook → broker).
+     * 명시 생성자 — {@code @Lazy} 가 InMemoryRealtimeBroker 의 publishHook setter 와 본 broker 의
+     * RealtimeBroker 필드 사이의 circular dependency 회피 (broker → hook → broker).
      */
     public RedisRealtimeBroker(StringRedisTemplate redisTemplate,
                                RedisMessageListenerContainer listenerContainer,
-                               @Lazy SlipRealtimeBroker localBroker,
+                               @Lazy RealtimeBroker localBroker,
                                ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.listenerContainer = listenerContainer;
@@ -75,12 +71,12 @@ public class RedisRealtimeBroker implements RealtimePublishHook {
 
     /**
      * Spring 컨텍스트 부팅 직후 Redis pattern subscribe 시작. 다른 노드의 publish 메시지를 수신하면
-     * 자기 노드 SlipRealtimeBroker.publishLocal 호출.
+     * 자기 노드 RealtimeBroker.publishLocal 호출.
      */
     @PostConstruct
     public void start() {
         listenerContainer.addMessageListener(new RedisListener(), new PatternTopic(TOPIC_PATTERN));
-        log.info("[PR-H2] RedisRealtimeBroker 활성 — topic pattern={}", TOPIC_PATTERN);
+        log.info("[PR-H4a] RedisRealtimeBroker 활성 — topic pattern={}", TOPIC_PATTERN);
     }
 
     /**
@@ -88,23 +84,22 @@ public class RedisRealtimeBroker implements RealtimePublishHook {
      * 이미 publishLocal 처리됨 — fail-open).
      */
     @Override
-    public void propagate(UUID slipId, String eventName, Object payload) {
+    public void propagate(UUID entityId, String eventName, Object payload) {
         propagateCount.incrementAndGet();
         try {
             Map<String, Object> envelope = new LinkedHashMap<>();
-            envelope.put("slipId", slipId.toString());
+            envelope.put("entityId", entityId.toString());
             envelope.put("eventName", eventName);
             envelope.put("data", payload);
-            // origin nodeId 동봉 — 향후 self-message echo 차단 시 활용 (현 PR-H2 는 미사용)
             String json = objectMapper.writeValueAsString(envelope);
-            redisTemplate.convertAndSend(TOPIC_PREFIX + slipId, json);
+            redisTemplate.convertAndSend(TOPIC_PREFIX + entityId, json);
         } catch (JsonProcessingException ex) {
             serializationFailureCount.incrementAndGet();
-            log.warn("[PR-H2] Redis propagate JSON 직렬화 실패 — slipId={} event={} cause={}",
-                    slipId, eventName, ex.getMessage());
+            log.warn("[PR-H4a] Redis propagate JSON 직렬화 실패 — entityId={} event={} cause={}",
+                    entityId, eventName, ex.getMessage());
         } catch (RuntimeException ex) {
-            log.warn("[PR-H2] Redis convertAndSend 실패 — slipId={} event={} cause={}",
-                    slipId, eventName, ex.getMessage());
+            log.warn("[PR-H4a] Redis convertAndSend 실패 — entityId={} event={} cause={}",
+                    entityId, eventName, ex.getMessage());
         }
     }
 
@@ -136,17 +131,17 @@ public class RedisRealtimeBroker implements RealtimePublishHook {
             try {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> envelope = objectMapper.readValue(json, Map.class);
-                String slipIdStr = (String) envelope.get("slipId");
+                String entityIdStr = (String) envelope.get("entityId");
                 String eventName = (String) envelope.get("eventName");
                 Object payload = envelope.get("data");
-                if (slipIdStr == null || eventName == null) {
-                    log.warn("[PR-H2] Redis 메시지 schema 위반 (slipId/eventName 누락): {}", json);
+                if (entityIdStr == null || eventName == null) {
+                    log.warn("[PR-H4a] Redis 메시지 schema 위반 (entityId/eventName 누락): {}", json);
                     return;
                 }
                 // publishLocal 호출 — publish 호출 시 다시 Redis 로 전파되어 infinite loop 발생.
-                localBroker.publishLocal(UUID.fromString(slipIdStr), eventName, payload);
+                localBroker.publishLocal(UUID.fromString(entityIdStr), eventName, payload);
             } catch (Exception ex) {
-                log.warn("[PR-H2] Redis 메시지 처리 실패 — body={} cause={}", json, ex.getMessage());
+                log.warn("[PR-H4a] Redis 메시지 처리 실패 — body={} cause={}", json, ex.getMessage());
             }
         }
     }
