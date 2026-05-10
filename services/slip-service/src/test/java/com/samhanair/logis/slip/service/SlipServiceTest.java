@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
@@ -48,6 +49,8 @@ class SlipServiceTest {
     @Mock private SlipNumberService slipNumberService;
     @Mock private ProductClient productClient;
     @Mock private InventoryClient inventoryClient;
+    /** PR-H2 — editHeader 가 audit overlay 호출. 본 테스트에서는 mock 격리 (audit 자체는 별도 단위 테스트). */
+    @Mock private SlipAuditLogService auditLogService;
 
     @InjectMocks private SlipService service;
 

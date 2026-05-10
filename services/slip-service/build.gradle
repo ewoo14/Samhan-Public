@@ -45,6 +45,12 @@ dependencies {
     // bucket = `slip-attachments` (DevOps 가 별도 dispatch 로 생성).
     implementation 'io.minio:minio:8.5.12'
 
+    // PR-H2 (Phase 12 Step 2) — Redis pub/sub 옵션 multi-node broker.
+    // SAMHAN_REALTIME_BROKER=redis 시 RedisRealtimeBroker 활성, default in-memory SlipRealtimeBroker 만.
+    // Redis 미연결 시 startup 정상 (auto-config 자체는 implementation 으로 포함되지만 broker bean 은
+    // @ConditionalOnProperty 로 단일 노드 환경에서 무효).
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
     implementation project(':shared:common')
     implementation project(':shared:security')
 

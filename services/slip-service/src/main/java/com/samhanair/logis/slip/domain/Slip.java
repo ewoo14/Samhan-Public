@@ -424,6 +424,18 @@ public class Slip extends BaseEntity {
     @Column(name = "agree_term", length = 50)
     private String agreeTerm;
 
+    /**
+     * 누적 수정 횟수 — PR-H2 V18 신규.
+     *
+     * <p>{@code slip_audit_logs.revision_no} 채번 보조 + FE timeline UI 표시. mutation 마다 +1
+     * 증가 ({@link #incrementRevision} 호출). 같은 트랜잭션의 다중 필드 변경은 1회만 증가
+     * (audit log 의 revision_no 는 그 값을 모든 row 에 공유).
+     *
+     * <p>기존 row 는 V18 migration 의 DEFAULT 0 으로 backfill — 첫 수정 시 1 부터 시작.
+     */
+    @Column(name = "revision_count", nullable = false)
+    private Integer revisionCount = 0;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -1198,6 +1210,140 @@ public class Slip extends BaseEntity {
         if (this.status != expected) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "전이 가능한 상태가 아닙니다: 현재 " + this.status + ", 필요 " + expected);
+        }
+    }
+
+    // ---------- PR-H2 (Phase 12 Step 2) — audit overlay 보조 ----------
+
+    /**
+     * 누적 수정 횟수 +1 — PR-H2 V18 신규. 같은 트랜잭션의 다중 필드 변경은 service 레이어에서
+     * 1회만 호출하여 audit log 의 revision_no 그룹핑을 유지.
+     *
+     * @return 증가된 신규 revisionCount (= audit log 의 revision_no)
+     */
+    public int incrementRevision() {
+        if (this.revisionCount == null) {
+            this.revisionCount = 0;
+        }
+        this.revisionCount = this.revisionCount + 1;
+        return this.revisionCount;
+    }
+
+    /**
+     * 라이프사이클 가드 없는 단일 필드 setter — PR-H2 audit revert 용. service 레이어가 권한
+     * 가드 + audit log INSERT 를 책임짐. 도메인은 순수 mutation 만.
+     *
+     * <p><b>주의</b>: 본 메서드는 audit revert 경로 한정. 일반 mutation 은 {@link #editHeader}
+     * 등 라이프사이클 가드 메서드를 사용. revert 는 마감 lock 가드만 적용 (lockFlag=true 면 거부).
+     *
+     * <p>지원 필드 (PR-H2 시범 한정 — overlay 의 모든 영역 확장은 PR-H4):
+     * <ul>
+     *   <li>{@code memo} — 자유 메모 (≤1000자)</li>
+     *   <li>{@code shippingAddress} — 배송지 주소 (≤500자)</li>
+     *   <li>{@code inspectionAddress} — 검수지 주소 (≤500자)</li>
+     *   <li>{@code receiverPhone} — 수령자 연락처 (≤50자)</li>
+     *   <li>{@code customerTel} — 거래처 연락처 (≤50자)</li>
+     *   <li>{@code customerAddress} — 거래처 주소 (≤500자)</li>
+     *   <li>{@code customerRepresentative} — 거래처 대표자명 (≤100자)</li>
+     *   <li>{@code paymentDueLabel} — 결제 만기 라벨 (≤20자)</li>
+     *   <li>{@code discountInfo} — 할인 정보 (≤200자)</li>
+     *   <li>{@code collectTerm} — 대금 회수 조건 (≤50자)</li>
+     *   <li>{@code agreeTerm} — 거래 약정 조건 (≤50자)</li>
+     * </ul>
+     *
+     * @param fieldName 필드 식별자
+     * @param value 새 값 (null 허용 — 필드 clear)
+     * @throws BusinessException(INVALID_INPUT) 미지원 필드 또는 길이 초과
+     * @throws BusinessException(CONFLICT) 마감 lock 적용 슬립
+     */
+    public void applyOverlayPatch(String fieldName, String value) {
+        requireNotLocked();
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "fieldName 은 필수입니다");
+        }
+        switch (fieldName) {
+            case "memo" -> {
+                requireMaxLen(value, 1000, "memo");
+                this.memo = value;
+            }
+            case "shippingAddress" -> {
+                requireMaxLen(value, 500, "shippingAddress");
+                this.shippingAddress = value;
+            }
+            case "inspectionAddress" -> {
+                requireMaxLen(value, 500, "inspectionAddress");
+                this.inspectionAddress = value;
+            }
+            case "receiverPhone" -> {
+                requireMaxLen(value, 50, "receiverPhone");
+                this.receiverPhone = value;
+            }
+            case "customerTel" -> {
+                requireMaxLen(value, 50, "customerTel");
+                this.customerTel = value;
+            }
+            case "customerAddress" -> {
+                requireMaxLen(value, 500, "customerAddress");
+                this.customerAddress = value;
+            }
+            case "customerRepresentative" -> {
+                requireMaxLen(value, 100, "customerRepresentative");
+                this.customerRepresentative = value;
+            }
+            case "paymentDueLabel" -> {
+                requireMaxLen(value, 20, "paymentDueLabel");
+                this.paymentDueLabel = value;
+            }
+            case "discountInfo" -> {
+                requireMaxLen(value, 200, "discountInfo");
+                this.discountInfo = value;
+            }
+            case "collectTerm" -> {
+                requireMaxLen(value, 50, "collectTerm");
+                this.collectTerm = value;
+            }
+            case "agreeTerm" -> {
+                requireMaxLen(value, 50, "agreeTerm");
+                this.agreeTerm = value;
+            }
+            default -> throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "지원하지 않는 audit overlay 필드입니다: " + fieldName
+                            + " (PR-H2 시범 한정 — PR-H4 에서 확장 예정)");
+        }
+    }
+
+    /**
+     * 현재 슬립의 audit overlay 가능 필드 값을 read — service 레이어 diff 계산 + revert 시 snapshot.
+     *
+     * @param fieldName 필드 식별자 (applyOverlayPatch 와 동일 set)
+     * @return 현재 값 (null 가능)
+     * @throws BusinessException(INVALID_INPUT) 미지원 필드
+     */
+    public String readOverlayField(String fieldName) {
+        if (fieldName == null) {
+            return null;
+        }
+        return switch (fieldName) {
+            case "memo" -> this.memo;
+            case "shippingAddress" -> this.shippingAddress;
+            case "inspectionAddress" -> this.inspectionAddress;
+            case "receiverPhone" -> this.receiverPhone;
+            case "customerTel" -> this.customerTel;
+            case "customerAddress" -> this.customerAddress;
+            case "customerRepresentative" -> this.customerRepresentative;
+            case "paymentDueLabel" -> this.paymentDueLabel;
+            case "discountInfo" -> this.discountInfo;
+            case "collectTerm" -> this.collectTerm;
+            case "agreeTerm" -> this.agreeTerm;
+            default -> throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "지원하지 않는 audit overlay 필드입니다: " + fieldName);
+        };
+    }
+
+    private static void requireMaxLen(String value, int max, String label) {
+        if (value != null && value.length() > max) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    label + " 는 최대 " + max + "자입니다 (현재: " + value.length() + ")");
         }
     }
 }
