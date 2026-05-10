@@ -1,8 +1,8 @@
 /**
  * vendor 발주서 OCR 업로드 (`/sales/vendor-order-upload`).
  *
- * Phase 10 PR-F2 — Designer mock (3-step UI). BE 미연결 (Tesseract OCR endpoint
- * 미구현). 실 OCR endpoint 합류 시 mock state 를 useMutation 으로 교체.
+ * Phase 10 PR-F2 Phase B FE — Designer mock 위에 실 BE API 연결.
+ * (mock data 제거 → useMutation 패턴 + 503 graceful fallback)
  *
  * <h2>용도</h2>
  * legacy GAS #10 (에어디자이너) + #14 (제이시스템) 운송장/발주서 OCR 자동화 native
@@ -10,28 +10,28 @@
  * OCR 하여 견적 / 주문서 line item 을 자동 생성. 사용자는 매칭 결과만 확인 후
  * 확정 → PartnerOrder 발행.
  *
- * <h2>3-step UX</h2>
+ * <h2>3-step UX (Designer mock 보존)</h2>
  * <ol>
  *   <li><b>Step 1 — Upload:</b> vendor 라디오 (에어디자이너 / 제이시스템) +
- *       파일 drag-drop (.pdf, .png, .jpg, 단일) + 미리보기 + "OCR 분석 시작".</li>
+ *       파일 drag-drop (.pdf, .png, .jpg, 단일) + 미리보기 + "OCR 분석 시작" →
+ *       {@code uploadVendorOrder} 호출.</li>
  *   <li><b>Step 2 — Preview:</b> 좌측 OCR raw 텍스트 read-only + 우측 파싱된
- *       line item 표 (수량/단가 수정 가능, 매칭 실패 행 빨간 highlight) +
- *       거래처 정보 자동 lookup + 합계 row + "다시 업로드" / "확정".</li>
- *   <li><b>Step 3 — Confirm:</b> 발주 생성 결과 (PartnerOrder no + 상태 + 총액)
- *       + "발주서 보기" link + "다른 vendor 업로드".</li>
+ *       line item 표 (수량/단가 수정 가능, MANUAL source 행 빨간 highlight) +
+ *       거래처 정보 자동 lookup + 합계 row + "다시 업로드" / "확정" →
+ *       {@code confirmVendorOrder} 호출.</li>
+ *   <li><b>Step 3 — Confirm:</b> 발주 생성 결과 (orderNo + 상태 + 총액) +
+ *       "발주서 보기" link + "다른 vendor 업로드".</li>
  * </ol>
  *
  * <h2>설계 노트</h2>
  * <ul>
  *   <li>UUID 비공개 (feedback_uuid_no_user_visibility) — 사용자 노출 = vendorName
- *       + partnerCode + productName 만. 내부 식별자 partnerOrderId 는 link 의
- *       path param 으로만 전달.</li>
+ *       + partnerCode + productName + orderNo 만. 내부 식별자 partnerOrderId 는
+ *       link 의 path param 으로만 전달.</li>
  *   <li>풀네임 ROLE — 라우트 가드는 routes/index.tsx 에서 부여 (영업 그룹).</li>
  *   <li>한국어 라벨 100%.</li>
- *   <li>(주)삼한공조시스템 표기 금지 — vendor 발주는 우리가 받는 입장이므로
- *       vendor 명만 강조.</li>
- *   <li>mock 데이터 명확 (TODO comment "BE 연결 시점에 실 OCR 결과 사용").</li>
- *   <li>Designer mock 색상 / Stepper / drag-drop UX 보존 — CSS module 별도.</li>
+ *   <li>503 graceful fallback — {@link OcrDisabledError} 캐치 후 사용자 친화 메시지.</li>
+ *   <li>Designer mock 색상 / Stepper / drag-drop UX 보존 — CSS module 무수정.</li>
  * </ul>
  *
  * <h2>data-testid</h2>
@@ -55,192 +55,100 @@ import {
   type ChangeEvent,
   type DragEvent as ReactDragEvent,
 } from 'react'
+import axios from 'axios'
+import { useMutation } from '@tanstack/react-query'
 import { Button } from '@samhan/design-system'
 import { usePageTitle } from '../hooks/usePageTitle'
+import {
+  confirmVendorOrder,
+  OcrDisabledError,
+  uploadVendorOrder,
+  type VendorConfirmLine,
+  type VendorName,
+  type VendorOrderConfirmResponse,
+  type VendorOrderUploadResponse,
+  type VendorPreviewLine,
+} from '../api/vendorOrderApi'
 import styles from './SalesVendorOrderUploadPage.module.css'
 
 // ---------------------------------------------------------------------------
-// 도메인 타입 (mock — BE 연결 시점에 dispatchVendorOrderOcrApi.ts 분리 예정)
+// vendor 옵션 — BE parser VENDOR_NAME 와 1:1 (사용자 명시 2종)
 // ---------------------------------------------------------------------------
 
-/** vendor 종류 — 사용자 결정 2종 (에어디자이너 / 제이시스템). */
-type VendorType = 'AIRDESIGNER' | 'JSYSTEM'
-
 interface VendorOption {
-  type: VendorType
-  name: string
+  /** BE 와 일치하는 한국어 vendor 식별자. */
+  name: VendorName
+  /** 사용자 보조 안내. */
   hint: string
+  /** data-testid. */
   testId: string
 }
 
 const VENDOR_OPTIONS: ReadonlyArray<VendorOption> = [
   {
-    type: 'AIRDESIGNER',
     name: '에어디자이너',
     hint: 'legacy GAS #10 — PDF/이미지 발주서 OCR',
     testId: 'vendor-radio-airdesigner',
   },
   {
-    type: 'JSYSTEM',
     name: '제이시스템',
     hint: 'legacy GAS #14 — PDF/이미지 발주서 OCR',
     testId: 'vendor-radio-jsystem',
   },
 ]
 
-/** 파싱된 vendor 거래처 정보 (자동 lookup 결과). */
-interface VendorPartnerInfo {
-  partnerCode: string
-  partnerName: string
-  businessRegNo: string
-  dcRate: number // %
-  dcDesc: string
-}
+// ---------------------------------------------------------------------------
+// UI line item — BE PreviewLine 을 사용자 편집 가능 형태로 확장
+// ---------------------------------------------------------------------------
 
-/** 파싱된 line item (정규식 매칭 + 수정 가능). */
-interface ParsedLineItem {
+/**
+ * 표시용 line item — BE {@link VendorPreviewLine} 을 사용자 편집 가능 형태로 미러.
+ *
+ * <p>{@code matchFailed} 는 source 가 {@code MANUAL} (단가 누락) 또는 unitPrice/finalPrice
+ * 가 0 인 경우 true — 빨간 highlight 로 사용자 보정을 유도.
+ */
+interface EditableLine {
   productName: string
   modelCode: string
   quantity: number
-  sheetPrice: number
-  dcPrice: number
+  /** 단가 (시트 또는 OCR). 사용자가 보정 시 finalPrice 로만 반영. */
+  unitPrice: number
+  /** DC 적용율 (0.0~1.0). 표시 전용. */
+  dcRate: number
+  /** 최종 단가 (DC 적용 후) — 사용자 수정 시 갱신. */
   finalPrice: number
-  /** 정규식 매칭 실패 시 true — 빨간 highlight + 사용자 보정 안내. */
+  /** finalPrice * quantity. */
+  subtotal: number
+  /** 단가 source. */
+  source: VendorPreviewLine['source']
+  /** 매칭 실패 (MANUAL or 단가 0) — 사용자 보정 안내. */
   matchFailed: boolean
-  /** 매칭 실패 사유 (예: "모델 코드 정규식 miss"). */
+  /** 매칭 실패 사유 (사용자 안내). */
   failReason?: string
 }
 
-interface OcrParseResult {
-  rawText: string
-  partner: VendorPartnerInfo
-  items: ParsedLineItem[]
-}
-
-// ---------------------------------------------------------------------------
-// Mock OCR 결과 — vendor 별 fixture
-// TODO(BE 연결 시점): 실 OCR endpoint (POST /api/v1/vendor-order-ocr) 응답으로 교체.
-// ---------------------------------------------------------------------------
-
-const MOCK_RESULTS: Record<VendorType, OcrParseResult> = {
-  AIRDESIGNER: {
-    rawText: [
-      '에어디자이너 (주)',
-      '발주서  No. AD-2026-05-009',
-      '거래처: (주)에어디자이너 / 사업자번호 123-45-67890',
-      '주소: 서울 강남구 ...',
-      '------------------------------------------------------',
-      ' 품명           모델           수량   단가    금액',
-      ' 천장형 4WAY    AD-CST4-3HP   2     820,000  1,640,000',
-      ' 벽걸이형 인버터 AD-WLI-2HP    3     450,000  1,350,000',
-      ' 시스템 콘트롤러 AD-CTRL-X10   1     180,000    180,000',
-      ' [매칭미상] AD-???-NEW1      1     350,000    350,000',
-      '------------------------------------------------------',
-      '합계 (DC 적용 전)   3,520,000',
-      'DC 5% 적용         -176,000',
-      '최종 합계          3,344,000',
-    ].join('\n'),
-    partner: {
-      partnerCode: 'AIRD-001',
-      partnerName: '(주)에어디자이너',
-      businessRegNo: '123-45-67890',
-      dcRate: 5,
-      dcDesc: '연간 누적 매출 DC 5%',
-    },
-    items: [
-      {
-        productName: '천장형 4WAY',
-        modelCode: 'AD-CST4-3HP',
-        quantity: 2,
-        sheetPrice: 820_000,
-        dcPrice: 779_000,
-        finalPrice: 1_558_000,
-        matchFailed: false,
-      },
-      {
-        productName: '벽걸이형 인버터',
-        modelCode: 'AD-WLI-2HP',
-        quantity: 3,
-        sheetPrice: 450_000,
-        dcPrice: 427_500,
-        finalPrice: 1_282_500,
-        matchFailed: false,
-      },
-      {
-        productName: '시스템 콘트롤러',
-        modelCode: 'AD-CTRL-X10',
-        quantity: 1,
-        sheetPrice: 180_000,
-        dcPrice: 171_000,
-        finalPrice: 171_000,
-        matchFailed: false,
-      },
-      {
-        productName: '[매칭미상]',
-        modelCode: 'AD-???-NEW1',
-        quantity: 1,
-        sheetPrice: 350_000,
-        dcPrice: 350_000,
-        finalPrice: 350_000,
-        matchFailed: true,
-        failReason: '품목 마스터 모델 코드 정규식 miss — 신규 코드일 가능성',
-      },
-    ],
-  },
-  JSYSTEM: {
-    rawText: [
-      '제이시스템 (주)',
-      '구매 발주서  No. JS-26-0510-022',
-      '공급처: (주)제이시스템 / 등록번호 456-78-90123',
-      'TEL: 02-555-1234',
-      '------------------------------------------------------',
-      ' 항목          모델            수량  시트가     적용가',
-      ' 정온항온기    JS-PCH-300L     1    1,200,000  1,140,000',
-      ' 송풍기        JS-FAN-550W     4      85,000    323,000',
-      ' [모델 누락]   ---             2      40,000     76,000',
-      '------------------------------------------------------',
-      '소계               1,539,000',
-      'DC 5% 차감          -76,950',
-      '청구 합계          1,462,050',
-    ].join('\n'),
-    partner: {
-      partnerCode: 'JSYS-001',
-      partnerName: '(주)제이시스템',
-      businessRegNo: '456-78-90123',
-      dcRate: 5,
-      dcDesc: '월 정기 거래 DC 5%',
-    },
-    items: [
-      {
-        productName: '정온항온기',
-        modelCode: 'JS-PCH-300L',
-        quantity: 1,
-        sheetPrice: 1_200_000,
-        dcPrice: 1_140_000,
-        finalPrice: 1_140_000,
-        matchFailed: false,
-      },
-      {
-        productName: '송풍기',
-        modelCode: 'JS-FAN-550W',
-        quantity: 4,
-        sheetPrice: 85_000,
-        dcPrice: 80_750,
-        finalPrice: 323_000,
-        matchFailed: false,
-      },
-      {
-        productName: '[모델 누락]',
-        modelCode: '',
-        quantity: 2,
-        sheetPrice: 40_000,
-        dcPrice: 38_000,
-        finalPrice: 76_000,
-        matchFailed: true,
-        failReason: '모델 코드 인식 실패 — vendor 양식 변형 가능, 수동 보정 필요',
-      },
-    ],
-  },
+function fromPreviewLine(line: VendorPreviewLine): EditableLine {
+  const matchFailed = line.source === 'MANUAL' || line.finalPrice <= 0
+  let failReason: string | undefined
+  if (matchFailed) {
+    if (line.source === 'MANUAL') {
+      failReason = '시트/OCR 단가 모두 누락 — 수동 입력 필요'
+    } else if (line.finalPrice <= 0) {
+      failReason = '최종 단가가 0 — 단가 보정 필요'
+    }
+  }
+  return {
+    productName: line.productName,
+    modelCode: line.modelCode,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    dcRate: line.dcRate,
+    finalPrice: line.finalPrice,
+    subtotal: line.subtotal,
+    source: line.source,
+    matchFailed,
+    failReason,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +174,7 @@ function formatKrw(value: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Stepper — 3-step 진행 상황 시각화
+// Stepper — 3-step 진행 상황 시각화 (Designer mock 보존)
 // ---------------------------------------------------------------------------
 
 type StepKey = 'UPLOAD' | 'PREVIEW' | 'CONFIRM'
@@ -329,6 +237,24 @@ function Stepper({ current }: StepperProps) {
 }
 
 // ---------------------------------------------------------------------------
+// 에러 메시지 변환 — 503 OcrDisabled / axios / 일반 Error 분기
+// ---------------------------------------------------------------------------
+
+function toUserMessage(err: unknown, fallback: string): string {
+  if (err instanceof OcrDisabledError) {
+    return err.message
+  }
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { message?: string } | undefined
+    return data?.message ?? fallback
+  }
+  if (err instanceof Error) {
+    return err.message
+  }
+  return fallback
+}
+
+// ---------------------------------------------------------------------------
 // 컴포넌트
 // ---------------------------------------------------------------------------
 
@@ -337,21 +263,19 @@ export function SalesVendorOrderUploadPage() {
 
   // ----- step + 입력 state -----
   const [step, setStep] = useState<StepKey>('UPLOAD')
-  const [vendor, setVendor] = useState<VendorType>('AIRDESIGNER')
+  const [vendor, setVendor] = useState<VendorName>('에어디자이너')
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // ----- Step 2 OCR 결과 (mock) -----
-  const [ocrResult, setOcrResult] = useState<OcrParseResult | null>(null)
-  const [items, setItems] = useState<ParsedLineItem[]>([])
-  const [analyzing, setAnalyzing] = useState(false)
+  // ----- Step 2 OCR 결과 (실 BE 응답) -----
+  const [uploadResult, setUploadResult] = useState<VendorOrderUploadResponse | null>(null)
+  const [items, setItems] = useState<EditableLine[]>([])
 
-  // ----- Step 3 발주 결과 (mock) -----
-  const [partnerOrderNo, setPartnerOrderNo] = useState<string>('')
-  const [submitting, setSubmitting] = useState(false)
+  // ----- Step 3 발주 결과 -----
+  const [confirmResult, setConfirmResult] = useState<VendorOrderConfirmResponse | null>(null)
 
   // 파일 미리보기 URL revoke
   useEffect(() => {
@@ -360,7 +284,7 @@ export function SalesVendorOrderUploadPage() {
     }
   }, [previewUrl])
 
-  // ----- 파일 업로드 -----
+  // ----- 파일 업로드 검증 -----
 
   const accept = useCallback(
     (incoming: File) => {
@@ -414,40 +338,54 @@ export function SalesVendorOrderUploadPage() {
 
   const handleDragLeave = () => setDragOver(false)
 
-  // ----- Step 1 → Step 2: OCR 실행 (mock) -----
-  // TODO(BE 연결 시점): mock setTimeout 을 useMutation(POST /api/v1/vendor-order-ocr) 로 교체.
+  // ----- Step 1 → Step 2: OCR 실행 (실 BE) -----
+
+  const uploadMutation = useMutation<
+    VendorOrderUploadResponse,
+    unknown,
+    { vendor: VendorName; file: File }
+  >({
+    mutationFn: ({ vendor: v, file: f }) => uploadVendorOrder(v, f),
+    onSuccess: (data) => {
+      setUploadResult(data)
+      setItems(data.parsedLines.map(fromPreviewLine))
+      setError(null)
+      setStep('PREVIEW')
+    },
+    onError: (err) => {
+      setError(toUserMessage(err, 'OCR 분석에 실패했습니다.'))
+    },
+  })
+
   const handleRunOcr = () => {
     if (!file) {
       setError('vendor 발주서 파일을 업로드하세요.')
       return
     }
     setError(null)
-    setAnalyzing(true)
-    setTimeout(() => {
-      const result = MOCK_RESULTS[vendor]
-      setOcrResult(result)
-      setItems(result.items.map((i) => ({ ...i })))
-      setAnalyzing(false)
-      setStep('PREVIEW')
-    }, 600)
+    uploadMutation.mutate({ vendor, file })
   }
 
   // ----- Step 2 line item 수정 -----
 
-  const updateItem = (idx: number, patch: Partial<ParsedLineItem>) => {
+  const updateItem = (idx: number, patch: Partial<EditableLine>) => {
     setItems((prev) =>
       prev.map((it, i) => {
         if (i !== idx) return it
         const next = { ...it, ...patch }
-        // 단가가 변경되면 finalPrice 재계산 (DC 적용가 * 수량)
-        next.finalPrice = next.dcPrice * next.quantity
+        // 단가/수량 변경 시 subtotal 재계산 (matchFailed 갱신 — finalPrice 보정 시 해제)
+        next.subtotal = next.finalPrice * next.quantity
+        if (next.finalPrice > 0 && next.matchFailed) {
+          next.matchFailed = false
+          next.failReason = undefined
+        }
         return next
       }),
     )
   }
 
   const totalAmount = useMemo(
-    () => items.reduce((sum, it) => sum + it.finalPrice, 0),
+    () => items.reduce((sum, it) => sum + it.subtotal, 0),
     [items],
   )
 
@@ -456,24 +394,44 @@ export function SalesVendorOrderUploadPage() {
     [items],
   )
 
-  // ----- Step 2 → Step 3: 발주 확정 (mock) -----
-  // TODO(BE 연결 시점): POST /api/v1/partner-orders/from-vendor-ocr 호출.
-  const handleConfirm = () => {
-    if (!ocrResult) return
-    setSubmitting(true)
-    setTimeout(() => {
-      // mock 발주서 번호 — vendor prefix + YYMMDD + sequence
-      const today = new Date()
-      const yymmdd
-        = String(today.getFullYear()).slice(2)
-        + String(today.getMonth() + 1).padStart(2, '0')
-        + String(today.getDate()).padStart(2, '0')
-      const prefix = vendor === 'AIRDESIGNER' ? 'PO-AD' : 'PO-JS'
-      const seq = String(Math.floor(Math.random() * 900) + 100)
-      setPartnerOrderNo(`${prefix}-${yymmdd}-${seq}`)
-      setSubmitting(false)
+  // ----- Step 2 → Step 3: 발주 확정 (실 BE) -----
+
+  const confirmMutation = useMutation<
+    VendorOrderConfirmResponse,
+    unknown,
+    { vendorName: string; partnerCode: string; lines: VendorConfirmLine[] }
+  >({
+    mutationFn: ({ vendorName, partnerCode, lines }) =>
+      confirmVendorOrder(vendorName, partnerCode, lines),
+    onSuccess: (data) => {
+      setConfirmResult(data)
+      setError(null)
       setStep('CONFIRM')
-    }, 500)
+    },
+    onError: (err) => {
+      setError(toUserMessage(err, '발주 확정에 실패했습니다.'))
+    },
+  })
+
+  const handleConfirm = () => {
+    if (!uploadResult) return
+    const partnerCode = uploadResult.partnerCode?.trim()
+    if (!partnerCode) {
+      setError('거래처 코드 인식 실패 — vendor 발주서를 다시 업로드하거나 BE 관리자에게 문의하세요.')
+      return
+    }
+    const lines: VendorConfirmLine[] = items.map((it) => ({
+      modelCode: it.modelCode,
+      productName: it.productName,
+      quantity: it.quantity,
+      finalPrice: it.finalPrice,
+    }))
+    setError(null)
+    confirmMutation.mutate({
+      vendorName: uploadResult.vendorName,
+      partnerCode,
+      lines,
+    })
   }
 
   // ----- Step 3 → Step 1: 다른 vendor 업로드 -----
@@ -482,21 +440,29 @@ export function SalesVendorOrderUploadPage() {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null)
     setFile(null)
-    setOcrResult(null)
+    setUploadResult(null)
     setItems([])
-    setPartnerOrderNo('')
+    setConfirmResult(null)
     setError(null)
+    uploadMutation.reset()
+    confirmMutation.reset()
     setStep('UPLOAD')
   }
 
   // ----- Step 2 → Step 1: 다시 업로드 (vendor 유지) -----
 
   const handleRestart = () => {
-    setOcrResult(null)
+    setUploadResult(null)
     setItems([])
     setError(null)
+    confirmMutation.reset()
     setStep('UPLOAD')
   }
+
+  // ----- 파생 상태 -----
+
+  const analyzing = uploadMutation.isPending
+  const submitting = confirmMutation.isPending
 
   // ----- render -----
 
@@ -552,7 +518,7 @@ export function SalesVendorOrderUploadPage() {
             </div>
             <div className={styles.vendorList} role="radiogroup" aria-label="vendor 선택">
               {VENDOR_OPTIONS.map((opt) => {
-                const active = vendor === opt.type
+                const active = vendor === opt.name
                 const cls = [
                   styles.vendorCard,
                   active ? styles.vendorCardActive : '',
@@ -561,7 +527,7 @@ export function SalesVendorOrderUploadPage() {
                   .join(' ')
                 return (
                   <label
-                    key={opt.type}
+                    key={opt.name}
                     className={cls}
                     data-testid={opt.testId}
                   >
@@ -569,9 +535,9 @@ export function SalesVendorOrderUploadPage() {
                       <input
                         type="radio"
                         name="vendor"
-                        value={opt.type}
+                        value={opt.name}
                         checked={active}
-                        onChange={() => setVendor(opt.type)}
+                        onChange={() => setVendor(opt.name)}
                       />
                       <span className={styles.vendorTitle}>{opt.name}</span>
                     </div>
@@ -642,9 +608,7 @@ export function SalesVendorOrderUploadPage() {
                 </div>
                 <div className={styles.previewMetaRow}>
                   <span className={styles.previewMetaLabel}>대상 vendor</span>
-                  <strong>
-                    {VENDOR_OPTIONS.find((v) => v.type === vendor)?.name}
-                  </strong>
+                  <strong>{vendor}</strong>
                 </div>
               </div>
             </div>
@@ -665,21 +629,45 @@ export function SalesVendorOrderUploadPage() {
       ) : null}
 
       {/* ───────── Step 2 — Preview ───────── */}
-      {step === 'PREVIEW' && ocrResult ? (
+      {step === 'PREVIEW' && uploadResult ? (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 거래처 정보 (자동 lookup 결과) */}
+          {/* 거래처 정보 + vendor (자동 lookup 결과) */}
           <div className={styles.partnerInfo}>
-            <span className={styles.partnerInfoLabel}>거래처</span>
-            <strong>
-              {ocrResult.partner.partnerName} ({ocrResult.partner.partnerCode})
-            </strong>
-            <span className={styles.partnerInfoLabel}>사업자번호</span>
-            <span>{ocrResult.partner.businessRegNo}</span>
-            <span className={styles.partnerInfoLabel}>DC 정보</span>
-            <span>
-              {ocrResult.partner.dcRate}% &middot; {ocrResult.partner.dcDesc}
-            </span>
+            <span className={styles.partnerInfoLabel}>vendor</span>
+            <strong>{uploadResult.vendorName}</strong>
+            <span className={styles.partnerInfoLabel}>거래처 코드</span>
+            <strong>{uploadResult.partnerCode ?? '— (인식 실패)'}</strong>
+            {uploadResult.parsedTotal != null && uploadResult.parsedTotal > 0 ? (
+              <>
+                <span className={styles.partnerInfoLabel}>OCR 합계</span>
+                <span>{formatKrw(uploadResult.parsedTotal)}</span>
+              </>
+            ) : null}
           </div>
+
+          {/* BE suggestions — 단가 누락/거래처 미발견 등 사용자 안내 */}
+          {uploadResult.suggestions.length > 0 ? (
+            <div
+              role="status"
+              style={{
+                padding: '8px 12px',
+                border: '1px solid var(--color-warning-300, #fcd34d)',
+                background: 'var(--color-warning-50, #fffbeb)',
+                color: 'var(--color-warning-800, #92400e)',
+                borderRadius: 6,
+                fontSize: 13,
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                BE 분석 안내 ({uploadResult.suggestions.length}건)
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {uploadResult.suggestions.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {failedCount > 0 ? (
             <div
@@ -694,7 +682,7 @@ export function SalesVendorOrderUploadPage() {
               }}
             >
               품목 매칭 실패 — 수동 보정 필요 ({failedCount}건). 빨간 행을
-              확인 후 수정하세요.
+              확인 후 단가를 보정하세요.
             </div>
           ) : null}
 
@@ -712,7 +700,7 @@ export function SalesVendorOrderUploadPage() {
                 OCR 결과 (read-only)
               </div>
               <pre className={styles.ocrText} aria-readonly="true">
-                {ocrResult.rawText}
+                {uploadResult.ocrText}
               </pre>
             </div>
             <div>
@@ -739,10 +727,10 @@ export function SalesVendorOrderUploadPage() {
                         단가 (시트)
                       </th>
                       <th className={styles.colNumeric} style={{ width: 110 }}>
-                        DC 적용가
+                        최종 단가
                       </th>
                       <th className={styles.colNumeric} style={{ width: 130 }}>
-                        최종 단가
+                        소계
                       </th>
                     </tr>
                   </thead>
@@ -768,11 +756,11 @@ export function SalesVendorOrderUploadPage() {
                         <td className={styles.colNumeric}>
                           <input
                             type="number"
-                            min={0}
+                            min={1}
                             value={it.quantity}
                             onChange={(e) =>
                               updateItem(idx, {
-                                quantity: Math.max(0, Number(e.target.value) || 0),
+                                quantity: Math.max(1, Number(e.target.value) || 1),
                               })
                             }
                             className={styles.itemInput}
@@ -780,16 +768,16 @@ export function SalesVendorOrderUploadPage() {
                           />
                         </td>
                         <td className={styles.colNumeric}>
-                          {formatKrw(it.sheetPrice)}
+                          {formatKrw(it.unitPrice)}
                         </td>
                         <td className={styles.colNumeric}>
                           <input
                             type="number"
                             min={0}
-                            value={it.dcPrice}
+                            value={it.finalPrice}
                             onChange={(e) =>
                               updateItem(idx, {
-                                dcPrice: Math.max(0, Number(e.target.value) || 0),
+                                finalPrice: Math.max(0, Number(e.target.value) || 0),
                               })
                             }
                             className={styles.itemInput}
@@ -797,7 +785,7 @@ export function SalesVendorOrderUploadPage() {
                           />
                         </td>
                         <td className={styles.colNumeric}>
-                          {formatKrw(it.finalPrice)}
+                          {formatKrw(it.subtotal)}
                         </td>
                       </tr>
                     ))}
@@ -839,7 +827,7 @@ export function SalesVendorOrderUploadPage() {
       ) : null}
 
       {/* ───────── Step 3 — Confirm ───────── */}
-      {step === 'CONFIRM' && partnerOrderNo ? (
+      {step === 'CONFIRM' && confirmResult ? (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div
             className={styles.confirmCard}
@@ -848,37 +836,32 @@ export function SalesVendorOrderUploadPage() {
             <div className={styles.confirmTitle}>발주가 정상 생성되었습니다.</div>
             <div className={styles.confirmRow}>
               <span className={styles.confirmLabel}>발주서 번호</span>
-              <span className={styles.confirmStrong}>{partnerOrderNo}</span>
+              <span className={styles.confirmStrong}>{confirmResult.orderNo}</span>
             </div>
             <div className={styles.confirmRow}>
               <span className={styles.confirmLabel}>vendor</span>
-              <span>
-                {VENDOR_OPTIONS.find((v) => v.type === vendor)?.name}
-              </span>
+              <span>{confirmResult.vendorName}</span>
             </div>
             <div className={styles.confirmRow}>
-              <span className={styles.confirmLabel}>거래처</span>
-              <span>
-                {ocrResult?.partner.partnerName} (
-                {ocrResult?.partner.partnerCode})
-              </span>
+              <span className={styles.confirmLabel}>거래처 코드</span>
+              <span>{confirmResult.partnerCode}</span>
             </div>
             <div className={styles.confirmRow}>
               <span className={styles.confirmLabel}>상태</span>
-              <span>대기 (PENDING) — 승인 시 정식 등록</span>
+              <span>{confirmResult.status}</span>
             </div>
             <div className={styles.confirmRow}>
               <span className={styles.confirmLabel}>총 금액</span>
               <span className={styles.confirmStrong}>
-                {formatKrw(totalAmount)}
+                {formatKrw(confirmResult.totalAmount)}
               </span>
             </div>
           </div>
 
           <div className={styles.actionRow}>
-            {/* 발주서 보기 — 기존 partner-order-service 페이지 link */}
+            {/* 발주서 보기 — 기존 partner-order-service 페이지 link (orderNo 만 노출, UUID 비공개) */}
             <a
-              href={`#/sales/partner-orders/${partnerOrderNo}`}
+              href={`#/sales/partner-orders/${encodeURIComponent(confirmResult.orderNo)}`}
               data-testid="vendor-order-view-link"
               style={{
                 padding: '8px 14px',
