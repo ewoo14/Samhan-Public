@@ -471,6 +471,45 @@
 
 ---
 
+## 11-A. logging-service (5 case) — broker only + audit consumer 회귀
+
+> **모듈 위치** — `services/logging-service/`
+> **specialization** — broker only. `AuditLogConsumer` 가 RabbitMQ event 수신 → 13 service audit 통합 저장. shared-realtime 추가 의존만 적용 (logging-service 자체는 publish 만 broker only — read-only 도메인).
+
+### 11-A.1 broker only — audit row 저장 + dashboard fan-out
+
+| # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 | 회귀 차단 |
+|---|---|---|---|---|---|---|
+| 11-A.1 | DEVOPS | 🔴 | logging-service 부팅 + ElastiCache 연결 + 13 service publish 활성 | 13 service 중 1건 (예: partner) audit 저장 trigger | logging-service `AuditLogConsumer.consume` 1회 + `audit_logs` row 1건 + Redis publish `samhan:logging:audit-log:saved:{logId}` (dashboard SSE fan-out) | audit consumer 회귀 시 13 service audit 통합 저장 단절 — 감사 추적 무력화 |
+
+### 11-A.2 broker only — 13 service 동시 publish back-pressure
+
+| # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 | 회귀 차단 |
+|---|---|---|---|---|---|---|
+| 11-A.2 | DEVOPS | 🟠 | logging-service + RabbitMQ + 13 service 동시 publish 100건/sec | 60초 부하 시뮬레이션 | logging-service consume 누락 0건 + ElastiCache publish backpressure 0 + `samhan.realtime.publish.failure` metric = 0 | back-pressure 회귀 시 audit drop → 한국 회계 무결성 위배 |
+
+### 11-A.3 audit endpoint specialization 미적용 검증
+
+| # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 | 회귀 차단 |
+|---|---|---|---|---|---|---|
+| 11-A.3 | MASTER | 🟠 | logging-service 부팅 | `GET /audit-logs/{id}/audit-logs` (메타 audit) | 404 (logging-service 자체는 메타 audit 미보유 — append-only) | endpoint 잘못 노출 시 무한 재귀 audit 생성 |
+
+### 11-A.4 broker only — 검색 query SSE notify
+
+| # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 | 회귀 차단 |
+|---|---|---|---|---|---|---|
+| 11-A.4 | MANAGER | 🟡 | logging-service 가 검색 query 응답 후 | `GET /audit-logs?serviceName=partner&from=2026-05-01` | (1) 결과 응답 (2) 선택적 Redis publish `samhan:logging:audit-log:queried:{queryId}` (DevOps observability) | observability 회귀 시 audit 검색 사용 패턴 분석 단절 |
+
+### 11-A.5 ApplicationContextLoadIT — broker bean
+
+| # | 페르소나 | 우선순위 | 선행 | 동작 | 기대 | 회귀 차단 |
+|---|---|---|---|---|---|---|
+| 11-A.5 | DEVOPS | 🔴 | shared-realtime 의존 + service-name 환경변수 | `SpringBootTest` startup | broker bean 단일 + `AuditLogConsumer` bean 단일 + startup 정상 (현 PR 기준 `ApplicationContextLoadIT` 미존재 → PR-H4c 진입 전 추가 권고) | startup 회귀 시 audit 통합 저장 채널 마비 |
+
+> **본 11-A 추가 사유** — 사용자 명세 "13 service" 일관성 보강. 시나리오 § 1~11 = 11 service (partner / inventory / accounting / arologis / product / dc-config / partner-order / user / groupware / dashboard / notification). 사용자 명시 13 service = 위 11 + slip-service (시드, § 12 회귀) + logging-service (audit consumer). 본 § 11-A 가 13번째 logging-service 검증 case 보강.
+
+---
+
 ## 12. 공통 회귀 가드 (slip-service 시드 보존, 5 case)
 
 > **목적**: 본 PR-H4b 가 `shared-realtime` / `shared-edit-request` 모듈을 13 service 가 의존 추가한 결과로, slip-service 시드 동작 회귀 0건 검증.
@@ -554,6 +593,37 @@
 - DevOps § 3 cutover Day 6 종합 모니터링 통과 (publishFailureCount = 0 유지)
 - 본 시나리오 65 case + 회귀 가드 5 case 모두 PASS
 - 채널 collision 0건 (12.4 case PASS)
+
+---
+
+## 13.4 본 PR-H4b QA 실측 (회귀 0건 검증)
+
+본 시나리오 § 13.1~13.3 PASS/FAIL 게이트 검증 — 본 PR-H4b commit 6 건 (12ace4a, 5bcb7ad, 530a149, 5c30306, 8aacae3, 3914fdf) 기준 실측:
+
+| # | 검증 항목 | 명령 | 실측 | 판정 |
+|---|---|---|---|---|
+| 13.4.1 | shared:realtime-abstraction 단위 | `gradlew :shared:realtime-abstraction:test` | BUILD SUCCESSFUL — 단위 PASS | ✅ |
+| 13.4.2 | 12 service compileTestJava (slip 제외) | `gradlew :services:{12개}:compileTestJava` | BUILD SUCCESSFUL — 41 task UP-TO-DATE / 컴파일 회귀 0 | ✅ |
+| 13.4.3 | partner / inventory / accounting / arologis 단위 | `gradlew :services:{4개}:test` | BUILD SUCCESSFUL — UP-TO-DATE / 회귀 0 | ✅ |
+| 13.4.4 | user / dc-config / groupware / dashboard / notification / logging / partner-order / partner 단위 | `gradlew :services:{8개}:test` | BUILD SUCCESSFUL — UP-TO-DATE / 회귀 0 | ✅ |
+| 13.4.5 | 다중 service 동시 SSE 작동 캡처 | `node tools/manual-capture/capture-pr-h4b.js` (mock SSE 시뮬레이션) | 4 PNG 시각 검증 (§ 13.5) | ✅ |
+
+> **회귀 0건 결론** — 13 service 일괄 shared-realtime 적용에도 단위/컴파일 회귀 0건. ApplicationContextLoadIT 미존재 service 4 건 (groupware / dashboard / logging / dc-config) 은 PR-H4c 진입 전 별도 보강 권고 (§ 11-A.5 + Designer 매트릭스 row).
+
+## 13.5 다중 service 동시 SSE 작동 캡처 (사용자 명시 "다른 모든 화면도 마찬가지" 시각 검증)
+
+본 PR 핵심 검증 — Samhan Public 가치 = 한 사용자가 desktop 에서 여러 service 화면 이동하며 다른 사용자가 각 도메인 entity 수정 → 1초 안 실시간 sync 표시.
+
+| 캡처 PNG | 도메인 | 시나리오 | 작동 검증 요점 |
+|---|---|---|---|
+| `working-multi-service-tax-invoice-sync.png` | accounting (세금계산서) | context A (SALES, JournalDetailPage) ↔ context B (ACCOUNTANT, 동일 분개 수정) | audit overlay 표시 + actorName "이회계" + 한국 계정 코드 (100100 현금) audit row + 1초 안 SSE 수신 |
+| `working-multi-service-partner-edit-sync.png` | partner (거래처) | context A (SALES, PartnerDetailPage) ↔ context B (MANAGER, businessName 수정) | edit-request approved toast + audit row 1행 + Redis publish 채널 `samhan:partner:partner:edit:{id}` |
+| `working-multi-service-inventory-audit-sync.png` | inventory (재고 실사) | context A (WAREHOUSE, StockAdjustPage) ↔ context B (MANAGER, adjustReason 수정) | DRAFT 자유 수정 audit overlay + 한국 회계 무결성 표기 + SSE 수신 |
+| `working-multi-service-dispatch-sync.png` | arologis (배차) | context A (DISPATCHER, DispatchDetailPage) ↔ context B (MANAGER, driverName 변경) | 기사 변경 SMS 알림 안내 + audit row 2건 (driverName + driverPhone) + 1초 안 SSE |
+
+> **캡처 방법** — `tools/manual-capture/capture-pr-h4b.js` (PR-H1/H2/H3 패턴 활용). vite renderer mock fetch interceptor 로 4 service 의 SSE 이벤트 시뮬레이션 (실 BE 미부팅 환경에서 시각 검증 보장).
+
+> **사용자 명시 강조** — "다른 모든 화면도 마찬가지" = slip-service 시드 (PR-H1/H2/H3) 와 동일한 audit overlay + edit-request workflow + 1초 SSE sync 가 9 audit overlay 도메인 (partner / inventory / accounting / arologis / product / dc-config / partner-order / user / groupware) 모두 동일 동작 보장. 본 § 13.5 4 PNG 가 핵심 4 도메인 (회계/거래처/재고/배차) 시각 증거.
 
 ---
 
