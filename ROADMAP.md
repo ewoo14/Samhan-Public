@@ -23,6 +23,7 @@
 | 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **4차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification #93 + W4 dashboard skeleton 본 PR)** |
 | 10    | -           | arologis-service (배차 마이크로서비스) + 모바일 어플 driver tab + slip 통합 (renumber, D-P10-05) | **W10-1 PR #97 + W10-3 PR #98 + W10-4 본 PR (slip-service 전자서명 LINK+APP source 통합, V10 Flyway, ApiResponse wrapper IT 의무화) — D-P10-11 / D-P10-12** |
 | 11    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기 |
+| 12    | -           | 실시간 협업 시리즈 (SSE infra + slip 코멘트 / audit overlay / 권한·수락 / 전 15 service 확장) — 총 ~13주 (사용자 결정 옵션 A) | **step-1 진행 (PR-H1 SSE infra + slip 코멘트 smoke 본 PR)** |
 
 ---
 
@@ -453,6 +454,49 @@ W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful
 
 ### 진입 plan 위치
 - `docs/migration/phase11/M-PHASE-11-readiness.md` (본 PR 이동 — 기존 phase10 readiness 의 P10-1/P10-2/P10-3 슬라이스 분해 → 향후 P11-1/P11-2/P11-3 으로 정정 예정)
+
+---
+
+## Phase 12 — 실시간 협업 시리즈 (사용자 결정 옵션 A, 2026-05-09)
+
+> **시리즈 의도** — Samhan Public 핵심 가치 = "두 사람이 같은 전표 보고 한 명 코멘트 → 다른 사람에게 실시간 반영". 4 슬라이스 (PR-H1 ~ PR-H4) 단계 진입. **본 PR-H1 머지로 시리즈 1/4 완성 (SSE infra + slip 코멘트 smoke).**
+
+### 시리즈 분해 (총 ~13주)
+
+- **PR-H1 (1주, 본 PR)** — SSE infra + slip 코멘트 smoke. Spring `SseEmitter` 표준 + `SlipRealtimeBroker` (in-memory `Map<UUID, CopyOnWriteArrayList<SseEmitter>>`, 30s heartbeat) + `slip_comments` Flyway V17 + 단위 9 + IT 5 + multi-context Playwright 작동 캡처 4 PNG. desktop `SlipRealtimeClient` (fetch+ReadableStream polyfill) + mobile-staff `react-native-sse` (RN EventSource polyfill) + Designer `userIdToColor` HSL hash util (PR-H2 audit overlay 의존 시드). DevOps gateway `httpclient.response-timeout: 600s` + nginx `proxy_buffering off` 운영 hint. **외부 SaaS (Pusher/Firebase/Ably) 의존 0** (D-P12-01).
+- **PR-H2 (~3주)** — slip audit overlay + 실시간 sync. slip 라이프사이클 10단계 변경 시 모든 접속 client 에게 SSE broadcast (DRAFT→SAVED→DISPATCHED→...→COMPLETED) + 사용자별 색상 audit overlay (userColorHash 활용) + 변경 이력 timeline UI.
+- **PR-H3 (~1.5주)** — 권한 / 수락 / 거절 워크플로우. 영업 → 창고 → 기사 인계 시점 명시적 수락 + SSE 양방향 push (영업 입력 시 창고 알림 / 창고 수락 시 영업 알림 / 기사 수락 시 양측 알림).
+- **PR-H4 (~7주)** — 전 15 service 확장. partner / inventory / accounting / arologis / dashboard 등 14 backend MSA 도메인 모두 SSE 채널 도입 + `shared/realtime` module 추출 + Redis Pub/Sub 분기 (다중 노드 진입 시 활성).
+
+### 산출물 (본 PR-H1)
+- `services/slip-service` SSE infra — `realtime/SlipRealtimeBroker` + `realtime/SlipRealtimeController` + `comment/{domain,repository,service,web,dto}` 8 신규 file + V17 Flyway (`slip_comments` + 부분 인덱스, BaseEntity 7 audit) + 단위 9 case (Service 5 + Broker 4) + IT 5 case (SSE/POST/GET/broker/403) + `ApplicationContextLoadIT` 보강
+- `clients/desktop` — `realtime/SlipRealtimeClient.ts` (fetch+ReadableStream polyfill, JWT header, 5s reconnect backoff) + `api/slipComment.ts` + `SlipDetailPage` 코멘트 Card (useQuery + useEffect SSE + optimistic add, data-testid 4종)
+- `clients/mobile-staff` — `react-native-sse@^1.2.1` 의존 + `realtime/SlipRealtimeClient.ts` (heartbeat watchdog 60s) + `api/slipComment.ts` (ApiResponse wrapper assert) + `screens/SlipDetailScreen.tsx` 신규 + `DriverDashboardScreen` "전표 보기 / 코멘트" link + `DriverTabNavigator` minimal stack
+- `clients/web/design-system` — `utils/userColorHash.ts` (HSL deterministic, PR-H2 audit overlay 의존 시드) + Storybook 1 story (5 userId swatch + Determinism 검증)
+- `docs/uiux/phase12/H1-comment-smoke.md` 신규 — wireframe + 한국어 라벨
+- `docs/devops/realtime-sse-production.md` 신규 — nginx config + AWS ALB / cafe24 운영 hint
+- `infrastructure/env-templates/{api-gateway,slip-service}.env` — `SAMHAN_REALTIME_HEARTBEAT_SECONDS=30` + gateway response-timeout 600s
+- `services/api-gateway/src/main/resources/application.yml` — `httpclient.response-timeout: 600s` (SSE keep-alive)
+- `services/slip-service/src/main/resources/application.yml` — `samhan.realtime.heartbeat-seconds` property
+- `docs/qa/phase-12-step-1-websocket-infra/scenarios.md` 신규 — 14 case (subscribe + broadcast 5 + 다중 client 5 + API contract 4) + 페르소나 5
+- `docs/qa/phase-12-step-1-websocket-infra/working-{comment-context-a-input,comment-context-a-after-send,comment-context-b-receives,multi-context-split}.png` 신규 — multi-context Playwright 작동 캡처 4 PNG (browser.newContext 2회로 A/B 분리 + sharp 좌-우 합성)
+- `tools/manual-capture/capture-pr-h1.js` 신규 — Playwright 자동화 (msedge → chromium fallback, mock comments seed 사전 주입)
+- `clients/desktop/src/renderer/api/mock.ts` — POST/GET `/comments` mock 추가 (capture 자동화 의존)
+
+### 진입 조건 (PR-H1)
+- PR #122 (운영 검증 인프라) 머지 — 충족 (origin/main `841edde`)
+
+### 진입 plan
+- 본 PR-H1 머지 후 **PR-H2 (slip audit overlay + 실시간 sync, ~3주)** 즉시 진입. userColorHash util 활용.
+
+### 5-team 리뷰 + CI + PM + 사용자 머지 워크플로우 (memory `feedback_pr_review_workflow`)
+
+본 PR 머지 절차:
+1. PR 발행 즉시 `gh pr checks --watch` 자동 시작 (memory `feedback_pr_ci_monitoring`)
+2. 5-team 리뷰 (BE / FE / Designer / QA / DevOps) PR comment 토론 (memory `feedback_tm_led_agent_discussion`)
+3. CI green + reviewer agent 토론 종료 후 TM 종합 추가 commit (필요 시)
+4. PM 최종 승인 댓글 + 머지 요청 (memory `feedback_user_merge_authority`)
+5. 사용자 머지
 
 ---
 
