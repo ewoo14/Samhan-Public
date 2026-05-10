@@ -20,9 +20,13 @@ import com.samhanair.logis.inventory.repository.StockLotRepository;
 import com.samhanair.logis.inventory.repository.StockMovementRepository;
 import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import com.samhanair.logis.inventory.web.dto.AuditDetailResponse;
+import com.samhanair.logis.inventory.realtime.service.InventoryAuditLogRecorder;
+import com.samhanair.logis.inventory.realtime.service.InventoryEditRequestService;
+import com.samhanair.logis.inventory.realtime.service.InventoryLockPolicies;
 import com.samhanair.logis.inventory.web.dto.AuditLineRequest;
 import com.samhanair.logis.inventory.web.dto.AuditResponse;
 import com.samhanair.logis.inventory.web.dto.CreateAuditRequest;
+import com.samhanair.logis.shared.realtime.lock.EditLockGuard;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -79,6 +83,14 @@ public class InventoryAuditService {
     private final StockMovementRepository stockMovementRepository;
     private final ProductClient productClient;
     private final AccountingClient accountingClient;
+
+    /**
+     * PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction 잠금 정책 가드 + 활성 APPROVED lookup.
+     * COMPLETED 단계 InventoryAudit 의 mutation 채널은 InventoryEditRequestService 통한 요청만.
+     */
+    private final EditLockGuard editLockGuard;
+    private final InventoryEditRequestService editRequestService;
+    private final InventoryAuditLogRecorder auditLogRecorder;
 
     /**
      * 재고 실사 신규 등록 — PLANNED 상태로 생성. 해당 창고의 모든 활성 stock_balance 를 조회하여
@@ -140,7 +152,10 @@ public class InventoryAuditService {
      */
     public AuditDetailResponse start(UUID id) {
         InventoryAudit audit = loadOrThrow(id);
+        AuditStatus oldStatus = audit.getStatus();
         audit.start();
+        // PR-H4b: status 변경 audit overlay + SSE broadcast
+        recordStatusAudit(id, "status", oldStatus.name(), audit.getStatus().name());
         return AuditDetailResponse.from(audit);
     }
 
@@ -214,7 +229,10 @@ public class InventoryAuditService {
      */
     public AuditDetailResponse complete(UUID id, String actorUserId) {
         InventoryAudit audit = loadOrThrow(id);
+        AuditStatus oldStatus = audit.getStatus();
         audit.complete();
+        // PR-H4b: status 변경 audit overlay + SSE broadcast
+        recordStatusAudit(id, "status", oldStatus.name(), audit.getStatus().name());
 
         // Stock 조정 — 각 라인 차이 만큼 stock_balance.adjust + ADJUST movement
         for (InventoryAuditLine line : audit.getLines()) {
@@ -254,7 +272,14 @@ public class InventoryAuditService {
      */
     public AuditDetailResponse cancel(UUID id) {
         InventoryAudit audit = loadOrThrow(id);
+        // PR-H4b: 잠금 정책 가드 — COMPLETED 는 LOCKED_REQUIRES_APPROVAL, CANCELLED 는 TERMINAL
+        // (도메인 cancel() 가 PLANNED/IN_PROGRESS 만 허용하므로 COMPLETED 도 자체 가드되지만
+        // 본 호출로 일관 잠금 정책 적용 — APPROVED 활성 시 진행).
+        boolean hasApproval = editRequestService.findActiveApproval(id).isPresent();
+        editLockGuard.guardCanDelete(audit.getStatus(), InventoryLockPolicies.AUDIT_POLICY, hasApproval);
+        AuditStatus oldStatus = audit.getStatus();
         audit.cancel();
+        recordStatusAudit(id, "status", oldStatus.name(), audit.getStatus().name());
         return AuditDetailResponse.from(audit);
     }
 
@@ -361,6 +386,24 @@ public class InventoryAuditService {
         return auditRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "실사를 찾을 수 없습니다"));
+    }
+
+    /**
+     * PR-H4b — InventoryAudit status 변경 audit overlay + SSE broadcast helper.
+     *
+     * <p>actor 정보는 본 서비스 시그니처가 caller user id 를 받지 않는 호환성 유지 이유로 system
+     * sentinel (UUID 0/0). 호출자 (Controller) 가 명시 actor 정보를 전달하는 별도 channel 은
+     * Phase 12 후속 step 에서 service 시그니처 확장 예정.
+     */
+    private void recordStatusAudit(UUID auditId, String fieldName, String oldValue, String newValue) {
+        try {
+            auditLogRecorder.recordOverlayPatch(auditId, new UUID(0L, 0L), "system", null,
+                    fieldName, oldValue, newValue);
+        } catch (RuntimeException ex) {
+            // audit overlay 실패는 회계/도메인 로직 진행을 막지 않음 (graceful fallback)
+            log.warn("[PR-H4b] audit overlay 실패 — auditId={} field={} cause={}",
+                    auditId, fieldName, ex.getMessage());
+        }
     }
 
     private Warehouse loadWarehouseOrThrow(UUID id) {

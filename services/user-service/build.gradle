@@ -37,6 +37,10 @@ dependencies {
 
     implementation project(':shared:common')
     implementation project(':shared:security')
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction module.
+    // Employee/Department audit overlay + SSE broadcast + EditLockGuard
+    // (terminationDate != null = DEACTIVATED → 잠금 정책 적용).
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 

@@ -51,6 +51,10 @@ dependencies {
 
     implementation project(':shared:common')
     implementation project(':shared:security')
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction module.
+    // DcConfig 변경 audit overlay + SSE broadcast + EditLockGuard
+    // (정책 적용 후 변경 신중 — APPROVED 1회 소진 후 mutation 가능).
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 

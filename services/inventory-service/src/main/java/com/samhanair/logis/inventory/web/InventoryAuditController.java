@@ -2,20 +2,30 @@ package com.samhanair.logis.inventory.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.inventory.domain.AuditStatus;
+import com.samhanair.logis.inventory.realtime.service.InventoryAuditLogRecorder;
+import com.samhanair.logis.inventory.realtime.service.InventoryEditRequestService;
+import com.samhanair.logis.inventory.realtime.web.dto.InventoryAuditLogResponse;
+import com.samhanair.logis.inventory.realtime.web.dto.InventoryEditRequestResponse;
 import com.samhanair.logis.inventory.service.InventoryAuditService;
 import com.samhanair.logis.inventory.web.dto.AuditDetailResponse;
 import com.samhanair.logis.inventory.web.dto.AuditLineRequest;
 import com.samhanair.logis.inventory.web.dto.AuditResponse;
 import com.samhanair.logis.inventory.web.dto.CreateAuditRequest;
+import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.editrequest.EditRequestType;
+import com.samhanair.logis.shared.realtime.editrequest.EditTargetRole;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 재고 실사 endpoint (Phase 10 P2-6 슬라이스 9). 한국 일반기업회계기준 의무 실사.
@@ -50,8 +61,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class InventoryAuditController {
 
     private static final String CALLER_HEADER = "X-User-Id";
+    private static final String CALLER_NAME_HEADER = "X-User-Name";
 
     private final InventoryAuditService auditService;
+    private final InventoryAuditLogRecorder auditLogRecorder;
+    private final InventoryEditRequestService editRequestService;
+    private final RealtimeBroker realtimeBroker;
 
     /**
      * 재고 실사 목록 조회 — warehouse / year / status 필터.
@@ -182,6 +197,133 @@ public class InventoryAuditController {
     @PreAuthorize("hasAnyRole('MASTER','MANAGER','INVENTORY')")
     public ApiResponse<AuditDetailResponse> cancel(@PathVariable UUID id) {
         return ApiResponse.ok(auditService.cancel(id));
+    }
+
+    // ============================================================
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction 활성
+    // ============================================================
+
+    /**
+     * 실사 audit timeline — FE timeline 표시용. 최신 revision 우선, soft-deleted 자동 제외.
+     */
+    @Operation(summary = "재고 실사 audit timeline (PR-H4b)",
+            description = "InventoryAudit/StockBalance 등 변경 이력 (최신 revision 우선)")
+    @GetMapping("/{id}/audit-logs")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER','ACCOUNTANT','WAREHOUSE','INVENTORY')")
+    public ApiResponse<List<InventoryAuditLogResponse>> listAuditLogs(@PathVariable UUID id) {
+        return ApiResponse.ok(auditLogRecorder.listByEntity(id).stream()
+                .map(InventoryAuditLogResponse::from).toList());
+    }
+
+    /**
+     * 실사 SSE realtime — entity 별 audit / edit-request event 구독.
+     *
+     * <p>{@code text/event-stream} stream — heartbeat 30s. 클라이언트는 EventSource API 로 subscribe.
+     */
+    @Operation(summary = "재고 실사 SSE realtime 구독 (PR-H4b)",
+            description = "audit/edit-request event SSE stream — heartbeat 30s")
+    @GetMapping(value = "/{id}/realtime", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','DEVELOPER','ACCOUNTANT','WAREHOUSE','INVENTORY')")
+    public SseEmitter subscribeRealtime(@PathVariable UUID id) {
+        return realtimeBroker.subscribe(id);
+    }
+
+    /**
+     * 수정/삭제 요청 생성 — InventoryAudit COMPLETED 단계에서 본문 변경 채널.
+     */
+    @Operation(summary = "수정/삭제 요청 생성 (PR-H4b)",
+            description = "InventoryAudit COMPLETED 후 MANAGER 수락 1회 소진 후 mutation 가능")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "요청 생성 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "PLANNED/IN_PROGRESS/CANCELLED 단계"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "실사 미존재")
+    })
+    @PostMapping("/{id}/edit-requests")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','INVENTORY','ACCOUNTANT')")
+    public ApiResponse<InventoryEditRequestResponse> createEditRequest(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        EditRequestType requestType = parseRequestType(body == null ? null : body.get("requestType"));
+        String reason = body == null ? null : body.get("reason");
+        return ApiResponse.ok(InventoryEditRequestResponse.from(
+                editRequestService.request(id, requestType, reason,
+                        parseActorId(callerId), resolveActorName(callerId, callerName))));
+    }
+
+    /** 권한자 그룹 PENDING 대시보드 (관리자 화면). */
+    @Operation(summary = "PENDING 요청 대시보드 (PR-H4b)",
+            description = "MANAGER 권한자가 수락/거절 대상 요청 목록 조회")
+    @GetMapping("/edit-requests/pending")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','ACCOUNTANT')")
+    public ApiResponse<List<InventoryEditRequestResponse>> listPending(
+            @RequestParam(defaultValue = "MANAGER") EditTargetRole targetRole) {
+        return ApiResponse.ok(editRequestService.listPendingForRole(targetRole).stream()
+                .map(InventoryEditRequestResponse::from).toList());
+    }
+
+    /** 요청 수락. */
+    @Operation(summary = "수정/삭제 요청 수락 (PR-H4b)")
+    @PostMapping("/edit-requests/{requestId}/approve")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','ACCOUNTANT')")
+    public ApiResponse<InventoryEditRequestResponse> approveEditRequest(
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        String note = body == null ? null : body.get("note");
+        return ApiResponse.ok(InventoryEditRequestResponse.from(
+                editRequestService.approve(requestId,
+                        parseActorId(callerId), resolveActorName(callerId, callerName), note)));
+    }
+
+    /** 요청 거절. */
+    @Operation(summary = "수정/삭제 요청 거절 (PR-H4b)")
+    @PostMapping("/edit-requests/{requestId}/reject")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','ACCOUNTANT')")
+    public ApiResponse<InventoryEditRequestResponse> rejectEditRequest(
+            @PathVariable UUID requestId,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        String reason = body == null ? null : body.get("decisionReason");
+        return ApiResponse.ok(InventoryEditRequestResponse.from(
+                editRequestService.reject(requestId,
+                        parseActorId(callerId), resolveActorName(callerId, callerName), reason)));
+    }
+
+    private EditRequestType parseRequestType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new com.samhanair.logis.common.exception.BusinessException(
+                    com.samhanair.logis.common.exception.ErrorCode.INVALID_INPUT,
+                    "requestType 필수 (EDIT/DELETE)");
+        }
+        try {
+            return EditRequestType.valueOf(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new com.samhanair.logis.common.exception.BusinessException(
+                    com.samhanair.logis.common.exception.ErrorCode.INVALID_INPUT,
+                    "잘못된 requestType: " + raw);
+        }
+    }
+
+    private UUID parseActorId(String callerId) {
+        if (callerId == null || callerId.isBlank()) {
+            return new UUID(0L, 0L);
+        }
+        try {
+            return UUID.fromString(callerId);
+        } catch (IllegalArgumentException ex) {
+            return new UUID(0L, 0L);
+        }
+    }
+
+    private String resolveActorName(String callerId, String callerName) {
+        if (callerName != null && !callerName.isBlank()) {
+            return callerName;
+        }
+        return (callerId == null || callerId.isBlank()) ? "system" : callerId;
     }
 
     private String callerOrSystem(String header) {

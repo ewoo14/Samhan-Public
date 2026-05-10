@@ -3,10 +3,14 @@ package com.samhanair.logis.accounting.it;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.samhanair.logis.accounting.AccountingServiceApplication;
+import com.samhanair.logis.accounting.audit.service.AccountingAuditLogService;
 import com.samhanair.logis.accounting.client.ChatRoomMappingClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.ProductClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
+import com.samhanair.logis.accounting.editrequest.service.AccountingEditRequestService;
+import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.lock.EditLockGuard;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +36,15 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Autowired
     private ApplicationContext applicationContext;
 
+    @Autowired
+    private RealtimeBroker realtimeBroker;
+    @Autowired
+    private EditLockGuard editLockGuard;
+    @Autowired
+    private AccountingAuditLogService accountingAuditLogService;
+    @Autowired
+    private AccountingEditRequestService accountingEditRequestService;
+
     @MockBean
     private SlipServiceClient slipServiceClient;
     @MockBean
@@ -48,5 +61,17 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Test
     void contextLoads() {
         assertThat(applicationContext).isNotNull();
+    }
+
+    /**
+     * PR-H4b BE-A — shared:realtime-abstraction 의 RealtimeBroker / EditLockGuard 가 자동 설정으로
+     * 등록되었고, accounting-service 의 audit / edit-request bean 도 정상 주입되는지 확인.
+     */
+    @Test
+    void realtimeBeansAreWired() {
+        assertThat(realtimeBroker).isNotNull();
+        assertThat(editLockGuard).isNotNull();
+        assertThat(accountingAuditLogService).isNotNull();
+        assertThat(accountingEditRequestService).isNotNull();
     }
 }

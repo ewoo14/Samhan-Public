@@ -53,6 +53,14 @@ dependencies {
     implementation project(':shared:discovery-abstraction')
     // Phase 9 W4 — UserVerifier 표준 abstraction (W3 backlog #1 채택, Caffeine TTL 60s 일원화)
     implementation project(':shared:user-client-abstraction')
+    // PR-H4b (Phase 12 Step 4b) BE-E — shared:realtime-abstraction module 의존 추가.
+    // groupware-service 는 결재선/메신저/일정 도메인 — 게시 후 변경 신중 정책 일관 (slip-service
+    // PR-H3 의 잠금 패턴 참조). 본 PR 범위:
+    //   - shared module 의존 + autoconfig 활성 (broker bean + EditLockGuard)
+    //   - groupware_audit_logs 테이블 (AuditLogEntry @MappedSuperclass 적용)
+    //   - groupware_edit_requests 테이블 (EditRequestRecord @MappedSuperclass 적용)
+    //   - 도메인 service 의 mutation 호출자에서 실제 audit/lock 활용은 향후 PR (entity 별 단계)
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 

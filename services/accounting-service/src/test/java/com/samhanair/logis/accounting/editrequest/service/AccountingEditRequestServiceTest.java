@@ -1,0 +1,130 @@
+package com.samhanair.logis.accounting.editrequest.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.samhanair.logis.accounting.editrequest.domain.AccountingEditRequest;
+import com.samhanair.logis.accounting.editrequest.repository.AccountingEditRequestRepository;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.editrequest.EditRequestStatus;
+import com.samhanair.logis.shared.realtime.editrequest.EditRequestType;
+import com.samhanair.logis.shared.realtime.editrequest.EditTargetRole;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+/**
+ * PR-H4b BE-A — AccountingEditRequestService 단위 테스트 (5 case).
+ *
+ * <ol>
+ *   <li>request — 정상 PENDING 생성 + targetRole=MANAGER + SSE created broadcast</li>
+ *   <li>approve — APPROVED 전이 + decided broadcast</li>
+ *   <li>reject — REJECTED 전이 + decisionReason 보존</li>
+ *   <li>findActiveApproval — APPROVED 1건 lookup → requestId 반환</li>
+ *   <li>consumeApproval — soft-delete 패턴 (요청 미존재 시 NOT_FOUND)</li>
+ * </ol>
+ */
+@ExtendWith(MockitoExtension.class)
+class AccountingEditRequestServiceTest {
+
+    @Mock private AccountingEditRequestRepository requestRepository;
+    @Mock private RealtimeBroker broker;
+
+    @InjectMocks private AccountingEditRequestService service;
+
+    private UUID entityId;
+    private UUID requesterId;
+    private UUID approverId;
+
+    @BeforeEach
+    void setUp() {
+        entityId = UUID.randomUUID();
+        requesterId = UUID.randomUUID();
+        approverId = UUID.randomUUID();
+    }
+
+    @Test
+    void request_createsPendingWithManagerTargetRole_andBroadcastsCreated() {
+        when(requestRepository.save(any(AccountingEditRequest.class))).thenAnswer(inv -> {
+            AccountingEditRequest req = inv.getArgument(0);
+            ReflectionTestUtils.setField(req, "id", UUID.randomUUID());
+            return req;
+        });
+
+        AccountingEditRequest saved = service.request(entityId, EditRequestType.EDIT,
+                "발행 후 거래처 정정", requesterId, "이수민");
+
+        assertThat(saved.getStatus()).isEqualTo(EditRequestStatus.PENDING);
+        assertThat(saved.getTargetRole()).isEqualTo(EditTargetRole.MANAGER);
+        assertThat(saved.getRequesterName()).isEqualTo("이수민");
+        verify(broker, times(1))
+                .publish(eq(entityId), eq(AccountingEditRequestService.EVENT_REQUEST_CREATED), any());
+    }
+
+    @Test
+    void approve_transitionsToApproved_andBroadcastsDecided() {
+        AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
+                EditRequestType.EDIT, "사유", EditTargetRole.MANAGER, LocalDateTime.now().plusHours(24));
+        UUID requestId = UUID.randomUUID();
+        ReflectionTestUtils.setField(req, "id", requestId);
+        when(requestRepository.findById(requestId)).thenReturn(Optional.of(req));
+
+        AccountingEditRequest approved = service.approve(requestId, approverId, "관리자A", "OK");
+
+        assertThat(approved.getStatus()).isEqualTo(EditRequestStatus.APPROVED);
+        assertThat(approved.getDecidedByName()).isEqualTo("관리자A");
+        verify(broker, times(1))
+                .publish(eq(entityId), eq(AccountingEditRequestService.EVENT_REQUEST_DECIDED), any());
+    }
+
+    @Test
+    void reject_requiresReason_andTransitionsToRejected() {
+        AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
+                EditRequestType.DELETE, "삭제요청", EditTargetRole.MANAGER, null);
+        UUID requestId = UUID.randomUUID();
+        ReflectionTestUtils.setField(req, "id", requestId);
+        when(requestRepository.findById(requestId)).thenReturn(Optional.of(req));
+
+        AccountingEditRequest rejected = service.reject(requestId, approverId, "관리자A",
+                "정책상 불가");
+
+        assertThat(rejected.getStatus()).isEqualTo(EditRequestStatus.REJECTED);
+        assertThat(rejected.getDecisionReason()).isEqualTo("정책상 불가");
+    }
+
+    @Test
+    void findActiveApproval_returnsRequestId_whenApprovedExists() {
+        AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
+                EditRequestType.EDIT, null, EditTargetRole.MANAGER, null);
+        UUID requestId = UUID.randomUUID();
+        ReflectionTestUtils.setField(req, "id", requestId);
+        when(requestRepository.findFirstByEntityIdAndStatus(entityId, EditRequestStatus.APPROVED))
+                .thenReturn(Optional.of(req));
+
+        Optional<UUID> result = service.findActiveApproval(entityId);
+
+        assertThat(result).contains(requestId);
+    }
+
+    @Test
+    void consumeApproval_throwsNotFound_whenRequestMissing() {
+        UUID requestId = UUID.randomUUID();
+        when(requestRepository.findById(requestId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.consumeApproval(requestId, "system"))
+                .isInstanceOf(BusinessException.class);
+    }
+}

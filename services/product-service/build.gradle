@@ -52,6 +52,10 @@ dependencies {
 
     implementation project(':shared:common')
     implementation project(':shared:security')
+    // PR-H4b (Phase 12 Step 4b BE-C) — shared:realtime-abstraction module 적용.
+    // Product master mutation 흐름에 audit overlay + SSE + EditLockGuard (DISCONTINUED 후 잠금)
+    // 활성. slip-service (PR-H4a 시범) / partner-order-service (PR-H4b 함께) 와 동일 패턴.
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 

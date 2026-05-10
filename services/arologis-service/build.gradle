@@ -72,6 +72,9 @@ dependencies {
     implementation project(':shared:discovery-abstraction')
     // Phase 10 W10-1 — UserVerifier 5번째 소비자 (notification + groupware + dashboard + partner + arologis).
     implementation project(':shared:user-client-abstraction')
+    // PR-H4b (Phase 12 Step 4b) — shared:realtime-abstraction module 활성.
+    // Dispatch / VehicleStop 변경 시 audit overlay + SSE broadcast + Dispatch DISPATCHED/DELIVERED 후 잠금.
+    implementation project(':shared:realtime-abstraction')
 
     runtimeOnly 'org.postgresql:postgresql'
 

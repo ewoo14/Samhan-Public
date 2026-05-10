@@ -88,6 +88,13 @@ public class PartnerOrder extends BaseEntity {
     @OneToMany(mappedBy = "partnerOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PartnerOrderLine> lines = new ArrayList<>();
 
+    /**
+     * PR-H4b 누적 수정 횟수 — partner_order_audit_logs 의 다음 revision_no 채번 보조 + FE timeline UI 표시.
+     * V3 마이그에서 신규. 기존 row 는 0 으로 backfill.
+     */
+    @Column(name = "revision_count", nullable = false)
+    private int revisionCount = 0;
+
     private PartnerOrder(String partnerCode, String bizCode, String orderNo,
                          String idempotencyKey, BigDecimal totalAmount) {
         if (partnerCode == null || partnerCode.isBlank()) {
@@ -178,5 +185,16 @@ public class PartnerOrder extends BaseEntity {
     /** unmodifiable view — 외부 변경 차단. */
     public List<PartnerOrderLine> getLines() {
         return Collections.unmodifiableList(this.lines);
+    }
+
+    /**
+     * PR-H4b 단조 증가 revision 채번 — audit overlay 1행 INSERT 직전 호출.
+     * 같은 mutation 의 다중 필드 변경은 service 레이어가 1회만 호출하여 같은 revisionNo 공유.
+     *
+     * @return 새 revisionNo (1, 2, 3, ...)
+     */
+    public int incrementRevision() {
+        this.revisionCount += 1;
+        return this.revisionCount;
     }
 }

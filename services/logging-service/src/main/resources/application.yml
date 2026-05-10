@@ -11,6 +11,14 @@ spring:
     port: ${RABBIT_PORT:5672}
     username: ${RABBIT_USER:samhan}
     password: ${RABBIT_PASSWORD:samhan_dev_pw}
+  # PR-H4b BE-E — shared:realtime-abstraction module 이 transitive 로 starter-data-jpa 를 가져오지만
+  # logging-service 는 Postgres JPA 를 사용하지 않음 (audit sink = Elasticsearch). DataSource/JPA
+  # autoconfig 를 명시 exclude 하여 startup 시 DB connection 시도 차단.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
 
 eureka:
   client:
@@ -41,6 +49,10 @@ spring:
       - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
       - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration
       - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+      # PR-H4b BE-E — shared:realtime-abstraction transitive JPA exclude (default 프로필과 일관)
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
 
 eureka:
   client:

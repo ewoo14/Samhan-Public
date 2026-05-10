@@ -13,6 +13,7 @@ import com.samhanair.logis.arologis.domain.VehicleStop;
 import com.samhanair.logis.arologis.matcher.DriverMatchResult;
 import com.samhanair.logis.arologis.matcher.DriverMatcher;
 import com.samhanair.logis.arologis.parser.ParsedDispatch;
+import com.samhanair.logis.arologis.realtime.service.ArologisAuditLogRecorder;
 import com.samhanair.logis.arologis.repository.DispatchRepository;
 import com.samhanair.logis.arologis.repository.DriverRepository;
 import com.samhanair.logis.arologis.repository.VehicleRepository;
@@ -54,6 +55,12 @@ public class DispatchService {
      * 비-skeleton 토글 → 본인 / 배차담당자 user-service lookup 활성.
      */
     private final UserClient userClient;
+
+    /**
+     * PR-H4b (Phase 12 Step 4b) — VehicleStop status 변경 시 audit overlay + SSE broadcast.
+     * dispatch 잠금 정책 가드는 별도 service (ArologisEditRequestService.guardCanEdit) 가 담당.
+     */
+    private final ArologisAuditLogRecorder auditLogRecorder;
 
     /**
      * Parsed dispatch → 영속화. dispatch + vehicles + stops 일괄 저장.
@@ -185,7 +192,18 @@ public class DispatchService {
         VehicleStop stop = stopRepository.findFirstByVehicleIdAndSequence(vehicle.getId(), stopSeq)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "stop 미존재 — vehicleId=" + vehicle.getId() + " seq=" + stopSeq));
+        StopStatus oldStatus = stop.getStatus();
         stop.updateStatus(status, LocalDateTime.now());
+        // PR-H4b: status 변경 audit overlay + SSE broadcast (entity_id = dispatchId, fieldName = stops[seq].status)
+        try {
+            auditLogRecorder.recordOverlayPatch(dispatchId, new UUID(0L, 0L), "system", null,
+                    "stops[" + stopSeq + "].status",
+                    oldStatus == null ? null : oldStatus.name(),
+                    status == null ? null : status.name());
+        } catch (RuntimeException ex) {
+            log.warn("[PR-H4b] stop status audit 실패 — dispatchId={} stopSeq={} cause={}",
+                    dispatchId, stopSeq, ex.getMessage());
+        }
     }
 
     /** Soft Delete (BaseEntity.markDeleted). */

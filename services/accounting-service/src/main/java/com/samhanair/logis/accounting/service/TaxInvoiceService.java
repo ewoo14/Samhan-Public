@@ -12,11 +12,14 @@ import com.samhanair.logis.accounting.web.dto.TaxInvoiceDetailResponse;
 import com.samhanair.logis.accounting.web.dto.TaxInvoiceResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.shared.realtime.audit.AuditLogRecorder;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -65,6 +68,18 @@ public class TaxInvoiceService {
     private final JournalService journalService;
 
     /**
+     * shared:realtime-abstraction audit recorder — PR-H4b. AccountingAuditLogService 가 본
+     * interface 를 구현. {@code @Autowired(required=false)} setter — 단위 테스트 (AuditLogRecorder
+     * bean 미등록 환경) 회귀 0 보장.
+     */
+    private AuditLogRecorder auditRecorder;
+
+    @Autowired(required = false)
+    public void setAuditRecorder(AuditLogRecorder auditRecorder) {
+        this.auditRecorder = auditRecorder;
+    }
+
+    /**
      * 신규 세금계산서 생성 (DRAFT). 라인 1개 이상 필수, 금액 자동 계산.
      */
     public TaxInvoiceDetailResponse create(CreateTaxInvoiceRequest request) {
@@ -83,9 +98,18 @@ public class TaxInvoiceService {
 
     /**
      * 수정 — DRAFT 상태에서 헤더 + 라인 일괄 교체.
+     *
+     * <p>PR-H4b — shared audit recorder 가 등록되어 있으면 헤더 변경 (partnerName/partnerAddress/
+     * supplyDate/description) 별로 audit_log 1행 + SSE broadcast.
      */
     public TaxInvoiceDetailResponse update(UUID id, CreateTaxInvoiceRequest request) {
         TaxInvoice ti = findOrThrow(id);
+        // diff snapshot — audit 비교용
+        String oldPartnerName = ti.getPartnerName();
+        String oldPartnerAddress = ti.getPartnerAddress();
+        String oldSupplyDate = ti.getSupplyDate() == null ? null : ti.getSupplyDate().toString();
+        String oldDescription = ti.getDescription();
+
         ti.updateBasic(request.partnerBusinessNo(), request.partnerName(),
                 request.partnerAddress(), request.supplyDate(), request.description());
         // 라인 교체 — orphan removal 로 기존 라인 영속화 제거.
@@ -96,7 +120,33 @@ public class TaxInvoiceService {
                     lineReq.spec(), lineReq.quantity(), lineReq.unitPrice(), lineReq.memo()));
         }
         ti.replaceLines(newLines);
+
+        if (auditRecorder != null) {
+            UUID systemActor = new UUID(0L, 0L);
+            recordIfChanged(ti.getId(), systemActor, "system", "taxInvoice.partnerName",
+                    oldPartnerName, ti.getPartnerName());
+            recordIfChanged(ti.getId(), systemActor, "system", "taxInvoice.partnerAddress",
+                    oldPartnerAddress, ti.getPartnerAddress());
+            recordIfChanged(ti.getId(), systemActor, "system", "taxInvoice.supplyDate",
+                    oldSupplyDate, ti.getSupplyDate() == null ? null : ti.getSupplyDate().toString());
+            recordIfChanged(ti.getId(), systemActor, "system", "taxInvoice.description",
+                    oldDescription, ti.getDescription());
+        }
         return TaxInvoiceDetailResponse.of(ti);
+    }
+
+    /** 변경된 경우만 audit row 1행 INSERT — UUID 비공개 가드 (actorName 표시). */
+    private void recordIfChanged(UUID entityId, UUID actorId, String actorName,
+                                 String fieldName, String oldVal, String newVal) {
+        if (Objects.equals(oldVal, newVal)) {
+            return;
+        }
+        try {
+            auditRecorder.recordOverlayPatch(entityId, actorId, actorName, null,
+                    fieldName, oldVal, newVal);
+        } catch (RuntimeException ex) {
+            // graceful — audit 실패가 비즈니스 mutation 차단하지 않음
+        }
     }
 
     /**
