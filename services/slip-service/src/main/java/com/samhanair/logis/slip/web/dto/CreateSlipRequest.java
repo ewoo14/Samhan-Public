@@ -19,6 +19,21 @@ import java.util.UUID;
  *
  * <p>Slice B (notification-slice-B): {@code driverName}, {@code driverPhone} 2 필드 신규 추가 —
  * 출고 슬립 생성 시 배송 기사 정보를 함께 입력 가능 (선택). 입력되지 않으면 추후 editHeader 로 갱신.
+ *
+ * <p>PR-G1 backlog #2 — V16 e-Count schema 12 컬럼 신규 (모두 nullable):
+ * <ul>
+ *   <li>{@code customerTel} / {@code customerAddress} / {@code customerRepresentative}
+ *       — 거래처 자동 채움 후 사용자 수정 가능 (snapshot).</li>
+ *   <li>{@code shippingAddress} / {@code inspectionAddress} / {@code receiverPhone}
+ *       — 배송지/검수지/수령자 별도 입력.</li>
+ *   <li>{@code paymentDueLabel} (MM-DD picker label) / {@code discountInfo} (textarea).</li>
+ *   <li>{@code collectTerm} / {@code agreeTerm} — 대금 회수 조건 / 거래 약정 조건.</li>
+ *   <li>{@code ioType} ({@code "10"}=출고 / {@code "11"}=입고. null 시 slipType 분기 자동).</li>
+ *   <li>{@code timeDate} (HHmmss. null 시 서버 시각 자동).</li>
+ * </ul>
+ *
+ * <p>본 12 필드는 publish 흐름 ({@code from-estimate} / {@code from-partner-order}) 과 동일하게
+ * {@code Slip.applyEcountSchema} 로 직접 컬럼 저장.
  */
 public record CreateSlipRequest(
         @NotNull SlipType slipType,
@@ -31,6 +46,19 @@ public record CreateSlipRequest(
         @Size(max = 1000) String memo,
         @Size(max = 50) String driverName,
         @Size(max = 20) String driverPhone,
+        // PR-G1 backlog #2 — V16 e-Count 12 컬럼 (모두 nullable)
+        @Size(max = 10) String ioType,
+        @Size(max = 10) String timeDate,
+        @Size(max = 100) String customerTel,
+        @Size(max = 200) String customerAddress,
+        @Size(max = 100) String customerRepresentative,
+        @Size(max = 500) String shippingAddress,
+        @Size(max = 500) String inspectionAddress,
+        @Size(max = 100) String receiverPhone,
+        @Size(max = 200) String paymentDueLabel,
+        @Size(max = 200) String discountInfo,
+        @Size(max = 100) String collectTerm,
+        @Size(max = 100) String agreeTerm,
         @NotEmpty @Valid List<SlipLineRequest> lines) {
 
     /**

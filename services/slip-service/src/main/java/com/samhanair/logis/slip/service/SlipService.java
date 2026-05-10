@@ -123,6 +123,25 @@ public class SlipService {
             slip.setDriverContact(req.driverName(), req.driverPhone());
         }
 
+        // 7. PR-G1 backlog #2 — V16 e-Count 12 컬럼 직접 저장 (publish 흐름과 동일).
+        // ioType null 시 slipType 분기 자동 ("10"=OUTBOUND / "11"=INBOUND).
+        // timeDate null 시 서버 시각 (HHmmss) 자동.
+        String resolvedIoType = req.ioType();
+        if (resolvedIoType == null || resolvedIoType.isBlank()) {
+            resolvedIoType = req.slipType() == SlipType.OUTBOUND ? "10" : "11";
+        }
+        String resolvedTimeDate = req.timeDate();
+        if (resolvedTimeDate == null || resolvedTimeDate.isBlank()) {
+            resolvedTimeDate = java.time.LocalTime.now().format(
+                    java.time.format.DateTimeFormatter.ofPattern("HHmmss"));
+        }
+        slip.applyEcountSchema(
+                resolvedIoType, resolvedTimeDate,
+                req.customerTel(), req.customerAddress(), req.customerRepresentative(),
+                req.shippingAddress(), req.inspectionAddress(), req.receiverPhone(),
+                req.paymentDueLabel(), req.discountInfo(),
+                req.collectTerm(), req.agreeTerm());
+
         Slip saved = slipRepository.save(slip);
         return SlipDetailResponse.from(saved);
     }

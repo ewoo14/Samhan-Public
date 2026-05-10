@@ -37,6 +37,11 @@ app:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
   slip:
+    # PR-G1 backlog #1 — partner-service 거래처 strict 검증 toggle (hybrid policy).
+    # default true → 발행 시 partner-service 미등록 (404) 거래처 reject (BusinessException NOT_FOUND).
+    # false → lookup skip + warning log (data-migration / disaster-recovery 시점만 사용 권장).
+    # 5xx / 연결 실패는 strict 모드에서도 fail-open (회계 critical path 보호).
+    partner-strict-validation: ${SAMHAN_SLIP_PARTNER_STRICT:true}
     # P1-8 (Stage 4) — 슬립 첨부 MinIO bucket. default false → NoopSlipAttachmentStorage fallback.
     # DevOps 가 별도 dispatch 로 bucket `slip-attachments` 생성. 활성 시 MinioSlipAttachmentStorage 주입.
     minio:

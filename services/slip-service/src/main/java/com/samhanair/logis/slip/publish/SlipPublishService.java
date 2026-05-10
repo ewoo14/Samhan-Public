@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.client.PartnerInternalClient;
+import com.samhanair.logis.slip.client.PartnerInternalClient.PartnerVerifyResult;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.domain.Slip;
@@ -87,7 +89,9 @@ public class SlipPublishService {
     private final SlipPublishAuditRepository auditRepository;
     private final SlipNumberService slipNumberService;
     private final ProductClient productClient;
+    private final PartnerInternalClient partnerInternalClient;
     private final WarehouseCodeMapper warehouseCodeMapper;
+    private final SlipPublishProperties publishProperties;
     private final ObjectMapper objectMapper;
     private final EntityManager entityManager;
 
@@ -111,6 +115,9 @@ public class SlipPublishService {
         if (existing.isPresent()) {
             return assertReplayOrConflict(existing.get(), fingerprint);
         }
+
+        // 1.5 PR-G1 backlog #1 — partnerCode strict 검증 (hybrid policy, default strict)
+        verifyPartnerOrThrow(req.partnerCode());
 
         // 2. 헤더 매핑 — PR-G1: memo prepend 폐기, 사용자 자유 입력만 보존
         UUID warehouseId = warehouseCodeMapper.resolve(req.warehouseCode());
@@ -180,6 +187,9 @@ public class SlipPublishService {
             return assertReplayOrConflict(existing.get(), fingerprint);
         }
 
+        // PR-G1 backlog #1 — partnerCode strict 검증 (hybrid policy)
+        verifyPartnerOrThrow(req.partnerCode());
+
         UUID warehouseId = warehouseCodeMapper.resolve(req.warehouseCode());
         LocalDate slipDate = parseIoDate(req.ioDate());
         // PR-G1: memo prepend 폐기 — orderApprovedAt 만 사용자 자유 입력 memo 와 결합 보존 (snapshot 컬럼 없음)
@@ -245,6 +255,48 @@ public class SlipPublishService {
     }
 
     // ---------- 내부 helper ----------
+
+    /**
+     * PR-G1 backlog #1 — partnerCode strict 검증 (hybrid policy).
+     *
+     * <p>{@link SlipPublishProperties#isPartnerStrictValidation()} = true (default):
+     * <ul>
+     *   <li>partner-service {@code GET /internal/partners/{partnerCode}} 호출.</li>
+     *   <li>{@link PartnerVerifyResult#isFound()} → 정상 진행.</li>
+     *   <li>{@link PartnerVerifyResult#isNotFound()} → {@link BusinessException} (NOT_FOUND).</li>
+     *   <li>{@code SERVER_ERROR} (5xx) → fail-open + warning log (회계 critical path 보호).</li>
+     *   <li>{@code SKIPPED} (partnerCode null/blank 또는 token 미설정) → 진행 (기존 호환성).</li>
+     * </ul>
+     *
+     * <p>{@code partnerStrictValidation = false} (운영 override):
+     * <ul>
+     *   <li>lookup 자체 skip + warning log.</li>
+     * </ul>
+     *
+     * @param partnerCode 발행 요청의 partnerCode (null/blank 가능)
+     * @throws BusinessException(NOT_FOUND) strict on + 거래처 미등록 (404)
+     */
+    private void verifyPartnerOrThrow(String partnerCode) {
+        if (partnerCode == null || partnerCode.isBlank()) {
+            return; // partnerCode 가 비어있으면 lookup 자체 의미 없음 (기존 호환성)
+        }
+        if (!publishProperties.isPartnerStrictValidation()) {
+            log.warn("[strict OFF] partner verify skipped (code={}) — app.slip.partner-strict-validation=false 운영 override",
+                    partnerCode);
+            return;
+        }
+        PartnerVerifyResult result = partnerInternalClient.verifyPartnerCode(partnerCode);
+        if (result.isNotFound()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "거래처 코드 '" + partnerCode + "' 가 partner-service 에 등록되지 않았습니다. "
+                            + "거래처를 먼저 등록한 후 다시 발행하세요.");
+        }
+        if (result.status() == PartnerVerifyResult.Status.SERVER_ERROR) {
+            log.warn("[strict ON, fail-open] partner-service 5xx/연결 실패 — partnerCode={} raw 저장 진행 (회계 critical path 보호)",
+                    partnerCode);
+        }
+        // FOUND / SKIPPED → 정상 진행 (SKIPPED 는 internal token 미설정 시 — 운영 misconfig 지표)
+    }
 
     private Optional<Slip> lookupByIdempotencyKey(String idempotencyKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {

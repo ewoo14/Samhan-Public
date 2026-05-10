@@ -167,6 +167,31 @@ export interface CreateSlipRequest {
   driverName?: string
   /** 기사 휴대폰 — link-dispatch-slice 신규 (옵션, 010-XXXX-XXXX). */
   driverPhone?: string
+  // PR-G1 backlog #2 — V16 e-Count 12 컬럼 (모두 옵션, BE 가 null 시 기본 분기).
+  /** "10"=출고 / "11"=입고. null 시 slipType 분기 자동. */
+  ioType?: string
+  /** HHmmss. null 시 BE 가 서버 시각 자동 채움. */
+  timeDate?: string
+  /** 거래처 연락처 (자동 채움 가능). */
+  customerTel?: string
+  /** 거래처 사업장 주소 (자동 채움 가능). */
+  customerAddress?: string
+  /** 거래처 대표자명 (자동 채움 가능). */
+  customerRepresentative?: string
+  /** 배송지 주소 — 별도 입력. */
+  shippingAddress?: string
+  /** 검수지 주소 — 별도 입력. */
+  inspectionAddress?: string
+  /** 수령자 연락처 — 별도 입력. */
+  receiverPhone?: string
+  /** 결제 만기 라벨 (예: "MM-DD" 또는 "익월말"). */
+  paymentDueLabel?: string
+  /** 할인 정보 (자유 입력). */
+  discountInfo?: string
+  /** 대금 회수 조건 ("월말" / "익월말" / "현금" 등). */
+  collectTerm?: string
+  /** 거래 약정 조건 (자유 입력). */
+  agreeTerm?: string
   lines: SlipLineInput[]
 }
 
@@ -327,6 +352,43 @@ export async function lookupProductByModelName(
     { params: { modelName } },
   )
   return res.data.data
+}
+
+/**
+ * PR-G1 backlog #2 — 거래처 자동 채움 lookup 응답.
+ * BE `PartnerAdminResponse` 의 customer 필드 부분만 추출 (UUID 미노출).
+ */
+export interface PartnerAutoFillResult {
+  partnerCode: string
+  name: string
+  phone: string | null
+  address: string | null
+  representative: string | null
+}
+
+/**
+ * PR-G1 backlog #2 — 거래처 코드 → 자동 채움 데이터 lookup.
+ *
+ * SlipFormPage "거래처 자동 채움" 버튼이 호출. 200 시 customerTel/customerAddress/
+ * customerRepresentative 3 필드 fill (사용자 수정 가능). 404 시 axios error 던짐 →
+ * 호출자가 "거래처 미존재" 안내.
+ *
+ * @param partnerCode 거래처 코드 (사용자 노출 식별자)
+ */
+export async function lookupPartnerForAutoFill(
+  partnerCode: string,
+): Promise<PartnerAutoFillResult> {
+  const res = await apiClient.get<ApiEnvelope<PartnerAutoFillResult>>(
+    `/admin/partners/${encodeURIComponent(partnerCode)}`,
+  )
+  const d = res.data.data
+  return {
+    partnerCode: d.partnerCode,
+    name: d.name,
+    phone: d.phone ?? null,
+    address: d.address ?? null,
+    representative: d.representative ?? null,
+  }
 }
 
 /**

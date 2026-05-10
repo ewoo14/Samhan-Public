@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
+import com.samhanair.logis.slip.client.PartnerInternalClient;
+import com.samhanair.logis.slip.client.PartnerInternalClient.PartnerVerifyResult;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.domain.Slip;
@@ -80,6 +82,13 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
     @MockBean
     private InventoryClient inventoryClient;
 
+    /**
+     * PR-G1 backlog #1 — partner strict 검증 client. 기본은 FOUND 반환 (기존 happy-path IT 보존),
+     * strict-on-not-found IT 는 별도 {@link SlipPublishPartnerStrictIT} 에서 검증.
+     */
+    @MockBean
+    private PartnerInternalClient partnerInternalClient;
+
     @BeforeEach
     void setupMocks() {
         // lookupByModel — 모든 productCode 에 대해 가짜 ProductSummary 반환.
@@ -90,6 +99,9 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
         // 기존 lookup/requireExists 도 IT 실패 방지용 lenient 처리 (publish 경로는 사용 X).
         Mockito.lenient().when(productClient.lookup(ArgumentMatchers.anyList()))
                 .thenReturn(List.of());
+        // PR-G1 backlog #1 — strict ON 기본값에서도 happy-path 통과하도록 FOUND 반환.
+        Mockito.lenient().when(partnerInternalClient.verifyPartnerCode(ArgumentMatchers.anyString()))
+                .thenReturn(PartnerVerifyResult.found(java.util.Optional.empty()));
     }
 
     // ---------------- happy path: from-estimate ----------------
