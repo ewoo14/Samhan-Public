@@ -6,11 +6,22 @@
  * - DataTable 컬럼에서 ID 컬럼 미포함 (UUID 비공개 가드)
  * - 행 클릭 시 alert 가 아닌 상세 페이지로 navigate (`/sales/:id` 또는 `/purchases/:id`)
  *
+ * <h2>PR-H4c FE-B 보강 — 실시간 동기화 (입고/출고 통합)</h2>
+ * <ul>
+ *   <li>30초 polling refetchInterval — 멀티 워크스테이션 동기화 안전망.</li>
+ *   <li>BE slip-service 는 PR-H4a 부터 entity 단위 SSE 노출 — list 화면은 단일 entityId 가
+ *       없으므로 broadcast endpoint 합류 전까지 polling fallback 유지.</li>
+ *   <li>헤더 우측 "실시간 자동 갱신" 안내 — UsersPage (FE-C) / InventoryAuditListPage 패턴.</li>
+ * </ul>
+ *
  * 사용 컴포넌트:
  * - `DataTable` (rows + columns)
  * - `SlipNumberDisplay` (uuid prop 제거됨 — 비즈니스 식별자만)
  * - `SlipStatusBadge`
  * - `Badge` (구분: 출고/입고)
+ *
+ * data-testid (PR-H4c FE-B 신규):
+ * - slip-list-realtime-indicator
  */
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -45,6 +56,8 @@ export function SlipListPage({ mode }: SlipListPageProps) {
   const query = useQuery({
     queryKey: ['slips', 'list', mode],
     queryFn: () => listSlips({ slipType: mode, page: 0, size: 20 }),
+    // PR-H4c FE-B: 30초 polling — 멀티 워크스테이션 동기화 안전망
+    refetchInterval: 30_000,
   })
 
   const columns: DataTableColumn<SlipSummary>[] = [
@@ -89,7 +102,16 @@ export function SlipListPage({ mode }: SlipListPageProps) {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>{titleLabel}</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>{titleLabel}</h3>
+          {/* PR-H4c FE-B: 실시간 자동 갱신 안내 (입고/출고 SlipListPage 통합 적용) */}
+          <span
+            data-testid="slip-list-realtime-indicator"
+            style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+          >
+            실시간 자동 갱신 · 30초
+          </span>
+        </div>
         {canCreateSlip(role) ? (
           <Button variant="primary" onClick={() => navigate(`${basePath}/new`)}>
             {newButtonLabel}

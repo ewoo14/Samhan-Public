@@ -98,6 +98,8 @@ export function ArologisPreClassifyPage() {
     queryKey: ['arologis', 'pre-classify', from, to],
     queryFn: () => getPreClassify(from, to),
     enabled: tab === 'region',
+    // PR-H4c FE-B: 30초 polling — 멀티 워크스테이션 동기화 안전망
+    refetchInterval: 30_000,
   })
 
   // 탭2 query — 활성 탭일 때만 fetch
@@ -105,6 +107,8 @@ export function ArologisPreClassifyPage() {
     queryKey: ['arologis', 'regional', date],
     queryFn: () => getRegional(date),
     enabled: tab === 'regional',
+    // PR-H4c FE-B: 30초 polling
+    refetchInterval: 30_000,
   })
 
   // ----- CSV 다운로드 -----
@@ -177,28 +181,37 @@ export function ArologisPreClassifyPage() {
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* ───── 탭 헤더 ───── */}
-      <div role="tablist" aria-label="가배차 분류 탭" style={{ display: 'flex', gap: 4 }}>
-        <button
-          role="tab"
-          type="button"
-          aria-selected={tab === 'region'}
-          data-testid="arologis-preclassify-tab-region"
-          onClick={() => setTab('region')}
-          style={tabButtonStyle(tab === 'region')}
+      {/* ───── 탭 헤더 + 실시간 갱신 안내 ───── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div role="tablist" aria-label="가배차 분류 탭" style={{ display: 'flex', gap: 4 }}>
+          <button
+            role="tab"
+            type="button"
+            aria-selected={tab === 'region'}
+            data-testid="arologis-preclassify-tab-region"
+            onClick={() => setTab('region')}
+            style={tabButtonStyle(tab === 'region')}
+          >
+            가배차 (권역)
+          </button>
+          <button
+            role="tab"
+            type="button"
+            aria-selected={tab === 'regional'}
+            data-testid="arologis-preclassify-tab-regional"
+            onClick={() => setTab('regional')}
+            style={tabButtonStyle(tab === 'regional')}
+          >
+            지방가배차 (시도)
+          </button>
+        </div>
+        {/* PR-H4c FE-B: 실시간 자동 갱신 안내 (30s polling) */}
+        <span
+          data-testid="arologis-preclassify-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500, #6B7280)', marginLeft: 'auto' }}
         >
-          가배차 (권역)
-        </button>
-        <button
-          role="tab"
-          type="button"
-          aria-selected={tab === 'regional'}
-          data-testid="arologis-preclassify-tab-regional"
-          onClick={() => setTab('regional')}
-          style={tabButtonStyle(tab === 'regional')}
-        >
-          지방가배차 (시도)
-        </button>
+          실시간 자동 갱신 · 30초
+        </span>
       </div>
 
       {tab === 'region' ? (

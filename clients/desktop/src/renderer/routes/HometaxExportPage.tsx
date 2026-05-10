@@ -33,6 +33,7 @@ import {
   downloadHometaxExport,
 } from '../api/hometaxExportApi'
 import { listTaxInvoices } from '../api/taxInvoiceApi'
+import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 /** 이번 달 1일 (YYYY-MM-DD). */
@@ -158,6 +159,12 @@ export function HometaxExportPage() {
 
   return (
     <>
+      {/* PR-H4c FE-A: read-only export 화면 — 변경 이력은 원본 세금계산서 상세에서 확인 */}
+      <AuditInfoBanner
+        message="이 양식은 ISSUED 세금계산서를 기반으로 생성됩니다. 변경 이력은 각 세금계산서 상세 화면에서 확인할 수 있습니다."
+        testId="hometax-export-audit-info-banner"
+      />
+
       <div
         style={{
           display: 'flex',

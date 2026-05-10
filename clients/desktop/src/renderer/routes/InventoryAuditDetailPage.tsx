@@ -25,7 +25,7 @@
  * - audit-complete-button
  * - audit-cancel-button
  */
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   useMutation,
@@ -34,6 +34,7 @@ import {
 } from '@tanstack/react-query'
 import axios from 'axios'
 import {
+  AuditOverlay,
   Badge,
   Button,
   Card,
@@ -54,6 +55,13 @@ import {
   type AuditLine,
   type AuditStatus,
 } from '../api/auditApi'
+import { inventoryAuditAuditApi } from '../api/createAuditApi'
+import { InventoryAuditRealtimeClient } from '../realtime/WarehouseRealtimeClient'
+import {
+  AuditLockedBanner,
+  AuditRevisionBadge,
+  groupAuditLogsByField,
+} from '../components/audit/AuditOverlaySection'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { useSessionStore } from '../stores/session'
 
@@ -91,6 +99,27 @@ export function InventoryAuditDetailPage() {
     queryFn: () => getAudit(id),
     enabled: !!id,
   })
+
+  // PR-H4c FE-B: audit log 백필 — BE 미구현 시 빈 배열 fallback
+  const auditQuery = useQuery({
+    queryKey: ['inventory', 'audit', id, 'audit-logs'],
+    queryFn: () => inventoryAuditAuditApi.listAuditLogs(id).catch(() => []),
+    enabled: !!id,
+  })
+
+  // PR-H4c FE-B: SSE 구독 — inventory:edit 수신 시 본문 + audit cache invalidate
+  useEffect(() => {
+    if (!id) return
+    const ctrl = InventoryAuditRealtimeClient.subscribe(id, (evt) => {
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'audit', id] })
+      if (evt.event === 'inventory:edit' || evt.event === 'message') {
+        void queryClient.invalidateQueries({
+          queryKey: ['inventory', 'audit', id, 'audit-logs'],
+        })
+      }
+    })
+    return () => ctrl.abort()
+  }, [id, queryClient])
 
   usePageTitle('재고 실사 상세', detailQuery.data?.auditNo)
 
@@ -134,6 +163,11 @@ export function InventoryAuditDetailPage() {
     )
   }
 
+  // PR-H4c FE-B: COMPLETED/CANCELLED 단계는 본문 변경 차단 — banner 노출
+  const isLocked = audit.status === 'COMPLETED' || audit.status === 'CANCELLED'
+  const auditLogs = auditQuery.data ?? []
+  const auditByField = groupAuditLogsByField(auditLogs)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Card>
@@ -148,12 +182,27 @@ export function InventoryAuditDetailPage() {
               flexWrap: 'wrap',
             }}
           >
-            <h3 style={{ margin: 0 }}>{audit.auditNo}</h3>
-            <Badge variant={STATUS_VARIANT[audit.status]}>
-              {AUDIT_STATUS_LABEL[audit.status]}
-            </Badge>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>{audit.auditNo}</h3>
+              <Badge variant={STATUS_VARIANT[audit.status]}>
+                {AUDIT_STATUS_LABEL[audit.status]}
+              </Badge>
+              {/* PR-H4c FE-B: 수정 횟수 badge (revert 미지원 — BE 정책상 차이 분개 후 변경 불가) */}
+              <AuditRevisionBadge
+                logs={auditLogs}
+                isError={auditQuery.isError}
+                testIdPrefix="audit-detail"
+              />
+            </div>
           </div>
-          <DetailGrid audit={audit} />
+          {isLocked ? (
+            <AuditLockedBanner
+              statusLabel={AUDIT_STATUS_LABEL[audit.status]}
+              testId="audit-detail-locked-banner"
+              message="차이 분개가 확정되어 본문 변경이 잠금 처리됩니다. 변경 필요 시 수정 요청을 사용하세요."
+            />
+          ) : null}
+          <DetailGrid audit={audit} auditByField={auditByField} />
         </div>
 
         <div
@@ -260,9 +309,11 @@ export function InventoryAuditDetailPage() {
 
 interface DetailGridProps {
   audit: AuditDetail
+  /** PR-H4c FE-B: field 별 audit log group — totalDiffAmount overlay 표시. */
+  auditByField: Record<string, import('@samhan/design-system').AuditLogEntry[]>
 }
 
-function DetailGrid({ audit }: DetailGridProps) {
+function DetailGrid({ audit, auditByField }: DetailGridProps) {
   return (
     <dl
       style={{
@@ -280,7 +331,13 @@ function DetailGrid({ audit }: DetailGridProps) {
       <dt style={dtStyle}>실사일자</dt>
       <dd style={ddStyle}>{audit.auditDate}</dd>
       <dt style={dtStyle}>차이금액</dt>
-      <dd style={ddStyle}>{formatKrw(audit.totalDiffAmount)}</dd>
+      <dd style={ddStyle} data-testid="audit-detail-audit-overlay-totalDiffAmount">
+        <AuditOverlay
+          field="totalDiffAmount"
+          currentValue={formatKrw(audit.totalDiffAmount)}
+          history={auditByField['totalDiffAmount'] ?? []}
+        />
+      </dd>
       <dt style={dtStyle}>시작</dt>
       <dd style={ddStyle}>
         {audit.startedAt ? audit.startedAt.replace('T', ' ').slice(0, 19) : '—'}

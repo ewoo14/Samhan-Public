@@ -52,6 +52,7 @@ import {
   sumPartnerTotals,
   type StatementBatchRow,
 } from '../api/statementBatchApi'
+import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { krw, krDate } from '../print/PrintLayout'
 
@@ -166,6 +167,12 @@ export function StatementBatchPage() {
 
   return (
     <>
+      {/* PR-H4c FE-A: read-only 일괄 인쇄 화면 — 변경 이력은 원본 세금계산서 상세에서 확인 */}
+      <AuditInfoBanner
+        message="원본 세금계산서의 변경 이력은 각 거래처 row 의 세금계산서 상세 화면에서 확인할 수 있습니다."
+        testId="statement-batch-audit-info-banner"
+      />
+
       <div
         style={{
           display: 'flex',

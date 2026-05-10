@@ -9,6 +9,14 @@
  * - 권한 변경 (Modal — Role select + reason)
  * - 권한 변경 이력 조회 (Dialog)
  *
+ * <h2>PR-H4c FE-C 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling refetchInterval — 멀티 워크스테이션 동기화 안전망 (SlipEditRequestsPage 패턴).</li>
+ *   <li>BE user-service 가 PR-H4b BE-D 로 user:edit / user:edit-request:* SSE 채널 노출 (entity-id 단위).
+ *       admin list 화면은 단일 entityId 가 없으므로 broadcast endpoint 합류 전까지 polling fallback 유지.</li>
+ *   <li>헤더 우측 "실시간 자동 갱신" 안내 — 사용자에게 cache 갱신 주기 명시.</li>
+ * </ul>
+ *
  * data-testid:
  * - admin-users-table
  * - admin-user-disable-button
@@ -73,6 +81,8 @@ export function UsersPage() {
         page,
         size: 20,
       }),
+    // PR-H4c FE-C: 30초 polling — 멀티 워크스테이션 동기화 안전망 (BE broadcast SSE 합류 전 단계).
+    refetchInterval: 30_000,
   })
 
   const rolesQuery = useQuery({
@@ -193,7 +203,22 @@ export function UsersPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>사용자 관리</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 16,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>사용자 관리</h3>
+        <span
+          data-testid="admin-users-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+        >
+          실시간 자동 갱신 · 30초
+        </span>
+      </div>
 
       <div
         style={{

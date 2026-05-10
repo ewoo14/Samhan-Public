@@ -19,6 +19,10 @@
  *   <li>30초 자동 polling fallback (SSE 미가용 / 멀티 워크스테이션 동기화)</li>
  * </ul>
  *
+ * <h2>PR-H4c FE-C 보존</h2>
+ * <p>본 페이지는 PR-H3 에서 이미 SSE 패턴 + 30s polling + admin layout 통합 완료 — FE-C
+ * 일괄 보강 시 변경 없이 보존. (10 page 보강 매트릭스의 reference page).</p>
+ *
  * <h2>data-testid</h2>
  * <ul>
  *   <li>{@code admin-slip-edit-requests-table}</li>

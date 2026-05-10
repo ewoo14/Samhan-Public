@@ -284,7 +284,16 @@ export function ArologisDispatchReconcilePage() {
       }}
     >
       <header>
-        <h3 style={{ margin: '0 0 4px' }}>운송사 실배차 비교</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: '0 0 4px' }}>운송사 실배차 비교</h3>
+          {/* PR-H4c FE-B: 비교 도구 — read-only. 원 dispatch 변경 이력은 dispatch 상세에서 자동 추적 */}
+          <span
+            data-testid="reconcile-realtime-notice"
+            style={{ fontSize: 11, color: 'var(--color-neutral-500, #6B7280)' }}
+          >
+            감사 추적 (수정 이력) 은 원 dispatch 화면에서 자동 (PR-H4c)
+          </span>
+        </div>
         <div style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
           vendor 별 엑셀 (.xlsx) 다중 업로드 → 우리 dispatch 기록과 비교 →
           누락 / 시각 오차 식별. 외부 vendor 콘솔 접속 불요.

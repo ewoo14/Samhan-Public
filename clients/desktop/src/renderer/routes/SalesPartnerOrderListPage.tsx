@@ -13,6 +13,7 @@ import {
   type PartnerOrderStatus,
 } from '../api/sales'
 import { formatSlipDate } from '../api/slipNumber'
+import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
 import styles from '../components/sales/sales.module.css'
@@ -39,16 +40,24 @@ export function SalesPartnerOrderListPage() {
     return () => setPageTitle({ title: '' })
   }, [setPageTitle])
 
+  // PR-H4c: list page entity-unbound — 30s polling 으로 SSE invalidate 효과를 흉내
+  // (단건 row SSE 는 SalesPartnerOrderDetailPage 진입 시 활성화).
   const query = useQuery({
     queryKey: ['partner-orders', statusFilter, 0],
     queryFn: () => listPartnerOrders(0, 50, statusFilter || undefined),
     retry: 1,
+    refetchInterval: 30_000,
   })
 
   return (
     <div className={styles['salesScope']}>
       <SalesSubNav />
       <div className={styles['wrap']}>
+        {/* PR-H4c FE-A: list 화면 audit 안내 — 상세 변경 이력은 row 클릭 후 상세에서 확인 */}
+        <AuditInfoBanner
+          message="주문 row 를 클릭하면 상세 화면에서 변경 이력 (수정 횟수 / 복원) 을 확인할 수 있습니다. 본 목록은 30초마다 자동 갱신됩니다."
+          testId="partner-order-list-audit-info-banner"
+        />
         <div className={styles['top']}>
           <div className={styles['title']}>
             주문서 조회

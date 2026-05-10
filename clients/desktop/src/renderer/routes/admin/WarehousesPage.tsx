@@ -6,10 +6,17 @@
  *
  * UUID 비공개 — 화면에는 code / name / type / address / displayOrder 만 표시.
  *
+ * <h2>PR-H4c FE-C 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling — 신규 창고 등록 / 정보 변경 결과 자동 반영.</li>
+ *   <li>inventory-service SSE (PR-H4b BE-B) audit/edit-request 채널 합류 시 SSE 직접 구독 가능.</li>
+ * </ul>
+ *
  * data-testid:
  * - admin-warehouses-table
  * - admin-warehouses-search-input
  * - admin-warehouses-row-{code}
+ * - admin-warehouses-realtime-indicator
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -55,6 +62,8 @@ export function WarehousesPage() {
         page,
         size: 20,
       }),
+    // PR-H4c FE-C: 30초 polling — 멀티 워크스테이션 동기화 안전망.
+    refetchInterval: 30_000,
   })
 
   const totalPages = query.data
@@ -94,7 +103,22 @@ export function WarehousesPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>창고 관리</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 16,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>창고 관리</h3>
+        <span
+          data-testid="admin-warehouses-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+        >
+          실시간 자동 갱신 · 30초
+        </span>
+      </div>
 
       <div
         style={{

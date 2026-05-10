@@ -1,5 +1,6 @@
 /**
  * SalesEstimatePhotoScreen — P2 (Phase 12 예정) estimate mode 사진 첨부 stub.
+ * Phase 12 PR-H4c 보강 — audit overlay 적용 예정 안내 stub 추가 (estimate → slip 변환 후 활성).
  *
  * <p>본 PR (P1-8 driver mode 우선) 진입 시점은 placeholder 화면 — 영업 직원 견적 답사 시
  * 현장 사진 첨부 흐름을 향후 활성화하기 위한 stub.
@@ -16,6 +17,7 @@
  *   <li>업로드 경로 = 인증 기반 {@code POST /slips/{slipId}/attachments} (estimate → slip 변환 후 ID 확보).</li>
  *   <li>견적서 인쇄 시 사진 부록 페이지 자동 첨부 (desktop-print 의 견적 양식 확장).</li>
  *   <li>최대 첨부 수 = 10장 (driver 5장 보다 다량 — 답사 사진 다수).</li>
+ *   <li>(PR-H4c) 첨부 변경 시 SlipDetailScreen 동등 audit overlay (사용자 색상 dot + 시각).</li>
  * </ul>
  *
  * <p>매뉴얼 출처: {@code docs/manual/04-모바일/04-사진-첨부.md} §2-2 / §6.
@@ -25,12 +27,14 @@
  *   <li>견적 webview 와 deeplink 연결 ({@code estimate://photos?estimateNo=Q-2026-00045}).</li>
  *   <li>{@code uploadAttachmentAuthenticated()} 호출 — JWT + slipId 필요.</li>
  *   <li>견적 작성 form 의 "현장 사진" 버튼 → 본 화면 진입.</li>
+ *   <li>(PR-H4c) {@link AuditOverlay} import + history props — slip-service audit log 와 wire-up.</li>
  * </ul>
  */
 
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { badgeStyle, colors, radii, spacing, typography } from '../theme/tokens';
+import { userIdToColor } from '../utils/userColorHash';
 
 interface Props {
   /** 견적 번호 (e.g. Q-2026-00045) — UI 표시용. 본 stub 은 안내 메시지만. */
@@ -66,6 +70,18 @@ export default function SalesEstimatePhotoScreen({ estimateNo }: Props): JSX.Ele
           <Text style={styles.refHead}>관련 매뉴얼</Text>
           <Text style={styles.refBody}>docs/manual/04-모바일/04-사진-첨부.md §2-2 (시나리오 2)</Text>
           <Text style={styles.refBody}>docs/manual/04-모바일/04-사진-첨부.md §6 (옵션 C 하이브리드)</Text>
+        </View>
+
+        {/* PR-H4c — audit overlay 적용 예정 안내 (estimate → slip 변환 시점부터 활성). */}
+        <View style={styles.auditPreview} testID="sales-estimate-photo-audit-preview-mobile">
+          <Text style={styles.auditPreviewHead}>변경 이력 표시 (Phase 12 활성 예정)</Text>
+          <View style={styles.auditPreviewRow}>
+            <View style={[styles.auditPreviewDot, { backgroundColor: userIdToColor('sales-preview') }]} />
+            <Text style={styles.auditPreviewBody}>
+              사진 첨부 / 삭제 시 SlipDetailScreen 과 동일한 색상 dot + 작성자 + 시각 audit overlay 가
+              표시됩니다 (estimate → slip 변환 후 slip-service audit log 와 자동 연결).
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -134,5 +150,36 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.ink.secondary,
     fontFamily: typography.fontFamily.mono,
+  },
+  // PR-H4c — audit overlay 적용 예정 안내 (stub).
+  auditPreview: {
+    backgroundColor: colors.surface.subtle,
+    borderRadius: radii.card,
+    padding: spacing[3],
+    gap: spacing[2],
+  },
+  auditPreviewHead: {
+    fontSize: typography.fontSize.xs,
+    color: colors.ink.tertiary,
+    fontWeight: typography.fontWeight.semibold,
+    fontFamily: typography.fontFamily.sans,
+  },
+  auditPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing[2],
+  },
+  auditPreviewDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radii.full,
+    marginTop: spacing[1],
+  },
+  auditPreviewBody: {
+    flex: 1,
+    fontSize: typography.fontSize.xs,
+    color: colors.ink.secondary,
+    fontFamily: typography.fontFamily.sans,
+    lineHeight: typography.fontSize.xs * typography.lineHeight.relaxed,
   },
 });

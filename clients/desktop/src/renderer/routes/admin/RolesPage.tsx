@@ -4,11 +4,18 @@
  * Phase 10 P0-5 슬라이스 4. BE `GET /admin/users/roles` 로 전체 ROLE 7건 조회 + 각 ROLE 별
  * 사용자 count 표시 (q=role 호출로 total 수집).
  *
+ * <h2>PR-H4c FE-C 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling — UsersPage 의 권한 변경/사용자 활성/잠금 토글 결과를 자동 반영.</li>
+ *   <li>user-service SSE (PR-H4b BE-D) broadcast endpoint 합류 시 SSE 직접 구독 가능.</li>
+ * </ul>
+ *
  * memory feedback_role_naming_full — ROLE 풀네임 + 한국어 라벨 동시 표시.
  *
  * data-testid:
  * - admin-roles-table
  * - admin-roles-row-{role}
+ * - admin-roles-realtime-indicator
  */
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
@@ -46,6 +53,8 @@ export function RolesPage() {
       queryKey: ['admin', 'role-count', role],
       queryFn: () => listAdminUsers({ role, page: 0, size: 1 }),
       enabled: !!role,
+      // PR-H4c FE-C: 30초 polling — UsersPage 변경 자동 반영.
+      refetchInterval: 30_000,
     })),
   })
 
@@ -92,7 +101,22 @@ export function RolesPage() {
 
   return (
     <>
-      <h3 style={{ margin: '0 0 16px' }}>권한 관리</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 8,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>권한 관리</h3>
+        <span
+          data-testid="admin-roles-realtime-indicator"
+          style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+        >
+          실시간 자동 갱신 · 30초
+        </span>
+      </div>
       <p style={{ marginTop: 0, color: '#6B7280', fontSize: 13 }}>
         7-tier ROLE 정책 — 풀네임 의무 (M/M/D 약어 금지). 권한 변경은 사용자
         관리 화면에서 수행합니다.

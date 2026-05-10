@@ -13,14 +13,20 @@
  * <p><b>refetch 정책</b>:
  * - useQuery refetchOnMount = 'always' — 페이지 진입 시 항상 최신 last 조회
  * - useMutation onSuccess 후 ['admin', 'sheet-sync', 'last'] invalidate
+ * - PR-H4c FE-C: 30초 polling — sync 진행 중 다른 사용자가 동시에 trigger 한 결과 자동 반영
  *
  * <p><b>가드</b>: AdminLayout(MASTER) 가 상위 라우트에서 가드. 본 화면 내부 추가 가드 불요.
+ *
+ * <p><b>PR-H4c FE-C 보강 — 실시간 동기화</b>:
+ * - 본 화면은 read-only — sync trigger 만 mutation. audit overlay / edit-request 미적용.
+ * - 30초 polling 으로 last sync 결과 자동 갱신 (다른 워크스테이션 trigger 결과 자동 반영).
  *
  * data-testid:
  * - admin-sheetsync-trigger-btn
  * - admin-sheetsync-last-time
  * - admin-sheetsync-result-table
  * - admin-sheetsync-tab-row (per row)
+ * - admin-sheetsync-realtime-indicator
  *
  * memory feedback_uuid_no_user_visibility — 본 도메인 UUID 노출 없음 (tab 이름만 표시).
  * memory feedback_role_naming_full — MASTER 가드 표기 풀네임.
@@ -50,6 +56,8 @@ export function SheetSyncPage() {
     queryKey: LAST_QUERY_KEY,
     queryFn: getLastSync,
     refetchOnMount: 'always',
+    // PR-H4c FE-C: 30초 polling — 다른 워크스테이션이 sync trigger 한 결과 자동 반영.
+    refetchInterval: 30_000,
   })
 
   const triggerMutation = useMutation({
@@ -107,6 +115,16 @@ export function SheetSyncPage() {
             }}
           >
             마지막 동기화: {lastQuery.isLoading ? '조회 중…' : lastSyncAtLabel}
+          </div>
+          <div
+            data-testid="admin-sheetsync-realtime-indicator"
+            style={{
+              fontSize: 12,
+              color: 'var(--color-neutral-500)',
+              marginTop: 2,
+            }}
+          >
+            실시간 자동 갱신 · 30초
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
