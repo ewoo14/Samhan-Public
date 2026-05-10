@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     SamhanLogis 풀 수준 로컬 테스트 환경 일괄 종료 스크립트.
 
@@ -119,6 +119,12 @@ if (-not $KeepDocker) {
     Write-Host ''
     Write-Host '[2/2] 인프라 stack 종료 (docker compose down)' -ForegroundColor Yellow
     Push-Location $InfraDir
+    # PS 5.1 native exe 가드 (memory feedback_powershell_utf8_writes 일관 가드):
+    #   docker compose down 의 진행 메시지가 stderr 로 흐르는 경우 ErrorActionPreference='Stop'
+    #   환경에서는 NativeCommandError 로 abort 가능. 본 스크립트는 'Continue' 라 안전하나
+    #   회귀 가드 차원에서 명시적으로 scope 화 + 2>&1 redirect 미사용 (memory feedback 일관).
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         if ($RemoveVolumes) {
             Write-Host '   -RemoveVolumes 옵션 — volume 일체 삭제 (postgres/redis/rabbitmq/es/minio)' -ForegroundColor Red
@@ -127,6 +133,7 @@ if (-not $KeepDocker) {
             docker compose -f docker-compose.yml down
         }
     } finally {
+        $ErrorActionPreference = $prevEAP
         Pop-Location
     }
 } else {
