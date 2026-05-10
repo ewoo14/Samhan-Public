@@ -36,11 +36,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * PR-H3 BE — SlipEditRequestService 단위 테스트 (8 case).
+ * PR-H3 BE — SlipEditRequestService 단위 테스트 (9 case, fix 후 CONFIRMED 추가).
  *
  * <ol>
  *   <li>request — DRAFT/SAVED/SENT 단계 → INVALID_INPUT (작성자 직접 가능)</li>
  *   <li>request — ACCEPTED 단계 → 정상 PENDING 생성 + broker.publish + notification</li>
+ *   <li>request — CONFIRMED 단계 → 정상 PENDING 생성 (FE banner 정합, LOCKED_REQUIRES_APPROVAL)</li>
  *   <li>request — INSPECTING 단계 → CONFLICT (완전 잠금)</li>
  *   <li>request — DELIVERED 단계 → CONFLICT (완전 잠금)</li>
  *   <li>approve — PENDING → APPROVED + 작성자 푸시 + SSE</li>
@@ -118,6 +119,36 @@ class SlipEditRequestServiceTest {
         assertThat(saved.getTargetRole()).isEqualTo(SlipEditTargetRole.WAREHOUSE);
         assertThat(saved.getReason()).isEqualTo("거래처명 오타 수정");
         assertThat(saved.getExpiresAt()).isNotNull();
+        verify(broker, times(1))
+                .publish(eq(slipId), eq(SlipEditRequestService.EVENT_REQUEST_CREATED), any());
+    }
+
+    @Test
+    void request_confirmedStage_createsPendingForFeBannerParity() {
+        // QA Major fix 회귀 가드 — FE SlipDetailPage 가 CONFIRMED 에서 banner 노출.
+        // 사용자 명시 정책: CONFIRMED ∈ LOCKED_REQUIRES_APPROVAL (창고 수락 필요).
+        slip.save();
+        slip.send();
+        slip.accept(UUID.randomUUID().toString());
+        slip.process();
+        slip.complete(); // → INSPECTING
+        slip.inspect(UUID.randomUUID().toString()); // → COMPLETED
+        slip.ship(); // → SHIPPING
+        slip.deliver(); // → DELIVERED
+        slip.confirm(); // → CONFIRMED
+
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+        when(requestRepository.save(any(SlipEditRequest.class))).thenAnswer(inv -> {
+            SlipEditRequest r = inv.getArgument(0);
+            ReflectionTestUtils.setField(r, "id", UUID.randomUUID());
+            return r;
+        });
+
+        SlipEditRequest saved = service.request(slipId, SlipEditRequestType.EDIT,
+                "확정 후 거래처명 정정", requesterId, "홍길동");
+
+        assertThat(saved.getStatus()).isEqualTo(SlipEditRequestStatus.PENDING);
+        assertThat(saved.getTargetRole()).isEqualTo(SlipEditTargetRole.WAREHOUSE);
         verify(broker, times(1))
                 .publish(eq(slipId), eq(SlipEditRequestService.EVENT_REQUEST_CREATED), any());
     }

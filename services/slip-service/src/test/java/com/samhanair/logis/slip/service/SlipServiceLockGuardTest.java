@@ -35,7 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * PR-H3 BE — SlipService 잠금 정책 가드 단위 테스트 (6 case).
+ * PR-H3 BE — SlipService 잠금 정책 가드 단위 테스트 (7 case, fix 후 CONFIRMED 추가).
  *
  * <p>{@code applyOverlayPatch} + {@code softDelete} 진입점에서 {@code guardLockPolicy} 가
  * status 별로 정확히 분기하는지 검증.
@@ -45,6 +45,7 @@ import org.springframework.test.util.ReflectionTestUtils;
  *   <li>SAVED — 자유</li>
  *   <li>ACCEPTED + APPROVED 부재 — CONFLICT</li>
  *   <li>ACCEPTED + APPROVED 1건 — mutation 진행 + consumeApproval 호출</li>
+ *   <li>CONFIRMED + APPROVED 부재 — CONFLICT (FE banner 정합, LOCKED_REQUIRES_APPROVAL)</li>
  *   <li>INSPECTING — CONFLICT (완전 잠금, APPROVED 무시)</li>
  *   <li>DELIVERED — CONFLICT (완전 잠금)</li>
  * </ol>
@@ -138,6 +139,33 @@ class SlipServiceLockGuardTest {
         assertThat(slip.getMemo()).isEqualTo("승인 후 수정");
         verify(editRequestService, times(1))
                 .consumeApproval(eq(requestId), eq(callerId.toString()));
+    }
+
+    @Test
+    void applyOverlayPatch_confirmedStage_withoutApproval_throwsConflict() {
+        // QA Major fix 회귀 가드 — CONFIRMED 는 LOCKED_REQUIRES_APPROVAL set (FE banner 정합).
+        // FULLY_LOCKED 가 아니므로 findActiveApproval 조회를 시도하고, 부재 시 CONFLICT.
+        slip.save();
+        slip.send();
+        slip.accept(callerId.toString());
+        slip.process();
+        slip.complete(); // → INSPECTING
+        slip.inspect(callerId.toString()); // → COMPLETED
+        slip.ship(); // → SHIPPING
+        slip.deliver(); // → DELIVERED
+        slip.confirm(); // → CONFIRMED
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+        when(editRequestService.findActiveApproval(slipId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> slipService.applyOverlayPatch(slipId, "memo", "확정 후 시도",
+                callerId.toString(), "홍길동"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        // CONFIRMED 는 FULLY_LOCKED 가 아니므로 APPROVED lookup 은 수행되어야 함
+        verify(editRequestService, times(1)).findActiveApproval(slipId);
+        verify(editRequestService, never()).consumeApproval(any(), any());
     }
 
     @Test

@@ -226,8 +226,8 @@ public class SlipService {
     /**
      * 슬립 soft-delete — PR-H3 신규. 사용자 명시 잠금 정책 가드 후 BaseEntity.markDeleted 적용.
      *
-     * <p>DRAFT/SAVED — 작성자 자유 삭제. ACCEPTED/PROCESSING — APPROVED 요청 1건 필요.
-     * INSPECTING/SHIPPING/DELIVERED/CONFIRMED — 완전 잠금 (CONFLICT).
+     * <p>DRAFT/SAVED — 작성자 자유 삭제. CONFIRMED/ACCEPTED/PROCESSING — APPROVED 요청 1건 필요.
+     * INSPECTING/SHIPPING/DELIVERED — 완전 잠금 (CONFLICT).
      *
      * @param id 전표 ID
      * @param callerId 삭제 수행자 user-id
@@ -247,9 +247,9 @@ public class SlipService {
      *
      * <ul>
      *   <li>DRAFT/SAVED/SENT — 자유 (return empty, 소진 없음)</li>
-     *   <li>{@link SlipEditRequestService#LOCKED_REQUIRES_APPROVAL} (ACCEPTED/PROCESSING) —
+     *   <li>{@link SlipEditRequestService#LOCKED_REQUIRES_APPROVAL} (CONFIRMED/ACCEPTED/PROCESSING) —
      *       APPROVED 요청 1건 lookup → 없으면 CONFLICT, 있으면 호출자에게 반환 (mutation 후 소진)</li>
-     *   <li>{@link SlipEditRequestService#FULLY_LOCKED} (INSPECTING/SHIPPING/DELIVERED/CONFIRMED) —
+     *   <li>{@link SlipEditRequestService#FULLY_LOCKED} (INSPECTING/SHIPPING/DELIVERED) —
      *       항상 CONFLICT</li>
      *   <li>REJECTED/CANCELED — 의미 없음, CONFLICT (이미 종결된 슬립)</li>
      * </ul>

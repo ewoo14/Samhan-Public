@@ -395,13 +395,20 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const possibleActions = actionsForStatus(slip.status, mode)
 
   /**
-   * PR-H3: 현재 단계가 CONFIRMED 인지.
-   * CONFIRMED 만 "수정/삭제 요청" UI 노출. DRAFT/SAVED 는 직접 편집, IN_INSPECTION+ 는 변경 차단.
+   * PR-H3: 창고/관리자 수락이 필요한 단계 (LOCKED_REQUIRES_APPROVAL).
+   * BE {@code SlipEditRequestService.LOCKED_REQUIRES_APPROVAL} 와 정확히 일치 —
+   * CONFIRMED/ACCEPTED/PROCESSING. "수정/삭제 요청" UI 노출 + 요청 후 창고 수락 필요.
+   * 사용자 명시 정책 정합 (QA Major 회귀 가드).
    */
-  const isConfirmed = slip.status === 'CONFIRMED'
+  const isApprovalRequired
+    = slip.status === 'CONFIRMED'
+    || slip.status === 'ACCEPTED'
+    || slip.status === 'PROCESSING'
 
   /**
-   * PR-H3: 변경 자체를 차단해야 하는 단계 (검수~배송 중간).
+   * PR-H3: 변경 자체를 차단해야 하는 단계 (FULLY_LOCKED + 종료 단계).
+   * BE {@code SlipEditRequestService.FULLY_LOCKED} (INSPECTING/SHIPPING/DELIVERED) 정합.
+   * COMPLETED 는 검수 직후 ship 대기 단계로 본 FE 에서 동일 차단 처리 (기존 정책 보존).
    * 사용자에게 "현재 변경 불가" 안내 + 모든 액션 disabled.
    */
   const isLocked
@@ -716,11 +723,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
       {/*
         PR-H3: 단계별 안내 + 수정/삭제 요청 버튼.
-        - DRAFT/SAVED: 본인 직접 수정/삭제 가능 → 별도 안내 없음
-        - CONFIRMED: 직접 변경 차단, "수정/삭제 요청" 버튼 노출
+        - DRAFT/SAVED/SENT: 본인 직접 수정/삭제 가능 → 별도 안내 없음
+        - CONFIRMED/ACCEPTED/PROCESSING: 직접 변경 차단, "수정/삭제 요청" 버튼 노출 (창고 수락 필요)
         - INSPECTING/COMPLETED/SHIPPING/DELIVERED: 모든 변경 차단 안내
       */}
-      {isConfirmed && canRequestEdit ? (
+      {isApprovalRequired && canRequestEdit ? (
         <Card
           padding={4}
           shadow="sm"
@@ -737,7 +744,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <strong style={{ fontSize: 14 }}>확정 전표</strong>
+              <strong style={{ fontSize: 14 }}>창고 인계 후 — 수락 필요</strong>
               <span style={{ fontSize: 13, color: 'var(--color-neutral-700)' }}>
                 직접 수정/삭제가 잠겼습니다. 창고 직원에게 처리를 요청할 수 있습니다.
               </span>

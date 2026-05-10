@@ -34,10 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>DRAFT/SAVED — 작성자 자유 수정/삭제 (본 service 사용 X — 직접 mutation).</li>
  *   <li>SENT — 작성자 자유 (전송 후 협력사 검토 단계, 창고 인계 전).</li>
- *   <li>ACCEPTED/PROCESSING (창고 인계 후) — 작성자 직접 차단 → 본 service 통한 요청 → 창고
- *       (ROLE_WAREHOUSE) 또는 관리자 (ROLE_MANAGER) 수락 시 1회 mutation 가능.</li>
- *   <li>INSPECTING/SHIPPING — 완전 잠금 (요청 자체 reject — picking/배송 중 위험).</li>
- *   <li>DELIVERED/CONFIRMED — 영구 잠금 (회계 마감 직전/이후, MANAGER 정책 검토 후 별도 채널).</li>
+ *   <li>CONFIRMED/ACCEPTED/PROCESSING (창고 인계 후 ~ 검수 전) — 작성자 직접 차단 → 본 service
+ *       통한 요청 → 창고 (ROLE_WAREHOUSE) 또는 관리자 (ROLE_MANAGER) 수락 시 1회 mutation 가능.</li>
+ *   <li>INSPECTING/SHIPPING — 완전 잠금 (요청 자체 reject — picking/배송 중 위험, 창고도 수락 불가).</li>
+ *   <li>DELIVERED — 영구 잠금 (회계 마감 직전, MANAGER 정책 검토 후 별도 채널).</li>
  * </ul>
  *
  * <p><b>SSE event 형식</b>:
@@ -65,18 +65,18 @@ public class SlipEditRequestService {
 
     /**
      * 잠금 정책 — 본 status set 의 슬립은 직접 mutation 차단 + 본 service 요청 채널만 가능.
-     * 창고 인계 후 (ACCEPTED) 부터 처리 중 (PROCESSING) 까지.
+     * 사용자 명시: 확정 (CONFIRMED) → 창고 인계 (ACCEPTED) → 처리 중 (PROCESSING) 까지 창고/관리자
+     * 수락 1회로 mutation 가능. CONFIRMED 는 작성자가 BE 에 전송 완료 후 창고 수락 직전 상태.
      */
     public static final Set<SlipStatus> LOCKED_REQUIRES_APPROVAL = Set.of(
-            SlipStatus.ACCEPTED, SlipStatus.PROCESSING);
+            SlipStatus.CONFIRMED, SlipStatus.ACCEPTED, SlipStatus.PROCESSING);
 
     /**
-     * 완전 잠금 — 본 status set 의 슬립은 요청 자체 reject (picking 중 / 배송 중 / 배송 완료 / 확정).
-     * 사용자 명시 정책: "INSPECTING + OUT_FOR_DELIVERY: 창고도 수락 불가" + "DELIVERED: 영구 잠금".
+     * 완전 잠금 — 본 status set 의 슬립은 요청 자체 reject (picking 중 / 배송 중 / 배송 완료).
+     * 사용자 명시 정책: "INSPECTING + SHIPPING: 창고도 수락 불가" + "DELIVERED: 영구 잠금".
      */
     public static final Set<SlipStatus> FULLY_LOCKED = Set.of(
-            SlipStatus.INSPECTING, SlipStatus.SHIPPING,
-            SlipStatus.DELIVERED, SlipStatus.CONFIRMED);
+            SlipStatus.INSPECTING, SlipStatus.SHIPPING, SlipStatus.DELIVERED);
 
     private final SlipEditRequestRepository requestRepository;
     private final SlipRepository slipRepository;
@@ -90,8 +90,8 @@ public class SlipEditRequestService {
      * <p>status 가드:
      * <ul>
      *   <li>DRAFT/SAVED/SENT — 작성자가 직접 mutation 가능하므로 본 endpoint 호출은 INVALID_INPUT.</li>
-     *   <li>ACCEPTED/PROCESSING — 정상 요청 생성 (target_role=WAREHOUSE).</li>
-     *   <li>INSPECTING/SHIPPING/DELIVERED/CONFIRMED — 완전 잠금, CONFLICT.</li>
+     *   <li>CONFIRMED/ACCEPTED/PROCESSING — 정상 요청 생성 (target_role=WAREHOUSE).</li>
+     *   <li>INSPECTING/SHIPPING/DELIVERED — 완전 잠금, CONFLICT.</li>
      *   <li>REJECTED/CANCELED — 의미 없음, INVALID_INPUT.</li>
      * </ul>
      *
@@ -103,7 +103,7 @@ public class SlipEditRequestService {
      * @return 영속화된 SlipEditRequest (status=PENDING)
      * @throws BusinessException(NOT_FOUND) 슬립 미존재
      * @throws BusinessException(INVALID_INPUT) DRAFT/SAVED/SENT/REJECTED/CANCELED 단계
-     * @throws BusinessException(CONFLICT) INSPECTING/SHIPPING/DELIVERED/CONFIRMED 단계 (완전 잠금)
+     * @throws BusinessException(CONFLICT) INSPECTING/SHIPPING/DELIVERED 단계 (완전 잠금)
      */
     @Transactional
     public SlipEditRequest request(UUID slipId, SlipEditRequestType requestType, String reason,
@@ -116,7 +116,7 @@ public class SlipEditRequestService {
 
         guardRequestableStatus(slip);
 
-        // CONFIRMED (= ACCEPTED 이후 창고 인계) 단계는 WAREHOUSE 권한자 그룹.
+        // CONFIRMED / ACCEPTED / PROCESSING 단계는 WAREHOUSE 권한자 그룹이 수락 주체.
         // 사용자 명시 정책 — 향후 정책 확장 시 status → role 매핑 분리.
         SlipEditTargetRole targetRole = SlipEditTargetRole.WAREHOUSE;
 
@@ -305,7 +305,7 @@ public class SlipEditRequestService {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
                     "현 단계 (" + s + ") 는 종결됨 — 수정/삭제 요청 의미 없음");
         }
-        // ACCEPTED / PROCESSING / COMPLETED 만 정상 진행
+        // CONFIRMED / ACCEPTED / PROCESSING (LOCKED_REQUIRES_APPROVAL) 만 정상 진행
     }
 
     private Map<String, Object> buildPayload(SlipEditRequest request) {
