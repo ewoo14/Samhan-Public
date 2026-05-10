@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 /**
  * Phase 10 PR-F1 BE-1 — {@link AligoCsvSourceClient} 의 fail-soft default placeholder.
@@ -17,12 +18,21 @@ import org.springframework.context.annotation.Configuration;
  * 자동 비활성화).
  *
  * <p>설계 — {@link NoopPartnerLookupClient} / {@link MockAligoAddressBookClient} 와 동일 패턴
- * ({@code @Configuration} + {@code @Bean} + {@code @ConditionalOnMissingBean}).
+ * ({@code @Configuration} + {@code @Bean} + {@code @ConditionalOnMissingBean} + {@code @Profile("!test")}).
  *
  * <p>본 placeholder 는 항상 빈 리스트 반환 — 운영자가 잘못된 환경 배치 시 sync 결과 응답에
  * "fetch 결과 비어있음" WARN 로그가 즉시 노출된다 (silent success 회피).
+ *
+ * <h2>{@code @Profile("!test")} 가드 — PR #119 회귀 fix (PR #115 NoopPartnerLookupClient fix 패턴 일관)</h2>
+ * <p>test profile 에서 본 {@code @Configuration} 자체를 비활성화하여 {@code @MockBean AligoCsvSourceClient}
+ * 가 단독 등록되도록 한다. {@code @ConditionalOnMissingBean} + {@code @MockBean} 조합 단독으로는
+ * BeanDefinitionOverrideException 회피 불가 (PR #115 1차/2차 fix 회고). production 영향 0
+ * (test 외 모든 profile 에서 활성).
+ *
+ * <p>(memory feedback_it_mockbean_external_clients — IT 외부 client @MockBean 격리 패턴 일관)
  */
 @Configuration
+@Profile("!test")
 public class NoopAligoCsvSourceClient {
 
     private static final Logger log = LoggerFactory.getLogger(NoopAligoCsvSourceClient.class);
