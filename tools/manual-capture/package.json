@@ -7,6 +7,8 @@
   "scripts": {
     "capture:desktop": "node capture-desktop.js",
     "capture:mobile": "node capture-mobile.js",
+    "capture:manual-all": "node capture-manual-all.js",
+    "capture:manual-sample": "cross-env SAMPLE_ONLY=1 node capture-manual-all.js",
     "annotate": "node annotate.js",
     "all": "node capture-desktop.js && node capture-mobile.js"
   },
