@@ -4,6 +4,17 @@
  * <p>Samhan Public 자동화 — legacy GAS 1번 (DPS 입고기록 비교) + 16번 (품목별
  * DPS 입고내역 비교) 의 native 이식. BE-2 (commit 4b14084) endpoint 호출.
  *
+ * <h2>PR-H4c FE-B 보강</h2>
+ * <ul>
+ *   <li>본 화면은 read-only (사용자 비교 도구) — 단일 entity 미보유 → SSE/audit overlay 미적용.</li>
+ *   <li>비교 결과 mismatch 표 자체에는 변경 이력이 없음. 만약 mismatch 가 발견되어 사용자가
+ *       원본 출고전표를 수정하면 SlipDetailPage (PR-H1~H3) 의 audit overlay 가 자동 추적.</li>
+ *   <li>화면 우상단에 "감사 추적: 원 전표 화면에서 자동" 안내 배너 추가.</li>
+ * </ul>
+ *
+ * data-testid (PR-H4c FE-B 신규):
+ * - dps-compare-realtime-notice
+ *
  * <h2>UX</h2>
  * <ol>
  *   <li>날짜 범위 from/to 입력 (출고전표 자동 조회 기간)</li>
@@ -203,6 +214,17 @@ export function InventoryDpsComparePage() {
         <h3 style={{ margin: 0 }}>DPS 입고 비교</h3>
         <span style={subtitleStyle}>
           출고전표 자동 조회 + DPS 엑셀 업로드 → SLIP/ITEM 단위 매칭
+        </span>
+        {/* PR-H4c FE-B: read-only 비교 화면 안내 */}
+        <span
+          data-testid="dps-compare-realtime-notice"
+          style={{
+            fontSize: 11,
+            color: 'var(--color-neutral-500, #6B7280)',
+            marginLeft: 'auto',
+          }}
+        >
+          감사 추적 (수정 이력) 은 원 출고전표 화면에서 자동
         </span>
       </div>
 

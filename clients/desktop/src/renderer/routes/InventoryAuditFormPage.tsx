@@ -5,6 +5,14 @@
  *
  * 입력: 창고 + 실사 일자. 등록 성공 시 상세 화면으로 이동 (snapshot 라인 자동 생성됨).
  *
+ * <h2>PR-H4c FE-B 보강</h2>
+ * <ul>
+ *   <li>신규 등록 form — entity 가 아직 없어 audit overlay/SSE 미적용 (저장 후 detail 화면에서 활성).</li>
+ *   <li>저장 성공 시 `/warehouse/audit/{id}` 로 이동 → InventoryAuditDetailPage 가
+ *       SSE + audit-overlay 자동 활성.</li>
+ *   <li>안내 텍스트에 "등록 후 상세 화면에서 변경 이력이 자동 추적됩니다" 명시.</li>
+ * </ul>
+ *
  * data-testid:
  * - audit-form-warehouse-select
  * - audit-form-date-input
@@ -134,6 +142,10 @@ export function InventoryAuditFormPage() {
         등록 시 해당 창고의 모든 활성 재고를 snapshot 라인으로 자동 생성합니다
         (PLANNED 상태). 이후 상세 화면에서 [시작] → 라인 입력 → [완료] 순으로
         진행합니다.
+        <br />
+        <span data-testid="audit-form-realtime-notice">
+          등록 후 상세 화면에서 변경 이력 (수정 횟수 / overlay) 이 자동 추적됩니다 (PR-H4c).
+        </span>
       </p>
     </Card>
   )

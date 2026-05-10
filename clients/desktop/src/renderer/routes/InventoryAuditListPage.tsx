@@ -6,12 +6,21 @@
  *
  * UUID 비공개 — 화면에는 auditNo / warehouseCode / auditDate / status / 차이금액 표시.
  *
+ * <h2>PR-H4c FE-B 보강 — 실시간 동기화</h2>
+ * <ul>
+ *   <li>30초 polling refetchInterval — 멀티 워크스테이션 동기화 안전망.</li>
+ *   <li>BE inventory-service 는 PR-H4b BE-B 로 entity 단위 SSE 노출 — list 화면은 단일
+ *       entityId 가 없으므로 broadcast endpoint 합류 전까지 polling fallback 유지.</li>
+ *   <li>헤더 우측 "실시간 자동 갱신" 안내 — UsersPage (FE-C) 패턴 1:1.</li>
+ * </ul>
+ *
  * data-testid:
  * - audit-list-table
  * - audit-list-warehouse-filter
  * - audit-list-year-filter
  * - audit-list-status-filter
  * - audit-list-new-button
+ * - audit-list-realtime-indicator
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -78,6 +87,8 @@ export function InventoryAuditListPage() {
         page: 0,
         size: 50,
       }),
+    // PR-H4c FE-B: 30초 polling — 멀티 워크스테이션 동기화 안전망
+    refetchInterval: 30_000,
   })
 
   const yearOptions = useMemo(() => {
@@ -130,7 +141,16 @@ export function InventoryAuditListPage() {
           flexWrap: 'wrap',
         }}
       >
-        <h3 style={{ margin: 0 }}>재고 실사</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>재고 실사</h3>
+          {/* PR-H4c FE-B: 실시간 자동 갱신 안내 (30s polling — UsersPage FE-C 패턴 1:1) */}
+          <span
+            data-testid="audit-list-realtime-indicator"
+            style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}
+          >
+            실시간 자동 갱신 · 30초
+          </span>
+        </div>
         {canManageAudit(role) ? (
           <Button
             variant="primary"

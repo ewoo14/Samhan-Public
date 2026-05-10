@@ -346,7 +346,16 @@ export function ArologisManualDispatchPage() {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>arologis 수동 배차</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>arologis 수동 배차</h3>
+          {/* PR-H4c FE-B: 신규 작성 form — 저장 후 dispatch 상세에서 audit overlay 자동 활성 */}
+          <span
+            data-testid="arologis-manual-realtime-notice"
+            style={{ fontSize: 12, color: 'var(--color-neutral-500, #6B7280)' }}
+          >
+            저장 후 변경 이력 자동 추적 (PR-H4c)
+          </span>
+        </div>
         <Button variant="ghost" onClick={() => navigate('/')}>
           취소
         </Button>

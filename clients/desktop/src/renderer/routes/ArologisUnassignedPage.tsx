@@ -82,6 +82,8 @@ export function ArologisUnassignedPage() {
     queryKey: ['arologis-unassigned', date],
     queryFn: () => getUnassigned(date),
     enabled: !!date,
+    // PR-H4c FE-B: 30초 polling — 멀티 워크스테이션 동기화 안전망
+    refetchInterval: 30_000,
   })
 
   const entries: UnassignedEntry[] = query.data?.entries ?? []
@@ -133,7 +135,16 @@ export function ArologisUnassignedPage() {
           gap: 12,
         }}
       >
-        <h3 style={{ margin: 0 }}>미배차 리스트</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>미배차 리스트</h3>
+          {/* PR-H4c FE-B: 실시간 자동 갱신 안내 (30s polling) */}
+          <span
+            data-testid="arologis-unassigned-realtime-indicator"
+            style={{ fontSize: 12, color: 'var(--color-neutral-500, #6B7280)' }}
+          >
+            실시간 자동 갱신 · 30초
+          </span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13, color: 'var(--color-neutral-600)' }}>

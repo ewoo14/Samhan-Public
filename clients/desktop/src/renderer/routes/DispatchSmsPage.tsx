@@ -225,7 +225,16 @@ export function DispatchSmsPage() {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>배차안내 SMS 발송</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>배차안내 SMS 발송</h3>
+          {/* PR-H4c FE-B: 워크플로우 화면 (preview → send) — 발송 audit 는 BE 측에서 자동 기록 */}
+          <span
+            data-testid="dispatch-sms-realtime-notice"
+            style={{ fontSize: 12, color: 'var(--color-neutral-500, #6B7280)' }}
+          >
+            발송 이력은 BE audit_log 에 자동 기록 (PR-H4c)
+          </span>
+        </div>
       </div>
 
       {/* =============================================================== */}
