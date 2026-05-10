@@ -81,6 +81,7 @@ export default function DriverTabNavigator({ token, selectedStop }: Props): JSX.
   }
 
   // PR-H1 — slip detail push 활성 시 tab UI 위로 SlipDetailScreen 노출.
+  // PR-H2 — DRIVER 는 audit revert 권한 없음 → currentUserRole 명시 (canRevert=false).
   if (slipDetailRoute) {
     return (
       <SlipDetailScreen
@@ -88,6 +89,7 @@ export default function DriverTabNavigator({ token, selectedStop }: Props): JSX.
         slipId={slipDetailRoute.slipId}
         slipNo={slipDetailRoute.slipNo}
         partnerName={slipDetailRoute.partnerName}
+        currentUserRole="DRIVER"
         onBack={() => setSlipDetailRoute(null)}
       />
     );
