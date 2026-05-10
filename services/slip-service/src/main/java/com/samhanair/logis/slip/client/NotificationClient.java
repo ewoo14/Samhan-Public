@@ -1,0 +1,145 @@
+package com.samhanair.logis.slip.client;
+
+import com.samhanair.logis.security.InternalAuthProperties;
+import java.time.Duration;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
+
+/**
+ * notification-service 호출 client — PR-H3 (Phase 12 Step 3) 신규.
+ *
+ * <p>슬립 수정/삭제 요청 워크플로우의 notification 통합:
+ * <ul>
+ *   <li>요청 시 — 창고 직원 / 관리자 그룹에게 SMS / 푸시 알림 (수락/거절 유도)</li>
+ *   <li>수락 시 — 작성자 (요청자) 에게 "수정 가능" 알림</li>
+ *   <li>거절 시 — 작성자 (요청자) 에게 "거절 사유" 알림</li>
+ * </ul>
+ *
+ * <p>호출 endpoint: {@code POST /internal/notifications/send} (notification-service의
+ * {@code NotificationInternalController}). 인증 = X-Internal-Token (notification-service 의
+ * InternalTokenFilter 가 ROLE_MASTER 부여).
+ *
+ * <p>오류 처리 (graceful fallback) — notification 실패가 슬립 비즈니스 로직 (수락/거절) 을 막지
+ * 않도록 모두 warning log + 진행. SMS/push 채널 운영 모니터링은 notification-service 의 metric.
+ *
+ * <p>timeout — connect 2s / read 3s (NotificationChatRoomClient 일관).
+ *
+ * <p>Samhan Public 이식 강조 — notification-service 자체는 Aligo SMS / FCM / SES 의존을 흡수하므로
+ * 본 client 는 외부 vendor 직접 의존 없음 (notification-service 내부 격리).
+ */
+@Component
+public class NotificationClient {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationClient.class);
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String NOTIFICATION_SERVICE_BASE = "http://notification-service";
+    private static final String SEND_PATH = "/internal/notifications/send";
+
+    private final RestClient restClient;
+    private final InternalAuthProperties internalAuthProperties;
+
+    public NotificationClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
+                              InternalAuthProperties internalAuthProperties) {
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout((int) Duration.ofSeconds(2).toMillis());
+        rf.setReadTimeout((int) Duration.ofSeconds(3).toMillis());
+        this.restClient = builder
+                .baseUrl(NOTIFICATION_SERVICE_BASE)
+                .requestFactory(rf)
+                .build();
+        this.internalAuthProperties = internalAuthProperties;
+    }
+
+    /**
+     * 사용자 (USER recipientType) 에게 SMS 알림 발송. PR-H3 — 작성자 (수락/거절 결과) 통지용.
+     *
+     * @param recipientUserId 수신자 user UUID
+     * @param subject 제목 (≤200자)
+     * @param body 본문 (≤2000자)
+     */
+    public void sendUserSms(UUID recipientUserId, String subject, String body) {
+        sendInternal(Map.of(
+                "recipientType", "USER",
+                "recipientId", recipientUserId.toString(),
+                "channel", "SMS",
+                "subject", safeTruncate(subject, 200),
+                "body", safeTruncate(body, 2000)));
+    }
+
+    /**
+     * 외부 전화번호 (EXTERNAL_PHONE recipientType) 에게 SMS 알림. PR-H3 — 창고 직원 그룹 발송 시
+     * 사용 (user UUID resolve 가 안 되는 경우 폴백, 일반적으로는 sendUserSms 우선).
+     *
+     * @param phone 수신 전화번호 (010-XXXX-XXXX)
+     * @param subject 제목
+     * @param body 본문
+     */
+    public void sendExternalSms(String phone, String subject, String body) {
+        if (phone == null || phone.isBlank()) {
+            log.debug("[NotificationClient] phone 누락 — SMS 발송 skip");
+            return;
+        }
+        sendInternal(Map.of(
+                "recipientType", "EXTERNAL_PHONE",
+                "recipientAddress", phone,
+                "channel", "SMS",
+                "subject", safeTruncate(subject, 200),
+                "body", safeTruncate(body, 2000)));
+    }
+
+    /**
+     * 푸시 알림 (PUSH channel). PR-H3 — mobile-staff 앱 알림용. recipientId = user UUID 필수.
+     *
+     * @param recipientUserId 수신자 user UUID
+     * @param subject 제목
+     * @param body 본문
+     */
+    public void sendUserPush(UUID recipientUserId, String subject, String body) {
+        sendInternal(Map.of(
+                "recipientType", "USER",
+                "recipientId", recipientUserId.toString(),
+                "channel", "PUSH",
+                "subject", safeTruncate(subject, 200),
+                "body", safeTruncate(body, 2000)));
+    }
+
+    private void sendInternal(Map<String, Object> requestBody) {
+        String token = internalAuthProperties.getToken();
+        if (token == null || token.isBlank()) {
+            log.warn("[NotificationClient] app.security.internal.token 미설정 — SMS/push 발송 skip");
+            return;
+        }
+        try {
+            restClient.post()
+                    .uri(SEND_PATH)
+                    .header(INTERNAL_TOKEN_HEADER, token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[NotificationClient] 발송 완료 — recipientType={} channel={}",
+                    requestBody.get("recipientType"), requestBody.get("channel"));
+        } catch (RestClientResponseException ex) {
+            log.warn("[NotificationClient] notification-service 호출 실패 (graceful fallback) — status={} body={}",
+                    ex.getStatusCode(), ex.getResponseBodyAsString());
+        } catch (Exception ex) {
+            log.warn("[NotificationClient] notification-service 호출 실패 (graceful fallback) — msg={}",
+                    ex.getMessage());
+        }
+    }
+
+    private static String safeTruncate(String value, int max) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() > max ? value.substring(0, max) : value;
+    }
+}
