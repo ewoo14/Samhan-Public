@@ -31,6 +31,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import {
+  AuditOverlay,
   Button,
   Card,
   CopyButton,
@@ -40,6 +41,7 @@ import {
   ProgressBar,
   SignatureViewer,
   SlipNumberDisplay,
+  type AuditLogEntry,
 } from '@samhan/design-system'
 import axios from 'axios'
 import {
@@ -59,6 +61,11 @@ import {
   listSlipComments,
   type SlipComment,
 } from '../api/slipComment'
+import {
+  listAuditLogs,
+  revertToRevision,
+  type SlipAuditLogEntry,
+} from '../api/slipAudit'
 import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
 import { useSessionStore, canTransitionSlip } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -157,15 +164,27 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     enabled: !!id,
   })
 
-  // PR-H1: SSE 구독 — 진입 시 1회, unmount 시 abort. 이벤트 수신 시 cache invalidate.
+  // PR-H2: audit log 백필 — useQuery cache 키 ['slipAuditLogs', id]
+  // SSE "slip:edit" event 수신 시 함께 invalidate.
+  const auditLogsQuery = useQuery({
+    queryKey: ['slipAuditLogs', id],
+    queryFn: () => listAuditLogs(id),
+    enabled: !!id,
+  })
+
+  // PR-H1+PR-H2: SSE 구독 — 진입 시 1회, unmount 시 abort.
+  // 이벤트 수신 시 슬립 본체/코멘트/audit-logs 모두 invalidate.
   useEffect(() => {
     if (!id) return
     const ctrl = SlipRealtimeClient.subscribe(id, (evt) => {
-      // SSE 이벤트 수신 → 전표/코멘트 cache 무효화 (작은 입자 — 단순 invalidate 전략)
+      // SSE 이벤트 수신 → 전표/코멘트/audit cache 무효화 (작은 입자 — 단순 invalidate 전략)
       void queryClient.invalidateQueries({ queryKey: ['slipComments', id] })
       // 전표 본체 변경 (status 등) 도 가능 → 함께 무효화
       void queryClient.invalidateQueries({ queryKey: ['slip', id] })
-      void evt
+      // PR-H2: slip:edit event → audit-logs 재조회 (수정 횟수 + overlay 갱신)
+      if (evt.event === 'slip:edit' || evt.event === 'message') {
+        void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+      }
     })
     return () => {
       ctrl.abort()
@@ -270,6 +289,21 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       void queryClient.invalidateQueries({ queryKey: ['slips'] })
       const target = created.slipType === 'OUTBOUND' ? 'sales' : 'purchases'
       navigate(`/${target}/${created.id}`)
+    },
+  })
+
+  /**
+   * PR-H2: 특정 revision 으로 복원 — 200 응답 시 audit-logs / 전표 본체 cache invalidate.
+   * 사용자에게 confirm dialog 후 실행 (실수 방지).
+   */
+  const revertMutation = useMutation({
+    mutationFn: (revisionNo: number) => revertToRevision(id, revisionNo),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+      void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+    },
+    onError: () => {
+      alert('복원에 실패했습니다.')
     },
   })
 
@@ -387,6 +421,54 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       ? slip.memo ?? undefined
       : undefined
 
+  /**
+   * PR-H2: audit logs 를 필드별로 group 후 AuditOverlay 의 history 형식으로 매핑.
+   * - field 키 → AuditLogEntry[] (revisionNo 내림차순 정렬은 AuditOverlay 가 담당)
+   * - actorId 는 색상 hash 입력 전용, 화면 노출 X.
+   */
+  const auditLogs: SlipAuditLogEntry[] = auditLogsQuery.data ?? []
+  const auditByField: Record<string, AuditLogEntry[]> = auditLogs.reduce(
+    (acc, log) => {
+      const list = acc[log.field] ?? []
+      list.push({
+        revisionNo: log.revisionNo,
+        beforeValue: log.beforeValue,
+        actorId: log.actorId,
+        actorName: log.actorName,
+        changedAt: log.changedAt,
+      })
+      acc[log.field] = list
+      return acc
+    },
+    {} as Record<string, AuditLogEntry[]>,
+  )
+
+  /**
+   * PR-H2: 수정 횟수 = distinct revisionNo 개수.
+   * BE 가 한 revision 에 여러 필드 변경을 묶어 보낼 수 있으므로 set 으로 dedupe.
+   */
+  const revisionCount = new Set(auditLogs.map((l) => l.revisionNo)).size
+
+  /**
+   * PR-H2: revert dropdown 후보 — distinct revisionNo (내림차순).
+   * 가장 최근 revision 을 제외 (이미 현재 상태) — slice(1) 시 의미 모호 → 모두 노출 후 사용자 선택.
+   */
+  const revertCandidates = Array.from(
+    new Set(auditLogs.map((l) => l.revisionNo)),
+  ).sort((a, b) => b - a)
+
+  /** revert 핸들러 — confirm 후 mutation. */
+  const handleRevert = (revisionNo: number) => {
+    if (
+      !window.confirm(
+        `이 전표를 revision #${revisionNo} 시점으로 복원하시겠습니까?\n\n현재 값은 새 revision 으로 보존됩니다.`,
+      )
+    ) {
+      return
+    }
+    revertMutation.mutate(revisionNo)
+  }
+
   return (
     <>
       <div
@@ -399,8 +481,58 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <SlipNumberDisplay slipDate={slip.slipDate} seqNo={slip.seqNo} size="lg" />
+          {/* PR-H2: 수정 횟수 표시 — auditLogs distinct revisionNo 개수 */}
+          <span
+            data-testid="slip-detail-revision-count"
+            style={{
+              fontSize: 13,
+              color: 'var(--color-neutral-600)',
+              padding: '2px 8px',
+              borderRadius: 12,
+              background: 'var(--color-neutral-100)',
+            }}
+            title={
+              auditLogsQuery.isError
+                ? '수정 이력을 불러오지 못했습니다'
+                : '전표 변경 누적 횟수'
+            }
+          >
+            수정 {revisionCount}회
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* PR-H2: 복원 dropdown — revertCandidates 가 있을 때만 표시 */}
+          {revertCandidates.length > 0 ? (
+            <select
+              data-testid="slip-detail-revert-select"
+              defaultValue=""
+              disabled={revertMutation.isPending}
+              onChange={(e) => {
+                const v = e.target.value
+                if (!v) return
+                handleRevert(Number(v))
+                e.target.value = '' // reset selection
+              }}
+              style={{
+                padding: '4px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--color-neutral-300)',
+                fontSize: 13,
+              }}
+              aria-label="이전 revision 으로 복원"
+            >
+              <option value="">복원...</option>
+              {revertCandidates.map((rev) => (
+                <option
+                  key={rev}
+                  value={rev}
+                  data-testid={`slip-detail-revert-button-${rev}`}
+                >
+                  revision #{rev} 으로 복원
+                </option>
+              ))}
+            </select>
+          ) : null}
           {isOutbound ? (
             <>
               <Button
@@ -447,10 +579,29 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             <span className="detail-label">배송 태그</span>
             <span className="detail-value">{slip.deliveryTag ?? '-'}</span>
           </div>
-          <div>
+          <div data-testid="slip-detail-audit-overlay-memo">
             <span className="detail-label">메모</span>
-            <span className="detail-value">{slip.memo ?? '-'}</span>
+            <span className="detail-value">
+              <AuditOverlay
+                field="memo"
+                currentValue={slip.memo}
+                history={auditByField['memo'] ?? []}
+              />
+            </span>
           </div>
+          {/* PR-H2: 배송지 audit overlay (출고전표만 의미 있음) */}
+          {isOutbound ? (
+            <div data-testid="slip-detail-audit-overlay-shippingAddress">
+              <span className="detail-label">배송지</span>
+              <span className="detail-value">
+                <AuditOverlay
+                  field="shippingAddress"
+                  currentValue={slip.shippingAddress}
+                  history={auditByField['shippingAddress'] ?? []}
+                />
+              </span>
+            </div>
+          ) : null}
         </div>
       </Card>
 

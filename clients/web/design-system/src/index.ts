@@ -48,3 +48,5 @@ export * from './components/CsvUploadDialog'
 // Phase 12 시리즈 공유 자산 — userId → HSL 색상 deterministic hash util
 // 사용처: PR-H2 audit overlay 수정자 색상 dot, PR-H3 코멘트 author avatar 배경색
 export * from './utils'
+// PR-H2 신규 — SlipDetailPage audit overlay 컴포넌트 (취소선 + 색상 + 수정자)
+export * from './components/AuditOverlay'
