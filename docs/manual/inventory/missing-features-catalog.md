@@ -106,6 +106,31 @@
 
 **→ P0-4 누락: 5건. 시한: Phase 11 진입 전 1 PR (세금계산서 + 견적서 인쇄).**
 
+### P0-10. e-Count schema 12 컬럼 + API 호출 폐기 — Stage 4 (Phase 10 step-14, PR-G1) ✅ 완성
+
+> **이전 분석 출처** — e-Count BulkDatas 14 필드 vs Samhan Public schema 비교 (`docs/migration/ecount-reference/20260509_091636.png` 판매입력 + `091652.png` 구매입력 양식). 기존에는 이카운트 호환을 위한 외부 API 호출 + 메모 1000자 결합으로 부가 정보 보존.
+> **사용자 명시 결정** — 자체 분개 + 출고전표 자동 조회 + accounting-service native 이식 (PR #117 + #118) 100% 완성 후 schema 정리 단계 진입. 이카운트 외부 호출 폐기 → Samhan Public 자체 발행 (`POST /api/v1/slip-publish/from-{estimate,partner-order}`) 으로 일원화.
+
+| # | 기능 | 상태 | 비고 |
+|---|---|---|---|
+| 1 | `IO_TYPE` (입출고 구분 코드 `10`/`11`) | ✅ (PR-G1) | slip 헤더 컬럼 |
+| 2 | `TIME_DATE` (분 단위 처리 시각) | ✅ (PR-G1) | `LocalDateTime` |
+| 3 | `customer_tel` (거래처 전화 snapshot) | ✅ (PR-G1) | partner-service 자동 snapshot |
+| 4 | `customer_addr` (거래처 주소 snapshot) | ✅ (PR-G1) | partner-service 자동 snapshot |
+| 5 | `customer_rep` (거래처 대표자 snapshot) | ✅ (PR-G1) | partner-service 자동 snapshot |
+| 6 | `shipping_addr` (배송지 별도 입력) | ✅ (PR-G1) | 거래처 주소와 다를 때 영업 입력 |
+| 7 | `inspection_addr` (검수지 별도 입력) | ✅ (PR-G1) | 도착 후 검수 위치 |
+| 8 | `receiver_phone` (수령자 전화) | ✅ (PR-G1) | DeliveryBatch SMS share token 발송처 |
+| 9 | `payment_due` (입금 예정일 `MM-DD`) | ✅ (PR-G1) | 거래처 수금예정일 자동 채움 + 수정 |
+| 10 | `discount_info` (할인 정보) | ✅ (PR-G1) | DC 적용 내역 |
+| 11 | `collect_term` (결제 조건) | ✅ (PR-G1) | 거래처 결제조건 자동 채움 + 수정 |
+| 12 | `agree_term` (약정 조건) | ✅ (PR-G1) | 반품 / 교환 / 보증 |
+| 13 | **이카운트 외부 API 호출 폐기** | ✅ (PR-G1) | BulkDatas 호환 외부 호출 코드 제거 → Samhan Public 자체 발행 일원화 |
+| 14 | **`composeMemo` 리팩토링** (메모 1000자 결합 → 12 컬럼 분리) | ✅ (PR-G1) | `SlipPublishService.composeMemoLines` 12 컬럼 분리 후 메모는 자유 텍스트만 |
+| 15 | **partner_code resolve 보강** (V15 → V16) | ✅ (PR-G1) | `partner_code` snapshot 누락 row backfill + `customer_*` 3 컬럼 동시 채움 |
+
+**→ P0-10 = ✅ 완성 (Phase 10 step-14, PR-G1). Phase 11 진입 시 별도 PR 불필요.**
+
 ### P0-5. 사용자 / 권한 관리 화면
 
 > **검증 출처** — `services/user-service/src/main/java/com/samhanair/logis/user/web/EmployeeController.java` (POST/GET/POST lookup/POST terminate). desktop `routes/index.tsx` 27 라우트 중 `/admin/users` / `/admin/roles` 부재.
@@ -501,6 +526,7 @@
 | 2026-05-09 | TeamMember (W10-7 Stage 1) | 초안 작성. P0 50 / P1 37 / P2 27 / P3 17 = 총 131 sub. 8 P0 슬라이스 / 13 권고 PR. |
 | 2026-05-09 | TeamMember (W10-7b Stage 2) | Stage 2 매뉴얼 (영업 5 + 창고 4 = 9 docs) 검증 과정에서 신규 누락 19 sub 발견. 신규 슬라이스 **P0-9 (입고 검수 UI 5 sub)** + **P2-6 (재고 실사 5 sub)** + 기존 슬라이스 sub 9건 추가. **누적: 131 → 150 sub (+19). 9 P0 슬라이스 / 14 권고 PR.** |
 | 2026-05-09 | TeamMember (W10-7c Stage 3) | Stage 3 매뉴얼 (회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3 = 22 docs) 검증 과정에서 신규 누락 21 sub 발견. 신규 슬라이스 **P1-8 (모바일 사진 첨부 5 sub — 검수/배송/영업 방문)** + **P2-7 (영업 모바일 마이그레이션 5 sub — legacy v2 → Expo native)** + 기존 슬라이스 sub 11건 추가 (P0-2 N15 보안 / P0-3 N4·N11 도메인 확장 / P1-5 N7·N8·N9·N10 arologis 4건 / P2-1 N5 비대면 인수 / P2-2 N13·N14 단축키 / P2-3 N12 시산표 분기). **누적: 150 → 171 sub (+21). 9 P0 / 8 P1 / 7 P2 / 4 P3 슬라이스 = 28 슬라이스. Phase 11 진입 전 14 PR + Phase 11 후 6 PR (P1 3 + P2 3) = 20 PR 권고.** |
+| 2026-05-10 | Designer (Phase 10 step-14, PR-G1) | **신규 P0-10 슬라이스 ✅ 완성** — e-Count schema 12 컬럼 (IO_TYPE / TIME_DATE / customer_tel·addr·rep / shipping_addr / inspection_addr / receiver_phone / payment_due / discount_info / collect_term / agree_term) + 이카운트 외부 API 호출 폐기 + `composeMemo` 리팩토링 + partner_code resolve V15→V16 보강 = 15 sub 모두 ✅. **부수 효과** — P0-4 거래명세서 인쇄가 12 컬럼 활용으로 양식 정합성 향상 (별도 PR 진입 시 작업량 감소). **누적: 171 sub 유지 (P0-10 신규 15 sub 모두 ✅ 완성 표기 — 미구현 카운트에 +0). 9 P0 → 9 P0 + 1 P0 완성 = 9 미완성 P0 + 1 완성 P0. 권고 PR: Phase 11 진입 전 14 PR 유지 (P0-10 본 PR 로 자체 처리).** |
 
 ---
 

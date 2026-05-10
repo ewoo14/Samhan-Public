@@ -89,6 +89,8 @@ class SlipServiceTest {
                 SlipType.OUTBOUND, LocalDate.of(2026, 5, 4),
                 sourceWh, destWh, partnerId, "삼한공조", DeliveryTag.DAY, "메모",
                 null, null,
+                // PR-G1 backlog #2 — V16 e-Count 12 컬럼 (모두 null 시 기본 분기)
+                null, null, null, null, null, null, null, null, null, null, null, null,
                 List.of(new CreateSlipRequest.SlipLineRequest(productId, "에어컨", "M-1", null,
                         2, new BigDecimal("100.00"), null)));
 
@@ -111,6 +113,8 @@ class SlipServiceTest {
                 SlipType.INBOUND, LocalDate.of(2026, 5, 4),
                 null, destWh, partnerId, "삼한", DeliveryTag.RETURN, null,
                 null, null,
+                // PR-G1 backlog #2 — V16 e-Count 12 컬럼 (null 기본 분기)
+                null, null, null, null, null, null, null, null, null, null, null, null,
                 List.of(new CreateSlipRequest.SlipLineRequest(productId, "p", null, null,
                         1, new BigDecimal("10.00"), null)));
 

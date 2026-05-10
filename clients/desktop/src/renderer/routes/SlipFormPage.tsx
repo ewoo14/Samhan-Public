@@ -62,6 +62,7 @@ import axios from 'axios'
 import { fetchStockBalanceBatch, listWarehouses } from '../api/inventory'
 import {
   createSlip,
+  lookupPartnerForAutoFill,
   lookupProductByModelName,
   type SlipLineInput,
   type SlipType,
@@ -189,6 +190,27 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const [driverName, setDriverName] = useState('')
   const [driverPhone, setDriverPhone] = useState('')
 
+  // PR-G1 backlog #2 — V16 e-Count 12 컬럼 form state.
+  // 거래처 자동 채움 (customerTel/Address/Representative) + 별도 입력 6 + 기간 2 + 분기 2.
+  const [partnerCode, setPartnerCode] = useState('')
+  const [customerTel, setCustomerTel] = useState('')
+  const [customerAddress, setCustomerAddress] = useState('')
+  const [customerRepresentative, setCustomerRepresentative] = useState('')
+  const [shippingAddress, setShippingAddress] = useState('')
+  const [inspectionAddress, setInspectionAddress] = useState('')
+  const [receiverPhone, setReceiverPhone] = useState('')
+  const [paymentDueLabel, setPaymentDueLabel] = useState('')
+  const [discountInfo, setDiscountInfo] = useState('')
+  const [collectTerm, setCollectTerm] = useState('')
+  const [agreeTerm, setAgreeTerm] = useState('')
+  // ioType 은 mode 분기 자동 (OUTBOUND="10" / INBOUND="11"), 사용자 toggle 가능.
+  const [ioType, setIoType] = useState<string>(isOutbound ? '10' : '11')
+  // timeDate 는 BE 가 null 시 서버 시각 자동 채움 — 사용자 명시 입력 옵션 (HHmmss).
+  const [timeDate, setTimeDate] = useState('')
+  // 자동 채움 상태
+  const [autoFillError, setAutoFillError] = useState<string | null>(null)
+  const [autoFillLoading, setAutoFillLoading] = useState(false)
+
   // 재고조회 모달 state
   const [stockModalOpen, setStockModalOpen] = useState(false)
   const [stockRows, setStockRows] = useState<StockBalanceRow[] | null>(null)
@@ -304,6 +326,40 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     }
   }
 
+  // ── PR-G1 backlog #2 — 거래처 자동 채움 (partner-service lookup) ──
+
+  /**
+   * partnerCode 입력 후 "거래처 자동 채움" 버튼 클릭 시 호출.
+   *
+   * `GET /admin/partners/{partnerCode}` → name/phone/address/representative 200 응답.
+   * 200 시 customerTel/customerAddress/customerRepresentative + partnerName 자동 fill.
+   * 사용자가 채워진 후 자유롭게 수정 가능 (snapshot).
+   * 404 시 autoFillError 표시 — partner strict validation 정책에 따라 BE 가 발행 거부함.
+   */
+  const handlePartnerAutoFill = async () => {
+    const trimmed = partnerCode.trim()
+    if (!trimmed) {
+      setAutoFillError('거래처 코드를 먼저 입력하세요')
+      return
+    }
+    setAutoFillLoading(true)
+    setAutoFillError(null)
+    try {
+      const partner = await lookupPartnerForAutoFill(trimmed)
+      setPartnerName(partner.name)
+      if (partner.phone) setCustomerTel(partner.phone)
+      if (partner.address) setCustomerAddress(partner.address)
+      if (partner.representative) setCustomerRepresentative(partner.representative)
+    } catch (err) {
+      const msg = axios.isAxiosError(err) && err.response?.status === 404
+        ? `거래처 코드 '${trimmed}' 를 찾을 수 없습니다. 먼저 partner-service 에 등록하세요.`
+        : '거래처 자동 채움에 실패했습니다.'
+      setAutoFillError(msg)
+    } finally {
+      setAutoFillLoading(false)
+    }
+  }
+
   // ── 재고조회 mutation ───────────────────────────────────
 
   const stockMutation = useMutation({
@@ -368,6 +424,19 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         // link-dispatch-slice — OUTBOUND 만 driver 정보 송신
         driverName: isOutbound && driverName.trim() ? driverName.trim() : undefined,
         driverPhone: isOutbound && driverPhone ? driverPhone : undefined,
+        // PR-G1 backlog #2 — V16 e-Count 12 컬럼 송신 (모두 옵션, 빈 값은 undefined).
+        ioType: ioType || undefined,
+        timeDate: timeDate.trim() || undefined,
+        customerTel: customerTel.trim() || undefined,
+        customerAddress: customerAddress.trim() || undefined,
+        customerRepresentative: customerRepresentative.trim() || undefined,
+        shippingAddress: shippingAddress.trim() || undefined,
+        inspectionAddress: inspectionAddress.trim() || undefined,
+        receiverPhone: receiverPhone.trim() || undefined,
+        paymentDueLabel: paymentDueLabel.trim() || undefined,
+        discountInfo: discountInfo.trim() || undefined,
+        collectTerm: collectTerm.trim() || undefined,
+        agreeTerm: agreeTerm.trim() || undefined,
         lines: lines
           .filter((l) => l.productId && Number(l.quantity) > 0)
           .map<SlipLineInput>((l) => ({
@@ -518,6 +587,245 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
             />
           </div>
         ) : null}
+      </Card>
+
+      {/*
+        PR-G1 backlog #2 — V16 e-Count 12 컬럼 입력 카드.
+        거래처 자동 채움 + 자동 채움 후 수동 수정 가능 + 별도 입력 6 + 결제/할인/약정 4.
+      */}
+      <Card padding={6} shadow="sm" className="sfp-card">
+        <div className="sfp-section-title">거래 명세 정보 (e-Count 12 필드)</div>
+
+        {/* 거래처 코드 + 자동 채움 버튼 */}
+        <div className="sfp-form-grid sfp-form-grid--2" style={{ marginTop: 8 }}>
+          <FormField
+            label="거래처 코드"
+            hint="입력 후 '거래처 자동 채움' 버튼으로 연락처/주소/대표자 채우기"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={partnerCode}
+                onChange={(e) => setPartnerCode(e.target.value)}
+                maxLength={100}
+                className="sfp-input"
+                placeholder="예: CUST-0001"
+                data-testid="slip-form-partner-code"
+              />
+            )}
+          />
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handlePartnerAutoFill()}
+              loading={autoFillLoading}
+              disabled={!partnerCode.trim() || autoFillLoading}
+              data-testid="slip-form-partner-autofill-btn"
+            >
+              거래처 자동 채움
+            </Button>
+          </div>
+        </div>
+
+        {autoFillError ? (
+          <div className="sfp-error-banner" role="alert" style={{ marginTop: 8 }}>
+            <span aria-hidden="true">ⓘ</span>
+            <span>{autoFillError}</span>
+          </div>
+        ) : null}
+
+        {/* 거래처 snapshot 3 (자동 채움 + 수정 가능) */}
+        <div className="sfp-form-grid sfp-form-grid--3" style={{ marginTop: 16 }}>
+          <FormField
+            label="거래처 연락처"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={customerTel}
+                onChange={(e) => setCustomerTel(e.target.value)}
+                maxLength={100}
+                className="sfp-input"
+                placeholder="자동 채움 후 수정 가능"
+                data-testid="slip-form-customer-tel"
+              />
+            )}
+          />
+          <FormField
+            label="거래처 사업장 주소"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={customerAddress}
+                onChange={(e) => setCustomerAddress(e.target.value)}
+                maxLength={200}
+                className="sfp-input"
+                placeholder="자동 채움 후 수정 가능"
+                data-testid="slip-form-customer-address"
+              />
+            )}
+          />
+          <FormField
+            label="거래처 대표자"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={customerRepresentative}
+                onChange={(e) => setCustomerRepresentative(e.target.value)}
+                maxLength={100}
+                className="sfp-input"
+                placeholder="자동 채움 후 수정 가능"
+                data-testid="slip-form-customer-representative"
+              />
+            )}
+          />
+        </div>
+
+        {/* 배송지 / 검수지 / 수령자 (별도 입력 3) */}
+        <div className="sfp-form-grid sfp-form-grid--3" style={{ marginTop: 16 }}>
+          <FormField
+            label="배송지 주소"
+            hint="배송 도착지 (필수 권장)"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                maxLength={500}
+                className="sfp-input"
+                data-testid="slip-form-shipping-address"
+              />
+            )}
+          />
+          <FormField
+            label="검수지 주소"
+            hint="검수자 사무실 (배송 도착지와 다른 경우)"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={inspectionAddress}
+                onChange={(e) => setInspectionAddress(e.target.value)}
+                maxLength={500}
+                className="sfp-input"
+                data-testid="slip-form-inspection-address"
+              />
+            )}
+          />
+          <FormField
+            label="수령자 연락처"
+            hint="현장 수령자 직접 연락처"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={receiverPhone}
+                onChange={(e) => setReceiverPhone(e.target.value)}
+                maxLength={100}
+                className="sfp-input"
+                data-testid="slip-form-receiver-phone"
+              />
+            )}
+          />
+        </div>
+
+        {/* 결제/할인 (2) */}
+        <div className="sfp-form-grid sfp-form-grid--2" style={{ marginTop: 16 }}>
+          <FormField
+            label="결제 만기"
+            hint="MM-DD 또는 '익월말' / '월말' 등 라벨"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={paymentDueLabel}
+                onChange={(e) => setPaymentDueLabel(e.target.value)}
+                maxLength={200}
+                className="sfp-input"
+                placeholder="예: 06-30 또는 익월말"
+                data-testid="slip-form-payment-due-label"
+              />
+            )}
+          />
+          <FormField
+            label="할인 정보"
+            render={({ id }) => (
+              <textarea
+                id={id}
+                value={discountInfo}
+                onChange={(e) => setDiscountInfo(e.target.value)}
+                maxLength={200}
+                rows={2}
+                className="sfp-input"
+                placeholder="예: 5% 할인 / 정가 / 특가 등"
+                data-testid="slip-form-discount-info"
+              />
+            )}
+          />
+        </div>
+
+        {/* 회수/약정 (2) — 자유 입력 */}
+        <div className="sfp-form-grid sfp-form-grid--2" style={{ marginTop: 16 }}>
+          <FormField
+            label="대금 회수 조건"
+            hint="월말 / 익월말 / 현금 등"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={collectTerm}
+                onChange={(e) => setCollectTerm(e.target.value)}
+                maxLength={100}
+                className="sfp-input"
+                placeholder="예: 월말"
+                data-testid="slip-form-collect-term"
+              />
+            )}
+          />
+          <FormField
+            label="거래 약정"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={agreeTerm}
+                onChange={(e) => setAgreeTerm(e.target.value)}
+                maxLength={100}
+                className="sfp-input"
+                data-testid="slip-form-agree-term"
+              />
+            )}
+          />
+        </div>
+
+        {/* ioType + timeDate (분기/시간) */}
+        <div className="sfp-form-grid sfp-form-grid--2" style={{ marginTop: 16 }}>
+          <FormField
+            label="입출고 분기 (io_type)"
+            hint="'10'=출고 / '11'=입고. 페이지 분기로 자동 설정"
+            render={({ id }) => (
+              <select
+                id={id}
+                value={ioType}
+                onChange={(e) => setIoType(e.target.value)}
+                className="sfp-input"
+                data-testid="slip-form-io-type"
+              >
+                <option value="10">10 (출고)</option>
+                <option value="11">11 (입고)</option>
+              </select>
+            )}
+          />
+          <FormField
+            label="발행 시각 (HHmmss)"
+            hint="비워두면 BE 가 서버 시각 자동 채움"
+            render={({ id }) => (
+              <input
+                id={id}
+                value={timeDate}
+                onChange={(e) => setTimeDate(e.target.value)}
+                maxLength={10}
+                className="sfp-input"
+                placeholder="예: 143025 (자동)"
+                data-testid="slip-form-time-date"
+              />
+            )}
+          />
+        </div>
       </Card>
 
       {/* 라인 카드 */}

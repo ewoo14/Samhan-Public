@@ -75,14 +75,27 @@ public class PartnerInternalClient {
      * @return partnerId UUID Optional. 미존재 / 5xx / 연결 실패 / 토큰 미설정 시 empty.
      */
     public Optional<UUID> resolvePartnerId(String partnerCode) {
+        return verifyPartnerCode(partnerCode).partnerId();
+    }
+
+    /**
+     * Phase 10 PR-G1 backlog #1 — partnerCode strict 검증 + 결과 분류.
+     *
+     * <p>{@link #resolvePartnerId} 와 달리 호출 결과를 4가지로 분류하여 호출자
+     * (SlipPublishService) 가 strict on/off 정책에 맞춰 분기할 수 있게 한다.
+     *
+     * @param partnerCode 사용자 노출 거래처 코드
+     * @return {@link PartnerVerifyResult} (FOUND / NOT_FOUND / SERVER_ERROR / SKIPPED)
+     */
+    public PartnerVerifyResult verifyPartnerCode(String partnerCode) {
         if (partnerCode == null || partnerCode.isBlank()) {
-            return Optional.empty();
+            return PartnerVerifyResult.skipped(Optional.empty());
         }
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
-            log.warn("PartnerInternalClient.resolvePartnerId — app.security.internal.token 미설정, empty 반환 (partnerCode={})",
+            log.warn("PartnerInternalClient.verifyPartnerCode — app.security.internal.token 미설정, skipped 반환 (partnerCode={})",
                     partnerCode);
-            return Optional.empty();
+            return PartnerVerifyResult.skipped(Optional.empty());
         }
         try {
             String body = restClient.get()
@@ -91,32 +104,72 @@ public class PartnerInternalClient {
                     .retrieve()
                     .body(String.class);
             if (body == null || body.isBlank()) {
-                return Optional.empty();
+                return PartnerVerifyResult.notFound();
             }
             JsonNode root = objectMapper.readTree(body);
             JsonNode data = root.has("data") ? root.get("data") : root;
             if (data == null || data.isNull()) {
-                return Optional.empty();
+                return PartnerVerifyResult.notFound();
             }
             JsonNode partnerIdNode = data.get("partnerId");
             if (partnerIdNode == null || partnerIdNode.isNull()) {
-                return Optional.empty();
+                return PartnerVerifyResult.found(Optional.empty());
             }
-            return Optional.of(UUID.fromString(partnerIdNode.asText()));
+            return PartnerVerifyResult.found(Optional.of(UUID.fromString(partnerIdNode.asText())));
         } catch (RestClientResponseException ex) {
-            // 404 = 미등록 partnerCode (정상). 5xx = warn.
+            // 404 = 미등록 partnerCode (strict 모드 reject 대상).
+            // 5xx = partner-service 장애 (strict 모드 fail-open).
             if (ex.getStatusCode().is5xxServerError()) {
-                log.warn("PartnerInternalClient.resolvePartnerId 5xx — partnerCode={}, status={}",
+                log.warn("PartnerInternalClient.verifyPartnerCode 5xx — partnerCode={}, status={}",
                         partnerCode, ex.getStatusCode());
-            } else {
-                log.debug("PartnerInternalClient.resolvePartnerId 4xx (미존재 등) — partnerCode={}, status={}",
-                        partnerCode, ex.getStatusCode());
+                return PartnerVerifyResult.serverError();
             }
-            return Optional.empty();
+            log.debug("PartnerInternalClient.verifyPartnerCode 4xx (미존재 등) — partnerCode={}, status={}",
+                    partnerCode, ex.getStatusCode());
+            return PartnerVerifyResult.notFound();
         } catch (Exception ex) {
-            log.warn("PartnerInternalClient.resolvePartnerId 호출 실패 — partnerCode={}, msg={}",
+            log.warn("PartnerInternalClient.verifyPartnerCode 호출 실패 — partnerCode={}, msg={}",
                     partnerCode, ex.getMessage());
-            return Optional.empty();
+            return PartnerVerifyResult.serverError();
+        }
+    }
+
+    /**
+     * Phase 10 PR-G1 backlog #1 — partner verify 결과 4분류.
+     *
+     * <ul>
+     *   <li>{@link Status#FOUND} — 200, 거래처 존재. partnerId 가 응답에 있으면 함께 반환.</li>
+     *   <li>{@link Status#NOT_FOUND} — 404, 거래처 미등록. strict 모드 reject 대상.</li>
+     *   <li>{@link Status#SERVER_ERROR} — 5xx / 연결 실패. strict 모드 fail-open (raw 저장 + warning).</li>
+     *   <li>{@link Status#SKIPPED} — partnerCode null/blank 또는 internal token 미설정. lookup 자체 skip.</li>
+     * </ul>
+     */
+    public record PartnerVerifyResult(Status status, Optional<UUID> partnerId) {
+
+        public enum Status { FOUND, NOT_FOUND, SERVER_ERROR, SKIPPED }
+
+        public static PartnerVerifyResult found(Optional<UUID> partnerId) {
+            return new PartnerVerifyResult(Status.FOUND, partnerId);
+        }
+
+        public static PartnerVerifyResult notFound() {
+            return new PartnerVerifyResult(Status.NOT_FOUND, Optional.empty());
+        }
+
+        public static PartnerVerifyResult serverError() {
+            return new PartnerVerifyResult(Status.SERVER_ERROR, Optional.empty());
+        }
+
+        public static PartnerVerifyResult skipped(Optional<UUID> partnerId) {
+            return new PartnerVerifyResult(Status.SKIPPED, partnerId);
+        }
+
+        public boolean isFound() {
+            return status == Status.FOUND;
+        }
+
+        public boolean isNotFound() {
+            return status == Status.NOT_FOUND;
         }
     }
 }

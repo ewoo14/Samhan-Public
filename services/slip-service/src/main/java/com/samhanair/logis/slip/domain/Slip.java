@@ -320,6 +320,110 @@ public class Slip extends BaseEntity {
     @Column(name = "lock_flag", nullable = false)
     private Boolean lockFlag = Boolean.FALSE;
 
+    // ---------- PR-G1 BE (V16 migration) — e-Count schema 보강 12 컬럼 ----------
+    // legacy GAS 가 e-Count API 로 출고전표 발행 시 사용한 14 BulkDatas 필드 중
+    // 누락된 12 필드를 본 entity 에 직접 매핑. memo 1000자 prepend 정책 폐기 →
+    // 각 의미 단위를 별도 컬럼으로 명시적 저장. e-Count API 호출은 완전 제거 (사용자 결정).
+
+    /**
+     * 입출고 구분 — V16 (PR-G1) 신규. {@code "10"}=출고, {@code "11"}=입고.
+     *
+     * <p>legacy e-Count BulkDatas {@code IO_TYPE}. 현 publish endpoint 는 OUTBOUND 한정이므로
+     * 신규 row 는 DEFAULT '10'. {@link SlipType} 과 중복 정보지만 e-Count payload 호환 보존용.
+     */
+    @Column(name = "io_type", length = 2)
+    private String ioType;
+
+    /**
+     * 발행 시각 HHmmss — V16 (PR-G1) 신규.
+     *
+     * <p>legacy e-Count BulkDatas {@code TIME_DATE}. {@link #createdAt} 와 별도 — legacy
+     * payload 의 정확한 시각 보존 (e-Count cutover 후 backfill 용도).
+     */
+    @Column(name = "time_date", length = 8)
+    private String timeDate;
+
+    /**
+     * 거래처 연락처 snapshot — V16 (PR-G1) 신규. legacy {@code U_MEMO1} (e-Count 의 memo 1번 슬롯).
+     *
+     * <p>partner-service partners.tel 과 별도 — 발행 시점의 snapshot. partner master 변경 후에도
+     * 발행된 슬립의 인쇄 양식에 정확한 당시 연락처 표시.
+     */
+    @Column(name = "customer_tel", length = 50)
+    private String customerTel;
+
+    /**
+     * 거래처 사업장 주소 snapshot — V16 (PR-G1) 신규. legacy {@code U_MEMO2}.
+     */
+    @Column(name = "customer_address", length = 500)
+    private String customerAddress;
+
+    /**
+     * 거래처 대표자명 snapshot — V16 (PR-G1) 신규. legacy {@code U_MEMO3}.
+     */
+    @Column(name = "customer_representative", length = 100)
+    private String customerRepresentative;
+
+    /**
+     * 배송지 주소 — V16 (PR-G1) 신규. legacy {@code U_TXT1}.
+     *
+     * <p>**리팩토링 핵심**: 기존 {@link SlipPublishService#composeMemo} 가 memo 컬럼에
+     * "배송지: ..." 형식으로 prepend 하던 정책 폐기. 본 컬럼에 직접 저장. 인쇄 양식 / OCR 매칭 시
+     * memo 파싱 불필요.
+     */
+    @Column(name = "shipping_address", length = 500)
+    private String shippingAddress;
+
+    /**
+     * 검수지 주소 — V16 (PR-G1) 신규. legacy {@code ADD_TXT_01_T}.
+     *
+     * <p>{@link #shippingAddress} 와 별개 — 배송 도착지와 검수자 사무실이 다른 경우.
+     */
+    @Column(name = "inspection_address", length = 500)
+    private String inspectionAddress;
+
+    /**
+     * 수령자 연락처 — V16 (PR-G1) 신규. legacy {@code ADD_TXT_03_T}.
+     *
+     * <p>{@link #customerTel} 과 별개 — 거래처 대표 번호 vs 현장 수령자 직접 연락처.
+     */
+    @Column(name = "receiver_phone", length = 50)
+    private String receiverPhone;
+
+    /**
+     * 결제 만기 라벨 MM-DD — V16 (PR-G1) 신규. legacy {@code ADD_TXT_05_T}.
+     *
+     * <p>"05-31" / "익월말" 등 자유 형식 (legacy 데이터 호환). 회계 마감 자동 매칭에 사용 X
+     * (단순 표시 + 인쇄 양식 textbox).
+     */
+    @Column(name = "payment_due_label", length = 20)
+    private String paymentDueLabel;
+
+    /**
+     * 할인 정보 자유 텍스트 — V16 (PR-G1) 신규. legacy {@code ADD_TXT_06_T}.
+     *
+     * <p>"5% 할인" / "VIP 단가" 등. SlipLine 의 unitPrice 가 이미 할인 적용가이므로 본 컬럼은
+     * 인쇄 양식 / 감사 reference 용도.
+     */
+    @Column(name = "discount_info", length = 200)
+    private String discountInfo;
+
+    /**
+     * 대금 회수 조건 — V16 (PR-G1) 신규. legacy {@code COLL_TERM}.
+     *
+     * <p>"월말" / "익월말" / "현금" 등. partner-service partners.collectTerm 과 별도 snapshot.
+     */
+    @Column(name = "collect_term", length = 50)
+    private String collectTerm;
+
+    /**
+     * 거래 약정 조건 — V16 (PR-G1) 신규. legacy {@code AGREE_TERM}.
+     *
+     * <p>특수 약정 (계약 단가 / 운송비 별도 등) 의 요약 라벨.
+     */
+    @Column(name = "agree_term", length = 50)
+    private String agreeTerm;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -975,6 +1079,74 @@ public class Slip extends BaseEntity {
         this.sourceType = sourceType;
         this.sourceId = sourceId;
         this.idempotencyKey = idempotencyKey;
+    }
+
+    /**
+     * e-Count schema snapshot 일괄 설정 — V16 (PR-G1) 신규.
+     *
+     * <p>{@code SlipPublishService} 가 신규 슬립 생성 후 호출. memo 1000자 prepend 정책 폐기 →
+     * 각 의미 단위를 별도 컬럼에 직접 저장. legacy GAS 의 e-Count BulkDatas 14 필드 중 12 필드
+     * (io_type, time_date, customer_tel/address/representative, shipping_address,
+     * inspection_address, receiver_phone, payment_due_label, discount_info, collect_term, agree_term).
+     *
+     * <p>본 메서드는 단순 setter — 라이프사이클 단계 가드 없음 (어떤 단계에서도 snapshot 갱신 가능).
+     * 호출자가 null 인자를 전달하면 해당 필드는 변경 없음 (보존).
+     *
+     * @param ioType {@code "10"}=출고 / {@code "11"}=입고. null 이면 기존 값 보존.
+     * @param timeDate HHmmss. null 이면 보존.
+     * @param customerTel 거래처 연락처. null 이면 보존.
+     * @param customerAddress 거래처 사업장 주소. null 이면 보존.
+     * @param customerRepresentative 거래처 대표자명. null 이면 보존.
+     * @param shippingAddress 배송지 주소. null 이면 보존.
+     * @param inspectionAddress 검수지 주소. null 이면 보존.
+     * @param receiverPhone 수령자 연락처. null 이면 보존.
+     * @param paymentDueLabel 결제 만기 라벨. null 이면 보존.
+     * @param discountInfo 할인 정보. null 이면 보존.
+     * @param collectTerm 대금 회수 조건. null 이면 보존.
+     * @param agreeTerm 거래 약정 조건. null 이면 보존.
+     */
+    public void applyEcountSchema(String ioType, String timeDate,
+                                  String customerTel, String customerAddress,
+                                  String customerRepresentative,
+                                  String shippingAddress, String inspectionAddress,
+                                  String receiverPhone, String paymentDueLabel,
+                                  String discountInfo, String collectTerm, String agreeTerm) {
+        if (ioType != null) {
+            this.ioType = ioType;
+        }
+        if (timeDate != null) {
+            this.timeDate = timeDate;
+        }
+        if (customerTel != null) {
+            this.customerTel = customerTel;
+        }
+        if (customerAddress != null) {
+            this.customerAddress = customerAddress;
+        }
+        if (customerRepresentative != null) {
+            this.customerRepresentative = customerRepresentative;
+        }
+        if (shippingAddress != null) {
+            this.shippingAddress = shippingAddress;
+        }
+        if (inspectionAddress != null) {
+            this.inspectionAddress = inspectionAddress;
+        }
+        if (receiverPhone != null) {
+            this.receiverPhone = receiverPhone;
+        }
+        if (paymentDueLabel != null) {
+            this.paymentDueLabel = paymentDueLabel;
+        }
+        if (discountInfo != null) {
+            this.discountInfo = discountInfo;
+        }
+        if (collectTerm != null) {
+            this.collectTerm = collectTerm;
+        }
+        if (agreeTerm != null) {
+            this.agreeTerm = agreeTerm;
+        }
     }
 
     private static String generateShareToken() {
