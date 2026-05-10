@@ -80,6 +80,8 @@ samhan:
   partner-order:
     ocr:
       enabled: ${SAMHAN_OCR_ENABLED:false}
+      # 엔진 종류 — TESSERACT (default, 운영) / MOCK (테스트 / Tesseract 미설치 fallback)
+      engine: ${SAMHAN_OCR_ENGINE:TESSERACT}
       tesseract:
         # Linux default 경로. Windows: C:\Program Files\Tesseract-OCR\tessdata
         # macOS Apple Silicon: /opt/homebrew/share/tessdata
@@ -88,6 +90,12 @@ samhan:
         language: ${TESSERACT_LANGUAGE:kor+eng}
         # 6 = 단일 균일 텍스트 블록 (거래처 주문서 표 인식 권장)
         page-seg-mode: ${TESSERACT_PSM:6}
+    vendor:
+      # PR-F2 — 종합견적서 시트 modelCode → 단가 lookup. 사용자 결정 (memory project_arologis_phase10):
+      # legacy GAS Notion 단가 마스터 폐기 → product-service / partner-order-service 가 공유하는
+      # 우리 자체 종합견적서 시트로 일원화. partner-order-service 이미 PR-D 에서 시트 read 패턴 보유.
+      catalog-sheet-id: ${INTEGRATED_QUOTE_SHEET_ID:${BOOTSTRAP_SHEET_ID:1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ}}
+      catalog-range: ${INTEGRATED_QUOTE_RANGE:종합견적서!A2:C}
 
 # Resilience4J — slipServiceClient 가 가장 중요 (M5 §3 옵션 A)
 resilience4j:
