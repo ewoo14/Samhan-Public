@@ -765,16 +765,23 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(null)
   }
 
-  // GET /slips (페이지) — lookup-product / {id} 가 아닌 경우
+  // GET /slips (페이지) — lookup-product / {id} 가 아닌 경우.
+  // SlipListPage 가 ?slipType=OUTBOUND (판매조회) 또는 INBOUND (구매조회) 로 필터링 →
+  // mock 도 BE 와 동등하게 query param 으로 분리해 잘못된 슬립 노출 방지.
   if (
     method === 'GET'
     && url.includes('/slips')
     && !url.includes('/slips/lookup-product')
     && !slipDetailMatch
   ) {
+    const slipTypeMatch = url.match(/[?&]slipType=([^&]+)/)
+    const slipType = slipTypeMatch?.[1]
+    const filtered = slipType === 'OUTBOUND' || slipType === 'INBOUND'
+      ? MOCK_SLIPS.filter((s) => s.slipType === slipType)
+      : MOCK_SLIPS
     return envelope({
-      content: MOCK_SLIPS,
-      totalElements: MOCK_SLIPS.length,
+      content: filtered,
+      totalElements: filtered.length,
       totalPages: 1,
       number: 0,
       size: 20,
@@ -1633,20 +1640,52 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
-  // GET /api/v1/slips/edit-requests — SlipEditRequestsPage
+  // GET /api/v1/slips/edit-requests — SlipEditRequestsPage.
+  // BE 가 raw array (List<SlipEditRequestResponse>) 를 반환하므로 mock 도 동일하게 envelope.data = array.
+  // (Page envelope 으로 감싸면 SlipEditRequestsPage `list = query.data ?? []` → object → list.map 에러)
   if (method === 'GET' && url.includes('/slips/edit-requests')) {
+    return envelope(MOCK_EDIT_REQUESTS)
+  }
+  // POST /api/v1/slips/{slipId}/edit-request — 작성자 신규 요청 (CONFIRMED 단계).
+  // body { type: 'EDIT'|'DELETE', reason: string } → SlipEditRequest 응답.
+  const createEditRequestMatch = url.match(/\/slips\/([^/]+)\/edit-request(?:\?|$)/)
+  if (method === 'POST' && createEditRequestMatch) {
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      type?: 'EDIT' | 'DELETE'
+      reason?: string
+    }
+    const slipId = createEditRequestMatch[1]
+    const slipNo = MOCK_SLIPS.find((s) => s.id === slipId)?.slipNo ?? slipId
     return envelope({
-      content: MOCK_EDIT_REQUESTS,
-      totalElements: MOCK_EDIT_REQUESTS.length,
-      totalPages: 1,
-      number: 0,
-      size: 20,
-      first: true,
-      last: true,
+      id: `er-new-${Date.now()}`,
+      slipId,
+      slipNo,
+      requesterId: 'user-001',
+      requesterName: '오병승',
+      type: body.type ?? 'EDIT',
+      reason: body.reason ?? '',
+      requestedAt: new Date().toISOString(),
+      status: 'PENDING',
+      decidedAt: null,
+      decidedBy: null,
+      decidedByName: null,
+      decisionReason: null,
     })
   }
-  if (method === 'POST' && url.match(/\/slips\/edit-requests\/[^/]+\/(approve|reject|accept)$/)) {
-    return envelope({ message: '처리되었습니다' })
+  // POST /api/v1/slips/{slipId}/edit-request/{requestId}/approve|reject — 창고 직원 결정.
+  if (method === 'POST' && url.match(/\/slips\/[^/]+\/edit-request\/[^/]+\/(approve|reject)$/)) {
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      reason?: string
+    }
+    const isApprove = url.endsWith('/approve')
+    return envelope({
+      id: 'er-decided',
+      status: isApprove ? 'APPROVED' : 'REJECTED',
+      decidedAt: new Date().toISOString(),
+      decidedBy: 'user-warehouse',
+      decidedByName: '김창고',
+      decisionReason: isApprove ? null : (body.reason ?? null),
+    })
   }
 
   // ==========================================================================
@@ -2780,34 +2819,41 @@ const MOCK_ESTIMATES = [
 ]
 
 /**
- * 전표 수정 요청 (`/admin/slip-edit-requests`) — 2건 PENDING.
+ * 전표 수정/삭제 요청 (`/admin/slip-edit-requests`) — 2건 PENDING.
+ *
+ * <p>shape 은 {@code SlipEditRequest} interface (api/slipEditRequest.ts) 와 1:1.
+ * BE `SlipEditRequestResponse` 직렬화와 동등하므로 PENDING 의 경우 decided* 필드는 null.
  */
 const MOCK_EDIT_REQUESTS = [
   {
     id: 'er-001',
     slipId: 'slip-001',
     slipNo: '2026/05/04-1',
-    fieldName: 'memo',
-    currentValue: '9시까지배송요망',
-    requestedValue: '오전 10시까지 변경 요청',
+    requesterId: 'user-001',
     requesterName: '오병승',
-    requesterRole: 'SALES',
+    type: 'EDIT' as const,
+    reason: '거래처 요청으로 배송 시각을 9시 → 오전 10시로 변경 부탁드립니다.',
+    requestedAt: '2026-05-10T09:30:00+09:00',
     status: 'PENDING' as const,
-    createdAt: '2026-05-10T09:30:00+09:00',
-    reason: '거래처 요청 — 시간 조정',
+    decidedAt: null,
+    decidedBy: null,
+    decidedByName: null,
+    decisionReason: null,
   },
   {
     id: 'er-002',
     slipId: 'slip-002',
     slipNo: '2026/05/04-2',
-    fieldName: 'driverName',
-    currentValue: '홍지수',
-    requestedValue: '김기철',
+    requesterId: 'user-001',
     requesterName: '오병승',
-    requesterRole: 'SALES',
+    type: 'DELETE' as const,
+    reason: '기사 차량 정비 발생 — 본 전표를 취소 후 신규 발행 예정입니다.',
+    requestedAt: '2026-05-10T10:15:00+09:00',
     status: 'PENDING' as const,
-    createdAt: '2026-05-10T10:15:00+09:00',
-    reason: '기사 변경 — 차량 정비로 교체',
+    decidedAt: null,
+    decidedBy: null,
+    decidedByName: null,
+    decisionReason: null,
   },
 ]
 
