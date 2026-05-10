@@ -21,19 +21,63 @@ public interface TaxInvoiceRepository extends JpaRepository<TaxInvoice, UUID> {
 
     /**
      * 페이지 조회 — 4개 필터 조합 (status, from, to, partnerId). null 인 필터는 무시.
+     *
+     * <p>nativeQuery=true 사용 이유: Hibernate 6 + PostgreSQL 환경에서 JPQL
+     * {@code (:localDateParam IS NULL OR field >= :localDateParam)} 패턴이
+     * {@code LocalDate} 타입 바인딩 시 타입 추론 오류를 발생시킵니다.
+     * Native SQL 에서 CAST(:from AS DATE) 로 명시적 타입 지정하여 해결합니다.
+     * countQuery 도 동일 패턴으로 명시 (Spring Data JPA 자동 생성 비신뢰).
+     */
+    @Query(value = """
+            SELECT * FROM tax_invoices t
+            WHERE t.is_deleted = false
+              AND (:status IS NULL OR t.status = :status)
+              AND (CAST(:from AS DATE) IS NULL OR t.supply_date >= CAST(:from AS DATE))
+              AND (CAST(:to AS DATE) IS NULL OR t.supply_date <= CAST(:to AS DATE))
+              AND (CAST(:partnerId AS UUID) IS NULL OR t.partner_id = CAST(:partnerId AS UUID))
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM tax_invoices t
+            WHERE t.is_deleted = false
+              AND (:status IS NULL OR t.status = :status)
+              AND (CAST(:from AS DATE) IS NULL OR t.supply_date >= CAST(:from AS DATE))
+              AND (CAST(:to AS DATE) IS NULL OR t.supply_date <= CAST(:to AS DATE))
+              AND (CAST(:partnerId AS UUID) IS NULL OR t.partner_id = CAST(:partnerId AS UUID))
+            """,
+            nativeQuery = true)
+    Page<TaxInvoice> findByFilters(@Param("status") String status,
+                                   @Param("from") LocalDate from,
+                                   @Param("to") LocalDate to,
+                                   @Param("partnerId") String partnerId,
+                                   Pageable pageable);
+
+    /**
+     * 페이지 조회 — 5개 필터 조합 (status, type, from, to, partnerId). P0-4 신규.
+     * null 인 필터는 무시.
+     *
+     * @param status    세금계산서 상태 (선택)
+     * @param type      세금계산서 종류 SALES/PURCHASE (선택)
+     * @param from      공급일자 시작 (선택)
+     * @param to        공급일자 종료 (선택)
+     * @param partnerId 거래처 UUID (선택)
+     * @param pageable  페이지 정보
+     * @return 페이지 결과
      */
     @Query("""
             SELECT t FROM TaxInvoice t
             WHERE (:status IS NULL OR t.status = :status)
+              AND (:type IS NULL OR t.invoiceType = :type)
               AND (:from IS NULL OR t.supplyDate >= :from)
               AND (:to IS NULL OR t.supplyDate <= :to)
               AND (:partnerId IS NULL OR t.partnerId = :partnerId)
+            ORDER BY t.supplyDate DESC, t.taxInvoiceNo DESC
             """)
-    Page<TaxInvoice> findByFilters(@Param("status") TaxInvoiceStatus status,
-                                   @Param("from") LocalDate from,
-                                   @Param("to") LocalDate to,
-                                   @Param("partnerId") UUID partnerId,
-                                   Pageable pageable);
+    Page<TaxInvoice> findByFiltersWithType(@Param("status") TaxInvoiceStatus status,
+                                           @Param("type") TaxInvoiceType type,
+                                           @Param("from") LocalDate from,
+                                           @Param("to") LocalDate to,
+                                           @Param("partnerId") UUID partnerId,
+                                           Pageable pageable);
 
     /**
      * 발행 상태 + 공급일자 범위 list 조회 (PR-E2 BE-A11 hometax export 용).

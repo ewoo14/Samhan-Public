@@ -21,7 +21,7 @@
  *
  * <p>UUID 비공개 가드 — id 표시 X, taxInvoiceNo / partnerName 만 노출.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -30,6 +30,7 @@ import {
   Button,
   Card,
   DataTable,
+  Modal,
   Spinner,
   type DataTableColumn,
 } from '@samhan/design-system'
@@ -114,6 +115,10 @@ export function TaxInvoiceDetailPage() {
   usePageTitle('세금계산서 상세', query.data?.taxInvoiceNo ?? undefined)
 
   const [topError, setTopError] = useState<string>('')
+  /** 취소 사유 dialog 표시 여부. */
+  const [showCancelModal, setShowCancelModal] = useState<boolean>(false)
+  const [cancelReason, setCancelReason] = useState<string>('')
+  const cancelReasonRef = useRef<HTMLTextAreaElement>(null)
 
   const issueMutation = useMutation({
     mutationFn: () => issueTaxInvoice(id),
@@ -132,8 +137,10 @@ export function TaxInvoiceDetailPage() {
   })
 
   const cancelMutation = useMutation({
-    mutationFn: () => cancelTaxInvoice(id),
+    mutationFn: (reason: string) => cancelTaxInvoice(id, { reason }),
     onSuccess: () => {
+      setShowCancelModal(false)
+      setCancelReason('')
       queryClient.invalidateQueries({
         queryKey: ['accounting', 'tax-invoices'],
       })
@@ -142,7 +149,10 @@ export function TaxInvoiceDetailPage() {
       })
       alert('취소 완료\n\n자동 역분개가 생성되었습니다.')
     },
-    onError: (err: Error) => setTopError(`취소 실패: ${err.message}`),
+    onError: (err: Error) => {
+      setShowCancelModal(false)
+      setTopError(`취소 실패: ${err.message}`)
+    },
   })
 
   if (query.isLoading) {
@@ -181,15 +191,21 @@ export function TaxInvoiceDetailPage() {
     issueMutation.mutate()
   }
 
-  const handleCancel = () => {
+  const handleCancelOpen = () => {
     setTopError('')
-    if (
-      !confirm(
-        '이 세금계산서를 취소하시겠습니까?\n자동 역분개가 생성됩니다 (원본 분개는 보존).',
-      )
-    )
+    setCancelReason('')
+    setShowCancelModal(true)
+    // 모달 열리면 textarea 포커스 (접근성)
+    setTimeout(() => cancelReasonRef.current?.focus(), 50)
+  }
+
+  const handleCancelSubmit = () => {
+    const trimmed = cancelReason.trim()
+    if (trimmed.length < 5) {
+      alert('취소 사유는 5자 이상 입력해야 합니다.')
       return
-    cancelMutation.mutate()
+    }
+    cancelMutation.mutate(trimmed)
   }
 
   const handlePrint = () => {
@@ -214,10 +230,17 @@ export function TaxInvoiceDetailPage() {
       header: '품명',
     },
     {
-      key: 'spec',
+      key: 'specification',
       header: '규격',
       width: '120px',
-      render: (l) => l.spec ?? '—',
+      render: (l) => l.specification ?? '—',
+    },
+    {
+      key: 'unit',
+      header: '단위',
+      width: '60px',
+      align: 'center',
+      render: (l) => l.unit ?? '—',
     },
     {
       key: 'quantity',
@@ -301,6 +324,22 @@ export function TaxInvoiceDetailPage() {
                 ? ` · 취소: ${new Date(t.cancelledAt).toLocaleString('ko-KR')}`
                 : ''}
             </div>
+            {t.status === 'CANCELLED' && t.cancelReason ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '8px 12px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  color: '#991B1B',
+                }}
+                data-testid="tax-invoice-detail-cancel-reason"
+              >
+                <strong>취소 사유</strong>: {t.cancelReason}
+              </div>
+            ) : null}
             <div style={{ marginTop: 12, fontSize: 14 }}>
               <div>
                 <strong>거래처</strong>: {t.partnerName}
@@ -361,11 +400,11 @@ export function TaxInvoiceDetailPage() {
             {isIssued && canMutate ? (
               <Button
                 variant="ghost"
-                onClick={handleCancel}
+                onClick={handleCancelOpen}
                 disabled={cancelMutation.isPending}
                 data-testid="tax-invoice-detail-cancel-button"
               >
-                {cancelMutation.isPending ? '취소 중...' : '취소'}
+                취소
               </Button>
             ) : null}
             {(isIssued || t.status === 'CANCELLED') ? (
@@ -469,6 +508,77 @@ export function TaxInvoiceDetailPage() {
           {topError}
         </div>
       ) : null}
+
+      {/* 취소 사유 입력 Modal */}
+      <Modal
+        open={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        title="세금계산서 취소"
+        data-testid="tax-invoice-cancel-modal"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setShowCancelModal(false)}
+              disabled={cancelMutation.isPending}
+            >
+              닫기
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleCancelSubmit}
+              disabled={cancelMutation.isPending || cancelReason.trim().length < 5}
+              data-testid="tax-invoice-cancel-modal-submit"
+            >
+              {cancelMutation.isPending ? '취소 처리 중...' : '취소 확인'}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ marginTop: 0, fontSize: 13, color: '#374151' }}>
+          이 세금계산서를 취소하면 자동 역분개가 생성됩니다. 원본 분개는 보존됩니다.
+        </p>
+        <label
+          htmlFor="tax-invoice-cancel-reason"
+          style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}
+        >
+          취소 사유 <span style={{ color: '#DC2626' }}>*</span>
+        </label>
+        <textarea
+          id="tax-invoice-cancel-reason"
+          ref={cancelReasonRef}
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="취소 사유를 입력하세요 (5자 이상 필수)"
+          rows={4}
+          maxLength={1000}
+          style={{
+            width: '100%',
+            padding: '8px 10px',
+            border: '1px solid #D1D5DB',
+            borderRadius: 6,
+            fontSize: 13,
+            resize: 'vertical',
+            fontFamily: 'inherit',
+            boxSizing: 'border-box',
+          }}
+          data-testid="tax-invoice-cancel-reason-input"
+        />
+        <div
+          style={{
+            marginTop: 4,
+            fontSize: 11,
+            color: cancelReason.trim().length > 0 && cancelReason.trim().length < 5
+              ? '#DC2626'
+              : '#6B7280',
+            textAlign: 'right',
+          }}
+        >
+          {cancelReason.trim().length > 0 && cancelReason.trim().length < 5
+            ? `최소 5자 이상 입력 — 현재 ${cancelReason.trim().length}자`
+            : `${cancelReason.length} / 1000`}
+        </div>
+      </Modal>
     </>
   )
 }
