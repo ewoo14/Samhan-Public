@@ -18,4 +18,17 @@ public interface DispatchRepository extends JpaRepository<Dispatch, UUID> {
 
     List<Dispatch> findAllByDispatchDateAndDispatchTypeOrderByCreatedAtDesc(
             LocalDate dispatchDate, DispatchType dispatchType);
+
+    /**
+     * 기간 내 모든 dispatch 조회 — Phase 10 PR-F1 BE-2 (운송사 실배차 비교).
+     *
+     * <p>legacy GAS 11번 ("운송사-실배차내역 비교") 의 from/to 자동 조회 source.
+     * dispatchDate 인덱스 활용 (V1 migration ix_dispatches_date).
+     *
+     * @param fromDate 조회 시작일 (inclusive)
+     * @param toDate   조회 종료일 (inclusive)
+     * @return 활성 dispatch 목록 (날짜 오름차순)
+     */
+    List<Dispatch> findAllByDispatchDateBetweenOrderByDispatchDateAsc(
+            LocalDate fromDate, LocalDate toDate);
 }
