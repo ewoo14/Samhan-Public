@@ -38,14 +38,27 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>설계: {@code docs/migration/phase6/M5-slip-service-integration.md} §3 (payload 매핑) +
  * CONSISTENCY-MATRIX (Sync REST + idempotency 3중 격리).
  *
+ * <p>**PR-G1 BE (V16) 리팩토링** — Samhan Public native:
+ * <ul>
+ *   <li>e-Count API 호출 코드 완전 제거 (사용자 결정). proxy {@code 152.69.228.109:3000} +
+ *       {@code SaleList} / {@code SaleOrderList} / ECOUNT_SESSION 의존 0.</li>
+ *   <li>memo 1000자 prepend 정책 폐기 — 12 신규 컬럼에 직접 저장
+ *       ({@link Slip#applyEcountSchema}). memo 컬럼은 사용자 자유 입력만 보존.</li>
+ *   <li>partner_code resolve — {@code req.partnerCode()} 를 {@link Slip#setPartnerCode} 로 직접
+ *       snapshot (V15 보강). UUID 비공개 가드 일관.</li>
+ *   <li>자체 슬립번호 채번 + 자체 publish 흐름으로 완결 — e-Count Data.SuccessCnt / Data.SlipNos
+ *       의존 제거.</li>
+ * </ul>
+ *
  * <p>핵심 책임:
  * <ol>
  *   <li>Idempotency 3중 격리 (DB partial UNIQUE INDEX + 본 서비스의 fingerprint 비교 +
  *       (별 슬라이스) outbox).</li>
- *   <li>legacy header 6 필드 → {@link Slip#getMemo()} 1000자 결합 prepend (라벨 포맷).</li>
+ *   <li>legacy header 12 필드 → {@link Slip#applyEcountSchema} 직접 컬럼 저장 (V16 신규).</li>
  *   <li>legacy line ({@code PROD_CD/QTY/USER_PRICE_VAT/SIZE_DES/REMARKS/SUPPLY_AMT/VAT_AMT})
  *       → {@link SlipLine} + {@link SlipPublishAudit}.</li>
  *   <li>{@code Slip.assignPublishSource} 로 출처/idempotencyKey 1회성 설정.</li>
+ *   <li>{@code Slip.setPartnerCode} 로 partner_code snapshot (V15 보강).</li>
  *   <li>Audit 1행 INSERT (회계 reference 영구 보존).</li>
  * </ol>
  *
@@ -64,8 +77,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class SlipPublishService {
 
     private static final DateTimeFormatter IO_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter TIME_DATE_FMT = DateTimeFormatter.ofPattern("HHmmss");
     private static final String ZERO_WIDTH_SPACE = "​";
     private static final int MEMO_MAX = 1000;
+    /** PR-G1 V16 — 출고 디폴트 io_type. 입고 endpoint 신설 시 "11" 분기. */
+    private static final String IO_TYPE_OUTBOUND = "10";
 
     private final SlipRepository slipRepository;
     private final SlipPublishAuditRepository auditRepository;
@@ -96,10 +112,10 @@ public class SlipPublishService {
             return assertReplayOrConflict(existing.get(), fingerprint);
         }
 
-        // 2. 헤더 매핑
+        // 2. 헤더 매핑 — PR-G1: memo prepend 폐기, 사용자 자유 입력만 보존
         UUID warehouseId = warehouseCodeMapper.resolve(req.warehouseCode());
         LocalDate slipDate = parseIoDate(req.ioDate());
-        String memo = composeEstimateMemo(req);
+        String memo = preserveFreeMemo(req.memo());
         String requester = pickRequester(req.employeeCode(), requesterId);
 
         // 3. 라인 매핑 + product lookup (모델명 → productId)
@@ -116,6 +132,17 @@ public class SlipPublishService {
             slip.addLine(line);
         }
         slip.assignPublishSource(SlipSourceType.ESTIMATE, req.estimateNumber(), idempotencyKey);
+
+        // 5. PR-G1 V16 — e-Count 12 컬럼 + V15 partner_code snapshot 직접 저장 (memo prepend 폐기)
+        slip.applyEcountSchema(
+                pickIoType(req.ioType()), pickTimeDate(req.timeDate()),
+                req.customerTel(), req.customerAddr(), req.customerRep(),
+                req.shippingAddress(), req.inspectionAddress(), req.receiverPhone(),
+                req.paymentDueLabel(), req.discountInfo(),
+                null, null);
+        if (req.partnerCode() != null && !req.partnerCode().isBlank()) {
+            slip.setPartnerCode(req.partnerCode().trim());
+        }
 
         // 5. persist — partial UNIQUE INDEX 충돌 시 동시 race condition (정확한 원인 별도 추적)
         Slip saved;
@@ -155,7 +182,8 @@ public class SlipPublishService {
 
         UUID warehouseId = warehouseCodeMapper.resolve(req.warehouseCode());
         LocalDate slipDate = parseIoDate(req.ioDate());
-        String memo = composePartnerOrderMemo(req);
+        // PR-G1: memo prepend 폐기 — orderApprovedAt 만 사용자 자유 입력 memo 와 결합 보존 (snapshot 컬럼 없음)
+        String memo = mergePartnerOrderApprovalIntoMemo(req.memo(), req.orderApprovedAt());
         String requester = pickRequester(req.employeeCode(), requesterId);
 
         ResolvedLines resolved = resolveLines(req.lines());
@@ -170,6 +198,18 @@ public class SlipPublishService {
             slip.addLine(line);
         }
         slip.assignPublishSource(SlipSourceType.PARTNER_ORDER, req.partnerOrderId(), idempotencyKey);
+
+        // PR-G1 V16 — e-Count 12 컬럼 + V15 partner_code snapshot 직접 저장
+        // partner-order DTO 에는 ioType/timeDate/customer* / inspection* 필드 없음 → null 보존 (defaults)
+        slip.applyEcountSchema(
+                IO_TYPE_OUTBOUND, pickTimeDate(null),
+                null, null, null,
+                req.shippingAddress(), null, req.receiverPhone(),
+                req.paymentDueLabel(), req.discountInfo(),
+                null, null);
+        if (req.partnerCode() != null && !req.partnerCode().isBlank()) {
+            slip.setPartnerCode(req.partnerCode().trim());
+        }
 
         Slip saved;
         try {
@@ -278,47 +318,81 @@ public class SlipPublishService {
         return "system";
     }
 
-    private String composeEstimateMemo(PublishFromEstimateRequest req) {
-        return composeMemoLines(
-                "배송지: " + safe(req.shippingAddress()),
-                "검수지: " + safe(req.inspectionAddress()),
-                "수령자 연락처: " + safe(req.receiverPhone()),
-                "결제: " + safe(req.paymentDueLabel()),
-                "할인: " + safe(req.discountInfo()),
-                "메모: " + safe(req.memo()));
-    }
-
-    private String composePartnerOrderMemo(PublishFromPartnerOrderRequest req) {
-        return composeMemoLines(
-                "주문 승인 시각: " + safe(req.orderApprovedAt()),
-                "배송지: " + safe(req.shippingAddress()),
-                "수령자 연락처: " + safe(req.receiverPhone()),
-                "결제: " + safe(req.paymentDueLabel()),
-                "할인: " + safe(req.discountInfo()),
-                "메모: " + safe(req.memo()));
-    }
-
-    private String composeMemoLines(String... lines) {
-        StringBuilder sb = new StringBuilder();
-        for (String l : lines) {
-            String trimmed = l == null ? "" : l.trim();
-            // 라벨 뒤 빈 값이면 skip (label: "값없음" 회피)
-            if (trimmed.isEmpty() || trimmed.endsWith(":")) {
-                continue;
-            }
-            if (sb.length() > 0) {
-                sb.append('\n');
-            }
-            sb.append(trimmed);
+    /**
+     * PR-G1 V16 — memo 1000자 prepend 정책 폐기 후의 사용자 자유 입력 보존 헬퍼.
+     *
+     * <p>기존 {@code composeEstimateMemo / composePartnerOrderMemo} 가 배송지/검수지/연락처/결제/할인을
+     * "라벨: 값" 으로 prepend 결합하여 memo 1000자 한도를 사용했다. 본 PR 부터는 각 의미 단위가
+     * {@link Slip#applyEcountSchema} 로 별도 컬럼에 저장되므로 memo 는 사용자가 직접 입력한 자유
+     * 텍스트만 보존. trim + 1000자 cut 만 수행.
+     *
+     * @param userMemo 사용자 자유 입력 (null/blank 가능)
+     * @return trim 후 1000자 cut 한 문자열, 또는 null (입력이 null/blank 인 경우)
+     */
+    private String preserveFreeMemo(String userMemo) {
+        if (userMemo == null) {
+            return null;
         }
-        if (sb.length() > MEMO_MAX) {
-            return sb.substring(0, MEMO_MAX);
+        String trimmed = userMemo.trim();
+        if (trimmed.isEmpty()) {
+            return null;
         }
-        return sb.toString();
+        if (trimmed.length() > MEMO_MAX) {
+            return trimmed.substring(0, MEMO_MAX);
+        }
+        return trimmed;
     }
 
-    private static String safe(String s) {
-        return s == null ? "" : s.trim();
+    /**
+     * partner-order 전용 memo 보존 — orderApprovedAt 은 V16 컬럼이 없으므로 자유 memo 와 prepend 결합.
+     *
+     * <p>partner-order DTO 의 {@code orderApprovedAt} 은 협력사 주문 승인 시각 audit 용도로 슬립
+     * 본문에 표시될 필요가 있다 (회계 cross-check). e-Count BulkDatas 매핑 대상이 아니므로 별도
+     * 컬럼 없이 memo 에 라벨 1줄만 prepend (다른 5 필드 prepend 폐기).
+     *
+     * @param userMemo 사용자 자유 입력 (null/blank 가능)
+     * @param orderApprovedAt 주문 승인 시각 ISO 문자열 (null/blank 면 prepend 생략)
+     * @return 결합된 memo 또는 null
+     */
+    private String mergePartnerOrderApprovalIntoMemo(String userMemo, String orderApprovedAt) {
+        String approval = (orderApprovedAt == null || orderApprovedAt.isBlank())
+                ? null : "주문 승인 시각: " + orderApprovedAt.trim();
+        String free = preserveFreeMemo(userMemo);
+        if (approval == null) {
+            return free;
+        }
+        if (free == null) {
+            return approval.length() > MEMO_MAX ? approval.substring(0, MEMO_MAX) : approval;
+        }
+        String combined = approval + "\n" + free;
+        return combined.length() > MEMO_MAX ? combined.substring(0, MEMO_MAX) : combined;
+    }
+
+    /**
+     * io_type 결정 — DTO 가 명시한 값을 우선, 없으면 출고 디폴트 ('10').
+     *
+     * @param requestedIoType DTO 의 ioType (null/blank 가능). "10"=출고, "11"=입고.
+     * @return 정규화된 ioType (항상 non-null)
+     */
+    private String pickIoType(String requestedIoType) {
+        if (requestedIoType == null || requestedIoType.isBlank()) {
+            return IO_TYPE_OUTBOUND;
+        }
+        String trimmed = requestedIoType.trim();
+        return trimmed.length() > 2 ? trimmed.substring(0, 2) : trimmed;
+    }
+
+    /**
+     * time_date 결정 — DTO 가 명시한 HHmmss 우선, 없으면 발행 시점의 서버 시각으로 채움.
+     *
+     * @param requestedTimeDate DTO 의 timeDate (HHmmss, null/blank 가능)
+     * @return HHmmss 형식 문자열 (항상 non-null)
+     */
+    private String pickTimeDate(String requestedTimeDate) {
+        if (requestedTimeDate == null || requestedTimeDate.isBlank()) {
+            return java.time.LocalTime.now().format(TIME_DATE_FMT);
+        }
+        return requestedTimeDate.trim();
     }
 
     /** legacy SIZE_DES 의 zero-width space ({@code ​}) 제거. */

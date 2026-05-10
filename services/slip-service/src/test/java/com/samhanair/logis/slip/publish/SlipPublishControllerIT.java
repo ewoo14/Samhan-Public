@@ -12,7 +12,9 @@ import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
+import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.it.AbstractPostgresIT;
+import com.samhanair.logis.slip.repository.SlipRepository;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,6 +70,9 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private SlipRepository slipRepository;
 
     @MockBean
     private ProductClient productClient;
@@ -226,6 +231,118 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ---------------- PR-G1 V16 — e-Count schema 12 컬럼 직접 저장 회귀 ----------------
+
+    @Test
+    void publishFromEstimate_persistsAll12EcountColumnsDirectly_memoNotPrepended() throws Exception {
+        Map<String, Object> body = estimateBody("EST-V16-001");
+        body.put("ioType", "10");
+        body.put("timeDate", "143025");
+        body.put("customerTel", "010-1111-2222");
+        body.put("customerAddr", "서울 강남구 사업장");
+        body.put("customerRep", "홍길동");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/slips/from-estimate")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES")
+                        .header("Idempotency-Key", "idem-v16-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID slipId = UUID.fromString(
+                objectMapper.readTree(result.getResponse().getContentAsString())
+                        .get("data").get("slipId").asText());
+        Slip persisted = slipRepository.findById(slipId).orElseThrow();
+
+        // 12 컬럼 직접 저장 검증
+        org.assertj.core.api.Assertions.assertThat(persisted.getIoType()).isEqualTo("10");
+        org.assertj.core.api.Assertions.assertThat(persisted.getTimeDate()).isEqualTo("143025");
+        org.assertj.core.api.Assertions.assertThat(persisted.getCustomerTel()).isEqualTo("010-1111-2222");
+        org.assertj.core.api.Assertions.assertThat(persisted.getCustomerAddress()).isEqualTo("서울 강남구 사업장");
+        org.assertj.core.api.Assertions.assertThat(persisted.getCustomerRepresentative()).isEqualTo("홍길동");
+        org.assertj.core.api.Assertions.assertThat(persisted.getShippingAddress()).isEqualTo("서울 강남구");
+        org.assertj.core.api.Assertions.assertThat(persisted.getInspectionAddress()).isEqualTo("서울 강남구 검수");
+        org.assertj.core.api.Assertions.assertThat(persisted.getReceiverPhone()).isEqualTo("010-0000-0000");
+        org.assertj.core.api.Assertions.assertThat(persisted.getPaymentDueLabel()).isEqualTo("익월말 결제");
+        org.assertj.core.api.Assertions.assertThat(persisted.getDiscountInfo()).isEqualTo("5% 할인");
+
+        // memo 1000자 prepend 폐기 — 사용자 자유 입력만 보존
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).isEqualTo("급송");
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).doesNotContain("배송지:");
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).doesNotContain("검수지:");
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).doesNotContain("결제:");
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).doesNotContain("할인:");
+
+        // V15 partner_code resolve — DTO partnerCode 가 직접 snapshot
+        org.assertj.core.api.Assertions.assertThat(persisted.getPartnerCode()).isEqualTo("CUST-0001");
+    }
+
+    @Test
+    void publishFromEstimate_blankCustomerFields_storedAsNull_noPrepend() throws Exception {
+        // legacy 입력이 비어있는 경우 — 12 컬럼은 null/빈문자열, memo 는 자유 입력만
+        Map<String, Object> body = estimateBody("EST-V16-002");
+        body.put("shippingAddress", "");
+        body.put("inspectionAddress", "");
+        body.put("receiverPhone", "");
+        body.put("paymentDueLabel", "");
+        body.put("discountInfo", "");
+        body.put("memo", "단순 메모");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/slips/from-estimate")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES")
+                        .header("Idempotency-Key", "idem-v16-002")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID slipId = UUID.fromString(
+                objectMapper.readTree(result.getResponse().getContentAsString())
+                        .get("data").get("slipId").asText());
+        Slip persisted = slipRepository.findById(slipId).orElseThrow();
+
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).isEqualTo("단순 메모");
+        // io_type 은 항상 채워짐 (출고 디폴트)
+        org.assertj.core.api.Assertions.assertThat(persisted.getIoType()).isEqualTo("10");
+        org.assertj.core.api.Assertions.assertThat(persisted.getTimeDate()).isNotBlank();
+    }
+
+    @Test
+    void publishFromPartnerOrder_persistsEcountColumns_andOrderApprovedAtMergedIntoMemo() throws Exception {
+        Map<String, Object> body = partnerOrderBody("PO-V16-001");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/slips/from-partner-order")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("Idempotency-Key", "idem-v16-po-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID slipId = UUID.fromString(
+                objectMapper.readTree(result.getResponse().getContentAsString())
+                        .get("data").get("slipId").asText());
+        Slip persisted = slipRepository.findById(slipId).orElseThrow();
+
+        // partner-order 도 V16 컬럼 직접 저장
+        org.assertj.core.api.Assertions.assertThat(persisted.getShippingAddress()).isEqualTo("경기 성남시");
+        org.assertj.core.api.Assertions.assertThat(persisted.getReceiverPhone()).isEqualTo("010-1111-1111");
+        org.assertj.core.api.Assertions.assertThat(persisted.getPaymentDueLabel()).isEqualTo("월말 결제");
+        org.assertj.core.api.Assertions.assertThat(persisted.getPartnerCode()).isEqualTo("CUST-0002");
+        org.assertj.core.api.Assertions.assertThat(persisted.getIoType()).isEqualTo("10");
+
+        // orderApprovedAt 만 memo prepend 보존 (V16 컬럼 없음)
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).contains("주문 승인 시각:");
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).contains("PO 메모");
+        // 다른 5 필드 prepend 폐기 회귀 가드
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).doesNotContain("배송지:");
+        org.assertj.core.api.Assertions.assertThat(persisted.getMemo()).doesNotContain("결제:");
     }
 
     @Test
