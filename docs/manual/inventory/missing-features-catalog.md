@@ -1,9 +1,9 @@
 # Samhan Public 누락 기능 종합 Catalog
 
-> **branch** — `feature/integrated-phase-10-step-7c-operator-manual-final` (Stage 2 = `...-stage2`, Stage 1 = `...-step-7-operator-manual`)
-> **작성일** — 2026-05-09 (Stage 1 초안 → Stage 2 갱신 → Stage 3 갱신)
+> **branch** — `feature/integrated-phase-12-step-5-manual-augmentation` (Stage 4 — Phase 12 보강 / Stage 3 = `...-step-7c-operator-manual-final`)
+> **작성일** — 2026-05-10 (Stage 1 초안 → Stage 2 갱신 → Stage 3 갱신 → **Stage 4 갱신 — Phase 12 실시간 협업 ✅ 완성 row 추가**)
 > **목적** — 개발책임자가 본 docs 만으로 P0 누락 기능을 즉시 파악 가능하도록 하는 종합 카탈로그.
-> **출처** — 이카운트 ERP 16 캡처(`docs/migration/ecount-reference/`) + 메모리 가드(`feedback_*.md` / `project_*.md`) + 한국 일반기업회계기준 / 한국 ERP 표준 + 다른 agent 의 `backend-feature-inventory.md` (17 service / 145 endpoint / 누락 42건) + `frontend-feature-inventory.md` (3 client / 27 desktop 라우트 / 누락 8건) + 본 task 검증 + Stage 2 `stage2-scenarios.md` (74 검증 항목) + **Stage 3 `stage3-final-scenarios.md` (120 검증 항목)**.
+> **출처** — 이카운트 ERP 16 캡처(`docs/migration/ecount-reference/`) + 메모리 가드(`feedback_*.md` / `project_*.md`) + 한국 일반기업회계기준 / 한국 ERP 표준 + 다른 agent 의 `backend-feature-inventory.md` (17 service / 145 endpoint / 누락 42건) + `frontend-feature-inventory.md` (3 client / 27 desktop 라우트 / 누락 8건) + 본 task 검증 + Stage 2 `stage2-scenarios.md` (74 검증 항목) + **Stage 3 `stage3-final-scenarios.md` (120 검증 항목)** + **Stage 4 Phase 12 시리즈 (PR-H1 → PR-H4c) 종결**.
 > **상태 표기** — ✅ 완료 / ⏳ 부분 (stub/skeleton/TODO) / ❌ 미구현 / ⚠️ 미흡 (구현은 됐으나 실 운영 부족)
 
 ---
@@ -527,7 +527,45 @@
 | 2026-05-09 | TeamMember (W10-7b Stage 2) | Stage 2 매뉴얼 (영업 5 + 창고 4 = 9 docs) 검증 과정에서 신규 누락 19 sub 발견. 신규 슬라이스 **P0-9 (입고 검수 UI 5 sub)** + **P2-6 (재고 실사 5 sub)** + 기존 슬라이스 sub 9건 추가. **누적: 131 → 150 sub (+19). 9 P0 슬라이스 / 14 권고 PR.** |
 | 2026-05-09 | TeamMember (W10-7c Stage 3) | Stage 3 매뉴얼 (회계 4 + 모바일 4 + arologis 3 + 트러블슈팅 5 + 부록 3 + Stage 3 안내 3 = 22 docs) 검증 과정에서 신규 누락 21 sub 발견. 신규 슬라이스 **P1-8 (모바일 사진 첨부 5 sub — 검수/배송/영업 방문)** + **P2-7 (영업 모바일 마이그레이션 5 sub — legacy v2 → Expo native)** + 기존 슬라이스 sub 11건 추가 (P0-2 N15 보안 / P0-3 N4·N11 도메인 확장 / P1-5 N7·N8·N9·N10 arologis 4건 / P2-1 N5 비대면 인수 / P2-2 N13·N14 단축키 / P2-3 N12 시산표 분기). **누적: 150 → 171 sub (+21). 9 P0 / 8 P1 / 7 P2 / 4 P3 슬라이스 = 28 슬라이스. Phase 11 진입 전 14 PR + Phase 11 후 6 PR (P1 3 + P2 3) = 20 PR 권고.** |
 | 2026-05-10 | Designer (Phase 10 step-14, PR-G1) | **신규 P0-10 슬라이스 ✅ 완성** — e-Count schema 12 컬럼 (IO_TYPE / TIME_DATE / customer_tel·addr·rep / shipping_addr / inspection_addr / receiver_phone / payment_due / discount_info / collect_term / agree_term) + 이카운트 외부 API 호출 폐기 + `composeMemo` 리팩토링 + partner_code resolve V15→V16 보강 = 15 sub 모두 ✅. **부수 효과** — P0-4 거래명세서 인쇄가 12 컬럼 활용으로 양식 정합성 향상 (별도 PR 진입 시 작업량 감소). **누적: 171 sub 유지 (P0-10 신규 15 sub 모두 ✅ 완성 표기 — 미구현 카운트에 +0). 9 P0 → 9 P0 + 1 P0 완성 = 9 미완성 P0 + 1 완성 P0. 권고 PR: Phase 11 진입 전 14 PR 유지 (P0-10 본 PR 로 자체 처리).** |
+| 2026-05-10 | TM (Phase 12 step-1 ~ 4c, PR-H1 → PR-H4c) | **신규 P0-11 슬라이스 ✅ 완성 — Phase 12 실시간 협업** — SSE infra (PR-H1) + audit overlay (PR-H2) + 수정 요청 워크플로우 + 잠금 정책 4단계 (PR-H3) + shared-realtime module (PR-H4a) + BE 13 service 일괄 (PR-H4b) + FE 50+ desktop page + mobile-staff 일괄 (PR-H4c) = **총 ~25 sub 모두 ✅** (SSE 채널 5 + 잠금 단계 4 + audit overlay 5 + 수정 요청 5채널 + 복원 권한 1 + 다중 service 적용 13 + 다중 page 50+ 매트릭스). **부수 효과** — 매뉴얼 33 docs 중 audit 적용 8 docs 가 PR-H4c commit `0e3b247` 에서 inline section 추가 보완 완료 + 신규 카테고리 [`08-실시간-협업/`](../08-실시간-협업/) 10 docs 작성 (Stage 4 본 PR). **누적: 171 sub 유지 + P0-11 ✅ 완성 25 sub (미구현 카운트에 +0). 권고 PR: Phase 11 진입 전 14 PR 유지.** |
+| 2026-05-10 | Designer (Phase 12 step-5 — 본 PR) | **Stage 4 매뉴얼 보강** — Phase 12 시리즈 종결 후 신규 카테고리 [`08-실시간-협업/`](../08-실시간-협업/) 10 docs (00-개요 + 01-동기화 + 02-이력 + 03-카운트 + 04-복원 + 05-요청 + 06-잠금 + 07-창고 수락 + 08-모바일 + 09-적용 범위) 작성. 본문 33 → **43 docs**. README + STATUS + 본 catalog 갱신. PR-H1~H4c 작동 캡처 raw URL commit-pinned 활용 (`04e2b44` / `732e105` / `24b22f9` / `2db1d02` / `0e3b247`). 누락 카운트 영향 없음 (P0-11 ✅ 완성에 매뉴얼 row 결합). |
 
 ---
 
-**Stage 4 이후 갱신 예정** — Phase 11 P0/P1 PR 머지 시 안내 docs (10건) 정식 본문 교체 + 신규 운영 매뉴얼 부속 3 docs (백업·복원 / 장애 대응 / 사용자 관리) 작성 시 추가 row. 다른 agent (BE/FE inventory) 와 cross-check 시 numerical mismatch 시 본 catalog 가 ground truth.
+## 9. ✅ 완성 슬라이스 (Phase 10 step-14 ~ Phase 12 step-5 종합)
+
+본 catalog 는 미구현 누락 추적이 주 목적이지만, 이미 ✅ 완성된 슬라이스도 cross-reference 용으로 함께 기록합니다.
+
+| # | 슬라이스 | sub 카운트 | PR | 매뉴얼 안내 |
+| --- | --- | --- | --- | --- |
+| **P0-10** | e-Count schema 12 컬럼 + 이카운트 외부 API 폐기 + composeMemo 리팩토링 (Phase 10 step-14, PR-G1) | 15 | (Phase 10 step-14) | [02-창고/02. 출고 처리](../02-창고/02-출고-처리.md) §2-8 |
+| **P0-11** | **Phase 12 실시간 협업 — SSE 동기화 + audit overlay + 수정 횟수 + 복원 + 잠금/요청 5종 패턴 일괄** (PR-H1 → PR-H4c) | ~25 | PR #123 ~ #128 | **[08-실시간-협업/](../08-실시간-협업/) 10 docs (본 PR Stage 4)** |
+
+### 9.1 P0-11 sub 분해
+
+| 항목 | sub | PR | 매뉴얼 |
+| --- | --- | --- | --- |
+| WebSocket/SSE infra (`samhan.realtime.*` 5채널) | 5 | PR-H1 (#123) | [01. 실시간 동기화](../08-실시간-협업/01-실시간-동기화.md) |
+| audit overlay (취소선 + 색상 dot + 풀네임 + UUID 비공개 가드 + (빈 값) 가시화) | 5 | PR-H2 (#124) | [02. 수정 이력 보기](../08-실시간-협업/02-수정-이력-보기.md) |
+| 수정 횟수 카운트 + 임계 색상 (0/1~4/5~9/10+) | 1 | PR-H2 (#124) | [03. 수정 횟수 카운트](../08-실시간-협업/03-수정-횟수-카운트.md) |
+| 복원 (MASTER + MANAGER 권한 + 영구 잠금 차단) | 1 | PR-H2 (#124) | [04. 수정 복원](../08-실시간-협업/04-수정-복원.md) |
+| 수정 요청 워크플로우 + SSE 알림 5채널 (요청/수락/거절/만료/삭제) | 5 | PR-H3 (#125) | [05. 수정 요청 워크플로우](../08-실시간-협업/05-수정-요청-워크플로우.md) |
+| 잠금 정책 4단계 (0/1/2/영구) + 사유 200자 + 카테고리 4 + unlock 24h/1h | 4 | PR-H3 (#125) | [06. 잠금 정책](../08-실시간-협업/06-잠금-정책.md) |
+| 창고 직원 검토 의견 + mobile-staff 검토 다이얼로그 | 1 | PR-H3 (#125), commit `83cdf67` | [07. 창고 직원 수락](../08-실시간-협업/07-창고-직원-수락.md) |
+| shared-realtime module 추출 + slip-service 마이그레이션 (`samhan.realtime.*` property prefix) | 1 | PR-H4a (#126) | (운영자 무관 — 인프라) |
+| BE 13 service 일괄 적용 (slip / partner / accounting / inventory / arologis / partner-order / product / user / dc-config / notification / logging / groupware / dashboard / tax-invoice) | 1 | PR-H4b (#127) | [09. 적용 범위](../08-실시간-협업/09-적용-범위.md) §1 |
+| FE 50+ desktop page + mobile-staff 일괄 적용 + Designer 매뉴얼 8 docs 보완 | 1 | PR-H4c (#128) | [09. 적용 범위](../08-실시간-협업/09-적용-범위.md) §2, §3 |
+
+### 9.2 후속 검토 항목 (P0-11 ✅ 완성 후 운영 1개월 누적 후 재평가)
+
+| 후보 | 우선순위 후보 | 메모 |
+| --- | --- | --- |
+| 카테고리 통계 dashboard (2차 잠금 사유 분포) | P2 / P3 | "거래처 요청" / "재고 차질" / "법적 사유" / "기타" 비율 — Phase 13 후보 |
+| 사용자 풀네임 영구 보존 (탈퇴 후 `(알 수 없음)` 방지) | P2 / P3 | snapshot 컬럼 — 후속 PR 검토 |
+| 색상 dot fallback 색 (회색) → 색상 강제 hash | P3 | userId 누락 fallback 처리 |
+| audit log monthly report (10회+ 빨강 badge 항목) | P2 / P3 | 감사 보고서 자동 생성 |
+| Phase 13 sliding window — Phase 12 실시간 협업 운영 후 보완 | (재평가) | 운영 1개월 누적 후 P 분류 결정 |
+
+---
+
+**Stage 5 이후 갱신 예정** — Phase 11 P0/P1 PR 머지 시 안내 docs (10건) 정식 본문 교체 + 신규 운영 매뉴얼 부속 3 docs (백업·복원 / 장애 대응 / 사용자 관리) 작성 시 추가 row. 다른 agent (BE/FE inventory) 와 cross-check 시 numerical mismatch 시 본 catalog 가 ground truth.
