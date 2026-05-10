@@ -1267,6 +1267,122 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // ===== PR-F2 vendor OCR — QA 작동 캡처용 mock (BE 미연결 환경) =====
+  // POST /api/v1/admin/partner-order/vendor/upload — multipart, vendor query 보고 fixture 반환
+  if (method === 'POST' && url.includes('/admin/partner-order/vendor/upload')) {
+    // FormData / multipart payload 에서 vendor query 추출 시도. 실패 시 에어디자이너 default.
+    let vendor = 'AIRDESIGNER'
+    try {
+      const data = config.data as FormData | undefined
+      if (data && typeof (data as FormData).get === 'function') {
+        const v = (data as FormData).get('vendor')
+        if (typeof v === 'string') vendor = v
+      }
+    } catch {
+      // ignore
+    }
+    if (vendor === '제이시스템' || vendor === 'JSYSTEM') {
+      return envelope({
+        vendorName: '제이시스템',
+        partnerCode: 'P-J001',
+        ocrText:
+          '제이시스템 발주서\nPartner: P-J001\nHM-7000 헬로멀티 7kW 2 EA 1,500,000\nTOTAL 3,000,000',
+        parsedLines: [
+          {
+            modelCode: 'HM-7000',
+            productName: '헬로멀티 7kW',
+            quantity: 2,
+            unitPrice: 1500000,
+            dcRate: 0.10,
+            finalPrice: 1350000,
+            subtotal: 2700000,
+            source: 'CATALOG',
+          },
+        ],
+        totalAmount: 2700000,
+        parsedTotal: 3000000,
+        suggestions: [
+          'OCR 합계 (3,000,000) 와 라인 합산 (2,700,000) 불일치 — DC 10% 적용 차이',
+        ],
+      })
+    }
+    // AIRDESIGNER default — 매칭 실패 라인 1건 포함 (Step 2 빨간 highlight 캡처용)
+    return envelope({
+      vendorName: '에어디자이너',
+      partnerCode: 'AIRD-001',
+      ocrText:
+        '에어디자이너 발주서\n거래처: AIRD-001\n1. 헬로멀티 5kW [HM-5000] 2개 1,000,000원\n2. 신규품목 [UNKNOWN-CODE] 1개 350,000원\n합계: 2,350,000원',
+      parsedLines: [
+        {
+          modelCode: 'HM-5000',
+          productName: '헬로멀티 5kW',
+          quantity: 2,
+          unitPrice: 950000,
+          dcRate: 0.10,
+          finalPrice: 855000,
+          subtotal: 1710000,
+          source: 'CATALOG',
+        },
+        {
+          modelCode: 'UNKNOWN-CODE',
+          productName: '[매칭미상] 신규품목',
+          quantity: 1,
+          unitPrice: 0,
+          dcRate: 0,
+          finalPrice: 0,
+          subtotal: 0,
+          source: 'MANUAL',
+        },
+      ],
+      totalAmount: 1710000,
+      parsedTotal: 2350000,
+      suggestions: [
+        'OCR 합계 (2,350,000) 와 라인 합산 (2,060,000) 불일치 — 운영자 보정 필요',
+        '모델 코드 [UNKNOWN-CODE] 미식별 — 단가 OCR fallback 적용',
+      ],
+    })
+  }
+
+  // POST /api/v1/admin/partner-order/vendor/confirm — 확정 → orderNo 반환
+  if (method === 'POST' && url.includes('/admin/partner-order/vendor/confirm')) {
+    const today = new Date()
+    const yymmdd
+      = String(today.getFullYear()).slice(2)
+      + String(today.getMonth() + 1).padStart(2, '0')
+      + String(today.getDate()).padStart(2, '0')
+    const seq = String(Math.floor(Math.random() * 900) + 100)
+    const body = config.data as
+      | { vendorName?: string; partnerCode?: string; lines?: { quantity: number; finalPrice: number }[] }
+      | string
+      | undefined
+    let total = 0
+    let vendorName = '에어디자이너'
+    let partnerCode = 'AIRD-001'
+    try {
+      const parsed = typeof body === 'string' ? JSON.parse(body) : body
+      if (parsed?.vendorName) vendorName = parsed.vendorName
+      if (parsed?.partnerCode) partnerCode = parsed.partnerCode
+      if (Array.isArray(parsed?.lines)) {
+        total = parsed.lines.reduce(
+          (s: number, l: { quantity: number; finalPrice: number }) =>
+            s + (l.quantity || 0) * (l.finalPrice || 0),
+          0,
+        )
+      }
+    } catch {
+      // ignore
+    }
+    const prefix = vendorName.includes('제이시스템') ? 'PO-JS' : 'PO-AD'
+    return envelope({
+      orderNo: `${prefix}-${yymmdd}-${seq}`,
+      partnerOrderId: '00000000-0000-0000-0000-' + Date.now().toString().padStart(12, '0'),
+      status: 'PENDING',
+      totalAmount: total,
+      vendorName,
+      partnerCode,
+    })
+  }
+
   return null
 }
 
