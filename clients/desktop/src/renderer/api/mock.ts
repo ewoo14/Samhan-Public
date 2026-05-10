@@ -31,11 +31,25 @@ export function isMockMode(): boolean {
   return import.meta.env['VITE_MOCK_MODE'] === '1'
 }
 
-/** Mock token snapshot — AuthGuard 자동 인증 우회 + 헤더 chip 표시용. */
+/**
+ * Mock token snapshot — AuthGuard 자동 인증 우회 + 헤더 chip 표시용.
+ *
+ * role override: dev-only — `?mockRole=MASTER` 쿼리스트링으로 강제 (PR-F1 QA 캡처용).
+ * MASTER 가드 admin 페이지 캡처 시 가드 통과를 위해 사용. 미지정 시 MANAGER 기본.
+ */
+function _resolveMockRole(): string {
+  if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    const override = params.get('mockRole')
+    if (override) return override
+  }
+  return 'MANAGER'
+}
+
 export const MOCK_AUTH = {
   token: 'mock-jwt-token',
   userId: '00000000-0000-0000-0000-000000010001',
-  role: 'MANAGER',
+  role: _resolveMockRole(),
   fullName: '오병승',
 }
 
