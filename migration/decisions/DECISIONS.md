@@ -937,6 +937,50 @@ PR (`feature/integrated-phase-10-step-10-gas-b-ecount-auto`) — Samhan Public �
 - accounting-service 4 도메인 (ledger / statement / tax invoice / daily close) = GAS B 8~11번 native 이식
 - NextDaySlipView 인쇄 양식 2~5차 iteration (사용자 Edge 캡처 → CSS-only 미세 조정, `feedback_print_design_iteration`)
 
+### D-P10-20. step-11 (PR-E2) GAS B accounting 4건 이식 — 원장/거래명세서/계산서/일마감 + 자체 분개/세금계산서 자동 조회 (2026-05-10)
+
+PR (`feature/integrated-phase-10-step-11-gas-b-accounting`) — PR #117 (PR-E1, GAS B 11건 중 7건) 머지 후 사용자 명시 GAS B 잔여 4건 (원장 / 거래명세서 / 계산서 / 일마감) 을 accounting-service native 이식. 본 PR 머지 시점 GAS B 11건 매핑 100% 완성, 후속 PR-F (GAS C/D 6건) 진입 가능.
+
+근거:
+- **자체 분개 + 세금계산서 자동 조회 (이카운트 의존 0)** — accounting-service `journal_entries / journal_lines / tax_invoices` 테이블이 Phase 4 (PR #28 accounting-slice-A) + Phase 6 (M2/M3/M4/M5 backend 통합 PR #76) + Phase 9 (W4 dashboard 보강) + W10-step-8 (V3/V4 seed 150/919 추가) 시점 한국 일반기업회계기준 65 row 시드 + 401/110/255 코드 + ISSUED 상태 머신 구비. step-11 시점 = GAS 의 이카운트 매출/세금계산서 export 패턴을 자체 자동 조회로 전면 격상 가능.
+- **외부 client 3종 도입 (ProductClient + PartnerLookupClient + ChatRoomMappingClient)** — Ledger/StatementBatch 응답에 partner snapshot (사업자번호/대표/주소) + 단톡방 매핑 (운영자 가시성) + product 명칭 (라인 snapshot) 동반. accounting-service 자체 보유 0 → product-service / partner-service / notification-service Feign 호출 의무. 모두 fail-soft (404/5xx 시 응답 partial null) + IT @MockBean 격리 (memory `feedback_it_mockbean_external_clients`).
+- **POI 5.2.5 도입 (Apache License 2.0)** — 홈택스 일괄 양식 xlsx 100건 sheet 분할 표준 라이브러리. 내장 Java SXSSF (streaming) 회피 — 100건 단위 sheet 분할은 일반 XSSFWorkbook 의 명시적 batch 분할 패턴이 사용자 운영자 (회계사) 검토 흐름과 정합. memory `project_korean_accounting` 의 한국 일반기업회계기준 표준 정합.
+- **단일 통합 PR (5+1 = 6 commits)** — Phase A (BE 1 통합 5 task + Designer 2 view) + Phase B (FE 4) + multi-agent collision 복구 1 = 6 commits 단일 통합 PR. 별도 docs PR 회피 (memory `feedback_continuous_docs_sync` + `feedback_integrated_pr_pattern` 일관).
+- **multi-agent collision 복구 패턴** — FE-10 의 `git reset --soft` 가 FE-8 (commit `eb473b4`) + FE-9 (commits `6cf9646` / `8f62b57`) 를 destroy → working tree unstaged 산출 단일 복구 commit `55ebad5` 으로 일괄 stage + commit, destroy 된 SHA 3건 commit body 명시. PR-E1 의 d163caa (FE-1+2+6 통합) 와 동일 패턴 — rebase 정정 회피 + PR body 명시 보완 (`feedback_integrated_pr_pattern` 의 fix 후속 PR 금지 일관). 후속 PR-F 진입 시점 sequential commit 강제 또는 task 별 worktree 분리 검토.
+
+영향:
+- `services/accounting-service/build.gradle` — Apache POI 5.2.5 (`poi` + `poi-ooxml`) 의존성 추가
+- `services/accounting-service/src/main/java/.../web/AccountingReportController.java` 신규 — 5 endpoint 통합 (`/accounting/sales/aggregate` BE-A8, `/accounting/journals/ledger-data` BE-A9, `/accounting/statements/batch-data` BE-A10, `/accounting/tax-invoice/hometax-export` BE-A11 binary xlsx, `/accounting/closings/daily` BE-A12), 모두 `ACCOUNTANT/MASTER` `@PreAuthorize` 가드, ApiResponse 래핑 (xlsx 제외)
+- `services/accounting-service/src/main/java/.../service/SalesAggregateService.java` 신규 — 401 (제품매출) + 110 (외상매출금) 코드 합계 (기간 + partnerCode 옵션)
+- `services/accounting-service/src/main/java/.../service/LedgerImageService.java` 신규 — 거래처 snapshot + 단톡방 매핑 + 분개 line 시간순 + 누적 잔액
+- `services/accounting-service/src/main/java/.../service/StatementBatchService.java` 신규 — 기간 ISSUED 세금계산서 → 거래처별 그룹핑 + 라인 snapshot
+- `services/accounting-service/src/main/java/.../service/HometaxExportService.java` 신규 — POI 100건 sheet 분할 + 한국어 파일명 + 표준 컬럼 (구분/공급자사업자번호/공급가액/세액 등)
+- `services/accounting-service/src/main/java/.../service/MonthEndCloseService.java` — `getDailyDetail` 신규 메서드 (read-only, 마감 OPEN/CLOSED 무관)
+- `services/accounting-service/src/main/java/.../client/ProductClient.java` + `ProductSummary.java` 신규 — product-service `/internal/products/by-id` Feign + X-Internal-Token + fail-soft
+- `services/accounting-service/src/main/java/.../client/PartnerLookupClient.java` + `PartnerSummary.java` 신규 — partner-service `/internal/partners/{partnerCode}` Feign + X-Internal-Token + fail-soft
+- `services/accounting-service/src/main/java/.../client/ChatRoomMappingClient.java` 신규 — notification-service `/internal/chat-rooms/by-partner-code` Feign + X-Internal-Token + fail-soft
+- `services/accounting-service/src/main/java/.../repository/JournalLineRepository.java` 신규 — Specification 기반 read-only
+- `services/accounting-service/src/main/java/.../repository/TaxInvoiceRepository.java` 신규 — 기간 ISSUED 조회
+- `services/accounting-service/src/main/java/.../web/dto/{LedgerImageResponse, StatementBatchRow, SalesAggregateRow, DailyClosingDetailResponse}.java` 신규 — 4 DTO, 모두 partnerCode + partnerName + slipNo / taxInvoiceNo / journalNo 만 노출 (UUID 비공개)
+- `services/accounting-service/src/test/java/.../service/{SalesAggregateServiceTest, LedgerImageServiceTest, StatementBatchServiceTest, HometaxExportServiceTest, DailyClosingDetailServiceTest}.java` 신규 — 단위 20 case 신규 (4+4+3+5+4) 전부 PASS
+- `clients/desktop/src/renderer/api/{partnerLedgerApi, statementBatchApi, hometaxExportApi, closingApi}.ts` 신규 — 4 API client (`getDailyClosingDetail` 신규 포함)
+- `clients/desktop/src/renderer/routes/{PartnerLedgerPage, StatementBatchPage, HometaxExportPage}.tsx` 신규 + `MonthEndClosingPage.tsx` 일별 detail 보강 (productName/discount/supply/vat/total + 일별 CSV)
+- `clients/desktop/src/renderer/print/{PartnerLedgerView, StatementBatchView}.tsx` (+CSS Module) 신규 — Designer 1차 mock (사용자 Edge 캡처 후 2~5차 iteration `feedback_print_design_iteration`)
+- `clients/desktop/src/renderer/components/AppLayout.tsx` 회계 그룹 entry 4건 신규 ("거래처 원장" / "거래명세서 일괄" / "홈택스 일괄 양식" / 일마감 detail) + `clients/desktop/src/renderer/routes/index.tsx` 라우트 5종 (`/accounting/partner-ledger`, `/accounting/statement-batch`, `/accounting/hometax-export`, `/print/partner-ledger`, `/print/statement-batch`)
+- `ROADMAP.md` Phase 10 step-11 row 추가
+- `docs/dev-reports/integration-phase-10-step-11-gas-b-accounting.md` 신규
+
+GAS B 11건 매핑 (PR-E1 + PR-E2 = 100% 완성):
+- PR-E1 (#117) 7건 — DPS비교 (inventory) / 가배차 / 미배차 / 지방가배차 (arologis) / 내일자전표 / 전표정리 (slip) / 배차안내 SMS (notification)
+- PR-E2 (본 PR) 4건 — 원장 / 거래명세서 / 계산서 (홈택스 xlsx) / 일마감 (모두 accounting-service)
+
+후속 (PR-F 이후):
+- **PR-F** — GAS C/D 6건 진입 (사용자 분류 C/D 도구) 별도 슬라이스
+- **인쇄 양식 iteration** — PartnerLedgerView + StatementBatchView 2~5차 (`feedback_print_design_iteration`)
+- **POI 5.2.5 운영 진입** — Hometax v2026 표준 회귀 테스트 1건 추가 권장
+- **외부 client cache** — Ledger/StatementBatch 의 PartnerLookup/ChatRoom 호출 운영 부하 진입 시점 short-TTL Caffeine cache 검토
+- **CI fail 시뮬레이션** — 후속 별도 슬라이스 (사용자 명시)
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
