@@ -34,6 +34,7 @@ include 'shared:common'
 include 'shared:discovery-abstraction'
 include 'shared:user-client-abstraction'
 include 'shared:security'
+include 'shared:realtime-abstraction'
 include 'services:eureka-server'
 include 'services:api-gateway'
 include 'services:auth-service'
@@ -56,6 +57,7 @@ project(':shared:common').projectDir                    = file('shared/common')
 project(':shared:discovery-abstraction').projectDir     = file('shared/discovery-abstraction')
 project(':shared:user-client-abstraction').projectDir   = file('shared/user-client-abstraction')
 project(':shared:security').projectDir                  = file('shared/security')
+project(':shared:realtime-abstraction').projectDir      = file('shared/realtime-abstraction')
 project(':services:eureka-server').projectDir           = file('services/eureka-server')
 project(':services:api-gateway').projectDir             = file('services/api-gateway')
 project(':services:auth-service').projectDir            = file('services/auth-service')

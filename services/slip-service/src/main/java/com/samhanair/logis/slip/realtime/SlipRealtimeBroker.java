@@ -1,244 +1,65 @@
 package com.samhanair.logis.slip.realtime;
 
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicLong;
-import lombok.extern.slf4j.Slf4j;
+import com.samhanair.logis.shared.realtime.broker.InMemoryRealtimeBroker;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 /**
- * 슬립 실시간 SSE 브로커 — PR-H1 (Phase 12 Step 1).
+ * 슬립 실시간 SSE 브로커 — PR-H4a (Phase 12 Step 4a) 마이그 thin facade.
  *
- * <p><b>전송 = SseEmitter</b> (Spring 표준 servlet, spring-boot-starter-web 포함, 추가 의존 0).
- * 외부 SaaS (Pusher/Ably/PubNub) 의존 0 — Samhan Public 자체 운영 가능.
+ * <p><b>본 PR (PR-H4a)</b>: 기존 in-memory broker 구현은 {@link InMemoryRealtimeBroker}
+ * (shared:realtime-abstraction) 로 이동. 본 클래스는 호환성 유지 (기존 호출자 0 변경) 위한
+ * 얇은 facade — InMemoryRealtimeBroker 를 그대로 상속하여 모든 메서드 시그니처 동일.
  *
- * <p><b>다중 노드 가정</b>: 단일 노드 in-memory broker. Phase 12 Step 1 = 단일 slip-service 인스턴스.
- * 향후 다중 노드 확장 시 Redis pub/sub 또는 Kafka 로 broker 교체 (interface 추출).
+ * <p>RedisRealtimeBroker (slip-service local) 도 마찬가지로 {@code shared:realtime-abstraction}
+ * 의 {@link com.samhanair.logis.shared.realtime.broker.RedisRealtimeBroker} 로 이동되었으며,
+ * {@code samhan.realtime.broker=redis} 시점만 자동 활성. slip-service 의 기존 hook setter 메커니즘은
+ * 동일 동작 ({@code @Autowired(required=false)} setPublishHook).
  *
- * <p><b>Emitter 라이프사이클</b>:
- * <ul>
- *   <li>{@link #subscribe(UUID)} — emitter 신규 발급, timeout 0L (무한 — heartbeat 로 keep-alive).
- *       완료/타임아웃/에러 콜백에서 자동 cleanup.</li>
- *   <li>{@link #publish(UUID, String, Object)} — 해당 slipId 구독자 전원에게 SSE event 전송.
- *       IOException 발생 emitter 는 즉시 제거 (cleanup).</li>
- *   <li>{@link #heartbeat()} — 30초마다 모든 구독자에게 {@code ping} comment 전송. 끊긴 emitter
- *       감지 + proxy/load-balancer idle timeout 회피.</li>
- * </ul>
+ * <p><b>마이그 결정 근거</b>: slip-service 는 14 service 의 시범 활용 사례. 다른 13 service 는
+ * PR-H4b 에서 자체 facade 없이 직접 InMemoryRealtimeBroker 를 활용 (slip-service 만 기존
+ * SlipRealtimeBroker 명시 reference 가 다수라 thin facade 보존).
  *
- * <p><b>Thread-safety</b>: emitters {@link ConcurrentHashMap} + {@link CopyOnWriteArrayList} 조합 —
- * publish/subscribe/heartbeat 동시 호출 안전. SseEmitter.send 는 내부 동기화.
+ * <p><b>회귀 가드</b>: 본 PR 의 모든 기존 단위/IT 가 변경 없이 PASS — 메서드 시그니처 + 동작
+ * 100% 일관.
  */
-@Slf4j
-@Component
-public class SlipRealtimeBroker {
-
-    /** Emitter timeout 0L = 무한 (heartbeat keep-alive). */
-    public static final long EMITTER_TIMEOUT_INFINITE = 0L;
-
-    /** Heartbeat interval ms (30s) — proxy idle timeout (보통 60s) 보다 짧게. */
-    public static final long HEARTBEAT_INTERVAL_MS = 30_000L;
-
-    private final Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters = new ConcurrentHashMap<>();
-
-    /** 통계 — 누적 publish 시도/실패/heartbeat 카운터 (운영 모니터링용). */
-    private final AtomicLong publishCount = new AtomicLong();
-    private final AtomicLong publishFailureCount = new AtomicLong();
-    private final AtomicLong heartbeatCount = new AtomicLong();
+public class SlipRealtimeBroker extends InMemoryRealtimeBroker {
 
     /**
-     * cross-node propagate hook — PR-H2 (Phase 12 Step 2) 신규.
+     * Spring 이 RealtimePublishHook bean 등록 시 자동 setter 주입 (@Autowired(required=false)
+     * 의미는 InMemoryRealtimeBroker 와 동일). RedisRealtimeBroker bean 미등록 (default 단일 노드)
+     * 환경에서는 hook 미설정.
      *
-     * <p>{@link com.samhanair.logis.slip.realtime.RedisRealtimeBroker} 가 활성화되면 본 hook 으로
-     * 등록되어 publish 시 cross-node Redis pub 호출. 단일 노드 default 환경에서는 hook 없음 (no-op).
-     *
-     * <p>본 broker 는 항상 자기 노드의 emitter 들에게 publish 한 뒤 hook 도 호출 (cross-node
-     * 전파). hook 자체는 수신측 노드의 본 broker.publishLocal 을 다시 호출하지 않도록 호출자가
-     * 책임 (Redis 메시지 수신 시 publishLocal — infinite loop 방지).
+     * <p>본 override 는 단순 super delegate. {@code @Autowired(required=false)} 가 자식 클래스에서
+     * 명시적으로 재선언되어야 Spring DI 가 본 facade bean 에 주입.
      */
-    private Optional<RealtimePublishHook> publishHook = Optional.empty();
-
-    /**
-     * Spring 이 RedisRealtimeBroker bean 등록 시 자동 setter 주입. RedisRealtimeBroker bean 미등록
-     * (default 단일 노드) 환경에서는 hook 미설정 (Optional.empty).
-     *
-     * <p>{@code @Autowired(required=false)} 로 단일 노드 default 환경 startup 정상 보장.
-     */
+    @Override
     @Autowired(required = false)
-    public void setPublishHook(RealtimePublishHook hook) {
-        this.publishHook = Optional.ofNullable(hook);
-        if (hook != null) {
-            log.info("[PR-H2] cross-node propagate hook 등록됨 — broker={}",
-                    hook.getClass().getSimpleName());
-        }
+    public void setPublishHook(
+            com.samhanair.logis.shared.realtime.broker.RealtimePublishHook hook) {
+        super.setPublishHook(hook);
     }
 
     /**
-     * 신규 SSE 구독 발급. emitter timeout 0L 무한 — heartbeat 가 keep-alive.
+     * SlipRealtimeBroker bean 등록 — slip-service local @Configuration. shared module 의 default
+     * RealtimeBroker bean 을 SlipRealtimeBroker (subclass) 로 override.
      *
-     * <p>완료/타임아웃/에러 콜백에서 자동 cleanup.
+     * <p>{@code @ConditionalOnMissingBean(SlipRealtimeBroker.class)} — 명시 override 보장.
+     * shared 의 BrokerConfiguration 도 {@code @ConditionalOnMissingBean(RealtimeBroker.class)}
+     * 라 본 facade 가 RealtimeBroker bean 자리를 차지함 → shared 의 InMemoryRealtimeBroker bean
+     * 미등록.
      *
-     * @param slipId 구독할 슬립 UUID
-     * @return 신규 발급된 SseEmitter (controller 가 즉시 반환)
+     * <p><b>*Bean suffix 가드</b>: bean method name {@code slipRealtimeBrokerBean} (suffix 명시).
      */
-    public SseEmitter subscribe(UUID slipId) {
-        Objects.requireNonNull(slipId, "slipId 는 필수입니다");
-        SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_INFINITE);
+    @Configuration
+    public static class SlipRealtimeBrokerConfig {
 
-        CopyOnWriteArrayList<SseEmitter> list = emitters.computeIfAbsent(slipId,
-                k -> new CopyOnWriteArrayList<>());
-        list.add(emitter);
-
-        emitter.onCompletion(() -> remove(slipId, emitter));
-        emitter.onTimeout(() -> remove(slipId, emitter));
-        emitter.onError(throwable -> remove(slipId, emitter));
-
-        // 초기 connect event — 클라이언트 onopen 직후 1회 신호
-        try {
-            emitter.send(SseEmitter.event()
-                    .name("connected")
-                    .data(Map.of("slipId", slipId.toString())));
-        } catch (IOException ex) {
-            log.debug("SSE 초기 connected event 전송 실패 — emitter 즉시 제거 slipId={}", slipId);
-            remove(slipId, emitter);
-        }
-        return emitter;
-    }
-
-    /**
-     * 해당 슬립 구독자 전원에게 SSE event 전송 (자기 노드) + cross-node hook 호출 (활성 시).
-     * IOException 발생 emitter 는 즉시 cleanup.
-     *
-     * <p>PR-H2 (Phase 12 Step 2) — Redis broker 활성 시 hook 통해 다른 노드에도 전파.
-     *
-     * @param slipId 대상 슬립
-     * @param eventName SSE event name (예: "comment.created", "slip:edit")
-     * @param payload event data (Jackson 직렬화)
-     */
-    public void publish(UUID slipId, String eventName, Object payload) {
-        publishLocal(slipId, eventName, payload);
-        // cross-node propagate (활성 시) — hook 자체는 수신측에서 publishLocal 만 호출 (loop 방지)
-        publishHook.ifPresent(hook -> {
-            try {
-                hook.propagate(slipId, eventName, payload);
-            } catch (RuntimeException ex) {
-                log.warn("[PR-H2] cross-node propagate 실패 — slipId={} event={} cause={}",
-                        slipId, eventName, ex.getMessage());
-            }
-        });
-    }
-
-    /**
-     * 자기 노드 emitter 들에게만 SSE event 전송 — cross-node hook 호출 없음.
-     *
-     * <p>RedisRealtimeBroker 가 다른 노드에서 Redis 메시지를 수신했을 때 본 메서드 호출 (infinite
-     * loop 방지). 일반 application 코드는 {@link #publish} 사용.
-     *
-     * @param slipId 대상 슬립
-     * @param eventName SSE event name
-     * @param payload event data
-     */
-    public void publishLocal(UUID slipId, String eventName, Object payload) {
-        Objects.requireNonNull(slipId, "slipId 는 필수입니다");
-        Objects.requireNonNull(eventName, "eventName 은 필수입니다");
-        publishCount.incrementAndGet();
-
-        CopyOnWriteArrayList<SseEmitter> list = emitters.get(slipId);
-        if (list == null || list.isEmpty()) {
-            return;
-        }
-
-        Set<SseEmitter> dead = new HashSet<>();
-        for (SseEmitter emitter : list) {
-            try {
-                emitter.send(SseEmitter.event().name(eventName).data(payload));
-            } catch (IOException | IllegalStateException ex) {
-                publishFailureCount.incrementAndGet();
-                log.debug("SSE publish 실패 — emitter cleanup slipId={} event={} cause={}",
-                        slipId, eventName, ex.getMessage());
-                dead.add(emitter);
-            }
-        }
-        if (!dead.isEmpty()) {
-            list.removeAll(dead);
-            if (list.isEmpty()) {
-                emitters.remove(slipId, list);
-            }
-        }
-    }
-
-    /**
-     * 30초 주기 heartbeat — 끊긴 emitter 감지 + proxy idle timeout 회피.
-     *
-     * <p>SSE comment ({@code :ping}) 형식 — event 가 아닌 comment line 으로 트래픽 최소화.
-     */
-    @Scheduled(fixedRate = HEARTBEAT_INTERVAL_MS)
-    public void heartbeat() {
-        heartbeatCount.incrementAndGet();
-        for (Map.Entry<UUID, CopyOnWriteArrayList<SseEmitter>> entry : emitters.entrySet()) {
-            UUID slipId = entry.getKey();
-            CopyOnWriteArrayList<SseEmitter> list = entry.getValue();
-            Set<SseEmitter> dead = new HashSet<>();
-            for (SseEmitter emitter : list) {
-                try {
-                    emitter.send(SseEmitter.event().comment("ping"));
-                } catch (IOException | IllegalStateException ex) {
-                    log.debug("SSE heartbeat 실패 — emitter cleanup slipId={}", slipId);
-                    dead.add(emitter);
-                }
-            }
-            if (!dead.isEmpty()) {
-                list.removeAll(dead);
-                if (list.isEmpty()) {
-                    emitters.remove(slipId, list);
-                }
-            }
-        }
-    }
-
-    /**
-     * 특정 슬립 구독자 수 (운영 모니터링 / 테스트 검증).
-     *
-     * @param slipId 대상 슬립
-     * @return 현재 활성 구독자 수
-     */
-    public int subscriberCount(UUID slipId) {
-        List<SseEmitter> list = emitters.get(slipId);
-        return list == null ? 0 : list.size();
-    }
-
-    /** 누적 publish 시도 횟수 (테스트/운영 검증). */
-    public long publishCount() {
-        return publishCount.get();
-    }
-
-    /** 누적 publish 실패 횟수 (IOException cleanup). */
-    public long publishFailureCount() {
-        return publishFailureCount.get();
-    }
-
-    /** 누적 heartbeat 실행 횟수. */
-    public long heartbeatCount() {
-        return heartbeatCount.get();
-    }
-
-    private void remove(UUID slipId, SseEmitter emitter) {
-        CopyOnWriteArrayList<SseEmitter> list = emitters.get(slipId);
-        if (list != null) {
-            list.remove(emitter);
-            if (list.isEmpty()) {
-                emitters.remove(slipId, list);
-            }
+        @Bean
+        @ConditionalOnMissingBean(SlipRealtimeBroker.class)
+        public SlipRealtimeBroker slipRealtimeBrokerBean() {
+            return new SlipRealtimeBroker();
         }
     }
 }
