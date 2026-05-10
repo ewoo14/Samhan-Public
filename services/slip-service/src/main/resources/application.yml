@@ -1,5 +1,7 @@
 server:
-  port: 8086
+  # 운영자 환경변수 SERVER_PORT 로 영구 우회 가능 (예: InfluxDB 가 8086 점유 시 SERVER_PORT=8186).
+  # SAMHAN_SLIP_PORT 도 chained-default 로 호환 (기존 4개 service 패턴 일관).
+  port: ${SERVER_PORT:${SAMHAN_SLIP_PORT:8086}}
 
 spring:
   application:

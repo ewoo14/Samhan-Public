@@ -160,10 +160,14 @@ if (-not $SkipPortCheck) {
         Write-Host '   다음 port 가 이미 점유 중입니다 — 기동 시 충돌 가능:' -ForegroundColor Yellow
         $occupied | Format-Table -AutoSize
         # 8086 InfluxDB 특수 안내
+        # 주의: SERVER_PORT 를 전역 set 하면 14 service 모두 같은 port 를 시도 → 충돌.
+        # service-specific 환경변수 SAMHAN_<SVC>_PORT 사용 의무 (chained-default 두번째 단계).
         if ($occupied | Where-Object { $_.Port -eq 8086 }) {
-            Write-Host '   [안내] port 8086 충돌 — InfluxDB 가 점유 중일 가능성이 높습니다.' -ForegroundColor Yellow
-            Write-Host '          slip-service 의 SERVER_PORT 환경변수를 8186 으로 변경 후 재시도 권장:' -ForegroundColor Yellow
-            Write-Host '            $env:SERVER_PORT = 8186' -ForegroundColor DarkGray
+            Write-Host '   [안내] port 8086 충돌 — InfluxDB (MasterCTRLService child influxd) 가 점유 중일 가능성이 높습니다.' -ForegroundColor Yellow
+            Write-Host '          slip-service 만 다른 port 로 우회 — service-specific 환경변수 사용:' -ForegroundColor Yellow
+            Write-Host '            (영구) setx SAMHAN_SLIP_PORT 8186  → 신규 PowerShell 세션에서 inherit' -ForegroundColor DarkGray
+            Write-Host '            (세션) $env:SAMHAN_SLIP_PORT = 8186' -ForegroundColor DarkGray
+            Write-Host '          ※ SERVER_PORT 는 전역 우선이라 14 service 모두 같은 port 를 시도 → 사용 금지.' -ForegroundColor DarkGray
             Write-Host '          또는 InfluxDB 컨테이너 종료 후 재시도.' -ForegroundColor Yellow
         }
         Write-Host '   계속 진행 시 점유 process 가 우선이며 신규 service 가 기동 실패할 수 있습니다.' -ForegroundColor Yellow
@@ -335,21 +339,36 @@ foreach ($p in $dbAlias) {
 # (미준수 시 OrgChartSeeder 16명 모두 createAccount RPC fail).
 
 $services = @(
-    @{ name = 'eureka-server';         port = 8761; required = $true  },  # tier 0 — discovery 필수
-    @{ name = 'auth-service';          port = 8081; required = $true  },  # tier 1 — user OrgChartSeeder 의 사전 의존
-    @{ name = 'user-service';          port = 8083; required = $false },
-    @{ name = 'product-service';       port = 8084; required = $false },
-    @{ name = 'partner-service';       port = 8095; required = $false },
-    @{ name = 'inventory-service';     port = 8085; required = $false },
-    @{ name = 'accounting-service';    port = 8087; required = $false },
-    @{ name = 'slip-service';          port = 8086; required = $false },
-    @{ name = 'partner-order-service'; port = 8088; required = $false },
-    @{ name = 'arologis-service';      port = 8097; required = $false },
-    @{ name = 'groupware-service';     port = 8092; required = $false },
-    @{ name = 'notification-service';  port = 8093; required = $false },
-    @{ name = 'dashboard-service';     port = 8094; required = $false },
-    @{ name = 'api-gateway';           port = 8080; required = $false }
+    @{ name = 'eureka-server';         envVar = 'SAMHAN_EUREKA_PORT';        port = 8761; required = $true  },  # tier 0 — discovery 필수
+    @{ name = 'auth-service';          envVar = 'SAMHAN_AUTH_PORT';          port = 8081; required = $true  },  # tier 1 — user OrgChartSeeder 의 사전 의존
+    @{ name = 'user-service';          envVar = 'SAMHAN_USER_PORT';          port = 8083; required = $false },
+    @{ name = 'product-service';       envVar = 'SAMHAN_PRODUCT_PORT';       port = 8084; required = $false },
+    @{ name = 'partner-service';       envVar = 'SAMHAN_PARTNER_PORT';       port = 8095; required = $false },
+    @{ name = 'inventory-service';     envVar = 'SAMHAN_INVENTORY_PORT';     port = 8085; required = $false },
+    @{ name = 'accounting-service';    envVar = 'SAMHAN_ACCOUNTING_PORT';    port = 8087; required = $false },
+    @{ name = 'slip-service';          envVar = 'SAMHAN_SLIP_PORT';          port = 8086; required = $false },  # InfluxDB 충돌 시 SAMHAN_SLIP_PORT=8186 권장
+    @{ name = 'partner-order-service'; envVar = 'SAMHAN_PARTNER_ORDER_PORT'; port = 8088; required = $false },
+    @{ name = 'arologis-service';      envVar = 'SAMHAN_AROLOGIS_PORT';      port = 8097; required = $false },
+    @{ name = 'groupware-service';     envVar = 'SAMHAN_GROUPWARE_PORT';     port = 8092; required = $false },
+    @{ name = 'notification-service';  envVar = 'SAMHAN_NOTIFICATION_PORT';  port = 8093; required = $false },
+    @{ name = 'dashboard-service';     envVar = 'SAMHAN_DASHBOARD_PORT';     port = 8094; required = $false },
+    @{ name = 'api-gateway';           envVar = 'SAMHAN_API_GATEWAY_PORT';   port = 8080; required = $false }
 )
+
+# 사용자 환경변수 SAMHAN_<SVC>_PORT override 반영 — application.yml chained-default 와 정합.
+# 예: setx SAMHAN_SLIP_PORT 8186 (InfluxDB 점유 우회) → 본 스크립트가 health check 도 8186 으로 폴링.
+foreach ($svc in $services) {
+    $override = [Environment]::GetEnvironmentVariable($svc.envVar)
+    if ($override) {
+        $portInt = 0
+        if ([int]::TryParse($override, [ref]$portInt) -and $portInt -gt 0) {
+            if ($portInt -ne $svc.port) {
+                Write-Host "   [override] $($svc.name) port $($svc.port) → $portInt ($($svc.envVar) 환경변수)" -ForegroundColor DarkCyan
+                $svc.port = $portInt
+            }
+        }
+    }
+}
 
 $startupResults = @()
 $abortRemaining = $false
