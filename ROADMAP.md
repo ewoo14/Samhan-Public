@@ -23,7 +23,7 @@
 | 9     | -           | 잔여 도메인 (partner-service / groupware / notification / dashboard) | **4차 진행 (W1 partner #91 + W2 groupware #92 + W3 notification #93 + W4 dashboard skeleton 본 PR)** |
 | 10    | -           | arologis-service (배차 마이크로서비스) + 모바일 어플 driver tab + slip 통합 (renumber, D-P10-05) | **W10-1 PR #97 + W10-3 PR #98 + W10-4 본 PR (slip-service 전자서명 LINK+APP source 통합, V10 Flyway, ApiResponse wrapper IT 의무화) — D-P10-11 / D-P10-12** |
 | 11    | -           | AWS 마이그레이션 + Migration Service + 운영 안정화 (AWS cutover 본격) — dry-run plan: `docs/migration/phase10/M-AWS-MIGRATION-DRY-RUN.md` | 대기 |
-| 12    | -           | 실시간 협업 시리즈 (SSE infra + slip 코멘트 / audit overlay / 권한·수락 / 전 15 service 확장) — 총 ~13주 (사용자 결정 옵션 A) | **step-1 진행 (PR-H1 SSE infra + slip 코멘트 smoke 본 PR)** |
+| 12    | -           | 실시간 협업 시리즈 (SSE infra + slip 코멘트 / audit overlay / 권한·수락 / 전 15 service 확장) — 총 ~13주 (사용자 결정 옵션 A) | **step-1 (PR #123 SSE infra) 머지 + step-2 진행 (PR-H2 slip audit overlay + 실시간 sync + TM 보완 3건 본 PR)** |
 
 ---
 
@@ -459,14 +459,14 @@ W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful
 
 ## Phase 12 — 실시간 협업 시리즈 (사용자 결정 옵션 A, 2026-05-09)
 
-> **시리즈 의도** — Samhan Public 핵심 가치 = "두 사람이 같은 전표 보고 한 명 코멘트 → 다른 사람에게 실시간 반영". 4 슬라이스 (PR-H1 ~ PR-H4) 단계 진입. **본 PR-H1 머지로 시리즈 1/4 완성 (SSE infra + slip 코멘트 smoke).**
+> **시리즈 의도** — Samhan Public 핵심 가치 = "두 사람이 같은 전표 보고 한 명 코멘트 → 다른 사람에게 실시간 반영". 4 슬라이스 (PR-H1 ~ PR-H4) 단계 진입. **PR-H1 (PR #123) 머지 완료 (시리즈 1/4) + 본 PR-H2 진행 (시리즈 2/4 = slip audit overlay + 실시간 sync + TM 보완 3건).**
 
 ### 시리즈 분해 (총 ~13주)
 
-- **PR-H1 (1주, 본 PR)** — SSE infra + slip 코멘트 smoke. Spring `SseEmitter` 표준 + `SlipRealtimeBroker` (in-memory `Map<UUID, CopyOnWriteArrayList<SseEmitter>>`, 30s heartbeat) + `slip_comments` Flyway V17 + 단위 9 + IT 5 + multi-context Playwright 작동 캡처 4 PNG. desktop `SlipRealtimeClient` (fetch+ReadableStream polyfill) + mobile-staff `react-native-sse` (RN EventSource polyfill) + Designer `userIdToColor` HSL hash util (PR-H2 audit overlay 의존 시드). DevOps gateway `httpclient.response-timeout: 600s` + nginx `proxy_buffering off` 운영 hint. **외부 SaaS (Pusher/Firebase/Ably) 의존 0** (D-P12-01).
-- **PR-H2 (~3주)** — slip audit overlay + 실시간 sync. slip 라이프사이클 10단계 변경 시 모든 접속 client 에게 SSE broadcast (DRAFT→SAVED→DISPATCHED→...→COMPLETED) + 사용자별 색상 audit overlay (userColorHash 활용) + 변경 이력 timeline UI.
+- **PR-H1 (1주, PR #123 머지 완료)** — SSE infra + slip 코멘트 smoke. Spring `SseEmitter` 표준 + `SlipRealtimeBroker` (in-memory `Map<UUID, CopyOnWriteArrayList<SseEmitter>>`, 30s heartbeat) + `slip_comments` Flyway V17 + 단위 9 + IT 5 + multi-context Playwright 작동 캡처 4 PNG. desktop `SlipRealtimeClient` (fetch+ReadableStream polyfill) + mobile-staff `react-native-sse` (RN EventSource polyfill) + Designer `userIdToColor` HSL hash util (PR-H2 audit overlay 의존 시드). DevOps gateway `httpclient.response-timeout: 600s` + nginx `proxy_buffering off` 운영 hint. **외부 SaaS (Pusher/Firebase/Ably) 의존 0** (D-P12-01).
+- **PR-H2 (~3주, 본 PR)** — slip audit overlay + 실시간 sync + TM 보완 3건. Flyway V18 (`slip_audit_logs` + `slips.revision_count`) + `SlipAuditLogService` (record / recordBatch / listBySlip / revertToRevision) + 신규 endpoint 3 (`GET /audit-logs` / `PATCH /audit/overlay` / `POST /audit/revert/{n}`) + `Slip.applyOverlayPatch/readOverlayField` 11 필드 시범 + `SlipService.editHeader` memo diff → SSE `slip:edit` broadcast. design-system `AuditOverlay` 컴포넌트 (취소선 + 색상 dot + 수정자명 + 시각) + Storybook 4 story + desktop `SlipDetailPage` 수정 횟수 chip + 복원 dropdown + mobile-staff `SlipDetailScreen` partnerName/status overlay (RN Text strikethrough + View dot). **TM 보완 3건 흡수 (사용자 명시)**: (1) `SlipRealtimeBrokerConcurrencyIT` (multi-emitter 3 case — 50 subscribe + cleanup race + 100 emitter / 1000 publish), (2) `SlipAuditPayloadCaptorTest` (ArgumentCaptor SSE payload schema 3 case), (3) `RedisRealtimeBroker` + `RedisRealtimeConfigBean` + `RealtimePublishHook` (`SAMHAN_REALTIME_BROKER` config toggle, default in-memory, 다중 노드 진입 옵션). 단위 24 + IT 9 case + multi-context Playwright 작동 캡처 4 PNG (D-P12-02).
 - **PR-H3 (~1.5주)** — 권한 / 수락 / 거절 워크플로우. 영업 → 창고 → 기사 인계 시점 명시적 수락 + SSE 양방향 push (영업 입력 시 창고 알림 / 창고 수락 시 영업 알림 / 기사 수락 시 양측 알림).
-- **PR-H4 (~7주)** — 전 15 service 확장. partner / inventory / accounting / arologis / dashboard 등 14 backend MSA 도메인 모두 SSE 채널 도입 + `shared/realtime` module 추출 + Redis Pub/Sub 분기 (다중 노드 진입 시 활성).
+- **PR-H4 (~7주)** — 전 15 service 확장. partner / inventory / accounting / arologis / dashboard 등 14 backend MSA 도메인 모두 SSE 채널 도입 + `shared/realtime` module 추출 + Redis Pub/Sub 분기 (PR-H2 시드된 `RedisRealtimeBroker` 활성).
 
 ### 산출물 (본 PR-H1)
 - `services/slip-service` SSE infra — `realtime/SlipRealtimeBroker` + `realtime/SlipRealtimeController` + `comment/{domain,repository,service,web,dto}` 8 신규 file + V17 Flyway (`slip_comments` + 부분 인덱스, BaseEntity 7 audit) + 단위 9 case (Service 5 + Broker 4) + IT 5 case (SSE/POST/GET/broker/403) + `ApplicationContextLoadIT` 보강
@@ -486,8 +486,30 @@ W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful
 ### 진입 조건 (PR-H1)
 - PR #122 (운영 검증 인프라) 머지 — 충족 (origin/main `841edde`)
 
+### 산출물 (본 PR-H2)
+- `services/slip-service` audit overlay infra — `audit/{domain/SlipAuditLog,repository/SlipAuditLogRepository,service/SlipAuditLogService,web/SlipAuditLogController,web/dto/{OverlayPatchRequest,SlipAuditLogResponse}}.java` 7 신규 file + `Slip.applyOverlayPatch/readOverlayField/incrementRevision` (11 필드 시범 — memo / shippingAddress / contactPhone / partnerName / discountRate 등) + `SlipService.editHeader` memo diff → `recordBatch` + SSE `slip:edit` broadcast
+- `services/slip-service` Flyway V18 — `V18__add_slip_audit_logs.sql` (`slip_audit_logs` 신규 + `slips.revision_count BIGINT NOT NULL DEFAULT 0` + 부분 인덱스, BaseEntity 7 audit + Soft Delete)
+- `services/slip-service` TM 보완 3건 (사용자 명시) — (1) `realtime/SlipRealtimeBrokerConcurrencyIT.java` (multi-emitter 3 case — 50 subscribe + cleanup race + 100 emitter/1000 publish), (2) `audit/service/SlipAuditPayloadCaptorTest.java` (ArgumentCaptor SSE payload schema 3 case — actorId/actorName/actorColor/changes[]/revisionNo 5 키 일치), (3) `realtime/{RedisRealtimeBroker,RedisRealtimeConfigBean,RealtimePublishHook}.java` (`SAMHAN_REALTIME_BROKER=in-memory|redis` config toggle, default in-memory, 미연결 startup 정상, `*Bean` suffix 가드 PR #119 회귀 가드 일관)
+- `services/slip-service` 단위 24 + IT 9 — `SlipAuditLogServiceTest` (6 case) + `SlipAuditLogServiceRevertTest` (4 case) + `SlipAuditPayloadCaptorTest` (3 case) + `SlipServiceAuditDiffTest` (5 case memo diff) + `SlipRealtimeBrokerConcurrencyIT` (3 case) + `RedisRealtimeBrokerTest` (3 case mock) + `ApplicationContextLoadIT` `SlipAuditLogService` 단일 등록 가드 보강
+- `clients/web/design-system` — `components/AuditOverlay/{AuditOverlay.tsx,AuditOverlay.module.css,AuditOverlay.stories.tsx,index.ts}` 4 신규 file (취소선 + 색상 dot + 수정자명 + 시각, Storybook 4 story — Single / Multiple / Empty / MultiUserShowcase) + barrel export 보강
+- `clients/desktop` — `api/slipAudit.ts` 신규 (`listAuditLogs` + `revertToRevision`) + `routes/SlipDetailPage.tsx` 수정 횟수 chip (`slip-detail-revision-count`) + AuditOverlay 적용 (memo / shippingAddress) + 복원 dropdown (`slip-detail-revert-select`) + SSE `slip:edit` cache invalidate
+- `clients/mobile-staff` — `utils/userColorHash.ts` 신규 (design-system 1:1 RN 호환 복제) + `components/AuditOverlay.tsx` 신규 (RN Text 취소선 + View dot) + `screens/SlipDetailScreen.tsx` 수정 횟수 헤더 + AuditOverlay 적용 (partnerName / status) + 복원 버튼 MASTER/MANAGER 만 + `realtime/SlipRealtimeClient.ts` `slip.edit` event type 추가
+- `docs/uiux/phase12/H2-audit-overlay.md` 신규 — wireframe + 한국어 라벨 + Designer 매뉴얼
+- `docs/manual/05-슬립공유-수정-처리.md` 신규 — 사용자 시나리오 (페르소나 5) + 권한 + 화면 캡처 stub
+- `docs/devops/redis-realtime-broker.md` 신규 — in-memory vs Redis 가이드 + AWS ElastiCache cache.t3.micro ~₩30K/월 + cutover 절차 + Testcontainers Redis 권고
+- `infrastructure/env-templates/slip-service.env` — `SAMHAN_REALTIME_BROKER=in-memory` (default) + `REDIS_HOST` / `REDIS_PORT` placeholder
+- `services/slip-service/src/main/resources/application.yml` — `samhan.realtime.broker` config toggle + `spring.data.redis` host/port
+- `docs/qa/phase-12-step-2-slip-audit-overlay/scenarios.md` 신규 — 27 case (audit_log 자동 기록 5 + AuditOverlay UI 5 + 수정 횟수 카운트 3 + 복원 4 + 실시간 sync 5 + 동시 수정 충돌 3 + Redis broker fallback 2) + 페르소나 5
+- `docs/qa/phase-12-step-2-slip-audit-overlay/working-{audit-overlay-context-a-edit,audit-overlay-context-b-receives,audit-overlay-multi-revision,multi-context-edit-split}.png` 신규 — multi-context Playwright 작동 캡처 4 PNG (취소선 + 색상 + 수정자명 + 1초 sync 4 요소 시각 증거, 핵심 = `multi-context-edit-split.png` 좌-A 우-B 합성)
+- `tools/manual-capture/capture-pr-h2.js` 신규 — Playwright multi-context 자동화 (browser.newContext 2회 분리 + sharp 좌-우 합성 + 한국어 라벨 + audit-logs / overlay PATCH / revert mock seed)
+- `clients/desktop/src/renderer/api/mock.ts` — audit-logs / overlay PATCH / revert mock endpoint (capture 자동화 의존)
+
+### 진입 조건 (PR-H2)
+- PR #123 (PR-H1 SSE infra + slip 코멘트 smoke) 머지 — 충족
+- PR-H1 시드 `userIdToColor` HSL hash util 재사용 (design-system `utils/userColorHash.ts` 동일 + RN 1:1 복제 `clients/mobile-staff/src/utils/userColorHash.ts`)
+
 ### 진입 plan
-- 본 PR-H1 머지 후 **PR-H2 (slip audit overlay + 실시간 sync, ~3주)** 즉시 진입. userColorHash util 활용.
+- 본 PR-H2 머지 후 **PR-H3 (slip 권한 / 수락 / 거절 워크플로우, ~1.5주)** 즉시 진입. SSE 양방향 push (영업 → 창고 → 기사 인계 알림).
 
 ### 5-team 리뷰 + CI + PM + 사용자 머지 워크플로우 (memory `feedback_pr_review_workflow`)
 
@@ -571,6 +593,8 @@ W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful
 | #93 | 9 | Phase 9 3차 W3 (notification-service skeleton — port 8093, 2 entity + 3 channel adapter (FCM/SES/Aligo) + UserClient bulk verify + Caffeine TTL 60s + ServiceDiscoveryClient 세 번째 소비자 + DevOps #11/#12 흡수) |
 | #94 | 9 | Phase 9 4차 W4 (dashboard-service skeleton — port 8094, 3 entity + 2 materialized view (CONCURRENTLY refresh) + 4 client (Inventory/Accounting/PartnerOrder/Partner) + Caffeine KPI cache + ServiceDiscoveryClient 네 번째 소비자 + shared:user-client-abstraction 신규 + W3 backlog 5건 + 사용자 가드 후속 fix 11건 본 PR 채택 + slip-service 시간 의존 회귀 정공법 fix) |
 | 본 PR | 9 | Phase 9 5차 W5 (회고 보고서 + Phase 10 진입 plan + 잔존 backlog 1건 흡수 — partner-service POST /internal/partners/find-by-codes bulk endpoint + dashboard-service PartnerCodeResolver.resolveAll bulk 전환, D-P9-16 ~ D-P9-20 추가) |
+| #123 | 12 | Phase 12 시리즈 1/4 — PR-H1 SSE infra + slip 코멘트 smoke (`SseEmitter` 표준 + 단일 노드 in-memory broker + `slip_comments` V17 + multi-context Playwright 4 PNG, D-P12-01) |
+| 본 PR | 12 | Phase 12 시리즈 2/4 — PR-H2 slip audit overlay + 실시간 sync + TM 보완 3건 (Flyway V18 `slip_audit_logs` + `SlipAuditLogService` 4책임 + 신규 endpoint 3 + design-system `AuditOverlay` + desktop / mobile-staff 통합 + multi-emitter 동시성 IT + ArgumentCaptor SSE payload + `RedisRealtimeBroker` config toggle, D-P12-02) |
 
 ---
 
