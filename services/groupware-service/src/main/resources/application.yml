@@ -1,5 +1,6 @@
 server:
-  port: ${SAMHAN_GROUPWARE_PORT:8092}
+  # 운영자 환경변수 SERVER_PORT 로 영구 우회 가능 (외부 process 가 default port 점유 시).
+  port: ${SERVER_PORT:${SAMHAN_GROUPWARE_PORT:8092}}
 
 spring:
   application:

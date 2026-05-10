@@ -9,7 +9,8 @@
 #   prod-peer1   — HA peer #1, registers with peer #2.
 #   prod-peer2   — HA peer #2, registers with peer #1.
 server:
-  port: 8761
+  # 운영자 환경변수 SERVER_PORT 로 영구 우회 가능 (외부 process 가 default port 점유 시).
+  port: ${SERVER_PORT:${SAMHAN_EUREKA_PORT:8761}}
 
 spring:
   application:
