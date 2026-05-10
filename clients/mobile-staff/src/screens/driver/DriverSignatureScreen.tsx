@@ -1,5 +1,8 @@
 /**
  * DriverSignatureScreen — Phase 10 W10-3 신규.
+ * Phase 12 PR-H4c 보강 — 서명 등록 직후 actor (driver) audit overlay 표시. backend slip-service
+ * 가 동기화한 audit log 가 있으면 우선 사용, 없으면 local 합성 audit 1건을 만들어 desktop /
+ * SlipDetailScreen 과 시각적 동등성 보장 (사용자 색상 dot + actorFullName + 시각).
  *
  * 정차 도착 시 전자서명 캡처 + GPS 위치 동시 캡처 + POST 전송.
  *
@@ -8,17 +11,23 @@
  *   2. 서명 시점에 GPS 위치 1회 캡처 (NUMERIC(10,7) ~1.1cm 정확도).
  *   3. POST `/driver-app/arologis/dispatches/{id}/vehicles/{seq}/stops/{stopSeq}/sign`.
  *   4. backend SignatureSource = APP (LINK 는 외부 링크 서명, 본 어플 = APP).
+ *   5. (PR-H4c) 등록 성공 시 AuditOverlay 1건을 'signature' 필드 이력으로 노출.
  *
  * 본 PR (W10-3) 시점:
  *   - signature canvas = `react-native-signature-canvas` 의존성 가용 시 활성, 미가용 시 fallback
  *     "서명 placeholder" UI (graceful guard).
  *   - W10-4 slip-service 통합 시점에 imageRef → file-server / S3 업로드 활성.
+ *
+ * data-testid (PR-H4c 추가):
+ *   - `driver-signature-audit-mobile` — 서명 등록 audit overlay wrapper
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { submitSignature } from '../../api/arologis';
+import AuditOverlay from '../../components/AuditOverlay';
+import type { SlipAuditActorRole, SlipAuditLogResponse } from '../../api/slipAudit';
 import { getCurrentPositionAsync } from '../../hooks/useGpsPermission';
 import { badgeStyle, colors, radii, spacing, typography } from '../../theme/tokens';
 
@@ -33,6 +42,15 @@ interface Props {
   stopSeq: number;
   /** 정차 표시명 — UI 노출용 (parsed_partner_name + parsedAddress). UUID 미노출 가드. */
   stopLabel?: string;
+  /**
+   * (PR-H4c) actor 정보 — audit overlay 의 색상 dot + 이름 표시용.
+   * 미전달 시 driverCode='driver' / fullName='배송기사' / role='DRIVER' fallback (시각 일관 유지).
+   */
+  actor?: {
+    driverCode?: string | null;
+    fullName?: string | null;
+    role?: SlipAuditActorRole | null;
+  };
 }
 
 interface SignatureCaptureState {
@@ -48,7 +66,7 @@ interface SignatureCaptureState {
 }
 
 export default function DriverSignatureScreen({
-  token, dispatchId, vehicleSeq, stopSeq, stopLabel,
+  token, dispatchId, vehicleSeq, stopSeq, stopLabel, actor,
 }: Props): JSX.Element {
   const [state, setState] = useState<SignatureCaptureState>({
     imageRef: null,
@@ -130,6 +148,37 @@ export default function DriverSignatureScreen({
     });
   };
 
+  // PR-H4c — 서명 등록 audit 합성 1건 (slip-service 미연동 시점에도 시각 일관 보장).
+  // submitted=true 가 되면 actor 정보 + 캡처 시각 기반 합성 SlipAuditLogResponse 1건 생성.
+  // signatureId 가 응답에 포함되므로 이를 audit log id 로 사용 (UI 미노출, key 만).
+  const signatureAuditHistory = useMemo<SlipAuditLogResponse[]>(() => {
+    if (!state.submitted || !state.signatureId) return [];
+    const actorIdHashInput = actor?.driverCode ?? 'driver';
+    return [
+      {
+        id: state.signatureId,
+        slipId: dispatchId, // path 만, UI 미노출.
+        field: 'signature',
+        previousValue: '(서명 전)',
+        newValue: `APP 서명 / ${state.latitude?.toFixed(7) ?? '-'}, ${state.longitude?.toFixed(7) ?? '-'}`,
+        actorId: actorIdHashInput,
+        actorFullName: actor?.fullName ?? '배송기사',
+        actorRole: (actor?.role ?? 'DRIVER') as SlipAuditActorRole,
+        createdAt: state.capturedAt ?? new Date().toISOString(),
+      },
+    ];
+  }, [
+    state.submitted,
+    state.signatureId,
+    state.capturedAt,
+    state.latitude,
+    state.longitude,
+    actor?.driverCode,
+    actor?.fullName,
+    actor?.role,
+    dispatchId,
+  ]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -192,6 +241,23 @@ export default function DriverSignatureScreen({
             ) : (
               <Text style={badgeStyle('slicePending')}>slip-service 미연동 (자체 저장만)</Text>
             )}
+          </View>
+        )}
+
+        {/* PR-H4c — 등록 완료 후 audit overlay (signature 필드 이력 1건). */}
+        {state.submitted && signatureAuditHistory.length > 0 && (
+          <View style={styles.auditCard} testID="driver-signature-audit-mobile">
+            <Text style={styles.auditCardTitle}>변경 이력</Text>
+            <View style={styles.auditRow}>
+              <Text style={styles.auditFieldLabel}>서명</Text>
+              <View style={styles.auditFieldValue}>
+                <AuditOverlay
+                  field="signature"
+                  currentValue={`APP 서명 (정차 #${stopSeq})`}
+                  history={signatureAuditHistory}
+                />
+              </View>
+            </View>
           </View>
         )}
 
@@ -370,4 +436,36 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.sans,
   },
   btnDisabled: { opacity: 0.5 },
+  // PR-H4c — audit overlay card styles (SlipDetailScreen audit field row 와 시각 일관).
+  auditCard: {
+    backgroundColor: colors.surface.card,
+    borderRadius: radii.card,
+    padding: spacing[4],
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    marginBottom: spacing[3],
+    gap: spacing[2],
+  },
+  auditCardTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.ink.secondary,
+    fontFamily: typography.fontFamily.sans,
+  },
+  auditRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing[2],
+  },
+  auditFieldLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.ink.tertiary,
+    fontFamily: typography.fontFamily.sans,
+    width: 48,
+    paddingTop: spacing[1],
+  },
+  auditFieldValue: {
+    flex: 1,
+    gap: spacing[1],
+  },
 });
