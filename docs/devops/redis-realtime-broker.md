@@ -197,10 +197,153 @@ redis-cli -h $REDIS_HOST publish samhan:slip:test "hello"
 
 ---
 
+---
+
+## 9. PR-H4a — `shared-realtime` 모듈 + 14 service 공유 (PR-H4a 보강)
+
+### 9.1 shared-realtime 모듈 → broker config toggle 활용
+
+PR-H4a 부터 BE-1 agent 가 `services/shared-realtime/` 공통 Gradle 모듈을 신설한다 (slip-service 의 `realtime` 패키지 추출). 본 모듈은 **broker config toggle (`SAMHAN_REALTIME_BROKER`) 그대로 활용** — slip-service 외 다른 13 service 도 동일 환경변수를 읽어 in-memory / Redis 분기.
+
+**모듈 구조 (BE-1 산출 예정)**:
+
+```
+services/shared-realtime/
+  build.gradle                                # 공통 의존 (lombok / slf4j / spring-data-redis optional)
+  src/main/java/com/samhanair/logis/shared/realtime/
+    SamhanRealtimeBroker.java                 # interface (publish / subscribe / publishLocal / heartbeat)
+    InMemorySamhanRealtimeBroker.java         # default 구현 (slip-service SlipRealtimeBroker 추출)
+    RedisSamhanRealtimeBroker.java            # Redis 구현 (slip-service RedisRealtimeBroker 추출)
+    RealtimePublishHook.java                  # cross-node hook (slip-service 시드)
+    RealtimeBrokerAutoConfig.java             # @ConditionalOnProperty 자동 등록
+```
+
+**14 service 의존 추가** (각 service 의 `build.gradle`):
+
+```gradle
+dependencies {
+    implementation project(':services:shared-realtime')
+}
+```
+
+> 의존 추가만으로 broker bean 자동 등록 — service 별 코드 0 변경. event name 만 도메인별 다르게 (`partner:edit` / `journal:edit` 등).
+
+### 9.2 14 service 공유 — Redis 호스트 단일 vs service 별 namespace
+
+**원칙**: AWS ElastiCache **단일 instance 1대로 14 service 공유**. service 별 namespace 분리는 channel name prefix 로만 처리 (별도 instance 불필요).
+
+| 옵션 | 설명 | 권고 | 비용 |
+| --- | --- | --- | --- |
+| **A. 단일 instance + channel prefix** | cache.t3.micro 1대, channel = `samhan:<service>:<entity>:<id>` | ✅ **권장 (default)** | ~₩25-50K/월 (1 instance) |
+| B. service 별 instance | service 14개 × instance 14대 | ❌ 비추 (overkill) | ~₩350-700K/월 (14 instance) |
+| C. service 별 Redis DB index | DB 0~13 (Redis 기본 16 DB) | ❌ 비추 (cluster mode 비호환) | ~₩25-50K/월 |
+
+**채택: 옵션 A** — 단일 instance + channel prefix.
+
+**channel naming convention**:
+
+```
+samhan:slip:edit:{slipId}              # PR-H2 시드
+samhan:slip:reverted:{slipId}          # PR-H2 시드
+samhan:slip:edit-request:created:{slipId}   # PR-H3 시드
+samhan:slip:edit-request:decided:{slipId}   # PR-H3 시드
+samhan:partner:edit:{partnerId}        # PR-H4b/H4c 신규
+samhan:inventory:adjust:{adjustId}     # PR-H4b/H4c 신규
+samhan:accounting:journal:edit:{journalId}  # PR-H4b/H4c 신규
+samhan:arologis:dispatch:edit:{dispatchId}  # PR-H4b/H4c 신규
+```
+
+> RedisSamhanRealtimeBroker 는 service prefix 자동 prepend (도메인별 코드 신경 X).
+
+### 9.3 14 service 공유 — Redis 메시지량 추정 + 비용 영향
+
+| 측정 | 단일 service (slip) | 14 service 합계 (full rollout 후) |
+| --- | --- | --- |
+| 평균 publish/sec | ~5 msg/s (peak ~50) | ~70 msg/s (peak ~700) |
+| 평균 channel 수 (활성 slip/entity) | ~50 | ~700 |
+| Redis CPU 점유 | <1% | <5% (cache.t3.micro 충분) |
+| Redis 네트워크 in/out | ~10 KB/s | ~140 KB/s (원거리 region 도 무리 없음) |
+
+> **결론**: cache.t3.micro 0.5 GB RAM 으로 14 service 공유 충분. 동시 SSE 구독자 ≥ 5,000 (전 service 합계) 시 cache.t3.small (~₩50K/월) upgrade 검토.
+
+### 9.4 운영 비용 (Phase 11 AWS + 14 service shared Redis)
+
+| 항목 | 단가 | 월 비용 (KRW) |
+| --- | --- | --- |
+| EC2 m5.xlarge + RDS db.t3.medium + EBS + 기타 (Phase 11 base) | | ~₩405K |
+| **ElastiCache cache.t3.micro** (replica 0) — 14 service 공유 | $0.026/h × 730h × 1 | **~₩25K** |
+| **ElastiCache cache.t3.micro** (replica 1, production) — 14 service 공유 | $0.026/h × 730h × 2 | **~₩50K** |
+
+> **최종 권고**: production = cache.t3.micro replica 1 (자동 failover) — **월 ₩50K 추가로 14 service 전체 다중 노드 확장 가능**. instance 14대 분리 대비 **₩300~650K/월 절감**.
+
+### 9.5 cutover 절차 (14 service 일괄 → in-memory → Redis)
+
+**전제**: PR-H4a BE-1 의 `shared-realtime` 모듈 머지 + 14 service 의존 추가 PR (PR-H4b) 머지 완료.
+
+1. **사전**: ElastiCache cluster 1대 생성 (§ 4 절차).
+2. **단계적 적용** (한꺼번에 14 service 전환 X — 회귀 위험):
+   - **Day 1**: slip-service 1대만 `SAMHAN_REALTIME_BROKER=redis` 전환 → 24h 모니터링 (publishCount / publishFailureCount / heartbeat).
+   - **Day 2~3**: partner / inventory / accounting 3대 추가 전환 → 48h 모니터링.
+   - **Day 4~5**: 잔여 10 service 전환.
+3. **롤백 (service 별)**: `SAMHAN_REALTIME_BROKER=in-memory` 환경변수 원복 + 해당 service 만 재시작 (다른 service 무영향).
+4. **모니터링 의무**:
+   - ElastiCache 콘솔 — CPU / Memory / Network / EngineCPUUtilization
+   - 각 service actuator — `subscriberCount` / `publishCount` / `publishFailureCount` / `heartbeatCount`
+   - publishFailureCount 이상 (정상 = 0~소수) 발생 시 즉시 진단
+
+### 9.6 환경변수 (14 service 동일 — env 템플릿 14개 일관)
+
+각 service 의 `infrastructure/env-templates/<service>.env` 에 다음 라인 일관 의무:
+
+```bash
+# Phase 12 PR-H4a — shared-realtime broker 14 service 공유
+SAMHAN_REALTIME_BROKER=in-memory      # default. production 전환 시 redis
+REDIS_HOST=                           # ElastiCache endpoint (전 service 동일)
+REDIS_PORT=6379                       # 전 service 동일
+```
+
+> `SAMHAN_REALTIME_BROKER` / `REDIS_HOST` / `REDIS_PORT` 3 변수 전 service 동일 — 운영 중복 0건. infrastructure/secrets/* 단일 출처에서 14 service 모두 주입.
+
+### 9.7 보안 (14 service 공유 환경)
+
+- **VPC 격리**: ElastiCache SG 의 inbound 6379 = slip / partner / inventory / accounting / arologis / 기타 EC2 SG 만 허용 (whitelist).
+- **TLS in transit**: 권장 활성 (내부 VPC 라도) — `spring.data.redis.ssl.enabled=true` + Jedis client 설정.
+- **AUTH**: cache.t3.micro 도 Redis AUTH 토큰 권장 — `spring.data.redis.password=${REDIS_AUTH_TOKEN}` 환경변수.
+- **channel access**: Redis 6+ ACL 로 service 별 channel pattern 제한 가능 (예: slip-service 는 `samhan:slip:*` 만 publish/subscribe). 단, 운영 복잡도 vs 보안 trade-off — Phase 11 단일 VPC 환경에서는 채택 보류 권고.
+
+### 9.8 Testcontainers Redis IT (14 service 공통 패턴)
+
+`shared-realtime` 모듈 신설 후 BE-1 agent 가 시드한 IT 패턴을 14 service 모두 재사용:
+
+```java
+// services/shared-realtime/src/test/java/.../RedisSamhanRealtimeBrokerIT.java
+@SpringBootTest
+@Testcontainers
+class RedisSamhanRealtimeBrokerIT {
+    @Container
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
+            .withExposedPorts(6379);
+
+    @DynamicPropertySource
+    static void redisProps(DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        registry.add("samhan.realtime.broker", () -> "redis");
+    }
+    // 다중 노드 fan-out IT (PR-H2 SlipRealtimeBrokerConcurrencyIT 패턴 일반화)
+}
+```
+
+> **Windows Docker caveat** (`feedback_testcontainers_windows_docker`): `DOCKER_HOST=tcp://localhost:2375` 우회 필요. CI ubuntu-latest 는 무리 없음.
+
+---
+
 ## 관련 문서
 
 - [`infrastructure/env-templates/slip-service.env`](../../infrastructure/env-templates/slip-service.env)
 - [`services/slip-service/src/main/resources/application.yml`](../../services/slip-service/src/main/resources/application.yml)
 - [`docs/devops/realtime-sse-production.md`](./realtime-sse-production.md) (PR-H1 nginx / ALB 가이드)
+- [`docs/uiux/phase12/H4a-shared-realtime-pattern.md`](../uiux/phase12/H4a-shared-realtime-pattern.md) (PR-H4a Designer 패턴 가이드 — 14 service / 50+ page)
+- [`docs/qa/phase-12-step-4a-shared-realtime-module/scenarios.md`](../qa/phase-12-step-4a-shared-realtime-module/scenarios.md) (PR-H4a QA 시나리오 — shared module 단위 + slip-service 회귀)
 - Phase 11 AWS 단일 환경 결정 (DECISIONS — Phase 11 entry)
 - [feedback_testcontainers_windows_docker] (Windows Docker IT 가이드)
