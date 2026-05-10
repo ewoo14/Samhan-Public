@@ -18,6 +18,12 @@ spring:
       discovery:
         locator:
           enabled: false
+      # PR-H1 (Phase 12 Step 1) — slip-service SSE realtime endpoint
+      # (/api/v1/slips/{id}/realtime) 의 30s heartbeat keep-alive 보존.
+      # 기본 response-timeout (없음) 이면 일부 환경 idle timeout 으로 stream 끊김.
+      # 600s = SseEmitter 무한 timeout + 30s heartbeat 와 충분한 여유.
+      httpclient:
+        response-timeout: 600s
       routes:
         # ============================================================
         # Legacy `/api/*` routes (Phase 1~9). 단일 prefix `/api`. StripPrefix=1
