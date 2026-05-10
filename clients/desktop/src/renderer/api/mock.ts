@@ -1473,6 +1473,478 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // ==========================================================================
+  // Phase 12 step-6 manual-rewrite Phase A — 50+ page mount 보장 mock 보강.
+  // 기존 mock 매칭 체인 (slip / journal / partner-order) 보존 우선,
+  // admin / region / chat-room / blocked-partner / edit-request / audit /
+  // closing / estimate / tax-invoice / arologis dispatch 등 추가.
+  // 각 endpoint 는 매뉴얼 캡처 1 컷 분량의 한국어 라벨 + UUID 비공개 fixture 만 반환.
+  // ==========================================================================
+
+  // GET /admin/users — admin/UsersPage list (AdminPage<AdminUser>)
+  if (method === 'GET' && url.includes('/admin/users') && !url.includes('/role-history') && !url.match(/\/admin\/users\/roles/)) {
+    return envelope({
+      items: MOCK_ADMIN_USERS,
+      total: MOCK_ADMIN_USERS.length,
+      page: 0,
+      size: 20,
+    })
+  }
+
+  // GET /admin/users/roles — 7 ROLE 풀네임 list
+  if (method === 'GET' && url.endsWith('/admin/users/roles')) {
+    return envelope([
+      { code: 'MASTER', label: '마스터' },
+      { code: 'DEVELOPER', label: '개발자' },
+      { code: 'MANAGER', label: '매니저' },
+      { code: 'SALES', label: '영업원' },
+      { code: 'ACCOUNTANT', label: '회계원' },
+      { code: 'WAREHOUSE', label: '창고원' },
+      { code: 'INVENTORY', label: '재고원' },
+    ])
+  }
+
+  // PATCH /admin/users/{id}/disable, /enable, /role
+  const adminUserActionMatch = url.match(/\/admin\/users\/([^/]+)\/(disable|enable|role)$/)
+  if (method === 'PATCH' && adminUserActionMatch) {
+    return envelope({ id: adminUserActionMatch[1], message: '처리되었습니다' })
+  }
+
+  // GET /admin/users/{id}/role-history
+  const adminUserHistoryMatch = url.match(/\/admin\/users\/([^/]+)\/role-history$/)
+  if (method === 'GET' && adminUserHistoryMatch) {
+    return envelope([
+      {
+        previousRole: 'SALES',
+        nextRole: 'MANAGER',
+        changedByName: '김미선',
+        changedAt: '2026-04-21T10:23:00+09:00',
+        reason: '영업1팀 매니저 승격',
+      },
+      {
+        previousRole: null,
+        nextRole: 'SALES',
+        changedByName: '김미선',
+        changedAt: '2026-01-05T09:00:00+09:00',
+        reason: '신규 입사 초기 권한',
+      },
+    ])
+  }
+
+  // GET /users/departments — 부서 목록 (5건)
+  if (method === 'GET' && url.endsWith('/users/departments')) {
+    return envelope([
+      { id: 'dept-001', name: '영업1팀', sortOrder: 1 },
+      { id: 'dept-002', name: '영업2팀', sortOrder: 2 },
+      { id: 'dept-003', name: '회계팀', sortOrder: 3 },
+      { id: 'dept-004', name: '창고팀', sortOrder: 4 },
+      { id: 'dept-005', name: '관리팀', sortOrder: 5 },
+    ])
+  }
+
+  // GET /admin/partners/search — admin/PartnersPage list
+  if (method === 'GET' && url.includes('/admin/partners/search')) {
+    return envelope({
+      items: MOCK_ADMIN_PARTNERS,
+      total: MOCK_ADMIN_PARTNERS.length,
+      page: 0,
+      size: 20,
+    })
+  }
+
+  // POST/PUT/DELETE /admin/partners — 신규/수정/삭제
+  if (method === 'POST' && url.endsWith('/admin/partners')) {
+    return envelope({ partnerCode: 'NEW-' + Date.now(), message: '거래처가 등록되었습니다' })
+  }
+  if (method === 'PUT' && url.match(/\/admin\/partners\/[^/]+$/)) {
+    return envelope({ message: '거래처 정보가 수정되었습니다' })
+  }
+  if (method === 'DELETE' && url.match(/\/admin\/partners\/[^/]+$/)) {
+    return envelope({ message: '거래처가 삭제되었습니다' })
+  }
+
+  // GET /inventory/warehouses/search — admin/WarehousesPage
+  if (method === 'GET' && url.includes('/inventory/warehouses/search')) {
+    return envelope({
+      items: MOCK_WAREHOUSES,
+      total: MOCK_WAREHOUSES.length,
+      page: 0,
+      size: 20,
+    })
+  }
+
+  // GET /admin/arologis/regions — RegionsPage list
+  if (method === 'GET' && url.endsWith('/admin/arologis/regions')) {
+    return envelope(MOCK_REGIONS)
+  }
+  if (method === 'POST' && url.endsWith('/admin/arologis/regions')) {
+    return envelope({ id: 'reg-new-' + Date.now() })
+  }
+  if ((method === 'PUT' || method === 'DELETE') && url.match(/\/admin\/arologis\/regions\/[^/]+$/)) {
+    return envelope({ message: '처리되었습니다' })
+  }
+  if (method === 'POST' && url.includes('/admin/arologis/regions/import')) {
+    return envelope({ inserted: 4, updated: 1, rejected: [] })
+  }
+
+  // GET /admin/chat-rooms — ChatRoomsPage list
+  if (method === 'GET' && url.includes('/admin/chat-rooms')) {
+    return envelope(MOCK_CHAT_ROOMS)
+  }
+
+  // GET /admin/partners/blocks — BlockedPartnersPage list
+  if (method === 'GET' && url.includes('/admin/partners/blocks') || url.includes('/admin/blocked-partners')) {
+    return envelope({
+      items: MOCK_BLOCKED_PARTNERS,
+      total: MOCK_BLOCKED_PARTNERS.length,
+      page: 0,
+      size: 20,
+    })
+  }
+
+  // GET /admin/aligo/address-book — AligoAddressBookPage
+  if (method === 'GET' && url.includes('/admin/aligo/address-book')) {
+    return envelope({
+      lastSyncAt: '2026-05-10T08:30:15+09:00',
+      totalContacts: 487,
+      newContacts: 12,
+      updatedContacts: 8,
+      removedContacts: 2,
+      status: 'SYNCED',
+    })
+  }
+  if (method === 'POST' && url.includes('/admin/aligo/address-book/sync')) {
+    return envelope({
+      jobId: 'aligo-sync-' + Date.now(),
+      status: 'IN_PROGRESS',
+      message: '알리고 주소록 동기화를 시작했습니다',
+    })
+  }
+
+  // GET /admin/sheet-sync — SheetSyncPage
+  if (method === 'GET' && url.includes('/admin/sheet-sync')) {
+    return envelope({
+      lastSyncAt: '2026-05-10T07:15:42+09:00',
+      sheets: [
+        { sheetName: '거래처마스터', rowCount: 487, status: 'SYNCED' },
+        { sheetName: '품목마스터', rowCount: 1245, status: 'SYNCED' },
+        { sheetName: '단가표', rowCount: 222, status: 'PENDING' },
+      ],
+    })
+  }
+
+  // GET /api/v1/slips/edit-requests — SlipEditRequestsPage
+  if (method === 'GET' && url.includes('/slips/edit-requests')) {
+    return envelope({
+      content: MOCK_EDIT_REQUESTS,
+      totalElements: MOCK_EDIT_REQUESTS.length,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
+    })
+  }
+  if (method === 'POST' && url.match(/\/slips\/edit-requests\/[^/]+\/(approve|reject|accept)$/)) {
+    return envelope({ message: '처리되었습니다' })
+  }
+
+  // ==========================================================================
+  // 회계 — tax-invoices / closing / partner-ledger / statement-batch / hometax-export
+  // ==========================================================================
+
+  // GET /accounting/tax-invoices/{id} (단건 상세)
+  const taxInvoiceDetailMatch = url.match(/\/accounting\/tax-invoices\/([^/?]+)$/)
+  if (method === 'GET' && taxInvoiceDetailMatch && !url.includes('/print')) {
+    const id = taxInvoiceDetailMatch[1]!
+    const found = MOCK_TAX_INVOICES.find((t) => t.id === id) ?? MOCK_TAX_INVOICES[0]!
+    return envelope(found)
+  }
+
+  // GET /accounting/tax-invoices (페이지)
+  if (method === 'GET' && url.includes('/accounting/tax-invoices')) {
+    return envelope({
+      content: MOCK_TAX_INVOICES,
+      totalElements: MOCK_TAX_INVOICES.length,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
+    })
+  }
+
+  // POST /accounting/tax-invoices — 신규
+  if (method === 'POST' && url.endsWith('/accounting/tax-invoices')) {
+    return envelope({
+      id: 'ti-new-' + Date.now(),
+      taxInvoiceNo: 'TI-2026/05-099',
+      status: 'DRAFT',
+    })
+  }
+
+  // GET /accounting/closing — MonthEndClosingPage
+  if (method === 'GET' && url.includes('/accounting/closing')) {
+    return envelope({
+      period: '202605',
+      status: 'OPEN',
+      lockedAt: null,
+      lockedByName: null,
+      checks: [
+        { name: '분개 균형 검증', status: 'PASSED', detail: '5월 분개 87건 모두 차변/대변 일치' },
+        { name: 'DRAFT 분개 확정', status: 'WARNING', detail: 'DRAFT 분개 1건 남음 (jv-004)' },
+        { name: '재고 이동 확정', status: 'PASSED', detail: 'CONFIRMED/CANCELED 외 0건' },
+        { name: '세금계산서 매핑', status: 'PASSED', detail: '발행 세금계산서 12건 모두 분개 연결' },
+      ],
+    })
+  }
+  if (method === 'POST' && url.match(/\/accounting\/closing\/(close|reopen)$/)) {
+    return envelope({ message: '처리되었습니다', period: '202605' })
+  }
+
+  // GET /accounting/sales/aggregate — PartnerLedgerPage
+  if (method === 'GET' && url.includes('/accounting/sales/aggregate')) {
+    return envelope({
+      from: '2026-04-01',
+      to: '2026-04-30',
+      partners: [
+        { partnerCode: '1234567890', partnerName: '엘에이시스템에어', totalSales: 12450000, totalReceived: 8200000, balance: 4250000 },
+        { partnerCode: '2345678901', partnerName: '강남에어솔루션', totalSales: 8700000, totalReceived: 8700000, balance: 0 },
+        { partnerCode: '3456789012', partnerName: '한빛쾌적', totalSales: 5500000, totalReceived: 0, balance: 5500000 },
+      ],
+    })
+  }
+
+  // GET /accounting/journals/ledger-data — PartnerLedger detail
+  if (method === 'GET' && url.includes('/accounting/journals/ledger-data')) {
+    return envelope({
+      partnerCode: '1234567890',
+      partnerName: '엘에이시스템에어',
+      from: '2026-04-01',
+      to: '2026-04-30',
+      openingBalance: 0,
+      closingBalance: 4250000,
+      lines: [
+        { date: '2026-04-05', type: 'SALE', description: '4월 1주 출고', debit: 3700000, credit: 0, balance: 3700000 },
+        { date: '2026-04-12', type: 'PAYMENT', description: '계좌이체 입금', debit: 0, credit: 2000000, balance: 1700000 },
+        { date: '2026-04-19', type: 'SALE', description: '4월 3주 출고', debit: 4750000, credit: 0, balance: 6450000 },
+        { date: '2026-04-26', type: 'PAYMENT', description: '계좌이체 입금', debit: 0, credit: 2200000, balance: 4250000 },
+      ],
+    })
+  }
+
+  // GET /accounting/statements/batch-data — StatementBatchPage
+  if (method === 'GET' && url.includes('/accounting/statements/batch-data')) {
+    return envelope({
+      from: '2026-04-01',
+      to: '2026-04-30',
+      partnerCount: 3,
+      partners: [
+        { partnerCode: '1234567890', partnerName: '엘에이시스템에어', slipCount: 8, totalAmount: 12450000 },
+        { partnerCode: '2345678901', partnerName: '강남에어솔루션', slipCount: 5, totalAmount: 8700000 },
+        { partnerCode: '3456789012', partnerName: '한빛쾌적', slipCount: 3, totalAmount: 5500000 },
+      ],
+    })
+  }
+
+  // GET /accounting/tax-invoice/hometax-export — HometaxExportPage
+  if (method === 'GET' && url.includes('/accounting/tax-invoice/hometax-export')) {
+    return envelope({
+      period: '202604',
+      totalCount: 12,
+      eligibleCount: 11,
+      ineligibleCount: 1,
+      previewRows: [
+        { no: 1, partnerCode: '1234567890', partnerName: '엘에이시스템에어', amount: 4250000, status: 'READY' },
+        { no: 2, partnerCode: '2345678901', partnerName: '강남에어솔루션', amount: 8700000, status: 'READY' },
+        { no: 3, partnerCode: '3456789012', partnerName: '한빛쾌적', amount: 5500000, status: 'INELIGIBLE', reason: '사업자번호 미등록' },
+      ],
+    })
+  }
+
+  // GET /warehouse/audit (재고 실사 목록)
+  if (method === 'GET' && url.includes('/warehouse/audit') && !url.includes('/dps-compare')) {
+    const auditMatch = url.match(/\/warehouse\/audit\/([^/?]+)$/)
+    if (auditMatch && auditMatch[1] !== 'new') {
+      const id = auditMatch[1]!
+      const found = MOCK_INVENTORY_AUDITS.find((a) => a.id === id) ?? MOCK_INVENTORY_AUDITS[0]!
+      return envelope(found)
+    }
+    return envelope({
+      content: MOCK_INVENTORY_AUDITS,
+      totalElements: MOCK_INVENTORY_AUDITS.length,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
+    })
+  }
+
+  // GET /warehouse/dps-compare — DpsComparePage
+  if (method === 'GET' && url.includes('/warehouse/dps-compare')) {
+    return envelope({
+      compareDate: '2026-05-10',
+      totalRows: 24,
+      matchedRows: 22,
+      mismatchedRows: 2,
+      rows: [
+        { dpsCode: 'AJ040RXH4BC1', expectedQty: 12, actualQty: 12, status: 'MATCH' },
+        { dpsCode: 'AJ052RXH5BC1', expectedQty: 5, actualQty: 4, status: 'MISMATCH', reason: '실측 차이' },
+        { dpsCode: 'AJ036NCH3CH', expectedQty: 8, actualQty: 8, status: 'MATCH' },
+      ],
+    })
+  }
+
+  // ==========================================================================
+  // arologis — manual / pre-classify / unassigned / dispatch-sms / dispatch-reconcile
+  // ==========================================================================
+
+  // GET /arologis/dispatches — manual / unassigned 공통
+  if (method === 'GET' && url.includes('/arologis/dispatches')) {
+    const dispatchDetailMatch = url.match(/\/arologis\/dispatches\/([^/?]+)$/)
+    if (dispatchDetailMatch) {
+      const id = dispatchDetailMatch[1]!
+      const found = MOCK_DISPATCHES.find((d) => d.id === id) ?? MOCK_DISPATCHES[0]!
+      return envelope(found)
+    }
+    return envelope({
+      content: MOCK_DISPATCHES,
+      totalElements: MOCK_DISPATCHES.length,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
+    })
+  }
+
+  // GET /arologis/unassigned — UnassignedPage
+  if (method === 'GET' && url.includes('/arologis/unassigned')) {
+    return envelope({
+      date: '2026-05-10',
+      totalSlips: 8,
+      unassignedSlips: MOCK_SLIPS.slice(0, 3).map((s) => ({
+        slipId: s.id,
+        slipNo: s.slipNo,
+        partnerName: s.partnerName,
+        shippingAddress: s.shippingAddress,
+        memo: s.memo,
+      })),
+    })
+  }
+
+  // POST /arologis/manual/dispatch — 수동 배차 confirm
+  if (method === 'POST' && url.includes('/arologis/manual')) {
+    return envelope({
+      dispatchId: 'disp-new-' + Date.now(),
+      message: '수동 배차가 등록되었습니다',
+    })
+  }
+
+  // GET /arologis/pre-classify — PreClassifyPage (REGION + 광역 prefix 2-탭)
+  if (method === 'GET' && url.includes('/arologis/pre-classify')) {
+    return envelope({
+      date: '2026-05-10',
+      regions: [
+        { groupName: '서울권', slipCount: 12, slips: ['slip-001', 'slip-002'] },
+        { groupName: '경기권', slipCount: 8, slips: ['slip-003'] },
+        { groupName: '부산권', slipCount: 4, slips: ['slip-004'] },
+        { groupName: '미분류', slipCount: 2, slips: ['slip-005'] },
+      ],
+      sigungus: [
+        { prefix: '서울', slipCount: 12 },
+        { prefix: '경기', slipCount: 8 },
+        { prefix: '인천', slipCount: 3 },
+        { prefix: '부산', slipCount: 4 },
+      ],
+    })
+  }
+
+  // GET /arologis/dispatch-sms/preview — DispatchSmsPage preview
+  if (method === 'GET' && url.includes('/arologis/dispatch-sms/preview')) {
+    return envelope({
+      date: '2026-05-10',
+      previews: [
+        { partnerName: '주식회사 윌리-정현수', phone: '010-1234-5678', message: '[삼한] 5/10 오전 배송 예정 (1톤 12가3456 홍지수 기사)', blocked: false },
+        { partnerName: '○○종합건설', phone: '010-9876-5432', message: '[삼한] 5/10 오전 배송 예정 (1톤 23나7890 김기철 기사)', blocked: false },
+        { partnerName: '한일냉동기술', phone: '010-2222-3333', message: '[발송 차단됨]', blocked: true, blockReason: 'CUSTOMER_REQUEST' },
+      ],
+      totalCount: 3,
+      sendableCount: 2,
+      blockedCount: 1,
+    })
+  }
+  if (method === 'POST' && url.includes('/arologis/dispatch-sms/send')) {
+    return envelope({ sentCount: 2, failedCount: 0, blockedCount: 1, message: 'SMS 발송 완료' })
+  }
+
+  // POST /arologis/dispatch/reconcile — 운송사 비교 (multipart)
+  if (method === 'POST' && url.includes('/arologis/dispatch/reconcile')) {
+    return envelope({
+      uploadedRows: 18,
+      matchedRows: 16,
+      mismatchedRows: 2,
+      mismatches: [
+        { slipNo: '2026/05/04-1', samhanDriver: '홍지수', vendorDriver: '김민수', reason: '기사 불일치' },
+        { slipNo: '2026/05/04-3', samhanDriver: '박서연', vendorDriver: '(미할당)', reason: '운송사 미배차' },
+      ],
+    })
+  }
+
+  // ==========================================================================
+  // estimate — list / detail / form (P2-1 견적서)
+  // ==========================================================================
+
+  // GET /api/v1/estimates/{id} (단건 상세)
+  const estimateDetailMatch = url.match(/\/api\/v1\/estimates\/([^/?]+)$/)
+  if (method === 'GET' && estimateDetailMatch && !url.includes('/print')) {
+    const id = estimateDetailMatch[1]!
+    const found = MOCK_ESTIMATES.find((e) => e.id === id) ?? MOCK_ESTIMATES[0]!
+    return envelope(found)
+  }
+
+  // GET /api/v1/estimates (목록) — 기존 빈 list 덮어쓰기 위해 위에서 처리됨, 여기서 catch
+  // (위쪽에 빈 list 매칭이 있으므로 매칭되지 않음 — endpoint 만 정의해두고 미사용)
+
+  // POST /api/v1/estimates — 신규 견적
+  if (method === 'POST' && url.endsWith('/api/v1/estimates')) {
+    return envelope({
+      id: 'est-new-' + Date.now(),
+      estimateNumber: 'EST-2026/05-099',
+      status: 'DRAFT',
+    })
+  }
+
+  // ==========================================================================
+  // partner-orders detail (기존 빈 list 옆에 detail mock)
+  // ==========================================================================
+  const partnerOrderDetailMatch = url.match(/\/api\/v1\/partner-orders\/([^/?]+)$/)
+  if (method === 'GET' && partnerOrderDetailMatch) {
+    return envelope({
+      id: partnerOrderDetailMatch[1],
+      orderNo: 'PO-2026/05-001',
+      partnerCode: '1234567890',
+      partnerName: '엘에이시스템에어',
+      status: 'PENDING',
+      orderDate: '2026-05-04',
+      totalAmount: 3700000,
+      lines: SAMPLE_LINES,
+      createdByName: '오병승',
+      requestNote: '5/5 오전 배송 부탁드립니다',
+    })
+  }
+
+  // ==========================================================================
+  // audit-logs 추가 (slip 외 — journal / tax-invoice / dispatch / user)
+  // ==========================================================================
+  const otherAuditLogsMatch = url.match(/\/(journals|tax-invoices|dispatches|users)\/([^/]+)\/audit-logs/)
+  if (method === 'GET' && otherAuditLogsMatch) {
+    const domain = otherAuditLogsMatch[1]!
+    const sample = MOCK_AUDIT_LOGS_BY_DOMAIN[domain] ?? []
+    return envelope(sample)
+  }
+
   // POST /api/v1/admin/partner-order/vendor/confirm — 확정 → orderNo 반환
   if (method === 'POST' && url.includes('/admin/partner-order/vendor/confirm')) {
     const today = new Date()
@@ -1859,5 +2331,514 @@ const MOCK_TRIAL_BALANCE = {
       periodCredit: '0',
       closingBalance: '2000000',
     },
+  ],
+}
+
+// ============================================================================
+// Phase 12 step-6 manual-rewrite Phase A — 50+ page mount mock fixture
+// ============================================================================
+
+/**
+ * 사용자 admin (admin/UsersPage) — 8건 + 7 ROLE 분포 + 부서 5건.
+ * UUID 비공개 가드 — 사용자 노출 식별자는 loginId / fullName.
+ */
+const MOCK_ADMIN_USERS = [
+  {
+    id: 'user-001',
+    loginId: 'kimmiseon',
+    fullName: '김미선',
+    position: '대표이사',
+    role: 'MASTER' as const,
+    departmentId: 'dept-005',
+    departmentName: '관리팀',
+    teamLead: true,
+    hireDate: '2020-01-01',
+    terminationDate: null,
+    email: 'kimmiseon@samhan.com',
+    phone: '010-1111-2222',
+  },
+  {
+    id: 'user-002',
+    loginId: 'leejunghoon',
+    fullName: '이정훈',
+    position: '회계팀장',
+    role: 'ACCOUNTANT' as const,
+    departmentId: 'dept-003',
+    departmentName: '회계팀',
+    teamLead: true,
+    hireDate: '2021-03-15',
+    terminationDate: null,
+    email: 'lee@samhan.com',
+    phone: '010-3333-4444',
+  },
+  {
+    id: 'user-003',
+    loginId: 'salesuser',
+    fullName: '오병승',
+    position: '영업1팀장',
+    role: 'SALES' as const,
+    departmentId: 'dept-001',
+    departmentName: '영업1팀',
+    teamLead: true,
+    hireDate: '2022-06-20',
+    terminationDate: null,
+    email: 'oh@samhan.com',
+    phone: '010-5555-6666',
+  },
+  {
+    id: 'user-004',
+    loginId: 'parkseoyeon',
+    fullName: '박서연',
+    position: '영업2팀',
+    role: 'SALES' as const,
+    departmentId: 'dept-002',
+    departmentName: '영업2팀',
+    teamLead: false,
+    hireDate: '2023-04-10',
+    terminationDate: null,
+    email: 'park@samhan.com',
+    phone: '010-7777-8888',
+  },
+  {
+    id: 'user-005',
+    loginId: 'hongjisu',
+    fullName: '홍지수',
+    position: '창고팀장',
+    role: 'WAREHOUSE' as const,
+    departmentId: 'dept-004',
+    departmentName: '창고팀',
+    teamLead: true,
+    hireDate: '2021-08-01',
+    terminationDate: null,
+    email: 'hong@samhan.com',
+    phone: '010-1234-5678',
+  },
+  {
+    id: 'user-006',
+    loginId: 'kimgicheol',
+    fullName: '김기철',
+    position: '재고원',
+    role: 'INVENTORY' as const,
+    departmentId: 'dept-004',
+    departmentName: '창고팀',
+    teamLead: false,
+    hireDate: '2024-01-15',
+    terminationDate: null,
+    email: 'kim@samhan.com',
+    phone: '010-9876-5432',
+  },
+  {
+    id: 'user-007',
+    loginId: 'devuser',
+    fullName: '강현구',
+    position: '시스템 개발',
+    role: 'DEVELOPER' as const,
+    departmentId: 'dept-005',
+    departmentName: '관리팀',
+    teamLead: false,
+    hireDate: '2023-02-01',
+    terminationDate: null,
+    email: 'kang@samhan.com',
+    phone: '010-2222-3333',
+  },
+  {
+    id: 'user-008',
+    loginId: 'manageruser',
+    fullName: '정매니저',
+    position: '운영매니저',
+    role: 'MANAGER' as const,
+    departmentId: 'dept-005',
+    departmentName: '관리팀',
+    teamLead: false,
+    hireDate: '2022-11-05',
+    terminationDate: '2026-04-30',
+    email: 'jung@samhan.com',
+    phone: '010-4444-5555',
+  },
+]
+
+/**
+ * 거래처 admin (admin/PartnersPage) — 6건 + ACTIVE/SUSPENDED/TERMINATED 분포.
+ */
+const MOCK_ADMIN_PARTNERS = [
+  {
+    partnerCode: '1234567890',
+    partnerName: '엘에이시스템에어',
+    representative: '이엘에이',
+    businessNumber: '123-45-67890',
+    address: '서울특별시 강남구 테헤란로 152',
+    phone: '02-1234-5678',
+    status: 'ACTIVE' as const,
+    creditLimit: '50000000',
+    currentBalance: '4250000',
+    createdAt: '2024-03-15T09:00:00+09:00',
+  },
+  {
+    partnerCode: '2345678901',
+    partnerName: '강남에어솔루션',
+    representative: '강솔루',
+    businessNumber: '234-56-78901',
+    address: '서울특별시 서초구 서초대로 200',
+    phone: '02-2345-6789',
+    status: 'ACTIVE' as const,
+    creditLimit: '30000000',
+    currentBalance: '0',
+    createdAt: '2024-05-20T10:00:00+09:00',
+  },
+  {
+    partnerCode: '3456789012',
+    partnerName: '한빛쾌적',
+    representative: '한빛이',
+    businessNumber: '345-67-89012',
+    address: '경기도 성남시 분당구 판교로 235',
+    phone: '031-3456-7890',
+    status: 'ACTIVE' as const,
+    creditLimit: '20000000',
+    currentBalance: '5500000',
+    createdAt: '2024-07-01T11:00:00+09:00',
+  },
+  {
+    partnerCode: '4567890123',
+    partnerName: '미래시스템',
+    representative: '미래길',
+    businessNumber: '456-78-90123',
+    address: '인천광역시 연수구 송도과학로 32',
+    phone: '032-4567-8901',
+    status: 'SUSPENDED' as const,
+    creditLimit: '15000000',
+    currentBalance: '12000000',
+    createdAt: '2023-11-10T14:00:00+09:00',
+  },
+  {
+    partnerCode: '5678901234',
+    partnerName: '대박종합건설',
+    representative: '김대박',
+    businessNumber: '567-89-01234',
+    address: '서울특별시 송파구 올림픽로 300',
+    phone: '02-5678-9012',
+    status: 'ACTIVE' as const,
+    creditLimit: '100000000',
+    currentBalance: '23500000',
+    createdAt: '2022-08-25T16:00:00+09:00',
+  },
+  {
+    partnerCode: '6789012345',
+    partnerName: '경기냉난방',
+    representative: '경기냉',
+    businessNumber: '678-90-12345',
+    address: '경기도 수원시 영통구 광교로 145',
+    phone: '031-6789-0123',
+    status: 'TERMINATED' as const,
+    creditLimit: '0',
+    currentBalance: '0',
+    createdAt: '2021-04-12T08:30:00+09:00',
+  },
+]
+
+/**
+ * 가배차 지역 분류 (admin/RegionsPage) — 6건.
+ */
+const MOCK_REGIONS = [
+  { id: 'reg-001', groupName: '서울권', keywords: '강남구,서초구,송파구,강동구,마포구,용산구', sortOrder: 1 },
+  { id: 'reg-002', groupName: '경기남부', keywords: '성남시,수원시,용인시,화성시,평택시', sortOrder: 2 },
+  { id: 'reg-003', groupName: '경기북부', keywords: '고양시,파주시,의정부시,남양주시', sortOrder: 3 },
+  { id: 'reg-004', groupName: '인천권', keywords: '연수구,남동구,부평구,서구', sortOrder: 4 },
+  { id: 'reg-005', groupName: '부산권', keywords: '해운대구,수영구,부산진구,동래구', sortOrder: 5 },
+  { id: 'reg-006', groupName: '대구권', keywords: '수성구,중구,달서구', sortOrder: 6 },
+]
+
+/**
+ * 단톡방 매핑 (admin/ChatRoomsPage) — 4건.
+ */
+const MOCK_CHAT_ROOMS = [
+  { id: 'cr-001', roomName: '서울 1톤', regionGroupName: '서울권', vehicleType: '1톤', driverCount: 4, active: true },
+  { id: 'cr-002', roomName: '서울 2.5톤', regionGroupName: '서울권', vehicleType: '2.5톤', driverCount: 2, active: true },
+  { id: 'cr-003', roomName: '경기 1톤', regionGroupName: '경기남부', vehicleType: '1톤', driverCount: 3, active: true },
+  { id: 'cr-004', roomName: '부산 1톤', regionGroupName: '부산권', vehicleType: '1톤', driverCount: 2, active: false },
+]
+
+/**
+ * 발송금지 거래처 (admin/BlockedPartnersPage) — 2건.
+ */
+const MOCK_BLOCKED_PARTNERS = [
+  {
+    id: 'block-001',
+    partnerCode: '6789012345',
+    partnerName: '경기냉난방',
+    blockReason: 'CUSTOMER_REQUEST' as const,
+    blockReasonDetail: '거래처 요청 — SMS 수신 거부',
+    blockedByName: '김미선',
+    blockedAt: '2026-04-15T10:00:00+09:00',
+  },
+  {
+    id: 'block-002',
+    partnerCode: '4567890123',
+    partnerName: '미래시스템',
+    blockReason: 'PAYMENT_OVERDUE' as const,
+    blockReasonDetail: '60일 미수 — 신용 한도 초과',
+    blockedByName: '이정훈',
+    blockedAt: '2026-05-01T09:30:00+09:00',
+  },
+]
+
+/**
+ * 세금계산서 (`/accounting/tax-invoices`) — 3건 + DRAFT/ISSUED/CANCELED 분포.
+ */
+const MOCK_TAX_INVOICES = [
+  {
+    id: 'ti-001',
+    taxInvoiceNo: 'TI-2026/05-001',
+    issueDate: '2026-05-04',
+    status: 'ISSUED' as const,
+    supplierName: '삼한산업',
+    supplierBusinessNumber: '111-22-33333',
+    buyerCode: '1234567890',
+    buyerName: '엘에이시스템에어',
+    buyerBusinessNumber: '123-45-67890',
+    supplyAmount: '3700000',
+    taxAmount: '370000',
+    totalAmount: '4070000',
+    description: '5월 1주차 시스템에어컨 출고',
+    issuedByName: '이정훈',
+  },
+  {
+    id: 'ti-002',
+    taxInvoiceNo: 'TI-2026/05-002',
+    issueDate: '2026-05-08',
+    status: 'DRAFT' as const,
+    supplierName: '삼한산업',
+    supplierBusinessNumber: '111-22-33333',
+    buyerCode: '2345678901',
+    buyerName: '강남에어솔루션',
+    buyerBusinessNumber: '234-56-78901',
+    supplyAmount: '8000000',
+    taxAmount: '800000',
+    totalAmount: '8800000',
+    description: '5월 2주차 (작성중)',
+    issuedByName: '이정훈',
+  },
+  {
+    id: 'ti-003',
+    taxInvoiceNo: 'TI-2026/04-099',
+    issueDate: '2026-04-28',
+    status: 'CANCELED' as const,
+    supplierName: '삼한산업',
+    supplierBusinessNumber: '111-22-33333',
+    buyerCode: '3456789012',
+    buyerName: '한빛쾌적',
+    buyerBusinessNumber: '345-67-89012',
+    supplyAmount: '5000000',
+    taxAmount: '500000',
+    totalAmount: '5500000',
+    description: '거래처 요청 취소 (오등록)',
+    issuedByName: '이정훈',
+  },
+]
+
+/**
+ * 재고 실사 (`/warehouse/audit`) — 3건 + DRAFT/SUBMITTED/POSTED 분포.
+ */
+const MOCK_INVENTORY_AUDITS = [
+  {
+    id: 'ia-001',
+    auditNo: 'IA-2026/05-001',
+    auditDate: '2026-05-08',
+    warehouseId: '11111111-1111-1111-1111-000000000001',
+    warehouseName: '본사창고',
+    status: 'DRAFT' as const,
+    auditorName: '홍지수',
+    note: '5월 정기 실사 (1차)',
+    items: [
+      { productId: 'p-aj040', modelName: 'AJ040RXH4BC1', productName: '시스템에어컨 4Way 4HP', expectedQty: 12, actualQty: 12, adjustQty: 0 },
+      { productId: 'p-aj052', modelName: 'AJ052RXH5BC1', productName: '시스템에어컨 4Way 5HP', expectedQty: 5, actualQty: 4, adjustQty: -1 },
+      { productId: 'p-mwr10', modelName: 'MWR-WE10N', productName: '유선 리모컨', expectedQty: 45, actualQty: 47, adjustQty: 2 },
+    ],
+  },
+  {
+    id: 'ia-002',
+    auditNo: 'IA-2026/05-002',
+    auditDate: '2026-05-09',
+    warehouseId: '11111111-1111-1111-1111-000000000002',
+    warehouseName: '1호차 차량재고',
+    status: 'SUBMITTED' as const,
+    auditorName: '김기철',
+    note: '차량 재고 실사 — 결재 대기',
+    items: [
+      { productId: 'p-aj040', modelName: 'AJ040RXH4BC1', productName: '시스템에어컨 4Way 4HP', expectedQty: 3, actualQty: 3, adjustQty: 0 },
+      { productId: 'p-mwr10', modelName: 'MWR-WE10N', productName: '유선 리모컨', expectedQty: 10, actualQty: 9, adjustQty: -1 },
+    ],
+  },
+  {
+    id: 'ia-003',
+    auditNo: 'IA-2026/04-099',
+    auditDate: '2026-04-30',
+    warehouseId: '11111111-1111-1111-1111-000000000001',
+    warehouseName: '본사창고',
+    status: 'POSTED' as const,
+    auditorName: '홍지수',
+    note: '4월 마감 실사 — 분개 전기 완료',
+    items: [
+      { productId: 'p-aj036', modelName: 'AJ036NCH3CH', productName: '천장형 1Way 3HP', expectedQty: 8, actualQty: 8, adjustQty: 0 },
+    ],
+  },
+]
+
+/**
+ * arologis 배차 (`/arologis/dispatches`) — 3건.
+ */
+const MOCK_DISPATCHES = [
+  {
+    id: 'disp-001',
+    dispatchNo: 'D-2026/05/10-001',
+    dispatchDate: '2026-05-10',
+    vehicleNo: '12가3456',
+    vehicleType: '1톤',
+    driverName: '홍지수',
+    driverPhone: '010-1234-5678',
+    sourceWarehouse: '본사창고',
+    destination: '서울권 + 경기남부',
+    status: 'DISPATCHED' as const,
+    slipCount: 5,
+    slips: ['slip-001', 'slip-002', 'slip-006'],
+    departureAt: '2026-05-10T08:30:00+09:00',
+  },
+  {
+    id: 'disp-002',
+    dispatchNo: 'D-2026/05/10-002',
+    dispatchDate: '2026-05-10',
+    vehicleNo: '23나7890',
+    vehicleType: '2.5톤',
+    driverName: '김기철',
+    driverPhone: '010-9876-5432',
+    sourceWarehouse: '본사창고',
+    destination: '인천권',
+    status: 'IN_TRANSIT' as const,
+    slipCount: 3,
+    slips: ['slip-003', 'slip-007'],
+    departureAt: '2026-05-10T09:15:00+09:00',
+  },
+  {
+    id: 'disp-003',
+    dispatchNo: 'D-2026/05/09-005',
+    dispatchDate: '2026-05-09',
+    vehicleNo: '34다1234',
+    vehicleType: '1톤',
+    driverName: '박서연',
+    driverPhone: '010-7777-8888',
+    sourceWarehouse: '본사창고',
+    destination: '부산권',
+    status: 'COMPLETED' as const,
+    slipCount: 4,
+    slips: ['slip-004'],
+    departureAt: '2026-05-09T07:00:00+09:00',
+  },
+]
+
+/**
+ * 견적 (`/sales/estimates`) — 3건 + DRAFT/SENT/ACCEPTED 분포.
+ */
+const MOCK_ESTIMATES = [
+  {
+    id: 'est-001',
+    estimateNumber: 'EST-2026/05-001',
+    estimateDate: '2026-05-04',
+    expirationDate: '2026-05-31',
+    status: 'DRAFT' as const,
+    partnerCode: '1234567890',
+    partnerName: '엘에이시스템에어',
+    totalAmount: '3700000',
+    createdByName: '오병승',
+    note: '시스템에어컨 4Way 4HP 2EA 견적',
+    lines: SAMPLE_LINES,
+  },
+  {
+    id: 'est-002',
+    estimateNumber: 'EST-2026/05-002',
+    estimateDate: '2026-05-06',
+    expirationDate: '2026-06-06',
+    status: 'SENT' as const,
+    partnerCode: '2345678901',
+    partnerName: '강남에어솔루션',
+    totalAmount: '8000000',
+    createdByName: '오병승',
+    note: '신축건물 시스템에어컨 견적 — 5/6 발송',
+    lines: SAMPLE_LINES,
+  },
+  {
+    id: 'est-003',
+    estimateNumber: 'EST-2026/04-099',
+    estimateDate: '2026-04-28',
+    expirationDate: '2026-05-28',
+    status: 'ACCEPTED' as const,
+    partnerCode: '5678901234',
+    partnerName: '대박종합건설',
+    totalAmount: '23500000',
+    createdByName: '박서연',
+    note: '대박빌딩 신축 — 채택 → 출고 진행',
+    lines: SAMPLE_LINES,
+  },
+]
+
+/**
+ * 전표 수정 요청 (`/admin/slip-edit-requests`) — 2건 PENDING.
+ */
+const MOCK_EDIT_REQUESTS = [
+  {
+    id: 'er-001',
+    slipId: 'slip-001',
+    slipNo: '2026/05/04-1',
+    fieldName: 'memo',
+    currentValue: '9시까지배송요망',
+    requestedValue: '오전 10시까지 변경 요청',
+    requesterName: '오병승',
+    requesterRole: 'SALES',
+    status: 'PENDING' as const,
+    createdAt: '2026-05-10T09:30:00+09:00',
+    reason: '거래처 요청 — 시간 조정',
+  },
+  {
+    id: 'er-002',
+    slipId: 'slip-002',
+    slipNo: '2026/05/04-2',
+    fieldName: 'driverName',
+    currentValue: '홍지수',
+    requestedValue: '김기철',
+    requesterName: '오병승',
+    requesterRole: 'SALES',
+    status: 'PENDING' as const,
+    createdAt: '2026-05-10T10:15:00+09:00',
+    reason: '기사 변경 — 차량 정비로 교체',
+  },
+]
+
+/**
+ * 도메인별 audit-log (slip 외) — journal / tax-invoice / dispatch / user 각 3 revision.
+ */
+const MOCK_AUDIT_LOGS_BY_DOMAIN: Record<string, Array<{
+  revisionNo: number
+  field: string
+  beforeValue: string | null
+  afterValue: string | null
+  actorId: string
+  actorName: string
+  changedAt: string
+}>> = {
+  journals: [
+    { revisionNo: 2, field: 'description', beforeValue: '5월 광고비', afterValue: '5월 네이버 광고 (검토중)', actorId: 'user-002', actorName: '이정훈', changedAt: '2026-05-04T14:32:00+09:00' },
+    { revisionNo: 1, field: 'totalDebit', beforeValue: '450000', afterValue: '500000', actorId: 'user-002', actorName: '이정훈', changedAt: '2026-05-04T14:15:00+09:00' },
+  ],
+  'tax-invoices': [
+    { revisionNo: 3, field: 'description', beforeValue: '5월 1주', afterValue: '5월 1주차 시스템에어컨 출고', actorId: 'user-002', actorName: '이정훈', changedAt: '2026-05-04T16:42:00+09:00' },
+    { revisionNo: 2, field: 'supplyAmount', beforeValue: '3500000', afterValue: '3700000', actorId: 'user-002', actorName: '이정훈', changedAt: '2026-05-04T16:30:00+09:00' },
+    { revisionNo: 1, field: 'buyerName', beforeValue: '엘에이', afterValue: '엘에이시스템에어', actorId: 'user-002', actorName: '이정훈', changedAt: '2026-05-04T16:15:00+09:00' },
+  ],
+  dispatches: [
+    { revisionNo: 2, field: 'driverPhone', beforeValue: '010-1234-5678', afterValue: '010-1234-5679', actorId: 'user-005', actorName: '홍지수', changedAt: '2026-05-10T08:35:00+09:00' },
+    { revisionNo: 1, field: 'driverName', beforeValue: '박서연', afterValue: '홍지수', actorId: 'user-005', actorName: '홍지수', changedAt: '2026-05-10T08:30:00+09:00' },
+  ],
+  users: [
+    { revisionNo: 3, field: 'phone', beforeValue: '010-7777-7777', afterValue: '010-7777-8888', actorId: 'user-001', actorName: '김미선', changedAt: '2026-04-21T10:23:00+09:00' },
+    { revisionNo: 2, field: 'departmentName', beforeValue: '영업1팀', afterValue: '영업2팀', actorId: 'user-001', actorName: '김미선', changedAt: '2026-04-15T09:00:00+09:00' },
+    { revisionNo: 1, field: 'role', beforeValue: 'SALES', afterValue: 'SALES', actorId: 'user-001', actorName: '김미선', changedAt: '2026-01-05T09:00:00+09:00' },
   ],
 }

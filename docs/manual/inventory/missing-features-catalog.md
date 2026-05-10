@@ -1,7 +1,7 @@
 # Samhan Public 누락 기능 종합 Catalog
 
-> **branch** — `feature/integrated-phase-12-step-5-manual-augmentation` (Stage 4 — Phase 12 보강 / Stage 3 = `...-step-7c-operator-manual-final`)
-> **작성일** — 2026-05-10 (Stage 1 초안 → Stage 2 갱신 → Stage 3 갱신 → **Stage 4 갱신 — Phase 12 실시간 협업 ✅ 완성 row 추가**)
+> **branch** — `feature/integrated-phase-12-step-6-manual-rewrite` (Phase 12 step-6 — 매뉴얼 전체 재작성 / Stage 4 = `...-step-5-manual-augmentation`)
+> **작성일** — 2026-05-10 (Stage 1 초안 → Stage 2 갱신 → Stage 3 갱신 → Stage 4 Phase 12 실시간 협업 ✅ → **Phase 12 step-6 매뉴얼 전체 재작성 ✅ row 추가**)
 > **목적** — 개발책임자가 본 docs 만으로 P0 누락 기능을 즉시 파악 가능하도록 하는 종합 카탈로그.
 > **출처** — 이카운트 ERP 16 캡처(`docs/migration/ecount-reference/`) + 메모리 가드(`feedback_*.md` / `project_*.md`) + 한국 일반기업회계기준 / 한국 ERP 표준 + 다른 agent 의 `backend-feature-inventory.md` (17 service / 145 endpoint / 누락 42건) + `frontend-feature-inventory.md` (3 client / 27 desktop 라우트 / 누락 8건) + 본 task 검증 + Stage 2 `stage2-scenarios.md` (74 검증 항목) + **Stage 3 `stage3-final-scenarios.md` (120 검증 항목)** + **Stage 4 Phase 12 시리즈 (PR-H1 → PR-H4c) 종결**.
 > **상태 표기** — ✅ 완료 / ⏳ 부분 (stub/skeleton/TODO) / ❌ 미구현 / ⚠️ 미흡 (구현은 됐으나 실 운영 부족)
@@ -529,6 +529,7 @@
 | 2026-05-10 | Designer (Phase 10 step-14, PR-G1) | **신규 P0-10 슬라이스 ✅ 완성** — e-Count schema 12 컬럼 (IO_TYPE / TIME_DATE / customer_tel·addr·rep / shipping_addr / inspection_addr / receiver_phone / payment_due / discount_info / collect_term / agree_term) + 이카운트 외부 API 호출 폐기 + `composeMemo` 리팩토링 + partner_code resolve V15→V16 보강 = 15 sub 모두 ✅. **부수 효과** — P0-4 거래명세서 인쇄가 12 컬럼 활용으로 양식 정합성 향상 (별도 PR 진입 시 작업량 감소). **누적: 171 sub 유지 (P0-10 신규 15 sub 모두 ✅ 완성 표기 — 미구현 카운트에 +0). 9 P0 → 9 P0 + 1 P0 완성 = 9 미완성 P0 + 1 완성 P0. 권고 PR: Phase 11 진입 전 14 PR 유지 (P0-10 본 PR 로 자체 처리).** |
 | 2026-05-10 | TM (Phase 12 step-1 ~ 4c, PR-H1 → PR-H4c) | **신규 P0-11 슬라이스 ✅ 완성 — Phase 12 실시간 협업** — SSE infra (PR-H1) + audit overlay (PR-H2) + 수정 요청 워크플로우 + 잠금 정책 4단계 (PR-H3) + shared-realtime module (PR-H4a) + BE 13 service 일괄 (PR-H4b) + FE 50+ desktop page + mobile-staff 일괄 (PR-H4c) = **총 ~25 sub 모두 ✅** (SSE 채널 5 + 잠금 단계 4 + audit overlay 5 + 수정 요청 5채널 + 복원 권한 1 + 다중 service 적용 13 + 다중 page 50+ 매트릭스). **부수 효과** — 매뉴얼 33 docs 중 audit 적용 8 docs 가 PR-H4c commit `0e3b247` 에서 inline section 추가 보완 완료 + 신규 카테고리 [`08-실시간-협업/`](../08-실시간-협업/) 10 docs 작성 (Stage 4 본 PR). **누적: 171 sub 유지 + P0-11 ✅ 완성 25 sub (미구현 카운트에 +0). 권고 PR: Phase 11 진입 전 14 PR 유지.** |
 | 2026-05-10 | Designer (Phase 12 step-5 — 본 PR) | **Stage 4 매뉴얼 보강** — Phase 12 시리즈 종결 후 신규 카테고리 [`08-실시간-협업/`](../08-실시간-협업/) 10 docs (00-개요 + 01-동기화 + 02-이력 + 03-카운트 + 04-복원 + 05-요청 + 06-잠금 + 07-창고 수락 + 08-모바일 + 09-적용 범위) 작성. 본문 33 → **43 docs**. README + STATUS + 본 catalog 갱신. PR-H1~H4c 작동 캡처 raw URL commit-pinned 활용 (`04e2b44` / `732e105` / `24b22f9` / `2db1d02` / `0e3b247`). 누락 카운트 영향 없음 (P0-11 ✅ 완성에 매뉴얼 row 결합). |
+| 2026-05-10 | Designer (Phase 12 step-6 — 본 PR ✅) | **매뉴얼 전체 재작성 ✅ 완성** — 9 카테고리 × **43 docs 본문 모두 7-section 패턴 일관 재작성** (1.구현 상태 / 2.대상 독자 / 3.학습 내용 / 4.본문 / 5.화면 미리보기 / 6.FAQ / 7.관련 매뉴얼). placeholder 안내 톤 → 실 사용자 가이드 톤 전환. **111 신규 PNG inline** (Phase B 산출 — `docs/manual/screenshots/<카테고리>/`, mock 모드 캡처로 한국어 라벨 100% / placeholder 47건 0건 교체 완료). README + STATUS + 본 catalog 갱신. **누락 카운트 영향 없음** (매뉴얼 재작성은 docs 인프라 보강). |
 
 ---
 
