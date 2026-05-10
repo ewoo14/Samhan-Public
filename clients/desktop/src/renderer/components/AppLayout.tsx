@@ -28,7 +28,7 @@
  * - 우상단 사용자 chip → dropdown 토글 (비밀번호 변경 link 추가)
  * - 외부 클릭 / Esc 키 dropdown 자동 닫기
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
@@ -55,6 +55,11 @@ import { canAccessHometaxExport } from '../api/hometaxExportApi'
 import { canAccessPartnerLedger } from '../api/partnerLedgerApi'
 // [PR-H3 FE-1] 전표 수정/삭제 요청 처리 대시보드 — WAREHOUSE / MANAGER / MASTER (BE @PreAuthorize 일치)
 import { SLIP_EDIT_REQUEST_REVIEWER_ROLES } from '../api/slipEditRequest'
+// [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE. 헤더 배지 + 창고 운영 메뉴.
+import {
+  canAccessSafetyStock,
+  fetchSafetyStockAlertCount,
+} from '../api/safetyStockApi'
 
 /**
  * [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES / MANAGER / MASTER.
@@ -72,6 +77,21 @@ export function AppLayout() {
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // [P1-3] 안전재고 알림 건수 — 헤더 배지 + 60초 polling
+  const [safetyStockCount, setSafetyStockCount] = useState(0)
+  const showSafetyStock = canAccessSafetyStock(auth?.role)
+  const refreshSafetyStockCount = useCallback(() => {
+    if (!showSafetyStock) return
+    fetchSafetyStockAlertCount()
+      .then((count) => setSafetyStockCount(count))
+      .catch(() => { /* 배지 조회 실패는 무시 */ })
+  }, [showSafetyStock])
+  useEffect(() => {
+    refreshSafetyStockCount()
+    const timer = setInterval(refreshSafetyStockCount, 60_000)
+    return () => clearInterval(timer)
+  }, [refreshSafetyStockCount])
 
   // 외부 클릭 시 dropdown 닫기
   useEffect(() => {
@@ -150,8 +170,10 @@ export function AppLayout() {
   const INBOUND_INSPECTION_ROLES = ['WAREHOUSE', 'MANAGER', 'MASTER'] as const
   const showInboundInspection = !!auth?.role
     && (INBOUND_INSPECTION_ROLES as readonly string[]).includes(auth.role)
-  // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 전표 요청 / 입고 검수 중 하나라도 보이면 그룹 노출
-  const showWarehouseOps = showAudit || showDpsCompare || showSlipEditRequests || showInboundInspection
+  // [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE 가시
+  const showSafetyStockAlerts = showSafetyStock
+  // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 전표 요청 / 입고 검수 / 안전재고 알림 중 하나라도 보이면 그룹 노출
+  const showWarehouseOps = showAudit || showDpsCompare || showSlipEditRequests || showInboundInspection || showSafetyStockAlerts
   // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
   // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
   // [PR-E1 FE-5] 전표 정리 entry — SALES / MANAGER / MASTER / ACCOUNTANT
@@ -502,6 +524,37 @@ export function AppLayout() {
                   전표 수정 요청
                 </NavLink>
               ) : null}
+              {/* [P1-3] 안전재고 알림 — MASTER/MANAGER/WAREHOUSE 가시. 배지로 건수 표시. */}
+              {showSafetyStockAlerts ? (
+                <NavLink
+                  to="/inventory/safety-stock-alerts"
+                  data-testid="sidebar-warehouse-safety-stock-alerts"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  안전재고 알림
+                  {safetyStockCount > 0 ? (
+                    <span
+                      data-testid="sidebar-safety-stock-badge"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        background: 'var(--color-danger-500)',
+                        color: 'var(--color-neutral-0)',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '0 5px',
+                        lineHeight: 1,
+                      }}
+                    >
+                      {safetyStockCount}
+                    </span>
+                  ) : null}
+                </NavLink>
+              ) : null}
             </>
           ) : null}
 
@@ -600,6 +653,69 @@ export function AppLayout() {
             {meta ? <span className="app-header-meta">[{meta}]</span> : null}
           </h2>
           <div className="app-header-actions">
+            {/* [P1-3] 안전재고 알림 헤더 count chip — 벨 아이콘 + position absolute 원형 오버레이.
+               Designer spec: count > 0 시만 노출. data-testid: header-safety-stock-count-chip. */}
+            {showSafetyStock && safetyStockCount > 0 ? (
+              <button
+                type="button"
+                data-testid="header-safety-stock-count-chip"
+                onClick={() => navigate('/inventory/safety-stock-alerts')}
+                style={{
+                  position: 'relative',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  background: 'transparent',
+                  border: '1px solid var(--color-neutral-200)',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+                aria-label={`안전재고 알림 ${safetyStockCount}건`}
+                title={`안전재고 알림 ${safetyStockCount}건`}
+              >
+                {/* 벨 아이콘 (SVG) */}
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--color-neutral-600)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {/* 원형 카운트 오버레이 — position absolute */}
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -6,
+                    right: -6,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    background: 'var(--color-danger-500)',
+                    color: 'var(--color-neutral-0)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '0 4px',
+                    lineHeight: 1,
+                    border: '2px solid var(--color-neutral-0)',
+                  }}
+                >
+                  {safetyStockCount > 99 ? '99+' : safetyStockCount}
+                </span>
+              </button>
+            ) : null}
             <div
               ref={userMenuRef}
               style={{ position: 'relative', display: 'inline-block' }}
