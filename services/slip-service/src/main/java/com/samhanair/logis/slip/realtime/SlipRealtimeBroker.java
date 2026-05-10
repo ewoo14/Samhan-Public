@@ -5,12 +5,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -55,6 +57,33 @@ public class SlipRealtimeBroker {
     private final AtomicLong heartbeatCount = new AtomicLong();
 
     /**
+     * cross-node propagate hook — PR-H2 (Phase 12 Step 2) 신규.
+     *
+     * <p>{@link com.samhanair.logis.slip.realtime.RedisRealtimeBroker} 가 활성화되면 본 hook 으로
+     * 등록되어 publish 시 cross-node Redis pub 호출. 단일 노드 default 환경에서는 hook 없음 (no-op).
+     *
+     * <p>본 broker 는 항상 자기 노드의 emitter 들에게 publish 한 뒤 hook 도 호출 (cross-node
+     * 전파). hook 자체는 수신측 노드의 본 broker.publishLocal 을 다시 호출하지 않도록 호출자가
+     * 책임 (Redis 메시지 수신 시 publishLocal — infinite loop 방지).
+     */
+    private Optional<RealtimePublishHook> publishHook = Optional.empty();
+
+    /**
+     * Spring 이 RedisRealtimeBroker bean 등록 시 자동 setter 주입. RedisRealtimeBroker bean 미등록
+     * (default 단일 노드) 환경에서는 hook 미설정 (Optional.empty).
+     *
+     * <p>{@code @Autowired(required=false)} 로 단일 노드 default 환경 startup 정상 보장.
+     */
+    @Autowired(required = false)
+    public void setPublishHook(RealtimePublishHook hook) {
+        this.publishHook = Optional.ofNullable(hook);
+        if (hook != null) {
+            log.info("[PR-H2] cross-node propagate hook 등록됨 — broker={}",
+                    hook.getClass().getSimpleName());
+        }
+    }
+
+    /**
      * 신규 SSE 구독 발급. emitter timeout 0L 무한 — heartbeat 가 keep-alive.
      *
      * <p>완료/타임아웃/에러 콜백에서 자동 cleanup.
@@ -87,13 +116,39 @@ public class SlipRealtimeBroker {
     }
 
     /**
-     * 해당 슬립 구독자 전원에게 SSE event 전송. IOException 발생 emitter 는 즉시 cleanup.
+     * 해당 슬립 구독자 전원에게 SSE event 전송 (자기 노드) + cross-node hook 호출 (활성 시).
+     * IOException 발생 emitter 는 즉시 cleanup.
+     *
+     * <p>PR-H2 (Phase 12 Step 2) — Redis broker 활성 시 hook 통해 다른 노드에도 전파.
      *
      * @param slipId 대상 슬립
-     * @param eventName SSE event name (예: "comment.created")
+     * @param eventName SSE event name (예: "comment.created", "slip:edit")
      * @param payload event data (Jackson 직렬화)
      */
     public void publish(UUID slipId, String eventName, Object payload) {
+        publishLocal(slipId, eventName, payload);
+        // cross-node propagate (활성 시) — hook 자체는 수신측에서 publishLocal 만 호출 (loop 방지)
+        publishHook.ifPresent(hook -> {
+            try {
+                hook.propagate(slipId, eventName, payload);
+            } catch (RuntimeException ex) {
+                log.warn("[PR-H2] cross-node propagate 실패 — slipId={} event={} cause={}",
+                        slipId, eventName, ex.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 자기 노드 emitter 들에게만 SSE event 전송 — cross-node hook 호출 없음.
+     *
+     * <p>RedisRealtimeBroker 가 다른 노드에서 Redis 메시지를 수신했을 때 본 메서드 호출 (infinite
+     * loop 방지). 일반 application 코드는 {@link #publish} 사용.
+     *
+     * @param slipId 대상 슬립
+     * @param eventName SSE event name
+     * @param payload event data
+     */
+    public void publishLocal(UUID slipId, String eventName, Object payload) {
         Objects.requireNonNull(slipId, "slipId 는 필수입니다");
         Objects.requireNonNull(eventName, "eventName 은 필수입니다");
         publishCount.incrementAndGet();

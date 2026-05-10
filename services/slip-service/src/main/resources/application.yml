@@ -25,6 +25,14 @@ spring:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
+  # Phase 12 Step 2 (PR-H2) — Redis 연결 설정 (samhan.realtime.broker=redis 일 때만 사용).
+  # in-memory broker (default) 에서는 사용되지 않으나, RedisAutoConfiguration 이 classpath
+  # 미존재 시 NoOp 이고 BE 의 RedisRealtimeBroker 는 @ConditionalOnProperty 로 격리되므로
+  # default in-memory 운영 환경에서는 Redis 미가용도 무해 (heartbeat / publish 정상).
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 eureka:
   client:
@@ -62,6 +70,11 @@ app:
   # 600s 와 정합. 운영 적용 가이드: docs/devops/realtime-sse-production.md
   realtime:
     heartbeat-seconds: ${SAMHAN_REALTIME_HEARTBEAT_SECONDS:30}
+    # Phase 12 Step 2 (PR-H2) — SSE broker 구현체 toggle.
+    # - in-memory (default) : 단일 노드 ConcurrentHashMap 기반 (현재 운영 모델, 추가 의존 0).
+    # - redis              : Redis pub/sub 기반 다중 노드 fan-out (Phase 11 AWS 다중 EC2/ECS 시 적용).
+    # 운영 가이드: docs/devops/redis-realtime-broker.md (단일 vs 다중 노드 / ElastiCache 비용).
+    broker: ${SAMHAN_REALTIME_BROKER:in-memory}
   # Slice B SMS 게이트웨이 — Aligo (한국 SMS 게이트웨이, Solapi 에서 마이그)
   sms:
     vendor: ${SMS_VENDOR:aligo}

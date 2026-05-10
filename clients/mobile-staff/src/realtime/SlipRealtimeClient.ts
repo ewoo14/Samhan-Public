@@ -12,7 +12,9 @@
  * BE 계약 (parallel — endpoint 는 desktop 과 공유):
  *   - GET `/slips/{slipId}/realtime`  (Authorization: Bearer <jwt>)
  *   - response = `text/event-stream`
- *   - event types: `comment.created` | `slip.transition` | `heartbeat`
+ *   - event types: `comment.created` | `comment.updated` | `comment.deleted`
+ *                  | `slip.transition` | `slip.edit` | `heartbeat`
+ *   - `slip.edit` (Phase 12 PR-H2 신규) = slip 필드 수정 이벤트 — AuditOverlay 의 trigger.
  *   - heartbeat ≈ 30s 간격 (server keepalive). 60s 미수신 시 client 가 reconnect.
  *
  * 사용 (예):
@@ -41,6 +43,7 @@ export type SlipRealtimeEventType =
   | 'comment.updated'
   | 'comment.deleted'
   | 'slip.transition'
+  | 'slip.edit'
   | 'heartbeat';
 
 /**
@@ -138,6 +141,7 @@ export function subscribeToSlip(
         'comment.updated',
         'comment.deleted',
         'slip.transition',
+        'slip.edit',
         'heartbeat',
       ] as const
     ).forEach((name) => {

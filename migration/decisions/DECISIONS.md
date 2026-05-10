@@ -1131,3 +1131,60 @@ PR (`feature/integrated-phase-12-step-1-websocket-infra`) — PR #122 (운영 �
 - **PR-H2 (~3주) — slip audit overlay + 실시간 sync** — slip 라이프사이클 10단계 변경 시 모든 접속 client 에게 SSE broadcast (DRAFT→SAVED→DISPATCHED→...→COMPLETED) + 사용자별 색상 audit overlay (userColorHash 활용) + 변경 이력 timeline UI. 본 PR-H1 머지 후 즉시 진입.
 - **PR-H3 (~1.5주) — 권한 / 수락 / 거절 워크플로우** — 영업 → 창고 → 기사 인계 시점 명시적 수락 + SSE 양방향 push.
 - **PR-H4 (~7주) — 전 15 service 확장** — partner / inventory / accounting / arologis / dashboard 등 14 backend MSA 도메인 모두 SSE 채널 도입 + `shared/realtime` module 추출 + Redis Pub/Sub 분기 (다중 노드 진입 시 활성).
+
+---
+
+### D-P12-02. slip audit overlay (Flyway V18) + 실시간 sync (`slip:edit` SSE event) + TM 보완 3건 흡수 (multi-emitter 동시성 IT + ArgumentCaptor SSE payload + `RedisRealtimeBroker` config toggle) (PR-H2, 2026-05-10)
+
+PR (`feature/integrated-phase-12-step-2-slip-audit-overlay`) — PR #123 (PR-H1 SSE infra + slip 코멘트 smoke) 머지 후 Phase 12 시리즈 2/4 진입. **사용자 핵심 요구 = "두 사람이 같은 전표 보면서 한 명이 메모를 수정하면 다른 사람 화면에 1초 안에 취소선 + 수정자 색상 + 수정자 이름 + 수정 시각 으로 audit overlay 가 표시"** 의 4 요소 시각 검증 단계. PR-H1 시드 `userIdToColor` HSL hash util 활용 + audit overlay 컴포넌트 도입 + TM 보완 3건 흡수 (사용자 명시 = "multi-emitter 동시성 / ArgumentCaptor SSE payload / Redis broker config toggle").
+
+근거:
+- **Flyway V18 (`slip_audit_logs` + `slips.revision_count`) 신규** — slip 본문 필드 변경 (memo / shippingAddress / contactPhone / partnerName / discountRate 등 11 필드 시범) 마다 1 row 누적 + revisionNo 그룹핑. BaseEntity 7 audit (id / created_at / created_by_user_id / updated_at / updated_by_user_id / is_deleted / version) + Soft Delete (`@SQLRestriction("is_deleted = false")`) + 부분 인덱스 (`WHERE is_deleted = false ORDER BY revision_no DESC`). `slips.revision_count BIGINT NOT NULL DEFAULT 0` 누적 카운터 → desktop / mobile-staff 수정 횟수 chip / 헤더 표시 의존.
+- **`SlipAuditLogService` 4 책임 (record / recordBatch / listBySlip / revertToRevision)** — `recordOverlayPatch(slipId, fieldName, oldValue, newValue, actor)` 단일 필드 + `recordBatch(slipId, changes[], actor)` 다중 필드 (1 revision = N field rows) + `listBySlip(slipId, limit)` 최신순 + `revertToRevision(slipId, revisionNo, actor)` 신규 revision 으로 audit 영원 보존 (덮어쓰기 금지). actor = `{actorId, actorName, actorColor (userIdToColor hash)}` snapshot (UUID 비공개 가드 — 화면 노출은 actorName + actorColor 만).
+- **`Slip.applyOverlayPatch/readOverlayField/incrementRevision` 11 필드 시범** — 도메인 entity 에 자체 reflection-free `switch` 패턴 (memo / shippingAddress / contactPhone / partnerName / discountRate 등). `applyOverlayPatch(name, value)` 마감 lock 가드 (`SlipService.applyOverlayPatch` wrapper) + `readOverlayField(name)` audit oldValue snapshot. 11 필드 시범 → PR-H3 / PR-H4 시점 전 60+ 필드 확장 plan.
+- **신규 endpoint 3 (`GET /audit-logs` / `PATCH /audit/overlay` / `POST /audit/revert/{n}`)** — (1) `GET /slips/{id}/audit-logs` 인증 사용자 전체 (도메인 권한 0, 이력 조회 자유), (2) `PATCH /slips/{id}/audit/overlay` SALES / WAREHOUSE / MANAGER / MASTER (DRIVER 차단), (3) `POST /slips/{id}/audit/revert/{revisionNo}` MANAGER / MASTER 만 (영업 / 창고 / 기사 차단). ApiResponse wrapper 의무 (PR #98 D-P10-12 일관) + ROLE 풀네임 가드 (memory `feedback_role_naming_full`).
+- **`SlipService.editHeader` memo diff → `SlipAuditLogService.recordBatch` + SSE `slip:edit` broadcast** — 기존 editHeader 호출 시 memo 변경 감지 → audit row 1 (혹은 다중) + `SlipRealtimeBroker.publish(slipId, "slip:edit", {revisionNo, actorId, actorName, actorColor, changes[]})` payload 5 키 일치 (ArgumentCaptor 검증 의무). 사용자 핵심 요구 "1초 안 sync" 측정 — multi-context Playwright `working-multi-context-edit-split.png` 시각 증거 1 PNG.
+- **design-system `AuditOverlay` 컴포넌트 (취소선 + 색상 dot + 수정자명 + 시각) + Storybook 4 story** — `clients/web/design-system/src/components/AuditOverlay/AuditOverlay.tsx` 신규. props = `{currentValue, history[]}` history 항목 = `{revisionNo, oldValue, newValue, actorName, actorColor, occurredAt}`. CSS `text-decoration: line-through` (oldValue) + `<span class="dot" style="background:${actorColor}">` (사용자 색상) + 수정자명 (actorName) + 시각 (relative). Storybook 4 story = Single / Multiple / Empty / MultiUserShowcase. desktop = 직접 import, mobile-staff = RN 1:1 복제 (`clients/mobile-staff/src/components/AuditOverlay.tsx`, RN Text strikethrough + View dot).
+- **TM 보완 #1 — `SlipRealtimeBrokerConcurrencyIT` (multi-emitter 동시성 3 case, 사용자 명시)** — broker `Map<UUID, CopyOnWriteArrayList<SseEmitter>>` race condition 회귀 가드: (1) 50 emitter 동시 subscribe → broker subscriber count = 50 정확, (2) cleanup race — 동시 publish + emitter close → no exception + count 정정, (3) 100 emitter / 1000 publish → 전체 emitter 1000 receive (lost 0). `CountDownLatch` + `Executors.newFixedThreadPool(N)` 패턴.
+- **TM 보완 #2 — `SlipAuditPayloadCaptorTest` (ArgumentCaptor SSE payload schema 3 case, 사용자 명시)** — `SlipRealtimeBroker.publish` 호출 시 payload 구조 정합 검증: (1) `slip:edit` event = `{revisionNo, actorId, actorName, actorColor, changes[]}` 5 키 일치, (2) `slip:reverted` event = revert 시 신규 revision payload 동일 구조, (3) `changes[]` 다중 필드 = `[{fieldName, oldValue, newValue}, ...]` schema. Mockito `ArgumentCaptor<Map<String, Object>>` + JSON schema assert.
+- **TM 보완 #3 — `RedisRealtimeBroker` + `RedisRealtimeConfigBean` + `RealtimePublishHook` (config toggle, 사용자 명시)** — `SAMHAN_REALTIME_BROKER` 환경변수 / `samhan.realtime.broker` property = `in-memory|redis` toggle. **default = `in-memory`** (단일 노드 cafe24 / Phase 11 AWS 단일 환경 일관) + `redis` 옵션 시 `RedisRealtimeBroker` 활성 (Lettuce Pub/Sub publisher / subscriber + 노드별 in-memory broker 로 fanout). `RedisRealtimeConfigBean` (`*Bean` suffix 가드 PR #119 회귀 가드 일관) — Redis 미연결 시 startup 정상 (graceful fallback). PR-H4 시점 다중 노드 진입 시 toggle 만으로 활성 (D-P12-01 시점 plan 한 분기 시드).
+- **단위 24 + IT 9 case + multi-context Playwright 작동 캡처 4 PNG** — 단위 = `SlipAuditLogServiceTest` 6 + `SlipAuditLogServiceRevertTest` 4 + `SlipAuditPayloadCaptorTest` 3 + `SlipServiceAuditDiffTest` 5 + `RedisRealtimeBrokerTest` 3 + `Slip` overlay patch 단위 3. IT = `SlipRealtimeBrokerConcurrencyIT` 3 + `SlipAuditPayloadCaptorTest` SSE schema 3 (단위/IT 양쪽 카운트) + `ApplicationContextLoadIT` `SlipAuditLogService` 단일 등록 가드 + 기존 PR-H1 IT 5 회귀 PASS. 작동 캡처 = `working-audit-overlay-context-a-edit.png` (97KB) / `working-audit-overlay-context-b-receives.png` (90KB) / `working-audit-overlay-multi-revision.png` (102KB) / `working-multi-context-edit-split.png` (120KB, 핵심 시각 증거 = 좌-A 우-B 합성). PR body inline raw URL + commit-pinned + HEAD 200 검증 의무 (memory `feedback_pr_qa_screenshots`).
+- **단일 통합 PR (5 commits) — 별도 docs PR 회피** — Phase A (DevOps 1 + BE 1 + FE-1 desktop+design-system 1 + FE-2 mobile-staff 1 = 4 commits) + Phase B (QA 1 = 1 commit). ROADMAP / DECISIONS / dev-report 본 PR 동시 갱신 (memory `feedback_continuous_docs_sync` 일관). 별도 docs PR 폐기 패턴 일관.
+
+영향:
+- `services/slip-service/src/main/java/.../slip/audit/{domain/SlipAuditLog,repository/SlipAuditLogRepository,service/SlipAuditLogService,web/SlipAuditLogController,web/dto/{OverlayPatchRequest,SlipAuditLogResponse}}.java` 신규 — audit overlay 도메인 (BaseEntity 7 audit + Soft Delete + ApiResponse wrapper + ROLE 풀네임 가드)
+- `services/slip-service/src/main/java/.../slip/domain/Slip.java` — `applyOverlayPatch` / `readOverlayField` / `incrementRevision` 11 필드 시범 (memo / shippingAddress / contactPhone / partnerName / discountRate 등)
+- `services/slip-service/src/main/java/.../slip/service/SlipService.java` — `applyOverlayPatch` wrapper (마감 lock 가드) + `editHeader` memo diff → `recordBatch` + SSE `slip:edit` broadcast
+- `services/slip-service/src/main/java/.../slip/realtime/{RedisRealtimeBroker,RedisRealtimeConfigBean,RealtimePublishHook}.java` 신규 — Redis Pub/Sub config toggle (`SAMHAN_REALTIME_BROKER=in-memory|redis`, default in-memory, 미연결 startup 정상, `*Bean` suffix 가드)
+- `services/slip-service/src/main/java/.../slip/realtime/SlipRealtimeBroker.java` — publishCount / publishFailureCount / heartbeatCount 통계 보강 (TM 보완 IT 의존)
+- `services/slip-service/src/main/resources/db/migration/V18__add_slip_audit_logs.sql` 신규 — `slip_audit_logs` 신규 + `slips.revision_count BIGINT NOT NULL DEFAULT 0` + 부분 인덱스 + BaseEntity 7 audit
+- `services/slip-service/src/main/resources/application.yml` — `samhan.realtime.broker` config toggle + `spring.data.redis` host/port
+- `services/slip-service/build.gradle` — `spring-boot-starter-data-redis` 의존 추가 (config toggle redis 옵션 지원)
+- `services/slip-service/src/test/java/.../slip/audit/service/{SlipAuditLogServiceTest,SlipAuditLogServiceRevertTest,SlipAuditPayloadCaptorTest}.java` 신규 — 단위 6+4+3 = 13 case
+- `services/slip-service/src/test/java/.../slip/service/{SlipServiceAuditDiffTest,SlipServiceTest}.java` — memo diff 5 case + 회귀 3 case
+- `services/slip-service/src/test/java/.../slip/realtime/{SlipRealtimeBrokerConcurrencyIT,RedisRealtimeBrokerTest}.java` 신규 — IT 3 + 단위 3 case
+- `services/slip-service/src/test/java/.../slip/it/ApplicationContextLoadIT.java` — `SlipAuditLogService` 단일 등록 가드 보강
+- `infrastructure/env-templates/slip-service.env` — `SAMHAN_REALTIME_BROKER=in-memory` (default) + `REDIS_HOST` / `REDIS_PORT` placeholder
+- `clients/web/design-system/src/components/AuditOverlay/{AuditOverlay.tsx,AuditOverlay.module.css,AuditOverlay.stories.tsx,index.ts}` 신규 — 취소선 + 색상 dot + 수정자명 + 시각 + Storybook 4 story (Single / Multiple / Empty / MultiUserShowcase) + barrel export 보강
+- `clients/web/design-system/src/index.ts` — AuditOverlay barrel export
+- `clients/desktop/src/renderer/api/slipAudit.ts` 신규 — `listAuditLogs` + `revertToRevision`
+- `clients/desktop/src/renderer/routes/SlipDetailPage.tsx` 보강 — `auditLogsQuery` + 수정 횟수 chip (`slip-detail-revision-count`) + AuditOverlay 적용 (memo / shippingAddress) + 복원 dropdown (`slip-detail-revert-select`) + SSE `slip:edit` cache invalidate
+- `clients/desktop/src/renderer/api/mock.ts` — audit-logs / overlay PATCH / revert mock endpoint (capture 자동화 의존)
+- `clients/mobile-staff/src/utils/userColorHash.ts` 신규 — design-system 1:1 RN 호환 복제
+- `clients/mobile-staff/src/components/AuditOverlay.tsx` 신규 — RN Text 취소선 + View dot 색상 + 수정자명/role
+- `clients/mobile-staff/src/screens/SlipDetailScreen.tsx` 보강 — 수정 횟수 헤더 + AuditOverlay 적용 (partnerName / status) + 복원 버튼 MASTER/MANAGER 만
+- `clients/mobile-staff/src/api/slipAudit.ts` 신규 — list + revert + ApiResponse wrapper assert
+- `clients/mobile-staff/src/realtime/SlipRealtimeClient.ts` — `slip.edit` event type 추가
+- `clients/mobile-staff/src/screens/driver/DriverTabNavigator.tsx` — `currentUserRole='DRIVER'` 명시 (복원 버튼 비표시 검증 의존)
+- `docs/devops/redis-realtime-broker.md` 신규 — in-memory vs Redis 가이드 + AWS ElastiCache cache.t3.micro ~₩30K/월 + cutover 절차 + Testcontainers Redis 권고
+- `docs/uiux/phase12/H2-audit-overlay.md` 신규 — wireframe + 한국어 라벨 + Designer 매뉴얼
+- `docs/manual/05-슬립공유-수정-처리.md` 신규 — 사용자 시나리오 (페르소나 5) + 권한 + 화면 캡처 stub
+- `docs/qa/phase-12-step-2-slip-audit-overlay/scenarios.md` 신규 — 27 case (audit_log 자동 기록 5 + AuditOverlay UI 5 + 수정 횟수 카운트 3 + 복원 4 + 실시간 sync 5 + 동시 수정 충돌 3 + Redis broker fallback 2) + 페르소나 5
+- `docs/qa/phase-12-step-2-slip-audit-overlay/working-{audit-overlay-context-a-edit,audit-overlay-context-b-receives,audit-overlay-multi-revision,multi-context-edit-split}.png` 신규 — multi-context Playwright 작동 캡처 4 PNG (취소선 + 색상 + 수정자명 + 1초 sync 4 요소 시각 증거)
+- `tools/manual-capture/capture-pr-h2.js` 신규 — Playwright multi-context 자동화 (browser.newContext 2회 분리 + sharp 좌-우 합성 + 한국어 라벨)
+- `ROADMAP.md` Phase 12 row + Phase 12 section + PR 매트릭스 갱신
+- `docs/dev-reports/integration-phase-12-step-2-slip-audit-overlay.md` 신규
+
+후속 (PR-H2 머지 후):
+- **PR-H3 (~1.5주) — 권한 / 수락 / 거절 워크플로우** — 영업 → 창고 → 기사 인계 시점 명시적 수락 + SSE 양방향 push (영업 입력 시 창고 알림 / 창고 수락 시 영업 알림 / 기사 수락 시 양측 알림). 본 PR-H2 머지 후 즉시 진입.
+- **PR-H4 (~7주) — 전 15 service 확장 + Redis Pub/Sub 활성** — partner / inventory / accounting / arologis / dashboard 등 14 backend MSA 도메인 모두 SSE 채널 도입 + `shared/realtime` module 추출 + 본 PR-H2 시드된 `RedisRealtimeBroker` config toggle 활성 (다중 노드 진입 시).

@@ -3,6 +3,7 @@ package com.samhanair.logis.slip.it;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.samhanair.logis.slip.SlipServiceApplication;
+import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.NotificationChatRoomClient;
 import com.samhanair.logis.slip.client.PartnerBlockClient;
@@ -39,6 +40,10 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Autowired
     private SlipRealtimeBroker slipRealtimeBroker;
 
+    /** PR-H2 — audit overlay service bean 단일 등록 회귀 가드 (Phase 12 Step 2). */
+    @Autowired
+    private SlipAuditLogService slipAuditLogService;
+
     @MockBean
     private ProductClient productClient;
     @MockBean
@@ -67,5 +72,15 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     void slipRealtimeBrokerBeanIsRegistered() {
         assertThat(slipRealtimeBroker).isNotNull();
         assertThat(applicationContext.getBeansOfType(SlipRealtimeBroker.class)).hasSize(1);
+    }
+
+    /**
+     * PR-H2 — SlipAuditLogService bean 단일 등록 회귀 가드 (Phase 12 Step 2).
+     * audit overlay service + repository + entity 등록 정합 검증.
+     */
+    @Test
+    void slipAuditLogServiceBeanIsRegistered() {
+        assertThat(slipAuditLogService).isNotNull();
+        assertThat(applicationContext.getBeansOfType(SlipAuditLogService.class)).hasSize(1);
     }
 }

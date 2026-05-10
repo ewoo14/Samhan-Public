@@ -2,6 +2,7 @@ package com.samhanair.logis.slip.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
@@ -57,6 +58,7 @@ public class SlipService {
     private final SlipNumberService slipNumberService;
     private final ProductClient productClient;
     private final InventoryClient inventoryClient;
+    private final SlipAuditLogService auditLogService;
 
     /**
      * 새 전표를 DRAFT 상태로 생성한다 — slipType 분기로 createOutbound/createInbound 호출,
@@ -149,18 +151,78 @@ public class SlipService {
     /**
      * 헤더 부분 수정 — DRAFT/SAVED 단계만. 도메인 메서드가 가드.
      *
+     * <p>PR-H2 (Phase 12 Step 2) — memo 변경 시 audit overlay 1행 + SSE broadcast 자동 적용.
+     * audit overlay 시범 한정 (PR-H4 에서 partnerName/deliveryTag/driver* 등 확장 예정).
+     * 본 PR 의 시범 = "memo" 단일 필드만 audit (사용자 자유 입력 — 가장 빈번한 수정).
+     *
      * @param id 전표 ID
      * @param req 수정 요청 (null 필드는 보존)
-     * @param callerId 호출자 user-id (감사용, 도메인에는 전달 안 함)
+     * @param callerId 호출자 user-id (감사용 — audit actor + audit broker payload)
      * @return 갱신된 상세 응답
      * @throws BusinessException(NOT_FOUND) 전표 미발견
      * @throws BusinessException(CONFLICT) 현재 상태가 DRAFT/SAVED 가 아닐 때
      */
     public SlipDetailResponse editHeader(UUID id, EditHeaderRequest req, String callerId) {
         Slip slip = loadOrThrow(id);
+        // PR-H2 — memo 변경분 audit 사전 snapshot (도메인 mutation 직전 oldValue 보존)
+        String oldMemo = slip.getMemo();
         applyMutation(() -> slip.editHeader(req.partnerId(), req.partnerName(),
                 req.deliveryTag(), req.memo(), req.driverName(), req.driverPhone()));
+        // PR-H2 — memo 실제 변경 (newValue != oldValue) 감지 시 audit overlay 1행 + SSE broadcast
+        String newMemo = slip.getMemo();
+        if (req.memo() != null && !java.util.Objects.equals(oldMemo, newMemo)) {
+            UUID actorId = parseActorId(callerId);
+            String actorName = callerId == null || callerId.isBlank() ? "system" : callerId;
+            auditLogService.recordOverlayPatch(id, actorId, actorName, null,
+                    "memo", oldMemo, newMemo);
+        }
         return SlipDetailResponse.from(slip);
+    }
+
+    /**
+     * audit overlay 단일 필드 patch + SSE broadcast — PR-H2 신규.
+     *
+     * <p>FE 가 본 endpoint 호출 시 즉시 audit row INSERT + 모든 SSE 구독자에게 push. 라이프사이클
+     * 가드는 도메인 {@link Slip#applyOverlayPatch} 내부 (마감 lock 만 가드 — overlay 는 어떤
+     * 단계에서도 가능하도록 시범).
+     *
+     * @param id 전표 ID
+     * @param fieldName 필드 식별자 (memo/shippingAddress/...)
+     * @param newValue 새 값 (null 가능 — 필드 clear)
+     * @param callerId 호출자 user-id (audit actor)
+     * @param callerName 호출자 표시명 (UUID 비공개 가드, null 이면 callerId 사용)
+     * @return 갱신된 상세 응답
+     * @throws BusinessException(NOT_FOUND) 전표 미발견
+     * @throws BusinessException(INVALID_INPUT) 미지원 필드 또는 길이 초과
+     * @throws BusinessException(CONFLICT) 마감 lock 적용 슬립
+     */
+    public SlipDetailResponse applyOverlayPatch(UUID id, String fieldName, String newValue,
+                                                String callerId, String callerName) {
+        Slip slip = loadOrThrow(id);
+        String oldValue = slip.readOverlayField(fieldName);
+        applyMutation(() -> slip.applyOverlayPatch(fieldName, newValue));
+        String actualNew = slip.readOverlayField(fieldName);
+        if (!java.util.Objects.equals(oldValue, actualNew)) {
+            UUID actorId = parseActorId(callerId);
+            String actorName = (callerName != null && !callerName.isBlank())
+                    ? callerName
+                    : (callerId == null || callerId.isBlank() ? "system" : callerId);
+            auditLogService.recordOverlayPatch(id, actorId, actorName, null,
+                    fieldName, oldValue, actualNew);
+        }
+        return SlipDetailResponse.from(slip);
+    }
+
+    private UUID parseActorId(String callerId) {
+        if (callerId == null || callerId.isBlank()) {
+            return new UUID(0L, 0L);
+        }
+        try {
+            return UUID.fromString(callerId);
+        } catch (IllegalArgumentException ex) {
+            // X-User-Id 가 UUID 가 아닌 경우 (legacy employeeCode 등) — 가상 system UUID
+            return new UUID(0L, 0L);
+        }
     }
 
     /**
