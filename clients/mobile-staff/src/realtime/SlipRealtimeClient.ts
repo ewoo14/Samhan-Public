@@ -13,8 +13,13 @@
  *   - GET `/slips/{slipId}/realtime`  (Authorization: Bearer <jwt>)
  *   - response = `text/event-stream`
  *   - event types: `comment.created` | `comment.updated` | `comment.deleted`
- *                  | `slip.transition` | `slip.edit` | `heartbeat`
+ *                  | `slip.transition` | `slip.edit`
+ *                  | `slip.edit-request.created` | `slip.edit-request.approved`
+ *                  | `slip.edit-request.rejected` | `heartbeat`
  *   - `slip.edit` (Phase 12 PR-H2 신규) = slip 필드 수정 이벤트 — AuditOverlay 의 trigger.
+ *   - `slip.edit-request.*` (Phase 12 PR-H3 신규) = 영업 ↔ 창고 양방향 push (수정 요청 워크플로우).
+ *     - created: 영업 → 창고 (창고 직원 PENDING list 갱신, foreground 알림 표시).
+ *     - approved / rejected: 창고 → 영업 (작성자 SlipDetailScreen 알림 표시).
  *   - heartbeat ≈ 30s 간격 (server keepalive). 60s 미수신 시 client 가 reconnect.
  *
  * 사용 (예):
@@ -44,6 +49,9 @@ export type SlipRealtimeEventType =
   | 'comment.deleted'
   | 'slip.transition'
   | 'slip.edit'
+  | 'slip.edit-request.created'
+  | 'slip.edit-request.approved'
+  | 'slip.edit-request.rejected'
   | 'heartbeat';
 
 /**
@@ -142,6 +150,9 @@ export function subscribeToSlip(
         'comment.deleted',
         'slip.transition',
         'slip.edit',
+        'slip.edit-request.created',
+        'slip.edit-request.approved',
+        'slip.edit-request.rejected',
         'heartbeat',
       ] as const
     ).forEach((name) => {
