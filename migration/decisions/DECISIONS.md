@@ -981,6 +981,48 @@ GAS B 11건 매핑 (PR-E1 + PR-E2 = 100% 완성):
 - **외부 client cache** — Ledger/StatementBatch 의 PartnerLookup/ChatRoom 호출 운영 부하 진입 시점 short-TTL Caffeine cache 검토
 - **CI fail 시뮬레이션** — 후속 별도 슬라이스 (사용자 명시)
 
+### D-P10-21. step-12 (PR-F1) GAS C/D 일부 이식 — 알리고 sync (mock) + 운송사 reconcile + Tesseract OCR 결정 (PR-F2 의존, 2026-05-10)
+
+PR (`feature/integrated-phase-10-step-12-gas-cd-vendor`) — PR #117 (PR-E1) + #118 (PR-E2) 머지로 GAS B 11건 native 이식 100% 완성 후, 사용자 분류 GAS C/D 6건 중 vendor 외부 의존 0 인 2건 (C 9번 알리고 자동 업로드 + D 11번 운송사 실배차 비교) 을 단일 통합 PR 로 native 이식. OCR 엔진 의존 2건 (D 10번 에어디자이너 운송장 OCR + D 14번 제이시스템 운송장 OCR) 은 PR-F2 별도 슬라이스 위임 (Tesseract 채택).
+
+근거:
+- **알리고 주소록 자동 동기화 (mock 안내)** — 실 알리고 API spec 사용자 입수 전 단계. 본 PR 시점 = `MockAligoAddressBookClient` (dryRun 응답: `added=N, http=200`) 활성, 실 RestClient 구현체 `RestClientAligoAddressBookClient` (TODO comment + skeleton 만) 선등록. 사용자 spec 입수 시점 `samhan.notification.aligo.address-book.dry-run=false` 토글 + RestClient 본문 채우면 즉시 운영 활성. CSV export 양식 (UTF-8 BOM + 헤더 4컬럼 + 비고 `[partnerCode]`) 은 알리고 콘솔 직접 import 호환 표준이라 mock 무관 검증 가능.
+- **차단 거래처 자동 제외 + 휴대폰 정규화** — `BlockedPartner` 매칭 row skip + 휴대폰 prefix `010|011|016|017|018|019` 검증 + `+82-10-...` / `00821012345678` 등 8 변형 정규화. 알리고 발송 실패 (잘못된 prefix) + 차단 거래처 실수 발송 양쪽 회귀 차단. 사용자 명시 신용정보 / 전자소송 / 폐업의심 strikethrough filter 는 본 PR 시점 미적용 (status=ACTIVE 만 적용) — 향후 filter 추가 PR 시 BE-1 #5 test (`exportAligoCsv_userNotedStrikethroughFilters_areNotApplied`) 폐기 의무.
+- **chunk 50 분할 + 429 backoff retry** — `AligoAddressBookSyncService` 가 chunk 50 (알리고 권장 상한) 으로 분할 + 429 응답 시 backoff 재시도 (`BACKOFF_MAX_RETRIES`) + 소진 시 failed 누적 (운영자 인지). partial fail (첫 chunk success + 둘째 chunk 500) 시 다른 chunk 결과 보장.
+- **운송사 실배차 비교 (POI 다중 vendor 양식 매처)** — `VendorExcelParser` 가 4 vendor 양식 헤더 매처 (CJ대한통운 `접수일자/접수시간/업체명` + 롯데 `예약번호/발송일자/발송시간` + 한진 `송장번호/출고일/거래처명` + 2층 헤더 row0 그룹/row1 컬럼 패턴 GAS 11번 호환). 영문 양식 등 미인식 vendor 는 빈 list 반환 (예외 X) 으로 partial parse 보장 — 1개 vendor 양식 미지원이어도 다른 vendor 결과 노출 (전체 fail 회귀 차단).
+- **left join TRUE / FALSE_LEFT / FALSE_RIGHT 분류** — `DispatchReconcileService` 가 우리 dispatch ↔ vendor 엑셀 양방향 mismatch 분류. FALSE_LEFT = vendor 누락 (영업 매출 손실 차단) + FALSE_RIGHT = 자체 dispatch 누락 (회계 자동 매출 분개 차단). status filter UI + CSV 다운로드 → 회계 외주 (ACCOUNTANT) 매출 마감 정합 검증 가능.
+- **Tesseract OCR 채택 (PR-F2 의존)** — 사용자 결정. 에어디자이너 / 제이시스템 운송장 PDF/이미지 → 운송장번호 / 거래처명 / 일자 OCR 추출. 후보 비교: (1) Tesseract (Apache 2.0, 한국어 학습 모델 `kor.traineddata` 무료, 자체 호스팅, OCR 정확도 80~90%) — 채택, (2) Naver CLOVA OCR (월 ₩100 / 호출, vendor lock-in) — 보류, (3) Google Vision OCR (해외 cloud, 가격 변동) — 보류. PR-F2 시점 = `arologis-service` 또는 신규 `ocr-service` (8098, 미정) Tesseract 4.x JNI binding (`tess4j`) + 한국어 traineddata 동봉 (~10MB) + 후처리 정규화 (운송장번호 12자 hyphen 표준).
+- **단일 통합 PR (5 commits) — 별도 docs PR 회피** — Phase A (Designer 1 + BE 2 = 3 commits) + Phase B (FE 1 + QA 1 = 2 commits) 단일 통합 PR. ROADMAP / DECISIONS / dev-report 본 PR 동시 갱신 (memory `feedback_continuous_docs_sync` 일관). 별도 docs PR 폐기 패턴.
+
+영향:
+- `services/partner-service/src/main/java/.../partner/service/PartnerAligoExportService.java` 신규 — UTF-8 BOM CSV export + BlockedPartner skip + 휴대폰 정규화 (8 변형 + prefix 검증) + group1 fallback ("기본") + RFC 4180 escape, 단위 7 case PASS
+- `services/partner-service/src/main/java/.../partner/controller/PartnerAdminController.java` 신규 — `GET /api/v1/partners/admin/aligo/csv` (MASTER 가드)
+- `services/notification-service/src/main/java/.../notification/service/AligoAddressBookSyncService.java` 신규 — chunk 50 분할 + 429 backoff retry + partial fail 누적, 단위 6 case PASS
+- `services/notification-service/src/main/java/.../notification/client/{AligoAddressBookClient,MockAligoAddressBookClient,AligoCsvSourceClient,NoopAligoCsvSourceClient,RestClientAligoCsvSourceClient}.java` 신규 — 알리고 client interface + mock dryRun + CsvSource interface (Noop / RestClient 분기)
+- `services/notification-service/src/main/java/.../notification/controller/AligoAddressBookController.java` + `dto/AligoAddressBookSyncResponse.java` 신규 — `POST /api/v1/notify/aligo/address-book/sync` (MASTER 가드)
+- `services/arologis-service/src/main/java/.../arologis/parser/{VendorExcelParser,VendorExcelRow}.java` 신규 — POI 4 vendor 헤더 매처 + 2층 헤더 패턴 + 영문 양식 빈 list partial parse, 단위 6 case PASS
+- `services/arologis-service/src/main/java/.../arologis/service/DispatchReconcileService.java` 신규 — left join TRUE/FALSE_LEFT/FALSE_RIGHT + 다중 vendor + 인자 검증, 단위 9 case PASS
+- `services/arologis-service/src/main/java/.../arologis/controller/DispatchReconcileController.java` + `dto/{DispatchReconcileResponse,MismatchedRow}.java` 신규 — `POST /api/v1/arologis/dispatch/reconcile` (DISPATCH/MANAGER/MASTER + multipart)
+- `services/arologis-service/src/main/java/.../arologis/repository/DispatchRepository.java` 신규 — 기간 + status (`COMPLETED`) 조회
+- `services/arologis-service/build.gradle` — POI 5.2.5 의존성 추가
+- `clients/desktop/src/renderer/api/{aligoAddressBookApi,dispatchReconcileApi}.ts` 신규 — 2 API client (multipart 업로드 + binary CSV 다운로드)
+- `clients/desktop/src/renderer/routes/admin/AligoAddressBookPage.tsx` 신규 — `/admin/aligo-address-book` (AdminLayout MASTER 가드, 거래처 미리보기 + 그룹 dropdown + "동기화 실행" + 결과 chip 4종)
+- `clients/desktop/src/renderer/routes/ArologisDispatchReconcilePage.tsx` 신규 — `/arologis/dispatch-reconcile` (DISPATCH/MANAGER/MASTER, drag-drop 다중 업로드 + 시작/종료일 + 비교 실행 + status filter + CSV 다운로드)
+- `clients/desktop/src/renderer/components/AdminLayout.tsx` "관리자 (MASTER 전용)" 그룹 entry 1건 신규 ("알리고 주소록 sync") + `routes/index.tsx` 라우트 2건
+- `clients/desktop/src/renderer/api/mock.ts` `_resolveMockRole()` 신규 — `?mockRole=MASTER` dev-only override (capture 자동화용)
+- `tools/manual-capture/capture-pr-f1.js` 신규 — Playwright headless 캡처 자동화 스크립트 (msedge channel → chromium fallback)
+- `docs/qa/phase-10-step-12-gas-cd-vendor/scenarios.md` 신규 — 14 case (1.x 5 + 2.x 6 + 3.x 3 권한/UUID) + 단위 28 case 매핑 + 페르소나 5 + 회귀 위험 7건 + 후속 6건
+- `docs/qa/phase-10-step-12-gas-cd-vendor/working-aligo-address-book.png` + `working-dispatch-reconcile.png` 신규 — Playwright 작동 캡처 (한국어 100% + UUID 비공개 통과)
+- `ROADMAP.md` Phase 10 step-12 row 추가
+- `docs/dev-reports/integration-phase-10-step-12-gas-cd-vendor.md` 신규
+
+후속 (PR-F2 이후):
+- **PR-F2** — GAS D 운송장 OCR 2건 (10번 에어디자이너 + 14번 제이시스템) — Tesseract 4.x + tess4j JNI + `kor.traineddata` 동반 + 운송장번호 / 거래처명 / 일자 추출 + 정규화 후처리. 신규 `services/ocr-service` (8098) 또는 `arologis-service` 흡수 미정 (PR-F2 진입 시점 결정).
+- **알리고 실 RestClient 활성** — 사용자 알리고 API spec 입수 시점 `RestClientAligoAddressBookClient` 본문 채움 + `samhan.notification.aligo.address-book.dry-run=false` 토글 + 운영 진입 (X-API-Key + 단톡방 token).
+- **운송사 vendor sample 다양화** — 본 PR 시점 = CJ대한통운 / 롯데 / 한진 / 2층 헤더 4 vendor 매처. 운영 진입 시점 추가 vendor (한진 / 우체국 / 로젠 등) 헤더 sample 입수 시 매처 keyword 확장.
+- **인쇄 양식 iteration** — 운송사 reconcile 결과 CSV 외 PDF / 인쇄 양식 도입 권고 (사용자 Edge 캡처 → CSS-only 미세 조정 `feedback_print_design_iteration`).
+- **동일 vendor 다중 파일 합산 정책** — `CJ_2026-05.xlsx` + `CJ_2026-06.xlsx` 동시 업로드 시 vendor 식별자 합산 vs 분리 정책 미정의 — 운영 도입 시 결정 후 case 추가.
+
 ### D-P10-15. 사용자 강화 가드 (2026-05-08) — Phase 11 위임 0건 + 본 PR 잔존 backlog 모두 채택
 
 W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON / 운영 진입 검증 plan) 모두 본 PR 채택 — Phase 11 위임 0건.
