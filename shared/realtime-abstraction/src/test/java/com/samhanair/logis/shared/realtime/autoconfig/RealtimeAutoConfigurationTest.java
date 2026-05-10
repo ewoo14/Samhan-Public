@@ -19,7 +19,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
  *
  * <ol>
  *   <li>default — InMemoryRealtimeBroker + DefaultEditLockGuard 만 등록 (Redis 미활성)</li>
- *   <li>app.realtime.broker=redis — RedisRealtimeBroker + InMemoryRealtimeBroker + listener 모두 등록</li>
+ *   <li>samhan.realtime.broker=redis — RedisRealtimeBroker + InMemoryRealtimeBroker + listener 모두 등록</li>
  * </ol>
  */
 class RealtimeAutoConfigurationTest {
@@ -50,7 +50,7 @@ class RealtimeAutoConfigurationTest {
                         JacksonAutoConfiguration.class,
                         RedisAutoConfiguration.class,
                         RealtimeAutoConfiguration.class))
-                .withPropertyValues("app.realtime.broker=redis")
+                .withPropertyValues("samhan.realtime.broker=redis")
                 .run(context -> {
                     assertThat(context).hasSingleBean(RealtimeBroker.class);
                     assertThat(context.getBean(RealtimeBroker.class))

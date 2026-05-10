@@ -20,7 +20,7 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
  * <ul>
  *   <li><b>default (단일 노드)</b> — {@link InMemoryRealtimeBroker} bean 1건만 등록.
  *       publishHook 는 미설정 (Optional.empty), 자기 노드만 SSE 전송.</li>
- *   <li><b>{@code app.realtime.broker=redis}</b> — {@link InMemoryRealtimeBroker} +
+ *   <li><b>{@code samhan.realtime.broker=redis}</b> — {@link InMemoryRealtimeBroker} +
  *       {@link RedisRealtimeBroker} ({@link RealtimePublishHook} 구현) +
  *       {@link RedisMessageListenerContainer} 함께 등록. 다중 노드 SSE sync 활성.</li>
  * </ul>
@@ -49,7 +49,7 @@ public class BrokerConfiguration {
      */
     @Bean
     @ConditionalOnClass(name = "org.springframework.data.redis.core.StringRedisTemplate")
-    @ConditionalOnProperty(name = "app.realtime.broker", havingValue = "redis")
+    @ConditionalOnProperty(name = "samhan.realtime.broker", havingValue = "redis")
     @ConditionalOnMissingBean(name = "realtimeMessageListenerContainerBean")
     public RedisMessageListenerContainer realtimeMessageListenerContainerBean(
             RedisConnectionFactory connectionFactory) {
@@ -59,12 +59,12 @@ public class BrokerConfiguration {
     }
 
     /**
-     * Redis cross-node propagate hook — {@code app.realtime.broker=redis} 시점만 등록.
+     * Redis cross-node propagate hook — {@code samhan.realtime.broker=redis} 시점만 등록.
      * InMemoryRealtimeBroker 가 setter 주입으로 hook 활용.
      */
     @Bean
     @ConditionalOnClass(name = "org.springframework.data.redis.core.StringRedisTemplate")
-    @ConditionalOnProperty(name = "app.realtime.broker", havingValue = "redis")
+    @ConditionalOnProperty(name = "samhan.realtime.broker", havingValue = "redis")
     @ConditionalOnMissingBean(RedisRealtimeBroker.class)
     public RedisRealtimeBroker redisRealtimeBroker(StringRedisTemplate redisTemplate,
                                                    RedisMessageListenerContainer listenerContainer,

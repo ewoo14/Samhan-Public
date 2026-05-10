@@ -8,7 +8,7 @@
  *   * editrequest — EditRequestService interface + EditRequestRecord @MappedSuperclass + EditRequestStatus enum
  *
  * AutoConfiguration 패턴 (shared:security 일관) — 의존만 추가하면 InMemoryRealtimeBroker bean 자동 등록.
- * Redis broker 는 {@code app.realtime.broker=redis} 시점만 활성 (Conditional).
+ * Redis broker 는 {@code samhan.realtime.broker=redis} 시점만 활성 (Conditional).
  *
  * PR-H4b 에서 product/inventory/partner/groupware/dashboard 등 다른 13 service 가 본 module 의존만
  * 추가하여 자체 슬라이스의 audit/realtime 활성 가능 — slip-service 가 시범 활용 사례.

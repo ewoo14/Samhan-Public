@@ -20,7 +20,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *       {@link com.samhanair.logis.shared.realtime.broker.InMemoryRealtimeBroker} default 구현
  *       (in-memory, 단일 노드)</li>
  *   <li>{@link com.samhanair.logis.shared.realtime.broker.RedisRealtimeBroker} —
- *       {@code app.realtime.broker=redis} 시점만 등록 (cross-node 전파 hook)</li>
+ *       {@code samhan.realtime.broker=redis} 시점만 등록 (cross-node 전파 hook)</li>
  *   <li>{@link EditLockGuard} — {@link DefaultEditLockGuard} default 구현</li>
  *   <li>{@code @EnableScheduling} — InMemoryRealtimeBroker.heartbeat 의 30s 주기 활성</li>
  * </ul>

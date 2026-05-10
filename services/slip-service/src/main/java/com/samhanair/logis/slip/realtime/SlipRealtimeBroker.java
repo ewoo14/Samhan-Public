@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>RedisRealtimeBroker (slip-service local) 도 마찬가지로 {@code shared:realtime-abstraction}
  * 의 {@link com.samhanair.logis.shared.realtime.broker.RedisRealtimeBroker} 로 이동되었으며,
- * {@code app.realtime.broker=redis} 시점만 자동 활성. slip-service 의 기존 hook setter 메커니즘은
+ * {@code samhan.realtime.broker=redis} 시점만 자동 활성. slip-service 의 기존 hook setter 메커니즘은
  * 동일 동작 ({@code @Autowired(required=false)} setPublishHook).
  *
  * <p><b>마이그 결정 근거</b>: slip-service 는 14 service 의 시범 활용 사례. 다른 13 service 는

@@ -13,7 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 외부 SaaS (Pusher/Ably/PubNub) 의존 0 — Samhan Public 자체 운영 가능.
  *
  * <p><b>default 구현</b> = {@link InMemoryRealtimeBroker} (단일 노드). 다중 노드 환경에서는
- * {@link RedisRealtimeBroker} ({@code app.realtime.broker=redis}) 가 cross-node propagate 를 추가
+ * {@link RedisRealtimeBroker} ({@code samhan.realtime.broker=redis}) 가 cross-node propagate 를 추가
  * 활성. consumer service 코드는 본 interface 만 의존하면 두 모드 모두 호환.
  *
  * <p><b>Thread-safety</b>: 구현체는 publish/subscribe/heartbeat 동시 호출 안전 의무.

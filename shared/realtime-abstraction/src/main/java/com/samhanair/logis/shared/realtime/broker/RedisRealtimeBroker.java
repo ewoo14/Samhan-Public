@@ -19,7 +19,7 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 /**
  * Redis pub/sub 기반 cross-node realtime broker — PR-H4a (Phase 12 Step 4a) 통합 구현.
  *
- * <p><b>활성 조건</b>: {@code SAMHAN_REALTIME_BROKER=redis} (또는 {@code app.realtime.broker=redis})
+ * <p><b>활성 조건</b>: {@code SAMHAN_REALTIME_BROKER=redis} (또는 {@code samhan.realtime.broker=redis})
  * 환경 변수 설정 시만 bean 등록 ({@link com.samhanair.logis.shared.realtime.RealtimeAutoConfiguration}
  * 의 {@code @ConditionalOnProperty} 가드). default (= "in-memory") 단일 노드 환경에서는 본 broker
  * bean 미등록 → {@link InMemoryRealtimeBroker} 만 작동.
