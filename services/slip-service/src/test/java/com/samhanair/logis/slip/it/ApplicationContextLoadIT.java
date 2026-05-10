@@ -8,6 +8,7 @@ import com.samhanair.logis.slip.client.NotificationChatRoomClient;
 import com.samhanair.logis.slip.client.PartnerBlockClient;
 import com.samhanair.logis.slip.client.PartnerInternalClient;
 import com.samhanair.logis.slip.client.ProductClient;
+import com.samhanair.logis.slip.realtime.SlipRealtimeBroker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +35,10 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Autowired
     private ApplicationContext applicationContext;
 
+    /** PR-H1 — SSE in-memory broker bean 단일 등록 회귀 가드 (Phase 12 Step 1). */
+    @Autowired
+    private SlipRealtimeBroker slipRealtimeBroker;
+
     @MockBean
     private ProductClient productClient;
     @MockBean
@@ -52,5 +57,15 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     @Test
     void contextLoads() {
         assertThat(applicationContext).isNotNull();
+    }
+
+    /**
+     * PR-H1 — SlipRealtimeBroker bean 단일 등록 + autowire 정합 회귀 가드.
+     * @Component + @Scheduled (heartbeat) 가 EnableScheduling 활성 환경에서 정상 등록되는지 검증.
+     */
+    @Test
+    void slipRealtimeBrokerBeanIsRegistered() {
+        assertThat(slipRealtimeBroker).isNotNull();
+        assertThat(applicationContext.getBeansOfType(SlipRealtimeBroker.class)).hasSize(1);
     }
 }

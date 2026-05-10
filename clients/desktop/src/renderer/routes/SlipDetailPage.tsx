@@ -23,7 +23,7 @@
  * UUID 비공개 가드: id 는 path param 으로만 사용. 화면 표시 영역에는 노출 X.
  * dispatcher.userId / inspector.userId 도 화면 미노출 (이름만 표시).
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   useMutation,
@@ -54,6 +54,12 @@ import {
 } from '../api/slip'
 import { fetchStockBalanceBatch } from '../api/inventory'
 import { invalidateSignature } from '../api/signature'
+import {
+  addSlipComment,
+  listSlipComments,
+  type SlipComment,
+} from '../api/slipComment'
+import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
 import { useSessionStore, canTransitionSlip } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -135,11 +141,70 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   // signature-slice-C 신규: 서명 무효화 modal state (MASTER only)
   const [invalidateOpen, setInvalidateOpen] = useState(false)
   const [invalidateReason, setInvalidateReason] = useState('')
+  // PR-H1: 코멘트 입력 state
+  const [commentInput, setCommentInput] = useState('')
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
     queryFn: () => getSlip(id),
     enabled: !!id,
+  })
+
+  // PR-H1: 코멘트 목록 백필 (최근 20건) — useQuery cache 키는 ['slipComments', id]
+  const commentsQuery = useQuery({
+    queryKey: ['slipComments', id],
+    queryFn: () => listSlipComments(id, 20),
+    enabled: !!id,
+  })
+
+  // PR-H1: SSE 구독 — 진입 시 1회, unmount 시 abort. 이벤트 수신 시 cache invalidate.
+  useEffect(() => {
+    if (!id) return
+    const ctrl = SlipRealtimeClient.subscribe(id, (evt) => {
+      // SSE 이벤트 수신 → 전표/코멘트 cache 무효화 (작은 입자 — 단순 invalidate 전략)
+      void queryClient.invalidateQueries({ queryKey: ['slipComments', id] })
+      // 전표 본체 변경 (status 등) 도 가능 → 함께 무효화
+      void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+      void evt
+    })
+    return () => {
+      ctrl.abort()
+    }
+  }, [id, queryClient])
+
+  // PR-H1: 코멘트 등록 mutation — optimistic add 후 응답 시 cache 갱신
+  const addCommentMutation = useMutation({
+    mutationFn: (body: string) => addSlipComment(id, { body }),
+    onMutate: async (body) => {
+      await queryClient.cancelQueries({ queryKey: ['slipComments', id] })
+      const previous = queryClient.getQueryData<SlipComment[]>([
+        'slipComments',
+        id,
+      ])
+      const optimistic: SlipComment = {
+        id: `optimistic-${Date.now()}`,
+        authorId: '',
+        authorName:
+          useSessionStore.getState().auth?.fullName ?? '나',
+        body,
+        createdAt: new Date().toISOString(),
+      }
+      queryClient.setQueryData<SlipComment[]>(
+        ['slipComments', id],
+        [...(previous ?? []), optimistic],
+      )
+      return { previous }
+    },
+    onError: (_err, _body, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(['slipComments', id], ctx.previous)
+      }
+      alert('코멘트 등록에 실패했습니다.')
+    },
+    onSuccess: () => {
+      setCommentInput('')
+      void queryClient.invalidateQueries({ queryKey: ['slipComments', id] })
+    },
   })
 
   // Slice A: AppHeader 동적 화면명 — slipNo bracket meta (Designer wireframes.md § 1.3)
@@ -614,6 +679,109 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             <span className="detail-label">담당자</span>
             <span className="detail-value">{slip.ownerFullName ?? '-'}</span>
           </div>
+        </div>
+      </Card>
+
+      {/*
+        PR-H1 FE-1: 코멘트 영역 (Card) — useQuery 백필 + SSE 실시간 업데이트.
+        UUID 비공개 가드: id/authorId 화면 노출 금지. authorName + body + createdAt 만 표시.
+      */}
+      <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
+        <h4 style={{ marginTop: 0 }}>코멘트</h4>
+        <div
+          data-testid="slip-detail-comment-list"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            maxHeight: 320,
+            overflowY: 'auto',
+            marginBottom: 12,
+          }}
+        >
+          {commentsQuery.isLoading ? (
+            <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>
+              코멘트를 불러오는 중...
+            </p>
+          ) : commentsQuery.isError ? (
+            <p
+              role="alert"
+              style={{ margin: 0, color: 'var(--color-danger-600)' }}
+            >
+              코멘트를 불러오지 못했습니다.
+            </p>
+          ) : (commentsQuery.data ?? []).length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>
+              아직 코멘트가 없습니다.
+            </p>
+          ) : (
+            (commentsQuery.data ?? []).map((c) => (
+              <div
+                key={c.id}
+                data-testid={`slip-detail-comment-row-${c.id}`}
+                style={{
+                  borderBottom: '1px solid var(--color-neutral-200)',
+                  paddingBottom: 6,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 12,
+                    color: 'var(--color-neutral-600)',
+                  }}
+                >
+                  <strong style={{ color: 'var(--color-neutral-900)' }}>
+                    {c.authorName}
+                  </strong>
+                  <span>{c.createdAt.slice(0, 16).replace('T', ' ')}</span>
+                </div>
+                <div style={{ fontSize: 14, marginTop: 2, whiteSpace: 'pre-wrap' }}>
+                  {c.body}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            data-testid="slip-detail-comment-input"
+            type="text"
+            value={commentInput}
+            onChange={(e) => setCommentInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (
+                e.key === 'Enter'
+                && !e.nativeEvent.isComposing
+                && commentInput.trim().length > 0
+                && !addCommentMutation.isPending
+              ) {
+                addCommentMutation.mutate(commentInput.trim())
+              }
+            }}
+            placeholder="코멘트 입력..."
+            maxLength={1000}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: 6,
+              border: '1px solid var(--color-neutral-300)',
+              fontSize: 14,
+            }}
+          />
+          <Button
+            data-testid="slip-detail-comment-submit"
+            variant="primary"
+            size="sm"
+            disabled={
+              commentInput.trim().length === 0 || addCommentMutation.isPending
+            }
+            loading={addCommentMutation.isPending}
+            onClick={() => addCommentMutation.mutate(commentInput.trim())}
+          >
+            전송
+          </Button>
         </div>
       </Card>
 

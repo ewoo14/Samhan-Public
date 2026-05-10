@@ -23,6 +23,7 @@ import DriverDashboardScreen from './DriverDashboardScreen';
 import DriverLocationTrackingScreen from './DriverLocationTrackingScreen';
 import DriverSignatureScreen from './DriverSignatureScreen';
 import GpsBlockedScreen from './GpsBlockedScreen';
+import SlipDetailScreen from '../SlipDetailScreen';
 
 type Tab = 'dashboard' | 'tracking' | 'signature';
 
@@ -53,9 +54,17 @@ const MOCK_STOP_FOR_PR = {
   label: 'mock 정차 (W10-3 진입 시점 placeholder, 실 deeplink = 후속)',
 };
 
+interface SlipDetailRoute {
+  slipId: string;
+  slipNo?: string;
+  partnerName?: string | null;
+}
+
 export default function DriverTabNavigator({ token, selectedStop }: Props): JSX.Element {
   const gps = useGpsPermission();
   const [tab, setTab] = useState<Tab>('dashboard');
+  // PR-H1 — Dashboard slip card 에서 SlipDetailScreen 으로 push (정식 navigation library 도입 전 minimal stack).
+  const [slipDetailRoute, setSlipDetailRoute] = useState<SlipDetailRoute | null>(null);
 
   const stopForSignature = useMemo(() => selectedStop ?? MOCK_STOP_FOR_PR, [selectedStop]);
 
@@ -71,10 +80,28 @@ export default function DriverTabNavigator({ token, selectedStop }: Props): JSX.
     );
   }
 
+  // PR-H1 — slip detail push 활성 시 tab UI 위로 SlipDetailScreen 노출.
+  if (slipDetailRoute) {
+    return (
+      <SlipDetailScreen
+        token={token}
+        slipId={slipDetailRoute.slipId}
+        slipNo={slipDetailRoute.slipNo}
+        partnerName={slipDetailRoute.partnerName}
+        onBack={() => setSlipDetailRoute(null)}
+      />
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.screen}>
-        {tab === 'dashboard' && <DriverDashboardScreen token={token} />}
+        {tab === 'dashboard' && (
+          <DriverDashboardScreen
+            token={token}
+            onOpenSlipDetail={(params) => setSlipDetailRoute(params)}
+          />
+        )}
         {tab === 'tracking' && (
           <DriverLocationTrackingScreen
             token={token}

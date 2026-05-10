@@ -1081,3 +1081,53 @@ W10-4 (PR #99) 종합 TM 시점 잔존 4 fix (DV-3 / DV-2 흡수 / Grafana JSON 
 - DV-2 흡수 — `services/slip-service/src/main/resources/db/migration/V11__concurrently_signature_indexes.sql` 신규 (`-- ${flyway:executeInTransaction:false}` 명시)
 - Grafana — `infrastructure/grafana/dashboards/arologis-slip-bridge.json` 신규 (4 panel + alert 1)
 - dev-report § 11 — 운영 진입 검증 plan 5 case 명시 (signature_source 분류 / Grafana / Flyway lock 시뮬레이션 / SlipClient SLA / shared/security 회귀)
+
+---
+
+## Phase 12 결정 (실시간 협업 시리즈, 2026-05-09 ~)
+
+### D-P12-01. 실시간 통신 = SSE (Spring `SseEmitter`) 표준 채택 + 단일 노드 in-memory broker + JWT 헤더 + `slip_comments` 신규 + Flyway V17 (PR-H1, 2026-05-10)
+
+PR (`feature/integrated-phase-12-step-1-websocket-infra`) — PR #122 (운영 검증 인프라) 머지 후 사용자 결정 옵션 A (Phase 12 실시간 협업 시리즈, 총 ~13주) 진입. 시리즈 1/4 = SSE infra + slip 코멘트 smoke. **Samhan Public 핵심 가치 = "두 사람이 같은 전표 보고 한 명 코멘트 → 다른 사람에게 실시간 반영"** 의 최소 검증 단계.
+
+근거:
+- **실시간 통신 = SSE (Spring `SseEmitter`) 표준 채택** — 후보 비교: (A) WebSocket / STOMP, (B) SSE / `SseEmitter`, (C) 외부 SaaS (Pusher / Firebase Realtime / Ably). **B 채택**. 사유: (1) Samhan Public 통신 흐름 = 단방향 server → client push 가 99% (코멘트 broadcast / audit overlay / slip 라이프사이클 변경 / 권한 수락 알림 모두 server → client). 양방향이 필요한 시나리오 (PR-H3 권한 수락) 도 client → server 는 일반 REST POST 로 처리 가능 → WebSocket / STOMP 의 양방향 양식 비용 불요. (2) HTTP/1.1 keep-alive + 재연결 = 기존 nginx / AWS ALB / Cloudflare 인프라 그대로 사용 가능 (WebSocket upgrade 별도 라우팅 가드 불요). (3) Spring `SseEmitter` 표준 = JDK 표준 + Spring Web MVC 내장, 외부 라이브러리 의존 0. (4) 외부 SaaS 의존 0 (사용자 핵심 가치 = self-host 100%, 외부 SaaS 비용 / 데이터 주권 / 장애 의존도 회피). (5) 회귀 가드 단순 — `MockMvc` async dispatch + `SseEmitter` IT case 만으로 검증 가능 (WebSocket session manager mock 비용 회피).
+- **단일 노드 in-memory `Map<UUID, CopyOnWriteArrayList<SseEmitter>>` broker** — `SlipRealtimeBroker` = `ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>>` 기반. 단일 노드 운영 가정 (현 시점 cafe24 단일 + Phase 11 AWS 단일 환경 = `project_phase11_aws.md` Seoul `m5.xlarge` 단일). 다중 노드 진입 시 PR-H4 시점 Redis Pub/Sub 분기 추가 (slip-service → Redis publish → 모든 노드 subscribe → 각 노드의 in-memory broker → SseEmitter 노드별 broadcast). 본 PR-H1 시점 = 단일 노드 in-memory 만 + 30s heartbeat (idle 연결 cleanup) + IOException / IllegalStateException 자동 cleanup.
+- **JWT 헤더 인증 (`Authorization: Bearer <token>`)** — SSE 연결 시 EventSource 표준은 헤더 주입 불가 → 후보 비교: (A) 쿼리 파라미터 `?token=...`, (B) fetch+ReadableStream polyfill 로 헤더 주입, (C) 쿠키 기반 세션. **B 채택**. 사유: (1) 쿠키 세션은 JWT stateless 패턴 회귀, (2) 쿼리 파라미터는 access log / 캐시 / 브라우저 history 노출 위험. desktop = `fetch + ReadableStream polyfill` 로 헤더 주입, mobile-staff = `react-native-sse@^1.2.1` 가 헤더 주입 표준 지원. gateway `HeaderAuthenticationFilter` 패턴 일관 (SSE 라우트도 동일 인증 흐름).
+- **`slip_comments` 신규 entity + Flyway V17** — slip 라이프사이클 10단계와 분리된 자유 코멘트 도메인. BaseEntity 7 audit 의무 + Soft Delete (`is_deleted = false` `@SQLRestriction`) + `slip_id` FK + `author_user_id` FK + `body TEXT` + 부분 인덱스 (`WHERE is_deleted = false ORDER BY created_at DESC`). 단위 9 case (Service 5 + Broker 4) + IT 5 case (SSE subscribe / POST 201 / GET 200 / broker cleanup / 403 권한 거부) PASS.
+- **gateway `httpclient.response-timeout: 600s` (SSE keep-alive)** — Spring Cloud Gateway default 60s 가 SSE 장기 연결을 끊음. 600s (10분) 로 확장 + slip-service `samhan.realtime.heartbeat-seconds=30` (default) 로 30초마다 heartbeat event 발송 → 연결 keep + idle cleanup. nginx production 시점 = `proxy_read_timeout 600s` + `proxy_buffering off` + `gzip off` (운영 hint `docs/devops/realtime-sse-production.md` 명시).
+- **Designer `userIdToColor` HSL deterministic hash util 시드** — PR-H2 (slip audit overlay + 실시간 sync) 진입 시 사용자별 색상 표시 의존. `clients/web/design-system/src/utils/userColorHash.ts` 신규 + Storybook 1 story (5 userId 색상 swatch + Determinism 검증). 본 PR-H1 시점 = util 만 시드, 실제 audit overlay UI = PR-H2 진입.
+- **multi-context Playwright 작동 캡처 4 PNG (사용자 핵심 가치 시각 증거)** — `tools/manual-capture/capture-pr-h1.js` = `browser.newContext` 2회로 사용자 A / B 분리 + `addInitScript` 으로 mock comments seed 사전 주입 + `sharp` 로 좌-우 합성 (1280+1280=2560) + 한국어 라벨 헤더 60px. 4 PNG = (1) `working-comment-context-a-input.png` (사용자 A MASTER 영업 코멘트 입력 직전), (2) `working-comment-context-a-after-send.png` (사용자 A 전송 직후 optimistic 표시), (3) `working-comment-context-b-receives.png` (사용자 B SALES 창고 SSE 시뮬레이션 수신), (4) `working-multi-context-split.png` (좌-A 우-B 한 화면 합성). PR body inline raw URL + commit-pinned + HEAD 200 검증 의무 (memory `feedback_pr_qa_screenshots`).
+- **단일 통합 PR (6 commits) — 별도 docs PR 회피** — Phase A (DevOps 1 + BE 1 + FE-1 desktop + FE-2 mobile-staff + Designer = 5 commits) + Phase B (QA 1 = 1 commit). ROADMAP / DECISIONS / dev-report 본 PR 동시 갱신 (memory `feedback_continuous_docs_sync` 일관). 별도 docs PR 폐기 패턴.
+
+영향:
+- `services/slip-service/src/main/java/.../slip/realtime/{SlipRealtimeBroker,SlipRealtimeController}.java` 신규 — `SseEmitter` 표준 + in-memory broker + 30s heartbeat + IOException/IllegalStateException cleanup
+- `services/slip-service/src/main/java/.../slip/comment/{domain/SlipComment,repository/SlipCommentRepository,service/SlipCommentService,web/SlipCommentController,web/dto/{AddSlipCommentRequest,SlipCommentResponse}}.java` 신규 — slip_comments 도메인 (BaseEntity 7 audit + Soft Delete + ROLE 가드 + ApiResponse wrapper)
+- `services/slip-service/src/main/resources/db/migration/V17__add_slip_comments.sql` 신규 — `slip_comments` 신규 + 부분 인덱스 + BaseEntity 7 audit
+- `services/slip-service/src/main/resources/application.yml` — `samhan.realtime.heartbeat-seconds` property + `@EnableScheduling` 활성
+- `services/slip-service/src/test/java/.../slip/{comment/it/SlipRealtimeControllerIT,comment/service/SlipCommentServiceTest,realtime/SlipRealtimeBrokerTest,it/ApplicationContextLoadIT}.java` 신규 / 보강 — 단위 9 + IT 5 case PASS
+- `services/api-gateway/src/main/resources/application.yml` — `httpclient.response-timeout: 600s` (SSE keep-alive)
+- `infrastructure/env-templates/{api-gateway,slip-service}.env` — `SAMHAN_REALTIME_HEARTBEAT_SECONDS=30` + gateway response-timeout 600s
+- `clients/desktop/src/renderer/realtime/SlipRealtimeClient.ts` 신규 — fetch+ReadableStream polyfill (JWT header + 5s reconnect backoff)
+- `clients/desktop/src/renderer/api/slipComment.ts` 신규 — list + add 2 endpoint client
+- `clients/desktop/src/renderer/routes/SlipDetailPage.tsx` 보강 — 코멘트 Card (useQuery + useEffect SSE + optimistic add, data-testid 4종)
+- `clients/desktop/src/renderer/api/mock.ts` 보강 — POST/GET `/comments` mock (`globalThis.__SAMHAN_MOCK_COMMENTS_SEED` 으로 capture 시점 seed 주입)
+- `clients/mobile-staff/package.json` — `react-native-sse@^1.2.1` 의존 추가 (RN EventSource polyfill)
+- `clients/mobile-staff/src/realtime/SlipRealtimeClient.ts` 신규 — `subscribeToSlip` + heartbeat watchdog 60s
+- `clients/mobile-staff/src/api/slipComment.ts` 신규 — list/create/delete + ApiResponse wrapper assert
+- `clients/mobile-staff/src/screens/SlipDetailScreen.tsx` 신규 — slip 정보 + 코멘트 list/입력/전송 + SSE invalidate
+- `clients/mobile-staff/src/screens/driver/{DriverDashboardScreen,DriverTabNavigator}.tsx` 보강 — slip card 에서 "전표 보기 / 코멘트" 진입 link + minimal stack push
+- `clients/web/design-system/src/utils/{userColorHash.ts,userColorHash.stories.tsx}` 신규 — HSL deterministic hash util + Storybook 1 story (PR-H2 audit overlay 의존 시드)
+- `clients/web/design-system/src/{index.ts,utils/index.ts}` — barrel export 보강
+- `docs/devops/realtime-sse-production.md` 신규 — nginx config + AWS ALB / cafe24 운영 hint
+- `docs/uiux/phase12/H1-comment-smoke.md` 신규 — wireframe + 한국어 라벨
+- `docs/qa/phase-12-step-1-websocket-infra/scenarios.md` 신규 — 14 case (subscribe + broadcast 5 + 다중 client 5 + API contract 4) + 페르소나 5
+- `docs/qa/phase-12-step-1-websocket-infra/working-{comment-context-a-input,comment-context-a-after-send,comment-context-b-receives,multi-context-split}.png` 신규 — multi-context Playwright 작동 캡처 4 PNG
+- `tools/manual-capture/capture-pr-h1.js` 신규 — Playwright headless 자동화 (msedge → chromium fallback, browser.newContext 2회 분리, sharp 좌-우 합성)
+- `ROADMAP.md` Phase 12 row + Phase 12 section 신규
+- `docs/dev-reports/integration-phase-12-step-1-websocket-infra.md` 신규
+
+후속 (PR-H1 머지 후):
+- **PR-H2 (~3주) — slip audit overlay + 실시간 sync** — slip 라이프사이클 10단계 변경 시 모든 접속 client 에게 SSE broadcast (DRAFT→SAVED→DISPATCHED→...→COMPLETED) + 사용자별 색상 audit overlay (userColorHash 활용) + 변경 이력 timeline UI. 본 PR-H1 머지 후 즉시 진입.
+- **PR-H3 (~1.5주) — 권한 / 수락 / 거절 워크플로우** — 영업 → 창고 → 기사 인계 시점 명시적 수락 + SSE 양방향 push.
+- **PR-H4 (~7주) — 전 15 service 확장** — partner / inventory / accounting / arologis / dashboard 등 14 backend MSA 도메인 모두 SSE 채널 도입 + `shared/realtime` module 추출 + Redis Pub/Sub 분기 (다중 노드 진입 시 활성).

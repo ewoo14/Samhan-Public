@@ -1,0 +1,1 @@
+export { userIdToColor } from './userColorHash'

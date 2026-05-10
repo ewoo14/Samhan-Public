@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchTodayDispatches, type DispatchVehicleSummary } from '../../api/arologis';
 import { badgeStyle, colors, radii, spacing, typography } from '../../theme/tokens';
@@ -26,6 +26,14 @@ import { badgeStyle, colors, radii, spacing, typography } from '../../theme/toke
 interface Props {
   /** JWT access token — driver tab 진입 시점에 user-service `/auth/me` 로 확인 후 보관. */
   token: string | null;
+  /**
+   * slip 상세 진입 콜백 — Phase 12 PR-H1 신규.
+   *
+   * 본 PR (W10-3) 시점 backend 응답 = vehicle 단순 요약 (slip 식별자 미포함). 정식 deeplink 는 후속.
+   * 본 PR 단계는 vehicle card 우측 "전표 보기" 버튼 노출 — placeholder slipId 로 SlipDetailScreen
+   * 진입 흐름 검증. backend 확장 (vehicleSequence → slipId 매핑) 시 실 slipId 전달.
+   */
+  onOpenSlipDetail?: (params: { slipId: string; slipNo?: string; partnerName?: string | null }) => void;
 }
 
 const TONNAGE_LABEL: Record<DispatchVehicleSummary['tonnage'], string> = {
@@ -54,7 +62,7 @@ const STATUS_BADGE_KIND: Record<DispatchVehicleSummary['status'], Parameters<typ
   CANCELLED: 'sliceDeferred',
 };
 
-export default function DriverDashboardScreen({ token }: Props): JSX.Element {
+export default function DriverDashboardScreen({ token, onOpenSlipDetail }: Props): JSX.Element {
   const [vehicles, setVehicles] = useState<DispatchVehicleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -133,6 +141,20 @@ export default function DriverDashboardScreen({ token }: Props): JSX.Element {
               <Text style={styles.label}>상태</Text>
               <Text style={styles.value}>{STATUS_LABEL[item.status]}</Text>
             </View>
+            {onOpenSlipDetail ? (
+              <TouchableOpacity
+                style={styles.openSlipBtn}
+                onPress={() => onOpenSlipDetail({
+                  // 본 PR 시점 backend 응답 = vehicle 단순 요약 → placeholder slipId.
+                  // backend 확장 (vehicleSequence → slipId 매핑) 후 실 slipId 전달.
+                  slipId: `vehicle-${item.vehicleSequence}`,
+                  slipNo: `차량 #${item.vehicleSequence}`,
+                })}
+                testID={`driver-dashboard-open-slip-mobile-${item.vehicleSequence}`}
+              >
+                <Text style={styles.openSlipLabel}>전표 보기 / 코멘트</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
       />
@@ -211,6 +233,20 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     color: colors.ink.primary,
     fontWeight: typography.fontWeight.medium,
+    fontFamily: typography.fontFamily.sans,
+  },
+  openSlipBtn: {
+    marginTop: spacing[3],
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    borderRadius: radii.button,
+    backgroundColor: colors.action.brandSubtle,
+    alignSelf: 'flex-start',
+  },
+  openSlipLabel: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.action.brandActive,
     fontFamily: typography.fontFamily.sans,
   },
   errorCard: {

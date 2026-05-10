@@ -552,6 +552,61 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // ==========================================================================
+  // PR-H1: slip 코멘트 mock (in-memory per-context — multi-context QA 캡처 지원)
+  // - 화면 노출 = authorName + body + createdAt (UUID 비공개 가드)
+  // - addInitScript 로 globalThis.__SAMHAN_MOCK_COMMENTS_SEED 사전 주입 가능
+  //   (capture-pr-h1.js multi-context "B 가 SSE 로 수신" 시뮬레이션)
+  // ==========================================================================
+  type MockSlipComment = {
+    id: string
+    authorId: string
+    authorName: string
+    body: string
+    createdAt: string
+  }
+  const g = globalThis as unknown as {
+    __SAMHAN_MOCK_COMMENTS?: Record<string, MockSlipComment[]>
+    __SAMHAN_MOCK_COMMENTS_SEED?: Record<string, MockSlipComment[]>
+  }
+  if (!g.__SAMHAN_MOCK_COMMENTS) {
+    g.__SAMHAN_MOCK_COMMENTS = {}
+    // capture 스크립트가 미리 주입한 seed 가 있으면 1회 흡수
+    if (g.__SAMHAN_MOCK_COMMENTS_SEED) {
+      for (const [k, v] of Object.entries(g.__SAMHAN_MOCK_COMMENTS_SEED)) {
+        g.__SAMHAN_MOCK_COMMENTS[k] = [...v]
+      }
+    }
+  }
+  const commentsStore = g.__SAMHAN_MOCK_COMMENTS
+
+  // POST /api/v1/slips/{slipId}/comments — 신규 코멘트
+  const commentPostMatch = url.match(/\/slips\/([^/?]+)\/comments$/)
+  if (method === 'POST' && commentPostMatch) {
+    const slipId = commentPostMatch[1]!
+    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+      body?: string
+    }
+    const created: MockSlipComment = {
+      id: `mock-comment-${Date.now()}`,
+      authorId: MOCK_AUTH.userId,
+      authorName: MOCK_AUTH.fullName,
+      body: body.body ?? '',
+      createdAt: new Date().toISOString(),
+    }
+    if (!commentsStore[slipId]) commentsStore[slipId] = []
+    commentsStore[slipId].push(created)
+    return envelope(created)
+  }
+
+  // GET /api/v1/slips/{slipId}/comments?limit=N — 백필
+  const commentGetMatch = url.match(/\/slips\/([^/?]+)\/comments(\?.*)?$/)
+  if (method === 'GET' && commentGetMatch) {
+    const slipId = commentGetMatch[1]!
+    const list = commentsStore[slipId] ?? []
+    return envelope(list)
+  }
+
   // GET /slips/{id} (단건 상세) — UUID-like 또는 'slip-001' 패턴
   const slipDetailMatch = url.match(/\/slips\/([^/?]+)$/)
   if (method === 'GET' && slipDetailMatch && !url.includes('lookup-product')) {
