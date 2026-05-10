@@ -26,6 +26,9 @@ import {
   type EstimateLineRequest,
   type UpdateEstimateRequest,
 } from '../api/estimateApi'
+import { estimateAuditApi } from '../api/createAuditApi'
+import { EstimateRealtimeClient } from '../realtime/EstimateRealtimeClient'
+import { AuditRevisionBadge } from '../components/audit/AuditOverlaySection'
 import { searchPartners, type PartnerSummary } from '../api/sales'
 import { lookupProductByModelName } from '../api/slip'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -95,6 +98,35 @@ export function EstimateFormPage() {
     queryKey: ['estimate', editId],
     queryFn: () => getEstimate(editId!),
     enabled: isEdit,
+  })
+
+  // PR-H4c: edit 모드 audit log 백필
+  const auditQuery = useQuery({
+    queryKey: ['estimate', editId, 'audit-logs'],
+    queryFn: () => estimateAuditApi.listAuditLogs(editId!).catch(() => []),
+    enabled: isEdit && !!editId,
+  })
+
+  // PR-H4c: edit 모드 SSE 구독
+  useEffect(() => {
+    if (!isEdit || !editId) return
+    const ctrl = EstimateRealtimeClient.subscribe(editId, (evt) => {
+      void queryClient.invalidateQueries({ queryKey: ['estimate', editId] })
+      if (evt.event === 'estimate:edit' || evt.event === 'message') {
+        void queryClient.invalidateQueries({ queryKey: ['estimate', editId, 'audit-logs'] })
+      }
+    })
+    return () => ctrl.abort()
+  }, [isEdit, editId, queryClient])
+
+  const revertMutation = useMutation({
+    mutationFn: (revisionNo: number) =>
+      estimateAuditApi.revertToRevision(editId!, revisionNo),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['estimate', editId] })
+      void queryClient.invalidateQueries({ queryKey: ['estimate', editId, 'audit-logs'] })
+    },
+    onError: () => alert('복원에 실패했습니다.'),
   })
 
   const [partner, setPartner] = useState<PartnerSummary | null>(null)
@@ -347,13 +379,34 @@ export function EstimateFormPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: 0 }}>
-          {isEdit ? '견적서 편집' : '견적서 작성'}
-        </h3>
-        <p style={{ marginTop: 4, fontSize: 13, color: '#6B7280' }}>
-          모델명을 입력하고 다른 영역을 클릭하면 품목명/단가가 자동 입력됩니다.
-        </p>
+      <div
+        style={{
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0 }}>
+            {isEdit ? '견적서 편집' : '견적서 작성'}
+          </h3>
+          <p style={{ marginTop: 4, fontSize: 13, color: '#6B7280' }}>
+            모델명을 입력하고 다른 영역을 클릭하면 품목명/단가가 자동 입력됩니다.
+          </p>
+        </div>
+        {/* PR-H4c: 편집 모드 — 수정 횟수 + 복원 dropdown */}
+        {isEdit ? (
+          <AuditRevisionBadge
+            logs={auditQuery.data ?? []}
+            isError={auditQuery.isError}
+            reverting={revertMutation.isPending}
+            onRevert={(rev) => revertMutation.mutate(rev)}
+            testIdPrefix="estimate-form"
+          />
+        ) : null}
       </div>
 
       {isReadOnly ? (

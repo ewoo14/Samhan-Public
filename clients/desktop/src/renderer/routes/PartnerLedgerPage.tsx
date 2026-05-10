@@ -50,6 +50,7 @@ import {
   type LedgerLine,
   type SalesAggregateRow,
 } from '../api/partnerLedgerApi'
+import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 /** YYYY-MM-DD 헬퍼. */
@@ -300,6 +301,12 @@ export function PartnerLedgerPage() {
 
   return (
     <>
+      {/* PR-H4c FE-A: read-only 집계 화면 — 변경 이력은 원본 분개/세금계산서 상세에서 확인 */}
+      <AuditInfoBanner
+        message="원장 라인의 변경 이력은 각 분개 또는 세금계산서 상세 화면에서 확인할 수 있습니다."
+        testId="partner-ledger-audit-info-banner"
+      />
+
       {/* Step 1 — 집계 필터 */}
       <Card style={{ marginBottom: 16 }}>
         <h3 style={{ margin: '0 0 12px 0' }}>Step 1 — 매출/수금/채권 집계</h3>

@@ -15,7 +15,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CsvUploadDialog } from '@samhan/design-system'
+import { AuditOverlay, CsvUploadDialog } from '@samhan/design-system'
 import {
   PARTNER_DC_CONFIG_COLUMNS,
   type PartnerDcConfig,
@@ -23,6 +23,13 @@ import {
   updatePartnerDcConfig,
 } from '../api/sales'
 import { importDcConfigCsv } from '../api/dcConfigImportApi'
+import { dcConfigAuditApi } from '../api/createAuditApi'
+import { DcConfigRealtimeClient } from '../realtime/DcConfigRealtimeClient'
+import {
+  AuditInfoBanner,
+  AuditRevisionBadge,
+  groupAuditLogsByField,
+} from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { useSessionStore } from '../stores/session'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
@@ -36,6 +43,8 @@ export function SalesPartnerDcConfigPage() {
   const [committedKeyword, setCommittedKeyword] = useState('')
   const [dirty, setDirty] = useState<DirtyMap>({})
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  // PR-H4c: 선택 거래처 audit panel.
+  const [selectedPartnerCode, setSelectedPartnerCode] = useState<string | null>(null)
   const queryClient = useQueryClient()
   // PR-D Phase B FE-C — CSV 일괄 업로드는 MASTER role 만 노출 (BE @PreAuthorize 와 일치).
   const role = useSessionStore((s) => s.auth?.role)
@@ -51,6 +60,27 @@ export function SalesPartnerDcConfigPage() {
     queryFn: () => listPartnerDcConfigs(0, 250, committedKeyword || undefined),
     retry: 1,
   })
+
+  // PR-H4c: 선택 거래처 audit log + SSE.
+  const auditQuery = useQuery({
+    queryKey: ['partner-dc-config', selectedPartnerCode, 'audit-logs'],
+    queryFn: () =>
+      dcConfigAuditApi.listAuditLogs(selectedPartnerCode!).catch(() => []),
+    enabled: !!selectedPartnerCode,
+  })
+
+  useEffect(() => {
+    if (!selectedPartnerCode) return
+    const ctrl = DcConfigRealtimeClient.subscribe(selectedPartnerCode, (evt) => {
+      void queryClient.invalidateQueries({ queryKey: ['partner-dc-configs'] })
+      if (evt.event === 'dc-config:edit' || evt.event === 'message') {
+        void queryClient.invalidateQueries({
+          queryKey: ['partner-dc-config', selectedPartnerCode, 'audit-logs'],
+        })
+      }
+    })
+    return () => ctrl.abort()
+  }, [selectedPartnerCode, queryClient])
 
   const saveMutation = useMutation({
     mutationFn: ({ code, patch }: { code: string; patch: Partial<PartnerDcConfig> }) =>
@@ -104,10 +134,20 @@ export function SalesPartnerDcConfigPage() {
 
   const dirtyCount = Object.keys(dirty).length
 
+  const selectedRow = useMemo(
+    () => items.find((r) => r.partnerCode === selectedPartnerCode) ?? null,
+    [items, selectedPartnerCode],
+  )
+
   return (
     <div className={styles['salesScope']}>
       <SalesSubNav />
       <div className={styles['wrap']}>
+        {/* PR-H4c FE-A: DC 설정 변경은 거래처 단위 SSE + audit log 기록 */}
+        <AuditInfoBanner
+          message="DC 셀 변경은 BE audit log 에 자동 기록됩니다. 거래처 row 의 [이력] 버튼으로 변경 이력을 확인할 수 있습니다."
+          testId="partner-dc-config-audit-info-banner"
+        />
         <div className={styles['top']}>
           <div className={styles['title']}>
             거래처 DC율 설정
@@ -196,6 +236,7 @@ export function SalesPartnerDcConfigPage() {
                     <th key={c.key}>{c.label}</th>
                   ))}
                   <th>저장</th>
+                  <th>이력</th>
                 </tr>
               </thead>
               <tbody>
@@ -255,6 +296,16 @@ export function SalesPartnerDcConfigPage() {
                             : '저장'}
                         </button>
                       </td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles['btnMini']}
+                          onClick={() => setSelectedPartnerCode(row.partnerCode)}
+                          data-testid={`partner-dc-config-audit-button-${row.partnerCode}`}
+                        >
+                          보기
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -277,6 +328,81 @@ export function SalesPartnerDcConfigPage() {
                 return result
               }}
             />
+          </div>
+        ) : null}
+
+        {/* PR-H4c FE-A: 선택 거래처 DC audit panel — 모든 변경 필드 overlay */}
+        {selectedRow ? (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 16,
+              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              background: '#fff',
+            }}
+            data-testid="partner-dc-config-audit-panel"
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+                flexWrap: 'wrap',
+                gap: 8,
+              }}
+            >
+              <h4 style={{ margin: 0 }}>
+                {selectedRow.companyName} ({selectedRow.partnerCode}) — DC 변경 이력
+              </h4>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <AuditRevisionBadge
+                  logs={auditQuery.data ?? []}
+                  isError={auditQuery.isError}
+                  testIdPrefix="partner-dc-config-audit"
+                />
+                <button
+                  type="button"
+                  className={styles['btnMini']}
+                  onClick={() => setSelectedPartnerCode(null)}
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 12,
+              }}
+            >
+              {PARTNER_DC_CONFIG_COLUMNS.map((c) => {
+                const history =
+                  groupAuditLogsByField(auditQuery.data ?? [])[c.key as string] ?? []
+                if (history.length === 0) return null
+                const cur = selectedRow[c.key]
+                return (
+                  <div
+                    key={c.key as string}
+                    data-testid={`partner-dc-config-audit-overlay-${String(c.key)}`}
+                  >
+                    <strong style={{ fontSize: 12 }}>{c.label}</strong>:{' '}
+                    <AuditOverlay
+                      field={String(c.key)}
+                      currentValue={cur == null ? null : String(cur)}
+                      history={history}
+                    />
+                  </div>
+                )
+              })}
+              {(auditQuery.data ?? []).length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12, color: '#6b7280', gridColumn: '1 / -1' }}>
+                  변경 이력이 없습니다.
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>

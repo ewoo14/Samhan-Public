@@ -25,6 +25,9 @@ import {
   type CreateTaxInvoiceLineRequest,
   type CreateTaxInvoiceRequest,
 } from '../api/taxInvoiceApi'
+import { taxInvoiceAuditApi } from '../api/createAuditApi'
+import { TaxInvoiceRealtimeClient } from '../realtime/AccountingRealtimeClient'
+import { AuditRevisionBadge } from '../components/audit/AuditOverlaySection'
 import { searchPartners, type PartnerSummary } from '../api/sales'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -82,6 +85,39 @@ export function TaxInvoiceFormPage() {
     queryKey: ['accounting', 'tax-invoice', editId],
     queryFn: () => getTaxInvoice(editId!),
     enabled: isEdit,
+  })
+
+  // PR-H4c: edit 모드 audit log 백필
+  const auditQuery = useQuery({
+    queryKey: ['accounting', 'tax-invoice', editId, 'audit-logs'],
+    queryFn: () => taxInvoiceAuditApi.listAuditLogs(editId!).catch(() => []),
+    enabled: isEdit && !!editId,
+  })
+
+  // PR-H4c: edit 모드 SSE 구독
+  useEffect(() => {
+    if (!isEdit || !editId) return
+    const ctrl = TaxInvoiceRealtimeClient.subscribe(editId, (evt) => {
+      void queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-invoice', editId] })
+      if (evt.event === 'accounting:edit' || evt.event === 'message') {
+        void queryClient.invalidateQueries({
+          queryKey: ['accounting', 'tax-invoice', editId, 'audit-logs'],
+        })
+      }
+    })
+    return () => ctrl.abort()
+  }, [isEdit, editId, queryClient])
+
+  const revertMutation = useMutation({
+    mutationFn: (revisionNo: number) =>
+      taxInvoiceAuditApi.revertToRevision(editId!, revisionNo),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-invoice', editId] })
+      void queryClient.invalidateQueries({
+        queryKey: ['accounting', 'tax-invoice', editId, 'audit-logs'],
+      })
+    },
+    onError: () => alert('복원에 실패했습니다.'),
   })
 
   // 헤더 state
@@ -304,14 +340,35 @@ export function TaxInvoiceFormPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: 0 }}>
-          {isEdit ? '세금계산서 편집' : '세금계산서 작성'}
-        </h3>
-        <p style={{ marginTop: 4, fontSize: 13, color: '#6B7280' }}>
-          거래처를 선택하면 사업자번호/주소가 자동 입력됩니다. 부가세는
-          공급가액의 10% 로 자동 계산됩니다.
-        </p>
+      <div
+        style={{
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0 }}>
+            {isEdit ? '세금계산서 편집' : '세금계산서 작성'}
+          </h3>
+          <p style={{ marginTop: 4, fontSize: 13, color: '#6B7280' }}>
+            거래처를 선택하면 사업자번호/주소가 자동 입력됩니다. 부가세는
+            공급가액의 10% 로 자동 계산됩니다.
+          </p>
+        </div>
+        {/* PR-H4c: 편집 모드 — 수정 횟수 + 복원 dropdown */}
+        {isEdit ? (
+          <AuditRevisionBadge
+            logs={auditQuery.data ?? []}
+            isError={auditQuery.isError}
+            reverting={revertMutation.isPending}
+            onRevert={(rev) => revertMutation.mutate(rev)}
+            testIdPrefix="tax-invoice-form"
+          />
+        ) : null}
       </div>
 
       {isReadOnly ? (

@@ -26,6 +26,7 @@ import {
   resetPartnerPassword,
   updatePartnerApprovalStatus,
 } from '../api/sales'
+import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
 import styles from '../components/sales/sales.module.css'
@@ -60,10 +61,13 @@ export function SalesOrderApprovalsPage() {
     return () => setPageTitle({ title: '' })
   }, [setPageTitle])
 
+  // PR-H4c: 승인 status 변경/비밀번호 초기화는 BE audit log 자동 기록 — 30s 자동 갱신
+  // 으로 SSE invalidate 효과 흉내. 단건 row SSE 는 partner-service entity-bound 미지원.
   const query = useQuery({
     queryKey: ['partner-approvals', statusFilter],
     queryFn: () => listPartnerApprovals(0, 100, statusFilter || undefined),
     retry: 1,
+    refetchInterval: 30_000,
   })
 
   const updateStatus = useMutation({
@@ -106,6 +110,11 @@ export function SalesOrderApprovalsPage() {
     <div className={styles['salesScope']}>
       <SalesSubNav />
       <div className={styles['wrap']}>
+        {/* PR-H4c FE-A: 승인 변경 audit 안내 — 변경 시 BE audit log 자동 기록 */}
+        <AuditInfoBanner
+          message="승인 상태 변경과 비밀번호 초기화는 BE audit 로그에 자동 기록됩니다. 본 목록은 30초마다 자동 갱신됩니다."
+          testId="partner-approvals-audit-info-banner"
+        />
         <div className={styles['top']}>
           <div className={styles['title']}>
             주문서 승인

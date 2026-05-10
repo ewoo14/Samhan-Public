@@ -25,9 +25,10 @@
  * - `closing-daily-detail-row-{seq}` — 일별 detail 표 row (seq = 1-based index)
  * - `closing-daily-detail-csv-button` — 일별 detail CSV 다운로드 버튼
  */
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AuditOverlay,
   Button,
   Card,
   DataTable,
@@ -48,6 +49,13 @@ import {
   type DailyTaxInvoiceRow,
   type PeriodType,
 } from '../api/closingApi'
+import { closingAuditApi } from '../api/createAuditApi'
+import { ClosingRealtimeClient } from '../realtime/AccountingRealtimeClient'
+import {
+  AuditLockedBanner,
+  AuditRevisionBadge,
+  groupAuditLogsByField,
+} from '../components/audit/AuditOverlaySection'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { useSessionStore } from '../stores/session'
 
@@ -159,6 +167,8 @@ export function MonthEndClosingPage() {
   const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY')
   const [periodDate, setPeriodDate] = useState<string>(today())
   const [description, setDescription] = useState<string>('')
+  // PR-H4c: row 클릭으로 audit overlay panel 표시.
+  const [selectedClosingId, setSelectedClosingId] = useState<string | null>(null)
 
   usePageTitle('매출 마감')
 
@@ -166,6 +176,32 @@ export function MonthEndClosingPage() {
     queryKey: ['closings', periodType],
     queryFn: () => listClosings({ periodType }),
   })
+
+  // PR-H4c: 선택 마감 audit log + SSE.
+  const auditQuery = useQuery({
+    queryKey: ['closings', selectedClosingId, 'audit-logs'],
+    queryFn: () => closingAuditApi.listAuditLogs(selectedClosingId!).catch(() => []),
+    enabled: !!selectedClosingId,
+  })
+
+  useEffect(() => {
+    if (!selectedClosingId) return
+    const ctrl = ClosingRealtimeClient.subscribe(selectedClosingId, (evt) => {
+      void queryClient.invalidateQueries({ queryKey: ['closings'] })
+      if (evt.event === 'accounting:edit' || evt.event === 'message') {
+        void queryClient.invalidateQueries({
+          queryKey: ['closings', selectedClosingId, 'audit-logs'],
+        })
+      }
+    })
+    return () => ctrl.abort()
+  }, [selectedClosingId, queryClient])
+
+  const selectedClosing = useMemo(
+    () =>
+      (listQuery.data ?? []).find((c) => c.id === selectedClosingId) ?? null,
+    [listQuery.data, selectedClosingId],
+  )
 
   const closeMutation = useMutation({
     mutationFn: () =>
@@ -299,6 +335,22 @@ export function MonthEndClosingPage() {
               역마감
             </Button>
           ) : null,
+      },
+      // PR-H4c: row 클릭으로 audit overlay panel 표시.
+      {
+        key: 'auditAction',
+        header: '이력',
+        width: '70px',
+        render: (r) => (
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid={`closing-audit-button-${r.id}`}
+            onClick={() => setSelectedClosingId(r.id)}
+          >
+            보기
+          </Button>
+        ),
       },
     ],
     [canReverse, reverseMutation],
@@ -607,6 +659,59 @@ export function MonthEndClosingPage() {
           </div>
         )}
       </Card>
+
+      {/* PR-H4c: 선택 마감 audit overlay panel — SlipDetailPage 패턴 1:1 */}
+      {selectedClosing ? (
+        <Card style={{ marginTop: 16 }} data-testid="closing-audit-panel">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 12,
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <h3 style={{ margin: 0 }}>
+              마감 변경 이력 — {PERIOD_TYPE_LABEL[selectedClosing.periodType]}{' '}
+              {selectedClosing.periodType === 'MONTHLY'
+                ? selectedClosing.periodDate.slice(0, 7)
+                : selectedClosing.periodDate}
+            </h3>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <AuditRevisionBadge
+                logs={auditQuery.data ?? []}
+                isError={auditQuery.isError}
+                testIdPrefix="closing-audit"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedClosingId(null)}
+              >
+                닫기
+              </Button>
+            </div>
+          </div>
+          {/* 마감 후 본문 잠금 — banner */}
+          {selectedClosing.status === 'CLOSED' ? (
+            <AuditLockedBanner
+              statusLabel={PERIOD_STATUS_LABEL[selectedClosing.status]}
+              testId="closing-audit-locked-banner"
+              message="마감된 기간은 역마감 후에만 변경 가능합니다."
+            />
+          ) : null}
+          <div data-testid="closing-audit-overlay-description">
+            <strong style={{ fontSize: 13 }}>메모</strong>:{' '}
+            <AuditOverlay
+              field="description"
+              currentValue={selectedClosing.description ?? null}
+              history={groupAuditLogsByField(auditQuery.data ?? [])['description'] ?? []}
+            />
+          </div>
+        </Card>
+      ) : null}
     </>
   )
 }
