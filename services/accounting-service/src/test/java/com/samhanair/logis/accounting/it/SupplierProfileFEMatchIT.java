@@ -61,9 +61,9 @@ import org.springframework.transaction.annotation.Transactional;
 @MockitoSettings(strictness = Strictness.LENIENT)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @org.junit.jupiter.api.Disabled(
-        "BE SupplierProfileControllerIT TC-SP-1/2/3/5/6 가 동일 contract 검증. " +
-        "본 IT 의 schema/PUT 흐름은 후속 슬라이스에서 @Sql 시드 분리 후 재활성. " +
-        "Playwright TC-SP 7건이 FE 흐름 cover.")
+        "PR #165 회고 — primary supplier seed 의존 + 메서드별 graceful skip 미흡으로 200 단언 fail. " +
+        "후속 슬라이스에서 @Sql 시드 또는 Mock 응답으로 재작성 후 재활성. " +
+        "BE SupplierProfileControllerIT TC-SP-1/2/3/5/6 + Playwright TC-SP 7건이 동일 contract cover.")
 class SupplierProfileFEMatchIT extends AbstractPostgresIT {
 
     @Autowired private MockMvc mockMvc;
