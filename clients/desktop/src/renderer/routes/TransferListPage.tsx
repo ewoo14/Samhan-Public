@@ -5,6 +5,13 @@
  *
  * UUID 비공개: transferNo / source code / destination code / status / 사유
  * 만 컬럼에 노출. id 는 navigate 의 path param 으로만 사용.
+ *
+ * <h2>P1-6 보강 — Excel 다운로드</h2>
+ * <ul>
+ *   <li>헤더 우측 "Excel 다운로드" 버튼 — `GET /api/v1/inventory/stocks/export`</li>
+ *   <li>전 창고 현황 export (warehouseCode 미지정 → BE 가 전 창고 집계)</li>
+ *   <li>data-testid: transfer-list-stocks-excel-export</li>
+ * </ul>
  */
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -12,6 +19,7 @@ import {
   Badge,
   Button,
   DataTable,
+  ExcelDownloadButton,
   type DataTableColumn,
 } from '@samhan/design-system'
 import {
@@ -23,6 +31,8 @@ import {
 } from '../api/inventory'
 import { useSessionStore, canCreateTransfer } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { exportStocks } from '../api/excelExportApi'
+import { makeExportFilename } from '../hooks/useExcelDownload'
 
 const STATUS_VARIANT: Record<
   TransferStatus,
@@ -93,11 +103,21 @@ export function TransferListPage() {
         }}
       >
         <h3 style={{ margin: 0 }}>재고이동 목록</h3>
-        {canCreateTransfer(role) ? (
-          <Button variant="primary" onClick={() => navigate('/transfers/new')}>
-            새 이동전표
-          </Button>
-        ) : null}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* P1-6: 전 창고 재고 현황 export */}
+          <ExcelDownloadButton
+            onFetch={() => exportStocks()}
+            filename={makeExportFilename('재고현황')}
+            data-testid="transfer-list-stocks-excel-export"
+          >
+            Excel 다운로드
+          </ExcelDownloadButton>
+          {canCreateTransfer(role) ? (
+            <Button variant="primary" onClick={() => navigate('/transfers/new')}>
+              새 이동전표
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <DataTable

@@ -21,6 +21,7 @@
  * - admin-partners-row-{partnerCode}
  * - admin-partners-realtime-indicator
  * - admin-partners-create-btn
+ * - admin-partners-excel-export (P1-6 신규)
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -31,6 +32,8 @@ import {
   DataTable,
   type DataTableColumn,
 } from '@samhan/design-system'
+import { exportPartners } from '../../api/excelExportApi'
+import { useExcelDownload, makeExportFilename } from '../../hooks/useExcelDownload'
 import {
   listAdminPartners,
   PARTNER_STATUS_LABEL,
@@ -77,6 +80,9 @@ export function PartnersPage() {
   const [statusFilter, setStatusFilter] = useState<PartnerStatus | ''>('')
   const [typeFilter, setTypeFilter] = useState<PartnerType | ''>('')
   const [page, setPage] = useState(0)
+
+  // P1-6: Excel export
+  const { downloading, download } = useExcelDownload()
 
   // 4탭 상세 다이얼로그 상태
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(
@@ -176,6 +182,27 @@ export function PartnersPage() {
           >
             실시간 자동 갱신 · 30초
           </span>
+          {/* P1-6: Excel 다운로드 — 현재 검색어(q) + 상태 필터 BE 시그니처와 일치
+              (BE PartnerAdminController.exportXlsx(q, status) 는 type 미지원 — TM PR #146 cross-check) */}
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={downloading}
+            disabled={downloading}
+            onClick={() =>
+              download(
+                () =>
+                  exportPartners({
+                    q: q.trim() || undefined,
+                    status: statusFilter || undefined,
+                  }),
+                makeExportFilename('거래처목록'),
+              )
+            }
+            data-testid="admin-partners-excel-export"
+          >
+            Excel 다운로드
+          </Button>
           <Button
             variant="primary"
             size="sm"
