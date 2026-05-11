@@ -1,29 +1,32 @@
 /**
- * 매출 마감 화면 (`/warehouse/closing`).
+ * 매출 마감 화면 — `/sales/closing` (P2-4).
  *
- * P2-4 매출 마감 (Phase 10 Step 8 — slice 8).
- * 매뉴얼 출처: `docs/manual/02-창고/04-매출-마감.md`.
+ * <p>구성:
+ * <ul>
+ *   <li>상단: 일별/월별 toggle + 기간 일자 선택 + 마감 실행 버튼</li>
+ *   <li>시산표 link (새 탭) + 마감 후 변경 차단 안내</li>
+ *   <li>마감 이력 표 — periodType / periodDate / status / 매출합계 / 마감시각 / 실행자</li>
+ *   <li>역마감 버튼 (CLOSED + MASTER 만)</li>
+ *   <li>일별 세금계산서 detail 카드 (DAILY 탭 전용) — CSV 다운로드 포함</li>
+ * </ul>
  *
- * 화면 구성:
- * - 상단: 일별/월별 toggle + 기간 일자 선택 + [마감 실행] 버튼
- * - 시산표 link (새 탭) + 마감 후 변경 차단 안내
- * - 마감 list table — periodType / periodDate / status / totalSales / closedAt / closedBy
- *   - row 별 [역마감] 버튼 (CLOSED + MASTER 만)
+ * <p>권한 (BE `@PreAuthorize` 와 동일):
+ * <ul>
+ *   <li>마감 실행: ACCOUNTANT / MASTER</li>
+ *   <li>역마감:    MASTER 만</li>
+ * </ul>
  *
- * 권한 (BE `@PreAuthorize` 와 동일):
- * - 마감 실행: ACCOUNTANT / MASTER
- * - 역마감:    MASTER 만
+ * <p>UUID 비공개 가드 (`feedback_uuid_no_user_visibility.md`):
+ * 마감 row 의 `id` 는 역마감 path param 전용. 화면 표시는 periodType + periodDate.
  *
- * UUID 비공개 가드 (`feedback_uuid_no_user_visibility.md`):
- * - 마감 row 의 `id` 는 reverse 호출 path 에만 사용. 화면 표시는 periodType+periodDate.
+ * 매뉴얼 출처: {@code docs/manual/02-창고/04-매출-마감.md}.
  *
  * data-testid:
- * - `closing-list-table`             — 마감 list table
- * - `closing-new-button`             — 마감 실행 버튼
- * - `closing-reverse-button`         — 역마감 버튼 (per row, MASTER 만)
- * - `closing-daily-detail-table`     — 일별 detail 표 (PR-E2 BE-A12)
- * - `closing-daily-detail-row-{seq}` — 일별 detail 표 row (seq = 1-based index)
- * - `closing-daily-detail-csv-button` — 일별 detail CSV 다운로드 버튼
+ * - `sales-closing-list-table`              — 마감 이력 표
+ * - `sales-closing-new-button`              — 마감 실행 버튼
+ * - `sales-closing-reverse-button`          — 역마감 버튼 (MASTER 만)
+ * - `sales-closing-daily-detail-table`      — 일별 detail 표
+ * - `sales-closing-daily-detail-csv-button` — CSV 다운로드 버튼
  */
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -61,13 +64,13 @@ import {
 import { usePageTitle } from '../hooks/usePageTitle'
 import { useSessionStore } from '../stores/session'
 
-/** YYYY-MM-DD 오늘 날짜 (한국 시간 클라이언트 local). */
+/** YYYY-MM-DD 오늘 날짜. */
 function today(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** YYYY-MM-DD → "YYYY-MM" (월별 input value). */
+/** YYYY-MM-DD → "YYYY-MM". */
 function toMonth(iso: string): string {
   return iso.slice(0, 7)
 }
@@ -86,17 +89,17 @@ function fmtKrw(raw: string | null | undefined): string {
   return Math.round(n).toLocaleString('ko-KR')
 }
 
-/** ISO 8601 → "YYYY-MM-DD HH:mm" (Asia/Seoul 가정). */
+/** ISO 8601 → "YYYY-MM-DD HH:mm". */
 function fmtTimestamp(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   const Y = d.getFullYear()
-  const M = String(d.getMonth() + 1).padStart(2, '0')
+  const Mo = String(d.getMonth() + 1).padStart(2, '0')
   const D = String(d.getDate()).padStart(2, '0')
   const h = String(d.getHours()).padStart(2, '0')
   const m = String(d.getMinutes()).padStart(2, '0')
-  return `${Y}-${M}-${D} ${h}:${m}`
+  return `${Y}-${Mo}-${D} ${h}:${m}`
 }
 
 /** CSV 셀 escape — 콤마/줄바꿈/큰따옴표 포함 시 큰따옴표 wrap + 내부 큰따옴표 2배. */
@@ -109,9 +112,7 @@ function csvCell(v: string | number | null | undefined): string {
 
 /**
  * 일별 detail CSV 다운로드 (UTF-8 BOM — Excel 한글 호환).
- *
  * 컬럼: 순번 / 세금계산서번호 / 거래처명 / 공급가액 / 세액 / 합계
- * 마지막 row 는 합계 (전체 supply / vat / total).
  */
 function downloadDailyDetailCsv(detail: DailyClosingDetail): void {
   const header = ['순번', '세금계산서번호', '거래처명', '공급가액', '세액', '합계']
@@ -120,14 +121,7 @@ function downloadDailyDetailCsv(detail: DailyClosingDetail): void {
       .map(csvCell)
       .join(','),
   )
-  const totalRow = [
-    '합계',
-    '',
-    '',
-    detail.totalSupply,
-    detail.totalVat,
-    detail.totalAmount,
-  ]
+  const totalRow = ['합계', '', '', detail.totalSupply, detail.totalVat, detail.totalAmount]
     .map(csvCell)
     .join(',')
   const body = [header.map(csvCell).join(','), ...rows, totalRow].join('\r\n')
@@ -135,7 +129,7 @@ function downloadDailyDetailCsv(detail: DailyClosingDetail): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `closing-daily-detail_${detail.date}.csv`
+  a.download = `sales-closing-daily_${detail.date}.csv`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -160,7 +154,7 @@ const noticeStyle: CSSProperties = {
   lineHeight: 1.5,
 }
 
-export function MonthEndClosingPage() {
+export function SalesClosingPage() {
   const role = useSessionStore((s) => s.auth?.role)
   const canExecute = canExecuteClosing(role)
   const canReverse = canReverseClosing(role)
@@ -169,7 +163,6 @@ export function MonthEndClosingPage() {
   const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY')
   const [periodDate, setPeriodDate] = useState<string>(today())
   const [description, setDescription] = useState<string>('')
-  // PR-H4c: row 클릭으로 audit overlay panel 표시.
   const [selectedClosingId, setSelectedClosingId] = useState<string | null>(null)
 
   /** 역마감 확인 Modal 상태 */
@@ -178,13 +171,12 @@ export function MonthEndClosingPage() {
   usePageTitle('매출 마감')
 
   const listQuery = useQuery({
-    queryKey: ['closings', periodType],
+    queryKey: ['sales-closings', periodType],
     queryFn: () => listClosings({ periodType }),
   })
 
-  // PR-H4c: 선택 마감 audit log + SSE.
   const auditQuery = useQuery({
-    queryKey: ['closings', selectedClosingId, 'audit-logs'],
+    queryKey: ['sales-closings', selectedClosingId, 'audit-logs'],
     queryFn: () => closingAuditApi.listAuditLogs(selectedClosingId!).catch(() => []),
     enabled: !!selectedClosingId,
   })
@@ -192,10 +184,10 @@ export function MonthEndClosingPage() {
   useEffect(() => {
     if (!selectedClosingId) return
     const ctrl = ClosingRealtimeClient.subscribe(selectedClosingId, (evt) => {
-      void queryClient.invalidateQueries({ queryKey: ['closings'] })
+      void queryClient.invalidateQueries({ queryKey: ['sales-closings'] })
       if (evt.event === 'accounting:edit' || evt.event === 'message') {
         void queryClient.invalidateQueries({
-          queryKey: ['closings', selectedClosingId, 'audit-logs'],
+          queryKey: ['sales-closings', selectedClosingId, 'audit-logs'],
         })
       }
     })
@@ -203,8 +195,7 @@ export function MonthEndClosingPage() {
   }, [selectedClosingId, queryClient])
 
   const selectedClosing = useMemo(
-    () =>
-      (listQuery.data ?? []).find((c) => c.id === selectedClosingId) ?? null,
+    () => (listQuery.data ?? []).find((c) => c.id === selectedClosingId) ?? null,
     [listQuery.data, selectedClosingId],
   )
 
@@ -218,25 +209,19 @@ export function MonthEndClosingPage() {
       }),
     onSuccess: () => {
       setDescription('')
-      void queryClient.invalidateQueries({ queryKey: ['closings'] })
+      void queryClient.invalidateQueries({ queryKey: ['sales-closings'] })
     },
   })
 
   const reverseMutation = useMutation({
     mutationFn: (id: string) => reverseClosing(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['closings'] })
+      void queryClient.invalidateQueries({ queryKey: ['sales-closings'] })
     },
   })
 
-  /**
-   * 일별 detail (PR-E2 BE-A12) — DAILY 탭 + 유효 일자일 때만 호출.
-   *
-   * legacy GAS 12번 "일마감 프로그램" — 발행된 세금계산서 + 모델별 매출 detail.
-   * read-only 이므로 마감 OPEN/CLOSED 무관 호출.
-   */
   const dailyDetailQuery = useQuery({
-    queryKey: ['closings', 'daily-detail', periodDate],
+    queryKey: ['sales-closings', 'daily-detail', periodDate],
     queryFn: () => getDailyClosingDetail(periodDate),
     enabled:
       periodType === 'DAILY' && /^\d{4}-\d{2}-\d{2}$/.test(periodDate) && canExecute,
@@ -245,6 +230,17 @@ export function MonthEndClosingPage() {
   const closeError = closeMutation.error as Error | null
   const reverseError = reverseMutation.error as Error | null
   const dailyDetailError = dailyDetailQuery.error as Error | null
+
+  type DailyDetailRow = DailyTaxInvoiceRow & { seq: number }
+
+  const detailRows: DailyDetailRow[] = useMemo(
+    () =>
+      (dailyDetailQuery.data?.taxInvoices ?? []).map((r, idx) => ({
+        ...r,
+        seq: idx + 1,
+      })),
+    [dailyDetailQuery.data],
+  )
 
   const columns: DataTableColumn<AccountingPeriod>[] = useMemo(
     () => [
@@ -274,23 +270,9 @@ export function MonthEndClosingPage() {
       {
         key: 'totalSales',
         header: '매출 합계',
-        width: '140px',
+        width: '150px',
         align: 'right',
         render: (r) => fmtKrw(r.totalSales),
-      },
-      {
-        key: 'totalPurchase',
-        header: '매입 합계',
-        width: '140px',
-        align: 'right',
-        render: (r) => fmtKrw(r.totalPurchase),
-      },
-      {
-        key: 'totalExpense',
-        header: '판관비',
-        width: '120px',
-        align: 'right',
-        render: (r) => fmtKrw(r.totalExpense),
       },
       {
         key: 'lockedSlipCount',
@@ -308,7 +290,7 @@ export function MonthEndClosingPage() {
       {
         key: 'closedBy',
         header: '실행자',
-        width: '120px',
+        width: '110px',
         render: (r) => r.closedBy ?? '—',
       },
       {
@@ -320,7 +302,7 @@ export function MonthEndClosingPage() {
             <Button
               variant="ghost"
               size="sm"
-              data-testid="closing-reverse-button"
+              data-testid="sales-closing-reverse-button"
               onClick={() => setReverseConfirmRow(r)}
               disabled={reverseMutation.isPending}
             >
@@ -328,7 +310,6 @@ export function MonthEndClosingPage() {
             </Button>
           ) : null,
       },
-      // PR-H4c: row 클릭으로 audit overlay panel 표시.
       {
         key: 'auditAction',
         header: '이력',
@@ -337,7 +318,7 @@ export function MonthEndClosingPage() {
           <Button
             variant="ghost"
             size="sm"
-            data-testid={`closing-audit-button-${r.id}`}
+            data-testid={`sales-closing-audit-button-${r.id}`}
             onClick={() => setSelectedClosingId(r.id)}
           >
             보기
@@ -348,23 +329,6 @@ export function MonthEndClosingPage() {
     [canReverse, reverseMutation],
   )
 
-  /**
-   * 일별 detail 표 column — seq / 세금계산서번호 / 거래처 / 공급/세액/합계.
-   *
-   * UUID 비공개 가드: 식별자는 `taxInvoiceNo` (발행번호) + `partnerName`.
-   * row key 는 (taxInvoiceNo + idx) — BE 미보장 unique 회피.
-   */
-  type DailyDetailRow = DailyTaxInvoiceRow & { seq: number }
-
-  const detailRows: DailyDetailRow[] = useMemo(
-    () =>
-      (dailyDetailQuery.data?.taxInvoices ?? []).map((r, idx) => ({
-        ...r,
-        seq: idx + 1,
-      })),
-    [dailyDetailQuery.data],
-  )
-
   const detailColumns: DataTableColumn<DailyDetailRow>[] = useMemo(
     () => [
       {
@@ -372,54 +336,24 @@ export function MonthEndClosingPage() {
         header: '순번',
         width: '60px',
         align: 'right',
-        // testid 는 row 의 seq cell 에 부여 — DataTable 이 rowProps 미지원.
-        render: (r) => (
-          <span data-testid={`closing-daily-detail-row-${r.seq}`}>{r.seq}</span>
-        ),
+        render: (r) => <span data-testid={`sales-closing-daily-detail-row-${r.seq}`}>{r.seq}</span>,
       },
-      {
-        key: 'taxInvoiceNo',
-        header: '세금계산서번호',
-        width: '160px',
-        render: (r) => r.taxInvoiceNo,
-      },
-      {
-        key: 'partnerName',
-        header: '거래처명',
-        render: (r) => r.partnerName,
-      },
-      {
-        key: 'supplyAmount',
-        header: '공급가액',
-        width: '140px',
-        align: 'right',
-        render: (r) => fmtKrw(r.supplyAmount),
-      },
-      {
-        key: 'vatAmount',
-        header: '세액',
-        width: '120px',
-        align: 'right',
-        render: (r) => fmtKrw(r.vatAmount),
-      },
-      {
-        key: 'totalAmount',
-        header: '합계',
-        width: '140px',
-        align: 'right',
-        render: (r) => fmtKrw(r.totalAmount),
-      },
+      { key: 'taxInvoiceNo', header: '세금계산서번호', width: '160px', render: (r) => r.taxInvoiceNo },
+      { key: 'partnerName', header: '거래처명', render: (r) => r.partnerName },
+      { key: 'supplyAmount', header: '공급가액', width: '140px', align: 'right', render: (r) => fmtKrw(r.supplyAmount) },
+      { key: 'vatAmount', header: '세액', width: '120px', align: 'right', render: (r) => fmtKrw(r.vatAmount) },
+      { key: 'totalAmount', header: '합계', width: '140px', align: 'right', render: (r) => fmtKrw(r.totalAmount) },
     ],
     [],
   )
 
   return (
     <>
-      {/* 상단: 마감 실행 카드 */}
+      {/* 마감 실행 카드 */}
       <Card style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: '0 0 12px 0' }}>마감 실행</h3>
+        <h3 style={{ margin: '0 0 12px 0' }}>매출 마감 실행</h3>
         <p style={noticeStyle}>
-          ⚠ 마감 실행 시 해당 기간의 모든 CONFIRMED 슬립이 LOCKED 상태로 전환되며,
+          마감 실행 시 해당 기간의 모든 CONFIRMED 슬립이 LOCKED 상태로 전환되며,
           이후 분개/슬립 입력이 차단됩니다. 변경이 필요하면 MASTER 권한자에게 역마감을
           요청하십시오.
         </p>
@@ -449,7 +383,6 @@ export function MonthEndClosingPage() {
             ))}
           </div>
 
-          {/* 기간 일자 input — 일별/월별 분기 */}
           <label style={{ fontSize: 13, color: 'var(--ink-primary)' }}>
             기간 일자:&nbsp;
             {periodType === 'MONTHLY' ? (
@@ -472,7 +405,6 @@ export function MonthEndClosingPage() {
             )}
           </label>
 
-          {/* 메모 (옵션) */}
           <label style={{ fontSize: 13, color: 'var(--ink-primary)', flexGrow: 1, minWidth: 200 }}>
             메모(옵션):&nbsp;
             <input
@@ -485,10 +417,9 @@ export function MonthEndClosingPage() {
             />
           </label>
 
-          {/* 마감 실행 버튼 */}
           <Button
             variant="primary"
-            data-testid="closing-new-button"
+            data-testid="sales-closing-new-button"
             onClick={() => closeMutation.mutate()}
             disabled={!canExecute || closeMutation.isPending}
             title={!canExecute ? 'ACCOUNTANT / MASTER 권한이 필요합니다' : undefined}
@@ -496,16 +427,11 @@ export function MonthEndClosingPage() {
             {closeMutation.isPending ? '처리 중...' : '마감 실행'}
           </Button>
 
-          {/* 시산표 link (새 탭) */}
           <a
-            href={`#/accounting/balances`}
+            href="#/accounting/balances"
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              fontSize: 13,
-              color: 'var(--color-brand-600)',
-              textDecoration: 'underline',
-            }}
+            style={{ fontSize: 13, color: 'var(--color-brand-600)', textDecoration: 'underline' }}
           >
             시산표 열기 ↗
           </a>
@@ -536,7 +462,7 @@ export function MonthEndClosingPage() {
         ) : null}
       </Card>
 
-      {/* 일별 detail (PR-E2 BE-A12) — DAILY 탭 + 권한 보유 시 노출 */}
+      {/* 일별 세금계산서 detail — DAILY 탭 전용 */}
       {periodType === 'DAILY' && canExecute ? (
         <Card style={{ marginBottom: 16 }}>
           <div
@@ -549,24 +475,15 @@ export function MonthEndClosingPage() {
               gap: 8,
             }}
           >
-            <h3 style={{ margin: 0 }}>
-              일별 세금계산서 detail — {periodDate}
-            </h3>
+            <h3 style={{ margin: 0 }}>일별 세금계산서 detail — {periodDate}</h3>
             <Button
               variant="ghost"
               size="sm"
-              data-testid="closing-daily-detail-csv-button"
+              data-testid="sales-closing-daily-detail-csv-button"
               disabled={!dailyDetailQuery.data || detailRows.length === 0}
               onClick={() => {
-                if (dailyDetailQuery.data) {
-                  downloadDailyDetailCsv(dailyDetailQuery.data)
-                }
+                if (dailyDetailQuery.data) downloadDailyDetailCsv(dailyDetailQuery.data)
               }}
-              title={
-                detailRows.length === 0
-                  ? '내려받을 detail 데이터가 없습니다'
-                  : 'UTF-8 BOM CSV — Excel 한글 호환'
-              }
             >
               CSV 다운로드
             </Button>
@@ -582,7 +499,7 @@ export function MonthEndClosingPage() {
             </div>
           ) : (
             <>
-              <div data-testid="closing-daily-detail-table">
+              <div data-testid="sales-closing-daily-detail-table">
                 <DataTable
                   columns={detailColumns}
                   rows={detailRows}
@@ -590,8 +507,6 @@ export function MonthEndClosingPage() {
                   emptyMessage="해당 일자에 발행된 세금계산서가 없습니다."
                 />
               </div>
-
-              {/* 합계 row — 표 footer */}
               {dailyDetailQuery.data && detailRows.length > 0 ? (
                 <div
                   style={{
@@ -604,7 +519,6 @@ export function MonthEndClosingPage() {
                     fontSize: 13,
                     fontWeight: 600,
                   }}
-                  data-testid="closing-daily-detail-totals"
                 >
                   <span>건수: {dailyDetailQuery.data.totalTaxInvoiceCount}</span>
                   <span>공급가액: {fmtKrw(dailyDetailQuery.data.totalSupply)}</span>
@@ -617,20 +531,11 @@ export function MonthEndClosingPage() {
         </Card>
       ) : null}
 
-      {/* 마감 list */}
+      {/* 마감 이력 표 */}
       <Card>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 8,
-          }}
-        >
-          <h3 style={{ margin: 0 }}>
-            마감 이력 — {PERIOD_TYPE_LABEL[periodType]}
-          </h3>
-        </div>
+        <h3 style={{ margin: '0 0 8px 0' }}>
+          마감 이력 — {PERIOD_TYPE_LABEL[periodType]}
+        </h3>
 
         {listQuery.isLoading ? (
           <div style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}>
@@ -641,7 +546,7 @@ export function MonthEndClosingPage() {
             마감 목록을 불러오지 못했습니다. 백엔드 연결을 확인하세요.
           </div>
         ) : (
-          <div data-testid="closing-list-table">
+          <div data-testid="sales-closing-list-table">
             <DataTable
               columns={columns}
               rows={listQuery.data ?? []}
@@ -671,7 +576,7 @@ export function MonthEndClosingPage() {
             <Button
               variant="primary"
               size="sm"
-              data-testid="closing-reverse-confirm-button"
+              data-testid="sales-closing-reverse-confirm-button"
               disabled={reverseMutation.isPending}
               onClick={() => {
                 if (reverseConfirmRow) {
@@ -701,9 +606,9 @@ export function MonthEndClosingPage() {
         ) : null}
       </Modal>
 
-      {/* PR-H4c: 선택 마감 audit overlay panel — SlipDetailPage 패턴 1:1 */}
+      {/* 감사 이력 패널 */}
       {selectedClosing ? (
-        <Card style={{ marginTop: 16 }} data-testid="closing-audit-panel">
+        <Card style={{ marginTop: 16 }} data-testid="sales-closing-audit-panel">
           <div
             style={{
               display: 'flex',
@@ -724,26 +629,23 @@ export function MonthEndClosingPage() {
               <AuditRevisionBadge
                 logs={auditQuery.data ?? []}
                 isError={auditQuery.isError}
-                testIdPrefix="closing-audit"
+                testIdPrefix="sales-closing-audit"
               />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedClosingId(null)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setSelectedClosingId(null)}>
                 닫기
               </Button>
             </div>
           </div>
-          {/* 마감 후 본문 잠금 — banner */}
+
           {selectedClosing.status === 'CLOSED' ? (
             <AuditLockedBanner
               statusLabel={PERIOD_STATUS_LABEL[selectedClosing.status]}
-              testId="closing-audit-locked-banner"
+              testId="sales-closing-audit-locked-banner"
               message="마감된 기간은 역마감 후에만 변경 가능합니다."
             />
           ) : null}
-          <div data-testid="closing-audit-overlay-description">
+
+          <div data-testid="sales-closing-audit-overlay-description">
             <strong style={{ fontSize: 13 }}>메모</strong>:{' '}
             <AuditOverlay
               field="description"
