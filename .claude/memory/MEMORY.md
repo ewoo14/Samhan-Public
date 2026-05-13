@@ -1,0 +1,33 @@
+- [Project Overview](project_overview.md) — SamhanLogis MSA platform: 14 services, Spring Boot 3 / Java 17, PostgreSQL service-per-DB, 33-week roadmap
+- [Phase 10 = arologis-service / Phase 11 = AWS migration (renumber)](project_arologis_phase10.md) — 2026-05-07 사용자 결정, 모바일 어플 RN Expo mobile-staff 패턴 일관, 외부 vendor = 인성데이타 퀵프로그램
+- [Phase 11 AWS 단일 환경 + 자동 복구](project_phase11_aws.md) — Seoul, m5.xlarge + db.t3.medium + RDS auto backup + EC2 Auto Recovery + Health Check Lambda. 월 ₩405K (정상가)
+- [User Role](user_role.md) — 개발책임자 역할; Claude는 PM으로서 팀 에이전트를 병렬 디스패치
+- [사용자 호칭 규칙](feedback_user_title.md) — 사용자는 "개발책임자"; "대표"는 회사 실제 대표(김미선)에게만 사용
+- [Build Conventions](project_build_conventions.md) — Gradle multi-project, Java 17, BaseEntity 7 audit fields mandatory, Soft Delete only
+- [Domain Strategy](project_domain_strategy.md) — samhan-air.com subdomains: app/api/order/sign/chat/files/monitor
+- [Korean Audit Standard](project_korean_accounting.md) — 한국 일반기업회계기준 표준 계정과목 코드 (100/200/300/400/500/800/900) seed data required
+- [Dev Environment](project_dev_environment.md) — JDK 17 / Gradle 8.10.2 / Docker; locations, env vars, common commands
+- [Korean Path JDK Trap](feedback_korean_path_jdk.md) — `gradle test` fails when project sits under 한글 path on JDK 17; use `assemble` locally, or move/upgrade
+- [한국어 의무 — 커밋/PR/Issue](feedback_korean_commits.md) — 모든 git commit, GitHub PR, Issue는 한국어 작성 필수 (prefix와 trailer만 예외)
+- [GitHub PR/Issue 워크플로우](feedback_github_pr_workflow.md) — TL → PM → 대표 승인 체인, branch 전략, 라벨 스킴 (plan §12)
+- [PR QA 스크린샷](feedback_pr_qa_screenshots.md) — 모든 PR 본문에 QA 결과 스크린샷 1장 이상 인라인 첨부 (docs/qa/<slug>/*.png)
+- [통합 PR 패턴 의무](feedback_integrated_pr_pattern.md) — 디자인/UI 차이는 단편 PR 금지, 전체 묶어서 통합 PR + QA + TM 승인 (PR #66 회고)
+- [TM 주도 + agent discussion 패턴](feedback_tm_led_agent_discussion.md) — TM 통합 PR 발행 후 reviewer agent (BE/FE/Designer/QA/DevOps) 가 PR comment 로 토론, TM 이 종합하여 추가 commit
+- [문서 동기화 의무](feedback_continuous_docs_sync.md) — 매 작업 PR 에 README + ROADMAP + DECISIONS + 각 client/service README + dev-report 갱신 의무 포함, 별도 docs PR 금지 (PR #80/#85 패턴 폐기)
+- [인쇄 양식 디자인 반복 정정](feedback_print_design_iteration.md) — 인쇄 양식은 단번 완성 가정 금지, 사용자 이미지 → mock → Edge 캡처 → CSS-only 미세 조정 3~5회 iteration (PR #21 회고)
+- [gradlew 실행 권한](feedback_gradlew_exec_bit.md) — Windows 커밋 시 `git update-index --chmod=+x gradlew` 필수 (Linux CI Permission denied 방지)
+- [멀티 에이전트 팀 디스패치 패턴](feedback_multi_agent_team_pattern.md) — 모든 슬라이스에 Plan + **5-team(BE/FE/Designer/QA/DevOps)** parallel + TM 검토 (PR #19 회고 후 Designer 추가)
+- [agent origin/main 동기화 의무](feedback_agent_origin_main_sync.md) — background agent 작업 시작 직후 git fetch + git log origin/main 검증 의무 (3건 stale 회고)
+- [PM 통합 풀빌드 가드](feedback_pm_integration_build_check.md) — 4-team 결과물 팀별 PR 발행 전 BE+QA 사전 컴파일 검증 + Docker 가용 IT + Layer 4 도메인 메서드 의미 정렬 (PR #16/17/21 회고)
+- [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — Windows + Docker Desktop 환경에서 npipe 한계로 IT skip 가능; DOCKER_HOST=tcp://localhost:2375 우회 권장
+- [IT 외부 RestClient @MockBean 의무](feedback_it_mockbean_external_clients.md) — SpringBootTest IT 의 모든 외부 client (ProductClient/InventoryClient 등) @MockBean 격리 + lenient setup. 누락 시 Eureka 비활성 → 500 (PR #17 회고)
+- [UUID 사용자 비공개 원칙](feedback_uuid_no_user_visibility.md) — 모든 클라이언트 화면에서 UUID 노출 금지. 비즈니스 식별자 (슬립번호/창고 코드/모델명/거래처명) 만 사용자 노출 (PR #18 회고)
+- [함수 단위 문서화 3-layer](feedback_function_documentation.md) — 모든 슬라이스에 (1) 한국어 Javadoc 의무, (2) springdoc-openapi 자동 생성, (3) docs/dev-reports/<slice>.md 누적 의무
+- [PowerShell UTF-8 트랩](feedback_powershell_utf8_writes.md) — body-file 은 Write/Edit/heredoc 만 사용. PowerShell `Set-Content` 기본값 UTF-16 LE BOM → 한글 깨짐
+- [권한 표기 풀네임](feedback_role_naming_full.md) — PR/Issue/문서에서 Role 표기는 풀네임 (MASTER/MANAGER/...). M/M/D 약어 금지
+- [PR 발행 후 PM 자동 CI 모니터링](feedback_pr_ci_monitoring.md) — PR 발행 즉시 `gh pr checks --watch` 자동 시작, fail 시 즉시 fix, green 후 PM 승인 → 개발책임자 머지 요청 (PR #34 회고)
+- [Monitor 도구 자동 사용](feedback_monitor_no_permission.md) — Monitor/CI watch 사용자 허락 없이 즉시 시작, confirm/announce 불필요
+- [PR 머지/close 시 Issue 자동 close](feedback_issue_close_after_pr.md) — PR 발행 시 `연관 Issue: #N` 명시 의무, 머지/close 후 연관 Issue 즉시 close (v4 회고)
+- [PM 자동 머지 (5-team 0결함 + CI green 시)](feedback_user_merge_authority.md) — 2026-05-10 갱신 — 20+ 슬라이스 일괄 진행 효율화. 결함/UNSTABLE 시는 사용자 결정 대기
+- [GitGuardian = PM 자동 false positive 처리](feedback_gitguardian_false_positive.md) — 2026-05-11 갱신 — PM 자동 판정 후 머지, 사용자 dashboard 위임 X
+- [PR 표준 리뷰 워크플로우](feedback_pr_review_workflow.md) — 5-team 리뷰 → TM 승인 → CI green → PM 최종 승인 → 개발책임자 머지. 단순 PR 도 적용
