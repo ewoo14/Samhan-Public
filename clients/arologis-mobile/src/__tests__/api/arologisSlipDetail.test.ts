@@ -26,7 +26,7 @@ describe('fetchStopSlipDetail', () => {
           parsedKakaoSeq: 4567,
           stopLabel: '테스트상사 / 서울 강남구 테스트로 1 / 카톡 순번 4567',
           slipDate: '2026-05-15',
-          slipNo: 'SL-20260515-001',
+          slipNo: '2026/05/15-1',
           partnerName: '테스트상사',
           deliveryAddress: '서울 강남구 테스트로 1',
           sourceWarehouseName: '삼한 본창고',
@@ -50,7 +50,7 @@ describe('fetchStopSlipDetail', () => {
   it('today 정차 전표 상세 경로에 Accept JSON만 전송하고 parsedKakaoSeq query를 붙인다', async () => {
     const result = await fetchStopSlipDetail('jwt-x', 'NIGHT', 7, 3, { parsedKakaoSeq: 4567 });
 
-    expect(result.slipNo).toBe('SL-20260515-001');
+    expect(result.slipNo).toBe('2026/05/15-1');
     expect(result.dispatchType).toBe('NIGHT');
     expect(result.vehicleSequence).toBe(7);
     expect(result.stopSequence).toBe(3);

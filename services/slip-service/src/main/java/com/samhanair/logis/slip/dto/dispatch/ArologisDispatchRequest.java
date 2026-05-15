@@ -10,7 +10,7 @@ import java.util.UUID;
  * <p>전송 endpoint: {@code POST /internal/arologis/dispatches} (X-Internal-Token).
  *
  * @param samhanDispatchTaskId Samhan Public 의 DispatchTask UUID (멱등 키)
- * @param taskCode 사용자 노출 식별자 (DT-YYYYMMDD-NNN)
+ * @param taskCode 사용자 노출 식별자 (yyyy/MM/dd-N)
  * @param dispatchDate 배차 날짜
  * @param vehicles 차량 그룹 목록 (정차 sequence 포함)
  */

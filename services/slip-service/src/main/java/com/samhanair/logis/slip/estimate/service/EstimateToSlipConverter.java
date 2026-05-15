@@ -44,7 +44,7 @@ public class EstimateToSlipConverter {
      */
     public Slip convert(Estimate estimate) {
         LocalDate slipDate = LocalDate.now();
-        String slipNo = slipNumberService.next(slipDate);
+        String slipNo = slipNumberService.next(slipDate, com.samhanair.logis.slip.domain.SlipType.OUTBOUND);
         int seqNo = slipNumberService.extractSeqNo(slipNo);
 
         // sourceWarehouseId 는 nullable 허용 안 함 (Slip.createOutbound 가드) — 임시 placeholder UUID

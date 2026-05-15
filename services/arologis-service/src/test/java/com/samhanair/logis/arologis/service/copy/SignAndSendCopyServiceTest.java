@@ -78,7 +78,7 @@ class SignAndSendCopyServiceTest {
         when(stopRepo.findFirstByVehicleIdAndSequence(VEHICLE_ID, 1)).thenReturn(Optional.of(stop));
         when(slipResolver.resolveSlipId(stop)).thenReturn(Optional.of(SLIP_ID));
         when(slipResolver.buildSlipDataMap(stop))
-                .thenReturn(Map.of("slipNo", "SL-001", "partnerName", "대구공조"));
+                .thenReturn(Map.of("slipNo", "2026/05/14-1", "partnerName", "대구공조"));
     }
 
     private SignAndSendCopyRequest req() {

@@ -65,7 +65,7 @@ class ArologisDispatchClientTest {
                 .andRespond(withSuccess(objectMapper.writeValueAsString(mockRes), MediaType.APPLICATION_JSON));
 
         ArologisDispatchRequest req = new ArologisDispatchRequest(
-                taskId, "DT-20260514-001", LocalDate.of(2026, 5, 14),
+                taskId, "2026/05/14-1", LocalDate.of(2026, 5, 14),
                 List.of(new ArologisDispatchRequest.VehicleGroup(1, "TONNAGE_1", List.of())));
 
         ArologisDispatchResponse res = client.send(req);
@@ -81,7 +81,7 @@ class ArologisDispatchClientTest {
                 .andRespond(withServerError());
 
         ArologisDispatchRequest req = new ArologisDispatchRequest(
-                UUID.randomUUID(), "DT-x", LocalDate.now(), List.of());
+                UUID.randomUUID(), "2026/05/14-1", LocalDate.now(), List.of());
 
         assertThatThrownBy(() -> client.send(req))
                 .isInstanceOf(BusinessException.class);
@@ -95,7 +95,7 @@ class ArologisDispatchClientTest {
                 RestClient.builder().baseUrl(AROLOGIS_BASE).build(), emptyProps);
 
         ArologisDispatchRequest req = new ArologisDispatchRequest(
-                UUID.randomUUID(), "DT-x", LocalDate.now(), List.of());
+                UUID.randomUUID(), "2026/05/14-2", LocalDate.now(), List.of());
         assertThatThrownBy(() -> noTokenClient.send(req))
                 .isInstanceOf(BusinessException.class);
     }

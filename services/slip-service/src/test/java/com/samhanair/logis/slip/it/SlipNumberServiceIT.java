@@ -3,6 +3,7 @@ package com.samhanair.logis.slip.it;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.samhanair.logis.slip.SlipServiceApplication;
+import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.service.SlipNumberService;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  *   <li>{@code SlipNumberSequence.next(): int} — atomic 1씩 증가, 첫 호출 1 반환</li>
  *   <li>{@code SlipNumberService.next(LocalDate): String} — Service facade.
  *       해당 일자 sequence 가 없으면 create + next, 있으면 next.
- *       반환 형식: {@code "yyyy/MM/dd-NNN"} (예: {@code "2026/05/04-001"}).</li>
+ *       반환 형식: {@code "yyyy/MM/dd-N"} (예: {@code "2026/05/04-1"}).</li>
  *   <li>{@code SlipNumberService.extractSeqNo(String): int} — 채번 결과 trailing 순번 파싱.</li>
  * </ul>
  *
@@ -63,5 +64,21 @@ class SlipNumberServiceIT extends AbstractPostgresIT {
         assertThat(slipNumberService.extractSeqNo(bSlip2)).isEqualTo(2);
         assertThat(aSlip1).startsWith("2026/05/05-");
         assertThat(bSlip1).startsWith("2026/05/06-");
+    }
+
+    @Test
+    void next_sameDateDifferentSlipTypes_eachIndependentFromOne() {
+        // 판매/구매는 서로 다른 메뉴/속성이므로 같은 날짜 같은 공개 전표번호가 허용된다.
+        LocalDate date = LocalDate.of(2026, 5, 7);
+
+        String outbound1 = slipNumberService.next(date, SlipType.OUTBOUND);
+        String inbound1 = slipNumberService.next(date, SlipType.INBOUND);
+        String outbound2 = slipNumberService.next(date, SlipType.OUTBOUND);
+        String inbound2 = slipNumberService.next(date, SlipType.INBOUND);
+
+        assertThat(outbound1).isEqualTo("2026/05/07-1");
+        assertThat(inbound1).isEqualTo("2026/05/07-1");
+        assertThat(outbound2).isEqualTo("2026/05/07-2");
+        assertThat(inbound2).isEqualTo("2026/05/07-2");
     }
 }

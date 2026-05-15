@@ -24,7 +24,7 @@ public record PublicSignatureViewResponse(
     /**
      * 인수증 표시용 슬립 정보 — UUID 미노출.
      *
-     * @param slipNo 전표번호 ({@code yyyy/MM/dd-NNN})
+     * @param slipNo 전표번호 ({@code yyyy/MM/dd-N})
      * @param partnerName 거래처명 snapshot
      * @param deliveryDate 배송일 (slipDate)
      * @param lines 라인 목록 (productName + quantity 만)

@@ -48,7 +48,8 @@ import org.springframework.transaction.annotation.Transactional;
  * {@link Slip#complete}, {@link Slip#inspect}, {@link Slip#ship}, {@link Slip#deliver},
  * {@link Slip#confirm}, {@link Slip#reject}. 잘못된 전이 시도 시 BusinessException(CONFLICT) 던짐.
  *
- * <p>idempotency: {@code SlipRepository.findBySlipNo} EXISTS 체크 + 중복 시 skip. 안전 재실행.
+ * <p>idempotency: {@code SlipRepository.findBySlipTypeAndSlipNoAndIsDeletedFalse} EXISTS 체크
+ * + 중복 시 skip. 판매/구매 전표는 같은 공개번호를 가질 수 있으므로 유형까지 함께 본다.
  * UUID 비공개 가드 — 모든 외부 식별자는 slipNo / partnerCode / productCode 사용.
  */
 @Component
@@ -141,17 +142,17 @@ public class SlipSeeder implements CommandLineRunner {
             throw new IllegalStateException("SlipSpec 분포 검증 실패 — 기대 100, 실제 " + specs.size());
         }
 
-        Map<LocalDate, Integer> seqByDate = new HashMap<>();
+        Map<SequenceKey, Integer> seqByDateType = new HashMap<>();
         int created = 0;
         int skipped = 0;
 
         // 시드 슬립을 생성 순서대로 (DRAFT → CONFIRMED) 처리하기 위해 정렬 안 함 — spec idx 순.
         for (SlipSpec spec : specs) {
             LocalDate slipDate = computeSlipDate(spec.idx());
-            int seqNo = seqByDate.merge(slipDate, 1, Integer::sum);
+            int seqNo = seqByDateType.merge(new SequenceKey(slipDate, spec.type()), 1, Integer::sum);
             String slipNo = formatSlipNo(slipDate, seqNo);
 
-            if (slipRepository.findBySlipNo(slipNo).isPresent()) {
+            if (slipRepository.findBySlipTypeAndSlipNoAndIsDeletedFalse(spec.type(), slipNo).isPresent()) {
                 skipped++;
                 continue;
             }
@@ -369,9 +370,9 @@ public class SlipSeeder implements CommandLineRunner {
         return base.plusDays(dayOffset);
     }
 
-    /** "yyyy/MM/dd-NNN" 포맷. SlipNumberSequence 미경유 — 시드 결정적 채번. */
+    /** "yyyy/MM/dd-N" 포맷. SlipNumberSequence 미경유 — 시드 결정적 채번. */
     private static String formatSlipNo(LocalDate slipDate, int seqNo) {
-        return String.format("%04d/%02d/%02d-%03d",
+        return String.format("%04d/%02d/%02d-%d",
                 slipDate.getYear(), slipDate.getMonthValue(), slipDate.getDayOfMonth(), seqNo);
     }
 
@@ -426,4 +427,7 @@ public class SlipSeeder implements CommandLineRunner {
      * @param targetStatus 도메인 메서드 chain 으로 도달할 최종 status
      */
     private record SlipSpec(int idx, SlipType type, DeliveryTag tag, SlipStatus targetStatus) {}
+
+    /** 전표번호 공개 순번 범위 — 날짜 + 전표 유형별 독립 증가. */
+    private record SequenceKey(LocalDate slipDate, SlipType slipType) {}
 }

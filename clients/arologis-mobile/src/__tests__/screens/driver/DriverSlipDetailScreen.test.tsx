@@ -65,7 +65,7 @@ const detail = {
   parsedKakaoSeq: 4567,
   stopLabel: '테스트상사 / 서울 강남구 테스트로 1 / 카톡 순번 4567',
   slipDate: '2026-05-15',
-  slipNo: 'SL-20260515-001',
+  slipNo: '2026/05/15-1',
   partnerName: '테스트상사',
   deliveryAddress: '서울 강남구 테스트로 1',
   sourceWarehouseName: '삼한 본창고',
@@ -139,7 +139,7 @@ describe('DriverSlipDetailScreen D-AX-18', () => {
     expect(utils.getByText('전표 상세 불러오는 중...')).toBeTruthy();
     await waitFor(() => expect(fetchStopSlipDetail).toHaveBeenCalledWith('jwt-x', 'NIGHT', 7, 3, { parsedKakaoSeq: 4567 }));
 
-    expect(await utils.findByText('SL-20260515-001')).toBeTruthy();
+    expect(await utils.findByText('2026/05/15-1')).toBeTruthy();
     expect(utils.getByText('테스트상사')).toBeTruthy();
     expect(utils.getByText('2026-05-15')).toBeTruthy();
     expect(utils.getByText('서울 강남구 테스트로 1')).toBeTruthy();
@@ -173,7 +173,7 @@ describe('DriverSlipDetailScreen D-AX-18', () => {
     expect(await utils.findByText('전표 상세를 불러오지 못했습니다.')).toBeTruthy();
     expect(utils.getByText('잠시 후 다시 시도해 주세요.')).toBeTruthy();
     fireEvent.press(utils.getByTestId('arologis-slip-detail-retry'));
-    expect(await utils.findByText('SL-20260515-001')).toBeTruthy();
+    expect(await utils.findByText('2026/05/15-1')).toBeTruthy();
     expect(fetchStopSlipDetail).toHaveBeenCalledTimes(2);
   });
 
@@ -201,7 +201,7 @@ describe('DriverSlipDetailScreen D-AX-18', () => {
 
     fireEvent.press(await utils.findByTestId('arologis-open-slip-detail-7-3'));
 
-    expect(await utils.findByText('SL-20260515-001')).toBeTruthy();
+    expect(await utils.findByText('2026/05/15-1')).toBeTruthy();
     expect(fetchStopSlipDetail).toHaveBeenCalledWith('jwt-x', 'NIGHT', 7, 3, { parsedKakaoSeq: 4567 });
     expect(textContent(utils.toJSON())).not.toContain('11111111-2222-3333-4444-555555555555');
     expect(textContent(utils.toJSON())).not.toContain('downloadUrl');

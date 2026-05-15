@@ -99,7 +99,7 @@ public class SlipService {
 
         // 2. 채번 (slipDate null 이면 today)
         LocalDate slipDate = req.slipDate() == null ? LocalDate.now() : req.slipDate();
-        String slipNo = slipNumberService.next(slipDate);
+        String slipNo = slipNumberService.next(slipDate, req.slipType());
         int seqNo = slipNumberService.extractSeqNo(slipNo);
 
         // 3. 헤더 생성

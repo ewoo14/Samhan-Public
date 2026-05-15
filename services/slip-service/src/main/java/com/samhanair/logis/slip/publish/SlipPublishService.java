@@ -129,7 +129,7 @@ public class SlipPublishService {
         ResolvedLines resolved = resolveLines(req.lines());
 
         // 4. 슬립 헤더 + 라인 빌드 + 채번
-        String slipNo = slipNumberService.next(slipDate);
+        String slipNo = slipNumberService.next(slipDate, SlipType.OUTBOUND);
         int seqNo = slipNumberService.extractSeqNo(slipNo);
         Slip slip = Slip.createOutbound(slipNo, slipDate, seqNo,
                 warehouseId, null,
@@ -198,7 +198,7 @@ public class SlipPublishService {
 
         ResolvedLines resolved = resolveLines(req.lines());
 
-        String slipNo = slipNumberService.next(slipDate);
+        String slipNo = slipNumberService.next(slipDate, SlipType.OUTBOUND);
         int seqNo = slipNumberService.extractSeqNo(slipNo);
         Slip slip = Slip.createOutbound(slipNo, slipDate, seqNo,
                 warehouseId, null,

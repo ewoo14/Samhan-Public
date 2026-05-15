@@ -57,7 +57,7 @@ export const SLIP_DISPATCH_STATUS_OPTIONS: SlipDispatchStatus[] = [
  * <p>spec § 4.2 + § 5.1 + Phase A plan F2.1 (개발책임자 확정 schema).
  *
  * @property id 슬립 UUID — drag payload / API path 에만 사용 (UUID 비공개).
- * @property slipNumber 전표번호 (사용자 노출 식별자, 예: "SL-001").
+ * @property slipNumber 전표번호 (사용자 노출 식별자, 예: "2026/05/14-1").
  * @property partnerCode 거래처 코드 (사용자 노출, 예: "P-1234").
  * @property partnerName 거래처명 (사용자 노출, 예: "대구공조").
  * @property address 인수자 주소 (모달 상세 + arologis 발송 payload).

@@ -55,7 +55,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         UUID groupId = UUID.randomUUID();
         UUID slipId = UUID.randomUUID();
 
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-1", LocalDate.now());
         setId(task, taskId);
         task.markDispatching();
 
@@ -91,7 +91,7 @@ class DispatchConfirmAndUnavailableServiceTest {
     @Test
     void confirm_from_DRAFT_throws() throws Exception {
         UUID taskId = UUID.randomUUID();
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-2", LocalDate.now());
         setId(task, taskId);
         when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
 
@@ -113,7 +113,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         UUID groupId = UUID.randomUUID();
         UUID slipId = UUID.randomUUID();
 
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-3", LocalDate.now());
         setId(task, taskId);
         task.markDispatching();
 
@@ -149,7 +149,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         UUID g1Id = UUID.randomUUID();
         UUID g2Id = UUID.randomUUID();
 
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-4", LocalDate.now());
         setId(task, taskId);
         task.markDispatching();
 

@@ -19,7 +19,7 @@ import org.hibernate.annotations.UuidGenerator;
  * 견적번호 채번 시퀀스 — 일자별 last_seq 보조.
  *
  * <p>{@link com.samhanair.logis.slip.domain.SlipNumberSequence} 와 동일 패턴 — 단,
- * 견적은 {@code EQ-yyyyMMdd-NNNN} (4자리 시퀀스). slip 은 {@code yyyy/MM/dd-NNN} (3자리).
+ * 견적은 {@code EQ-yyyyMMdd-NNNN} (4자리 시퀀스). slip 은 {@code yyyy/MM/dd-N}.
  */
 @Entity
 @Getter

@@ -23,7 +23,7 @@ public record PublicBatchResponse(
     /**
      * 모바일 슬립 요약 — UUID 없음, slipNo + 거래처명 + 라인 건수만.
      *
-     * @param slipNo 전표번호 (yyyy/MM/dd-NNN)
+     * @param slipNo 전표번호 (yyyy/MM/dd-N)
      * @param partnerName 거래처명 snapshot
      * @param lineCount 라인 건수
      * @param status 상태 (기사 화면 progress 표시용)

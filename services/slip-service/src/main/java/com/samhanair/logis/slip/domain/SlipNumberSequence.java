@@ -3,6 +3,8 @@ package com.samhanair.logis.slip.domain;
 import com.samhanair.logis.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -16,9 +18,10 @@ import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UuidGenerator;
 
 /**
- * 전표 일자별 채번 보조 — {@link Slip#getSlipNo()} 의 {@code yyyy/MM/dd-NNN} 순번을
- * atomic 하게 관리한다. 동시 충돌은 {@code slips(slip_no) WHERE is_deleted=false} 의
- * partial unique 인덱스로 백업 (서비스 레이어가 충돌 시 재시도 정책 결정).
+ * 전표 일자 + 유형별 채번 보조 — {@link Slip#getSlipNo()} 의 {@code yyyy/MM/dd-N} 순번을
+ * atomic 하게 관리한다. 판매/구매 전표는 서로 다른 메뉴/속성이므로 같은 날짜에 같은 공개번호를
+ * 가질 수 있고, 동시 충돌은 {@code slips(slip_type, slip_no) WHERE is_deleted=false} 의 partial
+ * unique 인덱스로 백업한다.
  */
 @Entity
 @Getter
@@ -33,8 +36,12 @@ public class SlipNumberSequence extends BaseEntity {
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "slip_date", nullable = false, unique = true)
+    @Column(name = "slip_date", nullable = false)
     private LocalDate slipDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "slip_type", nullable = false, length = 20)
+    private SlipType slipType;
 
     @Column(name = "last_seq", nullable = false)
     private int lastSeq;
@@ -43,8 +50,9 @@ public class SlipNumberSequence extends BaseEntity {
     @Column(name = "version", nullable = false)
     private Long version;
 
-    private SlipNumberSequence(LocalDate slipDate) {
+    private SlipNumberSequence(LocalDate slipDate, SlipType slipType) {
         this.slipDate = slipDate;
+        this.slipType = slipType;
         this.lastSeq = 0;
         this.version = 0L;
     }
@@ -56,7 +64,18 @@ public class SlipNumberSequence extends BaseEntity {
      * @return lastSeq=0 의 신규 SlipNumberSequence
      */
     public static SlipNumberSequence create(LocalDate slipDate) {
-        return new SlipNumberSequence(slipDate);
+        return create(slipDate, SlipType.OUTBOUND);
+    }
+
+    /**
+     * 새 날짜 + 전표 유형 시퀀스를 생성한다. lastSeq=0 으로 시작한다.
+     *
+     * @param slipDate 채번 기준 날짜
+     * @param slipType 판매/구매 전표 유형
+     * @return lastSeq=0 의 신규 SlipNumberSequence
+     */
+    public static SlipNumberSequence create(LocalDate slipDate, SlipType slipType) {
+        return new SlipNumberSequence(slipDate, slipType);
     }
 
     /**

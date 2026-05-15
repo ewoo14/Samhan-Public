@@ -560,7 +560,7 @@ public class Slip extends BaseEntity {
     /**
      * 출고전표 생성 — sourceWarehouseId 필수, destinationWarehouseId 는 거래처 직배 등 시 null 가능.
      *
-     * @param slipNo 채번된 전표번호 ({@code yyyy/MM/dd-NNN})
+     * @param slipNo 채번된 전표번호 ({@code yyyy/MM/dd-N})
      * @param slipDate 전표 날짜
      * @param seqNo 같은 날짜 내 순번 (1 이상)
      * @param sourceWarehouseId 출고지 창고 UUID (필수)
@@ -589,7 +589,7 @@ public class Slip extends BaseEntity {
     /**
      * 입고전표 생성 — destinationWarehouseId 필수 (도착지). sourceWarehouseId 는 항상 null.
      *
-     * @param slipNo 채번된 전표번호 ({@code yyyy/MM/dd-NNN})
+     * @param slipNo 채번된 전표번호 ({@code yyyy/MM/dd-N})
      * @param slipDate 전표 날짜
      * @param seqNo 같은 날짜 내 순번
      * @param destinationWarehouseId 입고 창고 UUID (필수)

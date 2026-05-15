@@ -9,6 +9,7 @@ import com.samhanair.logis.slip.attachment.web.dto.SlipAttachmentResponse;
 import com.samhanair.logis.slip.delivery.domain.DeliveryBatch;
 import com.samhanair.logis.slip.delivery.repository.DeliveryBatchRepository;
 import com.samhanair.logis.slip.domain.Slip;
+import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -77,7 +78,7 @@ public class PublicSlipAttachmentController {
             return ResponseEntity.status(HttpStatus.GONE)
                     .body(ApiResponse.fail(ErrorCode.CONFLICT, "토큰이 만료되었습니다"));
         }
-        Slip slip = slipRepository.findBySlipNo(slipNo)
+        Slip slip = slipRepository.findBySlipTypeAndSlipNoAndIsDeletedFalse(SlipType.OUTBOUND, slipNo)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "슬립을 찾을 수 없습니다: " + slipNo));
         // 본 슬립이 해당 batch 에 속해야 함 (cross-token 업로드 차단)

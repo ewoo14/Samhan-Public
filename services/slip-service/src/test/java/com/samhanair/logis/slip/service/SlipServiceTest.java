@@ -86,8 +86,8 @@ class SlipServiceTest {
 
     @Test
     void create_outbound_returnsDraft_andCallsProductLookup() {
-        when(slipNumberService.next(any(LocalDate.class))).thenReturn("2026/05/04-001");
-        when(slipNumberService.extractSeqNo("2026/05/04-001")).thenReturn(1);
+        when(slipNumberService.next(any(LocalDate.class), eq(SlipType.OUTBOUND))).thenReturn("2026/05/04-1");
+        when(slipNumberService.extractSeqNo("2026/05/04-1")).thenReturn(1);
         when(slipRepository.save(any(Slip.class))).thenAnswer(inv -> {
             Slip s = inv.getArgument(0);
             ReflectionTestUtils.setField(s, "id", slipId);
@@ -108,7 +108,7 @@ class SlipServiceTest {
         SlipDetailResponse res = service.create(req, "user-1");
 
         assertThat(res.status()).isEqualTo(SlipStatus.DRAFT);
-        assertThat(res.slipNo()).isEqualTo("2026/05/04-001");
+        assertThat(res.slipNo()).isEqualTo("2026/05/04-1");
         assertThat(res.lines()).hasSize(1);
         assertThat(res.lines().get(0).lineTotal()).isEqualByComparingTo(new BigDecimal("200.00"));
         verify(productClient).lookup(any());
@@ -116,8 +116,8 @@ class SlipServiceTest {
 
     @Test
     void create_inbound_setsSourceNull() {
-        when(slipNumberService.next(any(LocalDate.class))).thenReturn("2026/05/04-002");
-        when(slipNumberService.extractSeqNo("2026/05/04-002")).thenReturn(2);
+        when(slipNumberService.next(any(LocalDate.class), eq(SlipType.INBOUND))).thenReturn("2026/05/04-1");
+        when(slipNumberService.extractSeqNo("2026/05/04-1")).thenReturn(1);
         when(slipRepository.save(any(Slip.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateSlipRequest req = new CreateSlipRequest(
@@ -346,7 +346,7 @@ class SlipServiceTest {
     // ---------- helpers ----------
 
     private Slip preparedOutbound(SlipStatus status, int qty, BigDecimal unitPrice) {
-        Slip slip = Slip.createOutbound("2026/05/04-001", LocalDate.of(2026, 5, 4), 1,
+        Slip slip = Slip.createOutbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
                 sourceWh, destWh, partnerId, "삼한공조", DeliveryTag.DAY, null, "u");
         ReflectionTestUtils.setField(slip, "id", slipId);
         slip.addLine(SlipLine.create(slip, productId, "에어컨", "M-1", null, qty, unitPrice, null));
@@ -355,7 +355,7 @@ class SlipServiceTest {
     }
 
     private Slip preparedInbound(SlipStatus status) {
-        Slip slip = Slip.createInbound("2026/05/04-002", LocalDate.of(2026, 5, 4), 2,
+        Slip slip = Slip.createInbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
                 destWh, partnerId, "삼한", DeliveryTag.RETURN, null, "u");
         ReflectionTestUtils.setField(slip, "id", slipId);
         slip.addLine(SlipLine.create(slip, productId, "p", null, null, 1, new BigDecimal("10.00"), null));

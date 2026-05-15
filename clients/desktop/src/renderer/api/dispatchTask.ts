@@ -174,7 +174,7 @@ export interface DispatchVehicleGroupResponse {
  * DispatchTask 응답 — BE {@code DispatchTaskResponse} 와 1:1.
  *
  * @property id task UUID — API path 에만 사용.
- * @property taskCode 사용자 노출 식별자 (예: "DT-20260514-001").
+ * @property taskCode 사용자 노출 식별자 (예: "2026/05/14-1").
  * @property dispatchDate 배차 일자 (yyyy-MM-dd).
  * @property status 11 상태 (Phase A 4 + Phase C 7).
  * @property vehicleGroups 차량 그룹 리스트 (sequence 순서 보장).

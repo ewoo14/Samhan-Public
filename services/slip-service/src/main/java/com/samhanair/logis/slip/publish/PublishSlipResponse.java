@@ -12,7 +12,7 @@ import java.util.UUID;
  * 상세는 {@code GET /slips/{id}} 로 별도 조회 (UUID 비공개 원칙은 화면 단의 책임).
  *
  * @param slipId 발행된 Slip UUID (호출자가 후속 조회/리다이렉트에 사용)
- * @param slipNo 채번된 전표번호 ({@code yyyy/MM/dd-NNN})
+ * @param slipNo 채번된 전표번호 ({@code yyyy/MM/dd-N})
  * @param status 발행 직후 상태 (보통 {@link SlipStatus#DRAFT})
  * @param sourceType 발행 출처
  * @param sourceId 출처 비즈니스 식별자 (estimateNumber / partnerOrderId)

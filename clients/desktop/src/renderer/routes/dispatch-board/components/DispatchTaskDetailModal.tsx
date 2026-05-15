@@ -18,7 +18,7 @@
  *  - taskId / groupId / slipId UUID 는 API path 와 dialog 호출에만 사용.
  *
  * accessibility:
- *  - aria-label 한국어 풀네임 ("배차 작업 DT-... 상세").
+ *  - aria-label 한국어 풀네임 ("배차 작업 2026/05/14-1 상세").
  *  - Modal (design-system) 의 focus trap + ESC 닫기 + 한국어 닫기 라벨 활용.
  */
 import { useState } from 'react'

@@ -54,7 +54,9 @@ import org.springframework.test.web.servlet.MockMvc;
  * <p>Docker 미가용 환경 (Windows + Docker Desktop npipe) 에서는 AbstractPostgresIT 가 자동 skip
  * ([feedback_testcontainers_windows_docker]).
  */
-@SpringBootTest(classes = ArologisServiceApplication.class)
+@SpringBootTest(
+        classes = ArologisServiceApplication.class,
+        properties = "arologis.signature-copy.dir=build/tmp/arologis-signature-copies")
 @AutoConfigureMockMvc
 abstract class AbstractSignAndSendCopyIT extends AbstractPostgresIT {
 

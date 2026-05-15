@@ -10,7 +10,6 @@ import com.samhanair.logis.slip.repository.dispatch.DispatchTaskRepository;
 import com.samhanair.logis.slip.repository.dispatch.DispatchVehicleGroupRepository;
 import com.samhanair.logis.slip.repository.dispatch.DispatchVehicleGroupSlipRepository;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Samhan Public 배차 작업 DRAFT 생명주기 — BE Task B6.
  *
- * <p>Daily counter 기반 taskCode 발급 (DT-YYYYMMDD-NNN). UUID 비공개 가드.
+ * <p>Daily counter 기반 taskCode 발급 ({@code YYYY/MM/DD-N}). UUID 비공개 가드.
  *
  * <p>책임 분리:
  * <ul>
@@ -39,8 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class DispatchTaskService {
 
-    private static final DateTimeFormatter CODE_DATE_FMT = DateTimeFormatter.BASIC_ISO_DATE;
-    private static final int MAX_DAILY_COUNTER = 999;
+    private static final int MAX_DAILY_COUNTER = 99_999;
 
     private final DispatchTaskRepository taskRepo;
     private final DispatchVehicleGroupRepository groupRepo;
@@ -120,11 +118,11 @@ public class DispatchTaskService {
         slipMapRepo.save(mapping);
     }
 
-    /** Daily counter 기반 taskCode 발급 — DT-YYYYMMDD-NNN. */
+    /** Daily counter 기반 taskCode 발급 — YYYY/MM/DD-N. 배차 메뉴 안에서만 유일하면 된다. */
     public String generateTaskCode(LocalDate date) {
-        String prefix = "DT-" + date.format(CODE_DATE_FMT);
+        String prefix = date.format(java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"));
         for (int n = 1; n <= MAX_DAILY_COUNTER; n++) {
-            String code = prefix + "-" + String.format("%03d", n);
+            String code = prefix + "-" + n;
             if (!taskRepo.existsByTaskCodeAndIsDeletedFalse(code)) {
                 return code;
             }

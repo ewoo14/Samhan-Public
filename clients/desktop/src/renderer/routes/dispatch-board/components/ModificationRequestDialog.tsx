@@ -120,7 +120,7 @@ export function ModificationRequestDialog({
           aria-label="배차 수정 요청 사유"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="예: 슬립 SL-009 추가 필요 + 정차 순서 조정"
+          placeholder="예: 슬립 2026/05/14-1 추가 필요 + 정차 순서 조정"
           rows={4}
           maxLength={MAX_REASON_LENGTH}
           disabled={submitting}
