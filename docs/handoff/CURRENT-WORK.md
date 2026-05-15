@@ -4,6 +4,37 @@
 > 갱신자: PM (Claude Opus 4.7) → 다음 진행 도구 = **OpenAI Codex CLI** (사용자 결정, 토큰 한도 사유)
 > 사용법: 새 도구/세션 시작 시 본 파일 read → §0 (즉시 시작) + §1 (방금 끝난 일) + §3 (다음 trigger 후보) 순서
 
+## 2026-05-15 Codex 최신 핸드오프 — D-AX-11 PR #192 머지 완료
+
+이 섹션이 아래의 과거 `D-AX-11 in progress` 기록보다 우선한다.
+
+- 현재 브랜치: `main`
+- 최신 main commit: `5599580 feat(arologis): D-AX-11 배차 페이지 데스크톱 이전`
+- PR: https://github.com/ewoo14/SamhanLogis/pull/192
+- 머지 커밋: `55995805d2922084c516f942d02f3cf1382a6407`
+- 상태: D-AX-11 완료, PR #192 squash merge 완료, remote main 최신.
+- 최종 CI: PR head `bfc5f7d` 기준 GitHub checks 전체 통과.
+- QA: `qa/playwright`의 Chromium mock render로 한국어 화면 4장 캡처 완료.
+- QA 산출물:
+  - `docs/qa/arologis-dispatch-pages-extract/screenshots/01-manual-dispatch.png`
+  - `docs/qa/arologis-dispatch-pages-extract/screenshots/02-pre-classify.png`
+  - `docs/qa/arologis-dispatch-pages-extract/screenshots/03-unassigned.png`
+  - `docs/qa/arologis-dispatch-pages-extract/screenshots/04-reconcile.png`
+- PR 포함 항목: 5-team review 표, TM 통합, PM/CI 승인, QA 스크린샷, 리뷰 반영 내역.
+- 별도 세션 기록: `docs/handoff/2026-05-15-codex-d-ax-11-session.md`
+- dev report: `docs/dev-reports/arologis-dispatch-pages-extract.md`
+
+다음 세션 첫 명령:
+
+```powershell
+git checkout main
+git pull
+git log --oneline -5
+Get-Content AGENTS.md, docs/handoff/CURRENT-WORK.md, .codex/AGENTS.md -Encoding UTF8
+```
+
+다음 후보 작업은 새 결정을 만들기 전에 `migration/decisions/DECISIONS.md`와 해당 slice spec/plan을 먼저 확인한다. 사용자가 “그대로 진행”을 요청하면 Claude handoff 패턴대로 5-team review, PR 본문 QA 스크린샷, PM/CI 승인 코멘트를 포함한다.
+
 ## 2026-05-15 Codex Update — D-AX-11 in progress
 
 - Current branch: `feat/arologis-dispatch-pages-extract`

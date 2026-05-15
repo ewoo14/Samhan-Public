@@ -10,6 +10,33 @@
 
 ---
 
+## 2026-05-15 최신 상태 — PR #192 머지 완료
+
+이 블록이 아래의 과거 `feat/arologis-dispatch-pages-extract` 진행 중 기록보다 우선한다.
+
+- 현재 기준 브랜치: `main`
+- 최신 머지: PR #192 `[codex] D-AX-11 아로로지스 배차 페이지 이전`
+- PR: https://github.com/ewoo14/SamhanLogis/pull/192
+- 머지 커밋: `55995805d2922084c516f942d02f3cf1382a6407`
+- 작업 범위: 아로로지스 데스크톱 배차 4개 화면(`/dispatches/manual`, `/dispatches/pre-classify`, `/dispatches/unassigned`, `/dispatches/reconcile`) 이전, 관련 API/realtime helper/route 등록, 수동 배차 `partnerCode` 백엔드 계약 보존.
+- 검증: PR #192 최종 head `bfc5f7d` 기준 GitHub CI 전체 통과. PR 본문과 코멘트에 5-team review, TM 통합, PM/CI 승인, 한국어 Playwright mock QA 스크린샷 포함.
+- 다음 세션 시작 시 우선 read:
+  1. `AGENTS.md`
+  2. `docs/handoff/CURRENT-WORK.md`
+  3. `.codex/AGENTS.md`
+  4. 필요 시 `docs/handoff/2026-05-15-codex-d-ax-11-session.md`
+
+즉시 시작 명령:
+
+```powershell
+git checkout main
+git pull
+git log --oneline -5
+Get-Content AGENTS.md, docs/handoff/CURRENT-WORK.md, .codex/AGENTS.md -Encoding UTF8
+```
+
+---
+
 ## 0. 코덱스가 본 repo 에서 먼저 알아야 할 3가지
 
 1. **본 repo 의 1차 도구는 Claude Code 였으나, 토큰 한도 사유로 코덱스로 전환됨 (2026-05-15)**. Claude Code 의 auto-memory (`.claude/memory/*.md`) 는 코덱스가 자동 로드하지 못하지만 git tracked 이므로 **read 는 가능**. 아래 §4 의 "메모리 참조 가이드" 에 어느 파일을 언제 읽으면 되는지 정리.
