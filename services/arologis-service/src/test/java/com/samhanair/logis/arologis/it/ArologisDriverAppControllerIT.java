@@ -1,5 +1,6 @@
 package com.samhanair.logis.arologis.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 
@@ -56,6 +57,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 @SpringBootTest(classes = ArologisServiceApplication.class)
 @AutoConfigureMockMvc
 class ArologisDriverAppControllerIT extends AbstractPostgresIT {
+
+    private static final String UUID_PATTERN =
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
     @Autowired
     private MockMvc mockMvc;
@@ -192,13 +196,16 @@ class ArologisDriverAppControllerIT extends AbstractPostgresIT {
                         .content(body))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.locationId").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.locationId").doesNotExist())
                 // BE-1 회귀 — source 변환 결과가 APP_GPS_BACKGROUND 로 응답
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.source")
-                        .value(DriverLocationSource.APP_GPS_BACKGROUND.name()));
+                        .value(DriverLocationSource.APP_GPS_BACKGROUND.name()))
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("locationId")
+                        .doesNotContainPattern(UUID_PATTERN));
     }
 
-    /** Case 5 — POST sign 정상 → 200 + signatureId. */
+    /** Case 5 — POST sign 정상 → 200 + UUID-free response. */
     @Test
     void sign_for_existing_stop_returns_200() throws Exception {
         UUID userId = UUID.randomUUID();
@@ -227,7 +234,10 @@ class ArologisDriverAppControllerIT extends AbstractPostgresIT {
                         .contentType("application/json")
                         .content(body))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").exists());
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").doesNotExist())
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("signatureId")
+                        .doesNotContainPattern(UUID_PATTERN));
 
         // stop 미존재 sequence 는 404 검증 (Case 6 분리)
     }

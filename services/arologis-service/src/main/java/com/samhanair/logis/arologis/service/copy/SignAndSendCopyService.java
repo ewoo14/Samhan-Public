@@ -64,14 +64,14 @@ public class SignAndSendCopyService {
         // 0. vehicle/stop 조회 + 본인 dispatch 권한 검증 (D-DF-08)
         Vehicle vehicle = vehicleRepository.findFirstByDispatchIdAndSequence(dispatchId, vehicleSeq)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "vehicle 미발견 — dispatchId=" + dispatchId + ", vehicleSeq=" + vehicleSeq));
+                        "vehicle 미발견 — vehicleSeq=" + vehicleSeq));
         if (vehicle.getAssignedDriverId() == null
                 || !vehicle.getAssignedDriverId().equals(driverIdFromJwt)) {
             throw new SecurityException("본인 dispatch 가 아님 — assignedDriverId mismatch");
         }
         VehicleStop stop = vehicleStopRepository.findFirstByVehicleIdAndSequence(vehicle.getId(), stopSeq)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "stop 미발견 — vehicleId=" + vehicle.getId() + ", stopSeq=" + stopSeq));
+                        "stop 미발견 — stopSeq=" + stopSeq));
 
         // 1. 1회 가드 (D-DF-04) — 기존 Signature 조회 (stopId + APP source 의 가장 최근 1건)
         Optional<Signature> existing = findLatestAppSignature(stop.getId());

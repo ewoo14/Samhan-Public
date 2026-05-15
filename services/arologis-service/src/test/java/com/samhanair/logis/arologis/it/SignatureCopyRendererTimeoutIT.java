@@ -19,6 +19,9 @@ import org.springframework.http.MediaType;
  */
 class SignatureCopyRendererTimeoutIT extends AbstractSignAndSendCopyIT {
 
+    private static final String UUID_PATTERN =
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+
     @Test
     void renderer_timeout_returns_200_with_RENDERER_TIMEOUT_and_retry_succeeds() throws Exception {
         // 1차 — timeout
@@ -36,7 +39,11 @@ class SignatureCopyRendererTimeoutIT extends AbstractSignAndSendCopyIT {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.copySent").value(false))
-                .andExpect(jsonPath("$.copyFailureReason").value("RENDERER_TIMEOUT"));
+                .andExpect(jsonPath("$.copyFailureReason").value("RENDERER_TIMEOUT"))
+                .andExpect(jsonPath("$.signatureId").doesNotExist())
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("signatureId")
+                        .doesNotContainPattern(UUID_PATTERN));
 
         // copy_send_failure_count == 1 검증
         var saved = signatureRepository.findAllByStopIdOrderByCapturedAtDesc(stopId);

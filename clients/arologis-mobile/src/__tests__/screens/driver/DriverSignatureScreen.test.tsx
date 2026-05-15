@@ -121,6 +121,8 @@ describe('DriverSignatureScreen D-AX-16', () => {
       kind: 'success',
       pngBase64: 'PNG_BASE64',
       signatureId: '11111111-2222-3333-4444-555555555555',
+      downloadUrl: 'https://storage.example/private/signature-copy.png',
+      storageKey: 'signature-copies/internal-key.png',
       copySentAt: '2026-05-15T14:30:00',
       copyRecipientPhoneMasked: '010-****-5678',
     });
@@ -151,6 +153,12 @@ describe('DriverSignatureScreen D-AX-16', () => {
 
     const toast = await utils.findByTestId('arologis-signature-toast');
     expect(textContent(toast)).toContain('010-****-5678');
+    const renderedText = textContent(utils.toJSON());
+    expect(renderedText).not.toContain('11111111-2222-3333-4444-555555555555');
+    expect(renderedText).not.toContain('downloadUrl');
+    expect(renderedText).not.toContain('storageKey');
+    expect(renderedText).not.toContain('https://storage.example/private/signature-copy.png');
+    expect(renderedText).not.toContain('signature-copies/internal-key.png');
     expect(utils.getByText('발송 완료')).toBeTruthy();
   });
 

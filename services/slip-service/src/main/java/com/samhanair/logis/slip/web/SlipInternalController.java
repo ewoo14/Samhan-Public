@@ -238,8 +238,7 @@ public class SlipInternalController {
      * Phase F (D-DF-06) — print-renderer 용 slip 전체 상세 lookup. arologis 가 PNG 합성에 사용.
      *
      * <p>OutboundView 가 받는 props 와 1:1 매핑. lines 는 slip.getLines() flatten.
-     * sourceWarehouseName 은 본 PR 시점 sourceWarehouseId.toString() placeholder — 후속 PR 에서
-     * warehouse-service lookup 으로 정정 (양식 표시상 큰 영향 X).
+     * sourceWarehouseName 은 driver-facing 사본/상세 표시용 공개명이다. 내부 창고 UUID 는 노출하지 않는다.
      *
      * @param slipId 전표 UUID
      * @return ApiResponse wrapper (data 미발견 시 404 → BusinessException)
@@ -274,9 +273,9 @@ public class SlipInternalController {
             String sourceWarehouseName) {
 
         public static SlipFullDetailResponse from(Slip slip) {
-            // sourceWarehouseName placeholder — 후속 PR 에서 warehouse-service lookup 으로 정정.
+            // 창고명 조회가 없는 internal 사본 경로에서는 UUID 대신 중립 표시명을 내려보낸다.
             String warehouseName = slip.getSourceWarehouseId() != null
-                    ? slip.getSourceWarehouseId().toString()
+                    ? "창고명 확인 필요"
                     : null;
             // total = supply + vat (Slip entity 가 직접 보유하지 않음 — line 합계 + VAT 합계 별도 계산은 호출자 의무)
             java.math.BigDecimal supplyTotal = java.math.BigDecimal.ZERO;

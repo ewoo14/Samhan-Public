@@ -1,7 +1,9 @@
 import {
+  reportLocation,
   uploadStopPhoto,
   signAndSendCopy,
   type DispatchVehicleSummary,
+  type LocationReportResponse,
   type SignAndSendCopyResult,
   type StopPhotoUploadResponse,
 } from '../api/arologis';
@@ -48,12 +50,47 @@ async function submitSignatureContract(token: string | null): Promise<SignAndSen
 async function readSuccessHeaders(token: string | null): Promise<string | null> {
   const result = await submitSignatureContract(token);
   if (result.kind === 'success') {
-    return result.copyRecipientPhoneMasked ?? result.signatureId ?? result.pngBase64;
+    return result.copyRecipientPhoneMasked ?? result.pngBase64;
   }
   return result.copyFailureReason ?? result.error ?? null;
 }
 
 void readSuccessHeaders(null);
+
+async function readForbiddenSignatureFields(token: string | null): Promise<string> {
+  const result = await submitSignatureContract(token);
+  // @ts-expect-error 내부 서명 UUID 는 기사 앱 공개 응답 타입에 포함되면 안 된다.
+  const forbiddenSignatureId = result.signatureId;
+  // @ts-expect-error raw downloadUrl 은 기사 앱 공개 응답 타입에 포함되면 안 된다.
+  const forbiddenDownloadUrl = result.downloadUrl;
+  // @ts-expect-error storageKey 는 기사 앱 공개 응답 타입에 포함되면 안 된다.
+  const forbiddenStorageKey = result.storageKey;
+  return [forbiddenSignatureId, forbiddenDownloadUrl, forbiddenStorageKey].join('|');
+}
+
+void readForbiddenSignatureFields(null);
+
+async function submitLocationContract(token: string | null): Promise<LocationReportResponse> {
+  return reportLocation(token, {
+    latitude: 37.5665,
+    longitude: 126.978,
+    capturedAt: '2026-05-15T12:00:00',
+    source: 'APP_GPS_ACTIVE',
+  });
+}
+
+async function readLocationPublicFields(token: string | null): Promise<string> {
+  const result = await submitLocationContract(token);
+  // @ts-expect-error 내부 location UUID 는 기사 앱 공개 응답 타입에 포함되면 안 된다.
+  const forbiddenLocationId = result.locationId;
+  // @ts-expect-error raw downloadUrl 은 기사 앱 공개 응답 타입에 포함되면 안 된다.
+  const forbiddenDownloadUrl = result.downloadUrl;
+  // @ts-expect-error storageKey 는 기사 앱 공개 응답 타입에 포함되면 안 된다.
+  const forbiddenStorageKey = result.storageKey;
+  return [result.capturedAt, forbiddenLocationId, forbiddenDownloadUrl, forbiddenStorageKey].join('|');
+}
+
+void readLocationPublicFields(null);
 
 async function submitPhotoContract(token: string | null): Promise<StopPhotoUploadResponse> {
   return uploadStopPhoto(

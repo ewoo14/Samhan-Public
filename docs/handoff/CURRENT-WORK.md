@@ -1,41 +1,49 @@
 # 현재 작업 핸드오프 노트
 
-> 갱신일: 2026-05-16 (D-AX-21 **구현/검증 진행**, Codex)
+> 갱신일: 2026-05-16 (D-AX-22 **구현/검증 진행**, Codex)
 > 갱신자: Codex
 > 사용법: 새 도구/세션 시작 시 본 파일 read → §0 (즉시 시작) + §1 (방금 끝난 일) + §3 (다음 trigger 후보) 순서
 
-## 2026-05-16 Codex 최신 핸드오프 — D-AX-21 업무번호 범위형 표준화 진행
+## 2026-05-16 Codex 최신 핸드오프 — D-AX-22 UUID 비노출 계약 hardening 진행
 
-- 현재 branch: `codex/d-ax-21-business-code-standardization`
-- 직전 완료: D-AX20 Admin 사진 감사/재업로드 후보 PR #200 merge, 원격 브랜치 삭제 완료.
+- 현재 branch: `codex/d-ax-22-uuid-free-contract-hardening`
+- 직전 완료:
+  - D-AX20 Admin 사진 감사/재업로드 후보 PR #200 merge, 원격 브랜치 삭제 완료.
+  - D-AX21 업무번호 범위형 표준화 PR #201 merge, 원격 브랜치 삭제 완료.
 - 사용자 최신 결정:
-  - 전표번호는 전역 unique가 아니라 메뉴/업무 속성별 날짜 시퀀스다.
+  - 전표번호는 전역 unique 가 아니라 메뉴/업무 속성별 날짜 시퀀스다.
   - 판매전표 `YYYY/MM/DD-1` 과 구매전표 `YYYY/MM/DD-1` 은 서로 다른 메뉴값/속성이므로 중복 가능하다.
   - UUID는 내부 PK이며 Samhan Public/아로로지스 화면에 표시하지 않는다.
-- 구현:
+- D-AX21 완료 요약:
   - `SlipNumberSequence`를 `slipDate + slipType` 단위로 확장.
-  - `SlipNumberService.next(LocalDate, SlipType)` 추가, 기존 `next(LocalDate)`는 OUTBOUND 호환 경로 유지.
   - Flyway `V24__business_number_scope.sql`: `slip_number_sequences.slip_type`, `UNIQUE(slip_date, slip_type)`, `ux_slips_slip_type_no_active`.
-  - `SlipService`, publish, estimate, mobile partner order 변환 경로에서 업무 유형을 명시해 채번.
-  - `DispatchTaskService` 배차번호를 `DT-YYYYMMDD-NNN` 에서 `YYYY/MM/DD-{순번}` 으로 변경.
-  - dev seed, notification seed, partner-order seed, 아로로지스 모바일/복사 테스트 fixture의 구식 `SL`/`DT` 예시 제거.
-  - `.github/workflows` actionlint syntax/shellcheck 오류 보정.
+  - `DispatchTaskService` 배차번호를 `YYYY/MM/DD-{순번}` 으로 변경.
+  - Docker/JDK `slip-service` + `arologis-service` 전체 테스트, 모바일 Jest/typecheck, 데스크톱 typecheck, actionlint PASS 후 PR #201 merge.
+- D-AX22 구현:
+  - slip-service full detail 의 `sourceWarehouseName` UUID 문자열화 fallback 제거.
+  - arologis GPS 보고 응답에서 내부 위치 row key 제거.
+  - arologis 서명 저장 응답과 sign-and-send-copy 성공 header/body 에서 서명 내부키 제거.
+  - sign-and-send-copy 실패 JSON 은 운영 사유 코드만 공개하고 저장 경로/원본 URL/내부키를 숨김.
+  - `clients/arologis-mobile` API normalize + Jest/typecheck 로 서버가 내부 필드를 내려도 UI 반환값에서 제거.
+  - `clients/desktop` signature 계약 typecheck 추가.
 - 문서/QA:
-  - `docs/dev-reports/d-ax-21-business-code-standardization.md`
-  - `docs/qa/d-ax-21-business-code-standardization/scenarios.md`
-  - `docs/qa/d-ax-21-business-code-standardization/domain-integrity-check.md`
-  - `docs/team-reviews/d-ax-21/team-1-tm-integration-review.md`
-  - QA 캡처 8장: `01-business-number-scope-policy.png` ~ `08-pr-capture-checklist.png`
-- 검증:
-  - Docker targeted Gradle PASS.
-  - Docker/JDK Gradle `:services:slip-service:test` PASS — 463 tests, failure 0, error 0, 기존 skipped 172.
-  - Docker/JDK Gradle `:services:arologis-service:test` PASS — 236 tests, failure 0, error 0, 기존 skipped 75.
-  - `clients/arologis-mobile` Jest PASS — 2 suites / 8 tests.
-  - `clients/arologis-mobile` typecheck PASS.
-  - `clients/desktop` typecheck PASS.
-  - actionlint `.github/workflows/*.yml` PASS.
+  - `docs/dev-reports/d-ax-22-uuid-free-contract-hardening.md`
+  - `docs/qa/d-ax-22-uuid-free-contract-hardening/scenarios.md`
+  - `docs/qa/d-ax-22-uuid-free-contract-hardening/domain-integrity-check.md`
+  - `docs/team-reviews/d-ax-22/team-1-tm-integration-review.md`
+  - QA 캡처 8장 생성 완료: `01-driver-today-target-contract.png` ~ `08-mobile-ui-uuid-free-regression-matrix.png`
+- 현재 검증:
+  - D-AX22 RED targeted test 실패 확인 후 production patch.
+  - targeted backend Gradle PASS.
+  - Docker/JDK `:services:slip-service:test :services:arologis-service:test` PASS.
+  - XML 집계: `slip-service` 464 tests / failure 0 / error 0 / skipped 0.
+  - XML 집계: `arologis-service` 236 tests / failure 0 / error 0 / skipped 0.
+  - `clients/arologis-mobile` Jest PASS — 7 suites / 23 tests / skipped 0.
+  - `clients/arologis-mobile` typecheck PASS, `npx expo install --check` PASS.
+  - `clients/desktop` typecheck/lint/build PASS. lint 는 기존 warning 3건, error 0.
+  - `git diff --check` PASS.
+  - `actionlint` 는 로컬 PATH 에 없어 실행하지 못함. 이번 PR 은 workflow 파일 변경 없음.
 - 남은 즉시 작업:
-  - QA 캡처 생성/가드 확인.
   - commit/push/PR 생성.
   - PR 본문 raw screenshot URL 8장 HEAD 200 확인.
   - `gh pr checks --watch` 후 PM 재점검/머지.

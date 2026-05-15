@@ -1615,6 +1615,23 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 - actionlint `.github/workflows/*.yml`.
 - PR 본문 캡처 8장 이상.
 
+### D-AX-22. driver-facing UUID 비노출 계약 hardening (2026-05-16)
+
+**배경**: D-AX-21 업무번호 표준화 이후, UUID PK 와 사용자 표시 업무번호의 경계를 더 엄격히 고정한다. UUID 는 복구/이력/조인용 내부 PK 이며, 기사 앱과 PR 캡처에 보이는 계약은 업무번호, target sequence, 표시명, 마스킹된 연락처만 사용한다.
+
+**결정**:
+- GPS 보고 응답은 저장 성공 여부와 capturedAt/source 만 공개한다. 내부 위치 row key 는 응답 body 에 포함하지 않는다.
+- 서명 저장 응답과 sign-and-send-copy 성공 header 는 서명 내부키를 공개하지 않는다. 파일명/공유 sheet/토스트도 today target 기반 이름만 사용한다.
+- sign-and-send-copy 실패 JSON 은 `copyFailureReason`, `copySent`, `slipBridged` 같은 운영 상태만 공개하고 저장 경로, 원본 URL, 내부키를 포함하지 않는다.
+- slip-service full detail 의 `sourceWarehouseName` 은 내부 창고 UUID 문자열화 fallback 을 금지한다. 창고명 lookup 이 없는 경로에서는 중립 표시명만 사용한다.
+- 전표번호 중복 허용 범위는 D-AX21과 동일하다. 판매/구매/배차 등 서로 다른 메뉴/업무 속성의 `YYYY/MM/DD-1` 은 같은 문자열이어도 충돌이 아니며, UUID PK + 업무 타입으로 구분한다.
+
+**검증 의무**:
+- Docker JDK `slip-service` / `arologis-service` 전체 테스트.
+- 모바일 Jest/typecheck + 데스크톱 typecheck/lint/build.
+- QA 캡처 8장 이상과 raw PNG 링크 확인.
+- driver-facing JSON body/header 에 내부 UUID/원본 URL/저장키가 없는지 테스트 assertion 으로 고정.
+
 ---
 
 ## Phase A — Samhan Public 배차 메뉴 + 아로로지스 발송 (2026-05-14)

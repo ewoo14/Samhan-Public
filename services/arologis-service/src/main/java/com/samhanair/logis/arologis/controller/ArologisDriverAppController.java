@@ -198,10 +198,10 @@ public class ArologisDriverAppController {
             source = DriverLocationSource.APP_GPS_ACTIVE;
         }
 
-        DriverLocation saved = locationRepository.save(
-                DriverLocation.of(self.getId(), lat, lng, capturedAt, source));
+        // 기사앱 응답에는 내부 DriverLocation UUID 를 노출하지 않는다.
+        locationRepository.save(DriverLocation.of(self.getId(), lat, lng, capturedAt, source));
         return ApiResponse.ok(Map.of(
-                "locationId", saved.getId().toString(),
+                "accepted", true,
                 "capturedAt", capturedAt.toString(),
                 "source", source.name()));
     }
@@ -237,10 +237,10 @@ public class ArologisDriverAppController {
             @RequestBody Map<String, String> body) {
         Vehicle vehicle = vehicleRepository.findFirstByDispatchIdAndSequence(id, seq)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "vehicle 미존재 — dispatchId=" + id + " seq=" + seq));
+                        "vehicle 미존재 — vehicleSeq=" + seq));
         VehicleStop stop = stopRepository.findFirstByVehicleIdAndSequence(vehicle.getId(), stopSeq)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "stop 미존재 — vehicleId=" + vehicle.getId() + " seq=" + stopSeq));
+                        "stop 미존재 — stopSeq=" + stopSeq));
         String imageRef = body == null ? null : body.get("imageRef");
         BigDecimal lat = body == null || body.get("latitude") == null
                 ? null : new BigDecimal(body.get("latitude"));
@@ -272,8 +272,8 @@ public class ArologisDriverAppController {
                     stop.getParsedKakaoSeq());
         }
 
+        // Deprecated endpoint 도 driver-facing 계약이므로 내부 signature UUID 를 응답하지 않는다.
         return ApiResponse.ok(Map.of(
-                "signatureId", saved.getId().toString(),
                 "slipBridged", slipBridged,
                 "capturedAt", capturedAt.toString()));
     }
@@ -283,7 +283,7 @@ public class ArologisDriverAppController {
      *
      * <p>응답 분기:
      * <ul>
-     *   <li>성공 (PNG 합성 + 저장 OK) → 200 image/png byte[] + X-Signature-Id / X-Slip-Bridged /
+     *   <li>성공 (PNG 합성 + 저장 OK) → 200 image/png byte[] + X-Slip-Bridged /
      *       X-Copy-Sent-At / X-Copy-Recipient-Phone-Masked 헤더</li>
      *   <li>인수자 번호 없음 (D-DF-05) → 200 application/json (RECIPIENT_PHONE_MISSING)</li>
      *   <li>사본 합성/저장 fail → 200 application/json (RENDERER_TIMEOUT/RENDERER_ERROR/STORAGE_FULL)</li>
@@ -547,16 +547,15 @@ public class ArologisDriverAppController {
             if (result.failureReason() == CopyFailureReason.RECIPIENT_PHONE_MISSING) {
                 return ResponseEntity.ok()
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(SignAndSendCopyResponse.phoneMissing(result.signatureId()));
+                        .body(SignAndSendCopyResponse.phoneMissing());
             }
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(SignAndSendCopyResponse.copyFailed(result.signatureId(), result.failureReason()));
+                    .body(SignAndSendCopyResponse.copyFailed(result.failureReason()));
         }
         // 성공 — image/png + 헤더
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
-                .header("X-Signature-Id", result.signatureId().toString())
                 .header("X-Slip-Bridged", "true")
                 .header("X-Copy-Sent-At", result.copySentAt().toString())
                 .header("X-Copy-Recipient-Phone-Masked", result.copyRecipientPhoneMasked())
