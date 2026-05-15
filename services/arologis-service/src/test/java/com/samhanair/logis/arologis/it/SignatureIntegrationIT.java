@@ -56,7 +56,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  *   <li>POST sign 정상 — arologis signatures INSERT + SlipClient.registerSignature 1회 호출 (mock
  *       success → slipBridged=true 응답)</li>
  *   <li>POST sign + SlipClient false (skeleton-mode 또는 매핑 실패) → 자체 INSERT 만 + slipBridged=false</li>
- *   <li>POST sign 응답 schema (ApiResponse wrapper success/data/signatureId/slipBridged/capturedAt)</li>
+ *   <li>POST sign 응답 schema (ApiResponse wrapper success/data/slipBridged/capturedAt, UUID-free)</li>
  *   <li>POST sign — driverCode body 명시 시 SlipClient payload 의 driverCode 보존 (verify)</li>
  *   <li>arologis 자체 signatures source=APP 보존 검증</li>
  * </ul>
@@ -68,6 +68,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 @SpringBootTest(classes = ArologisServiceApplication.class)
 @AutoConfigureMockMvc
 class SignatureIntegrationIT extends AbstractPostgresIT {
+
+    private static final String UUID_PATTERN =
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -105,7 +108,7 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
     /**
      * Case 1 — sign 정상 시나리오: arologis 자체 signatures INSERT + slip-service bridge skip
      * (PartnerClient empty → resolveByKakaoSeq empty → slipClient.registerSignature 미호출).
-     * 응답 schema: ApiResponse wrapper + slipBridged=false + signatureId 존재.
+     * 응답 schema: ApiResponse wrapper + slipBridged=false + UUID-free.
      */
     @Test
     void sign_partnerNotMapped_savesArologisSignature_skipsSlipBridge() throws Exception {
@@ -138,9 +141,12 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 // F-3 의무: ApiResponse wrapper schema
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").doesNotExist())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.slipBridged").value(false))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.capturedAt").exists());
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.capturedAt").exists())
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("signatureId")
+                        .doesNotContainPattern(UUID_PATTERN));
 
         // arologis 자체 signatures source=APP 검증
         var saved = signatureRepository.findAllByStopIdOrderByCapturedAtDesc(stop.getId());
@@ -185,7 +191,10 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
                         .content(body))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").exists());
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").doesNotExist())
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("signatureId")
+                        .doesNotContainPattern(UUID_PATTERN));
 
         var saved = signatureRepository.findAllByStopIdOrderByCapturedAtDesc(stop.getId());
         assertThat(saved).hasSize(1);
@@ -235,10 +244,13 @@ class SignatureIntegrationIT extends AbstractPostgresIT {
                         .content(body))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.signatureId").doesNotExist())
                 // QA-2 채택 핵심 검증 — slipBridged=true (slip-service 양쪽 저장 성공)
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.slipBridged").value(true))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.capturedAt").exists());
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.capturedAt").exists())
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("signatureId")
+                        .doesNotContainPattern(UUID_PATTERN));
 
         // arologis 자체 signatures source=APP 검증 (양쪽 저장 모두 보장)
         var saved = signatureRepository.findAllByStopIdOrderByCapturedAtDesc(stop.getId());

@@ -62,6 +62,8 @@ import org.springframework.transaction.annotation.Transactional;
 class SlipInternalControllerIT extends AbstractPostgresIT {
 
     private static final String INTERNAL_TOKEN = "test-internal-token";
+    private static final String UUID_PATTERN =
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -278,6 +280,23 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
     void findRecentByPartnerCode_missingInternalToken_returns403() throws Exception {
         mockMvc.perform(get("/internal/slips/by-partner-code/214/recent"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void findFullDetail_doesNotExposeWarehouseUuidAsSourceWarehouseName() throws Exception {
+        String slipId = createInspectingSlip();
+
+        MvcResult result = mockMvc.perform(get("/internal/slips/" + slipId + "/full")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.slipNo").exists())
+                .andReturn();
+
+        String raw = result.getResponse().getContentAsString();
+        assertThat(raw)
+                .doesNotContainPattern(UUID_PATTERN)
+                .doesNotContainPattern("\"sourceWarehouseName\":\"" + UUID_PATTERN + "\"");
     }
 
     // ---------- helpers ----------

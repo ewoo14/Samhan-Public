@@ -1,5 +1,6 @@
 package com.samhanair.logis.arologis.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,9 @@ import org.springframework.http.MediaType;
  */
 class SignatureCopyMissingPhoneIT extends AbstractSignAndSendCopyIT {
 
+    private static final String UUID_PATTERN =
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+
     @Test
     void missing_recipient_phone_returns_200_with_reason() throws Exception {
         // recipientPhone empty (slip lookup 응답 null) — base setup override
@@ -36,7 +40,11 @@ class SignatureCopyMissingPhoneIT extends AbstractSignAndSendCopyIT {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.copySent").value(false))
                 .andExpect(jsonPath("$.copyFailureReason").value("RECIPIENT_PHONE_MISSING"))
-                .andExpect(jsonPath("$.slipBridged").value(true));
+                .andExpect(jsonPath("$.slipBridged").value(true))
+                .andExpect(jsonPath("$.signatureId").doesNotExist())
+                .andDo(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("signatureId")
+                        .doesNotContainPattern(UUID_PATTERN));
 
         // renderer 미호출 검증
         verify(renderer, never()).render(any(), any(), any());

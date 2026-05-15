@@ -20,6 +20,9 @@ import org.springframework.http.MediaType;
  */
 class SignAndSendCopyIT extends AbstractSignAndSendCopyIT {
 
+    private static final String UUID_PATTERN =
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+
     @Test
     void signAndSendCopy_success_returns_image_png() throws Exception {
         when(renderer.render(any(), any(), any())).thenReturn(new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
@@ -33,11 +36,18 @@ class SignAndSendCopyIT extends AbstractSignAndSendCopyIT {
                         .content(validRequestBody()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
-                .andExpect(header().exists("X-Signature-Id"))
+                .andExpect(header().doesNotExist("X-Signature-Id"))
                 .andExpect(header().string("X-Slip-Bridged", "true"))
                 .andExpect(header().exists("X-Copy-Sent-At"))
                 .andExpect(header().string("X-Copy-Recipient-Phone-Masked",
-                        Matchers.matchesPattern("\\d{3}-\\*{4}-\\d{4}")));
+                        Matchers.matchesPattern("\\d{3}-\\*{4}-\\d{4}")))
+                .andDo(result -> {
+                    String responseHeaders = String.join("\n",
+                            result.getResponse().getHeaderNames().stream()
+                                    .map(name -> name + ": " + result.getResponse().getHeaders(name))
+                                    .toList());
+                    assertThat(responseHeaders).doesNotContainPattern(UUID_PATTERN);
+                });
 
         // 자체 signatures 보존 + copy_sent_at NOT NULL
         var saved = signatureRepository.findAllByStopIdOrderByCapturedAtDesc(stopId);

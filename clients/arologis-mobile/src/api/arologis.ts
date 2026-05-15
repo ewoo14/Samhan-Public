@@ -153,12 +153,22 @@ export interface ReportLocationPayload {
   source?: 'APP_GPS_ACTIVE' | 'APP_GPS_BACKGROUND';
 }
 
+export interface LocationReportResponse {
+  capturedAt: string;
+}
+
+interface LocationReportRawResponse extends LocationReportResponse {
+  locationId?: string | null;
+  downloadUrl?: string | null;
+  storageKey?: string | null;
+}
+
 export async function reportLocation(
   token: string | null,
   payload: ReportLocationPayload,
-): Promise<{ locationId: string; capturedAt: string }> {
+): Promise<LocationReportResponse> {
   void token;
-  const response = await apiFetch<ApiResponse<{ locationId: string; capturedAt: string }>>(
+  const response = await apiFetch<ApiResponse<LocationReportRawResponse>>(
     '/driver-app/arologis/locations',
     {
       method: 'POST',
@@ -171,7 +181,7 @@ export async function reportLocation(
     },
   );
   assertApiResponseSuccess(response, 'GPS 위치 보고');
-  return response.data ?? { locationId: '', capturedAt: payload.capturedAt };
+  return { capturedAt: response.data?.capturedAt ?? payload.capturedAt };
 }
 
 export interface SignAndSendCopyRequest {
@@ -193,7 +203,6 @@ export type CopyFailureReason =
   | 'STORAGE_FULL';
 
 export interface SignAndSendCopyJsonResponse {
-  signatureId?: string;
   slipBridged?: boolean;
   copySent?: boolean;
   copySentAt?: string;
@@ -207,7 +216,6 @@ export interface SignAndSendCopyJsonResponse {
 export interface SignAndSendCopySuccess {
   kind: 'success';
   pngBase64: string;
-  signatureId?: string;
   copySentAt?: string;
   copyRecipientPhoneMasked?: string;
 }
@@ -215,7 +223,6 @@ export interface SignAndSendCopySuccess {
 export interface SignAndSendCopyFail {
   kind: 'fail' | 'duplicate' | 'bridge';
   status: number;
-  signatureId?: string;
   copyFailureReason?: CopyFailureReason;
   error?: string;
   retryable?: boolean;
@@ -251,7 +258,6 @@ export async function signAndSendCopy(
     return {
       kind: 'success',
       pngBase64,
-      signatureId: response.headers.get('X-Signature-Id') ?? undefined,
       copySentAt: response.headers.get('X-Copy-Sent-At') ?? undefined,
       copyRecipientPhoneMasked: response.headers.get('X-Copy-Recipient-Phone-Masked') ?? undefined,
     };
@@ -277,7 +283,6 @@ export async function signAndSendCopy(
   return {
     kind: 'fail',
     status: response.status,
-    signatureId: json.signatureId,
     copyFailureReason: json.copyFailureReason,
     error: json.error,
     retryable: json.retryable,
