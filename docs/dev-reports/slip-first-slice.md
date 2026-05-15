@@ -56,7 +56,7 @@
 ### Service 메서드
 
 #### SlipNumberService
-- `SlipNumberService.next(slipDate)`: 시퀀스 조회 → 없으면 새로 생성 → next() → `yyyy/MM/dd-NNN` 포맷 반환. `@Transactional(REQUIRED)` — 호출자 트랜잭션 합류.
+- `SlipNumberService.next(slipDate)`: 시퀀스 조회 → 없으면 새로 생성 → next() → `yyyy/MM/dd-N` 포맷 반환. `@Transactional(REQUIRED)` — 호출자 트랜잭션 합류. 2026-05-16 D-AX21 이후 신규 코드는 `next(slipDate, slipType)` 로 날짜 + 전표유형별 독립 순번을 사용한다.
 - `SlipNumberService.extractSeqNo(slipNo)`: 채번 결과 문자열에서 trailing 순번 정수 파싱 (Slip.seqNo 컬럼 채움용).
 
 #### SlipService (orchestrator + Inventory 연계)

@@ -167,7 +167,7 @@ class DispatchTaskDecisionServiceTest {
     // ---------- 헬퍼 ----------
 
     private static DispatchTask dispatchedTask(UUID taskId, UUID arologisId) throws Exception {
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-1", LocalDate.now());
         setId(task, taskId);
         task.markDispatching();
         task.markDispatched(arologisId);

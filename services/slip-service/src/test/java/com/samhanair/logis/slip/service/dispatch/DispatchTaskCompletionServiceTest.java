@@ -52,7 +52,7 @@ class DispatchTaskCompletionServiceTest {
         UUID groupId = UUID.randomUUID();
         UUID slipId = UUID.randomUUID();
 
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-1", LocalDate.now());
         setIdViaReflection(task, taskId);
 
         DispatchVehicleGroup group = DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1);
@@ -62,7 +62,7 @@ class DispatchTaskCompletionServiceTest {
 
         Slip slip = mock(Slip.class);
         when(slip.getId()).thenReturn(slipId);
-        when(slip.getSlipNo()).thenReturn("SL-001");
+        when(slip.getSlipNo()).thenReturn("2026/05/14-1");
 
         when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
         when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
@@ -84,7 +84,7 @@ class DispatchTaskCompletionServiceTest {
     @Test
     void dispatch_from_DISPATCHING_throws_CONFLICT() throws Exception {
         UUID taskId = UUID.randomUUID();
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-2", LocalDate.now());
         setIdViaReflection(task, taskId);
         task.markDispatching();
         when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
@@ -98,7 +98,7 @@ class DispatchTaskCompletionServiceTest {
     @Test
     void dispatch_with_no_groups_throws() throws Exception {
         UUID taskId = UUID.randomUUID();
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-3", LocalDate.now());
         setIdViaReflection(task, taskId);
         when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
         when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))

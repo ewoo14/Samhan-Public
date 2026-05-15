@@ -14,15 +14,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 /**
- * Slip 헤더 — 단건/필터 페이지 조회. partial unique 는 {@code slip_no} 컬럼에 적용 (V1 SQL).
+ * Slip 헤더 — 단건/필터 페이지 조회. partial unique 는 {@code slip_type + slip_no} 컬럼에 적용.
  *
  * <p>PR-E1 BE-A0 신규: {@link JpaSpecificationExecutor} 추가 — 5 query param (date range / partner_code
  * / driver_phone like / region_group / status) 동적 조합용. 기존 named query 들은 유지 (회귀 가드).
  */
 public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificationExecutor<Slip> {
 
-    /** 전표번호({@code yyyy/MM/dd-NNN}) 단건 조회. soft-delete 제외. */
+    /** 전표번호({@code yyyy/MM/dd-N}) 단건 조회. soft-delete 제외. 중복 가능성 때문에 신규 코드는 type 지정 조회 권장. */
     Optional<Slip> findBySlipNo(String slipNo);
+
+    /** 전표 유형 + 전표번호 단건 조회. 판매/구매 번호 중복 허용 정책의 기본 조회 방식. */
+    Optional<Slip> findBySlipTypeAndSlipNoAndIsDeletedFalse(SlipType slipType, String slipNo);
 
     /** 상태별 페이지 조회. soft-delete 제외. */
     Page<Slip> findAllByStatusAndIsDeletedFalse(SlipStatus status, Pageable pageable);

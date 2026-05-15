@@ -30,28 +30,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           QUARTER=$(date -u +%Y-Q$((($(date -u +%-m)+2)/3)))
+          cat > issue-body.md <<'ISSUE_BODY'
+          ## 대상
+
+          - Service Account: `samhan@samhan-homepage.iam.gserviceaccount.com`
+          - 사용처: estimate-app v2 (`GOOGLE_SERVICE_ACCOUNT_KEY`)
+          - 회전 주기: 90일 (분기)
+
+          ## 절차
+
+          `infrastructure/security/sa-rotation-cron.md` 참조.
+
+          ## 체크리스트
+
+          - [ ] GCP 콘솔에서 신규 key 발급 (JSON)
+          - [ ] Render dashboard `samhan-estimate-app` 의 `GOOGLE_SERVICE_ACCOUNT_KEY` 갱신
+          - [ ] /healthz 200 + finalize 1회 시나리오 검증
+          - [ ] 기존 key Disable (24시간 관찰)
+          - [ ] 24시간 후 기존 key Delete
+          - [ ] 본 Issue close
+
+          ## 다음 회전 예정
+
+          다음 분기 첫날 09:00 UTC 자동 reminder.
+          ISSUE_BODY
+
           gh issue create \
             --title "[보안] Service Account key 90일 회전 — ${QUARTER}" \
             --label "security,ops" \
-            --body "## 대상
-
-- Service Account: \`samhan@samhan-homepage.iam.gserviceaccount.com\`
-- 사용처: estimate-app v2 (\`GOOGLE_SERVICE_ACCOUNT_KEY\`)
-- 회전 주기: 90일 (분기)
-
-## 절차
-
-\`infrastructure/security/sa-rotation-cron.md\` 참조.
-
-## 체크리스트
-
-- [ ] GCP 콘솔에서 신규 key 발급 (JSON)
-- [ ] Render dashboard \`samhan-estimate-app\` 의 \`GOOGLE_SERVICE_ACCOUNT_KEY\` 갱신
-- [ ] /healthz 200 + finalize 1회 시나리오 검증
-- [ ] 기존 key Disable (24시간 관찰)
-- [ ] 24시간 후 기존 key Delete
-- [ ] 본 Issue close
-
-## 다음 회전 예정
-
-다음 분기 첫날 09:00 UTC 자동 reminder."
+            --body-file issue-body.md

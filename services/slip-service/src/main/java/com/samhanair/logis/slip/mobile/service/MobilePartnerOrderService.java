@@ -99,7 +99,7 @@ public class MobilePartnerOrderService {
 
         // 3. 채번
         LocalDate slipDate = req.slipDate() != null ? req.slipDate() : LocalDate.now();
-        String slipNo = slipNumberService.next(slipDate);
+        String slipNo = slipNumberService.next(slipDate, com.samhanair.logis.slip.domain.SlipType.OUTBOUND);
         int seqNo = slipNumberService.extractSeqNo(slipNo);
 
         // 4. OUTBOUND DRAFT 슬립 헤더 생성

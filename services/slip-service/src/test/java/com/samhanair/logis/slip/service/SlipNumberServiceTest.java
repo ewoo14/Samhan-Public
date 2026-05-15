@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.slip.domain.SlipNumberSequence;
+import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.repository.SlipNumberSequenceRepository;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -31,56 +32,73 @@ class SlipNumberServiceTest {
     }
 
     @Test
-    void next_firstCall_createsSequence_andReturns001() {
-        when(sequenceRepository.findBySlipDate(today)).thenReturn(Optional.empty());
+    void next_firstCall_createsSequence_andReturns1WithoutPadding() {
+        when(sequenceRepository.findBySlipDateAndSlipType(today, SlipType.OUTBOUND)).thenReturn(Optional.empty());
         when(sequenceRepository.save(any(SlipNumberSequence.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String slipNo = service.next(today);
 
-        assertThat(slipNo).isEqualTo("2026/05/04-001");
+        assertThat(slipNo).isEqualTo("2026/05/04-1");
     }
 
     @Test
     void next_existingSequence_incrementsLastSeq() {
-        SlipNumberSequence existing = SlipNumberSequence.create(today);
+        SlipNumberSequence existing = SlipNumberSequence.create(today, SlipType.OUTBOUND);
         existing.next(); // lastSeq=1
         existing.next(); // lastSeq=2
-        when(sequenceRepository.findBySlipDate(today)).thenReturn(Optional.of(existing));
+        when(sequenceRepository.findBySlipDateAndSlipType(today, SlipType.OUTBOUND))
+                .thenReturn(Optional.of(existing));
 
         String slipNo = service.next(today);
 
-        assertThat(slipNo).isEqualTo("2026/05/04-003");
+        assertThat(slipNo).isEqualTo("2026/05/04-3");
     }
 
     @Test
     void next_twoCallsSameDay_returnSequentialNos() {
-        SlipNumberSequence seq = SlipNumberSequence.create(today);
-        when(sequenceRepository.findBySlipDate(today)).thenReturn(Optional.of(seq));
+        SlipNumberSequence seq = SlipNumberSequence.create(today, SlipType.OUTBOUND);
+        when(sequenceRepository.findBySlipDateAndSlipType(today, SlipType.OUTBOUND))
+                .thenReturn(Optional.of(seq));
 
         String first = service.next(today);
         String second = service.next(today);
 
-        assertThat(first).isEqualTo("2026/05/04-001");
-        assertThat(second).isEqualTo("2026/05/04-002");
+        assertThat(first).isEqualTo("2026/05/04-1");
+        assertThat(second).isEqualTo("2026/05/04-2");
     }
 
     @Test
     void extractSeqNo_parsesTrailingNumber() {
-        assertThat(service.extractSeqNo("2026/05/04-005")).isEqualTo(5);
+        assertThat(service.extractSeqNo("2026/05/04-5")).isEqualTo(5);
         assertThat(service.extractSeqNo("2026/05/04-123")).isEqualTo(123);
     }
 
     @Test
     void next_differentDates_independentSequences() {
         LocalDate yesterday = today.minusDays(1);
-        SlipNumberSequence todaySeq = SlipNumberSequence.create(today);
-        SlipNumberSequence yesterdaySeq = SlipNumberSequence.create(yesterday);
+        SlipNumberSequence todaySeq = SlipNumberSequence.create(today, SlipType.OUTBOUND);
+        SlipNumberSequence yesterdaySeq = SlipNumberSequence.create(yesterday, SlipType.OUTBOUND);
         yesterdaySeq.next();
         yesterdaySeq.next();
-        when(sequenceRepository.findBySlipDate(today)).thenReturn(Optional.of(todaySeq));
-        when(sequenceRepository.findBySlipDate(yesterday)).thenReturn(Optional.of(yesterdaySeq));
+        when(sequenceRepository.findBySlipDateAndSlipType(today, SlipType.OUTBOUND))
+                .thenReturn(Optional.of(todaySeq));
+        when(sequenceRepository.findBySlipDateAndSlipType(yesterday, SlipType.OUTBOUND))
+                .thenReturn(Optional.of(yesterdaySeq));
 
-        assertThat(service.next(today)).isEqualTo("2026/05/04-001");
-        assertThat(service.next(yesterday)).isEqualTo("2026/05/03-003");
+        assertThat(service.next(today)).isEqualTo("2026/05/04-1");
+        assertThat(service.next(yesterday)).isEqualTo("2026/05/03-3");
+    }
+
+    @Test
+    void next_sameDateDifferentSlipTypes_allowSamePublicNumber() {
+        SlipNumberSequence outboundSeq = SlipNumberSequence.create(today, SlipType.OUTBOUND);
+        SlipNumberSequence inboundSeq = SlipNumberSequence.create(today, SlipType.INBOUND);
+        when(sequenceRepository.findBySlipDateAndSlipType(today, SlipType.OUTBOUND))
+                .thenReturn(Optional.of(outboundSeq));
+        when(sequenceRepository.findBySlipDateAndSlipType(today, SlipType.INBOUND))
+                .thenReturn(Optional.of(inboundSeq));
+
+        assertThat(service.next(today, SlipType.OUTBOUND)).isEqualTo("2026/05/04-1");
+        assertThat(service.next(today, SlipType.INBOUND)).isEqualTo("2026/05/04-1");
     }
 }

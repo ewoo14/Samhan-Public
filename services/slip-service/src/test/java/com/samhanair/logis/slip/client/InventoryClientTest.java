@@ -86,7 +86,7 @@ class InventoryClientTest {
                 .andRespond(withStatus(HttpStatus.CREATED));
 
         client.inbound(UUID.randomUUID(), UUID.randomUUID(), 10,
-                "2026/05/04-001", new BigDecimal("100.00"));
+                "2026/05/04-1", new BigDecimal("100.00"));
         server.verify();
     }
 

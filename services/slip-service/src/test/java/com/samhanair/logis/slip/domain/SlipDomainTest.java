@@ -20,7 +20,7 @@ class SlipDomainTest {
 
     @Test
     void createOutbound_setsDraft_andRequiresSourceWarehouse() {
-        Slip slip = Slip.createOutbound("2026/05/04-001", LocalDate.of(2026, 5, 4), 1,
+        Slip slip = Slip.createOutbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
                 SOURCE_WH, DEST_WH, PARTNER, "삼한공조",
                 DeliveryTag.DAY, "메모", "user-1");
 
@@ -40,7 +40,7 @@ class SlipDomainTest {
 
     @Test
     void createInbound_setsSourceNull_andRequiresDestWarehouse() {
-        Slip slip = Slip.createInbound("2026/05/04-002", LocalDate.of(2026, 5, 4), 2,
+        Slip slip = Slip.createInbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
                 DEST_WH, PARTNER, "삼한공조",
                 DeliveryTag.RETURN, null, "user-1");
 
@@ -370,13 +370,13 @@ class SlipDomainTest {
     }
 
     private Slip newOutbound() {
-        return Slip.createOutbound("2026/05/04-001", LocalDate.of(2026, 5, 4), 1,
+        return Slip.createOutbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
                 SOURCE_WH, DEST_WH, PARTNER, "삼한공조",
                 DeliveryTag.DAY, null, "user-1");
     }
 
     private Slip newInbound() {
-        return Slip.createInbound("2026/05/04-002", LocalDate.of(2026, 5, 4), 2,
+        return Slip.createInbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
                 DEST_WH, PARTNER, "삼한공조",
                 DeliveryTag.RETURN, null, "user-1");
     }

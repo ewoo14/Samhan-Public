@@ -62,7 +62,7 @@ class DispatchEndToEndIT extends AbstractPostgresIT {
     @Test
     void task_create_then_add_group_lifecycle() {
         DispatchTask t = taskService.createTask(LocalDate.of(2026, 5, 14));
-        assertThat(t.getTaskCode()).startsWith("DT-20260514-");
+        assertThat(t.getTaskCode()).startsWith("2026/05/14-");
         assertThat(t.getStatus()).isEqualTo(DispatchTaskStatus.DRAFT);
 
         var group = taskService.addVehicleGroup(t.getId(), DispatchVehicleType.TONNAGE_1);

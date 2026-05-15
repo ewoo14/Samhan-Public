@@ -119,7 +119,7 @@ jobs:
 
       # design-system 사전 빌드 — file: dependency 가 있을 경우만 필요.
       # 본 step 은 graceful — design-system 미참조 시 skip.
-      - name: design-system 사전 빌드 (file: dependency, 있을 경우)
+      - name: "design-system 사전 빌드 (file: dependency, 있을 경우)"
         run: |
           if [ -f clients/web/design-system/package.json ]; then
             cd clients/web/design-system

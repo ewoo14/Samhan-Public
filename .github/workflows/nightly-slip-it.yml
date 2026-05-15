@@ -150,31 +150,36 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           DATE_KST=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          cat > issue-body.md <<'ISSUE_BODY'
+          ## 개요
+
+          nightly slip-service IT workflow 가 실패했습니다. 본 Issue 는 자동 생성되었으며, fix 후 close 의무.
+
+          ## 실행 정보
+
+          - workflow: `.github/workflows/nightly-slip-it.yml`
+          - run URL: __RUN_URL__
+          - 실행 시간 (KST): __DATE_KST__ 02:00
+          - 대상 matrix: slip-it-public + slip-it-core × (main + 활성 feature branch)
+
+          ## 점검 체크리스트
+
+          - [ ] 실패 matrix 의 어떤 branch / group 인지 run URL 에서 확인
+          - [ ] 60분 timeout 도달 (resource 부족) 인지, assertion fail (회귀) 인지 분류
+          - [ ] 회귀이면 즉시 fix PR (영향 branch 우선)
+          - [ ] timeout 이면 PR #99/#102 회고 참조하여 추가 split 또는 self-hosted runner 검토
+          - [ ] PR fix 머지 후 nightly workflow 재실행 (`workflow_dispatch`) 로 회복 확인
+          - [ ] 본 Issue close
+
+          ## 참고
+
+          - PR #99 (5/6/7차 fix 회고): slip-it 60분 timeout 회귀 사 (옵션 B = matrix 제거)
+          - PR #102: V11 CONCURRENTLY 제거 — idle in transaction deadlock 차단 fix
+          - W10-5 회고: nightly 분리 + PR matrix 재활성 (timeout 30분) 패턴 도입
+          ISSUE_BODY
+
+          sed -i "s|__RUN_URL__|${RUN_URL}|g; s|__DATE_KST__|${DATE_KST}|g" issue-body.md
           gh issue create \
             --title "[nightly] slip-service IT 실패 — ${DATE_KST}" \
             --label "ci,nightly,slip-service" \
-            --body "## 개요
-
-nightly slip-service IT workflow 가 실패했습니다. 본 Issue 는 자동 생성되었으며, fix 후 close 의무.
-
-## 실행 정보
-
-- workflow: \`.github/workflows/nightly-slip-it.yml\`
-- run URL: ${RUN_URL}
-- 실행 시간 (KST): ${DATE_KST} 02:00
-- 대상 matrix: slip-it-public + slip-it-core × (main + 활성 feature branch)
-
-## 점검 체크리스트
-
-- [ ] 실패 matrix 의 어떤 branch / group 인지 run URL 에서 확인
-- [ ] 60분 timeout 도달 (resource 부족) 인지, assertion fail (회귀) 인지 분류
-- [ ] 회귀이면 즉시 fix PR (영향 branch 우선)
-- [ ] timeout 이면 PR #99/#102 회고 참조하여 추가 split 또는 self-hosted runner 검토
-- [ ] PR fix 머지 후 nightly workflow 재실행 (\`workflow_dispatch\`) 로 회복 확인
-- [ ] 본 Issue close
-
-## 참고
-
-- PR #99 (5/6/7차 fix 회고): slip-it 60분 timeout 회귀 사 (옵션 B = matrix 제거)
-- PR #102: V11 CONCURRENTLY 제거 — idle in transaction deadlock 차단 fix
-- W10-5 회고: nightly 분리 + PR matrix 재활성 (timeout 30분) 패턴 도입"
+            --body-file issue-body.md

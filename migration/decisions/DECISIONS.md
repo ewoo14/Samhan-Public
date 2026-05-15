@@ -1594,9 +1594,26 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 - 사용자 노출 전표번호 샘플은 `YYYY/MM/DD-{순번}` 형식을 사용한다.
 
 **후속 결정 후보**:
-- 기존 slip/dispatch/order 번호 예시 중 `001` padding, `S-2026-*`, `SL-*` 계열을 전역 표준 `YYYY/MM/DD-{순번}` 으로 정리하는 별도 PR.
+- 기존 slip/dispatch/order 번호 예시 중 `001` padding, `S-2026-*`, `SL-*` 계열을 업무/메뉴 범위 표준 `YYYY/MM/DD-{순번}` 으로 정리하는 별도 PR.
 - 삼한 퍼블릭 거래처 생성/관리 UI gap 점검.
 - 사진 감사 후속 mutation(재업로드 요청 기록, 후보 해제)은 별도 role-gated PR.
+
+### D-AX-21. 전표/배차 업무번호 범위형 표준화 (2026-05-16)
+
+**배경**: 개발책임자 최신 지시 — UUID는 숨겨진 고유 PK이고, 전표코드/배차번호 등 사용자 노출 업무번호는 `YYYY/MM/DD-{순번}` 형식으로 통일한다. 단 판매전표와 구매전표처럼 서로 다른 메뉴/업무 속성은 같은 날짜 같은 순번을 가져도 된다.
+
+**결정**:
+- 전표번호 scope = `slip_type + slip_date`. OUTBOUND `2026/05/16-1` 과 INBOUND `2026/05/16-1` 은 동시에 허용한다.
+- active slip unique = `slip_type + slip_no + is_deleted=false`. `slip_no` 단독 unique/lookup 은 신규 코드에서 지양한다.
+- 배차번호도 전표번호와 같은 공개 형식 `YYYY/MM/DD-{순번}` 으로 정리한다. 기존 `DT-YYYYMMDD-NNN` 은 폐기한다.
+- `SL-*`, `S-2026-*`, `001` padding 예시는 신규 fixture/문서/QA 캡처에서 제거한다.
+- workflow syntax/actionlint 오류는 다음 PR CI 신뢰성을 막는 P0로 보아 본 PR에 최소 수정 포함한다.
+
+**검증 의무**:
+- Docker JDK `slip-service` / `arologis-service` 전체 테스트.
+- 모바일 Jest/typecheck + 데스크톱 typecheck.
+- actionlint `.github/workflows/*.yml`.
+- PR 본문 캡처 8장 이상.
 
 ---
 

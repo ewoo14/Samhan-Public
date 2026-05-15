@@ -1,14 +1,15 @@
 package com.samhanair.logis.slip.repository;
 
 import com.samhanair.logis.slip.domain.SlipNumberSequence;
+import com.samhanair.logis.slip.domain.SlipType;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-/** SlipNumberSequence — 날짜별 채번 시퀀스. {@code slip_date} 는 unique. */
+/** SlipNumberSequence — 날짜 + 전표 유형별 채번 시퀀스. */
 public interface SlipNumberSequenceRepository extends JpaRepository<SlipNumberSequence, UUID> {
 
-    /** 해당 날짜의 시퀀스 조회. 없으면 호출 측이 {@link SlipNumberSequence#create} 후 저장. */
-    Optional<SlipNumberSequence> findBySlipDate(LocalDate slipDate);
+    /** 해당 날짜 + 전표 유형의 시퀀스 조회. */
+    Optional<SlipNumberSequence> findBySlipDateAndSlipType(LocalDate slipDate, SlipType slipType);
 }

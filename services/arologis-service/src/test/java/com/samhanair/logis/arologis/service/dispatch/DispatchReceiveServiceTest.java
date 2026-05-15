@@ -67,10 +67,10 @@ class DispatchReceiveServiceTest {
                 DriverMatchResult.of(driver, MatchSource.INTERNAL_APP, "MOCK-REF"));
 
         ArologisDispatchRequest req = new ArologisDispatchRequest(
-                samhanTaskId, "DT-20260514-001", LocalDate.of(2026, 5, 14),
+                samhanTaskId, "2026/05/14-1", LocalDate.of(2026, 5, 14),
                 List.of(new ArologisDispatchRequest.VehicleGroup(1, "TONNAGE_1",
                         List.of(new ArologisDispatchRequest.SlipRef(
-                                1, UUID.randomUUID(), "SL-001", "P-1234",
+                                1, UUID.randomUUID(), "2026/05/14-1", "P-1234",
                                 "대구공조", "인천 ...", "010-x", "9시 도착")))));
 
         ArologisDispatchResponse res = svc.receive(req);
@@ -99,7 +99,7 @@ class DispatchReceiveServiceTest {
                 .thenReturn(DriverMatchResult.empty(MatchSource.INTERNAL_APP));
 
         ArologisDispatchRequest req = new ArologisDispatchRequest(
-                samhanTaskId, "DT-x", LocalDate.now(),
+                samhanTaskId, "2026/05/14-2", LocalDate.now(),
                 List.of(new ArologisDispatchRequest.VehicleGroup(1, "TONNAGE_1", List.of())));
 
         svc.receive(req);
@@ -113,7 +113,7 @@ class DispatchReceiveServiceTest {
         when(dispatchRepo.save(any())).thenReturn(dispatch);
 
         ArologisDispatchRequest req = new ArologisDispatchRequest(
-                UUID.randomUUID(), "DT-x", LocalDate.now(),
+                UUID.randomUUID(), "2026/05/14-3", LocalDate.now(),
                 List.of(new ArologisDispatchRequest.VehicleGroup(1, "INVALID_TYPE", List.of())));
 
         try {

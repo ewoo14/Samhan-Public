@@ -44,7 +44,7 @@ class PlaywrightCopyRendererTest {
         when(page.screenshot(any(Page.ScreenshotOptions.class))).thenReturn(expected);
 
         byte[] actual = renderer.render(
-                Map.of("slipNo", "SL-001", "partnerName", "대구공조"),
+                Map.of("slipNo", "2026/05/14-1", "partnerName", "대구공조"),
                 "driver-base64", "recipient-base64");
 
         assertThat(actual).isEqualTo(expected);
@@ -55,7 +55,7 @@ class PlaywrightCopyRendererTest {
         when(page.screenshot(any(Page.ScreenshotOptions.class)))
                 .thenThrow(new PlaywrightException("Timeout 8000ms exceeded"));
 
-        assertThatThrownBy(() -> renderer.render(Map.of("slipNo", "SL-001"), "a", "b"))
+        assertThatThrownBy(() -> renderer.render(Map.of("slipNo", "2026/05/14-1"), "a", "b"))
                 .isInstanceOf(PlaywrightCopyRenderer.RendererTimeoutException.class);
     }
 
@@ -64,7 +64,7 @@ class PlaywrightCopyRendererTest {
         when(page.screenshot(any(Page.ScreenshotOptions.class)))
                 .thenThrow(new PlaywrightException("Chromium crashed"));
 
-        assertThatThrownBy(() -> renderer.render(Map.of("slipNo", "SL-001"), "a", "b"))
+        assertThatThrownBy(() -> renderer.render(Map.of("slipNo", "2026/05/14-1"), "a", "b"))
                 .isInstanceOf(PlaywrightCopyRenderer.RendererErrorException.class);
     }
 
@@ -72,7 +72,7 @@ class PlaywrightCopyRendererTest {
     void render_sets_viewport_size_600x850() {
         when(page.screenshot(any(Page.ScreenshotOptions.class))).thenReturn(new byte[]{0x01});
 
-        renderer.render(Map.of("slipNo", "SL-001"), "a", "b");
+        renderer.render(Map.of("slipNo", "2026/05/14-1"), "a", "b");
 
         verify(page).setViewportSize(600, 850);
     }
@@ -81,7 +81,7 @@ class PlaywrightCopyRendererTest {
     void render_navigates_with_query_params() {
         when(page.screenshot(any(Page.ScreenshotOptions.class))).thenReturn(new byte[]{0x01});
 
-        renderer.render(Map.of("slipNo", "SL-001"), "drv", "rcp");
+        renderer.render(Map.of("slipNo", "2026/05/14-1"), "drv", "rcp");
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         verify(page).navigate(urlCaptor.capture());
@@ -95,7 +95,7 @@ class PlaywrightCopyRendererTest {
         PlaywrightCopyRenderer noBrowser = new PlaywrightCopyRenderer(null, new ObjectMapper(),
                 "file:///app/print-renderer/index.html", 8000, 600, 850);
 
-        assertThatThrownBy(() -> noBrowser.render(Map.of("slipNo", "SL-001"), "a", "b"))
+        assertThatThrownBy(() -> noBrowser.render(Map.of("slipNo", "2026/05/14-1"), "a", "b"))
                 .isInstanceOf(PlaywrightCopyRenderer.RendererErrorException.class)
                 .hasMessageContaining("Playwright Browser bean 미주입");
     }

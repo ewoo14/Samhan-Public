@@ -41,24 +41,24 @@ class DispatchTaskServiceTest {
         when(taskRepo.save(any(DispatchTask.class))).thenAnswer(inv -> inv.getArgument(0));
 
         DispatchTask t = svc.createTask(LocalDate.of(2026, 5, 14));
-        assertThat(t.getTaskCode()).isEqualTo("DT-20260514-001");
+        assertThat(t.getTaskCode()).isEqualTo("2026/05/14-1");
     }
 
     @Test
     void createTask_increments_when_first_taken() {
-        when(taskRepo.existsByTaskCodeAndIsDeletedFalse("DT-20260514-001")).thenReturn(true);
-        when(taskRepo.existsByTaskCodeAndIsDeletedFalse("DT-20260514-002")).thenReturn(false);
+        when(taskRepo.existsByTaskCodeAndIsDeletedFalse("2026/05/14-1")).thenReturn(true);
+        when(taskRepo.existsByTaskCodeAndIsDeletedFalse("2026/05/14-2")).thenReturn(false);
         when(taskRepo.save(any(DispatchTask.class))).thenAnswer(inv -> inv.getArgument(0));
 
         DispatchTask t = svc.createTask(LocalDate.of(2026, 5, 14));
-        assertThat(t.getTaskCode()).isEqualTo("DT-20260514-002");
+        assertThat(t.getTaskCode()).isEqualTo("2026/05/14-2");
     }
 
     @Test
     void addVehicleGroup_assigns_next_sequence() {
         UUID taskId = UUID.randomUUID();
         when(taskRepo.findById(taskId)).thenReturn(
-                Optional.of(DispatchTask.create("DT-x", LocalDate.now())));
+                Optional.of(DispatchTask.create("2026/05/14-9", LocalDate.now())));
         when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(any()))
                 .thenReturn(List.of(
                         DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1),

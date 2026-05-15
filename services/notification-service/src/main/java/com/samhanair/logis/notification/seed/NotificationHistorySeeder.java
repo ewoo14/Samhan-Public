@@ -143,7 +143,7 @@ public class NotificationHistorySeeder implements CommandLineRunner {
         String body = String.format(BODY_TEMPLATES[(seq - 1) % BODY_TEMPLATES.length],
                 pickContextToken(seq));
         String payload = String.format(
-                "{\"slipNo\":\"2026/05/%02d-%03d\",\"actor\":\"%s\"}",
+                "{\"slipNo\":\"2026/05/%02d-%d\",\"actor\":\"%s\"}",
                 ((seq - 1) % 28) + 1, ((seq - 1) % 9) + 1,
                 EMPLOYEE_LOGINS[(seq - 1) % EMPLOYEE_LOGINS.length]);
 
@@ -241,7 +241,7 @@ public class NotificationHistorySeeder implements CommandLineRunner {
 
     /** 본문 % 자리 채울 token — 결정적. */
     private String pickContextToken(int seq) {
-        return String.format("2026/05/%02d-%03d",
+        return String.format("2026/05/%02d-%d",
                 ((seq - 1) % 28) + 1, ((seq - 1) % 9) + 1);
     }
 

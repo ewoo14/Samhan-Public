@@ -35,7 +35,7 @@ class DispatchTaskRepositoryIT extends AbstractPostgresIT {
 
     @Test
     void save_and_lookup_by_code_active() {
-        String taskCode = "DT-IT-" + UUID.randomUUID().toString().substring(0, 8);
+        String taskCode = "2099/05/14-" + Math.abs(UUID.randomUUID().hashCode());
         DispatchTask t = DispatchTask.create(taskCode, LocalDate.of(2099, 5, 14));
         taskRepo.save(t);
 
@@ -45,11 +45,11 @@ class DispatchTaskRepositoryIT extends AbstractPostgresIT {
 
     @Test
     void findByDispatchDateBetween_filters_date_and_status() {
-        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        int suffix = Math.abs(UUID.randomUUID().hashCode());
         LocalDate baseDate = LocalDate.of(2099, 6, 13);
-        DispatchTask t1 = DispatchTask.create("DT-R-" + suffix + "-A", baseDate);
-        DispatchTask t2 = DispatchTask.create("DT-R-" + suffix + "-B", baseDate.plusDays(1));
-        DispatchTask t3 = DispatchTask.create("DT-R-" + suffix + "-C", baseDate.plusDays(7));
+        DispatchTask t1 = DispatchTask.create("2099/06/13-" + suffix, baseDate);
+        DispatchTask t2 = DispatchTask.create("2099/06/14-" + suffix, baseDate.plusDays(1));
+        DispatchTask t3 = DispatchTask.create("2099/06/20-" + suffix, baseDate.plusDays(7));
         taskRepo.save(t1);
         taskRepo.save(t2);
         taskRepo.save(t3);
@@ -64,7 +64,7 @@ class DispatchTaskRepositoryIT extends AbstractPostgresIT {
 
     @Test
     void vehicle_group_ordered_by_sequence() {
-        DispatchTask t = DispatchTask.create("DT-VG", LocalDate.now());
+        DispatchTask t = DispatchTask.create("2099/05/14-" + Math.abs(UUID.randomUUID().hashCode()), LocalDate.now());
         DispatchTask saved = taskRepo.save(t);
 
         DispatchVehicleGroup g1 = DispatchVehicleGroup.create(saved.getId(), 1, DispatchVehicleType.TONNAGE_1);
@@ -81,7 +81,8 @@ class DispatchTaskRepositoryIT extends AbstractPostgresIT {
 
     @Test
     void vehicle_group_slip_lookup_by_slip_id() {
-        DispatchTask t = taskRepo.save(DispatchTask.create("DT-SLIP", LocalDate.now()));
+        DispatchTask t = taskRepo.save(DispatchTask.create(
+                "2099/05/15-" + Math.abs(UUID.randomUUID().hashCode()), LocalDate.now()));
         DispatchVehicleGroup g = groupRepo.save(DispatchVehicleGroup.create(t.getId(), 1, DispatchVehicleType.TONNAGE_1));
 
         UUID slipId = UUID.randomUUID();

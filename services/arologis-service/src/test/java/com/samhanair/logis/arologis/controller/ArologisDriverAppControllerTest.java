@@ -402,7 +402,7 @@ class ArologisDriverAppControllerTest {
         VehicleStop stop = VehicleStop.of(vehicleId, 2, "서울 강남구 테스트로 1 (상세상사-5555)",
                 "서울 강남구 테스트로 1", "상세상사", 5555L, "문 앞", StopStatus.PENDING);
         SlipClient.SlipFullDetail detail = new SlipClient.SlipFullDetail(
-                "SL-20260515-0001",
+                "2026/05/15-1",
                 LocalDate.of(2026, 5, 15),
                 "상세상사",
                 "서울 강남구 테스트로 1",
@@ -447,7 +447,7 @@ class ArologisDriverAppControllerTest {
         assertThat(data.parsedKakaoSeq()).isEqualTo(5555L);
         assertThat(data.partnerName()).isEqualTo("상세상사");
         assertThat(data.stopLabel()).isEqualTo("문 앞");
-        assertThat(data.slipNo()).isEqualTo("SL-20260515-0001");
+        assertThat(data.slipNo()).isEqualTo("2026/05/15-1");
         assertThat(data.lines())
                 .singleElement()
                 .satisfies(line -> {

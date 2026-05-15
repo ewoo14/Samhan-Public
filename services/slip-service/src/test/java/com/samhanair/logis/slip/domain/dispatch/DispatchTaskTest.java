@@ -14,23 +14,23 @@ class DispatchTaskTest {
 
     @Test
     void create_starts_in_DRAFT() {
-        DispatchTask t = DispatchTask.create("DT-20260514-001", LocalDate.of(2026, 5, 14));
+        DispatchTask t = DispatchTask.create("2026/05/14-1", LocalDate.of(2026, 5, 14));
         assertThat(t.getStatus()).isEqualTo(DispatchTaskStatus.DRAFT);
-        assertThat(t.getTaskCode()).isEqualTo("DT-20260514-001");
+        assertThat(t.getTaskCode()).isEqualTo("2026/05/14-1");
         assertThat(t.getArologisDispatchId()).isNull();
         assertThat(t.getFailureReason()).isNull();
     }
 
     @Test
     void markDispatching_from_DRAFT_ok() {
-        DispatchTask t = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask t = DispatchTask.create("2026/05/14-1", LocalDate.now());
         t.markDispatching();
         assertThat(t.getStatus()).isEqualTo(DispatchTaskStatus.DISPATCHING);
     }
 
     @Test
     void markDispatched_from_DISPATCHING_ok() {
-        DispatchTask t = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask t = DispatchTask.create("2026/05/14-1", LocalDate.now());
         t.markDispatching();
         UUID arologisId = UUID.randomUUID();
         t.markDispatched(arologisId);
@@ -40,7 +40,7 @@ class DispatchTaskTest {
 
     @Test
     void markFailed_from_DISPATCHING_ok() {
-        DispatchTask t = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask t = DispatchTask.create("2026/05/14-1", LocalDate.now());
         t.markDispatching();
         t.markFailed("1톤 차량 가용 기사 0명");
         assertThat(t.getStatus()).isEqualTo(DispatchTaskStatus.FAILED);
@@ -49,14 +49,14 @@ class DispatchTaskTest {
 
     @Test
     void markDispatched_from_DRAFT_throws() {
-        DispatchTask t = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask t = DispatchTask.create("2026/05/14-1", LocalDate.now());
         assertThatThrownBy(() -> t.markDispatched(UUID.randomUUID()))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void markFailed_from_DRAFT_throws() {
-        DispatchTask t = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask t = DispatchTask.create("2026/05/14-1", LocalDate.now());
         assertThatThrownBy(() -> t.markFailed("reason"))
                 .isInstanceOf(IllegalStateException.class);
     }

@@ -20,7 +20,7 @@ import org.hibernate.annotations.UuidGenerator;
 /**
  * 배차 작업 (Samhan Public Phase A) — slip-service 안 신규 도메인 (D-DB-01).
  *
- * <p>사용자 노출 식별자 = {@link #taskCode} ({@code DT-YYYYMMDD-NNN}, daily counter).
+ * <p>사용자 노출 식별자 = {@link #taskCode} ({@code yyyy/MM/dd-N}, daily counter).
  * UUID 는 비공개 ([feedback_uuid_no_user_visibility]).
  *
  * <p>상태 머신 — {@link DispatchTaskStatus} 참조.

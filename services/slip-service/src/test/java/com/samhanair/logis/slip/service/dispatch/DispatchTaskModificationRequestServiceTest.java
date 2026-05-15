@@ -57,7 +57,7 @@ class DispatchTaskModificationRequestServiceTest {
     @Test
     void request_from_DRAFT_throws_CONFLICT() throws Exception {
         UUID taskId = UUID.randomUUID();
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-1", LocalDate.now());
         setId(task, taskId);
         setArologisDispatchId(task, UUID.randomUUID());
         // DRAFT 상태 그대로 — markModificationRequested 가 IllegalStateException → CONFLICT 변환
@@ -72,7 +72,7 @@ class DispatchTaskModificationRequestServiceTest {
     @Test
     void request_without_arologis_dispatch_id_throws_CONFLICT() throws Exception {
         UUID taskId = UUID.randomUUID();
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-2", LocalDate.now());
         setId(task, taskId);
         // arologisDispatchId 미설정 — 의도적 invalid 상태
 
@@ -110,7 +110,7 @@ class DispatchTaskModificationRequestServiceTest {
     // ---------- 헬퍼 ----------
 
     private static DispatchTask dispatchedTask(UUID taskId, UUID arologisId) throws Exception {
-        DispatchTask task = DispatchTask.create("DT-x", LocalDate.now());
+        DispatchTask task = DispatchTask.create("2026/05/14-3", LocalDate.now());
         setId(task, taskId);
         task.markDispatching();
         task.markDispatched(arologisId);

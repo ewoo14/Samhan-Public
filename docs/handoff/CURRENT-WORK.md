@@ -1,12 +1,53 @@
 # 현재 작업 핸드오프 노트
 
-> 갱신일: 2026-05-16 (D-AX-20 **구현/검증 진행**, Codex)
+> 갱신일: 2026-05-16 (D-AX-21 **구현/검증 진행**, Codex)
 > 갱신자: Codex
 > 사용법: 새 도구/세션 시작 시 본 파일 read → §0 (즉시 시작) + §1 (방금 끝난 일) + §3 (다음 trigger 후보) 순서
 
-## 2026-05-16 Codex 최신 핸드오프 — D-AX-20 Admin 사진 감사/재업로드 후보 진행
+## 2026-05-16 Codex 최신 핸드오프 — D-AX-21 업무번호 범위형 표준화 진행
 
-- 현재 branch: `codex/d-ax-20-arologis-admin-photo-audit`
+- 현재 branch: `codex/d-ax-21-business-code-standardization`
+- 직전 완료: D-AX20 Admin 사진 감사/재업로드 후보 PR #200 merge, 원격 브랜치 삭제 완료.
+- 사용자 최신 결정:
+  - 전표번호는 전역 unique가 아니라 메뉴/업무 속성별 날짜 시퀀스다.
+  - 판매전표 `YYYY/MM/DD-1` 과 구매전표 `YYYY/MM/DD-1` 은 서로 다른 메뉴값/속성이므로 중복 가능하다.
+  - UUID는 내부 PK이며 Samhan Public/아로로지스 화면에 표시하지 않는다.
+- 구현:
+  - `SlipNumberSequence`를 `slipDate + slipType` 단위로 확장.
+  - `SlipNumberService.next(LocalDate, SlipType)` 추가, 기존 `next(LocalDate)`는 OUTBOUND 호환 경로 유지.
+  - Flyway `V24__business_number_scope.sql`: `slip_number_sequences.slip_type`, `UNIQUE(slip_date, slip_type)`, `ux_slips_slip_type_no_active`.
+  - `SlipService`, publish, estimate, mobile partner order 변환 경로에서 업무 유형을 명시해 채번.
+  - `DispatchTaskService` 배차번호를 `DT-YYYYMMDD-NNN` 에서 `YYYY/MM/DD-{순번}` 으로 변경.
+  - dev seed, notification seed, partner-order seed, 아로로지스 모바일/복사 테스트 fixture의 구식 `SL`/`DT` 예시 제거.
+  - `.github/workflows` actionlint syntax/shellcheck 오류 보정.
+- 문서/QA:
+  - `docs/dev-reports/d-ax-21-business-code-standardization.md`
+  - `docs/qa/d-ax-21-business-code-standardization/scenarios.md`
+  - `docs/qa/d-ax-21-business-code-standardization/domain-integrity-check.md`
+  - `docs/team-reviews/d-ax-21/team-1-tm-integration-review.md`
+  - QA 캡처 8장: `01-business-number-scope-policy.png` ~ `08-pr-capture-checklist.png`
+- 검증:
+  - Docker targeted Gradle PASS.
+  - Docker/JDK Gradle `:services:slip-service:test` PASS — 463 tests, failure 0, error 0, 기존 skipped 172.
+  - Docker/JDK Gradle `:services:arologis-service:test` PASS — 236 tests, failure 0, error 0, 기존 skipped 75.
+  - `clients/arologis-mobile` Jest PASS — 2 suites / 8 tests.
+  - `clients/arologis-mobile` typecheck PASS.
+  - `clients/desktop` typecheck PASS.
+  - actionlint `.github/workflows/*.yml` PASS.
+- 남은 즉시 작업:
+  - QA 캡처 생성/가드 확인.
+  - commit/push/PR 생성.
+  - PR 본문 raw screenshot URL 8장 HEAD 200 확인.
+  - `gh pr checks --watch` 후 PM 재점검/머지.
+- 다음 후보:
+  - A: comments/audit/SSE proxy 확장
+  - B: 삼한 퍼블릭 거래처 생성/관리 UI gap 점검
+  - C: 실제 기기 QA
+  - D: Testcontainers no-skip hardening
+
+## 2026-05-16 Codex 최신 핸드오프 — D-AX-20 Admin 사진 감사/재업로드 후보 완료
+
+- branch: `codex/d-ax-20-arologis-admin-photo-audit`
 - 직전 완료: D-AX-19 `clients/mobile-staff` 기사 모드 은퇴 PR #199 merge, 원격 브랜치 삭제 완료.
 - 사용자 선택/운영 방식:
   - 추천안 1번 — Admin 사진 감사/재업로드 후보 화면.
@@ -15,8 +56,9 @@
 - 새 도메인 정책:
   - UUID 는 내부 PK 이며 Samhan Public / 아로로지스 화면에 표시하지 않는다.
   - 전표/배차 등 사용자 노출 업무번호는 `YYYY/MM/DD-{순번}` 형식을 표준으로 삼는다.
+  - 전표번호는 메뉴/업무 속성별로 독립 증가한다. 예: 판매전표 `YYYY/MM/DD-1` 과 구매전표 `YYYY/MM/DD-1` 은 중복 가능하며 UUID PK + 업무 유형으로 구분한다.
   - 날짜가 바뀌면 해당 날짜의 마지막 순번 이후로 증가하고, soft-delete/복구 이력은 UUID PK 와 audit 으로 보존한다.
-  - D-AX20 신규 샘플/캡처는 위 형식으로 맞췄고, 기존 `001` padding / `S-2026-*` / `SL-*` 계열은 후속 전역 표준화 PR 후보로 남긴다.
+  - D-AX20 신규 샘플/캡처는 위 형식으로 맞췄고, 기존 `001` padding / `S-2026-*` / `SL-*` 계열은 후속 업무번호 범위형 표준화 PR 후보로 남긴다.
 - 구현:
   - BE `GET /slips/admin/photo-audit` 추가. gateway 외부 경로는 `/api/v1/slips/admin/photo-audit`.
   - `type/from/to/slipNo/page/size` 필터, `WAREHOUSE/MANAGER/MASTER` 권한, `uploadedAt desc`, size 최대 100.
@@ -46,7 +88,7 @@
   - PR 본문 raw screenshot URL 7장 HEAD 200 확인.
   - `gh pr checks --watch` 후 PM 재점검/머지.
 - 다음 후보:
-  - A: 전표/배차 표시번호 `YYYY/MM/DD-{순번}` 전역 표준화
+  - A: 전표/배차 표시번호 `YYYY/MM/DD-{순번}` 업무번호 범위형 표준화
   - B: 삼한 퍼블릭 거래처 생성/관리 UI gap 점검
   - C: 전표 상세 comments/audit/SSE proxy 확장
   - D: 실제 기기 QA

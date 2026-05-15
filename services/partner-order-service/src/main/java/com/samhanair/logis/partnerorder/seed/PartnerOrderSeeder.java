@@ -41,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>status — DRAFT 5 / CONFIRMED 25 (CONFIRMED 중 SLIP_PUBLISHED 15)</li>
  *   <li>slipPublishStatus — PENDING_RETRY 15 / PUBLISHED 15</li>
- *   <li>slipNo — PUBLISHED 15건만 채움 (Stage 2 slip 의 yyyy/MM/dd-NNN 형식 매핑)</li>
+ *   <li>slipNo — PUBLISHED 15건만 채움 (Stage 2 slip 의 yyyy/MM/dd-N 형식 매핑)</li>
  * </ul>
  *
  * @see com.samhanair.logis.user.seed.OrgChartSeeder 16 employee 시드 patron 패턴
@@ -58,7 +58,7 @@ public class PartnerOrderSeeder implements CommandLineRunner {
     private static final String PARTNER_CODE_PREFIX = "P-2026-";
     /** Stage 1 product 100 의 modelCode prefix — Samsung HVAC 01XXXX. */
     private static final String PRODUCT_CODE_PREFIX = "01";
-    /** Stage 2 slip 100 의 slipNo prefix — yyyy/MM/dd-NNN (slip-service SlipNumberService). */
+    /** Stage 2 slip 100 의 slipNo prefix — yyyy/MM/dd-N (slip-service SlipNumberService). */
     private static final String SLIP_DATE_PREFIX = "2026/04/15";
 
     /** 결정적 partner 표본 — 30 partner sample (partnerCode, partnerName, bizNo). */
@@ -180,8 +180,8 @@ public class PartnerOrderSeeder implements CommandLineRunner {
             setField(order, "slipPublishStatus", SlipPublishStatus.PENDING_RETRY);
         } else {
             // 16..30 → CONFIRMED + PUBLISHED + slipNo (Stage 2 slip 매핑)
-            // slipNo 형식 = "yyyy/MM/dd-NNN" (slip-service SlipNumberService.next 동일 포맷)
-            String slipNo = SLIP_DATE_PREFIX + "-" + zfill(seq, 3);
+            // slipNo 형식 = "yyyy/MM/dd-N" (slip-service SlipNumberService.next 동일 포맷)
+            String slipNo = SLIP_DATE_PREFIX + "-" + seq;
             order.markSlipPublished(slipNo); // status=CONFIRMED + slipPublishStatus=PUBLISHED + slipNo
         }
     }
