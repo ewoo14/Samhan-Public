@@ -12,7 +12,7 @@
  * - 부서         (`/admin/departments`)        — admin-nav-departments
  * - 단톡방 매핑  (`/admin/chat-rooms`)         — admin-nav-chat-rooms
  * - DC 설정      (`/sales/partner-dc-config`)  — admin-nav-dc-config
- * - 거래처 마스터(`/admin/partners`)           — admin-nav-partners
+ * - 거래처 관리  (`/admin/partners`)           — admin-nav-partners (공용 거래처 화면 quick link)
  * - 창고         (`/admin/warehouses`)         — admin-nav-warehouses
  *
  * memory feedback_uuid_no_user_visibility — admin 화면도 비즈니스 식별자만 노출.
@@ -127,7 +127,7 @@ function AdminLayoutInner() {
           DC 설정
         </AdminNav>
         <AdminNav to="/admin/partners" testId="admin-nav-partners">
-          거래처 마스터
+          거래처 관리
         </AdminNav>
         <AdminNav to="/admin/warehouses" testId="admin-nav-warehouses">
           창고

@@ -1,12 +1,46 @@
 # 현재 작업 핸드오프 노트
 
-> 갱신일: 2026-05-16 (D-AX-22 **구현/검증 진행**, Codex)
+> 갱신일: 2026-05-16 (SP-01 **검증 완료 / PR 준비**, Codex)
 > 갱신자: Codex
 > 사용법: 새 도구/세션 시작 시 본 파일 read → §0 (즉시 시작) + §1 (방금 끝난 일) + §3 (다음 trigger 후보) 순서
 
-## 2026-05-16 Codex 최신 핸드오프 — D-AX-22 UUID 비노출 계약 hardening 진행
+## 2026-05-16 Codex 최신 핸드오프 — SP-01 Samhan Public 거래처 관리 메뉴 gap 진행
 
-- 현재 branch: `codex/d-ax-22-uuid-free-contract-hardening`
+- 현재 branch: `codex/sp-01-partner-ui-menu-gap-audit`
+- 직전 완료:
+  - D-AX20 Admin 사진 감사/재업로드 후보 PR #200 merge, 원격 브랜치 삭제 완료.
+  - D-AX21 업무번호 범위형 표준화 PR #201 merge, 원격 브랜치 삭제 완료.
+  - D-AX22 UUID 비노출 계약 hardening PR #202 merge, 원격 브랜치 삭제 완료.
+- 사용자 최신 결정:
+  - 전표번호는 전역 unique 가 아니라 메뉴/업무 속성별 날짜 시퀀스다.
+  - 판매전표 `YYYY/MM/DD-1` 과 구매전표 `YYYY/MM/DD-1` 은 서로 다른 메뉴값/속성이므로 중복 가능하다.
+  - UUID는 내부 PK이며 Samhan Public/아로로지스 화면에 표시하지 않는다.
+  - 아로로지스 후 Samhan Public 문서/PR/UI 누락을 점검한다. 거래처 생성 메뉴 누락은 우선 점검 대상.
+- SP-01 구현:
+  - `clients/desktop` 판매 그룹에 `거래처 관리` entry 추가.
+  - `/admin/partners`, `/admin/partners/new` 를 `AdminLayout` 밖 `SALES / MANAGER / MASTER` 공용 RoleGuard route 로 정렬.
+  - `partner-service` `GET /admin/partners`, `GET /admin/partners/search`, `POST /api/v1/partners/full` 권한을 `SALES / MANAGER / MASTER` 로 정합화.
+  - `PartnerAdminControllerIT`, `P06ValidationIT` 에 SALES 목록/검색/상세/등록 + UUID 비노출 assertion 추가.
+  - `clients/desktop/src/renderer/api/mock.ts` 거래처 mock 을 FE `PartnerSummary`/4탭 응답 계약과 정렬.
+  - 영업 매뉴얼/FAQ/QA/dev-report/TM review 갱신.
+- SP-01 로컬 검증:
+  - QA 캡처 14장 생성 완료: `docs/qa/sp-01-partner-ui-menu-gap-audit/screenshots/01-sales-discoverability.png` ~ `14-uuid-hidden-assertions.png`.
+  - Docker/JDK `:services:partner-service:test` PASS — `115 tests / failures 0 / errors 0 / skipped 0`.
+  - `clients/web/design-system` `npm run build` PASS.
+  - `clients/desktop` `npm run typecheck`, `npm run lint`, `npm run build` PASS. lint 는 기존 warning 3건, error 0.
+  - `clients/desktop` Playwright static contract PASS — `3 passed / skipped 0`.
+  - `git diff --check` PASS.
+- 남은 즉시 작업:
+  - commit/push/PR 생성, QA 캡처 raw 링크 확인, CI watch, green 후 PM 재점검/머지.
+- 다음 후보:
+  - A: Samhan Public 추가 UI 누락 점검
+  - B: comments/audit/SSE proxy 확장
+  - C: 실제 기기 QA
+  - D: Testcontainers no-skip hardening
+
+## 2026-05-16 Codex 핸드오프 — D-AX-22 UUID 비노출 계약 hardening 완료
+
+- branch: `codex/d-ax-22-uuid-free-contract-hardening`
 - 직전 완료:
   - D-AX20 Admin 사진 감사/재업로드 후보 PR #200 merge, 원격 브랜치 삭제 완료.
   - D-AX21 업무번호 범위형 표준화 PR #201 merge, 원격 브랜치 삭제 완료.
@@ -43,10 +77,7 @@
   - `clients/desktop` typecheck/lint/build PASS. lint 는 기존 warning 3건, error 0.
   - `git diff --check` PASS.
   - `actionlint` 는 로컬 PATH 에 없어 실행하지 못함. 이번 PR 은 workflow 파일 변경 없음.
-- 남은 즉시 작업:
-  - commit/push/PR 생성.
-  - PR 본문 raw screenshot URL 8장 HEAD 200 확인.
-  - `gh pr checks --watch` 후 PM 재점검/머지.
+- PR #202 merge 완료, 원격 브랜치 삭제 완료.
 - 다음 후보:
   - A: comments/audit/SSE proxy 확장
   - B: 삼한 퍼블릭 거래처 생성/관리 UI gap 점검

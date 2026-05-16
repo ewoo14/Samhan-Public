@@ -21,7 +21,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  * <p>커버:
  * <ol>
  *   <li>인증 미적재 → 403 (Spring Security 기본 — protected endpoint)</li>
- *   <li>X-User-Role = SALES (관리자 아님) → 403 FORBIDDEN</li>
+ *   <li>X-User-Role = SALES 의 legacy admin POST → 403 FORBIDDEN</li>
+ *   <li>X-User-Role = SALES 의 목록/검색/상세 조회 → 200 + 내부 UUID 비노출</li>
  *   <li>X-User-Role = MANAGER → 200, 신규 거래처 등록 OK</li>
  *   <li>중복 partnerCode → 409 CONFLICT</li>
  *   <li>X-User-Role = MASTER + DELETE → 200 (soft-delete)</li>
@@ -76,7 +77,68 @@ class PartnerAdminControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partnerCode").value("P-2026-0012"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.id").doesNotExist())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.status").value("ACTIVE"));
+    }
+
+    @Test
+    void find_all_with_sales_role_returns_partner_code_list_without_uuid() throws Exception {
+        PartnerAdminRequest req = sampleRequest("P-2026-0015", "999-88-77782");
+        mockMvc.perform(MockMvcRequestBuilders.post("/admin/partners")
+                        .header("X-User-Id", "user-manager")
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(MockMvcResultMatchers.status().isOk());
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/partners")
+                        .header("X-User-Id", "user-sales")
+                        .header("X-User-Role", "SALES")
+                        .param("page", "0")
+                        .param("size", "20")
+                        .param("sort", "partnerCode,asc"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.content[0].partnerCode").value("P-2026-0015"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.content[0].id").doesNotExist());
+    }
+
+    @Test
+    void search_with_sales_role_returns_partner_code_items_without_uuid() throws Exception {
+        PartnerAdminRequest req = sampleRequest("P-2026-0016", "999-88-77783");
+        mockMvc.perform(MockMvcRequestBuilders.post("/admin/partners")
+                        .header("X-User-Id", "user-manager")
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(MockMvcResultMatchers.status().isOk());
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/partners/search")
+                        .header("X-User-Id", "user-sales")
+                        .header("X-User-Role", "SALES")
+                        .param("q", "P-2026-0016")
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.items[0].partnerCode").value("P-2026-0016"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.items[0].id").doesNotExist());
+    }
+
+    @Test
+    void find_one_with_sales_role_returns_partner_code_detail_without_uuid() throws Exception {
+        PartnerAdminRequest req = sampleRequest("P-2026-0017", "999-88-77784");
+        mockMvc.perform(MockMvcRequestBuilders.post("/admin/partners")
+                        .header("X-User-Id", "user-manager")
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(MockMvcResultMatchers.status().isOk());
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/partners/P-2026-0017")
+                        .header("X-User-Id", "user-sales")
+                        .header("X-User-Role", "SALES"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.partnerCode").value("P-2026-0017"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.id").doesNotExist());
     }
 
     @Test
