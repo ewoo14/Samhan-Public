@@ -56,6 +56,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class InboundInspectionControllerIT extends AbstractPostgresIT {
 
+    private static final String PUBLIC_PATH = "/api/v1/inventory/inbound-inspections";
+    private static final String STRIPPED_PATH = "/inventory/inbound-inspections";
+    private static final String STANDARD_SLIP_NO = "2026/05/11-1";
+
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private WarehouseRepository warehouseRepository;
@@ -86,8 +90,8 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
                 slipLineId, productId, "테스트 제품", "MODEL-IT-001",
                 5, new BigDecimal("50000"));
         SlipDetail slipDetail = new SlipDetail(
-                slipId, "2025/05/11-001", "INBOUND", "SAVED",
-                hqWarehouseId, "테스트 거래처", "본사창고", "2025-05-11",
+                slipId, STANDARD_SLIP_NO, "INBOUND", "SAVED",
+                hqWarehouseId, "테스트 거래처", "본사창고", "2026-05-11",
                 List.of(slipLine));
         Mockito.lenient().when(slipClient.getSlip(slipId)).thenReturn(slipDetail);
     }
@@ -95,27 +99,36 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("미인증 요청 → 403")
     void unauthenticated_returns403() throws Exception {
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections/{slipId}", slipId))
+        mockMvc.perform(get(PUBLIC_PATH + "/{slipId}", slipId))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     @DisplayName("SALES 권한 → 403")
     void salesRole_returns403() throws Exception {
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections/{slipId}", slipId)
+        mockMvc.perform(get(PUBLIC_PATH + "/{slipId}", slipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
+    @DisplayName("INVENTORY 권한 → 403 (inventory-service 검수 계약은 WAREHOUSE/MANAGER/MASTER)")
+    void inventoryRole_returns403() throws Exception {
+        mockMvc.perform(get(PUBLIC_PATH + "/{slipId}", slipId)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "INVENTORY"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("WAREHOUSE — GET 검수 생성 → 200 + slipNo + lines")
     void warehouseRole_getInspection_creates_returns200() throws Exception {
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections/{slipId}", slipId)
+        mockMvc.perform(get(PUBLIC_PATH + "/{slipId}", slipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.slipNo").value("2025/05/11-001"))
+                .andExpect(jsonPath("$.data.slipNo").value(STANDARD_SLIP_NO))
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.lines").isArray())
                 .andExpect(jsonPath("$.data.lines[0].expectedQty").value(5))
@@ -123,11 +136,21 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("Gateway StripPrefix=2 도착 경로 — /inventory/inbound-inspections GET 200")
+    void gatewayStrippedPath_getInspection_returns200() throws Exception {
+        mockMvc.perform(get(STRIPPED_PATH + "/{slipId}", slipId)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.slipNo").value(STANDARD_SLIP_NO));
+    }
+
+    @Test
     @DisplayName("WAREHOUSE — POST inspect 결과 저장 → 200 + inspectedQty 반영")
     void warehouseRole_saveResult_returns200() throws Exception {
         // 1) 먼저 GET 으로 검수 생성
         MvcResult getResult = mockMvc.perform(
-                        get("/api/v1/inventory/inbound-inspections/{slipId}", slipId)
+                        get(PUBLIC_PATH + "/{slipId}", slipId)
                                 .header("X-User-Id", UUID.randomUUID().toString())
                                 .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
@@ -146,7 +169,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
         Map<String, Object> body = new HashMap<>();
         body.put("lines", List.of(lineResult));
 
-        mockMvc.perform(post("/api/v1/inventory/inbound-inspections/{slipId}/inspect", slipId)
+        mockMvc.perform(post(PUBLIC_PATH + "/{slipId}/inspect", slipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -162,7 +185,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
     void warehouseRole_complete_returns200_stockApplied() throws Exception {
         // 1) 검수 생성
         MvcResult getResult = mockMvc.perform(
-                        get("/api/v1/inventory/inbound-inspections/{slipId}", slipId)
+                        get(PUBLIC_PATH + "/{slipId}", slipId)
                                 .header("X-User-Id", UUID.randomUUID().toString())
                                 .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
@@ -181,7 +204,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
         Map<String, Object> inspectBody = new HashMap<>();
         inspectBody.put("lines", List.of(lineResult));
 
-        mockMvc.perform(post("/api/v1/inventory/inbound-inspections/{slipId}/inspect", slipId)
+        mockMvc.perform(post(PUBLIC_PATH + "/{slipId}/inspect", slipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -189,7 +212,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk());
 
         // 3) 완료 → 재고 반영
-        mockMvc.perform(post("/api/v1/inventory/inbound-inspections/{slipId}/complete", slipId)
+        mockMvc.perform(post(PUBLIC_PATH + "/{slipId}/complete", slipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
@@ -202,12 +225,12 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
     @DisplayName("GET list status=PENDING → 200 + page 구조")
     void listInspections_pending_returns200() throws Exception {
         // 검수 1건 생성 후 list 조회
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections/{slipId}", slipId)
+        mockMvc.perform(get(PUBLIC_PATH + "/{slipId}", slipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections")
+        mockMvc.perform(get(PUBLIC_PATH)
                         .param("status", "PENDING")
                         .param("page", "0")
                         .param("size", "10")
@@ -223,12 +246,12 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
     void outboundSlip_returns409() throws Exception {
         UUID outboundSlipId = UUID.randomUUID();
         SlipDetail outbound = new SlipDetail(
-                outboundSlipId, "2025/05/11-002", "OUTBOUND", "SAVED",
-                hqWarehouseId, "테스트 거래처", "본사창고", "2025-05-11",
+                outboundSlipId, "2026/05/11-1", "OUTBOUND", "SAVED",
+                hqWarehouseId, "테스트 거래처", "본사창고", "2026-05-11",
                 List.of());
         Mockito.when(slipClient.getSlip(outboundSlipId)).thenReturn(outbound);
 
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections/{slipId}", outboundSlipId)
+        mockMvc.perform(get(PUBLIC_PATH + "/{slipId}", outboundSlipId)
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isConflict());
@@ -237,7 +260,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("잘못된 status 파라미터 → 400")
     void invalidStatus_returns400() throws Exception {
-        mockMvc.perform(get("/api/v1/inventory/inbound-inspections")
+        mockMvc.perform(get(PUBLIC_PATH)
                         .param("status", "INVALID_STATUS")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "MANAGER"))

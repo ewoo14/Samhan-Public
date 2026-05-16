@@ -435,6 +435,7 @@ export interface SlipQueryRow {
   slipType: SlipType
   slipNo: string
   slipDate: string
+  status: SlipStatus
   partnerName: string | null
   partnerCode: string | null
   businessNumber: string | null

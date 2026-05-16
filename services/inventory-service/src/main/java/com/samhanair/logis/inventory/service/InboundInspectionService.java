@@ -52,7 +52,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>비즈니스 규칙:
  * <ul>
- *   <li>입고 슬립 status: SAVED / CONFIRMED / COMPLETED — 검수 대상. 그 외 상태는 CONFLICT.</li>
+ *   <li>입고 슬립 status: SAVED / CONFIRMED / COMPLETED / PROCESSING / INSPECTING — 검수 대상.
+ *       구매조회 CTA 는 업무 발견성 기준으로 SAVED / CONFIRMED 에만 노출한다.</li>
  *   <li>슬립 type 은 INBOUND 만 허용.</li>
  *   <li>정상 수량 = inspectedQty - defectQty. 불량 수량은 별도 추적 (본 슬라이스 X).</li>
  *   <li>{@link InboundInspection#stockApplied} 플래그로 중복 재고 반영 방지.</li>

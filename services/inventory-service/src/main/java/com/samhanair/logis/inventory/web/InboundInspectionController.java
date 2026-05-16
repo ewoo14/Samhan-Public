@@ -45,10 +45,14 @@ import org.springframework.web.bind.annotation.RestController;
  *       — 검수 완료 → 재고 반영</li>
  * </ul>
  *
+ * <p>Gateway 는 {@code /api/v1/inventory/**} 요청에서 {@code api/v1} 을 StripPrefix 하므로
+ * 서비스 도착 경로는 {@code /inventory/inbound-inspections/**} 이다. 기존 MockMvc/직접 호출
+ * 호환을 위해 {@code /api/v1/inventory/inbound-inspections/**} 도 함께 수신한다.
+ *
  * <p>UUID 비공개 가드: slipId 는 path parameter (내부 참조). 응답의 {@code slipNo} 가 사용자 노출 식별자.
  */
 @RestController
-@RequestMapping("/api/v1/inventory/inbound-inspections")
+@RequestMapping({"/inventory/inbound-inspections", "/api/v1/inventory/inbound-inspections"})
 @RequiredArgsConstructor
 public class InboundInspectionController {
 

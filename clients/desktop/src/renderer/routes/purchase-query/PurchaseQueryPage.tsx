@@ -1,7 +1,7 @@
 /**
- * 구매조회 — 입고전표 다중 선택 + 날짜 범위 + 검색 모달 + 50/page pagination.
+ * 구매관리 — 입고전표 다중 선택 + 날짜 범위 + 검색 모달 + 50/page pagination.
  *
- * 컬럼 11개 (슬립 #17 구매조회 명세):
+ * 컬럼 12개 (슬립 #17 구매조회 명세 + SP-03 입고 검수 CTA):
  *  1. 체크박스 (다중 선택 + 전체 선택)
  *  2. 순번 (slipDate desc 기준 row index)
  *  3. 구매번호 (slipNo)
@@ -13,6 +13,7 @@
  *  9. 입고창고 (destinationWarehouseId → warehousesQuery cache resolve)
  * 10. 적요 (memo)
  * 11. 비고 (memo — BE 분리 컬럼 추가 시 후속 갱신)
+ * 12. 검수 (SAVED/CONFIRMED 행만 InboundInspectionDialog 진입)
  *
  * UUID 비공개 가드: slipNo / businessNumber / partnerCode 만 사용자 노출.
  * id / destinationWarehouseId 는 내부 처리 전용.
@@ -23,12 +24,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Button, Modal, Input, FormField, DataGrid, type DataGridColumn } from '@samhan/design-system'
 import { querySlips, type SlipQueryRow } from '../../api/slip'
 import { listWarehouses, type Warehouse } from '../../api/inventory'
-import { useSessionStore, canCreateSlip } from '../../stores/session'
+import { useSessionStore, canCreateSlip, canInspectInbound } from '../../stores/session'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { exportSlips } from '../../api/excelExportApi'
 import { useExcelDownload, makeExportFilename } from '../../hooks/useExcelDownload'
+import { InboundInspectionDialog } from '../components/InboundInspectionDialog'
 
 const PAGE_SIZE = 50
+const INSPECTABLE_STATUSES = ['SAVED', 'CONFIRMED'] as const
 
 /** YYYY-MM-DD 포맷 (Asia/Seoul 로케일 Date API) */
 function toSeoulDateStr(d: Date): string {
@@ -69,6 +72,14 @@ function resolveWarehouseName(id: string | null, warehouses: Warehouse[]): strin
   return found?.name ?? '—'
 }
 
+function toPublicTestId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9가-힣_-]/g, '-')
+}
+
+function isInspectableInbound(row: SlipQueryRow, canInspect: boolean): boolean {
+  return canInspect && INSPECTABLE_STATUSES.includes(row.status as (typeof INSPECTABLE_STATUSES)[number])
+}
+
 /** 검색 폼 상태 */
 interface SearchForm {
   searchSlipNo: string
@@ -83,10 +94,11 @@ const EMPTY_SEARCH: SearchForm = {
 }
 
 export function PurchaseQueryPage() {
-  usePageTitle('구매조회')
+  usePageTitle('구매관리')
   const navigate = useNavigate()
   const role = useSessionStore((s) => s.auth?.role)
   const canCreate = canCreateSlip(role)
+  const canInspect = canInspectInbound(role)
 
   // ── 날짜 범위 (기본: 오늘 ±15일, Asia/Seoul) ──
   const defaultFrom = (() => {
@@ -112,6 +124,7 @@ export function PurchaseQueryPage() {
 
   // ── 다중 선택 ──
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [inspectionSlipId, setInspectionSlipId] = useState<string | null>(null)
 
   // ── Excel export ──
   const { downloading, download } = useExcelDownload()
@@ -147,7 +160,7 @@ export function PurchaseQueryPage() {
   // ── Excel-like DataGrid 보기 모드 토글 ──
   const [gridMode, setGridMode] = useState(false)
 
-  /** DataGrid 열 정의 (입고전표 11컬럼 중 사용자 노출 컬럼) */
+  /** DataGrid 열 정의 (입고전표 사용자 노출 컬럼 + 검수 action) */
   const dataGridColumns: DataGridColumn<SlipQueryRow>[] = useMemo(
     () => [
       { key: 'slipNo',                 label: '구매번호',    filter: 'text' },
@@ -165,9 +178,34 @@ export function PurchaseQueryPage() {
       { key: 'slipDate',               label: '전표일자',    filter: 'text' },
       { key: 'printed',                label: '인쇄',        filter: 'select' as const,
         format: (v: unknown) => v ? '완료' : '미완' },
+      ...(canInspect
+        ? [{
+            key: 'inspectionAction',
+            label: '검수',
+            width: 86,
+            align: 'center' as const,
+            filter: false as const,
+            render: (row: SlipQueryRow) =>
+              isInspectableInbound(row, canInspect) ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setInspectionSlipId(row.id)
+                  }}
+                  aria-label={`${row.slipNo} 입고 검수`}
+                  data-testid={`purchase-query-inspect-${toPublicTestId(row.slipNo)}`}
+                >
+                  검수
+                </Button>
+              ) : '—',
+          } satisfies DataGridColumn<SlipQueryRow>]
+        : []),
     ],
-    [warehouses],
+    [canInspect, warehouses],
   )
+  const tableColumnCount = canInspect ? 12 : 11
 
   // ── 전체선택 (현재 페이지) ──
   const allPageIds   = useMemo(() => rows.map((r) => r.id), [rows])
@@ -285,7 +323,7 @@ export function PurchaseQueryPage() {
           onClick={() =>
             download(
               () => exportSlips({ slipType: 'INBOUND', from: dateFrom, to: dateTo }),
-              makeExportFilename('구매조회'),
+              makeExportFilename('구매관리'),
             )
           }
           data-testid="purchase-query-excel-download"
@@ -384,18 +422,19 @@ export function PurchaseQueryPage() {
               <Th width="100px">입고창고</Th>
               <Th width="160px">적 요</Th>
               <Th width="160px">비 고</Th>
+              {canInspect ? <Th width="86px" align="center">검수</Th> : null}
             </tr>
           </thead>
           <tbody>
             {slipsQuery.isLoading ? (
               <tr>
-                <td colSpan={11} style={{ textAlign: 'center', padding: 32, color: 'var(--color-neutral-400)' }}>
+                <td colSpan={tableColumnCount} style={{ textAlign: 'center', padding: 32, color: 'var(--color-neutral-400)' }}>
                   로딩 중...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={11} style={{ textAlign: 'center', padding: 32, color: 'var(--color-neutral-400)' }}>
+                <td colSpan={tableColumnCount} style={{ textAlign: 'center', padding: 32, color: 'var(--color-neutral-400)' }}>
                   조회된 구매 전표가 없습니다.
                 </td>
               </tr>
@@ -447,6 +486,24 @@ export function PurchaseQueryPage() {
                     <Td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {row.memo ?? '—'}
                     </Td>
+                    {canInspect ? (
+                      <Td align="center">
+                        {isInspectableInbound(row, canInspect) ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setInspectionSlipId(row.id)
+                            }}
+                            aria-label={`${row.slipNo} 입고 검수`}
+                            data-testid={`purchase-query-inspect-${toPublicTestId(row.slipNo)}`}
+                          >
+                            검수
+                          </Button>
+                        ) : '—'}
+                      </Td>
+                    ) : null}
                   </tr>
                 )
               })
@@ -500,7 +557,7 @@ export function PurchaseQueryPage() {
                 id={id}
                 value={draftSearch.searchSlipNo}
                 onChange={(e) => setDraftSearch((d) => ({ ...d, searchSlipNo: e.target.value }))}
-                placeholder="예: 2026/05/10-IN1"
+                placeholder="예: 2026/05/10-1"
                 data-testid="purchase-query-search-slipno"
               />
             )}
@@ -531,6 +588,18 @@ export function PurchaseQueryPage() {
           />
         </div>
       </Modal>
+
+      {inspectionSlipId ? (
+        <InboundInspectionDialog
+          slipId={inspectionSlipId}
+          open={inspectionSlipId !== null}
+          onClose={() => setInspectionSlipId(null)}
+          onSuccess={() => {
+            setInspectionSlipId(null)
+            void slipsQuery.refetch()
+          }}
+        />
+      ) : null}
     </div>
   )
 }

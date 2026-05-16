@@ -1780,3 +1780,21 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | SP-02-07 | 마감 목록 repository 는 nullable JPQL 파라미터 대신 명시적 분기 조회를 사용한다. PostgreSQL/Testcontainers 에서 `year` 필터 조회가 500으로 무너지지 않아야 한다. |
 | SP-02-08 | `TaxInvoiceBatchPreviewResponse.batchId` 는 `save()` 반환 entity 기준으로 채운다. UUID는 화면에 노출하지 않지만 다운로드/history API 연결에 필요한 내부 param 이므로 `null`로 응답하면 안 된다. |
 | SP-02-09 | accounting-service IT 는 Docker/Testcontainers 가용 시 skip 없이 실행한다. 기존 disabled 5건은 외부 client `@MockBean` 격리와 실제 API 계약 보정 후 재활성화한다. |
+
+---
+
+### SP-03. Samhan Public 구매관리 입고 검수 CTA 복구 + 관리형 메뉴명 정리 (2026-05-16)
+
+**배경**: `구매조회` 정식 route 가 legacy `SlipListPage(INBOUND)`에서 `PurchaseQueryPage`로 통합되면서, 매뉴얼이 안내하는 SAVED/CONFIRMED 행의 **[검수]** CTA와 `InboundInspectionDialog` 연결이 새 화면에 이식되지 않았다. 또한 판매/구매/재고이동/창고/견적서/주문서 화면은 생성·상세·수정/처리 흐름을 품고 있는데 `조회` 또는 단순 명사 라벨로 보여 사용자가 조회 전용으로 오해할 수 있었다. 사용자는 구매번호를 확인한 문맥에서 바로 검수 수량/불량 사유 입력으로 이동할 수 있어야 하며, 관리형 화면은 `…관리`로 드러나야 한다.
+
+| # | 결정 |
+|---|---|
+| SP-03-01 | `/purchases`와 `/purchases/query`의 정식 구매관리 화면에서 `SAVED / CONFIRMED` 입고전표 행에 **[검수]** CTA를 노출한다. |
+| SP-03-02 | 검수 CTA 권한은 `inventory-service` `InboundInspectionController`와 동일하게 `WAREHOUSE / MANAGER / MASTER`로 둔다. `SALES / ACCOUNTANT`는 구매관리 자체를 보더라도 검수 CTA를 보지 못한다. |
+| SP-03-03 | CTA 클릭 시 기존 `InboundInspectionDialog`를 재사용한다. 저장/완료 성공 후 구매관리 query를 직접 refetch하여 통합 목록의 상태를 갱신한다. |
+| SP-03-04 | `SlipQueryRow`는 backend `SlipResponse.status`를 타입에 포함한다. API schema 변경 없이 FE 타입 누락만 보정한다. |
+| SP-03-05 | 버튼 `data-testid`와 화면 표시값은 구매번호(`slipNo`) 기반 public id를 사용한다. 내부 `row.id`/UUID는 Dialog API param으로만 사용하고 사용자 화면/캡처에는 노출하지 않는다. |
+| SP-03-06 | 서로 다른 서비스·메뉴·업무 타입의 업무번호는 같은 날짜 같은 순번을 가질 수 있다. 예: 판매전표 `YYYY/MM/DD-1`과 구매전표 `YYYY/MM/DD-1`은 중복 허용이며, 구분은 업무 타입 + 내부 UUID PK가 담당한다. |
+| SP-03-07 | 사이드바/페이지 타이틀에서 `판매조회` → `판매관리`, `구매조회` → `구매관리`, `재고이동` → `재고이동 관리`, `창고` → `창고 관리`, `견적서` → `견적서 관리`, `주문서 조회` → `주문서 관리`로 정리한다. |
+| SP-03-08 | `주문서 승인`, `거래처 DC 설정`은 이미 단일 업무 행위를 표현하므로 명칭을 유지한다. |
+| SP-03-09 | 재고이동 이동번호도 전표번호 표준과 동일하게 `YYYY/MM/DD-{순번}`으로 둔다. 신규 채번은 같은 날짜의 마지막 numeric suffix + 1을 사용한다. `T-YYYY/MM/DD-N`, `TR-YYYYMMDD-NNN` 같은 prefix/zero-padding 형식은 폐기하고 Flyway V10으로 기존 prefix 값을 정규화한다. |

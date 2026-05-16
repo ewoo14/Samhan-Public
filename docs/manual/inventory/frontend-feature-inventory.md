@@ -165,7 +165,7 @@
 
 1. `/login` → loginId/password 입력 → `POST /auth/login` → 토큰 메인 프로세스 저장
 2. `/` 대시보드 → "처리중 출고전표" 카드 (실시간 카운트)
-3. 사이드바 **판매조회** (`/sales`) → 출고전표 목록 (DataTable + 상태 badge)
+3. 사이드바 **판매관리** (`/sales`) → 출고전표 목록 (DataTable + 상태 badge)
 4. **신규 작성** 버튼 → `/sales/new` → 거래처 / 창고 / 라인 (LineRow + StockBalanceModal onBlur 재고 검증) 입력 → `POST /slips`
 5. `/sales/:id` 상세 → `save` → `send` 액션 → 창고로 이송
 6. **링크발송** (`/sales/link-dispatch`) → `POST /delivery-batches/auto-group?date=` → 같은 기사 자동 묶음 → SMS 일괄 발송 (e-sign URL 포함)

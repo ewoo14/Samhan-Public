@@ -74,7 +74,7 @@ class StockTransferServiceTest {
 
     @Test
     void create_validatesAndPersistsWithGeneratedTransferNo() {
-        when(transferRepository.countByTransferNoStartingWith(any())).thenReturn(2L);
+        when(transferRepository.findMaxSequenceByTransferNoPrefix(any())).thenReturn(7);
         when(transferRepository.save(any(StockTransfer.class))).thenAnswer(inv -> {
             StockTransfer t = inv.getArgument(0);
             ReflectionTestUtils.setField(t, "id", UUID.randomUUID());
@@ -87,8 +87,10 @@ class StockTransferServiceTest {
                 "user-1");
 
         assertThat(response.status()).isEqualTo(TransferStatus.REQUESTED);
-        assertThat(response.transferNo()).startsWith("TR-");
-        assertThat(response.transferNo()).endsWith("-003");
+        assertThat(response.transferNo())
+                .matches("\\d{4}/\\d{2}/\\d{2}-8")
+                .doesNotStartWith("T-")
+                .doesNotStartWith("TR-");
         assertThat(response.lines()).hasSize(1);
         assertThat(response.lines().get(0).requestedQuantity()).isEqualTo(5);
     }
@@ -231,16 +233,25 @@ class StockTransferServiceTest {
     }
 
     @Test
-    void nextTransferNo_format_isPrefixedAndZeroPadded() {
-        when(transferRepository.countByTransferNoStartingWith(any())).thenReturn(0L);
+    void nextTransferNo_format_matchesBusinessNumberStandard() {
+        when(transferRepository.findMaxSequenceByTransferNoPrefix(any())).thenReturn(0);
 
         String no = service.nextTransferNo(LocalDate.of(2026, 5, 4));
 
-        assertThat(no).isEqualTo("TR-20260504-001");
+        assertThat(no).isEqualTo("2026/05/04-1");
+    }
+
+    @Test
+    void nextTransferNo_usesLastSequenceNotRowCount() {
+        when(transferRepository.findMaxSequenceByTransferNoPrefix("2026/05/04-")).thenReturn(7);
+
+        String no = service.nextTransferNo(LocalDate.of(2026, 5, 4));
+
+        assertThat(no).isEqualTo("2026/05/04-8");
     }
 
     private StockTransfer freshTransfer(Warehouse src, Warehouse dst) {
-        StockTransfer t = StockTransfer.create("TR-20260504-001", src, dst,
+        StockTransfer t = StockTransfer.create("2026/05/04-1", src, dst,
                 TransferReason.REBALANCE, null, "user-1");
         ReflectionTestUtils.setField(t, "id", UUID.randomUUID());
         return t;

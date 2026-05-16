@@ -1,0 +1,126 @@
+/**
+ * Samhan Public 구매관리 입고 검수 CTA contract.
+ *
+ * dev server 없이 실행되는 정적 회귀 스펙:
+ * - 구매관리(`/purchases`) 통합 화면에서도 SAVED/CONFIRMED 입고전표는 검수 Dialog 로 진입해야 한다.
+ * - 버튼/테스트 식별자는 UUID가 아닌 구매번호(slipNo) 기반 public id 를 사용해야 한다.
+ * - 입고 검수 권한은 inventory-service 계약과 같은 WAREHOUSE / MANAGER / MASTER 여야 한다.
+ * - 업무번호 `YYYY/MM/DD-N` 은 서비스/메뉴/업무 타입별 독립 순번이며 서로 다른 타입끼리 중복될 수 있다.
+ */
+import { expect, test } from '@playwright/test'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const desktopRoot = path.resolve(__dirname, '../..')
+const repoRoot = path.resolve(desktopRoot, '../..')
+
+const purchasePagePath = path.join(desktopRoot, 'src/renderer/routes/purchase-query/PurchaseQueryPage.tsx')
+const sessionPath = path.join(desktopRoot, 'src/renderer/stores/session.ts')
+const layoutPath = path.join(desktopRoot, 'src/renderer/components/AppLayout.tsx')
+const slipApiPath = path.join(desktopRoot, 'src/renderer/api/slip.ts')
+const mockApiPath = path.join(desktopRoot, 'src/renderer/api/mock.ts')
+const transferServicePath = path.join(repoRoot, 'services/inventory-service/src/main/java/com/samhanair/logis/inventory/service/StockTransferService.java')
+const transferMigrationPath = path.join(repoRoot, 'services/inventory-service/src/main/resources/db/migration/V10__normalize_stock_transfer_numbers.sql')
+const manualPath = path.join(repoRoot, 'docs/manual/02-창고/06-구매조회.md')
+const decisionsPath = path.join(repoRoot, 'migration/decisions/DECISIONS.md')
+
+function read(filePath: string): string {
+  return fs.readFileSync(filePath, 'utf8')
+}
+
+test.describe('Samhan Public 구매관리 입고 검수 CTA', () => {
+  test('구매관리는 SAVED/CONFIRMED 행에서 InboundInspectionDialog를 연다', () => {
+    const page = read(purchasePagePath)
+
+    expect(page).toContain("import { InboundInspectionDialog } from '../components/InboundInspectionDialog'")
+    expect(page).toContain("const INSPECTABLE_STATUSES = ['SAVED', 'CONFIRMED'] as const")
+    expect(page).toContain('const [inspectionSlipId, setInspectionSlipId] = useState<string | null>(null)')
+    expect(page).toContain('setInspectionSlipId(row.id)')
+    expect(page).toContain('<InboundInspectionDialog')
+    expect(page).toContain('slipId={inspectionSlipId}')
+    expect(page).toContain('void slipsQuery.refetch()')
+  })
+
+  test('검수 버튼은 UUID가 아닌 구매번호 기반 public test id를 사용한다', () => {
+    const page = read(purchasePagePath)
+    const slipApi = read(slipApiPath)
+
+    expect(slipApi).toContain('status: SlipStatus')
+    expect(page).toContain('function toPublicTestId(value: string): string')
+    expect(page).toContain('data-testid={`purchase-query-inspect-${toPublicTestId(row.slipNo)}`}')
+    expect(page).not.toMatch(/data-testid=\{`purchase-query-inspect-\$\{row\.id\}`\}/)
+  })
+
+  test('입고 검수 권한은 메뉴와 버튼이 같은 helper를 쓴다', () => {
+    const session = read(sessionPath)
+    const layout = read(layoutPath)
+    const page = read(purchasePagePath)
+    const canInspectInboundBody = session.match(
+      /export function canInspectInbound[\s\S]*?\n}\n/,
+    )?.[0] ?? ''
+
+    expect(canInspectInboundBody).toMatch(
+      /export function canInspectInbound[\s\S]*WAREHOUSE[\s\S]*MANAGER[\s\S]*MASTER/,
+    )
+    expect(canInspectInboundBody).not.toContain('INVENTORY')
+    expect(layout).toContain('const showInboundInspection = canInspectInbound(auth?.role)')
+    expect(page).toContain('const canInspect = canInspectInbound(role)')
+  })
+
+  test('문서는 구매관리 검수 CTA와 업무번호 독립 순번 원칙을 명시한다', () => {
+    const manual = read(manualPath)
+    const decisions = read(decisionsPath)
+
+    expect(manual).toContain('검수')
+    expect(manual).toContain('구매관리')
+    expect(manual).toContain('SAVED / CONFIRMED')
+    expect(manual).toContain('WAREHOUSE / MANAGER / MASTER')
+    expect(manual).toContain('YYYY/MM/DD-{순번}')
+    expect(manual).toContain('서비스/메뉴/업무 타입별로 독립')
+
+    expect(decisions).toContain('SP-03')
+    expect(decisions).toContain('판매관리')
+    expect(decisions).toContain('구매관리')
+    expect(decisions).toContain('서로 다른 서비스·메뉴·업무 타입의 업무번호는 같은 날짜 같은 순번을 가질 수 있다')
+    expect(decisions).toContain('재고이동 이동번호도 전표번호 표준과 동일하게')
+  })
+
+  test('관리형 업무 메뉴는 조회 전용처럼 보이지 않는 라벨을 쓴다', () => {
+    const layout = read(layoutPath)
+    const salesSubNav = read(path.join(desktopRoot, 'src/renderer/components/sales/SalesSubNav.tsx'))
+
+    expect(layout).toContain('>창고 관리</NavLink>')
+    expect(layout).toContain('>판매관리</NavLink>')
+    expect(layout).toContain('>구매관리</NavLink>')
+    expect(layout).toContain('>재고이동 관리</NavLink>')
+    expect(layout).toContain('>견적서 관리</NavLink>')
+    expect(layout).toContain('>주문서 관리</NavLink>')
+    expect(layout).toContain('>주문서 승인</NavLink>')
+    expect(layout).toContain('>거래처 DC 설정</NavLink>')
+    expect(salesSubNav).toContain("label: '견적서 관리'")
+    expect(salesSubNav).toContain("label: '주문서 관리'")
+    expect(salesSubNav).toContain("label: '주문서 승인'")
+    expect(salesSubNav).toContain("label: '거래처 DC 설정'")
+  })
+
+  test('재고이동 이동번호도 T/TR prefix 없이 YYYY/MM/DD-N 형식을 쓴다', () => {
+    const mockApi = read(mockApiPath)
+    const transferService = read(transferServicePath)
+    const migration = read(transferMigrationPath)
+
+    expect(mockApi).toContain("transferNo: '2026/05/04-1'")
+    expect(mockApi).not.toMatch(/transferNo:\s*'T-/)
+    expect(mockApi).not.toMatch(/transferNo:\s*'TR-/)
+
+    expect(transferService).toContain('DateTimeFormatter.ofPattern("yyyy/MM/dd")')
+    expect(transferService).toContain('String prefix = date.format(NO_DATE_FMT) + "-"')
+    expect(transferService).toContain('findMaxSequenceByTransferNoPrefix(prefix) + 1')
+    expect(transferService).toContain('return prefix + seq')
+    expect(transferService).not.toContain('String prefix = "TR-"')
+
+    expect(migration).toContain("regexp_replace(transfer_no, '^T-', '')")
+    expect(migration).toContain("WHERE transfer_no ~ '^TR-[0-9]{8}-[0-9]+$'")
+  })
+})
