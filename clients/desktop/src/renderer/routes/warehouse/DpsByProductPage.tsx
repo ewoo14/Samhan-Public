@@ -50,6 +50,7 @@ import {
 import { DpsHistoryTab } from '../../components/DpsHistoryTab'
 import { DpsRestoredBanner } from '../../components/DpsRestoredBanner'
 import { DpsSaveDialog } from '../../components/DpsSaveDialog'
+import { maskCreatedBy } from '../../utils/maskCreatedBy'
 import { usePageTitle } from '../../hooks/usePageTitle'
 
 // ---------------------------------------------------------------------------
@@ -74,7 +75,7 @@ function todayIso(): string {
 }
 
 // ---------------------------------------------------------------------------
-// 창고 목록 (mock 고정 — warehouseId 는 내부 전송용)
+// 창고 목록 (mock 고정 — warehouseId 는 내부 전송용 UUID, 사용자 미노출)
 // ---------------------------------------------------------------------------
 
 interface WarehouseOption {
@@ -315,7 +316,7 @@ export function DpsByProductPage() {
   const handleRestore = useCallback((detail: DpsSaveHistoryDetailResponse) => {
     setRestoredData(detail.responsePayload as DpsByProductResponse)
     setActiveTab(0)
-    setRestoreBanner(`복원: ${fmtGeneratedAt(detail.createdAt)} ${detail.createdBy} '${detail.topic}'`)
+    setRestoreBanner(`복원: ${fmtGeneratedAt(detail.createdAt)} ${maskCreatedBy(detail.createdBy)} '${detail.topic}'`)
   }, [])
 
   const handleManualSave = useCallback((topic: string) => {

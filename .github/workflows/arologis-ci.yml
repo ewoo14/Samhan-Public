@@ -19,6 +19,7 @@ on:
     paths:
       - 'services/arologis-service/**'
       - 'clients/arologis-desktop/**'
+      - 'clients/web/design-system/**'
       - 'clients/arologis-mobile/**'
       - 'shared/**'
       - '.github/workflows/arologis-ci.yml'
@@ -27,6 +28,7 @@ on:
     paths:
       - 'services/arologis-service/**'
       - 'clients/arologis-desktop/**'
+      - 'clients/web/design-system/**'
       - 'clients/arologis-mobile/**'
       - 'shared/**'
 
@@ -136,6 +138,10 @@ jobs:
       - name: typecheck (arologis-desktop)
         working-directory: clients/arologis-desktop
         run: npm run typecheck
+
+      - name: lint (arologis-desktop)
+        working-directory: clients/arologis-desktop
+        run: npm run lint
 
       - name: build (arologis-desktop)
         working-directory: clients/arologis-desktop
