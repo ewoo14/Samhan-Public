@@ -416,7 +416,7 @@ const MOCK_SLIPS = [
 const MOCK_TRANSFERS = [
   {
     id: 'tr-001',
-    transferNo: 'T-2026/05/04-1',
+    transferNo: '2026/05/04-1',
     sourceWarehouseId: HQ_ID,
     sourceWarehouseCode: 'HQ-001',
     destinationWarehouseId: VH_ID,
@@ -434,7 +434,7 @@ const MOCK_TRANSFERS = [
   },
   {
     id: 'tr-002',
-    transferNo: 'T-2026/05/03-2',
+    transferNo: '2026/05/03-2',
     sourceWarehouseId: VH_ID,
     sourceWarehouseCode: 'VH-001',
     destinationWarehouseId: HQ_ID,
@@ -452,7 +452,7 @@ const MOCK_TRANSFERS = [
   },
   {
     id: 'tr-003',
-    transferNo: 'T-2026/05/04-3',
+    transferNo: '2026/05/04-3',
     sourceWarehouseId: HQ_ID,
     sourceWarehouseCode: 'HQ-001',
     destinationWarehouseId: VH_ID,
@@ -470,7 +470,7 @@ const MOCK_TRANSFERS = [
   },
   {
     id: 'tr-004',
-    transferNo: 'T-2026/05/04-4',
+    transferNo: '2026/05/04-4',
     sourceWarehouseId: HQ_ID,
     sourceWarehouseCode: 'HQ-001',
     destinationWarehouseId: VH_ID,
@@ -488,7 +488,7 @@ const MOCK_TRANSFERS = [
   },
   {
     id: 'tr-005',
-    transferNo: 'T-2026/05/02-7',
+    transferNo: '2026/05/02-7',
     sourceWarehouseId: HQ_ID,
     sourceWarehouseCode: 'HQ-001',
     destinationWarehouseId: VH_ID,
@@ -943,7 +943,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const OUTBOUND_QUERY_ROWS = [
       {
         id: 'sq-001', slipType: 'OUTBOUND', slipNo: '2026/05/10-1',
-        slipDate: '2026-05-10', partnerName: '주식회사 윌리-정현수',
+        slipDate: '2026-05-10', status: 'CONFIRMED', partnerName: '주식회사 윌리-정현수',
         partnerCode: 'WR-001', businessNumber: '123-45-67890',
         deliveryAddress: '서울특별시 강남구 테헤란로 152',
         supervisionAddress: '서울 강남구 삼성동 100', projectName: '강남 오피스텔 A동',
@@ -955,7 +955,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-002', slipType: 'OUTBOUND', slipNo: '2026/05/10-2',
-        slipDate: '2026-05-10', partnerName: '○○종합건설',
+        slipDate: '2026-05-10', status: 'SAVED', partnerName: '○○종합건설',
         partnerCode: 'OO-002', businessNumber: '234-56-78901',
         deliveryAddress: '경기도 성남시 분당구 판교로 235',
         supervisionAddress: null, projectName: null,
@@ -967,7 +967,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-003', slipType: 'OUTBOUND', slipNo: '2026/05/09-5',
-        slipDate: '2026-05-09', partnerName: '한일냉동기술',
+        slipDate: '2026-05-09', status: 'SHIPPING', partnerName: '한일냉동기술',
         partnerCode: 'HI-003', businessNumber: '345-67-89012',
         deliveryAddress: '부산광역시 해운대구 센텀시티 100',
         supervisionAddress: '부산 해운대구 센텀 A빌딩 3F', projectName: '센텀 물류센터 냉동 공사',
@@ -979,7 +979,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-004', slipType: 'OUTBOUND', slipNo: '2026/05/09-3',
-        slipDate: '2026-05-09', partnerName: '삼성물산 건설부문',
+        slipDate: '2026-05-09', status: 'PROCESSING', partnerName: '삼성물산 건설부문',
         partnerCode: 'SM-004', businessNumber: '456-78-90123',
         deliveryAddress: '인천광역시 연수구 송도과학로 32',
         supervisionAddress: '인천 연수구 송도 B빌딩', projectName: '송도 국제도시 HVAC',
@@ -991,7 +991,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-005', slipType: 'OUTBOUND', slipNo: '2026/05/08-11',
-        slipDate: '2026-05-08', partnerName: '대림산업',
+        slipDate: '2026-05-08', status: 'CONFIRMED', partnerName: '대림산업',
         partnerCode: 'DL-005', businessNumber: '567-89-01234',
         deliveryAddress: '대전광역시 유성구 테크노파크로 50',
         supervisionAddress: null, projectName: '대전 테크노파크 공조 설치',
@@ -1003,7 +1003,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-006', slipType: 'OUTBOUND', slipNo: '2026/05/08-7',
-        slipDate: '2026-05-08', partnerName: '현대건설',
+        slipDate: '2026-05-08', status: 'SENT', partnerName: '현대건설',
         partnerCode: 'HD-006', businessNumber: '678-90-12345',
         deliveryAddress: '서울특별시 송파구 올림픽로 300',
         supervisionAddress: '서울 송파 현장사무소', projectName: '잠실 주상복합 A타워',
@@ -1015,7 +1015,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-007', slipType: 'OUTBOUND', slipNo: '2026/05/07-2',
-        slipDate: '2026-05-07', partnerName: '롯데건설',
+        slipDate: '2026-05-07', status: 'DELIVERED', partnerName: '롯데건설',
         partnerCode: 'LT-007', businessNumber: '789-01-23456',
         deliveryAddress: '경기도 수원시 영통구 삼성로 129',
         supervisionAddress: null, projectName: null,
@@ -1027,7 +1027,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-008', slipType: 'OUTBOUND', slipNo: '2026/05/07-9',
-        slipDate: '2026-05-07', partnerName: 'GS건설',
+        slipDate: '2026-05-07', status: 'COMPLETED', partnerName: 'GS건설',
         partnerCode: 'GS-008', businessNumber: '890-12-34567',
         deliveryAddress: '서울특별시 마포구 양화로 45',
         supervisionAddress: '마포 현장 2공구', projectName: '마포 오피스텔 공조',
@@ -1039,7 +1039,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-009', slipType: 'OUTBOUND', slipNo: '2026/05/06-4',
-        slipDate: '2026-05-06', partnerName: '포스코건설',
+        slipDate: '2026-05-06', status: 'CONFIRMED', partnerName: '포스코건설',
         partnerCode: 'PC-009', businessNumber: '901-23-45678',
         deliveryAddress: '광양시 금호동 포스코 1공장',
         supervisionAddress: '광양 1공장 B구역', projectName: '광양제철소 냉각설비',
@@ -1051,7 +1051,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-010', slipType: 'OUTBOUND', slipNo: '2026/05/06-1',
-        slipDate: '2026-05-06', partnerName: '두산중공업',
+        slipDate: '2026-05-06', status: 'SAVED', partnerName: '두산중공업',
         partnerCode: 'DS-010', businessNumber: '012-34-56789',
         deliveryAddress: '창원시 성산구 두산대로 22',
         supervisionAddress: '창원공장 C동', projectName: '창원 스팀터빈 보조냉각',
@@ -1063,7 +1063,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-011', slipType: 'OUTBOUND', slipNo: '2026/05/05-8',
-        slipDate: '2026-05-05', partnerName: '에스케이에코플랜트',
+        slipDate: '2026-05-05', status: 'CANCELED', partnerName: '에스케이에코플랜트',
         partnerCode: 'SK-011', businessNumber: '111-22-33444',
         deliveryAddress: '수원시 권선구 SK로 1',
         supervisionAddress: null, projectName: 'SK 수원캠퍼스 IDC 공조',
@@ -1075,7 +1075,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       {
         id: 'sq-012', slipType: 'OUTBOUND', slipNo: '2026/05/05-3',
-        slipDate: '2026-05-05', partnerName: '롯데케미칼',
+        slipDate: '2026-05-05', status: 'REJECTED', partnerName: '롯데케미칼',
         partnerCode: 'LC-012', businessNumber: '222-33-44555',
         deliveryAddress: '울산광역시 남구 석유화학로 10',
         supervisionAddress: '울산공장 A라인', projectName: '울산 석화단지 냉동 증설',
@@ -1090,8 +1090,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     /** 구매(INBOUND) 조회 12건 mock rows */
     const INBOUND_QUERY_ROWS = [
       {
-        id: 'iq-001', slipType: 'INBOUND', slipNo: '2026/05/10-IN1',
-        slipDate: '2026-05-10', partnerName: '삼성전자',
+        id: 'iq-001', slipType: 'INBOUND', slipNo: '2026/05/10-1',
+        slipDate: '2026-05-10', status: 'SAVED', partnerName: '삼성전자',
         partnerCode: 'SE-001', businessNumber: '101-81-25508',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
@@ -1101,8 +1101,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-002', slipType: 'INBOUND', slipNo: '2026/05/10-IN2',
-        slipDate: '2026-05-10', partnerName: 'LG전자',
+        id: 'iq-002', slipType: 'INBOUND', slipNo: '2026/05/10-2',
+        slipDate: '2026-05-10', status: 'CONFIRMED', partnerName: 'LG전자',
         partnerCode: 'LG-001', businessNumber: '107-86-14075',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
@@ -1112,8 +1112,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-003', slipType: 'INBOUND', slipNo: '2026/05/09-IN3',
-        slipDate: '2026-05-09', partnerName: '캐리어에어컨',
+        id: 'iq-003', slipType: 'INBOUND', slipNo: '2026/05/09-3',
+        slipDate: '2026-05-09', status: 'COMPLETED', partnerName: '캐리어에어컨',
         partnerCode: 'CA-001', businessNumber: '126-87-00312',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: null,
@@ -1123,8 +1123,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-004', slipType: 'INBOUND', slipNo: '2026/05/09-IN4',
-        slipDate: '2026-05-09', partnerName: '대우일렉트로닉스',
+        id: 'iq-004', slipType: 'INBOUND', slipNo: '2026/05/09-4',
+        slipDate: '2026-05-09', status: 'SAVED', partnerName: '대우일렉트로닉스',
         partnerCode: 'DW-001', businessNumber: '201-81-74932',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-28',
@@ -1134,8 +1134,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000002',
       },
       {
-        id: 'iq-005', slipType: 'INBOUND', slipNo: '2026/05/08-IN5',
-        slipDate: '2026-05-08', partnerName: '삼성전자',
+        id: 'iq-005', slipType: 'INBOUND', slipNo: '2026/05/08-5',
+        slipDate: '2026-05-08', status: 'CONFIRMED', partnerName: '삼성전자',
         partnerCode: 'SE-001', businessNumber: '101-81-25508',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
@@ -1145,8 +1145,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-006', slipType: 'INBOUND', slipNo: '2026/05/08-IN6',
-        slipDate: '2026-05-08', partnerName: '대성산업',
+        id: 'iq-006', slipType: 'INBOUND', slipNo: '2026/05/08-6',
+        slipDate: '2026-05-08', status: 'CANCELED', partnerName: '대성산업',
         partnerCode: 'DS-001', businessNumber: '130-81-28742',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-06-10',
@@ -1156,8 +1156,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-007', slipType: 'INBOUND', slipNo: '2026/05/07-IN7',
-        slipDate: '2026-05-07', partnerName: 'LG전자',
+        id: 'iq-007', slipType: 'INBOUND', slipNo: '2026/05/07-7',
+        slipDate: '2026-05-07', status: 'SAVED', partnerName: 'LG전자',
         partnerCode: 'LG-001', businessNumber: '107-86-14075',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
@@ -1167,8 +1167,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000002',
       },
       {
-        id: 'iq-008', slipType: 'INBOUND', slipNo: '2026/05/07-IN8',
-        slipDate: '2026-05-07', partnerName: '캐리어에어컨',
+        id: 'iq-008', slipType: 'INBOUND', slipNo: '2026/05/07-8',
+        slipDate: '2026-05-07', status: 'CONFIRMED', partnerName: '캐리어에어컨',
         partnerCode: 'CA-001', businessNumber: '126-87-00312',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: null,
@@ -1178,8 +1178,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-009', slipType: 'INBOUND', slipNo: '2026/05/06-IN9',
-        slipDate: '2026-05-06', partnerName: '삼성전자',
+        id: 'iq-009', slipType: 'INBOUND', slipNo: '2026/05/06-9',
+        slipDate: '2026-05-06', status: 'COMPLETED', partnerName: '삼성전자',
         partnerCode: 'SE-001', businessNumber: '101-81-25508',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
@@ -1189,8 +1189,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-010', slipType: 'INBOUND', slipNo: '2026/05/06-IN10',
-        slipDate: '2026-05-06', partnerName: '대우일렉트로닉스',
+        id: 'iq-010', slipType: 'INBOUND', slipNo: '2026/05/06-10',
+        slipDate: '2026-05-06', status: 'SAVED', partnerName: '대우일렉트로닉스',
         partnerCode: 'DW-001', businessNumber: '201-81-74932',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-28',
@@ -1200,8 +1200,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000002',
       },
       {
-        id: 'iq-011', slipType: 'INBOUND', slipNo: '2026/05/05-IN11',
-        slipDate: '2026-05-05', partnerName: '대성산업',
+        id: 'iq-011', slipType: 'INBOUND', slipNo: '2026/05/05-11',
+        slipDate: '2026-05-05', status: 'CONFIRMED', partnerName: '대성산업',
         partnerCode: 'DS-001', businessNumber: '130-81-28742',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-06-15',
@@ -1211,8 +1211,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000001',
       },
       {
-        id: 'iq-012', slipType: 'INBOUND', slipNo: '2026/05/05-IN12',
-        slipDate: '2026-05-05', partnerName: 'LG전자',
+        id: 'iq-012', slipType: 'INBOUND', slipNo: '2026/05/05-12',
+        slipDate: '2026-05-05', status: 'REJECTED', partnerName: 'LG전자',
         partnerCode: 'LG-001', businessNumber: '107-86-14075',
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
@@ -1585,7 +1585,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (method === 'POST' && url.endsWith('/inventory/transfers')) {
     return envelope({
       id: 'new-tr-' + Date.now(),
-      transferNo: 'T-2026/05/04-99',
+      transferNo: '2026/05/04-99',
       sourceWarehouseId: HQ_ID,
       sourceWarehouseCode: 'HQ-001',
       destinationWarehouseId: VH_ID,
@@ -3139,26 +3139,26 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   /** 검수 목록 시연용 시드 — 3건 (검수대기 2, 검수완료 1). BE 정의 enum 정합. */
   const MOCK_INSPECTIONS_SUMMARY = [
     {
-      slipId: 'slip-003',
-      slipNo: '2026/05/03-7',
+      slipId: 'iq-001',
+      slipNo: '2026/05/10-1',
       partnerName: '삼성전자',
-      slipDate: '2026-05-03',
+      slipDate: '2026-05-10',
       status: 'PENDING',
       inspectorName: null,
     },
     {
-      slipId: 'slip-008',
-      slipNo: '2026/05/05-2',
-      partnerName: '(주)에어텍',
-      slipDate: '2026-05-05',
+      slipId: 'iq-002',
+      slipNo: '2026/05/10-2',
+      partnerName: 'LG전자',
+      slipDate: '2026-05-10',
       status: 'PENDING',
       inspectorName: null,
     },
     {
-      slipId: 'slip-009',
-      slipNo: '2026/05/05-5',
-      partnerName: '대한냉각기',
-      slipDate: '2026-05-05',
+      slipId: 'iq-003',
+      slipNo: '2026/05/09-3',
+      partnerName: '캐리어에어컨',
+      slipDate: '2026-05-09',
       status: 'COMPLETED',
       inspectorName: '김기철',
     },

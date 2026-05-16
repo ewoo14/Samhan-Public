@@ -1,5 +1,5 @@
 /**
- * 주문서 조회 목록 — `/sales/partner-orders` (read-only).
+ * 주문서 관리 목록 — `/sales/partner-orders` (read-only).
  *
  * <p>거래처가 보낸 주문 목록 (legacy partner-order Code.js 의 ORDER DB 결과 → SamhanLogis
  * partner-order-service M4 통합).
@@ -36,7 +36,7 @@ export function SalesPartnerOrderListPage() {
   const [statusFilter, setStatusFilter] = useState<PartnerOrderStatus | ''>('')
 
   useEffect(() => {
-    setPageTitle({ title: '주문서 조회', meta: '영업' })
+    setPageTitle({ title: '주문서 관리', meta: '영업' })
     return () => setPageTitle({ title: '' })
   }, [setPageTitle])
 
@@ -80,7 +80,7 @@ export function SalesPartnerOrderListPage() {
         />
         <div className={styles['top']}>
           <div className={styles['title']}>
-            주문서 조회
+            주문서 관리
             <span className={styles['badge']}>전체 {query.data?.totalElements ?? 0}건</span>
           </div>
           <div className={styles['topActions']}>

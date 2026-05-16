@@ -116,7 +116,7 @@ public class StockTransfer extends BaseEntity {
      * 새 이동전표 헤더를 REQUESTED 상태로 생성한다. requestedAt = now().
      * source 와 destination 동일 시 IllegalArgumentException.
      *
-     * @param transferNo 채번된 전표번호 (TR-YYYYMMDD-NNN)
+     * @param transferNo 채번된 이동번호 (YYYY/MM/DD-N, 메뉴/업무 타입 단위 독립 순번)
      * @param sourceWarehouse 출발 창고 (필수)
      * @param destinationWarehouse 도착 창고 (필수, source 와 달라야 함)
      * @param reason 이동 사유 (enum)

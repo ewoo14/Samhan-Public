@@ -18,8 +18,8 @@ import { NavLink } from 'react-router-dom'
 import styles from './sales.module.css'
 
 const ITEMS = [
-  { to: '/sales/estimates', label: '견적서' },
-  { to: '/sales/partner-orders', label: '주문서 조회' },
+  { to: '/sales/estimates', label: '견적서 관리' },
+  { to: '/sales/partner-orders', label: '주문서 관리' },
   { to: '/sales/order-approvals', label: '주문서 승인' },
   { to: '/sales/partner-dc-config', label: '거래처 DC 설정' },
 ]

@@ -4,8 +4,8 @@
  * 사이드바 메뉴 (slip-output-format 슬라이스 IA 재편 — Q1=A 새 슬라이스):
  * - 대시보드 (`/`)
  * - 창고 (`/warehouses`)
- * - 판매조회 (`/sales`)     — [2a 통합] SalesQueryPage 직행. 영업원 메인. legacy SlipListPage 는 `/sales/slips`.
- * - 구매조회 (`/purchases`) — [2a 통합] PurchaseQueryPage 직행. 회계원 메인. legacy SlipListPage 는 `/purchases/slips`.
+ * - 판매관리 (`/sales`)     — [2a 통합] SalesQueryPage 직행. 영업원 메인. legacy SlipListPage 는 `/sales/slips`.
+ * - 구매관리 (`/purchases`) — [2a 통합] PurchaseQueryPage 직행. 회계원 메인. legacy SlipListPage 는 `/purchases/slips`.
  * - 재고이동 (`/transfers`) — 창고 간 이동, 창고원/재고원
  * - 링크발송 (`/sales/link-dispatch`) — 배송 묶음 + e-sign URL SMS 발송 (link-dispatch-slice)
  *
@@ -30,7 +30,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useSessionStore } from '../stores/session'
+import { canInspectInbound, useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { canAccessAccounting } from '../api/accounting'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
@@ -246,10 +246,8 @@ export function AppLayout() {
     && (SLIP_EDIT_REQUEST_REVIEWER_ROLES as readonly string[]).includes(auth.role)
   // [D-AX-20] 사진 감사 — WAREHOUSE / MANAGER / MASTER
   const showPhotoAudit = canAccessSlipPhotoAudit(auth?.role)
-  // [P0-9] 입고 검수 — WAREHOUSE / MANAGER / MASTER (재고 적용 권한과 일치)
-  const INBOUND_INSPECTION_ROLES = ['WAREHOUSE', 'MANAGER', 'MASTER'] as const
-  const showInboundInspection = !!auth?.role
-    && (INBOUND_INSPECTION_ROLES as readonly string[]).includes(auth.role)
+  // [P0-9] 입고 검수 — WAREHOUSE / MANAGER / MASTER (inventory-service 권한과 일치)
+  const showInboundInspection = canInspectInbound(auth?.role)
   // [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE 가시
   const showSafetyStockAlerts = showSafetyStock
   // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 품목별 DPS 분석 / 전표 요청 / 사진 감사 / 입고 검수 / 안전재고 알림 중 하나라도 보이면 그룹 노출
@@ -288,13 +286,13 @@ export function AppLayout() {
           <NavLink to="/" end>
             대시보드
           </NavLink>
-          <NavLink to="/warehouses">창고</NavLink>
-          {/* [2a 메뉴 통합] /sales, /purchases 는 SalesQueryPage / PurchaseQueryPage
+          <NavLink to="/warehouses">창고 관리</NavLink>
+          {/* [2a 메뉴 통합 + SP-03 IA] /sales, /purchases 는 SalesQueryPage / PurchaseQueryPage
               (풍성한 컬럼 + 다중 선택 + 50/page). legacy SlipListPage 는 /sales/slips,
-              /purchases/slips 로 이전 — 사이드바 미노출 (2c 작성 plumbing 합류 시 재진입). */}
-          <NavLink to="/sales" data-testid="sidebar-sales">판매조회</NavLink>
-          <NavLink to="/purchases" data-testid="sidebar-purchases">구매조회</NavLink>
-          <NavLink to="/transfers">재고이동</NavLink>
+              /purchases/slips 로 이전. 메뉴명은 조회 전용 오해를 줄이기 위해 관리형 라벨을 사용. */}
+          <NavLink to="/sales" data-testid="sidebar-sales">판매관리</NavLink>
+          <NavLink to="/purchases" data-testid="sidebar-purchases">구매관리</NavLink>
+          <NavLink to="/transfers">재고이동 관리</NavLink>
           <NavLink to="/sales/link-dispatch">링크발송</NavLink>
           {/* [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH/MANAGER/MASTER.
               Samhan Public 배차담당자 → 미배차 출고전표 + 차량 그룹 + arologis 발송. */}
@@ -323,11 +321,11 @@ export function AppLayout() {
           >
             판매
           </div>
-          {/* [2a 메뉴 통합] '판매 조회 (상세)' / '구매 조회 (상세)' 중복 진입점 제거 —
-              이제 사이드바 최상단 '판매조회' / '구매조회' 가 SalesQueryPage / PurchaseQueryPage
+          {/* [2a 메뉴 통합 + SP-03 IA] '판매 조회 (상세)' / '구매 조회 (상세)' 중복 진입점 제거 —
+              이제 사이드바 최상단 '판매관리' / '구매관리' 가 SalesQueryPage / PurchaseQueryPage
               로 직행한다. /sales/query, /purchases/query 라우트는 기존 bookmark 호환 유지. */}
-          <NavLink to="/sales/estimates">견적서</NavLink>
-          <NavLink to="/sales/partner-orders">주문서 조회</NavLink>
+          <NavLink to="/sales/estimates">견적서 관리</NavLink>
+          <NavLink to="/sales/partner-orders">주문서 관리</NavLink>
           <NavLink to="/sales/order-approvals">주문서 승인</NavLink>
           <NavLink to="/sales/partner-dc-config">거래처 DC 설정</NavLink>
           {/* [SP-01] 거래처 관리 — 생성 성공 후 복귀 대상인 /admin/partners 를 SALES/MANAGER/MASTER 에 직접 노출. */}

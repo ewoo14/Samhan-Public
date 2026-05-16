@@ -74,10 +74,10 @@
 - 낙관적 락 정책: `applyWithRetry` 가 OptimisticLockException/OptimisticLockingFailureException 1회 재시도 후 실패 시 CONFLICT 매핑. IllegalStateException → CONFLICT, IllegalArgumentException → INVALID_INPUT.
 
 #### StockTransferService
-- `StockTransferService.create(req, requesterId)`: source/destination warehouse 로드 → 동일 ID 검증 → 라인 productId 일괄 ProductClient.lookup → transferNo 채번 (TR-YYYYMMDD-NNN) → 헤더+라인 영속화.
+- `StockTransferService.create(req, requesterId)`: source/destination warehouse 로드 → 동일 ID 검증 → 라인 productId 일괄 ProductClient.lookup → transferNo 채번 (`YYYY/MM/DD-N`) → 헤더+라인 영속화.
 - `StockTransferService.approve/reject/ship/receive/confirm/cancel(id, ...)`: 도메인 메서드 위임. NOT_FOUND/CONFLICT 가드.
 - `StockTransferService.getOne(id)` / `list(status, pageable)`: read-only 페이지 조회. status 가 null 이면 전체.
-- `StockTransferService.nextTransferNo(date)`: prefix `TR-yyyyMMdd-` 의 발행 건수 + 1. 동시 충돌은 DB unique constraint 으로 방어 (별도 retry 정책 후속).
+- `StockTransferService.nextTransferNo(date)`: prefix `yyyy/MM/dd-` 의 발행 건수 + 1. 재고이동 메뉴/업무 타입이 구분자이므로 `T-`/`TR-` prefix 와 zero padding 은 쓰지 않는다. 동시 충돌은 DB unique constraint 으로 방어 (별도 retry 정책 후속).
 
 ### Controller endpoint
 

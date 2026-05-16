@@ -9,8 +9,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.inventory.InventoryServiceApplication;
 import com.samhanair.logis.inventory.client.ProductClient;
 import com.samhanair.logis.inventory.client.ProductSummary;
+import com.samhanair.logis.inventory.domain.StockTransfer;
+import com.samhanair.logis.inventory.domain.TransferReason;
+import com.samhanair.logis.inventory.repository.StockTransferRepository;
 import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +54,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class StockTransferControllerIT extends AbstractPostgresIT {
 
+    private static final DateTimeFormatter PUBLIC_NO_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -57,6 +64,9 @@ class StockTransferControllerIT extends AbstractPostgresIT {
 
     @Autowired
     private WarehouseRepository warehouseRepository;
+
+    @Autowired
+    private StockTransferRepository stockTransferRepository;
 
     @MockBean
     private ProductClient productClient;
@@ -132,6 +142,29 @@ class StockTransferControllerIT extends AbstractPostgresIT {
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("RECEIVED"));
+    }
+
+    @Test
+    void createTransfer_usesLastSequenceAndPublicFormat() throws Exception {
+        UUID productId = UUID.randomUUID();
+        String todayPrefix = LocalDate.now().format(PUBLIC_NO_DATE) + "-";
+        StockTransfer existing = StockTransfer.create(todayPrefix + "7",
+                warehouseRepository.getReferenceById(hqId),
+                warehouseRepository.getReferenceById(vehicleId),
+                TransferReason.REBALANCE,
+                "기존 마지막 순번",
+                "seed-user");
+        stockTransferRepository.saveAndFlush(existing);
+
+        Map<String, Object> body = createTransferBody(hqId, vehicleId, productId, 3, "마지막 순번 이후 채번");
+
+        mockMvc.perform(post("/inventory/transfers")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "WAREHOUSE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.transferNo").value(todayPrefix + "8"));
     }
 
     @Test

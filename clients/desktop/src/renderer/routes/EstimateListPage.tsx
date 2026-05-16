@@ -1,5 +1,5 @@
 /**
- * 견적서 목록 화면 — `/sales/estimates` (P2-1 #5).
+ * 견적서 관리 화면 — `/sales/estimates` (P2-1 #5).
  *
  * <p>매뉴얼 출처: {@code docs/manual/01-영업/06-견적서.md}.
  *
@@ -62,7 +62,7 @@ export function EstimateListPage() {
   const navigate = useNavigate()
   const role = useSessionStore((s) => s.auth?.role)
 
-  usePageTitle('견적서')
+  usePageTitle('견적서 관리')
 
   const [statusFilter, setStatusFilter] = useState<EstimateStatus | ''>('')
   const [startDate, setStartDate] = useState<string>('')
@@ -195,7 +195,7 @@ export function EstimateListPage() {
           }}
         >
           <h3 style={{ margin: 0 }}>
-            견적서{' '}
+            견적서 관리{' '}
             <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 8 }}>
               전체 {query.data?.totalElements ?? 0}건
             </span>

@@ -71,6 +71,15 @@ export function canCreateSlip(role: string | undefined | null): boolean {
 }
 
 /**
+ * 입고 검수 화면/버튼 접근 권한.
+ * BE `inventory-service` InboundInspectionController 와 동일 매핑.
+ */
+export function canInspectInbound(role: string | undefined | null): boolean {
+  if (!role) return false
+  return role === 'WAREHOUSE' || role === 'MANAGER' || role === 'MASTER'
+}
+
+/**
  * 이동전표 작성 권한 — BE `StockTransferController#create` 와 동일 매핑.
  * MASTER / MANAGER / WAREHOUSE / INVENTORY.
  */

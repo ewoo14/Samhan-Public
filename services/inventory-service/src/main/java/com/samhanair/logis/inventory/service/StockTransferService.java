@@ -30,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class StockTransferService {
 
-    private static final DateTimeFormatter NO_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter NO_DATE_FMT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     private final StockTransferRepository transferRepository;
     private final WarehouseRepository warehouseRepository;
@@ -38,7 +38,7 @@ public class StockTransferService {
 
     /**
      * 새 이동전표를 REQUESTED 상태로 생성한다. 라인의 productId 들을 ProductClient 로 일괄 검증 후
-     * transferNo 채번(TR-YYYYMMDD-NNN) → 헤더+라인 영속화.
+     * transferNo 채번(YYYY/MM/DD-N) → 헤더+라인 영속화.
      *
      * @param req source/destination warehouse, reason, lines (productId+requestedQuantity[]) 묶음
      * @param requesterId 신청자 user-id (gateway X-User-Id 또는 "system")
@@ -192,16 +192,17 @@ public class StockTransferService {
     }
 
     /**
-     * {@code TR-YYYYMMDD-NNN} 채번 — 그날 prefix 의 발행 건수를 카운트해 +1.
+     * {@code YYYY/MM/DD-N} 채번 — 그날 prefix 의 마지막 순번에 +1.
+     * 이동전표라는 메뉴/업무 타입이 이미 구분자이므로 별도 {@code T-}/{@code TR-} prefix 는 붙이지 않는다.
      * 동시 요청 시 same seq 충돌 가능 (DB unique constraint 으로 방어, 별도 retry 정책 추후 도입).
      *
      * @param date 채번 기준 날짜
      * @return 채번된 transferNo 문자열
      */
     String nextTransferNo(LocalDate date) {
-        String prefix = "TR-" + date.format(NO_DATE_FMT) + "-";
-        long seq = transferRepository.countByTransferNoStartingWith(prefix) + 1;
-        return prefix + String.format("%03d", seq);
+        String prefix = date.format(NO_DATE_FMT) + "-";
+        int seq = transferRepository.findMaxSequenceByTransferNoPrefix(prefix) + 1;
+        return prefix + seq;
     }
 
     private StockTransfer loadOrThrow(UUID id) {

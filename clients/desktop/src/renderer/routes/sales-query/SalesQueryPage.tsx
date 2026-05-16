@@ -1,5 +1,5 @@
 /**
- * 판매조회 — 출고전표 다중 선택 + 날짜 범위 + 검색 모달 + 50/page pagination.
+ * 판매관리 — 출고전표 다중 선택 + 날짜 범위 + 검색 모달 + 50/page pagination.
  *
  * 컬럼 17개 (슬립 #17 판매조회 명세):
  *  1. 체크박스 (다중 선택 + 전체 선택)
@@ -99,7 +99,7 @@ const EMPTY_SEARCH: SearchForm = {
 }
 
 export function SalesQueryPage() {
-  usePageTitle('판매조회')
+  usePageTitle('판매관리')
   const navigate = useNavigate()
   const role = useSessionStore((s) => s.auth?.role)
   const canCreate = canCreateSlip(role)
@@ -247,9 +247,6 @@ export function SalesQueryPage() {
     setSelectedIds(new Set())
   }
 
-  // ── Excel 다운로드 (선택 행) ──
-  const selectedRows = rows.filter((r) => selectedIds.has(r.id))
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* ── 툴바 ── */}
@@ -313,7 +310,7 @@ export function SalesQueryPage() {
           onClick={() =>
             download(
               () => exportSlips({ slipType: 'OUTBOUND', from: dateFrom, to: dateTo }),
-              makeExportFilename('판매조회'),
+              makeExportFilename('판매관리'),
             )
           }
           data-testid="sales-query-excel-download"

@@ -1,5 +1,5 @@
 /**
- * 재고이동 목록 화면 — `/transfers`.
+ * 재고이동 관리 화면 — `/transfers`.
  *
  * BE `GET /inventory/transfers` (status 필터 옵션) 호출. 행 클릭 시 상세로.
  *
@@ -50,7 +50,7 @@ const STATUS_VARIANT: Record<
 }
 
 export function TransferListPage() {
-  usePageTitle('재고이동')
+  usePageTitle('재고이동 관리')
   const navigate = useNavigate()
   const role = useSessionStore((s) => s.auth?.role)
 
@@ -102,7 +102,7 @@ export function TransferListPage() {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>재고이동 목록</h3>
+        <h3 style={{ margin: 0 }}>재고이동 관리</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* P1-6: 전 창고 재고 현황 export */}
           <ExcelDownloadButton
