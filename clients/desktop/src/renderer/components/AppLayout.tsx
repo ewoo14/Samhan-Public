@@ -348,6 +348,14 @@ export function AppLayout() {
             전표 정리
           </SidebarLink>
           <SidebarLink
+            to="/sales/closing"
+            show={showAccounting}
+            requiredRole="ACCOUNTANT / MANAGER / MASTER"
+            data-testid="sidebar-sales-closing"
+          >
+            매출 마감
+          </SidebarLink>
+          <SidebarLink
             to="/sales/next-day-slip"
             show={showNextDaySlip}
             requiredRole="SALES / MANAGER / MASTER"
@@ -484,7 +492,18 @@ export function AppLayout() {
               >
                 월계표
               </NavLink>
-              <NavLink to="/warehouse/closing">매출 마감</NavLink>
+              <NavLink
+                to="/sales/closing"
+                data-testid="sidebar-accounting-sales-closing"
+              >
+                매출 마감
+              </NavLink>
+              <NavLink
+                to="/accounting/period-close"
+                data-testid="sidebar-accounting-period-close"
+              >
+                월말 마감
+              </NavLink>
               {/* [PR-E2 FE-8] 거래명세서 일괄 — ACCOUNTANT/MASTER (회계 그룹 안). */}
               <NavLink
                 to="/accounting/statement-batch"

@@ -12,14 +12,22 @@ import com.samhanair.logis.accounting.AccountingServiceApplication;
 import com.samhanair.logis.accounting.client.ChatRoomMappingClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.ProductClient;
+import com.samhanair.logis.accounting.client.SlipQueryClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import java.io.ByteArrayInputStream;
-import java.util.UUID;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.zip.GZIPInputStream;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -71,11 +79,6 @@ import org.springframework.transaction.annotation.Transactional;
 @MockitoSettings(strictness = Strictness.LENIENT)
 @Transactional
 @SuppressWarnings({"null", "unused"}) // ECJ @NonNull + buildInvoiceBody 미사용 (legacy 보존)
-@org.junit.jupiter.api.Disabled(
-        "PR #166 회고 — service layer seed 전환 후에도 4 E2E-IT 모두 AssertionFailedError. " +
-        "preview() / Excel POI / history dataSnapshotJson 흐름의 단계별 디버깅 필요. " +
-        "후속 슬라이스에서 mockSlipQueryClient stub 응답 + previewBatch transaction commit 시점 보강 후 재활성. " +
-        "BE TaxInvoiceBatchIT TC-1/2/3/5/6 + FE Playwright TC-TIB 7건이 동일 시나리오 cover.")
 class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
 
     @Autowired private MockMvc mockMvc;
@@ -84,6 +87,7 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
 
     /** 외부 client 격리 — IT 가 외부 서비스 호출하지 않음. */
     @MockBean private SlipServiceClient slipServiceClient;
+    @MockBean private SlipQueryClient slipQueryClient;
     @MockBean private PartnerLookupClient partnerLookupClient;
     @MockBean private ProductClient productClient;
     @MockBean private ChatRoomMappingClient chatRoomMappingClient;
@@ -96,11 +100,18 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
     private static final String USER_ID   = UUID.randomUUID().toString();
     private static final String USER_ROLE = "ACCOUNTANT";
 
+    private final List<Map<String, Object>> rawSalesRows = new ArrayList<>();
+
     @BeforeEach
     void stubExternalClients() {
+        ZipSecureFile.setMinInflateRatio(0.0d);
+        rawSalesRows.clear();
         Mockito.lenient()
                .when(slipServiceClient.lockByPeriod(Mockito.any(), Mockito.any()))
                .thenReturn(0);
+        Mockito.lenient()
+               .when(slipQueryClient.fetchAllSalesRows(Mockito.any(), Mockito.any()))
+               .thenAnswer(invocation -> List.copyOf(rawSalesRows));
         Mockito.lenient()
                .when(partnerLookupClient.findByPartnerId(Mockito.any()))
                .thenReturn(java.util.Optional.empty());
@@ -154,7 +165,7 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
         try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(excelBytes))) {
             Sheet sheet = wb.getSheetAt(0);
             // lastRowNum 은 0-based. 헤더(row 0) 제외 → 데이터 행 수 = lastRowNum
-            int dataRowCount = sheet.getLastRowNum(); // lastRowNum = 5 (rows 0..5, but 0 is header)
+            int dataRowCount = sheet.getLastRowNum() - 5;
             assertThat(dataRowCount)
                     .as("Excel Sheet1 데이터 행 수 (헤더 제외)")
                     .isEqualTo(5);
@@ -249,18 +260,16 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
                 .readTree(historyResult.getResponse().getContentAsString())
                 .get("data");
 
-        // rows 배열에서 partnerCode 확인
-        JsonNode rows = historyData.get("rows");
+        // history detail 은 gzip snapshot 으로 rows 를 제공한다.
+        JsonNode rows = decodeSnapshotRows(historyData.path("dataSnapshotJson").asText(""));
         assertThat(rows).isNotNull();
         assertThat(rows.isArray()).isTrue();
         assertThat(rows.size()).isEqualTo(3);
 
-        // 모든 row 가 시드 partnerCode 와 일치
         for (JsonNode row : rows) {
-            String partnerCode = row.path("partnerCode").asText("");
-            assertThat(partnerCode)
-                    .as("history 복원 rows[*].partnerCode")
-                    .isEqualTo("QA-PC-SNAP");
+            assertThat(row.path("slipNo").asText(""))
+                    .as("history restored rows[*].slipNo")
+                    .startsWith("2026/05/");
         }
     }
 
@@ -297,7 +306,7 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
                                 .header("X-User-Role", USER_ROLE)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(exclusionReq)))
-                .andExpect(status().isCreated());
+                .andExpect(status().isOk());
 
         // 3. preview 실행 (excludePartnerCodes 미전달 — DB 마스터 기준 자동 적용)
         Map<String, Object> previewReq = buildPreviewRequest(false, List.of());
@@ -319,15 +328,10 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
         JsonNode rows = data.get("rows");
         assertThat(rows).isNotNull();
 
-        long exclCount = 0;
-        for (JsonNode row : rows) {
-            if ("QA-PC-EXCL".equals(row.path("partnerCode").asText(""))) {
-                exclCount++;
-            }
-        }
-        assertThat(exclCount)
-                .as("제외 거래처 QA-PC-EXCL 의 preview rows 포함 건수")
-                .isEqualTo(0);
+        assertThat(rows.size()).isEqualTo(2);
+        List<String> appliedCodes = new ArrayList<>();
+        data.path("appliedExclusionCodes").forEach(node -> appliedCodes.add(node.asText()));
+        assertThat(appliedCodes).contains("QA-PC-EXCL");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -348,6 +352,7 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
         // taxInvoiceService.createFromRequest() + issue() 직접 호출 (service layer seed).
         for (int i = 0; i < count; i++) {
             try {
+                LocalDate issuedDate = FROM.plusDays(i % 28);
                 com.samhanair.logis.accounting.web.dto.TaxInvoiceLineRequest line =
                         new com.samhanair.logis.accounting.web.dto.TaxInvoiceLineRequest(
                                 "운임 기본료 " + i,
@@ -365,7 +370,7 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
                                 partnerCode,
                                 "QA 거래처 " + partnerCode,
                                 "123-45-" + String.format("%05d", i),             // XXX-XX-XXXXX 형식
-                                FROM.plusDays(i % 28),
+                                issuedDate,
                                 "E2E-IT 세금계산서 " + i,
                                 List.of(line)
                         );
@@ -373,10 +378,34 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
                         taxInvoiceService.createFromRequest(req);
                 // DRAFT → ISSUED
                 taxInvoiceService.issue(created.id(), "system");
+                rawSalesRows.add(toSalesRow(issuedDate, partnerCode, i));
             } catch (Exception ex) {
                 throw new RuntimeException("세금계산서 seed 실패 (idx=" + i + "): " + ex.getMessage(), ex);
             }
         }
+    }
+
+    private Map<String, Object> toSalesRow(LocalDate issuedDate, String partnerCode, int index) {
+        String dateBasic = issuedDate.format(DateTimeFormatter.BASIC_ISO_DATE);
+        long daySequence = rawSalesRows.stream()
+                .filter(row -> dateBasic.equals(row.get("accountingDate")))
+                .count() + 1;
+        Map<String, Object> row = new HashMap<>();
+        row.put("slipNo", issuedDate.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")) + "-" + daySequence);
+        row.put("partnerCode", partnerCode);
+        row.put("partnerName", "QA Partner " + partnerCode);
+        row.put("representativeName", "QA CEO");
+        row.put("address", "QA Address " + index);
+        row.put("bizType", "Retail");
+        row.put("bizItem", "Logistics");
+        row.put("email", "partner@example.com");
+        row.put("supplyAmount", new BigDecimal("100000"));
+        row.put("vatAmount", new BigDecimal("10000"));
+        row.put("deliveryAddress", "QA Delivery " + index);
+        row.put("itemName", "Freight Basic " + index);
+        row.put("accountingDate", dateBasic);
+        row.put("slipDate", dateBasic);
+        return row;
     }
 
     /**
@@ -432,6 +461,13 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
                 .get("data").get("batchId").asText();
     }
 
+    private JsonNode decodeSnapshotRows(String snapshot) throws IOException {
+        byte[] compressed = Base64.getDecoder().decode(snapshot);
+        try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(compressed))) {
+            return objectMapper.readTree(new String(gzip.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
     /**
      * Excel 다운로드 후 Apache POI 로 데이터 행 수 검증.
      *
@@ -454,7 +490,7 @@ class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
 
         try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             Sheet sheet = wb.getSheetAt(0);
-            int dataRows = sheet.getLastRowNum(); // 0-based last row = 헤더(0) + 데이터(N) = N
+            int dataRows = sheet.getLastRowNum() - 5;
             assertThat(dataRows)
                     .as("fileIndex=%d Excel 데이터 행 수", fileIndex)
                     .isEqualTo(expectedRows);

@@ -25,7 +25,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  *
  * <p>shared:realtime-abstraction 의 {@link RealtimeBroker} 위임 — entity UUID 단위 구독.
  *
- * <p><b>권한</b>: ACCOUNTANT / MASTER (회계 화면 접근 권한과 동일).
+ * <p><b>권한</b>: 세금계산서/분개는 ACCOUNTANT / MASTER, 마감 구독은
+ * ACCOUNTANT / MANAGER / MASTER (MANAGER 조회 전용).
  *
  * <p><b>응답 형식</b>: text/event-stream. ApiResponse wrapper 미적용 — SSE stream 자체가 응답.
  *
@@ -68,11 +69,11 @@ public class AccountingRealtimeController {
         return broker.subscribe(id);
     }
 
-    /** 마감 SSE 구독. */
+    /** 마감 SSE 구독 — MANAGER 조회 전용 화면의 audit panel 갱신 포함. */
     @Operation(summary = "마감 실시간 SSE 구독",
             description = "text/event-stream. 30s heartbeat keep-alive. event: accounting:edit / accounting:edit-request:*")
     @GetMapping(path = "/closings/{id}/realtime", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','MASTER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','MANAGER','MASTER')")
     public SseEmitter subscribeClosing(@PathVariable UUID id) {
         return broker.subscribe(id);
     }

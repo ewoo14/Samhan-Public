@@ -22,20 +22,19 @@ public interface AccountingPeriodRepository extends JpaRepository<AccountingPeri
     Optional<AccountingPeriod> findByPeriodTypeAndPeriodDate(PeriodType periodType,
                                                              LocalDate periodDate);
 
-    /**
-     * 연도(YYYY) + period_type 필터 조회 — controller GET 용.
-     * year null 이면 전체 연도, periodType null 이면 전체 유형.
-     */
-    @Query("""
-            SELECT p FROM AccountingPeriod p
-            WHERE (:periodType IS NULL OR p.periodType = :periodType)
-              AND (:from IS NULL OR p.periodDate >= :from)
-              AND (:to IS NULL OR p.periodDate <= :to)
-            ORDER BY p.periodDate DESC, p.periodType ASC
-            """)
-    List<AccountingPeriod> findByFilters(@Param("periodType") PeriodType periodType,
-                                         @Param("from") LocalDate from,
-                                         @Param("to") LocalDate to);
+    /** 전체 마감 목록 — controller GET 기본 조회. */
+    List<AccountingPeriod> findAllByOrderByPeriodDateDescPeriodTypeAsc();
+
+    /** 유형 필터 마감 목록. */
+    List<AccountingPeriod> findByPeriodTypeOrderByPeriodDateDescPeriodTypeAsc(PeriodType periodType);
+
+    /** 연도 필터 마감 목록. */
+    List<AccountingPeriod> findByPeriodDateBetweenOrderByPeriodDateDescPeriodTypeAsc(
+            LocalDate from, LocalDate to);
+
+    /** 유형 + 연도 필터 마감 목록. */
+    List<AccountingPeriod> findByPeriodTypeAndPeriodDateBetweenOrderByPeriodDateDescPeriodTypeAsc(
+            PeriodType periodType, LocalDate from, LocalDate to);
 
     /**
      * 주어진 일자가 속한 CLOSED 기간을 조회 — DAILY 동일 일자 또는 MONTHLY 동일 월 1일.

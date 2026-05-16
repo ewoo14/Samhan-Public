@@ -1603,6 +1603,7 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 **배경**: 개발책임자 최신 지시 — UUID는 숨겨진 고유 PK이고, 전표코드/배차번호 등 사용자 노출 업무번호는 `YYYY/MM/DD-{순번}` 형식으로 통일한다. 단 판매전표와 구매전표처럼 서로 다른 메뉴/업무 속성은 같은 날짜 같은 순번을 가져도 된다.
 
 **결정**:
+- 공개 업무번호 scope = 서비스/메뉴/업무 속성 + 날짜다. OUTBOUND `2026/05/16-1`, INBOUND `2026/05/16-1`, 배차 `2026/05/16-1` 은 서로 다른 도메인 값이므로 동시에 허용한다.
 - 전표번호 scope = `slip_type + slip_date`. OUTBOUND `2026/05/16-1` 과 INBOUND `2026/05/16-1` 은 동시에 허용한다.
 - active slip unique = `slip_type + slip_no + is_deleted=false`. `slip_no` 단독 unique/lookup 은 신규 코드에서 지양한다.
 - 배차번호도 전표번호와 같은 공개 형식 `YYYY/MM/DD-{순번}` 으로 정리한다. 기존 `DT-YYYYMMDD-NNN` 은 폐기한다.
@@ -1762,3 +1763,20 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | SP-01-04 | 목록/검색 `GET /admin/partners`, `GET /admin/partners/search` 도 `SALES / MANAGER / MASTER` 공용 조회로 확장한다. |
 | SP-01-05 | 내부 UUID는 계속 비공개다. UI/응답/QA 캡처에는 `partnerCode`, `name`, `bizNo`, `phone` 등 업무 식별자만 표시한다. |
 
+---
+
+### SP-02. Samhan Public 회계 마감 메뉴/route 정합화 (2026-05-16)
+
+**배경**: 매뉴얼은 `매출 마감` 정식 route 를 `/sales/closing`으로, `월말 마감` 정식 route 를 `/accounting/period-close`로 안내한다. 그러나 desktop 사이드바의 회계 그룹 `매출 마감` entry 는 legacy `/warehouse/closing`으로 이동했고, `월말 마감` entry 는 노출되지 않았다.
+
+| # | 결정 |
+|---|---|
+| SP-02-01 | `매출 마감` 정식 route 는 `/sales/closing`으로 둔다. 판매 그룹과 회계 그룹 양쪽 entry가 같은 route로 이동한다. |
+| SP-02-02 | `월말 마감` 정식 route 는 `/accounting/period-close`로 둔다. 회계 그룹에 별도 entry 를 추가한다. |
+| SP-02-03 | 두 route 는 기존 `ACCOUNTANT / MANAGER / MASTER` route guard 를 유지한다. 실행/역마감 가능 여부는 화면 내부 `canExecuteClosing` / `canReverseClosing` 정책이 결정한다. |
+| SP-02-04 | legacy `/warehouse/closing` route 는 deep-link 호환으로 즉시 삭제하지 않는다. 단, 사용자-facing 사이드바 목적지에서는 제외한다. |
+| SP-02-05 | 마감 row 내부 `id`는 action param 전용이며, UI/캡처에는 기간/상태/실행자명 등 업무 식별자만 표시한다. |
+| SP-02-06 | `GET /accounting/closings` 와 `GET /accounting/closings/{id}/realtime` 은 `ACCOUNTANT / MANAGER / MASTER` 조회 전용 권한으로 맞춘다. `POST /accounting/closings` 는 `ACCOUNTANT / MASTER`, 역마감은 `MASTER` 전용으로 유지한다. |
+| SP-02-07 | 마감 목록 repository 는 nullable JPQL 파라미터 대신 명시적 분기 조회를 사용한다. PostgreSQL/Testcontainers 에서 `year` 필터 조회가 500으로 무너지지 않아야 한다. |
+| SP-02-08 | `TaxInvoiceBatchPreviewResponse.batchId` 는 `save()` 반환 entity 기준으로 채운다. UUID는 화면에 노출하지 않지만 다운로드/history API 연결에 필요한 내부 param 이므로 `null`로 응답하면 안 된다. |
+| SP-02-09 | accounting-service IT 는 Docker/Testcontainers 가용 시 skip 없이 실행한다. 기존 disabled 5건은 외부 client `@MockBean` 격리와 실제 API 계약 보정 후 재활성화한다. |

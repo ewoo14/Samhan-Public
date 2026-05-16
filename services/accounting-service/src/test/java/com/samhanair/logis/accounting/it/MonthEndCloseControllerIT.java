@@ -1,5 +1,6 @@
 package com.samhanair.logis.accounting.it;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -91,6 +92,41 @@ class MonthEndCloseControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(balancedJournal("2026-05-08"))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("list — MANAGER 조회 허용, 마감 실행은 403")
+    void managerCanListButCannotClose() throws Exception {
+        Mockito.when(slipServiceClient.lockByPeriod(Mockito.any(), Mockito.any())).thenReturn(0);
+
+        Map<String, Object> closingBody = new HashMap<>();
+        closingBody.put("periodType", "MONTHLY");
+        closingBody.put("periodDate", "2026-03-01");
+        closingBody.put("description", "3월 월말 마감");
+
+        mockMvc.perform(post("/accounting/closings")
+                        .header("X-User-Id", "accountant-1")
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(closingBody)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/accounting/closings")
+                        .header("X-User-Id", "manager-1")
+                        .header("X-User-Role", "MANAGER")
+                        .param("periodType", "MONTHLY")
+                        .param("year", "2026"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].periodType").value("MONTHLY"))
+                .andExpect(jsonPath("$.data[0].periodDate").value("2026-03-01"))
+                .andExpect(jsonPath("$.data[0].status").value("CLOSED"));
+
+        mockMvc.perform(post("/accounting/closings")
+                        .header("X-User-Id", "manager-1")
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(closingBody)))
+                .andExpect(status().isForbidden());
     }
 
     @Test
