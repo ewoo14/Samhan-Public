@@ -11,7 +11,9 @@ import com.samhanair.logis.partnerorder.repository.PartnerOrderHistoryRepository
 import com.samhanair.logis.partnerorder.web.dto.DraftCreateRequest;
 import com.samhanair.logis.partnerorder.web.dto.DraftDetailResponse;
 import com.samhanair.logis.partnerorder.web.dto.DraftResponse;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -72,8 +74,29 @@ public class PartnerOrderDraftService {
     /** 거래처별 draft 페이지 조회 (legacy getDraftList). 본인 거래처만. */
     @Transactional(readOnly = true)
     public Page<DraftResponse> list(String partnerCode, Pageable pageable) {
+        return list(partnerCode, null, null, pageable);
+    }
+
+    /** 거래처별 draft 페이지 조회 (legacy getOrderSnapshotHistory). 날짜 필터는 선택이다. */
+    @Transactional(readOnly = true)
+    public Page<DraftResponse> list(String partnerCode, LocalDate from, LocalDate to, Pageable pageable) {
         if (partnerCode == null || partnerCode.isBlank()) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "partnerCode 필수");
+        }
+        if (from != null && to != null) {
+            return draftRepository.findAllByPartnerCodeAndCreatedAtBetweenOrderByCreatedAtDesc(
+                            partnerCode, from.atStartOfDay(), to.atTime(LocalTime.MAX), pageable)
+                    .map(DraftResponse::from);
+        }
+        if (from != null) {
+            return draftRepository.findAllByPartnerCodeAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+                            partnerCode, from.atStartOfDay(), pageable)
+                    .map(DraftResponse::from);
+        }
+        if (to != null) {
+            return draftRepository.findAllByPartnerCodeAndCreatedAtLessThanEqualOrderByCreatedAtDesc(
+                            partnerCode, to.atTime(LocalTime.MAX), pageable)
+                    .map(DraftResponse::from);
         }
         return draftRepository.findAllByPartnerCodeOrderByCreatedAtDesc(partnerCode, pageable)
                 .map(DraftResponse::from);
