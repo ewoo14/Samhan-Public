@@ -7,6 +7,7 @@
 ## 2026-05-16 Codex 최신 핸드오프 — SP-01 Samhan Public 거래처 관리 메뉴 gap 진행
 
 - 현재 branch: `codex/sp-01-partner-ui-menu-gap-audit`
+- 현재 PR: #203 `[codex] SP-01 Samhan Public 거래처 관리 메뉴 권한 정합화`
 - 직전 완료:
   - D-AX20 Admin 사진 감사/재업로드 후보 PR #200 merge, 원격 브랜치 삭제 완료.
   - D-AX21 업무번호 범위형 표준화 PR #201 merge, 원격 브랜치 삭제 완료.
@@ -31,7 +32,7 @@
   - `clients/desktop` Playwright static contract PASS — `3 passed / skipped 0`.
   - `git diff --check` PASS.
 - 남은 즉시 작업:
-  - commit/push/PR 생성, QA 캡처 raw 링크 확인, CI watch, green 후 PM 재점검/머지.
+  - PR #203 CI watch, green 후 PM 재점검/머지.
 - 다음 후보:
   - A: Samhan Public 추가 UI 누락 점검
   - B: comments/audit/SSE proxy 확장
