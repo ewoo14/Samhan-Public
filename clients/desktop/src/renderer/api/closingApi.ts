@@ -6,9 +6,9 @@
  *
  * 노출 endpoint:
  * - `POST /accounting/closings`            — 마감 실행 (DAILY/MONTHLY, ACCOUNTANT/MASTER)
- * - `GET  /accounting/closings`            — 마감 list (periodType / year filter, ACCOUNTANT/MASTER)
+ * - `GET  /accounting/closings`            — 마감 list (periodType / year filter, ACCOUNTANT/MANAGER/MASTER)
  * - `POST /accounting/closings/{id}/reverse` — 역마감 (MASTER 만)
- * - `GET  /accounting/closings/daily?date=` — 일별 세금계산서 detail (PR-E2 BE-A12, ACCOUNTANT/MASTER)
+ * - `GET  /accounting/closings/daily?date=` — 일별 세금계산서 detail (PR-E2 BE-A12, ACCOUNTANT/MANAGER/MASTER)
  *
  * BE Java 와의 매핑 (`AccountingPeriodResponse` record):
  * - `periodType`: DAILY / MONTHLY

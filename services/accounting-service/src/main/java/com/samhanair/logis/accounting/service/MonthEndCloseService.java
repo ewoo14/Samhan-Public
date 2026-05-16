@@ -115,9 +115,20 @@ public class MonthEndCloseService {
     /** 필터 조회 — period_type / year (year null 이면 전체). */
     @Transactional(readOnly = true)
     public List<AccountingPeriodResponse> list(PeriodType periodType, Integer year) {
-        LocalDate from = year == null ? null : LocalDate.of(year, 1, 1);
-        LocalDate to = year == null ? null : LocalDate.of(year, 12, 31);
-        return periodRepository.findByFilters(periodType, from, to).stream()
+        List<AccountingPeriod> periods;
+        if (year == null && periodType == null) {
+            periods = periodRepository.findAllByOrderByPeriodDateDescPeriodTypeAsc();
+        } else if (year == null) {
+            periods = periodRepository.findByPeriodTypeOrderByPeriodDateDescPeriodTypeAsc(periodType);
+        } else {
+            LocalDate from = LocalDate.of(year, 1, 1);
+            LocalDate to = LocalDate.of(year, 12, 31);
+            periods = periodType == null
+                    ? periodRepository.findByPeriodDateBetweenOrderByPeriodDateDescPeriodTypeAsc(from, to)
+                    : periodRepository.findByPeriodTypeAndPeriodDateBetweenOrderByPeriodDateDescPeriodTypeAsc(
+                            periodType, from, to);
+        }
+        return periods.stream()
                 .map(AccountingPeriodResponse::of)
                 .toList();
     }

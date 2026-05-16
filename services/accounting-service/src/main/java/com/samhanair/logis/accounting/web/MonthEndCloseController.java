@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <ul>
  *   <li>POST /accounting/closings           — ACCOUNTANT, MASTER (일별/월별 마감 실행)</li>
- *   <li>GET  /accounting/closings           — ACCOUNTANT, MASTER (목록 조회)</li>
+ *   <li>GET  /accounting/closings           — ACCOUNTANT, MANAGER, MASTER (목록 조회)</li>
  *   <li>POST /accounting/closings/{id}/reverse — MASTER 만 (역마감)</li>
  * </ul>
  *
@@ -65,9 +65,9 @@ public class MonthEndCloseController {
     }
 
     /** 목록 조회 — period_type / year 필터. */
-    @Operation(summary = "마감 목록 조회", description = "period_type / year 필터")
+    @Operation(summary = "마감 목록 조회", description = "period_type / year 필터. MANAGER 는 조회 전용")
     @GetMapping
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','MASTER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','MANAGER','MASTER')")
     public ApiResponse<List<AccountingPeriodResponse>> list(
             @RequestParam(required = false) PeriodType periodType,
             @RequestParam(required = false) Integer year) {

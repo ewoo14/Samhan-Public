@@ -27,10 +27,11 @@
 - D-AX-18: 전표 상세 bridge 완료, PR #198 merge. `dispatchType + vehicleSequence + stopSequence + parsedKakaoSeq` 로 서버가 내부 slip 을 해석하고, 앱에는 전표번호/거래처/주소/품목/합계만 노출.
 - D-AX-19: `clients/mobile-staff` 기사 모드 은퇴 완료, PR #199 merge. 기사 기능은 `clients/arologis-mobile` 전담, mobile-staff 는 estimate WebView 단일 진입으로 축소.
 - D-AX-20: Admin 사진 감사/재업로드 후보 화면 완료, PR #200 merge. `GET /api/v1/slips/admin/photo-audit` 로 전표 첨부 사진을 조회하고, 화면에는 `YYYY/MM/DD-{순번}` 전표번호만 표시하며 UUID/원본 URL/raw 업로더 UUID 는 숨긴다.
-- D-AX-21: 전표/배차 표시번호 `YYYY/MM/DD-{순번}` 업무번호 범위형 표준화 완료, PR #201 merge. 판매전표와 구매전표는 같은 날짜 같은 순번을 가질 수 있으며, DB unique 기준은 `slip_type + slip_no` 로 둔다.
+- D-AX-21: 전표/배차 표시번호 `YYYY/MM/DD-{순번}` 업무번호 범위형 표준화 완료, PR #201 merge. 판매전표/구매전표/배차번호 등 서로 다른 서비스·메뉴의 업무번호는 같은 날짜 같은 순번을 가질 수 있으며, 각 도메인은 업무 타입 + 표시번호를 기준으로 구분한다.
 - D-AX-22: driver-facing GPS/서명/사본/전표상세 계약의 UUID 비노출 hardening 완료, PR #202 merge. 내부 PK/저장키/원본 URL 은 서버 내부 처리에만 쓰고 화면/API 응답에는 업무번호, target sequence, 표시명만 노출한다.
-- SP-01: Samhan Public 거래처 관리 메뉴 gap 정합화 진행. `판매 > 거래처 관리`를 정식 진입점으로 두고 `/admin/partners`와 `/admin/partners/new`를 `SALES / MANAGER / MASTER` 공용 권한으로 정렬한다.
-- 다음 후보: comments/audit/SSE proxy 확장, Samhan Public 추가 UI 누락 점검, 실제 기기 QA, Testcontainers no-skip hardening.
+- SP-01: Samhan Public 거래처 관리 메뉴 gap 정합화 완료, PR #203 merge. `판매 > 거래처 관리`와 `/admin/partners`, `/admin/partners/new`를 `SALES / MANAGER / MASTER` 공용 권한으로 정렬했다.
+- SP-02: Samhan Public 회계 마감 메뉴 gap 정합화 진행. `매출 마감`은 `/sales/closing`, `월말 마감`은 `/accounting/period-close`로 고정하고 MANAGER 조회 전용 백엔드 계약 및 accounting-service Docker 무스킵 테스트(204 tests / 0 skipped)를 맞춘다.
+- 다음 후보: 구매조회 검수 CTA 복구, 품목 마스터 7탭 UI, 전표 작성 route guard, 창고 재고 조회 IA, comments/audit/SSE proxy 확장.
 
 ## 시스템 구조 (Mermaid)
 

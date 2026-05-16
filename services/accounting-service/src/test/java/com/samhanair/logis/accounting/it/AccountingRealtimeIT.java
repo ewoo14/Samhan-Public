@@ -65,6 +65,20 @@ class AccountingRealtimeIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("GET /accounting/closings/{id}/realtime — MANAGER 200 + text/event-stream")
+    void managerCanSubscribeClosingRealtime() throws Exception {
+        UUID entityId = UUID.randomUUID();
+        MvcResult result = mockMvc.perform(get("/accounting/closings/{id}/realtime", entityId)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(result.getResponse().getContentType())
+                .startsWith(MediaType.TEXT_EVENT_STREAM_VALUE);
+    }
+
+    @Test
     @DisplayName("POST /accounting/entities/{id}/edit-request — ACCOUNTANT 201 + DB PENDING/MANAGER")
     void editRequestCreatePersistsPendingRow() throws Exception {
         UUID entityId = UUID.randomUUID();

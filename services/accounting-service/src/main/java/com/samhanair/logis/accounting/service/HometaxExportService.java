@@ -312,9 +312,9 @@ public class HometaxExportService {
         TaxInvoiceBatch batch = TaxInvoiceBatch.create(batchNo, req.fromDate(), req.toDate(), resolvedActor);
         String exclusionCsv = exclusionSet.isEmpty() ? null : String.join(",", exclusionSet);
         batch.complete(total, splitCount, null, exclusionCsv, snapshotJson);
-        batchRepository.save(batch);
+        TaxInvoiceBatch saved = batchRepository.save(batch);
 
-        return TaxInvoiceBatchPreviewResponse.of(batch, homtaxRows, new ArrayList<>(exclusionSet));
+        return TaxInvoiceBatchPreviewResponse.of(saved, homtaxRows, new ArrayList<>(exclusionSet));
     }
 
     // =========================================================================
