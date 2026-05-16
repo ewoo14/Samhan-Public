@@ -1,15 +1,20 @@
 import type { CSSProperties } from 'react'
 import { Button } from '@samhan/design-system'
 
-interface DpsRestoredBannerProps {
+interface SlipCleanupRestoredBannerProps {
   message: string
+  testIdPrefix: string
   onClose: () => void
 }
 
-/** DPS 자동/명시 복원 상태 배너. */
-export function DpsRestoredBanner({ message, onClose }: DpsRestoredBannerProps) {
+/** 전표정리 저장내역 복원 상태 안내 배너. */
+export function SlipCleanupRestoredBanner({
+  message,
+  testIdPrefix,
+  onClose,
+}: SlipCleanupRestoredBannerProps) {
   return (
-    <div data-testid="dps-history-restored-banner" style={bannerStyle} role="status">
+    <div data-testid={`${testIdPrefix}-restored-banner`} role="status" style={bannerStyle}>
       <span>{message}</span>
       <Button variant="ghost" size="sm" onClick={onClose}>
         닫기
@@ -20,10 +25,10 @@ export function DpsRestoredBanner({ message, onClose }: DpsRestoredBannerProps) 
 
 const bannerStyle: CSSProperties = {
   display: 'flex',
-  alignItems: 'center',
   justifyContent: 'space-between',
+  alignItems: 'center',
   gap: 12,
-  padding: '10px 12px',
+  padding: '8px 12px',
   border: '1px solid var(--state-info-border)',
   borderRadius: 6,
   background: 'var(--state-info-bg)',

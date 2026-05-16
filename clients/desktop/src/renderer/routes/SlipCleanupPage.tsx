@@ -27,10 +27,10 @@
  *
  * <p>풀네임 ROLE: SALES / MANAGER / MASTER / ACCOUNTANT (RoleGuard 는 routes/index.tsx 에서).
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Button } from '@samhan/design-system'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Button, Input, Tabs } from '@samhan/design-system'
 import type { SlipStatus } from '@samhan/design-system'
 import {
   CLEANUP_FLAG_COLOR,
@@ -41,7 +41,16 @@ import {
   type CleanupFlag,
   type SlipCleanupResponse,
 } from '../api/slipCleanupApi'
+import {
+  getLatestSlipCleanupHistory,
+  saveSlipCleanupHistory,
+  type SlipCleanupSaveHistoryDetailResponse,
+} from '../api/slipCleanupSaveHistoryApi'
+import { SlipCleanupHistoryTab, formatDateTime } from '../components/SlipCleanupHistoryTab'
+import { SlipCleanupRestoredBanner } from '../components/SlipCleanupRestoredBanner'
+import { SlipCleanupSaveDialog } from '../components/SlipCleanupSaveDialog'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { maskCreatedBy } from '../utils/maskCreatedBy'
 
 /** 한국어 status 라벨 (SlipStatusBadge 와 동일 매핑 — local copy 로 dependency cycle 회피). */
 const STATUS_LABEL: Record<SlipStatus, string> = {
@@ -180,36 +189,150 @@ function groupByStatus(
 export function SlipCleanupPage() {
   usePageTitle('전표 정리 리스트')
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const initial = useMemo(() => defaultRange(), [])
   const [from, setFrom] = useState(initial.from)
   const [to, setTo] = useState(initial.to)
   // 검색 버튼 클릭 시점의 (from, to) 만 query key 로 사용 — 입력 중 자동 fetch 방지.
   const [applied, setApplied] = useState<{ from: string; to: string }>(initial)
+  const [activeTab, setActiveTab] = useState(0)
+  const [restoredResponse, setRestoredResponse] = useState<SlipCleanupResponse | null>(null)
+  const [restoreBanner, setRestoreBanner] = useState<string | null>(null)
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [latestRestoreSettled, setLatestRestoreSettled] = useState(false)
+  const lastAutoSaveKeyRef = useRef<string | null>(null)
+  const skipNextAutoSaveRef = useRef(false)
 
   const query = useQuery<SlipCleanupResponse>({
     queryKey: ['slip-cleanup', applied.from, applied.to],
     queryFn: () => getCleanupList(applied.from, applied.to),
+    enabled: latestRestoreSettled && !restoredResponse,
   })
 
+  const cleanupData = restoredResponse ?? query.data
   const groups = useMemo(
-    () => (query.data ? groupByStatus(query.data.entries) : []),
-    [query.data],
+    () => (cleanupData ? groupByStatus(cleanupData.entries) : []),
+    [cleanupData],
   )
 
   const handleSearch = () => {
     if (!from || !to) return
+    setRestoredResponse(null)
+    setRestoreBanner(null)
+    skipNextAutoSaveRef.current = false
     setApplied({ from, to })
   }
 
   const handleCsv = () => {
-    if (!query.data) return
-    const filename = `slip-cleanup_${query.data.from}_${query.data.to}.csv`
-    downloadCsv(filename, query.data.entries)
+    if (!cleanupData) return
+    const filename = `slip-cleanup_${cleanupData.from}_${cleanupData.to}.csv`
+    downloadCsv(filename, cleanupData.entries)
   }
 
+  useEffect(() => {
+    let cancelled = false
+    void getLatestSlipCleanupHistory('SLIP_CLEANUP')
+      .then((detail) => {
+        if (cancelled || !detail) return
+        const payload = detail.responsePayload as SlipCleanupResponse
+        setRestoredResponse(payload)
+        setFrom(payload.from)
+        setTo(payload.to)
+        skipNextAutoSaveRef.current = true
+        setApplied({ from: payload.from, to: payload.to })
+        setRestoreBanner(`이전 결과 복원됨 · ${formatDateTime(detail.createdAt)}`)
+      })
+      .catch(() => {
+        // latest 없음/조회 실패는 첫 방문 UX 를 막지 않는다.
+      })
+      .finally(() => {
+        if (!cancelled) setLatestRestoreSettled(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!query.data) return
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false
+      return
+    }
+    const rowCount = query.data.entries.length
+    const autoSaveKey = `${query.data.from}|${query.data.to}|${rowCount}|${query.data.totalSlips}`
+    if (lastAutoSaveKeyRef.current === autoSaveKey) return
+    lastAutoSaveKeyRef.current = autoSaveKey
+    void saveSlipCleanupHistory({
+      programType: 'SLIP_CLEANUP',
+      saveMode: 'AUTO_LATEST',
+      requestParams: {
+        from: query.data.from,
+        to: query.data.to,
+        rowCount,
+        totalSlips: query.data.totalSlips,
+      },
+      responsePayload: query.data,
+    }).catch(() => {
+      // 자동 저장 실패는 조회 UX 를 막지 않는다.
+    })
+  }, [query.data])
+
+  const saveManualMutation = useMutation({
+    mutationFn: (topic: string) => {
+      if (!cleanupData) throw new Error('저장할 전표정리 결과가 없습니다.')
+      return saveSlipCleanupHistory({
+        programType: 'SLIP_CLEANUP',
+        saveMode: 'MANUAL_NAMED',
+        topic,
+        requestParams: {
+          from: cleanupData.from,
+          to: cleanupData.to,
+          rowCount: cleanupData.entries.length,
+          totalSlips: cleanupData.totalSlips,
+        },
+        responsePayload: cleanupData,
+      })
+    },
+    onSuccess: () => {
+      setSaveDialogOpen(false)
+      setActiveTab(1)
+      void queryClient.invalidateQueries({ queryKey: ['slip-cleanup-history-list', 'SLIP_CLEANUP'] })
+      void queryClient.invalidateQueries({ queryKey: ['slip-cleanup-history-list'] })
+    },
+  })
+
+  const handleRestore = useCallback((detail: SlipCleanupSaveHistoryDetailResponse) => {
+    const payload = detail.responsePayload as SlipCleanupResponse
+    setRestoredResponse(payload)
+    setFrom(payload.from)
+    setTo(payload.to)
+    skipNextAutoSaveRef.current = true
+    setApplied({ from: payload.from, to: payload.to })
+    setActiveTab(0)
+    setRestoreBanner(`복원: ${formatDateTime(detail.createdAt)} ${maskCreatedBy(detail.createdBy)} '${detail.topic}'`)
+  }, [])
+
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Tabs
+        tabs={[
+          { label: '실행', testId: 'slip-cleanup-history-tab-run' },
+          { label: '저장내역', testId: 'slip-cleanup-history-tab-list' },
+        ]}
+        activeIndex={activeTab}
+        onTabChange={setActiveTab}
+        ariaLabel="전표정리 저장내역 탭"
+      >
+        <div>
+          {restoreBanner ? (
+            <SlipCleanupRestoredBanner
+              message={restoreBanner}
+              testIdPrefix="slip-cleanup-history"
+              onClose={() => setRestoreBanner(null)}
+            />
+          ) : null}
       <div
         style={{
           display: 'flex',
@@ -222,27 +345,37 @@ export function SlipCleanupPage() {
       >
         <h3 style={{ margin: 0 }}>
           전표 정리 리스트
-          {query.data ? (
+          {cleanupData ? (
             <span
               style={{
                 marginLeft: 8,
                 fontSize: 13,
                 fontWeight: 400,
-                color: '#6B7280',
+                color: 'var(--color-neutral-500)',
               }}
             >
-              총 {query.data.totalSlips}건
+              총 {cleanupData.totalSlips}건
             </span>
           ) : null}
         </h3>
-        <Button
-          variant="secondary"
-          data-testid="slip-cleanup-csv-download"
-          onClick={handleCsv}
-          disabled={!query.data || (query.data.entries?.length ?? 0) === 0}
-        >
-          CSV 다운로드
-        </Button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button
+            variant="secondary"
+            data-testid="slip-cleanup-csv-download"
+            onClick={handleCsv}
+            disabled={!cleanupData || (cleanupData.entries?.length ?? 0) === 0}
+          >
+            CSV 다운로드
+          </Button>
+          <Button
+            variant="primary"
+            data-testid="slip-cleanup-history-save-button"
+            onClick={() => setSaveDialogOpen(true)}
+            disabled={!cleanupData || (cleanupData.entries?.length ?? 0) === 0}
+          >
+            내역으로 저장
+          </Button>
+        </div>
       </div>
 
       <div
@@ -254,26 +387,24 @@ export function SlipCleanupPage() {
           alignItems: 'center',
         }}
       >
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, color: '#374151' }}>시작일</span>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            data-testid="slip-cleanup-from"
-            style={inputStyle}
-          />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, color: '#374151' }}>종료일</span>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            data-testid="slip-cleanup-to"
-            style={inputStyle}
-          />
-        </label>
+        <Input
+          label="시작일"
+          type="date"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          data-testid="slip-cleanup-from"
+          inputSize="sm"
+          fullWidth={false}
+        />
+        <Input
+          label="종료일"
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          data-testid="slip-cleanup-to"
+          inputSize="sm"
+          fullWidth={false}
+        />
         <Button
           variant="primary"
           data-testid="slip-cleanup-search"
@@ -291,15 +422,15 @@ export function SlipCleanupPage() {
       ) : null}
 
       {query.isLoading ? (
-        <div style={{ padding: 24, color: '#6B7280' }}>불러오는 중...</div>
+        <div style={{ padding: 24, color: 'var(--color-neutral-500)' }}>불러오는 중...</div>
       ) : null}
 
-      {query.data && (query.data.entries?.length ?? 0) === 0 ? (
+      {cleanupData && (cleanupData.entries?.length ?? 0) === 0 ? (
         <div
           style={{
             padding: 24,
-            color: '#6B7280',
-            border: '1px dashed #D1D5DB',
+            color: 'var(--color-neutral-500)',
+            border: '1px dashed var(--color-neutral-300)',
             borderRadius: 6,
             textAlign: 'center',
           }}
@@ -314,7 +445,7 @@ export function SlipCleanupPage() {
           data-testid={`slip-cleanup-group-${status}`}
           style={{
             marginBottom: 24,
-            border: '1px solid #E5E7EB',
+            border: '1px solid var(--color-neutral-200)',
             borderRadius: 8,
             overflow: 'hidden',
           }}
@@ -322,8 +453,8 @@ export function SlipCleanupPage() {
           <header
             style={{
               padding: '8px 12px',
-              background: '#F9FAFB',
-              borderBottom: '1px solid #E5E7EB',
+              background: 'var(--color-neutral-50)',
+              borderBottom: '1px solid var(--color-neutral-200)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -331,7 +462,7 @@ export function SlipCleanupPage() {
           >
             <strong style={{ fontSize: 14 }}>
               {STATUS_LABEL[status]}{' '}
-              <span style={{ color: '#6B7280', fontWeight: 400, fontSize: 12 }}>
+              <span style={{ color: 'var(--color-neutral-500)', fontWeight: 400, fontSize: 12 }}>
                 ({rows.length}건)
               </span>
             </strong>
@@ -345,7 +476,7 @@ export function SlipCleanupPage() {
               }}
             >
               <thead>
-                <tr style={{ background: '#FFFFFF', textAlign: 'left' }}>
+                <tr style={{ background: 'var(--surface-card)', textAlign: 'left' }}>
                   <th style={thStyle}>전표번호</th>
                   <th style={thStyle}>전표일자</th>
                   <th style={thStyle}>거래처코드</th>
@@ -364,7 +495,7 @@ export function SlipCleanupPage() {
                     <tr
                       key={entry.id}
                       data-testid={`slip-cleanup-row-${entry.slipNo}`}
-                      style={{ borderTop: '1px solid #F3F4F6' }}
+                      style={{ borderTop: '1px solid var(--color-neutral-100)' }}
                     >
                       <td style={tdStyle}>{entry.slipNo}</td>
                       <td style={tdStyle}>{entry.slipDate}</td>
@@ -381,7 +512,7 @@ export function SlipCleanupPage() {
                       </td>
                       <td style={tdStyle}>
                         {flags.length === 0 ? (
-                          <span style={{ color: '#10B981', fontSize: 12 }}>
+                          <span style={{ color: 'var(--state-success)', fontSize: 12 }}>
                             정상
                           </span>
                         ) : (
@@ -406,40 +537,47 @@ export function SlipCleanupPage() {
           </div>
         </section>
       ))}
-    </>
+        </div>
+        <SlipCleanupHistoryTab
+          programType="SLIP_CLEANUP"
+          testIdPrefix="slip-cleanup-history"
+          isSaving={saveManualMutation.isPending}
+          onRestore={handleRestore}
+        />
+      </Tabs>
+      <SlipCleanupSaveDialog
+        open={saveDialogOpen}
+        isSaving={saveManualMutation.isPending}
+        testIdPrefix="slip-cleanup-history"
+        onClose={() => setSaveDialogOpen(false)}
+        onSave={(topic) => saveManualMutation.mutate(topic)}
+      />
+    </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  height: 32,
-  padding: '0 10px',
-  border: '1px solid #D1D5DB',
-  borderRadius: 6,
-  fontSize: 13,
 }
 
 const thStyle: React.CSSProperties = {
   padding: '8px 10px',
-  borderBottom: '1px solid #E5E7EB',
+  borderBottom: '1px solid var(--color-neutral-200)',
   fontSize: 12,
   fontWeight: 600,
-  color: '#374151',
-  background: '#FFFFFF',
+  color: 'var(--color-neutral-700)',
+  background: 'var(--surface-card)',
 }
 
 const tdStyle: React.CSSProperties = {
   padding: '8px 10px',
   fontSize: 13,
-  color: '#1F2937',
+  color: 'var(--color-neutral-800)',
   whiteSpace: 'nowrap',
 }
 
 const linkBtnStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #D1D5DB',
+  border: '1px solid var(--color-neutral-300)',
   borderRadius: 4,
   padding: '4px 8px',
   fontSize: 12,
   cursor: 'pointer',
-  color: '#1D4ED8',
+  color: 'var(--action-brand-hover)',
 }

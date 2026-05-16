@@ -26,6 +26,32 @@ function envelope<T>(data: T) {
   }
 }
 
+function mockError(status: number, code: string, message: string) {
+  return {
+    __mockStatus: status,
+    body: {
+      success: false,
+      code,
+      message,
+      data: null,
+      timestamp: new Date().toISOString(),
+    },
+  }
+}
+
+function mockLocationParams(): URLSearchParams {
+  if (typeof window === 'undefined' || typeof window.location === 'undefined') {
+    return new URLSearchParams()
+  }
+  const params = new URLSearchParams(window.location.search)
+  const hashQuery = window.location.hash.split('?')[1]
+  if (hashQuery) {
+    const hashParams = new URLSearchParams(hashQuery)
+    hashParams.forEach((value, key) => params.set(key, value))
+  }
+  return params
+}
+
 function parseMockBody(config: AxiosRequestConfig): Record<string, unknown> {
   if (!config.data) return {}
   if (typeof config.data === 'string') {
@@ -127,7 +153,7 @@ export function isMockMode(): boolean {
  */
 function _resolveMockRole(): string {
   if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
-    const params = new URLSearchParams(window.location.search)
+    const params = mockLocationParams()
     const override = params.get('mockRole')
     if (override) return override
   }
@@ -3062,6 +3088,69 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const domain = otherAuditLogsMatch[1]!
     const sample = MOCK_AUDIT_LOGS_BY_DOMAIN[domain] ?? []
     return envelope(sample)
+  }
+
+  // ==========================================================================
+  // SP-08-3-3: /slips/cleanup/history — 전표정리 저장내역 mock.
+  // generic /slips/cleanup matcher 보다 먼저 처리해야 한다.
+  // ==========================================================================
+  if (url.includes('/slips/cleanup/history')) {
+    const now = '2026-05-17T09:30:00'
+    const row = {
+      id: 'slip-cleanup-history-demo',
+      programType: 'SLIP_CLEANUP',
+      saveMode: 'MANUAL_NAMED',
+      topic: '월말 마감 직전 점검',
+      createdAt: now,
+      createdBy: 'sales-user',
+      requestParams: { from: '2026-05-01', to: '2026-05-16', rowCount: 2 },
+      rowCount: 2,
+    }
+    const payload = {
+      from: '2026-05-01',
+      to: '2026-05-16',
+      totalSlips: 2,
+      byStatus: [{ status: 'SAVED', count: 2 }],
+      byPartner: [{ partnerCode: 'P001', partnerName: '엘에이시스템에어', count: 2 }],
+      entries: MOCK_SLIPS.slice(0, 2).map((s) => ({
+        id: s.id,
+        slipNo: s.slipNo,
+        slipDate: s.slipDate,
+        status: s.status,
+        partnerCode: 'P001',
+        partnerName: s.partnerName,
+        classifiedRegionGroup: '서울권',
+        lineCount: 2,
+        totalAmount: '3870000',
+        partnerCodeMissing: false,
+        amountZero: false,
+        linesMissing: false,
+        regionMissing: false,
+      })),
+    }
+    if (method === 'POST') {
+      return envelope({ id: 'slip-cleanup-history-saved', savedAt: now })
+    }
+    if (method === 'GET' && url.includes('/latest')) {
+      if (mockLocationParams().get('mockLatest404') === '1') {
+        return mockError(404, 'SLIP_CLEANUP_HISTORY_NOT_FOUND', '전표정리 저장내역을 찾을 수 없습니다.')
+      }
+      return envelope({ ...row, saveMode: 'AUTO_LATEST', topic: '자동저장', responsePayload: payload })
+    }
+    if (method === 'GET' && /\/slips\/cleanup\/history\/[^/?]+/.test(url)) {
+      return envelope({ ...row, responsePayload: payload })
+    }
+    if (method === 'GET') {
+      return envelope({
+        content: [row],
+        totalElements: 1,
+        totalPages: 1,
+        size: 50,
+        number: 0,
+        first: true,
+        last: true,
+      })
+    }
   }
 
   // ==========================================================================
