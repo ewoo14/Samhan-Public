@@ -1748,3 +1748,17 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 
 **자체 정정 (4 team 18건)**: BE 9건 + DevOps 4건 + FE 5건 — spec/plan vs 실 코드 정정 (예: SignatureRepository stream filter, 별도 vite.print-renderer.config.ts, mock dataURL guard 보존). 모두 worktree 자체에서 commit.
 
+---
+
+### SP-01. Samhan Public 거래처 관리 메뉴/권한 정합화 (2026-05-16)
+
+**배경**: P0-6 거래처 4탭 UI는 구현되어 있었지만, 목록 화면이 `MASTER + 대표실` 전용 `AdminLayout` 영향권에 있어 `SALES / MANAGER` 사용자가 `신규 등록` 흐름을 찾기 어렵고, 등록 성공 후 `/admin/partners` 복귀가 권한 가드에 막힐 수 있었다.
+
+| # | 결정 |
+|---|---|
+| SP-01-01 | 정식 UI 진입점 = `판매 > 거래처 관리`. `거래처 마스터` 라벨은 내부 도메인 용어로 보고 사용자-facing 메뉴에서는 `거래처 관리`를 사용한다. |
+| SP-01-02 | `/admin/partners`, `/admin/partners/new` 는 `AdminLayout` 밖 공용 route 로 두고 `SALES / MANAGER / MASTER` RoleGuard 를 적용한다. 기존 대표실 인사 셸의 `admin-nav-partners`는 quick link 로 유지한다. |
+| SP-01-03 | `partner-service` 4탭 신규 등록 `POST /api/v1/partners/full` 은 `SALES / MANAGER / MASTER` 모두 허용한다. 이는 영업 매뉴얼과 H4b 신규 거래처 직접 작성 기대를 우선한다. |
+| SP-01-04 | 목록/검색 `GET /admin/partners`, `GET /admin/partners/search` 도 `SALES / MANAGER / MASTER` 공용 조회로 확장한다. |
+| SP-01-05 | 내부 UUID는 계속 비공개다. UI/응답/QA 캡처에는 `partnerCode`, `name`, `bizNo`, `phone` 등 업무 식별자만 표시한다. |
+

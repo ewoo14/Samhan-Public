@@ -35,7 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>{@code PATCH /api/v1/partners/{partnerCode}/full} — 4탭 일괄 수정
  *       (name 변경 + priceDiscount 갱신 + shippingAddresses 교체 + contacts 교체)</li>
  *   <li>수정 후 {@code GET /api/v1/partners/{partnerCode}/full} 으로 변경 검증</li>
- *   <li>권한 없는 SALES 역할로 POST 시도 → 403 FORBIDDEN</li>
+ *   <li>SALES 역할 POST → 201 CREATED + 내부 UUID 비노출</li>
  * </ol>
  *
  * <p>PR #140 회고 — Testcontainers connection: {@link AbstractPostgresIT} 상속으로
@@ -88,6 +88,7 @@ class P06ValidationIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 // 기본정보 탭
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.basic.partnerCode").value(PC_IT))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.basic.id").doesNotExist())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.basic.bizNo").value(BIZ_IT))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.basic.name").value("(주)IT검증거래처"))
                 // 단가/할인 탭
@@ -233,19 +234,21 @@ class P06ValidationIT extends AbstractPostgresIT {
     }
 
     // ================================================================
-    // 시나리오 5: SALES 역할 POST → 403
+    // 시나리오 5: SALES 역할 POST → 201
     // ================================================================
 
     @Test
-    @DisplayName("POST /api/v1/partners/full — SALES 역할 403 FORBIDDEN")
-    void registerFull_with_sales_role_returns_403() throws Exception {
+    @DisplayName("POST /api/v1/partners/full — SALES 역할 201 + partnerCode 응답")
+    void registerFull_with_sales_role_returns_201_and_partner_code() throws Exception {
         PartnerFullRequest req = buildFullRequest("IT-P06-SALES", "777-88-11001", "(주)IT세일즈");
         mockMvc.perform(MockMvcRequestBuilders.post(BASE_URL + "/full")
                         .header("X-User-Id", "it-user-sales")
                         .header("X-User-Role", "SALES")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(MockMvcResultMatchers.status().isForbidden());
+                .andExpect(MockMvcResultMatchers.status().isCreated())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.basic.partnerCode").value("IT-P06-SALES"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.basic.id").doesNotExist());
     }
 
     // ================================================================

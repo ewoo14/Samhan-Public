@@ -66,6 +66,8 @@ import {
 import { ARO_ADMIN_DISPATCH_ROLES } from '../api/arologisAdminDispatchApi'
 // [D-AX-20] 사진 감사 — WAREHOUSE / MANAGER / MASTER
 import { canAccessSlipPhotoAudit } from '../api/slipPhotoAuditApi'
+// [SP-01] 거래처 관리 — SALES / MANAGER / MASTER
+import { canAccessPartnerFull } from '../api/partnerApi'
 
 /**
  * 사이드바 NavLink disabled 래퍼.
@@ -273,6 +275,7 @@ export function AppLayout() {
     && (ALIGO_ADDRESS_BOOK_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
   const showBlockedPartners = !!auth?.role
     && (BLOCKED_PARTNERS_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
+  const showPartnerManagement = canAccessPartnerFull(auth?.role)
   // [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH/MANAGER/MASTER 가시.
   const showDispatchBoard = !!auth?.role
     && (DISPATCH_BOARD_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
@@ -327,6 +330,15 @@ export function AppLayout() {
           <NavLink to="/sales/partner-orders">주문서 조회</NavLink>
           <NavLink to="/sales/order-approvals">주문서 승인</NavLink>
           <NavLink to="/sales/partner-dc-config">거래처 DC 설정</NavLink>
+          {/* [SP-01] 거래처 관리 — 생성 성공 후 복귀 대상인 /admin/partners 를 SALES/MANAGER/MASTER 에 직접 노출. */}
+          <SidebarLink
+            to="/admin/partners"
+            show={showPartnerManagement}
+            requiredRole="SALES / MANAGER / MASTER"
+            data-testid="sidebar-sales-partners"
+          >
+            거래처 관리
+          </SidebarLink>
           <SidebarLink
             to="/sales/slip-cleanup"
             show={showSlipCleanup}

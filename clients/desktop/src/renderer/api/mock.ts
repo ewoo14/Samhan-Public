@@ -26,6 +26,94 @@ function envelope<T>(data: T) {
   }
 }
 
+function parseMockBody(config: AxiosRequestConfig): Record<string, unknown> {
+  if (!config.data) return {}
+  if (typeof config.data === 'string') {
+    try {
+      return JSON.parse(config.data) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  }
+  if (typeof config.data === 'object') {
+    return config.data as Record<string, unknown>
+  }
+  return {}
+}
+
+function normalizeAdminPartner(row: Record<string, unknown>) {
+  return {
+    partnerCode: String(row['partnerCode'] ?? ''),
+    name: String(row['name'] ?? row['partnerName'] ?? ''),
+    bizNo: String(row['bizNo'] ?? row['businessNumber'] ?? ''),
+    phone: (row['phone'] as string | null | undefined) ?? null,
+    status: row['status'] ?? 'ACTIVE',
+    creditLimit: row['creditLimit'] ?? '0',
+    outstandingBalance: row['outstandingBalance'] ?? row['currentBalance'] ?? '0',
+  }
+}
+
+function buildMockPartnerFull(body: Record<string, unknown>) {
+  const partnerCode = String(body['partnerCode'] ?? 'P-SP01-0001')
+  const bizNo = String(body['bizNo'] ?? '123-45-67890')
+  const name = String(body['name'] ?? '(주)SP01검증공조')
+  const priceDiscount = body['priceDiscount'] as Record<string, unknown> | undefined
+  const shippingAddresses = Array.isArray(body['shippingAddresses'])
+    ? body['shippingAddresses'] as Record<string, unknown>[]
+    : []
+  const contacts = Array.isArray(body['contacts'])
+    ? body['contacts'] as Record<string, unknown>[]
+    : []
+
+  return {
+    basic: {
+      partnerCode,
+      bizNo,
+      name,
+      representative: null,
+      businessType: null,
+      industry: null,
+      address: null,
+      phone: null,
+      fax: null,
+      email: null,
+      email2: null,
+      mobile: null,
+      website: null,
+      partnerGroup1: null,
+      partnerGroup2: null,
+      creditLimit: 0,
+      outstandingBalance: 0,
+      status: 'ACTIVE',
+      registrationDate: new Date().toISOString().slice(0, 10),
+    },
+    priceDiscount: {
+      basicDiscountRate: Number(priceDiscount?.['basicDiscountRate'] ?? 0),
+      paymentTermDays: Number(priceDiscount?.['paymentTermDays'] ?? 30),
+      discountMemo: (priceDiscount?.['discountMemo'] as string | null | undefined) ?? null,
+    },
+    shippingAddresses: shippingAddresses.map((addr, index) => ({
+      id: `addr-sp01-${index + 1}`,
+      alias: (addr['alias'] as string | null | undefined) ?? null,
+      zipCode: (addr['zipCode'] as string | null | undefined) ?? null,
+      address: String(addr['address'] ?? ''),
+      phone: (addr['phone'] as string | null | undefined) ?? null,
+      receiverName: (addr['receiverName'] as string | null | undefined) ?? null,
+      isDefault: Boolean(addr['isDefault']),
+      memo: (addr['memo'] as string | null | undefined) ?? null,
+    })),
+    contacts: contacts.map((contact, index) => ({
+      id: `contact-sp01-${index + 1}`,
+      contactName: String(contact['contactName'] ?? ''),
+      position: (contact['position'] as string | null | undefined) ?? null,
+      phone: (contact['phone'] as string | null | undefined) ?? null,
+      email: (contact['email'] as string | null | undefined) ?? null,
+      isPrimary: Boolean(contact['isPrimary']),
+      memo: (contact['memo'] as string | null | undefined) ?? null,
+    })),
+  }
+}
+
 /** 본 환경이 mock 모드인지 — Vite import.meta.env 기반 컴파일 타임 결정. */
 export function isMockMode(): boolean {
   return import.meta.env['VITE_MOCK_MODE'] === '1'
@@ -2183,11 +2271,45 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // GET /admin/partners/search — admin/PartnersPage list
   if (method === 'GET' && url.includes('/admin/partners/search')) {
     return envelope({
-      items: MOCK_ADMIN_PARTNERS,
+      items: MOCK_ADMIN_PARTNERS.map((row) => normalizeAdminPartner(row)),
       total: MOCK_ADMIN_PARTNERS.length,
       page: 0,
       size: 20,
     })
+  }
+
+  // POST /api/v1/partners/full — PartnerCreatePage 4탭 신규 등록.
+  if (method === 'POST' && url.endsWith('/api/v1/partners/full')) {
+    const body = parseMockBody(config)
+    const full = buildMockPartnerFull(body)
+    if (!MOCK_ADMIN_PARTNERS.some((row) => row.partnerCode === full.basic.partnerCode)) {
+      MOCK_ADMIN_PARTNERS.unshift({
+        partnerCode: full.basic.partnerCode,
+        name: full.basic.name,
+        bizNo: full.basic.bizNo,
+        phone: null,
+        status: 'ACTIVE' as const,
+        creditLimit: '0',
+        outstandingBalance: '0',
+        createdAt: new Date().toISOString(),
+      })
+    }
+    return envelope(full)
+  }
+
+  // GET/PATCH /api/v1/partners/{partnerCode}/full — PartnerDetailDialog mock.
+  const partnerFullMatch = url.match(/\/api\/v1\/partners\/([^/]+)\/full$/)
+  if ((method === 'GET' || method === 'PATCH') && partnerFullMatch) {
+    const row = MOCK_ADMIN_PARTNERS.find((partner) => partner.partnerCode === decodeURIComponent(partnerFullMatch[1] ?? ''))
+    return envelope(buildMockPartnerFull({
+      partnerCode: row?.partnerCode ?? decodeURIComponent(partnerFullMatch[1] ?? 'P-SP01-0001'),
+      bizNo: (row as Record<string, unknown> | undefined)?.['bizNo']
+        ?? (row as Record<string, unknown> | undefined)?.['businessNumber']
+        ?? '123-45-67890',
+      name: (row as Record<string, unknown> | undefined)?.['name']
+        ?? (row as Record<string, unknown> | undefined)?.['partnerName']
+        ?? '(주)SP01검증공조',
+    }))
   }
 
   // POST/PUT/DELETE /admin/partners — 신규/수정/삭제
@@ -3811,7 +3933,7 @@ const MOCK_ADMIN_USERS = [
 /**
  * 거래처 admin (admin/PartnersPage) — 6건 + ACTIVE/SUSPENDED/TERMINATED 분포.
  */
-const MOCK_ADMIN_PARTNERS = [
+const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
   {
     partnerCode: '1234567890',
     partnerName: '엘에이시스템에어',

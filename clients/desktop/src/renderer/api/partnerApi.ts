@@ -34,6 +34,16 @@ import { apiClient, type ApiEnvelope } from './client'
 /** 거래처 유형 — BE PartnerType enum 과 1:1. */
 export type PartnerType = 'CUSTOMER' | 'SUPPLIER' | 'BOTH'
 
+/** 거래처 4탭/관리 화면 권한 — BE @PreAuthorize 와 1:1. */
+export const PARTNER_FULL_ROLES = ['SALES', 'MANAGER', 'MASTER'] as const
+
+/** 거래처 관리 화면 진입 가능 여부. */
+export function canAccessPartnerFull(
+  role: string | undefined | null,
+): boolean {
+  return !!role && (PARTNER_FULL_ROLES as readonly string[]).includes(role)
+}
+
 /** PartnerType → 한국어 표시 라벨. */
 export const PARTNER_TYPE_LABEL: Record<PartnerType, string> = {
   CUSTOMER: '고객',

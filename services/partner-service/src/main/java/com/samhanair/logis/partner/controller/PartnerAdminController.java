@@ -38,8 +38,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 거래처 마스터 관리자 CRUD endpoint.
  *
- * <p>인증 = X-User-* 헤더 (gateway 경유) + {@code @PreAuthorize} 권한 가드 (MASTER / MANAGER).
- * SALES / WAREHOUSE 등 일반 사용자는 admin 작업 불가. 본 endpoint 는 internal token 필요 X.
+ * <p>인증 = X-User-* 헤더 (gateway 경유) + {@code @PreAuthorize} 권한 가드.
+ * 목록/상세 조회는 SALES / MANAGER / MASTER 를 허용하고, 쓰기 작업은 MANAGER / MASTER 이상으로 제한한다.
+ * 본 endpoint 는 internal token 필요 X.
  *
  * <p>모든 응답은 {@link PartnerAdminResponse} 사용 — UUID 비공개 가드 (memory feedback_uuid_no_user_visibility)
  * 일관 적용. partnerCode 만 응답에 노출, 후속 조회/수정도 partnerCode path variable.
@@ -75,7 +76,7 @@ public class PartnerAdminController {
     /**
      * 거래처 페이지 조회 (admin 목록).
      *
-     * <p>Phase 10 W10-6 — 50 partner 시드 검증을 위해 도입. 권한은 MASTER / MANAGER 만 (memory
+     * <p>Phase 10 W10-6 — 50 partner 시드 검증을 위해 도입. 권한은 SALES / MANAGER / MASTER (memory
      * feedback_uuid_no_user_visibility 가드 — 응답은 partnerCode/name/bizNo 등 비즈니스 식별자만,
      * 내부 UUID 미노출). 페이지 / 정렬은 표준 Spring {@link Pageable} 규약 (예:
      * {@code ?page=0&size=3&sort=partnerCode,asc}).
@@ -83,13 +84,13 @@ public class PartnerAdminController {
      * @return {@code ApiResponse<Page<PartnerSummaryResponse>>}
      */
     @Operation(summary = "거래처 페이지 조회 (admin 목록)",
-            description = "MASTER / MANAGER 권한 필요. UUID 비공개 — partnerCode 만 응답.")
+            description = "SALES / MANAGER / MASTER 권한 필요. UUID 비공개 — partnerCode 만 응답.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "권한 없음")
     })
     @GetMapping
-    @PreAuthorize("@hr.isExecutiveOffice() and hasAnyRole('MASTER','MANAGER')")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','SALES')")
     public ApiResponse<Page<PartnerSummaryResponse>> findAll(Pageable pageable) {
         Page<PartnerSummaryResponse> page = partnerService.findAll(pageable)
                 .map(PartnerSummaryResponse::from);
@@ -107,9 +108,9 @@ public class PartnerAdminController {
      * 검색 / 필터 화면용, 위 endpoint 는 Spring Data {@link Page} raw 응답.
      */
     @Operation(summary = "거래처 admin 검색 (Phase 10 P0-5)",
-            description = "q + type(status) 필터. items / total / page / size 형식 응답.")
+            description = "SALES / MANAGER / MASTER 권한. q + type(status) 필터. items / total / page / size 형식 응답.")
     @GetMapping("/search")
-    @PreAuthorize("@hr.isExecutiveOffice() and hasAnyRole('MASTER','MANAGER')")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','SALES')")
     public ApiResponse<AdminPartnerListResponse> search(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,

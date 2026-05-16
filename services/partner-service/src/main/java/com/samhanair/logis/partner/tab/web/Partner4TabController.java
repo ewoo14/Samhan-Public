@@ -84,7 +84,7 @@ public class Partner4TabController {
      * @param req 4탭 일괄 등록 요청
      * @return 등록된 4탭 응답
      */
-    @Operation(summary = "거래처 4탭 일괄 등록", description = "MANAGER / MASTER 권한 필요. partnerCode / bizNo / name 필수.")
+    @Operation(summary = "거래처 4탭 일괄 등록", description = "SALES / MANAGER / MASTER 권한 필요. partnerCode / bizNo / name 필수.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "등록 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "필수값 누락"),
@@ -92,7 +92,7 @@ public class Partner4TabController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "partnerCode 또는 bizNo 중복")
     })
     @PostMapping("/full")
-    @PreAuthorize("hasAnyRole('MASTER','MANAGER')")
+    @PreAuthorize("hasAnyRole('MASTER','MANAGER','SALES')")
     public ResponseEntity<ApiResponse<PartnerFullResponse>> registerFull(
             @Valid @RequestBody PartnerFullRequest req) {
         PartnerFullResponse resp = partner4TabService.registerFull(req);
