@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { Input, Select } from '@samhan/design-system'
 import {
   PARTNER_ORDER_STATUS_LABEL,
   listPartnerOrders,
@@ -20,20 +21,24 @@ import styles from '../components/sales/sales.module.css'
 
 const STATUS_CLASS: Record<PartnerOrderStatus, string> = {
   DRAFT: styles['statusDraft']!,
-  SUBMITTED: styles['statusSent']!,
+  CONFIRMING: styles['statusSent']!,
   CONFIRMED: styles['statusConfirmed']!,
-  CONVERTED: styles['statusConverted']!,
   CANCELED: styles['statusCanceled']!,
 }
 
 const krw = (n: number) => new Intl.NumberFormat('ko-KR').format(n)
 // v2 §정정 8 — 'YYYY/MM/DD' 통일.
 const ymd = (iso: string | null) => (iso ? formatSlipDate(iso) : '-')
+const toOrderPathId = (orderNumber: string) => orderNumber.replace(/\//g, '-')
 
 export function SalesPartnerOrderListPage() {
   const navigate = useNavigate()
   const setPageTitle = usePageTitleStore((s) => s.setPageTitle)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [partnerId, setPartnerId] = useState('')
   const [statusFilter, setStatusFilter] = useState<PartnerOrderStatus | ''>('')
+  const [searchKeyword, setSearchKeyword] = useState('')
 
   useEffect(() => {
     setPageTitle({ title: '주문서 관리', meta: '영업' })
@@ -43,8 +48,14 @@ export function SalesPartnerOrderListPage() {
   // PR-H4c: list page entity-unbound — 30s polling 으로 SSE invalidate 효과를 흉내
   // (단건 row SSE 는 SalesPartnerOrderDetailPage 진입 시 활성화).
   const query = useQuery({
-    queryKey: ['partner-orders', statusFilter, 0],
-    queryFn: () => listPartnerOrders(0, 50, statusFilter || undefined),
+    queryKey: ['partner-orders', dateFrom, dateTo, partnerId, statusFilter, searchKeyword, 0],
+    queryFn: () => listPartnerOrders(0, 50, {
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      partnerId: partnerId.trim() || undefined,
+      status: statusFilter || undefined,
+      searchKeyword: searchKeyword.trim() || undefined,
+    }),
     retry: 1,
     refetchInterval: 30_000,
   })
@@ -84,25 +95,52 @@ export function SalesPartnerOrderListPage() {
             <span className={styles['badge']}>전체 {query.data?.totalElements ?? 0}건</span>
           </div>
           <div className={styles['topActions']}>
-            <select
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              aria-label="시작일"
+              data-testid="partner-order-list-date-from"
+              inputSize="sm"
+            />
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              aria-label="종료일"
+              data-testid="partner-order-list-date-to"
+              inputSize="sm"
+            />
+            <Input
+              value={partnerId}
+              onChange={(e) => setPartnerId(e.target.value)}
+              placeholder="거래처 코드 또는 사업자번호"
+              aria-label="거래처 필터"
+              data-testid="partner-order-list-partner-filter"
+              inputSize="sm"
+            />
+            <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as PartnerOrderStatus | '')}
               aria-label="상태 필터"
-              style={{
-                border: '1px solid #cbd5e1',
-                borderRadius: 8,
-                padding: '6px 10px',
-                fontSize: 13,
-                background: '#fff',
-              }}
+              data-testid="partner-order-list-status-filter"
+              selectSize="sm"
             >
-              <option value="">전체</option>
+              <option value="">전체 상태</option>
               {(Object.keys(PARTNER_ORDER_STATUS_LABEL) as PartnerOrderStatus[]).map((s) => (
                 <option key={s} value={s}>
                   {PARTNER_ORDER_STATUS_LABEL[s]}
                 </option>
               ))}
-            </select>
+            </Select>
+            <Input
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              placeholder="주문번호·품목명·모델명"
+              aria-label="검색어"
+              data-testid="partner-order-list-keyword-filter"
+              inputSize="sm"
+            />
           </div>
         </div>
 
@@ -110,9 +148,8 @@ export function SalesPartnerOrderListPage() {
           <div className={styles['emptyState']}>주문 목록을 불러오는 중…</div>
         ) : query.isError ? (
           <div className={styles['emptyState']}>
-            <h3>partner-order-service 가 응답하지 않습니다</h3>
-            <p>M4 단계 partner-order-service 가 미배포 상태일 수 있습니다.</p>
-            <p style={{ fontSize: 11 }}>endpoint: GET /api/v1/partner-orders</p>
+            <h3>주문 목록을 불러오지 못했습니다</h3>
+            <p>잠시 후 다시 조회하거나 관리자에게 문의하세요.</p>
           </div>
         ) : (query.data?.content ?? []).length === 0 ? (
           <div className={styles['emptyState']}>
@@ -142,12 +179,12 @@ export function SalesPartnerOrderListPage() {
                       console.warn('[SalesPartnerOrderListPage] orderNumber 누락 row 무시', o)
                       return
                     }
-                    navigate(`/sales/partner-orders/${encodeURIComponent(o.orderNumber)}`)
+                    navigate(`/sales/partner-orders/${encodeURIComponent(toOrderPathId(o.orderNumber))}`)
                   }}
                 >
                   <td>{o.orderNumber}</td>
                   <td>{o.partnerCode}</td>
-                  <td>{o.partnerName}</td>
+                  <td>{o.partnerName ?? o.partnerCode}</td>
                   <td>{ymd(o.submittedAt)}</td>
                   <td className="numeric">{krw(o.totalAmount)}원</td>
                   <td>
