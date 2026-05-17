@@ -665,6 +665,20 @@ const MOCK_SAFETY_STOCK_ALERTS = [
   },
 ]
 
+interface MockDispatchSmsHistoryRow {
+  id: string
+  programType: string
+  saveMode: string
+  topic: string
+  createdAt: string
+  createdBy: string
+  requestParams: Record<string, unknown>
+  rowCount: number
+  responsePayload?: unknown
+}
+
+const mockDispatchSmsHistoryRows: MockDispatchSmsHistoryRow[] = []
+
 /**
  * URL + method 매칭으로 mock 응답을 반환. 매칭 실패 시 null.
  */
@@ -872,7 +886,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // GET /slips/{id} (단건 상세) — UUID-like 또는 'slip-001' 패턴
   const slipDetailMatch = url.match(/\/slips\/([^/?]+)$/)
-  if (method === 'GET' && slipDetailMatch && !url.includes('lookup-product')) {
+  if (method === 'GET' && slipDetailMatch && !url.includes('lookup-product') && !url.match(/\/slips\/cleanup/)) {
     const id = slipDetailMatch[1]!
     const found = MOCK_SLIPS.find((s) => s.id === id) ?? MOCK_SLIPS[0]!
     return envelope({
@@ -1278,6 +1292,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     method === 'GET'
     && url.includes('/slips')
     && !url.includes('/slips/lookup-product')
+    && !url.match(/\/slips\/cleanup/)
     && !slipDetailMatch
   ) {
     const slipTypeMatch = url.match(/[?&]slipType=([^&]+)/)
@@ -3006,22 +3021,162 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // SP-08-3-4: /admin/notifications/dispatch-sms/history — 배차문자 저장내역 mock.
+  if (url.includes('/admin/notifications/dispatch-sms/history')) {
+    const now = '2026-05-17T10:20:00'
+    const previewPayload = {
+      date: '2026-05-17',
+      totalSlips: 3,
+      mappedSlips: 2,
+      unmappedSlips: 1,
+      chatRooms: [
+        {
+          chatRoomName: '서울권 발주방',
+          partners: [
+            {
+              partnerCode: 'P-001',
+              partnerName: '엘에이시스템에어',
+              slipNo: '2026/05/17-1',
+              message: '[삼한] 5/17 오전 배송 예정입니다.',
+              blocked: false,
+            },
+            {
+              partnerCode: 'P-002',
+              partnerName: '한일냉동기술',
+              slipNo: '2026/05/17-2',
+              message: '[발송 차단됨]',
+              blocked: true,
+            },
+          ],
+        },
+      ],
+      unmapped: [
+        { partnerCode: 'P-404', partnerName: '미매핑 거래처', slipNo: '2026/05/17-3' },
+      ],
+    }
+    const row: MockDispatchSmsHistoryRow = {
+      id: 'dispatch-sms-history-demo',
+      programType: 'DISPATCH_SMS',
+      saveMode: 'MANUAL_NAMED',
+      topic: '오전 발송 전 점검',
+      createdAt: now,
+      createdBy: 'dispatch-user',
+      requestParams: { date: '2026-05-17', rowCount: 3 },
+      rowCount: 3,
+    }
+    const auditRow: MockDispatchSmsHistoryRow = {
+      ...row,
+      id: 'dispatch-sms-history-send-audit',
+      saveMode: 'SEND_AUDIT',
+      topic: '발송 감사 2026-05-17',
+      requestParams: { date: '2026-05-17', rowCount: 2, sent: 2, failed: 0, blocked: 1 },
+      rowCount: 2,
+    }
+    const auditPayload = {
+      date: '2026-05-17',
+      sent: 2,
+      failed: 0,
+      blocked: 1,
+      details: [
+        { partnerCode: 'P-001', recipientPhone: 'room:서울권 발주방', status: 'SENT', reason: null },
+        { partnerCode: 'P-002', recipientPhone: 'room:서울권 발주방', status: 'BLOCKED', reason: '발송금지' },
+      ],
+    }
+    if (method === 'POST') {
+      const body = parseMockBody(config)
+      const saveMode = String(body['saveMode'] ?? 'MANUAL_NAMED')
+      const requestParams = (body['requestParams'] && typeof body['requestParams'] === 'object')
+        ? body['requestParams'] as Record<string, unknown>
+        : {}
+      const responsePayload = body['responsePayload']
+      const rowCount = Number(requestParams['rowCount'] ?? 0)
+      const savedRow: MockDispatchSmsHistoryRow = {
+        id: `dispatch-sms-history-${saveMode.toLowerCase()}-${mockDispatchSmsHistoryRows.length + 1}`,
+        programType: 'DISPATCH_SMS',
+        saveMode,
+        topic: String(body['topic'] ?? (saveMode === 'AUTO_LATEST' ? '자동저장' : '저장내역')),
+        createdAt: new Date().toISOString(),
+        createdBy: 'dispatch-user',
+        requestParams,
+        rowCount,
+        responsePayload,
+      }
+      if (saveMode === 'AUTO_LATEST') {
+        for (let i = mockDispatchSmsHistoryRows.length - 1; i >= 0; i -= 1) {
+          if (mockDispatchSmsHistoryRows[i]?.saveMode === 'AUTO_LATEST') {
+            mockDispatchSmsHistoryRows.splice(i, 1)
+          }
+        }
+      }
+      mockDispatchSmsHistoryRows.unshift(savedRow)
+      return envelope({ id: savedRow.id, savedAt: savedRow.createdAt })
+    }
+    if (method === 'GET' && url.includes('/latest')) {
+      if (mockLocationParams().get('mockDispatchSmsLatest404') === '1') {
+        return mockError(404, 'DISPATCH_SMS_HISTORY_NOT_FOUND', '배차문자 저장내역을 찾을 수 없습니다.')
+      }
+      const latest = mockDispatchSmsHistoryRows.find(item => item.saveMode === 'AUTO_LATEST')
+      return envelope(latest ?? { ...row, saveMode: 'AUTO_LATEST', topic: '자동저장', responsePayload: previewPayload })
+    }
+    if (method === 'GET' && /\/admin\/notifications\/dispatch-sms\/history\/[^/?]+/.test(url)) {
+      const id = url.split('/').pop()?.split('?')[0] ?? ''
+      const savedRow = mockDispatchSmsHistoryRows.find(item => item.id === id)
+      if (savedRow) return envelope(savedRow)
+      if (url.includes('send-audit')) {
+        return envelope({ ...auditRow, responsePayload: auditPayload })
+      }
+      return envelope({ ...row, responsePayload: previewPayload })
+    }
+    if (method === 'GET') {
+      const mode = new URL(url, 'http://mock.local').searchParams.get('mode')
+      const baseRows = [auditRow, row]
+      const allRows = [...mockDispatchSmsHistoryRows, ...baseRows]
+      const filteredRows = mode && mode !== 'ALL'
+        ? allRows.filter(item => item.saveMode === mode)
+        : allRows
+      return envelope({
+        content: filteredRows,
+        totalElements: filteredRows.length,
+        totalPages: 1,
+        size: 50,
+        number: 0,
+        first: true,
+        last: true,
+      })
+    }
+  }
+
   // POST /admin/notifications/dispatch-batch/preview — DispatchSmsPage preview
   if (method === 'POST' && url.includes('/admin/notifications/dispatch-batch/preview')) {
     return envelope({
-      date: '2026-05-10',
-      previews: [
-        { partnerName: '주식회사 윌리-정현수', phone: '010-1234-5678', message: '[삼한] 5/10 오전 배송 예정 (1톤 12가3456 홍지수 기사)', blocked: false },
-        { partnerName: '○○종합건설', phone: '010-9876-5432', message: '[삼한] 5/10 오전 배송 예정 (1톤 23나7890 김기철 기사)', blocked: false },
-        { partnerName: '한일냉동기술', phone: '010-2222-3333', message: '[발송 차단됨]', blocked: true, blockReason: 'CUSTOMER_REQUEST' },
+      date: '2026-05-17',
+      totalSlips: 3,
+      mappedSlips: 2,
+      unmappedSlips: 1,
+      chatRooms: [
+        {
+          chatRoomName: '서울권 발주방',
+          partners: [
+            { partnerCode: 'P-001', partnerName: '엘에이시스템에어', slipNo: '2026/05/17-1', message: '[삼한] 5/17 오전 배송 예정입니다.', blocked: false },
+            { partnerCode: 'P-002', partnerName: '한일냉동기술', slipNo: '2026/05/17-2', message: '[발송 차단됨]', blocked: true },
+          ],
+        },
       ],
-      totalCount: 3,
-      sendableCount: 2,
-      blockedCount: 1,
+      unmapped: [
+        { partnerCode: 'P-404', partnerName: '미매핑 거래처', slipNo: '2026/05/17-3' },
+      ],
     })
   }
   if (method === 'POST' && url.includes('/admin/notifications/dispatch-batch/send')) {
-    return envelope({ sentCount: 2, failedCount: 0, blockedCount: 1, message: 'SMS 발송 완료' })
+    return envelope({
+      date: '2026-05-17',
+      sent: 1,
+      failed: 0,
+      blocked: 0,
+      details: [
+        { partnerCode: 'P-001', recipientPhone: 'room:서울권 발주방', status: 'SENT', reason: null },
+      ],
+    })
   }
 
   // POST /arologis/dispatch/reconcile — 운송사 비교 (multipart)
