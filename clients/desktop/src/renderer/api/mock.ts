@@ -3292,6 +3292,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  if (method === 'DELETE' && partnerOrderDetailMatch) {
+    const params = mockLocationParams()
+    if (params.get('mockDelete404')) {
+      return mockError(404, 'PARTNER_ORDER_NOT_FOUND', '주문서를 찾을 수 없습니다.')
+    }
+    if (params.get('mockDelete422')) {
+      return mockError(422, 'PARTNER_ORDER_DELETE_FORBIDDEN_STATUS', '확정 또는 전표 발행된 주문서는 삭제할 수 없습니다.')
+    }
+    return envelope(null)
+  }
+
   const partnerOrderAuditMatch = url.match(/\/api\/v1\/partner-orders\/([^/?]+)\/audit-logs/)
   if (method === 'GET' && partnerOrderAuditMatch) {
     return envelope([

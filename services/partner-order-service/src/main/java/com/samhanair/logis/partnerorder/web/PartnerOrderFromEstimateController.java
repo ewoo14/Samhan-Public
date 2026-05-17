@@ -2,49 +2,44 @@ package com.samhanair.logis.partnerorder.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.http.HttpHeaderConstants;
-import com.samhanair.logis.partnerorder.service.PartnerOrderUpdateService;
+import com.samhanair.logis.partnerorder.service.PartnerOrderFromEstimateService;
 import com.samhanair.logis.partnerorder.web.dto.PartnerOrderDetailResponse;
-import com.samhanair.logis.partnerorder.web.dto.PartnerOrderUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
-import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 거래처 주문 direct PUT 수정 endpoint.
- *
- * <p>본사 SALES/MANAGER/MASTER 즉시 수정 전용이며, PARTNER 의 수정 요청은 기존
- * {@link com.samhanair.logis.partnerorder.editrequest.web.PartnerOrderEditRequestController}
- * flow 와 공존한다.
+ * 견적 -> 거래처 주문 변환 endpoint.
  */
 @RestController
 @RequestMapping("/api/v1/partner-orders")
 @RequiredArgsConstructor
-public class PartnerOrderEditController {
+public class PartnerOrderFromEstimateController {
 
-    private final PartnerOrderUpdateService updateService;
+    private final PartnerOrderFromEstimateService fromEstimateService;
 
     /**
-     * 주문 헤더/라인 즉시 수정.
+     * 외부 estimate-service UUID 를 주문으로 변환한다.
      */
-    @Operation(summary = "거래처 주문 즉시 수정",
-            description = "본사 SALES/MANAGER/MASTER 가 주문 헤더와 라인을 낙관적 잠금으로 수정합니다.")
-    @PutMapping("/{id}")
+    @Operation(summary = "견적에서 거래처 주문 생성",
+            description = "견적 snapshot 을 partner-order-service 주문 row 로 변환합니다.")
+    @PostMapping("/from-estimate/{estimateId}")
+    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('SALES','MASTER','MANAGER')")
-    public ApiResponse<PartnerOrderDetailResponse> update(
-            @PathVariable String id,
-            @Valid @RequestBody PartnerOrderUpdateRequest request,
+    public ApiResponse<PartnerOrderDetailResponse> createFromEstimate(
+            @PathVariable UUID estimateId,
             @RequestHeader(value = HttpHeaderConstants.CALLER_ID_HEADER, required = false) String callerId,
             @RequestHeader(value = HttpHeaderConstants.CALLER_NAME_HEADER, required = false) String callerName) {
-        return ApiResponse.ok(updateService.update(id, request, parseActorId(callerId),
-                resolveName(callerId, callerName)));
+        return ApiResponse.ok(fromEstimateService.createFromEstimate(
+                estimateId, parseActorId(callerId), resolveName(callerId, callerName)));
     }
 
     private UUID parseActorId(String callerId) {
