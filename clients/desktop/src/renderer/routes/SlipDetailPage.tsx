@@ -85,6 +85,25 @@ export interface SlipDetailPageProps {
   mode: SlipType
 }
 
+const SLIP_STATUS_LABEL: Record<string, string> = {
+  DRAFT: '임시저장',
+  SAVED: '저장',
+  SENT: '전송',
+  ACCEPTED: '수락',
+  PROCESSING: '처리중',
+  INSPECTING: '검수중',
+  COMPLETED: '완료',
+  SHIPPING: '배송중',
+  DELIVERED: '배송완료',
+  CONFIRMED: '확정',
+  REJECTED: '반려',
+  CANCELED: '취소',
+}
+
+function slipStatusLabel(status: string): string {
+  return SLIP_STATUS_LABEL[status] ?? status
+}
+
 /**
  * status 별 가능 transition 액션 목록 (Slice A 갱신 — INSPECTING 신규).
  * OUTBOUND/INBOUND 차이 (ship/deliver 는 출고전표 한정) 는 mode 로 필터.
@@ -129,6 +148,11 @@ const ACTION_LABEL: Record<SlipTransitionAction, string> = {
   confirm: '확정',
   reject: '반려',
   cancel: '취소',
+}
+
+const INSPECTION_STATUS_LABEL: Record<string, string> = {
+  READY: '검수 가능',
+  NOT_READY: '검수 대기',
 }
 
 /**
@@ -483,7 +507,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const handleRemoveLine = () => {
     if (!selectedLine) return
     if (!linesEditable) {
-      alert(`라인 편집은 작성 중/저장 단계에서만 가능합니다. (현재: ${slip.status})`)
+      alert(`라인 편집은 작성 중/저장 단계에서만 가능합니다. (현재: ${slipStatusLabel(slip.status)})`)
       return
     }
     if (!window.confirm(`[${selectedLine.modelName ?? '-'}] 라인을 삭제하시겠습니까?`)) {
@@ -507,7 +531,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   /** 하단 "삭제" — 경고창 후 cancel transition (BE soft-delete). */
   const handleDeleteSlip = () => {
     if (!possibleActions.includes('cancel')) {
-      alert(`현재 단계(${slip.status})에서는 삭제(취소)할 수 없습니다.`)
+      alert(`현재 단계(${slipStatusLabel(slip.status)})에서는 삭제(취소)할 수 없습니다.`)
       return
     }
     if (!window.confirm('정말로 이 전표를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 전표가 취소 상태로 변경됩니다.')) {
@@ -828,7 +852,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             fontSize: 13,
           }}
         >
-          현재 단계({slip.status})에서는 전표 변경이 차단됩니다. 처리가 끝나면 확정 후 수정/삭제 요청이 가능합니다.
+          현재 단계({slipStatusLabel(slip.status)})에서는 전표 변경이 차단됩니다. 처리가 끝나면 확정 후 수정/삭제 요청이 가능합니다.
         </div>
       ) : null}
 
@@ -910,6 +934,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               {slip.printed == null ? '—' : slip.printed ? '인쇄됨' : '미인쇄'}
             </span>
           </div>
+          {mode === 'INBOUND' ? (
+            <div data-testid="slip-detail-inspection-status">
+              <span className="detail-label">검수 상태</span>
+              <span className="detail-value">
+                <Badge variant={slip.inspectionStatus === 'READY' ? 'success' : 'warning'}>
+                  {slip.inspectionStatus ? (INSPECTION_STATUS_LABEL[slip.inspectionStatus] ?? slip.inspectionStatus) : '—'}
+                </Badge>
+              </span>
+            </div>
+          ) : null}
         </div>
       </Card>
 

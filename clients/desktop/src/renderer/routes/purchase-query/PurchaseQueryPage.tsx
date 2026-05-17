@@ -21,7 +21,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Modal, Input, FormField, DataGrid, type DataGridColumn } from '@samhan/design-system'
+import { Badge, Button, Modal, Input, FormField, DataGrid, type DataGridColumn } from '@samhan/design-system'
 import { querySlips, type SlipQueryRow } from '../../api/slip'
 import { listWarehouses, type Warehouse } from '../../api/inventory'
 import { useSessionStore, canCreateSlip, canInspectInbound } from '../../stores/session'
@@ -32,6 +32,20 @@ import { InboundInspectionDialog } from '../components/InboundInspectionDialog'
 
 const PAGE_SIZE = 50
 const INSPECTABLE_STATUSES = ['SAVED', 'CONFIRMED'] as const
+const SLIP_STATUS_LABEL: Record<string, string> = {
+  DRAFT: '임시저장',
+  SAVED: '저장',
+  SENT: '전송',
+  ACCEPTED: '수락',
+  PROCESSING: '처리중',
+  INSPECTING: '검수중',
+  COMPLETED: '완료',
+  SHIPPING: '배송중',
+  DELIVERED: '배송완료',
+  CONFIRMED: '확정',
+  REJECTED: '반려',
+  CANCELED: '취소',
+}
 
 /** YYYY-MM-DD 포맷 (Asia/Seoul 로케일 Date API) */
 function toSeoulDateStr(d: Date): string {
@@ -136,7 +150,10 @@ export function PurchaseQueryPage() {
     queryFn: () => listWarehouses(),
     staleTime: 5 * 60 * 1000,
   })
-  const warehouses: Warehouse[] = warehousesQuery.data ?? []
+  const warehouses = useMemo<Warehouse[]>(
+    () => warehousesQuery.data ?? [],
+    [warehousesQuery.data],
+  )
 
   // ── 구매관리 데이터 ──
   const slipsQuery = useQuery({
@@ -177,6 +194,8 @@ export function PurchaseQueryPage() {
       { key: 'salesPersonName',        label: '담당자명',    filter: 'text' },
       { key: 'paymentDueDate',         label: '지급예정일',  filter: 'text' },
       { key: 'slipDate',               label: '전표일자',    filter: 'text' },
+      { key: 'status',                 label: '상태',        filter: 'select' as const,
+        format: (v: unknown) => typeof v === 'string' ? (SLIP_STATUS_LABEL[v] ?? v) : '—' },
       { key: 'printed',                label: '인쇄',        filter: 'select' as const,
         format: (v: unknown) => v ? '완료' : '미완' },
       {
@@ -227,7 +246,7 @@ export function PurchaseQueryPage() {
     ],
     [canInspect, navigate, warehouses],
   )
-  const tableColumnCount = canInspect ? 13 : 12
+  const tableColumnCount = canInspect ? 14 : 13
 
   // ── 전체선택 (현재 페이지) ──
   const allPageIds   = useMemo(() => rows.map((r) => r.id), [rows])
@@ -291,20 +310,22 @@ export function PurchaseQueryPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {/* 날짜 범위 */}
         <label style={{ fontSize: 13, color: 'var(--color-neutral-600)' }}>기간</label>
-        <input
+        <Input
           type="date"
           value={dateFrom}
           onChange={(e) => { setDateFrom(e.target.value); setPage(0) }}
-          style={inputStyle}
           aria-label="시작 날짜"
+          inputSize="sm"
+          fullWidth={false}
         />
         <span style={{ fontSize: 13 }}>~</span>
-        <input
+        <Input
           type="date"
           value={dateTo}
           onChange={(e) => { setDateTo(e.target.value); setPage(0) }}
-          style={inputStyle}
           aria-label="종료 날짜"
+          inputSize="sm"
+          fullWidth={false}
         />
 
         {/* preset 버튼 */}
@@ -318,7 +339,7 @@ export function PurchaseQueryPage() {
         {selectedIds.size > 0 ? (
           <span
             data-testid="purchase-query-selected-count"
-            style={{ fontSize: 13, color: 'var(--color-primary-600)' }}
+            style={{ fontSize: 13, color: 'var(--color-brand-600)' }}
           >
             {selectedIds.size}행 선택됨
           </span>
@@ -446,6 +467,7 @@ export function PurchaseQueryPage() {
               <Th width="100px">입고창고</Th>
               <Th width="160px">적요</Th>
               <Th width="160px">비고</Th>
+              <Th width="86px">상태</Th>
               <Th width="72px" align="center">상세</Th>
               {canInspect ? <Th width="86px" align="center">검수</Th> : null}
             </tr>
@@ -472,7 +494,7 @@ export function PurchaseQueryPage() {
                     key={row.id}
                     onClick={() => toggleRow(row.id)}
                     style={{
-                      background: isSelected ? 'var(--color-primary-50, #EFF6FF)' : undefined,
+                      background: isSelected ? 'var(--color-brand-50, #EFF6FF)' : undefined,
                       borderBottom: '1px solid var(--color-neutral-100)',
                       cursor: 'pointer',
                     }}
@@ -510,6 +532,9 @@ export function PurchaseQueryPage() {
                     {/* 비고 — 현재 memo 와 동일 (BE 분리 컬럼 추가 시 후속 갱신) */}
                     <Td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {row.memo ?? '—'}
+                    </Td>
+                    <Td>
+                      <Badge variant="neutral">{SLIP_STATUS_LABEL[row.status] ?? row.status}</Badge>
                     </Td>
                     <Td align="center">
                       <Button
@@ -767,10 +792,10 @@ function PageBtn({
         height: 32,
         padding: '0 8px',
         border: active
-          ? '1px solid var(--color-primary-500)'
+          ? '1px solid var(--color-brand-500)'
           : '1px solid var(--color-neutral-200)',
         borderRadius: 4,
-        background: active ? 'var(--color-primary-500)' : 'var(--color-neutral-0)',
+        background: active ? 'var(--color-brand-500)' : 'var(--color-neutral-0)',
         color: active ? 'var(--color-neutral-0)' : 'var(--color-neutral-700)',
         fontSize: 13,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -780,13 +805,4 @@ function PageBtn({
       {children}
     </button>
   )
-}
-
-/** date input 공통 스타일 */
-const inputStyle: React.CSSProperties = {
-  fontSize: 13,
-  padding: '4px 8px',
-  borderRadius: 4,
-  border: '1px solid var(--color-neutral-300)',
-  background: 'var(--color-white)',
 }

@@ -15,9 +15,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,7 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>응답에 V20 신규 필드 포함 (금액합 / 수량합 / 담당자명 / 수정이력수 / 인쇄여부 등)</li>
  * </ul>
  *
- * <p>권한: 모든 인증 사용자 (조회 전용).
+ * <p>권한: 조회 전용. 단 INBOUND 구매조회는 WAREHOUSE / MANAGER / MASTER 만 허용.
  *
  * <p>UUID 비공개 가드: 모든 검색 파라미터는 비즈니스 식별자 기준.
  * UUID 파라미터 ({@code partnerId} 등) 는 노출하지 않는다.
@@ -132,13 +134,19 @@ public class SlipQueryController {
             @RequestParam(defaultValue = "0") int page,
 
             @Parameter(description = "페이지 크기 (기본 50)")
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
 
-        Pageable pageable = PageRequest.of(page, size);
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+
+        SlipPurchaseAccessGuard.guardInboundPurchaseRead(slipType, role);
+        SlipType effectiveSlipType = SlipPurchaseAccessGuard.restrictInboundWhenTypeOmitted(slipType, role);
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Order.desc("slipDate"), Sort.Order.desc("seqNo")));
         return ApiResponse.ok(slipQueryService.listForQuery(
-                slipType, status, dateFrom, dateTo, deliveryTags,
+                effectiveSlipType, status, dateFrom, dateTo, deliveryTags,
                 searchPartnerName, searchPartnerCode, searchBusinessNumber,
                 searchSlipNo, searchProjectName, searchDeliveryAddress,
                 pageable));
     }
+
 }

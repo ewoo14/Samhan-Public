@@ -28,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -95,6 +96,7 @@ public class SlipController {
                     "deliveryTag-slipType 정합 불일치 시 400.")
     @GetMapping
     public ApiResponse<Page<SlipResponse>> list(
+            @RequestParam(required = false, name = "type") SlipType typeAlias,
             @RequestParam(required = false) SlipType slipType,
             @RequestParam(required = false) SlipStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -104,9 +106,14 @@ public class SlipController {
             @RequestParam(required = false) String regionGroup,
             @RequestParam(required = false, name = "deliveryTag") java.util.List<DeliveryTag> deliveryTags,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        return ApiResponse.ok(slipService.list(slipType, status, from, to,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        SlipType effectiveSlipType = slipType != null ? slipType : typeAlias;
+        SlipPurchaseAccessGuard.guardInboundPurchaseRead(effectiveSlipType, role);
+        effectiveSlipType = SlipPurchaseAccessGuard.restrictInboundWhenTypeOmitted(effectiveSlipType, role);
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Order.desc("slipDate"), Sort.Order.desc("seqNo")));
+        return ApiResponse.ok(slipService.list(effectiveSlipType, status, from, to,
                 partnerCode, driverPhone, regionGroup, deliveryTags, pageable));
     }
 
@@ -117,8 +124,12 @@ public class SlipController {
      */
     @Operation(summary = "전표 단건 조회", description = "라인 포함 상세")
     @GetMapping("/{id}")
-    public ApiResponse<SlipDetailResponse> getOne(@PathVariable UUID id) {
-        return ApiResponse.ok(slipService.getOne(id));
+    public ApiResponse<SlipDetailResponse> getOne(
+            @PathVariable UUID id,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        SlipDetailResponse response = slipService.getOne(id);
+        SlipPurchaseAccessGuard.guardInboundPurchaseRead(response.slipType(), role);
+        return ApiResponse.ok(response);
     }
 
     /**
@@ -456,4 +467,5 @@ public class SlipController {
     private String callerOrSystem(String header) {
         return (header == null || header.isBlank()) ? "system" : header;
     }
+
 }
