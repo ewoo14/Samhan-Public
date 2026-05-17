@@ -10,10 +10,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -81,11 +82,24 @@ public class PartnerOrder extends BaseEntity {
     @Column(name = "slip_published_at")
     private LocalDateTime slipPublishedAt;
 
+    /** 영업자가 본사 direct PUT 으로 관리하는 납기일. 기존 row 는 null 허용. */
+    @Column(name = "due_date")
+    private LocalDate dueDate;
+
+    /** 영업자가 본사 direct PUT 으로 관리하는 요청사항/메모. 기존 row 는 null 허용. */
+    @Column(name = "memo", length = 1000)
+    private String memo;
+
+    /** JPA optimistic lock version. modifiedAt 비교는 사용자 메시지용으로 별도 유지한다. */
+    @Version
+    @Column(name = "lock_version", nullable = false)
+    private Long lockVersion;
+
     /** Idempotency-Key 원본 (PO-CONF-{draftSeq} — 설계서 §3.6). 재시도 시 동일 키 재사용. */
     @Column(name = "idempotency_key", nullable = false, length = 80, unique = true)
     private String idempotencyKey;
 
-    @OneToMany(mappedBy = "partnerOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "partnerOrder", cascade = CascadeType.ALL, orphanRemoval = false)
     private List<PartnerOrderLine> lines = new ArrayList<>();
 
     /**
@@ -146,9 +160,61 @@ public class PartnerOrder extends BaseEntity {
     public void recomputeTotal() {
         BigDecimal sum = BigDecimal.ZERO;
         for (PartnerOrderLine l : this.lines) {
+            if (l.getDeletedAt() != null) {
+                continue;
+            }
             sum = sum.add(l.getSubtotal());
         }
         this.totalAmount = sum;
+    }
+
+    /**
+     * 본사 direct PUT 헤더 수정.
+     *
+     * @param partnerCode 거래처 코드
+     * @param bizCode 사업자번호
+     * @param dueDate 납기일
+     * @param memo 요청사항/메모
+     */
+    public void updateHeader(String partnerCode, String bizCode, LocalDate dueDate, String memo) {
+        if (partnerCode == null || partnerCode.isBlank()) {
+            throw new IllegalArgumentException("partnerCode 필수");
+        }
+        if (bizCode == null || bizCode.isBlank()) {
+            throw new IllegalArgumentException("bizCode 필수");
+        }
+        this.partnerCode = partnerCode;
+        this.bizCode = bizCode;
+        this.dueDate = dueDate;
+        this.memo = memo == null || memo.isBlank() ? null : memo.trim();
+    }
+
+    /**
+     * 본사 direct PUT 라인 전체 교체. 기존 active line 은 {@link BaseEntity#markDeleted(String)}
+     * soft-delete 로 보존하고 새 snapshot 으로 재구성한다.
+     *
+     * <p>{@code orphanRemoval = false} 는 soft-delete 전략을 지키기 위한 명시 설정이다.
+     * 라인 제거는 컬렉션 {@code remove()} 가 아니라 {@link BaseEntity#markDeleted(String)} 만 사용하며,
+     * {@code @SQLRestriction("is_deleted = false")} 가 SELECT 시점에 deleted line 을 필터링한다.
+     * 기존 active 라인만 markDeleted 처리한다. markDeleted 는 {@code isDeleted=true} 와 {@code deletedAt} 을 함께 세팅하여
+     * {@code @SQLRestriction("is_deleted = false")} 와 정합을 유지하고, {@code deletedAt == null} 가드는 재처리를 방지한다.
+     *
+     * @param replacementLines 새 주문 라인 snapshot
+     */
+    public void replaceLines(List<PartnerOrderLine> replacementLines) {
+        if (replacementLines == null || replacementLines.isEmpty()) {
+            throw new IllegalArgumentException("lines 필수");
+        }
+        for (PartnerOrderLine line : this.lines) {
+            if (line.getDeletedAt() == null) {
+                line.markDeleted("system-partner-order-update");
+            }
+        }
+        this.totalAmount = BigDecimal.ZERO;
+        for (PartnerOrderLine line : replacementLines) {
+            addLine(line);
+        }
+        recomputeTotal();
     }
 
     /**
@@ -184,7 +250,9 @@ public class PartnerOrder extends BaseEntity {
 
     /** unmodifiable view — 외부 변경 차단. */
     public List<PartnerOrderLine> getLines() {
-        return Collections.unmodifiableList(this.lines);
+        return this.lines.stream()
+                .filter(line -> line.getDeletedAt() == null)
+                .toList();
     }
 
     /**

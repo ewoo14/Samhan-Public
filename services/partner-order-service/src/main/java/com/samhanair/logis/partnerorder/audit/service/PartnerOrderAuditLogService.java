@@ -7,6 +7,7 @@ import com.samhanair.logis.partnerorder.audit.repository.PartnerOrderAuditLogRep
 import com.samhanair.logis.partnerorder.domain.PartnerOrder;
 import com.samhanair.logis.partnerorder.realtime.PartnerOrderRealtimeBroker;
 import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
+import com.samhanair.logis.partnerorder.util.PartnerOrderIdResolver;
 import com.samhanair.logis.shared.realtime.audit.AuditEventPayloadBuilder;
 import com.samhanair.logis.shared.realtime.audit.AuditLogRecorder;
 import com.samhanair.logis.shared.realtime.audit.ChangeEntry;
@@ -108,13 +109,33 @@ public class PartnerOrderAuditLogService implements AuditLogRecorder {
                                                   String actorName, String actorColor,
                                                   List<ChangeEntry> changes) {
         Objects.requireNonNull(partnerOrderId, "partnerOrderId 는 필수입니다");
+        PartnerOrder order = partnerOrderRepository.findById(partnerOrderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "거래처 주문을 찾을 수 없습니다: " + partnerOrderId));
+        return recordBatch(order, actorId, actorName, actorColor, changes);
+    }
+
+    /**
+     * 이미 로딩된 주문 entity 로 다중 필드 audit 을 기록한다. 같은 트랜잭션에서 본문을 수정한 호출자는
+     * 이 overload 를 사용해 불필요한 재조회 없이 revision 을 증가시킨다.
+     *
+     * @param order 대상 주문 entity
+     * @param actorId 수정자 UUID
+     * @param actorName 수정자 표시명
+     * @param actorColor FE 색상 hex (선택)
+     * @param changes 변경된 필드 리스트 (1건 이상)
+     * @return 영속화된 audit log 리스트 (입력 순서 유지)
+     */
+    @Transactional
+    public List<PartnerOrderAuditLog> recordBatch(PartnerOrder order, UUID actorId,
+                                                  String actorName, String actorColor,
+                                                  List<ChangeEntry> changes) {
+        Objects.requireNonNull(order, "order 는 필수입니다");
         if (changes == null || changes.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
                     "changes 가 비어있습니다 — audit 기록할 변경이 없습니다");
         }
-        PartnerOrder order = partnerOrderRepository.findById(partnerOrderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "거래처 주문을 찾을 수 없습니다: " + partnerOrderId));
+        UUID partnerOrderId = order.getId();
         int revisionNo = order.incrementRevision();
         List<PartnerOrderAuditLog> saved = new ArrayList<>(changes.size());
         for (ChangeEntry change : changes) {
@@ -140,5 +161,20 @@ public class PartnerOrderAuditLogService implements AuditLogRecorder {
     public List<PartnerOrderAuditLog> listByOrder(UUID partnerOrderId) {
         Objects.requireNonNull(partnerOrderId, "partnerOrderId 는 필수입니다");
         return auditLogRepository.findByEntityIdOrderByRevisionNoDescChangedAtDesc(partnerOrderId);
+    }
+
+    /**
+     * 주문번호 또는 UUID 문자열로 audit log 를 조회한다. FE 는 사용자 표시용 주문번호만 보유하므로
+     * 내부 UUID 를 화면 상태에 보관하지 않는다.
+     *
+     * @param id 주문번호 또는 내부 UUID 문자열
+     * @return 최신순 audit log
+     */
+    @Transactional(readOnly = true)
+    public List<PartnerOrderAuditLog> listByOrderIdentifier(String id) {
+        PartnerOrder order = PartnerOrderIdResolver.findByIdentifier(partnerOrderRepository, id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PARTNER_ORDER_NOT_FOUND,
+                        ErrorCode.PARTNER_ORDER_NOT_FOUND.getDefaultMessage()));
+        return listByOrder(order.getId());
     }
 }
