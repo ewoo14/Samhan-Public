@@ -201,6 +201,8 @@ export function InboundInspectionDialog({
       setSuccessMsg('검수 내용이 임시 저장되었습니다.')
       void qc.invalidateQueries({ queryKey: ['inbound-inspection', slipId] })
       void qc.invalidateQueries({ queryKey: ['inbound-inspections'] })
+      // 검수 저장 시 BE 가 슬립 상태를 INSPECTING 으로 전환하므로 구매관리 목록도 갱신.
+      void qc.invalidateQueries({ queryKey: ['slips', 'query', 'INBOUND'] })
     },
     onError: () => {
       setErrorMsg('검수 저장에 실패했습니다. 잠시 후 다시 시도하세요.')
@@ -436,17 +438,16 @@ export function InboundInspectionDialog({
                           style={{ padding: '8px 10px', minWidth: 160 }}
                           data-testid={`inbound-inspection-line-${lineTestId}-defect-reason-row`}
                         >
-                          <input
+                          <Input
                             type="text"
+                            inputSize="sm"
+                            fullWidth
                             value={line.defectReason}
                             placeholder={line.defectQty > 0 ? '불량 사유 입력 (필수)' : '—'}
                             disabled={isCompleted || isBusy || line.defectQty === 0}
                             aria-label={`${line.modelCode} 불량 사유`}
                             data-testid={`inbound-inspection-line-${lineTestId}-defect-reason`}
-                            style={{
-                              ...reasonInputStyle,
-                              borderColor: line.defectQty > 0 && !line.defectReason.trim() ? 'var(--color-danger-400)' : undefined,
-                            }}
+                            style={line.defectQty > 0 && !line.defectReason.trim() ? { borderColor: 'var(--color-danger-400)' } : undefined}
                             onChange={(e) =>
                               dispatch({ type: 'SET_REASON', lineId: line.lineId, value: e.target.value })
                             }
@@ -557,15 +558,6 @@ export function InboundInspectionDialog({
       ) : null}
     </>
   )
-}
-
-const reasonInputStyle: React.CSSProperties = {
-  width: '100%',
-  height: 32,
-  padding: '0 8px',
-  border: '1px solid var(--color-neutral-300)',
-  borderRadius: 4,
-  fontSize: 13,
 }
 
 // ---------------------------------------------------------------------------
