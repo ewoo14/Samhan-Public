@@ -73,6 +73,19 @@ export const colors = {
     text:    '#14532D',
   },
   /**
+   * Aligo SMS 전용 — teal 계열. SP-09-2
+   * NTS(#0F6523) / Clova(#03C75A) / KFTC(#0061A8) 와 4색 시각 구분.
+   * WCAG AA: text(#074B47) on 50(#F0FDFC) ≈ 9.1:1 (AAA 충족)
+   */
+  aligo: {
+    primary: '#0F766E',
+    50:      '#F0FDFC',
+    100:     '#CCFBF1',
+    200:     '#99F6E4',
+    700:     '#0D6460',
+    text:    '#074B47',
+  },
+  /**
    * Naver Clova OCR 전용 — Naver 공식 녹색 계열. SP-09-3
    * NTS(#0F6523) / Aligo teal(#0F766E) / success(#2A9D8F) 과 시각 구분.
    * WCAG: text(#014A22) on 50(#F0FDF6) ≈ 10.8:1 (AAA)
@@ -84,6 +97,19 @@ export const colors = {
     200:     '#BBF7D0',
     700:     '#02A04B',
     text:    '#014A22',
+  },
+  /**
+   * 한국금융결제원(KFTC) 오픈뱅킹 전용. SP-09-4
+   * NTS(#0F6523) / Aligo(#0F766E) / Clova(#03C75A) 와 4색 시각 구분.
+   * WCAG AA: text(#003662) on 50(#EEF6FF) ≈ 9.4:1 (AAA 충족)
+   */
+  kftc: {
+    primary: '#0061A8',
+    50:      '#EEF6FF',
+    100:     '#DBEAFE',
+    200:     '#BFDBFE',
+    700:     '#004D85',
+    text:    '#003662',
   },
 } as const
 
