@@ -1,15 +1,16 @@
 /**
- * 세금계산서 도메인 API 클라이언트 — P0-4.
+ * 세금계산서 도메인 API 클라이언트 — P0-4 / SP-09-1.
  *
- * <p>BE 출처: {@code services/accounting-service} commit f8b8b49 — TaxInvoiceController.
- * 6 endpoint 매핑:
+ * <p>BE 출처: {@code services/accounting-service} — TaxInvoiceController.
+ * 7 endpoint 매핑:
  * <ul>
- *   <li>{@code GET    /accounting/tax-invoices}             — 페이지 조회 (status / from / to / partnerId)</li>
- *   <li>{@code GET    /accounting/tax-invoices/{id}}        — 단건 + lines</li>
- *   <li>{@code POST   /accounting/tax-invoices}             — DRAFT 생성</li>
- *   <li>{@code PUT    /accounting/tax-invoices/{id}}        — DRAFT 수정 (헤더 + 라인 일괄)</li>
- *   <li>{@code POST   /accounting/tax-invoices/{id}/issue}  — DRAFT → ISSUED + 자동 분개 (110/255/400)</li>
- *   <li>{@code POST   /accounting/tax-invoices/{id}/cancel} — ISSUED → CANCELLED + 자동 역분개</li>
+ *   <li>{@code GET    /accounting/tax-invoices}                — 페이지 조회 (status / from / to / partnerId)</li>
+ *   <li>{@code GET    /accounting/tax-invoices/{id}}           — 단건 + lines</li>
+ *   <li>{@code POST   /accounting/tax-invoices}                — DRAFT 생성</li>
+ *   <li>{@code PUT    /accounting/tax-invoices/{id}}           — DRAFT 수정 (헤더 + 라인 일괄)</li>
+ *   <li>{@code POST   /accounting/tax-invoices/{id}/issue}     — DRAFT → ISSUED + 자동 분개 (110/255/400)</li>
+ *   <li>{@code POST   /accounting/tax-invoices/{id}/cancel}    — ISSUED → CANCELLED + 자동 역분개</li>
+ *   <li>{@code POST   /accounting/tax-invoices/{id}/emit-nts}  — ISSUED → 국세청 전자세금계산서 발행 (SP-09-1)</li>
  * </ul>
  *
  * <p>UUID 비공개 가드 ({@code feedback_uuid_no_user_visibility.md}):
@@ -23,6 +24,23 @@ import {
   type ApiEnvelope,
   type PageResponse,
 } from './client'
+
+/**
+ * BE 공통 오류 응답 envelope — {@code ApiResponse} 오류 필드 구조.
+ *
+ * <p>BE {@code GlobalExceptionHandler} 가 반환하는 오류 본문과 1:1.
+ * {@code code} = ErrorCode enum 문자열 (TAX_INVOICE_ALREADY_EMITTED 등).
+ * {@code message} = 한국어 사용자 메시지.
+ *
+ * <p>FE 에서 {@code err.response?.data as ApiErrorEnvelope} 로 캐스팅 후 사용.
+ * 동일 HTTP status 내 세부 ErrorCode 분기가 필요해지면 {@code code} 필드를 사용한다.
+ */
+export interface ApiErrorEnvelope {
+  /** ErrorCode enum 문자열 (예: TAX_INVOICE_ALREADY_EMITTED). 부재 시 undefined. */
+  code?: string
+  /** 한국어 사용자 메시지. */
+  message?: string
+}
 
 /** 세금계산서 상태 — BE TaxInvoiceStatus 와 1:1. */
 export type TaxInvoiceStatus = 'DRAFT' | 'ISSUED' | 'CANCELLED'
@@ -279,4 +297,71 @@ export async function getTaxInvoicePrintData(
 export function canAccessTaxInvoice(role: string | undefined | null): boolean {
   if (!role) return false
   return role === 'ACCOUNTANT' || role === 'MASTER'
+}
+
+// ---------------------------------------------------------------------------
+// SP-09-1: NTS e-tax 국세청 전자세금계산서 발행
+// ---------------------------------------------------------------------------
+
+/**
+ * 국세청 전자세금계산서 제출 방법.
+ *
+ * <p>BE {@code NtsSubmitMethod} enum 과 1:1 — BE {@code @Pattern(regexp = "DRY_RUN|NTS")}.
+ * <ul>
+ *   <li>{@code DRY_RUN} — 실제 발행 없이 유효성 검증만 수행 (기본값). 개발/테스트 전용.</li>
+ *   <li>{@code NTS}     — 국세청 API 실 호출. 운영 PC {@code .env.ops} 에서만 활성.</li>
+ * </ul>
+ */
+export type NtsSubmitMethod = 'DRY_RUN' | 'NTS'
+
+/**
+ * 국세청 전자세금계산서 발행 요청 — BE {@code EmitNtsRequest}.
+ *
+ * <p>SP-09-1 shell: BE ETaxClient 가 mock/sandbox 모드로 동작.
+ * BE {@code @NotNull} — {@code submitMethod} 는 필수이며 생략 불가.
+ */
+export interface EmitNtsRequest {
+  /** 제출 방법 — DRY_RUN (기본) / NTS (운영). BE @NotNull + @Pattern(DRY_RUN|NTS). */
+  submitMethod: NtsSubmitMethod
+}
+
+/**
+ * 국세청 전자세금계산서 발행 응답 — BE {@code EmitNtsResponse} record 5 필드.
+ *
+ * <p>BE {@code TaxInvoiceEmitService} 반환값과 정확히 일치.
+ * DRY_RUN 모드: {@code eTaxExternalId = "DRY-{taxInvoiceNo}-{epochMilli}"}.
+ */
+export interface EmitNtsResponse {
+  /** 세금계산서 번호 (사용자 노출 가능). */
+  taxInvoiceNo: string
+  /** 발행 후 상태 — 정상 발행 시 ISSUED 유지. */
+  status: TaxInvoiceStatus
+  /** 국세청 수신 ID (비즈니스 식별자, DRY_RUN 시 "DRY-..." 형식). */
+  eTaxExternalId: string
+  /** 발행 시각 ISO-8601 (Instant → JSON). */
+  submittedAt: string
+  /** 제출 방법 — DRY_RUN 또는 NTS. */
+  submitMethod: NtsSubmitMethod
+}
+
+/**
+ * ISSUED 상태 세금계산서를 국세청에 전자세금계산서로 발행한다.
+ *
+ * <p>POST {@code /accounting/tax-invoices/{id}/emit-nts}
+ * <p>권한: ACCOUNTANT / MASTER 만 허용 (BE PreAuthorize 동일).
+ * <p>SP-09-1 shell — BE ETaxClient mock 모드. 실 발행은 운영 `.env.ops` 키 활성 후 NTS.
+ *
+ * @param id           세금계산서 UUID (path param 전용 — 사용자 미노출).
+ * @param submitMethod 제출 방법 (생략 시 DRY_RUN; 운영 실 발행 시 NTS).
+ */
+export async function emitTaxInvoiceToNts(
+  id: string,
+  submitMethod: NtsSubmitMethod = 'DRY_RUN',
+): Promise<EmitNtsResponse> {
+  const body: EmitNtsRequest = { submitMethod }
+  const res = await apiClient.post<ApiEnvelope<EmitNtsResponse>>(
+    `/accounting/tax-invoices/${id}/emit-nts`,
+    body,
+  )
+  return res.data.data
 }
