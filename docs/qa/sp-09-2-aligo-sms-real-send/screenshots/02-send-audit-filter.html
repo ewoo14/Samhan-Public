@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>SP-09-2 #02 Aligo SMS 발송 이력 — 날짜 범위 + 결과 상태 필터 적용 (부분실패)</title>
+<!--
+  [BATCH AUDIT 목록 — 필터 적용 상태]
+  필터 조건: 2026-05-13 ~ 2026-05-18 · 결과: 부분실패
+  실제 TSX: 날짜 범위 + resultFilter 클라이언트 측 필터링
+-->
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    margin: 0; padding: 24px;
+    background: #F5F7FA;
+    color: #1F2937;
+    -webkit-font-smoothing: antialiased;
+  }
+  :root {
+    --color-neutral-50: #F9FAFB;
+    --color-neutral-100: #F3F4F6;
+    --color-neutral-200: #E5E7EB;
+    --color-neutral-300: #D1D5DB;
+    --color-neutral-400: #9CA3AF;
+    --color-neutral-500: #6B7280;
+    --color-neutral-700: #374151;
+    --color-neutral-900: #111827;
+    --state-danger: #B91C1C;
+    --state-danger-bg: #FEF2F2;
+    --surface-card: #ffffff;
+  }
+  .frame { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .header-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .page-title { font-size: 18px; font-weight: 600; color: var(--color-neutral-900); margin: 0; }
+  .notice { font-size: 12px; color: var(--color-neutral-500); }
+
+  /* 필터 카드 — 활성 상태 */
+  .filter-card { background: var(--surface-card); border: 1px solid var(--color-neutral-200); border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .filter-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-label { font-size: 12px; font-weight: 500; color: var(--color-neutral-700); }
+  /* 활성 필터 input — design-system Input sm 스타일 */
+  .filter-input { height: 32px; padding: 0 10px; border: 1px solid #2D77A8; border-radius: 6px; font-size: 13px; background: #fff; color: var(--color-neutral-900); box-shadow: 0 0 0 2px rgba(45,119,168,0.14); }
+  .filter-select { height: 32px; padding: 0 8px; border: 1px solid #2D77A8; border-radius: 6px; font-size: 13px; font-family: inherit; background: #EFF6FF; color: #1D4ED8; font-weight: 600; box-shadow: 0 0 0 2px rgba(45,119,168,0.12); min-width: 120px; cursor: pointer; }
+  .btn-primary { height: 32px; padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: #2D77A8; color: #fff; }
+
+  /* 테이블 카드 */
+  .table-card { background: var(--surface-card); border: 1px solid var(--color-neutral-200); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    background: var(--color-neutral-50);
+    padding: 10px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-neutral-700);
+    border-bottom: 1px solid var(--color-neutral-200);
+    white-space: nowrap;
+  }
+  thead th.r { text-align: right; }
+  thead th.c { text-align: center; }
+  tbody tr { border-bottom: 1px solid var(--color-neutral-100); cursor: pointer; transition: background 0.1s; }
+  tbody tr:hover { background: #F0F9FF; }
+  tbody td { padding: 11px 16px; color: var(--color-neutral-700); vertical-align: middle; }
+  tbody td.r { text-align: right; }
+  tbody td.c { text-align: center; }
+
+  .date-primary { color: var(--color-neutral-900); font-weight: 500; white-space: nowrap; }
+  .time-secondary { color: var(--color-neutral-500); font-size: 12px; white-space: nowrap; }
+  .executor { color: var(--color-neutral-700); }
+
+  /* Badge */
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .badge.success { background: #CCFBF1; color: #0F766E; border: 1px solid #99F6E4; }
+  .badge.fail    { background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
+  .badge.warn    { background: #FEF9C3; color: #92400E; border: 1px solid #FDE68A; }
+  .badge.partial { background: #FFF7ED; color: #C2410C; border: 1px solid #FDBA74; }
+  .count-zero { color: var(--color-neutral-400); font-size: 13px; }
+
+  /* 보기 버튼 */
+  .btn-ghost { background: none; border: 1px solid var(--color-neutral-300); border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 500; color: var(--color-neutral-700); cursor: pointer; white-space: nowrap; }
+
+  /* 빈 상태 */
+  .empty-state { padding: 40px 24px; text-align: center; color: var(--color-neutral-400); font-size: 14px; }
+
+  /* 필터 결과 카운트 바 */
+  .result-count-bar { padding: 8px 16px; background: #EFF6FF; border-bottom: 1px solid #BFDBFE; font-size: 13px; color: #374151; }
+  .result-count-bar .highlight { color: #1D4ED8; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="header-row">
+    <h3 class="page-title">SMS 발송 이력</h3>
+    <span class="notice">SEND_AUDIT — 발송 시점 자동 append-only 저장</span>
+  </div>
+
+  <!-- 필터 카드 — 날짜 범위 + 부분실패 선택 -->
+  <div class="filter-card">
+    <div class="filter-row">
+      <div class="filter-group">
+        <label class="filter-label" for="filter-from">기간 시작</label>
+        <input class="filter-input" id="filter-from" type="date" value="2026-05-13" readonly />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label" for="filter-to">기간 종료</label>
+        <input class="filter-input" id="filter-to" type="date" value="2026-05-18" readonly />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label" for="filter-result">결과 상태</label>
+        <select class="filter-select" id="filter-result">
+          <option value="ALL">전체</option>
+          <option value="SUCCESS">성공</option>
+          <option value="PARTIAL" selected>부분실패</option>
+          <option value="FAIL">실패</option>
+        </select>
+      </div>
+      <div style="align-self: flex-end;">
+        <button class="btn-primary">조회</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 테이블 카드 -->
+  <div class="table-card">
+    <div class="result-count-bar">
+      필터 결과 <span class="highlight">2</span> 건 / 기간 내 전체 6 건 (결과: 부분실패)
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:110px;">배차일</th>
+          <th style="width:150px;">발송시각</th>
+          <th style="width:100px;">실행자</th>
+          <th style="width:70px;" class="r">성공</th>
+          <th style="width:70px;" class="r">실패</th>
+          <th style="width:80px;" class="r">발송금지</th>
+          <th style="width:100px;" class="c">결과</th>
+          <th style="width:70px;" class="c">상세</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="date-primary">2026-05-17</span></td>
+          <td><span class="time-secondary">2026-05-17 16:30</span></td>
+          <td class="executor">박매니저</td>
+          <td class="r"><span class="badge success">9</span></td>
+          <td class="r"><span class="badge fail">2</span></td>
+          <td class="r"><span class="count-zero">0</span></td>
+          <td class="c"><span class="badge partial">부분실패</span></td>
+          <td class="c"><button class="btn-ghost">보기</button></td>
+        </tr>
+        <tr>
+          <td><span class="date-primary">2026-05-13</span></td>
+          <td><span class="time-secondary">2026-05-13 11:20</span></td>
+          <td class="executor">김마스터</td>
+          <td class="r"><span class="badge success">8</span></td>
+          <td class="r"><span class="badge fail">1</span></td>
+          <td class="r"><span class="badge warn">2</span></td>
+          <td class="c"><span class="badge partial">부분실패</span></td>
+          <td class="c"><button class="btn-ghost">보기</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

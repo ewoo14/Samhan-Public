@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>SP-09-2 #04 Aligo SMS 발송 이력 — 실패 배치 상세 modal</title>
+<!--
+  [BATCH AUDIT 실패 상세 modal]
+  배경: 01-send-audit-list 배치 목록 (필터: 실패만, 흐림)
+  modal: 배차일 2026-05-15 행 보기 클릭 → 실패 AuditDetailModal
+    header: 적색 계열
+    body: fail-banner (role="alert" 적용) + per-message DataTable (실패 rows)
+  aria: role="dialog" aria-modal="true" aria-labelledby="m-title"
+        fail-banner: role="alert" (Claude M-D-04 결함 fix)
+  재발송 버튼: 미구현 — disabled + title tooltip 표시 (Codex MEDIUM 권고 반영)
+-->
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    margin: 0; padding: 0;
+    background: #F5F7FA;
+    color: #1F2937;
+    -webkit-font-smoothing: antialiased;
+    min-height: 820px;
+  }
+  :root {
+    --color-neutral-50: #F9FAFB;
+    --color-neutral-100: #F3F4F6;
+    --color-neutral-200: #E5E7EB;
+    --color-neutral-300: #D1D5DB;
+    --color-neutral-400: #9CA3AF;
+    --color-neutral-500: #6B7280;
+    --color-neutral-700: #374151;
+    --color-neutral-900: #111827;
+    --state-danger: #B91C1C;
+    --state-danger-bg: #FEF2F2;
+  }
+
+  /* 흐림 배경 */
+  .bg-page { padding: 24px; min-height: 820px; position: relative; }
+  .bg-frame {
+    max-width: 1200px; margin: 0 auto; background: #fff;
+    border: 1px solid #E5E7EB; border-radius: 8px;
+    opacity: 0.3; pointer-events: none;
+  }
+  .bg-header { padding: 12px 16px; border-bottom: 1px solid #E5E7EB; }
+  .bg-title { font-size: 18px; font-weight: 600; color: #111827; }
+  .bg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .bg-table th { background: #F9FAFB; padding: 10px 16px; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB; }
+  .bg-table td { padding: 11px 16px; border-bottom: 1px solid #F3F4F6; color: #374151; }
+  .bg-table tr.fail-row { background: #FFF5F5; }
+  .badge-sm { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .badge-sm.fail { background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
+
+  /* 모달 오버레이 */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(17,24,39,0.52);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .modal {
+    width: 680px; background: #fff; border-radius: 10px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+    overflow: hidden; max-height: 90vh;
+    display: flex; flex-direction: column;
+  }
+
+  /* 모달 헤더 — 실패 적색 */
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 20px 24px 14px;
+    border-bottom: 2px solid #B91C1C;
+    background: #FFF5F5;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; color: #7F1D1D; }
+  .modal-sub { font-size: 12px; color: #9CA3AF; margin-top: 3px; }
+  .modal-close { background: none; border: none; font-size: 20px; color: #9CA3AF; cursor: pointer; line-height: 1; padding: 2px; }
+
+  /* 모달 바디 */
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+  /* 실패 알림 배너 — role="alert" 적용 (Claude M-D-04 fix) */
+  .fail-banner {
+    display: flex; gap: 12px;
+    background: var(--state-danger-bg);
+    border: 1px solid #FECACA;
+    border-radius: 8px; padding: 14px 16px;
+    align-items: flex-start;
+  }
+  .fail-icon { font-size: 22px; flex-shrink: 0; line-height: 1.2; }
+  .fail-title { font-size: 14px; font-weight: 700; color: var(--state-danger); margin-bottom: 4px; }
+  .fail-desc { font-size: 13px; color: #7F1D1D; line-height: 1.5; }
+
+  /* 발송 메타 */
+  .meta-row {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    font-size: 13px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-neutral-200);
+  }
+  .meta-row span { color: var(--color-neutral-700); }
+  .meta-row strong { color: var(--color-neutral-900); }
+
+  /* 집계 Badge */
+  .count-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .badge.success { background: #CCFBF1; color: #0F766E; border: 1px solid #99F6E4; }
+  .badge.fail    { background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
+
+  /* 수신자별 결과 DataTable */
+  .detail-table-wrap { overflow-x: auto; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .detail-table th {
+    background: var(--color-neutral-50);
+    padding: 8px 12px; text-align: left; font-weight: 600;
+    color: var(--color-neutral-700); border-bottom: 1px solid var(--color-neutral-200);
+    white-space: nowrap;
+  }
+  .detail-table th.c { text-align: center; }
+  .detail-table td {
+    padding: 9px 12px; border-bottom: 1px solid var(--color-neutral-100);
+    color: var(--color-neutral-700); vertical-align: middle;
+  }
+  .detail-table td.c { text-align: center; }
+  .mask {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 13px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+  }
+  .reason-fail { color: #B91C1C; font-size: 12px; }
+
+  /* 조치 안내 박스 */
+  .action-box {
+    background: #FFFBEB; border: 1px solid #FDE68A;
+    border-radius: 6px; padding: 12px 16px;
+    font-size: 13px; color: #78350F; line-height: 1.6;
+  }
+  .action-box strong { display: block; font-weight: 700; color: #92400E; margin-bottom: 4px; }
+
+  /* 모달 푸터 */
+  .modal-foot {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 24px; background: var(--color-neutral-50);
+    border-top: 1px solid var(--color-neutral-200); flex-shrink: 0;
+  }
+  .btn-outline {
+    padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    cursor: pointer; background: #fff; color: var(--color-neutral-700);
+    border: 1px solid var(--color-neutral-300);
+  }
+  /* 재발송 버튼 — 미구현 상태 disabled */
+  .btn-disabled {
+    padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    cursor: not-allowed; background: var(--color-neutral-100);
+    color: var(--color-neutral-400); border: 1px solid var(--color-neutral-200);
+    opacity: 0.7;
+  }
+</style>
+</head>
+<body>
+<div class="bg-page">
+  <!-- 흐림 배경: 실패만 필터 적용된 배치 목록 -->
+  <div class="bg-frame">
+    <div class="bg-header">
+      <div style="font-size:12px; color:#6B7280; margin-bottom:4px;">알림 / SMS / 발송 이력</div>
+      <div class="bg-title">SMS 발송 이력</div>
+    </div>
+    <table class="bg-table">
+      <thead>
+        <tr>
+          <th>배차일</th><th>발송시각</th><th>실행자</th>
+          <th>성공</th><th>실패</th><th>발송금지</th><th>결과</th><th>상세</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="fail-row">
+          <td>2026-05-15</td><td>2026-05-15 09:45</td><td>이드라이버</td>
+          <td style="color:#9CA3AF;">0</td>
+          <td><span class="badge-sm fail">7</span></td>
+          <td style="color:#9CA3AF;">0</td>
+          <td><span class="badge-sm fail">실패</span></td>
+          <td style="color:#2D77A8; font-weight:600; font-size:12px;">보기</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 실패 상세 Modal -->
+  <div class="overlay">
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="m-title"
+      data-testid="dispatch-sms-send-audit-detail-modal"
+    >
+
+      <div class="modal-head">
+        <div>
+          <!-- id="m-title" 이 aria-labelledby 참조 대상 -->
+          <div id="m-title" class="modal-title">SMS 발송 실패 상세</div>
+          <div class="modal-sub">배차일 2026-05-15 · 발송시각 2026-05-15 09:45:10</div>
+        </div>
+        <button class="modal-close" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- 실패 알림 배너 — role="alert" (Claude M-D-04 fix) -->
+        <div class="fail-banner" role="alert">
+          <div class="fail-icon">&#9888;</div>
+          <div>
+            <div class="fail-title">Aligo API 발송 실패 — 전체 7건 실패</div>
+            <div class="fail-desc">
+              수신번호 형식 오류 또는 Aligo API 거부.<br>
+              수신번호를 확인 후 거래처 수정 화면에서 올바른 번호로 수정하거나 관리자에게 문의하세요.
+            </div>
+          </div>
+        </div>
+
+        <!-- 발송 메타 -->
+        <div class="meta-row">
+          <span>배차일: <strong>2026-05-15</strong></span>
+          <span>발송시각: <strong>2026-05-15 09:45:10</strong></span>
+          <span>실행자: <strong>이드라이버</strong></span>
+        </div>
+
+        <!-- 집계 Badge -->
+        <div class="count-row">
+          <span class="badge fail">실패 7건</span>
+        </div>
+
+        <!-- 수신자별 결과 DataTable — 실패 rows -->
+        <div class="detail-table-wrap">
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th style="width:120px;">거래처코드</th>
+                <th style="width:160px;">수신번호</th>
+                <th style="width:90px;" class="c">결과</th>
+                <th>사유</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>P010</td>
+                <td><span class="mask">010-****-9012</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+              <tr>
+                <td>P011</td>
+                <td><span class="mask">010-****-1122</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+              <tr>
+                <td>P012</td>
+                <td><span class="mask">010-****-3344</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+              <tr>
+                <td>P013</td>
+                <td><span class="mask">010-****-5566</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+              <tr>
+                <td>P014</td>
+                <td><span class="mask">010-****-7788</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+              <tr>
+                <td>P015</td>
+                <td><span class="mask">010-****-9900</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+              <tr>
+                <td>P016</td>
+                <td><span class="mask">010-****-1234</span></td>
+                <td class="c"><span class="badge fail">실패</span></td>
+                <td><span class="reason-fail">수신번호 형식 오류 (-101)</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 조치 안내 -->
+        <div class="action-box">
+          <strong>조치 방법</strong>
+          수신번호 형식 오류(-101)는 발신 대상 번호 데이터를 확인해야 합니다.
+          거래처 수정 화면에서 올바른 번호로 수정 후 배차 SMS 재발송을 시도하세요.
+          반복 실패 시 관리자에게 문의하세요.
+        </div>
+
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn-outline">닫기</button>
+        <!-- 재발송: BE API 미구현 — disabled 표시 (Codex MEDIUM 권고 반영) -->
+        <button
+          class="btn-disabled"
+          disabled
+          title="재발송 기능은 현재 미구현 상태입니다. 관리자에게 문의하세요."
+          aria-disabled="true"
+        >
+          재발송 시도 (미구현)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
