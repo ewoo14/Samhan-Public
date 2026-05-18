@@ -5,7 +5,7 @@
  * 역할(행) × 페이지(열) 체크박스 그리드로 권한을 시각적으로 관리.
  *
  * 기능:
- * - 7 역할 × 12 페이지 코드 = 최대 84 셀 (view / edit 체크박스 2개)
+ * - 7 역할 × 19 페이지 코드 = 최대 133 셀 (view / edit 체크박스 2개)
  * - 셀 변경 시 dirty 상태 강조 (노란 배경)
  * - "저장" 버튼 → 변경된 셀만 batch update API 호출 + toast
  * - "초기화" 버튼 → 서버 데이터로 롤백 (dirty 취소)
@@ -64,10 +64,13 @@ const ROLE_LABEL: Record<RbacRole, string> = {
 }
 
 /**
- * 페이지 코드 12개 표시 순서 — BE PageCode enum dot-separated code 와 1:1.
- * SP-D1 cycle 2 fix: 대문자 상수에서 BE dot-separated 코드로 교체.
+ * 페이지 코드 19개 표시 순서 — BE PageCode enum dot-separated code 와 1:1.
+ * SP-D1: 12개 초기 등록.
+ * SP-D2: 회계 7개 신규 추가 (accounts / journals / balances / reports /
+ *         period-close / statement-batch / partner-ledger).
  */
 const PAGES_ORDER: PageCode[] = [
+  // SP-D1 12개
   'accounting.tax-invoice.emit-nts',
   'accounting.tax-invoice.list',
   'accounting.deposit-match',
@@ -80,10 +83,19 @@ const PAGES_ORDER: PageCode[] = [
   'inbound.inspection',
   'dispatch.board',
   'admin.permissions',
+  // SP-D2 회계 7개 신규
+  'accounting.accounts',
+  'accounting.journals',
+  'accounting.balances',
+  'accounting.reports',
+  'accounting.period-close',
+  'accounting.statement-batch',
+  'accounting.partner-ledger',
 ]
 
 /** 페이지 코드 한국어 라벨. */
 const PAGE_LABEL: Record<PageCode, string> = {
+  // SP-D1 12개
   'accounting.tax-invoice.emit-nts': 'NTS 발행',
   'accounting.tax-invoice.list': '세금계산서 목록',
   'accounting.deposit-match': '입금 매칭',
@@ -96,6 +108,14 @@ const PAGE_LABEL: Record<PageCode, string> = {
   'inbound.inspection': '입고 검수',
   'dispatch.board': '배차 보드',
   'admin.permissions': '권한 관리',
+  // SP-D2 회계 7개 신규
+  'accounting.accounts': '계정과목',
+  'accounting.journals': '분개장',
+  'accounting.balances': '시산표',
+  'accounting.reports': '재무 보고서',
+  'accounting.period-close': '월말 마감',
+  'accounting.statement-batch': '거래명세서 일괄',
+  'accounting.partner-ledger': '거래처 원장',
 }
 
 /** edit 액션이 의미 있는 페이지 코드 목록. 나머지는 view 만 표시. */
