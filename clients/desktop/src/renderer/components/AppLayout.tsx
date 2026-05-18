@@ -33,6 +33,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { canInspectInbound, useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { canAccessAccounting } from '../api/accounting'
+// [SP-D1 cycle 2] 동적 RBAC 권한 훅 — 사이드바 메뉴 동적 hidden 연동.
+import { usePermissions } from '../hooks/usePermissions'
 import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
 // [Phase 10 PR-E1 FE-2/FE-3] arologis 가배차 분류 + 미배차 리스트 — MASTER/MANAGER/DISPATCH
 import {
@@ -74,44 +76,34 @@ import { canAccessDeliveryBatch } from '../api/delivery'
 import { canAccessPartnerDcConfig } from '../api/sales'
 
 /**
- * 사이드바 NavLink disabled 래퍼.
+ * 사이드바 NavLink — 권한 없으면 완전 미렌더 (hidden).
  *
- * <p>show=true 시 일반 NavLink, false 시 회색 disabled 처리 + tooltip.
- * pointer-events:none 은 CSS(.sidebar-disabled) 가 담당하고,
- * onClick preventDefault 를 이중 방어로 적용한다.
+ * SP-D1 정책: 권한 없는 메뉴는 회색 비활성화가 아닌 완전 미노출.
+ * show=false 시 null 반환 — DOM 에 렌더되지 않음.
  *
- * @param show - 권한 보유 여부 (false 시 disabled)
- * @param requiredRole - tooltip 에 표시할 필요 ROLE 설명 (선택)
+ * @param show - 권한 보유 여부 (false 시 미렌더)
  */
 function SidebarLink({
   to,
   show,
-  requiredRole,
   'data-testid': testId,
   style,
   children,
 }: {
   to: string
   show: boolean
+  /** @deprecated SP-D1 hidden 정책으로 tooltip 미사용. 하위호환 유지용. */
   requiredRole?: string
   'data-testid'?: string
   style?: React.CSSProperties
   children: React.ReactNode
 }) {
-  const disabledTitle = requiredRole
-    ? `권한이 없습니다 (필요 ROLE: ${requiredRole})`
-    : '권한이 없습니다'
+  if (!show) return null
 
   return (
     <NavLink
       to={to}
       data-testid={testId}
-      className={show ? undefined : 'sidebar-disabled'}
-      aria-disabled={show ? undefined : true}
-      title={show ? undefined : disabledTitle}
-      onClick={(e) => {
-        if (!show) e.preventDefault()
-      }}
       style={style}
     >
       {children}
@@ -153,6 +145,9 @@ export function AppLayout() {
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // [SP-D1 cycle 2] 동적 RBAC 권한 훅 — 5분 캐시. 사이드바 메뉴 hidden 연동.
+  const { canAccess: dynamicCanAccess } = usePermissions()
 
   // [P1-3] 안전재고 알림 건수 — 헤더 배지 + 60초 polling
   const [safetyStockCount, setSafetyStockCount] = useState(0)
@@ -270,11 +265,10 @@ export function AppLayout() {
   // [PR-F2 Designer mock] vendor 발주서 OCR 업로드 entry — SALES / MANAGER / MASTER (영업 그룹).
   const showVendorOrderOcr = !!auth?.role
     && (VENDOR_ORDER_OCR_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
-  // [SP-09-3] 영수증 OCR 업로드 entry — WAREHOUSE / ACCOUNTANT / MANAGER / MASTER (구매 그룹).
-  // 사용자 정정 2026-05-18: ACCOUNTANT 추가.
-  const RECEIPT_OCR_SIDEBAR_ROLES = ['WAREHOUSE', 'ACCOUNTANT', 'MANAGER', 'MASTER'] as const
-  const showReceiptOcr = !!auth?.role
-    && (RECEIPT_OCR_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
+  // [SP-09-3 + SP-D1 cycle 2] 영수증 OCR 업로드 entry — 동적 RBAC 권한 연동.
+  // 기존 정적 역할 체크(WAREHOUSE/ACCOUNTANT/MANAGER/MASTER) → purchases.receipt-ocr 동적 canAccess 로 전환.
+  // dynamicCanAccess 는 로딩 중 true(보수적 허용) → 캐시 완료 후 DB 값 적용.
+  const showReceiptOcr = dynamicCanAccess('purchases.receipt-ocr', 'view')
   const showChatRoomAdmin = canAccessChatRoomAdmin(auth?.role)
 
   // [Slice 2] admin GAS 이식 — 일반 카테고리 병행 노출
@@ -288,9 +282,9 @@ export function AppLayout() {
     && (BLOCKED_PARTNERS_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
   const showPartnerManagement = canAccessPartnerFull(auth?.role)
   const showPartnerDcConfig = canAccessPartnerDcConfig(auth?.role)
-  // [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH/MANAGER/MASTER 가시.
-  const showDispatchBoard = !!auth?.role
-    && (DISPATCH_BOARD_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
+  // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 메뉴 — 동적 RBAC 권한 연동.
+  // 기존 정적 역할 체크 → dispatch.board 동적 canAccess 로 전환.
+  const showDispatchBoard = dynamicCanAccess('dispatch.board', 'view')
 
   return (
     <div className="app-shell">
@@ -933,33 +927,38 @@ export function AppLayout() {
             disabled 시 tooltip: "대표실 부서 권한자만 접근 가능".
             활성 시 AdminLayout (/admin/users) 로 진입.
           */}
-          <div
-            className="app-sidebar-group"
-            aria-hidden="true"
-            style={{
-              marginTop: 16,
-              padding: '4px 8px',
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--color-neutral-400)',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-            }}
-          >
-            인사
-          </div>
-          <NavLink
-            to="/admin/users"
-            data-testid="sidebar-hr-users"
-            className={showAdmin ? undefined : 'sidebar-disabled'}
-            aria-disabled={showAdmin ? undefined : true}
-            title={showAdmin ? undefined : '대표실 부서 권한자만 접근 가능'}
-            onClick={(e) => {
-              if (!showAdmin) e.preventDefault()
-            }}
-          >
-            인사 관리
-          </NavLink>
+          {/* SP-D1: 인사 카테고리 — MASTER 만 가시. 권한 없으면 완전 미노출. */}
+          {showAdmin ? (
+            <>
+              <div
+                className="app-sidebar-group"
+                aria-hidden="true"
+                style={{
+                  marginTop: 16,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--color-neutral-400)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                인사
+              </div>
+              <NavLink
+                to="/admin/users"
+                data-testid="sidebar-hr-users"
+              >
+                인사 관리
+              </NavLink>
+              <NavLink
+                to="/admin/permission-matrix"
+                data-testid="sidebar-hr-permission-matrix"
+              >
+                권한 매트릭스
+              </NavLink>
+            </>
+          ) : null}
         </nav>
         <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--color-neutral-500)' }}>
           v0.1.0 · 사내 전용
