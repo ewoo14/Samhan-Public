@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.report;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.security.permission.RequirePermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -9,7 +10,6 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,7 +39,6 @@ public class CashFlowStatementController {
     private static final DateTimeFormatter PERIOD_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final CashFlowStatementService cashFlowStatementService;
-    private final ReportPermissionGuard reportPermissionGuard;
 
     /**
      * 현금흐름표 조회 — 단월 또는 기간.
@@ -63,7 +62,7 @@ public class CashFlowStatementController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "파라미터 오류")
     })
     @GetMapping("/cash-flow")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','MANAGER','MASTER')")
+    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = "VIEW")
     public ApiResponse<CashFlowStatementResponse> cashFlow(
             @Parameter(description = "단월 기간 (yyyyMM)")
             @RequestParam(required = false) String period,
@@ -72,7 +71,6 @@ public class CashFlowStatementController {
             @Parameter(description = "기간 종료 월 (yyyyMM)")
             @RequestParam(required = false) String toPeriod,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        reportPermissionGuard.checkView(roleHeader);
 
         if (period != null && !period.isBlank()) {
             YearMonth ym = parsePeriod(period, "period");

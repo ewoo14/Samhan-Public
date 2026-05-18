@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.report;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.security.permission.RequirePermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -8,7 +9,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,7 +36,6 @@ public class EquityChangesController {
     private static final String ROLE_HEADER = "X-User-Role";
 
     private final EquityChangesService equityChangesService;
-    private final ReportPermissionGuard reportPermissionGuard;
 
     /**
      * 자본변동표 조회.
@@ -55,14 +54,13 @@ public class EquityChangesController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "파라미터 오류")
     })
     @GetMapping("/equity-changes")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','MANAGER','MASTER')")
+    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = "VIEW")
     public ApiResponse<EquityChangesResponse> equityChanges(
             @Parameter(description = "기간 시작 일자 (YYYY-MM-DD)")
             @RequestParam String fromDate,
             @Parameter(description = "기간 종료 일자 (YYYY-MM-DD)")
             @RequestParam String toDate,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        reportPermissionGuard.checkView(roleHeader);
 
         LocalDate from = parseDate(fromDate, "fromDate");
         LocalDate to = parseDate(toDate, "toDate");
