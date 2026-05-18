@@ -114,7 +114,20 @@ public enum ErrorCode {
      * 입금 조회 기간 오류 — from 일자가 to 일자보다 늦을 때 422 반환 (SP-09-4).
      */
     DEPOSIT_DATE_RANGE_INVALID(HttpStatus.UNPROCESSABLE_ENTITY,
-            "조회 시작일이 종료일보다 늦을 수 없습니다.");
+            "조회 시작일이 종료일보다 늦을 수 없습니다."),
+    /**
+     * 인성데이타 퀵프로그램 API 미설정 또는 placeholder 사용 — 실 API 키 미주입 시 502 반환 (SP-10-2).
+     *
+     * <p>blank / 6 placeholder 키워드 ({@code PLACEHOLDER_DEV_ONLY} / {@code CHANGE_ME_LOCAL_ONLY} /
+     * {@code changeme} / {@code dummy} / {@code placeholder}) 차단.
+     */
+    INSUNG_QUICK_NOT_CONFIGURED(HttpStatus.BAD_GATEWAY,
+            "인성데이타 퀵프로그램 API 키가 설정되지 않았습니다. 환경변수를 확인해주세요."),
+    /**
+     * 인성데이타 퀵프로그램 외부 API 호출 실패 — 5xx/network 런타임 오류 시 502 반환 (SP-10-2).
+     */
+    INSUNG_QUICK_SUBMIT_FAILED(HttpStatus.BAD_GATEWAY,
+            "인성데이타 퀵프로그램 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus httpStatus;
     private final String defaultMessage;

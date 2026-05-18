@@ -13,10 +13,16 @@
  * `ProtectedRoute` 가 토큰 부재 시 `/login` 으로 강제 리다이렉트한다.
  */
 import {
+  useEffect,
+  useState,
+} from 'react'
+import {
   createHashRouter,
   Navigate,
   RouterProvider,
+  useParams,
 } from 'react-router-dom'
+import { apiClient, type ApiEnvelope } from '../api/client'
 import { AppLayout } from '../components/AppLayout'
 import { ProtectedRoute } from '../components/ProtectedRoute'
 import { LoginPage } from './login/LoginPage'
@@ -26,6 +32,66 @@ import { ArologisManualDispatchPage } from './dispatches/ManualDispatchPage'
 import { ArologisPreClassifyPage } from './dispatches/PreClassifyPage'
 import { ArologisUnassignedPage } from './dispatches/UnassignedPage'
 import { ArologisDispatchReconcilePage } from './dispatches/DispatchReconcilePage'
+import {
+  DispatchDetailPage,
+  type DispatchDetail,
+} from './dispatches/DispatchDetailPage'
+
+/**
+ * DispatchDetailPage 라우트 래퍼 — URL params 에서 dispatchCode 를 추출.
+ * QA Playwright page.route() mock 과 실 BE endpoint 양쪽에서 동일한 fetch 경로를 사용한다.
+ *
+ * SP-10-2 TM cross-check cycle 2: orphan → router mount 연결.
+ * SP-10-2 TM cross-check cycle 3: loadError state 분리 (Cycle 2 FE-C2-1 P1 fix).
+ * fetch 실패 시 사용자가 "배차 정보를 불러오는 중..." 영구 노출되는 회귀 방지.
+ */
+function DispatchDetailRouteWrapper(): JSX.Element {
+  // dispatchCode 는 라우팅 용도 전용 — 사용자 화면 노출 X (UUID 비공개 원칙 적용)
+  const { dispatchCode } = useParams<{ dispatchCode: string }>()
+  const [dispatch, setDispatch] = useState<DispatchDetail | null>(null)
+  const [loadError, setLoadError] = useState<boolean>(false)
+
+  useEffect(() => {
+    if (!dispatchCode) {
+      setDispatch(null)
+      setLoadError(false)
+      return
+    }
+
+    let cancelled = false
+    setDispatch(null)
+    setLoadError(false)
+
+    apiClient
+      .get<DispatchDetail | ApiEnvelope<DispatchDetail>>(
+        `/api/arologis/dispatches/${encodeURIComponent(dispatchCode)}`,
+      )
+      .then((res) => {
+        const body = res.data
+        const nextDispatch =
+          body && typeof body === 'object' && 'data' in body
+            ? (body as ApiEnvelope<DispatchDetail>).data
+            : (body as DispatchDetail)
+        if (!cancelled) {
+          setDispatch(nextDispatch)
+          setLoadError(false)
+        }
+      })
+      .catch((err) => {
+        console.error('[DispatchDetailRouteWrapper] 배차 상세 조회 실패', err)
+        if (!cancelled) {
+          setDispatch(null)
+          setLoadError(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dispatchCode])
+
+  return <DispatchDetailPage dispatch={dispatch} loadError={loadError} />
+}
 
 const router = createHashRouter([
   { path: '/login', element: <LoginPage /> },
@@ -47,6 +113,8 @@ const router = createHashRouter([
           { path: 'pre-classify', element: <ArologisPreClassifyPage /> },
           { path: 'unassigned', element: <ArologisUnassignedPage /> },
           { path: 'reconcile', element: <ArologisDispatchReconcilePage /> },
+          // SP-10-2 FE-3/FE-4: 배차 상세 페이지 — 사이드바 links 배열 변경 없음
+          { path: 'detail/:dispatchCode', element: <DispatchDetailRouteWrapper /> },
         ],
       },
       { path: 'drivers', element: <DriverManagementPage /> },
