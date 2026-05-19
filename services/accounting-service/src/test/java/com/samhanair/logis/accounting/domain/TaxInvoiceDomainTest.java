@@ -33,6 +33,7 @@ class TaxInvoiceDomainTest {
         TaxInvoice ti = newDraft();
 
         assertThat(ti.getStatus()).isEqualTo(TaxInvoiceStatus.DRAFT);
+        assertThat(ti.getDirection()).isEqualTo(TaxInvoiceDirection.OUTBOUND);
         assertThat(ti.getTaxInvoiceNo()).isNull();
         assertThat(ti.getSupplyAmount()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(ti.getVatAmount()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -62,6 +63,33 @@ class TaxInvoiceDomainTest {
         assertThatThrownBy(() -> ti.issue("20260504-0001", "user-A"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("라인이 1개 이상");
+    }
+
+    @Test
+    @DisplayName("markReceived — INBOUND DRAFT만 ISSUED 전이하고 OUTBOUND 자동분개는 만들지 않음")
+    void markReceivedSuccess() {
+        TaxInvoice ti = TaxInvoice.createInbound("20260504-9001", TODAY,
+                UUID.randomUUID(), "P-001", "테스트거래처", "123-45-67890",
+                new BigDecimal("100000.00"), new BigDecimal("10000.00"),
+                new BigDecimal("110000.00"), "source-user");
+
+        ti.markReceived("receiver-A");
+
+        assertThat(ti.getStatus()).isEqualTo(TaxInvoiceStatus.ISSUED);
+        assertThat(ti.getIssuedBy()).isEqualTo("receiver-A");
+        assertThat(ti.getJournalId()).isNull();
+    }
+
+    @Test
+    @DisplayName("markReceived 실패 — OUTBOUND 세금계산서 차단")
+    void markReceivedBlocksOutbound() {
+        TaxInvoice ti = newDraft();
+
+        assertThatThrownBy(() -> ti.markReceived("receiver-A"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT))
+                .hasMessageContaining("INBOUND");
     }
 
     @Test
