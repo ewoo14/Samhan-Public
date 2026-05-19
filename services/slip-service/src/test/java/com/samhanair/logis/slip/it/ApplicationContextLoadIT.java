@@ -1,6 +1,8 @@
 package com.samhanair.logis.slip.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
@@ -10,7 +12,10 @@ import com.samhanair.logis.slip.client.PartnerBlockClient;
 import com.samhanair.logis.slip.client.PartnerInternalClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ReceiptOcrClient;
+import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.realtime.SlipRealtimeBroker;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -58,6 +63,18 @@ class ApplicationContextLoadIT extends AbstractPostgresIT {
     /** SP-09-3 — ReceiptOcrClient (@MockBean 격리, feedback_it_mockbean_external_clients). */
     @MockBean
     private ReceiptOcrClient receiptOcrClient;
+    /** SP-08-FU1 — UserInternalClient @MockBean 격리 (ownerFullName graceful fallback). */
+    @MockBean
+    private UserInternalClient userInternalClient;
+
+    /**
+     * SP-08-FU1 cycle 2 fix — UserInternalClient lenient stub 적용으로 39 IT 패턴 일관.
+     * contextLoads 검증만 수행하더라도 미래 회귀 (SlipService.resolveOwnerFullName 호출 추가) 가드.
+     */
+    @BeforeEach
+    void setUpUserInternalClient() {
+        lenient().when(userInternalClient.resolveFullName(any())).thenReturn(Optional.of("담당자"));
+    }
 
     /**
      * Spring ApplicationContext 가 BeanDefinitionOverrideException / NoSuchBeanDefinitionException
