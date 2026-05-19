@@ -276,6 +276,35 @@ public class TaxInvoice extends BaseEntity {
     }
 
     /**
+     * 매출전표 N:1 묶음 발행용 DRAFT 생성.
+     *
+     * <p>매출전표 라인을 세금계산서 라인으로 스냅샷하고, 라인 합계로 헤더 금액을 계산합니다.
+     * 현재 도메인은 {@link TaxInvoiceType} 으로 매출/매입을 구분하므로 매출전표 묶음은
+     * {@link TaxInvoiceType#SALES} 로 생성합니다.
+     */
+    public static TaxInvoice createDraftFromSalesSlips(String taxInvoiceNo, LocalDate issuedDate,
+            UUID partnerId, String partnerCode, String partnerName, String partnerBusinessNo,
+            List<SalesAccountingSlipLine> sourceLines, String actorUserId) {
+        if (taxInvoiceNo == null || taxInvoiceNo.isBlank() || taxInvoiceNo.length() > 20) {
+            throw new IllegalArgumentException("taxInvoiceNo 는 1~20자 필수입니다");
+        }
+        if (sourceLines == null || sourceLines.isEmpty()) {
+            throw new IllegalArgumentException("sourceLines 는 1건 이상 필수입니다");
+        }
+        TaxInvoice taxInvoice = create(partnerId, partnerCode, partnerBusinessNo, partnerName, null,
+                issuedDate, "매출전표 묶음 발행", TaxInvoiceType.SALES);
+        taxInvoice.taxInvoiceNo = taxInvoiceNo;
+        taxInvoice.issuedBy = actorUserId;
+        int lineNo = 1;
+        for (SalesAccountingSlipLine sourceLine : sourceLines) {
+            taxInvoice.lines.add(TaxInvoiceLine.createFromSalesAccountingSlipLine(
+                    taxInvoice, lineNo++, sourceLine));
+        }
+        taxInvoice.recalcTotals();
+        return taxInvoice;
+    }
+
+    /**
      * 헤더 기본 정보 갱신 (DRAFT 만). partner snapshot / supplyDate / description 변경.
      *
      * @throws BusinessException(CONFLICT) DRAFT 가 아닐 때
