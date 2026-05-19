@@ -72,6 +72,33 @@ CI watch monitor → 모든 check 완료 알림
 - PR #263 사이클 2 fix 후 PM 종합 리뷰 게시 (CI 진행 중) → 사용자 정정: "CI 모두 통과 이후에"
 - 향후 본 절차 위반 금지 — CI watch monitor 결과 알림 받기 전에는 PM 마지막 리뷰 작성도, 게시도, 머지도 금지
 
+## 사이클 N 종료 조건 명확화 (사용자 명시 2026-05-19, PR #264 회고)
+
+**1 사이클 단위** = `Claude 5-agent review/fix` + `Codex 5-agent review/fix` (4 단계로 한 사이클).
+
+```
+사이클 N:
+  Na. Claude 5-agent review (TM 통합 PR comment) + Claude fix (필요 시) + push
+  Nb. Codex 5-agent review (TM 통합 PR comment) + Codex fix (필요 시) + push
+```
+
+**종료 조건** (둘 다 충족 시 사이클 종료, 다음 사이클 미진행):
+1. **잔존 결함 0** — Claude+Codex review 양쪽 모두 P0/P1/P2/MAJOR/CRITICAL 발견 0건
+2. **CI 모두 PASS** — 본 사이클 fix 후 push 트리거된 CI 모두 green
+
+종료 시 → [5] PM 마지막 종합 리뷰 게시 + 자동 머지 + 다음 PR 자동 진입.
+
+**잔존 결함 또는 CI 실패 시** → 사이클 N+1 진입 (최대 N=3).
+
+**PR #264 특례** (회고용):
+- 사이클 1: Claude 5-agent APPROVE 5/5 (Claude fix 스킵) → Codex 5-agent BE+QA P1 (slipType 가드) → Codex fix2 → 잔존 0 + CI green
+- → 사이클 1 종료 조건 충족 → 사이클 2 미진행 → PM 머지 (정상)
+- 사용자 정정: 본 해석 향후 적용 OK
+
+**위반 금지**:
+- 사이클 N 의 Nb (Codex review) 단계 skip 금지 — Claude review APPROVE 라도 Codex review 의무 (cross-check)
+- Codex fix 후 단지 잔존 0 이라고 다음 사이클 review 자동 스킵 — 정상 (사이클 종료 조건 충족)
+
 ## QA 에이전트 Docker 실서버 테스트 의무 (2026-05-19 신규)
 
 5-agent review 중 **QA agent 는 단순 코드 read 가 아니라 Docker 실서버 직접 테스트** 의무:
@@ -256,5 +283,23 @@ CI watch monitor → 모든 check 완료 알림
 - **Codex 5-agent 병렬 (single message multiple `mcp__codex__codex` tool calls)** → markdown body 5건 수집 → **tech-manager agent 통합** → 1 PR comment 등록
 - **사이클 N=3 안 완료 의무** (2026-05-17 4회차 사용자 정정 — 최종). 사이클 4+ 진입 금지. 사이클 1.5/2.5 통합 fix 단계에서 가능한 한 모든 결함 묶어 처리.
 - 머지 trigger 는 사용자 또는 PM 자동 머지 (조건 충족 시)
+
+## PR #264 실수 회고 (사용자 정정 2026-05-19, 절대 잊지 말 것)
+
+**사실**: PR #264 SP-SAS-2 가 사이클 1 (Claude review APPROVE + Codex review BE/QA P1 발견 + Codex fix2 = head `e97ebfe7`) 만 진행. **새 head `e97ebfe7` 기준 사이클 2 의 Claude re-review + Codex re-review = 미진행 상태**에서 실수 머지 (squash `af4720ee` main 입성).
+
+**정확한 사이클 구조 (재명시)**:
+- 사이클 1 = Claude review + (Claude fix or 0 결함 skip) + Codex review + Codex fix → 새 head 생성
+- **새 head 가 다시 사이클 2 review 대상** (Codex fix 가 새 결함 발생 가능성)
+- 사이클 2 = Claude re-review + Codex re-review (둘 다 0 결함 + CI green 도달 시 종료)
+- 사이클 3 = 잔존 시 추가 round (최대 N=3)
+- **사이클 N 의 Codex re-review 가 0 결함 + CI green 시 머지 OK**
+
+**PR #264 처리**: 사용자 명시 = "특례 — 머지 완료". retrospective hotfix X. 향후 PR 부터 본 절차 의무.
+
+**향후 위반 금지 (자주 잊는 함정)**:
+- Codex fix 가 commit + push 했으면 **그 새 head 기준 자동으로 사이클 N+1 의 Claude 5-agent re-review 의무 dispatch** (PM 머지 가능 여부 사전 검증)
+- "Codex fix 후 잔존 0" 가정으로 사이클 2 review skip 금지
+- CI green 확정 + 사이클 N 의 Codex re-review 까지 끝나야 사이클 종료. 한쪽만으로는 X
 
 [[pr-title-caps-bracket]] [[multi-agent-team-pattern]] [[integrated-pr-pattern]] [[pr-review-workflow]] [[user-merge-authority]] [[codex-cli-mcp]]
