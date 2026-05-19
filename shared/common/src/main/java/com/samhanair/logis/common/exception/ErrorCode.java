@@ -139,6 +139,11 @@ public enum ErrorCode {
     SAS_SOURCE_SLIP_NOT_CONFIRMED(HttpStatus.UNPROCESSABLE_ENTITY,
             "출고/입고전표가 CONFIRMED 상태가 아닙니다."),
     /**
+     * source 전표 유형 불일치 — 매출은 OUTBOUND, 매입은 INBOUND 만 허용 (SAS 슬라이스).
+     */
+    SAS_SOURCE_SLIP_TYPE_MISMATCH(HttpStatus.UNPROCESSABLE_ENTITY,
+            "source 전표 유형이 잘못되었습니다 (매출=OUTBOUND, 매입=INBOUND 만 허용)"),
+    /**
      * 할당 합계가 출고/입고전표 line 잔여를 초과 (SAS 슬라이스).
      */
     SAS_OVER_ALLOCATION(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -174,10 +179,10 @@ public enum ErrorCode {
     SAS_PARTNER_MONTH_MISMATCH(HttpStatus.UNPROCESSABLE_ENTITY,
             "묶음 발행 시 거래처 또는 발행월이 일치하지 않습니다."),
     /**
-     * 매출전표 번호 생성 충돌 — timestamp 기반 PoC 채번 중 slip_no unique 충돌 발생.
+     * 매출/매입전표 번호 생성 충돌 — timestamp 기반 PoC 채번 중 slip_no unique 충돌 발생.
      */
     SAS_SLIP_NO_CONFLICT(HttpStatus.CONFLICT,
-            "매출전표 번호 충돌 — 재시도 권장");
+            "매출/매입전표 번호 충돌 — 재시도 권장");
 
     private final HttpStatus httpStatus;
     private final String defaultMessage;

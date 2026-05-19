@@ -2,17 +2,17 @@ package com.samhanair.logis.accounting.service;
 
 import com.samhanair.logis.accounting.client.SlipLineSnapshot;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
-import com.samhanair.logis.accounting.domain.SalesAccountingSlip;
-import com.samhanair.logis.accounting.domain.SalesAccountingSlipAllocation;
-import com.samhanair.logis.accounting.domain.SalesAccountingSlipLine;
-import com.samhanair.logis.accounting.repository.SalesAccountingSlipAllocationRepository;
-import com.samhanair.logis.accounting.repository.SalesAccountingSlipRepository;
-import com.samhanair.logis.accounting.web.dto.CreateSalesAccountingSlipRequest;
-import com.samhanair.logis.accounting.web.dto.CreateSalesAccountingSlipRequest.AllocationRequest;
-import com.samhanair.logis.accounting.web.dto.CreateSalesAccountingSlipRequest.LineRequest;
-import com.samhanair.logis.accounting.web.dto.SalesAccountingSlipResponse;
-import com.samhanair.logis.accounting.web.dto.SalesAccountingSlipResponse.AllocationResponse;
-import com.samhanair.logis.accounting.web.dto.SalesAccountingSlipResponse.LineResponse;
+import com.samhanair.logis.accounting.domain.PurchaseAccountingSlip;
+import com.samhanair.logis.accounting.domain.PurchaseAccountingSlipAllocation;
+import com.samhanair.logis.accounting.domain.PurchaseAccountingSlipLine;
+import com.samhanair.logis.accounting.repository.PurchaseAccountingSlipAllocationRepository;
+import com.samhanair.logis.accounting.repository.PurchaseAccountingSlipRepository;
+import com.samhanair.logis.accounting.web.dto.CreatePurchaseAccountingSlipRequest;
+import com.samhanair.logis.accounting.web.dto.CreatePurchaseAccountingSlipRequest.AllocationRequest;
+import com.samhanair.logis.accounting.web.dto.CreatePurchaseAccountingSlipRequest.LineRequest;
+import com.samhanair.logis.accounting.web.dto.PurchaseAccountingSlipResponse;
+import com.samhanair.logis.accounting.web.dto.PurchaseAccountingSlipResponse.AllocationResponse;
+import com.samhanair.logis.accounting.web.dto.PurchaseAccountingSlipResponse.LineResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -26,20 +26,20 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class SalesAccountingSlipCreateAttemptService {
+public class PurchaseAccountingSlipCreateAttemptService {
 
-    private final SalesAccountingSlipRepository slipRepository;
-    private final SalesAccountingSlipAllocationRepository allocationRepository;
+    private final PurchaseAccountingSlipRepository slipRepository;
+    private final PurchaseAccountingSlipAllocationRepository allocationRepository;
     private final SlipServiceClient slipServiceClient;
-    private final SalesAccountingSlipNumberGenerator numberGenerator;
+    private final PurchaseAccountingSlipNumberGenerator numberGenerator;
     private final EntityManager entityManager;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public SalesAccountingSlipResponse createDraftAttempt(
-            CreateSalesAccountingSlipRequest req,
+    public PurchaseAccountingSlipResponse createDraftAttempt(
+            CreatePurchaseAccountingSlipRequest req,
             String actorUserId) {
         String slipNo = numberGenerator.next(req.slipDate());
-        SalesAccountingSlip slip = SalesAccountingSlip.createDraft(
+        PurchaseAccountingSlip slip = PurchaseAccountingSlip.createDraft(
                 slipNo, req.slipDate(), req.partnerId(), req.partnerCode(),
                 req.partnerName(), req.taxType(), req.memo());
 
@@ -47,11 +47,11 @@ public class SalesAccountingSlipCreateAttemptService {
         for (LineRequest lr : req.lines()) {
             if (lr.allocations() == null || lr.allocations().isEmpty()) {
                 throw new BusinessException(ErrorCode.SAS_LINE_AMOUNT_MISMATCH,
-                        "매출전표 line allocation 이 비어 있습니다");
+                        "매입전표 line allocation 이 비어 있습니다");
             }
             lineNo++;
             VatCalculator.Result vat = VatCalculator.split(lr.qty(), lr.unitPrice(), req.taxType());
-            SalesAccountingSlipLine line = SalesAccountingSlipLine.create(
+            PurchaseAccountingSlipLine line = PurchaseAccountingSlipLine.create(
                     slip, lineNo, lr.productCode(), lr.productName(),
                     lr.qty(), lr.unitPrice(),
                     vat.supplyAmount(), vat.vatAmount(), vat.lineTotal());
@@ -59,7 +59,7 @@ public class SalesAccountingSlipCreateAttemptService {
 
             for (AllocationRequest ar : lr.allocations()) {
                 verifySourceAndAllocation(ar);
-                line.getAllocations().add(SalesAccountingSlipAllocation.create(line,
+                line.getAllocations().add(PurchaseAccountingSlipAllocation.create(line,
                         ar.sourceSlipId(), ar.sourceSlipNo(),
                         ar.sourceLineId(), ar.sourceLineNo(),
                         ar.allocatedQty(), ar.allocatedAmount()));
@@ -74,9 +74,9 @@ public class SalesAccountingSlipCreateAttemptService {
     private void verifySourceAndAllocation(AllocationRequest ar) {
         acquireSourceLineLock(ar.sourceLineId());
         SlipLineSnapshot src = slipServiceClient.getSlipLine(ar.sourceLineId());
-        if (!"OUTBOUND".equals(src.slipType())) {
+        if (!"INBOUND".equals(src.slipType())) {
             throw new BusinessException(ErrorCode.SAS_SOURCE_SLIP_TYPE_MISMATCH,
-                    "매출전표는 OUTBOUND 출고전표만 source 가능 (slip="
+                    "매입전표는 INBOUND 입고전표만 source 가능 (slip="
                             + src.slipNo() + " type=" + src.slipType() + ")");
         }
         if (!"CONFIRMED".equals(src.slipStatus())) {
@@ -99,7 +99,7 @@ public class SalesAccountingSlipCreateAttemptService {
                 .getSingleResult();
     }
 
-    private SalesAccountingSlipResponse toResponse(SalesAccountingSlip s) {
+    private PurchaseAccountingSlipResponse toResponse(PurchaseAccountingSlip s) {
         List<LineResponse> lines = s.getLines().stream().map(l -> new LineResponse(
                 l.getLineNo(), l.getProductCode(), l.getProductName(),
                 l.getQty(), l.getUnitPrice(),
@@ -108,7 +108,7 @@ public class SalesAccountingSlipCreateAttemptService {
                         a.getSourceSlipNo(), a.getSourceLineNo(),
                         a.getAllocatedQty(), a.getAllocatedAmount())).toList()
         )).toList();
-        return new SalesAccountingSlipResponse(s.getSlipNo(), s.getSlipDate(),
+        return new PurchaseAccountingSlipResponse(s.getSlipNo(), s.getSlipDate(),
                 s.getPartnerCode(), s.getPartnerName(), s.getTaxType().name(), s.getStatus().name(),
                 s.getTotalSupplyAmount(), s.getTotalVatAmount(), s.getTotalAmount(),
                 s.getMemo(), lines);

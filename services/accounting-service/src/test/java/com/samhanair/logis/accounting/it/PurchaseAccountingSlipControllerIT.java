@@ -13,8 +13,8 @@ import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.SlipLineSnapshot;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.domain.SalesTaxType;
-import com.samhanair.logis.accounting.service.SalesAccountingSlipNumberGenerator;
-import com.samhanair.logis.accounting.web.dto.CreateSalesAccountingSlipRequest;
+import com.samhanair.logis.accounting.service.PurchaseAccountingSlipNumberGenerator;
+import com.samhanair.logis.accounting.web.dto.CreatePurchaseAccountingSlipRequest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
+class PurchaseAccountingSlipControllerIT extends AbstractPostgresIT {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper om;
@@ -42,27 +42,27 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
     @MockBean ETaxClient eTaxClient;
     @MockBean KftcClient kftcClient;
     @MockBean DynamicPermissionClient dynamicPermissionClient;
-    @MockBean SalesAccountingSlipNumberGenerator numberGenerator;
+    @MockBean PurchaseAccountingSlipNumberGenerator numberGenerator;
 
     @Test
-    void POST_admin_sales_slips_DRAFT_정상생성() throws Exception {
+    void POST_admin_purchase_slips_DRAFT_정상생성() throws Exception {
         UUID sourceSlipId = UUID.randomUUID();
         UUID sourceLineId = UUID.randomUUID();
-        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("SAS-IT-0001");
+        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("PAS-IT-0001");
         when(slipServiceClient.getSlipLine(sourceLineId)).thenReturn(new SlipLineSnapshot(
-                sourceSlipId, "OUT-2026-05-0042", sourceLineId, "RX다배관 30A",
-                10, new BigDecimal("150000"), new BigDecimal("1500000"), "CONFIRMED", "OUTBOUND"));
+                sourceSlipId, "IN-2026-05-0042", sourceLineId, "RX다배관 30A",
+                10, new BigDecimal("150000"), new BigDecimal("1500000"), "CONFIRMED", "INBOUND"));
 
-        CreateSalesAccountingSlipRequest req = new CreateSalesAccountingSlipRequest(
+        CreatePurchaseAccountingSlipRequest req = new CreatePurchaseAccountingSlipRequest(
                 LocalDate.of(2026, 5, 19), UUID.randomUUID(), "P-2026-0001", "(주)한국공조",
                 SalesTaxType.TAXABLE, "IT Docker 실서버 검증",
-                List.of(new CreateSalesAccountingSlipRequest.LineRequest(
+                List.of(new CreatePurchaseAccountingSlipRequest.LineRequest(
                         "RX다배관", "RX다배관 30A", new BigDecimal("10"), new BigDecimal("150000"),
-                        List.of(new CreateSalesAccountingSlipRequest.AllocationRequest(
-                                sourceSlipId, "OUT-2026-05-0042", sourceLineId, 1,
+                        List.of(new CreatePurchaseAccountingSlipRequest.AllocationRequest(
+                                sourceSlipId, "IN-2026-05-0042", sourceLineId, 1,
                                 new BigDecimal("10"), new BigDecimal("1500000"))))));
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -75,13 +75,13 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void POST_admin_sales_slips_taxType_ZERO_RATED_VAT_0() throws Exception {
+    void POST_admin_purchase_slips_taxType_ZERO_RATED_VAT_0() throws Exception {
         UUID sourceSlipId = UUID.randomUUID();
         UUID sourceLineId = UUID.randomUUID();
-        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("SAS-IT-ZERO");
+        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("PAS-IT-ZERO");
         stubConfirmedSourceLine(sourceSlipId, sourceLineId, new BigDecimal("1500000"));
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -96,13 +96,13 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void POST_admin_sales_slips_taxType_EXEMPT_VAT_0() throws Exception {
+    void POST_admin_purchase_slips_taxType_EXEMPT_VAT_0() throws Exception {
         UUID sourceSlipId = UUID.randomUUID();
         UUID sourceLineId = UUID.randomUUID();
-        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("SAS-IT-EXEMPT");
+        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("PAS-IT-EXEMPT");
         stubConfirmedSourceLine(sourceSlipId, sourceLineId, new BigDecimal("1500000"));
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -117,13 +117,13 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void POST_admin_sales_slips_overAllocation_정확boundary() throws Exception {
+    void POST_admin_purchase_slips_overAllocation_정확boundary() throws Exception {
         UUID sourceSlipId = UUID.randomUUID();
         UUID sourceLineId = UUID.randomUUID();
-        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("SAS-IT-B1", "SAS-IT-B2");
+        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("PAS-IT-B1", "PAS-IT-B2");
         stubConfirmedSourceLine(sourceSlipId, sourceLineId, new BigDecimal("1500000"));
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -133,7 +133,7 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
                                 new BigDecimal("1500000")))))
                 .andExpect(status().isOk());
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -146,16 +146,16 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void POST_admin_sales_slips_empty_allocations_거부() throws Exception {
-        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("SAS-IT-EMPTY");
-        CreateSalesAccountingSlipRequest req = new CreateSalesAccountingSlipRequest(
+    void POST_admin_purchase_slips_empty_allocations_거부() throws Exception {
+        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("PAS-IT-EMPTY");
+        CreatePurchaseAccountingSlipRequest req = new CreatePurchaseAccountingSlipRequest(
                 LocalDate.of(2026, 5, 19), UUID.randomUUID(), "P-2026-0001", "(주)한국공조",
                 SalesTaxType.TAXABLE, "empty allocations",
-                List.of(new CreateSalesAccountingSlipRequest.LineRequest(
+                List.of(new CreatePurchaseAccountingSlipRequest.LineRequest(
                         "RX다배관", "RX다배관 30A", new BigDecimal("10"), new BigDecimal("150000"),
                         List.of())));
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -165,15 +165,15 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void POST_admin_sales_slips_INBOUND_source_거부() throws Exception {
+    void POST_admin_purchase_slips_OUTBOUND_source_거부() throws Exception {
         UUID sourceSlipId = UUID.randomUUID();
         UUID sourceLineId = UUID.randomUUID();
-        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("SAS-IT-TYPE");
+        when(numberGenerator.next(LocalDate.of(2026, 5, 19))).thenReturn("PAS-IT-TYPE");
         when(slipServiceClient.getSlipLine(sourceLineId)).thenReturn(new SlipLineSnapshot(
-                sourceSlipId, "IN-2026-05-0042", sourceLineId, "RX다배관 30A",
-                10, new BigDecimal("150000"), new BigDecimal("1500000"), "CONFIRMED", "INBOUND"));
+                sourceSlipId, "OUT-2026-05-0042", sourceLineId, "RX다배관 30A",
+                10, new BigDecimal("150000"), new BigDecimal("1500000"), "CONFIRMED", "OUTBOUND"));
 
-        mvc.perform(post("/admin/sales-slips")
+        mvc.perform(post("/admin/purchase-slips")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-User-Id", "it-tester")
                         .header("X-User-Role", "MASTER")
@@ -187,19 +187,19 @@ class SalesAccountingSlipControllerIT extends AbstractPostgresIT {
 
     private void stubConfirmedSourceLine(UUID sourceSlipId, UUID sourceLineId, BigDecimal lineTotal) {
         when(slipServiceClient.getSlipLine(sourceLineId)).thenReturn(new SlipLineSnapshot(
-                sourceSlipId, "OUT-2026-05-0042", sourceLineId, "RX다배관 30A",
-                10, new BigDecimal("150000"), lineTotal, "CONFIRMED", "OUTBOUND"));
+                sourceSlipId, "IN-2026-05-0042", sourceLineId, "RX다배관 30A",
+                10, new BigDecimal("150000"), lineTotal, "CONFIRMED", "INBOUND"));
     }
 
-    private static CreateSalesAccountingSlipRequest request(UUID sourceSlipId, UUID sourceLineId,
+    private static CreatePurchaseAccountingSlipRequest request(UUID sourceSlipId, UUID sourceLineId,
             SalesTaxType taxType, BigDecimal qty, BigDecimal unitPrice, BigDecimal allocatedAmount) {
-        return new CreateSalesAccountingSlipRequest(
+        return new CreatePurchaseAccountingSlipRequest(
                 LocalDate.of(2026, 5, 19), UUID.randomUUID(), "P-2026-0001", "(주)한국공조",
                 taxType, "IT Docker 실서버 검증",
-                List.of(new CreateSalesAccountingSlipRequest.LineRequest(
+                List.of(new CreatePurchaseAccountingSlipRequest.LineRequest(
                         "RX다배관", "RX다배관 30A", qty, unitPrice,
-                        List.of(new CreateSalesAccountingSlipRequest.AllocationRequest(
-                                sourceSlipId, "OUT-2026-05-0042", sourceLineId, 1,
+                        List.of(new CreatePurchaseAccountingSlipRequest.AllocationRequest(
+                                sourceSlipId, "IN-2026-05-0042", sourceLineId, 1,
                                 qty, allocatedAmount)))));
     }
 }
