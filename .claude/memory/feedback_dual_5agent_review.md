@@ -1,11 +1,90 @@
 ---
 name: dual-5agent-review
-description: Claude 5-agent + Codex 5-agent (총 10 reviewer) 병렬 cross-check 사이클 + TM 통합 게시. 사이클당 PR comment 2건 (Claude TM 통합 1 + Codex TM 통합 1). 양쪽 0 결함 + CI green 까지 수렴.
+description: Claude 기획 → Codex 개발 → Claude 5-agent review + TM 통합 fix → Codex 5-agent review + TM 통합 fix → PM 머지. QA agent 는 5-agent review 시 Docker 실서버 직접 테스트 의무. 사이클당 PR comment 2건 + 양쪽 0 결함 + CI green 까지 수렴.
 metadata:
   type: feedback
 ---
 
-모든 PR 에 **양쪽 5-agent 병렬 cross-check + TM 통합 게시** 적용:
+## 5-단계 전체 워크플로우 (2026-05-19 사용자 정정 — 9회차 최종)
+
+```
+[1] Claude 기획 — brainstorming + writing-plans (spec + 5 슬라이스 plans)
+        ↓
+[2] Codex 개발 — mcp__codex__codex sandbox=workspace-write, TDD + commit
+   - 매 slice 의 모든 task implementation = Codex 의무
+   - Claude subagent (general-purpose) 단독 implementation 패턴 금지
+   - sandbox 권한 한계 (git index.lock / Gradle download) 시 controller (Claude) 가 gradle test + commit 만 대행
+        ↓
+[3] 사이클 (최대 N=3, 3 사이클 내 모든 오류 개선 의무, 다음 PR 미루기 금지):
+   3a. Claude 5-agent review 게시 (PR comment TM 통합) + fix
+       - BE/FE/Designer/QA(Docker 실 검증 의무)/DevOps 5 agent 병렬
+       - tech-manager 통합 → PR comment 게시
+       - Codex 위임 fix (sandbox=workspace-write) 또는 Claude 직접 fix
+       - commit + push
+   3b. Codex 5-agent review 게시 (PR comment TM 통합) + fix
+       - mcp__codex__codex × 5 병렬 (sandbox=read-only)
+       - tech-manager 통합 → PR comment 게시
+       - Codex fix (sandbox=workspace-write)
+       - commit + push
+   → 사이클 1 종료. 잔존 결함 시 사이클 2 (3a + 3b 반복), 사이클 3 까지 모든 결함 fix.
+        ↓
+[4] CI 모두 완료 대기 (필수 단계, 절대 생략 금지)
+   - CI watch monitor 가동 — 모든 check 의 pending → 완료 (success/fail) 대기
+   - **모두 PASS** → [5] 진입 (PM 마지막 리뷰 + 머지)
+   - **실패** (any fail) → 사이클 재진입 (Claude review/fix → Codex review/fix → 재 CI)
+        ↓
+[5] CI green 확정 후에만 PM 마지막 종합 리뷰 게시 + 자동 머지 + 다음 PR 자동 진입
+   - **CI green 확정 전에 PM 마지막 리뷰 게시 금지** — 시기상조 comment 폐기
+   - PM 마지막 리뷰 = CI 결과 + 사이클 1~N 종합 + 잔존 결함 0 명시 + 머지 결정
+   - `gh pr merge <num> --squash --delete-branch` 자동 실행
+   - 머지 후 다음 슬라이스 (SP-SAS-2 등) 자동 진입
+```
+
+**핵심 (9회차, 2026-05-19)**:
+- 사이클 1회 = Claude review/fix + Codex review/fix **양쪽** ([feedback_dual_5agent_review] 5회차 형태 복원)
+- 8회차 의 "Codex review 단계 제거" + "머지 전 사용자 확인 의무" **모두 정정**
+- **3 사이클 내 모든 오류 fix 의무** — 후속 PR 백로그 금지
+- **CI 모두 PASS 시에만 PM 마지막 리뷰 + 자동 머지** — CI 미완료/실패 시 사이클 재진입
+- **CI green 전 PM 종합 리뷰 게시 금지** — 시기상조 (자주 잊는 함정, 절대 위반 금지)
+- **머지 후 다음 PR 자동 진행** — 자동화 강화
+
+## CI 결과 처리 절차 (사용자 명시 2026-05-19, 절대 잊지 말 것)
+
+```
+CI watch monitor → 모든 check 완료 알림
+    │
+    ├── 모두 PASS:
+    │     1. PM 마지막 종합 리뷰 PR comment 게시 (CI green 사실 + 사이클 N 결과 + 잔존 0)
+    │     2. `gh pr merge <num> --squash --delete-branch`
+    │     3. main checkout + pull
+    │     4. 다음 슬라이스 plan 파일 read + 자동 진입 (Codex 개발 dispatch)
+    │
+    └── 실패 (any check fail):
+          1. 실패 check log 분석 (`gh run view <id> --log-failed`)
+          2. 사이클 재진입 (사이클 +1):
+             - Claude 5-agent review (실패 원인 진단 포함) + TM 통합 PR comment + Codex fix
+             - Codex 5-agent review + TM 통합 PR comment + Codex fix
+          3. 재 CI watch
+          4. 사이클 N=3 도달 시점에도 fail 잔존하면 사용자 결정 위임
+```
+
+**위반 사례 회고**:
+- PR #263 사이클 2 fix 후 PM 종합 리뷰 게시 (CI 진행 중) → 사용자 정정: "CI 모두 통과 이후에"
+- 향후 본 절차 위반 금지 — CI watch monitor 결과 알림 받기 전에는 PM 마지막 리뷰 작성도, 게시도, 머지도 금지
+
+## QA 에이전트 Docker 실서버 테스트 의무 (2026-05-19 신규)
+
+5-agent review 중 **QA agent 는 단순 코드 read 가 아니라 Docker 실서버 직접 테스트** 의무:
+
+- samhan-postgres 컨테이너 사용 (포트 5432, accounting_db / partner_db / slip_db 등)
+- 서비스 bootRun 또는 Testcontainers spinup
+- 실 endpoint curl / RestClient 호출 + 응답 검증
+- DB 분포 SQL cross-check (`docker exec samhan-postgres psql ...`)
+- 멱등성 / E2E flow / 실 데이터 적재 검증
+
+회피 표현 금지: "code read 만으로 PASS", "static review", "Docker 검증은 후속" — Docker 실서버 검증 누락 시 QA review FAIL.
+
+## 사이클 구조 (2026-05-17 사용자 정정 5회차 — review/fix 사이클 부분)
 
 ## 사이클 구조 (2026-05-17 사용자 정정 5회차 — 최종)
 
