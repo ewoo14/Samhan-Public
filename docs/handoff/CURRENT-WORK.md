@@ -2,6 +2,67 @@
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
 
+---
+
+## 🚀 2026-05-20 최신 진행 — MIG-3 머지 완료 + MIG-4 자동 진입 대기
+
+### 머지 완료 슬라이스 (2026-05-20)
+
+| PR | 슬라이스 | head | merged | 산출 |
+|---|---|---|---|---|
+| #270 | **MIG-2** 이카운트 마스터 5종 (품목/계정/부서/창고/카드) + 자동 lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file, 5 importer, V7~V22 + V8 보강, ErrorCode MIG2 7종, commons-beanutils 1.11.0 (CVE-2025-48734) |
+| #271 | **MIG-3** 이카운트 회계 전표 4종 (매입/매출/일반/분개) | `3a57c41f` | 03:38 UTC | 49 file, 4 importer + 4 controller, V23 + V16, ErrorCode MIG3 9종, partner-service `/api/v1/partners/internal/by-name` 연동, 회계전표분개 차/대 검증 + group reject |
+
+### 다음 슬라이스 — MIG-4 (자동 진입)
+
+**raw 5종 (이미 `docs/migration/ecount-data/raw/` 에 존재)**:
+- `세금계산서용 판매전표-Excel다운로드(20260501~20260519_1).csv` → TaxInvoice OUTBOUND 매칭 (기존 SAS 시리즈)
+- `판매전표-Excel다운로드(20260501~20260519_1).csv` → SalesAccountingSlip 출고 연결
+- `매출매입내역-Excel다운로드(20260501~20260519_1).csv` → 검증/집계 (DailyClosing 연동)
+- `주문서-Excel다운로드(...).csv` (5 분할 파일) → SalesAccountingSlip / Order 연계
+- `매출장.xlsx` / `매입장.xlsx` → DailyClosing 대조 (검증용, 옵션)
+
+### 새 세션 즉시 진입 절차
+
+```powershell
+# 1. main 동기화 (이미 done)
+git checkout main && git pull origin main
+
+# 2. Codex MCP 회복 확인 (새 세션이라 deferred tool registry 정상 등록)
+claude mcp list  # → codex: codex mcp-server - ✓ Connected
+
+# 3. MIG-4 brainstorming + spec 진입 — 사용자 명시 "PM 자동시작" 자율 진행
+#    (MIG-3 spec/plan/dev-report 패턴 미러)
+```
+
+### 9회차 워크플로우 — 핵심 규칙 (절대 잊지 말 것)
+
+[feedback_dual_5agent_review] 9회차 = Claude 기획 → Codex 개발 → 사이클 (Claude 5-agent review/fix → Codex 5-agent review/fix) N≤3 → CI green → PM 자동 머지 + 다음 PR 자동 진입.
+
+- **CI green 전 PM 마지막 리뷰 게시 금지** (자주 잊는 함정)
+- **사이클 1~3 안 모든 결함 fix 의무** (후속 PR 백로그 금지, 사용자 명시)
+- **각 사이클 TM 통합 PR comment 2건** (Claude + Codex) — 사이클별 누락 시 사용자 정정 발생
+- **QA agent Docker 실 검증 의무** — code read 만 PASS 금지
+- **PM 자동시작** (사용자 명시) — brainstorming HARD-GATE skip 가능, spec → plan → Codex 개발 즉시 진입
+
+### Codex MCP 세션 한정 한계 (신규 회고)
+
+- **MCP 서버**: ✓ Connected (`claude mcp list`)
+- **codex CLI**: 정상 (`codex-cli 0.131.0`, `codex exec` 우회 가능)
+- **본 세션 deferred tool registry**: 한 번 close 후 ToolSearch `no match` — 새 세션 시 자동 해소
+- **MIG-3 사이클 1 후반 QA 호출 중 `MCP error -32000: Connection closed` 발생** → 사이클 2/3 Codex re-review 환경 한계 예외 ([feedback_dual_5agent_review] line 188) 적용
+- **회복**: 새 Claude Code 세션 시작 → `mcp__codex__codex` 도구 재등록 → 9회차 워크플로우 정상 진행
+
+### 진행 누적 요약 (이카운트 마이그레이션)
+
+- [x] MIG-1 거래처 PoC (PR #262, 5월 14일)
+- [x] MIG-2 마스터 5종 + lookup map 4종 (PR #270, 5월 20일)
+- [x] MIG-3 회계 전표 4종 (PR #271, 5월 20일)
+- [ ] **MIG-4** 세금계산서/판매전표/매출매입내역 (다음 슬라이스, 자동 진입 대기)
+- [ ] MIG-5+ 주문서/창고이동/지출결의서/입금보고서 (이후)
+
+---
+
 ## 2026-05-19 회사 PC 첨부 대기 — 이카운트 5월 샘플 + 출고전표 + 거래명세서 양식
 
 ### 첨부 위치 (자택 PC 에서 셋업 완료, 회사 PC `git pull` 후 즉시 사용)
