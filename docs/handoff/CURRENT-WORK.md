@@ -4,44 +4,41 @@
 
 ---
 
-## 🚧 2026-05-20 Codex Update — MIG-6 잔여 마스터 5종 개발 진행
-
-- Branch: `spec/2026-05-20-mig-6-master-employee-asset`
-- 범위: 통장계좌/사원/인사카드/급여관리사원/고정자산유형 5종 importer + controller + Flyway + PageCode + fixture/test + 문서 동기화.
-- PII guard: 인사카드 주민등록번호는 staging/domain 모두 `resident_number_masked`만 저장. fixture는 `XXXXXX-XXXXXXX` placeholder 사용.
-- 구현 상태: Task 1~9 반영 완료. `docs/dev-reports/ecount-mig-6-master-employee-asset.md`에 설계/검증 메모 누적.
-- 검증 상태: Gradle wrapper/Gradle plugin 의존성 다운로드가 현재 Codex sandbox 네트워크 제한(`Permission denied: getsockopt`)에 막혀 전체 Gradle 검증 미완료. 따라서 commit/push 보류.
-
----
-
-## 🚀 2026-05-20 최신 진행 — MIG-5 머지 완료 + MIG-6 자동 진입 대기
+## 🚀 2026-05-20 최신 진행 — MIG-6 머지 완료 + MIG-7 자동 진입 대기
 
 ### 머지 완료 슬라이스 (2026-05-20)
 
 | PR | 슬라이스 | head | merged | 산출 |
 |---|---|---|---|---|
-| #270 | **MIG-2** 이카운트 마스터 5종 (품목/계정/부서/창고/카드) + 자동 lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file, 5 importer, V7~V22 + V8 보강, ErrorCode MIG2 7종, commons-beanutils 1.11.0 (CVE-2025-48734) |
-| #271 | **MIG-3** 이카운트 회계 전표 4종 (매입/매출/일반/분개) | `3a57c41f` | 03:38 UTC | 49 file, 4 importer + 4 controller, V23 + V16, ErrorCode MIG3 9종, partner-service `/api/v1/partners/internal/by-name` 연동, 회계전표분개 차/대 검증 + group reject |
-| #272 | **MIG-4** 이카운트 영업·세무 raw 4종 (세금계산서/판매전표/내역/주문서) | `c8d64e38` | 05:34 UTC | 41 file, 4 importer + 4 controller, V24 + V17, ErrorCode MIG4 9종, TaxInvoiceStatus.MIGRATED + SalesAccountingSlip.dueDate, soft-delete CTE 4 도메인, pg_advisory_xact_lock 4 namespace, footer 정확 skip + malformed row MIG4_DATE_INVALID 가드, 단위 테스트 32 cases + 16 IT parameterized |
-| #273 | **MIG-5** 이카운트 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file, 3 importer + 3 controller, V13(inventory) + V25(accounting) + V18(auth), ErrorCode MIG5 10종 (warehouse/product lookup 분리), AbstractEcountMig5CashImporter DRY, ProductLookupClient (RestClient DB 경계 준수), product-service /products/internal/by-name endpoint 신규, soft-delete CTE 2 도메인, 단위 테스트 28 cases + 15 IT parameterized, Windows JDK 한국어 인코딩 fix |
+| #270 | **MIG-2** 이카운트 마스터 5종 + 자동 lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file, 5 importer |
+| #271 | **MIG-3** 회계 전표 4종 (매입/매출/일반/분개) | `3a57c41f` | 03:38 UTC | 49 file, 4 importer + 4 controller, V23 + V16 |
+| #272 | **MIG-4** 영업·세무 raw 4종 (세금계산서/판매전표/내역/주문서) | `c8d64e38` | 05:34 UTC | 41 file, V24 + V17, soft-delete CTE 4 도메인 |
+| #273 | **MIG-5** 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file, V13/V25/V18, ProductLookupClient DB 경계 준수 |
+| #274 | **MIG-6** 잔여 마스터 5종 (통장계좌/사원/인사카드/급여/고정자산유형) | `5c15db2b` | 08:43 UTC | 75 file, V26/V8/V19, ErrorCode MIG6 8종, **주민등록번호 PII 마스킹 가드**, EcountCsvSupport `회사명 :` 패턴 보강, BankAccount/EmployeeCard/Payroll/FixedAssetType 신규 도메인, seenKeys business key duplicate 감지, 단위 테스트 49 cases + 30 IT parameterized |
 
-### MIG-5 사이클 1 누적 (PR #273)
+### MIG-6 사이클 1 누적 (PR #274)
 
 | 사이클 | head | 결함 | 처리 |
 |---|---|---|---|
-| 1a Claude 5-agent | `589e40ae` | BE P2 1 + Minor 4 / QA P0 1 + P1 1 + P2 3 + Minor 1 = **중복 제거 11건** | 1c fix |
-| 1c Claude fix | `648ffd08` | 0 (잔존 0) | 1d 진입 |
-| 1d Codex 5-section | — | Architecture P1 (DB 경계) + Robustness/Completeness P2×2 = **3건** | 1e fix |
-| 1e Codex fix | `645b8693` | 0 (잔존 0) | 사이클 종료 |
-| CI watch | — | **27/27 PASS** ✅ | PM 자동 머지 |
+| 1a Claude 5-agent | `71660502` | **BE P0** (주민등록번호 평문 raw_payload) + P2 + Minor 2 / QA P1+P2+Minor 1 = **7건** | 1c fix |
+| 1c Claude fix | `c1ff0ca7` | 0 (잔존 0) | 1d 진입 |
+| 1d Codex 5-section | — | P1×3 (BankAccount/EmployeeCard lookup + duplicate 흡수) + P2×2 + Minor = **6건** | 1e fix |
+| 1e Codex fix | `0c880f35` | 0 (잔존 0) | CI 확인 |
+| 1e CI | — | ❌ EmployeePermissionIT 3건 + arologis 1건 (C3-P2-2 부작용 + flaky) | 1f fix |
+| 1f Claude fix | `feae7f75` | 0 (잔존 0) | CI 재검증 |
+| CI 재검증 | — | ✅ **27/27 PASS** (arologis 도 재실행 PASS — flaky) | PM 자동 머지 |
 
-### 다음 슬라이스 — MIG-6 (자동 진입 대기)
+### 신규 메모리 갱신 (사용자 명시 2026-05-20)
+
+- `feedback_codex_plugin_setup.md` — Codex `sandbox=workspace-write` 통일 (review 단계 read-only 폐기)
+
+### 다음 슬라이스 — MIG-7 (자동 진입 대기)
 
 **후보 범위**:
-- Cash disbursement / receipt 도메인 신규 + MIG-5 staging (expense_voucher_raw / deposit_report_raw) → 도메인 변환
+- Cash disbursement / Cash receipt 도메인 신규 + MIG-5 staging (expense_voucher_raw / deposit_report_raw) → 도메인 변환
 - Order 도메인 신규 + MIG-4 주문서 staging → Order 변환
-- 이카운트 잔여 raw (있다면)
-- 또는 cash 도메인은 회계 영역 우선 vs Order 도메인은 영업 영역 우선 — 사용자 결정 후보
+- 잔여 검증 raw (매출장/매입장 xlsx → DailyClosing 대조)
+- 사용자 우선순위 결정 후보
 
 ### 새 세션 즉시 진입 절차
 
