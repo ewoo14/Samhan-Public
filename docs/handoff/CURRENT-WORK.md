@@ -4,30 +4,28 @@
 
 ---
 
-## 🚀 2026-05-20 최신 진행 — MIG-7 Cash 도메인 구현 진행
-
-### 현재 Codex 슬라이스 — MIG-7 Cash 도메인 신규 + MIG-5 staging 변환
-
-- branch: `spec/2026-05-20-mig-7-cash-domain`
-- 범위: `CashDisbursement` / `CashReceipt` 도메인 신규, accounting V27, auth V20, MIG7 ErrorCode 6종, staging transform service/controller 2종.
-- 변환 source:
-  - `staging.ecount_expense_voucher_raw` → `cash_disbursements`
-  - `staging.ecount_deposit_report_raw` → `cash_receipts`
-- 핵심 계약: `external_ref = source_file_hash + '-' + source_row_no`, `REQUIRES_NEW + READ_COMMITTED`, transform별 advisory lock namespace, soft-delete CTE 복구, row-level reject 흡수.
-- 검증 진행:
-  - `Mig7CashDisbursementTransformServiceTest` 10 cases + `Mig7CashReceiptTransformServiceTest` 10 cases PASS.
-  - `EcountMig7CashTransformControllerIT` 10 parameterized cases 추가. Docker daemon 접근 가능 환경에서 실행.
-- 문서: `docs/dev-reports/ecount-mig-7-cash-domain.md` 신규.
+## 🚀 2026-05-20 최신 진행 — MIG-7 머지 완료 + MIG-8 자동 진입 대기
 
 ### 머지 완료 슬라이스 (2026-05-20)
 
 | PR | 슬라이스 | head | merged | 산출 |
 |---|---|---|---|---|
-| #270 | **MIG-2** 이카운트 마스터 5종 + 자동 lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file, 5 importer |
-| #271 | **MIG-3** 회계 전표 4종 (매입/매출/일반/분개) | `3a57c41f` | 03:38 UTC | 49 file, 4 importer + 4 controller, V23 + V16 |
-| #272 | **MIG-4** 영업·세무 raw 4종 (세금계산서/판매전표/내역/주문서) | `c8d64e38` | 05:34 UTC | 41 file, V24 + V17, soft-delete CTE 4 도메인 |
-| #273 | **MIG-5** 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file, V13/V25/V18, ProductLookupClient DB 경계 준수 |
-| #274 | **MIG-6** 잔여 마스터 5종 (통장계좌/사원/인사카드/급여/고정자산유형) | `5c15db2b` | 08:43 UTC | 75 file, V26/V8/V19, ErrorCode MIG6 8종, **주민등록번호 PII 마스킹 가드**, EcountCsvSupport `회사명 :` 패턴 보강, BankAccount/EmployeeCard/Payroll/FixedAssetType 신규 도메인, seenKeys business key duplicate 감지, 단위 테스트 49 cases + 30 IT parameterized |
+| #270 | **MIG-2** 마스터 5종 + lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file |
+| #271 | **MIG-3** 회계 전표 4종 | `3a57c41f` | 03:38 UTC | 49 file |
+| #272 | **MIG-4** 영업·세무 raw 4종 | `c8d64e38` | 05:34 UTC | 41 file |
+| #273 | **MIG-5** 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file |
+| #274 | **MIG-6** 잔여 마스터 5종 (PII 가드) | `5c15db2b` | 08:43 UTC | 75 file |
+| #275 | **MIG-7** Cash 도메인 신규 (CashDisbursement + CashReceipt) + MIG-5 staging 변환 | `9fd88bc5` | 09:38 UTC | 26 file, V27 + V20, ErrorCode MIG7 6종, AbstractMig7CashTransformService DRY, transform_status PENDING→TRANSFORMED/REJECTED 추적, 단위 테스트 20 cases (Disbursement 10 + Receipt 10 대칭) + 10 IT parameterized. **D-MIG-7-04 옵션 C**: aging snapshot + Journal 자동 생성 MIG-8 이연 |
+
+### MIG-7 사이클 1 누적 (PR #275)
+
+| 사이클 | head | 결함 | 처리 |
+|---|---|---|---|
+| 1a Claude 5-agent | `d2a7f401` | 모두 APPROVE (P0/P1 0건) — P2 1 + Minor 4 = **5건** | 1c fix |
+| 1c Claude fix | `1e33d823` | 0 | 1d 진입 |
+| 1d Codex 5-section | — | 문서 동기화 2건 (plan goal + 2 README) | 1e fix |
+| 1e Codex fix | `dd979fb7` | 0 (잔존 0) | CI 재검증 |
+| CI 재검증 | — | ✅ **27/27 PASS** (arologis flaky 재실행 PASS) | PM 자동 머지 |
 
 ### MIG-6 사이클 1 누적 (PR #274)
 
@@ -45,11 +43,11 @@
 
 - `feedback_codex_plugin_setup.md` — Codex `sandbox=workspace-write` 통일 (review 단계 read-only 폐기)
 
-### 다음 슬라이스 — MIG-7 (자동 진입 대기)
+### 다음 슬라이스 — MIG-8 (자동 진입 대기)
 
 **후보 범위**:
-- Cash disbursement / Cash receipt 도메인 신규 + MIG-5 staging (expense_voucher_raw / deposit_report_raw) → 도메인 변환
-- Order 도메인 신규 + MIG-4 주문서 staging → Order 변환
+- Order 도메인 신규 + MIG-4 주문서 staging (`staging.ecount_order_raw`) → Order 도메인 변환
+- aging snapshot view 신규 + Journal 자동 생성 (D-MIG-7-04 옵션 C 이연 처리)
 - 잔여 검증 raw (매출장/매입장 xlsx → DailyClosing 대조)
 - 사용자 우선순위 결정 후보
 
