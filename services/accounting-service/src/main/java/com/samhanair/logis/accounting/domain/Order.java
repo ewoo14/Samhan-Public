@@ -47,6 +47,9 @@ public class Order extends BaseEntity {
     @Column(name = "manager_name", length = 100)
     private String managerName;
 
+    @Column(name = "manager_employee_id")
+    private UUID managerEmployeeId;
+
     @Column(name = "valid_until")
     private LocalDate validUntil;
 
@@ -109,6 +112,10 @@ public class Order extends BaseEntity {
 
     public void linkSalesSlip(String slipNo) {
         this.linkedSlipNo = slipNo;
+    }
+
+    public void linkManagerEmployee(UUID employeeId) {
+        this.managerEmployeeId = employeeId;
     }
 
     private void recalcTotals() {
