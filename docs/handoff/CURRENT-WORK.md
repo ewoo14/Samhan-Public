@@ -4,19 +4,38 @@
 
 ---
 
-## 2026-05-21 진행 중 — MIG-12 follow-up (V32 partial UNIQUE + Lookup auth 격상)
+## 🚀 2026-05-21 최신 진행 — MIG-12 follow-up 머지 완료 + 옵션 A 12단계 첫 적용
 
-- 현재 브랜치: `spec/2026-05-21-mig-12-followup-tax-invoice-line-unique-lookup-auth`
-- 범위: MIG-1~11 사후 재점검 MAJOR 1건 + P1 1건 follow-up
-- 구현:
-  - accounting V32 `tax_invoice_lines(tax_invoice_id,line_no)` active partial UNIQUE
-  - `MIG12_INTERNAL_AUTH_MISS(503)` ErrorCode
-  - Product/Partner LookupClient token null/blank 및 401/403 fail-fast
-  - `TaxInvoiceLineSoftDeleteIT` 3 cases + LookupClient 단위 테스트
-- 검증 명령:
-  - `./gradlew.bat :shared:common:test :services:accounting-service:test :services:inventory-service:test --no-daemon`
-- 산출 문서:
-  - `docs/dev-reports/mig-12-followup-tax-invoice-line-unique-lookup-auth.md`
+### MIG-12 PR #280 머지 (`d14affb2`, 21:48 UTC, 14 file +433 LOC)
+
+**범위**: MIG-1~11 사후 재점검 MAJOR 1 + P1 1 follow-up
+- accounting V32 `tax_invoice_lines(tax_invoice_id, line_no)` partial UNIQUE (WHERE is_deleted=FALSE)
+- `MIG12_INTERNAL_AUTH_MISS(503)` ErrorCode
+- ProductLookupClient + PartnerLookupClient: token null/blank/401/403 → fail-fast (이전 silent miss → 503 throw)
+- `TaxInvoiceLineSoftDeleteIT` 3 case + LookupClient 단위 테스트 8 cases
+
+### 옵션 A 12단계 첫 적용 결과 — 최단 사이클
+
+| 단계 | 결과 |
+|---|---|
+| 1a Claude 5-agent | 모두 APPROVE (P0/P1/P2 0건, Minor 2 백로그) |
+| 1c Claude fix | **skip** (P1 이하 백로그) |
+| 1d Codex 5-section | **모두 APPROVE (결함 0건)** |
+| 1e Codex fix | **skip** (결함 0) |
+| 9 Claude verify | **skip** (Codex fix 변경 없음) |
+| 10 1f Claude fix | **skip** (MAJOR/P0 없음) |
+| CI | 27/27 PASS |
+
+→ 양쪽 모두 APPROVE + Codex fix 0 = 단계 1c/1e/9/10 skip 효과 입증.
+
+### Minor 백로그
+
+- MIG-12-MIN-1: 다수 IT의 `DynamicPermissionClient @MockBean` deprecation warning (별도 청소 슬라이스)
+- MIG-12-MIN-2: `PartnerLookupClient` Javadoc 'fail-soft 패턴' 잔존 (V32 후 fail-fast 격상됨)
+
+### 신규 메모리 (2026-05-21)
+
+- `feedback_codex_fix_claude_verify.md` — 옵션 A 12단계 (Codex fix → Claude verify, MAJOR/P0 만 1f fix)
 
 ---
 
