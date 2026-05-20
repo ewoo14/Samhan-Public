@@ -4,30 +4,13 @@
 
 ---
 
-## 🚀 2026-05-20 최신 진행 — MIG-10 머지 완료 + MIG-11 자동 진입 (PM 자율 연속)
+## 🎉 2026-05-20 최신 진행 — 이카운트 마이그레이션 시리즈 종료 (MIG-1~11 모두 머지)
 
-### 2026-05-20 Codex Update — MIG-11 구현 진행
+### 시리즈 종료 보고 (PM 자율 연속 진행 종결)
 
-- 현재 branch: `spec/2026-05-20-mig-11-sales-purchase-ledger-xlsx`
-- 범위: `매출장.xlsx` / `매입장.xlsx` Apache POI 5.4.0 파서 도입, staging 2표, DailyClosing 대조 warning, auth PageCode 2종.
-- 실제 raw 헤더 확인:
-  - row 0은 header가 아니라 `회사명 ... / 매출장|매입장` meta row.
-  - 매출장 row 1 header: `월/일`, `유형명`, `전자구분`, `거래처코드`, `거래처명`, `적요`, `매출공급가액`, `매출부가세`, `매출합계`.
-  - 매입장 row 1 header: `월/일`, `거래처코드`, `유형명`, `전자구분`, `거래처명`, `적요`, `매입공급가액`, `매입부가세`.
-  - 매입장 `total_amount`는 `매입공급가액 + 매입부가세`로 계산.
-- 구현 파일:
-  - `shared/common/src/main/java/com/samhanair/logis/common/ecount/EcountXlsxSupport.java`
-  - `shared/common/src/main/java/com/samhanair/logis/common/ecount/EcountMig11Result.java`
-  - `services/accounting-service/src/main/resources/db/migration/V31__add_ecount_ledger_staging.sql`
-  - `services/auth-service/src/main/resources/db/migration/V24__seed_mig11_page_codes.sql`
-  - `EcountSalesLedgerImporter`, `EcountPurchaseLedgerImporter`, controller 2종, 단위/IT/fixture tests.
-- 문서:
-  - spec 실제 header/DailyClosing schema 정정 완료.
-  - dev-report: `docs/dev-reports/ecount-mig-11-sales-purchase-ledger-xlsx.md`
-  - README / ROADMAP / DECISIONS / accounting-service README / overview HTML 갱신.
-- 검증 상태:
-  - Gradle wrapper는 distribution/plugin classpath 다운로드를 시도했으나 sandbox network 제한으로 `Permission denied: getsockopt` 실패.
-  - 캐시된 Gradle 직접 실행 + `--offline`도 root plugin classpath 캐시 부재로 실패.
+이카운트 마이그레이션 11 슬라이스 모두 머지 완료 — **이카운트 raw 11종 + 도메인 변환 + Journal 자동 생성 + aging snapshot view + Employee cross-link + xlsx 검증 모두 완성**. 다음 단계는 사용자 결정 대기 (PM 자율 연속 메모리 조건: "시리즈 종료 시 멈춤").
+
+### 머지 완료 누적 (2026-05-20 하루 11 슬라이스)
   - 네트워크 가능한 환경에서 `./gradlew.bat :shared:common:test :services:auth-service:test :services:accounting-service:test --no-daemon` 재실행 필요.
 
 ### 머지 완료 슬라이스 (2026-05-20)
@@ -42,7 +25,19 @@
 | #275 | **MIG-7** Cash 도메인 신규 (CashDisbursement + CashReceipt) | `9fd88bc5` | 09:38 UTC | 26 file, V27 + V20 |
 | #276 | **MIG-8** Order 도메인 신규 + MIG-4 주문서 변환 | `b62c6cb8` | 10:39 UTC | 23 file, V28 + V21 |
 | #277 | **MIG-9** Cash → Journal 자동 생성 + Partner aging snapshot view | `1d30dee6` | 11:52 UTC | 25 file 초기 + 사이클 fix 12 file, V29 + V22 |
-| #278 | **MIG-10** Order Employee cross-link + aging_snapshot net 컬럼 (D-MIG-8-05 + C6-MIN-3 이연 처리) | `4f925a94` | 13:40 UTC | 27 file 초기 + 사이클 fix 17 file, V30 + V23, ErrorCode MIG10 5종, orders.manager_employee_id (FK 미선언 — service boundary), EmployeeLookupClient (config/contract fail-fast LOOKUP_ERROR), partner_aging_snapshot DROP+RECREATE + net_receivable/net_payable/net_cash (stable account_code), user-service /internal/users/by-name endpoint 신규, InternalUserByNameControllerIT 6 case |
+| #278 | **MIG-10** Order Employee cross-link + aging_snapshot net 컬럼 (D-MIG-8-05 + C6-MIN-3 이연 처리) | `4f925a94` | 13:40 UTC | 27 file 초기 + 사이클 fix 17 file, V30 + V23, ErrorCode MIG10 5종 |
+| #279 | **MIG-11** 매출장/매입장 xlsx → staging + DailyClosing 대조 (Apache POI 도입) | `25824d2e` | 14:38 UTC | 28 file 초기 + 사이클 fix 20 file, V31 + V24, Apache POI 5.4.0 (GHSA-gmg8-593g-7mv3 해소), EcountXlsxSupport 헬퍼 + extra column strict reject, ErrorCode MIG11 5종 + MIG11_FILE_HASH_INVALID, DailyClosing 대조 검증 SQL, 단위 테스트 18 cases + 10 IT parameterized |
+
+### 다음 슬라이스 — 사용자 결정 대기 (이카운트 시리즈 종료)
+
+PM 자율 연속 진행 ([feedback_pm_auto_continuous]) 의 멈춤 조건 "시리즈 종료" 도달. 다음 단계는 사용자 우선순위 결정:
+
+**후보**:
+1. **admin UI 화면** (Cash/Order/AgingSnapshot/Ledger 조회 + FE + Designer + QA 큰 슬라이스)
+2. **외부 통합 실 연동** (KFTC / NTS / Aligo / Clova — SP-09 shell 완비, vendor key 필요)
+3. **Phase 11 AWS migration** (RDS + EC2 + Secrets Manager)
+4. **POI shared/common 분리** (D-MIG-11 이연, shared:ecount-io module)
+5. **운영 데이터 실 import 검증** (E2E 시나리오)
 
 ### 신규 메모리 (2026-05-20)
 
