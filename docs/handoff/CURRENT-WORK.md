@@ -4,16 +4,7 @@
 
 ---
 
-## 🚀 2026-05-20 최신 진행 — MIG-8 Order 도메인 구현 진행 중
-
-### Codex MIG-8 구현 메모 (2026-05-20)
-
-- 브랜치: `spec/2026-05-20-mig-8-order-domain`
-- 범위: Order + OrderLine + OrderProgressStatus 신규, `staging.ecount_order_raw` → Order 도메인 transform, 완료 주문 SalesAccountingSlip cross-link.
-- 신규 Flyway: accounting V28 `orders`/`order_lines`, auth V21 `ecount.mig8.order`.
-- 신규 계약: shared/common `EcountMig8TransformResult`, ErrorCode MIG8 7종.
-- 검증 진행: targeted `:shared:common:test --tests ErrorCodeMig8Test` + `:services:accounting-service:test --tests Mig8OrderTransformServiceTest` PASS (`GRADLE_USER_HOME=C:\dev\SamhanLogis\.gradle\codex-home`).
-- 남은 단계: 전체 요청 검증 `:shared:common:test :services:auth-service:test :services:accounting-service:test`, commit, push.
+## 🚀 2026-05-20 최신 진행 — MIG-8 머지 완료 + MIG-9 자동 진입 대기
 
 ### 머지 완료 슬라이스 (2026-05-20)
 
@@ -24,7 +15,18 @@
 | #272 | **MIG-4** 영업·세무 raw 4종 | `c8d64e38` | 05:34 UTC | 41 file |
 | #273 | **MIG-5** 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file |
 | #274 | **MIG-6** 잔여 마스터 5종 (PII 가드) | `5c15db2b` | 08:43 UTC | 75 file |
-| #275 | **MIG-7** Cash 도메인 신규 (CashDisbursement + CashReceipt) + MIG-5 staging 변환 | `9fd88bc5` | 09:38 UTC | 26 file, V27 + V20, ErrorCode MIG7 6종, AbstractMig7CashTransformService DRY, transform_status PENDING→TRANSFORMED/REJECTED 추적, 단위 테스트 20 cases (Disbursement 10 + Receipt 10 대칭) + 10 IT parameterized. **D-MIG-7-04 옵션 C**: aging snapshot + Journal 자동 생성 MIG-8 이연 |
+| #275 | **MIG-7** Cash 도메인 신규 (CashDisbursement + CashReceipt) | `9fd88bc5` | 09:38 UTC | 26 file, V27 + V20, ErrorCode MIG7 6종 |
+| #276 | **MIG-8** Order 도메인 신규 (Order + OrderLine + OrderProgressStatus) + MIG-4 주문서 staging 변환 | `b62c6cb8` | 10:39 UTC | 23 file 초기 + 사이클 fix 4 file, V28 + V21, ErrorCode MIG8 7종, SalesAccountingSlip cross-link (COMPLETED 시 linked_slip_no), pendingRows LIMIT 제거 (batch boundary order_no split 가드), product_id MIG-2 item_alias fail-soft lookup, DuplicateKeyException constraint 분기 |
+
+### MIG-8 사이클 1 누적 (PR #276)
+
+| 사이클 | head | 결함 | 처리 |
+|---|---|---|---|
+| 1a Claude 5-agent | `7232e129` | 모두 APPROVE (P0/P1 0건) — Minor 5건 | 1c fix |
+| 1c Claude fix | `86942d6c` | 0 (잔존 0) | 1d 진입 |
+| 1d Codex 5-section | — | **MAJOR 1** (batch boundary order_no split) + Minor 1 (product_id lookup 미구현) | 1e fix |
+| 1e Codex fix | `6c3129b2` | 0 (잔존 0) | CI 확인 |
+| CI watch | — | ✅ **27/27 PASS** | PM 자동 머지 |
 
 ### MIG-7 사이클 1 누적 (PR #275)
 
@@ -52,11 +54,11 @@
 
 - `feedback_codex_plugin_setup.md` — Codex `sandbox=workspace-write` 통일 (review 단계 read-only 폐기)
 
-### 다음 슬라이스 — MIG-8 (자동 진입 대기)
+### 다음 슬라이스 — MIG-9 (자동 진입 대기)
 
 **후보 범위**:
-- Order 도메인 신규 + MIG-4 주문서 staging (`staging.ecount_order_raw`) → Order 도메인 변환
 - aging snapshot view 신규 + Journal 자동 생성 (D-MIG-7-04 옵션 C 이연 처리)
+- Order 매니저명 → Employee cross-link (D-MIG-8-05 이연 처리)
 - 잔여 검증 raw (매출장/매입장 xlsx → DailyClosing 대조)
 - 사용자 우선순위 결정 후보
 
