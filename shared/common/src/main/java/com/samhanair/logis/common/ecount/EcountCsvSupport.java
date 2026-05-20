@@ -96,7 +96,7 @@ public final class EcountCsvSupport {
     }
 
     public static void validateHeader(String[] header, String[] expected) {
-        if (header.length != expected.length) {
+        if (!isExpectedWidth(header, expected)) {
             throw new BusinessException(ErrorCode.MIG2_CSV_HEADER_MISMATCH,
                     "CSV 헤더 컬럼 수 불일치 — 예상=" + expected.length
                             + " 실제=" + header.length
@@ -110,6 +110,13 @@ public final class EcountCsvSupport {
                                 + " 예상='" + expected[i] + "' 실제='" + actual + "'");
             }
         }
+    }
+
+    private static boolean isExpectedWidth(String[] header, String[] expected) {
+        if (header.length == expected.length) {
+            return true;
+        }
+        return header.length == expected.length + 1 && stripCell(header[header.length - 1]).isEmpty();
     }
 
     public static void requireMaxLength(String raw, int max, String fieldName, int sourceRowNo) {
