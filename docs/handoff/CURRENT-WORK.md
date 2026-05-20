@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 2026-05-20 최신 진행 — MIG-3 머지 완료 + MIG-4 자동 진입 대기
+## 🚀 2026-05-20 최신 진행 — MIG-4 머지 완료 + MIG-5 자동 진입 대기
 
 ### 머지 완료 슬라이스 (2026-05-20)
 
@@ -12,15 +12,29 @@
 |---|---|---|---|---|
 | #270 | **MIG-2** 이카운트 마스터 5종 (품목/계정/부서/창고/카드) + 자동 lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file, 5 importer, V7~V22 + V8 보강, ErrorCode MIG2 7종, commons-beanutils 1.11.0 (CVE-2025-48734) |
 | #271 | **MIG-3** 이카운트 회계 전표 4종 (매입/매출/일반/분개) | `3a57c41f` | 03:38 UTC | 49 file, 4 importer + 4 controller, V23 + V16, ErrorCode MIG3 9종, partner-service `/api/v1/partners/internal/by-name` 연동, 회계전표분개 차/대 검증 + group reject |
+| #272 | **MIG-4** 이카운트 영업·세무 raw 4종 (세금계산서/판매전표/내역/주문서) | `c8d64e38` | 05:34 UTC | 41 file, 4 importer + 4 controller, V24 + V17, ErrorCode MIG4 9종, TaxInvoiceStatus.MIGRATED + SalesAccountingSlip.dueDate, soft-delete CTE 4 도메인, pg_advisory_xact_lock 4 namespace, footer 정확 skip + malformed row MIG4_DATE_INVALID 가드, 단위 테스트 32 cases + 16 IT parameterized |
 
-### 다음 슬라이스 — MIG-4 (자동 진입)
+### MIG-4 사이클 1 누적 (PR #272)
 
-**raw 5종 (이미 `docs/migration/ecount-data/raw/` 에 존재)**:
-- `세금계산서용 판매전표-Excel다운로드(20260501~20260519_1).csv` → TaxInvoice OUTBOUND 매칭 (기존 SAS 시리즈)
-- `판매전표-Excel다운로드(20260501~20260519_1).csv` → SalesAccountingSlip 출고 연결
-- `매출매입내역-Excel다운로드(20260501~20260519_1).csv` → 검증/집계 (DailyClosing 연동)
-- `주문서-Excel다운로드(...).csv` (5 분할 파일) → SalesAccountingSlip / Order 연계
-- `매출장.xlsx` / `매입장.xlsx` → DailyClosing 대조 (검증용, 옵션)
+| 사이클 | head | 결함 | 처리 |
+|---|---|---|---|
+| 1a Claude 5-agent | `3b9ce7d2` | P0 1 + P1 1 + P2 3 + Minor 2 (BE) / P0 1 + P1 2 + P2 2 + Minor 1 (QA) = 중복 제거 11건 | 1c fix |
+| 1c Claude fix | `c2b2a746` | 0 (잔존 0) | 1d 진입 |
+| 1d Codex 5-section | — | Architecture/Robustness/Completeness P2×3 | 1e fix |
+| 1e Codex fix | `2969229a` | 0 (잔존 0) | 사이클 종료 |
+| CI watch | — | **27/27 PASS** ✅ | PM 자동 머지 (`gh pr merge --squash --delete-branch`) |
+
+### 신규 메모리 (2026-05-20)
+
+- `.claude/memory/feedback_samhan_public_overview_sync.md` — `docs/samhan-public-overview.html` GitHub Pages 항시 동기화 의무 (사용자 명시 "항시 업데이트 요망")
+
+### 다음 슬라이스 — MIG-5 (자동 진입 대기, 사용자 결정)
+
+**raw 후보 (이미 `docs/migration/ecount-data/raw/` 에 존재)**:
+- `창고이동-Excel다운로드(20260501~20260519_1).csv` → Inventory 도메인 (StockMovement / 창고 간 이동)
+- `지출결의서-Excel다운로드(20260501~20260519_1).csv` → accounting-service 지출결의서 도메인
+- `입금보고서-Excel다운로드(20260501~20260519_1).csv` → accounting-service 입금/회수 (Partner aging cross-link)
+- (옵션) Order 도메인 신규 + MIG-4 주문서 staging → Order 변환
 
 ### 새 세션 즉시 진입 절차
 
@@ -31,8 +45,8 @@ git checkout main && git pull origin main
 # 2. Codex MCP 회복 확인 (새 세션이라 deferred tool registry 정상 등록)
 claude mcp list  # → codex: codex mcp-server - ✓ Connected
 
-# 3. MIG-4 brainstorming + spec 진입 — 사용자 명시 "PM 자동시작" 자율 진행
-#    (MIG-3 spec/plan/dev-report 패턴 미러)
+# 3. MIG-5 brainstorming + spec 진입 — 사용자 명시 "PM 자동시작" 자율 진행
+#    (MIG-3/MIG-4 spec/plan/dev-report 패턴 미러)
 ```
 
 ### 9회차 워크플로우 — 핵심 규칙 (절대 잊지 말 것)
@@ -77,17 +91,9 @@ claude mcp list  # → codex: codex mcp-server - ✓ Connected
 - [x] MIG-1 거래처 PoC (PR #262, 5월 14일)
 - [x] MIG-2 마스터 5종 + lookup map 4종 (PR #270, 5월 20일)
 - [x] MIG-3 회계 전표 4종 (PR #271, 5월 20일)
-- [ ] **MIG-4** 세금계산서/판매전표/매출매입내역/주문서 (Codex 구현 진행 중, branch `spec/2026-05-20-mig-4-sales-tax-invoice`)
-- [ ] MIG-5+ 주문서/창고이동/지출결의서/입금보고서 (이후)
-
-### 2026-05-20 Codex Update — MIG-4 구현 진행
-
-- accounting V24: MIG-4 staging 4표 + `sales_accounting_slips.due_date` nullable 보강.
-- shared/common: MIG4 ErrorCode 9종.
-- auth V17: MIG4 PageCode 4종 role_page_permissions seed.
-- accounting-service: TaxInvoice / SalesSlipLine / Summary / Order importer 4종 + controller 4종 + `EcountMig4ImportResult`.
-- test resources: `fixtures/mig4-*.csv` 4종 + raw header cross-check.
-- 검증 대기: Gradle wrapper/dependency network 제한 해소 후 `.\gradlew.bat :services:accounting-service:test :services:auth-service:test :shared:common:test --no-daemon`.
+- [x] MIG-4 영업·세무 raw 4종 (PR #272, 5월 20일 05:34 UTC)
+- [ ] **MIG-5** 창고이동/지출결의서/입금보고서 (자동 진입 대기)
+- [ ] MIG-6+ Order 도메인 신규 / 주문서 → SalesAccountingSlip 전환
 
 ---
 
