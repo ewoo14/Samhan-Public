@@ -192,6 +192,22 @@ CI watch monitor → 모든 check 완료 알림
 
 - **PR 코멘트는 TM 통합 2건** — Claude TM 통합 1 + Codex TM 통합 1 = **사이클 1회당 2 PR comment**. 가독성 우선, 각자 5+5=10 별도 등록 폐기 (2026-05-17 사용자 정정).
 - **양쪽 TM 통합 등록 의무** (2026-05-17 PR #220 사이클 1 회고): 5회차 워크플로우는 1b TM Claude 등록 → 1c Claude fix → **2a Codex review → 2b TM Codex 등록 필수** → 2c Codex fix. 2b 등록 누락하면 사용자가 양쪽 review 비교 불가. Codex fix 진행 전 반드시 2b PR comment 등록 검증.
+- **워크플로우 일관성 절대 의무** (2026-05-20 사용자 정정 — 절대 잊지 말 것): **매 PR / 매 사이클 동일 패턴 엄수**. 본 메모리의 5회차 사이클 구조 (Claude review → TM Claude PR comment → Claude fix → push → Codex review → TM Codex PR comment → Codex fix → push) 를 매번 정확히 반복. **워크플로우 변동/임의 단축 금지**. 다음 변동 패턴은 모두 위반 사례:
+  - TM 통합 PR comment 게시를 사이클 종료 후에야 사후 등록 (PR #271 사이클 1/2 회고) — fix 진행 전 즉시 게시 의무
+  - Codex review 단계 임의 생략 (Codex MCP disconnect 외 환경 한계 없을 때) — 새 세션 회복 후 정상 진행 의무
+  - 사이클 안 "보강 fix-2/3", "dev-report 추가 commit" 등 임의 추가 단계 (PR #270 회고) — 가능한 한 1 사이클 = 2 commit (Claude fix + Codex fix) 으로 통일
+  - 사이클 종료 조건 (잔존 0 + CI green) 미달 상태에서 사이클 종료 선언 (PR #264 회고)
+- **사이클 1회 체크리스트** (절대 변동 금지):
+  1. ☐ Claude 5-agent 병렬 review (single message multiple Agent tool calls)
+  2. ☐ TM Claude 통합 PR comment 등록 (즉시, head SHA 명시)
+  3. ☐ Claude fix (Codex CLI MCP workspace-write 위임 또는 직접) — 결함 0 시 skip 가능
+  4. ☐ commit + push (head 갱신)
+  5. ☐ Codex 5-agent 병렬 review (사이클 1c push 후 새 head 기준)
+  6. ☐ TM Codex 통합 PR comment 등록 (즉시, head SHA 명시)
+  7. ☐ Codex fix (workspace-write)
+  8. ☐ commit + push (head 갱신)
+  9. ☐ 사이클 종료 조건 검증: 잔존 결함 0 + 다음 사이클 CI watch 결과 PASS
+  10. ☐ 종료 시 → PM 마지막 종합 리뷰 + 자동 머지. 미충족 시 → 사이클 N+1 진입 (최대 N=3)
 - **각 agent 5건 raw markdown** — 작업 산출물은 `docs/qa/<slug>/claude-{role}-cycle-N.md` / `codex-{role}-cycle-N.md` 로 저장만 (PR comment 등록 X, repo commit X). TM 통합 markdown 작성 시 source 자료.
 - **head SHA 명시** — TM 통합 코멘트 첫 줄에 "head `<sha>` 기준" 명시 (사이클별 추적).
 - **Codex CLI MCP 호출 규칙**:

@@ -39,9 +39,28 @@ claude mcp list  # → codex: codex mcp-server - ✓ Connected
 
 [feedback_dual_5agent_review] 9회차 = Claude 기획 → Codex 개발 → 사이클 (Claude 5-agent review/fix → Codex 5-agent review/fix) N≤3 → CI green → PM 자동 머지 + 다음 PR 자동 진입.
 
+### 🔒 사이클 1회 체크리스트 (절대 변동 금지 — 2026-05-20 사용자 정정)
+
+매 PR / 매 사이클 동일 패턴 엄수. **워크플로우 변동/임의 단축 금지**.
+
+1. ☐ Claude 5-agent 병렬 review (single message multiple Agent tool calls)
+2. ☐ **TM Claude 통합 PR comment 등록 (즉시, head SHA 명시)** — 사이클 종료 후 사후 등록 금지
+3. ☐ Claude fix (Codex CLI MCP workspace-write 위임 또는 직접) — 결함 0 시 skip 가능
+4. ☐ commit + push (head 갱신)
+5. ☐ Codex 5-agent 병렬 review (사이클 1c push 후 새 head 기준)
+6. ☐ **TM Codex 통합 PR comment 등록 (즉시, head SHA 명시)**
+7. ☐ Codex fix (workspace-write)
+8. ☐ commit + push (head 갱신)
+9. ☐ 사이클 종료 조건 검증: 잔존 결함 0 + CI watch 결과 PASS
+10. ☐ 종료 시 → PM 마지막 종합 리뷰 + 자동 머지. 미충족 시 → 사이클 N+1 진입 (최대 N=3)
+
+### 워크플로우 변동/혼란 회피 가드 (회고)
+
 - **CI green 전 PM 마지막 리뷰 게시 금지** (자주 잊는 함정)
-- **사이클 1~3 안 모든 결함 fix 의무** (후속 PR 백로그 금지, 사용자 명시)
-- **각 사이클 TM 통합 PR comment 2건** (Claude + Codex) — 사이클별 누락 시 사용자 정정 발생
+- **TM 통합 PR comment 사후 등록 금지** (PR #271 회고 — 사이클 1/2 사후 게시로 사용자 정정 발생)
+- **Codex review 단계 임의 생략 금지** (환경 한계 외) — Codex MCP disconnect 시 새 세션 회복 후 정상 진행
+- **사이클 안 "보강 fix-2/3", dev-report 추가 commit" 등 임의 추가 단계 금지** (PR #270 회고) — 1 사이클 = Claude fix + Codex fix 2 commit 통일
+- **사이클 1~3 안 모든 결함 fix 의무** (후속 PR 백로그 금지)
 - **QA agent Docker 실 검증 의무** — code read 만 PASS 금지
 - **PM 자동시작** (사용자 명시) — brainstorming HARD-GATE skip 가능, spec → plan → Codex 개발 즉시 진입
 
