@@ -64,7 +64,7 @@ public class Product extends BaseEntity {
      * 사용자 노출 식별자 — 시트 B열 모델명 정규화. UUID 비공개 원칙 충족
      * (feedback_uuid_no_user_visibility.md). V3 마이그에서 추가된 신규 컬럼.
      */
-    @Column(name = "model_code", length = 64)
+    @Column(name = "model_code", length = 100)
     private String modelCode;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -174,7 +174,7 @@ public class Product extends BaseEntity {
     // ============================================================
 
     /** 이카운트 품목코드 (5자리, 01XXXX). 사용자 노출 식별자 (modelCode 와 별도 — 시트 vs 이카운트). */
-    @Column(name = "product_code", length = 20)
+    @Column(name = "product_code", length = 100)
     private String productCode;
 
     /** 규격 (예: "13평형 / R32 / 인버터"). */
@@ -232,6 +232,19 @@ public class Product extends BaseEntity {
     /** 분류2 (벽걸이/스탠드/시스템/천장형/공기청정기/부속). */
     @Column(name = "product_group2", length = 50)
     private String productGroup2;
+
+    /** MIG-2 품목계층그룹 raw 명칭 ([CAC] 싱글 등). */
+    @Column(name = "category_group", length = 100)
+    private String categoryGroup;
+
+    /** MIG-2/SAS VAT 계산 정책. 이카운트 품목은 기본 과세. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tax_type", nullable = false, length = 20)
+    private ProductTaxType taxType = ProductTaxType.TAXABLE;
+
+    /** VAT-inclusive 기준 단가. slip-service / SAS 라인 금액 분리 기준과 일관. */
+    @Column(name = "unit_price_with_vat", nullable = false, precision = 15, scale = 2)
+    private BigDecimal unitPriceWithVat = BigDecimal.ZERO;
 
     // === HVAC 특화 단가 6종 (이카운트 발견 — Stage 1 핵심 보강) ===
 
@@ -491,6 +504,17 @@ public class Product extends BaseEntity {
     public void updateGroups(String productGroup1, String productGroup2) {
         this.productGroup1 = productGroup1;
         this.productGroup2 = productGroup2;
+    }
+
+    /** MIG-2 이카운트 품목 import 메타 갱신. */
+    public void updateMig2EcountFields(String categoryGroup, ProductTaxType taxType,
+                                       BigDecimal unitPriceWithVat) {
+        this.categoryGroup = categoryGroup;
+        this.taxType = taxType == null ? ProductTaxType.TAXABLE : taxType;
+        if (unitPriceWithVat != null) {
+            validateNonNegative(unitPriceWithVat, "VAT 포함 단가");
+            this.unitPriceWithVat = unitPriceWithVat;
+        }
     }
 
     /**
