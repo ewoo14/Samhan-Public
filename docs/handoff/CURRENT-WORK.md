@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 2026-05-20 최신 진행 — MIG-8 머지 완료 + MIG-9 자동 진입 대기
+## 🚀 2026-05-20 최신 진행 — MIG-9 머지 완료 + MIG-10 자동 진입 대기
 
 ### 머지 완료 슬라이스 (2026-05-20)
 
@@ -15,8 +15,19 @@
 | #272 | **MIG-4** 영업·세무 raw 4종 | `c8d64e38` | 05:34 UTC | 41 file |
 | #273 | **MIG-5** 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file |
 | #274 | **MIG-6** 잔여 마스터 5종 (PII 가드) | `5c15db2b` | 08:43 UTC | 75 file |
-| #275 | **MIG-7** Cash 도메인 신규 (CashDisbursement + CashReceipt) | `9fd88bc5` | 09:38 UTC | 26 file, V27 + V20, ErrorCode MIG7 6종 |
-| #276 | **MIG-8** Order 도메인 신규 (Order + OrderLine + OrderProgressStatus) + MIG-4 주문서 staging 변환 | `b62c6cb8` | 10:39 UTC | 23 file 초기 + 사이클 fix 4 file, V28 + V21, ErrorCode MIG8 7종, SalesAccountingSlip cross-link (COMPLETED 시 linked_slip_no), pendingRows LIMIT 제거 (batch boundary order_no split 가드), product_id MIG-2 item_alias fail-soft lookup, DuplicateKeyException constraint 분기 |
+| #275 | **MIG-7** Cash 도메인 신규 (CashDisbursement + CashReceipt) | `9fd88bc5` | 09:38 UTC | 26 file, V27 + V20 |
+| #276 | **MIG-8** Order 도메인 신규 + MIG-4 주문서 변환 | `b62c6cb8` | 10:39 UTC | 23 file, V28 + V21 |
+| #277 | **MIG-9** Cash → Journal 자동 생성 + Partner aging snapshot view (D-MIG-7-04 옵션 C 이연 처리) | `1d30dee6` | 11:52 UTC | 25 file 초기 + 사이클 fix 12 file, V29 + V22, ErrorCode MIG9 5종, JournalSourceType.CASH_DISBURSEMENT/CASH_RECEIPT enum, partner_aging_snapshot MATERIALIZED VIEW + REFRESH CONCURRENTLY, journal_no JD-/JR- 접두사 분리, ON CONFLICT (source_type, source_ref) DO NOTHING (PG duplicate trans abort 회피), PageCode enum + V22 seed 일관, 단위 테스트 15+ cases + 15 IT parameterized (3 endpoint × 5 case) |
+
+### MIG-9 사이클 1 누적 (PR #277)
+
+| 사이클 | head | 결함 | 처리 |
+|---|---|---|---|
+| 1a Claude 5-agent | `2f6e7cca` | 모두 APPROVE (P0/P1 0건) — P2 3 + Minor 4 = 7건 | 1c fix |
+| 1c Claude fix | `2b05e663` | 0 (잔존 0) | 1d 진입 |
+| 1d Codex 5-section | — | **MAJOR 2** (journal_no 충돌 + PG duplicate trans abort) + Minor 2 | 1e fix |
+| 1e Codex fix | `67d6cbf1` | 0 (잔존 0) | CI 확인 |
+| CI watch | — | ✅ **27/27 PASS** | PM 자동 머지 |
 
 ### MIG-8 사이클 1 누적 (PR #276)
 
@@ -54,18 +65,14 @@
 
 - `feedback_codex_plugin_setup.md` — Codex `sandbox=workspace-write` 통일 (review 단계 read-only 폐기)
 
-### 현재 슬라이스 — MIG-9 (Codex 구현 진행)
+### 다음 슬라이스 — MIG-10 (자동 진입 대기)
 
-**범위**:
-- CashDisbursement/CashReceipt → Journal 자동 생성 (D-MIG-7-04 옵션 C 이연 처리)
-- `partner_aging_snapshot` MATERIALIZED VIEW + concurrent refresh
-- `journals(source_type, source_ref)` unique 멱등 키
-- auth V22 PageCode 2종 + MIG9 ErrorCode 5종
-- 단위 테스트 11 cases + cash-journals controller IT 10 cases
-
-**이연 유지**:
-- Order 매니저명 → Employee cross-link (D-MIG-8-05)는 MIG-10+ 후속
-- 잔여 검증 raw(매출장/매입장 xlsx → DailyClosing 대조)는 후속
+**후보 범위**:
+- Order 매니저명 → Employee cross-link (D-MIG-8-05 이연 처리)
+- partner_aging_snapshot net 계산 view 보정 (C6-MIN-3 이연 — `total_receivable = debit - credit` net 잔액)
+- 잔여 검증 raw (매출장/매입장 xlsx → DailyClosing 대조)
+- admin UI 화면 (Cash/Order/AgingSnapshot 조회)
+- 사용자 우선순위 결정 후보
 
 ### 새 세션 즉시 진입 절차
 
