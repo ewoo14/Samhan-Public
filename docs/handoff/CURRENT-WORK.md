@@ -4,17 +4,7 @@
 
 ---
 
-## 2026-05-20 Codex Update — MIG-5 개발 진행 중
-
-- 브랜치: `spec/2026-05-20-mig-5-stock-expense-deposit`
-- 범위: inventory V13 창고이동 staging + `EcountStockTransferImporter`, accounting V25 지출결의서/입금보고서 staging + importer 2종, auth V18 PageCode 3종, shared/common MIG5 ErrorCode 10종.
-- 테스트 산출: behavior test 3종, fixture header cross-check 2종, controller IT 2종 추가.
-- 검증 상태: `gradlew.bat`는 Gradle 배포본 다운로드가 sandbox 네트워크 제한으로 실패했고, 캐시 Gradle `--offline`도 plugin classpath 캐시 부재로 실패했다. 사용자 지시 조건에 따라 commit/push 보류.
-- 다음 단계: 네트워크 접근 가능한 환경에서 `./gradlew.bat :services:inventory-service:test :services:accounting-service:test :services:auth-service:test :shared:common:test --no-daemon` 재실행 후 통과 시 한국어 commit + push.
-
----
-
-## 🚀 2026-05-20 최신 진행 — MIG-4 머지 완료 + MIG-5 개발 진행 중
+## 🚀 2026-05-20 최신 진행 — MIG-5 머지 완료 + MIG-6 자동 진입 대기
 
 ### 머지 완료 슬라이스 (2026-05-20)
 
@@ -23,28 +13,25 @@
 | #270 | **MIG-2** 이카운트 마스터 5종 (품목/계정/부서/창고/카드) + 자동 lookup map 4종 | `5b47197e` | 00:56 UTC | 49 file, 5 importer, V7~V22 + V8 보강, ErrorCode MIG2 7종, commons-beanutils 1.11.0 (CVE-2025-48734) |
 | #271 | **MIG-3** 이카운트 회계 전표 4종 (매입/매출/일반/분개) | `3a57c41f` | 03:38 UTC | 49 file, 4 importer + 4 controller, V23 + V16, ErrorCode MIG3 9종, partner-service `/api/v1/partners/internal/by-name` 연동, 회계전표분개 차/대 검증 + group reject |
 | #272 | **MIG-4** 이카운트 영업·세무 raw 4종 (세금계산서/판매전표/내역/주문서) | `c8d64e38` | 05:34 UTC | 41 file, 4 importer + 4 controller, V24 + V17, ErrorCode MIG4 9종, TaxInvoiceStatus.MIGRATED + SalesAccountingSlip.dueDate, soft-delete CTE 4 도메인, pg_advisory_xact_lock 4 namespace, footer 정확 skip + malformed row MIG4_DATE_INVALID 가드, 단위 테스트 32 cases + 16 IT parameterized |
+| #273 | **MIG-5** 이카운트 창고이동·지출결의서·입금보고서 raw 3종 | `cf16a93d` | 07:01 UTC | 54 file, 3 importer + 3 controller, V13(inventory) + V25(accounting) + V18(auth), ErrorCode MIG5 10종 (warehouse/product lookup 분리), AbstractEcountMig5CashImporter DRY, ProductLookupClient (RestClient DB 경계 준수), product-service /products/internal/by-name endpoint 신규, soft-delete CTE 2 도메인, 단위 테스트 28 cases + 15 IT parameterized, Windows JDK 한국어 인코딩 fix |
 
-### MIG-4 사이클 1 누적 (PR #272)
+### MIG-5 사이클 1 누적 (PR #273)
 
 | 사이클 | head | 결함 | 처리 |
 |---|---|---|---|
-| 1a Claude 5-agent | `3b9ce7d2` | P0 1 + P1 1 + P2 3 + Minor 2 (BE) / P0 1 + P1 2 + P2 2 + Minor 1 (QA) = 중복 제거 11건 | 1c fix |
-| 1c Claude fix | `c2b2a746` | 0 (잔존 0) | 1d 진입 |
-| 1d Codex 5-section | — | Architecture/Robustness/Completeness P2×3 | 1e fix |
-| 1e Codex fix | `2969229a` | 0 (잔존 0) | 사이클 종료 |
-| CI watch | — | **27/27 PASS** ✅ | PM 자동 머지 (`gh pr merge --squash --delete-branch`) |
+| 1a Claude 5-agent | `589e40ae` | BE P2 1 + Minor 4 / QA P0 1 + P1 1 + P2 3 + Minor 1 = **중복 제거 11건** | 1c fix |
+| 1c Claude fix | `648ffd08` | 0 (잔존 0) | 1d 진입 |
+| 1d Codex 5-section | — | Architecture P1 (DB 경계) + Robustness/Completeness P2×2 = **3건** | 1e fix |
+| 1e Codex fix | `645b8693` | 0 (잔존 0) | 사이클 종료 |
+| CI watch | — | **27/27 PASS** ✅ | PM 자동 머지 |
 
-### 신규 메모리 (2026-05-20)
+### 다음 슬라이스 — MIG-6 (자동 진입 대기)
 
-- `.claude/memory/feedback_samhan_public_overview_sync.md` — `docs/samhan-public-overview.html` GitHub Pages 항시 동기화 의무 (사용자 명시 "항시 업데이트 요망")
-
-### 현재 슬라이스 — MIG-5 (개발 진행 중, 검증/commit 보류)
-
-**raw 후보 (이미 `docs/migration/ecount-data/raw/` 에 존재)**:
-- `창고이동-Excel다운로드(20260501~20260519_1).csv` → Inventory 도메인 (StockMovement / 창고 간 이동)
-- `지출결의서-Excel다운로드(20260501~20260519_1).csv` → accounting-service 지출결의서 도메인
-- `입금보고서-Excel다운로드(20260501~20260519_1).csv` → accounting-service 입금/회수 (Partner aging cross-link)
-- (옵션) Order 도메인 신규 + MIG-4 주문서 staging → Order 변환
+**후보 범위**:
+- Cash disbursement / receipt 도메인 신규 + MIG-5 staging (expense_voucher_raw / deposit_report_raw) → 도메인 변환
+- Order 도메인 신규 + MIG-4 주문서 staging → Order 변환
+- 이카운트 잔여 raw (있다면)
+- 또는 cash 도메인은 회계 영역 우선 vs Order 도메인은 영업 영역 우선 — 사용자 결정 후보
 
 ### 새 세션 즉시 진입 절차
 
