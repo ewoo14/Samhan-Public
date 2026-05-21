@@ -4,6 +4,34 @@
 
 ---
 
+## 🚧 2026-05-21 최신 진행 — MIG-17 Designer tokens/Mock 라벨 동기화
+
+### 현재 브랜치
+
+- `spec/2026-05-21-mig-17-designer-tokens-sync`
+
+### 범위
+
+- `docs/design/mig-14-admin-ui/tokens.md`의 CashKind / CashReceiptKind / OrderProgressStatus 라벨과 chip token 매핑을 실제 BE enum 계약으로 정렬한다.
+- MIG-14 FE 라벨 테이블과 mock wireframe 7건의 상태 chip/구분 라벨을 `EXPENSE_VOUCHER=지출결의서`, `MANUAL_DISBURSEMENT=수기 지출`, `DEPOSIT_REPORT=입금보고서`, `MANUAL_RECEIPT=수기 입금`, `COMPLETED=완료`, `IN_PROGRESS=진행`, `CANCELED=취소`, `PENDING=대기` 기준으로 정정한다.
+- Ledger mock은 `reconcileStatus` 임의 라벨 대신 `transformStatus`(`PENDING` / `TRANSFORMED` / `REJECTED`) 기준 변환상태 chip으로 정리한다.
+- 필터 chip + reset 공통 UI 구현은 MIG-18(E admin UI 2단계)로 이연한다.
+
+### 문서 산출
+
+- spec: `docs/superpowers/specs/2026-05-21-mig-17-designer-tokens-sync-design.md`
+- dev-report: `docs/dev-reports/mig-17-designer-tokens-sync.md`
+- decisions: `D-MIG-17-01~04`
+
+### 검증 메모
+
+- `clients/desktop npm run typecheck`
+- `clients/desktop npm run build`
+- `./gradlew :services:accounting-service:test --no-daemon`
+- `git diff --check`
+
+---
+
 ## 🚧 2026-05-21 최신 진행 — MIG-16 BE Minor 청소 진행 중
 
 ### 현재 브랜치

@@ -43,7 +43,7 @@
 | 주문번호 | `orderNo` | 헤더와 요약 모두 표시 |
 | 거래처 | `partnerName` | 업무 명칭 |
 | 매니저 | `managerName` | 이름 |
-| 진행상태 | `progressStatus` | 상태 badge |
+| 진행상태 | `progressStatus` | OrderProgressStatus badge. `COMPLETED`=`완료`, `IN_PROGRESS`=`진행`, `CANCELED`=`취소`, `PENDING`=`대기` |
 | 연결 전표 | `linkedSlipNo` | 없으면 `-` |
 | 라인 | `lines[]` | 품목명, 규격, 수량, 단가, 공급가액 |
 
