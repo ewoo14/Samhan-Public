@@ -5617,6 +5617,11 @@ const SP_D1_PAGES = [
   'products.admin',
   'arologis.admin',
   'arologis.region',
+  // MIG-14 admin UI 4 groups
+  'ecount.mig14.cash-list',
+  'ecount.mig14.order-list',
+  'ecount.mig14.aging-snapshot',
+  'ecount.mig14.ledger',
 ] as const
 
 /**
@@ -5666,6 +5671,9 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'inventory.dps', 'inventory.audit', 'admin.employees',
     'partners.list', 'partners.detail', 'partners.block', 'partners.edit-request',
     'products.list', 'products.admin', 'arologis.admin', 'arologis.region',
+    // MIG-14 admin UI
+    'ecount.mig14.cash-list', 'ecount.mig14.order-list',
+    'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -5697,6 +5705,9 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'estimates.list', 'sales.partner-order.list', 'sales.partner-order.history',
     'inventory.stock', 'inventory.audit',
     'partners.list', 'partners.detail',
+    // MIG-14 admin UI — ACCOUNTANT: view 전용
+    'ecount.mig14.cash-list', 'ecount.mig14.order-list',
+    'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
   ],
   // SP-D3 V9 fix: sales.slip.list 제거 + purchases.receipt-ocr 추가
   // (사용자 요구 ② — WAREHOUSE 에게 매출 슬립 숨김, 매입 영수증 OCR 허용)
@@ -5756,6 +5767,9 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'admin.employees',
     'partners.list', 'partners.detail', 'partners.block', 'partners.edit-request',
     'products.list', 'products.admin', 'arologis.admin', 'arologis.region',
+    // MIG-14 admin UI
+    'ecount.mig14.cash-list', 'ecount.mig14.order-list',
+    'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
