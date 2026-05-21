@@ -19,24 +19,33 @@ metadata:
 |---|---|---|---|
 | **Code review** | `mcp__codex__codex` | **`danger-full-access`** | 5-agent 병렬 |
 | **Code fix** | `mcp__codex__codex` | **`danger-full-access`** | commit + push 직접 가능 |
-| **Continue session** | `mcp__codex__codex-reply` `threadId` | — | 동일 thread 이어가기 |
+| **Continue session** | `mcp__codex__codex-reply` `threadId` | **`danger-full-access` 명시 의무 (2026-05-21 사용자 재지적)** | 동일 thread 이어가기 |
+
+**🚨 2026-05-21 사용자 재지적 (MIG-22 진행 중)**: "또다시 코덱스 read-only로 권한이 바뀜. 이미 권한 변경을 요청하였으나 리셋됨" → **모든 호출에 명시 의무 강화**. `mcp__codex__codex-reply` 는 thread 상속 X — 매 호출마다 `sandbox: "danger-full-access"` 명시 필수. 누락 시 read-only fallback 회귀.
 
 **Why:** `workspace-write` 는 `.git/index.lock` 권한 거부 + Gradle wrapper 네트워크 차단 trap 발생. Claude 가 매번 commit + push 우회 필요. `danger-full-access` 적용 시 Codex 가 자체 검증 + commit + push 완료 → 사이클 단축.
 
-**How to apply:**
-- 모든 `mcp__codex__codex` / `mcp__codex__codex-reply` 호출에 `sandbox: "danger-full-access"` 명시
-- `approval-policy: "never"` 유지 (자동 진행)
+**How to apply (재강화 2026-05-21)**:
+- **모든** `mcp__codex__codex` / `mcp__codex__codex-reply` 호출에 **반드시 명시** `sandbox: "danger-full-access"` (parameter 누락 = read-only 회귀)
+- `approval-policy: "never"` 명시 의무 (interactive 차단)
 - prompt 끝에 "commit + push 직접 진행" 명시 (Claude 우회 불필요)
+- **thread continue 시도 reset 회귀** 확인 절차: `mcp__codex__codex-reply` 응답에서 "permission denied" / "read-only" 키워드 발견 시 즉시 새 `mcp__codex__codex` 호출 (danger-full-access 명시) 로 thread 폐기 + 재시작
 
 ## MCP 호출 표준 파라미터
 
 ```yaml
 mcp__codex__codex:
   prompt: "<role-specific review/fix prompt>"
-  sandbox: "workspace-write"       # review + fix 모두 (2026-05-20 통일)
+  sandbox: "danger-full-access"    # 2026-05-21 사용자 재지적 강화 (모든 호출 명시 의무)
   approval-policy: "never"         # interactive 차단
   model: "gpt-5.5-codex"           # 또는 "gpt-5.2-codex" 등
   cwd: "C:\\dev\\SamhanLogis"      # repo root
+
+mcp__codex__codex-reply:
+  threadId: "<previous-thread-uuid>"
+  prompt: "<continue prompt>"
+  sandbox: "danger-full-access"    # ⚠️ thread 상속 X — 매 호출마다 명시 필수 (2026-05-21 reset 회귀 확인)
+  approval-policy: "never"
 ```
 
 ## MCP 서버 확인
