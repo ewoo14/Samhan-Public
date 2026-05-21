@@ -1,24 +1,32 @@
 ---
 name: codex-plugin-setup
-description: Codex CLI MCP 서버 사용 (mcp__codex__codex) — 2026-05-17 사용자 정정 / 2026-05-20 갱신. Plugin 폐기. review + fix 모두 sandbox=workspace-write 통일 (사용자 명시).
+description: Codex CLI MCP 서버 사용 (mcp__codex__codex). 2026-05-21 사용자 명시 "코덱스에게 전체 권한 부여" — 모든 호출 sandbox=danger-full-access 통일 (workspace-write 폐기).
 metadata:
   type: feedback
 ---
 
-# Codex CLI MCP 서버 사용 (2026-05-17 사용자 정정 / 2026-05-20 갱신)
+# Codex CLI MCP 서버 사용 (2026-05-17~21 누적)
 
-> **2026-05-17 사용자 명시**: "코덱스 플러그인 아니며 codex CLI로 MCP 서버를 활용". Plugin (`openai/codex-plugin-cc`) 폐기. **`mcp__codex__codex` MCP 도구 사용**.
+> **2026-05-17 사용자 명시**: Plugin 폐기 → **`mcp__codex__codex` MCP 도구 사용**.
 >
-> **2026-05-20 사용자 정정 (MIG-6 사이클 1d 직후)**: review 단계 sandbox 도 `workspace-write` 로 통일 (`read-only` 폐기). 앞으로 모든 Codex 호출은 `workspace-write`.
+> **2026-05-20**: review + fix 모두 `workspace-write` 통일 (read-only 폐기).
+>
+> **🚀 2026-05-21 사용자 명시 (MIG-18 사이클 1 직후)**: "코덱스에게 전체 권한 부여 바람" → 모든 Codex 호출 `sandbox: "danger-full-access"` 통일. `.git/index.lock` 권한 거부 + Gradle wrapper 네트워크 거부 회피 — Codex 가 직접 commit + push + Gradle 실행 가능.
 
-## 핵심 규칙
+## 핵심 규칙 (2026-05-21~)
 
-| 구분 | 사용 도구 | 비고 |
-|---|---|---|
-| **Code review** | `mcp__codex__codex` `sandbox: "workspace-write"` | review 5-agent 병렬, **2026-05-20 read-only 폐기 후 workspace-write 통일** |
-| **Code fix** | `mcp__codex__codex` `sandbox: "workspace-write"` | 통합 fix commit |
-| **Adversarial / 위험 작업** | `mcp__codex__codex` `sandbox: "danger-full-access"` | 신중 사용 |
-| **Continue session** | `mcp__codex__codex-reply` `threadId` | 동일 thread 이어가기 |
+| 구분 | 사용 도구 | sandbox | 비고 |
+|---|---|---|---|
+| **Code review** | `mcp__codex__codex` | **`danger-full-access`** | 5-agent 병렬 |
+| **Code fix** | `mcp__codex__codex` | **`danger-full-access`** | commit + push 직접 가능 |
+| **Continue session** | `mcp__codex__codex-reply` `threadId` | — | 동일 thread 이어가기 |
+
+**Why:** `workspace-write` 는 `.git/index.lock` 권한 거부 + Gradle wrapper 네트워크 차단 trap 발생. Claude 가 매번 commit + push 우회 필요. `danger-full-access` 적용 시 Codex 가 자체 검증 + commit + push 완료 → 사이클 단축.
+
+**How to apply:**
+- 모든 `mcp__codex__codex` / `mcp__codex__codex-reply` 호출에 `sandbox: "danger-full-access"` 명시
+- `approval-policy: "never"` 유지 (자동 진행)
+- prompt 끝에 "commit + push 직접 진행" 명시 (Claude 우회 불필요)
 
 ## MCP 호출 표준 파라미터
 
