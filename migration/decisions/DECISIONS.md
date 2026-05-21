@@ -2389,3 +2389,21 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-MIG-18-06 | 옵션 C 21단계 + PM 자율 연속 슬라이스로 진행하고 dev-report/handoff/overview를 같은 변경에 포함한다. |
 
 **산출 예정/진행**: desktop `FilterChipBar`, Cash/Order/Aging/Ledger admin 화면 적용, AGING page-size UI, AppLayout 회계 관리자 그룹화, dev-report `docs/dev-reports/mig-18-admin-ui-phase-2.md`.
+
+### D-MIG-19-00. 이카운트 cutover 운영 가이드 (MIG-19, 2026-05-21)
+
+**배경**: MIG-1~11 이카운트 데이터 이관 기능과 MIG-14~18 admin UI가 준비되어 실제 운영 cutover 시 운영자가 따라갈 단일 가이드가 필요하다. 본 슬라이스는 docs-only로 유지하고 코드/Flyway/권한 seed는 변경하지 않는다.
+
+| 결정 | 내용 |
+|---|---|
+| D-MIG-19-01 | cutover 문서는 개발자가 아닌 운영자 대상 한국어 문서로 작성한다. |
+| D-MIG-19-02 | MIG-1~11 실행 순서를 그대로 유지하고, 각 단계에 endpoint와 응답 sample을 둔다. |
+| D-MIG-19-03 | admin UI 트레이닝은 MIG-14~18의 Cash / Order / AgingSnapshot / Ledger 화면 기준으로 정리한다. |
+| D-MIG-19-04 | 롤백은 hard delete가 아니라 soft-delete 복구와 staging `PENDING` 재실행 중심으로 안내한다. |
+| D-MIG-19-05 | cutover 가이드의 ground truth는 spec 초안이 아니라 실 BE 코드/Flyway grep 결과로 둔다. endpoint, record 필드, ErrorCode status, SQL 컬럼은 문서 작성 전 실제 코드에서 확인한다. |
+| D-MIG-19-06 | 사이클 2는 옵션 C의 가치를 입증했다. 사이클 1 1c/1e/1f가 잡지 못한 transform/journal/backfill DTO sample 결함을 재검토 단계에서 잡았다. |
+| D-MIG-19-07 | ground truth 의무를 실 BE record/DTO grep까지 강화한다. 응답 sample은 controller 추정이나 spec 초안이 아니라 shared/common record 정의와 test fixture를 확인한 뒤 작성한다. |
+| D-MIG-19-08 | Journal 번호 충돌 회피는 MIG-13 정정 결과인 CashDisbursement `JD-`, CashReceipt `JR-` 접두사를 명시한다. |
+| D-MIG-19-09 | MIG-19는 docs-only 슬라이스로 유지하고 코드, Flyway, 권한 seed를 변경하지 않는다. |
+
+**산출 예정/진행**: 운영자용 `docs/migration/ECOUNT-CUTOVER-GUIDE.md`, dev-report `docs/dev-reports/mig-19-cutover-guide.md`, handoff/overview 동기화.
