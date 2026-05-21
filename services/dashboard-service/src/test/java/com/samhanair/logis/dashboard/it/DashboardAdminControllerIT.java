@@ -1,5 +1,6 @@
 package com.samhanair.logis.dashboard.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -26,6 +27,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
  * Admin endpoint 시나리오 (5 case).
@@ -52,6 +54,8 @@ class DashboardAdminControllerIT extends AbstractPostgresIT {
     private RealTimeStockRepository stockRepository;
     @Autowired
     private SalesAggregateRepository salesRepository;
+    @Autowired
+    private RequestMappingHandlerMapping requestMappingHandlerMapping;
 
     @MockBean
     private InventoryClient inventoryClient;
@@ -66,6 +70,7 @@ class DashboardAdminControllerIT extends AbstractPostgresIT {
     void cleanup() {
         lenient().when(inventoryClient.findStock(any(), any())).thenReturn(Optional.empty());
         lenient().when(accountingClient.sumSalesByPartner(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        lenient().when(accountingClient.fetchPrometheusMetrics()).thenReturn("");
         lenient().when(partnerOrderClient.countOrdersByPartner(any(), any(), any())).thenReturn(0);
         lenient().when(partnerClient.findByCode(any())).thenReturn(Optional.empty());
         kpiRepository.deleteAll();
@@ -149,6 +154,34 @@ class DashboardAdminControllerIT extends AbstractPostgresIT {
                         .header("X-User-Role", "MANAGER"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void ecount_mig_ops_dashboard_returns_200_on_v1_gateway_target_path() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.get("/dashboard/ecount-mig")
+                        .header("X-User-Id", "test-admin")
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.transformStatus").isArray());
+    }
+
+    @Test
+    void ecount_mig_ops_dashboard_allows_accountant_view() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.get("/dashboard/ecount-mig")
+                        .header("X-User-Id", "test-accountant")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void old_admin_ecount_mig_ops_path_is_removed() throws Exception {
+        boolean mapped = requestMappingHandlerMapping.getHandlerMethods().keySet().stream()
+                .flatMap(info -> info.getPathPatternsCondition().getPatterns().stream())
+                .anyMatch(pattern -> "/admin/dashboard/ecount-mig".equals(pattern.getPatternString()));
+
+        assertThat(mapped).isFalse();
     }
 
     @Test

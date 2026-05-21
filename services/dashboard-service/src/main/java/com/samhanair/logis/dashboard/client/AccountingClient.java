@@ -1,6 +1,8 @@
 package com.samhanair.logis.dashboard.client;
 
 import com.samhanair.logis.discovery.ServiceDiscoveryClient;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -32,17 +34,22 @@ public class AccountingClient {
     private final String baseUrl;
     private final String internalToken;
     private final boolean skeletonMode;
+    private final Counter scrapeFailures;
 
     public AccountingClient(RestClient.Builder builder,
                              ServiceDiscoveryClient discoveryClient,
                              @Value("${samhan.accounting-service.url:http://localhost:8087}") String baseUrl,
                              @Value("${app.security.internal.token:}") String internalToken,
-                             @Value("${samhan.dashboard.client.skeleton-mode:true}") boolean skeletonMode) {
+                             @Value("${samhan.dashboard.client.skeleton-mode:true}") boolean skeletonMode,
+                             MeterRegistry meterRegistry) {
         this.builder = builder;
         this.discoveryClient = discoveryClient;
         this.baseUrl = baseUrl;
         this.internalToken = internalToken;
         this.skeletonMode = skeletonMode;
+        this.scrapeFailures = Counter.builder("dashboard_accounting_scrape_failures")
+                .description("dashboard-service accounting-service prometheus scrape failures")
+                .register(meterRegistry);
     }
 
     /**
@@ -79,6 +86,29 @@ public class AccountingClient {
         } catch (Exception ex) {
             log.warn("AccountingClient sales lookup 실패 — partnerId={}, msg={}", partnerId, ex.getMessage());
             return BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * accounting-service actuator Prometheus text 조회.
+     *
+     * <p>actuator 는 형제 service 내부 통신 전용이며 accounting-service 가 {@code X-Internal-Token}
+     * 으로 보호한다. 조회 실패 시 대시보드가 빈 지표로 fail-soft 된다.
+     */
+    public String fetchPrometheusMetrics() {
+        try {
+            RestClient client = builder.baseUrl(baseUrl).build();
+            String body = client.get()
+                    .uri("/actuator/prometheus")
+                    .header("X-Internal-Token", internalToken == null ? "" : internalToken)
+                    .retrieve()
+                    .body(String.class);
+            return body == null ? "" : body;
+        } catch (Exception ex) {
+            scrapeFailures.increment();
+            log.error("AccountingClient prometheus metric 조회 실패 — baseUrl={}, msg={}",
+                    baseUrl, ex.getMessage(), ex);
+            return "";
         }
     }
 

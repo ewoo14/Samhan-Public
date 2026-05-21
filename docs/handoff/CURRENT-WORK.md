@@ -4,6 +4,56 @@
 
 ---
 
+## ✅ 2026-05-21 최신 진행 — MIG-21 마이그레이션 운영 대시보드
+
+### 현재 브랜치
+- `spec/2026-05-21-mig-21-migration-ops-dashboard`
+
+### 범위
+
+- accounting-service에 `MigOpsMetricsRecorder`를 추가하고 MIG-20 재import 결과를 Micrometer counter/gauge로 기록한다.
+- dashboard-service가 accounting-service `/actuator/prometheus` text를 조회해 `/api/v1/dashboard/ecount-mig` gateway 경로로 운영 DTO를 제공한다.
+- desktop 회계 관리자 그룹에 `운영 대시보드` 메뉴와 6개 카드 화면을 추가하고 React Query 5분 polling으로 갱신한다.
+- auth-service V27 `ecount.mig.ops-dashboard` PageCode를 추가한다. MASTER/MANAGER view+edit, ACCOUNTANT view-only.
+- Grafana dashboard JSON 8패널과 observability README를 추가한다.
+- Cycle 1c에서 Aging/DailyClosing recorder call site, MIG-2~11 accounting importer/transform 초기 메트릭, `/actuator/prometheus` 내부 토큰 가드, ACCOUNTANT API view, Grafana alert 표현식, FE number 타입, scrape failure counter를 보완했다.
+- Cycle 1e에서 reimport orchestrator의 imported/transform/rejected 중복 기록을 제거하고, capped sample 밖 rejected 행은 `UNSPECIFIED` errorCode로 보존해 rejected_total 누적 일관성을 복구했다.
+
+### 문서 산출
+
+- spec: `docs/superpowers/specs/2026-05-21-mig-21-migration-ops-dashboard-design.md`
+- dev-report: `docs/dev-reports/mig-21-migration-ops-dashboard.md`
+- grafana: `docs/observability/grafana-mig-ops-dashboard.json`
+- decisions: `D-MIG-21-01~07`
+  - Cycle 1c 보완은 기존 결정 유지: endpoint는 그대로 `/actuator/prometheus`, 접근만 `X-Internal-Token` 내부 scrape로 제한.
+
+### 다음 상태
+
+- **PM 자율 연속 마지막 슬라이스 완료 → D 멈춤.**
+- 다음 작업은 사용자(개발책임자) 결정 대기.
+
+### 검증 메모
+
+- 좁은 RED/GREEN:
+  - 신규 recorder/parser/PageCode 테스트 RED 확인 후 구현.
+  - `./gradlew :services:accounting-service:test --tests com.samhanair.logis.accounting.service.MigOpsMetricsRecorderTest :services:dashboard-service:test --tests com.samhanair.logis.dashboard.service.EcountMigOpsDashboardServiceTest :services:auth-service:test --tests com.samhanair.logis.auth.domain.PageCodeTest --no-daemon` PASS.
+  - `clients/desktop npm.cmd run typecheck` PASS.
+- 최종 통합:
+  - `./gradlew :services:accounting-service:test :services:dashboard-service:test :services:auth-service:test :shared:common:test --no-daemon` PASS.
+  - `clients/desktop`: `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run build` PASS.
+  - lint 기존 warning 2건과 build 기존 Pretendard font runtime warning 유지.
+- Cycle 1c 부분 검증:
+  - `./gradlew :services:accounting-service:test :services:dashboard-service:test --no-daemon` PASS.
+  - `./gradlew :services:accounting-service:test :services:dashboard-service:test :services:auth-service:test :shared:common:test --no-daemon` PASS.
+  - `clients/desktop`: `npm.cmd run typecheck`, `npm.cmd run build` PASS.
+- Cycle 1e 부분 검증:
+  - RED 확인: `EcountMigMetricsSupportTest`, `EcountReimportServiceTest` 신규 케이스 기존 구현 실패.
+  - GREEN 확인: `./gradlew :services:accounting-service:test --tests com.samhanair.logis.accounting.service.EcountMigMetricsSupportTest --tests com.samhanair.logis.accounting.service.EcountReimportServiceTest --no-daemon` PASS.
+  - 최종 확인: `./gradlew :services:accounting-service:test :services:dashboard-service:test :shared:common:test --no-daemon` PASS.
+  - 최종 확인: `clients/desktop npm.cmd run build` PASS.
+
+---
+
 ## 🚧 2026-05-21 최신 진행 — MIG-20 이카운트 raw 자동 재import 스케줄
 
 ### 현재 브랜치
