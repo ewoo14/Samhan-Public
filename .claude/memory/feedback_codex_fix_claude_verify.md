@@ -1,13 +1,17 @@
 ---
 name: codex-fix-claude-verify
-description: 사이클 1e Codex fix 후 Claude 짧은 verify 의무 (옵션 A, 2026-05-21 사용자 결정). 5-agent 전체 재실행 X, fix diff 영향만 spot-check
+description: 옵션 A — 2026-05-21 폐기. 옵션 C ([[cycle-n2-mandatory]]) 로 대체. 본 메모리는 history 참조용.
 metadata:
   type: feedback
 ---
 
-# Codex fix → Claude verify (옵션 A, 2026-05-21 사용자 결정)
+# Codex fix → Claude verify (옵션 A — 폐기 2026-05-21)
 
-> 사용자 명시 (2026-05-21): "사이클1에서 코덱스 리뷰 후 fix된 이후 클로드가 다시 리뷰하는지 문의" → 옵션 A 채택.
+> **2026-05-21 폐기**: MIG-14 사례에서 옵션 A 의 약점 발견 (1f fix 후 Codex 가 1f 변경 review 안 함, CI 만 의존). 사용자 결정으로 **옵션 C ([[cycle-n2-mandatory]]) 로 대체**.
+>
+> 본 메모리는 옵션 C 가 어떤 약점을 보완했는지 history 참조용. 다음 슬라이스부터 옵션 C 적용.
+
+> 사용자 명시 (2026-05-21 초기): "사이클1에서 코덱스 리뷰 후 fix된 이후 클로드가 다시 리뷰하는지 문의" → 옵션 A 채택 → MIG-14 사례 회고 → 옵션 C 로 전환.
 
 **Why:** 기존 워크플로우 (Claude review → Claude fix → Codex review → Codex fix → CI → 머지) 는 Codex fix 결과를 누구도 cross-check 안 함 → Codex 가 본인 review 한 결과를 본인이 fix (자기참조). Codex fix 가 새 결함 (사이드 이펙트 / 의도 어긋남 / dead code) 을 도입해도 CI 의 컴파일/단위 회귀만 잡힘. 양쪽 cross-check 완전성 보장 안 됨.
 
