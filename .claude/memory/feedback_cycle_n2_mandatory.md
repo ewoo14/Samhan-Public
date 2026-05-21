@@ -17,11 +17,11 @@ metadata:
 
 ### 사이클 1 (1~11)
 1. Claude 5-agent 병렬 review
-2. TM Claude 통합 PR comment (즉시, head SHA 명시)
+2. **TM Claude 통합 PR comment (즉시, head SHA 명시)** — skip 금지 의무
 3. Claude fix
 4. commit + push (head 갱신)
 5. Codex 5-section review
-6. TM Codex 통합 PR comment (즉시, head SHA 명시)
+6. **🚨 TM Codex 통합 PR comment (즉시, head SHA 명시)** — **2026-05-21 사용자 명시 강화** ("MIG-20 코덱스 리뷰 게시 없이 머지" 지적) → **skip 절대 금지 의무**. JSON 결과만 받고 PR comment 게시 안 하면 사이클 위반 → 사후 보완 의무.
 7. Codex fix
 8. commit + push (head 갱신)
 9. Claude verify (BE + QA spot-check, fix diff 만)
