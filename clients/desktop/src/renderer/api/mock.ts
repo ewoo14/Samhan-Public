@@ -676,6 +676,49 @@ const MOCK_SAFETY_STOCK_ALERTS = [
   },
 ]
 
+// Issue 4 Slice 2 — 통합 알림 센터 mock seed
+const MOCK_NOTIFICATION_CENTER: Array<{
+  id: string
+  channel: string
+  severity: 'INFO' | 'WARNING' | 'CRITICAL'
+  title: string
+  body: string | null
+  deeplink: string | null
+  createdAt: string
+  readAt: string | null
+}> = [
+  {
+    id: 'n0000000-0000-0000-0000-000000000001',
+    channel: 'SAFETY_STOCK',
+    severity: 'WARNING',
+    title: 'AJ056RXH4BC1 HQ 본사 창고 안전재고 부족',
+    body: '현재 43 / 임계 50 (부족 -7)',
+    deeplink: '/inventory/safety-stock-alerts',
+    createdAt: '2026-05-22T10:00:00',
+    readAt: null,
+  },
+  {
+    id: 'n0000000-0000-0000-0000-000000000002',
+    channel: 'MESSENGER',
+    severity: 'INFO',
+    title: '김미선 → 새 메시지',
+    body: '김종 압축기 견적 검토 부탁드립니다',
+    deeplink: '/messenger',
+    createdAt: '2026-05-22T10:30:00',
+    readAt: null,
+  },
+  {
+    id: 'n0000000-0000-0000-0000-000000000003',
+    channel: 'ECOUNT_IMPORT',
+    severity: 'CRITICAL',
+    title: 'mig-2 product import 실패',
+    body: '2836 row rejected (Eureka product-service stale)',
+    deeplink: '/admin/ecount/reimport',
+    createdAt: '2026-05-22T09:00:00',
+    readAt: null,
+  },
+]
+
 interface MockDispatchSmsHistoryRow {
   id: string
   programType: string
@@ -725,6 +768,31 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       isExecutiveOffice,
       departmentName: isExecutiveOffice ? '대표실' : (mockDept || '영업1팀'),
     })
+  }
+
+  // GET /api/notifications/my
+  if (method === 'GET' && url.endsWith('/api/notifications/my')) {
+    return envelope(MOCK_NOTIFICATION_CENTER.filter((n) => n.readAt === null))
+  }
+
+  // GET /api/notifications/history?page=&size=
+  if (method === 'GET' && url.includes('/api/notifications/history')) {
+    return envelope({
+      content: MOCK_NOTIFICATION_CENTER,
+      number: 0,
+      size: 50,
+      totalElements: MOCK_NOTIFICATION_CENTER.length,
+      totalPages: 1,
+    })
+  }
+
+  // POST /api/notifications/{id}/acknowledge
+  const ackMatch = url.match(/\/api\/notifications\/([^/]+)\/acknowledge$/)
+  if (method === 'POST' && ackMatch) {
+    const id = ackMatch[1]!
+    const target = MOCK_NOTIFICATION_CENTER.find((n) => n.id === id)
+    if (target) target.readAt = new Date().toISOString()
+    return envelope(null)
   }
 
   // GET /inventory/warehouses

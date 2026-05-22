@@ -69,6 +69,7 @@ import { AppLayout } from '../components/AppLayout'
 import { RoleGuard } from '../components/RoleGuard'
 import { LoginPage } from './LoginPage'
 import { DashboardPage } from './DashboardPage'
+import { NotificationHistoryPage } from './NotificationHistoryPage'
 import { WarehousesPage } from './WarehousesPage'
 import { SlipListPage } from './SlipListPage'
 import { SlipFormPage } from './SlipFormPage'
@@ -377,6 +378,7 @@ const router = createHashRouter([
     ),
     children: [
       { path: '/', element: <DashboardPage /> },
+      { path: '/notifications', element: <NotificationHistoryPage /> },
       // [SP-D4] inventory.warehouse 동적 RBAC 추가 (기존 미가드 라우트 → PermissionGuard 추가).
       {
         path: '/warehouses',
