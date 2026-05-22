@@ -135,7 +135,6 @@ class SupplierProfileFEMatchIT extends AbstractPostgresIT {
      * <p>seed 데이터 기준: businessNumber=2148720659, companyName=（주）삼한공조시스템.
      */
     @Test
-    @SuppressWarnings("null")
     @DisplayName("SP-FE-1: GET /supplier-profiles/primary — 8 필드 + version schema 검증")
     @Transactional
     void spFe1_primarySchema() throws Exception {
@@ -202,7 +201,6 @@ class SupplierProfileFEMatchIT extends AbstractPostgresIT {
      * </ol>
      */
     @Test
-    @SuppressWarnings("null")
     @DisplayName("SP-FE-2: PUT 갱신 후 GET primary → 신규 businessAddress 반영")
     @Transactional
     void spFe2_updateAndRefetch() throws Exception {
@@ -296,7 +294,6 @@ class SupplierProfileFEMatchIT extends AbstractPostgresIT {
      * <p>mock 변경 시나리오: DB 에 저장된 primary supplier 와 동일한 값이 batch rows 에 반영.
      */
     @Test
-    @SuppressWarnings("null")
     @DisplayName("SP-FE-3: TaxInvoiceBatch preview 시 primary supplier 동적 조회 반영 검증")
     @Transactional
     void spFe3_batchPreviewUsesPrimarySupplier() throws Exception {

@@ -39,12 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
  * </ul>
  *
  * <p>Docker 미가용 환경에서는 {@link AbstractPostgresIT.DockerAvailableCondition} 에 의해 skip 처리.
- *
- * <p>{@code @SuppressWarnings("null")} — MockMvc / Hamcrest API 의 Eclipse null annotation 경고
- * (MediaType, String, Matcher) 는 런타임/컴파일에 영향 없는 IDE 분석 경고이므로 일괄 억제.
- * 기존 {@link InventoryControllerIT} 등 동일 패턴 전반 사용 중.
  */
-@SuppressWarnings("null")
 @SpringBootTest(classes = InventoryServiceApplication.class)
 @AutoConfigureMockMvc
 @Transactional

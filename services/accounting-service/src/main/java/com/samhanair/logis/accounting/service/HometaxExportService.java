@@ -265,7 +265,6 @@ public class HometaxExportService {
      * @throws BusinessException(INTERNAL_ERROR) JSON 직렬화 / gzip 실패
      */
     @Transactional
-    @SuppressWarnings("null") // ECJ @NonNull unchecked — resolvedActor 항상 non-null 보장
     public TaxInvoiceBatchPreviewResponse previewBatch(TaxInvoiceBatchPreviewRequest req,
                                                         UUID actorUserId) {
         // 0) 공급자 정보 1회 fetch (매 row 반복 조회 방지)
@@ -341,7 +340,6 @@ public class HometaxExportService {
      * @throws BusinessException(INTERNAL_ERROR) 직렬화 실패
      */
     @Transactional
-    @SuppressWarnings("null") // ECJ @NonNull unchecked — orElseThrow 이후 non-null 보장
     public byte[] exportSplitFile(UUID batchId, int fileIndex) {
         TaxInvoiceBatch batch = batchRepository.findById(batchId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
@@ -395,7 +393,6 @@ public class HometaxExportService {
      * @throws BusinessException(CONFLICT) 이미 등록된 거래처 코드
      */
     @Transactional
-    @SuppressWarnings("null") // ECJ @NonNull unchecked — save() 반환값 non-null 보장
     public TaxInvoiceBatchExclusionResponse addExclusion(String partnerCode, String partnerName,
                                                           String reason, String actorUserId) {
         exclusionRepository.findByPartnerCode(partnerCode).ifPresent(ex -> {
@@ -448,7 +445,6 @@ public class HometaxExportService {
      * @return 이력 상세 (스냅샷 포함)
      * @throws BusinessException(NOT_FOUND) 배치 미존재
      */
-    @SuppressWarnings("null") // ECJ @NonNull unchecked — orElseThrow 이후 non-null 보장
     public TaxInvoiceBatchHistoryResponse getHistoryDetail(UUID batchId) {
         TaxInvoiceBatch batch = batchRepository.findById(batchId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,

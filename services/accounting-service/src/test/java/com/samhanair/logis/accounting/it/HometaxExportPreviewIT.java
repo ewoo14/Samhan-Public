@@ -58,7 +58,6 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>외부 client 전부 {@code @MockBean} 격리
  * (메모리 가드 {@code feedback_it_mockbean_external_clients.md}).
  */
-@SuppressWarnings("null") // ECJ @NonNull unchecked — MockMvc API MediaType/String 파라미터
 @SpringBootTest(classes = AccountingServiceApplication.class)
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)

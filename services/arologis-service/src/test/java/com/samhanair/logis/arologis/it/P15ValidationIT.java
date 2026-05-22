@@ -132,7 +132,6 @@ class P15ValidationIT extends AbstractPostgresIT {
      *
      * <p>fixture: 미배차 슬립 5건 + 가용 기사 3명.
      */
-    @SuppressWarnings("null") // JPA save() / get(0).getId() Spring Data @NonNull 계약 보장
     @BeforeEach
     void setUp() {
         // lenient mock setup — 4종 외부 client 격리
@@ -264,7 +263,6 @@ class P15ValidationIT extends AbstractPostgresIT {
     // TC-5: 수동 배차 후 vehicle status ASSIGNED + assignedDriverId 非NULL
     // ============================================================
 
-    @SuppressWarnings("null") // vehicleRepository.findById() orElseThrow — Spring Data @NonNull 계약
     @Test
     @DisplayName("TC-5: 배차 후 Vehicle status=ASSIGNED + assignedDriverId 非NULL")
     void tc5_vehicle_becomes_assigned_after_manual_dispatch() throws Exception {
@@ -291,7 +289,6 @@ class P15ValidationIT extends AbstractPostgresIT {
     // TC-6: 배차 완료 1건 제외 후 미배차 집계 확인 (partnerCode 매핑 기반)
     // ============================================================
 
-    @SuppressWarnings("null") // stopRepository.findFirst / save() — Spring Data @NonNull 계약
     @Test
     @DisplayName("TC-6: 1건 배차 후 parsed_partner_code 매칭 → 해당 슬립 assigned 로 분류")
     void tc6_unassigned_decreases_after_dispatch_with_partner_code() throws Exception {
@@ -391,7 +388,6 @@ class P15ValidationIT extends AbstractPostgresIT {
      * @param partnerCode   partner-service partnerCode (parsedPartnerCode — 기본 null, TC-6 에서 갱신)
      * @return 생성된 Dispatch UUID
      */
-    @SuppressWarnings("null") // JPA save() / getId() 반환값 — Spring Data @NonNull 계약 보장
     private UUID createPendingDispatch(String dateStr, DispatchType type,
                                        String partnerName, String address,
                                        Long kakaoSeq, String partnerCode) {

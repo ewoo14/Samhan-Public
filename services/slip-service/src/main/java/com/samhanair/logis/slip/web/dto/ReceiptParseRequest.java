@@ -30,6 +30,7 @@ public record ReceiptParseRequest(
      *
      * @return 실제 전송 방식 (null 이면 "DRY_RUN")
      */
+    @Deprecated
     public String effectiveSubmitMethod() {
         return (submitMethod == null || submitMethod.isBlank()) ? "DRY_RUN" : submitMethod;
     }
