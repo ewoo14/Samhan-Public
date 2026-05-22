@@ -79,7 +79,7 @@ public class ArologisJwtFilter extends OncePerRequestFilter {
     }
 
     /**
-     * 신규 헤더 주입 wrapper — 기존 헤더 우선 (외부에서 헤더 위조 차단), 신규 키만 추가.
+     * 신규 헤더 주입 wrapper — JWT claim 기반 X-User-* 값을 inbound spoof 헤더보다 우선한다.
      */
     private static final class HeaderInjectingRequestWrapper extends HttpServletRequestWrapper {
         private final Map<String, String> headers;
@@ -91,24 +91,17 @@ public class ArologisJwtFilter extends OncePerRequestFilter {
 
         @Override
         public String getHeader(String name) {
-            String original = super.getHeader(name);
-            if (original != null) {
-                return original;
-            }
-            return headers.get(name);
+            String injected = injectedHeader(name);
+            return injected != null ? injected : super.getHeader(name);
         }
 
         @Override
         public Enumeration<String> getHeaders(String name) {
-            String original = super.getHeader(name);
-            if (original != null) {
-                return super.getHeaders(name);
-            }
-            String injected = headers.get(name);
+            String injected = injectedHeader(name);
             if (injected != null) {
                 return Collections.enumeration(List.of(injected));
             }
-            return Collections.emptyEnumeration();
+            return super.getHeaders(name);
         }
 
         @Override
@@ -121,6 +114,14 @@ public class ArologisJwtFilter extends OncePerRequestFilter {
             }
             all.addAll(headers.keySet());
             return Collections.enumeration(all);
+        }
+
+        private String injectedHeader(String name) {
+            return headers.entrySet().stream()
+                    .filter(entry -> entry.getKey().equalsIgnoreCase(name))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElse(null);
         }
     }
 }

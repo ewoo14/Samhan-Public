@@ -5,6 +5,7 @@ import com.samhanair.logis.auth.service.dto.PermissionDto;
 import com.samhanair.logis.auth.web.dto.PermissionBatchUpdateRequest;
 import com.samhanair.logis.auth.web.dto.PermissionUpdateRequest;
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.security.InternalAuthProperties;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 // SP-D1 cycle 2: getMyPermissions endpoint 에서 X-User-Role 헤더를 사용한다.
 
@@ -49,8 +51,10 @@ public class PermissionAdminController {
 
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_ROLE_HEADER = "X-User-Role";
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
 
     private final DynamicPermissionService permissionService;
+    private final InternalAuthProperties internalAuthProperties;
 
     /**
      * 전체 권한 매트릭스 조회 — 역할 × 페이지 (MASTER 전용).
@@ -144,7 +148,8 @@ public class PermissionAdminController {
     }
 
     /**
-     * 단일 권한 조회 — 타 서비스(POC: accounting-service) 가 권한 체크 시 호출.
+     * 단일 권한 조회 — deprecated alias. 신규 service-to-service 호출은
+     * {@code /auth/internal/permissions/check} 로 이동.
      *
      * <p>roleCode + pageCode + type(VIEW|EDIT) 파라미터로 해당 권한 여부를 반환.
      * 인증된 사용자(타 서비스 헤더 기반)이면 모두 호출 가능.
@@ -156,11 +161,14 @@ public class PermissionAdminController {
      * @return 권한 허용 여부 {@code {"allowed": true/false}}
      */
     @GetMapping("/check")
+    @Deprecated(since = "2026-05-22", forRemoval = false)
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<PermissionCheckResponse> checkPermission(
             @RequestParam String roleCode,
             @RequestParam String pageCode,
-            @RequestParam(defaultValue = "EDIT") String type) {
+            @RequestParam(defaultValue = "EDIT") String type,
+            @RequestHeader(value = INTERNAL_TOKEN_HEADER, required = false) String internalToken) {
+        assertInternalToken(internalToken);
         boolean allowed = permissionService.canAccess(roleCode, pageCode, type);
         return ApiResponse.ok(new PermissionCheckResponse(allowed));
     }
@@ -171,6 +179,15 @@ public class PermissionAdminController {
      * @param allowed 권한 부여 여부
      */
     public record PermissionCheckResponse(boolean allowed) {
+    }
+
+    private void assertInternalToken(String supplied) {
+        String expected = internalAuthProperties.getToken();
+        if (expected == null || expected.isBlank()
+                || supplied == null || supplied.isBlank()
+                || !expected.equals(supplied)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "X-Internal-Token invalid");
+        }
     }
 
     private String callerOrSystem(String header) {

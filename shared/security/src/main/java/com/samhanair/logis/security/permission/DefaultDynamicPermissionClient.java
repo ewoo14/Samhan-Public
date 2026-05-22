@@ -13,7 +13,7 @@ import org.springframework.web.client.RestClientException;
  * product/slip/user) 가 자체 패키지에 중복 정의하던 동일 구현을 {@code shared:security} 로
  * 일원화한다.
  *
- * <p>auth-service 의 {@code /auth/admin/permissions/check} endpoint 를 호출하여
+ * <p>auth-service 의 {@code /auth/internal/permissions/check} endpoint 를 호출하여
  * 특정 역할의 특정 페이지 접근 가능 여부를 확인한다.
  *
  * <p>응답 파싱 정책: auth-service 는 {@code ApiResponse<PermissionCheckResponse>} 래퍼로
@@ -62,10 +62,10 @@ public class DefaultDynamicPermissionClient implements DynamicPermissionClient {
     private boolean checkPermission(String roleCode, String pageCode, String permType) {
         try {
             JsonNode root = restClient.get()
-                    .uri("/auth/admin/permissions/check?roleCode={role}&pageCode={page}&type={type}",
+                    .uri("/auth/internal/permissions/check?roleCode={role}&pageCode={page}&type={type}",
                             roleCode, pageCode, permType)
                     .header(INTERNAL_TOKEN_HEADER, internalToken == null ? "" : internalToken)
-                    // auth-service HeaderAuthenticationFilter 는 X-User-Id + X-User-Role 두 헤더 모두 비어 있지 않아야 인증 객체 생성 — service-to-service 호출 시 필수
+                    // legacy alias 호환과 호출자 추적을 위해 X-User-* 헤더도 함께 전달한다.
                     .header("X-User-Id", "system-internal:" + callerServiceName)
                     .header("X-User-Role", roleCode)
                     .retrieve()

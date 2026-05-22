@@ -74,7 +74,15 @@ public class SecurityConfig {
                 "file://*"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                "Origin",
+                "Cache-Control",
+                "Pragma",
+                "X-Requested-With"
+        ));
         config.setExposedHeaders(List.of("Authorization", "Content-Type", "X-User-Id", "X-User-Role"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
