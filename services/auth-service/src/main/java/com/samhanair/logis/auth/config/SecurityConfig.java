@@ -43,9 +43,10 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         // SP-D1 동적 RBAC — MASTER 전용 (method security 에서 추가 검증)
                         .requestMatchers("/auth/admin/permissions/**").authenticated()
+                        .requestMatchers("/auth/internal/permissions/**").authenticated()
                         .anyRequest().authenticated())
                 .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);
         return http.build();
     }
 

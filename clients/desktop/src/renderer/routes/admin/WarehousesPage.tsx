@@ -66,7 +66,7 @@ const TYPE_VARIANT: Record<
 }
 
 export function WarehousesPage() {
-  usePageTitle('창고 관리')
+  usePageTitle('창고관리')
 
   const [q, setQ] = useState('')
   const [page, setPage] = useState(0)
@@ -254,7 +254,7 @@ export function WarehousesPage() {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>창고 관리</h3>
+        <h3 style={{ margin: 0 }}>창고관리</h3>
         <span
           data-testid="admin-warehouses-realtime-indicator"
           style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}

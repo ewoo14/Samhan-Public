@@ -130,7 +130,7 @@ function AdminLayoutInner() {
           거래처 관리
         </AdminNav>
         <AdminNav to="/admin/warehouses" testId="admin-nav-warehouses">
-          창고 관리
+          창고관리
         </AdminNav>
         {/*
           [Slice 2 이관 완료] 다음 4건은 PR #159 에서 일반 카테고리 (설정/arologis/영업/메신저)

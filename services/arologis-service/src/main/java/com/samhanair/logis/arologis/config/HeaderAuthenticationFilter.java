@@ -23,6 +23,12 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        var existing = SecurityContextHolder.getContext().getAuthentication();
+        if (existing != null && existing.isAuthenticated()) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String userId = request.getHeader(USER_ID_HEADER);
         String role = request.getHeader(USER_ROLE_HEADER);
 

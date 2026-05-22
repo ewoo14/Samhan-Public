@@ -417,7 +417,7 @@ export function AppLayout() {
           <NavLink to="/" end>
             대시보드
           </NavLink>
-          <NavLink to="/warehouses" data-testid="sidebar-warehouses">창고 관리</NavLink>
+          <NavLink to="/warehouses" data-testid="sidebar-warehouses">창고관리</NavLink>
           {/* [2a 메뉴 통합 + SP-03 IA] /sales, /purchases 는 SalesQueryPage / PurchaseQueryPage
               (풍성한 컬럼 + 다중 선택 + 50/page). legacy SlipListPage 는 /sales/slips,
               /purchases/slips 로 이전. 메뉴명은 조회 전용 오해를 줄이기 위해 관리형 라벨을 사용. */}

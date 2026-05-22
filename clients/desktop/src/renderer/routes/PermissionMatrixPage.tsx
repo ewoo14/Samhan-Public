@@ -257,7 +257,7 @@ const PAGE_LABEL: Record<PageCode, string> = {
   'sales.partner-order.history': '주문 이력',
   'sales.partner-order.print': '주문서 인쇄',
   'sales.vendor-order': '벤더 주문',
-  'inventory.warehouse': '창고 관리',
+  'inventory.warehouse': '창고관리',
   'inventory.stock': '재고 현황',
   'inventory.stock-transfer': '재고 이동',
   'inventory.dps': 'DPS 비교',

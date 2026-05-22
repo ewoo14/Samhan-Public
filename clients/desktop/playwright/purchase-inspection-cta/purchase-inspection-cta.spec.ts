@@ -91,7 +91,7 @@ test.describe('Samhan Public 구매관리 입고 검수 CTA', () => {
     const layout = read(layoutPath)
     const salesSubNav = read(path.join(desktopRoot, 'src/renderer/components/sales/SalesSubNav.tsx'))
 
-    expect(layout).toContain('>창고 관리</NavLink>')
+    expect(layout).toContain('>창고관리</NavLink>')
     expect(layout).toContain('>판매관리</NavLink>')
     expect(layout).toContain('>구매관리</NavLink>')
     expect(layout).toContain('>재고이동 관리</NavLink>')

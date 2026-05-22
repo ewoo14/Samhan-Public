@@ -11,6 +11,8 @@ import com.samhanair.logis.auth.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.auth.service.DynamicPermissionService;
 import com.samhanair.logis.auth.service.dto.PermissionDto;
 import com.samhanair.logis.auth.web.dto.PermissionUpdateRequest;
+import com.samhanair.logis.security.InternalAuthProperties;
+import com.samhanair.logis.security.InternalTokenFilter;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,18 +34,27 @@ class PermissionAdminControllerTest {
 
     private DynamicPermissionService permissionService;
     private MockMvc mockMvc;
+    private InternalAuthProperties internalAuthProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String MASTER_ROLE = "MASTER";
     private static final String ACCOUNTANT_ROLE = "ACCOUNTANT";
     private static final String PAGE_EMIT = "accounting.tax-invoice.emit-nts";
+    private static final String INTERNAL_TOKEN = "test-internal-token";
 
     @BeforeEach
     void setUp() {
         permissionService = Mockito.mock(DynamicPermissionService.class);
+        internalAuthProperties = new InternalAuthProperties();
+        internalAuthProperties.setToken(INTERNAL_TOKEN);
+        internalAuthProperties.setPathPrefix("/auth/internal/");
+        internalAuthProperties.setRole("INTERNAL");
+        internalAuthProperties.setAllowMissingToken(false);
+        PermissionAdminController adminController =
+                new PermissionAdminController(permissionService, internalAuthProperties);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new PermissionAdminController(permissionService))
-                .addFilters(new HeaderAuthenticationFilter())
+                .standaloneSetup(adminController, new PermissionInternalController(permissionService))
+                .addFilters(new InternalTokenFilter(internalAuthProperties), new HeaderAuthenticationFilter())
                 .build();
     }
 
@@ -144,6 +155,7 @@ class PermissionAdminControllerTest {
                         MockMvcRequestBuilders.get("/auth/admin/permissions/check")
                                 .header("X-User-Id", "a0000000-0000-0000-0000-000000000005")
                                 .header("X-User-Role", ACCOUNTANT_ROLE)
+                                .header("X-Internal-Token", INTERNAL_TOKEN)
                                 .param("roleCode", ACCOUNTANT_ROLE)
                                 .param("pageCode", PAGE_EMIT)
                                 .param("type", "EDIT"))
@@ -151,6 +163,42 @@ class PermissionAdminControllerTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getContentAsString()).contains("\"allowed\":true");
+    }
+
+    @Test
+    @DisplayName("internal 권한 체크 endpoint — X-Internal-Token 일치 → 200 반환")
+    void checkPermission_internalEndpointWithToken_returns200() throws Exception {
+        when(permissionService.canAccess(eq(ACCOUNTANT_ROLE), eq(PAGE_EMIT), eq("EDIT")))
+                .thenReturn(true);
+
+        MockHttpServletResponse response = mockMvc.perform(
+                        MockMvcRequestBuilders.get("/auth/internal/permissions/check")
+                                .header("X-Internal-Token", INTERNAL_TOKEN)
+                                .param("roleCode", ACCOUNTANT_ROLE)
+                                .param("pageCode", PAGE_EMIT)
+                                .param("type", "EDIT"))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getContentAsString()).contains("\"allowed\":true");
+    }
+
+    @Test
+    @DisplayName("deprecated admin 권한 체크 alias — X-Internal-Token 없음 → 403")
+    void checkPermission_deprecatedAdminAliasWithoutInternalToken_returns403() throws Exception {
+        when(permissionService.canAccess(eq(ACCOUNTANT_ROLE), eq(PAGE_EMIT), eq("EDIT")))
+                .thenReturn(true);
+
+        MockHttpServletResponse response = mockMvc.perform(
+                        MockMvcRequestBuilders.get("/auth/admin/permissions/check")
+                                .header("X-User-Id", "a0000000-0000-0000-0000-000000000005")
+                                .header("X-User-Role", ACCOUNTANT_ROLE)
+                                .param("roleCode", ACCOUNTANT_ROLE)
+                                .param("pageCode", PAGE_EMIT)
+                                .param("type", "EDIT"))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(403);
     }
 
     @Test
@@ -163,6 +211,7 @@ class PermissionAdminControllerTest {
                         MockMvcRequestBuilders.get("/auth/admin/permissions/check")
                                 .header("X-User-Id", "a0000000-0000-0000-0000-000000000005")
                                 .header("X-User-Role", ACCOUNTANT_ROLE)
+                                .header("X-Internal-Token", INTERNAL_TOKEN)
                                 .param("roleCode", ACCOUNTANT_ROLE)
                                 .param("pageCode", PAGE_EMIT)
                                 .param("type", "EDIT"))

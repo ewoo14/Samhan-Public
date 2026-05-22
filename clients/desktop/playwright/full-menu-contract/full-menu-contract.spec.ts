@@ -88,7 +88,7 @@ test.describe('SP-04 full menu and legacy migration contract', () => {
     expect(appLayout).toContain('판매관리')
     expect(appLayout).toContain('구매관리')
     expect(appLayout).toContain('재고이동 관리')
-    expect(appLayout).toContain('창고 관리')
+    expect(appLayout).toContain('창고관리')
     expect(appLayout).not.toContain('>판매조회<')
     expect(appLayout).not.toContain('>구매조회<')
   })
