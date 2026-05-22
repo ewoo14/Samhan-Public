@@ -2,7 +2,6 @@ package com.samhanair.logis.product.seed;
 
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Product;
-import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.CategoryRepository;

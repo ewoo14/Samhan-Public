@@ -38,6 +38,8 @@ def leafProjects = [
         ':shared:common',
         ':shared:discovery-abstraction',
         ':shared:user-client-abstraction',
+        ':shared:security',
+        ':shared:realtime-abstraction',
         ':shared:ecount-io',
         ':services:eureka-server',
         ':services:api-gateway',

@@ -60,7 +60,7 @@ public class AccountingAuditLogService implements AuditLogRecorder {
                                    String oldValue, String newValue) {
         Objects.requireNonNull(entityId, "entityId 는 필수입니다");
         int revisionNo = nextRevisionNo(entityId);
-        AccountingAuditLog saved = auditLogRepository.save(AccountingAuditLog.record(
+        auditLogRepository.save(AccountingAuditLog.record(
                 entityId, revisionNo, actorId, actorName, actorColor,
                 fieldName, oldValue, newValue));
         broker.publish(entityId, EVENT_ACCOUNTING_EDIT,

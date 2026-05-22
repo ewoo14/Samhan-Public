@@ -192,7 +192,6 @@ class EcountStockTransferImporterTest {
         assertThat(sourceRows).containsExactly(1, 2, 3);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private void stubLookupRows(boolean warehouseMiss, boolean productMiss, boolean existingTransfer) {
         stubLookupRowsWithTransferLookupSequence(warehouseMiss, productMiss,
                 existingTransfer ? TransferLookup.SOFT_DELETED : TransferLookup.MISSING);

@@ -217,7 +217,7 @@ class ArologisDriverAppControllerIT extends AbstractPostgresIT {
                 Dispatch.of(LocalDate.now(), DispatchType.NIGHT, "sign test"));
         Vehicle vehicle = vehicleRepository.save(
                 Vehicle.of(dispatch.getId(), 1, VehicleTonnage.TONNAGE_1, "차량1"));
-        VehicleStop stop = stopRepository.save(VehicleStop.of(
+        stopRepository.save(VehicleStop.of(
                 vehicle.getId(), 1, "테스트 정차",
                 "서울시 강남구 어딘가", "테스트사", 1234L, null, StopStatus.PENDING));
 

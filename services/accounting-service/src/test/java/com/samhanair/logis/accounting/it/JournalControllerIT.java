@@ -150,7 +150,7 @@ class JournalControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data.postedBy").value("accountant-1"));
 
         // POSTED → reverse → 신규 역분개 POSTED
-        MvcResult reverseRes = mockMvc.perform(post("/accounting/journals/" + id + "/reverse")
+        mockMvc.perform(post("/accounting/journals/" + id + "/reverse")
                         .header("X-User-Id", "accountant-1")
                         .header("X-User-Role", "ACCOUNTANT"))
                 .andExpect(status().isOk())

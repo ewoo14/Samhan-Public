@@ -16,7 +16,6 @@ import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.client.WarehouseInternalClient;
 import com.samhanair.logis.slip.domain.Slip;
-import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
@@ -161,7 +160,7 @@ class SlipSalesQueryControllerIT extends AbstractPostgresIT {
     @Test
     void scenario5_confirmedOutboundSlip_appearsInContent() throws Exception {
         // given
-        Slip slip = createAndPersistConfirmedOutbound("A001", "테스트거래처A", LocalDate.of(2026, 5, 15));
+        createAndPersistConfirmedOutbound("A001", "테스트거래처A", LocalDate.of(2026, 5, 15));
 
         // when
         MvcResult result = mockMvc.perform(get(SALES_QUERY_URL)

@@ -137,7 +137,8 @@ public class EcountJournalEntryImporter {
             }
             if (group.rows().isEmpty()) {
                 // 모든 row 가 skipped (idempotent reimport 등) — skipped 카운트만 반영.
-                for (int ignored : group.skippedRows()) {
+                int skippedCount = group.skippedRows().size();
+                for (int i = 0; i < skippedCount; i++) {
                     result.skipped();
                 }
                 continue;

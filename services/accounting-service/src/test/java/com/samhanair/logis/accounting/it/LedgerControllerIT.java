@@ -73,7 +73,7 @@ class LedgerControllerIT extends AbstractPostgresIT {
     @DisplayName("Q3-1: 분개 POSTED 1건 생성 후 원장 조회 → accountName 채워짐")
     void postedJournalLedgerExposesAccountName() throws Exception {
         // 분개 생성 + POST
-        UUID journalId = createPostedJournal("100000");
+        createPostedJournal("100000");
 
         // 원장 조회 (2026-05-01 ~ 2026-05-31, 전체 거래처)
         mockMvc.perform(get("/api/v1/accounting/ledgers")

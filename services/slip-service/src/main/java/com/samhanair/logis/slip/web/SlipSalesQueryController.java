@@ -44,7 +44,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class SlipSalesQueryController {
 
-    /** accounting-service SlipQueryClient 기본 page size 와 동일. */
+    /** accounting-service SlipQueryClient 기본 page size 와 동일 (sync reference). */
+    @SuppressWarnings("unused")
     private static final int DEFAULT_PAGE_SIZE = 200;
     private static final int MAX_PAGE_SIZE = 500;
 

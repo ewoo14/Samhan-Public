@@ -85,7 +85,8 @@ public class SlipSeeder implements CommandLineRunner {
             "gyeonjinseong", "parkeunwoo", "sinhyeonmin",
             "leeseongmi", "heoyujin", "rahaeram", "kimeunji", "parkjisu");
 
-    /** loginId → 한국어 이름 매핑 (requesterName / acceptorName 캐싱용). */
+    /** loginId → 한국어 이름 매핑 (requesterName / acceptorName 캐싱용 reference, 추후 사용 예정). */
+    @SuppressWarnings("unused")
     private static final Map<String, String> EMPLOYEE_NAMES = Map.ofEntries(
             Map.entry("kimmiseon", "김미선"),
             Map.entry("janyeonggu", "장영구"),

@@ -14,7 +14,6 @@ import com.samhanair.logis.security.InternalAuthProperties;
 import com.samhanair.logis.security.InternalTokenFilter;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.service.ProductService;
-import com.samhanair.logis.product.web.GlobalExceptionHandler;
 import com.samhanair.logis.product.web.dto.LookupByModelRequest;
 import com.samhanair.logis.product.web.dto.LookupRequest;
 import com.samhanair.logis.product.web.dto.ProductSummaryResponse;

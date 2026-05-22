@@ -111,7 +111,7 @@ class ProductRepositoryIT extends AbstractPostgresIT {
 
     @Test
     void sqlRestrictionFilter_hidesDeletedRowsFromFindAll() {
-        Product alive = productRepository.save(Product.create(
+        productRepository.save(Product.create(
                 "활성 모델", "ALIVE-001", indoorWall,
                 new BigDecimal("500000"), new BigDecimal("400000"),
                 "KRW", Map.of(), null));

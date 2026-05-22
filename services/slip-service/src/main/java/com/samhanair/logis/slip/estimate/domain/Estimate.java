@@ -61,7 +61,8 @@ public class Estimate extends BaseEntity {
     private static final Set<EstimateStatus> EDITABLE_STATUSES =
             EnumSet.of(EstimateStatus.QUOTE_DRAFT, EstimateStatus.QUOTE_SENT);
 
-    /** 한국 부가세율 10% — VAT 자동 계산. */
+    /** 한국 부가세율 10% — VAT 자동 계산 (도메인 상수, 추후 사용 예정). */
+    @SuppressWarnings("unused")
     private static final BigDecimal VAT_RATE = new BigDecimal("0.10");
 
     @Id
