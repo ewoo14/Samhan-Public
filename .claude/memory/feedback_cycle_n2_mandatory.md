@@ -8,6 +8,10 @@ metadata:
 # 옵션 C — 사이클 N=2 의무 (2026-05-21 사용자 결정)
 
 > 사용자 명시 (2026-05-21, MIG-14 머지 직후): "옵션 C 로 적용"
+>
+> **🚨 사용자 재지적 (2026-05-22, PR #293 사이클 1d 종료 시점)**: "코덱스 리뷰가 끝나면 원래 클로드가 한 번 더 점검을 하는 워크플로우였는데 또다시 위반" → **단계 9 Claude verify skip 절대 금지**. Codex 1e fix 후 CI green 만으로 사이클 종료한 회귀. 매 사이클 단계 9 (Claude verify) 의무.
+>
+> **🚨 사용자 명시 (2026-05-22, 동일 시점)**: "머지는 그 후 PM이 판단하에 자동으로 진행 및 다음으로 자동 진입 (사용자 문의X)" → 사이클 종료 + 양쪽 APPROVE + CI green 충족 시 **PM 자동 머지 + 다음 Sprint 자동 진입** (사용자 머지 요청 대기 금지). [[user-merge-authority]] 강화.
 
 옵션 A ([feedback_codex_fix_claude_verify]) 의 약점 (1f fix 후 Codex 가 1f 변경을 다시 review 안 함, CI 만 의존) 보완. **1f Claude fix 발생 시 사이클 N=2 의무 진입** — Claude 5-agent + Codex 5-section 양쪽 전체 재실행.
 
