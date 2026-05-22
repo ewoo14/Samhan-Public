@@ -76,6 +76,17 @@ class SafetyStockControllerIT extends AbstractPostgresIT {
                 .thenReturn(new ProductSummary(productId, "테스트 제품", "TEST-001",
                         UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"));
 
+        // Sprint 4 — findAlerts() 의 batch lookup stub. enrich (productCode/productName) 검증용.
+        Mockito.lenient().when(productClient.lookup(Mockito.anyList()))
+                .thenAnswer(inv -> {
+                    java.util.List<UUID> ids = inv.getArgument(0);
+                    return ids.stream()
+                            .map(id -> new ProductSummary(id, "테스트 제품", "TEST-001",
+                                    "TEST-CODE-" + id.toString().substring(0, 4),
+                                    UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"))
+                            .toList();
+                });
+
         // NotificationClient fire-and-forget — 반환값 없음, 예외 없음
         Mockito.lenient().doNothing().when(notificationClient)
                 .sendSafetyStockAlert(Mockito.anyString(), Mockito.anyString());
@@ -211,7 +222,14 @@ class SafetyStockControllerIT extends AbstractPostgresIT {
                 // data 정렬 순서 비의존 — JSONPath filter 로 자기 row 만 추출.
                 .andExpect(jsonPath("$.data[?(@.productId == '" + productId + "')].threshold").value(50))
                 .andExpect(jsonPath("$.data[?(@.productId == '" + productId + "')].shortage",
-                        org.hamcrest.Matchers.everyItem(greaterThanOrEqualTo(1))));
+                        org.hamcrest.Matchers.everyItem(greaterThanOrEqualTo(1))))
+                // Sprint 4 — 신규 enrich field jsonPath 검증 (productCode + productName + warehouseName)
+                .andExpect(jsonPath("$.data[?(@.productId == '" + productId + "')].productCode",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.startsWith("TEST-CODE-"))))
+                .andExpect(jsonPath("$.data[?(@.productId == '" + productId + "')].productName")
+                        .value(org.hamcrest.Matchers.hasItem("TEST-001")))
+                .andExpect(jsonPath("$.data[?(@.productId == '" + productId + "')].warehouseName")
+                        .value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.notNullValue())));
     }
 
     @Test

@@ -1,16 +1,24 @@
 package com.samhanair.logis.inventory.service;
+
 import com.samhanair.logis.inventory.client.NotificationClient;
-import java.util.Objects;
 import com.samhanair.logis.inventory.client.ProductClient;
+import com.samhanair.logis.inventory.client.ProductSummary;
 import com.samhanair.logis.inventory.domain.SafetyStockConfig;
+import com.samhanair.logis.inventory.domain.Warehouse;
 import com.samhanair.logis.inventory.repository.SafetyStockConfigRepository;
 import com.samhanair.logis.inventory.repository.StockBalanceRepository;
+import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import com.samhanair.logis.inventory.web.dto.SafetyStockAlertResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockConfigResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockSetRequest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,9 +45,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class SafetyStockService {
 
     private static final Logger log = LoggerFactory.getLogger(SafetyStockService.class);
+    private static final int PRODUCT_LOOKUP_BATCH_SIZE = 100;
 
     private final SafetyStockConfigRepository safetyStockConfigRepository;
     private final StockBalanceRepository stockBalanceRepository;
+    private final WarehouseRepository warehouseRepository;
     private final ProductClient productClient;
     private final NotificationClient notificationClient;
 
@@ -94,15 +104,68 @@ public class SafetyStockService {
     @Transactional(readOnly = true)
     public List<SafetyStockAlertResponse> findAlerts() {
         List<SafetyStockConfig> configs = safetyStockConfigRepository.findAll();
-        List<SafetyStockAlertResponse> alerts = new ArrayList<>();
+        if (configs.isEmpty()) {
+            return List.of();
+        }
 
+        // Sprint 3 (2026-05-22) — 사용자 화면에 productCode/modelName/warehouseName 노출 위해 batch lookup.
+        // product-service 호출은 fail-soft: 외부 service 다운 시도 알림 자체는 노출되어야 함 (UUID 만 표시 fallback).
+        Set<UUID> productIds = configs.stream()
+                .map(SafetyStockConfig::getProductId)
+                .collect(Collectors.toSet());
+        Map<UUID, ProductSummary> productMap = lookupProductsSafe(productIds);
+
+        Set<UUID> warehouseIds = configs.stream()
+                .map(SafetyStockConfig::getWarehouseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, Warehouse> warehouseMap = warehouseIds.isEmpty()
+                ? Map.of()
+                : warehouseRepository.findAllById(warehouseIds).stream()
+                        .collect(Collectors.toMap(Warehouse::getId, w -> w));
+
+        List<SafetyStockAlertResponse> alerts = new ArrayList<>();
         for (SafetyStockConfig config : configs) {
             int currentQty = resolveCurrentQty(config);
             if (currentQty <= config.getThreshold()) {
-                alerts.add(SafetyStockAlertResponse.of(config, currentQty));
+                ProductSummary product = productMap.get(config.getProductId());
+                String productCode = product != null ? product.productCode() : null;
+                String productName = product != null ? product.modelName() : null;
+                String warehouseName = config.getWarehouseId() == null
+                        ? "전체"
+                        : (warehouseMap.containsKey(config.getWarehouseId())
+                                ? warehouseMap.get(config.getWarehouseId()).getName()
+                                : null);
+                alerts.add(SafetyStockAlertResponse.of(config, productCode, productName, warehouseName, currentQty));
             }
         }
         return alerts;
+    }
+
+    /**
+     * product-service batch lookup. 외부 service 다운 시 빈 맵 반환 (fail-soft) —
+     * 안전재고 알림 자체는 노출되어야 운영자가 부족 사실 인지 가능.
+     */
+    private Map<UUID, ProductSummary> lookupProductsSafe(Set<UUID> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> ids = List.copyOf(productIds);
+        Map<UUID, ProductSummary> map = new HashMap<>();
+        for (int from = 0; from < ids.size(); from += PRODUCT_LOOKUP_BATCH_SIZE) {
+            int to = Math.min(from + PRODUCT_LOOKUP_BATCH_SIZE, ids.size());
+            List<UUID> chunk = ids.subList(from, to);
+            try {
+                List<ProductSummary> summaries = productClient.lookup(chunk);
+                for (ProductSummary s : summaries) {
+                    map.put(s.id(), s);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("findAlerts: product-service lookup chunk 실패, productCode/modelName fallback null — chunkSize={}, {}",
+                        chunk.size(), ex.getMessage());
+            }
+        }
+        return map;
     }
 
     /**

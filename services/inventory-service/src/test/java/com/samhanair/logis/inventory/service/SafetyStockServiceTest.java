@@ -18,6 +18,7 @@ import com.samhanair.logis.inventory.domain.StockBalance;
 import com.samhanair.logis.inventory.domain.Warehouse;
 import com.samhanair.logis.inventory.repository.SafetyStockConfigRepository;
 import com.samhanair.logis.inventory.repository.StockBalanceRepository;
+import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import com.samhanair.logis.inventory.web.dto.SafetyStockAlertResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockConfigResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockSetRequest;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -50,6 +52,9 @@ class SafetyStockServiceTest {
     private StockBalanceRepository stockBalanceRepository;
 
     @Mock
+    private WarehouseRepository warehouseRepository;
+
+    @Mock
     private ProductClient productClient;
 
     @Mock
@@ -66,10 +71,14 @@ class SafetyStockServiceTest {
         productId = UUID.randomUUID();
         warehouseId = UUID.randomUUID();
 
-        // ProductClient.requireExists 는 ProductSummary 반환
+        // ProductClient.requireExists 는 ProductSummary 반환 (backward-compat 6-arg)
         lenient().when(productClient.requireExists(any()))
                 .thenReturn(new ProductSummary(productId, "테스트 제품", "TEST-001",
                         UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"));
+
+        // Sprint 4 — findAlerts() 의 batch lookup 기본 stub. 개별 test 가 override.
+        lenient().when(productClient.lookup(anyList())).thenReturn(List.of());
+        lenient().when(warehouseRepository.findAllById(any())).thenReturn(List.of());
     }
 
     // ------------------------------------------------------------------
@@ -207,6 +216,168 @@ class SafetyStockServiceTest {
         assertThat(alerts).hasSize(1);
         assertThat(alerts.get(0).currentQty()).isEqualTo(70);
         assertThat(alerts.get(0).shortage()).isEqualTo(30);
+    }
+
+    // ------------------------------------------------------------------
+    // Sprint 4 — findAlerts 의 enrich (productCode / productName / warehouseName)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("findAlerts: ProductClient.lookup 성공 시 productCode/productName 채움")
+    void findAlerts_populatesProductCodeAndProductName() {
+        SafetyStockConfig config = SafetyStockConfig.create(productId, warehouseId, 100, null);
+        when(safetyStockConfigRepository.findAll()).thenReturn(List.of(config));
+
+        StockBalance balance = mockBalance(30);
+        when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(
+                productId, warehouseId))
+                .thenReturn(Optional.of(balance));
+
+        // ProductClient.lookup 응답 (productCode 채움, 7-arg)
+        when(productClient.lookup(anyList()))
+                .thenReturn(List.of(new ProductSummary(productId, "테스트 제품", "AJ040RXH4BC1",
+                        "AJ040-CODE", UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE")));
+
+        Warehouse warehouse = org.mockito.Mockito.mock(Warehouse.class);
+        org.mockito.Mockito.when(warehouse.getId()).thenReturn(warehouseId);
+        org.mockito.Mockito.when(warehouse.getName()).thenReturn("HQ 본사 창고");
+        when(warehouseRepository.findAllById(any())).thenReturn(List.of(warehouse));
+
+        List<SafetyStockAlertResponse> alerts = safetyStockService.findAlerts();
+
+        assertThat(alerts).hasSize(1);
+        SafetyStockAlertResponse alert = alerts.get(0);
+        assertThat(alert.productCode()).isEqualTo("AJ040-CODE");
+        assertThat(alert.productName()).isEqualTo("AJ040RXH4BC1"); // modelName 매핑
+        assertThat(alert.warehouseName()).isEqualTo("HQ 본사 창고");
+    }
+
+    @Test
+    @DisplayName("findAlerts: productId 101건이면 ProductClient.lookup 을 100건 단위로 분할 호출")
+    void findAlerts_with101Products_chunksLookupCorrectly() {
+        List<UUID> productIds = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(i -> UUID.randomUUID())
+                .toList();
+        List<SafetyStockConfig> configs = productIds.stream()
+                .map(id -> SafetyStockConfig.create(id, warehouseId, 100, null))
+                .toList();
+        when(safetyStockConfigRepository.findAll()).thenReturn(configs);
+
+        StockBalance balance = mockBalance(30);
+        when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(any(), any()))
+                .thenReturn(Optional.of(balance));
+
+        when(productClient.lookup(anyList())).thenAnswer(invocation -> {
+            List<UUID> ids = invocation.getArgument(0);
+            if (ids.size() > 100) {
+                throw new BusinessException(
+                        com.samhanair.logis.common.exception.ErrorCode.INVALID_INPUT,
+                        "한 번에 조회할 수 있는 최대 제품 수는 100건입니다");
+            }
+            return ids.stream()
+                    .map(id -> new ProductSummary(id, "테스트 제품", "MODEL-" + id.toString().substring(0, 8),
+                            "CODE-" + id.toString().substring(0, 8),
+                            UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE"))
+                    .toList();
+        });
+
+        Warehouse warehouse = org.mockito.Mockito.mock(Warehouse.class);
+        org.mockito.Mockito.when(warehouse.getId()).thenReturn(warehouseId);
+        org.mockito.Mockito.when(warehouse.getName()).thenReturn("HQ 본사 창고");
+        when(warehouseRepository.findAllById(any())).thenReturn(List.of(warehouse));
+
+        List<SafetyStockAlertResponse> alerts = safetyStockService.findAlerts();
+
+        assertThat(alerts).hasSize(101);
+        assertThat(alerts)
+                .allSatisfy(alert -> {
+                    assertThat(alert.productCode()).isNotBlank();
+                    assertThat(alert.productName()).isNotBlank();
+                });
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UUID>> lookupCaptor = ArgumentCaptor.forClass(List.class);
+        verify(productClient, org.mockito.Mockito.times(2)).lookup(lookupCaptor.capture());
+        assertThat(lookupCaptor.getAllValues())
+                .extracting(List::size)
+                .containsExactly(100, 1);
+    }
+
+    @Test
+    @DisplayName("findAlerts: product-service 다운 시 productCode/productName null fallback")
+    void findAlerts_productServiceDown_returnsAlertsWithNullCodeName() {
+        SafetyStockConfig config = SafetyStockConfig.create(productId, warehouseId, 100, null);
+        when(safetyStockConfigRepository.findAll()).thenReturn(List.of(config));
+
+        StockBalance balance = mockBalance(30);
+        when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(
+                productId, warehouseId))
+                .thenReturn(Optional.of(balance));
+
+        // ProductClient 다운 (RuntimeException) — fail-soft
+        when(productClient.lookup(anyList()))
+                .thenThrow(new RuntimeException("product-service connection refused"));
+
+        Warehouse warehouse = org.mockito.Mockito.mock(Warehouse.class);
+        org.mockito.Mockito.when(warehouse.getId()).thenReturn(warehouseId);
+        org.mockito.Mockito.when(warehouse.getName()).thenReturn("HQ 본사 창고");
+        when(warehouseRepository.findAllById(any())).thenReturn(List.of(warehouse));
+
+        List<SafetyStockAlertResponse> alerts = safetyStockService.findAlerts();
+
+        // 알림 자체는 노출 — 운영자가 부족 사실 인지 가능
+        assertThat(alerts).hasSize(1);
+        SafetyStockAlertResponse alert = alerts.get(0);
+        assertThat(alert.productCode()).isNull();
+        assertThat(alert.productName()).isNull();
+        // warehouseName 은 정상 (별도 repository 호출)
+        assertThat(alert.warehouseName()).isEqualTo("HQ 본사 창고");
+    }
+
+    @Test
+    @DisplayName("findAlerts: warehouseId null 설정은 warehouseName='전체' 반환")
+    void findAlerts_globalWarehouse_returnsWarehouseNameJeonche() {
+        SafetyStockConfig config = SafetyStockConfig.create(productId, null, 100, null);
+        when(safetyStockConfigRepository.findAll()).thenReturn(List.of(config));
+
+        StockBalance b1 = mockBalance(40);
+        when(stockBalanceRepository.findAllByProductIdInAndIsDeletedFalse(anyList()))
+                .thenReturn(List.of(b1));
+
+        when(productClient.lookup(anyList()))
+                .thenReturn(List.of(new ProductSummary(productId, "테스트 제품", "AJ040",
+                        "AJ040-CODE", UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE")));
+
+        List<SafetyStockAlertResponse> alerts = safetyStockService.findAlerts();
+
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).warehouseName()).isEqualTo("전체");
+    }
+
+    @Test
+    @DisplayName("findAlerts: warehouseRepository miss 시 warehouseName null fallback")
+    void findAlerts_warehouseDeleted_returnsNullWarehouseName() {
+        SafetyStockConfig config = SafetyStockConfig.create(productId, warehouseId, 100, null);
+        when(safetyStockConfigRepository.findAll()).thenReturn(List.of(config));
+
+        StockBalance balance = mockBalance(30);
+        when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(
+                productId, warehouseId))
+                .thenReturn(Optional.of(balance));
+
+        when(productClient.lookup(anyList()))
+                .thenReturn(List.of(new ProductSummary(productId, "테스트 제품", "AJ040",
+                        "AJ040-CODE", UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE")));
+
+        // warehouseRepository 가 빈 리스트 반환 (warehouseId 가 삭제됨)
+        when(warehouseRepository.findAllById(any())).thenReturn(List.of());
+
+        List<SafetyStockAlertResponse> alerts = safetyStockService.findAlerts();
+
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).warehouseName()).isNull();
+        // productCode/Name 은 정상 채움
+        assertThat(alerts.get(0).productCode()).isEqualTo("AJ040-CODE");
     }
 
     // ------------------------------------------------------------------
