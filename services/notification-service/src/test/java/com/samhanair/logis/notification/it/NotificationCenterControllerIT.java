@@ -91,7 +91,7 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
         NotificationPublishRequest req = new NotificationPublishRequest(
                 "SAFETY_STOCK", NotificationSeverity.WARNING,
                 "AJ056 부족", null,
-                "MASTER,MANAGER", null,
+                List.of("MASTER", "MANAGER"), null,
                 "inventory-service", "product-1+wh-A",
                 "/inventory/safety-stock-alerts");
 
@@ -110,12 +110,12 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
         repository.save(NotificationCenter.publish(
                 "SAFETY_STOCK", NotificationSeverity.WARNING,
                 "MASTER 대상", null,
-                "MASTER", null,
+                List.of("MASTER"), null,
                 "inventory-service", "ref-1", null));
         repository.save(NotificationCenter.publish(
                 "MESSENGER", NotificationSeverity.INFO,
                 "SALES 대상", null,
-                "SALES", null,
+                List.of("SALES"), null,
                 "groupware-service", "ref-2", null));
 
         mockMvc.perform(get("/notifications/my")
@@ -124,6 +124,32 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.data[0].title").value("MASTER 대상"));
+    }
+
+    @Test
+    @DisplayName("GET /notifications/my — TEXT[] 다중 role 중 MANAGER 매칭 row 노출")
+    void findMyUnread_csvMultipleRoles_includesAllMatches() throws Exception {
+        Map<String, Object> req = Map.of(
+                "channel", "SAFETY_STOCK",
+                "severity", "WARNING",
+                "title", "MASTER/MANAGER 대상",
+                "targetRole", List.of("MASTER", "MANAGER"),
+                "sourceService", "inventory-service",
+                "sourceRefId", "ref-multi-role"
+        );
+
+        mockMvc.perform(post("/internal/notifications")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/notifications/my")
+                        .header("X-User-Id", masterUserId.toString())
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.data[0].title").value("MASTER/MANAGER 대상"));
     }
 
     @Test
@@ -148,7 +174,7 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
         NotificationCenter saved = repository.save(NotificationCenter.publish(
                 "SAFETY_STOCK", NotificationSeverity.WARNING,
                 "test", null,
-                "MASTER", null,
+                List.of("MASTER"), null,
                 "inventory-service", "ref-1", null));
 
         mockMvc.perform(post("/notifications/{id}/acknowledge", saved.getId())
@@ -170,7 +196,7 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
             repository.save(NotificationCenter.publish(
                     "SAFETY_STOCK", NotificationSeverity.WARNING,
                     "title " + i, null,
-                    "MASTER", null,
+                    List.of("MASTER"), null,
                     "inventory-service", "ref-" + i, null));
         }
 

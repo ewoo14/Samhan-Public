@@ -3,6 +3,8 @@
 > 사용자 보고 (2026-05-22): "우측 상단의 알림은 '안전재고 알림' 외에도 다양한 알림 용도로 사용해야함(종을 누르면 아래로 창을 하나 더 띄워서 여러 알림을 확인할 수 있도록 해야함"
 >
 > 추가 요구사항: "안전재고뿐 아니라 모든 알림 표시, 단 알림마다 전송 범위가 다르며, 나에게 해당되는 모든 알림은 표시, 알림 확인 후 확인하면 패널에서 사라짐. 알림도 메뉴를 생성하여 나의 지난 알림 내역을 모두 확인할 수 있어야함. 패널 하단에 전체 알림 보기로 이동하거나, 왼쪽 최상단에 알림내역을 넣음"
+>
+> **Cycle 1c 보정 (2026-05-22)**: Slice 1 구현 리뷰에서 CSV `target_role` native query 가 index 활용을 막는 BE P1이 확인되어, 현재 설계 기준은 `target_role TEXT[]` + GIN index + array containment query 이다. 아래 과거 CSV 표현은 이 보정이 우선한다.
 
 ## 1. 목표
 
@@ -51,7 +53,7 @@ accounting-service   │                │                     │
 | target_role | target_user_id | 노출 대상 |
 |---|---|---|
 | `MASTER` | NULL | 모든 MASTER role 사용자 |
-| `MANAGER,INVENTORY` (CSV) | NULL | MANAGER 또는 INVENTORY role 사용자 |
+| `["MANAGER","INVENTORY"]` | NULL | MANAGER 또는 INVENTORY role 사용자 |
 | NULL | `<UUID>` | 특정 사용자만 (메신저 receiver) |
 | `*` | NULL | 모든 인증 사용자 |
 
@@ -91,7 +93,7 @@ CREATE TABLE notification (
     severity         VARCHAR(16)  NOT NULL,   -- 'INFO' | 'WARNING' | 'CRITICAL'
     title            VARCHAR(200) NOT NULL,
     body             TEXT,
-    target_role      VARCHAR(200),            -- CSV (e.g. 'MASTER,MANAGER'), NULL = 모든 role
+    target_role      TEXT[],                  -- e.g. ARRAY['MASTER','MANAGER']
     target_user_id   UUID,                    -- NULL = role-based, else 특정 사용자
     source_service   VARCHAR(32)  NOT NULL,   -- 'inventory-service' | 'groupware-service' | ...
     source_ref_id    VARCHAR(100),            -- 알림 source 식별자 (productId+warehouseId, messageId 등)
@@ -103,10 +105,11 @@ CREATE TABLE notification (
     read_at          TIMESTAMP,               -- NULL = 미확인, else acknowledge 시점
     deleted_at       TIMESTAMP,
     deleted_by       VARCHAR(50),
-    is_deleted       BOOLEAN NOT NULL DEFAULT FALSE
+    is_deleted       BOOLEAN NOT NULL DEFAULT FALSE,
+    CONSTRAINT chk_notification_target_required CHECK (target_role IS NOT NULL OR target_user_id IS NOT NULL)
 );
 
-CREATE INDEX idx_notification_target_role_unread ON notification(target_role, read_at) WHERE is_deleted = FALSE;
+CREATE INDEX idx_notification_target_role_gin ON notification USING GIN(target_role) WHERE is_deleted = FALSE;
 CREATE INDEX idx_notification_target_user_unread ON notification(target_user_id, read_at) WHERE is_deleted = FALSE;
 CREATE INDEX idx_notification_source_ref ON notification(source_service, source_ref_id, channel);
 ```
@@ -218,7 +221,7 @@ clients/desktop/src/renderer/
 ### Slice 3 (Sprint 7) — 알림 source 통합
 
 - shared 또는 신규 `shared:notification-client` 모듈 + `NotificationPublisher`
-- inventory-service `SafetyStockService.checkAndNotify` → `NotificationPublisher.publish` (channel='SAFETY_STOCK', target_role='MASTER,MANAGER,INVENTORY,WAREHOUSE', deeplink='/inventory/safety-stock-alerts')
+- inventory-service `SafetyStockService.checkAndNotify` → `NotificationPublisher.publish` (channel='SAFETY_STOCK', target_role=["MASTER","MANAGER","INVENTORY","WAREHOUSE"], deeplink='/inventory/safety-stock-alerts')
 - groupware-service `MessageService.send` → `NotificationPublisher.publish` (channel='MESSENGER', target_user_id=receiverId, deeplink='/messenger/rooms/{roomId}')
 - 기존 안전재고 alert endpoint (`/inventory/alerts/safety-stock`) 은 deprecated 표시 (하위 호환)
 
@@ -229,7 +232,7 @@ clients/desktop/src/renderer/
 - `NotificationPublisher.publish()` fail-soft — source 트랜잭션 영향 0
 - `NotificationService.findMy()` — DB 조회 실패 시 빈 list (panel 빈 표시)
 - `acknowledge()` — 이미 읽음 처리된 알림 재호출 시 idempotent (read_at 갱신 안 함)
-- `target_role` CSV parse 실패 시 해당 row skip + warn log
+- `target_role` empty/null + `target_user_id` null row 는 CHECK 제약으로 차단
 
 ## 6. Testing
 

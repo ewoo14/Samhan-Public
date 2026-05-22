@@ -4,7 +4,9 @@
 
 **Goal:** notification-service 에 통합 알림 도메인 (Notification entity + REST API 4종 + IT) 신규 추가. 알림 source services 변경 없음.
 
-**Architecture:** Spring Boot 3 / JPA + Flyway. notification-service 내부에 도메인 추가. `Notification` entity (BaseEntity 7 audit + read_at). 4 REST endpoint (조회/acknowledge/internal publish). `target_role` CSV + `target_user_id` UUID 로 사용자별 필터.
+**Architecture:** Spring Boot 3 / JPA + Flyway. notification-service 내부에 도메인 추가. `Notification` entity (BaseEntity 7 audit + read_at). 4 REST endpoint (조회/acknowledge/internal publish). `target_role` PostgreSQL `TEXT[]` + `target_user_id` UUID 로 사용자별 필터.
+
+> **Cycle 1c 보정 (2026-05-22)**: 최초 계획의 CSV `target_role` / `string_to_array` native query 는 BE P1 리뷰 결과 폐기. 현재 구현 기준은 `target_role TEXT[]`, GIN partial index, `target_role @> ARRAY[CAST(:role AS text)]`, `target_role IS NOT NULL OR target_user_id IS NOT NULL` CHECK 제약이다.
 
 **Tech Stack:** Spring Boot 3.3.5, Spring Data JPA, Flyway 10, PostgreSQL, JUnit 5, Mockito, MockMvc + Testcontainers (IT)
 
@@ -55,7 +57,7 @@ CREATE TABLE notification_center (
     severity         VARCHAR(16)  NOT NULL,
     title            VARCHAR(200) NOT NULL,
     body             TEXT,
-    target_role      VARCHAR(200),
+    target_role      TEXT[],
     target_user_id   UUID,
     source_service   VARCHAR(64)  NOT NULL,
     source_ref_id    VARCHAR(200),
@@ -68,11 +70,14 @@ CREATE TABLE notification_center (
     modified_by      VARCHAR(50),
     deleted_at       TIMESTAMP,
     deleted_by       VARCHAR(50),
-    is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE
+    is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT chk_notification_center_target_required
+        CHECK (target_role IS NOT NULL OR target_user_id IS NOT NULL)
 );
 
-CREATE INDEX idx_notification_center_target_role_unread
-    ON notification_center(target_role, read_at)
+CREATE INDEX idx_notification_center_target_role_gin
+    ON notification_center USING GIN(target_role)
     WHERE is_deleted = FALSE;
 
 CREATE INDEX idx_notification_center_target_user_unread
@@ -134,18 +139,22 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.type.SqlTypes;
 
 /**
  * 사용자 통합 알림 (Issue 4 Slice 1).
  *
  * <p>NotificationLog (게이트웨이 발송 이력) 와 별개의 도메인 — 사용자 화면 알림.
- * target_role CSV (e.g. "MASTER,MANAGER") + target_user_id UUID 조합으로 노출 대상 결정.
+ * target_role PostgreSQL TEXT[] + target_user_id UUID 조합으로 노출 대상 결정.
  * read_at NULL = 미확인, NOT NULL = acknowledge 시점.
  */
 @Entity
@@ -174,8 +183,10 @@ public class NotificationCenter extends BaseEntity {
     @Column(name = "body", columnDefinition = "TEXT", updatable = false)
     private String body;
 
-    @Column(name = "target_role", length = 200, updatable = false)
-    private String targetRole;
+    @Getter(AccessLevel.NONE)
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "target_role", columnDefinition = "TEXT[]", updatable = false)
+    private String[] targetRole;
 
     @Column(name = "target_user_id", updatable = false)
     private UUID targetUserId;
@@ -194,7 +205,7 @@ public class NotificationCenter extends BaseEntity {
 
     public static NotificationCenter publish(String channel, NotificationSeverity severity,
                                              String title, String body,
-                                             String targetRole, UUID targetUserId,
+                                             List<String> targetRole, UUID targetUserId,
                                              String sourceService, String sourceRefId,
                                              String deeplink) {
         NotificationCenter n = new NotificationCenter();
@@ -202,7 +213,7 @@ public class NotificationCenter extends BaseEntity {
         n.severity = severity;
         n.title = title;
         n.body = body;
-        n.targetRole = targetRole;
+        n.targetRole = normalizeTargetRole(targetRole);
         n.targetUserId = targetUserId;
         n.sourceService = sourceService;
         n.sourceRefId = sourceRefId;
@@ -214,6 +225,23 @@ public class NotificationCenter extends BaseEntity {
         if (this.readAt == null) {
             this.readAt = when;
         }
+    }
+
+    public String[] getTargetRole() {
+        return targetRole == null ? null : targetRole.clone();
+    }
+
+    private static String[] normalizeTargetRole(List<String> targetRole) {
+        if (targetRole == null) {
+            return null;
+        }
+        String[] roles = targetRole.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(role -> !role.isBlank())
+                .distinct()
+                .toArray(String[]::new);
+        return roles.length == 0 ? null : roles;
     }
 }
 ```
@@ -254,8 +282,8 @@ import org.springframework.data.repository.query.Param;
 /**
  * NotificationCenter 조회.
  *
- * <p>target_role CSV / target_user_id UUID 조합 필터. role 매칭은 PostgreSQL 의 `string_to_array`
- * + ANY 패턴으로 처리한다.
+ * <p>target_role TEXT[] / target_user_id UUID 조합 필터. role 매칭은 PostgreSQL array containment
+ * operator 로 처리해 GIN index 를 활용한다.
  */
 public interface NotificationCenterRepository extends JpaRepository<NotificationCenter, UUID> {
 
@@ -270,7 +298,7 @@ public interface NotificationCenterRepository extends JpaRepository<Notification
               AND (
                    n.target_user_id = :userId
                 OR (n.target_role IS NOT NULL
-                    AND :role = ANY(string_to_array(n.target_role, ',')))
+                    AND n.target_role @> ARRAY[CAST(:role AS text)])
               )
             ORDER BY n.created_at DESC
             """, nativeQuery = true)
@@ -285,7 +313,7 @@ public interface NotificationCenterRepository extends JpaRepository<Notification
               AND (
                    n.target_user_id = :userId
                 OR (n.target_role IS NOT NULL
-                    AND :role = ANY(string_to_array(n.target_role, ',')))
+                    AND n.target_role @> ARRAY[CAST(:role AS text)])
               )
             ORDER BY n.created_at DESC
             """,
@@ -295,7 +323,7 @@ public interface NotificationCenterRepository extends JpaRepository<Notification
               AND (
                    n.target_user_id = :userId
                 OR (n.target_role IS NOT NULL
-                    AND :role = ANY(string_to_array(n.target_role, ',')))
+                    AND n.target_role @> ARRAY[CAST(:role AS text)])
               )
             """,
             nativeQuery = true)
@@ -312,7 +340,7 @@ Expected: BUILD SUCCESSFUL
 
 ```bash
 git add services/notification-service/src/main/java/com/samhanair/logis/notification/repository/NotificationCenterRepository.java
-git commit -m "feat(notification): Slice 1 Task 3 — NotificationCenterRepository (native query role CSV filter)"
+git commit -m "feat(notification): Slice 1 Task 3 — NotificationCenterRepository (native query role array filter)"
 ```
 
 ---
@@ -332,6 +360,7 @@ package com.samhanair.logis.notification.web.dto;
 import com.samhanair.logis.notification.domain.NotificationSeverity;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -341,7 +370,7 @@ import java.util.UUID;
  * @param severity       심각도 (INFO/WARNING/CRITICAL)
  * @param title          알림 제목 (200자 이내)
  * @param body           본문 (TEXT)
- * @param targetRole     role CSV (예: "MASTER,MANAGER"), null/blank 면 role 필터 미적용
+ * @param targetRole     대상 role 배열 (예: ["MASTER","MANAGER"]), null/empty 면 role 필터 미적용
  * @param targetUserId   특정 사용자 UUID, null 면 role 기반
  * @param sourceService  발송 service 명 (기록용)
  * @param sourceRefId    source 식별자 (예: productId+warehouseId, messageId)
@@ -352,7 +381,7 @@ public record NotificationPublishRequest(
         @NotNull NotificationSeverity severity,
         @NotBlank String title,
         String body,
-        String targetRole,
+        List<String> targetRole,
         UUID targetUserId,
         @NotBlank String sourceService,
         String sourceRefId,
@@ -1106,7 +1135,7 @@ Issue 4 통합 알림 센터의 BE 도메인 신규 (Slice 1).
 - Flyway V5 \`notification_center\` 테이블 + 4 index
 - \`NotificationCenter\` entity (BaseEntity 7 audit + read_at)
 - \`NotificationSeverity\` enum (INFO/WARNING/CRITICAL)
-- \`NotificationCenterRepository\` (native query — role CSV string_to_array 필터)
+- \`NotificationCenterRepository\` (native query — TEXT[] role array containment 필터)
 - DTO 3종 (PublishRequest, Response, Page)
 - \`NotificationCenterService\` — publish/findMyUnread/findMyHistory/acknowledge (idempotent)
 - \`NotificationCenterController\` — GET /my, /history, POST /{id}/acknowledge
@@ -1137,10 +1166,10 @@ EOF
 
 ### Spec coverage
 - [x] notification entity Flyway V5 → Task 1
-- [x] target_role CSV + target_user_id 필터 → Task 3 (native query)
+- [x] target_role TEXT[] + target_user_id 필터 → Cycle 1c 보정 (GIN + array containment native query)
 - [x] read/unread state (read_at) → Task 2 entity + Task 5 service.acknowledge
 - [x] REST API 4종 → Task 6 + Task 7
-- [x] target_role/userId 권한 가드 → Task 5 canAccess
+- [x] target_role array/userId 권한 가드 → Task 5 canAccess + Cycle 1c 보정
 - [x] paged history → Task 4 NotificationCenterPage + Task 5/6
 - [x] internal token 가드 → Task 7 (path-prefix 자동) + Task 8 IT 첫번째
 - [x] gateway route → Task 9

@@ -12,8 +12,8 @@ import org.springframework.data.repository.query.Param;
 /**
  * NotificationCenter 조회.
  *
- * <p>target_role CSV / target_user_id UUID 조합 필터. role 매칭은 PostgreSQL 의 {@code string_to_array}
- * + ANY 패턴으로 처리한다.
+ * <p>target_role TEXT[] / target_user_id UUID 조합 필터. role 매칭은 PostgreSQL array containment
+ * operator 로 처리해 GIN index 를 활용한다.
  */
 public interface NotificationCenterRepository extends JpaRepository<NotificationCenter, UUID> {
 
@@ -28,7 +28,7 @@ public interface NotificationCenterRepository extends JpaRepository<Notification
               AND (
                    n.target_user_id = :userId
                 OR (n.target_role IS NOT NULL
-                    AND :role = ANY(string_to_array(n.target_role, ',')))
+                    AND n.target_role @> ARRAY[CAST(:role AS text)])
               )
             ORDER BY n.created_at DESC
             """, nativeQuery = true)
@@ -43,7 +43,7 @@ public interface NotificationCenterRepository extends JpaRepository<Notification
               AND (
                    n.target_user_id = :userId
                 OR (n.target_role IS NOT NULL
-                    AND :role = ANY(string_to_array(n.target_role, ',')))
+                    AND n.target_role @> ARRAY[CAST(:role AS text)])
               )
             ORDER BY n.created_at DESC
             """,
@@ -53,7 +53,7 @@ public interface NotificationCenterRepository extends JpaRepository<Notification
               AND (
                    n.target_user_id = :userId
                 OR (n.target_role IS NOT NULL
-                    AND :role = ANY(string_to_array(n.target_role, ',')))
+                    AND n.target_role @> ARRAY[CAST(:role AS text)])
               )
             """,
             nativeQuery = true)

@@ -3,6 +3,7 @@ package com.samhanair.logis.notification.web.dto;
 import com.samhanair.logis.notification.domain.NotificationSeverity;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -12,7 +13,7 @@ import java.util.UUID;
  * @param severity       심각도 (INFO/WARNING/CRITICAL)
  * @param title          알림 제목 (200자 이내)
  * @param body           본문 (TEXT)
- * @param targetRole     role CSV (예: {@code "MASTER,MANAGER"}), null/blank 면 role 필터 미적용
+ * @param targetRole     대상 role 배열 (예: {@code ["MASTER","MANAGER"]}), null/empty 면 role 필터 미적용
  * @param targetUserId   특정 사용자 UUID, null 면 role 기반
  * @param sourceService  발송 service 명 (기록용)
  * @param sourceRefId    source 식별자 (예: productId+warehouseId, messageId)
@@ -23,7 +24,7 @@ public record NotificationPublishRequest(
         @NotNull NotificationSeverity severity,
         @NotBlank String title,
         String body,
-        String targetRole,
+        List<String> targetRole,
         UUID targetUserId,
         @NotBlank String sourceService,
         String sourceRefId,

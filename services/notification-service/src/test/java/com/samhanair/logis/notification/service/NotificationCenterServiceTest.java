@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -50,7 +51,7 @@ class NotificationCenterServiceTest {
         NotificationPublishRequest req = new NotificationPublishRequest(
                 "SAFETY_STOCK", NotificationSeverity.WARNING,
                 "AJ056 부족", "현재 30 / 임계 50",
-                "MASTER,MANAGER", null,
+                List.of("MASTER", "MANAGER"), null,
                 "inventory-service", "product-1+warehouse-A",
                 "/inventory/safety-stock-alerts");
 
@@ -63,7 +64,9 @@ class NotificationCenterServiceTest {
         UUID id = service.publish(req);
 
         assertThat(id).isEqualTo(saved.getId());
-        verify(repository).save(any(NotificationCenter.class));
+        ArgumentCaptor<NotificationCenter> captor = ArgumentCaptor.forClass(NotificationCenter.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getTargetRole()).containsExactly("MASTER", "MANAGER");
     }
 
     @Test
@@ -130,6 +133,19 @@ class NotificationCenterServiceTest {
     }
 
     @Test
+    @DisplayName("acknowledge: 다중 role 배열 중 두 번째 role 도 접근 허용")
+    void acknowledge_multipleTargetRoles_allowsSecondRole() {
+        NotificationCenter n = stubNotification();
+        when(repository.findById(n.getId())).thenReturn(Optional.of(n));
+        when(repository.save(n)).thenReturn(n);
+
+        service.acknowledge(n.getId(), userId, "MANAGER");
+
+        assertThat(n.getReadAt()).isNotNull();
+        verify(repository).save(n);
+    }
+
+    @Test
     @DisplayName("acknowledge: 권한 없는 알림 → FORBIDDEN")
     void acknowledge_notMyNotification_throwsForbidden() {
         NotificationCenter n = NotificationCenter.publish(
@@ -157,7 +173,7 @@ class NotificationCenterServiceTest {
         return NotificationCenter.publish(
                 "SAFETY_STOCK", NotificationSeverity.WARNING,
                 "AJ056 부족", "현재 30 / 임계 50",
-                "MASTER,MANAGER", null,
+                List.of("MASTER", "MANAGER"), null,
                 "inventory-service", "product-1", "/inventory/safety-stock-alerts");
     }
 }

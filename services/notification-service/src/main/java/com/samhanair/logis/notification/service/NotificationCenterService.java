@@ -72,11 +72,9 @@ public class NotificationCenterService {
         if (userId != null && userId.equals(n.getTargetUserId())) {
             return true;
         }
-        if (n.getTargetRole() != null && !n.getTargetRole().isBlank()) {
-            List<String> roles = Arrays.stream(n.getTargetRole().split(","))
-                    .map(String::trim)
-                    .toList();
-            return roles.contains(role);
+        String[] targetRole = n.getTargetRole();
+        if (targetRole != null && targetRole.length > 0) {
+            return Arrays.asList(targetRole).contains(role);
         }
         return false;
     }

@@ -8,7 +8,7 @@ CREATE TABLE notification_center (
     severity         VARCHAR(16)  NOT NULL,
     title            VARCHAR(200) NOT NULL,
     body             TEXT,
-    target_role      VARCHAR(200),
+    target_role      TEXT[],
     target_user_id   UUID,
     source_service   VARCHAR(64)  NOT NULL,
     source_ref_id    VARCHAR(200),
@@ -21,11 +21,14 @@ CREATE TABLE notification_center (
     modified_by      VARCHAR(50),
     deleted_at       TIMESTAMP,
     deleted_by       VARCHAR(50),
-    is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE
+    is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT chk_notification_center_target_required
+        CHECK (target_role IS NOT NULL OR target_user_id IS NOT NULL)
 );
 
-CREATE INDEX idx_notification_center_target_role_unread
-    ON notification_center(target_role, read_at)
+CREATE INDEX idx_notification_center_target_role_gin
+    ON notification_center USING GIN(target_role)
     WHERE is_deleted = FALSE;
 
 CREATE INDEX idx_notification_center_target_user_unread
