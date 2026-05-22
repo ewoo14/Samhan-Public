@@ -7,7 +7,7 @@
  * - `POST   /api/delivery-batches/auto-group?date=`   — 같은 기사+같은 날짜 자동 그룹
  * - `POST   /api/delivery-batches/{id}/slips`         — 배치에 전표 추가
  * - `DELETE /api/delivery-batches/{id}/slips/{slipId}` — 배치에서 전표 제거
- * - `POST   /api/delivery-batches/{id}/sms`           — 배치 SMS 일괄 발송 (e-sign URL 포함)
+ * - `POST   /api/delivery-batches/{id}/send-sms`      — 배치 SMS 일괄 발송 (e-sign URL 포함)
  * - `POST   /api/delivery-batches/{id}/regenerate-token` — 토큰 재발행 (URL 새로고침)
  *
  * UUID 비공개 가드: batch.id / slip.id 는 path/body 에서만 사용. 화면 표시 영역에서
@@ -167,7 +167,7 @@ export async function removeSlipFromBatch(
  */
 export async function sendBatchSms(batchId: string): Promise<DeliveryBatchSummary> {
   const res = await apiClient.post<ApiEnvelope<DeliveryBatchSummary>>(
-    `/api/delivery-batches/${batchId}/sms`,
+    `/api/delivery-batches/${batchId}/send-sms`,
     {},
   )
   return res.data.data
