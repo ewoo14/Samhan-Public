@@ -28,7 +28,7 @@
  * - 우상단 사용자 chip → dropdown 토글 (비밀번호 변경 link 추가)
  * - 외부 클릭 / Esc 키 dropdown 자동 닫기
  */
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { canInspectInbound, useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
@@ -59,7 +59,6 @@ import { SLIP_EDIT_REQUEST_REVIEWER_ROLES } from '../api/slipEditRequest'
 // [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE. 헤더 배지 + 창고 운영 메뉴.
 import {
   canAccessSafetyStock,
-  fetchSafetyStockAlertCount,
 } from '../api/safetyStockApi'
 // [PR-F1 FE-2] 운송사 실배차 비교 — DISPATCH / MANAGER / MASTER
 import { canAccessDispatchReconcile } from '../api/dispatchReconcileApi'
@@ -71,6 +70,7 @@ import { canAccessSlipPhotoAudit } from '../api/slipPhotoAuditApi'
 import { canAccessPartnerFull } from '../api/partnerApi'
 import { canAccessDeliveryBatch } from '../api/delivery'
 import { canAccessPartnerDcConfig } from '../api/sales'
+import { NotificationBellDropdown } from './NotificationBellDropdown'
 
 /**
  * 사이드바 NavLink — 권한 없으면 완전 미렌더 (hidden).
@@ -203,21 +203,6 @@ export function AppLayout() {
 
   // [SP-D1 cycle 2] 동적 RBAC 권한 훅 — 5분 캐시. 사이드바 메뉴 hidden 연동.
   const { canAccess: dynamicCanAccess } = usePermissions()
-
-  // [P1-3] 안전재고 알림 건수 — 헤더 배지 + 60초 polling
-  const [safetyStockCount, setSafetyStockCount] = useState(0)
-  const showSafetyStock = canAccessSafetyStock(auth?.role)
-  const refreshSafetyStockCount = useCallback(() => {
-    if (!showSafetyStock) return
-    fetchSafetyStockAlertCount()
-      .then((count) => setSafetyStockCount(count))
-      .catch(() => { /* 배지 조회 실패는 무시 */ })
-  }, [showSafetyStock])
-  useEffect(() => {
-    refreshSafetyStockCount()
-    const timer = setInterval(refreshSafetyStockCount, 60_000)
-    return () => clearInterval(timer)
-  }, [refreshSafetyStockCount])
 
   // 외부 클릭 시 dropdown 닫기
   useEffect(() => {
@@ -374,7 +359,7 @@ export function AppLayout() {
   const showInboundInspection = dynamicCanAccess('inbound.inspection', 'view')
     || canInspectInbound(auth?.role)
   // [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE 가시
-  const showSafetyStockAlerts = showSafetyStock
+  const showSafetyStockAlerts = canAccessSafetyStock(auth?.role)
   // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 품목별 DPS 분석 / 전표 요청 / 사진 감사 / 입고 검수 / 안전재고 알림 중 하나라도 보이면 그룹 노출
   // [SP-D4] inventory 그룹 PageCode 변수 병합 (showInventoryGroup 은 이 시점에서 미정의이므로 개별 항목 직접 OR)
   const showWarehouseOps = showAudit || showDpsCompare || showDpsByProduct || showSlipEditRequests || showPhotoAudit || showInboundInspection || showSafetyStockAlerts
@@ -416,6 +401,9 @@ export function AppLayout() {
         <nav>
           <NavLink to="/" end>
             대시보드
+          </NavLink>
+          <NavLink to="/notifications" data-testid="sidebar-notifications">
+            알림 내역
           </NavLink>
           <NavLink to="/warehouses" data-testid="sidebar-warehouses">창고관리</NavLink>
           {/* [2a 메뉴 통합 + SP-03 IA] /sales, /purchases 는 SalesQueryPage / PurchaseQueryPage
@@ -1044,36 +1032,14 @@ export function AppLayout() {
               >
                 사진 감사
               </SidebarLink>
-              {/* [P1-3] 안전재고 알림 — MASTER/MANAGER/WAREHOUSE. 배지로 건수 표시. */}
+              {/* [P1-3] 안전재고 알림 — MASTER/MANAGER/WAREHOUSE. */}
               <SidebarLink
                 to="/inventory/safety-stock-alerts"
                 show={showSafetyStockAlerts}
                 requiredRole="MASTER / MANAGER / WAREHOUSE"
                 data-testid="sidebar-warehouse-safety-stock-alerts"
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 안전재고 알림
-                {showSafetyStockAlerts && safetyStockCount > 0 ? (
-                  <span
-                    data-testid="sidebar-safety-stock-badge"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minWidth: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      background: 'var(--color-danger-500)',
-                      color: 'var(--color-neutral-0)',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: '0 5px',
-                      lineHeight: 1,
-                    }}
-                  >
-                    {safetyStockCount}
-                  </span>
-                ) : null}
               </SidebarLink>
             </>
           ) : null}
@@ -1232,69 +1198,7 @@ export function AppLayout() {
             {meta ? <span className="app-header-meta">[{meta}]</span> : null}
           </h2>
           <div className="app-header-actions">
-            {/* [P1-3] 안전재고 알림 헤더 count chip — 벨 아이콘 + position absolute 원형 오버레이.
-               Designer spec: count > 0 시만 노출. data-testid: header-safety-stock-count-chip. */}
-            {showSafetyStock && safetyStockCount > 0 ? (
-              <button
-                type="button"
-                data-testid="header-safety-stock-count-chip"
-                onClick={() => navigate('/inventory/safety-stock-alerts')}
-                style={{
-                  position: 'relative',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 36,
-                  height: 36,
-                  background: 'transparent',
-                  border: '1px solid var(--color-neutral-200)',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-                aria-label={`안전재고 알림 ${safetyStockCount}건`}
-                title={`안전재고 알림 ${safetyStockCount}건`}
-              >
-                {/* 벨 아이콘 (SVG) */}
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="var(--color-neutral-600)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                {/* 원형 카운트 오버레이 — position absolute */}
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -6,
-                    right: -6,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    background: 'var(--color-danger-500)',
-                    color: 'var(--color-neutral-0)',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: '0 4px',
-                    lineHeight: 1,
-                    border: '2px solid var(--color-neutral-0)',
-                  }}
-                >
-                  {safetyStockCount > 99 ? '99+' : safetyStockCount}
-                </span>
-              </button>
-            ) : null}
+            <NotificationBellDropdown />
             <div
               ref={userMenuRef}
               style={{ position: 'relative', display: 'inline-block' }}
