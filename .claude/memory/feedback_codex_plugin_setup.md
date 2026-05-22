@@ -17,11 +17,13 @@ metadata:
 
 | 구분 | 사용 도구 | sandbox | 비고 |
 |---|---|---|---|
-| **Code review** | `mcp__codex__codex` | **`danger-full-access`** | 5-agent 병렬 |
+| **Code review** | `mcp__codex__codex` | **`danger-full-access`** (read-only 금지, 2026-05-22 3차 재지적) | 5-agent 병렬, `gh pr diff` 등 필요 |
 | **Code fix** | `mcp__codex__codex` | **`danger-full-access`** | commit + push 직접 가능 |
 | **Continue session** | `mcp__codex__codex-reply` `threadId` | **`danger-full-access` 명시 의무 (2026-05-21 사용자 재지적)** | 동일 thread 이어가기 |
 
 **🚨 2026-05-21 사용자 재지적 (MIG-22 진행 중)**: "또다시 코덱스 read-only로 권한이 바뀜. 이미 권한 변경을 요청하였으나 리셋됨" → **모든 호출에 명시 의무 강화**. `mcp__codex__codex-reply` 는 thread 상속 X — 매 호출마다 `sandbox: "danger-full-access"` 명시 필수. 누락 시 read-only fallback 회귀.
+
+**🚨 2026-05-22 사용자 3차 재지적 (PR #293 사이클 1d 진행 중)**: "코덱스 전체 권한으로 변경 메모리 참조 요청" — review 단계에서 read-only 사용한 회귀 (5건 모두 sandbox=read-only) 적발. **review 단계도 무조건 danger-full-access** — Codex 가 직접 grep / git diff / gh CLI 등 실행해야 정확한 review 가능. read-only 는 `gh pr diff` 등 차단되어 review 품질 저하.
 
 **Why:** `workspace-write` 는 `.git/index.lock` 권한 거부 + Gradle wrapper 네트워크 차단 trap 발생. Claude 가 매번 commit + push 우회 필요. `danger-full-access` 적용 시 Codex 가 자체 검증 + commit + push 완료 → 사이클 단축.
 

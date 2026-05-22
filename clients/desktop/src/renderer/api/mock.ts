@@ -1486,8 +1486,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     ])
   }
 
-  // POST /delivery-batches/{id}/sms — SMS 발송
-  const batchSmsMatch = url.match(/\/delivery-batches\/([^/]+)\/sms$/)
+  // POST /delivery-batches/{id}/send-sms — SMS 발송
+  const batchSmsMatch = url.match(/\/delivery-batches\/([^/]+)\/send-sms$/)
   if (method === 'POST' && batchSmsMatch) {
     const id = batchSmsMatch[1]!
     const found = MOCK_BATCHES.find((b) => b.id === id) ?? MOCK_BATCHES[0]!

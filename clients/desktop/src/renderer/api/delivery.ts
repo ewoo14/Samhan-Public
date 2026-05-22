@@ -1,14 +1,14 @@
 /**
  * 배송 묶음 (delivery batch) 도메인 API 클라이언트 — link-dispatch-slice.
  *
- * 노출 endpoint (BE notification-service / batch-service):
- * - `GET    /delivery-batches?date=&sent=`        — 날짜 + sent 필터 목록
- * - `GET    /delivery-batches/{id}`               — 배치 상세 (포함 전표 N건)
- * - `POST   /delivery-batches/auto-group?date=`   — 같은 기사+같은 날짜 자동 그룹
- * - `POST   /delivery-batches/{id}/slips`         — 배치에 전표 추가
- * - `DELETE /delivery-batches/{id}/slips/{slipId}` — 배치에서 전표 제거
- * - `POST   /delivery-batches/{id}/sms`           — 배치 SMS 일괄 발송 (e-sign URL 포함)
- * - `POST   /delivery-batches/{id}/regenerate-token` — 토큰 재발행 (URL 새로고침)
+ * 노출 endpoint (BE slip-service DeliveryBatchController, gateway StripPrefix=1):
+ * - `GET    /api/delivery-batches?date=&sent=`        — 날짜 + sent 필터 목록
+ * - `GET    /api/delivery-batches/{id}`               — 배치 상세 (포함 전표 N건)
+ * - `POST   /api/delivery-batches/auto-group?date=`   — 같은 기사+같은 날짜 자동 그룹
+ * - `POST   /api/delivery-batches/{id}/slips`         — 배치에 전표 추가
+ * - `DELETE /api/delivery-batches/{id}/slips/{slipId}` — 배치에서 전표 제거
+ * - `POST   /api/delivery-batches/{id}/send-sms`      — 배치 SMS 일괄 발송 (e-sign URL 포함)
+ * - `POST   /api/delivery-batches/{id}/regenerate-token` — 토큰 재발행 (URL 새로고침)
  *
  * UUID 비공개 가드: batch.id / slip.id 는 path/body 에서만 사용. 화면 표시 영역에서
  * 는 driverName / slipNo / 날짜 등 비즈니스 라벨만 사용한다 (memo
@@ -93,7 +93,7 @@ export async function listBatches(
   if (options.sent !== undefined) params['sent'] = String(options.sent)
 
   const res = await apiClient.get<ApiEnvelope<DeliveryBatchSummary[]>>(
-    '/delivery-batches',
+    '/api/delivery-batches',
     { params },
   )
   return res.data.data
@@ -106,7 +106,7 @@ export async function listBatches(
  */
 export async function getBatch(batchId: string): Promise<DeliveryBatchDetail> {
   const res = await apiClient.get<ApiEnvelope<DeliveryBatchDetail>>(
-    `/delivery-batches/${batchId}`,
+    `/api/delivery-batches/${batchId}`,
   )
   return res.data.data
 }
@@ -121,7 +121,7 @@ export async function getBatch(batchId: string): Promise<DeliveryBatchDetail> {
  */
 export async function autoGroup(date: string): Promise<DeliveryBatchSummary[]> {
   const res = await apiClient.post<ApiEnvelope<DeliveryBatchSummary[]>>(
-    '/delivery-batches/auto-group',
+    '/api/delivery-batches/auto-group',
     null,
     { params: { date } },
   )
@@ -139,7 +139,7 @@ export async function addSlipToBatch(
   slipId: string,
 ): Promise<DeliveryBatchDetail> {
   const res = await apiClient.post<ApiEnvelope<DeliveryBatchDetail>>(
-    `/delivery-batches/${batchId}/slips`,
+    `/api/delivery-batches/${batchId}/slips`,
     { slipId },
   )
   return res.data.data
@@ -155,7 +155,7 @@ export async function removeSlipFromBatch(
   batchId: string,
   slipId: string,
 ): Promise<void> {
-  await apiClient.delete(`/delivery-batches/${batchId}/slips/${slipId}`)
+  await apiClient.delete(`/api/delivery-batches/${batchId}/slips/${slipId}`)
 }
 
 /**
@@ -167,7 +167,7 @@ export async function removeSlipFromBatch(
  */
 export async function sendBatchSms(batchId: string): Promise<DeliveryBatchSummary> {
   const res = await apiClient.post<ApiEnvelope<DeliveryBatchSummary>>(
-    `/delivery-batches/${batchId}/sms`,
+    `/api/delivery-batches/${batchId}/send-sms`,
     {},
   )
   return res.data.data
@@ -185,7 +185,7 @@ export async function regenerateBatchToken(
   batchId: string,
 ): Promise<DeliveryBatchDetail> {
   const res = await apiClient.post<ApiEnvelope<DeliveryBatchDetail>>(
-    `/delivery-batches/${batchId}/regenerate-token`,
+    `/api/delivery-batches/${batchId}/regenerate-token`,
     {},
   )
   return res.data.data
