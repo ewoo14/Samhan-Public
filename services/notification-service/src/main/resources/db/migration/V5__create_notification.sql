@@ -24,7 +24,10 @@ CREATE TABLE notification_center (
     is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE,
 
     CONSTRAINT chk_notification_center_target_required
-        CHECK (target_role IS NOT NULL OR target_user_id IS NOT NULL)
+        CHECK (
+            (target_role IS NOT NULL AND target_user_id IS NULL)
+            OR (target_role IS NULL AND target_user_id IS NOT NULL)
+        )
 );
 
 CREATE INDEX idx_notification_center_target_role_gin

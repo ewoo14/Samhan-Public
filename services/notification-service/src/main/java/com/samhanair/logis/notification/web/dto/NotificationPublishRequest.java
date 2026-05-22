@@ -1,9 +1,11 @@
 package com.samhanair.logis.notification.web.dto;
 
 import com.samhanair.logis.notification.domain.NotificationSeverity;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -30,4 +32,12 @@ public record NotificationPublishRequest(
         String sourceRefId,
         String deeplink
 ) {
+    @AssertTrue(message = "targetRole 또는 targetUserId 중 정확히 하나만 지정해야 합니다")
+    public boolean isExactlyOneTargetSpecified() {
+        boolean roleSpecified = targetRole != null && targetRole.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .anyMatch(role -> !role.isBlank());
+        return roleSpecified ^ (targetUserId != null);
+    }
 }

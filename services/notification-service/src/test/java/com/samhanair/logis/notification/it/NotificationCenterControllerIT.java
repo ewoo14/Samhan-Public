@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,10 +39,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Issue 4 Slice 1 — NotificationCenterController IT 5건.
+ * Issue 4 Slice 1 — NotificationCenterController IT.
  *
  * <ol>
  *   <li>POST /internal/notifications — X-Internal-Token 으로 알림 INSERT</li>
+ *   <li>POST /internal/notifications — target_role + target_user_id 동시 지정 거절</li>
+ *   <li>POST /internal/notifications — X-Internal-Token 누락 거절</li>
  *   <li>GET /notifications/my — MASTER role 알림만 노출 (다른 role 제외)</li>
  *   <li>GET /notifications/my — target_user_id 매칭 row 포함</li>
  *   <li>POST /notifications/{id}/acknowledge — read_at 설정 + idempotent</li>
@@ -102,6 +105,47 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /internal/notifications — target_role + target_user_id 동시 지정 시 400")
+    void publish_bothTargetRoleAndUserId_rejected() throws Exception {
+        Map<String, Object> req = Map.of(
+                "channel", "MESSENGER",
+                "severity", "INFO",
+                "title", "중복 대상 지정",
+                "targetRole", List.of("MASTER"),
+                "targetUserId", masterUserId,
+                "sourceService", "groupware-service",
+                "sourceRefId", "msg-invalid"
+        );
+
+        mockMvc.perform(post("/internal/notifications")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("POST /internal/notifications — X-Internal-Token 누락 시 user header 위조도 거절")
+    void publish_missingInternalToken_rejected() throws Exception {
+        Map<String, Object> req = Map.of(
+                "channel", "SAFETY_STOCK",
+                "severity", "WARNING",
+                "title", "토큰 누락",
+                "targetRole", List.of("MASTER"),
+                "sourceService", "inventory-service",
+                "sourceRefId", "missing-token"
+        );
+
+        mockMvc.perform(post("/internal/notifications")
+                        .header("X-User-Id", masterUserId.toString())
+                        .header("X-User-Role", "MASTER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(result -> Assertions.assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 
     @Test

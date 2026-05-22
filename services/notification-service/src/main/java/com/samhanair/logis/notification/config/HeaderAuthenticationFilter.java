@@ -19,10 +19,17 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_ROLE_HEADER = "X-User-Role";
+    private static final String INTERNAL_PATH_PREFIX = "/internal/";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        String path = request.getRequestURI();
+        if (path != null && path.startsWith(INTERNAL_PATH_PREFIX)) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String userId = request.getHeader(USER_ID_HEADER);
         String role = request.getHeader(USER_ROLE_HEADER);
 

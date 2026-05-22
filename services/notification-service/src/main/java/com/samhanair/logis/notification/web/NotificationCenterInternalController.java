@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +28,7 @@ public class NotificationCenterInternalController {
     private final NotificationCenterService service;
 
     @PostMapping
+    @PreAuthorize("hasRole('MASTER')")
     @Operation(summary = "알림 발송 (source service 호출용)")
     public ApiResponse<UUID> publish(@Valid @RequestBody NotificationPublishRequest req) {
         UUID id = service.publish(req);

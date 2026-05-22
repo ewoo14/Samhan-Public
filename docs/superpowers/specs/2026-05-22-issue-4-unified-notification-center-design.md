@@ -26,20 +26,20 @@
 
 ```
 [source services]                     [notification-service]                [FE]
-inventory-service                     ┌─────────────────────┐                
-  SafetyStockService                  │ notification table  │                
-  .checkAndNotify() ─┐                │ (Flyway V12 신규)   │                
-                     │                │                     │                
-groupware-service    │  POST /internal/notifications        │                
-  MessageService     │  (X-Internal-Token + 사용자 헤더)    │                
-  .send() ──────────►├───► NotificationPublisher           │                
-                     │     → INSERT notification row        │                
-accounting-service   │                │                     │                
-  (Sprint 7+)        │                └─────────────────────┘                
-                     │                          │                            
-                     │                          ▼                            
-                     │                  GET /notifications/my (unread)       
-                     │                  GET /notifications/history (paged)   
+inventory-service                     ┌─────────────────────┐
+  SafetyStockService                  │ notification table  │
+  .checkAndNotify() ─┐                │ (Flyway V12 신규)   │
+                     │                │                     │
+groupware-service    │  POST /internal/notifications        │
+  MessageService     │  (X-Internal-Token + 사용자 헤더)    │
+  .send() ──────────►├───► NotificationPublisher           │
+                     │     → INSERT notification row        │
+accounting-service   │                │                     │
+  (Sprint 7+)        │                └─────────────────────┘
+                     │                          │
+                     │                          ▼
+                     │                  GET /notifications/my (unread)
+                     │                  GET /notifications/history (paged)
                      │                  POST /notifications/{id}/acknowledge ◄── AppLayout
                      │                                                          NotificationBell
                      │                                                            (60s polling)
@@ -106,7 +106,10 @@ CREATE TABLE notification (
     deleted_at       TIMESTAMP,
     deleted_by       VARCHAR(50),
     is_deleted       BOOLEAN NOT NULL DEFAULT FALSE,
-    CONSTRAINT chk_notification_target_required CHECK (target_role IS NOT NULL OR target_user_id IS NOT NULL)
+    CONSTRAINT chk_notification_target_required CHECK (
+        (target_role IS NOT NULL AND target_user_id IS NULL)
+        OR (target_role IS NULL AND target_user_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_notification_target_role_gin ON notification USING GIN(target_role) WHERE is_deleted = FALSE;
