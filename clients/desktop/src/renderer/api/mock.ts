@@ -643,7 +643,10 @@ const SAMPLE_TRANSFER_LINES = [
 const MOCK_SAFETY_STOCK_ALERTS = [
   {
     productId: 'a0a0a0a0-0000-0000-0000-000000000002',
+    productCode: 'AJ056RXH4BC1',
+    productName: '시스템에어컨 멀티 5.6kW',
     warehouseId: '11111111-1111-1111-1111-000000000001',
+    warehouseName: 'HQ 본사 창고',
     threshold: 50,
     currentQty: 43,
     shortage: 7,
@@ -651,7 +654,10 @@ const MOCK_SAFETY_STOCK_ALERTS = [
   },
   {
     productId: 'a0a0a0a0-0000-0000-0000-000000000003',
+    productCode: 'AM100RXMDH',
+    productName: '시스템에어컨 실외기 10마력',
     warehouseId: '11111111-1111-1111-1111-000000000001',
+    warehouseName: 'HQ 본사 창고',
     threshold: 30,
     currentQty: 27,
     shortage: 3,
@@ -659,7 +665,10 @@ const MOCK_SAFETY_STOCK_ALERTS = [
   },
   {
     productId: 'a0a0a0a0-0000-0000-0000-000000000001',
+    productCode: 'AJ040RXH4BC1',
+    productName: '시스템에어컨 싱글 4.0kW',
     warehouseId: '11111111-1111-1111-1111-000000000002',
+    warehouseName: 'VH 분원 창고',
     threshold: 10,
     currentQty: 6,
     shortage: 4,
