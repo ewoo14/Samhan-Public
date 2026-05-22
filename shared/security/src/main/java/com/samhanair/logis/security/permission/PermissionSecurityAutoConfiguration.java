@@ -94,7 +94,8 @@ public class PermissionSecurityAutoConfiguration {
     @ConditionalOnMissingBean(DynamicPermissionClient.class)
     @ConditionalOnBean(name = "loadBalancedRestClientBuilder")
     public DynamicPermissionClient defaultDynamicPermissionClient(
-            @Qualifier("loadBalancedRestClientBuilder") RestClient.Builder loadBalancedBuilder) {
-        return new DefaultDynamicPermissionClient(loadBalancedBuilder);
+            @Qualifier("loadBalancedRestClientBuilder") RestClient.Builder loadBalancedBuilder,
+            @Value("${app.security.internal.token:}") String internalToken) {
+        return new DefaultDynamicPermissionClient(loadBalancedBuilder, internalToken);
     }
 }

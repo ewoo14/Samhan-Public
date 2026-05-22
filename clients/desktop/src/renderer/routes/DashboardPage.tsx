@@ -85,7 +85,7 @@ export function DashboardPage() {
             재고이동 관리
           </Button>
           <Button variant="ghost" onClick={() => navigate('/warehouses')}>
-            창고 관리
+            창고관리
           </Button>
         </div>
         {!canCreateSlip(auth?.role) ? (

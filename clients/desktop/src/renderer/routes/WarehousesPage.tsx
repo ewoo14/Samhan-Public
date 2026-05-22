@@ -56,7 +56,7 @@ const TYPE_VARIANT: Record<
 }
 
 export function WarehousesPage() {
-  usePageTitle('창고 관리')
+  usePageTitle('창고관리')
   const role = useSessionStore((s) => s.auth?.role)
   const hasWarehouseWriteRole = hasAdminRole(role)
   const [modalOpen, setModalOpen] = useState(false)

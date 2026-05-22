@@ -37,11 +37,14 @@ public class DefaultDynamicPermissionClient implements DynamicPermissionClient {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultDynamicPermissionClient.class);
     private static final String AUTH_SERVICE_BASE = "http://auth-service";
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
 
     private final RestClient restClient;
+    private final String internalToken;
 
-    public DefaultDynamicPermissionClient(RestClient.Builder loadBalancedBuilder) {
+    public DefaultDynamicPermissionClient(RestClient.Builder loadBalancedBuilder, String internalToken) {
         this.restClient = loadBalancedBuilder.baseUrl(AUTH_SERVICE_BASE).build();
+        this.internalToken = internalToken;
     }
 
     @Override
@@ -59,6 +62,10 @@ public class DefaultDynamicPermissionClient implements DynamicPermissionClient {
             JsonNode root = restClient.get()
                     .uri("/auth/admin/permissions/check?roleCode={role}&pageCode={page}&type={type}",
                             roleCode, pageCode, permType)
+                    .header(INTERNAL_TOKEN_HEADER, internalToken == null ? "" : internalToken)
+                    // auth-service HeaderAuthenticationFilter 가 X-User-Role 만 보고 인증 객체 생성 — service-to-service 호출 시 필수
+                    .header("X-User-Id", "system-internal")
+                    .header("X-User-Role", roleCode)
                     .retrieve()
                     .onStatus(status -> status.is4xxClientError(), (req, res) -> {
                         log.debug("[SP-D6] 권한 조회 4xx — roleCode={} pageCode={} type={} status={}",
