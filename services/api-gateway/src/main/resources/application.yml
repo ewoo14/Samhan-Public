@@ -98,6 +98,16 @@ spring:
             - StripPrefix=1
             - JwtAuthentication
 
+        # Issue 4 Slice 1 — 통합 알림 센터 (notification-service NotificationCenterController)
+        # /api/notifications/** → StripPrefix=1 → notification-service /notifications/** mapping
+        - id: notification-center
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - StripPrefix=1
+            - JwtAuthentication
+
         # Logging service — restricted to MASTER + MANAGER per audit policy.
         - id: logging-service
           uri: lb://logging-service
