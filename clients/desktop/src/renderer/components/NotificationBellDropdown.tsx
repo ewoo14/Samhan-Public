@@ -34,7 +34,7 @@ export function NotificationBellDropdown() {
   const ackMutation = useMutation({
     mutationFn: acknowledgeNotification,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'my'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 
@@ -52,7 +52,7 @@ export function NotificationBellDropdown() {
 
   const handleClickRow = (n: NotificationCenter) => {
     ackMutation.mutate(n.id)
-    if (n.deeplink) {
+    if (n.deeplink && isSafeDeeplink(n.deeplink)) {
       navigate(n.deeplink)
       setOpen(false)
     }
@@ -237,4 +237,8 @@ export function NotificationBellDropdown() {
       ) : null}
     </div>
   )
+}
+
+function isSafeDeeplink(path: string): boolean {
+  return path.startsWith('/') && !path.startsWith('//')
 }
