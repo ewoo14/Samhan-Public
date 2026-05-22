@@ -1,6 +1,6 @@
 package com.samhanair.logis.inventory.service;
+
 import com.samhanair.logis.inventory.client.NotificationClient;
-import java.util.Objects;
 import com.samhanair.logis.inventory.client.ProductClient;
 import com.samhanair.logis.inventory.client.ProductSummary;
 import com.samhanair.logis.inventory.domain.SafetyStockConfig;
@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -44,6 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SafetyStockService {
 
     private static final Logger log = LoggerFactory.getLogger(SafetyStockService.class);
+    private static final int PRODUCT_LOOKUP_BATCH_SIZE = 100;
 
     private final SafetyStockConfigRepository safetyStockConfigRepository;
     private final StockBalanceRepository stockBalanceRepository;
@@ -148,17 +150,22 @@ public class SafetyStockService {
         if (productIds.isEmpty()) {
             return Map.of();
         }
-        try {
-            List<ProductSummary> summaries = productClient.lookup(List.copyOf(productIds));
-            Map<UUID, ProductSummary> map = new HashMap<>();
-            for (ProductSummary s : summaries) {
-                map.put(s.id(), s);
+        List<UUID> ids = List.copyOf(productIds);
+        Map<UUID, ProductSummary> map = new HashMap<>();
+        for (int from = 0; from < ids.size(); from += PRODUCT_LOOKUP_BATCH_SIZE) {
+            int to = Math.min(from + PRODUCT_LOOKUP_BATCH_SIZE, ids.size());
+            List<UUID> chunk = ids.subList(from, to);
+            try {
+                List<ProductSummary> summaries = productClient.lookup(chunk);
+                for (ProductSummary s : summaries) {
+                    map.put(s.id(), s);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("findAlerts: product-service lookup chunk 실패, productCode/modelName fallback null — chunkSize={}, {}",
+                        chunk.size(), ex.getMessage());
             }
-            return map;
-        } catch (RuntimeException ex) {
-            log.warn("findAlerts: product-service lookup 실패, productCode/modelName fallback null — {}", ex.getMessage());
-            return Map.of();
         }
+        return map;
     }
 
     /**

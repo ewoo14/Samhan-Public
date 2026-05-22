@@ -22,8 +22,8 @@ import { apiClient, type ApiEnvelope } from './client'
  * 안전재고 알림 단건 — BE `SafetyStockAlertResponse` record 와 1:1 매칭.
  *
  * @property productId    제품 UUID (path param / 내부 조인용, 화면 비표시)
- * @property productCode  제품 코드 (화면 표시용 비즈니스 식별자)
- * @property productName  제품명 (화면 표시용)
+ * @property productCode  제품 코드 (화면 표시용 비즈니스 식별자, BE fail-soft 시 null)
+ * @property productName  제품명 (화면 표시용, BE fail-soft 시 null)
  * @property warehouseId  창고 UUID (path param / 내부 조인용, 화면 비표시)
  * @property warehouseName 창고명 (화면 표시용, memory `feedback_uuid_no_user_visibility`)
  * @property threshold    안전재고 임계값
@@ -35,8 +35,8 @@ import { apiClient, type ApiEnvelope } from './client'
  */
 export interface SafetyStockAlert {
   productId: string
-  productCode: string
-  productName: string
+  productCode: string | null
+  productName: string | null
   warehouseId: string | null
   warehouseName: string | null
   threshold: number
