@@ -2470,3 +2470,16 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-MIG-23-07 | 옵션 C 21단계와 TM PR comment 머지 게이트 의무는 PR 발행 후 comment로 남겨 머지 전 확인한다. |
 
 **산출**: local-all Docker Compose overlay, 공통 Spring runtime Dockerfile, PowerShell/Bash launcher, seed script, 8개 client `local-dev` script, local-stack README, dev-report `docs/dev-reports/mig-23-local-6-client-direct-test.md`.
+
+### D-ISSUE-4-00. 통합 알림 센터 Slice 1 — target_role 배열 저장 (PR #297 Cycle 1c, 2026-05-22)
+
+**배경**: PR #297 5-team BE 리뷰에서 `:role = ANY(string_to_array(target_role, ','))` native query 가 컬럼에 함수를 적용해 partial index 활용을 막는 P1 성능 결함으로 확인됐다. Slice 1 Flyway V5는 아직 main 머지 전 branch-local migration 이므로 history 누적 없이 in-place 수정한다.
+
+| 결정 | 내용 |
+|---|---|
+| D-ISSUE-4-01 | `notification_center.target_role`은 CSV `VARCHAR(200)`이 아니라 PostgreSQL native `TEXT[]`로 저장한다. |
+| D-ISSUE-4-02 | role 조회 native query는 `string_to_array`를 제거하고 `target_role @> ARRAY[CAST(:role AS text)]`로 통일해 GIN index 사용 가능성을 보존한다. |
+| D-ISSUE-4-03 | `idx_notification_center_target_role_unread` btree partial index는 제거하고 `idx_notification_center_target_role_gin ON notification_center USING GIN(target_role) WHERE is_deleted = FALSE`를 사용한다. |
+| D-ISSUE-4-04 | noise row 차단을 위해 `target_role IS NOT NULL OR target_user_id IS NOT NULL` CHECK 제약을 V5에 포함한다. |
+
+**검증**: `NotificationCenterServiceTest` 9건 PASS, notification-service compile/test PASS. Testcontainers 기반 `NotificationCenterControllerIT` 6건은 로컬 Docker daemon 미가용 조건으로 skip, CI Linux runner에서 실 PostgreSQL 검증 대상.

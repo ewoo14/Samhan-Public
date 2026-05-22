@@ -1,0 +1,43 @@
+package com.samhanair.logis.notification.web.dto;
+
+import com.samhanair.logis.notification.domain.NotificationSeverity;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * {@code /internal/notifications} 발송 요청 body — source service 가 호출.
+ *
+ * @param channel        알림 채널 키 ({@code SAFETY_STOCK} / {@code MESSENGER} / {@code APPROVAL} 등)
+ * @param severity       심각도 (INFO/WARNING/CRITICAL)
+ * @param title          알림 제목 (200자 이내)
+ * @param body           본문 (TEXT)
+ * @param targetRole     대상 role 배열 (예: {@code ["MASTER","MANAGER"]}), null/empty 면 role 필터 미적용
+ * @param targetUserId   특정 사용자 UUID, null 면 role 기반
+ * @param sourceService  발송 service 명 (기록용)
+ * @param sourceRefId    source 식별자 (예: productId+warehouseId, messageId)
+ * @param deeplink       FE 가 클릭 시 이동할 라우트
+ */
+public record NotificationPublishRequest(
+        @NotBlank String channel,
+        @NotNull NotificationSeverity severity,
+        @NotBlank String title,
+        String body,
+        List<String> targetRole,
+        UUID targetUserId,
+        @NotBlank String sourceService,
+        String sourceRefId,
+        String deeplink
+) {
+    @AssertTrue(message = "targetRole 또는 targetUserId 중 정확히 하나만 지정해야 합니다")
+    public boolean isExactlyOneTargetSpecified() {
+        boolean roleSpecified = targetRole != null && targetRole.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .anyMatch(role -> !role.isBlank());
+        return roleSpecified ^ (targetUserId != null);
+    }
+}
