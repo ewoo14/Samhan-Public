@@ -247,7 +247,6 @@ class SlipDeleteIT extends AbstractPostgresIT {
     @DisplayName("D8: INSPECTING 이후 단계 전표는 422 SLIP_DELETE_INSPECTION_COMPLETED 를 반환한다")
     void testDeleteInspectionCompletedReturns422() throws Exception {
         String id = createSlip("INBOUND", "SP0853-검수진행");
-        String updatedAt = updatedAt(id);
 
         // DRAFT → SAVED → SENT → ACCEPTED → PROCESSING → INSPECTING 전이
         Slip slip = slipRepository.findById(UUID.fromString(id)).orElseThrow();

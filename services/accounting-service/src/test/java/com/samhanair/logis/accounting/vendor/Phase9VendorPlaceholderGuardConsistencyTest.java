@@ -38,7 +38,8 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 class Phase9VendorPlaceholderGuardConsistencyTest {
 
-    /** 4 표준 placeholder 키워드 (SP-09-2~4 모든 vendor 에서 사용). */
+    /** 4 표준 placeholder 키워드 (SP-09-2~4 모든 vendor 에서 사용) — JavaDoc 참조용 documentation. */
+    @SuppressWarnings("unused")
     private static final String[] STANDARD_PLACEHOLDERS = {
             "PLACEHOLDER_DEV_ONLY",
             "CHANGE_ME_LOCAL_ONLY",
@@ -46,7 +47,8 @@ class Phase9VendorPlaceholderGuardConsistencyTest {
             "dummy"
     };
 
-    /** 합법적인 키 샘플 — 차단되지 않아야 한다 (false-positive 가드). */
+    /** 합법적인 키 샘플 — 차단되지 않아야 한다 (false-positive 가드, JavaDoc 참조용). */
+    @SuppressWarnings("unused")
     private static final String[] LEGITIMATE_KEY_SAMPLES = {
             "test",
             "sandbox-key-9a3f",

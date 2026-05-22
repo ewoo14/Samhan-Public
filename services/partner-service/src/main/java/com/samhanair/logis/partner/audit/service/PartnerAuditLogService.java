@@ -51,7 +51,7 @@ public class PartnerAuditLogService implements AuditLogRecorder {
                                    String oldValue, String newValue) {
         Objects.requireNonNull(entityId, "entityId 는 필수입니다");
         int revisionNo = nextRevisionNo(entityId);
-        PartnerAuditLog saved = auditLogRepository.save(PartnerAuditLog.record(
+        auditLogRepository.save(PartnerAuditLog.record(
                 entityId, revisionNo, actorId, actorName, actorColor,
                 fieldName, oldValue, newValue));
         broker.publish(entityId, EVENT_PARTNER_EDIT,

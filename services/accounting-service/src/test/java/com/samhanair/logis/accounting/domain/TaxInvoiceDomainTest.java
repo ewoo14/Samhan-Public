@@ -110,6 +110,7 @@ class TaxInvoiceDomainTest {
 
     @Test
     @DisplayName("cancel — ISSUED → CANCELLED + cancelledAt/By 기록 + linkReverseJournal 가능")
+    @SuppressWarnings("deprecation")
     void cancelTransition() {
         TaxInvoice ti = newDraft();
         ti.addLine(TaxInvoiceLine.create(ti, 1, "운임", null,
@@ -127,6 +128,7 @@ class TaxInvoiceDomainTest {
 
     @Test
     @DisplayName("cancel — DRAFT 상태에서 호출 시 CONFLICT")
+    @SuppressWarnings("deprecation")
     void cancelRequiresIssued() {
         TaxInvoice ti = newDraft();
         assertThatThrownBy(() -> ti.cancel("user-B"))

@@ -52,7 +52,6 @@ class SlipServiceListSpecTest {
         pageable = PageRequest.of(0, 20);
     }
 
-    @SuppressWarnings("unchecked")
     private void stubFindAllReturnsEmpty() {
         Page<Slip> empty = new PageImpl<>(Collections.emptyList(), pageable, 0);
         when(slipRepository.findAll(org.mockito.ArgumentMatchers.<Specification<Slip>>any(), any(Pageable.class))).thenReturn(empty);

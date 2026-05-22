@@ -82,7 +82,7 @@ class EmployeeRepositoryIT extends AbstractPostgresIT {
 
     @Test
     void sqlRestrictionFilter_hidesDeletedRowsFromFindAll() {
-        Employee active = employeeRepository.save(Employee.create(
+        employeeRepository.save(Employee.create(
                 UUID.randomUUID(), "alive", "활성", "사원", Role.SALES, salesTeam, false,
                 LocalDate.of(2026, 1, 1), null, null));
         Employee terminated = employeeRepository.save(Employee.create(

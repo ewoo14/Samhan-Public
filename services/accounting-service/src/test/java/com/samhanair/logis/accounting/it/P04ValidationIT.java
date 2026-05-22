@@ -68,7 +68,6 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest(classes = AccountingServiceApplication.class)
 @AutoConfigureMockMvc
 @Transactional
-@SuppressWarnings("null") // MockMvc fluent API @NonNull JDT 경고 억제 (런타임 안전)
 class P04ValidationIT extends AbstractPostgresIT {
 
     /** 외부 client @MockBean 격리 (feedback_it_mockbean_external_clients 가드 준수). */

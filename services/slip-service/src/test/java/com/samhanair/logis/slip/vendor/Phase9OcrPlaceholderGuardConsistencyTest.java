@@ -32,7 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 class Phase9OcrPlaceholderGuardConsistencyTest {
 
-    /** 4 표준 placeholder 키워드 (SP-09 vendor 통일 기준). */
+    /** 4 표준 placeholder 키워드 (SP-09 vendor 통일 기준, JavaDoc 참조용). */
+    @SuppressWarnings("unused")
     private static final String[] STANDARD_PLACEHOLDERS = {
             "PLACEHOLDER_DEV_ONLY",
             "CHANGE_ME_LOCAL_ONLY",

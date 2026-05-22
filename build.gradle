@@ -38,6 +38,8 @@ def leafProjects = [
         ':shared:common',
         ':shared:discovery-abstraction',
         ':shared:user-client-abstraction',
+        ':shared:security',
+        ':shared:realtime-abstraction',
         ':shared:ecount-io',
         ':services:eureka-server',
         ':services:api-gateway',
@@ -61,6 +63,19 @@ def leafProjects = [
 configure(leafProjects.collect { project(it) }) {
     apply plugin: 'java'
     apply plugin: 'eclipse'
+
+    // JDT task tag 비활성화 — TODO/FIXME/XXX 키워드 information 진단 noise 제거
+    // (XXX-XX-XXXXX 사업자번호 마스크 / Phase 11 TODO JavaDoc 등 의도된 텍스트가 JDT info 로 보고되는 회귀 차단)
+    eclipse {
+        jdt {
+            file {
+                withProperties { props ->
+                    props.setProperty('org.eclipse.jdt.core.compiler.taskTags', '')
+                    props.setProperty('org.eclipse.jdt.core.compiler.taskPriorities', '')
+                }
+            }
+        }
+    }
 
     java {
         toolchain {

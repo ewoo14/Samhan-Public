@@ -81,7 +81,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @MockitoSettings(strictness = Strictness.LENIENT)
 @Transactional
-@SuppressWarnings({"null", "unused"}) // ECJ @NonNull + buildInvoiceBody 미사용 (legacy 보존)
+@SuppressWarnings("unused") // buildInvoiceBody 미사용 (legacy 보존)
 class TaxInvoiceBatchEndToEndIT extends AbstractPostgresIT {
 
     @Autowired private MockMvc mockMvc;
