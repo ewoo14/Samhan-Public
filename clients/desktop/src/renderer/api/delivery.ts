@@ -1,7 +1,7 @@
 /**
  * 배송 묶음 (delivery batch) 도메인 API 클라이언트 — link-dispatch-slice.
  *
- * 노출 endpoint (BE notification-service / batch-service):
+ * 노출 endpoint (BE slip-service DeliveryBatchController, gateway StripPrefix=1):
  * - `GET    /api/delivery-batches?date=&sent=`        — 날짜 + sent 필터 목록
  * - `GET    /api/delivery-batches/{id}`               — 배치 상세 (포함 전표 N건)
  * - `POST   /api/delivery-batches/auto-group?date=`   — 같은 기사+같은 날짜 자동 그룹
