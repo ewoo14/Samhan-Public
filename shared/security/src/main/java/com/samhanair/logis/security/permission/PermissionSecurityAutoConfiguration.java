@@ -95,7 +95,8 @@ public class PermissionSecurityAutoConfiguration {
     @ConditionalOnBean(name = "loadBalancedRestClientBuilder")
     public DynamicPermissionClient defaultDynamicPermissionClient(
             @Qualifier("loadBalancedRestClientBuilder") RestClient.Builder loadBalancedBuilder,
-            @Value("${app.security.internal.token:}") String internalToken) {
-        return new DefaultDynamicPermissionClient(loadBalancedBuilder, internalToken);
+            @Value("${app.security.internal.token:}") String internalToken,
+            @Value("${spring.application.name:unknown}") String applicationName) {
+        return new DefaultDynamicPermissionClient(loadBalancedBuilder, internalToken, applicationName);
     }
 }

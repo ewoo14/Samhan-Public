@@ -41,10 +41,12 @@ public class DefaultDynamicPermissionClient implements DynamicPermissionClient {
 
     private final RestClient restClient;
     private final String internalToken;
+    private final String callerServiceName;
 
-    public DefaultDynamicPermissionClient(RestClient.Builder loadBalancedBuilder, String internalToken) {
+    public DefaultDynamicPermissionClient(RestClient.Builder loadBalancedBuilder, String internalToken, String callerServiceName) {
         this.restClient = loadBalancedBuilder.baseUrl(AUTH_SERVICE_BASE).build();
         this.internalToken = internalToken;
+        this.callerServiceName = (callerServiceName == null || callerServiceName.isBlank()) ? "unknown" : callerServiceName;
     }
 
     @Override
@@ -63,8 +65,8 @@ public class DefaultDynamicPermissionClient implements DynamicPermissionClient {
                     .uri("/auth/admin/permissions/check?roleCode={role}&pageCode={page}&type={type}",
                             roleCode, pageCode, permType)
                     .header(INTERNAL_TOKEN_HEADER, internalToken == null ? "" : internalToken)
-                    // auth-service HeaderAuthenticationFilter 가 X-User-Role 만 보고 인증 객체 생성 — service-to-service 호출 시 필수
-                    .header("X-User-Id", "system-internal")
+                    // auth-service HeaderAuthenticationFilter 는 X-User-Id + X-User-Role 두 헤더 모두 비어 있지 않아야 인증 객체 생성 — service-to-service 호출 시 필수
+                    .header("X-User-Id", "system-internal:" + callerServiceName)
                     .header("X-User-Role", roleCode)
                     .retrieve()
                     .onStatus(status -> status.is4xxClientError(), (req, res) -> {
