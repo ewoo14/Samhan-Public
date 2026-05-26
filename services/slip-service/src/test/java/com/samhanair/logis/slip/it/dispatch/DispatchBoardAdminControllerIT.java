@@ -39,11 +39,12 @@ import org.springframework.test.web.servlet.MockMvc;
 @WithMockUser(username = "ewoo", authorities = {"ROLE_MASTER"})
 class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
 
+    private static final String USER_ROLE_HEADER = "X-User-Role";
+    private static final String DISPATCH_BOARD_PAGE_CODE = "dispatch.board";
+
     @Autowired MockMvc mvc;
 
     // 외부 client @MockBean — [feedback_it_mockbean_external_clients]
-    /** SP-D3 핵심 @MockBean — DynamicPermissionClient 누락 시 Eureka 호출 → 500 트랩 */
-    @MockBean(classes = com.samhanair.logis.security.permission.DynamicPermissionClient.class) DynamicPermissionClient dynamicPermissionClient;
     @MockBean ArologisDispatchClient arologisDispatchClient;
     @MockBean NotificationClient notificationClient;
     @MockBean NotificationChatRoomClient notificationChatRoomClient;
@@ -72,7 +73,8 @@ class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
 
     @Test
     void GET_undispatched_slips_returns_empty_page_with_defaults() throws Exception {
-        mvc.perform(get("/admin/dispatch-board/undispatched-slips"))
+        mvc.perform(get("/admin/dispatch-board/undispatched-slips")
+                        .header(USER_ROLE_HEADER, "MASTER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.size").value(50));
@@ -81,7 +83,8 @@ class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
     @Test
     @WithMockUser(username = "dispatcher", authorities = {"ROLE_DISPATCH"})
     void GET_undispatched_slips_allows_dispatch_role() throws Exception {
-        mvc.perform(get("/admin/dispatch-board/undispatched-slips"))
+        mvc.perform(get("/admin/dispatch-board/undispatched-slips")
+                        .header(USER_ROLE_HEADER, "DISPATCH"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray());
     }
@@ -89,13 +92,18 @@ class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
     @Test
     @WithMockUser(username = "sales", authorities = {"ROLE_SALES"})
     void GET_undispatched_slips_rejects_sales_role() throws Exception {
-        mvc.perform(get("/admin/dispatch-board/undispatched-slips"))
+        org.mockito.Mockito.when(dynamicPermissionClient.canView("SALES", DISPATCH_BOARD_PAGE_CODE))
+                .thenReturn(false);
+
+        mvc.perform(get("/admin/dispatch-board/undispatched-slips")
+                        .header(USER_ROLE_HEADER, "SALES"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void GET_undispatched_slips_with_custom_filters() throws Exception {
         mvc.perform(get("/admin/dispatch-board/undispatched-slips")
+                        .header(USER_ROLE_HEADER, "MASTER")
                         .param("from", "2026-05-10")
                         .param("to", "2026-05-20")
                         .param("statuses", "UNDISPATCHED", "DISPATCHING")
