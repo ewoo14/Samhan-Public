@@ -11,6 +11,10 @@ import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import com.samhanair.logis.inventory.web.dto.SafetyStockAlertResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockConfigResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockSetRequest;
+import com.samhanair.logis.notification.publisher.NotificationPublishRequest;
+import com.samhanair.logis.notification.publisher.NotificationPublisher;
+import com.samhanair.logis.notification.publisher.NotificationPublisherSupport;
+import com.samhanair.logis.notification.publisher.NotificationSeverity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,7 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
  * </ol>
  *
  * <p>알림 발송은 {@link NotificationClient#sendSafetyStockAlert} 를 통해 fire-and-forget 방식으로
- * notification-service 에 위임한다. 발송 실패 시 경고 로그만 남기고 트랜잭션에 영향을 주지 않는다.
+ * legacy 채널을 유지하고, {@link NotificationPublisher} 로 통합 알림 센터에도 발송한다.
+ * 발송 실패 시 경고 로그만 남기고 트랜잭션에 영향을 주지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,6 +57,7 @@ public class SafetyStockService {
     private final WarehouseRepository warehouseRepository;
     private final ProductClient productClient;
     private final NotificationClient notificationClient;
+    private final NotificationPublisher notificationPublisher;
 
     /**
      * 제품별 안전재고 임계값을 설정하거나 기존 설정을 갱신한다.
@@ -260,19 +266,82 @@ public class SafetyStockService {
      * @param currentQty 현재 가용 재고 수량
      */
     private void fireAlert(SafetyStockConfig config, int currentQty) {
-        String warehouseLabel = config.getWarehouseId() != null
-                ? config.getWarehouseId().toString()
-                : "전체 창고 합산";
-        String subject = String.format("[안전재고 경보] 제품 %s 재고 부족 (%s)",
-                config.getProductId(), warehouseLabel);
+        ProductSummary product = lookupProductSafe(config.getProductId());
+        String productLabel = productLabel(product);
+        String warehouseLabel = warehouseLabel(config.getWarehouseId());
+        String subject = String.format("[안전재고 경보] %s 재고 부족 (%s)",
+                productLabel, warehouseLabel);
         String body = String.format(
-                "제품 ID: %s%n창고: %s%n현재 가용 재고: %d%n안전재고 임계값: %d%n부족량: %d",
-                config.getProductId(),
+                "제품: %s%n창고: %s%n현재 가용 재고: %d%n안전재고 임계값: %d%n부족량: %d",
+                productLabel,
                 warehouseLabel,
                 currentQty,
                 config.getThreshold(),
                 config.getThreshold() - currentQty
         );
         notificationClient.sendSafetyStockAlert(subject, body);
+        NotificationPublisherSupport.publishAfterCommit(notificationPublisher, new NotificationPublishRequest(
+                "SAFETY_STOCK",
+                NotificationSeverity.WARNING,
+                String.format("안전재고 부족 — %s", productLabel),
+                String.format("%s — 현재 %d / 임계 %d (부족 %d)",
+                        warehouseLabel,
+                        currentQty,
+                        config.getThreshold(),
+                        config.getThreshold() - currentQty),
+                List.of("MASTER", "MANAGER", "INVENTORY", "WAREHOUSE"),
+                null,
+                null,
+                config.getProductId() + (config.getWarehouseId() != null ? "+" + config.getWarehouseId() : ""),
+                "/inventory/safety-stock-alerts"
+        ));
+    }
+
+    private ProductSummary lookupProductSafe(UUID productId) {
+        try {
+            List<ProductSummary> summaries = productClient.lookup(List.of(productId));
+            return summaries.isEmpty() ? null : summaries.get(0);
+        } catch (RuntimeException ex) {
+            log.warn("fireAlert: product-service lookup 실패, 제품 미확인 fallback — {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private String productLabel(ProductSummary product) {
+        if (product == null) {
+            return "제품 미확인";
+        }
+        String productCode = blankToNull(product.productCode());
+        String modelName = blankToNull(product.modelName());
+        if (productCode == null && modelName == null) {
+            return "제품 미확인";
+        }
+        if (productCode == null) {
+            return modelName;
+        }
+        if (modelName == null) {
+            return productCode;
+        }
+        return String.format("%s (%s)", productCode, modelName);
+    }
+
+    private String warehouseLabel(UUID warehouseId) {
+        if (warehouseId == null) {
+            return "전체";
+        }
+        try {
+            return warehouseRepository.findById(warehouseId)
+                    .map(Warehouse::getName)
+                    .map(String::trim)
+                    .filter(name -> !name.isBlank())
+                    .orElse("창고 미확인");
+        } catch (RuntimeException ex) {
+            log.warn("fireAlert: warehouse lookup 실패, 창고 미확인 fallback — {}", ex.getMessage());
+            return "창고 미확인";
+        }
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

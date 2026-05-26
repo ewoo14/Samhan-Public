@@ -22,6 +22,9 @@ import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import com.samhanair.logis.inventory.web.dto.SafetyStockAlertResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockConfigResponse;
 import com.samhanair.logis.inventory.web.dto.SafetyStockSetRequest;
+import com.samhanair.logis.notification.publisher.NotificationPublishRequest;
+import com.samhanair.logis.notification.publisher.NotificationPublisher;
+import com.samhanair.logis.notification.publisher.NotificationSeverity;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
@@ -35,6 +38,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * SafetyStockService 단위 테스트 (P1-3).
@@ -59,6 +64,9 @@ class SafetyStockServiceTest {
 
     @Mock
     private NotificationClient notificationClient;
+
+    @Mock
+    private NotificationPublisher notificationPublisher;
 
     @InjectMocks
     private SafetyStockService safetyStockService;
@@ -402,6 +410,87 @@ class SafetyStockServiceTest {
         safetyStockService.checkAndNotify(productId, warehouseId);
 
         verify(notificationClient).sendSafetyStockAlert(any(), any());
+    }
+
+    @Test
+    @DisplayName("checkAndNotify: 임계 미만이면 NotificationPublisher.publish 호출")
+    void checkAndNotify_belowThreshold_publishesNotificationCenterEvent() {
+        SafetyStockConfig config = SafetyStockConfig.create(productId, warehouseId, 50, null);
+
+        when(safetyStockConfigRepository.findByProductIdAndWarehouseId(productId, warehouseId))
+                .thenReturn(Optional.of(Objects.requireNonNull(config)));
+        when(safetyStockConfigRepository.findByProductIdAndWarehouseId(productId, null))
+                .thenReturn(Optional.empty());
+
+        StockBalance balance = mockBalance(20);
+        when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(
+                productId, warehouseId))
+                .thenReturn(Optional.of(balance));
+        when(productClient.lookup(anyList()))
+                .thenReturn(List.of(new ProductSummary(productId, "테스트 제품", "AJ040RXH4BC1",
+                        "AJ040-CODE", UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE")));
+        Warehouse warehouse = org.mockito.Mockito.mock(Warehouse.class);
+        org.mockito.Mockito.when(warehouse.getName()).thenReturn("HQ 본사 창고");
+        when(warehouseRepository.findById(warehouseId)).thenReturn(Optional.of(warehouse));
+
+        safetyStockService.checkAndNotify(productId, warehouseId);
+
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> legacyBodyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(notificationClient).sendSafetyStockAlert(subjectCaptor.capture(), legacyBodyCaptor.capture());
+        assertThat(subjectCaptor.getValue()).contains("AJ040-CODE", "AJ040RXH4BC1", "HQ 본사 창고");
+        assertThat(legacyBodyCaptor.getValue()).contains("AJ040-CODE", "AJ040RXH4BC1", "HQ 본사 창고");
+        assertThat(subjectCaptor.getValue()).doesNotContain(productId.toString(), warehouseId.toString());
+        assertThat(legacyBodyCaptor.getValue()).doesNotContain(productId.toString(), warehouseId.toString());
+
+        ArgumentCaptor<NotificationPublishRequest> captor = ArgumentCaptor.forClass(NotificationPublishRequest.class);
+        verify(notificationPublisher).publish(captor.capture());
+        NotificationPublishRequest req = captor.getValue();
+        assertThat(req.channel()).isEqualTo("SAFETY_STOCK");
+        assertThat(req.severity()).isEqualTo(NotificationSeverity.WARNING);
+        assertThat(req.title()).isEqualTo("안전재고 부족 — AJ040-CODE (AJ040RXH4BC1)");
+        assertThat(req.body()).isEqualTo("HQ 본사 창고 — 현재 20 / 임계 50 (부족 30)");
+        assertThat(req.title()).doesNotContain(productId.toString(), warehouseId.toString());
+        assertThat(req.body()).doesNotContain(productId.toString(), warehouseId.toString());
+        assertThat(req.targetRole()).containsExactly("MASTER", "MANAGER", "INVENTORY", "WAREHOUSE");
+        assertThat(req.targetUserId()).isNull();
+        assertThat(req.sourceService()).isNull();
+        assertThat(req.sourceRefId()).isEqualTo(productId + "+" + warehouseId);
+        assertThat(req.deeplink()).isEqualTo("/inventory/safety-stock-alerts");
+    }
+
+    @Test
+    void checkAndNotify_belowThreshold_defersNotificationCenterPublishUntilAfterCommit() {
+        SafetyStockConfig config = SafetyStockConfig.create(productId, warehouseId, 50, null);
+
+        when(safetyStockConfigRepository.findByProductIdAndWarehouseId(productId, warehouseId))
+                .thenReturn(Optional.of(Objects.requireNonNull(config)));
+        when(safetyStockConfigRepository.findByProductIdAndWarehouseId(productId, null))
+                .thenReturn(Optional.empty());
+
+        StockBalance balance = mockBalance(20);
+        when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(
+                productId, warehouseId))
+                .thenReturn(Optional.of(balance));
+        when(productClient.lookup(anyList()))
+                .thenReturn(List.of(new ProductSummary(productId, "Test Product", "MODEL-001",
+                        "CODE-001", UUID.randomUUID(), new BigDecimal("100000"), "ACTIVE")));
+        Warehouse warehouse = org.mockito.Mockito.mock(Warehouse.class);
+        org.mockito.Mockito.when(warehouse.getName()).thenReturn("HQ Warehouse");
+        when(warehouseRepository.findById(warehouseId)).thenReturn(Optional.of(warehouse));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            safetyStockService.checkAndNotify(productId, warehouseId);
+
+            verify(notificationPublisher, never()).publish(any());
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(TransactionSynchronization::afterCommit);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(notificationPublisher).publish(any(NotificationPublishRequest.class));
     }
 
     @Test
