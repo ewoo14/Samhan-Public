@@ -22,24 +22,27 @@ import { apiClient, type ApiEnvelope } from './client'
 // ---------------------------------------------------------------------------
 
 /**
- * 7-role ROLE 풀네임 (BE Role enum 과 동일).
+ * 동적 RBAC 매트릭스 ROLE 풀네임.
  * feedback_role_naming_full — UI/PR/문서 모두 풀네임 의무.
- * 참고: DEVELOPER 는 BE getPermissionMatrix allRoles 목록에 미포함 — 향후 추가 예정.
  */
 export type RbacRole =
   | 'MASTER'
+  | 'DEVELOPER'
   | 'MANAGER'
   | 'DISPATCH'
   | 'SALES'
   | 'ACCOUNTANT'
   | 'WAREHOUSE'
   | 'INVENTORY'
+  | 'PARTNER'
+  | 'STAFF'
+  | 'DRIVER'
 
 /** 페이지 권한 액션 종류 — view(조회) / edit(변경). */
 export type PermissionAction = 'view' | 'edit'
 
 /**
- * 페이지 코드 41개 — BE PageCode enum dot-separated code 와 1:1 매핑.
+ * 페이지 코드 — BE PageCode enum dot-separated code 와 1:1 매핑.
  *
  * SP-D1 cycle 2 fix: 대문자 상수(DASHBOARD 등)에서 dot-separated 소문자 코드로 교체.
  * SP-D2: 회계 카테고리 7개 신규 추가 (accounts / journals / balances / reports /
@@ -48,6 +51,7 @@ export type PermissionAction = 'view' | 'edit'
  * SP-D4: 잔여 7 도메인 22개 신규 추가 (estimates / sales.partner-order.* /
  *         sales.vendor-order / inventory.* / admin.* / partners.* / products.* / arologis.*).
  * SP-D6-1: system.* / dc-config.import / dashboard.admin + 거래처 DC 설정 권한 추가.
+ * SP-D6-2: messenger.* / product edit-request/import / partner-order edit-request/tutorial 추가.
  * BE {@code PageCode.java} enum 의 {@code code} 필드값과 완전 일치.
  * UUID 비공개: pageCode 만 사용자 노출.
  */
@@ -63,6 +67,8 @@ export type PageCode =
   | 'accounting.daily-closing'
   | 'accounting.general-ledger'
   | 'notification.dispatch-sms.send-audit'
+  | 'messenger.admin'
+  | 'messenger.send'
   | 'purchases.receipt-ocr'
   | 'purchases.slip.list'
   | 'sales.slip.list'
@@ -88,9 +94,13 @@ export type PageCode =
   | 'estimates.list'
   | 'sales.partner-order.list'
   | 'sales.partner-order.draft'
+  | 'sales.partner-order.edit'
   | 'sales.partner-order.confirm'
   | 'sales.partner-order.history'
   | 'sales.partner-order.print'
+  | 'sales.partner-order.edit-requests'
+  | 'sales.partner-order.edit-requests.decide'
+  | 'sales.partner-order.tutorial'
   | 'sales.vendor-order'
   | 'inventory.warehouse'
   | 'inventory.stock'
@@ -105,6 +115,10 @@ export type PageCode =
   | 'partners.edit-request'
   | 'products.list'
   | 'products.admin'
+  | 'products.price'
+  | 'products.edit-requests'
+  | 'products.edit-requests.decide'
+  | 'products.ecount-import'
   | 'arologis.admin'
   | 'arologis.region'
   // MIG-14 admin UI 4 groups
