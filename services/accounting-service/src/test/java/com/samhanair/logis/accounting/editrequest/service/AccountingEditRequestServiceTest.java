@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.samhanair.logis.accounting.editrequest.domain.AccountingEditRequest;
 import com.samhanair.logis.accounting.editrequest.repository.AccountingEditRequestRepository;
 import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.notification.publisher.NotificationPublishRequest;
 import com.samhanair.logis.notification.publisher.NotificationPublisher;
 import com.samhanair.logis.notification.publisher.NotificationSeverity;
@@ -118,7 +119,7 @@ class AccountingEditRequestServiceTest {
                 EditRequestType.EDIT, "사유", EditTargetRole.MANAGER, LocalDateTime.now().plusHours(24));
         UUID requestId = UUID.randomUUID();
         ReflectionTestUtils.setField(req, "id", requestId);
-        when(requestRepository.findById(requestId)).thenReturn(Optional.of(req));
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
 
         AccountingEditRequest approved = service.approve(requestId, approverId, "관리자A", "OK");
 
@@ -134,7 +135,7 @@ class AccountingEditRequestServiceTest {
                 EditRequestType.EDIT, "사유", EditTargetRole.MANAGER, LocalDateTime.now().plusHours(24));
         UUID requestId = UUID.randomUUID();
         ReflectionTestUtils.setField(req, "id", requestId);
-        when(requestRepository.findById(requestId)).thenReturn(Optional.of(req));
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
 
         TransactionSynchronizationManager.initSynchronization();
         try {
@@ -164,7 +165,7 @@ class AccountingEditRequestServiceTest {
                 EditRequestType.DELETE, "삭제요청", EditTargetRole.MANAGER, null);
         UUID requestId = UUID.randomUUID();
         ReflectionTestUtils.setField(req, "id", requestId);
-        when(requestRepository.findById(requestId)).thenReturn(Optional.of(req));
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
 
         AccountingEditRequest rejected = service.reject(requestId, approverId, "관리자A",
                 "정책상 불가");
@@ -179,7 +180,7 @@ class AccountingEditRequestServiceTest {
                 EditRequestType.DELETE, "삭제요청", EditTargetRole.MANAGER, null);
         UUID requestId = UUID.randomUUID();
         ReflectionTestUtils.setField(req, "id", requestId);
-        when(requestRepository.findById(requestId)).thenReturn(Optional.of(req));
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
 
         TransactionSynchronizationManager.initSynchronization();
         try {
@@ -204,6 +205,52 @@ class AccountingEditRequestServiceTest {
     }
 
     @Test
+    void approve_throwsConflict_andSkipsPublish_whenAlreadyDecided() {
+        // race 가드 — 첫 트랜잭션이 APPROVED 로 commit 한 직후 두 번째 트랜잭션이
+        // findByIdForDecision (PESSIMISTIC_WRITE) 으로 같은 row 조회 → 이미 APPROVED →
+        // requirePending() 가 BusinessException(CONFLICT) 던짐 → 알림 발송 안 됨.
+        AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
+                EditRequestType.EDIT, "사유", EditTargetRole.MANAGER, LocalDateTime.now().plusHours(24));
+        UUID requestId = UUID.randomUUID();
+        ReflectionTestUtils.setField(req, "id", requestId);
+        req.approve(approverId, "관리자A", "OK");  // 첫 결정 (이미 APPROVED)
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.approve(requestId, approverId, "관리자B", "재시도"))
+                    .isInstanceOf(BusinessException.class);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        verify(notificationPublisher, never()).publish(any());
+        verify(broker, never())
+                .publish(eq(entityId), eq(AccountingEditRequestService.EVENT_REQUEST_DECIDED), any());
+    }
+
+    @Test
+    void reject_throwsConflict_andSkipsPublish_whenAlreadyDecided() {
+        // race 가드 — reject 도 동일. 이미 APPROVED 된 요청 reject 시도 시 CONFLICT.
+        AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
+                EditRequestType.DELETE, "삭제요청", EditTargetRole.MANAGER, null);
+        UUID requestId = UUID.randomUUID();
+        ReflectionTestUtils.setField(req, "id", requestId);
+        req.approve(approverId, "관리자A", null);  // 이미 APPROVED
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.reject(requestId, approverId, "관리자B", "정책상 불가"))
+                    .isInstanceOf(BusinessException.class);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        verify(notificationPublisher, never()).publish(any());
+        verify(broker, never())
+                .publish(eq(entityId), eq(AccountingEditRequestService.EVENT_REQUEST_DECIDED), any());
+    }
+
+    @Test
     void findActiveApproval_returnsRequestId_whenApprovedExists() {
         AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
                 EditRequestType.EDIT, null, EditTargetRole.MANAGER, null);
@@ -220,9 +267,25 @@ class AccountingEditRequestServiceTest {
     @Test
     void consumeApproval_throwsNotFound_whenRequestMissing() {
         UUID requestId = UUID.randomUUID();
-        when(requestRepository.findById(requestId)).thenReturn(Optional.empty());
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.consumeApproval(requestId, "system"))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void consumeApproval_throwsConflict_whenAlreadyConsumed() {
+        AccountingEditRequest req = AccountingEditRequest.create(entityId, requesterId, "이수민",
+                EditRequestType.EDIT, "사유", EditTargetRole.MANAGER, null);
+        UUID requestId = UUID.randomUUID();
+        ReflectionTestUtils.setField(req, "id", requestId);
+        req.approve(approverId, "관리자A", null);
+        req.consumeApproval("user-1");
+        when(requestRepository.findByIdForDecision(requestId)).thenReturn(Optional.of(req));
+
+        assertThatThrownBy(() -> service.consumeApproval(requestId, "system"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
     }
 }
