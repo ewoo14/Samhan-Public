@@ -65,6 +65,11 @@ class SafetyStockControllerIT extends AbstractPostgresIT {
 
     @BeforeEach
     void setUp() {
+        Mockito.lenient().when(dynamicPermissionClient.canView(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+        Mockito.lenient().when(dynamicPermissionClient.canEdit(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+
         productId = UUID.randomUUID();
 
         hqWarehouseId = warehouseRepository.findByCode("HQ-001")
@@ -121,6 +126,11 @@ class SafetyStockControllerIT extends AbstractPostgresIT {
     void setSafetyStock_salesRole_returns403() throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("threshold", 50);
+
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
 
         mockMvc.perform(post("/inventory/products/{productId}/safety-stock", productId)
                         .header("X-User-Id", UUID.randomUUID().toString())
@@ -191,6 +201,11 @@ class SafetyStockControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("알림 목록: SALES 권한 조회 → 403")
     void listAlerts_salesRole_returns403() throws Exception {
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+
         mockMvc.perform(get("/inventory/alerts/safety-stock")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "SALES"))

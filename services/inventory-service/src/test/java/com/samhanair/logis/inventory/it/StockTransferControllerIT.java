@@ -77,6 +77,11 @@ class StockTransferControllerIT extends AbstractPostgresIT {
 
     @BeforeEach
     void setUp() {
+        Mockito.lenient().when(dynamicPermissionClient.canView(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+        Mockito.lenient().when(dynamicPermissionClient.canEdit(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+
         hqId = lookupSeed("HQ-001");
         vehicleId = lookupSeed("VH-001");
         virtualId = lookupSeed("VR-001");
@@ -248,6 +253,11 @@ class StockTransferControllerIT extends AbstractPostgresIT {
                 .get("data").get("id").asText();
 
         // WAREHOUSE 가 approve → 403 (MASTER/MANAGER/INVENTORY 만 허용).
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("WAREHOUSE"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("WAREHOUSE"), Mockito.anyString()))
+                .thenReturn(false);
+
         mockMvc.perform(post("/inventory/transfers/" + transferId + "/approve")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "WAREHOUSE"))

@@ -59,6 +59,11 @@ class InventoryAuditControllerIT extends AbstractPostgresIT {
 
     @BeforeEach
     void setUp() {
+        Mockito.lenient().when(dynamicPermissionClient.canView(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+        Mockito.lenient().when(dynamicPermissionClient.canEdit(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+
         hqId = warehouseRepository.findByCode("HQ-001")
                 .orElseThrow(() -> new IllegalStateException("HQ-001 시드 누락"))
                 .getId();
@@ -166,6 +171,11 @@ class InventoryAuditControllerIT extends AbstractPostgresIT {
         Map<String, Object> body = new HashMap<>();
         body.put("warehouseId", hqId.toString());
         body.put("auditDate", "2026-12-31");
+
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("WAREHOUSE"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("WAREHOUSE"), Mockito.anyString()))
+                .thenReturn(false);
 
         mockMvc.perform(post("/inventory/audits")
                         .header("X-User-Id", UUID.randomUUID().toString())

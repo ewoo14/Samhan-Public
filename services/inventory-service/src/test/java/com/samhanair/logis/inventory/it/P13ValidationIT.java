@@ -88,6 +88,11 @@ class P13ValidationIT extends AbstractPostgresIT {
 
     @BeforeEach
     void setUpMocks() {
+        Mockito.lenient().when(dynamicPermissionClient.canView(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+        Mockito.lenient().when(dynamicPermissionClient.canEdit(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true);
+
         // ProductClient — requireExists 는 ProductSummary 반환 (void 아님)
         Mockito.lenient().when(productClient.requireExists(Mockito.any()))
                 .thenAnswer(inv -> new ProductSummary(
@@ -204,6 +209,11 @@ class P13ValidationIT extends AbstractPostgresIT {
      */
     @Test
     void listAlerts_salesRole_returns403() throws Exception {
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+
         mockMvc.perform(get("/inventory/alerts/safety-stock")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "SALES"))
@@ -217,6 +227,11 @@ class P13ValidationIT extends AbstractPostgresIT {
     void setSafetyStock_salesRole_returns403() throws Exception {
         Map<String, Object> req = Map.of("warehouseId", WH_HQ_001.toString(),
                 "threshold", 50);
+
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
 
         mockMvc.perform(post("/inventory/products/" + PROD_001 + "/safety-stock")
                         .header("X-User-Id", UUID.randomUUID().toString())
@@ -435,6 +450,11 @@ class P13ValidationIT extends AbstractPostgresIT {
      */
     @Test
     void alertCount_salesRole_returns403() throws Exception {
+        Mockito.when(dynamicPermissionClient.canView(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+        Mockito.when(dynamicPermissionClient.canEdit(Mockito.eq("SALES"), Mockito.anyString()))
+                .thenReturn(false);
+
         mockMvc.perform(get("/inventory/alerts/safety-stock/count")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .header("X-User-Role", "SALES"))
