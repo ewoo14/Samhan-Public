@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.web;
 
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
+import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.accounting.service.SupplierProfileService;
 import com.samhanair.logis.accounting.web.dto.CreateSupplierProfileRequest;
 import com.samhanair.logis.accounting.web.dto.SupplierProfileResponse;
@@ -16,7 +17,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -45,7 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>UUID 비공개 원칙 — 사용자 노출 식별자는 {@code businessNumber} / {@code companyName}.
  * UUID 는 PUT/PATCH/DELETE 경로 파라미터로만 사용.
  *
- * <p>SP-D2 동적 권한: {@code accounting.partner-ledger} 페이지 코드 (사업자 양식).
+ * <p>SP-D6-7 동적 권한: {@code accounting.supplier-profiles} 페이지 코드.
  */
 @Slf4j
 @RestController
@@ -54,8 +54,8 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "사업자 프로필", description = "홈택스 세금계산서 공급자 정보 관리 (사업자 양식)")
 public class SupplierProfileController {
 
-    /** SP-D2 — 사업자 양식/거래처 원장 페이지 코드. */
-    private static final String PAGE_CODE = "accounting.partner-ledger";
+    /** SP-D6-7 — 공급자 프로필 페이지 코드. */
+    private static final String PAGE_CODE = "accounting.supplier-profiles";
     private static final String ROLE_HEADER = "X-User-Role";
 
     private final SupplierProfileService service;
@@ -73,7 +73,7 @@ public class SupplierProfileController {
      * @return 전체 사업자 프로필 목록
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','MANAGER','MASTER')")
+    @RequirePermission(page = "accounting.supplier-profiles", action = "VIEW")
     @Operation(summary = "사업자 프로필 목록 조회", description = "활성 사업자 프로필 전체 목록 반환 (보통 1건)")
     public ApiResponse<List<SupplierProfileResponse>> list() {
         return ApiResponse.ok(service.listAll());
@@ -92,7 +92,7 @@ public class SupplierProfileController {
      * @return 기본 사업자 프로필
      */
     @GetMapping("/primary")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','MANAGER','MASTER')")
+    @RequirePermission(page = "accounting.supplier-profiles", action = "VIEW")
     @Operation(summary = "기본 사업자 단건 조회", description = "isPrimary=true 사업자 단건 반환")
     public ApiResponse<SupplierProfileResponse> getPrimary() {
         return ApiResponse.ok(service.getPrimary());
@@ -112,7 +112,7 @@ public class SupplierProfileController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyRole('MANAGER','MASTER')")
+    @RequirePermission(page = "accounting.supplier-profiles", action = "EDIT")
     @Operation(summary = "사업자 프로필 신규 등록", description = "다중 사업자 대비용. isPrimary=true 시 기존 primary 해제")
     public ApiResponse<SupplierProfileResponse> create(
             @RequestBody @Valid CreateSupplierProfileRequest req,
@@ -135,7 +135,7 @@ public class SupplierProfileController {
      * @return 수정된 사업자 프로필
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER','MASTER')")
+    @RequirePermission(page = "accounting.supplier-profiles", action = "EDIT")
     @Operation(summary = "사업자 프로필 수정", description = "null 필드는 기존 값 유지. isPrimary 변경은 PATCH /{id}/primary 사용")
     public ApiResponse<SupplierProfileResponse> update(
             @PathVariable UUID id,
@@ -158,7 +158,7 @@ public class SupplierProfileController {
      * @return 갱신된 사업자 프로필
      */
     @PatchMapping("/{id}/primary")
-    @PreAuthorize("hasAnyRole('MANAGER','MASTER')")
+    @RequirePermission(page = "accounting.supplier-profiles", action = "EDIT")
     @Operation(summary = "기본 사업자 전환", description = "기존 primary 해제 후 지정 사업자를 primary 로 설정")
     public ApiResponse<SupplierProfileResponse> setPrimary(@PathVariable UUID id) {
         return ApiResponse.ok(service.setPrimary(id), "기본 사업자가 변경되었습니다.");
@@ -178,7 +178,7 @@ public class SupplierProfileController {
      */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('MANAGER','MASTER')")
+    @RequirePermission(page = "accounting.supplier-profiles", action = "EDIT")
     @Operation(summary = "사업자 프로필 삭제 (Soft Delete)", description = "primary 사업자는 삭제 불가 (409 반환)")
     public void delete(
             @PathVariable UUID id,
@@ -193,7 +193,7 @@ public class SupplierProfileController {
     // =========================================================================
 
     /**
-     * SP-D2 동적 EDIT 권한 검증 — 사업자 양식/거래처 원장 페이지 코드.
+     * SP-D6-7 동적 EDIT 권한 검증 — 공급자 프로필 페이지 코드.
      *
      * @param actorRole 요청자 role
      */
