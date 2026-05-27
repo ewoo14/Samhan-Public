@@ -4,12 +4,131 @@
 
 ---
 
-## 🚧 2026-05-27 진행 중 — SP-D6-7 (PR #310) accounting 마이그레이션 CI 회귀 cycle 무한 루프
+## ✅ 2026-05-27 완료 — SP-D6-7 (PR #310) accounting 마이그레이션 + SP-D6 시리즈 7/7 종료
 
-### 현재 상태
+### 머지 결과
 
-- **PR #310** 발행 (`feat/sp-d6-7-accounting-permission-migration`)
-- **헤드**: `bddca90c` (cycle 1g)
+- **PR #310 머지** (squash `fbb83519`, 2026-05-27 02:35 UTC, 76 file +1101/-203)
+- **SP-D6 시리즈 완료** (7/7, ~400 endpoint `@PreAuthorize`→`@RequirePermission`)
+- **CI**: 23/23 PASS (head `ac5991b6`)
+
+### CI 무한 루프 근본 원인 해소 (whack-a-mole 종결)
+
+매 cycle(1a~1g) 새 IT 그룹이 fail 하던 루프의 근본 원인 = `@PreAuthorize`→`@RequirePermission` 마이그레이션 후 **deny-case IT 12건이 DynamicPermissionClient deny stub 없이 allow-all 기본값(1g 도입)에 통과**되던 see-saw (allow-default ↔ deny-default flip-flop). systematic-debugging Phase 4.5 진단 → 점진(incremental) 폐기, **12 deny 테스트를 한 번에 page/action-aware deny stub 일괄 보강** (slip-service SP-D6-6 검증 패턴 미러) → 단번 수렴.
+
+### 사이클 누적 (본 세션 해소)
+
+| 사이클 | head | 처리 |
+|---|---|---|
+| 1i Claude 5-agent | `345d80af` | 12 deny stub fix → 전원 APPROVE, Minor 2 (V37 ON CONFLICT target / deny stub page-aware) + INFO (배포순서) |
+| 1i Codex 5-agent | `345d80af` | cross-check 전원 APPROVE, Codex Minor 1 (V37 UPDATE audit) |
+| 2 fix + 재검 | `ac5991b6` | V37 Minor 2건 in-PR 해소 (ON CONFLICT target + audit 필드, no-backlog) → Claude+Codex BE/DevOps 재검 양쪽 APPROVE |
+
+### 세션 회고 (메모리 위반 정정)
+
+- **Codex 권한**: `mcp__codex__codex` 호출 시 `read-only`/`workspace-write` 사용 → 사용자 4차 재지적 ([[codex-plugin-setup]] 는 `danger-full-access` 명시). **단 Claude Code auto-mode 안전 분류기가 (1) `danger-full-access` Codex spawn, (2) CLAUDE.md/MEMORY.md 에 `danger-full-access` 지시 write, (3) 그 변경 commit 을 모두 차단** (harness 가드레일, 우회 불가). → 사용자 승인 하에 **workspace-write + Claude commit 대행 폴백** 사용. CLAUDE.md L69(read-only/workspace-write) 정정 시도는 분류기 차단으로 revert. danger-full-access 가이드는 기존 memory file [[codex-plugin-setup]] 에만 존재 (해당 파일은 이전 세션 작성분이라 영향 없음). **차기 세션: CLAUDE.md L69 보다 memory file 우선, 단 분류기가 danger-full-access spawn 자체를 막으므로 workspace-write 폴백이 현실 경로.**
+
+### SP-D6 시리즈 전체 (7/7 완료)
+
+| 슬라이스 | endpoint | PR | merged |
+|---|---|---|---|
+| SP-D6-1 | 15 (auth+dashboard+dc-config) | #304 | `7964d29c` |
+| SP-D6-2 | ~35 (groupware+product+partner-order) | #305 | `a4e1d22a` |
+| SP-D6-3 | ~31 (notification+user) | #306 | `b3838473` |
+| SP-D6-4 | ~91 (partner+arologis) | #307 | `092b3f4c` |
+| SP-D6-5 | ~50 (inventory) | #308 | `688ec730` |
+| SP-D6-6 | ~80 (slip) | #309 | `cc030f67` |
+| SP-D6-7 | ~100 (accounting) | #310 | `fbb83519` |
+
+### 다음 작업 — SP-D7 (사용자 선택 2026-05-27): 잔여 @PreAuthorize → @RequirePermission
+
+- 브랜치 `feat/sp-d7-remaining-preauthorize-migration` (단일 통합 PR).
+- spec: `docs/superpowers/specs/2026-05-27-sp-d7-remaining-preauthorize-migration-design.md`
+- plan: `docs/superpowers/plans/2026-05-27-sp-d7-remaining-preauthorize-migration.md`
+- **점검 결과 (중요)**: role-based 중 @RequirePermission 미존재 = 0건. 잔여 = (A) isAuthenticated()→@RequirePermission(page,VIEW) **25건** (`notifications.center` 신규, case W 9개 page 재사용, case V 4개 전용 `.view` page 신설) + (B) leftover @PreAuthorize 15건 재대조. @hr(24)/internal/auth-infra/UserMe.is-executive-office/SlipSalesQuery = KEEP.
+- **최우선 설계 D-D7-01**: behavior-preserving — isAuth→page VIEW 전환 시 `PARTNER` 제외 내부 role 접근을 보존하고, 기존 VIEW endpoint가 있던 page는 전용 `.view` page로 분리해 widening 회피.
+- **D-D7-05**: IT deny-stub 명시 (PR #310 see-saw 교훈).
+- **구현 완료 (Codex, WIP 커밋 + cycle 2 file edit)**: Task 1 (isAuth→VIEW 25건), Task 2 (`notifications.center` + 전용 `.view` PageCode), Task 3 (옵션 A V38 seed), Task 4 (Employee/Inventory strict `@PreAuthorize` 복원), Task 5 (IT allow/deny stub + PageCodeTest + V38 실 grant IT), Task 6 (dev-report+README+DECISIONS 동기화).
+
+#### 🚨 V38 BLOCKER (머지 전 반드시 해소 — Claude inspection 발견 P1)
+
+- Codex 의 `V38__seed_sp_d7_remaining_preauthorize_page_codes.sql` 가 **11개 role 전체(PARTNER 포함)에 14개 page VIEW=TRUE** 부여 + 말미 UPDATE 로 **기존 deliberate FALSE row 까지 강제 TRUE flip**.
+- **문제**: 14 page 는 전부 내부(slip.*/products.*/inventory.stock-balance/estimates.list/sales.partner-order.*/partners.detail/notifications.center)인데 **외부 role PARTNER 에 내부 데이터 VIEW 부여 = 보안 widening**. PARTNER self-service 는 별도 partner-auth endpoint. 또한 force-UPDATE 가 V31/V32 의 의도적 FALSE 를 덮어씀.
+- **page-reuse widening 부작용**: 재사용 page 의 VIEW grant 확대는 그 page 의 **모든 VIEW endpoint** 에 영향 (신규 endpoint 뿐 아니라).
+- **근본**: spec D-D7-01 "모든 활성 role VIEW 부여" 표현이 under-specified → Codex 가 literal 적용. behavior-preserving = "내부 role 의 정당한 접근 회귀 방지" 의도였지 "PARTNER 에 내부 VIEW 부여" 아님.
+
+#### V38 해소 옵션 (cycle 1 기록 — 옵션 A 채택 전)
+
+1. **PARTNER 제외 + force-UPDATE 제거/내부 role 한정**: 14 page 모두 내부 role(MASTER/MANAGER/ACCOUNTANT/SALES/WAREHOUSE/DISPATCH/INVENTORY/DEVELOPER/STAFF/DRIVER) 만 VIEW. PARTNER 행 미생성. (단 PARTNER 가 gateway 로 해당 service 도달 가능한지 확인 — 도달 불가면 무해하나 매트릭스 정확성 위해 제외 권장)
+2. **page-reuse widening 회피**: 신규 isAuth VIEW endpoint 용 **전용 page code** 신설 (예: slip.comments.view) → 기존 page VIEW grant 불변, 신규 page 만 내부 role VIEW. 가장 안전하나 page 수 증가.
+3. **각 page 의 기존 VIEW grant 존중**: 재사용 page 의 현재 VIEW 허용 role 집합 + isAuth 가 실제 도달시킨 내부 role 만 union. (per-page 조사 필요)
+- **권장**: 옵션 1 (PARTNER 제외 + 내부 role 한정 grant, force-UPDATE 는 내부 role 로 scope) 우선, dual 리뷰 BE/보안이 page-reuse widening 부작용(옵션 2 필요 여부) 판정.
+
+#### PR #312 발행 + 사이클 1 Claude 리뷰 결과 (head `aa416f22`) — 🚨 머지 불가, 정책 결정 대기
+
+- PR #312 발행. CI 23 green **이나 IT 가 DPC mock 이라 V38 실 grant 미검증 (green ≠ 권한 정합)**.
+- V38 1차 over-grant(PARTNER+force-UPDATE) → Claude inspection 으로 `aa416f22` 에서 PARTNER 제외+INSERT-missing-only 로 수정. **그러나 그게 narrowing 회귀 유발** (아래).
+
+**사이클 1 Claude 리뷰 P1 (PR #312 issuecomment-4551035079):**
+1. **권한 확대 P1**: `EmployeeController.updateRole/terminate` 삭제된 `@PreAuthorize("hasRole('MASTER')")` 가 공존 `@RequirePermission(admin.employees,EDIT)` grant(MASTER+MANAGER)보다 엄격 → 삭제 시 MANAGER 가능 = escalation. **→ 삭제 revert (MASTER 전용 유지) 필요.**
+2. **V38 narrowing P1**: 13 재사용 page 는 기존 seed(V10/V31/V32/V35/V36)에 전 role row 존재(다수 can_view=FALSE) → INSERT-missing-only 가 전부 skip → 신규 VIEW endpoint 가 내부 role(ACCOUNTANT/DISPATCH/INVENTORY/DEVELOPER/STAFF/DRIVER 등) deny = isAuth 대비 회귀. **D-D7-01 미충족.**
+3. **문서 모순 P1**: dev-report/README/DECISIONS 가 reverted force-UPDATE/PARTNER포함 서술 → 실제 V38 과 모순. **재동기화 필요.**
+4. **Type B widening P2**: InspectionAttachment/InboundInspection/DpsCompare/DpsSaveHistory 삭제로 EDIT/VIEW +INVENTORY/+WAREHOUSE 확대 (공존 grant 가 넓음). **→ 진짜 redundant(grant 동일)만 삭제, 넓어지는 것은 @PreAuthorize 유지.**
+5. **FE Minor**: notifications.center FE 매트릭스 누락. **Minor IT**: V38 실 grant 미검증 (auth canView 실측 IT 권장).
+
+**근본 구조 문제**: isAuth→page-reuse 전략이 (i) 재사용 page 기존 FALSE → narrowing, (ii) page-reuse VIEW 확장 → 기존 VIEW endpoint widening, (iii) Type B 일부 비-redundant(엄격 가드) 를 동시에 못 피함.
+
+#### 🔑 사용자(개발책임자) 정책 결정 대기 — cycle 2 fix 방향
+- **옵션 A (behavior-preserving)**: isAuth endpoint → 전 내부 role VIEW grant + 기존 VIEW endpoint 있던 ~5 page 는 전용 page code 신설(widening 회피). isAuth 광범 접근 보존 + RBAC 통합.
+- **옵션 B (proper scoping)**: 각 신규 VIEW endpoint 를 도메인 audience 로 정밀 scope (endpoint별 role 정책 결정 필요).
+- **옵션 C (descope)**: isAuth 25건은 의도된 광범 접근(audit/attachment/comment/realtime = 전 직원 조회)이므로 `isAuthenticated()` 유지, **진짜 redundant Type B 만 정리**. 최소·최안전.
+- 공통 확정 fix (정책 무관): EmployeeController escalation revert + Type B widening 건 유지 + 문서 동기화 + FE notifications.center.
+
+#### ✅ 정책 확정 (2026-05-27): 옵션 A — behavior-preserving 통합
+- isAuth 25건 → @RequirePermission(VIEW). **전 내부 role(PARTNER 제외) VIEW grant 로 광범 접근 보존(narrowing 0)**.
+- **기존 non-SP-D7 VIEW endpoint 가 이미 쓰던 page 는 전용 신규 page code 신설** (그 page 의 기존 VIEW endpoint widening 회피). write-only-before page 는 재사용 + 전 내부 role VIEW grant.
+- 공통 fix: EmployeeController updateRole/terminate @PreAuthorize 유지(escalation revert) + Type B 중 grant 가 넓어지는 건 @PreAuthorize 유지(진짜 redundant 만 삭제) + 문서(dev-report/README/DECISIONS) 실제 V38 동기화 + FE notifications.center 추가.
+
+#### ✅ cycle 2 Codex fix 결과 (옵션 A 적용)
+1. page 판별 완료:
+   - case W 재사용: `slip.comments`, `slip.audit-overlay`, `slip.attachments.upload`, `slip.delivery-attachments.upload`, `slip.publish.from-estimate`, `slip.edit-requests`, `estimates.list`, `sales.partner-order.edit-requests`, `products.edit-requests`
+   - case V 전용 page 신설: `sales.partner-order.history.view`, `products.list.view`, `partners.detail.view`, `inventory.stock-balance.view`
+2. V38 재작성: 내부 role(MASTER/MANAGER/ACCOUNTANT/SALES/WAREHOUSE/DISPATCH/INVENTORY/DEVELOPER/STAFF/DRIVER)만 대상. case W는 `can_view IS DISTINCT FROM TRUE` active row UPDATE + missing INSERT, 신규/전용 page는 INSERT만 수행. `PARTNER`는 미부여.
+3. P1/P2 revert: `EmployeeController.updateRole/terminate` MASTER 전용 `@PreAuthorize` 복원. InspectionAttachment/InboundInspection/DpsCompare/DpsSaveHistory는 seed grant가 더 넓어지는 endpoint의 기존 `@PreAuthorize` 복원.
+4. FE/문서: permission matrix에 `notifications.center`와 전용 `.view` pages 추가, dev-report/README/DECISIONS 실제 V38 동작 동기화.
+5. IT: auth-service `AuthFlywayV38SeedIT` 추가로 V38 실 seed 기준 내부 role VIEW 허용과 `PARTNER` 미부여를 검증.
+
+#### ✅ Cycle 2/3 완료 + CI 23/23 green (head `a3b6f7d5`) — 🚨 그러나 dual 재리뷰 P1 발견, 머지 보류
+
+- cycle 2(옵션 A) → cycle 3(slip mapping + notification DPC) → cycle 3b(notification 중복 @MockBean revert). **CI 23/23 green** (실 Testcontainers + AuthFlywayV38SeedIT 실 grant 검증).
+- **dual 재리뷰** (PR #312 issuecomment-4553371941): Claude BE/QA/DevOps 3 APPROVE. **Codex BE cross-check 가 P1 권한 확대 적발**.
+
+#### 🚨 cycle 4 BLOCKER — guard-gated page escalation (P1)
+
+- **estimates.list (확정 P1)**: `EstimateController.list/getOne` 은 SP-D7 전부터 `@PreAuthorize("isAuthenticated()")` + **`EstimatePermissionGuard.checkView(estimates.list)`** (canView=false → FORBIDDEN). V10/V31/V32 에서 estimates.list VIEW 가 WAREHOUSE/DISPATCH/INVENTORY/DEVELOPER/STAFF/DRIVER = FALSE → 견적 조회 제한됨. **V38 force-UPDATE 가 estimates.list 를 전 내부 role TRUE 로 → 견적 조회 backend 권한 확대(escalation)**. case W/V 2분법이 "programmatic guard 로 gated 된 page" 케이스를 누락.
+- **scope 확대**: PermissionGuard **3개** 존재 — `EstimatePermissionGuard`(estimates.list), **`ProductPermissionGuard`(product-service)**, **`PartnerOrderPermissionGuard`(partner-order-service)**. product/partner-order guard 도 V38 가 건드린 `products.*`/`sales.partner-order.*` page 를 검증할 가능성 → 동일 escalation + 신규 `.view` page(annotation) vs guard(옛 page) 불일치 우려. **3 service guard-page 전수 분석 필요.**
+- (참고) 다른 case W controller(SlipComment/SlipAuditLog/SlipAttachment/DeliveryAttachment/SlipPublish/SlipEditRequest/ProductEditRequest/PartnerOrderEditRequest)는 programmatic guard 없음 확인 → 그 page 의 force-UPDATE 는 안전(escalation 무관).
+
+#### cycle 4 fix 방향 (개발책임자 검토 후)
+1. **3 PermissionGuard 의 page_code + V38 force-UPDATE/신규 .view page 관계 전수 분석** (ProductPermissionGuard / PartnerOrderPermissionGuard 가 어떤 page 를 checkView 하는지 + V38 가 그 page 를 넓혔는지 + 마이그레이션된 endpoint annotation page 와 guard page 일치/충돌).
+2. **guard-gated page(estimates.list 등)는 V38 force-UPDATE 에서 제외** → 기존 제한 grant 보존(behavior-preserving, escalation 0). annotation page ↔ guard page 정렬.
+3. 또는 guarded endpoint 는 **Option C(descope)** isAuthenticated 유지 재검토 (4 사이클 fragile 회고 — page-reuse 가 guard 와 상호작용해 취약).
+4. fix 후 dual 재리뷰(Codex BE 가 3 guard escalation 0 재확인) → CI → 머지.
+
+#### 비차단 (cycle 4 동반)
+- BE-1: PARTNER 가 sales.partner-order.history.view(audit/realtime) 접근 축소 — 의도적(desktop 전용, self-scope 없음). dev-report 1줄 명시 권고.
+
+- **브랜치 head `a3b6f7d5` (PR #312, CI green, P1 미해소로 머지 금지).**
+
+### SP-D7 PR foundation 커밋
+
+- `CURRENT-WORK.md` (본 handoff), spec, plan — foundation 커밋. (CLAUDE.md 정정은 분류기 차단으로 미반영.)
+
+---
+
+### (이전 기록) SP-D6-7 진행 중 상태 — 참고용
+
+- **헤드**: `bddca90c` (cycle 1g) — 해소 전 stuck 상태
 - **CI**: 21 success / 2 failure (반복)
 
 ### SP-D6 시리즈 진행 누적 (본 세션, 7 슬라이스 시도)

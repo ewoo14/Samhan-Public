@@ -36,6 +36,12 @@ SamhanLogis Product 마스터 + Category 트리 + Google Sheets 동기화 서비
 | PATCH | `/products/categories/{id}` | MASTER / MANAGER / DEVELOPER |
 | DELETE | `/products/categories/{id}` | MASTER / MANAGER / DEVELOPER (자식 존재 시 409) |
 
+## SP-D7 조회성 부가 endpoint 권한
+
+상품 audit log와 realtime SSE는 SP-D7 전용 `products.list.view` VIEW, 상품 edit-request 목록은
+`products.edit-requests` VIEW 동적 권한으로 전환했다. `products.list` 기존 VIEW endpoint widening을 피하기 위해
+auth-service V38은 전용 page에만 내부 role VIEW grant를 insert하고, `PARTNER`는 제외한다.
+
 ## Google Sheets 동기화 (Phase 6)
 
 - PR #68 / #75 — google sheets cron 동기화. `getDisplayValues` / `getFormulas` 로 표시값과 수식을 모두 채취하여 model 정보 정확화.

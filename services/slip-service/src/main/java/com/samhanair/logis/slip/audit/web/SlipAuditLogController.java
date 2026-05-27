@@ -14,7 +14,6 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,7 +43,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>응답 형식 = {@link ApiResponse} wrapper.
  */
 @RestController
-@RequestMapping("/slips/{slipId}/audit")
+@RequestMapping("/slips/{slipId}")
 @RequiredArgsConstructor
 public class SlipAuditLogController {
 
@@ -59,8 +58,8 @@ public class SlipAuditLogController {
      */
     @Operation(summary = "슬립 audit timeline",
             description = "PR-H2 — slip 본문 수정 이력 (최신 revision 우선). soft-deleted 자동 제외")
-    @GetMapping("-logs")
-    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/audit-logs")
+    @RequirePermission(page = "slip.audit-overlay", action = "VIEW")
     public ApiResponse<List<SlipAuditLogResponse>> listAuditLogs(@PathVariable UUID slipId) {
         List<SlipAuditLogResponse> items = auditLogService.listBySlip(slipId).stream()
                 .map(SlipAuditLogResponse::from)
@@ -82,7 +81,7 @@ public class SlipAuditLogController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "슬립 미존재"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "마감 lock")
     })
-    @PatchMapping("/overlay")
+    @PatchMapping("/audit/overlay")
     @RequirePermission(page = "slip.audit-overlay", action = "EDIT")
     public ApiResponse<SlipDetailResponse> applyOverlayPatch(
             @PathVariable UUID slipId,
@@ -105,7 +104,7 @@ public class SlipAuditLogController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "슬립/revision 미존재"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "마감 lock")
     })
-    @PostMapping("/revert/{revisionNo}")
+    @PostMapping("/audit/revert/{revisionNo}")
     @RequirePermission(page = "slip.audit-revert", action = "EDIT")
     public ApiResponse<List<SlipAuditLogResponse>> revertToRevision(
             @PathVariable UUID slipId,

@@ -118,7 +118,7 @@ public class InspectionAttachmentController {
             description = "slipId 기준 업로드 시각 오름차순. 검수 레코드 없으면 빈 목록. "
                     + "downloadUrl 은 캐시(만료 가능)")
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @RequirePermission(page = "inventory.stock-balance.view", action = "VIEW")
     public ApiResponse<List<InspectionAttachmentResponse>> list(@PathVariable UUID slipId) {
         List<InspectionAttachmentResponse> items = attachmentService.listBySlipId(slipId).stream()
                 .map(InspectionAttachmentResponse::from)
@@ -136,7 +136,7 @@ public class InspectionAttachmentController {
     @Operation(summary = "검수 첨부 단건 + presigned 다운로드 URL 발급",
             description = "downloadUrl 은 1시간 유효 — 만료 시 본 endpoint 재호출")
     @GetMapping("/{attachmentId}")
-    @PreAuthorize("isAuthenticated()")
+    @RequirePermission(page = "inventory.stock-balance.view", action = "VIEW")
     public ApiResponse<InspectionAttachmentResponse> detail(
             @PathVariable UUID slipId,
             @PathVariable UUID attachmentId) {

@@ -46,7 +46,8 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>SP-D6-6 권한 가드:
  * <ul>
- *   <li>GET 조회 → {@code isAuthenticated()} + {@link EstimatePermissionGuard#checkView(String)}</li>
+ *   <li>GET 조회 → {@code @PreAuthorize("isAuthenticated()")}
+ *       + {@link EstimatePermissionGuard#checkView(String)}</li>
  *   <li>POST/PUT write → {@code @RequirePermission(page = "estimates.list", action = "EDIT")}
  *       + {@link EstimatePermissionGuard#checkEdit(String)}</li>
  * </ul>
