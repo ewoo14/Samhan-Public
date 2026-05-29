@@ -4,6 +4,18 @@
 
 ---
 
+## ✅ 2026-05-29 완료 — 권한 재편 Phase 2.2 견적(Estimate) 버전이력 + 복원 **머지** (PR #319, squash `57f51af5`)
+
+RESTORE 3번째 적용 도메인. brainstorming(grounding)→spec→plan→subagent-driven(Task1~7) 전부 **Claude 에이전트**(Codex 크레딧 소진 6/1). slip(2.1) 패턴 이식.
+
+- **산출**: 견적 헤더+라인 full-snapshot(`estimate_revisions` V28 JSONB) + 편집가능-상태 point-in-time 복원. 캡처(create/update) + 복원(`requireEditable()` 가드 — QUOTE_DRAFT/SENT만, ACCEPTED/CONVERTED/REJECTED 409) + REST API(`/slips/estimates/{id}/revisions` VIEW, `.../{n}/restore` RESTORE, changeSummary) + FE `EstimateVersionHistoryPanel`(편집불가 상태 복원버튼 비활성) + Testcontainers IT + Playwright. estimate=slip-service `slip.estimate.*`.
+- **slip 대비 차이**: 라인 전량교체 `lines.clear()`(orphanRemoval=true), SSE 생략(estimate broker 부재), 기존 audit/overlay 없어 단일 revision 채널(더 단순), estimates.list page에 RESTORE action 추가.
+- **dual 리뷰(Claude 대체) APPROVE**: 스냅샷 8필드 ⊇ editHeader 6필드(slip P1 갭 회피), 경로 double-prefix 없음 확인, requireEditable 가드 도메인+IT. CI **slip-it-core 288 tests 0 skipped 0 failed**(EstimateRevisionRestoreIT 실 Testcontainers 실행). 
+- **결정**: DECISIONS D-RST-05. spec/plan: docs/superpowers/{specs,plans}/2026-05-29-estimate-restore-*. dev-report: docs/dev-reports/phase-2-2-estimate-restore-version-history.md.
+- 배포: estimates.list RESTORE 비-MASTER grant 시드(P2, 운영). overview.html estimate 반영은 후속(slip RESTORE로 Phase2 이미 표기됨).
+
+---
+
 ## ✅ 2026-05-29 완료 — 권한 재편 Phase 2.1 slip 전표 버전이력 + 복원 **머지** (PR #318, squash `b4d4eb94`)
 
 RESTORE 메커니즘 첫 도메인(D-PO-06 이행). brainstorming→spec→plan→subagent-driven(Task1~7) 전부 **Claude 에이전트**(Codex 크레딧 소진 6/1, 임시 대체).
@@ -13,7 +25,7 @@ RESTORE 메커니즘 첫 도메인(D-PO-06 이행). brainstorming→spec→plan�
 - **결정**: DECISIONS D-RST-01(full-snapshot+point-in-time) / D-RST-02(slip 첫 도메인 + 도메인별 분해) / D-RST-03(slip.audit-revert page 재사용 + overlay 공존). spec/plan: docs/superpowers/{specs,plans}/2026-05-29-slip-restore-*. dev-report: docs/dev-reports/phase-2-1-slip-restore-version-history.md. 배포런북 패턴: 없음(slip 단독).
 
 ### 다음 — Phase 2 후보 (사용자 "1부터 순서대로" 진행 중, #1 RESTORE 첫 도메인 완료)
-1. **RESTORE** — slip(2.1) 완료. **inventory(2.2) 보류**(D-RST-04 — StockTransfer 편집기능 부재/StockBalance mutable desync/InventoryAudit 회계연동 = slip식 적합 대상 없음, brainstorming grounding 결론). 차기 RESTORE 슬라이스 = **편집되는 도메인**(거래처 마스터 / 견적·주문 등) — 사용자 도메인 선택 대기. 3번째 도메인에서 slip 패턴 shared 추출 검토.
+1. **RESTORE** — **slip(2.1, PR #318) + estimate(2.2, PR #319) 완료.** inventory 보류(D-RST-04). RESTORE 로드맵(D-RST-02): 차기 도메인 후보 = 거래처 마스터(partners) / 주문(partner-order) 등 **편집되는 도메인**. slip+estimate 2개로는 형태차(slip=overlay 공존, estimate=단순)로 shared 추출 보류 중(D-RST-05) — 4번째 도메인에서 공통부 추출 재평가. 배포 체크리스트: 각 도메인 RESTORE action(slip.audit-revert / estimates.list)에 비-MASTER 계정 grant 시드 필요(Phase1 동적권한 운영).
 2. **DOWNLOAD 실구현** (PDF/PNG — 현 can_download bit만, 생성 0).
 3. **PRINT view 실구현** (HTML 인쇄 view).
 4. **아로로지스 독립 권한 슬라이스** (descope된 arologis 자체 account×page×action).
