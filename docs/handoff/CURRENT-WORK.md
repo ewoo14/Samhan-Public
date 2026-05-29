@@ -13,7 +13,7 @@ RESTORE 메커니즘 첫 도메인(D-PO-06 이행). brainstorming→spec→plan�
 - **결정**: DECISIONS D-RST-01(full-snapshot+point-in-time) / D-RST-02(slip 첫 도메인 + 도메인별 분해) / D-RST-03(slip.audit-revert page 재사용 + overlay 공존). spec/plan: docs/superpowers/{specs,plans}/2026-05-29-slip-restore-*. dev-report: docs/dev-reports/phase-2-1-slip-restore-version-history.md. 배포런북 패턴: 없음(slip 단독).
 
 ### 다음 — Phase 2 후보 (사용자 "1부터 순서대로" 진행 중, #1 RESTORE 첫 도메인 완료)
-1. **RESTORE** — slip(2.1) 완료. 도메인 분해 로드맵(D-RST-02): 2.2 inventory(stock/transfer/detail) / accounting / partners / sales — slip 패턴 검증됨, shared 일반화 검토.
+1. **RESTORE** — slip(2.1) 완료. **inventory(2.2) 보류**(D-RST-04 — StockTransfer 편집기능 부재/StockBalance mutable desync/InventoryAudit 회계연동 = slip식 적합 대상 없음, brainstorming grounding 결론). 차기 RESTORE 슬라이스 = **편집되는 도메인**(거래처 마스터 / 견적·주문 등) — 사용자 도메인 선택 대기. 3번째 도메인에서 slip 패턴 shared 추출 검토.
 2. **DOWNLOAD 실구현** (PDF/PNG — 현 can_download bit만, 생성 0).
 3. **PRINT view 실구현** (HTML 인쇄 view).
 4. **아로로지스 독립 권한 슬라이스** (descope된 arologis 자체 account×page×action).
