@@ -27,7 +27,14 @@ Phase 1 프레임워크 완료 → **Phase 2 기능구현(별도 다중 PR)** �
 3. **PRINT view 실구현** (HTML print-view — 현 GET 은 VIEW 로 매핑됨, 실 인쇄 view 미존재).
 4. **아로로지스 독립 권한 슬라이스** (descope 된 arologis 자체 account×page×action 권한 체계).
 5. **partner-facing endpoint PARTNER 경계 정식 검토** (carve-out 적용분 외 잔여 + V30 grant 정합 audit).
-- 미정식화: **DECISIONS.md D-PO-10~12 추가** (본 핸드오프·PR 코멘트·리뷰 산출물에 내용 존재, 정식 entry 는 차기 docs 동기화 시).
+
+### ✅ follow-up 정리 완료 (PR #317 squash `eaf7eec3`, 2026-05-29)
+cross-check P2/Minor 정리: role-form 400 계약 테스트 + 매트릭스 UX 가드(danger 셀/aria/shadow 토큰/replace 경고) + **DECISIONS D-PO-10~12 정식화** + dev-report §8 + **배포 런북** `docs/runbooks/phase-1-permission-deploy.md`. Claude 에이전트 구현·리뷰(Codex 크레딧 소진 임시 대체, 6/1 리셋). CI 23/23 green.
+
+### 미해소 future-hardening (별개 후속, 비차단)
+- **`ResponseStatusException`→500**: auth-service `AuthExceptionHandler` catch-all 이 4xx 를 500 으로 뭉갬(전 endpoint 4xx 정합성). 실 영향 낮음.
+- **CI `skipped=0` gate**: Testcontainers silent-skip 위장 green 방지.
+- ⚠️ **Codex 회복(6/1) 전까지 dual 리뷰의 Codex 측 = Claude 에이전트 대체** (사용자 지시).
 
 ---
 
