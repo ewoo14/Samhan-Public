@@ -4,6 +4,24 @@
 
 ---
 
+## ✅ 2026-05-29 완료 — 권한 재편 Phase 2.1 slip 전표 버전이력 + 복원 **머지** (PR #318, squash `b4d4eb94`)
+
+RESTORE 메커니즘 첫 도메인(D-PO-06 이행). brainstorming→spec→plan→subagent-driven(Task1~7) 전부 **Claude 에이전트**(Codex 크레딧 소진 6/1, 임시 대체).
+
+- **산출**: slip 헤더+라인 full-snapshot(`slip_revisions` V27 JSONB) 버전이력 + point-in-time 복원. 전 content-mutation 7경로 캡처(create/editHeader/updateSlip/applyOverlayPatch/addLine/removeLine/reject-with-reason) + 복원(라인 전량교체+마감가드+SSE `slip:restored`) + REST API(`GET /slips/{id}/revisions` VIEW, `POST .../{n}/restore` RESTORE, changeSummary) + FE 버전이력 패널 + Testcontainers IT + Playwright.
+- **dual 리뷰 cycle1 수렴**: BE 가 P1-1(SlipSnapshot overlay 10필드 누락→복원 롤백 누락) + P2-1(채번 race→500) 적발 → overlay 필드 대칭 보강 + saveAndFlush 재시도→409 + IT 흐름 정합 + race 단위테스트. CI 23/23 green.
+- **결정**: DECISIONS D-RST-01(full-snapshot+point-in-time) / D-RST-02(slip 첫 도메인 + 도메인별 분해) / D-RST-03(slip.audit-revert page 재사용 + overlay 공존). spec/plan: docs/superpowers/{specs,plans}/2026-05-29-slip-restore-*. dev-report: docs/dev-reports/phase-2-1-slip-restore-version-history.md. 배포런북 패턴: 없음(slip 단독).
+
+### 다음 — Phase 2 후보 (사용자 "1부터 순서대로" 진행 중, #1 RESTORE 첫 도메인 완료)
+1. **RESTORE** — slip(2.1) 완료. 도메인 분해 로드맵(D-RST-02): 2.2 inventory(stock/transfer/detail) / accounting / partners / sales — slip 패턴 검증됨, shared 일반화 검토.
+2. **DOWNLOAD 실구현** (PDF/PNG — 현 can_download bit만, 생성 0).
+3. **PRINT view 실구현** (HTML 인쇄 view).
+4. **아로로지스 독립 권한 슬라이스** (descope된 arologis 자체 account×page×action).
+5. **future-hardening** (ResponseStatusException→500 정정 / CI skipped=0 gate / partner-facing 경계 audit).
+- ⚠️ **Codex 회복(6/1) 전까지 구현·dual리뷰 = Claude 에이전트 대체** (사용자 지시).
+
+---
+
 ## ✅ 2026-05-29 완료 — 권한 재편 Phase 1 프레임워크 **머지** (PR #316, squash `80f4c00e`)
 
 **결과**: 계정×page×7-action 권한 프레임워크 main 머지 완료. CI 28/28 green. dual 5-agent 리뷰 3사이클 수렴.
