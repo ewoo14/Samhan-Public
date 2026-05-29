@@ -4,6 +4,25 @@
 
 ---
 
+## 🚧 진행 중 — 권한 재편 Phase 2.3 거래처(Partner) RESTORE (PR #320, **Docker QA 스크린샷 게이트만 남음**)
+
+브랜치 `feat/phase-2-3-partner-restore`. RESTORE 4번째 도메인. **구현·CI·리뷰·TM 종합 완료, 머지 전 단 1개 게이트(Docker 실 QA 스크린샷) 남음.**
+
+### 완료 (PR #320 에 누적·push)
+- T1~7a: `partner_revisions`(V12 JSONB) + PartnerSnapshot(헤더40+priceDiscount+shippingAddresses[]+contacts[], **service-layer 조립** — 4탭 자식 @OneToMany 아님) + 캡처 7훅 + 복원(**TERMINATED 가드 requireEditable 신설** + 자식 전량교체 replaceChildrenFromFull 재사용 + RESTORE revision + SSE partner:edit) + API(partners.4tab.edit VIEW/RESTORE) + FE(PartnerDetailDialog "버전이력" 탭) + IT + Playwright + dev-report + DECISIONS **D-RST-06** + overview.
+- **cycle1 fix**: 순환 의존(Partner4TabService⇄PartnerRevisionService) → **ObjectProvider** 해소(@Lazy Lombok 미전파). 
+- dual 리뷰(Claude 대체) 양쪽 APPROVE. CI 23/23 green, accounting+partner 1256 run/0 fail, **PartnerRevisionRestoreIT 6건 실 Testcontainers 실행 확인**. TM 종합 PR 게시(issuecomment-4576363435).
+
+### 🔑 재개 = 머지 전 마지막 게이트: **Docker 실 QA 스크린샷** ([[feedback_early_pr_docker_qa_screenshots]])
+1. `.\scripts\launch-local-stack.ps1` 로 풀스택 기동(빌드+24컨테이너+health). ⚠️ Docker 스택은 본 세션 중 자원확보로 down 됐을 수 있음.
+2. 데스크톱 앱(또는 Playwright electron/gstack)으로 **거래처 목록 → 상세 다이얼로그 → 4탭 편집 → "버전 이력" 탭 → 이 시점으로 복원 confirm → 결과** 단계별 실사용 촬영.
+3. `docs/qa/phase-2-3-partner-restore/*.png` 저장 + PR #320 본문에 인라인(잘 보이게).
+4. → PM 최종 머지. (BE P2×3: priceDiscount 복원 비대칭/탭편집 actorName 유실/updateCreditPolicy null 비대칭 — 머지 후 후속 또는 동반.)
+
+### ⚠️ Codex 회복(6/1) 시: 사용자에게 즉시 알림 후 Codex 구현/리뷰 체제 복귀. 그 전까지 Claude 에이전트 전면 대체.
+
+---
+
 ## ✅ 2026-05-29 완료 — 권한 재편 Phase 2.2 견적(Estimate) 버전이력 + 복원 **머지** (PR #319, squash `57f51af5`)
 
 RESTORE 3번째 적용 도메인. brainstorming(grounding)→spec→plan→subagent-driven(Task1~7) 전부 **Claude 에이전트**(Codex 크레딧 소진 6/1). slip(2.1) 패턴 이식.
