@@ -4,7 +4,34 @@
 
 ---
 
-## 🚧 2026-05-29 진행 — 권한 재편 Phase 1: Stage 2b~4 완료 + PR #316 발행 + 사이클 1 Claude 리뷰 완료 / 🛑 Codex runner 환경 블로커
+## ✅ 2026-05-29 완료 — 권한 재편 Phase 1 프레임워크 **머지** (PR #316, squash `80f4c00e`)
+
+**결과**: 계정×page×7-action 권한 프레임워크 main 머지 완료. CI 28/28 green. dual 5-agent 리뷰 3사이클 수렴.
+
+### 사이클 이력 (dual review 가 false-green 결함 차단)
+- **사이클 1** (Claude 리뷰→Codex fix 4R): P0 V39 IT local profile / AuthPermissionMigrationIT MASTER bypass stale + 권한 IT **see-saw 60종**(7-action stub + X-User-Id 헤더 + deny override 일괄) + V39 보존표 재산출(inventory.dps/stock-balance DOWNLOAD narrowing 복구, SALES tax-invoice.list PRINT widening 제거, 재무보고서 11 GET PRINT→VIEW) + PARTNER print carve-out → CI green.
+- **사이클 1후반** (Codex 5-agent cross-check): 🔴 arologis lockout + PARTNER self-service 회귀 적발.
+- **사이클 2**: 아로로지스 descope + PARTNER carve-out 확대 + FE 173 + Spinner fail-closed + 실DB materialize IT.
+- **사이클 N=2** (Claude 5-agent 재리뷰): 🔴 **P0 role-form endpoint 운영 파손** 적발(account-form 교체로 canView/canEdit 400→deny; IT mock 으로 CI false-green; BE 단독). → [[feedback_enforcement_real_http_test]] 메모리화.
+- **사이클 3**: role-form `/check` 양식 분기 복구 + 실 HTTP 회귀 IT 3종 + 매트릭스 위험 action 시각화 → CI green → Claude 전원+Codex BE/QA APPROVE → PM 머지.
+
+### 신규 결정 (DECISIONS 정식화 필요 — D-PO-10~12)
+- **D-PO-10 아로로지스 descope**: `samhan.security.permission.enforcement-mode` opt-in(default account, **arologis=role**). 아로로지스 독립 auth(자체 UUID+AROLOGIS_* role)는 account materialize 대상 외 → role-based 유지. 아로로지스 독립 권한은 별도 슬라이스.
+- **D-PO-11 PARTNER self-service carve-out**: `@RequirePermission.partnerSelfService` flag — PARTNER 자기범위(PARTNER_CODE_HEADER, service 계층) endpoint 만 aspect deny 면제. print/draft/confirm/list/detail/history/edit-requests/tutorial 적용, admin성 미적용.
+- **D-PO-12 role-form 권한 endpoint 양식 분기**: `/auth/internal/permissions/check` account-form(accountId+action)·role-form(roleCode+type) 동시 지원.
+
+### 다음 작업 — 사용자(개발책임자) 결정 대기 ([[pm-auto-continuous]] 멈춤=시리즈/프레임워크 마일스톤 종료)
+Phase 1 프레임워크 완료 → **Phase 2 기능구현(별도 다중 PR)** 후보:
+1. **RESTORE 메커니즘** (전표 버전이력+롤백 YYYY/MM/DD-{전표번호}) — Phase 2 핵심.
+2. **DOWNLOAD 실구현** (PDF/PNG 생성 — 현 codebase 0, Excel 7 endpoint 만 존재).
+3. **PRINT view 실구현** (HTML print-view — 현 GET 은 VIEW 로 매핑됨, 실 인쇄 view 미존재).
+4. **아로로지스 독립 권한 슬라이스** (descope 된 arologis 자체 account×page×action 권한 체계).
+5. **partner-facing endpoint PARTNER 경계 정식 검토** (carve-out 적용분 외 잔여 + V30 grant 정합 audit).
+- 미정식화: **DECISIONS.md D-PO-10~12 추가** (본 핸드오프·PR 코멘트·리뷰 산출물에 내용 존재, 정식 entry 는 차기 docs 동기화 시).
+
+---
+
+## 🗄️ (이전) 2026-05-29 진행 — 권한 재편 Phase 1: Stage 2b~4 완료 + PR #316 발행 + 사이클 1 Claude 리뷰 완료 / 🛑 Codex runner 환경 블로커
 
 **브랜치**: `feat/phase-1-permission-overhaul-framework` HEAD `8e863d5a` (origin push 완료). **PR #316** (base main, `[FEAT] Phase 1 권한 프레임워크`).
 
