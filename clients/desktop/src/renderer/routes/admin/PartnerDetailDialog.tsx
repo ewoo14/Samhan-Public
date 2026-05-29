@@ -42,6 +42,7 @@ import {
   type PartnerFullResponse,
 } from '../../api/partnerApi'
 import { useSessionStore } from '../../stores/session'
+import { PartnerVersionHistoryPanel } from '../../components/audit/PartnerVersionHistoryPanel'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -69,7 +70,7 @@ function formatKrw(v: number | null | undefined): string {
   return '₩' + Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-const TABS = ['기본정보', '단가/할인 정책', '배송지', '담당자'] as const
+const TABS = ['기본정보', '단가/할인 정책', '배송지', '담당자', '버전 이력'] as const
 
 // ---------------------------------------------------------------------------
 // 컴포넌트
@@ -109,6 +110,9 @@ export function PartnerDetailDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['partner', 'full', partnerId] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] })
+      // [Phase 2.3 F5] 편집은 EDIT revision 을 새로 캡처하므로 버전이력 캐시도 무효화해야
+      // '버전 이력' 탭이 stale(편집 전) 목록을 보이지 않는다. (partnerId === partnerCode)
+      queryClient.invalidateQueries({ queryKey: ['partnerRevisions', partnerId] })
       setEditing(false)
       setSaveError(null)
     },
@@ -312,6 +316,12 @@ export function PartnerDetailDialog({
                   prev ? { ...prev, contacts } : prev,
                 )
               }
+            />
+
+            {/* 탭 5: 버전 이력 + 복원 (Phase 2.3 Task 6) — status 는 조회 데이터에서 파생 */}
+            <PartnerVersionHistoryPanel
+              partnerCode={query.data.basic.partnerCode}
+              status={query.data.basic.status}
             />
           </Tabs>
         </>
