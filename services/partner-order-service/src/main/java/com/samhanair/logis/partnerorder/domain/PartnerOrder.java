@@ -11,6 +11,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -284,7 +286,16 @@ public class PartnerOrder extends BaseEntity {
         this.slipPublishStatus = SlipPublishStatus.FAILED_PERMANENT;
     }
 
-    /** 거래처 취소 또는 admin 반려. */
+    /**
+     * 거래처 취소 또는 admin 반려.
+     *
+     * <p><b>현재 死코드</b>: cancel() 을 호출하는 서비스/컨트롤러 경로가 Phase 2.4 시점 기준으로
+     * 아직 구현되지 않았다. 도메인 메서드는 미래 "주문 취소" 슬라이스 구현을 위해 미리 선언되어 있으며,
+     * {@link PartnerOrderStatus#CANCELED} 상태에서의 복원 가드({@link #requireRestorable()}) 와
+     * 409 테스트 케이스는 이미 검증되어 있다. 취소 슬라이스 구현 시 이 주석을 제거하고
+     * STATUS revision 캡처({@link com.samhanair.logis.partnerorder.revision.domain.PartnerOrderRevisionType#STATUS})
+     * 훅을 연결할 것.
+     */
     public void cancel() {
         this.status = PartnerOrderStatus.CANCELED;
     }
@@ -305,5 +316,73 @@ public class PartnerOrder extends BaseEntity {
     public int incrementRevision() {
         this.revisionCount += 1;
         return this.revisionCount;
+    }
+
+    /**
+     * soft-delete 된 주문을 활성 상태로 복구한다 (undelete).
+     *
+     * <p>삭제된 주문도 복원 대상이 됨에 따라 (설계서 §3.3a) undelete 가 필요하다.
+     * {@link com.samhanair.logis.common.entity.BaseEntity#markRestored()} 를 통해
+     * {@code is_deleted=false} 로 전환하고 {@code deletedAt}/{@code deletedBy} 를 클리어한다.
+     *
+     * <p>헤더/라인 내용 역적용은 별도 {@link #restoreHeader} + {@link #replaceLines} 로 수행한다.
+     * 본 메서드는 undelete(활성화) 만 담당한다.
+     *
+     * <p>이미 활성(is_deleted=false) 상태인 주문에 호출해도 멱등하게 동작한다.
+     *
+     * <p>연결된 라인은 {@link #replaceLines(List)} 에서 soft-delete 후 재생성되므로
+     * 별도 라인 undelete 처리가 불필요하다.
+     */
+    public void restoreFromDeleted() {
+        markRestored();
+    }
+
+    /**
+     * point-in-time 복원 가능 상태인지 검사한다 (Phase 2.4 버전이력 + 복원).
+     *
+     * <p><b>제외목록 방식</b>: 복원은 CONFIRMING · CANCELED 를 제외한 모든 상태에서 허용한다.
+     * <ul>
+     *   <li>{@link PartnerOrderStatus#CONFIRMING} — 출고전표 전환 중(transient) 상태: 거부</li>
+     *   <li>{@link PartnerOrderStatus#CANCELED} — 취소 완료 상태: 거부</li>
+     *   <li>{@link PartnerOrderStatus#DRAFT} — 진행중: 허용</li>
+     *   <li>{@link PartnerOrderStatus#CONFIRMED} — 완료(출고전표 발행): 허용
+     *       (복원 후 slip 재동기화 필요 여부는 호출자가 {@code slipResyncRequired} 플래그로 판단)</li>
+     *   <li>추후 ON_HOLD 추가 시 이 가드 수정 불필요 (허용 기본)</li>
+     * </ul>
+     *
+     * <p>설계서 §3.3 복원 가드 참조.
+     *
+     * @throws org.springframework.web.server.ResponseStatusException(409)
+     *         CONFIRMING 또는 CANCELED 상태에서 호출 시
+     */
+    public void requireRestorable() {
+        if (this.status == PartnerOrderStatus.CONFIRMING
+                || this.status == PartnerOrderStatus.CANCELED) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "진행 중(전환)이거나 취소된 주문은 복원할 수 없습니다. 현재 상태: " + this.status);
+        }
+    }
+
+    /**
+     * 복원 스냅샷의 헤더 필드를 현재 주문에 역적용한다 (Phase 2.4 point-in-time 복원).
+     *
+     * <p>복원 가능 상태 가드({@link #requireRestorable()})는 호출자가 선행 호출해야 한다.
+     * 직접 필드 setter 금지 — 도메인 메서드를 통해서만 변경한다.
+     *
+     * <p><b>복원 대상</b>: partnerCode / bizCode / dueDate / memo 만 역적용한다.
+     *
+     * <p><b>복원 제외 (slip 연동 필드)</b>: status / slipNo / slipPublishStatus /
+     * confirmedAt / slipPublishedAt 은 역적용하지 않는다.
+     * CONFIRMED 상태 주문을 복원하더라도 출고전표 발행 사실은 보존된다 — 컨트롤러가
+     * {@code slipResyncRequired} 플래그를 응답에 포함하여 재발행 필요 여부를 호출자에게 알린다.
+     *
+     * @param partnerCode 복원할 거래처 코드
+     * @param bizCode     복원할 사업자번호
+     * @param dueDate     복원할 납기일
+     * @param memo        복원할 메모/요청사항
+     */
+    public void restoreHeader(String partnerCode, String bizCode, LocalDate dueDate, String memo) {
+        this.updateHeader(partnerCode, bizCode, dueDate, memo);
     }
 }
