@@ -4,17 +4,27 @@
 
 ---
 
-## 🚧 2026-05-30 진행 — 권한 재편 Phase 2.4 주문(Partner-Order) RESTORE (기획 완료, 구현 진입)
+## ✅ 2026-05-30 완료 — 권한 재편 Phase 2.4 주문(Partner-Order) RESTORE **머지** (PR #323 squash `54a8ca0f`) + PR #321 QA 문서 머지 (`a6f04e84`)
 
-RESTORE 4번째 도메인. slip(2.1)/estimate(2.2)/partner(2.3) 머지 완료 후 연속. 자택→회사 핸드오프(d4bda209 main pull).
+RESTORE **5번째 도메인**(slip 2.1 / estimate 2.2 / partner 2.3 / **partner-order 2.4**). ⚠️ Codex 토큰 소진(6/1 12:00 복구 전) → 구현+dual리뷰 모두 **Claude 에이전트 전면 대체**.
 
-- **⚠️ Codex 토큰 소진 → 2026-06-01(월) 12:00 복구**. 그 전까지 **구현+dual리뷰 모두 Claude 에이전트 전면 대체** (개발책임자 회사 지시).
-- **브랜치**: `feat/phase-2-4-partner-order-restore` (base main `d4bda209`)
-- **spec**: `docs/superpowers/specs/2026-05-30-partner-order-restore-version-history-design.md`
-- **plan**: `docs/superpowers/plans/2026-05-30-partner-order-restore-version-history.md` (Task 1~13)
-- **대상**: `partner-order-service` `PartnerOrder`+`PartnerOrderLine`(1:N) full-snapshot. Flyway **V7** `partner_order_revisions`. 캡처=draft create/update·from-estimate·본사 edit(EDIT)·confirm/cancel(STATUS), delete 제외. **복원=DRAFT 상태만**(CONFIRMED 는 slip 발행 연동 → 정합성). page code=`sales.partner-order.history.view` 확장 권장. UUID 비공개(F4)+invalidate(F5) 가드.
-- **차기 슬라이스 예약**: 주문→출고전표 전환 고도화(품목별 부분전환 + 다중주문 병합) — `project_order_slip_conversion.md` ([[project-order-slip-conversion]]). 견적→슬립·주문→슬립 1:1 은 기구현.
-- **다음 단계**: spec/plan/memory commit+push → 조기 draft PR → Claude 에이전트 Task 1~13 구현 → 5-team 리뷰(사이클 N=2) → Docker 실 QA → CI green → 머지.
+- **산출**: partner-order-service `PartnerOrder`+`PartnerOrderLine` full-snapshot 버전이력 + point-in-time 복원. Flyway **V7** `partner_order_revisions`(JSONB, type CREATE/EDIT/STATUS/RESTORE/DELETE). 캡처=from-estimate·confirm(CREATE)/draft·본사 update(EDIT)/delete(DELETE). 복원=**제외목록 가드(CONFIRMING·CANCELED만 409, DRAFT+CONFIRMED+추후 ON_HOLD 허용)** + CONFIRMED 복원 시 `slipResyncRequired` 경고(slip 연동필드 역적용 제외) + **삭제 주문 undelete 복원**(findByIdIncludingDeleted). 권한 VIEW=`sales.partner-order.history.view` 재사용 / RESTORE=신규 `sales.partner-order.revisions`(auth **V40**, 배포순서 auth→partner-order). FE `PartnerOrderVersionHistoryPanel`(배지5+changeSummary+slip경고+DS Modal+invalidate F5차단+UUID비공개).
+- **업무용어 매핑**(개발책임자 확정): 진행중=DRAFT / 완료=CONFIRMED(출고전표 전환) / 보류=신규 ON_HOLD(별도 슬라이스). [[project-partner-order-status-model]]
+- **사이클 N=2**: cycle1 5팀(P1 6+P2 7)→fix→cycle2 4팀 APPROVE→cycle2c 비차단 정리. **CI 14/14 PASS**. IT 10(실 Postgres V7, skipped=0)+Playwright 8. Docker 실 QA(실 partner-order-service:8288+실 Postgres 적중 revision 1·2·3 실증, 스크린샷 13장 — UI는 mock fixture 렌더 한계 README 명시).
+- **DECISIONS** D-RST-06. spec/plan: docs/superpowers/{specs,plans}/2026-05-30-partner-order-restore-*. dev-report: docs/dev-reports/phase-2-4-partner-order-restore-version-history.md.
+
+### PR #321 QA 문서 머지 완료
+전 기능 게이트웨이 경유 Docker 실 QA(데스크톱 57캡처). **67결함→9근본원인(RC1~RC9)**. RC1~RC8 은 **#322(`d4bda209`)로 전부 수정·머지됨**. **RC9 잔여 = 미구현 기능/FE 데드코드(404)** — 결함 아님, 기능 구현/데드코드 정리는 후속(vendor OCR 업로드/확정, spec-key-templates, material-prices, odu-recommendations, branch-pipes, partners/long-pending, sales.ts 데드 `/api/v1/estimates`).
+
+### 다음 슬라이스 후보 (개발책임자 결정 — 모두 [[always-mouse-choices]] 로 선택 제시)
+1. **주문 보류(ON_HOLD) 상태 추가 + 주문 리스트 상태 필터**(기본 진행중, 진행중/완료/보류 선택) — [[project-partner-order-status-model]]
+2. **주문→출고전표 전환 고도화**: 품목별 부분전환 + 다중주문 병합(헤더 충돌 선택/'/' 병기) — [[project-order-slip-conversion]]. 견적→슬립·주문→슬립 1:1 은 기구현.
+3. **RC9 미구현 기능 구현 / FE 데드코드 정리** (vendor OCR 등)
+4. RESTORE 잔여: DOWNLOAD/PRINT 실구현, shared revision 추출 PoC(D-RST-05), MASTER bypass verify IT
+
+### 미해결/주의
+- slip-service 로컬 V11 checksum mismatch (본 작업 무관, 기존 main 인프라 트랙 — `docker exec samhan-postgres psql -U samhan -d slip_db -c "UPDATE flyway_schema_history SET checksum=-502054243 WHERE version='11'"` 로 해소 가능, 개발책임자 직접 실행)
+- 로컬 QA 시 influxd(호스트)가 8086/8088 점유 → compose 포트 우회 필요(8288/8186)
 
 ---
 
