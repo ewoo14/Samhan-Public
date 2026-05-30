@@ -146,6 +146,17 @@ spring:
           filters:
             - StripPrefix=2
 
+        # [RC1] 인증 필요 auth-service endpoint(권한 admin / 비밀번호 변경) — JwtAuthentication 필터로
+        # X-User-Id/Role 헤더를 주입해야 auth-service HeaderAuthenticationFilter 가 인증을 세운다.
+        # /auth/** catch-all(아래 auth-service-legacy)보다 먼저 선언(더 구체적 경로 우선 매칭).
+        # login/password/policy/password-reset 등 public 은 catch-all 이 필터 없이 처리.
+        - id: auth-service-admin-authenticated
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/admin/**,/auth/password/change
+          filters:
+            - JwtAuthentication
+
         # Legacy /auth/** routing — desktop renderer 의 axios 가 baseURL=http://localhost:8080
         # + path=/auth/login (PR #100 BE controller @RequestMapping("/auth")) 호출 시 매핑.
         # PR #110 (manual Stage 2) capture-desktop.js 의 auth 자동 로그인 navigation fix 의무.
@@ -155,12 +166,30 @@ spring:
           predicates:
             - Path=/auth/**
 
+        # [RC3] UserMeController 는 풀패스 @RequestMapping("/api/v1/users/me") → strip=2 면 불일치.
+        # generic user-service-v1(/api/v1/users/**, strip=2)보다 먼저 no-strip 으로 선언.
+        - id: user-me-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/me,/api/v1/users/me/**
+          filters:
+            - JwtAuthentication
+
         - id: user-service-v1
           uri: lb://user-service
           predicates:
             - Path=/api/v1/users/**
           filters:
             - StripPrefix=2
+            - JwtAuthentication
+
+        # [RC3] user-service AdminUserController 는 풀패스 @RequestMapping("/api/v1/admin/users")
+        # 라 generic /api/v1/users/** (strip=2) 로는 도달 불가. no-strip 으로 그대로 전달.
+        - id: user-admin-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/admin/users,/api/v1/admin/users/**
+          filters:
             - JwtAuthentication
 
         # partner-service — 발송금지리스트는 Notion 원본 CSV 를 partner DB 로 이관한 뒤
@@ -173,13 +202,32 @@ spring:
           filters:
             - JwtAuthentication
 
-        # partner-service — Phase 10 W10-6 신규 GET /admin/partners 검증 entry
+        # [RC2] partner-service 의 /api/v1/partners 컨트롤러(4tab/revision/attachment/blocks)는 전부
+        # 풀패스 @RequestMapping("/api/v1/partners...") 라 StripPrefix 를 적용하면 안 된다(strip 시
+        # /partners/... 로 변형되어 "No static resource" 404/500). no-strip 으로 그대로 전달.
         - id: partner-service-v1
           uri: lb://partner-service
           predicates:
             - Path=/api/v1/partners/**
           filters:
-            - StripPrefix=2
+            - JwtAuthentication
+
+        # [RC2] product-service — admin(/api/v1/products/admin) 은 풀패스 컨트롤러라 no-strip 필요.
+        # generic product-service-v1(strip=2, 카탈로그 /products 컨트롤러용)보다 먼저 선언.
+        - id: product-admin-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/admin/**
+          filters:
+            - JwtAuthentication
+
+        # [잔여] ProductCatalogController 풀패스(@RequestMapping("/api/v1") + /products/{code}/specs,
+        # /spec-key-templates). strip=2 면 깨지므로 표적 no-strip(카탈로그 GET 은 기존 strip route 유지).
+        - id: product-specs-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/*/specs,/api/v1/products/*/specs/**,/api/v1/spec-key-templates,/api/v1/spec-key-templates/**
+          filters:
             - JwtAuthentication
 
         - id: product-service-v1
@@ -247,6 +295,21 @@ spring:
             - StripPrefix=2
             - JwtAuthentication
 
+        # [RC2] arologis admin 컨트롤러는 풀패스 @RequestMapping("/api/v1/arologis/admin") → no-strip 필요.
+        # generic arologis-service-v1(strip=2)보다 먼저 선언. 인증 동일(JWT 주입 + Authorization 제거).
+        - id: arologis-admin-v1
+          uri: lb://arologis-service
+          predicates:
+            - Path=/api/v1/arologis/admin/**
+          filters:
+            - JwtAuthentication
+            - RemoveRequestHeader=Authorization
+
+        # [RC6] arologis 는 자체 ArologisJwtFilter(arologis 전용 secret, 모바일 직접 접근용)가
+        # HeaderAuthenticationFilter 보다 먼저 실행된다. 게이트웨이가 auth-service 토큰(다른 secret)을
+        # Authorization 으로 그대로 전달하면 ArologisJwtFilter 가 검증 실패로 403. JwtAuthentication 이
+        # X-User-* 를 주입한 뒤 Authorization 을 제거하면, ArologisJwtFilter 는 토큰 없음으로 skip 하고
+        # HeaderAuthenticationFilter 가 X-User-* 로 인증한다(모바일 직접 경로는 게이트웨이 미경유라 영향 없음).
         - id: arologis-service-v1
           uri: lb://arologis-service
           predicates:
@@ -254,12 +317,22 @@ spring:
           filters:
             - StripPrefix=2
             - JwtAuthentication
+            - RemoveRequestHeader=Authorization
 
         # partner-order-service — controller 측 `/api/v1/partner-orders` 풀패스 보유 → StripPrefix=0
         - id: partner-order-service-v1
           uri: lb://partner-order-service
           predicates:
             - Path=/api/v1/partner-orders/**
+          filters:
+            - JwtAuthentication
+
+        # [잔여] vendor 발주 OCR — VendorOrderController 풀패스 @RequestMapping("/api/v1/admin/partner-order/vendor").
+        # /api/v1/partner-orders/** predicate 와 세그먼트가 달라 미매칭이었음 → no-strip 라우트 추가.
+        - id: partner-order-admin-v1
+          uri: lb://partner-order-service
+          predicates:
+            - Path=/api/v1/admin/partner-order/**
           filters:
             - JwtAuthentication
 
@@ -334,17 +407,27 @@ spring:
           filters:
             - JwtAuthentication
 
+        # [RC2] 회계 admin(현금출납 snapshot refresh 등) BE 컨트롤러는 /admin/accounting 풀패스 보유.
+        - id: accounting-admin-noprefix
+          uri: lb://accounting-service
+          predicates:
+            - Path=/admin/accounting/**
+          filters:
+            - JwtAuthentication
+
         - id: arologis-service-noprefix
           uri: lb://arologis-service
           predicates:
             - Path=/admin/arologis/**,/arologis/**
           filters:
             - JwtAuthentication
+            - RemoveRequestHeader=Authorization
 
         - id: notification-service-noprefix
           uri: lb://notification-service
           predicates:
-            - Path=/admin/notifications/**,/notify/**
+            # [RC9] AligoAddressBookController 는 단수 /admin/notification/aligo/... 매핑 → 단수도 라우팅.
+            - Path=/admin/notifications/**,/admin/notification/**,/notify/**
           filters:
             - JwtAuthentication
 

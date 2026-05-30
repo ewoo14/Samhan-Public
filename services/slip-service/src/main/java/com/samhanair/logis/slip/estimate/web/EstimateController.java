@@ -61,6 +61,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class EstimateController {
 
     private static final String CALLER_HEADER  = "X-User-Id";
+    private static final String CALLER_NAME_HEADER = "X-User-Name";
     private static final String ROLE_HEADER    = "X-User-Role";
 
     private final EstimateService estimateService;
@@ -80,8 +81,9 @@ public class EstimateController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
-        estimatePermissionGuard.checkView(parseAccountId(callerHeader));
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        estimatePermissionGuard.checkView(parseAccountId(callerHeader), roleHeader);
         Pageable pageable = PageRequest.of(page, size);
         return ApiResponse.ok(estimateService.list(status, partnerId, startDate, endDate, pageable));
     }
@@ -92,8 +94,9 @@ public class EstimateController {
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<EstimateDetailResponse> getOne(
             @PathVariable UUID id,
-            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
-        estimatePermissionGuard.checkView(parseAccountId(callerHeader));
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        estimatePermissionGuard.checkView(parseAccountId(callerHeader), roleHeader);
         return ApiResponse.ok(estimateService.getOne(id));
     }
 
@@ -109,9 +112,10 @@ public class EstimateController {
     public ApiResponse<EstimateDetailResponse> create(
             @Valid @RequestBody CreateEstimateRequest request,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), PermissionAction.CREATE);
-        return ApiResponse.ok(estimateService.create(request, callerOrSystem(callerHeader)));
+        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), roleHeader, PermissionAction.CREATE);
+        return ApiResponse.ok(estimateService.create(request, callerOrSystem(callerHeader), callerName));
     }
 
     /** 견적서 수정 — DRAFT/SENT 단계만. */
@@ -122,9 +126,10 @@ public class EstimateController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateEstimateRequest request,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), PermissionAction.UPDATE);
-        return ApiResponse.ok(estimateService.update(id, request, callerOrSystem(callerHeader)));
+        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), roleHeader, PermissionAction.UPDATE);
+        return ApiResponse.ok(estimateService.update(id, request, callerOrSystem(callerHeader), callerName));
     }
 
     /** DRAFT → SENT. */
@@ -135,7 +140,7 @@ public class EstimateController {
             @PathVariable UUID id,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), PermissionAction.UPDATE);
+        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), roleHeader, PermissionAction.UPDATE);
         return ApiResponse.ok(estimateService.send(id, callerOrSystem(callerHeader)));
     }
 
@@ -147,7 +152,7 @@ public class EstimateController {
             @PathVariable UUID id,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), PermissionAction.UPDATE);
+        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), roleHeader, PermissionAction.UPDATE);
         return ApiResponse.ok(estimateService.accept(id, callerOrSystem(callerHeader)));
     }
 
@@ -159,7 +164,7 @@ public class EstimateController {
             @PathVariable UUID id,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), PermissionAction.UPDATE);
+        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), roleHeader, PermissionAction.UPDATE);
         return ApiResponse.ok(estimateService.reject(id, callerOrSystem(callerHeader)));
     }
 
@@ -176,7 +181,7 @@ public class EstimateController {
             @PathVariable UUID id,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), PermissionAction.UPDATE);
+        estimatePermissionGuard.checkEdit(parseAccountId(callerHeader), roleHeader, PermissionAction.UPDATE);
         return ApiResponse.ok(estimateService.convert(id, callerOrSystem(callerHeader)));
     }
 
