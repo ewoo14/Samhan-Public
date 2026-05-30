@@ -9,6 +9,7 @@ import com.samhanair.logis.partnerorder.util.PartnerOrderIdResolver;
 import com.samhanair.logis.partnerorder.web.dto.PartnerOrderDetailResponse;
 import com.samhanair.logis.partnerorder.web.dto.PartnerOrderListFilter;
 import com.samhanair.logis.partnerorder.web.dto.PartnerOrderSummaryResponse;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -121,17 +122,42 @@ public class PartnerOrderQueryService {
                 trimToNull(filter.searchKeyword()));
     }
 
+    /**
+     * 목록 필터를 JPA Specification 으로 변환한다.
+     *
+     * <p>기간 필터(dateFrom/dateTo) 기준 필드 — COALESCE(confirmedAt, createdAt) 통일 (Phase 2.5 Cycle 1 fix):
+     * <ul>
+     *   <li>CONFIRMED / CONFIRMING / CANCELED → confirmedAt 이 채워져 있으므로 COALESCE 결과 = confirmedAt</li>
+     *   <li>DRAFT / ON_HOLD → confirmedAt = null 이므로 COALESCE 결과 = createdAt (fallback)</li>
+     *   <li>status = null (전체 조회) → 각 row 에 맞는 날짜가 자동 선택되므로 status 분기 불필요</li>
+     * </ul>
+     * 기존 preConfirm 분기(CONFIRMING 미포함) 및 status=null 전체조회 DRAFT/ON_HOLD 누락 문제를
+     * COALESCE 로 일관 처리하여 해소한다.
+     *
+     * <p><b>count 쿼리 가드 (Cycle 2c P1-NEW)</b>: Spring Data {@code findAll(Specification, Pageable)} 는
+     * 동일 Specification 을 데이터 쿼리와 count 쿼리 양쪽에 적용한다. count 쿼리에 {@code orderBy} 를
+     * 포함하면 일부 JPA 구현체(Hibernate 6+)에서 경고·오류가 발생하므로,
+     * {@code query.getResultType()} 으로 결과 타입을 확인하여 count 쿼리일 때 정렬을 건너뛴다.
+     *
+     * @param filter 목록 필터
+     * @return JPA Specification
+     */
     private Specification<PartnerOrder> toSpec(PartnerOrderListFilter filter) {
         return (root, query, cb) -> {
             var predicates = new ArrayList<Predicate>();
+
+            // COALESCE(confirmedAt, createdAt) — status 에 무관하게 의미 있는 날짜를 자동 선택
+            Expression<LocalDateTime> effectiveDate =
+                    cb.coalesce(root.get("confirmedAt"), root.get("createdAt"));
+
             if (filter.dateFrom() != null) {
                 predicates.add(cb.greaterThanOrEqualTo(
-                        root.get("confirmedAt"),
+                        effectiveDate,
                         filter.dateFrom().atStartOfDay()));
             }
             if (filter.dateTo() != null) {
                 LocalDateTime exclusiveTo = filter.dateTo().plusDays(1).atStartOfDay();
-                predicates.add(cb.lessThan(root.get("confirmedAt"), exclusiveTo));
+                predicates.add(cb.lessThan(effectiveDate, exclusiveTo));
             }
             if (filter.partnerId() != null) {
                 String partner = like(filter.partnerId());
@@ -154,6 +180,15 @@ public class PartnerOrderQueryService {
                         cb.like(cb.lower(line.get("modelName")), keyword),
                         cb.like(cb.lower(line.get("remark")), keyword)));
             }
+
+            // count 쿼리 가드 — count 쿼리에 orderBy 를 적용하면 Hibernate 6+ 에서 오류/경고 발생.
+            // query.getResultType() 이 Long/long 이면 count 쿼리이므로 정렬을 건너뛴다.
+            Class<?> resultType = query.getResultType();
+            if (resultType != Long.class && resultType != long.class) {
+                query.orderBy(cb.desc(
+                        cb.coalesce(root.get("confirmedAt"), root.get("createdAt"))));
+            }
+
             return cb.and(predicates.toArray(Predicate[]::new));
         };
     }
