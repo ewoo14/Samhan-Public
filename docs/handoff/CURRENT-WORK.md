@@ -4,16 +4,26 @@
 
 ---
 
-## 🚧 2026-05-31 재개 예정 — 권한 재편 Phase 2.5 주문 보류(ON_HOLD) 상태 + 리스트 상태 필터 (spec 초안 완료, plan 부터)
+## ✅ 2026-05-30 완료 — 권한 재편 Phase 2.5 주문 보류(ON_HOLD) 상태 + 리스트 상태 필터 **머지** (PR #324 squash `d095b9d0`)
 
-⚠️ 자정 중단. 내일 재개. ⚠️ Codex 6/1 12:00 복구 전 → Claude 에이전트 전면 대체.
+⚠️ Codex 6/1 12:00 복구 전 → 구현+dual리뷰 모두 Claude 에이전트 전면 대체.
 
-- **브랜치**: `feat/phase-2-5-partner-order-hold-status-filter` (base main `bbe45bf6`, 생성됨)
-- **spec 초안**: `docs/superpowers/specs/2026-05-31-partner-order-hold-status-filter-design.md` (grounding + 결정 반영 완료)
-- **개발책임자 확정 결정**: ① 보류 전이 = **진행중↔보류만**(DRAFT↔ON_HOLD, 완료는 보류 불가) ② 보류/해제 권한 = **기존 `sales.partner-order.edit` UPDATE 재사용**(신규 page X)
-- **핵심 작업**: ON_HOLD enum 추가 / markOnHold·releaseHold 도메인 메서드 / hold·release API / **리스트 status 필터(최대 난점 — 현 목록쿼리가 confirmedAt 기반이라 DRAFT/ON_HOLD 조회 재설계 필요)** / FE 상태필터 UI(기본 진행중)+한글라벨 ON_HOLD=보류+보류/해제 버튼. ON_HOLD 는 Phase 2.4 복원 제외목록 가드에 자동 포함(수정 불필요).
-- **내일 재개 절차**: ① `git checkout feat/phase-2-5-partner-order-hold-status-filter` ② spec 검토 → writing-plans 로 plan 작성 ③ Claude 에이전트 구현 → 사이클 N=2 → Docker 실 QA → 머지.
-- **내일 확인할 미정**: hold/release 시 STATUS revision 캡처 여부(Phase 2.4 STATUS type 첫 실사용 후보).
+- **산출**: `ON_HOLD`(보류) enum + `markOnHold`/`releaseHold` 도메인 메서드(409 가드) + `POST /hold`·`/release`(기존 `sales.partner-order.edit` UPDATE 권한 재사용) + 리스트 정렬/기간필터 **COALESCE(confirmedAt, createdAt)** 통일 + count 쿼리 orderBy 가드. 마이그레이션 불필요(status VARCHAR CHECK 제약 없음). FE 라벨 업무용어 통일(작성중→진행중/확정→완료/ON_HOLD=보류/CONFIRMING=확인중) + status 뱃지 색 정정 + 보류/해제 버튼(warning, 403/409 피드백) + 기본 필터 진행중.
+- **전이**: 진행중(DRAFT)↔보류(ON_HOLD) 양방향만, 완료(CONFIRMED) 보류 불가. ON_HOLD 는 Phase 2.4 복원 제외목록 가드에 자동 포함(복원 가능).
+- **사이클 N=2**: cycle1 5팀(P1 4)→fix→cycle2 BE/FE/QA APPROVE→cycle2c(count 가드). CI 21 job PASS. IT 11(실 Postgres, skipped=0)+단위 5+Playwright 8.
+- **Docker 실 QA**: 실 gateway(:8080)+실 JWT(dev_master)+실 partner_order_db 연동 실 desktop renderer 화면 7장(44~118KB 실렌더) + raw JSON/psql 실적중 증빙(hold→ON_HOLD/release→DRAFT/필터/409). 인증전달만 IPC stub(addInitScript 실JWT), API/데이터/화면 전부 실제.
+- **DECISIONS** D-PO-25. spec/plan: docs/superpowers/{specs,plans}/2026-05-31-partner-order-hold-*. dev-report: docs/dev-reports/phase-2-5-partner-order-hold-status-filter.md.
+- **미정/후속**: hold/release STATUS revision 캡처(Phase 2.4 STATUS type 첫 실사용 후보) — 현재 전이 이력 미기록(dev-report 명시).
+
+### ⚠️ 로컬 환경 메모 (차기 실 QA 재사용)
+- **dev_master 비번 = `dev_p05_pass!`** 로 재설정됨(V5 시드 해시가 주석과 불일치했던 문제 해소). password_change_required=TRUE 시드 원복. 차기 실 QA 시 플래그만 FALSE 로 풀면 즉시 실 로그인 가능. (DEV 시드 계정, 운영 무관)
+- influxd(호스트 PID 1956)가 8088 점유 → partner-order-service compose 포트 8288 우회 필요.
+- **가짜 데이터·합성 이미지 영구 금지** ([[no-fake-data-ever]]) — 실 캡처만.
+
+### 다음 슬라이스 후보 (개발책임자 결정 — [[always-mouse-choices]])
+1. **주문→출고전표 전환 고도화**: 품목별 부분전환 + 다중주문 병합(헤더 충돌 선택/'/' 병기) — [[project-order-slip-conversion]]. 견적→슬립·주문→슬립 1:1 기구현.
+2. **RC9 미구현 기능 구현** (#321 잔여): vendor OCR 업로드/확정, spec-key-templates, material-prices 등.
+3. RESTORE 잔여: DOWNLOAD/PRINT 실구현, shared revision 추출 PoC, hold/release STATUS revision 캡처.
 
 ---
 
