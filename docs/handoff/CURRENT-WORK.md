@@ -6,9 +6,22 @@
 
 ## 🧭 새 세션 시작 가이드 (2026-05-31 갱신)
 
-**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. **2.6d 재고조회 모달 머지 완료**(#335 squash `6e4ac58b`). 직전: D2 다중주문 병합(#334 `f1de64d0`).
+**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. **시리얼 인스턴스 S1 머지 완료**(#336 squash `c043e4b9`). 직전: 2.6d 재고조회 모달(#335 `6e4ac58b`), D2 병합(#334 `f1de64d0`).
 
-### ✅ 이번 세션 — 2.6d 품목 재고조회 모달 머지 (#335 `6e4ac58b`)
+### ✅ 이번 세션 — 시리얼 인스턴스 재고 S1 인스턴스 기반 머지 (#336 `c043e4b9`, Phase INV-S)
+개별시리얼 품목(에어컨) 재고 최소단위 = UUID 인스턴스(`stock_instances`). **BE 전용**, 입출고 전표 연동은 S2~S4 후속.
+- product: V9 `categories.serial_managed`(에어컨 계열 UPDATE: HVAC/INDOOR/OUTDOOR/INDOOR_WALL/INDOOR_CEILING=true, PIPING/CONTROL=false) + `Category.serialManaged` + `ProductSummaryResponse.serialManaged` + HvacProductSeeder markSerialManaged.
+- inventory: V15 `stock_instances`(UUID 시리얼 키, status AVAILABLE/RESERVED/SHIPPED/RECALLED 전이, FIFO received_at/역-FIFO outbound_at 인덱스) + `StockInstance`(inbound 팩토리+ship/recall/reserve/release 가드, BusinessException) + Repository(FIFO/역-FIFO/findByProductId) + Service(serial_managed 가드 409) + `StockInstanceController`(/inventory/instances) + seeder + IT 12.
+- **관리방식 판정 = product `serial_managed` 파생**(DECISIONS — 마우스 결정). 5-team 사이클 N=2 APPROVE. CI green(skipped=0). **Docker 실 QA PASS**(인스턴스 생성 201/AVAILABLE, batch 품목 409 차단, FIFO received_at ASC, psql cross-DB serial_managed 정합 — `docs/qa/slice-inv-s1-serial-instance/real-qa-evidence.md`).
+- spec/plan: `docs/.../2026-05-31-serial-instance-inventory-design`(§4 S1) + `docs/.../2026-05-31-serial-instance-s1`.
+- **⚠️ S2~S4 후속(독립 슬라이스)**: S2 입고연동(구매전표→인스턴스 생성/lot) / S3 출고연동(판매전표→FIFO 소진+출고처) / S4 회수(반품/회차 역-FIFO). 미결정(spec §5): 전표↔inventory 연동 방식(이벤트 vs REST). 비차단: DECISIONS D-SER 정식화(본 PR dev-report 누락 — 후속 docs).
+
+### 다음 후보 (개발책임자 선택)
+1. **S2 입고 연동** (시리얼 다음 단계): 구매전표(INBOUND) 발행 → 구매/차용이면 품목코드 그룹에 인스턴스 생성(개별)/lot(batch). 전표↔inventory 연동(이벤트 vs REST 결정 필요).
+2. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 공통 base. 소규모.
+3. **후속 비차단 정리**: DECISIONS D-SER 정식화 / 2.6d·D2 후속(목록 배지 E2E·discountInfo·INBOUND seeder 정합) / partner-order `/revisions` 500.
+
+### ✅ (직전) 2.6d 품목 재고조회 모달 머지 (#335 `6e4ac58b`)
 주문/출고/입고 상세 품목 다중선택 → 창고별 가용/실/예약 매트릭스 모달(0수량 전창고 토글). **DECISIONS D-IL-01~06**. 읽기전용 FE + BE 1필드.
 - partner-order `LineResponse.productId` 노출(재고 batch 키, 화면 미노출) + FE `fetchProductBalancesMatrix`(batch 가용/실/예약 + listWarehouses 머지, **lines 기준 순회** — 잔량 없던 품목도 행 생성) + 신규 공유 `InventoryLookupModal`(셀 3줄, design-system 토큰: 가용0 danger·예약>0 warning, sticky 고정컬럼, th scope/caption/aria) + SlipDetailPage(기존 단일 alert 재고조회 대체)·SalesPartnerOrderDetailPage 배선.
 - 5-team 사이클 N=2 전원 APPROVE(사이클1 QA B-2 품목 행 누락 실버그·Designer 토큰화·FE 상태리셋 fix). CI 23잡 green(skipped=0). **Docker 실 QA PASS**(실 inventory_db — HQ-001 가용47/실50/예약3 등 psql 일치, 0토글 OFF/ON·VIRTUAL 제외 실 캡처 9장 `docs/qa/slice-2-6d-inventory-lookup/`). batch API/inventory 무변경 → 배포 partner-order→FE, Flyway 없음.

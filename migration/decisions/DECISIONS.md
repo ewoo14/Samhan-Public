@@ -2642,3 +2642,18 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-IL-06 | partner-order **`PartnerOrderDetailResponse.LineResponse` 에 productId 노출**(재고 batch 키). 화면 미노출(UUID 비공개=화면 노출만 금지). 출고/입고 슬립 라인은 이미 보유 |
 
 **산출**: partner-order LineResponse productId 1필드 + FE `fetchProductBalancesMatrix`(lines 기준 순회 — 잔량 없던 품목도 행 생성 + 전 창고 머지) + `InventoryLookupModal`(셀 3줄 가용/실/예약, 0토글, design-system 토큰: 가용0 danger·예약>0 warning, sticky 고정컬럼, th scope/caption/aria) + SlipDetailPage(기존 단일 alert 재고조회 대체)·SalesPartnerOrderDetailPage 배선 + Playwright 13. 5-team 사이클 N=2 APPROVE(skipped=0). **FE 전용 + BE 1필드** → 배포 partner-order→FE, Flyway 없음. 후속(비차단): SlipFormPage 모달 통합 / 시리얼 카운트 확장 / D2-6d Playwright CI 자동실행 게이트. spec/plan/dev-report `docs/.../2026-05-31-inventory-lookup-modal*`.
+
+---
+
+### D-SER. 시리얼 인스턴스 재고 모델 — S1 인스턴스 기반 (Phase INV-S, 2026-06-01)
+
+**배경**: 개별시리얼 품목(에어컨/판넬)의 재고 최소단위를 UUID 인스턴스로 모델링. 품목코드(productCode)=분류 그룹, UUID=인스턴스 시리얼 키. spec `2026-05-31-serial-instance-inventory-design`.
+
+| 결정 | 내용 |
+|---|---|
+| D-SER-01 | **범위 = S1 인스턴스 기반만** (테이블+도메인+판정+seed+CRUD/조회). 입출고 전표 연동은 S2(입고)/S3(출고)/S4(회수) 후속 독립 슬라이스. (2026-05-31 마우스) |
+| D-SER-02 | **관리방식 판정 = product-service `categories.serial_managed` 파생** — 에어컨 계열 카테고리 true(개별시리얼), 부자재(PIPING/CONTROL) false(batch). `ProductSummaryResponse.serialManaged` 노출 → inventory 소비. 카테고리 의미를 product-service 단일 소유(inventory 하드코딩 없음). (2026-05-31 마우스) |
+| D-SER-03 | **인스턴스 상태 = status 전이**(AVAILABLE/RESERVED/SHIPPED/RECALLED), soft-delete 대신. 도메인 메서드 ship/recall/reserve/release + requireStatus 가드(BusinessException CONFLICT). |
+| D-SER-04 | **FIFO/역-FIFO** — 출고 소진 = product_code+AVAILABLE received_at ASC. 회수 = outbound_partner_code+product_code+SHIPPED outbound_at DESC. V15 인덱스 2개. |
+
+**산출**: product V9 `categories.serial_managed` + Category 도메인 + ProductSummaryResponse + HvacProductSeeder markSerialManaged. inventory V15 `stock_instances` + StockInstance(Status) + Repository(FIFO/역-FIFO/findByProductId) + Service(serial_managed 가드 409) + Controller(/inventory/instances) + seeder + IT 12. batch 품목은 기존 stock_lots/balances 무변경. 5-team 사이클 N=2 APPROVE. CI green(skipped=0). Docker 실 QA PASS(인스턴스 201/batch 409/FIFO ASC/psql cross-DB). 배포 product(V9)→inventory(V15), 순서 위반 시 serialManaged=false 안전 degrade. **미결정(spec §5, S2~S4 시)**: 전표↔inventory 연동(이벤트 vs REST) / 2.6c 수량 reserve↔인스턴스 RESERVED 통합. dev-report `docs/dev-reports/slice-inv-s1-serial-instance.md`.
