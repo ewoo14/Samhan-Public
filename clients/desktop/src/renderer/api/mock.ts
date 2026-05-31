@@ -569,7 +569,7 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
     productName: '실외기 10HP',
     sellingPrice: '4200000',
   },
-  MWR_WE10N: {
+  'MWR-WE10N': {
     productId: 'p-mwr10',
     modelName: 'MWR-WE10N',
     productName: '유선 리모컨 (WE10N)',
@@ -827,6 +827,37 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       address: body['address'],
       displayOrder: body['displayOrder'] ?? 0,
       description: body['description'],
+    })
+  }
+
+  // GET /api/products?q=... — AC-2 품목 자동완성 검색 (product-service `/products?q=` 프록시)
+  if (method === 'GET' && (url.endsWith('/api/products') || url.includes('/api/products?'))) {
+    const q = String(config.params?.['q'] ?? '').toLowerCase()
+    const allProducts = Object.values(MOCK_PRODUCTS_BY_MODEL)
+    const matched = q
+      ? allProducts.filter(
+          (p) =>
+            p.modelName.toLowerCase().includes(q) ||
+            p.productName.toLowerCase().includes(q),
+        )
+      : allProducts
+    // ApiEnvelope<Page<ProductSummaryResponse>> 형태
+    return envelope({
+      content: matched.map((p) => ({
+        id: p.productId,
+        name: p.productName,
+        modelName: p.modelName,
+        productCode: null,
+        categoryId: null,
+        sellingPrice: p.sellingPrice,
+        status: 'ACTIVE',
+      })),
+      totalElements: matched.length,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
     })
   }
 
