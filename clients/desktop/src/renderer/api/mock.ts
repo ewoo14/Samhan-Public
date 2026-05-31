@@ -171,7 +171,7 @@ export const MOCK_AUTH = {
   partnerCode: 'P-MOCK-001',
 }
 
-/** 시드 4 창고 (V2 시드와 동일) */
+/** 시드 창고 (V2 시드 4종 + Phase 2.6d 전창고 머지 검증용 신규 1종) */
 const MOCK_WAREHOUSES = [
   {
     id: '11111111-1111-1111-1111-000000000001',
@@ -212,6 +212,21 @@ const MOCK_WAREHOUSES = [
     address: null,
     displayOrder: 4,
     description: '삼성 직배/반품/서비스 인보이스 등 비물리',
+  },
+  /**
+   * Phase 2.6d: 전창고 머지 검증용 신규 창고.
+   * batch(/inventory/balances/batch) 에는 이 창고의 잔량 row 가 없으므로
+   * FE fetchProductBalancesMatrix 가 0/0/0 으로 채우는지 검증 가능.
+   */
+  {
+    id: '11111111-1111-1111-1111-000000000005',
+    code: 'BK-001',
+    name: '백업창고',
+    type: 'CONSIGNMENT',
+    active: true,
+    address: null,
+    displayOrder: 5,
+    description: '2.6d 전창고 머지 검증용 — batch 미포함 창고(0/0/0 표시 확인)',
   },
 ]
 
@@ -1770,10 +1785,14 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // POST /inventory/balances/batch — 다건 재고 조회 (sales-form-polish 슬라이스)
   if (method === 'POST' && url.endsWith('/inventory/balances/batch')) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
-      productIds?: string[]
-    }
+    // parseMockBody 로 config.data 가 object/string 모두 안전 처리 (Phase 2.6d 수정)
+    const body = parseMockBody(config) as { productIds?: string[] }
     const ids = body.productIds ?? []
+
+    // Phase 2.6d: 에러 시나리오 테스트 트리거 — '__error_test__' productId 포함 시 500 반환 (R-4)
+    if (ids.includes('__error_test__')) {
+      return mockError(500, 'INVENTORY_SERVER_ERROR', '재고 서버 일시 오류가 발생했습니다.')
+    }
 
     /**
      * 시연용 mock — 실제 BE `ProductBalanceResponse[]` 평면 응답 구조를 모사.
@@ -4038,6 +4057,41 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     // ord-linked-slip         → DRAFT + linkedSlipNo 있음 — 전환 버튼 미노출
     // ord-partially-converted → DRAFT + line 0 convertedQuantity=1 (부분 전환 후 잔여 1 남음)
     // 그 외 기존 fixture      → CONFIRMED (하위 호환)
+    // Phase 2.6d: ord-error-test → 에러 배너 시나리오 (R-4). __error_test__ productId → batch 500
+    if (poId === 'ord-error-test') {
+      return envelope({
+        orderNumber: '2026/05/31-ERR',
+        partnerCode: '1234567890',
+        bizCode: '1234567890',
+        partnerName: '테스트에러거래처',
+        submittedAt: '2026-05-31T10:00:00',
+        updatedAt: '2026-05-31T10:00:00',
+        status: 'DRAFT',
+        totalAmount: 100000,
+        linkedSlipNo: null,
+        deliveryAddress: '서울시 강남구 테헤란로 1',
+        siteAddress: '현장 B동',
+        contactPhone: '010-0000-0000',
+        dueDate: '2026-06-01',
+        memo: null,
+        lines: [
+          {
+            productId: '__error_test__',
+            lineId: 'line-err-001',
+            modelCode: 'ERR-MODEL-001',
+            productName: '에러 테스트 품목',
+            categoryKey: 'homemulti',
+            quantity: 1,
+            convertedQuantity: 0,
+            deliveryPrice: 100000,
+            subtotal: 100000,
+            bundleMode: null,
+            expandedComponents: [],
+          },
+        ],
+      })
+    }
+
     const poStatus: string =
       poId === 'ord-draft' || poId === 'ord-partially-converted' || poId === 'ord-linked-slip'
         ? 'DRAFT'
@@ -4058,10 +4112,12 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     //   ord-partially-converted → line-po-001: quantity=2, convertedQuantity=1 (잔여 1)
     //                             line-po-002: quantity=3, convertedQuantity=3 (전환완료, 잔여 0)
     //   그 외 DRAFT/ON_HOLD 전환 가능 fixture → convertedQuantity=0
+    // Phase 2.6d: 주문 라인에 productId 추가 (재고 batch 조회 키. 화면 미노출)
     const poLines =
       poId === 'ord-partially-converted'
         ? [
             {
+              productId: 'p-aj040',
               lineId: 'line-po-001',
               modelCode: 'AJ040RXH4BC1',
               productName: '실외기',
@@ -4074,6 +4130,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               expandedComponents: [],
             },
             {
+              productId: 'p-mwr10',
               lineId: 'line-po-002',
               modelCode: 'MWR-WE10N',
               productName: '유선 리모컨',
@@ -4088,6 +4145,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
           ]
         : [
             {
+              productId: 'p-aj040',
               lineId: 'line-po-001',
               modelCode: 'AJ040RXH4BC1',
               productName: '실외기',
