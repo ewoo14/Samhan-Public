@@ -6,8 +6,17 @@
 
 ## 🧭 새 세션 시작 가이드 (2026-05-31 갱신)
 
-**현재 상태**: **AC-3(거래처 자동완성) 구현 완료** — 브랜치 `feat/ac-3-partner-autocomplete`(`01fc6da0` PartnerAutocomplete + searchPartners + SlipFormPage 2단계 채움 + docs). **PR + 5-team + Docker 실 QA 대기**. C(#328)·D1(#329)·confirm복구(#330)·AC-1(#331)·AC-2(#332) 머지 완료. (순서 = C✅→D1✅→confirm복구✅→AC-1✅→AC-2✅→**AC-3(구현완료)**→D2 병합→B→A.) DECISIONS D-AC-01~03 / D-AC2-01~04 / D-AC3-01~04.
-**자동완성 트리오 완료(AC-3 머지 시)** → 공용 async typeahead(`AsyncAutocomplete<T>`) 추출 별도 리팩터 후보. confirm 후속(거래처코드 시드 정합) 미해결.
+**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. 이번 세션 **6 슬라이스 머지**: C 창고코드정렬(#328)·D1 confirm자동발행폐지(#329)·confirm경로복구(#330)·AC-1 창고자동완성(#331)·AC-2 품목자동완성(#332)·**AC-3 거래처자동완성(#333 `d87ab22b`)**. 🎉 **마스터데이터 자동완성 트리오(창고·품목·거래처) 완료** (DECISIONS D-AC/D-AC2/D-AC3, design-system WarehouseAutocomplete/ProductAutocomplete/PartnerAutocomplete, 전표작성 SlipFormPage 배선).
+
+### 다음 후보 (개발책임자 선택)
+1. **D2 다중주문 병합** (2.6b ②): slip N:1 출처추적(slip V10) + `from-orders-merge` API + 헤더 '/'병기(같은 거래처) + FE 다중선택. spec `2026-05-30-order-to-slip-conversion-design` §7. (D1 confirm 폐지로 DRAFT→convert 일원화 토대 완성.)
+2. **B 2.6d 재고조회 모달** ([[project_inventory_lookup_modal_2_6d]]): 주문/판매/구매 상세 품목 선택→창고별 재고 모달(가용/실/예약, 0수량 토글). FE 중심.
+3. **A 시리얼 인스턴스 재고 모델** (대형, spec 박제됨 `2026-05-31-serial-instance-inventory-design`): writing-plans 부터.
+4. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터(+WarehouseAutocomplete sync 변형 통합). 소규모 정리.
+
+### ⚠️ 미해결 후속 (비차단)
+- **confirm DC 실적용**: confirm 은 정상 partnerCode 전송하나 **partner_order_db ↔ dc_config_db 거래처코드 시드 불일치**로 로컬 실 confirm DC fail-soft(정상가). 시드 정합(DevOps/seed) 후 실 confirm DC 재-QA. (#330 QA 발견.)
+- autocomplete: input height 36/40 통일 / order-app FE "전송완료" 실 캡처(partner_auth 시드) / AC-1·AC-2 focus-ring·shadow 토큰 백포트(AC-3 에서 토큰 신설됨).
 **⚠️ AC-3 선결**: 거래처 검색 API(명·코드·정보) 확인 — partner-service `/admin/partners/search` 등 존재(slice C 메모). AC-2 검색 = product-service `GET /products?q=`(name/model_name LIKE) 재사용 확인됨.
 **⚠️ confirm 복구 후속(비차단)**: ① **partner_order ↔ dc-config 거래처코드 시드 정합**(DevOps/seed) — 정합 후 실 confirm DC 실적용 재-QA(현재 로컬 시드 불일치로 fail-soft, 코드는 정상 partnerCode 전송). ② order-app FE "전송 완료" 실 캡처(partner_auth 시드 부재로 #330 QA BLOCKED). ③ confirm 옵션 정액 DC / estimate price-calc / N-1 P2.
 **환경 메모**: ⚠️ Codex 6/1(월) 12:00 복구 전 → 구현+리뷰 모두 Claude 에이전트. 5-team 패턴 + 사이클 N=2 + Docker 실 QA([[no-fake-data-ever]]) + [[always-mouse-choices]] 유지.
