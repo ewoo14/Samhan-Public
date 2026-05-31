@@ -61,3 +61,4 @@
 - [seeder product UUID 3-DB 정합](project_seed_product_uuid_catalog.md) — 2026-05-31 머지 #327. 4 seeder product key=실 modelName 결정적 UUID 통일 + product seeder @UuidGenerator 버그→jdbcTemplate native INSERT. cross-service QA 토대
 - [시리얼 인스턴스 재고 모델](project_serial_inventory_model.md) — 2026-05-31. 품목코드(그룹)→UUID(시리얼 PK). 카테고리로 개별시리얼/batch. 입고 구매·차용=생성/반품·회차=역FIFO 회수, 판매=FIFO 소진. 신규 대형 Phase spec(S1~S4)
 - [전표/주문번호 표준 = 슬래시 YYYY/MM/DD-{번호}](feedback_slip_order_number_format.md) — 2026-05-31 개발책임자 정정(D2 #334). 화면/저장/본문 전부 슬래시. 하이픈은 URL 경로 세그먼트만(게이트웨이 %2F 차단) → 공용 utils/orderNo.ts toOrderPathId 재사용. PartnerOrderIdResolver 양용. mock 미검출→경로번호 신규화면 Docker 실QA 필수
+- [PR은 구현 첫 push 직후 즉시 연다](feedback_open_pr_early.md) — 2026-06-01 개발책임자 지적. 구현 1차 완료→곧바로 push+PR, 5-team 리뷰/CI/Docker QA는 열린 PR 위에서 후속 커밋. 로컬 사이클 N=2 수렴 후 PR 여는 패턴 금지(진행 불투명)
