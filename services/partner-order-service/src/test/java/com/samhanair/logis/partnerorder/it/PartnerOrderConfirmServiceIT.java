@@ -2,20 +2,21 @@ package com.samhanair.logis.partnerorder.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.samhanair.logis.common.exception.BusinessException;
-import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.partnerorder.PartnerOrderServiceApplication;
 import com.samhanair.logis.partnerorder.client.DcConfigClient;
 import com.samhanair.logis.partnerorder.client.InventoryClient;
-import com.samhanair.logis.partnerorder.client.InventoryClient.ReservationResult;
 import com.samhanair.logis.partnerorder.client.PartnerAuthClient;
 import com.samhanair.logis.partnerorder.client.ProductClient;
 import com.samhanair.logis.partnerorder.client.ProductSummary;
 import com.samhanair.logis.partnerorder.client.SlipServiceClient;
-import com.samhanair.logis.partnerorder.client.SlipServiceClient.PublishResult;
+import com.samhanair.logis.partnerorder.domain.HistoryEventType;
 import com.samhanair.logis.partnerorder.domain.SlipPublishStatus;
+import com.samhanair.logis.partnerorder.repository.PartnerOrderHistoryRepository;
+import com.samhanair.logis.partnerorder.repository.PartnerOrderLineRepository;
 import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
 import com.samhanair.logis.partnerorder.repository.SlipPublishOutboxRepository;
+import com.samhanair.logis.partnerorder.revision.domain.PartnerOrderRevisionType;
+import com.samhanair.logis.partnerorder.revision.repository.PartnerOrderRevisionRepository;
 import com.samhanair.logis.partnerorder.service.PartnerOrderConfirmService;
 import com.samhanair.logis.partnerorder.web.dto.ConfirmLineRequest;
 import com.samhanair.logis.partnerorder.web.dto.ConfirmRequest;
@@ -31,9 +32,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 
 /**
- * confirm 흐름 happy + 5xx → outbox INSERT 검증 (설계서 §3.6 + §6).
+ * confirm 흐름 D1 — slip 미발행 DRAFT 주문 생성 검증 (슬라이스 D1).
  *
- * <p>5 외부 client 모두 mock — 가격/카탈로그/재고/slip 발행 결과를 stub 으로 통제.
+ * <p>5 외부 client 모두 mock — confirm 은 slip-service 를 호출하지 않아야 한다.
+ *
+ * <p>검증 대상:
+ * <ol>
+ *   <li>DRAFT 주문 생성 + slip 미발행 (slipNo=null, status=DRAFT, slipPublishStatus=NOT_REQUIRED)</li>
+ *   <li>outbox 미삽입 (D1 이후 confirm 은 outbox 비사용)</li>
+ *   <li>revision_no=1, type=CREATE row 생성 (Phase 2.4 버전이력 훅)</li>
+ *   <li>history CONFIRMED row 생성 (거래처 주문 접수 이벤트)</li>
+ *   <li>멱등 재confirm — 동일 idempotencyKey 로 2회 호출 시 동일 orderNo 반환 + 중복 row 없음</li>
+ * </ol>
  */
 @SpringBootTest(classes = PartnerOrderServiceApplication.class)
 class PartnerOrderConfirmServiceIT extends AbstractPostgresIT {
@@ -42,10 +52,19 @@ class PartnerOrderConfirmServiceIT extends AbstractPostgresIT {
     private PartnerOrderConfirmService confirmService;
 
     @Autowired
+    private SlipPublishOutboxRepository outboxRepository;
+
+    @Autowired
     private PartnerOrderRepository orderRepository;
 
     @Autowired
-    private SlipPublishOutboxRepository outboxRepository;
+    private PartnerOrderLineRepository lineRepository;
+
+    @Autowired
+    private PartnerOrderRevisionRepository revisionRepository;
+
+    @Autowired
+    private PartnerOrderHistoryRepository historyRepository;
 
     @MockBean
     private DcConfigClient dcConfigClient;
@@ -63,7 +82,7 @@ class PartnerOrderConfirmServiceIT extends AbstractPostgresIT {
     private PartnerAuthClient partnerAuthClient;
 
     @Test
-    void confirm_happy_path_sets_slipNo_and_published() {
+    void confirm_creates_draft_order_without_slip_publish() {
         UUID productId = UUID.randomUUID();
         Mockito.when(dcConfigClient.fetchDcConfig(Mockito.anyString()))
                 .thenReturn(Map.of());
@@ -71,23 +90,24 @@ class PartnerOrderConfirmServiceIT extends AbstractPostgresIT {
                 .thenReturn(List.of(new ProductSummary(
                         productId, "헬로멀티 5kW", "HM-5000", null,
                         new BigDecimal("1000000"), "ACTIVE")));
-        Mockito.when(inventoryClient.reserve(Mockito.any(), Mockito.any(), Mockito.anyInt()))
-                .thenReturn(ReservationResult.reserved());
-        Mockito.when(slipServiceClient.publishFromPartnerOrder(
-                        Mockito.anyMap(), Mockito.anyString()))
-                .thenReturn(PublishResult.published("S-2025-0001"));
 
         ConfirmRequest request = new ConfirmRequest(List.of(
                 new ConfirmLineRequest(productId, "homemulti", 1, "remark-1")));
         ConfirmResponse response = confirmService.confirm(
-                "P-HAPPY", "1234567890", "user-happy", null, null, request);
+                "P-DRAFT", "1234567890", "user-draft", null, null, request);
 
-        assertThat(response.slipNo()).isEqualTo("S-2025-0001");
-        assertThat(response.slipPublishStatus()).isEqualTo(SlipPublishStatus.PUBLISHED.name());
+        // 주문만 생성 — slip 미발행, 진행중(DRAFT)
+        assertThat(response.slipNo()).isNull();
+        assertThat(response.status()).isEqualTo("DRAFT");
+        assertThat(response.slipPublishStatus()).isEqualTo(SlipPublishStatus.NOT_REQUIRED.name());
+
+        // slip-service 미호출
+        Mockito.verify(slipServiceClient, Mockito.never())
+                .publishFromPartnerOrder(Mockito.anyMap(), Mockito.anyString());
     }
 
     @Test
-    void confirm_slip_5xx_queues_outbox_and_marks_pending_retry() {
+    void confirm_does_not_enqueue_outbox() {
         UUID productId = UUID.randomUUID();
         Mockito.when(dcConfigClient.fetchDcConfig(Mockito.anyString()))
                 .thenReturn(Map.of());
@@ -95,26 +115,192 @@ class PartnerOrderConfirmServiceIT extends AbstractPostgresIT {
                 .thenReturn(List.of(new ProductSummary(
                         productId, "헬로멀티 7kW", "HM-7000", null,
                         new BigDecimal("1500000"), "ACTIVE")));
-        Mockito.when(inventoryClient.reserve(Mockito.any(), Mockito.any(), Mockito.anyInt()))
-                .thenReturn(ReservationResult.reserved());
-        Mockito.when(slipServiceClient.publishFromPartnerOrder(
-                        Mockito.anyMap(), Mockito.anyString()))
-                .thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "slip-service 5xx"));
+
+        long before = outboxRepository.count();
 
         ConfirmRequest request = new ConfirmRequest(List.of(
                 new ConfirmLineRequest(productId, "homemulti", 1, null)));
         ConfirmResponse response = confirmService.confirm(
-                "P-RETRY", "9876543210", "user-retry", null, null, request);
+                "P-NOOUTBOX", "9876543210", "user-nooutbox", null, null, request);
 
-        assertThat(response.slipNo()).isNull();
-        assertThat(response.slipPublishStatus()).isEqualTo(SlipPublishStatus.PENDING_RETRY.name());
+        assertThat(response.status()).isEqualTo("DRAFT");
+        assertThat(outboxRepository.count()).isEqualTo(before);
+    }
 
-        // outbox 1건 INSERT 검증
-        long outboxCount = outboxRepository.count();
-        assertThat(outboxCount).isGreaterThanOrEqualTo(1);
+    /**
+     * 멱등 재confirm 검증 — spec §6 (D1 사이클2 보강).
+     *
+     * <p>동일 (partnerCode, draftSeq) 기반의 idempotencyKey 로 confirm 을 실제로 2회 호출하여
+     * 두 번째 호출이 {@code findByIdempotencyKey} hit 경로를 타는지 직접 검증한다.
+     *
+     * <p>핵심 전제 — {@code resolveDraftSeq(partnerCode, draftId=null)} 는
+     * {@code draftRepository.findMaxDraftSeqByPartnerCode(partnerCode) + 1} 을 반환하며,
+     * confirm 은 PartnerOrderDraft 를 INSERT 하지 않으므로 1회 confirm 후 MAX 값이 변하지 않는다.
+     * 따라서 동일 partnerCode 로 draftId=null 인 채 2회 호출하면 두 호출 모두 동일 draftSeq 를
+     * 사용하게 되고, idempotencyKey("PO-CONF-{partnerCode}-{draftSeq}") 가 동일해진다.
+     * 두 번째 호출은 반드시 {@code findByIdempotencyKey} hit → 기존 주문 반환 경로를 탄다.
+     *
+     * <p>검증 항목:
+     * <ul>
+     *   <li>두 번째 호출 응답 orderNo == 첫 번째 응답 orderNo (동일 주문 반환)</li>
+     *   <li>2회 호출 후 해당 partnerCode 의 partner_orders row = 1건 (중복 생성 0)</li>
+     *   <li>2회 호출 후 partner_order_lines row = 첫 호출과 동일 (라인 중복 0)</li>
+     *   <li>저장된 idempotencyKey 로 findByIdempotencyKey 가 동일 orderNo 의 주문을 반환</li>
+     * </ul>
+     */
+    @Test
+    void idempotent_reconfirm_returns_same_order_no_without_duplicate_rows() {
+        // ── given ──────────────────────────────────────────────────────────────
+        // 전용 partnerCode 사용 — 다른 테스트 partnerCode 와 격리하여 MAX draftSeq 오염 방지
+        String partnerCode = "P-IDEM2";
+        String bizCode = "1111111111";
+        UUID productId = UUID.randomUUID();
 
-        // PartnerOrder 도 PENDING_RETRY 상태
-        long pendingCount = orderRepository.findAllBySlipPublishStatus(SlipPublishStatus.PENDING_RETRY).size();
-        assertThat(pendingCount).isGreaterThanOrEqualTo(1);
+        Mockito.lenient().when(dcConfigClient.fetchDcConfig(Mockito.anyString()))
+                .thenReturn(Map.of());
+        Mockito.lenient().when(productClient.lookup(Mockito.anyList()))
+                .thenReturn(List.of(new ProductSummary(
+                        productId, "멱등테스트 5kW", "IDEM-5000", null,
+                        new BigDecimal("2000000"), "ACTIVE")));
+
+        ConfirmRequest request = new ConfirmRequest(List.of(
+                new ConfirmLineRequest(productId, "homemulti", 2, "idem-remark")));
+
+        // ── when: 1회 confirm ─────────────────────────────────────────────────
+        ConfirmResponse first = confirmService.confirm(
+                partnerCode, bizCode, "user-idem-1", "홍길동", null, request);
+
+        assertThat(first.orderNo()).isNotNull();
+        assertThat(first.status()).isEqualTo("DRAFT");
+
+        // DB 상태 스냅샷 (1회 confirm 직후)
+        var savedOrderAfterFirst = orderRepository.findByOrderNo(first.orderNo())
+                .orElseThrow(() -> new AssertionError("1회 confirm 후 주문을 찾을 수 없음"));
+        String savedIdemKey = savedOrderAfterFirst.getIdempotencyKey();
+        long orderCountAfterFirst = orderRepository.findAll().stream()
+                .filter(o -> o.getPartnerCode().equals(partnerCode))
+                .count();
+        long lineCountAfterFirst = lineRepository.findAllByPartnerOrder_Id(
+                savedOrderAfterFirst.getId()).size();
+
+        // ── when: 2회 confirm — 실제 멱등 분기 hit 검증 ───────────────────────
+        // confirm 은 PartnerOrderDraft 를 INSERT 하지 않으므로 MAX draftSeq 불변.
+        // 동일 partnerCode + draftId=null → 동일 draftSeq → 동일 idempotencyKey 보장.
+        // 이 호출은 반드시 findByIdempotencyKey hit → 기존 주문 반환 경로를 타야 한다.
+        ConfirmResponse second = confirmService.confirm(
+                partnerCode, bizCode, "user-idem-2", "홍길동", null, request);
+
+        // ── then ──────────────────────────────────────────────────────────────
+        // 두 번째 응답이 첫 번째와 동일한 orderNo 를 반환해야 한다 (멱등 경로 검증 핵심)
+        assertThat(second.orderNo())
+                .as("멱등 재호출 시 동일 orderNo 반환")
+                .isEqualTo(first.orderNo());
+
+        // 2회 호출 후에도 해당 partnerCode 의 partner_orders row = 1건 (중복 생성 0)
+        long orderCountAfterSecond = orderRepository.findAll().stream()
+                .filter(o -> o.getPartnerCode().equals(partnerCode))
+                .count();
+        assertThat(orderCountAfterSecond)
+                .as("2회 confirm 후 partner_orders row 중복 없음")
+                .isEqualTo(orderCountAfterFirst);
+
+        // 라인 row 중복 없음
+        long lineCountAfterSecond = lineRepository.findAllByPartnerOrder_Id(
+                savedOrderAfterFirst.getId()).size();
+        assertThat(lineCountAfterSecond)
+                .as("2회 confirm 후 partner_order_lines row 중복 없음")
+                .isEqualTo(lineCountAfterFirst);
+
+        // idempotencyKey 로 findByIdempotencyKey 가 동일 orderNo 의 주문을 반환
+        assertThat(orderRepository.findByIdempotencyKey(savedIdemKey)
+                .map(o -> o.getOrderNo()))
+                .as("findByIdempotencyKey 가 동일 주문 반환")
+                .contains(first.orderNo());
+    }
+
+    /**
+     * confirm 후 partner_order_revisions 에 revision_no=1, type=CREATE row 가 존재해야 한다.
+     *
+     * <p>Phase 2.4 버전이력 훅 — {@link com.samhanair.logis.partnerorder.revision.service.PartnerOrderRevisionService#capture}
+     * 가 confirm 트랜잭션 내에서 호출된다.
+     */
+    @Test
+    void confirm_creates_revision_with_no1_and_type_create() {
+        // ── given ──────────────────────────────────────────────────────────────
+        String partnerCode = "P-REVISION";
+        UUID productId = UUID.randomUUID();
+
+        Mockito.lenient().when(dcConfigClient.fetchDcConfig(Mockito.anyString()))
+                .thenReturn(Map.of());
+        Mockito.lenient().when(productClient.lookup(Mockito.anyList()))
+                .thenReturn(List.of(new ProductSummary(
+                        productId, "리비전 테스트 3kW", "REV-3000", null,
+                        new BigDecimal("500000"), "ACTIVE")));
+
+        ConfirmRequest request = new ConfirmRequest(List.of(
+                new ConfirmLineRequest(productId, "homemulti", 1, null)));
+
+        // ── when ───────────────────────────────────────────────────────────────
+        ConfirmResponse response = confirmService.confirm(
+                partnerCode, "2222222222", "user-rev", "김리뷰", null, request);
+
+        // ── then: partner_order_revisions 검증 ───────────────────────────────
+        var savedOrder = orderRepository.findByOrderNo(response.orderNo())
+                .orElseThrow(() -> new AssertionError("confirm 후 주문을 찾을 수 없음"));
+
+        var revisions = revisionRepository.findByPartnerOrderIdOrderByRevisionNoDesc(savedOrder.getId());
+
+        assertThat(revisions).isNotEmpty();
+        var firstRevision = revisions.stream()
+                .filter(r -> r.getRevisionNo() == 1)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("revision_no=1 row 없음"));
+
+        assertThat(firstRevision.getRevisionType()).isEqualTo(PartnerOrderRevisionType.CREATE);
+        assertThat(firstRevision.getPartnerOrderId()).isEqualTo(savedOrder.getId());
+    }
+
+    /**
+     * confirm 후 partner_order_history 에 CONFIRMED event row 가 존재해야 한다.
+     *
+     * <p>HistoryEventType.CONFIRMED 는 "거래처 주문 접수" 이벤트로,
+     * {@link com.samhanair.logis.partnerorder.service.PartnerOrderConfirmService#confirm} 에서
+     * {@link com.samhanair.logis.partnerorder.domain.PartnerOrderHistory#ofOrder} 로 저장된다.
+     */
+    @Test
+    void confirm_records_history_event_confirmed() {
+        // ── given ──────────────────────────────────────────────────────────────
+        String partnerCode = "P-HISTORY";
+        UUID productId = UUID.randomUUID();
+
+        Mockito.lenient().when(dcConfigClient.fetchDcConfig(Mockito.anyString()))
+                .thenReturn(Map.of());
+        Mockito.lenient().when(productClient.lookup(Mockito.anyList()))
+                .thenReturn(List.of(new ProductSummary(
+                        productId, "히스토리 테스트 8kW", "HIST-8000", null,
+                        new BigDecimal("3000000"), "ACTIVE")));
+
+        ConfirmRequest request = new ConfirmRequest(List.of(
+                new ConfirmLineRequest(productId, "commercialMulti", 3, "hist-remark")));
+
+        // ── when ───────────────────────────────────────────────────────────────
+        ConfirmResponse response = confirmService.confirm(
+                partnerCode, "3333333333", "user-hist", "이히스토리", null, request);
+
+        // ── then: partner_order_history 검증 ─────────────────────────────────
+        var savedOrder = orderRepository.findByOrderNo(response.orderNo())
+                .orElseThrow(() -> new AssertionError("confirm 후 주문을 찾을 수 없음"));
+
+        var historyList = historyRepository.findAllByPartnerOrderIdOrderByOccurredAtAsc(
+                savedOrder.getId());
+
+        assertThat(historyList).isNotEmpty();
+        var confirmedEvent = historyList.stream()
+                .filter(h -> h.getEventType() == HistoryEventType.CONFIRMED)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("CONFIRMED history event row 없음"));
+
+        assertThat(confirmedEvent.getPartnerCode()).isEqualTo(partnerCode);
+        assertThat(confirmedEvent.getPartnerOrderId()).isEqualTo(savedOrder.getId());
     }
 }
