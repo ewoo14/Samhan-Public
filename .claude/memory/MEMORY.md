@@ -57,3 +57,6 @@
 - [주문→출고전표 전환 고도화 (차기 슬라이스)](project_order_slip_conversion.md) — 2026-05-30 개발책임자 업무규칙. 품목별 부분전환 + 다중주문 병합(헤더 충돌 선택/'/'병기) 신규. 견적→슬립·주문→슬립 1:1 은 이미 구현. Phase 2.4 주문 RESTORE 다음.
 - [🚨 가짜 데이터·목업·시뮬레이션 영구 배제](feedback_no_fake_data_ever.md) — 2026-05-30 개발책임자 강력 지시. 모든 진행에서 실데이터·실서버·실화면·실측정만. QA 스크린샷=실 캡처만(PIL 합성/VITE_MOCK_MODE fixture 화면 금지). 실연동 불가 시 "캡처 불가+사유" 정직 보고(가짜 생성 금지). Playwright mock 은 FE 단위테스트 한정, 실QA로 포장 금지. (PR #324 PIL 합성 위반 회고)
 - [로컬 Docker 스택 + 데스크톱 실 QA 함정](project_local_stack_qa_gotchas.md) — 2026-05-30 PR #320 회고. launch 스크립트는 jar 만 빌드(이미지 stale 가능 → `docker compose build <svc>` 재빌드). 게이트웨이 격차(/api/v1/partners StripPrefix vs 풀패스, /auth/** JwtAuthentication 미적용, X-User-Name 미주입→principal=UUID). Playwright route() :포트 직접 프록시 브리지 + DS Modal data-testid 미전달(role=dialog). react-query invalidate 누락 stale.
+- [재고조회 모달 (Phase 2.6d 후속)](project_inventory_lookup_modal_2_6d.md) — 2026-05-31. 주문/판매/구매 상세 품목 선택→창고별 재고 모달, 0수량 창고 숨김+토글, 가용/실/예약
+- [seeder product UUID 3-DB 정합](project_seed_product_uuid_catalog.md) — 2026-05-31 머지 #327. 4 seeder product key=실 modelName 결정적 UUID 통일 + product seeder @UuidGenerator 버그→jdbcTemplate native INSERT. cross-service QA 토대
+- [시리얼 인스턴스 재고 모델](project_serial_inventory_model.md) — 2026-05-31. 품목코드(그룹)→UUID(시리얼 PK). 카테고리로 개별시리얼/batch. 입고 구매·차용=생성/반품·회차=역FIFO 회수, 판매=FIFO 소진. 신규 대형 Phase spec(S1~S4)
