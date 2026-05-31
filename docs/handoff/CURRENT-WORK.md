@@ -4,6 +4,31 @@
 
 ---
 
+## 🧭 새 세션 시작 가이드 (2026-05-31 갱신)
+
+**현재 상태**: main `8fba1c52` 동기화, working tree 깨끗. Phase 2.6c(재고 예약) 머지 완료(#327). 진행 중 작업 없음 — 다음 슬라이스 **선택 대기**.
+**환경 메모**: ⚠️ Codex 6/1(월) 12:00 복구 전 → 구현+리뷰 모두 Claude 에이전트. 5-team 패턴 + 사이클 N=2 + Docker 실 QA([[no-fake-data-ever]]) + [[always-mouse-choices]] 유지.
+
+### 다음 후보 (개발책임자 마우스 선택 → spec/plan 있으면 바로 구현 착수)
+
+| # | 후보 | spec/메모리 | 진입 상태 |
+|---|---|---|---|
+| **A** | **시리얼 인스턴스 재고 모델** (대형) | spec `docs/superpowers/specs/2026-05-31-serial-instance-inventory-design.md` / [[project_serial_inventory_model]] | spec 박제 완료 → **writing-plans 부터**(S1 인스턴스 기반). 가장 큰 도메인 변화 |
+| **B** | **2.6d 품목 재고조회 모달** | [[project_inventory_lookup_modal_2_6d]] | spec 미작성 → **brainstorming/writing-plans 부터**. FE 중심, 백엔드 `GET /inventory/balances`(가용/실/예약) 기존재 |
+| **C** | **slip↔inventory 창고코드 정렬** (2.6c happy-path 잠금) | spec 미작성 | slip `app.publish.warehouse-code-map`=이카운트 레거시(`00003/2/14/1`) vs inventory 자체코드(`HQ-001` 등) 불일치. 정렬해야 전환 시 slip 발행 성공(현재 400) |
+| **D** | **2.6b 다중주문 병합 + confirm 자동발행 폐지** | `docs/superpowers/specs/2026-05-30-order-to-slip-conversion-design.md` §7 | 같은 거래처만·출고정보 '/'병기. confirm→주문만생성으로 분리 |
+| **E** | 품목코드 그룹 모델(product_code 1:N) | spec `docs/superpowers/specs/2026-05-31-product-code-grouping-design.md` | 옵션1(product_code 컬럼) 권장. A(시리얼)와 연계 — 통합 검토 가능 |
+
+> 권장 순서 의견(참고): A·E 는 도메인 근간이라 묶어 검토 가치. C 는 2.6c happy-path 마무리(소). B 는 독립 FE. 단 **최종 선택은 개발책임자**.
+
+### 재고 실 QA 재현 절차 (다음 세션 Docker QA 시 필수)
+1. seeder 멱등이라 재시드하려면 3-DB(product/inventory/partner_order) product 관련 테이블 `TRUNCATE CASCADE` 후 새 이미지 재기동.
+2. docker-compose.local-all.yml 에 product/inventory/slip/partner-order **seed 토글 미정의** → 재기동 시 `SAMHAN_<X>_SEED_TEST_DATA=true` 환경변수 주입 필요(override 파일 사용).
+3. slip/partner-order 호스트포트(8086/8088) influxd(PID 1956) 충돌 → override 로 `ports: !reset []`(컨테이너간 Eureka 통신만).
+4. 상세: [[project_seed_product_uuid_catalog]].
+
+---
+
 ## ✅ 2026-05-31 완료 — Phase 2.6c 주문→전환 시 재고 **예약(reserve)** 정합 **머지** (PR #327 squash `0299191b`)
 
 > ⚠️ Codex 6/1 12:00 복구 전 → 구현+리뷰 모두 Claude 에이전트 전면 대체.
