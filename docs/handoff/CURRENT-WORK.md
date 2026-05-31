@@ -6,9 +6,22 @@
 
 ## 🧭 새 세션 시작 가이드 (2026-05-31 갱신)
 
-**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. **D2 다중주문 병합 머지 완료**(#334 squash `f1de64d0`). 직전 6 슬라이스(C/D1/confirm복구/AC-1/AC-2/AC-3)에 이어 D2 추가.
+**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. **2.6d 재고조회 모달 머지 완료**(#335 squash `6e4ac58b`). 직전: D2 다중주문 병합(#334 `f1de64d0`).
 
-### ✅ 이번 세션 — D2 다중주문 병합 → 단일 출고전표 머지 (#334 `f1de64d0`, 2.6b ②)
+### ✅ 이번 세션 — 2.6d 품목 재고조회 모달 머지 (#335 `6e4ac58b`)
+주문/출고/입고 상세 품목 다중선택 → 창고별 가용/실/예약 매트릭스 모달(0수량 전창고 토글). **DECISIONS D-IL-01~06**. 읽기전용 FE + BE 1필드.
+- partner-order `LineResponse.productId` 노출(재고 batch 키, 화면 미노출) + FE `fetchProductBalancesMatrix`(batch 가용/실/예약 + listWarehouses 머지, **lines 기준 순회** — 잔량 없던 품목도 행 생성) + 신규 공유 `InventoryLookupModal`(셀 3줄, design-system 토큰: 가용0 danger·예약>0 warning, sticky 고정컬럼, th scope/caption/aria) + SlipDetailPage(기존 단일 alert 재고조회 대체)·SalesPartnerOrderDetailPage 배선.
+- 5-team 사이클 N=2 전원 APPROVE(사이클1 QA B-2 품목 행 누락 실버그·Designer 토큰화·FE 상태리셋 fix). CI 23잡 green(skipped=0). **Docker 실 QA PASS**(실 inventory_db — HQ-001 가용47/실50/예약3 등 psql 일치, 0토글 OFF/ON·VIRTUAL 제외 실 캡처 9장 `docs/qa/slice-2-6d-inventory-lookup/`). batch API/inventory 무변경 → 배포 partner-order→FE, Flyway 없음.
+- spec/plan/dev-report: `docs/.../2026-05-31-inventory-lookup-modal*` + design guide `docs/design/inventory-lookup-modal-guide.md`.
+- **⚠️ 후속(비차단)**: SlipFormPage StockBalanceModal 통합 / 시리얼 카운트 확장 / D2-6d Playwright CI 자동실행 / INBOUND seeder product_id 정합(구 TEST-MODEL UUID→실 modelName) / partner-order `/revisions` 500(별도).
+
+### 다음 후보 (개발책임자 선택)
+1. **A 시리얼 인스턴스 재고 모델** (대형, spec 박제됨 `2026-05-31-serial-instance-inventory-design`): writing-plans 부터.
+2. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터. 소규모.
+3. **D2/2.6d 후속 비차단 정리** (위 ⚠️ 항목 + 목록 배지 갱신 E2E / discountInfo 충돌헤더).
+4. **INBOUND/seeder 정합** (재고조회 입고 컨텍스트 실값 표시 토대).
+
+### ✅ (직전) D2 다중주문 병합 → 단일 출고전표 머지 (#334 `f1de64d0`, 2.6b ②)
 같은 거래처 DRAFT/ON_HOLD 주문 N개 → 단일 출고전표 병합 발행. **DECISIONS D-MRG-01~06**.
 - slip **V30 `slip_source_orders`**(N:1 헤더추적) + `publishFromOrdersMerge` + `findBySource` UNION 확장. partner-order `convertMerge`(reserve→발행→보상 N주문 일반화, 원자적) + `POST /convert-to-slip-merge`. desktop 다중선택 + `MergeConvertDialog`(충돌헤더 라디오/직접입력, danger 경고, 4-AND).
 - **전표번호 표준 = 슬래시 `YYYY/MM/DD-{번호}`**(화면/저장/본문). URL 경로 세그먼트만 공용 **`utils/orderNo.ts` `toOrderPathId`**(슬래시→하이픈, 게이트웨이 `%2F` 차단 회피, 단일주문 경로와 동일 규약). 개발책임자 지적 반영.
