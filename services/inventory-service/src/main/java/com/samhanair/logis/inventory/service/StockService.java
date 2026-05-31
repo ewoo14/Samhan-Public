@@ -85,6 +85,10 @@ public class StockService {
     /**
      * 예약 — availableQty 에서 reservedQty 로 이동. RESERVE movement 기록.
      *
+     * <p><b>멱등 보장</b>: referenceType + referenceId + productId 조합이 이미 RESERVE movement 로
+     * 기록된 경우 no-op 으로 기존 잔량을 그대로 반환한다 (Phase 2.6c 사전차단 멱등 가드).
+     * referenceType 또는 referenceId 가 null 이면 멱등 검사를 건너뛴다 (기존 호출 무영향).
+     *
      * @param req 예약 요청 (productId / warehouseId / quantity / referenceType / referenceId / note)
      * @param actorUserId 행위자 user-id
      * @return 예약 후 잔량을 담은 ReservationResponse
@@ -93,7 +97,29 @@ public class StockService {
      */
     public ReservationResponse reserve(ReserveRequest req, String actorUserId) {
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
-        StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
+        // 가용 재고가 없거나(balance 미존재) 부족한 경우 모두 CONFLICT(409) 사전차단 —
+        // Phase 2.6c §0 도메인 규칙: 입고된 적 없는 제품에 대한 예약도 동일하게 차단.
+        StockBalance balance = stockBalanceRepository
+                .findByProductIdAndWarehouse_IdAndIsDeletedFalse(req.productId(), req.warehouseId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONFLICT,
+                        "가용 재고가 없습니다: 해당 제품의 입고 이력이 없습니다"));
+
+        // 멱등 가드 — (referenceType, referenceId, productId, RESERVE) 중복 시 no-op 반환
+        // alreadyReserved=true 를 반환하여 호출자(PartnerOrderConvertService)가
+        // 보상 대상(reservedLines)에서 제외할 수 있도록 한다 (double-release 방지).
+        if (req.referenceType() != null && req.referenceId() != null) {
+            boolean alreadyReserved = stockMovementRepository
+                    .findByReferenceTypeAndReferenceIdAndProductIdAndMovementType(
+                            req.referenceType(), req.referenceId(),
+                            req.productId(), MovementType.RESERVE)
+                    .isPresent();
+            if (alreadyReserved) {
+                return new ReservationResponse(
+                        req.productId(), req.warehouseId(), req.quantity(),
+                        balance.getAvailableQty(), balance.getReservedQty(), actorUserId,
+                        true /* alreadyReserved — 실제 reservedQty 변동 없음 */);
+            }
+        }
 
         applyWithRetry(() -> balance.reserve(req.quantity()));
 
@@ -119,6 +145,23 @@ public class StockService {
     public ReservationResponse release(ReleaseRequest req, String actorUserId) {
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
         StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
+
+        // 멱등 가드 — 실제 RESERVE movement 가 없는 referenceId 에 대한 release no-op 처리.
+        // 멱등 no-op 예약 라인(alreadyReserved=true)이 compensateReserved 에서 잘못
+        // release 되는 경우 또는 보상 release 가 중복 호출되는 경우 reservedQty 음수 방지.
+        if (req.referenceType() != null && req.referenceId() != null) {
+            boolean hasReserveMovement = stockMovementRepository
+                    .findByReferenceTypeAndReferenceIdAndProductIdAndMovementType(
+                            req.referenceType(), req.referenceId(),
+                            req.productId(), MovementType.RESERVE)
+                    .isPresent();
+            if (!hasReserveMovement) {
+                // 대응하는 RESERVE movement 가 없으므로 no-op 반환 (reservedQty 불변)
+                return new ReservationResponse(
+                        req.productId(), req.warehouseId(), req.quantity(),
+                        balance.getAvailableQty(), balance.getReservedQty(), actorUserId);
+            }
+        }
 
         applyWithRetry(() -> balance.release(req.quantity()));
 

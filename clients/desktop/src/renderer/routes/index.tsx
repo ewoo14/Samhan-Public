@@ -182,6 +182,8 @@ import { DPS_COMPARE_ROLES } from '../api/dpsCompareApi'
 // [P0-B GAS 보강] 품목별 DPS 분석 (품목별 DPS 입고 pivot — WAREHOUSE/MANAGER/MASTER)
 import { DpsByProductPage } from './warehouse/DpsByProductPage'
 import { DPS_BY_PRODUCT_ROLES } from '../api/dpsByProductApi'
+// [Phase 2.6c] 재고 현황 조회 — 가용/실재고/예약 3구분 (WAREHOUSE/MANAGER/MASTER)
+import { InventoryStockBalancePage } from './warehouse/InventoryStockBalancePage'
 // [PR-E1 FE-6] 배차안내 SMS 발송 (preview + send 2-step) — DISPATCH / MANAGER / MASTER 가드
 import { DispatchSmsPage } from './DispatchSmsPage'
 import { DISPATCH_SMS_ROLES } from '../api/dispatchSmsApi'
@@ -332,6 +334,15 @@ const ACCOUNTING_ROLES = ['ACCOUNTANT', 'MANAGER', 'MASTER'] as const
 
 /** 재고 실사 권한 — WAREHOUSE / MASTER (사용자 요구). */
 const AUDIT_ROLES = ['WAREHOUSE', 'MASTER'] as const
+
+/**
+ * 재고 현황 조회 권한 — WAREHOUSE / MANAGER / MASTER.
+ *
+ * 창고 담당자(WAREHOUSE) + 운영 관리자(MANAGER) + 최고 관리자(MASTER) 에 한해 접근.
+ * 영업(SALES) / 회계(ACCOUNTANT) / 배차(DISPATCH) 는 재고 현황 직접 조회 불가.
+ * BE: inventory-service `GET /inventory/balances` @PreAuthorize 와 1:1 일치.
+ */
+const STOCK_BALANCE_ROLES = ['WAREHOUSE', 'MANAGER', 'MASTER'] as const
 
 /** P0-9 입고 검수 권한 — WAREHOUSE / MANAGER / MASTER (재고 적용 권한과 일치). */
 const INBOUND_INSPECTION_ROLES = ['WAREHOUSE', 'MANAGER', 'MASTER'] as const
@@ -566,6 +577,17 @@ const router = createHashRouter([
             <PermissionGuard pageCode="purchases.receipt-ocr" action="view">
               <PurchaseSlipOcrUploadPage />
             </PermissionGuard>
+          </RoleGuard>
+        ),
+      },
+
+      // [Phase 2.6c] 재고 현황 — 가용/실재고/예약 3구분 (STOCK_BALANCE_ROLES 가드).
+      // 접근 허용: WAREHOUSE / MANAGER / MASTER (SALES / ACCOUNTANT / DISPATCH 차단).
+      {
+        path: '/inventory/stock-balance',
+        element: (
+          <RoleGuard allow={STOCK_BALANCE_ROLES}>
+            <InventoryStockBalancePage />
           </RoleGuard>
         ),
       },
