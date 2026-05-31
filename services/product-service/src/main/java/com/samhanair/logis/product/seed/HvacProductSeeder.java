@@ -39,6 +39,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>이중 가드</b>: {@code @Profile("dev")} + {@code app.product.seed-test-data=true} 둘 다 만족 시만 실행.
  * application.yml default false. ProductSeedRunner 의 {@code @Profile("seed")} 와는 직교 (서로 배타).
  *
+ * <p><b>serial_managed 보장</b>: V9 Flyway SQL 이 이미 에어컨 계열 카테고리의
+ * {@code serial_managed=true} 를 DB 에 적용하지만, seeder 가 카테고리를 메모리에 로드한 후
+ * {@link Category#markSerialManaged(boolean)} 을 호출하여 JPA 영속성 컨텍스트 내에서도
+ * 일관성을 보장한다 (Flyway 없이 seeder 만 도는 테스트 컨텍스트 대비).
+ *
  * <p><b>HVAC 단가 6종 비즈니스 룰</b> (이카운트 매트릭스):
  * <ul>
  *     <li>입고단가 (inboundPrice) = tonnage * 100,000 base</li>
@@ -79,11 +84,13 @@ public class HvacProductSeeder implements CommandLineRunner {
     private static final BigDecimal RATE_ITEM_35  = new BigDecimal("1.30");
 
     /** V2 product_categories 시드의 결정적 UUID (V2__seed_product_categories.sql 와 1:1). */
+    private static final java.util.UUID CAT_HVAC_ROOT      = java.util.UUID.fromString("00000000-0000-0000-0000-000000001001");
+    /** V9 UPDATE 대상: 실내기 루트 카테고리 (INDOOR_WALL/INDOOR_CEILING 의 부모). */
+    private static final java.util.UUID CAT_INDOOR         = java.util.UUID.fromString("00000000-0000-0000-0000-000000001002");
+    private static final java.util.UUID CAT_OUTDOOR        = java.util.UUID.fromString("00000000-0000-0000-0000-000000001003");
     private static final java.util.UUID CAT_INDOOR_WALL    = java.util.UUID.fromString("00000000-0000-0000-0000-000000001004");
     private static final java.util.UUID CAT_INDOOR_CEILING = java.util.UUID.fromString("00000000-0000-0000-0000-000000001005");
-    private static final java.util.UUID CAT_OUTDOOR        = java.util.UUID.fromString("00000000-0000-0000-0000-000000001003");
     private static final java.util.UUID CAT_PIPING         = java.util.UUID.fromString("00000000-0000-0000-0000-000000001006");
-    private static final java.util.UUID CAT_HVAC_ROOT      = java.util.UUID.fromString("00000000-0000-0000-0000-000000001001");
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
@@ -102,16 +109,28 @@ public class HvacProductSeeder implements CommandLineRunner {
     public void run(String... args) {
         // 카테고리 prefetch — 100건 INSERT 동안 매번 lookup 회피
         Map<java.util.UUID, Category> catCache = new HashMap<>();
+        loadCategory(catCache, CAT_HVAC_ROOT);
+        loadCategory(catCache, CAT_INDOOR);
+        loadCategory(catCache, CAT_OUTDOOR);
         loadCategory(catCache, CAT_INDOOR_WALL);
         loadCategory(catCache, CAT_INDOOR_CEILING);
-        loadCategory(catCache, CAT_OUTDOOR);
         loadCategory(catCache, CAT_PIPING);
-        loadCategory(catCache, CAT_HVAC_ROOT);
 
         if (catCache.isEmpty()) {
             log.warn("HvacProductSeeder skipped — V2 product_categories seed missing (categoryRepository empty)");
             return;
         }
+
+        // 에어컨 계열 카테고리 serial_managed=true 보장
+        // V9 Flyway SQL 이 DB 에 이미 적용하지만, JPA 영속성 컨텍스트 내 일관성 보장
+        // (Flyway 없이 seeder 만 도는 테스트 컨텍스트, H2 in-memory 환경 대비)
+        // V9 UPDATE 대상 5종: HVAC/INDOOR/OUTDOOR/INDOOR_WALL/INDOOR_CEILING 모두 포함
+        markSerialManagedIfPresent(catCache, CAT_HVAC_ROOT);
+        markSerialManagedIfPresent(catCache, CAT_INDOOR);
+        markSerialManagedIfPresent(catCache, CAT_OUTDOOR);
+        markSerialManagedIfPresent(catCache, CAT_INDOOR_WALL);
+        markSerialManagedIfPresent(catCache, CAT_INDOOR_CEILING);
+        // CAT_PIPING 은 batch 관리 — serial_managed=false 유지 (기본값)
 
         List<SeedRow> rows = buildAllRows();
         int created = 0;
@@ -141,6 +160,20 @@ public class HvacProductSeeder implements CommandLineRunner {
 
     private void loadCategory(Map<java.util.UUID, Category> cache, java.util.UUID id) {
         categoryRepository.findById(id).ifPresent(c -> cache.put(id, c));
+    }
+
+    /**
+     * 캐시에 카테고리가 존재하면 {@code serialManaged=true} 로 지정.
+     * V9 Flyway 가 DB 에 적용하는 UPDATE 와 동일 효과를 JPA 레이어에서 보장하기 위함.
+     *
+     * @param cache 카테고리 캐시 맵
+     * @param id    대상 카테고리 UUID
+     */
+    private void markSerialManagedIfPresent(Map<java.util.UUID, Category> cache, java.util.UUID id) {
+        Category category = cache.get(id);
+        if (category != null) {
+            category.markSerialManaged(true);
+        }
     }
 
     private Product buildProduct(SeedRow row, Map<java.util.UUID, Category> catCache) {
