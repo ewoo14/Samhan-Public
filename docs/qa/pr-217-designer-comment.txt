@@ -1,0 +1,67 @@
+## Designer 리뷰 — SP-08-4-2 사이클 2 (head 67791758)
+
+### 검증 1 · 4 PNG 시각 sweep (이카운트 reference 16장 대조)
+
+`docs/migration/ecount-reference/` 16장 전수 확인. 이카운트 거래처등록/품목등록/판매조회 캡처 기준으로 현재 SalesPartnerOrderDetailPage 화면 필드 레이블을 대조했다.
+
+- 영문/기술 용어 잔존 없음 ("partnerCode" 등 raw key 노출 없음).
+- "Fax" / "Email" 은 이카운트 reference 자체에 영문 그대로 사용 (고유명사) — 당 화면에는 해당 필드 없으므로 해당 없음.
+- PNG 4장 이상 이슈 없음. **합격**.
+
+---
+
+### 검증 2 · design-system Input readOnly 적용 (line 178~203)
+
+사이클 1 이전 `_codex_commit_repo` 원본 (line 178~203): **native `<input readOnly>` / `<textarea readOnly>`** 7건.
+
+사이클 1.5 fix 후 PR #217 head (line 178~203): **`<Input readOnly inputSize="sm" value={...} />`** 7건 (거래처코드·연결전표·배송지·현장·연락처·납기·요청사항).
+
+- `@samhan/design-system` `Input` 컴포넌트 forwardRef 확인: `readOnly` 는 `InputHTMLAttributes<HTMLInputElement>` 를 통해 `...rest` 로 native `<input>` 에 전달됨.
+- `inputSize="sm"` → `size-sm` class: `height: 28px; padding: 0 var(--space-2); font-size: var(--font-size-sm)` — 폼 조회 전용 소형 인풋 적절.
+
+**단, P1 신규 결함 — `Input.module.css` 에 `:read-only` 시각 스타일 없음.**
+native `<input readonly>` 는 브라우저 기본으로 배경 회색 처리되나, design-system `Input.module.css` 에는 `.input:read-only { ... }` 선언이 없다. 결과적으로 readOnly Input 이 editable Input 과 시각적으로 구분되지 않음 — 조회 전용 필드임을 사용자가 인지 불가. 이카운트 reference 거래처등록 캡처에서 조회 전용 필드는 배경색 구분 또는 커서 변경으로 명확히 구분된다.
+
+권고: `Input.module.css` 에 아래 추가 필요 (다음 사이클).
+```css
+.input:read-only {
+  background-color: var(--color-bg-muted);
+  cursor: default;
+}
+```
+
+---
+
+### 검증 3 · font-family Pretendard 정합 (사이클 1 false positive dismiss 적절성)
+
+- `sales.module.css` line 24: `.salesScope { font-family: var(--font-family-sans); }` — 컴포넌트 최상위 scope 에 Pretendard 적용.
+- `tokens.css` `--font-family-sans`: `"Pretendard Variable", Pretendard, -apple-system, ...` 정의 완비.
+- `Input.module.css` line 20: `.input { font-family: var(--font-family-sans); }` — Input 컴포넌트 자체도 토큰 직접 인용.
+- `sales.module.css` line 744/774: 인쇄 전용 `.printPaperLegacy` / `.printTableLegacy` 한정 `font-family: 'Malgun Gothic', system-ui, sans-serif` — 인쇄 명조계열 예외 (디자인 원칙 허용 범위).
+
+**사이클 1 false positive dismiss 적절. Pretendard 정합 이상 없음.**
+
+---
+
+### 검증 4 · 신규 발견
+
+**P2 — 요청사항 필드 Input/Textarea 불일치.**
+사이클 1 이전 원본에서 `요청사항` 은 `<textarea readOnly>` 였으나, 사이클 1.5 fix 후 `<Input readOnly>` (단일 라인) 로 교체됨. 긴 메모 내용이 잘릴 수 있음. 이카운트 reference 거래처등록 캡처의 `적요` / `특이사항` 필드는 멀티라인 textarea 형태. design-system 에 `Textarea` 컴포넌트가 없다면 `<Input as="textarea">` 또는 native textarea 에 design-system 클래스 적용 방안 검토 권고.
+
+**P3 — `style={{ fontSize: 11 }}` inline magic number (line 244).**
+`expandedComponents` 렌더 셀에 `style={{ fontSize: 11 }}` inline 사용. 토큰 `--font-size-xs: 12px` 또는 `--font-size-sm: 13px` 대신 magic number 11 (단위 없음 → `px` 추론). 다음 사이클 토큰 치환 권고.
+
+---
+
+### 종합 판정
+
+| 항목 | 결과 |
+|---|---|
+| 4 PNG 영문 잔존 | 합격 |
+| native input 8건 → DS Input readOnly | 합격 (7건 확인) |
+| font-family Pretendard 정합 | 합격 (false positive dismiss 적절) |
+| `:read-only` 시각 스타일 미선언 | **P1 — 다음 사이클 필수 반영** |
+| 요청사항 Input/Textarea 불일치 | P2 |
+| fontSize 11 magic number | P3 |
+
+P1 은 사이클 3 (후속 CSS 패치) 에서 `Input.module.css` 수정 요청. P2·P3 는 백로그 등록 권고. 현재 PR 머지 블록 없음 (P1 은 시각 regression 이지 기능 차단 아님).

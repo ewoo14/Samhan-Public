@@ -1,0 +1,11 @@
+# 호스트 포트 충돌 우회 overlay
+# influxd(PID 2704)가 8086/8088 점유 → slip-service/partner-order-service 호스트 포트 제거
+# 컨테이너 간 Eureka 통신(내부 네트워크)은 유지됨
+# psql 검증은 samhan-postgres:5432 직접 접근으로 대체
+
+services:
+  slip-service:
+    ports: !reset []
+
+  partner-order-service:
+    ports: !reset []

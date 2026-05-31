@@ -67,6 +67,14 @@ test-results/
 *~
 test_raw.json
 tempit_raw.json
+*.home-bak
+
+# ----- 머신-로컬 설정 (커밋 금지 — PC별 상이) -----
+.mcp.json
+
+# ----- pnpm 미사용 (clients 는 npm — package-lock.json) -----
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # ----- Codex 로컬 캐시/워크스페이스 (회사 PC 핸드오프 산출물 — 커밋 금지) -----
 .gradle-codex/

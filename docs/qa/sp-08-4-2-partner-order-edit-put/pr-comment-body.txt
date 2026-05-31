@@ -1,0 +1,41 @@
+## Designer 리뷰 — SP-08-4-2 사이클 1 (head 76ac6ef8)
+
+> 검증 범위: 4 PNG 시각 · design-system 컴포넌트 적용 · status badge 토큰 · SP-08-4-1 회고 회피
+
+---
+
+### Major 결함 (머지 전 필수 수정)
+
+| # | 위치 | 내용 |
+|---|------|------|
+| M-1 | `SalesPartnerOrderDetailPage.tsx` L178–203 | read-only 상세 뷰에 native `<input readOnly>` 7개 + `<textarea readOnly>` 1개 잔존. `@samhan/design-system` `Input readOnly` prop 으로 전량 교체 필요. edit form(Modal 내부) 은 DS Input/Select 정상 적용되어 있으나, 상세 카드 섹션이 누락됨. |
+| M-2 | `sales.module.css` L24 | `.salesScope { font-family: system-ui, sans-serif }` 가 전역 Pretendard (`var(--font-family-sans)`) 를 오버라이드. 디자인 원칙(Pretendard 9-weight self-host) 위반. `font-family: var(--font-family-sans)` 로 교체 요망. |
+
+---
+
+### Minor 결함 (다음 사이클 반영 권장)
+
+| # | 위치 | 내용 |
+|---|------|------|
+| m-1 | `SalesPartnerOrderDetailPage.tsx` L350–356 | `<Input label="요청사항">` 이 단행 입력으로 렌더링. 멀티라인 메모 UX 를 위해 DS `Input` 의 `as="textarea"` prop 또는 별도 textarea 래퍼 사용 권장 (01 PNG 에서 단행으로 표시). |
+| m-2 | `SalesPartnerOrderDetailPage.tsx` L279 | `entry.field` 를 직접 화면 출력. BE 가 한국어 반환 시 무해하나, 영문 DB 컬럼명 fallback 가드(필드명 → 한국어 라벨 매핑 상수) 추가 권장. |
+
+---
+
+### 통과 항목
+
+- **영문/기술 용어 잔존 없음**: 4 PNG 전체 헤더·라벨 한국어 확인 (주문서 수정 / 주문서 재확인 / 수정 이력 / 거래처 권한 화면).
+- **Modal 적용 정상**: edit form 은 DS `Modal(size="xl")` + `Button(variant="primary/secondary")` 정확히 사용.
+- **Select 적용**: 라인 내 구분 Select — DS `Select` 컴포넌트 정상 사용.
+- **status badge 토큰 정합**: `statusDraft/Confirmed/Sent/Canceled` 모두 `var(--state-*)` CSS 변수 참조. SP-08-4-1 lesson 반영 확인.
+- **SP-08-4-1 회고 회피**: footer/DOM 내 `내부 식별자` 노출 패턴 없음. `actorId` 는 화면 미노출(`actorName` 만 표시).
+- **UUID 비공개 가드**: URL 파라미터 `:id` 는 `orderNumber`(비즈니스 식별자) decode 후 사용. `id` 자체를 UI 에 출력하는 경우는 `orderNumber` 미수신 시 fallback 뿐이며, orderNumber 는 UUID 아님.
+- **충돌 배너**: 409 conflict 시 DS `Button(variant="secondary")` 내 한국어 CTA "최신 내용 불러오기" — 기술 용어 없음.
+
+---
+
+### 종합
+
+edit form(Modal 내부) 의 DS 컴포넌트 적용은 완성도 높음. **M-1(native input 잔존)** 과 **M-2(Pretendard 오버라이드)** 두 항목이 디자인 시스템 일관성 규칙 위반으로 머지 전 수정 필요. Minor 2건은 다음 iteration 에서 반영 가능.
+
+**판정: CHANGES_REQUESTED (M-1, M-2 수정 후 재리뷰)**
