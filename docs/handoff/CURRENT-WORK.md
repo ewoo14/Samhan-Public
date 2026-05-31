@@ -6,13 +6,21 @@
 
 ## 🧭 새 세션 시작 가이드 (2026-05-31 갱신)
 
-**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. 이번 세션 **6 슬라이스 머지**: C 창고코드정렬(#328)·D1 confirm자동발행폐지(#329)·confirm경로복구(#330)·AC-1 창고자동완성(#331)·AC-2 품목자동완성(#332)·**AC-3 거래처자동완성(#333 `d87ab22b`)**. 🎉 **마스터데이터 자동완성 트리오(창고·품목·거래처) 완료** (DECISIONS D-AC/D-AC2/D-AC3, design-system WarehouseAutocomplete/ProductAutocomplete/PartnerAutocomplete, 전표작성 SlipFormPage 배선).
+**현재 상태**: 진행 중 작업 없음 — **다음 슬라이스 선택 대기**. **D2 다중주문 병합 머지 완료**(#334 squash `f1de64d0`). 직전 6 슬라이스(C/D1/confirm복구/AC-1/AC-2/AC-3)에 이어 D2 추가.
+
+### ✅ 이번 세션 — D2 다중주문 병합 → 단일 출고전표 머지 (#334 `f1de64d0`, 2.6b ②)
+같은 거래처 DRAFT/ON_HOLD 주문 N개 → 단일 출고전표 병합 발행. **DECISIONS D-MRG-01~06**.
+- slip **V30 `slip_source_orders`**(N:1 헤더추적) + `publishFromOrdersMerge` + `findBySource` UNION 확장. partner-order `convertMerge`(reserve→발행→보상 N주문 일반화, 원자적) + `POST /convert-to-slip-merge`. desktop 다중선택 + `MergeConvertDialog`(충돌헤더 라디오/직접입력, danger 경고, 4-AND).
+- **전표번호 표준 = 슬래시 `YYYY/MM/DD-{번호}`**(화면/저장/본문). URL 경로 세그먼트만 공용 **`utils/orderNo.ts` `toOrderPathId`**(슬래시→하이픈, 게이트웨이 `%2F` 차단 회피, 단일주문 경로와 동일 규약). 개발책임자 지적 반영.
+- 5-team 사이클 N=2 전원 APPROVE. CI 23잡 green(skipped=0). **Docker 실 QA PASS**(실 gateway+JWT+DB — slip `2026/05/31-10` 발행 + `slip_source_orders` 2행 + `converted_quantity` 누적 + inventory RESERVE psql 실적중, 캡처 09장 `docs/qa/slice-d2-order-merge/`). 실 QA가 **FE-BUG-1**(병합 모달 슬래시 주문번호 `%2F`→게이트웨이 400, mock 미검출) 적발·수정.
+- spec/plan/dev-report/런북: `docs/superpowers/{specs,plans}/2026-05-31-order-merge-to-slip*` + `docs/dev-reports/slice-d2-order-merge-to-slip.md` + `docs/runbooks/d2-order-merge-deploy.md`.
+- **⚠️ 후속(비차단)**: 병합 성공 후 목록 배지 갱신 E2E(invalidate 로직은 존재) / discountInfo 충돌헤더(PartnerOrderDetail 미보유, BE 보강) / D2 Playwright CI 자동실행 게이트 / 공용 `AsyncAutocomplete<T>` 추출.
 
 ### 다음 후보 (개발책임자 선택)
-1. **D2 다중주문 병합** (2.6b ②): slip N:1 출처추적(slip V10) + `from-orders-merge` API + 헤더 '/'병기(같은 거래처) + FE 다중선택. spec `2026-05-30-order-to-slip-conversion-design` §7. (D1 confirm 폐지로 DRAFT→convert 일원화 토대 완성.)
-2. **B 2.6d 재고조회 모달** ([[project_inventory_lookup_modal_2_6d]]): 주문/판매/구매 상세 품목 선택→창고별 재고 모달(가용/실/예약, 0수량 토글). FE 중심.
-3. **A 시리얼 인스턴스 재고 모델** (대형, spec 박제됨 `2026-05-31-serial-instance-inventory-design`): writing-plans 부터.
-4. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터(+WarehouseAutocomplete sync 변형 통합). 소규모 정리.
+1. **B 2.6d 재고조회 모달** ([[project_inventory_lookup_modal_2_6d]]): 주문/판매/구매 상세 품목 선택→창고별 재고 모달(가용/실/예약, 0수량 토글). FE 중심, 백엔드 `GET /inventory/balances` 기존재. spec 미작성 → brainstorming 부터.
+2. **A 시리얼 인스턴스 재고 모델** (대형, spec 박제됨 `2026-05-31-serial-instance-inventory-design`): writing-plans 부터.
+3. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터(+WarehouseAutocomplete sync 변형 통합). 소규모 정리.
+4. **D2 후속 비차단 정리** (위 ⚠️ 항목).
 
 ### ⚠️ 미해결 후속 (비차단)
 - **confirm DC 실적용**: confirm 은 정상 partnerCode 전송하나 **partner_order_db ↔ dc_config_db 거래처코드 시드 불일치**로 로컬 실 confirm DC fail-soft(정상가). 시드 정합(DevOps/seed) 후 실 confirm DC 재-QA. (#330 QA 발견.)
