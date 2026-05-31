@@ -6,7 +6,8 @@
 
 ## 🧭 새 세션 시작 가이드 (2026-05-31 갱신)
 
-**현재 상태**: **confirm 경로 복구(DC price-calc 정식 연동 + FE res.ok) 구현 완료** — 브랜치 `fix/confirm-recovery-dc-price-calc`(BE `e85f45f3` + FE `70dacf5f` + docs). **PR 발행 + 5-team + Docker 실 QA 대기**. 슬라이스 C(#328 `ed7bebee`)·D1(#329 `8ff363f1`) 머지 완료. (순서 = C✅→D1✅→**confirm복구(진행)**→AC-1 창고자동완성→AC-2 품목→AC-3 거래처→D2 병합→B→A.)
+**현재 상태**: **AC-1(창고 자동완성) 진입** — confirm 경로 복구 머지 완료(#330 `6732f7de`). C(#328)·D1(#329)·confirm복구(#330) 머지 완료. (순서 = C✅→D1✅→confirm복구✅→**AC-1(진행)**→AC-2 품목→AC-3 거래처→D2 병합→B→A.)
+**⚠️ confirm 복구 후속(비차단)**: ① **partner_order ↔ dc-config 거래처코드 시드 정합**(DevOps/seed) — 정합 후 실 confirm DC 실적용 재-QA(현재 로컬 시드 불일치로 fail-soft, 코드는 정상 partnerCode 전송). ② order-app FE "전송 완료" 실 캡처(partner_auth 시드 부재로 #330 QA BLOCKED). ③ confirm 옵션 정액 DC / estimate price-calc / N-1 P2.
 **환경 메모**: ⚠️ Codex 6/1(월) 12:00 복구 전 → 구현+리뷰 모두 Claude 에이전트. 5-team 패턴 + 사이클 N=2 + Docker 실 QA([[no-fake-data-ever]]) + [[always-mouse-choices]] 유지.
 
 ### 🚧 confirm 경로 복구 구현 완료 (브랜치 `fix/confirm-recovery-dc-price-calc`, 머지 전)
