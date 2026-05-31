@@ -60,3 +60,4 @@
 - [재고조회 모달 (Phase 2.6d 후속)](project_inventory_lookup_modal_2_6d.md) — 2026-05-31. 주문/판매/구매 상세 품목 선택→창고별 재고 모달, 0수량 창고 숨김+토글, 가용/실/예약
 - [seeder product UUID 3-DB 정합](project_seed_product_uuid_catalog.md) — 2026-05-31 머지 #327. 4 seeder product key=실 modelName 결정적 UUID 통일 + product seeder @UuidGenerator 버그→jdbcTemplate native INSERT. cross-service QA 토대
 - [시리얼 인스턴스 재고 모델](project_serial_inventory_model.md) — 2026-05-31. 품목코드(그룹)→UUID(시리얼 PK). 카테고리로 개별시리얼/batch. 입고 구매·차용=생성/반품·회차=역FIFO 회수, 판매=FIFO 소진. 신규 대형 Phase spec(S1~S4)
+- [전표/주문번호 표준 = 슬래시 YYYY/MM/DD-{번호}](feedback_slip_order_number_format.md) — 2026-05-31 개발책임자 정정(D2 #334). 화면/저장/본문 전부 슬래시. 하이픈은 URL 경로 세그먼트만(게이트웨이 %2F 차단) → 공용 utils/orderNo.ts toOrderPathId 재사용. PartnerOrderIdResolver 양용. mock 미검출→경로번호 신규화면 Docker 실QA 필수
