@@ -4,7 +4,7 @@
 
 ---
 
-## 🔥 2026-05-31 진행 중 — Phase 2.6c 주문→전환 시 재고 **예약(reserve)** 정합
+## ✅ 2026-05-31 완료 — Phase 2.6c 주문→전환 시 재고 **예약(reserve)** 정합 **머지** (PR #327 squash `0299191b`)
 
 > ⚠️ Codex 6/1 12:00 복구 전 → 구현+리뷰 모두 Claude 에이전트 전면 대체.
 
@@ -16,7 +16,23 @@
 - **confirm 의 주문확정-reserve 제거**(주문 무영향). confirm 자동발행 자체 폐지는 2.6b.
 - **전환으로 생성된 출고전표(판매전표)는 새 전표 → 발행 즉시 불변(SENT)**. 기존/타 경로 전표는 회귀방지 위해 현행 유지.
 
-**진행 상태**: spec(`docs/superpowers/specs/2026-05-30-inventory-deduction-on-convert-2-6c-design.md` §0 모델정정)/plan(`docs/superpowers/plans/2026-05-30-inventory-deduction-2-6c.md`) 커밋 완료. backend reserve 재구현 진행 중(⚠️ 초기 deduct 오구현 → 전량 폐기 후 reserve 로 재시작). FE 전환 409 에러 UX 완료(기존 핸들러 재사용), **재고화면 가용/실/예약 표시 + mock.ts 정리는 backend API 확정 후**.
+**머지 산출**:
+- BE: inventory `by-code` internal endpoint + reserve 멱등(V14 partial unique index) + 가용/실/예약 조회. partner-order convert 재설계(warehouseId 변환→라인별 reserve→slip 발행→실패 시 release 보상→converted 누적). confirm reserve 제거. slip PARTNER_ORDER 전표 SENT 불변(수정/삭제/cancel 409).
+- FE: 재고현황 페이지(`/inventory/stock-balance`, 가용/실/예약 DataGrid) + 전환 409 에러 UX.
+- **실 결함 2건 수정(Docker 실 QA 발견, IT @MockBean 미검출)**: ① SlipServiceClient 경로(`/api/v1/slips/...`) ② **InventoryClient X-User-Role:MASTER 헤더 누락→403**.
+- **seed product UUID 3-DB 정합**(근본 인프라 수정): 4 seeder product key 통일(modelName 결정적 UUID) + product seeder `@UuidGenerator` 덮어쓰기 버그 → jdbcTemplate native INSERT. → products/stock_balances/partner_order_lines product_id 정렬(cross-service join 가능).
+- **사이클 N=2 APPROVE**(BE/FE/Designer/QA/DevOps). CI 23 job green(skipped=0). **Docker 실 QA**: 전환→예약(RESERVE+2)→slip 발행실패→release 보상(RELEASE+2)→재고 원상복구 end-to-end 실 DB 증명(`docs/qa/phase-2-6c-inventory-deduction/real-qa-evidence.md`).
+- spec/plan: `docs/superpowers/{specs,plans}/2026-05-30-inventory-deduction-*`.
+
+**⚠️ 2.6c 잔여/후속**:
+- **slip↔inventory 창고코드 불일치**: slip `warehouse-code-map`=이카운트 레거시(`00003/2/14/1`), inventory=자체코드(`HQ-001` 등). 전환 happy-path(slip 발행 성공)는 이 정렬 후 가능 — 2.6c 범위 밖 별도 통합 과제.
+- 실재고 차감(deduct)=출고확정 단계(후속). 2.6c 수량 reserve → 시리얼 인스턴스 RESERVED 통합(시리얼 Phase).
+
+### 다음 슬라이스 후보 (개발책임자 결정 — [[always-mouse-choices]])
+1. **시리얼 인스턴스 재고 모델** (신규 대형 Phase, spec `docs/superpowers/specs/2026-05-31-serial-instance-inventory-design.md`): 품목코드(그룹)→시리얼 UUID 인스턴스. 카테고리로 개별시리얼(에어컨/판넬)/batch(부자재) 분기. 입고 구매/차용=생성·반품/회차=역-FIFO 회수, 판매=FIFO 소진+출고처 기록. S1 인스턴스 기반→S2 입고→S3 출고→S4 회수.
+2. **2.6d 품목 재고조회 모달**(주문/판매/구매 상세, 0수량 창고 토글, 가용/실/예약) — [[project_inventory_lookup_modal_2_6d]].
+3. **2.6b** 다중주문 병합 + confirm 자동발행 폐지(같은 거래처·'/'병기).
+4. **slip↔inventory 창고코드 정렬**(전환 happy-path 잠금) / 품목코드 그룹 모델 product_code(spec `2026-05-31-product-code-grouping-design.md`).
 
 **다음 단계**: backend 완료 → FE 재고화면 → PM 통합 빌드 → 5팀 사이클 N=2 → CI(skipped=0) → Docker 실 QA(실 inventory_db 예약 row psql 증빙) → 머지.
 **배포 순서**: inventory(by-code+reserve 멱등) → slip(전환전표 불변) → partner-order(convert 예약+사전차단+보상, confirm reserve 제거).
