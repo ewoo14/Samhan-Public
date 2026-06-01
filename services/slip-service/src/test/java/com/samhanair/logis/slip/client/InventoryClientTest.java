@@ -25,6 +25,7 @@ import org.springframework.web.client.RestClient;
 class InventoryClientTest {
 
     private static final String TOKEN = "test-token-xyz";
+    private static final String INTERNAL_CALLER_ID = "00000000-0000-0000-0000-000000000000";
 
     private MockRestServiceServer server;
     private InventoryClient client;
@@ -87,6 +88,19 @@ class InventoryClientTest {
 
         client.inbound(UUID.randomUUID(), UUID.randomUUID(), 10,
                 "2026/05/04-1", new BigDecimal("100.00"));
+        server.verify();
+    }
+
+    @Test
+    void inboundInstances_callsInstancesBatchEndpoint_withInternalToken() {
+        server.expect(requestTo("http://inventory-service/inventory/instances/batch"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", INTERNAL_CALLER_ID))
+                .andRespond(withStatus(HttpStatus.CREATED));
+
+        client.inboundInstances(UUID.randomUUID(), "AC-S2", UUID.randomUUID(), 2,
+                "구매", "S2-INB-001", new BigDecimal("500000.00"));
         server.verify();
     }
 

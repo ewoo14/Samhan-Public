@@ -29,12 +29,17 @@ import com.samhanair.logis.slip.web.dto.UpdateSlipDriverRequest;
 import com.samhanair.logis.slip.web.dto.UpdateSlipRequest;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -633,13 +638,13 @@ public class SlipService {
 
     /**
      * 처리완료 — INSPECTING → COMPLETED. OUTBOUND 면 라인별 deduct(fromReservation=true),
-     * INBOUND 면 라인별 inbound 호출.
+     * INBOUND 면 serial-managed 품목은 인스턴스 배치 입고, batch 품목은 기존 lot 입고를 호출한다.
      *
      * <p>Slice A (sales-polish-2) 변경: 직전 단계가 PROCESSING → INSPECTING 으로 변경.
      * 재고 차감 시점은 그대로 complete 시점 유지 — 검수는 단순 확인 단계, 재고는
      * 이미 reserve 되어 있고 출고 완료 시점에 deduct 가 의미적으로 정확.
      *
-     * @throws BusinessException(CONFLICT) 상태 불일치, 재고 부족
+     * @throws BusinessException(CONFLICT) 상태 불일치, 재고 부족, 회수 입고 태그(RETURN/RETURN_TRIP)
      * @throws BusinessException(INTERNAL_ERROR) inventory-service 호출 실패
      */
     public SlipDetailResponse complete(UUID id) {
@@ -651,12 +656,85 @@ public class SlipService {
                         line.getQuantity(), true, SLIP_REF_TYPE, slip.getId());
             }
         } else {
+            Map<UUID, ProductSummary> productsById = new HashMap<>();
+            Map<UUID, SerialInboundGroup> serialGroups = new LinkedHashMap<>();
             for (SlipLine line : slip.getLines()) {
-                inventoryClient.inbound(line.getProductId(), slip.getDestinationWarehouseId(),
-                        line.getQuantity(), slip.getSlipNo(), line.getUnitPrice());
+                ProductSummary product = productClient.requireExists(line.getProductId());
+                productsById.put(line.getProductId(), product);
+                if (product.serialManaged()) {
+                    serialGroups.compute(line.getProductId(), (ignored, group) -> {
+                        if (group == null) {
+                            return SerialInboundGroup.from(product, line);
+                        }
+                        group.add(line);
+                        return group;
+                    });
+                }
+            }
+
+            Set<UUID> dispatchedSerialProducts = new HashSet<>();
+            for (SlipLine line : slip.getLines()) {
+                ProductSummary product = productsById.get(line.getProductId());
+                if (!product.serialManaged()) {
+                    inventoryClient.inbound(line.getProductId(), slip.getDestinationWarehouseId(),
+                            line.getQuantity(), slip.getSlipNo(), line.getUnitPrice());
+                    continue;
+                }
+                if (dispatchedSerialProducts.add(line.getProductId())) {
+                    SerialInboundGroup group = serialGroups.get(line.getProductId());
+                    inventoryClient.inboundInstances(line.getProductId(), product.productCode(),
+                            slip.getDestinationWarehouseId(), group.quantity(),
+                            resolveInboundType(slip), slip.getSlipNo(), group.weightedUnitCost());
+                }
             }
         }
         return SlipDetailResponse.from(slip);
+    }
+
+    private String resolveInboundType(Slip slip) {
+        DeliveryTag tag = slip.getDeliveryTag();
+        if (tag == DeliveryTag.BORROW) {
+            return "차용";
+        }
+        if (tag == DeliveryTag.RETURN || tag == DeliveryTag.RETURN_TRIP) {
+            throw new BusinessException(ErrorCode.CONFLICT, "회수 입고는 S4 범위입니다");
+        }
+        return "구매";
+    }
+
+    private static final class SerialInboundGroup {
+        private final ProductSummary product;
+        private int quantity;
+        private BigDecimal totalCost;
+
+        private SerialInboundGroup(ProductSummary product) {
+            this.product = product;
+        }
+
+        private static SerialInboundGroup from(ProductSummary product, SlipLine line) {
+            SerialInboundGroup group = new SerialInboundGroup(product);
+            group.add(line);
+            return group;
+        }
+
+        private void add(SlipLine line) {
+            quantity += line.getQuantity();
+            if (line.getUnitPrice() != null) {
+                BigDecimal lineCost = line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity()));
+                totalCost = totalCost == null ? lineCost : totalCost.add(lineCost);
+            }
+        }
+
+        private int quantity() {
+            return quantity;
+        }
+
+        private BigDecimal weightedUnitCost() {
+            if (totalCost == null || quantity == 0) {
+                return product.sellingPrice();
+            }
+            return totalCost.divide(BigDecimal.valueOf(quantity), 2, RoundingMode.HALF_UP);
+        }
     }
 
     /** 처리완료 → 배송중 (OUTBOUND 한정). */
