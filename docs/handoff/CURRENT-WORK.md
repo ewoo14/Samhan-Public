@@ -4,13 +4,23 @@
 
 ---
 
-## 🧭 새 세션 시작 가이드 (2026-06-01 갱신 — 회사 PC 인계)
+## 🧭 새 세션 시작 가이드 (2026-06-01 갱신 — 회사 PC, Codex 복구 후)
 
-> **🖥️ 회사 PC 새 세션 인계 (2026-06-01)**: 본 세션에서 **D2(#334)·2.6d(#335)·시리얼 S1(#336) 3 슬라이스 머지** + **working tree 전면 정리**(미커밋 182건 housekeeping 커밋 `fcdf779c` — 이전 세션 QA 산출물 + 인프라 헬퍼 커밋, 잡파일 삭제/gitignore). main 클린·origin 동기화. 회사 PC 에서 `git pull` + `.\scripts\sync-claude-memory.ps1` 후 즉시 재개 가능.
-> **다음 세션 진행 순서 = 아래 "다음 작업" 1→2→3 순서대로** (개발책임자 지시 2026-06-01).
-> ⚠️ Codex 6/1(월) 12:00 복구 예정 — 복구 후 dual 리뷰의 Codex 측 재활성. 그 전까지 구현+리뷰 모두 Claude 에이전트. **PR 은 구현 첫 push 직후 즉시 발행**([[feedback_open_pr_early]] — 2026-06-01 지적 반영).
+> **🖥️ 회사 PC 세션 (2026-06-01 오후)**: `git pull`(32커밋) + 메모리 sync 후, ① 미커밋 게이트웨이 CORS dedup 정리 → **PR #337 머지**(`b725b2e4`), ② **Codex 복구 확인** → 표준 프로세스 복귀 → **S2 입고연동 PR #338 머지**(`260d44f3`). main 클린·origin 동기화.
+> ⚠️ **Codex 복구됨** (2026-06-01) — dual 5-agent 리뷰 정상 가동(Claude 기획→Codex 구현→양쪽 cross-check). **PR 은 spec/plan push 직후 즉시 조기 발행**([[feedback_open_pr_early]]).
+> **다음 = 아래 "다음 작업" 2→3** (1=S2 완료). [[feedback_pm_auto_continuous]].
 
-**현재 상태**: 진행 중 작업 없음 — **회사 PC 새 세션 1→2→3 순서 진행 예정**. **시리얼 인스턴스 S1 머지 완료**(#336 squash `c043e4b9`). 직전: 2.6d 재고조회 모달(#335 `6e4ac58b`), D2 병합(#334 `f1de64d0`).
+**현재 상태**: 진행 중 작업 없음. **시리얼 S2 입고연동 머지 완료**(#338 `260d44f3`). 직전: 게이트웨이 CORS dedup(#337 `b725b2e4`), 시리얼 S1(#336 `c043e4b9`).
+
+### ✅ 이번 세션 — 게이트웨이 CORS dedup(#337) + 시리얼 S2 입고연동(#338)
+- **#337 [FIX] 게이트웨이↔arologis CORS 중복 dedup** (`b725b2e4`, D-GW-CORS-01): arologis 자체 CORS(.cors(), :8097 직접접근용)가 게이트웨이 경유 2xx 응답에도 발동→ACAO/ACAC 중복(×2)→브라우저 차단. `default-filters` 에 `DedupeResponseHeader=...RETAIN_UNIQUE` 1행. #322 와 같은 5/30 QA 발견인데 머지 누락(실행 이미지엔 반영, git 미커밋)됐던 것. before/after Docker 실 QA(ACAO 2→1).
+- **#338 [FEAT] 시리얼 S2 입고연동** (`260d44f3`, Phase INV-S, D-SER-05~08): 구매/차용 INBOUND 전표 `complete()` 시 serial_managed 품목→`stock_instances` N개(`POST /inventory/instances/batch`, count-deficit 멱등 + advisory lock), batch→기존 lot. **연동=동기 REST+보상**(이벤트 X — spec §5 "회계 이벤트 구독" 전제는 사실과 반대, 이벤트 인프라 0). **시리얼=자동 UUID**(D-SER-07). inboundType=deliveryTag(구매/차용, RETURN/회차=S4 가드). **Codex 구현 + dual 5-agent N=2 수렴**(P1 4건: product_code=productCode 정정/RETURN 가드 serial한정/동일품목 다라인 합산/멱등 동시성). **Docker 실 QA**(실 inventory+Postgres+V16: 배치입고 201/멱등/deficit/409 psql 실증). CI 20/20 green. spec/plan/dev-report `docs/.../2026-06-01-serial-instance-s2-inbound*`.
+
+### ⚠️ 비차단 후속 (이번 세션 발견 — S2 무관 인프라)
+- **CI false-green 게이트 결함**: `ci.yml` slip 테스트가 패키지 allowlist(`--tests "...slip.client.*" 등`)라 **`slip.attachment.*` 미실행** → #316부터 잠재 버그(SlipPhotoAuditAdminControllerTest enum↔String, 본 PR drive-by 교정)가 CI 미포착이었음. **CI 필터 보강 별도 PR 권장**([[feedback_enforcement_real_http_test]] 계열).
+- **date-bomb 테스트**: `DpsSaveHistoryIT`/`SlipCleanupSaveHistoryIT` 가 저장이력을 하드코딩 월범위(2026-05)로 조회→6월 진입 시 실패. 상대범위로 교정. **유사 하드코딩 날짜 테스트 전수점검 필요**.
+- `/inventory/*` mutation 의 internal-token 강제 가드(현 X-User-Role:MASTER 헤더 의존, 기존 패턴 한계).
+- **DB 드리프트 주의**: 회사 PC 로컬 스택은 본 세션 전 #336 이전 구 스키마였음(product V8). Docker 실 QA 전 관련 서비스 재빌드로 최신 Flyway(V9/V15/V16) 적용 필요.
 
 ### ✅ 이번 세션 — 시리얼 인스턴스 재고 S1 인스턴스 기반 머지 (#336 `c043e4b9`, Phase INV-S)
 개별시리얼 품목(에어컨) 재고 최소단위 = UUID 인스턴스(`stock_instances`). **BE 전용**, 입출고 전표 연동은 S2~S4 후속.
@@ -20,8 +30,8 @@
 - spec/plan: `docs/.../2026-05-31-serial-instance-inventory-design`(§4 S1) + `docs/.../2026-05-31-serial-instance-s1`.
 - **⚠️ S2~S4 후속(독립 슬라이스)**: S2 입고연동(구매전표→인스턴스 생성/lot) / S3 출고연동(판매전표→FIFO 소진+출고처) / S4 회수(반품/회차 역-FIFO). 미결정(spec §5): 전표↔inventory 연동 방식(이벤트 vs REST). DECISIONS D-SER-01~04 + dev-report 정식화 완료(`67ad8e8a`).
 
-### 🎯 다음 작업 (회사 PC — **1→2→3 순서대로 진행**, 개발책임자 지시 2026-06-01)
-1. **S2 입고 연동** (시리얼 다음 단계): 구매전표(INBOUND) 발행 → 구매/차용이면 품목코드 그룹에 인스턴스 생성(개별)/lot(batch). **선결 결정**: 전표↔inventory 연동 방식(이벤트 SlipPublishedEvent 구독 vs 동기 REST SlipServiceClient 역호출 — 회계가 이미 이벤트 구독이라 일관성 위해 이벤트 우선 검토, spec §5). spec/plan(S2) 신규 작성 부터.
+### 🎯 다음 작업 (회사 PC — **2→3 순서**, 1=S2 완료)
+1. ~~**S2 입고 연동**~~ ✅ **머지 완료 (#338 `260d44f3`)**. 동기 REST 채택(이벤트 전제 정정). 다음 시리얼 단계 = S3 출고연동(판매전표→FIFO SHIPPED 소진 + 2.6c reserve↔RESERVED 통합) / S4 회수(반품·회차 역-FIFO).
 2. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터(+WarehouseAutocomplete sync 변형 통합). FE 소규모 정리. brainstorming/writing-plans 부터.
 3. **후속 비차단 일괄 정리**: 2.6d·D2 후속(목록 배지 갱신 E2E / discountInfo 충돌헤더(PartnerOrderDetail BE 보강) / INBOUND seeder product_id 정합(구 TEST-MODEL UUID→실 modelName, 재고조회 입고 컨텍스트 실값 토대) / SlipFormPage StockBalanceModal 통합 / D2·2.6d Playwright CI 자동실행 게이트) + partner-order `/revisions` 500(별도).
 
