@@ -6,15 +6,20 @@
 
 ## 🧭 새 세션 시작 가이드 (2026-06-01 갱신 — 회사 PC, Codex 복구 후)
 
-> **🖥️ 회사 PC 세션 (2026-06-01 오후)**: `git pull`(32커밋) + 메모리 sync 후, ① 미커밋 게이트웨이 CORS dedup 정리 → **PR #337 머지**(`b725b2e4`), ② **Codex 복구 확인** → 표준 프로세스 복귀 → **S2 입고연동 PR #338 머지**(`260d44f3`). main 클린·origin 동기화.
-> ⚠️ **Codex 복구됨** (2026-06-01) — dual 5-agent 리뷰 정상 가동(Claude 기획→Codex 구현→양쪽 cross-check). **PR 은 spec/plan push 직후 즉시 조기 발행**([[feedback_open_pr_early]]).
-> **다음 = 아래 "다음 작업" 2→3** (1=S2 완료). [[feedback_pm_auto_continuous]].
+> **🖥️ 회사 PC 세션 (2026-06-01, 종료)**: `git pull`(32커밋) + 메모리 sync → **6 PR 머지**(#337 CORS / #338 S2 / #340 CI하드닝 / #341 3-B / #342 3-C + 핸드오프/메모리 커밋). main 클린·origin 동기화. **내일 본 파일만 읽고 3-D 부터 재개.**
+> ⚠️ **Codex 복구됨** (2026-06-01) — dual 5-agent 정상 가동(Claude 기획→Codex 구현→양쪽 cross-check). **PR 은 spec/plan push 직후 즉시 발행**([[feedback_open_pr_early]]).
+> 🚨 **교훈(개발책임자 지적)**: CHORE 라도 **dual 5-agent TM 리뷰 제대로** 돌릴 것 — 가벼운 PM 단독 리뷰가 #342 의 P1(CI 필터 누락 false-green)을 놓칠 뻔. PR 마다 **Claude TM / Codex TM 사이클별 종합 코멘트 게시 의무**([[feedback_dual_5agent_review]]).
+> **다음 = 아래 "다음 작업" 3-D**(FE StockBalanceModal, brainstorming 필요) → 3-A2(Playwright) → item 2(typeahead). [[feedback_pm_auto_continuous]].
 
-**현재 상태**: 진행 중 작업 없음. **시리얼 S2 입고연동 머지 완료**(#338 `260d44f3`). 직전: 게이트웨이 CORS dedup(#337 `b725b2e4`), 시리얼 S1(#336 `c043e4b9`).
+**현재 상태**: 진행 중 작업 없음. **item 3 의 A·B·C 머지 완료** + CORS·S2. 다음 = **3-D**(FE, brainstorming 부터).
 
-### ✅ 이번 세션 — 게이트웨이 CORS dedup(#337) + 시리얼 S2 입고연동(#338)
-- **#337 [FIX] 게이트웨이↔arologis CORS 중복 dedup** (`b725b2e4`, D-GW-CORS-01): arologis 자체 CORS(.cors(), :8097 직접접근용)가 게이트웨이 경유 2xx 응답에도 발동→ACAO/ACAC 중복(×2)→브라우저 차단. `default-filters` 에 `DedupeResponseHeader=...RETAIN_UNIQUE` 1행. #322 와 같은 5/30 QA 발견인데 머지 누락(실행 이미지엔 반영, git 미커밋)됐던 것. before/after Docker 실 QA(ACAO 2→1).
-- **#338 [FEAT] 시리얼 S2 입고연동** (`260d44f3`, Phase INV-S, D-SER-05~08): 구매/차용 INBOUND 전표 `complete()` 시 serial_managed 품목→`stock_instances` N개(`POST /inventory/instances/batch`, count-deficit 멱등 + advisory lock), batch→기존 lot. **연동=동기 REST+보상**(이벤트 X — spec §5 "회계 이벤트 구독" 전제는 사실과 반대, 이벤트 인프라 0). **시리얼=자동 UUID**(D-SER-07). inboundType=deliveryTag(구매/차용, RETURN/회차=S4 가드). **Codex 구현 + dual 5-agent N=2 수렴**(P1 4건: product_code=productCode 정정/RETURN 가드 serial한정/동일품목 다라인 합산/멱등 동시성). **Docker 실 QA**(실 inventory+Postgres+V16: 배치입고 201/멱등/deficit/409 psql 실증). CI 20/20 green. spec/plan/dev-report `docs/.../2026-06-01-serial-instance-s2-inbound*`.
+### ✅ 이번 세션 — 6 PR 머지 (2026-06-01)
+- **#337 [FIX] 게이트웨이↔arologis CORS 중복 dedup** (`b725b2e4`, D-GW-CORS-01): arologis 자체 CORS(:8097용)가 게이트웨이 경유 2xx 에도 발동→ACAO/ACAC 중복→차단. `default-filters DedupeResponseHeader RETAIN_UNIQUE`. #322 와 같은 5/30 QA 발견·미커밋분. before/after Docker 실 QA(2→1). (Codex 미복구 시점 → Claude 단독.)
+- **#338 [FEAT] 시리얼 S2 입고연동** (`260d44f3`, INV-S, D-SER-05~08): 구매/차용 INBOUND `complete()` → serial_managed 품목 `stock_instances` N개(`POST /inventory/instances/batch` count-deficit 멱등 + advisory lock), batch→기존 lot. **연동=동기 REST+보상**(이벤트 X — spec §5 "회계 이벤트 구독" 전제는 사실 반대). 시리얼=자동 UUID. inboundType=deliveryTag(구매/차용, RETURN/회차=S4 가드). Codex 구현 + dual N=2 수렴(P1 4건). Docker 실 QA + CI 20/20.
+- **#340 [CHORE] CI false-green 하드닝** (`1d181dcd`, item 3-A): slip 테스트 필터 누락 패키지 전수 등재(estimate/revision/attachment 등 — CI 미실행이던 것 폐쇄) + date-bomb 2건 정정. (⚠️ 신규 `slip.seed.*` 누락 → #342 보강.)
+- **#341 [FIX] partner-order /revisions 500** (`a2c9c40b`, item 3-B): listWithSummary deserialize 가 구 스냅샷 스키마 진화 시 500 → `@JsonIgnoreProperties`+`READ_UNKNOWN_ENUM_VALUES_AS_NULL`+목록 graceful + 재현 IT. **B2(discountInfo) descope**(주문에 저장 원천 없음=별도 기능).
+- **#342 [CHORE] EstimateSeeder UUID 정합** (`9b9aedd1`, item 3-C): EstimateSeeder TEST-MODEL→실 modelName + 결정적 UUID(`HvacSeedProductCatalog` 100모델 HvacProductSeeder 1:1) + `slip.seed.*` CI 필터 추가. dual 5-agent 가 P1 2건 적발(CI필터/reseed QA) — CI필터 fix, reseed QA 는 로컬 구-시드 드리프트로 deferred.
+- **소급 TM 리뷰**: #337/#338/#340/#341 에 Claude TM/Codex TM 사이클별 종합 코멘트 소급 게시 완료.
 
 ### ⚠️ 비차단 후속 (이번 세션 발견 — S2 무관 인프라)
 - **CI false-green 게이트 결함**: `ci.yml` slip 테스트가 패키지 allowlist(`--tests "...slip.client.*" 등`)라 **`slip.attachment.*` 미실행** → #316부터 잠재 버그(SlipPhotoAuditAdminControllerTest enum↔String, 본 PR drive-by 교정)가 CI 미포착이었음. **CI 필터 보강 별도 PR 권장**([[feedback_enforcement_real_http_test]] 계열).
