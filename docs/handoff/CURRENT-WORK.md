@@ -30,8 +30,14 @@
 - spec/plan: `docs/.../2026-05-31-serial-instance-inventory-design`(§4 S1) + `docs/.../2026-05-31-serial-instance-s1`.
 - **⚠️ S2~S4 후속(독립 슬라이스)**: S2 입고연동(구매전표→인스턴스 생성/lot) / S3 출고연동(판매전표→FIFO 소진+출고처) / S4 회수(반품/회차 역-FIFO). 미결정(spec §5): 전표↔inventory 연동 방식(이벤트 vs REST). DECISIONS D-SER-01~04 + dev-report 정식화 완료(`67ad8e8a`).
 
-### 🎯 다음 작업 (회사 PC — **2→3 순서**, 1=S2 완료)
-1. ~~**S2 입고 연동**~~ ✅ **머지 완료 (#338 `260d44f3`)**. 동기 REST 채택(이벤트 전제 정정). 다음 시리얼 단계 = S3 출고연동(판매전표→FIFO SHIPPED 소진 + 2.6c reserve↔RESERVED 통합) / S4 회수(반품·회차 역-FIFO).
+### 🎯 다음 작업 (회사 PC)
+1. ~~**S2 입고 연동**~~ ✅ **머지 (#338 `260d44f3`)**. 다음 시리얼 = S3 출고연동(판매전표→FIFO SHIPPED + 2.6c reserve↔RESERVED) / S4 회수(반품·회차 역-FIFO).
+3. **후속 비차단 일괄 정리** (개발책임자 2026-06-01 선택, A→B→C→D 독립 PR):
+   - ~~**3-A CI 하드닝**~~ ✅ **머지 (#340 `1d181dcd`)** — slip 테스트 필터 누락 전수 등재(estimate/revision/attachment 등 false-green 폐쇄) + date-bomb 정정.
+   - **3-B partner-order 버그** (다음): `/revisions` 500(서비스 존재, 특정 버그 진단 필요) + discountInfo 충돌헤더 PartnerOrderDetail BE 보강.
+   - **3-C seeder 정합**: INBOUND seeder `TEST-MODEL-%04d`(EstimateSeeder)→실 modelName, 재고조회 입고 컨텍스트 실값.
+   - **3-D FE StockBalanceModal 통합**: SlipFormPage 재고모달 통합 + 목록 배지 갱신 E2E. **brainstorming 필요**.
+   - **3-A2 Playwright hard gate**: D2/2.6d desktop 스펙 CI 자동실행(`ci.yml:171` 자체가 별도 PR 명시, qa/playwright testDir 확장 — E2E 스택 필요).
 2. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터(+WarehouseAutocomplete sync 변형 통합). FE 소규모 정리. brainstorming/writing-plans 부터.
 3. **후속 비차단 일괄 정리**: 2.6d·D2 후속(목록 배지 갱신 E2E / discountInfo 충돌헤더(PartnerOrderDetail BE 보강) / INBOUND seeder product_id 정합(구 TEST-MODEL UUID→실 modelName, 재고조회 입고 컨텍스트 실값 토대) / SlipFormPage StockBalanceModal 통합 / D2·2.6d Playwright CI 자동실행 게이트) + partner-order `/revisions` 500(별도).
 
