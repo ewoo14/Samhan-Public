@@ -33,11 +33,13 @@
 ### 🎯 다음 작업 (회사 PC)
 1. ~~**S2 입고 연동**~~ ✅ **머지 (#338 `260d44f3`)**. 다음 시리얼 = S3 출고연동(판매전표→FIFO SHIPPED + 2.6c reserve↔RESERVED) / S4 회수(반품·회차 역-FIFO).
 3. **후속 비차단 일괄 정리** (개발책임자 2026-06-01 선택, A→B→C→D 독립 PR):
-   - ~~**3-A CI 하드닝**~~ ✅ **머지 (#340 `1d181dcd`)** — slip 테스트 필터 누락 전수 등재(estimate/revision/attachment 등 false-green 폐쇄) + date-bomb 정정.
-   - **3-B partner-order 버그** (다음): `/revisions` 500(서비스 존재, 특정 버그 진단 필요) + discountInfo 충돌헤더 PartnerOrderDetail BE 보강.
-   - **3-C seeder 정합**: INBOUND seeder `TEST-MODEL-%04d`(EstimateSeeder)→실 modelName, 재고조회 입고 컨텍스트 실값.
-   - **3-D FE StockBalanceModal 통합**: SlipFormPage 재고모달 통합 + 목록 배지 갱신 E2E. **brainstorming 필요**.
-   - **3-A2 Playwright hard gate**: D2/2.6d desktop 스펙 CI 자동실행(`ci.yml:171` 자체가 별도 PR 명시, qa/playwright testDir 확장 — E2E 스택 필요).
+   - ~~**3-A CI 하드닝**~~ ✅ **머지 (#340 `1d181dcd`)** — slip 테스트 필터 누락 전수 등재 + date-bomb 정정. (단 신규 `slip.seed.*` 누락 → #342 에서 보강.)
+   - ~~**3-B partner-order 버그**~~ ✅ **머지 (#341 `a2c9c40b`)** — `/revisions` 500 스냅샷 역직렬화 견고화(@JsonIgnoreProperties + READ_UNKNOWN_ENUM + 목록 graceful) + 재현 IT. **B2(discountInfo) descope**(주문에 저장 원천 없음 = 별도 기능).
+   - ~~**3-C seeder 정합**~~ ✅ **머지 (#342 `9b9aedd1`)** — EstimateSeeder TEST-MODEL→실 modelName + 결정적 UUID(HvacSeedProductCatalog) + slip.seed.* CI 필터 추가.
+   - **3-D FE StockBalanceModal 통합** (다음): SlipFormPage 재고모달 통합 + 목록 배지 갱신 E2E. **brainstorming 필요**(FE 설계).
+   - **3-A2 Playwright hard gate**: D2/2.6d desktop 스펙 CI 자동실행(`ci.yml:171` 별도 PR 명시, E2E 스택 필요).
+
+> 🚨 **로컬 스택 구-시드 드리프트(2026-06-01 발견)**: 로컬 product_db 의 products 가 **v4 랜덤 UUID(구 시드, #327 native-INSERT 결정적 UUID 이전)** — product-service 재빌드해도 seeder 멱등(modelName EXISTS) 으로 재시드 skip → **#327 결정적 UUID 3-DB 정합이 로컬에 미실현**. 따라서 cross-DB join 실증 QA(견적/재고 productId ∩ products.id)는 **3-DB TRUNCATE CASCADE + 전체 reseed**([[project_seed_product_uuid_catalog]] 절차) 후에만 가능. 차기 QA 세션 선결. 코드(결정적 파생)는 정상.
 2. **공용 async typeahead 추출** (`AsyncAutocomplete<T>`): ProductAutocomplete+PartnerAutocomplete 거의 동일 → 공통 base 리팩터(+WarehouseAutocomplete sync 변형 통합). FE 소규모 정리. brainstorming/writing-plans 부터.
 3. **후속 비차단 일괄 정리**: 2.6d·D2 후속(목록 배지 갱신 E2E / discountInfo 충돌헤더(PartnerOrderDetail BE 보강) / INBOUND seeder product_id 정합(구 TEST-MODEL UUID→실 modelName, 재고조회 입고 컨텍스트 실값 토대) / SlipFormPage StockBalanceModal 통합 / D2·2.6d Playwright CI 자동실행 게이트) + partner-order `/revisions` 500(별도).
 
