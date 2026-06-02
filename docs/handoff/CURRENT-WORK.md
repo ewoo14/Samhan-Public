@@ -11,12 +11,13 @@
 > 🚨 **교훈(개발책임자 지적)**: CHORE 라도 **dual 5-agent TM 리뷰 제대로** 돌릴 것 — 가벼운 PM 단독 리뷰가 #342 의 P1(CI 필터 누락 false-green)을 놓칠 뻔. PR 마다 **Claude TM / Codex TM 사이클별 종합 코멘트 게시 의무**([[feedback_dual_5agent_review]]).
 > **다음 = 아래 "다음 작업" 3-D**(FE StockBalanceModal, brainstorming 필요) → 3-A2(Playwright) → item 2(typeahead). [[feedback_pm_auto_continuous]].
 
-**현재 상태**: **item 3-D PR #343 발행 + dual 5-agent 리뷰 수렴(P0/P1 0) + CI green** → **머지 게이트 = Docker 실 QA**(구-시드 reseed 선결, PM 수동). 머지 후 다음 = **3-A2**(Playwright hard gate) → item 2(typeahead). item 3 의 A·B·C 머지 완료 + CORS·S2.
+**현재 상태**: **item 3-D 머지 완료 (#343 squash `ea2b4038`)**. 다음 = **3-A2**(desktop Playwright CI hard gate) → item 2(typeahead). item 3 의 A·B·C·D 머지 완료 + CORS·S2.
 
-### 🚧 item 3-D 진행 중 (브랜치 `feature/slice-3-d-stock-modal-unify`, PR #343, 머지 게이트만 남음)
-SlipFormPage 재고모달을 구 `StockBalanceModal`(총량) → 신 공용 `InventoryLookupModal`(가용/실/예약)로 일원화 + 구 컴포넌트/`fetchStockBalanceBatch` 데드코드 제거(순감 –818/+57) + 병합 후 주문 목록 배지 갱신 invalidate 회귀 E2E 신규. spec/plan/dev-report/DECISIONS(D-3D-01~03) 박제. **Claude 5-agent + Codex 5-section cross-check P0/P1 0 수렴**(QA P2 2건 fix: 같은거래처 2건 명시단언 + mock index 의도주석). **CI 전 잡 green**.
-- **남은 단계**: ① Docker 실서버 실 QA — 선결 **3-DB TRUNCATE CASCADE + reseed**([[project_seed_product_uuid_catalog]], 로컬 구-시드 드리프트) 후 SlipFormPage 재고조회 가용/실/예약 매트릭스 실 렌더 + psql 대조 실 캡처(`docs/qa/slice-3-d-slipform-stock-modal-unify/`) → PR 인라인 첨부 → ② PM 최종 종합 + 머지.
-- **⚠️ 후속(비차단)**: 신규 desktop Playwright 스펙은 CI 미실행(`clients/desktop/playwright/**` 가 CI `qa/playwright` 범위 밖, 80+ 스펙 기존 부채) → **CI 자동실행 게이트 = item 3-A2**. UX P2(0수량 토글 헤더 밖 분리 / 선택품목 리스트 표시).
+### ✅ item 3-D 머지 완료 (#343 squash `ea2b4038`, 2026-06-02)
+SlipFormPage 재고모달을 구 `StockBalanceModal`(총량) → 신 공용 `InventoryLookupModal`(가용/실/예약)로 일원화 + 구 컴포넌트/`fetchStockBalanceBatch` 데드코드 제거(순감 –818/+57) + 병합 후 주문 목록 배지 갱신 invalidate 회귀 E2E 신규. BE 무변경/Flyway 없음/FE only. spec/plan/dev-report/DECISIONS(D-3D-01~03) 박제.
+- **Claude 5-agent + Codex 5-section cross-check P0/P1 0 수렴**(QA P2 2건 fix). **CI 28/28 green**. **Docker 비파괴 실 QA PASS**(실 게이트웨이+JWT+product/inventory+DB, `balances/batch` 200, 신 모달 실 서버 오픈·VIRTUAL제외·UUID가드·0수량토글, 실캡처 5장 `docs/qa/slice-3-d-slipform-stock-modal-unify/`). 값 0/0/0=로컬 구-시드 드리프트(코드 무관, 비-0은 2.6d #335 동일모달 기실증).
+- **실 QA 부수 해소(비파괴)**: dev_master 비번 해시↔V5 시드 평문 불일치 복원 / design-system `dist` stale 재빌드. (둘 다 로컬 환경, 코드 무관.)
+- **⚠️ 후속(비차단)**: **3-A2** = 신규 desktop Playwright 스펙 CI 미실행(`clients/desktop/playwright/**` 가 CI `qa/playwright` 범위 밖, 80+ 스펙 기존 부채)→CI 자동실행 hard gate. UX P2(0수량 토글 헤더 밖 분리 / 선택품목 리스트 표시). (선택) 3-DB reseed 후 비-0 재고 실 QA 재캡처.
 
 ### ✅ 이번 세션 — 6 PR 머지 (2026-06-01)
 - **#337 [FIX] 게이트웨이↔arologis CORS 중복 dedup** (`b725b2e4`, D-GW-CORS-01): arologis 자체 CORS(:8097용)가 게이트웨이 경유 2xx 에도 발동→ACAO/ACAC 중복→차단. `default-filters DedupeResponseHeader RETAIN_UNIQUE`. #322 와 같은 5/30 QA 발견·미커밋분. before/after Docker 실 QA(2→1). (Codex 미복구 시점 → Claude 단독.)
