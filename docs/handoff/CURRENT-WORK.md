@@ -4,6 +4,29 @@
 
 ---
 
+## 🌙 2026-06-03 자율 세션 — 시리얼 동시성·보상 강화 ✅ 머지 완료 (#349 `c2cd830a`) — 🎉 Phase INV-S 완결
+
+> 🎉 **Phase INV-S 완결**: S1(#336)·S2(#338)·S3(#347)·S4(#348)·동시성보상(#349) 전부 머지. 모두 dual 5-agent cross-check N=2 + CI green + Docker 실 QA 검증.
+>
+> **차기 후속**(PM 자율선택, ⓐ 1순위 권장):
+> - ⓐ **시리얼 락 전략 최적화**(DevOps P1/P2): recallBatch/reserveBatch ForUpdate `LIMIT :deficit`(락 범위 최소화·LockTimeout 완화) + 인덱스 V19 `(product_code, warehouse_id, status, received_at)` + `jakarta.persistence.lock.timeout` PG 적용 검증 + 역-FIFO filesort + IT jsonPath 단언.
+> - ⓑ **분산 보상 견고화**(Codex P1, 전사): 동기 REST 보상 실패 대비 Saga/outbox 재시도(D-SER-05 한계 보완).
+> - ⓒ 기타: 3-A2 격리 레거시 스펙 / 3-D 비-0 재고 QA / WarehouseAutocomplete 통합.
+
+### (구현 상세 — Codex 세션 기록)
+
+- 범위: `inventory-service` + `slip-service`, spec/plan `2026-06-03-serial-concurrency-compensation*`.
+- inventory: 후보 조회 ForUpdate 2건(`PESSIMISTIC_WRITE`) 추가, `reserveBatch`/`recallBatch` 후보 조회 교체, `StockInstance.unrecall()`, `unrecallBatch`, `POST /inventory/instances/unrecall-batch`.
+- slip: `InventoryClient.unrecallInstances`, `completeRecallInbound` serial recall 성공분 역순 unrecall 보상(addSuppressed).
+- 문서: DECISIONS D-SER-17~18, `docs/dev-reports/slice-serial-concurrency-compensation.md`, README/ROADMAP 갱신.
+- 검증(Gradle 격리 준수: `.gradle-codex`, `--no-daemon`, `-p C:\dev\SamhanLogis`):
+  - inventory 단위 `StockInstanceOutboundTest` + `StockInstanceServiceOutboundTest` PASS.
+  - slip 단위 `InventoryClientTest` + `SlipServiceTest` PASS.
+  - inventory IT `StockInstanceOutboundIT`: 12 tests / 0 skipped / 0 failures / 0 errors.
+  - slip IT `SlipInboundInstanceIT`: 10 tests / 0 skipped / 0 failures / 0 errors.
+
+---
+
 ## 🌙 2026-06-03 자율 세션 — 시리얼 S4 회수연동 ✅ 머지 완료 (#348 squash `208acc78`, PM 완전 자율)
 
 > 개발책임자 "머지 및 계속 진행" 지시로 머지(P1 2건은 후속 "시리얼 동시성·보상 강화" 슬라이스 분리). 🆕 **"머지도 PM 판단" 위임**([[feedback_user_merge_authority]] 강화 — 이제 P1 잔존·UNSTABLE 등도 개발책임자 확인 없이 PM 이 머지 여부 자율 판단).
