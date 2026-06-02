@@ -59,7 +59,7 @@ test.describe('SP-08-3-2 아로로지스 배차 저장내역', () => {
     const migration = read('services/arologis-service/src/main/resources/db/migration/V12__add_dispatch_save_history.sql')
 
     expect(controller).toContain('@RequestMapping("/admin/arologis/dispatches/history")')
-    expect(controller).toContain("hasAnyRole('MASTER','MANAGER','DISPATCH','AROLOGIS_MASTER','AROLOGIS_MANAGER')")
+    expect(controller).toContain('@RequirePermission(page = "arologis.dispatch.ops"')
     expect(controller).toContain('@Operation(summary = "아로로지스 배차 저장내역 저장"')
     expect(controller).toContain('@GetMapping("/latest")')
     expect(repository).toContain('findByIdAndCreatedBy(UUID id, String createdBy)')
@@ -129,73 +129,76 @@ test.describe('SP-08-3-2 아로로지스 배차 저장내역', () => {
     expect(guarded).not.toMatch(/api\.notion\.com|Notion-Version|@notionhq/)
   })
 
-  test('mock UI: 저장내역 탭, 저장 dialog, 복원 banner testid를 노출한다', async ({ page }) => {
-    await page.setContent(`
-      <main>
-        <button data-testid="pre-classify-history-tab-run">실행</button>
-        <button data-testid="pre-classify-history-tab-list">저장내역</button>
-        <div data-testid="pre-classify-history-restored-banner">이전 결과 복원됨 · 2026. 05. 17.</div>
-        <button data-testid="pre-classify-history-save-button">내역으로 저장</button>
-        <div role="dialog" aria-label="배차 결과 저장">
-          <input data-testid="pre-classify-history-topic-input" value="오전 마감 점검" />
-          <button>저장</button>
-        </div>
-        <table>
-          <tbody>
-            <tr data-testid="pre-classify-history-row-0">
-              <td data-testid="pre-classify-history-row-0-created-at">2026. 05. 17. 오전 10:00</td>
-              <td>사용자</td>
-              <td>명시</td>
-            </tr>
-          </tbody>
-        </table>
-      </main>
-    `)
+  // [P1] setContent false-green → 정적 소스 단언 전환.
+  // 실-라우트 테스트가 없으므로 삭제 대신 실 컴포넌트 소스 기반으로 전환.
+  test('저장내역 탭·저장dialog·복원banner testid가 실 컴포넌트 소스에 존재한다', () => {
+    const historyTab = read('clients/arologis-desktop/src/renderer/routes/dispatches/HistoryTab.tsx')
+    const saveDialog = read('clients/arologis-desktop/src/renderer/routes/dispatches/SaveDialog.tsx')
+    const restoredBanner = read('clients/arologis-desktop/src/renderer/routes/dispatches/RestoredBanner.tsx')
+    const preClassify = read('clients/arologis-desktop/src/renderer/routes/dispatches/PreClassifyPage.tsx')
 
-    await expect(page.locator('[data-testid="pre-classify-history-tab-run"]')).toBeVisible()
-    await expect(page.locator('[data-testid="pre-classify-history-tab-list"]')).toBeVisible()
-    await expect(page.locator('[data-testid="pre-classify-history-restored-banner"]')).toContainText('이전 결과 복원됨')
-    await expect(page.getByRole('dialog', { name: '배차 결과 저장' })).toBeVisible()
-    await expect(page.locator('[data-testid="pre-classify-history-topic-input"]')).toBeVisible()
-    await expect(page.locator('[data-testid="pre-classify-history-row-0"]')).toContainText('명시')
+    // HistoryTab: 탭(tab-run/tab-list) testId prop을 테이블 컬럼/탭 버튼으로 전달
+    expect(historyTab).toContain('testIdPrefix')
+    expect(historyTab).toContain('`${testIdPrefix}-row-${row.__index}`')
+    expect(historyTab).toContain('`${testIdPrefix}-row-${row.__index}-created-at`')
+
+    // RestoredBanner: testIdPrefix 기반 restored-banner testid 생성
+    expect(restoredBanner).toContain('`${testIdPrefix}-restored-banner`')
+    // UUID 미노출 — RestoredBanner 는 maskCreatedBy 적용 후 message 만 수신
+    expect(restoredBanner).not.toMatch(UUID_REGEX)
+
+    // SaveDialog: topic-input testid 생성 + isSaving 상태 제어
+    expect(saveDialog).toContain('`${testIdPrefix}-topic-input`')
+    expect(saveDialog).toContain('isSaving')
+
+    // PreClassifyPage: pre-classify-history / regional-history 두 prefix testId 실재
+    expect(preClassify).toContain('"pre-classify-history-save-button"')
+    expect(preClassify).toContain('"regional-history-save-button"')
+    expect(preClassify).toContain("tab === 'region' ? 'pre-classify-history' : 'regional-history'")
+    // maskCreatedBy 로 UUID 은닉
+    expect(preClassify).toContain('maskCreatedBy(detail.createdBy)')
   })
 
-  test('mock UI: latest empty 404 시 복원 banner를 노출하지 않는다', async ({ page }) => {
-    await page.setContent(`
-      <main>
-        <button data-testid="pre-classify-history-tab-run">실행</button>
-        <button data-testid="pre-classify-history-tab-list">저장내역</button>
-      </main>
-    `)
+  // [P1] latest empty 404 → 복원 banner 미노출 보장을 정적 소스로 전환.
+  // (cross-check 보강) "404/latest 없음이면 배너 미노출" 의도를 실제로 고정한다:
+  //   ① 배너는 restoreBanner 상태가 truthy 일 때만 조건부 렌더(`{restoreBanner ? (`)
+  //   ② latest fetch 실패(404/없음) catch 핸들러는 배너를 설정하지 않음(첫 방문 UX 보존 주석)
+  //   ③ 어떤 catch 블록도 배너 메시지를 setRestoreBanner 로 설정하지 않음(실패=무배너)
+  test('latest empty 404 시 복원 banner 미노출 — 조건부 렌더 + catch 무설정으로 보장된다', () => {
+    const pages = [
+      'clients/arologis-desktop/src/renderer/routes/dispatches/PreClassifyPage.tsx',
+      'clients/arologis-desktop/src/renderer/routes/dispatches/UnassignedPage.tsx',
+      'clients/arologis-desktop/src/renderer/routes/dispatches/DispatchReconcilePage.tsx',
+    ].map(p => ({ p, src: read(p) }))
 
-    await expect(page.locator('[data-testid="pre-classify-history-restored-banner"]')).toHaveCount(0)
+    for (const { p, src } of pages) {
+      // ① 조건부 렌더 게이트: restoreBanner 상태가 있을 때만 RestoredBanner 노출
+      expect(src, `${p}: restoreBanner 조건부 렌더 게이트 부재`).toMatch(/\{\s*restoreBanner\s*\?\s*\(/)
+      expect(src, `${p}: RestoredBanner 미사용`).toContain('RestoredBanner')
+      // ② latest 없음/조회 실패(404) catch 가 배너를 세우지 않음 (첫 방문 UX 보존)
+      expect(src, `${p}: latest 실패 catch 무배너 보장 주석 부재`)
+        .toContain('// latest 없음/조회 실패는 첫 방문 UX 를 막지 않는다.')
+      // ③ 어떤 catch 블록에서도 배너 메시지를 설정하지 않음 (실패 경로 = 무배너)
+      const catchBlocks = src.match(/\.catch\(\(\)\s*=>\s*\{[\s\S]*?\}\)/g) ?? []
+      expect(catchBlocks.length, `${p}: catch 블록 미검출`).toBeGreaterThan(0)
+      for (const block of catchBlocks) {
+        expect(block, `${p}: catch 블록이 복원 배너를 설정함(404 무배너 위반)`).not.toContain('setRestoreBanner(`')
+      }
+    }
   })
 
+  // [P1] row click 복원 navigation 보장을 각 화면 소스로 전환.
+  // 각 화면이 maskCreatedBy 를 통해 UUID 비공개 복원 banner 를 생성함을 단언.
   for (const screen of screens) {
-    test(`mock UI: ${screen.label} row click 복원 navigation`, async ({ page }) => {
-      await page.setContent(`
-        <main>
-          <button data-testid="${screen.prefix}-tab-run">실행</button>
-          <button data-testid="${screen.prefix}-tab-list">저장내역</button>
-          <div id="view">list</div>
-          <div data-testid="${screen.prefix}-row-0" role="row" tabindex="0">명시 저장</div>
-          <script>
-            document.querySelector('[data-testid="${screen.prefix}-row-0"]').addEventListener('click', () => {
-              document.querySelector('#view').textContent = 'restored';
-              const banner = document.createElement('div');
-              banner.dataset.testid = '${screen.prefix}-restored-banner';
-              banner.textContent = '복원: 2026. 05. 17. 사용자 저장주제';
-              document.querySelector('main').appendChild(banner);
-            });
-          </script>
-        </main>
-      `)
+    test(`${screen.label} row click 복원은 maskCreatedBy UUID 비공개 banner를 소스로 보장한다`, () => {
+      const source = read(screen.source)
 
-      await page.locator(`[data-testid="${screen.prefix}-row-0"]`).click()
-      await expect(page.locator('#view')).toHaveText('restored')
-      await expect(page.locator(`[data-testid="${screen.prefix}-restored-banner"]`)).toContainText('복원:')
-      await expect(page.locator(`[data-testid="${screen.prefix}-restored-banner"]`)).toContainText('사용자')
-      await expect(page.locator(`[data-testid="${screen.prefix}-restored-banner"]`)).not.toContainText(UUID_REGEX)
+      // 각 화면의 prefix testId 가 소스에 실재
+      expect(source).toContain(screen.prefix)
+      // maskCreatedBy 로 UUID 은닉하여 복원 banner 생성
+      expect(source).toContain('maskCreatedBy(detail.createdBy)')
+      // 복원 banner 텍스트에 UUID 가 포함되지 않음 (UUID_REGEX 에 매치되는 리터럴 없음)
+      expect(source).not.toMatch(UUID_REGEX)
     })
   }
 })
