@@ -11,7 +11,16 @@
 > 🚨 **교훈(개발책임자 지적)**: CHORE 라도 **dual 5-agent TM 리뷰 제대로** 돌릴 것 — 가벼운 PM 단독 리뷰가 #342 의 P1(CI 필터 누락 false-green)을 놓칠 뻔. PR 마다 **Claude TM / Codex TM 사이클별 종합 코멘트 게시 의무**([[feedback_dual_5agent_review]]).
 > **다음 = 아래 "다음 작업" 3-D**(FE StockBalanceModal, brainstorming 필요) → 3-A2(Playwright) → item 2(typeahead). [[feedback_pm_auto_continuous]].
 
-**현재 상태**: **item 3-A2 머지 완료 (#344 squash `56bfcae0`)**. 다음 = **item 2(공용 AsyncAutocomplete<T> 추출)** — brainstorming/writing-plans 부터. 3-D(#343)·3-A2(#344)·item3 A·B·C·D·CORS·S2 머지 완료.
+**현재 상태**: **item 2 머지 완료 (#345 squash `4c07e580`)** — 이번 세션 3 슬라이스(3-D #343 / 3-A2 #344 / item 2 #345) 머지. **진행 중 작업 없음.** 다음 후보(개발책임자 선택) ↓.
+
+### 다음 후보 (개발책임자 선택)
+1. **시리얼 S3 출고연동** — 판매전표→FIFO SHIPPED 소진 + 2.6c reserve↔RESERVED 통합([[project_serial_inventory_model]]). 다음 시리얼 슬라이스.
+2. **3-A2 격리 39 레거시 스펙 수리** — 동적RBAC(sp-d*)/정적계약(sp-08·09)/드리프트UI. 게이트 커버리지 복원(dev-report `slice-3-a2-...` 추적목록).
+3. **3-D 비-0 재고 실 QA 재캡처** — 3-DB reseed 후 SlipFormPage 가용/실/예약 실값 캡처(현재 로컬 드리프트로 0/0/0).
+4. **WarehouseAutocomplete/Selector → AsyncAutocomplete 통합 평가** (D-AAC-01 후속, sync 변형).
+
+### ✅ item 2 머지 완료 (#345 squash `4c07e580`, 2026-06-02)
+ProductAutocomplete(450)·PartnerAutocomplete(465) 95% 중복 → 제네릭 `AsyncAutocomplete<T>`(430) + wrapper(87/93) 추출. 공개 API·타입·prop 불변(소비처 SlipFormPage·LineRow 0 변경). CSS 단일화 + focus-ring 토큰(AC-2 백포트 흡수). 순감 900→610 + 구 css 2개 삭제. DECISIONS D-AAC-01~03. dual(Claude 2-agent+Codex) P0/P1 0 · CI 29/29(Desktop Playwright 게이트가 ac-2/ac-3 회귀 통과로 동작 불변 실증). dev-report `slice-item2-async-autocomplete`.
 
 ### ✅ item 3-A2 머지 완료 (#344 squash `56bfcae0`, 2026-06-02)
 `clients/desktop/playwright/**` mock 회귀 스펙 CI hard gate(false-green 해소). **opt-out 컨벤션**(testIgnore manual/full-qa/audit/*-real-qa/full-menu-contract — 그 외 자동 게이트) + `qa-e2e.yml` `desktop-playwright` 잡(`|| true` 금지, DS 사전빌드 선행) + silent-skip 가드(expected>0/unexpected>0/**skipped>0** 엄격) + README 컨벤션. spec/plan/DECISIONS(D-3A2-01~03)/dev-report 박제.

@@ -2703,3 +2703,17 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-3A2-03 | 트리아지 잔여 실패는 **투명 격리 허용**(testIgnore QUARANTINE 블록 + dev-report 추적, 은폐 금지). |
 
 **산출**: `playwright.config.ts`(testIgnore opt-out + 크로스플랫폼 webServer `env:{VITE_MOCK_MODE}` + `workers:CI?2:1` + CI json reporter) + `qa-e2e.yml` `desktop-playwright` 잡(`npx playwright test`, `|| true` 금지 = hard gate) + `scripts/assert-playwright-ran.mjs`(silent-skip 가드: expected==0 실패) + `playwright/README.md`(컨벤션). **트리아지**: load-error 복구(`__dirname` ESM shim/sp-09-5 문법/full-menu-contract 제외) → 수집 0→416 → 로컬 전수 335 pass/77 fail(39 레거시 파일)/4 skip → **39파일 투명 격리** → 게이트 171 tests green(핵심 mock 회귀 24 tests 포함). **후속(추적)**: 격리 39 레거시 스펙 수리(동적RBAC sp-d*/정적계약 sp-08·09/드리프트UI). dev-report `docs/dev-reports/slice-3-a2-desktop-playwright-ci-gate.md`.
+
+---
+
+### D-AAC. 공용 AsyncAutocomplete<T> 추출 (2026-06-02, PR #345)
+
+**배경**: ProductAutocomplete(450)·PartnerAutocomplete(465)가 async 서버검색 typeahead로 95% 중복.
+
+| 결정 | 내용 |
+|---|---|
+| D-AAC-01 | 추출 범위 = Product + Partner(async)만. WarehouseAutocomplete/Selector(sync 변형)는 별도 평가. |
+| D-AAC-02 | 제네릭 `AsyncAutocomplete<T>`(어댑터 getKey/getInputLabel/renderOption/listboxLabel/matchExact) 추출, 기존 두 컴포넌트는 **얇은 wrapper로 보존**(공개 API·타입·소비처 불변). |
+| D-AAC-03 | CSS 통합 시 **focus-ring 토큰(`--focus-ring-brand`/`--focus-ring-danger`) 채택** — Product 하드코딩 rgba 제거, AC-2 백포트 흡수. |
+
+**산출**: `AsyncAutocomplete/{tsx,module.css,index.ts}` 신규(제네릭 430) + Product/Partner wrapper 축소(87/93) + 구 css 2개 삭제 + barrel export. 순감 900→610. 공개 API 불변 → SlipFormPage·LineRow 0 변경. **dual(Claude 2-agent + Codex) P0/P1 0 수렴**(P2 tabular-nums fix). **CI 29/29 green** — item 3-A2 게이트가 ac-2/ac-3 회귀 통과로 동작 불변 실증. dev-report `docs/dev-reports/slice-item2-async-autocomplete.md`. 후속: Warehouse 변형 통합 평가, 단위 테스트 보강.
