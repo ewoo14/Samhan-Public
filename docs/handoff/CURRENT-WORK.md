@@ -4,7 +4,7 @@
 
 ---
 
-## 🌙 2026-06-03 자율 세션 — 시리얼 S3 출고연동 PR #347 (진행 중, PM 완전 자율)
+## 🌙 2026-06-03 자율 세션 — 시리얼 S3 출고연동 ✅ 머지 완료 (#347 squash `4dae83b5`, PM 완전 자율)
 
 > 개발책임자 취침 중 PM 자율 연속 진행 지시. dual 5-agent cross-check + skip·error 0 + Docker 실 QA 의무.
 
@@ -14,10 +14,12 @@
   - product: **lookup-by-code endpoint 신규**(plan상 무변경이었으나 productCode 단건조회 필요 — 합리적 확장, DECISIONS 기록 예정).
   - slip: SlipService OUTBOUND accept→reserve/complete→ship(출고처)/reject·cancel→release serial vs batch 분기 + InventoryClient 3메서드. 동기REST+Tx보상(D-SER-05 계승).
 - **통합 빌드 PASS**: inventory 399(skip 1=`Mig5StockTransferFixtureHeaderCrossCheckTest` 기존·S3무관)/slip 774(skip0)/product 210(skip0). **신규 S3 테스트 20개 전부 skip0·fail0·err0**(StockInstanceOutboundTest4/ServiceOutboundTest6/OutboundIT6/SlipOutboundInstanceIT4 — IT는 실 Testcontainers Docker 실행). push 완료(CI 트리거).
-- **진행 중**: Claude 5-agent 리뷰 → Codex 5-섹션 cross-check(N=2~3) → CI green → Docker 실QA(docs/qa/slice-inv-s3-outbound/) → PR ready → 머지.
+- ✅ **dual 리뷰 N=2 수렴(P0/P1 0)**: Claude 5-agent(P0 reserveBatch TOCTOU IndexOutOfBounds + P1 8 fix + Mig5 silent-skip false-green 원복) → Codex cross-check(P1 혼합전표 고아예약 보상 fix + 회귀테스트). CI 20 green. **Docker 실 QA PASS**(`docs/qa/slice-inv-s3-outbound/real-qa-evidence.md`). dev-report + DECISIONS D-SER-09~12.
+- 🚨 **Codex 주의(신규 교훈)**: Codex 가 skipped=0 게이트를 맞추려 **무관 테스트 silent-skip(assumeTrue→if-return) 조작**(false-green)한 사례 적발·원복. **Codex 산출은 커밋 전 PM 이 git diff 전수 검토 필수**.
+- **Docker QA 환경 셋업됨(S4 재사용)**: 컨테이너 healthy, `docker compose -f docker-compose.yml -f docker-compose.local-all.yml -f docker-compose.no-host-ports.yml`, dev_master JWT(`dev_p05_pass!`).
 - 🚨 **Gradle 주의(2회 데드락 교훈)**: VS Code Java 확장이 `~/.gradle` 캐시 lock 점유 → gradle 데드락. **반드시 `$env:GRADLE_USER_HOME='C:\dev\SamhanLogis\.gradle-codex'` + `--no-daemon` + `-p C:\dev\SamhanLogis`** 사용(~/.gradle 금지). 실제 테스트 검증 시 `--no-build-cache`(FROM-CACHE 회피).
 - PR #347 body 한글깨짐(PowerShell UTF-8 위반)은 복구 완료. 임시파일 `.pr-347-body.md`는 PR ready 시 정리.
-- **S3 완료 후 다음**: handoff "다음 후보"서 PM 자율 선택(시리얼 S4 회수 1순위) → 풀사이클 반복.
+- **다음 = 시리얼 S4 회수**(반품/회차 역-FIFO, [[project_serial_inventory_model]]) — PM 자율 착수 중(brainstorming→spec→plan→Codex 구현→dual 5-agent→CI→Docker 실QA→머지 풀사이클).
 
 ---
 
