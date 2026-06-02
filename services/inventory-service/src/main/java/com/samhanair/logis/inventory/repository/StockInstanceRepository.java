@@ -50,7 +50,18 @@ public interface StockInstanceRepository extends JpaRepository<StockInstance, UU
      * @param status              대상 상태
      * @return outbound_at 내림차순 인스턴스 목록 (역-FIFO 순)
      */
-    List<StockInstance> findByOutboundPartnerCodeAndProductCodeAndStatusOrderByOutboundAtDesc(
+    List<StockInstance> findByOutboundPartnerCodeAndProductCodeAndStatusOrderByOutboundAtDescIdAsc(
+            String outboundPartnerCode, String productCode, StockInstanceStatus status);
+
+    /**
+     * 회수 대상 수량 확인 — 거래처+품목코드+상태 기준 건수.
+     *
+     * @param outboundPartnerCode 출고 거래처 코드
+     * @param productCode         품목코드 그룹
+     * @param status              대상 상태
+     * @return 해당 조건의 인스턴스 수
+     */
+    long countByOutboundPartnerCodeAndProductCodeAndStatus(
             String outboundPartnerCode, String productCode, StockInstanceStatus status);
 
     /**
@@ -105,6 +116,28 @@ public interface StockInstanceRepository extends JpaRepository<StockInstance, UU
      */
     long countByOutboundSlipNoAndProductCodeAndStatus(
             String outboundSlipNo, String productCode, StockInstanceStatus status);
+
+    /**
+     * S4 회수연동 대상 조회 — 회수전표 번호 + 품목코드 + 상태 기준으로 회수된 인스턴스를 찾는다.
+     *
+     * @param recallSlipNo 회수 입고전표 번호
+     * @param productCode  품목코드 그룹
+     * @param status       대상 상태
+     * @return 해당 전표로 회수 처리된 인스턴스 목록
+     */
+    List<StockInstance> findByRecallSlipNoAndProductCodeAndStatus(
+            String recallSlipNo, String productCode, StockInstanceStatus status);
+
+    /**
+     * S4 회수연동 멱등 수량 확인 — 회수전표 번호 + 품목코드 + 상태 기준 건수.
+     *
+     * @param recallSlipNo 회수 입고전표 번호
+     * @param productCode  품목코드 그룹
+     * @param status       대상 상태
+     * @return 해당 조건의 인스턴스 수
+     */
+    long countByRecallSlipNoAndProductCodeAndStatus(
+            String recallSlipNo, String productCode, StockInstanceStatus status);
 
     /**
      * S2 입고 멱등 수량 확인 — 입고전표+품목 기준 기존 인스턴스 수를 센다.
