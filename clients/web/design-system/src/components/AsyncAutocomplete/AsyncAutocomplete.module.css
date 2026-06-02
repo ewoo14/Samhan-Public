@@ -1,7 +1,4 @@
-/* ProductAutocomplete — 품목 서버검색 자동완성 (typeahead, async).
- *
- * WarehouseAutocomplete.module.css 를 기반으로 로딩/에러/힌트 상태 추가.
- */
+/* AsyncAutocomplete — 서버검색 자동완성 공통 스타일. */
 
 .wrapper {
   position: relative;
@@ -31,7 +28,7 @@
 .field:focus-within {
   outline: none;
   border-color: var(--color-brand-500);
-  box-shadow: 0 0 0 3px rgba(45, 119, 168, 0.18);
+  box-shadow: var(--focus-ring-brand);
 }
 
 .disabled {
@@ -45,7 +42,7 @@
 
 .hasError:focus-within {
   border-color: var(--color-danger);
-  box-shadow: 0 0 0 3px rgba(214, 80, 74, 0.18);
+  box-shadow: var(--focus-ring-danger);
 }
 
 .input {
@@ -142,13 +139,16 @@
   background-color: var(--color-brand-200);
 }
 
-.optionModel {
-  font-variant-numeric: tabular-nums;
-  /* 모델명이 1차 검색 키워드 — primary color 로 강조 (D-2) */
-  color: var(--color-text);
+/* 1차 표시 — 주요 검색 키워드. */
+.optionPrimary {
   font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  /* 1차 식별자(모델명/거래처명)는 숫자 혼합 — 등폭 정렬 유지(구 optionModel 동등) */
+  font-variant-numeric: tabular-nums;
 }
 
 .optionSep {
@@ -156,13 +156,23 @@
   flex-shrink: 0;
 }
 
-.optionName {
-  flex: 1 1 auto;
-  /* 품목명은 보조 정보 — muted 로 처리 (D-2) */
+/* 2차 표시 — 코드/이름 등 보조 식별자. */
+.optionSecondary {
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 3차 표시 — 사업자번호 등 낮은 우선순위 보조 정보. */
+.optionTertiary {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-subtle);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ---------- 로딩/상태 행 ---------- */
