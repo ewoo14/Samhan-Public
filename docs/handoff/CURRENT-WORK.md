@@ -27,7 +27,7 @@
 - **⑤ 3-A2-④ A그룹 재게이트** ✅ 머지 #361 (`9279c529`) — sp-d2(회계 5/5)+sp-d3(슬립/배차 9/9)=16 passed/0 skipped. 이중 가드(RoleGuard+PermissionGuard) 차단 판정 sp-d4 패턴 교정 + 광범위 page.route 제거(SPA redirect 간섭). **프로덕션 src 무변경(스펙+config만)**. QA false-green 4건 적발→수정(T5 동어반복·T3 !==undefined·sp-d3 콘텐츠 단언·admin-hr test.skip(!ok)) + Codex APPROVE. **격리 유지**: admin-hr(미구현 TC-HR2 부서 route-게이팅 — CI silent-skip 가드로 fixme 불가, 개선분은 커밋 보존) · sp-d1(매트릭스 UI 재설계). **후속: admin-hr 부서 게이팅 구현 슬라이스(완료 시 admin-hr 재게이트) · sp-d1 매트릭스 스펙 재작성.**
 - **⑥ 3-A2-④ B/C 재게이트** 🔄 진행(개발책임자 "계속" 지시) — 머지 #363 (`3fd1214a`):
   - ✅ **sp-d4(잔여 7도메인 PermissionGuard, 20 TC) 재게이트**. B/C 11스펙 triage(52 pass/28 fail) + 드리프트 패턴 문서화(`docs/dev-reports/slice-3a2-4-bc-triage.md`).
-  - 🔧 supplier-profile 부분 정정(5/7, 격리 유지): `/#/` URL 7건 + seed 번호(1112233333) + 번호 포맷 드리프트. 잔여 TC-SP-3(add→save 흐름 드리프트).
+  - 🔧 supplier-profile(5/7, #363)·tax-invoice-batch(6/7, #364 `c17cbaee`) `/#/` 드리프트 부분 정정(격리 유지). 잔여: supplier TC-SP-3(add→save 흐름), tax-invoice-batch TC-TIB-1(4탭 → PR #161 HometaxExportPage 이전 기능 재배치 반영 필요).
   - 📋 **다음 세션 B/C 잔여 8스펙**(격리): phase-2-6c(8실패·재고현황 모달)·sp-09-2(5·알리고)·sp-09-3/4/5(각3·OCR/KFTC/vendor)·sp-08-6-6(2·발행CTA)·phase-2-5(1·ON_HOLD필터)·sp-09-1(1·eTaxExternalId)·tax-invoice-batch(1·4탭). **공통 드리프트: goto URL `/#/` 누락 + mock seed 기대값**. URL 정정 후 상호작용 TC 재검증 필수(페이지 실로드 시 가려진 실패 표면화).
 - 남은: ⑥ B/C 잔여 8스펙(위 triage 표 우선순위) · **⑦ outbox/Saga**(대형 프로덕션 기능, 보상 자동재시도 @Scheduled 워커 + V32 backoff 컬럼, spec 신중 — 다음 세션 권장).
 - ⚠️ 세션 중 OOM/파일잠금으로 samhan Docker 스택 일시 중지 후 `docker compose up -d` 전체 복구함(24컨테이너). build.gradle slip test maxHeapSize=2g 추가(포크 JVM OOM 방지).
