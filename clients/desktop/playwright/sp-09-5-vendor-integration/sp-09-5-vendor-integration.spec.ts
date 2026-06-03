@@ -323,50 +323,42 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       })
 
       await page.goto(CLOVA_URL_WAREHOUSE, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      // 직전 step 역할 세션 재설정(hash 네비 미반영) — WAREHOUSE 로 OCR 페이지 진입 보장.
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
-      // 드롭존 표시 확인
+      // 드롭존·파일입력은 WAREHOUSE 에서 반드시 노출(vacuous skip 방지 — Codex P1).
       const dropZone = page.locator('[data-testid="receipt-ocr-drop-zone"]')
-      const dropZoneVisible = await dropZone.isVisible().catch(() => false)
+      await expect(dropZone, 'WAREHOUSE OCR 드롭존 미표시').toBeVisible({ timeout: 8000 })
+      const fileInput = page.locator('[data-testid="receipt-ocr-file-input"]')
+      await expect(fileInput, 'OCR 파일 입력 미존재').toBeAttached({ timeout: 5000 })
 
-      if (dropZoneVisible) {
-        // 파일 선택 + 제출 시도 (502 응답 확인)
-        const fileInput = page.locator('[data-testid="receipt-ocr-file-input"]')
-        const fileInputAttached = await fileInput.isAttached().catch(() => false)
+      // in-process mock(VITE_MOCK_MODE)은 page.route 를 가리므로 502 는 mock 의 파일명 컨벤션('502')으로 트리거.
+      const minimalPng = Buffer.from(
+        '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6260000000020001e221bc330000000049454e44ae426082',
+        'hex',
+      )
+      const tmpPng = path.join(QA_DIR, 'fixture-clova-502.png')
+      fs.writeFileSync(tmpPng, minimalPng)
 
-        if (fileInputAttached) {
-          // 최소 PNG fixture 생성
-          const minimalPng = Buffer.from(
-            '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6260000000020001e221bc330000000049454e44ae426082',
-            'hex',
-          )
-          const tmpPng = path.join(QA_DIR, 'fixture-clova-test.png')
-          fs.writeFileSync(tmpPng, minimalPng)
+      await fileInput.setInputFiles(tmpPng)
+      await page.waitForTimeout(500)
 
-          await fileInput.setInputFiles(tmpPng)
-          await page.waitForTimeout(500)
+      const submitBtn = page.locator('[data-testid="receipt-ocr-submit-btn"]')
+      await expect(submitBtn, '파일 선택 후 OCR 제출 버튼 비활성').toBeEnabled({ timeout: 5000 })
+      await submitBtn.click()
+      await page.waitForTimeout(1500)
 
-          const submitBtn = page.locator('[data-testid="receipt-ocr-submit-btn"]')
-          const isEnabled = await submitBtn.isEnabled().catch(() => false)
-
-          if (isEnabled) {
-            await submitBtn.click()
-            await page.waitForTimeout(1500)
-
-            const bodyText = (await page.textContent('body')) ?? ''
-            const hasClovaError =
-              bodyText.includes('OCR_SUBMIT_FAILED') ||
-              bodyText.includes('placeholder') ||
-              bodyText.includes('CLOVA') ||
-              bodyText.includes('DRY_RUN') ||
-              bodyText.includes('연동 전')
-            expect(
-              hasClovaError,
-              'Clova placeholder 502 에러 메시지 미표시 — "OCR_SUBMIT_FAILED"/"CLOVA"/"placeholder" 키워드 없음',
-            ).toBe(true)
-          }
-        }
-      }
+      const bodyText = (await page.textContent('body')) ?? ''
+      const hasClovaError =
+        bodyText.includes('OCR_SUBMIT_FAILED') ||
+        bodyText.includes('일시적 오류') ||
+        bodyText.includes('Clova') ||
+        bodyText.includes('외부 서비스')
+      expect(
+        hasClovaError,
+        'Clova 502 에러 메시지 미표시 — OCR_SUBMIT_FAILED 502 차단 검증',
+      ).toBe(true)
 
       await page.unroute('**/slips/receipt-ocr**')
 
@@ -541,7 +533,7 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       if (dropZoneVisible) {
         // 파일 선택 + 제출
         const fileInput = page.locator('[data-testid="receipt-ocr-file-input"]')
-        const fileInputAttached = await fileInput.isAttached().catch(() => false)
+        const fileInputAttached = (await fileInput.count()) > 0
 
         if (fileInputAttached) {
           const minimalPng = Buffer.from(
@@ -712,6 +704,8 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
     // ── step 4: SALES — KFTC 접근 차단
     await test.step('SALES — KFTC 입금 매칭 접근 차단 확인', async () => {
       await page.goto(KFTC_URL_SALES, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      // 직전 step 의 역할(ACCOUNTANT) 세션이 hash 네비로 SALES 로 재설정되지 않으므로 reload 로 mockRole=SALES 재독.
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1000)
 
       const submitBtn = page.locator('[data-testid="deposit-match-submit-btn"]')
@@ -748,6 +742,8 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
     // ── step 6: WAREHOUSE — Clova OCR 허용 확인
     await test.step('WAREHOUSE — Clova OCR 접근 허용 (drop-zone 표시)', async () => {
       await page.goto(CLOVA_URL_WAREHOUSE, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      // 직전 SALES 세션을 WAREHOUSE 로 재설정(hash 네비는 mockRole 미반영) — reload 로 재독.
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1000)
 
       const dropZone = page.locator('[data-testid="receipt-ocr-drop-zone"]')
@@ -861,6 +857,7 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 2: Aligo teal 토큰 — SMS 발송 이력 페이지
     await test.step('Aligo teal 토큰 — SMS 발송 이력 페이지 vendor 식별 요소 확인', async () => {
+      // 직전 step 의 역할 세션이 hash 네비로 재설정되지 않아 SMS 이력 접근이 막힐 수 있어 reload 로 mockRole 재독.
       await page.route('**/admin/notifications/dispatch-sms/history**', async route => {
         await route.fulfill({
           status: 200,
@@ -873,6 +870,7 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       })
 
       await page.goto(ALIGO_URL_MANAGER, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
       // Aligo vendor 토큰 요소 탐색
