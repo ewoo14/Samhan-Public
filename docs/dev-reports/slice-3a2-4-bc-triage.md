@@ -122,6 +122,15 @@ OCR shell 도 패턴 정합으로 전건 green → 재게이트:
 - **phase-2-6c**: 8/8 전환 모달 상호작용 실패(toBeEnabled/click timeout) — 전환 플로우 깊은 검증 필요(별도).
 - **sp-09-2/sp-09-5**: 상세 modal/vendor UI feature TC 포함(per-feature).
 
+### phase-2-6c 정밀 진단 (전환 모달 — 격리 유지, 테스트 재작성 필요)
+
+8/8 실패 근본원인 확인: **출고전표 전환 모달이 Phase 2.6a 부분전환으로 진화**해 submit 활성 조건이
+`convertWarehouse 선택 + convertQtyMap 라인 qty>0` 가 됐다(SalesPartnerOrderDetailPage L1009-1013).
+기존 테스트(시나리오 1~5)는 모달 오픈 후 **창고 선택·qty 입력 없이** `partner-order-convert-submit` 활성을
+기대해 `toBeEnabled()` timeout. 모달은 `WarehouseAutocomplete`(design-system) + 라인별 qty input 을 쓴다.
+→ 테스트 재작성 필요: (1) WarehouseAutocomplete 상호작용(type+option select), (2) convert-qty-0 입력 후 submit.
+시나리오 6~8(재고 현황 /inventory/stock-balance)은 별도 화면 검증. 단순 드리프트 아닌 **상호작용 흐름 재작성**(autocomplete 포함)이라 별도 작업.
+
 ### ⑥ 본 세션 종합 (최종)
 
 - ✅ **재게이트 38 TC**: sp-d4(20)·phase-2-5(8)·sp-08-6-6(5)·sp-09-3(5) — 순수 드리프트/패턴 정합.
