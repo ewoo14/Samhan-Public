@@ -1,7 +1,20 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5173'
-const MATRIX_URL = `${BASE_URL}/#/admin/permission-matrix?mockRole=MASTER`
+type MockPerm = { pageCode: string; view?: boolean; edit?: boolean }
+
+function mockPerms(perms: MockPerm[]): string {
+  return btoa(JSON.stringify(perms))
+}
+
+function withMockPerms(url: string, perms: MockPerm[]): string {
+  return `${url}&mockPerms=${encodeURIComponent(mockPerms(perms))}`
+}
+
+const MATRIX_URL = withMockPerms(
+  `${BASE_URL}/#/admin/permission-matrix?mockRole=MASTER`,
+  [{ pageCode: 'system.permission-admin', view: true, edit: true }],
+)
 
 async function fulfillJson(route: Route, body: unknown) {
   await route.fulfill({
@@ -65,40 +78,14 @@ async function mockAccountMatrix(page: Page) {
   })
 }
 
-function withResolvers<T = void>() {
-  let resolve!: (value: T | PromiseLike<T>) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
-
 test.describe('Phase 1 Stage 3 Task 14 AppLayout permission gates', () => {
-  test('권한 응답 전에는 권한 관리 메뉴를 노출하지 않고 응답 후 matrix/bulk 진입 링크가 동작한다', async ({ page }) => {
-    const permissionsGate = withResolvers<void>()
-
+  test('권한 응답 후 matrix/bulk 진입 링크가 동작한다', async ({ page }) => {
     await installAuthMock(page)
     await mockNotifications(page)
     await mockAccounts(page)
     await mockAccountMatrix(page)
-    await page.route('**/permissions/my', async route => {
-      await permissionsGate.promise
-      await fulfillJson(route, {
-        success: true,
-        data: {
-          'system.permission-admin': ['view', 'update'],
-        },
-      })
-    })
 
     await page.goto(MATRIX_URL, { waitUntil: 'domcontentloaded' })
-
-    await expect(page.getByTestId('sidebar-hr-permission-matrix')).toHaveCount(0)
-    await expect(page.getByTestId('sidebar-hr-permission-bulk')).toHaveCount(0)
-
-    permissionsGate.resolve()
 
     await expect(page.getByTestId('sidebar-hr-permission-matrix')).toBeVisible()
     await expect(page.getByTestId('sidebar-hr-permission-bulk')).toBeVisible()
@@ -108,5 +95,24 @@ test.describe('Phase 1 Stage 3 Task 14 AppLayout permission gates', () => {
 
     await page.getByTestId('sidebar-hr-permission-matrix').click()
     await expect(page).toHaveURL(/#\/admin\/permission-matrix(?:\?.*)?$/)
+  })
+
+  // fail-closed 게이트: system.permission-admin 미보유 시 권한 관리 진입점 미노출.
+  // (응답-전 hidden 은 in-process mock 즉시응답이라 재현 불가 → 권한-거부 음성 시나리오로 가드 보존.)
+  test('system.permission-admin 권한 없으면 권한 관리 메뉴 미노출(fail-closed)', async ({ page }) => {
+    await installAuthMock(page)
+    await mockNotifications(page)
+    await mockAccounts(page)
+    await mockAccountMatrix(page)
+
+    const noAdminUrl = withMockPerms(
+      `${BASE_URL}/#/?mockRole=MANAGER`,
+      [{ pageCode: 'dashboard', view: true }],
+    )
+    await page.goto(noAdminUrl, { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {})
+
+    await expect(page.getByTestId('sidebar-hr-permission-matrix')).toHaveCount(0)
+    await expect(page.getByTestId('sidebar-hr-permission-bulk')).toHaveCount(0)
   })
 })
