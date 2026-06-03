@@ -8,7 +8,7 @@
  *
  * 사유 (reason) 는 6종 enum (REBALANCE/URGENT/CONSOLIDATE/MAINTENANCE/SAMSUNG_DIRECT/OTHER).
  *
- * UUID 비공개: 출발/도착 창고 선택은 WarehouseSelector (코드+이름),
+ * UUID 비공개: 출발/도착 창고 선택은 WarehouseAutocomplete (코드+이름 타이핑 검색),
  * 모델명 onBlur lookup 으로 productId 내부 보유.
  */
 import { useState } from 'react'
@@ -18,7 +18,7 @@ import {
   Button,
   Card,
   FormField,
-  WarehouseSelector,
+  WarehouseAutocomplete,
 } from '@samhan/design-system'
 import axios from 'axios'
 import {
@@ -161,14 +161,14 @@ export function TransferFormPage() {
       <Card padding={5} shadow="sm">
         <div className="form-section">
           <div className="form-row">
-            <WarehouseSelector
+            <WarehouseAutocomplete
               label="출발 창고"
               required
               warehouses={Array.isArray(warehousesQuery.data) ? warehousesQuery.data : []}
               value={sourceWh}
               onChange={(id) => setSourceWh(id)}
             />
-            <WarehouseSelector
+            <WarehouseAutocomplete
               label="도착 창고"
               required
               warehouses={Array.isArray(warehousesQuery.data) ? warehousesQuery.data : []}
