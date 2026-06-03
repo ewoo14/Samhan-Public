@@ -137,7 +137,12 @@ OCR shell 도 패턴 정합으로 전건 green → 재게이트:
 → feature 갭 아닌 drift. 근본원인 = 테스트가 5 TC 전부 `page.route` 로 SMS 감사 리스트/상세를 mock(5행)하나
 VITE_MOCK_MODE 에서 page.route 무효 → in-process mock(SEND_AUDIT 데모 **3행**) 사용. T1 `≥5` 기대 불일치(실 3),
 T2 필터·T3/T4 상세(in-process mock detail 3건 ID)·T5 MANAGER 접근. → in-process mock(3행 데모) 기준 5 TC
-전면 재작성(page.route 의존 제거 + 기대값 정합 + role reload) 필요 — sp-09-3 보다 광범위(별도 작업).
+전면 재작성 필요 — sp-09-3 보다 광범위(별도 작업).
+
+실제 부분 착수 결과: T1 행 단언 ≥5→≥3(mock 정합) 적용했으나, 잔여는 단순 정합이 아니라 **in-process mock 의
+list/masking/filter/detail 계약 보강 + 페이지 연동**이 필요함을 확인 — T1(수신자 마스킹 010-****-NNNN 데이터),
+T2(날짜 필터 후 테이블 재렌더), T3/T4(상세 modal — detail-by-id 응답 shape), T5(MANAGER 접근/role reload).
+즉 mock 데모 데이터 보강 + 5 TC 정합이 동반되는 실질 슬라이스(test-only 정합으로 끝나지 않음). T1≥3 개선분만 커밋(격리 유지).
 
 ### ⑥ 본 세션 종합 (최종)
 

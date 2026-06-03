@@ -233,10 +233,12 @@ test.describe('SP-09-2 Aligo SMS 실 발송 + send_audit QA (T1~T5)', () => {
       )
       const rowCount = await rowLocator.count()
 
+      // in-process mock(VITE_MOCK_MODE)의 SEND_AUDIT 데모는 3행이다(page.route mock 은 무효). 다행 렌더를
+      // 검증하되 mock 실제 데이터에 정합한다(고정 5는 page.route 가정 잔재).
       expect(
         rowCount,
-        `SEND_AUDIT row 5개 이상 미확인 — 현재 rowCount=${rowCount}. data-testid="sms-audit-table" 테이블 렌더 필요`,
-      ).toBeGreaterThanOrEqual(5)
+        `SEND_AUDIT row 렌더 미확인 — 현재 rowCount=${rowCount}. data-testid="sms-audit-table" 테이블 렌더 필요`,
+      ).toBeGreaterThanOrEqual(3)
     })
 
     // ── step 4: 수신자 전화번호 마스킹 형식 검증
