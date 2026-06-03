@@ -4,6 +4,34 @@
 
 ---
 
+## 🏢 2026-06-03 야간 마라톤 종료 → 회사 PC 이어가기 (개발책임자 취침, 자율 진행 결과)
+
+### ✅ 이번 세션 완료 (머지 14건 + admin-hr 재게이트)
+- **④ notification 푸시**(#360, D-SER-26) · **⑤ A그룹 재게이트**(#361) · **⑦ outbox/Saga 보상 자동재시도**(#369, D-SER-27 — **보상 saga 완성**)
+- **⑥ B/C 재게이트 누계 43 TC**: sp-d4(20)·phase-2-5(8)·sp-08-6-6(5)·sp-09-3(5)·**admin-hr(5, mock hash 교정으로 재게이트, `00139732`)**. ①②③ 은 이전(#357~359).
+- 게이트 합동 **59 passed / 0 skipped** 확인. main green(확인 중).
+
+### 🔧 회사 PC에서 이어갈 잔여 = 구현 슬라이스 (test 정합 아닌 신규 기능/대규모 mock 보강)
+> 전건 근본원인·재현·해결경로 박제: `docs/dev-reports/slice-3a2-4-bc-triage.md`. **재사용 패턴**(중요):
+> ① page.route 는 VITE_MOCK_MODE 에서 no-op → 단언을 in-process mock(src/renderer/api/mock.ts) 응답에 정합
+> ② RoleGuard 역할 전환 검증 → `page.reload()` 로 세션 재설정(hash 네비는 mockRole 재설정 안 함)
+> ③ HashRouter 쿼리(mockRole/mockDepartment/mockPerms)는 hash 에 있음 → mock 은 `mockLocationParams()` 사용
+> ④ goto URL 은 반드시 `${BASE_URL}/#/...`(/#/ 누락 시 페이지 미로드)
+
+1. **sp-09-1 T3** (eTaxExternalId 표시): 세금계산서 상세에 emit 응답의 eTaxExternalId 를 `data-testid="tax-invoice-detail-etax-external-id"` 로 표시하는 **FE 구현** + 테스트를 in-process mock emit 응답값에 정합. (TaxInvoiceListPage/Detail + mock emit-nts 핸들러 확인.)
+2. **sp-09-4 T4** (deposit-match 상세 modal): MATCHED row 클릭 → 매칭 상세 모달(`deposit-match-detail-modal`) — Phase 11 미구현 모달 **FE 신규 구현**. T2/T5 는 패턴 정합으로 동반.
+3. **sp-09-2/sp-09-5** (알리고 SMS / vendor): in-process mock 의 list/masking/filter/detail 데모 보강 + 5 TC 정합(page.route 의존 제거). sp-09-5 는 T2(테스트마트)·T3(reload) 부분 패턴 적용 가능.
+4. **phase-2-6c** (전환 모달): submit 활성 조건이 `WarehouseAutocomplete 선택 + qty>0` 으로 진화 → 테스트에 autocomplete 상호작용 + qty 입력 단계 추가(시나리오 1~5) + 재고현황 화면(6~8).
+5. **sp-d1** (권한 매트릭스): role-grid → account-select UI 재설계로 스펙(84-grid) 전면 재작성.
+6. **후속(P2)**: retention soft-delete 물리 purge · Micrometer 보상 메트릭 · Phase11 활성화(SAMHAN_COMPENSATION_{RETENTION,ALERT,RETRY}_ENABLED).
+
+### ⚙️ 회사 PC 셋업 메모
+- `git pull` 후 `.\scripts\sync-claude-memory.ps1`(메모리 동기화). Docker 스택 `docker compose ... up -d`(24컨테이너). dev server: `cd clients/desktop; $env:VITE_MOCK_MODE=1; npx vite src/renderer --host 127.0.0.1 --port 5173`.
+- gradle 격리: `GRADLE_USER_HOME=C:\dev\SamhanLogis\.gradle-codex --no-daemon -p C:\dev\SamhanLogis`. 빌드 전 orphan java worker 정리(VS Code PID 보존).
+- 격리 스펙 검증 시 playwright.config testIgnore 에서 임시 해제 → 실행 → green 시 정식 해제.
+
+---
+
 ## ✅ 2026-06-03 — ⓑ 보상 실패 복구 API + 운영자 화면 (PR 진행, D-SER-23)
 
 > 세션 마무리 ②. #351(분산보상 견고화) 관측 → 정합(복구) 루프 완성. slip(BE)+desktop(FE).
