@@ -92,6 +92,8 @@ function attachPageErrorHook(page: Page, errors: string[]): void {
 const LIST_URL_ACCOUNTANT = `${BASE_URL}/#/accounting/tax-invoices?mockRole=ACCOUNTANT`
 /** ACCOUNTANT 역할 + ISSUED 상태 세금계산서 상세 (NTS 발행 대상) */
 const DETAIL_URL_ISSUED = `${BASE_URL}/#/accounting/tax-invoices?mockRole=ACCOUNTANT&mockStatus=ISSUED`
+// T3: NTS 발행은 상세 페이지(TaxInvoiceDetailPage)에서만 가능 — ISSUED·미발행(ti-001) 단건 상세로 직접 진입.
+const DETAIL_URL_ISSUED_TI001 = `${BASE_URL}/#/accounting/tax-invoices/ti-001?mockRole=ACCOUNTANT`
 /** SALES 역할 — 403 가드 검증 */
 const LIST_URL_SALES = `${BASE_URL}/#/accounting/tax-invoices?mockRole=SALES`
 /** MANAGER 역할 — 403 가드 검증 */
@@ -452,9 +454,9 @@ test.describe('SP-09-1 NTS e-Tax 국세청 전자세금계산서 발행 shell (T
       })
     })
 
-    // ── step 1: ISSUED 상세 진입
+    // ── step 1: ISSUED 단건 상세 진입(ti-001) — NTS 발행 버튼은 상세 페이지에서만 노출.
     await test.step('ISSUED detail 진입', async () => {
-      await page.goto(DETAIL_URL_ISSUED, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.goto(DETAIL_URL_ISSUED_TI001, { waitUntil: 'domcontentloaded', timeout: 20000 })
       await page.waitForTimeout(1500)
 
       const bodyText = (await page.textContent('body')) ?? ''
@@ -470,44 +472,24 @@ test.describe('SP-09-1 NTS e-Tax 국세청 전자세금계산서 발행 shell (T
         '[data-testid="tax-invoice-detail-emit-nts-button"], button:has-text("NTS 발행"), button:has-text("국세청 발행")',
       ).first()
 
-      if ((await ntsBtn.count()) > 0) {
-        // ISSUED 행 클릭하여 상세로 이동 (목록 페이지인 경우)
-        page.once('dialog', async dialog => { await dialog.accept() })
-        await ntsBtn.click()
-        await page.waitForTimeout(1500)
+      // ti-001(ISSUED·미발행) 상세에는 NTS 발행 버튼이 노출되어야 한다.
+      await expect(ntsBtn, 'NTS 발행 버튼 미노출 — ISSUED 미발행 상세에서 emit-nts 버튼 필요').toBeVisible({ timeout: 5000 })
+      await ntsBtn.click()
 
-        // confirm modal (role=dialog) 또는 window.confirm 수락 후 route 호출됐는지 검증
-        const confirmModal = page.locator('[role="dialog"], [data-testid*="confirm-modal"], [data-testid*="emit-confirm"]')
-        if ((await confirmModal.count()) > 0) {
-          // modal 내 확인 버튼 클릭
-          const confirmBtn = confirmModal.locator('button:has-text("확인"), button:has-text("발행"), button:has-text("예")').first()
-          if ((await confirmBtn.count()) > 0) {
-            await confirmBtn.click()
-            await page.waitForTimeout(1500)
-          }
-        }
-
-        // route 호출 횟수 검증 — 버튼 클릭 후 emit-nts API 가 1회 호출됐어야 함
-        expect(
-          emitNtsCallCount,
-          'NTS 발행 버튼 클릭 후 emit-nts API 호출이 발생하지 않음',
-        ).toBeGreaterThanOrEqual(1)
-      }
+      // 페이지는 design-system Modal 사용(window.confirm 아님) — 발행 확인 버튼을 정확 testid 로 클릭.
+      const confirmBtn = page.locator('[data-testid="tax-invoice-emit-nts-modal-confirm"]')
+      await expect(confirmBtn, 'NTS 발행 확인 모달 미표시').toBeVisible({ timeout: 5000 })
+      await confirmBtn.click()
+      await page.waitForTimeout(1500)
+      // NOTE: emit-nts 호출 검증은 page.route 카운터가 아니라(VITE_MOCK_MODE 에서 in-process mock 이 처리하여
+      //       page.route 무효) 발행 효과(eTaxExternalId 화면 표시)로 step 3 에서 확인한다.
     })
 
     // ── step 3: eTaxExternalId testid 표시 + 스크린샷
     await test.step('eTaxExternalId 화면 표시 + 스크린샷', async () => {
-      // data-testid="tax-invoice-detail-etax-external-id" 노출 확인
+      // emit 결과 검증은 canonical 배너(testid) 표시로 엄격 확인. 일반 문구('전자세금계산서'/'e-Tax')는
+      // emit 없이도 페이지에 존재할 수 있어 false-green 이므로 사용하지 않는다(Codex P1).
       const etaxIdElement = page.locator('[data-testid="tax-invoice-detail-etax-external-id"]')
-      const etaxIdElementExists = (await etaxIdElement.count()) > 0
-
-      const bodyText = (await page.textContent('body')) ?? ''
-      // data-testid 가 없는 경우 텍스트로 대체 검증
-      const etaxIdInBody =
-        bodyText.includes('DRY-20260518-0003') ||
-        bodyText.includes('DRY-') ||
-        bodyText.includes('e-Tax') ||
-        bodyText.includes('전자세금계산서')
 
       ensureQaDir()
       await page.screenshot({
@@ -515,10 +497,12 @@ test.describe('SP-09-1 NTS e-Tax 국세청 전자세금계산서 발행 shell (T
         fullPage: true,
       })
 
-      expect(
-        etaxIdElementExists || etaxIdInBody,
-        'eTaxExternalId 미표시 — [data-testid="tax-invoice-detail-etax-external-id"] 또는 DRY- 텍스트 없음',
-      ).toBeTruthy()
+      await expect(
+        etaxIdElement,
+        'eTaxExternalId 미표시 — emit 후 [data-testid="tax-invoice-detail-etax-external-id"] 배너 노출 필요',
+      ).toBeVisible({ timeout: 5000 })
+      // 배너에 DRY_RUN 접수번호(DRY-<taxInvoiceNo>-<seq>) 가 실제로 렌더됐는지 — emit 호출 효과 검증.
+      await expect(etaxIdElement, 'NTS 수신 ID(DRY-) 미표시 — emit-nts 실행 효과 없음').toContainText('DRY-')
     })
 
     expect(errors, `pageerror: ${errors.join(', ')}`).toHaveLength(0)
