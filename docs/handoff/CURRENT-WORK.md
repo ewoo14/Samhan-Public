@@ -29,7 +29,8 @@
   - ✅ **재게이트(33 TC)**: sp-d4(20, #363)·phase-2-5(8, #366)·sp-08-6-6(5, #366) — **순수 드리프트**(`/#/`·seed·단언 정정만으로 green).
   - 🔧 **부분 정정(격리 유지, feature 잔여 1+ TC)**: supplier-profile(5/7, #363)·tax-invoice-batch(6/7, #364)·sp-09-1(4/5, #365) — `/#/`+skip 정정했으나 feature TC 잔존(supplier TC-SP-3 add→save 흐름 / tax-invoice-batch TC-TIB-1 4탭 HometaxExportPage 이전 / sp-09-1 T3 eTaxExternalId 표시 UI 미구현).
   - 📋 **다음 세션 B/C 잔여 = feature 레벨**: sp-09-2(5·알리고 SMS)·sp-09-3(3·OCR 결과카드/422배너/RoleGuard)·sp-09-4(3·KFTC)·sp-09-5(3·vendor)·phase-2-6c(8·재고현황 모달) + 위 3 partial 의 잔여 feature TC. **🔑 B/C 는 혼합**: `/#/` 정정 후 전건 재실행으로 (순수 드리프트=즉시 re-gate / feature 잔여=드리프트 정정 후에도 남으면 실 기능 대조→갭이면 구현 슬라이스 분리) 판별. 상세: `docs/dev-reports/slice-3a2-4-bc-triage.md`.
-- 남은: ⑥ B/C feature 잔여 5스펙 + 3 partial 잔여 TC(per-feature) · **⑦ outbox/Saga**(대형 프로덕션 기능, 보상 자동재시도 @Scheduled 워커 + V32 backoff 컬럼, spec 신중 — 독립 세션 권장).
+  - ✅ **⑥ mechanical 재게이트 완결**(#367 `1ffbe373`): 순수 드리프트 33 TC 재게이트 확정. 남은 5스펙(sp-09-2/3/4/5·phase-2-6c) 일괄 재실행으로 **feature 레벨 확정**(23 fail, `/#/` 정정 후에도 잔존). sp-09-5 `/#/` de-false-green 정정(격리 유지).
+- 남은: ⑥ B/C **feature 잔여**(sp-09-2 알리고SMS·sp-09-3 OCR·sp-09-4 KFTC·sp-09-5 vendor·phase-2-6c 재고모달 + supplier/tax-invoice-batch/sp-09-1 partial 잔여 TC) — **mock 흐름/상호작용 per-feature 작업, 실 기능 갭 시 구현 슬라이스 동반**(test 재게이트와 다른 모드) · **⑦ outbox/Saga**(대형 신규 기능, V32 backoff, 독립 세션 권장).
 - ⚠️ 세션 중 OOM/파일잠금으로 samhan Docker 스택 일시 중지 후 `docker compose up -d` 전체 복구함(24컨테이너). build.gradle slip test maxHeapSize=2g 추가(포크 JVM OOM 방지).
 
 ---
