@@ -2,6 +2,7 @@ package com.samhanair.logis.slip.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,10 +39,13 @@ class CompensationAuditWriterTest {
     @Mock
     private SerialCompensationFailureRepository repository;
 
+    @Mock
+    private CompensationAlertNotifier alertNotifier;
+
     @Test
     void record_savesOneRowTruncatesReasonAndWritesWarn(CapturedOutput output) {
         Clock fixedClock = Clock.fixed(Instant.parse("2026-06-03T01:02:03Z"), ZoneId.of("Asia/Seoul"));
-        CompensationAuditWriter writer = new CompensationAuditWriter(repository, fixedClock);
+        CompensationAuditWriter writer = new CompensationAuditWriter(repository, alertNotifier, fixedClock);
         when(repository.save(any(SerialCompensationFailure.class))).thenAnswer(inv -> inv.getArgument(0));
         Slip slip = Slip.createOutbound("2026/06/03-77", LocalDate.of(2026, 6, 3), 77,
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "삼한", DeliveryTag.DAY, null, "u");
@@ -70,5 +74,9 @@ class CompensationAuditWriterTest {
                 .contains("slipNo=2026/06/03-77")
                 .contains("product=AC-WARN-001")
                 .contains("op=RELEASE_INSTANCES");
+        // 감사 행 저장 성공 후 운영 알림 seam 이 비즈니스 식별자(slip/단계/품목/동작)로 호출된다. (D-SER-26)
+        // 원인 요약은 UUID 포함 가능성 때문에 notifier 에 전달하지 않는다(Codex P1).
+        verify(alertNotifier).notifyFailure(eq(slip), eq(CompensationPhase.ACCEPT_RESERVE),
+                eq("AC-WARN-001"), eq(CompensationOperation.RELEASE_INSTANCES));
     }
 }

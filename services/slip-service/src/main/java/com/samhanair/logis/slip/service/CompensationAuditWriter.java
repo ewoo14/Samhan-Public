@@ -27,6 +27,7 @@ public class CompensationAuditWriter {
     private static final int MAX_REASON_LENGTH = 1000;
 
     private final SerialCompensationFailureRepository repository;
+    private final CompensationAlertNotifier alertNotifier;
     private final Clock clock;
 
     /**
@@ -66,7 +67,9 @@ public class CompensationAuditWriter {
                     slip.getSlipNo(), phase, productCode, operation, saveFailure);
             throw saveFailure;
         }
-        // TODO: notification-service 운영 알림 푸시는 후속 복구 API 슬라이스에서 연동한다.
+        // 감사 행 저장 성공 후 운영 알림 push (best-effort, 기본 비활성). 알림 실패는 보상 흐름에 무영향. (D-SER-26)
+        // 원인 요약(failureReason 등)은 UUID 포함 가능 → 푸시 본문에 싣지 않으려 notifier 에 전달하지 않는다(Codex P1).
+        alertNotifier.notifyFailure(slip, phase, productCode, operation);
     }
 
     private String summarize(Throwable ex) {
