@@ -37,6 +37,14 @@ QA 리뷰가 재게이트 대상 spec 의 **사전 존재 false-green**(재게�
 
 재검증: gated(sp-d2+sp-d3) 16 passed / 0 skipped. desktop tsc 0. (admin-hr 격리 — silent-skip 가드 충족.)
 
+## 3.7 admin-hr 재게이트 (mock 교정 — 부서 게이팅은 이미 구현됨)
+
+후속 조사 결과 TC-HR2(MASTER+영업 /admin/users 차단)는 **프로덕션 기능 미구현이 아니라 mock 버그**였다:
+- `/admin/users` 는 이미 `AdminLayout`(RoleGuard MASTER + `useQuery(is-executive-office)` → `!isExecutiveOffice` 시 `/forbidden`) children 으로 부서 게이팅됨.
+- mock `GET /users/me/is-executive-office` 핸들러가 `window.location.search` 에서 mockDepartment 를 읽었는데, HashRouter 에선 쿼리가 **hash** 에 있어 항상 빈값 → MASTER 면 무조건 대표실 판정 → 영업 부서도 통과(가드 마스킹).
+- 교정: `mockLocationParams()`(hash 병합 파서)로 변경. default(dept 미지정)는 MASTER→true 유지(타 스펙 무영향), 명시 비-대표실만 false.
+- 결과: **admin-hr 5/5 green → testIgnore 해제 재게이트**. 게이트 합동(sp-d4+sp-d2+sp-d3+admin-hr+phase-2-5+sp-08-6-6+sp-09-3) **59 passed / 0 skipped**. desktop tsc 0.
+
 ## 4. 후속
 
 - **admin-hr 부서 route-게이팅**: /admin/users(및 대상 admin 라우트) 대표실 외 차단 — BE 부서 정합 + redirect 목적지 결정 후 구현.

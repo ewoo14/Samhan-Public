@@ -868,10 +868,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // MASTER 이하 또는 대표실 미소속 시 false.
   // [PR-HR] AdminLayout 진입 가드용 mock.
   if (method === 'GET' && url.includes('/users/me/is-executive-office')) {
-    const params =
-      typeof window !== 'undefined' && window.location
-        ? new URLSearchParams(window.location.search)
-        : new URLSearchParams()
+    // HashRouter 에서 mockRole/mockDepartment 는 hash query 에 있으므로 mockLocationParams()(hash 병합)로 읽는다.
+    // (기존 window.location.search 직접 파싱은 hash 쿼리를 못 읽어 항상 빈값 → MASTER 면 무조건 대표실 판정되는 버그.)
+    const params = mockLocationParams()
     const mockRole = params.get('mockRole') ?? MOCK_AUTH.role
     const mockDept = params.get('mockDepartment') ?? ''
     const isExecutiveOffice =
