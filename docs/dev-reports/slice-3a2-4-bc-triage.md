@@ -131,6 +131,14 @@ OCR shell 도 패턴 정합으로 전건 green → 재게이트:
 → 테스트 재작성 필요: (1) WarehouseAutocomplete 상호작용(type+option select), (2) convert-qty-0 입력 후 submit.
 시나리오 6~8(재고 현황 /inventory/stock-balance)은 별도 화면 검증. 단순 드리프트 아닌 **상호작용 흐름 재작성**(autocomplete 포함)이라 별도 작업.
 
+### sp-09-2 정밀 진단 (알리고 SMS — 격리 유지, drift 재작성 필요)
+
+상세 모달/테이블 testid(`dispatch-sms-send-audit-detail-modal`, `sms-audit-detail-btn-{date}`) **페이지 구현됨**
+→ feature 갭 아닌 drift. 근본원인 = 테스트가 5 TC 전부 `page.route` 로 SMS 감사 리스트/상세를 mock(5행)하나
+VITE_MOCK_MODE 에서 page.route 무효 → in-process mock(SEND_AUDIT 데모 **3행**) 사용. T1 `≥5` 기대 불일치(실 3),
+T2 필터·T3/T4 상세(in-process mock detail 3건 ID)·T5 MANAGER 접근. → in-process mock(3행 데모) 기준 5 TC
+전면 재작성(page.route 의존 제거 + 기대값 정합 + role reload) 필요 — sp-09-3 보다 광범위(별도 작업).
+
 ### ⑥ 본 세션 종합 (최종)
 
 - ✅ **재게이트 38 TC**: sp-d4(20)·phase-2-5(8)·sp-08-6-6(5)·sp-09-3(5) — 순수 드리프트/패턴 정합.
