@@ -24,7 +24,8 @@
 - **② 회수품 재판매(RECALLED→AVAILABLE)** ✅ 머지 #358 — `StockInstance.resell()` + resell-batch API. Docker 실 QA(실 RECALLED resell→200→psql). D-SER-24.
 - **③ retention 스케줄러** ✅ (PR #359, 머지 진행) — `CompensationRetentionScheduler`(@Scheduled cron+zone=Asia/Seoul, @ConditionalOnProperty 기본 비활성) resolved+90일경과 soft-delete. 🚨미해소·기간내 절대 미정리. TimeConfig Clock Asia/Seoul(Codex P1). build.gradle test heap 2g(OOM fix). 5-agent+Codex 수렴. Docker QA(재배포 healthy+스케줄러 미등록). D-SER-25. **후속: soft-delete 물리 purge(P1-2)·Phase11 활성화(P2)**.
 - **④ notification 푸시** ✅ 머지 #360 (`b462b0ea`) — `CompensationAlertNotifier`(감사 저장 성공 후 best-effort push, config-gated 기본 비활성, afterCommit 발송, 본문 UUID 비공개). `CompensationAuditWriter` TODO seam 연결, 기존 `NotificationClient.sendUserPush` 재사용. Claude 5-team P1 5건(트랜잭션 커밋前 발송→afterCommit / catch(Exception) / IT body 단언 / @MockBean / env 템플릿) + Codex 사이클1 P1(본문 예외메시지 UUID 유출→본문서 원인 제거) fix → Codex 사이클2 APPROVE. CI 20/20 green. 실 Docker QA(재배포 3회 healthy/ERROR0, UUID부재 IT 실증). D-SER-26. **후속: Micrometer 카운터(P2)·Phase11 활성화(SAMHAN_COMPENSATION_ALERT_ENABLED+RECIPIENT)**.
-- 남은: ⑤3-A2-④ A그룹(착수) ⑥3-A2-④ B/C ⑦outbox/Saga(대형, spec 신중).
+- **⑤ 3-A2-④ A그룹 재게이트** ✅ 머지 #361 (`9279c529`) — sp-d2(회계 5/5)+sp-d3(슬립/배차 9/9)=16 passed/0 skipped. 이중 가드(RoleGuard+PermissionGuard) 차단 판정 sp-d4 패턴 교정 + 광범위 page.route 제거(SPA redirect 간섭). **프로덕션 src 무변경(스펙+config만)**. QA false-green 4건 적발→수정(T5 동어반복·T3 !==undefined·sp-d3 콘텐츠 단언·admin-hr test.skip(!ok)) + Codex APPROVE. **격리 유지**: admin-hr(미구현 TC-HR2 부서 route-게이팅 — CI silent-skip 가드로 fixme 불가, 개선분은 커밋 보존) · sp-d1(매트릭스 UI 재설계). **후속: admin-hr 부서 게이팅 구현 슬라이스(완료 시 admin-hr 재게이트) · sp-d1 매트릭스 스펙 재작성.**
+- 남은: ⑥3-A2-④ B/C(sp-08-6-6/sp-09-1~5/tax-invoice-batch/supplier-profile/phase-2-5/phase-2-6c — A그룹 유사 깊은 per-spec 작업) ⑦outbox/Saga(대형 프로덕션 기능, V32 동반, spec 신중).
 - ⚠️ 세션 중 OOM/파일잠금으로 samhan Docker 스택 일시 중지 후 `docker compose up -d` 전체 복구함(24컨테이너). build.gradle slip test maxHeapSize=2g 추가(포크 JVM OOM 방지).
 
 ---
