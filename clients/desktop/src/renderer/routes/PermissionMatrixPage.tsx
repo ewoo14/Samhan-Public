@@ -1,26 +1,34 @@
 /**
- * 권한 매트릭스 관리 화면 — SP-D1 슬라이스.
+ * 권한설정 화면 — SP-D1 슬라이스.
  *
  * MASTER 전용 (`/admin/permission-matrix`).
- * 역할(행) × 페이지(열) 체크박스 그리드로 권한을 시각적으로 관리.
+ * 계정 선택 후 해당 계정의 페이지 × 권한 액션 매트릭스를 관리한다.
+ * 행은 PAGE_GROUPS/PAGES_ORDER 전체 페이지 코드이며, 열은 PERMISSION_ACTIONS
+ * 7개(view/create/update/delete/restore/download/print)이다.
+ * 서버 응답에 없는 페이지도 accountMatrixToState 에서 false 기본값으로 채워 렌더한다.
  *
  * 기능:
- * - 역할 × 페이지 코드 매트릭스 (view / edit 체크박스 2개)
+ * - account-select 로 계정 선택 (첫 계정 자동 선택)
+ * - 페이지 코드 × PERMISSION_ACTIONS 7액션 체크박스 매트릭스
  * - 셀 변경 시 dirty 상태 강조 (노란 배경)
- * - "저장" 버튼 → 변경된 셀만 batch update API 호출 + toast
- * - "초기화" 버튼 → 서버 데이터로 롤백 (dirty 취소)
- * - 카테고리 그룹 헤더 행: 회계/매입·매출·배차·알림/관리(SP-D1~D3) +
- *   견적/거래처주문/재고/직원·계정/거래처/상품/아로로지스(SP-D4) 총 13 그룹
+ * - "저장" 버튼 → 변경된 page/action 만 계정 권한 update API 호출 + toast
+ * - "초기화" 버튼 → 선택 계정의 서버 데이터로 롤백 (dirty 취소)
+ * - 역할 템플릿 적용 / 다른 계정에서 복사 / 도메인·행·열 일괄 토글
+ * - 카테고리 그룹 헤더 행: 회계/매입/매출/전표 운영/배차/알림/메신저/관리/시스템 관리 +
+ *   견적/거래처주문/재고/직원·계정/거래처/상품/아로로지스 총 16 그룹
  *
- * data-testid (SP-D1 cycle 2 fix: Playwright spec 기준으로 통일):
+ * data-testid:
  * - permission-matrix-table                        — 매트릭스 표 wrapper
- * - permission-matrix-role-{role}                  — 역할 헤더 th
- * - permission-matrix-cell-{role}-{page}           — 개별 셀 td
- * - permission-matrix-cell-{role}-{page}-view      — view 체크박스 (pageCode 를 '-' 로 normalize)
- * - permission-matrix-cell-{role}-{page}-edit      — edit 체크박스
- * - permission-matrix-save-btn                     — 저장 버튼
- * - permission-matrix-reset-btn                    — 초기화 버튼
- * - permission-matrix-change-count                 — 변경 건수 배지
+ * - perm-matrix-account-select                     — 계정 선택 select
+ * - perm-matrix-cell-{pageNorm}-{action}           — 개별 셀 체크박스 (pageCode 를 '.' → '-' normalize)
+ * - perm-matrix-row-all-{pageNorm}                 — 페이지 행 7액션 일괄 토글 버튼
+ * - perm-matrix-col-all-{action}                   — 액션 열 전체 토글 버튼
+ * - perm-matrix-domain-all-{domainId}              — 도메인 그룹 전체 ON 버튼
+ * - perm-matrix-domain-all-{domainId}-off          — 도메인 그룹 전체 OFF 버튼
+ * - perm-matrix-apply-template                     — 역할 템플릿 적용 버튼
+ * - perm-matrix-copy-account                       — 다른 계정 권한 복사 버튼
+ * - perm-matrix-change-count                       — 변경 건수 배지 role="status"
+ * - perm-matrix-save-btn                           — 저장 버튼 (dirtyKeys.size===0 이면 disabled)
  * - sidebar-purchases-receipt-ocr (AppLayout)      — 영수증 OCR 사이드바 링크 (SP-D1 동적 권한 연동)
  */
 import { useState, useCallback, useEffect, useMemo } from 'react'
@@ -539,13 +547,13 @@ export const PAGE_LABEL: Record<PageCode, string> = {
 }
 
 const MATRIX_ACTION_LABEL: Record<PermissionAction, string> = {
-  view: 'VIEW',
-  create: 'CREATE',
-  update: 'UPDATE',
-  delete: 'DELETE',
-  restore: 'RESTORE',
-  download: 'DOWNLOAD',
-  print: 'PRINT',
+  view: '보기',
+  create: '생성',
+  update: '수정',
+  delete: '삭제',
+  restore: '복원',
+  download: '엑셀',
+  print: '인쇄',
 }
 
 const MATRIX_ACTION_META: Record<PermissionAction, {
@@ -610,10 +618,10 @@ const MATRIX_ACTION_GROUP_STARTS = new Set<PermissionAction>(['create', 'restore
 /** 위험(DELETE/RESTORE) 액션 — 173×7 그리드 단일 셀 오클릭 방지 시각 가드 대상. */
 const MATRIX_DANGER_ACTIONS = new Set<PermissionAction>(['delete', 'restore'])
 const MATRIX_LEGEND_ITEMS = [
-  { label: '조회', actions: 'VIEW', color: 'var(--color-brand-500)' },
-  { label: '변경', actions: 'CREATE · UPDATE', color: 'var(--color-warning-500)' },
-  { label: '위험', actions: 'DELETE · RESTORE', color: 'var(--color-danger-500)' },
-  { label: '출력', actions: 'DOWNLOAD · PRINT', color: 'var(--color-success-500)' },
+  { label: '조회', actions: '보기', color: 'var(--color-brand-500)' },
+  { label: '변경', actions: '생성 · 수정', color: 'var(--color-warning-500)' },
+  { label: '위험', actions: '삭제 · 복원', color: 'var(--color-danger-500)' },
+  { label: '출력', actions: '엑셀 · 인쇄', color: 'var(--color-success-500)' },
 ]
 
 const MATRIX_DOMAIN_ID_BY_LABEL: Record<string, string> = {
@@ -773,7 +781,7 @@ function matrixActionCheckboxStyle(action: PermissionAction): React.CSSPropertie
 }
 
 export function PermissionMatrixPage() {
-  usePageTitle('권한 매트릭스 관리')
+  usePageTitle('권한설정')
 
   const queryClient = useQueryClient()
   const [selectedAccountId, setSelectedAccountId] = useState('')
@@ -955,7 +963,7 @@ export function PermissionMatrixPage() {
     <div style={{ padding: '0 4px 28px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
         <div>
-          <h3 style={{ margin: 0 }}>권한 매트릭스 관리</h3>
+          <h3 style={{ margin: 0 }}>권한설정</h3>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-neutral-500)' }}>
             계정별 페이지 권한을 7개 액션 단위로 관리합니다.
           </p>
@@ -1084,7 +1092,7 @@ export function PermissionMatrixPage() {
 
       {matrixQuery.isError && (
         <div style={{ padding: 24, color: 'var(--color-danger-600)' }}>
-          계정 권한 매트릭스를 불러오지 못했습니다.
+          계정 권한설정을 불러오지 못했습니다.
         </div>
       )}
 

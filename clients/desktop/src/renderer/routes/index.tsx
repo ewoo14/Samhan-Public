@@ -308,11 +308,13 @@ import { DepositMatchPage } from './DepositMatchPage'
 import { DEPOSIT_MATCH_ROLES } from '../api/depositMatchApi'
 // [PR-HR] 403 접근 거부 페이지 — AdminLayout 대표실 부서 가드 + 일반 권한 부족 redirect 대상.
 import { ForbiddenPage } from './ForbiddenPage'
+// [SP-D1 404] 인앱 한국어 404 페이지 — AuthGuard + AppLayout 내부 catch-all.
+import { NotFoundPage } from './NotFoundPage'
 // [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH / MANAGER / MASTER.
 // BE: slip-service `/admin/dispatch-board/*` + `/admin/dispatch-tasks/*` (Phase A spec § 6).
 import DispatchBoardPage from './dispatch-board/DispatchBoardPage'
 const DISPATCH_BOARD_ROLES = ['DISPATCH', 'MANAGER', 'MASTER'] as const
-// [SP-D1] 동적 RBAC 권한 매트릭스 관리 화면 — MASTER 전용.
+// [SP-D1] 동적 RBAC 권한설정 화면 — MASTER 전용.
 import { PermissionMatrixPage } from './PermissionMatrixPage'
 import { PermissionMatrixBulkPage } from './PermissionMatrixBulkPage'
 const PERMISSION_MATRIX_ROLES = ['MASTER'] as const
@@ -1483,10 +1485,12 @@ const router = createHashRouter([
           { path: 'roles', element: <AdminRolesPage /> },
           { path: 'warehouses', element: <AdminWarehousesPage /> },
           { path: 'departments', element: <AdminDepartmentsPage /> },
+          // admin 중첩 레이아웃 내 미매칭 URL → 한국어 404
+          { path: '*', element: <NotFoundPage /> },
         ],
       },
 
-      // [SP-D1] 권한 매트릭스 관리 — MASTER 전용.
+      // [SP-D1] 권한설정 — MASTER 전용.
       // AdminLayout (대표실 부서 이중 가드) 외부에 단독 라우트로 배치.
       // 접근 시도 시 MASTER 가 아니면 홈 redirect.
       // [SP-D6-1] system.permission-admin 동적 RBAC 추가 (RoleGuard 이중 가드 유지).
@@ -1671,6 +1675,11 @@ const router = createHashRouter([
           </PermissionGuard>
         ),
       },
+
+      // [SP-D1 404] 인앱 한국어 404 — AuthGuard + AppLayout 내부 미매칭 catch-all.
+      // 로그인 사용자가 존재하지 않는 URL 진입 시 사이드바를 유지한 채 한국어 404 렌더.
+      // 비인증 최상위 미매칭은 AuthGuard 가 /login 으로 redirect (현행 유지, 별도 처리 불필요).
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ])
