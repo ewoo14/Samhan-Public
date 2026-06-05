@@ -28,6 +28,7 @@ import { apiClient } from '../api/client'
 import { partnerOrderAuditApi } from '../api/createAuditApi'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { useSessionStore } from '../stores/session'
+import { usePermissions } from '../hooks/usePermissions'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
 import { PartnerOrderVersionHistoryPanel } from '../components/audit/PartnerOrderVersionHistoryPanel'
 import styles from '../components/sales/sales.module.css'
@@ -38,10 +39,6 @@ const bundleModeLabel = (mode: 'EXPAND' | 'KEEP' | null) => {
   if (mode === 'KEEP') return '묶음 유지'
   return null
 }
-const EDIT_ROLES = ['SALES', 'MANAGER', 'MASTER']
-const PRINT_ROLES = ['SALES', 'MANAGER', 'MASTER']
-/** 출고전표 전환 허용 역할 — sales.partner-order.convert CREATE 와 동일 매트릭스. */
-const CONVERT_ROLES = ['SALES', 'MANAGER', 'MASTER']
 /**
  * 출고전표 전환 가능 status 화이트리스트 — BE requireConvertible(DRAFT/ON_HOLD 한정) 과 정합.
  * CONFIRMED 포함 나머지 상태는 전환 불가(BE 409 또는 business rule 위반).
@@ -76,14 +73,18 @@ export function SalesPartnerOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const setPageTitle = usePageTitleStore((s) => s.setPageTitle)
   const auth = useSessionStore((s) => s.auth)
+  const { canAccess } = usePermissions()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
   const isValidId = !!id && id !== 'undefined' && id !== 'null'
   const orderId = id!
-  const canEdit = !!auth?.role && EDIT_ROLES.includes(auth.role)
-  const canPrint = !!auth?.role && PRINT_ROLES.includes(auth.role)
-  const canConvert = !!auth?.role && CONVERT_ROLES.includes(auth.role)
+  const canEdit = canAccess('sales.partner-order.edit', 'update')
+  // [C2c] 삭제는 BE PartnerOrderDeleteController 가 sales.partner-order.edit + DELETE 요구 →
+  // 7-action 분리 모델에서 update 와 별개로 delete 권한을 확인(Codex review P1).
+  const canDelete = canAccess('sales.partner-order.edit', 'delete')
+  const canPrint = canAccess('sales.partner-order.print', 'print')
+  const canConvert = canAccess('sales.partner-order.convert', 'create')
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [convertOpen, setConvertOpen] = useState(false)
@@ -510,7 +511,7 @@ export function SalesPartnerOrderDetailPage() {
                 출고전표 전환
               </Button>
             ) : null}
-            {query.data && canEdit ? (
+            {query.data && canDelete ? (
               <Button
                 type="button"
                 variant="danger"

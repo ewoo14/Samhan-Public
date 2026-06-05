@@ -5426,10 +5426,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const myCells = _mockPermissionCells.filter((c) => c.roleCode === mockRole)
     const permissions: Record<string, string[]> = {}
     for (const cell of myCells) {
-      const actions = []
+      const actions: string[] = []
       if (cell.view) actions.push('VIEW')
-      if (cell.edit) actions.push('CREATE', 'UPDATE', 'DELETE')
-      if (cell.view) actions.push('DOWNLOAD', 'PRINT')
+      // [C2c] 특수 page-code 는 action-only(seed 정합) — 일반 edit→CRUD 도출 대신 지정 액션만.
+      // sales.partner-order.convert = create-only(V41) → update/delete 과다 grant 방지(Codex review P1).
+      const actionOnly = MOCK_ACTION_ONLY_PAGES[cell.pageCode]
+      if (actionOnly) {
+        if (cell.edit) actions.push(...actionOnly)
+      } else {
+        if (cell.edit) actions.push('CREATE', 'UPDATE', 'DELETE')
+        if (cell.view) actions.push('DOWNLOAD', 'PRINT')
+      }
       permissions[cell.pageCode] = actions
     }
     return envelope(permissions)
@@ -7004,7 +7011,21 @@ const SP_D1_PAGES = [
   'slip.edit-requests',
   'slip.edit-requests.decide',
   'slip.photo-audit',
+  // C2c 동적 권한 전환 page-codes (V36/V30/V41 seed 기반)
+  'purchases.slip.edit',
+  'purchases.slip.delete',
+  'sales.slip.edit',
+  'sales.partner-order.edit',
+  'sales.partner-order.convert',
 ] as const
+
+/**
+ * [C2c] action-only page-codes — view/edit 셀의 일반 CRUD 도출 대신 지정 액션만 grant.
+ * seed 정합(예: V41 convert = create-only). 비-MASTER `/permissions/my` mock 도출에 적용.
+ */
+const MOCK_ACTION_ONLY_PAGES: Record<string, string[]> = {
+  'sales.partner-order.convert': ['CREATE'],
+}
 
 /**
  * 역할 × 페이지 기본 view 권한 (V7+V8+V10 seed 기반 — SP-D1/D2/D4 통합 매트릭스).
@@ -7068,6 +7089,9 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch',
     'aligo.address-book', 'messenger.admin', 'slip.edit-requests', 'slip.edit-requests.decide',
     'slip.photo-audit',
+    // C2c 동적 권한 전환 — MANAGER: view 허용 (V36/V30/V41 seed)
+    'purchases.slip.edit', 'purchases.slip.delete',
+    'sales.slip.edit', 'sales.partner-order.edit', 'sales.partner-order.convert',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -7088,6 +7112,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     // C2b PermissionGuard 전환 — SALES: view 허용 (V36 seed)
     'sales.slip.create', 'slip.print.next-day', 'sales.partner-dc-config',
     'slip.cleanup', 'slip.edit-requests',
+    // C2c 동적 권한 전환 — SALES: view 허용 (V36/V30/V41 seed)
+    'sales.slip.edit', 'sales.partner-order.edit', 'sales.partner-order.convert',
   ],
   ACCOUNTANT: [
     // SP-D1
@@ -7123,6 +7149,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'products.list',
     // C2b PermissionGuard 전환 — WAREHOUSE: slip.edit-requests(V38 broadened) + slip.photo-audit(V36)
     'slip.edit-requests', 'slip.photo-audit',
+    // C2c 동적 권한 전환 — WAREHOUSE: purchases.slip.edit/delete view 허용 (V36 seed)
+    'purchases.slip.edit', 'purchases.slip.delete',
   ],
   INVENTORY: [
     'purchases.slip.list', 'sales.slip.list', 'inbound.inspection',
@@ -7190,6 +7218,9 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch',
     'aligo.address-book', 'messenger.admin', 'slip.edit-requests', 'slip.edit-requests.decide',
     // slip.photo-audit: MANAGER can_edit=FALSE per V36
+    // C2c 동적 권한 전환 — MANAGER: edit 허용 (V36/V30/V41 seed)
+    'purchases.slip.edit', 'purchases.slip.delete',
+    'sales.slip.edit', 'sales.partner-order.edit', 'sales.partner-order.convert',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -7209,6 +7240,8 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     // C2b PermissionGuard 전환 — SALES: edit 허용 (V36 seed)
     'sales.slip.create', 'slip.print.next-day', 'slip.cleanup', 'slip.edit-requests',
     // sales.partner-dc-config: SALES can_edit=FALSE per V29
+    // C2c 동적 권한 전환 — SALES: edit 허용 (V36/V30/V41 seed)
+    'sales.slip.edit', 'sales.partner-order.edit', 'sales.partner-order.convert',
   ],
   ACCOUNTANT: [
     // SP-D1
@@ -7233,6 +7266,8 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'inventory.list', 'inventory.transfer', 'inventory.stock-balance',
     'inventory.safety-stock',
     // C2b PermissionGuard 전환 — WAREHOUSE: slip.photo-audit can_edit=FALSE, slip.edit-requests can_edit=FALSE (V36)
+    // C2c 동적 권한 전환 — WAREHOUSE: purchases.slip.edit/delete edit 허용 (V36 seed)
+    'purchases.slip.edit', 'purchases.slip.delete',
   ],
   INVENTORY: [
     'inbound.inspection',
