@@ -4,6 +4,29 @@
 
 ---
 
+## 🆕 2026-06-06 (야간 자율) — 권한그룹 **C2 완료**(C2a/C2b/C2c 머지) + 리뷰 규칙 갱신
+
+> 개발책임자 야간 위임([[feedback_review_posting_and_zero_skip]]): Claude TM·Codex TM 리뷰 **각각 따로 게시** + PM 종합 마지막 필수 / 5-agent&fix 후 skip 0까지 fix / 슬라이스마다 묻지말고 PM 연속 진행.
+
+### ✅ C2 (FE 고정역할 게이트 제거) 완료 — 3 슬라이스 머지
+- **C2a #402(`ba949b95`)**: redundant 외부 RoleGuard 75 제거(내부 PermissionGuard 단일 게이트화). Option A widening 수용(D-PGC-01). 실회귀 4건(구 RoleGuard UX/구조 박제 테스트) 적발·수정.
+- **C2b #403(`c1f236c0`)**: 단독 RoleGuard 19 라우트 → PermissionGuard 전환 + **mock 권한 카탈로그 동기화**(전환 page-code 를 auth seed 역할별 grant 그대로 SP_D1_PAGES/DEFAULT_VIEW/EDIT 에 추가 — 미동기화 시 mockRole-only 진입 전원 redirect, D-PGC-05). dual P0/P1(dispatch-reconcile→ops, slip-edit-requests→decide) 교정. 보류 3(vendor-order-upload/sales-closing/sheet-sync — BE 미구현).
+- **C2c #404(`b44caccf`)**: 상세페이지 버튼 정적 역할 → `usePermissions().canAccess(pageCode, action)` 전환(4파일 10상수). mock 5 page-code 추가. dual P1(삭제 action 분리, convert create-only override `MOCK_ACTION_ONLY_PAGES`)+P2(revisions revert) 교정. **AdminLayout 부서(EXECUTIVE_OFFICE) 가드 유지**(조직 정책=page-code 직교, C2 비목표).
+
+### 🧠 C2 교훈 (메모리 박제)
+- **FE 가드 변경 = 전체 mock suite 필수** — 구 가드 UX(메시지 단언)+소스계약(routes/index.tsx 정규식·상수) 박제 테스트가 여러 슬라이스에 흩어짐. 핵심 스펙만 불충분. [[feedback_fe_guard_removal_contract_tests]]
+- **PermissionGuard 전환 = mock 카탈로그 동기화 동반** — mock 이 seed 정합해야 mockRole-only 테스트 통과. [[feedback_playwright_local_version_skew]] 로 로컬 실행.
+- **dual review 가 CI green 도 못잡는 page-code↔BE 불일치 적발** — mock 이 잘못된 page-code 에 맞춰 통과(C2b dispatch-reconcile, C2c 삭제 action). 7-action 분리 모델 정밀도.
+
+### 🗺️ 다음 — C3~C5 (고정역할 enum 물리제거, 최고위험)
+spec `2026-06-05-permission-groups-phase-c-fixed-role-removal-design.md` §4.
+- **C3(중위험, 다음)**: 역할부여 UX→그룹배속 일원화. EmployeeController.updateRole(단일 role 변경)→계정 그룹 배속/해제, role_snapshot→그룹 스냅샷. BE+FE+인사 흐름.
+- **C4(고위험)**: isMasterBypass(role=="MASTER")→is_system_master 그룹/전용 클레임. 전 서비스 PermissionAspect.
+- **C5(최고위험)**: accounts.role/X-User-Role 제거, JWT 그룹기반. HeaderAuthenticationFilter 정리.
+- 🚨 **spec §6 경고**: C4/C5 는 전 서비스 인증 핵심 = 한 세션 강행 금지(락아웃). 집중 세션 + 슬라이스별 실QA + 롤백 플랜. 개발책임자 취침 중이면 C4/C5 는 락아웃 대응 불가 → PM 신중 판단(spec/plan 준비 우선, 실QA·롤백 확보 후 진행).
+
+---
+
 ## 🆕 2026-06-06 — 권한그룹 Phase C2a (FE RoleGuard 단일 게이트화) PR #402 발행
 
 > 🚨 세션 시작 즉시 `git fetch origin`([[feedback_agent_origin_main_sync]]). 본 세션도 stale 핸드오프 믿었다 fetch/pull 로 9커밋(#396~#401, 권한그룹 A/B/C1)을 뒤늦게 동기화. 핸드오프 항상 stale 가정.
