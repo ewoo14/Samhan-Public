@@ -4,6 +4,24 @@
 
 ---
 
+## 🆕 2026-06-06 (야간 자율 — 최신) — **C2 완료 + C3a 머지** / C4·C5 계획준비·보류
+
+> 야간 자율 세션 누계 **5 PR 머지**: #402(C2a)·#403(C2b)·#404(C2c)·#405(C3a) + docs. 각 PR Claude TM·Codex TM·PM 종합 리뷰 3개 코멘트 게시([[feedback_review_posting_and_zero_skip]]). 전부 CI green 자율 머지.
+
+### ✅ C3a 머지 (#405 `36d05b80`) — 역할 변경 시 빌트인 role-group 자동 동기화
+`AuthService.updateAccountRole`/`registerWithId` 가 role 변경/계정 생성 시 빌트인 role-group(account_groups) 자동 동기화 + materialize. `BuiltinRoleGroupIds`(Role→V43 UUID), `AccountGroupService.syncBuiltinRoleGroup`(시스템그룹 가드 우회 internal, 수동그룹 보존). **role↔group 발산 해소 = C5 교량.** MASTER bypass 불변(materializer 가 systemMaster 그룹 계정 skip). **실 Testcontainers IT(RoleGroupSyncIT 6) + 208 테스트 통과**. dual APPROVE, IT 강화(behavior-preserving 고정 page_code 실증). DECISIONS D-PGC-07.
+- 🔵 **Option B(그룹 배속 UI 가 role 드롭다운 대체)는 개발책임자 결정 대기** — C3a 는 무중단 Option A(UX 유지, 그룹 동기화).
+
+### 🛑 C4·C5 — 계획 준비 완료, **자율 머지 보류** (개발책임자집중 세션 권장)
+계획서: `docs/superpowers/plans/2026-06-06-permission-groups-phase-c4-c5-execution-plan.md`
+- **결합 분석**: C4(isMasterBypass role→is_system_master)가 이미 **JWT 클레임 + 게이트웨이 헤더 + 전 14서비스 필터** 변경 필요 = C5 핵심 인프라. C4·C5 는 한 흐름의 전 서비스 auth 토큰 마이그레이션.
+- **안전 전제**: C3a 로 `is_system_master 그룹(100) 멤버십 ⟺ role=="MASTER"` 불변식 성립(behavior-preserving 토대). V47 런타임 전수검증 가드 선행 권장.
+- **슬라이스**: C4-1(additive: 클레임/헤더 추가만, 무소비)→C4-2(flip: isMasterBypass 전환, role 폴백 병행)→C4-3(폴백 제거)→C5-1(accounts.role 읽기전용)→C5-2(X-User-Role/role 클레임 제거).
+- 🚨 **보류 사유**: spec §6 "전 서비스 인증 핵심 = 집중 세션 + 단계별 실QA + 한 세션 강행 금지(락아웃)". 개발책임자 취침 중 → isMasterBypass flip 버그/X-User-Role 제거 회귀 시 **전 서비스 락아웃 대응 불가**. 기능 목표는 A/B 로 달성, C4/C5 는 enum 물리제거(긴급도 낮음). additive(C4-1)조차 공유 auth 경로(shared/security)라 전 서비스 영향.
+- 🔴 **개발책임자 결정**: (a) C4-1 additive 야간 자율 vs 전체집중 세션 / (b) C3 Option B 채택 / (c) C5 시점·롤백 윈도우.
+
+---
+
 ## 🆕 2026-06-06 (야간 자율) — 권한그룹 **C2 완료**(C2a/C2b/C2c 머지) + 리뷰 규칙 갱신
 
 > 개발책임자 야간 위임([[feedback_review_posting_and_zero_skip]]): Claude TM·Codex TM 리뷰 **각각 따로 게시** + PM 종합 마지막 필수 / 5-agent&fix 후 skip 0까지 fix / 슬라이스마다 묻지말고 PM 연속 진행.
