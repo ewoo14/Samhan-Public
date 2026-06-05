@@ -107,6 +107,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -247,6 +248,8 @@ class InventoryPermissionControllerIT {
                 ID, "2026/05/27-001", "photo.png", 1L, "image/png",
                 "inspection/photo.png", null, null, null, "tester", "memo");
         attachment.refreshStorageUrl("https://example.invalid/inspection/photo.png");
+        lenient().when(attachmentService.upload(any(), any(), any(), any(), any(), anyString(), any()))
+                .thenReturn(attachment);
         lenient().when(attachmentService.listBySlipId(any())).thenReturn(List.of(attachment));
         lenient().when(attachmentService.download(any()))
                 .thenReturn(new InspectionAttachmentService.DownloadView(
@@ -285,6 +288,17 @@ class InventoryPermissionControllerIT {
     void migratedEndpoint_withGrant_isNotForbidden(EndpointCase endpoint) throws Exception {
         mockMvc.perform(withActor(endpoint.request().get(), endpoint.role()))
                 .andExpect(status().is(not(403)));
+    }
+
+    @ParameterizedTest(name = "{0} inventory grant")
+    @MethodSource("inventoryGrantEndpoints")
+    void migratedEndpoint_inventoryRoleWithGrant_isAllowed(EndpointCase endpoint) throws Exception {
+        when(dynamicPermissionClient.check(eq(ID), eq(endpoint.page()), eq(endpoint.action()))).thenReturn(true);
+
+        mockMvc.perform(withActor(endpoint.request().get(), endpoint.role()))
+                .andExpect(status().is(endpoint.expectedStatus()));
+
+        verify(dynamicPermissionClient).check(eq(ID), eq(endpoint.page()), eq(endpoint.action()));
     }
 
     @ParameterizedTest(name = "{0} deny")
@@ -349,6 +363,30 @@ class InventoryPermissionControllerIT {
         assertDepartmentGate("restore", UUID.class, String.class, String.class);
     }
 
+    /**
+     * behavior-preserving 검증:
+     * InspectionAttachmentController.delete 는 @PreAuthorize("hasAnyRole('MANAGER','MASTER')")
+     * 가 의도적으로 유지되어 WAREHOUSE role 은 @RequirePermission(DELETE) 권한이 있어도 403.
+     * widening guard — @PreAuthorize 를 제거하면 WAREHOUSE 에게 삭제 권한이 열리는 것을 방지.
+     */
+    @Test
+    void attachmentDelete_warehouseRole_isForbiddenDueToPreAuthorize() throws Exception {
+        // WAREHOUSE 에게 inventory.stock-balance DELETE 동적 권한 부여
+        when(dynamicPermissionClient.check(eq(ID), eq("inventory.stock-balance"), eq(PermissionAction.DELETE)))
+                .thenReturn(true);
+
+        mockMvc.perform(delete("/inventory/inspections/{id}/attachments/{attachmentId}", ID, OTHER_ID)
+                        .header(USER_ID_HEADER, ID.toString())
+                        .header(ROLE_HEADER, "WAREHOUSE"))
+                .andExpect(status().isForbidden());
+
+        // @PreAuthorize 가 @RequirePermission AOP 보다 먼저 차단했음을 실증:
+        // 차단이 @PreAuthorize 에서 났다면 PermissionAspect 의 check() 는 호출되지 않는다.
+        // (이 verify 가 없으면 403 이 다른 사유(인증 실패 등)로 나도 통과 = false-green.)
+        verify(dynamicPermissionClient, never())
+                .check(any(java.util.UUID.class), anyString(), any(PermissionAction.class));
+    }
+
     static Stream<EndpointCase> endpoints() {
         return Stream.of(
                 endpoint("stock balances", "inventory.stock-balance", PermissionAction.VIEW, "WAREHOUSE",
@@ -395,6 +433,20 @@ class InventoryPermissionControllerIT {
                         () -> get("/warehouse/audit/dps-compare/template")),
                 endpoint("dps history save", "inventory.dps", PermissionAction.CREATE, "WAREHOUSE",
                         () -> post("/warehouse/audit/dps-history").contentType(MediaType.APPLICATION_JSON).content(historyBody())),
+                endpoint("dps history list", "inventory.dps", PermissionAction.VIEW, "WAREHOUSE",
+                        () -> get("/warehouse/audit/dps-history")),
+                endpoint("dps history detail", "inventory.dps", PermissionAction.VIEW, "WAREHOUSE",
+                        () -> get("/warehouse/audit/dps-history/{id}", ID)),
+                endpoint("dps history latest", "inventory.dps", PermissionAction.VIEW, "WAREHOUSE",
+                        () -> get("/warehouse/audit/dps-history/latest").param("programType", "DPS_COMPARE")),
+                endpoint("dps by product", "inventory.dps", PermissionAction.VIEW, "WAREHOUSE",
+                        () -> get("/warehouse/audit/dps-compare/by-product")
+                                .param("fromDate", "2026-05-01").param("toDate", "2026-05-31")),
+                endpoint("inbound inspection list", "inventory.stock-balance", PermissionAction.VIEW, "WAREHOUSE",
+                        () -> get("/inventory/inbound-inspections")),
+                endpoint("inbound inspection save result", "inventory.stock-balance", PermissionAction.UPDATE, "WAREHOUSE",
+                        () -> post("/inventory/inbound-inspections/{id}/inspect", ID)
+                                .contentType(MediaType.APPLICATION_JSON).content(inspectBody())),
                 endpoint("inbound inspection get", "inventory.stock-balance", PermissionAction.VIEW, "WAREHOUSE",
                         () -> get("/inventory/inbound-inspections/{id}", ID)),
                 endpoint("inbound inspection complete", "inventory.stock-balance", PermissionAction.UPDATE, "WAREHOUSE",
@@ -436,6 +488,36 @@ class InventoryPermissionControllerIT {
         );
     }
 
+    static Stream<EndpointCase> inventoryGrantEndpoints() {
+        return Stream.of(
+                endpoint("dps history save", "inventory.dps", PermissionAction.CREATE, "INVENTORY",
+                        () -> post("/warehouse/audit/dps-history").contentType(MediaType.APPLICATION_JSON).content(historyBody())),
+                endpoint("dps history list", "inventory.dps", PermissionAction.VIEW, "INVENTORY",
+                        () -> get("/warehouse/audit/dps-history")),
+                endpoint("dps history detail", "inventory.dps", PermissionAction.VIEW, "INVENTORY",
+                        () -> get("/warehouse/audit/dps-history/{id}", ID)),
+                endpoint("dps history latest", "inventory.dps", PermissionAction.VIEW, "INVENTORY",
+                        () -> get("/warehouse/audit/dps-history/latest").param("programType", "DPS_COMPARE")),
+                endpoint("dps template download", "inventory.dps", PermissionAction.DOWNLOAD, "INVENTORY",
+                        () -> get("/warehouse/audit/dps-compare/template")),
+                endpoint("dps by product", "inventory.dps", PermissionAction.VIEW, "INVENTORY",
+                        () -> get("/warehouse/audit/dps-compare/by-product")
+                                .param("fromDate", "2026-05-01").param("toDate", "2026-05-31")),
+                endpoint("inbound inspection get", "inventory.stock-balance", PermissionAction.VIEW, "INVENTORY",
+                        () -> get("/inventory/inbound-inspections/{id}", ID)),
+                endpoint("inbound inspection save result", "inventory.stock-balance", PermissionAction.UPDATE, "INVENTORY",
+                        () -> post("/inventory/inbound-inspections/{id}/inspect", ID)
+                                .contentType(MediaType.APPLICATION_JSON).content(inspectBody())),
+                endpoint("inbound inspection list", "inventory.stock-balance", PermissionAction.VIEW, "INVENTORY",
+                        () -> get("/inventory/inbound-inspections")),
+                endpoint("inbound inspection complete", "inventory.stock-balance", PermissionAction.UPDATE, "INVENTORY",
+                        () -> post("/inventory/inbound-inspections/{id}/complete", ID)),
+                endpoint("attachment upload", "inventory.stock-balance", PermissionAction.CREATE, "INVENTORY",
+                        () -> multipart("/inventory/inspections/{id}/attachments", ID).file(image("file")),
+                        HttpStatus.CREATED.value())
+        );
+    }
+
     static Stream<EndpointCase> warehouseDepartmentEndpoints() {
         return endpoints().filter(endpoint ->
                 "warehouse create".equals(endpoint.name())
@@ -449,7 +531,13 @@ class InventoryPermissionControllerIT {
     private static EndpointCase endpoint(
             String name, String page, PermissionAction action, String role,
             Supplier<MockHttpServletRequestBuilder> request) {
-        return new EndpointCase(name, page, action, role, request);
+        return endpoint(name, page, action, role, request, HttpStatus.OK.value());
+    }
+
+    private static EndpointCase endpoint(
+            String name, String page, PermissionAction action, String role,
+            Supplier<MockHttpServletRequestBuilder> request, int expectedStatus) {
+        return new EndpointCase(name, page, action, role, request, expectedStatus);
     }
 
     private static String inboundBody() {
@@ -489,6 +577,10 @@ class InventoryPermissionControllerIT {
 
     private static String resellBody() {
         return "{\"recallSlipNo\":\"S4-RETURN-PERM\",\"productCode\":\"AC-PERM\",\"quantity\":1}";
+    }
+
+    private static String inspectBody() {
+        return "{\"lines\":[{\"lineId\":\"" + ID + "\",\"inspectedQty\":1,\"defectQty\":0}]}";
     }
 
     private static MockMultipartFile csv(String name) {
@@ -604,7 +696,8 @@ class InventoryPermissionControllerIT {
             String page,
             PermissionAction action,
             String role,
-            Supplier<MockHttpServletRequestBuilder> request) {
+            Supplier<MockHttpServletRequestBuilder> request,
+            int expectedStatus) {
 
         @Override
         public String toString() {

@@ -16,7 +16,6 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,11 +30,14 @@ import org.springframework.web.multipart.MultipartFile;
  * 의 자체 운영 endpoint. 출고전표 = 자체 자동 조회 (slip-service Feign), DPS = 사용자 엑셀 업로드
  * 유지 (사용자 명시: "DPS 엑셀을 그대로 업로드할 수 있게 해야함 — 자동으로 가져올 수 없음").
  *
- * <p>권한 매트릭스 (memory ROLE 풀네임 의무):
+ * <p>권한 매트릭스 (memory ROLE 풀네임 의무): {@code @PreAuthorize} 제거 후
+ * {@code @RequirePermission(page = "inventory.dps")} 와 seed grant 가 단일 권한 소스이다.
+ * 개발책임자 Option A 결정에 따라 INVENTORY 접근을 정식 수용하며 compare / template /
+ * by-product 모두 같은 grant role-set 으로 수렴한다.
  * <ul>
  *   <li>POST  /warehouse/audit/dps-compare — MASTER / MANAGER / WAREHOUSE / INVENTORY</li>
  *   <li>GET   /warehouse/audit/dps-compare/template — MASTER / MANAGER / WAREHOUSE / INVENTORY</li>
- *   <li>GET   /warehouse/audit/dps-compare/by-product — WAREHOUSE / MANAGER / MASTER (P0-B)</li>
+ *   <li>GET   /warehouse/audit/dps-compare/by-product — MASTER / MANAGER / WAREHOUSE / INVENTORY (P0-B)</li>
  * </ul>
  *
  * <p>UUID 비공개 — 응답에는 slipNo / productCode / partnerCode / partnerName 비즈니스 식별자만
@@ -122,7 +124,6 @@ public class DpsCompareController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "warehouseId 창고 미존재")
     })
     @GetMapping("/by-product")
-    @PreAuthorize("hasAnyRole('WAREHOUSE','MANAGER','MASTER')")
     @RequirePermission(page = "inventory.dps", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     public ApiResponse<DpsByProductResponse> analyzeByProduct(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,

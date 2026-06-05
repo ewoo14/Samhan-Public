@@ -18,7 +18,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,7 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 입고 검수 API — P0-9 검수 UI 슬라이스.
  *
- * <p>권한: WAREHOUSE / MANAGER / MASTER (검수는 창고 담당자 역할 중심).
+ * <p>권한: {@code @PreAuthorize} 제거 후
+ * {@code @RequirePermission(page = "inventory.stock-balance")} 와 seed grant 가 단일 권한
+ * 소스이다. 개발책임자 Option A 결정에 따라
+ * MASTER / MANAGER / WAREHOUSE / INVENTORY 의 검수 접근을 정식 수용한다.
  *
  * <p>엔드포인트 목록:
  * <ul>
@@ -79,7 +81,6 @@ public class InboundInspectionController {
                     description = "입고전표 아님 또는 검수 불가 상태")
     })
     @GetMapping("/{slipId}")
-    @PreAuthorize("hasAnyRole('WAREHOUSE','MANAGER','MASTER')")
     @RequirePermission(page = "inventory.stock-balance", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     public ApiResponse<InboundInspectionDetailResponse> getInspection(
             @Parameter(description = "slip-service Slip UUID") @PathVariable UUID slipId) {
@@ -108,7 +109,6 @@ public class InboundInspectionController {
                     description = "PENDING 이 아닌 상태에서 호출")
     })
     @PostMapping("/{slipId}/inspect")
-    @PreAuthorize("hasAnyRole('WAREHOUSE','MANAGER','MASTER')")
     @RequirePermission(page = "inventory.stock-balance", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
     public ApiResponse<InboundInspectionDetailResponse> saveResult(
             @PathVariable UUID slipId,
@@ -135,7 +135,6 @@ public class InboundInspectionController {
                     description = "status 값이 올바르지 않음")
     })
     @GetMapping
-    @PreAuthorize("hasAnyRole('WAREHOUSE','MANAGER','MASTER')")
     @RequirePermission(page = "inventory.stock-balance", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     public ApiResponse<Page<InboundInspectionSummaryResponse>> listInspections(
             @Parameter(description = "검수 상태 필터 (PENDING/COMPLETED/CANCELED)")
@@ -166,7 +165,6 @@ public class InboundInspectionController {
     })
     @PostMapping("/{slipId}/complete")
     @ResponseStatus(HttpStatus.OK)
-    @PreAuthorize("hasAnyRole('WAREHOUSE','MANAGER','MASTER')")
     @RequirePermission(page = "inventory.stock-balance", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
     public ApiResponse<InboundInspectionDetailResponse> completeInspection(
             @PathVariable UUID slipId,
