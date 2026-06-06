@@ -4,6 +4,8 @@ import com.samhanair.logis.common.http.HttpHeaderConstants;
 import com.samhanair.logis.common.security.JwtTokenProvider;
 import com.samhanair.logis.common.security.Role;
 import com.samhanair.logis.gateway.config.JwtProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import java.nio.charset.StandardCharsets;
@@ -37,9 +39,6 @@ import reactor.core.publisher.Mono;
  *     - JwtAuthentication
  *     - name: JwtAuthentication
  *       args:
- *         allowedRoles: [MASTER, MANAGER]
- *     - name: JwtAuthentication
- *       args:
  *         allowedGroups:
  *           - 00000000-0000-0000-0000-000000000100
  *           - 00000000-0000-0000-0000-000000000101
@@ -49,19 +48,26 @@ import reactor.core.publisher.Mono;
  * <ul>
  *   <li>Missing {@code Authorization: Bearer ...} → {@code 401 UNAUTHORIZED}.</li>
  *   <li>Signature/expiry/parse failure → {@code 401 INVALID_TOKEN}.</li>
- *   <li>Authenticated but role not in allow-list → {@code 403 FORBIDDEN}.</li>
  *   <li>Authenticated but allowedGroups 가 비어있지 않고 X-User-Groups 와 교집합이 없으면
  *       → {@code 403 FORBIDDEN}.</li>
- *   <li>Otherwise: mutate request to add {@code X-User-Id}, {@code X-User-Role},
- *       and (Phase 12) {@code X-User-Department} headers, then continue.</li>
+ *   <li>Otherwise: mutate request to add {@code X-User-Id}, {@code X-User-Department},
+ *       {@code X-Is-System-Master}, {@code X-User-Groups}, {@code X-Is-Partner} headers,
+ *       then continue.</li>
  * </ul>
  *
- * <h2>allowedRoles / allowedGroups 검사 의미 — 🚨 양쪽 동시 지정 시 AND</h2>
- * 각 목록은 비어있지 않을 때 자기 검사를 수행하는 <b>순차 검사</b>다. 따라서 두 목록을
- * <b>동시에 지정하면 양쪽 모두 통과해야 하는 AND</b> 가 된다 — groups claim 없는
- * 구버전 토큰이 role 검사를 통과해도 그룹 검사에서 403 (PR #414 dual review P1).
- * 라우트에는 한쪽만 지정한다: C5-4 전 = allowedRoles 단독, C5-4 후 = allowedGroups 단독.
- * 두 목록이 모두 비어있으면 (기본 JwtAuthentication) 역할/그룹 제한 없음 — 인증만 확인.
+ * <h2>Phase C5-4 role 와이어 제거</h2>
+ * {@code X-User-Role} 헤더 주입이 제거되었다. allowedRoles Config 는 소스 계약 호환을 위해
+ * 잔존하나 신규 라우트에서는 사용하지 않는다. 두 목록이 모두 비어있으면
+ * 역할/그룹 제한 없음 — 인증만 확인.
+ *
+ * <h2>Phase C5-4 PARTNER 식별 — X-Is-Partner 헤더 (P1-a 강화)</h2>
+ * JWT {@code partnerCode} claim 존재 시 {@code X-Is-Partner: true},
+ * 부재 시 {@code X-Is-Partner: false} 를 <b>항상</b> 전송한다 (remove-then-set semantics).
+ * 이전에는 claim 존재 시만 {@code true} 를 append 했으나 Spring WebFlux
+ * {@code ServerHttpRequest.Builder.header()} 가 append semantics 라 클라이언트가 위조한
+ * {@code X-Is-Partner:true} 가 downstream 으로 유출될 수 있었다. P1-a 에서 모든 identity
+ * 헤더({@code X-User-Id/X-Is-System-Master/X-User-Groups/X-Is-Partner})를
+ * {@code headers(h -> h.remove().add())} 패턴으로 강제 override 한다.
  *
  * <h2>Phase 12 인사 카테고리 가드</h2>
  * JWT claim {@code departmentName} 존재 시 {@code X-User-Department} 헤더로 전파.
@@ -75,28 +81,33 @@ import reactor.core.publisher.Mono;
 public class JwtAuthenticationGatewayFilterFactory
         extends AbstractGatewayFilterFactory<JwtAuthenticationGatewayFilterFactory.Config> {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationGatewayFilterFactory.class);
+
     private static final String BEARER_PREFIX = "Bearer ";
     // C5-1 P2: identity 헤더 이름은 shared HttpHeaderConstants 단일 출처로 통일
     // (게이트웨이 로컬 중복 상수 제거 — downstream 필터/Aspect 와 문자열 불일치 위험 차단).
     /** 호출자 UUID 헤더. */
     private static final String HEADER_USER_ID = HttpHeaderConstants.CALLER_ID_HEADER;
-    /** 호출자 역할 헤더. */
-    private static final String HEADER_USER_ROLE = HttpHeaderConstants.CALLER_ROLE_HEADER;
     /** Phase 12 인사 가드 — 소속 부서명 헤더. JWT claim {@code departmentName} 에서 추출. */
     private static final String HEADER_USER_DEPARTMENT = HttpHeaderConstants.USER_DEPARTMENT_HEADER;
     /**
      * Phase C4 — 시스템 마스터 그룹 멤버십 헤더.
      * JWT claim {@code isSystemMaster} 가 {@code true} 이면 {@code "true"}, 그 외 {@code "false"} 전송.
-     * downstream {@link PermissionAspect} 가 {@code role==MASTER} OR 조건으로 bypass 판정에 사용.
+     * downstream {@link PermissionAspect} 가 bypass 판정에 사용.
      */
     private static final String HEADER_IS_SYSTEM_MASTER = HttpHeaderConstants.IS_SYSTEM_MASTER_HEADER;
     /**
      * Phase C5-1 — 계정의 활성 그룹 UUID 집합 헤더.
      * JWT claim {@code groups} (comma-join UUID 문자열) 을 그대로 전파.
      * 그룹이 없으면 빈 문자열 전송 — 헤더 부재와 구분.
-     * 본 슬라이스에서는 소비처 0 (additive 전파만).
      */
     private static final String HEADER_USER_GROUPS = HttpHeaderConstants.USER_GROUPS_HEADER;
+    /**
+     * Phase C5-4 — 파트너(거래처) 계정 식별 헤더.
+     * JWT {@code partnerCode} claim 존재 시 {@code "true"} 주입, 부재 시 헤더 미전송.
+     * downstream {@link PermissionAspect} 가 PARTNER 거절 판정에 사용한다.
+     */
+    private static final String HEADER_IS_PARTNER = HttpHeaderConstants.IS_PARTNER_HEADER;
 
     private final JwtProperties props;
 
@@ -134,7 +145,6 @@ public class JwtAuthenticationGatewayFilterFactory
             }
 
             String userId = JwtTokenProvider.getUserId(jws);
-            String roleName = JwtTokenProvider.getRole(jws);
             // Phase 12 인사 가드: JWT claim departmentName → X-User-Department 헤더 전파.
             // claim 미존재(구버전 토큰 포함) 시 null → 헤더 미전송.
             String departmentName = JwtTokenProvider.getDepartmentName(jws);
@@ -142,11 +152,26 @@ public class JwtAuthenticationGatewayFilterFactory
             // claim 미포함(구버전 토큰 또는 비-MASTER) 시 false → "false" 전송.
             boolean isSystemMaster = JwtTokenProvider.getIsSystemMaster(jws);
             // Phase C5-1: JWT claim groups → X-User-Groups 헤더 전파.
-            // claim 미포함(구버전 토큰 또는 그룹 미배속) 시 "" → 빈 문자열 전송 (소비처 0, additive).
+            // claim 미포함(구버전 토큰 또는 그룹 미배속) 시 "" → 빈 문자열 전송.
             String groups = JwtTokenProvider.getGroups(jws);
+            // Phase C5-4: JWT partnerCode claim 존재 시 X-Is-Partner: true 주입.
+            // partner-auth-service 가 발급한 파트너 JWT 에만 포함된 claim — 신뢰 경계.
+            // Samhan 직원 JWT 에는 partnerCode 없음 → 헤더 미전송.
+            String partnerCode = JwtTokenProvider.getPartnerCode(jws);
+            boolean isPartner = partnerCode != null && !partnerCode.isBlank();
 
-            // allowedRoles 검사 — 비어있지 않으면 role 검사 (기존 동작 100% 보존)
+            // allowedRoles 검사 — Phase C5-4 이후 신규 라우트는 allowedGroups 단독 사용.
+            // 소스 계약 호환을 위해 잔존. 비어있으면 검사 skip.
             if (!config.getAllowedRoles().isEmpty()) {
+                // Phase C5-4: role 클레임이 Samhan JWT 에서 제거되었으나 arologis JWT 는 여전히
+                // role 을 포함한다. getRole 은 deprecated — 잔존 토큰 호환용.
+                // role 클레임이 없으면 (Samhan JWT C5-4 이후) null 반환 → allowedRoles 검사 실패(403).
+                @SuppressWarnings("deprecation")
+                String roleName = JwtTokenProvider.getRole(jws);
+                if (roleName == null || roleName.isBlank()) {
+                    return writeError(exchange, HttpStatus.FORBIDDEN,
+                            "FORBIDDEN", "권한이 없습니다");
+                }
                 Role role;
                 try {
                     role = Role.valueOf(roleName);
@@ -160,8 +185,7 @@ public class JwtAuthenticationGatewayFilterFactory
                 }
             }
 
-            // allowedGroups 검사 — Phase C5-3 신규. allowedRoles 와 AND 아님·각각 독립 검사.
-            // 비어있으면 그룹 제한 없음 (기존 라우트 영향 0).
+            // allowedGroups 검사 — Phase C5-3 신규. 비어있으면 그룹 제한 없음 (기존 라우트 영향 0).
             // groups claim 과 allowedGroups 의 교집합이 없으면 403.
             if (!config.getAllowedGroups().isEmpty()) {
                 Set<String> tokenGroups = new java.util.HashSet<>(
@@ -176,20 +200,40 @@ public class JwtAuthenticationGatewayFilterFactory
                 }
             }
 
+            // Phase C5-4 P1-a 스푸핑 방지: HEADER_IS_PARTNER 는 JWT claim 기준으로 강제 덮어써야 한다.
+            // Spring WebFlux ServerHttpRequest.Builder.header() 는 append semantics 라
+            // 클라이언트가 X-Is-Partner:true 를 위조 주입해도 기존 값이 남을 수 있다.
+            // → 기존 헤더를 먼저 제거(headers().remove)한 뒤 claim 기반 값을 설정한다.
+            // 동일하게 X-Is-System-Master, X-User-Id, X-User-Groups 도 remove-then-set 으로 보강한다.
             ServerHttpRequest.Builder requestBuilder = request.mutate()
-                    .header(HEADER_USER_ID, userId)
-                    .header(HEADER_USER_ROLE, roleName)
-                    // Phase C4: isSystemMaster 는 항상 전송 ("true"/"false") — 헤더 부재와 false 를 구분
-                    .header(HEADER_IS_SYSTEM_MASTER, String.valueOf(isSystemMaster))
-                    // Phase C5-1: groups 는 항상 전송 (빈 문자열 포함) — 헤더 일관, 소비처 0 (additive)
-                    .header(HEADER_USER_GROUPS, groups);
+                    .headers(h -> {
+                        // 클라이언트 위조 헤더 제거 후 JWT claim 기반 값으로 강제 override
+                        h.remove(HEADER_USER_ID);
+                        h.remove(HEADER_IS_SYSTEM_MASTER);
+                        h.remove(HEADER_USER_GROUPS);
+                        h.remove(HEADER_IS_PARTNER);
+                        h.add(HEADER_USER_ID, userId);
+                        // Phase C4: isSystemMaster 는 항상 전송 ("true"/"false") — 헤더 부재와 false 를 구분
+                        h.add(HEADER_IS_SYSTEM_MASTER, String.valueOf(isSystemMaster));
+                        // Phase C5-1: groups 는 항상 전송 (빈 문자열 포함) — 헤더 일관
+                        h.add(HEADER_USER_GROUPS, groups);
+                        // Phase C5-4 P1-a: X-Is-Partner 는 항상 전송("true"/"false") — 클레임 기반 강제 덮어쓰기.
+                        // isPartner=false 이면 "false" 전송 → downstream 이 "true" 위조 입력을 신뢰할 수 없게 차단.
+                        h.add(HEADER_IS_PARTNER, String.valueOf(isPartner));
+                        if (isPartner) {
+                            log.debug("[C5-4-P1a] X-Is-Partner=true 강제 set — partnerCode={}", partnerCode);
+                        }
+                    });
             // departmentName 이 존재할 때만 헤더 추가 — 미배정 계정은 헤더 미전송.
             // [RC7] HTTP 헤더는 ISO-8859-1 인코딩이라 한글 부서명("대표실")을 그대로 넣으면 다운스트림
             // Tomcat 이 모지바케로 역디코딩 → @hr.isExecutiveOffice() 비교 실패. UTF-8 URL-encode 하여
             // 전파하고, 수신 측(HrAuthorizationHelper)이 URL-decode 한다.
             if (departmentName != null && !departmentName.isBlank()) {
-                requestBuilder.header(HEADER_USER_DEPARTMENT,
-                        java.net.URLEncoder.encode(departmentName, java.nio.charset.StandardCharsets.UTF_8));
+                requestBuilder.headers(h -> {
+                    h.remove(HEADER_USER_DEPARTMENT);
+                    h.add(HEADER_USER_DEPARTMENT,
+                            java.net.URLEncoder.encode(departmentName, java.nio.charset.StandardCharsets.UTF_8));
+                });
             }
 
             return chain.filter(exchange.mutate().request(requestBuilder.build()).build());

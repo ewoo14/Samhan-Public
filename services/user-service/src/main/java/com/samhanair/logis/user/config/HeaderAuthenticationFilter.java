@@ -1,5 +1,6 @@
 package com.samhanair.logis.user.config;
 
+import com.samhanair.logis.common.http.HttpHeaderConstants;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,35 +16,37 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Gateway 가 검증 후 주입한 사용자 헤더를 user-service 의 Spring Security 인증으로 변환한다.
  *
- * <p>userId 없이 role 만 있으면 401 반환 (강화 패턴 유지 — user-service 보안 요건).
+ * <p>Phase C5-4 갱신 — X-User-Role 헤더가 게이트웨이에서 더 이상 주입되지 않는다.
+ * 401 강화 분기는 <b>identity 부분-헤더 기준으로 재키잉</b>: X-User-Id 없이 다른 identity
+ * 헤더(role/groups/isSystemMaster)만 있으면 비정상 조합 = 명시적 401 (기존 user-service
+ * 강화 패턴 의미 보존 — 게이트웨이는 항상 userId 를 함께 주입하므로 정상 트래픽 미해당).
  *
- * <p>Phase C5-3 갱신 — X-User-Id 단독 인증 성립:
  * <ul>
  *   <li>X-User-Id 존재 시 인증 성립 — X-User-Role 부재여도 허용.</li>
- *   <li>X-User-Role 존재 시 {@code ROLE_<role>} authority 추가 (기존 동작 보존).</li>
- *   <li>X-User-Groups 존재 시 각 UUID 에 대해 {@code GROUP_<uuid>} authority 추가 (신규).</li>
+ *   <li>X-User-Role 존재 시 {@code ROLE_<role>} authority 추가 (잔존 토큰 호환).</li>
+ *   <li>X-User-Groups 존재 시 각 UUID 에 대해 {@code GROUP_<uuid>} authority 추가.</li>
  * </ul>
  */
 public class HeaderAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String USER_ID_HEADER = "X-User-Id";
-    private static final String USER_ROLE_HEADER = "X-User-Role";
-    private static final String USER_GROUPS_HEADER = "X-User-Groups";
-
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String userId = request.getHeader(USER_ID_HEADER);
-        String role = request.getHeader(USER_ROLE_HEADER);
-        String groups = request.getHeader(USER_GROUPS_HEADER);
+        String userId = request.getHeader(HttpHeaderConstants.CALLER_ID_HEADER);
+        String role = request.getHeader(HttpHeaderConstants.CALLER_ROLE_HEADER);
+        String groups = request.getHeader(HttpHeaderConstants.USER_GROUPS_HEADER);
 
-        // 강화 패턴 유지: userId 없이 role 만 있으면 401 (게이트웨이 주입 정합성 강제)
-        if ((userId == null || userId.isBlank()) && role != null && !role.isBlank()) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing X-User-Id header");
+        // Phase C5-4 재키잉: userId 부재 + 다른 identity 헤더 존재 = 비정상 조합 → 명시적 401
+        // (구 "role만 존재" 분기의 의미 보존 — 신호를 role 단독에서 identity 헤더 전반으로 확장)
+        boolean hasPartialIdentity = (role != null && !role.isBlank())
+                || (groups != null && !groups.isBlank())
+                || request.getHeader(HttpHeaderConstants.IS_SYSTEM_MASTER_HEADER) != null;
+        if ((userId == null || userId.isBlank()) && hasPartialIdentity) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
 
-        // Phase C5-3: X-User-Id 존재 시 인증 성립 (role 부재여도 허용)
+        // X-User-Id 존재 시 인증 성립 (role 부재여도 허용)
         if (userId != null && !userId.isBlank()
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
             List<SimpleGrantedAuthority> authorities = new ArrayList<>();
