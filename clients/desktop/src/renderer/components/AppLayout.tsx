@@ -30,48 +30,11 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useSessionStore } from '../stores/session'
+import { hasBuiltinRoleGroup, useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
-import { canAccessAccounting } from '../api/accounting'
 // [SP-D1 cycle 2] 동적 RBAC 권한 훅 — 사이드바 메뉴 동적 hidden 연동.
 import { usePermissions } from '../hooks/usePermissions'
-import { ARO_MANUAL_DISPATCH_ROLES } from '../api/arologisManualApi'
-// [Phase 10 PR-E1 FE-2/FE-3] arologis 가배차 분류 + 미배차 리스트 — MASTER/MANAGER/DISPATCH
-import {
-  ARO_PRECLASSIFY_ROLES,
-  ARO_UNASSIGNED_ROLES,
-} from '../api/arologisDispatchApi'
-import { canAccessAdmin } from '../api/adminApi'
-import { canAccessAudit } from '../api/auditApi'
-import { canAccessChatRoomAdmin } from '../api/chatRoomApi'
-import { SLIP_CLEANUP_ROLES } from '../api/slipCleanupApi'
-// [PR-E1 FE-4] 내일자 전표 이미지 — SALES / MANAGER / MASTER (BE @PreAuthorize 일치)
-import { canAccessNextDaySlip } from '../api/nextDaySlipApi'
-// [PR-E1 FE-6] 배차안내 SMS 발송 — DISPATCH / MANAGER / MASTER (BE @PreAuthorize 일치)
-import { canAccessDispatchSms } from '../api/dispatchSmsApi'
-// [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY (BE @PreAuthorize 일치)
-import { canAccessDpsCompare } from '../api/dpsCompareApi'
-// [P0-B GAS 보강] 품목별 DPS 분석 — WAREHOUSE / MANAGER / MASTER (BE @PreAuthorize 일치)
-import { canAccessDpsByProduct } from '../api/dpsByProductApi'
-// [PR-E2 FE-9/FE-7] SP-D2: 홈택스 일괄 양식 / 거래처 원장 — 동적 RBAC 연동으로 정적 함수 폐기.
-// [PR-H3 FE-1] 전표 수정/삭제 요청 처리 대시보드 — WAREHOUSE / MANAGER / MASTER (BE @PreAuthorize 일치)
-import { SLIP_EDIT_REQUEST_REVIEWER_ROLES } from '../api/slipEditRequest'
-// [Issue 4 Slice 4] 회계 수정/삭제 요청 처리 대시보드 — MANAGER / MASTER.
-import { ACCOUNTING_EDIT_REQUEST_REVIEWER_ROLES } from '../api/accountingEditRequest'
-// [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE. 헤더 배지 + 창고 운영 메뉴.
-import {
-  canAccessSafetyStock,
-} from '../api/safetyStockApi'
-// [PR-F1 FE-2] 운송사 실배차 비교 — DISPATCH / MANAGER / MASTER
-import { canAccessDispatchReconcile } from '../api/dispatchReconcileApi'
-// [P1-5] arologis 배차 admin 3개 신규 화면 — MANAGER / MASTER
-import { ARO_ADMIN_DISPATCH_ROLES } from '../api/arologisAdminDispatchApi'
-// [D-AX-20] 사진 감사 — WAREHOUSE / MANAGER / MASTER
-import { canAccessSlipPhotoAudit } from '../api/slipPhotoAuditApi'
-// [SP-01] 거래처 관리 — SALES / MANAGER / MASTER
-import { canAccessPartnerFull } from '../api/partnerApi'
-import { canAccessDeliveryBatch } from '../api/delivery'
-import { canAccessPartnerDcConfig } from '../api/sales'
+import type { AuthSnapshot } from '../types/electron'
 import { NotificationBellDropdown } from './NotificationBellDropdown'
 
 /**
@@ -169,28 +132,13 @@ function SidebarGroupToggle({
 }
 
 /**
- * [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES / MANAGER / MASTER.
- * legacy GAS #10 (에어디자이너) + #14 (제이시스템) 운송장/발주서 OCR native 이식.
- * BE Tesseract OCR endpoint 합류 시 정식 가드 export 로 교체. 영업 그룹 메뉴.
- */
-const VENDOR_ORDER_OCR_SIDEBAR_ROLES = ['SALES', 'MANAGER', 'MASTER'] as const
-
-/**
- * [Slice 2] admin GAS 이식 메뉴 — 일반 카테고리 병행 노출 ROLE 가드.
- * 기존 /admin/* 라우트 그대로 유지 (마스터 메뉴 유지). 동일 라우트로 이동하는 항목만 추가.
- */
-/** 배차지역 관리 (/admin/regions) — 배차(arologis) 카테고리 — DISPATCH/MANAGER/MASTER */
-const REGION_MGMT_SIDEBAR_ROLES = ['DISPATCH', 'MANAGER', 'MASTER'] as const
-/** 시트 동기화 (/admin/sheet-sync) — 설정 카테고리 — MANAGER/MASTER */
-const SHEET_SYNC_SIDEBAR_ROLES = ['MANAGER', 'MASTER'] as const
-/** 알리고 주소록 (/admin/aligo-address-book) — 메신저 카테고리 — MANAGER/MASTER */
-const ALIGO_ADDRESS_BOOK_SIDEBAR_ROLES = ['MANAGER', 'MASTER'] as const
-/** 발송금지 거래처 (/admin/blocked-partners) — 영업 카테고리 — MANAGER/MASTER */
-const BLOCKED_PARTNERS_SIDEBAR_ROLES = ['MANAGER', 'MASTER'] as const
-/**
  * [samhan-dispatch-board Phase A] 배차 메뉴 (/dispatch-board) — DISPATCH/MANAGER/MASTER.
  * Samhan Public 배차담당자 → 차량 그룹 + arologis 발송 흐름.
  */
+
+function hasAnyBuiltinRoleGroup(auth: AuthSnapshot | null, roles: readonly string[]): boolean {
+  return roles.some((role) => hasBuiltinRoleGroup(auth, role))
+}
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -243,8 +191,7 @@ export function AppLayout() {
   // race condition 호환 — 빈 title 시 "업무 화면" fallback (Designer § 2.7)
   const displayTitle = title || '업무 화면'
 
-  // [SP-D2] 회계 그룹 사이드바 — 동적 RBAC 연동 (정적 role 체크 → dynamicCanAccess 전환).
-  // 기존 canAccessAccounting(정적) 는 fallback 으로 유지하되 동적 RBAC 가 우선 적용.
+  // [SP-D2] 회계 그룹 사이드바 — 동적 RBAC 연동.
   // SP-D1 정책: 권한 없는 메뉴는 회색 비활성 X — 완전 미노출(null) 의무.
   //
   // 회계 카테고리 헤더: 12개 PageCode 중 1개라도 canAccess=true 면 표시.
@@ -260,10 +207,7 @@ export function AppLayout() {
   const showAccountingPurchaseSlip = dynamicCanAccess('accounting.purchase-slip.list', 'view')
   const showAccountingTaxInvoiceBatch = dynamicCanAccess('accounting.tax-invoice.batch-issue', 'view')
   const showAccountingTaxInvoiceInbound = dynamicCanAccess('accounting.tax-invoice.inbound', 'view')
-  const showAccountingTaxInvoice  = dynamicCanAccess('accounting.tax-invoice.emit-nts', 'view')
-    || dynamicCanAccess('accounting.tax-invoice.list', 'view')
-    || showAccountingTaxInvoiceBatch
-    || showAccountingTaxInvoiceInbound
+  const showAccountingTaxInvoice  = dynamicCanAccess('accounting.tax-invoice.list', 'view')
   const showAccountingDailyClose  = dynamicCanAccess('accounting.daily-closing',   'view')
   const showAccountingLedger      = dynamicCanAccess('accounting.general-ledger',  'view')
   const showAccountingDepositMatch = dynamicCanAccess('accounting.deposit-match',  'view')
@@ -272,9 +216,7 @@ export function AppLayout() {
   const showAccountingAdminAging = dynamicCanAccess('ecount.mig14.aging-snapshot', 'view')
   const showAccountingAdminLedger = dynamicCanAccess('ecount.mig14.ledger', 'view')
   const showAccountingAdminMigOps = dynamicCanAccess('ecount.mig.ops-dashboard', 'view')
-  const showAccountingEditRequests = dynamicCanAccess('accounting.edit-requests', 'view')
-    || (!!auth?.role
-      && (ACCOUNTING_EDIT_REQUEST_REVIEWER_ROLES as readonly string[]).includes(auth.role))
+  const showAccountingEditRequests = dynamicCanAccess('accounting.edit-requests.decide', 'view')
   const showAccountingAdminGroup =
     showAccountingAdminCash || showAccountingAdminOrder
     || showAccountingAdminAging || showAccountingAdminLedger
@@ -287,9 +229,7 @@ export function AppLayout() {
     || showAccountingPartnerLedger || showAccountingTaxInvoice || showAccountingDailyClose
     || showAccountingLedger || showAccountingDepositMatch
     || showAccountingAdminGroup
-    // 정적 role fallback — legacy 회계 entry 호환. MIG-14 admin 하위 메뉴는 dynamic 값만 따른다.
-    || canAccessAccounting(auth?.role)
-  const showDeliveryBatch = canAccessDeliveryBatch(auth?.role)
+  const showDeliveryBatch = dynamicCanAccess('slip.delivery-batch', 'view')
 
   // [SP-D4] 잔여 7 도메인 22 PageCode 동적 RBAC 연동.
   // SP-D 일관성: dynamicCanAccess 는 캐시 미로드 시 false 로 deny 하며 로딩 flash 를 만들지 않는다.
@@ -299,105 +239,81 @@ export function AppLayout() {
   const showInventoryWarehouse     = dynamicCanAccess('inventory.warehouse',          'view')
   // inventory.stock — 현재 사이드바 직접 노출 없음 (재고 현황 서브페이지). 라우트 가드에서 사용.
   const showInventoryStockTransfer = dynamicCanAccess('inventory.stock-transfer',     'view')
+  const showInventoryStockBalance  = dynamicCanAccess('inventory.stock-balance',      'view')
   const showInventoryDps           = dynamicCanAccess('inventory.dps',                'view')
   const showInventoryAuditPage     = dynamicCanAccess('inventory.audit',              'view')
   const showAdminEmployees         = dynamicCanAccess('admin.employees',              'view')
   const showAdminUsersMgmt         = dynamicCanAccess('admin.users',                  'view')
   const showPermissionAdmin        = dynamicCanAccess('system.permission-admin', 'view')
-  // [C5-2b] auth?.role === 'MASTER' → canAccess('system.permission-admin').
+  // [C5-2b] MASTER role 문자열 fallback 제거 → system.permission-admin 동적 권한만 사용.
   // BE @RequirePermission(page="system.permission-admin") 가 MASTER bypass 포함 단일 가드.
   const showPermissionDelegation   = showPermissionAdmin
   const showPartnersList           = dynamicCanAccess('partners.list',                'view')
   const showPartnersBlock          = dynamicCanAccess('partners.block',               'view')
-  const showPartnersEditRequest    = dynamicCanAccess('partners.edit-request',        'view')
+  // partners.edit-request — 현재 미사용 (사이드바 직접 노출/라우트 가드 소비처 없음 — 향후 메뉴 연결 예약).
+  const _showPartnersEditRequest   = dynamicCanAccess('partners.edit-request',        'view')
   // products.* — 현재 사이드바 직접 노출 없음 (향후 상품 메뉴 추가 시 SidebarLink 연결). 라우트 가드에서 사용.
   const _showProductsList          = dynamicCanAccess('products.list',                'view')
   const _showProductsAdmin         = dynamicCanAccess('products.admin',               'view')
+  const showProductsSync           = dynamicCanAccess('products.sync',                'view')
   const showArologisAdminPage      = dynamicCanAccess('arologis.admin',               'view')
   const showArologisRegionPage     = dynamicCanAccess('arologis.region',              'view')
   // SP-D4 그룹 헤더 가시성 (1개라도 true 이면 그룹 노출)
   const showInventoryGroup =
-    showInventoryWarehouse || showInventoryStockTransfer
+    showInventoryWarehouse || showInventoryStockTransfer || showInventoryStockBalance
     || showInventoryDps || showInventoryAuditPage
-  const showPartnersGroup  =
-    showPartnersList || showPartnersBlock || showPartnersEditRequest
+  // (사이클1 Codex fix C-4) showPartnersGroup 제거 — /admin/partners 직접 링크는 partners.list 1:1.
   const showAdminHrGroup   = showAdminEmployees || showAdminUsersMgmt || showPermissionAdmin || showPermissionDelegation
 
-  // [Phase 10 P1-5] arologis 수동 배차 — DISPATCH / MANAGER / MASTER 가드
-  const showArologisManual = !!auth?.role
-    && (ARO_MANUAL_DISPATCH_ROLES as readonly string[]).includes(auth.role)
-  // [Phase 10 PR-E1 FE-2] arologis 가배차 분류 — MASTER / MANAGER / DISPATCH (BE 와 동일 화이트리스트)
-  const showArologisPreClassify = !!auth?.role
-    && (ARO_PRECLASSIFY_ROLES as readonly string[]).includes(auth.role)
-  // [PR-E1 FE-6] 배차안내 SMS — DISPATCH / MANAGER / MASTER
-  // [SP-D3] notification.dispatch-sms.send-audit 동적 RBAC 전환 (정적 role 체크 병행 유지).
-  const showDispatchSms = dynamicCanAccess('notification.dispatch-sms.send-audit', 'view')
-    || canAccessDispatchSms(auth?.role)
-  // [Phase 10 PR-E1 FE-3] arologis 미배차 리스트 — MASTER / MANAGER / DISPATCH
-  const showArologisUnassigned = !!auth?.role
-    && (ARO_UNASSIGNED_ROLES as readonly string[]).includes(auth.role)
-  // [PR-F1 FE-2] 운송사 실배차 비교 — DISPATCH / MANAGER / MASTER
-  const showDispatchReconcile = canAccessDispatchReconcile(auth?.role)
-  // [P1-5] arologis admin 3개 신규 화면 — MANAGER / MASTER
-  const showArologisAdmin = !!auth?.role
-    && (ARO_ADMIN_DISPATCH_ROLES as readonly string[]).includes(auth.role)
-  // arologis 그룹 가시성 — 수동 배차 / 가배차 분류 / 미배차 리스트 / 배차안내 SMS / 실배차 비교 / P1-5 admin 중 하나라도 보이면 그룹 노출
+  // [C5 follow-up 사이클1 fix] arologis 메뉴 가시성 = 라우트 PermissionGuard 와 동일 page-code 단일 소스.
+  // (사이클1 리뷰 FE P1-2 + Designer D-002: 그룹 UUID 매칭은 라우트 가드와 소스 이원화 — seed 불일치 시
+  //  사이드바 노출↔진입 redirect 역전 발생. 라우트가 이미 page-code 게이팅이므로 동일 코드로 일원화.)
+  const showArologisManual = dynamicCanAccess('arologis.dispatch.admin', 'view')
+  // 가배차 분류 / 미배차 리스트 / 실배차 비교 — 라우트 공통 arologis.dispatch.ops
+  const showArologisOps = dynamicCanAccess('arologis.dispatch.ops', 'view')
+  const showDispatchSmsPage = dynamicCanAccess('dispatch.batch', 'view')
+  const showDispatchSmsSendAudit = dynamicCanAccess('notification.dispatch-sms.send-audit', 'view')
+  // arologis 그룹 가시성 — 수동 배차 / ops 3종 / 배차안내 SMS / 발송 이력 / P1-5 admin 중 하나라도 보이면 그룹 노출
   const showArologis
     = showArologisManual
-    || showArologisPreClassify
-    || showArologisUnassigned
-    || showDispatchSms
-    || showDispatchReconcile
-    || showArologisAdmin
+    || showArologisOps
+    || showDispatchSmsPage
+    || showDispatchSmsSendAudit
+    || showArologisAdminPage
 
-  // [Phase 10 P0-5] 관리자 admin 메뉴 — MASTER 만 가시
-  const showAdmin = canAccessAdmin(auth?.role)
-  // [Phase 10 P2-6] 재고 실사 메뉴 — WAREHOUSE / MASTER 만 가시
-  const showAudit = canAccessAudit(auth?.role)
-  // [PR-E1 FE-1] DPS 입고 비교 — WAREHOUSE / MASTER / MANAGER / INVENTORY 가시
-  const showDpsCompare = canAccessDpsCompare(auth?.role)
-  // [P0-B GAS 보강] 품목별 DPS 분석 — WAREHOUSE / MANAGER / MASTER 가시
-  const showDpsByProduct = canAccessDpsByProduct(auth?.role)
-  // [PR-H3 FE-1] 전표 수정/삭제 요청 대시보드 — WAREHOUSE / MANAGER / MASTER 가시
-  const showSlipEditRequests = !!auth?.role
-    && (SLIP_EDIT_REQUEST_REVIEWER_ROLES as readonly string[]).includes(auth.role)
-  // [D-AX-20] 사진 감사 — WAREHOUSE / MANAGER / MASTER
-  const showPhotoAudit = canAccessSlipPhotoAudit(auth?.role)
+  // 단톡방 매핑 entry 의 MASTER 제외 분기에서만 사용 — 빌트인 MASTER 그룹 UUID 내부 비교(화면 노출 없음).
+  const showAdmin = hasAnyBuiltinRoleGroup(auth, ['MASTER'])
+  const showAudit = showInventoryAuditPage
+  const showDpsCompare = showInventoryDps
+  const showDpsByProduct = showInventoryDps
+  const showSlipEditRequests = dynamicCanAccess('slip.edit-requests.decide', 'view')
+  const showPhotoAudit = dynamicCanAccess('slip.photo-audit', 'view')
   // [P0-9] 입고 검수 — WAREHOUSE / MANAGER / MASTER (inventory-service 권한과 일치)
-  // [C5-2b] canInspectInbound(role) 정적 fallback 제거 — dynamicCanAccess 단독 사용.
+  // [C5-2b] 입고 검수 정적 fallback 제거 — dynamicCanAccess 단독 사용.
   const showInboundInspection = dynamicCanAccess('inbound.inspection', 'view')
-  // [P1-3] 안전재고 알림 — MASTER / MANAGER / WAREHOUSE 가시
-  const showSafetyStockAlerts = canAccessSafetyStock(auth?.role)
+  const showSafetyStockAlerts = dynamicCanAccess('inventory.safety-stock', 'view')
   // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 품목별 DPS 분석 / 전표 요청 / 사진 감사 / 입고 검수 / 안전재고 알림 중 하나라도 보이면 그룹 노출
   // [SP-D4] inventory 그룹 PageCode 변수 병합 (showInventoryGroup 은 이 시점에서 미정의이므로 개별 항목 직접 OR)
   const showWarehouseOps = showAudit || showDpsCompare || showDpsByProduct || showSlipEditRequests || showPhotoAudit || showInboundInspection || showSafetyStockAlerts
   // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
   // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
   // [PR-E1 FE-5] 전표 정리 entry — SALES / MANAGER / MASTER
-  const showSlipCleanup = !!auth?.role
-    && (SLIP_CLEANUP_ROLES as readonly string[]).includes(auth.role)
-  // [PR-E1 FE-4] 내일자 전표 이미지 entry — SALES / MANAGER / MASTER
-  const showNextDaySlip = canAccessNextDaySlip(auth?.role)
-  // [PR-F2 Designer mock] vendor 발주서 OCR 업로드 entry — SALES / MANAGER / MASTER (영업 그룹).
-  const showVendorOrderOcr = !!auth?.role
-    && (VENDOR_ORDER_OCR_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
+  const showSlipCleanup = dynamicCanAccess('slip.cleanup', 'view')
+  const showNextDaySlip = dynamicCanAccess('slip.print.next-day', 'view')
+  const showVendorOrderOcr = showVendorOrder
   // [SP-09-3 + SP-D1 cycle 2] 영수증 OCR 업로드 entry — 동적 RBAC 권한 연동.
   // 기존 정적 역할 체크(WAREHOUSE/ACCOUNTANT/MANAGER/MASTER) → purchases.receipt-ocr 동적 canAccess 로 전환.
   // dynamicCanAccess 는 로딩 중 false(보수적 deny) → 캐시 완료 후 DB 값 적용.
   const showReceiptOcr = dynamicCanAccess('purchases.receipt-ocr', 'view')
-  const showChatRoomAdmin = canAccessChatRoomAdmin(auth?.role)
+  const showChatRoomAdmin = dynamicCanAccess('messenger.admin', 'view')
 
   // [Slice 2] admin GAS 이식 — 일반 카테고리 병행 노출
-  const showRegionMgmt = !!auth?.role
-    && (REGION_MGMT_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
-  const showSheetSync = !!auth?.role
-    && (SHEET_SYNC_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
-  const showAligoAddressBook = !!auth?.role
-    && (ALIGO_ADDRESS_BOOK_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
-  const showBlockedPartners = !!auth?.role
-    && (BLOCKED_PARTNERS_SIDEBAR_ROLES as readonly string[]).includes(auth.role)
-  const showPartnerManagement = canAccessPartnerFull(auth?.role)
-  const showPartnerDcConfig = canAccessPartnerDcConfig(auth?.role)
+  const showRegionMgmt = showArologisRegionPage
+  const showSheetSync = showProductsSync
+  const showAligoAddressBook = dynamicCanAccess('aligo.address-book', 'view')
+  const showBlockedPartners = showPartnersBlock
+  const showPartnerManagement = showPartnersList
+  const showPartnerDcConfig = dynamicCanAccess('sales.partner-dc-config', 'view')
   // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 메뉴 — 동적 RBAC 권한 연동.
   // 기존 정적 역할 체크 → dispatch.board 동적 canAccess 로 전환.
   const showDispatchBoard = dynamicCanAccess('dispatch.board', 'view')
@@ -494,11 +410,10 @@ export function AppLayout() {
           >
             거래처 DC 설정
           </SidebarLink>
-          {/* [SP-01] 거래처 관리 — 생성 성공 후 복귀 대상인 /admin/partners 를 SALES/MANAGER/MASTER 에 직접 노출.
-              [SP-D4] partners.* 동적 RBAC 병합 (정적 showPartnerManagement OR 유지). */}
+          {/* [C5 후속 C-4] 거래처 관리 — /admin/partners 라우트와 동일한 partners.list VIEW 기준. */}
           <SidebarLink
             to="/admin/partners"
-            show={showPartnerManagement || showPartnersGroup}
+            show={showPartnerManagement}
             requiredRole="SALES / MANAGER / MASTER"
             data-testid="sidebar-sales-partners"
           >
@@ -514,7 +429,7 @@ export function AppLayout() {
           </SidebarLink>
           <SidebarLink
             to="/sales/closing"
-            show={showAccounting}
+            show={showAccountingPeriodClose}
             requiredRole="ACCOUNTANT / MANAGER / MASTER"
             data-testid="sidebar-sales-closing"
           >
@@ -528,18 +443,17 @@ export function AppLayout() {
           >
             내일자 전표 이미지
           </SidebarLink>
-          {/* [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES/MANAGER/MASTER. */}
           {/* [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES/MANAGER/MASTER.
-              [SP-D4] sales.vendor-order 동적 RBAC 병합 (정적 showVendorOrderOcr OR 유지). */}
+              [SP-D4] sales.vendor-order 동적 RBAC 기반. */}
           <SidebarLink
             to="/sales/vendor-order-upload"
-            show={showVendorOrderOcr || showVendorOrder}
+            show={showVendorOrderOcr}
             requiredRole="SALES / MANAGER / MASTER"
             data-testid="sidebar-sales-vendor-order-upload"
           >
             vendor 발주 OCR
           </SidebarLink>
-          {/* [Slice 2] 발송금지 거래처 — /admin/blocked-partners — MANAGER/MASTER */}
+          {/* [C5 후속 C-4] 발송금지 거래처 — /admin/blocked-partners 라우트와 동일한 partners.block VIEW 기준. */}
           <SidebarLink
             to="/admin/blocked-partners"
             show={showBlockedPartners}
@@ -716,7 +630,7 @@ export function AppLayout() {
               ) : null}
               <SidebarLink
                 to="/sales/closing"
-                show={showAccounting}
+                show={showAccountingPeriodClose}
                 data-testid="sidebar-accounting-sales-closing"
               >
                 매출 마감
@@ -897,7 +811,7 @@ export function AppLayout() {
               {/* [Phase 10 PR-E1 FE-2] 가배차 분류 — MASTER/MANAGER/DISPATCH. */}
               <SidebarLink
                 to="/arologis/pre-classify"
-                show={showArologisPreClassify}
+                show={showArologisOps}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-preclassify"
               >
@@ -906,7 +820,7 @@ export function AppLayout() {
               {/* [Phase 10 PR-E1 FE-3] 미배차 리스트 — MASTER/MANAGER/DISPATCH. */}
               <SidebarLink
                 to="/arologis/unassigned"
-                show={showArologisUnassigned}
+                show={showArologisOps}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-unassigned"
               >
@@ -915,7 +829,7 @@ export function AppLayout() {
               {/* [PR-E1 FE-6] 배차안내 SMS — DISPATCH/MANAGER/MASTER. */}
               <SidebarLink
                 to="/arologis/dispatch-sms"
-                show={showDispatchSms}
+                show={showDispatchSmsPage}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-dispatch-sms"
               >
@@ -924,7 +838,7 @@ export function AppLayout() {
               {/* [SP-09-2 FE] SMS 발송 이력 — SEND_AUDIT 전용 조회화면. */}
               <SidebarLink
                 to="/arologis/dispatch-sms/send-audit"
-                show={showDispatchSms}
+                show={showDispatchSmsSendAudit}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-sms-send-audit"
               >
@@ -933,27 +847,25 @@ export function AppLayout() {
               {/* [SP-04] 운송사 실배차 비교 — hidden route 를 공식 메뉴 entry 로 승격. */}
               <SidebarLink
                 to="/arologis/dispatch-reconcile"
-                show={showDispatchReconcile}
+                show={showArologisOps}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-dispatch-reconcile"
               >
                 실배차 비교
               </SidebarLink>
-              {/* [SP-06] 배차지역 관리 — /admin/regions 단일 entry. DISPATCH 는 조회 전용, MANAGER/MASTER 는 수정 가능.
-                  [SP-D4] arologis.region 동적 RBAC 병합 (기존 정적 showRegionMgmt OR 유지). */}
+              {/* [C5 후속 C-4] 배차지역 관리 — /admin/regions 라우트와 동일한 arologis.region VIEW 기준. */}
               <SidebarLink
                 to="/admin/regions"
-                show={showRegionMgmt || showArologisManual || showArologisRegionPage}
+                show={showRegionMgmt}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-region-mgmt"
               >
                 배차지역 관리
               </SidebarLink>
-              {/* [P1-5] arologis 배차 admin 3개 신규 메뉴 — MANAGER / MASTER.
-                  [SP-D4] arologis.admin 동적 RBAC 병합 (기존 정적 showArologisAdmin OR 유지). */}
+              {/* [P1-5] arologis 배차 admin 3개 신규 메뉴 — MANAGER / MASTER. */}
               <SidebarLink
                 to="/arologis/admin/auto-dispatch"
-                show={showArologisAdmin || showArologisAdminPage}
+                show={showArologisAdminPage}
                 requiredRole="MANAGER / MASTER"
                 data-testid="sidebar-arologis-auto-dispatch"
               >
@@ -961,7 +873,7 @@ export function AppLayout() {
               </SidebarLink>
               <SidebarLink
                 to="/arologis/admin/manual-dispatch"
-                show={showArologisAdmin || showArologisAdminPage}
+                show={showArologisAdminPage}
                 requiredRole="MANAGER / MASTER"
                 data-testid="sidebar-arologis-manual-dispatch-admin"
               >
@@ -969,7 +881,7 @@ export function AppLayout() {
               </SidebarLink>
               <SidebarLink
                 to="/arologis/admin/driver-assignment"
-                show={showArologisAdmin || showArologisAdminPage}
+                show={showArologisAdminPage}
                 requiredRole="MANAGER / MASTER"
                 data-testid="sidebar-arologis-driver-assignment"
               >
@@ -1048,10 +960,10 @@ export function AppLayout() {
               >
                 사진 감사
               </SidebarLink>
-              {/* [Phase 2.6c] 재고 현황 — 가용/실재고/예약 3구분 (WAREHOUSE/MANAGER/MASTER). */}
+              {/* [C5 후속 C-4] 재고 현황 — /inventory/stock-balance 라우트와 동일한 inventory.stock-balance VIEW 기준. */}
               <SidebarLink
                 to="/inventory/stock-balance"
-                show={showInventoryWarehouse || showInventoryStockTransfer}
+                show={showInventoryStockBalance}
                 requiredRole="WAREHOUSE / MANAGER / MASTER"
                 data-testid="sidebar-inventory-stock-balance"
               >
@@ -1079,15 +991,11 @@ export function AppLayout() {
             </>
           ) : null}
 
-          {showAdmin ? (
-            <>
-              {/*
-                [PR-HR] MASTER 시점: 관리자 그룹은 인사 카테고리(AdminLayout)로 이전.
-                AppLayout 에서는 단축 링크(사용자/권한 조회)만 유지.
-                실제 인사 관리는 사이드바 최하단 "인사" 카테고리에서 접근.
-              */}
-            </>
-          ) : null}
+          {/*
+            [PR-HR] MASTER 시점: 관리자 그룹은 인사 카테고리(AdminLayout)로 이전 —
+            구 showAdmin 빈 블록은 dead-code 라 제거 (사이클1 Designer D-003).
+            실제 인사 관리는 사이드바 최하단 "인사" 카테고리에서 접근.
+          */}
 
           {/*
             [PR-D Phase B FE-D] MANAGER 전용 — 단톡방 매핑 단독 노출.

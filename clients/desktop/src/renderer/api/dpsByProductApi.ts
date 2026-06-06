@@ -10,8 +10,7 @@
  * </ul>
  *
  * <h2>권한</h2>
- * <p>MASTER / MANAGER / WAREHOUSE (BE @PreAuthorize 와 일치).
- * FE 화면 진입 가드도 동일 집합 적용.
+ * <p>FE 진입과 조회 endpoint 모두 {@code inventory.dps} VIEW 기준.
  *
  * <h2>UUID 비공개</h2>
  * <p>응답 wire-format 에서 UUID 미노출.
@@ -109,24 +108,4 @@ export async function getDpsByProduct(
     { params },
   )
   return res.data.data
-}
-
-// ---------------------------------------------------------------------------
-// 권한 헬퍼 (BE @PreAuthorize 와 일치 — feedback_role_naming_full.md 풀네임)
-// ---------------------------------------------------------------------------
-
-/** 품목별 DPS 분석 화면 진입 가능 ROLE 화이트리스트. */
-export const DPS_BY_PRODUCT_ROLES = [
-  'WAREHOUSE',
-  'MANAGER',
-  'MASTER',
-] as const
-
-/** 품목별 DPS 분석 화면 진입 — WAREHOUSE / MANAGER / MASTER. */
-export function canAccessDpsByProduct(role: string | undefined | null): boolean {
-  return (
-    role === 'WAREHOUSE'
-    || role === 'MANAGER'
-    || role === 'MASTER'
-  )
 }

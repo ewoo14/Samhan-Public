@@ -1,5 +1,9 @@
 package com.samhanair.logis.accounting.it;
 
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.PARTIAL_IDENTITY_GROUPS;
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.isMissingUserIdCase;
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.isMissingUserIdSystemMasterCase;
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.suppressRoleForPartialIdentityCase;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -40,6 +44,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest(classes = AccountingServiceApplication.class)
 @AutoConfigureMockMvc
 class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
+
 
     @Autowired
     private MockMvc mockMvc;
@@ -83,8 +88,14 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         }
         if (includeUserId) {
             request.header("X-User-Id", "00000000-0000-0000-0000-000000000115");
+        } else if (isMissingUserIdSystemMasterCase(label)) {
+            // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
+            request.header("X-Is-System-Master", "true");
+        } else if (isMissingUserIdCase(label)) {
+            // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
+            request.header("X-User-Groups", PARTIAL_IDENTITY_GROUPS);
         }
-        if (role != null) {
+        if (role != null && !suppressRoleForPartialIdentityCase(label)) {
             request.header("X-User-Role", role);
         }
 
@@ -130,7 +141,11 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
     private static Stream<Arguments> endpointCases(String url) {
         return Stream.of(
                 Arguments.of("success", url, "MANAGER", true, "{}", 200),
+                // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
                 Arguments.of("missingUserId", url, "MANAGER", false, "{}", 401),
+                Arguments.of("missingUserIdSystemMaster", url, null, false, "{}", 401),
+                // C5 후속: X-User-Role 단독은 부분-identity 신호가 아니므로 anonymous 계약(403).
+                Arguments.of("missingUserIdRoleOnly", url, "MANAGER", false, "{}", 403),
                 Arguments.of("memberForbidden", url, "MEMBER", true, "{}", 403),
                 Arguments.of("badBody", url, "MANAGER", true, "{", 400),
                 Arguments.of("noRows", url, "MANAGER", true, "{}", 422)
@@ -141,7 +156,11 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         String url = "/admin/accounting/aging-snapshot/refresh";
         return Stream.of(
                 Arguments.of("refreshSuccess", url, "MANAGER", true, "{}", 200),
+                // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
                 Arguments.of("refreshMissingUserId", url, "MANAGER", false, "{}", 401),
+                Arguments.of("refreshMissingUserIdSystemMaster", url, null, false, "{}", 401),
+                // C5 후속: X-User-Role 단독은 부분-identity 신호가 아니므로 anonymous 계약(403).
+                Arguments.of("refreshMissingUserIdRoleOnly", url, "MANAGER", false, "{}", 403),
                 Arguments.of("refreshMemberForbidden", url, "MEMBER", true, "{}", 403),
                 Arguments.of("refreshBadBody", url, "MANAGER", true, "{", 400),
                 Arguments.of("refreshFailed", url, "MANAGER", true, "{}", 422)
@@ -164,6 +183,7 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         }
         return PermissionAction.CREATE;
     }
+
 
     private void whenSuccess(String url) {
         if (url.endsWith("aging-snapshot/refresh")) {

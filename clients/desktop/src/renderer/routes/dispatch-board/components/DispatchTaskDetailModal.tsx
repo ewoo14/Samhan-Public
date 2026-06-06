@@ -22,15 +22,15 @@
  *  - Modal (design-system) 의 focus trap + ESC 닫기 + 한국어 닫기 라벨 활용.
  */
 import { useState } from 'react'
-import { Modal } from '@samhan/design-system'
+import { Button, Modal } from '@samhan/design-system'
 import {
-  canRequestModificationOrCancel,
   DISPATCH_TASK_STATUS_LABEL,
   DISPATCH_VEHICLE_TYPE_LABEL,
   type DispatchTaskResponse,
 } from '../../../api/dispatchTask'
 import { ModificationRequestDialog } from './ModificationRequestDialog'
 import { CancellationRequestDialog } from './CancellationRequestDialog'
+import { usePermissions } from '../../../hooks/usePermissions'
 
 interface DispatchTaskDetailModalProps {
   task: DispatchTaskResponse
@@ -95,8 +95,9 @@ export function DispatchTaskDetailModal({
 }: DispatchTaskDetailModalProps) {
   const [modificationOpen, setModificationOpen] = useState(false)
   const [cancellationOpen, setCancellationOpen] = useState(false)
+  const { canAccess } = usePermissions()
 
-  const showRequestButtons = canRequestModificationOrCancel(task.status)
+  const showRequestButtons = task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
   const banner = STATUS_BANNER_STYLE[task.status]
   const totalSlips = task.vehicleGroups.reduce((s, g) => s + g.slips.length, 0)
 
@@ -124,60 +125,37 @@ export function DispatchTaskDetailModal({
           >
             {showRequestButtons ? (
               <>
-                <button
+                <Button
                   type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={() => setModificationOpen(true)}
                   data-testid="dispatch-task-detail-request-modification"
                   aria-label={`배차 작업 ${task.taskCode} 수정 요청 발송`}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'var(--color-purple-600, #7C3AED)',
-                    color: 'var(--color-neutral-0)',
-                    border: 'none',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
                 >
-                  ✏ 수정 요청
-                </button>
-                <button
+                  수정 요청
+                </Button>
+                <Button
                   type="button"
+                  variant="danger"
+                  size="sm"
                   onClick={() => setCancellationOpen(true)}
                   data-testid="dispatch-task-detail-request-cancellation"
                   aria-label={`배차 작업 ${task.taskCode} 취소 요청 발송`}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'var(--color-danger-600, #DC2626)',
-                    color: 'var(--color-neutral-0)',
-                    border: 'none',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
                 >
-                  ✗ 취소 요청
-                </button>
+                  취소 요청
+                </Button>
               </>
             ) : null}
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={onClose}
               data-testid="dispatch-task-detail-close"
-              style={{
-                padding: '8px 16px',
-                background: 'var(--color-neutral-100)',
-                color: 'var(--color-neutral-800)',
-                border: '1px solid var(--color-neutral-200)',
-                borderRadius: 4,
-                cursor: 'pointer',
-                fontSize: 13,
-              }}
             >
               닫기
-            </button>
+            </Button>
           </div>
         }
       >

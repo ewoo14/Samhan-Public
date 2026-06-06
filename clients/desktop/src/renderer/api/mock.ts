@@ -3352,6 +3352,52 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  const mockDailyClosingRow = {
+    closingKind: 'SALES' as const,
+    sourceKind: 'TAX_INVOICE' as const,
+    closingDate: '2026-06-07',
+    partnerCode: null,
+    totalSupply: '1000000',
+    totalVat: '100000',
+    totalAmount: '1100000',
+    slipCount: 3,
+    isLocked: true,
+    lockedAt: '2026-06-07T18:00:00+09:00',
+    lockedBy: 'system',
+  }
+
+  // GET/POST/PATCH /accounting/daily-closings — DailyClosingPage mock runtime contract.
+  if (method === 'GET' && url.includes('/accounting/daily-closings')) {
+    return envelope({
+      content: [mockDailyClosingRow],
+      totalElements: 1,
+      totalPages: 1,
+      number: 0,
+      size: 20,
+      first: true,
+      last: true,
+    })
+  }
+  if (method === 'POST' && url.endsWith('/accounting/daily-closings')) {
+    const req = (config.data ? JSON.parse(config.data as string) : {}) as Record<string, unknown>
+    return envelope({
+      ...mockDailyClosingRow,
+      closingKind: req['closingKind'] === 'PURCHASE' ? 'PURCHASE' : mockDailyClosingRow.closingKind,
+      sourceKind: typeof req['sourceKind'] === 'string' ? req['sourceKind'] : mockDailyClosingRow.sourceKind,
+      closingDate: typeof req['closingDate'] === 'string' ? req['closingDate'] : mockDailyClosingRow.closingDate,
+      partnerCode: typeof req['partnerCode'] === 'string' ? req['partnerCode'] : null,
+      lockedAt: new Date().toISOString(),
+    })
+  }
+  if (method === 'PATCH' && /\/accounting\/daily-closings\/[^/]+\/lock$/.test(url)) {
+    return envelope({
+      ...mockDailyClosingRow,
+      isLocked: false,
+      lockedAt: null,
+      lockedBy: null,
+    })
+  }
+
   // GET /accounting/closing — MonthEndClosingPage
   if (method === 'GET' && url.includes('/accounting/closing')) {
     return envelope({
@@ -5501,6 +5547,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         if (cell.edit) actions.push(...actionOnly)
       } else {
         if (cell.edit) actions.push('CREATE', 'UPDATE', 'DELETE')
+        // download/print 는 BE read-side export 계약을 따르므로 view 권한에서 파생한다.
         if (cell.view) actions.push('DOWNLOAD', 'PRINT')
       }
       permissions[cell.pageCode] = actions
@@ -7000,12 +7047,15 @@ const SP_D1_PAGES = [
   // SP-D1 초기 12개
   'accounting.tax-invoice.emit-nts',
   'accounting.tax-invoice.list',
+  'accounting.tax-invoice.cancel',
   'accounting.tax-invoice.batch-issue',
   'accounting.tax-invoice.inbound',
   'accounting.sales-slip.list',
   'accounting.purchase-slip.list',
   'accounting.deposit-match',
   'accounting.daily-closing',
+  'accounting.daily-closing.run',
+  'accounting.daily-closing.unlock',
   'accounting.general-ledger',
   'notification.dispatch-sms.send-audit',
   'purchases.receipt-ocr',
@@ -7024,6 +7074,8 @@ const SP_D1_PAGES = [
   'accounting.period-close',
   'accounting.statement-batch',
   'accounting.partner-ledger',
+  // V37 회계 전표/거래처 원장 보조 도메인
+  'accounting.supplier-profiles',
   // Issue 4 Slice 4
   'accounting.edit-requests',
   // SP-D4 잔여 7 도메인 22개 신규 (V10 seed 기반)
@@ -7052,6 +7104,8 @@ const SP_D1_PAGES = [
   'admin.users',
   'partners.list',
   'partners.detail',
+  'partners.edit',
+  'partners.4tab.edit',
   'partners.block',
   'partners.edit-request',
   'products.list',
@@ -7063,12 +7117,13 @@ const SP_D1_PAGES = [
   'ecount.mig14.order-list',
   'ecount.mig14.aging-snapshot',
   'ecount.mig14.ledger',
-  // C2b 단독→PermissionGuard 전환 page-codes (V29/V30/V33/V34/V36 seed 기반)
-  'sales.slip.create',
-  'slip.delivery-batch',
-  'slip.print.next-day',
-  'sales.partner-dc-config',
-  'slip.cleanup',
+    // C2b 단독→PermissionGuard 전환 page-codes (V29/V30/V33/V34/V36 seed 기반)
+    'sales.slip.create',
+    'slip.delivery-batch',
+    'slip.print.next-day',
+    'slip.print.export',
+    'sales.partner-dc-config',
+    'slip.cleanup',
   'arologis.dispatch.admin',
   'arologis.dispatch.ops',
   'dispatch.batch',
@@ -7077,6 +7132,7 @@ const SP_D1_PAGES = [
   'slip.edit-requests',
   'slip.edit-requests.decide',
   'slip.photo-audit',
+  'accounting.edit-requests.decide',
   // C2c 동적 권한 전환 page-codes (V36/V30/V41 seed 기반)
   'purchases.slip.edit',
   'purchases.slip.delete',
@@ -7093,6 +7149,8 @@ const SP_D1_PAGES = [
   'slip.reject',
   'sales.slip.cancel',
   'inventory.warehouse.admin',
+  // C5 follow-up V47 — product-service sheet sync (MANAGER view/create, MASTER bypass)
+  'products.sync',
 ] as const
 
 /**
@@ -7100,7 +7158,12 @@ const SP_D1_PAGES = [
  * seed 정합(예: V41 convert = create-only). 비-MASTER `/permissions/my` mock 도출에 적용.
  */
 const MOCK_ACTION_ONLY_PAGES: Record<string, string[]> = {
+  // V37: accounting.daily-closing.run 은 실행 CREATE endpoint 전용.
+  'accounting.daily-closing.run': ['CREATE'],
+  // V37: accounting.daily-closing.unlock 은 잠금 해제 UPDATE endpoint 전용.
+  'accounting.daily-closing.unlock': ['UPDATE'],
   'sales.partner-order.convert': ['CREATE'],
+  'products.sync': ['CREATE'],
 }
 
 /**
@@ -7133,9 +7196,10 @@ const MOCK_ACTION_ONLY_PAGES: Record<string, string[]> = {
 const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
   MANAGER: [
     // SP-D1
-    'accounting.tax-invoice.list', 'accounting.tax-invoice.batch-issue',
+    'accounting.tax-invoice.list', 'accounting.tax-invoice.cancel', 'accounting.tax-invoice.batch-issue',
     'accounting.tax-invoice.inbound', 'accounting.sales-slip.list',
     'accounting.purchase-slip.list', 'accounting.deposit-match', 'accounting.daily-closing',
+    'accounting.daily-closing.run',
     'accounting.general-ledger', 'notification.dispatch-sms.send-audit',
     'purchases.receipt-ocr', 'purchases.slip.list', 'sales.slip.list',
     'inbound.inspection', 'dispatch.board',
@@ -7143,6 +7207,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
     'accounting.reports', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
+    // V37 supplier-profiles — MANAGER: view/edit 허용
+    'accounting.supplier-profiles',
     // SP-D4 22개 — MANAGER: 대부분 view 허용
     'estimates.list', 'sales.partner-order.list', 'sales.partner-order.draft',
     'sales.partner-order.confirm', 'sales.partner-order.history', 'sales.partner-order.print',
@@ -7152,15 +7218,16 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'inventory.stock-balance', 'inventory.safety-stock', 'inventory.edit-requests',
     'inventory.edit-requests.decide', 'ecount.import.inventory',
     'admin.employees',
-    'partners.list', 'partners.detail', 'partners.block', 'partners.edit-request',
+    'partners.list', 'partners.detail', 'partners.edit', 'partners.4tab.edit',
+    'partners.block', 'partners.edit-request',
     'products.list', 'products.admin', 'arologis.admin', 'arologis.region',
     // MIG-14 admin UI
     'ecount.mig14.cash-list', 'ecount.mig14.order-list',
     'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
     // Issue 4 Slice 4
-    'accounting.edit-requests',
+    'accounting.edit-requests', 'accounting.edit-requests.decide',
     // C2b PermissionGuard 전환 — MANAGER: 전 12개 page view 허용 (V29/V30/V33/V34/V36 seed)
-    'sales.slip.create', 'slip.delivery-batch', 'slip.print.next-day',
+    'sales.slip.create', 'slip.delivery-batch', 'slip.print.next-day', 'slip.print.export',
     'sales.partner-dc-config', 'slip.cleanup',
     'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch',
     'aligo.address-book', 'messenger.admin', 'slip.edit-requests', 'slip.edit-requests.decide',
@@ -7176,6 +7243,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     // C5-2c: V35/V36 seed 기반 MANAGER VIEW 추가
     'slip.transfer.process', 'sales.slip.confirm', 'slip.reject',
     'sales.slip.cancel', 'inventory.warehouse.admin',
+    // C5 follow-up V47 — MANAGER sheet sync view.
+    'products.sync',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -7187,7 +7256,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
   ],
   // SP-D3 V9 fix: SALES dispatch.board 제거 (사용자 요구 ② — SALES 에게 배차 메뉴 숨김)
   SALES: [
-    'accounting.tax-invoice.list', 'sales.slip.list',
+    'sales.slip.list',
     // SP-D4 — SALES: 견적/주문/거래처/상품 view
     'estimates.list', 'sales.partner-order.list', 'sales.partner-order.draft',
     'sales.partner-order.confirm', 'sales.partner-order.history', 'sales.partner-order.print',
@@ -7205,14 +7274,18 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
   ACCOUNTANT: [
     // SP-D1
     'accounting.tax-invoice.emit-nts', 'accounting.tax-invoice.list',
+    'accounting.tax-invoice.cancel',
     'accounting.tax-invoice.batch-issue', 'accounting.tax-invoice.inbound',
     'accounting.sales-slip.list', 'accounting.purchase-slip.list',
-    'accounting.deposit-match', 'accounting.daily-closing', 'accounting.general-ledger',
+    'accounting.deposit-match', 'accounting.daily-closing',
+    'accounting.daily-closing.run', 'accounting.general-ledger',
     'purchases.receipt-ocr', 'purchases.slip.list', 'sales.slip.list',
     // SP-D2 회계 7개 — ACCOUNTANT: view + edit 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
     'accounting.reports', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
+    // V37 supplier-profiles — ACCOUNTANT: view only
+    'accounting.supplier-profiles',
     // SP-D4 — ACCOUNTANT: 견적/주문 이력/재고/거래처/상품 view 만
     'estimates.list', 'sales.partner-order.list', 'sales.partner-order.history',
     'inventory.stock', 'inventory.list', 'inventory.detail', 'inventory.transfer',
@@ -7287,8 +7360,12 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
  */
 const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
   MANAGER: [
+    'accounting.tax-invoice.cancel',
     'accounting.tax-invoice.batch-issue', 'accounting.tax-invoice.inbound',
     'accounting.sales-slip.list', 'accounting.purchase-slip.list',
+    'accounting.daily-closing.run',
+    // V37 supplier-profiles — MANAGER: view/edit 허용
+    'accounting.supplier-profiles',
     // SP-D1 — MANAGER: edit 미허용 (view 전용)
     // SP-D4 — MANAGER: 대부분 edit 허용
     'estimates.list', 'sales.partner-order.list', 'sales.partner-order.draft',
@@ -7298,15 +7375,16 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'inventory.safety-stock', 'inventory.edit-requests',
     'inventory.edit-requests.decide', 'ecount.import.inventory',
     'admin.employees',
-    'partners.list', 'partners.detail', 'partners.block', 'partners.edit-request',
+    'partners.list', 'partners.detail', 'partners.edit', 'partners.4tab.edit',
+    'partners.block', 'partners.edit-request',
     'products.list', 'products.admin', 'arologis.admin', 'arologis.region',
     // MIG-14 admin UI
     'ecount.mig14.cash-list', 'ecount.mig14.order-list',
     'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
     // Issue 4 Slice 4
-    'accounting.edit-requests',
+    'accounting.edit-requests', 'accounting.edit-requests.decide',
     // C2b PermissionGuard 전환 — MANAGER: 전 12개 page edit 허용 (V29/V30/V33/V34/V36 seed)
-    'sales.slip.create', 'slip.delivery-batch', 'slip.print.next-day',
+    'sales.slip.create', 'slip.delivery-batch', 'slip.print.next-day', 'slip.print.export',
     'sales.partner-dc-config', 'slip.cleanup',
     'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch',
     'aligo.address-book', 'messenger.admin', 'slip.edit-requests', 'slip.edit-requests.decide',
@@ -7322,6 +7400,8 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     // C5-2c: V35/V36 seed 기반 MANAGER EDIT 추가
     'slip.transfer.process', 'sales.slip.confirm', 'slip.reject',
     'sales.slip.cancel', 'inventory.warehouse.admin',
+    // C5 follow-up V47 — MANAGER sheet sync create.
+    'products.sync',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -7349,9 +7429,11 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
   ACCOUNTANT: [
     // SP-D1
     'accounting.tax-invoice.emit-nts', 'accounting.tax-invoice.list',
+    'accounting.tax-invoice.cancel',
     'accounting.tax-invoice.batch-issue', 'accounting.tax-invoice.inbound',
     'accounting.sales-slip.list', 'accounting.purchase-slip.list',
     'accounting.deposit-match', 'accounting.daily-closing',
+    'accounting.daily-closing.run',
     'purchases.receipt-ocr',
     // SP-D2 회계 7개 — ACCOUNTANT: edit 허용 (accounts/journals/period-close/statement-batch)
     'accounting.accounts', 'accounting.journals', 'accounting.period-close',

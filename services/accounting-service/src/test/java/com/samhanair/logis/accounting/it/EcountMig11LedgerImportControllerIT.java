@@ -1,5 +1,9 @@
 package com.samhanair.logis.accounting.it;
 
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.PARTIAL_IDENTITY_GROUPS;
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.isMissingUserIdCase;
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.isMissingUserIdSystemMasterCase;
+import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.suppressRoleForPartialIdentityCase;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -39,6 +43,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 class EcountMig11LedgerImportControllerIT extends AbstractPostgresIT {
 
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -77,8 +82,14 @@ class EcountMig11LedgerImportControllerIT extends AbstractPostgresIT {
         var request = multipart(url).file(file);
         if (includeUserId) {
             request.header("X-User-Id", "00000000-0000-0000-0000-000000000115");
+        } else if (isMissingUserIdSystemMasterCase(label)) {
+            // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
+            request.header("X-Is-System-Master", "true");
+        } else if (isMissingUserIdCase(label)) {
+            // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
+            request.header("X-User-Groups", PARTIAL_IDENTITY_GROUPS);
         }
-        if (role != null) {
+        if (role != null && !suppressRoleForPartialIdentityCase(label)) {
             request.header("X-User-Role", role);
         }
 
@@ -112,7 +123,11 @@ class EcountMig11LedgerImportControllerIT extends AbstractPostgresIT {
     private static Stream<Arguments> cases() {
         return endpoints().flatMap(endpoint -> Stream.of(
                 Arguments.of(endpoint[0], endpoint[1], "success", xlsx("sample.xlsx"), "MANAGER", true, 200),
+                // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
                 Arguments.of(endpoint[0], endpoint[1], "missingUserId", xlsx("sample.xlsx"), "MANAGER", false, 401),
+                Arguments.of(endpoint[0], endpoint[1], "missingUserIdSystemMaster", xlsx("sample.xlsx"), null, false, 401),
+                // C5 후속: X-User-Role 단독은 부분-identity 신호가 아니므로 anonymous 계약(403).
+                Arguments.of(endpoint[0], endpoint[1], "missingUserIdRoleOnly", xlsx("sample.xlsx"), "MANAGER", false, 403),
                 Arguments.of(endpoint[0], endpoint[1], "memberForbidden", xlsx("sample.xlsx"), "MEMBER", true, 403),
                 Arguments.of(endpoint[0], endpoint[1], "invalidMime", file("sample.txt", "text/plain"), "MANAGER", true, 400),
                 Arguments.of(endpoint[0], endpoint[1], "headerMismatch", xlsx("broken.xlsx"), "MANAGER", true, 422)
@@ -131,6 +146,7 @@ class EcountMig11LedgerImportControllerIT extends AbstractPostgresIT {
         }
         return "ecount.mig11.purchase-ledger";
     }
+
 
     private static EcountMig11Result result() {
         return new EcountMig11Result(1, 1, 0, 0, 0, "HASH", List.of(), List.of());

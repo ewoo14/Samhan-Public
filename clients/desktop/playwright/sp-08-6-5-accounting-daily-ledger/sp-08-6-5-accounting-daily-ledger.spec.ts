@@ -135,12 +135,10 @@ test.describe('SP-08-6-5 일마감 + 원장 정적 계약', () => {
     expect(api).toContain('DailyClosingDetail')
     expect(api).toContain('getDailyClosingDetail')
     expect(api).toContain('/accounting/closings/daily')
-    expect(api).toContain("'ACCOUNTANT'")
-    expect(api).toContain("'MASTER'")
 
     // UUID 비공개 가드 — closing 의 id 는 path 에만 사용
     expect(page).not.toMatch(/\{closing\.id\}|closing\.id\s*===/)
-    // canExecuteClosing 함수 사용 여부
+    // [C5 후속] 마감 실행 가시성 — canAccess page-code 판정 사용 여부
     expect(page).toContain('canExecute')
   })
 
@@ -189,12 +187,13 @@ test.describe('SP-08-6-5 일마감 + 원장 정적 계약', () => {
   })
 
   /**
-   * T5: 권한 가드 — ACCOUNTANT/MANAGER/MASTER 만 접근
+   * T5: 권한 가드 — 마감 실행/역마감 page-code 계약
    *
-   * - closingApi.ts 에 canExecuteClosing / canReverseClosing 함수 존재
-   * - partnerLedgerApi.ts 에 PARTNER_LEDGER_ROLES + canAccessPartnerLedger 함수 존재
-   * - 역마감은 MASTER 만 (MonthEndCloseController @PreAuthorize("hasRole('MASTER')"))
-   * - 마감 실행은 ACCOUNTANT/MASTER (MANAGER 불가)
+   * - [C5 후속] closingApi.ts 의 role 헬퍼(canExecuteClosing/canReverseClosing)는 제거 —
+   *   마감 페이지가 usePermissions().canAccess page-code 로 BE @RequirePermission 과 1:1 판정.
+   * - partnerLedgerApi.ts 의 role 문자열 helper 제거
+   * - 역마감은 accounting.period-close.reverse UPDATE (seed MASTER 독점)
+   * - 마감 실행은 accounting.period-close CREATE (seed ACCOUNTANT/MASTER — MANAGER 불가)
    */
   test('T5 권한 가드: ACCOUNTANT/MANAGER/MASTER 접근 + MASTER 역마감 독점', () => {
     const closeCtrl = read(
@@ -205,6 +204,8 @@ test.describe('SP-08-6-5 일마감 + 원장 정적 계약', () => {
     )
     const closingApi = read('clients/desktop/src/renderer/api/closingApi.ts')
     const ledgerApi = read('clients/desktop/src/renderer/api/partnerLedgerApi.ts')
+    const routes = read('clients/desktop/src/renderer/routes/index.tsx')
+    const appLayout = read('clients/desktop/src/renderer/components/AppLayout.tsx')
 
     // BE 역마감 MASTER 독점
     expect(closeCtrl).toContain('@RequirePermission(page = "accounting.period-close.reverse"')
@@ -220,16 +221,16 @@ test.describe('SP-08-6-5 일마감 + 원장 정적 계약', () => {
     expect(reportCtrl).toContain('@RequirePermission(page = REPORTS_PAGE_CODE')
     expect(reportCtrl).toContain('REPORTS_PAGE_CODE = "accounting.reports"')
 
-    // FE 권한 함수
-    expect(closingApi).toContain('canExecuteClosing')
-    expect(closingApi).toContain('canReverseClosing')
-    expect(ledgerApi).toContain('PARTNER_LEDGER_ROLES')
-    expect(ledgerApi).toContain('canAccessPartnerLedger')
-
-    // PARTNER_LEDGER_ROLES 에 3개 역할 포함
-    expect(ledgerApi).toContain("'ACCOUNTANT'")
-    expect(ledgerApi).toContain("'MANAGER'")
-    expect(ledgerApi).toContain("'MASTER'")
+    // FE 권한 — [C5 후속] role 헬퍼 제거, 마감 페이지는 canAccess page-code 판정
+    expect(closingApi).not.toContain('export function canExecuteClosing')
+    expect(closingApi).not.toContain('export function canReverseClosing')
+    const salesClosingPage = read('clients/desktop/src/renderer/routes/SalesClosingPage.tsx')
+    expect(salesClosingPage).toMatch(/canAccess\('accounting\.period-close',\s*'create'\)/)
+    expect(salesClosingPage).toMatch(/canAccess\('accounting\.period-close\.reverse',\s*'update'\)/)
+    expect(ledgerApi).not.toMatch(/PARTNER_LEDGER_[A-Z]+/)
+    expect(ledgerApi).not.toMatch(new RegExp('canAccess' + 'PartnerLedger'))
+    expect(appLayout).toMatch(/const showAccountingPartnerLedger = dynamicCanAccess\('accounting\.partner-ledger',\s*'view'\)/)
+    expect(routes).toMatch(/path: '\/accounting\/partner-ledger'[\s\S]*<PermissionGuard pageCode="accounting\.partner-ledger" action="view">/)
 
     // auth-service V37 seed: accounting.period-close.reverse 는 MASTER 에게만 can_view/can_edit TRUE
     // (V37__seed_sp_d6_7_accounting_page_codes.sql line 72 확인)

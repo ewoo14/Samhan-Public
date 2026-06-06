@@ -15,7 +15,6 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -156,9 +155,9 @@ public class InspectionAttachmentController {
      * @return 200
      */
     @Operation(summary = "검수 첨부 soft-delete",
-            description = "MANAGER/MASTER 권한. MinIO 객체는 감사 추적 위해 보존")
+            description = "@RequirePermission(inventory.stock-balance, DELETE) 단일 게이트. "
+                    + "MinIO 객체는 감사 추적 위해 보존")
     @DeleteMapping("/{attachmentId}")
-    @PreAuthorize("hasAnyRole('MANAGER','MASTER')")
     @RequirePermission(page = "inventory.stock-balance", action = com.samhanair.logis.security.permission.PermissionAction.DELETE)
     public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable UUID slipId,

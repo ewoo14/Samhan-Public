@@ -287,38 +287,6 @@ export async function getTrialBalance(period: string): Promise<TrialBalance> {
   return res.data.data
 }
 
-/**
- * 회계 메뉴/라우트 접근 권한 — ACCOUNTANT / MANAGER / MASTER 허용.
- *
- * W-4 fix (PR #137): BE @PreAuthorize 가 ACCOUNTANT/MANAGER/MASTER 로 선언되어 있으므로
- * FE 사이드바도 동일하게 정렬. 기존 ACCOUNTANT/MASTER 만 허용하던 정의를 MANAGER 포함으로 확장.
- *
- * `feedback_role_naming_full.md` — 풀네임 표기 의무. M/M 약어 금지.
- */
-export function canAccessAccounting(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'ACCOUNTANT' || role === 'MANAGER' || role === 'MASTER'
-}
-
-/**
- * 분개 작성 권한 — ACCOUNTANT / MASTER. canAccessAccounting 와 동일하지만
- * 향후 readonly role (예: AUDITOR) 분리에 대비해 별도 함수.
- */
-export function canCreateJournal(
-  role: string | undefined | null,
-): boolean {
-  if (!role) return false
-  return role === 'ACCOUNTANT' || role === 'MASTER'
-}
-
-/**
- * 분개 확정 (POST/REVERSE) 권한 — MASTER 만. ACCOUNTANT 는 작성/조회만.
- */
-export function canPostJournal(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'MASTER'
-}
-
 // ==========================================================================
 // P0-1 Slice A: 3대 재무 보고서 API (손익계산서 / 재무상태표)
 // ==========================================================================
@@ -636,18 +604,6 @@ export async function getPartnerAging(
     { params: { asOfDate, type } },
   )
   return res.data.data
-}
-
-/**
- * 회계 보고서 접근 권한 (Slice B 포함).
- *
- * ACCOUNTANT / MANAGER / MASTER 모두 보고서 조회 가능.
- */
-export function canAccessAccountingReports(
-  role: string | undefined | null,
-): boolean {
-  if (!role) return false
-  return role === 'ACCOUNTANT' || role === 'MANAGER' || role === 'MASTER'
 }
 
 // ==========================================================================
@@ -1056,23 +1012,9 @@ export async function reverseDailyClosing(
   return res.data.data
 }
 
-/**
- * 일마감 실행 권한 — ACCOUNTANT / MASTER (BE `@PreAuthorize` 와 동일).
- *
- * `feedback_role_naming_full.md` — role 표기 풀네임 의무.
- */
-export function canExecuteDailyClosing(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'ACCOUNTANT' || role === 'MASTER'
-}
-
-/**
- * 일마감 역마감 권한 — MASTER 만.
- */
-export function canReverseDailyClosing(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'MASTER'
-}
+// [C5 후속 사이클2 D2-FE-001] canExecuteDailyClosing/canReverseDailyClosing role 문자열 헬퍼 제거 —
+// DailyClosingPage 는 usePermissions().canAccess('accounting.daily-closing.run','create') /
+// canAccess('accounting.daily-closing.unlock','update') 로 BE @RequirePermission 과 1:1 판정.
 
 /**
  * `isLocked` → UI 상태 문자열 파생.

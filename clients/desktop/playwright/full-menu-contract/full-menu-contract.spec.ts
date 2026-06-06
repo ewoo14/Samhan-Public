@@ -65,8 +65,6 @@ function csvNonEmptyRows(relDir: string): number {
 test.describe('SP-04 full menu and legacy migration contract', () => {
   const appLayout = read('clients/desktop/src/renderer/components/AppLayout.tsx')
   const routes = read('clients/desktop/src/renderer/routes/index.tsx')
-  const delivery = read('clients/desktop/src/renderer/api/delivery.ts')
-  const excelExport = read('clients/desktop/src/renderer/api/excelExportApi.ts')
   const slipCleanup = read('clients/desktop/src/renderer/api/slipCleanupApi.ts')
   const roleJava = read('shared/common/src/main/java/com/samhanair/logis/common/security/Role.java')
   const transferService = read('services/inventory-service/src/main/java/com/samhanair/logis/inventory/service/StockTransferService.java')
@@ -94,16 +92,17 @@ test.describe('SP-04 full menu and legacy migration contract', () => {
   })
 
   test('sidebar links and router guards match backend write/export contracts', () => {
-    expect(delivery).toContain("DELIVERY_BATCH_ROLES = ['MANAGER', 'MASTER']")
-    expect(excelExport).toContain("role === 'MANAGER' || role === 'MASTER'")
-    expect(slipCleanup).toMatch(/SLIP_CLEANUP_ROLES[\s\S]*'SALES'[\s\S]*'MANAGER'[\s\S]*'MASTER'/)
-    expect(slipCleanup).not.toContain("'ACCOUNTANT'")
+    expect(appLayout).toMatch(/const showDeliveryBatch = dynamicCanAccess\('slip\.delivery-batch',\s*'view'\)/)
+    expect(appLayout).toMatch(/const showPartnerDcConfig = dynamicCanAccess\('sales\.partner-dc-config',\s*'view'\)/)
+    expect(appLayout).toMatch(/const showSlipCleanup = dynamicCanAccess\('slip\.cleanup', 'view'\)/)
+    expect(routes).toMatch(/path: '\/sales\/slip-cleanup'[\s\S]*<PermissionGuard pageCode="slip\.cleanup" action="view">[\s\S]*<SlipCleanupPage \/>/)
+    expect(slipCleanup).not.toContain('SLIP_CLEANUP_ROLES')
 
-    expect(routes).toMatch(/path: '\/sales\/new'[\s\S]*RoleGuard allow=\{SLIP_CREATE_ROLES\}/)
-    expect(routes).toMatch(/path: '\/purchases\/new'[\s\S]*RoleGuard allow=\{SLIP_CREATE_ROLES\}/)
-    expect(routes).toMatch(/path: '\/transfers\/new'[\s\S]*RoleGuard allow=\{TRANSFER_CREATE_ROLES\}/)
-    expect(routes).toMatch(/path: '\/sales\/link-dispatch'[\s\S]*RoleGuard allow=\{DELIVERY_BATCH_ROLES\}/)
-    expect(routes).toMatch(/path: '\/sales\/partner-dc-config'[\s\S]*RoleGuard allow=\{PARTNER_DC_CONFIG_ROLES\}/)
+    expect(routes).toMatch(/path: '\/sales\/new'[\s\S]*<PermissionGuard pageCode="sales\.slip\.create" action="view">[\s\S]*<SlipFormPage mode="OUTBOUND" \/>/)
+    expect(routes).toMatch(/path: '\/purchases\/new'[\s\S]*<PermissionGuard pageCode="sales\.slip\.create" action="view">[\s\S]*<SlipFormPage mode="INBOUND" \/>/)
+    expect(routes).toMatch(/path: '\/transfers\/new'[\s\S]*<PermissionGuard pageCode="inventory\.stock-transfer" action="view">[\s\S]*<TransferFormPage \/>/)
+    expect(routes).toMatch(/path: '\/sales\/link-dispatch'[\s\S]*<PermissionGuard pageCode="slip\.delivery-batch" action="view">/)
+    expect(routes).toMatch(/path: '\/sales\/partner-dc-config'[\s\S]*<PermissionGuard pageCode="sales\.partner-dc-config" action="view">/)
   })
 
   test('partner DC settings have gateway route and method-level role guards', () => {
@@ -111,21 +110,24 @@ test.describe('SP-04 full menu and legacy migration contract', () => {
     expect(route).toContain('Path=/api/v1/partner-dc-configs/**')
     expect(route).toContain('JwtAuthentication')
     expect(route).not.toContain('StripPrefix=2')
-    expect(dcConfigController).toContain("@PreAuthorize(\"hasAnyRole('SALES','MANAGER','MASTER')\")")
-    expect(dcConfigController).toContain("@PreAuthorize(\"hasAnyRole('MANAGER','MASTER')\")")
+    expect(dcConfigController).toContain('@RequirePermission(page = "sales.partner-dc-config", action = PermissionAction.VIEW)')
+    expect(dcConfigController).toContain('@RequirePermission(page = "sales.partner-dc-config", action = PermissionAction.UPDATE)')
   })
 
   test('admin-origin operational screens are standalone guarded routes', () => {
-    expect(routes).toMatch(/path: '\/admin\/sheet-sync'[\s\S]*RoleGuard allow=\{SHEET_SYNC_ROLES\}/)
-    expect(routes).toMatch(/path: '\/admin\/blocked-partners'[\s\S]*RoleGuard allow=\{BLOCKED_PARTNER_ROLES\}/)
-    expect(routes).toMatch(/path: '\/admin\/aligo-address-book'[\s\S]*RoleGuard allow=\{ALIGO_ADDRESS_BOOK_ROLES\}/)
+    // [C5 후속] blocked-partners/aligo-address-book 은 C2b(#403)에서 PermissionGuard 전환 —
+    // 구 RoleGuard 단언은 stale 이었다 (본 spec 은 testIgnore 격리 상태이나 격리 해제 대비 현행화).
+    expect(routes).toMatch(/path: '\/admin\/sheet-sync'[\s\S]*PermissionGuard pageCode="products\.sync" action="view"/)
+    expect(routes).toMatch(/path: '\/admin\/blocked-partners'[\s\S]*PermissionGuard pageCode="partners\.block" action="view"/)
+    expect(routes).toMatch(/path: '\/admin\/aligo-address-book'[\s\S]*PermissionGuard pageCode="aligo\.address-book" action="view"/)
   })
 
   test('dispatch role is assignable and wired to dispatch menus', () => {
     expect(roleJava).toContain('DISPATCH("배차담당자")')
     expect(appLayout).toContain('sidebar-dispatch-board')
     expect(appLayout).toContain('sidebar-arologis-dispatch-reconcile')
-    expect(routes).toContain('ARO_DISPATCH_RECONCILE_ROLES')
+    // [C5 후속] ROLES 상수 제거 — 실배차 비교 라우트는 arologis.dispatch.ops PermissionGuard.
+    expect(routes).toMatch(/path: '\/arologis\/dispatch-reconcile'[\s\S]*?PermissionGuard pageCode="arologis\.dispatch\.ops" action="view"/)
   })
 
   test('region menu has a single public entry with dispatch read-only path', () => {
