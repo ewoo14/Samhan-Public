@@ -29,8 +29,8 @@ import {
   type TransferStatus,
   type TransferSummary,
 } from '../api/inventory'
-import { useSessionStore, canCreateTransfer } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { usePermissions } from '../hooks/usePermissions'
 import { exportStocks } from '../api/excelExportApi'
 import { makeExportFilename } from '../hooks/useExcelDownload'
 
@@ -52,7 +52,7 @@ const STATUS_VARIANT: Record<
 export function TransferListPage() {
   usePageTitle('재고이동 관리')
   const navigate = useNavigate()
-  const role = useSessionStore((s) => s.auth?.role)
+  const { canAccess } = usePermissions()
 
   const query = useQuery({
     queryKey: ['transfers', 'list'],
@@ -112,7 +112,8 @@ export function TransferListPage() {
           >
             Excel 다운로드
           </ExcelDownloadButton>
-          {canCreateTransfer(role) ? (
+          {/* [P1-A] BE StockTransferController @RequirePermission(page="inventory.transfer") — stock-transfer 코드 불일치 수정 */}
+          {canAccess('inventory.transfer', 'create') ? (
             <Button
               variant="primary"
               onClick={() => navigate('/transfers/new')}

@@ -7,6 +7,13 @@
  * 권한 체크 헬퍼:
  * - `hasAdminRole()` — 창고 등록 등 마스터 데이터 변경 권한 확인
  *   (MASTER / MANAGER / DEVELOPER)
+ *
+ * C5-2b: canCreateSlip / canInspectInbound / canCreateTransfer 헬퍼는
+ * usePermissions().canAccess() 로 이관 완료. session.ts 에서 제거됨.
+ *
+ * P1-B revert: canQuerySales 는 BE SlipSalesAccessGuard(SALES/MANAGER/MASTER 한정)와
+ * 정합을 맞추기 위해 session.ts 에 복원. canAccess('sales.slip.list') 는 seed 가
+ * ACCOUNTANT/INVENTORY 에도 view 부여하여 FE 화면은 열리나 API 403 발생.
  */
 import { create } from 'zustand'
 import type { AuthSnapshot } from '../types/electron'
@@ -62,44 +69,17 @@ export function hasAdminRole(role: string | undefined | null): boolean {
 }
 
 /**
- * 전표 작성 권한 보유 여부.
- * BE `SlipController#create` 가 SALES/MANAGER/MASTER 만 허용하므로 동일 매핑.
- */
-export function canCreateSlip(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'SALES' || role === 'MANAGER' || role === 'MASTER'
-}
-
-/**
- * 입고 검수 화면/버튼 접근 권한.
- * BE `inventory-service` InboundInspectionController 와 동일 매핑.
- */
-export function canInspectInbound(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'WAREHOUSE' || role === 'MANAGER' || role === 'MASTER'
-}
-
-/**
- * 매출 전표 조회 권한 — BE `SlipController#query` 매핑.
- * SALES / MANAGER / MASTER (영업 그룹 + 관리자).
+ * 매출 전표 목록 조회 권한.
+ *
+ * BE `SlipSalesAccessGuard#canReadOutboundSales` 와 동일 허용 집합(SALES/MANAGER/MASTER).
+ * seed `sales.slip.list` 는 ACCOUNTANT/INVENTORY 에도 view=TRUE 를 부여하나,
+ * BE 가드가 막으므로 FE 화면도 그 역할에게 노출해선 안 됨 (P1-B: FE-shows-BE-blocks 방지).
+ *
+ * @param role 현재 사용자 role
  */
 export function canQuerySales(role: string | undefined | null): boolean {
   if (!role) return false
-  return role === 'SALES' || role === 'MANAGER' || role === 'MASTER'
-}
-
-/**
- * 이동전표 작성 권한 — BE `StockTransferController#create` 와 동일 매핑.
- * MASTER / MANAGER / WAREHOUSE / INVENTORY.
- */
-export function canCreateTransfer(role: string | undefined | null): boolean {
-  if (!role) return false
-  return (
-    role === 'MASTER'
-    || role === 'MANAGER'
-    || role === 'WAREHOUSE'
-    || role === 'INVENTORY'
-  )
+  return ['SALES', 'MANAGER', 'MASTER'].includes(role)
 }
 
 /**
