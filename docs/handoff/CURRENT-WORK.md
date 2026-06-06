@@ -17,6 +17,10 @@ UsersPage 역할 드롭다운(RoleChangeModal) → GroupAssignModal(권한그룹
 ### ✅ C5-1 머지 (#408 `6276e402`) — 그룹 집합 전파 인프라 (additive)
 개발책임자 다중그룹 정책 결정 = **JWT/헤더 그룹 집합 전파**(2026-06-06). C5-1 = 인프라 additive 부설: JWT `groups` 클레임(JwtTokenProvider 7-arg, 기존 보존) + 게이트웨이 `X-User-Groups` 헤더. AuthService.login account_groups comma-join. **소비처 0(X-User-Role/role 유지) = behavior-preserving, 락아웃 0**. dual APPROVE, 전 14서비스 compile, CI green. D-PGC-11.
 
+### ✅ C5-2c 머지 (#410 `7002a872`) — FE 잔여 인가 헬퍼 → canAccess
+session.ts hasAdminRole/canTransitionSlip/canTransitionTransfer 제거 → action별 canAccess(BE @RequirePermission 정밀 대조: slipActionPageCode/transferActionPageCode/inventory.warehouse.admin). dual P1(삭제 버튼 canAccess('sales.slip.cancel') 가드)+P2(EOF) 수정. 전체 suite 418 passed. D-PGC-13.
+→ **FE role 인가 의존 소진**: 잔존 = 표시용 role(auth.role 라벨/audit) + canQuerySales(BE SlipSalesAccessGuard 불일치로 헬퍼 유지). 인가는 전부 canAccess(권한 기반).
+
 ### ✅ C5-2a/2b 진행 (자율) — 백엔드 role-clean 확인 + FE 인가 role 이관
 - **C5-2a 정찰**: 백엔드 **사용자 경로 @PreAuthorize(hasRole) 이미 0**(C1~C4 정리). 잔존 33건 전부 INTERNAL(26)/arologis(7) = 유지 대상. 동적 권한(@RequirePermission→account_page_permissions)은 **role-독립**. → X-User-Role 잔존 실사용 = PermissionAspect master 폴백(C4-3)·PARTNER·arologis·FE.
 - **C5-2b 머지 (#409 `56bed4f4`)**: FE 인가용 role → `canAccess(pageCode)` 이관. session.ts 헬퍼 4 제거(canCreateSlip/canInspectInbound/canCreateTransfer; canQuerySales 는 BE SlipSalesAccessGuard 불일치로 헬퍼 유지) + 직접 role==='MASTER' 5 이관(slip.signature/dc-config.import/partners.block.bulk/arologis.region.manage/system.permission-admin). dual P1 4(page-code↔BE 정합: inventory.transfer 교정·canQuerySales revert·mock seed 과다grant 교정) 수정. widening 0. D-PGC-12.
