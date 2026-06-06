@@ -22,7 +22,7 @@
 
 ## 2026-05-16 — SP-07 Google Sheets 견적/주문 원본 계약 정렬
 
-- PR: [#209](https://github.com/ewoo14/SamhanLogis/pull/209) — `[codex] SP-07 Google Sheets 견적 주문 원본 계약 정렬`
+- PR: [#209](https://github.com/ewoo14/Samhan-Public/pull/209) — `[codex] SP-07 Google Sheets 견적 주문 원본 계약 정렬`
 - 결정 기록: [`migration/decisions/DECISIONS.md` § SP-07](migration/decisions/DECISIONS.md) (SP-07-01 ~ SP-07-08)
 - dev-report: [`docs/dev-reports/2026-05-16-sp-07-google-sheets-quote-order-e2e.md`](docs/dev-reports/2026-05-16-sp-07-google-sheets-quote-order-e2e.md)
 - 계획 문서: [`docs/planning/2026-05-16_google-sheets-quote-order-e2e.md`](docs/planning/2026-05-16_google-sheets-quote-order-e2e.md)

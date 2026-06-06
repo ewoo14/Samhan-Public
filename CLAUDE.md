@@ -1,11 +1,13 @@
-# SamhanLogis (Samhan Public + 아로로지스) — Claude Code 진입점
+# Samhan Public (삼한 퍼블릭) — Claude Code 진입점
 
 > 본 파일은 Claude Code 세션 시작 시 자동 로드됩니다 (project memory).
 >
+> **프로젝트 정식 명칭 = Samhan Public** (2026-06-06 확정 — GitHub 레포 `ewoo14/Samhan-Public`, Gradle `samhan-public`).
+>
 > **운영 단위 명칭 (2026-05-14 결정)**:
-> - **Samhan Public** (삼한 퍼블릭) = 기존 14 service 묶음의 외부 호칭 ([feedback_samhan_public_name.md](.claude/memory/feedback_samhan_public_name.md))
+> - **Samhan Public** (삼한 퍼블릭) = 14 service 묶음(모노레포 전체)의 정식 명칭
 > - **아로로지스** (arologis) = Samhan Public 마이크로서비스에서 분리된 독립 운영 단위 (Phase 10.5, [project_arologis_independent.md](.claude/memory/project_arologis_independent.md))
-> - "SamhanLogis" = 폴더/repo working dir 명일 뿐 (외부 호칭 X)
+> - `SamhanLogis` = **로컬 working dir 폴더명 / `com.samhanair.logis.*` 패키지 네임스페이스**(기술 식별자, rename 비대상). 프로젝트/제품 명칭 아님.
 
 ---
 

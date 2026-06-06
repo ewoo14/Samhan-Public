@@ -28,7 +28,7 @@
  * each service directory contains its own build.gradle.
  */
 
-rootProject.name = 'samhan-logis'
+rootProject.name = 'samhan-public'
 
 include 'shared:common'
 include 'shared:discovery-abstraction'

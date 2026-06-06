@@ -16,7 +16,7 @@
 
 - 현재 기준 브랜치: `main`
 - 최신 머지: PR #192 `[codex] D-AX-11 아로로지스 배차 페이지 이전`
-- PR: https://github.com/ewoo14/SamhanLogis/pull/192
+- PR: https://github.com/ewoo14/Samhan-Public/pull/192
 - 머지 커밋: `55995805d2922084c516f942d02f3cf1382a6407`
 - 작업 범위: 아로로지스 데스크톱 배차 4개 화면(`/dispatches/manual`, `/dispatches/pre-classify`, `/dispatches/unassigned`, `/dispatches/reconcile`) 이전, 관련 API/realtime helper/route 등록, 수동 배차 `partnerCode` 백엔드 계약 보존.
 - 검증: PR #192 최종 head `bfc5f7d` 기준 GitHub CI 전체 통과. PR 본문과 코멘트에 5-team review, TM 통합, PM/CI 승인, 한국어 Playwright mock QA 스크린샷 포함.
