@@ -1,10 +1,13 @@
 package com.samhanair.logis.auth.service;
 
+import com.samhanair.logis.auth.domain.Account;
+import com.samhanair.logis.auth.domain.AccountGroup;
 import com.samhanair.logis.auth.domain.AccountPagePermission;
 import com.samhanair.logis.auth.domain.AccountPermissionOverride;
 import com.samhanair.logis.auth.domain.GroupPagePermission;
 import com.samhanair.logis.auth.domain.PageCode;
 import com.samhanair.logis.auth.domain.RolePagePermissionTemplate;
+import com.samhanair.logis.auth.repository.AccountGroupRepository;
 import com.samhanair.logis.auth.repository.AccountPagePermissionRepository;
 import com.samhanair.logis.auth.repository.AccountPermissionOverrideRepository;
 import com.samhanair.logis.auth.repository.AccountRepository;
@@ -35,6 +38,8 @@ public class AccountPermissionService {
     private final AccountPermissionOverrideRepository overrideRepository;
     private final RolePagePermissionTemplateRepository templateRepository;
     private final AccountRepository accountRepository;
+    /** C5-5: listAccounts role 파생을 위한 그룹 배속 저장소. */
+    private final AccountGroupRepository accountGroupRepository;
     private final EffectivePermissionMaterializer materializer;
 
     /**
@@ -84,16 +89,42 @@ public class AccountPermissionService {
     /**
      * MASTER 매트릭스의 계정 선택 목록.
      *
+     * <p>C5-5: role 표시값은 account_groups ∩ 빌트인(BuiltinRoleGroupIds) 역매핑으로 파생한다.
+     * accounts.role 컬럼 DROP(V46) 이후 entity 직접 접근 불가.
+     *
+     * <p>P2 N+1 개선: findAll() 후 계정별 개별 그룹 쿼리 대신, 전체 계정 UUID 집합으로
+     * {@link AccountGroupRepository#findByAccountIdInAndIsDeletedFalse} 를 1회 호출하여
+     * accountId 기준 Map 으로 그룹화한다 (전체 쿼리 수: 1+1).
+     *
+     * <p>P2: role 파생은 {@link BuiltinRoleGroupIds#deriveRoleName} 공통 헬퍼를 사용한다.
+     *
      * @return 계정 요약 목록
      */
     @Transactional(readOnly = true)
     public List<AccountSummary> listAccounts() {
-        return accountRepository.findAll().stream()
-                .map(account -> new AccountSummary(
-                        account.getId(),
-                        account.getDisplayName(),
-                        account.getRole().name(),
-                        account.isEnabled()))
+        List<Account> accounts = accountRepository.findAll();
+        if (accounts.isEmpty()) {
+            return List.of();
+        }
+        // P2: 전체 계정 UUID 집합으로 활성 그룹 배속 1회 일괄 조회 → N+1 제거
+        List<UUID> accountIds = accounts.stream().map(Account::getId).toList();
+        Map<UUID, List<AccountGroup>> groupsByAccountId = accountGroupRepository
+                .findByAccountIdInAndIsDeletedFalse(accountIds)
+                .stream()
+                .collect(Collectors.groupingBy(AccountGroup::getAccountId));
+
+        return accounts.stream()
+                .map(account -> {
+                    List<AccountGroup> activeGroups = groupsByAccountId.getOrDefault(
+                            account.getId(), List.of());
+                    // P2: 공통 헬퍼로 role 파생 — 빈 문자열 fallback 시 log.warn 자동 포함
+                    String role = BuiltinRoleGroupIds.deriveRoleName(activeGroups, account.getId());
+                    return new AccountSummary(
+                            account.getId(),
+                            account.getDisplayName(),
+                            role,
+                            account.isEnabled());
+                })
                 .collect(Collectors.toList());
     }
 
