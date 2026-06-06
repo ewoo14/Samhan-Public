@@ -17,7 +17,12 @@ UsersPage 역할 드롭다운(RoleChangeModal) → GroupAssignModal(권한그룹
 ### ✅ C5-1 머지 (#408 `6276e402`) — 그룹 집합 전파 인프라 (additive)
 개발책임자 다중그룹 정책 결정 = **JWT/헤더 그룹 집합 전파**(2026-06-06). C5-1 = 인프라 additive 부설: JWT `groups` 클레임(JwtTokenProvider 7-arg, 기존 보존) + 게이트웨이 `X-User-Groups` 헤더. AuthService.login account_groups comma-join. **소비처 0(X-User-Role/role 유지) = behavior-preserving, 락아웃 0**. dual APPROVE, 전 14서비스 compile, CI green. D-PGC-11.
 
-### 🔴 C5-2 — **개발책임자 입회 집중 세션 필요** (전 이니셔티브 유일 총 락아웃 위험, 자율 금지)
+### ✅ C5-2a/2b 진행 (자율) — 백엔드 role-clean 확인 + FE 인가 role 이관
+- **C5-2a 정찰**: 백엔드 **사용자 경로 @PreAuthorize(hasRole) 이미 0**(C1~C4 정리). 잔존 33건 전부 INTERNAL(26)/arologis(7) = 유지 대상. 동적 권한(@RequirePermission→account_page_permissions)은 **role-독립**. → X-User-Role 잔존 실사용 = PermissionAspect master 폴백(C4-3)·PARTNER·arologis·FE.
+- **C5-2b 머지 (#409 `56bed4f4`)**: FE 인가용 role → `canAccess(pageCode)` 이관. session.ts 헬퍼 4 제거(canCreateSlip/canInspectInbound/canCreateTransfer; canQuerySales 는 BE SlipSalesAccessGuard 불일치로 헬퍼 유지) + 직접 role==='MASTER' 5 이관(slip.signature/dc-config.import/partners.block.bulk/arologis.region.manage/system.permission-admin). dual P1 4(page-code↔BE 정합: inventory.transfer 교정·canQuerySales revert·mock seed 과다grant 교정) 수정. widening 0. D-PGC-12.
+- **잔여 FE(선택)**: hasAdminRole(coarse)·canTransitionSlip/Transfer(action 복합) page-code 확정 후 이관(저우선, cutover 무관). session.auth.role(표시용) 유지.
+
+### 🔴 C5 최종 cutover — **개발책임자 입회 집중 세션 필요** (전 이니셔티브 유일 총 락아웃 위험)
 계획서 §7 + C5-1 PM 종합 P2 체크리스트. **폴백 없음 = 실수 시 전 서비스 401/403 총 락아웃, 취침 중 대응 불가** → 자율 머지 절대 금지.
 - **소비처 이관**: PermissionAspect(role→그룹 집합 재계산: PARTNER 거절·arologis enforcement), 16서비스 HeaderAuthenticationFilter(role authority→그룹), @PreAuthorize(hasRole) 비-INTERNAL 잔존(INTERNAL 11 유지).
 - **제거**: X-User-Role 헤더, JWT role 클레임, accounts.role 컬럼(deprecate→drop).
