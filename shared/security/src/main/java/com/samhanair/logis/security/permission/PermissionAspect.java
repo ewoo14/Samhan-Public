@@ -2,6 +2,10 @@ package com.samhanair.logis.security.permission;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Parameter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -21,7 +25,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * <p>Controller 메서드에 {@code @RequirePermission(page="...", action=PermissionAction.CREATE)} 를 부착하면
  * 본 Aspect 가 메서드 실행 전에 {@link DynamicPermissionClient} 를 통해 동적 권한을 검증한다.
  *
- * <p>X-User-Id / X-User-Role 헤더 추출 순서:
+ * <p>X-User-Id / X-User-Role / X-User-Groups 헤더 추출 순서:
  * <ol>
  *   <li>메서드 파라미터 중 {@code @RequestHeader("X-User-*")} 어노테이션이 붙은 첫 번째 String 파라미터</li>
  *   <li>없으면 {@link RequestContextHolder} → {@link HttpServletRequest} 헤더에서 직접 추출</li>
@@ -30,14 +34,24 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  *
  * <p>deny 정책:
  * <ul>
- *   <li>MASTER: 동적 DB 조회 없이 통과</li>
- *   <li>PARTNER: 내부 서비스 접근 방어 차원에서 항상 deny.
- *       단, {@link RequirePermission#partnerSelfService()} 명시 opt-in endpoint 는 service 계층
- *       자기범위 검증을 전제로 통과</li>
+ *   <li>MASTER: 동적 DB 조회 없이 통과 (X-Is-System-Master=true OR role=MASTER)</li>
+ *   <li>PARTNER 판정: api-gateway 가 JWT role 클레임을 검증하여 {@code X-User-Role: PARTNER} 로 전파하는
+ *       경로만 신뢰 가능하다.
+ *       <br>[실측 결론 C5-3] partner-auth-service 는 {@code JwtTokenProvider.generate(id, "PARTNER", ...)} 로
+ *       발급하며 JWT 에 partnerCode 클레임이 없다. 게이트웨이도 {@code X-Partner-Code} 를 자체 주입하지 않는다.
+ *       FE/모바일이 전송하는 {@code X-Partner-Code} 는 FE origin 이므로 PermissionAspect 에서 신뢰 판정
+ *       근거로 쓸 수 없다.
+ *       따라서 PARTNER 거절 판정은 기존 {@code role == "PARTNER"} 로 유지한다.
+ *       partnerSelfService opt-in endpoint 는 service 계층 자기범위 검증을 전제로 통과시킨다.</li>
  *   <li>account 모드: 그 외 {@link DynamicPermissionClient#check(UUID, String, PermissionAction)} == false → deny</li>
  *   <li>role 모드: VIEW 는 {@link DynamicPermissionClient#canView(String, String)},
  *       나머지 action 은 {@link DynamicPermissionClient#canEdit(String, String)} == false → deny</li>
  * </ul>
+ *
+ * <p>Phase C5-3 추가 — {@link #parseGroupsHeader(String)} 공유 파서:
+ * {@code X-User-Groups} 헤더 raw 값을 comma-split 하여 {@code Set<String>} 으로 파싱한다.
+ * Aspect 판정 경로의 그룹 소비는 PR-2(C5-4, X-User-Role 제거)에서 도입 —
+ * 현재 소비처는 서비스 계층 guard(SlipSalesAccessGuard 등)가 본 파서를 호출하는 형태다.
  *
  * <p>deny 시: {@link PermissionGuardMetrics#incrementDenied(String, String, String, String)} 호출
  * 후 {@link AccessDeniedException} throw.
@@ -74,7 +88,6 @@ public class PermissionAspect {
      * "true" 이면 role==MASTER OR 폴백 없이도 bypass.
      */
     private static final String IS_SYSTEM_MASTER_HEADER = "X-Is-System-Master";
-
     private final ObjectProvider<DynamicPermissionClient> clientProvider;
     private final PermissionGuardMetrics metrics;
     private final String serviceName;
@@ -213,6 +226,34 @@ public class PermissionAspect {
         }
 
         return null;
+    }
+
+    /**
+     * comma-join 그룹 헤더({@code X-User-Groups}) 문자열을 {@link Set} 으로 파싱한다 — Phase C5-3 신규.
+     *
+     * <p>null 또는 blank 이면 빈 Set 반환. 각 항목 trim 및 빈 항목 제거.
+     * Set 은 O(1) 교집합 체크용. 공유 단일 구현 — 서비스 계층 guard(SlipSalesAccessGuard 등)도
+     * 본 메서드를 사용한다(중복 구현 금지, PR #414 dual review P2).
+     *
+     * <p>현재 Aspect 판정 경로는 본 메서드를 소비하지 않는다 — PR-2(C5-4)에서
+     * X-User-Role 제거와 함께 그룹 집합 기반 판정으로 소비 예정.
+     * [실측 C5-3] partner-auth JWT 에 partnerCode 클레임 부재 → PARTNER 식별 전환도 PR-2 선행 additive 후 수행.
+     *
+     * @param raw X-User-Groups 헤더 raw 값 (null 허용)
+     * @return 그룹 UUID 문자열 집합 (null 미반환)
+     */
+    public static Set<String> parseGroupsHeader(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Collections.emptySet();
+        }
+        Set<String> result = new HashSet<>();
+        for (String part : raw.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                result.add(trimmed);
+            }
+        }
+        return Collections.unmodifiableSet(result);
     }
 
     private UUID parseAccountId(String rawAccountId) {

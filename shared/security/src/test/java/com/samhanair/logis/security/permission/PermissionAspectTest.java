@@ -261,6 +261,64 @@ class PermissionAspectTest {
         attachHeaders(accountId, role, null);
     }
 
+    // -----------------------------------------------------------------------
+    // Phase C5-3: parseGroupsHeader 단위 검증
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("C5-3-(a) parseGroupsHeader — null 이면 빈 Set")
+    void parseGroupsHeader_null_returnsEmptySet() {
+        assertThat(PermissionAspect.parseGroupsHeader(null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("C5-3-(b) parseGroupsHeader — blank 이면 빈 Set")
+    void parseGroupsHeader_blank_returnsEmptySet() {
+        assertThat(PermissionAspect.parseGroupsHeader("   ")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("C5-3-(c) parseGroupsHeader — 단일 UUID 파싱")
+    void parseGroupsHeader_singleUuid_returnsSingletonSet() {
+        String uuid = "00000000-0000-0000-0000-000000000100";
+        assertThat(PermissionAspect.parseGroupsHeader(uuid)).containsExactly(uuid);
+    }
+
+    @Test
+    @DisplayName("C5-3-(d) parseGroupsHeader — comma-join UUID 3개 파싱")
+    void parseGroupsHeader_multipleUuids_returnsAllInSet() {
+        String raw = "00000000-0000-0000-0000-000000000100,00000000-0000-0000-0000-000000000101,"
+                + "00000000-0000-0000-0000-000000000102";
+        java.util.Set<String> result = PermissionAspect.parseGroupsHeader(raw);
+        assertThat(result).hasSize(3)
+                .contains(
+                        "00000000-0000-0000-0000-000000000100",
+                        "00000000-0000-0000-0000-000000000101",
+                        "00000000-0000-0000-0000-000000000102");
+    }
+
+    @Test
+    @DisplayName("C5-3-(e) parseGroupsHeader — 공백 trim 및 빈 항목 제거")
+    void parseGroupsHeader_whitespaceAndEmpty_trimsAndFilters() {
+        String raw = " uuid-1 , , uuid-2 ";
+        java.util.Set<String> result = PermissionAspect.parseGroupsHeader(raw);
+        assertThat(result).hasSize(2).contains("uuid-1", "uuid-2");
+    }
+
+    @Test
+    @DisplayName("C5-3-(f) parseGroupsHeader — 말미 콤마 무시 (dual review P2 경계)")
+    void parseGroupsHeader_trailingComma_ignored() {
+        java.util.Set<String> result = PermissionAspect.parseGroupsHeader("uuid-1,uuid-2,");
+        assertThat(result).hasSize(2).contains("uuid-1", "uuid-2");
+    }
+
+    @Test
+    @DisplayName("C5-3-(g) parseGroupsHeader — 중복 UUID 자동 제거 (dual review P2 경계)")
+    void parseGroupsHeader_duplicates_deduplicated() {
+        java.util.Set<String> result = PermissionAspect.parseGroupsHeader("uuid-1,uuid-1,uuid-2");
+        assertThat(result).hasSize(2).contains("uuid-1", "uuid-2");
+    }
+
     private void attachHeaders(String accountId, String role, String isSystemMaster) {
         MockHttpServletRequest req = new MockHttpServletRequest();
         if (accountId != null) {
