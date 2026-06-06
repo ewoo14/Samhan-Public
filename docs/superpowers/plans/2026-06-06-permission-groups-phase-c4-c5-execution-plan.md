@@ -38,3 +38,35 @@
 - (a) C4-1 additive 슬라이스를 야간 자율 진행할지(저위험) vs 전체 집중 세션 대기.
 - (b) Phase C3 Option B(그룹 배속 UI 가 role 드롭다운 대체) 채택 여부 — 별개 UX 결정.
 - (c) C5 시점(accounts.role 물리 제거)·롤백 윈도우.
+
+---
+
+## 7. C5 정찰 결과 (2026-06-06, C4 머지 후) — 🔴 자율 진행 불가, 신규 정책 결정 선행
+
+### 7.1 X-User-Role / accounts.role 소비처 전수 (제거 시 영향)
+- **게이트웨이**: JWT role 클레임 → X-User-Role 헤더 주입(JwtAuthenticationGatewayFilterFactory).
+- **16서비스 HeaderAuthenticationFilter**: X-User-Role → SecurityContext `ROLE_*` authority(@PreAuthorize 지원).
+- **PermissionAspect**: isMasterBypass(role 폴백, C4)·PARTNER 거절·roleBasedEnforcement(arologis) role 검사.
+- **@PreAuthorize(hasRole) 잔존**: INTERNAL ~11(서비스간, **유지 필수** — JWT 없음) + 비-INTERNAL ~11(InspectionAttachment widening 가드 등).
+- **accounts.role 컬럼**: login JWT 발급·/me 응답·updateAccountRole(C3a)·user-service role_snapshot/findAllByRoleSnapshot.
+- **🔴 FE 잔존**: `session.ts` 헬퍼(hasAdminRole/canCreateSlip/canInspectInbound/canQuerySales) + RoleGuard(잔존) + **~86 파일 직접 role 비교**(C2 가 라우트/버튼 가드만 전환, role 헬퍼·사이드바 잔존). useSessionStore auth.role.
+
+### 7.2 🔴 핵심 블로커 — 다중 그룹 표현 정책 (개발책임자 결정 필요)
+X-User-Role 은 **단일 role 문자열**(1 user = 1 role). 그룹 시스템은 **다중 그룹**(account_groups M:N). X-User-Role 제거 시 비-MASTER role 구분(MANAGER/SALES/...)을 **무엇으로 대체**할지 미결:
+- (a) `X-User-Groups: g1,g2,...` 헤더 / JWT 그룹 클레임 전파 → PermissionAspect/FE 가 그룹 집합으로 재계산.
+- (b) PermissionAspect 가 계정 UUID 로 DB 조회(현재 헤더만 읽음 — 성능/결합 변화).
+- (c) FE RoleGuard/session 헬퍼를 그룹 기반 재설계.
+→ **이 정책 미확정 상태로 X-User-Role 제거 불가**. [[feedback_pm_permission_autonomy]] "멈춤=신규 정책".
+
+### 7.3 안전 슬라이스 부재 결론
+- **C4-3**(role 폴백 제거): 안전망(role 폴백) 제거 → 헤더 파이프 깨짐 시 MASTER 락아웃. 실운영 모니터링(권한 deny 지표 0) 후에만. 자율 즉시 부적절.
+- **C5-1**(accounts.role read-only): role 여전히 JWT/헤더 emit → 한계적 가치, 다중그룹 정책 미해결.
+- **C5-2**(X-User-Role/role 클레임 big-bang 제거): 7.2 정책 + 전 서비스 동시 cutover(blue-green/feature flag) + DB 백업 + 롤백 전담 + 개발책임자 입회 4h. **최고위험, 자율 금지.**
+
+### 7.4 개발책임자 결정 필요 (C5 착수 전)
+1. **다중 그룹 표현 정책**(7.2 a/b/c) — C5-2 의 절대 선행.
+2. C4-3(role 폴백 제거) 시점 + 모니터링 윈도우.
+3. FE role 헬퍼/86파일 그룹 기반 재설계 범위(C5 FE).
+4. C5-2 cutover 방식(blue-green vs feature flag) + 롤백 + 실QA 매트릭스 + 입회 세션 일정.
+
+**현황(C4 머지 후)**: Phase C 의 **안전 전체(C2a/b/c·C3a/b·C4) 완료**. C5 는 신규 정책 결정 + 개발책임자 입회 cutover 필요 → 보류.

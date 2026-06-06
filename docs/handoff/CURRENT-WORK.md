@@ -4,7 +4,29 @@
 
 ---
 
-## 🆕 2026-06-06 (야간 자율 — 최신) — **C2 완료 + C3a 머지** / C4·C5 계획준비·보류
+## 🆕 2026-06-06 (야간 자율 — 최신) — **Phase C 안전 전체 완료(C2·C3·C4)** / 🔴 C5 정책 보류
+
+> 개발책임자 "123 순서"(①C3 Option B ②C4 ③C5) 지시. 야간 자율 누계 **8 PR 머지**: #402(C2a)·#403(C2b)·#404(C2c)·#405(C3a)·#406(C3b)·#407(C4) + docs. 각 PR Claude TM·Codex TM·PM 종합 리뷰 3코멘트 게시([[feedback_review_posting_and_zero_skip]]). 전부 CI green(+C4 Docker 실QA) 자율 머지.
+
+### ✅ C3b 머지 (#406 `1fe817c4`) — 직원 관리 그룹 배속 UX (Option B)
+UsersPage 역할 드롭다운(RoleChangeModal) → GroupAssignModal(권한그룹 배속). 빌트인 role-group select(그룹→role 역매핑 BUILTIN_GROUP_ROLE_MAP)→updateAdminUserRole(C3a 동기화) + 추가 커스텀 그룹 multi-assign. accounts.role=기본 그룹 파생 스냅샷(C5 전 호환). dual P1/P2(mock 404·이중PATCH·DRIVER/STAFF select·에러피드백) 교정. D-PGC-09.
+
+### ✅ C4 머지 (#407 `8e3758d2`) — MASTER bypass is_system_master 경로 추가 (OR 폴백, 락아웃 0)
+`isMasterBypass = (X-Is-System-Master=="true") OR (role=="MASTER")` — 새 경로 추가, role 폴백 유지(제거 금지=C4-3). JWT isSystemMaster 클레임(JwtTokenProvider 6-arg, 기존 보존)→게이트웨이 헤더→PermissionAspect OR. AuthService.login `existsByAccountIdAndSystemMasterTrue` 산출. **Docker 풀스택 실QA 실증**(`docs/qa/permission-groups-c4-system-master/`): MASTER JWT isSystemMaster=true 클레임·헤더 bypass 200·role 폴백 200·비-MASTER 403·락아웃 0. dual APPROVE. D-PGC-10. **다음 정리=C4-3(role 폴백 제거, 헤더경로 안정 후).**
+
+### 🔴 C5 — 정찰 완료, **자율 진행 불가**(개발책임자 정책 결정 필요)
+계획서 §7: `plans/2026-06-06-permission-groups-phase-c4-c5-execution-plan.md`.
+- **핵심 블로커**: X-User-Role = **단일 role 문자열**, 그룹 = **다중 그룹**. X-User-Role 제거 시 비-MASTER role(MANAGER/SALES) 구분을 **무엇으로 대체**할지 미결 = **신규 정책 결정**(다중 그룹 헤더/JWT 클레임 vs DB 조회 vs FE 그룹기반 재설계).
+- **소비처 광범위**: 게이트웨이·16서비스 HeaderAuthenticationFilter·PermissionAspect·@PreAuthorize(hasRole) INTERNAL 11(유지)+비-INTERNAL 11·accounts.role·**FE 잔존 role 헬퍼(session.ts)·~86파일 직접 role 비교**(C2가 라우트/버튼만 전환).
+- **C5-2 = big-bang**: 전 서비스 동시 cutover(blue-green/feature flag)+DB 백업+롤백 전담+개발책임자 입회. 안전 additive 슬라이스 부재(C4-3=안전망 제거, C5-1=한계가치).
+- 🔴 **개발책임자 결정**: ①다중 그룹 표현 정책(절대 선행) ②C4-3 시점/모니터링 ③FE role 헬퍼/86파일 그룹 재설계 범위 ④C5-2 cutover 방식+실QA 매트릭스+입회 일정.
+
+### 🧠 야간 세션 교훈/메모리
+[[feedback_fe_guard_removal_contract_tests]](FE 가드 변경=전체 mock suite) · [[feedback_playwright_local_version_skew]] · [[feedback_pgc_c2_widening_option_a]] · [[feedback_review_posting_and_zero_skip]]. dual review 가 CI green 도 못잡는 결함 반복 적발(page-code↔BE, mock 404, 이중PATCH 등).
+
+---
+
+## 🗄️ 2026-06-06 (이전) — C2 완료 + C3a 머지
 
 > 야간 자율 세션 누계 **5 PR 머지**: #402(C2a)·#403(C2b)·#404(C2c)·#405(C3a) + docs. 각 PR Claude TM·Codex TM·PM 종합 리뷰 3개 코멘트 게시([[feedback_review_posting_and_zero_skip]]). 전부 CI green 자율 머지.
 
