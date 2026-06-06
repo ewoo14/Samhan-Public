@@ -14,12 +14,17 @@ UsersPage 역할 드롭다운(RoleChangeModal) → GroupAssignModal(권한그룹
 ### ✅ C4 머지 (#407 `8e3758d2`) — MASTER bypass is_system_master 경로 추가 (OR 폴백, 락아웃 0)
 `isMasterBypass = (X-Is-System-Master=="true") OR (role=="MASTER")` — 새 경로 추가, role 폴백 유지(제거 금지=C4-3). JWT isSystemMaster 클레임(JwtTokenProvider 6-arg, 기존 보존)→게이트웨이 헤더→PermissionAspect OR. AuthService.login `existsByAccountIdAndSystemMasterTrue` 산출. **Docker 풀스택 실QA 실증**(`docs/qa/permission-groups-c4-system-master/`): MASTER JWT isSystemMaster=true 클레임·헤더 bypass 200·role 폴백 200·비-MASTER 403·락아웃 0. dual APPROVE. D-PGC-10. **다음 정리=C4-3(role 폴백 제거, 헤더경로 안정 후).**
 
-### 🔴 C5 — 정찰 완료, **자율 진행 불가**(개발책임자 정책 결정 필요)
-계획서 §7: `plans/2026-06-06-permission-groups-phase-c4-c5-execution-plan.md`.
-- **핵심 블로커**: X-User-Role = **단일 role 문자열**, 그룹 = **다중 그룹**. X-User-Role 제거 시 비-MASTER role(MANAGER/SALES) 구분을 **무엇으로 대체**할지 미결 = **신규 정책 결정**(다중 그룹 헤더/JWT 클레임 vs DB 조회 vs FE 그룹기반 재설계).
-- **소비처 광범위**: 게이트웨이·16서비스 HeaderAuthenticationFilter·PermissionAspect·@PreAuthorize(hasRole) INTERNAL 11(유지)+비-INTERNAL 11·accounts.role·**FE 잔존 role 헬퍼(session.ts)·~86파일 직접 role 비교**(C2가 라우트/버튼만 전환).
-- **C5-2 = big-bang**: 전 서비스 동시 cutover(blue-green/feature flag)+DB 백업+롤백 전담+개발책임자 입회. 안전 additive 슬라이스 부재(C4-3=안전망 제거, C5-1=한계가치).
-- 🔴 **개발책임자 결정**: ①다중 그룹 표현 정책(절대 선행) ②C4-3 시점/모니터링 ③FE role 헬퍼/86파일 그룹 재설계 범위 ④C5-2 cutover 방식+실QA 매트릭스+입회 일정.
+### ✅ C5-1 머지 (#408 `6276e402`) — 그룹 집합 전파 인프라 (additive)
+개발책임자 다중그룹 정책 결정 = **JWT/헤더 그룹 집합 전파**(2026-06-06). C5-1 = 인프라 additive 부설: JWT `groups` 클레임(JwtTokenProvider 7-arg, 기존 보존) + 게이트웨이 `X-User-Groups` 헤더. AuthService.login account_groups comma-join. **소비처 0(X-User-Role/role 유지) = behavior-preserving, 락아웃 0**. dual APPROVE, 전 14서비스 compile, CI green. D-PGC-11.
+
+### 🔴 C5-2 — **개발책임자 입회 집중 세션 필요** (전 이니셔티브 유일 총 락아웃 위험, 자율 금지)
+계획서 §7 + C5-1 PM 종합 P2 체크리스트. **폴백 없음 = 실수 시 전 서비스 401/403 총 락아웃, 취침 중 대응 불가** → 자율 머지 절대 금지.
+- **소비처 이관**: PermissionAspect(role→그룹 집합 재계산: PARTNER 거절·arologis enforcement), 16서비스 HeaderAuthenticationFilter(role authority→그룹), @PreAuthorize(hasRole) 비-INTERNAL 잔존(INTERNAL 11 유지).
+- **제거**: X-User-Role 헤더, JWT role 클레임, accounts.role 컬럼(deprecate→drop).
+- **FE 재설계**: session.ts role 헬퍼(hasAdminRole/canCreateSlip 등) + ~86파일 직접 role 비교 + RoleGuard 잔존 → 그룹 기반. FE 가 X-User-Groups/그룹 권한 수신.
+- **cutover**: 전 서비스 동시 배포(blue-green/feature flag) + **DB 백업** + 롤백 전담 + 단계별 Docker 실QA 매트릭스(전 서비스 MASTER/각 role).
+- **C5-1 P2 선처리**: HttpHeaderConstants/게이트웨이 상수 통일 · CorsConfig exposedHeaders X-User-Groups · 그룹 query ORDER BY(순서 결정성).
+- **선택 정리**: C4-3(role=="MASTER" 폴백 제거, 헤더경로 실운영 안정+모니터링 후).
 
 ### 🧠 야간 세션 교훈/메모리
 [[feedback_fe_guard_removal_contract_tests]](FE 가드 변경=전체 mock suite) · [[feedback_playwright_local_version_skew]] · [[feedback_pgc_c2_widening_option_a]] · [[feedback_review_posting_and_zero_skip]]. dual review 가 CI green 도 못잡는 결함 반복 적발(page-code↔BE, mock 404, 이중PATCH 등).
