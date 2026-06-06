@@ -7,7 +7,7 @@
 > **운영 단위 명칭 (2026-05-14 결정)**:
 > - **Samhan Public** (삼한 퍼블릭) = 14 service 묶음(모노레포 전체)의 정식 명칭
 > - **아로로지스** (arologis) = Samhan Public 마이크로서비스에서 분리된 독립 운영 단위 (Phase 10.5, [project_arologis_independent.md](.claude/memory/project_arologis_independent.md))
-> - `SamhanLogis` = **로컬 working dir 폴더명 / `com.samhanair.logis.*` 패키지 네임스페이스**(기술 식별자, rename 비대상). 프로젝트/제품 명칭 아님.
+> - `SamhanLogis` = **`com.samhanair.logis.*` 패키지 네임스페이스**(기술 식별자, rename 비대상). 프로젝트/제품 명칭 아님. ※ 로컬 working dir 폴더명은 `Samhan-Public` 으로 통일 (집 PC 2026-06-06 완료, 회사 PC 변경 예정).
 
 ---
 
@@ -35,7 +35,7 @@ git commit -m "memory: <변경 내용>"
 git push
 ```
 
-> 사용자 홈 auto-memory 경로 (`C:\Users\<user>\.claude\projects\c--dev-SamhanLogis\memory\`) 는 Claude Code 빌트인이라 변경 불가 — sync 스크립트가 repo → 홈 단방향 복사.
+> 사용자 홈 auto-memory 경로 (`C:\Users\<user>\.claude\projects\C--dev-Samhan-Public\memory\`) 는 working dir 경로에서 파생되는 Claude Code 빌트인이라 직접 변경 불가 — sync 스크립트가 repo → 홈 단방향 복사. (폴더명 `Samhan-Public` rename 에 따라 2026-06-06 경로 갱신 — 회사 PC 도 폴더 rename 후 동일 경로 적용됨.)
 
 ---
 

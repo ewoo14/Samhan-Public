@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Source = Join-Path $RepoRoot '.claude\memory'
-$Dest = Join-Path $env:USERPROFILE '.claude\projects\c--dev-SamhanLogis\memory'
+$Dest = Join-Path $env:USERPROFILE '.claude\projects\C--dev-Samhan-Public\memory'
 
 if (-not (Test-Path $Source)) {
     Write-Error "Source not found: $Source"
