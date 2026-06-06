@@ -4,7 +4,33 @@
 
 ---
 
-## 🆕 2026-06-06 (오후, 원격 세션 — 최신) — **C5-1 P2 선처리 PR #413** (cutover 무관 안전 3건)
+## 🎉 2026-06-06 (입회 cutover 세션 — 최신) — **권한그룹 C5 최종 cutover 완결** (PR #414·#415·#416 머지)
+
+> 개발책임자 입회 결정(끝까지/LoginResponse body 확장/accounts.role drop/C4-3 포함). 3-PR 게이트 cutover 완료 — **고정역할(role) 인가 의존 0 달성**. 계획서 `docs/superpowers/plans/2026-06-06-permission-groups-c5-cutover-execution-plan.md`. DB 백업 `backups/c5-*.sql`.
+
+### ✅ 인가 신원 이행 결과
+- **인가 = 그룹 UUID 집합(X-User-Groups/JWT groups) + X-Is-System-Master**. role(X-User-Role/JWT role 클레임/accounts.role 컬럼) 인가 경로에서 완전 소멸.
+- **잔존(인가 아님)**: LoginResponse.role(빌트인 그룹 역매핑 파생 표시값) · Role enum(provisioning Role 파라미터·BuiltinRoleGroupIds 매핑·arologis 자체 role) · user-service role_snapshot/RoleChangeHistory(HR 직무) · DynamicPermissionService role-mode(arologis roleBasedEnforcement 데이터 시맨틱).
+
+### ✅ 게이트 1 — #414 (`3e1910d5`) C5-3 소비처 그룹 전환 (role OR 병행)
+PermissionAspect 그룹 파싱·SlipSalesAccessGuard 그룹 OR·게이트웨이 allowedGroups·HeaderAuthenticationFilter 15서비스 X-User-Id 단독 인증+GROUP_ authority·LoginResponse.groups[{id,name,builtin}]·FE AuthSnapshot.groups 수신. behavior-preserving. dual+CI 적발: logging allowedRoles+allowedGroups AND 락아웃→allowedRoles 단독, anonymous IT 계약 재정의, mock builtin V43 정합.
+
+### ✅ 게이트 2 — #415 (`2b62a6f0`) C5-4 role 와이어 완전 제거
+JWT role 클레임·게이트웨이 X-User-Role 주입·C4-3(isMasterBypass=X-Is-System-Master 단독)·RestClient role 주입 4곳 제거. PARTNER=partnerCode 클레임→**X-Is-Partner**(게이트웨이 remove-then-set 강제). 🔴 **dual review 가 보안 P0 적발**: PartnerSelfScopeGuard ROLE_PARTNER authority 의존→role 소멸로 자기범위 우회→X-Is-Partner 헤더 직접 판정 교정(실QA 본인200/타거래처403). 전 역할 매트릭스 실QA(JWT role 클레임 소멸 실증).
+
+### ✅ 게이트 3 — #416 (`33ad68b7`) C5-5 accounts.role DROP
+V46 DROP COLUMN+INDEX. login/me/listAccounts role=BuiltinRoleGroupIds 역매핑 파생. dual 적발: 🔴 다중 빌트인 그룹 stale(syncBuiltinRoleGroup 전체 정리로 강화)·AuthController 레이어 위반(getMeResponse 위임)·deriveRoleName 공통화·N+1. 게이트3 실QA: 컬럼/인덱스 부재+5역할 파생 정확+인가 정상+IT.
+
+### 🧠 핵심 교훈
+- **입회 cutover 의 가치 입증**: 3개 PR 전 게이트에서 dual review(Claude 5-team+Codex)가 **CI green 도 못 잡는 결함** 적발 — 게이트2 보안 P0(파트너 자기범위 우회), 게이트3 cutover 회귀(다중 빌트인 stale). 취침 자율이었으면 보안 사고/회귀.
+- additive→flip→제거→drop 순서 + 각 게이트 전 서비스 재배포 실QA + DB 백업 = 총 락아웃 0.
+
+### 📋 후속 (선택, 비차단)
+- arologis SecurityConfig CORS Javadoc 비대칭(#413 후속, Issue 미발행) · C5-2 시 FE 사이드바 role 배열→그룹 전환(현재 표시 파생 role 로 동작) · 잔존 필터 ROLE_ authority dead-code 정리.
+
+---
+
+## 🆕 2026-06-06 (오후, 원격 세션) — **C5-1 P2 선처리 PR #413** (cutover 무관 안전 3건)
 
 > 개발책임자 원격(remote-control) 접속, AskUserQuestion 으로 "C5-1 P2 선처리만" 선택 — C5 최종 cutover 는 입회 집중 세션 보류 유지.
 
