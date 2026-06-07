@@ -14,10 +14,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.samhanair.logis.product.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.product.client.GoogleSheetsClient;
+import com.samhanair.logis.product.config.HeaderAuthenticationFilter;
+import com.samhanair.logis.product.domain.BranchPipeLookup;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.EstimateCategory;
+import com.samhanair.logis.product.domain.MaterialPrice;
+import com.samhanair.logis.product.domain.OduRecommendationLookup;
+import com.samhanair.logis.product.domain.OduRecommendationLookup.RecommendationType;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductStatus;
@@ -30,6 +34,9 @@ import com.samhanair.logis.product.editrequest.service.ProductEditRequestService
 import com.samhanair.logis.product.editrequest.web.ProductEditRequestController;
 import com.samhanair.logis.product.realtime.ProductRealtimeBroker;
 import com.samhanair.logis.product.realtime.ProductRealtimeController;
+import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
+import com.samhanair.logis.product.repository.MaterialPriceRepository;
+import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.service.CategoryService;
 import com.samhanair.logis.product.service.EcountProductImporter;
@@ -40,6 +47,7 @@ import com.samhanair.logis.product.web.EcountProductImportController;
 import com.samhanair.logis.product.web.ProductAdminController;
 import com.samhanair.logis.product.web.ProductByCodeController;
 import com.samhanair.logis.product.web.ProductController;
+import com.samhanair.logis.product.web.ProductLookupController;
 import com.samhanair.logis.product.web.dto.CategoryResponse;
 import com.samhanair.logis.product.web.dto.EcountProductImportResult;
 import com.samhanair.logis.product.web.dto.ProductResponse;
@@ -86,6 +94,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/**
+ * product-service controller 권한 가드 WebMvc 격리 IT.
+ *
+ * <p>신규 lookup 3 endpoint 는 기존 products.list page-code 재사용 — 권한 구조 미변경이므로
+ * DynamicPermissionClient mock 격리 허용.
+ */
 @WebMvcTest(
         controllers = {
                 ProductController.class,
@@ -93,6 +107,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
                 CategoryController.class,
                 EcountProductImportController.class,
                 ProductAdminController.class,
+                ProductLookupController.class,
                 ProductEditRequestController.class,
                 ProductAuditLogController.class,
                 ProductRealtimeController.class
@@ -118,6 +133,9 @@ class ProductPermissionControllerIT {
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private ProductService productService;
     @MockBean private ProductRepository productRepository;
+    @MockBean private MaterialPriceRepository materialPriceRepository;
+    @MockBean private OduRecommendationLookupRepository oduRecommendationLookupRepository;
+    @MockBean private BranchPipeLookupRepository branchPipeLookupRepository;
     @MockBean private CategoryService categoryService;
     @MockBean private ProductSheetSyncService productSheetSyncService;
     @MockBean private GoogleSheetsClient googleSheetsClient;
@@ -151,6 +169,11 @@ class ProductPermissionControllerIT {
                 "Product", "MODEL-1", Category.create("CAT", "Category", null, 1),
                 BigDecimal.valueOf(1000), BigDecimal.valueOf(800), ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        MaterialPrice materialPrice = MaterialPrice.seed("D2", "자재", BigDecimal.valueOf(2000),
+                "옵션", null);
+        OduRecommendationLookup oduRecommendation = OduRecommendationLookup.seed(
+                RecommendationType.HOME_MULTI, BigDecimal.valueOf(6), 2, "5HP");
+        BranchPipeLookup branchPipe = BranchPipeLookup.seed("1509", "15/09", 1);
 
         lenient().when(productService.search(any(), any(), any(), any(), any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 20), 1));
@@ -163,6 +186,17 @@ class ProductPermissionControllerIT {
         lenient().when(productService.replaceTags(any(), any())).thenReturn(response);
         lenient().when(productRepository.findByModelCodeAndIsDeletedFalse(anyString()))
                 .thenReturn(Optional.of(byCodeProduct));
+        lenient().when(materialPriceRepository.findAll()).thenReturn(List.of(materialPrice));
+        lenient().when(oduRecommendationLookupRepository.findAllByOrderByRecommendationTypeAscIndoorCapacityAsc())
+                .thenReturn(List.of(oduRecommendation));
+        lenient().when(oduRecommendationLookupRepository.findByRecommendationTypeOrderByIndoorCapacityAsc(any()))
+                .thenReturn(List.of(oduRecommendation));
+        lenient().when(branchPipeLookupRepository.findAllByOrderByBranchCodeAsc())
+                .thenReturn(List.of(branchPipe));
+        lenient().when(branchPipeLookupRepository.findAllByBranchCodeOrderByBranchCodeAsc(anyString()))
+                .thenReturn(List.of(branchPipe));
+        lenient().when(branchPipeLookupRepository.findByBranchCode(anyString()))
+                .thenReturn(Optional.of(branchPipe));
         lenient().when(categoryService.create(any())).thenReturn(category);
         lenient().when(categoryService.update(any(), any())).thenReturn(category);
         lenient().doNothing().when(googleSheetsClient).invalidateCache();
@@ -293,6 +327,12 @@ class ProductPermissionControllerIT {
                         () -> post("/api/v1/products/admin/sync")),
                 new EndpointCase("product sheet sync last", "products.sync", PermissionAction.VIEW, "MANAGER", 200,
                         () -> get("/api/v1/products/admin/sync/last")),
+                new EndpointCase("material prices lookup", "products.list", PermissionAction.VIEW, "SALES", 200,
+                        () -> get("/api/v1/material-prices")),
+                new EndpointCase("odu recommendations lookup", "products.list", PermissionAction.VIEW, "SALES", 200,
+                        () -> get("/api/v1/odu-recommendations")),
+                new EndpointCase("branch pipes lookup", "products.list", PermissionAction.VIEW, "SALES", 200,
+                        () -> get("/api/v1/branch-pipes")),
                 new EndpointCase("edit request create", "products.edit-requests", PermissionAction.CREATE, "SALES", 201,
                         () -> post("/products/{id}/edit-request", PRODUCT_ID)
                                 .contentType(MediaType.APPLICATION_JSON)
