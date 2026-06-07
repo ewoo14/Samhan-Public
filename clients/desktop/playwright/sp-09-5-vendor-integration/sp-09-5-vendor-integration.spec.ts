@@ -29,7 +29,7 @@
  *   KFTC   (SP-09-4): interface KftcClient   / DRY_RUN|KFTC    / 502 KFTC_SUBMIT_FAILED
  */
 
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as http from 'http'
@@ -54,6 +54,25 @@ function ensureQaDir(): void {
   if (!fs.existsSync(QA_DIR)) {
     fs.mkdirSync(QA_DIR, { recursive: true })
   }
+}
+
+async function gotoWithMockRoleReload(page: Page, url: string): Promise<void> {
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(1000)
+}
+
+async function expectPermissionGuardRedirect(
+  page: Page,
+  blockedPath: string,
+  protectedElement: Locator,
+  message: string,
+): Promise<void> {
+  await expect.poll(
+    () => page.url(),
+    { message, timeout: 5000 },
+  ).not.toContain(blockedPath)
+  await expect(protectedElement, `${message} — 보호 화면 요소가 렌더되면 안 됨`).toHaveCount(0)
 }
 
 /** dev server 가용 여부 확인 — 미가용 시 false 반환 (테스트는 반드시 FAIL) */
@@ -99,15 +118,18 @@ function attachPageErrorHook(page: Page, errors: string[]): void {
 // URL 상수 — HashRouter 라우트 (각 vendor 페이지)
 // ---------------------------------------------------------------------------
 
-// NTS (SP-09-1) — 세금계산서 목록
+// NTS (SP-09-1) — 세금계산서 목록/상세
 const NTS_URL_ACCOUNTANT   = `${BASE_URL}/#/accounting/tax-invoices?mockRole=ACCOUNTANT`
 const NTS_URL_SALES        = `${BASE_URL}/#/accounting/tax-invoices?mockRole=SALES`
 const NTS_URL_WAREHOUSE    = `${BASE_URL}/#/accounting/tax-invoices?mockRole=WAREHOUSE`
+const NTS_DETAIL_URL_ACCOUNTANT = `${BASE_URL}/#/accounting/tax-invoices/ti-001?mockRole=ACCOUNTANT`
+const NTS_DETAIL_URL_ACCOUNTANT_502 = `${NTS_DETAIL_URL_ACCOUNTANT}&mockNts502=1`
 
 // Aligo (SP-09-2) — SMS 발송 이력
 const ALIGO_URL_MANAGER    = `${BASE_URL}/#/arologis/dispatch-sms/send-audit?mockRole=MANAGER`
 const ALIGO_URL_SALES      = `${BASE_URL}/#/arologis/dispatch-sms/send-audit?mockRole=SALES`
 const ALIGO_URL_ACCOUNTANT = `${BASE_URL}/#/arologis/dispatch-sms/send-audit?mockRole=ACCOUNTANT`
+const ALIGO_URL_MANAGER_502 = `${ALIGO_URL_MANAGER}&mockAligo502=1`
 
 // Clova OCR (SP-09-3) — 영수증 OCR 업로드
 const CLOVA_URL_WAREHOUSE  = `${BASE_URL}/#/purchases/receipt-ocr?mockRole=WAREHOUSE`
@@ -119,75 +141,9 @@ const KFTC_URL_ACCOUNTANT  = `${BASE_URL}/#/accounting/deposit-match?mockRole=AC
 const KFTC_URL_SALES       = `${BASE_URL}/#/accounting/deposit-match?mockRole=SALES`
 const KFTC_URL_WAREHOUSE   = `${BASE_URL}/#/accounting/deposit-match?mockRole=WAREHOUSE`
 
-// ---------------------------------------------------------------------------
-// Mock 응답 헬퍼
-// ---------------------------------------------------------------------------
+// 권한 차단 step 양성 컨트롤 — mock.ts 실제 grant 보유 화면.
+const SALES_VENDOR_ORDER_URL = `${BASE_URL}/#/sales/vendor-order-upload?mockRole=SALES`
 
-/** 4 vendor 공통 502 placeholder 에러 응답 빌더 */
-function build502Error(vendorCode: string, message: string) {
-  return {
-    success: false,
-    code: vendorCode,
-    message,
-    data: null,
-    timestamp: '2026-05-18T09:00:00Z',
-  }
-}
-
-/** NTS DRY_RUN 성공 응답 */
-function buildNtsDryRunResponse() {
-  return {
-    success: true,
-    data: {
-      id: 'mock-nts-uuid-0001',
-      taxInvoiceNo: '20260518-0001',
-      eTaxExternalId: 'DRY-20260518-0001-1747555200000',
-      status: 'ISSUED',
-      submitMethod: 'DRY_RUN',
-      partnerName: '(주)삼한물류',
-    },
-  }
-}
-
-/** KFTC DRY_RUN 성공 응답 */
-function buildKftcDryRunResponse() {
-  return {
-    success: true,
-    data: {
-      totalCount: 5,
-      matchedCount: 2,
-      unmatchedCount: 3,
-      results: [
-        {
-          depositorName: '(주)삼성상사',
-          amount: 1100000.00,
-          transactionDate: '2026-05-01',
-          matchedPartnerCode: 'PARTNER-001',
-          matchedTaxInvoiceNo: 'TAX-2026-05-001',
-          status: 'MATCHED',
-        },
-      ],
-    },
-  }
-}
-
-/** OCR DRY_RUN 성공 응답 */
-function buildOcrDryRunResponse() {
-  return {
-    success: true,
-    data: {
-      slipNo: 'PUR-2026-05-0042',
-      vendorName: '테스트마트',
-      totalAmount: 12345,
-      vatAmount: 1234,
-      issuedAt: '2026-05-18',
-      submitMethod: 'DRY_RUN',
-      parseRawJson: '{}',
-    },
-  }
-}
-
-// ---------------------------------------------------------------------------
 // TC-T1 ~ TC-T5
 // ---------------------------------------------------------------------------
 
@@ -232,47 +188,20 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 1: NTS placeholder → 502 ETAX_SUBMIT_FAILED
     await test.step('NTS — ETAX_SUBMIT_FAILED 502 placeholder 차단 검증', async () => {
-      // emit-nts API mock 502 등록
-      await page.route('**/accounting/tax-invoices/**/emit-nts', async route => {
-        await route.fulfill({
-          status: 502,
-          contentType: 'application/json',
-          body: JSON.stringify(build502Error(
-            'ETAX_SUBMIT_FAILED',
-            'NTS_API_KEY 가 placeholder 입니다. Phase 11 sandbox 연동 전까지 DRY_RUN 모드만 사용 가능합니다.',
-          )),
-        })
-      })
-
-      await page.goto(NTS_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.goto(NTS_DETAIL_URL_ACCOUNTANT_502, { waitUntil: 'domcontentloaded', timeout: 20000 })
       await page.waitForTimeout(1200)
 
-      // NTS 발행 버튼 클릭 시도 (존재 시)
-      const ntsBtn = page.locator(
-        '[data-testid="tax-invoice-detail-emit-nts-button"], button:has-text("NTS 발행"), button:has-text("국세청 발행")',
-      ).first()
+      const ntsBtn = page.getByTestId('tax-invoice-detail-emit-nts-button')
+      await expect(ntsBtn, 'ti-001 ISSUED·미발행 상세에서 NTS 발행 버튼 미표시').toBeVisible({ timeout: 8000 })
+      await ntsBtn.click()
 
-      if ((await ntsBtn.count()) > 0) {
-        page.once('dialog', async dialog => { await dialog.accept() })
-        await ntsBtn.click()
-        await page.waitForTimeout(1200)
+      const confirmBtn = page.getByTestId('tax-invoice-emit-nts-modal-confirm')
+      await expect(confirmBtn, 'NTS 502 확인 모달 버튼 미표시').toBeVisible({ timeout: 5000 })
+      await confirmBtn.click()
 
-        // 502 에러 응답 처리 확인
-        const bodyText = (await page.textContent('body')) ?? ''
-        const hasNtsError =
-          bodyText.includes('ETAX_SUBMIT_FAILED') ||
-          bodyText.includes('placeholder') ||
-          bodyText.includes('NTS_API_KEY') ||
-          bodyText.includes('DRY_RUN') ||
-          bodyText.includes('홈택스') ||
-          bodyText.includes('연동 전')
-        expect(
-          hasNtsError,
-          'NTS placeholder 502 에러 메시지 미표시 — "ETAX_SUBMIT_FAILED"/"placeholder"/"DRY_RUN" 키워드 없음',
-        ).toBe(true)
-      }
-
-      await page.unroute('**/accounting/tax-invoices/**/emit-nts')
+      const topError = page.getByTestId('tax-invoice-detail-top-error')
+      await expect(topError, 'NTS 502 topError 배너 미표시').toBeVisible({ timeout: 8000 })
+      await expect(topError, 'NTS 502 사용자 메시지 미표시').toContainText('국세청(NTS) 서버 오류')
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T1-nts-placeholder-502.png'),
@@ -281,26 +210,13 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
     })
 
     // ── step 2: Aligo placeholder → 502
-    await test.step('Aligo — SMS 발송 placeholder 차단 검증 (정적 확인)', async () => {
-      // Aligo placeholder guard 는 IT 레벨에서 검증됨
-      // FE: SMS 발송 화면에서 placeholder 상태일 때 경고 배너 또는 에러 표시 확인
-      await page.goto(ALIGO_URL_MANAGER, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await page.waitForTimeout(1200)
+    await test.step('Aligo — SEND_FAILED 502 placeholder 차단 검증', async () => {
+      await page.goto(ALIGO_URL_MANAGER_502, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
 
-      // 페이지 로드 확인
-      const pageHeading = page.locator('h3, h2, h1').first()
-      const headingVisible = await pageHeading.isVisible().catch(() => false)
-
-      // Aligo 발송 화면 또는 접근 차단 화면 로드 확인
-      const bodyText = (await page.textContent('body')) ?? ''
-      const isAlgoPageLoaded =
-        headingVisible ||
-        bodyText.includes('발송') ||
-        bodyText.includes('이력') ||
-        bodyText.includes('SMS') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('로그인')
-      expect(isAlgoPageLoaded, 'Aligo SMS 화면 또는 접근 차단 화면 미로드').toBe(true)
+      const topError = page.getByTestId('sms-audit-top-error')
+      await expect(topError, 'Aligo 502 topError 배너 미표시').toBeVisible({ timeout: 8000 })
+      await expect(topError, 'Aligo 502 사용자 메시지 미표시').toContainText('Aligo SMS 외부 서비스 오류')
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T1-aligo-placeholder-guard.png'),
@@ -310,18 +226,6 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 3: Clova placeholder → 502 OCR_SUBMIT_FAILED
     await test.step('Clova — OCR_SUBMIT_FAILED 502 placeholder 차단 검증', async () => {
-      // OCR submit API mock 502 등록
-      await page.route('**/slips/receipt-ocr**', async route => {
-        await route.fulfill({
-          status: 502,
-          contentType: 'application/json',
-          body: JSON.stringify(build502Error(
-            'OCR_SUBMIT_FAILED',
-            'CLOVA_OCR_API_KEY 가 placeholder 입니다. Phase 11 sandbox 연동 전까지 DRY_RUN 모드만 사용 가능합니다.',
-          )),
-        })
-      })
-
       await page.goto(CLOVA_URL_WAREHOUSE, { waitUntil: 'domcontentloaded', timeout: 20000 })
       // 직전 step 역할 세션 재설정(hash 네비 미반영) — WAREHOUSE 로 OCR 페이지 진입 보장.
       await page.reload({ waitUntil: 'domcontentloaded' })
@@ -333,7 +237,7 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       const fileInput = page.locator('[data-testid="receipt-ocr-file-input"]')
       await expect(fileInput, 'OCR 파일 입력 미존재').toBeAttached({ timeout: 5000 })
 
-      // in-process mock(VITE_MOCK_MODE)은 page.route 를 가리므로 502 는 mock 의 파일명 컨벤션('502')으로 트리거.
+      // in-process mock(VITE_MOCK_MODE)은 파일명 컨벤션('502')으로 Clova 502 를 트리거한다.
       const minimalPng = Buffer.from(
         '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6260000000020001e221bc330000000049454e44ae426082',
         'hex',
@@ -347,20 +251,10 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       const submitBtn = page.locator('[data-testid="receipt-ocr-submit-btn"]')
       await expect(submitBtn, '파일 선택 후 OCR 제출 버튼 비활성').toBeEnabled({ timeout: 5000 })
       await submitBtn.click()
-      await page.waitForTimeout(1500)
 
-      const bodyText = (await page.textContent('body')) ?? ''
-      const hasClovaError =
-        bodyText.includes('OCR_SUBMIT_FAILED') ||
-        bodyText.includes('일시적 오류') ||
-        bodyText.includes('Clova') ||
-        bodyText.includes('외부 서비스')
-      expect(
-        hasClovaError,
-        'Clova 502 에러 메시지 미표시 — OCR_SUBMIT_FAILED 502 차단 검증',
-      ).toBe(true)
-
-      await page.unroute('**/slips/receipt-ocr**')
+      const ocrError = page.getByTestId('receipt-ocr-error')
+      await expect(ocrError, 'Clova 502 에러 배너 미표시').toBeVisible({ timeout: 8000 })
+      await expect(ocrError, 'Clova 502 사용자 메시지 미표시').toContainText('OCR 외부 서비스에 일시적 오류')
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T1-clova-placeholder-502.png'),
@@ -370,47 +264,21 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 4: KFTC placeholder → 502 KFTC_SUBMIT_FAILED
     await test.step('KFTC — KFTC_SUBMIT_FAILED 502 placeholder 차단 검증', async () => {
-      await page.route('**/accounting/deposits/fetch-and-match**', async route => {
-        await route.fulfill({
-          status: 502,
-          contentType: 'application/json',
-          body: JSON.stringify(build502Error(
-            'KFTC_SUBMIT_FAILED',
-            'KFTC_API_KEY 가 placeholder 입니다. Phase 11 sandbox 연동 전까지 DRY_RUN 모드만 사용 가능합니다.',
-          )),
-        })
-      })
-
       await page.goto(KFTC_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
-      // KFTC 조회 폼 표시 확인
       const submitBtn = page.locator('[data-testid="deposit-match-submit-btn"]')
-      const submitVisible = await submitBtn.isVisible().catch(() => false)
+      await expect(submitBtn, 'KFTC 입금 매칭 조회 버튼 미표시').toBeVisible({ timeout: 8000 })
 
-      if (submitVisible) {
-        // 계좌 핀번호 입력 + KFTC 모드로 조회
-        const accountFinNoInput = page.locator('[data-testid="deposit-match-account-fin-no"]')
-        await accountFinNoInput.fill('TEST-KFTC-REAL')
+      const accountFinNoInput = page.locator('[data-testid="deposit-match-account-fin-no"]')
+      await expect(accountFinNoInput, 'KFTC accountFinNo 입력 미표시').toBeVisible({ timeout: 5000 })
+      await accountFinNoInput.fill('TEST-KFTC-502')
+      await submitBtn.click()
 
-        await submitBtn.click()
-        await page.waitForTimeout(1500)
-
-        const bodyText = (await page.textContent('body')) ?? ''
-        const hasKftcError =
-          bodyText.includes('KFTC_SUBMIT_FAILED') ||
-          bodyText.includes('placeholder') ||
-          bodyText.includes('KFTC_API_KEY') ||
-          bodyText.includes('DRY_RUN') ||
-          bodyText.includes('오픈뱅킹') ||
-          bodyText.includes('연동 전')
-        expect(
-          hasKftcError,
-          'KFTC placeholder 502 에러 메시지 미표시 — "KFTC_SUBMIT_FAILED"/"KFTC_API_KEY"/"placeholder" 키워드 없음',
-        ).toBe(true)
-      }
-
-      await page.unroute('**/accounting/deposits/fetch-and-match**')
+      const depositError = page.getByTestId('deposit-match-error')
+      await expect(depositError, 'KFTC 502 에러 배너 미표시').toBeVisible({ timeout: 8000 })
+      await expect(depositError, 'KFTC 502 사용자 메시지 미표시').toContainText('KFTC 오픈뱅킹 외부 서비스')
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T1-kftc-placeholder-502.png'),
@@ -445,26 +313,22 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 1: NTS DRY_RUN 성공 응답 검증
     await test.step('NTS DRY_RUN — emit-nts 200 + eTaxExternalId "DRY-" 형식', async () => {
-      await page.route('**/accounting/tax-invoices/**/emit-nts', async route => {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(buildNtsDryRunResponse()),
-        })
-      })
-
-      await page.goto(NTS_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.goto(NTS_DETAIL_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
-      const bodyText = (await page.textContent('body')) ?? ''
-      const isNtsLoaded =
-        bodyText.includes('세금계산서') ||
-        bodyText.includes('발행') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('로그인')
-      expect(isNtsLoaded, 'NTS 세금계산서 페이지 미로드').toBe(true)
+      const ntsBtn = page.getByTestId('tax-invoice-detail-emit-nts-button')
+      await expect(ntsBtn, 'NTS DRY_RUN 발행 버튼 미표시').toBeVisible({ timeout: 8000 })
+      await ntsBtn.click()
 
-      await page.unroute('**/accounting/tax-invoices/**/emit-nts')
+      const confirmBtn = page.getByTestId('tax-invoice-emit-nts-modal-confirm')
+      await expect(confirmBtn, 'NTS DRY_RUN 확인 모달 버튼 미표시').toBeVisible({ timeout: 5000 })
+      page.once('dialog', async dialog => { await dialog.accept() })
+      await confirmBtn.click()
+
+      const etaxExternalId = page.getByTestId('tax-invoice-detail-etax-external-id')
+      await expect(etaxExternalId, 'NTS DRY_RUN eTaxExternalId 배너 미표시').toBeVisible({ timeout: 8000 })
+      await expect(etaxExternalId, 'NTS DRY_RUN eTaxExternalId 형식 미표시').toContainText('DRY-')
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T2-nts-dry-run-success.png'),
@@ -474,38 +338,13 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 2: Aligo SEND_AUDIT 발송 이력 DRY_RUN 검증 (목록 정상 조회)
     await test.step('Aligo — SEND_AUDIT 발송 이력 목록 정상 조회', async () => {
-      // mock 발송 이력 5건 등록
-      const mockRows = Array.from({ length: 5 }, (_, i) => ({
-        id: `send-audit-dry-${i + 1}`,
-        saveMode: 'SEND_AUDIT',
-        topic: `DRY_RUN 발송 ${i + 1}건차`,
-        programType: 'DISPATCH_SMS',
-        rowCount: i + 3,
-        recipientPhone: `010-****-${String(1000 + i).padStart(4, '0')}`,
-        resultCode: 1,
-        resultMessage: '성공',
-        status: 'SENT',
-        sentAt: '2026-05-18T09:00:00Z',
-      }))
-
-      await page.route('**/admin/notifications/dispatch-sms/history**', async route => {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            data: { content: mockRows, totalElements: 5, totalPages: 1, size: 20, number: 0 },
-          }),
-        })
-      })
-
       await page.goto(ALIGO_URL_MANAGER, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
       const pageHeading = page.locator('h3, h2, h1').first()
       await expect(pageHeading, 'Aligo SMS 화면 제목 미표시').toBeVisible({ timeout: 5000 })
-
-      await page.unroute('**/admin/notifications/dispatch-sms/history**')
+      await expect(page.getByTestId('sms-audit-search-btn'), 'Aligo SEND_AUDIT 조회 버튼 미표시').toBeVisible({ timeout: 5000 })
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T2-aligo-send-audit-list.png'),
@@ -515,57 +354,35 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 3: Clova DRY_RUN 성공 응답 + 결과 카드 표시
     await test.step('Clova DRY_RUN — 영수증 OCR 결과 카드 "테스트마트" 표시', async () => {
-      await page.route('**/slips/receipt-ocr**', async route => {
-        await route.fulfill({
-          status: 201,
-          contentType: 'application/json',
-          body: JSON.stringify(buildOcrDryRunResponse()),
-        })
-      })
-
       await page.goto(CLOVA_URL_WAREHOUSE, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
-      // 드롭존 또는 페이지 로드 확인
       const dropZone = page.locator('[data-testid="receipt-ocr-drop-zone"]')
-      const dropZoneVisible = await dropZone.isVisible().catch(() => false)
+      await expect(dropZone, 'WAREHOUSE OCR 드롭존 미표시').toBeVisible({ timeout: 8000 })
+      const fileInput = page.locator('[data-testid="receipt-ocr-file-input"]')
+      await expect(fileInput, 'OCR 파일 입력 미존재').toBeAttached({ timeout: 5000 })
 
-      if (dropZoneVisible) {
-        // 파일 선택 + 제출
-        const fileInput = page.locator('[data-testid="receipt-ocr-file-input"]')
-        const fileInputAttached = (await fileInput.count()) > 0
+      const minimalPng = Buffer.from(
+        '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6260000000020001e221bc330000000049454e44ae426082',
+        'hex',
+      )
+      const tmpPng = path.join(QA_DIR, 'fixture-clova-dry-run.png')
+      fs.writeFileSync(tmpPng, minimalPng)
 
-        if (fileInputAttached) {
-          const minimalPng = Buffer.from(
-            '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6260000000020001e221bc330000000049454e44ae426082',
-            'hex',
-          )
-          const tmpPng = path.join(QA_DIR, 'fixture-clova-dry-run.png')
-          fs.writeFileSync(tmpPng, minimalPng)
+      await fileInput.setInputFiles(tmpPng)
+      await page.waitForTimeout(500)
 
-          await fileInput.setInputFiles(tmpPng)
-          await page.waitForTimeout(500)
+      const submitBtn = page.locator('[data-testid="receipt-ocr-submit-btn"]')
+      await expect(submitBtn, '파일 선택 후 OCR 제출 버튼 비활성').toBeEnabled({ timeout: 5000 })
+      await submitBtn.click()
 
-          const submitBtn = page.locator('[data-testid="receipt-ocr-submit-btn"]')
-          const isEnabled = await submitBtn.isEnabled().catch(() => false)
-
-          if (isEnabled) {
-            await submitBtn.click()
-
-            // OCR 결과 카드 대기
-            const resultCard = page.locator('[data-testid="receipt-ocr-result"]')
-            const resultVisible = await resultCard.isVisible({ timeout: 8000 }).catch(() => false)
-            if (resultVisible) {
-              await expect(
-                resultCard.getByText('테스트마트'),
-                'OCR 결과 카드 — vendorName "테스트마트" 미표시',
-              ).toBeVisible({ timeout: 5000 })
-            }
-          }
-        }
-      }
-
-      await page.unroute('**/slips/receipt-ocr**')
+      const resultCard = page.locator('[data-testid="receipt-ocr-result"]')
+      await expect(resultCard, 'Clova DRY_RUN OCR 결과 카드 미표시').toBeVisible({ timeout: 8000 })
+      await expect(
+        resultCard.getByText('테스트마트'),
+        'OCR 결과 카드 — vendorName "테스트마트" 미표시',
+      ).toBeVisible({ timeout: 5000 })
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T2-clova-dry-run-result.png'),
@@ -575,38 +392,24 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 4: KFTC DRY_RUN 성공 응답 + 요약 카드 표시
     await test.step('KFTC DRY_RUN — 입금 매칭 totalCount=5 요약 카드 표시', async () => {
-      await page.route('**/accounting/deposits/fetch-and-match**', async route => {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(buildKftcDryRunResponse()),
-        })
-      })
-
       await page.goto(KFTC_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
 
       const submitBtn = page.locator('[data-testid="deposit-match-submit-btn"]')
-      const submitVisible = await submitBtn.isVisible().catch(() => false)
+      await expect(submitBtn, 'KFTC 입금 매칭 조회 버튼 미표시').toBeVisible({ timeout: 8000 })
 
-      if (submitVisible) {
-        const accountFinNoInput = page.locator('[data-testid="deposit-match-account-fin-no"]')
-        await accountFinNoInput.fill('DRY-FIN-0001')
-        await submitBtn.click()
+      const accountFinNoInput = page.locator('[data-testid="deposit-match-account-fin-no"]')
+      await expect(accountFinNoInput, 'KFTC accountFinNo 입력 미표시').toBeVisible({ timeout: 5000 })
+      await accountFinNoInput.fill('DRY-FIN-0001')
+      await submitBtn.click()
 
-        const summarySection = page.locator('[data-testid="deposit-match-summary"]')
-        const summaryVisible = await summarySection.isVisible({ timeout: 8000 }).catch(() => false)
-
-        if (summaryVisible) {
-          // totalCount=5 표시 확인
-          await expect(
-            summarySection.getByText('5', { exact: false }),
-            'KFTC DRY_RUN 요약 카드 totalCount=5 미표시',
-          ).toBeVisible({ timeout: 5000 })
-        }
-      }
-
-      await page.unroute('**/accounting/deposits/fetch-and-match**')
+      const summarySection = page.locator('[data-testid="deposit-match-summary"]')
+      await expect(summarySection, 'KFTC DRY_RUN 요약 카드 미표시').toBeVisible({ timeout: 8000 })
+      await expect(
+        summarySection.getByText('5', { exact: false }),
+        'KFTC DRY_RUN 요약 카드 totalCount=5 미표시',
+      ).toBeVisible({ timeout: 5000 })
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T2-kftc-dry-run-summary.png'),
@@ -622,15 +425,15 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
    * T3: 4 vendor 권한 매트릭스 cross-check
    *
    * 검증 항목:
-   *   - ACCOUNTANT: NTS (emit-nts 버튼 허용) + KFTC (조회 버튼 허용) + OCR 미허용 + Aligo 미허용
-   *   - SALES: 4 vendor 모두 접근 차단 (403 또는 관련 버튼 미표시)
+   *   - ACCOUNTANT: NTS (목록/emit-nts 권한) + KFTC 허용 (mock.ts 기준 OCR 도 허용)
+   *   - SALES: 4 vendor 모두 접근 차단 (PermissionGuard redirect 또는 관련 버튼 미표시)
    *   - WAREHOUSE: Clova OCR 허용 + NTS/KFTC/Aligo 차단
    *   - MANAGER: Aligo 허용 + KFTC 허용 + NTS 제한 (ACCOUNTANT/MASTER 만 emit-nts)
    *
    * 권한 매트릭스 근거:
    *   NTS    emit-nts: ACCOUNTANT / MASTER (MANAGER 제외 — TaxInvoiceEmitNtsIT case 3)
-   *   Aligo  SMS 이력: DISPATCH / MANAGER / MASTER
-   *   Clova  OCR:     WAREHOUSE / MANAGER / MASTER (ACCOUNTANT 제외 — ReceiptOcrShellIT)
+   *   Aligo  SMS 이력: DISPATCH / MANAGER / MASTER (mock.ts grant: MANAGER/DISPATCH, SALES 미부여)
+   *   Clova  OCR:     WAREHOUSE / ACCOUNTANT / MANAGER / MASTER (mock.ts SP_D1_DEFAULT_VIEW)
    *   KFTC   입금매칭: ACCOUNTANT / MANAGER / MASTER
    */
   test('T3: 4 vendor 권한 매트릭스 cross-check', async ({ page }) => {
@@ -640,17 +443,16 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 1: ACCOUNTANT — NTS 허용 (세금계산서 목록 접근 가능)
     await test.step('ACCOUNTANT — NTS 세금계산서 페이지 접근 허용', async () => {
-      await page.goto(NTS_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await page.waitForTimeout(1000)
+      await gotoWithMockRoleReload(page, NTS_URL_ACCOUNTANT)
 
-      const bodyText = (await page.textContent('body')) ?? ''
-      const accountantCanAccessNts =
-        bodyText.includes('세금계산서') ||
-        bodyText.includes('발행') ||
-        bodyText.includes('임시저장') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('로그인')
-      expect(accountantCanAccessNts, 'ACCOUNTANT NTS 세금계산서 페이지 접근 불가').toBe(true)
+      await expect(
+        page.getByTestId('tax-invoice-list-filter'),
+        'ACCOUNTANT NTS 세금계산서 목록 필터 미표시 — accounting.tax-invoice.list(view) 필요',
+      ).toBeVisible({ timeout: 8000 })
+      await expect(
+        page.getByTestId('tax-invoice-list-table'),
+        'ACCOUNTANT NTS 세금계산서 목록 테이블 미표시',
+      ).toBeVisible({ timeout: 5000 })
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T3-accountant-nts-allowed.png'),
@@ -660,40 +462,30 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 2: ACCOUNTANT — KFTC 허용 (입금 매칭 조회 버튼 표시)
     await test.step('ACCOUNTANT — KFTC 입금 매칭 페이지 접근 허용', async () => {
-      await page.goto(KFTC_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await page.waitForTimeout(1000)
+      await gotoWithMockRoleReload(page, KFTC_URL_ACCOUNTANT)
 
       const submitBtn = page.locator('[data-testid="deposit-match-submit-btn"]')
-      const submitVisible = await submitBtn.isVisible().catch(() => false)
-
-      const bodyText = (await page.textContent('body')) ?? ''
-      const accountantCanAccessKftc =
-        submitVisible ||
-        bodyText.includes('KFTC') ||
-        bodyText.includes('입금') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('로그인')
-      expect(accountantCanAccessKftc, 'ACCOUNTANT KFTC 입금 매칭 페이지 접근 불가').toBe(true)
+      await expect(
+        submitBtn,
+        'ACCOUNTANT KFTC 입금 매칭 조회 버튼 미표시 — accounting.deposit-match(view) 필요',
+      ).toBeVisible({ timeout: 8000 })
     })
 
     // ── step 3: SALES — NTS 접근 차단 (403 또는 emit-nts 버튼 미표시)
     await test.step('SALES — NTS 세금계산서 접근 차단 확인', async () => {
+      await gotoWithMockRoleReload(page, SALES_VENDOR_ORDER_URL)
+      await expect(
+        page.getByTestId('vendor-order-stepper'),
+        'SALES 양성 컨트롤 실패 — sales.vendor-order(view) 보유 화면 미표시',
+      ).toBeVisible({ timeout: 8000 })
+
       await page.goto(NTS_URL_SALES, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await page.waitForTimeout(1000)
-
-      const salesNtsBtnCount = await page.locator(
-        '[data-testid="tax-invoice-detail-emit-nts-button"], button:has-text("NTS 발행")',
-      ).count()
-
-      const bodyText = (await page.textContent('body')) ?? ''
-      const salesBlocked =
-        salesNtsBtnCount === 0 ||
-        bodyText.includes('권한') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('403') ||
-        page.url().includes('/login') ||
-        page.url().includes('/unauthorized')
-      expect(salesBlocked, 'SALES NTS 접근 차단 미작동 — NTS 발행 버튼 미표시 또는 403 필요').toBe(true)
+      await expectPermissionGuardRedirect(
+        page,
+        '/accounting/tax-invoices',
+        page.getByTestId('tax-invoice-list-table'),
+        'SALES NTS 접근 차단 미작동 — accounting.tax-invoice.list(view) 미보유',
+      )
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T3-sales-all-vendor-blocked.png'),
@@ -701,50 +493,93 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       })
     })
 
-    // ── step 4: SALES — KFTC 접근 차단
+    // ── step 4: SALES — Aligo SEND_AUDIT 접근 차단
+    await test.step('SALES — Aligo SMS 이력 접근 차단 확인', async () => {
+      await gotoWithMockRoleReload(page, SALES_VENDOR_ORDER_URL)
+      await expect(
+        page.getByTestId('vendor-order-stepper'),
+        'SALES 양성 컨트롤 실패 — sales.vendor-order(view) 보유 화면 미표시',
+      ).toBeVisible({ timeout: 8000 })
+
+      await page.goto(ALIGO_URL_SALES, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      await expectPermissionGuardRedirect(
+        page,
+        '/arologis/dispatch-sms/send-audit',
+        page.getByTestId('sms-audit-search-btn'),
+        'SALES Aligo SEND_AUDIT 접근 차단 미작동 — notification.dispatch-sms.send-audit(view) 미보유',
+      )
+
+      await page.screenshot({
+        path: path.join(QA_DIR, 'T3-sales-aligo-send-audit-blocked.png'),
+        fullPage: true,
+      })
+    })
+
+    // ── step 5: MANAGER — Aligo SEND_AUDIT 허용
+    await test.step('MANAGER — Aligo SMS 이력 접근 허용', async () => {
+      await gotoWithMockRoleReload(page, ALIGO_URL_MANAGER)
+
+      await expect(
+        page.getByTestId('sms-audit-search-btn'),
+        'MANAGER Aligo SEND_AUDIT 조회 버튼 미표시 — notification.dispatch-sms.send-audit(view) 필요',
+      ).toBeVisible({ timeout: 8000 })
+      // DataTable testid 미전달 함정 — 필터/행 텍스트로 대체
+      await expect(
+        page.getByTestId('sms-audit-filter-from'),
+        'MANAGER Aligo SEND_AUDIT 기간 시작 필터 미표시',
+      ).toBeVisible({ timeout: 5000 })
+      await expect(
+        page.getByRole('table'),
+        'MANAGER Aligo SEND_AUDIT mock 발송 이력 row 미표시',
+      ).toContainText('2026-05-17', { timeout: 5000 })
+      await expect(
+        page.getByRole('table'),
+        'MANAGER Aligo SEND_AUDIT mock 발송 이력 부분실패 상태 미표시',
+      ).toContainText('부분실패', { timeout: 5000 })
+
+      await page.screenshot({
+        path: path.join(QA_DIR, 'T3-manager-aligo-send-audit-allowed.png'),
+        fullPage: true,
+      })
+    })
+
+    // ── step 6: SALES — KFTC 접근 차단
     await test.step('SALES — KFTC 입금 매칭 접근 차단 확인', async () => {
+      await gotoWithMockRoleReload(page, SALES_VENDOR_ORDER_URL)
+      await expect(
+        page.getByTestId('vendor-order-stepper'),
+        'SALES 양성 컨트롤 실패 — sales.vendor-order(view) 보유 화면 미표시',
+      ).toBeVisible({ timeout: 8000 })
+
       await page.goto(KFTC_URL_SALES, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      // 직전 step 의 역할(ACCOUNTANT) 세션이 hash 네비로 SALES 로 재설정되지 않으므로 reload 로 mockRole=SALES 재독.
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1000)
-
-      const submitBtn = page.locator('[data-testid="deposit-match-submit-btn"]')
-      const submitBtnVisible = (await submitBtn.count()) > 0 && await submitBtn.isVisible()
-
-      const bodyText = (await page.textContent('body')) ?? ''
-      const salesKftcBlocked =
-        !submitBtnVisible ||
-        bodyText.includes('권한') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('403') ||
-        page.url().includes('/login')
-      expect(salesKftcBlocked, 'SALES KFTC 접근 차단 미작동 — deposit-match-submit-btn 미표시 또는 403 필요').toBe(true)
+      await expectPermissionGuardRedirect(
+        page,
+        '/accounting/deposit-match',
+        page.getByTestId('deposit-match-submit-btn'),
+        'SALES KFTC 접근 차단 미작동 — accounting.deposit-match(view) 미보유',
+      )
     })
 
-    // ── step 5: SALES — Clova OCR 접근 차단
+    // ── step 7: SALES — Clova OCR 접근 차단
     await test.step('SALES — Clova OCR 접근 차단 확인', async () => {
+      await gotoWithMockRoleReload(page, SALES_VENDOR_ORDER_URL)
+      await expect(
+        page.getByTestId('vendor-order-stepper'),
+        'SALES 양성 컨트롤 실패 — sales.vendor-order(view) 보유 화면 미표시',
+      ).toBeVisible({ timeout: 8000 })
+
       await page.goto(CLOVA_URL_SALES, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await page.waitForTimeout(1000)
-
-      const dropZone = page.locator('[data-testid="receipt-ocr-drop-zone"]')
-      const dropZoneVisible = (await dropZone.count()) > 0 && await dropZone.isVisible()
-
-      const bodyText = (await page.textContent('body')) ?? ''
-      const salesOcrBlocked =
-        !dropZoneVisible ||
-        bodyText.includes('권한') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('403') ||
-        page.url().includes('/login')
-      expect(salesOcrBlocked, 'SALES Clova OCR 접근 차단 미작동 — receipt-ocr-drop-zone 미표시 또는 403 필요').toBe(true)
+      await expectPermissionGuardRedirect(
+        page,
+        '/purchases/receipt-ocr',
+        page.getByTestId('receipt-ocr-drop-zone'),
+        'SALES Clova OCR 접근 차단 미작동 — purchases.receipt-ocr(view) 미보유',
+      )
     })
 
-    // ── step 6: WAREHOUSE — Clova OCR 허용 확인
+    // ── step 8: WAREHOUSE — Clova OCR 허용 확인
     await test.step('WAREHOUSE — Clova OCR 접근 허용 (drop-zone 표시)', async () => {
-      await page.goto(CLOVA_URL_WAREHOUSE, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      // 직전 SALES 세션을 WAREHOUSE 로 재설정(hash 네비는 mockRole 미반영) — reload 로 재독.
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1000)
+      await gotoWithMockRoleReload(page, CLOVA_URL_WAREHOUSE)
 
       const dropZone = page.locator('[data-testid="receipt-ocr-drop-zone"]')
       await expect(
@@ -758,22 +593,21 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       })
     })
 
-    // ── step 7: WAREHOUSE — KFTC 접근 차단 확인
-    await test.step('WAREHOUSE — KFTC 입금 매칭 접근 차단 (RoleGuard)', async () => {
+    // ── step 9: WAREHOUSE — KFTC 접근 차단 확인
+    await test.step('WAREHOUSE — KFTC 입금 매칭 접근 차단 (PermissionGuard)', async () => {
+      await gotoWithMockRoleReload(page, CLOVA_URL_WAREHOUSE)
+      await expect(
+        page.getByTestId('receipt-ocr-drop-zone'),
+        'WAREHOUSE 양성 컨트롤 실패 — purchases.receipt-ocr(view) 보유 화면 미표시',
+      ).toBeVisible({ timeout: 8000 })
+
       await page.goto(KFTC_URL_WAREHOUSE, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await page.waitForTimeout(1000)
-
-      const submitBtn = page.locator('[data-testid="deposit-match-submit-btn"]')
-      const submitBtnVisible = (await submitBtn.count()) > 0 && await submitBtn.isVisible()
-
-      const bodyText = (await page.textContent('body')) ?? ''
-      const warehouseKftcBlocked =
-        !submitBtnVisible ||
-        bodyText.includes('권한') ||
-        bodyText.includes('접근') ||
-        bodyText.includes('403') ||
-        page.url().includes('/login')
-      expect(warehouseKftcBlocked, 'WAREHOUSE KFTC 접근 차단 미작동 — deposit-match-submit-btn 미표시 또는 403 필요').toBe(true)
+      await expectPermissionGuardRedirect(
+        page,
+        '/accounting/deposit-match',
+        page.getByTestId('deposit-match-submit-btn'),
+        'WAREHOUSE KFTC 접근 차단 미작동 — accounting.deposit-match(view) 미보유',
+      )
     })
 
     expect(errors, `pageerror: ${errors.join(', ')}`).toHaveLength(0)
@@ -798,7 +632,9 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
    *   Clova (#16a34a — green-700 계열): OCR 파싱 완료 배지 (DRY_RUN 모드 표시)
    *   KFTC  (#3b82f6 — blue-500 계열):  입금 매칭 MATCHED 배지
    *
-   * NOTE: 현 shell 단계에서 vendor 토큰 색상 CSS 가 미구현 시 정적 키워드 검증으로 대체.
+   * NOTE: bodyText fallback 은 현 shell 단계에서 vendor-token-* 시각 요소가 아직 미구현인
+   *       T4 한정 임시 대체다. 권한/런타임 guard 검증에는 복제 금지이며, vendor-token-*
+   *       testid 도입 즉시 직접 visible 단언으로 전환한다.
    *       Phase 11 실 연동 완료 후 색상 contrast (WCAG 4.5:1) 자동 검사 추가 예정.
    */
   test('T4: 4 vendor 토큰 시각 구분 — vendor UI 요소 visible 검증', async ({ page }) => {
@@ -808,15 +644,6 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
     // ── step 1: NTS 녹색 토큰 — 세금계산서 목록 페이지에서 vendor badge 확인
     await test.step('NTS 녹색 토큰 — 세금계산서 페이지 vendor 식별 요소 확인', async () => {
-      // NTS DRY_RUN 성공 응답 mock
-      await page.route('**/accounting/tax-invoices/**/emit-nts', async route => {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(buildNtsDryRunResponse()),
-        })
-      })
-
       await page.goto(NTS_URL_ACCOUNTANT, { waitUntil: 'domcontentloaded', timeout: 20000 })
       await page.waitForTimeout(1200)
 
@@ -847,8 +674,6 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
 
       expect(ntsTokenFound, 'NTS 세금계산서 페이지에서 NTS 관련 vendor 토큰/텍스트 미확인').toBe(true)
 
-      await page.unroute('**/accounting/tax-invoices/**/emit-nts')
-
       await page.screenshot({
         path: path.join(QA_DIR, 'T4-nts-green-token.png'),
         fullPage: true,
@@ -858,17 +683,6 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
     // ── step 2: Aligo teal 토큰 — SMS 발송 이력 페이지
     await test.step('Aligo teal 토큰 — SMS 발송 이력 페이지 vendor 식별 요소 확인', async () => {
       // 직전 step 의 역할 세션이 hash 네비로 재설정되지 않아 SMS 이력 접근이 막힐 수 있어 reload 로 mockRole 재독.
-      await page.route('**/admin/notifications/dispatch-sms/history**', async route => {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            data: { content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 },
-          }),
-        })
-      })
-
       await page.goto(ALIGO_URL_MANAGER, { waitUntil: 'domcontentloaded', timeout: 20000 })
       await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1200)
@@ -899,8 +713,6 @@ test.describe('SP-09-5 Phase 9 vendor 통합 검증 (T1~T5)', () => {
       }
 
       expect(aligoTokenFound, 'Aligo SMS 페이지에서 Aligo 관련 vendor 토큰/텍스트 미확인').toBe(true)
-
-      await page.unroute('**/admin/notifications/dispatch-sms/history**')
 
       await page.screenshot({
         path: path.join(QA_DIR, 'T4-aligo-teal-token.png'),

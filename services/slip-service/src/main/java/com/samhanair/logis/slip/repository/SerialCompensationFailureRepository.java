@@ -7,6 +7,9 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * 원격 재고 보상 실패 감사 저장소.
@@ -36,6 +39,34 @@ public interface SerialCompensationFailureRepository
      */
     List<SerialCompensationFailure> findByResolvedTrueAndCreatedAtBefore(
             LocalDateTime cutoff);
+
+    /**
+     * soft-delete 후 grace 경과 행만 물리 삭제한다.
+     *
+     * <p>{@code is_deleted=TRUE} 조건이 미해소/활성 행 불가침을 보증한다.
+     * {@code @SQLRestriction} 은 native 미적용이라 의도적 우회한다.
+     * {@code ORDER BY deleted_at ... FOR UPDATE SKIP LOCKED} 로 다중 인스턴스가 동일 배치를 선점하지 않는다.
+     *
+     * @param cutoff 물리 삭제 기준 시각. {@code deleted_at} 이 이 시각보다 오래된 행만 삭제
+     * @param batchSize 단일 cron 발화에서 삭제할 최대 행 수
+     * @return 물리 삭제 건수
+     */
+    @Modifying
+    @Query(value = """
+            DELETE FROM serial_compensation_failures
+             WHERE id IN (
+                SELECT id
+                  FROM serial_compensation_failures
+                 WHERE is_deleted = TRUE
+                   AND deleted_at < :cutoff
+                 ORDER BY deleted_at
+                 LIMIT :batchSize
+                   FOR UPDATE SKIP LOCKED
+             )
+            """, nativeQuery = true)
+    int deleteSoftDeletedBefore(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("batchSize") int batchSize);
 
     /**
      * 자동 재시도 후보를 조회한다. (D-SER-27)
