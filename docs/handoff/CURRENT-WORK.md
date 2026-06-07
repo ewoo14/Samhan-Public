@@ -4,6 +4,28 @@
 
 ---
 
+## 🧹 2026-06-07 (심야 후속 세션 — 최신) — 로컬 잔여 정비 완결 + 신규 후보 발굴 정찰 (개발 큐 진성 소진 판정)
+
+> 개발책임자 "둘 다 (정비 → 발굴)" 지시. PR 없음 — 정비 커밋 `098a0e3e` 직푸시.
+
+### ✅ 로컬 잔여 정비 3건 완결 (`098a0e3e`)
+- **#422 QA 증빙 박제**: `docs/qa/v5-dev-account-hash-repair/real-qa-evidence.md` 미커밋 누락분 커밋.
+- **spec 산출 PNG 3장 트래킹**: sp-09-5 T3 Aligo 양/음성(#419 D3) + sp-d1 T6 PermissionGuard redirect(C2) — 시블링 컨벤션 일치, 실캡처 육안 검증 후 커밋.
+- **`.claude/tmp/` gitignore 등재** (세션 임시 산출물).
+- **dev_locked 잠금 오염 psql 원복** (#422 잔여 P3 종결): `failed_login_attempts=5 + locked_at=NOW()` V5 seed 의도 복원 + 실로그인 401 "계정이 잠겼습니다" 실증. 커밋 무관(로컬 DB 환경 정비).
+
+### 🔍 신규 후보 발굴 정찰 결과 — **집 PC 개발 큐 진성 소진**
+- **stale 걸러냄(실코드 검증)**: ON_HOLD 보류(`PartnerOrderHoldController` 존재)·시리얼 S1~S4(`StockInstance`+V18/V19 존재)·C2b 보류 3건 가드(RoleGuard 실사용=AdminLayout 1곳뿐) — **전부 구현 완료**.
+- **C5 잔여 정비 후보도 실체 없음** (very thorough 정찰 + PM 스팟체크 확정): 필터 ROLE_ dead-code CLEAN(X-User-Role 명시 무시+GROUP_ 단독)·사이드바 전면 dynamicCanAccess·gateway 상수 주석 명시·hasRole 잔존 = 전수 INTERNAL 신뢰 경계(유지 대상). 잔존 = `routes/index.tsx` stale RoleGuard 주석 ~13건(실가드=PermissionGuard 인데 주석이 RoleGuard 로 오기) — **P3, 차기 PR 동반 정정 후보** (단독 풀사이클 불비례, #423 의 #413 잔여 동반 패턴).
+
+### 🗺️ 잔여 진성 후보 (전부 외부 의존/개발책임자 결정 필요)
+1. **Phase 11 AWS 실 배포** (대형) — Terraform validate PASS 상태. 🔴 월 ₩405K 실비용 + cutover 일정 = 개발책임자 결정.
+2. **알리고 SMS 실 API 활성화** (소형) — 🔴 API Key + 단톡방 token 입수 대기.
+3. **lookup 3종 시드** (소형) — 🔴 회사 PC 전용 (workbook.json 집 PC 부재 재확인).
+4. 신규 도메인 기능 = 개발책임자 지정 필요 (legacy parity SP-08 종결, 기능 큐 소진).
+
+---
+
 ## 🏁 2026-06-07 (세션 종료 박제 — 최신) — **오늘 누계 4 PR 머지** (#420 권한 소급 / #421 V48 dev 계정 / #422 V49 해시 교정 / #423 전환 가드 정비)
 
 > 풀사이클 4회 완주 (조기PR→Codex 구현→dual review→QA Docker→CI→PM 종합→자율 머지). main `99fe4691`.
