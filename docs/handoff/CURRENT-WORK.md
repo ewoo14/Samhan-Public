@@ -4,7 +4,26 @@
 
 ---
 
-## 🆕 2026-06-07 (오전 자율 — 최신) — **PR #418 RC9 잔여 lookup 3종 머지** (#417 후 자율 연속)
+## 🆕 2026-06-07 (오후 — 최신) — **PR #419 보상 P2 후속 일괄 머지** + 세션 종료 (다음 세션 재개 지점)
+
+> main `b0f630d1`. 오늘 세션 누계 **3 PR 머지** (#417 권한 C5 후속 / #418 RC9 lookup / #419 보상 P2) — 권한·RC9·P2 백로그 **3개 시리즈 종결**.
+
+### ✅ PR #419 — 보상 P2 후속 일괄 (개발책임자 선택)
+- **D1 물리 purge (D-SER-28)**: 2단계 purge — soft-delete(90일) 후 grace 30일 경과분만 native hard-delete (SKIP LOCKED + ORDER BY). `CompensationPurgeService/Scheduler` **기본 비활성** + V33 partial index + env 템플릿. ⚠️ **운영 활성화(`SAMHAN_COMPENSATION_PURGE_ENABLED`) 시점에 grace 30일 개발책임자 확정 확인 필요.**
+- **D2 Micrometer**: `CompensationMetrics` 4종 (failure_recorded/alert_send/retry/retention_purged{soft|hard}) — afterCommit 계측, enum 태그 한정, 사전 등록 (Docker 실QA 로 prometheus 노출 실증).
+- **D3 sp-09-5**: NTS(mockNts502)/Aligo(mockAligo502) in-process 502 트리거 + spec T1/T3 false-green 전삭 (page.route no-op 잔재 0, T3 Aligo 양/음성 추가).
+- **D4**: M1(#382) dev-report 채무 보충.
+- dual review 1사이클 수렴 (1a Claude 6건 + 1b Codex 6건 전건 fix) · QA Docker 4/4 · suite 434/434 · CI 24/24.
+- 🧠 환경 함정 실측: vite dev server `spawn EPERM` 플레이크(stale node 정리로 해소) · design-system DataTable testid 미전달 재확인 · codex exec 검증단계 hang 은 산출물 확인 후 프로세스 정리로 대응.
+
+### 🗺️ 다음 세션 재개 후보 (개발책임자 결정)
+1. **lookup 3종 시드 슬라이스** — material_price 28행·ODU 24행 (G13 게이트 무관, #418 plan §4 리스크 1). workbook.json(repo 외부) 원천 — 시드 방식 결정 필요.
+2. **ProductCatalogController 기존 GET 권한 소급** — 무권한(JWT only) 비대칭 해소 (#418 잔여, 권한코드 = PM 전권 자율 가능).
+3. 신규 기능 트랙 (주문→슬립 고도화 잔여 / 재고 고도화 등 — CURRENT-WORK 하단 구 후보 참조).
+
+---
+
+## 🗄️ 2026-06-07 (오전 자율) — **PR #418 RC9 잔여 lookup 3종 머지** (#417 후 자율 연속)
 
 > #417 머지 직후 PM 자율 다음 슬라이스 결정 → 풀사이클(계획→조기PR→Codex 구현→dual review→Docker 실QA→CI→머지) 완주. main `69123611`.
 
