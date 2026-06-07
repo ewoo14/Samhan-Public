@@ -54,7 +54,7 @@
 - [이카운트 품목 신원 규칙 (MIG-2 의무)](project_ecount_product_identity_rule.md) — 2026-05-19. 품목코드 ≠ 품목명 + 동일 품목명 row 가 여러 개일 때 품목관계 매핑으로 같은 품목 판정. MIG-2 진행 시 staging.ecount_item_raw + staging.ecount_item_relation_raw join 으로 deduplicate.
 - [🚨 백로그 분리 금지 (사이클 안 모든 fix 의무 강화)](feedback_no_backlog_strict.md) — 2026-05-26 PR #301/#302 회고. "schema 변경 동반", "PR scope 외", "후속 슬라이스" 모두 백로그 정당화 사유 X. 단순 fix (lock, config) 가능성 우선 평가. 백로그는 사이클 3 까지 미해소 결함 한정.
 - [주문 상태 모델 업무용어 매핑](project_partner_order_status_model.md) — 2026-05-30 개발책임자 확정. 진행중=DRAFT / 완료=CONFIRMED(출고전표 전환 시) / 보류=신규 ON_HOLD(미구현). 리스트 기본필터=진행중. RESTORE 복원=CONFIRMING·CANCELED만 409(제외목록 방식). 보류 추가+리스트 필터는 별도 슬라이스.
-- [주문→출고전표 전환 고도화 (차기 슬라이스)](project_order_slip_conversion.md) — 2026-05-30 개발책임자 업무규칙. 품목별 부분전환 + 다중주문 병합(헤더 충돌 선택/'/'병기) 신규. 견적→슬립·주문→슬립 1:1 은 이미 구현. Phase 2.4 주문 RESTORE 다음.
+- [주문→출고전표 전환 — 구현 완결+정책 확정](project_order_slip_conversion.md) — 2.6a/2.6b 구현 완료 확인(2026-06-07 정찰), 개발책임자 정책 4건(독립 추적/같은 거래처만/선택·병기/예약 모델) 현행 확정
 - [🚨 가짜 데이터·목업·시뮬레이션 영구 배제](feedback_no_fake_data_ever.md) — 2026-05-30 개발책임자 강력 지시. 모든 진행에서 실데이터·실서버·실화면·실측정만. QA 스크린샷=실 캡처만(PIL 합성/VITE_MOCK_MODE fixture 화면 금지). 실연동 불가 시 "캡처 불가+사유" 정직 보고(가짜 생성 금지). Playwright mock 은 FE 단위테스트 한정, 실QA로 포장 금지. (PR #324 PIL 합성 위반 회고)
 - [로컬 Docker 스택 + 데스크톱 실 QA 함정](project_local_stack_qa_gotchas.md) — 2026-05-30 PR #320 회고. launch 스크립트는 jar 만 빌드(이미지 stale 가능 → `docker compose build <svc>` 재빌드). 게이트웨이 격차(/api/v1/partners StripPrefix vs 풀패스, /auth/** JwtAuthentication 미적용, X-User-Name 미주입→principal=UUID). Playwright route() :포트 직접 프록시 브리지 + DS Modal data-testid 미전달(role=dialog). react-query invalidate 누락 stale.
 - [재고조회 모달 (Phase 2.6d 후속)](project_inventory_lookup_modal_2_6d.md) — 2026-05-31. 주문/판매/구매 상세 품목 선택→창고별 재고 모달, 0수량 창고 숨김+토글, 가용/실/예약

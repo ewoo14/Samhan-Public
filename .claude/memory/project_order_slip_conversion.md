@@ -1,34 +1,26 @@
 ---
 name: project-order-slip-conversion
-description: 주문→출고전표 전환 고도화 (다음 슬라이스 예정). 품목별 부분전환 + 다중주문 병합 + 헤더 충돌 선택/'/' 병기. 견적→슬립·주문→슬립 1:1 은 이미 구현됨.
-metadata:
+description: "주문→출고전표 전환 — 부분전환+다중병합 구현 완료(Phase 2.6a/2.6b D2), 2026-06-07 개발책임자 정책 4건 현행 확정"
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: 66bf5482-6c8e-4d40-8915-cbe33b1c607d
 ---
 
-# 주문 → 출고전표(slip) 전환 고도화 — 차기 슬라이스 (Phase 2.4 RESTORE 다음)
+# 주문 → 출고전표 전환 — 구현 완결 + 정책 확정 (2026-06-07 갱신)
 
-> 2026-05-30 개발책임자 업무 규칙 명시. Phase 2.4 주문 RESTORE 머지 후 진행 결정.
+당초 2026-05-30 "차기 슬라이스" 박제였으나 **Phase 2.6a(부분전환)/2.6b D2(다중 병합)에서 구현 완결** — 2026-06-07 정찰로 확인 (BE/FE/IT 완비).
 
-## 업무 규칙 (사용자 원문 정리)
-- **견적서 → 출고전표 바로 생성** (직접 변환)
-- **주문서 → 출고전표 전환** 가능, 단:
-  1. **품목별(라인 단위) 부분 전환**: 한 주문서의 일부 품목만 골라 출고전표로
-  2. **다중 주문서 → 단일 출고전표 병합**: 여러 주문서를 하나로 합칠 때, 서로 다른 출고정보(배송지 등 헤더)는 **선택**하거나 **'/'로 구분 병기**
+## 구현 상태 (grounding 2026-06-07)
+- **품목별 부분전환**: `PartnerOrderConvertService` — 라인 선택+수량, `convertedQuantity` 누적, 전량 시 CONVERTED 자동 전이(`markConvertedIfComplete`), 멱등 3중(idempotencyKey 스냅샷 + convertKeyUuid + slip 기존 반환), 재고 예약(reserve)+발행 실패 보상(release).
+- **다중주문 병합**: `PartnerOrderMergeConvertService` — 같은 거래처만(409), `slip_source_orders` 역참조 N행, 헤더 충돌은 FE 선택 or '/'병기(shippingInfo).
+- 권한: `sales.partner-order.convert` CREATE (단일/병합 공유). FE: SalesPartnerOrderDetailPage 전환 모달.
 
-## 현행 구현 상태 (grounding 2026-05-30)
-| 기능 | 상태 | 위치 |
-|---|---|---|
-| 견적 → 슬립 직접생성 | ✅ 구현됨 | `slip-service` `estimate/service/EstimateToSlipConverter.java`, `EstimateController` convert endpoint (ACCEPTED 견적 → OUTBOUND DRAFT, sourceType=ESTIMATE) |
-| 주문 → 슬립 1:1 전체전환 | ✅ 구현됨 | `partner-order-service` `PartnerOrderConfirmService` → `SlipServiceClient.publishFromPartnerOrder` → `slip-service` `SlipPublishController`/`SlipPublishService`. idempotencyKey `PO-CONF-{partnerCode}-{draftSeq}`, outbox 재시도 |
-| **품목별 부분 전환** | ❌ 미구현 | `ConfirmLineRequest` 에 라인 선택 필드 없음. `buildSlipPayload(order)` 가 전 라인 포함 |
-| **다중 주문 병합** | ❌ 미구현 | 각 주문 개별 1:1 발행만. 헤더 병합/선택 로직 없음 |
+## 2026-06-07 개발책임자 정책 확정 — 4건 전부 현행 유지
+1. 부분 병합 후 주문 상태 = **각 주문 독립 추적** (참여 주문별 전량 시점에 개별 CONVERTED).
+2. 상이 거래처 병합 = **불허 유지** (업무 케이스 없음, 409).
+3. 헤더 충돌 = **사용자 선택 or '/'병기** 저장 유지.
+4. 재고 모델 = **전환 시 예약**(가용 감소), 실차감은 출고 프로세스 — 예약 모델 유지.
 
-## 설계 시 핵심 고려
-- `Slip` 엔티티: `sourceType`(ESTIMATE/PARTNER_ORDER/MANUAL/MIGRATED_ECOUNT) + `sourceId`(단일) 만 존재. `assignPublishSource()` 1회성 setter.
-- **라인 단위 역추적 필드 없음** → 부분전환/병합 위해 `SlipLine.sourceOrderId`/`sourceOrderLineId` 또는 다중 `sourceId` 추적 스키마 신규 필요.
-- 병합 시 배송지/거래처 등 헤더 충돌 해소 UX (선택 라디오 또는 '/' 병기) 설계 필요.
-- 주문 부분소비 상태관리: 일부 라인만 전환 시 주문 잔여 라인 상태(부분전환/완전전환) 추적 필요 → 주문 status enum 확장 가능성.
-
-## 관련
-- [[project-local-stack-qa-gotchas]] (게이트웨이/Docker QA 함정)
-- Phase 2.4 주문 RESTORE spec: `docs/superpowers/specs/2026-05-30-partner-order-restore-version-history-design.md`
+## 잔여
+- `requireConvertible()` 이 slipNo!=null 만 검사 — CONVERTED status 명시 검사 보강 (2026-06-07 정비 슬라이스 처리 대상, FE 화이트리스트 방어 의존 해소).
