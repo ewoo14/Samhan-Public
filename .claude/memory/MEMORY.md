@@ -74,3 +74,5 @@
 - [FE canAccess page-code는 BE @RequirePermission 정확 일치](feedback_fe_canaccess_pagecode_be_match.md) — 2026-06-06(C2/C5). role→canAccess 이관 시 page-code=실제 BE 엔드포인트 @RequirePermission(테마틱 금지), action 정확, FE>BE 불일치(seed>BE가드) 시 이관말고 유지, 버튼 canAccess 가드 동반, mock seed 정확. dual review 의무
 - [결함 fix 계열 단위 전수 sweep](feedback_defect_family_sweep_fix.md) — 리뷰 지적 1건=동일 패턴 전수 grep 의무, page-code 전환 4종 원자 체크리스트(BE대조→FE전환→mock 동기화→spec 박제), mock 누락=silent regression (PR #417 사이클3 회고, 2026-06-07)
 - [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — detached stdin 으로 codex exec 실행 시 무한 hang, </dev/null 리다이렉트 필수 (2026-06-07)
+- [PM-Codex 진행 검증 의무](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시 검증 + 주기 상태 보고, 침묵 구간 금지 (2026-06-07)
+- [PM 10분 주기 진행 보고](feedback_pm_10min_status_report.md) — 작업 중 10분당 1회 상태표 보고 의무, /loop 10m 가동 (2026-06-07)

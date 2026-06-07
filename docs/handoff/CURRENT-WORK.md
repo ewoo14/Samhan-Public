@@ -4,9 +4,14 @@
 
 ---
 
-## 🆕 2026-06-07 (저녁 — 최신) — **PR #420 ProductCatalog 권한 소급 + 풀패스 라우팅 교정** (진행 중 → 머지 시 갱신)
+## 🎉 2026-06-07 (저녁 — 최신) — **PR #420 ProductCatalog 권한 소급 + 풀패스 라우팅 교정 머지** (`f06f294f`)
 
-> 핸드오프 재개 후보 ② 선택 (개발책임자 "권한 다 끝난 줄 알았는데" → 별건 비대칭 확인 후 진행). 권한코드 = PM 전권 자율.
+> 핸드오프 재개 후보 ② 선택 (개발책임자 "권한 다 끝난 줄 알았는데" → 별건 비대칭 확인 후 진행). 권한코드 = PM 전권 자율 머지. CI 24/24 green · PM 종합 리뷰 게시 완료.
+
+### 🗺️ 다음 재개 후보 (개발책임자 결정)
+1. **lookup 3종 시드 슬라이스** — 자재 28행·ODU 24행, workbook.json(repo 외부) 원천 — **시드 방식 결정 필요** (#418 이월).
+2. **D-PCR-02**: products.list 무권한 dev 계정(기사/사원) V5 seed 추가 — 403 실QA 상시화 (소형, 권한 계열 PM 자율 가능).
+3. 신규 기능 트랙 — 주문→슬립 전환 고도화(부분전환+다중병합, [[project_order_slip_conversion]]) / 재고조회 모달([[project_inventory_lookup_modal_2_6d]]) / 시리얼 재고([[project_serial_inventory_model]]).
 
 - **범위 확대**: 핸드오프 기재 GET 3건 → 정찰 결과 **무권한 endpoint 10건**(ProductCatalogController 9 — mutation 6 P1 + CategoryController.tree) + **게이트웨이 라우팅 결함 동반 발견**(/api/v1/products exact 가 strip 오매칭, usage PATCH 404 도달 불가) → @RequirePermission 10건 + no-strip 라우트 2건 + deleteSpec actor X-User-Id + mock/계약 spec + qa-e2e hard-gate.
 - **dual review**: 1a Claude 8건(전건 fix) → 1b Codex 신규 0 → 2a delta 재검증 신규 0 — 수렴. 기각 2건 근거 박제(envelope(null) mock 원칙·트레일링 슬래시 matchTrailingSlash=true).
