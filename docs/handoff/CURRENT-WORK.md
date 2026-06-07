@@ -4,7 +4,15 @@
 
 ---
 
-## 🎉 2026-06-07 (밤 — 최신) — **PR #421 D-PCR-02 dev 계정 seed 머지** (`4fce46e8`) — 오늘 세션 누계 2 PR
+## 🆕 2026-06-07 (심야 — 최신) — **PR #422 V49 해시 교정 머지** (`8a9da3f4`) — 오늘 누계 3 PR + lookup 시드 회사 PC 이월
+
+- **#422**: V5 dev 계정 9종 해시 교정 (이중 가드 idempotent) — psql 수동 우회 종식. QA: $2a 잔존 0 + 전 계정 실로그인 200. 잔여 P3 = 로컬 dev_locked 잠금 오염(환경 정비 건).
+- **⏭️ lookup 3종 시드 = 회사 PC 세션 이월** (개발책임자 결정): workbook.json(migration/source/sheet/, gitignore) 이 집 PC 부재 + ecount raw 빈 디렉터리 — 실값 위조 금지 원칙으로 보류. **회사 PC 작업 절차**: workbook.json 에서 자재 28행(싱글 자재가격 시트 row 2~29)·ODU 24행(추천실외기 row 3~26) 추출 → V50 seed SQL 박제 (V4 패턴) + 분지관 6코드는 G13 개발책임자 검토(description/의미) 후 포함. mock 표본(4/4/6행)·rc9 spec 정합 갱신 동반.
+- **다음 진행 (집 PC 세션 계속)**: 신규 기능 트랙 = **주문→출고전표 전환 고도화** ([[project_order_slip_conversion]] — 품목별 부분전환 + 다중주문 병합, 헤더 충돌 선택/'/'병기) 진입.
+
+---
+
+## 🎉 2026-06-07 (밤) — **PR #421 D-PCR-02 dev 계정 seed 머지** (`4fce46e8`) — 오늘 세션 누계 2 PR
 
 > #420 머지 직후 PM 자율 연속 진입 → 풀사이클 완주. **V48**: dev_driver/dev_staff/dev_dispatch + 그룹 배속(107/108/106) + BOOL_OR materialize. 403 deny 실QA 가 psql 조작 없이 상시 재현 가능해짐.
 
