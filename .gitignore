@@ -103,6 +103,7 @@ clients/desktop/legacy-assets/estimate/*.html
 .claude/scheduled_tasks.lock
 .claude/.cache/
 .claude/worktrees/
+.claude/tmp/
 .superpowers/
 
 # ----- PR/Issue/TM/PM draft (gh CLI body-file 일회용) -----
