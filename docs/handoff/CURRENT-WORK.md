@@ -4,7 +4,18 @@
 
 ---
 
-## 🎉 2026-06-07 (저녁 — 최신) — **PR #420 ProductCatalog 권한 소급 + 풀패스 라우팅 교정 머지** (`f06f294f`)
+## 🎉 2026-06-07 (밤 — 최신) — **PR #421 D-PCR-02 dev 계정 seed 머지** (`4fce46e8`) — 오늘 세션 누계 2 PR
+
+> #420 머지 직후 PM 자율 연속 진입 → 풀사이클 완주. **V48**: dev_driver/dev_staff/dev_dispatch + 그룹 배속(107/108/106) + BOOL_OR materialize. 403 deny 실QA 가 psql 조작 없이 상시 재현 가능해짐.
+
+- **CI 가 V5 잠복 결함 적발**: V5 해시 ≠ 평문 "dev_p05_pass!" (#411 psql 우회로 잠복) → 신규 IT 가 적발, #411 검증 해시($2b$12$g9/...)로 비전파. ⚠️ **V5 기존 9계정 해시 결함은 잔존** (dev 한정, 후속 후보).
+- dual review: 1a Claude P2 6·P3 6 전건 fix → 1b Codex 핵심 3섹션 결함 0·P3 2 즉시 fix — 수렴. QA Docker **7/7 PASS**. GitGuardian = dev seed false positive PM 판정.
+- FE: AdminRole 10-role 표시 정합 (UsersPage/RolesPage/mock). BUILTIN_GROUP_ROLE_MAP 제외 = C3b 의도 유지.
+- 🧠 운영 전환: **Codex 디스패치 = codex exec 백그라운드 표준** ([[feedback_pm_codex_progress_verification]] 갱신 — MCP 동기 호출은 사용자 메시지에 취소되는 패턴 3회로 폐기) + 10분 주기 보고 가동([[feedback_pm_10min_status_report]]).
+
+---
+
+## 🎉 2026-06-07 (저녁) — **PR #420 ProductCatalog 권한 소급 + 풀패스 라우팅 교정 머지** (`f06f294f`)
 
 > 핸드오프 재개 후보 ② 선택 (개발책임자 "권한 다 끝난 줄 알았는데" → 별건 비대칭 확인 후 진행). 권한코드 = PM 전권 자율 머지. CI 24/24 green · PM 종합 리뷰 게시 완료.
 
