@@ -4,7 +4,30 @@
 
 ---
 
-## 🆕 2026-06-07 (심야 — 최신) — **PR #422 V49 해시 교정 머지** (`8a9da3f4`) — 오늘 누계 3 PR + lookup 시드 회사 PC 이월
+## 🏁 2026-06-07 (세션 종료 박제 — 최신) — **오늘 누계 4 PR 머지** (#420 권한 소급 / #421 V48 dev 계정 / #422 V49 해시 교정 / #423 전환 가드 정비)
+
+> 풀사이클 4회 완주 (조기PR→Codex 구현→dual review→QA Docker→CI→PM 종합→자율 머지). main `99fe4691`.
+
+### ✅ #423 — 전환 가드 회귀 박제 + arologis CORS Javadoc (`99fe4691`)
+- requireConvertible 동작 보존 리팩토링 + 비정상 조합(CONVERTED+slipNo=null / CONFIRMED+PENDING_RETRY) 회귀 IT 2케이스 + verifyNoInteractions 경로 차단 단언. **정찰 P3 정정 박제** (기존 가드도 화이트리스트 — 과대 판정).
+- arologis SecurityConfig CORS Javadoc 명확화 (#413 잔여 P2 종결, 동작 비변경).
+
+### 🧭 도메인 확정 사항 (본 세션)
+- **주문→슬립 전환 고도화 = 기구현 확인 + 정책 4건 현행 확정** (memory `project_order_slip_conversion` 갱신 — 독립 추적/같은 거래처만/선택·병기/예약 모델). 신규 기능 큐 3건(전환 고도화/재고 모달/시리얼) 전부 구현 완료 상태.
+
+### 🗺️ 다음 세션 재개 후보
+1. **lookup 3종 시드 (회사 PC 전용)** — workbook.json(migration/source/sheet/) 회사 PC 보유 → 자재 28행(row 2~29)·ODU 24행(row 3~26) 추출 → V50 seed SQL (V4 패턴) + 분지관 6코드 G13 검토(개발책임자 description 확정) + mock/rc9 spec 정합.
+2. **신규 기능 발굴** — 큐 소진 상태. PM 로드맵/legacy parity 분석으로 후보 제안 또는 개발책임자 지정.
+3. 소소 잔여: 로컬 dev_locked 잠금 오염 정비(psql) · 전 세션 미참조 PNG 3장(sp-09-5 T3 2장/sp-d1 T6 1장 — untracked, 처분 결정 대기).
+
+### 🧠 본 세션 운영 박제
+- **Codex 디스패치 = codex exec 백그라운드 표준** (MCP 동기 호출 폐기 — 사용자 메시지에 취소되는 패턴 3회). [[feedback_pm_codex_progress_verification]]
+- **10분 주기 진행 보고 의무** ([[feedback_pm_10min_status_report]]) — 세션 중 cron 가동, 종료 시 해제.
+- QA 실서버가 dual review 미적발 P1 2회 적발(#420 D-PCR-01 식별자 단절 / #421 C-1 V5 해시) — 실QA 가치 재입증. 무효 캡처 2장 PM 육안 적발·제거(no-fake-data).
+
+---
+
+## 🆕 2026-06-07 (심야) — **PR #422 V49 해시 교정 머지** (`8a9da3f4`) — 오늘 누계 3 PR + lookup 시드 회사 PC 이월
 
 - **#422**: V5 dev 계정 9종 해시 교정 (이중 가드 idempotent) — psql 수동 우회 종식. QA: $2a 잔존 0 + 전 계정 실로그인 200. 잔여 P3 = 로컬 dev_locked 잠금 오염(환경 정비 건).
 - **⏭️ lookup 3종 시드 = 회사 PC 세션 이월** (개발책임자 결정): workbook.json(migration/source/sheet/, gitignore) 이 집 PC 부재 + ecount raw 빈 디렉터리 — 실값 위조 금지 원칙으로 보류. **회사 PC 작업 절차**: workbook.json 에서 자재 28행(싱글 자재가격 시트 row 2~29)·ODU 24행(추천실외기 row 3~26) 추출 → V50 seed SQL 박제 (V4 패턴) + 분지관 6코드는 G13 개발책임자 검토(description/의미) 후 포함. mock 표본(4/4/6행)·rc9 spec 정합 갱신 동반.
