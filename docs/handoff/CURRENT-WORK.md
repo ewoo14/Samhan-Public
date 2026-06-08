@@ -4,7 +4,22 @@
 
 ---
 
-## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #427 머지** (`fdedf4d6`) — arologis 백오피스 Phase B FE (인사 화면)
+## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #428/#429 머지** — arologis 백오피스 Phase C 간이회계 (BE+FE)
+
+> Phase B(인사) 완결 후 Phase C(간이회계) 풀사이클 완주. **⚠️ Codex 사용량 한도 다운(~Jun 11) → 구현+dual review 모두 Claude 에이전트 대체**(환경한계 예외).
+
+### ✅ Phase C 간이회계 (BE #428 `6cf0c14f` / FE #429 `09fea061`)
+- BE: ArologisSimpleAccount(계정과목 14 seed)+ArologisCashTxn(수입/지출 **단식부기** — 분개/차대/마감/세금 0) + ArologisAccountingController(arologis.accounting.cashbook/summary, role_page_permissions V51) + V15. 월집계=수입합-지출합(BigDecimal).
+- FE: CashbookPage(집계 카드 수입/지출/잔액/건수 + 거래 DataGrid + 입력/수정/삭제 Modal, 금액 콤마, 계정 type 정합 FE 미러). 회계 네비(canManageHr).
+- **풀스택 실화면 QA**: 거래 4건 실 API→월집계 -770,000 실증 + 현금출납장 실화면. 증빙 `docs/qa/arologis-accounting-phase-c/`.
+
+### 🗺️ 다음 = **Phase A 권한 관리 UI** (arologis 백오피스 마지막)
+- 롤×page-code×action 매트릭스 조회/할당 화면 — arologis page-code(dispatch/hr/accounting) 관리. auth-service PermissionAdminController 활용.
+- **Codex 회복(Jun 11) 후 정상 dual(Claude+Codex) review 복귀**.
+
+---
+
+## 🏢 2026-06-08 (회사 PC 세션) — **PR #427 머지** (`fdedf4d6`) — arologis 백오피스 Phase B FE (인사 화면)
 
 > Phase B BE(#426) 후속 FE. 6단계 워크플로우 + 풀스택 실화면 QA 완주. **⚠️ 사이클2부터 Codex 사용량 한도 다운(~Jun 11) → dual review/fix Claude 에이전트 대체**(환경한계 예외, 회복 시 정상 복귀).
 

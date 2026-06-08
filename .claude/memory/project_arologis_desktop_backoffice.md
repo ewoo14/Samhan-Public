@@ -27,4 +27,6 @@ metadata:
 
 **✅ Phase B FE 완료 (PR #427 머지 `fdedf4d6`, 2026-06-08)**: arologis-desktop EmployeesPage/DepartmentsPage(DataGrid+Modal) + api/arologisHr.ts + 라우트/네비. roleLabel 한국어, FE 권한게이팅(canManageHr/canGrantMaster, AROLOGIS_MASTER 옵션 비마스터 숨김). **풀스택 Docker 실화면 QA 통과**(실 auth+arologis+Postgres+admin 로그인, 직원 provisioning/롤이력/퇴직 실증, 증빙 docs/qa/arologis-hr-phase-b/). ⚠️ 사이클2부터 Codex 사용량 한도 다운(~Jun 11) → dual review/fix Claude 대체.
 
-**차기**: Phase C 간이회계(ArologisCashTxn 수입/지출 + 간이 계정과목 + 월집계) → Phase A 권한UI. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공). **Codex 회복(Jun 11) 후 정상 dual review 복귀**.
+**✅ Phase C 간이회계 완료 (BE PR #428 `6cf0c14f` / FE PR #429 `09fea061`, 2026-06-08)**: ArologisSimpleAccount(계정과목 14 seed)+ArologisCashTxn(수입/지출 단식, 분개/차대/마감/세금 0) + ArologisAccountingController(arologis.accounting.cashbook/summary) + V15/auth V51 + CashbookPage(집계 카드+거래 DataGrid+입력 Modal). 풀스택 실화면 QA 통과(거래 4건/월집계 -770,000, docs/qa/arologis-accounting-phase-c/). Codex 다운(~Jun 11) → Claude 에이전트 구현+리뷰 대체.
+
+**차기 = Phase A 권한 관리 UI** (마지막): 기존 DynamicPermission(auth-service role_page_permissions) 위 롤×page-code×action 매트릭스 조회/할당 화면 — arologis page-code(arologis.dispatch.*/hr.*/accounting.*) 관리. auth-service PermissionAdminController 활용. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공). **Codex 회복(Jun 11) 후 정상 dual review 복귀**.
