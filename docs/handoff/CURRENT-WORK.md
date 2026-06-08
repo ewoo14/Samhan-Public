@@ -4,7 +4,24 @@
 
 ---
 
-## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #428/#429 머지** — arologis 백오피스 Phase C 간이회계 (BE+FE)
+## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #430/#431 머지** — arologis 백오피스 Phase A 권한관리 (BE+FE) ⇒ **백오피스 B·C·A 3축 완결**
+
+> arologis 백오피스 마지막 슬라이스. 6단계 워크플로우 완주. **⚠️ Codex 사용량 한도 다운(~Jun 11) → 구현+dual review+QA 전 단계 Claude 대체**(환경한계 예외, 회복 시 정상 복귀).
+
+### ✅ Phase A 권한 관리 (BE #430 `f0a13b42` / FE #431 `1a4fd151`)
+- BE: auth-service `PermissionInternalController` GET `/role-matrix?pagePrefix=` + PUT `/role-grant`(X-Internal-Token, 도메인 무제한 write = 호출측 스코프 책임 명시) + V52(arologis.admin.permissions MASTER-only) + PageCode AROLOGIS_ADMIN_PERMISSIONS. arologis-service `ArologisPermissionAdminController`(/admin/arologis/permissions, **arologis. prefix 스코프 가드** + 중앙 MASTER 거부 + X-User-Id audit) + AuthPermissionAdminClient.
+- FE: arologis-desktop `PermissionsPage`(롤×page-code 매트릭스, V/E 토글 즉시 PUT+invalidate, **희소셀 가상 그리드로 신규 grant 생성**, 낙관 setQueryData+cancelQueries+롤백, 중앙 MASTER 열 읽기전용, edit→view 자동) + `api/arologisPermissions.ts` + 권한 네비/라우트 + authStore canGrantMaster 3중 게이트.
+- 리뷰 회귀: ROLE_LABELS 가 **11 중앙롤 전체**(마스터/매니저/개발자/배차담당자/기사/사원/영업원/회계원/창고원/재고원/협력사) 필요 — V10/V50/V51 이 모든 롤에 arologis.* grant 시드 → getRoleMatrix 가 전부 반환. 크로스체크 5롤 + **실QA 가 DEVELOPER/DRIVER/PARTNER/STAFF 4롤 추가 적발**(코드리뷰 미검출, 실화면 가치 실증).
+- **풀스택 실화면 QA**: 실 auth:8181+arologis:8197+Postgres(2DB)+렌더러+admin 로그인 → 매트릭스 조회(200)·grant upsert **auth_db f→t persist**·보안 2중 가드(중앙 MASTER 403/arologis 외 page-code 403)·실화면 11롤 매트릭스·토글·edit→view 자동. 증빙 `docs/qa/arologis-permission-phase-a/`.
+
+### 🗺️ 다음 후보 (개발 큐 — arologis 백오피스 종료)
+- arologis 백오피스(B 인사 / C 간이회계 / A 권한관리) **3축 전부 완결**. 잔여 = 실 부서명·계정과목 seed(개발책임자 제공 대기), Codex 회복(Jun 11) 후 추가 크로스 실서버 테스트.
+- **외부 의존 후보**: Phase 11 AWS 배포 / 알리고 SMS / lookup 3종 시드 workbook.json — 전부 외부 자격·승인 대기.
+- ⚠️ QA 부작용: 본 세션 QA 가 실 auth_db/arologis_db 를 main HEAD 마이그레이션까지 전진 적용(auth V52, arologis V15). 로컬 dev 스택 컨테이너(:8081/:8097)는 **stale 코드** → 다음 `docker compose up --build` 로 재빌드 권장(auth V46 accounts.role 컬럼 drop 반영).
+
+---
+
+## 🏢 2026-06-08 (회사 PC 세션) — **PR #428/#429 머지** — arologis 백오피스 Phase C 간이회계 (BE+FE)
 
 > Phase B(인사) 완결 후 Phase C(간이회계) 풀사이클 완주. **⚠️ Codex 사용량 한도 다운(~Jun 11) → 구현+dual review 모두 Claude 에이전트 대체**(환경한계 예외).
 
