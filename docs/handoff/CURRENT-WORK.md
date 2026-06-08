@@ -4,7 +4,26 @@
 
 ---
 
-## 🔌 2026-06-08 (회사 PC 세션 — 최신) — **PR #425 머지** (`f4848c74`) — RC9 lookup 3종 시트→DB sync 확장 (시드 소스 확보)
+## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #426 머지** (`3f3cf464`) — arologis 백오피스 Phase B 인사(HR) BE
+
+> 개발책임자 "arologis-desktop = 행정직원 전용 백오피스(자체 마스터/권한/인사/회계)" 지시 → 전체 spec → Phase B 인사 BE 풀사이클 완주. **신규 정식 워크플로우 적용**(아래).
+
+### ✅ 결과 (PR #426)
+- **정찰 재정의**: arologis 자체 마스터 계정·인증·권한 기반은 **이미 구축**(V9). 신규 = 인사·회계·권한관리UI. 순서 **B(인사)→C(간이회계)→A(권한UI)**.
+- **Phase B 인사 BE**: ArologisEmployee(↔AdminUser **1:1 provisioning**)·ArologisDepartment·ArologisRoleChangeHistory + ArologisHrController(page-code `arologis.hr.*`) + V14 + auth V50(`role_page_permissions` 시드, arologis.admin V10 컨벤션). 
+- **보안 견고화(사이클2)**: 권한상승/강등 가드 = **actor persisted role DB 조회**(X-User-Role 헤더 미신뢰, 위조 무력화). 게이트웨이 X-User-Role 전반 경화 = pre-existing C5 cutover(D-PGC-11~13).
+- spec=`docs/superpowers/specs/2026-06-08-arologis-desktop-backoffice-spec.md`, dev-report=`docs/dev-reports/arologis-hr-phase-b.md`, DECISIONS=D-AROLO-HR.
+
+### 🧠 신규 워크플로우 ([[cycle-pm-judgment-gate]]) — 슬라이스당 6단계 적용
+1. Claude 기획+PR 개설 → 2. Codex 개발+개발상세내역 PR 게시 → 3. Claude 5-agent TM 리뷰+fix → 4. Codex 5-agent TM 리뷰+fix → 5. PM 판단+리뷰 게시 → 6. 사이클2 또는 머지. (매 사이클 종료마다 양TM 리뷰+PM판단 명시.)
+
+### 🗺️ 다음 (arologis 백오피스)
+1. **Phase B FE** — EmployeesPage/DepartmentsPage + mock + Playwright + **풀스택 Docker 실화면 QA**(launch-local-stack).
+2. **Phase C 간이회계** → **Phase A 권한UI**. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공).
+
+---
+
+## 🔌 2026-06-08 (회사 PC 세션) — **PR #425 머지** (`f4848c74`) — RC9 lookup 3종 시트→DB sync 확장 (시드 소스 확보)
 
 > 회사 PC 첫 세션(폴더 `Samhan-Public` rename 반영 완료, SAMHAN9440). 개발책임자 "lookup 시드 소스 확보" 지시 → 풀사이클 완주.
 

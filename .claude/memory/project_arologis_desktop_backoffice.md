@@ -21,4 +21,8 @@ metadata:
 - 🔴 **회계 시스템** — arologis 독립 단위 회계 (Samhan Public accounting-service 패턴, 규모 축소).
 - 🟠 **권한 관리 UI** — 기존 DynamicPermission 위 관리/매트릭스 화면.
 
-차기 작업 = 위 3종을 phase/slice 로 분해, 개발책임자와 시작 슬라이스·HR/회계 범위(payroll 포함? 복식부기? 규모) 확정 후 진행.
+**확정 범위 (개발책임자 2026-06-08)**: 인사=직원·부서 기본 / 회계=간이 수입·지출 / 순서 **B(인사)→C(간이회계)→A(권한UI)** / 권한 grant=중앙 auth-service 공유(arologis.* 네임스페이스, role_page_permissions 시드) / 직원↔계정 1:1 통합 / 롤=기존 2롤 page-code 통제 / RoleChangeHistory 포함. spec=`docs/superpowers/specs/2026-06-08-arologis-desktop-backoffice-spec.md`.
+
+**✅ Phase B 인사 BE 완료 (PR #426 머지 `3f3cf464`, 2026-06-08)**: ArologisEmployee(↔AdminUser 1:1 provisioning)/ArologisDepartment/ArologisRoleChangeHistory + ArologisHrController(page-code arologis.hr.*) + V14 + auth V50(role_page_permissions). 권한상승/강등 가드 = **actor persisted role DB 조회**(X-User-Role 미신뢰). dev-report=`docs/dev-reports/arologis-hr-phase-b.md`, DECISIONS=D-AROLO-HR-01~04.
+
+**차기**: Phase B FE(EmployeesPage/DepartmentsPage + 풀스택 Docker 실QA) → Phase C 간이회계 → Phase A 권한UI. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공).
