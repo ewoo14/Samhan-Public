@@ -4,7 +4,26 @@
 
 ---
 
-## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #430/#431 머지** — arologis 백오피스 Phase A 권한관리 (BE+FE) ⇒ **백오피스 B·C·A 3축 완결**
+## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #432 머지** — arologis 6-롤 모델 확장 (`8de0fe25`)
+
+> 개발책임자 지시 "아로로지스는 마스터/매니저/개발자/영업사원/회계사원/배송기사 6롤만". 적용범위=권한 모델 전체(매트릭스+HR 배정). 6단계 워크플로 완주(Codex 다운 → 전 단계 클로드 대체).
+
+### ✅ 결과 (PR #432)
+- **BE arologis**: AdminUserRole enum 2→6롤(+DEVELOPER/SALES/ACCOUNTANT/DRIVER). `DynamicPermissionClientConfig.normalize()` = AROLOGIS_ prefix-strip(6롤 전부 중앙코드 일치). **V16** = auth_admin_user/role_change_history CHECK 제약 6롤 확장(실 QA 적발).
+- **BE auth 시드 V53**: 무관 5롤(DISPATCH/INVENTORY/PARTNER/STAFF/WAREHOUSE) arologis.* grant 제거 + 신규 4롤 결정적 재적재. 개발자=**인사(HR)·권한관리 제외 전권**(개발책임자 정책: 직원 생성/롤변경 불가→권한 전파 차단), 회계사원=회계 V/E, 영업사원=배차/지역 조회(V), 배송기사=기사앱 V/E. V50/V51/V52 IT 는 MASTER/MANAGER 계약만, 나머지는 V53 IT 로 이관.
+- **FE arologis-desktop**: ArologisRole 6 · EmployeesPage 드롭다운/라벨 6 · PermissionsPage 매트릭스 라벨 6 중앙코드 · sortRoles 위계 · authStore 주석.
+- **enforcement**: admin/dispatch/hr/accounting 컨트롤러 = @RequirePermission(page-code)만(코드 @PreAuthorize 게이트 없음, javadoc 만 stale → 정정) → 매트릭스 grant 가 신규 롤에 즉시 발효.
+- **풀스택 실 QA**: 매트릭스 정확 6롤(제거 5롤 DB 0행) + 신규롤 enforcement(회계사원 → 회계 200/배차·인사·권한 403) + 실화면 6롤 매트릭스(개발자 HR 미체크 시각) + HR 6롤 드롭다운. 증빙 `docs/qa/arologis-6-role-model/`.
+- **교훈**: 정적 dual review 전부 통과한 CHECK 제약 회귀를 **실 Postgres INSERT(실 QA)가 적발** → V16. 실서버 QA 가치 재실증.
+
+### 🗺️ 다음 후보 (개발 큐 — arologis 백오피스 종료)
+- arologis 백오피스(B 인사 / C 간이회계 / A 권한관리 / 6-롤 모델) 완결. 잔여 = 실 부서명·계정과목 seed(개발책임자 제공 대기), Codex 회복(Jun 11) 후 추가 크로스 검증.
+- 외부 의존: Phase 11 AWS / 알리고 SMS / lookup workbook.json.
+- ⚠️ 본 세션 QA 가 실 auth_db(V53)/arologis_db(V16) 전진 적용 → 로컬 dev 스택(:8081/:8097) stale, `docker compose up --build` 재빌드 권장.
+
+---
+
+## 🏢 2026-06-08 (회사 PC 세션) — **PR #430/#431 머지** — arologis 백오피스 Phase A 권한관리 (BE+FE) ⇒ **백오피스 B·C·A 3축 완결**
 
 > arologis 백오피스 마지막 슬라이스. 6단계 워크플로우 완주. **⚠️ Codex 사용량 한도 다운(~Jun 11) → 구현+dual review+QA 전 단계 Claude 대체**(환경한계 예외, 회복 시 정상 복귀).
 
