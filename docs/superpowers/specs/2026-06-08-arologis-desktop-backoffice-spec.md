@@ -57,12 +57,14 @@
 - Docker 실서버 실 QA + 실화면 스크린샷([[qa-docker-real-test]],[[no-fake-data-ever]]). dual review N=2([[dual-5agent-review]],[[cycle-n2-mandatory]]). 조기 PR([[open-pr-early]]). Codex 구현([[codex-implements-claude-reviews]]).
 - arologis-desktop FE = design-system DataGrid/Modal 일관, data-testid 표준, mock 핸들러([[inprocess-mock-principles]]) + Playwright.
 
-## 4. 미결정 (개발책임자 확인 필요)
-1. **직원↔계정 모델**: ArologisEmployee 와 AdminUser(로그인) 를 1:1 연결로 통합? (직원 등록 시 로그인 계정 자동 생성 vs 별도). 권장 = 1:1, 직원 생성 시 AdminUser provisioning.
-2. **롤 체계**: 행정직원 롤을 AROLOGIS_MASTER/MANAGER 외에 세분(예 AROLOGIS_HR/AROLOGIS_ACCOUNTANT)할지, 아니면 page-code 권한만으로 통제할지.
-3. **RoleChangeHistory(롤 변경 이력)** MVP 포함 여부.
-4. **회계 계정과목 범위**: 간이 ~15코드 목록을 개발책임자가 지정할지(실 운영 항목), 아니면 표준 축약 seed 로 시작 후 조정.
-5. **부서 seed 목록**: 아로로지스 실 부서명.
+## 4. 설계 결정 (개발책임자 확정 2026-06-08)
+1. ✅ **직원↔계정 = 1:1 통합**: ArologisEmployee 생성 시 AdminUser(로그인 계정) 자동 provisioning + 연결(adminUserId NOT NULL). 행정직원=계정 일치. 퇴직 시 양쪽 비활성.
+2. ✅ **롤 = page-code 권한만**: 기존 `AROLOGIS_MASTER/AROLOGIS_MANAGER` 2롤 유지. 인사/회계 접근은 신규 page-code(`arologis.hr.*`/`arologis.accounting.*`) 권한으로만 통제(롤 세분화 안 함).
+3. ✅ **RoleChangeHistory = MVP 포함**: Phase B 에 `ArologisRoleChangeHistory`(previousRole→newRole·reason·changedBy) + 이력 모달 포함.
+
+### 잔여 seed 데이터 (구현 중 개발책임자 제공 — 차단 아님)
+4. **회계 간이 계정과목 목록**(~15코드 실 운영 항목) — 표준 축약 seed 로 시작 후 조정 가능.
+5. **부서 seed 목록**(아로로지스 실 부서명) — 임시 seed 후 조정 가능.
 
 ## 5. 권장 진행
 Phase A(권한 UI) → B(인사) → C(회계) 순차, 각 독립 PR. 본 spec 승인 후 Phase A spec 상세화 + Codex 디스패치.
