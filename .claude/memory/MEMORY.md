@@ -80,4 +80,5 @@
 - [standalone-boot 실 QA](feedback_standalone_boot_real_qa.md) — Testcontainers IT 가 Windows 로컬 skip 시 서비스 jar standalone 부팅(docker Postgres+실 외부소스)으로 실 QA, 2차 sync idempotency 실증 (PR #425)
 - [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 폴더 rename 시 desktop/arologis-desktop 의 @samhan/design-system file: junction 이 구경로로 깨짐 → npm install 복구 (web/mobile 면역, 2026-06-08)
 - [arologis-desktop 백오피스](project_arologis_desktop_backoffice.md) — 행정직원 전용, 자체 마스터/auth 이미 구축(V9), 신규 = 인사·회계·권한관리UI (Samhan Public 축소판, 2026-06-08)
+- [사이클 PM 판단 게이트](feedback_cycle_pm_judgment_gate.md) — 매 리뷰 사이클 종료마다 Claude/Codex TM 리뷰 게시 + PM 판단 명시 → 다음 사이클 or 머지 결정 (2026-06-08)
 - [변경 모듈 전체 test 완주 후 push](feedback_changed_module_full_test_before_push.md) — 신규 IT 타깃 실행만으로 push 금지, 기존 mock 단위테스트 구 패턴 스텁이 CI 에서만 깨짐 (PR #424 회고, 2026-06-08)

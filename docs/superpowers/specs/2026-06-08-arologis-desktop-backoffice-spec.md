@@ -62,6 +62,11 @@
 2. ✅ **롤 = page-code 권한만**: 기존 `AROLOGIS_MASTER/AROLOGIS_MANAGER` 2롤 유지. 인사/회계 접근은 신규 page-code(`arologis.hr.*`/`arologis.accounting.*`) 권한으로만 통제(롤 세분화 안 함).
 3. ✅ **RoleChangeHistory = MVP 포함**: Phase B 에 `ArologisRoleChangeHistory`(previousRole→newRole·reason·changedBy) + 이력 모달 포함.
 
+6. ✅ **권한 grant 저장소 = 중앙 auth-service 공유 유지** (2026-06-08 개발책임자): arologis 는 이미 권한 체크를 auth-service(`DynamicPermissionClient → /permissions/check`)에 위임 중 — 자체 독립은 계정(AdminUser)뿐. 신규 page-code(`arologis.hr.*`/`arologis.accounting.*`) grant 는 **auth-service `role_page_permissions` 에 시드**(V10 `arologis.admin` 선례), 롤 `AROLOGIS_MASTER/AROLOGIS_MANAGER` + page-code `arologis.*` **네임스페이스 분리**. 향후 "auth-service 없이 단독 운영" 필요 시 `arologis.*` 행만 arologis-service 자체 store 로 이관(문 열어둠). **권한 관리 UI(Phase A)는 auth-service `PermissionAdminController` 위에서 arologis page-code 관리.**
+
+### 구현 순서 (개발책임자 확정 2026-06-08): **B(인사) → C(회계) → A(권한 UI)**
+- Phase A 가 권한저장소 결정 의존적이었으나 해소. 단 권한 매트릭스 UI 는 B/C page-code 가 존재한 뒤가 유의미 + 자족적 B 가 foundation → **B 선착수**. (각 phase 신규 page-code 는 auth-service grant 시드로 게이트, 관리 UI 없이 동작.)
+
 ### 잔여 seed 데이터 (구현 중 개발책임자 제공 — 차단 아님)
 4. **회계 간이 계정과목 목록**(~15코드 실 운영 항목) — 표준 축약 seed 로 시작 후 조정 가능.
 5. **부서 seed 목록**(아로로지스 실 부서명) — 임시 seed 후 조정 가능.
