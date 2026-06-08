@@ -25,4 +25,6 @@ metadata:
 
 **✅ Phase B 인사 BE 완료 (PR #426 머지 `3f3cf464`, 2026-06-08)**: ArologisEmployee(↔AdminUser 1:1 provisioning)/ArologisDepartment/ArologisRoleChangeHistory + ArologisHrController(page-code arologis.hr.*) + V14 + auth V50(role_page_permissions). 권한상승/강등 가드 = **actor persisted role DB 조회**(X-User-Role 미신뢰). dev-report=`docs/dev-reports/arologis-hr-phase-b.md`, DECISIONS=D-AROLO-HR-01~04.
 
-**차기**: Phase B FE(EmployeesPage/DepartmentsPage + 풀스택 Docker 실QA) → Phase C 간이회계 → Phase A 권한UI. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공).
+**✅ Phase B FE 완료 (PR #427 머지 `fdedf4d6`, 2026-06-08)**: arologis-desktop EmployeesPage/DepartmentsPage(DataGrid+Modal) + api/arologisHr.ts + 라우트/네비. roleLabel 한국어, FE 권한게이팅(canManageHr/canGrantMaster, AROLOGIS_MASTER 옵션 비마스터 숨김). **풀스택 Docker 실화면 QA 통과**(실 auth+arologis+Postgres+admin 로그인, 직원 provisioning/롤이력/퇴직 실증, 증빙 docs/qa/arologis-hr-phase-b/). ⚠️ 사이클2부터 Codex 사용량 한도 다운(~Jun 11) → dual review/fix Claude 대체.
+
+**차기**: Phase C 간이회계(ArologisCashTxn 수입/지출 + 간이 계정과목 + 월집계) → Phase A 권한UI. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공). **Codex 회복(Jun 11) 후 정상 dual review 복귀**.

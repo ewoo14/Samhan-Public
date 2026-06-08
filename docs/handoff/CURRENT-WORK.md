@@ -4,7 +4,22 @@
 
 ---
 
-## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #426 머지** (`3f3cf464`) — arologis 백오피스 Phase B 인사(HR) BE
+## 🏢 2026-06-08 (회사 PC 세션 — 최신) — **PR #427 머지** (`fdedf4d6`) — arologis 백오피스 Phase B FE (인사 화면)
+
+> Phase B BE(#426) 후속 FE. 6단계 워크플로우 + 풀스택 실화면 QA 완주. **⚠️ 사이클2부터 Codex 사용량 한도 다운(~Jun 11) → dual review/fix Claude 에이전트 대체**(환경한계 예외, 회복 시 정상 복귀).
+
+### ✅ 결과 (PR #427)
+- arologis-desktop EmployeesPage/DepartmentsPage(DataGrid+Modal+등록/수정/롤변경/퇴직/이력) + `api/arologisHr.ts`(HR 10 엔드포인트) + 라우트/네비.
+- 리뷰 fix: roleLabel 한국어(매니저/마스터) · **FE 권한게이팅**(authStore canManageHr/canGrantMaster, AROLOGIS_MASTER 옵션 비마스터 숨김, 네비/버튼 게이트) · active 필터 한글 · soft-deleted 부서 합성옵션 · 마스터 직원 롤변경 선제차단.
+- **풀스택 Docker 실화면 QA**: 실 auth(8181 V50)+arologis(8197 V14)+Postgres(2DB)+렌더러+admin/admin1234 로그인 → 직원 provisioning(임시pw 1회)·롤이력(changedBy=loginId)·퇴직(DB 양쪽 soft-delete) 실증 + 직원/부서 실화면. 증빙 `docs/qa/arologis-hr-phase-b/`(employees/departments/login png + md).
+
+### 🗺️ 다음 (arologis 백오피스)
+- **Phase C 간이회계**(ArologisCashTxn 수입/지출 + 간이 계정과목 + 월집계) → **Phase A 권한UI**. 잔여 seed: 실 부서명·간이 계정과목(개발책임자 제공).
+- **Codex 회복(Jun 11) 후 정상 dual(Claude+Codex) review 복귀**. 그 전까지 Codex 역할 Claude 대체.
+
+---
+
+## 🏢 2026-06-08 (회사 PC 세션) — **PR #426 머지** (`3f3cf464`) — arologis 백오피스 Phase B 인사(HR) BE
 
 > 개발책임자 "arologis-desktop = 행정직원 전용 백오피스(자체 마스터/권한/인사/회계)" 지시 → 전체 spec → Phase B 인사 BE 풀사이클 완주. **신규 정식 워크플로우 적용**(아래).
 
