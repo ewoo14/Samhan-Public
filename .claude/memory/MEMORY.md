@@ -78,4 +78,6 @@
 - [PM 10분 주기 진행 보고](feedback_pm_10min_status_report.md) — 작업 중 10분당 1회 상태표 보고 의무, /loop 10m 가동 (2026-06-07)
 - [lookup 3종 시드 소스](project_lookup_seed_source.md) — material/odu/branch 시드 = legacy Google Sheet `1RJqO3jT...` 3탭(싱글자재가격/추천실외기/분기계산). ✅ PR #425 머지(sync 확장, SA key=C:\dev\samhan-homepage-*.json, 실QA 28/32/6)
 - [standalone-boot 실 QA](feedback_standalone_boot_real_qa.md) — Testcontainers IT 가 Windows 로컬 skip 시 서비스 jar standalone 부팅(docker Postgres+실 외부소스)으로 실 QA, 2차 sync idempotency 실증 (PR #425)
+- [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 폴더 rename 시 desktop/arologis-desktop 의 @samhan/design-system file: junction 이 구경로로 깨짐 → npm install 복구 (web/mobile 면역, 2026-06-08)
+- [arologis-desktop 백오피스](project_arologis_desktop_backoffice.md) — 행정직원 전용, 자체 마스터/auth 이미 구축(V9), 신규 = 인사·회계·권한관리UI (Samhan Public 축소판, 2026-06-08)
 - [변경 모듈 전체 test 완주 후 push](feedback_changed_module_full_test_before_push.md) — 신규 IT 타깃 실행만으로 push 금지, 기존 mock 단위테스트 구 패턴 스텁이 CI 에서만 깨짐 (PR #424 회고, 2026-06-08)
