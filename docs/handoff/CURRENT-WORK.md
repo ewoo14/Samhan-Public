@@ -4,7 +4,29 @@
 
 ---
 
-## 🏋️ 2026-06-08 (부하/soak 세션 — 최신) — **PR #424 머지** (`5e749f15`) — 로컬 동시부하+장기운영 검증 + P1 잠복결함 4건 적발·fix
+## 🔌 2026-06-08 (회사 PC 세션 — 최신) — **PR #425 머지** (`f4848c74`) — RC9 lookup 3종 시트→DB sync 확장 (시드 소스 확보)
+
+> 회사 PC 첫 세션(폴더 `Samhan-Public` rename 반영 완료, SAMHAN9440). 개발책임자 "lookup 시드 소스 확보" 지시 → 풀사이클 완주.
+
+### ✅ 결과 (PR #425, main `f4848c74`)
+- **시드 소스 확보**: lookup 3종(material/odu/branch) 0 row 원인 = legacy Google Sheet `1RJqO3jT...` 3탭(싱글자재가격/추천실외기/분기계산)에서만 옴. **SA key 제공**(개발책임자 GCP 발급 → `C:\dev\samhan-homepage-a008794e8a4f.json`, repo 밖) → live read 검증 성공.
+- **구현**: `ProductLookupSheetSyncService`(기존 ProductSheetSyncService rowHash+soft-delete 패턴 확장) + scheduler/admin 합류 + `V10`(odu indoor_capacity nullable + COALESCE active partial unique index). Codex 구현, Claude 빌드 보정.
+- **dual review N=2**: Claude TM 5-agent + Codex TM 5-section → 통합 fix 12건(P1×4+P2×6+P3×2, skip 0). cross-check 성과 = Codex 가 **ODU BigDecimal scale 오삭제(5.5 vs 5.50)·ODU unique 부재** P1 단독 적발.
+- **Docker 실서버 실 QA**(jar standalone+docker Postgres+실 시트): material **28**/odu **32**(MULTI24+HOME_MULTI8)/branch **6** 실적재. null 정직성(branch desc/qty·HOME_MULTI capacity 전부 null). 2차 sync `softDeleted=0` 으로 scale fix 실증. 증빙 `docs/qa/lookup-3table-sheet-sync/`.
+- CI 24/24. 부수: #424 advisory lock spec 상시 red(`CAST AS bigint` 미갱신) 동반 교정.
+
+### 🧠 신규 메모리
+- [[lookup-seed-source]] 완결 갱신 · [[standalone-boot-real-qa]] 신규(Windows Testcontainers skip 우회 실 QA 패턴).
+
+### 🗺️ 다음 재개 후보 (개발책임자 결정 — 전부 외부 의존)
+1. **Phase 11 AWS 배포**(대형, Terraform PASS, 월 ₩405K + cutover).
+2. **알리고 SMS 실 API**(API Key 대기).
+3. 신규 도메인 기능 = 개발책임자 지정.
+> ※ lookup 시드 = 종결. SA key 분실 시 GCP "키 추가" 재발급(재다운로드 불가).
+
+---
+
+## 🏋️ 2026-06-08 (부하/soak 세션) — **PR #424 머지** (`5e749f15`) — 로컬 동시부하+장기운영 검증 + P1 잠복결함 4건 적발·fix
 
 > 개발책임자 "로컬 동시 부하 / 장기 운영 검증" 지시 → 풀사이클 완주(조기PR→Codex 구현→단계실측→soak→dual review→CI→PM 종합→머지). 파라미터: 20/50/100 VU + soak + 읽기80/쓰기20.
 
