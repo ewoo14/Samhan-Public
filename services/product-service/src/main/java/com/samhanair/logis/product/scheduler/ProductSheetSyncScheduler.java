@@ -1,6 +1,7 @@
 package com.samhanair.logis.product.scheduler;
 
 import com.samhanair.logis.product.service.ProductSheetSyncService;
+import com.samhanair.logis.product.service.ProductLookupSheetSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,12 +35,15 @@ public class ProductSheetSyncScheduler {
     private static final Logger log = LoggerFactory.getLogger(ProductSheetSyncScheduler.class);
 
     private final ProductSheetSyncService syncService;
+    private final ProductLookupSheetSyncService lookupSyncService;
 
     @Value("${app.scheduling.enabled:true}")
     private boolean schedulingEnabled;
 
-    public ProductSheetSyncScheduler(ProductSheetSyncService syncService) {
+    public ProductSheetSyncScheduler(ProductSheetSyncService syncService,
+                                     ProductLookupSheetSyncService lookupSyncService) {
         this.syncService = syncService;
+        this.lookupSyncService = lookupSyncService;
     }
 
     /**
@@ -54,12 +58,29 @@ public class ProductSheetSyncScheduler {
             return;
         }
         log.info("[ProductSheetSyncScheduler] cron sync trigger");
+        runProductSyncForCron();
+        runLookupSyncForCron();
+    }
+
+    /** 기존 6카테고리 상품 sync 를 cron 경로에서 독립 실행한다. */
+    private void runProductSyncForCron() {
         try {
             ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
-            log.info("[ProductSheetSyncScheduler] cron sync 완료: inserted={}, updated={}, softDeleted={}",
+            log.info("[ProductSheetSyncScheduler] cron product sync 완료: inserted={}, updated={}, softDeleted={}",
                     summary.totalInserted, summary.totalUpdated, summary.totalSoftDeleted);
         } catch (Exception e) {
-            log.error("[ProductSheetSyncScheduler] cron sync 실패: {}", e.getMessage(), e);
+            log.error("[ProductSheetSyncScheduler] cron product sync 실패: {}", e.getMessage(), e);
+        }
+    }
+
+    /** lookup 3종 sync 를 cron 경로에서 독립 실행한다. */
+    private void runLookupSyncForCron() {
+        try {
+            ProductLookupSheetSyncService.SyncSummary summary = lookupSyncService.syncAll();
+            log.info("[ProductSheetSyncScheduler] cron lookup sync 완료: inserted={}, updated={}, softDeleted={}",
+                    summary.totalInserted, summary.totalUpdated, summary.totalSoftDeleted);
+        } catch (Exception e) {
+            log.error("[ProductSheetSyncScheduler] cron lookup sync 실패: {}", e.getMessage(), e);
         }
     }
 
@@ -74,12 +95,29 @@ public class ProductSheetSyncScheduler {
             return;
         }
         log.info("[ProductSheetSyncScheduler] 부팅 시 1회 sync trigger");
+        runProductSyncForBoot();
+        runLookupSyncForBoot();
+    }
+
+    /** 기존 6카테고리 상품 sync 를 부팅 경로에서 독립 실행한다. */
+    private void runProductSyncForBoot() {
         try {
             ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
-            log.info("[ProductSheetSyncScheduler] 부팅 sync 완료: inserted={}, updated={}, softDeleted={}",
+            log.info("[ProductSheetSyncScheduler] 부팅 product sync 완료: inserted={}, updated={}, softDeleted={}",
                     summary.totalInserted, summary.totalUpdated, summary.totalSoftDeleted);
         } catch (Exception e) {
-            log.warn("[ProductSheetSyncScheduler] 부팅 sync 실패 (cron 으로 재시도): {}", e.getMessage());
+            log.warn("[ProductSheetSyncScheduler] 부팅 product sync 실패 (cron 으로 재시도): {}", e.getMessage());
+        }
+    }
+
+    /** lookup 3종 sync 를 부팅 경로에서 독립 실행한다. */
+    private void runLookupSyncForBoot() {
+        try {
+            ProductLookupSheetSyncService.SyncSummary summary = lookupSyncService.syncAll();
+            log.info("[ProductSheetSyncScheduler] 부팅 lookup sync 완료: inserted={}, updated={}, softDeleted={}",
+                    summary.totalInserted, summary.totalUpdated, summary.totalSoftDeleted);
+        } catch (Exception e) {
+            log.warn("[ProductSheetSyncScheduler] 부팅 lookup sync 실패 (cron 으로 재시도): {}", e.getMessage());
         }
     }
 }

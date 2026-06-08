@@ -66,7 +66,27 @@ public class MaterialPrice extends BaseEntity {
             throw new IllegalArgumentException("materialKey 필수");
         if (name == null || name.isBlank())
             throw new IllegalArgumentException("name 필수");
-        return new MaterialPrice(materialKey, name,
-                price == null ? BigDecimal.ZERO : price, optionLabel, computedFormula);
+        if (price == null)
+            throw new IllegalArgumentException("price 필수");
+        return new MaterialPrice(materialKey, name, price, optionLabel, computedFormula);
+    }
+
+    /**
+     * 시트 sync update — materialKey natural key 는 유지하고 시트 실값 컬럼만 갱신한다.
+     *
+     * @param name A열 품명
+     * @param price B열 가격
+     * @param optionLabel C열 옵션 라벨, 시트 무값이면 null
+     * @param computedFormula D열 계산값, 시트 무값이면 null
+     */
+    public void updateFromSheet(String name, BigDecimal price, String optionLabel, String computedFormula) {
+        if (name == null || name.isBlank())
+            throw new IllegalArgumentException("name 필수");
+        if (price == null)
+            throw new IllegalArgumentException("price 필수");
+        this.name = name;
+        this.price = price;
+        this.optionLabel = optionLabel;
+        this.computedFormula = computedFormula;
     }
 }
