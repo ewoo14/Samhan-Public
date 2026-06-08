@@ -19,7 +19,7 @@
 ### 🗺️ 다음 후보 (개발 큐 — arologis 백오피스 종료)
 - arologis 백오피스(B 인사 / C 간이회계 / A 권한관리 / 6-롤 모델) 완결. 잔여 = 실 부서명·계정과목 seed(개발책임자 제공 대기), Codex 회복(Jun 11) 후 추가 크로스 검증.
 - 외부 의존: Phase 11 AWS / 알리고 SMS / lookup workbook.json.
-- ⚠️ 본 세션 QA 가 실 auth_db(V53)/arologis_db(V16) 전진 적용 → 로컬 dev 스택(:8081/:8097) stale, `docker compose up --build` 재빌드 권장.
+- ✅ **로컬 dev 스택 전체 재빌드·재기동 완료**(2026-06-08 세션 말): 16 서비스 jar + 이미지 `docker compose -p infrastructure -f docker-compose.yml -f docker-compose.local-all.yml up -d --build`. auth_db(V53)/arologis_db(V16) ↔ 새 jar Flyway 정합, 게이트웨이:8080·arologis:8097(6롤 매트릭스) 검증. **23/24 healthy**. ⚠️ `samhan-nginx` 만 unhealthy(`/healthz` 80 미기동 — 443 ssl 전제 prod 역프록시, 세션 이전부터 Exited, 로컬 클라이언트 영향 0). ⚠️ **폴더 rename 함정**: 일부 컨테이너 project label `<none>`(구 SamhanLogis) → `docker compose -p infrastructure` 명시 + orphan(api-gateway/inventory/product/slip) `docker rm` 후 재생성. `up` 시 `--no-deps` 미사용 시 depends_on 이 postgres 까지 재생성 시도하니 주의.
 
 ---
 

@@ -34,6 +34,12 @@
   `input:not([disabled])`. `DataTable` 행 onClick 은 `<tr>` (셀 텍스트 클릭 버블 OK).
 - 캡처 스크립트 선례: `clients/desktop/playwright/partner-restore-qa/capture.mjs`.
 
+## 3.5 폴더 rename → compose project label 함정 (2026-06-08 PR #432 후속)
+- 루트 폴더 rename(SamhanLogis→Samhan-Public) 후, **세션 이전 생성 컨테이너 중 일부 project label=`<none>`**(또는 구 프로젝트). 현재 가동 컨테이너 project = **`infrastructure`**(compose 파일 dir 기준). `docker inspect <c> --format '{{ index .Config.Labels "com.docker.compose.project" }}'` 로 확인.
+- label 불일치 컨테이너는 compose 가 자기 소유로 못 알아봐 **container_name 충돌**("already in use"). 해법: 충돌 orphan(Exited) `docker rm <c>` 후 `docker compose -p infrastructure ... up` 재생성.
+- **`up -d <svc>` 는 `depends_on` 으로 postgres/eureka 까지 Recreate 시도** → 단일/부분 재기동 시 반드시 **`--no-deps`** 추가(미사용 시 postgres 가 Created(stopped) 로 떨어져 스택 다운; `docker start samhan-postgres` 로 복구, 볼륨 데이터는 무손실).
+- 전체 재기동: orphan rm → 16 jar build → `docker compose -p infrastructure -f docker-compose.yml -f docker-compose.local-all.yml up -d --build`. `samhan-nginx` 는 로컬 dev 에서 상시 unhealthy(`/healthz` 80 미기동, 443 ssl 전제 — 클라이언트는 :8080/:8097 직결이라 무영향).
+
 ## 4. react-query 캐시 stale
 - 편집 mutation 이 연관 list 쿼리(`['partnerRevisions', code]` 등)를 invalidate 안 하면 탭 전환만으로는
   최신 안 보임. 같은 SPA 세션 재오픈으로도 안 되면 문서 리로드 필요. → 근본 fix 는 onSuccess invalidate.
