@@ -4,7 +4,33 @@
 
 ---
 
-## 🧹 2026-06-07 (심야 후속 세션 — 최신) — 로컬 잔여 정비 완결 + 신규 후보 발굴 정찰 (개발 큐 진성 소진 판정)
+## 🏋️ 2026-06-08 (부하/soak 세션 — 최신) — **PR #424 머지** (`5e749f15`) — 로컬 동시부하+장기운영 검증 + P1 잠복결함 4건 적발·fix
+
+> 개발책임자 "로컬 동시 부하 / 장기 운영 검증" 지시 → 풀사이클 완주(조기PR→Codex 구현→단계실측→soak→dual review→CI→PM 종합→머지). 파라미터: 20/50/100 VU + soak + 읽기80/쓰기20.
+
+### ✅ 실측 결과 (전부 docs/qa/local-load-soak-test/ 박제)
+- **단계**: baseline 20VU(21,597req 0%) · peak 50VU(53,458req 0%) · stress 100VU(410,413req·rps686·0.0005%) · **clean soak 2h(258,270req·4xx/5xx/checks_fail 0·글로벌 실패임계 통과·heap 무누수)**.
+- k6 하네스(`perf/k6/mixed-load.js` + 러너/스냅샷/cleanup ps1 3종) — 역할4종 가중·재고비차감 쓰기·JWT 재로그인.
+
+### 🔴 부하가 적발한 P1 잠복결함 4건 (기존 IT/QA/dual review/CI green 전부 통과해온 것 — 전건 fix, 백로그 0)
+- **D-LOAD-01**: inventory 재고잔량 productId 조회 LazyInit → **부하 무관 상시 500**. `@EntityGraph(warehouse)` + 비트랜잭션 회귀 IT.
+- **D-LOAD-02/04/05**: 전표/견적/분개/세금계산서/이동/배차/주문draft **채번 동시성 경합** → 17행 전수 처분표(`docs/dev-reports/d-load-04-...`) + 불안전 8경로 보호(row lock/advisory) + 병렬 유일성 IT. batchNo COUNT+1→MAX+1 공용 generator.
+- 부수 fix: 세금계산서 라인교체 flush 순서 · accounting CI heap OOM(1536m) · date-bomb IT 격리.
+
+### 🧠 핵심 교훈 (메모리 박제)
+- **[[changed-module-full-test-before-push]]**(신규): 신규 IT 타깃 실행만으로 push 금지 — 기존 mock 단위테스트 구 패턴 스텁이 CI 에서만 깨짐(PR #424 CI 7건 적발). 변경 모듈 전체 :test 완주 의무.
+- **D-LOAD-06 재판정**: soak 4xx 47k = **하네스 재로그인 roleCode 버그**(제품 무결). fix13 미실증 auth 변경 기각·원복. RBAC 5h+재로그인 사이클 오허용 0 일관거부 실증. (보고서 §3 박제)
+- **GitGuardian**: dashboard App 이 repo `.gitguardian.yaml` 미반영 → dev-seed 평문 red 유지. 관례대로 false-positive 오버라이드 머지(개발책임자 결정).
+- 운영 함정: 구경로(SamhanLogis) bind 컨테이너 재생성·Prometheus 25h 다운 복구·V33 checksum 드리프트 repair.
+
+### 🗺️ 다음 재개 후보 (개발책임자 결정)
+1. **Phase 11 AWS 배포** (대형, Terraform 준비완료 — 월 ₩405K + cutover 일정). 본 부하 하네스 BASE_URL 교체로 AWS 실측 재실행 권장.
+2. **알리고 SMS 실 API** (API Key 입수 대기) · **lookup 3종 시드** (회사 PC).
+3. 신규 도메인 기능 = 개발책임자 지정.
+
+---
+
+## 🧹 2026-06-07 (심야 후속 세션) — 로컬 잔여 정비 완결 + 신규 후보 발굴 정찰 (개발 큐 진성 소진 판정)
 
 > 개발책임자 "둘 다 (정비 → 발굴)" 지시. PR 없음 — 정비 커밋 `098a0e3e` 직푸시.
 
