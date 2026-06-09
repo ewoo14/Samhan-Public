@@ -4,7 +4,27 @@
 
 ---
 
-## 🏢 2026-06-09 (회사 PC 세션 — 최신) — **세트→전표 구성품 전개 에픽 ✅ 전체 완결** (PR-1~3b 머지)
+## 🏢 2026-06-09 (최신) — 세트 에픽 후속 + 출고전표 폼 정비 (실 UI 리뷰 주도)
+
+> 개발책임자가 **실 Docker 스택 + 데스크톱 실 UI**(실 게이트웨이 :8080 + 실 로그인 `dev_master`, VITE_MOCK_MODE 끔)로 라이브 리뷰하며 다수 개선 발견. **실서버 QA = 실사용자 UI 캡처** 규칙 박제([[feedback_real_server_check_screenshot]]).
+
+### ✅ 머지 완료
+- **#440** 세트 구성품 정합 점검 엔드포인트 `GET /products/internal/bundle-integrity`(미해소 0=healthy, 운영 데이터 343세트 정합 깨끗). 부모 active-BUNDLE 필터.
+- **#441** 기존 전표 라인추가(addLine) 세트 전개 — `addSlipLinesExpanded`(create 동일 엔진) 위임. 실 UI: addLine→1→5 전개.
+- **#442** 출고전표 작성폼 정비 — **출고 창고 1개**(출발/도착 제거), **eCount 12필드 카드 전체 제거**(ioType 출고/입고 토글 포함), **V20 프로젝트명/인수자/입금예정일 제거**(배송·감리주소만), 배송태그→**출고구분** 리라벨. ac-3/bundle 스펙 갱신.
+
+### 🔵 다음 (우선순위 순)
+1. **단가 부가세포함 전환** — 단가=부가세 포함 → 공급가액=round(단가÷1.1)·부가세=단가−공급가액. BE `SlipLine` 은 이미 `unitPrice`(공급가 VAT-excl)+`unitPriceWithVat`(×1.1)+`supplyAmount` 보유 → **FE 입력/표시 계층만 전환**(입력 VAT-incl→공급가 send, 표시 unitPriceWithVat). **작성/상세/조회/견적 전반 일관** 필요(반쪽 금지). 회계 계약 무변경.
+2. **세트 구성품 규격 자동채움**(product_spec) — expand 응답에 구성품 규격 합성 포함 + addSlipLinesExpanded/EstimateService 가 라인 specification 채움. (참고: 일반 라인 규격은 현재 수동 입력. 구성품 규격은 product_spec key/value 합성 — 일부 구성품엔 spec row 없음.)
+3. 번들 후속: #3 직접전표 BUNDLE IT / #4 ProductSpec flapping 전역 reconcile(규격과 연관) / #5 상업멀티 kind=ACCESSORY / #6 panelOption 시트옵션 dropdown.
+
+### ⚠️ 환경
+- **Codex 사용량 한도 다운(6/11 오전까지)** — MCP·CLI 모두. 듀얼리뷰 사이클2는 독립 Claude adversarial 리뷰로 대체(환경한계 예외 [[feedback_dual_5agent_review]]). 회복 시 재개.
+- 로컬 Docker 스택: product+slip 컨테이너를 현재 코드로 재배포 완료(이전 stale `/expand` 404 해소). 실 UI QA = vite `npx vite src/renderer --port 5180`(mock 끔) + addInitScript 로 실 JWT 주입.
+
+---
+
+## 🏢 2026-06-09 — **세트→전표 구성품 전개 에픽 ✅ 전체 완결** (PR-1~3b 머지)
 
 > **에픽 완결**: PR-1 #435 / 1b #436 / 2 #437 / 3a #438(BE 완결) / **3b #439(FE 옵션 picker, `82cbcf25`)** 전부 머지.
 > 이제 세트(BUNDLE) 품목이 견적/직접전표 생성 시 옵션(실외기 제외·판넬 360형상·자재) 선택 → BE 6:4 재배분 전개 → 구성품 라인으로 전표에 적재. GAS 종합견적서 동등.
