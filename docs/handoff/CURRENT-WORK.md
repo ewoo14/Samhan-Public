@@ -23,7 +23,16 @@
 - BundleExpander GAS 충실 재구현: `splitIndoorOutdoorToK`(고정부품 선차감→실내:실외 6:4 가정/4:6 비가정→천원정렬→음수가드), 가정용 판정(classifySingleSetFixed else-if cascade), 옵션 선별(패널 1개/리모컨 교체/자재/발통 제외), 상업멀티 개별단가(explodeCommSets_). `expand(parentModelCode, setQty, ExpandOptions)` → 단가 포함 ExpandedLine.
 - dual 리뷰(Claude TM 수학 정확 일치 + Codex-대체 Python 재현 검증) P2/P3 전건 fix. 실 Postgres IT(6:4/4:6/다수 비례배분 합=세트가/상업 개별/패널·리모컨 옵션). CI 20 pass.
 
-### 🔄 PR-3 진행 중 (#438, 옵션 A=견적 생성 시 즉시 전개) — **expand API 푸시 완료, slip 배선 잔여**
+### ✅ PR-3a 머지 (#438 `01b25aa5`, 옵션 A) — 견적/직접전표 통합 배선 **⇒ 세트→전표 구성품 전개 BE 완결**
+- product-service `POST /products/internal/expand`(BundleExpander 위임, productId+modelName+setHead). ProductSummary(Response) modelCode+productType 추가.
+- slip-service `ProductClient.expand` + EstimateService.create/update(BUNDLE→구성품 EstimateLine N, 첫 setHead/parentSetModel) + SlipService.create(직접전표 동일 전개) + EstimateToSlipConverter 1:1+메타전파. EstimateLine/SlipLine set_head/parent_set_model(V34). 단가=요청 setUnitOverride base 재배분.
+- dual 리뷰 P2(부분 전개 금액손실→any-skip NOT_FOUND)+P3 fix. **풀스택 Docker QA PASS**: 세트 AC052CS1PBH1SY(1,330,000)→4구성품 합계=세트단가(6:4보존), 견적201→estimate_lines 4구성품→convert→slip_lines 4구성품 일관, cross-service expand HTTP 실증. 증빙 `docs/qa/bundle-set-expansion-pr3/`.
+
+### 🗺️ 남은 것 — PR-3b (FE) + 후속
+- **PR-3b (FE 옵션 picker)**: 견적/직접전표 작성 화면에서 **등록품목 선택 + 세트 옵션(패널/리모컨/자재) picker**. ⚠️ **선결 확인**: FE 견적/전표 작성 화면 실재 위치(clients/desktop? arologis-desktop?) — 정찰 시 "scope 밖"이었음. 화면 부재면 PR-3b 는 화면 신설 동반(대형).
+- **후속(머지차단 아님)**: ① 기존 전표 라인추가(addLine) 경로 전개 미적용(주 경로 create 처리됨) ② 직접전표 BUNDLE 전용 IT(로직 견적 동형) ③ ⚠️ **운영 전 bundle_component↔products 정합 확인**(미등록/단종 구성품 0 — 아니면 세트 견적 404) ④ 사양 flapping 전역 reconcile ⑤ 상업멀티 구성품 kind=ACCESSORY.
+
+### 🗂️ (구) PR-3 7단계 잔여계획 — 완료됨
 - ✅ **product-service expand API 푸시**(`feat/bundle-set-expansion-pr3-integration`): `POST /products/internal/expand {parentModelCode, setQty, setUnitOverride, options}` → `List<ExpandedLineResponse>{modelCode,name,quantity,unitPrice,componentKind,setHead}`. BundleExpander 위임(BUNDLE→구성품 N 첫 setHead, KEEP/단일→1라인). `ExpandRequest`/`ExpandedLineResponse` DTO.
 - 🔜 **잔여 정밀 계획**(이대로 이어가면 됨):
   1. **ProductSummary 계약 확장**(additive): product `ProductSummaryResponse` + slip `ProductSummary` record 에 **`modelCode`, `productType`(SINGLE/BUNDLE)** 추가 — slip 이 BUNDLE 판별 + modelCode 확보용(현재 modelName 만 있음, modelCode 없음).
