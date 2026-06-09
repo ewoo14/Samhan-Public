@@ -19,10 +19,17 @@
 - 사양 보유 탭(홈멀티/싱글세트/상업멀티) 헤더 컬럼 → ProductSpec(spec_key=헤더, value=셀 통짜, blocklist+가격가드). V12 부분 유니크.
 - **실 Docker QA**: 실 시트→`product_spec` **7866 사양/736 품목** 실적재, 비사양 누출 0.
 
-### 🗺️ 다음 — PR-2 → PR-3 (남음)
-- **PR-2 (전개 엔진)**: BundleExpander 확장 — **싱글 6:4 가격 재배분(splitIndoorOutdoor)** + **옵션 선별(패널/리모컨/자재)** + 리모컨 교체. GAS fixture 단위테스트(구성품 합=세트가).
-- **PR-3 (통합)**: ① 종합견적서→판매전표 ② **직접 새 전표생성** 둘 다 **등록품목**으로 + 세트 전개(단일 엔진). EstimateToSlipConverter 전개 배선 + SlipLine 세트헤더/구성품 필드 + FE 옵션 picker. 전개 회귀 IT + Docker 실QA.
-- ⚠️ **후속 정리**(머지차단 아님): 사양 flapping(다탭 동일 modelCode → 전역 reconcile 전환). **신규 마이그레이션 시 clean bootJar 필수**(실 QA 적발).
+### ✅ PR-2 머지 (#437 `d19f2aec`) — 전개 엔진(6:4 재배분 + 옵션 선별)
+- BundleExpander GAS 충실 재구현: `splitIndoorOutdoorToK`(고정부품 선차감→실내:실외 6:4 가정/4:6 비가정→천원정렬→음수가드), 가정용 판정(classifySingleSetFixed else-if cascade), 옵션 선별(패널 1개/리모컨 교체/자재/발통 제외), 상업멀티 개별단가(explodeCommSets_). `expand(parentModelCode, setQty, ExpandOptions)` → 단가 포함 ExpandedLine.
+- dual 리뷰(Claude TM 수학 정확 일치 + Codex-대체 Python 재현 검증) P2/P3 전건 fix. 실 Postgres IT(6:4/4:6/다수 비례배분 합=세트가/상업 개별/패널·리모컨 옵션). CI 20 pass.
+
+### 🗺️ 다음 — PR-3 (마지막, 최대 — 통합 + 직접 전표생성 + FE)
+- **전개 배선**: BundleExpander(엔진, 호출 0 상태)를 **실제 전표 생성 경로에 연결**.
+  - ① **종합견적서→판매전표**: EstimateService/EstimateToSlipConverter 가 BUNDLE+옵션 수신→전개→구성품 라인 영속.
+  - ② **직접 새 전표생성**: slip-service 가 product-service **등록품목 catalog 조회/선택** + 세트 선택 시 동일 BundleExpander 전개 → 구성품 라인. (양 경로 단일 엔진.)
+- **모델**: SlipLine/PartnerOrderLine 세트헤더/구성품 참조 필드(isSetHead/setId). 견적이 옵션선택(패널/리모컨/자재) 저장하는 구조.
+- **FE**: 견적/직접 전표화면 세트+옵션 picker(등록품목 선택). 전개 회귀 IT(견적→전표 + 직접→전표) + **풀스택 Docker 실QA(세트→전표 구성품 실증)**.
+- ⚠️ **PR-3 동반 정리**(머지차단 아님): 사양 flapping(다탭 동일 modelCode → 전역 reconcile 전환). 상업멀티 구성품 kind=ACCESSORY(구분 컬럼 부재). **신규 마이그레이션 시 clean bootJar 필수**.
 
 ---
 
