@@ -29,7 +29,7 @@
 - dual 리뷰 P2(부분 전개 금액손실→any-skip NOT_FOUND)+P3 fix. **풀스택 Docker QA PASS**: 세트 AC052CS1PBH1SY(1,330,000)→4구성품 합계=세트단가(6:4보존), 견적201→estimate_lines 4구성품→convert→slip_lines 4구성품 일관, cross-service expand HTTP 실증. 증빙 `docs/qa/bundle-set-expansion-pr3/`.
 
 ### 🗺️ 남은 것 — PR-3b (FE) + 후속
-- **PR-3b (FE 옵션 picker)**: 견적/직접전표 작성 화면에서 **등록품목 선택 + 세트 옵션(패널/리모컨/자재) picker**. ⚠️ **선결 확인**: FE 견적/전표 작성 화면 실재 위치(clients/desktop? arologis-desktop?) — 정찰 시 "scope 밖"이었음. 화면 부재면 PR-3b 는 화면 신설 동반(대형).
+- **PR-3b (FE 옵션 picker)** — ✅ 화면 실재 확인(신규 아님, bounded): `clients/desktop/src/renderer/routes/EstimateFormPage.tsx`·`SlipFormPage.tsx`·`accounting/SalesAccountingSlipFormPage.tsx`, design-system `EstimateLineRow`. 작업 = 라인 품목이 BUNDLE(productType)일 때 **세트 옵션(패널/리모컨/자재/360형상) picker 노출 + 요청 setOptions 전달**. BUNDLE 판별 = product lookup(modelCode/productType 이미 응답에 추가됨). 단가는 세트 단가 입력→BE 재배분(화면은 구성품 라인 응답 표시). 견적/직접전표/판매회계전표 3화면.
 - **후속(머지차단 아님)**: ① 기존 전표 라인추가(addLine) 경로 전개 미적용(주 경로 create 처리됨) ② 직접전표 BUNDLE 전용 IT(로직 견적 동형) ③ ⚠️ **운영 전 bundle_component↔products 정합 확인**(미등록/단종 구성품 0 — 아니면 세트 견적 404) ④ 사양 flapping 전역 reconcile ⑤ 상업멀티 구성품 kind=ACCESSORY.
 
 ### 🗂️ (구) PR-3 7단계 잔여계획 — 완료됨
