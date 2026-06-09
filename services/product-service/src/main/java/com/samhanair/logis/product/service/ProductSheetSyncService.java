@@ -8,12 +8,14 @@ import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
+import com.samhanair.logis.product.repository.ProductSpecRepository;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -122,6 +124,21 @@ public class ProductSheetSyncService {
             new ComponentTabMapping("싱글 구성품_단가인상", false),
             new ComponentTabMapping("상업멀티 구성_단가인상", true));
 
+    /**
+     * 사양(ProductSpec) 적재 — 사양 보유 탭(홈멀티/싱글세트/상업멀티)의 헤더 컬럼을 spec_key=헤더명,
+     * value=셀 원본(통짜)으로 적재(legacy getSpecDetailMap_ 통짜저장 원칙).
+     *
+     * <p><b>정책 = blocklist</b>: legacy getSpecDetailMap_ 는 알려진 사양 헤더 allowlist(idx 화이트리스트)이나,
+     * 본 sync 는 비사양(아래 SPEC_EXCLUDE + 가격성 isPriceLikeHeader + 매핑 컬럼)만 제외하고 **나머지 모든
+     * 헤더를 사양으로 적재**(allowlist 보다 포괄적). 사양 보유 탭은 getSpecDetailMap_ 범위(홈멀티/싱글세트/
+     * 상업멀티)와 동일하고, 구형/구성품 탭은 미적재. 멀티컬럼 의미병합·| / 분리·ERV 는 PR-3 렌더 영역.
+     */
+    // 헤더 공백제거 정규화형 기준(예: "소  계"→"소계").
+    private static final Set<String> SPEC_EXCLUDE_HEADERS = Set.of(
+            "품명", "품", "품목", "항목", "모델명", "모델", "품목코드", "기종", "단위",
+            "출고가", "정가", "소비자가", "LIST", "납품가", "소계", "평형",
+            "세트", "고정DC", "비고", "대분류", "구분", "수량", "구성품특징", "특징");
+
     /** 부모-자식 연결 컬럼(자식의 부모 세트 modelCode) 헤더 후보. */
     private static final List<String> SET_HEADERS = List.of("세트");
     private static final List<String> MODEL_HEADERS = List.of("모델명", "모델", "품목코드", "기종");
@@ -135,6 +152,7 @@ public class ProductSheetSyncService {
     private final CategoryRepository categoryRepository;
     private final PriceHistoryRepository priceHistoryRepository;
     private final BundleComponentRepository bundleComponentRepository;
+    private final ProductSpecRepository productSpecRepository;
 
     /** rowHash 캐시 — JVM 메모리. (시트 row → SHA-256). 다음 sync 시 비교. */
     private final Map<String, String> lastKnownRowHash = new ConcurrentHashMap<>();
@@ -143,12 +161,21 @@ public class ProductSheetSyncService {
                                    ProductRepository productRepository,
                                    CategoryRepository categoryRepository,
                                    PriceHistoryRepository priceHistoryRepository,
-                                   BundleComponentRepository bundleComponentRepository) {
+                                   BundleComponentRepository bundleComponentRepository,
+                                   ProductSpecRepository productSpecRepository) {
         this.sheetsClient = sheetsClient;
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.priceHistoryRepository = priceHistoryRepository;
         this.bundleComponentRepository = bundleComponentRepository;
+        this.productSpecRepository = productSpecRepository;
+    }
+
+    /** 사양 보유 카테고리(legacy getSpecDetailMap_ scanHome/scanSingle/scanComm). */
+    private static boolean isSpecBearing(ProductCategory category) {
+        return category == ProductCategory.HOME_MULTI
+                || category == ProductCategory.SINGLE_SET
+                || category == ProductCategory.COMMERCIAL_MULTI;
     }
 
     /**
@@ -179,6 +206,7 @@ public class ProductSheetSyncService {
                 summary.totalUpdated += tabResult.updated;
                 summary.totalSoftDeleted += tabResult.softDeleted;
                 summary.totalSkipped += tabResult.skipped;
+                summary.totalSpecsLinked += tabResult.specsLinked;
             } catch (Exception e) {
                 log.error("[ProductSheetSync] tab '{}' sync 실패: {}", mapping.tabName, e.getMessage(), e);
                 TabSyncResult err = new TabSyncResult();
@@ -204,10 +232,10 @@ public class ProductSheetSyncService {
 
         summary.durationMs = Instant.now().toEpochMilli() - started.toEpochMilli();
         log.info("[ProductSheetSync] sync 완료: 총 inserted={}, updated={}, softDeleted={}, skipped={}, "
-                        + "구성품 linked={}, bundle marked={}, duration={}ms",
+                        + "구성품 linked={}, bundle marked={}, 사양 linked={}, duration={}ms",
                 summary.totalInserted, summary.totalUpdated, summary.totalSoftDeleted,
                 summary.totalSkipped, summary.totalComponentsLinked, summary.totalBundlesMarked,
-                summary.durationMs);
+                summary.totalSpecsLinked, summary.durationMs);
         return summary;
     }
 
@@ -324,6 +352,55 @@ public class ProductSheetSyncService {
         log.info("[ProductSheetSync] 구성품 tab '{}': linked={}, bundlesMarked={}, softDeleted={}, skipped={}",
                 mapping.tabName, result.linked, result.bundlesMarked, result.softDeleted, result.skipped);
         return result;
+    }
+
+    /**
+     * 사양 적재 — 사양 보유 탭의 헤더 컬럼(비사양/매핑컬럼 제외)을 spec_key=헤더(공백제거), value=셀 원본
+     * 으로 ProductSpec upsert(멱등). 시트에서 사라진 키는 soft-delete. legacy getSpecDetailMap_ 통짜저장 정합.
+     *
+     * @return 이번 row 에 적재(upsert)한 spec 개수
+     */
+    private int loadSpecsForProduct(UUID productId, List<String> header, List<String> cells, SheetTabMapping mapping) {
+        Set<String> seenKeys = new HashSet<>();
+        int linked = 0;
+        for (int col = 0; col < header.size(); col++) {
+            if (col == mapping.nameColumn || col == mapping.modelCodeColumn
+                    || col == mapping.releasePriceColumn || col == mapping.deliveryPriceColumn) {
+                continue;
+            }
+            String h = header.get(col) == null ? "" : header.get(col).replaceAll("\\s+", "");
+            if (h.isBlank() || SPEC_EXCLUDE_HEADERS.contains(h) || isPriceLikeHeader(h)) continue;
+            String value = safeGet(cells, col).trim();
+            if (value.isBlank() || "-".equals(value)) continue;
+            String key = h.length() > 50 ? h.substring(0, 50) : h;
+            if (!seenKeys.add(key)) continue; // 동일 헤더 중복 컬럼은 첫 컬럼만(legacy idx 첫매칭 정합)
+            String val = value.length() > 255 ? value.substring(0, 255) : value;
+            ProductSpec spec = productSpecRepository.findByProductIdAndSpecKey(productId, key).orElse(null);
+            if (spec == null) {
+                productSpecRepository.save(ProductSpec.create(productId, key, val, null, col));
+            } else {
+                spec.editValue(val, null);
+                spec.changeDisplayOrder(col);
+                productSpecRepository.save(spec);
+            }
+            linked++;
+        }
+        // soft-delete: 이번 시트에 더 이상 없는 기존 spec 키
+        for (ProductSpec s : productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId)) {
+            if (!seenKeys.contains(s.getSpecKey())) {
+                s.markDeleted("system-sheet-sync");
+                productSpecRepository.save(s);
+            }
+        }
+        return linked;
+    }
+
+    /**
+     * 가격/금액성 헤더 차단(보조) — SPEC_EXCLUDE 명시 누락분(소비자가/단가/금액/합계 등 변형 표기)이
+     * 사양으로 새지 않도록. '소비전력'·'에너지소비효율' 등 사양 키워드는 미매칭(소비'자가' 아님).
+     */
+    private static boolean isPriceLikeHeader(String h) {
+        return h.matches(".*(가격|단가|금액|합계|총액|정가|소비자가|부가세|VAT).*");
     }
 
     /** 구성품 탭 헤더 탐색 — '세트' AND '모델' 포함 행(상위 10행). */
@@ -457,6 +534,9 @@ public class ProductSheetSyncService {
 
         // 시트에서 본 row 의 modelCode set (DB 에 있으나 시트에 없는 row 검출용)
         Set<String> sheetModelCodes = new HashSet<>();
+        // 사양 보유 탭이면 헤더 행을 1회 확보(컬럼 헤더 → spec_key).
+        List<String> headerCells = isSpecBearing(mapping.productCategory)
+                ? GoogleSheetsClient.toStringRow(rows.get(headerIdx), 30) : null;
 
         for (int i = headerIdx + 1; i < rows.size(); i++) {
             List<Object> row = rows.get(i);
@@ -478,6 +558,7 @@ public class ProductSheetSyncService {
             BigDecimal deliveryPrice = parseDecimal(safeGet(cells, mapping.deliveryPriceColumn));
 
             Optional<Product> existing = productRepository.findByModelCodeAndIsDeletedFalse(modelCode);
+            UUID productId;
             if (existing.isEmpty()) {
                 Product p = Product.seedFromSheet(name, modelCode, defaultCategory,
                         releasePrice, deliveryPrice,
@@ -488,6 +569,7 @@ public class ProductSheetSyncService {
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
+                productId = p.getId();
                 result.inserted++;
             } else if (prevHash == null || !prevHash.equals(rowHash)) {
                 Product p = existing.get();
@@ -496,10 +578,17 @@ public class ProductSheetSyncService {
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
+                productId = p.getId();
                 result.updated++;
             } else {
-                upsertPriceHistory(existing.get().getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
+                productId = existing.get().getId();
+                upsertPriceHistory(productId, PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 result.unchanged++;
+            }
+
+            // 사양(ProductSpec) 적재 — 사양 보유 탭만. 헤더명=spec_key, 셀 원본=value(통짜).
+            if (headerCells != null) {
+                result.specsLinked += loadSpecsForProduct(productId, headerCells, cells, mapping);
             }
         }
 
@@ -648,6 +737,7 @@ public class ProductSheetSyncService {
         public int unchanged = 0;
         public int softDeleted = 0;
         public int skipped = 0;
+        public int specsLinked = 0;
         public String error;
     }
 
@@ -661,6 +751,7 @@ public class ProductSheetSyncService {
         public int totalSkipped = 0;
         public int totalComponentsLinked = 0;
         public int totalBundlesMarked = 0;
+        public int totalSpecsLinked = 0;
         public long durationMs = 0;
         public String error;
     }
