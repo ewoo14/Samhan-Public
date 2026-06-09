@@ -28,3 +28,18 @@ metadata:
 - SP-07 (Google Sheets `종합견적서` source 계약 + bootstrap 보안 보정 + product DB sync)
 
 **참조 메모리:** [[feedback_samhan_public_name]] / [[feedback_uuid_no_user_visibility]] / [[project_build_conventions]] / [[feedback_integrated_pr_pattern]] / [[feedback_multi_agent_team_pattern]] / [[feedback_pm_integration_build_check]] / [[feedback_function_documentation]] / [[feedback_korean_commits]] / [[feedback_pr_qa_screenshots]] / [[feedback_continuous_docs_sync]] / [[feedback_user_merge_authority]] / [[feedback_gitguardian_false_positive]]
+
+---
+
+## 🔄 GAS 재검증 (PR #434 머지 `00b810f8`, 2026-06-09)
+
+**경로**: 레거시 GAS 원본 = `tools/legacy-gas/` (18 폴더 + 2026-06-09 신규 6 폴더). 라이브 = Google Drive Apps Script(소유 samhan00@daum.net).
+**라이브 추출법**: `.clasp.json` 없음 → claude.ai **Google Drive 커넥터** `download_file_content(fileId, exportMimeType='application/vnd.google-apps.script+json')`. **주의: .content 는 base64** → 디코드 → `{files:[{name,type,source}]}`(server_js→.js, html→.html). ⚠️ 폰트/이미지 base64 임베드(NanumGothic 등) 프로젝트는 **10MB export 한도 초과로 차단**(종합견적서 미검증, clasp pull 필요).
+
+**재검증 결과(18개)**: 변경 8(배차안내문자 멀티날짜·복합키 / 거래처 발송 주문서 주소 지오코딩 신규 / 내일자전표 J-System코드·하차문구 / 미배차 TSV파서·긴급아침 / 일마감 셀편집 / 가배차 자동탭명 / 운송사 파일명교정) · 무변경 10. 파리티 = **15 구현·강함 / 3 부분**(부분 갭은 전부 최근 GAS 업데이트분). 매트릭스 = `docs/dev-reports/legacy-gas-reverify-2026-06-09.md`.
+
+**🔴 키 회전 필수(미완)**: 이카운트 API 인증키(`117d1e…857`)가 #379부터 종합견적서/에어디자이너/제이시스템 Code.js 에 평문 커밋 → PR #434 redact 했으나 **git 히스토리 잔존** → 운영상 회전 필요. (라이브 GAS·종합견적서 시트에도 평문: 네이버 검색/지도, 도로명/건물 API, 구글 Vision, Notion 토큰.) GitGuardian 은 삭제(-)줄 시크릿 적발 → PM 오버라이드 머지(개발책임자 승인).
+
+**🎯 품목/견적 시트→DB 전환 원칙(개발책임자 2026-06-09)**: 종합견적서·거래처 발송 주문서가 시트 `1RJqO3jT…` 품목마스터 5탭 직접조회 → **시트직접조회보다 우리 품목리스트(DB) 선호**. 데이터는 이미 `ProductSheetSyncService`(동일 시트·5탭 sync, Product/PriceHistory/BundleComponent/MaterialPrice/OduRecommendation, [[project_seed_product_uuid_catalog]]/[[project_lookup_seed_source]])로 편입됨. **후속 = GAS 시트조회→product-service REST 전환 + 견적 할인정책(홈/상업 0.45 등) estimate 도메인 이관**(견적 계산 API 미완). 우선순위: GAS 스냅샷·파리티 먼저(완료) → 그 다음 DB전환 설계.
+
+**Drive-only 신규 6**(가입고처리/거래처 업데이트/입출고 분석·내역/비밀번호 일괄 암호화/교육안내 자동상태변경) 스냅샷만 확보 — 마이그레이션 대상 여부 개발책임자 검토 대기.
