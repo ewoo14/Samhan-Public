@@ -13,15 +13,15 @@
 - **#441** 기존 전표 라인추가(addLine) 세트 전개 — `addSlipLinesExpanded`(create 동일 엔진) 위임. 실 UI: addLine→1→5 전개.
 - **#442** 출고전표 작성폼 정비 — **출고 창고 1개**(출발/도착 제거), **eCount 12필드 카드 전체 제거**(ioType 출고/입고 토글 포함), **V20 프로젝트명/인수자/입금예정일 제거**(배송·감리주소만), 배송태그→**출고구분** 리라벨. ac-3/bundle 스펙 갱신.
 
-### 🟡 PR-A (단가 부가세포함 — 전표측) 진행 중 (branch `feat/unit-price-vat-inclusive-pr-a`, 미푸시 WIP)
-- **완료(컴파일·타입체크 OK)**: BE `SlipLine.createFromVatInclusive`(라인단위 eCount: 합계=qty×VAT포함단가, 공급가액=round(합계/1.1), 부가세=차액. **unitPrice=공급단가 VAT-excl canonical 유지** + unitPriceWithVat=표시용) + 요청 `priceVatInclusive` 플래그(Create/AddLineRequest) + SlipService 배선(create/addLine/세트전개 구성품). FE: SlipLineInput.priceVatInclusive, SlipFormPage 단가=VAT포함 입력·라인별 공급/부가세/합계·totals 라인단위 합산·제출 플래그, design-system LineRow `vatInclusive` opt-in(견적 무영향).
-- **잔여(머지 전 필수, 반쪽금지)**: ① SlipLineResponse 에 unitPriceWithVat/supplyAmount/vatAmount 노출 ② FE SlipLineDetail 동 필드 ③ **슬립 상세/판매·구매 조회**가 단가=unitPriceWithVat(VAT포함)+공급/부가세 표시(미수정시 상세 단가 VAT-excl 로 보여 작성폼과 불일치) ④ IT(create priceVatInclusive→공급/부가세 단언) ⑤ 실 UI QA(작성+상세) ⑥ 리뷰/CI/머지.
-- ⚠️ 헤더 totalAmount=sum(lineTotal=공급가액 VAT-excl) 유지. 세트 base 단가도 VAT포함으로 expand→구성품 VAT포함 재배분.
+### ✅ 단가 부가세포함 전환 **전표 전체 완결** (spec `docs/superpowers/specs/2026-06-09-unit-price-vat-inclusive-spec.md`)
+- **#443 PR-A(전표)**: SlipLine.createFromVatInclusive(라인 단위 eCount, **원 단위** 반올림: 합계=qty×VAT포함단가, 공급가액=round(합계/1.1), 부가세=차액. unitPrice=공급단가 canonical + unitPriceWithVat 표시) + 요청 priceVatInclusive(Create/AddLineRequest) + SlipService 배선 + SlipLineResponse VAT 3필드. FE SlipFormPage 단가=VAT포함·라인별 공급/부가세/합계, LineRow vatInclusive opt-in, SlipDetailPage 단가(VAT포함)/공급가액/부가세/합계 컬럼.
+- **#444 PR-B(견적+변환)**: EstimateLine.createFromVatInclusive + unit_price_with_vat(V35) + 요청 플래그 + EstimateService 배선 + EstimateToSlipConverter VAT 보존(DB 실증). FE EstimateFormPage/DetailPage.
+- 실 검증: 1100×2→공급2000/부가세200, 1000→909/91, 변환 슬립 DB VAT 보존. 조회 리스트는 헤더 합계(공급가액)라 무변경.
+- **후속(범위 외)**: 매출/매입 **편집모드 매트릭스**(SlipDetailPage in-place) VAT포함 편집 / revision restore 가 unitPriceWithVat 미보존(SlipSnapshot/EstimateSnapshot 동일 — 스냅샷 스키마 확장 추후).
 
 ### 🔵 다음 (우선순위 순)
-1. **단가 부가세포함 전환** (spec `docs/superpowers/specs/2026-06-09-unit-price-vat-inclusive-spec.md`) — 확정: **라인 단위(eCount) 반올림** (라인 공급가액=round(단가�수량�1.1)�부가세�합계 VAT포함 즉시 표시), **BE 에 라인 공급가액(또는 unitPriceWithVat) 권위 전송**, 범위=**전표 전체(출고+입고+조회+견적)**. 다단계 PR-A(BE계약+출고/입고 create+폼)/PR-B(조회/상세)/PR-C(견적). 회계 계약은 unitPriceWithVat 수신으로 BE 분해(단일 진실원).
-2. **세트 구성품 규격 자동채움**(product_spec) — expand 응답에 구성품 규격 합성 포함 + addSlipLinesExpanded/EstimateService 가 라인 specification 채움. (참고: 일반 라인 규격은 현재 수동 입력. 구성품 규격은 product_spec key/value 합성 — 일부 구성품엔 spec row 없음.)
-3. 번들 후속: #3 직접전표 BUNDLE IT / #4 ProductSpec flapping 전역 reconcile(규격과 연관) / #5 상업멀티 kind=ACCESSORY / #6 panelOption 시트옵션 dropdown.
+1. **세트 구성품 규격 자동채움**(product_spec) — expand 응답에 구성품 규격 합성 포함 + addSlipLinesExpanded/EstimateService 가 라인 specification 채움. (일반 라인 규격은 수동 입력. 구성품 규격은 product_spec key/value 합성 — 일부 구성품엔 spec row 없음.)
+2. 번들 후속: #3 직접전표 BUNDLE IT / #4 ProductSpec flapping 전역 reconcile(규격과 연관) / #5 상업멀티 kind=ACCESSORY / #6 panelOption 시트옵션 dropdown.
 
 ### ⚠️ 환경
 - **Codex 사용량 한도 다운(6/11 오전까지)** — MCP·CLI 모두. 듀얼리뷰 사이클2는 독립 Claude adversarial 리뷰로 대체(환경한계 예외 [[feedback_dual_5agent_review]]). 회복 시 재개.
