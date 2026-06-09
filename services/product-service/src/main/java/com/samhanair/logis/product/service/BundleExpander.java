@@ -42,6 +42,23 @@ public class BundleExpander {
         this.componentRepository = componentRepository;
     }
 
+    /**
+     * 구성품/세트 규격(#24) — GAS 종합견적서 getSpecMap_ 와 동일하게 시트의 <b>'규격' 컬럼</b> 값을 쓴다.
+     * 우리 적재본에서는 세트 구성 탭의 '규격' 이 {@code BundleComponent.specText}(구성품) /
+     * {@code Product.specText}(단일·KEEP 부모)에 들어있다. product_spec(제품크기/냉방성능 등 detail)은
+     * GAS 규격이 아니므로 사용하지 않는다. slip/estimate specification 컬럼 길이(50)에 맞춰 절단.
+     */
+    private static String specOf(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String v = raw.trim();
+        if (v.isEmpty()) {
+            return null;
+        }
+        return v.length() > 50 ? v.substring(0, 50) : v;
+    }
+
     /** 기본 옵션(패널 기본/리모컨 유지/자재 별도)으로 전개. */
     @Transactional(readOnly = true)
     public List<ExpandedLine> expand(String parentModelCode, BigDecimal setQty) {
@@ -58,12 +75,13 @@ public class BundleExpander {
         BigDecimal setUnit = opts.setUnitOverride() != null ? round(opts.setUnitOverride())
                 : round(nz(parent.getDeliveryPrice()));
 
+        String parentSpec = specOf(parent.getSpecText());
         if (parent.getProductType() != ProductType.BUNDLE) {
-            return List.of(ExpandedLine.single(parent, setQty, setUnit));
+            return List.of(ExpandedLine.single(parent, setQty, setUnit, parentSpec));
         }
         BundleMode mode = parent.getBundleMode() == null ? BundleMode.EXPAND : parent.getBundleMode();
         if (mode == BundleMode.KEEP) {
-            return List.of(ExpandedLine.single(parent, setQty, setUnit));
+            return List.of(ExpandedLine.single(parent, setQty, setUnit, parentSpec));
         }
 
         // ── EXPAND ──────────────────────────────────────────────
@@ -78,7 +96,7 @@ public class BundleExpander {
                     ? setQty.multiply(c.getDefaultQty())
                     : c.getDefaultQty();
             parts.add(new Part(c.getComponentProductCode(), pid, name, modelName, c.getComponentKind(),
-                    c.getComponentVariant(), Boolean.TRUE.equals(c.getIsDefault()), price, qty));
+                    c.getComponentVariant(), Boolean.TRUE.equals(c.getIsDefault()), price, qty, specOf(c.getSpecText())));
         }
 
         // 싱글세트만 옵션 선별(picked) + 세트단가 재배분(explodeSetParts). 상업멀티 등은 legacy
@@ -92,7 +110,8 @@ public class BundleExpander {
         List<ExpandedLine> result = new ArrayList<>(picked.size());
         for (Part p : picked) {
             BigDecimal unit = round(p.price).max(BigDecimal.ZERO);
-            result.add(new ExpandedLine(p.modelCode, p.productId, p.name, p.modelName, p.qty, unit, p.kind));
+            result.add(new ExpandedLine(p.modelCode, p.productId, p.name, p.modelName, p.qty, unit, p.kind,
+                    p.specification));
         }
         return result;
     }
@@ -392,11 +411,12 @@ public class BundleExpander {
     /** 전개 라인 — productId/단가 포함. componentKind 는 KEEP/단일 라인 시 null. */
     public record ExpandedLine(String modelCode, java.util.UUID productId, String name, String modelName,
                                BigDecimal quantity, BigDecimal unitPrice,
-                               BundleComponent.ComponentKind componentKind) {
+                               BundleComponent.ComponentKind componentKind,
+                               String specification) {
         /** 단일/KEEP — 부모 1 라인. */
-        static ExpandedLine single(Product parent, BigDecimal qty, BigDecimal unitPrice) {
+        static ExpandedLine single(Product parent, BigDecimal qty, BigDecimal unitPrice, String specification) {
             return new ExpandedLine(parent.getModelCode(), parent.getId(), parent.getName(),
-                    parent.getModelName(), qty, unitPrice, null);
+                    parent.getModelName(), qty, unitPrice, null, specification);
         }
     }
 
@@ -430,10 +450,11 @@ public class BundleExpander {
         final boolean isDefault;
         BigDecimal price;
         final BigDecimal qty;
+        final String specification;
 
         Part(String modelCode, java.util.UUID productId, String name, String modelName,
              BundleComponent.ComponentKind kind, String variant,
-             boolean isDefault, BigDecimal price, BigDecimal qty) {
+             boolean isDefault, BigDecimal price, BigDecimal qty, String specification) {
             this.modelCode = modelCode;
             this.productId = productId;
             this.name = name;
@@ -443,6 +464,7 @@ public class BundleExpander {
             this.isDefault = isDefault;
             this.price = price == null ? BigDecimal.ZERO : price;
             this.qty = qty;
+            this.specification = specification;
         }
     }
 }
