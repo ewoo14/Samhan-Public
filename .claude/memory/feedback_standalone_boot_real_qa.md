@@ -17,6 +17,8 @@ Windows 회사 PC 에서 Testcontainers 기반 IT 는 `DockerAvailableCondition`
 5. **재부팅 2차 sync 로 idempotency 실증**: `inserted=0, softDeleted=0` 이면 정상(in-memory rowHash 캐시 cold-start 로 updated=N 은 동일값 재기록 무해). NUMERIC scale 정합(5.5 vs 5.50) 같은 동시성 fix 도 이 2차 sync 로 실증 가능.
 6. 종료: `Stop-Process` (java.exe CommandLine like `*<svc>.jar*`) + `docker rm -f qa-pg`.
 
+**🚨 신규 Flyway 마이그레이션 = clean bootJar 필수 (PR #436 회고, 2026-06-09)**: 신규 `V*.sql` 추가 후 그냥 `bootJar` 하면 Gradle `processResources UP-TO-DATE` 로 **jar 에 신규 마이그레이션 미반영** → standalone QA 가 구 스키마/제약으로 부팅해 이미 fix 한 결함(예 product_spec 전체 UNIQUE 위반 롤백)을 재현. **standalone QA·배포 전 `clean :services:<svc>:bootJar`**(또는 `processResources --rerun`) 필수. 실 QA 가 이 함정을 적발(stale jar 가 V12 미반영 → 상업멀티 탭 duplicate-key 롤백, clean 재빌드로 해소).
+
 **Why**: code-read PASS 금지·실 데이터만 원칙을 Windows Testcontainers 한계 안에서도 충족. H2 가 못 잡는 Postgres 전용 DDL(partial unique index, `IS NOT DISTINCT FROM`, COALESCE functional index)을 실 Postgres 로 검증. `@Profile("seed")` CommandLineRunner 등은 기본 무간섭.
 
 **🚨 cross-service 실 QA DB env-var 함정 (PR #431 회고, 2026-06-08)**: 서비스마다 datasource env-var 이름이 **다르다**. auth-service = **`DB_NAME`/`DB_HOST`/`DB_PORT`**(application.yml `${DB_NAME:auth_db}`). arologis-service = **`SAMHAN_AROLOGIS_DB_NAME`** (chained `${SAMHAN_AROLOGIS_DB_NAME:${LEGACY_DB_NAME:arologis_db}}`). 격리 QA DB(예 auth_db_qa) 부팅 시 **틀린 env-var 설정 → 기본 실 DB(auth_db)에 Flyway 적용** = 운영 dev DB 전진 마이그레이션(auth V46 = accounts.role drop 같은 파괴적 forward 포함, 실행 중 stale 컨테이너 깨질 위험). **부팅 전 해당 서비스 application.yml `spring.datasource.url` placeholder 이름을 grep 확인** 필수. cross-service round-trip QA(arologis→auth internal EP) 는 양 서비스 `SAMHAN_INTERNAL_TOKEN` 동일값 + `SAMHAN_AUTH_SERVICE_URL` 로 연결. 부작용 발생 시 핸드오프에 "dev 스택 재빌드 필요" 명기.

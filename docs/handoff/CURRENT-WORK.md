@@ -4,7 +4,29 @@
 
 ---
 
-## 🏢 2026-06-09 (회사 PC 세션 — 최신) — **PR #434 머지** (`00b810f8`) — 레거시 GAS 18개 재검증 + 신규 6개 스냅샷 + 자격 redact
+## 🏢 2026-06-09 (회사 PC 세션 — 최신) — **세트→전표 구성품 전개 에픽** (PR-1 #435 + PR-1b #436 머지)
+
+> 개발책임자 지시: 세트품목이 실제 전표에 **세트구성품으로 전개**되어야 함(기존 GAS 종합견적서/주문서 완전 충실). 현 구현은 세트가 전표에 한 줄로 올라가는 갭 → 3-PR 에픽. **+ "직접 새 전표생성"도 등록품목으로**(개발책임자 추가). spec=`docs/superpowers/specs/2026-06-09-bundle-set-expansion-spec.md`.
+
+### ✅ 진단(검증됨)
+- ProductSheetSyncService가 Product 전부 SINGLE 고정, BundleComponent/ProductSpec 미적재. ProductSeedRunner dry-run 전용. **BundleExpander는 로직만, production 호출 0**(IT만). EstimateToSlipConverter는 1:1 copy(전개 없음). → 세트가 전표에 한 줄.
+
+### ✅ PR-1 머지 (#435 `8698265d`) — 구성품 적재 + BUNDLE 마킹
+- ProductSheetSyncService 싱글구성품/상업멀티구성 탭(헤더이름 기반) → BundleComponent upsert + 부모 productType=BUNDLE/bundleMode(KEEP 패턴 else EXPAND) + parentBundleSetModel. 수량 전부 FOLLOW_SET('Q'→1/N→N, setQty 비례 GAS explodeCommSets_ 정합). V11 부분 유니크. 
+- **실 Docker QA**: 실 시트→`bundle_component` **1584 구성품/BUNDLE 부모 343** 실적재.
+
+### ✅ PR-1b 머지 (#436 `73802445`) — 사양(ProductSpec) 적재
+- 사양 보유 탭(홈멀티/싱글세트/상업멀티) 헤더 컬럼 → ProductSpec(spec_key=헤더, value=셀 통짜, blocklist+가격가드). V12 부분 유니크.
+- **실 Docker QA**: 실 시트→`product_spec` **7866 사양/736 품목** 실적재, 비사양 누출 0.
+
+### 🗺️ 다음 — PR-2 → PR-3 (남음)
+- **PR-2 (전개 엔진)**: BundleExpander 확장 — **싱글 6:4 가격 재배분(splitIndoorOutdoor)** + **옵션 선별(패널/리모컨/자재)** + 리모컨 교체. GAS fixture 단위테스트(구성품 합=세트가).
+- **PR-3 (통합)**: ① 종합견적서→판매전표 ② **직접 새 전표생성** 둘 다 **등록품목**으로 + 세트 전개(단일 엔진). EstimateToSlipConverter 전개 배선 + SlipLine 세트헤더/구성품 필드 + FE 옵션 picker. 전개 회귀 IT + Docker 실QA.
+- ⚠️ **후속 정리**(머지차단 아님): 사양 flapping(다탭 동일 modelCode → 전역 reconcile 전환). **신규 마이그레이션 시 clean bootJar 필수**(실 QA 적발).
+
+---
+
+## 🏢 2026-06-09 (회사 PC 세션) — **PR #434 머지** (`00b810f8`) — 레거시 GAS 18개 재검증 + 신규 6개 스냅샷 + 자격 redact
 
 > 개발책임자 지시: GAS 코드 업데이트 반영 + 기능이 우리 구현에 실제 다 들어갔는지 재검증.
 
