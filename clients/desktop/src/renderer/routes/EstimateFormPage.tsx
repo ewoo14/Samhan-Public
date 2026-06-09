@@ -22,6 +22,7 @@ import {
   getEstimate,
   sendEstimate,
   updateEstimate,
+  type BundleSetOptions,
   type CreateEstimateRequest,
   type EstimateLineRequest,
   type UpdateEstimateRequest,
@@ -30,10 +31,15 @@ import { estimateAuditApi } from '../api/createAuditApi'
 import { EstimateRealtimeClient } from '../realtime/EstimateRealtimeClient'
 import { AuditRevisionBadge } from '../components/audit/AuditOverlaySection'
 import { searchPartners, type PartnerSummary } from '../api/sales'
-import { lookupProductByModelName } from '../api/slip'
+import {
+  lookupProductByModelName,
+  emptyBundleSetOptions,
+  toApiBundleSetOptions,
+} from '../api/slip'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { LineLookupReferenceModal } from './components/LineLookupReferenceModal'
+import { BundleOptionRow } from './components/BundleOptionRow'
 
 let __lineUidCounter = 0
 const nextLineUid = (): string => `est-line-${++__lineUidCounter}`
@@ -50,6 +56,10 @@ interface DraftLine {
   note: string
   lookupError: string | null
   lookupLoading: boolean
+  /** 품목 유형 — "SINGLE" | "BUNDLE". BUNDLE 일 때만 세트 옵션 노출. */
+  productType: string | null
+  /** 세트 전개 옵션 — BUNDLE 라인에 한해 채움 (BE BundleSetOptions). */
+  setOptions: BundleSetOptions
 }
 
 const emptyLine = (): DraftLine => ({
@@ -63,6 +73,8 @@ const emptyLine = (): DraftLine => ({
   note: '',
   lookupError: null,
   lookupLoading: false,
+  productType: null,
+  setOptions: emptyBundleSetOptions(),
 })
 
 const today = (): string => {
@@ -178,6 +190,10 @@ export function EstimateFormPage() {
             note: l.note ?? '',
             lookupError: null,
             lookupLoading: false,
+            // 편집 모드: 이미 전개·저장된 구성품 라인이므로 재전개하지 않음
+            // (개별 SINGLE 품목으로 취급, setOptions 미적용).
+            productType: null,
+            setOptions: emptyBundleSetOptions(),
           }))
         : [emptyLine()],
     )
@@ -206,6 +222,13 @@ export function EstimateFormPage() {
       prev.map((l, i) => (i === index ? { ...l, ...patch } : l)),
     )
   }
+  const updateSetOption = (index: number, patch: Partial<BundleSetOptions>) => {
+    setLines((prev) =>
+      prev.map((l, i) =>
+        i === index ? { ...l, setOptions: { ...l.setOptions, ...patch } } : l,
+      ),
+    )
+  }
   const addLine = () => setLines((prev) => [...prev, emptyLine()])
   const removeLine = (index: number) => {
     setLines((prev) => {
@@ -224,6 +247,7 @@ export function EstimateFormPage() {
       updateLine(index, {
         productId: result.productId,
         productName: result.productName,
+        productType: result.productType ?? 'SINGLE',
         unitPrice:
           line.unitPrice === '0' || !line.unitPrice
             ? result.sellingPrice
@@ -299,6 +323,7 @@ export function EstimateFormPage() {
       quantity: Number.parseInt(l.quantity || '0', 10),
       unitPrice: l.unitPrice || '0',
       note: l.note.trim() || undefined,
+      setOptions: toApiBundleSetOptions(l.productType, l.setOptions),
     }))
     return {
       estimateDate: estimateDate || undefined,
@@ -575,9 +600,10 @@ export function EstimateFormPage() {
 
         {lines.map((line, i) => {
           const supply = calcLineSupply(line.quantity, line.unitPrice)
+          const isBundle = line.productType === 'BUNDLE'
           return (
+           <div key={line.uid}>
             <div
-              key={line.uid}
               style={{
                 display: 'grid',
                 gridTemplateColumns:
@@ -585,7 +611,7 @@ export function EstimateFormPage() {
                 gap: 8,
                 padding: '6px 0',
                 alignItems: 'center',
-                borderBottom: '1px solid #F3F4F6',
+                borderBottom: isBundle ? 'none' : '1px solid #F3F4F6',
               }}
               data-testid={`estimate-form-line-${i}`}
             >
@@ -718,6 +744,15 @@ export function EstimateFormPage() {
                 ×
               </button>
             </div>
+            {isBundle ? (
+              <BundleOptionRow
+                line={line}
+                index={i}
+                disabled={Boolean(isReadOnly)}
+                onChange={(patch) => updateSetOption(i, patch)}
+              />
+            ) : null}
+           </div>
           )
         })}
 

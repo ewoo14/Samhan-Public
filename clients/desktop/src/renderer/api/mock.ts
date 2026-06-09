@@ -692,16 +692,36 @@ const MOCK_TRANSFERS = [
   },
 ]
 
-/** 모델명 lookup 시연용 — 5개 mock product (대소문자 구분 없음). */
+/**
+ * 모델명 lookup 시연용 — mock product (대소문자 구분 없음).
+ * PR-3b: `productType` 추가 — "BUNDLE" 이면 세트 옵션 picker 노출.
+ * `modelCode` 미지정 시 modelName 을 그대로 사용 (BE ProductSummary 기본값).
+ */
 const MOCK_PRODUCTS_BY_MODEL: Record<
   string,
-  { productId: string; modelName: string; productName: string; sellingPrice: string }
+  {
+    productId: string
+    modelName: string
+    productName: string
+    sellingPrice: string
+    productType?: string
+    modelCode?: string
+  }
 > = {
   AJ040RXH4BC1: {
     productId: 'p-aj040',
     modelName: 'AJ040RXH4BC1',
     productName: '시스템에어컨 4Way 4HP',
     sellingPrice: '1850000',
+    productType: 'SINGLE',
+  },
+  'SET-HM2WAY': {
+    productId: 'p-set-hm2way',
+    modelName: 'SET-HM2WAY',
+    productName: '가정용 멀티 2in1 세트 (실내2 + 실외1 + 판넬 + 자재)',
+    sellingPrice: '5400000',
+    productType: 'BUNDLE',
+    modelCode: 'SET-HM2WAY',
   },
   AJ052RXH5BC1: {
     productId: 'p-aj052',
@@ -1060,7 +1080,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // POST /inventory/warehouses → 신규 창고 1건
   if (method === 'POST' && url.endsWith('/inventory/warehouses')) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as Record<string, unknown>
+    const body = parseMockBody(config) as Record<string, unknown>
     return envelope({
       id: 'new-' + Date.now(),
       code: body['code'],
@@ -1240,6 +1260,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         categoryId: null,
         sellingPrice: p.sellingPrice,
         status: 'ACTIVE',
+        modelCode: p.modelCode ?? p.modelName,
+        productType: p.productType ?? 'SINGLE',
       })),
       totalElements: matched.length,
       totalPages: 1,
@@ -1286,7 +1308,11 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const found = MOCK_PRODUCTS_BY_MODEL[modelName.toUpperCase()]
       ?? MOCK_PRODUCTS_BY_MODEL[modelName]
     if (found) {
-      return envelope(found)
+      return envelope({
+        ...found,
+        modelCode: found.modelCode ?? found.modelName,
+        productType: found.productType ?? 'SINGLE',
+      })
     }
     // 미존재는 mock 환경에서도 404 시뮬레이션 — null 반환 시 axios 가 실제 호출 시도
     // 하지만 백엔드 미부팅이라 실패. 간단히 envelope 안에 not-found 표시 대신
@@ -1332,7 +1358,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   const commentPostMatch = url.match(/\/slips\/([^/?]+)\/comments$/)
   if (method === 'POST' && commentPostMatch) {
     const slipId = commentPostMatch[1]!
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       body?: string
     }
     const created: MockSlipComment = {
@@ -1495,7 +1521,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   const auditOverlayMatch = url.match(/\/slips\/([^/?]+)\/audit\/overlay$/)
   if (method === 'PATCH' && auditOverlayMatch) {
     const slipId = auditOverlayMatch[1]!
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       fieldName?: string
       newValue?: string
     }
@@ -1547,7 +1573,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     /\/public\/batches\/([^/]+)\/slips\/([^/]+)\/signature$/,
   )
   if (method === 'POST' && publicSignatureMatch) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       signerName?: string
       signaturePngBase64?: string
       clientHash?: string
@@ -1957,7 +1983,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // POST /slips → 신규 전표 1건 (라인 포함, V20 필드 echo)
   if (method === 'POST' && url.endsWith('/slips')) {
-    const reqBody = (config.data ? JSON.parse(config.data as string) : {}) as {
+    // parseMockBody — config.data 가 object/string 모두 안전 처리(직 JSON.parse 는 object 에서 throw,
+    // [[inprocess-mock-principles]] 원칙①). 신규 전표 저장 mock QA 가 최초 적발한 잠복 버그.
+    const reqBody = parseMockBody(config) as {
       partnerName?: string
       deliveryAddress?: string
       supervisionAddress?: string
@@ -1967,6 +1995,14 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       slipType?: string
       deliveryTag?: string
       memo?: string
+      lines?: unknown[]
+    }
+    // PR-3b: in-process mock 은 page.route 로 가로챌 수 없으므로([[inprocess-mock-principles]])
+    // 마지막 전표 생성 요청 본문을 globalThis 에 노출 → Playwright page.evaluate 로 setOptions 단언.
+    try {
+      ;(globalThis as Record<string, unknown>)['__SAMHAN_LAST_SLIP_CREATE'] = reqBody
+    } catch {
+      /* noop */
     }
     return envelope({
       id: 'new-slip-' + Date.now(),
@@ -2174,7 +2210,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   const driverPatchMatch = url.match(/\/slips\/([^/]+)\/driver$/)
   if (method === 'PATCH' && driverPatchMatch) {
     const id = driverPatchMatch[1]!
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       driverName?: string | null
       driverPhone?: string | null
     }
@@ -2407,7 +2443,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // POST /accounting/journals → 신규 분개 1건
   if (method === 'POST' && url.endsWith('/accounting/journals')) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       journalDate?: string
       description?: string
       lines?: Array<{
@@ -2475,7 +2511,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   )
   if (method === 'POST' && journalReverseMatch) {
     const id = journalReverseMatch[1]!
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       reason?: string
     }
     const found = MOCK_JOURNALS.find((j) => j.id === id) ?? MOCK_JOURNALS[0]!
@@ -3345,7 +3381,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // body { type: 'EDIT'|'DELETE', reason: string } → SlipEditRequest 응답.
   const createEditRequestMatch = url.match(/\/slips\/([^/]+)\/edit-request(?:\?|$)/)
   if (method === 'POST' && createEditRequestMatch) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       type?: 'EDIT' | 'DELETE'
       reason?: string
     }
@@ -3369,7 +3405,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   }
   // POST /api/v1/slips/{slipId}/edit-request/{requestId}/approve|reject — 창고 직원 결정.
   if (method === 'POST' && url.match(/\/slips\/[^/]+\/edit-request\/[^/]+\/(approve|reject)$/)) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       reason?: string
     }
     const isApprove = url.endsWith('/approve')
@@ -3505,7 +3541,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (method === 'POST' && taxInvoiceCancelMatch) {
     const id = taxInvoiceCancelMatch[1]!
     const found = MOCK_TAX_INVOICES.find((t) => t.id === id) ?? MOCK_TAX_INVOICES[0]!
-    const req = (config.data ? JSON.parse(config.data as string) : {}) as Record<string, unknown>
+    const req = parseMockBody(config) as Record<string, unknown>
     const reason = typeof req['reason'] === 'string' ? (req['reason'] as string).trim() : ''
     return envelope({
       ...found,
@@ -3581,7 +3617,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (method === 'PUT' && taxInvoiceUpdateMatch) {
     const id = taxInvoiceUpdateMatch[1]!
     const found = MOCK_TAX_INVOICES.find((t) => t.id === id) ?? MOCK_TAX_INVOICES[1]!
-    const req = (config.data ? JSON.parse(config.data as string) : {}) as Record<string, unknown>
+    const req = parseMockBody(config) as Record<string, unknown>
     return envelope({
       ...found,
       partnerName: typeof req['partnerName'] === 'string' ? req['partnerName'] : found.partnerName,
@@ -3608,7 +3644,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // POST /accounting/tax-invoices — 신규 DRAFT 생성
   if (method === 'POST' && url.endsWith('/accounting/tax-invoices')) {
-    const req = (config.data ? JSON.parse(config.data as string) : {}) as Record<string, unknown>
+    const req = parseMockBody(config) as Record<string, unknown>
     const now = Date.now()
     return envelope({
       id: 'ti-new-' + now,
@@ -3661,7 +3697,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
   if (method === 'POST' && url.endsWith('/accounting/daily-closings')) {
-    const req = (config.data ? JSON.parse(config.data as string) : {}) as Record<string, unknown>
+    const req = parseMockBody(config) as Record<string, unknown>
     return envelope({
       ...mockDailyClosingRow,
       closingKind: req['closingKind'] === 'PURCHASE' ? 'PURCHASE' : mockDailyClosingRow.closingKind,
@@ -4930,7 +4966,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // POST /api/v1/auth/password-reset/confirm — 인증번호 + 새 비밀번호 확인
   // 결정적 mock: 인증번호 "123456" 일 때 성공, 그 외 envelope.success=false (mock 어댑터는 항상 200 반환)
   if (method === 'POST' && url.includes('/auth/password-reset/confirm')) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       token?: string
     }
     if (body.token === '123456') {
@@ -5127,7 +5163,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // POST /inventory/products/{productId}/safety-stock — 임계값 upsert (BE 정합)
   if (method === 'POST' && /\/inventory\/products\/[^/]+\/safety-stock$/.test(url)) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       warehouseId?: string | null
       threshold?: number
       note?: string | null
@@ -5248,7 +5284,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // @deprecated — POST /accounting/tax-invoices/batch/preview
   // HometaxExportPage 로 통합됨. /accounting/tax-invoices/batch route 는 Navigate redirect.
   if (method === 'POST' && url.includes('/accounting/tax-invoices/batch/preview')) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       fromDate?: string
       toDate?: string
     }
@@ -5287,7 +5323,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // @deprecated — POST /accounting/tax-invoices/batch/exclusions
   if (method === 'POST' && url.includes('/accounting/tax-invoices/batch/exclusions')) {
-    const body = (config.data ? JSON.parse(config.data as string) : {}) as {
+    const body = parseMockBody(config) as {
       partnerCode?: string
       partnerName?: string
       reason?: string

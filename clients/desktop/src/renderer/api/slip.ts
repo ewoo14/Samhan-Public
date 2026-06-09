@@ -160,6 +160,64 @@ export interface SlipDetail extends SlipSummary {
   printed?: boolean | null
 }
 
+/**
+ * 세트 전개 옵션 — BE `BundleSetOptions` (estimate/web/dto) 와 1:1.
+ *
+ * <p>BUNDLE(세트) 품목 라인에 한해 사용. 종합견적서 GAS 의 옵션 선택
+ * (실외기 교체/제외, 판넬 선택/360 형상, 자재 포함 여부) 을 그대로 전달하여
+ * BE BundleExpander 가 6:4 재분배 + 옵션 필터링으로 구성품 라인을 전개한다.
+ * SINGLE 품목 라인은 undefined 로 둔다(전개 없음).
+ */
+export interface BundleSetOptions {
+  /** 실외기 교체 옵션 modelCode — 지정 시 기본 실외기를 이 모델로 대체. */
+  remoteOption?: string | null
+  /** 실외기 제외 여부 — true 면 실외기 구성품 전개 제외. */
+  remoteExcluded?: boolean | null
+  /** 판넬 선택 modelCode — 1종 택1. */
+  panelOption?: string | null
+  /**
+   * 판넬 360 형상값 — BE `BundleExpander` 가 패널 variant 와 **정확 일치**로 매칭.
+   * 값: `''`(미지정) | `'원형'` | `'사각'`. (BE 계약: String, boolean 아님.)
+   */
+  panelShape360?: string | null
+  /** 자재 포함 여부 — true 면 자재류 구성품 포함. */
+  materialIncluded?: boolean | null
+}
+
+/** 빈 세트 옵션 — 신규 라인 초기값. */
+export function emptyBundleSetOptions(): BundleSetOptions {
+  return {
+    remoteOption: '',
+    remoteExcluded: false,
+    panelOption: '',
+    panelShape360: '',
+    materialIncluded: false,
+  }
+}
+
+/**
+ * 라인 setOptions 를 API 전송용으로 정규화.
+ * - `productType !== "BUNDLE"` → `undefined` (BE 전개 생략).
+ * - 빈 문자열 modelCode/형상 → `null` (BE 기본값 사용).
+ * 견적/전표 양 화면 공용 (중복 제거 + panelShape360 String 계약 단일점 보장).
+ */
+export function toApiBundleSetOptions(
+  productType: string | null | undefined,
+  opts: BundleSetOptions | undefined,
+): BundleSetOptions | undefined {
+  if (productType !== 'BUNDLE') return undefined
+  const o = opts ?? emptyBundleSetOptions()
+  const trimOrNull = (v: string | null | undefined): string | null =>
+    v && v.trim() ? v.trim() : null
+  return {
+    remoteOption: trimOrNull(o.remoteOption),
+    remoteExcluded: Boolean(o.remoteExcluded),
+    panelOption: trimOrNull(o.panelOption),
+    panelShape360: trimOrNull(o.panelShape360),
+    materialIncluded: Boolean(o.materialIncluded),
+  }
+}
+
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */
 export interface SlipLineInput {
   productId: string
@@ -173,6 +231,8 @@ export interface SlipLineInput {
   quantity: number
   unitPrice: string
   note?: string
+  /** 세트 전개 옵션 — BUNDLE 품목 라인에 한해 전달(BE BundleExpander). */
+  setOptions?: BundleSetOptions
 }
 
 /** 매입 전표 direct PUT 수정 요청 — BE `SlipUpdateRequest`. */
@@ -259,6 +319,10 @@ export interface ProductLookupResult {
   modelName: string
   productName: string
   sellingPrice: string
+  /** 품목코드 — 세트 전개 시 BE 가 부모 modelCode 로 사용. */
+  modelCode?: string
+  /** 품목 유형 — "SINGLE" | "BUNDLE". BUNDLE 이면 세트 옵션 노출. */
+  productType?: string
 }
 
 /**
