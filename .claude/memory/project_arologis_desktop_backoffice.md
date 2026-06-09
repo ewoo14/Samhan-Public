@@ -33,4 +33,10 @@ metadata:
 
 **✅ arologis 6-롤 모델 완료 (PR #432 `8de0fe25`, 2026-06-08)**: 개발책임자 "마스터/매니저/개발자/영업사원/회계사원/배송기사 6롤만". AdminUserRole enum 2→6 + `normalize()` AROLOGIS_ prefix-strip(6롤 전부 중앙코드 일치) + **V16**(auth_admin_user/role_change_history CHECK 제약 6롤 확장) + auth **V53**(무관 5롤 DISPATCH/INVENTORY/PARTNER/STAFF/WAREHOUSE arologis.* grant 제거 + 신규 4롤 재적재). **개발자=인사(HR)·권한관리 제외 전권**(개발책임자 정책=직원생성 권한 전파 차단). enforcement = @RequirePermission(page-code, @PreAuthorize 코드 게이트 없음). FE 매트릭스/HR 드롭다운 6롤. 풀스택 실 QA(6롤 매트릭스 + page-code enforcement 4종 + 실화면, `docs/qa/arologis-6-role-model/`). 🔑 정적 dual review 통과한 **CHECK 제약 회귀를 실 QA(실 Postgres INSERT)가 적발** → V16.
 
-**잔여**: 실 부서명·간이 계정과목 seed(개발책임자 제공 대기), Codex 회복(Jun 11) 후 추가 크로스 실서버 테스트. ⚠️ 본 세션 QA 가 실 auth_db(V53)/arologis_db(V16) 전진 적용 → 로컬 dev 스택(:8081/:8097)은 stale 코드, 다음 `docker compose up --build` 재빌드 권장.
+**✅ 표준 계정과목 + 부서 확정 + 활성상태 관리 완료 (PR #433 `dec8997c`, 2026-06-09) ⇒ arologis 백오피스 완결**: 개발책임자 지시로 임시 seed → 실 운영값 확정.
+- **부서 3개 확정**: 대표실(EXEC)/행정팀(ADMIN)/회계팀(ACCOUNTING). 배차/운영 soft-delete (V17). ⚠️ ADMIN 부서명 "행정"→"행정팀" 개명 → `ArologisEmployeeServiceIT` 단언 회귀(Windows Testcontainers skip false-green을 Linux CI 적발, [[changed-module-full-test-before-push]] 실증).
+- **표준계정과목 101개**(일반기업회계기준 5유형: 자산35/부채15/자본8/수익11/비용32, V17). `arologis_simple_account.type` CHECK **4→5유형(자본 EQUITY 추가)** ([[enum-expansion-check-constraint]]). 코드 4자리(1xxx 자산·2xxx 부채·3xxx 자본·4xxx 수익·8xxx 비용). 운송업 상용만 active=TRUE(46 활성/55 비활성).
+- **활성상태 관리(신규 기능)**: page-code **`arologis.accounting.accounts`**(현금출납장 cashbook 과 **분리** — 거래 입력 권한과 계정 마스터 관리 권한 격리). GET /accounts/all(VIEW)+PUT /accounts/{code}/active(UPDATE). 권한 = **마스터+회계사원만**(V54, 대표실=마스터·회계팀=회계사원 매핑, 매니저 제외). FE AccountsPage(canManageAccounts=MASTER|ACCOUNTANT, **'active' 미노출 "활성상태" 표기**, 낙관적 토글). 
+- dual 리뷰 P1(IT 부서명)+P2(enforcement HTTP 매트릭스 누락, [[enforcement-real-http-test]])+P3(복사포맷) 전건 fix. CI 29/29. 실 Docker 풀스택 QA PASS(101계정/EQUITY/토글 DB persist/매니저 403·회계사원 200 격리, `docs/qa/arologis-accounting-standard-chart/`).
+
+**arologis 백오피스 완결** (인사 B / 간이회계 C / 권한 A / 6롤 / 표준차트). **잔여**: 실 부서 추가 시 seed 갱신, Phase 11 AWS / 알리고 SMS 외부 의존. ⚠️ 로컬 dev 스택: QA 가 V17/V54 재빌드 적용 + 프로비저닝 계정 2건(qa_acct/qa_mgr) 잔존.
