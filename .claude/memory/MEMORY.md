@@ -83,3 +83,4 @@
 - [사이클 PM 판단 게이트](feedback_cycle_pm_judgment_gate.md) — 매 리뷰 사이클 종료마다 Claude/Codex TM 리뷰 게시 + PM 판단 명시 → 다음 사이클 or 머지 결정 (2026-06-08)
 - [변경 모듈 전체 test 완주 후 push](feedback_changed_module_full_test_before_push.md) — 신규 IT 타깃 실행만으로 push 금지, 기존 mock 단위테스트 구 패턴 스텁이 CI 에서만 깨짐 (PR #424 회고, 2026-06-08)
 - [enum 확장 = CHECK 제약 마이그레이션 동반](feedback_enum_expansion_check_constraint.md) — 영속 enum 값 추가 시 DB CHECK(IN 목록) 마이그레이션 필수, enum/시드 green 이어도 실 INSERT 거부. 정적 review 통과·실 QA 적발 (PR #432, 2026-06-08)
+- [FE 옵션 타입 = BE DTO 타입 정확 일치](feedback_fe_option_type_matches_be_dto.md) — boolean vs String variant 불일치는 Jackson 강제변환→silent no-op. 이름만 대조 말고 타입+실 매칭처까지. 세트 전개 에픽 PR-3b 완결(panelShape360, #439, 2026-06-09)
