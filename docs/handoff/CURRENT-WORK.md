@@ -21,8 +21,9 @@
 - **② P0-B 인증모델 = X-Internal-Token** (permitAll 금지).
 - **③ DC 통합키: partnerCode = 사업자번호 '-' 제외 동일값** — bizno↔partnerCode 매핑 불요.
 
-### ✅ P0-B 진행 (PR 오픈)
-- slip-service `POST /internal/slips/from-estimate`(InternalSlipPublishController, InternalTokenFilter 게이트) + enforcement IT 4케이스. slip-bridge URL 전환+토큰 헤더+봉투 언래핑 fix(가짜 SLP- fallback 제거)+estimateNumber WEB- fallback+qty String 계약. **실 Docker QA**: 201/403/401/200멱등 + 실 브리지 E2E + DB 실증(docs/qa/estimate-p0b/RESULTS.md).
+### ✅ P0-B 머지 (#452, `53207a5b`)
+- slip-service `POST /internal/slips/from-estimate`(InternalSlipPublishController, InternalTokenFilter 게이트) + enforcement IT 6케이스. slip-bridge URL 전환+토큰 헤더+봉투 언래핑 fix(가짜 SLP- fallback 제거)+estimateNumber WEB- fallback+qty String 계약. **실 Docker QA**: 201/403/401/200멱등+위조 X-User-* 403 + 실 브리지 E2E + DB 실증(docs/qa/estimate-p0b/RESULTS.md).
+- **부수 하드닝**: slip-service `/internal/**` 전체 system-internal principal 강제 — X-User-* 위조 면역. 사이클1 P1 2건 fix + CI 적발 2계열(IT 토큰 정합·dispatch IT 토큰 헤더 — 운영 호출자는 전건 토큰 송신 확인) fix.
 
 ### 🔵 다음 (우선순위)
 1. **#29 DC설정 Notion→DB** + P0-A by-customer 확장(getQuoteHistoryByCustomer) — 키=partnerCode(=bizno digits), 레거시 13컬럼 수용.
