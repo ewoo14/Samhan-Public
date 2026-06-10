@@ -25,8 +25,14 @@
 - **개발책임자 확인 대기 2건**: ① 수동 PARTNER_ORDER 품목의 order-app 카테고리 탭 노출(estimateCategory 부여 허용) ② **품목 표시 순서 화면 직접 조정** (새벽 문의 — 현행 진실원 = 시트 행 순서, 직접 조정은 결정 변경이라 별도 슬라이스 필요).
 - 토큰 한도 1회 중단(04:20 리셋) → 위임 절차대로 재개 완료.
 
-### 🔵 진행 중: 사원 서명 등록 슬라이스 (대기 큐 4번 — 자율 진입, ~05:35)
-- 스코프: user-service Employee signature + 사원등록 화면 SignaturePad → 출고전표 결재란 서명 스탬프 (#458 placeholder 해소). [[project_slip_shipout_print_form]] 슬라이스 C.
+### 🔵 PR #461 진행 중 — 품목관리 고도화 (새벽 지시 3건 반영, 야간 위임 07:30 종료 체크포인트)
+- **개발책임자 새벽 지시 반영** (1차: 시트=시드 전용·출처 불요·세트 여부·구성품 설정·전개 확인 / 2차: 세트 재고 표시 금지·순서 자동 재번호 / 3차: 표시순서 노출품목 한정·**모든 설정 실시간 동기화**): spec `docs/superpowers/specs/2026-06-11-product-catalog-enhance-spec.md` §2-1·§2-2 박제 (브랜치 커밋).
+- **완료** (branch `feat/product-catalog-enhance`, HEAD `81e88657`): 구현 1차(`0f42facb` — cron 게이트 기본 off·세트 뱃지+구성품 수·BundleComponent CRUD replace-all·display-orders 일괄·출처 UI 제거·구성품 모달·dnd 순서) + 정합 pass(`81e88657` — **api-gateway no-strip 3라우트**(components/display-orders/catalog-realtime)·카테고리군 검증 400·노출품목 한정·SlipFormPage 세트 재고 가드·`product:catalog:changed` SSE publish + FE ProductRealtimeClient 구독→invalidate). product-service+gateway green / desktop Playwright 8/8.
+- **잔여 (다음 세션)**: ① 사이클1·2 dual 리뷰 (Codex 10:11 회복 — Codex 복귀 1순위) ② Docker 실 QA (T1~T6 + **구성품 편집→전표 전개 반영**·SSE 실시간 2-브라우저 실증 — mock 불가 한계 보고됨) ③ **잔여 갭**: SlipDetailPage·SalesPartnerOrderDetailPage 재고조회 세트 가드 (라인 응답에 productType 부재 — slip/partner-order BE 응답 확장 필요) ④ CI green→PM 종합→머지 ⑤ docs 동기화 (dev-report/ROADMAP/README/overview — 미작성).
+- **실시간 동기화 전사 일반화** ("모든 설정이 전표처럼") = 본 슬라이스에서 패턴 확립 후 별도 슬라이스 (공급자 설정 등 수평 전개).
+
+### ⏭️ 대기: 사원 서명 등록 (정찰 완료 — spec 박제 `docs/superpowers/specs/2026-06-11-employee-signature-spec.md`)
+- #459 인감 패턴 100% 재사용 가능 판정, SignaturePad 기성, V10 + slip 응답 배선 갭 명시. 품목관리 고도화 머지 후 착수.
 - 대기 큐 3번(좌측메뉴 5대분류)·Codex 항목들은 10:11 회복 후.
 
 ---
