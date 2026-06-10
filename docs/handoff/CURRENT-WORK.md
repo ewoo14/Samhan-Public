@@ -4,6 +4,28 @@
 
 ---
 
+## 🏠 2026-06-10 (저녁, 집 PC) — 회사 PC 세션 끊김 복구 + **#458 머지** + 회계설정 메뉴 슬라이스 진입
+
+> 회사 PC 세션이 PR #458 메모리 커밋(`f036c6f3`) 직후 끊김 → 집 PC 에서 복구. 끊긴 지점 = PM 마지막 종합 리뷰 게시 직전.
+
+### ✅ #458 머지 (`fbd72f4f`) — 출고전표·거래명세서 원본 양식 1:1 + 전자서명 배치 + 한 A4 자동 비율
+- 사이클1 (BE P1 stale partnerCode) + 사이클2 cross-check (재전송 시 code NULL clear 회귀) fix 완료, 미해소 0.
+- 개발책임자 정정 2회 반영 (1차: 공급받는자=사업자주소·대표번호/배송지 검정 + BE 실배선 fix · 2차: 작성자/결제예정일/가운데 정렬/서명 위+이름 아래/전자서명 라벨 우측). 실 Docker QA 캡처 6종.
+- 결재란 `signaturePng` 주입은 **사원 서명 등록 슬라이스(별도 PR)** 대기 — placeholder 구조만 반영.
+- CI 24/24 green 확인 후 PM 종합 리뷰 게시 + squash 자동 머지.
+
+### ⚠️ 환경
+- **Codex 한도 다운 지속 실측**(집 PC `codex exec` 60s 무응답) — 6/11 10:11 회복 예정 그대로. Claude 대체 예외 계속.
+
+### 🔵 대기 슬라이스 큐 (개발책임자 지시 박제 기준)
+1. **공급자·은행계좌 회계설정 메뉴** ([[project_company_config_menu]]) — #458 의 env 임시 주입(`VITE_COMPANY_BANK_NOTICE`/`VITE_COMPANY_STAMP_URL`)+`COMPANY` 상수 대체. 거래명세서+세금계산서 공용. **← 진입 중**
+2. **요구사항1 PR-B**: 품목별 수동 토글 UI(데스크톱 품목관리) + sync override 보존 + searchProducts usageScope 필터 + 주문서 PARTNER_ORDER 분기 (#457 비스코프).
+3. **좌측메뉴 5대분류 + 권한필터 + '홈' 최상단** ([[project_item_exposure_and_menu_5cat]] §2+보강) — 대형 UI, Codex 회복 후 적합.
+4. **사원 서명 등록** (user-service Employee signature + 사원등록 SignaturePad → 결재란 스탬프, [[project_slip_shipout_print_form]] 슬라이스 C).
+5. **Codex 회복(6/11 10:11) 후**: Java FORMULA-read discrepancy 조사(`docs/audit/gas-port-fidelity/java-formula-read-discrepancy-investigation.md` 선독) → 상업 parity 종결 → CATALOG_SOURCE 기본 db 전환.
+
+---
+
 ## 🏢 2026-06-10 (주간) — 라이브 스냅샷 갱신 + **P0-C 계산 6함수 충실 복원 ✅ 머지**
 
 ### ✅ 머지
