@@ -26,4 +26,11 @@ metadata:
 - 구현 기반 = 기존 `SupplierProfile`(사업자 양식) 확장 (PR #459 정찰 결정).
 - 확장 3건: ① 계좌별 명세서 **노출 토글**(`exposed`) — 인쇄 bankNotice 는 노출 계좌만 조합 ② **로고 이미지 업로드** (인감과 동일 BYTEA 패턴, 정적 `/print-logo.svg` 대체) ③ 좌측 메뉴 라벨 **"공급자 설정"** (라우트 `/accounting/supplier-profiles` 유지).
 
+## ✅ 완결 (PR #459 머지 `d9bb8837`, 2026-06-11)
+
+요구 전체 + 확장 3건 구현·머지 완료. 핵심 잔류 지식:
+- 인쇄 소비처는 **`GET /accounting/supplier-profiles/print-profile`** (인증-only — 사내 전 role 인쇄 허용, 외부 파트너 X-Is-Partner 403). CRUD 는 `accounting.supplier-profiles` 권한 게이트 유지.
+- 메뉴 라벨 '공급자 설정', 라우트/page-code 는 `/accounting/supplier-profiles` 유지.
+- 계좌 실데이터·인감·로고는 public repo 비커밋 — 운영 화면 직접 입력 (현 DB 값은 QA 테스트 값).
+
 관련: [[slip-shipout-print-form]] (양식), [[item-exposure-and-menu-5cat]] (메뉴 재편과 동시 진행 가능)

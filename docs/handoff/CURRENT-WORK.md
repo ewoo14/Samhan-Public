@@ -4,6 +4,26 @@
 
 ---
 
+## 🌙 2026-06-11 (심야, 집 PC — 야간 자율 위임) — **#459 머지** (공급자 설정) + 요구사항1 PR-B 진입
+
+> 개발책임자 취침 전 위임: "이번 슬라이스 끝나면 다음 슬라이스 자율 머지, 오전 7:30 까지 자율 진행. 토큰 소진 시 회복 후 재개."
+
+### ✅ #459 머지 (`d9bb8837`) — 공급자·은행계좌·인감·로고 회계 설정 + 인쇄 실배선
+- 토큰 끊김 복구(미커밋 fix 309줄 + PrintProfileResponse/isPngMagic 컴파일 깨짐) → 사이클1 P1 4·P2 4·P3 9 전건 fix + **추가 지시 확장 3건**(계좌 노출 토글 `exposed` / 로고 BYTEA / 메뉴명 **'공급자 설정'**).
+- 사이클2 cross-check(5축 Workflow 27 에이전트 + 적대적 반박 필터): 확정 15·기각 7 → 전건 fix. 핵심: mock 핸들러 순서 회귀(리터럴 선점), **print-profile X-Is-Partner 403** 신뢰경계, TC-SP-12 항상-참 재설계, real-qa 단언 승격(T5 stub 제거→dev_sales 실 JWT).
+- **Docker 실 QA T1~T9 9/9 PASS** (accounting_db 재생성+V35 재적용 실증, 게이트웨이 경유 SALES 403/200 대조). QA 중간 결함 2건은 PM 교차검증 기각(stub 아티팩트/모달 진입 전 탐색 오판).
+- GitGuardian fail = `dev_p05_pass!` dev seed **FP 판정 머지** (전례 PR #424). accounting 838 테스트 green.
+- ⚠️ 사고 회고: ① 다중 에이전트 병렬 중 `git restore` 광역 원복으로 BE fix 1회 유실→재적용 (dev-report 회고 메모 42행 관행이 원인 — PNG 한정 경로 원복만 허용) ② real-qa config testMatch 가 무관 스펙 실행 → 디렉터리 한정 실행 의무.
+
+### ⚠️ 환경
+- **Codex 한도 다운 — 6/11 10:11 회복 예정.** 구현·dual리뷰 Claude 에이전트 대체 예외 계속. 회복 시 즉시 Codex 복귀.
+
+### 🔵 진행 중: 요구사항1 PR-B (대기 큐 2번 — 자율 진입)
+- 스코프: 품목별 수동 토글 UI(데스크톱 품목관리) + sync override 보존 + searchProducts usageScope 필터 강제 + 주문서 PARTNER_ORDER 분기 (#457 비스코프 잔여).
+- 대기 큐 3번(좌측메뉴 5대분류)은 "Codex 회복 후 적합" 박제대로 보류. 4번(사원 서명 등록) 후순위.
+
+---
+
 ## 🏠 2026-06-10 (저녁, 집 PC) — 회사 PC 세션 끊김 복구 + **#458 머지** + 회계설정 메뉴 슬라이스 진입
 
 > 회사 PC 세션이 PR #458 메모리 커밋(`f036c6f3`) 직후 끊김 → 집 PC 에서 복구. 끊긴 지점 = PM 마지막 종합 리뷰 게시 직전.
