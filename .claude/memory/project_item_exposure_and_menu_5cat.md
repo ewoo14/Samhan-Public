@@ -18,6 +18,13 @@ metadata:
 - **배차(arologis)·창고운영은 별도 그룹 유지**(5대 분류에 편입 안 함) — 실질 7그룹.
 - 매핑 가이드(현황 기준): 판매=estimates/partner-orders/거래처/dc-config/판매관리, 구매=구매관리/재고이동/입고검수/재고실사/DPS, 회계=기존 회계 그룹, 그룹웨어=메신저/알림매핑/링크발송/단톡방, 인사=인사관리/권한 전체. 배차·창고운영 별도. 설정(시트동기화) 배치는 구현 시 확인.
 
+## §1 완결 (PR-A #457 + PR-B #460 머지 `c3536db1`, 2026-06-11)
+
+usageScope/displayOrder + 수동 토글(usage_scope_manual, sync 보존·soft-delete 보호·시트복귀 rowHash evict) + 품목관리 화면(/products/catalog) + catalog 질의(q·**IN-확장**: PARTNER_ORDER→+BOTH·결정 페이징) 완결. 핵심 잔류 지식:
+- `/api/v1/products` = ProductCatalogController (게이트웨이 정확경로) — `/products`(ProductController) 의 usageScope 는 exact-match 시멘틱 분기 (실호출자 0, Javadoc 명시). **정찰 시 게이트웨이 라우팅표 대조 의무** (PR-B 사이클1 P1 근원).
+- 표시 순서 진실원 = 시트 행 순서 (바꾸려면 시트에서 행 이동→sync). 시트에 없는 수동 품목은 NULLS LAST 맨 뒤. **화면 직접 순서 조정은 미구현 — 개발책임자 결정 대기** (2026-06-11 새벽 문의).
+- 개발책임자 확인 대기 2건: ① 수동 PARTNER_ORDER 품목의 order-app 카테고리 탭 노출(estimateCategory 부여 허용) ② 화면 직접 순서 조정. §2(메뉴 5대분류) 는 미착수 — Codex 회복 후.
+
 **Why**: 견적/주문 노출 품목을 정확히 통제(전 품목 노출 방지) + 시트 운영 순서 유지. 메뉴 가독성·업무 권역 정리.
 **How to apply**: #30 카탈로그([[project-sheets-to-db-full-migration]]) 후속으로 usageScope 필터+displayOrder 적용. 관련 EstimateCatalogInternalController(#455)·ProductSheetSyncService. 메뉴는 clients/desktop AppLayout.tsx 재구성. 대형 UI 변경이라 Codex 회복(6/11 10:11) 후 구현 적합.
 

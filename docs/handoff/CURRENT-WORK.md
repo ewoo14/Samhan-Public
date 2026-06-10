@@ -18,9 +18,16 @@
 ### ⚠️ 환경
 - **Codex 한도 다운 — 6/11 10:11 회복 예정.** 구현·dual리뷰 Claude 에이전트 대체 예외 계속. 회복 시 즉시 Codex 복귀.
 
-### 🔵 진행 중: 요구사항1 PR-B (대기 큐 2번 — 자율 진입)
-- 스코프: 품목별 수동 토글 UI(데스크톱 품목관리) + sync override 보존 + searchProducts usageScope 필터 강제 + 주문서 PARTNER_ORDER 분기 (#457 비스코프 잔여).
-- 대기 큐 3번(좌측메뉴 5대분류)은 "Codex 회복 후 적합" 박제대로 보류. 4번(사원 서명 등록) 후순위.
+### ✅ 요구사항1 PR-B 머지 (#460, `c3536db1`, 05:30 자율 머지)
+- V14 `usage_scope_manual` + sync 보존(soft-delete 보호)·시트복귀 rowHash evict + PATCH·DELETE /usage + catalog 질의 q/IN-확장/결정 페이징 + '품목 관리' 화면 신설.
+- 사이클1 (확정 32/기각 3 — P1 3: **라우팅 오배선**·rowHash 캐시·IN-확장 부재) + 사이클2 (만장일치 실해소, 잔존 P2 3·P3 전건 fix). 실QA 1차+보충 PASS (T3/T5R 은 SA key 환경 한계 정직 기록). GitGuardian FP 판정 머지 (dev_p05_pass! 계열).
+- **교훈 박제**: 정찰 시 게이트웨이 라우팅표(`api-gateway application.yml`) 대조 의무 — FE URL 만으로 BE 컨트롤러 추정 금지 (이번 P1 근원).
+- **개발책임자 확인 대기 2건**: ① 수동 PARTNER_ORDER 품목의 order-app 카테고리 탭 노출(estimateCategory 부여 허용) ② **품목 표시 순서 화면 직접 조정** (새벽 문의 — 현행 진실원 = 시트 행 순서, 직접 조정은 결정 변경이라 별도 슬라이스 필요).
+- 토큰 한도 1회 중단(04:20 리셋) → 위임 절차대로 재개 완료.
+
+### 🔵 진행 중: 사원 서명 등록 슬라이스 (대기 큐 4번 — 자율 진입, ~05:35)
+- 스코프: user-service Employee signature + 사원등록 화면 SignaturePad → 출고전표 결재란 서명 스탬프 (#458 placeholder 해소). [[project_slip_shipout_print_form]] 슬라이스 C.
+- 대기 큐 3번(좌측메뉴 5대분류)·Codex 항목들은 10:11 회복 후.
 
 ---
 
