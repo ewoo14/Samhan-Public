@@ -43,10 +43,16 @@
 - **실 QA**(docs/qa/estimate-30-sheets-to-db/RESULTS.md): 실 컨테이너 벌크 10종 건수 + DB-mode bootstrap E2E 9종 렌더·분류·pyong 실증. jest 71/71. **⚠️ 상업멀티 useK2 parity 미달**(대용량 FORMULA read 반복호출 외부 변동) → 기본 sheet 유지, 명시 공개.
 - 🔵 **#30 후속(PR-2~)**: 거래처/담당자/사양맵(getSpecDetailMap_) DB 치환 · **상업 useK2 parity 종결 후 CATALOG_SOURCE 기본 db 전환** · priceInc.single baseline · recommend homeEx 분리.
 
+### 🟡 #30 PR-2 — 상업 useK2 parity **조사 차단**(개발책임자 옵션1: Codex 회복 후 집중 조사)
+- 규명: **JS 클라이언트(estimate-app)는 수식 정확 read(상업 $L$2 378·홈 107, 3회 결정적), Java sync(product-service GoogleSheetsClient)만 결정적 누락(86/54)**. 동일 시트·범위·`valueRenderOption=FORMULA`인데 라이브러리 레벨 discrepancy. 범위폭/quota/dateTimeRenderOption/행정렬 전부 배제.
+- **조사 브리프 박제**: `docs/audit/gas-port-fidelity/java-formula-read-discrepancy-investigation.md`(증상·실측·배제가설·남은가설·재현절차). **Codex 회복(6/11 10:11) 후 이 파일 먼저 읽고 착수.**
+- 차단 영향 0: #455 가 CATALOG_SOURCE=sheet 기본(무회귀) 머지, 갭은 opt-in db 한정. 해소 후 bootstrap 기본 db 전환.
+- 동반 소규모 후속: priceInc.single baseline 0건 / odu homeEx 분리.
+
 ### 🔵 다음 (우선순위)
-1. **#30 후속**(상업 useK2 parity·거래처/담당자/사양맵 DB) / 나머지 23개 GAS 앱 감사·이식.
-2. P0-A snapshots permitAll → X-Internal-Token 동일 하드닝(후속). 운영 Notion 시드 1회 + 운영 .env Naver/Juso 키 5종 설정(런북).
-3. **Codex 회복(6/11 10:11) 후 신규 대형 시리즈는 Codex 구현 의무 체제로 재개.**
+1. **Codex 회복(6/11 10:11) 후**: ① Java FORMULA-read discrepancy 집중 조사(위 브리프) → 상업 parity 종결 → db 기본 전환 ② 신규 대형 시리즈는 Codex 구현 의무 체제로 재개.
+2. **#30 후속**(거래처/담당자/사양맵 DB 치환 PR-3) / 나머지 23개 GAS 앱 감사·이식.
+3. P0-A snapshots permitAll → X-Internal-Token 동일 하드닝. 운영 Notion 시드 1회 + 운영 .env Naver/Juso 키 5종 설정(런북).
 
 ---
 
