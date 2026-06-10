@@ -574,6 +574,8 @@ public class ProductSheetSyncService {
             log.warn("[ProductSheetSync] tab '{}' 수식 read 실패 — 변동DC 판정 skip: {}",
                     mapping.tabName, e.getMessage());
         }
+        // #구분/순서 — 시트 노출 순서(display_order): 탭 내 유효 데이터 행 순번(1부터).
+        int displaySeq = 0;
         // 고정DC 컬럼(홈멀티/상업멀티) — 헤더명 기반.
         int fixedDcColumn = -1;
         {
@@ -594,6 +596,7 @@ public class ProductSheetSyncService {
                 continue;
             }
             sheetModelCodes.add(modelCode);
+            int displayOrder = ++displaySeq; // 시트 노출 순서(유효 데이터 행 순번)
 
             String rowHash = sha256(cells.subList(0, Math.min(8, cells.size())).toString());
             String prevHash = lastKnownRowHash.get(modelCode);
@@ -612,6 +615,12 @@ public class ProductSheetSyncService {
                     : parseFixedDcRate(fixedDcColumn >= 0 ? safeGet(cells, fixedDcColumn) : null);
             String discountFlags = discountDetector.detectDiscountFlags(modelCode);
 
+            // 노출 분류 홈 탭 불변식: TAB_MAPPINGS 는 견적 탭(홈멀티/싱글세트/상업멀티/구형)을
+            // 구성품 탭(싱글구성품/상업멀티구성)보다 먼저 처리한다(L96-115 순서 고정). 따라서 품목의
+            // 최초 insert = 견적 탭 → productCategory 가 견적 카테고리로 고정되고, 이후 구성품 탭의
+            // update 는 아래 가드(productCategory 불일치)로 usageScope/display_order 미변경.
+            // 구성품 탭에만 존재하는 모델은 SINGLE_PART/NONE 으로 insert 됨이 정상(노출 비대상).
+            // ※ 신규 탭 추가 시 견적 탭은 구성품 탭보다 앞에 둘 것.
             Optional<Product> existing = productRepository.findByModelCodeAndIsDeletedFalse(modelCode);
             UUID productId;
             if (existing.isEmpty()) {
@@ -624,6 +633,7 @@ public class ProductSheetSyncService {
                 p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                 p.changeDiscountFlags(discountFlags);
                 applyPyongSize(p, mapping, cells);
+                p.changeDisplayOrder(displayOrder);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
@@ -632,10 +642,17 @@ public class ProductSheetSyncService {
             } else if (prevHash == null || !prevHash.equals(rowHash)) {
                 Product p = existing.get();
                 p.changePrices(releasePrice, deliveryPrice);
-                p.changeUsage(mapping.usageScope, mapping.estimateCategory);
+                // 노출 분류(usageScope/estimateCategory/display_order)는 품목의 '홈 탭'(최초
+                // productCategory 일치 탭)에서만 설정 — 다른 탭(예: 싱글세트가 구성품 탭에 재출현)이
+                // NONE/다른 순번으로 덮어쓰는 stomping 방지(2026-06-10 노출구분 결정). 가격/변동DC/
+                // 사양은 어느 탭에서든 갱신(단가인상 탭 권위).
+                if (p.getProductCategory() == mapping.productCategory) {
+                    p.changeUsage(mapping.usageScope, mapping.estimateCategory);
+                    applyPyongSize(p, mapping, cells);
+                    p.changeDisplayOrder(displayOrder);
+                }
                 p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                 p.changeDiscountFlags(discountFlags);
-                applyPyongSize(p, mapping, cells);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);

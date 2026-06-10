@@ -10,6 +10,7 @@ import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductSpec;
+import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.MaterialPriceRepository;
@@ -112,7 +113,8 @@ public class EstimateCatalogInternalController {
      * @param category HOME_MULTI / SINGLE_SET / COMMERCIAL_MULTI / LEGACY(구형)
      */
     @Operation(summary = "[내부] estimate 카탈로그 벌크 (#30 Sheets→DB)",
-            description = "legacy 시트 getter 대체 — 변동DC 분기·사양 파생 포함 전량 반환.")
+            description = "legacy 시트 getter 대체 — 견적 노출(usageScope) 필터 + 시트 순서(display_order) "
+                    + "정렬 + 변동DC 분기·사양 파생 포함.")
     @GetMapping("/products")
     @Transactional(readOnly = true)
     public ApiResponse<List<CatalogRow>> products(@RequestParam("category") EstimateCategory category) {
@@ -123,8 +125,9 @@ public class EstimateCatalogInternalController {
             case LEGACY -> ProductCategory.OLD;
             default -> throw new IllegalArgumentException("지원하지 않는 카테고리: " + category);
         };
-        List<Product> products = productRepository
-                .findByProductCategoryAndIsDeletedFalse(productCategory);
+        // 개발책임자 결정(2026-06-10): 견적서엔 designated 품목만(ESTIMATE/BOTH), 구글 시트 순서 유지.
+        List<Product> products = productRepository.findExposedCatalog(
+                productCategory, java.util.List.of(UsageScope.ESTIMATE, UsageScope.BOTH));
 
         Map<UUID, Map<String, String>> specByProduct = loadSpecs(
                 products.stream().map(Product::getId).toList());
@@ -155,6 +158,11 @@ public class EstimateCatalogInternalController {
 
     /**
      * 카테고리별 세트 구성품 — legacy getSingleParts/getCommercialParts.
+     *
+     * <p>노출 구분(usageScope) 필터 미적용 의도: 구성품은 사용자 직접 선택 대상이 아니라 이미
+     * 노출 필터된 부모 세트(BUNDLE) 전개 시 따라붙는 자식이다. 부모(products endpoint)에서
+     * usageScope 필터되므로 구성품 단계는 무관. price-baseline 도 동일(인상 전/후 단가 비교용
+     * 전 품목 baseline — 노출 구분과 직교).
      *
      * @param category SINGLE_SET(싱글 구성품) / COMMERCIAL_MULTI(상업멀티 구성)
      */
