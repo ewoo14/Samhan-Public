@@ -25,7 +25,13 @@
 - **개발책임자 확인 대기 2건**: ① 수동 PARTNER_ORDER 품목의 order-app 카테고리 탭 노출(estimateCategory 부여 허용) ② **품목 표시 순서 화면 직접 조정** (새벽 문의 — 현행 진실원 = 시트 행 순서, 직접 조정은 결정 변경이라 별도 슬라이스 필요).
 - 토큰 한도 1회 중단(04:20 리셋) → 위임 절차대로 재개 완료.
 
-### 🔵 PR #461 진행 중 — 품목관리 고도화 (새벽 지시 3건 반영, 야간 위임 07:30 종료 체크포인트)
+### 🔵 PR #461 — 08:30 연장분 추가 진행 (사이클1 완료, HEAD `47cdc609`)
+- **실 QA T1~T8** (`78a8564c` 증빙): **SSE 2-브라우저 실시간 실증 PASS** (A 토글→B 5초 내 갱신), 구성품 편집→DB→전표 전개(API 직호출), cron 비활성, 권한 403, 세트 재고 가드. T6 적발 3건 즉시 fix (`c91e5e2f` — BusinessException 409/400 통일·검증 축 estimateCategory·명칭 model_name 2차).
+- **사이클1 리뷰 게시** (66 에이전트, 확정 58/기각 3): 핵심 P1 = **FE↔BE 구성품 필드명 계약 전면 불일치** (실 QA T2 는 BE 필드명 직호출이라 통과 — FE 모달 경유는 불능이었음, mock false-green) + 메타 유실 + unique flush + 부팅 sync 미게이트. **전건 fix** (`47cdc609` — 필드명 1:1 정렬 대조표·메타 hidden round-trip·flush·부팅 게이트·V15 구성품 순서 영속·yml dead config·N+1·@Valid·페이지≥2 재번호·deny IT·TC vacuous 정정).
+- **세트 재고 가드 구조 판정** (`5d3bb017`): 전표 상세 = 전개 저장이라 가드 불필요 확정 / **주문서 상세는 라인에 BUNDLE 판별 수단 부재 — 후속 BE 확장 필요** (PartnerOrderLine productType 저장).
+- **잔여 (다음 세션)**: ① P3 3건 (SSE publish afterCommit 통일 / 중복 componentProductCode 400 / soft-delete actor X-User-Id) ② **사이클2 cross-check** ③ **FE 모달 경유 구성품 편집 실 QA 재수행** (P1-A fix 검증 — 필수) ④ CI green → PM 종합 → 머지 ⑤ docs 동기화 (dev-report/ROADMAP/README/overview). **Codex 10:11 회복 — 사이클2 부터 Codex 복귀 1순위.**
+
+### (이전 기록) PR #461 진행 중 — 품목관리 고도화 (새벽 지시 3건 반영, 야간 위임 07:30 종료 체크포인트)
 - **개발책임자 새벽 지시 반영** (1차: 시트=시드 전용·출처 불요·세트 여부·구성품 설정·전개 확인 / 2차: 세트 재고 표시 금지·순서 자동 재번호 / 3차: 표시순서 노출품목 한정·**모든 설정 실시간 동기화**): spec `docs/superpowers/specs/2026-06-11-product-catalog-enhance-spec.md` §2-1·§2-2 박제 (브랜치 커밋).
 - **완료** (branch `feat/product-catalog-enhance`, HEAD `81e88657`): 구현 1차(`0f42facb` — cron 게이트 기본 off·세트 뱃지+구성품 수·BundleComponent CRUD replace-all·display-orders 일괄·출처 UI 제거·구성품 모달·dnd 순서) + 정합 pass(`81e88657` — **api-gateway no-strip 3라우트**(components/display-orders/catalog-realtime)·카테고리군 검증 400·노출품목 한정·SlipFormPage 세트 재고 가드·`product:catalog:changed` SSE publish + FE ProductRealtimeClient 구독→invalidate). product-service+gateway green / desktop Playwright 8/8.
 - **잔여 (다음 세션)**: ① 사이클1·2 dual 리뷰 (Codex 10:11 회복 — Codex 복귀 1순위) ② Docker 실 QA (T1~T6 + **구성품 편집→전표 전개 반영**·SSE 실시간 2-브라우저 실증 — mock 불가 한계 보고됨) ③ **잔여 갭**: SlipDetailPage·SalesPartnerOrderDetailPage 재고조회 세트 가드 (라인 응답에 productType 부재 — slip/partner-order BE 응답 확장 필요) ④ CI green→PM 종합→머지 ⑤ docs 동기화 (dev-report/ROADMAP/README/overview — 미작성).
