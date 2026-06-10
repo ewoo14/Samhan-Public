@@ -4,6 +4,26 @@
 
 ---
 
+## 🏢 2026-06-10 (주간) — 라이브 스냅샷 갱신 + **P0-C 계산 6함수 충실 복원 ✅ 머지**
+
+### ✅ 머지
+- **#450** 종합견적서 레포 스냅샷 라이브(clasp 06-09) 기준 갱신 — 자격 13건 redact(노션 6·이카운트 1·네이버 4·Juso 2), 광역 스윕 잔존 0. 이후 모든 이식 검증 기준 = 라이브 스냅샷.
+- **#451 (P0-C)** 계산 6함수 라이브 verbatim 복원 (`e503e20a`):
+  - classifyHome_ 8단계 cascade / classifyCommercial_ catS 4블록 / getSpecDetailMap_ 3-scan(ERV 감지) / decideWarehouseCode_ 반전 교정(기본 00003) / buildDefaultDcConfig_ flat 11키+가드 merge / **getFormulas 수식분기 복원**(readSheetGrid FORMULA render + FakeSheet 실 수식 그리드 → useK2/$L$2·matKey/$D$7·8·isDisc/$I$1).
+  - 부수: helper 깡통 복원(sanitize/trimSymbols/hpFromText NHP/findIdx_ 공백 정규화—maxIndoor 버그/포맷 라벨), detectHomeOrder 모델 분기.
+  - 사이클1 P1(ragged rows 수식 유실) fix → 사이클2 양축 APPROVE. jest **50/50**. **실 시트 standalone QA**(`docs/qa/estimate-p0c/RESULTS.md`): useK2 93/105·353/389, matKey D7 11, isDisc 31/42, 스펙맵 741모델 98%+.
+  - 실 시트 QA 재실행: `GOOGLE_SERVICE_ACCOUNT_KEY=C:\dev\samhan-homepage-*.json node clients/web/estimate-app/scripts/qa-real-sheet-p0c.js`
+
+### ⚠️ 환경
+- Codex 한도 다운 지속 — **6/11 10:11 회복 예정**(`codex exec` 실측). 구현·dual리뷰 Claude 대체 예외 적용 중, 회복 시 즉시 Codex 복귀.
+
+### 🔵 다음 (우선순위)
+1. **P0-B 전표 발행** `/from-estimate` 연결 — **결정 ② 인증모델 대기**.
+2. **#29 DC설정 Notion→DB** + P0-A by-customer 확장(getQuoteHistoryByCustomer) — **결정 ③ 통합키 대기**.
+3. **#30 Sheets→DB 전면 치환** / **#31 종합견적서 Docker E2E 실 UI 캡처** / 나머지 23개 GAS 앱 감사·이식.
+
+---
+
 ## 🌙 2026-06-10 (야간 자율) — **GAS 전체 정합성 감사 + 종합견적서 완결 에픽**
 
 > 개발책임자 지시(2026-06-09 밤): ① **모든 GAS 코드**(24앱·70,560줄)를 함수 단위로 무누락 이식 검증 ② **종합견적서는 구글드라이브 라이브 코드 재다운로드 후 재이식** ③ **Notion/Google Sheets/이카운트/엑셀 → 전부 우리 DB 데이터로 치환**(노션 페이지 데이터도 시드 DB 이식+통신호환) ④ 차이는 극명히 밝히고 재진행. **취침 → 오전 9시까지 PM 자율 판단·진행**.
