@@ -23,7 +23,15 @@ metadata:
 usageScope/displayOrder + 수동 토글(usage_scope_manual, sync 보존·soft-delete 보호·시트복귀 rowHash evict) + 품목관리 화면(/products/catalog) + catalog 질의(q·**IN-확장**: PARTNER_ORDER→+BOTH·결정 페이징) 완결. 핵심 잔류 지식:
 - `/api/v1/products` = ProductCatalogController (게이트웨이 정확경로) — `/products`(ProductController) 의 usageScope 는 exact-match 시멘틱 분기 (실호출자 0, Javadoc 명시). **정찰 시 게이트웨이 라우팅표 대조 의무** (PR-B 사이클1 P1 근원).
 - 표시 순서 진실원 = 시트 행 순서 (바꾸려면 시트에서 행 이동→sync). 시트에 없는 수동 품목은 NULLS LAST 맨 뒤. **화면 직접 순서 조정은 미구현 — 개발책임자 결정 대기** (2026-06-11 새벽 문의).
-- 개발책임자 확인 대기 2건: ① 수동 PARTNER_ORDER 품목의 order-app 카테고리 탭 노출(estimateCategory 부여 허용) ② 화면 직접 순서 조정. §2(메뉴 5대분류) 는 미착수 — Codex 회복 후.
+- 개발책임자 확인 대기: ① 수동 PARTNER_ORDER 품목의 order-app 카테고리 탭 노출(estimateCategory 부여 허용). §2(메뉴 5대분류) 는 미착수 — Codex 회복 후.
+
+## §1-보강: 시트 = 첫 시드 전용 확정 + 품목관리 고도화 (2026-06-11 새벽 개발책임자)
+
+> "구글 시트는 첫 시드 데이터고 추후 조회하지 않는데? 세트인지 아닌지 여부도 알아야하고 출처는 굳이 필요 없잖아. 세트인 품목은 상세에서 구성품 설정 가능해야 하고, 세트를 전표에 넣으면 구성품 자동 전개 여부도."
+
+- **시트 = 시드 전용 확정** ([[project-sheets-to-db-full-migration]] 합치): '시트 동기화' 메뉴는 시드 재적재 비상 수단으로 유지, **시간당 자동 cron 비활성**, 품목관리의 출처(시트자동/수동) 뱃지·'시트 자동 복귀' 버튼 제거.
+- **품목관리 고도화 슬라이스**: 세트 여부 컬럼(productType=BUNDLE + 구성품 수) / **구성품 편집기 신설** (BundleComponent CRUD — 기존엔 시트 sync·시더 적재 전용, 편집 수단 없었음) / **표시 순서 화면 직접 조정** (DB 진실원 전환 — @dnd-kit 기성 의존성).
+- 사실 확인: 전표 자동 전개는 **기성** (SlipFormPage BUNDLE → BundleOptionRow 옵션 + BundleExpander 6:4 재배분 전개, #439).
 
 **Why**: 견적/주문 노출 품목을 정확히 통제(전 품목 노출 방지) + 시트 운영 순서 유지. 메뉴 가독성·업무 권역 정리.
 **How to apply**: #30 카탈로그([[project-sheets-to-db-full-migration]]) 후속으로 usageScope 필터+displayOrder 적용. 관련 EstimateCatalogInternalController(#455)·ProductSheetSyncService. 메뉴는 clients/desktop AppLayout.tsx 재구성. 대형 UI 변경이라 Codex 회복(6/11 10:11) 후 구현 적합.
