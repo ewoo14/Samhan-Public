@@ -142,6 +142,10 @@ class SlipFormV20PersistIT extends AbstractPostgresIT {
         Mockito.lenient()
                 .when(partnerInternalClient.resolveBusinessNumber(ArgumentMatchers.any(UUID.class)))
                 .thenReturn(Optional.empty());
+        // partnerCode resolve 기본 stub — 실패 (TC-7 기본 동작, TC-6 에서 개별 override)
+        Mockito.lenient()
+                .when(partnerInternalClient.resolvePartnerCode(ArgumentMatchers.any(UUID.class)))
+                .thenReturn(Optional.empty());
     }
 
     /**
@@ -313,6 +317,172 @@ class SlipFormV20PersistIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.businessNumber", nullValue()));
+    }
+
+    /**
+     * TC-6: partnerCode Feign resolve mock → 전표 생성 시 snapshot 채움 검증 (2026-06-10).
+     *
+     * <p>거래명세서 공급받는자(사업자주소/대표번호)가 FE getPartnerFull(partnerCode) 로
+     * 조회되므로, 생성 시점에 PartnerInternalClient.resolvePartnerCode 결과가
+     * slip.partnerCode 로 snapshot 되는지 검증한다. (V15 컬럼 '후속 슬라이스' 이행)
+     */
+    @Test
+    @DisplayName("TC-6: partnerCode Feign resolve mock → 전표 생성 응답에 snapshot 채움")
+    void tc6_partnerCodeFeignResolve_snapshotFilled() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        Mockito.when(partnerInternalClient.resolvePartnerCode(partnerId))
+                .thenReturn(Optional.of("P-2026-0001"));
+
+        Map<String, Object> body = buildCreateBody(null, null, null, null, null);
+        body.put("partnerId", partnerId.toString());
+
+        mockMvc.perform(post("/slips")
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.partnerCode", is("P-2026-0001")));
+    }
+
+    /**
+     * TC-7: partnerCode resolve 실패 시 NULL 유지 (graceful fallback — legacy 호환).
+     */
+    @Test
+    @DisplayName("TC-7: partnerCode Feign fail 시 NULL 유지")
+    void tc7_partnerCodeFeignFail_nullRetained() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        Mockito.when(partnerInternalClient.resolvePartnerCode(partnerId))
+                .thenReturn(Optional.empty());
+
+        Map<String, Object> body = buildCreateBody(null, null, null, null, null);
+        body.put("partnerId", partnerId.toString());
+
+        mockMvc.perform(post("/slips")
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.partnerCode", nullValue()));
+    }
+
+    /**
+     * TC-8: updateSlip 거래처 변경 → 신규 partnerCode 재resolve 검증 (사이클1 BE 리뷰).
+     */
+    @Test
+    @DisplayName("TC-8: PATCH /v20 거래처 변경 → 신규 partnerCode 재resolve")
+    void tc8_updatePartnerChanged_partnerCodeReResolved() throws Exception {
+        UUID oldPartnerId = UUID.randomUUID();
+        UUID newPartnerId = UUID.randomUUID();
+        Mockito.when(partnerInternalClient.resolvePartnerCode(oldPartnerId))
+                .thenReturn(Optional.of("P-OLD-0001"));
+        Mockito.when(partnerInternalClient.resolvePartnerCode(newPartnerId))
+                .thenReturn(Optional.of("P-NEW-0002"));
+
+        Map<String, Object> body = buildCreateBody(null, null, null, null, null);
+        body.put("partnerId", oldPartnerId.toString());
+        MvcResult createResult = mockMvc.perform(post("/slips")
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.partnerCode", is("P-OLD-0001")))
+                .andReturn();
+        String slipId = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        Map<String, Object> patchBody = new HashMap<>();
+        patchBody.put("partnerId", newPartnerId.toString());
+        mockMvc.perform(patch("/slips/{id}/v20", slipId)
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(patchBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerCode", is("P-NEW-0002")));
+    }
+
+    /**
+     * TC-9: updateSlip 거래처 변경 + resolve 실패 → partnerCode NULL clear (stale 방지).
+     *
+     * <p>이전 거래처의 code 가 잔존하면 새 partnerId 와 불일치(stale) — 사이클1 BE 리뷰 P1.
+     */
+    @Test
+    @DisplayName("TC-9: PATCH /v20 거래처 변경 + resolve 실패 → partnerCode NULL clear")
+    void tc9_updatePartnerChanged_resolveFail_partnerCodeCleared() throws Exception {
+        UUID oldPartnerId = UUID.randomUUID();
+        UUID newPartnerId = UUID.randomUUID();
+        Mockito.when(partnerInternalClient.resolvePartnerCode(oldPartnerId))
+                .thenReturn(Optional.of("P-OLD-0001"));
+        Mockito.when(partnerInternalClient.resolvePartnerCode(newPartnerId))
+                .thenReturn(Optional.empty());
+
+        Map<String, Object> body = buildCreateBody(null, null, null, null, null);
+        body.put("partnerId", oldPartnerId.toString());
+        MvcResult createResult = mockMvc.perform(post("/slips")
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.partnerCode", is("P-OLD-0001")))
+                .andReturn();
+        String slipId = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        Map<String, Object> patchBody = new HashMap<>();
+        patchBody.put("partnerId", newPartnerId.toString());
+        mockMvc.perform(patch("/slips/{id}/v20", slipId)
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(patchBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerCode", nullValue()));
+    }
+
+    /**
+     * TC-10: 같은 partnerId 재전송(FE 전체필드 전송 관행) + resolve 실패 → 기존 partnerCode 유지.
+     *
+     * <p>사이클2 BE cross-check P1 — '변경' 판정이 req.partnerId() != null 이면 같은 거래처
+     * 재전송 시 정상 code 가 NULL clear 되는 회귀. 진짜 변경(이전 partnerId 상이) 시에만 clear.
+     */
+    @Test
+    @DisplayName("TC-10: 같은 partnerId 재전송 + resolve 실패 → partnerCode 유지")
+    void tc10_samePartnerResubmit_resolveFail_partnerCodeRetained() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        Mockito.when(partnerInternalClient.resolvePartnerCode(partnerId))
+                .thenReturn(Optional.of("P-KEEP-0001"));
+
+        Map<String, Object> body = buildCreateBody(null, null, null, null, null);
+        body.put("partnerId", partnerId.toString());
+        MvcResult createResult = mockMvc.perform(post("/slips")
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.partnerCode", is("P-KEEP-0001")))
+                .andReturn();
+        String slipId = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        // 이후 resolve 실패로 전환 — 같은 partnerId 재전송 시 기존 code 유지되어야 함
+        Mockito.when(partnerInternalClient.resolvePartnerCode(partnerId))
+                .thenReturn(Optional.empty());
+
+        Map<String, Object> patchBody = new HashMap<>();
+        patchBody.put("partnerId", partnerId.toString()); // 동일 거래처 (FE 전체필드 전송)
+        patchBody.put("projectName", "재전송 갱신");
+        mockMvc.perform(patch("/slips/{id}/v20", slipId)
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, SALES_ROLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(patchBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerCode", is("P-KEEP-0001")));
     }
 
     // ========================================================================

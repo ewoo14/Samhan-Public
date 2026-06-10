@@ -254,6 +254,12 @@ public class SlipService {
         // businessNumber: partnerId 가 있으면 partner-service Feign 자동 resolve.
         //                 Feign fail 시 NULL 유지 (legacy 호환, 로그만).
         String resolvedBusinessNumber = resolveBusinessNumber(req.partnerId());
+        // partnerCode snapshot (2026-06-10) — 거래명세서 공급받는자 주소/대표번호가 FE 에서
+        // getPartnerFull(partnerCode) 로 조회되므로 생성 시점에 resolve. 실패 시 NULL 유지.
+        if (req.partnerId() != null) {
+            partnerInternalClient.resolvePartnerCode(req.partnerId())
+                    .ifPresent(slip::setPartnerCode);
+        }
         slip.withProjectInfo(
                 resolvedBusinessNumber,
                 req.deliveryAddress(),
@@ -364,6 +370,8 @@ public class SlipService {
     public SlipDetailResponse updateSlip(UUID id, UpdateSlipRequest req, String callerId,
                                          String callerName) {
         Slip slip = loadOrThrow(id);
+        // editHeader 가 partnerId 를 덮어쓰기 전에 캡처 — partnerCode 진짜 변경 판정용 (사이클2 BE)
+        UUID previousPartnerId = slip.getPartnerId();
         // 기존 헤더 필드 수정 (도메인 메서드 chain — Slip.editHeader)
         applyMutation(() -> slip.editHeader(req.partnerId(), req.partnerName(),
                 req.deliveryTag(), req.memo(), req.driverName(), req.driverPhone()));
@@ -375,6 +383,21 @@ public class SlipService {
         String resolvedBusinessNumber = null;
         if (effectivePartnerId != null && (slip.getBusinessNumber() == null || req.partnerId() != null)) {
             resolvedBusinessNumber = resolveBusinessNumber(effectivePartnerId);
+        }
+        // partnerCode snapshot (2026-06-10) — partnerId 변경 또는 기존 NULL 시 resolve.
+        // '진짜 변경'(이전 partnerId 와 상이) 시에만 resolve 실패를 NULL clear 로 처리 —
+        // 이전 거래처 code 잔존(stale) 방지 (사이클1 P1). 같은 partnerId 재전송(FE 전체필드
+        // 전송 관행)은 백필 의미론(성공 시만 채움)이라 정상 code 가 clear 되지 않음 (사이클2 P1).
+        boolean partnerActuallyChanged =
+                req.partnerId() != null && !req.partnerId().equals(previousPartnerId);
+        if (effectivePartnerId != null && (slip.getPartnerCode() == null || partnerActuallyChanged)) {
+            java.util.Optional<String> resolvedCode =
+                    partnerInternalClient.resolvePartnerCode(effectivePartnerId);
+            if (partnerActuallyChanged) {
+                slip.setPartnerCode(resolvedCode.orElse(null));
+            } else {
+                resolvedCode.ifPresent(slip::setPartnerCode);
+            }
         }
         slip.withProjectInfo(
                 resolvedBusinessNumber,
