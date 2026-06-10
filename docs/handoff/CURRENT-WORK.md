@@ -35,6 +35,14 @@
 - **서버**: 주소검색 8함수 verbatim(Naver/Juso env 키 5종)·getAllNotionDcConfigs_(dc-config `GET /internal/partner-dc-configs` 벌크 신설)·getCustomerDataAsync dc 부착·getQuoteHistoryByCustomer(slip-service `GET .../snapshots/by-customer` 신설). **checkUserAuth 가 JWT 계약(`/auth/me`)과 불일치 → 실 스택 상시 차단 회귀 적발 → user-service `GET /internal/users/by-email` 신설로 해소.**
 - **실 QA**: 전부 실 env 풀기동 + Playwright 실 UI 캡처 4장(docs/qa/estimate-31-live-ui-parity/) — 게이트 통과([DEV-SEED] 개발마스터)·실 Naver 주소결과·by-customer 복원행·DC 45→**48** 자동반영(거래처 7,053 중 dc 225 매칭). jest 63/63.
 
+### ✅ P0-A snapshots 하드닝 머지 (#456) — 견적 snapshot permitAll → X-Internal-Token(/internal/estimates/snapshots), 게이트웨이 무인증 라우트 폐기, IT enforcement 3종. 실 QA 6종.
+
+### 🆕 개발책임자 신규 요구사항 로드맵 (2026-06-10, 확정 — [.claude/memory/project_item_exposure_and_menu_5cat.md], [project_estimate_auth_dc_key_decisions.md])
+대형 UI/auth 슬라이스라 **Codex 회복(6/11 10:11) 후 구현 적합**. 결정 모두 확정·박제 완료:
+1. **품목 노출 구분 + 시트 순서**: 견적/주문 노출=usageScope(시트 탭 자동 + **품목별 수동 토글 UI**, 시트 없는 품목도 수동 노출). EstimateCatalogInternalController 에 usageScope 필터 강제(현재 미적용). **Product 에 시트 row 순서 컬럼(displayOrder) 신규** → sync 보존 → 견적/주문 시트 동일 순서 표시.
+2. **좌측 메뉴 5대 분류**: clients/desktop AppLayout.tsx 를 판매/구매/회계/그룹웨어/인사 5그룹 재배치 + **배차(arologis)·창고운영 별도 유지**(실질 7그룹).
+3. **인증 모델 확정**: 종합견적서(estimate-app)=**사원 자체 로그인**(현 req.query.email 신뢰경로 갭 → 사원 로그인 교체, by-email Employee 확인 #31 유지). 주문서(order-app, React SPA)=**외부 거래처 + 사용 승인(ACTIVE) 상태만 접속** — partner-auth-service 기성(PartnerStatus PENDING→ACTIVE, PartnerApprovalsController) 활용.
+
 ### ✅ #31 라이브 UI 정합 머지 (#454, `b0a973dc`)
 
 ### ✅ #30 Sheets→DB 치환 PR-1 머지 (#455, `~`)
