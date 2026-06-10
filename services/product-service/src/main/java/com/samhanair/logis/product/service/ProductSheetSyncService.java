@@ -210,6 +210,7 @@ public class ProductSheetSyncService {
                 summary.totalUpdated += tabResult.updated;
                 summary.totalSoftDeleted += tabResult.softDeleted;
                 summary.totalSkipped += tabResult.skipped;
+                summary.totalPreservedManual += tabResult.preservedManual;
                 summary.totalSpecsLinked += tabResult.specsLinked;
             } catch (Exception e) {
                 log.error("[ProductSheetSync] tab '{}' sync 실패: {}", mapping.tabName, e.getMessage(), e);
@@ -236,9 +237,10 @@ public class ProductSheetSyncService {
 
         summary.durationMs = Instant.now().toEpochMilli() - started.toEpochMilli();
         log.info("[ProductSheetSync] sync 완료: 총 inserted={}, updated={}, softDeleted={}, skipped={}, "
-                        + "구성품 linked={}, bundle marked={}, 사양 linked={}, duration={}ms",
+                        + "preservedManual={}, 구성품 linked={}, bundle marked={}, 사양 linked={}, duration={}ms",
                 summary.totalInserted, summary.totalUpdated, summary.totalSoftDeleted,
-                summary.totalSkipped, summary.totalComponentsLinked, summary.totalBundlesMarked,
+                summary.totalSkipped, summary.totalPreservedManual,
+                summary.totalComponentsLinked, summary.totalBundlesMarked,
                 summary.totalSpecsLinked, summary.durationMs);
         return summary;
     }
@@ -646,8 +648,16 @@ public class ProductSheetSyncService {
                 // productCategory 일치 탭)에서만 설정 — 다른 탭(예: 싱글세트가 구성품 탭에 재출현)이
                 // NONE/다른 순번으로 덮어쓰는 stomping 방지(2026-06-10 노출구분 결정). 가격/변동DC/
                 // 사양은 어느 탭에서든 갱신(단가인상 탭 권위).
+                //
+                // V14 수동 override 보존 가드 (2026-06-11 PR-B):
+                //   usageScopeManual=true 인 품목은 usageScope/estimateCategory 를 시트 기준으로
+                //   덮어쓰지 않는다.
+                //   displayOrder 는 '홈 탭' update 분기 진입 시 갱신한다 (지적 [8], PR-B 2026-06-11).
+                //   manual 여부와 무관하게 갱신 — 사용자가 시트 행 순서를 재정렬해도 반영되어야 함.
                 if (p.getProductCategory() == mapping.productCategory) {
-                    p.changeUsage(mapping.usageScope, mapping.estimateCategory);
+                    if (!p.isUsageScopeManual()) {
+                        p.changeUsage(mapping.usageScope, mapping.estimateCategory);
+                    }
                     applyPyongSize(p, mapping, cells);
                     p.changeDisplayOrder(displayOrder);
                 }
@@ -672,12 +682,21 @@ public class ProductSheetSyncService {
 
         syncBeforeIncreasePriceHistory(mapping, sheetModelCodes);
 
-        // soft-delete: DB 의 같은 productCategory row 중 시트에서 사라진 것
+        // soft-delete: DB 의 같은 productCategory row 중 시트에서 사라진 것.
+        // usageScopeManual=true 인 품목은 시트 부재 시에도 soft-delete 제외 — 개발책임자 결정
+        // "시트에 없는 품목도 수동 노출 가능" 에 부합 (PR-B 2026-06-11, 지적 [4]).
         List<Product> dbProducts = productRepository.findByProductCategoryAndIsDeletedFalse(mapping.productCategory);
         for (Product p : dbProducts) {
             String code = p.getModelCode();
             if (code == null) continue;
             if (!sheetModelCodes.contains(code)) {
+                if (p.isUsageScopeManual()) {
+                    // 수동 override 품목 — 시트에 없어도 삭제 보호 (별도 카운터 preservedManual 사용, 사이클2 지적 P3-6)
+                    log.debug("[ProductSheetSync] tab '{}' modelCode='{}' usageScopeManual=true → soft-delete 제외",
+                            mapping.tabName, code);
+                    result.preservedManual++;
+                    continue;
+                }
                 // BaseEntity.markDeleted: deletedAt + deletedBy + isDeleted=true 설정 (shared:common).
                 p.markDeleted("system-sheet-sync");
                 productRepository.save(p);
@@ -686,9 +705,9 @@ public class ProductSheetSyncService {
             }
         }
 
-        log.info("[ProductSheetSync] tab '{}': inserted={}, updated={}, unchanged={}, softDeleted={}, skipped={}",
+        log.info("[ProductSheetSync] tab '{}': inserted={}, updated={}, unchanged={}, softDeleted={}, skipped={}, preservedManual={}",
                 mapping.tabName, result.inserted, result.updated, result.unchanged,
-                result.softDeleted, result.skipped);
+                result.softDeleted, result.skipped, result.preservedManual);
         return result;
     }
 
@@ -824,6 +843,24 @@ public class ProductSheetSyncService {
     }
 
     /**
+     * 특정 modelCode 의 rowHash 캐시 무효화 — 수동 override 해제 시 호출.
+     *
+     * <p>인메모리 {@link #lastKnownRowHash} 에서 해당 모델의 hash 를 제거하여
+     * 다음 sync 에서 {@code unchanged} 분기를 건너뛰고 usageScope/estimateCategory 를
+     * 시트 기준으로 재분류하도록 강제한다 (지적 [2], PR-B 2026-06-11).
+     *
+     * <p>시트 행 내용이 바뀌지 않았어도 override 해제 후 반드시 재분류가 필요하므로
+     * hash 자체를 제거한다. 제거 후 다음 sync = 신규 insert 가 아닌 hash miss → update 경로.
+     *
+     * @param modelCode override 해제된 품목의 modelCode
+     */
+    public void evictRowHash(String modelCode) {
+        if (modelCode != null) {
+            lastKnownRowHash.remove(modelCode);
+        }
+    }
+
+    /**
      * 테스트 전용 — 메모리 hash 캐시 초기화.
      * IT 에서 @BeforeEach 로 호출하여 테스트 간 격리 보장. 운영 코드에서 호출 금지.
      */
@@ -850,18 +887,35 @@ public class ProductSheetSyncService {
         }
     }
 
-    /** tab 1개 sync 결과. */
+    /**
+     * tab 1개 sync 결과.
+     *
+     * <p><b>카운터 구분 (사이클2 지적 P3-6, 2026-06-11)</b>:
+     * <ul>
+     *   <li>{@code skipped} — 파싱 불가(이름/modelCode 공백) 행 수</li>
+     *   <li>{@code preservedManual} — soft-delete 대상이나 {@code usageScopeManual=true} 로 보존된 품목 수</li>
+     * </ul>
+     * 두 카운터를 분리하여 sync 리포트에서 "파싱 skip"과 "수동 보존"을 독립적으로 확인 가능.
+     */
     public static class TabSyncResult {
         public int inserted = 0;
         public int updated = 0;
         public int unchanged = 0;
         public int softDeleted = 0;
+        /** 파싱 불가(이름/modelCode 공백) 행 수. */
         public int skipped = 0;
+        /** soft-delete 대상이나 usageScopeManual=true 로 삭제 보호된 품목 수 (사이클2 지적 P3-6). */
+        public int preservedManual = 0;
         public int specsLinked = 0;
         public String error;
     }
 
-    /** 전체 sync 집계. */
+    /**
+     * 전체 sync 집계.
+     *
+     * <p>{@code totalPreservedManual} — usageScopeManual=true 로 soft-delete 에서 보호된 품목 합계.
+     * {@code totalSkipped} 와 별도 집계하여 파싱 skip 과 혼용하지 않는다 (사이클2 지적 P3-6).
+     */
     public static class SyncSummary {
         public Map<String, TabSyncResult> byTab = new HashMap<>();
         public Map<String, ComponentSyncResult> byComponentTab = new HashMap<>();
@@ -869,6 +923,8 @@ public class ProductSheetSyncService {
         public int totalUpdated = 0;
         public int totalSoftDeleted = 0;
         public int totalSkipped = 0;
+        /** usageScopeManual=true 로 soft-delete 보호된 품목 합계 (사이클2 지적 P3-6). */
+        public int totalPreservedManual = 0;
         public int totalComponentsLinked = 0;
         public int totalBundlesMarked = 0;
         public int totalSpecsLinked = 0;

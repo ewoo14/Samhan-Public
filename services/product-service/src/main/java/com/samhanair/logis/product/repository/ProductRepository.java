@@ -72,9 +72,13 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     Page<Product> findAllByCategory_IdAndStatus(UUID categoryId, ProductStatus status, Pageable pageable);
 
     /**
-     * 자유 텍스트 검색 (name / model_name LIKE) + 선택적 카테고리/상태/태그 필터를
+     * 자유 텍스트 검색 (name / model_name LIKE) + 선택적 카테고리/상태/태그/usageScope/productCategory 필터를
      * 단일 native 쿼리로 합쳐 처리. {@code :tagFilter} 는 jsonb 형태의 문자열
      * (예: '{"hp":"1.5"}') 또는 NULL.
+     *
+     * <p>소비처: {@code /products} (GET) 엔드포인트 — 어드민/데스크톱 품목관리 화면 전용.
+     * order-app 및 desktop sales.ts 의 카탈로그 조회는 {@link #searchByUsageScope} 를 사용한다
+     * (사이클2 지적 P3-5, 2026-06-11).
      */
     // [RC4] null→bytea 방지: CAST(:q AS text) (nativeQuery 이므로 PostgreSQL text 캐스트)
     @Query(value = """
@@ -85,6 +89,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (CAST(:q AS text) IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%'))
                                         OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')))
               AND (CAST(:tagFilter AS text) IS NULL OR p.tags @> CAST(:tagFilter AS jsonb))
+              AND (CAST(:usageScope AS text) IS NULL OR p.usage_scope = CAST(:usageScope AS text))
+              AND (CAST(:productCategory AS text) IS NULL OR p.product_category = CAST(:productCategory AS text))
             """,
            countQuery = """
             SELECT COUNT(*) FROM products p
@@ -94,13 +100,26 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (CAST(:q AS text) IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%'))
                                         OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')))
               AND (CAST(:tagFilter AS text) IS NULL OR p.tags @> CAST(:tagFilter AS jsonb))
+              AND (CAST(:usageScope AS text) IS NULL OR p.usage_scope = CAST(:usageScope AS text))
+              AND (CAST(:productCategory AS text) IS NULL OR p.product_category = CAST(:productCategory AS text))
             """,
            nativeQuery = true)
     Page<Product> search(@Param("categoryId") UUID categoryId,
                          @Param("status") String status,
                          @Param("q") String q,
                          @Param("tagFilter") String tagFilter,
+                         @Param("usageScope") String usageScope,
+                         @Param("productCategory") String productCategory,
                          Pageable pageable);
+
+    /**
+     * usageScope 단일 필터 전용 페이징 조회 (기존 호출자 backward-compat 보조).
+     * @deprecated 신규 코드는 {@link #search(UUID, String, String, String, String, String, Pageable)} 사용.
+     */
+    @Deprecated
+    default Page<Product> search(UUID categoryId, String status, String q, String tagFilter, Pageable pageable) {
+        return search(categoryId, status, q, tagFilter, null, null, pageable);
+    }
 
     // ============================================================
     // V3 마이그 신규 — modelCode + usageScope/estimateCategory 필터
@@ -118,14 +137,71 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     boolean existsByProductCodeAndIsDeletedFalse(String productCode);
 
     /**
-     * 카탈로그 endpoint 필터 — usageScope/estimateCategory 조합 검색.
-     * GET /api/v1/products?usageScope={enum}&category={enum}.
+     * 카탈로그 endpoint 필터 — usageScope(IN 확장 시멘틱)/estimateCategory/q 조합 검색.
+     *
+     * <p>GET /api/v1/products?usageScope={enum}&amp;category={enum}&amp;q={keyword}.
+     *
+     * <p><b>usageScope IN 확장 시멘틱 (PR-B 2026-06-11, 지적 [10][3])</b>:
+     * <ul>
+     *   <li>ESTIMATE 요청 → IN (ESTIMATE, BOTH) — BOTH 품목이 견적 카탈로그에 포함</li>
+     *   <li>PARTNER_ORDER 요청 → IN (PARTNER_ORDER, BOTH) — BOTH 품목이 주문 카탈로그에 포함</li>
+     *   <li>BOTH/NONE 요청 → exact match (기존 동작 유지)</li>
+     *   <li>null → 전체 (필터 없음)</li>
+     * </ul>
+     *
+     * <p><b>q 파라미터 (PR-B 2026-06-11, 지적 [1][9][15])</b>:
+     * model_code / model_name / name LIKE 검색. null/blank → 전체.
+     * {@code model_code} 가 비어 있고 {@code model_name} 만 있는 레거시 행도 검색 가능하도록
+     * model_name 컬럼도 검색 대상에 포함한다 (사이클2 지적 P2-1, 2026-06-11).
+     * q 바인딩 전에 호출자(서비스 계층)가 LIKE 와일드카드({@code \}, {@code %}, {@code _}) 이스케이프 적용.
+     *
+     * <p><b>정렬 (사이클2 지적 P2-2, 2026-06-11)</b>:
+     * {@code display_order ASC NULLS LAST, model_code ASC} — 시트 노출 순서 보존 + 비결정 순서 방지.
+     * count 쿼리는 ORDER BY 제외.
      */
-    @Query("SELECT p FROM Product p WHERE p.isDeleted = false "
-            + "AND (:usageScope IS NULL OR p.usageScope = :usageScope) "
-            + "AND (:estimateCategory IS NULL OR p.estimateCategory = :estimateCategory)")
-    Page<Product> searchByUsageScope(@Param("usageScope") UsageScope usageScope,
-                                     @Param("estimateCategory") EstimateCategory estimateCategory,
+    @Query(value = """
+            SELECT * FROM products p
+             WHERE p.is_deleted = false
+               AND (
+                     CAST(:usageScope AS text) IS NULL
+                     OR (CAST(:usageScope AS text) = 'ESTIMATE'
+                         AND p.usage_scope IN ('ESTIMATE', 'BOTH'))
+                     OR (CAST(:usageScope AS text) = 'PARTNER_ORDER'
+                         AND p.usage_scope IN ('PARTNER_ORDER', 'BOTH'))
+                     OR (CAST(:usageScope AS text) NOT IN ('ESTIMATE', 'PARTNER_ORDER')
+                         AND p.usage_scope = CAST(:usageScope AS text))
+                   )
+               AND (CAST(:estimateCategory AS text) IS NULL
+                    OR p.estimate_category = CAST(:estimateCategory AS text))
+               AND (CAST(:q AS text) IS NULL
+                    OR LOWER(p.model_code) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
+                    OR LOWER(p.name)       LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
+                    OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\')
+             ORDER BY p.display_order ASC NULLS LAST, p.model_code ASC
+            """,
+           countQuery = """
+            SELECT COUNT(*) FROM products p
+             WHERE p.is_deleted = false
+               AND (
+                     CAST(:usageScope AS text) IS NULL
+                     OR (CAST(:usageScope AS text) = 'ESTIMATE'
+                         AND p.usage_scope IN ('ESTIMATE', 'BOTH'))
+                     OR (CAST(:usageScope AS text) = 'PARTNER_ORDER'
+                         AND p.usage_scope IN ('PARTNER_ORDER', 'BOTH'))
+                     OR (CAST(:usageScope AS text) NOT IN ('ESTIMATE', 'PARTNER_ORDER')
+                         AND p.usage_scope = CAST(:usageScope AS text))
+                   )
+               AND (CAST(:estimateCategory AS text) IS NULL
+                    OR p.estimate_category = CAST(:estimateCategory AS text))
+               AND (CAST(:q AS text) IS NULL
+                    OR LOWER(p.model_code) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
+                    OR LOWER(p.name)       LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
+                    OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\')
+            """,
+           nativeQuery = true)
+    Page<Product> searchByUsageScope(@Param("usageScope") String usageScope,
+                                     @Param("estimateCategory") String estimateCategory,
+                                     @Param("q") String q,
                                      Pageable pageable);
 
     List<Product> findByUsageScopeAndIsDeletedFalse(UsageScope usageScope);

@@ -1,7 +1,9 @@
 package com.samhanair.logis.product.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductStatus;
+import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.service.ProductService;
 import com.samhanair.logis.product.web.dto.CreateProductRequest;
 import com.samhanair.logis.product.web.dto.LookupRequest;
@@ -57,6 +59,18 @@ public class ProductController {
 
     private final ProductService productService;
 
+    /**
+     * 품목 목록 조회 (어드민/데스크톱 품목관리 화면 전용).
+     *
+     * <p>categoryId/status/tag/q 기존 필터 + usageScope/category 신규 AND 결합 필터.
+     * order-app 및 desktop sales.ts 의 카탈로그 조회는 {@link com.samhanair.logis.product.web.ProductCatalogController}
+     * ({@code /api/v1/products})에서 처리하므로 두 경로를 혼동하지 않도록 주의 (사이클2 지적 P3-5, 2026-06-11).
+     *
+     * <ul>
+     *   <li>{@code usageScope} — {@link UsageScope} enum 문자열 (예: {@code PARTNER_ORDER}, {@code BOTH})</li>
+     *   <li>{@code category} — {@link ProductCategory} enum 문자열 (예: {@code HOME_MULTI})</li>
+     * </ul>
+     */
     @GetMapping
     @RequirePermission(page = "products.list", action = PermissionAction.VIEW)
     public ApiResponse<Page<ProductSummaryResponse>> search(
@@ -65,11 +79,14 @@ public class ProductController {
             @RequestParam(required = false) String tagKey,
             @RequestParam(required = false) String tagValue,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) UsageScope usageScope,
+            @RequestParam(required = false) ProductCategory category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
         Pageable pageable = PageRequest.of(page, size);
-        return ApiResponse.ok(productService.search(categoryId, status, tagKey, tagValue, q, pageable));
+        return ApiResponse.ok(productService.search(categoryId, status, tagKey, tagValue, q,
+                usageScope, category, pageable));
     }
 
     @GetMapping("/{id}")

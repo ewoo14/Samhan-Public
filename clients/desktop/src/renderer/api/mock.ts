@@ -772,11 +772,27 @@ const MOCK_BRANCH_PIPE_ROWS = [
   { branchCode: '4119', description: null, summaryQty: null },
 ]
 
-const MOCK_PRODUCT_CATALOG_ROWS = Object.values(MOCK_PRODUCTS_BY_MODEL).map((p, index) => ({
+// MOCK_PRODUCT_CATALOG_ROWS: mutable 로 선언하여 PATCH/DELETE 가 업데이트 가능.
+// usageScopeManual / displayOrder 필드 추가 (PR-B 확장).
+let MOCK_PRODUCT_CATALOG_ROWS: Array<{
+  modelCode: string
+  name: string
+  usageScope: string
+  estimateCategory: string | null
+  usageScopeManual: boolean
+  displayOrder: number | null
+  releasePrice: number
+  deliveryPrice: number
+  hasVariableDiscount: boolean
+  legacyDiscountFlag: boolean
+  discountFlags: null
+}> = Object.values(MOCK_PRODUCTS_BY_MODEL).map((p, index) => ({
   modelCode: p.modelName,
   name: p.productName,
   usageScope: index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
   estimateCategory: index % 2 === 0 ? 'HOME_MULTI' : 'OTHER',
+  usageScopeManual: false,
+  displayOrder: index + 1,
   releasePrice: Number(p.sellingPrice),
   deliveryPrice: Number(p.sellingPrice),
   hasVariableDiscount: false,
@@ -1099,19 +1115,62 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(MOCK_PRODUCT_CATEGORIES)
   }
 
+  // PATCH /api/v1/products/{modelCode}/usage — 수동 override 설정 (usageScopeManual=true)
+  // DELETE /api/v1/products/{modelCode}/usage — 시트 자동 복귀 (usageScopeManual=false)
+  // 경로 우선순위: /usage 패턴이 /specs/ 보다 먼저 위치해야 선점 회귀 방지 (#459 교훈)
+  //
+  // BE 계약 (PR-B 사이클1 확정):
+  //   PATCH → bare ProductCatalogResponse (envelope 없음, res.data = DTO 직접)
+  //   DELETE → 204 무본문 (void). non-null 반환 규칙상 { deleted:true } 마커 사용
+  //   미존재 modelCode → 404
   const productUsageMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/usage(?:\?.*)?$/)
-  if (method === 'PATCH' && productUsageMatch) {
+  if (productUsageMatch) {
     const denied = mockRequirePermission('products.admin', 'update')
     if (denied) return denied
     const modelCode = decodeURIComponent(productUsageMatch[1]!)
-    const body = parseMockBody(config)
-    const product = MOCK_PRODUCT_CATALOG_ROWS.find((row) => row.modelCode === modelCode)
-    const fallbackProduct = product ?? MOCK_PRODUCT_CATALOG_ROWS[0]!
-    return {
-      ...fallbackProduct,
-      modelCode,
-      usageScope: body['usageScope'] ?? fallbackProduct.usageScope,
-      estimateCategory: body['estimateCategory'] ?? fallbackProduct.estimateCategory,
+    const idx = MOCK_PRODUCT_CATALOG_ROWS.findIndex((row) => row.modelCode === modelCode)
+    // 미존재 modelCode → 404 (BE 계약 동형 — EntityNotFoundException → "제품을 찾을 수 없습니다")
+    if (idx < 0) {
+      return mockError(404, 'NOT_FOUND', '제품을 찾을 수 없습니다')
+    }
+    const existing = MOCK_PRODUCT_CATALOG_ROWS[idx]!
+
+    if (method === 'PATCH') {
+      const body = parseMockBody(config)
+      const newScope = (body['usageScope'] as string | undefined) ?? existing.usageScope
+      // BE markUsageManual 동형 룰: NONE / PARTNER_ORDER 는 estimateCategory 강제 null 정리
+      const estimateCategoryRaw =
+        'estimateCategory' in body
+          ? ((body['estimateCategory'] as string | null | undefined) ?? null)
+          : existing.estimateCategory
+      const estimateCategoryResolved =
+        newScope === 'NONE' || newScope === 'PARTNER_ORDER' ? null : estimateCategoryRaw
+      const updated = {
+        ...existing,
+        modelCode,
+        usageScope: newScope,
+        estimateCategory: estimateCategoryResolved,
+        usageScopeManual: true,
+      }
+      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) =>
+        i === idx ? updated : row,
+      )
+      // BE 반환 = bare ProductCatalogResponse (ApiResponse envelope 없음)
+      // productCatalogApi.ts updateProductUsage 가 res.data 를 직접 사용하므로 bare 객체 반환
+      return updated
+    }
+    if (method === 'DELETE') {
+      const updated = {
+        ...existing,
+        modelCode,
+        usageScopeManual: false,
+      }
+      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) =>
+        i === idx ? updated : row,
+      )
+      // BE 204 무본문. null 반환은 "미매칭 fallthrough" 로 취급되므로 non-null 마커 반환.
+      // clearProductUsage 호출자는 void 반환을 기대하므로 body 는 무시됨.
+      return { deleted: true }
     }
   }
 
@@ -1216,16 +1275,34 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       : MOCK_SPEC_KEY_TEMPLATES
   }
 
+  // GET /api/v1/products — 품목 카탈로그 목록 (품목관리 화면 + 기존 estimate 소비처 공용)
+  // usageScope/category/q 필터 + usageScopeManual/displayOrder 응답 포함 (PR-B 확장)
+  // note: 경로 규칙상 /api/v1/products/{modelCode}/usage 패턴이 먼저 매칭되어야 하므로
+  //       이 핸들러는 그 아래 위치함 (#459 mock 핸들러 선점 회귀 교훈)
   if (method === 'GET' && (url.endsWith('/api/v1/products') || url.includes('/api/v1/products?'))) {
     const denied = mockRequirePermission('products.list', 'view')
     if (denied) return denied
     const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+    const q = ((config.params?.['q'] as string | undefined) ?? urlObj.searchParams.get('q') ?? '').toLowerCase()
     const usageScope = (config.params?.['usageScope'] as string | undefined)
       ?? urlObj.searchParams.get('usageScope')
     const category = (config.params?.['category'] as string | undefined)
       ?? urlObj.searchParams.get('category')
+    // usageScope IN-확장 시멘틱 (BE 계약 동형, PR-B 사이클1):
+    //   PARTNER_ORDER → PARTNER_ORDER | BOTH
+    //   ESTIMATE      → ESTIMATE | BOTH
+    //   BOTH          → BOTH 만
+    //   NONE          → NONE 만
+    //   미지정         → 전체
+    // note: 검색(q) 동작 단언 TC 는 이 mock q 필터 기반임 (BE q 파라미터는 BE 측에서 실효화)
+    function matchesUsageScope(rowScope: string, filter: string): boolean {
+      if (filter === 'PARTNER_ORDER') return rowScope === 'PARTNER_ORDER' || rowScope === 'BOTH'
+      if (filter === 'ESTIMATE') return rowScope === 'ESTIMATE' || rowScope === 'BOTH'
+      return rowScope === filter
+    }
     const filtered = MOCK_PRODUCT_CATALOG_ROWS.filter((row) =>
-      (!usageScope || row.usageScope === usageScope || row.usageScope === 'BOTH')
+      (!q || row.modelCode.toLowerCase().includes(q) || row.name.toLowerCase().includes(q))
+      && (!usageScope || matchesUsageScope(row.usageScope, usageScope))
       && (!category || row.estimateCategory === category),
     )
     return {
