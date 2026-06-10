@@ -26,12 +26,12 @@ import { listWarehouses, type Warehouse } from '../api/inventory'
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
   PrintLayout,
-  COMPANY,
   krw,
   krDate,
   calcAmounts,
 } from './PrintLayout'
 import { nowPrintedAt, fmtDatetime } from './printUtils'
+import { useCompanyProfile } from './useCompanyProfile'
 
 export function PurchaseSlipPrintPage() {
   const params = useParams<{ id: string }>()
@@ -49,6 +49,9 @@ export function PurchaseSlipPrintPage() {
   })
 
   usePageTitle('매입 전표', detailQuery.data?.slipNo)
+
+  // 훅 규칙(rules-of-hooks): early-return 보다 앞에 위치
+  const { company } = useCompanyProfile()
 
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>
@@ -84,10 +87,10 @@ export function PurchaseSlipPrintPage() {
           <div className="purchase-print-header-left">
             <img
               className="purchase-print-logo"
-              src={COMPANY.logoPath}
-              alt={COMPANY.legalName}
+              src={company.logoPath}
+              alt={company.legalName}
             />
-            <span className="purchase-print-company-name">{COMPANY.legalName}</span>
+            <span className="purchase-print-company-name">{company.legalName}</span>
           </div>
           <div className="purchase-print-header-center">
             <h1 className="purchase-print-title">매 입 전 표</h1>

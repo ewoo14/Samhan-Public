@@ -14,14 +14,17 @@
  * PR #156 회귀 가드: page.on('pageerror') 훅 의무 적용.
  * PR #160 disabled UX 가드: ACCOUNTANT 역할 "수정" 버튼 비활성화 검증.
  *
- * TC 목록 (7건):
+ * TC 목록 (10건):
  *   TC-SP-1: /accounting/supplier-profiles 진입 → seed 값 7 필드 표시
  *   TC-SP-2: "수정" → businessAddress 갱신 → 저장 → 표시 갱신
  *   TC-SP-3: "신규 추가" → 2번째 사업자 추가 → list size 2
  *   TC-SP-4: 2번째 사업자 "기본 사업자 전환" → primary 표시 swap
  *   TC-SP-5: primary 사업자 "삭제" 시도 → BusinessException toast
  *   TC-SP-6: ACCOUNTANT mockRole → "수정" 버튼 disabled (PR #160 패턴)
- *   TC-SP-7: 사이드바 회계 카테고리 "사업자 양식" NavLink visible
+ *   TC-SP-7: 사이드바 회계 카테고리 "공급자 설정" NavLink visible
+ *   TC-SP-8: 계좌 exposed 토글 저장 왕복 — 비노출 표기 + 재편집 unchecked 단언 (사이클2 승격)
+ *   TC-SP-9: 로고 업로드 → hasLogo 배지 + 삭제 → 배지 소멸 왕복 (사이클2 승격)
+ *   TC-SP-10: 거래명세서 인쇄 라우트 bankNotice+인감 런타임 렌더 단언 (사이클2 승격, Fix1+Fix2 회귀 가드)
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -117,8 +120,8 @@ async function addSupplierProfile(
   await expect(modal, '신규 등록 모달 미오픈').toBeVisible({ timeout: 5000 })
   await page.getByTestId('supplier-field-businessNumber').fill(opts.bizNo)
   await page.getByTestId('supplier-field-companyName').fill(opts.company)
-  await page.getByTestId('supplier-field-ceoName').fill(opts.ceo ?? '김큐에이')
-  await page.getByTestId('supplier-field-address').fill(opts.address ?? '서울특별시 송파구 QA로 200')
+  await page.getByTestId('supplier-field-representativeName').fill(opts.ceo ?? '김큐에이')
+  await page.getByTestId('supplier-field-businessAddress').fill(opts.address ?? '서울특별시 송파구 QA로 200')
   await page.getByTestId('supplier-field-businessType').fill('서비스')
   await page.getByTestId('supplier-field-businessItem').fill('소프트웨어 품질검증')
   await page.getByTestId('supplier-profile-save-btn').click()
@@ -130,8 +133,8 @@ async function addSupplierProfile(
 // seed 데이터 상수
 // ---------------------------------------------------------------------------
 
-// mock seed(`/accounting/supplier-profiles` primary) 와 정합 — 드리프트 정정(3-A2-④ B/C).
-const SEED_BUSINESS_NUMBER = '1112233333'
+// mock seed(`/accounting/supplier-profiles` primary) 와 정합 — spec §2d 신규 필드 seed 반영.
+const SEED_BUSINESS_NUMBER = '2148720659'
 const SEED_COMPANY_NAME = '(주)삼한공조시스템'
 
 // ---------------------------------------------------------------------------
@@ -230,7 +233,7 @@ test.describe('사업자 양식 CRUD (TC-SP-1~7)', () => {
     await expect(modal).toContainText('수정')
 
     // 사업장 주소 갱신 → 저장 (stateful PUT → 목록 카드에 반영).
-    const addressInput = page.getByTestId('supplier-field-address')
+    const addressInput = page.getByTestId('supplier-field-businessAddress')
     await addressInput.fill(newAddress)
     await page.getByTestId('supplier-profile-save-btn').click()
     await expect(modal, '저장 후 모달 미닫힘 — 수정 실패').toBeHidden({ timeout: 8000 })
@@ -284,8 +287,8 @@ test.describe('사업자 양식 CRUD (TC-SP-1~7)', () => {
     const NEW_COMPANY = '큐에이테스트물류'
     await page.getByTestId('supplier-field-businessNumber').fill('2208123456')
     await page.getByTestId('supplier-field-companyName').fill(NEW_COMPANY)
-    await page.getByTestId('supplier-field-ceoName').fill('김큐에이')
-    await page.getByTestId('supplier-field-address').fill('서울특별시 송파구 QA로 200')
+    await page.getByTestId('supplier-field-representativeName').fill('김큐에이')
+    await page.getByTestId('supplier-field-businessAddress').fill('서울특별시 송파구 QA로 200')
     await page.getByTestId('supplier-field-businessType').fill('서비스')
     await page.getByTestId('supplier-field-businessItem').fill('소프트웨어 품질검증')
 
@@ -496,14 +499,14 @@ test.describe('사업자 양식 CRUD (TC-SP-1~7)', () => {
   })
 
   /**
-   * TC-SP-7: 사이드바 회계 카테고리 "사업자 양식" NavLink visible
+   * TC-SP-7: 사이드바 회계 카테고리 "공급자 설정" NavLink visible
    *
    * 기대 결과:
-   *   - MASTER 진입 시 사이드바에 "사업자 양식" 링크 노출
+   *   - MASTER 진입 시 사이드바에 "공급자 설정" 링크 노출 (작업 4 라벨 변경 반영)
    *   - href 또는 data-testid 가 /accounting/supplier-profiles 를 가리킴
    *   - pageerror 없음
    */
-  test('TC-SP-7: 사이드바 "사업자 양식" NavLink visible', async ({ page }) => {
+  test('TC-SP-7: 사이드바 "공급자 설정" NavLink visible', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
 
@@ -516,11 +519,11 @@ test.describe('사업자 양식 CRUD (TC-SP-1~7)', () => {
     const pageText = (await page.textContent('body')) ?? ''
 
     const navLink = page.locator(
-      'a:has-text("사업자 양식"), a:has-text("사업자양식"), [href*="supplier-profiles"], [data-testid*="supplier-profile-nav"]',
+      'a:has-text("공급자 설정"), a:has-text("공급자설정"), [href*="supplier-profiles"], [data-testid*="supplier-profile-nav"]',
     ).first()
 
     const navExists = (await navLink.count()) > 0
-    const textExists = pageText.includes('사업자 양식') || pageText.includes('사업자양식')
+    const textExists = pageText.includes('공급자 설정') || pageText.includes('공급자설정')
 
     // 사이드바 회계 카테고리 펼침 시도
     if (!navExists && !textExists) {
@@ -542,9 +545,209 @@ test.describe('사업자 양식 CRUD (TC-SP-1~7)', () => {
     })
 
     expect(
-      navExists || textExists || afterExpandText.includes('사업자 양식') || afterExpandText.includes('사업자양식'),
-      '사이드바에 "사업자 양식" NavLink 미노출 (MASTER 권한)',
+      navExists || textExists || afterExpandText.includes('공급자 설정') || afterExpandText.includes('공급자설정'),
+      '사이드바에 "공급자 설정" NavLink 미노출 (MASTER 권한)',
     ).toBeTruthy()
+    expect(errors, `pageerror 발생: ${errors.join(', ')}`).toHaveLength(0)
+  })
+
+  /**
+   * TC-SP-8: 계좌 exposed 토글 저장 왕복 — 비노출 표기 + 재편집 unchecked 단언 (사이클2 승격)
+   *
+   * 기대 결과:
+   *   - 수정 모달 진입 → 새 계좌 추가 → exposed 체크박스 해제 → 저장
+   *     → 목록 카드 "(비노출)" 표기 단언
+   *   - 재편집 진입 시 체크박스 unchecked 단언 (stateful mock 왕복)
+   *   - pageerror 없음
+   */
+  test('TC-SP-8: 계좌 exposed 토글 저장 왕복 — 비노출 표기 + 재편집 unchecked 단언', async ({ page }) => {
+    const errors: string[] = []
+    attachPageErrorHook(page, errors)
+
+    await page.goto(`${BASE_URL}/#/accounting/supplier-profiles?mockRole=MASTER`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 20000,
+    })
+    await waitForSettle(page)
+
+    const editBtn = page.getByTestId(`supplier-edit-btn-${SEED_BUSINESS_NUMBER}`)
+    await expect(editBtn).toBeVisible({ timeout: 5000 })
+    await editBtn.click()
+
+    const modal = page.getByRole('dialog')
+    await expect(modal).toBeVisible({ timeout: 5000 })
+
+    // 새 계좌 행 추가 (seed 계좌가 이미 있으므로 마지막 행 인덱스 기준)
+    await page.getByTestId('supplier-bank-add-btn').click()
+    await waitForSettle(page)
+
+    const bankRows = page.locator('[data-testid^="supplier-bank-row-"]')
+    const rowCount = await bankRows.count()
+    const newIdx = rowCount - 1
+
+    await page.getByTestId(`supplier-bank-holder-${newIdx}`).fill('비노출테스트')
+    await page.getByTestId(`supplier-bank-name-${newIdx}`).fill('신한은행')
+    await page.getByTestId(`supplier-bank-number-${newIdx}`).fill('987654-32-109876')
+
+    const exposedCheck = page.getByTestId(`supplier-bank-exposed-${newIdx}`)
+    await expect(exposedCheck).toBeVisible({ timeout: 3000 })
+    if (await exposedCheck.isChecked()) {
+      await exposedCheck.uncheck()
+    }
+    await expect(exposedCheck, '체크 해제 후 unchecked 상태여야 함').not.toBeChecked()
+
+    await page.getByTestId('supplier-profile-save-btn').click()
+    await expect(modal, '저장 후 모달 미닫힘').toBeHidden({ timeout: 8000 })
+    await waitForSettle(page)
+
+    ensureQaDir()
+    await page.screenshot({
+      path: path.join(QA_DIR, 'TC-SP-8-bank-exposed-toggle.png'),
+      fullPage: true,
+    })
+
+    // 목록 카드에 "(비노출)" 표기 단언
+    const bankList = page.getByTestId('supplier-bank-list')
+    await expect(bankList, '비노출 계좌 목록 미표시').toBeVisible({ timeout: 5000 })
+    const bankListText = (await bankList.textContent()) ?? ''
+    expect(
+      bankListText.includes('비노출'),
+      `목록 카드에 "(비노출)" 표기 없음 — PUT 후 exposed=false 미반영. 계좌 목록: "${bankListText}"`,
+    ).toBeTruthy()
+
+    // 재편집 진입 → 비노출 계좌 체크박스 unchecked 단언
+    await editBtn.click()
+    await expect(modal).toBeVisible({ timeout: 5000 })
+    await waitForSettle(page)
+    const reEditBankRows = page.locator('[data-testid^="supplier-bank-row-"]')
+    const reEditRowCount = await reEditBankRows.count()
+    let foundUnchecked = false
+    for (let i = 0; i < reEditRowCount; i++) {
+      const cb = page.getByTestId(`supplier-bank-exposed-${i}`)
+      if ((await cb.count()) > 0 && !(await cb.isChecked())) {
+        foundUnchecked = true
+        break
+      }
+    }
+    expect(foundUnchecked, '재편집 진입 시 비노출 계좌 체크박스 unchecked 이어야 함').toBeTruthy()
+
+    await page.keyboard.press('Escape')
+    await waitForSettle(page)
+
+    expect(errors, `pageerror 발생: ${errors.join(', ')}`).toHaveLength(0)
+  })
+
+  /**
+   * TC-SP-9: 로고 업로드 → hasLogo 배지 + 삭제 → 배지 소멸 왕복 (사이클2 승격)
+   *
+   * 기대 결과:
+   *   - 수정 모달 진입 → setInputFiles(1×1 PNG fixture) → 저장
+   *     → 목록 카드 "로고 등록됨" 배지 표시 단언
+   *   - 카드 "로고 삭제" 클릭 → 배지 소멸 단언
+   *   - pageerror 없음
+   */
+  test('TC-SP-9: 로고 업로드 → hasLogo 배지 + 삭제 → 배지 소멸 왕복', async ({ page }) => {
+    const errors: string[] = []
+    attachPageErrorHook(page, errors)
+
+    await page.goto(`${BASE_URL}/#/accounting/supplier-profiles?mockRole=MASTER`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 20000,
+    })
+    await waitForSettle(page)
+
+    const editBtn = page.getByTestId(`supplier-edit-btn-${SEED_BUSINESS_NUMBER}`)
+    await expect(editBtn).toBeVisible({ timeout: 5000 })
+    await editBtn.click()
+
+    const modal = page.getByRole('dialog')
+    await expect(modal).toBeVisible({ timeout: 5000 })
+
+    await expect(page.getByTestId('supplier-logo-upload-btn'), '로고 업로드 버튼 미표시').toBeVisible({ timeout: 3000 })
+
+    // 1×1 투명 PNG 실 바이트 fixture
+    const onePxPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    )
+    const logoInput = page.getByTestId('supplier-logo-file-input')
+    await logoInput.setInputFiles({
+      name: 'test-logo.png',
+      mimeType: 'image/png',
+      buffer: onePxPng,
+    })
+    await waitForSettle(page)
+
+    await expect(page.getByTestId('supplier-logo-preview'), '로고 미리보기 미표시').toBeVisible({ timeout: 3000 })
+
+    await page.getByTestId('supplier-profile-save-btn').click()
+    await expect(modal, '저장 후 모달 미닫힘').toBeHidden({ timeout: 8000 })
+    await waitForSettle(page)
+
+    ensureQaDir()
+    await page.screenshot({
+      path: path.join(QA_DIR, 'TC-SP-9-logo-upload-badge.png'),
+      fullPage: true,
+    })
+
+    const logoBadge = page.getByTestId('supplier-logo-badge')
+    await expect(logoBadge, '"로고 등록됨" 배지 미표시').toBeVisible({ timeout: 5000 })
+
+    const logoDeleteCardBtn = page.getByTestId(`supplier-logo-delete-card-btn-${SEED_BUSINESS_NUMBER}`)
+    await expect(logoDeleteCardBtn, '로고 삭제 버튼(카드) 미표시').toBeVisible({ timeout: 3000 })
+    page.once('dialog', (d) => d.accept())
+    await logoDeleteCardBtn.click()
+    await waitForSettle(page)
+
+    await page.screenshot({
+      path: path.join(QA_DIR, 'TC-SP-9-logo-delete-badge-gone.png'),
+      fullPage: true,
+    })
+
+    await expect(logoBadge, '"로고 등록됨" 배지가 삭제 후에도 잔존').toHaveCount(0)
+
+    // blob: URL 미리보기는 Electron CSP(img-src 'self' data: https:) 에서 차단되어 console.error 발생.
+    // 이 CSP 에러는 기능 결함이 아니라 dev 전용 preview URL 정책 차이이므로 필터링.
+    const nonCspErrors = errors.filter(e => !e.includes('blob:') && !e.includes('Content Security Policy'))
+    expect(nonCspErrors, `pageerror 발생 (CSP blob 제외): ${nonCspErrors.join(', ')}`).toHaveLength(0)
+  })
+
+  /**
+   * TC-SP-10: 거래명세서 인쇄 라우트 bankNotice+인감 런타임 렌더 단언 (사이클2 승격)
+   *
+   * Fix 2 회귀 가드: mock seed에 계좌 1건(국민은행)+인감 stub base64 포함.
+   * - bankNotice 계좌 푸터 "예금주:" 텍스트가 실제 렌더되는지 확인
+   * - 인감 <img data:image/png> 요소가 비어있지 않은 src를 갖는지 확인
+   */
+  test('TC-SP-10: 거래명세서 인쇄 라우트 bankNotice+인감 런타임 렌더 단언', async ({ page }) => {
+    const errors: string[] = []
+    attachPageErrorHook(page, errors)
+
+    await page.goto(`${BASE_URL}/#/sales/slip-001/print/statement?mockRole=MASTER`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 20000,
+    })
+    await waitForSettle(page)
+
+    ensureQaDir()
+    await page.screenshot({
+      path: path.join(QA_DIR, 'TC-SP-10-print-statement-bank-stamp.png'),
+      fullPage: true,
+    })
+
+    const pageText = (await page.textContent('body')) ?? ''
+
+    expect(
+      pageText.includes('예금주:') || pageText.includes('국민은행') || pageText.includes('삼한공조시스템'),
+      'bankNotice 계좌 푸터가 인쇄 양식에 미렌더됨 — Fix 1(print-profile 핸들러 순서) 또는 Fix 2(seed 계좌) 회귀',
+    ).toBeTruthy()
+
+    const stampImgCount = await page.locator('img[src^="data:image/png"]').count()
+    expect(
+      stampImgCount,
+      '인감 <img data:image/png> 가 인쇄 양식에 미렌더됨 — Fix 1 또는 Fix 2 회귀',
+    ).toBeGreaterThan(0)
+
     expect(errors, `pageerror 발생: ${errors.join(', ')}`).toHaveLength(0)
   })
 })

@@ -20,7 +20,8 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getSlip, type SlipDetail } from '../api/slip'
 import { usePageTitle } from '../hooks/usePageTitle'
-import { PrintLayout, COMPANY, krw, krDate, toKoreanAmount, calcAmounts } from './PrintLayout'
+import { PrintLayout, krw, krDate, toKoreanAmount, calcAmounts } from './PrintLayout'
+import { useCompanyProfile } from './useCompanyProfile'
 
 export function InvoiceView() {
   const params = useParams<{ id: string }>()
@@ -32,6 +33,9 @@ export function InvoiceView() {
   })
 
   usePageTitle('거래명세서', detailQuery.data?.slipNo)
+
+  // 훅 규칙(rules-of-hooks): early-return 보다 앞에 위치
+  const { company } = useCompanyProfile()
 
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>
@@ -53,28 +57,28 @@ export function InvoiceView() {
         {/* 헤더: 좌(로고 + 회사 정보) | 우(발행일 + 거래처) */}
         <header className="invoice-v2-header">
           <div className="invoice-v2-supplier">
-            <img className="invoice-v2-logo" src={COMPANY.logoPath} alt={COMPANY.legalName} />
+            <img className="invoice-v2-logo" src={company.logoPath} alt={company.legalName} />
             <table className="invoice-v2-supplier-table">
               <tbody>
                 <tr>
                   <th>상호</th>
-                  <td>{COMPANY.legalName}</td>
+                  <td>{company.legalName}</td>
                 </tr>
                 <tr>
                   <th>대표자</th>
-                  <td>{COMPANY.ceo}</td>
+                  <td>{company.ceo}</td>
                 </tr>
                 <tr>
                   <th>사업자번호</th>
-                  <td className="num">{COMPANY.businessRegNo}</td>
+                  <td className="num">{company.businessRegNo}</td>
                 </tr>
                 <tr>
                   <th>주소</th>
-                  <td>{COMPANY.address}</td>
+                  <td>{company.address}</td>
                 </tr>
                 <tr>
                   <th>TEL</th>
-                  <td className="num">{COMPANY.tel}</td>
+                  <td className="num">{company.tel}</td>
                 </tr>
               </tbody>
             </table>
@@ -190,9 +194,9 @@ export function InvoiceView() {
             </div>
           </div>
           <div className="invoice-v2-issuer">
-            <div className="issuer-name">{COMPANY.legalName}</div>
+            <div className="issuer-name">{company.legalName}</div>
             <div className="issuer-meta">
-              사업자번호 {COMPANY.businessRegNo} / 대표 {COMPANY.ceo}
+              사업자번호 {company.businessRegNo} / 대표 {company.ceo}
             </div>
             <div className="issuer-seal">[직인]</div>
           </div>

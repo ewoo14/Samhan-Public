@@ -4,11 +4,15 @@ import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.accounting.service.SupplierProfileService;
 import com.samhanair.logis.accounting.web.dto.CreateSupplierProfileRequest;
+import com.samhanair.logis.accounting.web.dto.PrintProfileResponse;
 import com.samhanair.logis.accounting.web.dto.SupplierProfileResponse;
+import com.samhanair.logis.accounting.web.dto.UpdateLogoRequest;
+import com.samhanair.logis.accounting.web.dto.UpdateStampRequest;
 import com.samhanair.logis.accounting.web.dto.UpdateSupplierProfileRequest;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.common.http.HttpHeaderConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -99,6 +103,69 @@ public class SupplierProfileController {
     }
 
     // =========================================================================
+    // GET /api/v1/accounting/supplier-profiles/print-profile
+    // =========================================================================
+
+    /**
+     * 인쇄용 공개 공급자 정보 조회 — 권한 게이트 없음 (JWT 인증만).
+     *
+     * <p>P1-C 결정: 거래명세서·세금계산서 인쇄 시 공급자 블록에 출력되는 공개 정보.
+     * 인쇄물은 거래처에 전달되므로 회계 role 이 아닌 SALES 등 일반 role 에서도 인쇄 가능해야 한다.
+     * {@code @RequirePermission} 을 붙이면 비회계 role 의 인쇄에서 계좌·인감이 silent 소실되므로
+     * 의도적으로 권한 게이트를 생략한다.
+     *
+     * <p>반환되는 모든 정보는 인쇄물에 공개되는 데이터이므로 seed widening 아님.
+     *
+     * <p>주의: Spring MVC 리터럴 경로 우선 매칭 규칙 — {@code /print-profile} 은 리터럴 경로이므로
+     * {@code /{id}} UUID 패턴보다 우선 매칭된다 (안전).
+     *
+     * <p>신뢰 경계 (사이클2 Fix):
+     * <ul>
+     *   <li>사내 JWT ({@code X-Is-Partner} 헤더 없음 또는 {@code false}) — 전 role 통과 (P1-C 보존)</li>
+     *   <li>외부 파트너 JWT ({@code X-Is-Partner: true}) — 403 거절.
+     *       api-gateway 가 partner-auth JWT 의 {@code partnerCode} claim 존재 시 헤더를 주입한다.
+     *       외부 거래처 계정은 공급자(삼한) 인쇄 정보에 접근할 수 없음.</li>
+     * </ul>
+     *
+     * @param isPartner api-gateway 주입 파트너 식별 헤더 ({@code X-Is-Partner}, optional)
+     * @return 인쇄용 공급자 정보 (exposed=true 계좌 + 인감/로고 포함)
+     * @throws BusinessException(FORBIDDEN) 외부 거래처 계정 접근 시
+     */
+    @GetMapping("/print-profile")
+    @Operation(summary = "인쇄용 공급자 정보 조회",
+               description = "거래명세서·세금계산서 인쇄 전용. 권한 게이트 없음 — JWT 인증만. "
+                       + "exposed=true 계좌 + 인감 + 로고 포함. X-Is-Partner:true 시 403 거절.")
+    public ApiResponse<PrintProfileResponse> getPrintProfile(
+            @RequestHeader(value = HttpHeaderConstants.IS_PARTNER_HEADER, required = false)
+            String isPartner) {
+        if ("true".equalsIgnoreCase(isPartner)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "외부 거래처 계정은 공급자 인쇄 정보에 접근할 수 없습니다.");
+        }
+        return ApiResponse.ok(service.getPrintProfile());
+    }
+
+    // =========================================================================
+    // GET /api/v1/accounting/supplier-profiles/{id}
+    // =========================================================================
+
+    /**
+     * 사업자 프로필 단건 상세 조회 (은행계좌 + 인감 + 로고 포함).
+     *
+     * <p>P1-B 신설 — 사업자 프로필 편집 화면에서 stamp/logo 포함 전체 응답 조회.
+     *
+     * @param id 조회 UUID
+     * @return 상세 응답 (bankAccounts + stampPngBase64 + logoPngBase64 포함)
+     */
+    @GetMapping("/{id}")
+    @RequirePermission(page = "accounting.supplier-profiles", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
+    @Operation(summary = "사업자 프로필 단건 상세 조회",
+               description = "stamp + logo + bankAccounts 포함 전체 상세 응답")
+    public ApiResponse<SupplierProfileResponse> getById(@PathVariable UUID id) {
+        return ApiResponse.ok(service.getById(id));
+    }
+
+    // =========================================================================
     // POST /api/v1/accounting/supplier-profiles
     // =========================================================================
 
@@ -129,20 +196,23 @@ public class SupplierProfileController {
      * 사업자 프로필 수정.
      *
      * <p>null 필드는 기존 값 유지 (부분 업데이트 패턴).
+     * {@code bankAccounts} 가 null 이 아니면 replace-all 시맨틱으로 계좌 교체.
      *
-     * @param id  수정 대상 UUID (경로 파라미터)
-     * @param req 수정 요청 DTO
-     * @return 수정된 사업자 프로필
+     * @param id          수정 대상 UUID (경로 파라미터)
+     * @param req         수정 요청 DTO
+     * @param actorUserId 수정 실행자 user-id (X-User-Id 헤더)
+     * @return 수정된 사업자 프로필 (bankAccounts + hasStamp 포함)
      */
     @PutMapping("/{id}")
     @RequirePermission(page = "accounting.supplier-profiles", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
-    @Operation(summary = "사업자 프로필 수정", description = "null 필드는 기존 값 유지. isPrimary 변경은 PATCH /{id}/primary 사용")
+    @Operation(summary = "사업자 프로필 수정", description = "null 필드는 기존 값 유지. bankAccounts 가 있으면 replace-all. isPrimary 변경은 PATCH /{id}/primary 사용")
     public ApiResponse<SupplierProfileResponse> update(
             @PathVariable UUID id,
             @RequestBody @Valid UpdateSupplierProfileRequest req,
+            @RequestHeader("X-User-Id") String actorUserId,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
         checkEditPermission(roleHeader);
-        return ApiResponse.ok(service.update(id, req), "사업자 프로필이 수정되었습니다.");
+        return ApiResponse.ok(service.update(id, req, actorUserId), "사업자 프로필이 수정되었습니다.");
     }
 
     // =========================================================================
@@ -162,6 +232,101 @@ public class SupplierProfileController {
     @Operation(summary = "기본 사업자 전환", description = "기존 primary 해제 후 지정 사업자를 primary 로 설정")
     public ApiResponse<SupplierProfileResponse> setPrimary(@PathVariable UUID id) {
         return ApiResponse.ok(service.setPrimary(id), "기본 사업자가 변경되었습니다.");
+    }
+
+    // =========================================================================
+    // PUT /api/v1/accounting/supplier-profiles/{id}/stamp
+    // =========================================================================
+
+    /**
+     * 인감 PNG 등록/교체.
+     *
+     * <p>처리:
+     * <ol>
+     *   <li>base64 디코드 → 200KB 가드 → SHA-256 재계산 검증</li>
+     *   <li>검증 통과 후 저장</li>
+     * </ol>
+     *
+     * @param id          대상 사업자 프로필 UUID
+     * @param req         인감 등록 요청 (stampPngBase64 + stampHash)
+     * @return 갱신된 사업자 프로필 응답 (hasStamp=true)
+     */
+    @PutMapping("/{id}/stamp")
+    @RequirePermission(page = "accounting.supplier-profiles", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
+    @Operation(summary = "인감 PNG 등록/교체",
+               description = "Base64 PNG 업로드. ≤200KB + SHA-256 hash 검증. mismatch → 400")
+    public ApiResponse<SupplierProfileResponse> registerStamp(
+            @PathVariable UUID id,
+            @RequestBody @Valid UpdateStampRequest req,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        checkEditPermission(roleHeader);
+        return ApiResponse.ok(service.registerStamp(id, req), "인감이 등록되었습니다.");
+    }
+
+    // =========================================================================
+    // DELETE /api/v1/accounting/supplier-profiles/{id}/stamp
+    // =========================================================================
+
+    /**
+     * 인감 삭제.
+     *
+     * @param id 대상 사업자 프로필 UUID
+     */
+    @DeleteMapping("/{id}/stamp")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequirePermission(page = "accounting.supplier-profiles", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
+    @Operation(summary = "인감 삭제", description = "stampPng / stampHash 를 null 로 초기화")
+    public void clearStamp(
+            @PathVariable UUID id,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        checkEditPermission(roleHeader);
+        service.clearStamp(id);
+    }
+
+    // =========================================================================
+    // PUT /api/v1/accounting/supplier-profiles/{id}/logo
+    // =========================================================================
+
+    /**
+     * 로고 PNG 등록/교체.
+     *
+     * <p>인감 등록({@code PUT /{id}/stamp})과 동일 패턴.
+     * 처리: base64 디코드 → 200KB 가드 → PNG magic → SHA-256 재계산 검증 → 저장.
+     *
+     * @param id          대상 사업자 프로필 UUID
+     * @param req         로고 등록 요청 (logoPngBase64 + logoHash)
+     * @return 갱신된 사업자 프로필 응답 (hasLogo=true)
+     */
+    @PutMapping("/{id}/logo")
+    @RequirePermission(page = "accounting.supplier-profiles", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
+    @Operation(summary = "로고 PNG 등록/교체",
+               description = "Base64 PNG 업로드. ≤200KB + SHA-256 hash 검증. mismatch → 400")
+    public ApiResponse<SupplierProfileResponse> registerLogo(
+            @PathVariable UUID id,
+            @RequestBody @Valid UpdateLogoRequest req,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        checkEditPermission(roleHeader);
+        return ApiResponse.ok(service.registerLogo(id, req), "로고가 등록되었습니다.");
+    }
+
+    // =========================================================================
+    // DELETE /api/v1/accounting/supplier-profiles/{id}/logo
+    // =========================================================================
+
+    /**
+     * 로고 삭제.
+     *
+     * @param id 대상 사업자 프로필 UUID
+     */
+    @DeleteMapping("/{id}/logo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequirePermission(page = "accounting.supplier-profiles", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
+    @Operation(summary = "로고 삭제", description = "logoPng / logoHash 를 null 로 초기화")
+    public void clearLogo(
+            @PathVariable UUID id,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        checkEditPermission(roleHeader);
+        service.clearLogo(id);
     }
 
     // =========================================================================

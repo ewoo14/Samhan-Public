@@ -31,7 +31,8 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getTaxInvoice, type TaxInvoiceDetail } from '../api/printApi'
 import { usePageTitle } from '../hooks/usePageTitle'
-import { PrintLayout, COMPANY, krDate, toKoreanAmount } from './PrintLayout'
+import { PrintLayout, krDate, toKoreanAmount } from './PrintLayout'
+import { useCompanyProfile } from './useCompanyProfile'
 
 /**
  * 정수 → 11자리 셀 분리 (천억-백억-십억-억-천만-백만-십만-만-천-백-십-원).
@@ -79,6 +80,9 @@ export function TaxInvoiceView() {
 
   usePageTitle('세금계산서', detailQuery.data?.taxInvoiceNo ?? undefined)
 
+  // 훅 규칙(rules-of-hooks): early-return 보다 앞에 위치
+  const { company } = useCompanyProfile()
+
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>
   if (detailQuery.isError || !detailQuery.data) {
@@ -116,38 +120,38 @@ export function TaxInvoiceView() {
             <tr>
               <td className="party-side party-supplier" rowSpan={5}>공<br />급<br />자</td>
               <th>등록번호</th>
-              <td className="party-regno">{COMPANY.businessRegNo}</td>
+              <td className="party-regno">{company.businessRegNo}</td>
               <td className="party-side party-receiver" rowSpan={5}>공<br />급<br />받<br />는<br />자</td>
               <th>등록번호</th>
               <td className="party-regno">{fmtBizNo(ti.partnerBusinessNo)}</td>
             </tr>
             <tr>
               <th>상호<br />(법인명)</th>
-              <td>{COMPANY.legalName}</td>
+              <td>{company.legalName}</td>
               <th>성명</th>
-              <td className="seal-cell">{COMPANY.ceo}<span className="party-seal">(인)</span></td>
+              <td className="seal-cell">{company.ceo}<span className="party-seal">(인)</span></td>
               <th>상호<br />(법인명)</th>
               <td>{ti.partnerName ?? '-'}</td>
             </tr>
             <tr>
               <th>사업장<br />주소</th>
-              <td colSpan={3}>{COMPANY.address}</td>
+              <td colSpan={3}>{company.address}</td>
               <th>사업장<br />주소</th>
               <td>{ti.partnerAddress ?? '-'}</td>
             </tr>
             <tr>
               <th>업태</th>
-              <td>{COMPANY.businessType}</td>
+              <td>{company.businessType}</td>
               <th>종목</th>
-              <td>{COMPANY.businessItem}</td>
+              <td>{company.businessItem}</td>
               <th>업태</th>
               <td>-</td>
             </tr>
             <tr>
               <th>종사업장<br />번호</th>
-              <td>{COMPANY.subBusinessNo}</td>
+              <td>{company.subBusinessNo}</td>
               <th>전화</th>
-              <td className="num">{COMPANY.tel}</td>
+              <td className="num">{company.tel}</td>
               <th>종목</th>
               <td>-</td>
             </tr>

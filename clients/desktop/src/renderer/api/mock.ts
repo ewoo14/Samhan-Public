@@ -3425,78 +3425,278 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   /**
    * 사업자 seed 1건 — (주)삼한공조시스템 기본 사업자.
+   *
+   * 신규 필드(spec §2a):
+   * - tel / fax: 대표 전화 / 팩스
+   * - bankAccounts: 입금계좌 목록 (replace-all, displayOrder 배열 순)
+   * - hasStamp: 인감 등록 여부 (초기 false)
+   * - stampPngBase64: 인감 PNG base64 (목록은 null, detail/primary 는 실 값)
+   * - representativeName: 대표자 성명 (BE DTO 필드명 일치 — ceoName 대체)
+   * - businessAddress: 사업장 주소 (BE DTO 필드명 일치 — address 대체)
+   *
    * UUID 비공개 가드: id 는 내부 경로용. 화면은 businessNumber / companyName 표시.
    */
   const MOCK_SUPPLIER_PRIMARY = {
     id: '00000000-0000-0000-0000-supplier0001',
-    businessNumber: '1112233333',
+    version: 0,
+    businessNumber: '2148720659',
     subBusinessNumber: null,
     companyName: '(주)삼한공조시스템',
-    ceoName: '김미선',
-    address: '서울특별시 강남구 테헤란로 152, 10층',
-    businessType: '도소매',
-    businessItem: '냉난방 설비, 물류 운송',
+    representativeName: '김미선',
+    businessAddress: '서울특별시 서초구 마방로2길 9 (양재동) 삼한빌딩 4층',
+    businessType: '도매 및 소매업',
+    businessItem: '공조설비, 냉난방기',
     email: 'accounting@samhan-air.com',
     isPrimary: true,
-    createdAt: '2026-01-01T00:00:00+09:00',
-    updatedAt: '2026-01-01T00:00:00+09:00',
+    tel: '02-3461-0000',
+    fax: '02-3461-0001',
+    bankAccounts: [] as Array<{
+      accountHolder: string
+      bankName: string
+      accountNumber: string
+      displayOrder: number
+      exposed: boolean
+    }>,
+    hasStamp: false,
+    stampPngBase64: null as string | null,
+    hasLogo: false,
+    logoPngBase64: null as string | null,
   }
 
   // 첫 접근 시 seed 1건 주입 (테스트별 fresh page → 모듈 재평가로 재seed).
+  // Fix 2: seed에 계좌 1건(exposed=true) + 인감 stub base64 포함 — TC-SP-10 런타임 단언 지원.
+  const STUB_STAMP_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
   if (mockSupplierProfileList.length === 0) {
-    mockSupplierProfileList.push({ ...MOCK_SUPPLIER_PRIMARY })
+    mockSupplierProfileList.push({
+      ...MOCK_SUPPLIER_PRIMARY,
+      bankAccounts: [
+        {
+          accountHolder: '삼한공조시스템',
+          bankName: '국민은행',
+          accountNumber: '123456-78-901234',
+          displayOrder: 0,
+          exposed: true,
+        },
+      ],
+      hasStamp: true,
+      stampPngBase64: STUB_STAMP_BASE64,
+    })
   }
 
-  // GET /accounting/supplier-profiles/primary → 기본 사업자
+  // stamp PUT/DELETE 는 id match 패턴보다 앞에 위치해야 함 (더 구체적인 경로)
+  // PUT /accounting/supplier-profiles/{id}/stamp → 인감 업로드/교체
+  const supplierStampPutMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)\/stamp$/)
+  if (method === 'PUT' && supplierStampPutMatch) {
+    const stampId = supplierStampPutMatch[1]!
+    const body = parseMockBody(config) as { stampPngBase64: string; stampHash: string }
+    const idx = mockSupplierProfileList.findIndex((p) => p['id'] === stampId)
+    if (idx < 0) {
+      return mockError(404, 'NOT_FOUND', '사업자 정보를 찾을 수 없습니다.')
+    }
+    mockSupplierProfileList[idx] = {
+      ...mockSupplierProfileList[idx],
+      hasStamp: true,
+      stampPngBase64: body.stampPngBase64 ?? null,
+    }
+    return envelope(mockSupplierProfileList[idx])
+  }
+
+  // DELETE /accounting/supplier-profiles/{id}/stamp → 인감 삭제
+  const supplierStampDeleteMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)\/stamp$/)
+  if (method === 'DELETE' && supplierStampDeleteMatch) {
+    const stampId = supplierStampDeleteMatch[1]!
+    const idx = mockSupplierProfileList.findIndex((p) => p['id'] === stampId)
+    if (idx >= 0) {
+      mockSupplierProfileList[idx] = {
+        ...mockSupplierProfileList[idx],
+        hasStamp: false,
+        stampPngBase64: null,
+      }
+    }
+    return envelope({ deleted: true })
+  }
+
+  // PUT /accounting/supplier-profiles/{id}/logo → 로고 업로드/교체 (stamp 패턴 동형)
+  const supplierLogoPutMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)\/logo$/)
+  if (method === 'PUT' && supplierLogoPutMatch) {
+    const logoId = supplierLogoPutMatch[1]!
+    const body = parseMockBody(config) as { logoPngBase64: string; logoHash: string }
+    const idx = mockSupplierProfileList.findIndex((p) => p['id'] === logoId)
+    if (idx < 0) {
+      return mockError(404, 'NOT_FOUND', '사업자 정보를 찾을 수 없습니다.')
+    }
+    mockSupplierProfileList[idx] = {
+      ...mockSupplierProfileList[idx],
+      hasLogo: true,
+      logoPngBase64: body.logoPngBase64 ?? null,
+    }
+    return envelope(mockSupplierProfileList[idx])
+  }
+
+  // DELETE /accounting/supplier-profiles/{id}/logo → 로고 삭제 (stamp 패턴 동형)
+  const supplierLogoDeleteMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)\/logo$/)
+  if (method === 'DELETE' && supplierLogoDeleteMatch) {
+    const logoId = supplierLogoDeleteMatch[1]!
+    const idx = mockSupplierProfileList.findIndex((p) => p['id'] === logoId)
+    if (idx >= 0) {
+      mockSupplierProfileList[idx] = {
+        ...mockSupplierProfileList[idx],
+        hasLogo: false,
+        logoPngBase64: null,
+      }
+    }
+    return envelope({ deleted: true })
+  }
+
+  // GET /accounting/supplier-profiles/print-profile → primary 공개 정보 (권한 게이트 없음)
+  // ※ 반드시 GET /{id} 정규식 핸들러보다 앞에 위치해야 함 — 'print-profile' 이 [^/]+ 에 매칭되어
+  //   상세 핸들러가 가로채는 것을 방지. exposed=true 계좌만 반환 (BE 동형).
+  if (method === 'GET' && url.endsWith('/accounting/supplier-profiles/print-profile')) {
+    const primary = mockSupplierProfileList.find((p) => p['isPrimary']) ?? MOCK_SUPPLIER_PRIMARY
+    const accounts = ((primary['bankAccounts'] as unknown[]) ?? []).filter(
+      (a) => (a as Record<string, unknown>)['exposed'] !== false,
+    )
+    return envelope({
+      companyName: primary['companyName'],
+      businessNumber: primary['businessNumber'],
+      subBusinessNumber: primary['subBusinessNumber'] ?? null,
+      representativeName: primary['representativeName'],
+      businessAddress: primary['businessAddress'],
+      businessType: primary['businessType'],
+      businessItem: primary['businessItem'],
+      email: primary['email'],
+      tel: primary['tel'] ?? null,
+      fax: primary['fax'] ?? null,
+      bankAccounts: accounts,
+      stampPngBase64: primary['stampPngBase64'] ?? null,
+      logoPngBase64: primary['logoPngBase64'] ?? null,
+    })
+  }
+
+  // GET /accounting/supplier-profiles/primary → 기본 사업자 (stamp/logo payload 포함)
+  // ※ 반드시 GET /{id} 정규식 핸들러보다 앞에 위치해야 함 (동일 이유)
   if (method === 'GET' && url.endsWith('/accounting/supplier-profiles/primary')) {
-    return envelope(mockSupplierProfileList.find((p) => p['isPrimary']) ?? MOCK_SUPPLIER_PRIMARY)
+    const primary = mockSupplierProfileList.find((p) => p['isPrimary']) ?? MOCK_SUPPLIER_PRIMARY
+    return envelope(primary)
   }
 
-  // GET /accounting/supplier-profiles → 목록 (POST 등록분 포함)
+  // GET /accounting/supplier-profiles/{id} 상세 → stamp/logo payload 포함 전체 반환
+  // ※ /primary, /print-profile 리터럴 핸들러 뒤에 위치해야 함 — 'primary'/'print-profile' 문자열이
+  //   [^/]+ 에 매칭되어 리터럴 핸들러를 dead code 로 만드는 버그 방지.
+  //   안전망: detailId 가 리터럴 예약어와 같으면 skip 가드 적용.
+  const supplierDetailMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)$/)
+  if (method === 'GET' && supplierDetailMatch) {
+    const detailId = supplierDetailMatch[1]!
+    if (detailId === 'primary' || detailId === 'print-profile') {
+      // 리터럴 핸들러가 위에서 이미 처리했어야 하는 경로 — 여기 도달 시 미매칭으로 처리
+      return null
+    }
+    const found = mockSupplierProfileList.find((p) => p['id'] === detailId)
+    if (!found) {
+      return mockError(404, 'NOT_FOUND', '사업자 정보를 찾을 수 없습니다.')
+    }
+    return envelope(found)
+  }
+
+  // GET /accounting/supplier-profiles → 목록 (stamp/logo payload 제외 — hasStamp/hasLogo 만)
   if (method === 'GET' && url.endsWith('/accounting/supplier-profiles')) {
-    return envelope([...mockSupplierProfileList])
+    return envelope(
+      [...mockSupplierProfileList].map((p) => {
+        const { stampPngBase64: _stamp, logoPngBase64: _logo, ...rest } = p as Record<string, unknown>
+        void _stamp // 목록 응답에서 stamp payload 제외
+        void _logo // 목록 응답에서 logo payload 제외
+        return rest
+      }),
+    )
   }
 
   // POST /accounting/supplier-profiles → 신규 등록 (목록에 실제 append)
   if (method === 'POST' && url.endsWith('/accounting/supplier-profiles')) {
-    const body = parseMockBody(config)
-    const created = {
+    const body = parseMockBody(config) as Record<string, unknown>
+    const rawAccounts = (body['bankAccounts'] as unknown[] | undefined) ?? []
+    // Fix 4: 빈 필드 검증 — BE @NotBlank 동형 400 반환
+    const blankIdx = rawAccounts.findIndex((a) => {
+      const acct = a as Record<string, unknown>
+      return !String(acct['accountHolder'] ?? '').trim() || !String(acct['bankName'] ?? '').trim() || !String(acct['accountNumber'] ?? '').trim()
+    })
+    if (blankIdx >= 0) {
+      return mockError(400, 'INVALID_INPUT', `${blankIdx + 1}번째 계좌의 예금주·은행명·계좌번호를 모두 입력해 주세요.`)
+    }
+    // exposed 기본값 true 채움, displayOrder = 배열 index (BE 동형)
+    const bankAccounts = rawAccounts.map((a, i) => {
+      const acct = a as Record<string, unknown>
+      return {
+        accountHolder: acct['accountHolder'] ?? '',
+        bankName: acct['bankName'] ?? '',
+        accountNumber: acct['accountNumber'] ?? '',
+        displayOrder: i,
+        exposed: acct['exposed'] !== false,
+      }
+    })
+    const created: Record<string, unknown> = {
       ...MOCK_SUPPLIER_PRIMARY,
       ...body,
       id: `00000000-0000-0000-0000-supplier${Date.now()}`,
+      version: 0,
       isPrimary: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      hasStamp: false,
+      stampPngBase64: null,
+      hasLogo: false,
+      logoPngBase64: null,
+      bankAccounts,
     }
     mockSupplierProfileList.push(created)
     return envelope(created)
   }
 
-  // PUT /accounting/supplier-profiles/{id} → echo 수정
+  // PUT /accounting/supplier-profiles/{id} → echo 수정 (bankAccounts replace-all)
+  // ※ stamp/logo/mark-primary 경로보다 아래에 위치 (정규식 중복 방지)
   const supplierPutMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)$/)
   if (method === 'PUT' && supplierPutMatch) {
-    const body = parseMockBody(config)
+    const body = parseMockBody(config) as Record<string, unknown>
     const updatedId = supplierPutMatch[1]!
     const idx = mockSupplierProfileList.findIndex((p) => p['id'] === updatedId)
-    const updated = {
-      ...(idx >= 0 ? mockSupplierProfileList[idx] : MOCK_SUPPLIER_PRIMARY),
+    const base = idx >= 0 ? (mockSupplierProfileList[idx] as Record<string, unknown>) : (MOCK_SUPPLIER_PRIMARY as unknown as Record<string, unknown>)
+    const rawAccounts = (body['bankAccounts'] as unknown[] | undefined) ?? (base['bankAccounts'] as unknown[]) ?? []
+    // Fix 4: 빈 필드 검증 — BE @NotBlank 동형 400 반환
+    const blankPutIdx = rawAccounts.findIndex((a) => {
+      const acct = a as Record<string, unknown>
+      return !String(acct['accountHolder'] ?? '').trim() || !String(acct['bankName'] ?? '').trim() || !String(acct['accountNumber'] ?? '').trim()
+    })
+    if (blankPutIdx >= 0) {
+      return mockError(400, 'INVALID_INPUT', `${blankPutIdx + 1}번째 계좌의 예금주·은행명·계좌번호를 모두 입력해 주세요.`)
+    }
+    // exposed 기본값 true 채움, displayOrder = 배열 index 재계산 (BE 동형)
+    const bankAccounts = rawAccounts.map((a, i) => {
+      const acct = a as Record<string, unknown>
+      return {
+        accountHolder: acct['accountHolder'] ?? '',
+        bankName: acct['bankName'] ?? '',
+        accountNumber: acct['accountNumber'] ?? '',
+        displayOrder: i,
+        exposed: acct['exposed'] !== false,
+      }
+    })
+    const updated: Record<string, unknown> = {
+      ...base,
       ...body,
       id: updatedId,
-      updatedAt: new Date().toISOString(),
+      bankAccounts,
     }
     if (idx >= 0) mockSupplierProfileList[idx] = updated
     return envelope(updated)
   }
 
-  // POST /accounting/supplier-profiles/{id}/mark-primary → 목록 전체 isPrimary swap
-  const supplierMarkPrimaryMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)\/mark-primary$/)
-  if (method === 'POST' && supplierMarkPrimaryMatch) {
+  // PATCH /accounting/supplier-profiles/{id}/primary → 목록 전체 isPrimary swap (P2-1)
+  const supplierMarkPrimaryMatch = url.match(/\/accounting\/supplier-profiles\/([^/]+)\/primary$/)
+  if (method === 'PATCH' && supplierMarkPrimaryMatch) {
     const targetId = supplierMarkPrimaryMatch[1]!
     let target: Record<string, unknown> | null = null
     mockSupplierProfileList.forEach((p) => {
       const isTarget = p['id'] === targetId
       p['isPrimary'] = isTarget
-      if (isTarget) target = p
+      if (isTarget) target = p as Record<string, unknown>
     })
     return envelope(target ?? { ...MOCK_SUPPLIER_PRIMARY, isPrimary: true, id: targetId })
   }

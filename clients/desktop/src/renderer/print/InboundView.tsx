@@ -22,7 +22,8 @@ import { useQuery } from '@tanstack/react-query'
 import { getSlip, type SlipDetail } from '../api/slip'
 import { listWarehouses, type Warehouse } from '../api/inventory'
 import { usePageTitle } from '../hooks/usePageTitle'
-import { PrintLayout, COMPANY, krw, krDate, calcAmounts, type PaperSize } from './PrintLayout'
+import { PrintLayout, krw, krDate, calcAmounts, type PaperSize } from './PrintLayout'
+import { useCompanyProfile } from './useCompanyProfile'
 
 export function InboundView() {
   const params = useParams<{ id: string }>()
@@ -40,6 +41,9 @@ export function InboundView() {
   })
 
   usePageTitle('입고전표', detailQuery.data?.slipNo)
+
+  // 훅 규칙(rules-of-hooks): early-return 보다 앞에 위치
+  const { company } = useCompanyProfile()
 
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>
@@ -70,10 +74,10 @@ export function InboundView() {
       <div className={`inbound-page inbound-${variant}`} data-testid="inbound-print-area">
         <header className="inbound-header">
           <div className="inbound-company-row">
-            <img className="inbound-logo" src={COMPANY.logoPath} alt={COMPANY.legalName} />
+            <img className="inbound-logo" src={company.logoPath} alt={company.legalName} />
             <div className="inbound-issuer">
-              <div className="name">{COMPANY.legalName}</div>
-              <div className="meta">사업자번호 {COMPANY.businessRegNo} / TEL {COMPANY.tel}</div>
+              <div className="name">{company.legalName}</div>
+              <div className="meta">사업자번호 {company.businessRegNo} / TEL {company.tel}</div>
             </div>
           </div>
           <h1 className="inbound-title">입 고 전 표</h1>
