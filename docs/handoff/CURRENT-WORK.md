@@ -35,9 +35,18 @@
 - **서버**: 주소검색 8함수 verbatim(Naver/Juso env 키 5종)·getAllNotionDcConfigs_(dc-config `GET /internal/partner-dc-configs` 벌크 신설)·getCustomerDataAsync dc 부착·getQuoteHistoryByCustomer(slip-service `GET .../snapshots/by-customer` 신설). **checkUserAuth 가 JWT 계약(`/auth/me`)과 불일치 → 실 스택 상시 차단 회귀 적발 → user-service `GET /internal/users/by-email` 신설로 해소.**
 - **실 QA**: 전부 실 env 풀기동 + Playwright 실 UI 캡처 4장(docs/qa/estimate-31-live-ui-parity/) — 게이트 통과([DEV-SEED] 개발마스터)·실 Naver 주소결과·by-customer 복원행·DC 45→**48** 자동반영(거래처 7,053 중 dc 225 매칭). jest 63/63.
 
+### ✅ #31 라이브 UI 정합 머지 (#454, `b0a973dc`)
+
+### ✅ #30 Sheets→DB 치환 PR-1 머지 (#455, `~`)
+- **product-service**: `EstimateCatalogInternalController`(/products/internal/estimate-catalog/*, X-Internal-Token) — 벌크 10종(products 4카테고리·components 싱글/상업·material/odu/branch/price-baseline). ProductSheetSyncService 변동DC/평형 배선(FORMULA render 수식분기 useK2/$L$2·matKey/$D$N·구형 isDisc/$I$1 + 고정DC 셀 + 싱글 평형→pyong_size, 이전 all-zero 적재).
+- **estimate-app**: `lib/db-catalog.js`(벌크→legacy getter shape, 분류는 code.js classifier 재계산) + bootstrap `CATALOG_SOURCE` 스위치(**기본 sheet 무회귀, db opt-in**).
+- **실 QA**(docs/qa/estimate-30-sheets-to-db/RESULTS.md): 실 컨테이너 벌크 10종 건수 + DB-mode bootstrap E2E 9종 렌더·분류·pyong 실증. jest 71/71. **⚠️ 상업멀티 useK2 parity 미달**(대용량 FORMULA read 반복호출 외부 변동) → 기본 sheet 유지, 명시 공개.
+- 🔵 **#30 후속(PR-2~)**: 거래처/담당자/사양맵(getSpecDetailMap_) DB 치환 · **상업 useK2 parity 종결 후 CATALOG_SOURCE 기본 db 전환** · priceInc.single baseline · recommend homeEx 분리.
+
 ### 🔵 다음 (우선순위)
-1. **#30 Sheets→DB 전면 치환** / 나머지 23개 GAS 앱 감사·이식.
+1. **#30 후속**(상업 useK2 parity·거래처/담당자/사양맵 DB) / 나머지 23개 GAS 앱 감사·이식.
 2. P0-A snapshots permitAll → X-Internal-Token 동일 하드닝(후속). 운영 Notion 시드 1회 + 운영 .env Naver/Juso 키 5종 설정(런북).
+3. **Codex 회복(6/11 10:11) 후 신규 대형 시리즈는 Codex 구현 의무 체제로 재개.**
 
 ---
 
