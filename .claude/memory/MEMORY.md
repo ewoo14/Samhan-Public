@@ -92,3 +92,4 @@
 - [출고전표 양식 1:1 + 전자서명 배치 + 사원 서명 등록](project_slip_shipout_print_form.md) — 2026-06-10 개발책임자. 출력/조회(창고·기사·인수자) 시 샘플 양식 무변동 재현, 용달기사·인수자 전자서명 양식 내 정확 배치, 사원등록 메뉴 서명 등록(결재란 스탬프), 품목 수에 따라 길이 가변(A4 다페이지). 샘플원본=.claude/tmp(비커밋), mock v1 근접일치
 - [공급자·은행계좌 회계 설정 메뉴](project_company_config_menu.md) — 2026-06-10. 거래명세서+세금계산서 공용 공급자정보/입금계좌/인감 설정 (회계 메뉴, env 주입·COMPANY 상수 대체). accounting-service company-profile + FE 설정화면
 - [임시 다모델 리뷰 워크플로우](feedback_temp_multimodel_workflow.md) — 2026-06-11 개발책임자 임시. Opus 계획/PR → Codex(GPT5.5) 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent(6/22까지) → PM. 각 라운드 리뷰+fix+게시, Codex는 토큰 회복 시
+- [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 2026-06-11 개발책임자. 한글 "슬립"(slip 음차) 금지 "전표" 사용. 영문 식별자(slipId/slipNo/Slip)는 별개. 기존 895회/250파일 점진 치환·신규는 처음부터 전표
