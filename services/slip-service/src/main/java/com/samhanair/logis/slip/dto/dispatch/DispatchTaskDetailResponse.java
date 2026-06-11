@@ -108,7 +108,8 @@ public record DispatchTaskDetailResponse(
             String driverCode,
             String driverName,
             String driverPhoneNumber,
-            String driverSource
+            String driverSource,
+            String vehiclePlateNumber
     ) {
         public static MatchedDriverDto of(MatchedDriver driver, DispatchVehicleGroup group) {
             return new MatchedDriverDto(
@@ -116,7 +117,8 @@ public record DispatchTaskDetailResponse(
                     driver.getDriverCode(),
                     driver.getDriverName(),
                     driver.getDriverPhoneNumber(),
-                    driver.getDriverSource()
+                    driver.getDriverSource(),
+                    driver.getVehiclePlateNumber()
             );
         }
     }

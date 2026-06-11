@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -73,18 +74,22 @@ class DispatchConfirmAndUnavailableServiceTest {
         when(slipRepo.findById(slipId)).thenReturn(Optional.of(slip));
 
         UUID arologisId = UUID.randomUUID();
+        String vehiclePlateNumber = "12가3456";
         DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
                 arologisId,
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
                         1, "TONNAGE_1", "D-001", "홍길동",
-                        "010-1234-5678", "EXTERNAL_INSUNG_QUICK")),
+                        "010-1234-5678", "EXTERNAL_INSUNG_QUICK",
+                        vehiclePlateNumber)),
                 Instant.now());
 
         confirmSvc.confirm(taskId, req);
 
         assertThat(task.getStatus()).isEqualTo(DispatchTaskStatus.DISPATCHED);
         assertThat(task.getArologisDispatchId()).isEqualTo(arologisId);
-        verify(matchedRepo).save(any(MatchedDriver.class));
+        ArgumentCaptor<MatchedDriver> matchedCaptor = ArgumentCaptor.forClass(MatchedDriver.class);
+        verify(matchedRepo).save(matchedCaptor.capture());
+        assertThat(matchedCaptor.getValue().getVehiclePlateNumber()).isEqualTo(vehiclePlateNumber);
         verify(slip).markDispatchConfirmed();
     }
 
@@ -98,7 +103,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
                 UUID.randomUUID(),
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
-                        1, "TONNAGE_1", "D-001", "홍길동", "010-x", "INTERNAL_APP")),
+                        1, "TONNAGE_1", "D-001", "홍길동", "010-x", "INTERNAL_APP", null)),
                 Instant.now());
         assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))
                 .isInstanceOf(BusinessException.class);

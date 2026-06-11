@@ -78,7 +78,7 @@ public class DispatchTaskConfirmService {
             }
             MatchedDriver matched = MatchedDriver.create(
                     g.getId(), md.driverCode(), md.driverName(),
-                    md.driverPhoneNumber(), md.source());
+                    md.driverPhoneNumber(), md.source(), md.vehiclePlateNumber());
             matchedRepo.save(matched);
 
             // 매핑된 slip 모두 DISPATCHED 전이

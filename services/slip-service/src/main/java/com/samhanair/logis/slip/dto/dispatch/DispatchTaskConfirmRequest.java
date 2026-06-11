@@ -32,6 +32,7 @@ public record DispatchTaskConfirmRequest(
      * @param driverName 기사명
      * @param driverPhoneNumber 기사 전화번호
      * @param source 매칭 출처 (예: EXTERNAL_INSUNG_QUICK / INTERNAL_APP)
+     * @param vehiclePlateNumber 차량번호 (arologis 미공급 시 null)
      */
     public record MatchedDriverPayload(
             int vehicleGroupSequence,
@@ -39,6 +40,7 @@ public record DispatchTaskConfirmRequest(
             @NotBlank String driverCode,
             @NotBlank String driverName,
             @NotBlank String driverPhoneNumber,
-            @NotBlank String source
+            @NotBlank String source,
+            String vehiclePlateNumber
     ) {}
 }

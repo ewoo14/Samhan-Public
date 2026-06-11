@@ -15,7 +15,7 @@
  *
  * UUID 비공개 (feedback_uuid_no_user_visibility.md):
  * - 응답에 포함된 UUID 는 React state / API path 에만 사용. 사용자 노출은 taskCode / slipNumber /
- *   partnerCode / partnerName / driverCode / driverPhoneNumber 한정.
+ *   partnerCode / partnerName / driverCode / driverPhoneNumber / vehiclePlateNumber 한정.
  *
  * 차량 종류 (9 active enum, spec § 4.3):
  *   MOTORCYCLE / DAMAS / TONNAGE_1 / TONNAGE_1_5 / TONNAGE_2_5 / TONNAGE_3 / TONNAGE_5 / TONNAGE_10 / TONNAGE_20.
@@ -149,7 +149,7 @@ export interface DispatchTaskSlipHeaderResponse {
 /**
  * 매칭 완료 회신 후 BE 가 채우는 기사 정보 — spec § 6.2.
  *
- * <p>UI 표시: DISPATCHED 배지 옆에 `driverCode (driverName) phoneNumber` 인라인.
+ * <p>UI 표시: DISPATCHED 배지 옆에 `driverCode (driverName) phoneNumber vehiclePlateNumber` 인라인.
  * UUID 비공개 — driverId 등 UUID 는 응답에 포함 X.
  */
 export interface MatchedDriverResponse {
@@ -158,6 +158,7 @@ export interface MatchedDriverResponse {
   driverName: string
   driverPhoneNumber: string
   driverSource: string
+  vehiclePlateNumber?: string | null
 }
 
 /**

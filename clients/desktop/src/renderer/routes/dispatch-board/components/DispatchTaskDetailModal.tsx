@@ -14,7 +14,7 @@
  *  5) MODIFICATION_ACCEPTED 상태에서 "수정 가능 (편집 모드)" 안내 (녹색 배너).
  *
  * UUID 비공개:
- *  - 사용자 노출 = taskCode / slipNo / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber.
+ *  - 사용자 노출 = taskCode / slipNo / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber / vehiclePlateNumber.
  *  - taskId / groupId / slipId UUID 는 API path 와 dialog 호출에만 사용.
  *
  * accessibility:
@@ -283,7 +283,8 @@ export function DispatchTaskDetailModal({
                             }}
                           >
                             기사 {matched.driverName} ({matched.driverCode}){' '}
-                            {matched.driverPhoneNumber}
+                            {matched.driverPhoneNumber} · 차량번호{' '}
+                            {matched.vehiclePlateNumber?.trim() || '-'}
                           </span>
                         ) : null}
                       </header>

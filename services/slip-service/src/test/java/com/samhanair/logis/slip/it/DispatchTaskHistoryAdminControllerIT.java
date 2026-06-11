@@ -145,7 +145,8 @@ class DispatchTaskHistoryAdminControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data.matchedDrivers[0].driverCode").value("DRV-004"))
                 .andExpect(jsonPath("$.data.matchedDrivers[0].driverName").value("기사4"))
                 .andExpect(jsonPath("$.data.matchedDrivers[0].driverPhoneNumber").value("010-9999-0004"))
-                .andExpect(jsonPath("$.data.matchedDrivers[0].driverSource").value("AROLOGIS"));
+                .andExpect(jsonPath("$.data.matchedDrivers[0].driverSource").value("AROLOGIS"))
+                .andExpect(jsonPath("$.data.matchedDrivers[0].vehiclePlateNumber").value("12가0004"));
     }
 
     @Test
@@ -180,7 +181,8 @@ class DispatchTaskHistoryAdminControllerIT extends AbstractPostgresIT {
                 "DRV-%03d".formatted(seq),
                 "기사%d".formatted(seq),
                 "010-9999-%04d".formatted(seq),
-                "AROLOGIS"));
+                "AROLOGIS",
+                "12가%04d".formatted(seq)));
         return new SeededDispatch(task, group, mapping, slip);
     }
 
