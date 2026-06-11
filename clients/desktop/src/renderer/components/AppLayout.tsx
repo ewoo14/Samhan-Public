@@ -14,7 +14,7 @@
  * - 회계     — 매출·매입전표/계정과목/분개장/세금계산서/시산표/재무보고서/마감/원장/회계 관리자(중첩 토글)
  * - 그룹웨어 — 링크발송/알리고 주소록/단톡방 매핑
  * - 인사     — 인사 관리/권한설정/권한 일괄/그룹 권한/권한그룹 관리/권한 위임
- * - 배차     — 배차 메뉴/수동 배차/가배차 분류/미배차/배차안내 SMS/실배차 비교/배차지역 관리/배차 admin
+ * - 배차     — 배차현황/가배차리스트/미배차리스트/배차안내 SMS/실배차 비교/배차지역 관리/배차 admin
  * - 창고 운영 — 창고관리/재고 현황/안전재고/보상 실패 복구/전표 수정 요청/사진 감사
  *
  * 그룹/항목 권한은 usePermissions().canAccess(pageCode, action) 동적 RBAC 단일 소스이며,
@@ -283,7 +283,7 @@ function SidebarCategory({
 }
 
 /**
- * [samhan-dispatch-board Phase A] 배차 메뉴 (/dispatch-board) — DISPATCH/MANAGER/MASTER.
+ * [samhan-dispatch-board Phase A] 배차 보드 route (/dispatch-board) — DISPATCH/MANAGER/MASTER.
  * Samhan Public 배차담당자 → 차량 그룹 + arologis 발송 흐름.
  */
 
@@ -423,11 +423,11 @@ export function AppLayout() {
   // (사이클1 리뷰 FE P1-2 + Designer D-002: 그룹 UUID 매칭은 라우트 가드와 소스 이원화 — seed 불일치 시
   //  사이드바 노출↔진입 redirect 역전 발생. 라우트가 이미 page-code 게이팅이므로 동일 코드로 일원화.)
   const showArologisManual = dynamicCanAccess('arologis.dispatch.admin', 'view')
-  // 가배차 분류 / 미배차 리스트 / 실배차 비교 — 라우트 공통 arologis.dispatch.ops
+  // 가배차리스트 / 미배차리스트 / 실배차 비교 — 라우트 공통 arologis.dispatch.ops
   const showArologisOps = dynamicCanAccess('arologis.dispatch.ops', 'view')
   const showDispatchSmsPage = dynamicCanAccess('dispatch.batch', 'view')
   const showDispatchSmsSendAudit = dynamicCanAccess('notification.dispatch-sms.send-audit', 'view')
-  // arologis 그룹 가시성 — 수동 배차 / ops 3종 / 배차안내 SMS / 발송 이력 / P1-5 admin 중 하나라도 보이면 그룹 노출
+  // arologis 그룹 가시성 — arologis.dispatch.admin route 권한 / ops 3종 / 배차안내 SMS / 발송 이력 / P1-5 admin 중 하나라도 보이면 그룹 노출
   const showArologis
     = showArologisManual
     || showArologisOps
@@ -465,7 +465,7 @@ export function AppLayout() {
   const showBlockedPartners = showPartnersBlock
   const showPartnerManagement = showPartnersList
   const showPartnerDcConfig = dynamicCanAccess('sales.partner-dc-config', 'view')
-  // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 메뉴 — 동적 RBAC 권한 연동.
+  // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 보드 route — 동적 RBAC 권한 연동.
   // 기존 정적 역할 체크 → dispatch.board 동적 canAccess 로 전환.
   const showDispatchBoard = dynamicCanAccess('dispatch.board', 'view')
   const showSales =
@@ -1152,9 +1152,7 @@ export function AppLayout() {
             show={showArologisGroup}
             testId="sidebar-category-toggle-배차"
             activeTargets={[
-              '/dispatch-board',
               '/dispatch-board/history',
-              '/arologis/manual',
               '/arologis/pre-classify',
               '/arologis/unassigned',
               '/arologis/dispatch-sms',
@@ -1166,48 +1164,31 @@ export function AppLayout() {
               '/arologis/admin/driver-assignment',
             ]}
           >
-              {/* [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH/MANAGER/MASTER.
-                  Samhan Public 배차담당자 → 미배차 출고전표 + 차량 그룹 + arologis 발송. */}
-              <SidebarLink
-                to="/dispatch-board"
-                show={showDispatchBoard}
-                requiredRole="DISPATCH / MANAGER / MASTER"
-                data-testid="sidebar-dispatch-board"
-              >
-                배차 메뉴
-              </SidebarLink>
               <SidebarLink
                 to="/dispatch-board/history"
                 show={showDispatchBoard}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-dispatch-history"
               >
-                완료 배차 내역
+                배차현황
               </SidebarLink>
-              <SidebarLink
-                to="/arologis/manual"
-                show={showArologisManual}
-                requiredRole="DISPATCH / MANAGER / MASTER"
-              >
-                수동 배차
-              </SidebarLink>
-              {/* [Phase 10 PR-E1 FE-2] 가배차 분류 — MASTER/MANAGER/DISPATCH. */}
+              {/* [Phase 10 PR-E1 FE-2] 가배차리스트 — MASTER/MANAGER/DISPATCH. */}
               <SidebarLink
                 to="/arologis/pre-classify"
                 show={showArologisOps}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-preclassify"
               >
-                가배차 분류
+                가배차리스트
               </SidebarLink>
-              {/* [Phase 10 PR-E1 FE-3] 미배차 리스트 — MASTER/MANAGER/DISPATCH. */}
+              {/* [Phase 10 PR-E1 FE-3] 미배차리스트 — MASTER/MANAGER/DISPATCH. */}
               <SidebarLink
                 to="/arologis/unassigned"
                 show={showArologisOps}
                 requiredRole="DISPATCH / MANAGER / MASTER"
                 data-testid="sidebar-arologis-unassigned"
               >
-                미배차 리스트
+                미배차리스트
               </SidebarLink>
               {/* [PR-E1 FE-6] 배차안내 SMS — DISPATCH/MANAGER/MASTER. */}
               <SidebarLink

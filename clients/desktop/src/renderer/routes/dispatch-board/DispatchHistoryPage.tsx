@@ -33,7 +33,7 @@ function statusBadgeVariant(status: DispatchTaskStatus): 'success' | 'danger' | 
 }
 
 export function DispatchHistoryPage() {
-  usePageTitle('완료 배차 내역')
+  usePageTitle('배차현황')
 
   const today = useMemo(() => todayIsoSeoul(), [])
   const [from, setFrom] = useState(() => offsetIsoSeoul(today, -30))
@@ -127,7 +127,7 @@ export function DispatchHistoryPage() {
       style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}
     >
       <section
-        aria-label="완료 배차 내역 필터"
+        aria-label="배차현황 필터"
         style={{
           display: 'flex',
           alignItems: 'flex-end',
@@ -200,7 +200,7 @@ export function DispatchHistoryPage() {
             fontSize: 13,
           }}
         >
-          완료 배차 내역을 불러오지 못했습니다.
+          배차현황을 불러오지 못했습니다.
         </div>
       ) : null}
 
@@ -210,7 +210,7 @@ export function DispatchHistoryPage() {
           rows={rows}
           loading={listQuery.isLoading}
           rowKey={(row) => row.taskCode}
-          emptyMessage="조회 조건에 맞는 완료 배차 내역이 없습니다."
+          emptyMessage="조회 조건에 맞는 배차현황이 없습니다."
           onRowClick={handleRowClick}
         />
       </div>

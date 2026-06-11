@@ -7,12 +7,12 @@
  *   npx playwright test playwright/sp-d3-slip-dispatch-permission-migration/sp-d3-slip-dispatch-permission-migration.spec.ts --reporter=line
  *
  * dev server 미가용 시 테스트 FAIL (false green 방지 — SP-09 패턴 일관).
- * 스크린샷 저장: docs/qa/sp-d3-slip-dispatch-permission-migration/screenshots/*.png
+ * 스크린샷 저장: Playwright test outputPath (repo-level QA PNG overwrite 방지).
  *
  * TC 목록 (5건):
  *   T1 SALES 로그인 → 매출 슬립 + SMS 발송 이력 접근 가능 / 매입 슬립 + 배차 hidden
  *   T2 WAREHOUSE 로그인 → 매입 슬립 + OCR + 입고 검수 가능 / 매출 슬립 + 배차 hidden
- *   T3 DISPATCH 로그인 → 배차 메뉴 + SMS 발송 이력 가능 / 매입 슬립 + 매출 슬립 hidden
+ *   T3 DISPATCH 로그인 → 배차 보드 route + SMS 발송 이력 가능 / 매입 슬립 + 매출 슬립 hidden
  *   T4 마스터가 SALES 의 purchases.slip.list revoke → SALES 매입 슬립 접근 차단 확인
  *   T5 권한 없는 URL 직접 진입 → redirect "/"
  *
@@ -26,7 +26,7 @@
  *   /sales/slips                          → sales.slip.list               (매출 슬립 목록)
  *   /purchases/slips                      → purchases.slip.list           (매입 슬립 목록)
  *   /purchases/receipt-ocr                → purchases.receipt-ocr        (영수증 OCR)
- *   /dispatch-board                       → dispatch.board               (배차 메뉴)
+ *   /dispatch-board                       → dispatch.board               (배차 보드 route)
  *   /arologis/dispatch-sms/send-audit     → notification.dispatch-sms.send-audit (SMS 발송 이력)
  *   /warehouse/inbound-inspections        → inbound.inspection           (입고 검수 — 사이드바 연동)
  *
@@ -49,18 +49,6 @@ const _filename = fileURLToPath(import.meta.url)
 const _dirname = path.dirname(_filename)
 
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5173'
-
-/** 스크린샷 저장 디렉터리 */
-const QA_DIR = path.resolve(
-  _dirname,
-  '../../../../docs/qa/sp-d3-slip-dispatch-permission-migration/screenshots',
-)
-
-function ensureQaDir(): void {
-  if (!fs.existsSync(QA_DIR)) {
-    fs.mkdirSync(QA_DIR, { recursive: true })
-  }
-}
 
 /** dev server 가용 여부 확인 — 미가용 시 false 반환 (테스트는 반드시 FAIL) */
 async function isServerAvailable(): Promise<boolean> {
@@ -120,6 +108,73 @@ function mockPermsFromResponse(
     view: permission.canView ?? true,
     edit: permission.canEdit ?? false,
   }))
+}
+
+const SP_D3_EMPTY_PAGE = {
+  content: [],
+  totalElements: 0,
+  totalPages: 1,
+  number: 0,
+  size: 50,
+  first: true,
+  last: true,
+}
+
+const SP_D3_DISPATCH_TASK = {
+  id: 'sp-d3-dispatch-task-001',
+  taskCode: '2026/06/11-SPD3',
+  dispatchDate: '2026-06-11',
+  status: 'DRAFT',
+  arologisDispatchId: null,
+  vehicleGroups: [],
+  matchedDrivers: [],
+  failureReason: null,
+  modificationReason: null,
+  rejectionReason: null,
+  modificationRequestedAt: null,
+  modificationDecidedAt: null,
+}
+
+function apiEnvelope<T>(data: T) {
+  return {
+    success: true,
+    code: 'OK',
+    message: 'OK',
+    data,
+    timestamp: '2026-06-11T00:00:00Z',
+  }
+}
+
+async function installDispatchBoardApiStubs(page: Page): Promise<void> {
+  await page.route('**/admin/dispatch-tasks**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/admin/dispatch-tasks')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(apiEnvelope(SP_D3_DISPATCH_TASK)),
+      })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.includes('/admin/dispatch-tasks/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(apiEnvelope(SP_D3_DISPATCH_TASK)),
+      })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.route('**/admin/dispatch-board/undispatched-slips**', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(apiEnvelope(SP_D3_EMPTY_PAGE)),
+    })
+  })
 }
 
 /**
@@ -195,9 +250,7 @@ const SP_D3_ROUTES = [
   },
   {
     path: '/dispatch-board',
-    sidebarTestId: 'sidebar-dispatch-board',
     pageCode: 'dispatch.board',
-    label: '배차 메뉴',
     roles: ['DISPATCH', 'MANAGER', 'MASTER'],
   },
   {
@@ -243,7 +296,7 @@ function buildWarehousePermissions() {
   }
 }
 
-/** DISPATCH 기본 권한 — 배차 메뉴 + SMS 발송 이력 가능, 매입/매출 없음 */
+/** DISPATCH 기본 권한 — 배차 보드 route + SMS 발송 이력 가능, 매입/매출 없음 */
 function buildDispatchPermissions() {
   return {
     success: true,
@@ -307,20 +360,18 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
   // -------------------------------------------------------------------------
   /**
-   * T1: SALES 로그인 → 매출 슬립 + SMS 발송 이력 접근 가능 / 매입 슬립 + 배차 hidden
+   * T1: SALES 로그인 → 매출 슬립 + SMS 발송 이력 접근 가능 / 매입 슬립 + 배차 route 차단
    *
    * 검증 항목:
    *   - GET /auth/admin/permissions/my → SALES: sales.slip.list + notification.dispatch-sms.send-audit view=true
    *   - /sales/slips 진입 → 매출 슬립 목록 페이지 표시 (PermissionGuard 통과)
-   *   - 사이드바: [data-testid="sidebar-dispatch-board"] visible=false
    *   - /purchases/slips 직접 진입 → PermissionGuard redirect "/" (purchases.slip.list 없음)
    *   - /dispatch-board 직접 진입 → redirect "/" (dispatch.board 없음)
    *   - pageerror 없음
    */
-  test('T1: SALES → 매출 슬립 접근 가능 + 매입/배차 hidden + URL 직접 진입 차단', async ({ page }) => {
+  test('T1: SALES → 매출 슬립 접근 가능 + 매입/배차 route URL 직접 진입 차단', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
-    ensureQaDir()
 
     const salesPerms = mockPermsFromResponse(buildSalesPermissions())
 
@@ -358,31 +409,6 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
       ).toBe(false)
     })
 
-    await test.step('SALES — 배차 메뉴 사이드바 hidden 확인', async () => {
-      await page.goto(withMockPerms(`${BASE_URL}/#/?mockRole=SALES`, salesPerms), {
-        waitUntil: 'domcontentloaded',
-        timeout: 20000,
-      })
-      await page.waitForTimeout(1500)
-
-      const sidebar = page.locator('nav, aside, [data-testid="app-sidebar"]').first()
-      const sidebarVisible = await sidebar.isVisible().catch(() => false)
-
-      expect(
-        sidebarVisible,
-        '사이드바가 렌더링되어야 함 — SALES 홈 진입 후 nav/aside 미표시',
-      ).toBe(true)
-
-      // 배차 메뉴 사이드바 hidden 확인
-      const dispatchBoardLink = page.locator('[data-testid="sidebar-dispatch-board"]')
-      const dispatchBoardVisible = await dispatchBoardLink.isVisible().catch(() => false)
-
-      expect(
-        dispatchBoardVisible,
-        'SALES 사이드바에 배차 메뉴가 표시됨 — dispatch.board 권한 없으므로 hidden 필요',
-      ).toBe(false)
-    })
-
     await test.step('SALES — 매입 슬립 URL 직접 진입 시 redirect "/" 확인', async () => {
       await page.goto(withMockPerms(PURCHASES_SLIPS_URL, salesPerms), {
         waitUntil: 'domcontentloaded',
@@ -400,7 +426,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
       ).toBe(true)
     })
 
-    await test.step('SALES — 배차 메뉴 URL 직접 진입 시 차단 확인', async () => {
+    await test.step('SALES — 배차 보드 route URL 직접 진입 시 차단 확인', async () => {
       await page.goto(withMockPerms(DISPATCH_BOARD_URL, salesPerms), {
         waitUntil: 'domcontentloaded',
         timeout: 20000,
@@ -412,12 +438,12 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
       expect(
         isAccessBlocked(currentUrl, bodyText, '/dispatch-board'),
-        `SALES 배차 메뉴 직접 진입 차단 미작동 — URL: ${currentUrl}. dispatch.board 권한 없으므로 차단 필요.`,
+        `SALES 배차 보드 route 직접 진입 차단 미작동 — URL: ${currentUrl}. dispatch.board 권한 없으므로 차단 필요.`,
       ).toBe(true)
     })
 
     await page.screenshot({
-      path: path.join(QA_DIR, 'T1-sales-slip-access-dispatch-hidden.png'),
+      path: test.info().outputPath('T1-sales-slip-access-dispatch-hidden.png'),
       fullPage: true,
     })
 
@@ -428,20 +454,18 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
   // -------------------------------------------------------------------------
   /**
-   * T2: WAREHOUSE 로그인 → 매입 슬립 + OCR + 입고 검수 가능 / 매출 슬립 + 배차 hidden
+   * T2: WAREHOUSE 로그인 → 매입 슬립 + OCR + 입고 검수 가능 / 매출 슬립 + SMS 이력 hidden
    *
    * 검증 항목:
    *   - GET /auth/admin/permissions/my → WAREHOUSE: purchases.slip.list + purchases.receipt-ocr + inbound.inspection view=true
    *   - /purchases/slips 진입 → 매입 슬립 목록 페이지 표시 (PermissionGuard 통과)
    *   - /purchases/receipt-ocr 진입 → OCR 페이지 표시 (PermissionGuard 통과)
-   *   - 사이드바: [data-testid="sidebar-dispatch-board"] visible=false
    *   - 사이드바: [data-testid="sidebar-arologis-sms-send-audit"] visible=false
    *   - pageerror 없음
    */
-  test('T2: WAREHOUSE → 매입 슬립 + OCR 접근 가능 + 매출/배차 hidden', async ({ page }) => {
+  test('T2: WAREHOUSE → 매입 슬립 + OCR 접근 가능 + 매출/SMS 이력 hidden', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
-    ensureQaDir()
 
     const warehousePerms = mockPermsFromResponse(buildWarehousePermissions())
 
@@ -498,7 +522,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
       ).toBe(false)
     })
 
-    await test.step('WAREHOUSE — 배차 메뉴 + SMS 발송 이력 사이드바 hidden 확인', async () => {
+    await test.step('WAREHOUSE — SMS 발송 이력 사이드바 hidden 확인', async () => {
       await page.goto(withMockPerms(`${BASE_URL}/#/?mockRole=WAREHOUSE`, warehousePerms), {
         waitUntil: 'domcontentloaded',
         timeout: 20000,
@@ -513,14 +537,6 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
         '사이드바가 렌더링되어야 함 — WAREHOUSE 홈 진입 후 nav/aside 미표시',
       ).toBe(true)
 
-      // 배차 메뉴 hidden 확인
-      const dispatchBoardLink = page.locator('[data-testid="sidebar-dispatch-board"]')
-      const dispatchBoardVisible = await dispatchBoardLink.isVisible().catch(() => false)
-      expect(
-        dispatchBoardVisible,
-        'WAREHOUSE 사이드바에 배차 메뉴가 표시됨 — dispatch.board 권한 없으므로 hidden 필요',
-      ).toBe(false)
-
       // SMS 발송 이력 hidden 확인
       const smsAuditLink = page.locator('[data-testid="sidebar-arologis-sms-send-audit"]')
       const smsAuditVisible = await smsAuditLink.isVisible().catch(() => false)
@@ -531,7 +547,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
     })
 
     await page.screenshot({
-      path: path.join(QA_DIR, 'T2-warehouse-purchase-ocr-access-dispatch-hidden.png'),
+      path: test.info().outputPath('T2-warehouse-purchase-ocr-access-dispatch-hidden.png'),
       fullPage: true,
     })
 
@@ -542,21 +558,21 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
   // -------------------------------------------------------------------------
   /**
-   * T3: DISPATCH 로그인 → 배차 메뉴 + SMS 발송 이력 가능 / 매입 슬립 + 매출 슬립 hidden
+   * T3: DISPATCH 로그인 → 배차 보드 route + SMS 발송 이력 가능 / 매입 슬립 + 매출 슬립 hidden
    *
    * 검증 항목:
    *   - GET /auth/admin/permissions/my → DISPATCH: dispatch.board + notification.dispatch-sms.send-audit view=true
-   *   - /dispatch-board 진입 → 배차 메뉴 페이지 표시 (PermissionGuard 통과)
+   *   - /dispatch-board 진입 → 배차 보드 페이지 표시 (PermissionGuard 통과)
    *   - /arologis/dispatch-sms/send-audit 진입 → SMS 발송 이력 페이지 표시
    *   - 사이드바: [data-testid="sidebar-purchases"] — 매입 관련 PermissionGuard 미통과 메뉴 hidden
    *   - /sales/slips 직접 진입 → redirect "/" (sales.slip.list 없음)
    *   - /purchases/slips 직접 진입 → redirect "/" (purchases.slip.list 없음)
    *   - pageerror 없음
    */
-  test('T3: DISPATCH → 배차 메뉴 + SMS 이력 접근 가능 + 매입/매출 슬립 차단', async ({ page }) => {
+  test('T3: DISPATCH → 배차 보드 route + SMS 이력 접근 가능 + 매입/매출 슬립 차단', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
-    ensureQaDir()
+    await installDispatchBoardApiStubs(page)
 
     const dispatchPerms = mockPermsFromResponse(buildDispatchPermissions())
 
@@ -564,7 +580,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
     // 광범위 glob('**/dispatch-board**' 등) page.route 는 후속 SPA redirect 네비게이션을 간섭해
     // 차단 단계에서 빈 화면·redirect 미작동을 유발했다(순수 네비게이션은 정상 — 진단 확인). 제거.
 
-    await test.step('DISPATCH — 배차 메뉴 (/dispatch-board) 접근 가능 확인', async () => {
+    await test.step('DISPATCH — 배차 보드 route (/dispatch-board) 접근 가능 확인', async () => {
       await page.goto(withMockPerms(DISPATCH_BOARD_DISPATCH_URL, dispatchPerms), {
         waitUntil: 'domcontentloaded',
         timeout: 20000,
@@ -581,13 +597,13 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
       expect(
         isRedirectedToHome,
-        `DISPATCH 배차 메뉴 페이지 접근이 차단됨 — URL: ${currentUrl}. dispatch.board view=true 보유 DISPATCH 는 접근 허용 필요.`,
+        `DISPATCH 배차 보드 페이지 접근이 차단됨 — URL: ${currentUrl}. dispatch.board view=true 보유 DISPATCH 는 접근 허용 필요.`,
       ).toBe(false)
 
       // 접근 허용 강화 — RoleGuard 차단 화면이 아니어야 하고 앱 셸이 렌더되어야 한다(page.route 제거 후 빈 화면 회귀 방지).
-      expect(bodyText.includes('접근 권한이 없습니다'), 'DISPATCH 배차 메뉴 — 차단 화면 표시됨').toBe(false)
+      expect(bodyText.includes('접근 권한이 없습니다'), 'DISPATCH 배차 보드 — 차단 화면 표시됨').toBe(false)
       // [Round C P1 #8] '대시보드' 라벨 폐기('홈' 리라벨) → 앱 셸 렌더 sentinel 을 aside.app-sidebar 존재로 교체.
-      expect(await page.locator('aside.app-sidebar').count(), 'DISPATCH 배차 메뉴 — 앱 셸 미렌더(빈 화면)').toBeGreaterThanOrEqual(1)
+      expect(await page.locator('aside.app-sidebar').count(), 'DISPATCH 배차 보드 — 앱 셸 미렌더(빈 화면)').toBeGreaterThanOrEqual(1)
     })
 
     await test.step('DISPATCH — SMS 발송 이력 (/arologis/dispatch-sms/send-audit) 접근 가능 확인', async () => {
@@ -649,7 +665,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
     })
 
     await page.screenshot({
-      path: path.join(QA_DIR, 'T3-dispatch-board-sms-access-slip-hidden.png'),
+      path: test.info().outputPath('T3-dispatch-board-sms-access-slip-hidden.png'),
       fullPage: true,
     })
 
@@ -675,7 +691,6 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
   test('T4: 마스터가 SALES 의 purchases.slip.list revoke → 매입 슬립 hidden 확인', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
-    ensureQaDir()
 
     let batchRevokeCallCount = 0
 
@@ -778,7 +793,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
     })
 
     await page.screenshot({
-      path: path.join(QA_DIR, 'T4-sales-purchase-slip-revoked.png'),
+      path: test.info().outputPath('T4-sales-purchase-slip-revoked.png'),
       fullPage: true,
     })
 
@@ -807,7 +822,6 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
   test('T5: 권한 없는 URL 직접 진입 → PermissionGuard redirect "/" (6 PageCode 전체)', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
-    ensureQaDir()
 
     const noPerms = mockPermsFromResponse(buildNoPermissions())
 
@@ -896,7 +910,7 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
     })
 
     await page.screenshot({
-      path: path.join(QA_DIR, 'T5-no-perm-url-block-redirect.png'),
+      path: test.info().outputPath('T5-no-perm-url-block-redirect.png'),
       fullPage: true,
     })
 

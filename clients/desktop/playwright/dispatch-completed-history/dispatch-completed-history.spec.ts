@@ -25,7 +25,7 @@ async function gotoHistory(
   await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {})
 }
 
-test.describe('AROLOGIS 완료배차 내역 뷰 mock', () => {
+test.describe('AROLOGIS 배차현황 뷰 mock', () => {
   test('DISPATCHED 완료배차 목록을 렌더한다', async ({ page }) => {
     await gotoHistory(page)
 
