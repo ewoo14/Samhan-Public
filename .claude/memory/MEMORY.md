@@ -93,3 +93,4 @@
 - [공급자·은행계좌 회계 설정 메뉴](project_company_config_menu.md) — 2026-06-10. 거래명세서+세금계산서 공용 공급자정보/입금계좌/인감 설정 (회계 메뉴, env 주입·COMPANY 상수 대체). accounting-service company-profile + FE 설정화면
 - [임시 다모델 리뷰 워크플로우](feedback_temp_multimodel_workflow.md) — 2026-06-11 개발책임자 임시. Opus 계획/PR → Codex(GPT5.5) 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent(6/22까지) → PM. 각 라운드 리뷰+fix+게시, Codex는 토큰 회복 시
 - [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 2026-06-11 개발책임자. 한글 "슬립"(slip 음차) 금지 "전표" 사용. 영문 식별자(slipId/slipNo/Slip)는 별개. 기존 895회/250파일 점진 치환·신규는 처음부터 전표
+- [야간 위임 = 라이브 Docker 실QA 캡처 미루지 말 것](feedback_overnight_live_capture.md) — 2026-06-12 개발책임자 지적. 야간 위임 시 서비스 재빌드(docker compose up --build)해서라도 라이브 실서버 캡처 진행. "스택 안전" deferral 금지. CI IT 로 라이브 캡처 대체 금지
