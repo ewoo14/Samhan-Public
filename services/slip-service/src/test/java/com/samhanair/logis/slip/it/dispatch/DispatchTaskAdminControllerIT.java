@@ -96,8 +96,9 @@ class DispatchTaskAdminControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.taskCode").value(notNullValue()))
-                .andExpect(jsonPath("$.status").value("DRAFT"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.taskCode").value(notNullValue()))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"));
     }
 
     @Test
@@ -111,7 +112,7 @@ class DispatchTaskAdminControllerIT extends AbstractPostgresIT {
                         .content(taskBody))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        Map<?, ?> taskJson = objectMapper.readValue(taskRes, Map.class);
+        Map<?, ?> taskJson = dataMap(taskRes);
         UUID taskId = UUID.fromString((String) taskJson.get("id"));
 
         // 2) 차량 그룹 추가
@@ -122,10 +123,11 @@ class DispatchTaskAdminControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(groupBody))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.sequence").value(1))
-                .andExpect(jsonPath("$.vehicleType").value("TONNAGE_1"))
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.sequence").value(1))
+                .andExpect(jsonPath("$.data.vehicleType").value("TONNAGE_1"))
                 .andReturn().getResponse().getContentAsString();
-        Map<?, ?> groupJson = objectMapper.readValue(groupRes, Map.class);
+        Map<?, ?> groupJson = dataMap(groupRes);
         UUID groupId = UUID.fromString((String) groupJson.get("id"));
 
         // 3) 차량 그룹 삭제
@@ -144,7 +146,7 @@ class DispatchTaskAdminControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(taskBody))
                 .andReturn().getResponse().getContentAsString();
-        Map<?, ?> taskJson = objectMapper.readValue(taskRes, Map.class);
+        Map<?, ?> taskJson = dataMap(taskRes);
         UUID taskId = UUID.fromString((String) taskJson.get("id"));
 
         // 차량 그룹 없이 dispatch
@@ -170,7 +172,7 @@ class DispatchTaskAdminControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("dispatchDate", "2026-05-14"))))
                 .andReturn().getResponse().getContentAsString();
-        UUID taskId = UUID.fromString((String) objectMapper.readValue(taskRes, Map.class).get("id"));
+        UUID taskId = UUID.fromString((String) dataMap(taskRes).get("id"));
 
         mvc.perform(post("/admin/dispatch-tasks/{taskId}/vehicle-groups", taskId)
                         .header(USER_ID_HEADER, MASTER_ACCOUNT_ID)
@@ -183,8 +185,14 @@ class DispatchTaskAdminControllerIT extends AbstractPostgresIT {
                         .header(USER_ID_HEADER, MASTER_ACCOUNT_ID)
                         .header(USER_ROLE_HEADER, "MASTER"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("DISPATCHING"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("DISPATCHING"));
 
         Mockito.verify(arologisDispatchClient).send(ArgumentMatchers.any());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> dataMap(String responseBody) throws Exception {
+        return (Map<String, Object>) objectMapper.readValue(responseBody, Map.class).get("data");
     }
 }

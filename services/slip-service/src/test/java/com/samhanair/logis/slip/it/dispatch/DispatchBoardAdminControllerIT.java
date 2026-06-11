@@ -85,8 +85,9 @@ class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
                         .header(USER_ID_HEADER, MASTER_ACCOUNT_ID)
                         .header(USER_ROLE_HEADER, "MASTER"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").isArray())
-                .andExpect(jsonPath("$.size").value(50));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content").isArray())
+                .andExpect(jsonPath("$.data.size").value(50));
     }
 
     @Test
@@ -96,7 +97,8 @@ class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
                         .header(USER_ID_HEADER, DISPATCH_ACCOUNT_ID)
                         .header(USER_ROLE_HEADER, "DISPATCH"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").isArray());
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content").isArray());
     }
 
     @Test
@@ -123,6 +125,7 @@ class DispatchBoardAdminControllerIT extends AbstractPostgresIT {
                         .param("page", "0")
                         .param("size", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.size").value(20));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.size").value(20));
     }
 }

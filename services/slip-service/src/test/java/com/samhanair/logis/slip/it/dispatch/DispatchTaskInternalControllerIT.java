@@ -86,7 +86,7 @@ class DispatchTaskInternalControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("dispatchDate", "2026-05-14"))))
                 .andReturn().getResponse().getContentAsString();
-        UUID taskId = UUID.fromString((String) objectMapper.readValue(taskRes, Map.class).get("id"));
+        UUID taskId = UUID.fromString((String) dataMap(taskRes).get("id"));
 
         mvc.perform(post("/admin/dispatch-tasks/{taskId}/vehicle-groups", taskId)
                         .header(USER_ID_HEADER, MASTER_ACCOUNT_ID)
@@ -133,7 +133,7 @@ class DispatchTaskInternalControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("dispatchDate", "2026-05-14"))))
                 .andReturn().getResponse().getContentAsString();
-        UUID taskId = UUID.fromString((String) objectMapper.readValue(taskRes, Map.class).get("id"));
+        UUID taskId = UUID.fromString((String) dataMap(taskRes).get("id"));
 
         mvc.perform(post("/admin/dispatch-tasks/{taskId}/vehicle-groups", taskId)
                         .header(USER_ID_HEADER, MASTER_ACCOUNT_ID)
@@ -155,5 +155,10 @@ class DispatchTaskInternalControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(unavailBody)))
                 .andExpect(status().isNoContent());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> dataMap(String responseBody) throws Exception {
+        return (Map<String, Object>) objectMapper.readValue(responseBody, Map.class).get("data");
     }
 }
