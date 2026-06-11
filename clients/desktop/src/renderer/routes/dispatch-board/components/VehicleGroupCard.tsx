@@ -58,7 +58,7 @@ export function VehicleGroupCard({
   const deleteMutation = useDeleteVehicleGroupMutation(taskId)
   const removeSlipMutation = useRemoveSlipFromGroupMutation(taskId)
 
-  const slipIdsSorted = group.slips.map((s) => s.slip.id)
+  const slipIdsSorted = group.slips.map((s) => s.slipId)
 
   return (
     <article
@@ -117,7 +117,7 @@ export function VehicleGroupCard({
             aria-label={`${DISPATCH_VEHICLE_TYPE_LABEL[group.vehicleType]} #${group.sequence} 그룹 삭제`}
             title={
               group.slips.length > 0
-                ? '슬립이 남아있으면 삭제할 수 없습니다'
+                ? '전표가 남아있으면 삭제할 수 없습니다'
                 : '빈 그룹 삭제'
             }
             style={{
@@ -158,15 +158,15 @@ export function VehicleGroupCard({
             <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
               {group.slips.map((row) => (
                 <SortableSlipRow
-                  key={row.slip.id}
+                  key={row.id}
                   groupId={group.id}
                   row={row}
                   canEdit={canEdit}
-                  onOpenDetail={() => onOpenSlipDetail(row.slip.id)}
+                  onOpenDetail={() => onOpenSlipDetail(row.slipId)}
                   onRemove={() =>
                     removeSlipMutation.mutate({
                       groupId: group.id,
-                      slipId: row.slip.id,
+                      slipId: row.slipId,
                     })
                   }
                 />
@@ -200,8 +200,8 @@ function SortableSlipRow({
   const dragData: DispatchGroupSlipDragData = {
     type: 'group-slip',
     groupId,
-    slipId: row.slip.id,
-    slipNumber: row.slip.slipNumber,
+    slipId: row.slipId,
+    slipNumber: row.slip.slipNo,
   }
   const {
     attributes,
@@ -210,7 +210,7 @@ function SortableSlipRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: row.slip.id, data: dragData })
+  } = useSortable({ id: row.slipId, data: dragData })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -231,7 +231,7 @@ function SortableSlipRow({
         fontSize: 12,
         background: 'var(--color-neutral-0)',
       }}
-      data-testid={`dispatch-board-group-slip-${row.slip.slipNumber}`}
+      data-testid={`dispatch-board-group-slip-${row.slip.slipNo}`}
     >
       <span
         style={{
@@ -248,7 +248,7 @@ function SortableSlipRow({
         {...listeners}
         {...attributes}
         disabled={!canEdit}
-        aria-label={`정차 ${row.sequence} ${row.slip.slipNumber} ${row.slip.partnerName} 드래그`}
+        aria-label={`정차 ${row.sequence} ${row.slip.slipNo} ${row.slip.partnerName} 드래그`}
         title={canEdit ? '드래그로 순서 변경' : '편집 불가'}
         style={{
           background: 'transparent',
@@ -257,7 +257,7 @@ function SortableSlipRow({
           padding: 0,
           color: 'var(--color-neutral-500)',
         }}
-        data-testid={`dispatch-board-group-slip-${row.slip.slipNumber}-handle`}
+        data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-handle`}
       >
         ☰
       </button>
@@ -275,15 +275,15 @@ function SortableSlipRow({
           color: 'var(--color-neutral-800)',
         }}
       >
-        <span style={{ fontWeight: 600, marginRight: 6 }}>{row.slip.slipNumber}</span>
+        <span style={{ fontWeight: 600, marginRight: 6 }}>{row.slip.slipNo}</span>
         <span>{row.slip.partnerName}</span>
       </button>
       <button
         type="button"
         onClick={onRemove}
         disabled={!canEdit}
-        aria-label={`정차 ${row.sequence} ${row.slip.slipNumber} 그룹에서 제거`}
-        data-testid={`dispatch-board-group-slip-${row.slip.slipNumber}-remove`}
+        aria-label={`정차 ${row.sequence} ${row.slip.slipNo} 그룹에서 제거`}
+        data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-remove`}
         style={{
           background: 'transparent',
           border: 'none',

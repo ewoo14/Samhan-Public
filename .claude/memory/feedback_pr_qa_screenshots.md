@@ -176,6 +176,22 @@ PR #91 사례:
 - 누락 시 PR 발행 보류
 ```
 
+## 강화 — 커밋만 하고 본문 인라인 누락 반복 (2026-06-11 PR #462/#463 회고)
+
+**증상**: QA PNG 를 `docs/qa/<slug>/` 에 **커밋은 했으나 PR 본문에 인라인 안 함** → 개발책임자 "또 스크린샷 업로드 안함" 반복 지적. 규칙 부재가 아니라 **발행 절차 누락**. PNG 커밋 ≠ 인라인. `gh pr view <PR> --json body | grep '!\['` 로 **본문에 실제 image markdown 이 있는지 자가 검증** 의무.
+
+**체크리스트 (PR 발행/갱신 시 매번)**:
+1. QA PNG 커밋 (`docs/qa/<slug>/*.png`)
+2. **본문에 raw URL image markdown 인라인** — `![설명](https://raw.githubusercontent.com/<owner>/<repo>/<full-sha>/docs/qa/<slug>/<file>.png)`
+3. raw URL HEAD 200 검증 (`curl -s -o /dev/null -w "%{http_code}"`)
+4. `gh pr view <PR> --json body -q .body | grep -c '!\['` ≥ 1 자가 확인
+
+**운영 함정 — `gh pr edit` 스코프 실패 (신규)**: `gh pr edit <PR> --body-file f.md` 가 토큰 read:org 스코프 부재로 GraphQL 에러(`'login'/'name'/'slug' field requires read:org`) → **본문 미갱신**. 우회: REST API PATCH (repo 스코프로 충분) —
+```bash
+gh api repos/<owner>/<repo>/pulls/<PR> -X PATCH -F body=@body.md
+```
+`-F body=@file` 로 파일 내용을 본문 문자열로 주입. 한글 본문은 Write 로 UTF-8 파일 생성 후 `@` 참조([[powershell-utf8-writes]]).
+
 ## 관련 가드
 
 - 통합 PR 패턴 의무 (`feedback_integrated_pr_pattern.md`) 와 함께 적용 — 단편 fix PR 금지, 통합 PR 1개에 전수 QA 캡처 첨부 (PR #66 회고)

@@ -105,7 +105,7 @@ class DispatchEndToEndIT extends AbstractPostgresIT {
                 arologisId,
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
                         1, "TONNAGE_1", "D-001", "홍길동",
-                        "010-1234-5678", "EXTERNAL_INSUNG_QUICK")),
+                        "010-1234-5678", "EXTERNAL_INSUNG_QUICK", null)),
                 Instant.now());
         confirmService.confirm(t.getId(), req);
 

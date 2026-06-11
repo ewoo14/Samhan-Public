@@ -14,7 +14,7 @@
  *
  * UUID 비공개 가드 (feedback_uuid_no_user_visibility.md):
  * - 응답 객체의 {@code id} (slip UUID) 는 drag payload / API path 에만 사용.
- * - 화면 노출 식별자 = {@code slipNumber} / {@code partnerCode} / {@code partnerName}.
+ * - 화면 노출 식별자 = {@code slipNo} / {@code partnerCode} / {@code partnerName}.
  *
  * 한국어 timezone (Asia/Seoul) — 일자 default 는 화면 컴포넌트에서 ±1일 계산하여 전달한다.
  *
@@ -57,25 +57,23 @@ export const SLIP_DISPATCH_STATUS_OPTIONS: SlipDispatchStatus[] = [
  * <p>spec § 4.2 + § 5.1 + Phase A plan F2.1 (개발책임자 확정 schema).
  *
  * @property id 슬립 UUID — drag payload / API path 에만 사용 (UUID 비공개).
- * @property slipNumber 전표번호 (사용자 노출 식별자, 예: "2026/05/14-1").
+ * @property slipNo 전표번호 (사용자 노출 식별자, 예: "2026/05/14-1").
+ * @property slipDate 영업일 (yyyy-MM-dd).
  * @property partnerCode 거래처 코드 (사용자 노출, 예: "P-1234").
  * @property partnerName 거래처명 (사용자 노출, 예: "대구공조").
- * @property address 인수자 주소 (모달 상세 + arologis 발송 payload).
- * @property recipientPhoneNumber 인수자 휴대폰 (010-XXXX-XXXX, 모달 상세).
- * @property notes 영업 메모 (모달 상세).
- * @property createdAt 슬립 생성 timestamp (ISO 8601, 정렬 기준).
+ * @property deliveryAddress 인수자 주소 (모달 상세 + arologis 발송 payload).
+ * @property recipientPhone 인수자 휴대폰 (010-XXXX-XXXX, 모달 상세).
  * @property dispatchStatus 현재 dispatchStatus (필터 + 상태 배지 노출).
  */
 export interface SlipBoardResponse {
   id: string
-  slipNumber: string
+  slipNo: string
+  slipDate: string
   partnerCode: string
   partnerName: string
-  address: string
-  recipientPhoneNumber: string
-  notes: string
-  createdAt: string
-  dispatchStatus: SlipDispatchStatus
+  deliveryAddress: string | null
+  recipientPhone: string | null
+  dispatchStatus: SlipDispatchStatus | null
 }
 
 /**

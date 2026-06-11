@@ -46,11 +46,15 @@ public class MatchedDriver extends BaseEntity {
     @Column(name = "driver_phone_number", nullable = false, length = 20)
     private String driverPhoneNumber;
 
+    @Column(name = "vehicle_plate_number", length = 20)
+    private String vehiclePlateNumber;
+
     @Column(name = "driver_source", nullable = false, length = 32)
     private String driverSource;
 
     private MatchedDriver(UUID vehicleGroupId, String driverCode, String driverName,
-                          String driverPhoneNumber, String driverSource) {
+                          String driverPhoneNumber, String driverSource,
+                          String vehiclePlateNumber) {
         if (vehicleGroupId == null) {
             throw new IllegalArgumentException("vehicleGroupId 필수");
         }
@@ -71,11 +75,14 @@ public class MatchedDriver extends BaseEntity {
         this.driverName = driverName;
         this.driverPhoneNumber = driverPhoneNumber;
         this.driverSource = driverSource;
+        this.vehiclePlateNumber = vehiclePlateNumber;
     }
 
     /** 신규 매칭 기사 기록. */
     public static MatchedDriver create(UUID vehicleGroupId, String driverCode, String driverName,
-                                       String driverPhoneNumber, String driverSource) {
-        return new MatchedDriver(vehicleGroupId, driverCode, driverName, driverPhoneNumber, driverSource);
+                                       String driverPhoneNumber, String driverSource,
+                                       String vehiclePlateNumber) {
+        return new MatchedDriver(vehicleGroupId, driverCode, driverName, driverPhoneNumber, driverSource,
+                vehiclePlateNumber);
     }
 }

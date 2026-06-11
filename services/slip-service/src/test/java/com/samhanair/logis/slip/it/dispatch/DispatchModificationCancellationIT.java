@@ -101,8 +101,9 @@ class DispatchModificationCancellationIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("MODIFICATION_REQUESTED"))
-                .andExpect(jsonPath("$.modificationReason").value("슬립 추가 필요"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("MODIFICATION_REQUESTED"))
+                .andExpect(jsonPath("$.data.modificationReason").value("슬립 추가 필요"));
     }
 
     @Test
@@ -116,7 +117,8 @@ class DispatchModificationCancellationIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CANCEL_REQUESTED"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("CANCEL_REQUESTED"));
     }
 
     @Test
@@ -128,7 +130,7 @@ class DispatchModificationCancellationIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("dispatchDate", "2026-05-14"))))
                 .andReturn().getResponse().getContentAsString();
-        UUID taskId = UUID.fromString((String) objectMapper.readValue(taskRes, Map.class).get("id"));
+        UUID taskId = UUID.fromString((String) dataMap(taskRes).get("id"));
 
         String body = objectMapper.writeValueAsString(Map.of("reason", "x"));
         mvc.perform(post("/admin/dispatch-tasks/{taskId}/modification-request", taskId)
@@ -219,7 +221,7 @@ class DispatchModificationCancellationIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("dispatchDate", "2026-05-14"))))
                 .andReturn().getResponse().getContentAsString();
-        UUID taskId = UUID.fromString((String) objectMapper.readValue(taskRes, Map.class).get("id"));
+        UUID taskId = UUID.fromString((String) dataMap(taskRes).get("id"));
 
         // 차량 그룹 추가
         mvc.perform(post("/admin/dispatch-tasks/{taskId}/vehicle-groups", taskId)
@@ -254,5 +256,10 @@ class DispatchModificationCancellationIT extends AbstractPostgresIT {
                 .andExpect(status().isNoContent());
 
         return taskId;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> dataMap(String responseBody) throws Exception {
+        return (Map<String, Object>) objectMapper.readValue(responseBody, Map.class).get("data");
     }
 }

@@ -276,9 +276,11 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
     // 단톡방 매핑 — route(/admin/chat-rooms) 까지 hard 단언(기존 testid+label 만).
     assertSidebarLink(groupwareBlock, 'sidebar-admin-chat-rooms', '/admin/chat-rooms', '단톡방 매핑')
 
-    // [Round B P2] 배차 그룹 — 라벨 '배차'(구 'arologis'). 배차 메뉴 route(/dispatch-board) hard 단언.
+    // [#463] 배차 그룹 — 유지 메뉴 3종의 리라벨 hard 단언.
     const dispatchBlock = categoryBlock(appLayout, '배차')
-    assertSidebarLink(dispatchBlock, 'sidebar-dispatch-board', '/dispatch-board', '배차 메뉴')
+    assertSidebarLink(dispatchBlock, 'sidebar-dispatch-history', '/dispatch-board/history', '배차현황')
+    assertSidebarLink(dispatchBlock, 'sidebar-arologis-preclassify', '/arologis/pre-classify', '가배차리스트')
+    assertSidebarLink(dispatchBlock, 'sidebar-arologis-unassigned', '/arologis/unassigned', '미배차리스트')
 
     const warehouseOpsBlock = categoryBlock(appLayout, '창고 운영')
     assertSidebarLink(warehouseOpsBlock, 'sidebar-warehouses', '/warehouses', '창고관리')

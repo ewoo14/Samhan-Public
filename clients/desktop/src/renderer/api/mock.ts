@@ -14,6 +14,11 @@
  * - `GET /inventory/transfers` + `POST` + `GET /{id}` + transition mock
  */
 import type { AxiosRequestConfig } from 'axios'
+import type {
+  DispatchTaskResponse,
+  DispatchTaskSummaryResponse,
+} from './dispatchTask'
+import type { DispatchComment } from './dispatchCollab'
 
 /** ApiResponse envelope 형태 — `shared/common/dto/ApiResponse.java` 와 동일. */
 function envelope<T>(data: T) {
@@ -2299,7 +2304,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // GET /slips (페이지) — lookup-product / {id} 가 아닌 경우.
   // legacy SlipListPage 가 ?slipType=OUTBOUND (판매관리 legacy) 또는 INBOUND (구매관리 legacy) 로 필터링 →
-  // mock 도 BE 와 동등하게 query param 으로 분리해 잘못된 슬립 노출 방지.
+  // mock 도 BE 와 동등하게 query param 으로 분리해 잘못된 전표 노출 방지.
   if (
     method === 'GET'
     && url.includes('/slips')
@@ -4550,6 +4555,141 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // arologis — manual / pre-classify / unassigned / dispatch-sms / dispatch-reconcile
   // ==========================================================================
 
+  if (method === 'GET' && url.match(/\/admin\/dispatch-board\/undispatched-slips(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('dispatch.board', 'view')
+    if (denied) return denied
+    return envelope({
+      content: [
+        {
+          id: '77777777-d333-4d33-8d33-000000000001',
+          slipNo: '2026/06/11-SPD3-001',
+          slipDate: '2026-06-11',
+          partnerCode: 'P-SPD3-001',
+          partnerName: '동탄공조',
+          deliveryAddress: '경기도 화성시 동탄대로 10',
+          recipientPhone: '010-1111-2222',
+          dispatchStatus: 'UNDISPATCHED',
+        },
+        {
+          id: '77777777-d333-4d33-8d33-000000000002',
+          slipNo: '2026/06/11-SPD3-002',
+          slipDate: '2026-06-11',
+          partnerCode: 'P-SPD3-002',
+          partnerName: '성남냉열',
+          deliveryAddress: '경기도 성남시 분당구 판교로 20',
+          recipientPhone: '010-3333-4444',
+          dispatchStatus: 'UNDISPATCHED',
+        },
+      ],
+      totalElements: 2,
+      totalPages: 1,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+  }
+
+  const dispatchCommentItemMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/comments\/([^/?]+)(?:\?.*)?$/)
+  if (method === 'DELETE' && dispatchCommentItemMatch) {
+    const taskId = decodeURIComponent(dispatchCommentItemMatch[1]!)
+    const commentId = decodeURIComponent(dispatchCommentItemMatch[2]!)
+    const denied = mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const comments = MOCK_DISPATCH_COMMENTS[taskId] ?? []
+    MOCK_DISPATCH_COMMENTS[taskId] = comments.filter((comment) => comment.id !== commentId)
+    return envelope(null)
+  }
+
+  const dispatchCommentCollectionMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/comments(?:\?.*)?$/)
+  if (dispatchCommentCollectionMatch) {
+    const taskId = decodeURIComponent(dispatchCommentCollectionMatch[1]!)
+    if (method === 'GET') {
+      const denied = mockRequirePermission('dispatch.board', 'view')
+      if (denied) return denied
+      return envelope([...(MOCK_DISPATCH_COMMENTS[taskId] ?? [])])
+    }
+    if (method === 'POST') {
+      const denied = mockRequirePermission('dispatch.board', 'update')
+      if (denied) return denied
+      const body = parseMockBody(config) as {
+        body?: string
+        parentId?: string
+        anchor?: string
+      }
+      const text = String(body.body ?? '').trim()
+      if (!text) {
+        return mockError(400, 'INVALID_INPUT', '코멘트 내용은 필수입니다.')
+      }
+      const nextSequence = mockDispatchCommentSequence++
+      const created: DispatchComment = {
+        id: `66666666-aaaa-4aaa-8aaa-${String(nextSequence).padStart(12, '0')}`,
+        anchor: typeof body.anchor === 'string' && body.anchor.trim() ? body.anchor.trim() : null,
+        authorName: MOCK_AUTH.fullName,
+        body: text,
+        parentId: typeof body.parentId === 'string' && body.parentId.trim() ? body.parentId.trim() : null,
+        status: 'OPEN',
+        createdAt: new Date().toISOString(),
+      }
+      MOCK_DISPATCH_COMMENTS[taskId] = [
+        created,
+        ...(MOCK_DISPATCH_COMMENTS[taskId] ?? []),
+      ]
+      return envelope(created)
+    }
+  }
+
+  const dispatchTaskDetailMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)(?:\?.*)?$/)
+  if (method === 'GET' && dispatchTaskDetailMatch) {
+    const id = decodeURIComponent(dispatchTaskDetailMatch[1]!)
+    const denied = mockRequirePermission('dispatch.board', 'view')
+    if (denied) return denied
+    if (id === 'mock-detail-error') {
+      return mockError(500, 'DISPATCH_DETAIL_FAILED', '배차현황 상세 조회에 실패했습니다.')
+    }
+    const found = MOCK_DISPATCH_TASK_DETAILS.find(
+      (task) => task.id === id || task.arologisDispatchId === id,
+    )
+    if (!found) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 를 찾을 수 없습니다.')
+    }
+    return envelope(found)
+  }
+
+  if (method === 'GET' && url.match(/\/admin\/dispatch-tasks(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('dispatch.board', 'view')
+    if (denied) return denied
+    const params = config.params instanceof URLSearchParams
+      ? config.params
+      : new URLSearchParams(url.split('?')[1] ?? '')
+    const from = params.get('from') ?? mockOffsetIsoSeoul(MOCK_DISPATCH_HISTORY_TODAY, -30)
+    const to = params.get('to') ?? MOCK_DISPATCH_HISTORY_TODAY
+    const statuses = params.getAll('status')
+    const effectiveStatuses = statuses.length > 0 ? statuses : ['DISPATCHED']
+    const pageNo = Number(params.get('page') ?? 0)
+    const size = Number(params.get('size') ?? 20)
+    const forceDetailError = mockLocationParams().get('mockDispatchDetailError') === '1'
+    const filtered = MOCK_DISPATCH_TASK_SUMMARIES.filter((row) =>
+      row.dispatchDate >= from &&
+      row.dispatchDate <= to &&
+      effectiveStatuses.includes(row.status),
+    ).map((row, index) =>
+      forceDetailError && index === 0
+        ? { ...row, arologisDispatchId: 'mock-detail-error' }
+        : row,
+    )
+    const start = pageNo * size
+    return envelope({
+      content: filtered.slice(start, start + size),
+      totalElements: filtered.length,
+      totalPages: Math.max(1, Math.ceil(filtered.length / size)),
+      number: pageNo,
+      size,
+      first: pageNo === 0,
+      last: start + size >= filtered.length,
+    })
+  }
+
   // GET /arologis/dispatches — manual / unassigned 공통
   if (method === 'GET' && url.includes('/arologis/dispatches')) {
     const dispatchDetailMatch = url.match(/\/arologis\/dispatches\/([^/?]+)$/)
@@ -5963,7 +6103,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // ============================================================================
   // SP-09-3 영수증 OCR 업로드 mock (POST /slips/receipt-ocr)
   //
-  // submitMethod=DRY_RUN → 가짜 OCR 결과 + 매입 슬립 번호 반환.
+  // submitMethod=DRY_RUN → 가짜 OCR 결과 + 매입 전표 번호 반환.
   // 응답 shape = BE ReceiptParseResponse record 와 1:1 정합 (cycle 2 fix — Codex blocker 1).
   //
   // 시나리오:
@@ -7379,6 +7519,179 @@ const MOCK_INVENTORY_AUDITS = [
 /**
  * arologis 배차 (`/arologis/dispatches`) — 3건.
  */
+function mockTodayIsoSeoul(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function mockOffsetIsoSeoul(baseIso: string, offsetDays: number): string {
+  const d = new Date(baseIso + 'T00:00:00')
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function mockTaskCode(dateIso: string, suffix: string): string {
+  return `${dateIso.replace(/-/g, '/')}-${suffix}`
+}
+
+const MOCK_DISPATCH_HISTORY_TODAY = mockTodayIsoSeoul()
+const MOCK_DISPATCH_HISTORY_PREVIOUS = mockOffsetIsoSeoul(MOCK_DISPATCH_HISTORY_TODAY, -6)
+const MOCK_DISPATCH_HISTORY_TODAY_CODE = mockTaskCode(MOCK_DISPATCH_HISTORY_TODAY, '1')
+const MOCK_DISPATCH_HISTORY_PREVIOUS_CODE = mockTaskCode(MOCK_DISPATCH_HISTORY_PREVIOUS, '2')
+const MOCK_DISPATCH_HISTORY_TODAY_SLIP_PREFIX = MOCK_DISPATCH_HISTORY_TODAY.replace(/-/g, '/')
+const MOCK_DISPATCH_HISTORY_PREVIOUS_SLIP_PREFIX = MOCK_DISPATCH_HISTORY_PREVIOUS.replace(/-/g, '/')
+
+const MOCK_DISPATCH_COMMENTS: Record<string, DispatchComment[]> = {
+  '11111111-aaaa-4aaa-8aaa-000000000001': [
+    {
+      id: '66666666-aaaa-4aaa-8aaa-000000000001',
+      anchor: null,
+      authorName: 'system',
+      body: '배차 완료 후 기사 매칭 확인했습니다.',
+      parentId: null,
+      status: 'OPEN',
+      createdAt: `${MOCK_DISPATCH_HISTORY_TODAY}T10:20:00`,
+    },
+    {
+      id: '66666666-aaaa-4aaa-8aaa-000000000002',
+      anchor: null,
+      authorName: '이운영',
+      body: '성남냉열 연락처는 오전 중 한 번 더 확인 필요합니다.',
+      parentId: null,
+      status: 'OPEN',
+      createdAt: `${MOCK_DISPATCH_HISTORY_TODAY}T10:05:00`,
+    },
+  ],
+}
+let mockDispatchCommentSequence = 3
+
+const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
+  {
+    id: '11111111-aaaa-4aaa-8aaa-000000000001',
+    taskCode: MOCK_DISPATCH_HISTORY_TODAY_CODE,
+    dispatchDate: MOCK_DISPATCH_HISTORY_TODAY,
+    status: 'DISPATCHED',
+    arologisDispatchId: '22222222-aaaa-4aaa-8aaa-000000000001',
+    failureReason: null,
+    modificationReason: null,
+    rejectionReason: null,
+    modificationRequestedAt: null,
+    modificationDecidedAt: null,
+    vehicleGroups: [
+      {
+        id: '33333333-aaaa-4aaa-8aaa-000000000001',
+        vehicleType: 'TONNAGE_1',
+        sequence: 1,
+        slips: [
+          {
+            id: '44444444-aaaa-4aaa-8aaa-000000000001',
+            slipId: '55555555-aaaa-4aaa-8aaa-000000000001',
+            sequence: 1,
+            slip: {
+              slipNo: `${MOCK_DISPATCH_HISTORY_TODAY_SLIP_PREFIX}-001`,
+              partnerCode: 'P-DCH-001',
+              partnerName: '동탄공조',
+              deliveryAddress: '경기도 화성시 동탄대로 10',
+              recipientPhone: '010-1111-2222',
+              dispatchStatus: 'DISPATCHED',
+            },
+          },
+          {
+            id: '44444444-aaaa-4aaa-8aaa-000000000002',
+            slipId: '55555555-aaaa-4aaa-8aaa-000000000002',
+            sequence: 2,
+            slip: {
+              slipNo: `${MOCK_DISPATCH_HISTORY_TODAY_SLIP_PREFIX}-002`,
+              partnerCode: 'P-DCH-002',
+              partnerName: '성남냉열',
+              deliveryAddress: '경기도 성남시 분당구 판교로 20',
+              recipientPhone: '010-3333-4444',
+              dispatchStatus: 'DISPATCHED',
+            },
+          },
+        ],
+      },
+    ],
+    matchedDrivers: [
+      {
+        vehicleGroupSequence: 1,
+        driverCode: 'DRV-101',
+        driverName: '김배차',
+        driverPhoneNumber: '010-9000-1001',
+        driverSource: 'AROLOGIS',
+        vehiclePlateNumber: '12가3456',
+      },
+    ],
+  },
+  {
+    id: '11111111-bbbb-4bbb-8bbb-000000000002',
+    taskCode: MOCK_DISPATCH_HISTORY_PREVIOUS_CODE,
+    dispatchDate: MOCK_DISPATCH_HISTORY_PREVIOUS,
+    status: 'DISPATCHED',
+    arologisDispatchId: '22222222-bbbb-4bbb-8bbb-000000000002',
+    failureReason: null,
+    modificationReason: null,
+    rejectionReason: null,
+    modificationRequestedAt: null,
+    modificationDecidedAt: null,
+    vehicleGroups: [
+      {
+        id: '33333333-bbbb-4bbb-8bbb-000000000002',
+        vehicleType: 'DAMAS',
+        sequence: 1,
+        slips: [
+          {
+            id: '44444444-bbbb-4bbb-8bbb-000000000003',
+            slipId: '55555555-bbbb-4bbb-8bbb-000000000003',
+            sequence: 1,
+            slip: {
+              slipNo: `${MOCK_DISPATCH_HISTORY_PREVIOUS_SLIP_PREFIX}-004`,
+              partnerCode: 'P-DCH-003',
+              partnerName: '수원설비',
+              deliveryAddress: '경기도 수원시 영통구 광교로 30',
+              recipientPhone: '010-5555-6666',
+              dispatchStatus: 'DISPATCHED',
+            },
+          },
+        ],
+      },
+    ],
+    matchedDrivers: [
+      {
+        vehicleGroupSequence: 1,
+        driverCode: 'DRV-205',
+        driverName: '박기사',
+        driverPhoneNumber: '010-9000-2005',
+        driverSource: 'AROLOGIS',
+        vehiclePlateNumber: '34나5678',
+      },
+    ],
+  },
+]
+
+const MOCK_DISPATCH_TASK_SUMMARIES: DispatchTaskSummaryResponse[] = MOCK_DISPATCH_TASK_DETAILS.map((task) => {
+  const slips = task.vehicleGroups.flatMap((group) => group.slips)
+  const partnerNames = Array.from(new Set(slips.map((row) => row.slip.partnerName)))
+  const head = partnerNames.slice(0, 3).join(', ')
+  const rest = partnerNames.length - 3
+  return {
+    taskCode: task.taskCode,
+    dispatchDate: task.dispatchDate,
+    status: task.status,
+    vehicleGroupCount: task.vehicleGroups.length,
+    slipCount: slips.length,
+    partnerNames: rest > 0 ? `${head} +${rest}` : head,
+    driverCount: task.matchedDrivers.length,
+    arologisDispatchId: task.arologisDispatchId,
+  }
+})
+
 const MOCK_DISPATCHES = [
   {
     id: 'disp-001',
@@ -8244,7 +8557,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'sales.slip.confirm',
   ],
   // SP-D3 V9 fix: sales.slip.list 제거 + purchases.receipt-ocr 추가
-  // (사용자 요구 ② — WAREHOUSE 에게 매출 슬립 숨김, 매입 영수증 OCR 허용)
+  // (사용자 요구 ② — WAREHOUSE 에게 매출 전표 숨김, 매입 영수증 OCR 허용)
   WAREHOUSE: [
     'purchases.slip.list', 'purchases.receipt-ocr', 'inbound.inspection',
     // SP-D4 — WAREHOUSE: 재고/창고/인쇄/벤더주문 view

@@ -13,7 +13,7 @@ const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 const repoRoot = path.resolve(dirname, '../../../..')
 const BASE_URL = process.env['VITE_BASE_URL'] ?? process.env['AUDIT_BASE_URL'] ?? 'http://localhost:5173'
-const UUID_REGEX = /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+const UUID_REGEX = /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
 
 function read(relPath: string): string {
   return fs.readFileSync(path.join(repoRoot, relPath), 'utf8')

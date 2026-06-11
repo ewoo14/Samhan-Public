@@ -18,7 +18,7 @@ const BASE_URL =
   process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5173'
 
 const UUID_REGEX =
-  /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+  /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
 
 /** 보상 실패 복구 페이지로 이동 — MANAGER 역할(inventory.list view 권한) */
 async function gotoPage(

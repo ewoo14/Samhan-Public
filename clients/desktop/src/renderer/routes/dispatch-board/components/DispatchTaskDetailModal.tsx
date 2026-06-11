@@ -14,7 +14,7 @@
  *  5) MODIFICATION_ACCEPTED 상태에서 "수정 가능 (편집 모드)" 안내 (녹색 배너).
  *
  * UUID 비공개:
- *  - 사용자 노출 = taskCode / slipNumber / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber.
+ *  - 사용자 노출 = taskCode / slipNo / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber / vehiclePlateNumber.
  *  - taskId / groupId / slipId UUID 는 API path 와 dialog 호출에만 사용.
  *
  * accessibility:
@@ -30,11 +30,13 @@ import {
 } from '../../../api/dispatchTask'
 import { ModificationRequestDialog } from './ModificationRequestDialog'
 import { CancellationRequestDialog } from './CancellationRequestDialog'
+import { DispatchCommentThread } from './DispatchCommentThread'
 import { usePermissions } from '../../../hooks/usePermissions'
 
 interface DispatchTaskDetailModalProps {
   task: DispatchTaskResponse
   onClose: () => void
+  readOnly?: boolean
 }
 
 /**
@@ -55,7 +57,7 @@ const STATUS_BANNER_STYLE: Record<
     border: 'var(--color-success-200, #A7F3D0)',
     color: 'var(--color-success-700, #047857)',
     label:
-      '수정 수락됨 — 편집 모드 활성. 차량/슬립 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.',
+      '수정 수락됨 — 편집 모드 활성. 차량/전표 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.',
   },
   MODIFICATION_REJECTED: {
     bg: 'var(--color-danger-50, #FEF2F2)',
@@ -85,19 +87,21 @@ const STATUS_BANNER_STYLE: Record<
     bg: 'var(--color-neutral-100)',
     border: 'var(--color-neutral-300)',
     color: 'var(--color-neutral-700)',
-    label: '배차 취소 완료 — 매핑된 슬립은 미배차 상태로 복귀했습니다.',
+    label: '배차 취소 완료 — 매핑된 전표는 미배차 상태로 복귀했습니다.',
   },
 }
 
 export function DispatchTaskDetailModal({
   task,
   onClose,
+  readOnly = false,
 }: DispatchTaskDetailModalProps) {
   const [modificationOpen, setModificationOpen] = useState(false)
   const [cancellationOpen, setCancellationOpen] = useState(false)
   const { canAccess } = usePermissions()
 
-  const showRequestButtons = task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
+  const showRequestButtons =
+    !readOnly && task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
   const banner = STATUS_BANNER_STYLE[task.status]
   const totalSlips = task.vehicleGroups.reduce((s, g) => s + g.slips.length, 0)
 
@@ -112,7 +116,7 @@ export function DispatchTaskDetailModal({
         open
         onClose={onClose}
         title={`배차 작업 ${task.taskCode}`}
-        description={`${task.dispatchDate} · 차량 ${task.vehicleGroups.length}대 · 슬립 ${totalSlips}건`}
+        description={`${task.dispatchDate} · 차량 ${task.vehicleGroups.length}대 · 전표 ${totalSlips}건`}
         size="lg"
         footer={
           <div
@@ -280,7 +284,8 @@ export function DispatchTaskDetailModal({
                             }}
                           >
                             기사 {matched.driverName} ({matched.driverCode}){' '}
-                            {matched.driverPhoneNumber}
+                            {matched.driverPhoneNumber} · 차량번호{' '}
+                            {matched.vehiclePlateNumber?.trim() || '-'}
                           </span>
                         ) : null}
                       </header>
@@ -298,7 +303,7 @@ export function DispatchTaskDetailModal({
                         <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
                           {g.slips.map((row) => (
                             <li
-                              key={row.slip.id}
+                              key={row.id}
                               style={{
                                 display: 'flex',
                                 gap: 8,
@@ -318,7 +323,7 @@ export function DispatchTaskDetailModal({
                                 {row.sequence}.
                               </span>
                               <span style={{ fontWeight: 600 }}>
-                                {row.slip.slipNumber}
+                                {row.slip.slipNo}
                               </span>
                               <span style={{ flex: 1 }}>
                                 {row.slip.partnerName}
@@ -350,6 +355,8 @@ export function DispatchTaskDetailModal({
               <strong>배차 불가 사유:</strong> {task.failureReason}
             </div>
           ) : null}
+
+          <DispatchCommentThread taskId={task.id} readOnly={readOnly} />
         </div>
       </Modal>
 

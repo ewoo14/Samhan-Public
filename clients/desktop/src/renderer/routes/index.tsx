@@ -287,6 +287,7 @@ import { NotFoundPage } from './NotFoundPage'
 // [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH / MANAGER / MASTER.
 // BE: slip-service `/admin/dispatch-board/*` + `/admin/dispatch-tasks/*` (Phase A spec § 6).
 import DispatchBoardPage from './dispatch-board/DispatchBoardPage'
+import { DispatchHistoryPage } from './dispatch-board/DispatchHistoryPage'
 // [SP-D1] 동적 RBAC 권한설정 화면 — MASTER 전용.
 import { PermissionMatrixPage } from './PermissionMatrixPage'
 import { PermissionMatrixBulkPage } from './PermissionMatrixBulkPage'
@@ -884,6 +885,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="dispatch.board" action="view">
             <DispatchBoardPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/dispatch-board/history',
+        element: (
+          <PermissionGuard pageCode="dispatch.board" action="view">
+            <DispatchHistoryPage />
           </PermissionGuard>
         ),
       },

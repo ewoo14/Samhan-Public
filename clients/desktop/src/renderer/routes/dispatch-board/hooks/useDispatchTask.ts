@@ -8,6 +8,7 @@
  * 차량 그룹 / slip 할당 / 순서 / 배차 완료 mutation 일관 처리.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { PageResponse } from '../../../api/client'
 import {
   addVehicleGroup,
   assignSlipToGroup,
@@ -15,11 +16,14 @@ import {
   deleteVehicleGroup,
   dispatchToArologis,
   getDispatchTask,
+  getDispatchTasks,
   removeSlipFromGroup,
   reorderGroupSlips,
   requestCancellation,
   requestModification,
+  type ListDispatchTasksParams,
   type DispatchTaskResponse,
+  type DispatchTaskSummaryResponse,
   type DispatchVehicleType,
 } from '../../../api/dispatchTask'
 import { DISPATCH_BOARD_QUERY_KEY } from './useUnDispatchedSlipsQuery'
@@ -38,6 +42,16 @@ export function useDispatchTaskQuery(taskId: string | null) {
     queryKey: dispatchTaskQueryKey(taskId),
     queryFn: () => getDispatchTask(taskId as string),
     enabled: !!taskId,
+  })
+}
+
+/**
+ * 완료배차 내역 목록 query.
+ */
+export function useDispatchTasksQuery(params: ListDispatchTasksParams) {
+  return useQuery<PageResponse<DispatchTaskSummaryResponse>>({
+    queryKey: ['dispatchTasks', params],
+    queryFn: () => getDispatchTasks(params),
   })
 }
 
@@ -80,7 +94,7 @@ export function useDeleteVehicleGroupMutation(taskId: string | null) {
 /**
  * slip 그룹 할당 mutation — drag-and-drop drop 시 호출.
  *
- * <p>성공 시 task query + 미배차 슬립 query 양쪽 invalidate (UNDISPATCHED → DISPATCHING 상태 변화).
+ * <p>성공 시 task query + 미배차 전표 query 양쪽 invalidate (UNDISPATCHED → DISPATCHING 상태 변화).
  */
 export function useAssignSlipToGroupMutation(taskId: string | null) {
   const qc = useQueryClient()

@@ -11,4 +11,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface DispatchVehicleGroupRepository extends JpaRepository<DispatchVehicleGroup, UUID> {
 
     List<DispatchVehicleGroup> findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(UUID dispatchTaskId);
+
+    List<DispatchVehicleGroup> findByDispatchTaskIdInAndIsDeletedFalseOrderByDispatchTaskIdAscSequenceAsc(
+            List<UUID> dispatchTaskIds);
 }

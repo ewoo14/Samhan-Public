@@ -477,6 +477,18 @@ spring:
           filters:
             - JwtAuthentication
 
+        # [#463] slip-service 배차 보드 admin BE 컨트롤러는 /admin/dispatch-* 풀패스 보유
+        #   (DispatchTaskAdminController @RequestMapping("/admin/dispatch-tasks"),
+        #    DispatchBoardAdminController @RequestMapping("/admin/dispatch-board")). FE 도 /admin/dispatch-tasks
+        #   직접 호출 → /api/v1/slips StripPrefix=2 와 불일치하던 갭을 no-strip 라우트로 통합
+        #   (배차 보드 + 완료배차 내역 뷰 게이트웨이 실연동). accounting-admin-noprefix 선례 동일.
+        - id: slip-dispatch-admin-noprefix
+          uri: lb://slip-service
+          predicates:
+            - Path=/admin/dispatch-tasks,/admin/dispatch-tasks/**,/admin/dispatch-board,/admin/dispatch-board/**
+          filters:
+            - JwtAuthentication
+
         - id: arologis-service-noprefix
           uri: lb://arologis-service
           predicates:

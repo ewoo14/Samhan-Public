@@ -12,5 +12,8 @@ public interface DispatchVehicleGroupSlipRepository extends JpaRepository<Dispat
 
     List<DispatchVehicleGroupSlip> findByVehicleGroupIdAndIsDeletedFalseOrderBySequenceAsc(UUID vehicleGroupId);
 
+    List<DispatchVehicleGroupSlip> findByVehicleGroupIdInAndIsDeletedFalseOrderByVehicleGroupIdAscSequenceAsc(
+            List<UUID> vehicleGroupIds);
+
     List<DispatchVehicleGroupSlip> findBySlipIdAndIsDeletedFalse(UUID slipId);
 }
