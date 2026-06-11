@@ -19,6 +19,9 @@ public interface DocumentCollaborationPort {
     /** 제안 수락 시 도메인 문서에 changeSet JSON 을 적용한다. */
     void applyChangeSet(UUID documentId, String changeSetJson);
 
+    /** 특정 revision 의 full snapshot JSON 으로 도메인 문서를 복원한다. */
+    void restoreSnapshot(UUID documentId, String snapshotJson);
+
     /** 사용자가 해당 문서에 변경 제안을 등록할 수 있는지 판정한다. */
     boolean canPropose(UUID userId, UUID documentId);
 

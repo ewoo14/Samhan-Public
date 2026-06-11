@@ -2,7 +2,6 @@ package com.samhanair.logis.collab;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
-import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +29,14 @@ public class CollabRevisionService<T extends CollabRevisionRecord> {
 
     private final RevisionRepository<T> repository;
     private final RevisionFactory<T> factory;
-    private final RealtimeBroker broker;
+    private final CollabRealtimePublisher publisher;
 
     public CollabRevisionService(RevisionRepository<T> repository,
                                  RevisionFactory<T> factory,
-                                 RealtimeBroker broker) {
+                                 CollabRealtimePublisher publisher) {
         this.repository = repository;
         this.factory = factory;
-        this.broker = broker;
+        this.publisher = publisher;
     }
 
     /** 현재 문서 snapshot 을 캡처한다. */
@@ -48,21 +47,24 @@ public class CollabRevisionService<T extends CollabRevisionRecord> {
         String snapshot = port.loadSnapshot(documentId);
         T saved = captureSnapshot(port.documentType(), documentId, revisionType,
                 snapshot, sourceRevisionNo, sourceSuggestionId, actorId, actorName);
-        broker.publish(documentId, EVENT_REVISION_CAPTURED, payload(saved));
+        publisher.publish(documentId, EVENT_REVISION_CAPTURED, payload(saved));
         return saved;
     }
 
-    /** 특정 revision snapshot 으로 복원한다. 기본 구현은 snapshot JSON 을 port.applyChangeSet 으로 전달한다. */
+    /** 특정 revision snapshot 으로 복원한다. 기본 구현은 full snapshot JSON 을 port.restoreSnapshot 으로 전달한다. */
     @Transactional
     public T restore(DocumentCollaborationPort port, UUID documentId, long targetRevisionNo,
                      UUID actorId, String actorName) {
-        return restore(port, documentId, targetRevisionNo, actorId, actorName, port::applyChangeSet);
+        return restore(port, documentId, targetRevisionNo, actorId, actorName, port::restoreSnapshot);
     }
 
     /** 특정 revision snapshot 으로 복원한다. 소비 service 가 snapshot 복원 callback 을 주입할 수 있다. */
     @Transactional
     public T restore(DocumentCollaborationPort port, UUID documentId, long targetRevisionNo,
                      UUID actorId, String actorName, BiConsumer<UUID, String> snapshotRestorer) {
+        if (!port.canDecide(actorId, documentId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "회귀 권한 없음");
+        }
         T target = repository.findByDocumentTypeAndDocumentIdAndRevisionNo(
                         port.documentType(), documentId, targetRevisionNo)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
@@ -71,7 +73,7 @@ public class CollabRevisionService<T extends CollabRevisionRecord> {
         snapshotRestorer.accept(documentId, target.getSnapshot());
         T restored = captureSnapshot(port.documentType(), documentId, CollabRevisionType.RESTORE,
                 port.loadSnapshot(documentId), targetRevisionNo, null, actorId, actorName);
-        broker.publish(documentId, EVENT_REVISION_RESTORED, payload(restored));
+        publisher.publish(documentId, EVENT_REVISION_RESTORED, payload(restored));
         return restored;
     }
 

@@ -3,6 +3,8 @@ package com.samhanair.logis.collab;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
 
 /**
  * shared:collab-core 자동 설정 진입점.
@@ -14,4 +16,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 @AutoConfiguration
 @ConditionalOnClass(RealtimeBroker.class)
 public class CollabCoreAutoConfiguration {
+
+    /** collab-core generic 서비스가 공유하는 afterCommit SSE publisher. */
+    @Bean
+    @ConditionalOnMissingBean
+    public CollabRealtimePublisher collabRealtimePublisher(RealtimeBroker broker) {
+        return new CollabRealtimePublisher(broker);
+    }
 }

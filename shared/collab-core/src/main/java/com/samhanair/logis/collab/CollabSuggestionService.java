@@ -2,7 +2,6 @@ package com.samhanair.logis.collab;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
-import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -25,14 +24,14 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
 
     private final SuggestionRepository<T> repository;
     private final SuggestionFactory<T> factory;
-    private final RealtimeBroker broker;
+    private final CollabRealtimePublisher publisher;
 
     public CollabSuggestionService(SuggestionRepository<T> repository,
                                    SuggestionFactory<T> factory,
-                                   RealtimeBroker broker) {
+                                   CollabRealtimePublisher publisher) {
         this.repository = repository;
         this.factory = factory;
-        this.broker = broker;
+        this.publisher = publisher;
     }
 
     /** 변경 제안 등록 + 문서 채널 publish. */
@@ -45,11 +44,16 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
         }
         T saved = repository.save(factory.create(
                 port.documentType(), documentId, proposerId, proposerName, changeSetJson, reason));
-        broker.publish(documentId, EVENT_SUGGESTION_PROPOSED, payload(saved));
+        publisher.publish(documentId, EVENT_SUGGESTION_PROPOSED, payload(saved));
         return saved;
     }
 
-    /** 제안 수락 + 도메인 changeSet 적용 + 문서 채널 publish. */
+    /**
+     * 제안 수락 + 도메인 changeSet 적용 + 문서 채널 publish.
+     *
+     * <p>본 overload 는 revision 을 자동 생성하지 않는다. 호출측은 수락 성공 이후
+     * {@code SUGGESTION_ACCEPTED} revision capture 를 반드시 연결해야 한다.
+     */
     @Transactional
     public T accept(UUID suggestionId, DocumentCollaborationPort port,
                     UUID deciderId, String deciderName) {
@@ -70,7 +74,7 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
         suggestion.accept(deciderId, deciderName);
         T saved = repository.save(suggestion);
         acceptedCallback.accept(saved);
-        broker.publish(saved.getDocumentId(), EVENT_SUGGESTION_ACCEPTED, payload(saved));
+        publisher.publish(saved.getDocumentId(), EVENT_SUGGESTION_ACCEPTED, payload(saved));
         return saved;
     }
 
@@ -86,7 +90,7 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
         }
         suggestion.reject(deciderId, deciderName, reason);
         T saved = repository.save(suggestion);
-        broker.publish(saved.getDocumentId(), EVENT_SUGGESTION_REJECTED, payload(saved));
+        publisher.publish(saved.getDocumentId(), EVENT_SUGGESTION_REJECTED, payload(saved));
         return saved;
     }
 
@@ -100,7 +104,7 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
         }
         suggestion.withdraw();
         T saved = repository.save(suggestion);
-        broker.publish(saved.getDocumentId(), EVENT_SUGGESTION_WITHDRAWN, payload(saved));
+        publisher.publish(saved.getDocumentId(), EVENT_SUGGESTION_WITHDRAWN, payload(saved));
         return saved;
     }
 

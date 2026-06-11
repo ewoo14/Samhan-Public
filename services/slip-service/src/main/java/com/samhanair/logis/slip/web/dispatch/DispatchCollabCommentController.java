@@ -3,10 +3,13 @@ package com.samhanair.logis.slip.web.dispatch;
 import com.samhanair.logis.collab.CollabCommentService;
 import com.samhanair.logis.collab.CollabDocumentType;
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import com.samhanair.logis.slip.dispatch.collab.DispatchCollabComment;
+import com.samhanair.logis.slip.repository.dispatch.DispatchTaskRepository;
 import com.samhanair.logis.slip.web.dispatch.dto.AddDispatchCommentRequest;
 import com.samhanair.logis.slip.web.dispatch.dto.DispatchCommentResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,12 +45,15 @@ public class DispatchCollabCommentController {
 
     private final CollabCommentService<DispatchCollabComment> commentService;
     private final RealtimeBroker broker;
+    private final DispatchTaskRepository dispatchTaskRepository;
 
     public DispatchCollabCommentController(
             CollabCommentService<DispatchCollabComment> commentService,
-            RealtimeBroker broker) {
+            RealtimeBroker broker,
+            DispatchTaskRepository dispatchTaskRepository) {
         this.commentService = commentService;
         this.broker = broker;
+        this.dispatchTaskRepository = dispatchTaskRepository;
     }
 
     /**
@@ -64,6 +70,7 @@ public class DispatchCollabCommentController {
             @Valid @RequestBody AddDispatchCommentRequest request,
             @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId,
             @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        ensureTaskExists(taskId);
         DispatchCollabComment saved = commentService.add(
                 CollabDocumentType.DISPATCH_TASK,
                 taskId,
@@ -86,6 +93,7 @@ public class DispatchCollabCommentController {
     public ApiResponse<List<DispatchCommentResponse>> listRecent(
             @PathVariable UUID taskId,
             @RequestParam(defaultValue = "20") int limit) {
+        ensureTaskExists(taskId);
         List<DispatchCommentResponse> items = commentService
                 .listRecent(CollabDocumentType.DISPATCH_TASK, taskId, limit)
                 .stream()
@@ -102,6 +110,7 @@ public class DispatchCollabCommentController {
             @PathVariable UUID taskId,
             @PathVariable UUID commentId,
             @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId) {
+        ensureTaskExists(taskId);
         commentService.softDelete(commentId, resolveDeleter(callerId));
         return ApiResponse.ok(null);
     }
@@ -113,6 +122,7 @@ public class DispatchCollabCommentController {
     public ApiResponse<DispatchCommentResponse> resolve(
             @PathVariable UUID taskId,
             @PathVariable UUID commentId) {
+        ensureTaskExists(taskId);
         return ApiResponse.ok(DispatchCommentResponse.from(commentService.resolve(commentId)));
     }
 
@@ -121,6 +131,7 @@ public class DispatchCollabCommentController {
     @GetMapping(value = "/collab/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequirePermission(page = "dispatch.board", action = PermissionAction.VIEW)
     public SseEmitter stream(@PathVariable UUID taskId) {
+        ensureTaskExists(taskId);
         return broker.subscribe(taskId);
     }
 
@@ -139,13 +150,16 @@ public class DispatchCollabCommentController {
         if (callerName != null && !callerName.isBlank()) {
             return callerName;
         }
-        if (callerId != null && !callerId.isBlank()) {
-            return callerId;
-        }
         return "system";
     }
 
     private String resolveDeleter(String callerId) {
         return (callerId == null || callerId.isBlank()) ? "system" : callerId;
+    }
+
+    private void ensureTaskExists(UUID taskId) {
+        if (!dispatchTaskRepository.existsByIdAndIsDeletedFalse(taskId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "배차 작업을 찾을 수 없습니다: " + taskId);
+        }
     }
 }

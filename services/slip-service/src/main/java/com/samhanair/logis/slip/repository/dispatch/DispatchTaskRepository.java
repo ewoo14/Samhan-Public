@@ -23,4 +23,6 @@ public interface DispatchTaskRepository extends JpaRepository<DispatchTask, UUID
             LocalDate from, LocalDate to, Set<DispatchTaskStatus> statuses, Pageable pageable);
 
     boolean existsByTaskCodeAndIsDeletedFalse(String taskCode);
+
+    boolean existsByIdAndIsDeletedFalse(UUID id);
 }

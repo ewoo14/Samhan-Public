@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.collab.CollabCommentService;
 import com.samhanair.logis.collab.CollabDocumentType;
+import com.samhanair.logis.collab.CollabRealtimePublisher;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import java.util.List;
 import java.util.Optional;
@@ -31,8 +32,9 @@ class DispatchCollabConfigTest {
         DispatchCollabCommentRepository repository =
                 org.mockito.Mockito.mock(DispatchCollabCommentRepository.class);
         RealtimeBroker broker = org.mockito.Mockito.mock(RealtimeBroker.class);
+        CollabRealtimePublisher publisher = new CollabRealtimePublisher(broker);
         CollabCommentService<DispatchCollabComment> service =
-                new DispatchCollabConfig().dispatchCollabCommentService(repository, broker);
+                new DispatchCollabConfig().dispatchCollabCommentService(repository, publisher);
         UUID taskId = UUID.randomUUID();
         UUID authorId = UUID.randomUUID();
 
@@ -64,8 +66,9 @@ class DispatchCollabConfigTest {
         DispatchCollabCommentRepository repository =
                 org.mockito.Mockito.mock(DispatchCollabCommentRepository.class);
         RealtimeBroker broker = org.mockito.Mockito.mock(RealtimeBroker.class);
+        CollabRealtimePublisher publisher = new CollabRealtimePublisher(broker);
         CollabCommentService<DispatchCollabComment> service =
-                new DispatchCollabConfig().dispatchCollabCommentService(repository, broker);
+                new DispatchCollabConfig().dispatchCollabCommentService(repository, publisher);
         UUID taskId = UUID.randomUUID();
         when(repository.findRecent(eq(CollabDocumentType.DISPATCH_TASK), eq(taskId), any(Pageable.class)))
                 .thenReturn(List.of());

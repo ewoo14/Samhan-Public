@@ -2,7 +2,6 @@ package com.samhanair.logis.collab;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
-import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,14 +36,14 @@ public class CollabCommentService<T extends CollabCommentRecord> {
 
     private final CommentRepository<T> repository;
     private final CommentFactory<T> factory;
-    private final RealtimeBroker broker;
+    private final CollabRealtimePublisher publisher;
 
     public CollabCommentService(CommentRepository<T> repository,
                                 CommentFactory<T> factory,
-                                RealtimeBroker broker) {
+                                CollabRealtimePublisher publisher) {
         this.repository = repository;
         this.factory = factory;
-        this.broker = broker;
+        this.publisher = publisher;
     }
 
     /** 신규 댓글 등록 + 문서 채널 publish. */
@@ -53,7 +52,7 @@ public class CollabCommentService<T extends CollabCommentRecord> {
                  UUID authorId, String authorName, String body, UUID parentId) {
         T saved = repository.save(factory.create(
                 documentType, documentId, anchor, authorId, authorName, body, parentId));
-        broker.publish(documentId, EVENT_COMMENT_CREATED, payload(saved));
+        publisher.publish(documentId, EVENT_COMMENT_CREATED, payload(saved));
         return saved;
     }
 
@@ -70,7 +69,7 @@ public class CollabCommentService<T extends CollabCommentRecord> {
         T comment = find(commentId, "댓글을 찾을 수 없습니다: ");
         comment.resolve();
         T saved = repository.save(comment);
-        broker.publish(saved.getDocumentId(), EVENT_COMMENT_RESOLVED, payload(saved));
+        publisher.publish(saved.getDocumentId(), EVENT_COMMENT_RESOLVED, payload(saved));
         return saved;
     }
 
@@ -80,7 +79,7 @@ public class CollabCommentService<T extends CollabCommentRecord> {
         T comment = find(commentId, "댓글을 찾을 수 없습니다: ");
         comment.softDelete(deleterUserId);
         repository.save(comment);
-        broker.publish(comment.getDocumentId(), EVENT_COMMENT_DELETED, payload(comment));
+        publisher.publish(comment.getDocumentId(), EVENT_COMMENT_DELETED, deletedPayload(comment));
     }
 
     private T find(UUID commentId, String messagePrefix) {
@@ -102,6 +101,14 @@ public class CollabCommentService<T extends CollabCommentRecord> {
         payload.put("status", comment.getStatus().name());
         putIfNotNull(payload, "createdAt", comment.getCreatedAt() == null
                 ? null : comment.getCreatedAt().toString());
+        return payload;
+    }
+
+    private Map<String, Object> deletedPayload(T comment) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", comment.getId().toString());
+        payload.put("documentId", comment.getDocumentId().toString());
+        payload.put("status", comment.getStatus().name());
         return payload;
     }
 
