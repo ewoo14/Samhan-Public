@@ -14,6 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>권한과 실제 도메인 mutation 은 {@link DocumentCollaborationPort} 로 위임한다. accept 는 제안을
  * 수락하고 changeSet 을 적용한 뒤 accepted record 를 반환하므로 호출측이 revision capture 를 이어갈 수 있다.
+ *
+ * <p><b>동시성 계약:</b> 소비 suggestion {@code @Entity} 는 {@code @Version} 필드를 반드시 선언해야 한다.
+ * 같은 제안에 대한 동시 accept/reject lost-update 방지는 소비 service 의 concrete entity optimistic
+ * locking 계약으로 보장한다.
  */
 public class CollabSuggestionService<T extends CollabSuggestionRecord> {
 
@@ -66,6 +70,7 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
                     UUID deciderId, String deciderName, Consumer<T> acceptedCallback) {
         T suggestion = find(suggestionId);
         requireSameDocumentType(suggestion, port);
+        requireProposed(suggestion);
         if (!port.canDecide(deciderId, suggestion.getDocumentId())) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
                     "문서 변경 제안 결정 권한이 없습니다: " + suggestion.getDocumentId());
@@ -84,6 +89,7 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
                     UUID deciderId, String deciderName, String reason) {
         T suggestion = find(suggestionId);
         requireSameDocumentType(suggestion, port);
+        requireProposed(suggestion);
         if (!port.canDecide(deciderId, suggestion.getDocumentId())) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
                     "문서 변경 제안 결정 권한이 없습니다: " + suggestion.getDocumentId());
@@ -119,6 +125,13 @@ public class CollabSuggestionService<T extends CollabSuggestionRecord> {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "제안 문서 유형과 포트 유형이 다릅니다: " + suggestion.getDocumentType()
                             + " / " + port.documentType());
+        }
+    }
+
+    private void requireProposed(T suggestion) {
+        if (suggestion.getStatus() != CollabSuggestionStatus.PROPOSED) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "이미 종결된 제안입니다: " + suggestion.getStatus());
         }
     }
 

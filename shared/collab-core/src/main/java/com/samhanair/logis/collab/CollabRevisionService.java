@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 문서 full-snapshot revision generic service.
  *
  * <p>revisionNo 는 documentType/documentId 별 max+1 로 채번한다. 소비 service 는 unique 제약을
- * 자기 migration 에서 선언하고, 동시 insert 충돌은 1회 재채번 후 409 로 변환한다.
+ * 자기 migration 에서 선언하고, 동시 insert 충돌은 같은 transaction 재시도 없이 409 로 변환한다.
  */
 public class CollabRevisionService<T extends CollabRevisionRecord> {
 
@@ -98,13 +98,8 @@ public class CollabRevisionService<T extends CollabRevisionRecord> {
             return saveWithNextRevisionNo(documentType, documentId, revisionType, snapshot,
                     sourceRevisionNo, sourceSuggestionId, actorId, actorName);
         } catch (DataIntegrityViolationException firstConflict) {
-            try {
-                return saveWithNextRevisionNo(documentType, documentId, revisionType, snapshot,
-                        sourceRevisionNo, sourceSuggestionId, actorId, actorName);
-            } catch (DataIntegrityViolationException retryConflict) {
-                throw new BusinessException(ErrorCode.CONFLICT,
-                        "동시 수정 충돌 — 잠시 후 다시 시도해 주세요", retryConflict);
-            }
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "동시 수정 충돌 — 재시도", firstConflict);
         }
     }
 

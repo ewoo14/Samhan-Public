@@ -16,7 +16,7 @@ public record AddDispatchCommentRequest(
         @Size(max = CollabCommentRecord.MAX_BODY_LENGTH, message = "본문은 최대 500자까지 허용됩니다")
         String body,
         UUID parentId,
-        @Size(max = 120, message = "anchor 는 최대 120자까지 허용됩니다")
+        @Size(max = CollabCommentRecord.MAX_ANCHOR_LENGTH, message = "anchor 는 최대 120자까지 허용됩니다")
         String anchor
 ) {
 }

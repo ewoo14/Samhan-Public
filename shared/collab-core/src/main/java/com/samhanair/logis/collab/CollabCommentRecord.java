@@ -1,6 +1,8 @@
 package com.samhanair.logis.collab;
 
 import com.samhanair.logis.common.entity.BaseEntity;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -27,6 +29,12 @@ public abstract class CollabCommentRecord extends BaseEntity {
     /** 본문 최대 길이. */
     public static final int MAX_BODY_LENGTH = 500;
 
+    /** 작성자 표시명 최대 길이. */
+    public static final int MAX_AUTHOR_NAME_LENGTH = 50;
+
+    /** 필드/행 anchor 최대 길이. */
+    public static final int MAX_ANCHOR_LENGTH = 120;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false, length = 40)
     private CollabDocumentType documentType;
@@ -35,7 +43,7 @@ public abstract class CollabCommentRecord extends BaseEntity {
     private UUID documentId;
 
     /** 필드/행 anchor. NULL 이면 문서 전체 댓글이다. */
-    @Column(name = "anchor", length = 120)
+    @Column(name = "anchor", length = MAX_ANCHOR_LENGTH)
     private String anchor;
 
     /** 작성자 UUID. 감사 추적용이며 사용자 화면 직접 노출 금지. */
@@ -43,7 +51,7 @@ public abstract class CollabCommentRecord extends BaseEntity {
     private UUID authorId;
 
     /** 작성자 표시명. */
-    @Column(name = "author_name", nullable = false, length = 50)
+    @Column(name = "author_name", nullable = false, length = MAX_AUTHOR_NAME_LENGTH)
     private String authorName;
 
     @Column(name = "body", nullable = false, length = MAX_BODY_LENGTH)
@@ -71,6 +79,16 @@ public abstract class CollabCommentRecord extends BaseEntity {
         }
         if (authorName == null || authorName.isBlank()) {
             throw new IllegalArgumentException("authorName 은 필수입니다");
+        }
+        if (authorName.length() > MAX_AUTHOR_NAME_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "authorName 은 최대 " + MAX_AUTHOR_NAME_LENGTH + "자까지 허용됩니다 (현재: "
+                            + authorName.length() + ")");
+        }
+        if (anchor != null && anchor.length() > MAX_ANCHOR_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "anchor 는 최대 " + MAX_ANCHOR_LENGTH + "자까지 허용됩니다 (현재: "
+                            + anchor.length() + ")");
         }
         if (body == null || body.isBlank()) {
             throw new IllegalArgumentException("body 는 필수입니다");

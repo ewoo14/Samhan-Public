@@ -66,7 +66,7 @@ import reactor.core.publisher.Mono;
  * 이전에는 claim 존재 시만 {@code true} 를 append 했으나 Spring WebFlux
  * {@code ServerHttpRequest.Builder.header()} 가 append semantics 라 클라이언트가 위조한
  * {@code X-Is-Partner:true} 가 downstream 으로 유출될 수 있었다. P1-a 에서 모든 identity
- * 헤더({@code X-User-Id/X-Is-System-Master/X-User-Groups/X-Is-Partner})를
+ * 헤더({@code X-User-Id/X-Is-System-Master/X-User-Groups/X-Is-Partner/X-User-Name})를
  * {@code headers(h -> h.remove().add())} 패턴으로 강제 override 한다.
  *
  * <h2>Phase 12 인사 카테고리 가드</h2>
@@ -108,6 +108,8 @@ public class JwtAuthenticationGatewayFilterFactory
      * downstream {@link PermissionAspect} 가 PARTNER 거절 판정에 사용한다.
      */
     private static final String HEADER_IS_PARTNER = HttpHeaderConstants.IS_PARTNER_HEADER;
+    /** 표시명 claim 부재 상태에서 inbound 표시명 위조를 제거하는 헤더. */
+    private static final String HEADER_USER_NAME = HttpHeaderConstants.CALLER_NAME_HEADER;
 
     private final JwtProperties props;
 
@@ -212,6 +214,8 @@ public class JwtAuthenticationGatewayFilterFactory
                         h.remove(HEADER_IS_SYSTEM_MASTER);
                         h.remove(HEADER_USER_GROUPS);
                         h.remove(HEADER_IS_PARTNER);
+                        // JWT 표시명 claim 부재 — strip 으로 위조 차단, 실명 표시는 claim 추가 후속.
+                        h.remove(HEADER_USER_NAME);
                         h.add(HEADER_USER_ID, userId);
                         // Phase C4: isSystemMaster 는 항상 전송 ("true"/"false") — 헤더 부재와 false 를 구분
                         h.add(HEADER_IS_SYSTEM_MASTER, String.valueOf(isSystemMaster));

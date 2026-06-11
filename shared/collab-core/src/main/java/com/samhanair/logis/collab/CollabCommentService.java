@@ -70,6 +70,9 @@ public class CollabCommentService<T extends CollabCommentRecord> {
     @Transactional
     public T resolve(CollabDocumentType documentType, UUID documentId, UUID commentId) {
         T comment = find(documentType, documentId, commentId, "댓글을 찾을 수 없습니다: ");
+        if (comment.getStatus() == CollabCommentStatus.RESOLVED) {
+            return comment;
+        }
         comment.resolve();
         T saved = repository.save(comment);
         publisher.publish(saved.getDocumentId(), EVENT_COMMENT_RESOLVED, payload(saved));
@@ -113,7 +116,6 @@ public class CollabCommentService<T extends CollabCommentRecord> {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("id", comment.getId().toString());
         payload.put("documentId", comment.getDocumentId().toString());
-        payload.put("status", comment.getStatus().name());
         return payload;
     }
 
