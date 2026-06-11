@@ -56,7 +56,7 @@ const STATUS_BANNER_STYLE: Record<
     border: 'var(--color-success-200, #A7F3D0)',
     color: 'var(--color-success-700, #047857)',
     label:
-      '수정 수락됨 — 편집 모드 활성. 차량/슬립 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.',
+      '수정 수락됨 — 편집 모드 활성. 차량/전표 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.',
   },
   MODIFICATION_REJECTED: {
     bg: 'var(--color-danger-50, #FEF2F2)',
@@ -86,7 +86,7 @@ const STATUS_BANNER_STYLE: Record<
     bg: 'var(--color-neutral-100)',
     border: 'var(--color-neutral-300)',
     color: 'var(--color-neutral-700)',
-    label: '배차 취소 완료 — 매핑된 슬립은 미배차 상태로 복귀했습니다.',
+    label: '배차 취소 완료 — 매핑된 전표는 미배차 상태로 복귀했습니다.',
   },
 }
 
@@ -115,7 +115,7 @@ export function DispatchTaskDetailModal({
         open
         onClose={onClose}
         title={`배차 작업 ${task.taskCode}`}
-        description={`${task.dispatchDate} · 차량 ${task.vehicleGroups.length}대 · 슬립 ${totalSlips}건`}
+        description={`${task.dispatchDate} · 차량 ${task.vehicleGroups.length}대 · 전표 ${totalSlips}건`}
         size="lg"
         footer={
           <div

@@ -327,7 +327,7 @@ export async function deleteVehicleGroup(
  *
  * @param taskId DispatchTask UUID.
  * @param groupId 그룹 UUID.
- * @param slipId 할당 대상 슬립 UUID.
+ * @param slipId 할당 대상 전표 UUID.
  */
 export async function assignSlipToGroup(
   taskId: string,

@@ -117,7 +117,7 @@ export function VehicleGroupCard({
             aria-label={`${DISPATCH_VEHICLE_TYPE_LABEL[group.vehicleType]} #${group.sequence} 그룹 삭제`}
             title={
               group.slips.length > 0
-                ? '슬립이 남아있으면 삭제할 수 없습니다'
+                ? '전표가 남아있으면 삭제할 수 없습니다'
                 : '빈 그룹 삭제'
             }
             style={{

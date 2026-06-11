@@ -2303,7 +2303,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // GET /slips (페이지) — lookup-product / {id} 가 아닌 경우.
   // legacy SlipListPage 가 ?slipType=OUTBOUND (판매관리 legacy) 또는 INBOUND (구매관리 legacy) 로 필터링 →
-  // mock 도 BE 와 동등하게 query param 으로 분리해 잘못된 슬립 노출 방지.
+  // mock 도 BE 와 동등하게 query param 으로 분리해 잘못된 전표 노출 방지.
   if (
     method === 'GET'
     && url.includes('/slips')
@@ -6010,7 +6010,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // ============================================================================
   // SP-09-3 영수증 OCR 업로드 mock (POST /slips/receipt-ocr)
   //
-  // submitMethod=DRY_RUN → 가짜 OCR 결과 + 매입 슬립 번호 반환.
+  // submitMethod=DRY_RUN → 가짜 OCR 결과 + 매입 전표 번호 반환.
   // 응답 shape = BE ReceiptParseResponse record 와 1:1 정합 (cycle 2 fix — Codex blocker 1).
   //
   // 시나리오:
@@ -8410,7 +8410,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'sales.slip.confirm',
   ],
   // SP-D3 V9 fix: sales.slip.list 제거 + purchases.receipt-ocr 추가
-  // (사용자 요구 ② — WAREHOUSE 에게 매출 슬립 숨김, 매입 영수증 OCR 허용)
+  // (사용자 요구 ② — WAREHOUSE 에게 매출 전표 숨김, 매입 영수증 OCR 허용)
   WAREHOUSE: [
     'purchases.slip.list', 'purchases.receipt-ocr', 'inbound.inspection',
     // SP-D4 — WAREHOUSE: 재고/창고/인쇄/벤더주문 view

@@ -94,7 +94,7 @@ export function useDeleteVehicleGroupMutation(taskId: string | null) {
 /**
  * slip 그룹 할당 mutation — drag-and-drop drop 시 호출.
  *
- * <p>성공 시 task query + 미배차 슬립 query 양쪽 invalidate (UNDISPATCHED → DISPATCHING 상태 변화).
+ * <p>성공 시 task query + 미배차 전표 query 양쪽 invalidate (UNDISPATCHED → DISPATCHING 상태 변화).
  */
 export function useAssignSlipToGroupMutation(taskId: string | null) {
   const qc = useQueryClient()

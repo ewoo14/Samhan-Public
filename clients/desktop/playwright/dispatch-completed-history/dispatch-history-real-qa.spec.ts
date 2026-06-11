@@ -66,10 +66,15 @@ test('완료배차 내역 목록 + 상세 실 게이트웨이 캡처 (dev_master
   // 행 클릭 → 상세(차량그룹·전표·기사). arologisDispatchId drill-in.
   await page.locator('[data-testid^="dispatch-history-row-"]').first().click()
   await page.waitForTimeout(2000)
+  await expect(page.getByTestId('dispatch-task-detail-body')).toBeVisible({ timeout: 10000 })
   await page.screenshot({ path: path.join(SHOTS, 'history-detail.png'), fullPage: true })
 
   // 조회 전용 — 변경(수정/취소 요청) 버튼 부재 단언(read-only 실증).
   const mutationBtns = await page.getByRole('button', { name: /수정 요청|취소 요청|배차 완료|재배차/ }).count()
   expect(mutationBtns, '완료배차 상세는 조회 전용(변경 버튼 0)').toBe(0)
+  const detailText = await page.getByTestId('dispatch-task-detail-body').textContent()
+  expect(detailText ?? '', '상세 본문 raw UUID 노출 금지').not.toMatch(
+    /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i,
+  )
   expect(pageErrors, `pageerror: ${pageErrors.join('; ')}`).toHaveLength(0)
 })

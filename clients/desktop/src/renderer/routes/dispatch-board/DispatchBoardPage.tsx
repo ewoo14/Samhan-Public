@@ -6,7 +6,7 @@
  * - 우측: 차량 그룹 컬럼 (9 종류 차량 추가 + drag-and-drop + 배차 완료) — `VehicleGroupColumn`
  *
  * UI 흐름 (spec § 5.1, plan F1~F5):
- *  - 좌측 미배차 슬립을 drag → 우측 차량 그룹 drop 시 `POST /admin/dispatch-tasks/{taskId}/vehicle-groups/{groupId}/slips`
+ *  - 좌측 미배차 전표를 drag → 우측 차량 그룹 drop 시 `POST /admin/dispatch-tasks/{taskId}/vehicle-groups/{groupId}/slips`
  *  - 그룹 내부 sortable 순서 변경 시 `PUT .../slips/order`
  *  - 차량 추가 modal 에서 9 종류 (오토바이/다마스/1톤/1.5/2.5/3/5/10/20톤) 선택 → group 생성
  *  - [배차 완료] → 확인 dialog → `POST /admin/dispatch-tasks/{taskId}/dispatch` → DISPATCHED 회신 대기
@@ -75,7 +75,7 @@ export default function DispatchBoardPage() {
   const { canAccess } = usePermissions()
   const canEditDispatch = canAccess('dispatch.board', 'update')
 
-  // 슬립 상세 modal (slipId 보유 시 open).
+  // 전표 상세 modal (slipId 보유 시 open).
   const [detailSlipId, setDetailSlipId] = useState<string | null>(null)
 
   // 현재 task UUID — mount 직후 자동 생성.
