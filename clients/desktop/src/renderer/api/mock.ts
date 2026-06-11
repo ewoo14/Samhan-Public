@@ -4624,8 +4624,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const params = config.params instanceof URLSearchParams
       ? config.params
       : new URLSearchParams(url.split('?')[1] ?? '')
-    const from = params.get('from') ?? '2026-05-12'
-    const to = params.get('to') ?? '2026-06-11'
+    const from = params.get('from') ?? mockOffsetIsoSeoul(MOCK_DISPATCH_HISTORY_TODAY, -30)
+    const to = params.get('to') ?? MOCK_DISPATCH_HISTORY_TODAY
     const statuses = params.getAll('status')
     const effectiveStatuses = statuses.length > 0 ? statuses : ['DISPATCHED']
     const pageNo = Number(params.get('page') ?? 0)
@@ -7476,6 +7476,34 @@ const MOCK_INVENTORY_AUDITS = [
 /**
  * arologis 배차 (`/arologis/dispatches`) — 3건.
  */
+function mockTodayIsoSeoul(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function mockOffsetIsoSeoul(baseIso: string, offsetDays: number): string {
+  const d = new Date(baseIso + 'T00:00:00')
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function mockTaskCode(dateIso: string, suffix: string): string {
+  return `${dateIso.replace(/-/g, '/')}-${suffix}`
+}
+
+const MOCK_DISPATCH_HISTORY_TODAY = mockTodayIsoSeoul()
+const MOCK_DISPATCH_HISTORY_PREVIOUS = mockOffsetIsoSeoul(MOCK_DISPATCH_HISTORY_TODAY, -6)
+const MOCK_DISPATCH_HISTORY_TODAY_CODE = mockTaskCode(MOCK_DISPATCH_HISTORY_TODAY, '1')
+const MOCK_DISPATCH_HISTORY_PREVIOUS_CODE = mockTaskCode(MOCK_DISPATCH_HISTORY_PREVIOUS, '2')
+const MOCK_DISPATCH_HISTORY_TODAY_SLIP_PREFIX = MOCK_DISPATCH_HISTORY_TODAY.replace(/-/g, '/')
+const MOCK_DISPATCH_HISTORY_PREVIOUS_SLIP_PREFIX = MOCK_DISPATCH_HISTORY_PREVIOUS.replace(/-/g, '/')
+
 const MOCK_DISPATCH_COMMENTS: Record<string, DispatchComment[]> = {
   '11111111-aaaa-4aaa-8aaa-000000000001': [
     {
@@ -7485,7 +7513,7 @@ const MOCK_DISPATCH_COMMENTS: Record<string, DispatchComment[]> = {
       body: '배차 완료 후 기사 매칭 확인했습니다.',
       parentId: null,
       status: 'OPEN',
-      createdAt: '2026-06-11T10:20:00',
+      createdAt: `${MOCK_DISPATCH_HISTORY_TODAY}T10:20:00`,
     },
     {
       id: '66666666-aaaa-4aaa-8aaa-000000000002',
@@ -7494,7 +7522,7 @@ const MOCK_DISPATCH_COMMENTS: Record<string, DispatchComment[]> = {
       body: '성남냉열 연락처는 오전 중 한 번 더 확인 필요합니다.',
       parentId: null,
       status: 'OPEN',
-      createdAt: '2026-06-11T10:05:00',
+      createdAt: `${MOCK_DISPATCH_HISTORY_TODAY}T10:05:00`,
     },
   ],
 }
@@ -7503,8 +7531,8 @@ let mockDispatchCommentSequence = 3
 const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
   {
     id: '11111111-aaaa-4aaa-8aaa-000000000001',
-    taskCode: '2026/06/11-1',
-    dispatchDate: '2026-06-11',
+    taskCode: MOCK_DISPATCH_HISTORY_TODAY_CODE,
+    dispatchDate: MOCK_DISPATCH_HISTORY_TODAY,
     status: 'DISPATCHED',
     arologisDispatchId: '22222222-aaaa-4aaa-8aaa-000000000001',
     failureReason: null,
@@ -7523,7 +7551,7 @@ const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
             slipId: '55555555-aaaa-4aaa-8aaa-000000000001',
             sequence: 1,
             slip: {
-              slipNo: '2026/06/11-001',
+              slipNo: `${MOCK_DISPATCH_HISTORY_TODAY_SLIP_PREFIX}-001`,
               partnerCode: 'P-DCH-001',
               partnerName: '동탄공조',
               deliveryAddress: '경기도 화성시 동탄대로 10',
@@ -7536,7 +7564,7 @@ const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
             slipId: '55555555-aaaa-4aaa-8aaa-000000000002',
             sequence: 2,
             slip: {
-              slipNo: '2026/06/11-002',
+              slipNo: `${MOCK_DISPATCH_HISTORY_TODAY_SLIP_PREFIX}-002`,
               partnerCode: 'P-DCH-002',
               partnerName: '성남냉열',
               deliveryAddress: '경기도 성남시 분당구 판교로 20',
@@ -7560,8 +7588,8 @@ const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
   },
   {
     id: '11111111-bbbb-4bbb-8bbb-000000000002',
-    taskCode: '2026/06/05-2',
-    dispatchDate: '2026-06-05',
+    taskCode: MOCK_DISPATCH_HISTORY_PREVIOUS_CODE,
+    dispatchDate: MOCK_DISPATCH_HISTORY_PREVIOUS,
     status: 'DISPATCHED',
     arologisDispatchId: '22222222-bbbb-4bbb-8bbb-000000000002',
     failureReason: null,
@@ -7580,7 +7608,7 @@ const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
             slipId: '55555555-bbbb-4bbb-8bbb-000000000003',
             sequence: 1,
             slip: {
-              slipNo: '2026/06/05-004',
+              slipNo: `${MOCK_DISPATCH_HISTORY_PREVIOUS_SLIP_PREFIX}-004`,
               partnerCode: 'P-DCH-003',
               partnerName: '수원설비',
               deliveryAddress: '경기도 수원시 영통구 광교로 30',

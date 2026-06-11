@@ -54,11 +54,11 @@ test('완료배차 내역 목록 + 상세 실 게이트웨이 캡처 (dev_master
 
   await page.goto(`${BASE_URL}/#/dispatch-board/history`)
   await page.waitForSelector('[data-testid="dispatch-history-table"]', { timeout: 30000 })
-  // 실 데이터(dispatchDate=2026-06-11) 포함 위해 날짜 범위 명시(브라우저 today 기준 기본 30일 범위 무관).
+  // 실 서버 데이터 포함을 위해 날짜 범위를 명시한다(브라우저 today 기준 기본 30일 범위 무관).
   await page.getByTestId('dispatch-history-from').fill('2025-01-01')
   await page.getByTestId('dispatch-history-to').fill('2026-12-31')
   await page.getByTestId('dispatch-history-filter-submit').click()
-  // 실 DISPATCHED 1건(2026/06/11-1) 행 출현 대기.
+  // 실 DISPATCHED 행 출현 대기.
   await page.waitForSelector('[data-testid^="dispatch-history-row-"]', { timeout: 15000 })
   await page.waitForTimeout(1000)
   await page.screenshot({ path: path.join(SHOTS, 'history-list.png'), fullPage: true })

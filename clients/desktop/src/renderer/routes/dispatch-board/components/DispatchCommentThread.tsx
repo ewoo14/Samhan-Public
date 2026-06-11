@@ -17,6 +17,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 
 interface DispatchCommentThreadProps {
   taskId: string
+  readOnly?: boolean
 }
 
 const QUERY_KEY_PREFIX = 'dispatch-comments'
@@ -34,14 +35,14 @@ function formatDateTime(value: string): string {
 }
 
 function isDispatchCommentEvent(eventName: string): boolean {
-  return eventName === 'comment.created' || eventName === 'comment.deleted'
+  return eventName.startsWith('comment.')
 }
 
-export function DispatchCommentThread({ taskId }: DispatchCommentThreadProps) {
+export function DispatchCommentThread({ taskId, readOnly = false }: DispatchCommentThreadProps) {
   const [body, setBody] = useState('')
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
-  const canUpdate = canAccess('dispatch.board', 'update')
+  const canWrite = !readOnly && canAccess('dispatch.board', 'update')
   const queryKey = useMemo(() => [QUERY_KEY_PREFIX, taskId] as const, [taskId])
 
   const commentsQuery = useQuery({
@@ -52,18 +53,14 @@ export function DispatchCommentThread({ taskId }: DispatchCommentThreadProps) {
 
   useEffect(() => {
     if (!taskId) return
-    try {
-      const ctrl = DispatchCollabRealtimeClient.subscribe(taskId, (evt) => {
-        if (isDispatchCommentEvent(evt.event)) {
-          void queryClient.invalidateQueries({ queryKey })
-        }
-      })
-      return () => {
-        ctrl.abort()
+    const ctrl = DispatchCollabRealtimeClient.subscribe(taskId, (evt) => {
+      if (isDispatchCommentEvent(evt.event)) {
+        void queryClient.invalidateQueries({ queryKey })
       }
-    } catch (err) {
-      console.warn('[DispatchCommentThread] SSE 구독 실패 — REST 동작은 유지됩니다.', err)
-      return undefined
+    })
+    // subscribe() handles reconnect/backoff internally; cleanup only aborts the active stream.
+    return () => {
+      ctrl.abort()
     }
   }, [queryClient, queryKey, taskId])
 
@@ -90,7 +87,7 @@ export function DispatchCommentThread({ taskId }: DispatchCommentThreadProps) {
   const trimmedBody = body.trim()
 
   const submit = () => {
-    if (!canUpdate || trimmedBody.length === 0 || addMutation.isPending) return
+    if (!canWrite || trimmedBody.length === 0 || addMutation.isPending) return
     addMutation.mutate(trimmedBody)
   }
 
@@ -160,7 +157,7 @@ export function DispatchCommentThread({ taskId }: DispatchCommentThreadProps) {
                 <span style={{ marginLeft: 'auto' }}>
                   {formatDateTime(comment.createdAt)}
                 </span>
-                {canUpdate ? (
+                {canWrite ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -189,7 +186,7 @@ export function DispatchCommentThread({ taskId }: DispatchCommentThreadProps) {
         )}
       </div>
 
-      {canUpdate ? (
+      {canWrite ? (
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <textarea
             data-testid="dispatch-comment-input"
@@ -206,7 +203,7 @@ export function DispatchCommentThread({ taskId }: DispatchCommentThreadProps) {
               }
             }}
             placeholder="코멘트 입력..."
-            maxLength={1000}
+            maxLength={500}
             rows={2}
             style={{
               flex: 1,

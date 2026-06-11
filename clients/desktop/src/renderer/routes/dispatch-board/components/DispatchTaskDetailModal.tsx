@@ -356,7 +356,7 @@ export function DispatchTaskDetailModal({
             </div>
           ) : null}
 
-          <DispatchCommentThread taskId={task.id} />
+          <DispatchCommentThread taskId={task.id} readOnly={readOnly} />
         </div>
       </Modal>
 

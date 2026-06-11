@@ -6,6 +6,20 @@ const UUID_REGEX =
 
 type MockPerm = { pageCode: string; view?: boolean; edit?: boolean }
 
+function todayIsoSeoul(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function taskCode(dateIso: string, suffix: string): string {
+  return `${dateIso.replace(/-/g, '/')}-${suffix}`
+}
+
+const CURRENT_TASK_CODE = taskCode(todayIsoSeoul(), '1')
+
 function mockPerms(perms: MockPerm[]): string {
   return btoa(JSON.stringify(perms))
 }
@@ -22,26 +36,19 @@ async function gotoHistoryWithEditPermission(page: Page): Promise<void> {
 }
 
 test.describe('AROLOGIS 배차현황 협업 코멘트 mock', () => {
-  test('상세 모달에서 코멘트 목록, 등록, 삭제를 처리하고 UUID를 노출하지 않는다', async ({ page }) => {
+  test('상세 모달에서 코멘트 목록을 보여주고 조회 전용으로 작성/삭제를 막는다', async ({ page }) => {
     await gotoHistoryWithEditPermission(page)
 
-    await page.getByTestId('dispatch-history-row-2026/06/11-1').click()
+    await page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`).click()
     const thread = page.getByTestId('dispatch-comment-thread')
     await expect(thread).toBeVisible()
     await expect(page.getByTestId('dispatch-comment-item')).toHaveCount(2)
     await expect(thread).toContainText('배차 완료 후 기사 매칭 확인했습니다.')
     await expect(thread).toContainText('성남냉열 연락처는 오전 중 한 번 더 확인 필요합니다.')
 
-    await page.getByTestId('dispatch-comment-input').fill('신규 협업 코멘트 QA')
-    await page.getByTestId('dispatch-comment-submit').click()
-    await expect(thread).toContainText('신규 협업 코멘트 QA')
-
-    await thread
-      .getByTestId('dispatch-comment-item')
-      .filter({ hasText: '신규 협업 코멘트 QA' })
-      .getByRole('button', { name: '코멘트 삭제' })
-      .click()
-    await expect(thread).not.toContainText('신규 협업 코멘트 QA')
+    await expect(page.getByTestId('dispatch-comment-input')).toHaveCount(0)
+    await expect(page.getByTestId('dispatch-comment-submit')).toHaveCount(0)
+    await expect(thread.getByRole('button', { name: '코멘트 삭제' })).toHaveCount(0)
 
     const bodyText = await page.locator('body').textContent()
     expect(bodyText ?? '').not.toMatch(UUID_REGEX)

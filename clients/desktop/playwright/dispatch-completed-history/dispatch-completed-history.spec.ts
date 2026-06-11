@@ -6,6 +6,33 @@ const UUID_REGEX =
 
 type MockPerm = { pageCode: string; view?: boolean; edit?: boolean }
 
+function todayIsoSeoul(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function offsetIsoSeoul(baseIso: string, offsetDays: number): string {
+  const d = new Date(baseIso + 'T00:00:00')
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function taskCode(dateIso: string, suffix: string): string {
+  return `${dateIso.replace(/-/g, '/')}-${suffix}`
+}
+
+const CURRENT_DISPATCH_DATE = todayIsoSeoul()
+const PREVIOUS_DISPATCH_DATE = offsetIsoSeoul(CURRENT_DISPATCH_DATE, -6)
+const CURRENT_TASK_CODE = taskCode(CURRENT_DISPATCH_DATE, '1')
+const PREVIOUS_TASK_CODE = taskCode(PREVIOUS_DISPATCH_DATE, '2')
+const CURRENT_SLIP_NO = `${CURRENT_DISPATCH_DATE.replace(/-/g, '/')}-001`
+
 function mockPerms(perms: MockPerm[]): string {
   return btoa(JSON.stringify(perms))
 }
@@ -31,8 +58,8 @@ test.describe('AROLOGIS 배차현황 뷰 mock', () => {
 
     await expect(page.getByTestId('dispatch-history-page')).toBeVisible()
     await expect(page.getByTestId('dispatch-history-table')).toBeVisible()
-    await expect(page.getByTestId('dispatch-history-row-2026/06/11-1')).toBeVisible()
-    await expect(page.getByTestId('dispatch-history-row-2026/06/05-2')).toBeVisible()
+    await expect(page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`)).toBeVisible()
+    await expect(page.getByTestId(`dispatch-history-row-${PREVIOUS_TASK_CODE}`)).toBeVisible()
     await expect(page.getByTestId('dispatch-history-table').getByText('배차 완료').first()).toBeVisible()
   })
 
@@ -43,17 +70,20 @@ test.describe('AROLOGIS 배차현황 뷰 mock', () => {
     await expect(statusSelect.locator('option')).toHaveCount(1)
     await expect(statusSelect.locator('option')).toHaveText(['배차 완료'])
 
-    await expect(page.getByTestId('dispatch-history-row-2026/06/11-1')).toBeVisible()
+    await expect(page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`)).toBeVisible()
   })
 
   test('상세 모달은 조회 전용이며 수정/취소 mutation 버튼이 없다', async ({ page }) => {
     await gotoHistory(page)
 
-    await page.getByTestId('dispatch-history-row-2026/06/11-1').click()
+    await page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`).click()
     await expect(page.getByTestId('dispatch-task-detail-body')).toBeVisible()
 
     await expect(page.getByTestId('dispatch-task-detail-request-modification')).toHaveCount(0)
     await expect(page.getByTestId('dispatch-task-detail-request-cancellation')).toHaveCount(0)
+    await expect(page.getByTestId('dispatch-comment-input')).toHaveCount(0)
+    await expect(page.getByTestId('dispatch-comment-submit')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '肄붾찘????젣' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '수정 요청' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '취소 요청' })).toHaveCount(0)
   })
@@ -61,11 +91,11 @@ test.describe('AROLOGIS 배차현황 뷰 mock', () => {
   test('행 클릭 후 차량그룹, 전표, 기사 상세를 보여준다', async ({ page }) => {
     await gotoHistory(page)
 
-    await page.getByTestId('dispatch-history-row-2026/06/11-1').click()
+    await page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`).click()
     const detail = page.getByTestId('dispatch-task-detail-body')
     await expect(detail).toBeVisible()
     await expect(detail).toContainText('1톤 #1')
-    await expect(detail).toContainText('2026/06/11-001')
+    await expect(detail).toContainText(CURRENT_SLIP_NO)
     await expect(detail).toContainText('동탄공조')
     await expect(detail).toContainText('기사 김배차 (DRV-101) 010-9000-1001')
   })
@@ -82,7 +112,7 @@ test.describe('AROLOGIS 배차현황 뷰 mock', () => {
   test('화면 텍스트에 raw UUID가 노출되지 않는다', async ({ page }) => {
     await gotoHistory(page)
 
-    await page.getByTestId('dispatch-history-row-2026/06/11-1').click()
+    await page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`).click()
     await expect(page.getByTestId('dispatch-task-detail-body')).toBeVisible()
 
     const bodyText = await page.locator('body').textContent()
