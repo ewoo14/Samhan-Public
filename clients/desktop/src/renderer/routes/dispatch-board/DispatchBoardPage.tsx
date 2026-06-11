@@ -152,7 +152,7 @@ export default function DispatchBoardPage() {
       }
       const group = task.vehicleGroups.find((g) => g.id === activeData.groupId)
       if (!group) return
-      const currentIds = group.slips.map((s) => s.slip.id)
+      const currentIds = group.slips.map((s) => s.slipId)
       const oldIndex = currentIds.indexOf(activeData.slipId)
       const newIndex = currentIds.indexOf(overData.slipId)
       if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return

@@ -63,6 +63,9 @@ public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificat
      */
     List<Slip> findAllByDriverPhoneAndSlipDateAndIsDeletedFalse(String driverPhone, LocalDate slipDate);
 
+    /** 배차 상세/내역 조립용 slip 헤더 일괄 조회. */
+    List<Slip> findAllByIdInAndIsDeletedFalse(java.util.Collection<UUID> ids);
+
     /**
      * 특정 배송일에 driverPhone 이 채워진 모든 슬립 — 자동 그룹화 candidate set.
      * 같은 phone 끼리 묶어 batch 1건씩 생성. 호출자에서 phone 별 group by 후 처리.

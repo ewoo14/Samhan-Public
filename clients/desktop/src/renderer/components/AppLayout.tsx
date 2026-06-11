@@ -1153,6 +1153,7 @@ export function AppLayout() {
             testId="sidebar-category-toggle-배차"
             activeTargets={[
               '/dispatch-board',
+              '/dispatch-board/history',
               '/arologis/manual',
               '/arologis/pre-classify',
               '/arologis/unassigned',
@@ -1174,6 +1175,14 @@ export function AppLayout() {
                 data-testid="sidebar-dispatch-board"
               >
                 배차 메뉴
+              </SidebarLink>
+              <SidebarLink
+                to="/dispatch-board/history"
+                show={showDispatchBoard}
+                requiredRole="DISPATCH / MANAGER / MASTER"
+                data-testid="sidebar-dispatch-history"
+              >
+                완료 배차 내역
               </SidebarLink>
               <SidebarLink
                 to="/arologis/manual"

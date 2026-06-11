@@ -14,6 +14,10 @@
  * - `GET /inventory/transfers` + `POST` + `GET /{id}` + transition mock
  */
 import type { AxiosRequestConfig } from 'axios'
+import type {
+  DispatchTaskResponse,
+  DispatchTaskSummaryResponse,
+} from './dispatchTask'
 
 /** ApiResponse envelope 형태 — `shared/common/dto/ApiResponse.java` 와 동일. */
 function envelope<T>(data: T) {
@@ -4550,6 +4554,49 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // arologis — manual / pre-classify / unassigned / dispatch-sms / dispatch-reconcile
   // ==========================================================================
 
+  const dispatchTaskDetailMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)(?:\?.*)?$/)
+  if (method === 'GET' && dispatchTaskDetailMatch) {
+    const id = decodeURIComponent(dispatchTaskDetailMatch[1]!)
+    const denied = mockRequirePermission('dispatch.board', 'view')
+    if (denied) return denied
+    const found = MOCK_DISPATCH_TASK_DETAILS.find(
+      (task) => task.id === id || task.arologisDispatchId === id,
+    )
+    if (!found) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 를 찾을 수 없습니다.')
+    }
+    return envelope(found)
+  }
+
+  if (method === 'GET' && url.match(/\/admin\/dispatch-tasks(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('dispatch.board', 'view')
+    if (denied) return denied
+    const params = config.params instanceof URLSearchParams
+      ? config.params
+      : new URLSearchParams(url.split('?')[1] ?? '')
+    const from = params.get('from') ?? '2026-05-12'
+    const to = params.get('to') ?? '2026-06-11'
+    const statuses = params.getAll('status')
+    const effectiveStatuses = statuses.length > 0 ? statuses : ['DISPATCHED']
+    const pageNo = Number(params.get('page') ?? 0)
+    const size = Number(params.get('size') ?? 20)
+    const filtered = MOCK_DISPATCH_TASK_SUMMARIES.filter((row) =>
+      row.dispatchDate >= from &&
+      row.dispatchDate <= to &&
+      effectiveStatuses.includes(row.status),
+    )
+    const start = pageNo * size
+    return envelope({
+      content: filtered.slice(start, start + size),
+      totalElements: filtered.length,
+      totalPages: Math.max(1, Math.ceil(filtered.length / size)),
+      number: pageNo,
+      size,
+      first: pageNo === 0,
+      last: start + size >= filtered.length,
+    })
+  }
+
   // GET /arologis/dispatches — manual / unassigned 공통
   if (method === 'GET' && url.includes('/arologis/dispatches')) {
     const dispatchDetailMatch = url.match(/\/arologis\/dispatches\/([^/?]+)$/)
@@ -7379,6 +7426,139 @@ const MOCK_INVENTORY_AUDITS = [
 /**
  * arologis 배차 (`/arologis/dispatches`) — 3건.
  */
+const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
+  {
+    id: '11111111-aaaa-4aaa-8aaa-000000000001',
+    taskCode: '2026/06/11-1',
+    dispatchDate: '2026-06-11',
+    status: 'DISPATCHED',
+    arologisDispatchId: '22222222-aaaa-4aaa-8aaa-000000000001',
+    failureReason: null,
+    modificationReason: null,
+    rejectionReason: null,
+    modificationRequestedAt: null,
+    modificationDecidedAt: null,
+    vehicleGroups: [
+      {
+        id: '33333333-aaaa-4aaa-8aaa-000000000001',
+        vehicleType: 'TONNAGE_1',
+        sequence: 1,
+        slips: [
+          {
+            id: '44444444-aaaa-4aaa-8aaa-000000000001',
+            slipId: '55555555-aaaa-4aaa-8aaa-000000000001',
+            sequence: 1,
+            slip: {
+              slipNo: '2026/06/11-001',
+              partnerCode: 'P-DCH-001',
+              partnerName: '동탄공조',
+              deliveryAddress: '경기도 화성시 동탄대로 10',
+              recipientPhone: '010-1111-2222',
+              dispatchStatus: 'DISPATCHED',
+            },
+          },
+          {
+            id: '44444444-aaaa-4aaa-8aaa-000000000002',
+            slipId: '55555555-aaaa-4aaa-8aaa-000000000002',
+            sequence: 2,
+            slip: {
+              slipNo: '2026/06/11-002',
+              partnerCode: 'P-DCH-002',
+              partnerName: '성남냉열',
+              deliveryAddress: '경기도 성남시 분당구 판교로 20',
+              recipientPhone: '010-3333-4444',
+              dispatchStatus: 'DISPATCHED',
+            },
+          },
+        ],
+      },
+    ],
+    matchedDrivers: [
+      {
+        vehicleGroupSequence: 1,
+        driverCode: 'DRV-101',
+        driverName: '김배차',
+        driverPhoneNumber: '010-9000-1001',
+        driverSource: 'AROLOGIS',
+      },
+    ],
+  },
+  {
+    id: '11111111-bbbb-4bbb-8bbb-000000000002',
+    taskCode: '2026/06/05-2',
+    dispatchDate: '2026-06-05',
+    status: 'DISPATCHED',
+    arologisDispatchId: '22222222-bbbb-4bbb-8bbb-000000000002',
+    failureReason: null,
+    modificationReason: null,
+    rejectionReason: null,
+    modificationRequestedAt: null,
+    modificationDecidedAt: null,
+    vehicleGroups: [
+      {
+        id: '33333333-bbbb-4bbb-8bbb-000000000002',
+        vehicleType: 'DAMAS',
+        sequence: 1,
+        slips: [
+          {
+            id: '44444444-bbbb-4bbb-8bbb-000000000003',
+            slipId: '55555555-bbbb-4bbb-8bbb-000000000003',
+            sequence: 1,
+            slip: {
+              slipNo: '2026/06/05-004',
+              partnerCode: 'P-DCH-003',
+              partnerName: '수원설비',
+              deliveryAddress: '경기도 수원시 영통구 광교로 30',
+              recipientPhone: '010-5555-6666',
+              dispatchStatus: 'DISPATCHED',
+            },
+          },
+        ],
+      },
+    ],
+    matchedDrivers: [
+      {
+        vehicleGroupSequence: 1,
+        driverCode: 'DRV-205',
+        driverName: '박기사',
+        driverPhoneNumber: '010-9000-2005',
+        driverSource: 'AROLOGIS',
+      },
+    ],
+  },
+  {
+    id: '11111111-cccc-4ccc-8ccc-000000000003',
+    taskCode: '2026/05/01-9',
+    dispatchDate: '2026-05-01',
+    status: 'FAILED',
+    arologisDispatchId: '22222222-cccc-4ccc-8ccc-000000000003',
+    failureReason: '가용 기사 없음',
+    modificationReason: null,
+    rejectionReason: null,
+    modificationRequestedAt: null,
+    modificationDecidedAt: null,
+    vehicleGroups: [],
+    matchedDrivers: [],
+  },
+]
+
+const MOCK_DISPATCH_TASK_SUMMARIES: DispatchTaskSummaryResponse[] = MOCK_DISPATCH_TASK_DETAILS.map((task) => {
+  const slips = task.vehicleGroups.flatMap((group) => group.slips)
+  const partnerNames = Array.from(new Set(slips.map((row) => row.slip.partnerName)))
+  const head = partnerNames.slice(0, 3).join(', ')
+  const rest = partnerNames.length - 3
+  return {
+    taskCode: task.taskCode,
+    dispatchDate: task.dispatchDate,
+    status: task.status,
+    vehicleGroupCount: task.vehicleGroups.length,
+    slipCount: slips.length,
+    partnerNames: rest > 0 ? `${head} +${rest}` : head,
+    driverCount: task.matchedDrivers.length,
+    arologisDispatchId: task.arologisDispatchId,
+  }
+})
+
 const MOCK_DISPATCHES = [
   {
     id: 'disp-001',

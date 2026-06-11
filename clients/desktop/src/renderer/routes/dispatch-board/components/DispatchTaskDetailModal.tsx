@@ -14,7 +14,7 @@
  *  5) MODIFICATION_ACCEPTED 상태에서 "수정 가능 (편집 모드)" 안내 (녹색 배너).
  *
  * UUID 비공개:
- *  - 사용자 노출 = taskCode / slipNumber / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber.
+ *  - 사용자 노출 = taskCode / slipNo / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber.
  *  - taskId / groupId / slipId UUID 는 API path 와 dialog 호출에만 사용.
  *
  * accessibility:
@@ -35,6 +35,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 interface DispatchTaskDetailModalProps {
   task: DispatchTaskResponse
   onClose: () => void
+  readOnly?: boolean
 }
 
 /**
@@ -92,12 +93,14 @@ const STATUS_BANNER_STYLE: Record<
 export function DispatchTaskDetailModal({
   task,
   onClose,
+  readOnly = false,
 }: DispatchTaskDetailModalProps) {
   const [modificationOpen, setModificationOpen] = useState(false)
   const [cancellationOpen, setCancellationOpen] = useState(false)
   const { canAccess } = usePermissions()
 
-  const showRequestButtons = task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
+  const showRequestButtons =
+    !readOnly && task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
   const banner = STATUS_BANNER_STYLE[task.status]
   const totalSlips = task.vehicleGroups.reduce((s, g) => s + g.slips.length, 0)
 
@@ -298,7 +301,7 @@ export function DispatchTaskDetailModal({
                         <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
                           {g.slips.map((row) => (
                             <li
-                              key={row.slip.id}
+                              key={row.id}
                               style={{
                                 display: 'flex',
                                 gap: 8,
@@ -318,7 +321,7 @@ export function DispatchTaskDetailModal({
                                 {row.sequence}.
                               </span>
                               <span style={{ fontWeight: 600 }}>
-                                {row.slip.slipNumber}
+                                {row.slip.slipNo}
                               </span>
                               <span style={{ flex: 1 }}>
                                 {row.slip.partnerName}

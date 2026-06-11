@@ -1,6 +1,7 @@
 package com.samhanair.logis.slip.repository.dispatch;
 
 import com.samhanair.logis.slip.domain.dispatch.MatchedDriver;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,4 +12,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface MatchedDriverRepository extends JpaRepository<MatchedDriver, UUID> {
 
     Optional<MatchedDriver> findByVehicleGroupIdAndIsDeletedFalse(UUID vehicleGroupId);
+
+    List<MatchedDriver> findByVehicleGroupIdInAndIsDeletedFalse(List<UUID> vehicleGroupIds);
 }

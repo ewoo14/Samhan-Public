@@ -21,8 +21,7 @@
  *   MOTORCYCLE / DAMAS / TONNAGE_1 / TONNAGE_1_5 / TONNAGE_2_5 / TONNAGE_3 / TONNAGE_5 / TONNAGE_10 / TONNAGE_20.
  *   legacy 2 (TONNAGE_1_4 / TONNAGE_BIG) 는 backward compat 만 — UI 에는 노출 X.
  */
-import { apiClient, type ApiEnvelope } from './client'
-import type { SlipBoardResponse } from './dispatchBoard'
+import { apiClient, type ApiEnvelope, type PageResponse } from './client'
 
 /**
  * Phase A 배차 메뉴 차량 종류 (9 active 값, spec § 4.3).
@@ -125,12 +124,26 @@ export function isEditableStatus(status: DispatchTaskStatus): boolean {
 /**
  * 그룹 안 slip row — BE {@code DispatchVehicleGroupSlipResponse} 와 1:1.
  *
- * @property slip 전체 SlipBoardResponse (slipNumber/partnerCode/partnerName 포함).
+ * @property slip 전표 헤더 (slipNo/partnerCode/partnerName 포함).
  * @property sequence 그룹 안 정차 순서 (1 base).
  */
 export interface DispatchVehicleGroupSlipResponse {
-  slip: SlipBoardResponse
+  id: string
+  slipId: string
   sequence: number
+  slip: DispatchTaskSlipHeaderResponse
+}
+
+/**
+ * DispatchTask 상세 전용 전표 헤더 — Java detail DTO 필드명과 1:1.
+ */
+export interface DispatchTaskSlipHeaderResponse {
+  slipNo: string
+  partnerCode: string
+  partnerName: string
+  deliveryAddress: string | null
+  recipientPhone: string | null
+  dispatchStatus: string | null
 }
 
 /**
@@ -141,11 +154,10 @@ export interface DispatchVehicleGroupSlipResponse {
  */
 export interface MatchedDriverResponse {
   vehicleGroupSequence: number
-  vehicleType: DispatchVehicleType
   driverCode: string
   driverName: string
   driverPhoneNumber: string
-  source: string
+  driverSource: string
 }
 
 /**
@@ -170,6 +182,7 @@ export interface DispatchVehicleGroupResponse {
  * @property taskCode 사용자 노출 식별자 (예: "2026/05/14-1").
  * @property dispatchDate 배차 일자 (yyyy-MM-dd).
  * @property status 11 상태 (Phase A 4 + Phase C 7).
+ * @property arologisDispatchId 아로로지스 배차 식별자 — API path 에만 사용.
  * @property vehicleGroups 차량 그룹 리스트 (sequence 순서 보장).
  * @property matchedDrivers DISPATCHED 시점 채워지는 기사 매칭 결과.
  * @property failureReason FAILED 시점 사유 (UI 빨강 배지 노출).
@@ -183,6 +196,7 @@ export interface DispatchTaskResponse {
   taskCode: string
   dispatchDate: string
   status: DispatchTaskStatus
+  arologisDispatchId: string | null
   vehicleGroups: DispatchVehicleGroupResponse[]
   matchedDrivers: MatchedDriverResponse[]
   failureReason: string | null
@@ -190,6 +204,28 @@ export interface DispatchTaskResponse {
   rejectionReason?: string | null
   modificationRequestedAt?: string | null
   modificationDecidedAt?: string | null
+}
+
+/**
+ * 완료배차 내역 목록 요약 행 — UUID 비공개, taskCode 중심.
+ */
+export interface DispatchTaskSummaryResponse {
+  taskCode: string
+  dispatchDate: string
+  status: DispatchTaskStatus
+  vehicleGroupCount: number
+  slipCount: number
+  partnerNames: string
+  driverCount: number
+  arologisDispatchId: string | null
+}
+
+export interface ListDispatchTasksParams {
+  from?: string
+  to?: string
+  status?: DispatchTaskStatus[]
+  page?: number
+  size?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +257,28 @@ export async function getDispatchTask(
 ): Promise<DispatchTaskResponse> {
   const res = await apiClient.get<ApiEnvelope<DispatchTaskResponse>>(
     `/admin/dispatch-tasks/${taskId}`,
+  )
+  return res.data.data
+}
+
+/**
+ * 완료배차 내역 목록 조회 — `GET /admin/dispatch-tasks`.
+ */
+export async function getDispatchTasks(
+  params: ListDispatchTasksParams,
+): Promise<PageResponse<DispatchTaskSummaryResponse>> {
+  const query = new URLSearchParams()
+  if (params.from) query.set('from', params.from)
+  if (params.to) query.set('to', params.to)
+  for (const status of params.status ?? ['DISPATCHED']) {
+    query.append('status', status)
+  }
+  query.set('page', String(params.page ?? 0))
+  query.set('size', String(params.size ?? 20))
+
+  const res = await apiClient.get<ApiEnvelope<PageResponse<DispatchTaskSummaryResponse>>>(
+    '/admin/dispatch-tasks',
+    { params: query },
   )
   return res.data.data
 }
