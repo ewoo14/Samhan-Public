@@ -35,13 +35,17 @@ import com.samhanair.logis.product.audit.web.ProductAuditLogController;
 import com.samhanair.logis.product.editrequest.domain.ProductEditRequest;
 import com.samhanair.logis.product.editrequest.service.ProductEditRequestService;
 import com.samhanair.logis.product.editrequest.web.ProductEditRequestController;
+import com.samhanair.logis.product.realtime.ProductCatalogChangePublisher;
+import com.samhanair.logis.product.realtime.ProductCatalogRealtimeController;
 import com.samhanair.logis.product.realtime.ProductRealtimeBroker;
 import com.samhanair.logis.product.realtime.ProductRealtimeController;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
+import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.SpecKeyTemplateRepository;
+import com.samhanair.logis.product.service.BundleComponentService;
 import com.samhanair.logis.product.service.CategoryService;
 import com.samhanair.logis.product.service.EcountProductImporter;
 import com.samhanair.logis.product.service.ProductLookupSheetSyncService;
@@ -118,7 +122,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
                 ProductLookupController.class,
                 ProductEditRequestController.class,
                 ProductAuditLogController.class,
-                ProductRealtimeController.class
+                ProductRealtimeController.class,
+                ProductCatalogRealtimeController.class
         },
         properties = "spring.application.name=product-service")
 @Import({
@@ -155,6 +160,11 @@ class ProductPermissionControllerIT {
     @MockBean private ProductAuditLogService auditLogService;
     @MockBean private ProductRealtimeBroker realtimeBroker;
     @MockBean private JpaMetamodelMappingContext jpaMetamodelMappingContext;
+    // §1c/§1d 신규 빈 (ProductCatalogController 신규 의존성 — feedback_it_mockbean_external_clients.md)
+    @MockBean private BundleComponentService bundleComponentService;
+    @MockBean private BundleComponentRepository bundleComponentRepository;
+    // P3-1: SSE publish 시점 통일 게이트웨이 (ProductCatalogController 신규 의존성)
+    @MockBean private ProductCatalogChangePublisher catalogChangePublisher;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -238,6 +248,11 @@ class ProductPermissionControllerIT {
         lenient().when(categoryService.getTree()).thenReturn(List.of(category));
         lenient().when(categoryService.create(any())).thenReturn(category);
         lenient().when(categoryService.update(any(), any())).thenReturn(category);
+        // §1b/§1c lenient stub (ProductCatalogController 신규 경로 — N+1 방지 벌크 count)
+        lenient().when(bundleComponentRepository.countMapByBundleProductIds(any()))
+                .thenReturn(Map.of());
+        lenient().when(bundleComponentService.listComponents(anyString())).thenReturn(List.of());
+        lenient().when(bundleComponentService.replaceComponents(anyString(), any(), any())).thenReturn(List.of());
         lenient().doNothing().when(googleSheetsClient).invalidateCache();
         lenient().when(productSheetSyncService.syncAll()).thenReturn(new ProductSheetSyncService.SyncSummary());
         lenient().when(ecountProductImporter.importCsv(any(), any(), any(), anyString()))
@@ -421,7 +436,23 @@ class ProductPermissionControllerIT {
                 new EndpointCase("edit requests by product", "products.edit-requests", PermissionAction.VIEW, "STAFF", 200,
                         () -> get("/products/{id}/edit-requests", PRODUCT_ID)),
                 new EndpointCase("product realtime", "products.list.view", PermissionAction.VIEW, "STAFF", 200,
-                        () -> get("/products/{id}/realtime", PRODUCT_ID))
+                        () -> get("/products/{id}/realtime", PRODUCT_ID)),
+                // §1c/§1d (P2-5 2026-06-11) — components GET/PUT + display-orders PUT 권한 가드
+                new EndpointCase("bundle components list", "products.list", PermissionAction.VIEW, "SALES", 200,
+                        () -> get("/api/v1/products/MODEL-1/components")),
+                new EndpointCase("bundle components replace", "products.admin", PermissionAction.UPDATE, "MANAGER", 200,
+                        () -> put("/api/v1/products/MODEL-1/components")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("[{\"componentProductCode\":\"IDU-001\",\"defaultQty\":1,\"qtyMode\":\"FOLLOW_SET\","
+                                        + "\"componentKind\":\"INDOOR\",\"isDefault\":true}]")),
+                new EndpointCase("display orders update", "products.admin", PermissionAction.UPDATE, "MANAGER", 204,
+                        () -> put("/api/v1/products/display-orders")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("[{\"modelCode\":\"MODEL-1\",\"displayOrder\":1}]")),
+                // §2-2 (D fix 2026-06-11) — catalog-realtime SSE 구독 권한 가드 (products.list VIEW)
+                new EndpointCase("catalog realtime sse", "products.list", PermissionAction.VIEW, "SALES", 200,
+                        () -> get("/api/v1/products/catalog-realtime")
+                                .accept(MediaType.TEXT_EVENT_STREAM))
         );
     }
 

@@ -51,9 +51,27 @@ interface Props {
   onClose: () => void
   /** 조회 대상 라인 — {productId, modelName, productName}. UUID 화면 미노출. */
   lines: StockBalanceLookupLine[]
+  /**
+   * 세트 전용 안내 (§2-2 세트 재고 가드).
+   * 선택된 라인이 모두 BUNDLE 인 경우 호출자가 empty lines + true 로 전달.
+   * true 시 재고 조회 대신 안내 메시지를 표시한다.
+   */
+  bundleOnlyLines?: boolean
+  /**
+   * 혼합 선택 시 제외된 세트 품목 수 (P2-3).
+   * 0 또는 undefined 이면 캡션 미표시.
+   * bundleOnlyLines=true 시에는 캡션 대신 전용 안내가 표시되므로 무시.
+   */
+  excludedBundleCount?: number
 }
 
-export function InventoryLookupModal({ open, onClose, lines }: Props) {
+export function InventoryLookupModal({
+  open,
+  onClose,
+  lines,
+  bundleOnlyLines = false,
+  excludedBundleCount = 0,
+}: Props) {
   /** 0수량 창고도 표시 여부 (기본 OFF). 모달 재오픈 시 초기화 (P1-2). */
   const [showZero, setShowZero] = useState(false)
 
@@ -68,7 +86,8 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
       lines.map((l) => l.productId).sort().join(','),
     ],
     queryFn: () => fetchProductBalancesMatrix(lines),
-    enabled: open && lines.length > 0,
+    // bundleOnlyLines 시 라인이 비어 있으므로 enabled=false — 쿼리 미실행
+    enabled: open && lines.length > 0 && !bundleOnlyLines,
     staleTime: 30_000,
   })
 
@@ -131,9 +150,11 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
     </span>
   )
 
-  /** 서브헤더 — "선택 품목 N건 · 조회 창고 M개" (Designer P1-4). */
+  /** 서브헤더 — "선택 품목 N건 · 조회 창고 M개" (Designer P1-4). bundleOnlyLines 시 안내 문구. */
   const modalDescription =
-    query.isSuccess
+    bundleOnlyLines
+      ? '세트 품목 선택됨'
+      : query.isSuccess
       ? `선택 품목 ${lineCount}건 · 조회 창고 ${colCount}개`
       : `선택 품목 ${lineCount}건`
 
@@ -154,8 +175,56 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
         data-testid="inventory-lookup-modal"
         style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
       >
+        {/* 혼합 선택 안내 — 세트+단품 혼합 시 제외된 세트 건수 표시 (P2-3) */}
+        {!bundleOnlyLines && excludedBundleCount > 0 && (
+          <div
+            role="status"
+            data-testid="inventory-lookup-mixed-bundle-notice"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 4,
+              background: 'var(--color-neutral-50, #F7F8FA)',
+              border: '1px solid var(--color-border, #E5E7EB)',
+              fontSize: 12,
+              color: 'var(--ink-secondary, #5C6773)',
+            }}
+          >
+            세트 {excludedBundleCount}건은 제외됨 (구성품 단위로 조회됩니다)
+          </div>
+        )}
+
+        {/* 세트 전용 안내 — BUNDLE 품목만 선택된 경우 (§2-2 세트 재고 가드) */}
+        {bundleOnlyLines && (
+          <div
+            role="status"
+            data-testid="inventory-lookup-bundle-only-notice"
+            style={{
+              textAlign: 'center',
+              padding: '32px 24px',
+              color: 'var(--ink-secondary, #5C6773)',
+              fontSize: 14,
+              lineHeight: 1.8,
+              background: 'var(--surface-subtle, #F4F6F8)',
+              borderRadius: 8,
+              minHeight: 120,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <strong style={{ color: 'var(--ink-primary, #1A1F2E)', fontSize: 15 }}>
+              세트 품목은 재고를 표시하지 않습니다
+            </strong>
+            <span style={{ fontSize: 13, color: 'var(--ink-tertiary, #8A95A4)' }}>
+              재고는 구성품 단위로 조회됩니다.
+            </span>
+          </div>
+        )}
+
         {/* 로딩 상태 */}
-        {query.isPending && (
+        {!bundleOnlyLines && query.isPending && (
           <div
             role="status"
             data-testid="inventory-lookup-loading"
@@ -176,7 +245,7 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
         )}
 
         {/* 에러 상태 */}
-        {query.isError && (
+        {!bundleOnlyLines && query.isError && (
           <div
             role="alert"
             data-testid="inventory-lookup-error"
@@ -201,7 +270,7 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
         )}
 
         {/* 빈 상태 (데이터는 있지만 행 없음) */}
-        {query.isSuccess && matrix && matrix.rows.length === 0 && (
+        {!bundleOnlyLines && query.isSuccess && matrix && matrix.rows.length === 0 && (
           <div
             style={{
               textAlign: 'center',
@@ -215,7 +284,7 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
         )}
 
         {/* 창고 없음 (0토글 OFF 상태 + 모든 창고 0) — 가이드 §4.3 문구 */}
-        {query.isSuccess && matrix && matrix.rows.length > 0 && visibleCols.length === 0 && (
+        {!bundleOnlyLines && query.isSuccess && matrix && matrix.rows.length > 0 && visibleCols.length === 0 && (
           <div
             style={{
               textAlign: 'center',
@@ -231,7 +300,7 @@ export function InventoryLookupModal({ open, onClose, lines }: Props) {
         )}
 
         {/* 매트릭스 표 */}
-        {query.isSuccess && matrix && matrix.rows.length > 0 && visibleCols.length > 0 && (
+        {!bundleOnlyLines && query.isSuccess && matrix && matrix.rows.length > 0 && visibleCols.length > 0 && (
           <div
             role="region"
             aria-label="재고 매트릭스"

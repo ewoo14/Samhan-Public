@@ -4,9 +4,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.samhanair.logis.product.domain.BundleComponent;
+import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
@@ -14,6 +17,7 @@ import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
+import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
@@ -54,6 +58,9 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
 
     @Autowired
     private ProductSpecRepository productSpecRepository;
+
+    @Autowired
+    private BundleComponentRepository bundleComponentRepository;
 
     @MockBean
     private DynamicPermissionClient dynamicPermissionClient;
@@ -430,6 +437,377 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         // DB 확인 — usageScopeManual=false
         productRepository.findByModelNameAndIsDeletedFalse("MC_NULL_EVICT_01")
                 .ifPresent(p -> org.assertj.core.api.Assertions.assertThat(p.isUsageScopeManual()).isFalse());
+    }
+
+    /**
+     * §2-1: PUT /api/v1/products/display-orders — 다른 카테고리 혼합 시 400 INVALID_INPUT.
+     *
+     * <p>displayOrder 는 카테고리 내 정렬 ({@code findExposedCatalog} 소비) 이므로
+     * 전역 재번호(다른 카테고리 혼합) 는 금지. 혼합 시 400 응답.
+     */
+    @Test
+    void PUT_display_orders_다른_카테고리_혼합_400() throws Exception {
+        Category catM = categoryRepository.save(Category.create("CAT-MIX-M", "mix test M", null, 20));
+        Category catS = categoryRepository.save(Category.create("CAT-MIX-S", "mix test S", null, 21));
+        productRepository.save(Product.seedFromSheet("Mix Home", "MIX_HOME_01", catM,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI));
+        productRepository.save(Product.seedFromSheet("Mix Single", "MIX_SINGLE_01", catS,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.SINGLE_SET, UsageScope.BOTH, null));
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/display-orders")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"modelCode":"MIX_HOME_01","displayOrder":1},
+                                  {"modelCode":"MIX_SINGLE_01","displayOrder":2}
+                                ]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    // =========================================================================
+    // [B+componentCount] (2026-06-11) — 구성품 CRUD + componentCount 실-HTTP 회귀
+    // =========================================================================
+
+    /**
+     * (a) GET /api/v1/products/{code}/components — BUNDLE 구성품 목록 200 + displayOrder 1-based.
+     */
+    @Test
+    void GET_components_BUNDLE_구성품_목록_displayOrder_1based() throws Exception {
+        seedBundleWithComponents("BNDL_GET_01", "GET_IDU_01", "GET_ODU_01");
+
+        mvc.perform(get("/api/v1/products/BNDL_GET_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].componentProductCode").value("GET_IDU_01"))
+                .andExpect(jsonPath("$[0].displayOrder").value(1))
+                .andExpect(jsonPath("$[1].componentProductCode").value("GET_ODU_01"))
+                .andExpect(jsonPath("$[1].displayOrder").value(2));
+    }
+
+    /**
+     * (b) PUT replace-all 왕복 후 GET 재조회 정합 (순서/필드).
+     */
+    @Test
+    void PUT_components_replace_all_왕복_GET_재조회_정합() throws Exception {
+        // 부모 BUNDLE + 구성 후보 2종 시드 (초기 구성품은 없음)
+        seedBundleParent("BNDL_PUT_01");
+        seedComponentProduct("PUT_IDU_01", "실내기 PUT");
+        seedComponentProduct("PUT_ODU_01", "실외기 PUT");
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/BNDL_PUT_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"componentProductCode":"PUT_ODU_01","defaultQty":1,"qtyMode":"FOLLOW_SET",
+                                   "componentKind":"OUTDOOR","isDefault":true,"specText":"규격O"},
+                                  {"componentProductCode":"PUT_IDU_01","defaultQty":2,"qtyMode":"FIXED",
+                                   "componentKind":"INDOOR","isDefault":false,"specText":"규격I"}
+                                ]
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].componentProductCode").value("PUT_ODU_01"))
+                .andExpect(jsonPath("$[0].displayOrder").value(1))
+                .andExpect(jsonPath("$[1].componentProductCode").value("PUT_IDU_01"))
+                .andExpect(jsonPath("$[1].displayOrder").value(2));
+
+        // GET 재조회 — 순서/필드 왕복 정합 단언
+        // (defaultQty 는 DB NUMERIC(5,2) 재읽기로 scale 이 붙어(2.00 등) JSON 숫자 타입 비교가
+        //  취약하므로 comparesEqualTo(BigDecimal) 로 단언. 구조/순서 필드는 그대로 단언.)
+        mvc.perform(get("/api/v1/products/BNDL_PUT_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].componentProductCode").value("PUT_ODU_01"))
+                .andExpect(jsonPath("$[0].displayOrder").value(1))
+                .andExpect(jsonPath("$[0].componentKind").value("OUTDOOR"))
+                // DB NUMERIC(5,2) 재읽기 → JSON 1.00 (json-smart Double 1.0)
+                .andExpect(jsonPath("$[0].defaultQty").value(1.0))
+                .andExpect(jsonPath("$[0].isDefault").value(true))
+                .andExpect(jsonPath("$[0].specText").value("규격O"))
+                .andExpect(jsonPath("$[1].componentProductCode").value("PUT_IDU_01"))
+                .andExpect(jsonPath("$[1].displayOrder").value(2))
+                .andExpect(jsonPath("$[1].componentKind").value("INDOOR"))
+                .andExpect(jsonPath("$[1].defaultQty").value(2.0))
+                .andExpect(jsonPath("$[1].qtyMode").value("FIXED"));
+    }
+
+    /**
+     * (c) 비-BUNDLE PUT → 409 CONFLICT.
+     */
+    @Test
+    void PUT_components_비BUNDLE_409() throws Exception {
+        // API_HOME_01 은 setupMvc 에서 SINGLE 로 시드됨
+        seedComponentProduct("C_IDU_01", "실내기 C");
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/API_HOME_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"componentProductCode":"C_IDU_01","defaultQty":1,"qtyMode":"FOLLOW_SET",
+                                  "componentKind":"INDOOR","isDefault":true}]
+                                """))
+                .andExpect(status().isConflict());
+    }
+
+    /**
+     * (d-1) 자기참조 구성품 PUT → 400 BAD_REQUEST.
+     */
+    @Test
+    void PUT_components_자기참조_400() throws Exception {
+        seedBundleParent("BNDL_SELF_01");
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/BNDL_SELF_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"componentProductCode":"BNDL_SELF_01","defaultQty":1,"qtyMode":"FOLLOW_SET",
+                                  "componentKind":"ACCESSORY","isDefault":false}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * (d-2) 중복 componentProductCode PUT → 400 BAD_REQUEST.
+     */
+    @Test
+    void PUT_components_중복코드_400() throws Exception {
+        seedBundleParent("BNDL_DUP_01");
+        seedComponentProduct("DUP_IDU_01", "실내기 DUP");
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/BNDL_DUP_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"componentProductCode":"DUP_IDU_01","defaultQty":1,"qtyMode":"FOLLOW_SET",
+                                   "componentKind":"INDOOR","isDefault":true},
+                                  {"componentProductCode":"DUP_IDU_01","defaultQty":2,"qtyMode":"FOLLOW_SET",
+                                   "componentKind":"INDOOR","isDefault":false}
+                                ]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * (d-3) 미해소 구성코드(model_code 없는 행) PUT → 400 BAD_REQUEST.
+     *
+     * <p>[A] fix: 해소 검증은 modelCode-only(expander 와 동일 축). model_name 만 있는
+     * 레거시 행을 구성품으로 지정하면 전개 시 못 찾으므로 사전 400 거부한다.
+     */
+    @Test
+    void PUT_components_미해소코드_400() throws Exception {
+        seedBundleParent("BNDL_UNRES_01");
+        // model_code 없이 model_name 만 있는 레거시 품목 (modelCode-only 검증에서 미해소)
+        Category cat = categoryRepository.save(Category.create("CAT-UNRES", "unres", null, 31));
+        Product legacy = Product.create("레거시 실내기", "UNRES_NAME_ONLY_01", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, "KRW", Map.of(), null);
+        legacy.changeUsage(UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        productRepository.save(legacy);
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/BNDL_UNRES_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"componentProductCode":"UNRES_NAME_ONLY_01","defaultQty":1,"qtyMode":"FOLLOW_SET",
+                                  "componentKind":"INDOOR","isDefault":true}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * (e) GET /api/v1/products 응답 componentCount 실값 (벌크 projection 실 SQL 실행) 단언.
+     */
+    @Test
+    void GET_products_componentCount_실값_단언() throws Exception {
+        seedBundleWithComponents("BNDL_CNT_01", "CNT_IDU_01", "CNT_ODU_01");
+
+        // BUNDLE 품목은 componentCount=2, SINGLE 품목(API_HOME_01)은 0.
+        // 필터 jsonPath 는 indefinite path → JSONArray 반환이므로 hasItem 매처로 단언.
+        mvc.perform(get("/api/v1/products?usageScope=BOTH&category=HOME_MULTI")
+                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.modelCode == 'BNDL_CNT_01')].componentCount",
+                        org.hamcrest.Matchers.hasItem(2)))
+                .andExpect(jsonPath("$.content[?(@.modelCode == 'API_HOME_01')].componentCount",
+                        org.hamcrest.Matchers.hasItem(0)));
+    }
+
+    /**
+     * (f) 동일코드 유지 편집(soft-delete→flush→INSERT 부분 유니크) 200 + 재조회.
+     *
+     * <p>P1-D: 동일 component_product_code 를 유지한 채 수량만 변경하면
+     * 기존 active 행 soft-delete 후 동일 코드 재INSERT 가 발생한다. 부분 유니크 인덱스
+     * (bundle_product_id, component_product_code, is_deleted=false) 위반 없이 200 으로 통과해야 한다.
+     */
+    @Test
+    void PUT_components_동일코드_유지_편집_200_재조회() throws Exception {
+        seedBundleWithComponents("BNDL_SAME_01", "SAME_IDU_01", "SAME_ODU_01");
+
+        // 동일 코드(SAME_IDU_01, SAME_ODU_01) 유지하되 수량/순서 변경
+        mvc.perform(put("/api/v1/products/BNDL_SAME_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"componentProductCode":"SAME_IDU_01","defaultQty":5,"qtyMode":"FOLLOW_SET",
+                                   "componentKind":"INDOOR","isDefault":true},
+                                  {"componentProductCode":"SAME_ODU_01","defaultQty":3,"qtyMode":"FOLLOW_SET",
+                                   "componentKind":"OUTDOOR","isDefault":true}
+                                ]
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].componentProductCode").value("SAME_IDU_01"))
+                // PUT 응답은 갓 저장한 엔티티(스케일0 BigDecimal) → JSON 정수 5
+                .andExpect(jsonPath("$[0].defaultQty").value(5));
+
+        // 재조회 — active 행이 정확히 2개(중복 active 없음) + 변경 수량 반영.
+        // DB NUMERIC(5,2) 재읽기 → JSON 5.00/3.00 (json-smart Double)
+        mvc.perform(get("/api/v1/products/BNDL_SAME_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].componentProductCode").value("SAME_IDU_01"))
+                .andExpect(jsonPath("$[0].defaultQty").value(5.0))
+                .andExpect(jsonPath("$[1].componentProductCode").value("SAME_ODU_01"))
+                .andExpect(jsonPath("$[1].defaultQty").value(3.0));
+    }
+
+    /**
+     * (g) #1 박제: PUT components 요소 제약(@DecimalMax 999.99) 위반 → 400 (500 아님).
+     *
+     * <p>클래스 레벨 {@code @Validated} + {@code @Valid @RequestBody List<DTO>} 라서 요소의
+     * {@code @DecimalMax("999.99")} 위반은 {@code jakarta.validation.ConstraintViolationException}
+     * 으로 throw 된다. GlobalExceptionHandler 에 핸들러가 없으면 catch-all 500 으로 위장되므로
+     * 400 단언으로 K-fix 완결을 박제한다(defaultQty=1000.00 → NUMERIC(5,2) 상한 초과).
+     */
+    @Test
+    void PUT_components_defaultQty_상한초과_400() throws Exception {
+        seedBundleParent("BNDL_MAXQTY_01");
+        seedComponentProduct("MAXQTY_IDU_01", "실내기 MAXQTY");
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/BNDL_MAXQTY_01/components")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"componentProductCode":"MAXQTY_IDU_01","defaultQty":1000.00,"qtyMode":"FOLLOW_SET",
+                                  "componentKind":"INDOOR","isDefault":true}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * (h) #18 PUT /display-orders happy-path: 동일 estimateCategory 2건 → 204 →
+     * display_order DB 반영 단언 + GET /api/v1/products 순서 역전 단언.
+     *
+     * <p>m1(처음 displayOrder=10), m2(처음 displayOrder=20) 을 시드한 뒤
+     * PUT [{m1,2},{m2,1}] 로 순서를 역전시키고, DB display_order 값과 목록 순서(m2 먼저)를 단언한다.
+     */
+    @Test
+    void PUT_display_orders_정상경로_204_DB반영_및_목록순서_역전() throws Exception {
+        Category cat = categoryRepository.save(Category.create("CAT-DOHP", "display-order happy", null, 22));
+        Product m1 = Product.seedFromSheet("표시순서 M1", "DOHP_M1", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        m1.changeDisplayOrder(10);
+        Product m2 = Product.seedFromSheet("표시순서 M2", "DOHP_M2", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        m2.changeDisplayOrder(20);
+        productRepository.save(m1);
+        productRepository.save(m2);
+        productRepository.flush();
+
+        // PUT 순서 역전: m1→2, m2→1 (이제 m2 가 앞)
+        mvc.perform(put("/api/v1/products/display-orders")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"modelCode":"DOHP_M1","displayOrder":2},
+                                  {"modelCode":"DOHP_M2","displayOrder":1}
+                                ]
+                                """))
+                .andExpect(status().isNoContent());
+
+        // DB display_order 값 단언
+        productRepository.flush();
+        var m1After = productRepository.findByModelCodeAndIsDeletedFalse("DOHP_M1");
+        var m2After = productRepository.findByModelCodeAndIsDeletedFalse("DOHP_M2");
+        org.assertj.core.api.Assertions.assertThat(m1After).isPresent();
+        org.assertj.core.api.Assertions.assertThat(m2After).isPresent();
+        org.assertj.core.api.Assertions.assertThat(m1After.get().getDisplayOrder()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(m2After.get().getDisplayOrder()).isEqualTo(1);
+
+        // GET /api/v1/products 순서 역전 단언 — q=DOHP_ 로 좁혀 결정적 검증 (m2 먼저, m1 나중)
+        mvc.perform(get("/api/v1/products?q=DOHP_")
+                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].modelCode").value("DOHP_M2"))
+                .andExpect(jsonPath("$.content[1].modelCode").value("DOHP_M1"));
+    }
+
+    // ── 시드 헬퍼 ───────────────────────────────────────────────────────────
+
+    /** 부모 BUNDLE(EXPAND) 품목 1건 저장 (구성품 없음). category=HOME_MULTI, usage=BOTH. */
+    private Product seedBundleParent(String modelCode) {
+        Category cat = categoryRepository.save(Category.create("CAT-" + modelCode, "bundle parent", null, 30));
+        Product parent = Product.seedFromSheet("세트 " + modelCode, modelCode, cat,
+                BigDecimal.valueOf(1_000_000), BigDecimal.valueOf(800_000), ProductType.BUNDLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        parent.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        return productRepository.save(parent);
+    }
+
+    /** 구성 후보 품목(SINGLE) 1건 저장 — model_code 채워진 정상 행(해소 가능). */
+    private Product seedComponentProduct(String modelCode, String name) {
+        Category cat = categoryRepository.save(Category.create("CAT-" + modelCode, "component", null, 30));
+        Product comp = Product.seedFromSheet(name, modelCode, cat,
+                BigDecimal.valueOf(300_000), BigDecimal.valueOf(250_000), ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        return productRepository.save(comp);
+    }
+
+    /**
+     * 부모 BUNDLE + 구성품 2건(displayOrder 1,2) 직접 INSERT 시드.
+     *
+     * <p>#19 판별성 강화: 삽입 순서를 displayOrder 와 <b>역순</b>으로 한다 —
+     * ODU(displayOrder=2) 를 먼저 save 하고 IDU(displayOrder=1) 를 나중에 save.
+     * 이렇게 하면 GET 의 {@code ORDER BY display_order} 가 누락될 경우 결과 [0] 이
+     * 삽입 순서대로 ODU 가 되어 {@code GET[0]=IDU(displayOrder 1)} 단언이 즉시 실패한다
+     * (삽입순=displayOrder 였던 기존 시드는 ORDER BY 부재를 검출하지 못했음).
+     */
+    private void seedBundleWithComponents(String parentCode, String idu, String odu) {
+        Product parent = seedBundleParent(parentCode);
+        seedComponentProduct(idu, "실내기 " + idu);
+        seedComponentProduct(odu, "실외기 " + odu);
+        productRepository.flush();
+
+        // ODU 를 먼저 save 하되 displayOrder=2 (삽입순 != 표시순서)
+        BundleComponent c2 = BundleComponent.seed(parent.getId(), odu,
+                BigDecimal.ONE, BundleComponent.QtyMode.FOLLOW_SET,
+                BundleComponent.ComponentKind.OUTDOOR, null, true, "규격O");
+        c2.changeDisplayOrder(2);
+        bundleComponentRepository.save(c2);
+        bundleComponentRepository.flush();
+
+        // IDU 를 나중에 save 하되 displayOrder=1 → ORDER BY 부재 시 GET[0]=ODU 로 단언 실패
+        BundleComponent c1 = BundleComponent.seed(parent.getId(), idu,
+                BigDecimal.ONE, BundleComponent.QtyMode.FOLLOW_SET,
+                BundleComponent.ComponentKind.INDOOR, null, true, "규격I");
+        c1.changeDisplayOrder(1);
+        bundleComponentRepository.save(c1);
+        bundleComponentRepository.flush();
     }
 
     private Product saveModelNameOnlyProduct(String modelName) {

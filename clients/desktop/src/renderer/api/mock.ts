@@ -772,9 +772,7 @@ const MOCK_BRANCH_PIPE_ROWS = [
   { branchCode: '4119', description: null, summaryQty: null },
 ]
 
-// MOCK_PRODUCT_CATALOG_ROWS: mutable 로 선언하여 PATCH/DELETE 가 업데이트 가능.
-// usageScopeManual / displayOrder 필드 추가 (PR-B 확장).
-let MOCK_PRODUCT_CATALOG_ROWS: Array<{
+type MockProductCatalogRow = {
   modelCode: string
   name: string
   usageScope: string
@@ -786,19 +784,111 @@ let MOCK_PRODUCT_CATALOG_ROWS: Array<{
   hasVariableDiscount: boolean
   legacyDiscountFlag: boolean
   discountFlags: null
-}> = Object.values(MOCK_PRODUCTS_BY_MODEL).map((p, index) => ({
-  modelCode: p.modelName,
-  name: p.productName,
-  usageScope: index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
-  estimateCategory: index % 2 === 0 ? 'HOME_MULTI' : 'OTHER',
-  usageScopeManual: false,
-  displayOrder: index + 1,
-  releasePrice: Number(p.sellingPrice),
-  deliveryPrice: Number(p.sellingPrice),
-  hasVariableDiscount: false,
-  legacyDiscountFlag: false,
-  discountFlags: null,
-}))
+  productType: string
+  componentCount: number
+}
+
+// MOCK_PRODUCT_CATALOG_ROWS: mutable 로 선언하여 PATCH/DELETE 가 업데이트 가능.
+// usageScopeManual / displayOrder 필드 추가 (PR-B 확장).
+// productType / componentCount 추가 (PR-E 확장).
+let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
+  ...Object.values(MOCK_PRODUCTS_BY_MODEL).map((p, index) => {
+    const isBundle = p.productType === 'BUNDLE'
+    return {
+      modelCode: p.modelName,
+      name: p.productName,
+      usageScope: index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
+      estimateCategory: index % 2 === 0 ? 'HOME_MULTI' : 'OTHER',
+      usageScopeManual: false,
+      displayOrder: index + 1,
+      releasePrice: Number(p.sellingPrice),
+      deliveryPrice: Number(p.sellingPrice),
+      hasVariableDiscount: false,
+      legacyDiscountFlag: false,
+      discountFlags: null,
+      productType: p.productType ?? 'SINGLE',
+      componentCount: isBundle ? 3 : 0,
+    }
+  }),
+  // §2-1 NONE 품목 시드 — 노출 한정 시나리오 검증용 (displayOrder=null, 정렬 대상 제외).
+  {
+    modelCode: 'MOCK-NONE-ITEM',
+    name: '미노출 품목 (테스트)',
+    usageScope: 'NONE' as const,
+    estimateCategory: null,
+    usageScopeManual: false,
+    displayOrder: null,
+    releasePrice: 0,
+    deliveryPrice: 0,
+    hasVariableDiscount: false,
+    legacyDiscountFlag: false,
+    discountFlags: null,
+    productType: 'SINGLE',
+    componentCount: 0,
+  },
+]
+
+let mockProductCatalogExtraRowsSeeded = false
+
+/**
+ * Playwright 회귀 전용 대량 fixture 주입.
+ * in-process mock 은 route() 로 가로챌 수 없어 globalThis seed 를 모듈 로드 후 1회 반영한다.
+ */
+function ensureMockProductCatalogRowsSeeded() {
+  if (mockProductCatalogExtraRowsSeeded) return
+  mockProductCatalogExtraRowsSeeded = true
+  const seed = (globalThis as Record<string, unknown>)['__SAMHAN_MOCK_PRODUCT_CATALOG_EXTRA_ROWS']
+  if (!Array.isArray(seed)) return
+
+  const existing = new Set(MOCK_PRODUCT_CATALOG_ROWS.map((row) => row.modelCode))
+  const extraRows = seed
+    .map((raw): MockProductCatalogRow | null => {
+      if (!raw || typeof raw !== 'object') return null
+      const row = raw as Partial<MockProductCatalogRow>
+      const modelCode = String(row.modelCode ?? '').trim()
+      if (!modelCode || existing.has(modelCode)) return null
+      existing.add(modelCode)
+      return {
+        modelCode,
+        name: String(row.name ?? modelCode),
+        usageScope: String(row.usageScope ?? 'BOTH'),
+        estimateCategory: row.estimateCategory == null ? null : String(row.estimateCategory),
+        usageScopeManual: Boolean(row.usageScopeManual ?? false),
+        displayOrder: row.displayOrder == null ? null : Number(row.displayOrder),
+        releasePrice: Number(row.releasePrice ?? 0),
+        deliveryPrice: Number(row.deliveryPrice ?? 0),
+        hasVariableDiscount: Boolean(row.hasVariableDiscount ?? false),
+        legacyDiscountFlag: Boolean(row.legacyDiscountFlag ?? false),
+        discountFlags: null,
+        productType: String(row.productType ?? 'SINGLE'),
+        componentCount: Number(row.componentCount ?? 0),
+      }
+    })
+    .filter((row): row is MockProductCatalogRow => row != null)
+
+  if (extraRows.length > 0) {
+    MOCK_PRODUCT_CATALOG_ROWS = [...MOCK_PRODUCT_CATALOG_ROWS, ...extraRows]
+  }
+}
+
+// 구성품 데이터 (BUNDLE 품목 전용) — BE BundleComponentResponse 1:1 동형 — PUT replace-all 로 업데이트됨.
+let MOCK_BUNDLE_COMPONENTS: Record<string, Array<{
+  componentProductCode: string
+  componentName: string
+  defaultQty: number
+  qtyMode: 'FIXED' | 'FOLLOW_SET'
+  componentKind: 'INDOOR' | 'OUTDOOR' | 'PANEL' | 'REMOTE' | 'MATERIAL' | 'ACCESSORY' | 'FOOT'
+  componentVariant: string | null
+  isDefault: boolean
+  specText: string | null
+  displayOrder: number
+}>> = {
+  'SET-HM2WAY': [
+    { componentProductCode: 'AJ040RXH4BC1', componentName: '시스템에어컨 4Way 4HP', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'INDOOR', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 1 },
+    { componentProductCode: 'AJ100NCDKH', componentName: '실외기 10HP', defaultQty: 1, qtyMode: 'FOLLOW_SET', componentKind: 'OUTDOOR', componentVariant: null, isDefault: true, specText: '10HP', displayOrder: 2 },
+    { componentProductCode: 'MWR-WE10N', componentName: '유선 리모컨 (WE10N)', defaultQty: 2, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: null, isDefault: false, specText: null, displayOrder: 3 },
+  ],
+}
 
 let mockProductSpecsByModel: Record<string, Array<{
   id: string
@@ -1115,6 +1205,166 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(MOCK_PRODUCT_CATEGORIES)
   }
 
+  // PUT /api/v1/products/display-orders — 표시 순서 일괄 갱신 (드래그 후 저장)
+  // 경로 우선순위: 리터럴 /display-orders 가 /{modelCode}/components 패턴보다 먼저 매칭돼야 함.
+  if (method === 'PUT' && url.match(/\/api\/v1\/products\/display-orders(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('products.admin', 'update')
+    if (denied) return denied
+    ensureMockProductCatalogRowsSeeded()
+    const body = parseMockBody(config)
+    const orders = Array.isArray(body) ? (body as Array<{ modelCode?: unknown; displayOrder?: unknown }>) : []
+    // [#20] BE updateDisplayOrders 동형 — 빈 배열은 no-op 으로 204 성공(기존: 400 BAD_REQUEST 오정).
+    //   BE: `if (requests == null || requests.isEmpty()) return;` → 컨트롤러 204 No Content.
+    if (orders.length === 0) {
+      return { updated: true }
+    }
+    // [#10] BE updateDisplayOrders H fix 동형 — 요청 내 중복 modelCode → 400 INVALID_INPUT.
+    //   같은 modelCode 가 두 번 들어오면 마지막 값으로 덮어써 의도와 다른 순서가 저장된다.
+    const seenModelCodes = new Set<string>()
+    for (const o of orders as Array<{ modelCode?: unknown; displayOrder?: unknown }>) {
+      const code = String(o.modelCode ?? '').trim()
+      if (!code) {
+        return mockError(400, 'INVALID_INPUT', 'modelCode는 필수입니다')
+      }
+      if (o.displayOrder == null || !isFinite(Number(o.displayOrder))) {
+        return mockError(400, 'INVALID_INPUT', 'displayOrder는 필수입니다')
+      }
+      if (seenModelCodes.has(code)) {
+        return mockError(400, 'INVALID_INPUT', `표시 순서 갱신에 중복 modelCode 가 있습니다: ${code}`)
+      }
+      seenModelCodes.add(code)
+    }
+    // 미존재 modelCode 404 전건 롤백 (BE BundleComponentService.updateDisplayOrders 동형)
+    // 하나라도 카탈로그에 없으면 EntityNotFoundException→404, 부분 적용 없음.
+    const missing = (orders as Array<{ modelCode?: unknown }>).find(
+      (o) => !MOCK_PRODUCT_CATALOG_ROWS.some((r) => r.modelCode === String(o.modelCode ?? '')),
+    )
+    if (missing) {
+      return mockError(404, 'NOT_FOUND', '품목을 찾을 수 없습니다.')
+    }
+    // estimateCategory 혼합 400 검증 (BE c91e5e2f 시멘틱 동형)
+    // 전송된 modelCode 들이 서로 다른 estimateCategory 를 가지면 400
+    const affectedRows = (orders as Array<{ modelCode?: unknown }>)
+      .map((o) => MOCK_PRODUCT_CATALOG_ROWS.find((r) => r.modelCode === String(o.modelCode ?? '')))
+      .filter((r): r is NonNullable<typeof r> => r != null)
+    const distinctCategories = new Set(affectedRows.map((r) => r.estimateCategory ?? '__NULL__'))
+    if (distinctCategories.size > 1) {
+      return mockError(
+        400,
+        'INVALID_INPUT',
+        '표시 순서 일괄 갱신은 동일 견적 카테고리(estimateCategory) 품목만 허용됩니다.',
+      )
+    }
+    MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => {
+      const entry = orders.find((o) => String(o.modelCode ?? '') === row.modelCode)
+      if (!entry) return row
+      return { ...row, displayOrder: Number(entry.displayOrder ?? row.displayOrder) }
+    })
+    // in-process mock 은 page.route 로 가로챌 수 없으므로([[inprocess-mock-principles]])
+    // 마지막 표시순서 저장 요청 본문을 globalThis 에 노출 → Playwright page.evaluate 로 displayOrder 재번호 단언.
+    try {
+      ;(globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS'] = orders
+    } catch {
+      /* noop */
+    }
+    // 204 No Content 동형 — non-null 마커 반환
+    return { updated: true }
+  }
+
+  // GET /api/v1/products/{modelCode}/components — 구성품 목록 (BUNDLE 전용)
+  // PUT /api/v1/products/{modelCode}/components — 구성품 replace-all 저장
+  // 경로 우선순위: /components 패턴이 /usage, /specs, /display-orders 보다 아래, /{modelCode} 패턴보다 위.
+  const productComponentsMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/components(?:\?.*)?$/)
+  if (productComponentsMatch) {
+    ensureMockProductCatalogRowsSeeded()
+    const modelCode = decodeURIComponent(productComponentsMatch[1]!)
+    const catalogRow = MOCK_PRODUCT_CATALOG_ROWS.find((r) => r.modelCode === modelCode)
+    if (!catalogRow) {
+      return mockError(404, 'NOT_FOUND', '품목을 찾을 수 없습니다.')
+    }
+
+    if (method === 'GET') {
+      const denied = mockRequirePermission('products.list', 'view')
+      if (denied) return denied
+      // 비-BUNDLE 에 대해서는 BE 계약 동형: 200 빈배열 (409 대신 — P1-A fix)
+      if (catalogRow.productType !== 'BUNDLE') {
+        return []
+      }
+      return MOCK_BUNDLE_COMPONENTS[modelCode] ?? []
+    }
+
+    if (method === 'PUT') {
+      const denied = mockRequirePermission('products.admin', 'update')
+      if (denied) return denied
+      if (catalogRow.productType !== 'BUNDLE') {
+        return mockError(409, 'CONFLICT', '세트(BUNDLE) 품목만 구성품 편집이 가능합니다.')
+      }
+      const body = parseMockBody(config)
+      const components = Array.isArray(body)
+        ? (body as Array<{
+            componentProductCode?: unknown
+            defaultQty?: unknown
+            qtyMode?: unknown
+            componentKind?: unknown
+            componentVariant?: unknown
+            isDefault?: unknown
+            specText?: unknown
+          }>)
+        : []
+      if (components.length === 0) {
+        return mockError(400, 'BAD_REQUEST', '구성품 목록이 비어 있습니다.')
+      }
+      // [#10] BE BundleComponentService.replaceComponents 동형 검증 — 존재/자기참조 + 중복코드 + 수량범위.
+      //   (1) 미존재/자기참조: 기존 유지.
+      //   (2) 요청 내 중복 componentProductCode → 400 INVALID_INPUT (부분 유니크 인덱스 사전 차단).
+      //   (3) defaultQty 범위 0.01~999.99 (BE @DecimalMin/@DecimalMax NUMERIC(5,2)) 위반 → 400.
+      const seenCompCodes = new Set<string>()
+      for (const comp of components) {
+        const compCode = String(comp.componentProductCode ?? '')
+        const compRow = MOCK_PRODUCT_CATALOG_ROWS.find((r) => r.modelCode === compCode)
+        if (!compRow) {
+          return mockError(400, 'INVALID_INPUT', `구성 품목 '${compCode}'을(를) 찾을 수 없습니다.`)
+        }
+        if (compCode === modelCode) {
+          return mockError(400, 'INVALID_INPUT', '세트 품목 자신을 구성품으로 포함할 수 없습니다.')
+        }
+        if (compRow.productType === 'BUNDLE') {
+          return mockError(400, 'INVALID_INPUT', `세트 품목은 구성품으로 등록할 수 없습니다: ${compCode}`)
+        }
+        if (seenCompCodes.has(compCode)) {
+          return mockError(400, 'INVALID_INPUT', `구성품에 중복 모델코드가 있습니다: ${compCode}`)
+        }
+        seenCompCodes.add(compCode)
+        const qty = Number(comp.defaultQty ?? 1)
+        if (!isFinite(qty) || qty < 0.01 || qty > 999.99) {
+          return mockError(400, 'INVALID_INPUT', '구성품 수량은 0.01~999.99 범위여야 합니다.')
+        }
+      }
+      // BE BundleComponentResponse 1:1 동형 변환
+      const newComponents = components.map((comp, idx) => {
+        const compCode = String(comp.componentProductCode ?? '')
+        const compRow = MOCK_PRODUCT_CATALOG_ROWS.find((r) => r.modelCode === compCode)
+        return {
+          componentProductCode: compCode,
+          componentName: compRow?.name ?? compCode,
+          defaultQty: Number(comp.defaultQty ?? 1),
+          qtyMode: (comp.qtyMode as 'FIXED' | 'FOLLOW_SET' | undefined) ?? 'FOLLOW_SET',
+          componentKind: (comp.componentKind as string | undefined) ?? 'ACCESSORY',
+          componentVariant: (comp.componentVariant as string | null | undefined) ?? null,
+          isDefault: Boolean(comp.isDefault ?? false),
+          specText: (comp.specText as string | null | undefined) ?? null,
+          displayOrder: idx + 1,
+        } as (typeof MOCK_BUNDLE_COMPONENTS)[string][number]
+      })
+      MOCK_BUNDLE_COMPONENTS = { ...MOCK_BUNDLE_COMPONENTS, [modelCode]: newComponents }
+      // componentCount 갱신
+      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) =>
+        row.modelCode === modelCode ? { ...row, componentCount: newComponents.length } : row,
+      )
+      return newComponents
+    }
+  }
+
   // PATCH /api/v1/products/{modelCode}/usage — 수동 override 설정 (usageScopeManual=true)
   // DELETE /api/v1/products/{modelCode}/usage — 시트 자동 복귀 (usageScopeManual=false)
   // 경로 우선순위: /usage 패턴이 /specs/ 보다 먼저 위치해야 선점 회귀 방지 (#459 교훈)
@@ -1282,6 +1532,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (method === 'GET' && (url.endsWith('/api/v1/products') || url.includes('/api/v1/products?'))) {
     const denied = mockRequirePermission('products.list', 'view')
     if (denied) return denied
+    ensureMockProductCatalogRowsSeeded()
     const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
     const q = ((config.params?.['q'] as string | undefined) ?? urlObj.searchParams.get('q') ?? '').toLowerCase()
     const usageScope = (config.params?.['usageScope'] as string | undefined)
@@ -1305,14 +1556,29 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       && (!usageScope || matchesUsageScope(row.usageScope, usageScope))
       && (!category || row.estimateCategory === category),
     )
+    // [#9] BE 정렬 동형 — displayOrder asc(null=맨뒤), 동률 시 modelCode 사전순.
+    //   순서 저장(PUT /display-orders) 후 displayOrder 가 갱신되면 재조회 시 그 순서로 보여야
+    //   가시 반영이 일치한다(기존: 시드 순서 전량 반환 → 영구 불일치).
+    filtered.sort(
+      (a, b) =>
+        (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity)
+        || a.modelCode.localeCompare(b.modelCode),
+    )
+    // [#9] BE 페이지 슬라이싱 동형 — page/size slice + totalPages 계산(기존: 전량+totalPages=1).
+    const page = Number(config.params?.['page'] ?? urlObj.searchParams.get('page') ?? 0)
+    const size = Number(config.params?.['size'] ?? urlObj.searchParams.get('size') ?? 50)
+    const totalElements = filtered.length
+    const totalPages = size > 0 ? Math.max(1, Math.ceil(totalElements / size)) : 1
+    const start = page * size
+    const content = filtered.slice(start, start + size)
     return {
-      content: filtered,
-      totalElements: filtered.length,
-      totalPages: 1,
-      number: Number(config.params?.['page'] ?? urlObj.searchParams.get('page') ?? 0),
-      size: Number(config.params?.['size'] ?? urlObj.searchParams.get('size') ?? 50),
-      first: true,
-      last: true,
+      content,
+      totalElements,
+      totalPages,
+      number: page,
+      size,
+      first: page === 0,
+      last: page >= totalPages - 1,
     }
   }
 
@@ -4893,6 +5159,13 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   const partnerOrderDetailMatch = url.match(/\/api\/v1\/partner-orders\/([^/?]+)$/)
   if (method === 'GET' && partnerOrderDetailMatch) {
     const poId = partnerOrderDetailMatch[1]!
+    try {
+      const key = `__SAMHAN_PARTNER_ORDER_DETAIL_GET_COUNT_${poId}`
+      const g = globalThis as Record<string, unknown>
+      g[key] = Number(g[key] ?? 0) + 1
+    } catch {
+      /* noop */
+    }
     // Phase 2.4/2.5/2.6a spec 용: orderId 별 status 분기
     // ord-draft               → DRAFT     (Phase 2.4 복원 + Phase 2.5 보류 + Phase 2.6a 전환 진입점)
     // ord-hold                → ON_HOLD   (Phase 2.5 보류 해제 진입점 + Phase 2.6a 전환 가능)
@@ -4931,9 +5204,62 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
             deliveryPrice: 100000,
             subtotal: 100000,
             bundleMode: null,
+            productType: 'SINGLE',
             expandedComponents: [],
           },
         ],
+      })
+    }
+
+    // Round C #23: 세트(BUNDLE) 재고 가드 fixture
+    //   ord-bundle-only  → BUNDLE 라인 1건만 → 재고조회 시 bundle-only 안내(세트 단위 재고 미표시)
+    //   ord-bundle-mixed → BUNDLE 1 + SINGLE 1 → 혼합: "세트 1건 제외" 캡션 + 단품 매트릭스
+    if (poId === 'ord-bundle-only' || poId === 'ord-bundle-mixed') {
+      const bundleLine = {
+        productId: 'p-set-hm2way',
+        lineId: 'line-bundle-001',
+        modelCode: 'SET-HM2WAY',
+        productName: '홈멀티 2way 세트',
+        categoryKey: 'singleSets',
+        quantity: 1,
+        convertedQuantity: 0,
+        deliveryPrice: 2500000,
+        subtotal: 2500000,
+        bundleMode: 'KEEP' as const,
+        // BE PartnerOrderDetailResponse.LineResponse.productType enrich 정합 (product-service 조회)
+        productType: 'BUNDLE',
+        expandedComponents: [],
+      }
+      const singleLine = {
+        productId: 'p-aj040',
+        lineId: 'line-bundle-002',
+        modelCode: 'AJ040RXH4BC1',
+        productName: '실외기',
+        categoryKey: 'homemulti',
+        quantity: 2,
+        convertedQuantity: 0,
+        deliveryPrice: 120000,
+        subtotal: 240000,
+        bundleMode: null,
+        productType: 'SINGLE',
+        expandedComponents: [],
+      }
+      return envelope({
+        orderNumber: poId === 'ord-bundle-only' ? '2026/06/11-SET1' : '2026/06/11-MIX1',
+        partnerCode: '1234567890',
+        bizCode: '1234567890',
+        partnerName: '엘에이시스템에어',
+        submittedAt: '2026-06-11T10:00:00',
+        updatedAt: '2026-06-11T10:00:00',
+        status: 'DRAFT',
+        totalAmount: poId === 'ord-bundle-only' ? 2500000 : 2740000,
+        linkedSlipNo: null,
+        deliveryAddress: '서울시 강남구 테헤란로 1',
+        siteAddress: '현장 A동',
+        contactPhone: '010-1234-5678',
+        dueDate: '2026-06-20',
+        memo: null,
+        lines: poId === 'ord-bundle-only' ? [bundleLine] : [bundleLine, singleLine],
       })
     }
 
@@ -4972,6 +5298,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               deliveryPrice: 120000,
               subtotal: 240000,
               bundleMode: null,
+              productType: 'SINGLE',
               expandedComponents: [],
             },
             {
@@ -4985,6 +5312,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               deliveryPrice: 85000,
               subtotal: 255000,
               bundleMode: null,
+              productType: 'SINGLE',
               expandedComponents: [],
             },
           ]
@@ -5000,6 +5328,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               deliveryPrice: 120000,
               subtotal: 240000,
               bundleMode: null,
+              productType: 'SINGLE',
               expandedComponents: [],
             },
           ]
@@ -5023,9 +5352,14 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   }
 
   if (method === 'PUT' && partnerOrderDetailMatch) {
+    ensureMockProductCatalogRowsSeeded()
     const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
     if (body?.updatedAt === '409') {
       return mockError(409, 'PARTNER_ORDER_OPTIMISTIC_LOCK_CONFLICT', '최신 내용으로 다시 확인해 주세요.')
+    }
+    const lineIdByModelCode: Record<string, string> = {
+      'SET-HM2WAY': 'line-bundle-001',
+      AJ040RXH4BC1: 'line-bundle-002',
     }
     return envelope({
       orderNumber: '2026/05/04-1',
@@ -5042,16 +5376,27 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       contactPhone: '010-1234-5678',
       dueDate: body?.dueDate ?? null,
       memo: body?.memo ?? null,
-      lines: body?.lines?.map((line: Record<string, unknown>) => ({
-        modelCode: line['modelCode'],
-        productName: line['productName'],
-        categoryKey: line['categoryKey'],
-        quantity: line['quantity'],
-        deliveryPrice: line['deliveryPrice'],
-        subtotal: Number(line['quantity']) * Number(line['deliveryPrice']),
-        bundleMode: null,
-        expandedComponents: [],
-      })) ?? [],
+      lines: body?.lines?.map((line: Record<string, unknown>, index: number) => {
+        const modelCode = String(line['modelCode'] ?? '')
+        const product = Object.values(MOCK_PRODUCTS_BY_MODEL).find(
+          (p) => p.modelName === modelCode || p.modelCode === modelCode,
+        )
+        const catalogRow = MOCK_PRODUCT_CATALOG_ROWS.find((row) => row.modelCode === modelCode)
+        return {
+          productId: product?.productId ?? `mock-product-${index + 1}`,
+          lineId: lineIdByModelCode[modelCode] ?? `line-po-${String(index + 1).padStart(3, '0')}`,
+          modelCode,
+          productName: line['productName'],
+          categoryKey: line['categoryKey'],
+          quantity: line['quantity'],
+          convertedQuantity: 0,
+          deliveryPrice: line['deliveryPrice'],
+          subtotal: Number(line['quantity']) * Number(line['deliveryPrice']),
+          bundleMode: modelCode === 'SET-HM2WAY' ? 'KEEP' : null,
+          productType: product?.productType ?? catalogRow?.productType ?? 'SINGLE',
+          expandedComponents: [],
+        }
+      }) ?? [],
     })
   }
 

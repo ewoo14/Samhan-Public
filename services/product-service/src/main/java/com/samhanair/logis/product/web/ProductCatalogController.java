@@ -3,13 +3,21 @@ package com.samhanair.logis.product.web;
 import static com.samhanair.logis.product.service.ProductService.escapeLikeWildcards;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
+import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductSpec;
+import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.SpecKeyTemplate;
 import com.samhanair.logis.product.domain.UsageScope;
+import com.samhanair.logis.product.realtime.ProductCatalogChangePublisher;
+import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.SpecKeyTemplateRepository;
+import com.samhanair.logis.product.service.BundleComponentService;
 import com.samhanair.logis.product.service.ProductService;
 import com.samhanair.logis.product.service.ProductSpecService;
+import com.samhanair.logis.product.web.dto.BundleComponentRequest;
+import com.samhanair.logis.product.web.dto.BundleComponentResponse;
+import com.samhanair.logis.product.web.dto.DisplayOrderRequest;
 import com.samhanair.logis.product.web.dto.ProductCatalogResponse;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.SpecKeyTemplateResponse;
@@ -20,7 +28,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,15 +41,17 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Phase 6 M1a 카탈로그 endpoint — 9 endpoint (Migration Plan §2.1.7).
+ * Phase 6 M1a 카탈로그 endpoint — 9+4 endpoint (Migration Plan §2.1.7 + §1b/1c/1d 2026-06-11).
  *
  * <p>모든 응답은 {@code modelCode} 기반 (UUID 비공개 — feedback_uuid_no_user_visibility.md).
  * 이 값은 이카운트 품목 신원 규칙상 {@code product.modelCode} 가 비어 있으면
@@ -50,8 +62,9 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>endpoint:
  * <ul>
- *     <li>GET /api/v1/products?usageScope&category — products.list VIEW</li>
+ *     <li>GET /api/v1/products?usageScope&amp;category — products.list VIEW</li>
  *     <li>PATCH /api/v1/products/{code}/usage — products.admin UPDATE</li>
+ *     <li>DELETE /api/v1/products/{code}/usage — products.admin UPDATE</li>
  *     <li>GET /api/v1/products/{code}/specs — products.list VIEW</li>
  *     <li>POST /api/v1/products/{code}/specs — products.admin CREATE</li>
  *     <li>PATCH /api/v1/products/{code}/specs/{id} — products.admin UPDATE</li>
@@ -59,10 +72,23 @@ import org.springframework.web.bind.annotation.RestController;
  *     <li>PATCH /api/v1/products/{code}/specs/reorder — products.admin UPDATE</li>
  *     <li>GET /api/v1/spec-key-templates?category — products.list VIEW</li>
  *     <li>POST /api/v1/spec-key-templates/{id}/apply-to-existing?dryRun — products.admin CREATE</li>
+ *     <li>GET /api/v1/products/{code}/components — products.list VIEW (§1c)</li>
+ *     <li>PUT /api/v1/products/{code}/components — products.admin UPDATE (§1c)</li>
+ *     <li>PUT /api/v1/products/display-orders — products.admin UPDATE (§1d)</li>
  * </ul>
+ *
+ * <p><b>게이트웨이 라우팅 주의 (§1c/§1d, #460 교훈)</b>:
+ * 본 컨트롤러는 {@code @RequestMapping("/api/v1")} 풀패스를 사용한다.
+ * {@code /api/v1/products/&#42;/components} 경로는 api-gateway 의 {@code product-specs-v1} 라우트
+ * (Path=/api/v1/products/&#42;/specs,/api/v1/products/&#42;/specs/**) 와 세그먼트가 달라 매칭되지 않으므로
+ * 별도 {@code product-components-v1} 라우트 추가가 필요하다.
+ * {@code /api/v1/products/display-orders} 는 {@code product-service-v1}(strip=2) 경로 통해 도달하면
+ * {@code /products/display-orders} 가 되어 컨트롤러 매핑 {@code /api/v1/products/display-orders} 와
+ * 불일치 — 별도 no-strip 라우트 {@code product-display-orders-v1} 추가가 필요하다.
  */
 @RestController
 @RequestMapping("/api/v1")
+@Validated
 public class ProductCatalogController {
 
     private static final String CALLER_HEADER = "X-User-Id";
@@ -71,19 +97,28 @@ public class ProductCatalogController {
     private final ProductSpecService specService;
     private final SpecKeyTemplateRepository templateRepository;
     private final ProductService productService;
+    private final BundleComponentService bundleComponentService;
+    private final BundleComponentRepository bundleComponentRepository;
+    private final ProductCatalogChangePublisher catalogChangePublisher;
 
     public ProductCatalogController(ProductRepository productRepository,
                                     ProductSpecService specService,
                                     SpecKeyTemplateRepository templateRepository,
-                                    ProductService productService) {
+                                    ProductService productService,
+                                    BundleComponentService bundleComponentService,
+                                    BundleComponentRepository bundleComponentRepository,
+                                    ProductCatalogChangePublisher catalogChangePublisher) {
         this.productRepository = productRepository;
         this.specService = specService;
         this.templateRepository = templateRepository;
         this.productService = productService;
+        this.bundleComponentService = bundleComponentService;
+        this.bundleComponentRepository = bundleComponentRepository;
+        this.catalogChangePublisher = catalogChangePublisher;
     }
 
     /**
-     * 카탈로그 목록 조회.
+     * 카탈로그 목록 조회 — productType/componentCount 포함 (§1b 2026-06-11).
      *
      * <p>GET /api/v1/products?usageScope=BOTH&amp;category=HOME_MULTI&amp;q=AJ040&amp;page=0&amp;size=20
      *
@@ -93,6 +128,10 @@ public class ProductCatalogController {
      *
      * <p><b>q 파라미터 (지적 [1][9][15])</b>:
      * modelCode / name LIKE 검색. null/blank → 전체 (신규 품목관리 화면 검색 실효화).
+     *
+     * <p><b>componentCount N+1 방지 (§1b)</b>:
+     * 페이지 내 BUNDLE 품목들의 UUID 를 모아 BundleComponentRepository 벌크 count 1쿼리로
+     * 구성품 수를 채운다. SINGLE 품목은 0 으로 처리.
      */
     @GetMapping("/products")
     @RequirePermission(page = "products.list", action = PermissionAction.VIEW)
@@ -107,8 +146,39 @@ public class ProductCatalogController {
         String estimateCategoryName = estimateCategory == null ? null : estimateCategory.name();
         // LIKE 와일드카드(\, %, _) 이스케이프 후 바인딩 (사이클2 지적 P3-4, 2026-06-11)
         String qNormalized = (q == null || q.isBlank()) ? null : escapeLikeWildcards(q.trim());
-        return productRepository.searchByUsageScope(usageScopeName, estimateCategoryName, qNormalized, pageable)
-                .map(ProductCatalogResponse::from);
+
+        // P2-2 N+1 방지: searchByUsageScope 가 반환한 Page<Product> 를 직접 사용.
+        // 기존 코드는 page.getContent() 의 각 BUNDLE 행마다 findByCatalogExposedModelCodeAndIsDeletedFalse 를
+        // 2회 호출하여 N+1 을 유발했다. 여기서는 Product 엔티티(id 포함)를 이미 보유하므로
+        // 재조회 없이 UUID 집합을 수집 → 벌크 count 1쿼리로 대체한다.
+        Page<Product> productPage = productRepository
+                .searchByUsageScope(usageScopeName, estimateCategoryName, qNormalized, pageable);
+        List<Product> products = productPage.getContent();
+
+        // BUNDLE UUID 집합 → 벌크 count 1쿼리 (재조회 없음)
+        Set<UUID> bundleIds = products.stream()
+                .filter(p -> p.getProductType() == ProductType.BUNDLE)
+                .map(Product::getId)
+                .collect(Collectors.toSet());
+
+        Map<UUID, Long> countMap = bundleIds.isEmpty()
+                ? Map.of()
+                : bundleComponentRepository.countMapByBundleProductIds(bundleIds);
+
+        // DTO 변환 + componentCount 주입
+        List<ProductCatalogResponse> enriched = products.stream()
+                .map(p -> {
+                    ProductCatalogResponse r = ProductCatalogResponse.from(p);
+                    if (p.getProductType() != ProductType.BUNDLE) {
+                        return r;
+                    }
+                    long cnt = countMap.getOrDefault(p.getId(), 0L);
+                    return r.withComponentCount((int) cnt);
+                })
+                .toList();
+
+        return new org.springframework.data.domain.PageImpl<>(enriched,
+                productPage.getPageable(), productPage.getTotalElements());
     }
 
     /**
@@ -129,8 +199,12 @@ public class ProductCatalogController {
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
     public ProductCatalogResponse changeUsage(@PathVariable @NotBlank String modelCode,
                                               @Valid @RequestBody UpdateProductUsageRequest req) {
-        return ProductCatalogResponse.from(
+        ProductCatalogResponse response = ProductCatalogResponse.from(
                 productService.updateUsageAndReturn(modelCode, req));
+        // §2-2 실시간 publish — usage PATCH 성공 시 카탈로그 목록 invalidate 트리거
+        // P3-1: ProductCatalogChangePublisher 단일 경로 통일 (트랜잭션 종료 후 발화)
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+        return response;
     }
 
     /**
@@ -145,6 +219,9 @@ public class ProductCatalogController {
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
     public void clearUsage(@PathVariable @NotBlank String modelCode) {
         productService.clearUsageOverride(modelCode);
+        // §2-2 실시간 publish — usage DELETE 성공 시 카탈로그 목록 invalidate 트리거
+        // P3-1: ProductCatalogChangePublisher 단일 경로 통일 (트랜잭션 종료 후 발화)
+        catalogChangePublisher.publishCatalogChanged(modelCode);
     }
 
     @GetMapping("/products/{modelCode}/specs")
@@ -214,6 +291,76 @@ public class ProductCatalogController {
     public Map<String, Object> applyTemplateToExisting(@PathVariable UUID templateId,
                                                        @RequestParam(defaultValue = "true") boolean dryRun) {
         return specService.applyTemplateToExisting(templateId, dryRun).toMap();
+    }
+
+    // ============================================================
+    // §1c 구성품 CRUD (BUNDLE 전용)
+    // ============================================================
+
+    /**
+     * BUNDLE 구성품 목록 조회 (§1c 2026-06-11).
+     *
+     * <p>GET /api/v1/products/{modelCode}/components
+     *
+     * <p>대상 품목이 BUNDLE 이 아니어도 빈 목록을 반환한다 (단, 실제 구성품이 존재하는 경우는
+     * 품목이 BUNDLE 임을 뜻하므로 정합 문제 없음).
+     *
+     * @param modelCode 카탈로그 노출 식별자
+     * @return 구성품 목록 (구성 모델코드/명칭/수량/순서/옵션 메타)
+     */
+    @GetMapping("/products/{modelCode}/components")
+    @RequirePermission(page = "products.list", action = PermissionAction.VIEW)
+    public List<BundleComponentResponse> listComponents(@PathVariable @NotBlank String modelCode) {
+        return bundleComponentService.listComponents(modelCode);
+    }
+
+    /**
+     * BUNDLE 구성품 replace-all (§1c 2026-06-11).
+     *
+     * <p>PUT /api/v1/products/{modelCode}/components
+     *
+     * <p>배열 인덱스 = 표시 순서. 기존 구성품 전량을 soft-delete 후 전달된 배열로 교체한다.
+     *
+     * <ul>
+     *   <li>대상 품목이 BUNDLE 아님 → 409 CONFLICT</li>
+     *   <li>구성 모델코드가 활성 품목으로 해소 안 됨 → 400 BAD_REQUEST</li>
+     *   <li>자기 자신 포함 → 400 BAD_REQUEST</li>
+     *   <li>빈 배열 → 400 BAD_REQUEST (전개 불능 세트 방지)</li>
+     * </ul>
+     *
+     * @param modelCode    대상 BUNDLE 모델코드
+     * @param items        replace-all 구성품 목록 (인덱스=순서)
+     * @param callerHeader X-User-Id — 기존 구성품 soft-delete actor 로 기록 (P3-3)
+     * @return 갱신된 구성품 목록
+     */
+    @PutMapping("/products/{modelCode}/components")
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    public List<BundleComponentResponse> replaceComponents(
+            @PathVariable @NotBlank String modelCode,
+            @Valid @RequestBody List<BundleComponentRequest> items,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return bundleComponentService.replaceComponents(modelCode, items, callerHeader);
+    }
+
+    // ============================================================
+    // §1d 표시 순서 일괄 조정
+    // ============================================================
+
+    /**
+     * 품목 표시 순서 일괄 갱신 (§1d 2026-06-11).
+     *
+     * <p>PUT /api/v1/products/display-orders
+     *
+     * <p>body: [{modelCode, displayOrder}, ...]. 전건 검증 후 일괄 적용 (부분 적용 금지).
+     * 미존재 modelCode 가 하나라도 있으면 404 NOT_FOUND 를 반환하고 전체를 롤백한다.
+     *
+     * @param requests 모델코드 + displayOrder 목록
+     */
+    @PutMapping("/products/display-orders")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    public void updateDisplayOrders(@Valid @RequestBody List<DisplayOrderRequest> requests) {
+        bundleComponentService.updateDisplayOrders(requests);
     }
 
     // UsageChangeRequest 는 PR-B 에서 UpdateProductUsageRequest 로 대체됨.

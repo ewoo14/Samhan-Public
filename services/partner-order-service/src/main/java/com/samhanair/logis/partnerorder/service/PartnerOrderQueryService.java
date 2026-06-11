@@ -2,6 +2,8 @@ package com.samhanair.logis.partnerorder.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partnerorder.client.ProductClient;
+import com.samhanair.logis.partnerorder.client.ProductSummary;
 import com.samhanair.logis.partnerorder.domain.PartnerOrder;
 import com.samhanair.logis.partnerorder.domain.PartnerOrderLine;
 import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
@@ -16,8 +18,13 @@ import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -34,8 +41,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class PartnerOrderQueryService {
 
+    private static final Logger log = LoggerFactory.getLogger(PartnerOrderQueryService.class);
+
     private final PartnerOrderRepository partnerOrderRepository;
     private final PartnerSelfScopeGuard partnerSelfScopeGuard;
+    private final ProductClient productClient;
 
     /**
      * 주문 목록을 필터와 페이지 조건으로 조회한다.
@@ -97,7 +107,46 @@ public class PartnerOrderQueryService {
                         ErrorCode.PARTNER_ORDER_NOT_FOUND.getDefaultMessage()));
         partnerSelfScopeGuard.assertOwnPartner(
                 order.getPartnerCode(), callerPartnerCode, "본인 거래처 주문만 조회할 수 있습니다.");
-        return PartnerOrderDetailResponse.from(order);
+        // Round C #23: 라인 productType("SINGLE"/"BUNDLE") enrich — FE 재고조회 모달(2.6d)이
+        // 세트(BUNDLE) 라인을 재고조회 대상에서 제외하기 위함. 신규 DB 컬럼 없이 조회 시점 부착.
+        return PartnerOrderDetailResponse.from(order, resolveLineProductTypes(order));
+    }
+
+    /**
+     * 주문 라인의 {@code modelCode → productType} 매핑을 product-service 조회로 산출한다 (Round B #23).
+     *
+     * <p>fail-soft — product-service 조회 실패(회로 차단/네트워크/포맷 오류) 시 빈 맵을 반환하여
+     * 모든 라인 {@code productType=null} 로 둔다(상세 조회 가용성 우선, 기존 동작 동일). 카탈로그
+     * 조회는 {@code productClient} 회로 차단기 fail-soft 정책과 일관한다. direct PUT 라인은
+     * synthetic productId 를 저장할 수 있으므로 productId 가 아니라 라인 modelCode snapshot 을 사용한다.
+     *
+     * @param order 주문 엔티티
+     * @return modelCode → productType("SINGLE"/"BUNDLE") 매핑 (조회 실패 시 빈 맵)
+     */
+    private Map<String, String> resolveLineProductTypes(PartnerOrder order) {
+        List<String> modelCodes = order.getLines().stream()
+                .map(PartnerOrderLine::getModelName)
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (modelCodes.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> result = new HashMap<>();
+            for (ProductSummary p : productClient.lookupByModelCodes(modelCodes)) {
+                if (p.modelCode() != null && p.productType() != null) {
+                    result.put(p.modelCode(), p.productType());
+                }
+            }
+            return result;
+        } catch (RuntimeException ex) {
+            // fail-soft: 카탈로그 조회 실패해도 상세 조회는 정상 반환(productType 미부착).
+            log.warn("주문 상세 productType enrich 실패(fail-soft) orderNo={}: {}",
+                    order.getOrderNo(), ex.getMessage());
+            return Map.of();
+        }
     }
 
     private PartnerOrderListFilter normalize(PartnerOrderListFilter filter) {
