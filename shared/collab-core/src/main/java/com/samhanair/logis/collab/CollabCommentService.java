@@ -50,6 +50,9 @@ public class CollabCommentService<T extends CollabCommentRecord> {
     @Transactional
     public T add(CollabDocumentType documentType, UUID documentId, String anchor,
                  UUID authorId, String authorName, String body, UUID parentId) {
+        if (parentId != null) {
+            find(documentType, documentId, parentId, "부모 댓글을 찾을 수 없습니다: ");
+        }
         T saved = repository.save(factory.create(
                 documentType, documentId, anchor, authorId, authorName, body, parentId));
         publisher.publish(documentId, EVENT_COMMENT_CREATED, payload(saved));
@@ -65,8 +68,8 @@ public class CollabCommentService<T extends CollabCommentRecord> {
 
     /** 댓글 해결 + 문서 채널 publish. */
     @Transactional
-    public T resolve(UUID commentId) {
-        T comment = find(commentId, "댓글을 찾을 수 없습니다: ");
+    public T resolve(CollabDocumentType documentType, UUID documentId, UUID commentId) {
+        T comment = find(documentType, documentId, commentId, "댓글을 찾을 수 없습니다: ");
         comment.resolve();
         T saved = repository.save(comment);
         publisher.publish(saved.getDocumentId(), EVENT_COMMENT_RESOLVED, payload(saved));
@@ -75,15 +78,17 @@ public class CollabCommentService<T extends CollabCommentRecord> {
 
     /** 댓글 soft-delete + 문서 채널 publish. */
     @Transactional
-    public void softDelete(UUID commentId, String deleterUserId) {
-        T comment = find(commentId, "댓글을 찾을 수 없습니다: ");
+    public void softDelete(CollabDocumentType documentType, UUID documentId,
+                           UUID commentId, String deleterUserId) {
+        T comment = find(documentType, documentId, commentId, "댓글을 찾을 수 없습니다: ");
         comment.softDelete(deleterUserId);
         repository.save(comment);
         publisher.publish(comment.getDocumentId(), EVENT_COMMENT_DELETED, deletedPayload(comment));
     }
 
-    private T find(UUID commentId, String messagePrefix) {
-        return repository.findById(commentId)
+    private T find(CollabDocumentType documentType, UUID documentId,
+                   UUID commentId, String messagePrefix) {
+        return repository.findByIdAndDocumentTypeAndDocumentId(commentId, documentType, documentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         messagePrefix + commentId));
     }
@@ -122,7 +127,8 @@ public class CollabCommentService<T extends CollabCommentRecord> {
     public interface CommentRepository<T extends CollabCommentRecord> {
         T save(T comment);
 
-        Optional<T> findById(UUID commentId);
+        Optional<T> findByIdAndDocumentTypeAndDocumentId(
+                UUID commentId, CollabDocumentType documentType, UUID documentId);
 
         List<T> findRecent(CollabDocumentType documentType, UUID documentId, Pageable pageable);
     }

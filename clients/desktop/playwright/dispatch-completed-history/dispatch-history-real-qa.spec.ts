@@ -17,6 +17,10 @@ const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://localhost:5178'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const SHOTS = path.resolve(_dirname, '../../../../docs/qa/dispatch-completed-history')
+const TASK_CODE_PATTERN = /\b\d{4}\/\d{2}\/\d{2}-\d+\b/
+const SLIP_NO_PATTERN = /\b\d{4}\/\d{2}\/\d{2}-\d+\b/g
+const DRIVER_PATTERN = /기사\s+[^\s(]+(?:\s+[^\s(]+)*\s+\([A-Za-z0-9_-]+\)/
+const PLATE_PATTERN = /차량번호\s+(?:-|[0-9]{2,3}[가-힣]\s?\d{4}|[A-Za-z0-9가-힣 -]{4,})/
 fs.mkdirSync(SHOTS, { recursive: true })
 
 interface LoginResult { token: string; role: string; userId: string; displayName: string }
@@ -64,7 +68,11 @@ test('완료배차 내역 목록 + 상세 실 게이트웨이 캡처 (dev_master
   await page.screenshot({ path: path.join(SHOTS, 'history-list.png'), fullPage: true })
 
   // 행 클릭 → 상세(차량그룹·전표·기사). arologisDispatchId drill-in.
-  await page.locator('[data-testid^="dispatch-history-row-"]').first().click()
+  const selectedRow = page.locator('[data-testid^="dispatch-history-row-"]').first()
+  const selectedRowText = await selectedRow.textContent()
+  const selectedTaskCode = selectedRowText?.match(TASK_CODE_PATTERN)?.[0]
+  expect(selectedTaskCode, `선택 행 taskCode 패턴: ${selectedRowText ?? ''}`).toBeTruthy()
+  await selectedRow.click()
   await page.waitForTimeout(2000)
   await expect(page.getByTestId('dispatch-task-detail-body')).toBeVisible({ timeout: 10000 })
   await page.screenshot({ path: path.join(SHOTS, 'history-detail.png'), fullPage: true })
@@ -73,6 +81,11 @@ test('완료배차 내역 목록 + 상세 실 게이트웨이 캡처 (dev_master
   const mutationBtns = await page.getByRole('button', { name: /수정 요청|취소 요청|배차 완료|재배차/ }).count()
   expect(mutationBtns, '완료배차 상세는 조회 전용(변경 버튼 0)').toBe(0)
   const detailText = await page.getByTestId('dispatch-task-detail-body').textContent()
+  expect(detailText ?? '', '상세가 선택 taskCode 를 포함해야 함').toContain(selectedTaskCode)
+  const slipMatches = detailText?.match(SLIP_NO_PATTERN) ?? []
+  expect(slipMatches.length, `상세 전표번호(slipNo) 패턴 필요: ${detailText ?? ''}`).toBeGreaterThanOrEqual(2)
+  expect(detailText ?? '', '상세 기사명/기사코드 패턴 필요').toMatch(DRIVER_PATTERN)
+  expect(detailText ?? '', '상세 차량번호는 없으면 "-", 있으면 plate 형태').toMatch(PLATE_PATTERN)
   expect(detailText ?? '', '상세 본문 raw UUID 노출 금지').not.toMatch(
     /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i,
   )

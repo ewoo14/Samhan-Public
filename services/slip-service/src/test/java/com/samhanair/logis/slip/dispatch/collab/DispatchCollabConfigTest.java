@@ -1,8 +1,12 @@
 package com.samhanair.logis.slip.dispatch.collab;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,7 +14,14 @@ import static org.mockito.Mockito.when;
 import com.samhanair.logis.collab.CollabCommentService;
 import com.samhanair.logis.collab.CollabDocumentType;
 import com.samhanair.logis.collab.CollabRealtimePublisher;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.slip.repository.dispatch.DispatchTaskRepository;
+import com.samhanair.logis.slip.web.dispatch.DispatchCollabCommentController;
+import com.samhanair.logis.slip.web.dispatch.dto.AddDispatchCommentRequest;
+import com.samhanair.logis.slip.web.dispatch.dto.DispatchCommentResponse;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -85,12 +96,133 @@ class DispatchCollabConfigTest {
     }
 
     @Test
-    void repositoryAdapter_exposesFindByIdContract() {
+    void commentService_rejectsParentCommentFromDifferentDispatchTask() {
         DispatchCollabCommentRepository repository =
                 org.mockito.Mockito.mock(DispatchCollabCommentRepository.class);
-        UUID commentId = UUID.randomUUID();
-        when(repository.findById(commentId)).thenReturn(Optional.empty());
+        RealtimeBroker broker = org.mockito.Mockito.mock(RealtimeBroker.class);
+        CollabRealtimePublisher publisher = new CollabRealtimePublisher(broker);
+        CollabCommentService<DispatchCollabComment> service =
+                new DispatchCollabConfig().dispatchCollabCommentService(repository, publisher);
+        UUID taskId = UUID.randomUUID();
+        UUID otherTaskParentId = UUID.randomUUID();
 
-        assertThat(repository.findById(commentId)).isEmpty();
+        when(repository.findByIdAndDocumentTypeAndDocumentId(
+                otherTaskParentId, CollabDocumentType.DISPATCH_TASK, taskId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.add(
+                CollabDocumentType.DISPATCH_TASK,
+                taskId,
+                "vehicleGroups[0]",
+                UUID.randomUUID(),
+                "배차담당자",
+                "다른 task 댓글에 답글 금지",
+                otherTaskParentId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(repository, never()).save(any(DispatchCollabComment.class));
+        verify(broker, never()).publish(any(UUID.class), anyString(), any());
+    }
+
+    @Test
+    void commentService_resolveScopesCommentByDispatchTask() {
+        DispatchCollabCommentRepository repository =
+                org.mockito.Mockito.mock(DispatchCollabCommentRepository.class);
+        RealtimeBroker broker = org.mockito.Mockito.mock(RealtimeBroker.class);
+        CollabRealtimePublisher publisher = new CollabRealtimePublisher(broker);
+        CollabCommentService<DispatchCollabComment> service =
+                new DispatchCollabConfig().dispatchCollabCommentService(repository, publisher);
+        UUID taskId = UUID.randomUUID();
+        UUID commentId = UUID.randomUUID();
+
+        when(repository.findByIdAndDocumentTypeAndDocumentId(
+                commentId, CollabDocumentType.DISPATCH_TASK, taskId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resolve(
+                CollabDocumentType.DISPATCH_TASK, taskId, commentId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(repository, never()).save(any(DispatchCollabComment.class));
+        verify(broker, never()).publish(any(UUID.class), anyString(), any());
+    }
+
+    @Test
+    void commentService_softDeleteScopesCommentByDispatchTask() {
+        DispatchCollabCommentRepository repository =
+                org.mockito.Mockito.mock(DispatchCollabCommentRepository.class);
+        RealtimeBroker broker = org.mockito.Mockito.mock(RealtimeBroker.class);
+        CollabRealtimePublisher publisher = new CollabRealtimePublisher(broker);
+        CollabCommentService<DispatchCollabComment> service =
+                new DispatchCollabConfig().dispatchCollabCommentService(repository, publisher);
+        UUID taskId = UUID.randomUUID();
+        UUID commentId = UUID.randomUUID();
+
+        when(repository.findByIdAndDocumentTypeAndDocumentId(
+                commentId, CollabDocumentType.DISPATCH_TASK, taskId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.softDelete(
+                CollabDocumentType.DISPATCH_TASK, taskId, commentId, "deleter"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(repository, never()).save(any(DispatchCollabComment.class));
+        verify(broker, never()).publish(any(UUID.class), anyString(), any());
+    }
+
+    @Test
+    void dispatchController_masksUuidShapedCallerName() {
+        @SuppressWarnings("unchecked")
+        CollabCommentService<DispatchCollabComment> commentService =
+                org.mockito.Mockito.mock(CollabCommentService.class);
+        RealtimeBroker broker = org.mockito.Mockito.mock(RealtimeBroker.class);
+        DispatchTaskRepository taskRepository = org.mockito.Mockito.mock(DispatchTaskRepository.class);
+        DispatchCollabCommentController controller =
+                new DispatchCollabCommentController(commentService, broker, taskRepository);
+        UUID taskId = UUID.randomUUID();
+        UUID callerId = UUID.randomUUID();
+        String uuidShapedCallerName = UUID.randomUUID().toString();
+        DispatchCollabComment saved = DispatchCollabComment.create(
+                CollabDocumentType.DISPATCH_TASK,
+                taskId,
+                "vehicleGroups[0]",
+                callerId,
+                "system",
+                "UUID 이름 마스킹",
+                null);
+        ReflectionTestUtils.setField(saved, "id", UUID.randomUUID());
+
+        when(taskRepository.existsByIdAndIsDeletedFalse(taskId)).thenReturn(true);
+        when(commentService.add(
+                eq(CollabDocumentType.DISPATCH_TASK),
+                eq(taskId),
+                eq("vehicleGroups[0]"),
+                eq(callerId),
+                eq("system"),
+                eq("UUID 이름 마스킹"),
+                isNull()))
+                .thenReturn(saved);
+
+        ApiResponse<DispatchCommentResponse> response = controller.add(
+                taskId,
+                new AddDispatchCommentRequest("UUID 이름 마스킹", null, "vehicleGroups[0]"),
+                callerId.toString(),
+                uuidShapedCallerName);
+
+        assertThat(response.getData().authorName()).isEqualTo("system");
+        verify(commentService).add(
+                eq(CollabDocumentType.DISPATCH_TASK),
+                eq(taskId),
+                eq("vehicleGroups[0]"),
+                eq(callerId),
+                eq("system"),
+                eq("UUID 이름 마스킹"),
+                isNull());
     }
 }

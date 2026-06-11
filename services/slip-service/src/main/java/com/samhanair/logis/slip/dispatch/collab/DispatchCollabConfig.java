@@ -39,8 +39,10 @@ public class DispatchCollabConfig {
         }
 
         @Override
-        public Optional<DispatchCollabComment> findById(UUID commentId) {
-            return repository.findById(commentId);
+        public Optional<DispatchCollabComment> findByIdAndDocumentTypeAndDocumentId(
+                UUID commentId, CollabDocumentType documentType, UUID documentId) {
+            return repository.findByIdAndDocumentTypeAndDocumentId(
+                    commentId, documentType, documentId);
         }
 
         @Override

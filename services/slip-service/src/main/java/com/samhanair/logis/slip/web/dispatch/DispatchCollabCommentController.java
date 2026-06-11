@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -42,6 +43,8 @@ public class DispatchCollabCommentController {
 
     private static final String CALLER_ID_HEADER = "X-User-Id";
     private static final String CALLER_NAME_HEADER = "X-User-Name";
+    private static final Pattern UUID_SHAPE = Pattern.compile(
+            "(?i)^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$");
 
     private final CollabCommentService<DispatchCollabComment> commentService;
     private final RealtimeBroker broker;
@@ -111,7 +114,8 @@ public class DispatchCollabCommentController {
             @PathVariable UUID commentId,
             @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId) {
         ensureTaskExists(taskId);
-        commentService.softDelete(commentId, resolveDeleter(callerId));
+        commentService.softDelete(
+                CollabDocumentType.DISPATCH_TASK, taskId, commentId, resolveDeleter(callerId));
         return ApiResponse.ok(null);
     }
 
@@ -123,7 +127,8 @@ public class DispatchCollabCommentController {
             @PathVariable UUID taskId,
             @PathVariable UUID commentId) {
         ensureTaskExists(taskId);
-        return ApiResponse.ok(DispatchCommentResponse.from(commentService.resolve(commentId)));
+        return ApiResponse.ok(DispatchCommentResponse.from(commentService.resolve(
+                CollabDocumentType.DISPATCH_TASK, taskId, commentId)));
     }
 
     /** DispatchTask 협업 SSE stream. 댓글 이벤트는 taskId 채널로 전달된다. */
@@ -147,10 +152,14 @@ public class DispatchCollabCommentController {
     }
 
     private String resolveAuthorName(String callerId, String callerName) {
-        if (callerName != null && !callerName.isBlank()) {
-            return callerName;
+        if (callerName == null || callerName.isBlank()) {
+            return "system";
         }
-        return "system";
+        String normalized = callerName.trim();
+        if (UUID_SHAPE.matcher(normalized).matches()) {
+            return "system";
+        }
+        return normalized;
     }
 
     private String resolveDeleter(String callerId) {
