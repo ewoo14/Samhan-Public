@@ -586,7 +586,8 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
       // 접근 허용 강화 — RoleGuard 차단 화면이 아니어야 하고 앱 셸이 렌더되어야 한다(page.route 제거 후 빈 화면 회귀 방지).
       expect(bodyText.includes('접근 권한이 없습니다'), 'DISPATCH 배차 메뉴 — 차단 화면 표시됨').toBe(false)
-      expect(bodyText.includes('대시보드'), 'DISPATCH 배차 메뉴 — 앱 셸 미렌더(빈 화면)').toBe(true)
+      // [Round C P1 #8] '대시보드' 라벨 폐기('홈' 리라벨) → 앱 셸 렌더 sentinel 을 aside.app-sidebar 존재로 교체.
+      expect(await page.locator('aside.app-sidebar').count(), 'DISPATCH 배차 메뉴 — 앱 셸 미렌더(빈 화면)').toBeGreaterThanOrEqual(1)
     })
 
     await test.step('DISPATCH — SMS 발송 이력 (/arologis/dispatch-sms/send-audit) 접근 가능 확인', async () => {
@@ -611,7 +612,8 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
 
       // 접근 허용 강화 — 차단 화면 아님 + 앱 셸 렌더(빈 화면 회귀 방지).
       expect(bodyText.includes('접근 권한이 없습니다'), 'DISPATCH SMS 이력 — 차단 화면 표시됨').toBe(false)
-      expect(bodyText.includes('대시보드'), 'DISPATCH SMS 이력 — 앱 셸 미렌더(빈 화면)').toBe(true)
+      // [Round C P1 #8] '대시보드' 라벨 폐기('홈' 리라벨) → 앱 셸 렌더 sentinel 을 aside.app-sidebar 존재로 교체.
+      expect(await page.locator('aside.app-sidebar').count(), 'DISPATCH SMS 이력 — 앱 셸 미렌더(빈 화면)').toBeGreaterThanOrEqual(1)
     })
 
     await test.step('DISPATCH — 매출 슬립 URL 직접 진입 시 redirect "/" 확인', async () => {
@@ -872,13 +874,16 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
       const currentUrl = page.url()
       const bodyText = (await page.textContent('body')) ?? ''
 
-      // 이중 가드: PermissionGuard redirect(대시보드/로그인) 또는 RoleGuard in-place 차단 화면 중 하나.
+      // 이중 가드: PermissionGuard redirect(홈/로그인) 또는 RoleGuard in-place 차단 화면 중 하나.
+      // [2026-06-11 P3 #9/#14] 앱 셸 상존 텍스트 '홈'/'Dashboard' bodyText sentinel 제거 —
+      //   홈 NavLink('홈')는 권한과 무관하게 앱 셸에 항상 렌더되므로(차단 실패로 금지 페이지가
+      //   셸과 함께 떠도 '홈' 매칭) OR 단언이 vacuous(음성 회귀 은폐) 였다. 홈 redirect 는 URL
+      //   ('/#/'·'/#'), 로그인 redirect 는 URL('/login') + 로그인 화면 고유 텍스트(로그인/이메일),
+      //   in-place 차단은 RoleGuard 고유 문구(접근 권한이 없습니다/권한 보유자만)로만 판정한다.
       const isValidBlockedDest =
         currentUrl.endsWith('/#/') ||
         currentUrl.endsWith('/#') ||
         currentUrl.includes('/login') ||
-        bodyText.includes('대시보드') ||
-        bodyText.includes('Dashboard') ||
         bodyText.includes('로그인') ||
         bodyText.includes('이메일') ||
         bodyText.includes('접근 권한이 없습니다') ||

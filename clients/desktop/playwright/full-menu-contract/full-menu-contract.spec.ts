@@ -14,6 +14,9 @@ function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1
 }
 
+// [Round A P1] assertInOrder 헬퍼는 7카테고리 순서 단언과 함께
+//   menu-relocate/menu-ia-contract.spec.ts 로 이전됨.
+
 function ymlRouteBlock(text: string, routeId: string): string {
   const start = text.indexOf(`- id: ${routeId}`)
   if (start < 0) return ''
@@ -81,6 +84,10 @@ test.describe('SP-04 full menu and legacy migration contract', () => {
   const productSheetSync = read('services/product-service/src/main/java/com/samhanair/logis/product/service/ProductSheetSyncService.java')
   const productCatalogLookup = read('services/partner-order-service/src/main/java/com/samhanair/logis/partnerorder/vendor/client/ProductCatalogLookupClient.java')
   const partnerOrderApplication = read('services/partner-order-service/src/main/resources/application.yml')
+
+  // [Round A P1] 7그룹 IA 구조 단언 3건(홈/대시보드 · 7카테고리 순서+구그룹 부재 · 이동항목 route/testid)은
+  //   testIgnore 비대상 디렉터리 playwright/menu-relocate/menu-ia-contract.spec.ts 로 이전(CI 수집 보장).
+  //   본 스펙은 testIgnore 격리 상태라 여기 두면 false-green 이었다. 잔여는 legacy-GAS 소스 의존 단언만 유지.
 
   test('management labels replace 조회-only primary menu labels', () => {
     expect(appLayout).toContain('판매관리')

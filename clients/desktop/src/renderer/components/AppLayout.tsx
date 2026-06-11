@@ -1,20 +1,25 @@
 /**
  * 인증된 사용자용 앱 셸 레이아웃 — 좌측 사이드바 + 우측 본문 (Outlet).
  *
- * 사이드바 메뉴 (slip-output-format 슬라이스 IA 재편 — Q1=A 새 슬라이스):
- * - 대시보드 (`/`)
- * - 창고 관리 (`/warehouses`)
- * - 판매관리 (`/sales`)     — [2a 통합] SalesQueryPage 직행. 영업원 메인. legacy SlipListPage 는 `/sales/slips`.
- * - 구매관리 (`/purchases`) — [2a 통합] PurchaseQueryPage 직행. 회계원 메인. legacy SlipListPage 는 `/purchases/slips`.
- * - 재고이동 관리 (`/transfers`) — 창고 간 이동, 창고원/재고원
- * - 링크발송 (`/sales/link-dispatch`) — 배송 묶음 + e-sign URL SMS 발송, MANAGER/MASTER
+ * 사이드바 IA (desktop-menu-5category 슬라이스 — 5대분류 재편, PR #462):
+ * 상단 고정 링크 2개 + 7개 SidebarCategory 그룹 구조.
  *
- * accounting-slice-A 신규 그룹 "회계" — ACCOUNTANT/MANAGER/MASTER 가시:
- * - 계정과목 (`/accounting/accounts`)
- * - 분개장   (`/accounting/journals`)
- * - 시산표   (`/accounting/balances`)
+ * 상단 고정 (그룹 미소속, 항상 표시):
+ * - 홈        (`/`, NavLink end) — 대시보드 라벨 폐기, "홈" 단독.
+ * - 알림 내역 (`/notifications`)
  *
- * 기존 PR #18 의 `/slips` IA 는 폐기. 영업/회계/창고 흐름 분리.
+ * 7 SidebarCategory 그룹 (각 그룹은 권한 1개라도 보이면 헤더+자식 노출, 전무 시 완전 미렌더):
+ * - 판매     — 판매관리/견적서/주문서/거래처/DC설정/발송금지/전표정리/내일자전표/vendor OCR/품목 관리/시트 동기화
+ * - 구매     — 구매관리/영수증 OCR/재고이동 관리/입고 검수/재고실사/DPS 비교
+ * - 회계     — 매출·매입전표/계정과목/분개장/세금계산서/시산표/재무보고서/마감/원장/회계 관리자(중첩 토글)
+ * - 그룹웨어 — 링크발송/알리고 주소록/단톡방 매핑
+ * - 인사     — 인사 관리/권한설정/권한 일괄/그룹 권한/권한그룹 관리/권한 위임
+ * - 배차     — 배차 메뉴/수동 배차/가배차 분류/미배차/배차안내 SMS/실배차 비교/배차지역 관리/배차 admin
+ * - 창고 운영 — 창고관리/재고 현황/안전재고/보상 실패 복구/전표 수정 요청/사진 감사
+ *
+ * 그룹/항목 권한은 usePermissions().canAccess(pageCode, action) 동적 RBAC 단일 소스이며,
+ * 라우트 PermissionGuard 와 동일 page-code 로 일원화한다 (사이드바 노출↔진입 redirect 역전 방지).
+ * 기존 PR #18 의 `/slips` IA 및 평면(홈/창고/판매/구매 단일 NavLink) IA 는 폐기.
  *
  * 우상단에는 현재 사용자명 + 역할 + 사용자 dropdown 메뉴 (비밀번호 변경 / 로그아웃) 를 표시한다.
  * 인쇄 화면 (`/print/...`) 에서는 @media print CSS 가 사이드바/헤더를 숨긴다.
@@ -29,12 +34,11 @@
  * - 외부 클릭 / Esc 키 dropdown 자동 닫기
  */
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { hasBuiltinRoleGroup, useSessionStore } from '../stores/session'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useSessionStore } from '../stores/session'
 import { usePageTitleStore } from '../stores/pageTitle'
 // [SP-D1 cycle 2] 동적 RBAC 권한 훅 — 사이드바 메뉴 동적 hidden 연동.
 import { usePermissions } from '../hooks/usePermissions'
-import type { AuthSnapshot } from '../types/electron'
 import { NotificationBellDropdown } from './NotificationBellDropdown'
 
 /**
@@ -79,15 +83,22 @@ function SidebarGroupToggle({
   onToggle,
   testId,
   controls,
+  id,
+  variant = 'subgroup',
 }: {
   label: string
   open: boolean
   onToggle: () => void
   testId: string
   controls: string
+  id?: string
+  variant?: 'subgroup' | 'category'
 }) {
+  const isCategory = variant === 'category'
+
   return (
     <button
+      id={id}
       type="button"
       data-testid={testId}
       aria-expanded={open}
@@ -98,16 +109,18 @@ function SidebarGroupToggle({
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
-        minHeight: 34,
-        padding: 'var(--space-2) var(--space-3)',
+        minHeight: isCategory ? 26 : 34,
+        padding: isCategory ? '4px 8px' : 'var(--space-2) var(--space-3)',
         border: 'none',
-        borderRadius: 'var(--radius-md)',
+        borderRadius: isCategory ? 0 : 'var(--radius-md)',
         background: 'transparent',
-        color: 'var(--color-neutral-700)',
+        color: isCategory ? 'var(--color-neutral-400)' : 'var(--color-neutral-700)',
         cursor: 'pointer',
-        fontSize: 13,
+        fontSize: isCategory ? 11 : 13,
         fontWeight: 600,
         textAlign: 'left',
+        textTransform: isCategory ? 'uppercase' : undefined,
+        letterSpacing: isCategory ? 0.5 : undefined,
       }}
     >
       <span>{label}</span>
@@ -131,14 +144,148 @@ function SidebarGroupToggle({
   )
 }
 
+function compactSidebarLabel(label: string): string {
+  return label.replace(/\s+/g, '')
+}
+
+function readSidebarGroupOpen(storageKey: string): boolean {
+  if (typeof window === 'undefined') return false
+
+  try {
+    return window.localStorage.getItem(storageKey) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function writeSidebarGroupOpen(storageKey: string, open: boolean): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(storageKey, String(open))
+  } catch {
+    // localStorage 접근이 막힌 환경에서는 세션 내 상태만 유지한다.
+  }
+}
+
+/**
+ * 현재 경로가 사이드바 그룹의 활성 대상(to)에 해당하는지 판정한다.
+ *
+ * [2026-06-11 P2 #1/#5] cross-group 자동펼침 오탐 차단 —
+ *   기본 매칭은 prefix(`${to}/` 하위 포함)이지만, `exact=true` 면 정확 일치만 활성으로 본다.
+ *   예: 판매 그룹의 진입점 `/sales` 를 exact 로 두면 `/sales/closing`(회계)·`/sales/link-dispatch`
+ *   (그룹웨어) 진입 시 판매 그룹이 prefix 매칭으로 동시 자동펼침되던 갭을 제거한다
+ *   (spec '활성 그룹만 펼침' 준수).
+ *
+ * @param exact true 면 prefix 하위 경로를 활성으로 보지 않고 정확 일치만 활성 처리.
+ */
+function isSidebarTargetActive(
+  currentPathname: string,
+  currentFullPath: string,
+  to: string,
+  exact = false,
+): boolean {
+  const [targetPathname, targetSearch] = to.split('?')
+
+  if (!targetPathname || targetPathname === '/') {
+    return currentPathname === targetPathname
+  }
+
+  if (targetSearch) {
+    return currentFullPath === to
+  }
+
+  if (exact) {
+    return currentPathname === targetPathname
+  }
+
+  return currentPathname === targetPathname || currentPathname.startsWith(`${targetPathname}/`)
+}
+
+function SidebarCategory({
+  label,
+  show,
+  activeTargets,
+  exactTargets = [],
+  testId,
+  children,
+}: {
+  label: string
+  show: boolean
+  activeTargets: string[]
+  /**
+   * [2026-06-11 P2 #1/#5] 정확 일치(exact)로만 그룹을 활성화할 경로 목록.
+   * prefix 매칭이 다른 그룹 하위 경로(예: '/sales' ⊃ '/sales/closing')를 오활성화하는
+   * cross-group 자동펼침을 방지하기 위해, 1세그먼트 진입점은 여기에 둔다.
+   */
+  exactTargets?: string[]
+  testId: string
+  children: React.ReactNode
+}) {
+  const location = useLocation()
+  const currentFullPath = `${location.pathname}${location.search}`
+  const activeByRoute =
+    activeTargets.some((to) =>
+      isSidebarTargetActive(location.pathname, currentFullPath, to),
+    )
+    || exactTargets.some((to) =>
+      isSidebarTargetActive(location.pathname, currentFullPath, to, true),
+    )
+  const storageKey = `samhan.sidebar.group.${label}`
+  const [open, setOpen] = useState(() => readSidebarGroupOpen(storageKey))
+
+  useEffect(() => {
+    if (activeByRoute) {
+      setOpen(true)
+    }
+  }, [activeByRoute, currentFullPath])
+
+  if (!show) return null
+
+  // [2026-06-11] 그룹 헤더 자체를 토글 버튼으로 일반화한다.
+  // 기본은 접힘이며, 현재 route 가 그룹 자식 경로에 속하면 해당 그룹만 자동 펼침된다.
+  const compactLabel = compactSidebarLabel(label)
+  const headingId = `sidebar-group-heading-${compactLabel}`
+  const controls = `sidebar-group-content-${compactLabel}`
+  const handleToggle = () => {
+    setOpen((current) => {
+      const next = !current
+      writeSidebarGroupOpen(storageKey, next)
+      return next
+    })
+  }
+
+  return (
+    <>
+      <div
+        className="app-sidebar-group"
+        role="heading"
+        aria-level={2}
+        style={{ marginTop: 16 }}
+      >
+        <SidebarGroupToggle
+          id={headingId}
+          label={label}
+          open={open}
+          onToggle={handleToggle}
+          testId={testId}
+          controls={controls}
+          variant="category"
+        />
+      </div>
+      {open ? (
+        <div id={controls} role="group" aria-labelledby={headingId}>
+          {children}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 /**
  * [samhan-dispatch-board Phase A] 배차 메뉴 (/dispatch-board) — DISPATCH/MANAGER/MASTER.
  * Samhan Public 배차담당자 → 차량 그룹 + arologis 발송 흐름.
  */
-
-function hasAnyBuiltinRoleGroup(auth: AuthSnapshot | null, roles: readonly string[]): boolean {
-  return roles.some((role) => hasBuiltinRoleGroup(auth, role))
-}
 
 export function AppLayout() {
   const auth = useSessionStore((s) => s.auth)
@@ -221,18 +368,24 @@ export function AppLayout() {
     showAccountingAdminCash || showAccountingAdminOrder
     || showAccountingAdminAging || showAccountingAdminLedger
     || showAccountingAdminMigOps || showAccountingEditRequests
-  // 회계 카테고리 헤더: 12 PageCode 중 1개라도 가시이면 표시
+  // 회계 카테고리 헤더: 회계 PageCode 중 1개라도 가시이면 표시.
+  // [Round B P1] 세금계산서 발행 묶음(batch-issue)·수신 세금계산서(inbound) 누락 보강 —
+  //   해당 권한 단독 보유자(자식 링크 597/604행 존재)가 회계 그룹 전체를 잃던 갭 해소.
   const showAccounting =
     showAccountingAccounts || showAccountingJournals || showAccountingBalances
     || showAccountingReports || showAccountingPeriodClose || showAccountingStatBatch
     || showAccountingSalesSlip || showAccountingPurchaseSlip
-    || showAccountingPartnerLedger || showAccountingTaxInvoice || showAccountingDailyClose
+    || showAccountingPartnerLedger || showAccountingTaxInvoice
+    || showAccountingTaxInvoiceBatch || showAccountingTaxInvoiceInbound
+    || showAccountingDailyClose
     || showAccountingLedger || showAccountingDepositMatch
     || showAccountingAdminGroup
   const showDeliveryBatch = dynamicCanAccess('slip.delivery-batch', 'view')
 
   // [SP-D4] 잔여 7 도메인 22 PageCode 동적 RBAC 연동.
   // SP-D 일관성: dynamicCanAccess 는 캐시 미로드 시 false 로 deny 하며 로딩 flash 를 만들지 않는다.
+  const showSalesSlipList          = dynamicCanAccess('sales.slip.list',             'view')
+  const showPurchaseSlipList       = dynamicCanAccess('purchases.slip.list',         'view')
   const showEstimatesList          = dynamicCanAccess('estimates.list',               'view')
   const showPartnerOrderList       = dynamicCanAccess('sales.partner-order.list',     'view')
   const showVendorOrder            = dynamicCanAccess('sales.vendor-order',           'view')
@@ -243,7 +396,10 @@ export function AppLayout() {
   const showInventoryDps           = dynamicCanAccess('inventory.dps',                'view')
   const showInventoryAuditPage     = dynamicCanAccess('inventory.audit',              'view')
   const showAdminEmployees         = dynamicCanAccess('admin.employees',              'view')
-  const showAdminUsersMgmt         = dynamicCanAccess('admin.users',                  'view')
+  // admin.users — 인사 그룹 자식 링크 소비처 없음('인사 관리'/admin/users 는 admin.employees 게이트).
+  // [Round B P3] showAdminHrGroup 에서 제거 — admin.users 단독 권한자가 빈 '인사' 헤더만 보던 갭 해소.
+  // 사이드바/라우트 직접 소비처 없으나 page-code 자체는 유효 → 향후 메뉴 연결 예약(underscore).
+  const _showAdminUsersMgmt        = dynamicCanAccess('admin.users',                  'view')
   const showPermissionAdmin        = dynamicCanAccess('system.permission-admin', 'view')
   // [C5-2b] MASTER role 문자열 fallback 제거 → system.permission-admin 동적 권한만 사용.
   // BE @RequirePermission(page="system.permission-admin") 가 MASTER bypass 포함 단일 가드.
@@ -258,12 +414,10 @@ export function AppLayout() {
   const showProductsSync           = dynamicCanAccess('products.sync',                'view')
   const showArologisAdminPage      = dynamicCanAccess('arologis.admin',               'view')
   const showArologisRegionPage     = dynamicCanAccess('arologis.region',              'view')
-  // SP-D4 그룹 헤더 가시성 (1개라도 true 이면 그룹 노출)
-  const showInventoryGroup =
-    showInventoryWarehouse || showInventoryStockTransfer || showInventoryStockBalance
-    || showInventoryDps || showInventoryAuditPage
+  // [Round A P3] 구 showInventoryGroup 집계 변수 삭제 — 창고운영 그룹 게이트는
+  // showWarehouseOpsGroup(창고운영 자식 6개와 1:1 정합) 로 교체되어 미소비(dead) 였음.
   // (사이클1 Codex fix C-4) showPartnersGroup 제거 — /admin/partners 직접 링크는 partners.list 1:1.
-  const showAdminHrGroup   = showAdminEmployees || showAdminUsersMgmt || showPermissionAdmin || showPermissionDelegation
+  const showAdminHrGroup   = showAdminEmployees || showPermissionAdmin || showPermissionDelegation
 
   // [C5 follow-up 사이클1 fix] arologis 메뉴 가시성 = 라우트 PermissionGuard 와 동일 page-code 단일 소스.
   // (사이클1 리뷰 FE P1-2 + Designer D-002: 그룹 UUID 매칭은 라우트 가드와 소스 이원화 — seed 불일치 시
@@ -281,22 +435,19 @@ export function AppLayout() {
     || showDispatchSmsSendAudit
     || showArologisAdminPage
 
-  // 단톡방 매핑 entry 의 MASTER 제외 분기에서만 사용 — 빌트인 MASTER 그룹 UUID 내부 비교(화면 노출 없음).
-  const showAdmin = hasAnyBuiltinRoleGroup(auth, ['MASTER'])
   const showAudit = showInventoryAuditPage
   const showDpsCompare = showInventoryDps
   const showDpsByProduct = showInventoryDps
   const showSlipEditRequests = dynamicCanAccess('slip.edit-requests.decide', 'view')
   const showPhotoAudit = dynamicCanAccess('slip.photo-audit', 'view')
+  const showInventoryCompensationFailures = dynamicCanAccess('inventory.list', 'view')
   // [P0-9] 입고 검수 — WAREHOUSE / MANAGER / MASTER (inventory-service 권한과 일치)
   // [C5-2b] 입고 검수 정적 fallback 제거 — dynamicCanAccess 단독 사용.
   const showInboundInspection = dynamicCanAccess('inbound.inspection', 'view')
   const showSafetyStockAlerts = dynamicCanAccess('inventory.safety-stock', 'view')
-  // 창고 운영 그룹 가시성 — 재고 실사 / DPS 입고 비교 / 품목별 DPS 분석 / 전표 요청 / 사진 감사 / 입고 검수 / 안전재고 알림 중 하나라도 보이면 그룹 노출
-  // [SP-D4] inventory 그룹 PageCode 변수 병합 (showInventoryGroup 은 이 시점에서 미정의이므로 개별 항목 직접 OR)
-  const showWarehouseOps = showAudit || showDpsCompare || showDpsByProduct || showSlipEditRequests || showPhotoAudit || showInboundInspection || showSafetyStockAlerts
-  // [PR-D Phase B FE-D] 단톡방 매핑 — MASTER / MANAGER (BE @PreAuthorize 일치).
-  // showAdmin 이 false 인 MANAGER 도 entry 가 가시되도록 별도 분기.
+  // [Round A P3] 구 showWarehouseOps 집계 변수 삭제 — 창고운영 그룹 게이트 교체 후 미소비(dead) 였음.
+  //   실제 그룹 가시성은 아래 showWarehouseOpsGroup(창고운영 자식 6개와 1:1 정합) 가 담당한다.
+  // [PR-D Phase B FE-D] 단톡방 매핑 — messenger.admin (MASTER/MANAGER). 그룹웨어 단일 노출.
   // [PR-E1 FE-5] 전표 정리 entry — SALES / MANAGER / MASTER
   const showSlipCleanup = dynamicCanAccess('slip.cleanup', 'view')
   const showNextDaySlip = dynamicCanAccess('slip.print.next-day', 'view')
@@ -317,6 +468,22 @@ export function AppLayout() {
   // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 메뉴 — 동적 RBAC 권한 연동.
   // 기존 정적 역할 체크 → dispatch.board 동적 canAccess 로 전환.
   const showDispatchBoard = dynamicCanAccess('dispatch.board', 'view')
+  const showSales =
+    showSalesSlipList || showEstimatesList || showPartnerOrderList
+    || showPartnerDcConfig || showPartnerManagement || showSlipCleanup
+    || showNextDaySlip || showVendorOrderOcr || showBlockedPartners
+    || showProductsList || showSheetSync
+  const showPurchase =
+    showPurchaseSlipList || showReceiptOcr || showInventoryStockTransfer
+    || showInboundInspection || showAudit || showDpsCompare || showDpsByProduct
+  const showGroupware =
+    showDeliveryBatch || showAligoAddressBook || showChatRoomAdmin
+  // [Round A P3] showRegionMgmt(arologis.region) 포함 — 배차지역 관리 단독 권한자가
+  //   arologis 그룹 헤더+자식 전체를 잃던 선재 갭 해소(SidebarCategory show=false면 자식도 숨김).
+  const showArologisGroup = showDispatchBoard || showArologis || showRegionMgmt
+  const showWarehouseOpsGroup =
+    showInventoryWarehouse || showInventoryStockBalance || showSafetyStockAlerts
+    || showInventoryCompensationFailures || showSlipEditRequests || showPhotoAudit
 
   return (
     <div className="app-shell">
@@ -324,162 +491,250 @@ export function AppLayout() {
         <h1>Samhan Public</h1>
         <nav>
           <NavLink to="/" end>
-            대시보드
+            홈
           </NavLink>
           <NavLink to="/notifications" data-testid="sidebar-notifications">
             알림 내역
           </NavLink>
-          <NavLink to="/warehouses" data-testid="sidebar-warehouses">창고관리</NavLink>
-          {/* [2a 메뉴 통합 + SP-03 IA] /sales, /purchases 는 SalesQueryPage / PurchaseQueryPage
-              (풍성한 컬럼 + 다중 선택 + 50/page). legacy SlipListPage 는 /sales/slips,
-              /purchases/slips 로 이전. 메뉴명은 조회 전용 오해를 줄이기 위해 관리형 라벨을 사용. */}
-          <NavLink to="/sales" data-testid="sidebar-sales">판매관리</NavLink>
-          <NavLink to="/purchases" data-testid="sidebar-purchases">구매관리</NavLink>
-          {/* [SP-09-3] 영수증 OCR 업로드 — WAREHOUSE / ACCOUNTANT / MANAGER / MASTER.
-              구매관리 하위 진입점. ACCOUNTANT 추가 (2026-05-18 사용자 정정). */}
-          <SidebarLink
-            to="/purchases/receipt-ocr"
-            show={showReceiptOcr}
-            requiredRole="WAREHOUSE / ACCOUNTANT / MANAGER / MASTER"
-            data-testid="sidebar-purchases-receipt-ocr"
-          >
-            영수증 OCR
-          </SidebarLink>
-          <NavLink to="/transfers" data-testid="sidebar-transfers">재고이동 관리</NavLink>
-          <SidebarLink
-            to="/sales/link-dispatch"
-            show={showDeliveryBatch}
-            requiredRole="MANAGER / MASTER"
-            data-testid="sidebar-link-dispatch"
-          >
-            링크발송
-          </SidebarLink>
-          {/* [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH/MANAGER/MASTER.
-              Samhan Public 배차담당자 → 미배차 출고전표 + 차량 그룹 + arologis 발송. */}
-          <SidebarLink
-            to="/dispatch-board"
-            show={showDispatchBoard}
-            requiredRole="DISPATCH / MANAGER / MASTER"
-            data-testid="sidebar-dispatch-board"
-          >
-            배차 메뉴
-          </SidebarLink>
 
           {/* [Phase 6 v4 → P2-1] 판매 그룹 — 견적서 SamhanLogis 도메인 (legacy webview 폐기) + 4종 sub.
               [SP-D4] estimates.list / sales.partner-order.list 동적 RBAC 연동. */}
-          <div
-            className="app-sidebar-group"
-            aria-hidden="true"
-            style={{
-              marginTop: 16,
-              padding: '4px 8px',
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--color-neutral-400)',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-            }}
+          <SidebarCategory
+            label="판매"
+            show={showSales}
+            testId="sidebar-category-toggle-판매"
+            // [2026-06-11 P2 #1/#5] bare '/sales' 제거 — '/sales/closing'(회계)·'/sales/link-dispatch'
+            //   (그룹웨어) prefix 오매칭으로 판매 그룹이 cross-group 동시 자동펼침되던 갭 해소.
+            //   판매 전용 정확 경로만 나열하고, 판매관리 진입점('/sales')은 exactTargets 로 분리해
+            //   하위 경로가 판매를 오활성화하지 않게 한다.
+            activeTargets={[
+              '/sales/estimates',
+              '/sales/partner-orders',
+              '/sales/order-approvals',
+              '/admin/partners',
+              '/sales/partner-dc-config',
+              '/admin/blocked-partners',
+              '/sales/slip-cleanup',
+              '/sales/next-day-slip',
+              '/sales/vendor-order-upload',
+              '/products/catalog',
+              '/admin/sheet-sync',
+            ]}
+            exactTargets={['/sales']}
           >
-            판매
-          </div>
-          {/* [2a 메뉴 통합 + SP-03 IA] '판매 조회 (상세)' / '구매 조회 (상세)' 중복 진입점 제거 —
-              이제 사이드바 최상단 '판매관리' / '구매관리' 가 SalesQueryPage / PurchaseQueryPage
-              로 직행한다. /sales/query, /purchases/query 라우트는 기존 bookmark 호환 유지. */}
-          {/* [SP-D4] estimates.list 동적 RBAC 연동 (기존 NavLink → SidebarLink). */}
-          <SidebarLink
-            to="/sales/estimates"
-            show={showEstimatesList}
-            data-testid="sidebar-sales-estimates"
-          >
-            견적서 관리
-          </SidebarLink>
-          {/* [SP-D4] sales.partner-order.list 동적 RBAC 연동 (기존 NavLink → SidebarLink). */}
-          <SidebarLink
-            to="/sales/partner-orders"
-            show={showPartnerOrderList}
-            data-testid="sidebar-sales-partner-orders"
-          >
-            주문서 관리
-          </SidebarLink>
-          <NavLink to="/sales/order-approvals">주문서 승인</NavLink>
-          <SidebarLink
-            to="/sales/partner-dc-config"
-            show={showPartnerDcConfig}
-            requiredRole="SALES / MANAGER / MASTER"
-            data-testid="sidebar-sales-partner-dc-config"
-          >
-            거래처 DC 설정
-          </SidebarLink>
-          {/* [C5 후속 C-4] 거래처 관리 — /admin/partners 라우트와 동일한 partners.list VIEW 기준. */}
-          <SidebarLink
-            to="/admin/partners"
-            show={showPartnerManagement}
-            requiredRole="SALES / MANAGER / MASTER"
-            data-testid="sidebar-sales-partners"
-          >
-            거래처 관리
-          </SidebarLink>
-          <SidebarLink
-            to="/sales/slip-cleanup"
-            show={showSlipCleanup}
-            requiredRole="SALES / MANAGER / MASTER"
-            data-testid="sidebar-sales-slip-cleanup"
-          >
-            전표 정리
-          </SidebarLink>
-          <SidebarLink
-            to="/sales/closing"
-            show={showAccountingPeriodClose}
-            requiredRole="ACCOUNTANT / MANAGER / MASTER"
-            data-testid="sidebar-sales-closing"
-          >
-            매출 마감
-          </SidebarLink>
-          <SidebarLink
-            to="/sales/next-day-slip"
-            show={showNextDaySlip}
-            requiredRole="SALES / MANAGER / MASTER"
-            data-testid="sidebar-sales-next-day-slip"
-          >
-            내일자 전표 이미지
-          </SidebarLink>
-          {/* [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES/MANAGER/MASTER.
-              [SP-D4] sales.vendor-order 동적 RBAC 기반. */}
-          <SidebarLink
-            to="/sales/vendor-order-upload"
-            show={showVendorOrderOcr}
-            requiredRole="SALES / MANAGER / MASTER"
-            data-testid="sidebar-sales-vendor-order-upload"
-          >
-            vendor 발주 OCR
-          </SidebarLink>
-          {/* [C5 후속 C-4] 발송금지 거래처 — /admin/blocked-partners 라우트와 동일한 partners.block VIEW 기준. */}
-          <SidebarLink
-            to="/admin/blocked-partners"
-            show={showBlockedPartners}
-            requiredRole="MANAGER / MASTER"
-            data-testid="sidebar-sales-blocked-partners"
-          >
-            발송금지 거래처
-          </SidebarLink>
+            <SidebarLink
+              to="/sales"
+              show={showSalesSlipList}
+              data-testid="sidebar-sales"
+            >
+              판매관리
+            </SidebarLink>
+            {/* [SP-D4] estimates.list 동적 RBAC 연동 (기존 NavLink → SidebarLink). */}
+            <SidebarLink
+              to="/sales/estimates"
+              show={showEstimatesList}
+              data-testid="sidebar-sales-estimates"
+            >
+              견적서 관리
+            </SidebarLink>
+            {/* [SP-D4] sales.partner-order.list 동적 RBAC 연동 (기존 NavLink → SidebarLink). */}
+            <SidebarLink
+              to="/sales/partner-orders"
+              show={showPartnerOrderList}
+              data-testid="sidebar-sales-partner-orders"
+            >
+              주문서 관리
+            </SidebarLink>
+            <SidebarLink
+              to="/sales/order-approvals"
+              show={showPartnerOrderList}
+            >
+              주문서 승인
+            </SidebarLink>
+            {/* [C5 후속 C-4] 거래처 관리 — /admin/partners 라우트와 동일한 partners.list VIEW 기준. */}
+            <SidebarLink
+              to="/admin/partners"
+              show={showPartnerManagement}
+              requiredRole="SALES / MANAGER / MASTER"
+              data-testid="sidebar-sales-partners"
+            >
+              거래처 관리
+            </SidebarLink>
+            <SidebarLink
+              to="/sales/partner-dc-config"
+              show={showPartnerDcConfig}
+              requiredRole="SALES / MANAGER / MASTER"
+              data-testid="sidebar-sales-partner-dc-config"
+            >
+              거래처 DC 설정
+            </SidebarLink>
+            {/* [C5 후속 C-4] 발송금지 거래처 — /admin/blocked-partners 라우트와 동일한 partners.block VIEW 기준. */}
+            <SidebarLink
+              to="/admin/blocked-partners"
+              show={showBlockedPartners}
+              requiredRole="MANAGER / MASTER"
+              data-testid="sidebar-sales-blocked-partners"
+            >
+              발송금지 거래처
+            </SidebarLink>
+            <SidebarLink
+              to="/sales/slip-cleanup"
+              show={showSlipCleanup}
+              requiredRole="SALES / MANAGER / MASTER"
+              data-testid="sidebar-sales-slip-cleanup"
+            >
+              전표 정리
+            </SidebarLink>
+            <SidebarLink
+              to="/sales/next-day-slip"
+              show={showNextDaySlip}
+              requiredRole="SALES / MANAGER / MASTER"
+              data-testid="sidebar-sales-next-day-slip"
+            >
+              내일자 전표 이미지
+            </SidebarLink>
+            {/* [PR-F2 Designer mock] vendor 발주서 OCR 업로드 — SALES/MANAGER/MASTER.
+                [SP-D4] sales.vendor-order 동적 RBAC 기반. */}
+            <SidebarLink
+              to="/sales/vendor-order-upload"
+              show={showVendorOrderOcr}
+              requiredRole="SALES / MANAGER / MASTER"
+              data-testid="sidebar-sales-vendor-order-upload"
+            >
+              vendor 발주 OCR
+            </SidebarLink>
+            <SidebarLink
+              to="/products/catalog"
+              show={showProductsList}
+              data-testid="sidebar-products-catalog"
+            >
+              품목 관리
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/sheet-sync"
+              show={showSheetSync && showProductsList}
+              requiredRole="MANAGER / MASTER"
+              data-testid="sidebar-settings-sheet-sync-in-products"
+            >
+              시트 동기화
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/sheet-sync"
+              show={showSheetSync && !showProductsList}
+              requiredRole="MANAGER / MASTER"
+              data-testid="sidebar-settings-sheet-sync"
+            >
+              시트 동기화
+            </SidebarLink>
+          </SidebarCategory>
 
-          {showAccounting ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                회계
-              </div>
+          <SidebarCategory
+            label="구매"
+            show={showPurchase}
+            testId="sidebar-category-toggle-구매"
+            activeTargets={[
+              '/purchases',
+              '/purchases/receipt-ocr',
+              '/transfers',
+              '/warehouse/inbound-inspections',
+              '/warehouse/audit',
+              '/warehouse/dps-compare',
+              '/warehouse/dps-compare/by-product',
+            ]}
+          >
+            <SidebarLink
+              to="/purchases"
+              show={showPurchaseSlipList}
+              data-testid="sidebar-purchases"
+            >
+              구매관리
+            </SidebarLink>
+            {/* [SP-09-3] 영수증 OCR 업로드 — WAREHOUSE / ACCOUNTANT / MANAGER / MASTER.
+                구매관리 하위 진입점. ACCOUNTANT 추가 (2026-05-18 사용자 정정). */}
+            <SidebarLink
+              to="/purchases/receipt-ocr"
+              show={showReceiptOcr}
+              requiredRole="WAREHOUSE / ACCOUNTANT / MANAGER / MASTER"
+              data-testid="sidebar-purchases-receipt-ocr"
+            >
+              영수증 OCR
+            </SidebarLink>
+            <SidebarLink
+              to="/transfers"
+              show={showInventoryStockTransfer}
+              data-testid="sidebar-transfers"
+            >
+              재고이동 관리
+            </SidebarLink>
+            {/* [P0-9] 입고 검수 — WAREHOUSE/MANAGER/MASTER. */}
+            <SidebarLink
+              to="/warehouse/inbound-inspections"
+              show={showInboundInspection}
+              requiredRole="WAREHOUSE / MANAGER / MASTER"
+              data-testid="sidebar-warehouse-inbound-inspections"
+            >
+              입고 검수
+            </SidebarLink>
+            <SidebarLink
+              to="/warehouse/audit"
+              show={showAudit}
+              requiredRole="WAREHOUSE / MASTER"
+            >
+              재고 실사
+            </SidebarLink>
+            <SidebarLink
+              to="/warehouse/dps-compare"
+              show={showDpsCompare}
+              requiredRole="WAREHOUSE / MANAGER / MASTER / INVENTORY"
+              data-testid="sidebar-warehouse-dps-compare"
+            >
+              DPS 입고 비교
+            </SidebarLink>
+            {/* [P0-B GAS 보강] 품목별 DPS 분석 — DPS 비교 하위 들여쓰기 sub item */}
+            <SidebarLink
+              to="/warehouse/dps-compare/by-product"
+              show={showDpsByProduct}
+              requiredRole="WAREHOUSE / MANAGER / MASTER"
+              data-testid="sidebar-warehouse-dps-by-product"
+              style={{ paddingLeft: 20, fontSize: 13 }}
+            >
+              품목별 DPS 분석
+            </SidebarLink>
+          </SidebarCategory>
+
+          <SidebarCategory
+            label="회계"
+            show={showAccounting}
+            testId="sidebar-category-toggle-회계"
+            activeTargets={[
+              '/accounting/sales-slips',
+              '/accounting/purchase-slips',
+              '/accounting/accounts',
+              '/accounting/journals',
+              '/accounting/tax-invoices',
+              '/accounting/tax-invoices/batch',
+              '/accounting/tax-invoices/inbound',
+              '/accounting/balances',
+              '/accounting/reports',
+              '/sales/closing',
+              '/accounting/period-close',
+              '/accounting/statement-batch',
+              '/accounting/partner-ledger',
+              '/accounting/hometax-export',
+              '/accounting/supplier-profiles',
+              '/accounting/deposit-match',
+              '/accounting/daily-closing',
+              '/accounting/ledgers',
+              '/accounting/admin/cash-disbursements',
+              '/accounting/admin/cash-receipts',
+              '/accounting/admin/orders',
+              '/accounting/admin/aging-snapshot',
+              '/accounting/admin/ledger/sales',
+              '/accounting/admin/ledger/purchase',
+              '/accounting/admin/migration-ops',
+              '/admin/accounting-edit-requests',
+            ]}
+          >
               {/* [SP-D2] 회계 각 메뉴 — SidebarLink + dynamicCanAccess 로 전환.
                   권한 없는 메뉴는 완전 미노출(null). 회색 비활성 X. */}
               <SidebarLink
@@ -778,29 +1033,148 @@ export function AppLayout() {
                   ) : null}
                 </>
               ) : null}
-            </>
-          ) : null}
+          </SidebarCategory>
 
           {/* [SP-D2] MANAGER 전용 단독 노출 블록 폐기 — 동적 RBAC 통합으로 메인 회계 블록에서 처리.
               showAccounting 이 dynamicCanAccess 기반으로 전환되어 MANAGER 도 포함됨. */}
 
-          {showArologis ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
+          <SidebarCategory
+            label="그룹웨어"
+            show={showGroupware}
+            testId="sidebar-category-toggle-그룹웨어"
+            activeTargets={[
+              '/sales/link-dispatch',
+              '/admin/aligo-address-book',
+              '/admin/chat-rooms',
+            ]}
+          >
+            <SidebarLink
+              to="/sales/link-dispatch"
+              show={showDeliveryBatch}
+              requiredRole="MANAGER / MASTER"
+              data-testid="sidebar-link-dispatch"
+            >
+              링크발송
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/aligo-address-book"
+              show={showAligoAddressBook}
+              requiredRole="MANAGER / MASTER"
+              data-testid="sidebar-messenger-aligo-address-book"
+            >
+              알리고 주소록
+            </SidebarLink>
+            {/* [Round B P2] 단톡방 매핑 — 그룹웨어 단일화(5대분류 consolidation).
+                기존 가드는 MASTER 그룹(빌트인) 사용자를 그룹웨어에서 배제하고 AdminLayout(인사 셸)의
+                중복 nav 로만 노출했으나, 그 중복을 제거하고 messenger.admin 권한자(MASTER 포함) 전원을
+                그룹웨어 단일 경로로 통일한다(showChatRoomAdmin 단독 게이트). */}
+            <SidebarLink
+              to="/admin/chat-rooms"
+              show={showChatRoomAdmin}
+              requiredRole="MASTER / MANAGER"
+              data-testid="sidebar-admin-chat-rooms"
+            >
+              단톡방 매핑
+            </SidebarLink>
+          </SidebarCategory>
+
+          {/*
+            [PR-HR] 인사 카테고리 — 대표실 부서 + MASTER 만 접근 가능.
+            disabled 시 tooltip: "대표실 부서 권한자만 접근 가능".
+            활성 시 AdminLayout (/admin/users) 로 진입.
+          */}
+          {/* SP-D1: 인사 카테고리 — 권한 캐시 미로드 시 완전 미노출.
+              SP-D4: admin.employees / admin.users 동적 RBAC 연동 — showAdminHrGroup 추가.
+              Phase 1 Task 14: 권한 관리 진입점은 MASTER + system.permission-admin(view) 로 fail-closed. */}
+          <SidebarCategory
+            label="인사"
+            show={showAdminHrGroup}
+            testId="sidebar-category-toggle-인사"
+            activeTargets={[
+              '/admin/users',
+              '/admin/permission-matrix',
+              '/admin/permission-matrix/bulk',
+              '/admin/permission-groups/matrix',
+              '/admin/permission-groups/manage',
+              '/admin/permission-groups/delegation',
+            ]}
+          >
+            {/* admin.employees — MASTER/MANAGER (SP-D4 §2). */}
+            <SidebarLink
+              to="/admin/users"
+              show={showAdminEmployees}
+              data-testid="sidebar-hr-users"
+            >
+              인사 관리
+            </SidebarLink>
+            {/* 권한 관리 — MASTER 전용. route 도 RoleGuard + system.permission-admin(view) 로 이중 가드. */}
+            <SidebarLink
+              to="/admin/permission-matrix"
+              show={showPermissionAdmin}
+              data-testid="sidebar-hr-permission-matrix"
+            >
+              권한설정
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/permission-matrix/bulk"
+              show={showPermissionAdmin}
+              data-testid="sidebar-hr-permission-bulk"
+            >
+              권한 일괄 적용
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/permission-groups/matrix"
+              show={showPermissionAdmin}
+              data-testid="sidebar-hr-permission-groups-matrix"
+            >
+              그룹 권한
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/permission-groups/manage"
+              show={showPermissionAdmin}
+              data-testid="sidebar-hr-permission-groups-manage"
+            >
+              권한그룹 관리
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/permission-groups/delegation"
+              show={showPermissionDelegation}
+              data-testid="sidebar-hr-permission-delegation"
+            >
+              권한 위임
+            </SidebarLink>
+          </SidebarCategory>
+
+          {/* [Round B P2] 그룹 헤더 라벨 'arologis'(코드명 노출) → 한국어 업무 라벨 '배차'.
+              다른 6그룹과 일관(판매/구매/회계/그룹웨어/인사/창고 운영). testid 무관(라벨만). */}
+          <SidebarCategory
+            label="배차"
+            show={showArologisGroup}
+            testId="sidebar-category-toggle-배차"
+            activeTargets={[
+              '/dispatch-board',
+              '/arologis/manual',
+              '/arologis/pre-classify',
+              '/arologis/unassigned',
+              '/arologis/dispatch-sms',
+              '/arologis/dispatch-sms/send-audit',
+              '/arologis/dispatch-reconcile',
+              '/admin/regions',
+              '/arologis/admin/auto-dispatch',
+              '/arologis/admin/manual-dispatch',
+              '/arologis/admin/driver-assignment',
+            ]}
+          >
+              {/* [samhan-dispatch-board Phase A] 배차 메뉴 — DISPATCH/MANAGER/MASTER.
+                  Samhan Public 배차담당자 → 미배차 출고전표 + 차량 그룹 + arologis 발송. */}
+              <SidebarLink
+                to="/dispatch-board"
+                show={showDispatchBoard}
+                requiredRole="DISPATCH / MANAGER / MASTER"
+                data-testid="sidebar-dispatch-board"
               >
-                arologis
-              </div>
+                배차 메뉴
+              </SidebarLink>
               <SidebarLink
                 to="/arologis/manual"
                 show={showArologisManual}
@@ -887,78 +1261,27 @@ export function AppLayout() {
               >
                 기사 배정
               </SidebarLink>
-            </>
-          ) : null}
+          </SidebarCategory>
 
-          {/* [SP-D4] showInventoryGroup: inventory.* PageCode 중 1개라도 view 허용이면 창고 운영 그룹 노출. */}
-          {(showWarehouseOps || showInventoryGroup) ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                창고 운영
-              </div>
-              {/* [P0-9] 입고 검수 — WAREHOUSE/MANAGER/MASTER. */}
+          <SidebarCategory
+            label="창고 운영"
+            show={showWarehouseOpsGroup}
+            testId="sidebar-category-toggle-창고운영"
+            activeTargets={[
+              '/warehouses',
+              '/inventory/stock-balance',
+              '/inventory/safety-stock-alerts',
+              '/inventory/compensation-failures',
+              '/admin/slip-edit-requests',
+              '/admin/photo-audit',
+            ]}
+          >
               <SidebarLink
-                to="/warehouse/inbound-inspections"
-                show={showInboundInspection}
-                requiredRole="WAREHOUSE / MANAGER / MASTER"
-                data-testid="sidebar-warehouse-inbound-inspections"
+                to="/warehouses"
+                show={showInventoryWarehouse}
+                data-testid="sidebar-warehouses"
               >
-                입고 검수
-              </SidebarLink>
-              <SidebarLink
-                to="/warehouse/audit"
-                show={showAudit}
-                requiredRole="WAREHOUSE / MASTER"
-              >
-                재고 실사
-              </SidebarLink>
-              <SidebarLink
-                to="/warehouse/dps-compare"
-                show={showDpsCompare}
-                requiredRole="WAREHOUSE / MANAGER / MASTER / INVENTORY"
-                data-testid="sidebar-warehouse-dps-compare"
-              >
-                DPS 입고 비교
-              </SidebarLink>
-              {/* [P0-B GAS 보강] 품목별 DPS 분석 — DPS 비교 하위 들여쓰기 sub item */}
-              <SidebarLink
-                to="/warehouse/dps-compare/by-product"
-                show={showDpsByProduct}
-                requiredRole="WAREHOUSE / MANAGER / MASTER"
-                data-testid="sidebar-warehouse-dps-by-product"
-                style={{ paddingLeft: 20, fontSize: 13 }}
-              >
-                품목별 DPS 분석
-              </SidebarLink>
-              {/* [PR-H3 FE-1] 전표 수정/삭제 요청 대시보드 — WAREHOUSE/MANAGER/MASTER. */}
-              <SidebarLink
-                to="/admin/slip-edit-requests"
-                show={showSlipEditRequests}
-                requiredRole="WAREHOUSE / MANAGER / MASTER"
-                data-testid="sidebar-warehouse-slip-edit-requests"
-              >
-                전표 수정 요청
-              </SidebarLink>
-              {/* [D-AX-20] 사진 감사 — WAREHOUSE/MANAGER/MASTER. */}
-              <SidebarLink
-                to="/admin/photo-audit"
-                show={showPhotoAudit}
-                requiredRole="WAREHOUSE / MANAGER / MASTER"
-                data-testid="sidebar-warehouse-photo-audit"
-              >
-                사진 감사
+                창고관리
               </SidebarLink>
               {/* [C5 후속 C-4] 재고 현황 — /inventory/stock-balance 라우트와 동일한 inventory.stock-balance VIEW 기준. */}
               <SidebarLink
@@ -982,218 +1305,31 @@ export function AppLayout() {
                   SP-D4 기준: WAREHOUSE/MANAGER/MASTER 에 inventory.list view 부여. */}
               <SidebarLink
                 to="/inventory/compensation-failures"
-                show={dynamicCanAccess('inventory.list', 'view')}
+                show={showInventoryCompensationFailures}
                 requiredRole="WAREHOUSE / MANAGER / MASTER"
                 data-testid="sidebar-warehouse-compensation-failures"
               >
                 보상 실패 복구
               </SidebarLink>
-            </>
-          ) : null}
-
-          {/*
-            [PR-HR] MASTER 시점: 관리자 그룹은 인사 카테고리(AdminLayout)로 이전 —
-            구 showAdmin 빈 블록은 dead-code 라 제거 (사이클1 Designer D-003).
-            실제 인사 관리는 사이드바 최하단 "인사" 카테고리에서 접근.
-          */}
-
-          {/*
-            [PR-D Phase B FE-D] MANAGER 전용 — 단톡방 매핑 단독 노출.
-            MASTER 는 인사 카테고리 (AdminLayout 내) 에서 접근.
-          */}
-          {showChatRoomAdmin && !showAdmin ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                알림 매핑
-              </div>
+              {/* [PR-H3 FE-1] 전표 수정/삭제 요청 대시보드 — WAREHOUSE/MANAGER/MASTER. */}
               <SidebarLink
-                to="/admin/chat-rooms"
-                show={showChatRoomAdmin}
-                requiredRole="MASTER / MANAGER"
-                data-testid="sidebar-admin-chat-rooms"
+                to="/admin/slip-edit-requests"
+                show={showSlipEditRequests}
+                requiredRole="WAREHOUSE / MANAGER / MASTER"
+                data-testid="sidebar-warehouse-slip-edit-requests"
               >
-                단톡방 매핑
+                전표 수정 요청
               </SidebarLink>
-            </>
-          ) : null}
-
-          {/* [Slice 2] 메신저 카테고리 — 알리고 주소록 (MANAGER/MASTER). */}
-          {showAligoAddressBook ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                메신저
-              </div>
+              {/* [D-AX-20] 사진 감사 — WAREHOUSE/MANAGER/MASTER. */}
               <SidebarLink
-                to="/admin/aligo-address-book"
-                show={showAligoAddressBook}
-                requiredRole="MANAGER / MASTER"
-                data-testid="sidebar-messenger-aligo-address-book"
+                to="/admin/photo-audit"
+                show={showPhotoAudit}
+                requiredRole="WAREHOUSE / MANAGER / MASTER"
+                data-testid="sidebar-warehouse-photo-audit"
               >
-                알리고 주소록
+                사진 감사
               </SidebarLink>
-            </>
-          ) : null}
-
-          {/* [PR-B] 품목 관리 — products.list VIEW 게이트. 5대분류 재편 전 현 구조 내 추가. */}
-          {showProductsList ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                품목
-              </div>
-              <SidebarLink
-                to="/products/catalog"
-                show={showProductsList}
-                data-testid="sidebar-products-catalog"
-              >
-                품목 관리
-              </SidebarLink>
-              <SidebarLink
-                to="/admin/sheet-sync"
-                show={showSheetSync}
-                requiredRole="MANAGER / MASTER"
-                data-testid="sidebar-settings-sheet-sync-in-products"
-              >
-                시트 동기화
-              </SidebarLink>
-            </>
-          ) : null}
-
-          {/* [Slice 2] 설정 카테고리 — 시트 동기화 (MANAGER/MASTER). */}
-          {showSheetSync && !showProductsList ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                설정
-              </div>
-              <SidebarLink
-                to="/admin/sheet-sync"
-                show={showSheetSync}
-                requiredRole="MANAGER / MASTER"
-                data-testid="sidebar-settings-sheet-sync"
-              >
-                시트 동기화
-              </SidebarLink>
-            </>
-          ) : null}
-
-          {/*
-            [PR-HR] 인사 카테고리 — 대표실 부서 + MASTER 만 접근 가능.
-            disabled 시 tooltip: "대표실 부서 권한자만 접근 가능".
-            활성 시 AdminLayout (/admin/users) 로 진입.
-          */}
-          {/* SP-D1: 인사 카테고리 — 권한 캐시 미로드 시 완전 미노출.
-              SP-D4: admin.employees / admin.users 동적 RBAC 연동 — showAdminHrGroup 추가.
-              Phase 1 Task 14: 권한 관리 진입점은 MASTER + system.permission-admin(view) 로 fail-closed. */}
-          {showAdminHrGroup ? (
-            <>
-              <div
-                className="app-sidebar-group"
-                aria-hidden="true"
-                style={{
-                  marginTop: 16,
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-400)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
-                인사
-              </div>
-              {/* admin.employees — MASTER/MANAGER (SP-D4 §2). */}
-              <SidebarLink
-                to="/admin/users"
-                show={showAdminEmployees}
-                data-testid="sidebar-hr-users"
-              >
-                인사 관리
-              </SidebarLink>
-              {/* 권한 관리 — MASTER 전용. route 도 RoleGuard + system.permission-admin(view) 로 이중 가드. */}
-              <SidebarLink
-                to="/admin/permission-matrix"
-                show={showPermissionAdmin}
-                data-testid="sidebar-hr-permission-matrix"
-              >
-                권한설정
-              </SidebarLink>
-              <SidebarLink
-                to="/admin/permission-matrix/bulk"
-                show={showPermissionAdmin}
-                data-testid="sidebar-hr-permission-bulk"
-              >
-                권한 일괄 적용
-              </SidebarLink>
-              <SidebarLink
-                to="/admin/permission-groups/matrix"
-                show={showPermissionAdmin}
-                data-testid="sidebar-hr-permission-groups-matrix"
-              >
-                그룹 권한
-              </SidebarLink>
-              <SidebarLink
-                to="/admin/permission-groups/manage"
-                show={showPermissionAdmin}
-                data-testid="sidebar-hr-permission-groups-manage"
-              >
-                권한그룹 관리
-              </SidebarLink>
-              <SidebarLink
-                to="/admin/permission-groups/delegation"
-                show={showPermissionDelegation}
-                data-testid="sidebar-hr-permission-delegation"
-              >
-                권한 위임
-              </SidebarLink>
-            </>
-          ) : null}
+          </SidebarCategory>
         </nav>
         <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--color-neutral-500)' }}>
           v0.1.0 · 사내 전용

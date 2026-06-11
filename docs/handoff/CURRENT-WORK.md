@@ -4,6 +4,26 @@
 
 ---
 
+## ✅ 2026-06-11 (주간, 집 PC) — **#462 좌측 메뉴 5대분류 + 접기/펼치기 머지** (임시 워크플로우 전체 순서)
+
+> 개발책임자 임시 워크플로우([[temp-multimodel-review-workflow]]) 전체 적용 첫 슬라이스: **Opus 계획/PR → Codex(gpt5.5) 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent → PM**, **각 리뷰어 라운드에 QA agent 실서버 스크린샷 게시**(정정 반영).
+
+### #462 내용
+- **좌측 메뉴 7그룹 IA 재배치**: 홈·알림 내역 상단 고정 + 판매/구매/회계/그룹웨어/인사 5대분류 + 배차(arologis)·창고 운영 별도. 권한필터는 기성(dynamicCanAccess) 보존 — IA 재배치만.
+- **접기/펼치기**(개발책임자 추가요구): SidebarCategory collapsible — **기본 접힘 + 활성 라우트 그룹 자동펼침 + localStorage 영속**. 좌측 과도 메뉴 최소화. (기본 접힘 — 펼침 선호 시 1줄 전환.)
+- 배차 그룹 라벨 'arologis'→'배차'(Round B). 단톡방 매핑 그룹웨어 단일화(AdminLayout 중복 제거). 회계/인사 그룹 OR 보정.
+- **주문서 승인 보안 게이트**: partner-auth-service `PartnerApprovalsController @RequirePermission`(shared:security 의존조차 없던 fail-open 폐쇄) + 라우트 PermissionGuard + enforcement IT 13/13.
+
+### 리뷰 경위 (5→7→14, Fable5가 CI-RED·보안 적발)
+- Round A(Opus) 5확정 / Round B(Codex) 7확정 / **Round C(Fable5) 14확정 — Opus·Codex 둘 다 놓친 CI-RED 2(purchase-inspection-cta·sp-d3 산재 spec 파급, 변경모듈 전체 suite 미완주 회고) + 보안 1(주문서 승인 fail-open) 적발**. 종합 fix가 **데스크톱 mock 전체 suite 처음으로 완주 GREEN(468 pass)**. 라운드별 실서버 QA(역할별 메뉴 + 접기/펼치기, docs/qa/menu-5category/ 13컷). CI 전건 green.
+- **세션 복구 후 사이클2 재리뷰 14 + 사이클3 결함-계열 폴드인**(2026-06-11 세션 갑자기 끊김 복구): 끊긴 세션이 사이클2 fix 를 미커밋으로 남김 → 복구·검증·커밋(`270bd5e7`). cross-group 자동펼침 오탐(`exactTargets`)·승인 FE권한·**partner-auth InternalTokenFilter 표준 2단 배선**·vacuous sentinel 제거·CI-RED(sp-06 소스계약 박제) 전건 fix. 이어 cross-check 결함-계열 sweep 이 #6 동형 **6페이지 view-only 변경 게이트** 누락 적발 → 개발책임자 폴드인(`bc90e894`, Codex 구현, **전체 desktop mock 482/482**, 실서버 QA dev_master/manager ENABLED 실증). cross-check revert 실증으로 non-vacuous 확인. CI 전건 green → 머지(D-M5C-06/07 추가).
+
+### 다음 대기 큐
+- **AROLOGIS 완료배차 내역 뷰**(배차담당자가 완료·전송한 내역, 전표 포함, 조회 전용) — 별도 슬라이스(개발책임자 2026-06-11 분리 지시, [[project-arologis-independent]] 독립 단위).
+- #30 후속(거래처/담당자/사양맵 DB 치환·상업 useK2 parity) · Java FORMULA-read 조사 · 사원 서명 등록(spec 박제).
+
+---
+
 ## ✅ 2026-06-11 (주간, 집 PC) — **#461 품목관리 고도화 머지** (4-라운드 다모델 리뷰 + 통합 실 QA)
 
 > 개발책임자 임시 워크플로우(2026-06-11): **Opus 계획/PR → Codex(GPT5.5) 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent(6/22까지) → PM**, 각 라운드 review+fix+게시. **다음 슬라이스부터 각 라운드 5 agents 에 QA agent 실서버 스크린샷 게시 의무** ([[temp-multimodel-review-workflow]]). #461 은 진행 중 전환이라 A/C/B 코드리뷰 후 통합 실 QA 1회로 처리(예외).
