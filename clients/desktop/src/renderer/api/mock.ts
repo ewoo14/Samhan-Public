@@ -18,6 +18,7 @@ import type {
   DispatchTaskResponse,
   DispatchTaskSummaryResponse,
 } from './dispatchTask'
+import type { DispatchComment } from './dispatchCollab'
 
 /** ApiResponse envelope 형태 — `shared/common/dto/ApiResponse.java` 와 동일. */
 function envelope<T>(data: T) {
@@ -4554,6 +4555,55 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // arologis — manual / pre-classify / unassigned / dispatch-sms / dispatch-reconcile
   // ==========================================================================
 
+  const dispatchCommentItemMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/comments\/([^/?]+)(?:\?.*)?$/)
+  if (method === 'DELETE' && dispatchCommentItemMatch) {
+    const taskId = decodeURIComponent(dispatchCommentItemMatch[1]!)
+    const commentId = decodeURIComponent(dispatchCommentItemMatch[2]!)
+    const denied = mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const comments = MOCK_DISPATCH_COMMENTS[taskId] ?? []
+    MOCK_DISPATCH_COMMENTS[taskId] = comments.filter((comment) => comment.id !== commentId)
+    return envelope(null)
+  }
+
+  const dispatchCommentCollectionMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/comments(?:\?.*)?$/)
+  if (dispatchCommentCollectionMatch) {
+    const taskId = decodeURIComponent(dispatchCommentCollectionMatch[1]!)
+    if (method === 'GET') {
+      const denied = mockRequirePermission('dispatch.board', 'view')
+      if (denied) return denied
+      return envelope([...(MOCK_DISPATCH_COMMENTS[taskId] ?? [])])
+    }
+    if (method === 'POST') {
+      const denied = mockRequirePermission('dispatch.board', 'update')
+      if (denied) return denied
+      const body = parseMockBody(config) as {
+        body?: string
+        parentId?: string
+        anchor?: string
+      }
+      const text = String(body.body ?? '').trim()
+      if (!text) {
+        return mockError(400, 'INVALID_INPUT', '코멘트 내용은 필수입니다.')
+      }
+      const nextSequence = mockDispatchCommentSequence++
+      const created: DispatchComment = {
+        id: `66666666-aaaa-4aaa-8aaa-${String(nextSequence).padStart(12, '0')}`,
+        anchor: typeof body.anchor === 'string' && body.anchor.trim() ? body.anchor.trim() : null,
+        authorName: MOCK_AUTH.fullName,
+        body: text,
+        parentId: typeof body.parentId === 'string' && body.parentId.trim() ? body.parentId.trim() : null,
+        status: 'OPEN',
+        createdAt: new Date().toISOString(),
+      }
+      MOCK_DISPATCH_COMMENTS[taskId] = [
+        created,
+        ...(MOCK_DISPATCH_COMMENTS[taskId] ?? []),
+      ]
+      return envelope(created)
+    }
+  }
+
   const dispatchTaskDetailMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)(?:\?.*)?$/)
   if (method === 'GET' && dispatchTaskDetailMatch) {
     const id = decodeURIComponent(dispatchTaskDetailMatch[1]!)
@@ -7426,6 +7476,30 @@ const MOCK_INVENTORY_AUDITS = [
 /**
  * arologis 배차 (`/arologis/dispatches`) — 3건.
  */
+const MOCK_DISPATCH_COMMENTS: Record<string, DispatchComment[]> = {
+  '11111111-aaaa-4aaa-8aaa-000000000001': [
+    {
+      id: '66666666-aaaa-4aaa-8aaa-000000000001',
+      anchor: null,
+      authorName: '김배차',
+      body: '배차 완료 후 기사 매칭 확인했습니다.',
+      parentId: null,
+      status: 'OPEN',
+      createdAt: '2026-06-11T10:20:00',
+    },
+    {
+      id: '66666666-aaaa-4aaa-8aaa-000000000002',
+      anchor: null,
+      authorName: '이운영',
+      body: '성남냉열 연락처는 오전 중 한 번 더 확인 필요합니다.',
+      parentId: null,
+      status: 'OPEN',
+      createdAt: '2026-06-11T10:05:00',
+    },
+  ],
+}
+let mockDispatchCommentSequence = 3
+
 const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
   {
     id: '11111111-aaaa-4aaa-8aaa-000000000001',

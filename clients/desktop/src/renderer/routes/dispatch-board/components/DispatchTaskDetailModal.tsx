@@ -30,6 +30,7 @@ import {
 } from '../../../api/dispatchTask'
 import { ModificationRequestDialog } from './ModificationRequestDialog'
 import { CancellationRequestDialog } from './CancellationRequestDialog'
+import { DispatchCommentThread } from './DispatchCommentThread'
 import { usePermissions } from '../../../hooks/usePermissions'
 
 interface DispatchTaskDetailModalProps {
@@ -354,6 +355,8 @@ export function DispatchTaskDetailModal({
               <strong>배차 불가 사유:</strong> {task.failureReason}
             </div>
           ) : null}
+
+          <DispatchCommentThread taskId={task.id} />
         </div>
       </Modal>
 
