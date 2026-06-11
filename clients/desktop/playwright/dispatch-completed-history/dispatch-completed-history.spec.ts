@@ -36,17 +36,14 @@ test.describe('AROLOGIS 완료배차 내역 뷰 mock', () => {
     await expect(page.getByTestId('dispatch-history-table').getByText('배차 완료').first()).toBeVisible()
   })
 
-  test('날짜와 상태 필터로 FAILED 종결 내역을 조회한다', async ({ page }) => {
+  test('상태 필터는 완료(DISPATCHED)만 노출한다 - 대상자는 배차현황 편입', async ({ page }) => {
     await gotoHistory(page)
 
-    await page.getByTestId('dispatch-history-from').fill('2026-05-01')
-    await page.getByTestId('dispatch-history-to').fill('2026-05-01')
-    await page.getByTestId('dispatch-history-status').selectOption('FAILED')
-    await page.getByTestId('dispatch-history-filter-submit').click()
+    const statusSelect = page.getByTestId('dispatch-history-status')
+    await expect(statusSelect.locator('option')).toHaveCount(1)
+    await expect(statusSelect.locator('option')).toHaveText(['배차 완료'])
 
-    await expect(page.getByTestId('dispatch-history-row-2026/05/01-9')).toBeVisible()
-    await expect(page.getByTestId('dispatch-history-table').getByText('배차 불가').first()).toBeVisible()
-    await expect(page.getByTestId('dispatch-history-row-2026/06/11-1')).toHaveCount(0)
+    await expect(page.getByTestId('dispatch-history-row-2026/06/11-1')).toBeVisible()
   })
 
   test('상세 모달은 조회 전용이며 수정/취소 mutation 버튼이 없다', async ({ page }) => {

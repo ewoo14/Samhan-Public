@@ -22,11 +22,9 @@ import { DispatchTaskDetailModal } from './components/DispatchTaskDetailModal'
 
 const PAGE_SIZE = 20
 
-const HISTORY_STATUS_OPTIONS: DispatchTaskStatus[] = [
-  'DISPATCHED',
-  'FAILED',
-  'CANCELLED',
-]
+// "완료배차 이력" = 완료(DISPATCHED) 전용.
+// FAILED(배차 불가)·CANCELLED(배차 취소)는 추후 "배차현황" 화면으로 분리한다.
+const HISTORY_STATUS_OPTIONS: DispatchTaskStatus[] = ['DISPATCHED']
 
 function statusBadgeVariant(status: DispatchTaskStatus): 'success' | 'danger' | 'neutral' {
   if (status === 'DISPATCHED') return 'success'

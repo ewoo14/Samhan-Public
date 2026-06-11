@@ -7526,20 +7526,6 @@ const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
       },
     ],
   },
-  {
-    id: '11111111-cccc-4ccc-8ccc-000000000003',
-    taskCode: '2026/05/01-9',
-    dispatchDate: '2026-05-01',
-    status: 'FAILED',
-    arologisDispatchId: '22222222-cccc-4ccc-8ccc-000000000003',
-    failureReason: '가용 기사 없음',
-    modificationReason: null,
-    rejectionReason: null,
-    modificationRequestedAt: null,
-    modificationDecidedAt: null,
-    vehicleGroups: [],
-    matchedDrivers: [],
-  },
 ]
 
 const MOCK_DISPATCH_TASK_SUMMARIES: DispatchTaskSummaryResponse[] = MOCK_DISPATCH_TASK_DETAILS.map((task) => {
