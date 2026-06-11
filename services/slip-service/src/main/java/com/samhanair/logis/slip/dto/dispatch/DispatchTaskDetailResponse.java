@@ -92,8 +92,10 @@ public record DispatchTaskDetailResponse(
         public static SlipHeader from(Slip slip) {
             return new SlipHeader(
                     slip.getSlipNo(),
-                    slip.getPartnerCode(),
-                    slip.getPartnerName(),
+                    // partnerCode/partnerName 은 Slip 에서 nullable(partnerCode resolve 후속 슬라이스) —
+                    // FE DispatchTaskResponse 의 non-null string 계약과 정합 위해 "" coalesce([[fe_option_type_matches_be_dto]]).
+                    slip.getPartnerCode() != null ? slip.getPartnerCode() : "",
+                    slip.getPartnerName() != null ? slip.getPartnerName() : "",
                     slip.getDeliveryAddress(),
                     slip.getRecipientPhone(),
                     slip.getDispatchStatus() != null ? slip.getDispatchStatus().name() : null

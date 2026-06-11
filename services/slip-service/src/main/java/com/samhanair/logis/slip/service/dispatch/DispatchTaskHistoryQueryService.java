@@ -150,7 +150,11 @@ public class DispatchTaskHistoryQueryService {
                 ? Map.of()
                 : driverRepo.findByVehicleGroupIdInAndIsDeletedFalse(groupIds)
                         .stream()
-                        .collect(Collectors.toMap(MatchedDriver::getVehicleGroupId, Function.identity()));
+                        // group당 1 driver invariant 미강제(DB unique 제약 부재) — 중복 시 1건 채택(기존
+                        // findByVehicleGroupIdAndIsDeletedFalse Optional reader 와 동일 시맨틱). arologis 멀티드라이버
+                        // 콜백 시 toMap 기본 동작의 hard-500(Duplicate key) 방지.
+                        .collect(Collectors.toMap(MatchedDriver::getVehicleGroupId, Function.identity(),
+                                (existing, ignored) -> existing));
 
         Map<UUID, List<DispatchVehicleGroup>> groupsByTask = groups.stream()
                 .collect(Collectors.groupingBy(
