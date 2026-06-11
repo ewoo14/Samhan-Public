@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5173'
 const UUID_REGEX =
-  /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+  /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
 
 type MockPerm = { pageCode: string; view?: boolean; edit?: boolean }
 
@@ -41,11 +41,14 @@ async function gotoHistory(
   page: Page,
   role = 'DISPATCH',
   perms?: MockPerm[],
+  extraParams?: Record<string, string>,
 ): Promise<void> {
-  const suffix = perms
-    ? `&mockPerms=${encodeURIComponent(mockPerms(perms))}`
-    : ''
-  await page.goto(`${BASE_URL}/#/dispatch-board/history?mockRole=${role}${suffix}`, {
+  const params = new URLSearchParams({ mockRole: role })
+  if (perms) params.set('mockPerms', mockPerms(perms))
+  for (const [key, value] of Object.entries(extraParams ?? {})) {
+    params.set(key, value)
+  }
+  await page.goto(`${BASE_URL}/#/dispatch-board/history?${params.toString()}`, {
     waitUntil: 'domcontentloaded',
     timeout: 20_000,
   })
@@ -83,7 +86,7 @@ test.describe('AROLOGIS 배차현황 뷰 mock', () => {
     await expect(page.getByTestId('dispatch-task-detail-request-cancellation')).toHaveCount(0)
     await expect(page.getByTestId('dispatch-comment-input')).toHaveCount(0)
     await expect(page.getByTestId('dispatch-comment-submit')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '肄붾찘????젣' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '코멘트 삭제' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '수정 요청' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '취소 요청' })).toHaveCount(0)
   })
@@ -107,6 +110,16 @@ test.describe('AROLOGIS 배차현황 뷰 mock', () => {
 
     await expect(page.getByTestId('dispatch-history-page')).toHaveCount(0)
     await expect(page).toHaveURL(/#\/$/)
+  })
+
+  test('상세 조회 실패 시 오류 배너를 표시하고 같은 행을 다시 열 수 있다', async ({ page }) => {
+    await gotoHistory(page, 'DISPATCH', undefined, { mockDispatchDetailError: '1' })
+
+    await page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`).click()
+    await expect(page.getByRole('alert')).toContainText('배차현황 상세를 불러오지 못했습니다.')
+
+    await page.getByTestId(`dispatch-history-row-${CURRENT_TASK_CODE}`).click()
+    await expect(page.getByRole('alert')).toContainText('배차현황 상세를 불러오지 못했습니다.')
   })
 
   test('화면 텍스트에 raw UUID가 노출되지 않는다', async ({ page }) => {

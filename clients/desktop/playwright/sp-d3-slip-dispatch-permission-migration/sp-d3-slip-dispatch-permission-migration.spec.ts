@@ -110,9 +110,30 @@ function mockPermsFromResponse(
   }))
 }
 
-const SP_D3_EMPTY_PAGE = {
-  content: [],
-  totalElements: 0,
+const SP_D3_UNDISPATCHED_SLIPS_PAGE = {
+  content: [
+    {
+      id: '77777777-d333-4d33-8d33-000000000001',
+      slipNo: '2026/06/11-SPD3-001',
+      slipDate: '2026-06-11',
+      partnerCode: 'P-SPD3-001',
+      partnerName: '동탄공조',
+      deliveryAddress: '경기도 화성시 동탄대로 10',
+      recipientPhone: '010-1111-2222',
+      dispatchStatus: 'UNDISPATCHED',
+    },
+    {
+      id: '77777777-d333-4d33-8d33-000000000002',
+      slipNo: '2026/06/11-SPD3-002',
+      slipDate: '2026-06-11',
+      partnerCode: 'P-SPD3-002',
+      partnerName: '성남냉열',
+      deliveryAddress: '경기도 성남시 분당구 판교로 20',
+      recipientPhone: '010-3333-4444',
+      dispatchStatus: 'UNDISPATCHED',
+    },
+  ],
+  totalElements: 2,
   totalPages: 1,
   number: 0,
   size: 50,
@@ -172,7 +193,7 @@ async function installDispatchBoardApiStubs(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(apiEnvelope(SP_D3_EMPTY_PAGE)),
+      body: JSON.stringify(apiEnvelope(SP_D3_UNDISPATCHED_SLIPS_PAGE)),
     })
   })
 }
@@ -604,6 +625,9 @@ test.describe('SP-D3 매입/매출/배차 동적 RBAC 마이그레이션 (T1~T5)
       expect(bodyText.includes('접근 권한이 없습니다'), 'DISPATCH 배차 보드 — 차단 화면 표시됨').toBe(false)
       // [Round C P1 #8] '대시보드' 라벨 폐기('홈' 리라벨) → 앱 셸 렌더 sentinel 을 aside.app-sidebar 존재로 교체.
       expect(await page.locator('aside.app-sidebar').count(), 'DISPATCH 배차 보드 — 앱 셸 미렌더(빈 화면)').toBeGreaterThanOrEqual(1)
+      await expect(page.getByTestId('dispatch-board-slip-row-2026/06/11-SPD3-001')).toBeVisible()
+      await expect(page.getByTestId('dispatch-board-slip-open-2026/06/11-SPD3-001')).toContainText('동탄공조')
+      await expect(page.getByTestId('dispatch-board-slip-open-2026/06/11-SPD3-001')).toContainText('P-SPD3-001')
     })
 
     await test.step('DISPATCH — SMS 발송 이력 (/arologis/dispatch-sms/send-audit) 접근 가능 확인', async () => {

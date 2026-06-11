@@ -38,6 +38,10 @@ function isDispatchCommentEvent(eventName: string): boolean {
   return eventName.startsWith('comment.')
 }
 
+function displayAuthorName(authorName: string): string {
+  return authorName === 'system' ? '시스템' : authorName
+}
+
 export function DispatchCommentThread({ taskId, readOnly = false }: DispatchCommentThreadProps) {
   const [body, setBody] = useState('')
   const queryClient = useQueryClient()
@@ -152,7 +156,7 @@ export function DispatchCommentThread({ taskId, readOnly = false }: DispatchComm
                 }}
               >
                 <strong style={{ color: 'var(--color-neutral-900)' }}>
-                  {comment.authorName}
+                  {displayAuthorName(comment.authorName)}
                 </strong>
                 <span style={{ marginLeft: 'auto' }}>
                   {formatDateTime(comment.createdAt)}

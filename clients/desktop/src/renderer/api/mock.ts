@@ -4555,6 +4555,41 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // arologis — manual / pre-classify / unassigned / dispatch-sms / dispatch-reconcile
   // ==========================================================================
 
+  if (method === 'GET' && url.match(/\/admin\/dispatch-board\/undispatched-slips(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('dispatch.board', 'view')
+    if (denied) return denied
+    return envelope({
+      content: [
+        {
+          id: '77777777-d333-4d33-8d33-000000000001',
+          slipNo: '2026/06/11-SPD3-001',
+          slipDate: '2026-06-11',
+          partnerCode: 'P-SPD3-001',
+          partnerName: '동탄공조',
+          deliveryAddress: '경기도 화성시 동탄대로 10',
+          recipientPhone: '010-1111-2222',
+          dispatchStatus: 'UNDISPATCHED',
+        },
+        {
+          id: '77777777-d333-4d33-8d33-000000000002',
+          slipNo: '2026/06/11-SPD3-002',
+          slipDate: '2026-06-11',
+          partnerCode: 'P-SPD3-002',
+          partnerName: '성남냉열',
+          deliveryAddress: '경기도 성남시 분당구 판교로 20',
+          recipientPhone: '010-3333-4444',
+          dispatchStatus: 'UNDISPATCHED',
+        },
+      ],
+      totalElements: 2,
+      totalPages: 1,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+  }
+
   const dispatchCommentItemMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/comments\/([^/?]+)(?:\?.*)?$/)
   if (method === 'DELETE' && dispatchCommentItemMatch) {
     const taskId = decodeURIComponent(dispatchCommentItemMatch[1]!)
@@ -4609,6 +4644,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const id = decodeURIComponent(dispatchTaskDetailMatch[1]!)
     const denied = mockRequirePermission('dispatch.board', 'view')
     if (denied) return denied
+    if (id === 'mock-detail-error') {
+      return mockError(500, 'DISPATCH_DETAIL_FAILED', '배차현황 상세 조회에 실패했습니다.')
+    }
     const found = MOCK_DISPATCH_TASK_DETAILS.find(
       (task) => task.id === id || task.arologisDispatchId === id,
     )
@@ -4630,10 +4668,15 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const effectiveStatuses = statuses.length > 0 ? statuses : ['DISPATCHED']
     const pageNo = Number(params.get('page') ?? 0)
     const size = Number(params.get('size') ?? 20)
+    const forceDetailError = mockLocationParams().get('mockDispatchDetailError') === '1'
     const filtered = MOCK_DISPATCH_TASK_SUMMARIES.filter((row) =>
       row.dispatchDate >= from &&
       row.dispatchDate <= to &&
       effectiveStatuses.includes(row.status),
+    ).map((row, index) =>
+      forceDetailError && index === 0
+        ? { ...row, arologisDispatchId: 'mock-detail-error' }
+        : row,
     )
     const start = pageNo * size
     return envelope({
@@ -7509,7 +7552,7 @@ const MOCK_DISPATCH_COMMENTS: Record<string, DispatchComment[]> = {
     {
       id: '66666666-aaaa-4aaa-8aaa-000000000001',
       anchor: null,
-      authorName: '김배차',
+      authorName: 'system',
       body: '배차 완료 후 기사 매칭 확인했습니다.',
       parentId: null,
       status: 'OPEN',

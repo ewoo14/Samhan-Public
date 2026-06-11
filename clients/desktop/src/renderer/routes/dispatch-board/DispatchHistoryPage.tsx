@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Badge,
   Button,
@@ -41,6 +41,7 @@ export function DispatchHistoryPage() {
   const [status, setStatus] = useState<DispatchTaskStatus>('DISPATCHED')
   const [page, setPage] = useState(0)
   const [selectedDetailKey, setSelectedDetailKey] = useState<string | null>(null)
+  const [detailErrorVisible, setDetailErrorVisible] = useState(false)
 
   const listQuery = useDispatchTasksQuery({
     from,
@@ -118,8 +119,15 @@ export function DispatchHistoryPage() {
 
   const handleRowClick = (row: DispatchTaskSummaryResponse) => {
     if (!row.arologisDispatchId) return
+    setDetailErrorVisible(false)
     setSelectedDetailKey(row.arologisDispatchId)
   }
+
+  useEffect(() => {
+    if (!selectedDetailKey || !detailQuery.isError) return
+    setDetailErrorVisible(true)
+    setSelectedDetailKey(null)
+  }, [detailQuery.isError, selectedDetailKey])
 
   return (
     <div
@@ -201,6 +209,23 @@ export function DispatchHistoryPage() {
           }}
         >
           배차현황을 불러오지 못했습니다.
+        </div>
+      ) : null}
+
+      {detailErrorVisible ? (
+        <div
+          role="alert"
+          data-testid="dispatch-history-detail-error"
+          style={{
+            padding: 12,
+            border: '1px solid var(--color-danger-200)',
+            borderRadius: 6,
+            background: 'var(--color-danger-50)',
+            color: 'var(--color-danger-700)',
+            fontSize: 13,
+          }}
+        >
+          배차현황 상세를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
         </div>
       ) : null}
 

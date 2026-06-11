@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5173'
 const UUID_REGEX =
-  /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+  /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
 
 type MockPerm = { pageCode: string; view?: boolean; edit?: boolean }
 
@@ -43,6 +43,8 @@ test.describe('AROLOGIS 배차현황 협업 코멘트 mock', () => {
     const thread = page.getByTestId('dispatch-comment-thread')
     await expect(thread).toBeVisible()
     await expect(page.getByTestId('dispatch-comment-item')).toHaveCount(2)
+    await expect(thread).toContainText('시스템')
+    await expect(thread).not.toContainText('system')
     await expect(thread).toContainText('배차 완료 후 기사 매칭 확인했습니다.')
     await expect(thread).toContainText('성남냉열 연락처는 오전 중 한 번 더 확인 필요합니다.')
 

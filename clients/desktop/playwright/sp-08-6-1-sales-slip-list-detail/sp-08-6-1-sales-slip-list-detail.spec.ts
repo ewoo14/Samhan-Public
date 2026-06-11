@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 
 const specDir = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(specDir, '../../../..')
-const UUID_REGEX = /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+const UUID_REGEX = /\b(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
 
 function read(relPath: string): string {
   return fs.readFileSync(path.join(repoRoot, relPath), 'utf8')

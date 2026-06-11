@@ -7,15 +7,15 @@
  * - 일자 from/to date picker (default Asia/Seoul today ±1일).
  * - dispatchStatus multi-select (default `['UNDISPATCHED']`).
  * - 50/page 페이지네이션 (Spring Page 응답).
- * - 각 슬립 row 가 `useDraggable({ id: slip.id, data: { slipId, slipNumber, partnerName } })`.
+ * - 각 슬립 row 가 `useDraggable({ id: slip.id, data: { slipId, slipNumber: slipNo, partnerName } })`.
  *   → DndContext 가 VehicleGroupColumn 에 위치 (Phase A 의 dispatch board page level 통합).
  *
  * accessibility:
- * - row `aria-label="출고전표 {slipNumber} {partnerName} 드래그 가능"` (한국어).
+ * - row `aria-label="출고전표 {slipNo} {partnerName} 드래그 가능"` (한국어).
  * - `tabIndex={0}` 키보드 포커스 + 스페이스 grab (PointerSensor + KeyboardSensor 기본 동작).
  *
  * UUID 비공개:
- * - row 노출 = `slipNumber` + `partnerCode` + `partnerName` 만.
+ * - row 노출 = `slipNo` + `partnerCode` + `partnerName` 만.
  * - slip UUID 는 `useDraggable` id 로만 사용 (DOM data-* 속성은 testid 외 X).
  */
 import { useState } from 'react'
@@ -259,7 +259,7 @@ function DraggableSlipRow({
   const dragData: DispatchSlipDragData = {
     type: 'slip',
     slipId: slip.id,
-    slipNumber: slip.slipNumber,
+    slipNumber: slip.slipNo,
     partnerName: slip.partnerName,
   }
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -270,7 +270,7 @@ function DraggableSlipRow({
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.4 : 1,
   }
-  const ariaLabel = `출고전표 ${slip.slipNumber} ${slip.partnerName} 드래그 가능`
+  const ariaLabel = `출고전표 ${slip.slipNo} ${slip.partnerName} 드래그 가능`
 
   return (
     <li
@@ -285,7 +285,7 @@ function DraggableSlipRow({
         fontSize: 13,
         background: 'var(--color-neutral-0)',
       }}
-      data-testid={`dispatch-board-slip-row-${slip.slipNumber}`}
+      data-testid={`dispatch-board-slip-row-${slip.slipNo}`}
     >
       <button
         type="button"
@@ -302,7 +302,7 @@ function DraggableSlipRow({
           fontSize: 16,
           lineHeight: 1,
         }}
-        data-testid={`dispatch-board-slip-drag-${slip.slipNumber}`}
+        data-testid={`dispatch-board-slip-drag-${slip.slipNo}`}
       >
         ☰
       </button>
@@ -319,9 +319,9 @@ function DraggableSlipRow({
           fontSize: 13,
           color: 'var(--color-neutral-800)',
         }}
-        data-testid={`dispatch-board-slip-open-${slip.slipNumber}`}
+        data-testid={`dispatch-board-slip-open-${slip.slipNo}`}
       >
-        <span style={{ fontWeight: 600, marginRight: 8 }}>{slip.slipNumber}</span>
+        <span style={{ fontWeight: 600, marginRight: 8 }}>{slip.slipNo}</span>
         <span>{slip.partnerName}</span>
         <span
           style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-neutral-500)' }}
