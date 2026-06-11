@@ -47,6 +47,15 @@
 
 > ⚠️ 본 spec 제목은 "배차 보드"지만 §7로 인해 **실질 범위 = 전역 협업 문서 플랫폼**. 별도 아키텍처 spec 으로 승격 검토 필요.
 
+## 8. 배차 IA 재정의 + 데이터 흐름 (개발책임자 2026-06-11 추가)
+- **메뉴명 변경**: 가배차 분류 → **가배차리스트** · 미배차 리스트 → **미배차리스트** · 완료 배차 내역 → **배차현황**.
+- **배차 메뉴(`/dispatch-board`) 제거 검토**: 현재 = 미배차 출고전표를 좌측 팔레트에서 차량그룹 drag&drop 으로 묶어 [배차 완료]→arologis 보내는 메인 수동 보드. **그룹핑/완료를 미배차리스트·가배차리스트로 이관하면 독립 보드는 중복 → 제거/통합.**
+- **배차현황 = arologis 공급 배차상태**(우리 DB 완료기록이 아니라 arologis 가 직접 공급): 배차된 건의 **배차기사 차량번호 · 기사명 · 연락처**를 표시. #463 의 `matchedDrivers`(driverName/Code/Phone, arologis confirm 유래)가 토대이나 **차량번호(vehiclePlateNumber) 신규 필요** — `DispatchTaskConfirmRequest.MatchedDriverPayload` + `MatchedDriver` 엔티티/마이그 + detail DTO 확장.
+- **배차안내 SMS(Aligo) feed**: 배차현황의 기사·차량 정보가 배차안내 SMS(알리고) 발송에 직접 사용됨.
+- **다중 배차 vendor (아로로지스 단독 아님, 개발책임자 추가 2026-06-11)**: 아로로지스(주력) + **경기퀵**(아로로지스가 못 잡는 차량) + **전국화물**(지방권 차량). 배차 그룹/건별로 vendor 선택·전송, 배차현황에 **vendor 출처 표시**. `MatchedDriver.driverSource`(현 EXTERNAL_INSUNG_QUICK 등)를 vendor enum(`AROLOGIS`/`GYEONGGI_QUICK`/`JEONGUK_HWAMUL`/…)으로 확장, **차종·지역 기반 vendor 라우팅**. → "배차현황 = arologis 공급"은 정확히 "**배차 vendor(들) 공급**"으로 일반화.
+- **데이터 흐름**: 미배차리스트/가배차리스트(2축 차량 그룹핑·체크박스 일괄전송) → **배차 vendor(아로로지스/경기퀵/전국화물)**(매칭·기사/차량 배정) → **배차현황**(vendor 공급 상태 수신·표시, vendor 출처 포함) → **배차안내 SMS(Aligo)**.
+- #463(완료배차 뷰 + E0 실연동)은 배차현황의 **토대**. 라벨/출처 reframe + 차량번호 + 다중 vendor 확장은 본 에픽에서.
+
 ---
 
 ## 에픽 슬라이스 분해 (제안)
