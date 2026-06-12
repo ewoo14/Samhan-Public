@@ -4,6 +4,29 @@
 
 ---
 
+## ✅ 2026-06-12 (야간 자율, 집 PC) — **#464 배차현황 실 데이터 + 보안 연쇄 #465→#466 / #467→#468 머지**
+
+> 다모델 워크플로우([[temp-multimodel-workflow]]) — Opus 계획/PR → Codex 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent → PM 종합. 각 리뷰 라운드 QA agent + Docker 실QA. 전 PR 0 error/0 skip 후 머지.
+
+### #464 배차현황 실 데이터 (머지 `46d61b73`)
+- **#1 코멘트 작성자 실명**: JwtTokenProvider displayName("name") claim → auth login JWT → 게이트웨이 X-User-Name(URLEncode) → slip 코멘트 실명. **0xED("터") 모지바케 근본 규명**: Tomcat 이 헤더를 ISO-8859-1 로 읽어 깨짐 → 공용 `shared/security/UserHeaderDecodingFilter`(charset-repair) [[x-user-name-header-charset-mockmvc]].
+- **#2a arologis 자동공급 / #2b 타사 수동기입** + 전화번호 nullable 전 계층(더미폰 제거, V18~V20·V39·V40) + 용어 "코멘트"([[comment-not-collab-comment]]).
+- 3라운드(CI 29/29 green, Docker 실QA: [DEV-SEED] 개발마스터+12가7890+경기퀵).
+
+### 보안 연쇄 (#464 Fable5 리뷰가 발견 → 전용 PR)
+- **#465→#466**(머지 `73863d84`): 게이트웨이 `/auth/**` catch-all + default-filters identity 헤더 무strip → 위조 `X-Is-System-Master:true` 로 `/auth/register` 권한 우회(CRITICAL). `StripInboundIdentityHeaders` 필터를 무-JWT 공개 라우트 6개에 적용. 3라운드 P1 0.
+- **#467→#468**(머지 `9305ee56`): #466 리뷰가 surface 한 선재 인가 2건 — ① EmployeeController(list/getOne/lookup/org-chart) 직원 PII fail-open → 4 endpoint @RequirePermission(admin.employees,VIEW) ② X-Partner-Code cross-tenant → 게이트웨이 claim 주입. 3라운드 P1 0(직원 PII sweep Opus 적발·완결).
+
+### 🚩 다음 큐 — **개발책임자 결정 대기**(정책 게이트 — 자율 진행 보류)
+배차 보드 에픽([[project-item-exposure-and-menu-5cat]] / docs/superpowers/specs/2026-06-11-dispatch-board-enhancement-spec.md) 잔여:
+1. **2축 차량 모델**(차종12+톤수10) arologis enum 확장 vs lossy 호환 — PM 야간 기본값=additive, 아침 결정 필요.
+2. **2-pane 보드 대상 화면**(가배차리스트 좌우 분할 — 좌=전표 풀, 우=차량 캡슐 드래그/전표번호 그룹핑·중복 붉은표시·차종 가시·상태색).
+3. **수정제안 구성-mutation 정책**(어느 상태 편집 허용·accept 시 arologis 재발송) + 수동기입 task-status 게이트 / vendor가 MANUAL 덮어쓰기 우선순위(#467 DEFER).
+4. **§7 전역 협업 플랫폼**: 모든 전표(회계/입출고 등)에 코멘트 적용 — 큰 슬라이스(collab-core 재사용), 신규 세션 권장.
+- multi-vendor(아로로지스/경기퀵/전국화물) 배차안내 SMS 연동 · 배차현황 SMS feed.
+
+---
+
 ## ✅ 2026-06-11 (주간, 집 PC) — **#462 좌측 메뉴 5대분류 + 접기/펼치기 머지** (임시 워크플로우 전체 순서)
 
 > 개발책임자 임시 워크플로우([[temp-multimodel-review-workflow]]) 전체 적용 첫 슬라이스: **Opus 계획/PR → Codex(gpt5.5) 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent → PM**, **각 리뷰어 라운드에 QA agent 실서버 스크린샷 게시**(정정 반영).
