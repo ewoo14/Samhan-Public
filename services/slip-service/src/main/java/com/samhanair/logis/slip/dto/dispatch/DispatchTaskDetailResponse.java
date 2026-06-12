@@ -25,13 +25,15 @@ public record DispatchTaskDetailResponse(
         LocalDateTime modificationRequestedAt,
         LocalDateTime modificationDecidedAt,
         List<VehicleGroup> vehicleGroups,
-        List<MatchedDriverDto> matchedDrivers
+        List<MatchedDriverDto> matchedDrivers,
+        List<UUID> duplicateSlipIds
 ) {
 
     public static DispatchTaskDetailResponse of(
             DispatchTask task,
             List<VehicleGroup> vehicleGroups,
-            List<MatchedDriverDto> matchedDrivers
+            List<MatchedDriverDto> matchedDrivers,
+            List<UUID> duplicateSlipIds
     ) {
         return new DispatchTaskDetailResponse(
                 task.getId(),
@@ -45,7 +47,8 @@ public record DispatchTaskDetailResponse(
                 task.getModificationRequestedAt(),
                 task.getModificationDecidedAt(),
                 vehicleGroups,
-                matchedDrivers
+                matchedDrivers,
+                duplicateSlipIds
         );
     }
 
@@ -57,6 +60,7 @@ public record DispatchTaskDetailResponse(
             String vehicleBodyTypeDisplay,
             String tonnage,
             String tonnageDisplay,
+            String dispatchStatus,
             int sequence,
             List<VehicleGroupSlip> slips
     ) {
@@ -69,6 +73,7 @@ public record DispatchTaskDetailResponse(
                     group.getVehicleBodyType().getDisplayName(),
                     group.getTonnage() != null ? group.getTonnage().name() : null,
                     group.getTonnage() != null ? group.getTonnage().getDisplayName() : null,
+                    group.getDispatchStatus().name(),
                     group.getSequence(),
                     slips
             );

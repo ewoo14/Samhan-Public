@@ -48,11 +48,19 @@ import { SlipDetailModal } from './components/SlipDetailModal'
 import { todayIsoSeoul } from '../../api/dispatchBoard'
 import {
   useAssignSlipToGroupMutation,
-  useCreateDispatchTaskMutation,
   useDispatchTaskQuery,
+  useEnsureTodayDraftTaskMutation,
   useReorderGroupSlipsMutation,
 } from './hooks/useDispatchTask'
 import type { DispatchSlipDragData } from './components/UnDispatchedSlipList'
+
+function initialDispatchTaskIdFromLocation(): string | null {
+  if (typeof window === 'undefined') return null
+  const hashQuery = window.location.hash.split('?')[1]
+  const params = new URLSearchParams(hashQuery ?? window.location.search)
+  const taskId = params.get('taskId')
+  return taskId && taskId.trim() ? taskId.trim() : null
+}
 
 /**
  * 그룹 안 sortable slip row 가 useSortable 에 넘기는 data.
@@ -67,8 +75,8 @@ export interface DispatchGroupSlipDragData {
 /**
  * Phase A 배차 메뉴 page.
  *
- * <p>진입 직후 mount 1회만 `createDispatchTask` 호출하여 빈 DRAFT task 생성 →
- * 응답의 task UUID + taskCode 를 page state 로 보관. 모든 후속 mutation 은 본 taskId 인자 사용.
+ * <p>진입 직후 mount 1회만 오늘의 DRAFT task 를 보장하고 응답의 task UUID + taskCode 를 page state 로 보관.
+ * 모든 후속 mutation 은 본 taskId 인자 사용.
  */
 export default function DispatchBoardPage() {
   usePageTitle('배차 메뉴')
@@ -79,20 +87,20 @@ export default function DispatchBoardPage() {
   const [detailSlipId, setDetailSlipId] = useState<string | null>(null)
 
   // 현재 task UUID — mount 직후 자동 생성.
-  const [taskId, setTaskId] = useState<string | null>(null)
+  const [taskId, setTaskId] = useState<string | null>(() => initialDispatchTaskIdFromLocation())
 
-  const createMutation = useCreateDispatchTaskMutation()
+  const ensureDraftMutation = useEnsureTodayDraftTaskMutation()
   const taskQuery = useDispatchTaskQuery(taskId)
 
   useEffect(() => {
     // VIEW 전용 사용자는 보드 조회만 허용한다. mount 시 task 생성은 UPDATE 권한 보유자만 실행.
     if (permissionsLoading || !canEditDispatch) return
     if (taskId) return
-    if (createMutation.isPending || createMutation.isError) return
-    createMutation.mutate(todayIsoSeoul(), {
+    if (ensureDraftMutation.isPending || ensureDraftMutation.isError) return
+    ensureDraftMutation.mutate(todayIsoSeoul(), {
       onSuccess: (task) => setTaskId(task.id),
     })
-    // intentionally exclude createMutation from deps (mutate stable reference)
+    // intentionally exclude ensureDraftMutation from deps (mutate stable reference)
   }, [canEditDispatch, permissionsLoading, taskId])
 
   const task = taskQuery.data
@@ -142,6 +150,8 @@ export default function DispatchBoardPage() {
       const groupId =
         overData.type === 'group' ? overData.groupId : overData.groupId
       if (!groupId) return
+      const targetGroup = task.vehicleGroups.find((group) => group.id === groupId)
+      if (!targetGroup || targetGroup.dispatchStatus === 'DISPATCHED') return
       assignMutation.mutate({ groupId, slipId: activeData.slipId })
       return
     }
@@ -164,8 +174,8 @@ export default function DispatchBoardPage() {
   }
 
   // task 가 아직 없으면 spinner.
-  const initializing = canEditDispatch && !taskId && createMutation.isPending
-  const failed = canEditDispatch && !taskId && createMutation.isError
+  const initializing = canEditDispatch && !taskId && ensureDraftMutation.isPending
+  const failed = canEditDispatch && !taskId && ensureDraftMutation.isError
 
   const groups = useMemo(() => task?.vehicleGroups ?? [], [task])
 

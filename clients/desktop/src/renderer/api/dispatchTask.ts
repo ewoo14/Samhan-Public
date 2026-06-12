@@ -5,6 +5,7 @@
  * BE 출처 (Phase A BE Team):
  * <ul>
  *   <li>{@code POST /admin/dispatch-tasks}                                            — 신규 DispatchTask (DRAFT)</li>
+ *   <li>{@code POST /admin/dispatch-tasks/today-draft}                                — 오늘의 DRAFT 조회 또는 생성</li>
  *   <li>{@code POST /admin/dispatch-tasks/{taskId}/vehicle-groups}                    — 차량 그룹 추가</li>
  *   <li>{@code DELETE /admin/dispatch-tasks/{taskId}/vehicle-groups/{groupId}}        — 빈 그룹 삭제</li>
  *   <li>{@code POST /admin/dispatch-tasks/{taskId}/vehicle-groups/{groupId}/slips}    — slip 그룹 할당</li>
@@ -19,6 +20,7 @@
  *
  * 차량 종류:
  *   FE 신규 계약은 vehicleBodyType(차종 12) + tonnage(톤수 10) 2축.
+ *   현재 화면 선택지는 active subset(차종 9 + 톤수 6)만 노출한다.
  *   legacy vehicleType(9 enum) 은 arologis wire 호환 파생값으로 응답에만 남긴다.
  */
 import { apiClient, type ApiEnvelope, type PageResponse } from './client'
@@ -56,7 +58,7 @@ export const DISPATCH_VEHICLE_TYPE_LABEL: Record<DispatchVehicleType, string> = 
 }
 
 /**
- * 배차 차량 차종 12종.
+ * 배차 차량 차종 12종. excluded 값도 응답/legacy 표시 호환 때문에 타입에는 유지한다.
  */
 export type DispatchVehicleBodyType =
   | 'MOTORCYCLE'
@@ -73,7 +75,7 @@ export type DispatchVehicleBodyType =
   | 'TRAILER'
 
 /**
- * 배차 차량 톤수 10종. 소형 차종은 null 로 전송한다.
+ * 배차 차량 톤수 10종. excluded 값도 응답/legacy 표시 호환 때문에 타입에는 유지한다.
  */
 export type DispatchTonnage =
   | 'T_1'
@@ -117,7 +119,6 @@ export const DISPATCH_TONNAGE_LABEL: Record<DispatchTonnage, string> = {
 
 export const VEHICLE_BODY_TYPE_OPTIONS: DispatchVehicleBodyType[] = [
   'MOTORCYCLE',
-  'SEDAN',
   'DAMAS',
   'LABO',
   'CARGO',
@@ -126,32 +127,25 @@ export const VEHICLE_BODY_TYPE_OPTIONS: DispatchVehicleBodyType[] = [
   'LIFT',
   'REEFER',
   'VIBRATION_FREE',
-  'AXLE',
-  'TRAILER',
 ]
 
 export const TONNAGE_OPTIONS: DispatchTonnage[] = [
   'T_1',
-  'T_1_2',
   'T_1_4',
   'T_2_5',
   'T_3_5',
   'T_5',
   'T_11',
-  'T_14',
-  'T_18',
-  'T_25',
 ]
 
 /**
- * BE DispatchVehicleTypeMatrix 와 동일한 차종별 유효 톤수.
+ * BE DispatchVehicleTypeMatrix 와 동일한 active 차종별 유효 톤수.
  */
-export const DISPATCH_VEHICLE_TYPE_MATRIX: Record<
+export const DISPATCH_VEHICLE_TYPE_MATRIX: Partial<Record<
   DispatchVehicleBodyType,
   readonly DispatchTonnage[]
-> = {
+>> = {
   MOTORCYCLE: [],
-  SEDAN: [],
   DAMAS: [],
   LABO: [],
   CARGO: TONNAGE_OPTIONS,
@@ -160,8 +154,12 @@ export const DISPATCH_VEHICLE_TYPE_MATRIX: Record<
   LIFT: TONNAGE_OPTIONS,
   REEFER: TONNAGE_OPTIONS,
   VIBRATION_FREE: TONNAGE_OPTIONS,
-  AXLE: TONNAGE_OPTIONS,
-  TRAILER: TONNAGE_OPTIONS,
+}
+
+export function getAllowedDispatchTonnages(
+  vehicleBodyType: DispatchVehicleBodyType,
+): readonly DispatchTonnage[] | null {
+  return DISPATCH_VEHICLE_TYPE_MATRIX[vehicleBodyType] ?? null
 }
 
 export interface AddVehicleGroupPayload {
@@ -225,6 +223,85 @@ export const DISPATCH_TASK_STATUS_LABEL: Record<DispatchTaskStatus, string> = {
   CANCEL_ACCEPTED: '취소 수락됨',
   CANCEL_REJECTED: '취소 거부됨',
   CANCELLED: '배차 취소 완료',
+}
+
+export const DISPATCH_TASK_STATUS_TONE: Record<
+  DispatchTaskStatus,
+  { background: string; color: string; borderColor: string }
+> = {
+  DRAFT: {
+    background: 'var(--color-neutral-100, #F3F4F6)',
+    color: 'var(--color-neutral-700, #374151)',
+    borderColor: 'var(--color-neutral-300, #D1D5DB)',
+  },
+  DISPATCHING: {
+    background: 'var(--color-info-50, #EFF6FF)',
+    color: 'var(--color-info-700, #1E40AF)',
+    borderColor: 'var(--color-info-200, #BFDBFE)',
+  },
+  DISPATCHED: {
+    background: 'var(--color-success-50, #ECFDF5)',
+    color: 'var(--color-success-700, #047857)',
+    borderColor: 'var(--color-success-200, #A7F3D0)',
+  },
+  FAILED: {
+    background: 'var(--color-danger-50, #FEF2F2)',
+    color: 'var(--color-danger-700, #B91C1C)',
+    borderColor: 'var(--color-danger-200, #FECACA)',
+  },
+  MODIFICATION_REQUESTED: {
+    background: 'var(--color-purple-50, #FAF5FF)',
+    color: 'var(--color-purple-700, #6B21A8)',
+    borderColor: 'var(--color-purple-200, #E9D5FF)',
+  },
+  MODIFICATION_ACCEPTED: {
+    background: 'var(--color-success-50, #ECFDF5)',
+    color: 'var(--color-success-700, #047857)',
+    borderColor: 'var(--color-success-200, #A7F3D0)',
+  },
+  MODIFICATION_REJECTED: {
+    background: 'var(--color-danger-50, #FEF2F2)',
+    color: 'var(--color-danger-700, #B91C1C)',
+    borderColor: 'var(--color-danger-200, #FECACA)',
+  },
+  CANCEL_REQUESTED: {
+    background: 'var(--color-purple-50, #FAF5FF)',
+    color: 'var(--color-purple-700, #6B21A8)',
+    borderColor: 'var(--color-purple-200, #E9D5FF)',
+  },
+  CANCEL_ACCEPTED: {
+    background: 'var(--color-success-50, #ECFDF5)',
+    color: 'var(--color-success-700, #047857)',
+    borderColor: 'var(--color-success-200, #A7F3D0)',
+  },
+  CANCEL_REJECTED: {
+    background: 'var(--color-danger-50, #FEF2F2)',
+    color: 'var(--color-danger-700, #B91C1C)',
+    borderColor: 'var(--color-danger-200, #FECACA)',
+  },
+  CANCELLED: {
+    background: 'var(--color-neutral-100, #F3F4F6)',
+    color: 'var(--color-neutral-700, #374151)',
+    borderColor: 'var(--color-neutral-300, #D1D5DB)',
+  },
+}
+
+export type DispatchVehicleGroupDispatchStatus = 'PENDING' | 'DISPATCHED'
+
+export const DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_LABEL: Record<
+  DispatchVehicleGroupDispatchStatus,
+  string
+> = {
+  PENDING: '미발송',
+  DISPATCHED: '발송완료',
+}
+
+export const DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_TONE: Record<
+  DispatchVehicleGroupDispatchStatus,
+  { background: string; color: string; borderColor: string }
+> = {
+  PENDING: DISPATCH_TASK_STATUS_TONE.DRAFT,
+  DISPATCHED: DISPATCH_TASK_STATUS_TONE.DISPATCHED,
 }
 
 /**
@@ -292,6 +369,7 @@ export interface SetMatchedDriverPayload {
  * @property vehicleType legacy 9 enum 값 (arologis wire 호환 파생값).
  * @property vehicleBodyType 신 차종 12 enum 값.
  * @property tonnage 신 톤수 10 enum 값. 소형 차종은 null.
+ * @property dispatchStatus 그룹 단위 arologis 발송 상태.
  * @property slips 그룹 안 slip rows (sequence 순서 보장).
  */
 export interface DispatchVehicleGroupResponse {
@@ -303,6 +381,7 @@ export interface DispatchVehicleGroupResponse {
   vehicleBodyTypeDisplay: string
   tonnage: DispatchTonnage | null
   tonnageDisplay: string | null
+  dispatchStatus: DispatchVehicleGroupDispatchStatus
   slips: DispatchVehicleGroupSlipResponse[]
 }
 
@@ -330,6 +409,7 @@ export interface DispatchTaskResponse {
   arologisDispatchId: string | null
   vehicleGroups: DispatchVehicleGroupResponse[]
   matchedDrivers: MatchedDriverResponse[]
+  duplicateSlipIds: string[]
   failureReason: string | null
   modificationReason?: string | null
   rejectionReason?: string | null
@@ -373,6 +453,21 @@ export async function createDispatchTask(
 ): Promise<DispatchTaskResponse> {
   const res = await apiClient.post<ApiEnvelope<DispatchTaskResponse>>(
     '/admin/dispatch-tasks',
+    { dispatchDate },
+  )
+  return res.data.data
+}
+
+/**
+ * 오늘의 미발송 DRAFT 보장 — `POST /admin/dispatch-tasks/today-draft`.
+ *
+ * <p>보드 F5/메뉴 재진입 시 기존 DRAFT 를 재사용해 cross-task 전표 배정 교착을 방지한다.
+ */
+export async function ensureTodayDraftTask(
+  dispatchDate: string,
+): Promise<DispatchTaskResponse> {
+  const res = await apiClient.post<ApiEnvelope<DispatchTaskResponse>>(
+    '/admin/dispatch-tasks/today-draft',
     { dispatchDate },
   )
   return res.data.data
@@ -481,11 +576,12 @@ export async function assignSlipToGroup(
   taskId: string,
   groupId: string,
   slipId: string,
-): Promise<void> {
-  await apiClient.post(
+): Promise<DispatchVehicleGroupSlipResponse> {
+  const res = await apiClient.post<ApiEnvelope<DispatchVehicleGroupSlipResponse>>(
     `/admin/dispatch-tasks/${taskId}/vehicle-groups/${groupId}/slips`,
     { slipId },
   )
+  return res.data.data
 }
 
 /**
@@ -529,9 +625,11 @@ export async function removeSlipFromGroup(
  */
 export async function dispatchToArologis(
   taskId: string,
+  groupIds?: string[],
 ): Promise<DispatchTaskResponse> {
   const res = await apiClient.post<ApiEnvelope<DispatchTaskResponse>>(
     `/admin/dispatch-tasks/${taskId}/dispatch`,
+    groupIds ? { groupIds } : undefined,
   )
   return res.data.data
 }

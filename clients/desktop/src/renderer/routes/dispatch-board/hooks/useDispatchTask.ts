@@ -15,6 +15,7 @@ import {
   createDispatchTask,
   deleteVehicleGroup,
   dispatchToArologis,
+  ensureTodayDraftTask,
   getDispatchTask,
   getDispatchTasks,
   removeSlipFromGroup,
@@ -35,6 +36,8 @@ import { DISPATCH_BOARD_QUERY_KEY } from './useUnDispatchedSlipsQuery'
  */
 export const dispatchTaskQueryKey = (taskId: string | null) =>
   ['dispatchTask', taskId] as const
+
+export const DISPATCH_TASK_LOCAL_MUTATION_EVENT = 'samhan-dispatch-task-local-mutation'
 
 /**
  * DispatchTask 단건 query — taskId 가 null/undefined 면 disabled.
@@ -63,6 +66,15 @@ export function useDispatchTasksQuery(params: ListDispatchTasksParams) {
 export function useCreateDispatchTaskMutation() {
   return useMutation({
     mutationFn: (dispatchDate: string) => createDispatchTask(dispatchDate),
+  })
+}
+
+/**
+ * 오늘의 미발송 DRAFT 보장 mutation — 보드 mount/F5 재진입 전용.
+ */
+export function useEnsureTodayDraftTaskMutation() {
+  return useMutation({
+    mutationFn: (dispatchDate: string) => ensureTodayDraftTask(dispatchDate),
   })
 }
 
@@ -135,6 +147,7 @@ export function useAssignSlipToGroupMutation(taskId: string | null) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: dispatchTaskQueryKey(taskId) })
       void qc.invalidateQueries({ queryKey: DISPATCH_BOARD_QUERY_KEY })
+      window.dispatchEvent(new CustomEvent(DISPATCH_TASK_LOCAL_MUTATION_EVENT))
     },
   })
 }
@@ -181,7 +194,7 @@ export function useRemoveSlipFromGroupMutation(taskId: string | null) {
 export function useDispatchToArologisMutation(taskId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => dispatchToArologis(taskId as string),
+    mutationFn: (groupIds?: string[]) => dispatchToArologis(taskId as string, groupIds),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: dispatchTaskQueryKey(taskId) })
       void qc.invalidateQueries({ queryKey: DISPATCH_BOARD_QUERY_KEY })
