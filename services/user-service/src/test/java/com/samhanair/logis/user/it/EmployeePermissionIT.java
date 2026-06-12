@@ -27,10 +27,13 @@ import org.springframework.test.web.servlet.MockMvc;
  *
  * <p>케이스 목록:
  * <ol>
- *   <li>C1: MASTER canView=true → GET /users/employees 200 OK</li>
- *   <li>C2: MANAGER canView=false → 403 FORBIDDEN</li>
+ *   <li>C1: MASTER admin.employees VIEW grant → GET /users/employees 200 OK</li>
+ *   <li>C2: MANAGER admin.employees VIEW deny → GET /users/employees 403 FORBIDDEN</li>
  *   <li>C3: MASTER canEdit=true → POST /users/employees checkEdit 통과</li>
  *   <li>C4: MANAGER canEdit=false + canView=true → POST 403 (view-only override)</li>
+ *   <li>C5: role header 부재 + VIEW deny → GET /users/employees/{id} 403 FORBIDDEN</li>
+ *   <li>C6: MANAGER admin.employees VIEW deny → POST /users/employees/lookup 403 FORBIDDEN</li>
+ *   <li>C7: MANAGER admin.employees VIEW deny → GET /users/org-chart 403 FORBIDDEN</li>
  * </ol>
  */
 @SpringBootTest(classes = UserServiceApplication.class)
@@ -67,7 +70,7 @@ class EmployeePermissionIT extends AbstractPostgresIT {
     // -------------------------------------------------------------------------
 
     @Test
-    @DisplayName("C1: MASTER admin.employees canView=true → 직원 목록 200 OK")
+    @DisplayName("C1: MASTER admin.employees VIEW grant → 직원 목록 200 OK")
     @WithMockUser(username = "master-user", authorities = {"ROLE_MASTER"})
     void C1_master_canView_true_returns_200() throws Exception {
         mockMvc.perform(get("/users/employees")
@@ -77,19 +80,19 @@ class EmployeePermissionIT extends AbstractPostgresIT {
     }
 
     // -------------------------------------------------------------------------
-    // C2: MANAGER canView=false → 403
+    // C2: MANAGER admin.employees VIEW deny → 403
     // -------------------------------------------------------------------------
 
     @Test
-    @DisplayName("C2: MANAGER admin.employees canView=false → 직원 목록 403 FORBIDDEN")
+    @DisplayName("C2: MANAGER admin.employees VIEW deny → 직원 목록 403 FORBIDDEN")
     @WithMockUser(username = "manager-denied", authorities = {"ROLE_MANAGER"})
     void C2_manager_canView_false_returns_403() throws Exception {
-        Mockito.when(dynamicPermissionClient.canView("MANAGER", "admin.employees"))
+        Mockito.when(dynamicPermissionClient.check(
+                        Mockito.any(UUID.class), Mockito.eq("admin.employees"), Mockito.eq(PermissionAction.VIEW)))
                 .thenReturn(false);
 
         mockMvc.perform(get("/users/employees")
-                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020")
-                        .header("X-User-Role", "MANAGER"))
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020"))
                 .andExpect(status().isForbidden());
     }
 
@@ -135,5 +138,86 @@ class EmployeePermissionIT extends AbstractPostgresIT {
                                 + "\"departmentId\":\"00000000-0000-0000-0000-000000000001\","
                                 + "\"hireDate\":\"2026-05-18\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    // -------------------------------------------------------------------------
+    // C5: X-User-Role 부재 + VIEW deny → GET /users/employees/{id} 403
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("C5: role header 부재 + admin.employees VIEW deny → 직원 단건 403 FORBIDDEN")
+    @WithMockUser(username = "manager-denied", authorities = {"ROLE_MANAGER"})
+    void C5_missingRoleHeader_viewDeny_getOne_returns_403() throws Exception {
+        Mockito.when(dynamicPermissionClient.check(
+                        Mockito.any(UUID.class), Mockito.eq("admin.employees"), Mockito.eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+
+        mockMvc.perform(get("/users/employees/{id}", UUID.fromString("00000000-0000-0000-0000-000000000030"))
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020"))
+                .andExpect(status().isForbidden());
+    }
+
+    // -------------------------------------------------------------------------
+    // C6: EmployeeProjection lookup PII surface — VIEW deny → 403, grant → 200
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("C6: admin.employees VIEW deny → 직원 lookup PII surface 403 FORBIDDEN")
+    @WithMockUser(username = "manager-denied", authorities = {"ROLE_MANAGER"})
+    void C6_lookup_viewDeny_returns_403() throws Exception {
+        Mockito.when(dynamicPermissionClient.check(
+                        Mockito.any(UUID.class), Mockito.eq("admin.employees"), Mockito.eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+
+        mockMvc.perform(post("/users/employees/lookup")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[\"00000000-0000-0000-0000-000000000030\"]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("C6-allow: admin.employees VIEW grant → 직원 lookup PII surface 200 OK")
+    @WithMockUser(username = "manager-granted", authorities = {"ROLE_MANAGER"})
+    void C6_lookup_viewGrant_returns_200() throws Exception {
+        Mockito.when(dynamicPermissionClient.check(
+                        Mockito.any(UUID.class), Mockito.eq("admin.employees"), Mockito.eq(PermissionAction.VIEW)))
+                .thenReturn(true);
+
+        mockMvc.perform(post("/users/employees/lookup")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[\"00000000-0000-0000-0000-000000000030\"]}"))
+                .andExpect(status().isOk());
+    }
+
+    // -------------------------------------------------------------------------
+    // C7: org-chart 전체 직원 EmployeeProjection 덤프 — VIEW deny → 403, grant → 200
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("C7: admin.employees VIEW deny → 조직도 PII surface 403 FORBIDDEN")
+    @WithMockUser(username = "manager-denied", authorities = {"ROLE_MANAGER"})
+    void C7_orgChart_viewDeny_returns_403() throws Exception {
+        Mockito.when(dynamicPermissionClient.check(
+                        Mockito.any(UUID.class), Mockito.eq("admin.employees"), Mockito.eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+
+        mockMvc.perform(get("/users/org-chart")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("C7-allow: admin.employees VIEW grant → 조직도 PII surface 200 OK")
+    @WithMockUser(username = "manager-granted", authorities = {"ROLE_MANAGER"})
+    void C7_orgChart_viewGrant_returns_200() throws Exception {
+        Mockito.when(dynamicPermissionClient.check(
+                        Mockito.any(UUID.class), Mockito.eq("admin.employees"), Mockito.eq(PermissionAction.VIEW)))
+                .thenReturn(true);
+
+        mockMvc.perform(get("/users/org-chart")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000020"))
+                .andExpect(status().isOk());
     }
 }
