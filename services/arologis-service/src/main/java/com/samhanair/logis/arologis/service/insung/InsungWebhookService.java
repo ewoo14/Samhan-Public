@@ -52,6 +52,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class InsungWebhookService {
 
+    private static final int DRIVER_CODE_MAX_LENGTH = 50;
+    private static final String INSUNG_DRIVER_CODE_PREFIX = "INSUNG-";
+
     private final VehicleRepository vehicleRepository;
     private final VehicleStopRepository vehicleStopRepository;
     private final DriverRepository driverRepository;
@@ -87,14 +90,33 @@ public class InsungWebhookService {
                     req.vendorOrderId(), req.failReason(), vehicle.getStatus());
             return;
         }
+        String vendorDriverId = normalize(req.vendorDriverId());
+        if (vendorDriverId == null) {
+            vehicle.updateVendorStatus("MATCH_FAILED");
+            log.warn("[InsungWebhook] 매칭 성공 응답의 vendorDriverId 결손 — vendorOrderId={}, skip",
+                    req.vendorOrderId());
+            return;
+        }
 
         // Driver upsert — driverCode = INSUNG-<vendorDriverId>
-        String driverCode = "INSUNG-" + req.vendorDriverId();
-        String phoneNumber = req.driverPhone() != null ? req.driverPhone() : "010-0000-0000";
+        String driverCode = INSUNG_DRIVER_CODE_PREFIX + vendorDriverId;
+        if (driverCode.length() > DRIVER_CODE_MAX_LENGTH) {
+            vehicle.updateVendorStatus("MATCH_FAILED");
+            log.warn("[InsungWebhook] 매칭 성공 응답의 vendorDriverId 초과 — vendorOrderId={}, skip",
+                    req.vendorOrderId());
+            return;
+        }
+        String phoneNumber = normalize(req.driverPhone());
         Driver driver = driverRepository.findByDriverCode(driverCode)
+                .map(existing -> {
+                    existing.updateVendorProfile(req.driverName(), phoneNumber,
+                            req.vehicleType(), req.vehiclePlateNumber());
+                    return existing;
+                })
                 .orElseGet(() -> driverRepository.save(
-                        Driver.of(driverCode, phoneNumber, req.vehicleType(),
-                                DriverSource.EXTERNAL_INSUNG_QUICK, Boolean.FALSE, null)));
+                        Driver.of(driverCode, req.driverName(), phoneNumber, req.vehicleType(),
+                                req.vehiclePlateNumber(), DriverSource.EXTERNAL_INSUNG_QUICK,
+                                Boolean.FALSE, null)));
 
         if (vehicle.getStatus() == VehicleStatus.MATCHING
                 || vehicle.getStatus() == VehicleStatus.PENDING) {
@@ -247,6 +269,10 @@ public class InsungWebhookService {
             log.info("[InsungWebhook] 모든 정차 완료 — vendorOrderId={} vehicle.status={}",
                     req.vendorOrderId(), vehicle.getStatus());
         }
+    }
+
+    private static String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /**

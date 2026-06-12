@@ -203,6 +203,88 @@ class JwtAuthenticationGatewayFilterFactoryTest {
     }
 
     @Test
+    @DisplayName("displayName claim(name) → X-User-Name URL-encoded 전파, 위조 헤더는 제거")
+    void validToken_withDisplayName_propagatesEncodedUserNameHeader() {
+        String token = JwtTokenProvider.generate(
+                "user-name", "MANAGER", "배차팀", "홍길동", false, "", 3600L, props.getSecretBytes());
+        String expectedEncodedName = java.net.URLEncoder.encode(
+                "홍길동", java.nio.charset.StandardCharsets.UTF_8);
+
+        GatewayFilter filter = factory.apply(new JwtAuthenticationGatewayFilterFactory.Config());
+
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/dispatch")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header("X-User-Name", "system")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        ServerHttpRequest[] captured = new ServerHttpRequest[1];
+        GatewayFilterChain chain = e -> {
+            captured[0] = e.getRequest();
+            return Mono.empty();
+        };
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(captured[0]).isNotNull();
+        assertThat(captured[0].getHeaders().get("X-User-Name")).containsExactly(expectedEncodedName);
+        assertThat(captured[0].getHeaders().getFirst("X-User-Department")).isEqualTo(
+                java.net.URLEncoder.encode("배차팀", java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("name claim 부재 구토큰 + 위조 X-User-Name 입력 → downstream X-User-Name strip")
+    void legacyToken_withoutDisplayNameClaim_stripsSpoofedUserNameHeader() {
+        String token = JwtTokenProvider.generate(
+                "legacy-name", "MANAGER", 3600, props.getSecretBytes());
+
+        GatewayFilter filter = factory.apply(new JwtAuthenticationGatewayFilterFactory.Config());
+
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/dispatch")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header("X-User-Name", "%ED%99%8D%EA%B8%B8%EB%8F%99")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        ServerHttpRequest[] captured = new ServerHttpRequest[1];
+        GatewayFilterChain chain = e -> {
+            captured[0] = e.getRequest();
+            return Mono.empty();
+        };
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(captured[0]).isNotNull();
+        assertThat(captured[0].getHeaders().containsKey("X-User-Name")).isFalse();
+    }
+
+    @Test
+    @DisplayName("departmentName claim 부재 구토큰 + 위조 X-User-Department 입력 → downstream X-User-Department strip")
+    void legacyToken_withoutDepartmentNameClaim_stripsSpoofedUserDepartmentHeader() {
+        String token = JwtTokenProvider.generate(
+                "legacy-department", "MANAGER", 3600, props.getSecretBytes());
+
+        GatewayFilter filter = factory.apply(new JwtAuthenticationGatewayFilterFactory.Config());
+
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/hr/employees")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header("X-User-Department", "%EB%8C%80%ED%91%9C%EC%8B%A4")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        ServerHttpRequest[] captured = new ServerHttpRequest[1];
+        GatewayFilterChain chain = e -> {
+            captured[0] = e.getRequest();
+            return Mono.empty();
+        };
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(captured[0]).isNotNull();
+        assertThat(captured[0].getHeaders().containsKey("X-User-Department")).isFalse();
+    }
+
+    @Test
     void invalidToken_returns401InvalidToken() {
         GatewayFilter filter = factory.apply(new JwtAuthenticationGatewayFilterFactory.Config());
 

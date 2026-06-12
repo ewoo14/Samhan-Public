@@ -21,17 +21,19 @@
  *  - aria-label 한국어 풀네임 ("배차 작업 2026/05/14-1 상세").
  *  - Modal (design-system) 의 focus trap + ESC 닫기 + 한국어 닫기 라벨 활용.
  */
-import { useState } from 'react'
-import { Button, Modal } from '@samhan/design-system'
+import { useState, type FormEvent } from 'react'
+import { Button, Input, Modal } from '@samhan/design-system'
 import {
   DISPATCH_TASK_STATUS_LABEL,
   DISPATCH_VEHICLE_TYPE_LABEL,
   type DispatchTaskResponse,
+  type SetMatchedDriverPayload,
 } from '../../../api/dispatchTask'
 import { ModificationRequestDialog } from './ModificationRequestDialog'
 import { CancellationRequestDialog } from './CancellationRequestDialog'
 import { DispatchCommentThread } from './DispatchCommentThread'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { useSetMatchedDriverMutation } from '../hooks/useDispatchTask'
 
 interface DispatchTaskDetailModalProps {
   task: DispatchTaskResponse
@@ -91,6 +93,38 @@ const STATUS_BANNER_STYLE: Record<
   },
 }
 
+const EMPTY_MATCHED_DRIVER_FORM: SetMatchedDriverPayload = {
+  driverName: '',
+  vehiclePlateNumber: '',
+  driverPhoneNumber: '',
+  driverSource: '',
+}
+
+type MatchedDriverFormErrors = Partial<Record<keyof SetMatchedDriverPayload, string>>
+type MatchedDriverFormTouched = Partial<Record<keyof SetMatchedDriverPayload, boolean>>
+
+const PHONE_PATTERN = /^[0-9+\-\s()]{7,20}$/
+
+function validateMatchedDriverForm(
+  form: SetMatchedDriverPayload,
+): MatchedDriverFormErrors {
+  const errors: MatchedDriverFormErrors = {}
+  if (!form.driverName.trim()) {
+    errors.driverName = '기사명을 입력하세요.'
+  }
+  if (!form.vehiclePlateNumber.trim()) {
+    errors.vehiclePlateNumber = '차량번호를 입력하세요.'
+  }
+  const phone = form.driverPhoneNumber.trim()
+  if (phone && !PHONE_PATTERN.test(phone)) {
+    errors.driverPhoneNumber = '전화번호 형식을 확인하세요.'
+  }
+  if (!form.driverSource.trim()) {
+    errors.driverSource = '출처를 입력하세요.'
+  }
+  return errors
+}
+
 export function DispatchTaskDetailModal({
   task,
   onClose,
@@ -98,10 +132,31 @@ export function DispatchTaskDetailModal({
 }: DispatchTaskDetailModalProps) {
   const [modificationOpen, setModificationOpen] = useState(false)
   const [cancellationOpen, setCancellationOpen] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<{
+    id: string
+    sequence: number
+  } | null>(null)
+  const [matchedDriverForm, setMatchedDriverForm] =
+    useState<SetMatchedDriverPayload>(EMPTY_MATCHED_DRIVER_FORM)
+  const [matchedDriverFormTouched, setMatchedDriverFormTouched] =
+    useState<MatchedDriverFormTouched>({})
+  const [matchedDriverSubmitAttempted, setMatchedDriverSubmitAttempted] =
+    useState(false)
   const { canAccess } = usePermissions()
+  const setMatchedDriverMutation = useSetMatchedDriverMutation(task.id)
+  const matchedDriverFormErrors = validateMatchedDriverForm(matchedDriverForm)
+  const hasMatchedDriverFormErrors =
+    Object.keys(matchedDriverFormErrors).length > 0
+  const visibleMatchedDriverFormErrors = Object.fromEntries(
+    Object.entries(matchedDriverFormErrors).filter(([key]) =>
+      matchedDriverSubmitAttempted ||
+      matchedDriverFormTouched[key as keyof SetMatchedDriverPayload],
+    ),
+  ) as MatchedDriverFormErrors
 
   const showRequestButtons =
     !readOnly && task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
+  const canEditMatchedDriver = canAccess('dispatch.board', 'update')
   const banner = STATUS_BANNER_STYLE[task.status]
   const totalSlips = task.vehicleGroups.reduce((s, g) => s + g.slips.length, 0)
 
@@ -109,6 +164,62 @@ export function DispatchTaskDetailModal({
   const matchedByGroup = new Map(
     task.matchedDrivers.map((d) => [d.vehicleGroupSequence, d] as const),
   )
+
+  const startMatchedDriverEdit = (groupId: string, sequence: number) => {
+    const matched = matchedByGroup.get(sequence)
+    setMatchedDriverMutation.reset()
+    setMatchedDriverFormTouched({})
+    setMatchedDriverSubmitAttempted(false)
+    setEditingGroup({ id: groupId, sequence })
+    setMatchedDriverForm({
+      driverName: matched?.driverName ?? '',
+      vehiclePlateNumber: matched?.vehiclePlateNumber ?? '',
+      driverPhoneNumber: matched?.driverPhoneNumber ?? '',
+      driverSource: matched?.driverSource ?? '',
+    })
+  }
+
+  const updateMatchedDriverForm = (
+    key: keyof SetMatchedDriverPayload,
+    value: string,
+  ) => {
+    setMatchedDriverForm((current) => ({ ...current, [key]: value }))
+    setMatchedDriverFormTouched((current) => ({ ...current, [key]: true }))
+  }
+
+  const handleMatchedDriverSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingGroup) return
+    setMatchedDriverSubmitAttempted(true)
+    if (hasMatchedDriverFormErrors) return
+    setMatchedDriverMutation.mutate(
+      {
+        groupId: editingGroup.id,
+        payload: {
+          driverName: matchedDriverForm.driverName.trim(),
+          vehiclePlateNumber: matchedDriverForm.vehiclePlateNumber.trim(),
+          driverPhoneNumber: matchedDriverForm.driverPhoneNumber.trim(),
+          driverSource: matchedDriverForm.driverSource.trim(),
+        },
+      },
+      {
+        onSuccess: () => {
+          setEditingGroup(null)
+          setMatchedDriverForm(EMPTY_MATCHED_DRIVER_FORM)
+          setMatchedDriverFormTouched({})
+          setMatchedDriverSubmitAttempted(false)
+        },
+      },
+    )
+  }
+
+  const closeMatchedDriverEdit = () => {
+    setMatchedDriverMutation.reset()
+    setEditingGroup(null)
+    setMatchedDriverForm(EMPTY_MATCHED_DRIVER_FORM)
+    setMatchedDriverFormTouched({})
+    setMatchedDriverSubmitAttempted(false)
+  }
 
   return (
     <>
@@ -242,6 +353,10 @@ export function DispatchTaskDetailModal({
               >
                 {task.vehicleGroups.map((g) => {
                   const matched = matchedByGroup.get(g.sequence) ?? null
+                  const matchedDriverCodeLabel =
+                    matched?.driverCode === 'MANUAL'
+                      ? matched.driverSource
+                      : matched?.driverCode
                   return (
                     <div
                       key={g.id}
@@ -283,10 +398,22 @@ export function DispatchTaskDetailModal({
                               color: 'var(--color-success-700, #047857)',
                             }}
                           >
-                            기사 {matched.driverName} ({matched.driverCode}){' '}
-                            {matched.driverPhoneNumber} · 차량번호{' '}
+                            기사 {matched.driverName} ({matchedDriverCodeLabel}){' '}
+                            {matched.driverPhoneNumber?.trim() || '-'} · 차량번호{' '}
                             {matched.vehiclePlateNumber?.trim() || '-'}
                           </span>
+                        ) : null}
+                        {canEditMatchedDriver ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => startMatchedDriverEdit(g.id, g.sequence)}
+                            data-testid={`dispatch-task-detail-set-matched-driver-${g.sequence}`}
+                            aria-label={`${DISPATCH_VEHICLE_TYPE_LABEL[g.vehicleType]} #${g.sequence} 기사/차량 입력`}
+                          >
+                            기사/차량 입력
+                          </Button>
                         ) : null}
                       </header>
                       {g.slips.length === 0 ? (
@@ -384,6 +511,170 @@ export function DispatchTaskDetailModal({
             onClose()
           }}
         />
+      ) : null}
+
+      {editingGroup ? (
+        <Modal
+          open
+          onClose={closeMatchedDriverEdit}
+          title={`차량 #${editingGroup.sequence} 기사/차량 입력`}
+          description="타사 배차 기사명, 차량번호, 연락처, 출처"
+          size="sm"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={closeMatchedDriverEdit}
+              >
+                취소
+              </Button>
+              <Button
+                type="submit"
+                form="matched-driver-form"
+                variant="primary"
+                size="sm"
+                disabled={
+                  setMatchedDriverMutation.isPending || hasMatchedDriverFormErrors
+                }
+                data-testid="matched-driver-submit"
+              >
+                저장
+              </Button>
+            </div>
+          }
+        >
+          <form
+            id="matched-driver-form"
+            onSubmit={handleMatchedDriverSubmit}
+            style={{ display: 'grid', gap: 10 }}
+          >
+            <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+              기사명
+              <Input
+                value={matchedDriverForm.driverName}
+                onChange={(e) => updateMatchedDriverForm('driverName', e.currentTarget.value)}
+                maxLength={100}
+                required
+                aria-invalid={visibleMatchedDriverFormErrors.driverName ? true : undefined}
+                aria-describedby={
+                  visibleMatchedDriverFormErrors.driverName
+                    ? 'matched-driver-driver-name-error'
+                    : undefined
+                }
+                data-testid="matched-driver-driver-name"
+              />
+              {visibleMatchedDriverFormErrors.driverName ? (
+                <span
+                  id="matched-driver-driver-name-error"
+                  role="alert"
+                  style={{ color: 'var(--color-danger-700, #B91C1C)' }}
+                >
+                  {visibleMatchedDriverFormErrors.driverName}
+                </span>
+              ) : null}
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+              차량번호
+              <Input
+                value={matchedDriverForm.vehiclePlateNumber}
+                onChange={(e) =>
+                  updateMatchedDriverForm('vehiclePlateNumber', e.currentTarget.value)
+                }
+                maxLength={20}
+                required
+                aria-invalid={
+                  visibleMatchedDriverFormErrors.vehiclePlateNumber ? true : undefined
+                }
+                aria-describedby={
+                  visibleMatchedDriverFormErrors.vehiclePlateNumber
+                    ? 'matched-driver-vehicle-plate-number-error'
+                    : undefined
+                }
+                data-testid="matched-driver-vehicle-plate-number"
+              />
+              {visibleMatchedDriverFormErrors.vehiclePlateNumber ? (
+                <span
+                  id="matched-driver-vehicle-plate-number-error"
+                  role="alert"
+                  style={{ color: 'var(--color-danger-700, #B91C1C)' }}
+                >
+                  {visibleMatchedDriverFormErrors.vehiclePlateNumber}
+                </span>
+              ) : null}
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+              연락처
+              <Input
+                value={matchedDriverForm.driverPhoneNumber}
+                onChange={(e) =>
+                  updateMatchedDriverForm('driverPhoneNumber', e.currentTarget.value)
+                }
+                maxLength={20}
+                aria-invalid={
+                  visibleMatchedDriverFormErrors.driverPhoneNumber ? true : undefined
+                }
+                aria-describedby={
+                  visibleMatchedDriverFormErrors.driverPhoneNumber
+                    ? 'matched-driver-driver-phone-number-error'
+                    : undefined
+                }
+                data-testid="matched-driver-driver-phone-number"
+              />
+              {visibleMatchedDriverFormErrors.driverPhoneNumber ? (
+                <span
+                  id="matched-driver-driver-phone-number-error"
+                  role="alert"
+                  style={{ color: 'var(--color-danger-700, #B91C1C)' }}
+                >
+                  {visibleMatchedDriverFormErrors.driverPhoneNumber}
+                </span>
+              ) : null}
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+              출처
+              <Input
+                value={matchedDriverForm.driverSource}
+                onChange={(e) => updateMatchedDriverForm('driverSource', e.currentTarget.value)}
+                maxLength={32}
+                required
+                aria-invalid={visibleMatchedDriverFormErrors.driverSource ? true : undefined}
+                aria-describedby={
+                  visibleMatchedDriverFormErrors.driverSource
+                    ? 'matched-driver-driver-source-error'
+                    : undefined
+                }
+                placeholder="경기퀵"
+                data-testid="matched-driver-driver-source"
+              />
+              {visibleMatchedDriverFormErrors.driverSource ? (
+                <span
+                  id="matched-driver-driver-source-error"
+                  role="alert"
+                  style={{ color: 'var(--color-danger-700, #B91C1C)' }}
+                >
+                  {visibleMatchedDriverFormErrors.driverSource}
+                </span>
+              ) : null}
+            </label>
+            {setMatchedDriverMutation.isError ? (
+              <div
+                role="alert"
+                style={{
+                  padding: 8,
+                  borderRadius: 4,
+                  fontSize: 12,
+                  color: 'var(--color-danger-700, #B91C1C)',
+                  background: 'var(--color-danger-50, #FEF2F2)',
+                  border: '1px solid var(--color-danger-200, #FECACA)',
+                }}
+              >
+                기사/차량 정보를 저장하지 못했습니다.
+              </div>
+            ) : null}
+          </form>
+        </Modal>
       ) : null}
     </>
   )

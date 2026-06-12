@@ -3,10 +3,12 @@ package com.samhanair.logis.slip.service.dispatch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.client.NotificationClient;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.dispatch.DispatchTask;
@@ -72,6 +74,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         when(slipMapRepo.findByVehicleGroupIdAndIsDeletedFalseOrderBySequenceAsc(groupId))
                 .thenReturn(List.of(mapping));
         when(slipRepo.findById(slipId)).thenReturn(Optional.of(slip));
+        when(matchedRepo.findByVehicleGroupIdAndIsDeletedFalse(groupId)).thenReturn(Optional.empty());
 
         UUID arologisId = UUID.randomUUID();
         String vehiclePlateNumber = "12가3456";
@@ -91,6 +94,140 @@ class DispatchConfirmAndUnavailableServiceTest {
         verify(matchedRepo).save(matchedCaptor.capture());
         assertThat(matchedCaptor.getValue().getVehiclePlateNumber()).isEqualTo(vehiclePlateNumber);
         verify(slip).markDispatchConfirmed();
+    }
+
+    @Test
+    void confirm_allows_null_driver_phone_and_persists_matched_driver() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        DispatchTask task = DispatchTask.create("2026/05/14-NULL-PHONE", LocalDate.now());
+        setId(task, taskId);
+        task.markDispatching();
+
+        DispatchVehicleGroup group = DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1);
+        setId(group, groupId);
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
+                .thenReturn(List.of(group));
+        when(slipMapRepo.findByVehicleGroupIdAndIsDeletedFalseOrderBySequenceAsc(groupId))
+                .thenReturn(List.of());
+        when(matchedRepo.findByVehicleGroupIdAndIsDeletedFalse(groupId)).thenReturn(Optional.empty());
+
+        DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
+                UUID.randomUUID(),
+                List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
+                        1, "TONNAGE_1", "INSUNG-DRV-NO-PHONE", "Driver No Phone",
+                        null, "EXTERNAL_INSUNG_QUICK", "12A3456")),
+                Instant.now());
+
+        confirmSvc.confirm(taskId, req);
+
+        ArgumentCaptor<MatchedDriver> matchedCaptor = ArgumentCaptor.forClass(MatchedDriver.class);
+        verify(matchedRepo).save(matchedCaptor.capture());
+        assertThat(matchedCaptor.getValue().getDriverPhoneNumber()).isNull();
+        assertThat(task.getStatus()).isEqualTo(DispatchTaskStatus.DISPATCHED);
+    }
+
+    @Test
+    void confirm_updates_existing_matched_driver_row() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        DispatchTask task = DispatchTask.create("2026/05/14-UPDATE-MATCHED", LocalDate.now());
+        setId(task, taskId);
+        task.markDispatching();
+
+        DispatchVehicleGroup group = DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1);
+        setId(group, groupId);
+        MatchedDriver existing = MatchedDriver.create(
+                groupId, "OLD", "Old Driver", "010-0000-0000", "OLD_SOURCE", "00A0000");
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
+                .thenReturn(List.of(group));
+        when(slipMapRepo.findByVehicleGroupIdAndIsDeletedFalseOrderBySequenceAsc(groupId))
+                .thenReturn(List.of());
+        when(matchedRepo.findByVehicleGroupIdAndIsDeletedFalse(groupId)).thenReturn(Optional.of(existing));
+
+        DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
+                UUID.randomUUID(),
+                List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
+                        1, "TONNAGE_1", "NEW", "New Driver",
+                        null, "EXTERNAL_INSUNG_QUICK", "12A3456")),
+                Instant.now());
+
+        confirmSvc.confirm(taskId, req);
+
+        assertThat(existing.getDriverCode()).isEqualTo("NEW");
+        assertThat(existing.getDriverName()).isEqualTo("New Driver");
+        assertThat(existing.getDriverPhoneNumber()).isNull();
+        assertThat(existing.getDriverSource()).isEqualTo("EXTERNAL_INSUNG_QUICK");
+        assertThat(existing.getVehiclePlateNumber()).isEqualTo("12A3456");
+        verify(matchedRepo).save(existing);
+    }
+
+    @Test
+    void confirm_rejects_unknown_vehicleGroupSequence_before_markDispatched() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        DispatchTask task = DispatchTask.create("2026/05/14-UNKNOWN-SEQ", LocalDate.now());
+        setId(task, taskId);
+        task.markDispatching();
+
+        DispatchVehicleGroup group = DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1);
+        setId(group, UUID.randomUUID());
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
+                .thenReturn(List.of(group));
+
+        DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
+                UUID.randomUUID(),
+                List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
+                        2, "TONNAGE_1", "D-002", "이몽룡",
+                        "010-2222-3333", "EXTERNAL_INSUNG_QUICK", "34나5678")),
+                Instant.now());
+
+        assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("vehicleGroupSequence 미존재: 2");
+        assertThat(task.getStatus()).isEqualTo(DispatchTaskStatus.DISPATCHING);
+        verify(taskRepo, never()).save(task);
+        verify(matchedRepo, never()).save(any());
+    }
+
+    @Test
+    void confirm_rejects_duplicate_vehicleGroupSequence_before_markDispatched() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        DispatchTask task = DispatchTask.create("2026/05/14-DUP-SEQ", LocalDate.now());
+        setId(task, taskId);
+        task.markDispatching();
+
+        DispatchVehicleGroup group = DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1);
+        setId(group, UUID.randomUUID());
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
+                .thenReturn(List.of(group));
+
+        DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
+                UUID.randomUUID(),
+                List.of(
+                        new DispatchTaskConfirmRequest.MatchedDriverPayload(
+                                1, "TONNAGE_1", "D-001", "홍길동",
+                                "010-1234-5678", "EXTERNAL_INSUNG_QUICK", "12가3456"),
+                        new DispatchTaskConfirmRequest.MatchedDriverPayload(
+                                1, "TONNAGE_1", "D-002", "이몽룡",
+                                "010-2222-3333", "EXTERNAL_INSUNG_QUICK", "34나5678")),
+                Instant.now());
+
+        assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("vehicleGroupSequence 중복: 1");
+        assertThat(task.getStatus()).isEqualTo(DispatchTaskStatus.DISPATCHING);
+        verify(taskRepo, never()).save(task);
+        verify(matchedRepo, never()).save(any());
     }
 
     @Test

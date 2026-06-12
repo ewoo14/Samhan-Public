@@ -37,13 +37,13 @@ public class MatchedDriver extends BaseEntity {
     @Column(name = "vehicle_group_id", nullable = false)
     private UUID vehicleGroupId;
 
-    @Column(name = "driver_code", nullable = false, length = 32)
+    @Column(name = "driver_code", nullable = false, length = 50)
     private String driverCode;
 
     @Column(name = "driver_name", nullable = false, length = 100)
     private String driverName;
 
-    @Column(name = "driver_phone_number", nullable = false, length = 20)
+    @Column(name = "driver_phone_number", length = 20)
     private String driverPhoneNumber;
 
     @Column(name = "vehicle_plate_number", length = 20)
@@ -55,6 +55,17 @@ public class MatchedDriver extends BaseEntity {
     private MatchedDriver(UUID vehicleGroupId, String driverCode, String driverName,
                           String driverPhoneNumber, String driverSource,
                           String vehiclePlateNumber) {
+        validate(vehicleGroupId, driverCode, driverName, driverPhoneNumber, driverSource);
+        this.vehicleGroupId = vehicleGroupId;
+        this.driverCode = driverCode;
+        this.driverName = driverName;
+        this.driverPhoneNumber = driverPhoneNumber;
+        this.driverSource = driverSource;
+        this.vehiclePlateNumber = vehiclePlateNumber;
+    }
+
+    private static void validate(UUID vehicleGroupId, String driverCode, String driverName,
+                                 String driverPhoneNumber, String driverSource) {
         if (vehicleGroupId == null) {
             throw new IllegalArgumentException("vehicleGroupId 필수");
         }
@@ -64,18 +75,9 @@ public class MatchedDriver extends BaseEntity {
         if (driverName == null || driverName.isBlank()) {
             throw new IllegalArgumentException("driverName 필수");
         }
-        if (driverPhoneNumber == null || driverPhoneNumber.isBlank()) {
-            throw new IllegalArgumentException("driverPhoneNumber 필수");
-        }
         if (driverSource == null || driverSource.isBlank()) {
             throw new IllegalArgumentException("driverSource 필수");
         }
-        this.vehicleGroupId = vehicleGroupId;
-        this.driverCode = driverCode;
-        this.driverName = driverName;
-        this.driverPhoneNumber = driverPhoneNumber;
-        this.driverSource = driverSource;
-        this.vehiclePlateNumber = vehiclePlateNumber;
     }
 
     /** 신규 매칭 기사 기록. */
@@ -84,5 +86,22 @@ public class MatchedDriver extends BaseEntity {
                                        String vehiclePlateNumber) {
         return new MatchedDriver(vehicleGroupId, driverCode, driverName, driverPhoneNumber, driverSource,
                 vehiclePlateNumber);
+    }
+
+    /** 배차담당자가 타사 기사/차량 정보를 수동 갱신한다. */
+    public void updateManual(String driverCode, String driverName, String driverPhoneNumber,
+                             String driverSource, String vehiclePlateNumber) {
+        updateMatched(driverCode, driverName, driverPhoneNumber, driverSource, vehiclePlateNumber);
+    }
+
+    /** arologis 회신 또는 수동 입력으로 확정된 기사/차량 정보를 갱신한다. */
+    public void updateMatched(String driverCode, String driverName, String driverPhoneNumber,
+                              String driverSource, String vehiclePlateNumber) {
+        validate(this.vehicleGroupId, driverCode, driverName, driverPhoneNumber, driverSource);
+        this.driverCode = driverCode;
+        this.driverName = driverName;
+        this.driverPhoneNumber = driverPhoneNumber;
+        this.driverSource = driverSource;
+        this.vehiclePlateNumber = vehiclePlateNumber;
     }
 }

@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -58,8 +59,8 @@ class DispatchReceiveServiceTest {
         when(vehicleRepo.save(any())).thenReturn(vehicle);
         when(vehicleRepo.findById(vehicleId)).thenReturn(Optional.of(vehicle));
         when(stopRepo.findAllByVehicleIdOrderBySequenceAsc(vehicleId)).thenReturn(List.of());
-        Driver driver = Driver.of("D-001", "010-1234-5678", "1톤",
-                DriverSource.INTERNAL, Boolean.FALSE, null);
+        Driver driver = Driver.of("D-001", "김배차", "010-1234-5678", "1톤",
+                "서울12바3456", DriverSource.INTERNAL, Boolean.FALSE, null);
         Field driverIdField = Driver.class.getDeclaredField("id");
         driverIdField.setAccessible(true);
         driverIdField.set(driver, UUID.randomUUID());
@@ -79,7 +80,86 @@ class DispatchReceiveServiceTest {
 
         verify(stopRepo).save(any());
         verify(driverMatcher).match(any(), any());
-        verify(slipClient).confirm(eq(samhanTaskId), any(SlipDispatchConfirmRequest.class));
+        ArgumentCaptor<SlipDispatchConfirmRequest> confirmCaptor =
+                ArgumentCaptor.forClass(SlipDispatchConfirmRequest.class);
+        verify(slipClient).confirm(eq(samhanTaskId), confirmCaptor.capture());
+        SlipDispatchConfirmRequest.MatchedDriverPayload matched =
+                confirmCaptor.getValue().matchedDrivers().get(0);
+        assertThat(matched.driverCode()).isEqualTo("D-001");
+        assertThat(matched.driverName()).isEqualTo("김배차");
+        assertThat(matched.driverPhoneNumber()).isEqualTo("010-1234-5678");
+        assertThat(matched.vehiclePlateNumber()).isEqualTo("서울12바3456");
+    }
+
+    @Test
+    void receive_sends_confirm_with_null_phone_and_driverCode_name_fallback() throws Exception {
+        UUID dispatchId = UUID.randomUUID();
+        UUID vehicleId = UUID.randomUUID();
+        UUID samhanTaskId = UUID.randomUUID();
+
+        Dispatch dispatch = mockDispatch(dispatchId);
+        Vehicle vehicle = mockVehicle(vehicleId, dispatchId);
+
+        when(dispatchRepo.save(any())).thenReturn(dispatch);
+        when(vehicleRepo.save(any())).thenReturn(vehicle);
+        when(vehicleRepo.findById(vehicleId)).thenReturn(Optional.of(vehicle));
+        when(stopRepo.findAllByVehicleIdOrderBySequenceAsc(vehicleId)).thenReturn(List.of());
+        Driver driver = Driver.of("INSUNG-DRV-NO-PHONE", null, null, "1T",
+                "12A3456", DriverSource.EXTERNAL_INSUNG_QUICK, Boolean.FALSE, null);
+        setDriverId(driver, UUID.randomUUID());
+        when(driverMatcher.match(any(), any())).thenReturn(
+                DriverMatchResult.of(driver, MatchSource.EXTERNAL_INSUNG_QUICK, "VENDOR-ORD-NO-PHONE"));
+
+        ArologisDispatchRequest req = new ArologisDispatchRequest(
+                samhanTaskId, "2026/05/14-NULL-PHONE", LocalDate.of(2026, 5, 14),
+                List.of(new ArologisDispatchRequest.VehicleGroup(1, "TONNAGE_1", List.of())));
+
+        svc.receive(req);
+
+        ArgumentCaptor<SlipDispatchConfirmRequest> confirmCaptor =
+                ArgumentCaptor.forClass(SlipDispatchConfirmRequest.class);
+        verify(slipClient).confirm(eq(samhanTaskId), confirmCaptor.capture());
+        SlipDispatchConfirmRequest.MatchedDriverPayload matched =
+                confirmCaptor.getValue().matchedDrivers().get(0);
+        assertThat(matched.driverCode()).isEqualTo("INSUNG-DRV-NO-PHONE");
+        assertThat(matched.driverName()).isEqualTo("INSUNG-DRV-NO-PHONE");
+        assertThat(matched.driverPhoneNumber()).isNull();
+    }
+
+    @Test
+    void receive_sends_confirm_with_normalized_driver_fields() throws Exception {
+        UUID dispatchId = UUID.randomUUID();
+        UUID vehicleId = UUID.randomUUID();
+        UUID samhanTaskId = UUID.randomUUID();
+
+        Dispatch dispatch = mockDispatch(dispatchId);
+        Vehicle vehicle = mockVehicle(vehicleId, dispatchId);
+
+        when(dispatchRepo.save(any())).thenReturn(dispatch);
+        when(vehicleRepo.save(any())).thenReturn(vehicle);
+        when(vehicleRepo.findById(vehicleId)).thenReturn(Optional.of(vehicle));
+        when(stopRepo.findAllByVehicleIdOrderBySequenceAsc(vehicleId)).thenReturn(List.of());
+        Driver driver = Driver.of("INSUNG-DRV-LONG", "N".repeat(80), "010-1234-5678-EXTRA-LONG",
+                "VEHICLE-TYPE-OVER-20-CHARS", "PLATE-NUMBER-OVER-20-CHARS",
+                DriverSource.EXTERNAL_INSUNG_QUICK, Boolean.FALSE, null);
+        setDriverId(driver, UUID.randomUUID());
+        when(driverMatcher.match(any(), any())).thenReturn(
+                DriverMatchResult.of(driver, MatchSource.EXTERNAL_INSUNG_QUICK, "VENDOR-ORD-LONG"));
+
+        ArologisDispatchRequest req = new ArologisDispatchRequest(
+                samhanTaskId, "2026/05/14-NORMALIZED", LocalDate.of(2026, 5, 14),
+                List.of(new ArologisDispatchRequest.VehicleGroup(1, "TONNAGE_1", List.of())));
+
+        svc.receive(req);
+
+        ArgumentCaptor<SlipDispatchConfirmRequest> confirmCaptor =
+                ArgumentCaptor.forClass(SlipDispatchConfirmRequest.class);
+        verify(slipClient).confirm(eq(samhanTaskId), confirmCaptor.capture());
+        SlipDispatchConfirmRequest.MatchedDriverPayload matched =
+                confirmCaptor.getValue().matchedDrivers().get(0);
+        assertThat(matched.driverName()).hasSize(50);
+        assertThat(matched.driverPhoneNumber()).hasSize(20);
+        assertThat(matched.vehiclePlateNumber()).hasSize(20);
     }
 
     @Test
@@ -142,5 +222,11 @@ class DispatchReceiveServiceTest {
         f.setAccessible(true);
         f.set(v, vehicleId);
         return v;
+    }
+
+    private static void setDriverId(Driver driver, UUID id) throws Exception {
+        Field f = Driver.class.getDeclaredField("id");
+        f.setAccessible(true);
+        f.set(driver, id);
     }
 }
