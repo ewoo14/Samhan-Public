@@ -15,6 +15,7 @@
  *  - FAILED — "배차 불가" (빨강) + 사유 + [재배차] (재배차 backlog Phase A 후속).
  */
 import { useEffect, useMemo, useState } from 'react'
+import { Button } from '@samhan/design-system'
 import {
   DISPATCH_TASK_STATUS_LABEL,
   DISPATCH_TASK_STATUS_TONE,
@@ -27,6 +28,7 @@ import {
 import {
   DISPATCH_TASK_LOCAL_MUTATION_EVENT,
   useAddVehicleGroupMutation,
+  useStartRedispatchMutation,
 } from '../hooks/useDispatchTask'
 import { VehicleGroupCard } from './VehicleGroupCard'
 import { AddVehicleModal } from './AddVehicleModal'
@@ -85,6 +87,7 @@ export function VehicleGroupColumn({
   const [, setLocalMutationVersion] = useState(0)
 
   const addMutation = useAddVehicleGroupMutation(taskId)
+  const startRedispatchMutation = useStartRedispatchMutation(taskId)
 
   // matchedDrivers 를 vehicleGroupSequence 기준 dict 화 (그룹 카드 헤더에 inline 노출).
   const matchedByGroupSeq = useMemo(() => {
@@ -93,7 +96,7 @@ export function VehicleGroupColumn({
     return m
   }, [matchedDrivers])
 
-  // Phase C — DRAFT 또는 MODIFICATION_ACCEPTED 시 편집 가능 (D-DC-08).
+  // Phase C — MODIFICATION_ACCEPTED 는 start-redispatch 후 DRAFT 로 돌아와야 편집 가능.
   const canEdit = isEditableStatus(taskStatus) && canEditDispatch
   const dispatchableGroups = groups.filter((g) => (g.dispatchStatus ?? 'PENDING') === 'PENDING')
   const canDispatch =
@@ -134,12 +137,10 @@ export function VehicleGroupColumn({
       window.removeEventListener(DISPATCH_TASK_LOCAL_MUTATION_EVENT, rerenderAfterLocalMutation)
   }, [])
 
-  // Phase C — DISPATCHED 이후 (배차 완료 후) 상태에서 상세 모달 진입 가능.
-  // 단순화: DRAFT/DISPATCHING 외 모든 상태에서 상세 보기 활성.
-  const canOpenDetail =
-    !!task &&
-    taskStatus !== 'DRAFT' &&
-    taskStatus !== 'DISPATCHING'
+  // Round C P1-4 — 모든 상태에서 상세 모달 진입 허용. DRAFT/DISPATCHING 에서도 상세 모달의
+  // [기사/차량 입력] + [수동 발송완료] (타사 vendor 수동기입, spec § 8) 에 보드에서 도달해야 한다.
+  // readOnly 는 배차현황(DispatchHistoryPage) 한정.
+  const canOpenDetail = !!task
 
   // 거부 사유 / 요청 사유가 있을 때 헤더에 inline 안내 노출.
   const showRejectionBanner =
@@ -238,7 +239,19 @@ export function VehicleGroupColumn({
               borderRadius: 4,
             }}
           >
-            <strong>수정 가능 (편집 모드 활성):</strong> 차량/슬립 구성을 수정한 뒤 [배차 완료] 를 다시 누르면 아로로지스로 재 발송됩니다.
+            <strong>수정 수락됨:</strong> [재배차 시작] 을 누르면 기존 발송 그룹이 편집 가능한 상태로 돌아갑니다.
+            <div style={{ marginTop: 8 }}>
+              <Button
+                type="button"
+                onClick={() => startRedispatchMutation.mutate()}
+                disabled={!taskId || startRedispatchMutation.isPending || !canEditDispatch}
+                data-testid="dispatch-board-start-redispatch-button"
+                variant="primary"
+                size="sm"
+              >
+                재배차 시작
+              </Button>
+            </div>
           </div>
         ) : null}
         {showRequestBanner ? (
@@ -389,16 +402,14 @@ export function VehicleGroupColumn({
         >
           선택 전송 ({selectedDispatchGroupIds.length})
         </button>
+        {/* Round C P1-3 — MODIFICATION_ACCEPTED 직접 편집 모델의 '수정 배차 완료' 구 라벨 제거.
+            수정수락 후에는 [재배차 시작] → DRAFT 복귀 후 일반 [배차 완료] 만 사용한다 (D-DMR-01). */}
         <button
           type="button"
           disabled={!canDispatch}
           onClick={() => setCompleteGroupIds([])}
           data-testid="dispatch-board-complete-button"
-          aria-label={
-            taskStatus === 'MODIFICATION_ACCEPTED'
-              ? '수정 배차 완료 — 아로로지스로 재 발송'
-              : '배차 완료 — 아로로지스로 발송'
-          }
+          aria-label="배차 완료 — 아로로지스로 발송"
           style={{
             width: '100%',
             padding: '10px 12px',
@@ -413,9 +424,7 @@ export function VehicleGroupColumn({
             fontWeight: 600,
           }}
         >
-          {taskStatus === 'MODIFICATION_ACCEPTED'
-            ? '✓ 수정 배차 완료 (재 발송)'
-            : '✓ 배차 완료'}
+          ✓ 배차 완료
         </button>
       </footer>
 

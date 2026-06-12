@@ -8,10 +8,11 @@
  *
  * 본 모달의 책임:
  *  1) DispatchTask 요약 노출 — taskCode / dispatchDate / 상태 / 차량 그룹 + 정차 + 매칭 기사.
- *  2) DISPATCHED 상태에서만 [수정 요청] / [취소 요청] 버튼 노출 (D-DC-02).
+ *  2) DISPATCHED + arologisDispatchId 보유 task 만 [수정 요청] / [취소 요청] 버튼 노출
+ *     (D-DC-02 + Round E — 수동-only 완료 task 는 arologis dispatch 가 없어 미노출).
  *  3) MODIFICATION_REJECTED / CANCEL_REJECTED 상태에서 rejectionReason 안내 (빨강 배너).
  *  4) MODIFICATION_REQUESTED / CANCEL_REQUESTED 상태에서 "회신 대기" 안내 (보라 배너).
- *  5) MODIFICATION_ACCEPTED 상태에서 "수정 가능 (편집 모드)" 안내 (녹색 배너).
+ *  5) MODIFICATION_ACCEPTED 상태에서 [재배차 시작] 안내 (녹색 배너).
  *
  * UUID 비공개:
  *  - 사용자 노출 = taskCode / slipNo / partnerCode / partnerName / driverCode / driverName / driverPhoneNumber / vehiclePlateNumber.
@@ -22,9 +23,13 @@
  *  - Modal (design-system) 의 focus trap + ESC 닫기 + 한국어 닫기 라벨 활용.
  */
 import { useState, type FormEvent } from 'react'
-import { Button, Input, Modal } from '@samhan/design-system'
+import { Button, Input, Modal, Select } from '@samhan/design-system'
 import {
   DISPATCH_TASK_STATUS_LABEL,
+  DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_LABEL,
+  DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_TONE,
+  MANUAL_MATCHED_DRIVER_SOURCE_OPTIONS,
+  MATCHED_DRIVER_SOURCE_LABEL,
   formatDispatchVehicleGroupLabel,
   type DispatchTaskResponse,
   type SetMatchedDriverPayload,
@@ -33,12 +38,25 @@ import { ModificationRequestDialog } from './ModificationRequestDialog'
 import { CancellationRequestDialog } from './CancellationRequestDialog'
 import { DispatchCommentThread } from './DispatchCommentThread'
 import { usePermissions } from '../../../hooks/usePermissions'
-import { useSetMatchedDriverMutation } from '../hooks/useDispatchTask'
+import {
+  useMarkManualDispatchCompleteMutation,
+  useSetMatchedDriverMutation,
+  useStartRedispatchMutation,
+} from '../hooks/useDispatchTask'
 
 interface DispatchTaskDetailModalProps {
   task: DispatchTaskResponse
   onClose: () => void
+  /** 코멘트 작성/삭제 차단 등 조회 전용 표시 — 배차현황(DispatchHistoryPage) 한정. */
   readOnly?: boolean
+  /**
+   * task 단위 mutation 버튼([수정 요청]/[취소 요청]/[재배차 시작]) 노출 허용 — Round C Option A.
+   *
+   * <p>배차현황 상세는 {@code readOnly} (코멘트 조회 전용) 를 유지하면서도 본 플래그로 수정/취소
+   * 요청과 재배차 진입을 허용한다. 미지정 시 기존 의미 보존을 위해 {@code !readOnly} 를 따른다.
+   * UPDATE 권한 가드 (canAccess dispatch.board update) 는 본 플래그와 별개로 항상 적용된다.
+   */
+  allowTaskActions?: boolean
 }
 
 /**
@@ -59,7 +77,7 @@ const STATUS_BANNER_STYLE: Record<
     border: 'var(--color-success-200, #A7F3D0)',
     color: 'var(--color-success-700, #047857)',
     label:
-      '수정 수락됨 — 편집 모드 활성. 차량/전표 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.',
+      '수정 수락됨 — [재배차 시작] 후 편집. 차량/전표 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.',
   },
   MODIFICATION_REJECTED: {
     bg: 'var(--color-danger-50, #FEF2F2)',
@@ -97,7 +115,7 @@ const EMPTY_MATCHED_DRIVER_FORM: SetMatchedDriverPayload = {
   driverName: '',
   vehiclePlateNumber: '',
   driverPhoneNumber: '',
-  driverSource: '',
+  driverSource: 'GYEONGGI_QUICK',
 }
 
 type MatchedDriverFormErrors = Partial<Record<keyof SetMatchedDriverPayload, string>>
@@ -119,16 +137,27 @@ function validateMatchedDriverForm(
   if (phone && !PHONE_PATTERN.test(phone)) {
     errors.driverPhoneNumber = '전화번호 형식을 확인하세요.'
   }
-  if (!form.driverSource.trim()) {
-    errors.driverSource = '출처를 입력하세요.'
-  }
   return errors
+}
+
+function toManualMatchedDriverSource(value: string): SetMatchedDriverPayload['driverSource'] {
+  switch (value) {
+    case 'GYEONGGI_QUICK':
+      return 'GYEONGGI_QUICK'
+    case 'JEONGUK_HWAMUL':
+      return 'JEONGUK_HWAMUL'
+    case 'OTHER':
+      return 'OTHER'
+    default:
+      return 'GYEONGGI_QUICK'
+  }
 }
 
 export function DispatchTaskDetailModal({
   task,
   onClose,
   readOnly = false,
+  allowTaskActions = !readOnly,
 }: DispatchTaskDetailModalProps) {
   const [modificationOpen, setModificationOpen] = useState(false)
   const [cancellationOpen, setCancellationOpen] = useState(false)
@@ -142,8 +171,11 @@ export function DispatchTaskDetailModal({
     useState<MatchedDriverFormTouched>({})
   const [matchedDriverSubmitAttempted, setMatchedDriverSubmitAttempted] =
     useState(false)
+  const [taskActionError, setTaskActionError] = useState<string | null>(null)
   const { canAccess } = usePermissions()
   const setMatchedDriverMutation = useSetMatchedDriverMutation(task.id)
+  const manualCompleteMutation = useMarkManualDispatchCompleteMutation(task.id)
+  const startRedispatchMutation = useStartRedispatchMutation(task.id)
   const matchedDriverFormErrors = validateMatchedDriverForm(matchedDriverForm)
   const hasMatchedDriverFormErrors =
     Object.keys(matchedDriverFormErrors).length > 0
@@ -154,9 +186,20 @@ export function DispatchTaskDetailModal({
     ),
   ) as MatchedDriverFormErrors
 
+  // Round C Option A — 배차현황 상세에서도 UPDATE 권한이면 수정/취소 요청·재배차 시작 허용.
+  // 단, 수동-only 완료 task 는 arologisDispatchId 가 없으므로 arologis 수정/취소 요청 진입을 막는다.
   const showRequestButtons =
-    !readOnly && task.status === 'DISPATCHED' && canAccess('dispatch.board', 'update')
-  const canEditMatchedDriver = canAccess('dispatch.board', 'update')
+    allowTaskActions &&
+    task.status === 'DISPATCHED' &&
+    !!task.arologisDispatchId &&
+    canAccess('dispatch.board', 'update')
+  const showRedispatchButton =
+    allowTaskActions && task.status === 'MODIFICATION_ACCEPTED' && canAccess('dispatch.board', 'update')
+  const canEditMatchedDriver =
+    canAccess('dispatch.board', 'update') &&
+    (task.status === 'DRAFT' ||
+      task.status === 'DISPATCHING' ||
+      task.status === 'DISPATCHED')
   const banner = STATUS_BANNER_STYLE[task.status]
   const totalSlips = task.vehicleGroups.reduce((s, g) => s + g.slips.length, 0)
 
@@ -175,16 +218,30 @@ export function DispatchTaskDetailModal({
       driverName: matched?.driverName ?? '',
       vehiclePlateNumber: matched?.vehiclePlateNumber ?? '',
       driverPhoneNumber: matched?.driverPhoneNumber ?? '',
-      driverSource: matched?.driverSource ?? '',
+      driverSource:
+        matched?.driverSource && matched.driverSource !== 'AROLOGIS'
+          ? matched.driverSource
+          : 'GYEONGGI_QUICK',
     })
   }
 
-  const updateMatchedDriverForm = (
-    key: keyof SetMatchedDriverPayload,
+  const updateMatchedDriverTextField = (
+    key: Exclude<keyof SetMatchedDriverPayload, 'driverSource'>,
     value: string,
   ) => {
-    setMatchedDriverForm((current) => ({ ...current, [key]: value }))
+    setMatchedDriverForm((current) => ({
+      ...current,
+      [key]: value,
+    }))
     setMatchedDriverFormTouched((current) => ({ ...current, [key]: true }))
+  }
+
+  const updateMatchedDriverSource = (value: string) => {
+    setMatchedDriverForm((current) => ({
+      ...current,
+      driverSource: toManualMatchedDriverSource(value),
+    }))
+    setMatchedDriverFormTouched((current) => ({ ...current, driverSource: true }))
   }
 
   const handleMatchedDriverSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -199,7 +256,7 @@ export function DispatchTaskDetailModal({
           driverName: matchedDriverForm.driverName.trim(),
           vehiclePlateNumber: matchedDriverForm.vehiclePlateNumber.trim(),
           driverPhoneNumber: matchedDriverForm.driverPhoneNumber.trim(),
-          driverSource: matchedDriverForm.driverSource.trim(),
+          driverSource: matchedDriverForm.driverSource,
         },
       },
       {
@@ -262,6 +319,24 @@ export function DispatchTaskDetailModal({
                 </Button>
               </>
             ) : null}
+            {showRedispatchButton ? (
+              <Button
+                type="button"
+                variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setTaskActionError(null)
+                    startRedispatchMutation.mutate(undefined, {
+                      onError: () => setTaskActionError('재배차 시작에 실패했습니다. 상태를 확인하세요.'),
+                    })
+                  }}
+                  disabled={startRedispatchMutation.isPending}
+                data-testid="dispatch-task-detail-start-redispatch"
+                aria-label={`배차 작업 ${task.taskCode} 재배차 시작`}
+              >
+                재배차 시작
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
@@ -311,6 +386,22 @@ export function DispatchTaskDetailModal({
               ) : null}
             </div>
           ) : null}
+          {taskActionError ? (
+            <div
+              role="alert"
+              data-testid="dispatch-task-detail-action-error"
+              style={{
+                padding: 8,
+                borderRadius: 4,
+                fontSize: 12,
+                color: 'var(--color-danger-700, #B91C1C)',
+                background: 'var(--color-danger-50, #FEF2F2)',
+                border: '1px solid var(--color-danger-200, #FECACA)',
+              }}
+            >
+              {taskActionError}
+            </div>
+          ) : null}
 
           {/* 요약 정보 */}
           <section>
@@ -355,9 +446,18 @@ export function DispatchTaskDetailModal({
                   const matched = matchedByGroup.get(g.sequence) ?? null
                   const matchedDriverCodeLabel =
                     matched?.driverCode === 'MANUAL'
-                      ? matched.driverSource
+                      ? MATCHED_DRIVER_SOURCE_LABEL[matched.driverSource]
                       : matched?.driverCode
                   const vehicleLabel = formatDispatchVehicleGroupLabel(g)
+                  const groupDispatchStatus = g.dispatchStatus ?? 'PENDING'
+                  const groupStatusTone =
+                    DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_TONE[groupDispatchStatus]
+                  const canManualComplete =
+                    canEditMatchedDriver &&
+                    (task.status === 'DRAFT' || task.status === 'DISPATCHING') &&
+                    g.dispatchStatus === 'PENDING' &&
+                    matched?.driverCode === 'MANUAL' &&
+                    matched.driverSource !== 'AROLOGIS'
                   return (
                     <div
                       key={g.id}
@@ -390,6 +490,23 @@ export function DispatchTaskDetailModal({
                         >
                           ({g.slips.length}건)
                         </span>
+                        {/* Round C — 그룹 단위 발송 상태 배지 (보드 카드와 동일 라벨/톤).
+                            재배차 시작 직후 '미발송' 복귀를 모달 레벨에서 검증 가능. */}
+                        <span
+                          data-testid={`dispatch-task-detail-group-${g.sequence}-dispatch-status`}
+                          style={{
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                            border: `1px solid ${groupStatusTone.borderColor}`,
+                            background: groupStatusTone.background,
+                            color: groupStatusTone.color,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_LABEL[groupDispatchStatus]}
+                        </span>
                         {matched ? (
                           <span
                             style={{
@@ -413,6 +530,24 @@ export function DispatchTaskDetailModal({
                             aria-label={`${vehicleLabel} #${g.sequence} 기사/차량 입력`}
                           >
                             기사/차량 입력
+                          </Button>
+                        ) : null}
+                        {canManualComplete ? (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={() => {
+                              setTaskActionError(null)
+                              manualCompleteMutation.mutate(g.id, {
+                                onError: () => setTaskActionError('수동 발송완료 처리에 실패했습니다. 상태를 확인하세요.'),
+                              })
+                            }}
+                            disabled={manualCompleteMutation.isPending}
+                            data-testid={`dispatch-task-detail-manual-complete-${g.sequence}`}
+                            aria-label={`${vehicleLabel} #${g.sequence} 수동 발송완료 표시`}
+                          >
+                            수동 발송완료
                           </Button>
                         ) : null}
                       </header>
@@ -487,7 +622,9 @@ export function DispatchTaskDetailModal({
         </div>
       </Modal>
 
-      {/* 수정 요청 dialog */}
+      {/* 수정 요청 dialog — 발송 후 상세 모달은 유지한다 (Round C Option A).
+          요청 직후 상태 배너(회신 대기/수락/거부)를 같은 모달에서 바로 확인하고,
+          mock/실회신 수락 시 [재배차 시작] 까지 같은 세션에서 진입한다. */}
       {modificationOpen ? (
         <ModificationRequestDialog
           taskId={task.id}
@@ -495,12 +632,11 @@ export function DispatchTaskDetailModal({
           onClose={() => setModificationOpen(false)}
           onSubmitted={() => {
             setModificationOpen(false)
-            onClose()
           }}
         />
       ) : null}
 
-      {/* 취소 요청 dialog */}
+      {/* 취소 요청 dialog — 동일하게 상세 모달 유지. */}
       {cancellationOpen ? (
         <CancellationRequestDialog
           taskId={task.id}
@@ -508,7 +644,6 @@ export function DispatchTaskDetailModal({
           onClose={() => setCancellationOpen(false)}
           onSubmitted={() => {
             setCancellationOpen(false)
-            onClose()
           }}
         />
       ) : null}
@@ -554,7 +689,7 @@ export function DispatchTaskDetailModal({
               기사명
               <Input
                 value={matchedDriverForm.driverName}
-                onChange={(e) => updateMatchedDriverForm('driverName', e.currentTarget.value)}
+                onChange={(e) => updateMatchedDriverTextField('driverName', e.currentTarget.value)}
                 maxLength={100}
                 required
                 aria-invalid={visibleMatchedDriverFormErrors.driverName ? true : undefined}
@@ -580,7 +715,7 @@ export function DispatchTaskDetailModal({
               <Input
                 value={matchedDriverForm.vehiclePlateNumber}
                 onChange={(e) =>
-                  updateMatchedDriverForm('vehiclePlateNumber', e.currentTarget.value)
+                  updateMatchedDriverTextField('vehiclePlateNumber', e.currentTarget.value)
                 }
                 maxLength={20}
                 required
@@ -609,7 +744,7 @@ export function DispatchTaskDetailModal({
               <Input
                 value={matchedDriverForm.driverPhoneNumber}
                 onChange={(e) =>
-                  updateMatchedDriverForm('driverPhoneNumber', e.currentTarget.value)
+                  updateMatchedDriverTextField('driverPhoneNumber', e.currentTarget.value)
                 }
                 maxLength={20}
                 aria-invalid={
@@ -634,10 +769,9 @@ export function DispatchTaskDetailModal({
             </label>
             <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
               출처
-              <Input
+              <Select
                 value={matchedDriverForm.driverSource}
-                onChange={(e) => updateMatchedDriverForm('driverSource', e.currentTarget.value)}
-                maxLength={32}
+                onChange={(e) => updateMatchedDriverSource(e.currentTarget.value)}
                 required
                 aria-invalid={visibleMatchedDriverFormErrors.driverSource ? true : undefined}
                 aria-describedby={
@@ -645,9 +779,15 @@ export function DispatchTaskDetailModal({
                     ? 'matched-driver-driver-source-error'
                     : undefined
                 }
-                placeholder="경기퀵"
                 data-testid="matched-driver-driver-source"
-              />
+                selectSize="sm"
+              >
+                {MANUAL_MATCHED_DRIVER_SOURCE_OPTIONS.map((source) => (
+                  <option key={source} value={source}>
+                    {MATCHED_DRIVER_SOURCE_LABEL[source]}
+                  </option>
+                ))}
+              </Select>
               {visibleMatchedDriverFormErrors.driverSource ? (
                 <span
                   id="matched-driver-driver-source-error"

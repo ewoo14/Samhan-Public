@@ -6,13 +6,20 @@ metadata:
 ---
 2026-06-11 개발책임자 지시 / 2026-06-12 재확인("내가 준 워크플로우대로... 이전 워크플로우는 모두 삭제하고 새 워크플로우대로"). **본 워크플로우가 유일 — 구 dual/N-cycle 워크플로우 메모리(dual_5agent_review·cycle_n2_mandatory·cycle_pm_judgment_gate·pr_review_workflow·codex_fix_claude_verify)는 삭제·대체됨.**
 
+> 🔒 **2026-06-12 개발책임자 "영구 워크플로우" 확정 — temp 아님(슬러그만 legacy).**
+> ⚠️ **정정(2026-06-12): "코덱스 구현 완료되면 PR 에 리뷰 게시" 의 뜻 = Codex 개발 직후 [개발사항](무엇을 개발했는지 요약)을 PR 코멘트로 게시.** 5-agent 리뷰 findings 를 (더구나 미완 1/2 로) 게시하라는 뜻이 아니었음 — 본 PM 2회 오해.
+> **규칙: ① Codex 개발 끝나면 즉시 '개발사항' PR 게시(step 2.5) ② 모든 게시는 완결 산출만 — 부분/미완 리뷰 게시 금지 ③ 5-agent 리뷰 라운드도 완결 후 PR 게시**([[review-posting-and-zero-skip]]).
+
 ## 슬라이스 사이클 6단계
 1. **Opus 4.8** — 계획 + PR 개설(조기)
-2. **Codex(GPT5.5)** — 개발 (Claude 직접 구현 금지 [[codex-implements-claude-reviews]]; 토큰 회복 시)
-3. **Opus 5-agent TM** — 리뷰 + fix + 게시
-4. **Codex 5-agent TM** — 리뷰 + fix + 게시 (토큰 회복 시)
-5. **Fable5 5-agent TM** — 리뷰 + fix + 게시 (**2026-06-22까지만 가용** → 이후 본 라운드 자동 제외)
+2. **Codex(GPT5.5)** — **초기 개발** (이 단계만 Codex 구현 의무 [[codex-implements-claude-reviews]]; 토큰 회복 시)
+2.5. **개발사항 PR 게시 (의무)** — Codex 개발 직후 **무엇을 개발했는지**(BE/FE/test/migration 변경 요약 + 컴파일·IT 검증 결과)를 PR 코멘트로 즉시 게시. ← 개발책임자 "리뷰 게시" = 이것.
+3. **Opus 5-agent TM** — 리뷰 + **fix(Opus 가 직접)** + 게시 (완결 후)
+4. **Codex 5-agent TM** — 리뷰 + **fix(Codex 가 직접)** + 게시 (토큰 회복 시)
+5. **Fable5 5-agent TM** — 리뷰 + **fix(Fable5 가 직접)** + 게시 (**2026-06-22까지만 가용** → 이후 본 라운드 자동 제외)
 6. **PM 종합** — 검토 → 머지 또는 다음 사이클 + 게시
+
+> 🚨 **각 리뷰 라운드의 fix 는 그 라운드를 리뷰한 모델이 직접 수행** (개발책임자 2026-06-12 정정 "OPUS·FABLE5 fix 인데 왜 코덱스에 디스패치?"). Opus 라운드=Opus fix, Codex 라운드=Codex fix, Fable5 라운드=Fable5 fix. **fix 를 일괄 Codex 에 디스패치 금지** — 각 모델이 자기 관점으로 찾은 결함을 자기가 고쳐야 다모델 다양성 유지. **[[codex-implements-claude-reviews]] 의 "Codex 구현 의무·Claude 직접 구현 금지"는 step 2(초기 개발) 한정** — 리뷰-라운드 fix 에는 미적용(Opus/Fable5 가 직접 코드 수정).
 
 ## 🚨 각 리뷰어 라운드(3·4·5)에 QA agent + 스크린샷 의무 (자주 위반 — 2026-06-12 재지적)
 - 각 라운드 5-agent는 코드축(BE/FE/data/sec)**만** 돌리면 위반. **QA agent 가 Docker 실서버 QA(서비스 재빌드 포함)를 수행하고 그 스크린샷을 해당 라운드 리뷰 코멘트에 인라인 게시**.

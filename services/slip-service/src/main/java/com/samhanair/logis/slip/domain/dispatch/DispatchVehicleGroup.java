@@ -116,6 +116,15 @@ public class DispatchVehicleGroup extends BaseEntity {
         this.dispatchStatus = DispatchVehicleGroupDispatchStatus.DISPATCHED;
     }
 
+    /** 재배차 편집 진입을 위해 발송 완료 그룹을 미발송 상태로 되돌린다. */
+    public void resetToPending() {
+        if (this.dispatchStatus != DispatchVehicleGroupDispatchStatus.DISPATCHED) {
+            throw new IllegalStateException(
+                    "DISPATCHED 만 PENDING 으로 되돌릴 수 있습니다 — 현재=" + this.dispatchStatus);
+        }
+        this.dispatchStatus = DispatchVehicleGroupDispatchStatus.PENDING;
+    }
+
     /**
      * 차종/톤수에서 arologis 호환 legacy 차량 enum 으로 근사 변환한다.
      *

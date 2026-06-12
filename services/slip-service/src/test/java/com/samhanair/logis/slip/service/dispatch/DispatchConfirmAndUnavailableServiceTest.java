@@ -17,6 +17,7 @@ import com.samhanair.logis.slip.domain.dispatch.DispatchVehicleGroup;
 import com.samhanair.logis.slip.domain.dispatch.DispatchVehicleGroupSlip;
 import com.samhanair.logis.slip.domain.dispatch.DispatchVehicleType;
 import com.samhanair.logis.slip.domain.dispatch.MatchedDriver;
+import com.samhanair.logis.slip.domain.dispatch.MatchedDriverSource;
 import com.samhanair.logis.slip.dto.dispatch.DispatchTaskConfirmRequest;
 import com.samhanair.logis.slip.dto.dispatch.DispatchTaskUnavailableRequest;
 import com.samhanair.logis.slip.repository.SlipRepository;
@@ -83,7 +84,7 @@ class DispatchConfirmAndUnavailableServiceTest {
                 arologisId,
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
                         1, "TONNAGE_1", "D-001", "홍길동",
-                        "010-1234-5678", "EXTERNAL_INSUNG_QUICK",
+                        "010-1234-5678", MatchedDriverSource.AROLOGIS,
                         vehiclePlateNumber)),
                 Instant.now());
 
@@ -121,7 +122,7 @@ class DispatchConfirmAndUnavailableServiceTest {
                 UUID.randomUUID(),
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
                         1, "TONNAGE_1", "INSUNG-DRV-NO-PHONE", "Driver No Phone",
-                        null, "EXTERNAL_INSUNG_QUICK", "12A3456")),
+                        null, MatchedDriverSource.AROLOGIS, "12A3456")),
                 Instant.now());
 
         confirmSvc.confirm(taskId, req);
@@ -145,7 +146,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         setId(group, groupId);
         group.markDispatched();
         MatchedDriver existing = MatchedDriver.create(
-                groupId, "OLD", "Old Driver", "010-0000-0000", "OLD_SOURCE", "00A0000");
+                groupId, "OLD", "Old Driver", "010-0000-0000", MatchedDriverSource.OTHER, "00A0000");
 
         when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
         when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
@@ -158,7 +159,7 @@ class DispatchConfirmAndUnavailableServiceTest {
                 UUID.randomUUID(),
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
                         1, "TONNAGE_1", "NEW", "New Driver",
-                        null, "EXTERNAL_INSUNG_QUICK", "12A3456")),
+                        null, MatchedDriverSource.AROLOGIS, "12A3456")),
                 Instant.now());
 
         confirmSvc.confirm(taskId, req);
@@ -166,7 +167,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         assertThat(existing.getDriverCode()).isEqualTo("NEW");
         assertThat(existing.getDriverName()).isEqualTo("New Driver");
         assertThat(existing.getDriverPhoneNumber()).isNull();
-        assertThat(existing.getDriverSource()).isEqualTo("EXTERNAL_INSUNG_QUICK");
+        assertThat(existing.getDriverSource()).isEqualTo(MatchedDriverSource.AROLOGIS);
         assertThat(existing.getVehiclePlateNumber()).isEqualTo("12A3456");
         verify(matchedRepo).save(existing);
     }
@@ -190,7 +191,7 @@ class DispatchConfirmAndUnavailableServiceTest {
                 UUID.randomUUID(),
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
                         2, "TONNAGE_1", "D-002", "이몽룡",
-                        "010-2222-3333", "EXTERNAL_INSUNG_QUICK", "34나5678")),
+                        "010-2222-3333", MatchedDriverSource.AROLOGIS, "34나5678")),
                 Instant.now());
 
         assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))
@@ -221,10 +222,10 @@ class DispatchConfirmAndUnavailableServiceTest {
                 List.of(
                         new DispatchTaskConfirmRequest.MatchedDriverPayload(
                                 1, "TONNAGE_1", "D-001", "홍길동",
-                                "010-1234-5678", "EXTERNAL_INSUNG_QUICK", "12가3456"),
+                                "010-1234-5678", MatchedDriverSource.AROLOGIS, "12가3456"),
                         new DispatchTaskConfirmRequest.MatchedDriverPayload(
                                 1, "TONNAGE_1", "D-002", "이몽룡",
-                                "010-2222-3333", "EXTERNAL_INSUNG_QUICK", "34나5678")),
+                                "010-2222-3333", MatchedDriverSource.AROLOGIS, "34나5678")),
                 Instant.now());
 
         assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))
@@ -258,7 +259,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
                 UUID.randomUUID(),
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
-                        2, "TONNAGE_1", "D-002", "이몽룡", "010-x", "INTERNAL_APP", null)),
+                        2, "TONNAGE_1", "D-002", "이몽룡", "010-x", MatchedDriverSource.AROLOGIS, null)),
                 Instant.now());
         assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))
                 .isInstanceOf(BusinessException.class)
@@ -282,7 +283,7 @@ class DispatchConfirmAndUnavailableServiceTest {
         DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
                 UUID.randomUUID(),
                 List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
-                        1, "TONNAGE_1", "D-001", "홍길동", "010-x", "INTERNAL_APP", null)),
+                        1, "TONNAGE_1", "D-001", "홍길동", "010-x", MatchedDriverSource.AROLOGIS, null)),
                 Instant.now());
 
         assertThatThrownBy(() -> confirmSvc.confirm(taskId, req))

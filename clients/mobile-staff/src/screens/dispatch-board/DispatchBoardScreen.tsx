@@ -237,7 +237,8 @@ export default function DispatchBoardScreen({ token }: Props): JSX.Element {
     }
   };
 
-  // Phase C — DRAFT 또는 MODIFICATION_ACCEPTED 시 편집 가능 (D-DC-08).
+  // 모바일 편집/발송 = DRAFT 만 (Round D — MODIFICATION_ACCEPTED 재배차는 데스크톱
+  // 배차현황 Option A 한정, api/dispatchBoard.ts isEditableStatus 참조).
   const canEdit = !!task && isEditableStatus(task.status);
   const canDispatch =
     canEdit &&
@@ -294,7 +295,8 @@ export default function DispatchBoardScreen({ token }: Props): JSX.Element {
 
   const matchedByGroup = useMemo(() => {
     const m = new Map<number, string>();
-    task?.matchedDrivers.forEach((d) => {
+    // 수정/취소 요청 mutation 은 slim 응답(matchedDrivers 미포함)을 반환하므로 옵셔널 체이닝 가드.
+    task?.matchedDrivers?.forEach((d) => {
       m.set(
         d.vehicleGroupSequence,
         `${d.driverName} (${d.driverCode}) ${d.driverPhoneNumber}`,
@@ -374,7 +376,7 @@ export default function DispatchBoardScreen({ token }: Props): JSX.Element {
       {task.status === 'MODIFICATION_ACCEPTED' ? (
         <View style={styles.acceptedBanner}>
           <Text style={styles.acceptedBannerText}>
-            수정 가능 (편집 모드 활성): 차량/슬립 구성을 수정한 뒤 [배차 완료] 를 다시 누르세요.
+            수정 수락됨 — 재배차(차량/슬립 수정 후 재발송)는 데스크톱 배차현황에서 진행하세요. 모바일에서는 재배차를 시작할 수 없습니다.
           </Text>
         </View>
       ) : null}
@@ -424,7 +426,6 @@ export default function DispatchBoardScreen({ token }: Props): JSX.Element {
           matchedByGroup={matchedByGroup}
           canEdit={!!canEdit}
           canDispatch={!!canDispatch}
-          isEditMode={task.status === 'MODIFICATION_ACCEPTED'}
           onAddVehicle={() => setAddVehicleOpen(true)}
           onCompleteDispatch={() => setCompleteOpen(true)}
           onDeleteGroup={handleDeleteGroup}
@@ -903,8 +904,6 @@ interface GroupsTabProps {
   matchedByGroup: Map<number, string>;
   canEdit: boolean;
   canDispatch: boolean;
-  /** Phase C — MODIFICATION_ACCEPTED 시 true → [배차 완료] 라벨 "수정 배차 완료" 로 전환. */
-  isEditMode: boolean;
   onAddVehicle: () => void;
   onCompleteDispatch: () => void;
   onDeleteGroup: (groupId: string) => void;
@@ -916,7 +915,6 @@ function GroupsTab({
   matchedByGroup,
   canEdit,
   canDispatch,
-  isEditMode,
   onAddVehicle,
   onCompleteDispatch,
   onDeleteGroup,
@@ -997,21 +995,18 @@ function GroupsTab({
           ))
         )}
       </ScrollView>
+      {/* Round C P1-3 — MODIFICATION_ACCEPTED 직접 편집 모델의 '수정 배차 완료' 구 라벨 제거.
+          수정수락 후 재발송은 [재배차 시작](start-redispatch) → DRAFT 복귀 후 일반
+          [배차 완료] 만 사용한다 (D-DMR-01 — BE 가 MODIFICATION_ACCEPTED 직접 발송을 409 차단). */}
       <View style={styles.bottomRow}>
         <TouchableOpacity
           style={[styles.completeBtn, !canDispatch && styles.actionBtnDisabled]}
           disabled={!canDispatch}
           onPress={onCompleteDispatch}
-          accessibilityLabel={
-            isEditMode
-              ? '수정 배차 완료 — 아로로지스로 재 발송'
-              : '배차 완료 — 아로로지스 발송'
-          }
+          accessibilityLabel="배차 완료 — 아로로지스 발송"
           testID="dispatch-board-mobile-complete"
         >
-          <Text style={styles.completeBtnText}>
-            {isEditMode ? '✓ 수정 배차 완료 (재 발송)' : '✓ 배차 완료'}
-          </Text>
+          <Text style={styles.completeBtnText}>✓ 배차 완료</Text>
         </TouchableOpacity>
       </View>
     </View>

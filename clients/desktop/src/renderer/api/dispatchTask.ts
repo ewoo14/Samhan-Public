@@ -190,7 +190,7 @@ export function formatDispatchVehicleGroupLabel(
  * <p>spec docs/superpowers/specs/2026-05-14-samhan-dispatch-modification-design.md § 4.1.
  *
  * Phase C 신규 상태 흐름 (D-DC-03):
- *  - DISPATCHED → MODIFICATION_REQUESTED → MODIFICATION_ACCEPTED (편집 모드) → DISPATCHING → DISPATCHED
+ *  - DISPATCHED → MODIFICATION_REQUESTED → MODIFICATION_ACCEPTED → start-redispatch → DRAFT → DISPATCHING → DISPATCHED
  *  - DISPATCHED → MODIFICATION_REQUESTED → MODIFICATION_REJECTED (DISPATCHED 유지, rejectionReason 표시)
  *  - DISPATCHED → CANCEL_REQUESTED → CANCEL_ACCEPTED → CANCELLED
  *  - DISPATCHED → CANCEL_REQUESTED → CANCEL_REJECTED (DISPATCHED 유지)
@@ -217,7 +217,7 @@ export const DISPATCH_TASK_STATUS_LABEL: Record<DispatchTaskStatus, string> = {
   DISPATCHED: '배차 완료',
   FAILED: '배차 불가',
   MODIFICATION_REQUESTED: '수정 요청 중',
-  MODIFICATION_ACCEPTED: '수정 가능 (편집 모드)',
+  MODIFICATION_ACCEPTED: '수정 수락됨',
   MODIFICATION_REJECTED: '수정 거부됨',
   CANCEL_REQUESTED: '취소 요청 중',
   CANCEL_ACCEPTED: '취소 수락됨',
@@ -305,14 +305,33 @@ export const DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_TONE: Record<
 }
 
 /**
- * 수정/취소 편집 가능 상태 — DRAFT 또는 MODIFICATION_ACCEPTED.
+ * 배차 구성 편집 가능 상태 — DRAFT.
  *
- * <p>Phase A = DRAFT 만 편집. Phase C = MODIFICATION_ACCEPTED 추가 (D-DC-08).
+ * <p>MODIFICATION_ACCEPTED 는 [재배차 시작] mutation 으로 DRAFT 복귀 후 편집한다.
  * drag-and-drop 활성 + [배차 완료] 버튼 노출 여부 판정에 사용.
  */
 export function isEditableStatus(status: DispatchTaskStatus): boolean {
-  return status === 'DRAFT' || status === 'MODIFICATION_ACCEPTED'
+  return status === 'DRAFT'
 }
+
+export type MatchedDriverSource =
+  | 'AROLOGIS'
+  | 'GYEONGGI_QUICK'
+  | 'JEONGUK_HWAMUL'
+  | 'OTHER'
+
+export const MATCHED_DRIVER_SOURCE_LABEL: Record<MatchedDriverSource, string> = {
+  AROLOGIS: '아로로지스',
+  GYEONGGI_QUICK: '경기퀵',
+  JEONGUK_HWAMUL: '전국화물',
+  OTHER: '기타',
+}
+
+export const MANUAL_MATCHED_DRIVER_SOURCE_OPTIONS: MatchedDriverSource[] = [
+  'GYEONGGI_QUICK',
+  'JEONGUK_HWAMUL',
+  'OTHER',
+]
 
 /**
  * 그룹 안 slip row — BE {@code DispatchVehicleGroupSlipResponse} 와 1:1.
@@ -350,7 +369,7 @@ export interface MatchedDriverResponse {
   driverCode: string
   driverName: string
   driverPhoneNumber: string | null
-  driverSource: string
+  driverSource: MatchedDriverSource
   vehiclePlateNumber?: string | null
 }
 
@@ -358,7 +377,7 @@ export interface SetMatchedDriverPayload {
   driverName: string
   driverPhoneNumber: string
   vehiclePlateNumber: string
-  driverSource: string
+  driverSource: MatchedDriverSource
 }
 
 /**
@@ -410,6 +429,27 @@ export interface DispatchTaskResponse {
   vehicleGroups: DispatchVehicleGroupResponse[]
   matchedDrivers: MatchedDriverResponse[]
   duplicateSlipIds: string[]
+  failureReason: string | null
+  modificationReason?: string | null
+  rejectionReason?: string | null
+  modificationRequestedAt?: string | null
+  modificationDecidedAt?: string | null
+}
+
+/**
+ * BE 슬림 DispatchTaskResponse — task 단위 mutation ack (start-redispatch / 수정·취소 요청 등).
+ *
+ * <p>상세 read model 인 {@link DispatchTaskResponse} 와 달리 {@code vehicleGroups} /
+ * {@code matchedDrivers} / {@code duplicateSlipIds} 를 포함하지 않는다 (BE
+ * {@code DispatchTaskResponse.from(task)}). 상세 cache 갱신은
+ * {@code useDispatchTask.ts} 의 슬림 병합 헬퍼가 담당한다.
+ */
+export interface DispatchTaskSlimResponse {
+  id: string
+  taskCode: string
+  dispatchDate: string
+  status: DispatchTaskStatus
+  arologisDispatchId: string | null
   failureReason: string | null
   modificationReason?: string | null
   rejectionReason?: string | null
@@ -561,6 +601,19 @@ export async function setMatchedDriver(
   return res.data.data
 }
 
+/**
+ * 타사 수동 발송완료 표시 — `POST .../manual-dispatch-complete`.
+ */
+export async function markManualDispatchComplete(
+  taskId: string,
+  groupId: string,
+): Promise<DispatchTaskResponse> {
+  const res = await apiClient.post<ApiEnvelope<DispatchTaskResponse>>(
+    `/admin/dispatch-tasks/${taskId}/vehicle-groups/${groupId}/manual-dispatch-complete`,
+  )
+  return res.data.data
+}
+
 // ---------------------------------------------------------------------------
 // VehicleGroupSlip 매핑
 // ---------------------------------------------------------------------------
@@ -634,6 +687,22 @@ export async function dispatchToArologis(
   return res.data.data
 }
 
+/**
+ * 재배차 시작 — `POST /admin/dispatch-tasks/{taskId}/start-redispatch`.
+ *
+ * <p>MODIFICATION_ACCEPTED 상태에서 DRAFT 로 되돌리고 기존 발송 그룹을 다시 편집 가능하게 연다.
+ * 응답은 BE 슬림 ack — 그룹 PENDING / slip UNDISPATCHED 즉시 반영은
+ * {@code useStartRedispatchMutation} 의 상세 cache 병합이 수행한다.
+ */
+export async function startRedispatch(
+  taskId: string,
+): Promise<DispatchTaskSlimResponse> {
+  const res = await apiClient.post<ApiEnvelope<DispatchTaskSlimResponse>>(
+    `/admin/dispatch-tasks/${taskId}/start-redispatch`,
+  )
+  return res.data.data
+}
+
 // ---------------------------------------------------------------------------
 // Phase C — 수정/취소 요청 (DISPATCHED 상태에서 활성)
 // ---------------------------------------------------------------------------
@@ -650,8 +719,8 @@ export async function dispatchToArologis(
 export async function requestModification(
   taskId: string,
   reason: string,
-): Promise<DispatchTaskResponse> {
-  const res = await apiClient.post<ApiEnvelope<DispatchTaskResponse>>(
+): Promise<DispatchTaskSlimResponse> {
+  const res = await apiClient.post<ApiEnvelope<DispatchTaskSlimResponse>>(
     `/admin/dispatch-tasks/${taskId}/modification-request`,
     { reason },
   )
@@ -667,8 +736,8 @@ export async function requestModification(
 export async function requestCancellation(
   taskId: string,
   reason: string,
-): Promise<DispatchTaskResponse> {
-  const res = await apiClient.post<ApiEnvelope<DispatchTaskResponse>>(
+): Promise<DispatchTaskSlimResponse> {
+  const res = await apiClient.post<ApiEnvelope<DispatchTaskSlimResponse>>(
     `/admin/dispatch-tasks/${taskId}/cancellation-request`,
     { reason },
   )

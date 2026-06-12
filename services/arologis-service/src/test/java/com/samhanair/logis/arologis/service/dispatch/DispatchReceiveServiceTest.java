@@ -31,6 +31,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -185,6 +186,48 @@ class DispatchReceiveServiceTest {
         svc.receive(req);
 
         verify(slipClient).unavailable(eq(samhanTaskId), any());
+    }
+
+    /**
+     * Round C P1-1 — silent 파괴 방지 단언.
+     *
+     * <p>receive() 는 insert-only 다. 같은 날짜의 kakao-native dispatch 나 같은 task 의
+     * 기존 active dispatch 를 조회·soft-delete 하지 않아야 한다 (거버넌스는 V21/V22 partial
+     * unique 가 담당). 과거 fallback 이 같은 (date, type) 의 kakao dispatch 를 silent
+     * soft-delete 하던 결함의 회귀 가드.
+     */
+    @Test
+    void receive_is_insert_only_and_never_soft_deletes_existing_dispatches() throws Exception {
+        UUID newDispatchId = UUID.randomUUID();
+        UUID newVehicleId = UUID.randomUUID();
+        UUID samhanTaskId = UUID.randomUUID();
+
+        // 같은 날짜에 이미 존재하는 kakao-native dispatch — receive() 가 절대 건드리면 안 된다.
+        Dispatch existingKakaoDispatch = mockDispatch(UUID.randomUUID());
+
+        Dispatch newDispatch = mockDispatch(newDispatchId);
+        Vehicle newVehicle = mockVehicle(newVehicleId, newDispatchId);
+
+        when(dispatchRepo.save(any())).thenReturn(newDispatch);
+        when(vehicleRepo.save(any())).thenReturn(newVehicle);
+        when(vehicleRepo.findById(newVehicleId)).thenReturn(Optional.of(newVehicle));
+        when(stopRepo.findAllByVehicleIdOrderBySequenceAsc(newVehicleId)).thenReturn(List.of());
+        when(driverMatcher.match(any(), any()))
+                .thenReturn(DriverMatchResult.empty(MatchSource.INTERNAL_APP));
+
+        ArologisDispatchRequest req = new ArologisDispatchRequest(
+                samhanTaskId, "2026/05/14-RETRY", LocalDate.of(2026, 5, 14),
+                List.of(new ArologisDispatchRequest.VehicleGroup(1, "TONNAGE_1", List.of())));
+
+        ArologisDispatchResponse res = svc.receive(req);
+
+        assertThat(res.arologisDispatchId()).isEqualTo(newDispatchId);
+        // insert-only — 신규 dispatch 1건 save 외에 어떤 기존 row 조회/soft-delete 도 없다.
+        verify(dispatchRepo, Mockito.times(1)).save(any());
+        verify(dispatchRepo, Mockito.never()).findBySamhanDispatchTaskIdAndIsDeletedFalse(any());
+        verify(dispatchRepo, Mockito.never())
+                .findAllByDispatchDateAndDispatchTypeOrderByCreatedAtDesc(any(), any());
+        assertThat(existingKakaoDispatch.getIsDeleted()).isFalse();
     }
 
     @Test
