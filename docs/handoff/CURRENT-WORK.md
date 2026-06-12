@@ -4,6 +4,26 @@
 
 ---
 
+## ✅ 2026-06-12 (야간 자율, 집 PC) — **배차 보드 에픽 #1·#2 머지 (2축 차량 모델 + 2-pane 보드)**
+
+> 다모델 워크플로우([[temp-multimodel-workflow]]) — Codex 개발 → Opus/Codex/Fable5 3라운드(각 별도 게시 + Docker 실QA) → PM 종합. 개발책임자 "1,2,3,4 순서대로 진행".
+
+### #1 2축 차량 모델 (PR #470, 머지 `c4bbef41`)
+- `DispatchVehicleBodyType`(차종12)+`DispatchTonnage`(톤수10) 동적 종속. **additive** — legacy `vehicleType` 파생 유지로 arologis 와이어 무변경(개발책임자 확정 "lossy 유지"). V41(축별+조합 CHECK). fresh Postgres probe 가 V41 괄호초과 syntax 적발([[migration-fresh-postgres-probe]]).
+
+### #2 2-pane 배차 보드 (PR #471, 머지 `b5c001bd`)
+- 좌 미배차 전표 풀 ↔ 우 차량 캡슐 2-pane. **그룹 단위 발송상태**(`DispatchVehicleGroupDispatchStatus` PENDING/DISPATCHED, V42) — 선택 전송=PENDING 그룹만 발송, 전 그룹 DISPATCHED 시 task 전이. **미배차/가배차 균일**(개발책임자). **차종/톤수 축소**(active subset 차종9/톤수6 — 승용차·축차·추레라·1.2·14·18·25톤 제외).
+- **수렴 P1 fix**: 발송그룹 전표변경 BE 가드(FE/mock 계약 BE 누락 false-green)·cross-task assignSlip lock·unavailable confirm 대칭(DRAFT)·FE optimistic 제거(실 응답 slipNo 누락)·`findOrCreateTodayDraft`(F5/재진입 mount-creates-new-task 교착 해소)·선택전송 mixed 거부. CI red(`confirm_after_DISPATCHING` 그룹 PENDING) → 실 dispatch 경로 전환 + 음성 IT.
+- **교훈**: detached(nohup&) Codex 직후 git status 빈 것=미수행 단정 금지 — 쓰는 중. 안정화 폴링+diff 검증 후 판단([[codex-detached-write-settle]]). 13파일 전부 실제 구현됐음.
+- 3라운드 별도 게시(Opus 4689148665 / Codex 4689629247 / Fable5 4689631461) + PM 종합(4689664214). Docker 실QA: today-draft 재사용(F5 동일 taskCode)·active subset 라이브.
+
+### 🚩 다음 큐 — **#3 수정제안 mutation + 수동기입 정책** (배차 보드 에픽 잔여)
+- **#3**: 어느 상태 편집 허용·accept 시 arologis 재발송 + 수동기입 task-status 게이트 / vendor MANUAL 덮어쓰기 우선순위(#467 DEFER). **⚠️ #2 후속 의무**: `markBackToDraftForRedispatch`(MODIFICATION_ACCEPTED→DRAFT, **현재 main 미배선**) 배선 시 **그룹 dispatchStatus PENDING 리셋 동반 필수**(안 그러면 재배차 시 그룹 DISPATCHED 잔존으로 재전송 불가). arologis multi-dispatch-id 정밀 전이도 동반 검토.
+- **#4 §7 전역 협업**: 모든 전표(회계/입출고)에 코멘트(collab-core 재사용) — 큰 슬라이스, 신규 세션 권장.
+- E2 체크박스 일괄전송 / E3 수정이력 / E4 취소연동 / E5 실시간 / E6 전표 모달. multi-vendor 배차안내 SMS.
+
+---
+
 ## ✅ 2026-06-12 (야간 자율, 집 PC) — **#464 배차현황 실 데이터 + 보안 연쇄 #465→#466 / #467→#468 머지**
 
 > 다모델 워크플로우([[temp-multimodel-workflow]]) — Opus 계획/PR → Codex 개발 → Opus 5-agent → Codex 5-agent → Fable5 5-agent → PM 종합. 각 리뷰 라운드 QA agent + Docker 실QA. 전 PR 0 error/0 skip 후 머지.

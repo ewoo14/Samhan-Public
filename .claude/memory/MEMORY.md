@@ -71,6 +71,7 @@
 - [결함 fix 계열 단위 전수 sweep](feedback_defect_family_sweep_fix.md) — 리뷰 지적 1건=동일 패턴 전수 grep 의무, page-code 전환 4종 원자 체크리스트(BE대조→FE전환→mock 동기화→spec 박제), mock 누락=silent regression (PR #417 사이클3 회고, 2026-06-07)
 - [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — detached stdin 으로 codex exec 실행 시 무한 hang, </dev/null 리다이렉트 필수 (2026-06-07)
 - [PM-Codex 진행 검증 의무](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시 검증 + 주기 상태 보고, 침묵 구간 금지 (2026-06-07)
+- [detached codex 변경 안정화 후 판단](feedback_codex_detached_write_settle.md) — nohup& codex 직후 git status 빈 것=미수행 단정 금지(쓰는 중), 작업트리 안정화 폴링+diff 검증 후 판단, 중복 재디스패치 방지 (2026-06-12 #471)
 - [PM 10분 주기 진행 보고](feedback_pm_10min_status_report.md) — 작업 중 10분당 1회 상태표 보고 의무, /loop 10m 가동 (2026-06-07)
 - [lookup 3종 시드 소스](project_lookup_seed_source.md) — material/odu/branch 시드 = legacy Google Sheet `1RJqO3jT...` 3탭(싱글자재가격/추천실외기/분기계산). ✅ PR #425 머지(sync 확장, SA key=C:\dev\samhan-homepage-*.json, 실QA 28/32/6)
 - [standalone-boot 실 QA](feedback_standalone_boot_real_qa.md) — Testcontainers IT 가 Windows 로컬 skip 시 서비스 jar standalone 부팅(docker Postgres+실 외부소스)으로 실 QA, 2차 sync idempotency 실증 (PR #425)
@@ -93,3 +94,4 @@
 - [X-User-Name 헤더 charset + FilterRegistrationBean MockMvc 함정](feedback_x_user_name_header_charset_mockmvc.md) — 2026-06-12 PR #464. 게이트웨이 URLEncode X-User-Name → Tomcat ISO-8859-1 헤더 디코딩으로 0xED(터) 모지바케 → 공용 charset-repair 필터. FilterRegistrationBean 필터는 @AutoConfigureMockMvc 미적용 → 컨트롤러 IT 는 평문(디코딩된 값) 전달, 디코딩은 단위테스트+라이브 캡처 분담
 - [identity 헤더 인가 안티패턴 — 게이트웨이 단일 권위 주입](feedback_identity_header_authz_antipattern.md) — 2026-06-12 PR #466/#468. 게이트웨이 미주입(C5-4) identity 헤더를 downstream 이 신뢰→fail-open/위조 통과(3종: 무strip 공개라우트·stale fail-open·client-trusted self-scope). 유일 신뢰원=게이트웨이 claim remove-then-set, 공개=strip-only, downstream=fail-CLOSED, INBOUND_IDENTITY_HEADERS 단일목록 편입
 - [마이그레이션 변경은 fresh Postgres probe 검증](feedback_migration_fresh_postgres_probe.md) — 2026-06-12 PR #470. Windows 로컬 Testcontainers IT skip 이 V41 matrix CHECK 괄호초과 syntax error 가림(gradlew test BUILD SUCCESSFUL인데 CI 적색). 마이그 추가/수정 시 fresh Postgres probe(DROP/CREATE DB 분리 + 대상테이블 seed + `cat VXX.sql | psql ON_ERROR_STOP`)로 push 전 직접 적용 검증
+- [개발책임자 결정은 진행 중 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 2026-06-12 PR #471. 슬라이스 중 개발책임자 결정·지시·정정을 그때그때 해당 PR에 "📌 개발책임자 결정 기록" 리뷰 코멘트로 누적 게시. 채팅에만 두지 말 것
