@@ -1,6 +1,6 @@
 ---
 name: project-global-collab-epic
-description: §7 전역 협업 에픽 — 수정완료(1-인) 모델 + collab-core 문서별 롤아웃 (slip 레퍼런스 머지 완료)
+description: §7 전역 협업 에픽 — 수정완료(1-인) 모델 + collab-core 문서별 롤아웃 (slip·회계·주문·견적 4문서 머지, 배차/그룹웨어 잔여)
 metadata:
   type: project
 ---
@@ -19,10 +19,12 @@ metadata:
 
 **슬라이스 2 = 주문(PARTNER_ORDER) = 머지 완료** (PR #476, `7ea401da9`, 2026-06-13): collab-core 복제. 편집=memo+dueDate+라인remark만(핵심 불변·400), COLLAB_LOCKED={CANCELED,CONVERTED,CONFIRMING}, 알림=기여자만, page-code sales.partner-order 재사용, 주문번호 이미 슬래시. **lineKey=활성라인 1-based index → PartnerOrder.lines `@OrderBy("createdAt ASC, id ASC")` 결정성 필수**. **실서버 P1**: collab 컨트롤러 `@PathVariable UUID` → FE 하이픈 path-id(toOrderPathId) 400 → `@PathVariable String`+`PartnerOrderIdResolver.findByIdentifier`(EditController 패턴) 양형 해석. mock(단순 id) 미검출·실서버/dual-model 적발. Round A(Opus)/B(Codex)/C(Opus) 0 차단.
 
-**다음 슬라이스 후보**: 견적(ESTIMATE)·배차(DISPATCH_TASK)·그룹웨어 결재. 문서 순서는 개발책임자 확인(슬라이스마다 sequencing 질문).
+**슬라이스 3 = 견적(ESTIMATE) = 머지 완료** (PR #477, `90b1c960b`, 2026-06-13): collab-core 클론. 편집=memo+validUntil+line.{lineKey}.note만(핵심 불변·400), COLLAB_LOCKED={QUOTE_REJECTED,QUOTE_CONVERTED}, 알림=기여자만, page-code estimates.list, **UUID 라우팅**(주문 하이픈 path-id 문제 회피). 도메인=slip-service estimate. 다모델 3라운드: Opus(EstimateCollabController 7 엔드포인트 `@RequirePermission` 정렬[형제 collab 컨트롤러는 annotation, 견적은 guard 단독이라 → annotation+guard 이중]+deny 403 회귀 신설+FE dead-code/alert/aria) → Codex(부모 @Version OPTIMISTIC_FORCE_INCREMENT 동시성+overlay 길이 400+FE revision/audit invalidate+IT 보강) → Opus 수렴 0. **🚨 라이브 QA 가 Codex P1 회귀 단독 적발(IT false-green)**: `OPTIMISTIC_FORCE_INCREMENT` + `left join fetch e.lines` 가 비-버전 자식 EstimateLine 에 락 적용 → fresh 세션 커밋 런타임 파손, **동일-tx IT(10/10)는 1-차 영속성 캐시가 fresh fetch 차단해 통과 위장** → 부모 Estimate 한정 lock(라인 lazy) fix + `commitEdit_afterPersistenceContextClear` fresh-session 가드. Flyway V45. **후속(비차단)**: FE collab 패널 mock 핸들러 미등록(mock suite 미참조 green, 실QA 커버).
+
+**다음 슬라이스 후보**: 배차(DISPATCH_TASK)·그룹웨어 결재. 문서 순서는 개발책임자 확인(슬라이스마다 sequencing 질문).
 
 **🔭 후속 큐(비차단, §7 범위 밖)**: partner-order **버전이력(PartnerOrderRevisionController)·realtime(PartnerOrderRealtimeController) 컨트롤러가 `@PathVariable UUID`** 라 FE orderNumber 하이픈 path-id 에서 400(선존 버그, "버전 이력 불러오지 못함"). 수정 시 **controller 에 PartnerOrderRepository 주입하면 web-slice `@WebMvcTest`(JPA repo 미포함) 컨텍스트 로드 깨짐** → resolve-in-service 패턴(서비스가 String id 해석) 또는 @MockBean PartnerOrderRepository 동반. 별개 슬라이스.
 
-**collab 슬라이스 공통 검증 패턴(확립)**: ①BE collab IT(실 Postgres) — 수정완료+이력·잠금 409·핵심키/빈changeSet 400·알림 기여자(+Revision actor) resolve·username→UUID·다중라인 불변·CHECK ②desktop typecheck+collab playwright+전체 playwright ③**실서버 Docker QA**(게이트웨이 :8080·dev_master·VITE_MOCK_MODE off·하이픈 path-id, 수정완료·diff·코멘트 9컷, 불변 SHA URL 인라인) ④각 라운드 PR 게시. **실서버 QA 가 mock-미검출 계약버그(DTO normalize·orderId 경로) 적발 — 머지 전 필수**.
+**collab 슬라이스 공통 검증 패턴(확립)**: ①BE collab IT(실 Postgres) — 수정완료+이력·잠금 409·핵심키/빈changeSet 400·알림 기여자(+Revision actor) resolve·username→UUID·다중라인 불변·CHECK ②desktop typecheck+collab playwright+전체 playwright ③**실서버 Docker QA**(게이트웨이 :8080·dev_master·VITE_MOCK_MODE off·하이픈 path-id, 수정완료·diff·코멘트 9컷, 불변 SHA URL 인라인) ④각 라운드 PR 게시. **실서버 QA 가 mock-미검출/IT-가림 운영 파손 적발 — 머지 전 필수**(주문: DTO normalize·orderId 경로 / **견적: `@Transactional` IT 의 1-차 캐시가 OPTIMISTIC_FORCE_INCREMENT-on-비버전자식 fresh-session 파손을 false-green → 라운드별 실QA 단독 적발, EntityManager.clear() 가드 IT 동반**).
 
 **워크플로우**: 각 슬라이스 = [[temp-multimodel-workflow]] (기획 → Codex 개발 → 순차 5-agent 라운드[각 PR게시+실서버 스크린샷] → 다음 리뷰어 0에러까지 사이클 → PM 최종점검+머지). 용어는 [[comment-not-collab-comment]](사용자 노출=「코멘트」, 영문 식별자 collab-core 유지).
