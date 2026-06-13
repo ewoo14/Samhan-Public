@@ -17,6 +17,12 @@ metadata:
 
 **슬라이스 1 = 회계전표(ACCOUNTING_VOUCHER) = 머지 완료** (PR #475, `4e644241c`, 2026-06-13): 엔티티=`Journal`(분개), DRAFT→POSTED→REVERSED. 확정/완료=POSTED, COLLAB_LOCKED={REVERSED}. **수정완료 편집=적요(description)+라인메모(line.{lineNo}.memo, 1-based)만**(차대변 금액/계정 불변=역분개, 원장키 400). **알림=기여자만**(결재자 없음). page-code `accounting.journals` 재사용. **collab-core 근본fix**: `CollabCoreAutoConfiguration @AutoConfigureAfter(RealtimeAutoConfiguration)`(auto-config broker 의존 서비스 publisher 누락 방지 — 에픽 전체 이득). 다모델 Round A(Opus)/B(Codex, 실서버 DTO normalize 적발)/C(Opus) 0 차단 수렴. **+ 회계 문서번호 슬래시 표준화**(개발책임자 "슬래 모두" — 생성기 4종·forward V37·JournalSeeder seq-UUID 분리, [[feedback_slip_order_number_format]]). FE=기존 `JournalDetailPage.tsx`. Flyway V36(collab) + V37(번호).
 
-**다음 슬라이스 후보**: 주문(PARTNER_ORDER)·견적(ESTIMATE)·배차(DISPATCH_TASK)·그룹웨어 결재. 문서 순서는 개발책임자 확인(슬라이스마다 sequencing 질문).
+**슬라이스 2 = 주문(PARTNER_ORDER) = 머지 완료** (PR #476, `7ea401da9`, 2026-06-13): collab-core 복제. 편집=memo+dueDate+라인remark만(핵심 불변·400), COLLAB_LOCKED={CANCELED,CONVERTED,CONFIRMING}, 알림=기여자만, page-code sales.partner-order 재사용, 주문번호 이미 슬래시. **lineKey=활성라인 1-based index → PartnerOrder.lines `@OrderBy("createdAt ASC, id ASC")` 결정성 필수**. **실서버 P1**: collab 컨트롤러 `@PathVariable UUID` → FE 하이픈 path-id(toOrderPathId) 400 → `@PathVariable String`+`PartnerOrderIdResolver.findByIdentifier`(EditController 패턴) 양형 해석. mock(단순 id) 미검출·실서버/dual-model 적발. Round A(Opus)/B(Codex)/C(Opus) 0 차단.
+
+**다음 슬라이스 후보**: 견적(ESTIMATE)·배차(DISPATCH_TASK)·그룹웨어 결재. 문서 순서는 개발책임자 확인(슬라이스마다 sequencing 질문).
+
+**🔭 후속 큐(비차단, §7 범위 밖)**: partner-order **버전이력(PartnerOrderRevisionController)·realtime(PartnerOrderRealtimeController) 컨트롤러가 `@PathVariable UUID`** 라 FE orderNumber 하이픈 path-id 에서 400(선존 버그, "버전 이력 불러오지 못함"). 수정 시 **controller 에 PartnerOrderRepository 주입하면 web-slice `@WebMvcTest`(JPA repo 미포함) 컨텍스트 로드 깨짐** → resolve-in-service 패턴(서비스가 String id 해석) 또는 @MockBean PartnerOrderRepository 동반. 별개 슬라이스.
+
+**collab 슬라이스 공통 검증 패턴(확립)**: ①BE collab IT(실 Postgres) — 수정완료+이력·잠금 409·핵심키/빈changeSet 400·알림 기여자(+Revision actor) resolve·username→UUID·다중라인 불변·CHECK ②desktop typecheck+collab playwright+전체 playwright ③**실서버 Docker QA**(게이트웨이 :8080·dev_master·VITE_MOCK_MODE off·하이픈 path-id, 수정완료·diff·코멘트 9컷, 불변 SHA URL 인라인) ④각 라운드 PR 게시. **실서버 QA 가 mock-미검출 계약버그(DTO normalize·orderId 경로) 적발 — 머지 전 필수**.
 
 **워크플로우**: 각 슬라이스 = [[temp-multimodel-workflow]] (기획 → Codex 개발 → 순차 5-agent 라운드[각 PR게시+실서버 스크린샷] → 다음 리뷰어 0에러까지 사이클 → PM 최종점검+머지). 용어는 [[comment-not-collab-comment]](사용자 노출=「코멘트」, 영문 식별자 collab-core 유지).

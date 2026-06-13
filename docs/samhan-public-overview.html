@@ -427,7 +427,7 @@ body {
     <a class="nav-link" href="#phases">진행 현황</a>
   </div>
   <div class="nav-right">
-    <span class="nav-badge">PR #475 · §7 전역 협업 슬라이스 1 — 회계전표(Journal/분개) 협업: 확정(POSTED) 전표 권한자 수정완료(1-인)+diff 이력(이전값→새값)+코멘트+SSE / 편집범위=적요+라인메모 비-원장 필드만(차대변 금액·계정 불변=역분개, 원장키 400) / COLLAB_LOCKED=REVERSED / 알림=기여자만(결재자 없음, username→UUID resolve, 인-트랜잭션 동기) / collab-core @AutoConfigureAfter 근본fix(에픽 broker 순서) — 슬라이스 0(입출고전표 #474) 레퍼런스 후 주문·견적·배차·그룹웨어결재 롤아웃</span>
+    <span class="nav-badge">PR #476 · §7 전역 협업 슬라이스 2 — 주문(PartnerOrder) 협업: CONFIRMED 주문 수정완료(1-인, 편집=메모+납기+라인비고만·품목/수량/금액 불변·핵심키 400)+diff+코멘트+SSE / COLLAB_LOCKED={CANCELED,CONVERTED,CONFIRMING} / 알림=기여자만 / page-code sales.partner-order 재사용·주문번호 슬래시 / 실서버 P1 해소: collab orderId @PathVariable UUID→String+IdResolver(FE 하이픈 path-id 400, mock 미검출/실서버 적발) — 슬라이스 0(입출고전표 #474)·1(회계전표 #475) 후. 다음=견적·배차·그룹웨어결재. presence=후속</span>
   </div>
 </nav>
 
