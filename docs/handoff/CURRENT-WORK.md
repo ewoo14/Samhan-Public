@@ -4,19 +4,19 @@
 
 ---
 
-## ▶ 현재 에픽 — §7 전역 협업 플랫폼 · PR #474 (2026-06-13)
+## ▶ 현재 에픽 — §7 전역 협업 플랫폼 (슬라이스 0 머지 완료, 문서별 롤아웃 진행)
 
 **에픽(개발책임자 확정)**: 대부분 메뉴 화면(전표·견적·회계전표·주문·배차·미배차/가배차·**그룹웨어 결재** 등)에 협업 = **수정완료(1-인) + 코멘트 + diff + 알림**. 슬라이스 0 = 입출고전표 레퍼런스 확정 → 문서별 슬라이스 롤아웃.
 
-**모델**: 제안/수락(2-인) 아님 = **전표 수정(1-인)**. 확정/완료 전표 권한자 "수정"→편집→"수정완료"(즉시 커밋·잠금우회[물리종결 SHIPPING/DELIVERED/CANCELED/REJECTED만 409]·다필드 1버전·diff). 기존 edit-request(수정 요청) **완전 대체**(삭제 요청만 보존). **알림**=기여자(작성·수정·코멘트)+다음결재자(출고인·검수인, 없으면 skip), username→UUID resolve(auth by-login), 트랜잭션 내 동기 best-effort(기존 SlipEditRequestService 패턴 일관).
+**모델(레퍼런스 확정)**: 제안/수락(2-인) 아님 = **문서 수정(1-인)**. 확정/완료 문서 권한자 "수정"→편집→"수정완료"(즉시 커밋·잠금우회[물리종결만 409]·다필드 1버전·diff). 기존 edit-request **완전 대체**. **알림**=기여자(작성·수정·코멘트)+다음결재자(없으면 skip), username→UUID resolve(auth by-login), 트랜잭션 내 동기 best-effort.
 
-**완료(커밋·푸시)**: 수정완료 모델(`0b1b9bed`)·MASTER 락아웃+잠금우회 fix(`41094592`)·알림+배너대체(`a3be62b7`)·슬라이스0 알림 일반화+username resolve+auth by-login(`0c520039`)·Round A(Opus 5-agent) fix+docs(`fafca9d3`). slip+auth 전체 테스트 0실패. 실서버 QA: 확정전표 수정완료→memo 실변경+diff(UI 9컷 `docs/qa/slip-edit-collab/`).
+**✅ 슬라이스 0 머지 완료 (PR #474, `30b0ce93a`, 2026-06-13)**: `shared:collab-core`(CollabComment/CollabSuggestion Service·DocumentCollaborationPort·CollabDocumentType ENUM) 도입 + slip 레퍼런스 구현. 다모델 4라운드(Opus A→Codex B→Opus C→Opus 확정 D) 전건 fix·차단 0. CI 25/25 green. 실서버 QA: 확정전표 수정완료→memo 실변경+diff(UI 9컷 `docs/qa/slip-edit-collab/`) + 시드전표(출고자/검수자 username형) 수정완료→기여자+출고인+검수인 3건 알림 발송 실증(username→UUID resolve). auth `by-login` 신설.
 
-**진행 위치**: 슬라이스 0 Round A(Opus) 리뷰+fix 완료. **다음**: ①slip+auth 재빌드 ②Round A QA 실서버(알림 발송+UI 스크린샷) ③Round A PR 게시(findings+fix+스크린샷) ④Codex 5-dim→Fable5 5-agent 사이클(각 라운드 실서버 스크린샷, **다음 리뷰어 0에러까지**) ⑤CI green ⑥PM 최종점검+머지 ⑦문서별 롤아웃(견적·회계·주문·배차·그룹웨어결재…).
+**진행 위치**: 슬라이스 0(slip 레퍼런스) **머지 완료**. **다음 = 슬라이스 1 (문서별 롤아웃)** — collab-core 패턴을 다음 문서에 복제. 후보: 회계전표(ACCOUNTING_VOUCHER)·주문(PARTNER_ORDER)·견적(ESTIMATE)·배차(DISPATCH_TASK 일부 기구현)·그룹웨어 결재. **각 슬라이스 = 동일 워크플로우**(기획 → Codex 개발 → 순차 5-agent 라운드[각 PR게시+실서버 스크린샷] → 다음 리뷰어 0에러까지 사이클 → PM 최종점검+머지). presence(동시접속자+색상)=후속.
 
 **🚨 워크플로우(반복위반 주의)**: 각 라운드 5-agent 리뷰=PR게시+실서버 데스크톱 스크린샷 인라인 / 다음 리뷰어 0에러까지 사이클 / CI green前 PM종합 금지 / Bash커밋=heredoc 또는 `-F 파일`(`@'...'@` 금지) / 실QA=가짜금지 / Codex 샌드박스 wrapper-lock으로 컴파일 못함→PM이 매번 직접 컴파일 검증.
 
-> 게이트웨이 :8080, dev_master/`dev_p05_pass!`(loginId 필드), 확정전표 `1c72f28a`(2026/04/08-001). slip-service 재기동 후 게이트웨이 Eureka 캐시 stale→20초 후 정상.
+> 게이트웨이 :8080, dev_master/`dev_p05_pass!`(loginId 필드), 확정전표 `1c72f28a`(2026/04/08-001). 서비스 재기동 후 게이트웨이 Eureka 캐시 stale→20~35초 후 정상. **docker build 전 해당 서비스 bootJar 재빌드 필수**(stale jar 함정).
 
 ---
 <!-- 이하 누적 핸드오프 이력 (이전 슬라이스) -->
