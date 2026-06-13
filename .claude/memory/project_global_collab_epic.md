@@ -1,6 +1,6 @@
 ---
 name: project-global-collab-epic
-description: §7 전역 협업 에픽 — 수정완료(1-인) 모델 + collab-core 문서별 롤아웃 (slip·회계·주문·견적 4문서 머지, 배차/그룹웨어 잔여)
+description: §7 전역 협업 에픽 — 수정완료(1-인) 모델 + collab-core 문서별 롤아웃 (slip·회계·주문·견적·배차 5문서 머지, 그룹웨어 결재 잔여)
 metadata:
   type: project
 ---
@@ -21,7 +21,9 @@ metadata:
 
 **슬라이스 3 = 견적(ESTIMATE) = 머지 완료** (PR #477, `90b1c960b`, 2026-06-13): collab-core 클론. 편집=memo+validUntil+line.{lineKey}.note만(핵심 불변·400), COLLAB_LOCKED={QUOTE_REJECTED,QUOTE_CONVERTED}, 알림=기여자만, page-code estimates.list, **UUID 라우팅**(주문 하이픈 path-id 문제 회피). 도메인=slip-service estimate. 다모델 3라운드: Opus(EstimateCollabController 7 엔드포인트 `@RequirePermission` 정렬[형제 collab 컨트롤러는 annotation, 견적은 guard 단독이라 → annotation+guard 이중]+deny 403 회귀 신설+FE dead-code/alert/aria) → Codex(부모 @Version OPTIMISTIC_FORCE_INCREMENT 동시성+overlay 길이 400+FE revision/audit invalidate+IT 보강) → Opus 수렴 0. **🚨 라이브 QA 가 Codex P1 회귀 단독 적발(IT false-green)**: `OPTIMISTIC_FORCE_INCREMENT` + `left join fetch e.lines` 가 비-버전 자식 EstimateLine 에 락 적용 → fresh 세션 커밋 런타임 파손, **동일-tx IT(10/10)는 1-차 영속성 캐시가 fresh fetch 차단해 통과 위장** → 부모 Estimate 한정 lock(라인 lazy) fix + `commitEdit_afterPersistenceContextClear` fresh-session 가드. Flyway V45. **후속(비차단)**: FE collab 패널 mock 핸들러 미등록(mock suite 미참조 green, 실QA 커버).
 
-**다음 슬라이스 후보**: 배차(DISPATCH_TASK)·그룹웨어 결재. 문서 순서는 개발책임자 확인(슬라이스마다 sequencing 질문).
+**슬라이스 4 = 배차(DISPATCH_TASK) = 머지 완료** (PR #478, `1057c3eb9`, 2026-06-14): 코멘트 collab 기존완성 → **수정완료 편집(memo 단일)+diff+알림만 additive**(Phase C 수정요청 플로우 MODIFICATION_* 비대체). DispatchTask flat 엔티티 → memo+`@Version`(force-increment 불요, 단순 낙관락) + V46(dispatch_task memo/version ALTER + dispatch_collab_suggestions). COLLAB_LOCKED={CANCEL_ACCEPTED,CANCELLED}, FE 진입 status==DISPATCHED, page-code dispatch.board, **경로 `/admin/dispatch-tasks/{id}/edits`(게이트웨이 no-strip — `/api/v1` 없이 slip-service 직라우팅, apiClient base=:8080)**. 상세=배차 보드/이력 **모달**(DispatchTaskDetailModal) — 견적의 페이지 패널과 다름. 다모델 3라운드: Codex 개발 → Opus(Badge DS·CANCEL_ACCEPTED 409 IT·a11y) → Codex(SSE dedup·mock 격리) → Opus 수렴 0. **🔧 TM cross-check revert**: Codex 가 알림을 afterCommit 으로 옮겼으나 에픽 "AFTER_COMMIT 금지(in-transaction best-effort)" 위반·4슬라이스 불일치 → in-transaction 으로 revert(5슬라이스 통일). PM fix: IT 시드 task_code VARCHAR(32) 초과 단축. @Version 기존 배차 모듈 회귀 0. 실QA Opus 6컷+Codex 3컷.
+
+**다음 슬라이스 후보**: 그룹웨어 결재. 문서 순서는 개발책임자 확인. **⚠️ 단 그 전에 KST(Asia/Seoul) 전역화 전담 PR 우선**([[project_kst_timezone_standard]] — 개발책임자 2026-06-14 지시).
 
 **🔭 후속 큐(비차단, §7 범위 밖)**: partner-order **버전이력(PartnerOrderRevisionController)·realtime(PartnerOrderRealtimeController) 컨트롤러가 `@PathVariable UUID`** 라 FE orderNumber 하이픈 path-id 에서 400(선존 버그, "버전 이력 불러오지 못함"). 수정 시 **controller 에 PartnerOrderRepository 주입하면 web-slice `@WebMvcTest`(JPA repo 미포함) 컨텍스트 로드 깨짐** → resolve-in-service 패턴(서비스가 String id 해석) 또는 @MockBean PartnerOrderRepository 동반. 별개 슬라이스.
 
