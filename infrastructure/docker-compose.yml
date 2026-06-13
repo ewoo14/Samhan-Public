@@ -34,10 +34,13 @@ services:
       - "max_connections=300"
       - "-c"
       - "shared_buffers=256MB"
+      - "-c"
+      - "timezone=Asia/Seoul"
     environment:
       POSTGRES_USER: samhan
       POSTGRES_PASSWORD: samhan_dev_pw   # DEV-ONLY
       POSTGRES_DB: postgres
+      TZ: Asia/Seoul
     ports:
       - "5432:5432"
     volumes:
@@ -55,6 +58,8 @@ services:
     image: redis:7-alpine
     container_name: samhan-redis
     restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
     ports:
       - "6379:6379"
     volumes:
@@ -74,6 +79,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: samhan
       RABBITMQ_DEFAULT_PASS: samhan_dev_pw   # DEV-ONLY
+      TZ: Asia/Seoul
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -95,6 +101,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - TZ=Asia/Seoul
     ports:
       - "9200:9200"
     volumes:
@@ -129,6 +136,7 @@ services:
     environment:
       MINIO_ROOT_USER: samhan
       MINIO_ROOT_PASSWORD: samhan_dev_pw   # DEV-ONLY
+      TZ: Asia/Seoul
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -149,6 +157,8 @@ services:
     image: prom/prometheus:v2.55.1
     container_name: samhan-prometheus
     restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
     ports:
       - "9090:9090"
     volumes:
@@ -173,6 +183,7 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: samhan_dev_pw   # DEV-ONLY
       GF_USERS_ALLOW_SIGN_UP: "false"
+      TZ: Asia/Seoul
     ports:
       - "3100:3000"
     volumes:
@@ -190,6 +201,8 @@ services:
     image: nginx:1.27-alpine
     container_name: samhan-nginx
     restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
     ports:
       - "80:80"
       - "443:443"
