@@ -192,6 +192,19 @@ gh api repos/<owner>/<repo>/pulls/<PR> -X PATCH -F body=@body.md
 ```
 `-F body=@file` 로 파일 내용을 본문 문자열로 주입. 한글 본문은 Write 로 UTF-8 파일 생성 후 `@` 참조([[powershell-utf8-writes]]).
 
+## 🚨 강화 — 브랜치 URL 머지 후 404 + 매 리뷰-라운드 코멘트 의무 (2026-06-13 PR #474 회고, 4번째 재발)
+
+**증상**: §7 슬라이스 0(PR #474) 리뷰 라운드 코멘트들이 이미지를 **feature 브랜치 URL**(`.../blob/feat/global-collab-slip-reference/...?raw=true`)로 인라인 → **review 당시엔 렌더됐으나 머지 시 브랜치 삭제로 전부 HTTP 404(깨진 이미지)**. PM 종합은 경로만 텍스트 언급(인라인 0). 개발책임자 "인라인 스크린샷 왜 자꾸 첨부 안 해" 4번째 지적. → 머지 커밋 SHA 기준 9컷 재첨부로 정정.
+
+**못 박는 규칙 (이전 규칙들의 재확인 + 강화)**:
+1. **스크린샷 URL = 불변 full commit SHA 必**. 브랜치 이름 URL 절대 금지 — review 시 렌더돼도 **머지 시 브랜치 삭제 → 404**. (`https://github.com/<o>/<r>/blob/<full-sha>/docs/qa/<slug>/<f>.png?raw=true` 또는 `raw.githubusercontent.com/<o>/<r>/<full-sha>/...`)
+2. **인라인은 PR 본문뿐 아니라 매 리뷰-라운드 코멘트마다**. 각 라운드 = 실서버 스크린샷 인라인 임베드([[temp-multimodel-workflow]]). 경로 텍스트 언급 ≠ 인라인.
+3. **게시 직후 자가검증 의무**: 임베드한 모든 URL `curl -s -o /dev/null -w "%{http_code}"` = 200 확인. 하나라도 404면 SHA/경로 정정 후 재게시.
+4. PM 종합(머지 직전) 코멘트도 동일 — 핵심 캡처 인라인 임베드.
+
+> 규칙은 2026-05-04부터 5회 박제돼 있었음 — **부재가 아니라 미준수**. 매 스크린샷 게시 시 본 4항 mental check.
+
 ## 관련 가드
 
 - 통합 PR 패턴 의무 (`feedback_integrated_pr_pattern.md`) 와 함께 적용 — 단편 fix PR 금지, 통합 PR 1개에 전수 QA 캡처 첨부 (PR #66 회고)
+- 다모델 워크플로우 ([[temp-multimodel-workflow]]) — 각 리뷰 라운드 PR 게시 + 실서버 스크린샷 인라인
