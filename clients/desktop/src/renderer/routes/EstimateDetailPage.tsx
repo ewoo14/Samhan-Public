@@ -46,6 +46,7 @@ import {
 import { estimateAuditApi } from '../api/createAuditApi'
 import { EstimateRealtimeClient } from '../realtime/EstimateRealtimeClient'
 import { EstimateVersionHistoryPanel } from '../components/audit/EstimateVersionHistoryPanel'
+import { EstimateCollaborationPanel } from '../components/collab/EstimateCollaborationPanel'
 import {
   AuditLockedBanner,
   AuditRevisionBadge,
@@ -113,6 +114,7 @@ export function EstimateDetailPage() {
   usePageTitle('견적서 상세', query.data?.estimateNo)
 
   const [topError, setTopError] = useState<string>('')
+  const [collabEditMode, setCollabEditMode] = useState(false)
 
   const sendMutation = useMutation({
     mutationFn: () => sendEstimate(id),
@@ -222,6 +224,13 @@ export function EstimateDetailPage() {
     window.open(url, '_blank', 'width=900,height=1200')
   }
 
+  const handleCollabCommitted = () => {
+    void queryClient.invalidateQueries({ queryKey: ['estimate', id] })
+    void queryClient.invalidateQueries({ queryKey: ['estimates'] })
+    void queryClient.invalidateQueries({ queryKey: ['estimateRevisions', id] })
+    void queryClient.invalidateQueries({ queryKey: ['estimate', id, 'audit-logs'] })
+  }
+
   const lineColumns: DataTableColumn<EstimateLine>[] = [
     {
       key: 'lineNo',
@@ -298,6 +307,16 @@ export function EstimateDetailPage() {
           testId="estimate-detail-locked-banner"
           message="변환/거절 후에는 본문 수정이 불가합니다."
         />
+      ) : null}
+
+      {topError ? (
+        <div
+          className="error-banner"
+          role="alert"
+          style={{ marginBottom: 16, padding: 12, color: 'var(--state-danger)' }}
+        >
+          {topError}
+        </div>
       ) : null}
 
       <Card>
@@ -392,6 +411,15 @@ export function EstimateDetailPage() {
                 data-testid="estimate-detail-edit-button"
               >
                 편집
+              </Button>
+            ) : null}
+            {e.status === 'QUOTE_ACCEPTED' && canMutate && !isLocked ? (
+              <Button
+                variant="ghost"
+                onClick={() => setCollabEditMode(true)}
+                data-testid="estimate-detail-collab-edit-button"
+              >
+                수정
               </Button>
             ) : null}
             {isDraft && canMutate ? (
@@ -516,15 +544,25 @@ export function EstimateDetailPage() {
       {/* Phase 2.2 Task 6: 버전이력 패널 + 복원 (편집 불가 상태면 복원 버튼 비활성) */}
       <EstimateVersionHistoryPanel estimateId={id} status={e.status} />
 
-      {topError ? (
-        <div
-          className="error-banner"
-          role="alert"
-          style={{ marginTop: 16, padding: 12, color: 'var(--state-danger)' }}
-        >
-          {topError}
-        </div>
-      ) : null}
+      <EstimateCollaborationPanel
+        estimateId={id}
+        currentValues={{
+          memo: e.memo,
+          validUntil: e.validUntil,
+          lines: e.lines.map((line, index) => ({
+            lineKey: index + 1,
+            productName: line.productName,
+            modelName: line.modelName,
+            quantity: line.quantity,
+            unitPrice: line.unitPriceWithVat ?? line.unitPrice,
+            note: line.note,
+          })),
+        }}
+        editMode={e.status === 'QUOTE_ACCEPTED' && !isLocked && collabEditMode}
+        onEditModeChange={setCollabEditMode}
+        onCommitted={handleCollabCommitted}
+      />
+
     </>
   )
 }
