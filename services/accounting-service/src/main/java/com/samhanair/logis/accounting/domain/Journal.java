@@ -64,7 +64,7 @@ public class Journal extends BaseEntity {
     private UUID id;
 
     /**
-     * 분개번호 — {@code yyyyMMdd-N} ({@link com.samhanair.logis.accounting.service.JournalNumberService}).
+     * 분개번호 — {@code yyyy/MM/dd-N} ({@link com.samhanair.logis.accounting.service.JournalNumberService}).
      * partial UNIQUE INDEX 로 active 분개 안에서 유일성 보장.
      */
     @Column(name = "journal_no", nullable = false, length = 40)
@@ -136,7 +136,7 @@ public class Journal extends BaseEntity {
     /**
      * 신규 분개 생성 (DRAFT). 라인은 별도 {@link #addLine} 으로 추가.
      *
-     * @param journalNo 채번된 분개번호 ({@code yyyyMMdd-N})
+     * @param journalNo 채번된 분개번호 ({@code yyyy/MM/dd-N})
      * @param journalDate 분개 일자
      * @param description 적요 (선택, ≤500자)
      * @param sourceType 출처 (MANUAL/SLIP/CLOSING)
@@ -250,6 +250,38 @@ public class Journal extends BaseEntity {
      */
     public void linkReversal(UUID reversalJournalId) {
         this.reversedJournalId = reversalJournalId;
+    }
+
+    /**
+     * 협업 수정완료 overlay 적요 변경.
+     *
+     * <p>원장 불변 원칙에 따라 전표번호/일자/차대변/계정은 변경하지 않고, 설명성 보조 필드인
+     * 적요만 갱신한다. DRAFT/POSTED 에서 허용되며 REVERSED 잠금 판단은 service 가 수행한다.
+     *
+     * @param description 신규 적요. null 허용, 500자 이하.
+     * @return 현재 Journal (도메인 메서드 체인용)
+     */
+    public Journal updateOverlayDescription(String description) {
+        if (description != null && description.length() > 500) {
+            throw new IllegalArgumentException("description 은 최대 500자입니다");
+        }
+        this.description = description;
+        return this;
+    }
+
+    /**
+     * 라인 번호로 분개 라인을 찾는다.
+     *
+     * @param lineNo 화면 라인 번호
+     * @return 해당 라인
+     * @throws BusinessException(NOT_FOUND) 라인이 없을 때
+     */
+    public JournalLine requireLineByLineNo(int lineNo) {
+        return this.lines.stream()
+                .filter(line -> line.getLineNo() == lineNo)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "분개 라인을 찾을 수 없습니다: lineNo=" + lineNo));
     }
 
     /** 차변 합계 — 라인 debitAmount 합. */
