@@ -459,6 +459,61 @@ public class SlipService {
     }
 
     /**
+     * 협업 제안 수락 — 여러 overlay 필드를 단일 잠금 가드(물리 종결만 차단) / 단일 audit revision /
+     * 단일 EDIT revision 으로 일괄 적용한다 (§7 협업, 개발책임자 2026-06-13 정책 정정).
+     *
+     * <p>제안 수락은 확정/완료 전표의 공인(authorized) 수정 경로다. 수락자(권한자)가 곧 승인자이므로
+     * {@link #guardLockPolicy}(직접 편집용 — CONFIRMED/ACCEPTED/PROCESSING 단계에 APPROVED 수정요청 필요)와
+     * 달리, 수락 시 즉시 적용 + 버전기록 + 알림이 이루어진다. <b>물리 종결 상태(배송중/배송완료/취소/반려)
+     * 만 제외</b>한다({@link #guardCollabModifiable}).
+     *
+     * <p>변경분 수집·적용 묶음 계약(phantom SSE / EDIT revision 오염 차단 — Round C P2 이후 동일):
+     * <ol>
+     *   <li>루프에서 {@link SlipAuditLogService.ChangeEntry} 수집만 수행.</li>
+     *   <li>모든 mutation·검증 통과 후 {@link SlipAuditLogService#recordBatch} 1회 기록.</li>
+     *   <li>제안 1건 = audit revision_no 1 증가 + slip:edit SSE 1건 + EDIT revision 1건.</li>
+     * </ol>
+     *
+     * @param id 전표 ID
+     * @param patches 필드명 → 새 값 (순서 보존)
+     * @param callerId 호출자 user-id (audit actor)
+     * @param callerName 호출자 표시명 (UUID 비공개 가드, null 이면 callerId 사용)
+     * @return 갱신된 상세 응답
+     * @throws BusinessException(NOT_FOUND) 전표 미발견
+     * @throws BusinessException(INVALID_INPUT) 미지원 필드 또는 길이 초과
+     * @throws BusinessException(CONFLICT) 물리 종결 전표 — 협업 제안 수락 불가
+     */
+    public SlipDetailResponse applyOverlayPatchBatch(UUID id, Map<String, String> patches,
+                                                     String callerId, String callerName) {
+        Slip slip = loadOrThrow(id);
+        // 협업 수락 전용 가드 — 물리 종결(배송중/배송완료/취소/반려) 만 차단, APPROVED 소진 불요
+        guardCollabModifiable(slip);
+        UUID actorId = parseActorId(callerId);
+        String auditActorName = (callerName != null && !callerName.isBlank())
+                ? callerName
+                : (callerId == null || callerId.isBlank() ? "system" : callerId);
+        // 루프에서는 변경분 수집만 — audit 기록/SSE 발화는 모든 mutation·검증 통과 후 1회 (phantom 차단)
+        List<SlipAuditLogService.ChangeEntry> changes = new ArrayList<>(patches.size());
+        for (Map.Entry<String, String> patch : patches.entrySet()) {
+            String fieldName = patch.getKey();
+            String newValue = patch.getValue();
+            String oldValue = slip.readOverlayField(fieldName);
+            applyMutation(() -> slip.applyOverlayPatch(fieldName, newValue));
+            String actualNew = slip.readOverlayField(fieldName);
+            if (!java.util.Objects.equals(oldValue, actualNew)) {
+                changes.add(new SlipAuditLogService.ChangeEntry(fieldName, oldValue, actualNew));
+            }
+        }
+        // 제안 1건 = audit revision_no 1건 + slip:edit SSE 1건 + EDIT revision 1건 (변경 0건이면 모두 skip)
+        if (!changes.isEmpty()) {
+            auditLogService.recordBatch(id, actorId, auditActorName, null, changes);
+            slipRevisionService.capture(slip, SlipRevisionType.EDIT, null,
+                    actorId, resolveActorName(callerName, callerId), null);
+        }
+        return SlipDetailResponse.from(slip);
+    }
+
+    /**
      * 슬립 soft-delete — PR-H3 신규. 사용자 명시 잠금 정책 가드 후 BaseEntity.markDeleted 적용.
      *
      * <p>DRAFT/SAVED — 작성자 자유 삭제. CONFIRMED/ACCEPTED/PROCESSING — APPROVED 요청 1건 필요.
@@ -519,6 +574,33 @@ public class SlipService {
         payload.put("revisionNo", revisionNo);
         broker.publish(slipId, "slip:restored", payload);
         return SlipDetailResponse.from(slip);
+    }
+
+    /**
+     * 협업 제안 수락이 불가한 물리 종결 상태 — 배송 후/종결 전표는 제안 수락으로도 수정 불가.
+     *
+     * <p>개발책임자 2026-06-13 결정: SHIPPING/DELIVERED/CANCELED/REJECTED 만 차단.
+     * CONFIRMED/ACCEPTED/PROCESSING/INSPECTING/COMPLETED 는 수락자가 곧 승인자 — 별도 APPROVED 불요.
+     */
+    private static final java.util.Set<SlipStatus> COLLAB_LOCKED = java.util.EnumSet.of(
+            SlipStatus.SHIPPING, SlipStatus.DELIVERED, SlipStatus.CANCELED, SlipStatus.REJECTED);
+
+    /**
+     * 협업 제안 수락 가드 (개발책임자 2026-06-13 결정 — 수락=공인 수정, 잠금 우회).
+     *
+     * <p>제안 수락은 확정/완료 전표의 공인 수정 경로다. 직접편집 {@link #guardLockPolicy}(확정=APPROVED
+     * 요청 필요)와 달리, 수락자(권한자)가 곧 승인자이므로 확정/완료/처리/검수 단계를 별도 승인 없이
+     * 수정한다. 물리 종결(배송중/배송완료/취소/반려)만 차단한다.
+     *
+     * @param slip 대상 슬립
+     * @throws BusinessException(CONFLICT) 물리 종결 상태 ({@link #COLLAB_LOCKED}) 의 전표
+     */
+    private void guardCollabModifiable(Slip slip) {
+        SlipStatus s = slip.getStatus();
+        if (COLLAB_LOCKED.contains(s)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "현 단계 (" + s + ") 는 물리 종결 — 협업 제안 수락으로 수정할 수 없습니다");
+        }
     }
 
     /**

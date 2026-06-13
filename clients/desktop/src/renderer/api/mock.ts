@@ -638,6 +638,20 @@ const MOCK_SLIPS = [
   },
 ]
 
+// §7 협업 수정완료: BE SlipDetailResponse 가 V16 audit overlay 10필드를 상세 응답에 포함한다.
+// mock 시드가 누락한 필드는 기존 표시 필드에서 보수적으로 보강해 mock QA가 빈 현재값으로 통과하지 않게 한다.
+for (const slip of MOCK_SLIPS as Array<Record<string, unknown>>) {
+  if (slip.inspectionAddress === undefined) slip.inspectionAddress = null
+  if (slip.receiverPhone === undefined) slip.receiverPhone = slip.contactPhone ?? null
+  if (slip.customerTel === undefined) slip.customerTel = slip.contactPhone ?? null
+  if (slip.customerAddress === undefined) slip.customerAddress = slip.shippingAddress ?? null
+  if (slip.customerRepresentative === undefined) slip.customerRepresentative = null
+  if (slip.paymentDueLabel === undefined) slip.paymentDueLabel = null
+  if (slip.discountInfo === undefined) slip.discountInfo = null
+  if (slip.collectTerm === undefined) slip.collectTerm = null
+  if (slip.agreeTerm === undefined) slip.agreeTerm = null
+}
+
 /** 시연용 mock 이동전표 5건 */
 const MOCK_TRANSFERS = [
   {
@@ -1762,6 +1776,121 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const slipId = commentGetMatch[1]!
     const list = commentsStore[slipId] ?? []
     return envelope(list)
+  }
+
+  // ==========================================================================
+  // §7: slip collab-core mock (comments + direct edits)
+  // - 화면 노출 = authorName/proposerName/decidedByName (UUID 비공개 가드)
+  // ==========================================================================
+  type MockSlipCollabComment = {
+    id: string
+    anchor: string | null
+    authorName: string
+    body: string
+    parentId: string | null
+    status: 'OPEN' | 'RESOLVED'
+    createdAt: string
+  }
+  type MockSlipCollabEdit = {
+    id: string
+    changeSet: string
+    reason: string | null
+    proposerName: string
+    status: 'ACCEPTED'
+    decidedByName: string | null
+    decidedAt: string | null
+    createdAt: string
+  }
+  const gc = globalThis as unknown as {
+    __SAMHAN_MOCK_SLIP_COLLAB_COMMENTS?: Record<string, MockSlipCollabComment[]>
+    __SAMHAN_MOCK_SLIP_COLLAB_SUGGESTIONS?: Record<string, MockSlipCollabEdit[]>
+  }
+  if (!gc.__SAMHAN_MOCK_SLIP_COLLAB_COMMENTS) gc.__SAMHAN_MOCK_SLIP_COLLAB_COMMENTS = {}
+  if (!gc.__SAMHAN_MOCK_SLIP_COLLAB_SUGGESTIONS) gc.__SAMHAN_MOCK_SLIP_COLLAB_SUGGESTIONS = {}
+  const collabCommentsStore = gc.__SAMHAN_MOCK_SLIP_COLLAB_COMMENTS
+  const collabSuggestionsStore = gc.__SAMHAN_MOCK_SLIP_COLLAB_SUGGESTIONS
+
+  const collabCommentCollectionMatch = url.match(/\/slips\/([^/?]+)\/collab\/comments(?:\?.*)?$/)
+  if (collabCommentCollectionMatch) {
+    const slipId = collabCommentCollectionMatch[1]!
+    if (method === 'GET') {
+      // FE 호출부(slipCollab.ts getSlipCollabComments)는 limit 을 axios `params` 로 전달하므로
+      // config.params 우선 — URL querystring 만 읽으면 dead 파싱 (compensation-failures 7195행 패턴).
+      const params = config.params as Record<string, unknown> | undefined
+      const urlLimit = new URLSearchParams(url.split('?')[1] ?? '').get('limit')
+      const rawLimit = Number.parseInt(String(params?.['limit'] ?? urlLimit ?? '20'), 10)
+      const safeLimit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20
+      return envelope([...(collabCommentsStore[slipId] ?? [])].slice(0, safeLimit))
+    }
+    if (method === 'POST') {
+      const body = parseMockBody(config)
+      const created: MockSlipCollabComment = {
+        id: `mock-slip-collab-comment-${Date.now()}`,
+        anchor: (body['anchor'] as string | null | undefined) ?? null,
+        authorName: MOCK_AUTH.fullName,
+        body: String(body['body'] ?? ''),
+        parentId: (body['parentId'] as string | null | undefined) ?? null,
+        status: 'OPEN',
+        createdAt: new Date().toISOString(),
+      }
+      collabCommentsStore[slipId] = [created, ...(collabCommentsStore[slipId] ?? [])]
+      return envelope(created)
+    }
+  }
+
+  const collabCommentItemMatch = url.match(/\/slips\/([^/?]+)\/collab\/comments\/([^/?]+)(?:\/(resolve))?(?:\?.*)?$/)
+  if (collabCommentItemMatch) {
+    const slipId = collabCommentItemMatch[1]!
+    const commentId = collabCommentItemMatch[2]!
+    const action = collabCommentItemMatch[3]
+    const list = collabCommentsStore[slipId] ?? []
+    const target = list.find((item) => item.id === commentId)
+    if (method === 'POST' && action === 'resolve') {
+      // BE CollabCommentService.resolve — 대상 부재 시 NOT_FOUND. target 없을 때 fallthrough
+      // 하면 미매칭 블랭크(null envelope)로 위장되므로 404 명시 ([[inprocess-mock-principles]]).
+      if (!target) return mockError(404, 'NOT_FOUND', '댓글을 찾을 수 없습니다')
+      target.status = 'RESOLVED'
+      return envelope(target)
+    }
+    if (method === 'DELETE') {
+      // BE CollabCommentService.softDelete 와 동일 메시지 ("댓글을 찾을 수 없습니다").
+      if (!target) return mockError(404, 'NOT_FOUND', '댓글을 찾을 수 없습니다')
+      collabCommentsStore[slipId] = list.filter((item) => item.id !== commentId)
+      return envelope({ deleted: true })
+    }
+  }
+
+  const collabEditCollectionMatch = url.match(/\/slips\/([^/?]+)\/collab\/edits(?:\?.*)?$/)
+  if (collabEditCollectionMatch) {
+    const slipId = collabEditCollectionMatch[1]!
+    if (method === 'GET') return envelope([...(collabSuggestionsStore[slipId] ?? [])])
+    if (method === 'POST') {
+      const body = parseMockBody(config)
+      const created: MockSlipCollabEdit = {
+        id: `mock-slip-collab-edit-${Date.now()}`,
+        changeSet: String(body['changeSet'] ?? '{}'),
+        reason: (body['reason'] as string | null | undefined) ?? null,
+        proposerName: MOCK_AUTH.fullName,
+        status: 'ACCEPTED',
+        decidedByName: MOCK_AUTH.fullName,
+        decidedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      }
+      collabSuggestionsStore[slipId] = [created, ...(collabSuggestionsStore[slipId] ?? [])]
+      const slip = MOCK_SLIPS.find((s) => s.id === slipId) as Record<string, unknown> | undefined
+      if (slip) {
+        try {
+          const parsed = JSON.parse(created.changeSet) as Record<string, { after?: unknown }>
+          for (const [field, change] of Object.entries(parsed)) {
+            slip[field] = change.after ?? null
+          }
+        } catch {
+          return mockError(400, 'INVALID_INPUT', 'changeSet JSON 형식이 올바르지 않습니다')
+        }
+      }
+      if (!slip) return mockError(404, 'NOT_FOUND', '전표를 찾을 수 없습니다')
+      return envelope({ edit: created, slip })
+    }
   }
 
   // ==========================================================================
@@ -8472,8 +8601,8 @@ const MOCK_EDIT_REQUESTS = [
     slipNo: '2026/05/04-1',
     requesterId: 'user-001',
     requesterName: '오병승',
-    type: 'EDIT' as const,
-    reason: '거래처 요청으로 배송 시각을 9시 → 오전 10시로 변경 부탁드립니다.',
+    type: 'DELETE' as const,
+    reason: '거래처 요청으로 출고 전표를 취소 후 재발행 예정입니다.',
     requestedAt: '2026-05-10T09:30:00+09:00',
     status: 'PENDING' as const,
     decidedAt: null,
@@ -8999,6 +9128,19 @@ const SP_D1_PAGES = [
   'inventory.warehouse.admin',
   // C5 follow-up V47 — product-service sheet sync (MANAGER view/create, MASTER bypass)
   'products.sync',
+  // §7 입출고전표 협업 — V36 seed(MASTER/MANAGER/SALES/WAREHOUSE view+edit)
+  // + V38 view 보강(내부 전 role can_view=TRUE). 누락 시 mock 모드 canAccess 전건
+  // false → 협업 패널 버튼 전부 숨김 (silent regression — Fable5 Round C P2 fix).
+  'slip.comments',
+  'slip.audit-overlay',
+  // V36 동일 블록 — 버전이력 revert(MASTER/MANAGER view+edit). canAccess 소비자는
+  // 아직 없으나 매트릭스 화면 행 정합 + 동일 silent regression 예방 (계열 sweep).
+  'slip.audit-revert',
+  // [Round C 계열 sweep] canAccess 소비자 있는데 mock 부재였던 MASTER-only 코드 2건 —
+  // 누락 시 mock 모드에서 MASTER 조차 false (V37: 역마감 버튼 / V29: DC CSV import CTA).
+  // 비-MASTER 는 seed 전건 FALSE 이므로 DEFAULT_VIEW/EDIT 등재 없음이 정확.
+  'accounting.period-close.reverse',
+  'dc-config.import',
 ] as const
 
 /**
@@ -9093,6 +9235,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'sales.slip.cancel', 'inventory.warehouse.admin',
     // C5 follow-up V47 — MANAGER sheet sync view.
     'products.sync',
+    // §7 협업 — V36: MANAGER view+edit (slip.comments / slip.audit-overlay / slip.audit-revert)
+    'slip.comments', 'slip.audit-overlay', 'slip.audit-revert',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -9101,6 +9245,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     // C2b PermissionGuard 전환 — DISPATCH: arologis.dispatch.ops + dispatch.batch view
     'arologis.dispatch.ops', 'dispatch.batch',
     // P1-C: arologis.region.manage — V34 seed MASTER/MANAGER 만 허용, DISPATCH 없음 → 제거
+    // §7 협업 — V38: 내부 전 role view-only 보강 (can_edit=FALSE)
+    'slip.comments', 'slip.audit-overlay',
   ],
   // SP-D3 V9 fix: SALES dispatch.board 제거 (사용자 요구 ② — SALES 에게 배차 메뉴 숨김)
   SALES: [
@@ -9118,6 +9264,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'sales.slip.edit', 'sales.partner-order.edit', 'sales.partner-order.convert',
     // C5-2c: V36 seed 기반 SALES VIEW 추가
     'sales.slip.cancel',
+    // §7 협업 — V36: SALES view+edit
+    'slip.comments', 'slip.audit-overlay',
   ],
   ACCOUNTANT: [
     // SP-D1
@@ -9146,6 +9294,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'slip.edit-requests',
     // C5-2c: V36 seed 기반 ACCOUNTANT VIEW 추가
     'sales.slip.confirm',
+    // §7 협업 — V38: 내부 전 role view-only 보강 (can_edit=FALSE)
+    'slip.comments', 'slip.audit-overlay',
   ],
   // SP-D3 V9 fix: sales.slip.list 제거 + purchases.receipt-ocr 추가
   // (사용자 요구 ② — WAREHOUSE 에게 매출 전표 숨김, 매입 영수증 OCR 허용)
@@ -9163,6 +9313,8 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'purchases.slip.edit', 'purchases.slip.delete',
     // C5-2c: V36 seed 기반 WAREHOUSE VIEW 추가
     'slip.transfer.process',
+    // §7 협업 — V36: WAREHOUSE view+edit
+    'slip.comments', 'slip.audit-overlay',
   ],
   INVENTORY: [
     'purchases.slip.list', 'sales.slip.list', 'inbound.inspection',
@@ -9176,10 +9328,14 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'slip.edit-requests',
     // C5-2c: V36 seed 기반 INVENTORY VIEW 추가
     'slip.transfer.process',
+    // §7 협업 — V38: 내부 전 role view-only 보강 (can_edit=FALSE)
+    'slip.comments', 'slip.audit-overlay',
   ],
   DEVELOPER: [
     // V30/V43 seed — product 운영 보조 그룹.
     'products.list', 'products.admin',
+    // §7 협업 — V38: 내부 전 role view-only 보강 (can_edit=FALSE)
+    'slip.comments', 'slip.audit-overlay',
   ],
 }
 
@@ -9254,6 +9410,8 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'sales.slip.cancel', 'inventory.warehouse.admin',
     // C5 follow-up V47 — MANAGER sheet sync create.
     'products.sync',
+    // §7 협업 — V36: MANAGER can_edit=TRUE (slip.audit-revert 포함)
+    'slip.comments', 'slip.audit-overlay', 'slip.audit-revert',
   ],
   DISPATCH: [
     'notification.dispatch-sms.send-audit', 'dispatch.board',
@@ -9277,6 +9435,8 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'sales.slip.edit', 'sales.partner-order.edit', 'sales.partner-order.convert',
     // C5-2c: V36 seed 기반 SALES EDIT 추가
     'sales.slip.cancel',
+    // §7 협업 — V36: SALES can_edit=TRUE
+    'slip.comments', 'slip.audit-overlay',
   ],
   ACCOUNTANT: [
     // SP-D1
@@ -9309,6 +9469,8 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'purchases.slip.edit', 'purchases.slip.delete',
     // C5-2c: V36 seed 기반 WAREHOUSE EDIT 추가
     'slip.transfer.process',
+    // §7 협업 — V36: WAREHOUSE can_edit=TRUE
+    'slip.comments', 'slip.audit-overlay',
   ],
   INVENTORY: [
     'inbound.inspection',

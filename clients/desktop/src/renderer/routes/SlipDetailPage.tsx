@@ -68,11 +68,6 @@ import { type StockBalanceLookupLine } from '../api/inventory'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
 import { invalidateSignature } from '../api/signature'
 import {
-  addSlipComment,
-  listSlipComments,
-  type SlipComment,
-} from '../api/slipComment'
-import {
   listAuditLogs,
   revertToRevision,
   type SlipAuditLogEntry,
@@ -83,9 +78,8 @@ import {
   type SlipEditRequest,
   type SlipEditRequestType,
 } from '../api/slipEditRequest'
-import { SlipVersionHistoryPanel } from '../components/audit/SlipVersionHistoryPanel'
+import { SlipCollaborationPanel } from '../components/collab/SlipCollaborationPanel'
 import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
-import { useSessionStore } from '../stores/session'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 
@@ -255,8 +249,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   // signature-slice-C 신규: 서명 무효화 modal state (MASTER only)
   const [invalidateOpen, setInvalidateOpen] = useState(false)
   const [invalidateReason, setInvalidateReason] = useState('')
-  // PR-H1: 코멘트 입력 state
-  const [commentInput, setCommentInput] = useState('')
   // PR-H3: 수정/삭제 요청 다이얼로그 state — null 이면 미오픈, 'EDIT'/'DELETE' 면 해당 type 으로 오픈.
   const [editRequestDialogType, setEditRequestDialogType]
     = useState<SlipEditRequestType | null>(null)
@@ -313,6 +305,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [purchasePaymentDueDate, setPurchasePaymentDueDate] = useState('')
   const [purchaseEditLines, setPurchaseEditLines] = useState<PurchaseEditLine[]>([])
   const purchaseReloadSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // §7 협업 수정완료: 확정/완료 전표도 물리 종결 전이면 overlay 필드 편집 가능.
+  const [collabEditMode, setCollabEditMode] = useState(false)
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -320,13 +314,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     enabled: !!id,
   })
   const { refetch: refetchDetail } = detailQuery
-
-  // PR-H1: 코멘트 목록 백필 (최근 20건) — useQuery cache 키는 ['slipComments', id]
-  const commentsQuery = useQuery({
-    queryKey: ['slipComments', id],
-    queryFn: () => listSlipComments(id, 20),
-    enabled: !!id,
-  })
 
   // PR-H2: audit log 백필 — useQuery cache 키 ['slipAuditLogs', id]
   // SSE "slip:edit" event 수신 시 함께 invalidate.
@@ -406,41 +393,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       ctrl.abort()
     }
   }, [id, queryClient])
-
-  // PR-H1: 코멘트 등록 mutation — optimistic add 후 응답 시 cache 갱신
-  const addCommentMutation = useMutation({
-    mutationFn: (body: string) => addSlipComment(id, { body }),
-    onMutate: async (body) => {
-      await queryClient.cancelQueries({ queryKey: ['slipComments', id] })
-      const previous = queryClient.getQueryData<SlipComment[]>([
-        'slipComments',
-        id,
-      ])
-      const optimistic: SlipComment = {
-        id: `optimistic-${Date.now()}`,
-        authorId: '',
-        authorName:
-          useSessionStore.getState().auth?.fullName ?? '나',
-        body,
-        createdAt: new Date().toISOString(),
-      }
-      queryClient.setQueryData<SlipComment[]>(
-        ['slipComments', id],
-        [...(previous ?? []), optimistic],
-      )
-      return { previous }
-    },
-    onError: (_err, _body, ctx) => {
-      if (ctx?.previous) {
-        queryClient.setQueryData(['slipComments', id], ctx.previous)
-      }
-      alert('코멘트 등록에 실패했습니다.')
-    },
-    onSuccess: () => {
-      setCommentInput('')
-      void queryClient.invalidateQueries({ queryKey: ['slipComments', id] })
-    },
-  })
 
   // PR-H3: CONFIRMED 단계 수정/삭제 요청 mutation. 성공 시 dialog 닫기 + latestEditRequest 갱신.
   const editRequestMutation = useMutation({
@@ -819,7 +771,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   /**
    * PR-H3: 창고/관리자 수락이 필요한 단계 (LOCKED_REQUIRES_APPROVAL).
    * BE {@code SlipEditRequestService.LOCKED_REQUIRES_APPROVAL} 와 정확히 일치 —
-   * CONFIRMED/ACCEPTED/PROCESSING. "수정/삭제 요청" UI 노출 + 요청 후 창고 수락 필요.
+   * CONFIRMED/ACCEPTED/PROCESSING. 삭제 요청 UI 노출 + 요청 후 창고 수락 필요.
+   * 수정은 §7 협업 수정완료가 완전 대체하므로 edit-request 진입을 노출하지 않는다.
    * 사용자 명시 정책 정합 (QA Major 회귀 가드).
    */
   const isApprovalRequired
@@ -833,19 +786,38 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
    * COMPLETED 는 검수 직후 ship 대기 단계로 본 FE 에서 동일 차단 처리 (기존 정책 보존).
    * 사용자에게 "현재 변경 불가" 안내 + 모든 액션 disabled.
    */
-  const isLocked
-    = slip.status === 'INSPECTING'
-    || slip.status === 'COMPLETED'
-    || slip.status === 'SHIPPING'
+  const isPhysicalTerminal
+    = slip.status === 'SHIPPING'
     || slip.status === 'DELIVERED'
+    || slip.status === 'CANCELED'
+    || slip.status === 'REJECTED'
+
+  const isLocked = isPhysicalTerminal
+
+  const canCollabEdit = canAccess('slip.audit-overlay', 'update') && !isPhysicalTerminal
+
+  const collabEditValues: Record<string, string | null | undefined> = {
+    memo: slip.memo,
+    shippingAddress: slip.shippingAddress,
+    inspectionAddress: slip.inspectionAddress,
+    receiverPhone: slip.receiverPhone,
+    customerTel: slip.customerTel ?? slip.contactPhone,
+    customerAddress: slip.customerAddress,
+    customerRepresentative: slip.customerRepresentative,
+    paymentDueLabel: slip.paymentDueLabel,
+    discountInfo: slip.discountInfo,
+    collectTerm: slip.collectTerm,
+    agreeTerm: slip.agreeTerm,
+  }
 
   /**
-   * PR-H3: 수정/삭제 요청 생성 권한.
+   * PR-H3: 삭제 요청 생성 권한.
    * BE `POST /api/v1/slips/{slipId}/edit-request` 는
    * `@RequirePermission(page="slip.edit-requests", action=CREATE)` 이고,
    * V36 seed 는 MASTER/MANAGER/SALES can_edit=TRUE 로 기존 작성자 role 목록과 정합한다.
+   * 수정 요청은 §7 수정완료로 대체되어 화면에서 제거한다.
    */
-  const canRequestEdit = canAccess('slip.edit-requests', 'create')
+  const canRequestDelete = canAccess('slip.edit-requests', 'create')
 
   /**
    * PR-H3: 현재 PENDING 본인 요청이 있는지.
@@ -1148,6 +1120,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               수정
             </Button>
           ) : null}
+          {canCollabEdit && !canDirectEditSales && !canDirectEditPurchase ? (
+            <Button
+              variant="primary"
+              size="sm"
+              data-testid="slip-collab-edit-open"
+              onClick={() => setCollabEditMode(true)}
+            >
+              수정
+            </Button>
+          ) : null}
           {canDirectDeletePurchase ? (
             <Button
               variant="danger"
@@ -1240,12 +1222,13 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       ) : null}
 
       {/*
-        PR-H3: 단계별 안내 + 수정/삭제 요청 버튼.
+        PR-H3: 단계별 안내 + 삭제 요청 버튼.
         - DRAFT/SAVED/SENT: 본인 직접 수정/삭제 가능 → 별도 안내 없음
-        - CONFIRMED/ACCEPTED/PROCESSING: 직접 변경 차단, "수정/삭제 요청" 버튼 노출 (창고 수락 필요)
-        - INSPECTING/COMPLETED/SHIPPING/DELIVERED: 모든 변경 차단 안내
+        - CONFIRMED/ACCEPTED/PROCESSING: 직접 삭제 차단, "삭제 요청" 버튼 노출 (창고 수락 필요)
+        - 수정은 §7 수정완료가 유일 경로이므로 "수정 요청" 버튼을 노출하지 않음
+        - SHIPPING/DELIVERED/CANCELED/REJECTED: 모든 변경 차단 안내
       */}
-      {isApprovalRequired && canRequestEdit ? (
+      {isApprovalRequired && canRequestDelete ? (
         <Card
           padding={4}
           shadow="sm"
@@ -1262,9 +1245,9 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <strong style={{ fontSize: 14 }}>창고 인계 후 — 수락 필요</strong>
+              <strong style={{ fontSize: 14 }}>창고 인계 후 — 삭제 요청</strong>
               <span style={{ fontSize: 13, color: 'var(--color-neutral-700)' }}>
-                직접 수정/삭제가 잠겼습니다. 창고 직원에게 처리를 요청할 수 있습니다.
+                직접 삭제가 잠겼습니다. 창고 직원에게 삭제 처리를 요청할 수 있습니다.
               </span>
               {latestEditRequest ? (
                 <Badge
@@ -1282,20 +1265,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               ) : null}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={hasPendingRequest || editRequestMutation.isPending}
-                onClick={() => setEditRequestDialogType('EDIT')}
-                title={
-                  hasPendingRequest
-                    ? '이미 처리 대기 중인 요청이 있습니다.'
-                    : undefined
-                }
-                data-testid="slip-detail-edit-request-button"
-              >
-                수정 요청
-              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1338,7 +1307,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           data-testid="slip-detail-locked-banner"
           className="warning-banner"
         >
-          현재 단계({slipStatusLabel(slip.status)})에서는 전표 변경이 차단됩니다. 처리가 끝나면 확정 후 수정/삭제 요청이 가능합니다.
+          현재 단계({slipStatusLabel(slip.status)})에서는 전표 변경이 차단됩니다. 물리 종결 전 단계에서만 권한자 수정 또는 삭제 요청이 가능합니다.
         </div>
       ) : null}
 
@@ -1382,11 +1351,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </div>
       </Card>
 
-      {/*
-        Phase 2.1 Task 6: 전표 버전이력 패널 + 복원 — AuditOverlay 인접 배치.
-        UUID 비공개 가드: slipId 는 path/key 전용, 화면 노출 X.
-      */}
-      <SlipVersionHistoryPanel slipId={id} />
+      <SlipCollaborationPanel
+        slipId={id}
+        currentValues={collabEditValues}
+        editMode={collabEditMode}
+        onEditModeChange={setCollabEditMode}
+        onCommitted={() => {
+          void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+          void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+        }}
+      />
 
       {/*
         V20 신규 필드 표시 카드 — 배송주소 / 감리주소 / 프로젝트명 / 인수자 번호 / 입금예정일
@@ -1750,109 +1724,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       </Card>
 
       {/*
-        PR-H1 FE-1: 코멘트 영역 (Card) — useQuery 백필 + SSE 실시간 업데이트.
-        UUID 비공개 가드: id/authorId 화면 노출 금지. authorName + body + createdAt 만 표시.
-      */}
-      <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
-        <h4 style={{ marginTop: 0 }}>코멘트</h4>
-        <div
-          data-testid="slip-detail-comment-list"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            maxHeight: 320,
-            overflowY: 'auto',
-            marginBottom: 12,
-          }}
-        >
-          {commentsQuery.isLoading ? (
-            <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>
-              코멘트를 불러오는 중...
-            </p>
-          ) : commentsQuery.isError ? (
-            <p
-              role="alert"
-              style={{ margin: 0, color: 'var(--color-danger-600)' }}
-            >
-              코멘트를 불러오지 못했습니다.
-            </p>
-          ) : (Array.isArray(commentsQuery.data) ? commentsQuery.data : []).length === 0 ? (
-            <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>
-              아직 코멘트가 없습니다.
-            </p>
-          ) : (
-            (Array.isArray(commentsQuery.data) ? commentsQuery.data : []).map((c) => (
-              <div
-                key={c.id}
-                data-testid={`slip-detail-comment-row-${c.id}`}
-                style={{
-                  borderBottom: '1px solid var(--color-neutral-200)',
-                  paddingBottom: 6,
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 12,
-                    color: 'var(--color-neutral-600)',
-                  }}
-                >
-                  <strong style={{ color: 'var(--color-neutral-900)' }}>
-                    {c.authorName}
-                  </strong>
-                  <span>{c.createdAt.slice(0, 16).replace('T', ' ')}</span>
-                </div>
-                <div style={{ fontSize: 14, marginTop: 2, whiteSpace: 'pre-wrap' }}>
-                  {c.body}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            data-testid="slip-detail-comment-input"
-            type="text"
-            value={commentInput}
-            onChange={(e) => setCommentInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (
-                e.key === 'Enter'
-                && !e.nativeEvent.isComposing
-                && commentInput.trim().length > 0
-                && !addCommentMutation.isPending
-              ) {
-                addCommentMutation.mutate(commentInput.trim())
-              }
-            }}
-            placeholder="코멘트 입력..."
-            maxLength={1000}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--color-neutral-300)',
-              fontSize: 14,
-            }}
-          />
-          <Button
-            data-testid="slip-detail-comment-submit"
-            variant="primary"
-            size="sm"
-            disabled={
-              commentInput.trim().length === 0 || addCommentMutation.isPending
-            }
-            loading={addCommentMutation.isPending}
-            onClick={() => addCommentMutation.mutate(commentInput.trim())}
-          >
-            전송
-          </Button>
-        </div>
-      </Card>
-
-      {/*
         signature-slice-C 신규: 전자서명 정보 카드 (Designer wireframes.md §3).
         - signedAt 있을 때 SignatureViewer + 메타 + 공유링크 표시
         - MASTER 권한일 때만 [무효화] 버튼 노출 (Designer §3.4 권한 매트릭스)
@@ -2058,22 +1929,32 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         >
           삭제
         </Button>
-        <Button
-          variant="primary"
-          disabled={
-            !nextPrimaryAction
-            || !canAccess(slipActionPageCode(nextPrimaryAction).pageCode, 'update')
-            || transitionMutation.isPending
-          }
-          onClick={handleAdvanceStage}
-          title={
-            nextPrimaryAction
-              ? `다음 단계: ${ACTION_LABEL[nextPrimaryAction]}`
-              : '현재 단계에서 진행 가능한 다음 단계가 없습니다'
-          }
-        >
-          {nextPrimaryAction ? `완료 (${ACTION_LABEL[nextPrimaryAction]})` : '완료'}
-        </Button>
+        {slip.status === 'COMPLETED' && canCollabEdit ? (
+          <Button
+            variant="primary"
+            data-testid="slip-collab-edit-footer"
+            onClick={() => setCollabEditMode(true)}
+          >
+            수정
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            disabled={
+              !nextPrimaryAction
+              || !canAccess(slipActionPageCode(nextPrimaryAction).pageCode, 'update')
+              || transitionMutation.isPending
+            }
+            onClick={handleAdvanceStage}
+            title={
+              nextPrimaryAction
+                ? `다음 단계: ${ACTION_LABEL[nextPrimaryAction]}`
+                : '현재 단계에서 진행 가능한 다음 단계가 없습니다'
+            }
+          >
+            {nextPrimaryAction ? `완료 (${ACTION_LABEL[nextPrimaryAction]})` : '완료'}
+          </Button>
+        )}
       </div>
 
       {errorMessage ? (
