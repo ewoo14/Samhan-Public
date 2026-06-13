@@ -15,6 +15,8 @@ metadata:
 
 **롤아웃**: 문서별 슬라이스(개발책임자 "이번 슬라이스에 모두 종료" → PM 제안 per-document 롤아웃 수용). **슬라이스 0 = 입출고전표 레퍼런스 = 머지 완료**(PR #474, `30b0ce93a`, 2026-06-13). 다음 = 회계전표/주문/견적/배차/그룹웨어 결재 등에 collab-core 패턴 복제. presence(동시 접속자+사용자별 랜덤 색상)=후속 슬라이스로 분리.
 
-**슬라이스 1 = 회계전표(ACCOUNTING_VOUCHER)** (개발책임자 선정, 2026-06-13): 엔티티=`Journal`(분개), 상태 DRAFT→POSTED→REVERSED(one-way). 확정/완료=POSTED, 물리종결(COLLAB_LOCKED)=REVERSED. **수정완료 편집 범위(개발책임자 확정)=적요(Journal.description)+라인메모(JournalLine.memo) 비-원장 필드만** — 차대변 금액/계정(accountCode/debit/credit)은 불변(변경=역분개 reverse 경로), 회계 무결성 보존. **결재자 개념 없음 → 알림=기여자(createdBy/postedBy+제안자/결정자+코멘트작성자)만**(다음결재자 "없으면 예외"). FE=기존 `JournalDetailPage.tsx`(clients/desktop)에 협업 패널 추가(slip 패턴). collab-core 의존성 accounting-service build.gradle 신규 추가, Flyway V36(slip V44 미러).
+**슬라이스 1 = 회계전표(ACCOUNTING_VOUCHER) = 머지 완료** (PR #475, `4e644241c`, 2026-06-13): 엔티티=`Journal`(분개), DRAFT→POSTED→REVERSED. 확정/완료=POSTED, COLLAB_LOCKED={REVERSED}. **수정완료 편집=적요(description)+라인메모(line.{lineNo}.memo, 1-based)만**(차대변 금액/계정 불변=역분개, 원장키 400). **알림=기여자만**(결재자 없음). page-code `accounting.journals` 재사용. **collab-core 근본fix**: `CollabCoreAutoConfiguration @AutoConfigureAfter(RealtimeAutoConfiguration)`(auto-config broker 의존 서비스 publisher 누락 방지 — 에픽 전체 이득). 다모델 Round A(Opus)/B(Codex, 실서버 DTO normalize 적발)/C(Opus) 0 차단 수렴. **+ 회계 문서번호 슬래시 표준화**(개발책임자 "슬래 모두" — 생성기 4종·forward V37·JournalSeeder seq-UUID 분리, [[feedback_slip_order_number_format]]). FE=기존 `JournalDetailPage.tsx`. Flyway V36(collab) + V37(번호).
+
+**다음 슬라이스 후보**: 주문(PARTNER_ORDER)·견적(ESTIMATE)·배차(DISPATCH_TASK)·그룹웨어 결재. 문서 순서는 개발책임자 확인(슬라이스마다 sequencing 질문).
 
 **워크플로우**: 각 슬라이스 = [[temp-multimodel-workflow]] (기획 → Codex 개발 → 순차 5-agent 라운드[각 PR게시+실서버 스크린샷] → 다음 리뷰어 0에러까지 사이클 → PM 최종점검+머지). 용어는 [[comment-not-collab-comment]](사용자 노출=「코멘트」, 영문 식별자 collab-core 유지).
