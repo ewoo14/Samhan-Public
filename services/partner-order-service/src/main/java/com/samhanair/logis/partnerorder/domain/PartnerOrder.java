@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.springframework.http.HttpStatus;
@@ -105,7 +106,10 @@ public class PartnerOrder extends BaseEntity {
     @Column(name = "idempotency_key", nullable = false, length = 80, unique = true)
     private String idempotencyKey;
 
+    // @OrderBy 결정적 정렬 — 협업 lineKey(활성라인 1-based index)가 loadSnapshot/applyOverlayPatchBatch
+    // 세션 간 + 상세 응답/FE 표시에서 동일 라인을 가리키도록 보장(DB heap 반환 순서 비보장 회피).
     @OneToMany(mappedBy = "partnerOrder", cascade = CascadeType.ALL, orphanRemoval = false)
+    @OrderBy("createdAt ASC, id ASC")
     private List<PartnerOrderLine> lines = new ArrayList<>();
 
     /**
@@ -246,6 +250,60 @@ public class PartnerOrder extends BaseEntity {
         this.bizCode = bizCode;
         this.dueDate = dueDate;
         this.memo = memo == null || memo.isBlank() ? null : memo.trim();
+    }
+
+    /**
+     * 협업 수정완료 overlay 요청사항 변경.
+     *
+     * <p>주문번호/거래처/금액/상태 등 핵심 필드는 변경하지 않고, 설명성 보조 필드인 memo 만 갱신한다.
+     * CANCELED/CONVERTED/CONFIRMING 잠금 판단은 service 가 수행한다.
+     *
+     * @param memo 신규 요청사항. null 허용, 1000자 이하.
+     * @return 현재 PartnerOrder (도메인 메서드 체인용)
+     */
+    public PartnerOrder updateOverlayMemo(String memo) {
+        if (memo != null && memo.length() > 1000) {
+            throw new IllegalArgumentException("memo 는 최대 1000자입니다");
+        }
+        this.memo = memo == null || memo.isBlank() ? null : memo.trim();
+        return this;
+    }
+
+    /**
+     * 협업 수정완료 overlay 납기 변경.
+     *
+     * @param dueDate 신규 납기. null 허용.
+     * @return 현재 PartnerOrder (도메인 메서드 체인용)
+     */
+    public PartnerOrder updateOverlayDueDate(LocalDate dueDate) {
+        this.dueDate = dueDate;
+        return this;
+    }
+
+    /**
+     * 협업 overlay 라인 키로 주문 라인을 찾는다.
+     *
+     * <p>partner_order_lines 에 lineNo 컬럼이 없으므로, line key 는 활성 라인 목록의 1-based 순번이다.
+     * CONFIRMED 이후 협업 수정완료는 라인 추가/삭제를 허용하지 않으므로 해당 순번은 한 changeSet 적용
+     * 범위에서 안정적이다.
+     *
+     * @param lineKey 활성 라인 1-based 순번
+     * @return 해당 라인
+     * @throws com.samhanair.logis.common.exception.BusinessException(NOT_FOUND) 라인이 없을 때
+     */
+    public PartnerOrderLine requireLineByLineKey(int lineKey) {
+        if (lineKey < 1) {
+            throw new com.samhanair.logis.common.exception.BusinessException(
+                    com.samhanair.logis.common.exception.ErrorCode.INVALID_INPUT,
+                    "lineKey 는 1 이상이어야 합니다: " + lineKey);
+        }
+        List<PartnerOrderLine> activeLines = getLines();
+        if (lineKey > activeLines.size()) {
+            throw new com.samhanair.logis.common.exception.BusinessException(
+                    com.samhanair.logis.common.exception.ErrorCode.NOT_FOUND,
+                    "주문 라인을 찾을 수 없습니다: lineKey=" + lineKey);
+        }
+        return activeLines.get(lineKey - 1);
     }
 
     /**
