@@ -4,7 +4,27 @@
 
 ---
 
-## ▶ 현재 에픽 — §7 전역 협업 플랫폼 (슬라이스 0 머지 완료, 문서별 롤아웃 진행)
+## ▶ 현재 에픽 — 문서/전표 미리보기 표준화 (슬라이스1 머지, 후속 에픽 큐)
+
+### ✅ 머지 완료 (2026-06-14 야간) — 미리보기 표준화 슬라이스1 (PR #481, `8544a76df`)
+**🔀 개발책임자 방향 전환** (대화 중 3차 정정): 결재문서 양식(제목/결재란[작성자]/내용/첨부/인사말)은 전표·견적이 아니라 **'결재문서'(그룹웨어 결재·품의서 등)용**. 전표=전표양식, 견적=GAS.
+- **입고전표** → 출고전표(OutboundView) 양식 통일 (A4 기본 + 88mm 토글, 결재란 미적용, inbound/outbound CSS 공통 selector). 입고창고 헤더 1회, 연락처 조건부.
+- **견적서** → 종합견적서 에픽 분리 (QuoteView/sales/EstimateDetailPage/routes origin 복원). ⚠️ **견적 인쇄 진입 버그 origin 선재 잔존**: handlePrint 이 estimateNo(슬래시)를 path 전달 → encodeURIComponent %2F → 게이트웨이 StrictHttpFirewall 차단 → 400. 종합견적서 에픽에서 견적 전면 재작업 시 해결.
+- **PrintLayout 결재 골격**(approvalDoc/docHeader/approvalSteps/closingNote/print-approval-*) + DESIGN.md + tokens.css 결재토큰 **보존** → 결재문서 후속 에픽 토대 (슬라이스1 미렌더 스캐폴드, mock gate 가 보존+미사용 검증).
+- **전표번호 표시 0제거** (utils/orderNo.ts `stripSlipNoZeros`, print 뷰 9종). 저장값 유지(표시만). mock gate 에 계약 검증 CI 연동.
+- 거래명세서·세금계산서·출고전표 현행.
+- 다모델: Opus 5-agent(FE/QA/Designer — P1 2 문서정합[06-견적서.md·DESIGN.md 구방향] + P2) → Opus fix → Codex 5-agent cross-check(P1 0, P2 CI회귀방어 mock gate stripSlipNoZeros) → PM 종합. 라이브 QA 2/2(입고 A4 `2026/04/08-1`, 출고 88mm `2026/02/18-1`), mock 6/6, typecheck 0, CI 28/29(GitGuardian=dev seed 비번 false positive).
+
+### 🔜 후속 에픽 큐 (개발책임자 '전역, 저장 모두' + 야간 위임, 오전 7시까지 PM 자율)
+1. **전표번호 0제거 전역+저장** (Phase 2, 진행 예정): 실 DB slip_db.slips.slip_no — 운영 1924건 no-pad(`2026/06/08-1908`), **시드 100건만 zero-pad(`001`)**. BE 생성기(SlipNumberService/EstimateNumberService/JournalNumberService/PartnerOrderConfirmService/taskCode)는 **이미 no-pad**. taxInvoiceNo만 4자리(법정). → ① seeder zero-pad 제거 ② 시드 100건 Flyway 마이그레이션(`001→1`, unique 충돌 검증 + fresh Postgres probe) + 참조(partner_orders.slip_no, serial_compensation_failures) ③ FE 전역(저장 1→목록/상세/검색 자동, stripSlipNoZeros no-op 방어 유지).
+2. **종합견적서 에픽**: 견적서(기본/세트상세) GAS 양식(`tools/legacy-gas/종합견적서/index.html` 19182줄, 로고+제목+품목표+합계+안내문구4줄, 세트분해/조합비/스냅샷저장) + **스냅샷 저장 + 웹 종합견적서 재로드**(개발책임자 — 견적서가 스냅샷용·웹 연동 목적). 견적 인쇄 진입 버그 동반 해결. 데이터 모델(세트 구성품)부터 설계.
+3. **결재문서 에픽**: PrintLayout 결재 골격으로 그룹웨어 결재 등 결재문서 미리보기 (제목/결재란[작성자]/내용/첨부/인사말). 첨부 영역 신규.
+4. **desktop vitest 인프라**: orderNo.test.ts 등 단위 러너 CI 정식 연동 (현재 mock gate 우회, order-app vitest 격리).
+5. **회계 메뉴 갭**: 이카운트 31개 중 ~13 없음 (자금일보·자금현황표 등).
+
+---
+
+## ▶ (이전 에픽) §7 전역 협업 플랫폼 (슬라이스 0 머지 완료, 문서별 롤아웃 진행)
 
 ### ✅ 머지 완료 (2026-06-14) — §7 슬라이스6 그룹웨어 결재 (PR #480, `014d63cf5`) = §7 전역 협업 에픽 완결
 collab(title/content 수정완료·COLLAB_LOCKED={APPROVED,REJECTED,WITHDRAWN}·approvalNo 슬래시 KST·page-code groupware.approvals) + 결재유형 템플릿 빌더(동적필드) + 통합 문서 참조 첨부(출고/입고전표·분개장·세금계산서·거래명세서·거래처원장) + **결재자 사원검색 칩 + 결재선 실명**(개발책임자 요청 — 다중 추가 입력은 캡슐(칩) 통일, 품목 표 제외) + 전표번호 검색. user-service `/internal/users/search`+bulk `/internal/users/display-names`, groupware `UserClient.search/resolveDisplayNames`+`approver-search` 프록시, ApprovalLineAdminResponse approverName/requesterName.
