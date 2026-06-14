@@ -100,4 +100,4 @@
 - [개발책임자 결정은 진행 중 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 2026-06-12 PR #471. 슬라이스 중 개발책임자 결정·지시·정정을 그때그때 해당 PR에 "📌 개발책임자 결정 기록" 리뷰 코멘트로 누적 게시. 채팅에만 두지 말 것
 - [다중 추가 입력 = 칩(캡슐) 통일](feedback_chip_ui_multi_input.md) — 2026-06-14 개발책임자. 결재자/첨부/태그 등 다중 추가 입력은 design-system TagChip+AsyncAutocomplete 칩(label:value+제거). 품목 라인(수량/단가/금액 표)은 제외. §7 그룹웨어 결재 PR #480 적용
 - [§7 전역 협업 에픽 완결(6문서)](project_global_collab_epic.md) — 2026-06-14 PR #480 머지. slip·회계·주문·견적·배차·그룹웨어 결재 6문서 collab 완결. 다음 에픽=문서/전표 미리보기 표준화(PrintLayout 결재문서 형식·출고전표 기존)+회계 메뉴 갭 13
-- [미리보기 표준화 방향](project_print_preview_standardization.md) — 2026-06-14 개발책임자 3차 정정(#481 슬라이스1 머지). 전표=전표양식(입고=출고통일 A4)/견적=GAS 종합견적서/결재문서=PrintLayout골격(보존). 전표번호 0제거 전역+저장(시드100건 마이그). 견적 인쇄 진입버그 origin 선재→종합견적서 에픽
+- [미리보기 표준화 방향](project_print_preview_standardization.md) — 2026-06-14 개발책임자 3차 정정. 전표=전표양식(입고=출고통일 A4)/견적=GAS 종합견적서/결재문서=PrintLayout골격. **슬1 #481(입고출고통일)·슬2 #483(그룹웨어 결재문서 ApprovalDocView 골격 첫 실연결)·Phase2 전표번호0제거 PR#482 morning게이트(운영DB Flyway적용+라이브QA완)** 머지. 견적 인쇄 진입버그 origin 선재→종합견적서 에픽

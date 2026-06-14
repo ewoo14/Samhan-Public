@@ -40,6 +40,11 @@
 - **`up -d <svc>` 는 `depends_on` 으로 postgres/eureka 까지 Recreate 시도** → 단일/부분 재기동 시 반드시 **`--no-deps`** 추가(미사용 시 postgres 가 Created(stopped) 로 떨어져 스택 다운; `docker start samhan-postgres` 로 복구, 볼륨 데이터는 무손실).
 - 전체 재기동: orphan rm → 16 jar build → `docker compose -p infrastructure -f docker-compose.yml -f docker-compose.local-all.yml up -d --build`. `samhan-nginx` 는 로컬 dev 에서 상시 unhealthy(`/healthz` 80 미기동, 443 ssl 전제 — 클라이언트는 :8080/:8097 직결이라 무영향).
 
+## 3.6 호스트 포트 점유 충돌 — slip-service 8086 ↔ influxd (2026-06-15 Phase2 0제거 QA)
+- **dev PC 의 `influxd`(InfluxDB) 가 8086 LISTENING** (InfluxDB 기본 포트 = slip-service 기본 포트와 동일). `docker compose up slip-service` 시 host 바인딩 `127.0.0.1:8086:8086` 충돌 → 컨테이너가 **`Created` 에서 멈춤**(`bind: An attempt was made to access a socket ... forbidden`). Flyway 가 안 돌아 마이그 미적용(겉보기 "재기동 완료"인데 DB 미변경 — false success 주의).
+- 점유 프로세스 확인: `netstat -ano | grep ":8086"` → PID → `Get-Process -Id <pid>`(influxd).
+- **해법**: `docker-compose.local-all.yml` 의 slip-service `ports` 를 **host 쪽만** 임시 remap(`127.0.0.1:8186:8086`) 후 재기동 → Flyway 정상. **게이트웨이는 내부망 `http://slip-service:8086` 사용**(host 포트 무관)이라 QA 영향 0. 끝나면 compose 편집 `git checkout` 으로 되돌림(running 컨테이너는 영향 없음). influxd 를 죽이지 말 것(사용자 무관 서비스).
+
 ## 4. react-query 캐시 stale
 - 편집 mutation 이 연관 list 쿼리(`['partnerRevisions', code]` 등)를 invalidate 안 하면 탭 전환만으로는
   최신 안 보임. 같은 SPA 세션 재오픈으로도 안 되면 문서 리로드 필요. → 근본 fix 는 onSuccess invalidate.

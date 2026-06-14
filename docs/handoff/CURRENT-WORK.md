@@ -4,7 +4,7 @@
 
 ---
 
-## ▶ 현재 에픽 — 문서/전표 미리보기 표준화 (슬라이스1 머지, 후속 에픽 큐)
+## ▶ 현재 에픽 — 문서/전표 미리보기 표준화 (슬라이스1·2 머지, Phase2 morning 게이트, 후속 큐)
 
 ### ✅ 머지 완료 (2026-06-14 야간) — 미리보기 표준화 슬라이스1 (PR #481, `8544a76df`)
 **🔀 개발책임자 방향 전환** (대화 중 3차 정정): 결재문서 양식(제목/결재란[작성자]/내용/첨부/인사말)은 전표·견적이 아니라 **'결재문서'(그룹웨어 결재·품의서 등)용**. 전표=전표양식, 견적=GAS.
@@ -15,10 +15,18 @@
 - 거래명세서·세금계산서·출고전표 현행.
 - 다모델: Opus 5-agent(FE/QA/Designer — P1 2 문서정합[06-견적서.md·DESIGN.md 구방향] + P2) → Opus fix → Codex 5-agent cross-check(P1 0, P2 CI회귀방어 mock gate stripSlipNoZeros) → PM 종합. 라이브 QA 2/2(입고 A4 `2026/04/08-1`, 출고 88mm `2026/02/18-1`), mock 6/6, typecheck 0, CI 28/29(GitGuardian=dev seed 비번 false positive).
 
+### ✅ 머지 완료 (2026-06-15 야간) — 미리보기 표준화 슬라이스2 (PR #483, `4f3503ffd`)
+**그룹웨어 결재문서 인쇄 미리보기** — slice1 박제 `PrintLayout` approvalDoc 골격을 실연결(첫 활성). 개발책임자 확정 형식(제목/결재란[작성자 포함]/내용/첨부/품의 인삿말).
+- **신규 `print/ApprovalDocView.tsx`** (`/groupware/approvals/:id/print`): 실 DTO `ApprovalLineAdminResponse` + 첨부(`listApprovalAttachments`) + 템플릿 fieldValues. 결재란 = 작성(requesterName) + 결재선(합의/결재, APPROVED만 decidedAt). docHeader issueDate = **최종 승인일**. 본문 = content 문단 + fieldValues 표(템플릿 displayOrder 순, NUMBER 필드 `krw` 콤마) + 첨부 표(refSlipNo `stripSlipNoZeros` / refDocNo fallback). queryKey `groupware-approval-print*` 충돌가드. UUID 비노출. 템플릿 fetch 실패=graceful("추가 필드 N", 비fatal — 결재 VIEW만 보유자 보호).
+- **`PrintLayout.tsx`**: `PrintApprovalStep.signaturePngBase64?` optional 추가(회귀 0) + cell key 중복 방지. **`routes/index.tsx`**: 라우트(PermissionGuard `groupware.approvals`/view, 상세와 동일). **`GroupwareApprovalDetailPage.tsx`**: "인쇄 미리보기" 버튼. **global.css**: 결재란 긴 이름 줄바꿈 + header break-inside(.print-approval-doc 스코프 — slip 양식 무영향).
+- 다모델 2라운드: **Opus 5-agent**(BE P1 decidedAt 배열직렬화=**라이브 거짓양성 기각**[ISO 문자열 정상] + P2 라벨/발행일/금액콤마/이름truncate fix) → **Codex 5-agent**(P2 발행일 APPROVED한정·필드순서·refDocNo·CSS스코프 fix, template-fatal 1건 PM 되돌림[권한 회귀 방지]). 0 P1.
+- 라이브 실QA **A1/A2/A3 3건 PASS**(`docs/qa/approval-doc-print-preview/` — A1 지출결의 fieldValues+첨부, A3 다단계 승인 작성/합의/결재+발행일). typecheck/lint/build PASS. **CI 24 green**(GitGuardian=dev seed 비번 false positive, PM 판정). slice1 mock 6/6 회귀 무손상.
+- **후속(비차단)**: `groupware.approval-templates` 단건조회 권한을 `groupware.approvals` VIEW 와 정합(seed 동시부여 or 통일) — 권한정책 개발책임자 확인. CI mock smoke spec(approvalDoc 분기 회귀).
+
 ### 🔜 후속 에픽 큐 (개발책임자 '전역, 저장 모두' + 야간 위임, 오전 7시까지 PM 자율)
-1. **전표번호 0제거 전역+저장** (Phase 2, 진행 예정): 실 DB slip_db.slips.slip_no — 운영 1924건 no-pad(`2026/06/08-1908`), **시드 100건만 zero-pad(`001`)**. BE 생성기(SlipNumberService/EstimateNumberService/JournalNumberService/PartnerOrderConfirmService/taskCode)는 **이미 no-pad**. taxInvoiceNo만 4자리(법정). → ① seeder zero-pad 제거 ② 시드 100건 Flyway 마이그레이션(`001→1`, unique 충돌 검증 + fresh Postgres probe) + 참조(partner_orders.slip_no, serial_compensation_failures) ③ FE 전역(저장 1→목록/상세/검색 자동, stripSlipNoZeros no-op 방어 유지).
+1. **전표번호 0제거 전역+저장** (Phase 2, ⏳ **PR #482 — 머지 morning 게이트**, 브랜치 `feat/slip-no-zero-strip-global`): slip 도메인 0제거 완료 — V47(slips.slip_no + serial_compensation 001→1, probe 100→0) + V48(slip_revisions.slip_no + snapshot JSONB, **restore 재오염 fix**, probe 6→0) + V38(accounting journals.description 적요 박제 001→1, probe 29→0) + JournalSeeder.pickSlipNo `%03d→%d` + seeder no-pad. BE 생성기 이미 no-pad, taxInvoiceNo 4자리(법정). 다모델: Opus(BE 0 / QA·DevOps P1 journals.description + P2) → Codex cross-check(P1 회계전표 생성기 재발·slip_revisions 재오염 + P2 cross-service 사본) → Opus fix. **✅ 운영 DB Flyway 자연 적용 + 라이브 실QA 완료**: slips/revisions/snapshot/journals.description 잔존 zero-pad **전부 0**, 게이트웨이 `GET /slips` -1 응답, 데스크톱 입고/출고 미리보기 `-1` 캡처(`docs/qa/slip-no-zero-strip-global/`). **🔴 morning 개발책임자 확인 큐(머지 전)**: ⓐ회계전표 매출/매입 자체 번호(`SalesAccountingSlipNumberGenerator`/`PurchaseAccountingSlipNumberGenerator` `%04d`) — '전표번호 0제거'가 회계전표 자체 번호도 포함? 4자리 정책(taxInvoice 법정 vs 전표번호)? 미적용 시 신규 재발 ⓑcross-service slip 참조 사본(accounting allocation `source_slip_no`, groupware attachment `ref_slip_no`) 0제거 동반? ⓒ구번호(`-001`) 검색 비호환 고지. **🪤 재기동 함정 2건**: (1) docker compose 는 `-f docker-compose.yml -f docker-compose.local-all.yml` **둘 다**(samhan-net network=base 정의) (2) **dev PC influxd 가 8086 점유** → slip-service 컨테이너 host 포트 바인딩 실패(Created 멈춤) → host 포트만 8186 임시 remap 후 재기동(게이트웨이는 내부망 `slip-service:8086` 사용이라 QA 무영향), compose 편집 비커밋 되돌림.
 2. **종합견적서 에픽**: 견적서(기본/세트상세) GAS 양식(`tools/legacy-gas/종합견적서/index.html` 19182줄, 로고+제목+품목표+합계+안내문구4줄, 세트분해/조합비/스냅샷저장) + **스냅샷 저장 + 웹 종합견적서 재로드**(개발책임자 — 견적서가 스냅샷용·웹 연동 목적). 견적 인쇄 진입 버그 동반 해결. 데이터 모델(세트 구성품)부터 설계.
-3. **결재문서 에픽**: PrintLayout 결재 골격으로 그룹웨어 결재 등 결재문서 미리보기 (제목/결재란[작성자]/내용/첨부/인사말). 첨부 영역 신규.
+3. ~~**결재문서 에픽**: PrintLayout 결재 골격으로 그룹웨어 결재 미리보기~~ → ✅ **슬라이스2 머지(#483)**. 확장 후보(후속): 품의서/기안 등 다른 결재유형, 사원 등록 전자서명 이미지 실연동(`signaturePngBase64` 현재 placeholder), approval-templates 권한 정합.
 4. **desktop vitest 인프라**: orderNo.test.ts 등 단위 러너 CI 정식 연동 (현재 mock gate 우회, order-app vitest 격리).
 5. **회계 메뉴 갭**: 이카운트 31개 중 ~13 없음 (자금일보·자금현황표 등).
 
