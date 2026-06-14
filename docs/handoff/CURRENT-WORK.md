@@ -6,14 +6,15 @@
 
 ## ▶ 현재 에픽 — §7 전역 협업 플랫폼 (슬라이스 0 머지 완료, 문서별 롤아웃 진행)
 
-### 🔴 진행 중 (2026-06-14) — §7 슬라이스6 그룹웨어 결재 (PR #480, 미머지)
-브랜치 `feat/sec7-groupware-approval-collab`. **구현·검증 완료, Codex 5-agent 라운드 → 머지 잔여.**
-1. **기반 결재 collab**(수정완료 title/content + 코멘트 + diff + 알림, COLLAB_LOCKED={APPROVED,REJECTED,WITHDRAWN}, approvalNo 슬래시 KST 채번, page-code groupware.approvals). Opus 라운드 완료. **P1 2건 fix**: PageCode enum 누락(MASTER 리다이렉트)→enum+V56(account_page_permissions 그룹모델 materialize, V40 직접패턴 폐기=accounts.role 없음), 비-MASTER 403.
-2. **확장(개발책임자 통합 결정)**: **결재유형 템플릿 빌더(풀)**(ApprovalTemplate/Field 동적필드 TEXT/NUMBER/DATE/SELECT/TEXTAREA, 견본 지출결의서/휴가신청서 2종, V5 마이그) + **첨부**(ApprovalAttachment SLIP_REF/PARTNER_LEDGER_REF/FILE, MinIO Noop fallback, collab field overlay) + **전표번호 검색 자동완성**(slip-service GET /admin/slips/search 부분일치, FE SlipReferencePicker). page-code groupware.approval-templates + V57. Opus 라운드 완료(multipart/codec/mock/displayOrder/Content-Disposition/빌더그리드 fix).
-- **검증**: IT 15/15(ApprovalCollabIT 11 + ApprovalTemplateAttachmentIT 4) + SlipServiceListSpecTest 8/8, FE typecheck 0, V5/V57 fresh-postgres probe. **실QA**: collab 8컷(`docs/qa/groupware-approval-collab/`) + 템플릿/첨부/자동완성 6컷(`docs/qa/groupware-approval-templates/`).
-- **함정**: slip-service host 8086 ↔ influxd 충돌 → `docker-compose.slip-port-override.yml`(host 18086) 필수. active 엔드포인트는 /internal 아닌 **/admin**(게이트웨이 노출). DetailPage hook 은 early-return 위. 라이브 QA 가 게이트웨이 404/hooks 크래시/account 403 단독 적발.
-- **🟡 개발책임자 후속 결정 1건**: 결재 작성 시 **결재자 선택 UX**(현재 UUID 직접입력 MVP → 사원 검색 picker + 결재선 실명 표시 = 신규 후속 슬라이스). PR #480 은 현 범위로 머지 가능.
-- **잔여 단계**: Codex 5-agent 라운드(확장 cross-check) → 수렴 → 머지. spec=`docs/superpowers/specs/2026-06-14-groupware-approval-{collab,templates-attachments}.md`.
+### ✅ 머지 완료 (2026-06-14) — §7 슬라이스6 그룹웨어 결재 (PR #480, `014d63cf5`) = §7 전역 협업 에픽 완결
+collab(title/content 수정완료·COLLAB_LOCKED={APPROVED,REJECTED,WITHDRAWN}·approvalNo 슬래시 KST·page-code groupware.approvals) + 결재유형 템플릿 빌더(동적필드) + 통합 문서 참조 첨부(출고/입고전표·분개장·세금계산서·거래명세서·거래처원장) + **결재자 사원검색 칩 + 결재선 실명**(개발책임자 요청 — 다중 추가 입력은 캡슐(칩) 통일, 품목 표 제외) + 전표번호 검색. user-service `/internal/users/search`+bulk `/internal/users/display-names`, groupware `UserClient.search/resolveDisplayNames`+`approver-search` 프록시, ApprovalLineAdminResponse approverName/requesterName.
+- 리뷰: Opus 5-agent(P1 3: 칩 aria-label/첨부 입력행+칩 혼재/DocumentReferencePicker role=option + P2: EmployeeRepository LEFT JOIN·refSlipType 비전표 null·resolveDisplayNames N+1 bulk·AsyncAutocomplete inputTestId·minChars 2·IT stub) → Codex cross-check(P2 2: 목록 display-name 1회 일괄·중복 결재자 검증) 수렴.
+- **🚨 라이브 QA 단독 적발 P1**: groupware-service Docker `SAMHAN_USER_SERVICE_URL` 미설정 → user-service 도달 불가(결재자 검색/실명 전체 작동 불가, IT/mock false-green) → docker-compose.local-all.yml fix. + CI fix: 결재 page-code IT 동기화(messenger.admin→groupware.approvals/UPDATE), real-qa mock gate 누수(`**/*-real-qa/**`).
+- **후속 P3 큐**: allow-token false(user-service 전역 /internal 보안 — 별도 슬라이스, @PreAuthorize MASTER 2차 방어로 운영 안전), mock 결재자 검색범위(userId/dept→fullName/loginId), 분개장 전용 미리보기 뷰.
+
+### 🔜 다음 에픽 (2026-06-14 개발책임자 결정) — 문서/전표 출력 미리보기 표준화 + 회계 메뉴 갭
+1. **미리보기 표준화(먼저)**: 현존 문서/전표 출력 미리보기를 회사 공식 양식(`PrintLayout`=결재문서 형식)으로 통일. **출고전표 기존 유지**, 나머지(거래명세서·세금계산서·거래처원장·재무제표 등) 동일 형식. 전표는 이미 PrintLayout 미리보기(양식 본문 + 상단 "인쇄" 버튼, 즉시 출력 X) — `docs/qa/slip-print-preview/` 5컷 라이브 확인. P3: 세금계산서 인감/사업자번호 미등록 시드 한계.
+2. **회계 메뉴 갭(후속)**: 이카운트 31개 중 ~13 없음 — 자금일보·자금현황표·자금증감내역·월별원가분석·채권/채무회수기간표·외화장부·거래처관리대장 Ⅰ/Ⅱ·원가명세서·계정명세서·회계 vs 재고 비교(우리 도메인 필요 선별). 18 동등(우리 "원장" 1개가 이카운트 계정별/적요별/거래처별 장부 통합).
 
 ---
 
