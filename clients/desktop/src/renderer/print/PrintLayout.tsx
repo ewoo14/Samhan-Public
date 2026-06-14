@@ -15,11 +15,11 @@
  */
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '@samhan/design-system'
+import { Button, SignatureViewer } from '@samhan/design-system'
 
-// COMPANY 정적 상수는 useCompanyProfile 훅으로 대체됨 (spec §2c, 2026-06-10).
-// 외부에서 COMPANY 를 직접 import 하지 말 것 — useCompanyProfile() 훅 사용.
-// 아래 DEFAULT_COMPANY 는 useCompanyProfile.ts 내부에서 fallback 으로만 사용.
+// 결재문서(approvalDoc) 헤더에서 회사명/사업자번호 블록 제거(2026-06-14 개발책임자
+// 디자인 iteration 2) → useCompanyProfile 훅은 본 layout 에서 더 이상 쓰지 않는다.
+// 회사 정보는 거래명세서/세금계산서 등 각 view 가 필요 시 자체적으로 useCompanyProfile() 사용.
 
 /**
  * Paper size 종류 — `<PrintLayout>` 의 `paper` prop.
@@ -28,6 +28,20 @@ import { Button } from '@samhan/design-system'
  * - `receipt-88mm` — 88mm 영수증 프린터 (88mm × auto) — 출고/입고 분기 옵션
  */
 export type PaperSize = 'a4-portrait' | 'a4-landscape' | 'receipt-88mm'
+
+export interface PrintDocHeader {
+  title: string
+  docNo?: string
+  issueDate?: string
+  periodFrom?: string
+  periodTo?: string
+}
+
+export interface PrintApprovalStep {
+  label: string
+  name?: string
+  decidedAt?: string
+}
 
 interface PrintLayoutProps {
   /** 양식 종류 — `<body>` 단의 .paper-* 클래스 부여 (CSS @page size 분기). */
@@ -45,6 +59,23 @@ interface PrintLayoutProps {
   showFormatToggle?: boolean
   /** 88mm ↔ A4 toggle 콜백 — `showFormatToggle=true` 시. 본 1차 mock placeholder. */
   onToggleFormat?: () => void
+  /**
+   * 전자서명 결재문서 형식 opt-in.
+   *
+   * 기본값 false. 미전달 시 기존 출력 양식 DOM 을 그대로 children 만 렌더한다.
+   */
+  approvalDoc?: boolean
+  /** 결재문서 공통 헤더 정보. `approvalDoc=true` 일 때만 렌더한다. */
+  docHeader?: PrintDocHeader
+  /** 결재란 정의. 2~5칸을 배열 길이로 동적 렌더한다. */
+  approvalSteps?: PrintApprovalStep[]
+  /**
+   * 결재 서류용 정중한 품의/제출 멘트. `approvalDoc=true` 일 때 본문 divider 아래에 렌더한다.
+   *
+   * 예) "위와 같이 품의하오니 재가하여 주시기 바랍니다." / "아래와 같이 견적서를 제출하오니 …".
+   * 그 아래의 "※ 전자서명으로 결재된 문서입니다." 안내 문구는 본 멘트와 별개로 항상 유지된다.
+   */
+  closingNote?: string
 }
 
 /**
@@ -63,8 +94,13 @@ export function PrintLayout({
   children,
   showFormatToggle = false,
   onToggleFormat,
+  approvalDoc = false,
+  docHeader,
+  approvalSteps = [],
+  closingNote,
 }: PrintLayoutProps) {
   const navigate = useNavigate()
+  const normalizedApprovalSteps = approvalSteps.slice(0, 5)
   return (
     <div>
       <div className="no-print" style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
@@ -83,7 +119,99 @@ export function PrintLayout({
         ) : null}
       </div>
 
-      <div className={`paper paper-${paper}`}>{children}</div>
+      <div className={`paper paper-${paper}`}>
+        {approvalDoc ? (
+          <div className="print-approval-doc">
+            {/* 헤더 = 좌(문서제목 + 문서메타) + 우(결재란 박스).
+                회사명/사업자번호 블록은 제거(2026-06-14 개발책임자 디자인 iteration 2) →
+                좌측 최상단이 문서 제목 h1, 그 아래 문서메타(번호/발행일/기간), 우상단이 결재란.
+                한국 ERP/공문서/세금계산서 표준에 맞춰 결재란을 문서 우측 상단 코너로 배치한다. */}
+            <header className="print-approval-doc-header">
+              <div className="print-approval-doc-headline">
+                <div className="print-approval-doc-meta">
+                  <h1>{docHeader?.title ?? ''}</h1>
+                  {docHeader?.docNo ? (
+                    <div>
+                      <span>문서번호</span>
+                      <strong>{docHeader.docNo}</strong>
+                    </div>
+                  ) : null}
+                  {docHeader?.issueDate ? (
+                    <div>
+                      <span>발행일</span>
+                      <strong>{krDate(docHeader.issueDate)}</strong>
+                    </div>
+                  ) : null}
+                  {docHeader?.periodFrom || docHeader?.periodTo ? (
+                    <div>
+                      <span>기간</span>
+                      <strong>
+                        {krDate(docHeader.periodFrom)} ~ {krDate(docHeader.periodTo)}
+                      </strong>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              {/* 결재 단계가 하나도 없으면 빈 grid 박스가 그려지므로 결재란 박스 자체를 렌더하지 않는다.
+                  현재 호출처는 모두 3칸을 전달해 무해하나, 후속 호출처가 빈 배열을 넘길 때의 회귀 방어. */}
+              {normalizedApprovalSteps.length > 0 ? (
+                <section className="print-approval-section" aria-label="전자서명 결재란">
+                  {/* 우측 상단 코너용 — 칸당 고정폭(코너 토큰) × N칸. 전체폭(1fr) 아님.
+                      flex:0 0 auto 인 박스가 칸 폭만큼만 차지하도록 고정폭으로 그린다. */}
+                  <div
+                    className="print-approval-grid"
+                    style={{
+                      gridTemplateColumns: `repeat(${Math.max(2, normalizedApprovalSteps.length)}, var(--print-approval-corner-col, 19mm))`,
+                    }}
+                  >
+                    {normalizedApprovalSteps.map((step) => {
+                      const signerName = step.name ?? ''
+                      const decidedAt = step.decidedAt ?? ''
+                      return (
+                        <div className="print-approval-cell" key={step.label}>
+                          <div className="print-approval-label">{step.label}</div>
+                          <div className="print-approval-signature">
+                            {/* 슬라이스1 placeholder — 전자서명 이미지 실연동은 그룹웨어 결재 연동 후속. */}
+                            <SignatureViewer
+                              signaturePngBase64=""
+                              signerName={signerName}
+                              signedAt={decidedAt}
+                              size="fluid"
+                              className="print-approval-signature-viewer"
+                            />
+                          </div>
+                          <div className="print-approval-name">
+                            <div>{signerName}</div>
+                            <time>{formatApprovalDecidedAt(decidedAt)}</time>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              ) : null}
+            </header>
+            <div className="print-approval-divider" aria-hidden="true" />
+            <main className="print-approval-body">{children}</main>
+            {/* 문서 하단(본문 아래) = 정중한 품의/제출 멘트(closingNote) + 전자서명 안내 문구.
+                결재란 grid 는 우측 상단으로 이동했다(2026-06-14). closingNote 또는 결재란이
+                하나라도 있으면 divider 를 그린다. 안내 문구는 결재란이 렌더될 때만(빈 배열 방어). */}
+            {closingNote || normalizedApprovalSteps.length > 0 ? (
+              <>
+                <div className="print-approval-divider" aria-hidden="true" />
+                {closingNote ? (
+                  <p className="print-approval-closing">{closingNote}</p>
+                ) : null}
+                {normalizedApprovalSteps.length > 0 ? (
+                  <p className="print-approval-notice">※ 전자서명으로 결재된 문서입니다.</p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </div>
   )
 }
@@ -115,6 +243,13 @@ export function krDate(iso: string | null | undefined): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
   if (!m) return iso
   return `${m[1]}년 ${m[2]}월 ${m[3]}일`
+}
+
+function formatApprovalDecidedAt(iso: string | null | undefined): string {
+  if (!iso || iso.length < 10) return ''
+  const datePart = iso.slice(0, 10).replace(/-/g, '/')
+  if (iso.length < 16) return datePart
+  return `${datePart} ${iso.slice(11, 16)}`
 }
 
 /**
