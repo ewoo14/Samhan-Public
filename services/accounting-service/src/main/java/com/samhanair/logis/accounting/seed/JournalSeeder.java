@@ -46,7 +46,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>외부 의존</b>:
  * <ul>
  *   <li>Stage 1 partner UUID — {@code samhan-seed:partner:P-2026-NNNN} 결정 도출 (50건)</li>
- *   <li>Stage 2 slip UUID — {@code samhan-seed:slip:S-2026-MM-NNN} 결정 도출 (SLIP_ISSUE 30건만)</li>
+ *   <li>Stage 2 slip 번호 — slip-service {@code SlipSeeder.formatSlipNo} 와 동일한 {@code yyyy/MM/dd-N}
+ *       포맷으로 전표번호 텍스트를 산출 (SLIP_ISSUE 30건만). 적요/참조 텍스트의 전표번호 표기 일관성 확보가
+ *       목적이며, slip 엔티티의 실제 PK 와 매칭하지는 않는다 ({@code slips.id} 는 {@code @UuidGenerator} 가
+ *       random 부여, journal {@code source_ref_id} 는 번호 hash 라 cross-DB row 매칭 불가).</li>
  *   <li>16 employee — kimaccountant / leeseongmi 등 한글 이름 → samhan-seed:employee:&lt;loginId&gt;</li>
  * </ul>
  *
@@ -77,7 +80,7 @@ public class JournalSeeder implements CommandLineRunner {
     private static final String[] ACCOUNTANT_LOGINS =
             {"leeseongmi", "heoyujin", "rahaeram", "kimeunji", "parkjisu"};
 
-    /** Stage 2 slip 100건 표준 번호 형식 — yyyy/MM/dd-NNN. seq → 결정적 1건 매핑. */
+    /** Stage 2 slip 100건 표준 번호 형식 — yyyy/MM/dd-N. seq → 결정적 1건 매핑. */
     private static final LocalDate SLIP_BASE_DATE = LocalDate.of(2026, 4, 1);
 
     /** Stage 1 partner code 형식 — Stage 1 PartnerSeeder 의 P-2026-NNNN. */
@@ -156,7 +159,9 @@ public class JournalSeeder implements CommandLineRunner {
 
         switch (spec.type) {
             case SLIP_ISSUE -> {
-                String slipNo = pickSlipNo(seq); // 30 SLIP_ISSUE → 30 slip
+                String slipNo = pickSlipNo(seq); // 30 SLIP_ISSUE — 전표번호 텍스트만 생성 (slip-service 와 동일 포맷)
+                // source_ref_id 는 전표번호 hash 로 도출한 시드 전용 결정값일 뿐, slip_db.slips.id (random PK) 와는
+                // cross-DB 매칭하지 않는다. 적요/참조 표기의 전표번호 일관성만 보장한다.
                 sourceRefId = deterministicId("slip", slipNo);
                 description = String.format("전표 %s 자동 분개 (출하 매출)", slipNo);
             }
@@ -297,10 +302,10 @@ public class JournalSeeder implements CommandLineRunner {
 
     /** 30 SLIP_ISSUE 에 매핑할 slip 번호 — Stage 2 의 100 slip 중 결정적 30건. */
     private String pickSlipNo(int seq) {
-        // 매월 4월 1일부터 결정적 분포 — yyyy/MM/dd-NNN
+        // 4월 1일부터 결정적 분포 — yyyy/MM/dd-N, SlipSeeder.formatSlipNo 와 동일.
         LocalDate date = SLIP_BASE_DATE.plusDays((seq - 1) * 2L);
         int seqInDay = ((seq - 1) % 9) + 1;
-        return String.format("%d/%02d/%02d-%03d",
+        return String.format("%d/%02d/%02d-%d",
                 date.getYear(), date.getMonthValue(), date.getDayOfMonth(), seqInDay);
     }
 
