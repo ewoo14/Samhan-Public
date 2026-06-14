@@ -6,6 +6,12 @@
 
 ## ▶ 현재 에픽 — 문서/전표 미리보기 표준화 (슬라이스1·2 머지, Phase2 morning 게이트, 후속 큐)
 
+### 🌅 morning 개발책임자 결정 큐 (PM 야간 자율 완료 — 아래는 개발책임자 입력 필요해 PM 미진행)
+> 야간(2026-06-15) PM 진행: 슬라이스2(#483 그룹웨어 결재문서 미리보기)·vitest 인프라(#484) **머지 완료**. Phase2 전표번호 0제거(#482) 구현+운영DB적용+라이브QA **완료, 머지만 정책 게이트**. 이후 큐는 개발책임자 결정이 있어야 진행 가능(시리즈 자율분 소진) → 아래 답 주시면 즉시 재개.
+> 1. **Phase 2 머지(#482)**: ⓐ '전표번호 0제거'에 **회계전표 매출/매입 자체 번호**(`%04d` 4자리)도 포함? (slip 입출고전표만? taxInvoice 법정 4자리는 유지 전제) ⓑ cross-service slip 참조 사본(accounting `source_slip_no`·groupware `ref_slip_no`) **0제거 동반?** ⓒ 구번호(`-001`) 검색 비호환 고지 OK? → 답 주시면 ⓐ(필요시)+ⓑ 추가 마이그 후 머지.
+> 2. **종합견적서 에픽 스코핑**(다음 주력): 견적서(기본/세트상세)=스냅샷 저장+웹 재로드. GAS 양식 **754KB(~19k줄) 대형** → 1차 sub-slice = **세트 구성품 데이터 모델 + 기본 양식**부터(웹 재로드 계약은 후속). 견적 인쇄 진입버그(handlePrint estimateNo→%2F 400) 동반 해결. **결정 필요**: 세트→구성품 모델 형태 / 스냅샷 저장 시점(발행 시 freeze?) / 웹 재로드 API 계약.
+> 3. **회계 메뉴 갭**: 이카운트 13종 중 **우선 구현 선별**(자금일보·자금현황표·자금증감내역·월별원가분석 등 — 우리 도메인 필요분).
+
 ### ✅ 머지 완료 (2026-06-14 야간) — 미리보기 표준화 슬라이스1 (PR #481, `8544a76df`)
 **🔀 개발책임자 방향 전환** (대화 중 3차 정정): 결재문서 양식(제목/결재란[작성자]/내용/첨부/인사말)은 전표·견적이 아니라 **'결재문서'(그룹웨어 결재·품의서 등)용**. 전표=전표양식, 견적=GAS.
 - **입고전표** → 출고전표(OutboundView) 양식 통일 (A4 기본 + 88mm 토글, 결재란 미적용, inbound/outbound CSS 공통 selector). 입고창고 헤더 1회, 연락처 조건부.
@@ -23,12 +29,15 @@
 - 라이브 실QA **A1/A2/A3 3건 PASS**(`docs/qa/approval-doc-print-preview/` — A1 지출결의 fieldValues+첨부, A3 다단계 승인 작성/합의/결재+발행일). typecheck/lint/build PASS. **CI 24 green**(GitGuardian=dev seed 비번 false positive, PM 판정). slice1 mock 6/6 회귀 무손상.
 - **후속(비차단)**: `groupware.approval-templates` 단건조회 권한을 `groupware.approvals` VIEW 와 정합(seed 동시부여 or 통일) — 권한정책 개발책임자 확인. CI mock smoke spec(approvalDoc 분기 회귀).
 
+### ✅ 머지 완료 (2026-06-15 야간) — desktop vitest 단위 테스트 인프라 (PR #484, `63682e48c`)
+**큐 #4 + 슬라이스2 QA P2-6** — desktop 단위 러너(vitest) 부재 해소. `vitest.config.ts`(node env) + `package.json` vitest devDep/test 스크립트 + `print/approvalDoc.ts`(ApprovalDocView 순수 헬퍼 추출, 동작 불변) + `approvalDoc.test.ts`(28건) + `orderNo.test.ts`(16건) CI 정식 실행 + `ci.yml` frontend-desktop `npm test` 스텝. 리뷰 2라운드(Opus 포커스 FE/DevOps/QA + Codex 교차) 0 P1, P2 3건(테스트 커버리지) fix. **npm test 44/44 PASS, CI 24 green**(GitGuardian pass — dev seed 비번 없음). 향후 종합견적서 순수 데이터 변환 단위 테스트 토대.
+
 ### 🔜 후속 에픽 큐 (개발책임자 '전역, 저장 모두' + 야간 위임, 오전 7시까지 PM 자율)
 1. **전표번호 0제거 전역+저장** (Phase 2, ⏳ **PR #482 — 머지 morning 게이트**, 브랜치 `feat/slip-no-zero-strip-global`): slip 도메인 0제거 완료 — V47(slips.slip_no + serial_compensation 001→1, probe 100→0) + V48(slip_revisions.slip_no + snapshot JSONB, **restore 재오염 fix**, probe 6→0) + V38(accounting journals.description 적요 박제 001→1, probe 29→0) + JournalSeeder.pickSlipNo `%03d→%d` + seeder no-pad. BE 생성기 이미 no-pad, taxInvoiceNo 4자리(법정). 다모델: Opus(BE 0 / QA·DevOps P1 journals.description + P2) → Codex cross-check(P1 회계전표 생성기 재발·slip_revisions 재오염 + P2 cross-service 사본) → Opus fix. **✅ 운영 DB Flyway 자연 적용 + 라이브 실QA 완료**: slips/revisions/snapshot/journals.description 잔존 zero-pad **전부 0**, 게이트웨이 `GET /slips` -1 응답, 데스크톱 입고/출고 미리보기 `-1` 캡처(`docs/qa/slip-no-zero-strip-global/`). **🔴 morning 개발책임자 확인 큐(머지 전)**: ⓐ회계전표 매출/매입 자체 번호(`SalesAccountingSlipNumberGenerator`/`PurchaseAccountingSlipNumberGenerator` `%04d`) — '전표번호 0제거'가 회계전표 자체 번호도 포함? 4자리 정책(taxInvoice 법정 vs 전표번호)? 미적용 시 신규 재발 ⓑcross-service slip 참조 사본(accounting allocation `source_slip_no`, groupware attachment `ref_slip_no`) 0제거 동반? ⓒ구번호(`-001`) 검색 비호환 고지. **🪤 재기동 함정 2건**: (1) docker compose 는 `-f docker-compose.yml -f docker-compose.local-all.yml` **둘 다**(samhan-net network=base 정의) (2) **dev PC influxd 가 8086 점유** → slip-service 컨테이너 host 포트 바인딩 실패(Created 멈춤) → host 포트만 8186 임시 remap 후 재기동(게이트웨이는 내부망 `slip-service:8086` 사용이라 QA 무영향), compose 편집 비커밋 되돌림.
 2. **종합견적서 에픽**: 견적서(기본/세트상세) GAS 양식(`tools/legacy-gas/종합견적서/index.html` 19182줄, 로고+제목+품목표+합계+안내문구4줄, 세트분해/조합비/스냅샷저장) + **스냅샷 저장 + 웹 종합견적서 재로드**(개발책임자 — 견적서가 스냅샷용·웹 연동 목적). 견적 인쇄 진입 버그 동반 해결. 데이터 모델(세트 구성품)부터 설계.
 3. ~~**결재문서 에픽**: PrintLayout 결재 골격으로 그룹웨어 결재 미리보기~~ → ✅ **슬라이스2 머지(#483)**. 확장 후보(후속): 품의서/기안 등 다른 결재유형, 사원 등록 전자서명 이미지 실연동(`signaturePngBase64` 현재 placeholder), approval-templates 권한 정합.
-4. **desktop vitest 인프라**: orderNo.test.ts 등 단위 러너 CI 정식 연동 (현재 mock gate 우회, order-app vitest 격리).
-5. **회계 메뉴 갭**: 이카운트 31개 중 ~13 없음 (자금일보·자금현황표 등).
+4. ~~**desktop vitest 인프라**~~ → ✅ **PR #484 머지**. (후속: jsdom 컴포넌트 단위·`*.test.tsx` include·approvalDoc 렌더 스모크는 필요 시.)
+5. **회계 메뉴 갭**: 이카운트 31개 중 ~13 없음 (자금일보·자금현황표 등). **개발책임자 선별 필요**(우리 도메인 우선순위).
 
 ---
 
