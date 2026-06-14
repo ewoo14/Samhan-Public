@@ -18,5 +18,10 @@ metadata:
 - backfill UPDATE 는 대표 legacy 값 seed 후 결과 행을 SELECT 로 실측(매핑·CHECK 위반 0 확인).
 - 로컬 `gradlew test` BUILD SUCCESSFUL ≠ 마이그 검증(IT skip). [[standalone-boot-real-qa]] 와 동일 취지.
 
+## 정규화(backfill) 마이그 3대 추가 교훈 (2026-06-15 PR #482 Phase2 전표번호 0제거 회고)
+- **동기화 복사 컬럼 동반 필수**: 한 컬럼이 다른 컬럼의 복사본(예 V6 `ref_doc_no = ref_slip_no` 동기화, 또는 JSONB snapshot 사본)이면 원본만 정규화 시 복사본에 구값 잔류 → 노출 불일치. 정규화 마이그는 **복사/동기 컬럼 전수 동반**([[defect-family-sweep-fix]] 적용). slip_revisions snapshot JSONB(V48)·approval_attachments ref_doc_no(V7)가 사례.
+- **bulk regexp 는 형식 앵커**: `regexp_replace(col,'-0+([0-9])','-\1')` 처럼 broad 하면 비대상 식별자(`SEED-001`, batch ID)까지 오변형. **정확 형식 앵커** `^([0-9]{4}/[0-9]{2}/[0-9]{2})-0+([1-9][0-9]*)$` (날짜부 0 보존 + all-zero→`-0` 방지 + 비날짜 미변형). TEXT 목록 컬럼(여러 참조)은 `'g'` 플래그.
+- **운영 DB 선적용 금지(리뷰 확정 전)**: 마이그를 로컬 운영 DB 에 Flyway 로 적용한 뒤 리뷰로 파일이 바뀌면 **체크섬 불일치 → 다음 재기동 startup 실패**. 해법: 리뷰 확정 후 적용, 또는 적용했으면 `flyway_schema_history` 해당 version row 삭제(멱등 마이그면 다음 재기동 재적용=no-op) — 단 데이터는 이미 보정됨.
+
 ## How to apply
-마이그 파일 건드린 PR 은 push 전 fresh probe 적용 1회. 관련: [[testcontainers-windows-docker]] [[enum-expansion-check-constraint]] [[changed-module-full-test-before-push]] [[standalone-boot-real-qa]].
+마이그 파일 건드린 PR 은 push 전 fresh probe 적용 1회 + (backfill 이면) 위 3대 교훈 점검. 관련: [[testcontainers-windows-docker]] [[enum-expansion-check-constraint]] [[changed-module-full-test-before-push]] [[standalone-boot-real-qa]] [[defect-family-sweep-fix]].
