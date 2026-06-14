@@ -6,6 +6,7 @@ import com.samhanair.logis.groupware.domain.ApprovalStep;
 import com.samhanair.logis.groupware.domain.ApprovalStepStatus;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -15,17 +16,27 @@ import java.util.UUID;
  * 사용자 표시명 (user-service lookup 결과) 으로 추가 매핑하는 것이 후속 슬라이스 책임.
  *
  * @param approvalId 결재선 식별자 (form hidden / 후속 호출 path)
+ * @param approvalNo 결재문서번호 ({@code yyyy/MM/dd-N})
  * @param requesterId 요청자
+ * @param requesterName 요청자 표시명
  * @param title 제목
  * @param content 본문
+ * @param templateId 결재유형 템플릿 UUID
+ * @param templateName 결재유형 이름
+ * @param fieldValues 템플릿 동적 필드 값
  * @param status 종합 상태
  * @param steps chain 단계
  */
 public record ApprovalLineAdminResponse(
         UUID approvalId,
+        String approvalNo,
         UUID requesterId,
+        String requesterName,
         String title,
         String content,
+        UUID templateId,
+        String templateName,
+        Map<String, String> fieldValues,
         ApprovalStatus status,
         List<StepView> steps
 ) {
@@ -33,20 +44,48 @@ public record ApprovalLineAdminResponse(
     public record StepView(
             int sequence,
             UUID approverId,
+            String approverName,
             ApprovalStepStatus status,
             LocalDateTime decidedAt,
             String reason
     ) {
 
         static StepView from(ApprovalStep s) {
-            return new StepView(s.getSequence(), s.getApproverId(), s.getStatus(),
+            return from(s, null);
+        }
+
+        static StepView from(ApprovalStep s, Map<UUID, String> nameMap) {
+            return new StepView(s.getSequence(), s.getApproverId(), displayName(nameMap, s.getApproverId()), s.getStatus(),
                     s.getDecidedAt(), s.getReason());
         }
     }
 
     public static ApprovalLineAdminResponse from(ApprovalLine line) {
-        List<StepView> steps = line.getStepsView().stream().map(StepView::from).toList();
-        return new ApprovalLineAdminResponse(line.getId(), line.getRequesterId(), line.getTitle(),
-                line.getContent(), line.getStatus(), steps);
+        return from(line, null, Map.of());
+    }
+
+    /** 결재선 + 템플릿 표시 정보로 응답 DTO 를 만든다. */
+    public static ApprovalLineAdminResponse from(ApprovalLine line, String templateName,
+                                                 Map<String, String> fieldValues) {
+        return from(line, templateName, fieldValues, null);
+    }
+
+    /** 결재선 + 템플릿 표시 정보 + 사용자 표시명으로 응답 DTO 를 만든다. */
+    public static ApprovalLineAdminResponse from(ApprovalLine line, String templateName,
+                                                 Map<String, String> fieldValues,
+                                                 Map<UUID, String> nameMap) {
+        Map<UUID, String> safeNameMap = nameMap == null ? Map.of() : nameMap;
+        List<StepView> steps = line.getStepsView().stream().map(step -> StepView.from(step, safeNameMap)).toList();
+        return new ApprovalLineAdminResponse(line.getId(), line.getApprovalNo(), line.getRequesterId(),
+                displayName(safeNameMap, line.getRequesterId()), line.getTitle(), line.getContent(),
+                line.getTemplateId(), templateName,
+                fieldValues == null ? Map.of() : fieldValues, line.getStatus(), steps);
+    }
+
+    private static String displayName(Map<UUID, String> nameMap, UUID userId) {
+        if (nameMap == null || userId == null) {
+            return null;
+        }
+        return nameMap.get(userId);
     }
 }

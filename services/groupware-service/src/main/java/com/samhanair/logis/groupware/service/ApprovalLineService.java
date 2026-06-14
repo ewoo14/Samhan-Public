@@ -4,11 +4,15 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
+import com.samhanair.logis.groupware.domain.ApprovalStatus;
+import com.samhanair.logis.groupware.dto.ApprovalLineAdminResponse;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;
 import com.samhanair.logis.groupware.repository.ApprovalLineRepository;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +35,8 @@ public class ApprovalLineService {
 
     private final ApprovalLineRepository repository;
     private final UserClient userClient;
+    private final ApprovalNumberService approvalNumberService;
+    private final ApprovalTemplateService approvalTemplateService;
 
     /**
      * 신규 결재선 생성 + chain 등록. 요청자 본인 차단 / 결재자 0명 차단 / 사용자 미존재 차단 가드.
@@ -45,6 +51,7 @@ public class ApprovalLineService {
         }
         // Phase 9 W3 — BE backlog #4 채택. 요청자 + 결재자 N 명을 1회 bulk RPC 로 검증
         // (이전: 직렬 N+1 RPC, 현재: 1 RPC + cache hit 기대).
+        validateApproverChain(req.requesterId(), req.approverIds());
         List<UUID> idsToVerify = new ArrayList<>();
         idsToVerify.add(req.requesterId());
         idsToVerify.addAll(req.approverIds());
@@ -52,11 +59,19 @@ public class ApprovalLineService {
         if (!Boolean.TRUE.equals(existsMap.get(req.requesterId()))) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "요청자 미존재: " + req.requesterId());
         }
-        ApprovalLine line = ApprovalLine.open(req.requesterId(), req.title(), req.content());
         for (UUID approverId : req.approverIds()) {
             if (!Boolean.TRUE.equals(existsMap.get(approverId))) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "결재자 미존재: " + approverId);
             }
+        }
+        ApprovalLine line = ApprovalLine.open(
+                approvalNumberService.next(), req.requesterId(), req.title(), req.content());
+        if (req.templateId() != null) {
+            Map<String, String> normalized =
+                    approvalTemplateService.validateFieldValues(req.templateId(), req.fieldValues());
+            line.applyTemplateValues(req.templateId(), approvalTemplateService.writeFieldValues(normalized));
+        }
+        for (UUID approverId : req.approverIds()) {
             line.appendStep(approverId);
         }
         return repository.save(line);
@@ -68,6 +83,70 @@ public class ApprovalLineService {
         return repository.findById(approvalId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "결재선을 찾을 수 없습니다: " + approvalId));
+    }
+
+    /** 관리자 결재 문서 목록 조회. status/requesterId 는 선택 필터이며 응답 DTO 로 반환한다. */
+    @Transactional(readOnly = true)
+    public List<ApprovalLineAdminResponse> findAll(ApprovalStatus status, UUID requesterId) {
+        List<ApprovalLine> lines;
+        if (status != null && requesterId != null) {
+            lines = repository.findAllByRequesterIdAndStatusOrderByCreatedAtDesc(requesterId, status);
+        } else if (status != null) {
+            lines = repository.findAllByStatusOrderByCreatedAtDesc(status);
+        } else if (requesterId != null) {
+            lines = repository.findAllByRequesterIdOrderByCreatedAtDesc(requesterId);
+        } else {
+            lines = repository.findAllByOrderByCreatedAtDesc();
+        }
+        Map<UUID, String> nameMap = resolveDisplayNames(lines);
+        return lines.stream().map(line -> toResponse(line, nameMap)).toList();
+    }
+
+    /** 관리자 결재 문서 상세 조회. */
+    @Transactional(readOnly = true)
+    public ApprovalLineAdminResponse findResponseById(UUID approvalId) {
+        return toResponse(findById(approvalId));
+    }
+
+    /** 결재선 entity 를 관리자 응답 DTO 로 변환한다. */
+    @Transactional(readOnly = true)
+    public ApprovalLineAdminResponse toResponse(ApprovalLine line) {
+        Map<UUID, String> nameMap = resolveDisplayNames(List.of(line));
+        return toResponse(line, nameMap);
+    }
+
+    private ApprovalLineAdminResponse toResponse(ApprovalLine line, Map<UUID, String> nameMap) {
+        String templateName = approvalTemplateService.findTemplateNameOrNull(line.getTemplateId());
+        Map<String, String> fieldValues = approvalTemplateService.readFieldValues(line.getFieldValuesJson());
+        return ApprovalLineAdminResponse.from(line, templateName, fieldValues, nameMap);
+    }
+
+    private Map<UUID, String> resolveDisplayNames(List<ApprovalLine> lines) {
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (ApprovalLine line : lines) {
+            ids.add(line.getRequesterId());
+            line.getStepsView().forEach(step -> ids.add(step.getApproverId()));
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> resolvedNames = userClient.resolveDisplayNames(List.copyOf(ids));
+        return resolvedNames == null ? Map.of() : resolvedNames;
+    }
+
+    private void validateApproverChain(UUID requesterId, List<UUID> approverIds) {
+        Set<UUID> seen = new LinkedHashSet<>();
+        for (UUID approverId : approverIds) {
+            if (approverId == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "결재자는 필수입니다");
+            }
+            if (approverId.equals(requesterId)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "요청자 본인은 결재자가 될 수 없습니다");
+            }
+            if (!seen.add(approverId)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "동일 결재자를 결재선에 중복 추가할 수 없습니다");
+            }
+        }
     }
 
     /** 결재자 승인 처리 — chain 의 현재 step 결재자만 호출 허용. */

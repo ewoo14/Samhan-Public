@@ -55,6 +55,34 @@ public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificat
     /** 활성 전체 페이지. soft-delete 제외. */
     Page<Slip> findAllByIsDeletedFalse(Pageable pageable);
 
+    /**
+     * 접근 가능한 전표유형 범위 안에서 전표번호 또는 거래처명 키워드를 부분검색한다.
+     *
+     * <p>그룹웨어 결재 첨부 자동완성에서 사용한다. {@code slip_no} 또는
+     * {@code partner_name} 에 대한 대소문자 무시 부분일치이며, 최근 전표가 먼저 오도록
+     * {@code slipDate DESC, seqNo DESC} 로 정렬한다.
+     *
+     * @param q 전표번호 또는 거래처명 키워드
+     * @param slipTypes 조회 허용 전표유형 목록
+     * @param pageable limit 전용 페이지 요청
+     * @return 매칭 활성 전표 목록
+     */
+    @EntityGraph(attributePaths = "lines")
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT DISTINCT s FROM Slip s
+            WHERE s.isDeleted = false
+              AND s.slipType IN :slipTypes
+              AND (
+                    lower(s.slipNo) LIKE lower(concat('%', :q, '%'))
+                    OR lower(coalesce(s.partnerName, '')) LIKE lower(concat('%', :q, '%'))
+              )
+            ORDER BY s.slipDate DESC, s.seqNo DESC
+            """)
+    List<Slip> searchByKeywordAndSlipTypeIn(
+            @org.springframework.data.repository.query.Param("q") String q,
+            @org.springframework.data.repository.query.Param("slipTypes") java.util.Collection<SlipType> slipTypes,
+            Pageable pageable);
+
     // ---- Slice B (notification-slice-B) ----
 
     /**

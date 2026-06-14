@@ -1,9 +1,12 @@
 package com.samhanair.logis.groupware.controller;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.groupware.client.UserClient;
+import com.samhanair.logis.groupware.domain.ApprovalStatus;
 import com.samhanair.logis.groupware.dto.ApprovalDecisionRequest;
 import com.samhanair.logis.groupware.dto.ApprovalLineAdminResponse;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;
+import com.samhanair.logis.groupware.dto.ApproverSearchResponse;
 import com.samhanair.logis.groupware.dto.MessageResponse;
 import com.samhanair.logis.groupware.dto.MessageSendRequest;
 import com.samhanair.logis.groupware.dto.ScheduleRequest;
@@ -48,8 +51,40 @@ public class GroupwareAdminController {
     private final ApprovalLineService approvalLineService;
     private final MessageService messageService;
     private final ScheduleService scheduleService;
+    private final UserClient userClient;
 
     // ================================ 결재선 ================================
+
+    /** 결재 문서 목록 조회 — 전체 또는 status/requesterId 필터. */
+    @Operation(summary = "결재 문서 목록 조회")
+    @GetMapping("/approvals")
+    @RequirePermission(page = "groupware.approvals", action = PermissionAction.VIEW)
+    public ApiResponse<List<ApprovalLineAdminResponse>> listApprovals(
+            @RequestParam(required = false) ApprovalStatus status,
+            @RequestParam(required = false) UUID requesterId) {
+        return ApiResponse.ok(approvalLineService.findAll(status, requesterId));
+    }
+
+    /** 결재 문서 상세 조회. */
+    @Operation(summary = "결재 문서 상세 조회")
+    @GetMapping("/approvals/{approvalId}")
+    @RequirePermission(page = "groupware.approvals", action = PermissionAction.VIEW)
+    public ApiResponse<ApprovalLineAdminResponse> getApproval(@PathVariable UUID approvalId) {
+        return ApiResponse.ok(approvalLineService.findResponseById(approvalId));
+    }
+
+    /** 결재 작성 화면의 결재자 검색 proxy. */
+    @Operation(summary = "결재자 검색")
+    @GetMapping("/approvals/approver-search")
+    @RequireDepartment(Department.EXECUTIVE_OFFICE)
+    @RequirePermission(page = "groupware.approvals", action = PermissionAction.VIEW)
+    public ApiResponse<List<ApproverSearchResponse>> searchApprovers(
+            @RequestParam("q") String q,
+            @RequestParam(value = "limit", defaultValue = "20") int limit) {
+        return ApiResponse.ok(userClient.search(q, limit).stream()
+                .map(item -> new ApproverSearchResponse(item.userId(), item.name(), item.department()))
+                .toList());
+    }
 
     /** 결재선 생성 + chain 등록. */
     @Operation(summary = "결재선 생성", description = "MASTER / MANAGER 권한 필요")
@@ -61,34 +96,34 @@ public class GroupwareAdminController {
     })
     @PostMapping("/approvals")
     @RequireDepartment(Department.EXECUTIVE_OFFICE)
-    @RequirePermission(page = "messenger.admin", action = PermissionAction.CREATE)
+    @RequirePermission(page = "groupware.approvals", action = PermissionAction.UPDATE)
     public ResponseEntity<ApiResponse<ApprovalLineAdminResponse>> createApproval(
             @Valid @RequestBody ApprovalLineCreateRequest req) {
         var line = approvalLineService.create(req);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(ApprovalLineAdminResponse.from(line)));
+                .body(ApiResponse.ok(approvalLineService.toResponse(line)));
     }
 
     /** 결재 승인. */
     @Operation(summary = "결재 승인")
     @PutMapping("/approvals/{approvalId}/approve")
     @RequireDepartment(Department.EXECUTIVE_OFFICE)
-    @RequirePermission(page = "messenger.admin", action = PermissionAction.UPDATE)
+    @RequirePermission(page = "groupware.approvals", action = PermissionAction.UPDATE)
     public ApiResponse<ApprovalLineAdminResponse> approve(@PathVariable UUID approvalId,
                                                           @Valid @RequestBody ApprovalDecisionRequest req) {
         var line = approvalLineService.approve(approvalId, req.approverId());
-        return ApiResponse.ok(ApprovalLineAdminResponse.from(line));
+        return ApiResponse.ok(approvalLineService.toResponse(line));
     }
 
     /** 결재 반려. */
     @Operation(summary = "결재 반려")
     @PutMapping("/approvals/{approvalId}/reject")
     @RequireDepartment(Department.EXECUTIVE_OFFICE)
-    @RequirePermission(page = "messenger.admin", action = PermissionAction.UPDATE)
+    @RequirePermission(page = "groupware.approvals", action = PermissionAction.UPDATE)
     public ApiResponse<ApprovalLineAdminResponse> reject(@PathVariable UUID approvalId,
                                                          @Valid @RequestBody ApprovalDecisionRequest req) {
         var line = approvalLineService.reject(approvalId, req.approverId(), req.reason());
-        return ApiResponse.ok(ApprovalLineAdminResponse.from(line));
+        return ApiResponse.ok(approvalLineService.toResponse(line));
     }
 
     // ================================ 메신저 ================================

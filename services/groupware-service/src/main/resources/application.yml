@@ -5,6 +5,11 @@ server:
 spring:
   application:
     name: groupware-service
+  servlet:
+    multipart:
+      # §7 결재 첨부 파일 — ApprovalAttachmentService 가드(10MB)에 여유. slip-service 와 동일 한도.
+      max-file-size: 12MB
+      max-request-size: 13MB
   datasource:
     # 시크릿 placeholder — DB 자격증명은 반드시 환경변수로 주입.
     # default 값은 로컬 docker-compose 와의 호환을 위한 자리 표시자이며 실제 환경에서는 override 필수.
@@ -47,6 +52,13 @@ samhan:
     url: ${SAMHAN_AUTH_SERVICE_URL:http://localhost:8081}
   user-service:
     url: ${SAMHAN_USER_SERVICE_URL:http://localhost:8083}
+  minio:
+    # §7 결재 첨부 파일 storage. false/default 에서는 NoopApprovalAttachmentStorage fallback.
+    enabled: ${SAMHAN_MINIO_ENABLED:false}
+    endpoint: ${SAMHAN_MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${SAMHAN_MINIO_ACCESS_KEY:samhan}
+    secret-key: ${SAMHAN_MINIO_SECRET_KEY:samhan_dev_pw}
+    groupware-approval-bucket: ${SAMHAN_GROUPWARE_APPROVAL_MINIO_BUCKET:groupware-approval-attachments}
 
 app:
   security:

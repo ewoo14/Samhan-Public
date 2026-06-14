@@ -8,11 +8,16 @@ import static org.mockito.Mockito.when;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.domain.Slip;
+import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.repository.SlipRepository;
+import com.samhanair.logis.slip.web.dto.SlipSearchResult;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -127,5 +132,40 @@ class SlipServiceListSpecTest {
                 LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 31),
                 "P-2026-0001", "010", "서울특별시", pageable);
         verify(slipRepository).findAll(org.mockito.ArgumentMatchers.<Specification<Slip>>any(), any(Pageable.class));
+    }
+
+    @Test
+    void searchBySlipKeyword_filtersBySlipTypeAndReturnsAutocompleteShapeWithoutUuid() {
+        Slip newer = Slip.createOutbound("2026/05/04-012", LocalDate.of(2026, 5, 4), 12,
+                UUID.randomUUID(), null, UUID.randomUUID(), "삼한공조", null, null, "tester");
+        newer.addLine(SlipLine.create(newer, UUID.randomUUID(), "실외기", "ODU-1", null,
+                2, new BigDecimal("150000.00"), null));
+        when(slipRepository.searchByKeywordAndSlipTypeIn("05/04", List.of(SlipType.OUTBOUND), PageRequest.of(0, 10)))
+                .thenReturn(List.of(newer));
+
+        List<SlipSearchResult> results = service.searchBySlipNo(" 05/04 ", 10, List.of(SlipType.OUTBOUND));
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).slipNo()).isEqualTo("2026/05/04-012");
+        assertThat(results.get(0).slipType()).isEqualTo(SlipType.OUTBOUND);
+        assertThat(results.get(0).partnerName()).isEqualTo("삼한공조");
+        assertThat(results.get(0).totalAmount()).isEqualByComparingTo(new BigDecimal("300000.00"));
+        assertThat(results.get(0).slipDate()).isEqualTo(LocalDate.of(2026, 5, 4));
+    }
+
+    @Test
+    void searchBySlipKeyword_partnerNameKeywordKeepsRequestedSlipTypeFilter() {
+        Slip inbound = Slip.createInbound("2026/06/08-003", LocalDate.of(2026, 6, 8), 3,
+                UUID.randomUUID(), UUID.randomUUID(), "대구냉열", null, null, "tester");
+        inbound.addLine(SlipLine.create(inbound, UUID.randomUUID(), "필터", "FLT-1", null,
+                1, new BigDecimal("80000.00"), null));
+        when(slipRepository.searchByKeywordAndSlipTypeIn("대구", List.of(SlipType.INBOUND), PageRequest.of(0, 10)))
+                .thenReturn(List.of(inbound));
+
+        List<SlipSearchResult> results = service.searchBySlipNo("대구", 10, List.of(SlipType.INBOUND));
+
+        assertThat(results).extracting(SlipSearchResult::slipType).containsExactly(SlipType.INBOUND);
+        assertThat(results).extracting(SlipSearchResult::partnerName).containsExactly("대구냉열");
+        verify(slipRepository).searchByKeywordAndSlipTypeIn("대구", List.of(SlipType.INBOUND), PageRequest.of(0, 10));
     }
 }

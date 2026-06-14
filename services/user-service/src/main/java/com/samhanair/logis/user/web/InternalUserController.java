@@ -4,18 +4,23 @@ import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.user.repository.EmployeeRepository;
+import com.samhanair.logis.user.web.dto.BulkDisplayNameRequest;
 import com.samhanair.logis.user.web.dto.BulkVerifyRequest;
 import com.samhanair.logis.user.web.dto.BulkVerifyResponse;
 import com.samhanair.logis.user.web.dto.InternalEmployeeLookupResponse;
+import com.samhanair.logis.user.web.dto.InternalEmployeeSearchResponse;
 import com.samhanair.logis.user.web.dto.InternalUserResponse;
 import jakarta.validation.Valid;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -82,6 +87,32 @@ public class InternalUserController {
     }
 
     /**
+     * 직원명/loginId 부분일치 검색. groupware-service 결재자 picker 가 호출한다.
+     *
+     * <p>빈 q 는 빈 배열, limit 은 기본 20 / 상한 50 으로 제한한다.
+     */
+    @GetMapping("/search")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<List<InternalEmployeeSearchResponse>> search(
+            @RequestParam("q") String q,
+            @RequestParam(value = "limit", defaultValue = "20") int limit) {
+        String normalized = q == null ? "" : q.trim();
+        if (normalized.isBlank()) {
+            return ApiResponse.ok(List.of());
+        }
+        int normalizedLimit = Math.min(Math.max(limit, 1), 50);
+        List<InternalEmployeeSearchResponse> employees = employeeRepository
+                .searchInternalApprovers(normalized, PageRequest.of(0, normalizedLimit)).stream()
+                .map(emp -> new InternalEmployeeSearchResponse(
+                        emp.getId(),
+                        emp.getFullName(),
+                        emp.getDepartment() == null ? null : emp.getDepartment().getName(),
+                        emp.getRoleSnapshot().name()))
+                .toList();
+        return ApiResponse.ok(employees);
+    }
+
+    /**
      * 이메일 exact lookup — #31 estimate-app(종합견적서 웹) 접속 게이트.
      *
      * <p>legacy 는 Notion AUTH DB 에서 email 로 승인 여부를 조회했다. 우리 치환 = 사용자
@@ -126,5 +157,31 @@ public class InternalUserController {
             exists.put(id, existing.contains(id));
         }
         return ApiResponse.ok(new BulkVerifyResponse(exists));
+    }
+
+    /**
+     * 사용자 표시명 다건 조회. groupware-service 결재 목록/상세가 요청자와 결재자 표시명을
+     * 한 번의 RPC 로 해석할 때 사용한다.
+     *
+     * @param req 조회 대상 user UUID 목록
+     * @return 존재하는 활성 직원의 {@code userId -> fullName} 매핑
+     */
+    @PostMapping("/display-names")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<Map<UUID, String>> displayNames(@Valid @RequestBody BulkDisplayNameRequest req) {
+        List<UUID> ids = req.userIds() == null ? List.of() : req.userIds();
+        if (ids.isEmpty()) {
+            return ApiResponse.ok(Map.of());
+        }
+        Set<UUID> distinct = ids.stream()
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (distinct.isEmpty()) {
+            return ApiResponse.ok(Map.of());
+        }
+        Map<UUID, String> displayNames = new LinkedHashMap<>();
+        employeeRepository.findAllByIdIn(distinct)
+                .forEach(employee -> displayNames.put(employee.getId(), employee.getFullName()));
+        return ApiResponse.ok(displayNames);
     }
 }

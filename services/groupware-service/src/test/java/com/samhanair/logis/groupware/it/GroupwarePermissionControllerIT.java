@@ -2,6 +2,7 @@ package com.samhanair.logis.groupware.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -14,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.groupware.controller.GroupwareAdminController;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
@@ -84,6 +86,7 @@ class GroupwarePermissionControllerIT {
     private static final String ROLE_HEADER = "X-User-Role";
     private static final String DEPARTMENT_HEADER = "X-User-Department";
     private static final String ADMIN_PAGE = "messenger.admin";
+    private static final String APPROVAL_PAGE = "groupware.approvals";
     private static final String SEND_PAGE = "messenger.send";
 
     @Autowired private MockMvc mockMvc;
@@ -93,6 +96,7 @@ class GroupwarePermissionControllerIT {
     @MockBean private ApprovalLineService approvalLineService;
     @MockBean private MessageService messageService;
     @MockBean private ScheduleService scheduleService;
+    @MockBean private UserClient userClient;
     @MockBean private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     @BeforeEach
@@ -102,7 +106,8 @@ class GroupwarePermissionControllerIT {
         lenient().when(dynamicPermissionClient.check(any(UUID.class), anyString(), any(PermissionAction.class)))
                 .thenReturn(true);
 
-        ApprovalLine approval = ApprovalLine.open(UUID.randomUUID(), "SP-D6-2 결재", "테스트");
+        ApprovalLine approval = ApprovalLine.open(
+                "2099/01/01-1", UUID.randomUUID(), "SP-D6-2 결재", "테스트");
         approval.appendStep(UUID.randomUUID());
         Message message = Message.send(UUID.randomUUID(), UUID.randomUUID(), "테스트 메시지");
         Schedule schedule = Schedule.create(
@@ -121,6 +126,7 @@ class GroupwarePermissionControllerIT {
         lenient().when(scheduleService.create(any())).thenReturn(schedule);
         lenient().when(scheduleService.findInRange(any(), any(), any())).thenReturn(List.of(schedule));
         lenient().when(scheduleService.update(any(), any())).thenReturn(schedule);
+        lenient().when(userClient.search(anyString(), anyInt())).thenReturn(List.of());
     }
 
     @ParameterizedTest(name = "{0} grant -> 2xx")
@@ -183,6 +189,7 @@ class GroupwarePermissionControllerIT {
     @Test
     void approvalEndpointsUseRequireDepartmentAndNoPreAuthorize() throws Exception {
         assertDepartmentGate("createApproval", ApprovalLineCreateRequest.class);
+        assertDepartmentGate("searchApprovers", String.class, int.class);
         assertDepartmentGate("approve", UUID.class, ApprovalDecisionRequest.class);
         assertDepartmentGate("reject", UUID.class, ApprovalDecisionRequest.class);
     }
@@ -190,24 +197,28 @@ class GroupwarePermissionControllerIT {
     static Stream<EndpointCase> endpoints() {
         UUID id = UUID.fromString("00000000-0000-0000-0000-000000000001");
         return Stream.of(
-                new EndpointCase("create approval", ADMIN_PAGE, PermissionAction.CREATE, "MANAGER",
+                new EndpointCase("create approval", APPROVAL_PAGE, PermissionAction.UPDATE, "MANAGER",
                         () -> post("/admin/groupware/approvals")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {"requesterId":"00000000-0000-0000-0000-000000000011","title":"결재","content":"본문","approverIds":["00000000-0000-0000-0000-000000000012"]}
                                         """)),
-                new EndpointCase("approve approval", ADMIN_PAGE, PermissionAction.UPDATE, "MANAGER",
+                new EndpointCase("approve approval", APPROVAL_PAGE, PermissionAction.UPDATE, "MANAGER",
                         () -> put("/admin/groupware/approvals/{id}/approve", id)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {"approverId":"00000000-0000-0000-0000-000000000012","reason":null}
                                         """)),
-                new EndpointCase("reject approval", ADMIN_PAGE, PermissionAction.UPDATE, "MANAGER",
+                new EndpointCase("reject approval", APPROVAL_PAGE, PermissionAction.UPDATE, "MANAGER",
                         () -> put("/admin/groupware/approvals/{id}/reject", id)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {"approverId":"00000000-0000-0000-0000-000000000012","reason":"반려"}
                                         """)),
+                new EndpointCase("approver search", APPROVAL_PAGE, PermissionAction.VIEW, "MANAGER",
+                        () -> get("/admin/groupware/approvals/approver-search")
+                                .param("q", "김")
+                                .param("limit", "20")),
                 new EndpointCase("send message", SEND_PAGE, PermissionAction.CREATE, "SALES",
                         () -> post("/admin/groupware/messages")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -236,9 +247,8 @@ class GroupwarePermissionControllerIT {
     }
 
     static Stream<EndpointCase> approvalEndpoints() {
-        return endpoints().filter(endpoint -> ADMIN_PAGE.equals(endpoint.page())
-                && (endpoint.action() == PermissionAction.CREATE || endpoint.action() == PermissionAction.UPDATE)
-                && endpoint.name().contains("approval"));
+        return endpoints().filter(endpoint -> APPROVAL_PAGE.equals(endpoint.page())
+                && (endpoint.name().contains("approval") || endpoint.name().contains("approver")));
     }
 
     private static String scheduleBody() {

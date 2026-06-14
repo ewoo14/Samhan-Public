@@ -234,8 +234,10 @@ export const PAGE_GROUPS: PageGroup[] = [
     ],
   },
   {
-    label: '메신저',
+    label: '그룹웨어',
     pages: [
+      'groupware.approvals',
+      'groupware.approval-templates',
       'messenger.admin',
       'messenger.send',
     ],
@@ -395,6 +397,8 @@ export const PAGE_LABEL: Record<PageCode, string> = {
   'notifications.admin': '알림 발송',
   'notifications.center': '알림 센터',
   'aligo.address-book': '알리고 주소록',
+  'groupware.approvals': '그룹웨어 결재',
+  'groupware.approval-templates': '결재 양식',
   'messenger.admin': '메신저 관리',
   'messenger.send': '메신저 발송',
   'purchases.receipt-ocr': '영수증 OCR',
