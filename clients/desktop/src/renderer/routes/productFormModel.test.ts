@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCreateProductRequest,
+  buildSpecs,
   buildUpdateProductRequest,
+  composeDimensionSpecValue,
   editSeedToProductFormValues,
   initialProductFormValues,
+  moveSpecRow,
   validateProductForm,
   type ProductFormValues,
 } from './productFormModel'
@@ -22,10 +25,10 @@ const baseForm: ProductFormValues = {
   releasePrice: '1000000',
   deliveryPrice: '30000',
   specs: [
-    { specKey: '냉방성능', specValue: '6.0kW' },
-    { specKey: '전원', specValue: '220V' },
-    { specKey: ' ', specValue: 'ignored' },
-    { specKey: '크기', specValue: ' ' },
+    { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW', valueType: 'NUMBER' },
+    { specKey: '전원', specValue: '220V', unit: '', valueType: 'TEXT' },
+    { specKey: ' ', specValue: 'ignored', unit: '', valueType: 'TEXT' },
+    { specKey: '크기', specValue: ' ', unit: 'mm', valueType: 'DIMENSION' },
   ],
 }
 
@@ -50,8 +53,8 @@ describe('productFormModel', () => {
       deliveryPrice: '30000',
       goodsType: 'GOODS',
       specs: [
-        { specKey: '냉방성능', specValue: '6.0kW' },
-        { specKey: '전원', specValue: '220V' },
+        { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW' },
+        { specKey: '전원', specValue: '220V', unit: null },
       ],
     })
   })
@@ -60,12 +63,38 @@ describe('productFormModel', () => {
     const request = buildCreateProductRequest({
       ...baseForm,
       specs: [
-        { specKey: '커스텀특수사양', specValue: '현장별 별도 협의' },
+        { specKey: '커스텀특수사양', specValue: '현장별 별도 협의', unit: '', valueType: 'TEXT' },
       ],
     })
 
     expect(request.specs).toEqual([
-      { specKey: '커스텀특수사양', specValue: '현장별 별도 협의' },
+      { specKey: '커스텀특수사양', specValue: '현장별 별도 협의', unit: null },
+    ])
+  })
+
+  it('DIMENSION 사양은 숫자 3분할 값을 x 조인 문자열과 단위로 저장한다', () => {
+    expect(composeDimensionSpecValue('947', '365', '947')).toBe('947x365x947')
+    expect(buildSpecs({
+      ...baseForm,
+      specs: [
+        { specKey: '제품크기, mm', specValue: '947 x 365 x 947', unit: 'mm', valueType: 'DIMENSION' },
+      ],
+    })).toEqual([
+      { specKey: '제품크기, mm', specValue: '947x365x947', unit: 'mm' },
+    ])
+  })
+
+  it('사양 배열 순서 변경은 저장 요청 순서로 보존된다', () => {
+    const moved = moveSpecRow([
+      { specKey: '배관경', specValue: '6/12', unit: '', valueType: 'TEXT' },
+      { specKey: '제품크기, mm', specValue: '947x365x947', unit: 'mm', valueType: 'DIMENSION' },
+      { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW', valueType: 'NUMBER' },
+    ], 2, 0)
+
+    expect(buildSpecs({ ...baseForm, specs: moved }).map((spec) => spec.specKey)).toEqual([
+      '냉방능력, kW',
+      '배관경',
+      '제품크기, mm',
     ])
   })
 
@@ -122,8 +151,8 @@ describe('productFormModel', () => {
       deliveryPrice: '30000',
       goodsType: 'GOODS',
       specs: [
-        { specKey: '냉방성능', specValue: '6.0kW' },
-        { specKey: '전원', specValue: '220V' },
+        { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW' },
+        { specKey: '전원', specValue: '220V', unit: null },
       ],
     })
   })
@@ -164,7 +193,7 @@ describe('productFormModel', () => {
         deliveryPrice: '30000',
         goodsType: 'NON_GOODS',
         specs: [
-          { id: 'spec-1', specKey: '냉방성능', specValue: '5.2kW', unit: null, displayOrder: 1 },
+          { id: 'spec-1', specKey: '냉방능력, kW', specValue: '5.2', unit: 'kW', displayOrder: 1 },
           { id: 'spec-2', specKey: '전원', specValue: '220V', unit: null, displayOrder: 2 },
         ],
       },
@@ -189,8 +218,8 @@ describe('productFormModel', () => {
     expect(values.unit).toBe('SET')
     expect(values.goodsType).toBe('NON_GOODS')
     expect(values.specs).toEqual([
-      { specKey: '냉방성능', specValue: '5.2kW' },
-      { specKey: '전원', specValue: '220V' },
+      { specKey: '냉방능력, kW', specValue: '5.2', unit: 'kW', valueType: 'TEXT' },
+      { specKey: '전원', specValue: '220V', unit: '', valueType: 'TEXT' },
     ])
   })
 })

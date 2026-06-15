@@ -115,7 +115,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"specKey":"냉방성능(kW)","specValue":"5.6","unit":"kW","displayOrder":1}
+                                {"specKey":"냉방능력, kW","specValue":"5.6","unit":"kW","displayOrder":1}
                                 """))
                 .andExpect(status().isCreated());
 
@@ -123,7 +123,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"specKey":"냉방성능(kW)","specValue":"6.0","unit":"kW"}
+                                {"specKey":"냉방능력, kW","specValue":"6.0","unit":"kW"}
                                 """))
                 .andExpect(status().isConflict());
     }
@@ -133,9 +133,44 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         mvc.perform(get("/api/v1/spec-key-templates?category=HOME_MULTI")
                         .header("X-User-Id", UUID.randomUUID().toString()))
                 .andExpect(status().isOk())
-                // V4 SQL 시드된 14 row 중 일부 확인
+                // 사양 후속 #1 재시드 row 중 일부와 valueType 계약 확인
                 .andExpect(jsonPath("$[?(@.specKey == '배관경')]").exists())
-                .andExpect(jsonPath("$[?(@.specKey == '냉매가스')]").exists());
+                .andExpect(jsonPath("$[?(@.specKey == '냉매가스')]").exists())
+                .andExpect(jsonPath("$[?(@.specKey == '제품크기, mm')].valueType")
+                        .value(org.hamcrest.Matchers.hasItem("DIMENSION")));
+    }
+
+    @Test
+    void POST_products_specs_unit_저장_왕복() throws Exception {
+        Category cat = categoryRepository.save(Category.create("CAT-SPEC-UNIT", "spec unit", null, 14));
+
+        mvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name":"단위 왕복 테스트",
+                                  "modelName":"SPEC_UNIT_ROUND_01",
+                                  "categoryId":"%s",
+                                  "sellingPrice":0,
+                                  "purchasePrice":0,
+                                  "currency":"KRW",
+                                  "tags":{},
+                                  "itemKind":"GENERAL",
+                                  "productCategory":"HOME_MULTI",
+                                  "unit":"EA",
+                                  "goodsType":"GOODS",
+                                  "specs":[
+                                    {"specKey":"냉방능력, kW","specValue":"6.0","unit":"kW"},
+                                    {"specKey":"제품크기, mm","specValue":"947x365x947","unit":"mm"}
+                                  ]
+                                }
+                                """.formatted(cat.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.specs[0].specKey").value("냉방능력, kW"))
+                .andExpect(jsonPath("$.data.specs[0].unit").value("kW"))
+                .andExpect(jsonPath("$.data.specs[1].specValue").value("947x365x947"))
+                .andExpect(jsonPath("$.data.specs[1].unit").value("mm"));
     }
 
     @Test
@@ -169,10 +204,10 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"specKey":"냉방성능(kW)","specValue":"5.6","unit":"kW","displayOrder":2}
+                                {"specKey":"냉방능력, kW","specValue":"5.6","unit":"kW","displayOrder":2}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.specKey").value("냉방성능(kW)"));
+                .andExpect(jsonPath("$.specKey").value("냉방능력, kW"));
 
         mvc.perform(patch("/api/v1/products/MODEL_NAME_ONLY_01/specs/{specId}", spec.getId())
                         .header("X-User-Id", UUID.randomUUID().toString())

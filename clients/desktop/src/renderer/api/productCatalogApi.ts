@@ -48,6 +48,9 @@ export type BundleMode = 'EXPAND' | 'KEEP'
 /** 상품/비상품 — BE ProductGoodsType enum 과 정확히 일치 */
 export type ProductGoodsType = 'GOODS' | 'NON_GOODS'
 
+/** 사양 값 입력 방식 — BE SpecKeyValueType enum 과 정확히 일치 */
+export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'TEXT'
+
 // ---------------------------------------------------------------------------
 // 응답 DTO
 // ---------------------------------------------------------------------------
@@ -123,12 +126,12 @@ export interface ProductDetailResponse {
 export interface ProductSpecInput {
   specKey: string
   specValue: string
+  unit: string | null
 }
 
 /** 제품 동적 사양 응답 — id 는 내부 편집 보조용, 화면 표시 금지 */
 export interface ProductSpecResponse extends ProductSpecInput {
   id?: string | null
-  unit?: string | null
   displayOrder?: number | null
 }
 
@@ -138,6 +141,7 @@ export interface SpecKeyTemplateResponse {
   estimateCategory: EstimateCategory
   specKey: string
   defaultUnit: string | null
+  valueType: SpecKeyValueType
   displayOrder: number
   isRecommended: boolean
 }

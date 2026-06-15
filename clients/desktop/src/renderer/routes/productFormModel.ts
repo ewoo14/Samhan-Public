@@ -8,6 +8,7 @@ import type {
   ProductGoodsType,
   ProductItemKind,
   ProductSummaryResponse,
+  SpecKeyValueType,
   UpdateProductRequest,
 } from '../api/productCatalogApi'
 
@@ -36,6 +37,8 @@ export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>
 export interface ProductSpecFormRow {
   specKey: string
   specValue: string
+  unit: string
+  valueType: SpecKeyValueType
 }
 
 export function initialProductFormValues(): ProductFormValues {
@@ -104,6 +107,8 @@ export function editSeedToProductFormValues(seed: ProductEditSeed): ProductFormV
     specs: (seed.detail.specs ?? []).map((spec) => ({
       specKey: spec.specKey ?? '',
       specValue: spec.specValue ?? '',
+      unit: spec.unit ?? '',
+      valueType: 'TEXT',
     })),
   }
 }
@@ -127,11 +132,54 @@ function nullableDecimal(value: string): string | null {
   return next.length > 0 ? next : null
 }
 
-function buildSpecs(values: ProductFormValues) {
+export function composeDimensionSpecValue(width: string, height: string, depth: string): string {
+  const parts = [width, height, depth].map(trimmed)
+  return parts.some((part) => part.length > 0) ? parts.join('x') : ''
+}
+
+export function splitDimensionSpecValue(value: string): [string, string, string] {
+  const parts = value.split(/[xX×]/).map(trimmed)
+  return [parts[0] ?? '', parts[1] ?? '', parts[2] ?? '']
+}
+
+export function moveSpecRow(
+  specs: ProductSpecFormRow[],
+  fromIndex: number,
+  toIndex: number,
+): ProductSpecFormRow[] {
+  if (
+    fromIndex < 0 ||
+    fromIndex >= specs.length ||
+    toIndex < 0 ||
+    toIndex >= specs.length ||
+    fromIndex === toIndex
+  ) {
+    return [...specs]
+  }
+  const next = [...specs]
+  const [moved] = next.splice(fromIndex, 1)
+  if (!moved) return next
+  next.splice(toIndex, 0, moved)
+  return next
+}
+
+function normalizedSpecValue(spec: ProductSpecFormRow): string {
+  if (spec.valueType !== 'DIMENSION') return trimmed(spec.specValue)
+  const [width, height, depth] = splitDimensionSpecValue(spec.specValue)
+  return composeDimensionSpecValue(width, height, depth)
+}
+
+function nullableSpecUnit(value: string): string | null {
+  const next = trimmed(value)
+  return next.length > 0 ? next : null
+}
+
+export function buildSpecs(values: ProductFormValues) {
   return values.specs
     .map((spec) => ({
       specKey: trimmed(spec.specKey),
-      specValue: trimmed(spec.specValue),
+      specValue: normalizedSpecValue(spec),
+      unit: nullableSpecUnit(spec.unit),
     }))
     .filter((spec) => spec.specKey.length > 0 && spec.specValue.length > 0)
 }

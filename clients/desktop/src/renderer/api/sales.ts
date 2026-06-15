@@ -82,11 +82,14 @@ export interface ProductSpec {
 }
 
 /** SpecKeyTemplate 응답 — product-service `SpecKeyTemplateResponse` 와 1:1. */
+export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'TEXT'
+
 export interface SpecKeyTemplate {
   id: string
   estimateCategory: EstimateCategory
   specKey: string
   defaultUnit: string | null
+  valueType: SpecKeyValueType
   displayOrder: number | null
   isRecommended: boolean
 }
