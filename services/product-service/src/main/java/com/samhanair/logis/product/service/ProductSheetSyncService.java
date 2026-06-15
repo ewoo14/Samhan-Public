@@ -129,13 +129,12 @@ public class ProductSheetSyncService {
             new ComponentTabMapping("상업멀티 구성_단가인상", true));
 
     /**
-     * 사양(ProductSpec) 적재 — 사양 보유 탭(홈멀티/싱글세트/상업멀티)의 헤더 컬럼을 spec_key=헤더명,
-     * value=셀 원본(통짜)으로 적재(legacy getSpecDetailMap_ 통짜저장 원칙).
+     * 사양(ProductSpec) 적재 — 사양 보유 탭(홈멀티/싱글세트/상업멀티)의 legacy getSpecDetailMap_ 매핑 컬럼을
+     * V17 spec_key/value/unit 으로 적재한다.
      *
-     * <p><b>정책 = blocklist</b>: legacy getSpecDetailMap_ 는 알려진 사양 헤더 allowlist(idx 화이트리스트)이나,
-     * 본 sync 는 비사양(아래 SPEC_EXCLUDE + 가격성 isPriceLikeHeader + 매핑 컬럼)만 제외하고 **나머지 모든
-     * 헤더를 사양으로 적재**(allowlist 보다 포괄적). 사양 보유 탭은 getSpecDetailMap_ 범위(홈멀티/싱글세트/
-     * 상업멀티)와 동일하고, 구형/구성품 탭은 미적재. 멀티컬럼 의미병합·| / 분리·ERV 는 PR-3 렌더 영역.
+     * <p><b>정책</b>: 사양 보유 탭은 개발책임자 "원래 스펙 그대로" 결정에 따라 매핑 사양만 적재하고,
+     * 미매핑 헤더는 debug 로그로만 남긴다. 구형/구성품 등 비사양 카테고리는 기존 blocklist fallback 으로
+     * 데이터 보존을 유지한다.
      */
     // 헤더 공백제거 정규화형 기준(예: "소  계"→"소계").
     private static final Set<String> SPEC_EXCLUDE_HEADERS = Set.of(
@@ -374,7 +373,7 @@ public class ProductSheetSyncService {
 
     /**
      * 사양 적재 — legacy {@code getSpecDetailMap_()} 인덱스 해석을 카테고리별 allowlist 로 포팅한다.
-     * 매핑된 구헤더는 V17 spec_key/value/unit 로 저장하고, 미매핑 헤더는 기존 blocklist 방식으로 보존한다.
+     * 사양 보유 카테고리는 매핑된 구헤더만 V17 spec_key/value/unit 로 저장한다.
      *
      * @return 이번 row 에 적재(upsert)한 spec 개수
      */
@@ -382,6 +381,7 @@ public class ProductSheetSyncService {
         Set<String> seenKeys = new HashSet<>();
         Set<Integer> consumedColumns = new HashSet<>();
         int linked = 0;
+        boolean specBearing = isSpecBearing(mapping.productCategory);
         if (mapping.estimateCategory == EstimateCategory.HOME_MULTI) {
             linked += loadHomeSpecs(productId, header, cells, seenKeys, consumedColumns);
         } else if (mapping.estimateCategory == EstimateCategory.SINGLE_SET) {
@@ -389,7 +389,11 @@ public class ProductSheetSyncService {
         } else if (mapping.estimateCategory == EstimateCategory.COMMERCIAL_MULTI) {
             linked += loadCommercialSpecs(productId, header, cells, seenKeys, consumedColumns);
         }
-        linked += loadBlocklistSpecs(productId, header, cells, mapping, seenKeys, consumedColumns);
+        if (specBearing) {
+            logUnmappedSpecHeaders(mapping, header, cells, consumedColumns);
+        } else {
+            linked += loadBlocklistSpecs(productId, header, cells, mapping, seenKeys, consumedColumns);
+        }
 
         // soft-delete: 이번 시트에 더 이상 없는 기존 spec 키. 매핑된 구키는 seenKeys 에 없으므로 여기서 정리된다.
         for (ProductSpec s : productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId)) {
@@ -405,23 +409,46 @@ public class ProductSheetSyncService {
                                    Set<String> seenKeys, Set<Integer> consumedColumns) {
         int linked = 0;
         for (int col = 0; col < header.size(); col++) {
-            if (consumedColumns.contains(col)) {
-                continue;
-            }
-            if (col == mapping.nameColumn || col == mapping.modelCodeColumn
-                    || col == mapping.releasePriceColumn || col == mapping.deliveryPriceColumn) {
-                continue;
-            }
+            if (shouldSkipBlocklistSpecColumn(col, header, cells, mapping, consumedColumns)) continue;
             String h = normHeader(header.get(col));
-            if (h.isBlank() || SPEC_EXCLUDE_HEADERS.contains(h) || isPriceLikeHeader(h)) continue;
-            String value = safeGet(cells, col).trim();
-            if (value.isBlank() || "-".equals(value)) continue;
             String key = h.length() > 50 ? h.substring(0, 50) : h;
+            String value = safeGet(cells, col).trim();
             if (upsertSpec(productId, seenKeys, key, value, null, col)) {
                 linked++;
             }
         }
         return linked;
+    }
+
+    private void logUnmappedSpecHeaders(SheetTabMapping mapping, List<String> header, List<String> cells,
+                                        Set<Integer> consumedColumns) {
+        List<String> unmappedHeaders = new ArrayList<>();
+        for (int col = 0; col < header.size(); col++) {
+            if (!shouldSkipBlocklistSpecColumn(col, header, cells, mapping, consumedColumns)) {
+                unmappedHeaders.add(normHeader(header.get(col)));
+            }
+        }
+        if (!unmappedHeaders.isEmpty()) {
+            log.debug("[ProductSheetSync] {} 미매핑 헤더 제외(매핑전용): {}",
+                    mapping.productCategory, unmappedHeaders);
+        }
+    }
+
+    private static boolean shouldSkipBlocklistSpecColumn(int col, List<String> header, List<String> cells,
+                                                         SheetTabMapping mapping, Set<Integer> consumedColumns) {
+        if (consumedColumns.contains(col)) {
+            return true;
+        }
+        if (col == mapping.nameColumn || col == mapping.modelCodeColumn
+                || col == mapping.releasePriceColumn || col == mapping.deliveryPriceColumn) {
+            return true;
+        }
+        String h = normHeader(header.get(col));
+        if (h.isBlank() || SPEC_EXCLUDE_HEADERS.contains(h) || isPriceLikeHeader(h)) {
+            return true;
+        }
+        String value = safeGet(cells, col).trim();
+        return value.isBlank() || "-".equals(value);
     }
 
     private int loadHomeSpecs(UUID productId, List<String> header, List<String> cells,
@@ -982,7 +1009,7 @@ public class ProductSheetSyncService {
 
         // 시트에서 본 row 의 modelCode set (DB 에 있으나 시트에 없는 row 검출용)
         Set<String> sheetModelCodes = new HashSet<>();
-        // 사양 보유 탭이면 헤더 행을 1회 확보(컬럼 헤더 → spec_key).
+        // 사양 적재용 헤더 행을 1회 확보. 사양 보유 탭은 V17 매핑전용, 비사양 탭은 blocklist fallback.
         List<String> headerCells = isSpecBearing(mapping.productCategory)
                 ? GoogleSheetsClient.toStringRow(rows.get(headerIdx), 30) : null;
 
@@ -1096,7 +1123,7 @@ public class ProductSheetSyncService {
                 result.unchanged++;
             }
 
-            // 사양(ProductSpec) 적재 — 사양 보유 탭만. 헤더명=spec_key, 셀 원본=value(통짜).
+            // 사양(ProductSpec) 적재 — 사양 보유 탭은 V17 매핑전용, 비사양 탭은 기존 blocklist 보존.
             if (headerCells != null) {
                 result.specsLinked += loadSpecsForProduct(productId, headerCells, cells, mapping);
             }
