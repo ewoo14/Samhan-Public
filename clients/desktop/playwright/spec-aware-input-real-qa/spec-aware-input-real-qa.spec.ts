@@ -116,3 +116,28 @@ test('시드 제품 편집 — 기존 적재 사양 그대로 조회', async ({ 
     `시드 제품 AM100AXVHJH1 편집 — 기존 적재 사양 ${loaded.length}개 로드됨(그대로 조회 가능)\n`
     + `--- 로드된 사양명(구 표기 — TEXT 자유편집) ---\n${loaded.join('\n')}\n`, 'utf8')
 })
+
+test('RANGE — 싱글세트 능력 최소/정격/최대 3칸 입력 + / 결합', async ({ page }) => {
+  await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
+  await page.goto(`${BASE_URL}/#/products/new`)
+  await page.waitForSelector('[data-testid="product-form-model-name"]', { timeout: 30000 })
+
+  // 싱글세트 → 능력/소비전력 = RANGE
+  await page.selectOption('[data-testid="product-form-product-category"]', 'SINGLE_SET')
+  await page.waitForTimeout(1500)
+
+  await page.click('[data-testid="product-form-add-spec"]')
+  await page.fill('[data-testid="product-form-spec-0-key"]', '냉방능력, kW')
+  // RANGE 입력 = 최소/정격/최대 3칸으로 동적 전환
+  await page.waitForSelector('[data-testid="product-form-spec-0-range-min"]', { timeout: 5000 })
+  await page.fill('[data-testid="product-form-spec-0-range-min"]', '1.80')
+  await page.fill('[data-testid="product-form-spec-0-range-rated"]', '5.20')
+  await page.fill('[data-testid="product-form-spec-0-range-max"]', '7.20')
+  const rowText = await page.locator('[data-testid="product-form-spec-0-row"]').innerText()
+  expect(rowText).toContain('kW') // 단위 suffix
+  await page.screenshot({ path: path.join(OUT, '04-range-input.png'), fullPage: true })
+
+  fs.writeFileSync(path.join(OUT, 'range-evidence.txt'),
+    `싱글세트 "냉방능력, kW" = RANGE → 최소/정격/최대 3칸(1.80 · 5.20 · 7.20) + kW suffix.\n`
+    + `저장 시 "/" 결합("1.80/5.20/7.20") — composeRangeSpecValue.\n`, 'utf8')
+})
