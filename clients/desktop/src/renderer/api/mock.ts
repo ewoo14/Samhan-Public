@@ -985,7 +985,7 @@ let mockProductSpecsByModel: Record<string, Array<{
   displayOrder: number | null
 }>> = {
   AJ040RXH4BC1: [
-    { id: 'spec-aj040-cooling', specKey: '냉방성능(kW)', specValue: '5.6', unit: 'kW', displayOrder: 1 },
+    { id: 'spec-aj040-cooling', specKey: '냉방능력, kW', specValue: '5.6', unit: 'kW', displayOrder: 1 },
     { id: 'spec-aj040-power', specKey: '전원선', specValue: '2.5SQ', unit: null, displayOrder: 2 },
   ],
 }
@@ -999,31 +999,102 @@ function mockProductSpecsFromBody(modelCode: string, rawSpecs: unknown) {
         id: `spec-${modelCode}-${index + 1}`,
         specKey: String(row['specKey'] ?? '').trim(),
         specValue: String(row['specValue'] ?? '').trim(),
-        unit: null,
+        unit: row['unit'] == null ? null : String(row['unit']).trim() || null,
         displayOrder: index + 1,
       }
     })
     .filter((spec) => spec.specKey.length > 0 && spec.specValue.length > 0)
 }
 
-const MOCK_SPEC_KEY_TEMPLATES = [
+const GAS_SPEC_KEY_TEMPLATE_ROWS = [
   {
-    id: 'template-home-cooling',
     estimateCategory: 'HOME_MULTI',
-    specKey: '냉방성능(kW)',
-    defaultUnit: 'kW',
-    displayOrder: 1,
-    isRecommended: true,
+    rows: [
+      ['배관경', null, 'TEXT'],
+      ['냉방능력, kcal/h', 'kcal/h', 'NUMBER'],
+      ['냉방능력, kW', 'kW', 'NUMBER'],
+      ['냉방소비전력, kW', 'kW', 'NUMBER'],
+      ['냉매가스', null, 'TEXT'],
+      ['에너지소비효율등급', null, 'TEXT'],
+      ['전원선, mm²', 'mm²', 'NUMBER'],
+      ['차단기, A', 'A', 'NUMBER'],
+      ['제품크기, mm', 'mm', 'DIMENSION'],
+      ['제품중량, kg', 'kg', 'NUMBER'],
+      ['포장치수, mm', 'mm', 'DIMENSION'],
+      ['포장중량, kg', 'kg', 'NUMBER'],
+      ['배관길이, m', 'm', 'NUMBER'],
+      ['고낙차, m', 'm', 'NUMBER'],
+      ['최대 연결 실내기 대수, 대', '대', 'NUMBER'],
+      ['타공사이즈, mm', 'mm', 'NUMBER'],
+      ['전산볼트간격, mm', 'mm', 'NUMBER'],
+    ],
   },
   {
-    id: 'template-home-pipe',
-    estimateCategory: 'HOME_MULTI',
-    specKey: '배관경',
-    defaultUnit: null,
-    displayOrder: 2,
-    isRecommended: true,
+    estimateCategory: 'SINGLE_SET',
+    rows: [
+      ['배관경', null, 'TEXT'],
+      ['냉방능력, kcal/h', 'kcal/h', 'RANGE'],
+      ['난방능력, kcal/h', 'kcal/h', 'RANGE'],
+      ['냉방능력, kW', 'kW', 'RANGE'],
+      ['난방능력, kW', 'kW', 'RANGE'],
+      ['냉방소비전력, kW', 'kW', 'RANGE'],
+      ['난방소비전력, kW', 'kW', 'RANGE'],
+      ['냉매가스', null, 'TEXT'],
+      ['에너지소비효율등급', null, 'TEXT'],
+      ['전원선, mm²', 'mm²', 'NUMBER'],
+      ['차단기, A', 'A', 'NUMBER'],
+      ['실내기크기, mm', 'mm', 'DIMENSION'],
+      ['실외기크기, mm', 'mm', 'DIMENSION'],
+      ['실내기중량, kg', 'kg', 'NUMBER'],
+      ['실외기중량, kg', 'kg', 'NUMBER'],
+      ['실내기포장, mm', 'mm', 'DIMENSION'],
+      ['실외기포장, mm', 'mm', 'DIMENSION'],
+      ['실내기포장중량, kg', 'kg', 'NUMBER'],
+      ['실외기포장중량, kg', 'kg', 'NUMBER'],
+      ['배관길이, m', 'm', 'NUMBER'],
+      ['고낙차, m', 'm', 'NUMBER'],
+      ['타공사이즈, mm', 'mm', 'NUMBER'],
+      ['전산볼트간격, mm', 'mm', 'NUMBER'],
+    ],
   },
-]
+  {
+    estimateCategory: 'COMMERCIAL_MULTI',
+    rows: [
+      ['배관경', null, 'TEXT'],
+      ['냉방능력, kcal/h', 'kcal/h', 'NUMBER'],
+      ['난방능력, kcal/h', 'kcal/h', 'NUMBER'],
+      ['냉방능력, kW', 'kW', 'NUMBER'],
+      ['난방능력, kW', 'kW', 'NUMBER'],
+      ['냉방소비전력, kW', 'kW', 'NUMBER'],
+      ['난방소비전력, kW', 'kW', 'NUMBER'],
+      ['냉매가스', null, 'TEXT'],
+      ['소비효율등급', null, 'TEXT'],
+      ['전원선, mm²', 'mm²', 'NUMBER'],
+      ['차단기, A', 'A', 'NUMBER'],
+      ['제품크기, mm', 'mm', 'DIMENSION'],
+      ['제품중량, kg', 'kg', 'NUMBER'],
+      ['포장치수, mm', 'mm', 'DIMENSION'],
+      ['포장중량, kg', 'kg', 'NUMBER'],
+      ['배관길이, m', 'm', 'TEXT'],
+      ['고낙차, m', 'm', 'TEXT'],
+      ['최대 연결 실내기 대수, 대', '대', 'NUMBER'],
+      ['타공사이즈, mm', 'mm', 'NUMBER'],
+      ['전산볼트간격, mm', 'mm', 'NUMBER'],
+    ],
+  },
+] as const
+
+const MOCK_SPEC_KEY_TEMPLATES = GAS_SPEC_KEY_TEMPLATE_ROWS.flatMap((group) =>
+  group.rows.map(([specKey, defaultUnit, valueType], index) => ({
+    id: `template-${group.estimateCategory.toLowerCase()}-${index + 1}`,
+    estimateCategory: group.estimateCategory,
+    specKey,
+    defaultUnit,
+    valueType,
+    displayOrder: index + 1,
+    isRecommended: true,
+  })),
+)
 
 const MOCK_PRODUCT_CATEGORIES = [
   {
@@ -1713,7 +1784,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       const specs = mockProductSpecsByModel[modelCode] ?? []
       const current = specs.find((spec) => spec.id === specId) ?? {
         id: specId,
-        specKey: '냉방성능(kW)',
+        specKey: '냉방능력, kW',
         specValue: null,
         unit: null,
         displayOrder: 1,

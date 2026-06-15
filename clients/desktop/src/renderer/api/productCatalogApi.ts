@@ -48,6 +48,9 @@ export type BundleMode = 'EXPAND' | 'KEEP'
 /** 상품/비상품 — BE ProductGoodsType enum 과 정확히 일치 */
 export type ProductGoodsType = 'GOODS' | 'NON_GOODS'
 
+/** 사양 값 입력 방식 — BE SpecKeyValueType enum 과 정확히 일치 */
+export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'RANGE' | 'TEXT'
+
 // ---------------------------------------------------------------------------
 // 응답 DTO
 // ---------------------------------------------------------------------------
@@ -123,13 +126,24 @@ export interface ProductDetailResponse {
 export interface ProductSpecInput {
   specKey: string
   specValue: string
+  unit: string | null
 }
 
 /** 제품 동적 사양 응답 — id 는 내부 편집 보조용, 화면 표시 금지 */
 export interface ProductSpecResponse extends ProductSpecInput {
   id?: string | null
-  unit?: string | null
   displayOrder?: number | null
+}
+
+/** 사양명 제안 템플릿 DTO. `specKey` 는 입력 보조 후보이며 자유입력을 제한하지 않는다. */
+export interface SpecKeyTemplateResponse {
+  id: string
+  estimateCategory: EstimateCategory
+  specKey: string
+  defaultUnit: string | null
+  valueType: SpecKeyValueType
+  displayOrder: number
+  isRecommended: boolean
 }
 
 /** 검색 요약 — edit route 에서 modelCode 기반 UUID 내부 해소용 */
@@ -311,6 +325,17 @@ export async function listProducts(
 export async function listProductCategories(): Promise<ProductCategoryNode[]> {
   const res = await apiClient.get<ApiEnvelope<ProductCategoryNode[]>>('/api/products/categories')
   return res.data.data
+}
+
+/** 사양명 제안 템플릿 조회 — `GET /api/v1/spec-key-templates`. */
+export async function listSpecKeyTemplates(
+  category?: EstimateCategory,
+): Promise<SpecKeyTemplateResponse[]> {
+  const res = await apiClient.get<SpecKeyTemplateResponse[]>(
+    '/api/v1/spec-key-templates',
+    { params: category ? { category } : undefined },
+  )
+  return res.data
 }
 
 /** 제품 요약 검색 — edit route 의 내부 UUID 해소용. UUID 는 화면에 표시하지 않는다. */

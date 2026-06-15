@@ -45,7 +45,7 @@ public class BundleExpander {
     /**
      * 구성품/세트 규격(#24) — GAS 종합견적서 getSpecMap_ 와 동일하게 시트의 <b>'규격' 컬럼</b> 값을 쓴다.
      * 우리 적재본에서는 세트 구성 탭의 '규격' 이 {@code BundleComponent.specText}(구성품) /
-     * {@code Product.specText}(단일·KEEP 부모)에 들어있다. product_spec(제품크기/냉방성능 등 detail)은
+     * {@code Product.specText}(단일·KEEP 부모)에 들어있다. product_spec(제품크기/냉방능력 등 detail)은
      * GAS 규격이 아니므로 사용하지 않는다. slip/estimate specification 컬럼 길이(50)에 맞춰 절단.
      */
     private static String specOf(String raw) {

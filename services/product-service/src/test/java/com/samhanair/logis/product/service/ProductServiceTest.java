@@ -116,7 +116,7 @@ class ProductServiceTest {
         when(productSpecRepository.save(any(ProductSpec.class))).thenAnswer(inv -> inv.getArgument(0));
         when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
                 .thenReturn(List.of(
-                        ProductSpec.create(productId, "냉방성능", "6.0kW", null, 1),
+                        ProductSpec.create(productId, "냉방능력, kW", "6.0", "kW", 1),
                         ProductSpec.create(productId, "전원", "220V", null, 2)));
 
         ProductResponse response = service.create(new CreateProductRequest(
@@ -125,14 +125,14 @@ class ProductServiceTest {
                 null, Map.of("hp", "2.0"), null,
                 null, null, null, null, null, null, null, null, null,
                 List.of(
-                        new ProductSpecRequest("냉방성능", "6.0kW"),
-                        new ProductSpecRequest("전원", "220V"))));
+                        new ProductSpecRequest("냉방능력, kW", "6.0", "kW"),
+                        new ProductSpecRequest("전원", "220V", null))));
 
         assertThat(response.specs())
-                .extracting("specKey", "specValue", "displayOrder")
+                .extracting("specKey", "specValue", "unit", "displayOrder")
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("냉방성능", "6.0kW", 1),
-                        org.assertj.core.groups.Tuple.tuple("전원", "220V", 2));
+                        org.assertj.core.groups.Tuple.tuple("냉방능력, kW", "6.0", "kW", 1),
+                        org.assertj.core.groups.Tuple.tuple("전원", "220V", null, 2));
         org.mockito.Mockito.verify(productSpecRepository, org.mockito.Mockito.times(2))
                 .save(any(ProductSpec.class));
     }
@@ -198,7 +198,7 @@ class ProductServiceTest {
         when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
                 .thenReturn(List.of(oldSpec))
                 .thenReturn(List.of(
-                        ProductSpec.create(productId, "냉방성능", "6.0kW", null, 1),
+                        ProductSpec.create(productId, "냉방능력, kW", "6.0", "kW", 1),
                         ProductSpec.create(productId, "전원", "220V", null, 2)));
         when(productSpecRepository.save(any(ProductSpec.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -207,14 +207,14 @@ class ProductServiceTest {
                         null, null, null, null, null,
                         null, null, null, null,
                         List.of(
-                                new ProductSpecRequest("냉방성능", "6.0kW"),
-                                new ProductSpecRequest("전원", "220V"))));
+                                new ProductSpecRequest("냉방능력, kW", "6.0", "kW"),
+                                new ProductSpecRequest("전원", "220V", null))));
 
         assertThat(oldSpec.getIsDeleted()).isTrue();
         assertThat(response.specs())
                 .extracting("specKey", "specValue", "displayOrder")
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("냉방성능", "6.0kW", 1),
+                        org.assertj.core.groups.Tuple.tuple("냉방능력, kW", "6.0", 1),
                         org.assertj.core.groups.Tuple.tuple("전원", "220V", 2));
     }
 
@@ -502,7 +502,7 @@ class ProductServiceTest {
         when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
                 .thenReturn(Optional.of(product));
         when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
-                .thenReturn(List.of(ProductSpec.create(productId, "냉방성능", "5.2kW", null, 1)));
+                .thenReturn(List.of(ProductSpec.create(productId, "냉방능력, kW", "5.2", "kW", 1)));
 
         ProductResponse response = service.getByModelName("SHA-W15K");
 
@@ -511,8 +511,8 @@ class ProductServiceTest {
         assertThat(response.tags()).containsEntry("hp", "1.5");
         assertThat(response.purchasePrice()).isEqualByComparingTo(new BigDecimal("1100000.00"));
         assertThat(response.specs())
-                .extracting("specKey", "specValue")
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("냉방성능", "5.2kW"));
+                .extracting("specKey", "specValue", "unit")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("냉방능력, kW", "5.2", "kW"));
     }
 
     @Test

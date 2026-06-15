@@ -37,7 +37,7 @@ public class ProductSpec extends BaseEntity {
     @Column(name = "product_id", nullable = false)
     private UUID productId;
 
-    /** 스펙 키 (예: 냉방성능(kW), 전원선, 규격). */
+    /** 스펙 키 (예: 냉방능력, kW / 전원선, mm² / 규격). */
     @Column(name = "spec_key", nullable = false, length = 50)
     private String specKey;
 

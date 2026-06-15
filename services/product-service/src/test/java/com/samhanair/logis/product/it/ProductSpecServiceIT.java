@@ -67,14 +67,14 @@ class ProductSpecServiceIT extends AbstractPostgresIT {
 
     @Test
     void CRUD_정상() {
-        ProductSpec added = specService.addSpec("SPEC001", "냉방성능(kW)", "5.6", "kW", null);
+        ProductSpec added = specService.addSpec("SPEC001", "냉방능력, kW", "5.6", "kW", null);
         assertThat(added.getDisplayOrder()).isEqualTo(1);
 
         ProductSpec edited = specService.editSpec("SPEC001", added.getId(), "6.0", "kW");
         assertThat(edited.getSpecValue()).isEqualTo("6.0");
 
         var listAfterAdd = specService.listByModelCode("SPEC001");
-        assertThat(listAfterAdd).hasSize(1).extracting(ProductSpec::getSpecKey).containsExactly("냉방성능(kW)");
+        assertThat(listAfterAdd).hasSize(1).extracting(ProductSpec::getSpecKey).containsExactly("냉방능력, kW");
 
         specService.deleteSpec("SPEC001", added.getId(), "test-user");
         var listAfterDel = specService.listByModelCode("SPEC001");

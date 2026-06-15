@@ -423,7 +423,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         Product p = productRepository.findByModelCodeAndIsDeletedFalse("HM_SPEC_1").orElseThrow();
         List<ProductSpec> specs = productSpecRepository.findByProductIdOrderByDisplayOrderAsc(p.getId());
         assertThat(specs).extracting(ProductSpec::getSpecKey)
-                .containsExactlyInAnyOrder("배관경", "냉매가스", "에너지소비효율", "제품중량");
+                .containsExactlyInAnyOrder("배관경", "냉매가스", "에너지소비효율등급", "제품중량, kg");
         // 비사양 컬럼(품명/모델명/출고가/납품가)은 제외
         assertThat(specs).extracting(ProductSpec::getSpecKey)
                 .doesNotContain("품명", "모델명", "출고가", "납품가");

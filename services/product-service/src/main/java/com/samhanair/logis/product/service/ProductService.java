@@ -538,7 +538,7 @@ public class ProductService {
                         product.getId(),
                         spec.specKey(),
                         spec.specValue(),
-                        null,
+                        spec.unit(),
                         i + 1));
             } catch (IllegalArgumentException ex) {
                 throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());

@@ -1,0 +1,7 @@
+품목 카테고리=COMMERCIAL_MULTI (estimate_category 필터)
+행0 NUMBER "냉방능력, kW" 단위 suffix 노출=true
+행1 DIMENSION "제품크기, mm" 3분할(1800x2370x1070)
+행2 TEXT "냉매가스" R410A
+중복제외: 행3 후보에서 추가된 3개 제외 누수=0
+행3 잔여 후보 수=17
+순서변경: 행0 아래로 이동(드래그+위/아래 버튼 제공)

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from 'react'
@@ -23,22 +24,33 @@ import {
   getProductByModelName,
   listProductCategories,
   listProducts,
+  listSpecKeyTemplates,
   searchProductSummaries,
   updateProduct,
   type BundleMode,
   type ComponentKind,
+  type EstimateCategory,
   type ProductCategory,
   type ProductCategoryNode,
   type ProductGoodsType,
   type ProductItemKind,
+  type SpecKeyTemplateResponse,
+  type SpecKeyValueType,
 } from '../api/productCatalogApi'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePageTitleStore } from '../stores/pageTitle'
 import {
   buildCreateProductRequest,
   buildUpdateProductRequest,
+  composeDimensionSpecValue,
+  composeRangeSpecValue,
   editSeedToProductFormValues,
   initialProductFormValues,
+  isSingleNumeric,
+  moveSpecRow,
+  specPatchForKeyChange,
+  splitDimensionSpecValue,
+  splitRangeSpecValue,
   validateProductForm,
   type ProductFormErrors,
   type ProductFormValues,
@@ -80,6 +92,13 @@ const COMPONENT_KIND_OPTIONS: Array<{ value: ComponentKind; label: string }> = [
   { value: 'FOOT', label: '받침대' },
 ]
 
+const VALUE_TYPE_LABELS: Record<SpecKeyValueType, string> = {
+  NUMBER: '숫자',
+  DIMENSION: '크기',
+  RANGE: '범위',
+  TEXT: '텍스트',
+}
+
 function errorMsg(err: unknown): string {
   if (
     typeof err === 'object' &&
@@ -108,6 +127,20 @@ function defaultCategoryForItemKind(itemKind: ProductItemKind): ProductCategory 
   return 'SINGLE_PART'
 }
 
+function estimateCategoryForProductCategory(category: ProductCategory): EstimateCategory | undefined {
+  if (category === 'HOME_MULTI') return 'HOME_MULTI'
+  if (category === 'SINGLE_SET' || category === 'SINGLE_PART') return 'SINGLE_SET'
+  if (category === 'COMMERCIAL_MULTI' || category === 'COMMERCIAL_PART') return 'COMMERCIAL_MULTI'
+  return undefined // OLD/MATERIAL 등 — 홈/싱글/상업 외(개발책임자 스코프). 전체 템플릿 fallback.
+}
+
+function sortedTemplates(templates: SpecKeyTemplateResponse[]): SpecKeyTemplateResponse[] {
+  return [...templates].sort((a, b) =>
+    (a.displayOrder ?? Number.MAX_SAFE_INTEGER) - (b.displayOrder ?? Number.MAX_SAFE_INTEGER) ||
+    a.specKey.localeCompare(b.specKey, 'ko'),
+  )
+}
+
 export function ProductFormPage() {
   const params = useParams()
   const modelCode = params['modelCode'] ?? null
@@ -120,6 +153,9 @@ export function ProductFormPage() {
   const [errors, setErrors] = useState<ProductFormErrors>({})
   const [parentSet, setParentSet] = useState<ProductOption | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  const [draggingSpecIndex, setDraggingSpecIndex] = useState<number | null>(null)
+  const editSeedLoadedModelRef = useRef<string | null>(null)
+  const editSeedReconciledModelRef = useRef<string | null>(null)
 
   useEffect(() => {
     setPageTitle({ title: mode === 'create' ? '품목 등록' : '품목 수정', meta: '품목' })
@@ -129,6 +165,23 @@ export function ProductFormPage() {
   const categoriesQuery = useQuery({
     queryKey: ['product-categories'],
     queryFn: listProductCategories,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const estimateCategory = useMemo(
+    () => estimateCategoryForProductCategory(values.productCategory),
+    [values.productCategory],
+  )
+
+  const specKeyTemplatesQuery = useQuery({
+    queryKey: ['spec-key-templates', estimateCategory ?? 'all'],
+    queryFn: async () => {
+      try {
+        return await listSpecKeyTemplates(estimateCategory)
+      } catch {
+        return []
+      }
+    },
     staleTime: 5 * 60 * 1000,
   })
 
@@ -155,14 +208,71 @@ export function ProductFormPage() {
 
   useEffect(() => {
     const seed = editSeedQuery.data
-    if (!seed) return
+    if (!seed || mode !== 'edit' || !modelCode) return
+    if (editSeedLoadedModelRef.current === modelCode) return
+    editSeedLoadedModelRef.current = modelCode
+    editSeedReconciledModelRef.current = null
     setValues(editSeedToProductFormValues(seed))
-  }, [editSeedQuery.data])
+  }, [editSeedQuery.data, mode, modelCode])
 
   const categoryOptions = useMemo(
     () => flattenCategories(categoriesQuery.data ?? []),
     [categoriesQuery.data],
   )
+
+  const specTemplates = useMemo(() => sortedTemplates(specKeyTemplatesQuery.data ?? []), [specKeyTemplatesQuery.data])
+
+  const specTemplateByKey = useMemo(() => {
+    const map = new Map<string, SpecKeyTemplateResponse>()
+    for (const template of specTemplates) {
+      map.set(template.specKey, template)
+    }
+    return map
+  }, [specTemplates])
+
+  useEffect(() => {
+    const seed = editSeedQuery.data
+    if (!seed || mode !== 'edit' || !modelCode) return
+    if (editSeedLoadedModelRef.current !== modelCode) return
+    if (editSeedReconciledModelRef.current === modelCode) return
+    if (specTemplateByKey.size === 0) return
+
+    const seedValues = editSeedToProductFormValues(seed)
+    const seedEstimateCategory = estimateCategoryForProductCategory(seedValues.productCategory)
+    if (seedEstimateCategory && estimateCategory !== seedEstimateCategory) return
+
+    editSeedReconciledModelRef.current = modelCode
+    setValues((current) => ({
+      ...current,
+      specs: current.specs.map((spec) => {
+        const template = specTemplateByKey.get(spec.specKey)
+        if (!template) return spec
+        const valueType = template.valueType === 'NUMBER' && !isSingleNumeric(spec.specValue)
+          ? 'TEXT'
+          : template.valueType
+        return {
+          ...spec,
+          unit: spec.unit || template.defaultUnit || '',
+          valueType,
+        }
+      }),
+    }))
+  }, [editSeedQuery.data, estimateCategory, mode, modelCode, specTemplateByKey])
+
+  const selectedSpecKeys = useMemo(() => {
+    return new Set(values.specs.map((spec) => spec.specKey.trim()).filter(Boolean))
+  }, [values.specs])
+
+  const availableTemplatesForRow = (index: number) => {
+    const currentKey = values.specs[index]?.specKey.trim()
+    return specTemplates.filter((template) =>
+      template.specKey === currentKey || !selectedSpecKeys.has(template.specKey),
+    )
+  }
+
+  const selectedTemplateCount = useMemo(() => {
+    return specTemplates.filter((template) => selectedSpecKeys.has(template.specKey)).length
+  }, [selectedSpecKeys, specTemplates])
 
   const invalidateProducts = () => {
     void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
@@ -231,7 +341,7 @@ export function ProductFormPage() {
   }
 
   const addSpecRow = () => {
-    patchValues({ specs: [...values.specs, { specKey: '', specValue: '' }] })
+    patchValues({ specs: [...values.specs, { specKey: '', specValue: '', unit: '', valueType: 'TEXT' }] })
   }
 
   const updateSpecRow = (
@@ -248,6 +358,46 @@ export function ProductFormPage() {
   const removeSpecRow = (index: number) => {
     patchValues({
       specs: values.specs.filter((_, currentIndex) => currentIndex !== index),
+    })
+  }
+
+  const changeSpecKey = (index: number, specKey: string) => {
+    const current = values.specs[index]
+    const template = specTemplateByKey.get(specKey)
+    updateSpecRow(index, specPatchForKeyChange(current, specKey, template))
+  }
+
+  const reorderSpecRows = (fromIndex: number, toIndex: number) => {
+    patchValues({
+      specs: moveSpecRow(values.specs, fromIndex, toIndex),
+    })
+  }
+
+  const updateDimensionPart = (
+    index: number,
+    partIndex: 0 | 1 | 2,
+    nextValue: string,
+  ) => {
+    const current = values.specs[index]
+    if (!current) return
+    const parts = splitDimensionSpecValue(current.specValue)
+    parts[partIndex] = nextValue
+    updateSpecRow(index, {
+      specValue: composeDimensionSpecValue(parts[0], parts[1], parts[2]),
+    })
+  }
+
+  const updateRangePart = (
+    index: number,
+    partIndex: 0 | 1 | 2,
+    nextValue: string,
+  ) => {
+    const current = values.specs[index]
+    if (!current) return
+    const parts = splitRangeSpecValue(current.specValue)
+    parts[partIndex] = nextValue
+    updateSpecRow(index, {
+      specValue: composeRangeSpecValue(parts[0], parts[1], parts[2]),
     })
   }
 
@@ -434,7 +584,13 @@ export function ProductFormPage() {
 
       <section style={sectionStyle}>
         <div style={sectionHeaderStyle}>
-          <h4 style={sectionTitleStyle}>사양</h4>
+          <div>
+            <h4 style={sectionTitleStyle}>사양</h4>
+            <p style={hintStyle}>
+              {estimateCategory ? `${estimateCategory} 사양 ${specTemplates.length}개` : '전체 사양'}
+              {selectedTemplateCount > 0 ? ` · 선택됨 ${selectedTemplateCount}개` : ''}
+            </p>
+          </div>
           <Button
             variant="secondary"
             onClick={addSpecRow}
@@ -446,34 +602,166 @@ export function ProductFormPage() {
         </div>
         {values.specs.length > 0 ? (
           <div style={specRowsStyle}>
-            {values.specs.map((spec, index) => (
-              <div key={index} style={specRowStyle}>
-                <Input
-                  label="사양명"
-                  value={spec.specKey}
-                  onChange={(event) => updateSpecRow(index, { specKey: event.target.value })}
-                  placeholder="예: 냉방성능"
-                  data-testid={`product-form-spec-${index}-key`}
-                />
-                <Input
-                  label="값"
-                  value={spec.specValue}
-                  onChange={(event) => updateSpecRow(index, { specValue: event.target.value })}
-                  placeholder="예: 6.0kW"
-                  data-testid={`product-form-spec-${index}-value`}
-                />
-                <div style={specRemoveCellStyle}>
-                  <Button
-                    variant="secondary"
-                    onClick={() => removeSpecRow(index)}
-                    disabled={isSaving}
-                    data-testid={`product-form-spec-${index}-remove`}
-                  >
-                    삭제
-                  </Button>
+            {values.specs.map((spec, index) => {
+              const dimensionParts = splitDimensionSpecValue(spec.specValue)
+              const rangeParts = splitRangeSpecValue(spec.specValue)
+              const specKeyOptionsId = `spec-key-options-${index}`
+              return (
+                <div
+                  key={index}
+                  style={specRowStyle}
+                  draggable
+                  onDragStart={() => setDraggingSpecIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    if (draggingSpecIndex !== null) reorderSpecRows(draggingSpecIndex, index)
+                    setDraggingSpecIndex(null)
+                  }}
+                  onDragEnd={() => setDraggingSpecIndex(null)}
+                  data-testid={`product-form-spec-${index}-row`}
+                >
+                  <div style={specOrderCellStyle}>
+                    <button
+                      type="button"
+                      style={specDragHandleStyle}
+                      disabled={isSaving}
+                      aria-label={`${index + 1}번째 사양 드래그`}
+                      data-testid={`product-form-spec-${index}-drag-handle`}
+                    >
+                      ≡
+                    </button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => reorderSpecRows(index, index - 1)}
+                      disabled={isSaving || index === 0}
+                      aria-label="위로 이동"
+                      data-testid={`product-form-spec-${index}-move-up`}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => reorderSpecRows(index, index + 1)}
+                      disabled={isSaving || index === values.specs.length - 1}
+                      aria-label="아래로 이동"
+                      data-testid={`product-form-spec-${index}-move-down`}
+                    >
+                      ↓
+                    </Button>
+                  </div>
+                  <div style={specNameCellStyle}>
+                    <Input
+                      label="사양"
+                      value={spec.specKey}
+                      onChange={(event) => changeSpecKey(index, event.target.value)}
+                      placeholder="예: 냉방능력, kW"
+                      list={specKeyOptionsId}
+                      data-testid={`product-form-spec-${index}-key`}
+                    />
+                    <datalist id={specKeyOptionsId}>
+                      {availableTemplatesForRow(index).map((template) => (
+                        <option
+                          key={template.id}
+                          value={template.specKey}
+                          label={VALUE_TYPE_LABELS[template.valueType]}
+                        />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div style={specValueCellStyle}>
+                    {spec.valueType === 'NUMBER' ? (
+                      <div style={unitInputWrapStyle}>
+                        <Input
+                          label="값"
+                          type="number"
+                          value={spec.specValue}
+                          onChange={(event) => updateSpecRow(index, { specValue: event.target.value })}
+                          placeholder="예: 6.0"
+                          data-testid={`product-form-spec-${index}-value`}
+                        />
+                        {spec.unit ? <span style={unitSuffixStyle}>{spec.unit}</span> : null}
+                      </div>
+                    ) : spec.valueType === 'DIMENSION' ? (
+                      <div style={dimensionWrapStyle}>
+                        <Input
+                          label="W"
+                          type="number"
+                          value={dimensionParts[0]}
+                          onChange={(event) => updateDimensionPart(index, 0, event.target.value)}
+                          data-testid={`product-form-spec-${index}-dimension-width`}
+                        />
+                        <span style={dimensionSeparatorStyle}>x</span>
+                        <Input
+                          label="H"
+                          type="number"
+                          value={dimensionParts[1]}
+                          onChange={(event) => updateDimensionPart(index, 1, event.target.value)}
+                          data-testid={`product-form-spec-${index}-dimension-height`}
+                        />
+                        <span style={dimensionSeparatorStyle}>x</span>
+                        <Input
+                          label="D"
+                          type="number"
+                          value={dimensionParts[2]}
+                          onChange={(event) => updateDimensionPart(index, 2, event.target.value)}
+                          data-testid={`product-form-spec-${index}-dimension-depth`}
+                        />
+                        {spec.unit ? <span style={unitSuffixStyle}>{spec.unit}</span> : null}
+                      </div>
+                    ) : spec.valueType === 'RANGE' ? (
+                      <div style={dimensionWrapStyle}>
+                        <Input
+                          label="최소"
+                          type="number"
+                          value={rangeParts[0]}
+                          onChange={(event) => updateRangePart(index, 0, event.target.value)}
+                          data-testid={`product-form-spec-${index}-range-min`}
+                        />
+                        <span style={dimensionSeparatorStyle}>/</span>
+                        <Input
+                          label="정격"
+                          type="number"
+                          value={rangeParts[1]}
+                          onChange={(event) => updateRangePart(index, 1, event.target.value)}
+                          data-testid={`product-form-spec-${index}-range-rated`}
+                        />
+                        <span style={dimensionSeparatorStyle}>/</span>
+                        <Input
+                          label="최대"
+                          type="number"
+                          value={rangeParts[2]}
+                          onChange={(event) => updateRangePart(index, 2, event.target.value)}
+                          data-testid={`product-form-spec-${index}-range-max`}
+                        />
+                        {spec.unit ? <span style={unitSuffixStyle}>{spec.unit}</span> : null}
+                      </div>
+                    ) : (
+                      <div style={unitInputWrapStyle}>
+                        <Input
+                          label="값"
+                          value={spec.specValue}
+                          onChange={(event) => updateSpecRow(index, { specValue: event.target.value })}
+                          placeholder="예: 6/12 또는 10/12/15"
+                          data-testid={`product-form-spec-${index}-value`}
+                        />
+                        {spec.unit ? <span style={unitSuffixStyle}>{spec.unit}</span> : null}
+                      </div>
+                    )}
+                  </div>
+                  <div style={specRemoveCellStyle}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => removeSpecRow(index)}
+                      disabled={isSaving}
+                      data-testid={`product-form-spec-${index}-remove`}
+                    >
+                      삭제
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <p style={hintStyle}>등록된 사양이 없습니다.</p>
@@ -608,9 +896,75 @@ const specRowsStyle: CSSProperties = {
 
 const specRowStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  gridTemplateColumns: 'minmax(124px, auto) minmax(220px, 1fr) minmax(260px, 1.2fr) auto',
   gap: 10,
   alignItems: 'end',
+  padding: 10,
+  border: '1px solid var(--color-border, #E5E7EB)',
+  borderRadius: 6,
+  background: 'var(--color-neutral-50, #F9FAFB)',
+}
+
+const specOrderCellStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '32px 1fr 1fr',
+  gap: 6,
+  alignItems: 'end',
+}
+
+const specDragHandleStyle: CSSProperties = {
+  width: 32,
+  minWidth: 32,
+  height: 32,
+  border: '1px solid var(--color-border, #D1D5DB)',
+  borderRadius: 6,
+  background: 'var(--color-bg, #FFFFFF)',
+  color: 'var(--color-neutral-600, #4B5563)',
+  cursor: 'grab',
+}
+
+const specNameCellStyle: CSSProperties = {
+  display: 'grid',
+  gap: 8,
+}
+
+const specValueCellStyle: CSSProperties = {
+  minWidth: 0,
+}
+
+const unitInputWrapStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(120px, 1fr) auto',
+  alignItems: 'end',
+  gap: 8,
+}
+
+const dimensionWrapStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(70px, 1fr) auto minmax(70px, 1fr) auto minmax(70px, 1fr) auto',
+  alignItems: 'end',
+  gap: 6,
+}
+
+const dimensionSeparatorStyle: CSSProperties = {
+  alignSelf: 'center',
+  paddingTop: 18,
+  color: 'var(--color-neutral-500, #6B7280)',
+  fontSize: 13,
+}
+
+const unitSuffixStyle: CSSProperties = {
+  minWidth: 28,
+  height: 32,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '0 8px',
+  border: '1px solid var(--color-border, #E5E7EB)',
+  borderRadius: 6,
+  color: 'var(--color-neutral-600, #4B5563)',
+  background: 'var(--color-bg, #FFFFFF)',
+  fontSize: 12,
 }
 
 const specRemoveCellStyle: CSSProperties = {

@@ -8,6 +8,8 @@ import type {
   ProductGoodsType,
   ProductItemKind,
   ProductSummaryResponse,
+  SpecKeyTemplateResponse,
+  SpecKeyValueType,
   UpdateProductRequest,
 } from '../api/productCatalogApi'
 
@@ -36,6 +38,8 @@ export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>
 export interface ProductSpecFormRow {
   specKey: string
   specValue: string
+  unit: string
+  valueType: SpecKeyValueType
 }
 
 export function initialProductFormValues(): ProductFormValues {
@@ -104,12 +108,19 @@ export function editSeedToProductFormValues(seed: ProductEditSeed): ProductFormV
     specs: (seed.detail.specs ?? []).map((spec) => ({
       specKey: spec.specKey ?? '',
       specValue: spec.specValue ?? '',
+      unit: spec.unit ?? '',
+      valueType: 'TEXT',
     })),
   }
 }
 
 function trimmed(value: string): string {
   return value.trim()
+}
+
+export function isSingleNumeric(value: string): boolean {
+  const next = trimmed(value)
+  return next.length === 0 || /^[-+]?\d*\.?\d+$/.test(next)
 }
 
 function nullableText(value: string): string | null {
@@ -127,11 +138,101 @@ function nullableDecimal(value: string): string | null {
   return next.length > 0 ? next : null
 }
 
-function buildSpecs(values: ProductFormValues) {
+export function composeDimensionSpecValue(width: string, height: string, depth: string): string {
+  const parts = [width, height, depth].map(trimmed)
+  return parts.some((part) => part.length > 0) ? parts.join('x') : ''
+}
+
+export function splitDimensionSpecValue(value: string): [string, string, string] {
+  const parts = value.split(/[xX×]/).map(trimmed)
+  return [parts[0] ?? '', parts[1] ?? '', parts[2] ?? '']
+}
+
+export function composeRangeSpecValue(min: string, rated: string, max: string): string {
+  const parts = [min, rated, max].map(trimmed)
+  return parts.some((part) => part.length > 0) ? parts.join('/') : ''
+}
+
+export function splitRangeSpecValue(value: string): [string, string, string] {
+  const parts = value.split(/\//).map(trimmed)
+  return [parts[0] ?? '', parts[1] ?? '', parts[2] ?? '']
+}
+
+export function moveSpecRow(
+  specs: ProductSpecFormRow[],
+  fromIndex: number,
+  toIndex: number,
+): ProductSpecFormRow[] {
+  if (
+    fromIndex < 0 ||
+    fromIndex >= specs.length ||
+    toIndex < 0 ||
+    toIndex >= specs.length ||
+    fromIndex === toIndex
+  ) {
+    return [...specs]
+  }
+  const next = [...specs]
+  const [moved] = next.splice(fromIndex, 1)
+  if (!moved) return next
+  next.splice(toIndex, 0, moved)
+  return next
+}
+
+type SpecKeyTemplateLike = Pick<SpecKeyTemplateResponse, 'specKey' | 'defaultUnit' | 'valueType'>
+
+export function specPatchForKeyChange(
+  current: ProductSpecFormRow | undefined,
+  specKey: string,
+  template: SpecKeyTemplateLike | undefined,
+): Partial<ProductSpecFormRow> {
+  if (!template) {
+    // 자유편집은 기존 입력 방식과 값을 보존한다. 템플릿 미매칭 중간 입력으로 값이 지워지면 안 된다.
+    return current ? { specKey } : { specKey, unit: '', valueType: 'TEXT' }
+  }
+
+  // valueType 이 바뀔 때만 값 초기화(입력 포맷 전환) — 동일 타입 선택은 입력값 보존.
+  const resetValue = template.valueType !== current?.valueType
+  return {
+    specKey: template.specKey,
+    unit: template.defaultUnit ?? '',
+    valueType: template.valueType,
+    ...(resetValue ? { specValue: '' } : {}),
+  }
+}
+
+function normalizedSpecValue(spec: ProductSpecFormRow): string {
+  if (spec.valueType === 'DIMENSION') {
+    const [width, height, depth] = splitDimensionSpecValue(spec.specValue)
+    // W·H·D 3분할 모두 채워졌을 때만 WxHxD 저장 — 부분 입력(예 "1800xx")은 미완으로 보고
+    // 빈 값 반환 → buildSpecs 필터로 저장 제외(깨진 차원 값 영속 방지).
+    if (!width || !height || !depth) return ''
+    return composeDimensionSpecValue(width, height, depth)
+  }
+
+  if (spec.valueType === 'RANGE') {
+    // 최소/정격/최대 중 입력된 값만 '/' 결합(개발책임자: 최소 미입력 시 '최소' 없이 표시).
+    // 앞·뒤 빈 부분 제거(예 최소 미입력 → "정격/최대", 정격만 → "정격"). 모두 비면 ''(저장 제외).
+    const parts = splitRangeSpecValue(spec.specValue).slice()
+    while (parts.length && !parts[parts.length - 1]) parts.pop()
+    while (parts.length && !parts[0]) parts.shift()
+    return parts.join('/')
+  }
+
+  return trimmed(spec.specValue)
+}
+
+function nullableSpecUnit(value: string): string | null {
+  const next = trimmed(value)
+  return next.length > 0 ? next : null
+}
+
+export function buildSpecs(values: ProductFormValues) {
   return values.specs
     .map((spec) => ({
       specKey: trimmed(spec.specKey),
-      specValue: trimmed(spec.specValue),
+      specValue: normalizedSpecValue(spec),
+      unit: nullableSpecUnit(spec.unit),
     }))
     .filter((spec) => spec.specKey.length > 0 && spec.specValue.length > 0)
 }

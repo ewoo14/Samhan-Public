@@ -26,6 +26,7 @@ import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -282,7 +283,12 @@ public class ProductCatalogController {
         List<SpecKeyTemplate> templates = (estimateCategory == null)
                 ? templateRepository.findAll()
                 : templateRepository.findByEstimateCategoryOrderByDisplayOrderAsc(estimateCategory);
-        return templates.stream().map(SpecKeyTemplateResponse::from).toList();
+        return templates.stream()
+                .sorted(Comparator.comparing(SpecKeyTemplate::getEstimateCategory)
+                        .thenComparing(SpecKeyTemplate::getDisplayOrder)
+                        .thenComparing(SpecKeyTemplate::getSpecKey))
+                .map(SpecKeyTemplateResponse::from)
+                .toList();
     }
 
     /** POST /api/v1/spec-key-templates/{id}/apply-to-existing?dryRun=true (G19). */

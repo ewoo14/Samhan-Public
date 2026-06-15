@@ -198,9 +198,9 @@ class ProductPermissionControllerIT {
                 "Product", "MODEL-1", Category.create("CAT", "Category", null, 1),
                 BigDecimal.valueOf(1000), BigDecimal.valueOf(800), ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        ProductSpec productSpec = ProductSpec.create(PRODUCT_ID, "냉방성능(kW)", "5.6", "kW", 1);
+        ProductSpec productSpec = ProductSpec.create(PRODUCT_ID, "냉방능력, kW", "5.6", "kW", 1);
         SpecKeyTemplate specKeyTemplate = SpecKeyTemplate.create(
-                EstimateCategory.HOME_MULTI, "냉방성능(kW)", "kW", 1, true);
+                EstimateCategory.HOME_MULTI, "냉방능력, kW", "kW", 1, true);
         MaterialPrice materialPrice = MaterialPrice.seed("D2", "자재", BigDecimal.valueOf(2000),
                 "옵션", null);
         OduRecommendationLookup oduRecommendation = OduRecommendationLookup.seed(
@@ -235,7 +235,7 @@ class ProductPermissionControllerIT {
         lenient().when(productSpecService.editSpec(anyString(), any(), any(), any())).thenReturn(productSpec);
         lenient().when(productSpecService.applyTemplateToExisting(any(), anyBoolean()))
                 .thenReturn(new ProductSpecService.ApplyToExistingResult(
-                        "냉방성능(kW)", EstimateCategory.HOME_MULTI, List.of("MODEL-1"), 0, true));
+                        "냉방능력, kW", EstimateCategory.HOME_MULTI, List.of("MODEL-1"), 0, true));
         lenient().when(specKeyTemplateRepository.findAll()).thenReturn(List.of(specKeyTemplate));
         lenient().when(specKeyTemplateRepository.findByEstimateCategoryOrderByDisplayOrderAsc(any()))
                 .thenReturn(List.of(specKeyTemplate));
@@ -358,7 +358,7 @@ class ProductPermissionControllerIT {
                 new EndpointCase("product catalog spec add", "products.admin", PermissionAction.CREATE, "MANAGER", 201,
                         () -> post("/api/v1/products/MODEL-1/specs")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"specKey\":\"냉방성능(kW)\",\"specValue\":\"5.6\",\"unit\":\"kW\",\"displayOrder\":1}")),
+                                .content("{\"specKey\":\"냉방능력, kW\",\"specValue\":\"5.6\",\"unit\":\"kW\",\"displayOrder\":1}")),
                 new EndpointCase("product catalog spec edit", "products.admin", PermissionAction.UPDATE, "MANAGER", 200,
                         () -> patch("/api/v1/products/MODEL-1/specs/{id}", REQUEST_ID)
                                 .contentType(MediaType.APPLICATION_JSON)
