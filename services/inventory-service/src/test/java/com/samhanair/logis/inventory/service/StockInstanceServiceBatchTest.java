@@ -61,6 +61,36 @@ class StockInstanceServiceBatchTest {
     }
 
     @Test
+    @DisplayName("goods=false 비상품은 배치 인스턴스 입고를 no-op skip 하고 행을 생성하지 않는다")
+    void inboundBatch_nonGoodsProduct_skipsAndCreatesNoInstances() {
+        UUID productId = UUID.randomUUID();
+        when(productClient.requireExists(productId)).thenReturn(nonGoodsProduct(productId));
+
+        var result = service.inboundBatch(
+                productId, "FEE-001", UUID.randomUUID(), 3,
+                "구매", "INB-FEE-001", new BigDecimal("10000"),
+                LocalDateTime.of(2026, 6, 1, 9, 0));
+
+        assertThat(result).isEmpty();
+        verify(repo, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("goods=false 비상품은 수동 인스턴스 생성을 no-op skip 하고 행을 생성하지 않는다")
+    void create_nonGoodsProduct_skipsAndCreatesNoInstance() {
+        UUID productId = UUID.randomUUID();
+        when(productClient.requireExists(productId)).thenReturn(nonGoodsProduct(productId));
+
+        var result = service.create(
+                productId, "FEE-001", UUID.randomUUID(),
+                "구매", new BigDecimal("10000"), "INB-FEE-002",
+                LocalDateTime.of(2026, 6, 1, 9, 0));
+
+        assertThat(result).isNull();
+        verify(repo, never()).save(any());
+    }
+
+    @Test
     @DisplayName("serial_managed=true 품목은 요청 수량만큼 AVAILABLE 인스턴스를 생성한다")
     void inboundBatch_serialProduct_createsRequestedQuantity() {
         UUID productId = UUID.randomUUID();
@@ -136,6 +166,12 @@ class StockInstanceServiceBatchTest {
         return new ProductSummary(
                 productId, "테스트 품목", "MODEL-001", "AC-001",
                 null, new BigDecimal("500000"), "ACTIVE", serialManaged);
+    }
+
+    private ProductSummary nonGoodsProduct(UUID productId) {
+        return new ProductSummary(
+                productId, "설치비", "FEE-001", "FEE-001",
+                null, new BigDecimal("10000"), "ACTIVE", false, false);
     }
 
     private StockInstance instance(UUID productId, String productCode, UUID warehouseId, String slipNo) {

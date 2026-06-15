@@ -180,11 +180,16 @@ class ProductPermissionControllerIT {
                 PRODUCT_ID, "Product", "MODEL-1", "MODEL-1", CATEGORY_ID, "Category",
                 BigDecimal.valueOf(1000), BigDecimal.valueOf(800), "KRW",
                 ProductStatus.ACTIVE, Map.of(), "memo",
+                ProductCategory.HOME_MULTI,
+                com.samhanair.logis.product.web.dto.ProductItemKind.GENERAL,
+                null, null, null, "EA",
+                BigDecimal.valueOf(1000), BigDecimal.valueOf(800),
+                com.samhanair.logis.product.domain.ProductGoodsType.GOODS,
                 com.samhanair.logis.product.domain.UsageScope.BOTH,
                 com.samhanair.logis.product.domain.EstimateCategory.HOME_MULTI,
                 false, null,
                 LocalDateTime.of(2026, 5, 26, 9, 0), "system",
-                LocalDateTime.of(2026, 5, 26, 9, 0), "system");
+                LocalDateTime.of(2026, 5, 26, 9, 0), "system", List.of());
         CategoryResponse category = new CategoryResponse(CATEGORY_ID, "CAT", "Category", null, 1, List.of());
         ProductEditRequest editRequest = ProductEditRequest.create(
                 PRODUCT_ID, UUID.randomUUID(), "tester", EditRequestType.EDIT,

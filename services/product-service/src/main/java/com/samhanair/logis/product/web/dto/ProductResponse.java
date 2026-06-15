@@ -1,11 +1,16 @@
 package com.samhanair.logis.product.web.dto;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
+import com.samhanair.logis.product.domain.BundleComponent;
+import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductGoodsType;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.domain.UsageScope;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,6 +39,15 @@ public record ProductResponse(
         ProductStatus status,
         Map<String, String> tags,
         String description,
+        ProductCategory productCategory,
+        ProductItemKind itemKind,
+        BundleMode bundleMode,
+        String parentSetModelCode,
+        BundleComponent.ComponentKind componentKind,
+        String unit,
+        BigDecimal releasePrice,
+        BigDecimal deliveryPrice,
+        ProductGoodsType goodsType,
         UsageScope usageScope,
         EstimateCategory estimateCategory,
         boolean usageScopeManual,
@@ -41,9 +55,28 @@ public record ProductResponse(
         LocalDateTime createdAt,
         String createdBy,
         LocalDateTime modifiedAt,
-        String modifiedBy) {
+        String modifiedBy,
+        List<ProductSpecResponse> specs) {
 
     public static ProductResponse from(Product p) {
+        ProductItemKind itemKind = p.getProductType() == com.samhanair.logis.product.domain.ProductType.BUNDLE
+                ? ProductItemKind.SET
+                : ProductItemKind.GENERAL;
+        return from(p, itemKind, null, null);
+    }
+
+    public static ProductResponse from(Product p,
+                                       ProductItemKind itemKind,
+                                       String parentSetModelCode,
+                                       BundleComponent.ComponentKind componentKind) {
+        return from(p, itemKind, parentSetModelCode, componentKind, List.of());
+    }
+
+    public static ProductResponse from(Product p,
+                                       ProductItemKind itemKind,
+                                       String parentSetModelCode,
+                                       BundleComponent.ComponentKind componentKind,
+                                       List<ProductSpecResponse> specs) {
         return new ProductResponse(
                 p.getId(),
                 p.getName(),
@@ -57,6 +90,15 @@ public record ProductResponse(
                 p.getStatus(),
                 p.getTags(),
                 p.getDescription(),
+                p.getProductCategory(),
+                itemKind,
+                p.getBundleMode(),
+                parentSetModelCode,
+                componentKind,
+                p.getUnit(),
+                p.getReleasePrice(),
+                p.getDeliveryPrice(),
+                p.getGoodsType(),
                 p.getUsageScope(),
                 p.getEstimateCategory(),
                 p.isUsageScopeManual(),
@@ -64,6 +106,7 @@ public record ProductResponse(
                 p.getCreatedAt(),
                 p.getCreatedBy(),
                 p.getModifiedAt(),
-                p.getModifiedBy());
+                p.getModifiedBy(),
+                specs == null ? List.of() : specs);
     }
 }

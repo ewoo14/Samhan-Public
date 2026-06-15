@@ -70,6 +70,9 @@ public class StockInstanceService {
                                 String inboundType, BigDecimal unitCost, String inboundSlipNo,
                                 LocalDateTime receivedAt) {
         ProductSummary product = productClient.requireExists(productId);
+        if (isNonGoods(product)) {
+            return null; // 비상품 — 시리얼 인스턴스 미생성 no-op skip
+        }
         if (!product.serialManaged()) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "개별시리얼 관리 품목이 아닙니다 (batch 품목은 stock_lots 사용). productId=" + productId);
@@ -102,6 +105,9 @@ public class StockInstanceService {
                                             int quantity, String inboundType, String inboundSlipNo,
                                             BigDecimal unitCost, LocalDateTime receivedAt) {
         ProductSummary product = productClient.requireExists(productId);
+        if (isNonGoods(product)) {
+            return List.of(); // 비상품 — 시리얼 인스턴스 미생성 no-op skip
+        }
         if (!product.serialManaged()) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "개별시리얼 관리 품목이 아닙니다 (batch 품목은 stock_lots 사용). productId=" + productId);
@@ -330,6 +336,11 @@ public class StockInstanceService {
 
     private void lockRecallBatchKey(String recallSlipNo, String productCode) {
         lockBatchKey(recallSlipNo + "|" + productCode);
+    }
+
+    /** 비상품 여부 — true 면 시리얼 인스턴스를 생성하지 않고 no-op skip 한다(개발책임자 2026-06-15: inventory 게이트 no-op skip). */
+    private boolean isNonGoods(ProductSummary product) {
+        return !product.goods();
     }
 
     private void lockBatchKey(String lockKey) {

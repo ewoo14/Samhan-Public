@@ -2,29 +2,38 @@ package com.samhanair.logis.product.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductGoodsType;
+import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
+import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.web.dto.BundleIntegrityResponse;
 import com.samhanair.logis.product.web.dto.CreateProductRequest;
 import com.samhanair.logis.product.web.dto.ProductResponse;
 import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
+import com.samhanair.logis.product.web.dto.ProductItemKind;
+import com.samhanair.logis.product.web.dto.ProductSpecRequest;
+import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -44,8 +53,10 @@ public class ProductService {
     private static final int LOOKUP_MAX = 100;
 
     private final ProductRepository productRepository;
+    private final ProductSpecRepository productSpecRepository;
     private final CategoryRepository categoryRepository;
     private final BundleComponentRepository bundleComponentRepository;
+    private final BundleComponentService bundleComponentService;
 
     /**
      * rowHash 캐시 evict 를 위해 직접 주입.
@@ -109,7 +120,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductResponse getOne(UUID id) {
-        return ProductResponse.from(loadOrThrow(id));
+        return toResponse(loadOrThrow(id));
     }
 
     /**
@@ -200,7 +211,7 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public ProductResponse getByModelName(String modelName) {
-        return ProductResponse.from(findByModelNameOrThrow(modelName));
+        return toResponse(findByModelNameOrThrow(modelName));
     }
 
     @Transactional(readOnly = true)
@@ -297,11 +308,15 @@ public class ProductService {
         if (productRepository.existsByModelNameAndIsDeletedFalse(req.modelName())) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 모델명입니다: " + req.modelName());
         }
+        String modelCode = req.modelName().trim();
+        if (productRepository.existsByModelCodeAndIsDeletedFalse(modelCode)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 모델코드입니다: " + modelCode);
+        }
         Category category = categoryRepository.findById(req.categoryId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "카테고리를 찾을 수 없습니다"));
 
         try {
-            Product saved = productRepository.save(Product.create(
+            Product product = Product.create(
                     req.name(),
                     req.modelName(),
                     category,
@@ -309,13 +324,30 @@ public class ProductService {
                     req.purchasePrice(),
                     req.currency(),
                     req.tags(),
-                    req.description()));
-            return ProductResponse.from(saved);
+                    req.description());
+            product.changeModelCode(modelCode);
+            applyCreateFields(product, req);
+            Product saved = productRepository.save(product);
+            saveSpecs(saved, req.specs());
+            if (itemKind(req.itemKind()) == ProductItemKind.SET_COMPONENT) {
+                bundleComponentService.addRegisteredComponent(
+                        req.parentSetModelCode(),
+                        saved.getModelCode(),
+                        req.componentKind());
+            }
+            return toResponse(saved);
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
         }
     }
 
+    /**
+     * 제품 부분 수정.
+     *
+     * <p>개발책임자 결정: {@code modelCode} 는 생성 시 {@code modelName.trim()} 으로 한 번 설정한 뒤
+     * 이후 수정에서 불변이다. {@code modelName} 을 바꿔도 BundleComponent 링크와 사용자 노출 식별자인
+     * {@code modelCode} 는 변경하지 않는다.
+     */
     public ProductResponse update(UUID id, UpdateProductRequest req) {
         Product product = loadOrThrow(id);
 
@@ -337,7 +369,11 @@ public class ProductService {
         if (req.description() != null) {
             product.editDescription(req.description());
         }
-        return ProductResponse.from(product);
+        applyUpdateFields(product, req);
+        if (req.specs() != null) {
+            replaceSpecs(product, req.specs());
+        }
+        return toResponse(product);
     }
 
     public ProductResponse updatePrice(UUID id, UpdatePriceRequest req) {
@@ -355,13 +391,13 @@ public class ProductService {
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
         }
-        return ProductResponse.from(product);
+        return toResponse(product);
     }
 
     public ProductResponse replaceTags(UUID id, Map<String, String> tags) {
         Product product = loadOrThrow(id);
         product.replaceTags(tags);
-        return ProductResponse.from(product);
+        return toResponse(product);
     }
 
     public void discontinue(UUID id) {
@@ -391,7 +427,7 @@ public class ProductService {
     public ProductResponse updateUsage(String modelCode, UpdateProductUsageRequest req) {
         Product product = loadByModelCodeOrThrow(modelCode);
         product.markUsageManual(req.usageScope(), req.estimateCategory());
-        return ProductResponse.from(product);
+        return toResponse(product);
     }
 
     /**
@@ -472,6 +508,111 @@ public class ProductService {
                         "모델코드에 해당하는 품목을 찾을 수 없습니다: " + modelCode));
     }
 
+    private ProductResponse toResponse(Product product) {
+        List<ProductSpecResponse> specs = specResponses(product);
+        if (product.getProductType() == ProductType.BUNDLE) {
+            return ProductResponse.from(product, ProductItemKind.SET, null, null, specs);
+        }
+        ParentComponentLink parentLink = findParentComponentLink(product);
+        if (parentLink != null) {
+            return ProductResponse.from(
+                    product,
+                    ProductItemKind.SET_COMPONENT,
+                    parentLink.parentModelCode(),
+                    parentLink.componentKind(),
+                    specs);
+        }
+        return ProductResponse.from(product, ProductItemKind.GENERAL, null, null, specs);
+    }
+
+    /** 제품 등록/수정 화면의 동적 사양을 ProductSpec 1:N row 로 저장한다. */
+    private void saveSpecs(Product product, List<ProductSpecRequest> specs) {
+        if (specs == null || specs.isEmpty()) {
+            return;
+        }
+        validateDuplicateSpecKeys(specs);
+        for (int i = 0; i < specs.size(); i++) {
+            ProductSpecRequest spec = specs.get(i);
+            try {
+                productSpecRepository.save(ProductSpec.create(
+                        product.getId(),
+                        spec.specKey(),
+                        spec.specValue(),
+                        null,
+                        i + 1));
+            } catch (IllegalArgumentException ex) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 수정 요청에 specs 필드가 명시되면 기존 활성 사양을 soft-delete 하고 요청 배열로 전량 교체한다.
+     * specs=null 은 기존 사양 유지, specs=[] 은 전체 삭제 의미다.
+     */
+    private void replaceSpecs(Product product, List<ProductSpecRequest> specs) {
+        List<ProductSpec> currentSpecs = productSpecRepository.findByProductIdOrderByDisplayOrderAsc(product.getId());
+        if (currentSpecs != null) {
+            for (ProductSpec spec : currentSpecs) {
+                spec.markDeleted("system");
+            }
+        }
+        saveSpecs(product, specs);
+    }
+
+    private List<ProductSpecResponse> specResponses(Product product) {
+        if (product.getId() == null) {
+            return List.of();
+        }
+        List<ProductSpec> specs = productSpecRepository.findByProductIdOrderByDisplayOrderAsc(product.getId());
+        if (specs == null || specs.isEmpty()) {
+            return List.of();
+        }
+        return specs.stream()
+                .map(ProductSpecResponse::from)
+                .toList();
+    }
+
+    private void validateDuplicateSpecKeys(List<ProductSpecRequest> specs) {
+        Set<String> keys = new HashSet<>();
+        for (ProductSpecRequest spec : specs) {
+            String key = spec.specKey() == null ? null : spec.specKey().trim();
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            if (!keys.add(key)) {
+                throw new BusinessException(ErrorCode.CONFLICT, "이미 존재하는 specKey: " + key);
+            }
+        }
+    }
+
+    private ParentComponentLink findParentComponentLink(Product product) {
+        String componentCode = product.getModelCode();
+        if (componentCode == null || componentCode.isBlank()) {
+            return null;
+        }
+        List<BundleComponent> links = bundleComponentRepository.findByComponentProductCode(componentCode);
+        if (links == null || links.isEmpty()) {
+            return null;
+        }
+
+        List<UUID> parentIds = links.stream()
+                .map(BundleComponent::getBundleProductId)
+                .distinct()
+                .toList();
+        Map<UUID, Product> parentsById = productRepository.findAllByIdIn(parentIds).stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p, (left, right) -> left));
+        for (BundleComponent link : links) {
+            Product parent = parentsById.get(link.getBundleProductId());
+            if (parent != null && parent.getProductType() == ProductType.BUNDLE) {
+                return new ParentComponentLink(
+                        parent.getModelCode() != null ? parent.getModelCode() : parent.getModelName(),
+                        link.getComponentKind());
+            }
+        }
+        return null;
+    }
+
     /** {@code tagKey=hp&tagValue=1.5} → {@code {"hp":"1.5"}} 의 jsonb literal 문자열로 변환. */
     private String buildTagFilter(String tagKey, String tagValue) {
         if (tagKey == null || tagKey.isBlank()) {
@@ -500,5 +641,85 @@ public class ProductService {
         return q.replace("\\", "\\\\")
                 .replace("%", "\\%")
                 .replace("_", "\\_");
+    }
+
+    private void applyCreateFields(Product product, CreateProductRequest req) {
+        ProductItemKind itemKind = itemKind(req.itemKind());
+        if (itemKind == ProductItemKind.SET) {
+            product.changeBundle(ProductType.BUNDLE,
+                    req.bundleMode() == null ? BundleMode.EXPAND : req.bundleMode());
+        } else {
+            product.changeBundle(ProductType.SINGLE, null);
+        }
+        if (itemKind == ProductItemKind.SET_COMPONENT) {
+            product.changeUsage(UsageScope.NONE, null);
+        }
+        product.changeProductCategory(req.productCategory());
+        product.changeGoodsType(goodsType(req.goodsType()));
+        product.changeUnit(req.unit());
+        product.changePrices(req.releasePrice(), req.deliveryPrice());
+    }
+
+    private void applyUpdateFields(Product product, UpdateProductRequest req) {
+        if (req.itemKind() != null) {
+            boolean wasBundle = product.getProductType() == ProductType.BUNDLE;
+            if (req.itemKind() == ProductItemKind.SET) {
+                product.changeBundle(ProductType.BUNDLE,
+                        req.bundleMode() == null ? BundleMode.EXPAND : req.bundleMode());
+                bundleComponentService.removeRegisteredComponentLinks(product.getModelCode(), "system");
+            } else {
+                if (wasBundle) {
+                    bundleComponentService.removeBundleChildren(product.getId(), "system");
+                }
+                product.changeBundle(ProductType.SINGLE, null);
+            }
+            if (req.itemKind() == ProductItemKind.SET_COMPONENT) {
+                product.changeUsage(UsageScope.NONE, null);
+                bundleComponentService.replaceRegisteredComponentLink(
+                        req.parentSetModelCode(),
+                        product.getModelCode(),
+                        req.componentKind(),
+                        "system");
+            } else if (req.itemKind() == ProductItemKind.GENERAL) {
+                bundleComponentService.removeRegisteredComponentLinks(product.getModelCode(), "system");
+            }
+        } else if (req.bundleMode() != null && product.getProductType() == ProductType.BUNDLE) {
+            product.changeBundle(ProductType.BUNDLE, req.bundleMode());
+        } else if (product.getProductType() != ProductType.BUNDLE
+                && (req.parentSetModelCode() != null || req.componentKind() != null)) {
+            ParentComponentLink currentLink = findParentComponentLink(product);
+            String parentSetModelCode = req.parentSetModelCode() != null
+                    ? req.parentSetModelCode()
+                    : currentLink == null ? null : currentLink.parentModelCode();
+            if (parentSetModelCode != null && !parentSetModelCode.isBlank()) {
+                product.changeUsage(UsageScope.NONE, null);
+                bundleComponentService.replaceRegisteredComponentLink(
+                        parentSetModelCode,
+                        product.getModelCode(),
+                        req.componentKind() != null ? req.componentKind()
+                                : currentLink == null ? null : currentLink.componentKind(),
+                        "system");
+            }
+        }
+        if (req.productCategory() != null) {
+            product.changeProductCategory(req.productCategory());
+        }
+        if (req.goodsType() != null) {
+            product.changeGoodsType(req.goodsType());
+        }
+        product.changeUnit(req.unit());
+        product.changePrices(req.releasePrice(), req.deliveryPrice());
+    }
+
+    private ProductItemKind itemKind(ProductItemKind itemKind) {
+        return itemKind == null ? ProductItemKind.GENERAL : itemKind;
+    }
+
+    private ProductGoodsType goodsType(ProductGoodsType goodsType) {
+        return goodsType == null ? ProductGoodsType.GOODS : goodsType;
+    }
+
+    private record ParentComponentLink(String parentModelCode,
+                                       BundleComponent.ComponentKind componentKind) {
     }
 }

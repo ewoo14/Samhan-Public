@@ -7,13 +7,21 @@ import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.product.domain.BundleComponent;
+import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductStatus;
+import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
+import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.web.dto.CreateProductRequest;
+import com.samhanair.logis.product.web.dto.ProductItemKind;
 import com.samhanair.logis.product.web.dto.ProductResponse;
+import com.samhanair.logis.product.web.dto.ProductSpecRequest;
 import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
 import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductRequest;
@@ -39,10 +47,16 @@ class ProductServiceTest {
     private ProductRepository productRepository;
 
     @Mock
+    private ProductSpecRepository productSpecRepository;
+
+    @Mock
     private CategoryRepository categoryRepository;
 
     @Mock
     private com.samhanair.logis.product.repository.BundleComponentRepository bundleComponentRepository;
+
+    @Mock
+    private BundleComponentService bundleComponentService;
 
     @Mock
     private ProductSheetSyncService productSheetSyncService;
@@ -77,6 +91,7 @@ class ProductServiceTest {
             ReflectionTestUtils.setField(saved, "id", UUID.randomUUID());
             return saved;
         });
+        when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(any(UUID.class))).thenReturn(List.of());
 
         ProductResponse response = service.create(new CreateProductRequest(
                 "스마트 벽걸이 2.0", "SHA-W20K", categoryId,
@@ -87,6 +102,39 @@ class ProductServiceTest {
         assertThat(response.currency()).isEqualTo("KRW");
         assertThat(response.status()).isEqualTo(ProductStatus.ACTIVE);
         assertThat(response.tags()).containsEntry("hp", "2.0");
+    }
+
+    @Test
+    void create_persistsDynamicSpecsInRequestOrder() {
+        when(productRepository.existsByModelNameAndIsDeletedFalse("SHA-W20K")).thenReturn(false);
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
+            Product saved = inv.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", productId);
+            return saved;
+        });
+        when(productSpecRepository.save(any(ProductSpec.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
+                .thenReturn(List.of(
+                        ProductSpec.create(productId, "냉방성능", "6.0kW", null, 1),
+                        ProductSpec.create(productId, "전원", "220V", null, 2)));
+
+        ProductResponse response = service.create(new CreateProductRequest(
+                "스마트 벽걸이 2.0", "SHA-W20K", categoryId,
+                new BigDecimal("1800000.00"), new BigDecimal("1300000.00"),
+                null, Map.of("hp", "2.0"), null,
+                null, null, null, null, null, null, null, null, null,
+                List.of(
+                        new ProductSpecRequest("냉방성능", "6.0kW"),
+                        new ProductSpecRequest("전원", "220V"))));
+
+        assertThat(response.specs())
+                .extracting("specKey", "specValue", "displayOrder")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("냉방성능", "6.0kW", 1),
+                        org.assertj.core.groups.Tuple.tuple("전원", "220V", 2));
+        org.mockito.Mockito.verify(productSpecRepository, org.mockito.Mockito.times(2))
+                .save(any(ProductSpec.class));
     }
 
     @Test
@@ -131,6 +179,7 @@ class ProductServiceTest {
     @Test
     void update_changesNameAndDescription() {
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId)).thenReturn(List.of());
 
         ProductResponse response = service.update(productId,
                 new UpdateProductRequest("새 이름", null, null, "새 설명"));
@@ -138,6 +187,54 @@ class ProductServiceTest {
         assertThat(response.name()).isEqualTo("새 이름");
         assertThat(response.description()).isEqualTo("새 설명");
         assertThat(response.modelName()).isEqualTo("SHA-W15K");
+    }
+
+    @Test
+    void update_whenSpecsProvided_replacesAllDynamicSpecs() {
+        ProductSpec oldSpec = ProductSpec.create(productId, "기존", "old", null, 1);
+        ReflectionTestUtils.setField(oldSpec, "id", UUID.randomUUID());
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
+                .thenReturn(List.of(oldSpec))
+                .thenReturn(List.of(
+                        ProductSpec.create(productId, "냉방성능", "6.0kW", null, 1),
+                        ProductSpec.create(productId, "전원", "220V", null, 2)));
+        when(productSpecRepository.save(any(ProductSpec.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ProductResponse response = service.update(productId,
+                new UpdateProductRequest(null, null, null, null,
+                        null, null, null, null, null,
+                        null, null, null, null,
+                        List.of(
+                                new ProductSpecRequest("냉방성능", "6.0kW"),
+                                new ProductSpecRequest("전원", "220V"))));
+
+        assertThat(oldSpec.getIsDeleted()).isTrue();
+        assertThat(response.specs())
+                .extracting("specKey", "specValue", "displayOrder")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("냉방성능", "6.0kW", 1),
+                        org.assertj.core.groups.Tuple.tuple("전원", "220V", 2));
+    }
+
+    @Test
+    void update_whenSpecsNull_keepsExistingDynamicSpecs() {
+        ProductSpec currentSpec = ProductSpec.create(productId, "전원", "220V", null, 1);
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
+                .thenReturn(List.of(currentSpec));
+
+        ProductResponse response = service.update(productId,
+                new UpdateProductRequest(null, null, null, "설명만 변경"));
+
+        assertThat(response.description()).isEqualTo("설명만 변경");
+        assertThat(response.specs())
+                .extracting("specKey", "specValue")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("전원", "220V"));
+        org.mockito.Mockito.verify(productSpecRepository, org.mockito.Mockito.never())
+                .save(any(ProductSpec.class));
     }
 
     @Test
@@ -150,6 +247,96 @@ class ProductServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void update_modelNameChange_keepsModelCodeImmutable() {
+        product.changeModelCode("SHA-W15K");
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.existsByModelNameAndIsDeletedFalse("SHA-NEW")).thenReturn(false);
+
+        ProductResponse response = service.update(productId,
+                new UpdateProductRequest(null, "SHA-NEW", null, null));
+
+        assertThat(response.modelName()).isEqualTo("SHA-NEW");
+        assertThat(response.modelCode()).isEqualTo("SHA-W15K");
+    }
+
+    @Test
+    void update_setToGeneral_removesOwnChildBundleComponents() {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.GENERAL, null, null, null, null,
+                null, null, null, null));
+
+        org.mockito.Mockito.verify(bundleComponentService)
+                .removeBundleChildren(productId, "system");
+    }
+
+    @Test
+    void update_setToSetComponent_removesOwnChildrenThenReplacesParentLink() {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.SET_COMPONENT, null, null, "PARENT-SET",
+                BundleComponent.ComponentKind.OUTDOOR,
+                null, null, null, null));
+
+        org.mockito.Mockito.verify(bundleComponentService)
+                .removeBundleChildren(productId, "system");
+        org.mockito.Mockito.verify(bundleComponentService)
+                .replaceRegisteredComponentLink(
+                        "PARENT-SET",
+                        "SET-001",
+                        BundleComponent.ComponentKind.OUTDOOR,
+                        "system");
+    }
+
+    @Test
+    void update_componentKindOnly_keepsExistingParentAndReplacesLink() {
+        product.changeModelCode("IDU-001");
+        Product parent = Product.seedFromSheet("세트 부모", "SET-001", category,
+                BigDecimal.valueOf(1_000_000), BigDecimal.valueOf(800_000),
+                ProductType.BUNDLE, ProductCategory.SINGLE_SET,
+                com.samhanair.logis.product.domain.UsageScope.BOTH, null);
+        UUID parentId = UUID.randomUUID();
+        ReflectionTestUtils.setField(parent, "id", parentId);
+        parent.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        BundleComponent link = BundleComponent.seed(
+                parentId,
+                "IDU-001",
+                BigDecimal.ONE,
+                BundleComponent.QtyMode.FOLLOW_SET,
+                BundleComponent.ComponentKind.INDOOR,
+                null,
+                false,
+                null);
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(bundleComponentRepository.findByComponentProductCode("IDU-001"))
+                .thenReturn(List.of(link));
+        when(productRepository.findAllByIdIn(List.of(parentId)))
+                .thenReturn(List.of(parent));
+
+        service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                null, null, null, null,
+                BundleComponent.ComponentKind.REMOTE,
+                null, null, null, null));
+
+        org.mockito.Mockito.verify(bundleComponentService)
+                .replaceRegisteredComponentLink(
+                        "SET-001",
+                        "IDU-001",
+                        BundleComponent.ComponentKind.REMOTE,
+                        "system");
     }
 
     @Test
@@ -314,6 +501,8 @@ class ProductServiceTest {
     void getByModelName_existing_returnsFullResponse() {
         when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
                 .thenReturn(Optional.of(product));
+        when(productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId))
+                .thenReturn(List.of(ProductSpec.create(productId, "냉방성능", "5.2kW", null, 1)));
 
         ProductResponse response = service.getByModelName("SHA-W15K");
 
@@ -321,6 +510,49 @@ class ProductServiceTest {
         assertThat(response.modelName()).isEqualTo("SHA-W15K");
         assertThat(response.tags()).containsEntry("hp", "1.5");
         assertThat(response.purchasePrice()).isEqualByComparingTo(new BigDecimal("1100000.00"));
+        assertThat(response.specs())
+                .extracting("specKey", "specValue")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("냉방성능", "5.2kW"));
+    }
+
+    @Test
+    void getByModelName_setComponent_returnsEditRoundTripFields() {
+        product.changeModelCode("IDU-001");
+        product.changeProductCategory(ProductCategory.SINGLE_PART);
+        product.changeUnit("SET");
+
+        Product parent = Product.seedFromSheet("세트 부모", "SET-001", category,
+                BigDecimal.valueOf(1_000_000), BigDecimal.valueOf(800_000),
+                ProductType.BUNDLE, ProductCategory.SINGLE_SET,
+                com.samhanair.logis.product.domain.UsageScope.BOTH, null);
+        UUID parentId = UUID.randomUUID();
+        ReflectionTestUtils.setField(parent, "id", parentId);
+        parent.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+
+        BundleComponent link = BundleComponent.seed(
+                parentId,
+                "IDU-001",
+                BigDecimal.ONE,
+                BundleComponent.QtyMode.FOLLOW_SET,
+                BundleComponent.ComponentKind.INDOOR,
+                null,
+                false,
+                null);
+
+        when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
+                .thenReturn(Optional.of(product));
+        when(bundleComponentRepository.findByComponentProductCode("IDU-001"))
+                .thenReturn(List.of(link));
+        when(productRepository.findAllByIdIn(List.of(parentId)))
+                .thenReturn(List.of(parent));
+
+        ProductResponse response = service.getByModelName("SHA-W15K");
+
+        assertThat(response.itemKind()).isEqualTo(ProductItemKind.SET_COMPONENT);
+        assertThat(response.unit()).isEqualTo("SET");
+        assertThat(response.productCategory()).isEqualTo(ProductCategory.SINGLE_PART);
+        assertThat(response.componentKind()).isEqualTo(BundleComponent.ComponentKind.INDOOR);
+        assertThat(response.parentSetModelCode()).isEqualTo("SET-001");
     }
 
     @Test
