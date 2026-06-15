@@ -20,8 +20,8 @@
 홈멀티 실내/외(정격 SINGLE)·판넬(타공/볼트), 싱글세트(최소/정격/최대 RANGE), 상업멀티(정격·배관길이 조건부 TRIPLE), 전열교환기. 실 시트(SRC_SHEET_ID `1RJqO3jT…`) 사양 헤더 = 캐노니컬. 중복헤더 냉방성능(정격) 2컬럼(1st kW/2nd kcal/h).
 
 ## 3. BE (product-service)
-- `SpecKeyValueType`(NUMBER/DIMENSION/TEXT) enum + `spec_key_template.value_type`. `SpecKeyTemplateResponse` + valueType.
-- **V17 마이그**(forward): value_type 컬럼 + CHECK + 재시드(V4 system 행 삭제 + HOME 17/SINGLE 19/COMMERCIAL 20 = 56행, "이름, 단위"·품목별 value_type). **fresh-Postgres probe 56행·CHECK 검증.**
+- `SpecKeyValueType`(NUMBER/DIMENSION/**RANGE**/TEXT) enum + `spec_key_template.value_type`. `SpecKeyTemplateResponse` + valueType.
+- **V17 마이그**(forward): value_type 컬럼 + CHECK(NUMBER/DIMENSION/RANGE/TEXT) + 재시드(V4 system 행 삭제 + HOME 17/**SINGLE 23**/COMMERCIAL 20 = **60행**, "이름, 단위"·품목별 value_type). SINGLE 능력/소비전력=RANGE(최소/정격/최대), SINGLE 물리치수=실내기/실외기 분리 8키. **fresh-Postgres probe 60행·CHECK 검증.**
 - `ProductSpecRequest` + unit. `ProductService` saveSpecs/replaceSpecs 가 unit 저장(displayOrder=배열 positional).
 - 기존 ProductSpec 데이터 독립(템플릿 FK 아님) → 무영향.
 
@@ -42,7 +42,21 @@
 - 품목별 드롭다운(상업멀티 20)·valueType(냉방능력 kW 숫자+suffix / 제품크기 mm WxHxD / 냉매가스 TEXT)·중복제외(선택3→후보17 누수0)·순서변경.
 - **시드 제품 AM100AXVHJH1 편집 — 기존 13 사양 그대로 로드**(구 표기 TEXT). typecheck 0·vitest 10.
 
+## 7b. RANGE + 시드 재정렬 "원래 스펙 그대로" (2차, 개발책임자 추가 요구)
+- **RANGE valueType**: SINGLE 능력/소비전력은 최소/정격/최대 3칸 입력 + '/' 결합("1.80/5.20/7.20"), 최소 미입력 시 '최소' 없이(부분 허용). HOME/COMMERCIAL 능력은 NUMBER(정격 단일).
+- **SINGLE 실내기/실외기 분리**(개발책임자 결정): 원본 시트·견적서가 실내·외 물리치수를 둘 다 표시 → V17 통합 4키 → 분리 8키(실내기크기/실외기크기·중량·포장·포장중량).
+- **시드 재정렬**(매핑전용): `ProductSheetSyncService.loadSpecsForProduct` 를 blocklist → 카테고리 allowlist 로 재작성, legacy `getSpecDetailMap_` 인덱스 해석 포팅(HOME coolCols[0]=kW/[1]=kcal vs COMMERCIAL [0]=kcal/[1]=kW 반대, SINGLE splitBar/splitSlash/RANGE, extractNumber/normRange/normDimension). 사양 보유 탭은 매핑전용(용량/규격 등 비매핑 제외, debug 로그), 비사양 탭은 blocklist 보존. 구표기 키는 soft-delete 자동 정리.
+- **실 재동기화 검증**(실 시트→실 product_db): SINGLE 274/276·COMMERCIAL 325/338·HOME 113/119 사양 보유(잔여=컨트롤러/운임 등 물리사양 없는 항목), 용량/규격 active 0. AM320(냉방능력 77100 kcal/h+89.6 kW 복원), AC023(RANGE "688/1978/2666", 실내/외 분리). 편집 폼 valueType 재현 실 캡처(`docs/qa/spec-aware-input/03`).
+
+## 7c. ⚠ 라이브 QA 적발 회귀 (교훈)
+매핑전용 1차 구현이 `syncTab` 의 `headerCells` 가드(`isSpecBearing ? toStringRow : null`)를 제거 → 비사양 탭도 `loadSpecsForProduct` 호출 → 사양 보유 제품이 비사양 탭에서 재처리되며 그 탭 soft-delete(seenKeys=blocklist)가 매핑 사양 전부 nuke(싱글 276/276 사양 0). **IT 단위테스트는 단일 홈 탭 픽스처만 검증 → 탭 간 nuke 미검(false-green) → 실 Docker DB 검사가 단독 적발.** 가드 복원으로 수정. 교훈: 사양 적재 회귀는 실 DB 전수 분포 검사 필수.
+
+## 7d. 듀얼모델 리뷰 (Opus 3-agent + Codex)
+- **FE/QA 결함 0**: reconcile useRef 1회 가드+비파괴 머지 안전, mock↔V17 byte-equal, 실 캡처 진위(가짜 0), AM100 난방 kcal/h=2800=소스 데이터 이상치(legacy 동일, 매핑 정확), 잔여 0-사양=정당 빈데이터.
+- **BE/Codex 공통 [P1] ERV**: COMMERCIAL ERV(전열교환기)는 능력을 joinCols 다중값으로 저장하나 V17 NUMBER 선언 → 편집 NUMBER 입력 깨짐. **현 데이터 ERV 0건(joinCols 시그니처 0/1070, 잠재)**. 반영: FE reconcile 방어 가드(NUMBER 키라도 값이 단일 숫자 아니면 TEXT 유지). BE ERV turbo 게이트(legacy hasTurboStrongWeak 서브행) 복원은 ERV 모델 출현 시 후속(모델링 결정 — 개발책임자).
+
 ## 7. 후속(별도)
-- **시드 product_spec 데이터 정렬**: 기존 적재 사양은 구 표기(냉방성능(정격), 단위 값포함)라 새 템플릿과 미정합(TEXT 로드). 새 표기 정렬 원하면 product_spec 재시드(개발책임자 판단).
 - **GAS estimate-app 판넬 버그**: 싱글/상업 판넬 타공사이즈/전산볼트간격 cool_cap 오매핑.
+- **ERV turbo 게이트 + ERV 능력 valueType**(RANGE/TEXT) — ERV 상업 모델 출현 시.
+- **`syncComponentTab` self-invocation @Transactional**(PESSIMISTIC 락 트랜잭션 에러, 구성품 링킹, 사양 무관 기존 구조) 별도 검토.
 - LEGACY 사양 템플릿(홈/싱글/상업 스코프 외, 미시드).

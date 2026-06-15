@@ -7,6 +7,7 @@ import {
   composeRangeSpecValue,
   editSeedToProductFormValues,
   initialProductFormValues,
+  isSingleNumeric,
   moveSpecRow,
   specPatchForKeyChange,
   splitRangeSpecValue,
@@ -150,6 +151,13 @@ describe('productFormModel', () => {
       unit: 'kW',
       valueType: 'NUMBER',
     })
+  })
+
+  it('NUMBER reconcile 허용 여부는 빈 값과 단일 숫자만 true 로 판단한다', () => {
+    expect(isSingleNumeric('29.0')).toBe(true)
+    expect(isSingleNumeric('')).toBe(true)
+    expect(isSingleNumeric('1 / 2 / 3')).toBe(false)
+    expect(isSingleNumeric('abc')).toBe(false)
   })
 
   it('동일 valueType 템플릿 재선택은 값을 보존하고 valueType 변경만 값을 초기화한다', () => {

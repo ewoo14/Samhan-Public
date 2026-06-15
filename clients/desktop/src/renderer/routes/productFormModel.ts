@@ -118,6 +118,11 @@ function trimmed(value: string): string {
   return value.trim()
 }
 
+export function isSingleNumeric(value: string): boolean {
+  const next = trimmed(value)
+  return next.length === 0 || /^[-+]?\d*\.?\d+$/.test(next)
+}
+
 function nullableText(value: string): string | null {
   const next = trimmed(value)
   return next.length > 0 ? next : null

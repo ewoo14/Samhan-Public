@@ -46,6 +46,7 @@ import {
   composeRangeSpecValue,
   editSeedToProductFormValues,
   initialProductFormValues,
+  isSingleNumeric,
   moveSpecRow,
   specPatchForKeyChange,
   splitDimensionSpecValue,
@@ -246,10 +247,13 @@ export function ProductFormPage() {
       specs: current.specs.map((spec) => {
         const template = specTemplateByKey.get(spec.specKey)
         if (!template) return spec
+        const valueType = template.valueType === 'NUMBER' && !isSingleNumeric(spec.specValue)
+          ? 'TEXT'
+          : template.valueType
         return {
           ...spec,
           unit: spec.unit || template.defaultUnit || '',
-          valueType: template.valueType,
+          valueType,
         }
       }),
     }))
