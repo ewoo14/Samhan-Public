@@ -19,7 +19,9 @@ const _dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fil
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://localhost:5173'
 const API_BASE = 'http://localhost:8080'
 const OUT = path.resolve(_dirname, '../../../../docs/qa/spec-aware-input')
+const PANEL_OUT = path.resolve(_dirname, '../../../../docs/qa/panel-spec-relabel')
 fs.mkdirSync(OUT, { recursive: true })
+fs.mkdirSync(PANEL_OUT, { recursive: true })
 
 async function loginAndInstallStub(page: Page, loginId: string, password: string): Promise<void> {
   const res = await page.request.post(`${API_BASE}/auth/login`, { data: { loginId, password } })
@@ -130,6 +132,31 @@ test('시드 제품 편집 — 기존 적재 사양 그대로 조회', async ({ 
     `시드 제품 AM100AXVHJH1 편집 — V17 키 + valueType 재현 사양 ${loaded.length}개 로드됨\n`
     + `NUMBER 단위 suffix 행=${unitBearingRows.length}, DIMENSION 입력=${dimensionInputCount}, RANGE 입력=${rangeInputCount}\n`
     + `--- 로드된 사양명(V17 키 + valueType 재현) ---\n${loaded.join('\n')}\n`, 'utf8')
+})
+
+test('판넬 제품 편집 — 타공사이즈/전산볼트간격 로드 및 구 오라벨 제거', async ({ page }) => {
+  await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
+  // HOME_MULTI 판넬: 구 오라벨(냉방능력/냉방소비전력) 대신 판넬 전용 사양 키가 로드되어야 한다.
+  await page.goto(`${BASE_URL}/#/products/PC1BWCK3N/edit`)
+  await page.waitForSelector('[data-testid="product-form-spec-0-key"]', { timeout: 30000 })
+  await page.waitForTimeout(800)
+
+  const loaded = await page.$$eval(
+    '[data-testid$="-key"][data-testid^="product-form-spec-"]',
+    (els) => els.map((e) => (e as HTMLInputElement).value).filter(Boolean),
+  )
+
+  expect(loaded).toContain('타공사이즈, mm')
+  expect(loaded).toContain('전산볼트간격, mm')
+  expect(loaded.some((key) => key.startsWith('냉방능력'))).toBe(false)
+  expect(loaded.some((key) => key.startsWith('냉방소비전력'))).toBe(false)
+
+  await page.screenshot({ path: path.join(PANEL_OUT, '01-panel-edit.png'), fullPage: true })
+
+  fs.writeFileSync(path.join(PANEL_OUT, 'panel-edit-evidence.txt'),
+    `HOME_MULTI 판넬 PC1BWCK3N 편집 — 로드된 판넬 사양 키 ${loaded.length}개\n`
+    + `--- 로드된 판넬 사양 키 목록 ---\n${loaded.join('\n')}\n`
+    + `타공사이즈/전산볼트간격 정합, 냉방능력 오라벨 제거\n`, 'utf8')
 })
 
 test('RANGE — 싱글세트 능력 최소/정격/최대 3칸 입력 + / 결합', async ({ page }) => {
