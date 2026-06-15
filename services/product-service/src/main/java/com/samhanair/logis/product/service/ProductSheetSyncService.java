@@ -184,6 +184,12 @@ public class ProductSheetSyncService {
                 || category == ProductCategory.COMMERCIAL_MULTI;
     }
 
+    private static boolean isPanelRow(String name, String modelCode) {
+        String n = name == null ? "" : name;
+        String m = modelCode == null ? "" : modelCode;
+        return n.matches(".*(판넬|판널|패널).*") || m.matches("(?i)PC.*");
+    }
+
     /**
      * 전체 시트 sync — scheduler / admin 양쪽 진입점.
      * tab 별 별도 트랜잭션 (per-tab) — 1 tab 실패가 전체 무효화 방지.
@@ -382,12 +388,14 @@ public class ProductSheetSyncService {
         Set<Integer> consumedColumns = new HashSet<>();
         int linked = 0;
         boolean specBearing = isSpecBearing(mapping.productCategory);
+        String rowName = safeGet(cells, mapping.nameColumn);
+        String rowModelCode = safeGet(cells, mapping.modelCodeColumn);
         if (mapping.estimateCategory == EstimateCategory.HOME_MULTI) {
-            linked += loadHomeSpecs(productId, header, cells, seenKeys, consumedColumns);
+            linked += loadHomeSpecs(productId, header, cells, rowName, rowModelCode, seenKeys, consumedColumns);
         } else if (mapping.estimateCategory == EstimateCategory.SINGLE_SET) {
-            linked += loadSingleSpecs(productId, header, cells, seenKeys, consumedColumns);
+            linked += loadSingleSpecs(productId, header, cells, rowName, rowModelCode, seenKeys, consumedColumns);
         } else if (mapping.estimateCategory == EstimateCategory.COMMERCIAL_MULTI) {
-            linked += loadCommercialSpecs(productId, header, cells, seenKeys, consumedColumns);
+            linked += loadCommercialSpecs(productId, header, cells, rowName, rowModelCode, seenKeys, consumedColumns);
         }
         if (specBearing) {
             logUnmappedSpecHeaders(mapping, header, cells, consumedColumns);
@@ -452,6 +460,7 @@ public class ProductSheetSyncService {
     }
 
     private int loadHomeSpecs(UUID productId, List<String> header, List<String> cells,
+                              String name, String modelCode,
                               Set<String> seenKeys, Set<Integer> consumedColumns) {
         List<String> H = normalizedHeaders(header);
         List<Integer> coolCols = new ArrayList<>();
@@ -471,6 +480,11 @@ public class ProductSheetSyncService {
 
         int iPowKw = idx(H, "소비전력(정격)");
         if (iPowKw < 0) iPowKw = findContainsNorm(H, "소비전력");
+
+        if (isPanelRow(name, modelCode)) {
+            return loadPanelSpecs(productId, seenKeys, consumedColumns, cells, H, coolCols, iPowKw,
+                    9, 10, 11, 12, 16, 17, true);
+        }
 
         int linked = 0;
         linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "배관경"),
@@ -515,11 +529,17 @@ public class ProductSheetSyncService {
     }
 
     private int loadSingleSpecs(UUID productId, List<String> header, List<String> cells,
+                                String name, String modelCode,
                                 Set<String> seenKeys, Set<Integer> consumedColumns) {
         List<String> H = normalizedHeaders(header);
         int iPowKw = firstExistingIdx(H, "소비전력(kW)(최소/정격/최대)", "소비전력(kW)(최소/정격/최대)");
         int iCapKw = firstExistingIdx(H, "성능(kW)(최소/정격/최대)", "성능(kW)(최소/정격/최대)");
         int iCapKcal = firstExistingIdx(H, "성능(kcal/h)(최소/정격/최대)", "성능(kcal/h)(최소/정격/최대)");
+        if (isPanelRow(name, modelCode)) {
+            return loadPanelSpecs(productId, seenKeys, consumedColumns, cells, H,
+                    validCols(iCapKcal, iCapKw), iPowKw,
+                    -1, -1, -1, -1, 22, 23, false);
+        }
         Pair pow = splitBar(cell(cells, iPowKw));
         Pair capKw = splitBar(cell(cells, iCapKw));
         Pair capKcal = splitBar(cell(cells, iCapKcal));
@@ -592,6 +612,7 @@ public class ProductSheetSyncService {
     }
 
     private int loadCommercialSpecs(UUID productId, List<String> header, List<String> cells,
+                                    String name, String modelCode,
                                     Set<String> seenKeys, Set<Integer> consumedColumns) {
         List<String> H = normalizedHeaders(header);
         List<ColumnGroup> groups = commercialGroups(header);
@@ -608,6 +629,12 @@ public class ProductSheetSyncService {
         List<Integer> heatCols = collectRawContains(header, Pattern.compile("난방\\s*성능"));
         List<Integer> powCols = collectRawContains(header, Pattern.compile("소비\\s*전력"));
         int iDuct = firstExistingIdx(H, "덕트구경", "덕트구경");
+
+        if (isPanelRow(name, modelCode)) {
+            int iPowCool = powCols.size() > 0 ? powCols.get(0) : -1;
+            return loadPanelSpecs(productId, seenKeys, consumedColumns, cells, H, coolCols, iPowCool,
+                    12, 13, 14, 15, 19, 20, true);
+        }
 
         int linked = 0;
         if (isErvLayout) {
@@ -677,6 +704,30 @@ public class ProductSheetSyncService {
         linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
                 firstExistingIdx(H, "전산볼트간격", "전산볼트간격(mm)"),
                 "전산볼트간격, mm", "mm", 20, SpecValueMode.NUMBER);
+        return linked;
+    }
+
+    private int loadPanelSpecs(UUID productId, Set<String> seenKeys, Set<Integer> consumedColumns,
+                               List<String> cells, List<String> H, List<Integer> punchCols, int boltCol,
+                               int sizeOrder, int weightOrder, int packageSizeOrder, int packageWeightOrder,
+                               int punchOrder, int boltOrder, boolean includePhysicalSpecs) {
+        int linked = 0;
+        int punchCol = firstNonBlankColumn(cells, punchCols);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, punchCols,
+                "타공사이즈, mm", cell(cells, punchCol), "mm", punchOrder, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, boltCol,
+                "전산볼트간격, mm", "mm", boltOrder, SpecValueMode.NUMBER);
+
+        if (includePhysicalSpecs) {
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "제품크기"),
+                    "제품크기, mm", "mm", sizeOrder, SpecValueMode.DIMENSION);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "제품중량"),
+                    "제품중량, kg", "kg", weightOrder, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "포장치수"),
+                    "포장치수, mm", "mm", packageSizeOrder, SpecValueMode.DIMENSION);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "포장중량"),
+                    "포장중량, kg", "kg", packageWeightOrder, SpecValueMode.NUMBER);
+        }
         return linked;
     }
 
@@ -786,6 +837,29 @@ public class ProductSheetSyncService {
         for (String candidate : candidates) {
             int i = idx(normalizedHeader, candidate);
             if (i >= 0) return i;
+        }
+        return -1;
+    }
+
+    private static List<Integer> validCols(int... cols) {
+        List<Integer> out = new ArrayList<>();
+        for (int col : cols) {
+            if (col >= 0 && !out.contains(col)) {
+                out.add(col);
+            }
+        }
+        return out;
+    }
+
+    private static int firstNonBlankColumn(List<String> cells, List<Integer> cols) {
+        for (Integer col : cols) {
+            if (col == null || col < 0) {
+                continue;
+            }
+            String value = cell(cells, col);
+            if (!value.isBlank() && !"-".equals(value)) {
+                return col;
+            }
         }
         return -1;
     }
