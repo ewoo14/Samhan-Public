@@ -166,6 +166,9 @@ export function moveSpecRow(
 function normalizedSpecValue(spec: ProductSpecFormRow): string {
   if (spec.valueType !== 'DIMENSION') return trimmed(spec.specValue)
   const [width, height, depth] = splitDimensionSpecValue(spec.specValue)
+  // W·H·D 3분할 모두 채워졌을 때만 WxHxD 저장 — 부분 입력(예 "1800xx")은 미완으로 보고
+  // 빈 값 반환 → buildSpecs 필터로 저장 제외(깨진 차원 값 영속 방지).
+  if (!width || !height || !depth) return ''
   return composeDimensionSpecValue(width, height, depth)
 }
 

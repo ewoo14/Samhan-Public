@@ -124,8 +124,8 @@ function defaultCategoryForItemKind(itemKind: ProductItemKind): ProductCategory 
 function estimateCategoryForProductCategory(category: ProductCategory): EstimateCategory | undefined {
   if (category === 'HOME_MULTI') return 'HOME_MULTI'
   if (category === 'SINGLE_SET' || category === 'SINGLE_PART') return 'SINGLE_SET'
-  if (category === 'COMMERCIAL_MULTI') return 'COMMERCIAL_MULTI'
-  return undefined
+  if (category === 'COMMERCIAL_MULTI' || category === 'COMMERCIAL_PART') return 'COMMERCIAL_MULTI'
+  return undefined // OLD/MATERIAL 등 — 홈/싱글/상업 외(개발책임자 스코프). 전체 템플릿 fallback.
 }
 
 function sortedTemplates(templates: SpecKeyTemplateResponse[]): SpecKeyTemplateResponse[] {
@@ -322,21 +322,16 @@ export function ProductFormPage() {
   }
 
   const changeSpecKey = (index: number, specKey: string) => {
+    const current = values.specs[index]
     const template = specTemplateByKey.get(specKey)
-    if (!template) {
-      updateSpecRow(index, {
-        specKey,
-        specValue: '',
-        unit: '',
-        valueType: 'TEXT',
-      })
-      return
-    }
+    const nextValueType = template ? template.valueType : 'TEXT'
+    // valueType 이 바뀔 때만 값 초기화(입력 포맷 전환) — 동일 타입/자유 이름편집은 입력값 보존.
+    const resetValue = nextValueType !== current?.valueType
     updateSpecRow(index, {
-      specKey: template.specKey,
-      specValue: '',
-      unit: template.defaultUnit ?? '',
-      valueType: template.valueType,
+      specKey: template ? template.specKey : specKey,
+      unit: template ? (template.defaultUnit ?? '') : '',
+      valueType: nextValueType,
+      ...(resetValue ? { specValue: '' } : {}),
     })
   }
 

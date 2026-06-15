@@ -84,6 +84,19 @@ describe('productFormModel', () => {
     ])
   })
 
+  it('DIMENSION 부분 입력(W/H/D 미완)은 저장에서 제외된다', () => {
+    expect(buildSpecs({
+      ...baseForm,
+      specs: [
+        { specKey: '제품크기, mm', specValue: '1800x', unit: 'mm', valueType: 'DIMENSION' }, // W만
+        { specKey: '포장치수, mm', specValue: '1800x2370x', unit: 'mm', valueType: 'DIMENSION' }, // W·H만
+        { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW', valueType: 'NUMBER' },
+      ],
+    })).toEqual([
+      { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW' }, // 완전 입력만 저장(깨진 차원 값 미영속)
+    ])
+  })
+
   it('사양 배열 순서 변경은 저장 요청 순서로 보존된다', () => {
     const moved = moveSpecRow([
       { specKey: '배관경', specValue: '6/12', unit: '', valueType: 'TEXT' },
