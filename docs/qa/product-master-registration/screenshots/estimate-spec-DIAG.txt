@@ -1,0 +1,13 @@
+{
+  "spec_keys": 741,
+  "single_units": {
+    "EA": 276
+  },
+  "sample_set": {
+    "name": "360 CST UV",
+    "model": "AC060CS6PBH1SY",
+    "unit": "EA"
+  },
+  "has_explode": true,
+  "single_count": 276
+}
