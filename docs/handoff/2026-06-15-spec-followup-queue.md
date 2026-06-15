@@ -36,7 +36,8 @@
 
 **🔍 정찰 완료 (2026-06-15, PR #486 후):**
 - **BE 변경 불필요** — `spec-key-templates` 전부 기 운영: 엔티티 `SpecKeyTemplate`(estimateCategory/specKey/defaultUnit/displayOrder/isRecommended) + `SpecKeyTemplateRepository.findByEstimateCategoryOrderByDisplayOrderAsc` + `ProductCatalogController` `GET /api/v1/spec-key-templates?category=`(@RequirePermission products.list VIEW) + DTO `SpecKeyTemplateResponse` + 게이트웨이 라우트(product-specs-v1) + V4 시드 53키(HOME 14·SINGLE 21·COMM 16·LEGACY 2, 전부 isRecommended) + mock 핸들러(mock.ts:1787) + IT(ProductCatalogControllerIT:131).
-- **FE 전용 구현**: ① `productCatalogApi.ts` `listSpecKeyTemplates(category?)` GET 래퍼 신규 ② `ProductFormPage.tsx`(사양명 `<Input>` 라인 451-457) → `<AsyncAutocomplete>`(design-system 재사용, productCategory별 useQuery + 직접입력 허용) ③ `productFormModel.ts` 모델 무변경(specKey=string), vitest 유지 ④ `mock.ts` MOCK_SPEC_KEY_TEMPLATES 53키로 확대.
+- **FE 전용 구현**: ① `productCatalogApi.ts` `listSpecKeyTemplates(category?)` GET 래퍼 신규 ② `ProductFormPage.tsx`(사양명 `<Input>` 라인 451-457) → 자유입력 가능한 콤보박스, productCategory→estimateCategory 매핑별 후보 useQuery ③ `productFormModel.ts` 모델 무변경(specKey=string), vitest 유지 ④ `mock.ts` MOCK_SPEC_KEY_TEMPLATES 53키로 확대.
+- **🪤 컴포넌트 뉘앙스(구현 주의)**: design-system `AsyncAutocomplete`(`clients/web/design-system/.../AsyncAutocomplete.tsx`)는 **후보 선택형**(`value:T|null`/`onChange:(item:T|null)`/blur exact-match)이라 **커스텀 자유입력 보존이 기본 미지원**. #1 은 미수록 키 직접입력 필수 → (i) `search(q)` 가 입력값 자체를 후보로 포함 + `matchExact` 가 임의 입력 수용하여 typed-value 보존, 또는 (ii) native `<input list>`+`<datalist>`(자유입력+제안 네이티브, 최소코드) 중 택. Codex 개발 시 자유입력 보존을 vitest+실QA 로 반드시 검증.
 - **⚠️ 설계 분기(개발책임자 확인)**: 드롭박스 후보 소스 = (A) **spec-key-templates 53 큐레이션**(목적전용·BE-zero·깔끔, 단 미수록 키는 직접입력) vs (B) **ProductSpec distinct 전키**(포괄적·일관성↑, 단 신규 BE endpoint + 오라벨/오타 키까지 노출 = 데이터품질 이슈 전파) vs (C) 하이브리드(템플릿 우선+distinct 보조). 핸드오프 원안=B("741"), 정찰상 권장=A.
 
 ## 워크플로우 (동일)
