@@ -37,6 +37,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -157,6 +158,7 @@ public class ProductSheetSyncService {
     private final BundleComponentRepository bundleComponentRepository;
     private final ProductSpecRepository productSpecRepository;
     private final VariableDiscountDetector discountDetector;
+    private final ProductSheetSyncService self;
 
     /** rowHash 캐시 — JVM 메모리. (시트 row → SHA-256). 다음 sync 시 비교. */
     private final Map<String, String> lastKnownRowHash = new ConcurrentHashMap<>();
@@ -167,7 +169,8 @@ public class ProductSheetSyncService {
                                    PriceHistoryRepository priceHistoryRepository,
                                    BundleComponentRepository bundleComponentRepository,
                                    ProductSpecRepository productSpecRepository,
-                                   VariableDiscountDetector discountDetector) {
+                                   VariableDiscountDetector discountDetector,
+                                   @Lazy ProductSheetSyncService self) {
         this.sheetsClient = sheetsClient;
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
@@ -175,6 +178,7 @@ public class ProductSheetSyncService {
         this.bundleComponentRepository = bundleComponentRepository;
         this.productSpecRepository = productSpecRepository;
         this.discountDetector = discountDetector;
+        this.self = self;
     }
 
     /** 사양 보유 카테고리(legacy getSpecDetailMap_ scanHome/scanSingle/scanComm). */
@@ -231,7 +235,7 @@ public class ProductSheetSyncService {
         // 구성품(BUNDLE) 적재 — Product 전 tab sync 완료 후 부모/자식이 모두 DB 에 존재하는 시점.
         for (ComponentTabMapping cm : COMPONENT_TAB_MAPPINGS) {
             try {
-                ComponentSyncResult cr = syncComponentTab(cm);
+                ComponentSyncResult cr = self.syncComponentTab(cm);
                 summary.byComponentTab.put(cm.tabName, cr);
                 summary.totalComponentsLinked += cr.linked;
                 summary.totalBundlesMarked += cr.bundlesMarked;
@@ -327,6 +331,10 @@ public class ProductSheetSyncService {
             String spec = cSpec >= 0 ? safeGet(cells, cSpec).trim() : "";
             String qtyRaw = (mapping.hasQtyColumn && cQty >= 0) ? safeGet(cells, cQty).trim() : "";
             BundleComponent.ComponentKind kind = mapComponentKind(kindRaw, child.getName(), variant);
+            if (kind == BundleComponent.ComponentKind.ACCESSORY
+                    && child.getProductCategory() == ProductCategory.COMMERCIAL_MULTI) {
+                kind = BundleComponent.ComponentKind.OUTDOOR;
+            }
             boolean isDefault = (variant + " " + kindRaw).contains("기본");
 
             QtyAndMode qm = resolveQty(mapping.hasQtyColumn, qtyRaw);
