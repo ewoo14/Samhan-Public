@@ -443,6 +443,38 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     @Test
+    void sync_판넬행_타공사이즈전산볼트간격_매핑_능력키_미생성() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        // 홈멀티 mapping(name0, model1, release3, delivery5): col4/6은 판넬에서 타공/전산볼트, 비판넬에서 냉방능력/소비전력.
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "배관경", "출고가", "냉방성능(정격)", "납품가", "소비전력(정격)", "제품크기"),
+                row("판넬 360 QA", "PC1QA", "", "1,500,000", "1020", "1,200,000", "645", "100x50x100"),
+                row("홈멀티 AC QA", "AMQA1", "9/15", "1,500,000", "7.2", "1,200,000", "0.39", "900x300x200")
+        ));
+
+        syncService.syncAll();
+
+        Product panel = productRepository.findByModelCodeAndIsDeletedFalse("PC1QA").orElseThrow();
+        List<ProductSpec> panelSpecs = productSpecRepository.findByProductIdOrderByDisplayOrderAsc(panel.getId());
+        assertThat(panelSpecs).extracting(ProductSpec::getSpecKey)
+                .contains("타공사이즈, mm", "전산볼트간격, mm")
+                .doesNotContain("냉방능력, kW", "냉방능력, kcal/h", "냉방소비전력, kW");
+        assertThat(panelSpecs).filteredOn(s -> s.getSpecKey().equals("타공사이즈, mm"))
+                .singleElement().satisfies(s -> assertThat(s.getSpecValue()).isEqualTo("1020"));
+        assertThat(panelSpecs).filteredOn(s -> s.getSpecKey().equals("전산볼트간격, mm"))
+                .singleElement().satisfies(s -> assertThat(s.getSpecValue()).isEqualTo("645"));
+
+        Product normal = productRepository.findByModelCodeAndIsDeletedFalse("AMQA1").orElseThrow();
+        List<ProductSpec> normalSpecs = productSpecRepository.findByProductIdOrderByDisplayOrderAsc(normal.getId());
+        assertThat(normalSpecs).extracting(ProductSpec::getSpecKey)
+                .contains("냉방능력, kW", "냉방소비전력, kW");
+        assertThat(normalSpecs).filteredOn(s -> s.getSpecKey().equals("냉방능력, kW"))
+                .singleElement().satisfies(s -> assertThat(s.getSpecValue()).isEqualTo("7.2"));
+        assertThat(normalSpecs).filteredOn(s -> s.getSpecKey().equals("냉방소비전력, kW"))
+                .singleElement().satisfies(s -> assertThat(s.getSpecValue()).isEqualTo("0.39"));
+    }
+
+    @Test
     void sync_사양키_사라졌다_재등장해도_UNIQUE위반없이_재활성() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         // 1차: 냉매가스 사양 존재
