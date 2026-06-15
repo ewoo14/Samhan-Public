@@ -8,6 +8,7 @@ import type {
   ProductGoodsType,
   ProductItemKind,
   ProductSummaryResponse,
+  SpecKeyTemplateResponse,
   SpecKeyValueType,
   UpdateProductRequest,
 } from '../api/productCatalogApi'
@@ -161,6 +162,28 @@ export function moveSpecRow(
   if (!moved) return next
   next.splice(toIndex, 0, moved)
   return next
+}
+
+type SpecKeyTemplateLike = Pick<SpecKeyTemplateResponse, 'specKey' | 'defaultUnit' | 'valueType'>
+
+export function specPatchForKeyChange(
+  current: ProductSpecFormRow | undefined,
+  specKey: string,
+  template: SpecKeyTemplateLike | undefined,
+): Partial<ProductSpecFormRow> {
+  if (!template) {
+    // 자유편집은 기존 입력 방식과 값을 보존한다. 템플릿 미매칭 중간 입력으로 값이 지워지면 안 된다.
+    return current ? { specKey } : { specKey, unit: '', valueType: 'TEXT' }
+  }
+
+  // valueType 이 바뀔 때만 값 초기화(입력 포맷 전환) — 동일 타입 선택은 입력값 보존.
+  const resetValue = template.valueType !== current?.valueType
+  return {
+    specKey: template.specKey,
+    unit: template.defaultUnit ?? '',
+    valueType: template.valueType,
+    ...(resetValue ? { specValue: '' } : {}),
+  }
 }
 
 function normalizedSpecValue(spec: ProductSpecFormRow): string {

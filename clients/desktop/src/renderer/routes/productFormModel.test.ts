@@ -7,6 +7,7 @@ import {
   editSeedToProductFormValues,
   initialProductFormValues,
   moveSpecRow,
+  specPatchForKeyChange,
   validateProductForm,
   type ProductFormValues,
 } from './productFormModel'
@@ -109,6 +110,49 @@ describe('productFormModel', () => {
       '배관경',
       '제품크기, mm',
     ])
+  })
+
+  it('사양명 자유편집은 기존 valueType/unit/specValue 를 보존한다', () => {
+    const current = { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW', valueType: 'NUMBER' as const }
+
+    expect({ ...current, ...specPatchForKeyChange(current, '냉방능력, kW 특주', undefined) }).toEqual({
+      specKey: '냉방능력, kW 특주',
+      specValue: '6.0',
+      unit: 'kW',
+      valueType: 'NUMBER',
+    })
+  })
+
+  it('동일 valueType 템플릿 재선택은 값을 보존하고 valueType 변경만 값을 초기화한다', () => {
+    const current = { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW', valueType: 'NUMBER' as const }
+
+    expect({
+      ...current,
+      ...specPatchForKeyChange(current, '난방능력, kW', {
+        specKey: '난방능력, kW',
+        defaultUnit: 'kW',
+        valueType: 'NUMBER',
+      }),
+    }).toEqual({
+      specKey: '난방능력, kW',
+      specValue: '6.0',
+      unit: 'kW',
+      valueType: 'NUMBER',
+    })
+
+    expect({
+      ...current,
+      ...specPatchForKeyChange(current, '제품크기, mm', {
+        specKey: '제품크기, mm',
+        defaultUnit: 'mm',
+        valueType: 'DIMENSION',
+      }),
+    }).toEqual({
+      specKey: '제품크기, mm',
+      specValue: '',
+      unit: 'mm',
+      valueType: 'DIMENSION',
+    })
   })
 
   it('SET 선택 시 bundleMode 를 포함하고 parentSetModelCode 는 보내지 않는다', () => {

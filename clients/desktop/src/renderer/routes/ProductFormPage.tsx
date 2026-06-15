@@ -45,6 +45,7 @@ import {
   editSeedToProductFormValues,
   initialProductFormValues,
   moveSpecRow,
+  specPatchForKeyChange,
   splitDimensionSpecValue,
   validateProductForm,
   type ProductFormErrors,
@@ -324,15 +325,7 @@ export function ProductFormPage() {
   const changeSpecKey = (index: number, specKey: string) => {
     const current = values.specs[index]
     const template = specTemplateByKey.get(specKey)
-    const nextValueType = template ? template.valueType : 'TEXT'
-    // valueType 이 바뀔 때만 값 초기화(입력 포맷 전환) — 동일 타입/자유 이름편집은 입력값 보존.
-    const resetValue = nextValueType !== current?.valueType
-    updateSpecRow(index, {
-      specKey: template ? template.specKey : specKey,
-      unit: template ? (template.defaultUnit ?? '') : '',
-      valueType: nextValueType,
-      ...(resetValue ? { specValue: '' } : {}),
-    })
+    updateSpecRow(index, specPatchForKeyChange(current, specKey, template))
   }
 
   const reorderSpecRows = (fromIndex: number, toIndex: number) => {
