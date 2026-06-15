@@ -32,7 +32,12 @@
 **✅ 위 스코프 전부 구현·머지 완료**(PR #486, `6a3de57f`). Codex MCP 는 새 세션에도 미노출 → `codex exec` CLI 우회로 개발·교차리뷰 수행([[feedback_codex_mcp_session_limit]] — CLI 0.131.0, ChatGPT 로그인, approval never+workspace-write, Codex git 금지·Claude commit 대행). 소스 우선순위 ①DB→②SPEC_DETAIL_MAP→③물리치수 전부 반영.
 
 ## #1 (다음) — 사양명 드롭박스 (시드 사양 기반)
-사양 등록 시 `사양명` 자유입력 → **`select` 드롭다운**(기존 시드 spec_key 741개에서 선택). 구현: BE distinct spec-key endpoint(`GET /products/spec-keys` 등, ProductSpec distinct spec_key) + FE `ProductFormPage` 사양 행 `사양명`을 Select(+직접입력 허용 옵션). productFormModel/mock/vitest 동반.
+사양 등록 시 `사양명` 자유입력 → **드롭다운(+직접입력 허용)**.
+
+**🔍 정찰 완료 (2026-06-15, PR #486 후):**
+- **BE 변경 불필요** — `spec-key-templates` 전부 기 운영: 엔티티 `SpecKeyTemplate`(estimateCategory/specKey/defaultUnit/displayOrder/isRecommended) + `SpecKeyTemplateRepository.findByEstimateCategoryOrderByDisplayOrderAsc` + `ProductCatalogController` `GET /api/v1/spec-key-templates?category=`(@RequirePermission products.list VIEW) + DTO `SpecKeyTemplateResponse` + 게이트웨이 라우트(product-specs-v1) + V4 시드 53키(HOME 14·SINGLE 21·COMM 16·LEGACY 2, 전부 isRecommended) + mock 핸들러(mock.ts:1787) + IT(ProductCatalogControllerIT:131).
+- **FE 전용 구현**: ① `productCatalogApi.ts` `listSpecKeyTemplates(category?)` GET 래퍼 신규 ② `ProductFormPage.tsx`(사양명 `<Input>` 라인 451-457) → `<AsyncAutocomplete>`(design-system 재사용, productCategory별 useQuery + 직접입력 허용) ③ `productFormModel.ts` 모델 무변경(specKey=string), vitest 유지 ④ `mock.ts` MOCK_SPEC_KEY_TEMPLATES 53키로 확대.
+- **⚠️ 설계 분기(개발책임자 확인)**: 드롭박스 후보 소스 = (A) **spec-key-templates 53 큐레이션**(목적전용·BE-zero·깔끔, 단 미수록 키는 직접입력) vs (B) **ProductSpec distinct 전키**(포괄적·일관성↑, 단 신규 BE endpoint + 오라벨/오타 키까지 노출 = 데이터품질 이슈 전파) vs (C) 하이브리드(템플릿 우선+distinct 보조). 핸드오프 원안=B("741"), 정찰상 권장=A.
 
 ## 워크플로우 (동일)
 Opus 계획 → Codex 개발 → Opus 5-agent + Codex 교차 → CI green + Docker 실 QA(스크린샷, electron-vite dev 막힘→**렌더러 정적빌드+python http.server:5175+playwright real-qa.config** 우회 검증됨) → 머지.
