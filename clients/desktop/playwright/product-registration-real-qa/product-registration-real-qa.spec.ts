@@ -58,6 +58,11 @@ test('품목 등록 폼 — 종류 3구분·세트구성품 부모세트 자동�
   // 1) 기본(일반품목) — 종류 라디오 + 상품/비상품 토글 + 필드
   await screenshot(page, '01-form-general')
 
+  // 1b) 사양 추가 → 사양명/값 입력 행 등장 (동적 사양 등록 위치)
+  await page.getByTestId('product-form-add-spec').click()
+  await page.getByTestId('product-form-add-spec').click()
+  await screenshot(page, '01b-spec-rows')
+
   // 2) 비상품 선택 (상품/비상품 토글)
   await page.selectOption('[data-testid="product-form-goods-type"]', 'NON_GOODS')
   await screenshot(page, '02-non-goods')
