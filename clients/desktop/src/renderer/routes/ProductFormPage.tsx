@@ -42,11 +42,13 @@ import {
   buildCreateProductRequest,
   buildUpdateProductRequest,
   composeDimensionSpecValue,
+  composeRangeSpecValue,
   editSeedToProductFormValues,
   initialProductFormValues,
   moveSpecRow,
   specPatchForKeyChange,
   splitDimensionSpecValue,
+  splitRangeSpecValue,
   validateProductForm,
   type ProductFormErrors,
   type ProductFormValues,
@@ -91,6 +93,7 @@ const COMPONENT_KIND_OPTIONS: Array<{ value: ComponentKind; label: string }> = [
 const VALUE_TYPE_LABELS: Record<SpecKeyValueType, string> = {
   NUMBER: '숫자',
   DIMENSION: '크기',
+  RANGE: '범위',
   TEXT: '텍스트',
 }
 
@@ -348,6 +351,20 @@ export function ProductFormPage() {
     })
   }
 
+  const updateRangePart = (
+    index: number,
+    partIndex: 0 | 1 | 2,
+    nextValue: string,
+  ) => {
+    const current = values.specs[index]
+    if (!current) return
+    const parts = splitRangeSpecValue(current.specValue)
+    parts[partIndex] = nextValue
+    updateSpecRow(index, {
+      specValue: composeRangeSpecValue(parts[0], parts[1], parts[2]),
+    })
+  }
+
   const isLoading = categoriesQuery.isLoading || editSeedQuery.isLoading
   const isSaving = saveMutation.isPending
 
@@ -551,6 +568,7 @@ export function ProductFormPage() {
           <div style={specRowsStyle}>
             {values.specs.map((spec, index) => {
               const dimensionParts = splitDimensionSpecValue(spec.specValue)
+              const rangeParts = splitRangeSpecValue(spec.specValue)
               const specKeyOptionsId = `spec-key-options-${index}`
               return (
                 <div
@@ -652,6 +670,33 @@ export function ProductFormPage() {
                           value={dimensionParts[2]}
                           onChange={(event) => updateDimensionPart(index, 2, event.target.value)}
                           data-testid={`product-form-spec-${index}-dimension-depth`}
+                        />
+                        {spec.unit ? <span style={unitSuffixStyle}>{spec.unit}</span> : null}
+                      </div>
+                    ) : spec.valueType === 'RANGE' ? (
+                      <div style={dimensionWrapStyle}>
+                        <Input
+                          label="최소"
+                          type="number"
+                          value={rangeParts[0]}
+                          onChange={(event) => updateRangePart(index, 0, event.target.value)}
+                          data-testid={`product-form-spec-${index}-range-min`}
+                        />
+                        <span style={dimensionSeparatorStyle}>/</span>
+                        <Input
+                          label="정격"
+                          type="number"
+                          value={rangeParts[1]}
+                          onChange={(event) => updateRangePart(index, 1, event.target.value)}
+                          data-testid={`product-form-spec-${index}-range-rated`}
+                        />
+                        <span style={dimensionSeparatorStyle}>/</span>
+                        <Input
+                          label="최대"
+                          type="number"
+                          value={rangeParts[2]}
+                          onChange={(event) => updateRangePart(index, 2, event.target.value)}
+                          data-testid={`product-form-spec-${index}-range-max`}
                         />
                         {spec.unit ? <span style={unitSuffixStyle}>{spec.unit}</span> : null}
                       </div>

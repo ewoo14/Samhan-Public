@@ -4,10 +4,12 @@ import {
   buildSpecs,
   buildUpdateProductRequest,
   composeDimensionSpecValue,
+  composeRangeSpecValue,
   editSeedToProductFormValues,
   initialProductFormValues,
   moveSpecRow,
   specPatchForKeyChange,
+  splitRangeSpecValue,
   validateProductForm,
   type ProductFormValues,
 } from './productFormModel'
@@ -95,6 +97,32 @@ describe('productFormModel', () => {
       ],
     })).toEqual([
       { specKey: '냉방능력, kW', specValue: '6.0', unit: 'kW' }, // 완전 입력만 저장(깨진 차원 값 미영속)
+    ])
+  })
+
+  it('RANGE 사양은 최소/정격/최대 3분할 값을 슬래시 조인 문자열과 단위로 저장한다', () => {
+    expect(composeRangeSpecValue('1.80', '5.20', '7.20')).toBe('1.80/5.20/7.20')
+    expect(splitRangeSpecValue(' 1.80 / 5.20 / 7.20 ')).toEqual(['1.80', '5.20', '7.20'])
+    expect(buildSpecs({
+      ...baseForm,
+      specs: [
+        { specKey: '냉방능력, kW', specValue: '1.80 / 5.20 / 7.20', unit: 'kW', valueType: 'RANGE' },
+      ],
+    })).toEqual([
+      { specKey: '냉방능력, kW', specValue: '1.80/5.20/7.20', unit: 'kW' },
+    ])
+  })
+
+  it('RANGE 부분 입력(최소/정격/최대 미완)은 저장에서 제외된다', () => {
+    expect(buildSpecs({
+      ...baseForm,
+      specs: [
+        { specKey: '냉방능력, kW', specValue: '1.80/', unit: 'kW', valueType: 'RANGE' }, // 최소만
+        { specKey: '난방능력, kW', specValue: '1.80/5.20/', unit: 'kW', valueType: 'RANGE' }, // 최소·정격만
+        { specKey: '제품크기, mm', specValue: '947x365x947', unit: 'mm', valueType: 'DIMENSION' },
+      ],
+    })).toEqual([
+      { specKey: '제품크기, mm', specValue: '947x365x947', unit: 'mm' }, // 완전 입력만 저장
     ])
   })
 

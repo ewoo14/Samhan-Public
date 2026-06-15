@@ -143,6 +143,16 @@ export function splitDimensionSpecValue(value: string): [string, string, string]
   return [parts[0] ?? '', parts[1] ?? '', parts[2] ?? '']
 }
 
+export function composeRangeSpecValue(min: string, rated: string, max: string): string {
+  const parts = [min, rated, max].map(trimmed)
+  return parts.some((part) => part.length > 0) ? parts.join('/') : ''
+}
+
+export function splitRangeSpecValue(value: string): [string, string, string] {
+  const parts = value.split(/\//).map(trimmed)
+  return [parts[0] ?? '', parts[1] ?? '', parts[2] ?? '']
+}
+
 export function moveSpecRow(
   specs: ProductSpecFormRow[],
   fromIndex: number,
@@ -187,12 +197,22 @@ export function specPatchForKeyChange(
 }
 
 function normalizedSpecValue(spec: ProductSpecFormRow): string {
-  if (spec.valueType !== 'DIMENSION') return trimmed(spec.specValue)
-  const [width, height, depth] = splitDimensionSpecValue(spec.specValue)
-  // W·H·D 3분할 모두 채워졌을 때만 WxHxD 저장 — 부분 입력(예 "1800xx")은 미완으로 보고
-  // 빈 값 반환 → buildSpecs 필터로 저장 제외(깨진 차원 값 영속 방지).
-  if (!width || !height || !depth) return ''
-  return composeDimensionSpecValue(width, height, depth)
+  if (spec.valueType === 'DIMENSION') {
+    const [width, height, depth] = splitDimensionSpecValue(spec.specValue)
+    // W·H·D 3분할 모두 채워졌을 때만 WxHxD 저장 — 부분 입력(예 "1800xx")은 미완으로 보고
+    // 빈 값 반환 → buildSpecs 필터로 저장 제외(깨진 차원 값 영속 방지).
+    if (!width || !height || !depth) return ''
+    return composeDimensionSpecValue(width, height, depth)
+  }
+
+  if (spec.valueType === 'RANGE') {
+    const [min, rated, max] = splitRangeSpecValue(spec.specValue)
+    // 최소·정격·최대 3분할 모두 채워졌을 때만 저장 — 부분 범위 값 영속 방지.
+    if (!min || !rated || !max) return ''
+    return composeRangeSpecValue(min, rated, max)
+  }
+
+  return trimmed(spec.specValue)
 }
 
 function nullableSpecUnit(value: string): string | null {

@@ -5,7 +5,7 @@ ALTER TABLE spec_key_template
     ADD COLUMN value_type VARCHAR(16) NOT NULL DEFAULT 'TEXT';
 
 ALTER TABLE spec_key_template
-    ADD CONSTRAINT chk_skt_value_type CHECK (value_type IN ('NUMBER', 'DIMENSION', 'TEXT'));
+    ADD CONSTRAINT chk_skt_value_type CHECK (value_type IN ('NUMBER', 'DIMENSION', 'RANGE', 'TEXT'));
 
 DELETE FROM spec_key_template
 WHERE created_by = 'system';
@@ -35,12 +35,12 @@ INSERT INTO spec_key_template (
 
 -- SINGLE_SET
 ('11111111-0000-0000-0000-000000002001', 'SINGLE_SET', '배관경', NULL, 'TEXT', 1, TRUE, NOW(), 'system', FALSE),
-('11111111-0000-0000-0000-000000002002', 'SINGLE_SET', '냉방능력, kcal/h', 'kcal/h', 'TEXT', 2, TRUE, NOW(), 'system', FALSE),
-('11111111-0000-0000-0000-000000002003', 'SINGLE_SET', '난방능력, kcal/h', 'kcal/h', 'TEXT', 3, TRUE, NOW(), 'system', FALSE),
-('11111111-0000-0000-0000-000000002004', 'SINGLE_SET', '냉방능력, kW', 'kW', 'TEXT', 4, TRUE, NOW(), 'system', FALSE),
-('11111111-0000-0000-0000-000000002005', 'SINGLE_SET', '난방능력, kW', 'kW', 'TEXT', 5, TRUE, NOW(), 'system', FALSE),
-('11111111-0000-0000-0000-000000002006', 'SINGLE_SET', '냉방소비전력, kW', 'kW', 'TEXT', 6, TRUE, NOW(), 'system', FALSE),
-('11111111-0000-0000-0000-000000002007', 'SINGLE_SET', '난방소비전력, kW', 'kW', 'TEXT', 7, TRUE, NOW(), 'system', FALSE),
+('11111111-0000-0000-0000-000000002002', 'SINGLE_SET', '냉방능력, kcal/h', 'kcal/h', 'RANGE', 2, TRUE, NOW(), 'system', FALSE),
+('11111111-0000-0000-0000-000000002003', 'SINGLE_SET', '난방능력, kcal/h', 'kcal/h', 'RANGE', 3, TRUE, NOW(), 'system', FALSE),
+('11111111-0000-0000-0000-000000002004', 'SINGLE_SET', '냉방능력, kW', 'kW', 'RANGE', 4, TRUE, NOW(), 'system', FALSE),
+('11111111-0000-0000-0000-000000002005', 'SINGLE_SET', '난방능력, kW', 'kW', 'RANGE', 5, TRUE, NOW(), 'system', FALSE),
+('11111111-0000-0000-0000-000000002006', 'SINGLE_SET', '냉방소비전력, kW', 'kW', 'RANGE', 6, TRUE, NOW(), 'system', FALSE),
+('11111111-0000-0000-0000-000000002007', 'SINGLE_SET', '난방소비전력, kW', 'kW', 'RANGE', 7, TRUE, NOW(), 'system', FALSE),
 ('11111111-0000-0000-0000-000000002008', 'SINGLE_SET', '냉매가스', NULL, 'TEXT', 8, TRUE, NOW(), 'system', FALSE),
 ('11111111-0000-0000-0000-000000002009', 'SINGLE_SET', '에너지소비효율등급', NULL, 'TEXT', 9, TRUE, NOW(), 'system', FALSE),
 ('11111111-0000-0000-0000-000000002010', 'SINGLE_SET', '전원선, mm²', 'mm²', 'NUMBER', 10, TRUE, NOW(), 'system', FALSE),

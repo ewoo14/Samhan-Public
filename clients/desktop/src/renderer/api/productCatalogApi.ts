@@ -49,7 +49,7 @@ export type BundleMode = 'EXPAND' | 'KEEP'
 export type ProductGoodsType = 'GOODS' | 'NON_GOODS'
 
 /** 사양 값 입력 방식 — BE SpecKeyValueType enum 과 정확히 일치 */
-export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'TEXT'
+export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'RANGE' | 'TEXT'
 
 // ---------------------------------------------------------------------------
 // 응답 DTO

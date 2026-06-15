@@ -82,7 +82,7 @@ export interface ProductSpec {
 }
 
 /** SpecKeyTemplate 응답 — product-service `SpecKeyTemplateResponse` 와 1:1. */
-export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'TEXT'
+export type SpecKeyValueType = 'NUMBER' | 'DIMENSION' | 'RANGE' | 'TEXT'
 
 export interface SpecKeyTemplate {
   id: string
