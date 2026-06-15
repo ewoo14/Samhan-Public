@@ -56,6 +56,19 @@ describe('productFormModel', () => {
     })
   })
 
+  it('템플릿에 없는 커스텀 사양명을 그대로 보존한다', () => {
+    const request = buildCreateProductRequest({
+      ...baseForm,
+      specs: [
+        { specKey: '커스텀특수사양', specValue: '현장별 별도 협의' },
+      ],
+    })
+
+    expect(request.specs).toEqual([
+      { specKey: '커스텀특수사양', specValue: '현장별 별도 협의' },
+    ])
+  })
+
   it('SET 선택 시 bundleMode 를 포함하고 parentSetModelCode 는 보내지 않는다', () => {
     const request = buildCreateProductRequest({
       ...baseForm,

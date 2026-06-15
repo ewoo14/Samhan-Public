@@ -23,6 +23,7 @@ import {
   getProductByModelName,
   listProductCategories,
   listProducts,
+  listSpecKeyTemplates,
   searchProductSummaries,
   updateProduct,
   type BundleMode,
@@ -43,6 +44,8 @@ import {
   type ProductFormErrors,
   type ProductFormValues,
 } from './productFormModel'
+
+const SPEC_KEY_DATALIST_ID = 'product-form-spec-key-options'
 
 const ITEM_KIND_OPTIONS: Array<{ value: ProductItemKind; label: string }> = [
   { value: 'GENERAL', label: '일반품목' },
@@ -132,6 +135,18 @@ export function ProductFormPage() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const specKeyTemplatesQuery = useQuery({
+    queryKey: ['spec-key-templates'],
+    queryFn: async () => {
+      try {
+        return await listSpecKeyTemplates()
+      } catch {
+        return []
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
   const editSeedQuery = useQuery({
     queryKey: ['product-form', modelCode],
     enabled: mode === 'edit' && !!modelCode,
@@ -163,6 +178,17 @@ export function ProductFormPage() {
     () => flattenCategories(categoriesQuery.data ?? []),
     [categoriesQuery.data],
   )
+
+  const specKeyOptions = useMemo(() => {
+    const seen = new Set<string>()
+    return (specKeyTemplatesQuery.data ?? [])
+      .map((template) => template.specKey.trim())
+      .filter((specKey) => {
+        if (!specKey || seen.has(specKey)) return false
+        seen.add(specKey)
+        return true
+      })
+  }, [specKeyTemplatesQuery.data])
 
   const invalidateProducts = () => {
     void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
@@ -444,12 +470,22 @@ export function ProductFormPage() {
             사양 추가
           </Button>
         </div>
+        <datalist id={SPEC_KEY_DATALIST_ID} data-testid="product-form-spec-key-datalist">
+          {specKeyOptions.map((specKey, index) => (
+            <option
+              key={specKey}
+              value={specKey}
+              data-testid={`product-form-spec-key-option-${index}`}
+            />
+          ))}
+        </datalist>
         {values.specs.length > 0 ? (
           <div style={specRowsStyle}>
             {values.specs.map((spec, index) => (
               <div key={index} style={specRowStyle}>
                 <Input
                   label="사양명"
+                  list={SPEC_KEY_DATALIST_ID}
                   value={spec.specKey}
                   onChange={(event) => updateSpecRow(index, { specKey: event.target.value })}
                   placeholder="예: 냉방성능"
