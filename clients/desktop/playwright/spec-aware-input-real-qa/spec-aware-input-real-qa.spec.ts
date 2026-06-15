@@ -109,12 +109,27 @@ test('시드 제품 편집 — 기존 적재 사양 그대로 조회', async ({ 
     '[data-testid$="-key"][data-testid^="product-form-spec-"]',
     (els) => els.map((e) => (e as HTMLInputElement).value).filter(Boolean),
   )
-  expect(loaded.length).toBeGreaterThanOrEqual(5) // 기존 시드 사양 로드됨
+  expect(loaded.length).toBeGreaterThanOrEqual(5) // seeded specs loaded
+
+  const numberInputCount = await page.locator(
+    'input[type="number"][data-testid^="product-form-spec-"][data-testid$="-value"]',
+  ).count()
+  expect(numberInputCount).toBeGreaterThan(0)
+
+  const rowTexts = await page.locator('[data-testid^="product-form-spec-"][data-testid$="-row"]').allInnerTexts()
+  const unitBearingRows = rowTexts.filter((text) => /\b(kW|kcal\/h|mm|kg|A|m)\b/.test(text))
+  expect(unitBearingRows.length).toBeGreaterThan(0)
+
+  const dimensionInputCount = await page.locator('[data-testid$="-dimension-width"]').count()
+  const rangeInputCount = await page.locator('[data-testid$="-range-min"]').count()
+  expect(dimensionInputCount + rangeInputCount).toBeGreaterThan(0)
+
   await page.screenshot({ path: path.join(OUT, '03-edit-seeded-specs.png'), fullPage: true })
 
   fs.writeFileSync(path.join(OUT, 'edit-seeded-evidence.txt'),
-    `시드 제품 AM100AXVHJH1 편집 — 기존 적재 사양 ${loaded.length}개 로드됨(그대로 조회 가능)\n`
-    + `--- 로드된 사양명(구 표기 — TEXT 자유편집) ---\n${loaded.join('\n')}\n`, 'utf8')
+    `시드 제품 AM100AXVHJH1 편집 — V17 키 + valueType 재현 사양 ${loaded.length}개 로드됨\n`
+    + `NUMBER 단위 suffix 행=${unitBearingRows.length}, DIMENSION 입력=${dimensionInputCount}, RANGE 입력=${rangeInputCount}\n`
+    + `--- 로드된 사양명(V17 키 + valueType 재현) ---\n${loaded.join('\n')}\n`, 'utf8')
 })
 
 test('RANGE — 싱글세트 능력 최소/정격/최대 3칸 입력 + / 결합', async ({ page }) => {

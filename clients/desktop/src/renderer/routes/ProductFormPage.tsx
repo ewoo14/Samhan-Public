@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from 'react'
@@ -152,6 +153,8 @@ export function ProductFormPage() {
   const [parentSet, setParentSet] = useState<ProductOption | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [draggingSpecIndex, setDraggingSpecIndex] = useState<number | null>(null)
+  const editSeedLoadedModelRef = useRef<string | null>(null)
+  const editSeedReconciledModelRef = useRef<string | null>(null)
 
   useEffect(() => {
     setPageTitle({ title: mode === 'create' ? '품목 등록' : '품목 수정', meta: '품목' })
@@ -204,9 +207,12 @@ export function ProductFormPage() {
 
   useEffect(() => {
     const seed = editSeedQuery.data
-    if (!seed) return
+    if (!seed || mode !== 'edit' || !modelCode) return
+    if (editSeedLoadedModelRef.current === modelCode) return
+    editSeedLoadedModelRef.current = modelCode
+    editSeedReconciledModelRef.current = null
     setValues(editSeedToProductFormValues(seed))
-  }, [editSeedQuery.data])
+  }, [editSeedQuery.data, mode, modelCode])
 
   const categoryOptions = useMemo(
     () => flattenCategories(categoriesQuery.data ?? []),
@@ -222,6 +228,32 @@ export function ProductFormPage() {
     }
     return map
   }, [specTemplates])
+
+  useEffect(() => {
+    const seed = editSeedQuery.data
+    if (!seed || mode !== 'edit' || !modelCode) return
+    if (editSeedLoadedModelRef.current !== modelCode) return
+    if (editSeedReconciledModelRef.current === modelCode) return
+    if (specTemplateByKey.size === 0) return
+
+    const seedValues = editSeedToProductFormValues(seed)
+    const seedEstimateCategory = estimateCategoryForProductCategory(seedValues.productCategory)
+    if (seedEstimateCategory && estimateCategory !== seedEstimateCategory) return
+
+    editSeedReconciledModelRef.current = modelCode
+    setValues((current) => ({
+      ...current,
+      specs: current.specs.map((spec) => {
+        const template = specTemplateByKey.get(spec.specKey)
+        if (!template) return spec
+        return {
+          ...spec,
+          unit: spec.unit || template.defaultUnit || '',
+          valueType: template.valueType,
+        }
+      }),
+    }))
+  }, [editSeedQuery.data, estimateCategory, mode, modelCode, specTemplateByKey])
 
   const selectedSpecKeys = useMemo(() => {
     return new Set(values.specs.map((spec) => spec.specKey.trim()).filter(Boolean))
