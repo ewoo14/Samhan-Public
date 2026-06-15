@@ -187,7 +187,7 @@ public class ProductSheetSyncService {
     private static boolean isPanelRow(String name, String modelCode) {
         String n = name == null ? "" : name;
         String m = modelCode == null ? "" : modelCode;
-        return n.matches(".*(판넬|판널|패널).*") || m.matches("(?i)PC.*");
+        return n.matches(".*(판넬|판널|패널).*") || m.matches("(?i)PC[0-9].*");
     }
 
     /**
