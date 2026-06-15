@@ -1,60 +1,60 @@
-# 사양 인지형 입력 (사양명 단위포함 + 값타입) — 스펙
+# 사양 인지형 입력 (품목별 사양 + 단위 + 값타입 + 순서/중복) — 스펙
 
-> 사양 후속 #1 재설계. 개발책임자 추가 요구(2026-06-15): 사양명 = 구글 시트 단위포함, 단위 자동부착, 크기 3분할, 값타입(수치/텍스트) 구분.
-> 개발책임자 결정 2건(AskUserQuestion): **① 실제 구글 시트 읽어 재시드 ② 명시 valueType 메타**.
+> 사양 후속 #1 전면 재설계. 개발책임자 추가 요구(2026-06-15, 다회):
+> 1. 사양명 = 구글 시트/GAS 기준 **품목별** 단위 포함, 단위 자동 부착.
+> 2. 값 입력 = **valueType**(숫자/크기3분할/텍스트) 분기.
+> 3. **사양 순서 동적 변경**(드래그 reorder).
+> 4. **이미 추가한 사양은 드롭박스에서 제외**(중복 방지).
+> 5. **GAS 코드 참조 + 표시 사양 품목별 확인**.
+> 결정(AskUserQuestion): ① 실제 시트 읽어 재시드 ② 명시 valueType 메타.
 
-## 1. 실 시트 조사 (SRC_SHEET_ID `1RJqO3jT…`, 탭 홈멀티/싱글세트/상업멀티_단가인상)
-사양 헤더(=캐노니컬 사양명) 추출. 단위 일부 헤더포함("소비전력(kW)", "실내기 크기(mm)"), 일부 미포함("배관경","냉매가스","차단기"). **중복 헤더**: "냉방성능(정격)" 2컬럼(1st=kW, 2nd=kcal/h — code.js scanHome 매핑) → 단위별 분리 필요.
+## 1. GAS 품목별 표시 사양 (권위 소스 = index.ejs render*Spec_, 원본 tools/legacy-gas/종합견적서 95%+ 동등)
 
-## 2. 데이터 모델 (개발책임자 ②)
-- **`spec_key_template`**: `spec_key` = **"이름, 단위"**(단위 있으면; 예 "냉방성능, kW") 자체가 식별자 → 다단위 충돌 없음. `default_unit`(자동부착용), 신규 `value_type`(NUMBER/DIMENSION/TEXT).
-- **`ProductSpec`**(기존): `spec_value`=숫자/치수문자열/텍스트, `unit`=단위(분리저장). 표시 시 조합(NUMBER `6.0`+`kW`→`6.0kW`, DIMENSION `947x365x947`+` mm`). **기존 ProductSpec 데이터는 독립(템플릿=FK 아님)** → 무영향.
+품목 타입별 표시 사양 집합(값구조 표기):
 
-## 3. valueType 정의
-- **NUMBER**: 값 필드 = 숫자 1개. 단위 자동 부착(표시). 예 냉방성능/소비전력/차단기/중량/장배관.
-- **DIMENSION**: 값 필드 = 숫자 3분할(가운데 `x`) → `WxHxD`. 단위 mm. 예 제품크기/포장치수.
-- **TEXT**: 자유 텍스트. 단위 없음. 예 냉매가스/등급/규격/비고/에너지소비효율등급.
+| 품목 타입 | 표시 사양 (값구조) |
+|---|---|
+| **홈멀티 실내기** | 배관경(DUAL), 냉방성능 kcal/h(N), 냉방성능 kW(N), 냉방소비전력 kW(N), 냉매가스(T), 에너지소비효율등급(T), 전원선 mm²(N), 차단기 A(N), 제품크기 mm(DIM), 제품중량 kg(N), 포장치수 mm(DIM), 포장중량 kg(N), 배관길이 m(N), 고낙차 m(N) |
+| **홈멀티 실외기** | (실내기 동일) + 최대 연결 실내기 대수 대(N) |
+| **홈멀티 판넬** | 타공사이즈 mm(N), 전산볼트간격 mm(N), 제품크기 mm(DIM), 제품중량 kg(N), 포장치수 mm(DIM), 포장중량 kg(N) |
+| **싱글세트 실내/외** | 배관경(DUAL), 냉방성능 kcal/h(RANGE), 난방성능 kcal/h(RANGE), 냉방성능 kW(RANGE), 난방성능 kW(RANGE), 냉방소비전력 kW(RANGE), 난방소비전력 kW(RANGE), 냉매가스(T), 효율등급(T), 전원선 mm²(N), 차단기 A(N), 제품크기 mm(DIM), 제품중량 kg(N), 포장치수 mm(DIM), 포장중량 kg(N), 배관길이 m(N), 고낙차 m(N) |
+| **싱글세트 판넬** | 타공사이즈 mm(N), 전산볼트간격 mm(N), 제품크기 mm(DIM), 제품중량 kg(N), 포장치수 mm(DIM), 포장중량 kg(N) |
+| **상업멀티 실내/외** | 배관경(DUAL), 냉방성능 kcal/h(N), 난방성능 kcal/h(N), 냉방성능 kW(N), 난방성능 kW(N), 냉방소비전력 kW(N), 난방소비전력 kW(N), 냉매가스(T), 소비효율등급(T), 전원선 mm²(N), 차단기 A(N), 제품크기 mm(DIM), 제품중량 kg(N), 포장치수 mm(DIM), 포장중량 kg(N), 배관길이 m(N/TRIPLE), 고낙차 m(N/TRIPLE) |
+| **상업멀티 실외기** | (실내기 동일) + 최대 연결 실내기 대수 대(N) |
+| **상업멀티 판넬** | 타공사이즈 mm(N), 전산볼트간격 mm(N), 제품크기 mm(DIM), 제품중량 kg(N), 포장치수 mm(DIM), 포장중량 kg(N) |
+| **전열교환기** | 덕트구경(T), 소비전력(전열환기)(T), 소비전력(일반환기)(T), 제품크기 mm(DIM), 제품중량 kg(N) |
 
-## 4. 사양 정의 시드 (제품 등록 폼 — 통합 단위, 실내/외 분리 제외)
-| spec_key(표시·식별자) | default_unit | value_type | 비고 |
-|---|---|---|---|
-| 용량 | (none) | NUMBER | 단위 미정(개발책임자 확인 — HP/kW?) |
-| 배관경 | (none) | TEXT | "6/12"(액관/가스관 2값) |
-| 냉방성능, kW | kW | NUMBER | |
-| 냉방성능, kcal/h | kcal/h | NUMBER | |
-| 난방성능, kW | kW | NUMBER | |
-| 난방성능, kcal/h | kcal/h | NUMBER | |
-| 소비전력, kW | kW | NUMBER | |
-| 냉매가스 | (none) | TEXT | R410A |
-| 차단기, A | A | NUMBER | |
-| 전원선, mm² | mm² | NUMBER | |
-| 제품크기, mm | mm | DIMENSION | WxHxD |
-| 제품중량, kg | kg | NUMBER | |
-| 포장치수, mm | mm | DIMENSION | WxHxD |
-| 포장중량, kg | kg | NUMBER | |
-| 최대장배관, m | m | NUMBER | |
-| 최대고저차, m | m | NUMBER | |
-| 최대 연결 실내기 대수, 대 | 대 | NUMBER | |
-| 에너지소비효율등급 | (none) | TEXT | "2/3등급" |
-| 등급(냉방/난방) | (none) | TEXT | |
-| 규격 | (none) | TEXT | |
-| 비고 | (none) | TEXT | |
+> 차이: 홈/상업=정격 SINGLE, 싱글=최소/정격/최대 RANGE, 상업 배관길이/고낙차=조건부 TRIPLE.
+> **🐞 GAS 버그(estimate-app 별도 후속)**: 싱글/상업 판넬의 타공사이즈/전산볼트간격이 cool_cap_kcal/cool_pow_kw로 오매핑(index.ejs 3461-2,3526-7). 본 슬라이스는 사양 정의만, 버그 fix는 estimate-app 후속.
 
-> **개발책임자 확인 사항**: ① 사양명 "냉방**성능**"(시트) vs "냉방**능력**"(개발책임자 표현) — 시트 따름(기본). ② 용량 단위. ③ 배관경 TEXT(2값) 수용 여부.
+## 2. valueType (제품 등록 = 단일 품목, 개발책임자 3종)
+- **NUMBER**: 숫자 1개 + 단위 자동부착(표시). SINGLE 매핑.
+- **DIMENSION**: 숫자 3분할(가운데 `x`) `WxHxD` + 단위 mm. DIMENSION 매핑.
+- **TEXT**: 자유 텍스트. TEXT/DUAL(배관경 "6/12")/RANGE(싱글 "10/12/15")/TRIPLE 매핑(제품 등록은 단일품목이라 RANGE/TRIPLE은 텍스트로 입력, 세트 표시 전용 구조).
 
-## 5. BE 변경 (product-service)
-- `SpecKeyTemplate` + `value_type`(enum NUMBER/DIMENSION/TEXT, NOT NULL default TEXT). `SpecKeyTemplateResponse` + valueType.
-- **V-migration(신규)**: `ALTER TABLE spec_key_template ADD value_type` + **재시드**(기존 system 행 삭제 + §4 신규 삽입, forward 마이그 — 기존 V4 수정 금지). HOME_MULTI 카테고리에 §4 통합 세트 시드(견적 카테고리 무관 제품폼 공용 → category 필터 없이 전체 노출).
-- 사양 입력 요청 DTO(`ProductSpecInput`)에 `unit` 추가. `ProductService` create/update → `ProductSpec.create(specKey, specValue, unit, order)`.
+## 3. 데이터 모델 (개발책임자 ②)
+- **`spec_key_template`**: `spec_key`="이름, 단위"(예 "냉방성능, kW") 식별자(다단위 충돌 없음), `default_unit`, 신규 `value_type`(NUMBER/DIMENSION/TEXT), `estimate_category`(품목별 필터 축), `display_order`.
+- **`ProductSpec`**(기존): `spec_value`=숫자/치수문자열/텍스트, `unit` 분리, `display_order`(reorder). 표시=조합.
+- 기존 ProductSpec 데이터 독립(템플릿=FK 아님) → 무영향.
 
-## 6. FE 변경 (desktop ProductFormPage)
-- 사양명 = `<datalist>`/Select 로 템플릿 `spec_key` 제안(#487 확장, 자유입력 유지). 선택 시 해당 템플릿의 `unit`+`valueType` 적용.
-- **값 입력 valueType 분기**:
-  - NUMBER: `type=number` 입력 1개 + 단위 suffix 표시(읽기전용). specValue=숫자문자열, unit=템플릿 단위.
-  - DIMENSION: 숫자 입력 3개 + `x` 구분 + 단위 suffix. specValue=`W x H x D`(예 `947x365x947`).
-  - TEXT: 기존 자유 텍스트.
-- `productFormModel.buildSpecs`: valueType별 specValue 구성 + unit 포함. vitest 동반.
-- mock: `MOCK_SPEC_KEY_TEMPLATES` value_type + §4 리스트.
+## 4. FE (desktop ProductFormPage 사양 섹션 전면)
+- **품목별 드롭다운**: 품목 카테고리(estimateCategory 매핑)별 사양 제안. 자유입력 유지.
+- **중복 제외(요구4)**: 이미 추가된 사양(specKey)은 드롭다운 후보에서 제외.
+- **순서 동적 변경(요구3)**: 사양 행 드래그 reorder(design-system 드래그 패턴 or 위/아래 버튼) → display_order 반영.
+- **valueType 입력(요구2)**: NUMBER(type=number + 단위 suffix) / DIMENSION(숫자3 + x + 단위) / TEXT(자유). 선택 시 템플릿 unit+valueType 적용.
+- `productFormModel.buildSpecs`: valueType별 specValue 구성 + unit + display_order. vitest.
+- mock: MOCK_SPEC_KEY_TEMPLATES value_type + 품목별 GAS 리스트.
+
+## 5. BE (product-service)
+- `SpecKeyTemplate` + `value_type` enum. `SpecKeyTemplateResponse` + valueType. (display_order 기존.)
+- V-migration(신규, forward): value_type 컬럼 + **재시드**(기존 system 행 삭제 + §1 품목별 GAS 사양 세트 삽입, estimate_category별). 
+- `ProductSpecInput` DTO + unit + displayOrder. `ProductService` create/update → `ProductSpec.create(specKey, specValue, unit, displayOrder)`.
+
+## 6. 개발책임자 확인 사항
+- 사양명 "냉방**성능**"(시트/GAS) vs "냉방**능력**"(구두) — GAS 따름 기본.
+- 품목별 필터 축: estimateCategory(홈/싱글/상업) 단위면 충분? 아니면 실내기/실외기/판넬 kind 까지 세분?
+- RANGE/DUAL(싱글 성능, 배관경)=제품 등록 시 TEXT 수용? (세트 표시 전용 구조라 단일품목 등록엔 단일값)
+- 순서 변경 UI: 드래그 vs 위/아래 버튼.
 
 ## 7. QA / 워크플로우
-실QA(라이브 :5173 FE + :8080): NUMBER(단위 부착)·DIMENSION(3분할 x)·TEXT 각 캡처 + 다단위(냉방성능 kW/kcal/h) 분리 확인. typecheck/vitest. Opus↔Codex 교대 리뷰. 브랜치 `feat/spec-name-dropdown` 확장(#487 PR 재스코프).
+실QA(라이브 :5173 + :8080): 품목별 드롭다운·valueType 입력(숫자단위/크기3분할/텍스트)·중복제외·순서변경 캡처. typecheck/vitest. Opus↔Codex 교대. 브랜치 `feat/spec-name-dropdown`(#487 재스코프).
