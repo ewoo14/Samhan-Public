@@ -16,7 +16,7 @@ import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UuidGenerator;
 
 /**
- * 카테고리별 추천 스펙 키 — 사양 후속 #1 GAS 기반 56 row 시드.
+ * 카테고리별 추천 스펙 키 — 사양 후속 #1 GAS 기반 60 row 시드.
  *
  * <p>출처: Migration Plan §2.1.1.2. 신규 품목 등록 시 estimateCategory 선택 →
  * isRecommended=TRUE 키들이 자동 추가됨 (값은 빈 칸).

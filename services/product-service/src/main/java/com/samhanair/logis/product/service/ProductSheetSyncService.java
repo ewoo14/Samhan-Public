@@ -23,6 +23,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +32,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -370,37 +373,25 @@ public class ProductSheetSyncService {
     }
 
     /**
-     * 사양 적재 — 사양 보유 탭의 헤더 컬럼(비사양/매핑컬럼 제외)을 spec_key=헤더(공백제거), value=셀 원본
-     * 으로 ProductSpec upsert(멱등). 시트에서 사라진 키는 soft-delete. legacy getSpecDetailMap_ 통짜저장 정합.
+     * 사양 적재 — legacy {@code getSpecDetailMap_()} 인덱스 해석을 카테고리별 allowlist 로 포팅한다.
+     * 매핑된 구헤더는 V17 spec_key/value/unit 로 저장하고, 미매핑 헤더는 기존 blocklist 방식으로 보존한다.
      *
      * @return 이번 row 에 적재(upsert)한 spec 개수
      */
     private int loadSpecsForProduct(UUID productId, List<String> header, List<String> cells, SheetTabMapping mapping) {
         Set<String> seenKeys = new HashSet<>();
+        Set<Integer> consumedColumns = new HashSet<>();
         int linked = 0;
-        for (int col = 0; col < header.size(); col++) {
-            if (col == mapping.nameColumn || col == mapping.modelCodeColumn
-                    || col == mapping.releasePriceColumn || col == mapping.deliveryPriceColumn) {
-                continue;
-            }
-            String h = header.get(col) == null ? "" : header.get(col).replaceAll("\\s+", "");
-            if (h.isBlank() || SPEC_EXCLUDE_HEADERS.contains(h) || isPriceLikeHeader(h)) continue;
-            String value = safeGet(cells, col).trim();
-            if (value.isBlank() || "-".equals(value)) continue;
-            String key = h.length() > 50 ? h.substring(0, 50) : h;
-            if (!seenKeys.add(key)) continue; // 동일 헤더 중복 컬럼은 첫 컬럼만(legacy idx 첫매칭 정합)
-            String val = value.length() > 255 ? value.substring(0, 255) : value;
-            ProductSpec spec = productSpecRepository.findByProductIdAndSpecKey(productId, key).orElse(null);
-            if (spec == null) {
-                productSpecRepository.save(ProductSpec.create(productId, key, val, null, col));
-            } else {
-                spec.editValue(val, null);
-                spec.changeDisplayOrder(col);
-                productSpecRepository.save(spec);
-            }
-            linked++;
+        if (mapping.estimateCategory == EstimateCategory.HOME_MULTI) {
+            linked += loadHomeSpecs(productId, header, cells, seenKeys, consumedColumns);
+        } else if (mapping.estimateCategory == EstimateCategory.SINGLE_SET) {
+            linked += loadSingleSpecs(productId, header, cells, seenKeys, consumedColumns);
+        } else if (mapping.estimateCategory == EstimateCategory.COMMERCIAL_MULTI) {
+            linked += loadCommercialSpecs(productId, header, cells, seenKeys, consumedColumns);
         }
-        // soft-delete: 이번 시트에 더 이상 없는 기존 spec 키
+        linked += loadBlocklistSpecs(productId, header, cells, mapping, seenKeys, consumedColumns);
+
+        // soft-delete: 이번 시트에 더 이상 없는 기존 spec 키. 매핑된 구키는 seenKeys 에 없으므로 여기서 정리된다.
         for (ProductSpec s : productSpecRepository.findByProductIdOrderByDisplayOrderAsc(productId)) {
             if (!seenKeys.contains(s.getSpecKey())) {
                 s.markDeleted("system-sheet-sync");
@@ -408,6 +399,428 @@ public class ProductSheetSyncService {
             }
         }
         return linked;
+    }
+
+    private int loadBlocklistSpecs(UUID productId, List<String> header, List<String> cells, SheetTabMapping mapping,
+                                   Set<String> seenKeys, Set<Integer> consumedColumns) {
+        int linked = 0;
+        for (int col = 0; col < header.size(); col++) {
+            if (consumedColumns.contains(col)) {
+                continue;
+            }
+            if (col == mapping.nameColumn || col == mapping.modelCodeColumn
+                    || col == mapping.releasePriceColumn || col == mapping.deliveryPriceColumn) {
+                continue;
+            }
+            String h = normHeader(header.get(col));
+            if (h.isBlank() || SPEC_EXCLUDE_HEADERS.contains(h) || isPriceLikeHeader(h)) continue;
+            String value = safeGet(cells, col).trim();
+            if (value.isBlank() || "-".equals(value)) continue;
+            String key = h.length() > 50 ? h.substring(0, 50) : h;
+            if (upsertSpec(productId, seenKeys, key, value, null, col)) {
+                linked++;
+            }
+        }
+        return linked;
+    }
+
+    private int loadHomeSpecs(UUID productId, List<String> header, List<String> cells,
+                              Set<String> seenKeys, Set<Integer> consumedColumns) {
+        List<String> H = normalizedHeaders(header);
+        List<Integer> coolCols = new ArrayList<>();
+        for (int i = 0; i < H.size(); i++) {
+            String h = H.get(i);
+            if ("냉방성능(정격)".equals(h) || h.contains("냉방성능")) {
+                coolCols.add(i);
+            }
+        }
+
+        int iCoolKw = coolCols.size() > 0 ? coolCols.get(0) : -1;
+        int iCoolKcal = coolCols.size() > 1 ? coolCols.get(1) : -1;
+        int guessKcal = findContainsRaw(header, Pattern.compile("kcal", Pattern.CASE_INSENSITIVE));
+        int guessKw = findContainsRaw(header, Pattern.compile("kW", Pattern.CASE_INSENSITIVE));
+        if (iCoolKcal < 0 && guessKcal >= 0) iCoolKcal = guessKcal;
+        if (iCoolKw < 0 && guessKw >= 0) iCoolKw = guessKw;
+
+        int iPowKw = idx(H, "소비전력(정격)");
+        if (iPowKw < 0) iPowKw = findContainsNorm(H, "소비전력");
+
+        int linked = 0;
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "배관경"),
+                "배관경", null, 1, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iCoolKcal,
+                "냉방능력, kcal/h", "kcal/h", 2, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iCoolKw,
+                "냉방능력, kW", "kW", 3, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iPowKw,
+                "냉방소비전력, kW", "kW", 4, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "냉매가스"),
+                "냉매가스", null, 5, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "에너지소비효율", "에너지소비효율등급"),
+                "에너지소비효율등급", null, 6, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "전원선"),
+                "전원선, mm²", "mm²", 7, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "차단기"),
+                "차단기, A", "A", 8, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "제품크기"),
+                "제품크기, mm", "mm", 9, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "제품중량"),
+                "제품중량, kg", "kg", 10, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "포장치수"),
+                "포장치수, mm", "mm", 11, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "포장중량"),
+                "포장중량, kg", "kg", 12, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, firstExistingIdx(H, "최대장배관", "최대장배관"),
+                "배관길이, m", "m", 13, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, firstExistingIdx(H, "최대고저차", "최대고저차"),
+                "고낙차, m", "m", 14, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "최대연결실내기대수", "최대연결실내기대수"),
+                "최대 연결 실내기 대수, 대", "대", 15, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "타공사이즈", "타공사이즈(mm)"),
+                "타공사이즈, mm", "mm", 16, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "전산볼트간격", "전산볼트간격(mm)"),
+                "전산볼트간격, mm", "mm", 17, SpecValueMode.NUMBER);
+        return linked;
+    }
+
+    private int loadSingleSpecs(UUID productId, List<String> header, List<String> cells,
+                                Set<String> seenKeys, Set<Integer> consumedColumns) {
+        List<String> H = normalizedHeaders(header);
+        int iPowKw = firstExistingIdx(H, "소비전력(kW)(최소/정격/최대)", "소비전력(kW)(최소/정격/최대)");
+        int iCapKw = firstExistingIdx(H, "성능(kW)(최소/정격/최대)", "성능(kW)(최소/정격/최대)");
+        int iCapKcal = firstExistingIdx(H, "성능(kcal/h)(최소/정격/최대)", "성능(kcal/h)(최소/정격/최대)");
+        Pair pow = splitBar(cell(cells, iPowKw));
+        Pair capKw = splitBar(cell(cells, iCapKw));
+        Pair capKcal = splitBar(cell(cells, iCapKcal));
+        Pair powerBreaker = splitSlash(cell(cells, firstExistingIdx(H, "전원(mm²)/차단(A)", "전원(mm²)/차단(A)")));
+        Pair pipeDrop = splitSlash(cell(cells, firstExistingIdx(H, "배관길이/고낙차(m)", "배관길이/고낙차(m)")));
+
+        int linked = 0;
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "배관경"),
+                "배관경", null, 1, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, iCapKcal,
+                "냉방능력, kcal/h", capKcal.a(), "kcal/h", 2, SpecValueMode.RANGE);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, iCapKcal,
+                "난방능력, kcal/h", capKcal.b(), "kcal/h", 3, SpecValueMode.RANGE);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, iCapKw,
+                "냉방능력, kW", capKw.a(), "kW", 4, SpecValueMode.RANGE);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, iCapKw,
+                "난방능력, kW", capKw.b(), "kW", 5, SpecValueMode.RANGE);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, iPowKw,
+                "냉방소비전력, kW", pow.a(), "kW", 6, SpecValueMode.RANGE);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, iPowKw,
+                "난방소비전력, kW", pow.b(), "kW", 7, SpecValueMode.RANGE);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "냉매가스"),
+                "냉매가스", null, 8, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "등급(냉방/난방)", "등급(냉방/난방)"),
+                "에너지소비효율등급", null, 9, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns,
+                firstExistingIdx(H, "전원(mm²)/차단(A)", "전원(mm²)/차단(A)"),
+                "전원선, mm²", powerBreaker.a(), "mm²", 10, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns,
+                firstExistingIdx(H, "전원(mm²)/차단(A)", "전원(mm²)/차단(A)"),
+                "차단기, A", powerBreaker.b(), "A", 11, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실내기크기(mm)", "실내기크기(mm)"),
+                "실내기크기, mm", "mm", 12, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실외기크기(mm)", "실외기크기(mm)"),
+                "실외기크기, mm", "mm", 13, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실내기중량(kg)", "실내기중량(kg)"),
+                "실내기중량, kg", "kg", 14, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실외기중량(kg)", "실외기중량(kg)"),
+                "실외기중량, kg", "kg", 15, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실내기포장(mm)", "실내기포장(mm)"),
+                "실내기포장, mm", "mm", 16, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실외기포장(mm)", "실외기포장(mm)"),
+                "실외기포장, mm", "mm", 17, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실내기포장중량(kg)", "실내기포장중량(kg)"),
+                "실내기포장중량, kg", "kg", 18, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "실외기포장중량(kg)", "실외기포장중량(kg)"),
+                "실외기포장중량, kg", "kg", 19, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns,
+                firstExistingIdx(H, "배관길이/고낙차(m)", "배관길이/고낙차(m)"),
+                "배관길이, m", pipeDrop.a(), "m", 20, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns,
+                firstExistingIdx(H, "배관길이/고낙차(m)", "배관길이/고낙차(m)"),
+                "고낙차, m", pipeDrop.b(), "m", 21, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "타공사이즈", "타공사이즈(mm)"),
+                "타공사이즈, mm", "mm", 22, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "전산볼트간격", "전산볼트간격(mm)"),
+                "전산볼트간격, mm", "mm", 23, SpecValueMode.NUMBER);
+        return linked;
+    }
+
+    private int loadCommercialSpecs(UUID productId, List<String> header, List<String> cells,
+                                    Set<String> seenKeys, Set<Integer> consumedColumns) {
+        List<String> H = normalizedHeaders(header);
+        List<ColumnGroup> groups = commercialGroups(header);
+        List<Integer> coolCapCols = groups.size() > 0 ? groups.get(0).cols() : List.of();
+        List<Integer> coolPowCols = groups.size() > 1 ? groups.get(1).cols() : List.of();
+        List<Integer> heatCapCols = groups.size() > 2 ? groups.get(2).cols() : List.of();
+        List<Integer> heatPowCols = groups.size() > 3 ? groups.get(3).cols() : List.of();
+        boolean isErvLayout = (coolCapCols.size() == 3 && coolPowCols.size() == 3
+                && heatCapCols.size() == 3 && heatPowCols.size() == 3)
+                || (coolCapCols.size() == 2 && coolPowCols.size() == 1
+                && heatCapCols.size() == 2 && heatPowCols.size() == 1);
+
+        List<Integer> coolCols = collectRawContains(header, Pattern.compile("냉방\\s*성능"));
+        List<Integer> heatCols = collectRawContains(header, Pattern.compile("난방\\s*성능"));
+        List<Integer> powCols = collectRawContains(header, Pattern.compile("소비\\s*전력"));
+        int iDuct = firstExistingIdx(H, "덕트구경", "덕트구경");
+
+        int linked = 0;
+        if (isErvLayout) {
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, coolCapCols,
+                    "냉방능력, kcal/h", joinCols(cells, coolCapCols), "kcal/h", 2, SpecValueMode.AS_IS);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, heatCapCols,
+                    "난방능력, kcal/h", joinCols(cells, heatCapCols), "kcal/h", 3, SpecValueMode.AS_IS);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, coolPowCols,
+                    "냉방소비전력, kW", joinCols(cells, coolPowCols), "kW", 6, SpecValueMode.AS_IS);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, heatPowCols,
+                    "난방소비전력, kW", joinCols(cells, heatPowCols), "kW", 7, SpecValueMode.AS_IS);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iDuct >= 0 ? iDuct : idx(H, "냉매가스"),
+                    "냉매가스", null, 8, SpecValueMode.AS_IS);
+        } else {
+            int iCoolKcal = coolCols.size() > 0 ? coolCols.get(0) : -1;
+            int iCoolKw = coolCols.size() >= 2 ? coolCols.get(1) : (iCoolKcal >= 0 ? iCoolKcal + 1 : -1);
+            int iHeatKcal = heatCols.size() > 0 ? heatCols.get(0) : -1;
+            int iHeatKw = heatCols.size() >= 2 ? heatCols.get(1) : (iHeatKcal >= 0 ? iHeatKcal + 1 : -1);
+            int iPowCool = powCols.size() > 0 ? powCols.get(0) : -1;
+            int iPowHeat = powCols.size() >= 2 ? powCols.get(powCols.size() - 1) : (iPowCool >= 0 ? iPowCool + 1 : -1);
+
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "배관경"),
+                    "배관경", null, 1, SpecValueMode.AS_IS);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iCoolKcal,
+                    "냉방능력, kcal/h", "kcal/h", 2, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iHeatKcal,
+                    "난방능력, kcal/h", "kcal/h", 3, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iCoolKw,
+                    "냉방능력, kW", "kW", 4, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iHeatKw,
+                    "난방능력, kW", "kW", 5, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iPowCool,
+                    "냉방소비전력, kW", "kW", 6, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, iPowHeat,
+                    "난방소비전력, kW", "kW", 7, SpecValueMode.NUMBER);
+            linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "냉매가스"),
+                    "냉매가스", null, 8, SpecValueMode.AS_IS);
+        }
+
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "소비효율등급", "에너지소비효율등급"),
+                "소비효율등급", null, 9, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "전원선"),
+                "전원선, mm²", "mm²", 10, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "차단기"),
+                "차단기, A", "A", 11, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "제품크기"),
+                "제품크기, mm", "mm", 12, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "제품중량"),
+                "제품중량, kg", "kg", 13, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "포장치수"),
+                "포장치수, mm", "mm", 14, SpecValueMode.DIMENSION);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells, idx(H, "포장중량"),
+                "포장중량, kg", "kg", 15, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "최대장배관", "배관길이"),
+                "배관길이, m", "m", 16, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "최대고저차", "고낙차"),
+                "고낙차, m", "m", 17, SpecValueMode.AS_IS);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "최대연결실내기대수", "최대연결실내기대수"),
+                "최대 연결 실내기 대수, 대", "대", 18, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "타공사이즈", "타공사이즈(mm)"),
+                "타공사이즈, mm", "mm", 19, SpecValueMode.NUMBER);
+        linked += addMappedSpec(productId, seenKeys, consumedColumns, cells,
+                firstExistingIdx(H, "전산볼트간격", "전산볼트간격(mm)"),
+                "전산볼트간격, mm", "mm", 20, SpecValueMode.NUMBER);
+        return linked;
+    }
+
+    private int addMappedSpec(UUID productId, Set<String> seenKeys, Set<Integer> consumedColumns,
+                              List<String> cells, int col, String key, String unit,
+                              int displayOrder, SpecValueMode mode) {
+        return addMappedSpec(productId, seenKeys, consumedColumns, col, key, cell(cells, col), unit, displayOrder, mode);
+    }
+
+    private int addMappedSpec(UUID productId, Set<String> seenKeys, Set<Integer> consumedColumns,
+                              int col, String key, String rawValue, String unit,
+                              int displayOrder, SpecValueMode mode) {
+        if (col >= 0) {
+            consumedColumns.add(col);
+        }
+        return upsertSpec(productId, seenKeys, key, normalizeSpecValue(rawValue, mode), unit, displayOrder) ? 1 : 0;
+    }
+
+    private int addMappedSpec(UUID productId, Set<String> seenKeys, Set<Integer> consumedColumns,
+                              List<Integer> cols, String key, String rawValue, String unit,
+                              int displayOrder, SpecValueMode mode) {
+        consumedColumns.addAll(cols);
+        return upsertSpec(productId, seenKeys, key, normalizeSpecValue(rawValue, mode), unit, displayOrder) ? 1 : 0;
+    }
+
+    private boolean upsertSpec(UUID productId, Set<String> seenKeys, String key, String value, String unit, int displayOrder) {
+        String val = value == null ? "" : value.trim();
+        if (val.isBlank() || "-".equals(val) || !seenKeys.add(key)) {
+            return false;
+        }
+        val = val.length() > 255 ? val.substring(0, 255) : val;
+        ProductSpec spec = productSpecRepository.findByProductIdAndSpecKey(productId, key).orElse(null);
+        if (spec == null) {
+            productSpecRepository.save(ProductSpec.create(productId, key, val, unit, displayOrder));
+        } else {
+            spec.editValue(val, unit);
+            spec.changeDisplayOrder(displayOrder);
+            productSpecRepository.save(spec);
+        }
+        return true;
+    }
+
+    private static String normalizeSpecValue(String rawValue, SpecValueMode mode) {
+        return switch (mode) {
+            case AS_IS -> rawValue == null ? "" : rawValue.trim();
+            case NUMBER -> extractNumber(rawValue);
+            case RANGE -> normRange(rawValue);
+            case DIMENSION -> normDimension(rawValue);
+        };
+    }
+
+    private static String extractNumber(String v) {
+        if (v == null) return "";
+        Matcher m = Pattern.compile("-?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?").matcher(v);
+        return m.find() ? m.group().replace(",", "") : "";
+    }
+
+    private static String normRange(String v) {
+        return v == null ? "" : v.trim().replaceAll("\\s*/\\s*", "/");
+    }
+
+    private static String normDimension(String v) {
+        if (v == null) return "";
+        String trimmed = v.trim();
+        String[] parts = trimmed.split("\\s*[xX×*]\\s*");
+        if (parts.length != 3) {
+            return trimmed;
+        }
+        return parts[0].trim() + "x" + parts[1].trim() + "x" + parts[2].trim();
+    }
+
+    private static Pair splitBar(String v) {
+        String s = v == null ? "" : v;
+        int pos = s.indexOf('|');
+        if (pos < 0) return new Pair(s.trim(), "");
+        return new Pair(s.substring(0, pos).trim(), s.substring(pos + 1).trim());
+    }
+
+    private static Pair splitSlash(String v) {
+        String s = v == null ? "" : v;
+        int pos = s.indexOf('/');
+        if (pos < 0) return new Pair(s.trim(), "");
+        return new Pair(s.substring(0, pos).trim(), s.substring(pos + 1).trim());
+    }
+
+    private static String normHeader(String h) {
+        return h == null ? "" : h.trim().replaceAll("\\s+", "");
+    }
+
+    private static List<String> normalizedHeaders(List<String> header) {
+        List<String> out = new ArrayList<>();
+        for (String h : header) {
+            out.add(normHeader(h));
+        }
+        return out;
+    }
+
+    private static int idx(List<String> normalizedHeader, String candidate) {
+        String target = normHeader(candidate);
+        for (int i = 0; i < normalizedHeader.size(); i++) {
+            if (target.equals(normalizedHeader.get(i))) return i;
+        }
+        return -1;
+    }
+
+    private static int firstExistingIdx(List<String> normalizedHeader, String... candidates) {
+        for (String candidate : candidates) {
+            int i = idx(normalizedHeader, candidate);
+            if (i >= 0) return i;
+        }
+        return -1;
+    }
+
+    private static int findContainsNorm(List<String> normalizedHeader, String needle) {
+        String target = normHeader(needle);
+        for (int i = 0; i < normalizedHeader.size(); i++) {
+            if (normalizedHeader.get(i).contains(target)) return i;
+        }
+        return -1;
+    }
+
+    private static int findContainsRaw(List<String> header, Pattern pattern) {
+        for (int i = 0; i < header.size(); i++) {
+            if (pattern.matcher(header.get(i) == null ? "" : header.get(i)).find()) return i;
+        }
+        return -1;
+    }
+
+    private static List<Integer> collectRawContains(List<String> header, Pattern pattern) {
+        List<Integer> out = new ArrayList<>();
+        for (int i = 0; i < header.size(); i++) {
+            if (pattern.matcher(header.get(i) == null ? "" : header.get(i)).find()) {
+                out.add(i);
+            }
+        }
+        return out;
+    }
+
+    private static List<ColumnGroup> commercialGroups(List<String> header) {
+        List<ColumnGroup> groups = new ArrayList<>();
+        ColumnGroup current = null;
+        for (int i = 0; i < header.size(); i++) {
+            String raw = header.get(i) == null ? "" : header.get(i);
+            String type = null;
+            if (Pattern.compile("냉방\\s*성능").matcher(raw).find()) type = "coolCap";
+            else if (Pattern.compile("난방\\s*성능").matcher(raw).find()) type = "heatCap";
+            else if (Pattern.compile("소비\\s*전력").matcher(raw).find()) type = "power";
+
+            if (type == null) {
+                current = null;
+            } else if (current == null || !current.type().equals(type)) {
+                List<Integer> cols = new ArrayList<>();
+                cols.add(i);
+                current = new ColumnGroup(type, cols);
+                groups.add(current);
+            } else {
+                current.cols().add(i);
+            }
+        }
+        return groups;
+    }
+
+    private static String joinCols(List<String> cells, List<Integer> cols) {
+        List<String> values = new ArrayList<>();
+        for (Integer col : cols) {
+            String v = cell(cells, col);
+            if (!v.isBlank()) {
+                values.add(v);
+            }
+        }
+        return String.join(" / ", values);
     }
 
     /**
@@ -783,7 +1196,11 @@ public class ProductSheetSyncService {
     }
 
     private static String safeGet(List<String> cells, int idx) {
-        return idx < cells.size() ? cells.get(idx) : "";
+        return idx >= 0 && idx < cells.size() ? cells.get(idx) : "";
+    }
+
+    private static String cell(List<String> cells, int idx) {
+        return safeGet(cells, idx).trim();
     }
 
     /** DISPLAY row 와 동일 인덱스의 FORMULA row 에서 '=' 시작 셀을 공백 join (변동DC 마커 검출용). */
@@ -894,6 +1311,19 @@ public class ProductSheetSyncService {
                     Math.max(releasePriceColumn, deliveryPriceColumn)
             ) + 1;
         }
+    }
+
+    private enum SpecValueMode {
+        AS_IS,
+        NUMBER,
+        RANGE,
+        DIMENSION
+    }
+
+    private record Pair(String a, String b) {
+    }
+
+    private record ColumnGroup(String type, List<Integer> cols) {
     }
 
     /**

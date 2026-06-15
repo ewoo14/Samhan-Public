@@ -91,8 +91,8 @@ public class ProductSeedRunner implements CommandLineRunner {
         // 7) ProductSpec — 시트별 spec 컬럼 변환 row 수 (대략 추산)
         result.productSpecRowCount = estimateProductSpecRowCount(reader);
 
-        // 8) SpecKeyTemplate — V17 SQL 재시드 56 row
-        result.specKeyTemplateRowCount = 56;
+        // 8) SpecKeyTemplate — V17 SQL 재시드 60 row
+        result.specKeyTemplateRowCount = 60;
 
         // 9) 변동DC 룰 자동 판정 sample (sample 30 SKU 비교)
         result.discountDetectionSamples = detectVariableDiscountSamples(reader);
@@ -243,7 +243,7 @@ public class ProductSeedRunner implements CommandLineRunner {
             w.write("| BranchPipeLookup | " + result.branchPipeRowCount + " | 분기계산 시트 99 row (G13 매핑 표 §3 참조) |\n");
             w.write("| OduRecommendationLookup | " + result.oduRecommendationRowCount + " | 추천실외기 시트 row 3~26 |\n");
             w.write("| ProductSpec | " + result.productSpecRowCount + " | 카테고리별 키 수 × 데이터 row (NULL 컬럼 미생성 가정 — 실측은 실 시드 시 갱신) |\n");
-            w.write("| SpecKeyTemplate | " + result.specKeyTemplateRowCount + " | V17 SQL 재시드 (HOME_MULTI 17 + SINGLE_SET 19 + COMMERCIAL_MULTI 20) |\n\n");
+            w.write("| SpecKeyTemplate | " + result.specKeyTemplateRowCount + " | V17 SQL 재시드 (HOME_MULTI 17 + SINGLE_SET 23 + COMMERCIAL_MULTI 20) |\n\n");
 
             w.write("## 2. 시트별 ProductMaster 시드 분포\n\n");
             w.write("| 시트 | data_rows | productCategory | usageScope |\n|---|---|---|---|\n");
