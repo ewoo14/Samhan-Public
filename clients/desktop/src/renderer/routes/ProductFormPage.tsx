@@ -180,14 +180,19 @@ export function ProductFormPage() {
   )
 
   const specKeyOptions = useMemo(() => {
-    const seen = new Set<string>()
-    return (specKeyTemplatesQuery.data ?? [])
-      .map((template) => template.specKey.trim())
-      .filter((specKey) => {
-        if (!specKey || seen.has(specKey)) return false
-        seen.add(specKey)
-        return true
-      })
+    // 전 카테고리 머지 후 distinct + displayOrder 정렬(없으면 후순위). datalist 는 optgroup
+    // 미지원이라 정렬이 유일한 탐색 개선 레버 — 큐레이션 displayOrder(공통 키 우선) 보존.
+    const orderByKey = new Map<string, number>()
+    for (const template of specKeyTemplatesQuery.data ?? []) {
+      const specKey = template.specKey.trim()
+      if (!specKey) continue
+      const order = template.displayOrder ?? Number.MAX_SAFE_INTEGER
+      const prev = orderByKey.get(specKey)
+      if (prev === undefined || order < prev) orderByKey.set(specKey, order)
+    }
+    return [...orderByKey.entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], 'ko'))
+      .map(([specKey]) => specKey)
   }, [specKeyTemplatesQuery.data])
 
   const invalidateProducts = () => {
