@@ -49,31 +49,35 @@ test('사양 인지형 입력 — 품목별 드롭다운·valueType·순서·중
   await page.selectOption('[data-testid="product-form-product-category"]', 'COMMERCIAL_MULTI')
   await page.waitForTimeout(1500) // 템플릿 로드
 
-  // 행0: NUMBER (냉방능력, kW) → 숫자 입력 + 단위 suffix
+  // 행0: NUMBER (냉방능력, kW) — 통합 "사양" 필드에 입력 → 값 필드 동적 전환(숫자+단위 suffix)
   await page.click('[data-testid="product-form-add-spec"]')
-  await page.waitForSelector('[data-testid="product-form-spec-0-template"]', { timeout: 10000 })
-  await page.selectOption('[data-testid="product-form-spec-0-template"]', '냉방능력, kW')
+  await page.waitForSelector('[data-testid="product-form-spec-0-key"]', { timeout: 10000 })
+  await page.fill('[data-testid="product-form-spec-0-key"]', '냉방능력, kW')
+  await page.waitForTimeout(300) // valueType 적용 re-render
   await page.fill('[data-testid="product-form-spec-0-value"]', '101.0')
   const row0Unit = await page.locator('[data-testid="product-form-spec-0-row"]').innerText()
   expect(row0Unit).toContain('kW')
 
-  // 행1: DIMENSION (제품크기, mm) → 3분할 WxHxD
+  // 행1: DIMENSION (제품크기, mm) → 값 필드가 3분할 WxHxD 로 동적 전환
   await page.click('[data-testid="product-form-add-spec"]')
-  await page.selectOption('[data-testid="product-form-spec-1-template"]', '제품크기, mm')
+  await page.fill('[data-testid="product-form-spec-1-key"]', '제품크기, mm')
+  await page.waitForSelector('[data-testid="product-form-spec-1-dimension-width"]', { timeout: 5000 })
   await page.fill('[data-testid="product-form-spec-1-dimension-width"]', '1800')
   await page.fill('[data-testid="product-form-spec-1-dimension-height"]', '2370')
   await page.fill('[data-testid="product-form-spec-1-dimension-depth"]', '1070')
 
-  // 행2: TEXT (냉매가스)
+  // 행2: TEXT (냉매가스) → 자유 텍스트
   await page.click('[data-testid="product-form-add-spec"]')
-  await page.selectOption('[data-testid="product-form-spec-2-template"]', '냉매가스')
+  await page.fill('[data-testid="product-form-spec-2-key"]', '냉매가스')
+  await page.waitForTimeout(300)
   await page.fill('[data-testid="product-form-spec-2-value"]', 'R410A')
 
   await page.screenshot({ path: path.join(OUT, '01-valuetypes.png'), fullPage: true })
 
-  // 중복 제외 검증: 행3 드롭다운에 이미 추가된 사양 미포함
+  // 중복 제외 검증: 행3 datalist 후보에 이미 추가된 사양 미포함
   await page.click('[data-testid="product-form-add-spec"]')
-  const row3Options = await page.$$eval('[data-testid="product-form-spec-3-template"] option', (els) =>
+  await page.waitForSelector('#spec-key-options-3', { state: 'attached', timeout: 5000 })
+  const row3Options = await page.$$eval('#spec-key-options-3 option', (els) =>
     els.map((e) => (e as HTMLOptionElement).value).filter(Boolean))
   const added = ['냉방능력, kW', '제품크기, mm', '냉매가스']
   const leaked = added.filter((a) => row3Options.includes(a))
@@ -92,4 +96,23 @@ test('사양 인지형 입력 — 품목별 드롭다운·valueType·순서·중
     + `중복제외: 행3 후보에서 추가된 ${added.length}개 제외 누수=${leaked.length}\n`
     + `행3 잔여 후보 수=${row3Options.length}\n`
     + `순서변경: 행0 아래로 이동(드래그+위/아래 버튼 제공)\n`, 'utf8')
+})
+
+test('시드 제품 편집 — 기존 적재 사양 그대로 조회', async ({ page }) => {
+  await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
+  // 시드 적재 사양 13개 보유 상업 제품
+  await page.goto(`${BASE_URL}/#/products/AM100AXVHJH1/edit`)
+  await page.waitForSelector('[data-testid="product-form-spec-0-key"]', { timeout: 30000 })
+  await page.waitForTimeout(800)
+
+  const loaded = await page.$$eval(
+    '[data-testid$="-key"][data-testid^="product-form-spec-"]',
+    (els) => els.map((e) => (e as HTMLInputElement).value).filter(Boolean),
+  )
+  expect(loaded.length).toBeGreaterThanOrEqual(5) // 기존 시드 사양 로드됨
+  await page.screenshot({ path: path.join(OUT, '03-edit-seeded-specs.png'), fullPage: true })
+
+  fs.writeFileSync(path.join(OUT, 'edit-seeded-evidence.txt'),
+    `시드 제품 AM100AXVHJH1 편집 — 기존 적재 사양 ${loaded.length}개 로드됨(그대로 조회 가능)\n`
+    + `--- 로드된 사양명(구 표기 — TEXT 자유편집) ---\n${loaded.join('\n')}\n`, 'utf8')
 })

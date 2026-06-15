@@ -321,7 +321,7 @@ export function ProductFormPage() {
     })
   }
 
-  const selectSpecTemplate = (index: number, specKey: string) => {
+  const changeSpecKey = (index: number, specKey: string) => {
     const template = specTemplateByKey.get(specKey)
     if (!template) {
       updateSpecRow(index, {
@@ -337,14 +337,6 @@ export function ProductFormPage() {
       specValue: '',
       unit: template.defaultUnit ?? '',
       valueType: template.valueType,
-    })
-  }
-
-  const changeSpecKeyFreely = (index: number, specKey: string) => {
-    updateSpecRow(index, {
-      specKey,
-      unit: '',
-      valueType: 'TEXT',
     })
   }
 
@@ -554,7 +546,7 @@ export function ProductFormPage() {
           <div>
             <h4 style={sectionTitleStyle}>사양</h4>
             <p style={hintStyle}>
-              {estimateCategory ? `${estimateCategory} 추천 사양 ${specTemplates.length}개` : '전체 추천 사양'}
+              {estimateCategory ? `${estimateCategory} 사양 ${specTemplates.length}개` : '전체 사양'}
               {selectedTemplateCount > 0 ? ` · 선택됨 ${selectedTemplateCount}개` : ''}
             </p>
           </div>
@@ -571,6 +563,7 @@ export function ProductFormPage() {
           <div style={specRowsStyle}>
             {values.specs.map((spec, index) => {
               const dimensionParts = splitDimensionSpecValue(spec.specValue)
+              const specKeyOptionsId = `spec-key-options-${index}`
               return (
                 <div
                   key={index}
@@ -594,46 +587,45 @@ export function ProductFormPage() {
                       aria-label={`${index + 1}번째 사양 드래그`}
                       data-testid={`product-form-spec-${index}-drag-handle`}
                     >
-                      ↕
+                      ≡
                     </button>
                     <Button
                       variant="secondary"
                       onClick={() => reorderSpecRows(index, index - 1)}
                       disabled={isSaving || index === 0}
+                      aria-label="위로 이동"
                       data-testid={`product-form-spec-${index}-move-up`}
                     >
-                      위
+                      ↑
                     </Button>
                     <Button
                       variant="secondary"
                       onClick={() => reorderSpecRows(index, index + 1)}
                       disabled={isSaving || index === values.specs.length - 1}
+                      aria-label="아래로 이동"
                       data-testid={`product-form-spec-${index}-move-down`}
                     >
-                      아래
+                      ↓
                     </Button>
                   </div>
                   <div style={specNameCellStyle}>
-                    <Select
-                      label="추천 사양"
-                      value={specTemplateByKey.has(spec.specKey) ? spec.specKey : ''}
-                      onChange={(event) => selectSpecTemplate(index, event.target.value)}
-                      data-testid={`product-form-spec-${index}-template`}
-                    >
-                      <option value="">직접 입력</option>
-                      {availableTemplatesForRow(index).map((template) => (
-                        <option key={template.id} value={template.specKey}>
-                          {template.specKey} ({VALUE_TYPE_LABELS[template.valueType]})
-                        </option>
-                      ))}
-                    </Select>
                     <Input
-                      label="사양명"
+                      label="사양"
                       value={spec.specKey}
-                      onChange={(event) => changeSpecKeyFreely(index, event.target.value)}
+                      onChange={(event) => changeSpecKey(index, event.target.value)}
                       placeholder="예: 냉방능력, kW"
+                      list={specKeyOptionsId}
                       data-testid={`product-form-spec-${index}-key`}
                     />
+                    <datalist id={specKeyOptionsId}>
+                      {availableTemplatesForRow(index).map((template) => (
+                        <option
+                          key={template.id}
+                          value={template.specKey}
+                          label={VALUE_TYPE_LABELS[template.valueType]}
+                        />
+                      ))}
+                    </datalist>
                   </div>
                   <div style={specValueCellStyle}>
                     {spec.valueType === 'NUMBER' ? (
@@ -864,7 +856,6 @@ const specDragHandleStyle: CSSProperties = {
 
 const specNameCellStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(150px, 0.9fr) minmax(160px, 1fr)',
   gap: 8,
 }
 
