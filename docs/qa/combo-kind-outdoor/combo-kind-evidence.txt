@@ -1,0 +1,20 @@
+상업 combo 모듈 kind ACCESSORY→OUTDOOR + 구성품 sync 트랜잭션 근본 수정 — 실 검증 (사양 후속 #3 후속)
+
+[1] 구성품 sync 트랜잭션 수정 (self-reference)
+- 수정 전: 구성품 tab '상업멀티 구성_단가인상' sync 실패 (Query requires transaction be in progress) — self-invocation @Transactional 우회 → pessimistic 락 실패.
+- 수정 후: 구성품 tab '싱글 구성품' linked=1447·bundlesMarked=271, '상업멀티 구성' linked=156·bundlesMarked=72, 구성품 linked 총 1603, 트랜잭션 에러 0.
+
+[2] blast radius (구성품 재링크 안전)
+- bundle_component active=1584 / deleted=26 — baseline(1584/26) 동일, softDeleted=0. 멱등 재링크, 손상 0.
+
+[3] combo 모듈 OUTDOOR (DB)
+- COMMERCIAL_MULTI 자식 combo 모듈 43개 → OUTDOOR (ACCESSORY 0).
+- 진짜 부속(SINGLE_PART) 8개 → ACCESSORY 유지 (오변경 0).
+- 샘플: AM100AXVHHH1 이 AM260/AM300/AM420...SY 세트 구성품으로 OUTDOOR.
+
+[4] /components API 계약 (DB→API→estimate-app)
+- /products/internal/estimate-catalog/components?category=COMMERCIAL_MULTI 응답:
+  AM* combo 구성품 135행 전부 kind=OUTDOOR (ComponentRow.kind = BundleComponent.componentKind).
+- estimate-app 은 ComponentRow.kind 를 세트 구성품 라벨로 렌더 → combo 모듈 [부속]→[실외기].
+
+검증 환경: 실 게이트웨이/실 product-service(재시드+self-reference 수정)/실 시트 재동기화, dev_master/X-Internal-Token. mock 미사용.
