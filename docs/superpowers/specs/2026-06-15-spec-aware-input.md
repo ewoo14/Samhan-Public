@@ -50,11 +50,22 @@
 - V-migration(신규, forward): value_type 컬럼 + **재시드**(기존 system 행 삭제 + §1 품목별 GAS 사양 세트 삽입, estimate_category별). 
 - `ProductSpecInput` DTO + unit + displayOrder. `ProductService` create/update → `ProductSpec.create(specKey, specValue, unit, displayOrder)`.
 
-## 6. 개발책임자 확인 사항
-- 사양명 "냉방**성능**"(시트/GAS) vs "냉방**능력**"(구두) — GAS 따름 기본.
-- 품목별 필터 축: estimateCategory(홈/싱글/상업) 단위면 충분? 아니면 실내기/실외기/판넬 kind 까지 세분?
-- RANGE/DUAL(싱글 성능, 배관경)=제품 등록 시 TEXT 수용? (세트 표시 전용 구조라 단일품목 등록엔 단일값)
-- 순서 변경 UI: 드래그 vs 위/아래 버튼.
+## 6. 개발책임자 확정 (2026-06-15)
+1. **사양명 = "냉방능력"/"난방능력"**(능력, GAS "성능" 아님). 그 외 GAS/시트 표기 따름.
+2. **품목별 필터 축 = estimate_category(홈/싱글/상업) 단위**. kind(실내기/실외기/판넬) 세분 안 함 → 카테고리 내 전체 사양(판넬·실외기 전용 포함) 노출.
+3. **RANGE/DUAL/TRIPLE = TEXT 입력 수용**(싱글 성능 최소/정격/최대, 배관경 액관/가스관, 상업 배관길이 트리플 → 자유텍스트). 단일값 NUMBER 와 구분.
+4. **순서 변경 = 드래그 + 위/아래 버튼 둘 다**.
+
+## 8. 최종 품목별 시드 테이블 (능력 표기, category별 value_type)
+> spec_key = "이름, 단위"(단위 있으면). display_order = 표 순서. **같은 사양명도 category별 value_type 다름**(싱글 성능=TEXT[RANGE], 홈/상업=NUMBER[정격]).
+
+**HOME_MULTI** (홈멀티): 배관경(TEXT) · 냉방능력, kcal/h(N) · 냉방능력, kW(N) · 냉방소비전력, kW(N) · 냉매가스(T) · 에너지소비효율등급(T) · 전원선, mm²(N) · 차단기, A(N) · 제품크기, mm(DIM) · 제품중량, kg(N) · 포장치수, mm(DIM) · 포장중량, kg(N) · 배관길이, m(N) · 고낙차, m(N) · 최대 연결 실내기 대수, 대(N) · 타공사이즈, mm(N) · 전산볼트간격, mm(N)
+
+**SINGLE_SET** (싱글세트): 배관경(TEXT) · 냉방능력, kcal/h(TEXT) · 난방능력, kcal/h(TEXT) · 냉방능력, kW(TEXT) · 난방능력, kW(TEXT) · 냉방소비전력, kW(TEXT) · 난방소비전력, kW(TEXT) · 냉매가스(T) · 에너지소비효율등급(T) · 전원선, mm²(N) · 차단기, A(N) · 제품크기, mm(DIM) · 제품중량, kg(N) · 포장치수, mm(DIM) · 포장중량, kg(N) · 배관길이, m(N) · 고낙차, m(N) · 타공사이즈, mm(N) · 전산볼트간격, mm(N)
+
+**COMMERCIAL_MULTI** (상업멀티): 배관경(TEXT) · 냉방능력, kcal/h(N) · 난방능력, kcal/h(N) · 냉방능력, kW(N) · 난방능력, kW(N) · 냉방소비전력, kW(N) · 난방소비전력, kW(N) · 냉매가스(T) · 소비효율등급(T) · 전원선, mm²(N) · 차단기, A(N) · 제품크기, mm(DIM) · 제품중량, kg(N) · 포장치수, mm(DIM) · 포장중량, kg(N) · 배관길이, m(TEXT) · 고낙차, m(TEXT) · 최대 연결 실내기 대수, 대(N) · 타공사이즈, mm(N) · 전산볼트간격, mm(N)
+
+> N=NUMBER, DIM=DIMENSION, TEXT/T=TEXT. 단위 있는 N/DIM 은 spec_key 에 ", 단위" 포함. TEXT 무단위는 spec_key=이름만.
 
 ## 7. QA / 워크플로우
 실QA(라이브 :5173 + :8080): 품목별 드롭다운·valueType 입력(숫자단위/크기3분할/텍스트)·중복제외·순서변경 캡처. typecheck/vitest. Opus↔Codex 교대. 브랜치 `feat/spec-name-dropdown`(#487 재스코프).
