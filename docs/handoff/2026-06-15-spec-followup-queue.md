@@ -14,7 +14,11 @@
 - **구성품 모델 329개 중 SPEC_DETAIL_MAP 개별 상세사양 엔트리 보유 = 단 7개**(판넬/리모컨류만, COMM 시트에 우연 존재). **핵심 실내기/실외기는 개별 엔트리 0**(세트 전용 구성품이라 HOME/COMM 독립 카탈로그에 없음). `.spec`/`specText`는 "싱글 360" 같은 분류 라벨뿐.
 - 상세 per-component 사양은 **product-service ProductSpec(#485 741 spec_key + #445 자동채움)에 존재하나 estimate-catalog 가 구성품별로 미노출.**
 
-## #3 (진행중) — 세트 조회 = 구성품 사양 집계 표시 — ✅ 스코프 확정, 🔨 구현 대기
+## #3 — 세트 조회 = 구성품별 사양 표시 — ✅ 머지 완료 (PR #486, `6a3de57f`)
+> **머지 완료 (2026-06-15)**: BE `/components` 에 구성품 ProductSpec additive 반환 + estimate-app `renderComponentSpecs_` 섹션 신설. 다모델 A(Opus)→B(Codex)→C(Opus) 수렴 0 P1/P2. CI 25/25 green. Docker 실QA(싱글·상업 모달 `docs/qa/set-component-spec-display/`). dev-report `docs/dev-reports/2026-06-15-set-component-spec-display.md`.
+> - **🚨 라이브 QA 단독 적발(P1)**: 상업 단위가 전부 EA(SET 없음)라 `unit==='SET'` 게이트가 항상 false → 상업 섹션 미렌더. `catL==='실외기'` 트리거 + `isSetFallback` over-trigger 가드로 fix(정적 4-agent 미적발).
+> - **후속(비차단·데이터 슬라이스)**: ① 싱글 판넬/리모컨 일부 DB spec_key 오라벨(`냉방성능: Ø1020`=타공사이즈, #445/#485 자동채움) ② 상업 combo 모듈 kind=ACCESSORY(소스 시트 구분 폴백 → `[부속]`). **둘 다 코드 아닌 데이터 정리 — 개발책임자 우선순위 판단.**
+
 **개발책임자 결정 2건(2026-06-15 회사 PC):**
 1. **범위 = C(DB 상세 전체)** — product-service estimate-catalog 확장→구성품별 ProductSpec→세트 모달 각 구성품 사양표.
 2. **싱글세트 구성품 = 물리치수+라벨(실측 데이터)** — 실내기/실외기는 치수·중량·포장(세트 spec inSize/outSize 유도)+분류 라벨, 판넬/리모컨은 전체 사양, 상업멀티는 구성품 전체 사양. **성능(냉방/난방)은 세트 통합값 유지**(시스템 단위·분리불가·실데이터 부재 → 합성 금지 [[feedback_no_fake_data_ever]]).
@@ -25,9 +29,9 @@
 
 **본 슬라이스 스코프**: ① BE `EstimateCatalogInternalController` `/components` ComponentRow 에 `List<ProductSpecResponse> specs` 추가(additive, `ProductSpecRepository.findByProductIdInOrderByDisplayOrderAsc` 신규) ② estimate-app `db-catalog.js` 구성품 specs 매핑 + `views/index.ejs` `renderSingleSpec_`/`renderCommSpec_` 에 `renderComponentSpecs_` 섹션 신설(소스 우선순위 part.specs→SPEC_DETAIL_MAP→싱글 실내/외 물리치수 유도). **후속 슬라이스**: 데스크톱 주문/전표 구성품 사양 / 사양맵 전체 시트→DB 치환 / #1 사양명 드롭박스.
 
-**🪤 Codex MCP**: 본 세션 `mcp__codex__codex` 미노출([[feedback_codex_mcp_session_limit]]). codex CLI 0.131.0 가용 → `codex exec` 우회(`</dev/null`+approval never+workspace-write, Codex git 금지·Claude commit 대행) 또는 새 세션(MCP 복구). **다음 = Codex 개발(BE+estimate-app) → Opus/Codex 5-agent → CI+Docker 실QA(싱글세트·상업멀티 모달 캡처) → 머지.**
+**✅ 위 스코프 전부 구현·머지 완료**(PR #486, `6a3de57f`). Codex MCP 는 새 세션에도 미노출 → `codex exec` CLI 우회로 개발·교차리뷰 수행([[feedback_codex_mcp_session_limit]] — CLI 0.131.0, ChatGPT 로그인, approval never+workspace-write, Codex git 금지·Claude commit 대행). 소스 우선순위 ①DB→②SPEC_DETAIL_MAP→③물리치수 전부 반영.
 
-## #1 (마지막) — 사양명 드롭박스 (시드 사양 기반)
+## #1 (다음) — 사양명 드롭박스 (시드 사양 기반)
 사양 등록 시 `사양명` 자유입력 → **`select` 드롭다운**(기존 시드 spec_key 741개에서 선택). 구현: BE distinct spec-key endpoint(`GET /products/spec-keys` 등, ProductSpec distinct spec_key) + FE `ProductFormPage` 사양 행 `사양명`을 Select(+직접입력 허용 옵션). productFormModel/mock/vitest 동반.
 
 ## 워크플로우 (동일)

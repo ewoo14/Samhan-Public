@@ -10,8 +10,8 @@
 > - **#485 품목 등록/관리 고도화 = ✅ 머지 완료** (`e13a16bf`). 동적 사양(ProductSpec 1:N) 포함.
 > - **사양 후속 큐 (개발책임자 순서 #2→#3→#1):**
 >   - **#2 종합견적서 사양 실캡처 = ✅ 완료** (`9991bd04`). 세트=구성품 모델명+세트통합사양만(구성품 개별상세 없음). 데이터제약 확정.
->   - **#3 세트 구성품 사양 표시 = ✅ 계획완료, 🔨 구현대기** (`20a9ebf4`). 개발책임자 결정: 범위=C(DB상세전체)/싱글세트=물리치수+라벨. 스펙=`docs/superpowers/specs/2026-06-15-set-component-spec-display.md`. **다음=Codex 개발**(개발책임자: 새 세션 Codex MCP로 진행 — 본 세션 MCP 미노출).
->   - **#1 사양명 드롭박스 = 대기** (#3 BE 패턴 재사용).
+>   - **#3 세트 구성품 사양 표시 = ✅ 머지 완료** (`6a3de57f`, PR #486). BE `/components` specs additive + estimate-app `renderComponentSpecs_`. 다모델 A→B→C 수렴 0 P1/P2, CI 25/25, Docker 실QA(`docs/qa/set-component-spec-display/`). **라이브 QA 단독 P1 적발**(상업 unit=EA로 `unit==='SET'` 게이트 미렌더 → `catL==='실외기'`+isSetFallback fix). **후속 데이터 슬라이스(비차단)**: 싱글 판넬/리모컨 DB spec_key 오라벨 + 상업 combo kind=ACCESSORY(개발책임자 우선순위 판단).
+>   - **#1 사양명 드롭박스 = 다음(next)** (#3 BE 패턴 재사용 — spec-key distinct endpoint + ProductFormPage Select).
 > - 아래 "품목 등록/관리 고도화" 섹션의 PR #485 "라운드1 fix 진행중" 기술은 **머지 전 체크포인트(이력)** — 현재 무관.
 
 ---
