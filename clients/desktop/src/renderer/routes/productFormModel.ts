@@ -206,10 +206,12 @@ function normalizedSpecValue(spec: ProductSpecFormRow): string {
   }
 
   if (spec.valueType === 'RANGE') {
-    const [min, rated, max] = splitRangeSpecValue(spec.specValue)
-    // 최소·정격·최대 3분할 모두 채워졌을 때만 저장 — 부분 범위 값 영속 방지.
-    if (!min || !rated || !max) return ''
-    return composeRangeSpecValue(min, rated, max)
+    // 최소/정격/최대 중 입력된 값만 '/' 결합(개발책임자: 최소 미입력 시 '최소' 없이 표시).
+    // 앞·뒤 빈 부분 제거(예 최소 미입력 → "정격/최대", 정격만 → "정격"). 모두 비면 ''(저장 제외).
+    const parts = splitRangeSpecValue(spec.specValue).slice()
+    while (parts.length && !parts[parts.length - 1]) parts.pop()
+    while (parts.length && !parts[0]) parts.shift()
+    return parts.join('/')
   }
 
   return trimmed(spec.specValue)

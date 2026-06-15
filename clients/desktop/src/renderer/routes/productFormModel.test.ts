@@ -113,16 +113,17 @@ describe('productFormModel', () => {
     ])
   })
 
-  it('RANGE 부분 입력(최소/정격/최대 미완)은 저장에서 제외된다', () => {
+  it('RANGE 부분 입력은 입력된 값만 / 결합(최소 미입력 시 최소 없이)', () => {
     expect(buildSpecs({
       ...baseForm,
       specs: [
-        { specKey: '냉방능력, kW', specValue: '1.80/', unit: 'kW', valueType: 'RANGE' }, // 최소만
-        { specKey: '난방능력, kW', specValue: '1.80/5.20/', unit: 'kW', valueType: 'RANGE' }, // 최소·정격만
-        { specKey: '제품크기, mm', specValue: '947x365x947', unit: 'mm', valueType: 'DIMENSION' },
+        { specKey: '냉방능력, kW', specValue: '/5.20/7.20', unit: 'kW', valueType: 'RANGE' }, // 최소 미입력 → 최소 없이
+        { specKey: '난방능력, kW', specValue: '1.80/', unit: 'kW', valueType: 'RANGE' }, // 최소만
+        { specKey: '냉방소비전력, kW', specValue: '//', unit: 'kW', valueType: 'RANGE' }, // 모두 비면 제외
       ],
     })).toEqual([
-      { specKey: '제품크기, mm', specValue: '947x365x947', unit: 'mm' }, // 완전 입력만 저장
+      { specKey: '냉방능력, kW', specValue: '5.20/7.20', unit: 'kW' }, // 최소 없이 정격/최대
+      { specKey: '난방능력, kW', specValue: '1.80', unit: 'kW' }, // 입력된 값만
     ])
   })
 
