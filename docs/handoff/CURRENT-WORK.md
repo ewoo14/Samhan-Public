@@ -11,7 +11,9 @@
 > - **사양 후속 큐 (개발책임자 순서 #2→#3→#1):**
 >   - **#2 종합견적서 사양 실캡처 = ✅ 완료** (`9991bd04`). 세트=구성품 모델명+세트통합사양만(구성품 개별상세 없음). 데이터제약 확정.
 >   - **#3 세트 구성품 사양 표시 = ✅ 머지 완료** (`6a3de57f`, PR #486). BE `/components` specs additive + estimate-app `renderComponentSpecs_`. 다모델 A→B→C 수렴 0 P1/P2, CI 25/25, Docker 실QA(`docs/qa/set-component-spec-display/`). **라이브 QA 단독 P1 적발**(상업 unit=EA로 `unit==='SET'` 게이트 미렌더 → `catL==='실외기'`+isSetFallback fix). **후속 데이터 슬라이스(비차단)**: 싱글 판넬/리모컨 DB spec_key 오라벨 + 상업 combo kind=ACCESSORY(개발책임자 우선순위 판단).
->   - **#1 사양명 드롭박스 = 다음(next)** (#3 BE 패턴 재사용 — spec-key distinct endpoint + ProductFormPage Select).
+>   - **#1 사양 인지형 입력 + 시드 "원래 스펙 그대로" 재정렬 = ✅ 구현·검증 완료, 머지 대기** (PR #487, 브랜치 `feat/spec-name-dropdown`). 단순 드롭박스 → **valueType 인지형**(NUMBER 숫자+단위 / DIMENSION WxHxD / RANGE 최소·정격·최대 '/' / TEXT) + 통합 "사양" datalist + 중복제외 + 순서변경(≡/↑/↓). **V17 60행**(value_type + SINGLE 실내기/실외기 분리 8키). **시드 재정렬**: `ProductSheetSyncService` 매핑전용(legacy getSpecDetailMap_ 포팅, HOME kW먼저/COMM kcal먼저, SINGLE splitBar/RANGE), 실 재동기화 검증(SINGLE 274/276·COMM 325/338·HOME 113/119, 용량/규격 0). 편집 폼 valueType 재현 실캡처(`docs/qa/spec-aware-input/03`). typecheck0·vitest15·CI green·듀얼리뷰(FE/QA 0결함). **🚨 라이브 QA 단독 적발 회귀**: headerCells 가드 제거→비사양 탭 nuke(싱글 276/276 0사양)→가드 복원 fix([[spec-sync-full-db-distribution-check]]).
+>   - **#1 후속(개발책임자 결정 필요)**: COMMERCIAL **ERV**(전열교환기) 능력 joinCols 다중값 ↔ V17 NUMBER 불일치. 현 데이터 ERV 0건(잠재), FE 방어가드 적용(NUMBER 값이 단일숫자 아니면 TEXT). ERV 모델 출현 시 turbo 게이트(legacy hasTurboStrongWeak) 복원 + ERV 능력 valueType(RANGE/TEXT) 모델링 결정. + `syncComponentTab` self-invocation @Transactional(PESSIMISTIC 락, 구성품 링킹, 사양 무관 기존 구조) 별도.
+>   - **다음 에픽**: 품목 등록/관리 고도화 잔여 + G1(카탈로그)·G2(거래처) DB전환([[quotation-estimate-app-state]]).
 > - 아래 "품목 등록/관리 고도화" 섹션의 PR #485 "라운드1 fix 진행중" 기술은 **머지 전 체크포인트(이력)** — 현재 무관.
 
 ---
