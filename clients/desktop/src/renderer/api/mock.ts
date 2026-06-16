@@ -1006,7 +1006,7 @@ let MOCK_BUNDLE_COMPONENTS: Record<string, Array<{
   'SET-HM2WAY': [
     { componentProductCode: 'AJ040RXH4BC1', componentName: '시스템에어컨 4Way 4HP', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'INDOOR', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 1 },
     { componentProductCode: 'AJ100NCDKH', componentName: '실외기 10HP', defaultQty: 1, qtyMode: 'FOLLOW_SET', componentKind: 'OUTDOOR', componentVariant: null, isDefault: true, specText: '10HP', displayOrder: 2 },
-    { componentProductCode: 'MWR-WE10N', componentName: '유선 리모컨 (WE10N)', defaultQty: 2, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: null, isDefault: false, specText: null, displayOrder: 3 },
+    { componentProductCode: 'MWR-WE10N', componentName: '유선 리모컨 (WE10N)', defaultQty: 2, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 3 },
   ],
 }
 

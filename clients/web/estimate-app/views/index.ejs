@@ -4904,7 +4904,11 @@ function materialsSumForSet(s){
   if(!includeMat) return 0;
   return partsForSetStrict_(s).reduce((t,p)=>t+(/자재/.test(p?.feat||'')?partUnitPrice(p):0),0);
 }
-function getDefaultRemoteRows(s){return partsForSetStrict_(s).filter(p=>(/리모컨/.test(p?.kind||'')||/리모컨/.test(p?.name||''))&&/기본/i.test(p?.feat||''));}
+function isDefaultComponent_(p){
+  if (typeof p?.isDefault === 'boolean') return p.isDefault === true;
+  return /기본/i.test(p?.feat||'');
+}
+function getDefaultRemoteRows(s){return partsForSetStrict_(s).filter(p=>(/리모컨/.test(p?.kind||'')||/리모컨/.test(p?.name||''))&&isDefaultComponent_(p));}
 function getOptionRemoteRow(s,opt){
   if(!opt) return null;const linked=partsForSetStrict_(s).filter(p=>/리모컨/.test((p?.kind||'')+(p?.name||'')));
   const pick=ok=>linked.find(ok)||null;
@@ -4921,12 +4925,12 @@ function is1WaySet_(s){
   if(/1\s*way|1way/i.test(t)) return true;
   return partsForSetStrict_(s).some(p=>/1\s*way|1way/i.test(((p?.name)||'')+' '+((p?.spec)||'')));
 }
-function getBasePanelRow(s){return partsForSetStrict_(s).filter(p=>/(판넬|패널)/.test((p?.kind||'')+(p?.name||''))).find(p=>/기본/.test(p?.feat||''))||null;}
+function getBasePanelRow(s){return partsForSetStrict_(s).filter(p=>/(판넬|패널)/.test((p?.kind||'')+(p?.name||''))).find(isDefaultComponent_)||null;}
 function pickPanelRow(s){
   const panels=partsForSetStrict_(s).filter(p=>/(판넬|패널)/.test((p?.kind||'')+(p?.name||'')));
   if(!panels.length) return null;
   const panelOpt=el('#ss_panel')?.value||'',shapeOpt=el('#ss_p360')?.value||'원형';
-  const base=panels.find(p=>/기본/i.test(p?.feat||''))||null;
+  const base=panels.find(isDefaultComponent_)||null;
   if(panelOpt==='판넬제외') return null;
   const T=p=>`${p?.name||''} ${p?.feat||''} ${p?.spec||''} ${p?.model||''}`;
   const is360=panels.some(p=>/360\s*-?\s*CST|CST\s*-?\s*360|360CST/i.test(T(p)));
@@ -4935,7 +4939,7 @@ function pickPanelRow(s){
   if(panelOpt==='블랙판넬') return panels.find(p=>/블랙/i.test(T(p))&&matchShape(p))||panels.find(matchShape)||base;
   if(panelOpt==='승강판넬') return panels.find(p=>/(자동승강|승강)/i.test(T(p))&&matchShape(p))||panels.find(matchShape)||base;
   if(panelOpt==='공청판넬') return panels.find(p=>/(공기청정|공청)/i.test(T(p))&&matchShape(p))||panels.find(matchShape)||base;
-  return panels.find(p=>/기본/i.test(p?.feat||'')&&matchShape(p))||panels.find(matchShape)||base;
+  return panels.find(p=>isDefaultComponent_(p)&&matchShape(p))||panels.find(matchShape)||base;
 }
 
 // 싱글세트 기본가 오른쪽가 우선
