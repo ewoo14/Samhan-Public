@@ -225,6 +225,112 @@ class ProductControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void componentProductPatchAsGeneral_preservesParentBundleComponentLink() throws Exception {
+        String parentModelCode = "SET-PARENT-PATCH-001";
+        var parentBody = Map.of(
+                "name", "회귀 세트",
+                "modelName", parentModelCode,
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "1000000",
+                "purchasePrice", "800000",
+                "currency", "KRW",
+                "itemKind", "SET",
+                "bundleMode", "EXPAND",
+                "goodsType", "GOODS");
+
+        MvcResult parentCreated = mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(parentBody)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID parentId = UUID.fromString(objectMapper.readTree(parentCreated.getResponse().getContentAsString())
+                .get("data").get("id").asText());
+
+        String componentModelCode = "SET-COMP-PATCH-001";
+        var componentBody = Map.of(
+                "name", "회귀 구성품",
+                "modelName", componentModelCode,
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "300000",
+                "purchasePrice", "250000",
+                "currency", "KRW",
+                "itemKind", "SET_COMPONENT",
+                "parentSetModelCode", parentModelCode,
+                "componentKind", "INDOOR",
+                "goodsType", "GOODS");
+
+        MvcResult componentCreated = mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(componentBody)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String componentId = objectMapper.readTree(componentCreated.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        assertThat(bundleComponentRepository.findByBundleProductId(parentId))
+                .extracting(BundleComponent::getComponentProductCode)
+                .containsExactly(componentModelCode);
+
+        var patchBody = Map.ofEntries(
+                Map.entry("itemKind", "GENERAL"),
+                Map.entry("unit", "EA"),
+                Map.entry("releasePrice", "310000"),
+                Map.entry("deliveryPrice", "260000"),
+                Map.entry("goodsType", "GOODS"));
+
+        // 구성품 링크는 세트측 BundleComponent CRUD에서만 관리한다. 단일 품목 편집은 부모 링크를 보존해야 한다.
+        mockMvc.perform(patch("/products/" + componentId)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(patchBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.itemKind").value("SET_COMPONENT"))
+                .andExpect(jsonPath("$.data.parentSetModelCode").value(parentModelCode));
+
+        assertThat(bundleComponentRepository.findByBundleProductId(parentId))
+                .extracting(BundleComponent::getComponentProductCode)
+                .containsExactly(componentModelCode);
+        assertThat(bundleComponentRepository.findByComponentProductCode(componentModelCode))
+                .hasSize(1)
+                .extracting(BundleComponent::getBundleProductId)
+                .containsExactly(parentId);
+    }
+
+    @Test
+    void managerRole_post_materialNonGoods_returns201_andUsageScopeNone() throws Exception {
+        // Map.of 는 최대 10쌍 → 12쌍은 Map.ofEntries (arity 제한 없음) 사용.
+        var body = Map.ofEntries(
+                Map.entry("name", "자재 등록 IT"),
+                Map.entry("modelName", "MAT-REG-IT-001"),
+                Map.entry("categoryId", categoryId.toString()),
+                Map.entry("sellingPrice", "40000"),
+                Map.entry("purchasePrice", "40000"),
+                Map.entry("currency", "KRW"),
+                Map.entry("itemKind", "GENERAL"),
+                Map.entry("productCategory", "MATERIAL"),
+                Map.entry("unit", "EA"),
+                Map.entry("releasePrice", "40000"),
+                Map.entry("deliveryPrice", "40000"),
+                Map.entry("goodsType", "NON_GOODS"));
+
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.productCategory").value("MATERIAL"))
+                .andExpect(jsonPath("$.data.goodsType").value("NON_GOODS"))
+                .andExpect(jsonPath("$.data.usageScope").value("NONE"))
+                .andExpect(jsonPath("$.data.unit").value("EA"));
+    }
+
+    @Test
     void accountantRole_priceUpdate_succeeds_butFullUpdate_returns403() throws Exception {
         // setup: MANAGER 가 먼저 제품 생성
         var createBody = Map.of(
@@ -348,5 +454,52 @@ class ProductControllerIT extends AbstractPostgresIT {
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[?(@.modelName=='DISC-001')]").isEmpty());
+    }
+
+    /**
+     * 슬9 회귀 가드 — 전표 라인 검색(usageScope=PARTNER_ORDER)이 BOTH 판매품목을 포함하고
+     * MATERIAL(usageScope NONE) 자재를 제외하는지 실 HTTP 로 단언한다. mock IN-expand 와 실 BE
+     * exact-match 가 어긋나 전표 라인 검색이 0건 되던 production 파손 회귀 방지.
+     */
+    @Test
+    void search_usageScopePartnerOrder_includesBothScope_excludesMaterial() throws Exception {
+        var bothBody = Map.of(
+                "name", "BOTH 검색 IT",
+                "modelName", "USAGE-BOTH-IT-001",
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "100000",
+                "purchasePrice", "80000",
+                "currency", "KRW",
+                "usageScope", "BOTH");
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(bothBody)))
+                .andExpect(status().isCreated());
+
+        var materialBody = Map.ofEntries(
+                Map.entry("name", "MATERIAL 검색 IT"),
+                Map.entry("modelName", "USAGE-MAT-IT-001"),
+                Map.entry("categoryId", categoryId.toString()),
+                Map.entry("sellingPrice", "30000"),
+                Map.entry("purchasePrice", "30000"),
+                Map.entry("currency", "KRW"),
+                Map.entry("productCategory", "MATERIAL"),
+                Map.entry("goodsType", "NON_GOODS"));
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(materialBody)))
+                .andExpect(status().isCreated());
+
+        // usageScope=PARTNER_ORDER 검색 → IN-expand 로 BOTH 포함, MATERIAL(NONE) 제외.
+        mockMvc.perform(get("/products?usageScope=PARTNER_ORDER&q=USAGE-")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[?(@.modelName=='USAGE-BOTH-IT-001')]").exists())
+                .andExpect(jsonPath("$.data.content[?(@.modelName=='USAGE-MAT-IT-001')]").doesNotExist());
     }
 }

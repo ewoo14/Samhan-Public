@@ -58,6 +58,7 @@
  *   <li>{@code product-catalog-save-order-button} — 순서 저장 버튼</li>
  *   <li>{@code components-modal} — 구성품 편집 모달 (data-testid on modal wrapper)</li>
  *   <li>{@code components-modal-component-row-{index}} — 구성품 행</li>
+ *   <li>{@code components-modal-default-{index}} — 기본 구성품 체크박스</li>
  *   <li>{@code components-modal-quantity-{index}} — 수량 입력</li>
  *   <li>{@code components-modal-delete-{index}} — 구성품 삭제 버튼</li>
  *   <li>{@code components-modal-up-{index}} — 위로 버튼</li>
@@ -119,6 +120,7 @@ import {
   updateDisplayOrders,
   type ProductCatalogRow,
   type EstimateCategory,
+  type ProductCategory,
   type UsageScope,
   type BundleComponentInput,
   type ComponentKind,
@@ -126,6 +128,11 @@ import {
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import {
+  buildBundleComponentInputs,
+  toggleComponentDefault,
+  type ComponentDraftModel,
+} from './componentsModalModel'
 
 // ---------------------------------------------------------------------------
 // 상수
@@ -140,15 +147,37 @@ const ESTIMATE_CATEGORY_LABEL: Record<EstimateCategory, string> = {
   HOME_MULTI: '홈멀티',
   SINGLE_SET: '단일 세트',
   COMMERCIAL_MULTI: '상업멀티',
-  LEGACY: '레거시',
+  LEGACY: '구형',
   OTHER: '기타',
+}
+
+/*
+const PRODUCT_CATEGORY_LABEL_BROKEN_ENCODING: Record<ProductCategory, string> = {
+  HOME_MULTI: '?덈???,
+  SINGLE_SET: '?⑥씪 ?명듃',
+  SINGLE_PART: '?⑥씪 援ъ꽦??,
+  COMMERCIAL_MULTI: '?곸뾽硫??,
+  COMMERCIAL_PART: '?곸뾽 援ъ꽦??,
+  OLD: '?덇굅??,
+  MATERIAL: '자재',
+}
+
+*/
+const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
+  HOME_MULTI: '홈멀티',
+  SINGLE_SET: '싱글 세트',
+  SINGLE_PART: '싱글 구성품',
+  COMMERCIAL_MULTI: '상업 멀티',
+  COMMERCIAL_PART: '상업 구성품',
+  OLD: '구형',
+  MATERIAL: '자재',
 }
 
 const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string }> = [
   { value: 'HOME_MULTI', label: '홈멀티' },
   { value: 'SINGLE_SET', label: '단일 세트' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
-  { value: 'LEGACY', label: '레거시' },
+  { value: 'LEGACY', label: '구형' },
   { value: 'OTHER', label: '기타' },
 ]
 
@@ -292,28 +321,6 @@ interface ComponentsModalProps {
   onSaved: () => void
 }
 
-/**
- * 구성품 draft — BE 응답 필드 전체 보존 + 로컬 메타.
- * 기존 행: GET 응답의 qtyMode/componentKind/componentVariant/isDefault/specText 유지 (hidden round-trip).
- * 신규 행: componentKind 사용자 선택 가능 (null → BE 기본 ACCESSORY), 나머지 null.
- */
-interface ComponentDraft {
-  /** BE BundleComponentItem 필드 전체 */
-  componentProductCode: string
-  componentName: string
-  defaultQty: number
-  qtyMode: 'FIXED' | 'FOLLOW_SET'
-  componentKind: ComponentKind | null
-  componentVariant: string | null
-  isDefault: boolean
-  specText: string | null
-  displayOrder: number
-  /** 로컬 임시 ID — 저장 시 제거 */
-  _localId: string
-  /** 신규 추가 여부 — true: componentKind 셀렉트 노출 */
-  _isNew: boolean
-}
-
 function ComponentsModal({
   open,
   modelCode,
@@ -322,7 +329,7 @@ function ComponentsModal({
   onSaved,
 }: ComponentsModalProps) {
   const queryClient = useQueryClient()
-  const [drafts, setDrafts] = useState<ComponentDraft[]>([])
+  const [drafts, setDrafts] = useState<ComponentDraftModel[]>([])
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
 
@@ -349,7 +356,7 @@ function ComponentsModal({
     },
   })
 
-  // 모달 열릴 때 drafts 초기화 — BE 응답 메타 전체 보존 (hidden round-trip)
+  // 모달 열릴 때 drafts 초기화 — BE 응답 메타 전체 보존
   useEffect(() => {
     if (open && componentsQuery.data) {
       setDrafts(
@@ -386,6 +393,10 @@ function ComponentsModal({
           : d,
       ),
     )
+  }
+
+  const handleDefaultChange = (localId: string, checked: boolean) => {
+    setDrafts((prev) => toggleComponentDefault(prev, localId, checked))
   }
 
   const handleDelete = (localId: string) => {
@@ -430,7 +441,7 @@ function ComponentsModal({
     const visibleCode = product.modelCode ?? product.modelName
     // 중복 추가 방지
     if (drafts.some((d) => d.componentProductCode === visibleCode)) return
-    const newDraft: ComponentDraft = {
+    const newDraft: ComponentDraftModel = {
       componentProductCode: visibleCode,
       componentName: product.productName,
       defaultQty: 1,
@@ -452,17 +463,7 @@ function ComponentsModal({
       setModalError('구성품이 없습니다. 최소 1개 이상 등록해 주세요.')
       return
     }
-    // BE BundleComponentRequest 1:1 매핑 — 배열 인덱스가 displayOrder
-    const components: BundleComponentInput[] = drafts.map((d) => ({
-      componentProductCode: d.componentProductCode,
-      defaultQty: d.defaultQty,
-      qtyMode: d.qtyMode ?? undefined,
-      componentKind: d.componentKind ?? undefined,
-      componentVariant: d.componentVariant ?? undefined,
-      isDefault: d.isDefault,
-      specText: d.specText ?? undefined,
-    }))
-    saveMutation.mutate(components)
+    saveMutation.mutate(buildBundleComponentInputs(drafts))
   }
 
   const handleClose = () => {
@@ -563,6 +564,17 @@ function ComponentsModal({
                     {COMPONENT_KIND_OPTIONS.find((o) => o.value === draft.componentKind)?.label ?? draft.componentKind}
                   </span>
                 ) : null}
+                <label style={componentDefaultLabelStyle}>
+                  <input
+                    type="checkbox"
+                    checked={draft.isDefault}
+                    disabled={!canEdit || isSaving}
+                    onChange={(e) => handleDefaultChange(draft._localId, e.target.checked)}
+                    data-testid={`components-modal-default-${idx}`}
+                    aria-label={`기본 구성품 ${idx + 1}`}
+                  />
+                  <span>기본</span>
+                </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>수량</span>
                   <Input
@@ -989,8 +1001,10 @@ export function ProductCatalogPage() {
       header: '카테고리',
       width: '100px',
       render: (row) =>
-        row.estimateCategory
-          ? ESTIMATE_CATEGORY_LABEL[row.estimateCategory]
+        row.productCategory
+          ? PRODUCT_CATEGORY_LABEL[row.productCategory]
+          : row.estimateCategory
+            ? ESTIMATE_CATEGORY_LABEL[row.estimateCategory]
           : '—',
     },
     {
@@ -1465,6 +1479,16 @@ const componentRowStyle: CSSProperties = {
   borderRadius: 4,
 }
 
+const componentDefaultLabelStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  fontSize: 11,
+  color: 'var(--color-neutral-600, #4B5563)',
+  cursor: 'pointer',
+  userSelect: 'none',
+  whiteSpace: 'nowrap',
+}
 
 const orderButtonStyle: CSSProperties = {
   appearance: 'none',

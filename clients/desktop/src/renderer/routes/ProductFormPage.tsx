@@ -14,10 +14,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   Button,
   Input,
-  ProductAutocomplete,
   Select,
   Spinner,
-  type ProductOption,
 } from '@samhan/design-system'
 import {
   createProduct,
@@ -28,20 +26,19 @@ import {
   searchProductSummaries,
   updateProduct,
   type BundleMode,
-  type ComponentKind,
   type EstimateCategory,
+  type ProductFormItemKind,
   type ProductCategory,
   type ProductCategoryNode,
   type ProductGoodsType,
-  type ProductItemKind,
   type SpecKeyTemplateResponse,
   type SpecKeyValueType,
 } from '../api/productCatalogApi'
-import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePageTitleStore } from '../stores/pageTitle'
 import {
   buildCreateProductRequest,
   buildUpdateProductRequest,
+  applyProductCategoryDefaults,
   composeDimensionSpecValue,
   composeRangeSpecValue,
   editSeedToProductFormValues,
@@ -56,10 +53,9 @@ import {
   type ProductFormValues,
 } from './productFormModel'
 
-const ITEM_KIND_OPTIONS: Array<{ value: ProductItemKind; label: string }> = [
-  { value: 'GENERAL', label: '일반품목' },
+const ITEM_KIND_OPTIONS: Array<{ value: ProductFormItemKind; label: string }> = [
+  { value: 'GENERAL', label: '단일' },
   { value: 'SET', label: '세트' },
-  { value: 'SET_COMPONENT', label: '세트구성품' },
 ]
 
 const GOODS_TYPE_OPTIONS: Array<{ value: ProductGoodsType; label: string }> = [
@@ -73,23 +69,13 @@ const PRODUCT_CATEGORY_OPTIONS: Array<{ value: ProductCategory; label: string }>
   { value: 'SINGLE_PART', label: '단일 구성품' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
   { value: 'COMMERCIAL_PART', label: '상업 구성품' },
-  { value: 'OLD', label: '레거시' },
+  { value: 'OLD', label: '구형' },
   { value: 'MATERIAL', label: '자재' },
 ]
 
 const BUNDLE_MODE_OPTIONS: Array<{ value: BundleMode; label: string }> = [
   { value: 'EXPAND', label: '구성품 펼침' },
   { value: 'KEEP', label: '세트 유지' },
-]
-
-const COMPONENT_KIND_OPTIONS: Array<{ value: ComponentKind; label: string }> = [
-  { value: 'INDOOR', label: '실내기' },
-  { value: 'OUTDOOR', label: '실외기' },
-  { value: 'PANEL', label: '판넬' },
-  { value: 'REMOTE', label: '리모컨' },
-  { value: 'MATERIAL', label: '자재' },
-  { value: 'ACCESSORY', label: '부속품' },
-  { value: 'FOOT', label: '받침대' },
 ]
 
 const VALUE_TYPE_LABELS: Record<SpecKeyValueType, string> = {
@@ -121,9 +107,8 @@ function flattenCategories(nodes: ProductCategoryNode[], depth = 0): Array<{ id:
   ])
 }
 
-function defaultCategoryForItemKind(itemKind: ProductItemKind): ProductCategory {
+function defaultCategoryForItemKind(itemKind: ProductFormItemKind): ProductCategory {
   if (itemKind === 'SET') return 'SINGLE_SET'
-  if (itemKind === 'SET_COMPONENT') return 'SINGLE_PART'
   return 'SINGLE_PART'
 }
 
@@ -151,7 +136,6 @@ export function ProductFormPage() {
 
   const [values, setValues] = useState<ProductFormValues>(() => initialProductFormValues())
   const [errors, setErrors] = useState<ProductFormErrors>({})
-  const [parentSet, setParentSet] = useState<ProductOption | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [draggingSpecIndex, setDraggingSpecIndex] = useState<number | null>(null)
   const editSeedLoadedModelRef = useRef<string | null>(null)
@@ -316,28 +300,16 @@ export function ProductFormPage() {
     })
   }
 
-  const handleItemKindChange = (itemKind: ProductItemKind) => {
+  const handleItemKindChange = (itemKind: ProductFormItemKind) => {
     patchValues({
       itemKind,
       productCategory: defaultCategoryForItemKind(itemKind),
-      parentSetModelCode: itemKind === 'SET_COMPONENT' ? values.parentSetModelCode : '',
       bundleMode: itemKind === 'SET' ? values.bundleMode : 'EXPAND',
     })
-    if (itemKind !== 'SET_COMPONENT') {
-      setParentSet(null)
-    }
   }
 
-  const searchBundleProducts = async (q: string): Promise<ProductOption[]> => {
-    const products = await searchProductsApi(q)
-    return products.filter((product) => product.productType === 'BUNDLE')
-  }
-
-  const handleParentSetChange = (product: ProductOption | null) => {
-    setParentSet(product)
-    patchValues({
-      parentSetModelCode: product?.modelCode ?? product?.modelName ?? '',
-    })
+  const handleProductCategoryChange = (productCategory: ProductCategory) => {
+    patchValues(applyProductCategoryDefaults(values, productCategory))
   }
 
   const addSpecRow = () => {
@@ -428,7 +400,7 @@ export function ProductFormPage() {
           <h3 style={{ margin: 0 }}>{mode === 'create' ? '품목 등록' : '품목 수정'}</h3>
           <p style={subtitleStyle}>
             {mode === 'create'
-              ? '일반품목, 세트, 세트구성품을 등록합니다.'
+              ? '단일 품목과 세트를 등록합니다.'
               : `모델코드 ${modelCode ?? ''} 품목을 수정합니다.`}
           </p>
         </div>
@@ -518,7 +490,7 @@ export function ProductFormPage() {
           <Select
             label="내부 분류"
             value={values.productCategory}
-            onChange={(event) => patchValues({ productCategory: event.target.value as ProductCategory })}
+            onChange={(event) => handleProductCategoryChange(event.target.value as ProductCategory)}
             data-testid="product-form-product-category"
           >
             {PRODUCT_CATEGORY_OPTIONS.map((option) => (
@@ -548,37 +520,6 @@ export function ProductFormPage() {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </Select>
-        </section>
-      ) : null}
-
-      {values.itemKind === 'SET_COMPONENT' ? (
-        <section style={sectionStyle}>
-          <h4 style={sectionTitleStyle}>부모 세트</h4>
-          <div style={gridStyle}>
-            <ProductAutocomplete
-              value={parentSet}
-              onChange={handleParentSetChange}
-              searchProducts={searchBundleProducts}
-              label="부모 세트"
-              placeholder="세트 모델명 또는 품목명 검색"
-              required
-              error={errors.parentSetModelCode}
-              minChars={1}
-            />
-            <Select
-              label="구성 분류"
-              value={values.componentKind}
-              onChange={(event) => patchValues({ componentKind: event.target.value as ComponentKind })}
-              data-testid="product-form-component-kind"
-            >
-              {COMPONENT_KIND_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Select>
-          </div>
-          {values.parentSetModelCode ? (
-            <p style={hintStyle}>선택한 부모 세트: {values.parentSetModelCode}</p>
-          ) : null}
         </section>
       ) : null}
 

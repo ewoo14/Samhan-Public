@@ -1,7 +1,7 @@
 /**
  * 품목 등록/관리 고도화 (PR #485) Docker 실서버 QA Playwright spec.
  *
- * 대상: 신규 품목 등록 폼 — 종류 3구분(일반/세트/세트구성품) + 세트구성품 부모세트 자동완성 + 상품/비상품.
+ * 대상: 신규 품목 등록 폼 — 종류 2구분(단일/세트) + 상품/비상품.
  * 실서버: http://localhost:8080 (api-gateway), http://localhost:5175 (FE dev)
  * 인증: dev_master / dev_p05_pass! (MASTER role, products.admin CREATE)
  *
@@ -9,7 +9,7 @@
  *   cd C:\dev\Samhan-Public\clients\desktop
  *   node_modules\.bin\playwright test --config=playwright.real-qa.config.ts playwright/product-registration-real-qa --reporter=line --timeout=60000
  */
-import { test, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import * as path from 'path'
 import * as fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -50,12 +50,15 @@ async function loginAndInstallStub(page: Page, loginId: string, password: string
   }, { tok: token, r: role, uid: userId, name: displayName })
 }
 
-test('품목 등록 폼 — 종류 3구분·세트구성품 부모세트 자동완성·상품/비상품', async ({ page }) => {
+test('품목 등록 폼 — 종류 2구분·상품/비상품', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
 
   await page.goto(`${BASE_URL}/#/products/new`)
   await page.waitForSelector('[data-testid="product-form-model-name"]', { timeout: 30000 })
-  // 1) 기본(일반품목) — 종류 라디오 + 상품/비상품 토글 + 필드
+  // 1) 기본(단일) — 종류 라디오 + 상품/비상품 토글 + 필드
+  await expect(page.getByRole('radio', { name: '단일' })).toBeVisible()
+  await expect(page.getByRole('radio', { name: '세트' })).toBeVisible()
+  await expect(page.getByRole('radio', { name: '세트구성품' })).toHaveCount(0)
   await screenshot(page, '01-form-general')
 
   // 1b) 사양 추가 → 사양명/값 입력 행 등장 (동적 사양 등록 위치)
@@ -67,23 +70,17 @@ test('품목 등록 폼 — 종류 3구분·세트구성품 부모세트 자동�
   await page.selectOption('[data-testid="product-form-goods-type"]', 'NON_GOODS')
   await screenshot(page, '02-non-goods')
 
-  // 3) 종류 = 세트구성품 → 부모 세트 자동완성 섹션 등장
+  // 3) 종류는 단일/세트만 제공 — 제품 쪽 부모 세트/구성 분류는 없음
   await page.selectOption('[data-testid="product-form-goods-type"]', 'GOODS')
-  await page.locator('input[name="itemKind"][value="SET_COMPONENT"]').click()
-  await page.waitForSelector('text=부모 세트', { timeout: 5000 })
-  await screenshot(page, '03-set-component-parent-required')
+  await expect(page.locator('input[name="itemKind"][value="SET_COMPONENT"]')).toHaveCount(0)
+  await expect(page.getByText('부모 세트')).toHaveCount(0)
+  await expect(page.locator('[data-testid="product-form-component-kind"]')).toHaveCount(0)
+  await screenshot(page, '03-kind-single-set-only')
 
-  // 4) 부모 세트 자동완성 검색 (방향키 선택 가능 — AsyncAutocomplete)
-  const parentInput = page.getByPlaceholder('세트 모델명 또는 품목명 검색')
-  await parentInput.click()
-  await parentInput.fill('세트')
-  await page.waitForTimeout(1200)
-  await screenshot(page, '04-parent-autocomplete-search')
-
-  // 5) 종류 = 세트(SET) → 세트 처리(bundleMode)
+  // 4) 종류 = 세트(SET) → 세트 처리(bundleMode)
   await page.locator('input[name="itemKind"][value="SET"]').click()
   await page.waitForSelector('[data-testid="product-form-bundle-mode"]', { timeout: 5000 })
-  await screenshot(page, '05-set-bundle-mode')
+  await screenshot(page, '04-set-bundle-mode')
 
   console.log('[product-registration-real-qa] screenshots captured to', SCREENSHOTS_DIR)
 })

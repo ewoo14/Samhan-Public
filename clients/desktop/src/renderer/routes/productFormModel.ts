@@ -1,12 +1,11 @@
 import type {
   BundleMode,
-  ComponentKind,
   CreateProductRequest,
+  ProductFormItemKind,
   ProductCatalogRow,
   ProductCategory,
   ProductDetailResponse,
   ProductGoodsType,
-  ProductItemKind,
   ProductSummaryResponse,
   SpecKeyTemplateResponse,
   SpecKeyValueType,
@@ -21,11 +20,9 @@ export interface ProductFormValues {
   purchasePrice: string
   currency: string
   description: string
-  itemKind: ProductItemKind
+  itemKind: ProductFormItemKind
   productCategory: ProductCategory
   bundleMode: BundleMode
-  parentSetModelCode: string
-  componentKind: ComponentKind
   unit: string
   releasePrice: string
   deliveryPrice: string
@@ -54,8 +51,6 @@ export function initialProductFormValues(): ProductFormValues {
     itemKind: 'GENERAL',
     productCategory: 'SINGLE_PART',
     bundleMode: 'EXPAND',
-    parentSetModelCode: '',
-    componentKind: 'ACCESSORY',
     unit: 'EA',
     releasePrice: '',
     deliveryPrice: '',
@@ -70,15 +65,30 @@ export interface ProductEditSeed {
   catalog?: ProductCatalogRow | undefined
 }
 
-function itemKindFromSeed(detail: ProductDetailResponse, summary: ProductSummaryResponse): ProductItemKind {
-  if (detail.itemKind) return detail.itemKind
+function itemKindFromSeed(detail: ProductDetailResponse, summary: ProductSummaryResponse): ProductFormItemKind {
+  if (detail.itemKind === 'SET') return 'SET'
   return summary.productType === 'BUNDLE' ? 'SET' : 'GENERAL'
 }
 
-function defaultCategoryForItemKind(itemKind: ProductItemKind): ProductCategory {
+function defaultCategoryForItemKind(itemKind: ProductFormItemKind): ProductCategory {
   if (itemKind === 'SET') return 'SINGLE_SET'
-  if (itemKind === 'SET_COMPONENT') return 'SINGLE_PART'
   return 'SINGLE_PART'
+}
+
+export function applyProductCategoryDefaults(
+  values: ProductFormValues,
+  productCategory: ProductCategory,
+): ProductFormValues {
+  if (productCategory !== 'MATERIAL') {
+    return { ...values, productCategory }
+  }
+
+  return {
+    ...values,
+    productCategory,
+    goodsType: 'NON_GOODS',
+    unit: values.unit.trim() ? values.unit : 'EA',
+  }
 }
 
 function inputValue(value: string | number | null | undefined): string {
@@ -99,8 +109,6 @@ export function editSeedToProductFormValues(seed: ProductEditSeed): ProductFormV
     itemKind,
     productCategory: seed.detail.productCategory ?? defaultCategoryForItemKind(itemKind),
     bundleMode: itemKind === 'SET' ? seed.detail.bundleMode ?? 'EXPAND' : 'EXPAND',
-    parentSetModelCode: itemKind === 'SET_COMPONENT' ? seed.detail.parentSetModelCode ?? '' : '',
-    componentKind: seed.detail.componentKind ?? 'ACCESSORY',
     unit: seed.detail.unit ?? 'EA',
     releasePrice: inputValue(seed.detail.releasePrice ?? seed.catalog?.releasePrice),
     deliveryPrice: inputValue(seed.detail.deliveryPrice ?? seed.catalog?.deliveryPrice),
@@ -258,10 +266,6 @@ export function validateProductForm(values: ProductFormValues, mode: 'create' | 
   if (hasInvalidDecimal(values.releasePrice)) errors.releasePrice = '출고가는 0 이상 숫자로 입력해 주세요.'
   if (hasInvalidDecimal(values.deliveryPrice)) errors.deliveryPrice = '배송가는 0 이상 숫자로 입력해 주세요.'
 
-  if (values.itemKind === 'SET_COMPONENT' && !trimmed(values.parentSetModelCode)) {
-    errors.parentSetModelCode = '부모 세트를 선택해 주세요.'
-  }
-
   return errors
 }
 
@@ -278,8 +282,6 @@ export function buildCreateProductRequest(values: ProductFormValues): CreateProd
     itemKind: values.itemKind,
     productCategory: values.productCategory,
     bundleMode: values.itemKind === 'SET' ? values.bundleMode : null,
-    parentSetModelCode: values.itemKind === 'SET_COMPONENT' ? trimmed(values.parentSetModelCode) : null,
-    componentKind: values.itemKind === 'SET_COMPONENT' ? values.componentKind : null,
     unit: nullableText(values.unit),
     releasePrice: nullableDecimal(values.releasePrice),
     deliveryPrice: nullableDecimal(values.deliveryPrice),
@@ -297,8 +299,6 @@ export function buildUpdateProductRequest(values: ProductFormValues): UpdateProd
     itemKind: values.itemKind,
     productCategory: values.productCategory,
     bundleMode: values.itemKind === 'SET' ? values.bundleMode : null,
-    parentSetModelCode: values.itemKind === 'SET_COMPONENT' ? trimmed(values.parentSetModelCode) : null,
-    componentKind: values.itemKind === 'SET_COMPONENT' ? values.componentKind : null,
     unit: nullableText(values.unit),
     releasePrice: nullableDecimal(values.releasePrice),
     deliveryPrice: nullableDecimal(values.deliveryPrice),

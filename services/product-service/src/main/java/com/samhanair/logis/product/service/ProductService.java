@@ -653,14 +653,18 @@ public class ProductService {
         }
         if (itemKind == ProductItemKind.SET_COMPONENT) {
             product.changeUsage(UsageScope.NONE, null);
+        } else if (req.usageScope() != null) {
+            product.changeUsage(req.usageScope(), req.estimateCategory());
         }
         product.changeProductCategory(req.productCategory());
         product.changeGoodsType(goodsType(req.goodsType()));
         product.changeUnit(req.unit());
         product.changePrices(req.releasePrice(), req.deliveryPrice());
+        applyMaterialDefaults(product);
     }
 
     private void applyUpdateFields(Product product, UpdateProductRequest req) {
+        boolean forceUsageNone = false;
         if (req.itemKind() != null) {
             boolean wasBundle = product.getProductType() == ProductType.BUNDLE;
             if (req.itemKind() == ProductItemKind.SET) {
@@ -673,15 +677,16 @@ public class ProductService {
                 }
                 product.changeBundle(ProductType.SINGLE, null);
             }
+            // 구성품 링크는 세트측(BundleComponent)에서만 관리한다.
+            // 단일(GENERAL) 품목 편집은 부모 세트의 구성품 링크를 변경하지 않는다.
             if (req.itemKind() == ProductItemKind.SET_COMPONENT) {
                 product.changeUsage(UsageScope.NONE, null);
+                forceUsageNone = true;
                 bundleComponentService.replaceRegisteredComponentLink(
                         req.parentSetModelCode(),
                         product.getModelCode(),
                         req.componentKind(),
                         "system");
-            } else if (req.itemKind() == ProductItemKind.GENERAL) {
-                bundleComponentService.removeRegisteredComponentLinks(product.getModelCode(), "system");
             }
         } else if (req.bundleMode() != null && product.getProductType() == ProductType.BUNDLE) {
             product.changeBundle(ProductType.BUNDLE, req.bundleMode());
@@ -693,6 +698,7 @@ public class ProductService {
                     : currentLink == null ? null : currentLink.parentModelCode();
             if (parentSetModelCode != null && !parentSetModelCode.isBlank()) {
                 product.changeUsage(UsageScope.NONE, null);
+                forceUsageNone = true;
                 bundleComponentService.replaceRegisteredComponentLink(
                         parentSetModelCode,
                         product.getModelCode(),
@@ -704,11 +710,31 @@ public class ProductService {
         if (req.productCategory() != null) {
             product.changeProductCategory(req.productCategory());
         }
+        if (!forceUsageNone && req.usageScope() != null) {
+            product.changeUsage(req.usageScope(), req.estimateCategory());
+        }
         if (req.goodsType() != null) {
             product.changeGoodsType(req.goodsType());
         }
         product.changeUnit(req.unit());
         product.changePrices(req.releasePrice(), req.deliveryPrice());
+        applyMaterialDefaults(product);
+    }
+
+    private void applyMaterialDefaults(Product product) {
+        if (product.getProductCategory() != ProductCategory.MATERIAL) {
+            return;
+        }
+        // 자재 품목은 견적/주문 라인 선택 대상이 아니며, 재고 생성 대상도 아니다.
+        if (product.getProductType() == ProductType.BUNDLE) {
+            bundleComponentService.removeBundleChildren(product.getId(), "system");
+        }
+        product.changeBundle(ProductType.SINGLE, null);
+        product.changeUsage(UsageScope.NONE, null);
+        product.changeGoodsType(ProductGoodsType.NON_GOODS);
+        if (product.getUnit() == null || product.getUnit().isBlank()) {
+            product.changeUnit("EA");
+        }
     }
 
     private ProductItemKind itemKind(ProductItemKind itemKind) {

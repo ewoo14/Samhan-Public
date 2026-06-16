@@ -420,7 +420,9 @@ public class BundleComponentService {
     }
 
     /**
-     * 구성품에서 일반/세트로 전환될 때 기존 부모 링크를 모두 soft-delete 한다.
+     * 세트 품목 전환처럼 부모 링크를 명시적으로 정리해야 하는 경로에서만 기존 부모 링크를 모두 soft-delete 한다.
+     *
+     * <p>단일(GENERAL) 품목 편집은 구성품 소속을 바꾸지 않으므로 이 메서드를 호출하면 안 된다.
      */
     @Transactional
     public void removeRegisteredComponentLinks(String componentProductCode, String actor) {

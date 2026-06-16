@@ -2,8 +2,10 @@ package com.samhanair.logis.product.web.dto;
 
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
+import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductGoodsType;
+import com.samhanair.logis.product.domain.UsageScope;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Size;
@@ -26,11 +28,13 @@ public record UpdateProductRequest(
         @DecimalMin("0.00") BigDecimal releasePrice,
         @DecimalMin("0.00") BigDecimal deliveryPrice,
         ProductGoodsType goodsType,
+        UsageScope usageScope,
+        EstimateCategory estimateCategory,
         @Valid List<ProductSpecRequest> specs) {
 
     public UpdateProductRequest(String name, String modelName, UUID categoryId, String description) {
         this(name, modelName, categoryId, description, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     public UpdateProductRequest(String name, String modelName, UUID categoryId, String description,
@@ -40,6 +44,19 @@ public record UpdateProductRequest(
                                 BigDecimal releasePrice, BigDecimal deliveryPrice,
                                 ProductGoodsType goodsType) {
         this(name, modelName, categoryId, description, itemKind, productCategory, bundleMode,
-                parentSetModelCode, componentKind, unit, releasePrice, deliveryPrice, goodsType, null);
+                parentSetModelCode, componentKind, unit, releasePrice, deliveryPrice, goodsType,
+                null, null, null);
+    }
+
+    public UpdateProductRequest(String name, String modelName, UUID categoryId, String description,
+                                ProductItemKind itemKind, ProductCategory productCategory,
+                                BundleMode bundleMode, String parentSetModelCode,
+                                BundleComponent.ComponentKind componentKind, String unit,
+                                BigDecimal releasePrice, BigDecimal deliveryPrice,
+                                ProductGoodsType goodsType,
+                                List<ProductSpecRequest> specs) {
+        this(name, modelName, categoryId, description, itemKind, productCategory, bundleMode,
+                parentSetModelCode, componentKind, unit, releasePrice, deliveryPrice, goodsType,
+                null, null, specs);
     }
 }
