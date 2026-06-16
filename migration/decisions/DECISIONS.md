@@ -2884,3 +2884,16 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-PMR-02 | 상품/비상품 = 신규 `ProductGoodsType`(GOODS/NON_GOODS) + V16 CHECK. 비상품(운임/수수료/설치비)=재고 미생성. inventory 게이트(StockService.inbound/adjust, StockInstanceService.create/inboundBatch, InboundInspectionService)는 reject 아닌 **no-op skip**(개발책임자 2026-06-15 — 전표 전환 시 비상품 라인이 전표 전체를 깨뜨리지 않게). 비상품용 카테고리 SERVICE(서비스/요금, serial_managed=false) 시드. |
 | D-PMR-03 | modelCode = 불변(개발책임자 2026-06-15). create 시 modelName.trim()로 1회 설정, update에서 modelName 변경해도 modelCode 유지(BundleComponent 링크 키 안정). |
 | D-PMR-04 | FE 품목 등록/수정 경로 = `/api/products`(게이트웨이 StripPrefix=1 → ProductController), `/api/v1/products` 아님(no-strip GET 라우트가 POST를 405 가로챔 — 실서버 QA 단독 적발). 자동완성 = design-system `AsyncAutocomplete`(방향키 기보유) 전역 표준 일원화. |
+
+---
+
+## 종합견적서 거래처·담당자 시트→사내 DB 전환 G2 (2026-06-16, PR #491)
+
+**배경**: 에픽 "estimate-app 외부 시트 잔여 제거(G1+G2)". 개발책임자 2026-06-16 — 거래처=우리 거래처 DB(partner-service), 담당자=우리 행정직원(user-service), "따로 추가는 무의미"(기존 데이터 read만). spec `docs/superpowers/specs/2026-06-16-estimate-partner-manager-db.md`, dev-report `docs/dev-reports/2026-06-16-estimate-partner-manager-db.md`.
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-EPM-01 | 거래처 = partner-service `GET /internal/partners/list`(신규 read DTO `PartnerDirectoryResponse` 8필드, ACTIVE만, page/limit 5000 순회, ROLE_MASTER). 기존 `PartnerInternalResponse` 무변경(blast radius 0). 신규 데이터/엔티티 0 = 기존 거래처 마스터 read projection. |
+| D-EPM-02 | 담당자 = user-service `GET /internal/users/employees`(행정직원 fullName+ecountCode+부서). 활성 정의 = `isDeleted=false AND terminationDate IS NULL`(searchAdmin 정합, 퇴사/비활성 제외). slip employeeCode 는 자유문자열 스냅샷이라 ecountCode 포맷 무관(비파손). |
+| D-EPM-03 | estimate-app `PARTNER_SERVICE_URL` 은 레거시상 **dc-config-service(:8089)** 지칭 → 신규 거래처 directory(`directory.js`)는 별개 env `SAMHAN_PARTNER_SERVICE_URL`(실 partner-service :8095) 사용. .env.example·render.yaml 정합. (Docker 실QA 단독 적발 — 미수정 시 배포에서 거래처 목록 404.) |
+| D-EPM-04 | 시트 '거래처'/'담당자' 컬럼 중 `싱글 할인`·거래처시트 `담당자명/연락처`는 vestigial(dc-config 가 할인 진실원, 슬립 manager 는 partner-order 출처) → 마이그 제외. 거래처→담당자 역참조 empCd 폴백 폐기(empCd=로그인 사용자 우선). |

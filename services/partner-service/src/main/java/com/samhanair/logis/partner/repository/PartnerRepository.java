@@ -87,4 +87,17 @@ public interface PartnerRepository extends JpaRepository<Partner, UUID> {
     Page<Partner> searchAdmin(@Param("q") String q,
                               @Param("status") PartnerStatus status,
                               Pageable pageable);
+
+    /**
+     * 종합견적서 거래처 directory 조회 — ACTIVE 거래처만 name/bizNo/partnerCode 로 검색한다.
+     *
+     * <p>admin 검색과 달리 phone 은 검색 대상이 아니다. estimate-app 은 결과의 partnerCode/bizNo 로만
+     * 거래처를 식별하고, UUID 는 내부 응답에만 포함된다.
+     */
+    @Query("SELECT p FROM Partner p WHERE p.status = com.samhanair.logis.partner.domain.PartnerStatus.ACTIVE "
+            + "AND (CAST(:q AS string) IS NULL "
+            + " OR LOWER(p.partnerCode) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')) "
+            + " OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')) "
+            + " OR LOWER(COALESCE(p.bizNo, '')) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))")
+    List<Partner> searchDirectory(@Param("q") String q, Pageable pageable);
 }

@@ -56,8 +56,8 @@ const {
 
 const BASE_URL = process.env.SAMHAN_API_BASE_URL || 'http://localhost:8080';
 // 비-품목 데이터 (인증 / snapshot / partner / 감사로그) 만 SamhanLogis MS 위임.
-// 품목 / 거래처 / 담당자 / 추천실외기 / 단가인상 등 시트 데이터는 google-sheets-client
-// 직접 read (개발책임자 결정 2026-05-05 — 옵션 C).
+// 품목 일부 / 추천실외기 / 단가인상 등 잔여 시트 데이터는 google-sheets-client 직접 read.
+// 거래처/담당자는 G2부터 partner-service/user-service directory endpoint 로 치환.
 const PARTNER_BASE = process.env.PARTNER_SERVICE_URL || BASE_URL;
 const ESTIMATE_BASE = process.env.ESTIMATE_SERVICE_URL || BASE_URL;
 // #29: 거래처별 DC 설정 = dc-config-service internal endpoint (X-Internal-Token).
@@ -1690,9 +1690,9 @@ function getGateImages() {
  * Express GET / 진입 시 호출 — legacy doGet() 1:1 호환 bootstrap.
  *
  * Apps Script doGet 은 SpreadsheetApp.openById 가 동기인 환경을 가정하지만
- * Node.js 에서는 sheet read 가 비동기. 따라서 사전에 preloadSheets 로 모든
- * 탭 (홈멀티 / 싱글 세트 / 싱글 구성품 / 상업멀티 / 상업멀티 구성 / 거래처 /
- * 담당자 등) 을 in-memory 로 채운 뒤 legacy 동기 함수들이 즉시 read 가능.
+ * Node.js 에서는 sheet/internal read 가 비동기. 따라서 사전에 preloadSheets 와
+ * directory prefetch 로 필요한 데이터를 in-memory/cache 로 채운 뒤 legacy 동기 함수들이
+ * 즉시 read 가능.
  *
  * Service Account 키 미설정 시 preloadSheets 가 모두 reject → 동기 getter 들이
  * 빈 sheet 반환 → 카탈로그 빈 배열 (legacy 동작과 동등 graceful).
@@ -1702,25 +1702,30 @@ function getGateImages() {
  */
 async function bootstrap(userEmail) {
   // #30: 카탈로그 소스 — CATALOG_SOURCE=db 시 product-service 벌크 endpoint, 기본 legacy 시트.
-  // 거래처/담당자/사양맵/기본값은 본 슬라이스 범위 외 → 시트 read 유지(후속 PR).
+  // 거래처/담당자는 G2부터 partner-service/user-service directory cache 로 치환.
   // 기본값 'sheet': DB 카탈로그는 가격/단위/규격/구성품/자재/추천/baseline/pyong + 홈·싱글·구형
   // 변동DC 까지 시트 동등 검증 완료. 상업멀티 useK2 검출 parity 미달(QA RESULTS 명시) → 해당
   // 항목 parity 종결 시 운영 default 를 db 로 전환(현재는 opt-in).
   const useDb = String(process.env.CATALOG_SOURCE || 'sheet').toLowerCase() === 'db';
 
   // legacy 가 read 하는 전 탭 prefetch (병렬). 누락 탭은 빈 sheet 반환.
-  // DB 모드에서도 거래처/담당자/사양맵/기본값/추천(homeEx)은 시트 의존이라 prefetch 유지.
+  // DB 모드에서도 사양맵/기본값/추천(homeEx)은 시트 의존이라 prefetch 유지.
   const sheetsToPreload = useDb
-    ? [CUSTOMERS_NAME, MANAGERS_NAME, HOME_NAME, SINGLE_NAME, COMM_NAME]
+    ? [HOME_NAME, SINGLE_NAME, COMM_NAME]
     : [
       HOME_NAME, SINGLE_NAME, SINGLE_PARTS_NAME, COMM_NAME, COMM_PARTS_NAME,
-      CUSTOMERS_NAME, MANAGERS_NAME, '싱글 자재가격', '구형', '추천실외기',
+      '싱글 자재가격', '구형', '추천실외기',
       '홈멀티', '상업멀티', '상업멀티 구성', '싱글 세트', '싱글 구성품',
     ];
   try {
     await preloadSheets(SRC_SHEET_ID, sheetsToPreload);
   } catch (e) {
     Logger.log('[bootstrap] preloadSheets 실패: ' + (e && e.message));
+  }
+  try {
+    await preloadDirectoryCache_();
+  } catch (e) {
+    Logger.log('[bootstrap] directory preload 실패: ' + (e && e.message));
   }
 
   const email = userEmail || Session.getActiveUser().getEmail();
@@ -1771,6 +1776,36 @@ async function bootstrap(userEmail) {
     unitRoundMode: UNIT_ROUND_MODE,
   });
   return t;
+}
+
+/**
+ * 거래처/담당자 directory prefetch.
+ *
+ * <p>기존 getCustomers_()/getManagers_() 호출자는 동기 함수에 의존한다. HTTP directory 조회는
+ * 비동기이므로 bootstrap/getCustomerDataAsync 의 async 구간에서 CUS_V6/MGR_V1 캐시에 먼저 채우고,
+ * 동기 getter 는 캐시만 읽도록 유지한다.
+ *
+ * @param {boolean=} forceRefresh 캐시를 지우고 다시 조회할지 여부
+ */
+async function preloadDirectoryCache_(forceRefresh) {
+  const directory = require('./directory');
+  if (forceRefresh === true) {
+    cacheRemoveJSON_('CUS_V6');
+    cacheRemoveJSON_('MGR_V1');
+  }
+  const tasks = [];
+  if (!cacheGetJSON_('CUS_V6')) {
+    // 빈 결과(서비스 다운 등)는 캐싱하지 않는다 — 다음 호출이 재시도해 복구 후 즉시 반영(10분 공백 방지).
+    tasks.push(directory.fetchPartners('').then((rows) => {
+      if (Array.isArray(rows) && rows.length) cachePutJSON_('CUS_V6', rows, 60 * 10);
+    }));
+  }
+  if (!cacheGetJSON_('MGR_V1')) {
+    tasks.push(directory.fetchManagers('').then((rows) => {
+      if (Array.isArray(rows) && rows.length) cachePutJSON_('MGR_V1', rows, 60 * 10);
+    }));
+  }
+  await Promise.all(tasks);
 }
 
 /**
@@ -1844,7 +1879,7 @@ async function getAllNotionDcConfigs_(forceRefresh) {
  * 프론트 initCustomerSearch 가 거래처 선택 시 applyCustomerDiscounts(c.dc) 자동 적용.
  */
 async function getCustomerDataAsync(forceRefresh) {
-  if (forceRefresh) cacheRemoveJSON_('CUS_V6');
+  await preloadDirectoryCache_(forceRefresh === true);
   const raw = getCustomers_();
 
   // 노션 거래처별 할인설정 맵 사업자번호 기준 매칭 (우리 DB 벌크 치환)
@@ -1863,57 +1898,10 @@ async function getCustomerDataAsync(forceRefresh) {
 }
 
 /**
- * legacy getCustomers_() — 거래처 시트 read.
- * estimate-legacy/lib/code.js (line 1463) 1:1 포팅.
+ * legacy getCustomers_() — 거래처 directory cache read.
  */
 function getCustomers_() {
-  const key = 'CUS_V6';
-  const hit = cacheGetJSON_(key);
-  if (hit) return hit;
-
-  const sh = SpreadsheetApp.openById(SRC_SHEET_ID).getSheetByName(CUSTOMERS_NAME);
-  if (!sh) return [];
-  const vr = sh.getDataRange().getDisplayValues();
-  if (!vr.length) return [];
-
-  const H = vr[0].map((v) => String(v || '').trim());
-  const idx = (n) => H.indexOf(n);
-  const idxCode = idx('거래처코드');
-  const idxMgr = idx('담당자명');
-  const idxName = idx('거래처명');
-  const idxRep = idx('대표자명');
-  const idxAddr = idx('주소');
-  const idxTel = idx('전화번호');
-  const idxSpec = idx('특이사항');
-  const idxGroup = idx('그룹');
-  const idxDisc = idx('싱글 할인');
-  const idxBiz = idx('사업자등록번호');
-  const idxMgrTel = idx('담당자연락처');
-
-  const out = [];
-  for (let r = 1; r < vr.length; r++) {
-    const row = vr[r] || [];
-    const code = String(row[idxCode] || '').trim();
-    const name = String(row[idxName] || '').trim();
-    const biz = idxBiz >= 0 ? String(row[idxBiz] || '').replace(/[^\d]/g, '') : '';
-    if (!code && !biz) continue;
-    out.push({
-      code,
-      name,
-      bizno: biz,
-      manager: String(row[idxMgr] || '').trim(),
-      managerTel: idxMgrTel >= 0 ? String(row[idxMgrTel] || '').trim() : '',
-      rep: String(row[idxRep] || '').trim(),
-      addr: String(row[idxAddr] || '').trim(),
-      tel: String(row[idxTel] || '').trim(),
-      note: String(row[idxSpec] || '').trim(),
-      group: String(row[idxGroup] || '').trim(),
-      singleDiscount: parseKRNumber_(row[idxDisc]),
-    });
-  }
-
-  cachePutJSON_(key, out, 60 * 10);
-  return out;
+  return cacheGetJSON_('CUS_V6') || [];
 }
 
 /**
@@ -1943,39 +1931,10 @@ function searchCustomerByBizno(bizno) {
 }
 
 /**
- * legacy getManagers_() — 담당자 시트 read.
- * estimate-legacy/lib/code.js (line 1533) 1:1 포팅.
+ * legacy getManagers_() — 담당자 directory cache read.
  */
 function getManagers_() {
-  const key = 'MGR_V1';
-  const hit = cacheGetJSON_(key);
-  if (hit) return hit;
-
-  const sh = SpreadsheetApp.openById(SRC_SHEET_ID).getSheetByName(MANAGERS_NAME);
-  if (!sh) return [];
-  const vr = sh.getDataRange().getDisplayValues();
-  if (vr.length < 2) return [];
-
-  const H = (vr[0] || []).map((v) => String(v || '').trim());
-  const iName = H.indexOf('담당자명');
-  const iCode = H.indexOf('담당자코드');
-  if (iName < 0 || iCode < 0) return [];
-
-  const out = [];
-  for (let r = 1; r < vr.length; r++) {
-    const row = vr[r] || [];
-    const name = String(row[iName] || '').trim();
-    const code = String(row[iCode] || '').trim();
-    if (!name || !code) continue;
-    out.push({
-      '담당자명': name,
-      '담당자코드': code,
-      manager: name,
-      empCd: code,
-    });
-  }
-  cachePutJSON_(key, out, 60 * 10);
-  return out;
+  return cacheGetJSON_('MGR_V1') || [];
 }
 
 function searchManagersByName_(query) {
@@ -2012,6 +1971,9 @@ async function initDcConfigFromNotion(bizno) {
     return cfg;
   }
 
+  // G2: searchCustomerByBizOrCode는 CUS_V6 캐시 read 전용이라 독립 RPC 진입 시 캐시가 비었거나 TTL
+  // 만료일 수 있다. customer 첨부 정확성을 위해 prefetch로 캐시를 보장한다(이미 warm이면 no-op).
+  await preloadDirectoryCache_();
   const cust = searchCustomerByBizOrCode(biznoDigits);
   let notion = null;
   try {
@@ -2193,6 +2155,10 @@ async function sendOrderFromUi(data) {
       REMARKS: String(it.remarks || it.REMARKS || ''),
     }));
 
+    // G2: getCustomers_()는 캐시 read 전용(시트 self-heal 제거)이라, 페이지를 오래 열어둔 뒤 제출해
+    // CUS_V6 TTL(10분)이 만료되면 등록 거래처가 빈 캐시로 누락("미등록거래처")될 수 있다. 제출 직전
+    // prefetch(이미 warm이면 no-op)로 캐시를 보장한다.
+    await preloadDirectoryCache_();
     let key = safeNum(order?.bizno || '');
     if (!key && order?.custCode) key = String(order.custCode).trim();
     const custRec = await searchCustomerByBizOrCode(key);
@@ -2213,14 +2179,9 @@ async function sendOrderFromUi(data) {
 
     const whCd = (order && order.whCode) ? order.whCode : decideWarehouseCode_(merged);
 
-    let empCdFinal = authInfo.managerCode;
-    if (!empCdFinal) {
-      if (custRec.manager) {
-        const m = await findManagerByNameExact_(custRec.manager);
-        if (m) empCdFinal = m.empCd;
-      }
-      if (!empCdFinal) empCdFinal = getScriptCreds_().EMP_CD;
-    }
+    // G2: 거래처 시트 담당자명 컬럼 제거(custRec.manager 항상 빈값)로 거래처→담당자 역참조 폐기.
+    // empCd = 주문 작성 로그인 사용자(managerCode) 우선, 없으면 기본 EMP_CD.
+    let empCdFinal = authInfo.managerCode || getScriptCreds_().EMP_CD;
 
     const SaleList = [];
 

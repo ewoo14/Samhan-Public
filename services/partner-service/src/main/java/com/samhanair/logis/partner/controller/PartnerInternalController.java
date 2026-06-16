@@ -2,6 +2,7 @@ package com.samhanair.logis.partner.controller;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.partner.dto.PartnerBusinessNumberResponse;
+import com.samhanair.logis.partner.dto.PartnerDirectoryResponse;
 import com.samhanair.logis.partner.dto.PartnerInternalResponse;
 import com.samhanair.logis.partner.dto.PartnerLookupByIdsRequest;
 import com.samhanair.logis.partner.dto.PartnerLookupByIdsResponse;
@@ -38,6 +39,33 @@ import org.springframework.web.bind.annotation.RestController;
 public class PartnerInternalController {
 
     private final PartnerService partnerService;
+
+    /**
+     * 종합견적서 거래처 directory 조회.
+     *
+     * <p>estimate-app 이 거래처 시트 대신 partner-service DB 를 읽기 위한 내부 endpoint. ACTIVE 거래처만
+     * 반환하고, 검색어는 partnerCode/name/bizNo 부분일치로 처리한다.
+     *
+     * @param q 검색어 (선택)
+     * @param limit 페이지당 최대 반환 건수 (상한 5000)
+     * @param page 페이지 번호 (0-base)
+     * @return 200 + 거래처 directory 목록 ; 토큰 누락 403 ; 토큰 불일치 401
+     */
+    @Operation(summary = "종합견적서 거래처 directory 조회",
+            description = "estimate-app 거래처 시트 read 치환용. ACTIVE 거래처만 반환. X-Internal-Token 필수.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "내부 토큰 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "내부 토큰 누락")
+    })
+    @GetMapping("/list")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<List<PartnerDirectoryResponse>> listDirectory(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "5000") int limit,
+            @RequestParam(defaultValue = "0") int page) {
+        return ApiResponse.ok(partnerService.listDirectory(q, limit, page));
+    }
 
     /**
      * partnerCode 로 거래처 마스터 lookup (slip-service M5 의존성 해소용).

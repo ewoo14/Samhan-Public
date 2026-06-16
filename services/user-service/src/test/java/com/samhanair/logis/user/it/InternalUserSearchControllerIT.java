@@ -24,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /** 그룹웨어 결재자 picker 용 internal 직원 검색 endpoint IT. */
 @SpringBootTest(classes = UserServiceApplication.class)
@@ -128,8 +129,65 @@ class InternalUserSearchControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void employees_토큰_누락_403() throws Exception {
+        mockMvc.perform(get("/internal/users/employees"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void employees_토큰_불일치_401() throws Exception {
+        mockMvc.perform(get("/internal/users/employees")
+                        .header("X-Internal-Token", "wrong-token"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void employees_활성_행정직원_목록은_fullName_ecountCode_departmentName을_반환한다() throws Exception {
+        String marker = "견적담당-" + shortToken();
+        UUID userId = employeeWithEcount("estimate-" + shortToken(), marker, Role.MANAGER, "EMP-9001");
+
+        mockMvc.perform(get("/internal/users/employees")
+                        .header("X-Internal-Token", TOKEN)
+                        .param("q", marker)
+                        .param("limit", "500"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].userId").value(userId.toString()))
+                .andExpect(jsonPath("$.data[0].fullName").value(marker))
+                .andExpect(jsonPath("$.data[0].ecountCode").value("EMP-9001"))
+                .andExpect(jsonPath("$.data[0].departmentName").value("결재검색팀"));
+    }
+
+    @Test
+    void employees_soft_delete_및_퇴사_비활성_직원은_제외한다() throws Exception {
+        String marker = "dir-inact-" + shortToken();
+        // 활성 1명 (반환 대상)
+        employeeWithEcount("active-" + shortToken(), marker + "-active", Role.SALES, "EMP-AC1");
+        // soft-delete 1명 (제외)
+        Employee deleted = employeeEntity("deleted-" + shortToken(), marker + "-deleted", Role.SALES);
+        deleted.markDeleted("it");
+        employeeRepository.saveAndFlush(deleted);
+        // 퇴사/비활성(terminationDate) 1명 (제외)
+        Employee terminated = employeeEntity("terminated-" + shortToken(), marker + "-terminated", Role.SALES);
+        ReflectionTestUtils.setField(terminated, "terminationDate", LocalDate.of(2026, 3, 1));
+        employeeRepository.saveAndFlush(terminated);
+
+        mockMvc.perform(get("/internal/users/employees")
+                        .header("X-Internal-Token", TOKEN)
+                        .param("q", marker))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
     private UUID employee(String loginId, String fullName, Role role) {
         return employeeRepository.saveAndFlush(employeeEntity(loginId, fullName, role)).getId();
+    }
+
+    private UUID employeeWithEcount(String loginId, String fullName, Role role, String ecountCode) {
+        Employee employee = employeeEntity(loginId, fullName, role);
+        ReflectionTestUtils.setField(employee, "ecountCode", ecountCode);
+        return employeeRepository.saveAndFlush(employee).getId();
     }
 
     private Employee employeeEntity(String loginId, String fullName, Role role) {

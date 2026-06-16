@@ -99,6 +99,7 @@ slip-service 호출 실패 (네트워크/5xx) 는 `{ ok: false, error }` 응답�
 | Notion API `https://api.notion.com/v1/*` | SamhanLogis MS DB axios (estimate-snapshot, audit-log, partner-order) |
 | Google Drive (logo/gate images) | files-service GET `/api/v1/files/*` |
 | Google Sheets (27탭) | product-service GET `/api/v1/products` (M1a) |
+| Google Sheets '거래처'/'담당자' 탭 | partner-service `/internal/partners/list` · user-service `/internal/users/employees` (G2, PR #491). 거래처=거래처 DB, 담당자=행정직원. base URL=`SAMHAN_PARTNER_SERVICE_URL`/`USER_SERVICE_URL` |
 
 ## 검증
 
