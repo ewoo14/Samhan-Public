@@ -91,7 +91,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (CAST(:q AS text) IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%'))
                                         OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')))
               AND (CAST(:tagFilter AS text) IS NULL OR p.tags @> CAST(:tagFilter AS jsonb))
-              AND (CAST(:usageScope AS text) IS NULL OR p.usage_scope = CAST(:usageScope AS text))
+              AND (CAST(:usageScope AS text) IS NULL
+                   OR (CAST(:usageScope AS text) = 'ESTIMATE' AND p.usage_scope IN ('ESTIMATE', 'BOTH'))
+                   OR (CAST(:usageScope AS text) = 'PARTNER_ORDER' AND p.usage_scope IN ('PARTNER_ORDER', 'BOTH'))
+                   OR (CAST(:usageScope AS text) NOT IN ('ESTIMATE', 'PARTNER_ORDER') AND p.usage_scope = CAST(:usageScope AS text)))
               AND (CAST(:productCategory AS text) IS NULL OR p.product_category = CAST(:productCategory AS text))
             """,
            countQuery = """
@@ -102,7 +105,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (CAST(:q AS text) IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%'))
                                         OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')))
               AND (CAST(:tagFilter AS text) IS NULL OR p.tags @> CAST(:tagFilter AS jsonb))
-              AND (CAST(:usageScope AS text) IS NULL OR p.usage_scope = CAST(:usageScope AS text))
+              AND (CAST(:usageScope AS text) IS NULL
+                   OR (CAST(:usageScope AS text) = 'ESTIMATE' AND p.usage_scope IN ('ESTIMATE', 'BOTH'))
+                   OR (CAST(:usageScope AS text) = 'PARTNER_ORDER' AND p.usage_scope IN ('PARTNER_ORDER', 'BOTH'))
+                   OR (CAST(:usageScope AS text) NOT IN ('ESTIMATE', 'PARTNER_ORDER') AND p.usage_scope = CAST(:usageScope AS text)))
               AND (CAST(:productCategory AS text) IS NULL OR p.product_category = CAST(:productCategory AS text))
             """,
            nativeQuery = true)
