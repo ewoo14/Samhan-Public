@@ -1267,7 +1267,12 @@ public class ProductSheetSyncService {
         }
         exposureRepository.findByProductIdAndEstimateCategoryAndIsDeletedFalse(product.getId(), estimateCategory)
                 .ifPresentOrElse(
-                        exposure -> exposure.changeDisplayOrder(displayOrder),
+                        exposure -> {
+                            // syncTab self-invocation 경로는 활성 트랜잭션이 없어 dirty checking 미적용 →
+                            // display_order 변경을 명시 save 로 flush (P1, [[self-invocation-transactional-bypass]]).
+                            exposure.changeDisplayOrder(displayOrder);
+                            exposureRepository.save(exposure);
+                        },
                         () -> exposureRepository.save(ProductEstimateExposure.create(
                                 product.getId(), estimateCategory, displayOrder)));
     }

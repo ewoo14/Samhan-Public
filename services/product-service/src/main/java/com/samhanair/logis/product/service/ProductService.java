@@ -332,7 +332,9 @@ public class ProductService {
             product.changeModelCode(modelCode);
             applyCreateFields(product, req);
             Product saved = productRepository.save(product);
-            syncEstimateExposures(saved, req.usageScope(), req.estimateCategories(), "product-create");
+            // applyCreateFields 가 SET_COMPONENT 등 scope 를 NONE 으로 강제할 수 있으므로
+            // 요청값이 아니라 영속된 effective scope 로 노출을 동기화한다 (P2 — update 경로와 정합).
+            syncEstimateExposures(saved, saved.getUsageScope(), req.estimateCategories(), "product-create");
             saveSpecs(saved, req.specs());
             if (itemKind(req.itemKind()) == ProductItemKind.SET_COMPONENT) {
                 bundleComponentService.addRegisteredComponent(

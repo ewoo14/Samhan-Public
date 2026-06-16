@@ -111,12 +111,14 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     const firstEstimateToggle = table.locator('[data-testid^="product-catalog-estimate-toggle-"]').first()
     await expect(firstEstimateToggle).toBeVisible()
 
-    const isChecked = await firstEstimateToggle.isChecked()
-    await firstEstimateToggle.click()
-
-    await page.waitForTimeout(300)
-    const newChecked = await firstEstimateToggle.isChecked()
-    expect(newChecked).toBe(!isChecked)
+    // 견적 해제 시 노출이 사라지면 목록이 displayOrder(NULLS LAST) 기준 재정렬되어 행 위치가
+    // 바뀔 수 있으므로 modelCode 로 고정 타겟팅한다. 또한 PATCH→invalidate→refetch 는 비동기라
+    // 고정 waitForTimeout(300) 은 레이스 → 상태 반전을 auto-retry 단언으로 확인한다.
+    const toggleTestId = await firstEstimateToggle.getAttribute('data-testid')
+    const toggle = page.getByTestId(toggleTestId!)
+    const isChecked = await toggle.isChecked()
+    await toggle.click()
+    await expect(toggle).toBeChecked({ checked: !isChecked })
   })
 
   // ---------------------------------------------------------------------------
