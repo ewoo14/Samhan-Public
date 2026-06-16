@@ -13,6 +13,7 @@
 >   - **🔁 워크플로우 교훈(중요)**: 회사 세션이 step5 PM 종합("머지 게이트 충족") 게시 후 머지 직전 끊김 → **Codex step4 fix 뒤 Opus 수렴 재리뷰가 누락**된 상태였음(원격 세션 끊김). 집 PC 재개 시 개발책임자 지적("코덱스 fix 했으면 Opus 재리뷰")으로 **Opus 5-agent 수렴 재리뷰 보강 = blocking 0**(실빌드 product 370/0·partner-order 295/0·desktop typecheck0+vitest65/65·`ProductSheetSyncExposureReorderIT` Testcontainers PG16 실행·회귀가드 INTACT·display-orders 가드 revert 깨끗) + **P3-4(SINGLE_PART 라벨) fix(`7d446e55`) → CI 30/30 green 머지**. **교훈: PM 종합/머지게이트가 게시돼 있어도 "마지막 fix 라운드 모델 ≠ 마지막 리뷰 라운드 모델"이면 미수렴** — 세션 중단이 수렴 라운드를 건너뛸 수 있으니, 재개 시 마지막 리뷰 라운드 모델이 마지막 fix 를 덮는지 반드시 확인.
 > - **개발책임자 대기 결정**: ① **멀티 세트 단가** — 멀티(홈멀티/상업멀티)는 카탈로그가 고정(`commUnitPrice`), 싱글은 구성품 단가 합산 동적(`calcSetUnitPrice`) → 불일치. 멀티도 구성품 합산 동적화(`calcCommSetUnitPrice` 신규)? **견적 금액 변동 가능 → 정책 확인 필요**(#19). ② 출고전표 deliveryTag 정합(야적/지방/경동/로젠 estimate-app 미전송, 데스크톱만).
 > - **다음**: 에픽 #18 **슬2 = 세트 구성품 정렬**(실내기→실외기→판넬→리모컨→자재, 각 종류 내 '기본' 먼저=전역아님, `BundleComponent.displayOrder` 드래그 reorder) + display-orders 서버측 부분요청 방어 재도입(슬2 동반 후보). 노출⊥구성품 독립 축. / G1 카탈로그 db 승격(슬2 후보) / 멀티 세트 동적가격(#19, 정책 후).
+>   - **🏠→🏢 슬2 진행 위치 = 회사 PC 권장**(2026-06-16 개발책임자 "여기서 일단락"). 집 PC 는 SA key(`samhan-homepage-*.json`) 부재로 Google Sheets 재동기화 불가 → 세트/구성품 시드 희박 → 슬2 라이브 QA(세트 구성품 정렬 실화면) 일그러질 수 있음. 회사 PC(시드 정상) 또는 집 PC SA key 확보 후 진행. (집 PC 2026-06-16 세션은 #494 슬1 머지 + 재개검증으로 일단락.)
 > - **개발책임자 후속 결정 추가**: ③ **P3-3 라벨 중복** — 품목 카탈로그 행에 productCategory(평문) + estimateCategory(brand badge)가 동일 라벨로 병기(예 "홈멀티" 평문 + "홈멀티" badge) → 디자인 의도 확인 후 처리(머지 무관, Opus 재리뷰 Designer 적발).
 
 ---
