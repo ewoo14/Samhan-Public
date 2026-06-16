@@ -850,10 +850,10 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
 }
 
 const MOCK_MATERIAL_PRICE_ROWS = [
-  { materialKey: 'D2', name: '유선리모컨', price: 40000, optionLabel: null },
-  { materialKey: 'D3', name: '컬러유선리모컨', price: 75000, optionLabel: null },
-  { materialKey: 'D4', name: '블랙판넬', price: 50000, optionLabel: null },
-  { materialKey: 'D9', name: 'FPH-1412XS3', price: 130000, optionLabel: null },
+  { materialKey: 'MAT-MOCK-REMOTE', name: '유선리모컨', price: 40000, optionLabel: null },
+  { materialKey: 'MAT-MOCK-COLOR-REMOTE', name: '컬러유선리모컨', price: 75000, optionLabel: null },
+  { materialKey: 'MAT-MOCK-BLACK-PANEL', name: '블랙판넬', price: 50000, optionLabel: null },
+  { materialKey: 'MAT-MOCK-FPH-1412XS3', name: 'FPH-1412XS3', price: 130000, optionLabel: null },
 ]
 
 const MOCK_ODU_RECOMMENDATION_ROWS = [
@@ -1684,8 +1684,12 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       {
         modelCode,
         name,
-        usageScope: isMaterial || itemKind === 'SET_COMPONENT' ? 'NONE' : 'BOTH',
-        estimateCategory: isMaterial || itemKind === 'SET_COMPONENT' ? null : 'OTHER',
+        usageScope: isMaterial || itemKind === 'SET_COMPONENT'
+          ? 'NONE'
+          : String(body['usageScope'] ?? 'BOTH'),
+        estimateCategory: isMaterial || itemKind === 'SET_COMPONENT'
+          ? null
+          : ((body['estimateCategory'] as string | null | undefined) ?? 'OTHER'),
         productCategory,
         usageScopeManual: false,
         displayOrder: MOCK_PRODUCT_CATALOG_ROWS.length + 1,
@@ -1788,8 +1792,12 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
             modelCode: nextModelName,
             name: nextName,
             productCategory,
-            usageScope: isMaterial || itemKind === 'SET_COMPONENT' ? 'NONE' : row.usageScope,
-            estimateCategory: isMaterial || itemKind === 'SET_COMPONENT' ? null : row.estimateCategory,
+            usageScope: isMaterial || itemKind === 'SET_COMPONENT'
+              ? 'NONE'
+              : String(body['usageScope'] ?? row.usageScope),
+            estimateCategory: isMaterial || itemKind === 'SET_COMPONENT'
+              ? null
+              : ((body['estimateCategory'] as string | null | undefined) ?? row.estimateCategory),
             productType: isMaterial ? 'SINGLE' : productType,
             releasePrice: body['releasePrice'] == null ? row.releasePrice : Number(body['releasePrice']),
             deliveryPrice: body['deliveryPrice'] == null ? row.deliveryPrice : Number(body['deliveryPrice']),

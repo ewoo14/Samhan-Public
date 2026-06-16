@@ -653,6 +653,8 @@ public class ProductService {
         }
         if (itemKind == ProductItemKind.SET_COMPONENT) {
             product.changeUsage(UsageScope.NONE, null);
+        } else if (req.usageScope() != null) {
+            product.changeUsage(req.usageScope(), req.estimateCategory());
         }
         product.changeProductCategory(req.productCategory());
         product.changeGoodsType(goodsType(req.goodsType()));
@@ -662,6 +664,7 @@ public class ProductService {
     }
 
     private void applyUpdateFields(Product product, UpdateProductRequest req) {
+        boolean forceUsageNone = false;
         if (req.itemKind() != null) {
             boolean wasBundle = product.getProductType() == ProductType.BUNDLE;
             if (req.itemKind() == ProductItemKind.SET) {
@@ -676,6 +679,7 @@ public class ProductService {
             }
             if (req.itemKind() == ProductItemKind.SET_COMPONENT) {
                 product.changeUsage(UsageScope.NONE, null);
+                forceUsageNone = true;
                 bundleComponentService.replaceRegisteredComponentLink(
                         req.parentSetModelCode(),
                         product.getModelCode(),
@@ -694,6 +698,7 @@ public class ProductService {
                     : currentLink == null ? null : currentLink.parentModelCode();
             if (parentSetModelCode != null && !parentSetModelCode.isBlank()) {
                 product.changeUsage(UsageScope.NONE, null);
+                forceUsageNone = true;
                 bundleComponentService.replaceRegisteredComponentLink(
                         parentSetModelCode,
                         product.getModelCode(),
@@ -704,6 +709,9 @@ public class ProductService {
         }
         if (req.productCategory() != null) {
             product.changeProductCategory(req.productCategory());
+        }
+        if (!forceUsageNone && req.usageScope() != null) {
+            product.changeUsage(req.usageScope(), req.estimateCategory());
         }
         if (req.goodsType() != null) {
             product.changeGoodsType(req.goodsType());

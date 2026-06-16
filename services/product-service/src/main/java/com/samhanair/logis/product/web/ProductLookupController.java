@@ -45,7 +45,7 @@ public class ProductLookupController {
     public List<MaterialPriceResponse> listMaterialPrices() {
         // 싱글 자재는 Product(MATERIAL)가 원천이다. 기존 배열/필드명은 데스크톱 lookup 호환용으로 유지한다.
         return productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.MATERIAL).stream()
-                // D10 이 D2 보다 앞서는 문자열 정렬 함정을 피하려고 D 뒤 숫자를 파싱한다.
+                // Product(MATERIAL) 전환 후 materialKey 는 MAT-* 품목코드다. 코드/이름 기준으로 결정 정렬한다.
                 .map(MaterialPriceResponse::from)
                 .sorted(MATERIAL_PRODUCT_CODE_ORDER)
                 .toList();

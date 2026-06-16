@@ -46,7 +46,7 @@ SamhanLogis Product 마스터 + Category 트리 + Google Sheets 동기화 서비
 | 수동 토글 | `PATCH /api/v1/products/{modelCode}/usage` body `{usageScope, estimateCategory?}` → manual=true (NONE/PARTNER_ORDER 시 estimateCategory 강제 null). `DELETE /api/v1/products/{modelCode}/usage` → 플래그 해제(값 유지) + **rowHash 캐시 evict** — 다음 sync 가 시트 기준 재분류. 권한 `products.admin` UPDATE |
 | sync 보존 | `usageScopeManual=true` 품목은 sync 가 usageScope/estimateCategory 무변경 + **시트 부재 시 soft-delete 제외** (`preservedManual` 카운터) |
 | catalog 질의 | `GET /api/v1/products` (ProductCatalogController — 게이트웨이 정확경로): `q`(model_code/name/model_name LIKE, 와일드카드 이스케이프) + `usageScope` **IN-확장**(ESTIMATE→+BOTH, PARTNER_ORDER→+BOTH) + `category`(EstimateCategory) + `ORDER BY display_order NULLS LAST, model_code` 결정 페이징 |
-| ⚠️ 시멘틱 분기 | `/products`(ProductController, `/api/products/**` strip 경로) 의 usageScope 는 **exact-match** — 실호출자 0, catalog 경로와 의미 상이 (Javadoc 명시) |
+| `/products` 자동완성 질의 | `/products`(ProductController, `/api/products/**` strip 경로) 도 `usageScope` **IN-확장**(ESTIMATE→+BOTH, PARTNER_ORDER→+BOTH)을 적용한다. desktop 전표 라인 자동완성(`SlipFormPage`)이 `usageScope=PARTNER_ORDER` 로 호출한다. |
 
 데스크톱 소비처: `/products/catalog` 품목 관리 화면 (견적/주문 노출 토글). order-app 은 `usageScope=PARTNER_ORDER` 로 본 catalog 질의를 사용. (출처 컬럼·시트자동/수동 뱃지는 PR #461 시드 전용 정책으로 제거.)
 

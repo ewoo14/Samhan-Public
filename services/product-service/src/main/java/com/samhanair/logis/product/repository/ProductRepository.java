@@ -78,9 +78,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * 단일 native 쿼리로 합쳐 처리. {@code :tagFilter} 는 jsonb 형태의 문자열
      * (예: '{"hp":"1.5"}') 또는 NULL.
      *
-     * <p>소비처: {@code /products} (GET) 엔드포인트 — 어드민/데스크톱 품목관리 화면 전용.
-     * order-app 및 desktop sales.ts 의 카탈로그 조회는 {@link #searchByUsageScope} 를 사용한다
-     * (사이클2 지적 P3-5, 2026-06-11).
+     * <p>소비처: {@code /products} (GET) 엔드포인트 — 어드민/데스크톱 검색 및
+     * 전표 라인 자동완성. {@code usageScope} 가 오면 카탈로그 경로와 동일하게
+     * ESTIMATE/PARTNER_ORDER 요청에 BOTH 를 포함한다.
      */
     // [RC4] null→bytea 방지: CAST(:q AS text) (nativeQuery 이므로 PostgreSQL text 캐스트)
     @Query(value = """

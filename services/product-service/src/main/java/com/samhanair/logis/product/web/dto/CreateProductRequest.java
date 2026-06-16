@@ -2,8 +2,10 @@ package com.samhanair.logis.product.web.dto;
 
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
+import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductGoodsType;
+import com.samhanair.logis.product.domain.UsageScope;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -33,12 +35,30 @@ public record CreateProductRequest(
         @DecimalMin("0.00") BigDecimal releasePrice,
         @DecimalMin("0.00") BigDecimal deliveryPrice,
         ProductGoodsType goodsType,
+        UsageScope usageScope,
+        EstimateCategory estimateCategory,
         @Valid List<ProductSpecRequest> specs) {
 
     public CreateProductRequest(String name, String modelName, UUID categoryId,
                                 BigDecimal sellingPrice, BigDecimal purchasePrice,
                                 String currency, Map<String, String> tags, String description) {
         this(name, modelName, categoryId, sellingPrice, purchasePrice, currency,
-                tags, description, null, null, null, null, null, null, null, null, null, null);
+                tags, description, null, null, null, null, null, null, null, null, null,
+                null, null, null);
+    }
+
+    public CreateProductRequest(String name, String modelName, UUID categoryId,
+                                BigDecimal sellingPrice, BigDecimal purchasePrice,
+                                String currency, Map<String, String> tags, String description,
+                                ProductItemKind itemKind, ProductCategory productCategory,
+                                BundleMode bundleMode, String parentSetModelCode,
+                                BundleComponent.ComponentKind componentKind, String unit,
+                                BigDecimal releasePrice, BigDecimal deliveryPrice,
+                                ProductGoodsType goodsType,
+                                List<ProductSpecRequest> specs) {
+        this(name, modelName, categoryId, sellingPrice, purchasePrice, currency, tags,
+                description, itemKind, productCategory, bundleMode, parentSetModelCode,
+                componentKind, unit, releasePrice, deliveryPrice, goodsType,
+                null, null, specs);
     }
 }
