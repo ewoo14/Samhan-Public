@@ -105,11 +105,12 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
         mockMvc.perform(get("/products/internal/estimate-catalog/material-prices")
                         .header("X-Internal-Token", INTERNAL_TOKEN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(2)))
-                .andExpect(jsonPath("$.data[0].name").value("IT 블랙판넬"))
-                .andExpect(jsonPath("$.data[0].price").value(50000))
-                .andExpect(jsonPath("$.data[0].id").doesNotExist())
-                .andExpect(jsonPath("$.data[0].computedFormula").doesNotExist())
+                // V18 가 자재 Product 28건을 시드하므로 size/positional 단언 금지 — 본 테스트가 심은
+                // 자재의 존재를 predicate 로 단언한다(시드 28건과 공존).
+                .andExpect(jsonPath("$.data[?(@.name == 'IT 블랙판넬' && @.price == 50000)]").exists())
+                .andExpect(jsonPath("$.data[?(@.name == 'IT 유선리모컨' && @.price == 40000)]").exists())
+                .andExpect(jsonPath("$.data[?(@.id)]").doesNotExist())
+                .andExpect(jsonPath("$.data[?(@.computedFormula)]").doesNotExist())
                 .andExpect(jsonPath("$.data[?(@.name == '일반 구성품 IT')]").doesNotExist());
     }
 

@@ -378,4 +378,51 @@ class ProductControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[?(@.modelName=='DISC-001')]").isEmpty());
     }
+
+    /**
+     * 슬9 회귀 가드 — 전표 라인 검색(usageScope=PARTNER_ORDER)이 BOTH 판매품목을 포함하고
+     * MATERIAL(usageScope NONE) 자재를 제외하는지 실 HTTP 로 단언한다. mock IN-expand 와 실 BE
+     * exact-match 가 어긋나 전표 라인 검색이 0건 되던 production 파손 회귀 방지.
+     */
+    @Test
+    void search_usageScopePartnerOrder_includesBothScope_excludesMaterial() throws Exception {
+        var bothBody = Map.of(
+                "name", "BOTH 검색 IT",
+                "modelName", "USAGE-BOTH-IT-001",
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "100000",
+                "purchasePrice", "80000",
+                "currency", "KRW",
+                "usageScope", "BOTH");
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(bothBody)))
+                .andExpect(status().isCreated());
+
+        var materialBody = Map.ofEntries(
+                Map.entry("name", "MATERIAL 검색 IT"),
+                Map.entry("modelName", "USAGE-MAT-IT-001"),
+                Map.entry("categoryId", categoryId.toString()),
+                Map.entry("sellingPrice", "30000"),
+                Map.entry("purchasePrice", "30000"),
+                Map.entry("currency", "KRW"),
+                Map.entry("productCategory", "MATERIAL"),
+                Map.entry("goodsType", "NON_GOODS"));
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(materialBody)))
+                .andExpect(status().isCreated());
+
+        // usageScope=PARTNER_ORDER 검색 → IN-expand 로 BOTH 포함, MATERIAL(NONE) 제외.
+        mockMvc.perform(get("/products?usageScope=PARTNER_ORDER&q=USAGE-")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[?(@.modelName=='USAGE-BOTH-IT-001')]").exists())
+                .andExpect(jsonPath("$.data.content[?(@.modelName=='USAGE-MAT-IT-001')]").doesNotExist());
+    }
 }

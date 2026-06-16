@@ -84,29 +84,23 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
 
         mockMvc.perform(withActor(get("/api/v1/material-prices")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].materialKey").value("MAT-PANEL-01"))
-                .andExpect(jsonPath("$[0].name").value("Product 블랙판넬"))
-                .andExpect(jsonPath("$[0].price").value(50000.0))
-                .andExpect(jsonPath("$[0].id").doesNotExist())
-                .andExpect(jsonPath("$[0].computedFormula").doesNotExist())
-                .andExpect(jsonPath("$[1].materialKey").value("MAT-REMOTE-01"))
+                // V18 자재 시드로 positional 단언 금지 — 심은 자재를 predicate 로 단언한다.
+                .andExpect(jsonPath("$[?(@.materialKey == 'MAT-PANEL-01' && @.name == 'Product 블랙판넬')]").exists())
+                .andExpect(jsonPath("$[?(@.materialKey == 'MAT-REMOTE-01' && @.name == 'Product 유선리모컨')]").exists())
+                .andExpect(jsonPath("$[?(@.id)]").doesNotExist())
+                .andExpect(jsonPath("$[?(@.computedFormula)]").doesNotExist())
                 .andExpect(jsonPath("$[?(@.name == '레거시 자재')]").doesNotExist())
                 .andExpect(jsonPath("$[?(@.materialKey == 'NON-MATERIAL-01')]").doesNotExist());
     }
 
     @Test
     void lookupEndpoints_returnEmptyArraysWhenTablesAreEmpty() throws Exception {
-        materialPriceRepository.deleteAll();
+        // material-prices 는 이제 material_price 테이블이 아니라 Product(MATERIAL) 시드(V18)를 원천으로
+        // 하므로 "빈 테이블 → 빈 배열" 대상이 아니다(odu/branch 만 빈 테이블 검증).
         oduRecommendationLookupRepository.deleteAll();
         branchPipeLookupRepository.deleteAll();
-        materialPriceRepository.flush();
         oduRecommendationLookupRepository.flush();
         branchPipeLookupRepository.flush();
-
-        mockMvc.perform(withActor(get("/api/v1/material-prices")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0]").doesNotExist());
 
         mockMvc.perform(withActor(get("/api/v1/odu-recommendations")))
                 .andExpect(status().isOk())
