@@ -314,14 +314,14 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
           data-testid={`product-catalog-estimate-category-${row.modelCode}`}
           style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}
         >
-          {selectedCategories.map((category) => (
+          {normalizeEstimateCategoryExposures(row).map((exposure) => (
             <TagChip
-              key={category}
-              label="견적"
-              value={ESTIMATE_CATEGORY_LABEL[category]}
-              removeLabel={ESTIMATE_CATEGORY_LABEL[category]}
-              onRemove={canEdit && !patchLoading ? () => handleCategoryRemove(category) : undefined}
-              data-testid={`product-catalog-estimate-category-${row.modelCode}-chip-${category}`}
+              key={exposure.category}
+              label={ESTIMATE_CATEGORY_LABEL[exposure.category]}
+              value={exposure.displayOrder != null ? String(exposure.displayOrder) : '—'}
+              removeLabel={ESTIMATE_CATEGORY_LABEL[exposure.category]}
+              onRemove={canEdit && !patchLoading ? () => handleCategoryRemove(exposure.category) : undefined}
+              data-testid={`product-catalog-estimate-category-${row.modelCode}-chip-${exposure.category}`}
             />
           ))}
           <Select
@@ -1046,7 +1046,7 @@ export function ProductCatalogPage() {
             ) : null}
             {exposures.length > 0 ? (
               exposures.map((entry) => (
-                <Badge key={entry.category} variant="neutral">
+                <Badge key={entry.category} variant="brand">
                   {ESTIMATE_CATEGORY_LABEL[entry.category]}
                 </Badge>
               ))
