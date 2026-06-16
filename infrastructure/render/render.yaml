@@ -54,6 +54,12 @@ services:
         sync: false
       - key: PARTNER_SERVICE_URL
         sync: false
+      # G2 directory: 실제 partner-service 거래처 마스터. PARTNER_SERVICE_URL 은
+      # legacy dc-config-service 용도라 directory.js 에서는 의도적으로 사용하지 않는다.
+      - key: SAMHAN_PARTNER_SERVICE_URL
+        sync: false
+      - key: USER_SERVICE_URL
+        sync: false
       - key: ESTIMATE_SERVICE_URL
         sync: false
       - key: AUDIT_LOG_URL

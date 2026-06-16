@@ -160,6 +160,22 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data[*].partnerCode", not(hasItem("P-2026-0003"))));
     }
 
+    @Test
+    void list_page_parameter_applies_offset_for_large_directory() throws Exception {
+        partnerRepository.save(Partner.register("P-2026-0002", "222-33-44444", "페이지거래처2",
+                null, null, new BigDecimal("1000000")));
+        partnerRepository.save(Partner.register("P-2026-0003", "333-44-55555", "페이지거래처3",
+                null, null, new BigDecimal("1000000")));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/list")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .param("limit", "1")
+                        .param("page", "1"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.length()").value(1))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].partnerCode").value("P-2026-0002"));
+    }
+
     /**
      * Phase 9 W5 신규 (D-P9-16, BE 의견 3 채택) — bulk endpoint 정상 응답.
      *

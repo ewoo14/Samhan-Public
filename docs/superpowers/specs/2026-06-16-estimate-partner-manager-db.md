@@ -50,7 +50,7 @@ estimate-app 의 `getManagers_()` 시트 읽기를 user-service internal 호출�
 ## 4. BE 변경 (Codex 구현)
 
 ### partner-service (신규 read 엔드포인트 1, 신규 데이터 0)
-- **`GET /internal/partners/list`** (`PartnerInternalController`): ACTIVE 거래처 목록. params `q`(선택, name/bizNo/partnerCode 부분일치), `limit`(기본 5000 상한). 인증 = X-Internal-Token(ROLE_MASTER, 기존 패턴).
+- **`GET /internal/partners/list`** (`PartnerInternalController`): ACTIVE 거래처 목록. params `q`(선택, name/bizNo/partnerCode 부분일치), `limit`(기본/상한 5000), `page`(0-base, 기본 0). 인증 = X-Internal-Token(ROLE_MASTER, 기존 패턴).
 - **신규 DTO `PartnerDirectoryResponse`** {partnerId(UUID), partnerCode, name, bizNo, representative, address, phone, group, note}. ⚠️ 기존 `PartnerInternalResponse`(slip/accounting 사용) **확장 금지** — 별도 DTO 로 blast radius 0.
 - 서비스/repo 메서드(기존 `findAllByStatus`/`searchAdmin` 재사용 가능). UUID 비공개 가드는 internal 응답이라 무관(사용자 화면 직접 노출 X, estimate-app 은 bizno/partnerCode 로 식별).
 - IT: 인증 401/403, 목록 shape, q 필터, ACTIVE 한정. (MockRestServiceServer 아닌 web-slice/Testcontainers.)
@@ -64,7 +64,7 @@ estimate-app 의 `getManagers_()` 시트 읽기를 user-service internal 호출�
 
 ## 5. FE 변경 — estimate-app (Codex 구현)
 
-- **신규 `lib/directory.js`** (db-catalog.js 패턴 미러): axios + X-Internal-Token + base URL(PARTNER_SERVICE_URL/USER_SERVICE_URL — `.env` 기존재).
+- **신규 `lib/directory.js`** (db-catalog.js 패턴 미러): axios + X-Internal-Token + base URL(SAMHAN_PARTNER_SERVICE_URL/USER_SERVICE_URL — `.env.example` 기준).
   - `fetchPartners()` → GET partner-service `/internal/partners/list` → 레거시 `getCustomers_()` shape {code,name,bizno,rep,addr,tel,group,note} 매핑.
   - `fetchManagers()` → GET user-service `/internal/users/employees` → {담당자명: fullName, 담당자코드: ecountCode||'', manager: fullName, empCd: ecountCode||''} 매핑.
 - **code.js 배선**: `getCustomers_()`/`getManagers_()` 본문을 directory 호출로 교체(함수명·RPC 계약 보존). `getCustomerDataAsync()` 의 dc-config bizno 매칭·캐시(CUS_V6/MGR_V1 TTL)·`searchManagersByName_`/`findManagerByNameExact_` 그대로 동작(취득 리스트 위에서).
@@ -75,7 +75,7 @@ estimate-app 의 `getManagers_()` 시트 읽기를 user-service internal 호출�
 
 1. **ecountCode 연속성**: 행정직원 ecountCode 가 legacy 담당자코드(EMP-0001~0019)와 포맷/값 상이 가능(eCount 임포터 채움, 정적 시드 없음). slip employeeCode 는 자유문자열 스냅샷 → **계약 비파손**. QA 에서 드롭다운 실제 채워짐 + 선택 코드 검증; 갭 시 개발책임자 보고(비차단).
 2. **담당자 범위**: 행정직원 전체(활성) — legacy 큐레이션 ~19 보다 넓을 수 있음. 검색 가능. 필요 시 role/dept 필터는 후속(개발책임자 확인).
-3. **거래처 목록 크기**: 캡(limit 5000) + 선택 q. parity = 전체 1회 fetch + 클라이언트 필터(레거시 동일).
+3. **거래처 목록 크기**: partner-service page/limit(5000 단위)로 끝 페이지까지 조회. parity = 전체 fetch + 클라이언트 필터(레거시 동일).
 4. **group**: `partnerGroup1` plain String → 직매핑(enum 변환 불요).
 
 ## 7. QA 계획 (Docker 실서버 — 매 리뷰 라운드)

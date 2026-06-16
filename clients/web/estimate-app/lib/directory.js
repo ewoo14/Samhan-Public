@@ -24,6 +24,8 @@ const INTERNAL_TOKEN =
   'dev-internal-token-change-me';
 
 const ax = axios.create({ timeout: 15000, validateStatus: () => true });
+const PARTNER_PAGE_LIMIT = 5000;
+const PARTNER_MAX_PAGES = 20;
 
 function digits(v) {
   return String(v == null ? '' : v).replace(/[^\d]/g, '');
@@ -52,11 +54,22 @@ async function getDirectory(url, params, label) {
 }
 
 async function fetchPartners(q) {
-  const rows = await getDirectory(
-    `${PARTNER_BASE}/internal/partners/list`,
-    { q: str(q), limit: 5000 },
-    'partners',
-  );
+  const rows = [];
+  const query = str(q);
+  for (let page = 0; page < PARTNER_MAX_PAGES; page += 1) {
+    // partner DB 는 7천 건 이상일 수 있어 1페이지만 읽으면 조용히 누락된다.
+    // internal endpoint 의 page 계약으로 끝 페이지까지 순차 조회한다.
+    const pageRows = await getDirectory(
+      `${PARTNER_BASE}/internal/partners/list`,
+      { q: query, limit: PARTNER_PAGE_LIMIT, page },
+      'partners',
+    );
+    rows.push(...pageRows);
+    if (pageRows.length < PARTNER_PAGE_LIMIT) break;
+    if (page === PARTNER_MAX_PAGES - 1) {
+      console.warn(`[directory] partners ${PARTNER_MAX_PAGES}페이지 초과 가능성 → ${rows.length}건까지만 사용`);
+    }
+  }
   return rows.map((r) => ({
     code: str(r.partnerCode),
     name: str(r.name),
@@ -93,4 +106,5 @@ async function fetchManagers(q) {
 module.exports = {
   fetchPartners,
   fetchManagers,
+  PARTNER_PAGE_LIMIT,
 };

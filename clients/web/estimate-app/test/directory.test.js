@@ -49,7 +49,7 @@ describe('directory → legacy 거래처/담당자 shape', () => {
     expect(mockGet).toHaveBeenCalledWith(
       expect.stringContaining('/internal/partners/list'),
       expect.objectContaining({
-        params: { q: '테스트', limit: 5000 },
+        params: { q: '테스트', limit: 5000, page: 0 },
         headers: expect.objectContaining({ 'X-Internal-Token': expect.any(String) }),
       }),
     );
@@ -105,5 +105,31 @@ describe('directory → legacy 거래처/담당자 shape', () => {
     await expect(directory.fetchPartners()).resolves.toEqual([]);
     await expect(directory.fetchManagers()).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalled();
+  });
+
+  test('fetchPartners는 5000건 페이지가 꽉 차면 다음 페이지까지 조회한다', async () => {
+    const fullPage = Array.from({ length: directory.PARTNER_PAGE_LIMIT }, (_, idx) => ({
+      partnerCode: `P-${idx}`,
+      name: `거래처${idx}`,
+      bizNo: `111-22-${String(idx).padStart(5, '0')}`,
+    }));
+    mockGet
+      .mockResolvedValueOnce({ status: 200, data: { success: true, data: fullPage } })
+      .mockResolvedValueOnce({ status: 200, data: { success: true, data: [{ partnerCode: 'P-last', name: '마지막' }] } });
+
+    const rows = await directory.fetchPartners('');
+
+    expect(mockGet).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('/internal/partners/list'),
+      expect.objectContaining({ params: { q: '', limit: 5000, page: 0 } }),
+    );
+    expect(mockGet).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/internal/partners/list'),
+      expect.objectContaining({ params: { q: '', limit: 5000, page: 1 } }),
+    );
+    expect(rows).toHaveLength(directory.PARTNER_PAGE_LIMIT + 1);
+    expect(rows.at(-1).code).toBe('P-last');
   });
 });

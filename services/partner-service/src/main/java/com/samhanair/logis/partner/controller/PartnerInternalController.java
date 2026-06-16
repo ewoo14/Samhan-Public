@@ -47,7 +47,8 @@ public class PartnerInternalController {
      * 반환하고, 검색어는 partnerCode/name/bizNo 부분일치로 처리한다.
      *
      * @param q 검색어 (선택)
-     * @param limit 최대 반환 건수 (상한 5000)
+     * @param limit 페이지당 최대 반환 건수 (상한 5000)
+     * @param page 페이지 번호 (0-base)
      * @return 200 + 거래처 directory 목록 ; 토큰 누락 403 ; 토큰 불일치 401
      */
     @Operation(summary = "종합견적서 거래처 directory 조회",
@@ -61,8 +62,9 @@ public class PartnerInternalController {
     @PreAuthorize("hasRole('MASTER')")
     public ApiResponse<List<PartnerDirectoryResponse>> listDirectory(
             @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "5000") int limit) {
-        return ApiResponse.ok(partnerService.listDirectory(q, limit));
+            @RequestParam(defaultValue = "5000") int limit,
+            @RequestParam(defaultValue = "0") int page) {
+        return ApiResponse.ok(partnerService.listDirectory(q, limit, page));
     }
 
     /**
