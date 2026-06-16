@@ -895,7 +895,7 @@ type MockProductCatalogRow = {
 // usageScopeManual / displayOrder 필드 추가 (PR-B 확장).
 // productType / componentCount 추가 (PR-E 확장).
 let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
-  ...Object.values(MOCK_PRODUCTS_BY_MODEL).map((p, index) => {
+  ...Object.values(MOCK_PRODUCTS_BY_MODEL).filter((p) => p.productCategory !== 'MATERIAL').map((p, index) => {
     const isBundle = p.productType === 'BUNDLE'
     return {
       modelCode: p.modelName,

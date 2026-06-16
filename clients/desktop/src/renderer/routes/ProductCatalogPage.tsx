@@ -147,7 +147,7 @@ const ESTIMATE_CATEGORY_LABEL: Record<EstimateCategory, string> = {
   HOME_MULTI: '홈멀티',
   SINGLE_SET: '단일 세트',
   COMMERCIAL_MULTI: '상업멀티',
-  LEGACY: '레거시',
+  LEGACY: '구형',
   OTHER: '기타',
 }
 
@@ -177,7 +177,7 @@ const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string 
   { value: 'HOME_MULTI', label: '홈멀티' },
   { value: 'SINGLE_SET', label: '단일 세트' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
-  { value: 'LEGACY', label: '레거시' },
+  { value: 'LEGACY', label: '구형' },
   { value: 'OTHER', label: '기타' },
 ]
 

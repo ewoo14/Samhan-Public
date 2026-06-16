@@ -74,7 +74,7 @@ const PRODUCT_CATEGORY_OPTIONS: Array<{ value: ProductCategory; label: string }>
   { value: 'SINGLE_PART', label: '단일 구성품' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
   { value: 'COMMERCIAL_PART', label: '상업 구성품' },
-  { value: 'OLD', label: '레거시' },
+  { value: 'OLD', label: '구형' },
   { value: 'MATERIAL', label: '자재' },
 ]
 
