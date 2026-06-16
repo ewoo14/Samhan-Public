@@ -36,7 +36,7 @@ public record CreateProductRequest(
         @DecimalMin("0.00") BigDecimal deliveryPrice,
         ProductGoodsType goodsType,
         UsageScope usageScope,
-        EstimateCategory estimateCategory,
+        List<EstimateCategory> estimateCategories,
         @Valid List<ProductSpecRequest> specs) {
 
     public CreateProductRequest(String name, String modelName, UUID categoryId,

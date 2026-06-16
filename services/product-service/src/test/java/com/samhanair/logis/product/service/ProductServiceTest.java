@@ -16,6 +16,7 @@ import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.web.dto.CreateProductRequest;
@@ -48,6 +49,9 @@ class ProductServiceTest {
 
     @Mock
     private ProductSpecRepository productSpecRepository;
+
+    @Mock
+    private ProductEstimateExposureRepository exposureRepository;
 
     @Mock
     private CategoryRepository categoryRepository;

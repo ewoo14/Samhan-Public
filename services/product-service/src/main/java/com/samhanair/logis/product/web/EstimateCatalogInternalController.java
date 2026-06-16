@@ -9,6 +9,7 @@ import com.samhanair.logis.product.domain.OduRecommendationLookup;
 import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
@@ -16,6 +17,7 @@ import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
@@ -68,6 +70,7 @@ public class EstimateCatalogInternalController {
     private final MaterialPriceRepository materialPriceRepository;
     private final OduRecommendationLookupRepository oduRecommendationLookupRepository;
     private final BranchPipeLookupRepository branchPipeLookupRepository;
+    private final ProductEstimateExposureRepository exposureRepository;
 
     /** 카탈로그 행 — legacy 시트 row 동등 (분류 catL/M/S·disp 는 estimate-app 이 name 으로 계산). */
     public record CatalogRow(
@@ -120,16 +123,9 @@ public class EstimateCatalogInternalController {
     @GetMapping("/products")
     @Transactional(readOnly = true)
     public ApiResponse<List<CatalogRow>> products(@RequestParam("category") EstimateCategory category) {
-        ProductCategory productCategory = switch (category) {
-            case HOME_MULTI -> ProductCategory.HOME_MULTI;
-            case SINGLE_SET -> ProductCategory.SINGLE_SET;
-            case COMMERCIAL_MULTI -> ProductCategory.COMMERCIAL_MULTI;
-            case LEGACY -> ProductCategory.OLD;
-            default -> throw new IllegalArgumentException("지원하지 않는 카테고리: " + category);
-        };
         // 개발책임자 결정(2026-06-10): 견적서엔 designated 품목만(ESTIMATE/BOTH), 구글 시트 순서 유지.
         List<Product> products = productRepository.findExposedCatalog(
-                productCategory, java.util.List.of(UsageScope.ESTIMATE, UsageScope.BOTH));
+                category, java.util.List.of(UsageScope.ESTIMATE, UsageScope.BOTH));
 
         Map<UUID, Map<String, String>> specByProduct = loadSpecs(
                 products.stream().map(Product::getId).toList());
@@ -262,13 +258,18 @@ public class EstimateCatalogInternalController {
         Map<UUID, PriceHistory> byProduct = baselines.stream()
                 .collect(Collectors.toMap(PriceHistory::getProductId, ph -> ph, (a, b) -> a));
         List<Product> products = productRepository.findAllById(byProduct.keySet());
-        List<PriceBaselineRow> rows = products.stream()
+        Map<UUID, Product> productById = products.stream()
                 .filter(p -> !Boolean.TRUE.equals(p.getIsDeleted()))
-                .filter(p -> p.getModelCode() != null && p.getEstimateCategory() != null)
-                .map(p -> {
-                    PriceHistory ph = byProduct.get(p.getId());
+                .filter(p -> p.getModelCode() != null)
+                .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        List<PriceBaselineRow> rows = exposureRepository
+                .findByProductIdInAndIsDeletedFalse(productById.keySet())
+                .stream()
+                .map(e -> {
+                    Product p = productById.get(e.getProductId());
+                    PriceHistory ph = byProduct.get(e.getProductId());
                     return new PriceBaselineRow(p.getModelCode(),
-                            p.getEstimateCategory().name(),
+                            e.getEstimateCategory().name(),
                             ph.getReleasePrice(), ph.getDeliveryPrice());
                 })
                 .toList();

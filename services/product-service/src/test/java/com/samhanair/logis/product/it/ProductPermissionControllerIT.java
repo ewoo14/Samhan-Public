@@ -43,6 +43,7 @@ import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.SpecKeyTemplateRepository;
 import com.samhanair.logis.product.service.BundleComponentService;
@@ -163,6 +164,7 @@ class ProductPermissionControllerIT {
     // §1c/§1d 신규 빈 (ProductCatalogController 신규 의존성 — feedback_it_mockbean_external_clients.md)
     @MockBean private BundleComponentService bundleComponentService;
     @MockBean private BundleComponentRepository bundleComponentRepository;
+    @MockBean private ProductEstimateExposureRepository productEstimateExposureRepository;
     // P3-1: SSE publish 시점 통일 게이트웨이 (ProductCatalogController 신규 의존성)
     @MockBean private ProductCatalogChangePublisher catalogChangePublisher;
 
@@ -350,7 +352,7 @@ class ProductPermissionControllerIT {
                 new EndpointCase("product catalog usage patch", "products.admin", PermissionAction.UPDATE, "MANAGER", 200,
                         () -> patch("/api/v1/products/MODEL-1/usage")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"usageScope\":\"ESTIMATE\",\"estimateCategory\":\"OTHER\"}")),
+                                .content("{\"usageScope\":\"ESTIMATE\",\"estimateCategories\":[\"OTHER\"]}")),
                 new EndpointCase("product catalog usage delete", "products.admin", PermissionAction.UPDATE, "MANAGER", 204,
                         () -> delete("/api/v1/products/MODEL-1/usage")),
                 new EndpointCase("product catalog specs list", "products.list", PermissionAction.VIEW, "SALES", 200,
@@ -453,7 +455,7 @@ class ProductPermissionControllerIT {
                 new EndpointCase("display orders update", "products.admin", PermissionAction.UPDATE, "MANAGER", 204,
                         () -> put("/api/v1/products/display-orders")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("[{\"modelCode\":\"MODEL-1\",\"displayOrder\":1}]")),
+                                .content("[{\"modelCode\":\"MODEL-1\",\"estimateCategory\":\"OTHER\",\"displayOrder\":1}]")),
                 // §2-2 (D fix 2026-06-11) — catalog-realtime SSE 구독 권한 가드 (products.list VIEW)
                 new EndpointCase("catalog realtime sse", "products.list", PermissionAction.VIEW, "SALES", 200,
                         () -> get("/api/v1/products/catalog-realtime")

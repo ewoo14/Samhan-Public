@@ -124,14 +124,14 @@ public class ProductSpecService {
         SpecKeyTemplate tmpl = templateRepository.findById(templateId)
                 .orElseThrow(() -> new EntityNotFoundException("SpecKeyTemplate 없음: " + templateId));
         EstimateCategory category = tmpl.getEstimateCategory();
-        // 같은 category 의 모든 product 를 대상으로 specKey 가 없는 row 만 신규 추가
-        // (간소화: usage_scope 가 NONE 이 아닌 product 만)
-        List<Product> candidates = productRepository.findByUsageScopeAndIsDeletedFalse(
-                com.samhanair.logis.product.domain.UsageScope.BOTH);
+        // 같은 M:N 견적 카테고리에 노출된 product 를 대상으로 specKey 가 없는 row 만 신규 추가.
+        List<Product> candidates = productRepository.findExposedCatalog(
+                category,
+                List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
+                        com.samhanair.logis.product.domain.UsageScope.BOTH));
         List<String> previewModelCodes = new ArrayList<>();
         int actuallyAdded = 0;
         for (Product p : candidates) {
-            if (p.getEstimateCategory() != category) continue;
             if (specRepository.existsByProductIdAndSpecKey(p.getId(), tmpl.getSpecKey())) continue;
             previewModelCodes.add(p.getModelCode() == null ? p.getModelName() : p.getModelCode());
             if (!dryRun) {

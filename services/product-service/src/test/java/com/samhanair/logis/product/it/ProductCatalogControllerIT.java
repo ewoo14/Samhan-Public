@@ -102,7 +102,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"OTHER"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["OTHER"]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usageScope").value("ESTIMATE"))
@@ -189,7 +189,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"OTHER"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["OTHER"]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.modelCode").value("MODEL_NAME_ONLY_01"))
@@ -229,7 +229,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"OTHER"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["OTHER"]}
                                 """))
                 .andExpect(status().isNotFound());
     }
@@ -265,7 +265,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"HOME_MULTI"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["HOME_MULTI"]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usageScopeManual").value(true));
@@ -460,7 +460,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"HOME_MULTI"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["HOME_MULTI"]}
                                 """))
                 .andExpect(status().isOk());
 
@@ -497,8 +497,8 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 [
-                                  {"modelCode":"MIX_HOME_01","displayOrder":1},
-                                  {"modelCode":"MIX_SINGLE_01","displayOrder":2}
+                                  {"modelCode":"MIX_HOME_01","estimateCategory":"HOME_MULTI","displayOrder":1},
+                                  {"modelCode":"MIX_SINGLE_01","estimateCategory":"SINGLE_SET","displayOrder":2}
                                 ]
                                 """))
                 .andExpect(status().isBadRequest());
@@ -769,8 +769,8 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 [
-                                  {"modelCode":"DOHP_M1","displayOrder":2},
-                                  {"modelCode":"DOHP_M2","displayOrder":1}
+                                  {"modelCode":"DOHP_M1","estimateCategory":"HOME_MULTI","displayOrder":2},
+                                  {"modelCode":"DOHP_M2","estimateCategory":"HOME_MULTI","displayOrder":1}
                                 ]
                                 """))
                 .andExpect(status().isNoContent());

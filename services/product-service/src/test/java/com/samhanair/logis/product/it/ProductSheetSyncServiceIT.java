@@ -12,6 +12,7 @@ import com.samhanair.logis.product.client.GoogleSheetsClient;
 import com.samhanair.logis.product.client.GoogleSheetsClient.ValueRenderMode;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
+import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductType;
@@ -19,6 +20,7 @@ import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.service.ProductSheetSyncService;
@@ -77,6 +79,9 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Autowired
     private ProductSpecRepository productSpecRepository;
+
+    @Autowired
+    private ProductEstimateExposureRepository exposureRepository;
 
     @BeforeEach
     void resetState() {
@@ -557,16 +562,13 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         syncService.syncAll();
 
         // 시트 행 순서(1,2,3) = display_order 그대로
-        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("DO_FIRST").orElseThrow()
-                .getDisplayOrder()).isEqualTo(1);
-        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("DO_SECOND").orElseThrow()
-                .getDisplayOrder()).isEqualTo(2);
-        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("DO_THIRD").orElseThrow()
-                .getDisplayOrder()).isEqualTo(3);
+        assertThat(exposureOrder("DO_FIRST", EstimateCategory.SINGLE_SET)).isEqualTo(1);
+        assertThat(exposureOrder("DO_SECOND", EstimateCategory.SINGLE_SET)).isEqualTo(2);
+        assertThat(exposureOrder("DO_THIRD", EstimateCategory.SINGLE_SET)).isEqualTo(3);
 
         // findExposedCatalog 정렬도 시트 순서대로
         List<Product> exposed = productRepository.findExposedCatalog(
-                ProductCategory.SINGLE_SET,
+                com.samhanair.logis.product.domain.EstimateCategory.SINGLE_SET,
                 List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
                         com.samhanair.logis.product.domain.UsageScope.BOTH));
         assertThat(exposed).extracting(Product::getModelCode)
@@ -600,20 +602,17 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(p.getProductCategory()).isEqualTo(ProductCategory.SINGLE_SET);
         assertThat(p.getUsageScope())
                 .isEqualTo(com.samhanair.logis.product.domain.UsageScope.BOTH);
-        assertThat(p.getEstimateCategory())
-                .isEqualTo(com.samhanair.logis.product.domain.EstimateCategory.SINGLE_SET);
-        assertThat(p.getDisplayOrder()).isEqualTo(1);
+        assertThat(exposureOrder("STOMP_TEST", EstimateCategory.SINGLE_SET)).isEqualTo(1);
         // 노출 카탈로그에 정상 노출(NONE 으로 stomp 되었다면 미반환)
         assertThat(productRepository.findExposedCatalog(
-                ProductCategory.SINGLE_SET,
+                com.samhanair.logis.product.domain.EstimateCategory.SINGLE_SET,
                 List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
                         com.samhanair.logis.product.domain.UsageScope.BOTH)))
                 .extracting(Product::getModelCode).contains("STOMP_TEST");
     }
 
     /**
-     * V14 수동 override 보존 가드 — usageScopeManual=true 인 품목은 sync 시 usageScope/estimateCategory 불변.
-     * displayOrder 는 시트 노출 순서이므로 manual 여부와 무관하게 계속 갱신된다.
+     * V14 수동 override 보존 가드 — usageScopeManual=true 인 품목은 sync 시 usageScope 및 M:N 노출 불변.
      */
     @Test
     void sync_수동override_true인_품목은_usageScope_불변_displayOrder는_갱신() throws Exception {
@@ -626,10 +625,10 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
         Product p = productRepository.findByModelCodeAndIsDeletedFalse("MANUAL_GUARD").orElseThrow();
         assertThat(p.getUsageScope()).isEqualTo(com.samhanair.logis.product.domain.UsageScope.BOTH);
-        assertThat(p.getDisplayOrder()).isEqualTo(1);
+        assertThat(exposureOrder("MANUAL_GUARD", EstimateCategory.HOME_MULTI)).isEqualTo(1);
 
         // 수동 override: usageScope 를 PARTNER_ORDER 로 변경하고 플래그 true
-        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER, null);
+        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
         productRepository.save(p);
         assertThat(p.isUsageScopeManual()).isTrue();
 
@@ -646,9 +645,8 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
                 .isEqualTo(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
         assertThat(after.isUsageScopeManual()).isTrue();
 
-        // displayOrder 는 계속 갱신 (시트에서 1번 행이므로 1)
-        assertThat(after.getDisplayOrder())
-                .as("displayOrder 는 manual 여부와 무관하게 시트 순서로 갱신")
+        assertThat(exposureOrder("MANUAL_GUARD", EstimateCategory.HOME_MULTI))
+                .as("manual=true 이면 sync 는 exposure 를 변경하지 않음")
                 .isEqualTo(1);
         // 가격은 갱신됨
         assertThat(after.getReleasePrice()).isEqualByComparingTo(new BigDecimal("1600000"));
@@ -674,7 +672,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(p.getUsageScope()).isEqualTo(com.samhanair.logis.product.domain.UsageScope.BOTH);
 
         // 변조: DB 에서 PARTNER_ORDER 로 직접 변경 후 manual=false 유지
-        p.changeUsage(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER, null);
+        p.changeUsage(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
         productRepository.save(p);
         assertThat(p.isUsageScopeManual()).isFalse();
 
@@ -692,12 +690,10 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     /**
-     * V14 수동 override 보존 가드 — true 케이스에 estimateCategory null 단언 추가 (지적 [26]).
-     *
-     * <p>PARTNER_ORDER 로 manual 설정 시 estimateCategory 가 null 로 정리되어야 한다.
+     * V18 수동 override 보존 가드 — PARTNER_ORDER manual 전환 후 sync 는 기존 exposure 를 건드리지 않는다.
      */
     @Test
-    void sync_수동override_true_PARTNER_ORDER_estimateCategory_null() throws Exception {
+    void sync_수동override_true_PARTNER_ORDER_exposure_미변경() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         // 홈멀티(BOTH + HOME_MULTI estimateCategory) 로 insert
         when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(homeMultiRows(
@@ -706,17 +702,12 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         syncService.syncAll();
 
         Product p = productRepository.findByModelCodeAndIsDeletedFalse("EC_GUARD").orElseThrow();
-        assertThat(p.getEstimateCategory())
-                .isEqualTo(com.samhanair.logis.product.domain.EstimateCategory.HOME_MULTI);
+        assertThat(exposureOrder("EC_GUARD", EstimateCategory.HOME_MULTI)).isEqualTo(1);
 
         // PARTNER_ORDER 로 수동 override
-        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER, null);
+        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
         productRepository.save(p);
 
-        // estimateCategory 가 null 로 정리되어야 함
-        assertThat(p.getEstimateCategory())
-                .as("PARTNER_ORDER 수동 설정 시 estimateCategory null 정리")
-                .isNull();
         assertThat(p.isUsageScopeManual()).isTrue();
 
         // 2차 sync — 가격 변경 후 manual=true 이므로 estimateCategory 계속 null
@@ -727,9 +718,9 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
         Product after = productRepository.findByModelCodeAndIsDeletedFalse("EC_GUARD").orElseThrow();
         assertThat(after.getUsageScope()).isEqualTo(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
-        assertThat(after.getEstimateCategory())
-                .as("sync 후에도 estimateCategory null 유지")
-                .isNull();
+        assertThat(exposureOrder("EC_GUARD", EstimateCategory.HOME_MULTI))
+                .as("manual=true 이면 sync 는 exposure 를 삭제하거나 갱신하지 않음")
+                .isEqualTo(1);
     }
 
     /**
@@ -754,7 +745,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(p.getUsageScope()).isEqualTo(com.samhanair.logis.product.domain.UsageScope.BOTH);
 
         // 수동 override: PARTNER_ORDER 로 변경
-        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER, null);
+        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
         productRepository.save(p);
         assertThat(p.isUsageScopeManual()).isTrue();
 
@@ -793,7 +784,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
         // 수동 override 설정
         Product p = productRepository.findByModelCodeAndIsDeletedFalse("MANUAL_NOSHEET").orElseThrow();
-        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER, null);
+        p.markUsageManual(com.samhanair.logis.product.domain.UsageScope.PARTNER_ORDER);
         productRepository.save(p);
 
         // 2차 sync — 시트에서 해당 row 제거 (빈 응답)
@@ -824,6 +815,13 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     @SafeVarargs
     private static List<List<Object>> rows(List<Object>... rows) {
         return List.of(rows);
+    }
+
+    private Integer exposureOrder(String modelCode, EstimateCategory category) {
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse(modelCode).orElseThrow();
+        return exposureRepository.findByProductIdAndEstimateCategoryAndIsDeletedFalse(product.getId(), category)
+                .orElseThrow()
+                .getDisplayOrder();
     }
 
     private static List<Object> row(Object... vals) {

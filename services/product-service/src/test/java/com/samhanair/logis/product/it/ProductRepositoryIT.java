@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.samhanair.logis.product.ProductServiceApplication;
 import com.samhanair.logis.product.domain.Category;
+import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -42,6 +45,9 @@ class ProductRepositoryIT extends AbstractPostgresIT {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private ProductEstimateExposureRepository exposureRepository;
 
     @Autowired
     private CategoryRepository categoryRepository;
@@ -151,43 +157,67 @@ class ProductRepositoryIT extends AbstractPostgresIT {
     }
 
     /**
-     * #노출구분 — findExposedCatalog: 카테고리 + 노출범위(usageScope) 필터 + 시트순서(display_order)
+     * #노출구분 — findExposedCatalog: M:N 견적 카테고리 + 노출범위(usageScope) 필터 + 카테고리별 순서
      * 정렬(NULLS LAST). 개발책임자 결정(2026-06-10): 견적/주문엔 designated 품목만, 시트 순서 유지.
      */
     @Test
-    void findExposedCatalog_filtersByUsageScope_ordersByDisplayOrder() {
-        // SINGLE_SET 4종: BOTH(노출, order 2,1), NONE(미노출), ESTIMATE(노출, order null)
+    void findExposedCatalog_filtersByExposureAndUsageScope_ordersByExposureDisplayOrder() {
+        // SINGLE_SET 노출 3종: BOTH(노출, order 2,1), NONE(미노출), ESTIMATE(노출, order null)
         Product b2 = seedSingle("노출2", "S-EXP-2",
-                com.samhanair.logis.product.domain.UsageScope.BOTH, 2);
+                com.samhanair.logis.product.domain.UsageScope.BOTH);
         Product b1 = seedSingle("노출1", "S-EXP-1",
-                com.samhanair.logis.product.domain.UsageScope.BOTH, 1);
+                com.samhanair.logis.product.domain.UsageScope.BOTH);
         Product none = seedSingle("미노출", "S-NONE",
-                com.samhanair.logis.product.domain.UsageScope.NONE, 3);
+                com.samhanair.logis.product.domain.UsageScope.NONE);
         Product estNull = seedSingle("노출순번없음", "S-EST-NULL",
-                com.samhanair.logis.product.domain.UsageScope.ESTIMATE, null);
+                com.samhanair.logis.product.domain.UsageScope.ESTIMATE);
+        exposureRepository.save(ProductEstimateExposure.create(b2.getId(), EstimateCategory.SINGLE_SET, 2));
+        exposureRepository.save(ProductEstimateExposure.create(b1.getId(), EstimateCategory.SINGLE_SET, 1));
+        exposureRepository.save(ProductEstimateExposure.create(none.getId(), EstimateCategory.SINGLE_SET, 3));
+        exposureRepository.save(ProductEstimateExposure.create(estNull.getId(), EstimateCategory.SINGLE_SET, null));
         productRepository.flush();
         entityManager.clear();
 
         List<Product> exposed = productRepository.findExposedCatalog(
-                com.samhanair.logis.product.domain.ProductCategory.SINGLE_SET,
+                EstimateCategory.SINGLE_SET,
                 List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
                         com.samhanair.logis.product.domain.UsageScope.BOTH));
 
-        // NONE 제외 + display_order ASC(1,2) 후 NULL 후순위
+        // NONE 제외 + exposure.display_order ASC(1,2) 후 NULL 후순위
         assertThat(exposed).extracting(Product::getModelCode)
                 .containsExactly("S-EXP-1", "S-EXP-2", "S-EST-NULL");
     }
 
+    @Test
+    void findExposedCatalog_한_품목이_두_견적카테고리에_노출된다() {
+        Product multi = seedSingle("다중노출", "MULTI-EXPOSED",
+                com.samhanair.logis.product.domain.UsageScope.BOTH);
+        exposureRepository.save(ProductEstimateExposure.create(multi.getId(), EstimateCategory.HOME_MULTI, 1));
+        exposureRepository.save(ProductEstimateExposure.create(multi.getId(), EstimateCategory.SINGLE_SET, 1));
+        productRepository.flush();
+        entityManager.clear();
+
+        List<Product> home = productRepository.findExposedCatalog(
+                EstimateCategory.HOME_MULTI,
+                List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
+                        com.samhanair.logis.product.domain.UsageScope.BOTH));
+        List<Product> single = productRepository.findExposedCatalog(
+                EstimateCategory.SINGLE_SET,
+                List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
+                        com.samhanair.logis.product.domain.UsageScope.BOTH));
+
+        assertThat(home).extracting(Product::getModelCode).contains("MULTI-EXPOSED");
+        assertThat(single).extracting(Product::getModelCode).contains("MULTI-EXPOSED");
+    }
+
     private Product seedSingle(String name, String modelCode,
-            com.samhanair.logis.product.domain.UsageScope scope, Integer displayOrder) {
+            com.samhanair.logis.product.domain.UsageScope scope) {
         Product p = Product.seedFromSheet(name, modelCode, indoorWall,
                 new BigDecimal("1000000"), new BigDecimal("800000"),
                 com.samhanair.logis.product.domain.ProductType.SINGLE,
                 com.samhanair.logis.product.domain.ProductCategory.SINGLE_SET,
                 scope,
-                scope == com.samhanair.logis.product.domain.UsageScope.NONE
-                        ? null : com.samhanair.logis.product.domain.EstimateCategory.SINGLE_SET);
-        p.changeDisplayOrder(displayOrder);
+                null);
         return productRepository.save(p);
     }
 

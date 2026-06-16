@@ -3,9 +3,12 @@ package com.samhanair.logis.product.web.dto;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * 카탈로그 endpoint 응답 — UUID 비공개 원칙 (feedback_uuid_no_user_visibility.md) 충족.
@@ -19,7 +22,7 @@ import java.math.BigDecimal;
  * <p>PR-B(2026-06-11) 추가 필드:
  * <ul>
  *   <li>{@code usageScopeManual} — 수동 override 여부. true 이면 sync 가 덮어쓰지 않음.</li>
- *   <li>{@code displayOrder} — 시트 노출 순서 (null 이면 정렬 후순위).</li>
+ *   <li>{@code estimateCategory}/{@code displayOrder} — V18 이후 하위호환용 deprecated 파생값.</li>
  * </ul>
  *
  * <p>§1b(2026-06-11) 추가 필드:
@@ -37,6 +40,7 @@ public record ProductCatalogResponse(
         ProductCategory productCategory,
         boolean usageScopeManual,
         Integer displayOrder,
+        List<EstimateCategoryExposureView> estimateCategories,
         BigDecimal releasePrice,
         BigDecimal deliveryPrice,
         boolean hasVariableDiscount,
@@ -55,14 +59,32 @@ public record ProductCatalogResponse(
      * @return 카탈로그 응답 DTO
      */
     public static ProductCatalogResponse from(Product p) {
+        return from(p, List.of());
+    }
+
+    /**
+     * {@link Product} + M:N 노출 목록 → 카탈로그 응답 변환.
+     *
+     * <p>{@code estimateCategory}/{@code displayOrder} 단일 필드는 오래된 reader 보호용으로
+     * 정렬된 첫 노출에서 파생한다. 신규 reader 는 {@code estimateCategories} 목록을 사용한다.
+     *
+     * @param p 변환 대상 Product 엔티티
+     * @param exposures 해당 품목의 활성 견적 노출 목록
+     * @return 카탈로그 응답 DTO
+     */
+    public static ProductCatalogResponse from(Product p, List<ProductEstimateExposure> exposures) {
+        List<EstimateCategoryExposureView> exposureViews = exposureViews(exposures);
+        EstimateCategory firstCategory = exposureViews.isEmpty() ? null : exposureViews.get(0).category();
+        Integer firstDisplayOrder = exposureViews.isEmpty() ? null : exposureViews.get(0).displayOrder();
         return new ProductCatalogResponse(
                 p.getModelCode() == null ? p.getModelName() : p.getModelCode(),
                 p.getName(),
                 p.getUsageScope(),
-                p.getEstimateCategory(),
+                firstCategory,
                 p.getProductCategory(),
                 p.isUsageScopeManual(),
-                p.getDisplayOrder(),
+                firstDisplayOrder,
+                exposureViews,
                 p.getReleasePrice(),
                 p.getDeliveryPrice(),
                 Boolean.TRUE.equals(p.getHasVariableDiscount()),
@@ -85,10 +107,27 @@ public record ProductCatalogResponse(
     public ProductCatalogResponse withComponentCount(int count) {
         return new ProductCatalogResponse(
                 modelCode, name, usageScope, estimateCategory,
-                productCategory, usageScopeManual, displayOrder,
+                productCategory, usageScopeManual, displayOrder, estimateCategories,
                 releasePrice, deliveryPrice,
                 hasVariableDiscount, legacyDiscountFlag, discountFlags,
                 productType, count
         );
+    }
+
+    private static List<EstimateCategoryExposureView> exposureViews(List<ProductEstimateExposure> exposures) {
+        if (exposures == null || exposures.isEmpty()) {
+            return List.of();
+        }
+        return exposures.stream()
+                .sorted(Comparator
+                        .comparing(ProductEstimateExposure::getDisplayOrder,
+                                Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(e -> e.getEstimateCategory().name()))
+                .map(e -> new EstimateCategoryExposureView(e.getEstimateCategory(), e.getDisplayOrder()))
+                .toList();
+    }
+
+    /** 카테고리별 견적 노출 표시 정보. */
+    public record EstimateCategoryExposureView(EstimateCategory category, Integer displayOrder) {
     }
 }

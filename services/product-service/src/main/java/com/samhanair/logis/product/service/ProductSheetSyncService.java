@@ -9,12 +9,14 @@ import com.samhanair.logis.product.domain.MaterialKey;
 import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import java.math.BigDecimal;
@@ -157,6 +159,7 @@ public class ProductSheetSyncService {
     private final PriceHistoryRepository priceHistoryRepository;
     private final BundleComponentRepository bundleComponentRepository;
     private final ProductSpecRepository productSpecRepository;
+    private final ProductEstimateExposureRepository exposureRepository;
     private final VariableDiscountDetector discountDetector;
     private final ProductSheetSyncService self;
 
@@ -169,6 +172,7 @@ public class ProductSheetSyncService {
                                    PriceHistoryRepository priceHistoryRepository,
                                    BundleComponentRepository bundleComponentRepository,
                                    ProductSpecRepository productSpecRepository,
+                                   ProductEstimateExposureRepository exposureRepository,
                                    VariableDiscountDetector discountDetector,
                                    @Lazy ProductSheetSyncService self) {
         this.sheetsClient = sheetsClient;
@@ -177,6 +181,7 @@ public class ProductSheetSyncService {
         this.priceHistoryRepository = priceHistoryRepository;
         this.bundleComponentRepository = bundleComponentRepository;
         this.productSpecRepository = productSpecRepository;
+        this.exposureRepository = exposureRepository;
         this.discountDetector = discountDetector;
         this.self = self;
     }
@@ -1156,6 +1161,7 @@ public class ProductSheetSyncService {
             // ※ 신규 탭 추가 시 견적 탭은 구성품 탭보다 앞에 둘 것.
             Optional<Product> existing = productRepository.findByModelCodeAndIsDeletedFalse(modelCode);
             UUID productId;
+            Product productForExposure;
             if (existing.isEmpty()) {
                 Product p = Product.seedFromSheet(name, modelCode, defaultCategory,
                         releasePrice, deliveryPrice,
@@ -1166,11 +1172,11 @@ public class ProductSheetSyncService {
                 p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                 p.changeDiscountFlags(discountFlags);
                 applyPyongSize(p, mapping, cells);
-                p.changeDisplayOrder(displayOrder);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
                 productId = p.getId();
+                productForExposure = p;
                 result.inserted++;
             } else if (prevHash == null || !prevHash.equals(rowHash)) {
                 Product p = existing.get();
@@ -1187,10 +1193,9 @@ public class ProductSheetSyncService {
                 //   manual 여부와 무관하게 갱신 — 사용자가 시트 행 순서를 재정렬해도 반영되어야 함.
                 if (p.getProductCategory() == mapping.productCategory) {
                     if (!p.isUsageScopeManual()) {
-                        p.changeUsage(mapping.usageScope, mapping.estimateCategory);
+                        p.changeUsage(mapping.usageScope);
                     }
                     applyPyongSize(p, mapping, cells);
-                    p.changeDisplayOrder(displayOrder);
                 }
                 p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                 p.changeDiscountFlags(discountFlags);
@@ -1198,12 +1203,17 @@ public class ProductSheetSyncService {
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
                 productId = p.getId();
+                productForExposure = p;
                 result.updated++;
             } else {
-                productId = existing.get().getId();
+                Product p = existing.get();
+                productId = p.getId();
+                productForExposure = p;
                 upsertPriceHistory(productId, PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 result.unchanged++;
             }
+
+            upsertSheetExposure(productForExposure, mapping.estimateCategory, displayOrder);
 
             // 사양(ProductSpec) 적재 — 사양 보유 탭은 V17 매핑전용, 비사양 탭은 기존 blocklist 보존.
             if (headerCells != null) {
@@ -1240,6 +1250,26 @@ public class ProductSheetSyncService {
                 mapping.tabName, result.inserted, result.updated, result.unchanged,
                 result.softDeleted, result.skipped, result.preservedManual);
         return result;
+    }
+
+    /**
+     * 시트 탭 기준 견적 노출을 additive upsert 한다.
+     *
+     * <p>수동 override 품목은 PATCH /usage 가 단일 권위이므로 sync 에서 노출을 변경하지 않는다.
+     * sync 는 삭제를 절대 수행하지 않고, 탭에 등장한 카테고리 행을 보장하거나 displayOrder 만 갱신한다.
+     */
+    private void upsertSheetExposure(Product product, EstimateCategory estimateCategory, int displayOrder) {
+        if (product == null || product.getId() == null || estimateCategory == null) {
+            return;
+        }
+        if (product.isUsageScopeManual()) {
+            return;
+        }
+        exposureRepository.findByProductIdAndEstimateCategoryAndIsDeletedFalse(product.getId(), estimateCategory)
+                .ifPresentOrElse(
+                        exposure -> exposure.changeDisplayOrder(displayOrder),
+                        () -> exposureRepository.save(ProductEstimateExposure.create(
+                                product.getId(), estimateCategory, displayOrder)));
     }
 
     private void syncBeforeIncreasePriceHistory(SheetTabMapping mapping, Set<String> currentModelCodes) throws Exception {

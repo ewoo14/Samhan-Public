@@ -4,12 +4,14 @@ import static com.samhanair.logis.product.service.ProductService.escapeLikeWildc
 
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.SpecKeyTemplate;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.realtime.ProductCatalogChangePublisher;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.SpecKeyTemplateRepository;
 import com.samhanair.logis.product.service.BundleComponentService;
@@ -100,6 +102,7 @@ public class ProductCatalogController {
     private final ProductService productService;
     private final BundleComponentService bundleComponentService;
     private final BundleComponentRepository bundleComponentRepository;
+    private final ProductEstimateExposureRepository exposureRepository;
     private final ProductCatalogChangePublisher catalogChangePublisher;
 
     public ProductCatalogController(ProductRepository productRepository,
@@ -108,6 +111,7 @@ public class ProductCatalogController {
                                     ProductService productService,
                                     BundleComponentService bundleComponentService,
                                     BundleComponentRepository bundleComponentRepository,
+                                    ProductEstimateExposureRepository exposureRepository,
                                     ProductCatalogChangePublisher catalogChangePublisher) {
         this.productRepository = productRepository;
         this.specService = specService;
@@ -115,6 +119,7 @@ public class ProductCatalogController {
         this.productService = productService;
         this.bundleComponentService = bundleComponentService;
         this.bundleComponentRepository = bundleComponentRepository;
+        this.exposureRepository = exposureRepository;
         this.catalogChangePublisher = catalogChangePublisher;
     }
 
@@ -166,10 +171,18 @@ public class ProductCatalogController {
                 ? Map.of()
                 : bundleComponentRepository.countMapByBundleProductIds(bundleIds);
 
+        Map<UUID, List<ProductEstimateExposure>> exposuresByProductId = products.isEmpty()
+                ? Map.of()
+                : exposureRepository.findByProductIdInAndIsDeletedFalse(
+                                products.stream().map(Product::getId).toList())
+                        .stream()
+                        .collect(Collectors.groupingBy(ProductEstimateExposure::getProductId));
+
         // DTO 변환 + componentCount 주입
         List<ProductCatalogResponse> enriched = products.stream()
                 .map(p -> {
-                    ProductCatalogResponse r = ProductCatalogResponse.from(p);
+                    ProductCatalogResponse r = ProductCatalogResponse.from(
+                            p, exposuresByProductId.getOrDefault(p.getId(), List.of()));
                     if (p.getProductType() != ProductType.BUNDLE) {
                         return r;
                     }
@@ -200,8 +213,9 @@ public class ProductCatalogController {
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
     public ProductCatalogResponse changeUsage(@PathVariable @NotBlank String modelCode,
                                               @Valid @RequestBody UpdateProductUsageRequest req) {
+        Product product = productService.updateUsageAndReturn(modelCode, req);
         ProductCatalogResponse response = ProductCatalogResponse.from(
-                productService.updateUsageAndReturn(modelCode, req));
+                product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
         // §2-2 실시간 publish — usage PATCH 성공 시 카탈로그 목록 invalidate 트리거
         // P3-1: ProductCatalogChangePublisher 단일 경로 통일 (트랜잭션 종료 후 발화)
         catalogChangePublisher.publishCatalogChanged(modelCode);

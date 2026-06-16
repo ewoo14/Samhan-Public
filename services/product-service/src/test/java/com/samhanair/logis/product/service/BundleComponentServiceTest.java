@@ -16,11 +16,13 @@ import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.realtime.ProductCatalogChangePublisher;
 import com.samhanair.logis.product.realtime.ProductRealtimeBroker;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.web.dto.BundleComponentRequest;
 import com.samhanair.logis.product.web.dto.BundleComponentResponse;
@@ -61,6 +63,9 @@ class BundleComponentServiceTest {
     private BundleComponentRepository bundleComponentRepository;
 
     @Mock
+    private ProductEstimateExposureRepository exposureRepository;
+
+    @Mock
     private EntityManager entityManager;
 
     /**
@@ -82,7 +87,8 @@ class BundleComponentServiceTest {
         broker = new ProductRealtimeBroker();
         catalogChangePublisher = new ProductCatalogChangePublisher(broker);
         service = new BundleComponentService(
-                productRepository, bundleComponentRepository, catalogChangePublisher, entityManager);
+                productRepository, bundleComponentRepository, exposureRepository,
+                catalogChangePublisher, entityManager);
         Category cat = Category.create("INDOOR_WALL", "벽걸이형", null, 1);
 
         // BUNDLE 부모
@@ -550,32 +556,36 @@ class BundleComponentServiceTest {
         when(productRepository.findByModelNameInAndIsDeletedFalse(any()))
                 .thenReturn(List.of());
 
-        DisplayOrderRequest req = new DisplayOrderRequest("NO-CODE", 1);
+        DisplayOrderRequest req = new DisplayOrderRequest("NO-CODE", EstimateCategory.HOME_MULTI, 1);
 
         assertThatThrownBy(() -> service.updateDisplayOrders(List.of(req)))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
     @Test
-    void updateDisplayOrders_전건_적용() {
+    void updateDisplayOrders_전건_카테고리별_재번호() {
         Product p1 = Product.seedFromSheet("품목1", "PROD-001", null,
-                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE, null, UsageScope.NONE, null);
-        ReflectionTestUtils.setField(p1, "id", UUID.randomUUID());
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE, null, UsageScope.BOTH, null);
+        UUID p1Id = UUID.randomUUID();
+        ReflectionTestUtils.setField(p1, "id", p1Id);
         Product p2 = Product.seedFromSheet("품목2", "PROD-002", null,
-                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE, null, UsageScope.NONE, null);
-        ReflectionTestUtils.setField(p2, "id", UUID.randomUUID());
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE, null, UsageScope.BOTH, null);
+        UUID p2Id = UUID.randomUUID();
+        ReflectionTestUtils.setField(p2, "id", p2Id);
+        ProductEstimateExposure e1 = ProductEstimateExposure.create(p1Id, EstimateCategory.HOME_MULTI, 10);
+        ProductEstimateExposure e2 = ProductEstimateExposure.create(p2Id, EstimateCategory.HOME_MULTI, 20);
 
         when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
                 .thenReturn(List.of(p1, p2));
-        lenient().when(productRepository.save(any(Product.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
+                any(), any())).thenReturn(List.of(e1, e2));
 
         service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("PROD-001", 5),
-                new DisplayOrderRequest("PROD-002", 10)));
+                new DisplayOrderRequest("PROD-001", EstimateCategory.HOME_MULTI, 50),
+                new DisplayOrderRequest("PROD-002", EstimateCategory.HOME_MULTI, 10)));
 
-        assertThat(p1.getDisplayOrder()).isEqualTo(5);
-        assertThat(p2.getDisplayOrder()).isEqualTo(10);
+        assertThat(e1.getDisplayOrder()).isEqualTo(1);
+        assertThat(e2.getDisplayOrder()).isEqualTo(2);
     }
 
     @Test
@@ -594,8 +604,8 @@ class BundleComponentServiceTest {
     void updateDisplayOrders_중복_modelCode_400_BusinessException() {
         // 중복 검출이 미존재 조회보다 먼저 일어나므로 repository stub 불필요.
         assertThatThrownBy(() -> service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("DUP-001", 1),
-                new DisplayOrderRequest("DUP-001", 2))))
+                new DisplayOrderRequest("DUP-001", EstimateCategory.HOME_MULTI, 1),
+                new DisplayOrderRequest("DUP-001", EstimateCategory.HOME_MULTI, 2))))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT))
@@ -624,37 +634,28 @@ class BundleComponentServiceTest {
                 .thenReturn(List.of(catA, catB));
 
         assertThatThrownBy(() -> service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("PROD-A", 1),
-                new DisplayOrderRequest("PROD-B", 2))))
+                new DisplayOrderRequest("PROD-A", EstimateCategory.HOME_MULTI, 1),
+                new DisplayOrderRequest("PROD-B", EstimateCategory.SINGLE_SET, 2))))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT));
     }
 
     /**
-     * D-PCE-02 (b): null + non-null 혼합 → 400 INVALID_INPUT.
-     * estimateCategory=null 인 품목과 non-null 인 품목을 같은 요청에 넣으면 400.
+     * D-PCE-02 (b): 요청 estimateCategory 누락 → 400 INVALID_INPUT.
      */
     @Test
-    void updateDisplayOrders_null_과_nonNull_estimateCategory_혼합_400() {
-        // estimateCategory=null (미분류)
+    void updateDisplayOrders_null_estimateCategory_400() {
         Product nullCat = Product.seedFromSheet("미분류", "PROD-NULL", null,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 null, UsageScope.NONE, null);
         ReflectionTestUtils.setField(nullCat, "id", UUID.randomUUID());
 
-        // estimateCategory=HOME_MULTI
-        Product nonNullCat = Product.seedFromSheet("홈멀티", "PROD-HM", null,
-                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
-                ProductCategory.HOME_MULTI, UsageScope.ESTIMATE, EstimateCategory.HOME_MULTI);
-        ReflectionTestUtils.setField(nonNullCat, "id", UUID.randomUUID());
-
         when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
-                .thenReturn(List.of(nullCat, nonNullCat));
+                .thenReturn(List.of(nullCat));
 
         assertThatThrownBy(() -> service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("PROD-NULL", 1),
-                new DisplayOrderRequest("PROD-HM", 2))))
+                new DisplayOrderRequest("PROD-NULL", null, 1))))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT));
@@ -668,54 +669,49 @@ class BundleComponentServiceTest {
         Product p1 = Product.seedFromSheet("홈멀티A", "HM-001", null,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.ESTIMATE, EstimateCategory.HOME_MULTI);
-        ReflectionTestUtils.setField(p1, "id", UUID.randomUUID());
+        UUID p1Id = UUID.randomUUID();
+        ReflectionTestUtils.setField(p1, "id", p1Id);
 
         Product p2 = Product.seedFromSheet("홈멀티B", "HM-002", null,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.ESTIMATE, EstimateCategory.HOME_MULTI);
-        ReflectionTestUtils.setField(p2, "id", UUID.randomUUID());
+        UUID p2Id = UUID.randomUUID();
+        ReflectionTestUtils.setField(p2, "id", p2Id);
+        ProductEstimateExposure e1 = ProductEstimateExposure.create(p1Id, EstimateCategory.HOME_MULTI, 10);
+        ProductEstimateExposure e2 = ProductEstimateExposure.create(p2Id, EstimateCategory.HOME_MULTI, 20);
 
         when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
                 .thenReturn(List.of(p1, p2));
-        lenient().when(productRepository.save(any(Product.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
+                any(), any())).thenReturn(List.of(e1, e2));
 
         // 예외 없이 정상 종료
         service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("HM-001", 1),
-                new DisplayOrderRequest("HM-002", 2)));
+                new DisplayOrderRequest("HM-001", EstimateCategory.HOME_MULTI, 1),
+                new DisplayOrderRequest("HM-002", EstimateCategory.HOME_MULTI, 2)));
 
-        assertThat(p1.getDisplayOrder()).isEqualTo(1);
-        assertThat(p2.getDisplayOrder()).isEqualTo(2);
+        assertThat(e1.getDisplayOrder()).isEqualTo(1);
+        assertThat(e2.getDisplayOrder()).isEqualTo(2);
     }
 
     /**
-     * D-PCE-02 (d): null estimateCategory 끼리 → 204 (자체 군 허용).
+     * D-PCE-02 (d): 요청 카테고리의 exposure 가 없으면 404.
      */
     @Test
-    void updateDisplayOrders_null_estimateCategory_끼리_허용() {
+    void updateDisplayOrders_exposure_없으면_404() {
         Product p1 = Product.seedFromSheet("미분류A", "NC-001", null,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
-                null, UsageScope.NONE, null);
+                null, UsageScope.BOTH, null);
         ReflectionTestUtils.setField(p1, "id", UUID.randomUUID());
 
-        Product p2 = Product.seedFromSheet("미분류B", "NC-002", null,
-                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
-                null, UsageScope.NONE, null);
-        ReflectionTestUtils.setField(p2, "id", UUID.randomUUID());
-
         when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
-                .thenReturn(List.of(p1, p2));
-        lenient().when(productRepository.save(any(Product.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+                .thenReturn(List.of(p1));
+        when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
+                any(), any())).thenReturn(List.of());
 
-        // 예외 없이 정상 종료
-        service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("NC-001", 3),
-                new DisplayOrderRequest("NC-002", 4)));
-
-        assertThat(p1.getDisplayOrder()).isEqualTo(3);
-        assertThat(p2.getDisplayOrder()).isEqualTo(4);
+        assertThatThrownBy(() -> service.updateDisplayOrders(List.of(
+                new DisplayOrderRequest("NC-001", EstimateCategory.HOME_MULTI, 3))))
+                .isInstanceOf(EntityNotFoundException.class);
     }
 
     // ============================================================
@@ -743,8 +739,8 @@ class BundleComponentServiceTest {
                 .thenReturn(List.of(catA, catB));
 
         assertThatThrownBy(() -> service.updateDisplayOrders(List.of(
-                new DisplayOrderRequest("PROD-A", 1),
-                new DisplayOrderRequest("PROD-B", 2))))
+                new DisplayOrderRequest("PROD-A", EstimateCategory.HOME_MULTI, 1),
+                new DisplayOrderRequest("PROD-B", EstimateCategory.SINGLE_SET, 2))))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT));

@@ -13,6 +13,7 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.realtime.ProductCatalogChangePublisher;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.SpecKeyTemplateRepository;
 import com.samhanair.logis.product.service.BundleComponentService;
@@ -49,6 +50,9 @@ class ProductCatalogControllerComponentCountTest {
     private BundleComponentRepository bundleComponentRepository;
 
     @Mock
+    private ProductEstimateExposureRepository exposureRepository;
+
+    @Mock
     private ProductSpecService specService;
 
     @Mock
@@ -73,7 +77,8 @@ class ProductCatalogControllerComponentCountTest {
     void setUp() {
         controller = new ProductCatalogController(
                 productRepository, specService, templateRepository,
-                productService, bundleComponentService, bundleComponentRepository, catalogChangePublisher);
+                productService, bundleComponentService, bundleComponentRepository,
+                exposureRepository, catalogChangePublisher);
 
         Category cat = Category.create("INDOOR_WALL", "벽걸이형", null, 1);
 
@@ -107,6 +112,8 @@ class ProductCatalogControllerComponentCountTest {
         // 벌크 count = 구성품 3개
         when(bundleComponentRepository.countMapByBundleProductIds(anyCollection()))
                 .thenReturn(Map.of(bundleId, 3L));
+        when(exposureRepository.findByProductIdInAndIsDeletedFalse(anyCollection()))
+                .thenReturn(List.of());
 
         // when
         var result = controller.listProducts(null, null, null, 0, 50);

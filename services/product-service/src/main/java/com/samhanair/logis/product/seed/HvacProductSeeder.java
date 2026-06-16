@@ -238,7 +238,7 @@ public class HvacProductSeeder implements CommandLineRunner {
         product.changePrices(outbound, inbound);
         product.changeRemark(row.description());
         product.changeSpecText(row.specification());
-        product.changeUsage(UsageScope.BOTH, null);
+        product.changeUsage(UsageScope.BOTH);
         product.changeBundle(ProductType.SINGLE, null);
 
         // 단종 4건 — seq % 25 == 0 (25/50/75/100)
