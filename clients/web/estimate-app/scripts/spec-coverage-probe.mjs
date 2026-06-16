@@ -1,4 +1,4 @@
-// #3 종합 데이터 커버리지 probe — 싱글세트 + 상업멀티 구성품의 SPEC_DETAIL_MAP 보유율 + 세트 spec 필드.
+// #3 종합 데이터 커버리지 probe — 싱글중대형 + 상업멀티 구성품의 SPEC_DETAIL_MAP 보유율 + 세트 spec 필드.
 import { chromium } from 'playwright';
 const URL = 'http://localhost:5183/?email=dev_master@samhan-air.com';
 const browser = await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu'] });
@@ -12,7 +12,7 @@ try {
     const has = (m) => typeof SPEC_DETAIL_MAP !== 'undefined' && !!SPEC_DETAIL_MAP[String(m || '').trim()];
     const out = {};
 
-    // ── 싱글세트 ──
+    // ── 싱글중대형 ──
     const singleSets = (typeof SINGLE_SETS !== 'undefined' && SINGLE_SETS) || [];
     const sComp = new Set(); const sCompByKind = {};
     let sSetsWithParts = 0;

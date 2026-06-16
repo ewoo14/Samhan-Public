@@ -64,9 +64,14 @@ export type ProductType = 'BUNDLE' | 'SINGLE' | string
 /**
  * 품목 카탈로그 행 — `GET /api/v1/products` 응답 DTO.
  *
- * usageScope/estimateCategory/usageScopeManual/displayOrder 포함 (PR-B 확장).
+ * usageScope/estimateCategories/usageScopeManual 포함 (품목 다중 카테고리 노출).
  * productType/componentCount 추가 (PR-E 확장).
  */
+export interface EstimateCategoryExposure {
+  category: EstimateCategory
+  displayOrder: number | null
+}
+
 export interface ProductCatalogRow {
   /** 품목코드 (사용자 식별자 — UUID 아님). modelName 과 동일값 */
   modelCode: string
@@ -74,13 +79,15 @@ export interface ProductCatalogRow {
   name: string
   /** 노출 범위 */
   usageScope: UsageScope
-  /** 견적 카테고리 (ESTIMATE/BOTH 시에만 의미 있음) */
-  estimateCategory: EstimateCategory | null
+  /** 견적 노출 카테고리 목록 (ESTIMATE/BOTH 시에만 의미 있음) */
+  estimateCategories?: EstimateCategoryExposure[]
+  /** @deprecated BE 하위호환 파생값. 신규 코드는 estimateCategories 를 사용한다. */
+  estimateCategory?: EstimateCategory | null
   productCategory: ProductCategory | null
   /** 수동 override 여부 — true: 수동 설정, false: 시트 자동 */
   usageScopeManual: boolean
-  /** 시트 기준 표시 순서 */
-  displayOrder: number | null
+  /** @deprecated BE 하위호환 파생값. 신규 코드는 estimateCategories[].displayOrder 를 사용한다. */
+  displayOrder?: number | null
   /** 출고 단가 */
   releasePrice: number | null
   /** 배송 단가 */
@@ -234,6 +241,7 @@ export interface BundleComponentInput {
  */
 export interface DisplayOrderInput {
   modelCode: string
+  estimateCategory: EstimateCategory
   displayOrder: number
 }
 
@@ -255,7 +263,7 @@ export interface CreateProductRequest {
   deliveryPrice: string | null
   goodsType: ProductGoodsType
   usageScope?: UsageScope | null
-  estimateCategory?: EstimateCategory | null
+  estimateCategories?: EstimateCategory[] | null
   specs: ProductSpecInput[]
 }
 
@@ -273,7 +281,7 @@ export interface UpdateProductRequest {
   deliveryPrice: string | null
   goodsType: ProductGoodsType | null
   usageScope?: UsageScope | null
-  estimateCategory?: EstimateCategory | null
+  estimateCategories?: EstimateCategory[] | null
   specs: ProductSpecInput[]
 }
 
@@ -284,8 +292,8 @@ export interface UpdateProductRequest {
 /** `PATCH /api/v1/products/{modelCode}/usage` 요청 body */
 export interface UpdateProductUsageRequest {
   usageScope: UsageScope
-  /** ESTIMATE/BOTH 시에만 필요. null 로 보내면 초기화 */
-  estimateCategory?: EstimateCategory | null
+  /** ESTIMATE/BOTH 시에만 의미 있음. NONE/PARTNER_ORDER 는 빈 배열 전송 */
+  estimateCategories?: EstimateCategory[]
 }
 
 /** `GET /api/v1/products` 필터 파라미터 */
@@ -386,7 +394,7 @@ export async function updateProduct(
  * usageScopeManual=true 로 설정되어 시트 sync 재실행 시에도 유지됨.
  *
  * @param modelCode 품목코드 (사용자 식별자)
- * @param req usageScope + estimateCategory
+ * @param req usageScope + estimateCategories
  */
 export async function updateProductUsage(
   modelCode: string,

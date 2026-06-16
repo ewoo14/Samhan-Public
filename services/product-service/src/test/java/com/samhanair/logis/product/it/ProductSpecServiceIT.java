@@ -7,11 +7,13 @@ import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.SpecKeyTemplate;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.repository.SpecKeyTemplateRepository;
@@ -49,6 +51,9 @@ class ProductSpecServiceIT extends AbstractPostgresIT {
     private ProductSpecRepository specRepository;
 
     @Autowired
+    private ProductEstimateExposureRepository exposureRepository;
+
+    @Autowired
     private CategoryRepository categoryRepository;
 
     @Autowired
@@ -62,6 +67,8 @@ class ProductSpecServiceIT extends AbstractPostgresIT {
         fixture = productRepository.save(Product.seedFromSheet("Spec Test", "SPEC001", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI));
+        exposureRepository.save(ProductEstimateExposure.create(fixture.getId(), EstimateCategory.HOME_MULTI, 1));
+        exposureRepository.flush();
         productRepository.flush();
     }
 

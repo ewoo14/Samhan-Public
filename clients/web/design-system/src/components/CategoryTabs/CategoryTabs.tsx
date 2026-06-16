@@ -7,7 +7,7 @@ import styles from './CategoryTabs.module.css'
  *
  * DOMAIN-EXTENSIONS §3 estimateCategory enum 과 1:1 매핑:
  * - HOME_MULTI (홈멀티)
- * - SINGLE_SET (싱글 세트)
+ * - SINGLE_SET (싱글중대형)
  * - COMMERCIAL_MULTI (상업멀티)
  * - LEGACY (구형)
  * - OTHER (기타)
@@ -36,7 +36,7 @@ export const ALL_CATEGORIES: readonly EstimateCategory[] = [
 
 const CATEGORY_LABEL: Record<EstimateCategory, string> = {
   HOME_MULTI: '홈멀티',
-  SINGLE_SET: '싱글 세트',
+  SINGLE_SET: '싱글중대형',
   COMMERCIAL_MULTI: '상업멀티',
   LEGACY: '구형',
   OTHER: '기타',

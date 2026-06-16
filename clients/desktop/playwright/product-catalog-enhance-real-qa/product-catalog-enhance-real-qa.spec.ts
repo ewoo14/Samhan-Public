@@ -129,7 +129,7 @@ test.beforeAll(async () => {
     // 2. usage 정규화 — BOTH/HOME_MULTI (T7 가 BOTH→ESTIMATE 토글을 관찰)
     const usageRes = await ctx.patch(`${API_BASE}/api/v1/products/${SETUP_BUNDLE_CODE}/usage`, {
       headers: authHeaders,
-      data: { usageScope: 'BOTH', estimateCategory: 'HOME_MULTI' },
+      data: { usageScope: 'BOTH', estimateCategories: ['HOME_MULTI'] },
     })
     if (!usageRes.ok()) {
       setupSkipReason = `usage 정규화 실패: HTTP ${usageRes.status()}`
@@ -338,7 +338,7 @@ test('T7: SSE 실시간 — A에서 토글 변경 후 B 화면 갱신 확인', a
     `${API_BASE}/api/v1/products/TEST-BUNDLE-SET-01/usage`,
     {
       headers: { Authorization: `Bearer ${masterToken}`, 'Content-Type': 'application/json' },
-      data: { usageScope: 'ESTIMATE', estimateCategory: 'HOME_MULTI' },
+      data: { usageScope: 'ESTIMATE', estimateCategories: ['HOME_MULTI'] },
     },
   )
   // (1) PATCH 응답이 성공이어야 한다 — 실패 시 테스트 실패.
@@ -364,7 +364,7 @@ test('T7: SSE 실시간 — A에서 토글 변경 후 B 화면 갱신 확인', a
     `${API_BASE}/api/v1/products/TEST-BUNDLE-SET-01/usage`,
     {
       headers: { Authorization: `Bearer ${masterToken}`, 'Content-Type': 'application/json' },
-      data: { usageScope: 'BOTH', estimateCategory: 'HOME_MULTI' },
+      data: { usageScope: 'BOTH', estimateCategories: ['HOME_MULTI'] },
     },
   )
 

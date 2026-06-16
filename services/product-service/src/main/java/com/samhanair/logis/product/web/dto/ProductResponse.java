@@ -20,7 +20,8 @@ import java.util.UUID;
  * <p>PR-B(2026-06-11) 추가 필드:
  * <ul>
  *   <li>{@code usageScope} — 현재 노출 범위 ({@link UsageScope})</li>
- *   <li>{@code estimateCategory} — 견적 카테고리 (scope ESTIMATE/BOTH 인 경우만 non-null)</li>
+ *   <li>{@code estimateCategory}/{@code displayOrder} — V18 이후 카탈로그 DTO 전용 정보로 이동.
+ *       본 상세 DTO 에서는 deprecated 호환 필드로 null 을 반환한다.</li>
  *   <li>{@code usageScopeManual} — 수동 override 여부 (true 면 sync 가 덮어쓰지 않음)</li>
  *   <li>{@code displayOrder} — 시트 노출 순서 (null 이면 정렬 후순위)</li>
  *   <li>{@code modelCode} — 사용자 노출 비즈니스 식별자</li>
@@ -100,9 +101,9 @@ public record ProductResponse(
                 p.getDeliveryPrice(),
                 p.getGoodsType(),
                 p.getUsageScope(),
-                p.getEstimateCategory(),
+                null,
                 p.isUsageScopeManual(),
-                p.getDisplayOrder(),
+                null,
                 p.getCreatedAt(),
                 p.getCreatedBy(),
                 p.getModifiedAt(),

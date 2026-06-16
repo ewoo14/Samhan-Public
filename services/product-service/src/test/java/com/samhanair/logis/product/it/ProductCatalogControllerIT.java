@@ -14,11 +14,13 @@ import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
@@ -60,6 +62,9 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
     private ProductSpecRepository productSpecRepository;
 
     @Autowired
+    private ProductEstimateExposureRepository exposureRepository;
+
+    @Autowired
     private BundleComponentRepository bundleComponentRepository;
 
     @MockBean
@@ -82,9 +87,10 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
 
         mvc = MockMvcBuilders.webAppContextSetup(context).build();
         Category cat = categoryRepository.save(Category.create("CAT-API", "api test", null, 1));
-        productRepository.save(Product.seedFromSheet("API-Home", "API_HOME_01", cat,
+        Product apiHome = productRepository.save(Product.seedFromSheet("API-Home", "API_HOME_01", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI));
+        persistExposure(apiHome, EstimateCategory.HOME_MULTI, 1);
         productRepository.flush();
     }
 
@@ -102,7 +108,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"OTHER"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["OTHER"]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usageScope").value("ESTIMATE"))
@@ -189,7 +195,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"OTHER"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["OTHER"]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.modelCode").value("MODEL_NAME_ONLY_01"))
@@ -229,7 +235,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"OTHER"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["OTHER"]}
                                 """))
                 .andExpect(status().isNotFound());
     }
@@ -265,7 +271,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"HOME_MULTI"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["HOME_MULTI"]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usageScopeManual").value(true));
@@ -395,21 +401,22 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         Product p1 = Product.seedFromSheet("Order First", "ORDER_FIRST", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        p1.changeDisplayOrder(1);
         Product p2 = Product.seedFromSheet("Order Second", "ORDER_SECOND", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        p2.changeDisplayOrder(2);
         Product p3 = Product.seedFromSheet("Order Null", "ORDER_NULL", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
         // displayOrder null — NULLS LAST 이므로 p1, p2 뒤에
-        productRepository.save(p1);
-        productRepository.save(p2);
-        productRepository.save(p3);
+        Product savedP1 = productRepository.save(p1);
+        Product savedP2 = productRepository.save(p2);
+        Product savedP3 = productRepository.save(p3);
+        persistExposure(savedP1, EstimateCategory.HOME_MULTI, 1);
+        persistExposure(savedP2, EstimateCategory.HOME_MULTI, 2);
+        persistExposure(savedP3, EstimateCategory.HOME_MULTI, null);
         productRepository.flush();
 
-        mvc.perform(get("/api/v1/products?q=ORDER_")
+        mvc.perform(get("/api/v1/products?category=HOME_MULTI&q=ORDER_")
                         .header("X-User-Id", UUID.randomUUID().toString()))
                 .andExpect(status().isOk())
                 // 첫 번째 페이지에서 displayOrder=1 이 앞에 나와야 함
@@ -460,7 +467,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"usageScope":"ESTIMATE","estimateCategory":"HOME_MULTI"}
+                                {"usageScope":"ESTIMATE","estimateCategories":["HOME_MULTI"]}
                                 """))
                 .andExpect(status().isOk());
 
@@ -497,8 +504,8 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 [
-                                  {"modelCode":"MIX_HOME_01","displayOrder":1},
-                                  {"modelCode":"MIX_SINGLE_01","displayOrder":2}
+                                  {"modelCode":"MIX_HOME_01","estimateCategory":"HOME_MULTI","displayOrder":1},
+                                  {"modelCode":"MIX_SINGLE_01","estimateCategory":"SINGLE_SET","displayOrder":2}
                                 ]
                                 """))
                 .andExpect(status().isBadRequest());
@@ -746,7 +753,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
      * display_order DB 반영 단언 + GET /api/v1/products 순서 역전 단언.
      *
      * <p>m1(처음 displayOrder=10), m2(처음 displayOrder=20) 을 시드한 뒤
-     * PUT [{m1,2},{m2,1}] 로 순서를 역전시키고, DB display_order 값과 목록 순서(m2 먼저)를 단언한다.
+     * PUT [{m2,1},{m1,2}] 로 순서를 역전시키고, DB display_order 값과 목록 순서(m2 먼저)를 단언한다.
      */
     @Test
     void PUT_display_orders_정상경로_204_DB반영_및_목록순서_역전() throws Exception {
@@ -754,23 +761,23 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         Product m1 = Product.seedFromSheet("표시순서 M1", "DOHP_M1", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        m1.changeDisplayOrder(10);
         Product m2 = Product.seedFromSheet("표시순서 M2", "DOHP_M2", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        m2.changeDisplayOrder(20);
-        productRepository.save(m1);
-        productRepository.save(m2);
+        Product savedM1 = productRepository.save(m1);
+        Product savedM2 = productRepository.save(m2);
+        persistExposure(savedM1, EstimateCategory.HOME_MULTI, 10);
+        persistExposure(savedM2, EstimateCategory.HOME_MULTI, 20);
         productRepository.flush();
 
-        // PUT 순서 역전: m1→2, m2→1 (이제 m2 가 앞)
+        // PUT 순서 역전: m2→1, m1→2 (이제 m2 가 앞)
         mvc.perform(put("/api/v1/products/display-orders")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 [
-                                  {"modelCode":"DOHP_M1","displayOrder":2},
-                                  {"modelCode":"DOHP_M2","displayOrder":1}
+                                  {"modelCode":"DOHP_M2","estimateCategory":"HOME_MULTI","displayOrder":1},
+                                  {"modelCode":"DOHP_M1","estimateCategory":"HOME_MULTI","displayOrder":2}
                                 ]
                                 """))
                 .andExpect(status().isNoContent());
@@ -781,11 +788,17 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         var m2After = productRepository.findByModelCodeAndIsDeletedFalse("DOHP_M2");
         org.assertj.core.api.Assertions.assertThat(m1After).isPresent();
         org.assertj.core.api.Assertions.assertThat(m2After).isPresent();
-        org.assertj.core.api.Assertions.assertThat(m1After.get().getDisplayOrder()).isEqualTo(2);
-        org.assertj.core.api.Assertions.assertThat(m2After.get().getDisplayOrder()).isEqualTo(1);
+        var m1Exposure = exposureRepository
+                .findByProductIdAndEstimateCategoryAndIsDeletedFalse(m1After.get().getId(), EstimateCategory.HOME_MULTI);
+        var m2Exposure = exposureRepository
+                .findByProductIdAndEstimateCategoryAndIsDeletedFalse(m2After.get().getId(), EstimateCategory.HOME_MULTI);
+        org.assertj.core.api.Assertions.assertThat(m1Exposure).isPresent();
+        org.assertj.core.api.Assertions.assertThat(m2Exposure).isPresent();
+        org.assertj.core.api.Assertions.assertThat(m1Exposure.get().getDisplayOrder()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(m2Exposure.get().getDisplayOrder()).isEqualTo(1);
 
         // GET /api/v1/products 순서 역전 단언 — q=DOHP_ 로 좁혀 결정적 검증 (m2 먼저, m1 나중)
-        mvc.perform(get("/api/v1/products?q=DOHP_")
+        mvc.perform(get("/api/v1/products?category=HOME_MULTI&q=DOHP_")
                         .header("X-User-Id", UUID.randomUUID().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].modelCode").value("DOHP_M2"))
@@ -801,7 +814,9 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                 BigDecimal.valueOf(1_000_000), BigDecimal.valueOf(800_000), ProductType.BUNDLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
         parent.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
-        return productRepository.save(parent);
+        Product saved = productRepository.save(parent);
+        persistExposure(saved, EstimateCategory.HOME_MULTI, 30);
+        return saved;
     }
 
     /** 구성 후보 품목(SINGLE) 1건 저장 — model_code 채워진 정상 행(해소 가능). */
@@ -810,7 +825,9 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         Product comp = Product.seedFromSheet(name, modelCode, cat,
                 BigDecimal.valueOf(300_000), BigDecimal.valueOf(250_000), ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        return productRepository.save(comp);
+        Product saved = productRepository.save(comp);
+        persistExposure(saved, EstimateCategory.HOME_MULTI, 30);
+        return saved;
     }
 
     /**
@@ -851,7 +868,13 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                 BigDecimal.ZERO, BigDecimal.ZERO, "KRW", Map.of(), null);
         product.changeUsage(UsageScope.BOTH, EstimateCategory.HOME_MULTI);
         Product saved = productRepository.save(product);
+        persistExposure(saved, EstimateCategory.HOME_MULTI, 2);
         productRepository.flush();
         return saved;
+    }
+
+    private void persistExposure(Product product, EstimateCategory category, Integer displayOrder) {
+        exposureRepository.save(ProductEstimateExposure.create(product.getId(), category, displayOrder));
+        exposureRepository.flush();
     }
 }

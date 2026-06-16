@@ -3,6 +3,7 @@ package com.samhanair.logis.product.repository;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
@@ -172,7 +173,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     boolean existsByProductCodeAndIsDeletedFalse(String productCode);
 
     /**
-     * 카탈로그 endpoint 필터 — usageScope(IN 확장 시멘틱)/estimateCategory/q 조합 검색.
+     * 카탈로그 endpoint 필터 — usageScope(IN 확장 시멘틱)/M:N estimateCategory/q 조합 검색.
      *
      * <p>GET /api/v1/products?usageScope={enum}&amp;category={enum}&amp;q={keyword}.
      *
@@ -190,12 +191,17 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * model_name 컬럼도 검색 대상에 포함한다 (사이클2 지적 P2-1, 2026-06-11).
      * q 바인딩 전에 호출자(서비스 계층)가 LIKE 와일드카드({@code \}, {@code %}, {@code _}) 이스케이프 적용.
      *
-     * <p><b>정렬 (사이클2 지적 P2-2, 2026-06-11)</b>:
-     * {@code display_order ASC NULLS LAST, model_code ASC} — 시트 노출 순서 보존 + 비결정 순서 방지.
+     * <p><b>정렬</b>:
+     * {@code product_estimate_exposure.display_order ASC NULLS LAST, model_code ASC}.
+     * category 가 없으면 노출 행 join 이 비어 있으므로 model_code 기준 결정 순서만 보장한다.
      * count 쿼리는 ORDER BY 제외.
      */
     @Query(value = """
-            SELECT * FROM products p
+            SELECT p.* FROM products p
+              LEFT JOIN product_estimate_exposure e
+                ON e.product_id = p.id
+               AND e.is_deleted = false
+               AND e.estimate_category = CAST(:estimateCategory AS text)
              WHERE p.is_deleted = false
                AND (
                      CAST(:usageScope AS text) IS NULL
@@ -206,16 +212,19 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                      OR (CAST(:usageScope AS text) NOT IN ('ESTIMATE', 'PARTNER_ORDER')
                          AND p.usage_scope = CAST(:usageScope AS text))
                    )
-               AND (CAST(:estimateCategory AS text) IS NULL
-                    OR p.estimate_category = CAST(:estimateCategory AS text))
+               AND (CAST(:estimateCategory AS text) IS NULL OR e.id IS NOT NULL)
                AND (CAST(:q AS text) IS NULL
                     OR LOWER(p.model_code) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
                     OR LOWER(p.name)       LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
                     OR LOWER(p.model_name) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\')
-             ORDER BY p.display_order ASC NULLS LAST, p.model_code ASC
+             ORDER BY e.display_order ASC NULLS LAST, p.model_code ASC
             """,
            countQuery = """
             SELECT COUNT(*) FROM products p
+              LEFT JOIN product_estimate_exposure e
+                ON e.product_id = p.id
+               AND e.is_deleted = false
+               AND e.estimate_category = CAST(:estimateCategory AS text)
              WHERE p.is_deleted = false
                AND (
                      CAST(:usageScope AS text) IS NULL
@@ -226,8 +235,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                      OR (CAST(:usageScope AS text) NOT IN ('ESTIMATE', 'PARTNER_ORDER')
                          AND p.usage_scope = CAST(:usageScope AS text))
                    )
-               AND (CAST(:estimateCategory AS text) IS NULL
-                    OR p.estimate_category = CAST(:estimateCategory AS text))
+               AND (CAST(:estimateCategory AS text) IS NULL OR e.id IS NOT NULL)
                AND (CAST(:q AS text) IS NULL
                     OR LOWER(p.model_code) LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
                     OR LOWER(p.name)       LIKE LOWER(CONCAT('%', CAST(:q AS text), '%')) ESCAPE '\\'
@@ -244,19 +252,22 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     List<Product> findByProductCategoryAndIsDeletedFalse(ProductCategory productCategory);
 
     /**
-     * 견적/주문 카탈로그 — 카테고리 + 노출범위(usageScope) 필터 + 시트 노출순서 정렬.
+     * 견적/주문 카탈로그 — M:N 견적 카테고리 + 노출범위(usageScope) 필터 + 카테고리별 순서 정렬.
      * 개발책임자 결정(2026-06-10): 견적/주문엔 designated 품목만, 구글 시트 순서 유지.
      * usageScope 는 ESTIMATE/PARTNER_ORDER/BOTH 중 호출자가 IN 목록으로 전달.
-     * display_order NULL(미sync)은 후순위(NULLS LAST), 동순위는 modelCode.
+     * M:N displayOrder NULL(미sync)은 후순위(NULLS LAST), 동순위는 modelCode.
      */
     @Query("""
             SELECT p FROM Product p
-              WHERE p.productCategory = :productCategory
+              , ProductEstimateExposure e
+              WHERE e.productId = p.id
+                AND e.isDeleted = false
+                AND e.estimateCategory = :estimateCategory
                 AND p.isDeleted = false
                 AND p.usageScope IN :scopes
-              ORDER BY p.displayOrder ASC NULLS LAST, p.modelCode ASC
+              ORDER BY e.displayOrder ASC NULLS LAST, p.modelCode ASC
             """)
-    List<Product> findExposedCatalog(@Param("productCategory") ProductCategory productCategory,
+    List<Product> findExposedCatalog(@Param("estimateCategory") EstimateCategory estimateCategory,
             @Param("scopes") java.util.Collection<UsageScope> scopes);
 
     List<Product> findByParentBundleSetModelAndIsDeletedFalse(String parentBundleSetModel);

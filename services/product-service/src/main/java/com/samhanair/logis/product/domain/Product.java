@@ -34,7 +34,7 @@ import org.hibernate.type.SqlTypes;
  *     <li>Migration Plan §2.1.1 — ProductMaster 확장 10 컬럼</li>
  *     <li>DOMAIN-EXTENSIONS §1 — 변동DC 4 컬럼 (hasVariableDiscount/fixedDiscountRate/setMaterialKey/legacyDiscountFlag)</li>
  *     <li>DOMAIN-EXTENSIONS §2 — Bundle 2 컬럼 (productType/bundleMode)</li>
- *     <li>DOMAIN-EXTENSIONS §3 — 노출 분류 2 컬럼 (usageScope/estimateCategory)</li>
+ *     <li>DOMAIN-EXTENSIONS §3 — 노출 범위 usageScope + 견적 노출 M:N</li>
  *     <li>DOMAIN-EXTENSIONS §4 — 동적 스펙은 별도 {@code ProductSpec} 1:N</li>
  * </ul>
  *
@@ -156,15 +156,20 @@ public class Product extends BaseEntity {
     @Column(name = "usage_scope", nullable = false, length = 16)
     private UsageScope usageScope = UsageScope.NONE;
 
-    /** DOMAIN-EXTENSIONS §3 — usageScope ∈ {ESTIMATE, BOTH} 인 경우만 채움. */
+    /**
+     * @deprecated V18 이후 견적 노출 단일 원천은 {@code product_estimate_exposure}.
+     * 롤백 안전을 위해 컬럼 매핑만 보존하며 신규 코드는 읽거나 쓰지 않는다.
+     */
+    @Deprecated
     @Enumerated(EnumType.STRING)
     @Column(name = "estimate_category", length = 20)
     private EstimateCategory estimateCategory;
 
     /**
-     * 시트 노출 순서(V13, 2026-06-10) — 견적서/주문서 품목 리스트를 구글 시트 행 순서로 표시.
-     * sync 가 각 탭의 데이터 행 순번(1부터)을 적재. 미적재(legacy)는 null → 정렬 시 후순위.
+     * @deprecated V18 이후 카테고리별 표시 순서는 {@code product_estimate_exposure.display_order}.
+     * 롤백 안전을 위해 컬럼 매핑만 보존하며 신규 코드는 읽거나 쓰지 않는다.
      */
+    @Deprecated
     @Column(name = "display_order")
     private Integer displayOrder;
 
@@ -172,11 +177,10 @@ public class Product extends BaseEntity {
      * 수동 노출 override 플래그(V14, 2026-06-11).
      *
      * <p>{@code true} 이면 {@link com.samhanair.logis.product.service.ProductSheetSyncService}
-     * upsert 경로에서 {@code usageScope}/{@code estimateCategory} 를 시트 기준으로 덮어쓰지 않는다.
-     * {@code displayOrder} 는 시트 순서이므로 플래그 무관하게 계속 갱신된다.
+     * upsert 경로에서 {@code usageScope} 및 M:N 견적 노출을 시트 기준으로 덮어쓰지 않는다.
      *
      * <p>초기값 {@code false} — 기존 row 는 전부 시트 자동 분류 상태.
-     * {@link #markUsageManual(UsageScope, EstimateCategory)} 로 {@code true} 전환,
+     * {@link #markUsageManual(UsageScope)} 로 {@code true} 전환,
      * {@link #clearUsageManual()} 로 {@code false} 복귀 (다음 sync 에서 시트 기준 재분류).
      */
     @Column(name = "usage_scope_manual", nullable = false)
@@ -352,7 +356,6 @@ public class Product extends BaseEntity {
         p.productType = productType == null ? ProductType.SINGLE : productType;
         p.productCategory = productCategory;
         p.usageScope = usageScope == null ? UsageScope.NONE : usageScope;
-        p.estimateCategory = estimateCategory;
         p.releasePrice = releasePrice;
         p.deliveryPrice = deliveryPrice;
         return p;
@@ -422,47 +425,40 @@ public class Product extends BaseEntity {
     // ============================================================
 
     /**
-     * Admin 운영 — usageScope/estimateCategory 변경. PATCH /api/v1/products/{code}/usage 호출 시.
-     * 출처: DOMAIN-EXTENSIONS §3 비즈니스 룰 (운영 중 분류 재조정).
+     * Admin 운영 — usageScope 변경. 견적 카테고리 노출은 V18 M:N 테이블에서 별도 관리한다.
      */
-    public void changeUsage(UsageScope usageScope, EstimateCategory estimateCategory) {
+    public void changeUsage(UsageScope usageScope) {
         this.usageScope = usageScope == null ? UsageScope.NONE : usageScope;
-        this.estimateCategory = estimateCategory;
     }
 
     /**
-     * 수동 노출 override 설정 — usageScope/estimateCategory 를 지정값으로 변경하고
+     * @deprecated V18 이후 estimateCategory 는 Product 에 저장하지 않는다.
+     * 기존 호출자 호환만 위해 남기며 {@link #changeUsage(UsageScope)} 로 위임한다.
+     */
+    @Deprecated
+    public void changeUsage(UsageScope usageScope, EstimateCategory estimateCategory) {
+        changeUsage(usageScope);
+    }
+
+    /**
+     * 수동 노출 override 설정 — usageScope 를 지정값으로 변경하고
      * {@code usageScopeManual=true} 를 마킹한다.
      *
      * <p>이후 {@link com.samhanair.logis.product.service.ProductSheetSyncService} upsert 에서
      * 시트 기준 자동 재분류가 차단된다. {@link #clearUsageManual()} 로 해제하면 다음 sync 에서
      * 시트 기준으로 재분류된다.
      *
-     * <p><b>{@link #changeUsage(UsageScope, EstimateCategory)} 보다 엄격한 null 정리 룰</b>
-     * (지적 [5], PR-B 2026-06-11):
-     * NONE/PARTNER_ORDER 선택 시 견적 카테고리가 무의미하므로 {@code estimateCategory} 를
-     * 무조건 {@code null} 로 정리한다. {@code changeUsage} 는 호출자가 전달한 값을 그대로
-     * 저장하지만, 본 메서드는 scope 에 따라 자동 null 정리를 강제한다.
-     *
-     * @param scope            새 노출 범위 (null 이면 {@link UsageScope#NONE} 처리)
-     * @param estimateCategory 견적 카테고리 (scope 가 ESTIMATE/BOTH 일 때만 유효;
-     *                         NONE/PARTNER_ORDER 전달 시 자동 null 처리)
+     * @param scope 새 노출 범위 (null 이면 {@link UsageScope#NONE} 처리)
      */
-    public void markUsageManual(UsageScope scope, EstimateCategory estimateCategory) {
+    public void markUsageManual(UsageScope scope) {
         this.usageScope = scope == null ? UsageScope.NONE : scope;
-        // NONE 또는 PARTNER_ORDER 는 견적 카테고리가 불필요 → null 정리
-        if (this.usageScope == UsageScope.NONE || this.usageScope == UsageScope.PARTNER_ORDER) {
-            this.estimateCategory = null;
-        } else {
-            this.estimateCategory = estimateCategory;
-        }
         this.usageScopeManual = true;
     }
 
     /**
      * 수동 노출 override 해제 — {@code usageScopeManual=false} 로 복귀.
      *
-     * <p>usageScope/estimateCategory 값 자체는 변경하지 않는다. 다음
+     * <p>usageScope 및 M:N 노출 값 자체는 변경하지 않는다. 다음
      * {@link com.samhanair.logis.product.service.ProductSheetSyncService} sync 가
      * 시트 기준으로 재분류한다.
      */
@@ -513,9 +509,13 @@ public class Product extends BaseEntity {
         this.remark = remark;
     }
 
-    /** 시트 노출 순서 set (V13) — sync 가 탭 내 데이터 행 순번 적재. */
+    /**
+     * @deprecated V18 이후 표시 순서는 {@code product_estimate_exposure} 에 저장한다.
+     * 기존 호출자 호환만 위해 남긴 no-op 이다.
+     */
+    @Deprecated
     public void changeDisplayOrder(Integer displayOrder) {
-        this.displayOrder = displayOrder;
+        // no-op: deprecated products.display_order 쓰기 금지.
     }
 
     public void changeSpecText(String specText) {

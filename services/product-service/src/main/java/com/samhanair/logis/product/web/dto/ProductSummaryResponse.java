@@ -19,8 +19,9 @@ import java.util.UUID;
  * {@link #from(Product)} 매핑에서 {@code p.getCategory().isSerialManaged()} 를 통해 채움.
  * category 는 LAZY 이므로 반드시 트랜잭션 내부에서 호출해야 한다.
  *
- * <p>PR-B(2026-06-11) 추가 필드: usageScope/estimateCategory/usageScopeManual/displayOrder —
- * 품목관리 화면 + order-app/desktop 노출 필터 소비처에서 사용.
+ * <p>PR-B(2026-06-11) 추가 필드: usageScope/estimateCategory/usageScopeManual/displayOrder.
+ * V18 이후 estimateCategory/displayOrder 는 카탈로그 DTO 전용 다중 노출 정보로 이동했으므로
+ * 본 요약 DTO 의 deprecated 호환 필드는 null 을 반환한다.
  */
 public record ProductSummaryResponse(
         UUID id,
@@ -108,8 +109,8 @@ public record ProductSummaryResponse(
                 p.getModelCode(),
                 p.getProductType() == null ? null : p.getProductType().name(),
                 p.getUsageScope(),
-                p.getEstimateCategory(),
+                null,
                 p.isUsageScopeManual(),
-                p.getDisplayOrder());
+                null);
     }
 }

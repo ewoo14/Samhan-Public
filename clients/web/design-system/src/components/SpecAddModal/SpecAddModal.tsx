@@ -53,7 +53,7 @@ export interface SpecAddModalProps {
 
 const CATEGORY_LABEL: Record<EstimateCategory, string> = {
   HOME_MULTI: '홈멀티',
-  SINGLE_SET: '싱글 세트',
+  SINGLE_SET: '싱글중대형',
   COMMERCIAL_MULTI: '상업멀티',
   LEGACY: '구형',
   OTHER: '기타',

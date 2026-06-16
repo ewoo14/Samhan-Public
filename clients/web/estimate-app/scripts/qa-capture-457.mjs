@@ -5,9 +5,9 @@
  *       (실 product-service 8084 컨테이너 → display_order/usageScope 적용된 카탈로그).
  * 출력: docs/qa/product-exposure-display-order/*.png
  *
- *   01-single-catalog-sheet-order.png — 싱글세트 카탈로그가 시트 row 순서대로 렌더(노출품목만)
+ *   01-single-catalog-sheet-order.png — 싱글중대형 카탈로그가 시트 row 순서대로 렌더(노출품목만)
  *
- * 검증: 싱글세트 tbody 의 모델명 순서가 product-service findExposedCatalog(SINGLE_SET) 의
+ * 검증: 싱글중대형 tbody 의 모델명 순서가 product-service findExposedCatalog(SINGLE_SET) 의
  *       display_order ASC 순서(AC060CS6PBH1SY, AC072CS6PBH1SY, AC090CS6PBH1SY …)와 일치.
  */
 
@@ -43,7 +43,7 @@ const run = async () => {
   const blocked = await page.evaluate(() => !document.getElementById('custSearch'));
   if (blocked) throw new Error('인증 게이트 차단 — by-email 배선 실패');
 
-  // 싱글세트 view 로 전환 (goSingle() → body.single-active → #cardSingle 표시)
+  // 싱글중대형 view 로 전환 (goSingle() → body.single-active → #cardSingle 표시)
   await page.evaluate(() => { if (typeof goSingle === 'function') goSingle(); });
   await page.waitForTimeout(800);
   await page.waitForSelector('body.single-active #cardSingle', { state: 'visible', timeout: 10000 });
@@ -65,7 +65,7 @@ const run = async () => {
     };
   });
   console.log('[qa457] 인증=', cat.authorized, '| 담당자=', cat.managerName);
-  console.log('[qa457] 싱글세트 노출 카탈로그 수 =', cat.count);
+  console.log('[qa457] 싱글중대형 노출 카탈로그 수 =', cat.count);
   console.log('[qa457] 상위 6 모델(시트 display_order 순서) =', JSON.stringify(cat.top6));
 
   await shot(page, '01-single-catalog-sheet-order.png');

@@ -1373,7 +1373,7 @@ body.history-snapshot-open .mobile-drawer-side {
           <button class="btn-mini" id="btnGoOrderInfo">전표작성</button>
           
           <button class="btn-mini" id="btnGoHome">홈멀티</button>
-          <button class="btn-mini" id="btnGoSingle">싱글세트</button>
+          <button class="btn-mini" id="btnGoSingle">싱글중대형</button>
           <button class="btn-mini" id="btnGoComm">상업멀티</button>
           <button class="btn-mini" id="btnGoOld">구형</button>
 
@@ -1463,10 +1463,10 @@ body.history-snapshot-open .mobile-drawer-side {
         </div>
       </div>
 
-      <!-- 싱글 세트 -->
+      <!-- 싱글중대형 -->
       <div class="card" id="cardSingle">
         <div class="card-head">
-          <div class="card-title">싱글 세트</div>
+          <div class="card-title">싱글중대형</div>
           <button type="button" id="btnResetSingle" class="btn-mini">초기화</button>
         </div>
         <div class="opts" id="singleOpts"></div>
@@ -1881,7 +1881,7 @@ body.history-snapshot-open .mobile-drawer-side {
 
           <div class="nav-btn-group mobile-only" style="margin-top:12px;">
             <button id="btnGoHomePv" onclick="closePreview()">홈멀티</button>
-            <button id="btnGoSinglePv" onclick="closePreview()">싱글 세트</button>
+            <button id="btnGoSinglePv" onclick="closePreview()">싱글중대형</button>
             <button id="btnGoCommPv" onclick="closePreview()">상업멀티</button>
             <button id="btnGoOldPv" onclick="closePreview()">구형</button>
           </div>
@@ -1954,7 +1954,7 @@ body.history-snapshot-open .mobile-drawer-side {
         <div class="modal-foot" style="display:block;">          
           <div class="nav-btn-group mobile-only">
             <button id="btnGoHomeFn" onclick="closeFinal()">홈멀티</button>
-            <button id="btnGoSingleFn" onclick="closeFinal()">싱글 세트</button>
+            <button id="btnGoSingleFn" onclick="closeFinal()">싱글중대형</button>
             <button id="btnGoCommFn" onclick="closeFinal()">상업멀티</button>
             <button id="btnGoOldFn" onclick="closeFinal()">구형</button>
           </div>
@@ -3326,7 +3326,7 @@ function openSpecModalByItem(item, scope){
   } else if(scope === 'comm'){
     if(!allowL.includes(L) && !isErv) return;
   } else if(scope === 'single'){
-    // 싱글 세트는 "세트 품목만" 허용
+    // 싱글중대형은 "세트 품목만" 허용
     if(!item.isSet) return;
   }
 
@@ -3396,7 +3396,7 @@ function renderHomeSpec_(catL, item, s){
   return specTable_(rows, {coolIdx:[1,2,3]});
 }
 
-// 싱글 세트 스펙
+// 싱글중대형 스펙
 function renderSingleSpec_(catL, item, s){
   const parts = explodeSetParts(item, 1, null) || [];
   const compSpecsHtml = renderComponentSpecs_(parts, s, 'single');
@@ -4942,7 +4942,7 @@ function pickPanelRow(s){
   return panels.find(p=>isDefaultComponent_(p)&&matchShape(p))||panels.find(matchShape)||base;
 }
 
-// 싱글세트 기본가 오른쪽가 우선
+// 싱글중대형 기본가 오른쪽가 우선
 function setBasePriceRightFirst(s){
   // 서버 계산가 price 최우선
   const v = priceFrom(s, {
@@ -5327,7 +5327,7 @@ function updateHomeFilterOptions(){
   }
 }
 
-/* 싱글 세트 필터 셀렉트 갱신 */
+/* 싱글중대형 필터 셀렉트 갱신 */
 function updateSingleFilterOptions(){
   const selL = document.getElementById('singleFilterL');
   const selM = document.getElementById('singleFilterM');
@@ -7503,8 +7503,8 @@ function updateTopControls(){
     if(titleBox) titleBox.firstChild.nodeValue='종합견적서';
   }else{
     if(pv) pv.style.display='';
-    if(sw){ sw.style.display = 'inline-flex'; sw.textContent=(mobileActive==='home')?'싱글 세트 보기':'홈멀티 보기'; }
-    if(titleBox) titleBox.firstChild.nodeValue=(mobileActive==='home'?'홈멀티':'싱글 세트')+' ';
+    if(sw){ sw.style.display = 'inline-flex'; sw.textContent=(mobileActive==='home')?'싱글중대형 보기':'홈멀티 보기'; }
+    if(titleBox) titleBox.firstChild.nodeValue=(mobileActive==='home'?'홈멀티':'싱글중대형')+' ';
   }
   refreshBranchButton();
 }
@@ -7641,7 +7641,7 @@ function renderHomeOptions() {
   });
 }
 
-/* 싱글세트옵션 */
+/* 싱글중대형옵션 */
 function renderSingleOptions() {
   const box = el('#singleOpts');
   if(!box) return;
@@ -7781,7 +7781,7 @@ function recomputeFootAll() {
   }
 }
 
-/* 싱글세트 발통계산 */
+/* 싱글중대형 발통계산 */
 function recomputeSingleBaseFoot(){
   const baseOn = !!document.getElementById('ss_base')?.checked;
   let round = 0, flat = 0;
@@ -8638,7 +8638,7 @@ function syncHomeTotals(){
   updateInlineTotals();
 }
 
-// 싱글세트 합계
+// 싱글중대형 합계
 function syncSingleTotals(){
   let sum = sumSingles();
   const tbody = document.getElementById('singleCustomBody');
@@ -8755,7 +8755,7 @@ function getSetUnitNowById(id){
   return Math.round(Number(setBasePriceRightFirst(s)) || 0);
 }
 
-// 싱글 세트 → 전송용 품목 목록
+// 싱글중대형 → 전송용 품목 목록
 function explodeSendSets_(s, q){
   const unitOverride = getRealSinglePrice(s.id); 
   
@@ -10057,7 +10057,7 @@ function resetSingle() {
 
   const wrap = document.getElementById('wrapSingle');
   if (wrap) wrap.scrollTo({ top: 0, behavior: 'smooth' });
-  logAction('초기화', '싱글세트 초기화');
+  logAction('초기화', '싱글중대형 초기화');
 }
 
 // 초기화
@@ -10298,7 +10298,7 @@ function fixFootersForMobile(isMobile){
     }
   }
 
-  // 싱글세트 푸터
+  // 싱글중대형 푸터
   const trS = document.querySelector('#wrapSingle tfoot tr');
   if(trS){
     const cells = trS.children;
@@ -10615,7 +10615,7 @@ function goSingle() {
   updateTopControls();
   fitAllTables();
   if (typeof forceOrderTitle === 'function') forceOrderTitle();
-  logAction('화면이동', '싱글세트');
+  logAction('화면이동', '싱글중대형');
 }
 
 function goComm() {
@@ -11092,7 +11092,7 @@ function getStructuredQuoteData() {
   }
   if(singleRows.length > 0) {
     const sum = singleRows.reduce((acc, curr) => acc + (curr.sub || 0), 0);
-    sections.push({ id: 'SINGLE', title: '<싱글 세트>', subLabel: '싱글 세트 합계', rows: singleRows, total: sum });
+    sections.push({ id: 'SINGLE', title: '<싱글중대형>', subLabel: '싱글중대형 합계', rows: singleRows, total: sum });
   }
 
   // 구형
@@ -11231,7 +11231,7 @@ function getStructuredQuoteData() {
   };
 
   getCustoms('home', '<홈멀티>', '홈멀티 합계', true, 'EA', 'HOME');
-  getCustoms('single', '<싱글세트>', '싱글세트 합계', false, 'EA', 'SINGLE');
+  getCustoms('single', '<싱글중대형>', '싱글중대형 합계', false, 'EA', 'SINGLE');
   getCustoms('comm', '<상업멀티>', '상업멀티 합계', true, 'EA', 'COMM');
   getCustoms('old', '<구형>', '구형 합계', true, 'EA', 'OLD');
   return sections;
@@ -14521,7 +14521,7 @@ function updateTopControls(){
     if(pv) pv.style.display='flex';
     if(title) title.firstChild.nodeValue=
       (mobileActive==='home'?'홈멀티':
-       mobileActive==='single'?'싱글 세트':
+       mobileActive==='single'?'싱글중대형':
        mobileActive==='comm'?'상업멀티':
        mobileActive==='old'?'구형':'종합견적서')+' ';
   }else{
@@ -15521,7 +15521,7 @@ function submitOrderCard() {
       }
     });
 
-    // 싱글 세트 할인액
+    // 싱글중대형 할인액
     const sets = {}; 
     itemsBySec.SINGLE.forEach(it => {
       if (it.setId) {
@@ -15615,7 +15615,7 @@ function submitOrderCard() {
     if (commRate >= 0.01 && itemsBySec.COMM.some(checkGlobalTarget)) dcInfoArr.push(fmtPct(commRate));
     if (homeRate >= 0.01 && itemsBySec.HOME.some(checkGlobalTarget)) dcInfoArr.push(fmtPct(homeRate));
     
-    // 싱글 세트에 적용된 금액 할인
+    // 싱글중대형에 적용된 금액 할인
     appliedSingleDcs.forEach(dc => dcInfoArr.push(dc));
 
     // 사용자가 지정한 고정 DC
@@ -18903,7 +18903,7 @@ document.addEventListener('change', function(e) {
     const isCleared = (raw === '');
     const val = isCleared ? 0 : parseInt(raw, 10);
 
-    // 싱글세트
+    // 싱글중대형
     if (e.target.classList.contains('part-qty-single')) {
       const setId = e.target.getAttribute('data-set');
       const partId = e.target.getAttribute('data-part');

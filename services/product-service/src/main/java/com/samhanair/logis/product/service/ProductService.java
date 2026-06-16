@@ -4,9 +4,11 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.BundleComponent;
+import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductGoodsType;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductStatus;
@@ -14,6 +16,7 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.web.dto.BundleIntegrityResponse;
@@ -54,6 +57,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final ProductSpecRepository productSpecRepository;
+    private final ProductEstimateExposureRepository exposureRepository;
     private final CategoryRepository categoryRepository;
     private final BundleComponentRepository bundleComponentRepository;
     private final BundleComponentService bundleComponentService;
@@ -328,6 +332,9 @@ public class ProductService {
             product.changeModelCode(modelCode);
             applyCreateFields(product, req);
             Product saved = productRepository.save(product);
+            // applyCreateFields 가 SET_COMPONENT 등 scope 를 NONE 으로 강제할 수 있으므로
+            // 요청값이 아니라 영속된 effective scope 로 노출을 동기화한다 (P2 — update 경로와 정합).
+            syncEstimateExposures(saved, saved.getUsageScope(), req.estimateCategories(), "product-create");
             saveSpecs(saved, req.specs());
             if (itemKind(req.itemKind()) == ProductItemKind.SET_COMPONENT) {
                 bundleComponentService.addRegisteredComponent(
@@ -369,7 +376,10 @@ public class ProductService {
         if (req.description() != null) {
             product.editDescription(req.description());
         }
-        applyUpdateFields(product, req);
+        boolean usageForcedNone = applyUpdateFields(product, req);
+        if (usageForcedNone || req.usageScope() != null || req.estimateCategories() != null) {
+            syncEstimateExposures(product, product.getUsageScope(), req.estimateCategories(), "product-update");
+        }
         if (req.specs() != null) {
             replaceSpecs(product, req.specs());
         }
@@ -409,28 +419,6 @@ public class ProductService {
     }
 
     /**
-     * 품목 노출 범위 수동 override — modelCode 로 품목을 조회하고
-     * {@link Product#markUsageManual(UsageScope, EstimateCategory)} 을 호출한다.
-     *
-     * <p>이후 ProductSheetSyncService sync 에서 이 품목의 usageScope/estimateCategory 는
-     * 시트 기준으로 덮어쓰이지 않는다 (displayOrder 는 계속 갱신).
-     *
-     * @param modelCode 수동 override 대상 품목의 모델코드
-     * @param req       새 노출 범위 + 견적 카테고리
-     * @return 갱신된 품목 상세 응답
-     * @throws BusinessException(NOT_FOUND) modelCode 에 해당하는 품목이 없을 때
-     * @deprecated 카탈로그 endpoint 는 {@link #updateUsageAndReturn(String, UpdateProductUsageRequest)} 을
-     *             사용하여 {@link com.samhanair.logis.product.web.dto.ProductCatalogResponse} 로 변환한다.
-     *             본 메서드의 운영 호출자는 없음 — 레거시 유지.
-     */
-    @Deprecated
-    public ProductResponse updateUsage(String modelCode, UpdateProductUsageRequest req) {
-        Product product = loadByModelCodeOrThrow(modelCode);
-        product.markUsageManual(req.usageScope(), req.estimateCategory());
-        return toResponse(product);
-    }
-
-    /**
      * 품목 노출 범위 수동 override — 갱신된 {@link Product} 도메인 객체를 직접 반환한다.
      *
      * <p>{@link com.samhanair.logis.product.web.ProductCatalogController#changeUsage} 에서
@@ -444,7 +432,8 @@ public class ProductService {
      */
     public Product updateUsageAndReturn(String modelCode, UpdateProductUsageRequest req) {
         Product product = loadByModelCodeOrThrow(modelCode);
-        product.markUsageManual(req.usageScope(), req.estimateCategory());
+        product.markUsageManual(req.usageScope());
+        syncEstimateExposures(product, req.usageScope(), req.estimateCategories(), "product-usage-manual");
         return product;
     }
 
@@ -486,7 +475,9 @@ public class ProductService {
 
     public void delete(UUID id, String callerId) {
         Product product = loadOrThrow(id);
-        product.markDeleted(callerId == null ? "system" : callerId);
+        String actor = callerId == null ? "system" : callerId;
+        product.markDeleted(actor);
+        softDeleteAll(exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()), actor);
     }
 
     private Product loadOrThrow(UUID id) {
@@ -652,9 +643,9 @@ public class ProductService {
             product.changeBundle(ProductType.SINGLE, null);
         }
         if (itemKind == ProductItemKind.SET_COMPONENT) {
-            product.changeUsage(UsageScope.NONE, null);
+            product.changeUsage(UsageScope.NONE);
         } else if (req.usageScope() != null) {
-            product.changeUsage(req.usageScope(), req.estimateCategory());
+            product.changeUsage(req.usageScope());
         }
         product.changeProductCategory(req.productCategory());
         product.changeGoodsType(goodsType(req.goodsType()));
@@ -663,7 +654,7 @@ public class ProductService {
         applyMaterialDefaults(product);
     }
 
-    private void applyUpdateFields(Product product, UpdateProductRequest req) {
+    private boolean applyUpdateFields(Product product, UpdateProductRequest req) {
         boolean forceUsageNone = false;
         if (req.itemKind() != null) {
             boolean wasBundle = product.getProductType() == ProductType.BUNDLE;
@@ -680,7 +671,7 @@ public class ProductService {
             // 구성품 링크는 세트측(BundleComponent)에서만 관리한다.
             // 단일(GENERAL) 품목 편집은 부모 세트의 구성품 링크를 변경하지 않는다.
             if (req.itemKind() == ProductItemKind.SET_COMPONENT) {
-                product.changeUsage(UsageScope.NONE, null);
+                product.changeUsage(UsageScope.NONE);
                 forceUsageNone = true;
                 bundleComponentService.replaceRegisteredComponentLink(
                         req.parentSetModelCode(),
@@ -697,7 +688,7 @@ public class ProductService {
                     ? req.parentSetModelCode()
                     : currentLink == null ? null : currentLink.parentModelCode();
             if (parentSetModelCode != null && !parentSetModelCode.isBlank()) {
-                product.changeUsage(UsageScope.NONE, null);
+                product.changeUsage(UsageScope.NONE);
                 forceUsageNone = true;
                 bundleComponentService.replaceRegisteredComponentLink(
                         parentSetModelCode,
@@ -711,7 +702,7 @@ public class ProductService {
             product.changeProductCategory(req.productCategory());
         }
         if (!forceUsageNone && req.usageScope() != null) {
-            product.changeUsage(req.usageScope(), req.estimateCategory());
+            product.changeUsage(req.usageScope());
         }
         if (req.goodsType() != null) {
             product.changeGoodsType(req.goodsType());
@@ -719,6 +710,7 @@ public class ProductService {
         product.changeUnit(req.unit());
         product.changePrices(req.releasePrice(), req.deliveryPrice());
         applyMaterialDefaults(product);
+        return forceUsageNone || product.getProductCategory() == ProductCategory.MATERIAL;
     }
 
     private void applyMaterialDefaults(Product product) {
@@ -730,7 +722,7 @@ public class ProductService {
             bundleComponentService.removeBundleChildren(product.getId(), "system");
         }
         product.changeBundle(ProductType.SINGLE, null);
-        product.changeUsage(UsageScope.NONE, null);
+        product.changeUsage(UsageScope.NONE);
         product.changeGoodsType(ProductGoodsType.NON_GOODS);
         if (product.getUnit() == null || product.getUnit().isBlank()) {
             product.changeUnit("EA");
@@ -743,6 +735,71 @@ public class ProductService {
 
     private ProductGoodsType goodsType(ProductGoodsType goodsType) {
         return goodsType == null ? ProductGoodsType.GOODS : goodsType;
+    }
+
+    /**
+     * 품목 견적 노출 M:N 행을 요청 목록으로 맞춘다.
+     *
+     * <p>usageScope 가 ESTIMATE/BOTH 가 아니면 모든 활성 노출을 soft-delete 한다.
+     * 활성 scope 에서는 요청 목록에 포함된 카테고리만 남기고, 새 카테고리는 해당 카테고리의
+     * 현재 최대 displayOrder + 1 로 추가한다. 요청 목록이 null 이면 기존 노출을 유지한다.
+     */
+    private void syncEstimateExposures(Product product,
+                                       UsageScope usageScope,
+                                       List<EstimateCategory> requestedCategories,
+                                       String actor) {
+        if (product.getId() == null) {
+            return;
+        }
+        UsageScope effectiveScope = usageScope == null ? UsageScope.NONE : usageScope;
+        List<ProductEstimateExposure> active =
+                exposureRepository.findByProductIdAndIsDeletedFalse(product.getId());
+        if (active == null) {
+            active = List.of();
+        }
+        if (!isEstimateScope(effectiveScope)) {
+            softDeleteAll(active, actor);
+            return;
+        }
+        if (requestedCategories == null) {
+            return;
+        }
+
+        Set<EstimateCategory> requested = normalizeCategories(requestedCategories);
+        Map<EstimateCategory, ProductEstimateExposure> activeByCategory = active.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProductEstimateExposure::getEstimateCategory,
+                        e -> e,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+
+        for (ProductEstimateExposure exposure : active) {
+            if (!requested.contains(exposure.getEstimateCategory())) {
+                exposure.markDeleted(actor);
+            }
+        }
+        for (EstimateCategory category : requested) {
+            if (!activeByCategory.containsKey(category)) {
+                int nextOrder = exposureRepository.maxDisplayOrder(category) + 1;
+                exposureRepository.save(ProductEstimateExposure.create(product.getId(), category, nextOrder));
+            }
+        }
+    }
+
+    private void softDeleteAll(List<ProductEstimateExposure> exposures, String actor) {
+        for (ProductEstimateExposure exposure : exposures) {
+            exposure.markDeleted(actor);
+        }
+    }
+
+    private boolean isEstimateScope(UsageScope scope) {
+        return scope == UsageScope.ESTIMATE || scope == UsageScope.BOTH;
+    }
+
+    private Set<EstimateCategory> normalizeCategories(List<EstimateCategory> categories) {
+        return categories.stream()
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     private record ParentComponentLink(String parentModelCode,

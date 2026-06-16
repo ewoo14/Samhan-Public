@@ -5,10 +5,12 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.realtime.ProductCatalogChangePublisher;
 import com.samhanair.logis.product.realtime.ProductRealtimeBroker;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.web.dto.BundleComponentRequest;
 import com.samhanair.logis.product.web.dto.BundleComponentResponse;
@@ -25,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,15 +75,18 @@ public class BundleComponentService {
 
     private final ProductRepository productRepository;
     private final BundleComponentRepository bundleComponentRepository;
+    private final ProductEstimateExposureRepository exposureRepository;
     private final ProductCatalogChangePublisher catalogChangePublisher;
     private final EntityManager entityManager;
 
     public BundleComponentService(ProductRepository productRepository,
                                   BundleComponentRepository bundleComponentRepository,
+                                  ProductEstimateExposureRepository exposureRepository,
                                   ProductCatalogChangePublisher catalogChangePublisher,
                                   EntityManager entityManager) {
         this.productRepository = productRepository;
         this.bundleComponentRepository = bundleComponentRepository;
+        this.exposureRepository = exposureRepository;
         this.catalogChangePublisher = catalogChangePublisher;
         this.entityManager = entityManager;
     }
@@ -512,18 +518,11 @@ public class BundleComponentService {
      * {@code replaceComponents} 의 {@code duplicateCodes(LinkedHashSet)} 패턴을 재사용해
      * 전건 검증 단계(적용 전)에서 중복을 검출하고 400 {@code INVALID_INPUT} 으로 거부한다.
      *
-     * <p><b>카테고리 동일 검증 (D-PCE-02 + G fix, 2026-06-11)</b>:
-     * 검증 기준 축은 {@link EstimateCategory} — FE 카탈로그 카테고리 선택과 동일하다.
-     * {@code findExposedCatalog} 는 실제로 {@link com.samhanair.logis.product.domain.ProductCategory}
-     * (별개 enum) 로 WHERE/ORDER BY 하므로 '동일 차원' 이 아니다(G fix — 허위 문구 제거).
-     * 시트 기본 적재 데이터는 productCategory↔estimateCategory 가 1:1 이나 수동 override
-     * (markUsageManual) 시 desync 가능하다. display_order 충돌은 {@code findExposedCatalog} 의
-     * {@code modelCode ASC} 타이브레이커로 결정적 해소된다.
-     * <ul>
-     *   <li>null {@code estimateCategory} 군은 자체 군으로 허용 (null끼리 OK)</li>
-     *   <li>null + non-null 혼합 → 400 {@code INVALID_INPUT}</li>
-     *   <li>서로 다른 non-null 값 혼합 → 400 {@code INVALID_INPUT}</li>
-     * </ul>
+     * <p><b>카테고리 동일 검증 (D-PCE-02, V18)</b>:
+     * 검증 기준은 요청의 {@link DisplayOrderRequest#estimateCategory()} 이다. 서로 다른
+     * 카테고리를 한 요청에 섞으면 400 을 반환한다. 저장은 Product 의 deprecated
+     * {@code displayOrder} 가 아니라 {@link ProductEstimateExposure#changeDisplayOrder(Integer)}
+     * 로 수행한다.
      *
      * <p>성공 시 {@code product:catalog:changed} 이벤트 broadcast — FE 카탈로그 목록 invalidate 트리거.
      *
@@ -587,37 +586,37 @@ public class BundleComponentService {
             products.add(p);
         }
 
-        // D-PCE-02: estimateCategory 기준 동일 군 검증
-        // null 군 자체는 허용, null+non-null 혼합 또는 서로 다른 non-null → 400
-        if (products.size() > 1) {
-            EstimateCategory firstCategory = products.get(0).getEstimateCategory();
-            boolean firstIsNull = (firstCategory == null);
-
-            for (Product p : products) {
-                EstimateCategory pCategory = p.getEstimateCategory();
-                boolean pIsNull = (pCategory == null);
-
-                // null + non-null 혼합
-                if (firstIsNull != pIsNull) {
-                    throw new BusinessException(ErrorCode.INVALID_INPUT,
-                            "표시 순서 일괄 갱신은 동일 견적 카테고리(estimateCategory) 품목만 허용됩니다. "
-                            + "null 카테고리와 분류된 카테고리가 혼합되어 있습니다: "
-                            + buildModelCodeList(products));
-                }
-                // 서로 다른 non-null
-                if (!firstIsNull && !Objects.equals(pCategory, firstCategory)) {
-                    throw new BusinessException(ErrorCode.INVALID_INPUT,
-                            "표시 순서 일괄 갱신은 동일 견적 카테고리(estimateCategory) 품목만 허용됩니다. "
-                            + "요청에 다른 카테고리 품목이 섞여 있습니다: "
-                            + buildModelCodeList(products));
-                }
+        EstimateCategory targetCategory = requests.get(0).estimateCategory();
+        for (DisplayOrderRequest req : requests) {
+            if (!Objects.equals(req.estimateCategory(), targetCategory)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "표시 순서 일괄 갱신은 동일 견적 카테고리(estimateCategory) 요청만 허용됩니다.");
             }
         }
+        if (targetCategory == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "estimateCategory 는 필수입니다.");
+        }
 
-        // 일괄 적용
+        Map<UUID, ProductEstimateExposure> exposureByProductId = exposureRepository
+                .findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
+                        products.stream().map(Product::getId).toList(), targetCategory)
+                .stream()
+                .collect(Collectors.toMap(ProductEstimateExposure::getProductId, e -> e, (left, right) -> left));
+
+        List<String> missingExposures = products.stream()
+                .filter(p -> !exposureByProductId.containsKey(p.getId()))
+                .map(p -> p.getModelCode() != null ? p.getModelCode() : p.getModelName())
+                .toList();
+        if (!missingExposures.isEmpty()) {
+            throw new EntityNotFoundException(
+                    "해당 견적 카테고리 노출을 찾을 수 없습니다: " + missingExposures);
+        }
+
+        // 같은 카테고리 안에서 요청 순서대로 1..N 재번호한다.
+        // (부분 요청은 보낸 항목만 재번호 — FE 는 카테고리 전 페이지를 수집해 전체를 전송하므로 부분 붕괴 미발생.
+        //  '전체 활성 노출 포함 강제' 가드는 IT 의 동일 카테고리 다품목 시드와 충돌·FE 페이징 취약 → 미채택.)
         for (int i = 0; i < products.size(); i++) {
-            products.get(i).changeDisplayOrder(requests.get(i).displayOrder());
-            productRepository.save(products.get(i));
+            exposureByProductId.get(products.get(i).getId()).changeDisplayOrder(i + 1);
         }
 
         // §2-2 실시간 publish — display-orders PUT 성공 시 카탈로그 목록 invalidate 트리거

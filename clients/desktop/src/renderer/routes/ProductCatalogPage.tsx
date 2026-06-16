@@ -6,7 +6,7 @@
  *   <li>전 품목 목록 (제한 없음 — products.list VIEW)</li>
  *   <li>컬럼: 모델명 / 품목명 / 카테고리 / 세트 / 노출 설정 / displayOrder</li>
  *   <li>수동 토글: '견적 노출' / '주문 노출' 체크 2개 → usageScope 매핑 → PATCH</li>
- *   <li>estimateCategory 셀렉트: ESTIMATE/BOTH 선택 시에만 노출</li>
+ *   <li>estimateCategories 칩: ESTIMATE/BOTH 선택 시 다중 견적 카테고리 노출</li>
  *   <li>세트 컬럼: BUNDLE 품목이면 '세트' 뱃지 + 구성품 수 ("세트 · 3"), 일반 품목은 —</li>
  *   <li>구성품 편집 모달: BUNDLE 행 '구성품' 버튼 → 구성 목록 + 추가/삭제/수량/순서 → PUT replace-all</li>
  *   <li>표시 순서 드래그: @dnd-kit/sortable 행 드래그 → '순서 저장' 버튼 → PUT /display-orders</li>
@@ -35,7 +35,8 @@
  *   <li>{@code DataTable} — 품목 목록</li>
  *   <li>{@code Modal} — 구성품 편집 모달</li>
  *   <li>{@code Input} — 수량 입력, 품목 검색</li>
- *   <li>{@code Select} — estimateCategory 셀렉트</li>
+ *   <li>{@code TagChip} — estimateCategories 다중 노출 칩</li>
+ *   <li>{@code Select} — estimateCategories 추가 드롭다운</li>
  *   <li>{@code DragHandle} — 행 드래그 핸들</li>
  * </ul>
  *
@@ -109,6 +110,7 @@ import {
   Modal,
   ProductAutocomplete,
   Select,
+  TagChip,
   type DataTableColumn,
   type ProductOption,
 } from '@samhan/design-system'
@@ -129,6 +131,12 @@ import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import {
+  buildCategoryDisplayOrderInputs,
+  estimateCategoryValues,
+  exposureDisplayOrder,
+  normalizeEstimateCategoryExposures,
+} from './ProductCatalogPageModel'
+import {
   buildBundleComponentInputs,
   toggleComponentDefault,
   type ComponentDraftModel,
@@ -145,7 +153,7 @@ const PAGE_SIZE = 50
 
 const ESTIMATE_CATEGORY_LABEL: Record<EstimateCategory, string> = {
   HOME_MULTI: '홈멀티',
-  SINGLE_SET: '단일 세트',
+  SINGLE_SET: '싱글중대형',
   COMMERCIAL_MULTI: '상업멀티',
   LEGACY: '구형',
   OTHER: '기타',
@@ -165,7 +173,7 @@ const PRODUCT_CATEGORY_LABEL_BROKEN_ENCODING: Record<ProductCategory, string> = 
 */
 const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
   HOME_MULTI: '홈멀티',
-  SINGLE_SET: '싱글 세트',
+  SINGLE_SET: '싱글중대형',
   SINGLE_PART: '싱글 구성품',
   COMMERCIAL_MULTI: '상업 멀티',
   COMMERCIAL_PART: '상업 구성품',
@@ -175,7 +183,7 @@ const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
 
 const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string }> = [
   { value: 'HOME_MULTI', label: '홈멀티' },
-  { value: 'SINGLE_SET', label: '단일 세트' },
+  { value: 'SINGLE_SET', label: '싱글중대형' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
   { value: 'LEGACY', label: '구형' },
   { value: 'OTHER', label: '기타' },
@@ -236,30 +244,42 @@ function errorMsg(err: unknown): string {
 interface ToggleCellProps {
   row: ProductCatalogRow
   canEdit: boolean
-  onPatch: (modelCode: string, scope: UsageScope, estimateCategory: EstimateCategory | null) => void
+  onPatch: (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => void
   patchLoading: boolean
 }
 
 function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
   const { estimate, order } = fromUsageScope(row.usageScope)
+  const selectedCategories = estimateCategoryValues(row)
+  const remainingOptions = ESTIMATE_CATEGORY_OPTIONS.filter(
+    (opt) => !selectedCategories.includes(opt.value),
+  )
 
   const handleEstimateChange = (checked: boolean) => {
     const newScope = toUsageScope(checked, order)
-    const cat = (checked || order) ? (row.estimateCategory ?? null) : null
-    onPatch(row.modelCode, newScope, cat)
+    onPatch(row.modelCode, newScope, checked ? selectedCategories : [])
   }
 
   const handleOrderChange = (checked: boolean) => {
     const newScope = toUsageScope(estimate, checked)
-    const cat = (estimate || checked) ? (row.estimateCategory ?? null) : null
-    onPatch(row.modelCode, newScope, cat)
+    const nextCategories = newScope === 'ESTIMATE' || newScope === 'BOTH'
+      ? selectedCategories
+      : []
+    onPatch(row.modelCode, newScope, nextCategories)
   }
 
-  const handleCategoryChange = (value: string) => {
+  const handleCategoryAdd = (value: string) => {
+    if (!value) return
+    const category = value as EstimateCategory
+    if (selectedCategories.includes(category)) return
+    onPatch(row.modelCode, row.usageScope, [...selectedCategories, category])
+  }
+
+  const handleCategoryRemove = (category: EstimateCategory) => {
     onPatch(
       row.modelCode,
       row.usageScope,
-      value ? (value as EstimateCategory) : null,
+      selectedCategories.filter((current) => current !== category),
     )
   }
 
@@ -290,20 +310,38 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
         주문 노출
       </label>
       {showEstimateCategory ? (
-        <Select
-          value={row.estimateCategory ?? ''}
-          disabled={!canEdit || patchLoading}
-          onChange={(e) => handleCategoryChange(e.target.value)}
+        <div
           data-testid={`product-catalog-estimate-category-${row.modelCode}`}
-          selectSize="sm"
-          fullWidth={false}
-          style={{ minWidth: 100 }}
+          style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}
         >
-          <option value="">카테고리 선택</option>
-          {ESTIMATE_CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          {normalizeEstimateCategoryExposures(row).map((exposure) => (
+            <TagChip
+              key={exposure.category}
+              label={ESTIMATE_CATEGORY_LABEL[exposure.category]}
+              value={exposure.displayOrder != null ? String(exposure.displayOrder) : '—'}
+              removeLabel={ESTIMATE_CATEGORY_LABEL[exposure.category]}
+              onRemove={canEdit && !patchLoading ? () => handleCategoryRemove(exposure.category) : undefined}
+              data-testid={`product-catalog-estimate-category-${row.modelCode}-chip-${exposure.category}`}
+            />
           ))}
-        </Select>
+          {remainingOptions.length > 0 ? (
+            <Select
+              value=""
+              disabled={!canEdit || patchLoading}
+              onChange={(e) => handleCategoryAdd(e.target.value)}
+              data-testid={`product-catalog-estimate-category-${row.modelCode}-add`}
+              selectSize="sm"
+              fullWidth={false}
+              aria-label="견적 카테고리 추가"
+              style={{ minWidth: 112 }}
+            >
+              <option value="">카테고리 추가</option>
+              {remainingOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </Select>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )
@@ -817,15 +855,17 @@ export function ProductCatalogPage() {
     mutationFn: ({
       modelCode,
       scope,
-      estimateCategory,
+      estimateCategories,
     }: {
       modelCode: string
       scope: UsageScope
-      estimateCategory: EstimateCategory | null
+      estimateCategories: EstimateCategory[]
     }) =>
       updateProductUsage(modelCode, {
         usageScope: scope,
-        estimateCategory: estimateCategory ?? null,
+        estimateCategories: scope === 'ESTIMATE' || scope === 'BOTH'
+          ? estimateCategories
+          : [],
       }),
     onSuccess: () => {
       setMutationError(null)
@@ -859,10 +899,10 @@ export function ProductCatalogPage() {
   )
 
   const handlePatch = useCallback(
-    (modelCode: string, scope: UsageScope, estimateCategory: EstimateCategory | null) => {
+    (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => {
       setPatchingCode(modelCode)
       setMutationError(null)
-      patchMutation.mutate({ modelCode, scope, estimateCategory })
+      patchMutation.mutate({ modelCode, scope, estimateCategories })
     },
     [patchMutation],
   )
@@ -945,10 +985,7 @@ export function ProductCatalogPage() {
         ...outsideItems.slice(insertAt),
       ]
 
-      const orders = merged.map((r, idx) => ({
-        modelCode: r.modelCode,
-        displayOrder: idx + 1,
-      }))
+      const orders = buildCategoryDisplayOrderInputs(merged, committedCategory)
 
       if (orders.length === 0) {
         setOrderError('노출 품목이 없어 순서를 저장할 수 없습니다.')
@@ -999,13 +1036,28 @@ export function ProductCatalogPage() {
     {
       key: 'estimateCategory',
       header: '카테고리',
-      width: '100px',
-      render: (row) =>
-        row.productCategory
-          ? PRODUCT_CATEGORY_LABEL[row.productCategory]
-          : row.estimateCategory
-            ? ESTIMATE_CATEGORY_LABEL[row.estimateCategory]
-          : '—',
+      width: '220px',
+      render: (row) => {
+        const exposures = normalizeEstimateCategoryExposures(row)
+        return (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            {row.productCategory ? (
+              <span style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
+                {PRODUCT_CATEGORY_LABEL[row.productCategory]}
+              </span>
+            ) : null}
+            {exposures.length > 0 ? (
+              exposures.map((entry) => (
+                <Badge key={entry.category} variant="brand">
+                  {ESTIMATE_CATEGORY_LABEL[entry.category]}
+                </Badge>
+              ))
+            ) : row.productCategory ? null : (
+              <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+            )}
+          </div>
+        )
+      },
     },
     {
       key: 'productType',
@@ -1072,13 +1124,23 @@ export function ProductCatalogPage() {
       key: 'displayOrder',
       header: '표시순서',
       width: '80px',
-      render: (row) =>
-        // §2-1: NONE 품목은 displayOrder '—' 표시 (정렬 대상 제외)
-        row.usageScope === 'NONE'
-          ? <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
-          : row.displayOrder != null
-          ? String(row.displayOrder)
-          : '—',
+      render: (row) => {
+        if (row.usageScope === 'NONE' || normalizeEstimateCategoryExposures(row).length === 0) {
+          return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+        }
+        if (!committedCategory) {
+          return (
+            <span
+              title="카테고리 선택 시 표시"
+              style={{ color: 'var(--color-neutral-500)', whiteSpace: 'nowrap' }}
+            >
+              카테고리별
+            </span>
+          )
+        }
+        const order = exposureDisplayOrder(row, committedCategory)
+        return order != null ? String(order) : <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+      },
     },
   ]
 

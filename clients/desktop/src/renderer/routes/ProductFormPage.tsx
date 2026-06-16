@@ -65,8 +65,8 @@ const GOODS_TYPE_OPTIONS: Array<{ value: ProductGoodsType; label: string }> = [
 
 const PRODUCT_CATEGORY_OPTIONS: Array<{ value: ProductCategory; label: string }> = [
   { value: 'HOME_MULTI', label: '홈멀티' },
-  { value: 'SINGLE_SET', label: '단일 세트' },
-  { value: 'SINGLE_PART', label: '단일 구성품' },
+  { value: 'SINGLE_SET', label: '싱글중대형' },
+  { value: 'SINGLE_PART', label: '싱글 구성품' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
   { value: 'COMMERCIAL_PART', label: '상업 구성품' },
   { value: 'OLD', label: '구형' },

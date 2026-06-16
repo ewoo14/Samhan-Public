@@ -72,7 +72,7 @@ async function multiCatalog(category, classify) {
 }
 
 /**
- * 싱글 세트.
+ * 싱글중대형.
  * @param {(s:{name,model})=>{L,M}} classifyLM
  */
 async function singleSets(classifyLM, normalizeSize, sanitizeDisp) {
