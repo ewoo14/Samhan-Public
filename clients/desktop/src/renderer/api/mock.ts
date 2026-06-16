@@ -900,7 +900,9 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     return {
       modelCode: p.modelName,
       name: p.productName,
-      usageScope: index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
+      // BUNDLE(세트)은 판매 가능 품목 → 전표 라인 자동완성(usageScope=PARTNER_ORDER, BE IN-확장 {PARTNER_ORDER,BOTH})에
+      // 노출되어야 하므로 항상 BOTH. (index-parity 로 ESTIMATE 가 되면 슬립 라인 검색에서 제외돼 bundle-set-options 회귀.)
+      usageScope: isBundle || index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
       estimateCategory: index % 2 === 0 ? 'HOME_MULTI' : 'OTHER',
       productCategory: index % 2 === 0 ? 'HOME_MULTI' : 'SINGLE_PART',
       usageScopeManual: false,
