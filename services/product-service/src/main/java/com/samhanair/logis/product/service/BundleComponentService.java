@@ -612,6 +612,19 @@ public class BundleComponentService {
                     "해당 견적 카테고리 노출을 찾을 수 없습니다: " + missingExposures);
         }
 
+        Set<UUID> requestedProductIds = products.stream()
+                .map(Product::getId)
+                .collect(Collectors.toSet());
+        Set<UUID> activeCategoryProductIds = exposureRepository
+                .findActiveProductExposuresByEstimateCategory(targetCategory)
+                .stream()
+                .map(ProductEstimateExposure::getProductId)
+                .collect(Collectors.toSet());
+        if (!requestedProductIds.equals(activeCategoryProductIds)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "표시 순서 일괄 갱신은 대상 견적 카테고리의 전체 활성 노출을 포함해야 합니다.");
+        }
+
         // 같은 카테고리 안에서 요청 순서대로 1..N 재번호한다.
         for (int i = 0; i < products.size(); i++) {
             exposureByProductId.get(products.get(i).getId()).changeDisplayOrder(i + 1);

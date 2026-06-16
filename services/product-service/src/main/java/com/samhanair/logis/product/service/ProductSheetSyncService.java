@@ -1239,8 +1239,10 @@ public class ProductSheetSyncService {
                     continue;
                 }
                 // BaseEntity.markDeleted: deletedAt + deletedBy + isDeleted=true 설정 (shared:common).
-                p.markDeleted("system-sheet-sync");
+                String actor = "system-sheet-sync";
+                p.markDeleted(actor);
                 productRepository.save(p);
+                softDeleteExposures(p.getId(), actor);
                 lastKnownRowHash.remove(code);
                 result.softDeleted++;
             }
@@ -1275,6 +1277,17 @@ public class ProductSheetSyncService {
                         },
                         () -> exposureRepository.save(ProductEstimateExposure.create(
                                 product.getId(), estimateCategory, displayOrder)));
+    }
+
+    private void softDeleteExposures(UUID productId, String actor) {
+        if (productId == null) {
+            return;
+        }
+        List<ProductEstimateExposure> exposures = exposureRepository.findByProductIdAndIsDeletedFalse(productId);
+        for (ProductEstimateExposure exposure : exposures) {
+            exposure.markDeleted(actor);
+            exposureRepository.save(exposure);
+        }
     }
 
     private void syncBeforeIncreasePriceHistory(SheetTabMapping mapping, Set<String> currentModelCodes) throws Exception {

@@ -419,29 +419,6 @@ public class ProductService {
     }
 
     /**
-     * 품목 노출 범위 수동 override — modelCode 로 품목을 조회하고
-     * {@link Product#markUsageManual(UsageScope)} 을 호출하고 M:N 노출을 동기화한다.
-     *
-     * <p>이후 ProductSheetSyncService sync 에서 이 품목의 usageScope/estimateCategory 는
-     * 시트 기준으로 덮어쓰이지 않는다 (displayOrder 는 계속 갱신).
-     *
-     * @param modelCode 수동 override 대상 품목의 모델코드
-     * @param req       새 노출 범위 + 견적 카테고리
-     * @return 갱신된 품목 상세 응답
-     * @throws BusinessException(NOT_FOUND) modelCode 에 해당하는 품목이 없을 때
-     * @deprecated 카탈로그 endpoint 는 {@link #updateUsageAndReturn(String, UpdateProductUsageRequest)} 을
-     *             사용하여 {@link com.samhanair.logis.product.web.dto.ProductCatalogResponse} 로 변환한다.
-     *             본 메서드의 운영 호출자는 없음 — 레거시 유지.
-     */
-    @Deprecated
-    public ProductResponse updateUsage(String modelCode, UpdateProductUsageRequest req) {
-        Product product = loadByModelCodeOrThrow(modelCode);
-        product.markUsageManual(req.usageScope());
-        syncEstimateExposures(product, req.usageScope(), req.estimateCategories(), "product-usage-manual");
-        return toResponse(product);
-    }
-
-    /**
      * 품목 노출 범위 수동 override — 갱신된 {@link Product} 도메인 객체를 직접 반환한다.
      *
      * <p>{@link com.samhanair.logis.product.web.ProductCatalogController#changeUsage} 에서
@@ -498,7 +475,9 @@ public class ProductService {
 
     public void delete(UUID id, String callerId) {
         Product product = loadOrThrow(id);
-        product.markDeleted(callerId == null ? "system" : callerId);
+        String actor = callerId == null ? "system" : callerId;
+        product.markDeleted(actor);
+        softDeleteAll(exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()), actor);
     }
 
     private Product loadOrThrow(UUID id) {

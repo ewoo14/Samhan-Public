@@ -202,7 +202,7 @@ public class ProductCatalogController {
      * 이후 시트 sync 가 이 품목의 노출 분류를 덮어쓰지 않는다.
      * NONE/PARTNER_ORDER 선택 시 estimateCategory 가 자동 null 처리된다.
      *
-     * <p>구현은 {@link com.samhanair.logis.product.service.ProductService#updateUsage} 에
+     * <p>구현은 {@link com.samhanair.logis.product.service.ProductService#updateUsageAndReturn} 에
      * 위임한다 (지적 [6][13][32] — 이중 구현 제거, 응답 DTO 변환만 이 계층에서).
      *
      * @param modelCode 수동 override 대상 품목의 모델코드 (카탈로그 노출 식별자)

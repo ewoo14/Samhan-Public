@@ -9,7 +9,7 @@ import type {
 export function normalizeEstimateCategoryExposures(
   row: ProductCatalogRow,
 ): EstimateCategoryExposure[] {
-  if (row.estimateCategories && row.estimateCategories.length > 0) {
+  if (Array.isArray(row.estimateCategories)) {
     return row.estimateCategories
   }
   if (row.estimateCategory) {

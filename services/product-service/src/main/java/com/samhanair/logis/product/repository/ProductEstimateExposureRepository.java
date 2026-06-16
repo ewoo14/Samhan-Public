@@ -26,10 +26,23 @@ public interface ProductEstimateExposureRepository extends JpaRepository<Product
             Collection<UUID> productIds, EstimateCategory estimateCategory);
 
     @Query("""
-            SELECT COALESCE(MAX(e.displayOrder), 0)
-              FROM ProductEstimateExposure e
+            SELECT e
+              FROM ProductEstimateExposure e, Product p
              WHERE e.estimateCategory = :estimateCategory
+               AND p.id = e.productId
                AND e.isDeleted = false
+               AND p.isDeleted = false
+            """)
+    List<ProductEstimateExposure> findActiveProductExposuresByEstimateCategory(
+            @Param("estimateCategory") EstimateCategory estimateCategory);
+
+    @Query("""
+            SELECT COALESCE(MAX(e.displayOrder), 0)
+              FROM ProductEstimateExposure e, Product p
+             WHERE e.estimateCategory = :estimateCategory
+               AND p.id = e.productId
+               AND e.isDeleted = false
+               AND p.isDeleted = false
             """)
     Integer maxDisplayOrder(@Param("estimateCategory") EstimateCategory estimateCategory);
 }

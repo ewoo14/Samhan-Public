@@ -1746,12 +1746,11 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
     const usageScope = isMaterial
       ? 'NONE'
-      : String(body['usageScope'] ?? 'BOTH')
+      : String(body['usageScope'] ?? 'NONE')
     const estimateCategories =
       usageScope === 'ESTIMATE' || usageScope === 'BOTH'
         ? normalizeMockExposures({
             estimateCategories: body['estimateCategories'],
-            estimateCategory: (body['estimateCategory'] as string | null | undefined) ?? 'OTHER',
             displayOrder: MOCK_PRODUCT_CATALOG_ROWS.length + 1,
           })
         : []
@@ -1816,6 +1815,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const productCategory = String(body['productCategory'] ?? existing.productCategory ?? (itemKind === 'SET' ? 'SINGLE_SET' : 'SINGLE_PART'))
     const isMaterial = productCategory === 'MATERIAL'
     const productType = itemKind === 'SET' ? 'BUNDLE' : 'SINGLE'
+    const stableModelCode = existing.modelCode ?? existing.modelName
     delete MOCK_PRODUCTS_BY_MODEL[oldKey]
     MOCK_PRODUCTS_BY_MODEL[nextModelName] = {
       ...existing,
@@ -1825,7 +1825,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       description: (body['description'] as string | null | undefined) ?? existing.description ?? null,
       goods: isMaterial ? false : body['goodsType'] == null ? existing.goods : String(body['goodsType']) !== 'NON_GOODS',
       productType: isMaterial ? 'SINGLE' : productType,
-      modelCode: nextModelName,
+      modelCode: stableModelCode,
       productCategory,
     }
     if ('specs' in body) {
@@ -1835,23 +1835,22 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       }
     }
     MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => {
-      if (row.modelCode !== (existing.modelCode ?? existing.modelName)) return row
+      if (row.modelCode !== stableModelCode) return row
       const usageScope = isMaterial
         ? 'NONE'
         : String(body['usageScope'] ?? row.usageScope)
       const estimateCategories =
         usageScope === 'ESTIMATE' || usageScope === 'BOTH'
-          ? ('estimateCategories' in body || 'estimateCategory' in body
+          ? ('estimateCategories' in body
               ? normalizeMockExposures({
                   estimateCategories: body['estimateCategories'],
-                  estimateCategory: body['estimateCategory'] ?? row.estimateCategory,
                   displayOrder: row.displayOrder,
                 })
               : row.estimateCategories)
           : []
       return deriveLegacyExposureFields({
         ...row,
-        modelCode: nextModelName,
+        modelCode: stableModelCode,
         name: nextName,
         productCategory,
         usageScope,
@@ -1865,7 +1864,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       id: productId,
       name: nextName,
       modelName: nextModelName,
-      modelCode: nextModelName,
+      modelCode: stableModelCode,
       categoryId: String(body['categoryId'] ?? existing.categoryId ?? 'cat-home'),
       categoryName: '홈멀티',
       sellingPrice: existing.sellingPrice,

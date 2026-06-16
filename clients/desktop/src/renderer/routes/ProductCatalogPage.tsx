@@ -324,21 +324,23 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
               data-testid={`product-catalog-estimate-category-${row.modelCode}-chip-${exposure.category}`}
             />
           ))}
-          <Select
-            value=""
-            disabled={!canEdit || patchLoading || remainingOptions.length === 0}
-            onChange={(e) => handleCategoryAdd(e.target.value)}
-            data-testid={`product-catalog-estimate-category-${row.modelCode}-add`}
-            selectSize="sm"
-            fullWidth={false}
-            aria-label="견적 카테고리 추가"
-            style={{ minWidth: 112 }}
-          >
-            <option value="">카테고리 추가</option>
-            {remainingOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </Select>
+          {remainingOptions.length > 0 ? (
+            <Select
+              value=""
+              disabled={!canEdit || patchLoading}
+              onChange={(e) => handleCategoryAdd(e.target.value)}
+              data-testid={`product-catalog-estimate-category-${row.modelCode}-add`}
+              selectSize="sm"
+              fullWidth={false}
+              aria-label="견적 카테고리 추가"
+              style={{ minWidth: 112 }}
+            >
+              <option value="">카테고리 추가</option>
+              {remainingOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </Select>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1127,7 +1129,14 @@ export function ProductCatalogPage() {
           return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
         }
         if (!committedCategory) {
-          return <span style={{ color: 'var(--color-neutral-500)' }}>카테고리별</span>
+          return (
+            <span
+              title="카테고리 선택 시 표시"
+              style={{ color: 'var(--color-neutral-500)', whiteSpace: 'nowrap' }}
+            >
+              카테고리별
+            </span>
+          )
         }
         const order = exposureDisplayOrder(row, committedCategory)
         return order != null ? String(order) : <span style={{ color: 'var(--color-neutral-400)' }}>—</span>

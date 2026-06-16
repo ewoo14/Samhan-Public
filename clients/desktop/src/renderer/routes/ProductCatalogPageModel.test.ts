@@ -47,6 +47,17 @@ describe('ProductCatalogPageModel', () => {
     ).toEqual([{ category: 'OTHER', displayOrder: 9 }])
   })
 
+  it('신규 estimateCategories 빈 배열은 legacy 단일 필드로 fallback 하지 않는다', () => {
+    expect(
+      normalizeEstimateCategoryExposures({
+        ...baseRow,
+        estimateCategory: 'OTHER',
+        displayOrder: 9,
+        estimateCategories: [],
+      }),
+    ).toEqual([])
+  })
+
   it('토글 PATCH 에 보낼 카테고리 값은 다중 노출 카테고리 목록이다', () => {
     expect(
       estimateCategoryValues({

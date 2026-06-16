@@ -213,8 +213,6 @@ class ProductPermissionControllerIT {
                 .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 20), 1));
         lenient().when(productService.search(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 20), 1));
-        lenient().when(productService.updateUsage(anyString(), any()))
-                .thenReturn(response);
         lenient().when(productService.updateUsageAndReturn(anyString(), any()))
                 .thenReturn(byCodeProduct);
         lenient().doNothing().when(productService).clearUsageOverride(anyString());

@@ -263,7 +263,7 @@ export interface CreateProductRequest {
   deliveryPrice: string | null
   goodsType: ProductGoodsType
   usageScope?: UsageScope | null
-  estimateCategory?: EstimateCategory | null
+  estimateCategories?: EstimateCategory[] | null
   specs: ProductSpecInput[]
 }
 
@@ -281,7 +281,7 @@ export interface UpdateProductRequest {
   deliveryPrice: string | null
   goodsType: ProductGoodsType | null
   usageScope?: UsageScope | null
-  estimateCategory?: EstimateCategory | null
+  estimateCategories?: EstimateCategory[] | null
   specs: ProductSpecInput[]
 }
 
