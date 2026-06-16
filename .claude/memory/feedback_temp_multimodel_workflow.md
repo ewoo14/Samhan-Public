@@ -34,5 +34,8 @@ metadata:
 - 머지 = **리뷰 error 0 · skip 0** + CI 모두 green + Docker 실 QA(라운드별 스크린샷) 후. PM 종합 게시 → 머지.
 - 종료 = 개발책임자 stop.
 
+## 🔁 세션 중단 후 재개 = 마지막 리뷰 라운드 수렴 검증 (2026-06-16 PR #494)
+원격 세션이 step5 PM 종합("머지 게이트 충족") 게시 후 머지 직전 끊기면, **Codex step4 fix 뒤 Opus 수렴 재리뷰가 누락된 채 PM 종합만 남을 수 있음**(게시된 PM 종합 = 실수렴 보장 아님). **재개 시 "마지막 fix 라운드 모델 == 마지막 리뷰 라운드 모델?" 확인 의무** — 다르면(예: 마지막이 Codex fix 인데 뒤이은 Opus 재리뷰 없음) 미수렴 → 누락 라운드(Opus 5-agent, **실빌드 동반**)를 보강한 뒤 머지. + "error 없냐" 질문엔 자기보고 인용 금지, **CI 가 실제 HEAD 커밋 기준 green 인지·마이그 V번호 충돌 없는지 독립 재확인** 후 증거로 답. PR #494 = 개발책임자 "코덱스 fix 했으면 Opus 재리뷰" 지적이 누락 단독 적발.
+
 ## How to apply
 각 라운드 review→fix→PR 코멘트 게시(QA 스크린샷 포함). Codex 라운드는 토큰 회복 후. **Fable5 영구 제외 — Opus 4.8↔Codex 2모델만.** 진행 중 슬라이스는 완료 단계 다음부터 진입. 관련 원칙: [[codex-implements-claude-reviews]] [[review-posting-and-zero-skip]] [[pr-qa-screenshots]] [[qa-docker-real-test]] [[overnight-live-capture]] [[codex-model-auto-switch]].

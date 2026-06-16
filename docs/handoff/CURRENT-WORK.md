@@ -4,14 +4,16 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-16 최신) — 싱글자재 정정(A안)+단일/세트 머지 완료, 다음=품목 노출/구성품 재설계
+## 🟢 현재 상태 (2026-06-16 최신) — 다중 카테고리 노출 M:N (#18 슬1) 머지 완료, 다음=슬2 세트 구성품 정렬
 
 > **에픽** = estimate-app 외부 Google Sheets 잔여 제거([[project_sheets_to_db_full_migration]]) + 품목 등록/관리 고도화.
 > - **싱글자재 정정(A안)+품목 종류 단일/세트 = ✅ 머지 완료** (PR #493, `75c4daca`). 1차 V18 가짜 MATERIAL 28품목(`MAT-`+md5 해시 모델명)을 개발책임자 "모델명 이상함" 지적 → 정찰: 자재=이미 실모델코드 보유 카탈로그 품목(1WAY 대형 공청=`PC1BWCK3NW`, 부품=SINGLE_PART). **A안**: V18 폐기 + materialPrices를 material_price(구형 lookup) 복원 + 자재=실 카탈로그. 품목 종류 3구분→**단일/세트 2구분**(D-PMR-01 대체, 구성품 지정은 세트측 ComponentsModal). usageScope IN-확장(전표 라인 운영버그). **P1 구성품 링크 보존**(단일 품목 편집 itemKind=GENERAL 저장 시 BE가 부모 세트 BundleComponent 링크 soft-delete 회귀 — 머지 게이트 Opus 재리뷰 단독 적발, 실 BE PATCH 검증). 레거시→구형 라벨. dev-report+DECISIONS D-SMP-01~04. **🪤 함정**: BUNDLE mock usageScope index-parity ESTIMATE→전표 라인(PARTNER_ORDER) 검색 제외 bundle-set-options 7건 회귀(CI 단독 적발)→BUNDLE=BOTH.
 > - **개발책임자 신규 설계 (다음 에픽 #18)**: 품목 노출/구성품 모델 재설계 — ①**다중 카테고리 노출**(`estimate_category` 단일컬럼→품목×카테고리×순서 M:N. 판넬/리모컨/유연호스 등 한 단일품목을 홈멀티/싱글세트/상업멀티/구형 중복 노출) ②**카테고리별 표시순서**+순서변경 시 같은 카테고리 내 일괄 자동조정 ③**세트 구성품 정렬**(실내기→실외기→판넬→리모컨→자재, 각 종류 내 '기본' 먼저=전역아님, 세트 구성품 설정 시 드래그 동적 reorder/BundleComponent.displayOrder). 노출⊥구성품 독립 축.
-> - **🔄 #18 슬1 재개 상태 (2026-06-16 일시정지)**: 슬1=다중카테고리 노출+카테고리별순서(M:N). **정찰 완료**(Explore: `product_estimate_exposure` M:N 단일원천 / `findExposedCatalog` LEFT JOIN / `PATCH /usage` `List<EstimateCategory>` / sync M:N upsert / estimate-app 무변경 수용 / usageScope 품목레벨 유지 / `products.estimate_category` deprecated 보존). **spec 작성+push 완료**(`docs/superpowers/specs/2026-06-16-product-multi-category-exposure.md`, 브랜치 `feat/product-multi-category-exposure` origin 존재, 코드/PR 미진행). **다음 세션 즉시**: 조기 PR 개설 → Codex BE(마이그 fresh-probe 단계화) → FE 다중칩+카테고리별 드래그 → dual 리뷰 → 머지. 🪤 slip BUNDLE usageScope=BOTH 회귀가드 유지(bundle-set-options).
+> - **✅ #18 슬1 다중 카테고리 노출 + 카테고리별 표시순서(M:N) = 머지 완료** (PR #494, merge `05c59aa2`). `products.estimate_category` 단일컬럼 → 신규 `product_estimate_exposure`(M:N 단일원천, **V18**, deprecated 컬럼 보존·후속 cleanup drop) 전환. 한 단일품목을 홈멀티/싱글중대형/상업멀티/구형 다중 노출 + 카테고리별 display_order(순서변경 시 같은 카테고리 일괄 재번호). `PATCH /usage` `List<EstimateCategory>`·`findExposedCatalog` M:N JOIN·`PUT /display-orders` 카테고리 컨텍스트·`ProductCatalogResponse.estimateCategories`. estimate-app 무변경(카테고리별 호출 구조). FE 다중칩(TagChip)+카테고리별 드래그. **SINGLE_SET 라벨="싱글중대형"(개발책임자)·SINGLE_PART="싱글 구성품" 통일.** 🪤 slip BUNDLE usageScope=BOTH 회귀가드 유지(bundle-set-options), 마이그 V18(main=V17 단독 추가).
+>   - **🔁 워크플로우 교훈(중요)**: 회사 세션이 step5 PM 종합("머지 게이트 충족") 게시 후 머지 직전 끊김 → **Codex step4 fix 뒤 Opus 수렴 재리뷰가 누락**된 상태였음(원격 세션 끊김). 집 PC 재개 시 개발책임자 지적("코덱스 fix 했으면 Opus 재리뷰")으로 **Opus 5-agent 수렴 재리뷰 보강 = blocking 0**(실빌드 product 370/0·partner-order 295/0·desktop typecheck0+vitest65/65·`ProductSheetSyncExposureReorderIT` Testcontainers PG16 실행·회귀가드 INTACT·display-orders 가드 revert 깨끗) + **P3-4(SINGLE_PART 라벨) fix(`7d446e55`) → CI 30/30 green 머지**. **교훈: PM 종합/머지게이트가 게시돼 있어도 "마지막 fix 라운드 모델 ≠ 마지막 리뷰 라운드 모델"이면 미수렴** — 세션 중단이 수렴 라운드를 건너뛸 수 있으니, 재개 시 마지막 리뷰 라운드 모델이 마지막 fix 를 덮는지 반드시 확인.
 > - **개발책임자 대기 결정**: ① **멀티 세트 단가** — 멀티(홈멀티/상업멀티)는 카탈로그가 고정(`commUnitPrice`), 싱글은 구성품 단가 합산 동적(`calcSetUnitPrice`) → 불일치. 멀티도 구성품 합산 동적화(`calcCommSetUnitPrice` 신규)? **견적 금액 변동 가능 → 정책 확인 필요**(#19). ② 출고전표 deliveryTag 정합(야적/지방/경동/로젠 estimate-app 미전송, 데스크톱만).
-> - **다음**: 에픽 #18 spec 착수(다중카테고리+카테고리별순서+구성품정렬) / G1 카탈로그 db 승격(슬2) / 멀티 세트 동적가격(#19, 정책 후).
+> - **다음**: 에픽 #18 **슬2 = 세트 구성품 정렬**(실내기→실외기→판넬→리모컨→자재, 각 종류 내 '기본' 먼저=전역아님, `BundleComponent.displayOrder` 드래그 reorder) + display-orders 서버측 부분요청 방어 재도입(슬2 동반 후보). 노출⊥구성품 독립 축. / G1 카탈로그 db 승격(슬2 후보) / 멀티 세트 동적가격(#19, 정책 후).
+> - **개발책임자 후속 결정 추가**: ③ **P3-3 라벨 중복** — 품목 카탈로그 행에 productCategory(평문) + estimateCategory(brand badge)가 동일 라벨로 병기(예 "홈멀티" 평문 + "홈멀티" badge) → 디자인 의도 확인 후 처리(머지 무관, Opus 재리뷰 Designer 적발).
 
 ---
 
