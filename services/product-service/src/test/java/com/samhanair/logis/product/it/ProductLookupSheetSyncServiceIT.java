@@ -32,7 +32,8 @@ import org.springframework.test.annotation.DirtiesContext;
  *
  * <p>검증 범위:
  * <ul>
- *     <li>3탭 insert — material/odu/branch natural key 기준 신규 적재</li>
+ *     <li>lookup insert — ODU/branch natural key 기준 신규 적재</li>
+ *     <li>material sync 은퇴 — Product(MATERIAL) 원천 전환 후 material_price 미변경</li>
  *     <li>rowHash 동일 재실행 — update 없이 unchanged 처리</li>
  *     <li>시트 값 변경 — active row update</li>
  *     <li>시트 row 제거 — hard delete 없이 soft-delete</li>
@@ -115,27 +116,13 @@ class ProductLookupSheetSyncServiceIT extends AbstractPostgresIT {
         ProductLookupSheetSyncService.SyncSummary first = syncService.syncAll();
         entityManager.clear();
 
-        // then: insert + null 계약
-        assertThat(first.totalInserted).isEqualTo(9);
+        // then: material sync 은퇴로 ODU/branch 만 insert + null 계약
+        assertThat(first.totalInserted).isEqualTo(5);
         assertThat(first.totalUpdated).isZero();
         assertThat(first.totalSoftDeleted).isZero();
-        assertThat(first.byTab.get("싱글 자재가격").skipped).isEqualTo(5);
-
-        MaterialPrice d2 = materialPriceRepository.findByMaterialKey("D2").orElseThrow();
-        assertThat(d2.getName()).isEqualTo("유선리모컨");
-        assertThat(d2.getPrice()).isEqualByComparingTo(new BigDecimal("40000"));
-        assertThat(d2.getOptionLabel()).isEqualTo("유선선택");
-        assertThat(d2.getComputedFormula()).isEqualTo("0");
-
-        MaterialPrice d3 = materialPriceRepository.findByMaterialKey("D3").orElseThrow();
-        assertThat(d3.getOptionLabel()).isNull();
-        assertThat(d3.getComputedFormula()).isNull();
-
-        MaterialPrice d9 = materialPriceRepository.findByMaterialKey("D9").orElseThrow();
-        assertThat(d9.getName()).isEqualTo("FPH-1412XS3");
-        assertThat(d9.getOptionLabel()).isNull();
-        assertThat(d9.getComputedFormula()).isNull();
-        assertThat(materialPriceRepository.findByMaterialKey("D10")).isEmpty();
+        assertThat(first.byTab.get("싱글 자재가격").inserted).isZero();
+        assertThat(first.byTab.get("싱글 자재가격").skipped).isZero();
+        assertThat(materialPriceRepository.findAll()).isEmpty();
 
         List<OduRecommendationLookup> oduRows = oduRepository.findAll();
         assertThat(oduRows).hasSize(3);
@@ -163,7 +150,7 @@ class ProductLookupSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(second.totalInserted).isZero();
         assertThat(second.totalUpdated).isZero();
         assertThat(second.totalSoftDeleted).isZero();
-        assertThat(second.totalUnchanged).isEqualTo(9);
+        assertThat(second.totalUnchanged).isEqualTo(5);
 
         // given: material 가격 변경 + branch 2512 제거
         stubLookupSheets(
@@ -193,11 +180,9 @@ class ProductLookupSheetSyncServiceIT extends AbstractPostgresIT {
         ProductLookupSheetSyncService.SyncSummary third = syncService.syncAll();
         entityManager.clear();
 
-        // then: update + soft-delete
-        assertThat(third.byTab.get("싱글 자재가격").updated).isEqualTo(1);
+        // then: material 은 더 이상 시트 변경을 반영하지 않고, branch 제거만 soft-delete 한다.
+        assertThat(third.byTab.get("싱글 자재가격").updated).isZero();
         assertThat(third.byTab.get("분기계산").softDeleted).isEqualTo(1);
-        assertThat(materialPriceRepository.findByMaterialKey("D2").orElseThrow().getPrice())
-                .isEqualByComparingTo(new BigDecimal("45000"));
         assertThat(branchRepository.findByBranchCode("2512")).isEmpty();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT is_deleted FROM branch_pipe_lookup WHERE branch_code = '2512'", Boolean.class))
@@ -223,55 +208,37 @@ class ProductLookupSheetSyncServiceIT extends AbstractPostgresIT {
         entityManager.clear();
 
         assertThat(emptyRead.totalSoftDeleted).isZero();
-        assertThat(materialPriceRepository.findByMaterialKey("D2")).isPresent();
+        assertThat(materialPriceRepository.findByMaterialKey("D2")).isEmpty();
         assertThat(oduRepository.findActiveByNaturalKey(
                 RecommendationType.MULTI_HEATING_COOLING, new BigDecimal("5.5"), null, "4HP"))
                 .isPresent();
         assertThat(branchRepository.findByBranchCode("1509")).isPresent();
     }
 
-    /**
-     * 자재 row 제거는 soft-delete 로 남기고, 시트 재등장 시 같은 id 를 복구한다.
-     */
+    /** Product(MATERIAL) 원천 전환 후 자재 시트 sync 는 material_price 를 건드리지 않는다. */
     @Test
-    void syncMaterialPricesTab_softDelete와_restore는_동일_row_id를_보존한다() throws Exception {
-        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 자재가격!A1:D"))
-                .thenReturn(materialRows(
-                        row("품 명", "가격", "옵션", "계산값"),
-                        row("유선리모컨", "40,000", "", ""),
-                        row("컬러유선리모컨", "75,000", "", "")
-                ));
-        syncService.syncMaterialPricesTab();
+    void syncMaterialPricesTab_은퇴되어_기존_materialPrice_row를_보존한다() throws Exception {
+        MaterialPrice existing = materialPriceRepository.save(MaterialPrice.seed(
+                "D2", "DB 보존 자재", new BigDecimal("40000"), "유선선택", "0"));
+        materialPriceRepository.flush();
         entityManager.clear();
-        UUID d3Id = materialPriceRepository.findByMaterialKey("D3").orElseThrow().getId();
 
         when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 자재가격!A1:D"))
                 .thenReturn(materialRows(
                         row("품 명", "가격", "옵션", "계산값"),
-                        row("유선리모컨", "40,000", "", "")
+                        row("시트 변경 자재", "45,000", "변경", "1")
                 ));
-        syncService.syncMaterialPricesTab();
+
+        ProductLookupSheetSyncService.TabSyncResult result = syncService.syncMaterialPricesTab();
         entityManager.clear();
 
-        assertThat(materialPriceRepository.findByMaterialKey("D3")).isEmpty();
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT is_deleted FROM material_price WHERE id = ?", Boolean.class, d3Id))
-                .isTrue();
-
-        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 자재가격!A1:D"))
-                .thenReturn(materialRows(
-                        row("품 명", "가격", "옵션", "계산값"),
-                        row("유선리모컨", "40,000", "", ""),
-                        row("컬러유선리모컨", "75,000", "", "")
-                ));
-        syncService.syncMaterialPricesTab();
-        entityManager.clear();
-
-        MaterialPrice restored = materialPriceRepository.findByMaterialKey("D3").orElseThrow();
-        assertThat(restored.getId()).isEqualTo(d3Id);
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT is_deleted FROM material_price WHERE id = ?", Boolean.class, d3Id))
-                .isFalse();
+        assertThat(result.inserted).isZero();
+        assertThat(result.updated).isZero();
+        assertThat(result.softDeleted).isZero();
+        MaterialPrice preserved = materialPriceRepository.findByMaterialKey("D2").orElseThrow();
+        assertThat(preserved.getId()).isEqualTo(existing.getId());
+        assertThat(preserved.getName()).isEqualTo("DB 보존 자재");
+        assertThat(preserved.getPrice()).isEqualByComparingTo(new BigDecimal("40000"));
     }
 
     /**

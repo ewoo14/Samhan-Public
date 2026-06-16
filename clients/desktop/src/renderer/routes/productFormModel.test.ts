@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyProductCategoryDefaults,
   buildCreateProductRequest,
   buildSpecs,
   buildUpdateProductRequest,
@@ -219,6 +220,24 @@ describe('productFormModel', () => {
     expect(request.componentKind).toBe('INDOOR')
   })
 
+  it('MATERIAL 내부 분류 선택은 비상품 자재 기본값을 적용한다', () => {
+    const values = applyProductCategoryDefaults({
+      ...baseForm,
+      productCategory: 'SINGLE_PART',
+      goodsType: 'GOODS',
+      unit: '',
+    }, 'MATERIAL')
+
+    expect(values.productCategory).toBe('MATERIAL')
+    expect(values.goodsType).toBe('NON_GOODS')
+    expect(values.unit).toBe('EA')
+    expect(buildCreateProductRequest(values)).toMatchObject({
+      productCategory: 'MATERIAL',
+      goodsType: 'NON_GOODS',
+      unit: 'EA',
+    })
+  })
+
   it('세트구성품은 부모 세트 선택 없이는 저장할 수 없다', () => {
     const errors = validateProductForm({
       ...baseForm,
@@ -296,6 +315,7 @@ describe('productFormModel', () => {
         name: '실내기',
         usageScope: 'NONE',
         estimateCategory: null,
+        productCategory: 'COMMERCIAL_PART',
         usageScopeManual: false,
         displayOrder: null,
         releasePrice: 1,

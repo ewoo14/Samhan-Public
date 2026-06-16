@@ -81,6 +81,22 @@ function defaultCategoryForItemKind(itemKind: ProductItemKind): ProductCategory 
   return 'SINGLE_PART'
 }
 
+export function applyProductCategoryDefaults(
+  values: ProductFormValues,
+  productCategory: ProductCategory,
+): ProductFormValues {
+  if (productCategory !== 'MATERIAL') {
+    return { ...values, productCategory }
+  }
+
+  return {
+    ...values,
+    productCategory,
+    goodsType: 'NON_GOODS',
+    unit: values.unit.trim() ? values.unit : 'EA',
+  }
+}
+
 function inputValue(value: string | number | null | undefined): string {
   return value == null ? '' : String(value)
 }

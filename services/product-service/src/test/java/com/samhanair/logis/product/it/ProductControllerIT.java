@@ -225,6 +225,35 @@ class ProductControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void managerRole_post_materialNonGoods_returns201_andUsageScopeNone() throws Exception {
+        // Map.of 는 최대 10쌍 → 12쌍은 Map.ofEntries (arity 제한 없음) 사용.
+        var body = Map.ofEntries(
+                Map.entry("name", "자재 등록 IT"),
+                Map.entry("modelName", "MAT-REG-IT-001"),
+                Map.entry("categoryId", categoryId.toString()),
+                Map.entry("sellingPrice", "40000"),
+                Map.entry("purchasePrice", "40000"),
+                Map.entry("currency", "KRW"),
+                Map.entry("itemKind", "GENERAL"),
+                Map.entry("productCategory", "MATERIAL"),
+                Map.entry("unit", "EA"),
+                Map.entry("releasePrice", "40000"),
+                Map.entry("deliveryPrice", "40000"),
+                Map.entry("goodsType", "NON_GOODS"));
+
+        mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.productCategory").value("MATERIAL"))
+                .andExpect(jsonPath("$.data.goodsType").value("NON_GOODS"))
+                .andExpect(jsonPath("$.data.usageScope").value("NONE"))
+                .andExpect(jsonPath("$.data.unit").value("EA"));
+    }
+
+    @Test
     void accountantRole_priceUpdate_succeeds_butFullUpdate_returns403() throws Exception {
         // setup: MANAGER 가 먼저 제품 생성
         var createBody = Map.of(

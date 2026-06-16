@@ -775,6 +775,7 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
     goods?: boolean
     productType?: string
     modelCode?: string
+    productCategory?: string | null
   }
 > = {
   AJ040RXH4BC1: {
@@ -834,6 +835,18 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
     categoryId: 'cat-home',
     goods: true,
   },
+  'MAT-MOCK-REMOTE': {
+    productId: 'p-mat-mock-remote',
+    modelName: 'MAT-MOCK-REMOTE',
+    modelCode: 'MAT-MOCK-REMOTE',
+    productName: '유선리모컨',
+    sellingPrice: '40000',
+    purchasePrice: '0',
+    categoryId: 'cat-home',
+    goods: false,
+    productType: 'SINGLE',
+    productCategory: 'MATERIAL',
+  },
 }
 
 const MOCK_MATERIAL_PRICE_ROWS = [
@@ -864,6 +877,7 @@ type MockProductCatalogRow = {
   name: string
   usageScope: string
   estimateCategory: string | null
+  productCategory: string | null
   usageScopeManual: boolean
   displayOrder: number | null
   releasePrice: number
@@ -886,6 +900,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
       name: p.productName,
       usageScope: index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
       estimateCategory: index % 2 === 0 ? 'HOME_MULTI' : 'OTHER',
+      productCategory: index % 2 === 0 ? 'HOME_MULTI' : 'SINGLE_PART',
       usageScopeManual: false,
       displayOrder: index + 1,
       releasePrice: Number(p.sellingPrice),
@@ -903,10 +918,27 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     name: '미노출 품목 (테스트)',
     usageScope: 'NONE' as const,
     estimateCategory: null,
+    productCategory: 'SINGLE_PART',
     usageScopeManual: false,
     displayOrder: null,
     releasePrice: 0,
     deliveryPrice: 0,
+    hasVariableDiscount: false,
+    legacyDiscountFlag: false,
+    discountFlags: null,
+    productType: 'SINGLE',
+    componentCount: 0,
+  },
+  {
+    modelCode: 'MAT-MOCK-REMOTE',
+    name: '유선리모컨',
+    usageScope: 'NONE',
+    estimateCategory: null,
+    productCategory: 'MATERIAL',
+    usageScopeManual: false,
+    displayOrder: null,
+    releasePrice: 40000,
+    deliveryPrice: 40000,
     hasVariableDiscount: false,
     legacyDiscountFlag: false,
     discountFlags: null,
@@ -940,6 +972,7 @@ function ensureMockProductCatalogRowsSeeded() {
         name: String(row.name ?? modelCode),
         usageScope: String(row.usageScope ?? 'BOTH'),
         estimateCategory: row.estimateCategory == null ? null : String(row.estimateCategory),
+        productCategory: row.productCategory == null ? null : String(row.productCategory),
         usageScopeManual: Boolean(row.usageScopeManual ?? false),
         displayOrder: row.displayOrder == null ? null : Number(row.displayOrder),
         releasePrice: Number(row.releasePrice ?? 0),
@@ -1614,6 +1647,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       return mockError(409, 'CONFLICT', '이미 등록된 모델명입니다.')
     }
     const itemKind = String(body['itemKind'] ?? 'GENERAL')
+    const productCategory = String(body['productCategory'] ?? (itemKind === 'SET' ? 'SINGLE_SET' : 'SINGLE_PART'))
+    const isMaterial = productCategory === 'MATERIAL'
     const productType = itemKind === 'SET' ? 'BUNDLE' : 'SINGLE'
     const parentSetModelCode = String(body['parentSetModelCode'] ?? '').trim()
     if (itemKind === 'SET_COMPONENT' && !parentSetModelCode) {
@@ -1635,9 +1670,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       purchasePrice: String(body['purchasePrice'] ?? '0'),
       categoryId: String(body['categoryId'] ?? 'cat-home'),
       description: (body['description'] as string | null | undefined) ?? null,
-      goods: String(body['goodsType'] ?? 'GOODS') !== 'NON_GOODS',
-      productType,
+      goods: isMaterial ? false : String(body['goodsType'] ?? 'GOODS') !== 'NON_GOODS',
+      productType: isMaterial ? 'SINGLE' : productType,
       modelCode,
+      productCategory,
     }
     const specs = mockProductSpecsFromBody(modelCode, body['specs'])
     mockProductSpecsByModel = {
@@ -1648,8 +1684,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       {
         modelCode,
         name,
-        usageScope: itemKind === 'SET_COMPONENT' ? 'NONE' : 'BOTH',
-        estimateCategory: itemKind === 'SET_COMPONENT' ? null : 'OTHER',
+        usageScope: isMaterial || itemKind === 'SET_COMPONENT' ? 'NONE' : 'BOTH',
+        estimateCategory: isMaterial || itemKind === 'SET_COMPONENT' ? null : 'OTHER',
+        productCategory,
         usageScopeManual: false,
         displayOrder: MOCK_PRODUCT_CATALOG_ROWS.length + 1,
         releasePrice: Number(body['releasePrice'] ?? body['sellingPrice'] ?? 0),
@@ -1657,7 +1694,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         hasVariableDiscount: false,
         legacyDiscountFlag: false,
         discountFlags: null,
-        productType,
+        productType: isMaterial ? 'SINGLE' : productType,
         componentCount: 0,
       },
       ...MOCK_PRODUCT_CATALOG_ROWS,
@@ -1699,6 +1736,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       currency: String(body['currency'] ?? 'KRW'),
       tags: {},
       description: (body['description'] as string | null | undefined) ?? null,
+      productCategory,
+      itemKind,
+      unit: isMaterial ? 'EA' : ((body['unit'] as string | null | undefined) ?? 'EA'),
+      goodsType: isMaterial ? 'NON_GOODS' : String(body['goodsType'] ?? 'GOODS'),
       specs,
     })
   }
@@ -1719,6 +1760,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const nextModelName = String(body['modelName'] ?? existing.modelName).trim()
     const nextName = String(body['name'] ?? existing.productName).trim()
     const itemKind = String(body['itemKind'] ?? (existing.productType === 'BUNDLE' ? 'SET' : 'GENERAL'))
+    const productCategory = String(body['productCategory'] ?? existing.productCategory ?? (itemKind === 'SET' ? 'SINGLE_SET' : 'SINGLE_PART'))
+    const isMaterial = productCategory === 'MATERIAL'
     const productType = itemKind === 'SET' ? 'BUNDLE' : 'SINGLE'
     delete MOCK_PRODUCTS_BY_MODEL[oldKey]
     MOCK_PRODUCTS_BY_MODEL[nextModelName] = {
@@ -1727,9 +1770,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       productName: nextName,
       categoryId: String(body['categoryId'] ?? existing.categoryId ?? 'cat-home'),
       description: (body['description'] as string | null | undefined) ?? existing.description ?? null,
-      goods: body['goodsType'] == null ? existing.goods : String(body['goodsType']) !== 'NON_GOODS',
-      productType,
+      goods: isMaterial ? false : body['goodsType'] == null ? existing.goods : String(body['goodsType']) !== 'NON_GOODS',
+      productType: isMaterial ? 'SINGLE' : productType,
       modelCode: nextModelName,
+      productCategory,
     }
     if ('specs' in body) {
       mockProductSpecsByModel = {
@@ -1743,7 +1787,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
             ...row,
             modelCode: nextModelName,
             name: nextName,
-            productType,
+            productCategory,
+            usageScope: isMaterial || itemKind === 'SET_COMPONENT' ? 'NONE' : row.usageScope,
+            estimateCategory: isMaterial || itemKind === 'SET_COMPONENT' ? null : row.estimateCategory,
+            productType: isMaterial ? 'SINGLE' : productType,
             releasePrice: body['releasePrice'] == null ? row.releasePrice : Number(body['releasePrice']),
             deliveryPrice: body['deliveryPrice'] == null ? row.deliveryPrice : Number(body['deliveryPrice']),
           }
@@ -1761,6 +1808,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       currency: 'KRW',
       tags: {},
       description: (body['description'] as string | null | undefined) ?? existing.description ?? null,
+      productCategory,
+      itemKind,
+      unit: isMaterial ? 'EA' : ((body['unit'] as string | null | undefined) ?? 'EA'),
+      goodsType: isMaterial ? 'NON_GOODS' : String(body['goodsType'] ?? (existing.goods === false ? 'NON_GOODS' : 'GOODS')),
       specs: mockProductSpecsByModel[nextModelName] ?? [],
     })
   }
@@ -1935,6 +1986,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       return mockError(404, 'NOT_FOUND', '모델명에 해당하는 제품이 없습니다')
     }
     const visibleModelCode = found.modelCode ?? found.modelName
+    const catalogRow = MOCK_PRODUCT_CATALOG_ROWS.find((row) => row.modelCode === visibleModelCode)
+    const productCategory = found.productCategory ?? catalogRow?.productCategory ?? null
+    const isMaterial = productCategory === 'MATERIAL'
     return envelope({
       id: found.productId,
       name: found.productName,
@@ -1947,6 +2001,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       currency: 'KRW',
       tags: {},
       description: found.description ?? null,
+      productCategory,
+      itemKind: found.productType === 'BUNDLE' ? 'SET' : 'GENERAL',
+      unit: isMaterial ? 'EA' : 'EA',
+      goodsType: isMaterial ? 'NON_GOODS' : (found.goods === false ? 'NON_GOODS' : 'GOODS'),
       specs: mockProductSpecsByModel[visibleModelCode] ?? mockProductSpecsByModel[found.modelName] ?? [],
     })
   }
@@ -1954,6 +2012,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // GET /api/products?q=... — AC-2 품목 자동완성 검색 (product-service `/products?q=` 프록시)
   if (method === 'GET' && (url.endsWith('/api/products') || url.includes('/api/products?'))) {
     const q = String(config.params?.['q'] ?? '').toLowerCase()
+    const usageScope = config.params?.['usageScope'] == null ? null : String(config.params['usageScope'])
     const allProducts = Object.values(MOCK_PRODUCTS_BY_MODEL)
     const matched = q
       ? allProducts.filter(
@@ -1964,7 +2023,16 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       : allProducts
     // ApiEnvelope<Page<ProductSummaryResponse>> 형태
     return envelope({
-      content: matched.map((p) => ({
+      content: matched
+        .filter((p) => {
+          if (!usageScope) return true
+          const modelCode = p.modelCode ?? p.modelName
+          const rowScope = MOCK_PRODUCT_CATALOG_ROWS.find((row) => row.modelCode === modelCode)?.usageScope
+          if (usageScope === 'PARTNER_ORDER') return rowScope === 'PARTNER_ORDER' || rowScope === 'BOTH'
+          if (usageScope === 'ESTIMATE') return rowScope === 'ESTIMATE' || rowScope === 'BOTH'
+          return rowScope === usageScope
+        })
+        .map((p) => ({
         id: p.productId,
         name: p.productName,
         modelName: p.modelName,

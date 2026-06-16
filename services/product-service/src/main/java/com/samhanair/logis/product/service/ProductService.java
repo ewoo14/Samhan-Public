@@ -658,6 +658,7 @@ public class ProductService {
         product.changeGoodsType(goodsType(req.goodsType()));
         product.changeUnit(req.unit());
         product.changePrices(req.releasePrice(), req.deliveryPrice());
+        applyMaterialDefaults(product);
     }
 
     private void applyUpdateFields(Product product, UpdateProductRequest req) {
@@ -709,6 +710,23 @@ public class ProductService {
         }
         product.changeUnit(req.unit());
         product.changePrices(req.releasePrice(), req.deliveryPrice());
+        applyMaterialDefaults(product);
+    }
+
+    private void applyMaterialDefaults(Product product) {
+        if (product.getProductCategory() != ProductCategory.MATERIAL) {
+            return;
+        }
+        // 자재 품목은 견적/주문 라인 선택 대상이 아니며, 재고 생성 대상도 아니다.
+        if (product.getProductType() == ProductType.BUNDLE) {
+            bundleComponentService.removeBundleChildren(product.getId(), "system");
+        }
+        product.changeBundle(ProductType.SINGLE, null);
+        product.changeUsage(UsageScope.NONE, null);
+        product.changeGoodsType(ProductGoodsType.NON_GOODS);
+        if (product.getUnit() == null || product.getUnit().isBlank()) {
+            product.changeUnit("EA");
+        }
     }
 
     private ProductItemKind itemKind(ProductItemKind itemKind) {

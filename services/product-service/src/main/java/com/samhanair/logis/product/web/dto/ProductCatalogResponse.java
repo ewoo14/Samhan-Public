@@ -2,6 +2,7 @@ package com.samhanair.logis.product.web.dto;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import java.math.BigDecimal;
@@ -33,6 +34,7 @@ public record ProductCatalogResponse(
         String name,
         UsageScope usageScope,
         EstimateCategory estimateCategory,
+        ProductCategory productCategory,
         boolean usageScopeManual,
         Integer displayOrder,
         BigDecimal releasePrice,
@@ -58,6 +60,7 @@ public record ProductCatalogResponse(
                 p.getName(),
                 p.getUsageScope(),
                 p.getEstimateCategory(),
+                p.getProductCategory(),
                 p.isUsageScopeManual(),
                 p.getDisplayOrder(),
                 p.getReleasePrice(),
@@ -82,7 +85,7 @@ public record ProductCatalogResponse(
     public ProductCatalogResponse withComponentCount(int count) {
         return new ProductCatalogResponse(
                 modelCode, name, usageScope, estimateCategory,
-                usageScopeManual, displayOrder,
+                productCategory, usageScopeManual, displayOrder,
                 releasePrice, deliveryPrice,
                 hasVariableDiscount, legacyDiscountFlag, discountFlags,
                 productType, count

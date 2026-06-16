@@ -42,6 +42,7 @@ import { usePageTitleStore } from '../stores/pageTitle'
 import {
   buildCreateProductRequest,
   buildUpdateProductRequest,
+  applyProductCategoryDefaults,
   composeDimensionSpecValue,
   composeRangeSpecValue,
   editSeedToProductFormValues,
@@ -328,6 +329,10 @@ export function ProductFormPage() {
     }
   }
 
+  const handleProductCategoryChange = (productCategory: ProductCategory) => {
+    patchValues(applyProductCategoryDefaults(values, productCategory))
+  }
+
   const searchBundleProducts = async (q: string): Promise<ProductOption[]> => {
     const products = await searchProductsApi(q)
     return products.filter((product) => product.productType === 'BUNDLE')
@@ -518,7 +523,7 @@ export function ProductFormPage() {
           <Select
             label="내부 분류"
             value={values.productCategory}
-            onChange={(event) => patchValues({ productCategory: event.target.value as ProductCategory })}
+            onChange={(event) => handleProductCategoryChange(event.target.value as ProductCategory)}
             data-testid="product-form-product-category"
           >
             {PRODUCT_CATEGORY_OPTIONS.map((option) => (

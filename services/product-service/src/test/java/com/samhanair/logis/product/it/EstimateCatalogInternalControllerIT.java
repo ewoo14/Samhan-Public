@@ -93,6 +93,26 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
                         hasItem(hasSize(0))));
     }
 
+    /** 싱글 자재가격 endpoint 는 MaterialPrice 가 아니라 Product(MATERIAL) 를 원천으로 반환한다. */
+    @Test
+    void materialPrices_returns_materialProducts_nameAndPriceShape() throws Exception {
+        seedMaterialProduct("MAT-REMOTE-IT", "IT 유선리모컨", BigDecimal.valueOf(40_000));
+        seedMaterialProduct("MAT-PANEL-IT", "IT 블랙판넬", BigDecimal.valueOf(50_000));
+        seedComponentProduct("IT_NOT_MATERIAL_01", "일반 구성품 IT",
+                ProductCategory.SINGLE_PART, EstimateCategory.SINGLE_SET);
+        productRepository.flush();
+
+        mockMvc.perform(get("/products/internal/estimate-catalog/material-prices")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(2)))
+                .andExpect(jsonPath("$.data[0].name").value("IT 블랙판넬"))
+                .andExpect(jsonPath("$.data[0].price").value(50000))
+                .andExpect(jsonPath("$.data[0].id").doesNotExist())
+                .andExpect(jsonPath("$.data[0].computedFormula").doesNotExist())
+                .andExpect(jsonPath("$.data[?(@.name == '일반 구성품 IT')]").doesNotExist());
+    }
+
     /** 부모 BUNDLE(EXPAND) 품목 1건 저장. */
     private Product seedBundleParent(String modelCode, ProductCategory productCategory,
                                      EstimateCategory estimateCategory) {
@@ -112,5 +132,12 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
                 BigDecimal.valueOf(300_000), BigDecimal.valueOf(250_000), ProductType.SINGLE,
                 productCategory, UsageScope.BOTH, estimateCategory);
         return productRepository.save(component);
+    }
+
+    /** 자재 Product 1건 저장. estimateCategory=null, usageScope=NONE 계약을 고정한다. */
+    private Product seedMaterialProduct(String modelCode, String name, BigDecimal price) {
+        Category cat = categoryRepository.save(Category.create("CAT-" + modelCode, "estimate material", null, 42));
+        return productRepository.save(Product.seedFromSheet(name, modelCode, cat,
+                price, price, ProductType.SINGLE, ProductCategory.MATERIAL, UsageScope.NONE, null));
     }
 }

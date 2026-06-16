@@ -119,6 +119,7 @@ import {
   updateDisplayOrders,
   type ProductCatalogRow,
   type EstimateCategory,
+  type ProductCategory,
   type UsageScope,
   type BundleComponentInput,
   type ComponentKind,
@@ -142,6 +143,28 @@ const ESTIMATE_CATEGORY_LABEL: Record<EstimateCategory, string> = {
   COMMERCIAL_MULTI: '상업멀티',
   LEGACY: '레거시',
   OTHER: '기타',
+}
+
+/*
+const PRODUCT_CATEGORY_LABEL_BROKEN_ENCODING: Record<ProductCategory, string> = {
+  HOME_MULTI: '?덈???,
+  SINGLE_SET: '?⑥씪 ?명듃',
+  SINGLE_PART: '?⑥씪 援ъ꽦??,
+  COMMERCIAL_MULTI: '?곸뾽硫??,
+  COMMERCIAL_PART: '?곸뾽 援ъ꽦??,
+  OLD: '?덇굅??,
+  MATERIAL: '자재',
+}
+
+*/
+const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
+  HOME_MULTI: '홈멀티',
+  SINGLE_SET: '싱글 세트',
+  SINGLE_PART: '싱글 구성품',
+  COMMERCIAL_MULTI: '상업 멀티',
+  COMMERCIAL_PART: '상업 구성품',
+  OLD: '구형',
+  MATERIAL: '자재',
 }
 
 const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string }> = [
@@ -989,8 +1012,10 @@ export function ProductCatalogPage() {
       header: '카테고리',
       width: '100px',
       render: (row) =>
-        row.estimateCategory
-          ? ESTIMATE_CATEGORY_LABEL[row.estimateCategory]
+        row.productCategory
+          ? PRODUCT_CATEGORY_LABEL[row.productCategory]
+          : row.estimateCategory
+            ? ESTIMATE_CATEGORY_LABEL[row.estimateCategory]
           : '—',
     },
     {

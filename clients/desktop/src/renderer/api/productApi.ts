@@ -15,6 +15,7 @@
  */
 import { apiClient, type ApiEnvelope, type PageResponse } from './client'
 import type { ProductOption } from '@samhan/design-system'
+import type { UsageScope } from './productCatalogApi'
 
 /**
  * product-service `ProductSummaryResponse` 매핑 타입 (FE 전용).
@@ -41,12 +42,15 @@ interface ProductSummaryResponse {
  * @param q 검색어 (모델명 또는 품목명 부분 입력)
  * @returns `ProductOption[]` — 실패 시 빈 배열 (graceful degradation)
  */
-export async function searchProducts(q: string): Promise<ProductOption[]> {
+export async function searchProducts(
+  q: string,
+  options: { usageScope?: UsageScope } = {},
+): Promise<ProductOption[]> {
   try {
     const res = await apiClient.get<ApiEnvelope<PageResponse<ProductSummaryResponse>>>(
       '/api/products',
       {
-        params: { q, size: 20 },
+        params: { q, size: 20, ...(options.usageScope ? { usageScope: options.usageScope } : {}) },
       },
     )
     const page = res.data.data

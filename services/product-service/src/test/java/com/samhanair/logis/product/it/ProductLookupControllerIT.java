@@ -8,12 +8,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.samhanair.logis.product.domain.BranchPipeLookup;
+import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.MaterialPrice;
 import com.samhanair.logis.product.domain.OduRecommendationLookup;
 import com.samhanair.logis.product.domain.OduRecommendationLookup.RecommendationType;
+import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductType;
+import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
+import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
+import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
 import java.math.BigDecimal;
@@ -47,6 +54,12 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
     @Autowired
     private BranchPipeLookupRepository branchPipeLookupRepository;
 
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
     @MockBean
     private DynamicPermissionClient dynamicPermissionClient;
 
@@ -60,28 +73,25 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void materialPrices_returnsAllSortedByNumericSuffixAndExcludesSoftDeletedRows() throws Exception {
-        MaterialPrice d10 = MaterialPrice.seed("D10", "D10 자재", new BigDecimal("10000.00"),
-                "옵션10", "=D10");
-        MaterialPrice d2 = MaterialPrice.seed("D2", "D2 자재", new BigDecimal("2000.00"),
-                "옵션2", "=D2");
-        MaterialPrice deleted = MaterialPrice.seed("D3", "삭제 자재", new BigDecimal("3000.00"),
-                "삭제", "=D3");
-        deleted.markDeleted("test-it");
-        materialPriceRepository.save(d10);
-        materialPriceRepository.save(d2);
-        materialPriceRepository.save(deleted);
+    void materialPrices_returnsMaterialProductsAndIgnoresLegacyMaterialPriceRows() throws Exception {
+        materialPriceRepository.save(MaterialPrice.seed("D2", "레거시 자재", new BigDecimal("2000.00"),
+                "레거시옵션", "=D2"));
+        seedMaterialProduct("MAT-REMOTE-01", "Product 유선리모컨", new BigDecimal("40000.00"));
+        seedMaterialProduct("MAT-PANEL-01", "Product 블랙판넬", new BigDecimal("50000.00"));
+        seedProduct("NON-MATERIAL-01", "일반 품목", ProductCategory.SINGLE_PART, UsageScope.BOTH);
         materialPriceRepository.flush();
+        productRepository.flush();
 
         mockMvc.perform(withActor(get("/api/v1/material-prices")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].materialKey").value("D2"))
-                .andExpect(jsonPath("$[0].name").value("D2 자재"))
-                .andExpect(jsonPath("$[0].optionLabel").value("옵션2"))
+                .andExpect(jsonPath("$[0].materialKey").value("MAT-PANEL-01"))
+                .andExpect(jsonPath("$[0].name").value("Product 블랙판넬"))
+                .andExpect(jsonPath("$[0].price").value(50000.0))
                 .andExpect(jsonPath("$[0].id").doesNotExist())
                 .andExpect(jsonPath("$[0].computedFormula").doesNotExist())
-                .andExpect(jsonPath("$[1].materialKey").value("D10"))
-                .andExpect(jsonPath("$[?(@.materialKey == 'D3')]").doesNotExist());
+                .andExpect(jsonPath("$[1].materialKey").value("MAT-REMOTE-01"))
+                .andExpect(jsonPath("$[?(@.name == '레거시 자재')]").doesNotExist())
+                .andExpect(jsonPath("$[?(@.materialKey == 'NON-MATERIAL-01')]").doesNotExist());
     }
 
     @Test
@@ -183,5 +193,27 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
         return request
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "SALES");
+    }
+
+    private Product seedMaterialProduct(String modelCode, String name, BigDecimal price) {
+        return seedProduct(modelCode, name, ProductCategory.MATERIAL, UsageScope.NONE, price);
+    }
+
+    private Product seedProduct(String modelCode, String name,
+                                ProductCategory productCategory, UsageScope usageScope) {
+        return seedProduct(modelCode, name, productCategory, usageScope, new BigDecimal("1000.00"));
+    }
+
+    private Product seedProduct(String modelCode, String name,
+                                ProductCategory productCategory, UsageScope usageScope,
+                                BigDecimal price) {
+        Category category = categoryRepository.findAll().stream()
+                .filter(c -> "PIPING".equals(c.getCode()))
+                .findFirst()
+                .orElseGet(() -> categoryRepository.save(
+                        Category.create("PIPING", "배관/부속", null, 3)));
+        Product product = Product.seedFromSheet(name, modelCode, category,
+                price, price, ProductType.SINGLE, productCategory, usageScope, null);
+        return productRepository.save(product);
     }
 }

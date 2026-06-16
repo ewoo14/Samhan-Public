@@ -73,6 +73,7 @@ export interface ProductCatalogRow {
   usageScope: UsageScope
   /** 견적 카테고리 (ESTIMATE/BOTH 시에만 의미 있음) */
   estimateCategory: EstimateCategory | null
+  productCategory: ProductCategory | null
   /** 수동 override 여부 — true: 수동 설정, false: 시트 자동 */
   usageScopeManual: boolean
   /** 시트 기준 표시 순서 */

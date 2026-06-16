@@ -4,7 +4,6 @@ import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.product.domain.BranchPipeLookup;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.EstimateCategory;
-import com.samhanair.logis.product.domain.MaterialPrice;
 import com.samhanair.logis.product.domain.OduRecommendationLookup;
 import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.Product;
@@ -13,15 +12,16 @@ import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
-import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
+import com.samhanair.logis.product.web.dto.MaterialPriceResponse;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +65,6 @@ public class EstimateCatalogInternalController {
     private final ProductSpecRepository productSpecRepository;
     private final BundleComponentRepository bundleComponentRepository;
     private final PriceHistoryRepository priceHistoryRepository;
-    private final MaterialPriceRepository materialPriceRepository;
     private final OduRecommendationLookupRepository oduRecommendationLookupRepository;
     private final BranchPipeLookupRepository branchPipeLookupRepository;
 
@@ -235,8 +234,18 @@ public class EstimateCatalogInternalController {
     /** 자재가격 — legacy getSingleMatPrices ('싱글 자재가격' 탭). */
     @Operation(summary = "[내부] 싱글 자재가격 벌크 (#30)")
     @GetMapping("/material-prices")
-    public ApiResponse<List<MaterialPrice>> materialPrices() {
-        return ApiResponse.ok(materialPriceRepository.findAll());
+    @Transactional(readOnly = true)
+    public ApiResponse<List<MaterialPriceResponse>> materialPrices() {
+        // Product(MATERIAL)이 자재 단가의 원천이다. estimate-app 호환을 위해 name/price 필드명은 유지한다.
+        List<MaterialPriceResponse> rows = productRepository
+                .findByProductCategoryAndIsDeletedFalse(ProductCategory.MATERIAL)
+                .stream()
+                .sorted(Comparator.comparing(
+                        p -> p.getModelCode() == null ? p.getModelName() : p.getModelCode(),
+                        Comparator.nullsLast(String::compareTo)))
+                .map(MaterialPriceResponse::from)
+                .toList();
+        return ApiResponse.ok(rows);
     }
 
     /** 추천실외기 — legacy getRecommendOduData ('추천실외기' 탭). */
