@@ -579,10 +579,6 @@ class BundleComponentServiceTest {
                 .thenReturn(List.of(p1, p2));
         when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
                 any(), any())).thenReturn(List.of(e1, e2));
-        // 전체-요청 가드(요청=카테고리 전체 활성 노출) 충족용 stub
-        when(exposureRepository.findActiveProductExposuresByEstimateCategory(any()))
-                .thenReturn(List.of(e1, e2));
-
         service.updateDisplayOrders(List.of(
                 new DisplayOrderRequest("PROD-001", EstimateCategory.HOME_MULTI, 50),
                 new DisplayOrderRequest("PROD-002", EstimateCategory.HOME_MULTI, 10)));
@@ -687,10 +683,6 @@ class BundleComponentServiceTest {
                 .thenReturn(List.of(p1, p2));
         when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
                 any(), any())).thenReturn(List.of(e1, e2));
-        // 전체-요청 가드(요청=카테고리 전체 활성 노출) 충족용 stub
-        when(exposureRepository.findActiveProductExposuresByEstimateCategory(any()))
-                .thenReturn(List.of(e1, e2));
-
         // 예외 없이 정상 종료
         service.updateDisplayOrders(List.of(
                 new DisplayOrderRequest("HM-001", EstimateCategory.HOME_MULTI, 1),
