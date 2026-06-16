@@ -62,6 +62,7 @@ jest.mock('axios', () => {
 
 const shim = require('../lib/apps-script-shim');
 const code = require('../lib/code');
+const directory = require('../lib/directory');
 
 const SHEET_ID = '1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ';
 const HOME_NAME = '홈멀티_단가인상';
@@ -537,19 +538,22 @@ describe('#31 getAllNotionDcConfigs_ / getCustomerDataAsync dc 부착', () => {
   test('getCustomerDataAsync — 라이브 verbatim: bizno 우선, 없으면 거래처코드 숫자키 매칭', async () => {
     code.cacheRemoveJSON_('CUS_V6');
     code.cacheRemoveJSON_('NOTION_DC_MAP_V1');
-    const shim2 = require('../lib/apps-script-shim');
-    shim2.injectSheet('1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ', '거래처', [
-      ['거래처코드', '거래처명', '사업자등록번호', '담당자명', '대표자명', '주소', '전화번호', '특이사항', '그룹', '싱글 할인', '담당자연락처'],
-      ['C-001', 'DC있는거래처', '987-65-43210', '', '', '', '', '', '', '', ''],
-      ['1112223334', '코드키거래처', '', '', '', '', '', '', '', '', ''],
-      ['C-003', 'DC없는거래처', '123-12-12345', '', '', '', '', '', '', '', ''],
+    const fetchPartnersSpy = jest.spyOn(directory, 'fetchPartners').mockResolvedValue([
+      { code: 'C-001', name: 'DC있는거래처', bizno: '9876543210', manager: '', managerTel: '', rep: '', addr: '', tel: '', note: '', group: '', singleDiscount: 0 },
+      { code: '1112223334', name: '코드키거래처', bizno: '', manager: '', managerTel: '', rep: '', addr: '', tel: '', note: '', group: '', singleDiscount: 0 },
+      { code: 'C-003', name: 'DC없는거래처', bizno: '1231212345', manager: '', managerTel: '', rep: '', addr: '', tel: '', note: '', group: '', singleDiscount: 0 },
     ]);
-    const out = await code.getCustomerDataAsync(true);
-    expect(out).toHaveLength(3);
-    expect(out[0].dc.homeDiscount).toBe(0.46); // bizno 매칭
-    expect(out[1].dc.homeDiscount).toBe(0.5); // 거래처코드 숫자키 매칭
-    expect(out[2].dc).toBeNull(); // 미등록 → null
-    expect(out[0].bizno).toBe('9876543210');
+
+    try {
+      const out = await code.getCustomerDataAsync(true);
+      expect(out).toHaveLength(3);
+      expect(out[0].dc.homeDiscount).toBe(0.46); // bizno 매칭
+      expect(out[1].dc.homeDiscount).toBe(0.5); // 거래처코드 숫자키 매칭
+      expect(out[2].dc).toBeNull(); // 미등록 → null
+      expect(out[0].bizno).toBe('9876543210');
+    } finally {
+      fetchPartnersSpy.mockRestore();
+    }
   });
 });
 

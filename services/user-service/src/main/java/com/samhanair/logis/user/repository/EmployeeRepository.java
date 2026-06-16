@@ -59,6 +59,17 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
             + "   OR LOWER(e.loginId) LIKE LOWER(CONCAT('%', :q, '%')))")
     List<Employee> searchInternalApprovers(@Param("q") String q, Pageable pageable);
 
+    /**
+     * 종합견적서 담당자 directory 조회 — 활성(soft-delete 제외) 직원의 이름만 검색한다.
+     *
+     * <p>기존 groupware approver 검색과 달리 blank q 도 전체 목록을 반환해야 하므로 별도 query 로 둔다.
+     */
+    @Query("SELECT e FROM Employee e LEFT JOIN FETCH e.department "
+            + "WHERE e.isDeleted = false "
+            + "AND (CAST(:q AS string) IS NULL "
+            + " OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))")
+    List<Employee> searchEmployeeDirectory(@Param("q") String q, Pageable pageable);
+
     /** #31 — estimate-app 접속 게이트 (legacy Notion AUTH DB 의 email 승인 조회 치환). */
     Optional<Employee> findByEmail(String email);
 

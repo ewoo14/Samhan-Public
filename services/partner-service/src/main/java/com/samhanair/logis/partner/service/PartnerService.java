@@ -5,6 +5,7 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.partner.domain.Partner;
 import com.samhanair.logis.partner.domain.PartnerStatus;
 import com.samhanair.logis.partner.dto.PartnerAdminRequest;
+import com.samhanair.logis.partner.dto.PartnerDirectoryResponse;
 import com.samhanair.logis.partner.dto.PartnerInternalResponse;
 import com.samhanair.logis.partner.repository.PartnerRepository;
 import com.samhanair.logis.partner.revision.domain.PartnerRevisionType;
@@ -21,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -168,6 +170,26 @@ public class PartnerService {
     public Page<Partner> searchAdmin(String q, PartnerStatus status, Pageable pageable) {
         String normalized = (q == null || q.isBlank()) ? null : q.trim();
         return partnerRepository.searchAdmin(normalized, status, pageable);
+    }
+
+    /**
+     * 종합견적서 거래처 directory 조회.
+     *
+     * <p>ACTIVE 거래처만 반환하며 q 는 partnerCode/name/bizNo 부분일치 검색이다. limit 은 호출자가 크게
+     * 넘겨도 내부 directory endpoint 계약에 맞춰 1~5000 범위로 보정한다.
+     *
+     * @param q 검색어 (blank 시 전체)
+     * @param limit 최대 반환 건수
+     * @return estimate-app legacy 거래처 shape 로 변환 가능한 directory DTO 목록
+     */
+    @Transactional(readOnly = true)
+    public List<PartnerDirectoryResponse> listDirectory(String q, int limit) {
+        String normalized = (q == null || q.isBlank()) ? null : q.trim();
+        int normalizedLimit = Math.min(Math.max(limit, 1), 5000);
+        Pageable pageable = PageRequest.of(0, normalizedLimit, Sort.by("partnerCode").ascending());
+        return partnerRepository.searchDirectory(normalized, pageable).stream()
+                .map(PartnerDirectoryResponse::from)
+                .toList();
     }
 
     /**

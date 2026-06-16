@@ -1,6 +1,8 @@
 package com.samhanair.logis.partner.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 
 import com.samhanair.logis.partner.PartnerServiceApplication;
 import com.samhanair.logis.partner.domain.Partner;
@@ -49,6 +51,9 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
         partnerRepository.deleteAll();
         Partner p = Partner.register("P-2026-0001", "111-22-33333", "(주)테스트거래처",
                 "서울 강남구 테스트로 1", "02-1234-5678", new BigDecimal("5000000"));
+        p.updateBusinessProfile("홍길동", null, null, null);
+        p.updateClassification("일반거래처", null, null);
+        p.updateNote("견적 테스트 메모");
         partnerRepository.save(p);
     }
 
@@ -93,6 +98,66 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.status().isNotFound())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(false))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void list_without_internal_token_returns_403() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/list"))
+                .andExpect(MockMvcResultMatchers.status().isForbidden());
+    }
+
+    @Test
+    void list_with_invalid_internal_token_returns_401() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/list")
+                        .header("X-Internal-Token", "wrong-token"))
+                .andExpect(MockMvcResultMatchers.status().isUnauthorized());
+    }
+
+    @Test
+    void list_with_valid_token_returns_active_partner_directory_fields() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/list")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.length()").value(1))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].partnerId").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].partnerCode").value("P-2026-0001"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("(주)테스트거래처"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].bizNo").value("111-22-33333"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].representative").value("홍길동"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].address").value("서울 강남구 테스트로 1"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].phone").value("02-1234-5678"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].group").value("일반거래처"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].note").value("견적 테스트 메모"));
+    }
+
+    @Test
+    void list_q_filters_by_name_bizNo_or_partnerCode() throws Exception {
+        Partner extra = Partner.register("P-2026-0099", "999-88-77777", "필터대상거래처",
+                "부산 테스트로 9", "051-000-0000", new BigDecimal("1000000"));
+        partnerRepository.save(extra);
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/list")
+                        .header("X-Internal-Token", "test-internal-token")
+                        .param("q", "999-88"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.length()").value(1))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].partnerCode").value("P-2026-0099"));
+    }
+
+    @Test
+    void list_excludes_non_active_partners() throws Exception {
+        Partner suspended = Partner.register("P-2026-0003", "333-44-55555", "일시중지거래처",
+                null, null, new BigDecimal("1000000"));
+        suspended.suspend();
+        partnerRepository.save(suspended);
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/internal/partners/list")
+                        .header("X-Internal-Token", "test-internal-token"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[*].partnerCode", hasItem("P-2026-0001")))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[*].partnerCode", not(hasItem("P-2026-0003"))));
     }
 
     /**

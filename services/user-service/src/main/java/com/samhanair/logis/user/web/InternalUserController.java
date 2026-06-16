@@ -7,6 +7,7 @@ import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.web.dto.BulkDisplayNameRequest;
 import com.samhanair.logis.user.web.dto.BulkVerifyRequest;
 import com.samhanair.logis.user.web.dto.BulkVerifyResponse;
+import com.samhanair.logis.user.web.dto.InternalEmployeeDirectoryResponse;
 import com.samhanair.logis.user.web.dto.InternalEmployeeLookupResponse;
 import com.samhanair.logis.user.web.dto.InternalEmployeeSearchResponse;
 import com.samhanair.logis.user.web.dto.InternalUserResponse;
@@ -48,6 +49,35 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalUserController {
 
     private final EmployeeRepository employeeRepository;
+
+    /**
+     * 종합견적서 담당자 directory 조회.
+     *
+     * <p>담당자는 거래처 연락처가 아니라 우리 행정직원(Employee)이다. blank q 는 전체 활성 직원을
+     * 반환하며, ecountCode 는 legacy 담당자코드로 estimate-app 에 전달된다.
+     *
+     * @param q 직원명 부분일치 검색어
+     * @param limit 최대 반환 건수 (상한 1000)
+     * @return 200 + 담당자 directory 목록 ; 토큰 누락 403 ; 토큰 불일치 401
+     */
+    @GetMapping("/employees")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<List<InternalEmployeeDirectoryResponse>> employees(
+            @RequestParam(value = "q", required = false, defaultValue = "") String q,
+            @RequestParam(value = "limit", defaultValue = "500") int limit) {
+        String normalized = q == null || q.isBlank() ? null : q.trim();
+        int normalizedLimit = Math.min(Math.max(limit, 1), 1000);
+        List<InternalEmployeeDirectoryResponse> employees = employeeRepository
+                .searchEmployeeDirectory(normalized, PageRequest.of(0, normalizedLimit))
+                .stream()
+                .map(employee -> new InternalEmployeeDirectoryResponse(
+                        employee.getId(),
+                        employee.getFullName(),
+                        employee.getEcountCode(),
+                        employee.getDepartment() == null ? null : employee.getDepartment().getName()))
+                .toList();
+        return ApiResponse.ok(employees);
+    }
 
     /**
      * 사용자 단건 존재 확인 + 기본 정보 lookup. notification-service / groupware-service / partner-service
