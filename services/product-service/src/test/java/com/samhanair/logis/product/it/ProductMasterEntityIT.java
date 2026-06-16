@@ -8,9 +8,11 @@ import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.MaterialKey;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +39,9 @@ class ProductMasterEntityIT extends AbstractPostgresIT {
     private ProductRepository productRepository;
 
     @Autowired
+    private ProductEstimateExposureRepository exposureRepository;
+
+    @Autowired
     private CategoryRepository categoryRepository;
 
     private Category cat;
@@ -59,6 +64,7 @@ class ProductMasterEntityIT extends AbstractPostgresIT {
         p.changeRemark("테스트 비고");
 
         Product saved = productRepository.saveAndFlush(p);
+        persistExposure(saved, EstimateCategory.HOME_MULTI, 1);
 
         Product fetched = productRepository.findById(saved.getId()).orElseThrow();
         assertThat(fetched.getModelCode()).isEqualTo("AJ060MXHNBC1");
@@ -71,7 +77,8 @@ class ProductMasterEntityIT extends AbstractPostgresIT {
         assertThat(fetched.getReleasePrice()).isEqualByComparingTo("2763200.00");
         assertThat(fetched.getDeliveryPrice()).isEqualByComparingTo("1519760.00");
         assertThat(fetched.getUsageScope()).isEqualTo(UsageScope.BOTH);
-        assertThat(fetched.getEstimateCategory()).isEqualTo(EstimateCategory.HOME_MULTI);
+        assertThat(exposureRepository.findByProductIdAndEstimateCategoryAndIsDeletedFalse(
+                fetched.getId(), EstimateCategory.HOME_MULTI)).isPresent();
         assertThat(fetched.getProductCategory()).isEqualTo(ProductCategory.HOME_MULTI);
         assertThat(fetched.getRemark()).isEqualTo("테스트 비고");
     }
@@ -103,11 +110,18 @@ class ProductMasterEntityIT extends AbstractPostgresIT {
         Product part = Product.seedFromSheet("Part", "MC002", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.SINGLE_PART, UsageScope.NONE, null);
-        productRepository.saveAll(java.util.List.of(home, part));
+        Product savedHome = productRepository.save(home);
+        productRepository.save(part);
+        persistExposure(savedHome, EstimateCategory.HOME_MULTI, 1);
         productRepository.flush();
 
         var page = productRepository.searchByUsageScope("BOTH", "HOME_MULTI", null,
                 org.springframework.data.domain.PageRequest.of(0, 10));
         assertThat(page.getContent()).extracting(Product::getModelCode).contains("MC001").doesNotContain("MC002");
+    }
+
+    private void persistExposure(Product product, EstimateCategory category, Integer displayOrder) {
+        exposureRepository.save(ProductEstimateExposure.create(product.getId(), category, displayOrder));
+        exposureRepository.flush();
     }
 }
