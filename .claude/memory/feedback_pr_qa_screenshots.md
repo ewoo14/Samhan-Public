@@ -204,6 +204,8 @@ gh api repos/<owner>/<repo>/pulls/<PR> -X PATCH -F body=@body.md
 
 > 규칙은 2026-05-04부터 5회 박제돼 있었음 — **부재가 아니라 미준수**. 매 스크린샷 게시 시 본 4항 mental check.
 
+**🔁 5번째 재지적 (2026-06-16, 에픽 #18 슬1 PR #494 착수 시점)**: 개발책임자 "스크린샷은 로컬에만 저장하면 확인 불가 — PR 리뷰로 게시 요청". 즉 `docs/qa/<slug>/*.png` 로컬 커밋만으로는 **확인 불가** → 반드시 **PR 코멘트/리뷰에 full-SHA raw URL 로 인라인 임베드**해야 PR 화면에서 보인다. 매 리뷰 라운드(Opus/Codex) 코멘트에 그 라운드 Docker 실QA 스크린샷을 인라인 + curl 200 자가검증. (착수 시 mental check 고정.)
+
 ## 관련 가드
 
 - 통합 PR 패턴 의무 (`feedback_integrated_pr_pattern.md`) 와 함께 적용 — 단편 fix PR 금지, 통합 PR 1개에 전수 QA 캡처 첨부 (PR #66 회고)

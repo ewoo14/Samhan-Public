@@ -13,7 +13,7 @@ describe('CategoryTabs', () => {
   it('5 탭 기본 렌더', () => {
     render(<CategoryTabs value="HOME_MULTI" onChange={() => {}} />)
     expect(screen.getByRole('tab', { name: /홈멀티/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /싱글 세트/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /싱글중대형/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /상업멀티/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /구형/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /기타/ })).toBeInTheDocument()
@@ -21,7 +21,7 @@ describe('CategoryTabs', () => {
 
   it('현재 value 의 tab 이 aria-selected=true', () => {
     render(<CategoryTabs value="SINGLE_SET" onChange={() => {}} />)
-    expect(screen.getByRole('tab', { name: /싱글 세트/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /싱글중대형/ })).toHaveAttribute(
       'aria-selected',
       'true',
     )

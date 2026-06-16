@@ -22,7 +22,7 @@
  * 모바일 분기 자동 활성:
  *   - order-legacy v4 의 views/index.ejs `@media max-width:1280px` + `body.mobile-mode` 가
  *     react-native-webview 의 device width (iPhone/Galaxy 모두 < 1280) 에서 자동 활성.
- *   - 모바일 게이트 4 카테고리 (홈멀티/싱글세트/상업멀티/구형) + 페이지 메뉴 drawer (▼) +
+ *   - 모바일 게이트 4 카테고리 (홈멀티/싱글중대형/상업멀티/구형) + 페이지 메뉴 drawer (▼) +
  *     과거 발송내역 + 자동 로그아웃 timer 가 모두 legacy 에서 표시.
  *
  * Android hardware 뒤로가기:

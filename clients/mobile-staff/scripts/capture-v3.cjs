@@ -163,7 +163,7 @@ async function gotoEstimateApp(page) {
     await snapshot(page, '01-staff-app-init.png');
 
     // -------- 02 — ▼ 페이지 메뉴 dropdown 활성 (13 메뉴 + 자동 로그아웃) --------
-    // 사용자 첨부: Screenshot 19.55.07.JPG (전표작성/홈멀티/싱글세트/상업멀티/구형/견적서(기본)/세트상세/
+    // 사용자 첨부: Screenshot 19.55.07.JPG (전표작성/홈멀티/싱글중대형/상업멀티/구형/견적서(기본)/세트상세/
     //                                       전표업로드목록/장비스펙/발송내역/견적저장/저장내역/다크모드 + 자동 로그아웃)
     // estimate-app v2 의 #handleTop click → toggleDrawer('top') → #drawerTop active.
     // drawerTop 안 #mobileTopContent 가 .top-actions (메뉴 버튼들) 을 동적으로 받음 (relocateUI).

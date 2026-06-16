@@ -132,16 +132,16 @@ test('M:N — AJ060MXHNBC1 단일 품목이 HOME_MULTI + SINGLE_SET 2개 카테�
   await expect(exposureGroup, '노출설정 견적 카테고리 그룹 미노출').toBeVisible({ timeout: 10000 })
   const rowContainer = exposureGroup.locator('xpath=ancestor::tr[1]')
 
-  // (2) '카테고리' 컬럼 — 견적 카테고리 Badge 2개 단언(실 라벨: 홈멀티 / 단일 세트).
+  // (2) '카테고리' 컬럼 — 견적 카테고리 Badge 2개 단언(실 라벨: 홈멀티 / 싱글중대형).
   //   normalizeEstimateCategoryExposures → Badge. (행 안에 productCategory 라벨 '홈멀티' 도 있어
-  //   '홈멀티' 는 2회 등장 가능 → first 로만 확인, '단일 세트' 는 견적 노출 Badge 로 등장.)
-  await expect(rowContainer.getByText('단일 세트', { exact: false }).first()).toBeVisible({
+  //   '홈멀티' 는 2회 등장 가능 → first 로만 확인, '싱글중대형' 은 견적 노출 Badge 로 등장.)
+  await expect(rowContainer.getByText('싱글중대형', { exact: false }).first()).toBeVisible({
     timeout: 10000,
   })
   await expect(rowContainer.getByText('홈멀티', { exact: false }).first()).toBeVisible({
     timeout: 10000,
   })
-  console.log('[2] 카테고리 컬럼 견적 Badge(홈멀티 + 단일 세트) 확인')
+  console.log('[2] 카테고리 컬럼 견적 Badge(홈멀티 + 싱글중대형) 확인')
 
   // 전체 카탈로그 행 캡처(검색 결과 — 다중노출 1행)
   await page.waitForTimeout(400)

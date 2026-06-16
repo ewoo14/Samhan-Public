@@ -28,7 +28,7 @@ async function main() {
 
   const matDist = {};
   ss.forEach((x) => { matDist[x.matKey] = (matDist[x.matKey] || 0) + 1; });
-  console.log(`싱글세트: ${ss.length}행 | matKey 분포: ${JSON.stringify(matDist)}`);
+  console.log(`싱글중대형: ${ss.length}행 | matKey 분포: ${JSON.stringify(matDist)}`);
 
   const cmCat = {};
   cm.forEach((x) => { cmCat[x.catL] = (cmCat[x.catL] || 0) + 1; });

@@ -183,8 +183,8 @@ async function gotoOrderApp(page) {
     // 게이트 우선 캡처 (dismiss 전).
     await snapshot(page, '05-bizgate.png');
 
-    // -------- 01 — 모바일 게이트 4 카테고리 (홈멀티/싱글세트/상업멀티/구형) --------
-    // 사용자 첨부: Screenshot 20.17.37.JPG (홈멀티/싱글 세트/상업멀티/구형 4 큰 진입 버튼).
+    // -------- 01 — 모바일 게이트 4 카테고리 (홈멀티/싱글중대형/상업멀티/구형) --------
+    // 사용자 첨부: Screenshot 20.17.37.JPG (홈멀티/싱글중대형/상업멀티/구형 4 큰 진입 버튼).
     await dismissBizGate(page);
     await page.waitForTimeout(600);
     await snapshot(page, '01-mobile-gate.png');
@@ -212,7 +212,7 @@ async function gotoOrderApp(page) {
     await page.waitForTimeout(400);
     await snapshot(page, '03-home-active.png');
 
-    // -------- 02 — ▼ 페이지 메뉴 drawer (싱글세트 보기 + 상업멀티 보기 + 구형 보기 + 견적/주문하기 +
+    // -------- 02 — ▼ 페이지 메뉴 drawer (싱글중대형 보기 + 상업멀티 보기 + 구형 보기 + 견적/주문하기 +
     //                                       과거 발송내역 + 자동 로그아웃 timer + 닫기 ▲) --------
     // 사용자 첨부: Screenshot 20.17.55.JPG (홈멀티 활성 상태에서 페이지 메뉴 drawer 활성).
     // legacy 의 #handleTop click → toggleDrawer('top') → #drawerTop.active 가 위에서 슬라이드.

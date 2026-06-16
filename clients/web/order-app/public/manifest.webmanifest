@@ -1,7 +1,7 @@
 {
   "name": "삼한공조시스템 주문서",
   "short_name": "주문서",
-  "description": "거래처용 주문서 작성 web app — 홈멀티 / 싱글세트 / 상업멀티 / 구형",
+  "description": "거래처용 주문서 작성 web app — 홈멀티 / 싱글중대형 / 상업멀티 / 구형",
   "lang": "ko",
   "start_url": "/",
   "scope": "/",

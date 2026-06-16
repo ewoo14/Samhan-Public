@@ -334,7 +334,7 @@ public class PartnerOrderPrintService {
     private String categoryLabel(String categoryKey) {
         return switch (nullToEmpty(categoryKey)) {
             case "homemulti" -> "홈멀티";
-            case "singleSets" -> "싱글 세트";
+            case "singleSets" -> "싱글중대형";
             case "commercialMulti" -> "상업멀티";
             case "oldProducts" -> "구형";
             default -> "기타";

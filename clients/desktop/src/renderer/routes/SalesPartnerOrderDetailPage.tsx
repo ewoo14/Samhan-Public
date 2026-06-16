@@ -986,7 +986,7 @@ export function SalesPartnerOrderDetailPage() {
                       onChange={(e) => updateLine(index, { categoryKey: e.target.value })}
                     >
                       <option value="homemulti">홈멀티</option>
-                      <option value="singleSets">싱글 세트</option>
+                      <option value="singleSets">싱글중대형</option>
                       <option value="commercialMulti">상업멀티</option>
                       <option value="oldProducts">구형</option>
                     </Select>

@@ -700,7 +700,7 @@ button.tut-highlight { filter: brightness(1.6); }
       <div class="top-actions">
         <div class="view-group">
           <button class="btn-mini" id="btnGoHome">홈멀티 보기</button>
-          <button class="btn-mini" id="btnGoSingle">싱글세트 보기</button>
+          <button class="btn-mini" id="btnGoSingle">싱글중대형 보기</button>
           <button class="btn-mini" id="btnGoComm">상업멀티 보기</button>
           <button class="btn-mini" id="btnGoOld">구형 보기</button>
         </div>
@@ -723,7 +723,7 @@ button.tut-highlight { filter: brightness(1.6); }
 
     <div class="mobile-gate" id="mobileGate" data-testid="mobile-gate">
       <button id="btnEnterHome"   class="select-big select-home">홈멀티</button>
-      <button id="btnEnterSingle" class="select-big select-single">싱글 세트</button>
+      <button id="btnEnterSingle" class="select-big select-single">싱글중대형</button>
       <button id="btnEnterComm"   class="select-big select-comm">상업멀티</button>
       <button id="btnEnterOld"    class="select-big select-old">구형</button>
     </div>
@@ -793,10 +793,10 @@ button.tut-highlight { filter: brightness(1.6); }
         </div>
       </div>
 
-      <!-- 싱글 세트 -->
+      <!-- 싱글중대형 -->
       <div class="card" id="cardSingle">
         <div class="card-head">
-          <div class="card-title">싱글 세트</div>
+          <div class="card-title">싱글중대형</div>
           <button type="button" id="btnResetSingle" class="btn-mini">초기화</button>
         </div>
         <div class="opts" id="singleOpts"></div>
@@ -1705,7 +1705,7 @@ function openSpecModalByItem(item, scope){
   } else if(scope === 'comm'){
     if(!allowL.includes(L) && !isErv) return;
   } else if(scope === 'single'){
-    // 싱글 세트는 "세트 품목만" 허용
+    // 싱글중대형은 "세트 품목만" 허용
     if(!item.isSet) return;
   }
 
@@ -2989,7 +2989,7 @@ function calcSetUnitPrice(s){
   setPrice = baseAdjusted + unitExtras;
 
   if(setPrice<0) setPrice=0;
-  // console.log('🧮 싱글 세트 최종 단가', s.model, setPrice);
+  // console.log('🧮 싱글중대형 최종 단가', s.model, setPrice);
   return setPrice;
 }
 
@@ -3309,7 +3309,7 @@ function updateHomeFilterOptions(){
   }
 }
 
-/* 싱글 세트 필터 셀렉트 갱신 */
+/* 싱글중대형 필터 셀렉트 갱신 */
 function updateSingleFilterOptions(){
   const selL = document.getElementById('singleFilterL');
   const selM = document.getElementById('singleFilterM');
@@ -3697,7 +3697,7 @@ function renderHome(){
   refreshBranchOpenButton('home');
 }
 
-// 싱글세트렌더
+// 싱글중대형렌더
 function renderSingle(){
   const body=el('#singleBody');body.innerHTML='';
 
@@ -3865,7 +3865,7 @@ function renderSingle(){
   refreshBranchOpenButton('single');
 }
 
-// 싱글 세트 구성 목록 생성
+// 싱글중대형 구성 목록 생성
 function buildSingleSetCompositionHtml_(s){
   try{
     if(!s) return '';
@@ -4590,8 +4590,8 @@ function updateTopControls(){
     if(specHistGrp) specHistGrp.style.display='none';
   }else{
     if(pv) pv.style.display='flex';
-    if(sw){ sw.style.display='inline-flex'; sw.textContent=(mobileActive==='home')?'싱글 세트 보기':'홈멀티 보기'; }
-    if(title) title.firstChild.nodeValue=(mobileActive==='home'?'홈멀티':mobileActive==='single'?'싱글 세트':mobileActive==='comm'?'상업멀티':mobileActive==='old'?'구형':'주문서')+' ';
+    if(sw){ sw.style.display='inline-flex'; sw.textContent=(mobileActive==='home')?'싱글중대형 보기':'홈멀티 보기'; }
+    if(title) title.firstChild.nodeValue=(mobileActive==='home'?'홈멀티':mobileActive==='single'?'싱글중대형':mobileActive==='comm'?'상업멀티':mobileActive==='old'?'구형':'주문서')+' ';
     if(specHistGrp) specHistGrp.style.display='flex';
   }
 }
@@ -5391,7 +5391,7 @@ function getSetUnitNowById(id){
   return Math.round(Number(setBasePriceRightFirst(s)) || 0);
 }
 
-// 싱글 세트 → 전송용 품목 목록
+// 싱글중대형 → 전송용 품목 목록
 function explodeSendSets_(s, q){
   const unitOverride = getSetUnitNowById(s.id); // 화면의 세트 납품가
   const cls = classifySingleSetFixed(s);
@@ -5832,9 +5832,9 @@ function initGate(){
     renderHome(); 
   });
 
-  // 싱글 세트 진입
+  // 싱글중대형 진입
   el('#btnEnterSingle')?.addEventListener('click', ()=>{ 
-    sendLog('섹션이동', '싱글세트 진입');
+    sendLog('섹션이동', '싱글중대형 진입');
 
     document.body.classList.remove('no-active'); 
     document.body.classList.add('single-active');
@@ -5935,7 +5935,7 @@ function buildSendRows(){
     });
   });
 
-  // 싱글세트
+  // 싱글중대형
   SINGLE_SETS.forEach(s=>{
     const q = singleQty.get(s.id) || 0;
     if(!q) return;
@@ -6011,7 +6011,7 @@ function forceOrderTitle(){
 /* 이벤트 */
 function initEvents(){
   el('#btnResetHome').addEventListener('click',()=>{sendLog('기능사용', '홈멀티 초기화 버튼 클릭');homeQty.forEach((_,k)=>homeQty.set(k,0));syncHomeUIFromState();syncHomeTotals();updateHomeRatio();refreshSelectedBadge();renderHomeOptions();HOME_FILTER={L:'',M:'',S:'',text:''};var l=document.getElementById('homeFilterL'),m=document.getElementById('homeFilterM'),s=document.getElementById('homeFilterS'),t=document.getElementById('homeFilterText');if(t)t.value='';if(l)l.value='';if(m){m.value='';m.disabled=true;}if(s){s.value='';s.disabled=true;}updateHomeFilterOptions();renderHome();});
-  el('#btnResetSingle').addEventListener('click',()=>{sendLog('기능사용', '싱글세트 초기화 버튼 클릭');singleQty.forEach((_,k)=>singleQty.set(k,0));syncSingleUIFromState();el('#singleTotal').textContent=fmt(sumSingles());refreshSelectedBadge();updateInlineTotals();renderSingleOptions();SINGLE_FILTER={L:'',M:'',text:''};var l=document.getElementById('singleFilterL'),m=document.getElementById('singleFilterM'),t=document.getElementById('singleFilterText');if(t)t.value='';if(l)l.value='';if(m){m.value='';m.disabled=true;}updateSingleFilterOptions();renderSingle();});
+  el('#btnResetSingle').addEventListener('click',()=>{sendLog('기능사용', '싱글중대형 초기화 버튼 클릭');singleQty.forEach((_,k)=>singleQty.set(k,0));syncSingleUIFromState();el('#singleTotal').textContent=fmt(sumSingles());refreshSelectedBadge();updateInlineTotals();renderSingleOptions();SINGLE_FILTER={L:'',M:'',text:''};var l=document.getElementById('singleFilterL'),m=document.getElementById('singleFilterM'),t=document.getElementById('singleFilterText');if(t)t.value='';if(l)l.value='';if(m){m.value='';m.disabled=true;}updateSingleFilterOptions();renderSingle();});
   el('#btnResetComm').addEventListener('click',()=>{sendLog('기능사용', '상업멀티 초기화 버튼 클릭');commQty.forEach((_,k)=>commQty.set(k,0));document.querySelectorAll('#commBody .qty-input').forEach(i=>i.value='');document.querySelectorAll('#commBody [data-csub]').forEach(td=>td.textContent=fmt(0));syncCommTotals();updateCommRatio();refreshSelectedBadge();refreshBranchOpenButton('comm');renderCommOptions();COMM_FILTER={L:'',M:'',S:'',text:''};var l=document.getElementById('commFilterL'),m=document.getElementById('commFilterM'),s=document.getElementById('commFilterS'),t=document.getElementById('commFilterText');if(t)t.value='';if(l)l.value='';if(m){m.value='';m.disabled=true;}if(s){s.value='';s.disabled=true;}updateCommFilterOptions();renderComm();});
   el('#btnResetOld')?.addEventListener('click', ()=>{oldQty.clear(); OLD_PRODUCTS.forEach(p => delete p._tempRemarks); renderOld(); syncOldTotals(); refreshSelectedBadge(); });
   el('#btnPreview').addEventListener('click', (e) => {
@@ -6226,7 +6226,7 @@ function fixFootersForMobile(isMobile){
     }
   }
 
-  // 싱글세트 푸터
+  // 싱글중대형 푸터
   const trS = document.querySelector('#wrapSingle tfoot tr');
   if(trS){
     const cells = trS.children;
@@ -6325,7 +6325,7 @@ function goSingle(){
   document.body.classList.add('single-active');
   document.body.classList.remove('home-active', 'comm-active', 'branch-active', 'old-active');
   refreshSelectedBadge?.(); updateTopControls?.(); fitAllTables?.();
-  sendLog('섹션이동', '싱글세트 진입');
+  sendLog('섹션이동', '싱글중대형 진입');
   forceOrderTitle();
   refreshBranchButton();
 }
@@ -7421,7 +7421,7 @@ function updateImgSlide() {
       });
     }
     
-    /* 싱글세트구형자동제외 */
+    /* 싱글중대형구형자동제외 */
     return (qTotal > 0 && qMain === 0);
   }
 
@@ -8412,7 +8412,7 @@ function updateTopControls(){
     if(pv) pv.style.display='flex';
     if(title) title.firstChild.nodeValue=
       (mobileActive==='home'?'홈멀티':
-       mobileActive==='single'?'싱글 세트':
+       mobileActive==='single'?'싱글중대형':
        mobileActive==='comm'?'상업멀티':
        mobileActive==='old'?'구형':'주문서')+' ';
   }else{
@@ -8511,8 +8511,8 @@ function updateTopControls(){
     if(specHistGrp) specHistGrp.style.display='none';
   }else{
     if(pv) pv.style.display='flex';
-    if(sw){ sw.style.display = 'inline-flex'; sw.textContent=(mobileActive==='home')?'싱글 세트 보기':'홈멀티 보기'; }
-    if(title) title.firstChild.nodeValue=(mobileActive==='home'?'홈멀티':mobileActive==='single'?'싱글 세트':mobileActive==='comm'?'상업멀티':mobileActive==='old'?'구형':'주문서')+' ';
+    if(sw){ sw.style.display = 'inline-flex'; sw.textContent=(mobileActive==='home')?'싱글중대형 보기':'홈멀티 보기'; }
+    if(title) title.firstChild.nodeValue=(mobileActive==='home'?'홈멀티':mobileActive==='single'?'싱글중대형':mobileActive==='comm'?'상업멀티':mobileActive==='old'?'구형':'주문서')+' ';
     if(specHistGrp) specHistGrp.style.display='flex';
   }
 }
@@ -9157,7 +9157,7 @@ const tutData = [
   { msg: "리모컨 옵션을 '유선'으로 변경하세요", t: () => document.querySelector('#home_remote').closest('.chip'), evt: '#home_remote', ev: 'change', val: '유선', pre: () => openTutDrawer('Left') },
   { msg: "판넬변경 옵션을 '공청판넬'로 변경하세요\n옵션 변경 시 견적에 즉시 반영됩니다", t: () => document.querySelector('#home_panel').closest('.chip'), evt: '#home_panel', ev: 'change', val: '공청판넬', pre: () => openTutDrawer('Left') },
   { msg: "다음 섹션으로 넘어가기 전 홈멀티 초기화 버튼을 클릭하세요", t: '#btnResetHome', ev: 'click', pre: () => openTutDrawer('Bottom') },
-  { msg: "싱글세트 보기 버튼을 클릭하여 이동하세요", t: '#btnGoSingle', ev: 'click', pre: () => openTutDrawer('Top') },
+  { msg: "싱글중대형 보기 버튼을 클릭하여 이동하세요", t: '#btnGoSingle', ev: 'click', pre: () => openTutDrawer('Top') },
   { msg: "AC145BS4PHH7SY 수량에 1을 넣으세요", t: 'input[data-model="AC145BS4PHH7SY"]', ev: 'input', val: '1' },
   { msg: "실외기 받침대 포함 옵션을 체크하세요", t: () => document.querySelector('#ss_base').closest('.chip'), evt: '#ss_base', ev: 'change', pre: () => openTutDrawer('Left') },
   { msg: "구성품을 확인하기 위해 견적/주문하기 버튼을 클릭하세요", t: '#btnPreview', ev: 'click', pre: () => openTutDrawer('Top') },
@@ -9166,7 +9166,7 @@ const tutData = [
   { msg: "자재 포함 여부 옵션을 포함으로 변경하세요", t: () => document.querySelector('#ss_mat').closest('.chip'), evt: '#ss_mat', ev: 'change', val: '포함', pre: () => openTutDrawer('Left') },
   { msg: "자재가 포함되었습니다 견적/주문하기로 확인하세요", t: '#btnPreview', ev: 'click', pre: () => openTutDrawer('Top') },
   { msg: "확인했으면 뒤로를 누르세요", t: '#btnBack', ev: 'click' },
-  { msg: "다음 섹션으로 넘어가기 전 싱글 세트 초기화 버튼을 클릭하세요", t: '#btnResetSingle', ev: 'click', pre: () => openTutDrawer('Bottom') },
+  { msg: "다음 섹션으로 넘어가기 전 싱글중대형 초기화 버튼을 클릭하세요", t: '#btnResetSingle', ev: 'click', pre: () => openTutDrawer('Bottom') },
   { msg: "상업멀티 보기 섹션으로 이동하세요", t: '#btnGoComm', ev: 'click', pre: () => openTutDrawer('Top') },
   { msg: "AM040BXMDBH1 수량에 1을 넣으세요", t: 'input[data-model="AM040BXMDBH1"]', ev: 'input', val: '1' },
   { msg: "AM023BN1PBH1 수량에 2를 넣으세요", t: 'input[data-model="AM023BN1PBH1"]', ev: 'input', val: '2' },

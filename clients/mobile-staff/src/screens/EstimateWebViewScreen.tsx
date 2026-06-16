@@ -14,7 +14,7 @@
  * 모바일 분기 자동 활성:
  *   - estimate-app v2 의 views/index.ejs `@media max-width:1280px` + `body.mobile-mode` 가
  *     react-native-webview 의 device width (iPhone/Galaxy 모두 < 1280) 에서 자동 활성.
- *   - 4 카드 grid (홈멀티/싱글세트/상업멀티/구형) 가 1열 stack 으로 자동 변환.
+ *   - 4 카드 grid (홈멀티/싱글중대형/상업멀티/구형) 가 1열 stack 으로 자동 변환.
  *
  * Android hardware 뒤로가기:
  *   - WebView 의 navigation history (canGoBack) 가 있으면 webview.goBack() 우선.

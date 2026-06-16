@@ -153,7 +153,7 @@ const PAGE_SIZE = 50
 
 const ESTIMATE_CATEGORY_LABEL: Record<EstimateCategory, string> = {
   HOME_MULTI: '홈멀티',
-  SINGLE_SET: '단일 세트',
+  SINGLE_SET: '싱글중대형',
   COMMERCIAL_MULTI: '상업멀티',
   LEGACY: '구형',
   OTHER: '기타',
@@ -173,7 +173,7 @@ const PRODUCT_CATEGORY_LABEL_BROKEN_ENCODING: Record<ProductCategory, string> = 
 */
 const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
   HOME_MULTI: '홈멀티',
-  SINGLE_SET: '싱글 세트',
+  SINGLE_SET: '싱글중대형',
   SINGLE_PART: '싱글 구성품',
   COMMERCIAL_MULTI: '상업 멀티',
   COMMERCIAL_PART: '상업 구성품',
@@ -183,7 +183,7 @@ const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
 
 const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string }> = [
   { value: 'HOME_MULTI', label: '홈멀티' },
-  { value: 'SINGLE_SET', label: '단일 세트' },
+  { value: 'SINGLE_SET', label: '싱글중대형' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
   { value: 'LEGACY', label: '구형' },
   { value: 'OTHER', label: '기타' },

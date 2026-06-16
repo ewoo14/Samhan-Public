@@ -1,4 +1,4 @@
-// #3 세트 구성품 사양 집계 표시 — 실 캡처 (싱글세트 + 상업멀티 모달).
+// #3 세트 구성품 사양 집계 표시 — 실 캡처 (싱글중대형 + 상업멀티 모달).
 // 실 시드(product-service DB, /components specs) + 실 사양맵. mock 미사용.
 // 탭 비활성으로 셀 dblclick 불가 → dblclick 와 동일 production 함수 openSpecModalByItem(item,scope) 직접 호출.
 // 모달 <dialog>.showModal() top-layer 라 탭 무관 실제 렌더 → 실 캡처.
@@ -32,7 +32,7 @@ try {
   await page.waitForSelector('#singleBody tr', { state: 'attached', timeout: 60000 });
   await page.waitForTimeout(2500);
 
-  // ───────────── 1) 싱글세트 모달 (구성품별 사양 = 실내/외 물리치수 + 판넬/리모컨 사양) ─────────────
+  // ───────────── 1) 싱글중대형 모달 (구성품별 사양 = 실내/외 물리치수 + 판넬/리모컨 사양) ─────────────
   const single = await page.evaluate(() => {
     const out = {};
     try {

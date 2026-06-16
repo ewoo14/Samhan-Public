@@ -56,7 +56,7 @@ AppRootNavigator
 | v3 캡처 | 화면 내용 |
 |---|---|
 | `01-staff-app-init.png` | 전표작성 거래처 form (거래처 / 대표자 / 대표번호 / 사업자주소 / 거래처분류 / 특이사항 / 출고일 / 출고창고 + 하단 버튼 4개) |
-| `02-staff-app-page-menu.png` | 페이지 메뉴 dropdown (전표작성 / 홈멀티 / 싱글세트 / 상업멀티 / 구형 / 견적서(기본) / 견적서(세트상세) / 전표업로드목록 / 장비스펙 / 발송내역 / 견적저장 / 저장내역 / 다크모드 + 자동 로그아웃 + 닫기) |
+| `02-staff-app-page-menu.png` | 페이지 메뉴 dropdown (전표작성 / 홈멀티 / 싱글중대형 / 상업멀티 / 구형 / 견적서(기본) / 견적서(세트상세) / 전표업로드목록 / 장비스펙 / 발송내역 / 견적저장 / 저장내역 / 다크모드 + 자동 로그아웃 + 닫기) |
 | `03-staff-app-card-line.png` | 홈멀티 카테고리 진입 후 라인 grid (품목명 / 모델명 / 수량 / 납품가 + 좌측 옵션 tab + 우측 필터 tab + 하단 검색/조합비/초기화) |
 
 ## 디렉토리 구조
@@ -115,7 +115,7 @@ document.body.classList.toggle('mobile-mode', isMobile);
 
 react-native-webview 의 device width (iPhone 14 Pro = 390, Galaxy S22 = 360) → 자동 활성.
 
-→ 4 카드 grid (홈멀티/싱글세트/상업멀티/구형) 가 1열 stack 으로 자동 변환.
+→ 4 카드 grid (홈멀티/싱글중대형/상업멀티/구형) 가 1열 stack 으로 자동 변환.
 → `.mobile-only` class 의 desktop 숨김 컬럼들이 자동 노출 (품목명, 모델 상세 등).
 → `#handleTop` (▼ 페이지 메뉴) drawer 가 활성 — 모바일 전용 메뉴 진입점.
 → `#handleLeft` (옵션) / `#handleRight` (필터) drawer 가 카테고리 진입 시 측면 sidebar 로 노출.
