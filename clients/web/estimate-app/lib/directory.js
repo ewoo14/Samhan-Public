@@ -9,7 +9,14 @@
 
 const axios = require('axios');
 
-const PARTNER_BASE = process.env.PARTNER_SERVICE_URL || 'http://localhost:8089';
+// 실제 partner-service(거래처 마스터, /internal/partners/list, 기본 8095).
+// ⚠️ estimate-app 의 PARTNER_SERVICE_URL 은 레거시상 dc-config-service(:8089,
+// /internal/partners/by-bizno)를 가리키므로(code.js 참조), 거래처 directory 는 인프라 표준
+// SAMHAN_PARTNER_SERVICE_URL(서비스간 http://partner-service:8095)을 사용한다.
+const PARTNER_BASE =
+  process.env.SAMHAN_PARTNER_SERVICE_URL ||
+  process.env.PARTNER_DIRECTORY_URL ||
+  'http://localhost:8095';
 const USER_BASE = process.env.USER_SERVICE_URL || 'http://localhost:8083';
 const INTERNAL_TOKEN =
   process.env.SAMHAN_INTERNAL_TOKEN ||
