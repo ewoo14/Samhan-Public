@@ -8,19 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.samhanair.logis.product.domain.BranchPipeLookup;
-import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.MaterialPrice;
 import com.samhanair.logis.product.domain.OduRecommendationLookup;
 import com.samhanair.logis.product.domain.OduRecommendationLookup.RecommendationType;
-import com.samhanair.logis.product.domain.Product;
-import com.samhanair.logis.product.domain.ProductCategory;
-import com.samhanair.logis.product.domain.ProductType;
-import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
-import com.samhanair.logis.product.repository.CategoryRepository;
 import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
-import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
 import java.math.BigDecimal;
@@ -54,12 +47,6 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
     @Autowired
     private BranchPipeLookupRepository branchPipeLookupRepository;
 
-    @Autowired
-    private CategoryRepository categoryRepository;
-
-    @Autowired
-    private ProductRepository productRepository;
-
     @MockBean
     private DynamicPermissionClient dynamicPermissionClient;
 
@@ -73,34 +60,43 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void materialPrices_returnsMaterialProductsAndIgnoresLegacyMaterialPriceRows() throws Exception {
-        materialPriceRepository.save(MaterialPrice.seed("D2", "레거시 자재", new BigDecimal("2000.00"),
-                "레거시옵션", "=D2"));
-        seedMaterialProduct("MAT-REMOTE-01", "Product 유선리모컨", new BigDecimal("40000.00"));
-        seedMaterialProduct("MAT-PANEL-01", "Product 블랙판넬", new BigDecimal("50000.00"));
-        seedProduct("NON-MATERIAL-01", "일반 품목", ProductCategory.SINGLE_PART, UsageScope.BOTH);
+    void materialPrices_returnsAllSortedByNumericSuffixAndExcludesSoftDeletedRows() throws Exception {
+        MaterialPrice d10 = MaterialPrice.seed("D10", "D10 자재", new BigDecimal("10000.00"),
+                "옵션10", "=D10");
+        MaterialPrice d2 = MaterialPrice.seed("D2", "D2 자재", new BigDecimal("2000.00"),
+                "옵션2", "=D2");
+        MaterialPrice deleted = MaterialPrice.seed("D3", "삭제 자재", new BigDecimal("3000.00"),
+                "삭제", "=D3");
+        deleted.markDeleted("test-it");
+        materialPriceRepository.save(d10);
+        materialPriceRepository.save(d2);
+        materialPriceRepository.save(deleted);
         materialPriceRepository.flush();
-        productRepository.flush();
 
         mockMvc.perform(withActor(get("/api/v1/material-prices")))
                 .andExpect(status().isOk())
-                // V18 자재 시드로 positional 단언 금지 — 심은 자재를 predicate 로 단언한다.
-                .andExpect(jsonPath("$[?(@.materialKey == 'MAT-PANEL-01' && @.name == 'Product 블랙판넬')]").exists())
-                .andExpect(jsonPath("$[?(@.materialKey == 'MAT-REMOTE-01' && @.name == 'Product 유선리모컨')]").exists())
-                .andExpect(jsonPath("$[?(@.id)]").doesNotExist())
-                .andExpect(jsonPath("$[?(@.computedFormula)]").doesNotExist())
-                .andExpect(jsonPath("$[?(@.name == '레거시 자재')]").doesNotExist())
-                .andExpect(jsonPath("$[?(@.materialKey == 'NON-MATERIAL-01')]").doesNotExist());
+                .andExpect(jsonPath("$[0].materialKey").value("D2"))
+                .andExpect(jsonPath("$[0].name").value("D2 자재"))
+                .andExpect(jsonPath("$[0].optionLabel").value("옵션2"))
+                .andExpect(jsonPath("$[0].id").doesNotExist())
+                .andExpect(jsonPath("$[0].computedFormula").doesNotExist())
+                .andExpect(jsonPath("$[1].materialKey").value("D10"))
+                .andExpect(jsonPath("$[?(@.materialKey == 'D3')]").doesNotExist());
     }
 
     @Test
     void lookupEndpoints_returnEmptyArraysWhenTablesAreEmpty() throws Exception {
-        // material-prices 는 이제 material_price 테이블이 아니라 Product(MATERIAL) 시드(V18)를 원천으로
-        // 하므로 "빈 테이블 → 빈 배열" 대상이 아니다(odu/branch 만 빈 테이블 검증).
+        materialPriceRepository.deleteAll();
         oduRecommendationLookupRepository.deleteAll();
         branchPipeLookupRepository.deleteAll();
+        materialPriceRepository.flush();
         oduRecommendationLookupRepository.flush();
         branchPipeLookupRepository.flush();
+
+        mockMvc.perform(withActor(get("/api/v1/material-prices")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[0]").doesNotExist());
 
         mockMvc.perform(withActor(get("/api/v1/odu-recommendations")))
                 .andExpect(status().isOk())
@@ -187,27 +183,5 @@ class ProductLookupControllerIT extends AbstractPostgresIT {
         return request
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "SALES");
-    }
-
-    private Product seedMaterialProduct(String modelCode, String name, BigDecimal price) {
-        return seedProduct(modelCode, name, ProductCategory.MATERIAL, UsageScope.NONE, price);
-    }
-
-    private Product seedProduct(String modelCode, String name,
-                                ProductCategory productCategory, UsageScope usageScope) {
-        return seedProduct(modelCode, name, productCategory, usageScope, new BigDecimal("1000.00"));
-    }
-
-    private Product seedProduct(String modelCode, String name,
-                                ProductCategory productCategory, UsageScope usageScope,
-                                BigDecimal price) {
-        Category category = categoryRepository.findAll().stream()
-                .filter(c -> "PIPING".equals(c.getCode()))
-                .findFirst()
-                .orElseGet(() -> categoryRepository.save(
-                        Category.create("PIPING", "배관/부속", null, 3)));
-        Product product = Product.seedFromSheet(name, modelCode, category,
-                price, price, ProductType.SINGLE, productCategory, usageScope, null);
-        return productRepository.save(product);
     }
 }

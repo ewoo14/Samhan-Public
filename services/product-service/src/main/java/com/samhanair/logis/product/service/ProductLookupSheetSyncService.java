@@ -123,13 +123,6 @@ public class ProductLookupSheetSyncService {
      */
     @Transactional
     public TabSyncResult syncMaterialPricesTab() throws Exception {
-        if (isMaterialPriceSheetSyncRetired()) {
-            // 싱글 자재가격은 2026-06-16부터 Product(MATERIAL)가 원천이다.
-            // Google Sheet sync를 유지하면 품목 화면에서 수정한 자재 단가를 legacy material_price 값으로 덮어쓰므로
-            // material_price 테이블은 보존하되 더 이상 동기화하지 않는다.
-            log.info("[ProductLookupSheetSync] tab '{}' sync retired: Product(MATERIAL) is the source", MATERIAL_TAB);
-            return new TabSyncResult();
-        }
         List<List<Object>> rows = sheetsClient.readSheetDisplay(sheetId, MATERIAL_TAB + "!A1:D");
         TabSyncResult result = new TabSyncResult();
         if (rows == null || rows.size() <= 1) {
@@ -310,11 +303,6 @@ public class ProductLookupSheetSyncService {
     }
 
     /** 탭 실행 wrapper — 실패를 summary 에 기록하고 다음 탭으로 진행한다. */
-    /** 자재가격 sheet sync 은퇴 플래그. legacy body 는 롤백 참고용으로만 남겨 둔다. */
-    private boolean isMaterialPriceSheetSyncRetired() {
-        return true;
-    }
-
     private void runTab(SyncSummary summary, String tabName, TabSyncCallable callable) {
         try {
             TabSyncResult result = callable.sync();

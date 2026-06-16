@@ -849,11 +849,13 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
   },
 }
 
+// 자재 단가 lookup 참조모달 mock. 자재는 material_price(legacy D-key) 가 원천이며 데스크톱 참조용으로만
+// 표시된다(가격 계산 미참여). 실제 자재(패널/리모컨/부품)는 이미 실모델코드 가진 카탈로그 품목이다.
 const MOCK_MATERIAL_PRICE_ROWS = [
-  { materialKey: 'MAT-MOCK-REMOTE', name: '유선리모컨', price: 40000, optionLabel: null },
-  { materialKey: 'MAT-MOCK-COLOR-REMOTE', name: '컬러유선리모컨', price: 75000, optionLabel: null },
-  { materialKey: 'MAT-MOCK-BLACK-PANEL', name: '블랙판넬', price: 50000, optionLabel: null },
-  { materialKey: 'MAT-MOCK-FPH-1412XS3', name: 'FPH-1412XS3', price: 130000, optionLabel: null },
+  { materialKey: 'D2', name: '유선리모컨', price: 40000, optionLabel: null },
+  { materialKey: 'D3', name: '컬러유선리모컨', price: 75000, optionLabel: null },
+  { materialKey: 'D4', name: '블랙판넬', price: 50000, optionLabel: null },
+  { materialKey: 'D9', name: 'FPH-1412XS3', price: 130000, optionLabel: null },
 ]
 
 const MOCK_ODU_RECOMMENDATION_ROWS = [

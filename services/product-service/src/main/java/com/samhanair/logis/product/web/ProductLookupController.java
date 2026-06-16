@@ -1,12 +1,12 @@
 package com.samhanair.logis.product.web;
 
 import com.samhanair.logis.product.domain.BranchPipeLookup;
+import com.samhanair.logis.product.domain.MaterialPrice;
 import com.samhanair.logis.product.domain.OduRecommendationLookup;
 import com.samhanair.logis.product.domain.OduRecommendationLookup.RecommendationType;
-import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.repository.BranchPipeLookupRepository;
+import com.samhanair.logis.product.repository.MaterialPriceRepository;
 import com.samhanair.logis.product.repository.OduRecommendationLookupRepository;
-import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.web.dto.BranchPipeResponse;
 import com.samhanair.logis.product.web.dto.MaterialPriceResponse;
 import com.samhanair.logis.product.web.dto.OduRecommendationResponse;
@@ -30,12 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ProductLookupController {
 
-    private static final Comparator<MaterialPriceResponse> MATERIAL_PRODUCT_CODE_ORDER =
-            Comparator.comparing(MaterialPriceResponse::materialKey,
-                            Comparator.nullsLast(String::compareTo))
-                    .thenComparing(MaterialPriceResponse::name, Comparator.nullsLast(String::compareTo));
+    private static final Comparator<MaterialPrice> MATERIAL_KEY_NUMERIC_ORDER =
+            Comparator.comparingInt(ProductLookupController::materialKeyNumber)
+                    .thenComparing(MaterialPrice::getMaterialKey);
 
-    private final ProductRepository productRepository;
+    private final MaterialPriceRepository materialPriceRepository;
     private final OduRecommendationLookupRepository oduRecommendationLookupRepository;
     private final BranchPipeLookupRepository branchPipeLookupRepository;
 
@@ -43,11 +42,10 @@ public class ProductLookupController {
     @GetMapping("/material-prices")
     @RequirePermission(page = "products.list", action = PermissionAction.VIEW)
     public List<MaterialPriceResponse> listMaterialPrices() {
-        // 싱글 자재는 Product(MATERIAL)가 원천이다. 기존 배열/필드명은 데스크톱 lookup 호환용으로 유지한다.
-        return productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.MATERIAL).stream()
-                // Product(MATERIAL) 전환 후 materialKey 는 MAT-* 품목코드다. 코드/이름 기준으로 결정 정렬한다.
+        return materialPriceRepository.findAll().stream()
+                // D10 이 D2 보다 앞서는 문자열 정렬 함정을 피하려고 D 뒤 숫자를 파싱한다.
+                .sorted(MATERIAL_KEY_NUMERIC_ORDER)
                 .map(MaterialPriceResponse::from)
-                .sorted(MATERIAL_PRODUCT_CODE_ORDER)
                 .toList();
     }
 
@@ -77,4 +75,15 @@ public class ProductLookupController {
                 .toList();
     }
 
+    private static int materialKeyNumber(MaterialPrice materialPrice) {
+        String materialKey = materialPrice.getMaterialKey();
+        if (materialKey == null || materialKey.length() < 2 || materialKey.charAt(0) != 'D') {
+            return Integer.MAX_VALUE;
+        }
+        try {
+            return Integer.parseInt(materialKey.substring(1));
+        } catch (NumberFormatException ignored) {
+            return Integer.MAX_VALUE;
+        }
+    }
 }
