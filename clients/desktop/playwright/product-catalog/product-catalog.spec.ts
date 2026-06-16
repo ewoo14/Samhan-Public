@@ -426,11 +426,12 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
     const payload = (await page.evaluate(
       () => (globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS'],
-    )) as Array<{ modelCode: string; displayOrder: number }>
+    )) as Array<{ modelCode: string; estimateCategory: string; displayOrder: number }>
 
     // (1) 비어 있지 않음
     expect(Array.isArray(payload)).toBe(true)
     expect(payload.length).toBeGreaterThanOrEqual(2)
+    expect(payload.every((o) => o.estimateCategory === 'HOME_MULTI')).toBe(true)
 
     // (2) displayOrder 가 1..N 연속 재번호 (정렬 시 [1,2,...,N])
     const orders = payload.map((o) => o.displayOrder).sort((a, b) => a - b)
@@ -484,9 +485,8 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
           modelCode: `HM-BULK-${String(i + 1).padStart(4, '0')}`,
           name: `홈멀티 대량 품목 ${i + 1}`,
           usageScope: 'BOTH',
-          estimateCategory: 'HOME_MULTI',
+          estimateCategories: [{ category: 'HOME_MULTI', displayOrder: 1000 + i }],
           usageScopeManual: false,
-          displayOrder: 1000 + i,
           releasePrice: 100000 + i,
           deliveryPrice: 100000 + i,
           hasVariableDiscount: false,
@@ -542,9 +542,10 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
     const payload = (await page.evaluate(
       () => (globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS'],
-    )) as Array<{ modelCode: string; displayOrder: number }>
+    )) as Array<{ modelCode: string; estimateCategory: string; displayOrder: number }>
 
     expect(payload.length).toBeGreaterThan(1000)
+    expect(payload.every((o) => o.estimateCategory === 'HOME_MULTI')).toBe(true)
     expect(payload.some((o) => o.modelCode === 'HM-BULK-1001')).toBe(true)
     expect(payload.map((o) => o.displayOrder)).toEqual(
       Array.from({ length: payload.length }, (_, i) => i + 1),

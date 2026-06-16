@@ -78,6 +78,13 @@ interface CatalogRow {
   usageScope?: string
   displayOrder?: number | null
   estimateCategory?: string | null
+  estimateCategories?: Array<{ category: string; displayOrder: number | null }>
+}
+
+function displayOrderForCategory(row: CatalogRow, category: string): number | null {
+  return row.estimateCategories?.find((entry) => entry.category === category)?.displayOrder
+    ?? row.displayOrder
+    ?? null
 }
 
 /** 카테고리 전체(모든 페이지)를 displayOrder 오름차순으로 수집 — 순서 백업/원복용. */
@@ -139,8 +146,12 @@ test('2. 표시순서 드래그 저장 — 행 순서 변경 → 순서 저장 P
   const backupRows = await fetchAllInCategory(page, token, SET_CATEGORY)
   const exposedBackup = backupRows
     .filter((r) => r.usageScope !== 'NONE')
-    .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
-  const backupOrder = exposedBackup.map((r) => ({ modelCode: r.modelCode, displayOrder: r.displayOrder }))
+    .sort((a, b) => (displayOrderForCategory(a, SET_CATEGORY) ?? 0) - (displayOrderForCategory(b, SET_CATEGORY) ?? 0))
+  const backupOrder = exposedBackup.map((r, index) => ({
+    modelCode: r.modelCode,
+    estimateCategory: SET_CATEGORY,
+    displayOrder: displayOrderForCategory(r, SET_CATEGORY) ?? index + 1,
+  }))
   // 안전망 — 테스트 중단 시 수동 원복용으로 백업을 디스크에 영속.
   try {
     const backupPath = path.resolve(_dirname, '../../../../.claude/tmp/cycle-order-backup.json')
@@ -214,14 +225,18 @@ test('2. 표시순서 드래그 저장 — 행 순서 변경 → 순서 저장 P
   // ── 4. 원복 — 백업한 전체 순서를 그대로 PUT (dev DB 청결) ───────────────
   const restorePut = await page.request.put(`${API_BASE}/api/v1/products/display-orders`, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    data: backupOrder.map((b) => ({ modelCode: b.modelCode, displayOrder: b.displayOrder })),
+    data: backupOrder.map((b) => ({
+      modelCode: b.modelCode,
+      estimateCategory: SET_CATEGORY,
+      displayOrder: b.displayOrder,
+    })),
   })
   expect(restorePut.ok(), `순서 원복 PUT 실패: HTTP ${restorePut.status()}`).toBeTruthy()
   // 원복 검증 — 1행이 백업 1행과 동일한지 REST 재조회
   const verifyRows = await fetchAllInCategory(page, token, SET_CATEGORY)
   const verifyExposed = verifyRows
     .filter((r) => r.usageScope !== 'NONE')
-    .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+    .sort((a, b) => (displayOrderForCategory(a, SET_CATEGORY) ?? 0) - (displayOrderForCategory(b, SET_CATEGORY) ?? 0))
   expect(verifyExposed[0]?.modelCode, '원복 후 1행이 백업 1행과 불일치').toBe(exposedBackup[0]?.modelCode)
   console.log(
     `[2] PASS 원복: ${SET_CATEGORY} 순서 백업 ${backupOrder.length}건으로 PUT HTTP ${restorePut.status()}, ` +
@@ -298,11 +313,12 @@ test('4. usage 노출 토글 — 노출 설정 토글 변경 PATCH 200 → 원�
     headers: { Authorization: `Bearer ${token}` },
     params: { q: BUNDLE_CODE, size: '5' },
   })
-  const beforeRow: CatalogRow & { estimateCategory?: string | null } =
+  const beforeRow: CatalogRow =
     ((await beforeRes.json()).content ?? []).find((r: CatalogRow) => r.modelCode === BUNDLE_CODE)
   const origScope = beforeRow.usageScope ?? 'BOTH'
-  const origCategory = beforeRow.estimateCategory ?? null
-  console.log(`[4] 백업 — ${BUNDLE_CODE} usageScope=${origScope}, category=${origCategory}`)
+  const origCategories = beforeRow.estimateCategories?.map((entry) => entry.category)
+    ?? (beforeRow.estimateCategory ? [beforeRow.estimateCategory] : [])
+  console.log(`[4] 백업 — ${BUNDLE_CODE} usageScope=${origScope}, categories=${origCategories.join(',') || '없음'}`)
 
   // 주문 노출 토글(현재 ON) 클릭 → OFF (BOTH→ESTIMATE). PATCH /usage 200 가로채기.
   const orderToggle = page.locator(`[data-testid="product-catalog-order-toggle-${BUNDLE_CODE}"]`)
@@ -325,7 +341,10 @@ test('4. usage 노출 토글 — 노출 설정 토글 변경 PATCH 200 → 원�
   // 원복 — 원래 usageScope/category 로 PATCH (dev DB 청결)
   const restore = await page.request.patch(`${API_BASE}/api/v1/products/${BUNDLE_CODE}/usage`, {
     headers: auth,
-    data: { usageScope: origScope, estimateCategory: origCategory },
+    data: {
+      usageScope: origScope,
+      estimateCategories: origScope === 'ESTIMATE' || origScope === 'BOTH' ? origCategories : [],
+    },
   })
   expect(restore.ok(), `usage 원복 PATCH 실패: HTTP ${restore.status()}`).toBeTruthy()
   console.log(`[4] PASS 원복: usageScope=${origScope} 복원, PATCH HTTP ${restore.status()}`)

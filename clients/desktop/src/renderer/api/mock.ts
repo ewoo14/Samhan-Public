@@ -878,6 +878,7 @@ type MockProductCatalogRow = {
   modelCode: string
   name: string
   usageScope: string
+  estimateCategories: Array<{ category: string; displayOrder: number | null }>
   estimateCategory: string | null
   productCategory: string | null
   usageScopeManual: boolean
@@ -891,22 +892,68 @@ type MockProductCatalogRow = {
   componentCount: number
 }
 
+function deriveLegacyExposureFields(row: MockProductCatalogRow): MockProductCatalogRow {
+  const firstExposure = row.estimateCategories[0] ?? null
+  return {
+    ...row,
+    estimateCategory: firstExposure?.category ?? null,
+    displayOrder: firstExposure?.displayOrder ?? null,
+  }
+}
+
+function exposureForCategory(row: MockProductCatalogRow, category: string): { category: string; displayOrder: number | null } | null {
+  return row.estimateCategories.find((entry) => entry.category === category) ?? null
+}
+
+function normalizeMockExposures(raw: {
+  estimateCategories?: unknown
+  estimateCategory?: unknown
+  displayOrder?: unknown
+}): Array<{ category: string; displayOrder: number | null }> {
+  if (Array.isArray(raw.estimateCategories)) {
+    return raw.estimateCategories
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null
+        const category = String((entry as { category?: unknown }).category ?? '').trim()
+        if (!category) return null
+        const displayOrder = (entry as { displayOrder?: unknown }).displayOrder
+        return {
+          category,
+          displayOrder: displayOrder == null ? null : Number(displayOrder),
+        }
+      })
+      .filter((entry): entry is { category: string; displayOrder: number | null } => entry != null)
+  }
+  if (raw.estimateCategory == null) return []
+  return [{
+    category: String(raw.estimateCategory),
+    displayOrder: raw.displayOrder == null ? null : Number(raw.displayOrder),
+  }]
+}
+
 // MOCK_PRODUCT_CATALOG_ROWS: mutable 로 선언하여 PATCH/DELETE 가 업데이트 가능.
 // usageScopeManual / displayOrder 필드 추가 (PR-B 확장).
 // productType / componentCount 추가 (PR-E 확장).
 let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
   ...Object.values(MOCK_PRODUCTS_BY_MODEL).filter((p) => p.productCategory !== 'MATERIAL').map((p, index) => {
     const isBundle = p.productType === 'BUNDLE'
-    return {
+    const primaryCategory = index % 2 === 0 ? 'HOME_MULTI' : 'OTHER'
+    return deriveLegacyExposureFields({
       modelCode: p.modelName,
       name: p.productName,
       // BUNDLE(세트)은 판매 가능 품목 → 전표 라인 자동완성(usageScope=PARTNER_ORDER, BE IN-확장 {PARTNER_ORDER,BOTH})에
       // 노출되어야 하므로 항상 BOTH. (index-parity 로 ESTIMATE 가 되면 슬립 라인 검색에서 제외돼 bundle-set-options 회귀.)
       usageScope: isBundle || index % 2 === 0 ? 'BOTH' : 'ESTIMATE',
-      estimateCategory: index % 2 === 0 ? 'HOME_MULTI' : 'OTHER',
+      estimateCategories: index === 0
+        ? [
+            { category: 'HOME_MULTI', displayOrder: index + 1 },
+            { category: 'COMMERCIAL_MULTI', displayOrder: 101 },
+          ]
+        : [{ category: primaryCategory, displayOrder: index + 1 }],
+      estimateCategory: null,
       productCategory: index % 2 === 0 ? 'HOME_MULTI' : 'SINGLE_PART',
       usageScopeManual: false,
-      displayOrder: index + 1,
+      displayOrder: null,
       releasePrice: Number(p.sellingPrice),
       deliveryPrice: Number(p.sellingPrice),
       hasVariableDiscount: false,
@@ -914,13 +961,14 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
       discountFlags: null,
       productType: p.productType ?? 'SINGLE',
       componentCount: isBundle ? 3 : 0,
-    }
+    })
   }),
   // §2-1 NONE 품목 시드 — 노출 한정 시나리오 검증용 (displayOrder=null, 정렬 대상 제외).
   {
     modelCode: 'MOCK-NONE-ITEM',
     name: '미노출 품목 (테스트)',
     usageScope: 'NONE' as const,
+    estimateCategories: [],
     estimateCategory: null,
     productCategory: 'SINGLE_PART',
     usageScopeManual: false,
@@ -937,6 +985,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     modelCode: 'MAT-MOCK-REMOTE',
     name: '유선리모컨',
     usageScope: 'NONE',
+    estimateCategories: [],
     estimateCategory: null,
     productCategory: 'MATERIAL',
     usageScopeManual: false,
@@ -972,13 +1021,15 @@ function ensureMockProductCatalogRowsSeeded() {
       if (!modelCode || existing.has(modelCode)) return null
       existing.add(modelCode)
       return {
+        ...deriveLegacyExposureFields({
         modelCode,
         name: String(row.name ?? modelCode),
         usageScope: String(row.usageScope ?? 'BOTH'),
-        estimateCategory: row.estimateCategory == null ? null : String(row.estimateCategory),
+        estimateCategories: normalizeMockExposures(row),
+        estimateCategory: null,
         productCategory: row.productCategory == null ? null : String(row.productCategory),
         usageScopeManual: Boolean(row.usageScopeManual ?? false),
-        displayOrder: row.displayOrder == null ? null : Number(row.displayOrder),
+        displayOrder: null,
         releasePrice: Number(row.releasePrice ?? 0),
         deliveryPrice: Number(row.deliveryPrice ?? 0),
         hasVariableDiscount: Boolean(row.hasVariableDiscount ?? false),
@@ -986,6 +1037,7 @@ function ensureMockProductCatalogRowsSeeded() {
         discountFlags: null,
         productType: String(row.productType ?? 'SINGLE'),
         componentCount: Number(row.componentCount ?? 0),
+        }),
       }
     })
     .filter((row): row is MockProductCatalogRow => row != null)
@@ -1423,7 +1475,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (denied) return denied
     ensureMockProductCatalogRowsSeeded()
     const body = parseMockBody(config)
-    const orders = Array.isArray(body) ? (body as Array<{ modelCode?: unknown; displayOrder?: unknown }>) : []
+    const orders = Array.isArray(body)
+      ? (body as Array<{ modelCode?: unknown; estimateCategory?: unknown; displayOrder?: unknown }>)
+      : []
     // [#20] BE updateDisplayOrders 동형 — 빈 배열은 no-op 으로 204 성공(기존: 400 BAD_REQUEST 오정).
     //   BE: `if (requests == null || requests.isEmpty()) return;` → 컨트롤러 204 No Content.
     if (orders.length === 0) {
@@ -1432,11 +1486,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     // [#10] BE updateDisplayOrders H fix 동형 — 요청 내 중복 modelCode → 400 INVALID_INPUT.
     //   같은 modelCode 가 두 번 들어오면 마지막 값으로 덮어써 의도와 다른 순서가 저장된다.
     const seenModelCodes = new Set<string>()
-    for (const o of orders as Array<{ modelCode?: unknown; displayOrder?: unknown }>) {
+    const requestCategories = new Set<string>()
+    for (const o of orders as Array<{ modelCode?: unknown; estimateCategory?: unknown; displayOrder?: unknown }>) {
       const code = String(o.modelCode ?? '').trim()
       if (!code) {
         return mockError(400, 'INVALID_INPUT', 'modelCode는 필수입니다')
       }
+      const estimateCategory = String(o.estimateCategory ?? '').trim()
+      if (!estimateCategory) {
+        return mockError(400, 'INVALID_INPUT', 'estimateCategory는 필수입니다')
+      }
+      requestCategories.add(estimateCategory)
       if (o.displayOrder == null || !isFinite(Number(o.displayOrder))) {
         return mockError(400, 'INVALID_INPUT', 'displayOrder는 필수입니다')
       }
@@ -1453,23 +1513,24 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (missing) {
       return mockError(404, 'NOT_FOUND', '품목을 찾을 수 없습니다.')
     }
-    // estimateCategory 혼합 400 검증 (BE c91e5e2f 시멘틱 동형)
-    // 전송된 modelCode 들이 서로 다른 estimateCategory 를 가지면 400
-    const affectedRows = (orders as Array<{ modelCode?: unknown }>)
-      .map((o) => MOCK_PRODUCT_CATALOG_ROWS.find((r) => r.modelCode === String(o.modelCode ?? '')))
-      .filter((r): r is NonNullable<typeof r> => r != null)
-    const distinctCategories = new Set(affectedRows.map((r) => r.estimateCategory ?? '__NULL__'))
-    if (distinctCategories.size > 1) {
+    // estimateCategory 혼합 400 검증: 신규 BE 계약은 요청 항목의 estimateCategory 가 모두 같아야 한다.
+    if (requestCategories.size > 1) {
       return mockError(
         400,
         'INVALID_INPUT',
         '표시 순서 일괄 갱신은 동일 견적 카테고리(estimateCategory) 품목만 허용됩니다.',
       )
     }
+    const targetCategory = [...requestCategories][0]!
     MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => {
       const entry = orders.find((o) => String(o.modelCode ?? '') === row.modelCode)
       if (!entry) return row
-      return { ...row, displayOrder: Number(entry.displayOrder ?? row.displayOrder) }
+      const nextExposures = row.estimateCategories.map((exposure) =>
+        exposure.category === targetCategory
+          ? { ...exposure, displayOrder: Number(entry.displayOrder ?? exposure.displayOrder) }
+          : exposure,
+      )
+      return deriveLegacyExposureFields({ ...row, estimateCategories: nextExposures })
     })
     // in-process mock 은 page.route 로 가로챌 수 없으므로([[inprocess-mock-principles]])
     // 마지막 표시순서 저장 요청 본문을 globalThis 에 노출 → Playwright page.evaluate 로 displayOrder 재번호 단언.
@@ -1599,20 +1660,29 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (method === 'PATCH') {
       const body = parseMockBody(config)
       const newScope = (body['usageScope'] as string | undefined) ?? existing.usageScope
-      // BE markUsageManual 동형 룰: NONE / PARTNER_ORDER 는 estimateCategory 강제 null 정리
-      const estimateCategoryRaw =
-        'estimateCategory' in body
-          ? ((body['estimateCategory'] as string | null | undefined) ?? null)
-          : existing.estimateCategory
-      const estimateCategoryResolved =
-        newScope === 'NONE' || newScope === 'PARTNER_ORDER' ? null : estimateCategoryRaw
-      const updated = {
+      // BE markUsageManual 동형 룰: NONE / PARTNER_ORDER 는 견적 노출 카테고리 전부 정리.
+      const requestedCategories = Array.isArray(body['estimateCategories'])
+        ? (body['estimateCategories'] as unknown[])
+            .map((category) => String(category).trim())
+            .filter((category) => category.length > 0)
+        : normalizeMockExposures(existing).map((entry) => entry.category)
+      const existingDisplayOrderByCategory = new Map(
+        existing.estimateCategories.map((entry) => [entry.category, entry.displayOrder] as const),
+      )
+      const estimateCategoriesResolved =
+        newScope === 'NONE' || newScope === 'PARTNER_ORDER'
+          ? []
+          : Array.from(new Set(requestedCategories)).map((category) => ({
+              category,
+              displayOrder: existingDisplayOrderByCategory.get(category) ?? null,
+            }))
+      const updated = deriveLegacyExposureFields({
         ...existing,
         modelCode,
         usageScope: newScope,
-        estimateCategory: estimateCategoryResolved,
+        estimateCategories: estimateCategoriesResolved,
         usageScopeManual: true,
-      }
+      })
       MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) =>
         i === idx ? updated : row,
       )
@@ -1674,19 +1744,27 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       ...mockProductSpecsByModel,
       [modelCode]: specs,
     }
+    const usageScope = isMaterial
+      ? 'NONE'
+      : String(body['usageScope'] ?? 'BOTH')
+    const estimateCategories =
+      usageScope === 'ESTIMATE' || usageScope === 'BOTH'
+        ? normalizeMockExposures({
+            estimateCategories: body['estimateCategories'],
+            estimateCategory: (body['estimateCategory'] as string | null | undefined) ?? 'OTHER',
+            displayOrder: MOCK_PRODUCT_CATALOG_ROWS.length + 1,
+          })
+        : []
     MOCK_PRODUCT_CATALOG_ROWS = [
-      {
+      deriveLegacyExposureFields({
         modelCode,
         name,
-        usageScope: isMaterial
-          ? 'NONE'
-          : String(body['usageScope'] ?? 'BOTH'),
-        estimateCategory: isMaterial
-          ? null
-          : ((body['estimateCategory'] as string | null | undefined) ?? 'OTHER'),
+        usageScope,
+        estimateCategories,
+        estimateCategory: null,
         productCategory,
         usageScopeManual: false,
-        displayOrder: MOCK_PRODUCT_CATALOG_ROWS.length + 1,
+        displayOrder: null,
         releasePrice: Number(body['releasePrice'] ?? body['sellingPrice'] ?? 0),
         deliveryPrice: Number(body['deliveryPrice'] ?? 0),
         hasVariableDiscount: false,
@@ -1694,7 +1772,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         discountFlags: null,
         productType: isMaterial ? 'SINGLE' : productType,
         componentCount: 0,
-      },
+      }),
       ...MOCK_PRODUCT_CATALOG_ROWS,
     ]
     return envelope({
@@ -1756,25 +1834,33 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         [nextModelName]: mockProductSpecsFromBody(nextModelName, body['specs']),
       }
     }
-    MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) =>
-      row.modelCode === (existing.modelCode ?? existing.modelName)
-        ? {
-            ...row,
-            modelCode: nextModelName,
-            name: nextName,
-            productCategory,
-            usageScope: isMaterial
-              ? 'NONE'
-              : String(body['usageScope'] ?? row.usageScope),
-            estimateCategory: isMaterial
-              ? null
-              : ((body['estimateCategory'] as string | null | undefined) ?? row.estimateCategory),
-            productType: isMaterial ? 'SINGLE' : productType,
-            releasePrice: body['releasePrice'] == null ? row.releasePrice : Number(body['releasePrice']),
-            deliveryPrice: body['deliveryPrice'] == null ? row.deliveryPrice : Number(body['deliveryPrice']),
-          }
-        : row,
-    )
+    MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => {
+      if (row.modelCode !== (existing.modelCode ?? existing.modelName)) return row
+      const usageScope = isMaterial
+        ? 'NONE'
+        : String(body['usageScope'] ?? row.usageScope)
+      const estimateCategories =
+        usageScope === 'ESTIMATE' || usageScope === 'BOTH'
+          ? ('estimateCategories' in body || 'estimateCategory' in body
+              ? normalizeMockExposures({
+                  estimateCategories: body['estimateCategories'],
+                  estimateCategory: body['estimateCategory'] ?? row.estimateCategory,
+                  displayOrder: row.displayOrder,
+                })
+              : row.estimateCategories)
+          : []
+      return deriveLegacyExposureFields({
+        ...row,
+        modelCode: nextModelName,
+        name: nextName,
+        productCategory,
+        usageScope,
+        estimateCategories,
+        productType: isMaterial ? 'SINGLE' : productType,
+        releasePrice: body['releasePrice'] == null ? row.releasePrice : Number(body['releasePrice']),
+        deliveryPrice: body['deliveryPrice'] == null ? row.deliveryPrice : Number(body['deliveryPrice']),
+      })
+    })
     return envelope({
       id: productId,
       name: nextName,
@@ -1925,15 +2011,22 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const filtered = MOCK_PRODUCT_CATALOG_ROWS.filter((row) =>
       (!q || row.modelCode.toLowerCase().includes(q) || row.name.toLowerCase().includes(q))
       && (!usageScope || matchesUsageScope(row.usageScope, usageScope))
-      && (!category || row.estimateCategory === category),
+      && (!category || exposureForCategory(row, category) != null),
     )
     // [#9] BE 정렬 동형 — displayOrder asc(null=맨뒤), 동률 시 modelCode 사전순.
     //   순서 저장(PUT /display-orders) 후 displayOrder 가 갱신되면 재조회 시 그 순서로 보여야
     //   가시 반영이 일치한다(기존: 시드 순서 전량 반환 → 영구 불일치).
     filtered.sort(
-      (a, b) =>
-        (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity)
-        || a.modelCode.localeCompare(b.modelCode),
+      (a, b) => {
+        const aOrder = category
+          ? exposureForCategory(a, category)?.displayOrder
+          : a.displayOrder
+        const bOrder = category
+          ? exposureForCategory(b, category)?.displayOrder
+          : b.displayOrder
+        return (aOrder ?? Infinity) - (bOrder ?? Infinity)
+          || a.modelCode.localeCompare(b.modelCode)
+      },
     )
     // [#9] BE 페이지 슬라이싱 동형 — page/size slice + totalPages 계산(기존: 전량+totalPages=1).
     const page = Number(config.params?.['page'] ?? urlObj.searchParams.get('page') ?? 0)
