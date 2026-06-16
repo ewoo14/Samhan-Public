@@ -4,12 +4,13 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-16 최신) — estimate-app 외부시트 DB전환 에픽: G2 머지 완료
+## 🟢 현재 상태 (2026-06-16 최신) — 싱글자재 정정(A안)+단일/세트 머지 완료, 다음=품목 노출/구성품 재설계
 
-> **에픽** = estimate-app 외부 Google Sheets 잔여 제거([[project_sheets_to_db_full_migration]]). 슬라이스: **G2(거래처/담당자) ✅** → 싱글자재 품목편입(신규) → G1(카탈로그 db) → G3/G4/G6.
-> - **G2 거래처·담당자 시트→사내 DB = ✅ 머지 완료** (PR #491, `6e02f29d`). 거래처=partner-service `GET /internal/partners/list`(실 7034건 page 순회), 담당자=user-service `GET /internal/users/employees`(행정직원). estimate-app `lib/directory.js` 신규. **🪤 함정**: estimate-app `PARTNER_SERVICE_URL`=dc-config:8089 지칭 → directory 는 `SAMHAN_PARTNER_SERVICE_URL`(실 partner-service:8095) 사용(Docker 실QA 단독 적발, 미수정 시 배포 404). 5단계 다모델(Opus계획→Codex개발→Opus5-agent→Codex5-agent→수렴) 0 P1/P2·CI green·실 화면 QA(`docs/qa/estimate-partner-manager-db/`)·dev-report·DECISIONS D-EPM-01~04.
-> - **개발책임자 대기 결정 2건**: ① 싱글자재→품목 편입 순서(G1보다 먼저? 권장 yes) + 자재 관리 UI 범위(품목화면 자재 편집 포함?) ② 출고전표 deliveryTag 정합 — estimate-app 경로는 야적/지방=주소프리픽스만·경동택배/경동화물/로젠 미처리(deliveryTag 미전송), 데스크톱만 설정. 정합 슬라이스화 여부.
-> - **다음 에픽 후보**: 싱글자재 품목편입(스펙·정찰 완료 [[product-master-registration]]) / G1 카탈로그 db 승격(슬2 task) / 출고전표 deliveryTag 정합.
+> **에픽** = estimate-app 외부 Google Sheets 잔여 제거([[project_sheets_to_db_full_migration]]) + 품목 등록/관리 고도화.
+> - **싱글자재 정정(A안)+품목 종류 단일/세트 = ✅ 머지 완료** (PR #493, `75c4daca`). 1차 V18 가짜 MATERIAL 28품목(`MAT-`+md5 해시 모델명)을 개발책임자 "모델명 이상함" 지적 → 정찰: 자재=이미 실모델코드 보유 카탈로그 품목(1WAY 대형 공청=`PC1BWCK3NW`, 부품=SINGLE_PART). **A안**: V18 폐기 + materialPrices를 material_price(구형 lookup) 복원 + 자재=실 카탈로그. 품목 종류 3구분→**단일/세트 2구분**(D-PMR-01 대체, 구성품 지정은 세트측 ComponentsModal). usageScope IN-확장(전표 라인 운영버그). **P1 구성품 링크 보존**(단일 품목 편집 itemKind=GENERAL 저장 시 BE가 부모 세트 BundleComponent 링크 soft-delete 회귀 — 머지 게이트 Opus 재리뷰 단독 적발, 실 BE PATCH 검증). 레거시→구형 라벨. dev-report+DECISIONS D-SMP-01~04. **🪤 함정**: BUNDLE mock usageScope index-parity ESTIMATE→전표 라인(PARTNER_ORDER) 검색 제외 bundle-set-options 7건 회귀(CI 단독 적발)→BUNDLE=BOTH.
+> - **개발책임자 신규 설계 (다음 에픽 #18)**: 품목 노출/구성품 모델 재설계 — ①**다중 카테고리 노출**(`estimate_category` 단일컬럼→품목×카테고리×순서 M:N. 판넬/리모컨/유연호스 등 한 단일품목을 홈멀티/싱글세트/상업멀티/구형 중복 노출) ②**카테고리별 표시순서**+순서변경 시 같은 카테고리 내 일괄 자동조정 ③**세트 구성품 정렬**(실내기→실외기→판넬→리모컨→자재, 각 종류 내 '기본' 먼저=전역아님, 세트 구성품 설정 시 드래그 동적 reorder/BundleComponent.displayOrder). 노출⊥구성품 독립 축.
+> - **개발책임자 대기 결정**: ① **멀티 세트 단가** — 멀티(홈멀티/상업멀티)는 카탈로그가 고정(`commUnitPrice`), 싱글은 구성품 단가 합산 동적(`calcSetUnitPrice`) → 불일치. 멀티도 구성품 합산 동적화(`calcCommSetUnitPrice` 신규)? **견적 금액 변동 가능 → 정책 확인 필요**(#19). ② 출고전표 deliveryTag 정합(야적/지방/경동/로젠 estimate-app 미전송, 데스크톱만).
+> - **다음**: 에픽 #18 spec 착수(다중카테고리+카테고리별순서+구성품정렬) / G1 카탈로그 db 승격(슬2) / 멀티 세트 동적가격(#19, 정책 후).
 
 ---
 
