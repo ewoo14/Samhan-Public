@@ -80,7 +80,7 @@ estimate-app 의 `getManagers_()` 시트 읽기를 user-service internal 호출�
 
 ## 7. QA 계획 (Docker 실서버 — 매 리뷰 라운드)
 
-스택: estimate-app(:5183) + partner-service(:8089) + user-service(:8083) + dc-config(:8089 공용) + product-service(:8084). 게이트웨이 우회(internal-token 직호출).
+스택: estimate-app(:5183) + partner-service(:8095) + user-service(:8083) + dc-config(:8089) + product-service(:8084). 게이트웨이 우회(internal-token 직호출). ⚠️ partner-service(:8095, 거래처 directory)와 dc-config(:8089, 할인)는 **별개 서비스** — estimate-app 의 `PARTNER_SERVICE_URL` 은 레거시상 dc-config 지칭이므로 directory 는 `SAMHAN_PARTNER_SERVICE_URL`(실 partner-service) 사용.
 - 거래처 드롭다운이 **partner-service DB** 에서 채워짐(시트 아님) — 실화면 캡처.
 - 담당자 드롭다운이 **행정직원**에서 채워짐 — 실화면 캡처.
 - dc-config bizno 매칭 유지(거래처 선택 → 할인 적용) — 실 견적 라인 캡처.
