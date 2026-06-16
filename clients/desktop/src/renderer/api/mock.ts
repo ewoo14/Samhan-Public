@@ -1648,20 +1648,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (MOCK_PRODUCT_CATALOG_ROWS.some((row) => row.modelCode === modelCode)) {
       return mockError(409, 'CONFLICT', '이미 등록된 모델명입니다.')
     }
-    const itemKind = String(body['itemKind'] ?? 'GENERAL')
+    const itemKind = String(body['itemKind'] ?? 'GENERAL') === 'SET' ? 'SET' : 'GENERAL'
     const productCategory = String(body['productCategory'] ?? (itemKind === 'SET' ? 'SINGLE_SET' : 'SINGLE_PART'))
     const isMaterial = productCategory === 'MATERIAL'
     const productType = itemKind === 'SET' ? 'BUNDLE' : 'SINGLE'
-    const parentSetModelCode = String(body['parentSetModelCode'] ?? '').trim()
-    if (itemKind === 'SET_COMPONENT' && !parentSetModelCode) {
-      return mockError(400, 'INVALID_INPUT', '세트구성품은 부모 세트가 필요합니다.')
-    }
-    if (itemKind === 'SET_COMPONENT') {
-      const parent = MOCK_PRODUCT_CATALOG_ROWS.find((row) => row.modelCode === parentSetModelCode)
-      if (!parent || parent.productType !== 'BUNDLE') {
-        return mockError(400, 'INVALID_INPUT', '부모 세트를 찾을 수 없습니다.')
-      }
-    }
 
     const productId = `p-${modelCode.toLowerCase().replace(/[^a-z0-9]+/g, '-') || Date.now()}`
     MOCK_PRODUCTS_BY_MODEL[modelName] = {
@@ -1686,10 +1676,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       {
         modelCode,
         name,
-        usageScope: isMaterial || itemKind === 'SET_COMPONENT'
+        usageScope: isMaterial
           ? 'NONE'
           : String(body['usageScope'] ?? 'BOTH'),
-        estimateCategory: isMaterial || itemKind === 'SET_COMPONENT'
+        estimateCategory: isMaterial
           ? null
           : ((body['estimateCategory'] as string | null | undefined) ?? 'OTHER'),
         productCategory,
@@ -1705,31 +1695,6 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
       ...MOCK_PRODUCT_CATALOG_ROWS,
     ]
-    if (itemKind === 'SET_COMPONENT') {
-      const current = MOCK_BUNDLE_COMPONENTS[parentSetModelCode] ?? []
-      MOCK_BUNDLE_COMPONENTS = {
-        ...MOCK_BUNDLE_COMPONENTS,
-        [parentSetModelCode]: [
-          ...current,
-          {
-            componentProductCode: modelCode,
-            componentName: name,
-            defaultQty: 1,
-            qtyMode: 'FOLLOW_SET',
-            componentKind: (body['componentKind'] as 'INDOOR' | 'OUTDOOR' | 'PANEL' | 'REMOTE' | 'MATERIAL' | 'ACCESSORY' | 'FOOT' | undefined) ?? 'ACCESSORY',
-            componentVariant: null,
-            isDefault: false,
-            specText: null,
-            displayOrder: current.length + 1,
-          },
-        ],
-      }
-      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) =>
-        row.modelCode === parentSetModelCode
-          ? { ...row, componentCount: (MOCK_BUNDLE_COMPONENTS[parentSetModelCode] ?? []).length }
-          : row,
-      )
-    }
     return envelope({
       id: productId,
       name,
@@ -1765,7 +1730,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const body = parseMockBody(config)
     const nextModelName = String(body['modelName'] ?? existing.modelName).trim()
     const nextName = String(body['name'] ?? existing.productName).trim()
-    const itemKind = String(body['itemKind'] ?? (existing.productType === 'BUNDLE' ? 'SET' : 'GENERAL'))
+    const itemKind = String(body['itemKind'] ?? (existing.productType === 'BUNDLE' ? 'SET' : 'GENERAL')) === 'SET'
+      ? 'SET'
+      : 'GENERAL'
     const productCategory = String(body['productCategory'] ?? existing.productCategory ?? (itemKind === 'SET' ? 'SINGLE_SET' : 'SINGLE_PART'))
     const isMaterial = productCategory === 'MATERIAL'
     const productType = itemKind === 'SET' ? 'BUNDLE' : 'SINGLE'
@@ -1794,10 +1761,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
             modelCode: nextModelName,
             name: nextName,
             productCategory,
-            usageScope: isMaterial || itemKind === 'SET_COMPONENT'
+            usageScope: isMaterial
               ? 'NONE'
               : String(body['usageScope'] ?? row.usageScope),
-            estimateCategory: isMaterial || itemKind === 'SET_COMPONENT'
+            estimateCategory: isMaterial
               ? null
               : ((body['estimateCategory'] as string | null | undefined) ?? row.estimateCategory),
             productType: isMaterial ? 'SINGLE' : productType,

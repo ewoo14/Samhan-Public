@@ -29,8 +29,11 @@ export type EstimateCategory =
   | 'LEGACY'
   | 'OTHER'
 
-/** 품목 등록 화면 요청 전용 3구분 — BE ProductItemKind enum 과 정확히 일치 */
+/** 품목 종류 — BE ProductItemKind enum 과 정확히 일치. legacy SET_COMPONENT 응답 호환용으로 유지 */
 export type ProductItemKind = 'GENERAL' | 'SET' | 'SET_COMPONENT'
+
+/** 품목 등록/수정 폼에서 선택 가능한 종류 — 구성품 여부는 세트 구성 관계에서만 관리 */
+export type ProductFormItemKind = Exclude<ProductItemKind, 'SET_COMPONENT'>
 
 /** 내부 품목 카테고리 — BE ProductCategory enum 과 정확히 일치 */
 export type ProductCategory =
@@ -234,7 +237,7 @@ export interface DisplayOrderInput {
   displayOrder: number
 }
 
-/** `POST /api/v1/products` 요청 body — BE CreateProductRequest record 와 필드명 동일 */
+/** `POST /api/v1/products` 요청 body — 폼에서는 단일/세트만 등록한다 */
 export interface CreateProductRequest {
   name: string
   modelName: string
@@ -244,11 +247,9 @@ export interface CreateProductRequest {
   currency: string
   tags: Record<string, string>
   description: string | null
-  itemKind: ProductItemKind
+  itemKind: ProductFormItemKind
   productCategory: ProductCategory
   bundleMode: BundleMode | null
-  parentSetModelCode: string | null
-  componentKind: ComponentKind | null
   unit: string | null
   releasePrice: string | null
   deliveryPrice: string | null
@@ -258,17 +259,15 @@ export interface CreateProductRequest {
   specs: ProductSpecInput[]
 }
 
-/** `PATCH /api/v1/products/{id}` 요청 body — BE UpdateProductRequest record 와 필드명 동일 */
+/** `PATCH /api/v1/products/{id}` 요청 body — 폼에서는 단일/세트만 수정한다 */
 export interface UpdateProductRequest {
   name: string | null
   modelName: string | null
   categoryId: string | null
   description: string | null
-  itemKind: ProductItemKind | null
+  itemKind: ProductFormItemKind | null
   productCategory: ProductCategory | null
   bundleMode: BundleMode | null
-  parentSetModelCode: string | null
-  componentKind: ComponentKind | null
   unit: string | null
   releasePrice: string | null
   deliveryPrice: string | null

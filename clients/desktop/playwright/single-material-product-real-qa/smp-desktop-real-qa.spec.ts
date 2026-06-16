@@ -4,9 +4,8 @@
  * 실서버(Docker, product-service :8084 + api-gateway :8080 healthy) FE(renderer :5175, mock OFF)
  * 경유로 아래 실 화면을 캡처한다(mock 금지, 실 게이트웨이 HTTP 왕복).
  *
- *   01-material-products-list.png   — 품목 관리(ProductCatalogPage) MATERIAL '자재' 행(V18 28건)
- *   02-product-kind-select.png      — 품목 등록(ProductFormPage) 종류=세트구성품 →
- *                                     구성 분류 셀렉트(product-form-component-kind) 실내기/실외기/판넬/리모컨
+ *   01-real-catalog-model-codes.png — 품목 관리: 자재=실 카탈로그 품목(PC1BWCK3NW 등 실모델코드, MAT-해시 0)
+ *   02-product-kind-select.png      — 품목 등록(ProductFormPage) 종류=단일/세트 2가지만 노출
  *   03-components-modal-default-toggle.png — BUNDLE(AC110CS6PBH1SY) 구성품 모달:
  *                                     '기본'(isDefault) 체크박스 + componentKind per row
  *   04-component-autocomplete.png   — 구성품 모달 ProductAutocomplete 검색 → 제안 목록
@@ -97,31 +96,20 @@ test('A1: 자재=실 카탈로그 품목 — 실모델코드(PC1BWCK3NW) 노출,
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// A2. 품목 등록 종류(kind) 셀렉트 — 세트구성품 → 구성 분류(componentKind)
+// A2. 품목 등록 종류(kind) 셀렉트 — 단일/세트 2가지만 노출
 // ─────────────────────────────────────────────────────────────────────────────
-test('A2: 품목 등록 — 종류=세트구성품 시 구성 분류 셀렉트(실내기/실외기/판넬/리모컨)', async ({ page }) => {
+test('A2: 품목 등록 — 종류는 단일/세트만 노출하고 제품 쪽 구성 분류는 숨긴다', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
   await page.goto(`${BASE_URL}/#/products/new`)
   // 품목 종류 radiogroup 노출까지 대기
   await page.getByRole('radiogroup', { name: '품목 종류' }).waitFor({ state: 'visible', timeout: 30000 })
 
-  // 종류 = '세트구성품' 선택 → componentKind 셀렉트(부모 세트 섹션) 노출
-  const setComponentRadio = page.getByRole('radio', { name: '세트구성품' })
-  await setComponentRadio.check()
-
-  const kindSelect = page.locator('[data-testid="product-form-component-kind"]')
-  await kindSelect.waitFor({ state: 'visible', timeout: 10000 })
-  // 옵션에 실내기/실외기/판넬/리모컨 존재 확인 (native <select> 옵션 텍스트)
-  const optionTexts = await kindSelect.locator('option').allTextContents()
-  console.log(`[A2] 구성 분류 옵션(전체): ${optionTexts.join(' / ')}`)
-  expect(optionTexts.join('|')).toContain('실내기')
-  expect(optionTexts.join('|')).toContain('실외기')
-  expect(optionTexts.join('|')).toContain('판넬')
-  expect(optionTexts.join('|')).toContain('리모컨')
-  // 헤드리스에서 native <select> 팝업은 스크린샷에 잡히지 않으므로, 옵션이 실제 선택 가능함을
-  // 입증하기 위해 '실내기' 를 선택해 셀렉트 표시값을 실내기로 바꾼 상태로 캡처한다.
-  await kindSelect.selectOption({ label: '실내기' })
-  await expect(kindSelect).toHaveValue('INDOOR')
+  await expect(page.getByRole('radio', { name: '단일' })).toBeVisible()
+  await expect(page.getByRole('radio', { name: '세트' })).toBeVisible()
+  await expect(page.getByRole('radio', { name: '세트구성품' })).toHaveCount(0)
+  await expect(page.locator('[data-testid="product-form-component-kind"]')).toHaveCount(0)
+  await expect(page.getByText('부모 세트')).toHaveCount(0)
+  console.log('[A2] 품목 종류는 단일/세트 2가지만 노출. 제품 쪽 부모 세트/구성 분류 UI 없음')
   await shot(page, '02-product-kind-select')
 })
 

@@ -278,6 +278,44 @@ class ProductServiceTest {
     }
 
     @Test
+    void update_componentSavedAsGeneral_preservesParentComponentLinks() {
+        product.changeModelCode("IDU-001");
+        Product parent = Product.seedFromSheet("세트 부모", "SET-001", category,
+                BigDecimal.valueOf(1_000_000), BigDecimal.valueOf(800_000),
+                ProductType.BUNDLE, ProductCategory.SINGLE_SET,
+                com.samhanair.logis.product.domain.UsageScope.BOTH, null);
+        UUID parentId = UUID.randomUUID();
+        ReflectionTestUtils.setField(parent, "id", parentId);
+        parent.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        BundleComponent link = BundleComponent.seed(
+                parentId,
+                "IDU-001",
+                BigDecimal.ONE,
+                BundleComponent.QtyMode.FOLLOW_SET,
+                BundleComponent.ComponentKind.INDOOR,
+                null,
+                false,
+                null);
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(bundleComponentRepository.findByComponentProductCode("IDU-001"))
+                .thenReturn(List.of(link));
+        when(productRepository.findAllByIdIn(List.of(parentId)))
+                .thenReturn(List.of(parent));
+
+        ProductResponse response = service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.GENERAL, null, null, null, null,
+                "EA", BigDecimal.valueOf(310_000), BigDecimal.valueOf(250_000),
+                null));
+
+        assertThat(response.itemKind()).isEqualTo(ProductItemKind.SET_COMPONENT);
+        assertThat(response.parentSetModelCode()).isEqualTo("SET-001");
+        org.mockito.Mockito.verify(bundleComponentService, org.mockito.Mockito.never())
+                .removeRegisteredComponentLinks("IDU-001", "system");
+    }
+
+    @Test
     void update_setToSetComponent_removesOwnChildrenThenReplacesParentLink() {
         product.changeModelCode("SET-001");
         product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);

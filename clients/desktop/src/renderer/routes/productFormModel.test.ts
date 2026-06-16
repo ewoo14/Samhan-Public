@@ -51,8 +51,6 @@ describe('productFormModel', () => {
       itemKind: 'GENERAL',
       productCategory: 'SINGLE_PART',
       bundleMode: null,
-      parentSetModelCode: null,
-      componentKind: null,
       unit: 'EA',
       releasePrice: '1000000',
       deliveryPrice: '30000',
@@ -193,31 +191,16 @@ describe('productFormModel', () => {
     })
   })
 
-  it('SET 선택 시 bundleMode 를 포함하고 parentSetModelCode 는 보내지 않는다', () => {
+  it('SET 선택 시 bundleMode 를 포함한다', () => {
     const request = buildCreateProductRequest({
       ...baseForm,
       itemKind: 'SET',
       productCategory: 'SINGLE_SET',
       bundleMode: 'EXPAND',
-      parentSetModelCode: 'IGNORED-PARENT',
     })
 
     expect(request.itemKind).toBe('SET')
     expect(request.bundleMode).toBe('EXPAND')
-    expect(request.parentSetModelCode).toBeNull()
-  })
-
-  it('SET_COMPONENT 선택 시 부모 세트 modelCode 와 componentKind 를 포함한다', () => {
-    const request = buildCreateProductRequest({
-      ...baseForm,
-      itemKind: 'SET_COMPONENT',
-      parentSetModelCode: 'SET-HM2WAY',
-      componentKind: 'INDOOR',
-    })
-
-    expect(request.itemKind).toBe('SET_COMPONENT')
-    expect(request.parentSetModelCode).toBe('SET-HM2WAY')
-    expect(request.componentKind).toBe('INDOOR')
   })
 
   it('MATERIAL 내부 분류 선택은 비상품 자재 기본값을 적용한다', () => {
@@ -238,16 +221,6 @@ describe('productFormModel', () => {
     })
   })
 
-  it('세트구성품은 부모 세트 선택 없이는 저장할 수 없다', () => {
-    const errors = validateProductForm({
-      ...baseForm,
-      itemKind: 'SET_COMPONENT',
-      parentSetModelCode: '',
-    })
-
-    expect(errors.parentSetModelCode).toBe('부모 세트를 선택해 주세요.')
-  })
-
   it('UpdateProductRequest 는 수정 가능한 필드만 포함하고 가격 필드는 제외한다', () => {
     expect(buildUpdateProductRequest(baseForm)).toEqual({
       name: '천장형 실내기',
@@ -257,8 +230,6 @@ describe('productFormModel', () => {
       itemKind: 'GENERAL',
       productCategory: 'SINGLE_PART',
       bundleMode: null,
-      parentSetModelCode: null,
-      componentKind: null,
       unit: 'EA',
       releasePrice: '1000000',
       deliveryPrice: '30000',
@@ -270,7 +241,7 @@ describe('productFormModel', () => {
     })
   })
 
-  it('edit seed 는 SET_COMPONENT 상세 응답의 부모 링크와 실제 분류/단위를 보존한다', () => {
+  it('edit seed 는 legacy SET_COMPONENT 상세 응답도 단일 품목으로 열고 제품 쪽 부모/구성 분류를 비운다', () => {
     const values = editSeedToProductFormValues({
       summary: {
         id: 'product-id',
@@ -325,10 +296,10 @@ describe('productFormModel', () => {
       },
     })
 
-    expect(values.itemKind).toBe('SET_COMPONENT')
+    expect(values.itemKind).toBe('GENERAL')
     expect(values.productCategory).toBe('COMMERCIAL_PART')
-    expect(values.parentSetModelCode).toBe('SET-001')
-    expect(values.componentKind).toBe('INDOOR')
+    expect(values).not.toHaveProperty('parentSetModelCode')
+    expect(values).not.toHaveProperty('componentKind')
     expect(values.unit).toBe('SET')
     expect(values.goodsType).toBe('NON_GOODS')
     expect(values.specs).toEqual([

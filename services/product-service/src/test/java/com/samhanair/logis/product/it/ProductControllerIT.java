@@ -225,6 +225,83 @@ class ProductControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void componentProductPatchAsGeneral_preservesParentBundleComponentLink() throws Exception {
+        String parentModelCode = "SET-PARENT-PATCH-001";
+        var parentBody = Map.of(
+                "name", "회귀 세트",
+                "modelName", parentModelCode,
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "1000000",
+                "purchasePrice", "800000",
+                "currency", "KRW",
+                "itemKind", "SET",
+                "bundleMode", "EXPAND",
+                "goodsType", "GOODS");
+
+        MvcResult parentCreated = mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(parentBody)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID parentId = UUID.fromString(objectMapper.readTree(parentCreated.getResponse().getContentAsString())
+                .get("data").get("id").asText());
+
+        String componentModelCode = "SET-COMP-PATCH-001";
+        var componentBody = Map.of(
+                "name", "회귀 구성품",
+                "modelName", componentModelCode,
+                "categoryId", categoryId.toString(),
+                "sellingPrice", "300000",
+                "purchasePrice", "250000",
+                "currency", "KRW",
+                "itemKind", "SET_COMPONENT",
+                "parentSetModelCode", parentModelCode,
+                "componentKind", "INDOOR",
+                "goodsType", "GOODS");
+
+        MvcResult componentCreated = mockMvc.perform(post("/products")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(componentBody)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String componentId = objectMapper.readTree(componentCreated.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        assertThat(bundleComponentRepository.findByBundleProductId(parentId))
+                .extracting(BundleComponent::getComponentProductCode)
+                .containsExactly(componentModelCode);
+
+        var patchBody = Map.ofEntries(
+                Map.entry("itemKind", "GENERAL"),
+                Map.entry("unit", "EA"),
+                Map.entry("releasePrice", "310000"),
+                Map.entry("deliveryPrice", "260000"),
+                Map.entry("goodsType", "GOODS"));
+
+        // 구성품 링크는 세트측 BundleComponent CRUD에서만 관리한다. 단일 품목 편집은 부모 링크를 보존해야 한다.
+        mockMvc.perform(patch("/products/" + componentId)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(patchBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.itemKind").value("SET_COMPONENT"))
+                .andExpect(jsonPath("$.data.parentSetModelCode").value(parentModelCode));
+
+        assertThat(bundleComponentRepository.findByBundleProductId(parentId))
+                .extracting(BundleComponent::getComponentProductCode)
+                .containsExactly(componentModelCode);
+        assertThat(bundleComponentRepository.findByComponentProductCode(componentModelCode))
+                .hasSize(1)
+                .extracting(BundleComponent::getBundleProductId)
+                .containsExactly(parentId);
+    }
+
+    @Test
     void managerRole_post_materialNonGoods_returns201_andUsageScopeNone() throws Exception {
         // Map.of 는 최대 10쌍 → 12쌍은 Map.ofEntries (arity 제한 없음) 사용.
         var body = Map.ofEntries(

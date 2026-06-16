@@ -677,6 +677,8 @@ public class ProductService {
                 }
                 product.changeBundle(ProductType.SINGLE, null);
             }
+            // 구성품 링크는 세트측(BundleComponent)에서만 관리한다.
+            // 단일(GENERAL) 품목 편집은 부모 세트의 구성품 링크를 변경하지 않는다.
             if (req.itemKind() == ProductItemKind.SET_COMPONENT) {
                 product.changeUsage(UsageScope.NONE, null);
                 forceUsageNone = true;
@@ -685,8 +687,6 @@ public class ProductService {
                         product.getModelCode(),
                         req.componentKind(),
                         "system");
-            } else if (req.itemKind() == ProductItemKind.GENERAL) {
-                bundleComponentService.removeRegisteredComponentLinks(product.getModelCode(), "system");
             }
         } else if (req.bundleMode() != null && product.getProductType() == ProductType.BUNDLE) {
             product.changeBundle(ProductType.BUNDLE, req.bundleMode());
