@@ -60,12 +60,14 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
     List<Employee> searchInternalApprovers(@Param("q") String q, Pageable pageable);
 
     /**
-     * 종합견적서 담당자 directory 조회 — 활성(soft-delete 제외) 직원의 이름만 검색한다.
+     * 종합견적서 담당자 directory 조회 — 활성 직원의 이름만 검색한다.
      *
-     * <p>기존 groupware approver 검색과 달리 blank q 도 전체 목록을 반환해야 하므로 별도 query 로 둔다.
+     * <p>활성 = soft-delete 제외(isDeleted=false) + 퇴사/비활성 제외(terminationDate IS NULL) —
+     * searchAdmin 의 활성/LOCKED 정의와 정합. 퇴사·비활성(disable) 직원은 담당자 후보에서 제외한다.
+     * 기존 groupware approver 검색과 달리 blank q 도 전체 목록을 반환해야 하므로 별도 query 로 둔다.
      */
     @Query("SELECT e FROM Employee e LEFT JOIN FETCH e.department "
-            + "WHERE e.isDeleted = false "
+            + "WHERE e.isDeleted = false AND e.terminationDate IS NULL "
             + "AND (CAST(:q AS string) IS NULL "
             + " OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))")
     List<Employee> searchEmployeeDirectory(@Param("q") String q, Pageable pageable);

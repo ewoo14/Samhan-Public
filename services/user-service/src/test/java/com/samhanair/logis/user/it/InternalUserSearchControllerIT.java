@@ -159,6 +159,27 @@ class InternalUserSearchControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data[0].departmentName").value("결재검색팀"));
     }
 
+    @Test
+    void employees_soft_delete_및_퇴사_비활성_직원은_제외한다() throws Exception {
+        String marker = "dir-inact-" + shortToken();
+        // 활성 1명 (반환 대상)
+        employeeWithEcount("active-" + shortToken(), marker + "-active", Role.SALES, "EMP-AC1");
+        // soft-delete 1명 (제외)
+        Employee deleted = employeeEntity("deleted-" + shortToken(), marker + "-deleted", Role.SALES);
+        deleted.markDeleted("it");
+        employeeRepository.saveAndFlush(deleted);
+        // 퇴사/비활성(terminationDate) 1명 (제외)
+        Employee terminated = employeeEntity("terminated-" + shortToken(), marker + "-terminated", Role.SALES);
+        ReflectionTestUtils.setField(terminated, "terminationDate", LocalDate.of(2026, 3, 1));
+        employeeRepository.saveAndFlush(terminated);
+
+        mockMvc.perform(get("/internal/users/employees")
+                        .header("X-Internal-Token", TOKEN)
+                        .param("q", marker))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
     private UUID employee(String loginId, String fullName, Role role) {
         return employeeRepository.saveAndFlush(employeeEntity(loginId, fullName, role)).getId();
     }

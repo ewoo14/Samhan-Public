@@ -61,7 +61,7 @@ public class PartnerInternalController {
     @PreAuthorize("hasRole('MASTER')")
     public ApiResponse<List<PartnerDirectoryResponse>> listDirectory(
             @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "2000") int limit) {
+            @RequestParam(defaultValue = "5000") int limit) {
         return ApiResponse.ok(partnerService.listDirectory(q, limit));
     }
 

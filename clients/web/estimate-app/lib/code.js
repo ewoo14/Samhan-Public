@@ -1795,10 +1795,15 @@ async function preloadDirectoryCache_(forceRefresh) {
   }
   const tasks = [];
   if (!cacheGetJSON_('CUS_V6')) {
-    tasks.push(directory.fetchPartners('').then((rows) => cachePutJSON_('CUS_V6', rows, 60 * 10)));
+    // 빈 결과(서비스 다운 등)는 캐싱하지 않는다 — 다음 호출이 재시도해 복구 후 즉시 반영(10분 공백 방지).
+    tasks.push(directory.fetchPartners('').then((rows) => {
+      if (Array.isArray(rows) && rows.length) cachePutJSON_('CUS_V6', rows, 60 * 10);
+    }));
   }
   if (!cacheGetJSON_('MGR_V1')) {
-    tasks.push(directory.fetchManagers('').then((rows) => cachePutJSON_('MGR_V1', rows, 60 * 10)));
+    tasks.push(directory.fetchManagers('').then((rows) => {
+      if (Array.isArray(rows) && rows.length) cachePutJSON_('MGR_V1', rows, 60 * 10);
+    }));
   }
   await Promise.all(tasks);
 }
@@ -1966,6 +1971,9 @@ async function initDcConfigFromNotion(bizno) {
     return cfg;
   }
 
+  // G2: searchCustomerByBizOrCode는 CUS_V6 캐시 read 전용이라 독립 RPC 진입 시 캐시가 비었거나 TTL
+  // 만료일 수 있다. customer 첨부 정확성을 위해 prefetch로 캐시를 보장한다(이미 warm이면 no-op).
+  await preloadDirectoryCache_();
   const cust = searchCustomerByBizOrCode(biznoDigits);
   let notion = null;
   try {
@@ -2147,6 +2155,10 @@ async function sendOrderFromUi(data) {
       REMARKS: String(it.remarks || it.REMARKS || ''),
     }));
 
+    // G2: getCustomers_()는 캐시 read 전용(시트 self-heal 제거)이라, 페이지를 오래 열어둔 뒤 제출해
+    // CUS_V6 TTL(10분)이 만료되면 등록 거래처가 빈 캐시로 누락("미등록거래처")될 수 있다. 제출 직전
+    // prefetch(이미 warm이면 no-op)로 캐시를 보장한다.
+    await preloadDirectoryCache_();
     let key = safeNum(order?.bizno || '');
     if (!key && order?.custCode) key = String(order.custCode).trim();
     const custRec = await searchCustomerByBizOrCode(key);
@@ -2167,14 +2179,9 @@ async function sendOrderFromUi(data) {
 
     const whCd = (order && order.whCode) ? order.whCode : decideWarehouseCode_(merged);
 
-    let empCdFinal = authInfo.managerCode;
-    if (!empCdFinal) {
-      if (custRec.manager) {
-        const m = await findManagerByNameExact_(custRec.manager);
-        if (m) empCdFinal = m.empCd;
-      }
-      if (!empCdFinal) empCdFinal = getScriptCreds_().EMP_CD;
-    }
+    // G2: 거래처 시트 담당자명 컬럼 제거(custRec.manager 항상 빈값)로 거래처→담당자 역참조 폐기.
+    // empCd = 주문 작성 로그인 사용자(managerCode) 우선, 없으면 기본 EMP_CD.
+    let empCdFinal = authInfo.managerCode || getScriptCreds_().EMP_CD;
 
     const SaleList = [];
 
