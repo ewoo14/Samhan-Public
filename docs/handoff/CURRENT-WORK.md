@@ -4,7 +4,16 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-15 최신) — 사양(스펙) 후속 큐 진행중
+## 🟢 현재 상태 (2026-06-16 최신) — estimate-app 외부시트 DB전환 에픽: G2 머지 완료
+
+> **에픽** = estimate-app 외부 Google Sheets 잔여 제거([[project_sheets_to_db_full_migration]]). 슬라이스: **G2(거래처/담당자) ✅** → 싱글자재 품목편입(신규) → G1(카탈로그 db) → G3/G4/G6.
+> - **G2 거래처·담당자 시트→사내 DB = ✅ 머지 완료** (PR #491, `6e02f29d`). 거래처=partner-service `GET /internal/partners/list`(실 7034건 page 순회), 담당자=user-service `GET /internal/users/employees`(행정직원). estimate-app `lib/directory.js` 신규. **🪤 함정**: estimate-app `PARTNER_SERVICE_URL`=dc-config:8089 지칭 → directory 는 `SAMHAN_PARTNER_SERVICE_URL`(실 partner-service:8095) 사용(Docker 실QA 단독 적발, 미수정 시 배포 404). 5단계 다모델(Opus계획→Codex개발→Opus5-agent→Codex5-agent→수렴) 0 P1/P2·CI green·실 화면 QA(`docs/qa/estimate-partner-manager-db/`)·dev-report·DECISIONS D-EPM-01~04.
+> - **개발책임자 대기 결정 2건**: ① 싱글자재→품목 편입 순서(G1보다 먼저? 권장 yes) + 자재 관리 UI 범위(품목화면 자재 편집 포함?) ② 출고전표 deliveryTag 정합 — estimate-app 경로는 야적/지방=주소프리픽스만·경동택배/경동화물/로젠 미처리(deliveryTag 미전송), 데스크톱만 설정. 정합 슬라이스화 여부.
+> - **다음 에픽 후보**: 싱글자재 품목편입(스펙·정찰 완료 [[product-master-registration]]) / G1 카탈로그 db 승격(슬2 task) / 출고전표 deliveryTag 정합.
+
+---
+
+## 🟢 (이력) 2026-06-15 — 사양(스펙) 후속 큐 (전부 머지 완료 #486~#489)
 
 > **📌 활성 핸드오프 = [docs/handoff/2026-06-15-spec-followup-queue.md](2026-06-15-spec-followup-queue.md)** (새 세션 먼저 읽을 것).
 > - **#485 품목 등록/관리 고도화 = ✅ 머지 완료** (`e13a16bf`). 동적 사양(ProductSpec 1:N) 포함.

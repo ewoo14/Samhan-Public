@@ -16,6 +16,6 @@ metadata:
 
 **개발책임자 6결정(2026-06-15) 전부 기존 코드 충족**: 완전동결✅ VAT표기만✅ 조합비경고✅ 6:4배분✅ / #6(시드1회→DB원천)만 부분.
 
-**잔여 갭(소규모)**: G1 카탈로그 운영 default 아직 'sheet'(상업멀티 변동DC FORMULA read 비결정성으로 db 승격 보류 — `db-catalog.js`·`VariableDiscountDetector` 완비, 납품가 컬럼 narrow read+재시도로 해소) · G2 거래처/담당자 시트 read→partner-service 위임(/internal/partners/list·managers 신규) · G3 추천실외기 homeEx 미분리(home.slice 대체) · G4 데스크톱 인쇄버그(estimateNo 슬래시 %2F→400, e.id 로 수정) · G6 구형 0.5 확인.
+**잔여 갭(소규모)**: G1 카탈로그 운영 default 아직 'sheet'(상업멀티 변동DC FORMULA read 비결정성으로 db 승격 보류 — `db-catalog.js`·`VariableDiscountDetector` 완비, 납품가 컬럼 narrow read+재시도로 해소) · G2 ✅ **머지(PR #491, 6e02f29d)**: 거래처=partner-service `/internal/partners/list`(page 순회 실 7034건)·담당자=user-service `/internal/users/employees`(=행정직원, partner contacts 아님). estimate-app `lib/directory.js`. 🪤 estimate-app `PARTNER_SERVICE_URL`=dc-config:8089 지칭 → directory 는 `SAMHAN_PARTNER_SERVICE_URL`(실 partner-service:8095) 사용(Docker 실QA 단독 적발). ⚠️ 출고전표 `DeliveryTag`(야적/지방/경동택배/경동화물/로젠 단일 enum)는 estimate-app 경로 **미전송**(야적/지방=주소 프리픽스만·택배3종 미처리, 데스크톱 PATCH 만 설정)→후속 정합 가능 · G3 추천실외기 homeEx 미분리(home.slice 대체) · G4 데스크톱 인쇄버그(estimateNo 슬래시 %2F→400, e.id 로 수정) · G6 구형 0.5 확인.
 
 🚨 **야간 스코핑 제안서 `docs/superpowers/specs/2026-06-15-comprehensive-quotation-epic.md` 는 "처음부터 구축" 전제 오류**(데스크톱 간이견적서를 종합견적서로 오인, estimate-app 존재 모름). 종합견적서 작업 = 기존 estimate-app 갭 보완이지 신규 구축 아님. 관련: [[project_estimate_auth_dc_key_decisions]] [[project_sheets_to_db_full_migration]] [[product-master-registration]].
