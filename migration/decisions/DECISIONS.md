@@ -2897,3 +2897,16 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-EPM-02 | 담당자 = user-service `GET /internal/users/employees`(행정직원 fullName+ecountCode+부서). 활성 정의 = `isDeleted=false AND terminationDate IS NULL`(searchAdmin 정합, 퇴사/비활성 제외). slip employeeCode 는 자유문자열 스냅샷이라 ecountCode 포맷 무관(비파손). |
 | D-EPM-03 | estimate-app `PARTNER_SERVICE_URL` 은 레거시상 **dc-config-service(:8089)** 지칭 → 신규 거래처 directory(`directory.js`)는 별개 env `SAMHAN_PARTNER_SERVICE_URL`(실 partner-service :8095) 사용. .env.example·render.yaml 정합. (Docker 실QA 단독 적발 — 미수정 시 배포에서 거래처 목록 404.) |
 | D-EPM-04 | 시트 '거래처'/'담당자' 컬럼 중 `싱글 할인`·거래처시트 `담당자명/연락처`는 vestigial(dc-config 가 할인 진실원, 슬립 manager 는 partner-order 출처) → 마이그 제외. 거래처→담당자 역참조 empCd 폴백 폐기(empCd=로그인 사용자 우선). |
+
+---
+
+## 싱글 자재 정정(A안) + 품목 종류 단일/세트 (2026-06-16, PR #493)
+
+**배경**: 1차 V18 시드가 자재시트 28행을 가짜 Product(MATERIAL)로 만들고 model_name 유니크 충돌 회피용 `MAT-`+md5 해시 코드 부여 → 개발책임자 "모델명 이상함" 지적. 정찰: 자재=이미 실모델코드 가진 카탈로그 품목(부품=SINGLE_PART, 패널/리모컨=HOME_MULTI/상업 `PC1BWCK3NW`). spec `docs/superpowers/specs/2026-06-16-single-material-product.md`, dev-report `docs/dev-reports/2026-06-16-single-material-product.md`.
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-SMP-01 | 자재 모델링 = **A안(실 카탈로그 통합)**. 가짜 MATERIAL 품목(V18) 폐기 — 자재(패널/리모컨/부품)는 이미 실모델코드 가진 기존 카탈로그 품목. material-prices 엔드포인트는 `material_price`(구형 참조 lookup) 복원. 싱글 옵션 단가는 실 구성품 단가 차액으로 동적 계산(estimate-app `calcSetUnitPrice`, 기구현). |
+| D-SMP-02 | **품목 종류 = 단일(GENERAL)/세트(SET) 2구분** (개발책임자 Option B — D-PMR-01 3구분 대체). '세트구성품' 종류 폐기, 구성품 지정은 세트측 ComponentsModal 에서만(단일 품목 선택). 판넬/리모컨/유연호스=단일 품목이며 노출(usageScope/카테고리) ⊥ 구성품(BundleComponent) 독립 축. BE `ProductItemKind` enum 은 backward-compat 유지. |
+| D-SMP-03 | P1 데이터 손상 픽스 — 세트 구성품인 단일 품목 편집(itemKind=GENERAL) 저장 시 BE가 부모 세트 BundleComponent 링크를 soft-delete 하던 회귀 제거(`ProductService.applyUpdateFields` GENERAL 분기). 구성품 링크는 세트측에서만 관리. 실 BE 회귀 IT 추가(mock 미재현). 머지 게이트 Opus 재리뷰 단독 적발. |
+| D-SMP-04 | 노출 설정 견적 카테고리 사용자 라벨 `레거시`→`구형`(enum 값 LEGACY/OLD 내부 식별자 유지). |
