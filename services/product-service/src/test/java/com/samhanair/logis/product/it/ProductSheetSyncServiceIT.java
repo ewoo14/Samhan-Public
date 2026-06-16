@@ -373,6 +373,40 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     @Test
+    void sync_상업멀티구성_구분blank_상업멀티자식은_OUTDOOR_일반자식은_ACCESSORY() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        // 부모 세트 + AM* 실외기 자식은 상업멀티 탭에서 COMMERCIAL_MULTI 로 먼저 적재된다.
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "모델명", "단위", "대분류", "출고가", "비고", "납품가"),
+                row("DVM S2 세트", "COMM_SET_OUTDOOR_KIND", "SET", "세트", "9,000,000", "", "5,000,000"),
+                row("DVM S2 프라임 8HP", "AM080AXVHHH1_KIND", "대", "실외기", "8,012,400", "", "4,406,820")
+        ));
+        // 구분 blank: AM* COMMERCIAL_MULTI 자식은 OUTDOOR override, 일반 구성품은 ACCESSORY 유지.
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티 구성_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "모델명", "단위", "출고가", "수량", "납품가", "소계", "규격", "세트", "구분"),
+                row("DVM S2 프라임 8HP", "AM080AXVHHH1_KIND", "대", "8,012,400", "Q", "4,406,820", "", "", "COMM_SET_OUTDOOR_KIND", ""),
+                row("통신 부속", "COMM_ACC_KIND", "EA", "10,000", "1", "8,000", "", "", "COMM_SET_OUTDOOR_KIND", "")
+        ));
+
+        syncService.syncAll();
+
+        Product parent = productRepository.findByModelCodeAndIsDeletedFalse("COMM_SET_OUTDOOR_KIND").orElseThrow();
+        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("AM080AXVHHH1_KIND").orElseThrow()
+                .getProductCategory()).isEqualTo(ProductCategory.COMMERCIAL_MULTI);
+        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("COMM_ACC_KIND").orElseThrow()
+                .getProductCategory()).isEqualTo(ProductCategory.COMMERCIAL_PART);
+
+        List<BundleComponent> comps = bundleComponentRepository.findByBundleProductId(parent.getId());
+        assertThat(comps).hasSize(2);
+        assertThat(comps).filteredOn(c -> c.getComponentProductCode().equals("AM080AXVHHH1_KIND"))
+                .singleElement()
+                .satisfies(c -> assertThat(c.getComponentKind()).isEqualTo(BundleComponent.ComponentKind.OUTDOOR));
+        assertThat(comps).filteredOn(c -> c.getComponentProductCode().equals("COMM_ACC_KIND"))
+                .singleElement()
+                .satisfies(c -> assertThat(c.getComponentKind()).isEqualTo(BundleComponent.ComponentKind.ACCESSORY));
+    }
+
+    @Test
     void sync_구성품_재sync_멱등_그리고_사라진_구성품_softDelete() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
