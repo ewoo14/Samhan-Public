@@ -11,6 +11,7 @@
 - **기초품목 관리** `ProductCatalogPage.tsx` 슬림화: 등록/수정/검색/목록/세트뱃지/구성품 모달 유지(구성품 모달은 슬2 이관), 노출/카테고리/표시순서 UI 제거(734줄). subtitle 에 "노출·순서는 견적품목 관리에서" 안내.
 - 사이드바 "품목 관리"→**"기초품목 관리"** + **"견적품목 관리"** 링크, `activeTargets` 갱신.
 - 마지막 카테고리 chip 제거 시 scope 보정(ESTIMATE→NONE, BOTH→PARTNER_ORDER) — "노출 checked·카테고리 0" 모순 방지. count/pagination NONE 정합.
+- **카테고리 탭 + 캡슐만 (개발책임자 피드백 2026-06-17)**: 표시순서를 카테고리별로 따로 설정하기 쉽게 — 카테고리 Select 드롭다운 → **고정 4탭**(홈멀티/싱글중대형/상업멀티/구형, HOME_MULTI 기본). 탭 컨텍스트로 listProducts·add-from-master·드래그 순서저장, URL `category` 쿼리 보존, 드래그 항상 활성('전체' 합친 편집뷰 제거 — 혼란 사유). 카테고리 컬럼 productCategory 평문 제거 → estimateCategories Badge(캡슐)만(#494 P3-3 라벨 중복 해소). **동적 카테고리 추가/삭제는 개발책임자 폐기**(고정 카테고리 — EstimateCategory enum 유지. 가격은 ProductCategory 가 결정하므로 노출 카테고리와 분리, 동적화 시 enum→테이블+마이그+estimate-app 부담만 큼).
 
 ## 3. 리뷰 수렴 (듀얼, error 0)
 - **Opus 3-agent**(FE/Designer/DevOps): P0 0, **P1×2** — (a) 이관 real-QA 4스펙이 구 `/products/catalog` 노출 UI 단언(contract sweep [[fe-guard-removal-contract-tests]]), (b) mock 시나리오 8/9 드래그 reorder 단언 삭제(헤드리스 키보드 hang 회피) → reorder 회귀가드 손실. + P2(메뉴계약 substring·add 가드·count).
@@ -19,6 +20,7 @@
 ## 4. QA (Docker 실서버 — 실 게이트웨이 :8080·dev_master·mock OFF)
 - `docs/qa/estimate-items-menu/estimate-items-page.png` — 견적품목 관리(기초품목 선택 추가 + 노출 M:N 칩 + 카테고리별 표시순서), 사이드바 기초품목+견적품목 분화 실증.
 - `docs/qa/estimate-items-menu/basic-items-page.png` — 기초품목 관리 등록 전용.
+- `docs/qa/estimate-items-menu/tabs-home-multi.png` · `tabs-single-set.png` — 카테고리 탭(홈멀티↔싱글중대형 전환) 실서버 캡처: 탭별 표시순서 1..N 드래그 + 카테고리 컬럼 캡슐만 실증.
 - 재포인트된 `multi-category-exposure-real-qa.spec.ts` **필터 테스트 PASS**(estimate-items 카테고리 필터·표시순서 실서버). 
 - 🪤 **M:N 테스트는 데이터-게이트**: 실 DB 에 2+ 카테고리 노출 품목 0건(슬2 product-service 재빌드 시 1-카테고리 재시드된 로컬 artifact; #494 당시 AJ060 2-cat). M:N 기능은 #494 머지+slice-1 필터 PASS+vitest mock 으로 검증, 다중 카테고리 데이터는 견적품목 관리 add-from-master 사용으로 채워짐.
 - 독립 검증: typecheck OK + vitest 5/72(+2 회귀) + CI green.
