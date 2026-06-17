@@ -1,0 +1,24 @@
+# D-PCE-09 display-orders 부분요청 가드 — 실 게이트웨이(:8080) 실HTTP QA  (2026-06-17)
+# 실서버: rebuilt samhan-product-service (slice2 코드, Up healthy), dev_master(MASTER) 로그인
+# 도구: curl → api-gateway :8080 (mock 아님, 실 Postgres product_db)
+
+## (1) 부분요청 (HOME_MULTI 활성노출 2건만) — 기대 400 → 결과 400 ✓
+$ PUT /api/v1/products/display-orders  [AJ060MXHNBC1, AJ050MXHNBC1]
+{"success":false,"code":"INVALID_INPUT",
+ "message":"표시 순서 일괄 갱신은 대상 견적 카테고리의 전체 활성 노출을 포함해야 합니다.",
+ "data":null,"timestamp":"2026-06-17T01:42:24Z"}
+--> HTTP 400   ✓ 가드 작동 (부분요청 거부)
+
+## (2) 전체요청 (LEGACY 노출가능 전체 38건) — 기대 204 → 결과 204 ✓
+$ PUT /api/v1/products/display-orders  [LEGACY 전체 38건, docker cp 본문(UTF-8 보존) + --data-binary]
+--> HTTP 204   ✓ 가드 통과 (전체 활성 노출 포함)
+
+## (3) 부분요청 (LEGACY 2건만) — 기대 400 → 결과 400 ✓
+
+# 참고(정직 기록): HOME_MULTI 전체요청 1차 시도가 HTTP 500 으로 났으나, 원인은 서버 버그가
+#   아니라 HOME_MULTI 노출에 한글 model_code(운임/절삭/발통세트=자재류)가 있어 Git Bash 파이프가
+#   UTF-8 멀티바이트를 0xb9 로 깨뜨린 테스트 하네스 artifact(서버 로그: JSON parse error: Invalid
+#   UTF-8 start byte 0xb9, DisplayOrderRequest[modelCode]). 실 FE 는 axios UTF-8 전송이라 무관.
+#   docker cp + --data-binary(LEGACY, 본문 바이트 보존) 재테스트 시 204 정상 → 서버 정상 확증.
+#
+# 결론: D-PCE-09 가드 = 부분→400 / 전체→204 실서버 확증. P1 fix(가드 모수 usageScope≠NONE 정렬) 반영.

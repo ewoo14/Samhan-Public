@@ -848,7 +848,8 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
      *
      * <p>FE 는 reorder 입력을 {@code usageScope !== 'NONE'} 품목으로만 구성한다. 따라서
      * HOME_MULTI 활성 노출 테이블에 NONE 품목이 남아 있어도, 노출 가능 품목(API_HOME_01,
-     * DOSCOPE_*) 전체만 보내면 204 로 통과해야 한다.
+     * DOSCOPE_*) 전체만 보내면 204 로 통과해야 한다. 노출 가능 범위는
+     * ESTIMATE/BOTH/PARTNER_ORDER 전체를 포함한다.
      */
     @Test
     void PUT_display_orders_usageScope_NONE_활성노출은_전체모수에서_제외_204() throws Exception {
@@ -859,15 +860,20 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         Product m2 = Product.seedFromSheet("표시순서 scope M2", "DOSCOPE_M2", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        Product m3 = Product.seedFromSheet("표시순서 scope PARTNER", "DOSCOPE_PO", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.PARTNER_ORDER, EstimateCategory.HOME_MULTI);
         Product none = Product.seedFromSheet("표시순서 scope NONE", "DOSCOPE_NONE", cat,
                 BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
                 ProductCategory.HOME_MULTI, UsageScope.NONE, EstimateCategory.HOME_MULTI);
         Product savedM1 = productRepository.save(m1);
         Product savedM2 = productRepository.save(m2);
+        Product savedM3 = productRepository.save(m3);
         Product savedNone = productRepository.save(none);
         persistExposure(savedM1, EstimateCategory.HOME_MULTI, 10);
         persistExposure(savedM2, EstimateCategory.HOME_MULTI, 20);
-        persistExposure(savedNone, EstimateCategory.HOME_MULTI, 30);
+        persistExposure(savedM3, EstimateCategory.HOME_MULTI, 30);
+        persistExposure(savedNone, EstimateCategory.HOME_MULTI, 40);
         productRepository.flush();
 
         mvc.perform(put("/api/v1/products/display-orders")
@@ -877,7 +883,8 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                 [
                                   {"modelCode":"DOSCOPE_M2","estimateCategory":"HOME_MULTI","displayOrder":1},
                                   {"modelCode":"DOSCOPE_M1","estimateCategory":"HOME_MULTI","displayOrder":2},
-                                  {"modelCode":"API_HOME_01","estimateCategory":"HOME_MULTI","displayOrder":3}
+                                  {"modelCode":"DOSCOPE_PO","estimateCategory":"HOME_MULTI","displayOrder":3},
+                                  {"modelCode":"API_HOME_01","estimateCategory":"HOME_MULTI","displayOrder":4}
                                 ]
                                 """))
                 .andExpect(status().isNoContent());

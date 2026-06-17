@@ -1028,7 +1028,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     modelCode: 'MOCK-NONE-ITEM',
     name: '미노출 품목 (테스트)',
     usageScope: 'NONE' as const,
-    estimateCategories: [],
+    estimateCategories: [{ category: 'HOME_MULTI', displayOrder: 999 }],
     estimateCategory: null,
     productCategory: 'SINGLE_PART',
     usageScopeManual: false,
@@ -1588,6 +1588,21 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       )
     }
     const targetCategory = [...requestCategories][0]!
+    const targetCategoryCodes = MOCK_PRODUCT_CATALOG_ROWS
+      .filter((row) => row.usageScope !== 'NONE' && exposureForCategory(row, targetCategory) != null)
+      .map((row) => row.modelCode)
+      .sort()
+    const requestCodes = [...seenModelCodes].sort()
+    if (
+      targetCategoryCodes.length !== requestCodes.length
+      || targetCategoryCodes.some((code, index) => code !== requestCodes[index])
+    ) {
+      return mockError(
+        400,
+        'INVALID_INPUT',
+        '표시 순서 일괄 갱신은 대상 견적 카테고리의 전체 활성 노출을 포함해야 합니다.',
+      )
+    }
     MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => {
       const entry = orders.find((o) => String(o.modelCode ?? '') === row.modelCode)
       if (!entry) return row
