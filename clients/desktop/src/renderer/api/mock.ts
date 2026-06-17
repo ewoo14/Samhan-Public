@@ -941,16 +941,79 @@ type MockProductCatalogRow = {
   estimateCategories: Array<{ category: string; displayOrder: number | null }>
   estimateCategory: string | null
   productCategory: string | null
+  catL: { id: string; name: string } | null
+  catM: { id: string; name: string } | null
+  catS: { id: string; name: string } | null
   usageScopeManual: boolean
   displayOrder: number | null
   releasePrice: number
   deliveryPrice: number
+  fixedDiscountRate: number | null
   hasVariableDiscount: boolean
   variableDiscountManual: boolean
   legacyDiscountFlag: boolean
   discountFlags: null
   productType: string
   componentCount: number
+}
+
+type MockClassification = {
+  id: string
+  estimateCategory: string
+  catLevel: 'L' | 'M' | 'S'
+  parentId: string | null
+  name: string
+  displayOrder: number
+  active: boolean
+}
+
+let MOCK_CLASSIFICATIONS: MockClassification[] = [
+  { id: 'cls-home-l-indoor', estimateCategory: 'HOME_MULTI', catLevel: 'L', parentId: null, name: '실내기', displayOrder: 1, active: true },
+  { id: 'cls-home-m-1way', estimateCategory: 'HOME_MULTI', catLevel: 'M', parentId: 'cls-home-l-indoor', name: '1-Way WIFI', displayOrder: 1, active: true },
+  { id: 'cls-home-s-small', estimateCategory: 'HOME_MULTI', catLevel: 'S', parentId: 'cls-home-m-1way', name: '소형', displayOrder: 1, active: true },
+  { id: 'cls-home-l-panel', estimateCategory: 'HOME_MULTI', catLevel: 'L', parentId: null, name: '판넬', displayOrder: 2, active: true },
+  { id: 'cls-home-m-panel-air', estimateCategory: 'HOME_MULTI', catLevel: 'M', parentId: 'cls-home-l-panel', name: '공기청정 WIFI', displayOrder: 1, active: true },
+  { id: 'cls-home-s-panel-round', estimateCategory: 'HOME_MULTI', catLevel: 'S', parentId: 'cls-home-m-panel-air', name: '360원형', displayOrder: 1, active: true },
+  { id: 'cls-single-l-indoor', estimateCategory: 'SINGLE_SET', catLevel: 'L', parentId: null, name: '실내기', displayOrder: 1, active: true },
+  { id: 'cls-single-m-stand', estimateCategory: 'SINGLE_SET', catLevel: 'M', parentId: 'cls-single-l-indoor', name: '스탠드형', displayOrder: 1, active: true },
+  { id: 'cls-commercial-l-outdoor', estimateCategory: 'COMMERCIAL_MULTI', catLevel: 'L', parentId: null, name: '실외기', displayOrder: 1, active: true },
+  { id: 'cls-commercial-m-prime', estimateCategory: 'COMMERCIAL_MULTI', catLevel: 'M', parentId: 'cls-commercial-l-outdoor', name: '프라임', displayOrder: 1, active: true },
+  { id: 'cls-legacy-l-old', estimateCategory: 'LEGACY', catLevel: 'L', parentId: null, name: '구형', displayOrder: 1, active: true },
+]
+
+function mockClassificationRef(id: string | null | undefined): { id: string; name: string } | null {
+  if (!id) return null
+  const found = MOCK_CLASSIFICATIONS.find((item) => item.id === id)
+  return found ? { id: found.id, name: found.name } : null
+}
+
+function mockDefaultClassificationRefs(category: string): {
+  catL: { id: string; name: string } | null
+  catM: { id: string; name: string } | null
+  catS: { id: string; name: string } | null
+} {
+  if (category === 'HOME_MULTI') {
+    return {
+      catL: mockClassificationRef('cls-home-l-indoor'),
+      catM: mockClassificationRef('cls-home-m-1way'),
+      catS: mockClassificationRef('cls-home-s-small'),
+    }
+  }
+  if (category === 'COMMERCIAL_MULTI') {
+    return {
+      catL: mockClassificationRef('cls-commercial-l-outdoor'),
+      catM: mockClassificationRef('cls-commercial-m-prime'),
+      catS: null,
+    }
+  }
+  if (category === 'SINGLE_SET') {
+    return {
+      catL: mockClassificationRef('cls-single-l-indoor'),
+      catM: mockClassificationRef('cls-single-m-stand'),
+      catS: null,
+    }
+  }
+  return { catL: null, catM: null, catS: null }
 }
 
 function deriveLegacyExposureFields(row: MockProductCatalogRow): MockProductCatalogRow {
@@ -1000,6 +1063,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     const isBundle = p.productType === 'BUNDLE'
     const primaryCategory = isBundle ? 'SINGLE_SET' : index % 2 === 0 ? 'HOME_MULTI' : 'OTHER'
     return deriveLegacyExposureFields({
+      ...mockDefaultClassificationRefs(primaryCategory),
       modelCode: p.modelName,
       name: p.productName,
       // BUNDLE(세트)은 판매 가능 품목 → 전표 라인 자동완성(usageScope=PARTNER_ORDER, BE IN-확장 {PARTNER_ORDER,BOTH})에
@@ -1017,6 +1081,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
       displayOrder: null,
       releasePrice: Number(p.sellingPrice),
       deliveryPrice: Number(p.sellingPrice),
+      fixedDiscountRate: index % 2 === 0 ? 0 : 10,
       hasVariableDiscount: false,
       variableDiscountManual: false,
       legacyDiscountFlag: false,
@@ -1033,10 +1098,14 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     estimateCategories: [{ category: 'HOME_MULTI', displayOrder: 999 }],
     estimateCategory: null,
     productCategory: 'SINGLE_PART',
+    catL: null,
+    catM: null,
+    catS: null,
     usageScopeManual: false,
     displayOrder: null,
     releasePrice: 0,
     deliveryPrice: 0,
+    fixedDiscountRate: null,
     hasVariableDiscount: false,
     variableDiscountManual: false,
     legacyDiscountFlag: false,
@@ -1051,10 +1120,14 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     estimateCategories: [],
     estimateCategory: null,
     productCategory: 'MATERIAL',
+    catL: null,
+    catM: null,
+    catS: null,
     usageScopeManual: false,
     displayOrder: null,
     releasePrice: 40000,
     deliveryPrice: 40000,
+    fixedDiscountRate: null,
     hasVariableDiscount: false,
     variableDiscountManual: false,
     legacyDiscountFlag: false,
@@ -1092,10 +1165,14 @@ function ensureMockProductCatalogRowsSeeded() {
         estimateCategories: normalizeMockExposures(row),
         estimateCategory: null,
         productCategory: row.productCategory == null ? null : String(row.productCategory),
+        catL: row.catL ?? null,
+        catM: row.catM ?? null,
+        catS: row.catS ?? null,
         usageScopeManual: Boolean(row.usageScopeManual ?? false),
         displayOrder: null,
         releasePrice: Number(row.releasePrice ?? 0),
         deliveryPrice: Number(row.deliveryPrice ?? 0),
+        fixedDiscountRate: row.fixedDiscountRate == null ? null : Number(row.fixedDiscountRate),
         hasVariableDiscount: Boolean(row.hasVariableDiscount ?? false),
         variableDiscountManual: Boolean(row.variableDiscountManual ?? false),
         legacyDiscountFlag: Boolean(row.legacyDiscountFlag ?? false),
@@ -1539,6 +1616,91 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(MOCK_PRODUCT_CATEGORIES)
   }
 
+  // GET/POST /api/v1/classifications — F1-b 분류 마스터 CRUD.
+  if (url.match(/\/api\/v1\/classifications(?:\?.*)?$/)) {
+    if (method === 'GET') {
+      const denied = mockRequirePermission('products.list', 'view')
+      if (denied) return denied
+      const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+      const estimateCategory = String(
+        config.params?.['estimateCategory'] ?? urlObj.searchParams.get('estimateCategory') ?? '',
+      )
+      const parentIdRaw = config.params?.['parentId'] ?? urlObj.searchParams.get('parentId')
+      const parentId = parentIdRaw == null || String(parentIdRaw) === '' ? null : String(parentIdRaw)
+      return MOCK_CLASSIFICATIONS
+        .filter((item) => item.estimateCategory === estimateCategory)
+        .filter((item) => (parentId == null ? item.parentId == null : item.parentId === parentId))
+        .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name, 'ko-KR'))
+    }
+    if (method === 'POST') {
+      const denied = mockRequirePermission('products.admin', 'create')
+      if (denied) return denied
+      const body = parseMockBody(config)
+      const estimateCategory = String(body['estimateCategory'] ?? '')
+      const catLevel = String(body['catLevel'] ?? 'L') as 'L' | 'M' | 'S'
+      const parentId = body['parentId'] == null ? null : String(body['parentId'])
+      const name = String(body['name'] ?? '').trim()
+      if (!estimateCategory || !name) return mockError(400, 'INVALID_INPUT', '분류명은 필수입니다.')
+      if (catLevel !== 'L' && !parentId) return mockError(400, 'INVALID_INPUT', '상위 분류는 필수입니다.')
+      const siblingOrders = MOCK_CLASSIFICATIONS
+        .filter((item) => item.estimateCategory === estimateCategory && item.catLevel === catLevel && item.parentId === parentId)
+        .map((item) => item.displayOrder)
+      const created: MockClassification = {
+        id: `cls-${estimateCategory.toLowerCase()}-${Date.now()}`,
+        estimateCategory,
+        catLevel,
+        parentId,
+        name,
+        displayOrder: body['displayOrder'] == null ? Math.max(0, ...siblingOrders) + 1 : Number(body['displayOrder']),
+        active: body['active'] == null ? true : Boolean(body['active']),
+      }
+      MOCK_CLASSIFICATIONS = [...MOCK_CLASSIFICATIONS, created]
+      return { __mockStatus: 201, body: created }
+    }
+  }
+
+  // PATCH/DELETE /api/v1/classifications/{id}
+  const classificationItemMatch = url.match(/\/api\/v1\/classifications\/([^/?]+)(?:\?.*)?$/)
+  if (classificationItemMatch) {
+    const id = decodeURIComponent(classificationItemMatch[1]!)
+    const idx = MOCK_CLASSIFICATIONS.findIndex((item) => item.id === id)
+    if (idx < 0) return mockError(404, 'NOT_FOUND', '분류를 찾을 수 없습니다.')
+    const existing = MOCK_CLASSIFICATIONS[idx]!
+
+    if (method === 'PATCH') {
+      const denied = mockRequirePermission('products.admin', 'update')
+      if (denied) return denied
+      const body = parseMockBody(config)
+      const updated: MockClassification = {
+        ...existing,
+        parentId: 'parentId' in body ? (body['parentId'] == null ? null : String(body['parentId'])) : existing.parentId,
+        name: body['name'] == null ? existing.name : String(body['name']).trim(),
+        displayOrder: body['displayOrder'] == null ? existing.displayOrder : Number(body['displayOrder']),
+        active: body['active'] == null ? existing.active : Boolean(body['active']),
+      }
+      MOCK_CLASSIFICATIONS = MOCK_CLASSIFICATIONS.map((item, i) => (i === idx ? updated : item))
+      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => ({
+        ...row,
+        catL: row.catL?.id === updated.id ? { id: updated.id, name: updated.name } : row.catL,
+        catM: row.catM?.id === updated.id ? { id: updated.id, name: updated.name } : row.catM,
+        catS: row.catS?.id === updated.id ? { id: updated.id, name: updated.name } : row.catS,
+      }))
+      return updated
+    }
+
+    if (method === 'DELETE') {
+      const denied = mockRequirePermission('products.admin', 'delete')
+      if (denied) return denied
+      const hasChild = MOCK_CLASSIFICATIONS.some((item) => item.parentId === id)
+      const used = MOCK_PRODUCT_CATALOG_ROWS.some((row) => row.catL?.id === id || row.catM?.id === id || row.catS?.id === id)
+      if (hasChild || used) {
+        return mockError(409, 'CONFLICT', '하위 분류 또는 품목에서 사용 중인 분류는 삭제할 수 없습니다.')
+      }
+      MOCK_CLASSIFICATIONS = MOCK_CLASSIFICATIONS.filter((item) => item.id !== id)
+      return { __mockStatus: 204, body: null }
+    }
+  }
+
   // PUT /api/v1/products/display-orders — 표시 순서 일괄 갱신 (드래그 후 저장)
   // 경로 우선순위: 리터럴 /display-orders 가 /{modelCode}/components 패턴보다 먼저 매칭돼야 함.
   if (method === 'PUT' && url.match(/\/api\/v1\/products\/display-orders(?:\?.*)?$/)) {
@@ -1723,6 +1885,30 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
+  // PATCH /api/v1/products/{modelCode}/classification — F1-b 품목 분류/고정DC 저장.
+  const productClassificationMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/classification(?:\?.*)?$/)
+  if (method === 'PATCH' && productClassificationMatch) {
+    const denied = mockRequirePermission('products.admin', 'update')
+    if (denied) return denied
+    ensureMockProductCatalogRowsSeeded()
+    const modelCode = decodeURIComponent(productClassificationMatch[1]!)
+    const idx = MOCK_PRODUCT_CATALOG_ROWS.findIndex((row) => row.modelCode === modelCode)
+    if (idx < 0) return mockError(404, 'NOT_FOUND', '제품을 찾을 수 없습니다')
+    const body = parseMockBody(config)
+    const fixedDiscountRateRaw = body['fixedDiscountRate']
+    const updated = {
+      ...MOCK_PRODUCT_CATALOG_ROWS[idx]!,
+      catL: mockClassificationRef(body['catLId'] == null ? null : String(body['catLId'])),
+      catM: mockClassificationRef(body['catMId'] == null ? null : String(body['catMId'])),
+      catS: mockClassificationRef(body['catSId'] == null ? null : String(body['catSId'])),
+      fixedDiscountRate: fixedDiscountRateRaw == null || String(fixedDiscountRateRaw).trim() === ''
+        ? null
+        : Number(fixedDiscountRateRaw),
+    }
+    MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) => (i === idx ? updated : row))
+    return updated
+  }
+
   // PATCH /api/v1/products/{modelCode}/usage — 수동 override 설정 (usageScopeManual=true)
   // DELETE /api/v1/products/{modelCode}/usage — 시트 자동 복귀 (usageScopeManual=false)
   // 경로 우선순위: /usage 패턴이 /specs/ 보다 먼저 위치해야 선점 회귀 방지 (#459 교훈)
@@ -1842,6 +2028,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         : []
     MOCK_PRODUCT_CATALOG_ROWS = [
       deriveLegacyExposureFields({
+        ...mockDefaultClassificationRefs(estimateCategories[0]?.category ?? ''),
         modelCode,
         name,
         usageScope,
@@ -1852,6 +2039,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         displayOrder: null,
         releasePrice: Number(body['releasePrice'] ?? body['sellingPrice'] ?? 0),
         deliveryPrice: Number(body['deliveryPrice'] ?? 0),
+        fixedDiscountRate: null,
         hasVariableDiscount: false,
         variableDiscountManual: false,
         legacyDiscountFlag: false,

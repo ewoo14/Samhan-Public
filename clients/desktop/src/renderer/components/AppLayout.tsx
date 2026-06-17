@@ -522,6 +522,7 @@ export function AppLayout() {
               '/sales/vendor-order-upload',
               '/products/catalog',
               '/products/estimate-items',
+              '/products/classifications',
               '/admin/sheet-sync',
             ]}
             exactTargets={['/sales']}
@@ -620,6 +621,13 @@ export function AppLayout() {
               data-testid="sidebar-products-estimate-items"
             >
               견적품목 관리
+            </SidebarLink>
+            <SidebarLink
+              to="/products/classifications"
+              show={showProductsList}
+              data-testid="sidebar-products-classifications"
+            >
+              분류 관리
             </SidebarLink>
             <SidebarLink
               to="/admin/sheet-sync"

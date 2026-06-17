@@ -86,6 +86,12 @@ export interface ProductCatalogRow {
   /** @deprecated BE 하위호환 파생값. 신규 코드는 estimateCategories 를 사용한다. */
   estimateCategory?: EstimateCategory | null
   productCategory: ProductCategory | null
+  /** F1-a 품목별 대분류 */
+  catL?: ClassificationRef | null
+  /** F1-a 품목별 중분류 */
+  catM?: ClassificationRef | null
+  /** F1-a 품목별 소분류 */
+  catS?: ClassificationRef | null
   /** 수동 override 여부 — true: 수동 설정, false: 시트 자동 */
   usageScopeManual: boolean
   /** @deprecated BE 하위호환 파생값. 신규 코드는 estimateCategories[].displayOrder 를 사용한다. */
@@ -94,6 +100,8 @@ export interface ProductCatalogRow {
   releasePrice: number | null
   /** 배송 단가 */
   deliveryPrice: number | null
+  /** 고정DC율(%) */
+  fixedDiscountRate?: number | string | null
   /** 변동DC 적용 여부 */
   hasVariableDiscount: boolean
   /** 변동DC 수동 override 여부 — true 이면 시트 sync 가 덮어쓰지 않는다. */
@@ -102,6 +110,44 @@ export interface ProductCatalogRow {
   productType?: ProductType
   /** 활성 구성품 수 — BUNDLE 외 0. BE 응답 없을 시 undefined */
   componentCount?: number
+}
+
+/** Classification 단계 — BE Classification.CatLevel enum 과 동일 */
+export type ClassificationLevel = 'L' | 'M' | 'S'
+
+/** 카탈로그 행 안에 포함되는 분류 표시 DTO */
+export interface ClassificationRef {
+  id: string
+  name: string
+}
+
+/** F1-a ClassificationResponse DTO */
+export interface Classification {
+  id: string
+  estimateCategory: EstimateCategory
+  catLevel: ClassificationLevel
+  parentId: string | null
+  name: string
+  displayOrder: number
+  active: boolean
+}
+
+/** POST /api/v1/classifications 요청 */
+export interface CreateClassificationRequest {
+  estimateCategory: EstimateCategory
+  catLevel: ClassificationLevel
+  parentId?: string | null
+  name: string
+  displayOrder?: number | null
+  active?: boolean | null
+}
+
+/** PATCH /api/v1/classifications/{id} 요청 */
+export interface UpdateClassificationRequest {
+  parentId?: string | null
+  name?: string | null
+  displayOrder?: number | null
+  active?: boolean | null
 }
 
 /** 카테고리 트리 노드 — BE CategoryResponse record 와 1:1 대응 */
@@ -307,6 +353,19 @@ export interface UpdateProductVariableDiscountRequest {
   hasVariableDiscount: boolean
 }
 
+/**
+ * F1-b 품목 분류/고정DC 부분 수정 요청.
+ *
+ * 주의: 현재 로컬 F1-a 소스에는 이 전용 컨트롤러 메서드가 아직 보이지 않는다.
+ * FE 호출부는 좁은 함수로 격리해 BE 경로 확정 시 한 곳만 교체한다.
+ */
+export interface UpdateProductClassificationSettingsRequest {
+  catLId: string | null
+  catMId: string | null
+  catSId: string | null
+  fixedDiscountRate: string | null
+}
+
 /** `GET /api/v1/products` 필터 파라미터 */
 export interface ListProductsParams {
   q?: string
@@ -463,6 +522,61 @@ export async function clearProductVariableDiscount(modelCode: string): Promise<v
   await apiClient.delete(
     `/api/v1/products/${encodeURIComponent(modelCode)}/variable-discount`,
   )
+}
+
+/** 분류 마스터 목록 — `GET /api/v1/classifications?estimateCategory=&parentId=`. */
+export async function listClassifications(params: {
+  estimateCategory: EstimateCategory
+  parentId?: string | null
+}): Promise<Classification[]> {
+  const res = await apiClient.get<Classification[]>('/api/v1/classifications', {
+    params: {
+      estimateCategory: params.estimateCategory,
+      ...(params.parentId ? { parentId: params.parentId } : {}),
+    },
+  })
+  return res.data
+}
+
+/** 분류 마스터 생성 — `POST /api/v1/classifications`. */
+export async function createClassification(
+  req: CreateClassificationRequest,
+): Promise<Classification> {
+  const res = await apiClient.post<Classification>('/api/v1/classifications', req)
+  return res.data
+}
+
+/** 분류 마스터 수정 — `PATCH /api/v1/classifications/{id}`. */
+export async function updateClassification(
+  id: string,
+  req: UpdateClassificationRequest,
+): Promise<Classification> {
+  const res = await apiClient.patch<Classification>(
+    `/api/v1/classifications/${encodeURIComponent(id)}`,
+    req,
+  )
+  return res.data
+}
+
+/** 분류 마스터 삭제 — `DELETE /api/v1/classifications/{id}`. */
+export async function deleteClassification(id: string): Promise<void> {
+  await apiClient.delete(`/api/v1/classifications/${encodeURIComponent(id)}`)
+}
+
+/**
+ * 품목별 분류/고정DC 수정.
+ *
+ * 로컬 F1-a 소스에는 전용 endpoint 가 아직 없어 FE 전용 격리 함수로 둔다.
+ */
+export async function updateProductClassificationSettings(
+  modelCode: string,
+  req: UpdateProductClassificationSettingsRequest,
+): Promise<ProductCatalogRow> {
+  const res = await apiClient.patch<ProductCatalogRow>(
+    `/api/v1/products/${encodeURIComponent(modelCode)}/classification`,
+    req,
+  )
+  return res.data
 }
 
 /**

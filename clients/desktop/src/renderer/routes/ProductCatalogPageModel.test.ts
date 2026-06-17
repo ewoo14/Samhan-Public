@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
+  filterClassificationsByParent,
+  nextClassificationSelection,
   nextScopeForEstimateCategoryRemoval,
   exposureDisplayOrder,
   isVariableDiscountEligible,
   normalizeEstimateCategoryExposures,
+  normalizeFixedDiscountRateInput,
   resolveEstimateItemsPageTotals,
 } from './ProductCatalogPageModel'
-import type { ProductCatalogRow } from '../api/productCatalogApi'
+import type { Classification, ProductCatalogRow } from '../api/productCatalogApi'
 
 const baseRow: ProductCatalogRow = {
   modelCode: 'AC-1000',
@@ -148,5 +151,44 @@ describe('ProductCatalogPageModel', () => {
     expect(isVariableDiscountEligible({ ...baseRow, productCategory: 'SINGLE_SET' })).toBe(false)
     expect(isVariableDiscountEligible({ ...baseRow, productCategory: 'OLD' })).toBe(false)
     expect(isVariableDiscountEligible({ ...baseRow, productCategory: null })).toBe(false)
+  })
+
+  it('분류 옵션은 부모 선택에 종속되어 해당 자식만 반환한다', () => {
+    const classifications: Classification[] = [
+      { id: 'l-panel', estimateCategory: 'HOME_MULTI', catLevel: 'L', parentId: null, name: '판넬', displayOrder: 1, active: true },
+      { id: 'm-air', estimateCategory: 'HOME_MULTI', catLevel: 'M', parentId: 'l-panel', name: '공청', displayOrder: 1, active: true },
+      { id: 'm-remote', estimateCategory: 'HOME_MULTI', catLevel: 'M', parentId: 'l-remote', name: '유선', displayOrder: 1, active: true },
+      { id: 's-round', estimateCategory: 'HOME_MULTI', catLevel: 'S', parentId: 'm-air', name: '360원형', displayOrder: 1, active: true },
+      { id: 's-hidden', estimateCategory: 'HOME_MULTI', catLevel: 'S', parentId: 'm-air', name: '비활성', displayOrder: 2, active: false },
+    ]
+
+    expect(filterClassificationsByParent(classifications, 'M', 'l-panel').map((item) => item.id)).toEqual(['m-air'])
+    expect(filterClassificationsByParent(classifications, 'S', 'm-air').map((item) => item.id)).toEqual(['s-round'])
+    expect(filterClassificationsByParent(classifications, 'S', null)).toEqual([])
+  })
+
+  it('대분류 변경은 중/소분류를 초기화하고 중분류 변경은 소분류만 초기화한다', () => {
+    expect(
+      nextClassificationSelection(
+        { catLId: 'l-old', catMId: 'm-old', catSId: 's-old' },
+        'L',
+        'l-new',
+      ),
+    ).toEqual({ catLId: 'l-new', catMId: null, catSId: null })
+
+    expect(
+      nextClassificationSelection(
+        { catLId: 'l-new', catMId: 'm-old', catSId: 's-old' },
+        'M',
+        'm-new',
+      ),
+    ).toEqual({ catLId: 'l-new', catMId: 'm-new', catSId: null })
+  })
+
+  it('고정DC 입력은 빈 값 null, 숫자는 소수 2자리 문자열로 정규화한다', () => {
+    expect(normalizeFixedDiscountRateInput('')).toBeNull()
+    expect(normalizeFixedDiscountRateInput(' 12.345 ')).toBe('12.35')
+    expect(normalizeFixedDiscountRateInput('-1')).toBeNull()
+    expect(normalizeFixedDiscountRateInput('abc')).toBeNull()
   })
 })

@@ -56,6 +56,7 @@ import {
   updateDisplayOrders,
   updateBundleComponents,
   updateProductUsage,
+  updateProductClassificationSettings,
   updateProductVariableDiscount,
   type BundleComponentInput,
   type ComponentKind,
@@ -63,6 +64,10 @@ import {
   type ProductCatalogRow,
   type UsageScope,
 } from '../api/productCatalogApi'
+import {
+  listClassifications,
+  type Classification,
+} from '../api/classificationApi'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePermissions } from '../hooks/usePermissions'
 import { usePageTitleStore } from '../stores/pageTitle'
@@ -70,10 +75,14 @@ import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
   exposureDisplayOrder,
+  filterClassificationsByParent,
   isVariableDiscountEligible,
+  nextClassificationSelection,
   nextScopeForEstimateCategoryRemoval,
   normalizeEstimateCategoryExposures,
+  normalizeFixedDiscountRateInput,
   resolveEstimateItemsPageTotals,
+  type ClassificationSelection,
 } from './ProductCatalogPageModel'
 import {
   buildBundleComponentInputs,
@@ -133,6 +142,18 @@ function fromUsageScope(scope: UsageScope): { estimate: boolean; order: boolean 
     estimate: scope === 'ESTIMATE' || scope === 'BOTH',
     order: scope === 'PARTNER_ORDER' || scope === 'BOTH',
   }
+}
+
+async function fetchClassificationTree(estimateCategory: EstimateCategory): Promise<Classification[]> {
+  const roots = await listClassifications({ estimateCategory })
+  const midsByRoot = await Promise.all(
+    roots.map((root) => listClassifications({ estimateCategory, parentId: root.id })),
+  )
+  const mids = midsByRoot.flat()
+  const subsByMid = await Promise.all(
+    mids.map((mid) => listClassifications({ estimateCategory, parentId: mid.id })),
+  )
+  return [...roots, ...mids, ...subsByMid.flat()]
 }
 
 function errorMsg(err: unknown): string {
@@ -245,6 +266,150 @@ function VariableDiscountCell({
         변동DC
       </label>
     </span>
+  )
+}
+
+interface ClassificationCellProps {
+  row: ProductCatalogRow
+  classifications: Classification[]
+  canEdit: boolean
+  onPatch: (modelCode: string, selection: ClassificationSelection, fixedDiscountRate: string | null) => void
+  patchLoading: boolean
+}
+
+function ClassificationCell({
+  row,
+  classifications,
+  canEdit,
+  onPatch,
+  patchLoading,
+}: ClassificationCellProps) {
+  const selection: ClassificationSelection = {
+    catLId: row.catL?.id ?? null,
+    catMId: row.catM?.id ?? null,
+    catSId: row.catS?.id ?? null,
+  }
+  const fixedRate = row.fixedDiscountRate == null ? null : String(row.fixedDiscountRate)
+  const catLOptions = filterClassificationsByParent(classifications, 'L', null)
+  const catMOptions = filterClassificationsByParent(classifications, 'M', selection.catLId)
+  const catSOptions = filterClassificationsByParent(classifications, 'S', selection.catMId)
+
+  const handleChange = (level: 'L' | 'M' | 'S', value: string) => {
+    const next = nextClassificationSelection(selection, level, value || null)
+    onPatch(row.modelCode, next, normalizeFixedDiscountRateInput(fixedRate ?? ''))
+  }
+
+  return (
+    <div style={classificationCellStyle} data-testid={`estimate-items-classification-${row.modelCode}`}>
+      <Select
+        value={selection.catLId ?? ''}
+        disabled={!canEdit || patchLoading}
+        onChange={(e) => handleChange('L', e.target.value)}
+        data-testid={`estimate-items-cat-l-${row.modelCode}`}
+        selectSize="sm"
+        fullWidth={false}
+        aria-label="대분류"
+        style={classificationSelectStyle}
+      >
+        <option value="">대분류</option>
+        {catLOptions.map((item) => (
+          <option key={item.id} value={item.id}>{item.name}</option>
+        ))}
+      </Select>
+      <Select
+        value={selection.catMId ?? ''}
+        disabled={!canEdit || patchLoading || !selection.catLId}
+        onChange={(e) => handleChange('M', e.target.value)}
+        data-testid={`estimate-items-cat-m-${row.modelCode}`}
+        selectSize="sm"
+        fullWidth={false}
+        aria-label="중분류"
+        style={classificationSelectStyle}
+      >
+        <option value="">중분류</option>
+        {catMOptions.map((item) => (
+          <option key={item.id} value={item.id}>{item.name}</option>
+        ))}
+      </Select>
+      <Select
+        value={selection.catSId ?? ''}
+        disabled={!canEdit || patchLoading || !selection.catMId}
+        onChange={(e) => handleChange('S', e.target.value)}
+        data-testid={`estimate-items-cat-s-${row.modelCode}`}
+        selectSize="sm"
+        fullWidth={false}
+        aria-label="소분류"
+        style={classificationSelectStyle}
+      >
+        <option value="">소분류</option>
+        {catSOptions.map((item) => (
+          <option key={item.id} value={item.id}>{item.name}</option>
+        ))}
+      </Select>
+    </div>
+  )
+}
+
+interface FixedDiscountCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onPatch: (modelCode: string, selection: ClassificationSelection, fixedDiscountRate: string | null) => void
+  patchLoading: boolean
+}
+
+function FixedDiscountCell({
+  row,
+  canEdit,
+  onPatch,
+  patchLoading,
+}: FixedDiscountCellProps) {
+  const initial = row.fixedDiscountRate == null ? '' : String(row.fixedDiscountRate)
+  const [value, setValue] = useState(initial)
+
+  useEffect(() => {
+    setValue(initial)
+  }, [initial])
+
+  const save = () => {
+    const normalized = normalizeFixedDiscountRateInput(value)
+    const current = row.fixedDiscountRate == null
+      ? null
+      : normalizeFixedDiscountRateInput(String(row.fixedDiscountRate))
+    if (normalized === current) return
+    onPatch(
+      row.modelCode,
+      {
+        catLId: row.catL?.id ?? null,
+        catMId: row.catM?.id ?? null,
+        catSId: row.catS?.id ?? null,
+      },
+      normalized,
+    )
+  }
+
+  return (
+    <div style={fixedDiscountCellStyle}>
+      <Input
+        type="number"
+        min="0"
+        step="0.01"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur()
+          }
+        }}
+        disabled={!canEdit || patchLoading}
+        data-testid={`estimate-items-fixed-dc-${row.modelCode}`}
+        aria-label="고정DC율"
+        inputSize="sm"
+        fullWidth={false}
+        style={{ width: 74 }}
+      />
+      <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>%</span>
+    </div>
   )
 }
 
@@ -892,6 +1057,12 @@ export function EstimateItemsCatalogPage() {
     staleTime: 30_000,
   })
 
+  const classificationsQuery = useQuery({
+    queryKey: ['classifications-tree', committedCategory],
+    queryFn: () => fetchClassificationTree(committedCategory),
+    staleTime: 30_000,
+  })
+
   const rawRows = listQuery.data?.content ?? []
   const rows = rawRows.filter((row) => row.usageScope !== 'NONE')
 
@@ -937,6 +1108,32 @@ export function EstimateItemsCatalogPage() {
       modelCode: string
       hasVariableDiscount: boolean
     }) => updateProductVariableDiscount(modelCode, hasVariableDiscount),
+    onSuccess: () => {
+      setMutationError(null)
+      setPatchingCode(null)
+      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
+      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+    },
+    onError: (err) => {
+      setMutationError(errorMsg(err))
+      setPatchingCode(null)
+    },
+  })
+
+  const classificationSettingsMutation = useMutation({
+    mutationFn: ({
+      modelCode,
+      selection,
+      fixedDiscountRate,
+    }: {
+      modelCode: string
+      selection: ClassificationSelection
+      fixedDiscountRate: string | null
+    }) =>
+      updateProductClassificationSettings(modelCode, {
+        ...selection,
+        fixedDiscountRate,
+      }),
     onSuccess: () => {
       setMutationError(null)
       setPatchingCode(null)
@@ -1021,6 +1218,15 @@ export function EstimateItemsCatalogPage() {
       variableDiscountMutation.mutate({ modelCode, hasVariableDiscount })
     },
     [variableDiscountMutation],
+  )
+
+  const handleClassificationSettingsPatch = useCallback(
+    (modelCode: string, selection: ClassificationSelection, fixedDiscountRate: string | null) => {
+      setPatchingCode(modelCode)
+      setMutationError(null)
+      classificationSettingsMutation.mutate({ modelCode, selection, fixedDiscountRate })
+    },
+    [classificationSettingsMutation],
   )
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -1138,6 +1344,20 @@ export function EstimateItemsCatalogPage() {
       width: '220px',
     },
     {
+      key: 'catL',
+      header: '분류',
+      width: '330px',
+      render: (row) => (
+        <ClassificationCell
+          row={row}
+          classifications={classificationsQuery.data ?? []}
+          canEdit={canEdit}
+          onPatch={handleClassificationSettingsPatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
+    },
+    {
       key: 'estimateCategory',
       header: '카테고리',
       width: '280px',
@@ -1172,6 +1392,19 @@ export function EstimateItemsCatalogPage() {
           row={row}
           canEdit={canEdit}
           onVariableDiscountPatch={handleVariableDiscountPatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
+    },
+    {
+      key: 'fixedDiscountRate',
+      header: '고정DC%',
+      width: '110px',
+      render: (row) => (
+        <FixedDiscountCell
+          row={row}
+          canEdit={canEdit}
+          onPatch={handleClassificationSettingsPatch}
           patchLoading={patchingCode === row.modelCode}
         />
       ),
@@ -1615,6 +1848,25 @@ const categoryChipRemoveStyle: CSSProperties = {
 }
 
 const variableDiscountGroupStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+}
+
+const classificationCellStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(92px, 1fr) minmax(92px, 1fr) minmax(92px, 1fr)',
+  gap: 4,
+  alignItems: 'center',
+  minWidth: 300,
+}
+
+const classificationSelectStyle: CSSProperties = {
+  minWidth: 92,
+  maxWidth: 120,
+}
+
+const fixedDiscountCellStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,

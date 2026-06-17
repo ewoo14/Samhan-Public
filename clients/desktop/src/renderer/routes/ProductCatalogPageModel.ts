@@ -1,4 +1,6 @@
 import type {
+  Classification,
+  ClassificationLevel,
   DisplayOrderInput,
   EstimateCategory,
   EstimateCategoryExposure,
@@ -75,4 +77,53 @@ export function resolveEstimateItemsPageTotals(page: PageTotals | null | undefin
 /** 변동DC 수동 토글은 멀티 카탈로그 품목에만 노출한다. */
 export function isVariableDiscountEligible(row: ProductCatalogRow): boolean {
   return row.productCategory === 'HOME_MULTI' || row.productCategory === 'COMMERCIAL_MULTI'
+}
+
+export interface ClassificationSelection {
+  catLId: string | null
+  catMId: string | null
+  catSId: string | null
+}
+
+/** 부모 분류에 종속되는 활성 자식 분류만 displayOrder/name 순으로 반환한다. */
+export function filterClassificationsByParent(
+  classifications: Classification[],
+  catLevel: ClassificationLevel,
+  parentId: string | null,
+): Classification[] {
+  if (catLevel !== 'L' && !parentId) return []
+  return classifications
+    .filter((item) =>
+      item.active &&
+      item.catLevel === catLevel &&
+      (catLevel === 'L' ? item.parentId == null : item.parentId === parentId),
+    )
+    .sort((a, b) => {
+      const orderDiff = a.displayOrder - b.displayOrder
+      return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name, 'ko-KR')
+    })
+}
+
+/** 대→중→소 종속 선택. 상위 변경 시 하위 선택을 즉시 무효화한다. */
+export function nextClassificationSelection(
+  current: ClassificationSelection,
+  level: ClassificationLevel,
+  selectedId: string | null,
+): ClassificationSelection {
+  if (level === 'L') {
+    return { catLId: selectedId, catMId: null, catSId: null }
+  }
+  if (level === 'M') {
+    return { ...current, catMId: selectedId, catSId: null }
+  }
+  return { ...current, catSId: selectedId }
+}
+
+/** 고정DC% 입력값을 BE 전송용 numeric 문자열로 정규화한다. */
+export function normalizeFixedDiscountRateInput(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return parsed.toFixed(2)
 }
