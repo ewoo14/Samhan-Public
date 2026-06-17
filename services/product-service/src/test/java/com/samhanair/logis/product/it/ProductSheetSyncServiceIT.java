@@ -239,6 +239,37 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     @Test
+    void sync_GAS_singleSet_화면분류기와_catL_catM_분류가_일치한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "평형", "모델명", "단위", "출고가", "수량", "납품가", "납품가", "소계"),
+                row("360 CST UV", "15", "SS_PARITY_360", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-"),
+                row("무풍 4way 냉난방 프레스티지", "30", "SS_PARITY_4WAY", "SET", "3,000,000", "", "2,100,000", "2,100,000", "-"),
+                row("무풍 1way 냉난방", "18", "SS_PARITY_1WAY", "SET", "2,100,000", "", "1,260,000", "1,260,000", "-"),
+                row("비스포크 스탠드(콰이엇 그레이)", "25", "SS_PARITY_BESPOKE", "SET", "2,500,000", "", "1,800,000", "1,800,000", "-"),
+                row("24년형 가정용 에어컨 무풍갤러리", "18", "SS_PARITY_HOME", "SET", "2,200,000", "", "1,500,000", "1,500,000", "-")
+        ));
+
+        syncService.syncAll();
+
+        assertSingleClassification("SS_PARITY_360", "360", "CST UV");
+        assertSingleClassification("SS_PARITY_4WAY", "4way 냉난방", "프레스티지");
+        assertSingleClassification("SS_PARITY_1WAY", "1way 냉난방", "");
+        assertSingleClassification("SS_PARITY_BESPOKE", "비스포크 스탠드", "콰이엇 그레이");
+        assertSingleClassification("SS_PARITY_HOME", "가정용 에어컨", "무풍갤러리");
+
+        List<Product> singleSets = productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.SINGLE_SET);
+        assertThat(singleSets)
+                .as("싱글 세트 대표 품목은 홈멀티 fallback 부자재로 쏠리면 안 된다")
+                .noneSatisfy(product -> assertThat(product.getCatL())
+                        .extracting(Classification::getName)
+                        .isEqualTo("부자재"));
+        assertThat(singleSets.stream().map(product -> product.getCatL().getName()).distinct().count())
+                .as("싱글 세트 catL 분포")
+                .isGreaterThan(1);
+    }
+
+    @Test
     void sync_상업멀티구성은_구글시트_F열_납품가를_그대로_읽는다() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티 구성_단가인상!A1:Z")).thenReturn(rows(
@@ -1141,6 +1172,17 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         return exposureRepository.findByProductIdAndEstimateCategoryAndIsDeletedFalse(product.getId(), category)
                 .orElseThrow()
                 .getDisplayOrder();
+    }
+
+    private void assertSingleClassification(String modelCode, String catL, String catM) {
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse(modelCode).orElseThrow();
+        assertThat(product.getCatL()).extracting(Classification::getName).isEqualTo(catL);
+        if (catM == null || catM.isBlank()) {
+            assertThat(product.getCatM()).isNull();
+        } else {
+            assertThat(product.getCatM()).extracting(Classification::getName).isEqualTo(catM);
+        }
+        assertThat(product.getCatS()).isNull();
     }
 
     private static List<Object> row(Object... vals) {

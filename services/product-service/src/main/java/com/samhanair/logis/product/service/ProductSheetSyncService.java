@@ -1544,6 +1544,10 @@ public class ProductSheetSyncService {
                 || productCategory == ProductCategory.COMMERCIAL_PART) {
             return classifyCommercial(name, modelCode);
         }
+        if (productCategory == ProductCategory.SINGLE_SET
+                || productCategory == ProductCategory.SINGLE_PART) {
+            return classifySingleSet(name, modelCode);
+        }
         return classifyHome(name);
     }
 
@@ -1601,6 +1605,86 @@ public class ProductSheetSyncService {
         else if (matches(n, "유연호스")) catM = "유연호스";
         else catM = "기타";
         return new ClassificationNames("부자재", catM, "");
+    }
+
+    private static ClassificationNames classifySingleSet(String name, String modelCode) {
+        // GAS classifySingleSetFixed(s) parity: BE 호출 계약에는 spec 이 없어 name/model 결합만 사용한다.
+        String hay = ((name == null ? "" : name) + " " + (modelCode == null ? "" : modelCode))
+                .toLowerCase(java.util.Locale.ROOT);
+        String model = modelCode == null ? "" : modelCode.trim();
+        if (matches(model, "^ADP-F075SP$")) {
+            return new ClassificationNames("부자재", "", "");
+        }
+
+        boolean isCoolOnly = matches(hay, "냉방전용|냉전");
+        boolean isHeatCool = matches(hay, "냉난방");
+        String catL = "기타";
+        String catM = "";
+
+        if (matches(hay, "발통|일자발|받침")) {
+            catL = "실외기 받침";
+        } else if (matches(hay, "360|cst")) {
+            catL = "360";
+            if (matches(hay, "cst\\s*uv|uv")) catM = "CST UV";
+        } else if (matches(hay, "4\\s*way|4way")) {
+            if (isHeatCool) catL = "4way 냉난방";
+            else if (isCoolOnly) catL = "4way 냉방전용";
+            if (catL.equals("4way 냉난방")) {
+                if (matches(hay, "프레스티지")) catM = "프레스티지";
+                else if (matches(hay, "프리미엄|디럭스")) catM = "프리미엄/디럭스";
+                else if (matches(hay, "1\\s*등급")) catM = "1등급";
+            }
+        } else if (matches(hay, "1\\s*way|1way")) {
+            if (isHeatCool) catL = "1way 냉난방";
+            else if (isCoolOnly) catL = "1way 냉방전용";
+        } else if (matches(hay, "덕트|duct")) {
+            catL = "덕트";
+        } else if (matches(hay, "실링")) {
+            catL = "실링";
+        } else if (matches(hay, "스탠드")) {
+            if (matches(hay, "비스포크")) {
+                catL = "비스포크 스탠드";
+                if (matches(hay, "콰이엇\\s*그레이")) catM = "콰이엇 그레이";
+                else if (matches(hay, "세이지\\s*블루")) catM = "세이지 블루";
+                else if (matches(hay, "프라임\\s*핑크")) catM = "프라임 핑크";
+            } else if (isHeatCool) {
+                catL = "냉난방 스탠드";
+                if (matches(hay, "프레스티지")) catM = "프레스티지";
+                else if (matches(hay, "프리미엄|디럭스")) catM = "프리미엄/디럭스";
+                else if (matches(hay, "1\\s*등급")) catM = "1등급";
+            } else if (isCoolOnly) {
+                catL = "냉전 스탠드";
+                if (matches(hay, "프레스티지")) catM = "프레스티지";
+            }
+        } else if (matches(hay, "벽걸이")) {
+            if (isHeatCool) {
+                catL = "냉난방 벽걸이";
+                if (matches(hay, "무풍")) catM = "무풍";
+            } else if (isCoolOnly) {
+                catL = "냉전 벽걸이";
+                catM = matches(hay, "무풍") ? "무풍" : "일반";
+            }
+        } else if (matches(hay, "가정용")) {
+            boolean isPro = matches(hay,
+                    "무풍\\s*콤보\\s*갤러리\\s*프로|콤보\\s*갤러리\\s*프로|"
+                            + "무풍\\s*ai\\s*콤보\\s*프로|ai\\s*콤보\\s*프로");
+            boolean isGallery = matches(hay, "무풍갤러리");
+            boolean isClassic = matches(hay, "무풍클래식");
+            boolean isQ9000 = matches(hay, "q9000");
+
+            catL = "가정용 에어컨";
+            if (isPro) catM = "무풍콤보 갤러리프로";
+            else if (isQ9000) catM = "Q9000";
+            else if (isClassic) catM = "무풍클래식";
+            else if (isGallery) catM = "무풍갤러리";
+            else catM = "24년형";
+        }
+
+        if (catL.equals("기타") && matches(hay,
+                "kit|키트|중계기|리모컨|유연호스|드레인펌프|유선보드|board|보드|멀티\\s*wifi")) {
+            catL = "부자재";
+        }
+        return new ClassificationNames(unifyCatL(catL), catM, "");
     }
 
     private static ClassificationNames classifyCommercial(String name, String modelCode) {
@@ -1690,6 +1774,11 @@ public class ProductSheetSyncService {
             catL = "부자재";
         }
         return new ClassificationNames(catL, catM, catS);
+    }
+
+    private static String unifyCatL(String catL) {
+        String normalized = catL == null ? "" : catL.trim();
+        return normalized.equals("부자재2") ? "부자재" : normalized;
     }
 
     private static boolean matches(String value, String regex) {

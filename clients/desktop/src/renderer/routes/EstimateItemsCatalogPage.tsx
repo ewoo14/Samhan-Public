@@ -272,7 +272,7 @@ interface VariableDiscountCellProps {
   patchLoading: boolean
 }
 
-function VariableDiscountCell({
+export function VariableDiscountCell({
   row,
   canEdit,
   onVariableDiscountPatch,
@@ -285,7 +285,7 @@ function VariableDiscountCell({
   return (
     <span style={variableDiscountGroupStyle}>
       <label
-        style={checkboxLabelStyle}
+        style={variableDiscountCheckboxLabelStyle}
         title="변동DC: 전역할인율 영향 없이 기초 납품가 그대로 표시"
       >
         <input
@@ -296,7 +296,6 @@ function VariableDiscountCell({
           data-testid={`estimate-items-vdc-toggle-${row.modelCode}`}
           aria-label="변동DC"
         />
-        변동DC
       </label>
     </span>
   )
@@ -2016,9 +2015,16 @@ const categoryChipRemoveStyle: CSSProperties = {
 }
 
 const variableDiscountGroupStyle: CSSProperties = {
-  display: 'inline-flex',
+  display: 'flex',
   alignItems: 'center',
-  gap: 4,
+  justifyContent: 'center',
+  width: '100%',
+}
+
+const variableDiscountCheckboxLabelStyle: CSSProperties = {
+  ...checkboxLabelStyle,
+  justifyContent: 'center',
+  gap: 0,
 }
 
 const fixedDiscountCellStyle: CSSProperties = {
