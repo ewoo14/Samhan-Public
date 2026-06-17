@@ -45,7 +45,6 @@ import {
   Modal,
   ProductAutocomplete,
   Select,
-  TagChip,
   type DataTableColumn,
   type ProductOption,
 } from '@samhan/design-system'
@@ -172,9 +171,6 @@ function ToggleCell({
 }: ToggleCellProps) {
   const { estimate, order } = fromUsageScope(row.usageScope)
   const selectedCategories = estimateCategoryValues(row)
-  const remainingOptions = ESTIMATE_CATEGORY_OPTIONS.filter(
-    (opt) => !selectedCategories.includes(opt.value),
-  )
   const showVariableDiscount = isVariableDiscountEligible(row)
 
   const handleEstimateChange = (checked: boolean) => {
@@ -190,30 +186,9 @@ function ToggleCell({
     onPatch(row.modelCode, newScope, nextCategories)
   }
 
-  const handleCategoryAdd = (value: string) => {
-    if (!value) return
-    const category = value as EstimateCategory
-    if (selectedCategories.includes(category)) return
-    onPatch(row.modelCode, row.usageScope, [...selectedCategories, category])
-  }
-
-  const handleCategoryRemove = (category: EstimateCategory) => {
-    const nextCategories = selectedCategories.filter((current) => current !== category)
-    const nextScope = nextCategories.length === 0
-      ? nextScopeForEstimateCategoryRemoval(row.usageScope)
-      : row.usageScope
-    onPatch(
-      row.modelCode,
-      nextScope,
-      nextCategories,
-    )
-  }
-
   const handleVariableDiscountChange = (checked: boolean) => {
     onVariableDiscountPatch(row.modelCode, checked)
   }
-
-  const showEstimateCategory = estimate && (row.usageScope === 'ESTIMATE' || row.usageScope === 'BOTH')
 
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -239,40 +214,6 @@ function ToggleCell({
         />
         주문 노출
       </label>
-      {showEstimateCategory ? (
-        <div
-          data-testid={`estimate-items-estimate-category-${row.modelCode}`}
-          style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}
-        >
-          {normalizeEstimateCategoryExposures(row).map((exposure) => (
-            <TagChip
-              key={exposure.category}
-              label={ESTIMATE_CATEGORY_LABEL[exposure.category]}
-              value={exposure.displayOrder != null ? String(exposure.displayOrder) : '—'}
-              removeLabel={ESTIMATE_CATEGORY_LABEL[exposure.category]}
-              onRemove={canEdit && !patchLoading ? () => handleCategoryRemove(exposure.category) : undefined}
-              data-testid={`estimate-items-estimate-category-${row.modelCode}-chip-${exposure.category}`}
-            />
-          ))}
-          {remainingOptions.length > 0 ? (
-            <Select
-              value=""
-              disabled={!canEdit || patchLoading}
-              onChange={(e) => handleCategoryAdd(e.target.value)}
-              data-testid={`estimate-items-estimate-category-${row.modelCode}-add`}
-              selectSize="sm"
-              fullWidth={false}
-              aria-label="견적 카테고리 추가"
-              style={{ minWidth: 112 }}
-            >
-              <option value="">카테고리 추가</option>
-              {remainingOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
-          ) : null}
-        </div>
-      ) : null}
       {showVariableDiscount ? (
         <span style={variableDiscountGroupStyle}>
           <label
@@ -290,6 +231,97 @@ function ToggleCell({
             변동DC
           </label>
         </span>
+      ) : null}
+    </div>
+  )
+}
+
+interface CategoryCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onPatch: (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => void
+  patchLoading: boolean
+}
+
+function CategoryCell({
+  row,
+  canEdit,
+  onPatch,
+  patchLoading,
+}: CategoryCellProps) {
+  const { estimate } = fromUsageScope(row.usageScope)
+  const selectedCategories = estimateCategoryValues(row)
+  const remainingOptions = ESTIMATE_CATEGORY_OPTIONS.filter(
+    (opt) => !selectedCategories.includes(opt.value),
+  )
+  const showEstimateCategory = estimate && (row.usageScope === 'ESTIMATE' || row.usageScope === 'BOTH')
+
+  const handleCategoryAdd = (value: string) => {
+    if (!value) return
+    const category = value as EstimateCategory
+    if (selectedCategories.includes(category)) return
+    onPatch(row.modelCode, row.usageScope, [...selectedCategories, category])
+  }
+
+  const handleCategoryRemove = (category: EstimateCategory) => {
+    const nextCategories = selectedCategories.filter((current) => current !== category)
+    const nextScope = nextCategories.length === 0
+      ? nextScopeForEstimateCategoryRemoval(row.usageScope)
+      : row.usageScope
+    onPatch(
+      row.modelCode,
+      nextScope,
+      nextCategories,
+    )
+  }
+
+  if (!showEstimateCategory) {
+    return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+  }
+
+  return (
+    <div
+      data-testid={`estimate-items-estimate-category-${row.modelCode}`}
+      style={categoryCellStyle}
+    >
+      {normalizeEstimateCategoryExposures(row).map((exposure) => {
+        const label = ESTIMATE_CATEGORY_LABEL[exposure.category]
+        return (
+          <span
+            key={exposure.category}
+            style={categoryChipStyle}
+            data-testid={`estimate-items-estimate-category-${row.modelCode}-chip-${exposure.category}`}
+          >
+            <span>{label}</span>
+            {canEdit && !patchLoading ? (
+              <button
+                type="button"
+                aria-label={`${label} 제거`}
+                onClick={() => handleCategoryRemove(exposure.category)}
+                style={categoryChipRemoveStyle}
+              >
+                x
+              </button>
+            ) : null}
+          </span>
+        )
+      })}
+      {remainingOptions.length > 0 ? (
+        <Select
+          value=""
+          disabled={!canEdit || patchLoading}
+          onChange={(e) => handleCategoryAdd(e.target.value)}
+          data-testid={`estimate-items-estimate-category-${row.modelCode}-add`}
+          selectSize="sm"
+          fullWidth={false}
+          aria-label="견적 카테고리 추가"
+          style={{ minWidth: 112 }}
+        >
+          <option value="">카테고리 추가</option>
+          {remainingOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </Select>
       ) : null}
     </div>
   )
@@ -1096,28 +1128,20 @@ export function EstimateItemsCatalogPage() {
     {
       key: 'estimateCategory',
       header: '카테고리',
-      width: '220px',
-      render: (row) => {
-        const exposures = normalizeEstimateCategoryExposures(row)
-        return (
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-            {exposures.length > 0 ? (
-              exposures.map((entry) => (
-                <Badge key={entry.category} variant="brand">
-                  {ESTIMATE_CATEGORY_LABEL[entry.category]}
-                </Badge>
-              ))
-            ) : (
-              <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
-            )}
-          </div>
-        )
-      },
+      width: '280px',
+      render: (row) => (
+        <CategoryCell
+          row={row}
+          canEdit={canEdit}
+          onPatch={handlePatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
     },
     {
       key: 'usageScope',
       header: '노출 설정',
-      width: '360px',
+      width: '260px',
       render: (row) => (
         <ToggleCell
           row={row}
@@ -1531,6 +1555,39 @@ const checkboxLabelStyle: CSSProperties = {
   color: 'var(--color-neutral-700, #363D49)',
   cursor: 'pointer',
   userSelect: 'none',
+}
+
+const categoryCellStyle: CSSProperties = {
+  display: 'flex',
+  gap: 4,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+}
+
+const categoryChipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '2px 6px',
+  border: '1px solid var(--color-primary-200, #BFDBFE)',
+  borderRadius: 999,
+  background: 'var(--color-primary-50, #EFF6FF)',
+  color: 'var(--color-primary-700, #1D4ED8)',
+  fontSize: 12,
+  fontWeight: 600,
+  lineHeight: 1.4,
+  whiteSpace: 'nowrap',
+}
+
+const categoryChipRemoveStyle: CSSProperties = {
+  appearance: 'none',
+  border: 0,
+  background: 'transparent',
+  color: 'inherit',
+  cursor: 'pointer',
+  padding: '0 1px',
+  fontSize: 12,
+  lineHeight: 1,
 }
 
 const variableDiscountGroupStyle: CSSProperties = {
