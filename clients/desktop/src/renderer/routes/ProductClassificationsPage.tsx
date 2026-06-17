@@ -16,6 +16,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import {
+  Badge,
   Button,
   DataTable,
   Input,
@@ -89,6 +90,19 @@ function parentLevel(level: ClassificationLevel): ClassificationLevel | null {
   return null
 }
 
+function TreeNodeLabel({ item }: { item: Classification }) {
+  return (
+    <span style={treeNodeLabelStyle}>
+      <span>{item.name}</span>
+      {!item.active ? (
+        <Badge variant="neutral" data-testid={`classification-tree-node-${item.id}-inactive-badge`}>
+          중지
+        </Badge>
+      ) : null}
+    </span>
+  )
+}
+
 export function ProductClassificationsPage() {
   const setPageTitle = usePageTitleStore((s) => s.setPageTitle)
   const queryClient = useQueryClient()
@@ -123,9 +137,9 @@ export function ProductClassificationsPage() {
   const selectedChildLevel = selected ? childLevel(selected.catLevel) : null
   const selectedChildren = selected
     ? selectedChildLevel
-      ? filterClassificationsByParent(classifications, selectedChildLevel, selected.id)
+      ? filterClassificationsByParent(classifications, selectedChildLevel, selected.id, { activeOnly: false })
       : []
-    : filterClassificationsByParent(classifications, 'L', null)
+    : filterClassificationsByParent(classifications, 'L', null, { activeOnly: false })
 
   useEffect(() => {
     if (!selected) {
@@ -150,7 +164,7 @@ export function ProductClassificationsPage() {
     const level = parentLevel(newLevel)
     if (!level) return []
     return classifications
-      .filter((item) => item.active && item.catLevel === level)
+      .filter((item) => item.catLevel === level)
       .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name, 'ko-KR'))
   }, [classifications, newLevel])
 
@@ -159,7 +173,7 @@ export function ProductClassificationsPage() {
     const level = parentLevel(selected.catLevel)
     if (!level) return []
     return classifications
-      .filter((item) => item.active && item.catLevel === level)
+      .filter((item) => item.catLevel === level)
       .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name, 'ko-KR'))
   }, [classifications, selected])
 
@@ -240,6 +254,11 @@ export function ProductClassificationsPage() {
       key: 'name',
       header: '분류명',
       width: '180px',
+      render: (row) => (
+        <span style={row.active ? undefined : inactiveTextStyle}>
+          {row.name}
+        </span>
+      ),
     },
     {
       key: 'displayOrder',
@@ -251,7 +270,11 @@ export function ProductClassificationsPage() {
       key: 'active',
       header: '상태',
       width: '70px',
-      render: (row) => row.active ? '사용' : '중지',
+      render: (row) => (
+        <Badge variant={row.active ? 'success' : 'neutral'} data-testid={`classification-active-badge-${row.id}`}>
+          {row.active ? '사용' : '중지'}
+        </Badge>
+      ),
     },
     {
       key: '_actions' as const,
@@ -325,35 +348,48 @@ export function ProductClassificationsPage() {
         <aside style={treePanelStyle} data-testid="classification-tree">
           <div style={panelHeaderStyle}>분류 트리</div>
           {treeQuery.isLoading ? <p style={mutedStyle}>불러오는 중…</p> : null}
-          {filterClassificationsByParent(classifications, 'L', null).map((catL) => (
+          {filterClassificationsByParent(classifications, 'L', null, { activeOnly: false }).map((catL) => (
             <div key={catL.id} style={treeGroupStyle}>
               <button
                 type="button"
-                style={{ ...treeButtonStyle, ...(selectedId === catL.id ? treeButtonSelectedStyle : {}) }}
+                style={{
+                  ...treeButtonStyle,
+                  ...(!catL.active ? inactiveTreeButtonStyle : {}),
+                  ...(selectedId === catL.id ? treeButtonSelectedStyle : {}),
+                }}
                 onClick={() => setSelectedId(catL.id)}
                 data-testid={`classification-tree-node-${catL.id}`}
               >
-                {catL.name}
+                <TreeNodeLabel item={catL} />
               </button>
-              {filterClassificationsByParent(classifications, 'M', catL.id).map((catM) => (
+              {filterClassificationsByParent(classifications, 'M', catL.id, { activeOnly: false }).map((catM) => (
                 <div key={catM.id} style={treeChildStyle}>
                   <button
                     type="button"
-                    style={{ ...treeButtonStyle, ...(selectedId === catM.id ? treeButtonSelectedStyle : {}) }}
+                    style={{
+                      ...treeButtonStyle,
+                      ...(!catM.active ? inactiveTreeButtonStyle : {}),
+                      ...(selectedId === catM.id ? treeButtonSelectedStyle : {}),
+                    }}
                     onClick={() => setSelectedId(catM.id)}
                     data-testid={`classification-tree-node-${catM.id}`}
                   >
-                    {catM.name}
+                    <TreeNodeLabel item={catM} />
                   </button>
-                  {filterClassificationsByParent(classifications, 'S', catM.id).map((catS) => (
+                  {filterClassificationsByParent(classifications, 'S', catM.id, { activeOnly: false }).map((catS) => (
                     <button
                       key={catS.id}
                       type="button"
-                      style={{ ...treeButtonStyle, ...treeGrandChildStyle, ...(selectedId === catS.id ? treeButtonSelectedStyle : {}) }}
+                      style={{
+                        ...treeButtonStyle,
+                        ...treeGrandChildStyle,
+                        ...(!catS.active ? inactiveTreeButtonStyle : {}),
+                        ...(selectedId === catS.id ? treeButtonSelectedStyle : {}),
+                      }}
                       onClick={() => setSelectedId(catS.id)}
                       data-testid={`classification-tree-node-${catS.id}`}
                     >
-                      {catS.name}
+                      <TreeNodeLabel item={catS} />
                     </button>
                   ))}
                 </div>
@@ -629,6 +665,11 @@ const treeButtonStyle: CSSProperties = {
   fontSize: 12,
 }
 
+const inactiveTreeButtonStyle: CSSProperties = {
+  color: 'var(--color-neutral-400, #9CA3AF)',
+  background: 'var(--color-neutral-50, #F7F8FA)',
+}
+
 const treeButtonSelectedStyle: CSSProperties = {
   borderColor: 'var(--color-primary-200, #BFDBFE)',
   background: 'var(--color-primary-50, #EFF6FF)',
@@ -638,6 +679,18 @@ const treeButtonSelectedStyle: CSSProperties = {
 
 const treeGrandChildStyle: CSSProperties = {
   marginLeft: 14,
+}
+
+const treeNodeLabelStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  width: '100%',
+}
+
+const inactiveTextStyle: CSSProperties = {
+  color: 'var(--color-neutral-400, #9CA3AF)',
 }
 
 const smallIconButtonStyle: CSSProperties = {

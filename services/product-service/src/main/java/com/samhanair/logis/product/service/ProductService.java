@@ -464,7 +464,7 @@ public class ProductService {
         return product;
     }
 
-    /** 품목별 L/M/S 분류와 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
+    /** 품목별 L/M/S 분류와 0~100 percent 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
     public Product updateClassificationAndFixedDiscount(String modelCode,
                                                         UpdateProductClassificationRequest req) {
         Product product = loadByModelCodeOrThrow(modelCode);

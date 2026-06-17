@@ -41,6 +41,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -145,6 +146,7 @@ public class ProductCatalogController {
      */
     @GetMapping("/products")
     @RequirePermission(page = "products.list", action = PermissionAction.VIEW)
+    @Transactional(readOnly = true)
     public Page<ProductCatalogResponse> listProducts(
             @RequestParam(required = false) UsageScope usageScope,
             @RequestParam(required = false, name = "category") EstimateCategory estimateCategory,
@@ -215,6 +217,7 @@ public class ProductCatalogController {
      */
     @PatchMapping("/products/{modelCode}/usage")
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
     public ProductCatalogResponse changeUsage(@PathVariable @NotBlank String modelCode,
                                               @Valid @RequestBody UpdateProductUsageRequest req) {
         Product product = productService.updateUsageAndReturn(modelCode, req);
@@ -255,6 +258,7 @@ public class ProductCatalogController {
      */
     @PatchMapping("/products/{modelCode}/variable-discount")
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
     public ProductCatalogResponse changeVariableDiscount(@PathVariable @NotBlank String modelCode,
                                                          @Valid @RequestBody UpdateProductVariableDiscountRequest req) {
         Product product = productService.updateVariableDiscountAndReturn(modelCode, req);
@@ -264,9 +268,10 @@ public class ProductCatalogController {
         return response;
     }
 
-    /** 품목별 L/M/S 분류와 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
+    /** 품목별 L/M/S 분류와 0~100 percent 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
     @PatchMapping("/products/{modelCode}/classification")
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
     public ProductCatalogResponse changeClassification(@PathVariable @NotBlank String modelCode,
                                                        @Valid @RequestBody UpdateProductClassificationRequest req) {
         Product product = productService.updateClassificationAndFixedDiscount(modelCode, req);

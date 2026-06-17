@@ -85,16 +85,18 @@ export interface ClassificationSelection {
   catSId: string | null
 }
 
-/** 부모 분류에 종속되는 활성 자식 분류만 displayOrder/name 순으로 반환한다. */
+/** 부모 분류에 종속되는 자식 분류를 displayOrder/name 순으로 반환한다. */
 export function filterClassificationsByParent(
   classifications: Classification[],
   catLevel: ClassificationLevel,
   parentId: string | null,
+  options: { activeOnly?: boolean } = {},
 ): Classification[] {
   if (catLevel !== 'L' && !parentId) return []
+  const activeOnly = options.activeOnly ?? true
   return classifications
     .filter((item) =>
-      item.active &&
+      (!activeOnly || item.active) &&
       item.catLevel === catLevel &&
       (catLevel === 'L' ? item.parentId == null : item.parentId === parentId),
     )
@@ -102,6 +104,25 @@ export function filterClassificationsByParent(
       const orderDiff = a.displayOrder - b.displayOrder
       return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name, 'ko-KR')
     })
+}
+
+/** 견적품목 행에는 분류 전체 편집 UI 대신 한 줄 요약만 노출한다. */
+export function formatClassificationPath(row: ProductCatalogRow): {
+  pathText: string
+  fixedDiscountText: string
+} {
+  const path = [row.catL?.name, row.catM?.name, row.catS?.name]
+    .filter((value): value is string => Boolean(value && value.trim()))
+  const fixedRate = row.fixedDiscountRate == null || String(row.fixedDiscountRate).trim() === ''
+    ? null
+    : Number(row.fixedDiscountRate)
+
+  return {
+    pathText: path.length > 0 ? path.join(' > ') : '미설정',
+    fixedDiscountText: fixedRate == null || !Number.isFinite(fixedRate)
+      ? '-'
+      : `${fixedRate.toFixed(2)}%`,
+  }
 }
 
 /** 대→중→소 종속 선택. 상위 변경 시 하위 선택을 즉시 무효화한다. */
@@ -125,5 +146,5 @@ export function normalizeFixedDiscountRateInput(value: string): string | null {
   if (!trimmed) return null
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed) || parsed < 0) return null
-  return parsed.toFixed(2)
+  return Math.min(parsed, 100).toFixed(2)
 }

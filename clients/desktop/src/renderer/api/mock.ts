@@ -1896,14 +1896,21 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (idx < 0) return mockError(404, 'NOT_FOUND', '제품을 찾을 수 없습니다')
     const body = parseMockBody(config)
     const fixedDiscountRateRaw = body['fixedDiscountRate']
+    const fixedDiscountRate = fixedDiscountRateRaw == null || String(fixedDiscountRateRaw).trim() === ''
+      ? null
+      : Number(fixedDiscountRateRaw)
+    if (
+      fixedDiscountRate != null &&
+      (!Number.isFinite(fixedDiscountRate) || fixedDiscountRate < 0 || fixedDiscountRate > 100)
+    ) {
+      return mockError(400, 'INVALID_INPUT', '고정DC율은 0~100 범위여야 합니다.')
+    }
     const updated = {
       ...MOCK_PRODUCT_CATALOG_ROWS[idx]!,
       catL: mockClassificationRef(body['catLId'] == null ? null : String(body['catLId'])),
       catM: mockClassificationRef(body['catMId'] == null ? null : String(body['catMId'])),
       catS: mockClassificationRef(body['catSId'] == null ? null : String(body['catSId'])),
-      fixedDiscountRate: fixedDiscountRateRaw == null || String(fixedDiscountRateRaw).trim() === ''
-        ? null
-        : Number(fixedDiscountRateRaw),
+      fixedDiscountRate,
     }
     MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) => (i === idx ? updated : row))
     return updated

@@ -30,6 +30,7 @@ import com.samhanair.logis.product.service.ProductService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -934,6 +935,54 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(synced)
                 .as("GAS 규칙 대상 row 는 catL 0-분류가 없어야 한다")
                 .allSatisfy(product -> assertThat(product.getCatL()).isNotNull());
+    }
+
+    /**
+     * [[spec-sync-full-db-distribution-check]]
+     * F1-a GAS parity — 실 카탈로그 수준 다건 픽스처의 카테고리별 0-분류 분포 가드.
+     *
+     * <p>분류 정규식이 대량 회귀하면 특정 카테고리 전체가 {@code catL IS NULL} 로 손상된다.
+     * GAS 기대 분포는 견적 카탈로그 3종 모두 0건이다.
+     */
+    @Test
+    void sync_GAS_다건_카탈로그_카테고리별_catL_0분류_분포를_검증한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("공기청정 WIFI 판넬", "HM_PANEL_WIFI", "", "100,000", "", "80,000", "12.5%"),
+                row("실외기 단배관", "HM_ODU_SINGLE", "", "200,000", "", "160,000", ""),
+                row("벽걸이 실내기 소형", "HM_INDOOR_WALL", "", "300,000", "", "240,000", "0"),
+                row("리모컨 유선", "HM_REMOTE", "", "40,000", "", "30,000", "")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "평형", "모델명", "단위", "출고가", "수량", "납품가", "납품가", "소계"),
+                row("360 CST UV 세트", "15", "SS_360_UV", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-"),
+                row("1-Way WIFI 내장 세트", "18", "SS_1WAY_WIFI", "SET", "2,100,000", "", "1,260,000", "1,260,000", "-"),
+                row("벽걸이 실내기 세트", "6", "SS_WALL", "SET", "900,000", "", "600,000", "600,000", "-"),
+                row("분기관 패키지", "", "SS_BRANCH", "SET", "100,000", "", "70,000", "70,000", "-")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "단위", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("DVM S2 프라임 8HP 실외기", "AM080AXVHHH1_DIST", "대", "", "8,012,400", "", "4,406,820", ""),
+                row("DUCT 고정압 실내기", "AM120BNHDCH1_DIST", "EA", "", "1,000,000", "", "700,000", "0"),
+                row("상업용 전열교환기", "ERV_COMM_DIST", "EA", "", "2,000,000", "", "1,400,000", ""),
+                row("분기관 세트", "COMM_BRANCH_DIST", "EA", "", "80,000", "", "60,000", "")
+        ));
+
+        syncService.syncAll();
+
+        Map<ProductCategory, Long> expectedNullCatLCounts = Map.of(
+                ProductCategory.HOME_MULTI, 0L,
+                ProductCategory.SINGLE_SET, 0L,
+                ProductCategory.COMMERCIAL_MULTI, 0L);
+        expectedNullCatLCounts.forEach((category, expected) -> {
+            long actual = productRepository.findByProductCategoryAndIsDeletedFalse(category).stream()
+                    .filter(product -> product.getCatL() == null)
+                    .count();
+            assertThat(actual)
+                    .as("%s GAS catL IS NULL(0-분류) 분포", category)
+                    .isEqualTo(expected);
+        });
     }
 
     /**
