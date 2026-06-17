@@ -970,6 +970,8 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         org.assertj.core.api.Assertions.assertThat(product.getCatM().getId()).isEqualTo(catM.getId());
         org.assertj.core.api.Assertions.assertThat(product.getCatS().getId()).isEqualTo(catS.getId());
         org.assertj.core.api.Assertions.assertThat(product.getFixedDiscountRate()).isEqualByComparingTo("12.50");
+        org.assertj.core.api.Assertions.assertThat(product.isClassificationManual()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(product.isFixedDiscountManual()).isTrue();
     }
 
     @Test
@@ -993,6 +995,26 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                   "fixedDiscountRate":null
                                 }
                                 """.formatted(catL.getId(), catM.getId())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void PATCH_classification_중지분류는_400() throws Exception {
+        Classification inactive = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.L, null, "중지 분류", 1, false));
+        classificationRepository.flush();
+
+        mvc.perform(patch("/api/v1/products/API_HOME_01/classification")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "catLId":"%s",
+                                  "catMId":null,
+                                  "catSId":null,
+                                  "fixedDiscountRate":"10"
+                                }
+                                """.formatted(inactive.getId())))
                 .andExpect(status().isBadRequest());
     }
 

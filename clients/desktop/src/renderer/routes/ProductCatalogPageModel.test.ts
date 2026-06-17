@@ -223,7 +223,7 @@ describe('ProductCatalogPageModel', () => {
   it('고정DC 입력은 빈 값 null, 숫자는 소수 2자리 문자열로 정규화한다', () => {
     expect(normalizeFixedDiscountRateInput('')).toBeNull()
     expect(normalizeFixedDiscountRateInput(' 12.345 ')).toBe('12.35')
-    expect(normalizeFixedDiscountRateInput('150')).toBe('100.00')
+    expect(normalizeFixedDiscountRateInput('150')).toBeNull()
     expect(normalizeFixedDiscountRateInput('-1')).toBeNull()
     expect(normalizeFixedDiscountRateInput('abc')).toBeNull()
   })

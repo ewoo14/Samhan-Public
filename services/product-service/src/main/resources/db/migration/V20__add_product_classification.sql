@@ -52,16 +52,20 @@ CREATE INDEX IF NOT EXISTS ix_classification_parent_order_active
 ALTER TABLE products
     ADD COLUMN IF NOT EXISTS cat_l_id UUID REFERENCES classification(id),
     ADD COLUMN IF NOT EXISTS cat_m_id UUID REFERENCES classification(id),
-    ADD COLUMN IF NOT EXISTS cat_s_id UUID REFERENCES classification(id);
+    ADD COLUMN IF NOT EXISTS cat_s_id UUID REFERENCES classification(id),
+    ADD COLUMN IF NOT EXISTS classification_manual BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS fixed_discount_manual BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- 기존 비율(0~1, NUMERIC(5,4))을 %(0~100)로 변환 + 타입 확장을 동시에 수행한다.
+-- UPDATE ×100 후 ALTER 순서는 NUMERIC(5,4)에서 0.5×100=50 > max 9.9999 numeric overflow가 나므로,
+-- ALTER ... USING 으로 타입 확장과 ×100 변환을 한 번에 적용해 overflow를 회피한다.
 ALTER TABLE products
-    ALTER COLUMN fixed_discount_rate TYPE NUMERIC(5,2);
-
-UPDATE products
-   SET fixed_discount_rate = fixed_discount_rate * 100
- WHERE fixed_discount_rate IS NOT NULL
-   AND fixed_discount_rate > 0
-   AND fixed_discount_rate <= 1;
+    ALTER COLUMN fixed_discount_rate TYPE NUMERIC(5,2)
+    USING (CASE
+        WHEN fixed_discount_rate IS NOT NULL AND fixed_discount_rate > 0 AND fixed_discount_rate <= 1
+        THEN fixed_discount_rate * 100
+        ELSE fixed_discount_rate
+    END);
 
 DO $$
 BEGIN

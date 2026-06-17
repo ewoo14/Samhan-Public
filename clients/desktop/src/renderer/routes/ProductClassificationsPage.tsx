@@ -509,7 +509,11 @@ export function ProductClassificationsPage() {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => deleteMutation.mutate()}
+                      onClick={() => {
+                        if (window.confirm('선택한 분류를 삭제할까요?')) {
+                          deleteMutation.mutate()
+                        }
+                      }}
                       loading={deleteMutation.isPending}
                       disabled={deleteMutation.isPending}
                       data-testid="classification-detail-delete"

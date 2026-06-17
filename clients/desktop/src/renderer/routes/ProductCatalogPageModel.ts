@@ -145,6 +145,6 @@ export function normalizeFixedDiscountRateInput(value: string): string | null {
   const trimmed = value.trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
-  if (!Number.isFinite(parsed) || parsed < 0) return null
-  return Math.min(parsed, 100).toFixed(2)
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return null
+  return parsed.toFixed(2)
 }

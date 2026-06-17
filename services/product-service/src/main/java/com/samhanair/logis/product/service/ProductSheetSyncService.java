@@ -1213,10 +1213,13 @@ public class ProductSheetSyncService {
                         p.changeUsage(mapping.usageScope);
                     }
                     if (!p.isVariableDiscountManual()) {
-                        p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
+                        BigDecimal nextFixedRate = p.isFixedDiscountManual() ? p.getFixedDiscountRate() : fixedRate;
+                        p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, nextFixedRate);
                         p.changeDiscountFlags(discountFlags);
                     }
-                    p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
+                    if (!p.isClassificationManual()) {
+                        p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
+                    }
                     applyPyongSize(p, mapping, cells);
                 }
                 productRepository.save(p);

@@ -473,8 +473,8 @@ public class ProductService {
         Classification catS = loadClassification(req.catSId(), Classification.CatLevel.S, "소분류");
         validateClassificationTree(product, catL, catM, catS);
 
-        product.changeClassifications(catL, catM, catS);
-        product.changeFixedDiscountRate(parseFixedDiscountRate(req.fixedDiscountRate()));
+        product.markClassificationManual(catL, catM, catS);
+        product.markFixedDiscountManual(parseFixedDiscountRate(req.fixedDiscountRate()));
 
         String evictKey = product.getModelCode();
         if (evictKey != null) {
@@ -542,6 +542,10 @@ public class ProductService {
         if (classification.getCatLevel() != expectedLevel) {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
                     label + " 분류 단계가 올바르지 않습니다");
+        }
+        if (!classification.isActive()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "중지된 " + label + " 분류는 품목에 지정할 수 없습니다");
         }
         return classification;
     }
