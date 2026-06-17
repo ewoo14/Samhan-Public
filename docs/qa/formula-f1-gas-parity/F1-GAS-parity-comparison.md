@@ -101,3 +101,19 @@ GAS `종합견적서-live/index.html` 1:1 포팅(`parseFixedDc`/`explodeSetParts
 ## 검증 상태 (고정DC% 인라인 + 변동DC)
 - 고정DC% 인라인 자동저장 실QA **5/5 PASS** (`docs/qa/formula-f1-inline-dc/`): 인라인 컬럼·blur 자동저장 PATCH 200·reload persist·null 원복·분류모달 catL/M/S 전용
 - 변동DC 행 텍스트 제거(체크박스만): typecheck ✅ + vitest **23 passed**
+
+## 시뮬레이션 실증 (전 카테고리, 실 DB)
+종합견적서/주문서 계산·분류 함수를 GAS와 **동일 입력으로 실제 실행** 비교 (`qa-gas-parity-sim.mjs`).
+
+### 종합견적서 (estimate-app ↔ GAS) — 차이 0
+- 실 **811품목**(홈멀티 119 + 상업멀티 404 + 싱글 288): 분류 **0 불일치**, 단가 5함수(`parseFixedDc`/`homeUnitPrice`/`singleUnitPrice`/`commUnitPrice`/`explodeSetParts`) **byte-identical**
+- divergence: `classifySingleSetLM_` 입력 결합(name OR model → name+model) **fix 완료**(GAS `Code.js:449` 정합)
+- `explodeSetParts` specs 메타 2줄: 사양 표시용 의도 확장(가격 무영향 → 유지)
+- **실앱 캡처**(`docs/qa/formula-f1-estimate-app/`): 홈멀티 119행·싱글 1185행(세트+구성품)·상업멀티 332행 실 DB 렌더(빈 화면 원인=인증게이트 이메일, config 교정)
+
+### 주문서 (order-app ↔ GAS) — 단가 차이 0 / 표시는 F6 대기
+- 실 **1116품목**: 단가 **0 불일치**, 단가 5함수 **byte-identical**
+- **가정용 연식 세분 + useK2 미발화 = 주문서 DB 적용(F6) 영역** → 별도 PR. 현재 order-app은 `BootstrapService`가 product_db 미연결(Sheets SA키 없음 + seed 빈) + gateway 401 → 품목 0행
+
+### 분류 소스 실화면 (desktop, `docs/qa/formula-f1-categories/`)
+- 홈멀티(실외기/실내기)·상업멀티(실외기 프라임)·싱글(360/가정용) — 부자재 0, GAS 분류 복원

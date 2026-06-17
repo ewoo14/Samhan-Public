@@ -486,7 +486,7 @@ function classifyHome_(rawName) {
  * estimate-legacy/lib/code.js 기준 (1:1 포팅) — name+model 텍스트 매칭.
  */
 function classifySingleSetLM_(s) {
-  const t = String((s && s.name) || (s && s.model) || s || '').toLowerCase();
+  const t = String(((s && s.name) || '') + ' ' + ((s && s.model) || '')).toLowerCase();
   let L = 'acc';
   if (/360\s*cst|360cst|360/.test(t)) L = '360';
   else if (/4\s*way|4way/.test(t)) L = '4w';
