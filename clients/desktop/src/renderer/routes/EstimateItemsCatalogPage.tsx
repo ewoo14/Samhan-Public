@@ -65,7 +65,9 @@ import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
   exposureDisplayOrder,
+  nextScopeForEstimateCategoryRemoval,
   normalizeEstimateCategoryExposures,
+  resolveEstimateItemsPageTotals,
 } from './ProductCatalogPageModel'
 
 const DISPLAY_ORDER_FULL_SIZE = 999
@@ -165,10 +167,14 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
   }
 
   const handleCategoryRemove = (category: EstimateCategory) => {
+    const nextCategories = selectedCategories.filter((current) => current !== category)
+    const nextScope = nextCategories.length === 0
+      ? nextScopeForEstimateCategoryRemoval(row.usageScope)
+      : row.usageScope
     onPatch(
       row.modelCode,
-      row.usageScope,
-      selectedCategories.filter((current) => current !== category),
+      nextScope,
+      nextCategories,
     )
   }
 
@@ -514,9 +520,7 @@ export function EstimateItemsCatalogPage() {
     return checked.filter((product): product is ProductOption => product != null)
   }, [committedCategory])
 
-  const hasClientFilteredRows = rows.length !== rawRows.length
-  const totalElements = hasClientFilteredRows ? rows.length : (listQuery.data?.totalElements ?? 0)
-  const totalPages = hasClientFilteredRows ? 1 : (listQuery.data?.totalPages ?? 1)
+  const { totalElements, totalPages } = resolveEstimateItemsPageTotals(listQuery.data)
   const selectedProductCode = selectedProduct
     ? selectedProduct.modelCode ?? selectedProduct.modelName
     : ''

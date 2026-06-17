@@ -303,10 +303,10 @@ test('4. usage 노출 토글 — 노출 설정 토글 변경 PATCH 200 → 원�
 
   // 실 BUNDLE 행 검색(usage=BOTH 시작 → 견적/주문 둘 다 checked)
   const searchInput = page
-    .locator('[data-testid="product-catalog-search-input"] input, input[data-testid="product-catalog-search-input"]')
+    .locator('[data-testid="estimate-items-search-input"] input, input[data-testid="estimate-items-search-input"]')
     .first()
   await searchInput.fill(BUNDLE_CODE)
-  await page.locator('[data-testid="product-catalog-query-button"]').click()
+  await page.locator('[data-testid="estimate-items-query-button"]').click()
 
   // 백업 — 현재 usageScope/estimateCategory (원복용)
   const beforeRes = await page.request.get(`${API_BASE}/api/v1/products`, {

@@ -3,6 +3,7 @@ import type {
   EstimateCategory,
   EstimateCategoryExposure,
   ProductCatalogRow,
+  UsageScope,
 } from '../api/productCatalogApi'
 
 /** 신규 M:N 노출 배열을 우선 사용하고, 과거 단일 필드는 하위호환 fallback 으로만 쓴다. */
@@ -46,4 +47,27 @@ export function buildCategoryDisplayOrderInputs(
       estimateCategory: category,
       displayOrder: idx + 1,
     }))
+}
+
+/** 마지막 견적 카테고리 제거 시 usageScope 에서 견적 노출 성분을 제거한다. */
+export function nextScopeForEstimateCategoryRemoval(scope: UsageScope): UsageScope {
+  if (scope === 'BOTH') return 'PARTNER_ORDER'
+  if (scope === 'ESTIMATE') return 'NONE'
+  return scope
+}
+
+interface PageTotals {
+  totalElements?: number
+  totalPages?: number
+}
+
+/** 견적품목 목록은 현재 페이지의 client-side NONE 제외와 무관하게 서버 페이지 정보를 유지한다. */
+export function resolveEstimateItemsPageTotals(page: PageTotals | null | undefined): {
+  totalElements: number
+  totalPages: number
+} {
+  return {
+    totalElements: page?.totalElements ?? 0,
+    totalPages: page?.totalPages ?? 1,
+  }
 }

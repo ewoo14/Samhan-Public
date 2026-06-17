@@ -249,7 +249,7 @@ test('T5: warehouse 역할 — 품목관리 접근 결과 캡처', async ({ page
     console.log('[T5] PASS: warehouse 역할 → 품목관리 접근 거부 (redirect)')
   } else {
     // (B) 접근 가능 분기 — 조회 전용 배너 + 첫 토글 비활성을 강제 단언.
-    const readOnlyBanner = page.locator('[data-testid="product-catalog-readonly-banner"]')
+    const readOnlyBanner = page.locator('[data-testid="estimate-items-readonly-banner"]')
     await expect(
       readOnlyBanner,
       'warehouse 접근 가능 시 조회 전용 배너가 보여야 함',
