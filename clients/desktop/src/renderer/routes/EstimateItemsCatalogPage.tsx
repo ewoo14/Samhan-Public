@@ -158,7 +158,6 @@ interface ToggleCellProps {
   row: ProductCatalogRow
   canEdit: boolean
   onPatch: (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => void
-  onVariableDiscountPatch: (modelCode: string, hasVariableDiscount: boolean) => void
   patchLoading: boolean
 }
 
@@ -166,12 +165,10 @@ function ToggleCell({
   row,
   canEdit,
   onPatch,
-  onVariableDiscountPatch,
   patchLoading,
 }: ToggleCellProps) {
   const { estimate, order } = fromUsageScope(row.usageScope)
   const selectedCategories = estimateCategoryValues(row)
-  const showVariableDiscount = isVariableDiscountEligible(row)
 
   const handleEstimateChange = (checked: boolean) => {
     const newScope = toUsageScope(checked, order)
@@ -184,10 +181,6 @@ function ToggleCell({
       ? selectedCategories
       : []
     onPatch(row.modelCode, newScope, nextCategories)
-  }
-
-  const handleVariableDiscountChange = (checked: boolean) => {
-    onVariableDiscountPatch(row.modelCode, checked)
   }
 
   return (
@@ -214,25 +207,44 @@ function ToggleCell({
         />
         주문 노출
       </label>
-      {showVariableDiscount ? (
-        <span style={variableDiscountGroupStyle}>
-          <label
-            style={checkboxLabelStyle}
-            title="변동DC: 전역할인율 영향 없이 기초 납품가 그대로 표시"
-          >
-            <input
-              type="checkbox"
-              checked={row.hasVariableDiscount}
-              disabled={!canEdit || patchLoading}
-              onChange={(e) => handleVariableDiscountChange(e.target.checked)}
-              data-testid={`estimate-items-vdc-toggle-${row.modelCode}`}
-              aria-label="변동DC"
-            />
-            변동DC
-          </label>
-        </span>
-      ) : null}
     </div>
+  )
+}
+
+interface VariableDiscountCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onVariableDiscountPatch: (modelCode: string, hasVariableDiscount: boolean) => void
+  patchLoading: boolean
+}
+
+function VariableDiscountCell({
+  row,
+  canEdit,
+  onVariableDiscountPatch,
+  patchLoading,
+}: VariableDiscountCellProps) {
+  if (!isVariableDiscountEligible(row)) {
+    return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+  }
+
+  return (
+    <span style={variableDiscountGroupStyle}>
+      <label
+        style={checkboxLabelStyle}
+        title="변동DC: 전역할인율 영향 없이 기초 납품가 그대로 표시"
+      >
+        <input
+          type="checkbox"
+          checked={row.hasVariableDiscount}
+          disabled={!canEdit || patchLoading}
+          onChange={(e) => onVariableDiscountPatch(row.modelCode, e.target.checked)}
+          data-testid={`estimate-items-vdc-toggle-${row.modelCode}`}
+          aria-label="변동DC"
+        />
+        변동DC
+      </label>
+    </span>
   )
 }
 
@@ -1141,12 +1153,24 @@ export function EstimateItemsCatalogPage() {
     {
       key: 'usageScope',
       header: '노출 설정',
-      width: '260px',
+      width: '190px',
       render: (row) => (
         <ToggleCell
           row={row}
           canEdit={canEdit}
           onPatch={handlePatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
+    },
+    {
+      key: 'hasVariableDiscount',
+      header: '변동DC',
+      width: '100px',
+      render: (row) => (
+        <VariableDiscountCell
+          row={row}
+          canEdit={canEdit}
           onVariableDiscountPatch={handleVariableDiscountPatch}
           patchLoading={patchingCode === row.modelCode}
         />
@@ -1381,7 +1405,7 @@ export function EstimateItemsCatalogPage() {
                       {sortableRows.length === 0 && !listQuery.isFetching ? (
                         <tr>
                           <td
-                            colSpan={columns.length + 1}
+                            colSpan={columns.filter((c) => c.key !== '_drag').length + 1}
                             style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--color-neutral-400)', fontSize: 13 }}
                           >
                             노출 중인 견적품목이 없습니다. 기초품목을 선택해 현재 카테고리에 추가하세요.
