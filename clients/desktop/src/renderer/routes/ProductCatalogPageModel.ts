@@ -71,3 +71,8 @@ export function resolveEstimateItemsPageTotals(page: PageTotals | null | undefin
     totalPages: page?.totalPages ?? 1,
   }
 }
+
+/** 변동DC 수동 토글은 멀티 카탈로그 품목에만 노출한다. */
+export function isVariableDiscountEligible(row: ProductCatalogRow): boolean {
+  return row.productCategory === 'HOME_MULTI' || row.productCategory === 'COMMERCIAL_MULTI'
+}

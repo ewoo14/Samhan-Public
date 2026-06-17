@@ -24,6 +24,7 @@ import com.samhanair.logis.product.web.dto.ProductCatalogResponse;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.SpecKeyTemplateResponse;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
+import com.samhanair.logis.product.web.dto.UpdateProductVariableDiscountRequest;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import jakarta.validation.Valid;
@@ -68,6 +69,8 @@ import org.springframework.web.bind.annotation.RestController;
  *     <li>GET /api/v1/products?usageScope&amp;category — products.list VIEW</li>
  *     <li>PATCH /api/v1/products/{code}/usage — products.admin UPDATE</li>
  *     <li>DELETE /api/v1/products/{code}/usage — products.admin UPDATE</li>
+ *     <li>PATCH /api/v1/products/{code}/variable-discount — products.admin UPDATE</li>
+ *     <li>DELETE /api/v1/products/{code}/variable-discount — products.admin UPDATE</li>
  *     <li>GET /api/v1/products/{code}/specs — products.list VIEW</li>
  *     <li>POST /api/v1/products/{code}/specs — products.admin CREATE</li>
  *     <li>PATCH /api/v1/products/{code}/specs/{id} — products.admin UPDATE</li>
@@ -236,6 +239,42 @@ public class ProductCatalogController {
         productService.clearUsageOverride(modelCode);
         // §2-2 실시간 publish — usage DELETE 성공 시 카탈로그 목록 invalidate 트리거
         // P3-1: ProductCatalogChangePublisher 단일 경로 통일 (트랜잭션 종료 후 발화)
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+    }
+
+    /**
+     * 품목 변동DC 수동 override 설정 (V19, 2026-06-17).
+     *
+     * <p>hasVariableDiscount 를 변경하고 {@code variableDiscountManual=true} 를 마킹한다.
+     * 이후 시트 sync 가 이 품목의 변동DC 값을 덮어쓰지 않는다.
+     *
+     * @param modelCode 수동 override 대상 품목의 모델코드 (카탈로그 노출 식별자)
+     * @param req       새 변동DC 적용 여부
+     * @return 갱신된 카탈로그 응답 (variableDiscountManual=true 포함)
+     */
+    @PatchMapping("/products/{modelCode}/variable-discount")
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    public ProductCatalogResponse changeVariableDiscount(@PathVariable @NotBlank String modelCode,
+                                                         @Valid @RequestBody UpdateProductVariableDiscountRequest req) {
+        Product product = productService.updateVariableDiscountAndReturn(modelCode, req);
+        ProductCatalogResponse response = ProductCatalogResponse.from(
+                product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+        return response;
+    }
+
+    /**
+     * 품목 변동DC 수동 override 해제 (V19, 2026-06-17).
+     *
+     * <p>{@code variableDiscountManual=false} 로 복귀. 다음 시트 sync 에서 시트 기준으로 재적재된다.
+     *
+     * @param modelCode override 해제 대상 품목의 모델코드 (카탈로그 노출 식별자)
+     */
+    @DeleteMapping("/products/{modelCode}/variable-discount")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    public void clearVariableDiscount(@PathVariable @NotBlank String modelCode) {
+        productService.clearVariableDiscountOverride(modelCode);
         catalogChangePublisher.publishCatalogChanged(modelCode);
     }
 

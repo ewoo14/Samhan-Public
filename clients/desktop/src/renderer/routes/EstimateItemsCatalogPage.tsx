@@ -45,7 +45,6 @@ import {
   Modal,
   ProductAutocomplete,
   Select,
-  TagChip,
   type DataTableColumn,
   type ProductOption,
 } from '@samhan/design-system'
@@ -57,6 +56,7 @@ import {
   updateDisplayOrders,
   updateBundleComponents,
   updateProductUsage,
+  updateProductVariableDiscount,
   type BundleComponentInput,
   type ComponentKind,
   type EstimateCategory,
@@ -70,6 +70,7 @@ import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
   exposureDisplayOrder,
+  isVariableDiscountEligible,
   nextScopeForEstimateCategoryRemoval,
   normalizeEstimateCategoryExposures,
   resolveEstimateItemsPageTotals,
@@ -160,12 +161,14 @@ interface ToggleCellProps {
   patchLoading: boolean
 }
 
-function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
+function ToggleCell({
+  row,
+  canEdit,
+  onPatch,
+  patchLoading,
+}: ToggleCellProps) {
   const { estimate, order } = fromUsageScope(row.usageScope)
   const selectedCategories = estimateCategoryValues(row)
-  const remainingOptions = ESTIMATE_CATEGORY_OPTIONS.filter(
-    (opt) => !selectedCategories.includes(opt.value),
-  )
 
   const handleEstimateChange = (checked: boolean) => {
     const newScope = toUsageScope(checked, order)
@@ -179,27 +182,6 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
       : []
     onPatch(row.modelCode, newScope, nextCategories)
   }
-
-  const handleCategoryAdd = (value: string) => {
-    if (!value) return
-    const category = value as EstimateCategory
-    if (selectedCategories.includes(category)) return
-    onPatch(row.modelCode, row.usageScope, [...selectedCategories, category])
-  }
-
-  const handleCategoryRemove = (category: EstimateCategory) => {
-    const nextCategories = selectedCategories.filter((current) => current !== category)
-    const nextScope = nextCategories.length === 0
-      ? nextScopeForEstimateCategoryRemoval(row.usageScope)
-      : row.usageScope
-    onPatch(
-      row.modelCode,
-      nextScope,
-      nextCategories,
-    )
-  }
-
-  const showEstimateCategory = estimate && (row.usageScope === 'ESTIMATE' || row.usageScope === 'BOTH')
 
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -225,39 +207,133 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
         />
         주문 노출
       </label>
-      {showEstimateCategory ? (
-        <div
-          data-testid={`estimate-items-estimate-category-${row.modelCode}`}
-          style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}
+    </div>
+  )
+}
+
+interface VariableDiscountCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onVariableDiscountPatch: (modelCode: string, hasVariableDiscount: boolean) => void
+  patchLoading: boolean
+}
+
+function VariableDiscountCell({
+  row,
+  canEdit,
+  onVariableDiscountPatch,
+  patchLoading,
+}: VariableDiscountCellProps) {
+  if (!isVariableDiscountEligible(row)) {
+    return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+  }
+
+  return (
+    <span style={variableDiscountGroupStyle}>
+      <label
+        style={checkboxLabelStyle}
+        title="변동DC: 전역할인율 영향 없이 기초 납품가 그대로 표시"
+      >
+        <input
+          type="checkbox"
+          checked={row.hasVariableDiscount}
+          disabled={!canEdit || patchLoading}
+          onChange={(e) => onVariableDiscountPatch(row.modelCode, e.target.checked)}
+          data-testid={`estimate-items-vdc-toggle-${row.modelCode}`}
+          aria-label="변동DC"
+        />
+        변동DC
+      </label>
+    </span>
+  )
+}
+
+interface CategoryCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onPatch: (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => void
+  patchLoading: boolean
+}
+
+function CategoryCell({
+  row,
+  canEdit,
+  onPatch,
+  patchLoading,
+}: CategoryCellProps) {
+  const { estimate } = fromUsageScope(row.usageScope)
+  const selectedCategories = estimateCategoryValues(row)
+  const remainingOptions = ESTIMATE_CATEGORY_OPTIONS.filter(
+    (opt) => !selectedCategories.includes(opt.value),
+  )
+  const showEstimateCategory = estimate && (row.usageScope === 'ESTIMATE' || row.usageScope === 'BOTH')
+
+  const handleCategoryAdd = (value: string) => {
+    if (!value) return
+    const category = value as EstimateCategory
+    if (selectedCategories.includes(category)) return
+    onPatch(row.modelCode, row.usageScope, [...selectedCategories, category])
+  }
+
+  const handleCategoryRemove = (category: EstimateCategory) => {
+    const nextCategories = selectedCategories.filter((current) => current !== category)
+    const nextScope = nextCategories.length === 0
+      ? nextScopeForEstimateCategoryRemoval(row.usageScope)
+      : row.usageScope
+    onPatch(
+      row.modelCode,
+      nextScope,
+      nextCategories,
+    )
+  }
+
+  if (!showEstimateCategory) {
+    return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
+  }
+
+  return (
+    <div
+      data-testid={`estimate-items-estimate-category-${row.modelCode}`}
+      style={categoryCellStyle}
+    >
+      {normalizeEstimateCategoryExposures(row).map((exposure) => {
+        const label = ESTIMATE_CATEGORY_LABEL[exposure.category]
+        return (
+          <span
+            key={exposure.category}
+            style={categoryChipStyle}
+            data-testid={`estimate-items-estimate-category-${row.modelCode}-chip-${exposure.category}`}
+          >
+            <span>{label}</span>
+            {canEdit && !patchLoading ? (
+              <button
+                type="button"
+                aria-label={`${label} 제거`}
+                onClick={() => handleCategoryRemove(exposure.category)}
+                style={categoryChipRemoveStyle}
+              >
+                x
+              </button>
+            ) : null}
+          </span>
+        )
+      })}
+      {remainingOptions.length > 0 ? (
+        <Select
+          value=""
+          disabled={!canEdit || patchLoading}
+          onChange={(e) => handleCategoryAdd(e.target.value)}
+          data-testid={`estimate-items-estimate-category-${row.modelCode}-add`}
+          selectSize="sm"
+          fullWidth={false}
+          aria-label="견적 카테고리 추가"
+          style={{ minWidth: 112 }}
         >
-          {normalizeEstimateCategoryExposures(row).map((exposure) => (
-            <TagChip
-              key={exposure.category}
-              label={ESTIMATE_CATEGORY_LABEL[exposure.category]}
-              value={exposure.displayOrder != null ? String(exposure.displayOrder) : '—'}
-              removeLabel={ESTIMATE_CATEGORY_LABEL[exposure.category]}
-              onRemove={canEdit && !patchLoading ? () => handleCategoryRemove(exposure.category) : undefined}
-              data-testid={`estimate-items-estimate-category-${row.modelCode}-chip-${exposure.category}`}
-            />
+          <option value="">카테고리 추가</option>
+          {remainingOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
-          {remainingOptions.length > 0 ? (
-            <Select
-              value=""
-              disabled={!canEdit || patchLoading}
-              onChange={(e) => handleCategoryAdd(e.target.value)}
-              data-testid={`estimate-items-estimate-category-${row.modelCode}-add`}
-              selectSize="sm"
-              fullWidth={false}
-              aria-label="견적 카테고리 추가"
-              style={{ minWidth: 112 }}
-            >
-              <option value="">카테고리 추가</option>
-              {remainingOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
-          ) : null}
-        </div>
+        </Select>
       ) : null}
     </div>
   )
@@ -853,6 +929,26 @@ export function EstimateItemsCatalogPage() {
     },
   })
 
+  const variableDiscountMutation = useMutation({
+    mutationFn: ({
+      modelCode,
+      hasVariableDiscount,
+    }: {
+      modelCode: string
+      hasVariableDiscount: boolean
+    }) => updateProductVariableDiscount(modelCode, hasVariableDiscount),
+    onSuccess: () => {
+      setMutationError(null)
+      setPatchingCode(null)
+      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
+      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+    },
+    onError: (err) => {
+      setMutationError(errorMsg(err))
+      setPatchingCode(null)
+    },
+  })
+
   const addProductMutation = useMutation({
     mutationFn: async (product: ProductOption) => {
       const modelCode = product.modelCode ?? product.modelName
@@ -916,6 +1012,15 @@ export function EstimateItemsCatalogPage() {
       patchMutation.mutate({ modelCode, scope, estimateCategories })
     },
     [patchMutation],
+  )
+
+  const handleVariableDiscountPatch = useCallback(
+    (modelCode: string, hasVariableDiscount: boolean) => {
+      setPatchingCode(modelCode)
+      setMutationError(null)
+      variableDiscountMutation.mutate({ modelCode, hasVariableDiscount })
+    },
+    [variableDiscountMutation],
   )
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -1035,33 +1140,38 @@ export function EstimateItemsCatalogPage() {
     {
       key: 'estimateCategory',
       header: '카테고리',
-      width: '220px',
-      render: (row) => {
-        const exposures = normalizeEstimateCategoryExposures(row)
-        return (
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-            {exposures.length > 0 ? (
-              exposures.map((entry) => (
-                <Badge key={entry.category} variant="brand">
-                  {ESTIMATE_CATEGORY_LABEL[entry.category]}
-                </Badge>
-              ))
-            ) : (
-              <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
-            )}
-          </div>
-        )
-      },
+      width: '280px',
+      render: (row) => (
+        <CategoryCell
+          row={row}
+          canEdit={canEdit}
+          onPatch={handlePatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
     },
     {
       key: 'usageScope',
       header: '노출 설정',
-      width: '280px',
+      width: '190px',
       render: (row) => (
         <ToggleCell
           row={row}
           canEdit={canEdit}
           onPatch={handlePatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
+    },
+    {
+      key: 'hasVariableDiscount',
+      header: '변동DC',
+      width: '100px',
+      render: (row) => (
+        <VariableDiscountCell
+          row={row}
+          canEdit={canEdit}
+          onVariableDiscountPatch={handleVariableDiscountPatch}
           patchLoading={patchingCode === row.modelCode}
         />
       ),
@@ -1295,7 +1405,7 @@ export function EstimateItemsCatalogPage() {
                       {sortableRows.length === 0 && !listQuery.isFetching ? (
                         <tr>
                           <td
-                            colSpan={columns.length + 1}
+                            colSpan={columns.filter((c) => c.key !== '_drag').length + 1}
                             style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--color-neutral-400)', fontSize: 13 }}
                           >
                             노출 중인 견적품목이 없습니다. 기초품목을 선택해 현재 카테고리에 추가하세요.
@@ -1469,6 +1579,45 @@ const checkboxLabelStyle: CSSProperties = {
   color: 'var(--color-neutral-700, #363D49)',
   cursor: 'pointer',
   userSelect: 'none',
+}
+
+const categoryCellStyle: CSSProperties = {
+  display: 'flex',
+  gap: 4,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+}
+
+const categoryChipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '2px 6px',
+  border: '1px solid var(--color-primary-200, #BFDBFE)',
+  borderRadius: 999,
+  background: 'var(--color-primary-50, #EFF6FF)',
+  color: 'var(--color-primary-700, #1D4ED8)',
+  fontSize: 12,
+  fontWeight: 600,
+  lineHeight: 1.4,
+  whiteSpace: 'nowrap',
+}
+
+const categoryChipRemoveStyle: CSSProperties = {
+  appearance: 'none',
+  border: 0,
+  background: 'transparent',
+  color: 'inherit',
+  cursor: 'pointer',
+  padding: '0 1px',
+  fontSize: 12,
+  lineHeight: 1,
+}
+
+const variableDiscountGroupStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
 }
 
 const tableSectionStyle: CSSProperties = {

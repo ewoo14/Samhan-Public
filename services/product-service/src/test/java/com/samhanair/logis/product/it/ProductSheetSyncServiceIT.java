@@ -24,6 +24,7 @@ import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.service.ProductSheetSyncService;
+import com.samhanair.logis.product.service.ProductService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -69,6 +70,9 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     private ProductSheetSyncService syncService;
 
     @Autowired
+    private ProductService productService;
+
+    @Autowired
     private ProductRepository productRepository;
 
     @Autowired
@@ -84,11 +88,13 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     private ProductEstimateExposureRepository exposureRepository;
 
     @BeforeEach
-    void resetState() {
+    void resetState() throws Exception {
         // 메모리 hash 캐시 초기화 — 테스트 간 격리 (Spring 싱글턴 bean 의 in-memory state)
         syncService.clearHashCacheForTest();
         // 캐시 invalidate mock — 호출 검증용
         lenient().doNothing().when(sheetsClient).invalidateCache();
+        // FORMULA read 기본값 — 개별 테스트에서 필요한 탭만 override.
+        lenient().when(sheetsClient.readSheetFormulas(anyString(), anyString())).thenReturn(List.of());
     }
 
     @Test
@@ -245,13 +251,13 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     /**
-     * legacy 1:1 보존 가드 (개발책임자 정정 2026-05-05) — sync 가
-     * {@link GoogleSheetsClient#readSheetDisplay} 만 호출 (legacy {@code getDisplayValues()} 동등)
-     * 하고, raw {@link GoogleSheetsClient#readSheet(String, String)}
-     * (legacy {@code getValues()}) 는 사용 X.
+     * legacy 1:1 보존 가드 (개발책임자 정정 2026-05-05) — sync 가 가격/사양 값은
+     * {@link GoogleSheetsClient#readSheetDisplay} 로 읽고, 변동DC 마커만
+     * {@link GoogleSheetsClient#readSheetFormulas} 로 별도 읽는다. raw
+     * {@link GoogleSheetsClient#readSheet(String, String)} (legacy {@code getValues()}) 는 사용 X.
      */
     @Test
-    void sync_시트read는_readSheetDisplay만_호출한다_legacy_getDisplayValues_1to1() throws Exception {
+    void sync_시트read는_DISPLAY와_FORMULA만_호출하고_raw_getValues는_사용하지_않는다() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(homeMultiRows(
                 row("Hi-Multi", "RENDER_MODE_GUARD", "", "1,000,000", "", "900,000")
@@ -261,6 +267,37 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
         // 6 current tab + 홈멀티 base tab(인상 전 단가 PriceHistory) + 구성품 2 tab(싱글/상업 BUNDLE 적재) read.
         verify(sheetsClient, times(9)).readSheetDisplay(eq("test-sheet-id"), anyString());
+        verify(sheetsClient, times(1)).readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ");
+        verify(sheetsClient, times(0)).readSheet(eq("test-sheet-id"), anyString());
+    }
+
+    @Test
+    void sync_FORMULA_A1ZZ_모델코드매칭으로_행순서_어긋남과_후행수식을_보존한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi A", "HM_FORMULA_A", "", "1,500,000", "", "1,200,000"),
+                row("Hi-Multi B", "HM_FORMULA_B", "", "1,600,000", "", "1,300,000")
+        ));
+        // FORMULA 응답은 ragged row + 넓은 A1:ZZ 범위 특성상 DISPLAY 와 폭/순서를 그대로 신뢰하지 않는다.
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ")).thenReturn(rows(
+                row("품 명", "모델명"),
+                row("Hi-Multi B", "HM_FORMULA_B", "", "", "", "", "=SUM(1,2)"),
+                row("Hi-Multi A", "HM_FORMULA_A", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+                        "", "", "", "", "", "", "", "", "", "", "", "=\nLET(useK2,$L$2,useK2)")
+        ));
+
+        syncService.syncAll();
+
+        Product a = productRepository.findByModelCodeAndIsDeletedFalse("HM_FORMULA_A").orElseThrow();
+        Product b = productRepository.findByModelCodeAndIsDeletedFalse("HM_FORMULA_B").orElseThrow();
+        assertThat(a.getHasVariableDiscount())
+                .as("A1:ZZ 후행 열의 멀티라인 수식 $L$2 를 모델코드 매칭으로 검출")
+                .isTrue();
+        assertThat(b.getHasVariableDiscount())
+                .as("행 인덱스만 신뢰해 A의 수식이 B에 붙으면 안 된다")
+                .isFalse();
+
+        verify(sheetsClient).readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ");
     }
 
     /**
@@ -721,6 +758,126 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(exposureOrder("EC_GUARD", EstimateCategory.HOME_MULTI))
                 .as("manual=true 이면 sync 는 exposure 를 삭제하거나 갱신하지 않음")
                 .isEqualTo(1);
+    }
+
+    /**
+     * V19 적재 회귀 — 상업멀티 견적 탭의 useK2=true 를 같은 modelCode 의 구성품 탭이 false 로 덮으면 안 된다.
+     *
+     * <p>상업멀티 구성 탭 F열은 소계라 {@code $L$2} 수식이 없으므로 기존 update 분기에서는
+     * hasVariableDiscount=false 로 오염됐다. 변동DC는 productCategory 가 일치하는 견적 탭에서만 갱신한다.
+     */
+    @Test
+    void sync_상업멀티_useK2_true를_상업멀티구성_false가_덮어쓰지_않음() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "단위", "비고", "출고가", "비고", "납품가"),
+                row("상업멀티 세트", "COMM_VDC_01", "SET", "", "5,000,000", "", "4,000,000")
+        ));
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "상업멀티_단가인상!A1:ZZ")).thenReturn(rows(
+                row("품 명", "모델명", "단위", "비고", "출고가", "비고", "납품가"),
+                row("상업멀티 세트", "COMM_VDC_01", "SET", "", "=100", "", "=$L$2*100")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티 구성_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "수량", "납품가", "소계"),
+                row("상업멀티 구성", "COMM_VDC_01", "구성", "1,000,000", "1", "900,000", "900,000")
+        ));
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "상업멀티 구성_단가인상!A1:ZZ")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "수량", "납품가", "소계"),
+                row("상업멀티 구성", "COMM_VDC_01", "구성", "=100", "1", "=90", "=F2*E2")
+        ));
+
+        syncService.syncAll();
+
+        Product after = productRepository.findByModelCodeAndIsDeletedFalse("COMM_VDC_01").orElseThrow();
+        assertThat(after.getProductCategory()).isEqualTo(ProductCategory.COMMERCIAL_MULTI);
+        assertThat(after.getHasVariableDiscount())
+                .as("구성품 탭의 useK2=false 가 견적 탭의 변동DC=true 를 덮으면 안 됨")
+                .isTrue();
+    }
+
+    /**
+     * V19 수동 변동DC override 보존 — variableDiscountManual=true 인 품목은 sync update 경로에서도
+     * hasVariableDiscount 를 시트 값으로 덮어쓰지 않는다.
+     */
+    @Test
+    void sync_variableDiscountManual_true인_품목은_변동DC_불변() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi Variable Manual", "VAR_MANUAL_01", "", "1,500,000", "", "1,200,000")
+        ));
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("Hi-Multi Variable Manual", "VAR_MANUAL_01", "", "=100", "", "=$L$2*100")
+        ));
+        syncService.syncAll();
+
+        Product p = productRepository.findByModelCodeAndIsDeletedFalse("VAR_MANUAL_01").orElseThrow();
+        assertThat(p.getHasVariableDiscount()).isTrue();
+        p.markVariableDiscountManual(false);
+        productRepository.save(p);
+        assertThat(p.isVariableDiscountManual()).isTrue();
+
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(homeMultiRows(
+                row("Hi-Multi Variable Manual", "VAR_MANUAL_01", "", "1,600,000", "", "1,300,000")
+        ));
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("Hi-Multi Variable Manual", "VAR_MANUAL_01", "", "=100", "", "=$L$2*100")
+        ));
+        syncService.syncAll();
+
+        Product after = productRepository.findByModelCodeAndIsDeletedFalse("VAR_MANUAL_01").orElseThrow();
+        assertThat(after.getHasVariableDiscount())
+                .as("manual=false 로 지정한 변동DC 값은 sync 의 useK2=true 로 덮어쓰지 않음")
+                .isFalse();
+        assertThat(after.isVariableDiscountManual()).isTrue();
+        assertThat(after.getReleasePrice()).isEqualByComparingTo(new BigDecimal("1600000"));
+    }
+
+    /**
+     * V19 변동DC DELETE 자동복귀 — clearVariableDiscountOverride 는 manual=false 로 되돌리고
+     * rowHash 를 evict 하므로, 행 내용이 동일해도 다음 sync 가 시트 기준 변동DC를 재적재한다.
+     */
+    @Test
+    void sync_variableDiscountManual_DELETE_후_행무변경_sync_시트기준_복원() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        List<List<Object>> sameRows = homeMultiRows(
+                row("Hi-Multi Variable Clear", "VAR_CLEAR_01", "", "1,500,000", "", "1,200,000")
+        );
+        List<List<Object>> sameFormulas = rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("Hi-Multi Variable Clear", "VAR_CLEAR_01", "", "=100", "", "=$L$2*100")
+        );
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(sameRows);
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ")).thenReturn(sameFormulas);
+
+        syncService.syncAll();
+        Product p = productRepository.findByModelCodeAndIsDeletedFalse("VAR_CLEAR_01").orElseThrow();
+        assertThat(p.getHasVariableDiscount()).isTrue();
+
+        // PATCH /variable-discount 와 동일: 수동값 false 지정 + manual=true.
+        p.markVariableDiscountManual(false);
+        productRepository.save(p);
+        assertThat(p.getHasVariableDiscount()).isFalse();
+        assertThat(p.isVariableDiscountManual()).isTrue();
+
+        // DELETE /variable-discount 와 동일: manual=false 복귀 + rowHash evict.
+        productService.clearVariableDiscountOverride("VAR_CLEAR_01");
+        Product cleared = productRepository.findByModelCodeAndIsDeletedFalse("VAR_CLEAR_01").orElseThrow();
+        assertThat(cleared.getHasVariableDiscount()).isFalse();
+        assertThat(cleared.isVariableDiscountManual()).isFalse();
+
+        ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult homeTab = summary.byTab.get("홈멀티");
+        assertThat(homeTab.updated)
+                .as("variableDiscount DELETE 후 rowHash evict 로 행 무변경에도 update 경로 진입")
+                .isEqualTo(1);
+
+        Product after = productRepository.findByModelCodeAndIsDeletedFalse("VAR_CLEAR_01").orElseThrow();
+        assertThat(after.getHasVariableDiscount())
+                .as("시트 수식($L$2) 기준 변동DC true 재적재")
+                .isTrue();
+        assertThat(after.isVariableDiscountManual()).isFalse();
     }
 
     /**

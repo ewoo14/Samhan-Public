@@ -88,6 +88,9 @@ public class ProductSheetSyncService {
     /** PriceHistory 기준일 — 인상 전 단가는 충분히 과거 날짜로 보존한다. */
     private static final LocalDate BEFORE_INCREASE_EFFECTIVE_DATE = LocalDate.of(2000, 1, 1);
 
+    /** FORMULA read 는 JS readSheetGrid 와 맞춰 후행 수식 열 유실을 막기 위해 ZZ 까지 읽는다. */
+    private static final String FORMULA_RANGE_END_COLUMN = "ZZ";
+
     /**
      * 시트 → 도메인 매핑 (PR #38 보존).
      *
@@ -1080,6 +1083,7 @@ public class ProductSheetSyncService {
     public TabSyncResult syncTab(SheetTabMapping mapping, Category defaultCategory) throws Exception {
         TabSyncResult result = new TabSyncResult();
         String range = mapping.currentTabName + "!A1:Z";
+        String formulaRange = expandFormulaRange(range);
         // legacy getDisplayValues() 1:1 — formatted value (천단위 콤마/통화 포함).
         List<List<Object>> rows = sheetsClient.readSheetDisplay(sheetId, range);
         if (rows == null || rows.isEmpty()) {
@@ -1100,18 +1104,19 @@ public class ProductSheetSyncService {
         List<String> headerCells = isSpecBearing(mapping.productCategory)
                 ? GoogleSheetsClient.toStringRow(rows.get(headerIdx), 30) : null;
 
-        // #30 — 변동DC 4컬럼 적재: FORMULA render 행을 DISPLAY row 와 동일 인덱스로 정렬해
-        // 행 전체 수식을 join → useK2($L$2)/matKey($D$4·7·8)/구형 isDisc($I$1) 판정
-        // (legacy 수식분기 동등). FORMULA render 와 DISPLAY render 는 동일 range·동일 행순서라
-        // 인덱스 정렬됨. modelCode 키 매칭은 modelCode 셀 자체가 수식일 때 깨져 부정확 →
-        // 인덱스 기반 채택. 수식 read 실패 시 가격 sync 는 계속(분기만 미적용).
+        // #30 — 변동DC 4컬럼 적재: DISPLAY 값은 legacy 와 같은 A1:Z 를 유지하되, FORMULA 는
+        // JS readSheetGrid 정답과 맞춰 A1:ZZ 로 넓혀 후행 수식 열을 보존한다. Sheets API
+        // values 응답은 trailing empty cell 을 자르는 ragged row 이므로, modelCode 기반 매칭을
+        // 우선하고 modelCode 셀이 수식인 예외에서는 동일 row index 를 fallback 으로 사용한다.
+        // 수식 read 실패 시 가격 sync 는 계속(분기만 미적용).
         List<List<Object>> formulaRows = null;
         try {
-            formulaRows = sheetsClient.readSheetFormulas(sheetId, range);
+            formulaRows = sheetsClient.readSheetFormulas(sheetId, formulaRange);
         } catch (Exception e) {
             log.warn("[ProductSheetSync] tab '{}' 수식 read 실패 — 변동DC 판정 skip: {}",
                     mapping.tabName, e.getMessage());
         }
+        FormulaRowResolver formulaResolver = FormulaRowResolver.from(formulaRows, mapping.modelCodeColumn);
         // #구분/순서 — 시트 노출 순서(display_order): 탭 내 유효 데이터 행 순번(1부터).
         int displaySeq = 0;
         // 고정DC 컬럼(홈멀티/상업멀티) — 헤더명 기반.
@@ -1141,9 +1146,9 @@ public class ProductSheetSyncService {
             BigDecimal releasePrice = parseDecimal(safeGet(cells, mapping.releasePriceColumn));
             BigDecimal deliveryPrice = parseDecimal(safeGet(cells, mapping.deliveryPriceColumn));
 
-            // #30 — 변동DC 판정 (DISPLAY/FORMULA 동일 인덱스 i 행 수식 join). useK2/matKey/
-            // 구형 isDisc 마커는 단가 수식에만 출현 → 행 전체 스캔 오검출 무시.
-            String rowFormula = joinRowFormulas(formulaRows, i);
+            // #30 — 변동DC 판정. useK2/matKey/구형 isDisc 마커는 단가 수식에만 출현하므로
+            // 행 전체 수식을 join 한다. FORMULA 행은 modelCode 매칭 우선, 인덱스 fallback.
+            String rowFormula = formulaResolver.joinFor(i, modelCode);
             boolean hasVariableDiscount = discountDetector.detectHasVariableDiscount(rowFormula);
             MaterialKey materialKey = discountDetector.detectMaterialKey(rowFormula).orElse(null);
             boolean legacyDiscount = mapping.productCategory == ProductCategory.OLD
@@ -1183,8 +1188,12 @@ public class ProductSheetSyncService {
                 p.changePrices(releasePrice, deliveryPrice);
                 // 노출 분류(usageScope/estimateCategory/display_order)는 품목의 '홈 탭'(최초
                 // productCategory 일치 탭)에서만 설정 — 다른 탭(예: 싱글세트가 구성품 탭에 재출현)이
-                // NONE/다른 순번으로 덮어쓰는 stomping 방지(2026-06-10 노출구분 결정). 가격/변동DC/
-                // 사양은 어느 탭에서든 갱신(단가인상 탭 권위).
+                // NONE/다른 순번으로 덮어쓰는 stomping 방지(2026-06-10 노출구분 결정). 가격/사양은
+                // 어느 탭에서든 갱신(단가인상 탭 권위).
+                // 변동DC 는 productCategory 일치 견적 탭에서만 갱신(구성품·겹침 탭 덮어쓰기 방지)하며
+                // variableDiscountManual=true 면 hasVariableDiscount/materialKey/legacy/fixedRate/
+                // discountFlags 를 모두 sync 동결한다. 변동DC override 가 부속 할인필드 동결을
+                // 동반하는 의도된 단순화다.
                 //
                 // V14 수동 override 보존 가드 (2026-06-11 PR-B):
                 //   usageScopeManual=true 인 품목은 usageScope/estimateCategory 를 시트 기준으로
@@ -1195,10 +1204,12 @@ public class ProductSheetSyncService {
                     if (!p.isUsageScopeManual()) {
                         p.changeUsage(mapping.usageScope);
                     }
+                    if (!p.isVariableDiscountManual()) {
+                        p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
+                        p.changeDiscountFlags(discountFlags);
+                    }
                     applyPyongSize(p, mapping, cells);
                 }
-                p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
-                p.changeDiscountFlags(discountFlags);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
@@ -1360,22 +1371,90 @@ public class ProductSheetSyncService {
         return safeGet(cells, idx).trim();
     }
 
-    /** DISPLAY row 와 동일 인덱스의 FORMULA row 에서 '=' 시작 셀을 공백 join (변동DC 마커 검출용). */
+    /**
+     * DISPLAY row 와 동일 인덱스의 FORMULA row 에서 '=' 시작 셀을 공백 join (fallback/진단용).
+     *
+     * <p>DISPLAY(A1:Z) 와 FORMULA(A1:ZZ) read range 가 달라 trailing 행 절단 양상이 다를 수 있다.
+     * 변동DC 판정은 modelCode 매칭 결과를 우선 사용하므로, 인덱스 fallback 은 modelCode 셀 자체가
+     * 수식이라 매칭할 수 없는 예외 행의 진단/보조 경로로만 쓰인다.
+     */
     private static String joinRowFormulas(List<List<Object>> formulaRows, int rowIdx) {
         if (formulaRows == null || rowIdx >= formulaRows.size()) {
             return "";
         }
         List<Object> row = formulaRows.get(rowIdx);
+        return joinFormulaCells(row);
+    }
+
+    /** FORMULA row 전체에서 수식 셀만 공백으로 join 한다. 멀티라인 LET 수식은 문자열 그대로 보존한다. */
+    private static String joinFormulaCells(List<Object> row) {
         if (row == null) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
         for (Object cell : row) {
             if (cell == null) continue;
-            String v = cell.toString();
+            String v = cell.toString().stripLeading();
             if (v.startsWith("=")) sb.append(v).append(' ');
         }
         return sb.toString();
+    }
+
+    /** DISPLAY read 범위(A1:Z)를 FORMULA read 범위(A1:ZZ)로 확장한다. */
+    private static String expandFormulaRange(String displayRange) {
+        if (displayRange == null || displayRange.isBlank()) {
+            return displayRange;
+        }
+        int colon = displayRange.lastIndexOf(':');
+        if (colon < 0) {
+            return displayRange;
+        }
+        return displayRange.substring(0, colon + 1) + FORMULA_RANGE_END_COLUMN;
+    }
+
+    /**
+     * FORMULA row 매칭기.
+     *
+     * <p>정상 시트는 DISPLAY/FORMULA row index 가 같지만, Google Sheets values API 는 빈
+     * trailing row/cell 을 잘라 ragged row 로 반환한다. 모델코드 셀이 일반 값이면 모델코드로
+     * 직접 매칭하고, 모델코드 셀 자체가 수식이라 키를 만들 수 없는 경우만 기존 index fallback 을 쓴다.
+     */
+    private static final class FormulaRowResolver {
+        private final List<List<Object>> formulaRows;
+        private final Map<String, List<Object>> rowsByModelCode;
+
+        private FormulaRowResolver(List<List<Object>> formulaRows, Map<String, List<Object>> rowsByModelCode) {
+            this.formulaRows = formulaRows;
+            this.rowsByModelCode = rowsByModelCode;
+        }
+
+        static FormulaRowResolver from(List<List<Object>> formulaRows, int modelCodeColumn) {
+            Map<String, List<Object>> rowsByModelCode = new HashMap<>();
+            if (formulaRows != null && modelCodeColumn >= 0) {
+                for (List<Object> row : formulaRows) {
+                    String modelCode = rawCell(row, modelCodeColumn).trim();
+                    if (!modelCode.isBlank() && !modelCode.startsWith("=")) {
+                        rowsByModelCode.putIfAbsent(modelCode, row);
+                    }
+                }
+            }
+            return new FormulaRowResolver(formulaRows, rowsByModelCode);
+        }
+
+        String joinFor(int displayRowIdx, String modelCode) {
+            if (modelCode != null && !modelCode.isBlank()) {
+                List<Object> byModel = rowsByModelCode.get(modelCode);
+                if (byModel != null) {
+                    return joinFormulaCells(byModel);
+                }
+            }
+            return joinRowFormulas(formulaRows, displayRowIdx);
+        }
+    }
+
+    private static String rawCell(List<Object> row, int idx) {
+        Object value = row != null && idx >= 0 && idx < row.size() ? row.get(idx) : null;
+        return value == null ? "" : value.toString();
     }
 
     /**

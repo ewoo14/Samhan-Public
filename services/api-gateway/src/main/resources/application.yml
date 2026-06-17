@@ -253,6 +253,16 @@ spring:
           filters:
             - JwtAuthentication
 
+        # [슬3-1] 변동DC 토글 PATCH/DELETE 도 풀패스 컨트롤러(@RequestMapping("/api/v1"))라
+        # generic strip=2 라우트 진입 시 /products/... 로 변형돼 "No static resource" 500.
+        # usage 와 동일하게 no-strip 으로 그대로 전달.
+        - id: product-variable-discount-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/*/variable-discount
+          filters:
+            - JwtAuthentication
+
         # [잔여] ProductCatalogController 풀패스(@RequestMapping("/api/v1") + /products/{code}/specs,
         # /spec-key-templates). strip=2 면 깨지므로 specs/template 표적 no-strip.
         - id: product-specs-v1
