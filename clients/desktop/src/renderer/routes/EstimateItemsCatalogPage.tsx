@@ -145,6 +145,30 @@ function fromUsageScope(scope: UsageScope): { estimate: boolean; order: boolean 
   }
 }
 
+export interface EstimateItemsCatalogSuccessEffects {
+  clearMutationError: () => void
+  clearPatchingCode: () => void
+  closeClassificationModal: () => void
+  invalidateCatalogQueries: () => void
+}
+
+/** usage scope PATCH 성공은 분류/고정DC 모달 상태를 건드리지 않는다. */
+export function applyUsagePatchSuccessEffects(effects: EstimateItemsCatalogSuccessEffects): void {
+  effects.clearMutationError()
+  effects.clearPatchingCode()
+  effects.invalidateCatalogQueries()
+}
+
+/** 분류/고정DC 저장 성공 시 stale row 를 남기지 않도록 모달을 닫는다. */
+export function applyClassificationSettingsSuccessEffects(
+  effects: EstimateItemsCatalogSuccessEffects,
+): void {
+  effects.clearMutationError()
+  effects.clearPatchingCode()
+  effects.closeClassificationModal()
+  effects.invalidateCatalogQueries()
+}
+
 async function fetchClassificationTree(estimateCategory: EstimateCategory): Promise<Classification[]> {
   const roots = await listClassifications({ estimateCategory })
   const midsByRoot = await Promise.all(
@@ -1131,6 +1155,16 @@ export function EstimateItemsCatalogPage() {
     }
   }, [rows, orderDirty])
 
+  const catalogSuccessEffects: EstimateItemsCatalogSuccessEffects = {
+    clearMutationError: () => setMutationError(null),
+    clearPatchingCode: () => setPatchingCode(null),
+    closeClassificationModal: () => setClassificationModalTarget(null),
+    invalidateCatalogQueries: () => {
+      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
+      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+    },
+  }
+
   const patchMutation = useMutation({
     mutationFn: ({
       modelCode,
@@ -1148,11 +1182,7 @@ export function EstimateItemsCatalogPage() {
           : [],
       }),
     onSuccess: () => {
-      setMutationError(null)
-      setPatchingCode(null)
-      setClassificationModalTarget(null)
-      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
-      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+      applyUsagePatchSuccessEffects(catalogSuccessEffects)
     },
     onError: (err) => {
       setMutationError(errorMsg(err))
@@ -1195,10 +1225,7 @@ export function EstimateItemsCatalogPage() {
         fixedDiscountRate,
       }),
     onSuccess: () => {
-      setMutationError(null)
-      setPatchingCode(null)
-      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
-      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+      applyClassificationSettingsSuccessEffects(catalogSuccessEffects)
     },
     onError: (err) => {
       setMutationError(errorMsg(err))
