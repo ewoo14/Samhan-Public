@@ -115,6 +115,9 @@ clients/desktop/legacy-assets/estimate/*.html
 .tmp-*
 commit-msg.txt
 
+# ----- 멀티모델 워크플로우 스크래치 (codex 콘솔로그·프롬프트·출력·커밋메시지 일회용) -----
+docs/tmp/
+
 # ----- legacy GAS (소스 코드는 추적, 운영 데이터·자격은 제외) -----
 # .js/.html 소스는 회사 PC 코드 조회용으로 추적(Notion/Google 토큰은 redact 됨).
 # 민감 운영 데이터(거래처 DC·단톡방·발송금지 등 Notion export)는 VCS 추적 금지.
