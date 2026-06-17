@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE IF NOT EXISTS classification (
     id                UUID         PRIMARY KEY,
     estimate_category VARCHAR(20)  NOT NULL,
-    cat_level         VARCHAR(1)   NOT NULL,
+    cat_level         CHAR(1)      NOT NULL,
     parent_id         UUID         REFERENCES classification(id),
     name              VARCHAR(100) NOT NULL,
     display_order     INTEGER      NOT NULL DEFAULT 0,
