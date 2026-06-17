@@ -946,6 +946,7 @@ type MockProductCatalogRow = {
   releasePrice: number
   deliveryPrice: number
   hasVariableDiscount: boolean
+  variableDiscountManual: boolean
   legacyDiscountFlag: boolean
   discountFlags: null
   productType: string
@@ -1017,6 +1018,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
       releasePrice: Number(p.sellingPrice),
       deliveryPrice: Number(p.sellingPrice),
       hasVariableDiscount: false,
+      variableDiscountManual: false,
       legacyDiscountFlag: false,
       discountFlags: null,
       productType: p.productType ?? 'SINGLE',
@@ -1036,6 +1038,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     releasePrice: 0,
     deliveryPrice: 0,
     hasVariableDiscount: false,
+    variableDiscountManual: false,
     legacyDiscountFlag: false,
     discountFlags: null,
     productType: 'SINGLE',
@@ -1053,6 +1056,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     releasePrice: 40000,
     deliveryPrice: 40000,
     hasVariableDiscount: false,
+    variableDiscountManual: false,
     legacyDiscountFlag: false,
     discountFlags: null,
     productType: 'SINGLE',
@@ -1093,6 +1097,7 @@ function ensureMockProductCatalogRowsSeeded() {
         releasePrice: Number(row.releasePrice ?? 0),
         deliveryPrice: Number(row.deliveryPrice ?? 0),
         hasVariableDiscount: Boolean(row.hasVariableDiscount ?? false),
+        variableDiscountManual: Boolean(row.variableDiscountManual ?? false),
         legacyDiscountFlag: Boolean(row.legacyDiscountFlag ?? false),
         discountFlags: null,
         productType: String(row.productType ?? 'SINGLE'),
@@ -1848,6 +1853,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         releasePrice: Number(body['releasePrice'] ?? body['sellingPrice'] ?? 0),
         deliveryPrice: Number(body['deliveryPrice'] ?? 0),
         hasVariableDiscount: false,
+        variableDiscountManual: false,
         legacyDiscountFlag: false,
         discountFlags: null,
         productType: isMaterial ? 'SINGLE' : productType,
@@ -1967,6 +1973,48 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (denied) return denied
     parseMockBody(config)
     return envelope(null)
+  }
+
+  // PATCH /api/v1/products/{modelCode}/variable-discount — 변동DC 수동 override 설정.
+  // DELETE /api/v1/products/{modelCode}/variable-discount — 시트 자동 복귀(variableDiscountManual=false).
+  // BE 계약: PATCH 는 bare ProductCatalogResponse, DELETE 는 204 무본문(non-null marker 반환).
+  const productVariableDiscountMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/variable-discount(?:\?.*)?$/)
+  if (productVariableDiscountMatch) {
+    const denied = mockRequirePermission('products.admin', 'update')
+    if (denied) return denied
+    ensureMockProductCatalogRowsSeeded()
+    const modelCode = decodeURIComponent(productVariableDiscountMatch[1]!)
+    const idx = MOCK_PRODUCT_CATALOG_ROWS.findIndex((row) => row.modelCode === modelCode)
+    if (idx < 0) {
+      return mockError(404, 'NOT_FOUND', '제품을 찾을 수 없습니다')
+    }
+    const existing = MOCK_PRODUCT_CATALOG_ROWS[idx]!
+
+    if (method === 'PATCH') {
+      const body = parseMockBody(config)
+      const updated = {
+        ...existing,
+        hasVariableDiscount: Boolean(body['hasVariableDiscount']),
+        variableDiscountManual: true,
+      }
+      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) =>
+        i === idx ? updated : row,
+      )
+      return updated
+    }
+
+    if (method === 'DELETE') {
+      const updated = {
+        ...existing,
+        variableDiscountManual: false,
+      }
+      MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) =>
+        i === idx ? updated : row,
+      )
+      return { deleted: true }
+    }
+
+    return mockError(405, 'METHOD_NOT_ALLOWED', '지원하지 않는 변동DC 요청입니다.')
   }
 
   const productSpecItemMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/specs\/([^/?]+)(?:\?.*)?$/)

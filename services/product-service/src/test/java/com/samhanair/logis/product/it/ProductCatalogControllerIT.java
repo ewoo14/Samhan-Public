@@ -292,6 +292,47 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
     }
 
     /**
+     * PATCH /variable-discount — 변동DC 수동 override 설정 후 응답에 manual=true 포함.
+     */
+    @Test
+    void PATCH_variableDiscount_수동override_variableDiscountManual_true_응답() throws Exception {
+        mvc.perform(patch("/api/v1/products/API_HOME_01/variable-discount")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"hasVariableDiscount":true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasVariableDiscount").value(true))
+                .andExpect(jsonPath("$.variableDiscountManual").value(true));
+    }
+
+    /**
+     * DELETE /variable-discount — 수동 override 해제 후 variableDiscountManual=false 로 복귀.
+     */
+    @Test
+    void DELETE_variableDiscount_수동override_해제() throws Exception {
+        mvc.perform(patch("/api/v1/products/API_HOME_01/variable-discount")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"hasVariableDiscount":false}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasVariableDiscount").value(false))
+                .andExpect(jsonPath("$.variableDiscountManual").value(true));
+
+        mvc.perform(delete("/api/v1/products/API_HOME_01/variable-discount")
+                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isNoContent());
+
+        var p = productRepository.findByModelCodeAndIsDeletedFalse("API_HOME_01");
+        org.assertj.core.api.Assertions.assertThat(p).isPresent();
+        org.assertj.core.api.Assertions.assertThat(p.get().isVariableDiscountManual()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(p.get().getHasVariableDiscount()).isFalse();
+    }
+
+    /**
      * GET /api/v1/products?usageScope=PARTNER_ORDER — IN 확장 시멘틱 포함·배제 양면 단언.
      *
      * <p>지적 [24][25] (PR-B 2026-06-11):

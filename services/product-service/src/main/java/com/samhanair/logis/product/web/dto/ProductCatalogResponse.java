@@ -25,6 +25,11 @@ import java.util.List;
  *   <li>{@code estimateCategory}/{@code displayOrder} — V18 이후 하위호환용 deprecated 파생값.</li>
  * </ul>
  *
+ * <p>V19(2026-06-17) 추가 필드:
+ * <ul>
+ *   <li>{@code variableDiscountManual} — 변동DC 수동 override 여부. true 이면 sync 가 덮어쓰지 않음.</li>
+ * </ul>
+ *
  * <p>§1b(2026-06-11) 추가 필드:
  * <ul>
  *   <li>{@code productType} — SINGLE / BUNDLE 구분 (세트 뱃지 표시용).</li>
@@ -44,6 +49,7 @@ public record ProductCatalogResponse(
         BigDecimal releasePrice,
         BigDecimal deliveryPrice,
         boolean hasVariableDiscount,
+        boolean variableDiscountManual,
         boolean legacyDiscountFlag,
         String discountFlags,
         ProductType productType,
@@ -88,6 +94,7 @@ public record ProductCatalogResponse(
                 p.getReleasePrice(),
                 p.getDeliveryPrice(),
                 Boolean.TRUE.equals(p.getHasVariableDiscount()),
+                p.isVariableDiscountManual(),
                 Boolean.TRUE.equals(p.getLegacyDiscountFlag()),
                 p.getDiscountFlags(),
                 p.getProductType(),
@@ -109,7 +116,7 @@ public record ProductCatalogResponse(
                 modelCode, name, usageScope, estimateCategory,
                 productCategory, usageScopeManual, displayOrder, estimateCategories,
                 releasePrice, deliveryPrice,
-                hasVariableDiscount, legacyDiscountFlag, discountFlags,
+                hasVariableDiscount, variableDiscountManual, legacyDiscountFlag, discountFlags,
                 productType, count
         );
     }

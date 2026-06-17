@@ -5,6 +5,8 @@
  * - `GET /api/v1/products?q=&usageScope=&category=&page=&size=` — 품목 목록 (필터)
  * - `PATCH /api/v1/products/{modelCode}/usage` — 수동 노출 설정
  * - `DELETE /api/v1/products/{modelCode}/usage` — 시트 자동 복귀 (수동 override 해제)
+ * - `PATCH /api/v1/products/{modelCode}/variable-discount` — 변동DC 수동 설정
+ * - `DELETE /api/v1/products/{modelCode}/variable-discount` — 변동DC 시트 자동 복귀
  * - `GET /api/v1/products/{modelCode}/components` — 구성품 목록 (BUNDLE 전용)
  * - `PUT /api/v1/products/{modelCode}/components` — 구성품 replace-all 저장
  * - `PUT /api/v1/products/display-orders` — 표시 순서 일괄 갱신
@@ -92,6 +94,10 @@ export interface ProductCatalogRow {
   releasePrice: number | null
   /** 배송 단가 */
   deliveryPrice: number | null
+  /** 변동DC 적용 여부 */
+  hasVariableDiscount: boolean
+  /** 변동DC 수동 override 여부 — true 이면 시트 sync 가 덮어쓰지 않는다. */
+  variableDiscountManual: boolean
   /** 품목 타입 (BUNDLE=세트, 그 외=단품). BE 응답 없을 시 undefined */
   productType?: ProductType
   /** 활성 구성품 수 — BUNDLE 외 0. BE 응답 없을 시 undefined */
@@ -296,6 +302,11 @@ export interface UpdateProductUsageRequest {
   estimateCategories?: EstimateCategory[]
 }
 
+/** `PATCH /api/v1/products/{modelCode}/variable-discount` 요청 body */
+export interface UpdateProductVariableDiscountRequest {
+  hasVariableDiscount: boolean
+}
+
 /** `GET /api/v1/products` 필터 파라미터 */
 export interface ListProductsParams {
   q?: string
@@ -418,6 +429,39 @@ export async function updateProductUsage(
 export async function clearProductUsage(modelCode: string): Promise<void> {
   await apiClient.delete(
     `/api/v1/products/${encodeURIComponent(modelCode)}/usage`,
+  )
+}
+
+/**
+ * 변동DC 수동 설정 — `PATCH /api/v1/products/{modelCode}/variable-discount`.
+ *
+ * variableDiscountManual=true 로 설정되어 시트 sync 재실행 시에도 유지됨.
+ *
+ * @param modelCode 품목코드 (사용자 식별자)
+ * @param hasVariableDiscount 변동DC 적용 여부
+ */
+export async function updateProductVariableDiscount(
+  modelCode: string,
+  hasVariableDiscount: boolean,
+): Promise<ProductCatalogRow> {
+  const req: UpdateProductVariableDiscountRequest = { hasVariableDiscount }
+  const res = await apiClient.patch<ProductCatalogRow>(
+    `/api/v1/products/${encodeURIComponent(modelCode)}/variable-discount`,
+    req,
+  )
+  return res.data
+}
+
+/**
+ * 변동DC 시트 자동 복귀 — `DELETE /api/v1/products/{modelCode}/variable-discount`.
+ *
+ * variableDiscountManual=false 로 해제. 값은 유지되며 다음 시트 sync 에서 자동 재분류됨.
+ *
+ * @param modelCode 품목코드 (사용자 식별자)
+ */
+export async function clearProductVariableDiscount(modelCode: string): Promise<void> {
+  await apiClient.delete(
+    `/api/v1/products/${encodeURIComponent(modelCode)}/variable-discount`,
   )
 }
 

@@ -4,6 +4,7 @@ import {
   estimateCategoryValues,
   nextScopeForEstimateCategoryRemoval,
   exposureDisplayOrder,
+  isVariableDiscountEligible,
   normalizeEstimateCategoryExposures,
   resolveEstimateItemsPageTotals,
 } from './ProductCatalogPageModel'
@@ -18,6 +19,8 @@ const baseRow: ProductCatalogRow = {
   usageScopeManual: false,
   releasePrice: 1000,
   deliveryPrice: 1000,
+  hasVariableDiscount: false,
+  variableDiscountManual: false,
   productType: 'SINGLE',
   componentCount: 0,
 }
@@ -137,5 +140,13 @@ describe('ProductCatalogPageModel', () => {
       totalElements: 123,
       totalPages: 3,
     })
+  })
+
+  it('변동DC 토글은 홈멀티/상업멀티 품목에만 표시한다', () => {
+    expect(isVariableDiscountEligible({ ...baseRow, productCategory: 'HOME_MULTI' })).toBe(true)
+    expect(isVariableDiscountEligible({ ...baseRow, productCategory: 'COMMERCIAL_MULTI' })).toBe(true)
+    expect(isVariableDiscountEligible({ ...baseRow, productCategory: 'SINGLE_SET' })).toBe(false)
+    expect(isVariableDiscountEligible({ ...baseRow, productCategory: 'OLD' })).toBe(false)
+    expect(isVariableDiscountEligible({ ...baseRow, productCategory: null })).toBe(false)
   })
 })

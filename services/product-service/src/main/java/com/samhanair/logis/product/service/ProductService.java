@@ -29,6 +29,7 @@ import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
+import com.samhanair.logis.product.web.dto.UpdateProductVariableDiscountRequest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -438,6 +439,23 @@ public class ProductService {
     }
 
     /**
+     * 품목 변동DC 수동 override — 갱신된 {@link Product} 도메인 객체를 직접 반환한다.
+     *
+     * <p>초기값은 시트 sync 가 적재하지만, 멀티 카탈로그(견적품목 관리)의 수동 토글은
+     * {@link Product#markVariableDiscountManual(boolean)} 로 보호하여 이후 sync 가 덮어쓰지 않는다.
+     *
+     * @param modelCode 수동 override 대상 품목의 모델코드
+     * @param req       새 변동DC 적용 여부
+     * @return 갱신된 Product 엔티티 (트랜잭션 내 — 호출자가 DTO 변환)
+     * @throws BusinessException(NOT_FOUND) modelCode 에 해당하는 품목이 없을 때
+     */
+    public Product updateVariableDiscountAndReturn(String modelCode, UpdateProductVariableDiscountRequest req) {
+        Product product = loadByModelCodeOrThrow(modelCode);
+        product.markVariableDiscountManual(req.hasVariableDiscount());
+        return product;
+    }
+
+    /**
      * 품목 노출 범위 수동 override 해제 — modelCode 로 품목을 조회하고
      * {@link Product#clearUsageManual()} 을 호출하여 플래그를 해제한다.
      *
@@ -467,6 +485,25 @@ public class ProductService {
         Product product = loadByModelCodeOrThrow(modelCode);
         product.clearUsageManual();
         // evict: 로드된 엔티티의 실제 modelCode 를 키로 사용. null 이면 캐시 항목 없으므로 no-op.
+        String evictKey = product.getModelCode();
+        if (evictKey != null) {
+            productSheetSyncService.evictRowHash(evictKey);
+        }
+    }
+
+    /**
+     * 품목 변동DC 수동 override 해제 — modelCode 로 품목을 조회하고
+     * {@link Product#clearVariableDiscountManual()} 을 호출하여 플래그를 해제한다.
+     *
+     * <p>플래그 해제 후 다음 ProductSheetSyncService sync 에서 시트 기준으로 재적재된다.
+     * usage override 와 동일하게 rowHash 캐시를 무효화하여 행 내용이 같아도 update 경로에 진입시킨다.
+     *
+     * @param modelCode override 해제 대상 품목의 카탈로그 노출 식별자 (modelCode 또는 modelName)
+     * @throws BusinessException(NOT_FOUND) modelCode 에 해당하는 품목이 없을 때
+     */
+    public void clearVariableDiscountOverride(String modelCode) {
+        Product product = loadByModelCodeOrThrow(modelCode);
+        product.clearVariableDiscountManual();
         String evictKey = product.getModelCode();
         if (evictKey != null) {
             productSheetSyncService.evictRowHash(evictKey);

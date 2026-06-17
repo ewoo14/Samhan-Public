@@ -129,6 +129,19 @@ public class Product extends BaseEntity {
     @Column(name = "discount_flags", nullable = false, length = 20)
     private String discountFlags = "000000";
 
+    /**
+     * 변동DC 수동 override 플래그(V19, 2026-06-17).
+     *
+     * <p>{@code true} 이면 {@link com.samhanair.logis.product.service.ProductSheetSyncService}
+     * upsert 경로에서 {@code hasVariableDiscount} 및 변동DC 부속 필드를 시트 기준으로 덮어쓰지 않는다.
+     *
+     * <p>초기값 {@code false} — 기존 row 는 전부 시트 자동 적재 상태.
+     * {@link #markVariableDiscountManual(boolean)} 로 {@code true} 전환,
+     * {@link #clearVariableDiscountManual()} 로 {@code false} 복귀 (다음 sync 에서 시트 기준 재적재).
+     */
+    @Column(name = "variable_discount_manual", nullable = false)
+    private boolean variableDiscountManual = false;
+
     /** 시트 D/E 출고가 (베이스 — 정적가). 시점별 가격은 PriceHistory 참조. */
     @Column(name = "release_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal releasePrice = BigDecimal.ZERO;
@@ -464,6 +477,32 @@ public class Product extends BaseEntity {
      */
     public void clearUsageManual() {
         this.usageScopeManual = false;
+    }
+
+    /**
+     * 변동DC 수동 override 설정 — hasVariableDiscount 를 지정값으로 변경하고
+     * {@code variableDiscountManual=true} 를 마킹한다.
+     *
+     * <p>이후 {@link com.samhanair.logis.product.service.ProductSheetSyncService} upsert 에서
+     * 시트 기준 변동DC 자동 적재가 차단된다. {@link #clearVariableDiscountManual()} 로 해제하면
+     * 다음 sync 에서 시트 기준으로 재적재된다.
+     *
+     * @param hasVariableDiscount 수동 지정할 변동DC 적용 여부
+     */
+    public void markVariableDiscountManual(boolean hasVariableDiscount) {
+        this.hasVariableDiscount = hasVariableDiscount;
+        this.variableDiscountManual = true;
+    }
+
+    /**
+     * 변동DC 수동 override 해제 — {@code variableDiscountManual=false} 로 복귀.
+     *
+     * <p>hasVariableDiscount 값 자체는 변경하지 않는다. 다음
+     * {@link com.samhanair.logis.product.service.ProductSheetSyncService} sync 가
+     * 시트 기준으로 재적재한다.
+     */
+    public void clearVariableDiscountManual() {
+        this.variableDiscountManual = false;
     }
 
     /** 변동DC 룰 적용 — VariableDiscountDetector 호출 결과 set. */

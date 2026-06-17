@@ -57,6 +57,7 @@ import {
   updateDisplayOrders,
   updateBundleComponents,
   updateProductUsage,
+  updateProductVariableDiscount,
   type BundleComponentInput,
   type ComponentKind,
   type EstimateCategory,
@@ -70,6 +71,7 @@ import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
   exposureDisplayOrder,
+  isVariableDiscountEligible,
   nextScopeForEstimateCategoryRemoval,
   normalizeEstimateCategoryExposures,
   resolveEstimateItemsPageTotals,
@@ -157,15 +159,23 @@ interface ToggleCellProps {
   row: ProductCatalogRow
   canEdit: boolean
   onPatch: (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => void
+  onVariableDiscountPatch: (modelCode: string, hasVariableDiscount: boolean) => void
   patchLoading: boolean
 }
 
-function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
+function ToggleCell({
+  row,
+  canEdit,
+  onPatch,
+  onVariableDiscountPatch,
+  patchLoading,
+}: ToggleCellProps) {
   const { estimate, order } = fromUsageScope(row.usageScope)
   const selectedCategories = estimateCategoryValues(row)
   const remainingOptions = ESTIMATE_CATEGORY_OPTIONS.filter(
     (opt) => !selectedCategories.includes(opt.value),
   )
+  const showVariableDiscount = isVariableDiscountEligible(row)
 
   const handleEstimateChange = (checked: boolean) => {
     const newScope = toUsageScope(checked, order)
@@ -197,6 +207,10 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
       nextScope,
       nextCategories,
     )
+  }
+
+  const handleVariableDiscountChange = (checked: boolean) => {
+    onVariableDiscountPatch(row.modelCode, checked)
   }
 
   const showEstimateCategory = estimate && (row.usageScope === 'ESTIMATE' || row.usageScope === 'BOTH')
@@ -258,6 +272,30 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
             </Select>
           ) : null}
         </div>
+      ) : null}
+      {showVariableDiscount ? (
+        <span style={variableDiscountGroupStyle}>
+          <label style={checkboxLabelStyle}>
+            <input
+              type="checkbox"
+              checked={row.hasVariableDiscount}
+              disabled={!canEdit || patchLoading}
+              onChange={(e) => handleVariableDiscountChange(e.target.checked)}
+              data-testid={`estimate-items-vdc-toggle-${row.modelCode}`}
+              aria-label="변동DC"
+            />
+            변동DC
+          </label>
+          {row.variableDiscountManual ? (
+            <span
+              style={manualBadgeStyle}
+              title="수동 설정값입니다. 시트 sync 가 덮어쓰지 않습니다."
+              data-testid={`estimate-items-vdc-manual-badge-${row.modelCode}`}
+            >
+              수동
+            </span>
+          ) : null}
+        </span>
       ) : null}
     </div>
   )
@@ -853,6 +891,26 @@ export function EstimateItemsCatalogPage() {
     },
   })
 
+  const variableDiscountMutation = useMutation({
+    mutationFn: ({
+      modelCode,
+      hasVariableDiscount,
+    }: {
+      modelCode: string
+      hasVariableDiscount: boolean
+    }) => updateProductVariableDiscount(modelCode, hasVariableDiscount),
+    onSuccess: () => {
+      setMutationError(null)
+      setPatchingCode(null)
+      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
+      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+    },
+    onError: (err) => {
+      setMutationError(errorMsg(err))
+      setPatchingCode(null)
+    },
+  })
+
   const addProductMutation = useMutation({
     mutationFn: async (product: ProductOption) => {
       const modelCode = product.modelCode ?? product.modelName
@@ -916,6 +974,15 @@ export function EstimateItemsCatalogPage() {
       patchMutation.mutate({ modelCode, scope, estimateCategories })
     },
     [patchMutation],
+  )
+
+  const handleVariableDiscountPatch = useCallback(
+    (modelCode: string, hasVariableDiscount: boolean) => {
+      setPatchingCode(modelCode)
+      setMutationError(null)
+      variableDiscountMutation.mutate({ modelCode, hasVariableDiscount })
+    },
+    [variableDiscountMutation],
   )
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -1056,12 +1123,13 @@ export function EstimateItemsCatalogPage() {
     {
       key: 'usageScope',
       header: '노출 설정',
-      width: '280px',
+      width: '360px',
       render: (row) => (
         <ToggleCell
           row={row}
           canEdit={canEdit}
           onPatch={handlePatch}
+          onVariableDiscountPatch={handleVariableDiscountPatch}
           patchLoading={patchingCode === row.modelCode}
         />
       ),
@@ -1469,6 +1537,26 @@ const checkboxLabelStyle: CSSProperties = {
   color: 'var(--color-neutral-700, #363D49)',
   cursor: 'pointer',
   userSelect: 'none',
+}
+
+const variableDiscountGroupStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+}
+
+const manualBadgeStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  height: 18,
+  padding: '0 5px',
+  borderRadius: 4,
+  border: '1px solid var(--color-primary-200, #BFDBFE)',
+  background: 'var(--color-primary-50, #EFF6FF)',
+  color: 'var(--color-primary-700, #1D4ED8)',
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: 1,
 }
 
 const tableSectionStyle: CSSProperties = {
