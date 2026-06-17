@@ -58,7 +58,6 @@ import {
   updateBundleComponents,
   updateProductUsage,
   updateProductVariableDiscount,
-  clearProductVariableDiscount,
   type BundleComponentInput,
   type ComponentKind,
   type EstimateCategory,
@@ -161,7 +160,6 @@ interface ToggleCellProps {
   canEdit: boolean
   onPatch: (modelCode: string, scope: UsageScope, estimateCategories: EstimateCategory[]) => void
   onVariableDiscountPatch: (modelCode: string, hasVariableDiscount: boolean) => void
-  onVariableDiscountClear: (modelCode: string) => void
   patchLoading: boolean
 }
 
@@ -170,7 +168,6 @@ function ToggleCell({
   canEdit,
   onPatch,
   onVariableDiscountPatch,
-  onVariableDiscountClear,
   patchLoading,
 }: ToggleCellProps) {
   const { estimate, order } = fromUsageScope(row.usageScope)
@@ -214,10 +211,6 @@ function ToggleCell({
 
   const handleVariableDiscountChange = (checked: boolean) => {
     onVariableDiscountPatch(row.modelCode, checked)
-  }
-
-  const handleVariableDiscountClear = () => {
-    onVariableDiscountClear(row.modelCode)
   }
 
   const showEstimateCategory = estimate && (row.usageScope === 'ESTIMATE' || row.usageScope === 'BOTH')
@@ -284,7 +277,7 @@ function ToggleCell({
         <span style={variableDiscountGroupStyle}>
           <label
             style={checkboxLabelStyle}
-            title="변동DC: 견적 시 멀티 공통 할인율($L$2)을 적용하는 품목"
+            title="변동DC: 전역할인율 영향 없이 기초 납품가 그대로 표시"
           >
             <input
               type="checkbox"
@@ -296,27 +289,6 @@ function ToggleCell({
             />
             변동DC
           </label>
-          {row.variableDiscountManual ? (
-            <>
-              <Badge
-                variant="brand"
-                title="수동 설정값입니다. 시트 sync 가 덮어쓰지 않습니다."
-                data-testid={`estimate-items-vdc-manual-badge-${row.modelCode}`}
-              >
-                수동
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!canEdit || patchLoading}
-                onClick={handleVariableDiscountClear}
-                title="시트 자동 분류로 되돌립니다."
-                data-testid={`estimate-items-vdc-manual-clear-${row.modelCode}`}
-              >
-                자동
-              </Button>
-            </>
-          ) : null}
         </span>
       ) : null}
     </div>
@@ -933,20 +905,6 @@ export function EstimateItemsCatalogPage() {
     },
   })
 
-  const variableDiscountClearMutation = useMutation({
-    mutationFn: (modelCode: string) => clearProductVariableDiscount(modelCode),
-    onSuccess: () => {
-      setMutationError(null)
-      setPatchingCode(null)
-      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
-      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
-    },
-    onError: (err) => {
-      setMutationError(errorMsg(err))
-      setPatchingCode(null)
-    },
-  })
-
   const addProductMutation = useMutation({
     mutationFn: async (product: ProductOption) => {
       const modelCode = product.modelCode ?? product.modelName
@@ -1019,15 +977,6 @@ export function EstimateItemsCatalogPage() {
       variableDiscountMutation.mutate({ modelCode, hasVariableDiscount })
     },
     [variableDiscountMutation],
-  )
-
-  const handleVariableDiscountClear = useCallback(
-    (modelCode: string) => {
-      setPatchingCode(modelCode)
-      setMutationError(null)
-      variableDiscountClearMutation.mutate(modelCode)
-    },
-    [variableDiscountClearMutation],
   )
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -1175,7 +1124,6 @@ export function EstimateItemsCatalogPage() {
           canEdit={canEdit}
           onPatch={handlePatch}
           onVariableDiscountPatch={handleVariableDiscountPatch}
-          onVariableDiscountClear={handleVariableDiscountClear}
           patchLoading={patchingCode === row.modelCode}
         />
       ),
