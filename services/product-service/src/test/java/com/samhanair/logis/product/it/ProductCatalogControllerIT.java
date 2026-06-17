@@ -842,6 +842,47 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isBadRequest());
     }
 
+    /**
+     * (j) #18 D-PCE-09 회귀: 같은 카테고리에 활성 노출은 있지만 usageScope=NONE 인 품목은
+     * display-orders 전체 전송 모수에서 제외한다.
+     *
+     * <p>FE 는 reorder 입력을 {@code usageScope !== 'NONE'} 품목으로만 구성한다. 따라서
+     * HOME_MULTI 활성 노출 테이블에 NONE 품목이 남아 있어도, 노출 가능 품목(API_HOME_01,
+     * DOSCOPE_*) 전체만 보내면 204 로 통과해야 한다.
+     */
+    @Test
+    void PUT_display_orders_usageScope_NONE_활성노출은_전체모수에서_제외_204() throws Exception {
+        Category cat = categoryRepository.save(Category.create("CAT-DOSCOPE", "display-order scope", null, 24));
+        Product m1 = Product.seedFromSheet("표시순서 scope M1", "DOSCOPE_M1", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.ESTIMATE, EstimateCategory.HOME_MULTI);
+        Product m2 = Product.seedFromSheet("표시순서 scope M2", "DOSCOPE_M2", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        Product none = Product.seedFromSheet("표시순서 scope NONE", "DOSCOPE_NONE", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.NONE, EstimateCategory.HOME_MULTI);
+        Product savedM1 = productRepository.save(m1);
+        Product savedM2 = productRepository.save(m2);
+        Product savedNone = productRepository.save(none);
+        persistExposure(savedM1, EstimateCategory.HOME_MULTI, 10);
+        persistExposure(savedM2, EstimateCategory.HOME_MULTI, 20);
+        persistExposure(savedNone, EstimateCategory.HOME_MULTI, 30);
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/display-orders")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"modelCode":"DOSCOPE_M2","estimateCategory":"HOME_MULTI","displayOrder":1},
+                                  {"modelCode":"DOSCOPE_M1","estimateCategory":"HOME_MULTI","displayOrder":2},
+                                  {"modelCode":"API_HOME_01","estimateCategory":"HOME_MULTI","displayOrder":3}
+                                ]
+                                """))
+                .andExpect(status().isNoContent());
+    }
+
     // ── 시드 헬퍼 ───────────────────────────────────────────────────────────
 
     /** 부모 BUNDLE(EXPAND) 품목 1건 저장 (구성품 없음). category=HOME_MULTI, usage=BOTH. */

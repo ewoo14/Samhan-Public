@@ -1,3 +1,4 @@
+import { arrayMove } from '@dnd-kit/sortable'
 import type {
   BundleComponentInput,
   ComponentKind,
@@ -53,7 +54,13 @@ function withDisplayOrder(drafts: ComponentDraftModel[]): ComponentDraftModel[] 
   return drafts.map((draft, index) => ({ ...draft, displayOrder: index + 1 }))
 }
 
-/** D-PCE-08 표시 순서: 종류순 + 종류 안 기본 먼저 + 기존 within-kind 순서 보존. */
+/**
+ * D-PCE-08 표시 순서: 종류순 + 종류 안 기본 먼저 + 기존 within-kind 순서 보존.
+ *
+ * <p>동일 종류·동일 기본 여부 안의 tie-breaker 는 입력 배열 순서에 의존한다.
+ * 즉 호출자는 "입력 배열 순서 == 현재 표시 순서" 계약을 지켜야 사용자의
+ * within-kind 드래그 결과가 저장 요청까지 보존된다.
+ */
 export function normalizeBundleComponentDraftOrder(
   drafts: ComponentDraftModel[],
 ): ComponentDraftModel[] {
@@ -112,11 +119,7 @@ export function reorderBundleComponentDrafts(
   const overIndex = ordered.findIndex((draft) => draft._localId === overId)
   if (activeIndex < 0 || overIndex < 0) return ordered
 
-  const next = [...ordered]
-  const [moved] = next.splice(activeIndex, 1)
-  if (!moved) return ordered
-  next.splice(overIndex, 0, moved)
-  return withDisplayOrder(next)
+  return withDisplayOrder(arrayMove(ordered, activeIndex, overIndex))
 }
 
 /** 사용자가 선택한 행의 기본 구성품 여부만 갱신한다. */

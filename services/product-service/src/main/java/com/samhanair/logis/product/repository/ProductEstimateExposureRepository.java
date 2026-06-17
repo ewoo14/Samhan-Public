@@ -2,6 +2,7 @@ package com.samhanair.logis.product.repository;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.ProductEstimateExposure;
+import com.samhanair.logis.product.domain.UsageScope;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -30,10 +31,19 @@ public interface ProductEstimateExposureRepository extends JpaRepository<Product
      *
      * <p>display-orders 일괄 갱신은 부분 요청으로 기존 순서를 붕괴시키지 않도록
      * 이 결과의 productId 집합과 요청 productId 집합이 같은지 먼저 검증한다.
+     * 단, 견적/주문 화면에 직접 노출되지 않는 {@code usageScope=NONE} 품목은 FE
+     * reorder 입력에도 포함되지 않으므로 가드 모수에서도 제외한다.
      *
      * @param estimateCategory 견적 카테고리
-     * @return 삭제되지 않은 품목과 삭제되지 않은 노출의 교집합
+     * @return 삭제되지 않은 노출 가능 품목과 삭제되지 않은 노출의 교집합
      */
+    default List<ProductEstimateExposure> findActiveProductExposuresByEstimateCategory(
+            EstimateCategory estimateCategory) {
+        return findActiveProductExposuresByEstimateCategoryAndUsageScopes(
+                estimateCategory,
+                List.of(UsageScope.ESTIMATE, UsageScope.PARTNER_ORDER, UsageScope.BOTH));
+    }
+
     @Query("""
             SELECT e
               FROM ProductEstimateExposure e, Product p
@@ -41,9 +51,11 @@ public interface ProductEstimateExposureRepository extends JpaRepository<Product
                AND p.id = e.productId
                AND e.isDeleted = false
                AND p.isDeleted = false
+               AND p.usageScope IN :usageScopes
             """)
-    List<ProductEstimateExposure> findActiveProductExposuresByEstimateCategory(
-            @Param("estimateCategory") EstimateCategory estimateCategory);
+    List<ProductEstimateExposure> findActiveProductExposuresByEstimateCategoryAndUsageScopes(
+            @Param("estimateCategory") EstimateCategory estimateCategory,
+            @Param("usageScopes") Collection<UsageScope> usageScopes);
 
     @Query("""
             SELECT COALESCE(MAX(e.displayOrder), 0)

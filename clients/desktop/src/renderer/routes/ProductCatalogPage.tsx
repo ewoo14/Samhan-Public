@@ -669,6 +669,17 @@ function SortableComponentRow({
   onDelete,
 }: SortableComponentRowProps) {
   const canDrag = canEdit && !isSaving && !draft.isDefault
+  const dragHandleTitle = draft.isDefault
+    ? '기본 구성품은 종류 안 최상단에 고정됩니다'
+    : isSaving
+      ? '저장 중에는 구성품 순서를 변경할 수 없습니다'
+      : '같은 종류 안에서 드래그'
+  const dragHandleLabel = canDrag
+    ? `${draft.componentProductCode} 구성품 드래그`
+    : `${draft.componentProductCode} 구성품 드래그 비활성`
+  const dragHandleDisabledStyle: CSSProperties | undefined = !canDrag
+    ? { opacity: 0.35, cursor: 'not-allowed' }
+    : undefined
   const {
     attributes,
     listeners,
@@ -692,21 +703,19 @@ function SortableComponentRow({
       data-testid={`components-modal-component-row-${index}`}
       style={style}
     >
-      <DragHandle
-        label={
-          draft.isDefault
-            ? `${draft.componentProductCode} 기본 구성품 고정`
-            : `${draft.componentProductCode} 구성품 드래그`
-        }
-        listeners={canDrag ? listeners as Record<string, unknown> | undefined : undefined}
-        attributes={canDrag ? attributes as unknown as Record<string, unknown> : undefined}
-        setActivatorNodeRef={setActivatorNodeRef}
-        dragging={isDragging}
-        disabled={!canDrag}
-        data-testid={`components-modal-drag-handle-${index}`}
-        title={draft.isDefault ? '기본 구성품은 종류 안 최상단에 고정됩니다' : '같은 종류 안에서 드래그'}
-        style={draft.isDefault ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
-      />
+      {canEdit ? (
+        <DragHandle
+          label={dragHandleLabel}
+          listeners={canDrag ? listeners as Record<string, unknown> | undefined : undefined}
+          attributes={canDrag ? attributes as unknown as Record<string, unknown> : undefined}
+          setActivatorNodeRef={setActivatorNodeRef}
+          dragging={isDragging}
+          disabled={!canDrag}
+          data-testid={`components-modal-drag-handle-${index}`}
+          title={dragHandleTitle}
+          style={dragHandleDisabledStyle}
+        />
+      ) : null}
       <span style={{ flex: 1, fontSize: 12 }}>
         <span style={{ fontFamily: 'monospace' }}>{draft.componentProductCode}</span>
         {draft.componentName ? (

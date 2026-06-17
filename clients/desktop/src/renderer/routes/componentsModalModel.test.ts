@@ -127,6 +127,29 @@ describe('componentsModalModel', () => {
     ])
   })
 
+  it('같은 종류의 비기본 구성품을 하향 다칸 드래그하면 over 행 뒤로 밀리지 않는다', () => {
+    const drafts: ComponentDraftModel[] = [
+      draft('panel-default', 'PANEL', true),
+      draft('panel-extra-1', 'PANEL', false),
+      draft('panel-extra-2', 'PANEL', false),
+      draft('panel-extra-3', 'PANEL', false),
+      draft('panel-extra-4', 'PANEL', false),
+      draft('remote-extra', 'REMOTE', false),
+    ]
+
+    const reordered = reorderBundleComponentDrafts(drafts, 'panel-extra-1', 'panel-extra-4')
+
+    expect(reordered.map((item) => item._localId)).toEqual([
+      'panel-default',
+      'panel-extra-2',
+      'panel-extra-3',
+      'panel-extra-4',
+      'panel-extra-1',
+      'remote-extra',
+    ])
+    expect(reordered.map((item) => item.displayOrder)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
   it('저장 요청 배열은 종류순, 기본 먼저, 사용자 within-kind 순서를 따른다', () => {
     const drafts: ComponentDraftModel[] = [
       draft('remote-extra', 'REMOTE', false),
