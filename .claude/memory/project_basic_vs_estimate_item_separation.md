@@ -21,8 +21,12 @@ metadata:
 - **견적품목 관리**: 노출 카테고리(M:N, #494)·카테고리별 표시순서(#494)·세트 구성(bundle_component)·구성품 정렬(#495)·판넬/리모컨/자재 옵션·변동DC. 추가=기초품목 선택만.
 - **#494 슬1·#495 슬2 자산은 견적품목 관리로 귀속(폐기 아님)**. 현 ProductCatalogPage 2분화. 단가는 SKU 1개로 충분(per-카테고리 override 불요).
 
-## 슬라이스 계획
-슬1=견적품목 관리 메뉴/화면 신설(기초품목 선택추가 + 노출M:N 이관, 기초품목=등록전용) → 슬2=세트구성+구성품정렬(#495)+옵션 이관 → 슬3=변동DC + G1 카탈로그 DB 승격(견적품목 도메인 내, Java FORMULA read parity 포함).
+## 슬라이스 계획 / 진행
+- ✅ **슬1 머지(PR #496, `bb21de5f`)**: 견적품목 관리 메뉴/화면 신설(기초품목 선택추가 + 노출M:N 이관 + 카테고리 탭 고정4 + 카테고리 컬럼 캡슐만). 동적 카테고리 추가/삭제=개발책임자 폐기(고정, EstimateCategory enum 유지).
+- ✅ **슬2 머지(PR #497, `8c7fe7d8`, 2026-06-17)**: 세트 구성품 모달(ComponentsModal/SortableComponentRow/COMPONENT_KIND_OPTIONS) 기초품목→견적품목 이관 + 기초품목 등록전용화(set-badge 유지) + P2 모달제목 품목명 병기. 듀얼리뷰 **사이클2**: Opus 5-agent+실QA 4/4 → CI mock 회귀 4건 적발·fix → **Codex 교차가 mock-BE false-green P1 적발**(fix 이 mock `updateProductUsage` 에서 PARTNER_ORDER 노출 유지로 바꿨으나, 실 BE `ProductService.syncEstimateExposures` 는 NONE/PARTNER_ORDER 시 활성 노출 soft-delete — `UpdateProductUsageRequest` 계약. Opus 라운드 'BE정합' 오판을 교차가 교정)·fix2 → CI green. 🔵Claude·🟣Codex·🟢PM 종합 PR 게시(실QA 4장 인라인).
+- 🔜 **슬3=변동DC + G1 카탈로그 DB 승격**(견적품목 도메인 내, Java FORMULA read useK2 378 parity 포함). **개발책임자 '슬2까지 자율' 위임 충족 → 슬3 착수 전 방향 확인.**
+
+**🪤 슬2 교훈**: mock 은 list-filter(`usageScope IN ESTIMATE/PARTNER_ORDER/BOTH`)가 아니라 **update-behavior(NONE/PARTNER_ORDER → 노출 soft-delete)와 정합**해야 false-green 회피. 듀얼 교차가 단일 라운드 오판 적발한 모범 사례. 리뷰는 채팅 아닌 **PR 에 즉시 게시**(개발책임자 지적) — Claude TM·Codex TM·PM 종합 + Docker 실QA 인라인. ([[ci-test-filter-false-green]] [[dual-5agent-review]] [[review-posting-and-zero-skip]])
 
 ## 재배치 / 잔존
 - **G1 카탈로그 DB 승격 + Java FORMULA read fix**(google-api-client FORMULA 누락: 상업멀티 useK2 Java 86 vs JS 378, `GoogleSheetsClient`+GsonFactory 가설, `docs/audit/gas-port-fidelity/java-formula-read-discrepancy-investigation.md`) = 폐기 아님 **슬3 재배치**.
