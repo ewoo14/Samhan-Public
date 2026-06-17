@@ -4,7 +4,7 @@
  * 실서버(Docker, product-service+api-gateway 6c539714 healthy) FE 화면 경유로
  * 아래 4종을 실 게이트웨이(http://localhost:8080) HTTP 왕복하며 캡처한다(mock 금지).
  *
- *   1. 세트 컬럼        — 품목관리 BUNDLE 행 '세트 · 13' 뱃지 (cycle-set-column.png)
+ *   1. 세트 컬럼        — 견적품목관리 BUNDLE 행 '세트 · 13' 뱃지 (cycle-set-column.png)
  *   2. 표시순서 드래그   — SINGLE_SET 카테고리 행 드래그 → '순서 저장' PUT 200
  *                          (cycle-order-before.png / cycle-order-after.png)
  *                          ※ 저장 전 전체 카테고리 순서 백업 → QA 후 원복 PUT (dev DB 청결)
@@ -108,23 +108,26 @@ async function fetchAllInCategory(page: Page, token: string, category: string): 
 }
 
 // ===========================================================================
-// 1. 세트 컬럼 — 품목관리 BUNDLE 행 '세트 · 13' 뱃지
+// 1. 세트 컬럼 — 견적품목관리 BUNDLE 행 '세트 · 13' 뱃지
 // ===========================================================================
 
-test('1. 세트 컬럼 — 품목관리 BUNDLE 행에 세트 뱃지 + 구성품 수 표시', async ({ page }) => {
+test('1. 세트 컬럼 — 견적품목관리 BUNDLE 행에 세트 뱃지 + 구성품 수 표시', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
 
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
+  const categoryTab = page.locator(`[data-testid="estimate-items-category-tab-${SET_CATEGORY}"]`)
+  await categoryTab.click()
+  await expect(categoryTab).toHaveAttribute('aria-selected', 'true')
 
   // 실 BUNDLE AC110CS6PBH1SY 검색 → 세트 뱃지 노출
   const searchInput = page
-    .locator('[data-testid="product-catalog-search-input"] input, input[data-testid="product-catalog-search-input"]')
+    .locator('[data-testid="estimate-items-search-input"] input, input[data-testid="estimate-items-search-input"]')
     .first()
   await searchInput.fill(BUNDLE_CODE)
-  await page.locator('[data-testid="product-catalog-query-button"]').click()
+  await page.locator('[data-testid="estimate-items-query-button"]').click()
 
-  const badge = page.locator(`[data-testid="product-catalog-set-badge-${BUNDLE_CODE}"]`)
+  const badge = page.locator(`[data-testid="estimate-items-set-badge-${BUNDLE_CODE}"]`)
   await badge.waitFor({ state: 'visible', timeout: 20000 })
   const badgeText = (await badge.textContent())?.trim() ?? ''
   // "세트 · N" (componentCount=13) 형식 검증

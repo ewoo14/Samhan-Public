@@ -997,7 +997,7 @@ function normalizeMockExposures(raw: {
 let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
   ...Object.values(MOCK_PRODUCTS_BY_MODEL).filter((p) => p.productCategory !== 'MATERIAL').map((p, index) => {
     const isBundle = p.productType === 'BUNDLE'
-    const primaryCategory = index % 2 === 0 ? 'HOME_MULTI' : 'OTHER'
+    const primaryCategory = isBundle ? 'HOME_MULTI' : index % 2 === 0 ? 'HOME_MULTI' : 'OTHER'
     return deriveLegacyExposureFields({
       modelCode: p.modelName,
       name: p.productName,

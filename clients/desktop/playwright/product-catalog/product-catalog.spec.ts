@@ -8,7 +8,7 @@
  *   <li>세트 컬럼 렌더 — BUNDLE 행에 '세트 · N' 뱃지, 일반 품목에 — 표시</li>
  *   <li>구성품 모달 왕복 — '구성품' 버튼 → 모달 → 추가/수량/저장 → componentCount 갱신</li>
  *   <li>순서 저장 — 기본 카테고리 탭에서 드래그 활성 + 탭별 순서 저장</li>
- *   <li>view-only 권한 — WAREHOUSE role 진입 시 체크박스·구성품 버튼 비활성</li>
+ *   <li>view-only 권한 — WAREHOUSE role 진입 시 체크박스 비활성</li>
  *   <li>§2-1 NONE 품목 — displayOrder '—' + 드래그 핸들 없음</li>
  *   <li>§2-2 카테고리 탭 컨텍스트에서 드래그 항상 활성</li>
  * </ol>
@@ -104,7 +104,9 @@ const BUNDLE_COMPONENT_CODES = [
 ]
 
 async function openSetComponentsModal(page: Page): Promise<void> {
-  const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+  await gotoEstimateItemsCatalog(page, 'MASTER')
+  await loadEstimateItemsTable(page)
+  const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
   await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
   await componentsBtn.click()
   await expect(page.getByTestId('components-modal')).toBeVisible({ timeout: 5_000 })
@@ -184,8 +186,8 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(page.getByTestId('product-catalog-save-order-button')).toHaveCount(0)
     await expect(page.getByTestId('product-catalog-drag-disabled-caption')).toHaveCount(0)
 
-    // 슬1에서는 세트 구성품 모달을 기초품목 관리에 그대로 둔다.
-    await expect(page.getByTestId('product-catalog-components-button-SET-HM2WAY')).toBeVisible()
+    await expect(page.locator('[data-testid^="product-catalog-components-button-"]')).toHaveCount(0)
+    await expect(page.getByTestId('components-modal')).toHaveCount(0)
   })
 
   test('시나리오 0b: 견적품목 관리 — 노출 품목 관리와 기초품목 선택 추가를 제공한다', async ({ page }) => {
@@ -284,13 +286,13 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   // Scenario 4: 구성품 모달 왕복 — 추가·수량·저장 (명시 단언 강화 — P2 vacuous pass 수정)
   // ---------------------------------------------------------------------------
 
-  test('시나리오 4: 구성품 모달 왕복 — 구성품 추가·수량 변경·저장·componentCount 갱신', async ({ page }) => {
+  test('시나리오 4: 견적품목 구성품 모달 왕복 — 구성품 추가·수량 변경·저장·componentCount 갱신', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
     // 1. 구성품 버튼 존재 단언
-    const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+    const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
     await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
 
     // 2. 모달 열기
@@ -320,7 +322,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(modal).not.toBeVisible({ timeout: 5_000 })
 
     // 8. 세트 뱃지 여전히 표시 단언 (componentCount 갱신)
-    const setBadge = page.getByTestId('product-catalog-set-badge-SET-HM2WAY')
+    const setBadge = page.getByTestId('estimate-items-set-badge-SET-HM2WAY')
     await expect(setBadge).toBeVisible({ timeout: 5_000 })
     const badgeText = await setBadge.textContent()
     // 저장 후 componentCount = 9 (수량 변경만, 행 개수 유지)
@@ -331,12 +333,12 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   // Scenario 4b: 구성품 모달 — 새 품목 추가 실제 수행 (P2 vacuous pass 수정)
   // ---------------------------------------------------------------------------
 
-  test('시나리오 4b: 구성품 모달 — 품목 검색 후 추가 실제 수행·행 개수 증가 단언', async ({ page }) => {
+  test('시나리오 4b: 견적품목 구성품 모달 — 품목 검색 후 추가 실제 수행·행 개수 증가 단언', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
-    const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+    const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
     await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
     await componentsBtn.click()
 
@@ -372,8 +374,6 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
   test('시나리오 4c: 구성품 드래그 정렬 — 종류 내 재정렬 저장·기본 고정·종류 경계 거부', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
     await openSetComponentsModal(page)
 
     await expect(page.getByTestId('components-modal-kind-group-INDOOR')).toBeVisible()

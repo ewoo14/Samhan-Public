@@ -2,7 +2,7 @@
  * 기초품목 관리 페이지 (`/products/catalog`) — 물리 SKU master 등록/수정 전용 화면.
  *
  * 견적/주문 노출, 견적 카테고리, 표시순서 관리는 `EstimateItemsCatalogPage` 로 분리한다.
- * 슬1에서는 세트 구성품 모달을 현 위치에 유지한다.
+ * 세트 구성품 편집은 `EstimateItemsCatalogPage` 에서 관리한다.
  */
 import {
   useCallback,
@@ -12,60 +12,25 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
 import { isMockMode } from '../api/mock'
 import { ProductRealtimeClient } from '../realtime/ProductRealtimeClient'
 import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import {
   Badge,
   Button,
   DataTable,
-  DragHandle,
   Input,
-  Modal,
-  ProductAutocomplete,
-  Select,
   type DataTableColumn,
-  type ProductOption,
 } from '@samhan/design-system'
 import {
   listProducts,
-  listBundleComponents,
-  updateBundleComponents,
   type ProductCatalogRow,
   type ProductCategory,
-  type BundleComponentInput,
-  type ComponentKind,
 } from '../api/productCatalogApi'
-import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
-import {
-  buildBundleComponentInputs,
-  groupBundleComponentDrafts,
-  normalizeBundleComponentDraftOrder,
-  reorderBundleComponentDrafts,
-  toggleComponentDefault,
-  type ComponentDraftModel,
-} from './componentsModalModel'
 
 // ---------------------------------------------------------------------------
 // 상수
@@ -95,16 +60,6 @@ const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
   MATERIAL: '자재',
 }
 
-const COMPONENT_KIND_OPTIONS: Array<{ value: ComponentKind; label: string }> = [
-  { value: 'INDOOR', label: '실내기' },
-  { value: 'OUTDOOR', label: '실외기' },
-  { value: 'PANEL', label: '판넬' },
-  { value: 'REMOTE', label: '리모컨' },
-  { value: 'MATERIAL', label: '자재' },
-  { value: 'ACCESSORY', label: '부속품' },
-  { value: 'FOOT', label: '받침대' },
-]
-
 // ---------------------------------------------------------------------------
 // 에러 메시지 추출
 // ---------------------------------------------------------------------------
@@ -126,448 +81,11 @@ function errorMsg(err: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// 구성품 편집 모달
-// ---------------------------------------------------------------------------
-
-interface ComponentsModalProps {
-  open: boolean
-  modelCode: string
-  canEdit: boolean
-  onClose: () => void
-  onSaved: () => void
-}
-
-function ComponentsModal({
-  open,
-  modelCode,
-  canEdit,
-  onClose,
-  onSaved,
-}: ComponentsModalProps) {
-  const queryClient = useQueryClient()
-  const [drafts, setDrafts] = useState<ComponentDraftModel[]>([])
-  const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
-  const [modalError, setModalError] = useState<string | null>(null)
-
-  // 구성품 목록 로드
-  const componentsQuery = useQuery({
-    queryKey: ['bundle-components', modelCode],
-    queryFn: () => listBundleComponents(modelCode),
-    enabled: open && modelCode.length > 0,
-    staleTime: 0,
-  })
-
-  // 구성품 저장 (PUT replace-all)
-  const saveMutation = useMutation({
-    mutationFn: (components: BundleComponentInput[]) =>
-      updateBundleComponents(modelCode, components),
-    onSuccess: () => {
-      setModalError(null)
-      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
-      void queryClient.invalidateQueries({ queryKey: ['bundle-components', modelCode] })
-      onSaved()
-    },
-    onError: (err) => {
-      setModalError(errorMsg(err))
-    },
-  })
-
-  // 모달 열릴 때 drafts 초기화 — BE 응답 메타 전체 보존
-  useEffect(() => {
-    if (open && componentsQuery.data) {
-      setDrafts(
-        componentsQuery.data.map((c, idx) => ({
-          componentProductCode: c.componentProductCode,
-          componentName: c.componentName,
-          defaultQty: c.defaultQty,
-          qtyMode: c.qtyMode,
-          componentKind: c.componentKind,
-          componentVariant: c.componentVariant,
-          isDefault: c.isDefault,
-          specText: c.specText,
-          displayOrder: idx + 1,
-          _localId: `existing-${c.componentProductCode}-${idx}`,
-          _isNew: false,
-        })),
-      )
-    }
-  }, [open, componentsQuery.data])
-
-  const handleQuantityChange = (localId: string, value: string) => {
-    const parsed = parseInt(value, 10)
-    if (!isFinite(parsed) || parsed < 1) return
-    setDrafts((prev) =>
-      prev.map((d) => (d._localId === localId ? { ...d, defaultQty: parsed } : d)),
-    )
-  }
-
-  const handleKindChange = (localId: string, value: string) => {
-    setDrafts((prev) =>
-      normalizeBundleComponentDraftOrder(
-        prev.map((d) =>
-          d._localId === localId
-            ? { ...d, componentKind: value ? (value as ComponentKind) : null }
-            : d,
-        ),
-      ),
-    )
-  }
-
-  const handleDefaultChange = (localId: string, checked: boolean) => {
-    setDrafts((prev) => normalizeBundleComponentDraftOrder(toggleComponentDefault(prev, localId, checked)))
-  }
-
-  const handleDelete = (localId: string) => {
-    setDrafts((prev) => {
-      const next = prev.filter((d) => d._localId !== localId)
-      return normalizeBundleComponentDraftOrder(next)
-    })
-  }
-
-  const searchComponentProducts = async (q: string): Promise<ProductOption[]> => {
-    const products = await searchProductsApi(q)
-    return products.filter((product) => {
-      const visibleCode = product.modelCode ?? product.modelName
-      return visibleCode !== modelCode && product.productType !== 'BUNDLE'
-    })
-  }
-
-  const handleAdd = (product: ProductOption | null) => {
-    if (!product) return
-    const visibleCode = product.modelCode ?? product.modelName
-    // 중복 추가 방지
-    if (drafts.some((d) => d.componentProductCode === visibleCode)) return
-    const newDraft: ComponentDraftModel = {
-      componentProductCode: visibleCode,
-      componentName: product.productName,
-      defaultQty: 1,
-      qtyMode: 'FOLLOW_SET',
-      componentKind: null, // 신규: 사용자가 선택하거나 BE 기본(ACCESSORY) 적용
-      componentVariant: null,
-      isDefault: false,
-      specText: null,
-      displayOrder: drafts.length + 1,
-      _localId: `new-${visibleCode}-${Date.now()}`,
-      _isNew: true,
-    }
-    setDrafts((prev) => normalizeBundleComponentDraftOrder([...prev, newDraft]))
-    setSelectedProduct(null)
-  }
-
-  const componentSensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  )
-
-  const handleComponentDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    setDrafts((prev) =>
-      reorderBundleComponentDrafts(prev, String(active.id), String(over.id)),
-    )
-  }, [])
-
-  const handleSave = () => {
-    if (drafts.length === 0) {
-      setModalError('구성품이 없습니다. 최소 1개 이상 등록해 주세요.')
-      return
-    }
-    saveMutation.mutate(buildBundleComponentInputs(drafts))
-  }
-
-  const handleClose = () => {
-    setSelectedProduct(null)
-    setModalError(null)
-    onClose()
-  }
-
-  const isLoading = componentsQuery.isLoading
-  const isSaving = saveMutation.isPending
-  const selectedProductCode = selectedProduct
-    ? selectedProduct.modelCode ?? selectedProduct.modelName
-    : ''
-  const selectedAlreadyAdded = selectedProductCode
-    ? drafts.some((d) => d.componentProductCode === selectedProductCode)
-    : false
-  const componentGroups = groupBundleComponentDrafts(drafts)
-  const orderedDrafts = componentGroups.flatMap((group) => group.items)
-
-  return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title={`구성품 편집 — ${modelCode}`}
-      size="lg"
-      footer={
-        canEdit ? (
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button variant="secondary" onClick={handleClose} disabled={isSaving}>
-              닫기
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              loading={isSaving}
-              disabled={isSaving || isLoading}
-              data-testid="components-modal-save-button"
-            >
-              저장
-            </Button>
-          </div>
-        ) : (
-          <Button variant="secondary" onClick={handleClose}>닫기</Button>
-        )
-      }
-    >
-      <div
-        style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 200 }}
-        data-testid="components-modal"
-      >
-        {isLoading ? (
-          <p style={{ color: 'var(--color-neutral-500)', fontSize: 13 }}>불러오는 중…</p>
-        ) : null}
-
-        {modalError ? (
-          <div role="alert" style={errorBannerStyle} data-testid="components-modal-error">
-            {modalError}
-          </div>
-        ) : null}
-
-        {/* 현재 구성품 목록 */}
-        <section aria-label="구성품 목록">
-          <h4 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-neutral-700)' }}>
-            구성품 ({drafts.length}개)
-          </h4>
-          {drafts.length === 0 && !isLoading ? (
-            <p style={{ fontSize: 12, color: 'var(--color-neutral-400)' }}>구성품이 없습니다.</p>
-          ) : null}
-          <DndContext
-            sensors={componentSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleComponentDragEnd}
-          >
-            <SortableContext
-              items={orderedDrafts.map((draft) => draft._localId)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {componentGroups.map((group) => (
-                  <div
-                    key={group.kind}
-                    style={componentGroupStyle}
-                    data-testid={`components-modal-kind-group-${group.kind}`}
-                  >
-                    <div style={componentKindHeaderStyle}>
-                      {COMPONENT_KIND_OPTIONS.find((option) => option.value === group.kind)?.label ?? group.kind}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {group.items.map((draft) => {
-                        const idx = orderedDrafts.findIndex((item) => item._localId === draft._localId)
-                        return (
-                          <SortableComponentRow
-                            key={draft._localId}
-                            draft={draft}
-                            index={idx}
-                            canEdit={canEdit}
-                            isSaving={isSaving}
-                            onKindChange={handleKindChange}
-                            onDefaultChange={handleDefaultChange}
-                            onQuantityChange={handleQuantityChange}
-                            onDelete={handleDelete}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        </section>
-
-        {/* 품목 검색 + 추가 (canEdit 시에만) */}
-        {canEdit ? (
-          <section aria-label="구성품 추가">
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-neutral-700)' }}>
-              품목 추가 (단품만)
-            </h4>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <ProductAutocomplete
-                value={selectedProduct}
-                onChange={setSelectedProduct}
-                searchProducts={searchComponentProducts}
-                label="품목 검색"
-                placeholder="모델명 또는 품목명 입력"
-                minChars={1}
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => handleAdd(selectedProduct)}
-                disabled={!selectedProduct || isSaving || selectedAlreadyAdded}
-                data-testid={
-                  selectedProduct
-                    ? `components-modal-add-${selectedProductCode}`
-                    : 'components-modal-add-button'
-                }
-              >
-                {selectedAlreadyAdded ? '추가됨' : '추가'}
-              </Button>
-            </div>
-          </section>
-        ) : null}
-      </div>
-    </Modal>
-  )
-}
-
-interface SortableComponentRowProps {
-  draft: ComponentDraftModel
-  index: number
-  canEdit: boolean
-  isSaving: boolean
-  onKindChange: (localId: string, value: string) => void
-  onDefaultChange: (localId: string, checked: boolean) => void
-  onQuantityChange: (localId: string, value: string) => void
-  onDelete: (localId: string) => void
-}
-
-function SortableComponentRow({
-  draft,
-  index,
-  canEdit,
-  isSaving,
-  onKindChange,
-  onDefaultChange,
-  onQuantityChange,
-  onDelete,
-}: SortableComponentRowProps) {
-  const canDrag = canEdit && !isSaving && !draft.isDefault
-  const dragHandleTitle = draft.isDefault
-    ? '기본 구성품은 종류 안 최상단에 고정됩니다'
-    : isSaving
-      ? '저장 중에는 구성품 순서를 변경할 수 없습니다'
-      : '같은 종류 안에서 드래그'
-  const dragHandleLabel = canDrag
-    ? `${draft.componentProductCode} 구성품 드래그`
-    : `${draft.componentProductCode} 구성품 드래그 비활성`
-  const dragHandleDisabledStyle: CSSProperties | undefined = !canDrag
-    ? { opacity: 0.35, cursor: 'not-allowed' }
-    : undefined
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: draft._localId, disabled: !canDrag })
-
-  const style: CSSProperties = {
-    ...componentRowStyle,
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.55 : 1,
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      data-testid={`components-modal-component-row-${index}`}
-      style={style}
-    >
-      {canEdit ? (
-        <DragHandle
-          label={dragHandleLabel}
-          listeners={canDrag ? listeners as Record<string, unknown> | undefined : undefined}
-          attributes={canDrag ? attributes as unknown as Record<string, unknown> : undefined}
-          setActivatorNodeRef={setActivatorNodeRef}
-          dragging={isDragging}
-          disabled={!canDrag}
-          data-testid={`components-modal-drag-handle-${index}`}
-          title={dragHandleTitle}
-          style={dragHandleDisabledStyle}
-        />
-      ) : null}
-      <span style={{ flex: 1, fontSize: 12 }}>
-        <span style={{ fontFamily: 'monospace' }}>{draft.componentProductCode}</span>
-        {draft.componentName ? (
-          <span style={{ color: 'var(--color-neutral-500)', marginLeft: 6 }}>{draft.componentName}</span>
-        ) : null}
-      </span>
-      {draft._isNew && canEdit ? (
-        <Select
-          value={draft.componentKind ?? ''}
-          disabled={isSaving}
-          onChange={(e) => onKindChange(draft._localId, e.target.value)}
-          data-testid={`components-modal-kind-${index}`}
-          selectSize="sm"
-          fullWidth={false}
-          style={{ minWidth: 80 }}
-        >
-          <option value="">분류</option>
-          {COMPONENT_KIND_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </Select>
-      ) : draft.componentKind ? (
-        <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>
-          {COMPONENT_KIND_OPTIONS.find((o) => o.value === draft.componentKind)?.label ?? draft.componentKind}
-        </span>
-      ) : null}
-      <label style={componentDefaultLabelStyle}>
-        <input
-          type="checkbox"
-          checked={draft.isDefault}
-          disabled={!canEdit || isSaving}
-          onChange={(e) => onDefaultChange(draft._localId, e.target.checked)}
-          data-testid={`components-modal-default-${index}`}
-          aria-label={`기본 구성품 ${index + 1}`}
-        />
-        <span>기본</span>
-      </label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>수량</span>
-        <Input
-          type="number"
-          value={String(draft.defaultQty)}
-          disabled={!canEdit || isSaving}
-          onChange={(e) => onQuantityChange(draft._localId, e.target.value)}
-          data-testid={`components-modal-quantity-${index}`}
-          inputSize="sm"
-          fullWidth={false}
-          style={{ width: 64, textAlign: 'right' }}
-          aria-label={`수량 ${index + 1}`}
-          min={1}
-          max={999}
-          step={1}
-        />
-      </div>
-      {canEdit ? (
-        <button
-          type="button"
-          onClick={() => onDelete(draft._localId)}
-          disabled={isSaving}
-          data-testid={`components-modal-delete-${index}`}
-          style={{ ...orderButtonStyle, color: 'var(--color-danger-600, #DC2626)' }}
-          aria-label="삭제"
-        >
-          ✕
-        </button>
-      ) : null}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // 메인 컴포넌트
 // ---------------------------------------------------------------------------
 
 /**
- * 기초품목 관리 페이지 — 물리 SKU master 등록/수정 + 세트 구성품 편집.
+ * 기초품목 관리 페이지 — 물리 SKU master 등록/수정 전용.
  */
 export function ProductCatalogPage() {
   const setPageTitle = usePageTitleStore((s) => s.setPageTitle)
@@ -580,9 +98,6 @@ export function ProductCatalogPage() {
   const [searchInput, setSearchInput] = useState('')
   const [committedSearch, setCommittedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(0)
-
-  // 구성품 모달
-  const [componentsModalCode, setComponentsModalCode] = useState<string | null>(null)
 
   useEffect(() => {
     setPageTitle({ title: '기초품목 관리', meta: '품목' })
@@ -678,22 +193,6 @@ export function ProductCatalogPage() {
         ),
     },
     {
-      key: '_components' as const,
-      header: '구성품',
-      width: '90px',
-      render: (row) =>
-        row.productType === 'BUNDLE' ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setComponentsModalCode(row.modelCode)}
-            data-testid={`product-catalog-components-button-${row.modelCode}`}
-          >
-            구성품
-          </Button>
-        ) : null,
-    },
-    {
       key: '_actions' as const,
       header: '관리',
       width: '80px',
@@ -718,7 +217,7 @@ export function ProductCatalogPage() {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0 }}>기초품목 관리</h3>
           <span style={subtitleStyle}>
-            물리 SKU master 등록/수정과 세트 구성품을 관리합니다. 견적/주문 노출·순서는 '견적품목 관리'에서 설정합니다.
+            물리 SKU master 등록/수정을 관리합니다. 견적/주문 노출·순서·세트 구성품은 '견적품목 관리'에서 설정합니다.
           </span>
         </div>
         {canCreate ? (
@@ -834,16 +333,6 @@ export function ProductCatalogPage() {
         </div>
       ) : null}
 
-      {/* ── 구성품 편집 모달 ───────────────────────────── */}
-      {componentsModalCode ? (
-        <ComponentsModal
-          open={true}
-          modelCode={componentsModalCode}
-          canEdit={canEdit}
-          onClose={() => setComponentsModalCode(null)}
-          onSaved={() => setComponentsModalCode(null)}
-        />
-      ) : null}
     </div>
   )
 }
@@ -955,50 +444,4 @@ const readOnlyBannerStyle: CSSProperties = {
   border: '1px solid var(--color-border, #E5E7EB)',
   borderRadius: 4,
   padding: '6px 10px',
-}
-
-const componentRowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '6px 8px',
-  background: 'var(--color-neutral-50, #F7F8FA)',
-  border: '1px solid var(--color-border, #E5E7EB)',
-  borderRadius: 4,
-}
-
-const componentGroupStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-}
-
-const componentKindHeaderStyle: CSSProperties = {
-  padding: '2px 4px',
-  borderBottom: '1px solid var(--color-border, #E5E7EB)',
-  color: 'var(--color-neutral-600, #4B5563)',
-  fontSize: 11,
-  fontWeight: 600,
-}
-
-const componentDefaultLabelStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
-  fontSize: 11,
-  color: 'var(--color-neutral-600, #4B5563)',
-  cursor: 'pointer',
-  userSelect: 'none',
-  whiteSpace: 'nowrap',
-}
-
-const orderButtonStyle: CSSProperties = {
-  appearance: 'none',
-  border: '1px solid var(--color-border, #E5E7EB)',
-  borderRadius: 3,
-  background: 'var(--color-bg, #FFFFFF)',
-  cursor: 'pointer',
-  padding: '2px 5px',
-  fontSize: 10,
-  lineHeight: 1,
 }
