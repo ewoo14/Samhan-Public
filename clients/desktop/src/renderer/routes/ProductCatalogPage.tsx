@@ -74,7 +74,7 @@ import {
 const PAGE_SIZE = 50
 
 /*
-const PRODUCT_CATEGORY_LABEL_BROKEN_ENCODING: Record<ProductCategory, string> = {
+Legacy mojibake label map removed. Keep PRODUCT_CATEGORY_LABEL below as the single source of truth.
   HOME_MULTI: '?덈???,
   SINGLE_SET: '?⑥씪 ?명듃',
   SINGLE_PART: '?⑥씪 援ъ꽦??,
@@ -718,7 +718,7 @@ export function ProductCatalogPage() {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0 }}>기초품목 관리</h3>
           <span style={subtitleStyle}>
-            물리 SKU master 등록/수정과 세트 구성품을 관리합니다.
+            물리 SKU master 등록/수정과 세트 구성품을 관리합니다. 견적/주문 노출·순서는 '견적품목 관리'에서 설정합니다.
           </span>
         </div>
         {canCreate ? (

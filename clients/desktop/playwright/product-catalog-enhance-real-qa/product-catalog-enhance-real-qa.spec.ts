@@ -205,11 +205,11 @@ test('T1: 품목관리 — BUNDLE 세트 뱃지 + 구성품 수 + 조회 전용 
 test('T3: 카테고리 미선택 — 드래그 비활성 캡션 확인', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
 
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
   // 카테고리 미선택 상태에서 drag-disabled-caption 표시 확인
-  const caption = page.locator('[data-testid="product-catalog-drag-disabled-caption"]')
+  const caption = page.locator('[data-testid="estimate-items-drag-disabled-caption"]')
   await expect(caption).toBeVisible({ timeout: 5000 })
   const captionText = await caption.textContent()
   expect(captionText).toContain('카테고리를 선택하면')
@@ -218,7 +218,7 @@ test('T3: 카테고리 미선택 — 드래그 비활성 캡션 확인', async (
   console.log(`[T3] PASS drag-disabled 캡션: "${captionText}"`)
 
   // 카테고리 선택 후 드래그 활성 확인
-  const catSelect = page.locator('[data-testid="product-catalog-category-select"]')
+  const catSelect = page.locator('[data-testid="estimate-items-category-select"]')
   await catSelect.selectOption('HOME_MULTI')
   await page.waitForTimeout(2000)
   await screenshot(page, 'T3-category-selected-HOME_MULTI')
@@ -232,7 +232,7 @@ test('T3: 카테고리 미선택 — 드래그 비활성 캡션 확인', async (
 test('T5: warehouse 역할 — 품목관리 접근 결과 캡처', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_warehouse', 'dev_p05_pass!')
 
-  await page.goto(`${BASE_URL}/#/products/catalog`)
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
   await page.waitForTimeout(5000)
 
   const url = page.url()
@@ -256,9 +256,9 @@ test('T5: warehouse 역할 — 품목관리 접근 결과 캡처', async ({ page
     ).toBeVisible({ timeout: 10000 })
 
     // 테이블 로드 대기 후 첫 토글 비활성 단언 (편집 권한 차단 가시 확인)
-    await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+    await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
     const firstEstimateToggle = page
-      .locator('[data-testid^="product-catalog-estimate-toggle-"]')
+      .locator('[data-testid^="estimate-items-estimate-toggle-"]')
       .first()
     await expect(firstEstimateToggle).toBeVisible({ timeout: 10000 })
     await expect(
@@ -304,8 +304,8 @@ test('T7: SSE 실시간 — A에서 토글 변경 후 B 화면 갱신 확인', a
       },
     })
   }, authStub)
-  await pageA.goto(`${BASE_URL}/#/products/catalog`)
-  await pageA.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await pageA.goto(`${BASE_URL}/#/products/estimate-items`)
+  await pageA.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
   // 컨텍스트 B
   const ctxB = await browser.newContext()
@@ -320,13 +320,13 @@ test('T7: SSE 실시간 — A에서 토글 변경 후 B 화면 갱신 확인', a
       },
     })
   }, authStub)
-  await pageB.goto(`${BASE_URL}/#/products/catalog`)
-  await pageB.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await pageB.goto(`${BASE_URL}/#/products/estimate-items`)
+  await pageB.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
   // PATCH 전 pageB 대상 행의 '주문 노출' 토글 상태 캡처 (BOTH 시작 → checked).
   // usageScope BOTH→ESTIMATE 변경은 order 토글 checked=true→false 로 관찰됨.
   const orderToggleB = pageB.locator(
-    '[data-testid="product-catalog-order-toggle-TEST-BUNDLE-SET-01"]',
+    '[data-testid="estimate-items-order-toggle-TEST-BUNDLE-SET-01"]',
   )
   await expect(orderToggleB).toHaveCount(1)
   const orderCheckedBefore = await orderToggleB.isChecked()

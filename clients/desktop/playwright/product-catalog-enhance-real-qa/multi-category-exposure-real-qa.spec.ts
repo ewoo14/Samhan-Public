@@ -8,7 +8,7 @@
  * 핵심 대상: 단일 품목 AJ060MXHNBC1 이 HOME_MULTI(순서 1) + SINGLE_SET(순서 287)
  *           두 견적 카테고리에 동시 노출(M:N). 카탈로그 화면에서:
  *   - '카테고리' 컬럼   : 견적 카테고리 Badge 2개(가정용 멀티 + 싱글/세트)
- *   - '노출 설정' 컬럼  : 견적 TagChip 2개(product-catalog-estimate-category-{code}-chip-{cat})
+ *   - '노출 설정' 컬럼  : 견적 TagChip 2개(estimate-items-estimate-category-{code}-chip-{cat})
  *
  * 캡처물:
  *   1. multi-category-catalog-row      — AJ060MXHNBC1 행: 카테고리 Badge 2개 + 노출설정 TagChip 2개
@@ -101,22 +101,22 @@ test('M:N — AJ060MXHNBC1 단일 품목이 HOME_MULTI + SINGLE_SET 2개 카테�
   // 품목관리 진입 → 대상 품목 검색.
   // 검색 결과는 단일 행이라 DataTable 재렌더 churn 으로 row testid 가시성 폴링이 흔들릴 수 있어
   // (실측), 정밀 타깃인 견적 TagChip 로케이터를 직접 대기한다(행 대신 칩).
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
   const searchInput = page
     .locator(
-      '[data-testid="product-catalog-search-input"] input, input[data-testid="product-catalog-search-input"]',
+      '[data-testid="estimate-items-search-input"] input, input[data-testid="estimate-items-search-input"]',
     )
     .first()
   await searchInput.fill(TARGET_CODE)
-  await page.locator('[data-testid="product-catalog-query-button"]').click()
+  await page.locator('[data-testid="estimate-items-query-button"]').click()
 
   // (1) '노출 설정' 컬럼 — 견적 TagChip 2개(HOME_MULTI + SINGLE_SET) 직접 대기 + 단언.
   const homeChip = page.locator(
-    `[data-testid="product-catalog-estimate-category-${TARGET_CODE}-chip-HOME_MULTI"]`,
+    `[data-testid="estimate-items-estimate-category-${TARGET_CODE}-chip-HOME_MULTI"]`,
   )
   const setChip = page.locator(
-    `[data-testid="product-catalog-estimate-category-${TARGET_CODE}-chip-SINGLE_SET"]`,
+    `[data-testid="estimate-items-estimate-category-${TARGET_CODE}-chip-SINGLE_SET"]`,
   )
   await expect(homeChip, '노출설정 셀에 HOME_MULTI 견적 TagChip 미노출').toBeVisible({ timeout: 25000 })
   await expect(setChip, '노출설정 셀에 SINGLE_SET 견적 TagChip 미노출').toBeVisible({ timeout: 10000 })
@@ -127,7 +127,7 @@ test('M:N — AJ060MXHNBC1 단일 품목이 HOME_MULTI + SINGLE_SET 2개 카테�
   // 행 컨테이너: design-system DataTable 이 <tr> 에 data-testid 를 forward 하지 않을 수 있어
   // (실측 — 칩은 렌더되나 row-testid 미forward), 칩의 공통 조상 셀을 통해 행 영역을 잡는다.
   const exposureGroup = page.locator(
-    `[data-testid="product-catalog-estimate-category-${TARGET_CODE}"]`,
+    `[data-testid="estimate-items-estimate-category-${TARGET_CODE}"]`,
   )
   await expect(exposureGroup, '노출설정 견적 카테고리 그룹 미노출').toBeVisible({ timeout: 10000 })
   const rowContainer = exposureGroup.locator('xpath=ancestor::tr[1]')
@@ -177,15 +177,15 @@ test('카테고리 필터 — HOME_MULTI 목록에서 다중노출 품목 AJ060M
 }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
 
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
   // 카테고리 = HOME_MULTI 선택(가정용 멀티)
-  const catSelect = page.locator('[data-testid="product-catalog-category-select"]')
+  const catSelect = page.locator('[data-testid="estimate-items-category-select"]')
   await catSelect.selectOption('HOME_MULTI')
 
   // 다중노출 품목 행이 HOME_MULTI 목록에 등장(순서 1) 확인
-  const targetRow = page.locator(`[data-testid="product-catalog-row-${TARGET_CODE}"]`)
+  const targetRow = page.locator(`[data-testid="estimate-items-row-${TARGET_CODE}"]`)
   await targetRow.waitFor({ state: 'visible', timeout: 20000 })
 
   // 표시순서 컬럼이 숫자(카테고리별 순서)로 표시되는지 확인 — HOME_MULTI 컨텍스트 순서.

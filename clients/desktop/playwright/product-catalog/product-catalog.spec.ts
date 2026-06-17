@@ -135,6 +135,31 @@ async function keyboardMoveComponent(
   await page.keyboard.press('Space')
 }
 
+async function dragRowByMouse(page: Page, fromIndex: number, toIndex: number): Promise<void> {
+  const handles = page.locator('[aria-label$="드래그"]')
+  const source = handles.nth(fromIndex)
+  const targetRow = page.locator('[data-testid^="estimate-items-row-"]').nth(toIndex)
+  await expect(source).toBeVisible({ timeout: 8_000 })
+  await expect(targetRow).toBeVisible({ timeout: 8_000 })
+
+  const sourceBox = await source.boundingBox()
+  const targetBox = await targetRow.boundingBox()
+  if (!sourceBox || !targetBox) {
+    throw new Error('드래그 핸들 또는 대상 행 boundingBox 를 가져오지 못했습니다.')
+  }
+
+  const startX = sourceBox.x + sourceBox.width / 2
+  const startY = sourceBox.y + sourceBox.height / 2
+  const targetX = targetBox.x + targetBox.width / 2
+  const targetY = targetBox.y + targetBox.height / 2
+
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX, startY + 8, { steps: 3 })
+  await page.mouse.move(targetX, targetY, { steps: 12 })
+  await page.mouse.up()
+}
+
 // ---------------------------------------------------------------------------
 // Scenario 1: 목록 렌더
 // ---------------------------------------------------------------------------
@@ -536,10 +561,27 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     ).filter(Boolean)
     expect(codesBefore.length).toBeGreaterThanOrEqual(2)
 
-    const saveOrderBtn = page.getByTestId('estimate-items-save-order-button')
-    await expect(saveOrderBtn).toBeVisible({ timeout: 8_000 })
+    await dragRowByMouse(page, 0, 1)
+
+    await expect
+      .poll(
+        async () => (
+          (await sortableRowsLoc.nth(0).getAttribute('data-testid')) ?? ''
+        ).replace('estimate-items-row-', ''),
+        { timeout: 5_000, message: '마우스 드래그 후 첫 행이 변경되어야 함' },
+      )
+      .not.toBe(codesBefore[0])
+    const codesAfterDrag = (
+      await sortableRowsLoc.evaluateAll((rows) =>
+        rows.map((r) => r.getAttribute('data-testid')?.replace('estimate-items-row-', '') ?? ''),
+      )
+    ).filter(Boolean)
+    expect(codesAfterDrag.length).toBeGreaterThanOrEqual(2)
+    expect(codesAfterDrag[0]).not.toBe(codesBefore[0])
 
     // 순서 저장 클릭 → PUT /display-orders 발사
+    const saveOrderBtn = page.getByTestId('estimate-items-save-order-button')
+    await expect(saveOrderBtn).toBeVisible({ timeout: 8_000 })
     await saveOrderBtn.click()
 
     // mock 이 노출한 마지막 페이로드 능동 대기
@@ -573,7 +615,15 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
     // (4) 카테고리 선택 상태에서는 버튼을 유지한다. 저장 성공은 payload 수신으로 검증한다.
     await expect(saveOrderBtn).toBeVisible()
-    expect(codesBefore.length).toBeGreaterThanOrEqual(2)
+    await page.getByTestId('estimate-items-query-button').click()
+    await expect
+      .poll(
+        async () => (
+          (await sortableRowsLoc.nth(0).getAttribute('data-testid')) ?? ''
+        ).replace('estimate-items-row-', ''),
+        { timeout: 8_000, message: '저장 후 재조회한 첫 행이 드래그 결과와 일치해야 함' },
+      )
+      .toBe(codesAfterDrag[0])
   })
 
   test('시나리오 9: 1000건 초과 카테고리 순서 저장 — totalPages 끝까지 수집 후 전건 재번호', async ({ page }) => {
@@ -618,6 +668,21 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
     const dragHandles = page.locator('[aria-label$="드래그"]')
     await expect(dragHandles.first()).toBeVisible({ timeout: 8_000 })
+
+    const bulkRows = page.locator('[data-testid^="estimate-items-row-"]')
+    const firstBeforeDrag = ((await bulkRows.nth(0).getAttribute('data-testid')) ?? '').replace(
+      'estimate-items-row-',
+      '',
+    )
+    await dragRowByMouse(page, 0, 1)
+    await expect
+      .poll(
+        async () => (
+          (await bulkRows.nth(0).getAttribute('data-testid')) ?? ''
+        ).replace('estimate-items-row-', ''),
+        { timeout: 5_000, message: '대량 목록에서도 마우스 드래그 후 첫 행이 변경되어야 함' },
+      )
+      .not.toBe(firstBeforeDrag)
 
     const saveOrderBtn = page.getByTestId('estimate-items-save-order-button')
     await expect(saveOrderBtn).toBeVisible({ timeout: 8_000 })

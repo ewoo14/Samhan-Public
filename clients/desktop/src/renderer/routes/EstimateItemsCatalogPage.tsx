@@ -10,7 +10,6 @@
 import {
   useCallback,
   useEffect,
-  useRef,
   useState,
   type CSSProperties,
 } from 'react'
@@ -335,12 +334,10 @@ export function EstimateItemsCatalogPage() {
 
   const rawRows = listQuery.data?.content ?? []
   const rows = rawRows.filter((row) => row.usageScope !== 'NONE')
-  const prevRowsRef = useRef<ProductCatalogRow[]>([])
 
   useEffect(() => {
     if (!orderDirty) {
       setSortableRows(rows)
-      prevRowsRef.current = rows
     }
   }, [rows, orderDirty])
 
@@ -380,6 +377,12 @@ export function EstimateItemsCatalogPage() {
       const modelCode = product.modelCode ?? product.modelName
       const detail = await listProducts({ q: modelCode, page: 0, size: 20 })
       const existing = detail.content.find((row) => row.modelCode === modelCode)
+      if (!existing || existing.productCategory === 'MATERIAL') {
+        throw new Error('견적품목으로 추가할 수 없는 기초품목입니다.')
+      }
+      if (estimateCategoryValues(existing).includes(committedCategory)) {
+        throw new Error('이미 현재 카테고리에 노출 중인 품목입니다.')
+      }
       const nextCategories = Array.from(new Set([
         ...(existing ? estimateCategoryValues(existing) : []),
         committedCategory,
@@ -493,13 +496,33 @@ export function EstimateItemsCatalogPage() {
     }
   }, [sortableRows, queryClient, committedCategory])
 
-  const searchMasterProducts = useCallback((q: string) => searchProductsApi(q), [])
+  const searchMasterProducts = useCallback(async (q: string): Promise<ProductOption[]> => {
+    const products = await searchProductsApi(q)
+    const checked = await Promise.all(
+      products.map(async (product) => {
+        const modelCode = product.modelCode ?? product.modelName
+        if (!modelCode) return null
+        const detail = await listProducts({ q: modelCode, page: 0, size: 20 })
+        const catalogRow = detail.content.find((row) => row.modelCode === modelCode)
+        if (!catalogRow || catalogRow.productCategory === 'MATERIAL') return null
+        if (committedCategory && estimateCategoryValues(catalogRow).includes(committedCategory)) {
+          return null
+        }
+        return product
+      }),
+    )
+    return checked.filter((product): product is ProductOption => product != null)
+  }, [committedCategory])
 
-  const totalElements = listQuery.data?.totalElements ?? 0
-  const totalPages = listQuery.data?.totalPages ?? 1
+  const hasClientFilteredRows = rows.length !== rawRows.length
+  const totalElements = hasClientFilteredRows ? rows.length : (listQuery.data?.totalElements ?? 0)
+  const totalPages = hasClientFilteredRows ? 1 : (listQuery.data?.totalPages ?? 1)
   const selectedProductCode = selectedProduct
     ? selectedProduct.modelCode ?? selectedProduct.modelName
     : ''
+  const selectedAlreadyAdded = !!committedCategory && !!selectedProductCode && rows.some(
+    (row) => row.modelCode === selectedProductCode && estimateCategoryValues(row).includes(committedCategory),
+  )
 
   const columns: DataTableColumn<ProductCatalogRow>[] = [
     ...(isDragEnabled
@@ -702,10 +725,19 @@ export function EstimateItemsCatalogPage() {
             size="sm"
             onClick={() => selectedProduct && addProductMutation.mutate(selectedProduct)}
             loading={addProductMutation.isPending}
-            disabled={!committedCategory || !selectedProduct || addProductMutation.isPending}
+            disabled={
+              !committedCategory ||
+              !selectedProduct ||
+              selectedAlreadyAdded ||
+              addProductMutation.isPending
+            }
             data-testid="estimate-items-add-product-button"
           >
-            {selectedProductCode ? `${selectedProductCode} 추가` : '현재 카테고리에 추가'}
+            {selectedAlreadyAdded
+              ? '이미 노출됨'
+              : selectedProductCode
+                ? `${selectedProductCode} 추가`
+                : '현재 카테고리에 추가'}
           </Button>
           {!committedCategory ? (
             <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>
@@ -764,7 +796,7 @@ export function EstimateItemsCatalogPage() {
                             colSpan={columns.length + 1}
                             style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--color-neutral-400)', fontSize: 13 }}
                           >
-                            조회 결과가 없습니다.
+                            노출 중인 견적품목이 없습니다. 기초품목을 선택해 현재 카테고리에 추가하세요.
                           </td>
                         </tr>
                       ) : (
@@ -789,7 +821,7 @@ export function EstimateItemsCatalogPage() {
             rows={sortableRows}
             rowKey={(row) => row.modelCode}
             loading={listQuery.isFetching}
-            emptyMessage="조회 결과가 없습니다."
+            emptyMessage="노출 중인 견적품목이 없습니다. 기초품목을 선택해 현재 카테고리에 추가하세요."
           />
         )}
       </section>

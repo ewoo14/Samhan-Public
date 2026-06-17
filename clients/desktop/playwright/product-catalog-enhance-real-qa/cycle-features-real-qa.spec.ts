@@ -164,18 +164,18 @@ test('2. 표시순서 드래그 저장 — 행 순서 변경 → 순서 저장 P
   expect(backupOrder.length, '백업 대상 노출 품목이 없음').toBeGreaterThan(1)
 
   // ── 1. 품목관리 → 카테고리 SINGLE_SET 선택 (드래그 활성 조건: canEdit+카테고리+검색없음) ──
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
-  const catSelect = page.locator('[data-testid="product-catalog-category-select"]')
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
+  const catSelect = page.locator('[data-testid="estimate-items-category-select"]')
   await catSelect.selectOption(SET_CATEGORY)
 
   // 드래그 핸들(첫 두 행) 노출 대기 — DragHandle aria-label = "{modelCode} 드래그"
-  const rows = page.locator('[data-testid^="product-catalog-row-"]')
+  const rows = page.locator('[data-testid^="estimate-items-row-"]')
   await expect.poll(async () => rows.count(), { timeout: 20000, message: '카테고리 행 미렌더' }).toBeGreaterThan(1)
 
   // 화면상 처음 2개 행의 modelCode 추출 (드래그 전 순서 캡처)
-  const firstRowCode = (await rows.nth(0).getAttribute('data-testid'))!.replace('product-catalog-row-', '')
-  const secondRowCode = (await rows.nth(1).getAttribute('data-testid'))!.replace('product-catalog-row-', '')
+  const firstRowCode = (await rows.nth(0).getAttribute('data-testid'))!.replace('estimate-items-row-', '')
+  const secondRowCode = (await rows.nth(1).getAttribute('data-testid'))!.replace('estimate-items-row-', '')
   console.log(`[2] 드래그 전 — 1행=${firstRowCode}, 2행=${secondRowCode}`)
   await shot(page, 'cycle-order-before')
 
@@ -194,11 +194,11 @@ test('2. 표시순서 드래그 저장 — 행 순서 변경 → 순서 저장 P
   await page.mouse.up()
 
   // 드래그 결과 — '순서 저장' 버튼이 dirty 상태로 노출되어야 함
-  const saveBtn = page.locator('[data-testid="product-catalog-save-order-button"]')
+  const saveBtn = page.locator('[data-testid="estimate-items-save-order-button"]')
   await saveBtn.waitFor({ state: 'visible', timeout: 10000 })
 
   // 화면 1행이 바뀌었는지(드래그 반영) 확인
-  const newFirstRowCode = (await rows.nth(0).getAttribute('data-testid'))!.replace('product-catalog-row-', '')
+  const newFirstRowCode = (await rows.nth(0).getAttribute('data-testid'))!.replace('estimate-items-row-', '')
   console.log(`[2] 드래그 후 — 1행=${newFirstRowCode} (이전 1행=${firstRowCode})`)
 
   // ── 3. '순서 저장' 클릭 → PUT /api/v1/products/display-orders 200 ───────
@@ -215,7 +215,7 @@ test('2. 표시순서 드래그 저장 — 행 순서 변경 → 순서 저장 P
   // 저장 후 목록 갱신 — 1행이 드래그 결과(newFirstRowCode)로 반영
   await expect
     .poll(
-      async () => (await rows.nth(0).getAttribute('data-testid'))!.replace('product-catalog-row-', ''),
+      async () => (await rows.nth(0).getAttribute('data-testid'))!.replace('estimate-items-row-', ''),
       { timeout: 15000, message: '저장 후 목록 1행이 드래그 결과로 반영되지 않음' },
     )
     .toBe(newFirstRowCode)
@@ -298,8 +298,8 @@ test('4. usage 노출 토글 — 노출 설정 토글 변경 PATCH 200 → 원�
   const token = await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
   const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
   // 실 BUNDLE 행 검색(usage=BOTH 시작 → 견적/주문 둘 다 checked)
   const searchInput = page
@@ -321,7 +321,7 @@ test('4. usage 노출 토글 — 노출 설정 토글 변경 PATCH 200 → 원�
   console.log(`[4] 백업 — ${BUNDLE_CODE} usageScope=${origScope}, categories=${origCategories.join(',') || '없음'}`)
 
   // 주문 노출 토글(현재 ON) 클릭 → OFF (BOTH→ESTIMATE). PATCH /usage 200 가로채기.
-  const orderToggle = page.locator(`[data-testid="product-catalog-order-toggle-${BUNDLE_CODE}"]`)
+  const orderToggle = page.locator(`[data-testid="estimate-items-order-toggle-${BUNDLE_CODE}"]`)
   await orderToggle.waitFor({ state: 'visible', timeout: 15000 })
   const checkedBefore = await orderToggle.isChecked()
   const patchPromise = page.waitForResponse(

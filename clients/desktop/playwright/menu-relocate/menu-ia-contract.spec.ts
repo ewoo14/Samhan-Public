@@ -251,7 +251,13 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
   test('이동 항목: 각 카테고리 블록 안에서 route+testid+label 동일 블록 hard 보존', () => {
     const salesBlock = categoryBlock(appLayout, '판매')
     assertSidebarLink(salesBlock, 'sidebar-sales', '/sales', '판매관리')
-    assertSidebarLink(salesBlock, 'sidebar-products-catalog', '/products/catalog', '품목 관리')
+    assertSidebarLink(salesBlock, 'sidebar-products-catalog', '/products/catalog', '기초품목 관리')
+    assertSidebarLink(
+      salesBlock,
+      'sidebar-products-estimate-items',
+      '/products/estimate-items',
+      '견적품목 관리',
+    )
     // 시트 동기화 — 품목 권한 동반 노출 변형(testid in-products) 의 route+testid+label 동시 단언.
     assertSidebarLink(
       salesBlock,
