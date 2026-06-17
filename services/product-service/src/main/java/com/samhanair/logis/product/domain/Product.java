@@ -110,8 +110,23 @@ public class Product extends BaseEntity {
     private Boolean hasVariableDiscount = Boolean.FALSE;
 
     /** DOMAIN-EXTENSIONS §1 — 룰 3 (구형 50%) 또는 행별 고정DC L 컬럼. */
-    @Column(name = "fixed_discount_rate", precision = 5, scale = 4)
+    @Column(name = "fixed_discount_rate", precision = 5, scale = 2)
     private BigDecimal fixedDiscountRate;
+
+    /** F1-a 견적 품목 대분류. 카테고리별 Classification 마스터를 참조한다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cat_l_id")
+    private Classification catL;
+
+    /** F1-a 견적 품목 중분류. {@code catL} 의 자식 Classification 을 참조한다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cat_m_id")
+    private Classification catM;
+
+    /** F1-a 견적 품목 소분류. {@code catM} 의 자식 Classification 을 참조한다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cat_s_id")
+    private Classification catS;
 
     /** DOMAIN-EXTENSIONS §1 — 룰 2 (D4 default / D7 미포함 / D8 포함) — 싱글 세트만. */
     @Enumerated(EnumType.STRING)
@@ -514,6 +529,18 @@ public class Product extends BaseEntity {
         this.setMaterialKey = setMaterialKey;
         this.legacyDiscountFlag = legacyDiscountFlag;
         this.fixedDiscountRate = fixedDiscountRate;
+    }
+
+    /**
+     * 견적 품목 L/M/S 분류를 갱신한다.
+     *
+     * <p>계층 정합은 {@code ClassificationService/ProductSheetSyncService} 에서 검증한 뒤 전달한다.
+     * null 은 해당 단계 미분류를 뜻한다.
+     */
+    public void changeClassifications(Classification catL, Classification catM, Classification catS) {
+        this.catL = catL;
+        this.catM = catM;
+        this.catS = catS;
     }
 
     /** Bundle 모드 set (마이그 + 운영). */

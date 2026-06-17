@@ -58,7 +58,7 @@ class ProductMasterEntityIT extends AbstractPostgresIT {
                 new BigDecimal("2763200.00"), new BigDecimal("1519760.00"),
                 ProductType.SINGLE, ProductCategory.HOME_MULTI,
                 UsageScope.BOTH, EstimateCategory.HOME_MULTI);
-        p.applyDiscountRules(true, MaterialKey.D4, false, new BigDecimal("0.4500"));
+        p.applyDiscountRules(true, MaterialKey.D4, false, new BigDecimal("45.00"));
         p.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
         p.changeDiscountFlags("100010");
         p.changeRemark("테스트 비고");

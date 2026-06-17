@@ -4,6 +4,7 @@ import com.samhanair.logis.product.client.GoogleSheetsClient;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.Category;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.MaterialKey;
 import com.samhanair.logis.product.domain.PriceHistory;
@@ -15,6 +16,7 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ClassificationRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
 import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
@@ -159,6 +161,7 @@ public class ProductSheetSyncService {
     private final GoogleSheetsClient sheetsClient;
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final ClassificationRepository classificationRepository;
     private final PriceHistoryRepository priceHistoryRepository;
     private final BundleComponentRepository bundleComponentRepository;
     private final ProductSpecRepository productSpecRepository;
@@ -172,6 +175,7 @@ public class ProductSheetSyncService {
     public ProductSheetSyncService(GoogleSheetsClient sheetsClient,
                                    ProductRepository productRepository,
                                    CategoryRepository categoryRepository,
+                                   ClassificationRepository classificationRepository,
                                    PriceHistoryRepository priceHistoryRepository,
                                    BundleComponentRepository bundleComponentRepository,
                                    ProductSpecRepository productSpecRepository,
@@ -181,6 +185,7 @@ public class ProductSheetSyncService {
         this.sheetsClient = sheetsClient;
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
+        this.classificationRepository = classificationRepository;
         this.priceHistoryRepository = priceHistoryRepository;
         this.bundleComponentRepository = bundleComponentRepository;
         this.productSpecRepository = productSpecRepository;
@@ -1157,6 +1162,8 @@ public class ProductSheetSyncService {
                     ? discountDetector.legacyFixedDiscountRate()
                     : parseFixedDcRate(fixedDcColumn >= 0 ? safeGet(cells, fixedDcColumn) : null);
             String discountFlags = discountDetector.detectDiscountFlags(modelCode);
+            ClassificationSet classifications = resolveClassifications(
+                    classificationEstimateCategory(mapping), classifyName(mapping.productCategory, name, modelCode));
 
             // 노출 분류 홈 탭 불변식: TAB_MAPPINGS 는 견적 탭(홈멀티/싱글세트/상업멀티/구형)을
             // 구성품 탭(싱글구성품/상업멀티구성)보다 먼저 처리한다(L96-115 순서 고정). 따라서 품목의
@@ -1176,6 +1183,7 @@ public class ProductSheetSyncService {
                         mapping.estimateCategory);
                 p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                 p.changeDiscountFlags(discountFlags);
+                p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
                 applyPyongSize(p, mapping, cells);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
@@ -1208,6 +1216,7 @@ public class ProductSheetSyncService {
                         p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                         p.changeDiscountFlags(discountFlags);
                     }
+                    p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
                     applyPyongSize(p, mapping, cells);
                 }
                 productRepository.save(p);
@@ -1458,8 +1467,8 @@ public class ProductSheetSyncService {
     }
 
     /**
-     * 고정DC 셀 → rate (0~0.99). legacy UI parseFixedDc 정합 — "50%" / "50" / "0.5" 모두
-     * 0.5 로 정규화. 빈/비숫자 → null.
+     * 고정DC 셀 → percent (0~100). "50%" / "50" / "0.5" 모두 50 으로 정규화.
+     * 빈/비숫자 → null.
      */
     private static BigDecimal parseFixedDcRate(String raw) {
         if (raw == null || raw.isBlank()) {
@@ -1471,14 +1480,219 @@ public class ProductSheetSyncService {
             return null;
         }
         BigDecimal v = new BigDecimal(m.group());
-        if (v.compareTo(BigDecimal.ONE) > 0) {
-            v = v.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
+        if (raw.contains("%")) {
+            // 이미 percent 표기.
+        } else if (v.compareTo(BigDecimal.ZERO) > 0 && v.compareTo(BigDecimal.ONE) <= 0) {
+            v = v.multiply(new BigDecimal("100"));
         }
         if (v.signum() < 0) {
             v = v.abs();
         }
-        BigDecimal cap = new BigDecimal("0.99");
-        return v.min(cap);
+        BigDecimal cap = new BigDecimal("100");
+        return v.min(cap).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros();
+    }
+
+    private EstimateCategory classificationEstimateCategory(SheetTabMapping mapping) {
+        return switch (mapping.productCategory) {
+            case HOME_MULTI -> EstimateCategory.HOME_MULTI;
+            case SINGLE_SET, SINGLE_PART -> EstimateCategory.SINGLE_SET;
+            case COMMERCIAL_MULTI, COMMERCIAL_PART -> EstimateCategory.COMMERCIAL_MULTI;
+            case OLD -> EstimateCategory.LEGACY;
+            case MATERIAL -> EstimateCategory.OTHER;
+        };
+    }
+
+    private ClassificationSet resolveClassifications(EstimateCategory estimateCategory, ClassificationNames names) {
+        if (names == null || names.catL() == null || names.catL().isBlank()) {
+            return new ClassificationSet(null, null, null);
+        }
+        Classification catL = findOrCreateClassification(
+                estimateCategory, Classification.CatLevel.L, null, names.catL());
+        Classification catM = names.catM() == null || names.catM().isBlank()
+                ? null
+                : findOrCreateClassification(estimateCategory, Classification.CatLevel.M, catL, names.catM());
+        Classification catS = catM == null || names.catS() == null || names.catS().isBlank()
+                ? null
+                : findOrCreateClassification(estimateCategory, Classification.CatLevel.S, catM, names.catS());
+        return new ClassificationSet(catL, catM, catS);
+    }
+
+    private Classification findOrCreateClassification(EstimateCategory estimateCategory,
+                                                      Classification.CatLevel level,
+                                                      Classification parent,
+                                                      String name) {
+        String normalized = name == null ? "" : name.trim();
+        Optional<Classification> existing = parent == null
+                ? classificationRepository.findByEstimateCategoryAndCatLevelAndNameAndIsDeletedFalse(
+                        estimateCategory, level, normalized)
+                : classificationRepository.findByEstimateCategoryAndCatLevelAndParent_IdAndNameAndIsDeletedFalse(
+                        estimateCategory, level, parent.getId(), normalized);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        int nextOrder = classificationRepository.maxDisplayOrder(
+                estimateCategory, level, parent == null ? null : parent.getId()) + 1;
+        return classificationRepository.save(Classification.create(
+                estimateCategory, level, parent, normalized, nextOrder, true));
+    }
+
+    private static ClassificationNames classifyName(ProductCategory productCategory, String name, String modelCode) {
+        if (productCategory == ProductCategory.COMMERCIAL_MULTI
+                || productCategory == ProductCategory.COMMERCIAL_PART) {
+            return classifyCommercial(name, modelCode);
+        }
+        return classifyHome(name);
+    }
+
+    private static ClassificationNames classifyHome(String rawName) {
+        String n = rawName == null ? "" : rawName.trim();
+        if (matches(n, "원형\\s*발통|발통\\s*세트|받침대|일자발|평발|플랫")) {
+            String catM = matches(n, "원형|발통") ? "원형발통"
+                    : matches(n, "일자발|평발|플랫") ? "일자발" : "";
+            return new ClassificationNames("실외기 받침대", catM, "");
+        }
+        if (matches(n, "전열\\s*교환기|에어콤보|에어콤포")) {
+            return new ClassificationNames("전열교환기",
+                    matches(n, "에어콤보|에어콤포") ? "에어콤보" : "", "");
+        }
+        if (matches(n, "인테리어\\s*핏|인테리어핏")) {
+            return new ClassificationNames("인테리어핏", "", "");
+        }
+        if (matches(n, "시스템\\s*제습기|제습기") && !matches(n, "가정용")) {
+            return new ClassificationNames("시스템제습기", "", "");
+        }
+        if (matches(n, "^실외기|[\\s_\\-]실외기")) {
+            String catM = matches(n, "단배관") ? "단배관" : matches(n, "다배관") ? "다배관" : "";
+            return new ClassificationNames("실외기", catM, "");
+        }
+        if (matches(n, "^실내기|[\\s_\\-]실내기|벽걸이")) {
+            String catM = "";
+            if (matches(n, "1\\s*-?\\s*Way")) {
+                if (matches(n, "WIFI\\s*내장")) catM = "1-Way WIFI";
+                else if (matches(n, "인피니트\\s*UV")) catM = "1-Way 인피니트UV";
+                else if (matches(n, "인피니트")) catM = "1-Way 인피니트";
+                else catM = "1-Way 미내장";
+            } else if (matches(n, "4\\s*WAY|4\\s*-?\\s*Way")) {
+                catM = matches(n, "WIFI\\s*내장") ? "4WAY WIFI" : "4WAY 미내장";
+            } else if (matches(n, "360\\s*CST")) {
+                catM = matches(n, "WIFI") ? "360 WIFI" : "360 미내장";
+            } else if (matches(n, "벽걸이")) {
+                catM = "벽걸이";
+            }
+            String catS = matches(n, "소형") ? "소형" : matches(n, "중형") ? "중형"
+                    : matches(n, "대형") ? "대형" : "";
+            return new ClassificationNames("실내기", catM, catS);
+        }
+        if (matches(n, "판넬|패널")) {
+            String catM = "";
+            if (matches(n, "공기청정|공청") && matches(n, "WIFI")) catM = "공기청정 WIFI";
+            else if (matches(n, "공기청정|공청") && matches(n, "미내장")) catM = "공기청정 미내장";
+            else if (matches(n, "WIFI")) catM = "WIFI";
+            else if (matches(n, "미내장")) catM = "미내장";
+            else if (matches(n, "인피니트")) catM = "인피니트";
+            return new ClassificationNames("판넬", catM, "");
+        }
+        String catM;
+        if (matches(n, "리모컨|리모콘")) catM = "리모컨";
+        else if (matches(n, "분\\s*기\\s*관|분기관")) catM = "분기관";
+        else if (matches(n, "유연호스")) catM = "유연호스";
+        else catM = "기타";
+        return new ClassificationNames("부자재", catM, "");
+    }
+
+    private static ClassificationNames classifyCommercial(String name, String modelCode) {
+        String n = name == null ? "" : name.trim();
+        String m = modelCode == null ? "" : modelCode.trim();
+        if (n.contains("분기관")) {
+            return new ClassificationNames("부자재", "분기관", "");
+        }
+        String catL = "";
+        String catM = "";
+        String catS = "";
+        boolean isOutdoorByModel = Pattern.compile("AM\\d{3}A[XVH]|AXV|AXH|AXX", Pattern.CASE_INSENSITIVE)
+                .matcher(m).find();
+        boolean isIndoorByModel = Pattern.compile("AM\\d{3}(BN|CN|PB|PH|PN)", Pattern.CASE_INSENSITIVE)
+                .matcher(m).find();
+
+        if (matches(n, "프\\s*라임|프라임")) {
+            catL = "실외기"; catM = "프라임";
+        } else if (matches(n, "고효율.*한랭지")) {
+            catL = "실외기"; catM = "고효율한랭지";
+        } else if (matches(n, "표준형")) {
+            catL = "실외기"; catM = "표준형";
+        } else if (matches(n, "ECO.*냉난방")) {
+            catL = "실외기"; catM = "ECO 냉난방";
+        } else if (matches(n, "ECO.*냉방전용")) {
+            catL = "실외기"; catM = "ECO 냉방전용";
+        } else if (matches(n, "리뉴얼")) {
+            catL = "실외기"; catM = "ECO 리뉴얼";
+        } else if (matches(n, "냉방전용")) {
+            catL = "실외기"; catM = "냉방전용";
+        }
+
+        if (catM.isBlank()) {
+            if (matches(n, "\\b1\\s*-?\\s*Way\\b|1WAY")) {
+                catL = "실내기";
+                catM = matches(n, "WIFI") ? "1-Way WIFI내장"
+                        : matches(n, "인피니트") ? "1-Way 인피니트" : "1WAY 미내장";
+            } else if (matches(n, "\\b2\\s*Way\\b|2Way")) {
+                catL = "실내기"; catM = "2Way";
+            } else if (matches(n, "\\b4\\s*-?\\s*Way\\b|4Way")) {
+                catL = "실내기";
+                catM = matches(n, "UV-?C") && matches(n, "WIFI") ? "4-Way UV-C WIFI내장"
+                        : matches(n, "MINI") && matches(n, "WIFI") ? "MINI 4WAY WIFI내장"
+                        : matches(n, "WIFI") ? "4-Way WIFI내장"
+                        : matches(n, "MINI") ? "MINI 4WAY 미내장" : "4WAY 미내장";
+            } else if (matches(n, "360\\s*CST|360CST")) {
+                catL = "실내기"; catM = matches(n, "WIFI") ? "360CST WIFI내장" : "360CST 미내장";
+            } else if (matches(n, "벽걸이")) {
+                catL = "실내기"; catM = "벽걸이";
+            } else if (matches(n, "스탠드|PAC")) {
+                catL = "실내기"; catM = "스탠드형(PAC)";
+            } else if (matches(n, "실링")) {
+                catL = "실내기"; catM = "실링";
+            } else if (matches(n, "DUCT")) {
+                catL = "실내기"; catM = "DUCT";
+            } else if (matches(n, "전열\\s*교환기")) {
+                catL = "실내기"; catM = "전열교환기";
+            }
+        }
+        if (catL.isBlank()) {
+            if (isOutdoorByModel || matches(n, "실외기|DVM\\s*(S2|ECO)")) catL = "실외기";
+            else if (isIndoorByModel || matches(n, "실내기")) catL = "실내기";
+        }
+        if (catM.equals("1-Way WIFI내장") || catM.equals("1-Way 인피니트") || catM.equals("1WAY 미내장")) {
+            if (matches(n, "소형")) catS = "소형";
+            else if (matches(n, "대형")) catS = "대형";
+            else catS = "중형";
+        }
+        if (catM.equals("DUCT")) {
+            if (matches(n, "저정압.*SLIM")) catS = "저정압 SLIM";
+            else if (matches(n, "중정압")) catS = "중정압";
+            else if (matches(n, "고정압")) catS = "고정압";
+        }
+        if (catM.equals("전열교환기")) {
+            if (matches(n, "상업용")) catS = "상업용";
+            else if (matches(n, "주택용")) catS = "주택용";
+        }
+        if (catL.equals("실외기") && catM.startsWith("ECO")) {
+            if (matches(n, "단상형")) catS = "단상형";
+            else if (matches(n, "삼상형")) catS = "삼상형";
+            else if (matches(n, "상부\\s*토출형|상부토출형")) catS = "상부토출형";
+        }
+        if (catL.isBlank() && matches(n, "판넬|패널|panel")) {
+            catL = "판넬";
+        }
+        if (catL.isBlank()) {
+            catL = "부자재";
+        }
+        return new ClassificationNames(catL, catM, catS);
+    }
+
+    private static boolean matches(String value, String regex) {
+        return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+                .matcher(value == null ? "" : value)
+                .find();
     }
 
     private static BigDecimal parseDecimal(String s) {
@@ -1557,6 +1771,12 @@ public class ProductSheetSyncService {
     }
 
     private record Pair(String a, String b) {
+    }
+
+    private record ClassificationNames(String catL, String catM, String catS) {
+    }
+
+    private record ClassificationSet(Classification catL, Classification catM, Classification catS) {
     }
 
     private record ColumnGroup(String type, List<Integer> cols) {

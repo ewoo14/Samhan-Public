@@ -12,6 +12,7 @@ import com.samhanair.logis.product.client.GoogleSheetsClient;
 import com.samhanair.logis.product.client.GoogleSheetsClient.ValueRenderMode;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
@@ -19,6 +20,7 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
+import com.samhanair.logis.product.repository.ClassificationRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
 import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
@@ -86,6 +88,9 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Autowired
     private ProductEstimateExposureRepository exposureRepository;
+
+    @Autowired
+    private ClassificationRepository classificationRepository;
 
     @BeforeEach
     void resetState() throws Exception {
@@ -878,6 +883,57 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
                 .as("시트 수식($L$2) 기준 변동DC true 재적재")
                 .isTrue();
         assertThat(after.isVariableDiscountManual()).isFalse();
+    }
+
+    /**
+     * F1-a GAS parity — 홈멀티 품명 정규식 분류 + 고정DC% 시트값 적재.
+     */
+    @Test
+    void sync_GAS_home_품명분류와_고정DC를_Classification으로_적재한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("공기청정 WIFI 판넬", "PANEL_WIFI_01", "", "100,000", "", "80,000", "12.5%")
+        ));
+
+        syncService.syncAll();
+
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse("PANEL_WIFI_01").orElseThrow();
+        assertThat(product.getCatL()).extracting(Classification::getName).isEqualTo("판넬");
+        assertThat(product.getCatM()).extracting(Classification::getName).isEqualTo("공기청정 WIFI");
+        assertThat(product.getCatS()).isNull();
+        assertThat(product.getFixedDiscountRate()).isEqualByComparingTo(new BigDecimal("12.5"));
+        assertThat(classificationRepository.findByEstimateCategoryAndParentIsNullOrderByDisplayOrderAsc(
+                        EstimateCategory.HOME_MULTI))
+                .extracting(Classification::getName)
+                .contains("판넬");
+    }
+
+    /**
+     * F1-a GAS parity — 상업멀티 DUCT 고정압 소분류와 0-분류 전수 가드.
+     */
+    @Test
+    void sync_GAS_commercial_품명분류는_catL_catM_catS_0분류가_없다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "단위", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("DUCT 고정압 실내기", "AM120BNHDCH1", "EA", "", "1,000,000", "", "700,000", "0"),
+                row("상업용 전열교환기", "ERV_COMM_01", "EA", "", "2,000,000", "", "1,400,000", "")
+        ));
+
+        syncService.syncAll();
+
+        Product duct = productRepository.findByModelCodeAndIsDeletedFalse("AM120BNHDCH1").orElseThrow();
+        assertThat(duct.getCatL()).extracting(Classification::getName).isEqualTo("실내기");
+        assertThat(duct.getCatM()).extracting(Classification::getName).isEqualTo("DUCT");
+        assertThat(duct.getCatS()).extracting(Classification::getName).isEqualTo("고정압");
+        assertThat(duct.getFixedDiscountRate()).isEqualByComparingTo(BigDecimal.ZERO);
+
+        List<Product> synced = productRepository.findByProductCategoryAndIsDeletedFalse(
+                ProductCategory.COMMERCIAL_MULTI);
+        assertThat(synced)
+                .as("GAS 규칙 대상 row 는 catL 0-분류가 없어야 한다")
+                .allSatisfy(product -> assertThat(product.getCatL()).isNotNull());
     }
 
     /**
