@@ -98,4 +98,25 @@ describe('ProductCatalogPageModel', () => {
       { modelCode: 'AC-3000', estimateCategory: 'HOME_MULTI', displayOrder: 2 },
     ])
   })
+
+  it('순서 저장 payload 는 카테고리 노출이 남은 usageScope NONE 품목을 제외한다', () => {
+    expect(
+      buildCategoryDisplayOrderInputs(
+        [
+          { ...baseRow, modelCode: 'AC-2000' },
+          {
+            ...baseRow,
+            modelCode: 'MOCK-NONE-ITEM',
+            usageScope: 'NONE',
+            estimateCategories: [{ category: 'HOME_MULTI', displayOrder: 99 }],
+          },
+          { ...baseRow, modelCode: 'AC-3000' },
+        ],
+        'HOME_MULTI',
+      ),
+    ).toEqual([
+      { modelCode: 'AC-2000', estimateCategory: 'HOME_MULTI', displayOrder: 1 },
+      { modelCode: 'AC-3000', estimateCategory: 'HOME_MULTI', displayOrder: 2 },
+    ])
+  })
 })

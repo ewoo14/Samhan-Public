@@ -73,6 +73,56 @@ async function loadTable(page: Page): Promise<void> {
   await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 10_000 })
 }
 
+const BUNDLE_COMPONENT_CODES = [
+  'AJ040RXH4BC1',
+  'AJ100NCDKH',
+  'PNL-BASIC',
+  'PNL-BLACK',
+  'PNL-LIFT',
+  'PNL-CLEAN',
+  'MWR-WE10N',
+  'MWR-WE13N',
+  'MWR-SH11N',
+]
+
+async function openSetComponentsModal(page: Page): Promise<void> {
+  const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+  await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
+  await componentsBtn.click()
+  await expect(page.getByTestId('components-modal')).toBeVisible({ timeout: 5_000 })
+  await expect(page.locator('[data-testid^="components-modal-component-row-"]')).toHaveCount(9, {
+    timeout: 5_000,
+  })
+}
+
+async function componentCodes(page: Page): Promise<string[]> {
+  const rows = page.locator('[data-testid^="components-modal-component-row-"]')
+  const count = await rows.count()
+  const result: string[] = []
+  for (let i = 0; i < count; i += 1) {
+    const text = (await rows.nth(i).textContent()) ?? ''
+    const code = BUNDLE_COMPONENT_CODES.find((candidate) => text.includes(candidate))
+    if (code) result.push(code)
+  }
+  return result
+}
+
+async function keyboardMoveComponent(
+  page: Page,
+  fromIndex: number,
+  direction: 'ArrowUp' | 'ArrowDown',
+  steps = 1,
+): Promise<void> {
+  await page.getByTestId(`components-modal-drag-handle-${fromIndex}`).focus()
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(150)
+  for (let i = 0; i < steps; i += 1) {
+    await page.keyboard.press(direction)
+    await page.waitForTimeout(150)
+  }
+  await page.keyboard.press('Space')
+}
+
 // ---------------------------------------------------------------------------
 // Scenario 1: 목록 렌더
 // ---------------------------------------------------------------------------
@@ -154,7 +204,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     const modal = page.getByTestId('components-modal')
     await expect(modal).toBeVisible({ timeout: 5_000 })
 
-    // 3. 기존 구성품 row-0 존재 단언 (mock 시드 3개)
+    // 3. 기존 구성품 row-0 존재 단언 (mock 시드 9개)
     const firstRow = page.getByTestId('components-modal-component-row-0')
     await expect(firstRow).toBeVisible({ timeout: 5_000 })
 
@@ -179,8 +229,8 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     const setBadge = page.getByTestId('product-catalog-set-badge-SET-HM2WAY')
     await expect(setBadge).toBeVisible({ timeout: 5_000 })
     const badgeText = await setBadge.textContent()
-    // 저장 후 componentCount = 3 (수량 변경만, 행 개수 유지)
-    expect(badgeText).toMatch(/세트\s*·\s*3/)
+    // 저장 후 componentCount = 9 (수량 변경만, 행 개수 유지)
+    expect(badgeText).toMatch(/세트\s*·\s*9/)
   })
 
   // ---------------------------------------------------------------------------
@@ -224,6 +274,65 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     const saveBtn = page.getByTestId('components-modal-save-button')
     await saveBtn.click()
     await expect(modal).not.toBeVisible({ timeout: 5_000 })
+  })
+
+  test('시나리오 4c: 구성품 드래그 정렬 — 종류 내 재정렬 저장·기본 고정·종류 경계 거부', async ({ page }) => {
+    await installAuth(page)
+    await gotoProductCatalog(page, 'MASTER')
+    await loadTable(page)
+    await openSetComponentsModal(page)
+
+    await expect(page.getByTestId('components-modal-kind-group-INDOOR')).toBeVisible()
+    await expect(page.getByTestId('components-modal-kind-group-OUTDOOR')).toBeVisible()
+    await expect(page.getByTestId('components-modal-kind-group-PANEL')).toBeVisible()
+    await expect(page.getByTestId('components-modal-kind-group-REMOTE')).toBeVisible()
+
+    const initial = await componentCodes(page)
+    expect(initial).toEqual([
+      'AJ040RXH4BC1',
+      'AJ100NCDKH',
+      'PNL-BASIC',
+      'PNL-BLACK',
+      'PNL-LIFT',
+      'PNL-CLEAN',
+      'MWR-WE10N',
+      'MWR-WE13N',
+      'MWR-SH11N',
+    ])
+
+    await expect(page.getByTestId('components-modal-drag-handle-2')).toBeDisabled()
+
+    await keyboardMoveComponent(page, 3, 'ArrowDown', 4)
+    await expect.poll(() => componentCodes(page), { timeout: 3_000 }).toEqual(initial)
+
+    await keyboardMoveComponent(page, 4, 'ArrowUp')
+    await expect.poll(() => componentCodes(page), { timeout: 3_000 }).toEqual([
+      'AJ040RXH4BC1',
+      'AJ100NCDKH',
+      'PNL-BASIC',
+      'PNL-LIFT',
+      'PNL-BLACK',
+      'PNL-CLEAN',
+      'MWR-WE10N',
+      'MWR-WE13N',
+      'MWR-SH11N',
+    ])
+
+    await page.getByTestId('components-modal-save-button').click()
+    await expect(page.getByTestId('components-modal')).not.toBeVisible({ timeout: 5_000 })
+
+    await openSetComponentsModal(page)
+    await expect.poll(() => componentCodes(page), { timeout: 5_000 }).toEqual([
+      'AJ040RXH4BC1',
+      'AJ100NCDKH',
+      'PNL-BASIC',
+      'PNL-LIFT',
+      'PNL-BLACK',
+      'PNL-CLEAN',
+      'MWR-WE10N',
+      'MWR-WE13N',
+      'MWR-SH11N',
+    ])
   })
 
   // ---------------------------------------------------------------------------

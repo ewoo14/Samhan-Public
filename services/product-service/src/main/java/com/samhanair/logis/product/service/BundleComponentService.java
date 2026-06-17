@@ -19,6 +19,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -193,8 +194,14 @@ public class BundleComponentService {
      * {@code X-User-Id} 를 {@code deletedBy} 로 기록한다. {@code actor} 가 null/blank 이면
      * {@code "system"} 으로 대체한다.
      *
+     * <p><b>D-PCE-08 표시 순서 정규화</b>:
+     * 신규 INSERT 전 요청 목록을 {@code componentKind.rank ASC → isDefault DESC → incoming index ASC}
+     * 로 안정 정렬한 뒤 1..N displayOrder 를 부여한다. 클라이언트가 종류 경계를 넘거나 기본 항목을
+     * 아래로 보내는 배열을 전송해도 서버가 세트 구성품 표시 구조의 단일 진실원으로 불변식을 보장한다.
+     * 같은 종류의 비기본 항목끼리는 incoming index 로 사용자 드래그 순서를 보존한다.
+     *
      * @param modelCode 대상 BUNDLE 모델코드
-     * @param requests  replace-all 구성품 목록 (배열 인덱스 = 표시 순서)
+     * @param requests  replace-all 구성품 목록 (저장 전 서버 정규화 순위로 표시 순서 부여)
      * @param actor     soft-delete 수행 주체 (X-User-Id, null/blank → "system")
      * @return 갱신된 구성품 응답 목록
      * @throws BusinessException(CONFLICT)      대상 품목이 BUNDLE 이 아닌 경우
@@ -283,10 +290,11 @@ public class BundleComponentService {
         // (bundle_product_id, component_product_code, is_deleted=false) 중복으로 500 을 유발한다.
         entityManager.flush();
 
-        // 신규 구성품 INSERT (배열 인덱스 = display_order 1-based)
-        List<BundleComponent> saved = new ArrayList<>(requests.size());
-        for (int idx = 0; idx < requests.size(); idx++) {
-            BundleComponentRequest req = requests.get(idx);
+        // 신규 구성품 INSERT (D-PCE-08: 서버 정규화 순위 = display_order 1-based)
+        List<BundleComponentRequest> orderedRequests = normalizeComponentRequestsForDisplayOrder(requests);
+        List<BundleComponent> saved = new ArrayList<>(orderedRequests.size());
+        for (int idx = 0; idx < orderedRequests.size(); idx++) {
+            BundleComponentRequest req = orderedRequests.get(idx);
             BundleComponent.QtyMode qtyMode = req.qtyMode() != null
                     ? req.qtyMode() : BundleComponent.QtyMode.FOLLOW_SET;
             BundleComponent.ComponentKind kind = req.componentKind() != null
@@ -524,10 +532,15 @@ public class BundleComponentService {
      * {@code displayOrder} 가 아니라 {@link ProductEstimateExposure#changeDisplayOrder(Integer)}
      * 로 수행한다.
      *
+     * <p><b>D-PCE-09 부분 요청 가드</b>:
+     * 요청 productId 집합은 대상 견적 카테고리의 전체 활성 노출 productId 집합과 같아야 한다.
+     * 일부 품목만 보내면 보낸 항목만 1..N 으로 재번호되어 기존 카테고리 순서가 붕괴되므로 400 으로 거부한다.
+     *
      * <p>성공 시 {@code product:catalog:changed} 이벤트 broadcast — FE 카탈로그 목록 invalidate 트리거.
      *
      * @param requests modelCode + displayOrder 목록
-     * @throws BusinessException(INVALID_INPUT) 중복 modelCode / 다른 estimateCategory 혼합 / null+non-null 혼합 시
+     * @throws BusinessException(INVALID_INPUT) 중복 modelCode / 다른 estimateCategory 혼합 / null+non-null 혼합 /
+     *                                         카테고리 전체 활성 노출 미포함 시
      * @throws EntityNotFoundException          404 — 미존재 modelCode 포함 시
      */
     @Transactional
@@ -612,9 +625,20 @@ public class BundleComponentService {
                     "해당 견적 카테고리 노출을 찾을 수 없습니다: " + missingExposures);
         }
 
+        Set<UUID> requestedProductIds = products.stream()
+                .map(Product::getId)
+                .collect(Collectors.toSet());
+        Set<UUID> activeCategoryProductIds = exposureRepository
+                .findActiveProductExposuresByEstimateCategory(targetCategory)
+                .stream()
+                .map(ProductEstimateExposure::getProductId)
+                .collect(Collectors.toSet());
+        if (!requestedProductIds.equals(activeCategoryProductIds)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "표시 순서 일괄 갱신은 대상 견적 카테고리의 전체 활성 노출을 포함해야 합니다.");
+        }
+
         // 같은 카테고리 안에서 요청 순서대로 1..N 재번호한다.
-        // (부분 요청은 보낸 항목만 재번호 — FE 는 카테고리 전 페이지를 수집해 전체를 전송하므로 부분 붕괴 미발생.
-        //  '전체 활성 노출 포함 강제' 가드는 IT 의 동일 카테고리 다품목 시드와 충돌·FE 페이징 취약 → 미채택.)
         for (int i = 0; i < products.size(); i++) {
             exposureByProductId.get(products.get(i).getId()).changeDisplayOrder(i + 1);
         }
@@ -636,6 +660,38 @@ public class BundleComponentService {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * 세트 구성품 요청을 서버 표시 순서 불변식에 맞게 정규화한다.
+     *
+     * <p>정렬 키는 종류 순위 오름차순, 기본 여부 내림차순, 원래 요청 인덱스 오름차순이다.
+     * 마지막 키로 incoming index 를 명시해 같은 종류/기본 여부 안의 사용자 순서를 안정적으로 보존한다.
+     *
+     * @param requests replace-all 요청 목록
+     * @return 표시 순서 부여에 사용할 정규화된 요청 목록
+     */
+    private static List<BundleComponentRequest> normalizeComponentRequestsForDisplayOrder(
+            List<BundleComponentRequest> requests) {
+        List<IndexedComponentRequest> indexed = new ArrayList<>(requests.size());
+        for (int i = 0; i < requests.size(); i++) {
+            indexed.add(new IndexedComponentRequest(requests.get(i), i));
+        }
+        indexed.sort(Comparator
+                .comparingInt((IndexedComponentRequest x) -> componentKindOrDefault(x.request()).rank())
+                .thenComparingInt(x -> x.request().isDefault() ? 0 : 1)
+                .thenComparingInt(IndexedComponentRequest::incomingIndex));
+        return indexed.stream()
+                .map(IndexedComponentRequest::request)
+                .toList();
+    }
+
+    private static BundleComponent.ComponentKind componentKindOrDefault(BundleComponentRequest request) {
+        return request.componentKind() != null
+                ? request.componentKind() : BundleComponent.ComponentKind.ACCESSORY;
+    }
+
+    private record IndexedComponentRequest(BundleComponentRequest request, int incomingIndex) {
     }
 
     private static String buildModelCodeList(List<Product> products) {

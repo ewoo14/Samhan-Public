@@ -34,7 +34,33 @@ public class BundleComponent extends BaseEntity {
 
     public enum QtyMode {FIXED, FOLLOW_SET}
 
-    public enum ComponentKind {INDOOR, OUTDOOR, PANEL, REMOTE, MATERIAL, ACCESSORY, FOOT}
+    public enum ComponentKind {
+        INDOOR(0),
+        OUTDOOR(1),
+        PANEL(2),
+        REMOTE(3),
+        MATERIAL(4),
+        ACCESSORY(5),
+        FOOT(6);
+
+        private final int rank;
+
+        ComponentKind(int rank) {
+            this.rank = rank;
+        }
+
+        /**
+         * 세트 구성품 표시 순서 정규화를 위한 고정 종류 순위.
+         *
+         * <p>사용자 드래그는 종류 내부 순서만 표현하며, 서버는 이 순위로
+         * 실내기→실외기→판넬→리모컨→자재→부속→받침대 구조를 보장한다.
+         *
+         * @return 낮을수록 먼저 표시되는 종류 순위
+         */
+        public int rank() {
+            return rank;
+        }
+    }
 
     @Id
     @GeneratedValue
@@ -76,7 +102,7 @@ public class BundleComponent extends BaseEntity {
 
     /**
      * 표시 순서 (§2-4 2026-06-11). NULL 허용 — 기존 행 backfill 미완 시 ORDER BY NULLS LAST 처리.
-     * replace-all 저장 시 배열 인덱스(0-based + 1 = 1-based) 를 기록한다.
+     * replace-all 저장 시 서버 정규화 순위(종류순 + 종류 내 기본 먼저 + incoming index) 를 기록한다.
      * 시트 sync 적재 시에는 설정하지 않는다 (NULL = sync 미설정 행).
      */
     @Column(name = "display_order")
@@ -110,7 +136,7 @@ public class BundleComponent extends BaseEntity {
     }
 
     /**
-     * 표시 순서 갱신 — replace-all 저장 시 배열 인덱스(1-based) 를 주입.
+     * 표시 순서 갱신 — replace-all 저장 시 서버 정규화 순위(1-based) 를 주입.
      *
      * @param displayOrder 1-based 표시 순서
      */

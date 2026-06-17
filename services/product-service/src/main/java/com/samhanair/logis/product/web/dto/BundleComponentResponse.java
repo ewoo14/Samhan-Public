@@ -17,7 +17,7 @@ import java.math.BigDecimal;
  * @param componentVariant     구성품 특징 (기본/사각/WIFI 등; null 가능)
  * @param isDefault            기본 옵션 여부
  * @param specText             규격 (null 가능)
- * @param displayOrder         표시 순서 (PUT 시 배열 인덱스 기준 부여)
+ * @param displayOrder         표시 순서 (PUT 시 서버 정규화 순위 기준 부여)
  */
 public record BundleComponentResponse(
         String componentProductCode,
@@ -31,11 +31,11 @@ public record BundleComponentResponse(
         int displayOrder
 ) {
     /**
-     * {@link BundleComponent} 엔티티 + 품목 명칭 + 순서 → 응답 DTO 변환.
+     * {@link BundleComponent} 엔티티 + 품목 명칭 + 응답 순서 → 응답 DTO 변환.
      *
      * @param bc          BundleComponent 엔티티
      * @param name        구성 품목 명칭 (Product.name; 없으면 componentProductCode)
-     * @param displayOrder 표시 순서 (BundleComponent 에 직접 보관되지 않아 서비스에서 주입)
+     * @param displayOrder 표시 순서 (응답 목록 기준 1-based)
      * @return 응답 DTO
      */
     public static BundleComponentResponse from(BundleComponent bc, String name, int displayOrder) {

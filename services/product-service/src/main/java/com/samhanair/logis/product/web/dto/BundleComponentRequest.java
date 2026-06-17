@@ -11,8 +11,8 @@ import java.math.BigDecimal;
 /**
  * 구성품 replace-all 요청 DTO (§1c 2026-06-11).
  *
- * <p>배열 인덱스가 표시 순서(0-based)가 된다.
- * BUNDLE 의 구성품 전체를 배열로 교체한다 (replace-all 패턴).
+ * <p>BUNDLE 의 구성품 전체를 배열로 교체한다 (replace-all 패턴).
+ * 서버는 배열을 종류순 + 종류 내 기본 먼저 + 요청 내 상대 순서 기준으로 정규화한 뒤 표시 순서를 부여한다.
  *
  * @param componentProductCode 구성 품목 모델코드 (활성 품목이어야 함)
  * @param defaultQty           기본 수량 (양수 필수, 최대 999.99 — NUMERIC(5,2) 컬럼 precision 상한)

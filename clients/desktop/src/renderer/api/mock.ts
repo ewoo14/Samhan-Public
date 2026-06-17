@@ -835,6 +835,66 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
     categoryId: 'cat-home',
     goods: true,
   },
+  'PNL-BASIC': {
+    productId: 'p-pnl-basic',
+    modelName: 'PNL-BASIC',
+    productName: '표준 판넬',
+    sellingPrice: '60000',
+    purchasePrice: '30000',
+    categoryId: 'cat-home',
+    goods: true,
+    productType: 'SINGLE',
+  },
+  'PNL-BLACK': {
+    productId: 'p-pnl-black',
+    modelName: 'PNL-BLACK',
+    productName: '블랙 판넬',
+    sellingPrice: '90000',
+    purchasePrice: '50000',
+    categoryId: 'cat-home',
+    goods: true,
+    productType: 'SINGLE',
+  },
+  'PNL-LIFT': {
+    productId: 'p-pnl-lift',
+    modelName: 'PNL-LIFT',
+    productName: '승강 판넬',
+    sellingPrice: '120000',
+    purchasePrice: '70000',
+    categoryId: 'cat-home',
+    goods: true,
+    productType: 'SINGLE',
+  },
+  'PNL-CLEAN': {
+    productId: 'p-pnl-clean',
+    modelName: 'PNL-CLEAN',
+    productName: '공청 판넬',
+    sellingPrice: '110000',
+    purchasePrice: '65000',
+    categoryId: 'cat-home',
+    goods: true,
+    productType: 'SINGLE',
+  },
+  'MWR-WE13N': {
+    productId: 'p-mwr13',
+    modelName: 'MWR-WE13N',
+    productName: '컬러 유선 리모컨',
+    sellingPrice: '120000',
+    purchasePrice: '70000',
+    categoryId: 'cat-home',
+    goods: true,
+    productType: 'SINGLE',
+  },
+  'MWR-SH11N': {
+    productId: 'p-mwr-sh11',
+    modelName: 'MWR-SH11N',
+    productName: '서브 유선 리모컨',
+    sellingPrice: '65000',
+    purchasePrice: '35000',
+    categoryId: 'cat-home',
+    goods: true,
+    productType: 'SINGLE',
+  },
   'MAT-MOCK-REMOTE': {
     productId: 'p-mat-mock-remote',
     modelName: 'MAT-MOCK-REMOTE',
@@ -960,7 +1020,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
       legacyDiscountFlag: false,
       discountFlags: null,
       productType: p.productType ?? 'SINGLE',
-      componentCount: isBundle ? 3 : 0,
+      componentCount: isBundle && p.modelName === 'SET-HM2WAY' ? 9 : isBundle ? 3 : 0,
     })
   }),
   // §2-1 NONE 품목 시드 — 노출 한정 시나리오 검증용 (displayOrder=null, 정렬 대상 제외).
@@ -968,7 +1028,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
     modelCode: 'MOCK-NONE-ITEM',
     name: '미노출 품목 (테스트)',
     usageScope: 'NONE' as const,
-    estimateCategories: [],
+    estimateCategories: [{ category: 'HOME_MULTI', displayOrder: 999 }],
     estimateCategory: null,
     productCategory: 'SINGLE_PART',
     usageScopeManual: false,
@@ -1062,7 +1122,13 @@ let MOCK_BUNDLE_COMPONENTS: Record<string, Array<{
   'SET-HM2WAY': [
     { componentProductCode: 'AJ040RXH4BC1', componentName: '시스템에어컨 4Way 4HP', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'INDOOR', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 1 },
     { componentProductCode: 'AJ100NCDKH', componentName: '실외기 10HP', defaultQty: 1, qtyMode: 'FOLLOW_SET', componentKind: 'OUTDOOR', componentVariant: null, isDefault: true, specText: '10HP', displayOrder: 2 },
-    { componentProductCode: 'MWR-WE10N', componentName: '유선 리모컨 (WE10N)', defaultQty: 2, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 3 },
+    { componentProductCode: 'PNL-BASIC', componentName: '표준 판넬', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'PANEL', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 3 },
+    { componentProductCode: 'PNL-BLACK', componentName: '블랙 판넬', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'PANEL', componentVariant: '블랙', isDefault: false, specText: null, displayOrder: 4 },
+    { componentProductCode: 'PNL-LIFT', componentName: '승강 판넬', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'PANEL', componentVariant: '승강', isDefault: false, specText: null, displayOrder: 5 },
+    { componentProductCode: 'PNL-CLEAN', componentName: '공청 판넬', defaultQty: 2, qtyMode: 'FOLLOW_SET', componentKind: 'PANEL', componentVariant: '공청', isDefault: false, specText: null, displayOrder: 6 },
+    { componentProductCode: 'MWR-WE10N', componentName: '유선 리모컨 (WE10N)', defaultQty: 2, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: '기본', isDefault: true, specText: null, displayOrder: 7 },
+    { componentProductCode: 'MWR-WE13N', componentName: '컬러 유선 리모컨', defaultQty: 1, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: '컬러', isDefault: false, specText: null, displayOrder: 8 },
+    { componentProductCode: 'MWR-SH11N', componentName: '서브 유선 리모컨', defaultQty: 1, qtyMode: 'FIXED', componentKind: 'REMOTE', componentVariant: '서브', isDefault: false, specText: null, displayOrder: 9 },
   ],
 }
 
@@ -1522,6 +1588,21 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       )
     }
     const targetCategory = [...requestCategories][0]!
+    const targetCategoryCodes = MOCK_PRODUCT_CATALOG_ROWS
+      .filter((row) => row.usageScope !== 'NONE' && exposureForCategory(row, targetCategory) != null)
+      .map((row) => row.modelCode)
+      .sort()
+    const requestCodes = [...seenModelCodes].sort()
+    if (
+      targetCategoryCodes.length !== requestCodes.length
+      || targetCategoryCodes.some((code, index) => code !== requestCodes[index])
+    ) {
+      return mockError(
+        400,
+        'INVALID_INPUT',
+        '표시 순서 일괄 갱신은 대상 견적 카테고리의 전체 활성 노출을 포함해야 합니다.',
+      )
+    }
     MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row) => {
       const entry = orders.find((o) => String(o.modelCode ?? '') === row.modelCode)
       if (!entry) return row

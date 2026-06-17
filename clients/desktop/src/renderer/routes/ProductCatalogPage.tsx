@@ -62,8 +62,7 @@
  *   <li>{@code components-modal-default-{index}} — 기본 구성품 체크박스</li>
  *   <li>{@code components-modal-quantity-{index}} — 수량 입력</li>
  *   <li>{@code components-modal-delete-{index}} — 구성품 삭제 버튼</li>
- *   <li>{@code components-modal-up-{index}} — 위로 버튼</li>
- *   <li>{@code components-modal-down-{index}} — 아래로 버튼</li>
+ *   <li>{@code components-modal-drag-handle-{index}} — 구성품 드래그 핸들</li>
  *   <li>품목 검색 = {@code ProductAutocomplete} combobox(label "품목 검색", 방향키 선택) — 구 search-input 대체</li>
  *   <li>{@code components-modal-add-{modelCode}} — 품목 추가 버튼</li>
  *   <li>{@code components-modal-save-button} — 저장 버튼</li>
@@ -138,6 +137,9 @@ import {
 } from './ProductCatalogPageModel'
 import {
   buildBundleComponentInputs,
+  groupBundleComponentDrafts,
+  normalizeBundleComponentDraftOrder,
+  reorderBundleComponentDrafts,
   toggleComponentDefault,
   type ComponentDraftModel,
 } from './componentsModalModel'
@@ -425,44 +427,24 @@ function ComponentsModal({
 
   const handleKindChange = (localId: string, value: string) => {
     setDrafts((prev) =>
-      prev.map((d) =>
-        d._localId === localId
-          ? { ...d, componentKind: value ? (value as ComponentKind) : null }
-          : d,
+      normalizeBundleComponentDraftOrder(
+        prev.map((d) =>
+          d._localId === localId
+            ? { ...d, componentKind: value ? (value as ComponentKind) : null }
+            : d,
+        ),
       ),
     )
   }
 
   const handleDefaultChange = (localId: string, checked: boolean) => {
-    setDrafts((prev) => toggleComponentDefault(prev, localId, checked))
+    setDrafts((prev) => normalizeBundleComponentDraftOrder(toggleComponentDefault(prev, localId, checked)))
   }
 
   const handleDelete = (localId: string) => {
     setDrafts((prev) => {
       const next = prev.filter((d) => d._localId !== localId)
-      return next.map((d, idx) => ({ ...d, displayOrder: idx + 1 }))
-    })
-  }
-
-  const handleMoveUp = (index: number) => {
-    if (index === 0) return
-    setDrafts((prev) => {
-      const next = [...prev]
-      const temp = next[index - 1]!
-      next[index - 1] = next[index]!
-      next[index] = temp
-      return next.map((d, idx) => ({ ...d, displayOrder: idx + 1 }))
-    })
-  }
-
-  const handleMoveDown = (index: number) => {
-    setDrafts((prev) => {
-      if (index >= prev.length - 1) return prev
-      const next = [...prev]
-      const temp = next[index + 1]!
-      next[index + 1] = next[index]!
-      next[index] = temp
-      return next.map((d, idx) => ({ ...d, displayOrder: idx + 1 }))
+      return normalizeBundleComponentDraftOrder(next)
     })
   }
 
@@ -492,9 +474,24 @@ function ComponentsModal({
       _localId: `new-${visibleCode}-${Date.now()}`,
       _isNew: true,
     }
-    setDrafts((prev) => [...prev, newDraft])
+    setDrafts((prev) => normalizeBundleComponentDraftOrder([...prev, newDraft]))
     setSelectedProduct(null)
   }
+
+  const componentSensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+
+  const handleComponentDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setDrafts((prev) =>
+      reorderBundleComponentDrafts(prev, String(active.id), String(over.id)),
+    )
+  }, [])
 
   const handleSave = () => {
     if (drafts.length === 0) {
@@ -518,6 +515,8 @@ function ComponentsModal({
   const selectedAlreadyAdded = selectedProductCode
     ? drafts.some((d) => d.componentProductCode === selectedProductCode)
     : false
+  const componentGroups = groupBundleComponentDrafts(drafts)
+  const orderedDrafts = componentGroups.flatMap((group) => group.items)
 
   return (
     <Modal
@@ -568,105 +567,48 @@ function ComponentsModal({
           {drafts.length === 0 && !isLoading ? (
             <p style={{ fontSize: 12, color: 'var(--color-neutral-400)' }}>구성품이 없습니다.</p>
           ) : null}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {drafts.map((draft, idx) => (
-              <div
-                key={draft._localId}
-                data-testid={`components-modal-component-row-${idx}`}
-                style={componentRowStyle}
-              >
-                <span style={{ flex: 1, fontSize: 12 }}>
-                  <span style={{ fontFamily: 'monospace' }}>{draft.componentProductCode}</span>
-                  {draft.componentName ? (
-                    <span style={{ color: 'var(--color-neutral-500)', marginLeft: 6 }}>{draft.componentName}</span>
-                  ) : null}
-                </span>
-                {/* 신규 행: componentKind 선택 가능 (design-system Select) */}
-                {draft._isNew && canEdit ? (
-                  <Select
-                    value={draft.componentKind ?? ''}
-                    disabled={isSaving}
-                    onChange={(e) => handleKindChange(draft._localId, e.target.value)}
-                    data-testid={`components-modal-kind-${idx}`}
-                    selectSize="sm"
-                    fullWidth={false}
-                    style={{ minWidth: 80 }}
+          <DndContext
+            sensors={componentSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleComponentDragEnd}
+          >
+            <SortableContext
+              items={orderedDrafts.map((draft) => draft._localId)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {componentGroups.map((group) => (
+                  <div
+                    key={group.kind}
+                    style={componentGroupStyle}
+                    data-testid={`components-modal-kind-group-${group.kind}`}
                   >
-                    <option value="">분류</option>
-                    {COMPONENT_KIND_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </Select>
-                ) : draft.componentKind ? (
-                  <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>
-                    {COMPONENT_KIND_OPTIONS.find((o) => o.value === draft.componentKind)?.label ?? draft.componentKind}
-                  </span>
-                ) : null}
-                <label style={componentDefaultLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={draft.isDefault}
-                    disabled={!canEdit || isSaving}
-                    onChange={(e) => handleDefaultChange(draft._localId, e.target.checked)}
-                    data-testid={`components-modal-default-${idx}`}
-                    aria-label={`기본 구성품 ${idx + 1}`}
-                  />
-                  <span>기본</span>
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>수량</span>
-                  <Input
-                    type="number"
-                    value={String(draft.defaultQty)}
-                    disabled={!canEdit || isSaving}
-                    onChange={(e) => handleQuantityChange(draft._localId, e.target.value)}
-                    data-testid={`components-modal-quantity-${idx}`}
-                    inputSize="sm"
-                    fullWidth={false}
-                    style={{ width: 64, textAlign: 'right' }}
-                    aria-label={`수량 ${idx + 1}`}
-                    min={1}
-                    max={999}
-                    step={1}
-                  />
-                </div>
-                {canEdit ? (
-                  <div style={{ display: 'flex', gap: 2 }}>
-                    <button
-                      type="button"
-                      onClick={() => handleMoveUp(idx)}
-                      disabled={idx === 0 || isSaving}
-                      data-testid={`components-modal-up-${idx}`}
-                      style={orderButtonStyle}
-                      aria-label="위로"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleMoveDown(idx)}
-                      disabled={idx >= drafts.length - 1 || isSaving}
-                      data-testid={`components-modal-down-${idx}`}
-                      style={orderButtonStyle}
-                      aria-label="아래로"
-                    >
-                      ▼
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(draft._localId)}
-                      disabled={isSaving}
-                      data-testid={`components-modal-delete-${idx}`}
-                      style={{ ...orderButtonStyle, color: 'var(--color-danger-600, #DC2626)' }}
-                      aria-label="삭제"
-                    >
-                      ✕
-                    </button>
+                    <div style={componentKindHeaderStyle}>
+                      {COMPONENT_KIND_OPTIONS.find((option) => option.value === group.kind)?.label ?? group.kind}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {group.items.map((draft) => {
+                        const idx = orderedDrafts.findIndex((item) => item._localId === draft._localId)
+                        return (
+                          <SortableComponentRow
+                            key={draft._localId}
+                            draft={draft}
+                            index={idx}
+                            canEdit={canEdit}
+                            isSaving={isSaving}
+                            onKindChange={handleKindChange}
+                            onDefaultChange={handleDefaultChange}
+                            onQuantityChange={handleQuantityChange}
+                            onDelete={handleDelete}
+                          />
+                        )
+                      })}
+                    </div>
                   </div>
-                ) : null}
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         </section>
 
         {/* 품목 검색 + 추가 (canEdit 시에만) */}
@@ -702,6 +644,145 @@ function ComponentsModal({
         ) : null}
       </div>
     </Modal>
+  )
+}
+
+interface SortableComponentRowProps {
+  draft: ComponentDraftModel
+  index: number
+  canEdit: boolean
+  isSaving: boolean
+  onKindChange: (localId: string, value: string) => void
+  onDefaultChange: (localId: string, checked: boolean) => void
+  onQuantityChange: (localId: string, value: string) => void
+  onDelete: (localId: string) => void
+}
+
+function SortableComponentRow({
+  draft,
+  index,
+  canEdit,
+  isSaving,
+  onKindChange,
+  onDefaultChange,
+  onQuantityChange,
+  onDelete,
+}: SortableComponentRowProps) {
+  const canDrag = canEdit && !isSaving && !draft.isDefault
+  const dragHandleTitle = draft.isDefault
+    ? '기본 구성품은 종류 안 최상단에 고정됩니다'
+    : isSaving
+      ? '저장 중에는 구성품 순서를 변경할 수 없습니다'
+      : '같은 종류 안에서 드래그'
+  const dragHandleLabel = canDrag
+    ? `${draft.componentProductCode} 구성품 드래그`
+    : `${draft.componentProductCode} 구성품 드래그 비활성`
+  const dragHandleDisabledStyle: CSSProperties | undefined = !canDrag
+    ? { opacity: 0.35, cursor: 'not-allowed' }
+    : undefined
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: draft._localId, disabled: !canDrag })
+
+  const style: CSSProperties = {
+    ...componentRowStyle,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.55 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`components-modal-component-row-${index}`}
+      style={style}
+    >
+      {canEdit ? (
+        <DragHandle
+          label={dragHandleLabel}
+          listeners={canDrag ? listeners as Record<string, unknown> | undefined : undefined}
+          attributes={canDrag ? attributes as unknown as Record<string, unknown> : undefined}
+          setActivatorNodeRef={setActivatorNodeRef}
+          dragging={isDragging}
+          disabled={!canDrag}
+          data-testid={`components-modal-drag-handle-${index}`}
+          title={dragHandleTitle}
+          style={dragHandleDisabledStyle}
+        />
+      ) : null}
+      <span style={{ flex: 1, fontSize: 12 }}>
+        <span style={{ fontFamily: 'monospace' }}>{draft.componentProductCode}</span>
+        {draft.componentName ? (
+          <span style={{ color: 'var(--color-neutral-500)', marginLeft: 6 }}>{draft.componentName}</span>
+        ) : null}
+      </span>
+      {draft._isNew && canEdit ? (
+        <Select
+          value={draft.componentKind ?? ''}
+          disabled={isSaving}
+          onChange={(e) => onKindChange(draft._localId, e.target.value)}
+          data-testid={`components-modal-kind-${index}`}
+          selectSize="sm"
+          fullWidth={false}
+          style={{ minWidth: 80 }}
+        >
+          <option value="">분류</option>
+          {COMPONENT_KIND_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </Select>
+      ) : draft.componentKind ? (
+        <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>
+          {COMPONENT_KIND_OPTIONS.find((o) => o.value === draft.componentKind)?.label ?? draft.componentKind}
+        </span>
+      ) : null}
+      <label style={componentDefaultLabelStyle}>
+        <input
+          type="checkbox"
+          checked={draft.isDefault}
+          disabled={!canEdit || isSaving}
+          onChange={(e) => onDefaultChange(draft._localId, e.target.checked)}
+          data-testid={`components-modal-default-${index}`}
+          aria-label={`기본 구성품 ${index + 1}`}
+        />
+        <span>기본</span>
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>수량</span>
+        <Input
+          type="number"
+          value={String(draft.defaultQty)}
+          disabled={!canEdit || isSaving}
+          onChange={(e) => onQuantityChange(draft._localId, e.target.value)}
+          data-testid={`components-modal-quantity-${index}`}
+          inputSize="sm"
+          fullWidth={false}
+          style={{ width: 64, textAlign: 'right' }}
+          aria-label={`수량 ${index + 1}`}
+          min={1}
+          max={999}
+          step={1}
+        />
+      </div>
+      {canEdit ? (
+        <button
+          type="button"
+          onClick={() => onDelete(draft._localId)}
+          disabled={isSaving}
+          data-testid={`components-modal-delete-${index}`}
+          style={{ ...orderButtonStyle, color: 'var(--color-danger-600, #DC2626)' }}
+          aria-label="삭제"
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
   )
 }
 
@@ -1539,6 +1620,20 @@ const componentRowStyle: CSSProperties = {
   background: 'var(--color-neutral-50, #F7F8FA)',
   border: '1px solid var(--color-border, #E5E7EB)',
   borderRadius: 4,
+}
+
+const componentGroupStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+}
+
+const componentKindHeaderStyle: CSSProperties = {
+  padding: '2px 4px',
+  borderBottom: '1px solid var(--color-border, #E5E7EB)',
+  color: 'var(--color-neutral-600, #4B5563)',
+  fontSize: 11,
+  fontWeight: 600,
 }
 
 const componentDefaultLabelStyle: CSSProperties = {
