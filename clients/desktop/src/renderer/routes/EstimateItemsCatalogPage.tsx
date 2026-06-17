@@ -57,6 +57,7 @@ import {
   updateBundleComponents,
   updateProductUsage,
   updateProductClassificationSettings,
+  updateProductFixedDiscount,
   updateProductVariableDiscount,
   type BundleComponentInput,
   type ComponentKind,
@@ -81,7 +82,7 @@ import {
   nextClassificationSelection,
   nextScopeForEstimateCategoryRemoval,
   normalizeEstimateCategoryExposures,
-  normalizeFixedDiscountRateInput,
+  resolveFixedDiscountAutoSave,
   resolveEstimateItemsPageTotals,
   type ClassificationSelection,
 } from './ProductCatalogPageModel'
@@ -152,14 +153,21 @@ export interface EstimateItemsCatalogSuccessEffects {
   invalidateCatalogQueries: () => void
 }
 
-/** usage scope PATCH 성공은 분류/고정DC 모달 상태를 건드리지 않는다. */
+/** usage scope PATCH 성공은 분류 모달 상태를 건드리지 않는다. */
 export function applyUsagePatchSuccessEffects(effects: EstimateItemsCatalogSuccessEffects): void {
   effects.clearMutationError()
   effects.clearPatchingCode()
   effects.invalidateCatalogQueries()
 }
 
-/** 분류/고정DC 저장 성공 시 stale row 를 남기지 않도록 모달을 닫는다. */
+/** 고정DC 인라인 자동저장 성공은 분류 모달 상태를 건드리지 않는다. */
+export function applyFixedDiscountPatchSuccessEffects(effects: EstimateItemsCatalogSuccessEffects): void {
+  effects.clearMutationError()
+  effects.clearPatchingCode()
+  effects.invalidateCatalogQueries()
+}
+
+/** 분류 저장 성공 시 stale row 를 남기지 않도록 모달을 닫는다. */
 export function applyClassificationSettingsSuccessEffects(
   effects: EstimateItemsCatalogSuccessEffects,
 ): void {
@@ -294,12 +302,84 @@ function VariableDiscountCell({
   )
 }
 
+interface FixedDiscountCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onFixedDiscountPatch: (modelCode: string, fixedDiscountRate: string | null) => void
+  patchLoading: boolean
+}
+
+function FixedDiscountCell({
+  row,
+  canEdit,
+  onFixedDiscountPatch,
+  patchLoading,
+}: FixedDiscountCellProps) {
+  const initialValue = row.fixedDiscountRate == null ? '' : String(row.fixedDiscountRate)
+  const [draft, setDraft] = useState(initialValue)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraft(initialValue)
+    setLocalError(null)
+  }, [initialValue])
+
+  const handleBlur = () => {
+    const decision = resolveFixedDiscountAutoSave(row.fixedDiscountRate, draft)
+    if (decision.error) {
+      setLocalError(decision.error)
+      return
+    }
+    setLocalError(null)
+    if (!decision.shouldPatch) return
+    onFixedDiscountPatch(row.modelCode, decision.fixedDiscountRate)
+  }
+
+  return (
+    <div style={fixedDiscountCellStyle}>
+      <span style={fixedDiscountInputWrapStyle}>
+        <Input
+          type="number"
+          min="0"
+          max="100"
+          step="0.01"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur()
+            }
+          }}
+          disabled={!canEdit || patchLoading}
+          data-testid={`estimate-items-fixed-dc-${row.modelCode}`}
+          aria-label="고정DC율"
+          inputSize="sm"
+          fullWidth={false}
+          style={{ width: 72 }}
+        />
+        <span style={fixedDiscountSuffixStyle}>%</span>
+      </span>
+      {localError ? (
+        <span
+          role="alert"
+          title={localError}
+          style={fixedDiscountErrorStyle}
+          data-testid={`estimate-items-fixed-dc-error-${row.modelCode}`}
+        >
+          오류
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 interface ClassificationSettingsModalProps {
   open: boolean
   row: ProductCatalogRow
   classifications: Classification[]
   canEdit: boolean
-  onPatch: (modelCode: string, selection: ClassificationSelection, fixedDiscountRate: string | null) => void
+  onPatch: (modelCode: string, selection: ClassificationSelection) => void
   patchLoading: boolean
   onClose: () => void
 }
@@ -318,22 +398,16 @@ function ClassificationSettingsModal({
     catMId: row.catM?.id ?? null,
     catSId: row.catS?.id ?? null,
   }
-  const initialFixedRate = row.fixedDiscountRate == null ? '' : String(row.fixedDiscountRate)
   const [selection, setSelection] = useState<ClassificationSelection>(initialSelection)
-  const [fixedRate, setFixedRate] = useState(initialFixedRate)
-  const [localError, setLocalError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setSelection(initialSelection)
-    setFixedRate(initialFixedRate)
-    setLocalError(null)
   }, [
     open,
     initialSelection.catLId,
     initialSelection.catMId,
     initialSelection.catSId,
-    initialFixedRate,
   ])
 
   const catLOptions = filterClassificationsByParent(classifications, 'L', null)
@@ -346,20 +420,14 @@ function ClassificationSettingsModal({
   }
 
   const handleSave = () => {
-    const normalized = normalizeFixedDiscountRateInput(fixedRate)
-    if (fixedRate.trim() && normalized == null) {
-      setLocalError('고정DC율은 0~100 사이 숫자로 입력해 주세요.')
-      return
-    }
-    setLocalError(null)
-    onPatch(row.modelCode, selection, normalized)
+    onPatch(row.modelCode, selection)
   }
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`분류/고정DC 설정 — ${row.modelCode}`}
+      title={`분류 설정 — ${row.modelCode}`}
       size="md"
       footer={
         canEdit ? (
@@ -386,11 +454,6 @@ function ClassificationSettingsModal({
         style={classificationModalBodyStyle}
         data-testid={`estimate-items-classification-modal-${row.modelCode}`}
       >
-        {localError ? (
-          <div role="alert" style={errorBannerStyle} data-testid="estimate-items-classification-modal-error">
-            {localError}
-          </div>
-        ) : null}
         <div style={classificationModalGridStyle}>
           <Select
             label="대분류"
@@ -434,27 +497,6 @@ function ClassificationSettingsModal({
               <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </Select>
-          <div style={fixedDiscountModalFieldStyle}>
-            <Input
-              label="고정DC율"
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              value={fixedRate}
-              onChange={(e) => setFixedRate(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleSave()
-                }
-              }}
-              disabled={!canEdit || patchLoading}
-              data-testid={`estimate-items-fixed-dc-${row.modelCode}`}
-              aria-label="고정DC율"
-              inputSize="sm"
-            />
-            <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>%</span>
-          </div>
         </div>
       </div>
     </Modal>
@@ -478,7 +520,6 @@ function ClassificationSummaryCell({
     <div style={classificationSummaryCellStyle} data-testid={`estimate-items-classification-${row.modelCode}`}>
       <div style={classificationSummaryTextStyle}>
         <span title={summary.pathText}>{summary.pathText}</span>
-        <span style={classificationFixedSummaryStyle}>고정DC {summary.fixedDiscountText}</span>
       </div>
       {canEdit ? (
         <Button
@@ -1210,19 +1251,33 @@ export function EstimateItemsCatalogPage() {
     },
   })
 
+  const fixedDiscountMutation = useMutation({
+    mutationFn: ({
+      modelCode,
+      fixedDiscountRate,
+    }: {
+      modelCode: string
+      fixedDiscountRate: string | null
+    }) => updateProductFixedDiscount(modelCode, fixedDiscountRate),
+    onSuccess: () => {
+      applyFixedDiscountPatchSuccessEffects(catalogSuccessEffects)
+    },
+    onError: (err) => {
+      setMutationError(errorMsg(err))
+      setPatchingCode(null)
+    },
+  })
+
   const classificationSettingsMutation = useMutation({
     mutationFn: ({
       modelCode,
       selection,
-      fixedDiscountRate,
     }: {
       modelCode: string
       selection: ClassificationSelection
-      fixedDiscountRate: string | null
     }) =>
       updateProductClassificationSettings(modelCode, {
         ...selection,
-        fixedDiscountRate,
       }),
     onSuccess: () => {
       applyClassificationSettingsSuccessEffects(catalogSuccessEffects)
@@ -1307,11 +1362,20 @@ export function EstimateItemsCatalogPage() {
     [variableDiscountMutation],
   )
 
-  const handleClassificationSettingsPatch = useCallback(
-    (modelCode: string, selection: ClassificationSelection, fixedDiscountRate: string | null) => {
+  const handleFixedDiscountPatch = useCallback(
+    (modelCode: string, fixedDiscountRate: string | null) => {
       setPatchingCode(modelCode)
       setMutationError(null)
-      classificationSettingsMutation.mutate({ modelCode, selection, fixedDiscountRate })
+      fixedDiscountMutation.mutate({ modelCode, fixedDiscountRate })
+    },
+    [fixedDiscountMutation],
+  )
+
+  const handleClassificationSettingsPatch = useCallback(
+    (modelCode: string, selection: ClassificationSelection) => {
+      setPatchingCode(modelCode)
+      setMutationError(null)
+      classificationSettingsMutation.mutate({ modelCode, selection })
     },
     [classificationSettingsMutation],
   )
@@ -1478,6 +1542,19 @@ export function EstimateItemsCatalogPage() {
           row={row}
           canEdit={canEdit}
           onVariableDiscountPatch={handleVariableDiscountPatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
+    },
+    {
+      key: 'fixedDiscountRate',
+      header: '고정DC%',
+      width: '110px',
+      render: (row) => (
+        <FixedDiscountCell
+          row={row}
+          canEdit={canEdit}
+          onFixedDiscountPatch={handleFixedDiscountPatch}
           patchLoading={patchingCode === row.modelCode}
         />
       ),
@@ -1944,6 +2021,29 @@ const variableDiscountGroupStyle: CSSProperties = {
   gap: 4,
 }
 
+const fixedDiscountCellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+}
+
+const fixedDiscountInputWrapStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 3,
+}
+
+const fixedDiscountSuffixStyle: CSSProperties = {
+  fontSize: 12,
+  color: 'var(--color-neutral-500, #6B7280)',
+}
+
+const fixedDiscountErrorStyle: CSSProperties = {
+  fontSize: 11,
+  color: 'var(--color-danger-700, #991B1B)',
+  whiteSpace: 'nowrap',
+}
+
 const tableSectionStyle: CSSProperties = {
   flex: 1,
   minHeight: 0,
@@ -1967,11 +2067,6 @@ const classificationSummaryTextStyle: CSSProperties = {
   color: 'var(--color-neutral-700, #363D49)',
 }
 
-const classificationFixedSummaryStyle: CSSProperties = {
-  color: 'var(--color-neutral-500, #6B7280)',
-  whiteSpace: 'nowrap',
-}
-
 const classificationModalBodyStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -1981,15 +2076,9 @@ const classificationModalBodyStyle: CSSProperties = {
 
 const classificationModalGridStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(120px, 1fr)) minmax(120px, 140px)',
+  gridTemplateColumns: 'repeat(3, minmax(120px, 1fr))',
   gap: 10,
   alignItems: 'end',
-}
-
-const fixedDiscountModalFieldStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-end',
-  gap: 4,
 }
 
 const summaryStyle: CSSProperties = {

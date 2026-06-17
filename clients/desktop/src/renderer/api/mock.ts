@@ -1885,13 +1885,33 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
-  // PATCH /api/v1/products/{modelCode}/classification — F1-b 품목 분류/고정DC 저장.
+  // PATCH /api/v1/products/{modelCode}/classification — F1-b 품목 분류 저장.
   const productClassificationMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/classification(?:\?.*)?$/)
   if (method === 'PATCH' && productClassificationMatch) {
     const denied = mockRequirePermission('products.admin', 'update')
     if (denied) return denied
     ensureMockProductCatalogRowsSeeded()
     const modelCode = decodeURIComponent(productClassificationMatch[1]!)
+    const idx = MOCK_PRODUCT_CATALOG_ROWS.findIndex((row) => row.modelCode === modelCode)
+    if (idx < 0) return mockError(404, 'NOT_FOUND', '제품을 찾을 수 없습니다')
+    const body = parseMockBody(config)
+    const updated = {
+      ...MOCK_PRODUCT_CATALOG_ROWS[idx]!,
+      catL: mockClassificationRef(body['catLId'] == null ? null : String(body['catLId'])),
+      catM: mockClassificationRef(body['catMId'] == null ? null : String(body['catMId'])),
+      catS: mockClassificationRef(body['catSId'] == null ? null : String(body['catSId'])),
+    }
+    MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) => (i === idx ? updated : row))
+    return updated
+  }
+
+  // PATCH /api/v1/products/{modelCode}/fixed-discount — 고정DC 인라인 자동 저장.
+  const productFixedDiscountMatch = url.match(/\/api\/v1\/products\/([^/?]+)\/fixed-discount(?:\?.*)?$/)
+  if (method === 'PATCH' && productFixedDiscountMatch) {
+    const denied = mockRequirePermission('products.admin', 'update')
+    if (denied) return denied
+    ensureMockProductCatalogRowsSeeded()
+    const modelCode = decodeURIComponent(productFixedDiscountMatch[1]!)
     const idx = MOCK_PRODUCT_CATALOG_ROWS.findIndex((row) => row.modelCode === modelCode)
     if (idx < 0) return mockError(404, 'NOT_FOUND', '제품을 찾을 수 없습니다')
     const body = parseMockBody(config)
@@ -1907,9 +1927,6 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
     const updated = {
       ...MOCK_PRODUCT_CATALOG_ROWS[idx]!,
-      catL: mockClassificationRef(body['catLId'] == null ? null : String(body['catLId'])),
-      catM: mockClassificationRef(body['catMId'] == null ? null : String(body['catMId'])),
-      catS: mockClassificationRef(body['catSId'] == null ? null : String(body['catSId'])),
       fixedDiscountRate,
     }
     MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) => (i === idx ? updated : row))

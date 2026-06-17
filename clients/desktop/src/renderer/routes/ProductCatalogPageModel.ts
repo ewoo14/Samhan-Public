@@ -148,3 +148,36 @@ export function normalizeFixedDiscountRateInput(value: string): string | null {
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return null
   return parsed.toFixed(2)
 }
+
+export interface FixedDiscountAutoSaveDecision {
+  shouldPatch: boolean
+  fixedDiscountRate: string | null
+  error: string | null
+}
+
+function normalizeExistingFixedDiscountRate(value: ProductCatalogRow['fixedDiscountRate']): string | null {
+  if (value == null || String(value).trim() === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : null
+}
+
+/** 고정DC 인라인 입력 onBlur 시 PATCH 필요 여부와 전송값을 결정한다. */
+export function resolveFixedDiscountAutoSave(
+  currentValue: ProductCatalogRow['fixedDiscountRate'],
+  draftValue: string,
+): FixedDiscountAutoSaveDecision {
+  const trimmed = draftValue.trim()
+  const normalized = normalizeFixedDiscountRateInput(draftValue)
+  if (trimmed && normalized == null) {
+    return {
+      shouldPatch: false,
+      fixedDiscountRate: null,
+      error: '고정DC율은 0~100 사이 숫자로 입력해 주세요.',
+    }
+  }
+  const current = normalizeExistingFixedDiscountRate(currentValue)
+  if (current === normalized) {
+    return { shouldPatch: false, fixedDiscountRate: normalized, error: null }
+  }
+  return { shouldPatch: true, fixedDiscountRate: normalized, error: null }
+}

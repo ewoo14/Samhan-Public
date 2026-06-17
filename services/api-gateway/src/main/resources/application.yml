@@ -263,7 +263,15 @@ spring:
           filters:
             - JwtAuthentication
 
-        # F1-a 품목별 분류/고정DC PATCH — ProductCatalogController 풀패스라 no-strip.
+        # F1 정정: 고정DC 인라인 자동저장 PATCH — ProductCatalogController 풀패스라 no-strip.
+        - id: product-fixed-discount-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/*/fixed-discount
+          filters:
+            - JwtAuthentication
+
+        # F1-a 품목별 분류 PATCH — ProductCatalogController 풀패스라 no-strip.
         - id: product-classification-v1
           uri: lb://product-service
           predicates:

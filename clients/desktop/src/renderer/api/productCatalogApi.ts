@@ -7,6 +7,7 @@
  * - `DELETE /api/v1/products/{modelCode}/usage` — 시트 자동 복귀 (수동 override 해제)
  * - `PATCH /api/v1/products/{modelCode}/variable-discount` — 변동DC 수동 설정
  * - `DELETE /api/v1/products/{modelCode}/variable-discount` — 변동DC 시트 자동 복귀
+ * - `PATCH /api/v1/products/{modelCode}/fixed-discount` — 고정DC 인라인 수동 설정
  * - `GET /api/v1/products/{modelCode}/components` — 구성품 목록 (BUNDLE 전용)
  * - `PUT /api/v1/products/{modelCode}/components` — 구성품 replace-all 저장
  * - `PUT /api/v1/products/display-orders` — 표시 순서 일괄 갱신
@@ -353,17 +354,18 @@ export interface UpdateProductVariableDiscountRequest {
   hasVariableDiscount: boolean
 }
 
+/** `PATCH /api/v1/products/{modelCode}/fixed-discount` 요청 body */
+export interface UpdateProductFixedDiscountRequest {
+  fixedDiscountRate: string | null
+}
+
 /**
- * F1-b 품목 분류/고정DC 부분 수정 요청.
- *
- * 주의: 현재 로컬 F1-a 소스에는 이 전용 컨트롤러 메서드가 아직 보이지 않는다.
- * FE 호출부는 좁은 함수로 격리해 BE 경로 확정 시 한 곳만 교체한다.
+ * F1-b 품목 분류 부분 수정 요청.
  */
 export interface UpdateProductClassificationSettingsRequest {
   catLId: string | null
   catMId: string | null
   catSId: string | null
-  fixedDiscountRate: string | null
 }
 
 /** `GET /api/v1/products` 필터 파라미터 */
@@ -524,6 +526,23 @@ export async function clearProductVariableDiscount(modelCode: string): Promise<v
   )
 }
 
+/**
+ * 고정DC 인라인 수동 설정 — `PATCH /api/v1/products/{modelCode}/fixed-discount`.
+ *
+ * fixedDiscountRate=null 은 빈칸 저장이며 전역DC율 영향 품목으로 처리한다.
+ */
+export async function updateProductFixedDiscount(
+  modelCode: string,
+  fixedDiscountRate: string | null,
+): Promise<ProductCatalogRow> {
+  const req: UpdateProductFixedDiscountRequest = { fixedDiscountRate }
+  const res = await apiClient.patch<ProductCatalogRow>(
+    `/api/v1/products/${encodeURIComponent(modelCode)}/fixed-discount`,
+    req,
+  )
+  return res.data
+}
+
 /** 분류 마스터 목록 — `GET /api/v1/classifications?estimateCategory=&parentId=`. */
 export async function listClassifications(params: {
   estimateCategory: EstimateCategory
@@ -563,11 +582,7 @@ export async function deleteClassification(id: string): Promise<void> {
   await apiClient.delete(`/api/v1/classifications/${encodeURIComponent(id)}`)
 }
 
-/**
- * 품목별 분류/고정DC 수정.
- *
- * 로컬 F1-a 소스에는 전용 endpoint 가 아직 없어 FE 전용 격리 함수로 둔다.
- */
+/** 품목별 분류 수정. */
 export async function updateProductClassificationSettings(
   modelCode: string,
   req: UpdateProductClassificationSettingsRequest,

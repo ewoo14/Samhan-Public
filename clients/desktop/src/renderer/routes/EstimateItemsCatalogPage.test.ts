@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyClassificationSettingsSuccessEffects,
+  applyFixedDiscountPatchSuccessEffects,
   applyUsagePatchSuccessEffects,
   type EstimateItemsCatalogSuccessEffects,
 } from './EstimateItemsCatalogPage'
@@ -35,6 +36,17 @@ describe('EstimateItemsCatalogPage mutation success wiring', () => {
     const fns = effects()
 
     applyUsagePatchSuccessEffects(fns)
+
+    expect(fns.clearMutationError).toHaveBeenCalledTimes(1)
+    expect(fns.clearPatchingCode).toHaveBeenCalledTimes(1)
+    expect(fns.closeClassificationModal).not.toHaveBeenCalled()
+    expect(fns.invalidateCatalogQueries).toHaveBeenCalledTimes(1)
+  })
+
+  it('고정DC 자동저장 성공은 분류 모달을 닫지 않고 목록만 갱신한다', () => {
+    const fns = effects()
+
+    applyFixedDiscountPatchSuccessEffects(fns)
 
     expect(fns.clearMutationError).toHaveBeenCalledTimes(1)
     expect(fns.clearPatchingCode).toHaveBeenCalledTimes(1)

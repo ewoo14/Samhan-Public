@@ -10,6 +10,7 @@ import {
   isVariableDiscountEligible,
   normalizeEstimateCategoryExposures,
   normalizeFixedDiscountRateInput,
+  resolveFixedDiscountAutoSave,
   resolveEstimateItemsPageTotals,
 } from './ProductCatalogPageModel'
 import type { Classification, ProductCatalogRow } from '../api/productCatalogApi'
@@ -226,5 +227,29 @@ describe('ProductCatalogPageModel', () => {
     expect(normalizeFixedDiscountRateInput('150')).toBeNull()
     expect(normalizeFixedDiscountRateInput('-1')).toBeNull()
     expect(normalizeFixedDiscountRateInput('abc')).toBeNull()
+  })
+
+  it('고정DC 자동저장은 빈칸을 null 저장 대상으로 판정한다', () => {
+    expect(resolveFixedDiscountAutoSave(12.5, ' ')).toEqual({
+      shouldPatch: true,
+      fixedDiscountRate: null,
+      error: null,
+    })
+  })
+
+  it('고정DC 자동저장은 기존 값과 같은 정규화 숫자를 no-op 처리한다', () => {
+    expect(resolveFixedDiscountAutoSave('12.50', '12.5')).toEqual({
+      shouldPatch: false,
+      fixedDiscountRate: '12.50',
+      error: null,
+    })
+  })
+
+  it('고정DC 자동저장은 0~100 범위 밖 숫자를 PATCH 하지 않는다', () => {
+    expect(resolveFixedDiscountAutoSave(null, '101')).toEqual({
+      shouldPatch: false,
+      fixedDiscountRate: null,
+      error: '고정DC율은 0~100 사이 숫자로 입력해 주세요.',
+    })
   })
 })

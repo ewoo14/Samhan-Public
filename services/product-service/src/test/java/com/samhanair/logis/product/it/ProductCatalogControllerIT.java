@@ -939,7 +939,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
     // F1-a classification PATCH IT
 
     @Test
-    void PATCH_classification_FE바디로_분류와_고정DC를_저장한다() throws Exception {
+    void PATCH_classification_FE바디로_분류만_저장한다() throws Exception {
         Classification catL = classificationRepository.save(Classification.create(
                 EstimateCategory.HOME_MULTI, Classification.CatLevel.L, null, "실내기", 1, true));
         Classification catM = classificationRepository.save(Classification.create(
@@ -955,23 +955,61 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                 {
                                   "catLId":"%s",
                                   "catMId":"%s",
-                                  "catSId":"%s",
-                                  "fixedDiscountRate":"12.50"
+                                  "catSId":"%s"
                                 }
                                 """.formatted(catL.getId(), catM.getId(), catS.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.catL.id").value(catL.getId().toString()))
                 .andExpect(jsonPath("$.catM.id").value(catM.getId().toString()))
-                .andExpect(jsonPath("$.catS.id").value(catS.getId().toString()))
-                .andExpect(jsonPath("$.fixedDiscountRate").value(12.50));
+                .andExpect(jsonPath("$.catS.id").value(catS.getId().toString()));
 
         Product product = productRepository.findByModelCodeAndIsDeletedFalse("API_HOME_01").orElseThrow();
         org.assertj.core.api.Assertions.assertThat(product.getCatL().getId()).isEqualTo(catL.getId());
         org.assertj.core.api.Assertions.assertThat(product.getCatM().getId()).isEqualTo(catM.getId());
         org.assertj.core.api.Assertions.assertThat(product.getCatS().getId()).isEqualTo(catS.getId());
-        org.assertj.core.api.Assertions.assertThat(product.getFixedDiscountRate()).isEqualByComparingTo("12.50");
         org.assertj.core.api.Assertions.assertThat(product.isClassificationManual()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(product.isFixedDiscountManual()).isFalse();
+    }
+
+    @Test
+    void PATCH_fixedDiscount_분류와_독립적으로_null과_숫자를_저장한다() throws Exception {
+        mvc.perform(patch("/api/v1/products/API_HOME_01/fixed-discount")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fixedDiscountRate":"7.25"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fixedDiscountRate").value(7.25));
+
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse("API_HOME_01").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(product.getFixedDiscountRate()).isEqualByComparingTo("7.25");
         org.assertj.core.api.Assertions.assertThat(product.isFixedDiscountManual()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(product.isClassificationManual()).isFalse();
+
+        mvc.perform(patch("/api/v1/products/API_HOME_01/fixed-discount")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fixedDiscountRate":null}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fixedDiscountRate").isEmpty());
+
+        Product cleared = productRepository.findByModelCodeAndIsDeletedFalse("API_HOME_01").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(cleared.getFixedDiscountRate()).isNull();
+        org.assertj.core.api.Assertions.assertThat(cleared.isFixedDiscountManual()).isTrue();
+    }
+
+    @Test
+    void PATCH_fixedDiscount_범위밖은_400() throws Exception {
+        mvc.perform(patch("/api/v1/products/API_HOME_01/fixed-discount")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fixedDiscountRate":"100.01"}
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -991,8 +1029,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                 {
                                   "catLId":"%s",
                                   "catMId":"%s",
-                                  "catSId":null,
-                                  "fixedDiscountRate":null
+                                  "catSId":null
                                 }
                                 """.formatted(catL.getId(), catM.getId())))
                 .andExpect(status().isBadRequest());
@@ -1011,8 +1048,7 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                 {
                                   "catLId":"%s",
                                   "catMId":null,
-                                  "catSId":null,
-                                  "fixedDiscountRate":"10"
+                                  "catSId":null
                                 }
                                 """.formatted(inactive.getId())))
                 .andExpect(status().isBadRequest());

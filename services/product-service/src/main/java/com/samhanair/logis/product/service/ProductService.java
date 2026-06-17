@@ -29,6 +29,7 @@ import com.samhanair.logis.product.web.dto.ProductItemKind;
 import com.samhanair.logis.product.web.dto.ProductSpecRequest;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.UpdateProductClassificationRequest;
+import com.samhanair.logis.product.web.dto.UpdateProductFixedDiscountRequest;
 import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
@@ -464,7 +465,7 @@ public class ProductService {
         return product;
     }
 
-    /** 품목별 L/M/S 분류와 0~100 percent 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
+    /** 품목별 L/M/S 분류를 FE F1-b PATCH body 계약 그대로 저장한다. */
     public Product updateClassificationAndFixedDiscount(String modelCode,
                                                         UpdateProductClassificationRequest req) {
         Product product = loadByModelCodeOrThrow(modelCode);
@@ -474,8 +475,18 @@ public class ProductService {
         validateClassificationTree(product, catL, catM, catS);
 
         product.markClassificationManual(catL, catM, catS);
-        product.markFixedDiscountManual(parseFixedDiscountRate(req.fixedDiscountRate()));
 
+        String evictKey = product.getModelCode();
+        if (evictKey != null) {
+            productSheetSyncService.evictRowHash(evictKey);
+        }
+        return product;
+    }
+
+    /** 품목별 고정DC율 수동 override — null 은 전역DC율 영향 품목으로 저장한다. */
+    public Product updateFixedDiscountAndReturn(String modelCode, UpdateProductFixedDiscountRequest req) {
+        Product product = loadByModelCodeOrThrow(modelCode);
+        product.markFixedDiscountManual(parseFixedDiscountRate(req.fixedDiscountRate()));
         String evictKey = product.getModelCode();
         if (evictKey != null) {
             productSheetSyncService.evictRowHash(evictKey);

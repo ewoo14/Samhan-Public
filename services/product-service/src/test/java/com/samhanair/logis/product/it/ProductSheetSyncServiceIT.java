@@ -911,7 +911,10 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
         productService.updateClassificationAndFixedDiscount(
                 "CLASS_MANUAL_01",
-                new UpdateProductClassificationRequest(manualL.getId(), null, null, "33.33"));
+                new UpdateProductClassificationRequest(manualL.getId(), null, null));
+        productService.updateFixedDiscountAndReturn(
+                "CLASS_MANUAL_01",
+                new com.samhanair.logis.product.web.dto.UpdateProductFixedDiscountRequest("33.33"));
 
         Product afterPatch = productRepository.findByModelCodeAndIsDeletedFalse("CLASS_MANUAL_01").orElseThrow();
         assertThat(afterPatch.isClassificationManual()).isTrue();

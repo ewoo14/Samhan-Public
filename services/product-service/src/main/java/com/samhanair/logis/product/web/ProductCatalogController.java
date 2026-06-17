@@ -24,6 +24,7 @@ import com.samhanair.logis.product.web.dto.ProductCatalogResponse;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.SpecKeyTemplateResponse;
 import com.samhanair.logis.product.web.dto.UpdateProductClassificationRequest;
+import com.samhanair.logis.product.web.dto.UpdateProductFixedDiscountRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductVariableDiscountRequest;
 import com.samhanair.logis.security.permission.PermissionAction;
@@ -73,6 +74,7 @@ import org.springframework.web.bind.annotation.RestController;
  *     <li>DELETE /api/v1/products/{code}/usage — products.admin UPDATE</li>
  *     <li>PATCH /api/v1/products/{code}/variable-discount — products.admin UPDATE</li>
  *     <li>DELETE /api/v1/products/{code}/variable-discount — products.admin UPDATE</li>
+ *     <li>PATCH /api/v1/products/{code}/fixed-discount — products.admin UPDATE</li>
  *     <li>GET /api/v1/products/{code}/specs — products.list VIEW</li>
  *     <li>POST /api/v1/products/{code}/specs — products.admin CREATE</li>
  *     <li>PATCH /api/v1/products/{code}/specs/{id} — products.admin UPDATE</li>
@@ -268,13 +270,26 @@ public class ProductCatalogController {
         return response;
     }
 
-    /** 품목별 L/M/S 분류와 0~100 percent 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
+    /** 품목별 L/M/S 분류를 FE F1-b PATCH body 계약 그대로 저장한다. */
     @PatchMapping("/products/{modelCode}/classification")
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
     @Transactional
     public ProductCatalogResponse changeClassification(@PathVariable @NotBlank String modelCode,
                                                        @Valid @RequestBody UpdateProductClassificationRequest req) {
         Product product = productService.updateClassificationAndFixedDiscount(modelCode, req);
+        ProductCatalogResponse response = ProductCatalogResponse.from(
+                product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+        return response;
+    }
+
+    /** 품목별 0~100 percent 고정DC율을 인라인 자동저장 계약 그대로 저장한다. */
+    @PatchMapping("/products/{modelCode}/fixed-discount")
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
+    public ProductCatalogResponse changeFixedDiscount(@PathVariable @NotBlank String modelCode,
+                                                      @Valid @RequestBody UpdateProductFixedDiscountRequest req) {
+        Product product = productService.updateFixedDiscountAndReturn(modelCode, req);
         ProductCatalogResponse response = ProductCatalogResponse.from(
                 product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
         catalogChangePublisher.publishCatalogChanged(modelCode);
