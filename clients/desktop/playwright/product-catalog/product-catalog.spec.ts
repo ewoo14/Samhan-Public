@@ -4,7 +4,7 @@
  * <h2>검증 시나리오</h2>
  * <ol>
  *   <li>목록 렌더 — 품목 행 표시 + 세트 뱃지 / 일반 품목 —</li>
- *   <li>토글 왕복 — 견적 체크해제 → PATCH → 체크 상태 반전</li>
+ *   <li>견적 노출 해제 — PATCH → 견적품목 목록에서 제거</li>
  *   <li>세트 컬럼 렌더 — BUNDLE 행에 '세트 · N' 뱃지, 일반 품목에 — 표시</li>
  *   <li>구성품 모달 왕복 — '구성품' 버튼 → 모달 → 추가/수량/저장 → componentCount 갱신</li>
  *   <li>순서 저장 — 기본 카테고리 탭에서 드래그 활성 + 탭별 순서 저장</li>
@@ -102,6 +102,8 @@ const BUNDLE_COMPONENT_CODES = [
   'MWR-WE13N',
   'MWR-SH11N',
 ]
+const BUNDLE_MODAL_TITLE_PATTERN =
+  /구성품 편집\s*—\s*SET-HM2WAY\s*·\s*가정용 멀티 2in1 세트/
 
 async function openSetComponentsModal(page: Page): Promise<void> {
   await gotoEstimateItemsCatalog(page, 'MASTER')
@@ -111,6 +113,7 @@ async function openSetComponentsModal(page: Page): Promise<void> {
   await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
   await componentsBtn.click()
   await expect(page.getByTestId('components-modal')).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByRole('dialog', { name: BUNDLE_MODAL_TITLE_PATTERN })).toBeVisible()
   await expect(page.locator('[data-testid^="components-modal-component-row-"]')).toHaveCount(9, {
     timeout: 5_000,
   })
@@ -268,10 +271,10 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   })
 
   // ---------------------------------------------------------------------------
-  // Scenario 2: 토글 왕복
+  // Scenario 2: 견적 노출 해제 → 견적품목 목록에서 제거
   // ---------------------------------------------------------------------------
 
-  test('시나리오 2: 토글 왕복 — 견적 체크 변경 후 상태 반전', async ({ page }) => {
+  test('시나리오 2: 견적 노출 해제 — 견적품목 목록에서 제거', async ({ page }) => {
     await installAuth(page)
     await gotoEstimateItemsCatalog(page, 'MASTER')
     await loadEstimateItemsTable(page)
@@ -280,14 +283,16 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     const firstEstimateToggle = table.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()
     await expect(firstEstimateToggle).toBeVisible()
 
-    // 견적 해제 시 노출이 사라지면 목록이 displayOrder(NULLS LAST) 기준 재정렬되어 행 위치가
-    // 바뀔 수 있으므로 modelCode 로 고정 타겟팅한다. 또한 PATCH→invalidate→refetch 는 비동기라
-    // 고정 waitForTimeout(300) 은 레이스 → 상태 반전을 auto-retry 단언으로 확인한다.
+    // BE syncEstimateExposures 는 NONE/PARTNER_ORDER 에서 활성 견적 노출을 soft-delete 하므로
+    // 견적 노출 해제 후 같은 modelCode 는 현재 견적품목 카테고리 목록에서 제거되어야 한다.
     const toggleTestId = await firstEstimateToggle.getAttribute('data-testid')
+    expect(toggleTestId).toBeTruthy()
     const toggle = page.getByTestId(toggleTestId!)
-    const isChecked = await toggle.isChecked()
+    await expect(toggle).toBeChecked()
+
     await toggle.click()
-    await expect(toggle).toBeChecked({ checked: !isChecked })
+
+    await expect(page.getByTestId(toggleTestId!)).toHaveCount(0)
   })
 
   // ---------------------------------------------------------------------------
@@ -323,6 +328,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await componentsBtn.click()
     const modal = page.getByTestId('components-modal')
     await expect(modal).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('dialog', { name: BUNDLE_MODAL_TITLE_PATTERN })).toBeVisible()
 
     // 3. 기존 구성품 row-0 존재 단언 (mock 시드 9개)
     const firstRow = page.getByTestId('components-modal-component-row-0')

@@ -266,6 +266,7 @@ function ToggleCell({ row, canEdit, onPatch, patchLoading }: ToggleCellProps) {
 interface ComponentsModalProps {
   open: boolean
   modelCode: string
+  productName: string | null
   canEdit: boolean
   onClose: () => void
   onSaved: () => void
@@ -274,6 +275,7 @@ interface ComponentsModalProps {
 function ComponentsModal({
   open,
   modelCode,
+  productName,
   canEdit,
   onClose,
   onSaved,
@@ -424,12 +426,13 @@ function ComponentsModal({
     : false
   const componentGroups = groupBundleComponentDrafts(drafts)
   const orderedDrafts = componentGroups.flatMap((group) => group.items)
+  const titleProductName = productName?.trim()
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title={`구성품 편집 — ${modelCode}`}
+      title={`구성품 편집 — ${modelCode}${titleProductName ? ` · ${titleProductName}` : ''}`}
       size="lg"
       footer={
         canEdit ? (
@@ -756,7 +759,10 @@ export function EstimateItemsCatalogPage() {
   const [orderDirty, setOrderDirty] = useState(false)
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
-  const [componentsModalCode, setComponentsModalCode] = useState<string | null>(null)
+  const [componentsModalTarget, setComponentsModalTarget] = useState<{
+    modelCode: string
+    productName: string | null
+  } | null>(null)
 
   const hasCommittedSearch = committedSearch.trim().length > 0
   const isDragEnabled = canEdit && !hasCommittedSearch
@@ -1097,7 +1103,9 @@ export function EstimateItemsCatalogPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setComponentsModalCode(row.modelCode)}
+            onClick={() =>
+              setComponentsModalTarget({ modelCode: row.modelCode, productName: row.name ?? null })
+            }
             data-testid={`estimate-items-components-button-${row.modelCode}`}
           >
             구성품
@@ -1372,13 +1380,14 @@ export function EstimateItemsCatalogPage() {
         </div>
       ) : null}
 
-      {componentsModalCode ? (
+      {componentsModalTarget ? (
         <ComponentsModal
           open={true}
-          modelCode={componentsModalCode}
+          modelCode={componentsModalTarget.modelCode}
+          productName={componentsModalTarget.productName}
           canEdit={canEdit}
-          onClose={() => setComponentsModalCode(null)}
-          onSaved={() => setComponentsModalCode(null)}
+          onClose={() => setComponentsModalTarget(null)}
+          onSaved={() => setComponentsModalTarget(null)}
         />
       ) : null}
     </div>

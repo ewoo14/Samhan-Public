@@ -1751,10 +1751,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         existing.estimateCategories.map((entry) => [entry.category, entry.displayOrder] as const),
       )
       const estimateCategoriesResolved =
-        newScope === 'NONE'
+        newScope === 'NONE' || newScope === 'PARTNER_ORDER'
           ? []
-          : newScope === 'PARTNER_ORDER' && requestedCategories.length === 0
-            ? existing.estimateCategories
           : Array.from(new Set(requestedCategories)).map((category) => ({
               category,
               displayOrder: existingDisplayOrderByCategory.get(category) ?? null,
