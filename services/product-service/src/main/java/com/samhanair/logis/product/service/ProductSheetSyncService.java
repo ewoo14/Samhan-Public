@@ -1191,7 +1191,9 @@ public class ProductSheetSyncService {
                 // NONE/다른 순번으로 덮어쓰는 stomping 방지(2026-06-10 노출구분 결정). 가격/사양은
                 // 어느 탭에서든 갱신(단가인상 탭 권위).
                 // 변동DC 는 productCategory 일치 견적 탭에서만 갱신(구성품·겹침 탭 덮어쓰기 방지)하며
-                // variableDiscountManual=true 면 수동값을 보존한다.
+                // variableDiscountManual=true 면 hasVariableDiscount/materialKey/legacy/fixedRate/
+                // discountFlags 를 모두 sync 동결한다. 변동DC override 가 부속 할인필드 동결을
+                // 동반하는 의도된 단순화다.
                 //
                 // V14 수동 override 보존 가드 (2026-06-11 PR-B):
                 //   usageScopeManual=true 인 품목은 usageScope/estimateCategory 를 시트 기준으로
@@ -1369,7 +1371,13 @@ public class ProductSheetSyncService {
         return safeGet(cells, idx).trim();
     }
 
-    /** DISPLAY row 와 동일 인덱스의 FORMULA row 에서 '=' 시작 셀을 공백 join (fallback/진단용). */
+    /**
+     * DISPLAY row 와 동일 인덱스의 FORMULA row 에서 '=' 시작 셀을 공백 join (fallback/진단용).
+     *
+     * <p>DISPLAY(A1:Z) 와 FORMULA(A1:ZZ) read range 가 달라 trailing 행 절단 양상이 다를 수 있다.
+     * 변동DC 판정은 modelCode 매칭 결과를 우선 사용하므로, 인덱스 fallback 은 modelCode 셀 자체가
+     * 수식이라 매칭할 수 없는 예외 행의 진단/보조 경로로만 쓰인다.
+     */
     private static String joinRowFormulas(List<List<Object>> formulaRows, int rowIdx) {
         if (formulaRows == null || rowIdx >= formulaRows.size()) {
             return "";

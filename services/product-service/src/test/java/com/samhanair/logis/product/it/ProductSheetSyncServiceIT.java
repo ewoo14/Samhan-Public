@@ -24,6 +24,7 @@ import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.service.ProductSheetSyncService;
+import com.samhanair.logis.product.service.ProductService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -69,6 +70,9 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     private ProductSheetSyncService syncService;
 
     @Autowired
+    private ProductService productService;
+
+    @Autowired
     private ProductRepository productRepository;
 
     @Autowired
@@ -84,7 +88,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     private ProductEstimateExposureRepository exposureRepository;
 
     @BeforeEach
-    void resetState() {
+    void resetState() throws Exception {
         // 메모리 hash 캐시 초기화 — 테스트 간 격리 (Spring 싱글턴 bean 의 in-memory state)
         syncService.clearHashCacheForTest();
         // 캐시 invalidate mock — 호출 검증용
@@ -828,6 +832,52 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
                 .isFalse();
         assertThat(after.isVariableDiscountManual()).isTrue();
         assertThat(after.getReleasePrice()).isEqualByComparingTo(new BigDecimal("1600000"));
+    }
+
+    /**
+     * V19 변동DC DELETE 자동복귀 — clearVariableDiscountOverride 는 manual=false 로 되돌리고
+     * rowHash 를 evict 하므로, 행 내용이 동일해도 다음 sync 가 시트 기준 변동DC를 재적재한다.
+     */
+    @Test
+    void sync_variableDiscountManual_DELETE_후_행무변경_sync_시트기준_복원() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        List<List<Object>> sameRows = homeMultiRows(
+                row("Hi-Multi Variable Clear", "VAR_CLEAR_01", "", "1,500,000", "", "1,200,000")
+        );
+        List<List<Object>> sameFormulas = rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("Hi-Multi Variable Clear", "VAR_CLEAR_01", "", "=100", "", "=$L$2*100")
+        );
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(sameRows);
+        when(sheetsClient.readSheetFormulas("test-sheet-id", "홈멀티_단가인상!A1:ZZ")).thenReturn(sameFormulas);
+
+        syncService.syncAll();
+        Product p = productRepository.findByModelCodeAndIsDeletedFalse("VAR_CLEAR_01").orElseThrow();
+        assertThat(p.getHasVariableDiscount()).isTrue();
+
+        // PATCH /variable-discount 와 동일: 수동값 false 지정 + manual=true.
+        p.markVariableDiscountManual(false);
+        productRepository.save(p);
+        assertThat(p.getHasVariableDiscount()).isFalse();
+        assertThat(p.isVariableDiscountManual()).isTrue();
+
+        // DELETE /variable-discount 와 동일: manual=false 복귀 + rowHash evict.
+        productService.clearVariableDiscountOverride("VAR_CLEAR_01");
+        Product cleared = productRepository.findByModelCodeAndIsDeletedFalse("VAR_CLEAR_01").orElseThrow();
+        assertThat(cleared.getHasVariableDiscount()).isFalse();
+        assertThat(cleared.isVariableDiscountManual()).isFalse();
+
+        ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult homeTab = summary.byTab.get("홈멀티");
+        assertThat(homeTab.updated)
+                .as("variableDiscount DELETE 후 rowHash evict 로 행 무변경에도 update 경로 진입")
+                .isEqualTo(1);
+
+        Product after = productRepository.findByModelCodeAndIsDeletedFalse("VAR_CLEAR_01").orElseThrow();
+        assertThat(after.getHasVariableDiscount())
+                .as("시트 수식($L$2) 기준 변동DC true 재적재")
+                .isTrue();
+        assertThat(after.isVariableDiscountManual()).isFalse();
     }
 
     /**

@@ -2011,7 +2011,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       MOCK_PRODUCT_CATALOG_ROWS = MOCK_PRODUCT_CATALOG_ROWS.map((row, i) =>
         i === idx ? updated : row,
       )
-      return { deleted: true }
+      return { __mockStatus: 204, body: null }
     }
 
     return mockError(405, 'METHOD_NOT_ALLOWED', '지원하지 않는 변동DC 요청입니다.')

@@ -443,6 +443,9 @@ public class ProductService {
      *
      * <p>초기값은 시트 sync 가 적재하지만, 멀티 카탈로그(견적품목 관리)의 수동 토글은
      * {@link Product#markVariableDiscountManual(boolean)} 로 보호하여 이후 sync 가 덮어쓰지 않는다.
+     * SET 직후에는 rowHash evict 가 필요 없다. 다음 sync 가 행 무변경이면 unchanged 분기로
+     * 수동값이 그대로 유지되고, 행 변경으로 update 분기에 진입해도 variableDiscountManual 가드가
+     * 변동DC 및 부속 할인필드를 보호한다.
      *
      * @param modelCode 수동 override 대상 품목의 모델코드
      * @param req       새 변동DC 적용 여부
