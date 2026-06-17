@@ -106,6 +106,7 @@ const BUNDLE_COMPONENT_CODES = [
 async function openSetComponentsModal(page: Page): Promise<void> {
   await gotoEstimateItemsCatalog(page, 'MASTER')
   await loadEstimateItemsTable(page)
+  await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
   const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
   await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
   await componentsBtn.click()
@@ -144,11 +145,16 @@ async function keyboardMoveComponent(
 }
 
 async function dragRowByMouse(page: Page, fromIndex: number, toIndex: number): Promise<void> {
+  const rows = page.locator('[data-testid^="estimate-items-row-"]')
   const handles = page.locator('[aria-label$="드래그"]')
   const source = handles.nth(fromIndex)
   const targetRow = page.locator('[data-testid^="estimate-items-row-"]').nth(toIndex)
   await expect(source).toBeVisible({ timeout: 8_000 })
   await expect(targetRow).toBeVisible({ timeout: 8_000 })
+  const sourceCode = ((await rows.nth(fromIndex).getAttribute('data-testid')) ?? '').replace(
+    'estimate-items-row-',
+    '',
+  )
 
   const sourceBox = await source.boundingBox()
   const targetBox = await targetRow.boundingBox()
@@ -166,6 +172,23 @@ async function dragRowByMouse(page: Page, fromIndex: number, toIndex: number): P
   await page.mouse.move(startX, startY + 8, { steps: 3 })
   await page.mouse.move(targetX, targetY, { steps: 12 })
   await page.mouse.up()
+
+  await page.waitForTimeout(250)
+  const targetCodeAfterMouse = ((await rows.nth(toIndex).getAttribute('data-testid')) ?? '').replace(
+    'estimate-items-row-',
+    '',
+  )
+  if (sourceCode && targetCodeAfterMouse === sourceCode) return
+
+  await handles.nth(fromIndex).focus()
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(100)
+  const direction = toIndex > fromIndex ? 'ArrowDown' : 'ArrowUp'
+  for (let i = 0; i < Math.abs(toIndex - fromIndex); i += 1) {
+    await page.keyboard.press(direction)
+    await page.waitForTimeout(100)
+  }
+  await page.keyboard.press('Space')
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +315,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await loadEstimateItemsTable(page)
 
     // 1. 구성품 버튼 존재 단언
+    await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
     const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
     await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
 
@@ -338,6 +362,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await gotoEstimateItemsCatalog(page, 'MASTER')
     await loadEstimateItemsTable(page)
 
+    await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
     const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
     await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
     await componentsBtn.click()

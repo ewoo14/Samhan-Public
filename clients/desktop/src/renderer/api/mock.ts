@@ -997,7 +997,7 @@ function normalizeMockExposures(raw: {
 let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
   ...Object.values(MOCK_PRODUCTS_BY_MODEL).filter((p) => p.productCategory !== 'MATERIAL').map((p, index) => {
     const isBundle = p.productType === 'BUNDLE'
-    const primaryCategory = isBundle ? 'HOME_MULTI' : index % 2 === 0 ? 'HOME_MULTI' : 'OTHER'
+    const primaryCategory = isBundle ? 'SINGLE_SET' : index % 2 === 0 ? 'HOME_MULTI' : 'OTHER'
     return deriveLegacyExposureFields({
       modelCode: p.modelName,
       name: p.productName,
@@ -1011,7 +1011,7 @@ let MOCK_PRODUCT_CATALOG_ROWS: MockProductCatalogRow[] = [
           ]
         : [{ category: primaryCategory, displayOrder: index + 1 }],
       estimateCategory: null,
-      productCategory: index % 2 === 0 ? 'HOME_MULTI' : 'SINGLE_PART',
+      productCategory: isBundle ? 'SINGLE_SET' : index % 2 === 0 ? 'HOME_MULTI' : 'SINGLE_PART',
       usageScopeManual: false,
       displayOrder: null,
       releasePrice: Number(p.sellingPrice),
@@ -1751,8 +1751,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         existing.estimateCategories.map((entry) => [entry.category, entry.displayOrder] as const),
       )
       const estimateCategoriesResolved =
-        newScope === 'NONE' || newScope === 'PARTNER_ORDER'
+        newScope === 'NONE'
           ? []
+          : newScope === 'PARTNER_ORDER' && requestedCategories.length === 0
+            ? existing.estimateCategories
           : Array.from(new Set(requestedCategories)).map((category) => ({
               category,
               displayOrder: existingDisplayOrderByCategory.get(category) ?? null,
