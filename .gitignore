@@ -60,6 +60,11 @@ coverage/
 playwright-report/
 playwright-json/
 test-results/
+# QA 일회용 — 실 캡처 PNG만 추적, 캡처 스크립트·결과 json·진단 스크립트 제외
+**/qa-*-capture.mjs
+docs/qa/**/_results.json
+**/.diag-*.cjs
+**/.diag-*.mjs
 
 # ----- Misc -----
 *.tmp
