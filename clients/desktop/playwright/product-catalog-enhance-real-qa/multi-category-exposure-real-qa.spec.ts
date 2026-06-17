@@ -169,10 +169,10 @@ test('M:N — AJ060MXHNBC1 단일 품목이 HOME_MULTI + SINGLE_SET 2개 카테�
 })
 
 // ===========================================================================
-// 2. 카테고리 필터 — HOME_MULTI 목록에 다중노출 품목이 1번 순서로 등장
+// 2. 카테고리 탭 — HOME_MULTI 목록에 다중노출 품목이 1번 순서로 등장
 // ===========================================================================
 
-test('카테고리 필터 — HOME_MULTI 목록에서 다중노출 품목 AJ060MXHNBC1 이 표시순서대로 등장', async ({
+test('카테고리 탭 — HOME_MULTI 목록에서 다중노출 품목 AJ060MXHNBC1 이 표시순서대로 등장', async ({
   page,
 }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
@@ -180,9 +180,11 @@ test('카테고리 필터 — HOME_MULTI 목록에서 다중노출 품목 AJ060M
   await page.goto(`${BASE_URL}/#/products/estimate-items`)
   await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
-  // 카테고리 = HOME_MULTI 선택(가정용 멀티)
-  const catSelect = page.locator('[data-testid="estimate-items-category-select"]')
-  await catSelect.selectOption('HOME_MULTI')
+  // 기본 카테고리 탭 = HOME_MULTI(가정용 멀티)
+  await expect(page.locator('[data-testid="estimate-items-category-tab-HOME_MULTI"]')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
 
   // 다중노출 품목 행이 HOME_MULTI 목록에 등장(순서 1) 확인
   const targetRow = page.locator(`[data-testid="estimate-items-row-${TARGET_CODE}"]`)

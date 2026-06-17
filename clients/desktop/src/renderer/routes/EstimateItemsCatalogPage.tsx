@@ -18,6 +18,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import {
   DndContext,
   PointerSensor,
@@ -55,7 +56,6 @@ import {
   updateProductUsage,
   type EstimateCategory,
   type ProductCatalogRow,
-  type ProductCategory,
   type UsageScope,
 } from '../api/productCatalogApi'
 import { searchProducts as searchProductsApi } from '../api/productApi'
@@ -81,23 +81,21 @@ const ESTIMATE_CATEGORY_LABEL: Record<EstimateCategory, string> = {
   OTHER: '기타',
 }
 
-const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
-  HOME_MULTI: '홈멀티',
-  SINGLE_SET: '싱글중대형',
-  SINGLE_PART: '싱글 구성품',
-  COMMERCIAL_MULTI: '상업 멀티',
-  COMMERCIAL_PART: '상업 구성품',
-  OLD: '구형',
-  MATERIAL: '자재',
-}
-
-const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string }> = [
+const ESTIMATE_CATEGORY_TABS = [
   { value: 'HOME_MULTI', label: '홈멀티' },
   { value: 'SINGLE_SET', label: '싱글중대형' },
   { value: 'COMMERCIAL_MULTI', label: '상업멀티' },
   { value: 'LEGACY', label: '구형' },
-  { value: 'OTHER', label: '기타' },
-]
+] as const satisfies ReadonlyArray<{ value: EstimateCategory; label: string }>
+
+const ESTIMATE_CATEGORY_OPTIONS: Array<{ value: EstimateCategory; label: string }> =
+  ESTIMATE_CATEGORY_TABS.map((tab) => ({ value: tab.value, label: tab.label }))
+
+function isEstimateCategoryTab(
+  value: string | null,
+): value is (typeof ESTIMATE_CATEGORY_TABS)[number]['value'] {
+  return ESTIMATE_CATEGORY_TABS.some((tab) => tab.value === value)
+}
 
 function toUsageScope(estimate: boolean, order: boolean): UsageScope {
   if (estimate && order) return 'BOTH'
@@ -291,10 +289,14 @@ export function EstimateItemsCatalogPage() {
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
   const canEdit = canAccess('products.admin', 'update')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [searchInput, setSearchInput] = useState('')
   const [committedSearch, setCommittedSearch] = useState('')
-  const [committedCategory, setCommittedCategory] = useState<EstimateCategory | ''>('')
+  const [committedCategory, setCommittedCategory] = useState<EstimateCategory>(() => {
+    const requested = searchParams.get('category')
+    return isEstimateCategoryTab(requested) ? requested : 'HOME_MULTI'
+  })
   const [currentPage, setCurrentPage] = useState(0)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
   const [patchingCode, setPatchingCode] = useState<string | null>(null)
@@ -304,7 +306,7 @@ export function EstimateItemsCatalogPage() {
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
 
-  const isDragEnabled = canEdit && !!committedCategory && !committedSearch
+  const isDragEnabled = canEdit
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -319,6 +321,15 @@ export function EstimateItemsCatalogPage() {
   }, [setPageTitle])
 
   useEffect(() => {
+    const requested = searchParams.get('category')
+    if (isEstimateCategoryTab(requested) && requested !== committedCategory) {
+      setCommittedCategory(requested)
+      setCurrentPage(0)
+      setOrderDirty(false)
+    }
+  }, [committedCategory, searchParams])
+
+  useEffect(() => {
     if (isMockMode()) return
     const ctrl = ProductRealtimeClient.subscribe('catalog', () => {
       void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
@@ -331,7 +342,7 @@ export function EstimateItemsCatalogPage() {
     queryFn: () =>
       listProducts({
         q: committedSearch || undefined,
-        category: committedCategory || undefined,
+        category: committedCategory,
         page: currentPage,
         size: PAGE_SIZE,
       }),
@@ -377,9 +388,6 @@ export function EstimateItemsCatalogPage() {
 
   const addProductMutation = useMutation({
     mutationFn: async (product: ProductOption) => {
-      if (!committedCategory) {
-        throw new Error('카테고리를 먼저 선택해 주세요.')
-      }
       const modelCode = product.modelCode ?? product.modelName
       const detail = await listProducts({ q: modelCode, page: 0, size: 20 })
       const existing = detail.content.find((row) => row.modelCode === modelCode)
@@ -416,11 +424,16 @@ export function EstimateItemsCatalogPage() {
     setCommittedSearch(searchInput)
   }, [searchInput])
 
-  const handleCategoryChange = useCallback((value: EstimateCategory | '') => {
+  const handleCategoryChange = useCallback((value: EstimateCategory) => {
     setCommittedCategory(value)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('category', value)
+      return next
+    }, { replace: true })
     setCurrentPage(0)
     setOrderDirty(false)
-  }, [])
+  }, [setSearchParams])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -451,7 +464,6 @@ export function EstimateItemsCatalogPage() {
   }, [])
 
   const handleSaveOrder = useCallback(async () => {
-    if (!committedCategory) return
     setOrderSaving(true)
     setOrderError(null)
     try {
@@ -511,7 +523,7 @@ export function EstimateItemsCatalogPage() {
         const detail = await listProducts({ q: modelCode, page: 0, size: 20 })
         const catalogRow = detail.content.find((row) => row.modelCode === modelCode)
         if (!catalogRow || catalogRow.productCategory === 'MATERIAL') return null
-        if (committedCategory && estimateCategoryValues(catalogRow).includes(committedCategory)) {
+        if (estimateCategoryValues(catalogRow).includes(committedCategory)) {
           return null
         }
         return product
@@ -524,7 +536,7 @@ export function EstimateItemsCatalogPage() {
   const selectedProductCode = selectedProduct
     ? selectedProduct.modelCode ?? selectedProduct.modelName
     : ''
-  const selectedAlreadyAdded = !!committedCategory && !!selectedProductCode && rows.some(
+  const selectedAlreadyAdded = !!selectedProductCode && rows.some(
     (row) => row.modelCode === selectedProductCode && estimateCategoryValues(row).includes(committedCategory),
   )
 
@@ -560,18 +572,13 @@ export function EstimateItemsCatalogPage() {
         const exposures = normalizeEstimateCategoryExposures(row)
         return (
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-            {row.productCategory ? (
-              <span style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
-                {PRODUCT_CATEGORY_LABEL[row.productCategory]}
-              </span>
-            ) : null}
             {exposures.length > 0 ? (
               exposures.map((entry) => (
                 <Badge key={entry.category} variant="brand">
                   {ESTIMATE_CATEGORY_LABEL[entry.category]}
                 </Badge>
               ))
-            ) : row.productCategory ? null : (
+            ) : (
               <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
             )}
           </div>
@@ -599,16 +606,6 @@ export function EstimateItemsCatalogPage() {
         if (normalizeEstimateCategoryExposures(row).length === 0) {
           return <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
         }
-        if (!committedCategory) {
-          return (
-            <span
-              title="카테고리 선택 시 표시"
-              style={{ color: 'var(--color-neutral-500)', whiteSpace: 'nowrap' }}
-            >
-              카테고리별
-            </span>
-          )
-        }
         const order = exposureDisplayOrder(row, committedCategory)
         return order != null ? String(order) : <span style={{ color: 'var(--color-neutral-400)' }}>—</span>
       },
@@ -633,6 +630,32 @@ export function EstimateItemsCatalogPage() {
       )}
 
       <section style={toolbarStyle} aria-label="조회 조건">
+        <div
+          role="tablist"
+          aria-label="견적 카테고리"
+          data-testid="estimate-items-category-tabs"
+          style={tabsStyle}
+        >
+          {ESTIMATE_CATEGORY_TABS.map((tab) => {
+            const selected = committedCategory === tab.value
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                style={{
+                  ...tabButtonStyle,
+                  ...(selected ? tabButtonSelectedStyle : {}),
+                }}
+                onClick={() => handleCategoryChange(tab.value)}
+                data-testid={`estimate-items-category-tab-${tab.value}`}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
         <div style={fieldStyle}>
           <Input
             label="모델명 검색"
@@ -647,22 +670,6 @@ export function EstimateItemsCatalogPage() {
             style={{ minWidth: 220 }}
           />
         </div>
-        <div style={fieldStyle}>
-          <Select
-            label="카테고리"
-            value={committedCategory}
-            onChange={(e) => handleCategoryChange(e.target.value as EstimateCategory | '')}
-            selectSize="sm"
-            fullWidth={false}
-            style={{ minWidth: 130 }}
-            data-testid="estimate-items-category-select"
-          >
-            <option value="">전체</option>
-            {ESTIMATE_CATEGORY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </Select>
-        </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
           <Button
             variant="primary"
@@ -673,7 +680,7 @@ export function EstimateItemsCatalogPage() {
           >
             조회
           </Button>
-          {canEdit && committedCategory ? (
+          {canEdit ? (
             <Button
               variant="primary"
               onClick={() => { void handleSaveOrder() }}
@@ -687,19 +694,6 @@ export function EstimateItemsCatalogPage() {
           {isDragEnabled && !orderDirty && rows.length > 0 ? (
             <span style={{ fontSize: 11, color: 'var(--color-neutral-400)' }}>
               행을 드래그하여 순서 조정
-            </span>
-          ) : null}
-          {canEdit && !committedCategory && !committedSearch ? (
-            <span
-              style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}
-              data-testid="estimate-items-drag-disabled-caption"
-            >
-              카테고리를 선택하면 순서를 조정할 수 있습니다
-            </span>
-          ) : null}
-          {committedSearch ? (
-            <span style={{ fontSize: 11, color: 'var(--color-neutral-400)' }}>
-              검색 중 — 드래그 비활성
             </span>
           ) : null}
           {listQuery.isError ? (
@@ -730,7 +724,6 @@ export function EstimateItemsCatalogPage() {
             onClick={() => selectedProduct && addProductMutation.mutate(selectedProduct)}
             loading={addProductMutation.isPending}
             disabled={
-              !committedCategory ||
               !selectedProduct ||
               selectedAlreadyAdded ||
               addProductMutation.isPending
@@ -743,11 +736,6 @@ export function EstimateItemsCatalogPage() {
                 ? `${selectedProductCode} 추가`
                 : '현재 카테고리에 추가'}
           </Button>
-          {!committedCategory ? (
-            <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>
-              추가할 견적 카테고리를 먼저 선택하세요.
-            </span>
-          ) : null}
         </section>
       ) : null}
 
@@ -914,6 +902,36 @@ const toolbarStyle: CSSProperties = {
   background: 'var(--color-bg, #FFFFFF)',
   border: '1px solid var(--color-border, #E5E7EB)',
   borderRadius: 8,
+}
+
+const tabsStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: 2,
+  border: '1px solid var(--color-border, #E5E7EB)',
+  borderRadius: 6,
+  background: 'var(--color-neutral-50, #F7F8FA)',
+}
+
+const tabButtonStyle: CSSProperties = {
+  appearance: 'none',
+  border: '1px solid transparent',
+  borderRadius: 4,
+  background: 'transparent',
+  color: 'var(--color-neutral-600, #4B5563)',
+  padding: '5px 10px',
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+}
+
+const tabButtonSelectedStyle: CSSProperties = {
+  borderColor: 'var(--color-primary-200, #BFDBFE)',
+  background: 'var(--color-bg, #FFFFFF)',
+  color: 'var(--color-primary-700, #1D4ED8)',
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
 }
 
 const fieldStyle: CSSProperties = {

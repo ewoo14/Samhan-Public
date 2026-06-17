@@ -163,11 +163,12 @@ test('2. 표시순서 드래그 저장 — 행 순서 변경 → 순서 저장 P
   console.log(`[2] 백업 — ${SET_CATEGORY} 노출품목 ${backupOrder.length}건 순서 저장(원복용)`)
   expect(backupOrder.length, '백업 대상 노출 품목이 없음').toBeGreaterThan(1)
 
-  // ── 1. 품목관리 → 카테고리 SINGLE_SET 선택 (드래그 활성 조건: canEdit+카테고리+검색없음) ──
+  // ── 1. 견적품목 관리 → SINGLE_SET 탭 선택 (탭 컨텍스트에서 드래그 항상 활성) ──
   await page.goto(`${BASE_URL}/#/products/estimate-items`)
   await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
-  const catSelect = page.locator('[data-testid="estimate-items-category-select"]')
-  await catSelect.selectOption(SET_CATEGORY)
+  const categoryTab = page.locator(`[data-testid="estimate-items-category-tab-${SET_CATEGORY}"]`)
+  await categoryTab.click()
+  await expect(categoryTab).toHaveAttribute('aria-selected', 'true')
 
   // 드래그 핸들(첫 두 행) 노출 대기 — DragHandle aria-label = "{modelCode} 드래그"
   const rows = page.locator('[data-testid^="estimate-items-row-"]')

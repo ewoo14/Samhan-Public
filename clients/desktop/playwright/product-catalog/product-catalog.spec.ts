@@ -7,10 +7,10 @@
  *   <li>토글 왕복 — 견적 체크해제 → PATCH → 체크 상태 반전</li>
  *   <li>세트 컬럼 렌더 — BUNDLE 행에 '세트 · N' 뱃지, 일반 품목에 — 표시</li>
  *   <li>구성품 모달 왕복 — '구성품' 버튼 → 모달 → 추가/수량/저장 → componentCount 갱신</li>
- *   <li>순서 저장 — 카테고리 미선택 드래그 비활성 캡션 + 카테고리 선택 후 드래그 활성</li>
+ *   <li>순서 저장 — 기본 카테고리 탭에서 드래그 활성 + 탭별 순서 저장</li>
  *   <li>view-only 권한 — WAREHOUSE role 진입 시 체크박스·구성품 버튼 비활성</li>
  *   <li>§2-1 NONE 품목 — displayOrder '—' + 드래그 핸들 없음</li>
- *   <li>§2-2 카테고리 미선택 드래그 비활성 캡션</li>
+ *   <li>§2-2 카테고리 탭 컨텍스트에서 드래그 항상 활성</li>
  * </ol>
  *
  * <h2>Mock 전략</h2>
@@ -20,8 +20,7 @@
  * - 기존 출처 뱃지 단언 없음 (PR-E 출처 컬럼 제거 반영).
  *
  * <h2>TC 한계 보고</h2>
- * - §2-2 카테고리 선택 후 드래그 순서 저장까지의 E2E는 dnd-kit 시뮬이 필요하여 현재
- *   드래그 활성 상태 단언만 검증 (DragHandle 노출 확인). 실제 순서 저장은 Docker 실 QA 범위.
+ * - §2-2 카테고리 탭 컨텍스트에서 mock 드래그→순서 저장 payload 까지 검증한다.
  * - §4 실시간 동기화 SSE 구독은 VITE_MOCK_MODE에서 skip — TC 범위 밖. 실 QA 필요.
  * - §3 세트 재고 가드 (SlipFormPage) mock 흐름 TC: SlipFormPage 내 BUNDLE 라인 선택 후
  *   재고조회 버튼 클릭 시 bundleOnlyLines 안내 표시 — SlipFormPage mock TC 에서 검증 필요.
@@ -83,6 +82,13 @@ async function loadEstimateItemsTable(page: Page): Promise<void> {
   const table = page.getByTestId('estimate-items-table')
   await expect(table).toBeVisible({ timeout: 10_000 })
   await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 10_000 })
+}
+
+async function selectEstimateItemsCategoryTab(page: Page, category: string): Promise<void> {
+  const tab = page.getByTestId(`estimate-items-category-tab-${category}`)
+  await expect(tab).toBeVisible({ timeout: 8_000 })
+  await tab.click()
+  await expect(tab).toHaveAttribute('aria-selected', 'true')
 }
 
 const BUNDLE_COMPONENT_CODES = [
@@ -188,12 +194,16 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await loadEstimateItemsTable(page)
 
     await expect(page.getByRole('heading', { name: '견적품목 관리', level: 3 })).toBeVisible()
-    await expect(page.getByTestId('estimate-items-category-select')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-select')).toHaveCount(0)
+    await expect(page.getByTestId('estimate-items-category-tabs')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-category-tab-SINGLE_SET')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-tab-COMMERCIAL_MULTI')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-tab-LEGACY')).toBeVisible()
     await expect(page.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()).toBeVisible()
     await expect(page.locator('[data-testid^="estimate-items-order-toggle-"]').first()).toBeVisible()
     await expect(page.getByTestId('product-catalog-create-button')).toHaveCount(0)
 
-    await page.getByTestId('estimate-items-category-select').selectOption('HOME_MULTI')
     const addRegion = page.getByTestId('estimate-items-add-product')
     const searchInput = addRegion.getByPlaceholder('모델명 또는 품목명 입력')
     await searchInput.click()
@@ -420,38 +430,29 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   })
 
   // ---------------------------------------------------------------------------
-  // Scenario 5: §2-2 드래그 비활성 캡션 + 카테고리 선택 후 드래그 활성
+  // Scenario 5: §2-2 기본 탭 드래그 활성 + 탭 전환
   // ---------------------------------------------------------------------------
 
-  test('시나리오 5: §2-2 카테고리 미선택 드래그 비활성 캡션 표시', async ({ page }) => {
+  test('시나리오 5: §2-2 기본 홈멀티 탭에서 드래그와 순서 저장이 활성화된다', async ({ page }) => {
     await installAuth(page)
     await gotoEstimateItemsCatalog(page, 'MASTER')
     await loadEstimateItemsTable(page)
 
-    // 카테고리 미선택 상태 — 드래그 비활성 캡션 노출
-    const caption = page.getByTestId('estimate-items-drag-disabled-caption')
-    await expect(caption).toBeVisible({ timeout: 5_000 })
-    const captionText = await caption.textContent()
-    expect(captionText).toContain('카테고리를 선택하면 순서를 조정할 수 있습니다')
-
-    // 순서 저장 버튼은 카테고리 미선택 + 드래그 없음 상태에서는 없음
-    const saveOrderBtn = page.getByTestId('estimate-items-save-order-button')
-    expect(await saveOrderBtn.count()).toBe(0)
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-drag-disabled-caption')).toHaveCount(0)
+    await expect(page.getByTestId('estimate-items-save-order-button')).toBeVisible()
+    await expect(page.locator('[aria-label$="드래그"]').first()).toBeVisible({ timeout: 8_000 })
   })
 
-  test('시나리오 5b: §2-2 카테고리 선택 후 캡션 사라짐', async ({ page }) => {
+  test('시나리오 5b: §2-2 카테고리 탭 전환 후 해당 탭 컨텍스트로 목록을 조회한다', async ({ page }) => {
     await installAuth(page)
     await gotoEstimateItemsCatalog(page, 'MASTER')
     await loadEstimateItemsTable(page)
 
-    // 카테고리 선택
-    const categorySelect = page.getByTestId('estimate-items-category-select')
-    await expect(categorySelect).toBeVisible()
-    await categorySelect.selectOption('HOME_MULTI')
-
-    // 카테고리 선택 후 드래그 비활성 캡션이 사라짐
-    const caption = page.getByTestId('estimate-items-drag-disabled-caption')
-    await expect(caption).not.toBeVisible({ timeout: 5_000 })
+    await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
+    await expect(page.getByTestId('estimate-items-drag-disabled-caption')).toHaveCount(0)
+    await expect(page.getByTestId('estimate-items-save-order-button')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-summary')).toContainText('총')
   })
 
   // ---------------------------------------------------------------------------
@@ -481,9 +482,11 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(firstOrderToggle).toBeVisible()
     await expect(firstOrderToggle).toBeDisabled()
 
-    // 카테고리 미선택 드래그 비활성 캡션은 view-only 에서도 없음 (canEdit=false)
+    // view-only 에서는 탭 조회는 가능하지만 드래그 캡션/순서 저장은 없음.
     const caption = page.getByTestId('estimate-items-drag-disabled-caption')
     expect(await caption.count()).toBe(0)
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-save-order-button')).toHaveCount(0)
   })
 
   // ---------------------------------------------------------------------------
@@ -506,14 +509,12 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(tableSection).toBeVisible({ timeout: 8_000 })
     await expect(tableSection.locator('td', { hasText: 'MOCK-NONE-ITEM' })).toHaveCount(0)
 
-    // 카테고리 선택 + 검색 초기화 → 조회 → 드래그 활성 상태 확인
+    // 기본 HOME_MULTI 탭 + 검색 초기화 → 조회 → 드래그 활성 상태 확인
     await searchInput.fill('')
     await page.getByTestId('estimate-items-query-button').click()
     await page.waitForTimeout(500)
 
-    const categorySelect = page.getByTestId('estimate-items-category-select')
-    await categorySelect.selectOption('HOME_MULTI')
-    await page.waitForTimeout(500)
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
 
     // HOME_MULTI 카테고리 + 드래그 활성 → SortableRow 에서 일반 행에 drag aria-label 존재 확인
     const dragHandles = page.locator('[aria-label*="드래그"]')
@@ -539,10 +540,8 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
       delete (globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS']
     })
 
-    // 카테고리 HOME_MULTI 선택 → 드래그 활성 (committedCategory 즉시 반영)
-    const categorySelect = page.getByTestId('estimate-items-category-select')
-    await expect(categorySelect).toBeVisible()
-    await categorySelect.selectOption('HOME_MULTI')
+    // 기본 HOME_MULTI 탭 → 드래그 활성
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
 
     // 드래그 활성 후 SortableRow 렌더 — 첫 행 드래그 핸들 확보
     const dragHandles = page.locator('[aria-label$="드래그"]')
@@ -652,8 +651,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
       delete (globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS']
     })
 
-    const categorySelect = page.getByTestId('estimate-items-category-select')
-    await categorySelect.selectOption('HOME_MULTI')
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
 
     const summary = page.getByTestId('estimate-items-summary')
     await expect

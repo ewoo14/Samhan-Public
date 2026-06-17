@@ -199,30 +199,21 @@ test('T1: 품목관리 — BUNDLE 세트 뱃지 + 구성품 수 + 조회 전용 
 })
 
 // ---------------------------------------------------------------------------
-// T3: 카테고리 미선택 시 드래그 비활성 캡션
+// T3: 기본 카테고리 탭에서 드래그 활성
 // ---------------------------------------------------------------------------
 
-test('T3: 카테고리 미선택 — 드래그 비활성 캡션 확인', async ({ page }) => {
+test('T3: 기본 홈멀티 탭 — 드래그 활성 확인', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
 
   await page.goto(`${BASE_URL}/#/products/estimate-items`)
   await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
 
-  // 카테고리 미선택 상태에서 drag-disabled-caption 표시 확인
-  const caption = page.locator('[data-testid="estimate-items-drag-disabled-caption"]')
-  await expect(caption).toBeVisible({ timeout: 5000 })
-  const captionText = await caption.textContent()
-  expect(captionText).toContain('카테고리를 선택하면')
-
-  await screenshot(page, 'T3-no-category-drag-disabled-caption')
-  console.log(`[T3] PASS drag-disabled 캡션: "${captionText}"`)
-
-  // 카테고리 선택 후 드래그 활성 확인
-  const catSelect = page.locator('[data-testid="estimate-items-category-select"]')
-  await catSelect.selectOption('HOME_MULTI')
-  await page.waitForTimeout(2000)
-  await screenshot(page, 'T3-category-selected-HOME_MULTI')
-  console.log('[T3] PASS: 카테고리 HOME_MULTI 선택 후 드래그 활성 캡처')
+  const homeTab = page.locator('[data-testid="estimate-items-category-tab-HOME_MULTI"]')
+  await expect(homeTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('[data-testid="estimate-items-drag-disabled-caption"]')).toHaveCount(0)
+  await page.waitForSelector('[aria-label$="드래그"]', { timeout: 10000 })
+  await screenshot(page, 'T3-home-multi-tab-drag-enabled')
+  console.log('[T3] PASS: 기본 HOME_MULTI 탭에서 드래그 활성 캡처')
 })
 
 // ---------------------------------------------------------------------------
