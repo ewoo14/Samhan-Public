@@ -543,6 +543,11 @@ public class Product extends BaseEntity {
         this.catS = catS;
     }
 
+    /** 품목별 고정DC율을 변경한다. null 은 고정DC 미지정으로 저장한다. */
+    public void changeFixedDiscountRate(BigDecimal fixedDiscountRate) {
+        this.fixedDiscountRate = fixedDiscountRate;
+    }
+
     /** Bundle 모드 set (마이그 + 운영). */
     public void changeBundle(ProductType productType, BundleMode bundleMode) {
         this.productType = productType == null ? ProductType.SINGLE : productType;

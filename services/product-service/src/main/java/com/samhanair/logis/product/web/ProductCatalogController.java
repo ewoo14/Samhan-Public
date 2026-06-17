@@ -23,6 +23,7 @@ import com.samhanair.logis.product.web.dto.DisplayOrderRequest;
 import com.samhanair.logis.product.web.dto.ProductCatalogResponse;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.SpecKeyTemplateResponse;
+import com.samhanair.logis.product.web.dto.UpdateProductClassificationRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductVariableDiscountRequest;
 import com.samhanair.logis.security.permission.PermissionAction;
@@ -263,13 +264,18 @@ public class ProductCatalogController {
         return response;
     }
 
-    /**
-     * 품목 변동DC 수동 override 해제 (V19, 2026-06-17).
-     *
-     * <p>{@code variableDiscountManual=false} 로 복귀. 다음 시트 sync 에서 시트 기준으로 재적재된다.
-     *
-     * @param modelCode override 해제 대상 품목의 모델코드 (카탈로그 노출 식별자)
-     */
+    /** 품목별 L/M/S 분류와 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
+    @PatchMapping("/products/{modelCode}/classification")
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    public ProductCatalogResponse changeClassification(@PathVariable @NotBlank String modelCode,
+                                                       @Valid @RequestBody UpdateProductClassificationRequest req) {
+        Product product = productService.updateClassificationAndFixedDiscount(modelCode, req);
+        ProductCatalogResponse response = ProductCatalogResponse.from(
+                product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+        return response;
+    }
+
     @DeleteMapping("/products/{modelCode}/variable-discount")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)

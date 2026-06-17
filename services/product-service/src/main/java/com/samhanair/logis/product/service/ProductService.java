@@ -6,6 +6,7 @@ import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Category;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductEstimateExposure;
@@ -16,6 +17,7 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ClassificationRepository;
 import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
@@ -26,10 +28,13 @@ import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
 import com.samhanair.logis.product.web.dto.ProductItemKind;
 import com.samhanair.logis.product.web.dto.ProductSpecRequest;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
+import com.samhanair.logis.product.web.dto.UpdateProductClassificationRequest;
 import com.samhanair.logis.product.web.dto.UpdatePriceRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductVariableDiscountRequest;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -60,6 +65,7 @@ public class ProductService {
     private final ProductSpecRepository productSpecRepository;
     private final ProductEstimateExposureRepository exposureRepository;
     private final CategoryRepository categoryRepository;
+    private final ClassificationRepository classificationRepository;
     private final BundleComponentRepository bundleComponentRepository;
     private final BundleComponentService bundleComponentService;
 
@@ -458,32 +464,25 @@ public class ProductService {
         return product;
     }
 
-    /**
-     * 품목 노출 범위 수동 override 해제 — modelCode 로 품목을 조회하고
-     * {@link Product#clearUsageManual()} 을 호출하여 플래그를 해제한다.
-     *
-     * <p>플래그 해제 후 다음 ProductSheetSyncService sync 에서 시트 기준으로 재분류된다.
-     *
-     * <p><b>rowHash 캐시 evict (PR-B 2026-06-11, 지적 [2])</b>:
-     * 해제 직후 {@link ProductSheetSyncService#evictRowHash(String)} 를 호출하여 인메모리
-     * hash 캐시를 무효화한다. 이 처리가 없으면 행 내용이 변경되지 않은 상태에서 sync 를
-     * 재실행해도 {@code unchanged} 분기에 걸려 usageScope 가 시트 기준으로 재분류되지 않는다.
-     *
-     * <p><b>evict 키 정합 (사이클2 지적 P3-1, 2026-06-11)</b>:
-     * hash 캐시 키는 시트 sync 시 {@code modelCode} 컬럼 값으로 적재된다.
-     * {@code model_code} 가 비어 있고 {@code model_name} 만 있는 레거시 품목의 경우
-     * 입력 파라미터({@code modelCode}) 가 실제로 modelName 값일 수 있으므로
-     * 로드된 엔티티의 {@code getModelCode()} 를 키로 사용한다.
-     * modelCode 가 null 이면 sync 에서 해당 행을 식별하는 캐시 항목이 없으므로 evict no-op.
-     *
-     * <p><b>커밋-전 evict race (사이클2 지적 P3-2)</b>:
-     * 본 메서드는 트랜잭션 커밋 직전에 evict 를 호출한다. 다중 인스턴스(JVM-local 한계)
-     * 환경에서는 다른 인스턴스의 캐시는 무효화되지 않으나, 단일 인스턴스 운영 구조에서는
-     * 허용된 트레이드오프이다 ({@code afterCommit} 훅 등록 패턴은 이 서비스에 적용된 선례 없음).
-     *
-     * @param modelCode override 해제 대상 품목의 카탈로그 노출 식별자 (modelCode ?? modelName)
-     * @throws BusinessException(NOT_FOUND) modelCode 에 해당하는 품목이 없을 때
-     */
+    /** 품목별 L/M/S 분류와 고정DC율을 FE F1-b PATCH body 계약 그대로 저장한다. */
+    public Product updateClassificationAndFixedDiscount(String modelCode,
+                                                        UpdateProductClassificationRequest req) {
+        Product product = loadByModelCodeOrThrow(modelCode);
+        Classification catL = loadClassification(req.catLId(), Classification.CatLevel.L, "대분류");
+        Classification catM = loadClassification(req.catMId(), Classification.CatLevel.M, "중분류");
+        Classification catS = loadClassification(req.catSId(), Classification.CatLevel.S, "소분류");
+        validateClassificationTree(product, catL, catM, catS);
+
+        product.changeClassifications(catL, catM, catS);
+        product.changeFixedDiscountRate(parseFixedDiscountRate(req.fixedDiscountRate()));
+
+        String evictKey = product.getModelCode();
+        if (evictKey != null) {
+            productSheetSyncService.evictRowHash(evictKey);
+        }
+        return product;
+    }
+
     public void clearUsageOverride(String modelCode) {
         Product product = loadByModelCodeOrThrow(modelCode);
         product.clearUsageManual();
@@ -533,6 +532,82 @@ public class ProductService {
      * @return 활성 Product 엔티티
      * @throws BusinessException(NOT_FOUND) 해당 모델코드의 품목이 없을 때
      */
+    private Classification loadClassification(UUID id, Classification.CatLevel expectedLevel, String label) {
+        if (id == null) {
+            return null;
+        }
+        Classification classification = classificationRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        label + " 분류를 찾을 수 없습니다"));
+        if (classification.getCatLevel() != expectedLevel) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    label + " 분류 단계가 올바르지 않습니다");
+        }
+        return classification;
+    }
+
+    private void validateClassificationTree(Product product,
+                                            Classification catL,
+                                            Classification catM,
+                                            Classification catS) {
+        EstimateCategory category = null;
+        if (catL != null) {
+            category = catL.getEstimateCategory();
+        }
+        if (catM != null) {
+            if (catL == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "중분류를 지정하려면 대분류가 필요합니다");
+            }
+            if (catM.getParent() == null || !catM.getParent().getId().equals(catL.getId())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "중분류의 상위 분류가 대분류와 일치하지 않습니다");
+            }
+            category = requireSameEstimateCategory(category, catM.getEstimateCategory());
+        }
+        if (catS != null) {
+            if (catM == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "소분류를 지정하려면 중분류가 필요합니다");
+            }
+            if (catS.getParent() == null || !catS.getParent().getId().equals(catM.getId())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "소분류의 상위 분류가 중분류와 일치하지 않습니다");
+            }
+            category = requireSameEstimateCategory(category, catS.getEstimateCategory());
+        }
+        if (category != null) {
+            final EstimateCategory targetCategory = category;
+            boolean exposed = exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()).stream()
+                    .anyMatch(exposure -> exposure.getEstimateCategory() == targetCategory);
+            if (!exposed) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "품목의 견적 노출 카테고리와 분류 카테고리가 일치하지 않습니다");
+            }
+        }
+    }
+
+    private EstimateCategory requireSameEstimateCategory(EstimateCategory current, EstimateCategory next) {
+        if (current == null) {
+            return next;
+        }
+        if (current != next) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "분류의 견적 카테고리가 서로 다릅니다");
+        }
+        return current;
+    }
+
+    private BigDecimal parseFixedDiscountRate(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            BigDecimal rate = new BigDecimal(raw.trim()).setScale(2, RoundingMode.HALF_UP);
+            if (rate.compareTo(BigDecimal.ZERO) < 0 || rate.compareTo(new BigDecimal("100.00")) > 0) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "고정DC율은 0 이상 100 이하이어야 합니다");
+            }
+            return rate;
+        } catch (NumberFormatException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "고정DC율이 숫자가 아닙니다");
+        }
+    }
+
     private Product loadByModelCodeOrThrow(String modelCode) {
         return productRepository.findByCatalogExposedModelCodeAndIsDeletedFalse(modelCode)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,

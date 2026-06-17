@@ -263,6 +263,14 @@ spring:
           filters:
             - JwtAuthentication
 
+        # F1-a 품목별 분류/고정DC PATCH — ProductCatalogController 풀패스라 no-strip.
+        - id: product-classification-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/*/classification
+          filters:
+            - JwtAuthentication
+
         # [잔여] ProductCatalogController 풀패스(@RequestMapping("/api/v1") + /products/{code}/specs,
         # /spec-key-templates). strip=2 면 깨지므로 specs/template 표적 no-strip.
         - id: product-specs-v1

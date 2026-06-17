@@ -220,6 +220,8 @@ class ProductPermissionControllerIT {
         lenient().when(productService.updateVariableDiscountAndReturn(anyString(), any()))
                 .thenReturn(byCodeProduct);
         lenient().doNothing().when(productService).clearVariableDiscountOverride(anyString());
+        lenient().when(productService.updateClassificationAndFixedDiscount(anyString(), any()))
+                .thenReturn(byCodeProduct);
         lenient().when(productService.getOne(any())).thenReturn(response);
         lenient().when(productService.getByModelName(anyString())).thenReturn(response);
         lenient().when(productService.lookup(any())).thenReturn(List.of(summary));
@@ -363,6 +365,10 @@ class ProductPermissionControllerIT {
                                 .content("{\"hasVariableDiscount\":true}")),
                 new EndpointCase("product catalog variable discount delete", "products.admin", PermissionAction.UPDATE, "MANAGER", 204,
                         () -> delete("/api/v1/products/MODEL-1/variable-discount")),
+                new EndpointCase("product catalog classification patch", "products.admin", PermissionAction.UPDATE, "MANAGER", 200,
+                        () -> patch("/api/v1/products/MODEL-1/classification")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"catLId\":null,\"catMId\":null,\"catSId\":null,\"fixedDiscountRate\":\"10\"}")),
                 new EndpointCase("product catalog specs list", "products.list", PermissionAction.VIEW, "SALES", 200,
                         () -> get("/api/v1/products/MODEL-1/specs")),
                 new EndpointCase("product catalog spec add", "products.admin", PermissionAction.CREATE, "MANAGER", 201,

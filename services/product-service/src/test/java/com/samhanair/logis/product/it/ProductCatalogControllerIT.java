@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.Category;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
@@ -20,6 +21,7 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ClassificationRepository;
 import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
@@ -57,6 +59,9 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private ClassificationRepository classificationRepository;
 
     @Autowired
     private ProductSpecRepository productSpecRepository;
@@ -929,6 +934,66 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                 ]
                                 """))
                 .andExpect(status().isNoContent());
+    }
+
+    // F1-a classification PATCH IT
+
+    @Test
+    void PATCH_classification_FE바디로_분류와_고정DC를_저장한다() throws Exception {
+        Classification catL = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.L, null, "실내기", 1, true));
+        Classification catM = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.M, catL, "벽걸이", 1, true));
+        Classification catS = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.S, catM, "기본형", 1, true));
+        classificationRepository.flush();
+
+        mvc.perform(patch("/api/v1/products/API_HOME_01/classification")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "catLId":"%s",
+                                  "catMId":"%s",
+                                  "catSId":"%s",
+                                  "fixedDiscountRate":"12.50"
+                                }
+                                """.formatted(catL.getId(), catM.getId(), catS.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.catL.id").value(catL.getId().toString()))
+                .andExpect(jsonPath("$.catM.id").value(catM.getId().toString()))
+                .andExpect(jsonPath("$.catS.id").value(catS.getId().toString()))
+                .andExpect(jsonPath("$.fixedDiscountRate").value(12.50));
+
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse("API_HOME_01").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(product.getCatL().getId()).isEqualTo(catL.getId());
+        org.assertj.core.api.Assertions.assertThat(product.getCatM().getId()).isEqualTo(catM.getId());
+        org.assertj.core.api.Assertions.assertThat(product.getCatS().getId()).isEqualTo(catS.getId());
+        org.assertj.core.api.Assertions.assertThat(product.getFixedDiscountRate()).isEqualByComparingTo("12.50");
+    }
+
+    @Test
+    void PATCH_classification_부모계층이_맞지_않으면_400() throws Exception {
+        Classification catL = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.L, null, "실내기", 1, true));
+        Classification wrongL = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.L, null, "실외기", 2, true));
+        Classification catM = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.M, wrongL, "다른 중분류", 1, true));
+        classificationRepository.flush();
+
+        mvc.perform(patch("/api/v1/products/API_HOME_01/classification")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "catLId":"%s",
+                                  "catMId":"%s",
+                                  "catSId":null,
+                                  "fixedDiscountRate":null
+                                }
+                                """.formatted(catL.getId(), catM.getId())))
+                .andExpect(status().isBadRequest());
     }
 
     // ── 시드 헬퍼 ───────────────────────────────────────────────────────────
