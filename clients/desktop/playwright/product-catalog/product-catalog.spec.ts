@@ -4,11 +4,11 @@
  * <h2>검증 시나리오</h2>
  * <ol>
  *   <li>목록 렌더 — 품목 행 표시 + 세트 뱃지 / 일반 품목 —</li>
- *   <li>토글 왕복 — 견적 체크해제 → PATCH → 체크 상태 반전</li>
+ *   <li>견적 노출 해제 — PATCH → 견적품목 목록에서 제거</li>
  *   <li>세트 컬럼 렌더 — BUNDLE 행에 '세트 · N' 뱃지, 일반 품목에 — 표시</li>
  *   <li>구성품 모달 왕복 — '구성품' 버튼 → 모달 → 추가/수량/저장 → componentCount 갱신</li>
  *   <li>순서 저장 — 기본 카테고리 탭에서 드래그 활성 + 탭별 순서 저장</li>
- *   <li>view-only 권한 — WAREHOUSE role 진입 시 체크박스·구성품 버튼 비활성</li>
+ *   <li>view-only 권한 — WAREHOUSE role 진입 시 체크박스 비활성</li>
  *   <li>§2-1 NONE 품목 — displayOrder '—' + 드래그 핸들 없음</li>
  *   <li>§2-2 카테고리 탭 컨텍스트에서 드래그 항상 활성</li>
  * </ol>
@@ -102,12 +102,18 @@ const BUNDLE_COMPONENT_CODES = [
   'MWR-WE13N',
   'MWR-SH11N',
 ]
+const BUNDLE_MODAL_TITLE_PATTERN =
+  /구성품 편집\s*—\s*SET-HM2WAY\s*·\s*가정용 멀티 2in1 세트/
 
 async function openSetComponentsModal(page: Page): Promise<void> {
-  const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+  await gotoEstimateItemsCatalog(page, 'MASTER')
+  await loadEstimateItemsTable(page)
+  await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
+  const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
   await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
   await componentsBtn.click()
   await expect(page.getByTestId('components-modal')).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByRole('dialog', { name: BUNDLE_MODAL_TITLE_PATTERN })).toBeVisible()
   await expect(page.locator('[data-testid^="components-modal-component-row-"]')).toHaveCount(9, {
     timeout: 5_000,
   })
@@ -142,11 +148,16 @@ async function keyboardMoveComponent(
 }
 
 async function dragRowByMouse(page: Page, fromIndex: number, toIndex: number): Promise<void> {
+  const rows = page.locator('[data-testid^="estimate-items-row-"]')
   const handles = page.locator('[aria-label$="드래그"]')
   const source = handles.nth(fromIndex)
   const targetRow = page.locator('[data-testid^="estimate-items-row-"]').nth(toIndex)
   await expect(source).toBeVisible({ timeout: 8_000 })
   await expect(targetRow).toBeVisible({ timeout: 8_000 })
+  const sourceCode = ((await rows.nth(fromIndex).getAttribute('data-testid')) ?? '').replace(
+    'estimate-items-row-',
+    '',
+  )
 
   const sourceBox = await source.boundingBox()
   const targetBox = await targetRow.boundingBox()
@@ -164,6 +175,23 @@ async function dragRowByMouse(page: Page, fromIndex: number, toIndex: number): P
   await page.mouse.move(startX, startY + 8, { steps: 3 })
   await page.mouse.move(targetX, targetY, { steps: 12 })
   await page.mouse.up()
+
+  await page.waitForTimeout(250)
+  const targetCodeAfterMouse = ((await rows.nth(toIndex).getAttribute('data-testid')) ?? '').replace(
+    'estimate-items-row-',
+    '',
+  )
+  if (sourceCode && targetCodeAfterMouse === sourceCode) return
+
+  await handles.nth(fromIndex).focus()
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(100)
+  const direction = toIndex > fromIndex ? 'ArrowDown' : 'ArrowUp'
+  for (let i = 0; i < Math.abs(toIndex - fromIndex); i += 1) {
+    await page.keyboard.press(direction)
+    await page.waitForTimeout(100)
+  }
+  await page.keyboard.press('Space')
 }
 
 // ---------------------------------------------------------------------------
@@ -184,8 +212,8 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(page.getByTestId('product-catalog-save-order-button')).toHaveCount(0)
     await expect(page.getByTestId('product-catalog-drag-disabled-caption')).toHaveCount(0)
 
-    // 슬1에서는 세트 구성품 모달을 기초품목 관리에 그대로 둔다.
-    await expect(page.getByTestId('product-catalog-components-button-SET-HM2WAY')).toBeVisible()
+    await expect(page.locator('[data-testid^="product-catalog-components-button-"]')).toHaveCount(0)
+    await expect(page.getByTestId('components-modal')).toHaveCount(0)
   })
 
   test('시나리오 0b: 견적품목 관리 — 노출 품목 관리와 기초품목 선택 추가를 제공한다', async ({ page }) => {
@@ -243,10 +271,10 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   })
 
   // ---------------------------------------------------------------------------
-  // Scenario 2: 토글 왕복
+  // Scenario 2: 견적 노출 해제 → 견적품목 목록에서 제거
   // ---------------------------------------------------------------------------
 
-  test('시나리오 2: 토글 왕복 — 견적 체크 변경 후 상태 반전', async ({ page }) => {
+  test('시나리오 2: 견적 노출 해제 — 견적품목 목록에서 제거', async ({ page }) => {
     await installAuth(page)
     await gotoEstimateItemsCatalog(page, 'MASTER')
     await loadEstimateItemsTable(page)
@@ -255,14 +283,16 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     const firstEstimateToggle = table.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()
     await expect(firstEstimateToggle).toBeVisible()
 
-    // 견적 해제 시 노출이 사라지면 목록이 displayOrder(NULLS LAST) 기준 재정렬되어 행 위치가
-    // 바뀔 수 있으므로 modelCode 로 고정 타겟팅한다. 또한 PATCH→invalidate→refetch 는 비동기라
-    // 고정 waitForTimeout(300) 은 레이스 → 상태 반전을 auto-retry 단언으로 확인한다.
+    // BE syncEstimateExposures 는 NONE/PARTNER_ORDER 에서 활성 견적 노출을 soft-delete 하므로
+    // 견적 노출 해제 후 같은 modelCode 는 현재 견적품목 카테고리 목록에서 제거되어야 한다.
     const toggleTestId = await firstEstimateToggle.getAttribute('data-testid')
+    expect(toggleTestId).toBeTruthy()
     const toggle = page.getByTestId(toggleTestId!)
-    const isChecked = await toggle.isChecked()
+    await expect(toggle).toBeChecked()
+
     await toggle.click()
-    await expect(toggle).toBeChecked({ checked: !isChecked })
+
+    await expect(page.getByTestId(toggleTestId!)).toHaveCount(0)
   })
 
   // ---------------------------------------------------------------------------
@@ -284,19 +314,21 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   // Scenario 4: 구성품 모달 왕복 — 추가·수량·저장 (명시 단언 강화 — P2 vacuous pass 수정)
   // ---------------------------------------------------------------------------
 
-  test('시나리오 4: 구성품 모달 왕복 — 구성품 추가·수량 변경·저장·componentCount 갱신', async ({ page }) => {
+  test('시나리오 4: 견적품목 구성품 모달 왕복 — 구성품 추가·수량 변경·저장·componentCount 갱신', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
     // 1. 구성품 버튼 존재 단언
-    const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+    await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
+    const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
     await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
 
     // 2. 모달 열기
     await componentsBtn.click()
     const modal = page.getByTestId('components-modal')
     await expect(modal).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('dialog', { name: BUNDLE_MODAL_TITLE_PATTERN })).toBeVisible()
 
     // 3. 기존 구성품 row-0 존재 단언 (mock 시드 9개)
     const firstRow = page.getByTestId('components-modal-component-row-0')
@@ -320,7 +352,7 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(modal).not.toBeVisible({ timeout: 5_000 })
 
     // 8. 세트 뱃지 여전히 표시 단언 (componentCount 갱신)
-    const setBadge = page.getByTestId('product-catalog-set-badge-SET-HM2WAY')
+    const setBadge = page.getByTestId('estimate-items-set-badge-SET-HM2WAY')
     await expect(setBadge).toBeVisible({ timeout: 5_000 })
     const badgeText = await setBadge.textContent()
     // 저장 후 componentCount = 9 (수량 변경만, 행 개수 유지)
@@ -331,12 +363,13 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   // Scenario 4b: 구성품 모달 — 새 품목 추가 실제 수행 (P2 vacuous pass 수정)
   // ---------------------------------------------------------------------------
 
-  test('시나리오 4b: 구성품 모달 — 품목 검색 후 추가 실제 수행·행 개수 증가 단언', async ({ page }) => {
+  test('시나리오 4b: 견적품목 구성품 모달 — 품목 검색 후 추가 실제 수행·행 개수 증가 단언', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
-    const componentsBtn = page.getByTestId('product-catalog-components-button-SET-HM2WAY')
+    await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
+    const componentsBtn = page.getByTestId('estimate-items-components-button-SET-HM2WAY')
     await expect(componentsBtn).toBeVisible({ timeout: 5_000 })
     await componentsBtn.click()
 
@@ -372,8 +405,6 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
   test('시나리오 4c: 구성품 드래그 정렬 — 종류 내 재정렬 저장·기본 고정·종류 경계 거부', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
     await openSetComponentsModal(page)
 
     await expect(page.getByTestId('components-modal-kind-group-INDOOR')).toBeVisible()

@@ -12,7 +12,7 @@
  *
  * 절차:
  *   1. (별도 백업 스크립트가 .claude/tmp/t2-orig.json 에 원본 13구성품 저장)
- *   2. dev_master 로그인 → /products/catalog → AC110CS6PBH1SY 검색
+ *   2. dev_master 로그인 → /products/estimate-items → AC110CS6PBH1SY 검색
  *   3. '구성품' 버튼 → 모달 13구성품 렌더(FE GET 정상)
  *   4. 첫 구성품 수량 1→2 변경 → 저장(FE PUT 실서버)
  *   5. 모달 재오픈 GET 으로 변경 영속 확인(FE PUT 정상)
@@ -36,6 +36,7 @@ const _dirname =
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://localhost:5175'
 const API_BASE = 'http://localhost:8080'
 const BUNDLE_CODE = 'AC110CS6PBH1SY'
+const SET_CATEGORY = 'SINGLE_SET'
 
 const SCREENSHOTS_DIR = path.resolve(_dirname, '../../../../docs/qa/product-catalog-enhance')
 fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true })
@@ -73,14 +74,17 @@ async function loginAndInstallStub(page: Page, loginId: string, password: string
   return token
 }
 
-/** 카탈로그 검색 → AC110CS6PBH1SY 행 노출까지. */
+/** 견적품목 카탈로그 검색 → AC110CS6PBH1SY 행 노출까지. */
 async function searchBundle(page: Page): Promise<void> {
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
-  const searchInput = page.locator('[data-testid="product-catalog-search-input"] input, input[data-testid="product-catalog-search-input"]').first()
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
+  const categoryTab = page.locator(`[data-testid="estimate-items-category-tab-${SET_CATEGORY}"]`)
+  await categoryTab.click()
+  await expect(categoryTab).toHaveAttribute('aria-selected', 'true')
+  const searchInput = page.locator('[data-testid="estimate-items-search-input"] input, input[data-testid="estimate-items-search-input"]').first()
   await searchInput.fill(BUNDLE_CODE)
-  await page.locator('[data-testid="product-catalog-query-button"]').click()
-  await page.waitForSelector(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`, {
+  await page.locator('[data-testid="estimate-items-query-button"]').click()
+  await page.waitForSelector(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`, {
     timeout: 20000,
   })
 }
@@ -92,7 +96,7 @@ test('T2: 구성품 편집 모달 — 13구성품 GET 렌더 + 수량 편집 PUT
   await searchBundle(page)
   await shot(page, 't2-1-catalog-search')
 
-  await page.locator(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`).click()
+  await page.locator(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`).click()
   await page.waitForSelector('[data-testid="components-modal"]', { timeout: 15000 })
 
   // 로딩 종료 후 행이 13개 렌더되는지 — FE GET 실 BE 왕복 정상(P1-A FE GET).
@@ -134,7 +138,7 @@ test('T2: 구성품 편집 모달 — 13구성품 GET 렌더 + 수량 편집 PUT
   await shot(page, 't2-4-after-save')
 
   // ── 5. 모달 재오픈 GET 으로 영속 확인 ─────────────────────────────
-  await page.locator(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`).click()
+  await page.locator(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`).click()
   await page.waitForSelector('[data-testid="components-modal"]', { timeout: 15000 })
   await expect
     .poll(async () => page.locator('[data-testid^="components-modal-component-row-"]').count(), {

@@ -6,7 +6,7 @@
  *
  *   01-real-catalog-model-codes.png — 품목 관리: 자재=실 카탈로그 품목(PC1BWCK3NW 등 실모델코드, MAT-해시 0)
  *   02-product-kind-select.png      — 품목 등록(ProductFormPage) 종류=단일/세트 2가지만 노출
- *   03-components-modal-default-toggle.png — BUNDLE(AC110CS6PBH1SY) 구성품 모달:
+ *   03-components-modal-default-toggle.png — 견적품목 BUNDLE(AC110CS6PBH1SY) 구성품 모달:
  *                                     '기본'(isDefault) 체크박스 + componentKind per row
  *   04-component-autocomplete.png   — 구성품 모달 ProductAutocomplete 검색 → 제안 목록
  *
@@ -30,6 +30,7 @@ const _dirname =
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://localhost:5175'
 const API_BASE = 'http://localhost:8080'
 const BUNDLE_CODE = 'AC110CS6PBH1SY'
+const SET_CATEGORY = 'SINGLE_SET'
 
 const SCREENSHOTS_DIR = path.resolve(_dirname, '../../../../docs/qa/single-material-product/screenshots')
 fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true })
@@ -118,20 +119,23 @@ test('A2: 품목 등록 — 종류는 단일/세트만 노출하고 제품 쪽 �
 // ─────────────────────────────────────────────────────────────────────────────
 test('A3/A4: BUNDLE 구성품 모달 — 기본 토글+종류 + ProductAutocomplete 검색', async ({ page }) => {
   await loginAndInstallStub(page, 'dev_master', 'dev_p05_pass!')
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
+  const categoryTab = page.locator(`[data-testid="estimate-items-category-tab-${SET_CATEGORY}"]`)
+  await categoryTab.click()
+  await expect(categoryTab).toHaveAttribute('aria-selected', 'true')
 
   const searchInput = page
-    .locator('[data-testid="product-catalog-search-input"] input, input[data-testid="product-catalog-search-input"]')
+    .locator('[data-testid="estimate-items-search-input"] input, input[data-testid="estimate-items-search-input"]')
     .first()
   await searchInput.fill(BUNDLE_CODE)
-  await page.locator('[data-testid="product-catalog-query-button"]').click()
-  await page.waitForSelector(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`, {
+  await page.locator('[data-testid="estimate-items-query-button"]').click()
+  await page.waitForSelector(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`, {
     timeout: 20000,
   })
 
   // 구성품 모달 열기 → 13구성품 GET 렌더
-  await page.locator(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`).click()
+  await page.locator(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`).click()
   await page.waitForSelector('[data-testid="components-modal"]', { timeout: 15000 })
   await expect
     .poll(async () => page.locator('[data-testid^="components-modal-component-row-"]').count(), {

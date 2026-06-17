@@ -6,7 +6,7 @@
  * 인증: dev_master / dev_p05_pass! (MASTER, products.admin UPDATE)
  *
  * 절차:
- *   1. dev_master 로그인 -> /products/catalog -> AC100CS6PHH1SY 검색
+ *   1. dev_master 로그인 -> /products/estimate-items -> AC100CS6PHH1SY 검색
  *   2. '구성품' 버튼 -> components-modal 렌더 -> 종류 그룹 헤더 + 기본 고정 초기 상태 캡처
  *   3. PANEL 그룹의 첫 비기본 구성품을 같은 그룹 내 아래로 이동(마우스 드래그)
  *   4. 저장(PUT 실서버 200/204) -> 모달 재오픈 -> 순서 유지 단언 + 캡처
@@ -32,6 +32,7 @@ const _dirname =
 const BASE_URL = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5175'
 const API_BASE = 'http://localhost:8080'
 const BUNDLE_CODE = 'AC100CS6PHH1SY'
+const SET_CATEGORY = 'SINGLE_SET'
 
 const SCREENSHOTS_DIR = path.resolve(_dirname, '../../../../docs/qa/product-set-component-reorder')
 fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true })
@@ -65,20 +66,23 @@ async function loginAndInstallStub(page: Page, loginId: string, password: string
 }
 
 async function searchBundle(page: Page): Promise<void> {
-  await page.goto(`${BASE_URL}/#/products/catalog`)
-  await page.waitForSelector('[data-testid="product-catalog-table"]', { timeout: 30000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`)
+  await page.waitForSelector('[data-testid="estimate-items-table"]', { timeout: 30000 })
+  const categoryTab = page.locator(`[data-testid="estimate-items-category-tab-${SET_CATEGORY}"]`)
+  await categoryTab.click()
+  await expect(categoryTab).toHaveAttribute('aria-selected', 'true')
   const searchInput = page.locator(
-    '[data-testid="product-catalog-search-input"] input, input[data-testid="product-catalog-search-input"]',
+    '[data-testid="estimate-items-search-input"] input, input[data-testid="estimate-items-search-input"]',
   ).first()
   await searchInput.fill(BUNDLE_CODE)
-  await page.locator('[data-testid="product-catalog-query-button"]').click()
-  await page.waitForSelector(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`, {
+  await page.locator('[data-testid="estimate-items-query-button"]').click()
+  await page.waitForSelector(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`, {
     timeout: 20000,
   })
 }
 
 async function openComponentsModal(page: Page): Promise<void> {
-  await page.locator(`[data-testid="product-catalog-components-button-${BUNDLE_CODE}"]`).click()
+  await page.locator(`[data-testid="estimate-items-components-button-${BUNDLE_CODE}"]`).click()
   await page.waitForSelector('[data-testid="components-modal"]', { timeout: 15000 })
   await expect
     .poll(
