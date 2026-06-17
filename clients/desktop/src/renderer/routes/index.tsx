@@ -304,6 +304,7 @@ import { GroupwareApprovalTemplateAdminPage } from './GroupwareApprovalTemplateA
 import { ApprovalDocView } from '../print/ApprovalDocView'
 // [PR-B] 품목 관리 — 품목별 노출 범위 수동 토글 (products.list VIEW 게이트).
 import { ProductCatalogPage } from './ProductCatalogPage'
+import { EstimateItemsCatalogPage } from './EstimateItemsCatalogPage'
 import { ProductFormPage } from './ProductFormPage'
 
 /**
@@ -1264,6 +1265,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="products.list" action="view">
             <ProductCatalogPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/products/estimate-items',
+        element: (
+          <PermissionGuard pageCode="products.list" action="view">
+            <EstimateItemsCatalogPage />
           </PermissionGuard>
         ),
       },
