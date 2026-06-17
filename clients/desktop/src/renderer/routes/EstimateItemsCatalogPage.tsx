@@ -306,7 +306,8 @@ export function EstimateItemsCatalogPage() {
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
 
-  const isDragEnabled = canEdit
+  const hasCommittedSearch = committedSearch.trim().length > 0
+  const isDragEnabled = canEdit && !hasCommittedSearch
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -322,12 +323,20 @@ export function EstimateItemsCatalogPage() {
 
   useEffect(() => {
     const requested = searchParams.get('category')
-    if (isEstimateCategoryTab(requested) && requested !== committedCategory) {
-      setCommittedCategory(requested)
+    const nextCategory = isEstimateCategoryTab(requested) ? requested : 'HOME_MULTI'
+    if (nextCategory !== committedCategory) {
+      setCommittedCategory(nextCategory)
       setCurrentPage(0)
       setOrderDirty(false)
     }
-  }, [committedCategory, searchParams])
+    if (requested !== nextCategory) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('category', nextCategory)
+        return next
+      }, { replace: true })
+    }
+  }, [committedCategory, searchParams, setSearchParams])
 
   useEffect(() => {
     if (isMockMode()) return
@@ -464,6 +473,7 @@ export function EstimateItemsCatalogPage() {
   }, [])
 
   const handleSaveOrder = useCallback(async () => {
+    if (!isDragEnabled) return
     setOrderSaving(true)
     setOrderError(null)
     try {
@@ -512,7 +522,7 @@ export function EstimateItemsCatalogPage() {
     } finally {
       setOrderSaving(false)
     }
-  }, [sortableRows, queryClient, committedCategory])
+  }, [sortableRows, queryClient, committedCategory, isDragEnabled])
 
   const searchMasterProducts = useCallback(async (q: string): Promise<ProductOption[]> => {
     const products = await searchProductsApi(q)
@@ -685,7 +695,7 @@ export function EstimateItemsCatalogPage() {
               variant="primary"
               onClick={() => { void handleSaveOrder() }}
               loading={orderSaving}
-              disabled={orderSaving || listQuery.isFetching || rows.length === 0}
+              disabled={orderSaving || listQuery.isFetching || rows.length === 0 || !isDragEnabled}
               data-testid="estimate-items-save-order-button"
             >
               순서 저장
@@ -694,6 +704,14 @@ export function EstimateItemsCatalogPage() {
           {isDragEnabled && !orderDirty && rows.length > 0 ? (
             <span style={{ fontSize: 11, color: 'var(--color-neutral-400)' }}>
               행을 드래그하여 순서 조정
+            </span>
+          ) : null}
+          {canEdit && hasCommittedSearch ? (
+            <span
+              style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}
+              data-testid="estimate-items-drag-disabled-caption"
+            >
+              검색 중 — 검색을 비우면 순서 조정 가능
             </span>
           ) : null}
           {listQuery.isError ? (

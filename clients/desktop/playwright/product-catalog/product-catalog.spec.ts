@@ -455,6 +455,22 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     await expect(page.getByTestId('estimate-items-summary')).toContainText('총')
   })
 
+  test('시나리오 5c: 검색 중에는 견적품목 드래그와 순서 저장이 비활성화된다', async ({ page }) => {
+    await installAuth(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
+
+    const searchInput = page.getByTestId('estimate-items-search-input')
+    await searchInput.fill('AJ')
+    await page.getByTestId('estimate-items-query-button').click()
+    await expect(page.getByTestId('estimate-items-table')).toBeVisible({ timeout: 8_000 })
+
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-drag-disabled-caption')).toContainText('검색')
+    await expect(page.getByTestId('estimate-items-save-order-button')).toBeDisabled()
+    await expect(page.locator('[aria-label$="드래그"]')).toHaveCount(0)
+  })
+
   // ---------------------------------------------------------------------------
   // Scenario 6: view-only 권한 — 체크박스·구성품 버튼 비활성
   // ---------------------------------------------------------------------------
