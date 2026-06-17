@@ -554,29 +554,30 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                                 ]
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].componentProductCode").value("PUT_ODU_01"))
+                .andExpect(jsonPath("$[0].componentProductCode").value("PUT_IDU_01"))
                 .andExpect(jsonPath("$[0].displayOrder").value(1))
-                .andExpect(jsonPath("$[1].componentProductCode").value("PUT_IDU_01"))
+                .andExpect(jsonPath("$[1].componentProductCode").value("PUT_ODU_01"))
                 .andExpect(jsonPath("$[1].displayOrder").value(2));
 
         // GET 재조회 — 순서/필드 왕복 정합 단언
         // (defaultQty 는 DB NUMERIC(5,2) 재읽기로 scale 이 붙어(2.00 등) JSON 숫자 타입 비교가
         //  취약하므로 comparesEqualTo(BigDecimal) 로 단언. 구조/순서 필드는 그대로 단언.)
         mvc.perform(get("/api/v1/products/BNDL_PUT_01/components")
-                        .header("X-User-Id", UUID.randomUUID().toString()))
+                .header("X-User-Id", UUID.randomUUID().toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].componentProductCode").value("PUT_ODU_01"))
+                .andExpect(jsonPath("$[0].componentProductCode").value("PUT_IDU_01"))
                 .andExpect(jsonPath("$[0].displayOrder").value(1))
-                .andExpect(jsonPath("$[0].componentKind").value("OUTDOOR"))
-                // DB NUMERIC(5,2) 재읽기 → JSON 1.00 (json-smart Double 1.0)
-                .andExpect(jsonPath("$[0].defaultQty").value(1.0))
-                .andExpect(jsonPath("$[0].isDefault").value(true))
-                .andExpect(jsonPath("$[0].specText").value("규격O"))
-                .andExpect(jsonPath("$[1].componentProductCode").value("PUT_IDU_01"))
+                .andExpect(jsonPath("$[0].componentKind").value("INDOOR"))
+                .andExpect(jsonPath("$[0].defaultQty").value(2.0))
+                .andExpect(jsonPath("$[0].qtyMode").value("FIXED"))
+                .andExpect(jsonPath("$[0].specText").value("규격I"))
+                .andExpect(jsonPath("$[1].componentProductCode").value("PUT_ODU_01"))
                 .andExpect(jsonPath("$[1].displayOrder").value(2))
-                .andExpect(jsonPath("$[1].componentKind").value("INDOOR"))
-                .andExpect(jsonPath("$[1].defaultQty").value(2.0))
-                .andExpect(jsonPath("$[1].qtyMode").value("FIXED"));
+                .andExpect(jsonPath("$[1].componentKind").value("OUTDOOR"))
+                // DB NUMERIC(5,2) 재읽기 → JSON 1.00 (json-smart Double 1.0)
+                .andExpect(jsonPath("$[1].defaultQty").value(1.0))
+                .andExpect(jsonPath("$[1].isDefault").value(true))
+                .andExpect(jsonPath("$[1].specText").value("규격O"));
     }
 
     /**
@@ -753,7 +754,9 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
      * display_order DB 반영 단언 + GET /api/v1/products 순서 역전 단언.
      *
      * <p>m1(처음 displayOrder=10), m2(처음 displayOrder=20) 을 시드한 뒤
-     * PUT [{m2,1},{m1,2}] 로 순서를 역전시키고, DB display_order 값과 목록 순서(m2 먼저)를 단언한다.
+     * 카테고리 전체 활성 노출(API_HOME_01 포함)을 PUT 으로 전송한다.
+     * 그중 DOHP_ 두 품목은 [{m2,1},{m1,2}] 로 순서를 역전시키고,
+     * DB display_order 값과 목록 순서(m2 먼저)를 단언한다.
      */
     @Test
     void PUT_display_orders_정상경로_204_DB반영_및_목록순서_역전() throws Exception {
@@ -770,14 +773,15 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
         persistExposure(savedM2, EstimateCategory.HOME_MULTI, 20);
         productRepository.flush();
 
-        // PUT 순서 역전: m2→1, m1→2 (이제 m2 가 앞)
+        // PUT 순서 역전: m2→1, m1→2, API_HOME_01→3 (대상 카테고리 전체 활성 노출 포함)
         mvc.perform(put("/api/v1/products/display-orders")
                         .header("X-User-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 [
                                   {"modelCode":"DOHP_M2","estimateCategory":"HOME_MULTI","displayOrder":1},
-                                  {"modelCode":"DOHP_M1","estimateCategory":"HOME_MULTI","displayOrder":2}
+                                  {"modelCode":"DOHP_M1","estimateCategory":"HOME_MULTI","displayOrder":2},
+                                  {"modelCode":"API_HOME_01","estimateCategory":"HOME_MULTI","displayOrder":3}
                                 ]
                                 """))
                 .andExpect(status().isNoContent());
@@ -803,6 +807,39 @@ class ProductCatalogControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].modelCode").value("DOHP_M2"))
                 .andExpect(jsonPath("$.content[1].modelCode").value("DOHP_M1"));
+    }
+
+    /**
+     * (i) #18 PUT /display-orders 부분 요청 가드: 동일 카테고리 활성 노출 일부만 전송하면 400.
+     *
+     * <p>setupMvc 의 API_HOME_01 이 같은 HOME_MULTI 활성 노출이므로, DOPART 두 건만 보내면
+     * 대상 카테고리 전체 활성 노출 집합과 불일치하여 거부되어야 한다.
+     */
+    @Test
+    void PUT_display_orders_부분요청_400() throws Exception {
+        Category cat = categoryRepository.save(Category.create("CAT-DOPART", "display-order partial", null, 23));
+        Product m1 = Product.seedFromSheet("표시순서 부분 M1", "DOPART_M1", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        Product m2 = Product.seedFromSheet("표시순서 부분 M2", "DOPART_M2", cat,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.BOTH, EstimateCategory.HOME_MULTI);
+        Product savedM1 = productRepository.save(m1);
+        Product savedM2 = productRepository.save(m2);
+        persistExposure(savedM1, EstimateCategory.HOME_MULTI, 10);
+        persistExposure(savedM2, EstimateCategory.HOME_MULTI, 20);
+        productRepository.flush();
+
+        mvc.perform(put("/api/v1/products/display-orders")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [
+                                  {"modelCode":"DOPART_M2","estimateCategory":"HOME_MULTI","displayOrder":1},
+                                  {"modelCode":"DOPART_M1","estimateCategory":"HOME_MULTI","displayOrder":2}
+                                ]
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     // ── 시드 헬퍼 ───────────────────────────────────────────────────────────

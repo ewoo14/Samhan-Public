@@ -339,7 +339,8 @@ public class ProductCatalogController {
      *
      * <p>PUT /api/v1/products/{modelCode}/components
      *
-     * <p>배열 인덱스 = 표시 순서. 기존 구성품 전량을 soft-delete 후 전달된 배열로 교체한다.
+     * <p>기존 구성품 전량을 soft-delete 후 전달된 배열로 교체한다.
+     * 표시 순서는 서버가 종류순 + 종류 내 기본 먼저 + 요청 내 상대 순서 기준으로 정규화한다.
      *
      * <ul>
      *   <li>대상 품목이 BUNDLE 아님 → 409 CONFLICT</li>

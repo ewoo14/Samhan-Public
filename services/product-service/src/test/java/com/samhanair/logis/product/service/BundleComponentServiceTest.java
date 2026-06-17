@@ -332,6 +332,92 @@ class BundleComponentServiceTest {
         assertThat(result.get(0).displayOrder()).isEqualTo(1);
     }
 
+    @Test
+    void replaceComponents_displayOrder_종류순_기본먼저_정규화() {
+        when(productRepository.findByCatalogExposedModelCodeAndIsDeletedFalse("TEST-BUNDLE-001"))
+                .thenReturn(Optional.of(bundleProduct));
+        stubResolvableComponents("REMOTE-NON", "INDOOR-OPT", "REMOTE-DEFAULT", "PANEL-OPT", "PANEL-DEFAULT");
+        when(bundleComponentRepository.findByBundleProductId(bundleId))
+                .thenReturn(List.of());
+        lenient().when(bundleComponentRepository.save(any(BundleComponent.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
+                .thenReturn(List.of(
+                        product("INDOOR-OPT"),
+                        product("PANEL-DEFAULT"),
+                        product("PANEL-OPT"),
+                        product("REMOTE-DEFAULT"),
+                        product("REMOTE-NON")));
+
+        List<BundleComponentResponse> result = service.replaceComponents("TEST-BUNDLE-001", List.of(
+                componentRequest("REMOTE-NON", BundleComponent.ComponentKind.REMOTE, false),
+                componentRequest("INDOOR-OPT", BundleComponent.ComponentKind.INDOOR, false),
+                componentRequest("REMOTE-DEFAULT", BundleComponent.ComponentKind.REMOTE, true),
+                componentRequest("PANEL-OPT", BundleComponent.ComponentKind.PANEL, false),
+                componentRequest("PANEL-DEFAULT", BundleComponent.ComponentKind.PANEL, true)
+        ), "tester-user");
+
+        assertThat(componentCodes(result)).containsExactly(
+                "INDOOR-OPT",
+                "PANEL-DEFAULT",
+                "PANEL-OPT",
+                "REMOTE-DEFAULT",
+                "REMOTE-NON");
+        assertThat(result).extracting(BundleComponentResponse::displayOrder)
+                .containsExactly(1, 2, 3, 4, 5);
+    }
+
+    @Test
+    void replaceComponents_displayOrder_종류내_비기본_사용자순서_보존() {
+        when(productRepository.findByCatalogExposedModelCodeAndIsDeletedFalse("TEST-BUNDLE-001"))
+                .thenReturn(Optional.of(bundleProduct));
+        stubResolvableComponents("PANEL-B", "OUTDOOR-DEFAULT", "PANEL-A", "PANEL-C");
+        when(bundleComponentRepository.findByBundleProductId(bundleId))
+                .thenReturn(List.of());
+        lenient().when(bundleComponentRepository.save(any(BundleComponent.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
+                .thenReturn(List.of(
+                        product("OUTDOOR-DEFAULT"),
+                        product("PANEL-B"),
+                        product("PANEL-A"),
+                        product("PANEL-C")));
+
+        List<BundleComponentResponse> result = service.replaceComponents("TEST-BUNDLE-001", List.of(
+                componentRequest("PANEL-B", BundleComponent.ComponentKind.PANEL, false),
+                componentRequest("OUTDOOR-DEFAULT", BundleComponent.ComponentKind.OUTDOOR, true),
+                componentRequest("PANEL-A", BundleComponent.ComponentKind.PANEL, false),
+                componentRequest("PANEL-C", BundleComponent.ComponentKind.PANEL, false)
+        ), "tester-user");
+
+        assertThat(componentCodes(result)).containsExactly(
+                "OUTDOOR-DEFAULT",
+                "PANEL-B",
+                "PANEL-A",
+                "PANEL-C");
+    }
+
+    @Test
+    void replaceComponents_displayOrder_기본이_종류내_최상단() {
+        when(productRepository.findByCatalogExposedModelCodeAndIsDeletedFalse("TEST-BUNDLE-001"))
+                .thenReturn(Optional.of(bundleProduct));
+        stubResolvableComponents("PANEL-A", "PANEL-DEFAULT", "PANEL-B");
+        when(bundleComponentRepository.findByBundleProductId(bundleId))
+                .thenReturn(List.of());
+        lenient().when(bundleComponentRepository.save(any(BundleComponent.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
+                .thenReturn(List.of(product("PANEL-DEFAULT"), product("PANEL-A"), product("PANEL-B")));
+
+        List<BundleComponentResponse> result = service.replaceComponents("TEST-BUNDLE-001", List.of(
+                componentRequest("PANEL-A", BundleComponent.ComponentKind.PANEL, false),
+                componentRequest("PANEL-DEFAULT", BundleComponent.ComponentKind.PANEL, true),
+                componentRequest("PANEL-B", BundleComponent.ComponentKind.PANEL, false)
+        ), "tester-user");
+
+        assertThat(componentCodes(result)).containsExactly("PANEL-DEFAULT", "PANEL-A", "PANEL-B");
+    }
+
     /**
      * P1-D (2026-06-11): 동일 코드 유지 편집(수량만 변경) 시
      * entityManager.flush() 가 soft-delete 후, INSERT 전에 호출됨을 검증.
@@ -579,6 +665,8 @@ class BundleComponentServiceTest {
                 .thenReturn(List.of(p1, p2));
         when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
                 any(), any())).thenReturn(List.of(e1, e2));
+        when(exposureRepository.findActiveProductExposuresByEstimateCategory(any()))
+                .thenReturn(List.of(e1, e2));
         service.updateDisplayOrders(List.of(
                 new DisplayOrderRequest("PROD-001", EstimateCategory.HOME_MULTI, 50),
                 new DisplayOrderRequest("PROD-002", EstimateCategory.HOME_MULTI, 10)));
@@ -683,6 +771,8 @@ class BundleComponentServiceTest {
                 .thenReturn(List.of(p1, p2));
         when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
                 any(), any())).thenReturn(List.of(e1, e2));
+        when(exposureRepository.findActiveProductExposuresByEstimateCategory(any()))
+                .thenReturn(List.of(e1, e2));
         // 예외 없이 정상 종료
         service.updateDisplayOrders(List.of(
                 new DisplayOrderRequest("HM-001", EstimateCategory.HOME_MULTI, 1),
@@ -690,6 +780,39 @@ class BundleComponentServiceTest {
 
         assertThat(e1.getDisplayOrder()).isEqualTo(1);
         assertThat(e2.getDisplayOrder()).isEqualTo(2);
+    }
+
+    @Test
+    void updateDisplayOrders_부분요청이면_400() {
+        Product p1 = Product.seedFromSheet("홈멀티A", "HM-GUARD-001", null,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.ESTIMATE, EstimateCategory.HOME_MULTI);
+        UUID p1Id = UUID.randomUUID();
+        ReflectionTestUtils.setField(p1, "id", p1Id);
+        Product p2 = Product.seedFromSheet("홈멀티B", "HM-GUARD-002", null,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, UsageScope.ESTIMATE, EstimateCategory.HOME_MULTI);
+        UUID p2Id = UUID.randomUUID();
+        ReflectionTestUtils.setField(p2, "id", p2Id);
+        UUID p3Id = UUID.randomUUID();
+        ProductEstimateExposure e1 = ProductEstimateExposure.create(p1Id, EstimateCategory.HOME_MULTI, 1);
+        ProductEstimateExposure e2 = ProductEstimateExposure.create(p2Id, EstimateCategory.HOME_MULTI, 2);
+        ProductEstimateExposure e3 = ProductEstimateExposure.create(p3Id, EstimateCategory.HOME_MULTI, 3);
+
+        when(productRepository.findByModelCodeInAndIsDeletedFalse(any()))
+                .thenReturn(List.of(p1, p2));
+        when(exposureRepository.findByProductIdInAndEstimateCategoryAndIsDeletedFalse(
+                any(), any())).thenReturn(List.of(e1, e2));
+        when(exposureRepository.findActiveProductExposuresByEstimateCategory(any()))
+                .thenReturn(List.of(e1, e2, e3));
+
+        assertThatThrownBy(() -> service.updateDisplayOrders(List.of(
+                new DisplayOrderRequest("HM-GUARD-002", EstimateCategory.HOME_MULTI, 1),
+                new DisplayOrderRequest("HM-GUARD-001", EstimateCategory.HOME_MULTI, 2))))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT))
+                .hasMessageContaining("전체 활성 노출");
     }
 
     /**
@@ -742,5 +865,33 @@ class BundleComponentServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    private void stubResolvableComponents(String... modelCodes) {
+        for (String modelCode : modelCodes) {
+            lenient().when(productRepository.findByModelCodeAndIsDeletedFalse(modelCode))
+                    .thenReturn(Optional.of(product(modelCode)));
+        }
+    }
+
+    private static BundleComponentRequest componentRequest(String modelCode,
+                                                           BundleComponent.ComponentKind kind,
+                                                           boolean isDefault) {
+        return new BundleComponentRequest(
+                modelCode, BigDecimal.ONE, BundleComponent.QtyMode.FOLLOW_SET,
+                kind, null, isDefault, null);
+    }
+
+    private Product product(String modelCode) {
+        Product product = Product.seedFromSheet(modelCode, modelCode, null,
+                BigDecimal.ZERO, BigDecimal.ZERO, ProductType.SINGLE, null, UsageScope.NONE, null);
+        ReflectionTestUtils.setField(product, "id", UUID.randomUUID());
+        return product;
+    }
+
+    private static List<String> componentCodes(List<BundleComponentResponse> responses) {
+        return responses.stream()
+                .map(BundleComponentResponse::componentProductCode)
+                .toList();
     }
 }
