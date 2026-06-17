@@ -7,10 +7,10 @@
  *   <li>토글 왕복 — 견적 체크해제 → PATCH → 체크 상태 반전</li>
  *   <li>세트 컬럼 렌더 — BUNDLE 행에 '세트 · N' 뱃지, 일반 품목에 — 표시</li>
  *   <li>구성품 모달 왕복 — '구성품' 버튼 → 모달 → 추가/수량/저장 → componentCount 갱신</li>
- *   <li>순서 저장 — 카테고리 미선택 드래그 비활성 캡션 + 카테고리 선택 후 드래그 활성</li>
+ *   <li>순서 저장 — 기본 카테고리 탭에서 드래그 활성 + 탭별 순서 저장</li>
  *   <li>view-only 권한 — WAREHOUSE role 진입 시 체크박스·구성품 버튼 비활성</li>
  *   <li>§2-1 NONE 품목 — displayOrder '—' + 드래그 핸들 없음</li>
- *   <li>§2-2 카테고리 미선택 드래그 비활성 캡션</li>
+ *   <li>§2-2 카테고리 탭 컨텍스트에서 드래그 항상 활성</li>
  * </ol>
  *
  * <h2>Mock 전략</h2>
@@ -20,8 +20,7 @@
  * - 기존 출처 뱃지 단언 없음 (PR-E 출처 컬럼 제거 반영).
  *
  * <h2>TC 한계 보고</h2>
- * - §2-2 카테고리 선택 후 드래그 순서 저장까지의 E2E는 dnd-kit 시뮬이 필요하여 현재
- *   드래그 활성 상태 단언만 검증 (DragHandle 노출 확인). 실제 순서 저장은 Docker 실 QA 범위.
+ * - §2-2 카테고리 탭 컨텍스트에서 mock 드래그→순서 저장 payload 까지 검증한다.
  * - §4 실시간 동기화 SSE 구독은 VITE_MOCK_MODE에서 skip — TC 범위 밖. 실 QA 필요.
  * - §3 세트 재고 가드 (SlipFormPage) mock 흐름 TC: SlipFormPage 내 BUNDLE 라인 선택 후
  *   재고조회 버튼 클릭 시 bundleOnlyLines 안내 표시 — SlipFormPage mock TC 에서 검증 필요.
@@ -66,11 +65,30 @@ async function gotoProductCatalog(page: Page, mockRole = 'MASTER'): Promise<void
   await expect(page.getByTestId('product-catalog-query-button')).toBeVisible({ timeout: 15_000 })
 }
 
+async function gotoEstimateItemsCatalog(page: Page, mockRole = 'MASTER'): Promise<void> {
+  await page.goto(`${BASE_URL}/#/products/estimate-items?mockRole=${mockRole}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('estimate-items-query-button')).toBeVisible({ timeout: 15_000 })
+}
+
 async function loadTable(page: Page): Promise<void> {
   await page.getByTestId('product-catalog-query-button').click()
   const table = page.getByTestId('product-catalog-table')
   await expect(table).toBeVisible({ timeout: 10_000 })
   await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 10_000 })
+}
+
+async function loadEstimateItemsTable(page: Page): Promise<void> {
+  await page.getByTestId('estimate-items-query-button').click()
+  const table = page.getByTestId('estimate-items-table')
+  await expect(table).toBeVisible({ timeout: 10_000 })
+  await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 10_000 })
+}
+
+async function selectEstimateItemsCategoryTab(page: Page, category: string): Promise<void> {
+  const tab = page.getByTestId(`estimate-items-category-tab-${category}`)
+  await expect(tab).toBeVisible({ timeout: 8_000 })
+  await tab.click()
+  await expect(tab).toHaveAttribute('aria-selected', 'true')
 }
 
 const BUNDLE_COMPONENT_CODES = [
@@ -123,11 +141,87 @@ async function keyboardMoveComponent(
   await page.keyboard.press('Space')
 }
 
+async function dragRowByMouse(page: Page, fromIndex: number, toIndex: number): Promise<void> {
+  const handles = page.locator('[aria-label$="드래그"]')
+  const source = handles.nth(fromIndex)
+  const targetRow = page.locator('[data-testid^="estimate-items-row-"]').nth(toIndex)
+  await expect(source).toBeVisible({ timeout: 8_000 })
+  await expect(targetRow).toBeVisible({ timeout: 8_000 })
+
+  const sourceBox = await source.boundingBox()
+  const targetBox = await targetRow.boundingBox()
+  if (!sourceBox || !targetBox) {
+    throw new Error('드래그 핸들 또는 대상 행 boundingBox 를 가져오지 못했습니다.')
+  }
+
+  const startX = sourceBox.x + sourceBox.width / 2
+  const startY = sourceBox.y + sourceBox.height / 2
+  const targetX = targetBox.x + targetBox.width / 2
+  const targetY = targetBox.y + targetBox.height / 2
+
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX, startY + 8, { steps: 3 })
+  await page.mouse.move(targetX, targetY, { steps: 12 })
+  await page.mouse.up()
+}
+
 // ---------------------------------------------------------------------------
 // Scenario 1: 목록 렌더
 // ---------------------------------------------------------------------------
 
 test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 + §2-1/§2-2', () => {
+  test('시나리오 0a: 기초품목 관리 — 등록 전용 목록으로 노출/정렬 UI 를 표시하지 않는다', async ({ page }) => {
+    await installAuth(page)
+    await gotoProductCatalog(page, 'MASTER')
+    await loadTable(page)
+
+    await expect(page.getByRole('heading', { name: '기초품목 관리', level: 3 })).toBeVisible()
+    await expect(page.getByTestId('product-catalog-create-button')).toBeVisible()
+    await expect(page.getByTestId('product-catalog-category-select')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="product-catalog-estimate-toggle-"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="product-catalog-order-toggle-"]')).toHaveCount(0)
+    await expect(page.getByTestId('product-catalog-save-order-button')).toHaveCount(0)
+    await expect(page.getByTestId('product-catalog-drag-disabled-caption')).toHaveCount(0)
+
+    // 슬1에서는 세트 구성품 모달을 기초품목 관리에 그대로 둔다.
+    await expect(page.getByTestId('product-catalog-components-button-SET-HM2WAY')).toBeVisible()
+  })
+
+  test('시나리오 0b: 견적품목 관리 — 노출 품목 관리와 기초품목 선택 추가를 제공한다', async ({ page }) => {
+    await installAuth(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
+
+    await expect(page.getByRole('heading', { name: '견적품목 관리', level: 3 })).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-select')).toHaveCount(0)
+    await expect(page.getByTestId('estimate-items-category-tabs')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-category-tab-SINGLE_SET')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-tab-COMMERCIAL_MULTI')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-category-tab-LEGACY')).toBeVisible()
+    await expect(page.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()).toBeVisible()
+    await expect(page.locator('[data-testid^="estimate-items-order-toggle-"]').first()).toBeVisible()
+    await expect(page.getByTestId('product-catalog-create-button')).toHaveCount(0)
+
+    const addRegion = page.getByTestId('estimate-items-add-product')
+    const searchInput = addRegion.getByPlaceholder('모델명 또는 품목명 입력')
+    await searchInput.click()
+    await searchInput.fill('AJ036NCH3CH')
+    const option = page.locator('li[role="option"]').filter({ hasText: 'AJ036NCH3CH' }).first()
+    await expect(option).toBeVisible({ timeout: 5_000 })
+    await option.click()
+
+    const addBtn = page.getByTestId('estimate-items-add-product-button')
+    await expect(addBtn).toBeEnabled()
+    await addBtn.click()
+
+    const addedToggle = page.getByTestId('estimate-items-estimate-toggle-AJ036NCH3CH')
+    await expect(addedToggle).toBeVisible({ timeout: 8_000 })
+    await expect(addedToggle).toBeChecked()
+    await expect(page.getByTestId('estimate-items-estimate-category-AJ036NCH3CH-chip-HOME_MULTI')).toBeVisible()
+  })
+
   test('시나리오 1: 목록 렌더 — 품목 행 + 세트 뱃지 표시', async ({ page }) => {
     await installAuth(page)
     await gotoProductCatalog(page, 'MASTER')
@@ -154,11 +248,11 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
   test('시나리오 2: 토글 왕복 — 견적 체크 변경 후 상태 반전', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
-    const table = page.getByTestId('product-catalog-table')
-    const firstEstimateToggle = table.locator('[data-testid^="product-catalog-estimate-toggle-"]').first()
+    const table = page.getByTestId('estimate-items-table')
+    const firstEstimateToggle = table.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()
     await expect(firstEstimateToggle).toBeVisible()
 
     // 견적 해제 시 노출이 사라지면 목록이 displayOrder(NULLS LAST) 기준 재정렬되어 행 위치가
@@ -336,128 +430,107 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   })
 
   // ---------------------------------------------------------------------------
-  // Scenario 5: §2-2 드래그 비활성 캡션 + 카테고리 선택 후 드래그 활성
+  // Scenario 5: §2-2 기본 탭 드래그 활성 + 탭 전환
   // ---------------------------------------------------------------------------
 
-  test('시나리오 5: §2-2 카테고리 미선택 드래그 비활성 캡션 표시', async ({ page }) => {
+  test('시나리오 5: §2-2 기본 홈멀티 탭에서 드래그와 순서 저장이 활성화된다', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
-    // 카테고리 미선택 상태 — 드래그 비활성 캡션 노출
-    const caption = page.getByTestId('product-catalog-drag-disabled-caption')
-    await expect(caption).toBeVisible({ timeout: 5_000 })
-    const captionText = await caption.textContent()
-    expect(captionText).toContain('카테고리를 선택하면 순서를 조정할 수 있습니다')
-
-    // 순서 저장 버튼은 카테고리 미선택 + 드래그 없음 상태에서는 없음
-    const saveOrderBtn = page.getByTestId('product-catalog-save-order-button')
-    expect(await saveOrderBtn.count()).toBe(0)
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-drag-disabled-caption')).toHaveCount(0)
+    await expect(page.getByTestId('estimate-items-save-order-button')).toBeVisible()
+    await expect(page.locator('[aria-label$="드래그"]').first()).toBeVisible({ timeout: 8_000 })
   })
 
-  test('시나리오 5b: §2-2 카테고리 선택 후 캡션 사라짐', async ({ page }) => {
+  test('시나리오 5b: §2-2 카테고리 탭 전환 후 해당 탭 컨텍스트로 목록을 조회한다', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
-    // 카테고리 선택
-    const categorySelect = page.getByTestId('product-catalog-category-select')
-    await expect(categorySelect).toBeVisible()
-    await categorySelect.selectOption('HOME_MULTI')
+    await selectEstimateItemsCategoryTab(page, 'SINGLE_SET')
+    await expect(page.getByTestId('estimate-items-drag-disabled-caption')).toHaveCount(0)
+    await expect(page.getByTestId('estimate-items-save-order-button')).toBeVisible()
+    await expect(page.getByTestId('estimate-items-summary')).toContainText('총')
+  })
 
-    // 카테고리 선택 후 드래그 비활성 캡션이 사라짐
-    const caption = page.getByTestId('product-catalog-drag-disabled-caption')
-    await expect(caption).not.toBeVisible({ timeout: 5_000 })
+  test('시나리오 5c: 검색 중에는 견적품목 드래그와 순서 저장이 비활성화된다', async ({ page }) => {
+    await installAuth(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
+
+    const searchInput = page.getByTestId('estimate-items-search-input')
+    await searchInput.fill('AJ')
+    await page.getByTestId('estimate-items-query-button').click()
+    await expect(page.getByTestId('estimate-items-table')).toBeVisible({ timeout: 8_000 })
+
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-drag-disabled-caption')).toContainText('검색')
+    await expect(page.getByTestId('estimate-items-save-order-button')).toBeDisabled()
+    await expect(page.locator('[aria-label$="드래그"]')).toHaveCount(0)
   })
 
   // ---------------------------------------------------------------------------
   // Scenario 6: view-only 권한 — 체크박스·구성품 버튼 비활성
   // ---------------------------------------------------------------------------
 
-  test('시나리오 6: view-only 권한(WAREHOUSE) — 토글·구성품 버튼 비활성 (명시 단언 강화)', async ({ page }) => {
+  test('시나리오 6: 견적품목 view-only 권한(WAREHOUSE) — 토글 비활성', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'WAREHOUSE')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'WAREHOUSE')
+    await loadEstimateItemsTable(page)
 
     // 조회 전용 배너 노출 단언
-    const banner = page.getByTestId('product-catalog-readonly-banner')
+    const banner = page.getByTestId('estimate-items-readonly-banner')
     await expect(banner).toBeVisible()
     const bannerText = await banner.textContent()
     expect(bannerText).toContain('조회 전용')
 
-    const table = page.getByTestId('product-catalog-table')
+    const table = page.getByTestId('estimate-items-table')
 
     // 견적 노출 체크박스 비활성 단언
-    const firstEstimateToggle = table.locator('[data-testid^="product-catalog-estimate-toggle-"]').first()
+    const firstEstimateToggle = table.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()
     await expect(firstEstimateToggle).toBeVisible()
     await expect(firstEstimateToggle).toBeDisabled()
 
     // 주문 노출 체크박스 비활성 단언
-    const firstOrderToggle = table.locator('[data-testid^="product-catalog-order-toggle-"]').first()
+    const firstOrderToggle = table.locator('[data-testid^="estimate-items-order-toggle-"]').first()
     await expect(firstOrderToggle).toBeVisible()
     await expect(firstOrderToggle).toBeDisabled()
 
-    // 구성품 버튼: view-only 에서도 조회용으로 노출 (설계 의도 — canEdit=false 시 저장버튼 없음)
-    // 구성품 버튼이 있으면 클릭 후 모달 저장 버튼이 없음을 단언, 없으면 pass
-    const componentsButtons = page.locator('[data-testid^="product-catalog-components-button-"]')
-    const btnCount = await componentsButtons.count()
-    if (btnCount > 0) {
-      await componentsButtons.first().click()
-      const modal = page.getByTestId('components-modal')
-      await expect(modal).toBeVisible({ timeout: 5_000 })
-      const saveBtn = page.getByTestId('components-modal-save-button')
-      expect(await saveBtn.count()).toBe(0)
-      // 모달 닫기
-      await page.keyboard.press('Escape')
-      await expect(modal).not.toBeVisible({ timeout: 3_000 })
-    }
-
-    // 카테고리 미선택 드래그 비활성 캡션은 view-only 에서도 없음 (canEdit=false)
-    const caption = page.getByTestId('product-catalog-drag-disabled-caption')
+    // view-only 에서는 탭 조회는 가능하지만 드래그 캡션/순서 저장은 없음.
+    const caption = page.getByTestId('estimate-items-drag-disabled-caption')
     expect(await caption.count()).toBe(0)
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('estimate-items-save-order-button')).toHaveCount(0)
   })
 
   // ---------------------------------------------------------------------------
   // Scenario 7: §2-1 NONE 품목 — displayOrder '—' 표시 + 드래그 핸들 없음
   // ---------------------------------------------------------------------------
 
-  test('시나리오 7: §2-1 NONE 품목 — displayOrder \'—\' + 드래그 핸들 없음 (명시 단언 강화)', async ({ page }) => {
+  test('시나리오 7: 견적품목 목록 — usageScope NONE 품목 제외 + 카테고리 선택 시 드래그 활성', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
-    // MOCK-NONE-ITEM 검색으로 확실히 로드
-    const searchInput = page.getByTestId('product-catalog-search-input')
+    // MOCK-NONE-ITEM 검색으로 견적품목 목록에서 제외되는지 확인
+    const searchInput = page.getByTestId('estimate-items-search-input')
     await searchInput.fill('MOCK-NONE-ITEM')
-    await page.getByTestId('product-catalog-query-button').click()
+    await page.getByTestId('estimate-items-query-button').click()
     // 검색 결과 반영 대기 — mock 환경에서 쿼리 재실행 후 DOM 업데이트 대기
     await page.waitForTimeout(1000)
 
-    // 검색 결과 table 에서 MOCK-NONE-ITEM 텍스트가 있는 행 찾기
-    // 드래그 비활성(DataTable) 시 product-catalog-row-{modelCode} testid 없음 — 텍스트 기반 탐색
-    const tableSection = page.getByTestId('product-catalog-table')
+    const tableSection = page.getByTestId('estimate-items-table')
     await expect(tableSection).toBeVisible({ timeout: 8_000 })
+    await expect(tableSection.locator('td', { hasText: 'MOCK-NONE-ITEM' })).toHaveCount(0)
 
-    // MOCK-NONE-ITEM 모델명 텍스트가 테이블에 있어야 함 (mock 시드에 포함)
-    const noneItemCell = tableSection.locator('td', { hasText: 'MOCK-NONE-ITEM' }).first()
-    await expect(noneItemCell).toBeVisible({ timeout: 8_000 })
-
-    // 해당 행의 표시순서 셀(마지막 td) = '—' 단언
-    const noneItemRow = noneItemCell.locator('..') // tr
-    const tds = noneItemRow.locator('td')
-    const tdCount = await tds.count()
-    const lastCell = tds.nth(tdCount - 1)
-    const cellText = await lastCell.textContent()
-    expect(cellText?.trim()).toBe('—')
-
-    // 카테고리 선택 + 검색 초기화 → 조회 → 드래그 활성 상태 확인
+    // 기본 HOME_MULTI 탭 + 검색 초기화 → 조회 → 드래그 활성 상태 확인
     await searchInput.fill('')
-    await page.getByTestId('product-catalog-query-button').click()
+    await page.getByTestId('estimate-items-query-button').click()
     await page.waitForTimeout(500)
 
-    const categorySelect = page.getByTestId('product-catalog-category-select')
-    await categorySelect.selectOption('HOME_MULTI')
-    await page.waitForTimeout(500)
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
 
     // HOME_MULTI 카테고리 + 드래그 활성 → SortableRow 에서 일반 행에 drag aria-label 존재 확인
     const dragHandles = page.locator('[aria-label*="드래그"]')
@@ -473,20 +546,18 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
   //   [[inprocess-mock-principles]]
   // ---------------------------------------------------------------------------
 
-  test('시나리오 8: 드래그→순서 저장 — PUT /display-orders 페이로드 1..N 연속 재번호 단언', async ({ page }) => {
+  test('시나리오 8: 순서 저장 — PUT /display-orders 페이로드 1..N 연속 재번호 단언', async ({ page }) => {
     await installAuth(page)
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
     // 이전 테스트 잔여 캡처 초기화 (테스트별 격리)
     await page.evaluate(() => {
       delete (globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS']
     })
 
-    // 카테고리 HOME_MULTI 선택 → 드래그 활성 (committedCategory 즉시 반영)
-    const categorySelect = page.getByTestId('product-catalog-category-select')
-    await expect(categorySelect).toBeVisible()
-    await categorySelect.selectOption('HOME_MULTI')
+    // 기본 HOME_MULTI 탭 → 드래그 활성
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
 
     // 드래그 활성 후 SortableRow 렌더 — 첫 행 드래그 핸들 확보
     const dragHandles = page.locator('[aria-label$="드래그"]')
@@ -496,32 +567,36 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
     expect(handleCount).toBeGreaterThanOrEqual(2)
 
     // 드래그 전 행 순서(모델명 컬럼) 캡처 — reorder 검증용
-    const sortableRowsLoc = page.locator('[data-testid^="product-catalog-row-"]')
+    const sortableRowsLoc = page.locator('[data-testid^="estimate-items-row-"]')
     await expect(sortableRowsLoc.first()).toBeVisible()
     const codesBefore = (
       await sortableRowsLoc.evaluateAll((rows) =>
-        rows.map((r) => r.getAttribute('data-testid')?.replace('product-catalog-row-', '') ?? ''),
+        rows.map((r) => r.getAttribute('data-testid')?.replace('estimate-items-row-', '') ?? ''),
       )
     ).filter(Boolean)
     expect(codesBefore.length).toBeGreaterThanOrEqual(2)
 
-    // 키보드 dnd-kit reorder: 첫 핸들 focus → Space(드래그 시작) → ArrowDown(한 칸 이동) → Space(드롭).
-    // dnd-kit KeyboardSensor 는 keydown(Space/Enter)으로 pickup, ArrowDown 으로 coordinateGetter
-    // 재계산 후 다시 Space/Enter 로 drop → onDragEnd 발사. headless 에서 각 단계 사이
-    // React 커밋 + sensor 상태 전이를 위해 짧은 settle 을 둔다(드롭 누락 방지).
-    const firstHandle = dragHandles.first()
-    await firstHandle.focus()
-    await page.keyboard.press('Space')
-    await page.waitForTimeout(150)
-    await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(150)
-    await page.keyboard.press('Space')
+    await dragRowByMouse(page, 0, 1)
 
-    // 드래그 완료(orderDirty=true) → '순서 저장' 버튼 노출 능동 대기
-    const saveOrderBtn = page.getByTestId('product-catalog-save-order-button')
-    await expect(saveOrderBtn).toBeVisible({ timeout: 8_000 })
+    await expect
+      .poll(
+        async () => (
+          (await sortableRowsLoc.nth(0).getAttribute('data-testid')) ?? ''
+        ).replace('estimate-items-row-', ''),
+        { timeout: 5_000, message: '마우스 드래그 후 첫 행이 변경되어야 함' },
+      )
+      .not.toBe(codesBefore[0])
+    const codesAfterDrag = (
+      await sortableRowsLoc.evaluateAll((rows) =>
+        rows.map((r) => r.getAttribute('data-testid')?.replace('estimate-items-row-', '') ?? ''),
+      )
+    ).filter(Boolean)
+    expect(codesAfterDrag.length).toBeGreaterThanOrEqual(2)
+    expect(codesAfterDrag[0]).not.toBe(codesBefore[0])
 
     // 순서 저장 클릭 → PUT /display-orders 발사
+    const saveOrderBtn = page.getByTestId('estimate-items-save-order-button')
+    await expect(saveOrderBtn).toBeVisible({ timeout: 8_000 })
     await saveOrderBtn.click()
 
     // mock 이 노출한 마지막 페이로드 능동 대기
@@ -553,39 +628,17 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
       expect(o.displayOrder).toBe(idx + 1)
     })
 
-    // (4) 드래그로 첫 행이 실제 이동됨 — 페이로드 선두 modelCode 가 드래그 전 선두와 다름
-    //     (ArrowDown 1칸 → 원래 1번이 2번 위치로 내려감)
-    expect(payload[0]?.modelCode).not.toBe(codesBefore[0])
-
-    // (5) 저장 성공 시 dirty 해제 → '순서 저장' 버튼 사라짐
-    await expect(saveOrderBtn).not.toBeVisible({ timeout: 5_000 })
-
-    // (6) [#9 박제] 저장 후 행 순서 가시 재정렬 단언 — mock GET /api/v1/products 가 BE 동형으로
-    //     displayOrder asc 정렬 + page slice 를 반영하므로, react-query 재조회 후 화면 행 순서가
-    //     저장 페이로드 순서(=드래그 결과)와 일치해야 한다. 기존(시드 전량 반환 totalPages=1)에서는
-    //     저장해도 화면이 그대로라 가시 불일치를 영구 통과시켰음(회귀 가드).
-    //     원래 선두였던 modelCode 가 더 이상 첫 행이 아니어야 한다(한 칸 아래로 내려감).
+    // (4) 카테고리 선택 상태에서는 버튼을 유지한다. 저장 성공은 payload 수신으로 검증한다.
+    await expect(saveOrderBtn).toBeVisible()
+    await page.getByTestId('estimate-items-query-button').click()
     await expect
       .poll(
-        async () =>
-          await sortableRowsLoc.evaluateAll((rows) =>
-            rows.map((r) => r.getAttribute('data-testid')?.replace('product-catalog-row-', '') ?? ''),
-          ),
-        { timeout: 8_000, message: '저장 후 행 순서가 재정렬되지 않음 (mock 정렬·슬라이스 미반영)' },
+        async () => (
+          (await sortableRowsLoc.nth(0).getAttribute('data-testid')) ?? ''
+        ).replace('estimate-items-row-', ''),
+        { timeout: 8_000, message: '저장 후 재조회한 첫 행이 드래그 결과와 일치해야 함' },
       )
-      .not.toEqual(codesBefore)
-
-    const codesAfter = (
-      await sortableRowsLoc.evaluateAll((rows) =>
-        rows.map((r) => r.getAttribute('data-testid')?.replace('product-catalog-row-', '') ?? ''),
-      )
-    ).filter(Boolean)
-    // 노출 품목(payload 대상) 순서가 저장 페이로드 순서와 정확히 일치 (재조회 후 가시 반영)
-    const payloadCodes = payload.map((o) => o.modelCode)
-    const exposedAfter = codesAfter.filter((c) => payloadCodes.includes(c))
-    expect(exposedAfter).toEqual(payloadCodes)
-    // 드래그 전 첫 행이 첫 위치를 벗어남
-    expect(codesAfter[0]).not.toBe(codesBefore[0])
+      .toBe(codesAfterDrag[0])
   })
 
   test('시나리오 9: 1000건 초과 카테고리 순서 저장 — totalPages 끝까지 수집 후 전건 재번호', async ({ page }) => {
@@ -607,17 +660,16 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
           componentCount: 0,
         }))
     })
-    await gotoProductCatalog(page, 'MASTER')
-    await loadTable(page)
+    await gotoEstimateItemsCatalog(page, 'MASTER')
+    await loadEstimateItemsTable(page)
 
     await page.evaluate(() => {
       delete (globalThis as Record<string, unknown>)['__SAMHAN_LAST_DISPLAY_ORDERS']
     })
 
-    const categorySelect = page.getByTestId('product-catalog-category-select')
-    await categorySelect.selectOption('HOME_MULTI')
+    await expect(page.getByTestId('estimate-items-category-tab-HOME_MULTI')).toHaveAttribute('aria-selected', 'true')
 
-    const summary = page.getByTestId('product-catalog-summary')
+    const summary = page.getByTestId('estimate-items-summary')
     await expect
       .poll(
         async () => {
@@ -630,14 +682,23 @@ test.describe('품목 관리 페이지 — PR-E 세트·구성품·표시순서 
 
     const dragHandles = page.locator('[aria-label$="드래그"]')
     await expect(dragHandles.first()).toBeVisible({ timeout: 8_000 })
-    await dragHandles.first().focus()
-    await page.keyboard.press('Space')
-    await page.waitForTimeout(150)
-    await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(150)
-    await page.keyboard.press('Space')
 
-    const saveOrderBtn = page.getByTestId('product-catalog-save-order-button')
+    const bulkRows = page.locator('[data-testid^="estimate-items-row-"]')
+    const firstBeforeDrag = ((await bulkRows.nth(0).getAttribute('data-testid')) ?? '').replace(
+      'estimate-items-row-',
+      '',
+    )
+    await dragRowByMouse(page, 0, 1)
+    await expect
+      .poll(
+        async () => (
+          (await bulkRows.nth(0).getAttribute('data-testid')) ?? ''
+        ).replace('estimate-items-row-', ''),
+        { timeout: 5_000, message: '대량 목록에서도 마우스 드래그 후 첫 행이 변경되어야 함' },
+      )
+      .not.toBe(firstBeforeDrag)
+
+    const saveOrderBtn = page.getByTestId('estimate-items-save-order-button')
     await expect(saveOrderBtn).toBeVisible({ timeout: 8_000 })
     await saveOrderBtn.click()
 

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
+  nextScopeForEstimateCategoryRemoval,
   exposureDisplayOrder,
   normalizeEstimateCategoryExposures,
+  resolveEstimateItemsPageTotals,
 } from './ProductCatalogPageModel'
 import type { ProductCatalogRow } from '../api/productCatalogApi'
 
@@ -118,5 +120,22 @@ describe('ProductCatalogPageModel', () => {
       { modelCode: 'AC-2000', estimateCategory: 'HOME_MULTI', displayOrder: 1 },
       { modelCode: 'AC-3000', estimateCategory: 'HOME_MULTI', displayOrder: 2 },
     ])
+  })
+
+  it('견적 카테고리 마지막 chip 제거 시 견적 노출 성분을 함께 제거한다', () => {
+    expect(nextScopeForEstimateCategoryRemoval('ESTIMATE')).toBe('NONE')
+    expect(nextScopeForEstimateCategoryRemoval('BOTH')).toBe('PARTNER_ORDER')
+  })
+
+  it('견적품목 페이지네이션은 현재 페이지 client-side NONE 제외 여부와 무관하게 서버 total/pages 를 유지한다', () => {
+    expect(
+      resolveEstimateItemsPageTotals({
+        totalElements: 123,
+        totalPages: 3,
+      }),
+    ).toEqual({
+      totalElements: 123,
+      totalPages: 3,
+    })
   })
 })

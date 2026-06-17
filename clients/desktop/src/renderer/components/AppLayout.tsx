@@ -521,6 +521,7 @@ export function AppLayout() {
               '/sales/next-day-slip',
               '/sales/vendor-order-upload',
               '/products/catalog',
+              '/products/estimate-items',
               '/admin/sheet-sync',
             ]}
             exactTargets={['/sales']}
@@ -611,7 +612,14 @@ export function AppLayout() {
               show={showProductsList}
               data-testid="sidebar-products-catalog"
             >
-              품목 관리
+              기초품목 관리
+            </SidebarLink>
+            <SidebarLink
+              to="/products/estimate-items"
+              show={showProductsList}
+              data-testid="sidebar-products-estimate-items"
+            >
+              견적품목 관리
             </SidebarLink>
             <SidebarLink
               to="/admin/sheet-sync"

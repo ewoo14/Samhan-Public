@@ -62,12 +62,12 @@ async function injectAuthIntoPage(page: Page, token: string): Promise<void> {
 test('T1: 품목관리 목록 + 토글 UI', async ({ page }) => {
   const token = await loginAndGetToken()
   await injectAuthIntoPage(page, token)
-  await page.goto(`${BASE_URL}/#/products/catalog`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByTestId('product-catalog-query-button')).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId('product-catalog-query-button').click()
-  await expect(page.getByTestId('product-catalog-table').locator('tbody tr').first()).toBeVisible({ timeout: 15_000 })
+  await page.goto(`${BASE_URL}/#/products/estimate-items`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('estimate-items-query-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('estimate-items-query-button').click()
+  await expect(page.getByTestId('estimate-items-table').locator('tbody tr').first()).toBeVisible({ timeout: 15_000 })
   await page.screenshot({
-    path: path.join(SCREENSHOT_DIR, 't1-product-catalog-list.png'),
+    path: path.join(SCREENSHOT_DIR, 't1-estimate-items-list.png'),
     fullPage: false,
   })
 })
@@ -78,25 +78,31 @@ test('T1: 품목관리 목록 + 토글 UI', async ({ page }) => {
 test('T2: PATCH usage_scope → 수동 뱃지 확인', async ({ page }) => {
   const token = await loginAndGetToken()
   await injectAuthIntoPage(page, token)
-  await page.goto(`${BASE_URL}/#/products/catalog`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByTestId('product-catalog-query-button')).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId('product-catalog-query-button').click()
+  await page.goto(`${BASE_URL}/#/products/estimate-items`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('estimate-items-query-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('estimate-items-query-button').click()
 
-  const table = page.getByTestId('product-catalog-table')
+  const table = page.getByTestId('estimate-items-table')
   await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 15_000 })
 
-  // 첫 번째 행의 견적 토글 클릭 → PATCH → 수동 뱃지 확인
-  const firstEstimateToggle = table.locator('[data-testid^="product-catalog-estimate-toggle-"]').first()
+  // 첫 번째 행의 견적 토글 클릭 → PATCH → 토글 상태 반영 확인
+  const firstEstimateToggle = table.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()
   const testId = await firstEstimateToggle.getAttribute('data-testid') ?? ''
-  const modelCode = testId.replace('product-catalog-estimate-toggle-', '')
+  const modelCode = testId.replace('estimate-items-estimate-toggle-', '')
+  const checkedBefore = await firstEstimateToggle.isChecked()
 
+  const patchPromise = page.waitForResponse(
+    (r) =>
+      r.url().includes(`/api/v1/products/${modelCode}/usage`) && r.request().method() === 'PATCH',
+    { timeout: 20_000 },
+  )
   await firstEstimateToggle.click()
-
-  const sourceBadge = page.getByTestId(`product-catalog-source-badge-${modelCode}`)
-  await expect(sourceBadge).toHaveText('수동', { timeout: 10_000 })
+  const patchResp = await patchPromise
+  expect(patchResp.status()).toBe(200)
+  await expect.poll(async () => firstEstimateToggle.isChecked(), { timeout: 10_000 }).toBe(!checkedBefore)
 
   await page.screenshot({
-    path: path.join(SCREENSHOT_DIR, 't2-manual-badge-after-patch.png'),
+    path: path.join(SCREENSHOT_DIR, 't2-estimate-toggle-after-patch.png'),
     fullPage: false,
   })
 })
@@ -132,23 +138,23 @@ test('T6: view-only (WAREHOUSE) — 토글 비활성 + readonly 배너', async (
     })
   }, whToken)
 
-  await page.goto(`${BASE_URL}/#/products/catalog?mockRole=WAREHOUSE`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByTestId('product-catalog-query-button')).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId('product-catalog-query-button').click()
+  await page.goto(`${BASE_URL}/#/products/estimate-items?mockRole=WAREHOUSE`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('estimate-items-query-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('estimate-items-query-button').click()
 
-  const table = page.getByTestId('product-catalog-table')
+  const table = page.getByTestId('estimate-items-table')
   await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 15_000 })
 
   // readonly 배너 확인 (mock mode에서 mockRole=WAREHOUSE → canEdit=false)
-  const banner = page.getByTestId('product-catalog-readonly-banner')
+  const banner = page.getByTestId('estimate-items-readonly-banner')
   await expect(banner).toBeVisible({ timeout: 8_000 })
 
   // 체크박스 비활성 확인
-  const firstToggle = table.locator('[data-testid^="product-catalog-estimate-toggle-"]').first()
+  const firstToggle = table.locator('[data-testid^="estimate-items-estimate-toggle-"]').first()
   await expect(firstToggle).toBeDisabled()
 
   await page.screenshot({
-    path: path.join(SCREENSHOT_DIR, 't6-warehouse-readonly-disabled.png'),
+    path: path.join(SCREENSHOT_DIR, 't6-estimate-items-warehouse-readonly-disabled.png'),
     fullPage: false,
   })
 })

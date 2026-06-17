@@ -418,10 +418,10 @@ test.describe('admin GAS 메뉴 일반 카테고리 노출 (TC-M1~M5)', () => {
    *   - 메뉴 이식 후 기존 관리자 메뉴 미삭제
    *   - pageerror 0건
    *
-   * [Round A P3] '제품 관리'/'/admin/products' → 현행 '품목 관리'/'/products/catalog' 로 갱신.
-   *   MASTER 는 products.list bypass 라 품목 관리가 항상 visible → soft warn 을 hard 단언으로 승격.
+   * [Round A P3] '제품 관리'/'/admin/products' → 현행 '기초품목 관리'/'/products/catalog' 로 갱신.
+   *   MASTER 는 products.list bypass 라 품목 관리 메뉴가 항상 visible → soft warn 을 hard 단언으로 승격.
    */
-  test('TC-M5: 기존 마스터 메뉴 4개 regression 가드 — 메뉴 이식 후에도 유지', async ({ page }) => {
+  test('TC-M5: 기존 마스터 메뉴 5개 regression 가드 — 메뉴 이식 후에도 유지', async ({ page }) => {
     const errors: string[] = []
     attachPageErrorHook(page, errors)
     ensureQaDir()
@@ -432,15 +432,16 @@ test.describe('admin GAS 메뉴 일반 카테고리 노출 (TC-M1~M5)', () => {
     })
     await page.waitForTimeout(1500)
 
-    // 기존 마스터 메뉴 4가지 확인 (정확 경로 AND 메뉴 텍스트 기준).
-    // [Round A P3] '제품 관리'/'/admin/products' → 현행 '품목 관리'/'/products/catalog'.
+    // 기존 마스터 메뉴 5가지 확인 (정확 경로 AND 메뉴 텍스트 기준).
+    // [Round A P3] '제품 관리'/'/admin/products' → 현행 '기초품목 관리'/'/products/catalog'.
     // [Round B P2] '사용자 관리' 라벨은 현행 사이드바 표기 '인사 관리'(admin.employees 게이트)와 일치시킨다
     //   (구 라벨 'admin-nav-users-new' 신규인사 와 혼동 금지). alt 로 구 표기 '사용자 관리' 보존.
     const legacyMenus = [
       { label: '배차지역 관리', path: '/admin/regions', alt: '배차지역관리' },
       { label: '인사 관리', path: '/admin/users', alt: '사용자 관리' },
       { label: '거래처 관리', path: '/admin/partners', alt: '거래처관리' },
-      { label: '품목 관리', path: '/products/catalog', alt: '품목관리' },
+      { label: '기초품목 관리', path: '/products/catalog', alt: '기초품목관리' },
+      { label: '견적품목 관리', path: '/products/estimate-items', alt: '견적품목관리' },
     ]
 
     // 기본 접힘 도입 후 자식 anchor 는 그룹을 펼친 뒤에만 DOM 에 존재한다.
@@ -474,12 +475,12 @@ test.describe('admin GAS 메뉴 일반 카테고리 노출 (TC-M1~M5)', () => {
       fullPage: true,
     })
 
-    // 4개 중 발견된 수 리포트
+    // 5개 중 발견된 수 리포트
     const foundCount = Object.values(foundResults).filter(v => v).length
-    console.log(`[TC-M5] 기존 마스터 메뉴 유지 확인: ${foundCount}/4`)
+    console.log(`[TC-M5] 기존 마스터 메뉴 유지 확인: ${foundCount}/5`)
 
     // [Round A P3 → Round B P2] soft warn → hard AND 단언.
-    //   MASTER 는 모든 page-code bypass 라 4개 메뉴(배차지역/인사/거래처/품목) 가 전부 visible 이어야 한다.
+    //   MASTER 는 모든 page-code bypass 라 5개 메뉴(배차지역/인사/거래처/기초품목/견적품목) 가 전부 visible 이어야 한다.
     //   정확 path href 1건 AND 라벨/alt 포함을 각각 단언해 어느 차원이 빠졌는지 메시지로 드러낸다.
     for (const menu of legacyMenus) {
       const d = detailResults[menu.label]
@@ -496,7 +497,7 @@ test.describe('admin GAS 메뉴 일반 카테고리 노출 (TC-M1~M5)', () => {
         `TC-M5: MASTER 는 "${menu.label}"(${menu.path}) 메뉴가 정확 path href+라벨 모두로 유지되어야 함`,
       ).toBe(true)
     }
-    expect(foundCount, 'TC-M5: 기존 마스터 메뉴 4개 모두 유지되어야 함').toBe(4)
+    expect(foundCount, 'TC-M5: 기존 마스터 메뉴 5개 모두 유지되어야 함').toBe(5)
 
     expect(errors, `TC-M5 pageerror 발생: ${errors.join('; ')}`).toHaveLength(0)
   })
