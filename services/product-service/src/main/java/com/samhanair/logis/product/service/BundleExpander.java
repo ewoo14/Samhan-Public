@@ -11,7 +11,11 @@ import jakarta.persistence.EntityNotFoundException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -85,9 +89,18 @@ public class BundleExpander {
         }
 
         // ── EXPAND ──────────────────────────────────────────────
+        List<BundleComponent> components = componentRepository.findByBundleProductId(parent.getId());
+        Map<String, Product> productsByModelCode = components.isEmpty()
+                ? Map.of()
+                : productRepository.findByModelCodeInAndIsDeletedFalse(
+                                components.stream()
+                                        .map(BundleComponent::getComponentProductCode)
+                                        .collect(Collectors.toCollection(LinkedHashSet::new)))
+                        .stream()
+                        .collect(Collectors.toMap(Product::getModelCode, Function.identity(), (left, right) -> left));
         List<Part> parts = new ArrayList<>();
-        for (BundleComponent c : componentRepository.findByBundleProductId(parent.getId())) {
-            Product cp = productRepository.findByModelCodeAndIsDeletedFalse(c.getComponentProductCode()).orElse(null);
+        for (BundleComponent c : components) {
+            Product cp = productsByModelCode.get(c.getComponentProductCode());
             String name = cp != null ? cp.getName() : c.getComponentProductCode();
             String modelName = cp != null ? cp.getModelName() : null;
             java.util.UUID pid = cp != null ? cp.getId() : null;
@@ -96,7 +109,9 @@ public class BundleExpander {
                     ? setQty.multiply(c.getDefaultQty())
                     : c.getDefaultQty();
             parts.add(new Part(c.getComponentProductCode(), pid, name, modelName, c.getComponentKind(),
-                    c.getComponentVariant(), Boolean.TRUE.equals(c.getIsDefault()), price, qty, specOf(c.getSpecText())));
+                    c.getComponentVariant(), Boolean.TRUE.equals(c.getIsDefault()), price, qty,
+                    specOf(c.getSpecText()), cp != null ? cp.getPanelType() : null,
+                    cp != null ? cp.getRemoteType() : null));
         }
 
         // 싱글세트만 옵션 선별(picked) + 세트단가 재배분(explodeSetParts). 상업멀티 등은 legacy
@@ -158,28 +173,51 @@ public class BundleExpander {
         if (panels.isEmpty()) {
             return null;
         }
+        String targetPanelType = switch (opt) {
+            case "블랙판넬" -> "블랙";
+            case "승강판넬" -> "승강";
+            case "공청판넬" -> "공청";
+            default -> null;
+        };
+        if (targetPanelType != null) {
+            Part attributeMatch = pickPreferred(panels.stream()
+                    .filter(p -> targetPanelType.equals(attributeOf(p.panelType)))
+                    .toList());
+            if (attributeMatch != null) {
+                return attributeMatch;
+            }
+        }
         java.util.function.Predicate<Part> kw = switch (opt) {
             case "블랙판넬" -> p -> textOf(p).matches(".*블랙.*");
             case "승강판넬" -> p -> textOf(p).matches(".*(자동승강|승강).*");
             case "공청판넬" -> p -> textOf(p).matches(".*(공기청정|공청).*");
             default -> null;
         };
-        if (kw != null) {
-            Part m = panels.stream().filter(kw).findFirst().orElse(null);
+        if (kw != null && panels.stream().noneMatch(p -> attributeOf(p.panelType) != null)) {
+            Part m = pickPreferred(panels.stream().filter(kw).toList());
             if (m != null) {
                 return m;
             }
         }
         // 360 형상 매칭(원형/사각) — legacy: 패널의 feat(variant)가 형상값과 정확 일치(없으면 textOf fallback).
         boolean is360 = parts.stream().anyMatch(p ->
-                textOf(p).matches("(?i).*(360\\s*-?\\s*CST|CST\\s*-?\\s*360|360CST).*"));
+                "360".equals(attributeOf(p.panelType))
+                        || textOf(p).matches("(?i).*(360\\s*-?\\s*CST|CST\\s*-?\\s*360|360CST).*"));
         if (is360 && opts.panelShape360() != null && !opts.panelShape360().isBlank()) {
             String shapeVal = opts.panelShape360();
-            Part shape = panels.stream()
+            Part shape = pickPreferred(panels.stream()
+                    .filter(p -> "360".equals(attributeOf(p.panelType)))
                     .filter(p -> shapeVal.equals(p.variant == null ? "" : p.variant.trim()))
-                    .findFirst()
-                    .orElseGet(() -> panels.stream()
-                            .filter(p -> textOf(p).contains(shapeVal)).findFirst().orElse(null));
+                    .toList());
+            if (shape == null) {
+                shape = pickPreferred(panels.stream()
+                        .filter(p -> shapeVal.equals(p.variant == null ? "" : p.variant.trim()))
+                        .toList());
+            }
+            if (shape == null) {
+                shape = pickPreferred(panels.stream()
+                        .filter(p -> textOf(p).contains(shapeVal)).toList());
+            }
             if (shape != null) {
                 return shape;
             }
@@ -200,7 +238,10 @@ public class BundleExpander {
         }
         String opt = opts.remoteOption() == null ? "" : opts.remoteOption();
         if (!opt.isBlank() && allowRemoteChange(defaults)) {
-            Part option = remotes.stream().filter(p -> matchOptionRemote(p, opt)).findFirst().orElse(null);
+            Part option = matchOptionRemoteByType(remotes, opt);
+            if (option == null) {
+                option = pickPreferred(remotes.stream().filter(p -> matchOptionRemote(p, opt)).toList());
+            }
             if (option != null) {
                 // 기본 중 유선 1개(없으면 첫 row) 제거 후 옵션 추가
                 Part drop = defaults.stream().filter(p -> textOf(p).matches(".*유선.*")).findFirst()
@@ -216,6 +257,20 @@ public class BundleExpander {
             }
         }
         return defaults.stream().map(p -> p.modelCode).toList();
+    }
+
+    private Part matchOptionRemoteByType(List<Part> remotes, String opt) {
+        String targetRemoteType = switch (opt) {
+            case "유선리모컨" -> "유선";
+            case "컬러유선리모컨" -> "컬러유선";
+            default -> null;
+        };
+        if (targetRemoteType == null) {
+            return null;
+        }
+        return pickPreferred(remotes.stream()
+                .filter(p -> targetRemoteType.equals(attributeOf(p.remoteType)))
+                .toList());
     }
 
     private boolean matchOptionRemote(Part p, String opt) {
@@ -394,6 +449,20 @@ public class BundleExpander {
                 + " " + (p.modelCode == null ? "" : p.modelCode));
     }
 
+    private static Part pickPreferred(List<Part> candidates) {
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.stream().filter(p -> p.isDefault).findFirst().orElse(candidates.get(0));
+    }
+
+    private static String attributeOf(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
@@ -451,10 +520,13 @@ public class BundleExpander {
         BigDecimal price;
         final BigDecimal qty;
         final String specification;
+        final String panelType;
+        final String remoteType;
 
         Part(String modelCode, java.util.UUID productId, String name, String modelName,
              BundleComponent.ComponentKind kind, String variant,
-             boolean isDefault, BigDecimal price, BigDecimal qty, String specification) {
+             boolean isDefault, BigDecimal price, BigDecimal qty, String specification,
+             String panelType, String remoteType) {
             this.modelCode = modelCode;
             this.productId = productId;
             this.name = name;
@@ -465,6 +537,8 @@ public class BundleExpander {
             this.price = price == null ? BigDecimal.ZERO : price;
             this.qty = qty;
             this.specification = specification;
+            this.panelType = panelType;
+            this.remoteType = remoteType;
         }
     }
 }
