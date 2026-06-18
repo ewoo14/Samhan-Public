@@ -738,6 +738,12 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
                 List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
                         com.samhanair.logis.product.domain.UsageScope.BOTH)))
                 .extracting(Product::getModelCode).contains("STOMP_TEST");
+
+        // 2차 sync — rowHash 동일 경로에서도 구성품 탭 재출현이 attribute 를 덮어쓰지 않아야 한다.
+        syncService.syncAll();
+        Product afterSecondSync = productRepository.findByModelCodeAndIsDeletedFalse("STOMP_TEST").orElseThrow();
+        assertThat(afterSecondSync.getPanelType()).isEqualTo("공청");
+        assertThat(afterSecondSync.getRemoteType()).isNull();
     }
 
     /**
