@@ -4,7 +4,26 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-18 최신) — 수식 빌더 에픽 F1(#499)+F6(#501) 머지 완료
+## 🟢 현재 상태 (2026-06-18 최신) — 수식 빌더 G1(#502) specDetailMap DB 승격 머지 완료
+
+> **G1** = estimate-app 종합견적서 사양맵(specDetailMap)을 런타임 Google Sheets 스크랩 → product-service DB endpoint 전환([[project_sheets_to_db_full_migration]] "외부 전면 DB 치환" 이행).
+
+- ✅ **G1 머지 완료** (PR #502, merge `a2d36319`). `EstimateCatalogInternalController` 신규 `GET /products/internal/estimate-catalog/spec-detail-map` — 이미 적재된 `ProductSpec`을 legacy `getSpecDetailMap_()` 출력 shape로 reshape(**신규 시트 스크랩/sync 0**). specKey(한글 라벨, ProductSheetSyncService 저장형식)→JS 필드명 매핑(home 18/single 21/comm 17/ERV 23 + **판넬 overlay** 타공사이즈/전산볼트간격→cool_kw·cool_power). `db-catalog.specDetailMap()` + `code.js` DB모드 분기(비-DB getSpecDetailMap_ fallback 보존). estimate-app **마지막 런타임 시트 의존 제거**(homeDefaults/singleDefaults 잔존 → 후속 마이크로 슬라이스에서 3탭 prefetch 완전 제거).
+- **다모델 사이클**: 🔵Opus 5-agent→🟣Codex fix(calc-fidelity scope 키집합 canary=ground-truth 고정·401·fallback 테스트)→🟣**Codex 독립 교차(판넬 사양 DB모드 회귀 P1 단독 적발** — Opus '무회귀' 판정 반박)→🟣Codex 판넬fix→🔵**Opus 수렴 재리뷰 blocking 0**. 🔵Claude TM·🟣Codex TM·🟢PM 종합 PR 게시.
+- **라이브 실QA**(product-service G1 재빌드+실 시드 ProductSpec): `/spec-detail-map` **733모델**(home119/single276/comm338) + estimate-app DB모드 GET / 200(14.8MB·SPEC_DETAIL_MAP 주입) + 사양 모달 실 캡처(상업 AM200AXVHHH1 배관경15/28·냉방49000kcal/57kW·R410A·차단기50A / **판넬 PC1MWSK3NW 타공860·전산볼트798 = P1 fix 실증**). `docs/qa/formula-g1-specdetailmap/`. CI 전 체크 green(product-service IT Testcontainers 포함).
+- **🪤 교훈**: ①**#488이 판넬 타공/볼트를 전용 specKey(`타공사이즈,mm`/`전산볼트간격,mm`)로 정규화** → reshape가 렌더가 읽는 legacy 필드(cool_kw/cool_power)로 안 돌리면 시트모드 대비 회귀(시트모드는 냉방성능 컬럼 재활용으로 표시). **교차리뷰(2nd 모델)가 1st 모델 '무회귀' 오판을 단독 교정** — dual-model 핵심 가치. ②canary가 구현 자기참조면 false-green → getSpecDetailMap_ 출력 키집합 고정 + 라이브 A/B로 보강. ③Codex 샌드박스 네트워크 차단으로 Java 빌드 미실행 → PM 직접 compileJava/IT(CI) 검증 보강.
+
+### 🌅 개발책임자 결정 큐 (수식 빌더 후속 — 정찰로 확정, PM 자율 진행 불가 항목)
+- **F2 거래처 DC 설정 UI = ✅ 이미 구현됨**(`SalesPartnerDcConfigPage` — 재작업 불요).
+- **F3(옵션 설정 UI)+F4(번들 자동매칭 룰엔진) = 🔒 신규 설계 결정 필요**(스펙§4 D1: 옵션 자동매칭=GAS에 없는 신규 동작·견적결과 영향. F4 수동선택은 `BundleExpander` 기구현, 자동매칭만 신규).
+- **F7(VAT/배분비율) = 기획서§7 비대상**(우선순위 낮음·현행 유지).
+- **멀티 세트 동적가격 #19 = 🔒 견적금액 변동 정책**.
+- **수식 빌더 Phase 우선순위 = 🔒 기획서§8**(Phase1 파라미터 설정 / Phase2 계산규칙 템플릿 / Phase3 노코드 수식빌더 — 착수 여부·범위 확정 필요).
+- **비게이트 자율 후속(머지 후 PM 진행)** = G1 잔여 = homeDefaults/singleDefaults DB 승격(→ estimate-app 시트 의존 0 완결).
+
+---
+
+## 🟢 (이력) 2026-06-18 — 수식 빌더 에픽 F1(#499)+F6(#501) 머지 완료
 
 > **수식 빌더 에픽** = 종합견적서(estimate-app)·주문서(order-app)의 하드코딩 수식 → 메뉴 설정 기반 계산 전환([[project_quotation_estimate_app_state]]). F1(품목 분류/고정DC 마스터) + F6(주문서 product_db 적용) 완결.
 
