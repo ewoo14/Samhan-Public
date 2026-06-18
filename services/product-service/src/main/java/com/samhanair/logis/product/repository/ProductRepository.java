@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -247,6 +248,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                                      @Param("q") String q,
                                      Pageable pageable);
 
+    /** 카탈로그 응답 변환용 catL/catM/catS 선로딩 — native Page 조회 후 순서 보존 재매핑에 사용. */
+    @EntityGraph(attributePaths = {"catL", "catM", "catS"})
+    @Query("SELECT p FROM Product p WHERE p.id IN :ids")
+    List<Product> findAllWithClassificationsByIdIn(@Param("ids") Collection<UUID> ids);
+
     List<Product> findByUsageScopeAndIsDeletedFalse(UsageScope usageScope);
 
     List<Product> findByProductCategoryAndIsDeletedFalse(ProductCategory productCategory);
@@ -268,6 +274,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * usageScope 는 ESTIMATE/PARTNER_ORDER/BOTH 중 호출자가 IN 목록으로 전달.
      * M:N displayOrder NULL(미sync)은 후순위(NULLS LAST), 동순위는 modelCode.
      */
+    @EntityGraph(attributePaths = {"catL", "catM", "catS"})
     @Query("""
             SELECT p FROM Product p
               , ProductEstimateExposure e

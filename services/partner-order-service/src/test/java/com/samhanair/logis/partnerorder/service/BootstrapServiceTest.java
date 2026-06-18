@@ -160,17 +160,29 @@ class BootstrapServiceTest {
                 .thenReturn(List.of(catalogRow(
                         "홈 실내기", "HM-1", "EA", "123000", "456000",
                         "실내기", "4WAY", "소형", true, null, "12.5", false,
-                        "홈 비고", "홈 규격", "7.2")));
+                        "홈 비고", "홈 규격", "7.2"),
+                        catalogRow(
+                                "홈 null 가격", "HM-NULL", "EA", "123000", null,
+                                "실내기", "4WAY", "소형", true, null, null, false,
+                                null, null, null)));
         when(estimateCatalogClient.catalog(EstimateCategory.COMMERCIAL_MULTI, UsageScope.PARTNER_ORDER))
                 .thenReturn(List.of(catalogRow(
                         "상업 실외기", "CM-1", "EA", "222000", "333000",
                         "실외기", "표준형", "", true, null, "7", false,
-                        "상업 비고", "상업 규격", "11.0")));
+                        "상업 비고", "상업 규격", "11.0"),
+                        catalogRow(
+                                "상업 0원", "CM-ZERO", "EA", "222000", "0",
+                                "실외기", "표준형", "", true, null, null, false,
+                                null, null, null)));
         when(estimateCatalogClient.catalog(EstimateCategory.SINGLE_SET, UsageScope.PARTNER_ORDER))
                 .thenReturn(List.of(catalogRow(
                         "싱글 세트", "SS-1", "SET", "1000000", "1200000",
                         "4w", "premium", null, false, "D7", null, false,
-                        "싱글 비고", "싱글 규격", null)));
+                        "싱글 비고", "싱글 규격", null),
+                        catalogRow(
+                                "싱글 0원", "SS-ZERO", "SET", "0", "1200000",
+                                "4w", "premium", null, false, "D7", null, false,
+                                null, null, null)));
         when(estimateCatalogClient.catalog(EstimateCategory.LEGACY, UsageScope.PARTNER_ORDER))
                 .thenReturn(List.of(catalogRow(
                         "구형 스탠드", "OLD-1", "EA", "800000", "1600000",
@@ -179,7 +191,10 @@ class BootstrapServiceTest {
         when(estimateCatalogClient.components(EstimateCategory.SINGLE_SET))
                 .thenReturn(List.of(componentRow(
                         "SS-1", "PANEL-1", "싱글 판넬", "EA",
-                        "55000", "66000", "PANEL", "기본", true, "판넬 규격")));
+                        "55000", "66000", "PANEL", "기본", true, "판넬 규격"),
+                        componentRow(
+                                "SS-1", "PANEL-NULL", "싱글 null 판넬", "EA",
+                                null, "66000", "PANEL", "선택", false, "판넬 규격")));
         when(estimateCatalogClient.components(EstimateCategory.COMMERCIAL_MULTI))
                 .thenReturn(List.of(componentRow(
                         "CM-1", "COMM-PART-1", "상업 구성품", "EA",

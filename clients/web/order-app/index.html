@@ -13,6 +13,34 @@
      따라서 parser-blocking classic script 로 bootstrap 을 먼저 채워 Apps Script SSR 주입 순서를 복원한다. -->
 <script>
 (function(){
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
+
+  function markBootstrapFatal(message) {
+    window.__SAMHAN_BOOTSTRAP_FATAL__ = true;
+    window.__SAMHAN_BOOTSTRAP_ERROR_MESSAGE__ = message || 'unknown';
+  }
+
+  window.__SAMHAN_RENDER_BOOTSTRAP_FATAL__ = function() {
+    var detail = window.__SAMHAN_BOOTSTRAP_ERROR_MESSAGE__;
+    var html = ''
+      + '<main role="alert" aria-live="assertive" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#020617;color:#e5e7eb;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;">'
+      + '<section style="width:min(440px,100%);border:1px solid #334155;background:#0f172a;padding:24px;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.35);">'
+      + '<h1 style="margin:0 0 12px;font-size:22px;line-height:1.35;">주문서 데이터를 불러오지 못했습니다.</h1>'
+      + '<p style="margin:0 0 18px;color:#cbd5e1;font-size:15px;line-height:1.6;">새로고침 후 다시 시도해주세요. 문제가 계속되면 관리자에게 문의해주세요.</p>'
+      + '<button type="button" onclick="window.location.reload()" style="height:42px;padding:0 16px;border:0;border-radius:6px;background:#2563eb;color:white;font-weight:700;cursor:pointer;">새로고침</button>'
+      + (detail ? '<p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">오류: ' + escapeHtml(detail) + '</p>' : '')
+      + '</section></main>';
+    if (document.body) {
+      document.body.innerHTML = html;
+    } else {
+      document.write('<body>' + html + '</body>');
+    }
+  };
+
   var existing = window.__SAMHAN_BOOTSTRAP__;
   if (existing && Object.keys(existing).length > 0) {
     window.__SAMHAN_BOOTSTRAP_PREFETCHED__ = true;
@@ -34,11 +62,11 @@
       window.__SAMHAN_BOOTSTRAP__ = data && data.payloads ? data.payloads : (data || {});
       window.__SAMHAN_BOOTSTRAP_PREFETCHED__ = true;
     } else {
-      window.__SAMHAN_BOOTSTRAP__ = window.__SAMHAN_BOOTSTRAP__ || {};
+      markBootstrapFatal('HTTP ' + xhr.status);
       console.warn('[v4 bootstrap] sync prefetch failed: HTTP ' + xhr.status);
     }
   } catch (err) {
-    window.__SAMHAN_BOOTSTRAP__ = window.__SAMHAN_BOOTSTRAP__ || {};
+    markBootstrapFatal(err && err.message ? err.message : String(err));
     console.warn('[v4 bootstrap] sync prefetch error', err);
   }
 })();
@@ -1300,9 +1328,17 @@ button.tut-highlight { filter: brightness(1.6); }
 })();
 
 /* 서버 데이터 바인딩 */
+if (window.__SAMHAN_BOOTSTRAP_FATAL__) {
+  // bootstrap 없이는 아래 legacy const snapshot 이 빈 카탈로그로 고정되므로 명시 중단한다.
+  if (typeof window.__SAMHAN_RENDER_BOOTSTRAP_FATAL__ === 'function') {
+    window.__SAMHAN_RENDER_BOOTSTRAP_FATAL__();
+  }
+  throw new Error('order-app bootstrap failed: ' + (window.__SAMHAN_BOOTSTRAP_ERROR_MESSAGE__ || 'unknown'));
+}
+
 /* v4: Apps Script 템플릿 (`<?!= var ?>`) → window.__SAMHAN_BOOTSTRAP__ 주입.
- * shim (legacyShim.ts) 가 main.ts 에서 SamhanLogis MS 로부터 prefetch 후 채움.
- * prefetch 실패 시 빈 배열/객체 (legacy 동작 graceful degrade). */
+ * head 의 parser-blocking sync bootstrap 이 성공한 데이터만 legacy snapshot 으로 고정한다.
+ * 실패 시 위 fatal guard 에서 빈 배열/객체 진행을 차단한다. */
 const __BS = (window.__SAMHAN_BOOTSTRAP__ = window.__SAMHAN_BOOTSTRAP__ || {});
 const HM_RAW = __BS.homemulti || [];
 const SS_RAW = __BS.singleSets || [];

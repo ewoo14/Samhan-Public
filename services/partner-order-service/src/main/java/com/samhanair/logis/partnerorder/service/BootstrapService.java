@@ -406,7 +406,11 @@ public class BootstrapService {
             if (modelCode == null || modelCode.isBlank()) {
                 continue;
             }
-            out.put(modelCode, decimal(row.get(priceKey)));
+            java.math.BigDecimal price = decimal(row.get(priceKey));
+            if (price == null || price.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            out.put(modelCode, price);
         }
         return out;
     }

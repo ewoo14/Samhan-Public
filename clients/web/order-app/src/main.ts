@@ -4,8 +4,9 @@
  * <p>역할:
  * 1. shim 설치 (synchronous) — `window.google.script.run` Proxy + UrlFetchApp noop
  * 2. head classic script 가 선주입한 부트스트랩 객체를 보존
- * 3. 선주입 실패 시 비동기 부트스트랩 prefetch — `/api/v1/partner-orders/bootstrap` 응답을
- *    `window.__SAMHAN_BOOTSTRAP__` 에 병합 + `samhan:bootstrap-ready` CustomEvent 발행
+ * 3. 선주입이 아직 없는 dev/preview 경로에서만 비동기 부트스트랩 prefetch —
+ *    `/api/v1/partner-orders/bootstrap` 응답을 `window.__SAMHAN_BOOTSTRAP__` 에 병합 +
+ *    `samhan:bootstrap-ready` CustomEvent 발행
  * 4. PWA service worker 등록 (vite-plugin-pwa virtual import)
  *
  * <p>실행 순서 보증:
@@ -16,8 +17,8 @@
  *
  * <p>backend 가용성:
  * - `/api/v1/partner-orders/bootstrap` 은 M4 PartnerOrderBootstrapController (PR #76) 가 제공.
- * - prefetch 실패 (네트워크 / 5xx) 는 본 entry 의 `.catch` 가 console.warn 후 진입 — 카탈로그 없이도
- *   BizGate / 로그인 / mobile-gate 는 RPC 12 site shim 만으로 동작한다.
+ * - parser-blocking sync prefetch 실패는 index.html 이 fatal UI 로 중단한다. legacy const snapshot 이
+ *   빈 카탈로그로 고정되는 false-ready 상태를 허용하지 않는다.
  */
 import { installLegacyShim } from './legacyShim'
 import { samhanApi } from './samhanApi'
@@ -25,8 +26,8 @@ import { samhanApi } from './samhanApi'
 // ─── 1) shim 동기 설치 + head 선주입 bootstrap 보존 ───
 installLegacyShim(window.__SAMHAN_BOOTSTRAP__ || {})
 
-// ─── 2) 동기 선주입 실패 시에만 비동기 fallback prefetch ───
-if (!window.__SAMHAN_BOOTSTRAP_PREFETCHED__) {
+// ─── 2) 동기 선주입이 없고 fatal 도 아닌 경로에서만 비동기 fallback prefetch ───
+if (!window.__SAMHAN_BOOTSTRAP_PREFETCHED__ && !window.__SAMHAN_BOOTSTRAP_FATAL__) {
   samhanApi
     .fetchBootstrap()
     .then((bootstrap) => {

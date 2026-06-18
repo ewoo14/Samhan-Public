@@ -34,6 +34,9 @@ declare global {
     UrlFetchApp?: { fetch: (url: string, opts?: unknown) => unknown }
     __SAMHAN_BOOTSTRAP__?: Record<string, unknown>
     __SAMHAN_BOOTSTRAP_PREFETCHED__?: boolean
+    __SAMHAN_BOOTSTRAP_FATAL__?: boolean
+    __SAMHAN_BOOTSTRAP_ERROR_MESSAGE__?: string
+    __SAMHAN_RENDER_BOOTSTRAP_FATAL__?: () => void
   }
 }
 
