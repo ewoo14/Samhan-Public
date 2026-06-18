@@ -269,7 +269,6 @@ public class BootstrapService {
         List<Map<String, Object>> commercialParts = nullToEmpty(estimateCatalogClient.components(
                 EstimateCategory.COMMERCIAL_MULTI));
         List<Map<String, Object>> materialPrices = nullToEmpty(estimateCatalogClient.materialPrices());
-        List<Map<String, Object>> priceBaseline = nullToEmpty(estimateCatalogClient.priceBaseline());
 
         boolean hasProductData = !(homemulti.isEmpty()
                 && commercialMulti.isEmpty()
@@ -277,8 +276,7 @@ public class BootstrapService {
                 && oldProducts.isEmpty()
                 && singleParts.isEmpty()
                 && commercialParts.isEmpty()
-                && materialPrices.isEmpty()
-                && priceBaseline.isEmpty());
+                && materialPrices.isEmpty());
         if (!hasProductData) {
             return Map.of();
         }
@@ -291,10 +289,10 @@ public class BootstrapService {
         payloads.put("commercialMulti", catalogRows(commercialMulti, CatalogShape.MULTI));
         payloads.put("commercialParts", componentRows(commercialParts, true));
         payloads.put("oldProducts", catalogRows(oldProducts, CatalogShape.LEGACY));
-        payloads.put("homeInc", priceBaselineMap(priceBaseline, "HOME_MULTI"));
-        payloads.put("commInc", priceBaselineMap(priceBaseline, "COMMERCIAL_MULTI"));
-        payloads.put("singleInc", priceBaselineMap(priceBaseline, "SINGLE_SET"));
-        payloads.put("singlePartsInc", priceBaselineMap(priceBaseline, "SINGLE_SET"));
+        payloads.put("homeInc", incPriceMap(homemulti, "modelCode", "releasePrice"));
+        payloads.put("commInc", incPriceMap(commercialMulti, "modelCode", "releasePrice"));
+        payloads.put("singleInc", incPriceMap(singleSets, "modelCode", "deliveryPrice"));
+        payloads.put("singlePartsInc", incPriceMap(singleParts, "componentModelCode", "deliveryPrice"));
         return payloads;
     }
 
@@ -397,17 +395,18 @@ public class BootstrapService {
         return out;
     }
 
-    private Map<String, Object> priceBaselineMap(List<Map<String, Object>> rows, String estimateCategory) {
+    /**
+     * order-app 의 *_INC 맵은 legacy GAS "_단가인상" 탭 의미와 동일하게 인상 후 catalog 값을 담는다.
+     * price-baseline(2000-01-01)은 estimate-app 의 "인상 전 단가" 체크박스 전용이므로 여기서 쓰지 않는다.
+     */
+    private Map<String, Object> incPriceMap(List<Map<String, Object>> rows, String modelKey, String priceKey) {
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
-            if (!estimateCategory.equals(str(row.get("estimateCategory")))) {
-                continue;
-            }
-            String modelCode = str(row.get("modelCode"));
+            String modelCode = str(row.get(modelKey));
             if (modelCode == null || modelCode.isBlank()) {
                 continue;
             }
-            out.put(modelCode, decimal(row.get("releasePrice")));
+            out.put(modelCode, decimal(row.get(priceKey)));
         }
         return out;
     }

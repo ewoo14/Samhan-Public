@@ -188,11 +188,6 @@ class BootstrapServiceTest {
                 .thenReturn(List.of(
                         Map.of("name", "D7", "price", new BigDecimal("43000")),
                         Map.of("name", "D8", "price", new BigDecimal("51000"))));
-        when(estimateCatalogClient.priceBaseline())
-                .thenReturn(List.of(
-                        baselineRow("HM-1", "HOME_MULTI", "470000"),
-                        baselineRow("CM-1", "COMMERCIAL_MULTI", "340000"),
-                        baselineRow("SS-1", "SINGLE_SET", "1300000")));
         when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of(
                 makeCacheRow("config", "{\"vatRate\":0.1,\"homeDiscount\":0.45}")));
 
@@ -259,12 +254,14 @@ class BootstrapServiceTest {
         assertThat(commercialPart).containsEntry("price", new BigDecimal("88000"));
 
         // then — 자재가격/단가인상은 배열이 아니라 legacy 객체맵이다.
+        // order-app INC 맵은 인상 후 catalog 값이어야 하며, price-baseline(인상 전)은 estimate-app 전용이다.
         assertThat(payloads.get("singleMatPrices"))
                 .isEqualTo(Map.of("D7", new BigDecimal("43000"), "D8", new BigDecimal("51000")));
-        assertThat(payloads.get("homeInc")).isEqualTo(Map.of("HM-1", new BigDecimal("470000")));
-        assertThat(payloads.get("commInc")).isEqualTo(Map.of("CM-1", new BigDecimal("340000")));
-        assertThat(payloads.get("singleInc")).isEqualTo(Map.of("SS-1", new BigDecimal("1300000")));
-        assertThat(payloads.get("singlePartsInc")).isEqualTo(Map.of("SS-1", new BigDecimal("1300000")));
+        assertThat(payloads.get("homeInc")).isEqualTo(Map.of("HM-1", new BigDecimal("456000")));
+        assertThat(payloads.get("commInc")).isEqualTo(Map.of("CM-1", new BigDecimal("333000")));
+        assertThat(payloads.get("singleInc")).isEqualTo(Map.of("SS-1", new BigDecimal("1000000")));
+        assertThat(payloads.get("singlePartsInc")).isEqualTo(Map.of("PANEL-1", new BigDecimal("55000")));
+        verify(estimateCatalogClient, never()).priceBaseline();
 
         @SuppressWarnings("unchecked")
         Map<String, Object> configMap = (Map<String, Object>) payloads.get("config");
@@ -333,14 +330,6 @@ class BootstrapServiceTest {
         row.put("isDefault", isDefault);
         row.put("specText", specText);
         return row;
-    }
-
-    private static Map<String, Object> baselineRow(
-            String modelCode, String estimateCategory, String releasePrice) {
-        return Map.of(
-                "modelCode", modelCode,
-                "estimateCategory", estimateCategory,
-                "releasePrice", bd(releasePrice));
     }
 
     private static BigDecimal bd(String value) {
