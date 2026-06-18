@@ -4,9 +4,12 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-18 최신) — 수식 빌더 F1.5(#504) 품목 attribute 머지 완료 → F3 착수
+## 🟢 현재 상태 (2026-06-19 최신) — 수식 빌더 F3(#505) 옵션 default DB 승격 머지 완료 → F4 개발책임자 검토 대기
 
-> **수식 빌더 진행**: G1(#502)·Phase1(#503)·**F1.5(품목 attribute panelType/remoteType #504)** 머지 완료. 개발책임자 결정 시퀀스 ~~F1.5~~→**F3(다음)**→F4→F5 자율 진행.
+> **수식 빌더 진행**: G1(#502)·Phase1(#503)·F1.5(#504)·**F3(옵션 default DB 승격 #505)** 머지 완료. 개발책임자 결정 시퀀스 ~~F1.5~~→~~F3~~→**F4(견적 출력 변경 — 검토/go 대기)**→F5.
+>
+> - ✅ **F3 머지**(PR #505, `6e3b786d`): estimate-app homeDefaults/singleDefaults(시트 Row1-2)→`estimate_configs`(V5) DB 승격 + 데스크톱 옵션 기본값 설정 UI + **estimate-app DB모드 시트 의존 0**(3탭 prefetch 제거). 🚨 parity 완전 보존(라이브 Row2 SA키 read 검증=코드 fallback=시드). 360판넬 view fix(ss_p360 SINGLE_DEFAULTS 읽음)·@Digits(12,2)/@Size. dual-model 수렴 blocking0 + 라이브 end-to-end QA(BE 12 default 서빙·PUT 반영/복원·estimate-app DB모드 페이지 HD_RAW/SD_RAW=시드).
+> - ⚠️ **F4 대기**: 옵션 토글 자동매칭(B 휴리스틱·isDefault 우선, BundleExpander.pickPanel을 F1.5 attribute 기반으로 전환) = **견적 출력 변경 슬라이스**. 야간→오전 경계 + 착수 전 확인 제안으로 개발책임자 go/검토 대기. go 시 golden parity 회귀 필수.
 >
 > - ✅ **F1.5 머지**(PR #504, `ecdb78b8`): Product `panel_type`/`remote_type`(V21 nullable+partial index) + `ProductAttributeClassifier`(panelType={공청[공기청정|공청 전부]/블랙/승강/360/일반/null}=F4 `pickPanelRow` 옵션 매칭 정합·classifyHome_ catM 아님; remoteType={유선/컬러유선/무선/null}) + `ProductSheetSyncService` 통합(productCategory guard 내=교차탭 stomp 방지). 🚨 **parity-safe**(컬럼 write-only, 견적 출력 무변경, F4가 소비). dual-model: Opus(P1 taxonomy F4-misalign)→Codex fix→**Codex 교차(P1 cross-tab stomp 단독 적발)**→stomp fix→Opus 수렴 blocking0(실 테스트 실행). 🪤 라이브 분포=dev product-service SA키 부재로 미populate(Testcontainers IT 메커니즘 실증·정직 보고). P2(remoteType variant 미반영=name만)·실 카탈로그 분포·컬러리모컨 누수=**F4 소비 시 검증**.
 
