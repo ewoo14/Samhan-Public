@@ -601,16 +601,43 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         syncService.syncAll();
 
         Product panel = productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_ATTR").orElseThrow();
-        assertThat(panel.getPanelType()).isEqualTo("공기청정 WIFI");
+        assertThat(panel.getPanelType()).isEqualTo("공청");
         assertThat(panel.getRemoteType()).isNull();
 
         Product remote = productRepository.findByModelCodeAndIsDeletedFalse("HM_REMOTE_ATTR").orElseThrow();
         assertThat(remote.getPanelType()).isNull();
-        assertThat(remote.getRemoteType()).isEqualTo("컬러유선리모컨");
+        assertThat(remote.getRemoteType()).isEqualTo("컬러유선");
 
         Product normal = productRepository.findByModelCodeAndIsDeletedFalse("HM_NORMAL_ATTR").orElseThrow();
         assertThat(normal.getPanelType()).isNull();
         assertThat(normal.getRemoteType()).isNull();
+    }
+
+    @Test
+    void sync_rowHash_동일해도_attribute_null이면_백필하고_다음_sync는_unchanged() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        List<List<Object>> sameRows = rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("공기청정 WIFI 판넬", "HM_PANEL_BACKFILL", "", "100,000", "", "80,000")
+        );
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(sameRows);
+
+        syncService.syncAll();
+        Product panel = productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_BACKFILL").orElseThrow();
+        panel.changeAttributes(null, null);
+        productRepository.save(panel);
+
+        ProductSheetSyncService.SyncSummary second = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult secondHome = second.byTab.get("홈멀티");
+        assertThat(secondHome.updated).isEqualTo(1);
+        assertThat(secondHome.unchanged).isZero();
+        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_BACKFILL").orElseThrow()
+                .getPanelType()).isEqualTo("공청");
+
+        ProductSheetSyncService.SyncSummary third = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult thirdHome = third.byTab.get("홈멀티");
+        assertThat(thirdHome.updated).isZero();
+        assertThat(thirdHome.unchanged).isEqualTo(1);
     }
 
     @Test
