@@ -24,7 +24,9 @@ metadata:
 ## 슬라이스 계획 / 진행
 - ✅ **슬1 머지(PR #496, `bb21de5f`)**: 견적품목 관리 메뉴/화면 신설(기초품목 선택추가 + 노출M:N 이관 + 카테고리 탭 고정4 + 카테고리 컬럼 캡슐만). 동적 카테고리 추가/삭제=개발책임자 폐기(고정, EstimateCategory enum 유지).
 - ✅ **슬2 머지(PR #497, `8c7fe7d8`, 2026-06-17)**: 세트 구성품 모달(ComponentsModal/SortableComponentRow/COMPONENT_KIND_OPTIONS) 기초품목→견적품목 이관 + 기초품목 등록전용화(set-badge 유지) + P2 모달제목 품목명 병기. 듀얼리뷰 **사이클2**: Opus 5-agent+실QA 4/4 → CI mock 회귀 4건 적발·fix → **Codex 교차가 mock-BE false-green P1 적발**(fix 이 mock `updateProductUsage` 에서 PARTNER_ORDER 노출 유지로 바꿨으나, 실 BE `ProductService.syncEstimateExposures` 는 NONE/PARTNER_ORDER 시 활성 노출 soft-delete — `UpdateProductUsageRequest` 계약. Opus 라운드 'BE정합' 오판을 교차가 교정)·fix2 → CI green. 🔵Claude·🟣Codex·🟢PM 종합 PR 게시(실QA 4장 인라인).
-- 🔜 **슬3=변동DC + G1 카탈로그 DB 승격**(견적품목 도메인 내, Java FORMULA read useK2 378 parity 포함). **개발책임자 '슬2까지 자율' 위임 충족 → 슬3 착수 전 방향 확인.**
+- ✅ **슬3-1 머지(`d508a020`/`33fc375f`, 2026-06-17)**: Java FORMULA read parity fix(useK2 GsonFactory/행정렬) + 변동DC 멀티 카탈로그 수동 토글(`variableDiscountManual` V19) + 적재 덮어쓰기 가드 + 게이트웨이 변동DC 라우트/UI/Badge. **실측 검증(2026-06-19)**: DB useK2 COMMERCIAL_MULTI **313/338**·HOME_MULTI **107/119** = 스펙 기대치(~313/~107) 달성(정찰의 '86'은 pre-fix 버그 기록).
+- ✅ **슬3-2(specDetailMap DB 승격) = formula-builder G1 #502(`a2d36319`)로 완료.**
+- 🔚 **에픽 데이터/메뉴 분리 핵심 완료**(슬1·슬2·슬3-1·슬3-2, 2026-06-19 확인). 잔여=**슬4(변동DC 실 단가 계산 적용)**: 토글 플래그→견적 단가 반영 = 견적 금액 behavior-change·가격 적용 규칙 **정책 gate**(개발책임자 결정 필요). CATALOG_SOURCE=db 기본전환(슬3-1 FORMULA fix로 unblocked)=3번 G2 소관.
 
 **🪤 슬2 교훈**: mock 은 list-filter(`usageScope IN ESTIMATE/PARTNER_ORDER/BOTH`)가 아니라 **update-behavior(NONE/PARTNER_ORDER → 노출 soft-delete)와 정합**해야 false-green 회피. 듀얼 교차가 단일 라운드 오판 적발한 모범 사례. 리뷰는 채팅 아닌 **PR 에 즉시 게시**(개발책임자 지적) — Claude TM·Codex TM·PM 종합 + Docker 실QA 인라인. ([[ci-test-filter-false-green]] [[dual-5agent-review]] [[review-posting-and-zero-skip]])
 
