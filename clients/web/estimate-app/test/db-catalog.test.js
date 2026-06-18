@@ -74,6 +74,18 @@ jest.mock('axios', () => {
         },
       } : global.__SPEC_DETAIL_MAP_PAYLOAD__);
     }
+    if (/\/estimate-config$/.test(url)) {
+      return ok(global.__ESTIMATE_CONFIG_PAYLOAD__ === undefined ? {
+        commonHomeDiscountRate: 0.42,
+        commonCommercialDiscountRate: 0.43,
+        oldProductDiscountRate: 0.55,
+        vatRate: 0.1,
+        cardFeeRate: 0.03,
+        advanceDiscountRate: 0.02,
+        comboWarnRate: 0.8,
+        footerNotice: '테스트 안내',
+      } : global.__ESTIMATE_CONFIG_PAYLOAD__);
+    }
     return ok([]);
   });
   return { create: jest.fn(() => ({ get })), get };
@@ -91,6 +103,7 @@ const sanitizeDisp = (s) => String(s || '').trim();
 describe('#30 db-catalog → legacy getter shape', () => {
   afterEach(() => {
     delete global.__SPEC_DETAIL_MAP_PAYLOAD__;
+    delete global.__ESTIMATE_CONFIG_PAYLOAD__;
   });
 
   test('multiCatalog HOME_MULTI — useK2/capacity/maxIndoor/고정DC', async () => {
@@ -178,5 +191,25 @@ describe('#30 db-catalog → legacy getter shape', () => {
 
     global.__SPEC_DETAIL_MAP_PAYLOAD__ = null;
     await expect(db.specDetailMap()).resolves.toEqual({});
+  });
+
+  test('estimateConfig — dc-config-service internal 전역 가격 파라미터 반환', async () => {
+    const cfg = await db.estimateConfig();
+    expect(cfg.commonHomeDiscountRate).toBe(0.42);
+    expect(cfg.commonCommercialDiscountRate).toBe(0.43);
+    expect(cfg.oldProductDiscountRate).toBe(0.55);
+    expect(cfg.vatRate).toBe(0.1);
+    expect(cfg.cardFeeRate).toBe(0.03);
+    expect(cfg.advanceDiscountRate).toBe(0.02);
+    expect(cfg.comboWarnRate).toBe(0.8);
+    expect(cfg.footerNotice).toBe('테스트 안내');
+  });
+
+  test('estimateConfig — 배열/null 응답은 빈 객체로 fallback', async () => {
+    global.__ESTIMATE_CONFIG_PAYLOAD__ = [];
+    await expect(db.estimateConfig()).resolves.toEqual({});
+
+    global.__ESTIMATE_CONFIG_PAYLOAD__ = null;
+    await expect(db.estimateConfig()).resolves.toEqual({});
   });
 });

@@ -177,6 +177,9 @@ public enum PageCode {
     /** 거래처 DC 설정 화면 — dc-config-service PartnerDcConfigsController. */
     SALES_PARTNER_DC_CONFIG("sales.partner-dc-config", "거래처 DC 설정"),
 
+    /** 종합견적서 전역 가격 설정 화면 — dc-config-service EstimateConfigController. */
+    SALES_ESTIMATE_CONFIG("sales.estimate-config", "견적 가격 설정"),
+
     // ---- 전표 공통 (slip) ----
 
     /** 전표 물류 처리 상태 전이 API — SP-D6-6. */

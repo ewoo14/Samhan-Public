@@ -463,16 +463,17 @@ export function AppLayout() {
   // [Slice 2] admin GAS 이식 — 일반 카테고리 병행 노출
   const showRegionMgmt = showArologisRegionPage
   const showSheetSync = showProductsSync
-  const showAligoAddressBook = dynamicCanAccess('aligo.address-book', 'view')
-  const showBlockedPartners = showPartnersBlock
-  const showPartnerManagement = showPartnersList
-  const showPartnerDcConfig = dynamicCanAccess('sales.partner-dc-config', 'view')
+    const showAligoAddressBook = dynamicCanAccess('aligo.address-book', 'view')
+    const showBlockedPartners = showPartnersBlock
+    const showPartnerManagement = showPartnersList
+    const showPartnerDcConfig = dynamicCanAccess('sales.partner-dc-config', 'view')
+    const showEstimateConfig = dynamicCanAccess('sales.estimate-config', 'view')
   // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 보드 route — 동적 RBAC 권한 연동.
   // 기존 정적 역할 체크 → dispatch.board 동적 canAccess 로 전환.
   const showDispatchBoard = dynamicCanAccess('dispatch.board', 'view')
   const showSales =
     showSalesSlipList || showEstimatesList || showPartnerOrderList
-    || showPartnerDcConfig || showPartnerManagement || showSlipCleanup
+    || showPartnerDcConfig || showEstimateConfig || showPartnerManagement || showSlipCleanup
     || showNextDaySlip || showVendorOrderOcr || showBlockedPartners
     || showProductsList || showSheetSync
   const showPurchase =
@@ -513,10 +514,11 @@ export function AppLayout() {
             activeTargets={[
               '/sales/estimates',
               '/sales/partner-orders',
-              '/sales/order-approvals',
-              '/admin/partners',
-              '/sales/partner-dc-config',
-              '/admin/blocked-partners',
+                '/sales/order-approvals',
+                '/admin/partners',
+                '/sales/partner-dc-config',
+                '/sales/estimate-config',
+                '/admin/blocked-partners',
               '/sales/slip-cleanup',
               '/sales/next-day-slip',
               '/sales/vendor-order-upload',
@@ -570,10 +572,18 @@ export function AppLayout() {
               show={showPartnerDcConfig}
               requiredRole="SALES / MANAGER / MASTER"
               data-testid="sidebar-sales-partner-dc-config"
-            >
-              거래처 DC 설정
-            </SidebarLink>
-            {/* [C5 후속 C-4] 발송금지 거래처 — /admin/blocked-partners 라우트와 동일한 partners.block VIEW 기준. */}
+              >
+                거래처 DC 설정
+              </SidebarLink>
+              <SidebarLink
+                to="/sales/estimate-config"
+                show={showEstimateConfig}
+                requiredRole="MANAGER / MASTER"
+                data-testid="sidebar-sales-estimate-config"
+              >
+                견적 가격 설정
+              </SidebarLink>
+              {/* [C5 후속 C-4] 발송금지 거래처 — /admin/blocked-partners 라우트와 동일한 partners.block VIEW 기준. */}
             <SidebarLink
               to="/admin/blocked-partners"
               show={showBlockedPartners}

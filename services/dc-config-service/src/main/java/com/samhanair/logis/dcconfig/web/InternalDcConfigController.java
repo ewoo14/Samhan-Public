@@ -2,10 +2,12 @@ package com.samhanair.logis.dcconfig.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.dcconfig.dto.DcConfigResponse;
+import com.samhanair.logis.dcconfig.dto.EstimateConfigResponse;
 import com.samhanair.logis.dcconfig.dto.PartnerInternalResponse;
 import com.samhanair.logis.dcconfig.dto.PriceCalculationRequest;
 import com.samhanair.logis.dcconfig.dto.PriceCalculationResponse;
 import com.samhanair.logis.dcconfig.service.DcConfigService;
+import com.samhanair.logis.dcconfig.service.EstimateConfigService;
 import com.samhanair.logis.dcconfig.service.PriceCalculationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -38,6 +40,7 @@ public class InternalDcConfigController {
 
     private final DcConfigService dcConfigService;
     private final PriceCalculationService priceCalculationService;
+    private final EstimateConfigService estimateConfigService;
 
     /**
      * 거래처 + DC 설정 통합 조회 — M2 RPC 응답 nested 구조.
@@ -89,6 +92,20 @@ public class InternalDcConfigController {
     @GetMapping("/partner-dc-configs")
     public ApiResponse<java.util.List<DcConfigResponse>> listDcConfigs() {
         return ApiResponse.ok(dcConfigService.listAll().stream().map(DcConfigResponse::from).toList());
+    }
+
+    /**
+     * 종합견적서 전역 가격 파라미터 조회 — estimate-app DB 모드 bootstrap 용.
+     */
+    @Operation(summary = "종합견적서 전역 가격 파라미터 조회 (internal)",
+            description = "X-Internal-Token 인증 후 호출. estimate_configs 미존재 시 기본값을 seed 후 반환.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "X-Internal-Token 누락 또는 불일치")
+    })
+    @GetMapping("/estimate-config")
+    public ApiResponse<EstimateConfigResponse> getEstimateConfig() {
+        return ApiResponse.ok(EstimateConfigResponse.from(estimateConfigService.getOrSeedDefault()));
     }
 
     /**

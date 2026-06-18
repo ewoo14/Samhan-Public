@@ -11,19 +11,23 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.samhanair.logis.dcconfig.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.dcconfig.domain.DcConfig;
 import com.samhanair.logis.dcconfig.domain.DcConfigSource;
+import com.samhanair.logis.dcconfig.domain.EstimateConfig;
 import com.samhanair.logis.dcconfig.domain.Partner;
 import com.samhanair.logis.dcconfig.domain.PartnerGroup;
 import com.samhanair.logis.dcconfig.dto.DcConfigImportResult;
 import com.samhanair.logis.dcconfig.repository.DcConfigRepository;
 import com.samhanair.logis.dcconfig.service.DcConfigImportService;
 import com.samhanair.logis.dcconfig.service.DcConfigService;
+import com.samhanair.logis.dcconfig.service.EstimateConfigService;
 import com.samhanair.logis.dcconfig.web.DcConfigImportController;
+import com.samhanair.logis.dcconfig.web.EstimateConfigController;
 import com.samhanair.logis.dcconfig.web.PartnerDcConfigsController;
 import com.samhanair.logis.security.HrAuthorizationHelper;
 import com.samhanair.logis.security.InternalSecurityAutoConfiguration;
@@ -69,6 +73,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @WebMvcTest(
         controllers = {
                 PartnerDcConfigsController.class,
+                EstimateConfigController.class,
                 DcConfigImportController.class
         },
         properties = {
@@ -94,6 +99,7 @@ class DcConfigPermissionControllerIT {
     private static final String IS_SYSTEM_MASTER_HEADER = "X-Is-System-Master";
     private static final String SERVICE_NAME = "dc-config-service";
     private static final String PARTNER_DC_PAGE = "sales.partner-dc-config";
+    private static final String ESTIMATE_CONFIG_PAGE = "sales.estimate-config";
     private static final String IMPORT_PAGE = "dc-config.import";
     private static final String PARTNER_CODE = "P-D6-WEBMVC";
 
@@ -103,6 +109,7 @@ class DcConfigPermissionControllerIT {
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private DcConfigRepository dcConfigRepository;
     @MockBean private DcConfigService dcConfigService;
+    @MockBean private EstimateConfigService estimateConfigService;
     @MockBean private DcConfigImportService importService;
     @MockBean private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
@@ -120,6 +127,10 @@ class DcConfigPermissionControllerIT {
                 .thenReturn(new PageImpl<>(List.of(dcConfig), PageRequest.of(0, 50), 1));
         lenient().when(dcConfigService.updatePartnerDcConfig(anyString(), any()))
                 .thenReturn(dcConfig);
+        lenient().when(estimateConfigService.getOrSeedDefault())
+                .thenReturn(EstimateConfig.defaults());
+        lenient().when(estimateConfigService.update(any()))
+                .thenReturn(EstimateConfig.defaults());
         lenient().when(importService.importCsv(any()))
                 .thenReturn(new DcConfigImportResult(1, 0, 0, List.of()));
     }
@@ -170,6 +181,45 @@ class DcConfigPermissionControllerIT {
                 .andExpect(status().isForbidden());
 
         assertThat(deniedCount(PARTNER_DC_PAGE, "SALES", PermissionAction.UPDATE.name())).isEqualTo(before + 1.0);
+    }
+
+    @Test
+    @DisplayName("견적 가격 설정 조회는 VIEW 권한 없으면 403")
+    void estimateConfigGet_withoutViewGrant_returns403() throws Exception {
+        when(dynamicPermissionClient.check(any(UUID.class), eq(ESTIMATE_CONFIG_PAGE), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+
+        mockMvc.perform(withActor(get("/api/v1/estimate-config"), "SALES"))
+                .andExpect(status().isForbidden());
+
+        verify(estimateConfigService, never()).getOrSeedDefault();
+    }
+
+    @Test
+    @DisplayName("견적 가격 설정 수정은 UPDATE 권한 없으면 403")
+    void estimateConfigPut_withoutUpdateGrant_returns403() throws Exception {
+        when(dynamicPermissionClient.check(any(UUID.class), eq(ESTIMATE_CONFIG_PAGE), eq(PermissionAction.UPDATE)))
+                .thenReturn(false);
+
+        mockMvc.perform(withActor(put("/api/v1/estimate-config"), "SALES")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cardFeeRate\":0.0300}"))
+                .andExpect(status().isForbidden());
+
+        verify(estimateConfigService, never()).update(any());
+    }
+
+    @Test
+    @DisplayName("견적 가격 설정은 X-Is-System-Master=true면 권한 조회 없이 200")
+    void estimateConfigGet_systemMasterBypass_returns200() throws Exception {
+        mockMvc.perform(withSystemMasterActor(
+                        get("/api/v1/estimate-config"),
+                        HrAuthorizationHelper.EXECUTIVE_OFFICE_NAME))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cardFeeRate").value(0.03));
+
+        verify(dynamicPermissionClient, never())
+                .check(any(UUID.class), eq(ESTIMATE_CONFIG_PAGE), eq(PermissionAction.VIEW));
     }
 
     @Test

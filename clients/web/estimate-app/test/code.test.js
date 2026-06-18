@@ -12,6 +12,10 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
 process.env.DEFAULT_USER_EMAIL = 'test@samhan-air.com';
 
 // axios mock — 실 endpoint 호출을 가로채 200/임의 페이로드로 응답.
@@ -48,6 +52,60 @@ jest.mock('axios', () => {
 
 const code = require('../lib/code');
 const slipBridge = require('../lib/slip-bridge');
+const axios = require('axios');
+
+function extractNamedFunction(source, name) {
+  const start = source.indexOf(`function ${name}`);
+  if (start < 0) throw new Error(`${name} not found`);
+  const braceStart = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`${name} body not closed`);
+}
+
+function loadEstimateViewFunctionFromSource(source, name, contextOverrides = {}) {
+  const context = {
+    window: {},
+    document: {
+      getElementById: jest.fn(() => null),
+      querySelector: jest.fn(() => null),
+    },
+    Number,
+    Math,
+    String,
+    Array,
+    ...contextOverrides,
+  };
+  vm.createContext(context);
+  vm.runInContext(extractNamedFunction(source, name), context);
+  return context;
+}
+
+function loadCurrentEstimateViewFunction(name, contextOverrides = {}) {
+  const source = fs.readFileSync(path.join(__dirname, '../views/index.ejs'), 'utf8');
+  return loadEstimateViewFunctionFromSource(source, name, contextOverrides);
+}
+
+function runCardFeeCase(loadFn, rows, checked = true) {
+  const chkCard = { checked };
+  const context = loadFn('applyCardFeeLogic', {
+    document: { getElementById: jest.fn((id) => (id === 'chkCardPay' ? chkCard : null)) },
+    getCardFeeRate: () => 0.03,
+  });
+  const clonedRows = JSON.parse(JSON.stringify(rows));
+  context.applyCardFeeLogic(clonedRows);
+  return {
+    rows: clonedRows,
+    currentCardFee: context.window.CURRENT_CARD_FEE,
+  };
+}
 
 describe('순수 유틸 (Apps Script 호환)', () => {
   test('parseKRNumber_ 한국식 콤마 파싱', () => {
@@ -134,6 +192,142 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     expect(cfg.unitRoundMode).toBe('ROUND');
   });
 
+  test('buildDefaultDcConfig_ — estimateConfig 전역 DC 기본율 주입', () => {
+    const cfg = code.buildDefaultDcConfig_({
+      commonHomeDiscountRate: 0.42,
+      commonCommercialDiscountRate: 0.43,
+    });
+    expect(cfg.homeDiscount).toBe(0.42);
+    expect(cfg.commDiscount).toBe(0.43);
+    expect(cfg.showIHose).toBe(false);
+  });
+
+  test('splitVatAmount_ — 기본 VAT 10%는 기존 1.1 하드코딩과 동일', () => {
+    expect(code.splitVatAmount_(110000, { vatRate: 0.1 })).toEqual({
+      supply: 100000,
+      vat: 10000,
+    });
+    expect(code.splitVatAmount_(-110000, { vatRate: 0.1 })).toEqual({
+      supply: -100000,
+      vat: -10000,
+    });
+  });
+
+  test('splitVatAmount_ — VAT 설정 변경 시 1+vatRate로 분리한다', () => {
+    expect(code.splitVatAmount_(120000, { vatRate: 0.2 })).toEqual({
+      supply: 100000,
+      vat: 20000,
+    });
+  });
+
+  test('applyEstimateTotalAdjustments_ — 선금 기본 0은 총액 무변경 parity', () => {
+    const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
+    const result = code.applyEstimateTotalAdjustments_(rows, {
+      advanceDiscountRate: 0,
+    }, { advance: true });
+    expect(result.total).toBe(110000);
+    expect(result.adjustment).toBe(0);
+    expect(rows).toEqual([{ name: 'A', qty: 1, price: 110000, sub: 110000 }]);
+  });
+
+  test('applyEstimateTotalAdjustments_ — 선금할인은 VAT 포함 총액에서 차감한다', () => {
+    const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
+    const result = code.applyEstimateTotalAdjustments_(rows, {
+      advanceDiscountRate: 0.02,
+    }, { advance: true });
+    expect(result.total).toBe(107800);
+    expect(result.adjustment).toBe(-2200);
+    expect(rows.at(-1)).toEqual(expect.objectContaining({
+      name: '선금할인',
+      price: -2200,
+      sub: -2200,
+    }));
+  });
+
+  test('applyCardFeeLogic(view) — origin/main frozen ground-truth 출력과 동일', () => {
+    // 기대값 = origin/main(머지 base) applyCardFeeLogic 의 verbatim 출력(동결 ground-truth).
+    // 재생성: `git show origin/main:clients/web/estimate-app/views/index.ejs` 의
+    // applyCardFeeLogic 을 동일 입력으로 실행. 테스트 런타임은 CI shallow checkout 호환을 위해 git 비의존.
+    const cases = [
+      {
+        name: '다중행 + qty=1 타깃 합산 + floor 경계',
+        checked: true,
+        rows: [
+          { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
+          { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
+          { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+        ],
+        expected: {
+          currentCardFee: 5029,
+          rows: [
+            { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
+            { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
+            { name: '설치비', type: 'item', qty: 1, price: 6029, sub: 6029 },
+          ],
+        },
+      },
+      {
+        name: '타깃 없음 → 카드수수료 별도행',
+        checked: true,
+        rows: [
+          { name: '세트헤드', type: 'set-head', qty: 2, price: 100000, sub: 200000 },
+          { name: '실내기', type: 'item', qty: 2, price: 100000, sub: 200000 },
+        ],
+        expected: {
+          currentCardFee: 12000,
+          rows: [
+            { name: '세트헤드', type: 'set-head', qty: 2, price: 100000, sub: 200000 },
+            { name: '실내기', type: 'item', qty: 2, price: 100000, sub: 200000 },
+            {
+              name: '카드수수료',
+              model: '카드수수료',
+              unit: '식',
+              qty: 1,
+              price: 12000,
+              sub: 12000,
+              remarks: '',
+              cat: '기타',
+              cardFee: 12000,
+            },
+          ],
+        },
+      },
+      {
+        name: '체크 off → no-op',
+        checked: false,
+        rows: [
+          { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+        ],
+        expected: {
+          currentCardFee: 0,
+          rows: [
+            { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+          ],
+        },
+      },
+      {
+        name: '기존 수수료 remarks → no-op',
+        checked: true,
+        rows: [
+          { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000, remarks: '수수료 포함' },
+          { name: '실내기', type: 'item', qty: 1, price: 2000, sub: 2000 },
+        ],
+        expected: {
+          currentCardFee: 0,
+          rows: [
+            { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000, remarks: '수수료 포함' },
+            { name: '실내기', type: 'item', qty: 1, price: 2000, sub: 2000 },
+          ],
+        },
+      },
+    ];
+
+    cases.forEach((c) => {
+      const actual = runCardFeeCase(loadCurrentEstimateViewFunction, c.rows, c.checked);
+      expect(actual).toEqual(c.expected);
+    });
+  });
+
   test('detectHomeOrder 모델 prefix (AJ0/AJ1/AM0/AM1) — 라이브 분기 복원', () => {
     expect(code.detectHomeOrder([{ section: 'COMM', model: 'AJ050TXJ3CH' }], {})).toBe(true);
     expect(code.detectHomeOrder([{ section: 'COMM', model: 'AC145' }], {})).toBe(false);
@@ -156,6 +350,9 @@ describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
     expect(JSON.parse(bs.homemulti)).toEqual([]);
     expect(JSON.parse(bs.singleSets)).toEqual([]);
     expect(JSON.parse(bs.config).homeDiscount).toBe(0.45);
+    expect(JSON.parse(bs.config).cardFeeRate).toBe(0.03);
+    expect(JSON.parse(bs.config).advanceDiscountRate).toBe(0);
+    expect(JSON.parse(bs.config).vatRate).toBe(0.1);
   }, 15000);
 
   test('checkUserAuth — user-service by-email 매핑 (#31)', async () => {
@@ -210,6 +407,12 @@ describe('slip-bridge — 견적 finalize → slip-service POST', () => {
 });
 
 describe('sendOrderFromUi — legacy 1762 logic 보존', () => {
+  beforeEach(() => {
+    code.cacheRemoveJSON_('CUS_V6');
+    code.cacheRemoveJSON_('MGR_V1');
+    axios.post.mockClear();
+  });
+
   test('빈 items → 항목없음', async () => {
     const r = await code.sendOrderFromUi({ items: [] });
     expect(r.ok).toBe(false);
@@ -223,6 +426,37 @@ describe('sendOrderFromUi — legacy 1762 logic 보존', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.error).toBe('미등록거래처');
+  });
+
+  test('선결제 + advanceDiscountRate > 0 → 선금할인 행을 slip-service 전송 body에 포함한다', async () => {
+    code.cachePutJSON_('CUS_V6', [
+      { code: 'C1', name: '거래처1', bizno: '1234567890', tel: '010', addr: '대구' },
+    ], 60);
+    code.cachePutJSON_('MGR_V1', [], 60);
+
+    const r = await code.sendOrderFromUi({
+      estimateNumber: 'EST-ADV-1',
+      bizno: '123-45-67890',
+      custName: '거래처1',
+      due: '2026-06-18',
+      payDue: '선결제',
+      addr: '대구',
+      estimateConfig: { advanceDiscountRate: 0.02 },
+      items: [{ section: 'HOME', name: '실내기', model: 'AC181', unit: 'EA', qty: 1, price: 110000, sub: 110000 }],
+    });
+
+    expect(r.ok).toBe(true);
+    const slipPost = axios.post.mock.calls.find(([url]) => /\/internal\/slips\/from-estimate$/.test(url));
+    expect(slipPost).toBeTruthy();
+    const body = slipPost[1];
+    const advanceLine = body.lines.find((line) => line.productCode === '선금할인');
+    expect(advanceLine).toEqual(expect.objectContaining({
+      qty: '1',
+      unitPriceVat: 2200,
+      supplyAmount: -2000,
+      vatAmount: -200,
+      remarks: '',
+    }));
   });
 });
 

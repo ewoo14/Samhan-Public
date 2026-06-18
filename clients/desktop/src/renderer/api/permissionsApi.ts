@@ -120,6 +120,7 @@ export type PageCode =
   | 'sales.slip.confirm'
   | 'sales.slip.cancel'
   | 'sales.partner-dc-config'
+  | 'sales.estimate-config'
   | 'slip.transfer.process'
   | 'slip.reject'
   | 'slip.period-lock'

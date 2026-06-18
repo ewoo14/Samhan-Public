@@ -1018,3 +1018,35 @@ export async function updatePartnerDcConfig(
   )
   return res.data.data
 }
+
+// ---------------------------------------------------------------------------
+// dc-config-service — 종합견적서 전역 가격 설정 (/sales/estimate-config)
+// ---------------------------------------------------------------------------
+
+export interface EstimateConfig {
+  commonHomeDiscountRate: number
+  commonCommercialDiscountRate: number
+  oldProductDiscountRate: number
+  vatRate: number
+  cardFeeRate: number
+  advanceDiscountRate: number
+  comboWarnRate: number
+  footerNotice: string
+}
+
+export type UpdateEstimateConfigRequest = EstimateConfig
+
+export async function getEstimateConfig(): Promise<EstimateConfig> {
+  const res = await apiClient.get<ApiEnvelope<EstimateConfig>>('/api/v1/estimate-config')
+  return res.data.data
+}
+
+export async function updateEstimateConfig(
+  request: UpdateEstimateConfigRequest,
+): Promise<EstimateConfig> {
+  const res = await apiClient.put<ApiEnvelope<EstimateConfig>>(
+    '/api/v1/estimate-config',
+    request,
+  )
+  return res.data.data
+}

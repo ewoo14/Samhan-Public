@@ -126,9 +126,11 @@ class PageCodeTest {
         assertThat(PageCode.DC_CONFIG_IMPORT.getCode()).isEqualTo("dc-config.import");
         assertThat(PageCode.DASHBOARD_ADMIN.getCode()).isEqualTo("dashboard.admin");
         assertThat(PageCode.SALES_PARTNER_DC_CONFIG.getCode()).isEqualTo("sales.partner-dc-config");
+        assertThat(PageCode.SALES_ESTIMATE_CONFIG.getCode()).isEqualTo("sales.estimate-config");
 
         assertThat(PageCode.isValid("system.permission-admin")).isTrue();
         assertThat(PageCode.isValid("sales.partner-dc-config")).isTrue();
+        assertThat(PageCode.isValid("sales.estimate-config")).isTrue();
     }
 
     @Test

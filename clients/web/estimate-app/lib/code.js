@@ -145,6 +145,21 @@ const DELUXE_DISCOUNT_AMT = 0;
 const FIRSTGRADE_DISCOUNT_AMT = 0;
 const UNIT_ROUND_TO = 0;
 const UNIT_ROUND_MODE = 'ROUND';
+const DEFAULT_ESTIMATE_CONFIG = {
+  commonHomeDiscountRate: DISCOUNT_RATE_HOME,
+  commonCommercialDiscountRate: DISCOUNT_RATE_COMM,
+  oldProductDiscountRate: 0.5,
+  vatRate: 0.1,
+  cardFeeRate: 0.03,
+  advanceDiscountRate: 0,
+  comboWarnRate: 0,
+  footerNotice: [
+    '※ 분기관은 임의 산정입니다.',
+    '※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.',
+    '※ 본 견적은 견적일로부터 30일 이내에만 유효합니다.',
+    '※ 공공기관 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.',
+  ].join('\n'),
+};
 
 /* ════════════════════════════════════════════════════════════════════════
  * §1 캐시 유틸 (legacy lines 90-123) — apps-script-shim CacheService 위임
@@ -369,10 +384,32 @@ function detectHomeOrder(items, order) {
 }
 
 // DC 설정 기본값 생성 — legacy 라이브 flat shape (homeDiscount 등 11키)
-function buildDefaultDcConfig_() {
+function normalizeEstimateConfig_(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const num = (key, fallback, alias) => {
+    const rawValue = src[key] != null ? src[key] : (alias ? src[alias] : undefined);
+    const value = Number(rawValue);
+    return Number.isFinite(value) ? value : fallback;
+  };
   return {
-    homeDiscount: DISCOUNT_RATE_HOME,
-    commDiscount: DISCOUNT_RATE_COMM,
+    commonHomeDiscountRate: num('commonHomeDiscountRate', DEFAULT_ESTIMATE_CONFIG.commonHomeDiscountRate, 'homeDiscount'),
+    commonCommercialDiscountRate: num('commonCommercialDiscountRate', DEFAULT_ESTIMATE_CONFIG.commonCommercialDiscountRate, 'commDiscount'),
+    oldProductDiscountRate: num('oldProductDiscountRate', DEFAULT_ESTIMATE_CONFIG.oldProductDiscountRate, 'oldDiscount'),
+    vatRate: num('vatRate', DEFAULT_ESTIMATE_CONFIG.vatRate),
+    cardFeeRate: num('cardFeeRate', DEFAULT_ESTIMATE_CONFIG.cardFeeRate),
+    advanceDiscountRate: num('advanceDiscountRate', DEFAULT_ESTIMATE_CONFIG.advanceDiscountRate),
+    comboWarnRate: num('comboWarnRate', DEFAULT_ESTIMATE_CONFIG.comboWarnRate),
+    footerNotice: typeof src.footerNotice === 'string'
+      ? src.footerNotice
+      : DEFAULT_ESTIMATE_CONFIG.footerNotice,
+  };
+}
+
+function buildDefaultDcConfig_(estimateConfig) {
+  const cfg = normalizeEstimateConfig_(estimateConfig);
+  return {
+    homeDiscount: cfg.commonHomeDiscountRate,
+    commDiscount: cfg.commonCommercialDiscountRate,
     showIHose: SHOW_I_HOSE,
     discount360: DISCOUNT_360_AMT,
     discount4way: DISCOUNT_4WAY_AMT,
@@ -383,6 +420,47 @@ function buildDefaultDcConfig_() {
     unitRoundTo: UNIT_ROUND_TO,
     unitRoundMode: UNIT_ROUND_MODE,
   };
+}
+
+function splitVatAmount_(amountVat, estimateConfig) {
+  const cfg = normalizeEstimateConfig_(estimateConfig);
+  const divisor = 1 + (Number(cfg.vatRate) || 0);
+  const abs = Math.abs(Number(amountVat) || 0);
+  const supplyAbs = Math.round(abs / divisor);
+  const vatAbs = abs - supplyAbs;
+  const sign = Number(amountVat) < 0 ? -1 : 1;
+  return { supply: supplyAbs * sign, vat: vatAbs * sign };
+}
+
+function applyEstimateTotalAdjustments_(rows, estimateConfig, options = {}) {
+  if (!Array.isArray(rows)) {
+    return { total: 0, adjustment: 0 };
+  }
+  const cfg = normalizeEstimateConfig_(estimateConfig);
+  const baseTotal = rows.reduce((acc, r) => acc + (Number(r.sub) || ((Number(r.price) || 0) * (Number(r.qty) || 0))), 0);
+  let adjustment = 0;
+
+  if (options.advance === true && cfg.advanceDiscountRate > 0
+      && !rows.some((r) => String(r.name || '').includes('선금할인') || r.advanceDiscount)) {
+    const discount = -Math.round(baseTotal * cfg.advanceDiscountRate);
+    if (discount !== 0) {
+      rows.push({
+        section: 'ETC',
+        type: 'item',
+        name: '선금할인',
+        model: '선금할인',
+        unit: '식',
+        qty: 1,
+        price: discount,
+        sub: discount,
+        remarks: '선금 할인',
+        advanceDiscount: discount,
+      });
+      adjustment += discount;
+    }
+  }
+
+  return { total: baseTotal + adjustment, adjustment };
 }
 
 /**
@@ -1760,6 +1838,10 @@ async function bootstrap(userEmail) {
 
   try { t.homeDefaults = JSON.stringify(getHomeDefaults()); } catch (_) { t.homeDefaults = '{}'; }
   try { t.singleDefaults = JSON.stringify(getSingleDefaults()); } catch (_) { t.singleDefaults = '{}'; }
+  let estimateConfig = normalizeEstimateConfig_(null);
+  if (useDb && dbCatalog) {
+    try { estimateConfig = normalizeEstimateConfig_(await dbCatalog.estimateConfig()); } catch (e) { Logger.log('[bootstrap] db estimateConfig: ' + e.message); }
+  }
   if (useDb && dbCatalog) {
     try { t.specDetailMap = JSON.stringify(await dbCatalog.specDetailMap()); } catch (e) { Logger.log('[bootstrap] db specDetailMap: ' + e.message); t.specDetailMap = '{}'; }
   } else {
@@ -1767,8 +1849,8 @@ async function bootstrap(userEmail) {
   }
   try { t.logoData = getLogoImage(); } catch (_) { t.logoData = ''; }
   t.config = JSON.stringify({
-    homeDiscount: DISCOUNT_RATE_HOME,
-    commDiscount: DISCOUNT_RATE_COMM,
+    homeDiscount: estimateConfig.commonHomeDiscountRate,
+    commDiscount: estimateConfig.commonCommercialDiscountRate,
     showIHose: SHOW_I_HOSE,
     discount360: DISCOUNT_360_AMT,
     discount4way: DISCOUNT_4WAY_AMT,
@@ -1776,7 +1858,12 @@ async function bootstrap(userEmail) {
     oneWayDiscount: ONEWAY_DISCOUNT_AMT,
     deluxeDiscount: DELUXE_DISCOUNT_AMT,
     firstGradeDiscount: FIRSTGRADE_DISCOUNT_AMT,
-    oldDiscount: 0.5,
+    oldDiscount: estimateConfig.oldProductDiscountRate,
+    vatRate: estimateConfig.vatRate,
+    cardFeeRate: estimateConfig.cardFeeRate,
+    advanceDiscountRate: estimateConfig.advanceDiscountRate,
+    comboWarnRate: estimateConfig.comboWarnRate,
+    footerNotice: estimateConfig.footerNotice,
     unitRoundTo: UNIT_ROUND_TO,
     unitRoundMode: UNIT_ROUND_MODE,
   });
@@ -2159,6 +2246,10 @@ async function sendOrderFromUi(data) {
       _last: idx,
       REMARKS: String(it.remarks || it.REMARKS || ''),
     }));
+    const estimateConfig = normalizeEstimateConfig_(order.estimateConfig || order.config);
+    applyEstimateTotalAdjustments_(merged, estimateConfig, {
+      advance: order?.payDue === '선결제',
+    });
 
     // G2: getCustomers_()는 캐시 read 전용(시트 self-heal 제거)이라, 페이지를 오래 열어둔 뒤 제출해
     // CUS_V6 TTL(10분)이 만료되면 등록 거래처가 빈 캐시로 누락("미등록거래처")될 수 있다. 제출 직전
@@ -2196,13 +2287,11 @@ async function sendOrderFromUi(data) {
 
       const priceVat = Math.round(Number(it.price) || 0);
       const total = priceVat * qty;
-      const sup = Math.round(Math.abs(total) / 1.1);
-      const vat = Math.abs(total) - sup;
-      const supply = total < 0 ? -sup : sup;
-      const vatAmt = total < 0 ? -vat : vat;
-      const priceEx = priceVat < 0
-        ? -Math.round(Math.abs(priceVat) / 1.1)
-        : Math.round(priceVat / 1.1);
+      const split = splitVatAmount_(total, estimateConfig);
+      const unitSplit = splitVatAmount_(priceVat, estimateConfig);
+      const supply = split.supply;
+      const vatAmt = split.vat;
+      const priceEx = unitSplit.supply;
 
       let rawSpec = String(it.spec || '').trim();
       if (/경동.*[\/:]/.test(String(order?.addr || ''))) {
@@ -2651,6 +2740,7 @@ module.exports = {
   extractRowsFromFormula_, classifyCommercial_,
   formatWonDiscountLabel_, formatPercentLabel_, combineRemarks_,
   detectHomeOrder, buildDefaultDcConfig_, decideWarehouseCode_,
+  normalizeEstimateConfig_, splitVatAmount_, applyEstimateTotalAdjustments_,
   // §3 부트스트랩
   getHomeMulti, getSingleSets, getSingleParts, getSingleMatPrices,
   getCommercialMulti, getCommercialParts, getOldProducts_,
