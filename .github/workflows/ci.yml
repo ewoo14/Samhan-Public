@@ -262,6 +262,37 @@ jobs:
       - name: 단위 테스트(vitest)
         run: npm test
 
+  frontend-order-app:
+    name: Frontend Order-App (typecheck + test + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: clients/web/order-app
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: clients/web/order-app/package-lock.json
+
+      - name: order-app 의존성 설치
+        run: npm ci
+
+      - name: typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: 단위 테스트(vitest)
+        run: npm run test
+
+      - name: vite build
+        run: npm run build
+
   frontend-mobile-staff:
     name: Frontend Mobile-Staff (typecheck + expo doctor + prebuild dry-run)
     runs-on: ubuntu-latest

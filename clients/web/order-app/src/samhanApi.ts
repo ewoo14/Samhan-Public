@@ -88,23 +88,35 @@ function draftHistoryParams(args: unknown[]): { from?: string; to?: string } {
   return { from: toIsoDateParam(from), to: toIsoDateParam(to) }
 }
 
+function unwrapApiResponse(body: unknown): unknown {
+  if (
+    body &&
+    typeof body === 'object' &&
+    ('success' in body || 'code' in body) &&
+    'data' in body
+  ) {
+    return (body as { data?: unknown }).data
+  }
+  return body
+}
+
 const RPC_MAP: Record<string, RpcHandler> = {
   // ─── 인증 / 등록 / 잠금 (RPC §S 카테고리) ───────────────────────────────
   checkAuthStatus: ([bizNo]) =>
     http
       .get('/auth/partner-status', { params: { bizNo } })
-      .then((r) => r.data),
+      .then((r) => unwrapApiResponse(r.data)),
   requestAuthApproval: ([payload]) =>
-    http.post('/auth/partner-register', payload).then((r) => r.data),
+    http.post('/auth/partner-register', payload).then((r) => unwrapApiResponse(r.data)),
   register: ([payload]) =>
-    http.post('/auth/partner-register', payload).then((r) => r.data),
+    http.post('/auth/partner-register', payload).then((r) => unwrapApiResponse(r.data)),
   setAuthPassword: ([bizNo, pw]) =>
-    http.patch('/auth/partner-password', { bizNo, password: pw }).then((r) => r.data),
+    http.patch('/auth/partner-password', { bizNo, newPassword: pw }).then((r) => unwrapApiResponse(r.data)),
   tryLogin: ([bizNo, pw]) =>
     http
       .post('/auth/partner-login', { bizNo, password: pw })
       .then((r) => {
-        const data = r.data as { token?: string; config?: unknown }
+        const data = unwrapApiResponse(r.data) as { token?: string; config?: unknown } | null
         if (data?.token) sessionStorage.setItem(TOKEN_KEY, data.token)
         // 3d backlog — partner-auth-service 의 로그인 응답 config (DC 율 포함) 캐싱.
         // applyConfigFromServer 가 별도 backend 호출 없이 본 캐시를 재사용한다.
@@ -118,21 +130,21 @@ const RPC_MAP: Record<string, RpcHandler> = {
         return data
       }),
   requestTempPassword: ([bizNo]) =>
-    http.post('/auth/partner-temp-password', { bizNo }).then((r) => r.data),
+    http.post('/auth/partner-temp-password', { bizNo }).then((r) => unwrapApiResponse(r.data)),
   getAccessExpiration: ([bizNo]) =>
     http
       .get('/auth/partner-expiration', { params: { bizNo } })
-      .then((r) => r.data),
+      .then((r) => unwrapApiResponse(r.data)),
 
   // ─── 게이트 이미지 (RPC §R 카테고리) ───────────────────────────────────
   getGateImages: () =>
-    http.get('/partner-orders/gate-images').then((r) => r.data),
+    http.get('/partner-orders/gate-images').then((r) => unwrapApiResponse(r.data)),
 
   // ─── 주문이력 / 로그 (RPC §T 카테고리) ────────────────────────────────
   getOrderHistory: ([bizCode, dateRange]) =>
     http
       .get('/partner-orders/history', { params: { bizCode, ...(dateRange || {}) } })
-      .then((r) => r.data),
+      .then((r) => unwrapApiResponse(r.data)),
   logFrontEvent: (args) => {
     const [first, second, third] = args
     const action = args.length >= 4 ? second : first
@@ -143,7 +155,7 @@ const RPC_MAP: Record<string, RpcHandler> = {
         action: String(action || 'legacy-action'),
         detail: String(detail || ''),
       })
-      .then((r) => r.data)
+      .then((r) => unwrapApiResponse(r.data))
       .catch((err: unknown) => {
         // 로그 실패는 swallow (legacy 동작 — sendLog 도 silent)
         console.warn('[v4 shim] logFrontEvent silent fail', err)
@@ -153,13 +165,13 @@ const RPC_MAP: Record<string, RpcHandler> = {
 
   // ─── 임시저장 / 스냅샷 (RPC §U/§V 카테고리) ──────────────────────────
   saveOrderSnapshot: ([payload]) =>
-    http.post('/partner-orders/drafts', payload).then((r) => r.data),
+    http.post('/partner-orders/drafts', payload).then((r) => unwrapApiResponse(r.data)),
   saveDraft: ([payload]) =>
-    http.post('/partner-orders/drafts', payload).then((r) => r.data),
+    http.post('/partner-orders/drafts', payload).then((r) => unwrapApiResponse(r.data)),
   getOrderSnapshotHistory: (args) =>
-    http.get('/partner-orders/drafts', { params: draftHistoryParams(args) }).then((r) => r.data),
+    http.get('/partner-orders/drafts', { params: draftHistoryParams(args) }).then((r) => unwrapApiResponse(r.data)),
   getDraftList: (args) =>
-    http.get('/partner-orders/drafts', { params: draftHistoryParams(args) }).then((r) => r.data),
+    http.get('/partner-orders/drafts', { params: draftHistoryParams(args) }).then((r) => unwrapApiResponse(r.data)),
 
   // ─── 최종 주문 전송 (RPC §O buildSendRows + §X sendOrderFromUi) ─────
   sendOrderFromUi: ([payload]) => {
@@ -176,15 +188,15 @@ const RPC_MAP: Record<string, RpcHandler> = {
 
   // ─── 튜토리얼 상태 (RPC §W 카테고리) ──────────────────────────────────
   saveTutorialState: ([state]) =>
-    http.patch('/auth/partner-tutorial', { state }).then((r) => r.data),
+    http.patch('/auth/partner-tutorial', { state }).then((r) => unwrapApiResponse(r.data)),
 
   // ─── 거래처 마스터 / 카탈로그 / DC 설정 (Code.js 외부 호출 대체) ─────
   getCustomerData: ([partnerCode]) =>
-    http.get(`/partners/${encodeURIComponent(String(partnerCode))}`).then((r) => r.data),
+    http.get(`/partners/${encodeURIComponent(String(partnerCode))}`).then((r) => unwrapApiResponse(r.data)),
   getProducts: ([category]) =>
     http
       .get('/products', { params: { usageScope: 'PARTNER_ORDER', category } })
-      .then((r) => r.data),
+      .then((r) => unwrapApiResponse(r.data)),
   // 3d backlog — partner-auth-service 의 로그인 응답이 이미 DC 정책을 nested 로 포함하므로
   // 별도 backend 호출 없이 sessionStorage 캐시를 즉시 반환한다. 캐시 부재 시 graceful null.
   // 외부 단건 endpoint `/partner-dc-configs/{partnerCode}` 는 admin list 전용 (4b backlog 와 별개).
@@ -238,8 +250,17 @@ export const samhanApi = {
     return http
       .get('/partner-orders/bootstrap', cfg)
       .then((r) => {
-        const body = r.data as { data?: Record<string, unknown> } | Record<string, unknown>
+        const body = r.data as
+          | { data?: { payloads?: Record<string, unknown> } & Record<string, unknown> }
+          | Record<string, unknown>
         if (body && typeof body === 'object' && 'data' in body && body.data) {
+          if (
+            typeof body.data === 'object' &&
+            'payloads' in body.data &&
+            body.data.payloads
+          ) {
+            return body.data.payloads as Record<string, unknown>
+          }
           return body.data as Record<string, unknown>
         }
         return body as Record<string, unknown>

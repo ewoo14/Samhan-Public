@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -161,13 +162,12 @@ public class ProductCatalogController {
         // LIKE 와일드카드(\, %, _) 이스케이프 후 바인딩 (사이클2 지적 P3-4, 2026-06-11)
         String qNormalized = (q == null || q.isBlank()) ? null : escapeLikeWildcards(q.trim());
 
-        // P2-2 N+1 방지: searchByUsageScope 가 반환한 Page<Product> 를 직접 사용.
+        // P2-2 N+1 방지: searchByUsageScope 가 반환한 Page<Product> 의 id 순서를 유지한다.
         // 기존 코드는 page.getContent() 의 각 BUNDLE 행마다 findByCatalogExposedModelCodeAndIsDeletedFalse 를
-        // 2회 호출하여 N+1 을 유발했다. 여기서는 Product 엔티티(id 포함)를 이미 보유하므로
-        // 재조회 없이 UUID 집합을 수집 → 벌크 count 1쿼리로 대체한다.
+        // 2회 호출하여 N+1 을 유발했다. 여기서는 id 집합 기준 catL/M/S 선로딩 + 구성품 count 벌크로 대체한다.
         Page<Product> productPage = productRepository
                 .searchByUsageScope(usageScopeName, estimateCategoryName, qNormalized, pageable);
-        List<Product> products = productPage.getContent();
+        List<Product> products = loadProductsWithClassifications(productPage.getContent());
 
         // BUNDLE UUID 집합 → 벌크 count 1쿼리 (재조회 없음)
         Set<UUID> bundleIds = products.stream()
@@ -201,6 +201,19 @@ public class ProductCatalogController {
 
         return new org.springframework.data.domain.PageImpl<>(enriched,
                 productPage.getPageable(), productPage.getTotalElements());
+    }
+
+    private List<Product> loadProductsWithClassifications(List<Product> products) {
+        if (products.isEmpty()) {
+            return products;
+        }
+        Map<UUID, Product> fetchedById = productRepository.findAllWithClassificationsByIdIn(
+                        products.stream().map(Product::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        return products.stream()
+                .map(product -> fetchedById.getOrDefault(product.getId(), product))
+                .toList();
     }
 
     /**

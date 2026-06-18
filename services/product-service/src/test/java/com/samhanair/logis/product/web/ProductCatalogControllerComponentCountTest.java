@@ -104,6 +104,8 @@ class ProductCatalogControllerComponentCountTest {
                 PageRequest.of(0, 50), 2);
         when(productRepository.searchByUsageScope(any(), any(), any(), any()))
                 .thenReturn(page);
+        when(productRepository.findAllWithClassificationsByIdIn(anyCollection()))
+                .thenReturn(List.of(bundleProduct, singleProduct));
         // P2-2 N+1 제거: searchByUsageScope 가 반환한 Page<Product> 에 id 가 이미 있으므로
         // findByCatalogExposedModelCodeAndIsDeletedFalse 재조회가 불필요해졌다.
         // 이전 stub 은 lenient 로 유지하여 이후 변경 테스트에서 필요 시 참조 가능.
@@ -140,6 +142,8 @@ class ProductCatalogControllerComponentCountTest {
                 PageRequest.of(0, 50), 1);
         when(productRepository.searchByUsageScope(any(), any(), any(), any()))
                 .thenReturn(page);
+        when(productRepository.findAllWithClassificationsByIdIn(anyCollection()))
+                .thenReturn(List.of(singleProduct));
 
         // when
         var result = controller.listProducts(null, null, null, 0, 50);

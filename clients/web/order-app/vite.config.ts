@@ -18,6 +18,8 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { resolve } from 'node:path'
 
+process.env.VITE_API_BASE_URL = process.env.VITE_API_BASE_URL || '/api/v1'
+
 export default defineConfig({
   plugins: [
     VitePWA({

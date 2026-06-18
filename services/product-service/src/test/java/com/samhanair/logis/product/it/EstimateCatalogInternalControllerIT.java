@@ -13,11 +13,13 @@ import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
+import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.UsageScope;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
+import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import java.math.BigDecimal;
@@ -49,7 +51,41 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
     private ProductSpecRepository productSpecRepository;
 
     @Autowired
+    private ProductEstimateExposureRepository exposureRepository;
+
+    @Autowired
     private BundleComponentRepository bundleComponentRepository;
+
+    /** products endpoint 는 default ESTIMATE, 주문서 호출은 PARTNER_ORDER + BOTH scope 로 노출 필터를 바꾼다. */
+    @Test
+    void products_scopeParam_filtersEstimateVsPartnerOrderCatalog() throws Exception {
+        Product estimateOnly = seedCatalogProduct("IT_SCOPE_EST", UsageScope.ESTIMATE);
+        Product partnerOrderOnly = seedCatalogProduct("IT_SCOPE_PO", UsageScope.PARTNER_ORDER);
+        Product both = seedCatalogProduct("IT_SCOPE_BOTH", UsageScope.BOTH);
+        exposureRepository.save(ProductEstimateExposure.create(
+                estimateOnly.getId(), EstimateCategory.HOME_MULTI, 1));
+        exposureRepository.save(ProductEstimateExposure.create(
+                partnerOrderOnly.getId(), EstimateCategory.HOME_MULTI, 2));
+        exposureRepository.save(ProductEstimateExposure.create(
+                both.getId(), EstimateCategory.HOME_MULTI, 3));
+        productRepository.flush();
+        exposureRepository.flush();
+
+        mockMvc.perform(get("/products/internal/estimate-catalog/products?category=HOME_MULTI")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].modelCode", hasItem("IT_SCOPE_EST")))
+                .andExpect(jsonPath("$.data[*].modelCode", hasItem("IT_SCOPE_BOTH")))
+                .andExpect(jsonPath("$.data[?(@.modelCode == 'IT_SCOPE_PO')]").doesNotExist());
+
+        mockMvc.perform(get("/products/internal/estimate-catalog/products"
+                        + "?category=HOME_MULTI&scope=PARTNER_ORDER")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].modelCode", hasItem("IT_SCOPE_PO")))
+                .andExpect(jsonPath("$.data[*].modelCode", hasItem("IT_SCOPE_BOTH")))
+                .andExpect(jsonPath("$.data[?(@.modelCode == 'IT_SCOPE_EST')]").doesNotExist());
+    }
 
     /** 상업멀티 구성품 조회 시 구성품 ProductSpec 목록을 additive specs 필드로 반환한다. */
     @Test
@@ -102,6 +138,14 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
                 productCategory, UsageScope.BOTH, estimateCategory);
         parent.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
         return productRepository.save(parent);
+    }
+
+    /** products endpoint scope 필터 검증용 카탈로그 품목 1건 저장. */
+    private Product seedCatalogProduct(String modelCode, UsageScope usageScope) {
+        Category cat = categoryRepository.save(Category.create("CAT-" + modelCode, "estimate catalog", null, 39));
+        return productRepository.save(Product.seedFromSheet("품목 " + modelCode, modelCode, cat,
+                BigDecimal.valueOf(500_000), BigDecimal.valueOf(400_000), ProductType.SINGLE,
+                ProductCategory.HOME_MULTI, usageScope, EstimateCategory.HOME_MULTI));
     }
 
     /** 구성 후보 품목(SINGLE) 1건 저장 — modelCode 로 BundleComponent 와 join 된다. */

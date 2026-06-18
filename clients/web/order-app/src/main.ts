@@ -3,42 +3,44 @@
  *
  * <p>역할:
  * 1. shim 설치 (synchronous) — `window.google.script.run` Proxy + UrlFetchApp noop
- * 2. 빈 부트스트랩 객체 즉시 주입 — legacy inline script (line 1230~) 가 안전하게 동작
- * 3. 비동기 부트스트랩 prefetch — `/api/v1/partner-orders/bootstrap` 응답을
- *    `window.__SAMHAN_BOOTSTRAP__` 에 병합 + `samhan:bootstrap-ready` CustomEvent 발행
+ * 2. head classic script 가 선주입한 부트스트랩 객체를 보존
+ * 3. 선주입이 아직 없는 dev/preview 경로에서만 비동기 부트스트랩 prefetch —
+ *    `/api/v1/partner-orders/bootstrap` 응답을 `window.__SAMHAN_BOOTSTRAP__` 에 병합 +
+ *    `samhan:bootstrap-ready` CustomEvent 발행
  * 4. PWA service worker 등록 (vite-plugin-pwa virtual import)
  *
  * <p>실행 순서 보증:
- * - 본 모듈 (`<script type="module">` in head) 은 기본적으로 defer 동작 (HTML parse 완료 후 실행)
- * - legacy inline `<script>` (body, line 1226~9437) 는 parser-blocking 이라 본 모듈보다 먼저 실행됨
- * - 그러나 legacy 의 실제 render/init (initGate / renderHome / initEvents 등 9029~9047 라인) 은
- *   `DOMContentLoaded` 시점에 실행 → 본 모듈의 sync 부분이 그 전에 완료됨
- * - shim 의 sync 부분 (window.google + window.__SAMHAN_BOOTSTRAP__={}) 만 보장하면 OK
+ * - 본 모듈 (`<script type="module">` in head) 은 defer 동작이라 legacy inline script 의
+ *   데이터 const 평가보다 늦다.
+ * - 따라서 index.html 의 parser-blocking classic script 가 먼저 bootstrap 을 채우고,
+ *   main.ts 는 그 객체를 덮어쓰지 않는다.
  *
  * <p>backend 가용성:
  * - `/api/v1/partner-orders/bootstrap` 은 M4 PartnerOrderBootstrapController (PR #76) 가 제공.
- * - prefetch 실패 (네트워크 / 5xx) 는 본 entry 의 `.catch` 가 console.warn 후 진입 — 카탈로그 없이도
- *   BizGate / 로그인 / mobile-gate 는 RPC 12 site shim 만으로 동작한다.
+ * - parser-blocking sync prefetch 실패는 index.html 이 fatal UI 로 중단한다. legacy const snapshot 이
+ *   빈 카탈로그로 고정되는 false-ready 상태를 허용하지 않는다.
  */
 import { installLegacyShim } from './legacyShim'
 import { samhanApi } from './samhanApi'
 
-// ─── 1) shim 동기 설치 + 빈 부트스트랩 — legacy inline script 가 즉시 사용 가능 ───
-installLegacyShim({})
+// ─── 1) shim 동기 설치 + head 선주입 bootstrap 보존 ───
+installLegacyShim(window.__SAMHAN_BOOTSTRAP__ || {})
 
-// ─── 2) 비동기 부트스트랩 prefetch + window 객체 갱신 + CustomEvent ───
-samhanApi
-  .fetchBootstrap()
-  .then((bootstrap) => {
-    Object.assign(window.__SAMHAN_BOOTSTRAP__ || {}, bootstrap)
-    // legacy 가 listen 하면 재렌더, 미구현이어도 무영향
-    document.dispatchEvent(
-      new CustomEvent('samhan:bootstrap-ready', { detail: bootstrap }),
-    )
-  })
-  .catch((err: unknown) => {
-    console.warn('[v4 main] bootstrap prefetch error', err)
-  })
+// ─── 2) 동기 선주입이 없고 fatal 도 아닌 경로에서만 비동기 fallback prefetch ───
+if (!window.__SAMHAN_BOOTSTRAP_PREFETCHED__ && !window.__SAMHAN_BOOTSTRAP_FATAL__) {
+  samhanApi
+    .fetchBootstrap()
+    .then((bootstrap) => {
+      Object.assign(window.__SAMHAN_BOOTSTRAP__ || {}, bootstrap)
+      // legacy 가 listen 하면 재렌더, 미구현이어도 무영향
+      document.dispatchEvent(
+        new CustomEvent('samhan:bootstrap-ready', { detail: bootstrap }),
+      )
+    })
+    .catch((err: unknown) => {
+      console.warn('[v4 main] bootstrap prefetch error', err)
+    })
+}
 
 // ─── 3) PWA service worker 등록 (vite-plugin-pwa virtual module) ───
 if ('serviceWorker' in navigator) {

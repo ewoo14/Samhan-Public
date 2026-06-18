@@ -426,6 +426,14 @@ spring:
             - JwtAuthentication
             - RemoveRequestHeader=Authorization
 
+        # partner-order-service 공개 endpoint — 주문서 bootstrap/gate/log 는 거래처 로그인 전 접근 가능.
+        - id: partner-order-public-v1
+          uri: lb://partner-order-service
+          predicates:
+            - Path=/api/v1/partner-orders/bootstrap,/api/v1/partner-orders/gate-images,/api/v1/partner-orders/log
+          filters:
+            - StripInboundIdentityHeaders
+
         # partner-order-service — controller 측 `/api/v1/partner-orders` 풀패스 보유 → StripPrefix=0
         - id: partner-order-service-v1
           uri: lb://partner-order-service

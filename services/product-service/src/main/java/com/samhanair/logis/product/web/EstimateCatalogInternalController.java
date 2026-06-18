@@ -125,10 +125,12 @@ public class EstimateCatalogInternalController {
                     + "정렬 + 변동DC 분기·사양 파생 포함.")
     @GetMapping("/products")
     @Transactional(readOnly = true)
-    public ApiResponse<List<CatalogRow>> products(@RequestParam("category") EstimateCategory category) {
-        // 개발책임자 결정(2026-06-10): 견적서엔 designated 품목만(ESTIMATE/BOTH), 구글 시트 순서 유지.
+    public ApiResponse<List<CatalogRow>> products(
+            @RequestParam("category") EstimateCategory category,
+            @RequestParam(name = "scope", defaultValue = "ESTIMATE") UsageScope scope) {
+        // 개발책임자 결정(2026-06-10): 호출 scope + BOTH 노출 품목만, 구글 시트 순서 유지.
         List<Product> products = productRepository.findExposedCatalog(
-                category, java.util.List.of(UsageScope.ESTIMATE, UsageScope.BOTH));
+                category, java.util.List.of(scope, UsageScope.BOTH));
 
         Map<UUID, Map<String, String>> specByProduct = loadSpecs(
                 products.stream().map(Product::getId).toList());

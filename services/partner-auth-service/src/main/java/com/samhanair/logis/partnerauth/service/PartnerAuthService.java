@@ -54,9 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PartnerAuthService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final char[] TEMP_ALPHABET =
-            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
-    private static final int TEMP_PASSWORD_LENGTH = 10;
+    private static final int PIN_BOUND = 10_000;
 
     private final PartnerAuthRepository authRepository;
     private final PartnerLoginAttemptRepository attemptRepository;
@@ -266,11 +264,8 @@ public class PartnerAuthService {
     }
 
     private String generateTempPassword() {
-        StringBuilder sb = new StringBuilder(TEMP_PASSWORD_LENGTH);
-        for (int i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
-            sb.append(TEMP_ALPHABET[RANDOM.nextInt(TEMP_ALPHABET.length)]);
-        }
-        return sb.toString();
+        // BizGate 거래처 비밀번호 정책과 동일하게 임시 비밀번호도 숫자 4자리 PIN 으로 발급한다.
+        return String.format("%04d", RANDOM.nextInt(PIN_BOUND));
     }
 
     private String maskMobileNo(String mobileNo) {

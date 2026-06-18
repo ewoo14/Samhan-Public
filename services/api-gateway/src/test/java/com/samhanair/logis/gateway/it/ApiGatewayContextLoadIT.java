@@ -74,6 +74,8 @@ class ApiGatewayContextLoadIT {
      *   <li>{@code product-display-orders-v1} → {@code /api/v1/products/display-orders} (표시순서 일괄 갱신)</li>
      *   <li>{@code product-catalog-realtime-v1} → {@code /api/v1/products/catalog-realtime} (목록 SSE 구독)</li>
      *   <li>{@code product-fixed-discount-v1} → {@code /api/v1/products/*&#47;fixed-discount} (고정DC 인라인 자동저장)</li>
+     *   <li>{@code product-classification-v1} → {@code /api/v1/products/*&#47;classification} (품목별 분류 저장)</li>
+     *   <li>{@code product-classifications-v1} → {@code /api/v1/classifications/**} (분류 마스터 CRUD)</li>
      * </ul>
      *
      * <p>단언 4축:
@@ -106,12 +108,17 @@ class ApiGatewayContextLoadIT {
         assertRoutePath(routes, "product-display-orders-v1", "/api/v1/products/display-orders");
         assertRoutePath(routes, "product-catalog-realtime-v1", "/api/v1/products/catalog-realtime");
         assertRoutePath(routes, "product-fixed-discount-v1", "/api/v1/products/*/fixed-discount");
+        assertRoutePath(routes, "product-classification-v1", "/api/v1/products/*/classification");
+        assertRoutePath(routes, "product-classifications-v1",
+                "/api/v1/classifications", "/api/v1/classifications/**");
 
         // (2) no-strip — 세 라우트 모두 StripPrefix 필터 미보유.
         assertNoStripPrefix(routes, "product-components-v1");
         assertNoStripPrefix(routes, "product-display-orders-v1");
         assertNoStripPrefix(routes, "product-catalog-realtime-v1");
         assertNoStripPrefix(routes, "product-fixed-discount-v1");
+        assertNoStripPrefix(routes, "product-classification-v1");
+        assertNoStripPrefix(routes, "product-classifications-v1");
 
         // (3) 선언 순서 — 세 라우트 모두 generic product-service-v1 보다 먼저 선언.
         int genericIndex = indexOfRoute(routes, "product-service-v1");
@@ -120,7 +127,7 @@ class ApiGatewayContextLoadIT {
                 .isGreaterThanOrEqualTo(0);
         for (String id : List.of(
                 "product-components-v1", "product-display-orders-v1", "product-catalog-realtime-v1",
-                "product-fixed-discount-v1")) {
+                "product-fixed-discount-v1", "product-classification-v1", "product-classifications-v1")) {
             assertThat(indexOfRoute(routes, id))
                     .as("%s 는 generic product-service-v1 보다 먼저 선언돼야 한다(선언 순서=우선순위)", id)
                     .isGreaterThanOrEqualTo(0)
@@ -132,6 +139,8 @@ class ApiGatewayContextLoadIT {
         assertHasJwtAuthenticationFilter(routes, "product-display-orders-v1");
         assertHasJwtAuthenticationFilter(routes, "product-catalog-realtime-v1");
         assertHasJwtAuthenticationFilter(routes, "product-fixed-discount-v1");
+        assertHasJwtAuthenticationFilter(routes, "product-classification-v1");
+        assertHasJwtAuthenticationFilter(routes, "product-classifications-v1");
     }
 
     /**
@@ -167,12 +176,41 @@ class ApiGatewayContextLoadIT {
                         "partner-auth-public-v1",
                         "auth-service-v1",
                         "auth-service-legacy",
+                        "partner-order-public-v1",
                         "partner-auth-service-v1"
                 );
 
         for (String id : noJwtRouteIds) {
             assertHasStripInboundIdentityHeadersFilter(routes, id);
         }
+    }
+
+    /** F6 주문서 bootstrap/gate/log 공개 라우트 — 인증 없이 접근하되 identity header spoof 는 제거. */
+    @Test
+    @DisplayName("partner-order 공개 라우트 — bootstrap/gate/log no-JWT + no-strip + 보호 route 선행")
+    void partnerOrderPublicRoute_hasNoJwt_noStrip_andPrecedesProtectedPartnerOrderRoute() {
+        List<RouteDefinition> routes = routeDefinitionLocator.getRouteDefinitions()
+                .collectList()
+                .block();
+
+        assertThat(routes)
+                .as("RouteDefinitionLocator 가 선언 라우트를 반환해야 한다")
+                .isNotNull()
+                .isNotEmpty();
+
+        assertRoutePath(routes, "partner-order-public-v1",
+                "/api/v1/partner-orders/bootstrap",
+                "/api/v1/partner-orders/gate-images",
+                "/api/v1/partner-orders/log");
+        assertNoStripPrefix(routes, "partner-order-public-v1");
+        assertHasStripInboundIdentityHeadersFilter(routes, "partner-order-public-v1");
+        assertThat(filterNames(findRoute(routes, "partner-order-public-v1")))
+                .as("partner-order-public-v1 은 JwtAuthentication 없이 공개되어야 한다")
+                .doesNotContain("JwtAuthentication");
+        assertThat(indexOfRoute(routes, "partner-order-public-v1"))
+                .as("공개 partner-order route 는 보호 partner-order catch-all 보다 먼저 선언되어야 한다")
+                .isGreaterThanOrEqualTo(0)
+                .isLessThan(indexOfRoute(routes, "partner-order-service-v1"));
     }
 
     /** #465: default-filters 에 identity strip 을 추가하지 않았는지 회귀 가드. */
@@ -185,10 +223,10 @@ class ApiGatewayContextLoadIT {
                 .doesNotContain("StripInboundIdentityHeaders", "RemoveRequestHeader");
     }
 
-    /** 주어진 id 의 라우트가 존재하고 단일 Path predicate 가 기대 패턴과 정확히 일치하는지 단언. */
-    private static void assertRoutePath(List<RouteDefinition> routes, String id, String expectedPath) {
+    /** 주어진 id 의 라우트가 존재하고 단일 Path predicate 가 기대 패턴들과 정확히 일치하는지 단언. */
+    private static void assertRoutePath(List<RouteDefinition> routes, String id, String... expectedPaths) {
         RouteDefinition route = findRoute(routes, id);
-        // Path predicate 1개 보유 — args 값(Spring 이 _genkey_0 키로 저장)이 기대 경로와 일치.
+        // Path predicate 1개 보유 — 콤마로 선언한 다중 경로는 Spring 이 _genkey_N args 로 분리 저장한다.
         assertThat(route.getPredicates())
                 .as("%s 는 Path predicate 1개를 보유해야 한다", id)
                 .hasSize(1);
@@ -196,8 +234,8 @@ class ApiGatewayContextLoadIT {
                 .as("%s predicate 는 Path 여야 한다", id)
                 .isEqualTo("Path");
         assertThat(route.getPredicates().get(0).getArgs().values())
-                .as("%s 의 Path 패턴은 %s 여야 한다", id, expectedPath)
-                .containsExactly(expectedPath);
+                .as("%s 의 Path 패턴은 %s 여야 한다", id, List.of(expectedPaths))
+                .containsExactly(expectedPaths);
     }
 
     /** 주어진 id 의 라우트가 StripPrefix 필터를 보유하지 않는지(no-strip) 단언. */
