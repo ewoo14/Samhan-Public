@@ -199,6 +199,22 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
         seedSpec(erv, "냉매가스", "Φ250", null, 8);
         seedSpec(erv, "차단기, A", "15", "A", 11);
         seedSpec(erv, "전원선, mm²", "2.5", "mm²", 10);
+
+        Product homePanel = seedSpecProduct("PC1HOME", "홈 공청판넬",
+                ProductCategory.HOME_MULTI, EstimateCategory.HOME_MULTI);
+        seedSpec(homePanel, "타공사이즈, mm", "1380", "mm", 16);
+        seedSpec(homePanel, "전산볼트간격, mm", "1260", "mm", 17);
+        seedSpec(homePanel, "제품크기, mm", "1020x40x1020", "mm", 9);
+
+        Product singlePanel = seedSpecProduct("PC1SINGLE", "싱글 패널",
+                ProductCategory.SINGLE_SET, EstimateCategory.SINGLE_SET);
+        seedSpec(singlePanel, "타공사이즈, mm", "950", "mm", 22);
+        seedSpec(singlePanel, "전산볼트간격, mm", "860", "mm", 23);
+
+        Product commPanel = seedSpecProduct("PC1COMM", "상업 판넬",
+                ProductCategory.COMMERCIAL_MULTI, EstimateCategory.COMMERCIAL_MULTI);
+        seedSpec(commPanel, "타공사이즈, mm", "1180", "mm", 19);
+        seedSpec(commPanel, "전산볼트간격, mm", "1060", "mm", 20);
         productRepository.flush();
         productSpecRepository.flush();
 
@@ -227,7 +243,16 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data.G1_ERV_01.comm.cool_kcal").value("688 / 0.8"))
                 .andExpect(jsonPath("$.data.G1_ERV_01.comm.cool_power").value("0.25"))
                 .andExpect(jsonPath("$.data.G1_ERV_01.comm.cool_cap_kcal").value(""))
-                .andExpect(jsonPath("$.data.G1_ERV_01.comm.pipeDia").value(""));
+                .andExpect(jsonPath("$.data.G1_ERV_01.comm.pipeDia").value(""))
+                .andExpect(jsonPath("$.data.PC1HOME.home.cool_kw").value("1380"))
+                .andExpect(jsonPath("$.data.PC1HOME.home.cool_cap_kw").value("1380"))
+                .andExpect(jsonPath("$.data.PC1HOME.home.cool_power").value("1260"))
+                .andExpect(jsonPath("$.data.PC1HOME.home.cool_pow_kw").value("1260"))
+                .andExpect(jsonPath("$.data.PC1HOME.home.size").value("1020x40x1020"))
+                .andExpect(jsonPath("$.data.PC1SINGLE.single.cool_cap_kcal").value("950"))
+                .andExpect(jsonPath("$.data.PC1SINGLE.single.cool_pow_kw").value("860"))
+                .andExpect(jsonPath("$.data.PC1COMM.comm.cool_cap_kcal").value("1180"))
+                .andExpect(jsonPath("$.data.PC1COMM.comm.cool_pow_kw").value("1060"));
     }
 
     /** 부모 BUNDLE(EXPAND) 품목 1건 저장. */

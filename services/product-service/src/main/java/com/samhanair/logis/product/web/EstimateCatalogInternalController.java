@@ -165,6 +165,12 @@ public class EstimateCatalogInternalController {
             Map.entry("에너지소비효율등급", List.of("grade")),
             Map.entry("배관길이, m", List.of("maxPipe")),
             Map.entry("고낙차, m", List.of("maxDrop")));
+    private static final Map<String, List<String>> HOME_PANEL_SPEC_KEY_TO_FIELDS = Map.of(
+            "타공사이즈, mm", List.of("cool_kw", "cool_cap_kw"),
+            "전산볼트간격, mm", List.of("cool_power", "cool_pow_kw"));
+    private static final Map<String, List<String>> SINGLE_COMM_PANEL_SPEC_KEY_TO_FIELDS = Map.of(
+            "타공사이즈, mm", List.of("cool_cap_kcal"),
+            "전산볼트간격, mm", List.of("cool_pow_kw"));
 
     private final ProductRepository productRepository;
     private final ProductSpecRepository productSpecRepository;
@@ -420,8 +426,8 @@ public class EstimateCatalogInternalController {
             Map<String, String> comm = current == null ? null : current.comm();
 
             switch (specScope(product)) {
-                case HOME -> home = buildSpecMap(HOME_SPEC_FIELDS, HOME_SPEC_KEY_TO_FIELDS, specs);
-                case SINGLE -> single = buildSpecMap(SINGLE_SPEC_FIELDS, SINGLE_SPEC_KEY_TO_FIELDS, specs);
+                case HOME -> home = buildHomeSpecMap(product, specs);
+                case SINGLE -> single = buildSingleSpecMap(product, specs);
                 case COMM -> comm = buildCommSpecMap(product, specs);
                 case NONE -> {
                     continue;
@@ -458,11 +464,32 @@ public class EstimateCatalogInternalController {
     }
 
     private static Map<String, String> buildCommSpecMap(Product product, Map<String, String> specs) {
+        if (isPanelRow(product)) {
+            Map<String, String> out = buildSpecMap(COMM_SPEC_FIELDS, COMM_SPEC_KEY_TO_FIELDS, specs);
+            applySpecMap(out, SINGLE_COMM_PANEL_SPEC_KEY_TO_FIELDS, specs);
+            return out;
+        }
         boolean erv = isErv(product, specs);
         return buildSpecMap(
                 erv ? COMM_ERV_SPEC_FIELDS : COMM_SPEC_FIELDS,
                 erv ? COMM_ERV_SPEC_KEY_TO_FIELDS : COMM_SPEC_KEY_TO_FIELDS,
                 specs);
+    }
+
+    private static Map<String, String> buildHomeSpecMap(Product product, Map<String, String> specs) {
+        Map<String, String> out = buildSpecMap(HOME_SPEC_FIELDS, HOME_SPEC_KEY_TO_FIELDS, specs);
+        if (isPanelRow(product)) {
+            applySpecMap(out, HOME_PANEL_SPEC_KEY_TO_FIELDS, specs);
+        }
+        return out;
+    }
+
+    private static Map<String, String> buildSingleSpecMap(Product product, Map<String, String> specs) {
+        Map<String, String> out = buildSpecMap(SINGLE_SPEC_FIELDS, SINGLE_SPEC_KEY_TO_FIELDS, specs);
+        if (isPanelRow(product)) {
+            applySpecMap(out, SINGLE_COMM_PANEL_SPEC_KEY_TO_FIELDS, specs);
+        }
+        return out;
     }
 
     private static Map<String, String> buildSpecMap(List<String> fields,
@@ -472,16 +499,28 @@ public class EstimateCatalogInternalController {
         fields.forEach(field -> out.put(field, ""));
         for (Map.Entry<String, List<String>> entry : specKeyToFields.entrySet()) {
             String value = specs.get(entry.getKey());
-            if (value == null) {
-                continue;
-            }
-            for (String field : entry.getValue()) {
-                if (out.containsKey(field)) {
-                    out.put(field, value);
-                }
-            }
+            putFields(out, entry.getValue(), value);
         }
         return out;
+    }
+
+    private static void applySpecMap(Map<String, String> out,
+                                     Map<String, List<String>> specKeyToFields,
+                                     Map<String, String> specs) {
+        for (Map.Entry<String, List<String>> entry : specKeyToFields.entrySet()) {
+            putFields(out, entry.getValue(), specs.get(entry.getKey()));
+        }
+    }
+
+    private static void putFields(Map<String, String> out, List<String> fields, String value) {
+        if (value == null) {
+            return;
+        }
+        for (String field : fields) {
+            if (out.containsKey(field)) {
+                out.put(field, value);
+            }
+        }
     }
 
     private static SpecScope specScope(Product product) {
@@ -525,6 +564,12 @@ public class EstimateCatalogInternalController {
                 .map(specs::get)
                 .filter(v -> v != null)
                 .anyMatch(v -> v.contains(" / "));
+    }
+
+    private static boolean isPanelRow(Product product) {
+        String name = product.getName() == null ? "" : product.getName();
+        String modelCode = product.getModelCode() == null ? "" : product.getModelCode();
+        return name.matches(".*(판넬|판널|패널).*") || modelCode.matches("(?i)PC[0-9].*");
     }
 
     private static String normalizeModelCode(String modelCode, String fallbackModelName) {
