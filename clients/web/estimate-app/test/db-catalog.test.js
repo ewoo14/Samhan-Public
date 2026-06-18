@@ -57,7 +57,7 @@ jest.mock('axios', () => {
       ]);
     }
     if (/\/spec-detail-map/.test(url)) {
-      return ok({
+      return ok(global.__SPEC_DETAIL_MAP_PAYLOAD__ === undefined ? {
         AJ060: {
           home: {
             pipeDia: 'Φ6.35',
@@ -72,7 +72,7 @@ jest.mock('axios', () => {
             breaker: '20',
           },
         },
-      });
+      } : global.__SPEC_DETAIL_MAP_PAYLOAD__);
     }
     return ok([]);
   });
@@ -89,6 +89,10 @@ const normalizeSize = (v) => String(v || '').replace(/[^\d.]/g, '');
 const sanitizeDisp = (s) => String(s || '').trim();
 
 describe('#30 db-catalog → legacy getter shape', () => {
+  afterEach(() => {
+    delete global.__SPEC_DETAIL_MAP_PAYLOAD__;
+  });
+
   test('multiCatalog HOME_MULTI — useK2/capacity/maxIndoor/고정DC', async () => {
     const rows = await db.multiCatalog('HOME_MULTI', classifyHome);
     expect(rows).toHaveLength(1);
@@ -166,5 +170,13 @@ describe('#30 db-catalog → legacy getter shape', () => {
     expect(map.AJ060.home.pipeDia).toBe('Φ6.35');
     expect(map.AJ060.home.cool_cap_kcal).toBe('1892');
     expect(map.AC060.single.breaker).toBe('20');
+  });
+
+  test('specDetailMap — 배열/null 응답은 빈 객체로 fallback', async () => {
+    global.__SPEC_DETAIL_MAP_PAYLOAD__ = [];
+    await expect(db.specDetailMap()).resolves.toEqual({});
+
+    global.__SPEC_DETAIL_MAP_PAYLOAD__ = null;
+    await expect(db.specDetailMap()).resolves.toEqual({});
   });
 });

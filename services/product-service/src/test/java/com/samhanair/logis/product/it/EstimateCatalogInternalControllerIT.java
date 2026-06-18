@@ -130,6 +130,13 @@ class EstimateCatalogInternalControllerIT extends AbstractPostgresIT {
                         hasItem(hasSize(0))));
     }
 
+    /** spec-detail-map 도 products/components 와 동일하게 X-Internal-Token 없이는 401 이다. */
+    @Test
+    void specDetailMap_withoutInternalToken_returns401() throws Exception {
+        mockMvc.perform(get("/products/internal/estimate-catalog/spec-detail-map"))
+                .andExpect(status().isUnauthorized());
+    }
+
     /** spec-detail-map 은 ProductSpec 을 legacy getSpecDetailMap_ shape 로 reshape 한다. */
     @Test
     void specDetailMap_returnsLegacyShapeByModelCode() throws Exception {

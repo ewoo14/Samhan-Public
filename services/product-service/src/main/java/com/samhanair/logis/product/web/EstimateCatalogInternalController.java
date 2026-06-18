@@ -65,6 +65,12 @@ public class EstimateCatalogInternalController {
     private static final LocalDate BASELINE_DATE = LocalDate.of(2000, 1, 1);
     private static final String SPEC_CAPACITY = "용량";
     private static final String SPEC_MAX_INDOOR = "최대연결실내기대수";
+
+    /*
+     * legacy clients/web/estimate-app/lib/code.js getSpecDetailMap_()
+     * scanHome/scanSingle/scanComm 출력 필드명의 거울이다. 필드명 변경 시 본 목록과
+     * clients/web/estimate-app/test/calc-fidelity.test.js 의 field-set canary 를 함께 갱신한다.
+     */
     private static final List<String> HOME_SPEC_FIELDS = List.of(
             "pipeDia", "gas", "breaker", "powerLine", "size", "weight", "packSize", "packWeight",
             "maxPipe", "maxDrop", "cool_kcal", "cool_kw", "cool_power", "effGrade",
@@ -405,6 +411,8 @@ public class EstimateCatalogInternalController {
             if (modelCode.isBlank()) {
                 continue;
             }
+            // ProductSpec 이 0건인 모델도 legacy 필드 전체를 "" 로 채운다.
+            // 시트 모드에서는 모델 key 자체가 없을 수 있지만 FE 는 양쪽 모두 빈 표("-")로 렌더한다.
             Map<String, String> specs = specByProduct.getOrDefault(product.getId(), Map.of());
             SpecDetail current = out.get(modelCode);
             Map<String, String> home = current == null ? null : current.home();
@@ -501,6 +509,11 @@ public class EstimateCatalogInternalController {
     }
 
     private static boolean isErv(Product product, Map<String, String> specs) {
+        /*
+         * ProductSheetSyncService 는 ERV layout 성능/소비전력 그룹을 joinCols(" / ")로 ProductSpec 에 저장한다.
+         * 따라서 품명/모델의 전열교환기·ERV 표식 또는 join 값으로 ERV shape 를 복원한다.
+         * 레이아웃은 ERV 이지만 무명칭+단일값인 품목은 오분류 가능하나, 현 데이터에서는 라이브 QA 대상이 아니다.
+         */
         String haystack = ((product.getName() == null ? "" : product.getName()) + " "
                 + (product.getModelCode() == null ? "" : product.getModelCode()) + " "
                 + (product.getModelName() == null ? "" : product.getModelName())).toLowerCase();

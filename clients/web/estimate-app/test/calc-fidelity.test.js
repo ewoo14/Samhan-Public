@@ -307,6 +307,31 @@ describe('수식분기 — shim getFormulas 실 수식 전달', () => {
  * 4. getSpecDetailMap_ — scanHome / scanSingle / scanComm (비ERV + ERV)
  * ═══════════════════════════════════════════════════════════════════════ */
 describe('getSpecDetailMap_ — 라이브 3-scan verbatim', () => {
+  // product-service EstimateCatalogInternalController *_SPEC_FIELDS 는 이 필드셋의 거울이다.
+  // getSpecDetailMap_ 출력 필드명을 바꾸면 BE reshape 필드셋도 함께 갱신해야 한다.
+  const HOME_SPEC_FIELDS = [
+    'pipeDia', 'gas', 'breaker', 'powerLine', 'size', 'weight', 'packSize', 'packWeight',
+    'maxPipe', 'maxDrop', 'cool_kcal', 'cool_kw', 'cool_power', 'effGrade',
+    'cool_cap_kcal', 'cool_cap_kw', 'cool_pow_kw', 'grade',
+  ];
+  const SINGLE_SPEC_FIELDS = [
+    'grade', 'pipeDia', 'cool_pow_kw', 'heat_pow_kw', 'cool_cap_kw', 'heat_cap_kw',
+    'cool_cap_kcal', 'heat_cap_kcal', 'powerLine', 'breaker', 'inSize', 'outSize',
+    'inWeight', 'outWeight', 'inPackSize', 'outPackSize', 'inPackWeight', 'outPackWeight',
+    'pipeLen', 'drop', 'gas',
+  ];
+  const COMM_SPEC_FIELDS = [
+    'pipeDia', 'gas', 'cool_cap_kcal', 'cool_cap_kw', 'heat_cap_kcal', 'heat_cap_kw',
+    'cool_pow_kw', 'heat_pow_kw', 'breaker', 'powerLine', 'size', 'weight',
+    'packSize', 'packWeight', 'grade', 'maxPipe', 'maxDrop',
+  ];
+  const COMM_ERV_SPEC_FIELDS = [
+    'gas', 'cool_kcal', 'cool_power', 'heat_kcal', 'heat_power', 'pipeDia',
+    'cool_kw', 'heat_kw', 'cool_cap_kcal', 'cool_cap_kw', 'heat_cap_kcal',
+    'heat_cap_kw', 'cool_pow_kw', 'heat_pow_kw', 'breaker', 'powerLine',
+    'size', 'weight', 'packSize', 'packWeight', 'grade', 'maxPipe', 'maxDrop',
+  ];
+
   function injectHome() {
     const header = ['모델명', '배관경', '냉매가스', '차단기', '전원선', '제품크기', '제품중량',
       '포장치수', '포장중량', '최대장배관', '최대고저차', '냉방성능(정격) kW', '냉방성능(정격) kcal',
@@ -342,6 +367,7 @@ describe('getSpecDetailMap_ — 라이브 3-scan verbatim', () => {
 
     const map = code.getSpecDetailMap_();
     const h = map.AM022.home;
+    expect(Object.keys(h)).toEqual(HOME_SPEC_FIELDS);
     expect(h.pipeDia).toBe('Φ6.35');
     expect(h.gas).toBe('R32');
     expect(h.cool_kw).toBe('2.2');
@@ -363,6 +389,7 @@ describe('getSpecDetailMap_ — 라이브 3-scan verbatim', () => {
 
     const map = code.getSpecDetailMap_();
     const s = map.AR060.single;
+    expect(Object.keys(s)).toEqual(SINGLE_SPEC_FIELDS);
     expect(s.grade).toBe('1등급/2등급');
     expect(s.cool_pow_kw).toBe('0.5/1.8/2.5');
     expect(s.heat_pow_kw).toBe('0.4/1.6/2.2');
@@ -393,6 +420,7 @@ describe('getSpecDetailMap_ — 라이브 3-scan verbatim', () => {
 
     const map = code.getSpecDetailMap_();
     const c = map.AM100AXVGH.comm;
+    expect(Object.keys(c)).toEqual(COMM_SPEC_FIELDS);
     expect(c.cool_cap_kcal).toBe('24,080');
     expect(c.cool_cap_kw).toBe('28.0');
     expect(c.heat_cap_kcal).toBe('27,520');
@@ -422,6 +450,7 @@ describe('getSpecDetailMap_ — 라이브 3-scan verbatim', () => {
     const map = code.getSpecDetailMap_();
     const c = map.ERV800.comm;
     // ERV layout: gas ← 덕트구경, joinCols 로 합쳐진 성능 문자열
+    expect(Object.keys(c)).toEqual(COMM_ERV_SPEC_FIELDS);
     expect(c.gas).toBe('Φ250');
     expect(c.cool_kcal).toBe('688 / 0.8');
     expect(c.cool_power).toBe('0.25');
