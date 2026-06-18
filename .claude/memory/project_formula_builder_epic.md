@@ -1,6 +1,6 @@
 ---
 name: project-formula-builder-epic
-description: "수식 빌더 에픽 — 종합견적서/주문서 하드코딩 수식 → 메뉴 설정 기반 계산 전환. F1·F6·G1·Phase1 완결, 결정 시퀀스 F1.5→F3→F4→F5"
+description: "수식 빌더 에픽 — 하드코딩 수식 → 설정 기반 계산 전환. ✅ 완료(2026-06-19 개발책임자 선언): F1·F6·G1·Phase1·F1.5·F3·F4. F5 미구현(주 목표 Phase1/F3 기달성)"
 metadata: 
   node_type: memory
   type: project
@@ -20,9 +20,10 @@ metadata:
 - **F3 (#505, `6e3b786d`)**: estimate-app homeDefaults/singleDefaults(시트 Row1-2 read) → `estimate_configs` 확장(home noHose/noBranch/withFoot·defaultPanel; single defaultWiredRemote/noRemote/withBase/defaultPanel/panelShape'원형'/discount/oneWayDiscount/materialInclusion'별도') + V5 + 데스크톱 옵션 기본값 설정 UI + **estimate-app DB 모드 시트 의존 0**(getHomeDefaults/getSingleDefaults(config) DB·sheet fallback 유지, 3탭 prefetch 전부 제거). 🚨 parity 완전 보존(라이브 Row2 SA키 read 검증=코드 fallback=시드). 360판넬 view fix(index.ejs ss_p360 초기+reset 경로 SINGLE_DEFAULTS 읽음·기존 하드코딩 '원형'→설정 반영). dual-model: Opus 3-agent(P2 360판넬·amount 상한)→Codex fix→Codex 교차(PASS)→Opus 수렴(라이브 probe) blocking0. 라이브 QA: BE 12 default 서빙+PUT 반영/복원+estimate-app DB모드 페이지 HD_RAW/SD_RAW=시드 end-to-end. 🪤 estimate-app default=dc-config internal endpoint(DB) 읽음(시트 SA키 무관). @Digits(12,2)/@Size 입력검증.
 - **F4 (#506, `69817fa2`, 개발책임자 '재개'=go)**: BundleExpander 판넬/리모컨 옵션 매칭 **attribute(panelType/remoteType) 기반 전환**(현 런타임 정규식→DB) + 다중후보 **isDefault 결정화**(현 findFirst rownum 의존) + **attribute-miss 시 regex backstop**(noneMatch 게이트 제거=복합명칭/혼재/null parity). Part+panelType/remoteType·expand() batch-fetch(findByModelCodeIn, N+1 제거)·유선 매칭 컬러 배제. parity: 단일=parity·다중=isDefault(개선)·null/혼재=regex backstop. dual-model: Opus3(P1 패널 fallback 게이트 parity 위반)→Codex fix→Codex 교차(P1 리모컨 self-match 쟁점)→Opus 수렴+적격판정(**리모컨 self-match=정당 no-op·legacy getOptionRemoteRow 동치**, blocking0)→synced IT 박제. 🚨🪤 **라이브 실QA 가 prod-breaking 단독 적발**: docs fix 의 V21 마이그 주석수정→기존 DB Flyway checksum mismatch crash(CI fresh-DB 미검출)→V21 복원([[feedback_applied_migration_immutable]]). fallback parity 실증(공청판넬→공기청정·블랙판넬→블랙, deployed F4 regex backstop=legacy). classifyRemoteType variant=F5 이관.
 
-## 다음 (개발책임자 결정 확정 시퀀스 — 자율 진행)
-**개발책임자 결정(2026-06-18 야간)**: F3/F4 설계=**B 경량 휴리스틱**(품목 attribute 분류 + 옵션 토글 시 setModel 그룹 내 매칭 자동선택, 룰테이블 없음)·자동매칭 후보다수=**세트 기본 구성품(isDefault) 우선**·Phase1 착수(완료)·카드수수료 **현행 3% 유지**.
-**진행 순서**: ~~F1.5✅(#504)~~ → ~~F3✅(#505)~~ → ~~F4✅(#506, 개발책임자 '재개'=go)~~ → **F5 (다음 — ⚠️ 견적 금액 영향, 개발책임자 검토/go 대기)**: estimate-app 설정 기반 계산 전환(현 하드코딩 계산 → estimate_configs/classification 설정 소비)·golden parity 회귀 + classifyRemoteType variant 보강(componentVariant 반영, F4서 이관). ※ F5=estimate-app 계산 경로 변경=견적 금액 영향 가능 → F4와 동일 behavior-change 신중, go 대기. golden parity 필수.
-**F2 = ✅ 이미 구현됨**(SalesPartnerDcConfigPage). F7(VAT/배분)=기획서§7 비대상. 멀티 동적가격#19=🔒견적금액 변동 정책. 브리프 [[]] `docs/handoff/2026-06-18-formula-f3-f4-decision-brief.md`.
+## ✅ 에픽 완료 (2026-06-19 개발책임자 선언)
+**개발책임자 결정(2026-06-18 야간)**: F3/F4 설계=B 경량 휴리스틱(품목 attribute 분류 + 옵션 토글 setModel 그룹 매칭)·다중후보 isDefault 우선·Phase1 착수·카드수수료 현행 3%.
+**완결 시퀀스**: ~~F1.5✅#504~~ → ~~F3✅#505~~ → ~~F4✅#506('재개'=go)~~. **F5 미구현** — 정찰(2026-06-19)이 **F5 주 목표(estimate-app 계산 전환)가 Phase1/F3 에서 이미 완료**됨을 확인(splitVatAmount_/applyCardFeeLogic/applyEstimateTotalAdjustments_/getHomeDefaults/getSingleDefaults 전부 estimate_configs 소비). 잔여(classifyRemoteType variant=F4 가 이미 `!컬러` exclusion+regex fallback 으로 케이스 처리·정확도 개선만 저가치; 전역 반올림=미결정)는 저가치 → 개발책임자 **'에픽 완료 선언'**('진행' 지시 후 F5 정찰 보고에 대한 결정, 2026-06-19). 향후 필요 시 variant 보강/반올림은 단발 cleanup 가능.
+**다음 우선순위(개발책임자 전환)**: [[project_basic_vs_estimate_item_separation]](기초품목↔견적품목, 슬1 #496 후속)·[[project_external_integration_research]](전자세금계산서 ASP·법인계좌)·G2 거래처/카탈로그 DB 등 — 개발책임자 지정 대기.
+**F2 = ✅ 이미 구현됨**(SalesPartnerDcConfigPage). F7(VAT/배분)=기획서§7 비대상. 멀티 동적가격#19=🔒견적금액 변동 정책.
 
 기획서 `.claude/tmp/estimate-formula-builder-plan.md`. [[project_quotation_estimate_app_state]] [[project_estimate_spec_data_sources]] [[feedback_stacked_pr_ci_false_green]]

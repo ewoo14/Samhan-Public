@@ -4,12 +4,13 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-19 최신) — 수식 빌더 F4(#506) 옵션 자동매칭 머지 완료 → F5 개발책임자 검토 대기
+## 🟢 현재 상태 (2026-06-19 최신) — ✅ 수식 빌더 에픽 완료 (5슬라이스) → 다음 우선순위 대기
 
-> **수식 빌더 진행**: G1(#502)·Phase1(#503)·F1.5(#504)·F3(#505)·**F4(옵션 자동매칭 #506)** 머지 완료 = **5슬라이스 완결**. 개발책임자 결정 시퀀스 ~~F1.5~~→~~F3~~→~~F4~~→**F5(견적 금액 영향 — 검토/go 대기)**.
+> **✅ 수식 빌더 에픽 완료**(2026-06-19 개발책임자 선언): G1(#502)·Phase1(#503)·F1.5(#504)·F3(#505)·F4(#506) 5슬라이스로 '하드코딩 수식→설정 기반 계산' 핵심 달성. **F5 미구현** — 정찰이 F5 주 목표(estimate-app 계산 전환)가 Phase1/F3 기달성을 확인(잔여 classifyRemoteType variant·반올림=저가치).
 >
 > - ✅ **F4 머지**(PR #506, `69817fa2`): BundleExpander 판넬/리모컨 옵션 매칭 attribute(panelType/remoteType) 전환 + 다중후보 isDefault 결정화 + **attribute-miss 시 regex backstop**(parity). dual-model: Opus(P1 패널 fallback parity)→Codex fix→Codex 교차(P1 리모컨 self-match)→Opus 수렴+적격판정(리모컨 self-match=정당 no-op·legacy 동치, blocking0). 🚨 **라이브 실QA 가 prod-breaking 단독 적발**: docs fix 의 V21 마이그 주석수정→기존 DB Flyway checksum mismatch crash(CI fresh-DB 미검출)→V21 복원([[feedback_applied_migration_immutable]]). fallback parity 실증(공청판넬→공기청정·블랙판넬→블랙, deployed F4 regex backstop=legacy).
-> - ⚠️ **F5 대기**: estimate-app 설정 기반 계산 전환(하드코딩 계산→estimate_configs/classification 소비)·golden parity + classifyRemoteType variant 보강(F4서 이관) = **견적 금액 영향** → F4와 동일 behavior-change 신중, 개발책임자 go/검토 대기.
+> - 🔚 **F5 미구현(에픽 완료)**: 정찰 결과 estimate-app 계산 전환은 Phase1/F3 기달성(VAT/카드/선금/옵션default 전부 estimate_configs 소비). 잔여=classifyRemoteType variant(F4가 `!컬러` exclusion+fallback으로 이미 케이스 처리·정확도만)·전역 반올림(미결정) → 저가치, 개발책임자 완료 선언. [[project_formula_builder_epic]]
+> - ▶️ **다음 우선순위(개발책임자 전환 — 지정 대기)**: [[project_basic_vs_estimate_item_separation]](기초품목↔견적품목 분리, 슬1 #496 후속)·[[project_external_integration_research]](전자세금계산서 ASP·법인계좌)·G2 거래처/카탈로그 DB 등.
 > - ✅ (이력) **F3 머지**(#505 `6e3b786d`): homeDefaults/singleDefaults→estimate_configs(V5) DB 승격 + 설정 UI + estimate-app 시트 의존 0. parity 완전 보존(라이브 Row2 검증).
 >
 > - ✅ **F1.5 머지**(PR #504, `ecdb78b8`): Product `panel_type`/`remote_type`(V21 nullable+partial index) + `ProductAttributeClassifier`(panelType={공청[공기청정|공청 전부]/블랙/승강/360/일반/null}=F4 `pickPanelRow` 옵션 매칭 정합·classifyHome_ catM 아님; remoteType={유선/컬러유선/무선/null}) + `ProductSheetSyncService` 통합(productCategory guard 내=교차탭 stomp 방지). 🚨 **parity-safe**(컬럼 write-only, 견적 출력 무변경, F4가 소비). dual-model: Opus(P1 taxonomy F4-misalign)→Codex fix→**Codex 교차(P1 cross-tab stomp 단독 적발)**→stomp fix→Opus 수렴 blocking0(실 테스트 실행). 🪤 라이브 분포=dev product-service SA키 부재로 미populate(Testcontainers IT 메커니즘 실증·정직 보고). P2(remoteType variant 미반영=name만)·실 카탈로그 분포·컬러리모컨 누수=**F4 소비 시 검증**.
