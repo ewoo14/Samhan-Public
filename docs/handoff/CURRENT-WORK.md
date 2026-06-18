@@ -14,6 +14,7 @@
 - **🪤 교훈**: ①**#488이 판넬 타공/볼트를 전용 specKey(`타공사이즈,mm`/`전산볼트간격,mm`)로 정규화** → reshape가 렌더가 읽는 legacy 필드(cool_kw/cool_power)로 안 돌리면 시트모드 대비 회귀(시트모드는 냉방성능 컬럼 재활용으로 표시). **교차리뷰(2nd 모델)가 1st 모델 '무회귀' 오판을 단독 교정** — dual-model 핵심 가치. ②canary가 구현 자기참조면 false-green → getSpecDetailMap_ 출력 키집합 고정 + 라이브 A/B로 보강. ③Codex 샌드박스 네트워크 차단으로 Java 빌드 미실행 → PM 직접 compileJava/IT(CI) 검증 보강.
 
 ### 🌅 개발책임자 결정 큐 (수식 빌더 후속 — 정찰로 확정, PM 자율 진행 불가 항목)
+> 📋 **상세 + PM 권고**: [docs/handoff/2026-06-18-formula-f3-f4-decision-brief.md](2026-06-18-formula-f3-f4-decision-brief.md) (F3/F4 설계 A/B/C 옵션·권고 B, homeDefaults F3 귀속, Phase1 착수 권고)
 - **F2 거래처 DC 설정 UI = ✅ 이미 구현됨**(`SalesPartnerDcConfigPage` — 재작업 불요).
 - **F3(옵션 설정 UI)+F4(번들 자동매칭 룰엔진) = 🔒 신규 설계 결정 필요**(스펙§4 D1: 옵션 자동매칭=GAS에 없는 신규 동작·견적결과 영향. F4 수동선택은 `BundleExpander` 기구현, 자동매칭만 신규).
 - **F7(VAT/배분비율) = 기획서§7 비대상**(우선순위 낮음·현행 유지).
