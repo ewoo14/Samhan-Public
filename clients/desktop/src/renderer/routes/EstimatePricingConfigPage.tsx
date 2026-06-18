@@ -23,7 +23,7 @@ const RATE_FIELDS: Array<{ key: keyof EstimateConfig; label: string; help: strin
   { key: 'commonCommercialDiscountRate', label: '상업멀티 공통 DC율', help: '기본 0.45' },
   { key: 'oldProductDiscountRate', label: '구형 제품 DC율', help: '기본 0.5' },
   { key: 'vatRate', label: '부가세율', help: '기본 0.1' },
-  { key: 'cardFeeRate', label: '카드수수료율', help: '기본 0' },
+  { key: 'cardFeeRate', label: '카드수수료율', help: '기본 0.03' },
   { key: 'advanceDiscountRate', label: '선금할인율', help: '기본 0' },
   { key: 'comboWarnRate', label: '조합비 경고 임계율', help: '0이면 off' },
 ]

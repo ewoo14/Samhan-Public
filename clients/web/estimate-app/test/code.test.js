@@ -70,8 +70,7 @@ function extractNamedFunction(source, name) {
   throw new Error(`${name} body not closed`);
 }
 
-function loadEstimateViewFunction(name, contextOverrides = {}) {
-  const source = fs.readFileSync(path.join(__dirname, '../views/index.ejs'), 'utf8');
+function loadEstimateViewFunctionFromSource(source, name, contextOverrides = {}) {
   const context = {
     window: {},
     document: {
@@ -87,6 +86,25 @@ function loadEstimateViewFunction(name, contextOverrides = {}) {
   vm.createContext(context);
   vm.runInContext(extractNamedFunction(source, name), context);
   return context;
+}
+
+function loadCurrentEstimateViewFunction(name, contextOverrides = {}) {
+  const source = fs.readFileSync(path.join(__dirname, '../views/index.ejs'), 'utf8');
+  return loadEstimateViewFunctionFromSource(source, name, contextOverrides);
+}
+
+function runCardFeeCase(loadFn, rows, checked = true) {
+  const chkCard = { checked };
+  const context = loadFn('applyCardFeeLogic', {
+    document: { getElementById: jest.fn((id) => (id === 'chkCardPay' ? chkCard : null)) },
+    getCardFeeRate: () => 0.03,
+  });
+  const clonedRows = JSON.parse(JSON.stringify(rows));
+  context.applyCardFeeLogic(clonedRows);
+  return {
+    rows: clonedRows,
+    currentCardFee: context.window.CURRENT_CARD_FEE,
+  };
 }
 
 describe('순수 유틸 (Apps Script 호환)', () => {
@@ -226,52 +244,87 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     }));
   });
 
-  test('applyCardFeeLogic(view) — origin/main 3% floor + 기존 qty=1 품목행 합산 parity', () => {
-    const chkCard = { checked: true };
-    const context = loadEstimateViewFunction('applyCardFeeLogic', {
-      document: { getElementById: jest.fn((id) => (id === 'chkCardPay' ? chkCard : null)) },
-      getCardFeeRate: () => 0.03,
-    });
-    const rows = [
-      { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
-      { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
-      { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+  test('applyCardFeeLogic(view) — origin/main frozen ground-truth 출력과 동일', () => {
+    // 기대값 = origin/main(머지 base) applyCardFeeLogic 의 verbatim 출력(동결 ground-truth).
+    // 재생성: `git show origin/main:clients/web/estimate-app/views/index.ejs` 의
+    // applyCardFeeLogic 을 동일 입력으로 실행. 테스트 런타임은 CI shallow checkout 호환을 위해 git 비의존.
+    const cases = [
+      {
+        name: '다중행 + qty=1 타깃 합산 + floor 경계',
+        checked: true,
+        rows: [
+          { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
+          { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
+          { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+        ],
+        expected: {
+          currentCardFee: 5029,
+          rows: [
+            { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
+            { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
+            { name: '설치비', type: 'item', qty: 1, price: 6029, sub: 6029 },
+          ],
+        },
+      },
+      {
+        name: '타깃 없음 → 카드수수료 별도행',
+        checked: true,
+        rows: [
+          { name: '세트헤드', type: 'set-head', qty: 2, price: 100000, sub: 200000 },
+          { name: '실내기', type: 'item', qty: 2, price: 100000, sub: 200000 },
+        ],
+        expected: {
+          currentCardFee: 12000,
+          rows: [
+            { name: '세트헤드', type: 'set-head', qty: 2, price: 100000, sub: 200000 },
+            { name: '실내기', type: 'item', qty: 2, price: 100000, sub: 200000 },
+            {
+              name: '카드수수료',
+              model: '카드수수료',
+              unit: '식',
+              qty: 1,
+              price: 12000,
+              sub: 12000,
+              remarks: '',
+              cat: '기타',
+              cardFee: 12000,
+            },
+          ],
+        },
+      },
+      {
+        name: '체크 off → no-op',
+        checked: false,
+        rows: [
+          { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+        ],
+        expected: {
+          currentCardFee: 0,
+          rows: [
+            { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+          ],
+        },
+      },
+      {
+        name: '기존 수수료 remarks → no-op',
+        checked: true,
+        rows: [
+          { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000, remarks: '수수료 포함' },
+          { name: '실내기', type: 'item', qty: 1, price: 2000, sub: 2000 },
+        ],
+        expected: {
+          currentCardFee: 0,
+          rows: [
+            { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000, remarks: '수수료 포함' },
+            { name: '실내기', type: 'item', qty: 1, price: 2000, sub: 2000 },
+          ],
+        },
+      },
     ];
 
-    context.applyCardFeeLogic(rows);
-
-    expect(context.window.CURRENT_CARD_FEE).toBe(5029);
-    expect(rows).toEqual([
-      { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
-      { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
-      { name: '설치비', type: 'item', qty: 1, price: 6029, sub: 6029 },
-    ]);
-  });
-
-  test('applyCardFeeLogic(view) — origin/main 타깃 없으면 카드수수료 별도행 parity', () => {
-    const chkCard = { checked: true };
-    const context = loadEstimateViewFunction('applyCardFeeLogic', {
-      document: { getElementById: jest.fn((id) => (id === 'chkCardPay' ? chkCard : null)) },
-      getCardFeeRate: () => 0.03,
-    });
-    const rows = [
-      { name: '세트헤드', type: 'set-head', qty: 2, price: 100000, sub: 200000 },
-      { name: '실내기', type: 'item', qty: 2, price: 100000, sub: 200000 },
-    ];
-
-    context.applyCardFeeLogic(rows);
-
-    expect(context.window.CURRENT_CARD_FEE).toBe(12000);
-    expect(rows.at(-1)).toEqual({
-      name: '카드수수료',
-      model: '카드수수료',
-      unit: '식',
-      qty: 1,
-      price: 12000,
-      sub: 12000,
-      remarks: '',
-      cat: '기타',
-      cardFee: 12000,
+    cases.forEach((c) => {
+      const actual = runCardFeeCase(loadCurrentEstimateViewFunction, c.rows, c.checked);
+      expect(actual).toEqual(c.expected);
     });
   });
 
