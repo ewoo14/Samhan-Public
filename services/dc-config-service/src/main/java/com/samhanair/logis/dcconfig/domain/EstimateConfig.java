@@ -26,6 +26,7 @@ public class EstimateConfig extends BaseEntity {
     public static final BigDecimal DEFAULT_COMMON_COMMERCIAL_DISCOUNT_RATE = new BigDecimal("0.4500");
     public static final BigDecimal DEFAULT_OLD_PRODUCT_DISCOUNT_RATE = new BigDecimal("0.5000");
     public static final BigDecimal DEFAULT_VAT_RATE = new BigDecimal("0.1000");
+    public static final BigDecimal DEFAULT_CARD_FEE_RATE = new BigDecimal("0.0300");
     public static final BigDecimal DEFAULT_ZERO_RATE = new BigDecimal("0.0000");
     public static final String DEFAULT_FOOTER_NOTICE = """
             ※ 분기관은 임의 산정입니다.
@@ -56,11 +57,12 @@ public class EstimateConfig extends BaseEntity {
     private BigDecimal vatRate = DEFAULT_VAT_RATE;
 
     @Column(name = "card_fee_rate", nullable = false, precision = 5, scale = 4)
-    private BigDecimal cardFeeRate = DEFAULT_ZERO_RATE;
+    private BigDecimal cardFeeRate = DEFAULT_CARD_FEE_RATE;
 
     @Column(name = "advance_discount_rate", nullable = false, precision = 5, scale = 4)
     private BigDecimal advanceDiscountRate = DEFAULT_ZERO_RATE;
 
+    /** Phase 1 에서는 저장/조회만 지원한다. 실제 조합비 경고 트리거는 후속 단계에서 구현한다. */
     @Column(name = "combo_warn_rate", nullable = false, precision = 5, scale = 4)
     private BigDecimal comboWarnRate = DEFAULT_ZERO_RATE;
 

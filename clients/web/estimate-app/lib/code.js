@@ -150,7 +150,7 @@ const DEFAULT_ESTIMATE_CONFIG = {
   commonCommercialDiscountRate: DISCOUNT_RATE_COMM,
   oldProductDiscountRate: 0.5,
   vatRate: 0.1,
-  cardFeeRate: 0,
+  cardFeeRate: 0.03,
   advanceDiscountRate: 0,
   comboWarnRate: 0,
   footerNotice: [
@@ -439,26 +439,6 @@ function applyEstimateTotalAdjustments_(rows, estimateConfig, options = {}) {
   const cfg = normalizeEstimateConfig_(estimateConfig);
   const baseTotal = rows.reduce((acc, r) => acc + (Number(r.sub) || ((Number(r.price) || 0) * (Number(r.qty) || 0))), 0);
   let adjustment = 0;
-
-  if (options.card === true && cfg.cardFeeRate > 0
-      && !rows.some((r) => String(r.name || '').includes('카드수수료') || r.cardFee)) {
-    const fee = Math.round(baseTotal * cfg.cardFeeRate);
-    if (fee !== 0) {
-      rows.push({
-        section: 'ETC',
-        type: 'item',
-        name: '카드수수료',
-        model: '카드수수료',
-        unit: '식',
-        qty: 1,
-        price: fee,
-        sub: fee,
-        remarks: '카드 수수료',
-        cardFee: fee,
-      });
-      adjustment += fee;
-    }
-  }
 
   if (options.advance === true && cfg.advanceDiscountRate > 0
       && !rows.some((r) => String(r.name || '').includes('선금할인') || r.advanceDiscount)) {
@@ -2268,7 +2248,6 @@ async function sendOrderFromUi(data) {
     }));
     const estimateConfig = normalizeEstimateConfig_(order.estimateConfig || order.config);
     applyEstimateTotalAdjustments_(merged, estimateConfig, {
-      card: order?.payDue === '카드결제',
       advance: order?.payDue === '선결제',
     });
 

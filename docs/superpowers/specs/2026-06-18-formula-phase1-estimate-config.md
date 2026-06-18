@@ -17,7 +17,7 @@
   - `DISCOUNT_RATE_HOME`/`DISCOUNT_RATE_COMM` = 0.45 (변동DC 공통율, line ~137-138) — buildDefaultDcConfig_ 기본값.
   - 구형DC 0.5 (t.config `oldDiscount`, line ~1779, 상수화 미완).
   - VAT 1.1 (line ~2199-2205, 부가세 10% 분리).
-  - 카드수수료/선금할인/조합비 = **미구현**(신규). 견적 UI에 "수수료 포함"·"선결제 표시" 토글 존재(@e35/@e36) → 요율 설정 가능化 + 적용.
+  - 카드수수료 = 기존 "수수료 포함" 3% client-side 합산 동작 유지 + 요율 설정화. 선금할인 = 신규(기본0). 조합비 경고 = Phase 1 저장만, 실제 경고 트리거는 후속.
   - 안내문구(footer) = 견적서 하단 문구.
 
 ## 3. 데이터 모델 (신규)
@@ -28,9 +28,9 @@
 | commonCommercialDiscountRate | NUMERIC(5,4) | 0.45 | 상업멀티 변동DC 공통율 |
 | oldProductDiscountRate | NUMERIC(5,4) | 0.5 | 구형 제품 DC율 |
 | vatRate | NUMERIC(5,4) | 0.1 | 부가세율(법정 10%) |
-| cardFeeRate | NUMERIC(5,4) | 0 | 카드수수료율(총액 가산) |
+| cardFeeRate | NUMERIC(5,4) | 0.03 | 카드수수료율(기존 3% parity, client-side 합산) |
 | advanceDiscountRate | NUMERIC(5,4) | 0 | 선금할인율(총액 할인) |
-| comboWarnRate | NUMERIC(5,4) | 0 | 조합비 경고 임계(0=off) |
+| comboWarnRate | NUMERIC(5,4) | 0 | 조합비 경고 임계(0=off). Phase 1은 저장/조회만 구현 |
 | footerNotice | TEXT | (현 안내문구) | 견적서 하단 안내 |
 
 - 싱글톤: 활성 1행 unique(soft-delete 제외). 미존재 시 service 가 기본값 1행 시드/반환.

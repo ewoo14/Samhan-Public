@@ -2305,7 +2305,7 @@ let CONFIG=J(CFG_RAW,{
   singleSetDiscount: 0,
   oldDiscount: 0.5,
   vatRate: 0.1,
-  cardFeeRate: 0,
+  cardFeeRate: 0.03,
   advanceDiscountRate: 0,
   comboWarnRate: 0,
   footerNotice: '※ 분기관은 임의 산정입니다.\n※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.\n※ 본 견적은 견적일로부터 30일 이내에만 유효합니다.\n※ 공공기관 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.',
@@ -2425,6 +2425,14 @@ function getOldDiscountPercent() {
   return Math.round(estimateConfigNumber('oldDiscount', 0.5) * 100);
 }
 
+function getCardFeeRate() {
+  return estimateConfigNumber('cardFeeRate', 0.03);
+}
+
+function getVatDivisor() {
+  return 1 + estimateConfigNumber('vatRate', 0.1);
+}
+
 function escapeEstimateHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -2447,17 +2455,7 @@ function applyEstimateTotalAdjustments(rows, opts) {
   if (!Array.isArray(rows)) return { total: 0, adjustment: 0 };
   const baseTotal = rows.reduce((acc, r) => acc + (Number(r.sub) || ((Number(r.price) || 0) * (Number(r.qty) || 0))), 0);
   let adjustment = 0;
-  const cardRate = estimateConfigNumber('cardFeeRate', 0);
   const advanceRate = estimateConfigNumber('advanceDiscountRate', 0);
-
-  if (opts && opts.card === true && cardRate > 0
-      && !rows.some(r => String(r.name || '').includes('카드수수료') || r.cardFee)) {
-    const fee = Math.round(baseTotal * cardRate);
-    if (fee !== 0) {
-      rows.push({ section:'ETC', type:'item', name:'카드수수료', model:'카드수수료', unit:'식', qty:1, price:fee, sub:fee, remarks:'카드 수수료', cat:'기타', cardFee:fee });
-      adjustment += fee;
-    }
-  }
 
   if (opts && opts.advance === true && advanceRate > 0
       && !rows.some(r => String(r.name || '').includes('선금할인') || r.advanceDiscount)) {
@@ -9481,8 +9479,13 @@ function buildSendRows(){
     });
   });
 
-  /* 수수료 */
+  /* 카드수수료 */
   applyCardFeeLogic(rows);
+
+  /* 선금할인 */
+  applyEstimateTotalAdjustments(rows, {
+    advance: !!document.getElementById('payDuePre')?.checked
+  });
 
   /* 절삭 */
   applyCutoffLogic(rows);
@@ -10443,7 +10446,8 @@ function fixFootersForMobile(isMobile){
       custCode: custCode,
       custName: custName,
       due: document.getElementById('due').value,
-      payDue: document.getElementById('chkCardPay')?.checked ? '카드결제' : document.getElementById('payDue').value,
+      payDue: document.getElementById('chkCardPay')?.checked ? '카드결제'
+        : (document.getElementById('payDuePre')?.checked ? '선결제' : document.getElementById('payDue').value),
       whCode: whCode,
       addr: fullAddr,
       addrAudit: fullAuditAddr,
@@ -11196,8 +11200,8 @@ function getStructuredQuoteData() {
     sections.forEach(s => allRows.push(...s.rows));
     const oldLen = allRows.length;
     
+    applyCardFeeLogic(allRows);
     applyEstimateTotalAdjustments(allRows, {
-      card: !!(box && box.checked),
       advance: !!(pre && pre.checked)
     });
     
@@ -14120,7 +14124,7 @@ function getInvoiceInnerContent(d, priceMap) {
     else unitPrice = Number(it.unitPrice) || 0;
 
     const lineTotal = qty * unitPrice;
-    const lineSupply = Math.round(lineTotal / 1.1);
+    const lineSupply = Math.round(lineTotal / getVatDivisor());
     const lineVat = lineTotal - lineSupply;
 
     totalSupply += lineSupply;
@@ -16335,18 +16339,34 @@ window.CURRENT_CARD_FEE = 0;
 /* 카드수수료 적용 */
 function applyCardFeeLogic(rows) {
   const box = document.getElementById('chkCardPay');
-  const pre = document.getElementById('payDuePre');
   window.CURRENT_CARD_FEE = 0;
-  if (!(box && box.checked) && !(pre && pre.checked)) return;
+  if (!box || !box.checked) return;
 
-  const oldLen = Array.isArray(rows) ? rows.length : 0;
-  applyEstimateTotalAdjustments(rows, {
-    card: !!(box && box.checked),
-    advance: !!(pre && pre.checked)
-  });
-  const newRows = Array.isArray(rows) ? rows.slice(oldLen) : [];
-  const cardRow = newRows.find(r => r.cardFee);
-  window.CURRENT_CARD_FEE = cardRow ? Number(cardRow.cardFee) || 0 : 0;
+  if (rows.some(r => r.name === '카드' || (r.remarks && r.remarks.includes('수수료')))) {
+    return;
+  }
+
+  /* 수수료 계산 */
+  const total = rows.reduce((acc, r) => acc + (r.sub || (r.price * r.qty) || 0), 0);
+  const fee = Math.floor(total * getCardFeeRate());
+
+  window.CURRENT_CARD_FEE = fee;
+
+  /* 타겟 선정 */
+  let target = rows.find(r => r.qty === 1 && r.type !== 'set-head');
+  if (!target) target = rows.find(r => r.qty === 1);
+
+  if (target) {
+    target.price += fee;
+    if (target.sub !== undefined) target.sub += fee;
+  } else {
+    // 신규 생성
+    rows.push({
+      name: '카드수수료', model: '카드수수료', unit: '식', 
+      qty: 1, price: fee, sub: fee, remarks: '', cat: '기타',
+      cardFee: fee
+    });
+  }
 }
 
 /* 절삭처리 */

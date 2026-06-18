@@ -36,7 +36,7 @@ class EstimateConfigControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data.commonCommercialDiscountRate").value(0.45))
                 .andExpect(jsonPath("$.data.oldProductDiscountRate").value(0.5))
                 .andExpect(jsonPath("$.data.vatRate").value(0.1))
-                .andExpect(jsonPath("$.data.cardFeeRate").value(0))
+                .andExpect(jsonPath("$.data.cardFeeRate").value(0.03))
                 .andExpect(jsonPath("$.data.advanceDiscountRate").value(0));
     }
 
@@ -78,6 +78,7 @@ class EstimateConfigControllerIT extends AbstractPostgresIT {
                         .header("X-Internal-Token", "test-internal-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.commonHomeDiscountRate").value(0.45))
+                .andExpect(jsonPath("$.data.cardFeeRate").value(0.03))
                 .andExpect(jsonPath("$.data.footerNotice").isString());
     }
 }

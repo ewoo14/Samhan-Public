@@ -8,7 +8,7 @@ CREATE TABLE estimate_configs (
     common_commercial_discount_rate   NUMERIC(5,4)  NOT NULL DEFAULT 0.4500 CHECK (common_commercial_discount_rate >= 0 AND common_commercial_discount_rate < 1),
     old_product_discount_rate         NUMERIC(5,4)  NOT NULL DEFAULT 0.5000 CHECK (old_product_discount_rate >= 0 AND old_product_discount_rate < 1),
     vat_rate                          NUMERIC(5,4)  NOT NULL DEFAULT 0.1000 CHECK (vat_rate >= 0 AND vat_rate < 1),
-    card_fee_rate                     NUMERIC(5,4)  NOT NULL DEFAULT 0.0000 CHECK (card_fee_rate >= 0 AND card_fee_rate < 1),
+    card_fee_rate                     NUMERIC(5,4)  NOT NULL DEFAULT 0.0300 CHECK (card_fee_rate >= 0 AND card_fee_rate < 1),
     advance_discount_rate             NUMERIC(5,4)  NOT NULL DEFAULT 0.0000 CHECK (advance_discount_rate >= 0 AND advance_discount_rate < 1),
     combo_warn_rate                   NUMERIC(5,4)  NOT NULL DEFAULT 0.0000 CHECK (combo_warn_rate >= 0 AND combo_warn_rate < 1),
     footer_notice                     TEXT,
@@ -47,7 +47,7 @@ INSERT INTO estimate_configs (
     0.4500,
     0.5000,
     0.1000,
-    0.0000,
+    0.0300,
     0.0000,
     0.0000,
     '※ 분기관은 임의 산정입니다.

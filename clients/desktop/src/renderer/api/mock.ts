@@ -118,6 +118,23 @@ function parseMockBody(config: AxiosRequestConfig): Record<string, unknown> {
   return {}
 }
 
+const DEFAULT_ESTIMATE_CONFIG_MOCK = {
+  commonHomeDiscountRate: 0.45,
+  commonCommercialDiscountRate: 0.45,
+  oldProductDiscountRate: 0.5,
+  vatRate: 0.1,
+  cardFeeRate: 0.03,
+  advanceDiscountRate: 0,
+  comboWarnRate: 0,
+  footerNotice:
+    '※ 분기관은 임의 산정입니다.\n'
+    + '※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.\n'
+    + '※ 본 견적은 견적일로부터 30일 이내에만 유효합니다.\n'
+    + '※ 공공기관 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.',
+}
+
+let estimateConfigMock = { ...DEFAULT_ESTIMATE_CONFIG_MOCK }
+
 type MockPermissionAction = 'view' | 'create' | 'update' | 'delete'
 
 function mockCanAccess(pageCode: string, action: MockPermissionAction): boolean {
@@ -4502,6 +4519,20 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       first: true,
       last: true,
     })
+  }
+
+  // GET/PUT /api/v1/estimate-config — 종합견적서 전역 가격 설정
+  if (url.match(/\/api\/v1\/estimate-config(?:\?.*)?$/)) {
+    if (method === 'GET') {
+      return envelope(estimateConfigMock)
+    }
+    if (method === 'PUT') {
+      estimateConfigMock = {
+        ...estimateConfigMock,
+        ...parseMockBody(config),
+      }
+      return envelope(estimateConfigMock)
+    }
   }
 
   // GET /api/v1/partner-dc-configs — 거래처 DC 설정 (222 row 시뮬레이션)

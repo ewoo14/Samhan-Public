@@ -12,6 +12,10 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
 process.env.DEFAULT_USER_EMAIL = 'test@samhan-air.com';
 
 // axios mock — 실 endpoint 호출을 가로채 200/임의 페이로드로 응답.
@@ -48,6 +52,42 @@ jest.mock('axios', () => {
 
 const code = require('../lib/code');
 const slipBridge = require('../lib/slip-bridge');
+const axios = require('axios');
+
+function extractNamedFunction(source, name) {
+  const start = source.indexOf(`function ${name}`);
+  if (start < 0) throw new Error(`${name} not found`);
+  const braceStart = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`${name} body not closed`);
+}
+
+function loadEstimateViewFunction(name, contextOverrides = {}) {
+  const source = fs.readFileSync(path.join(__dirname, '../views/index.ejs'), 'utf8');
+  const context = {
+    window: {},
+    document: {
+      getElementById: jest.fn(() => null),
+      querySelector: jest.fn(() => null),
+    },
+    Number,
+    Math,
+    String,
+    Array,
+    ...contextOverrides,
+  };
+  vm.createContext(context);
+  vm.runInContext(extractNamedFunction(source, name), context);
+  return context;
+}
 
 describe('순수 유틸 (Apps Script 호환)', () => {
   test('parseKRNumber_ 한국식 콤마 파싱', () => {
@@ -162,38 +202,21 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     });
   });
 
-  test('applyEstimateTotalAdjustments_ — 카드/선금 기본 0은 총액 무변경 parity', () => {
+  test('applyEstimateTotalAdjustments_ — 선금 기본 0은 총액 무변경 parity', () => {
     const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
     const result = code.applyEstimateTotalAdjustments_(rows, {
-      cardFeeRate: 0,
       advanceDiscountRate: 0,
-    }, { card: true, advance: true });
+    }, { advance: true });
     expect(result.total).toBe(110000);
     expect(result.adjustment).toBe(0);
     expect(rows).toEqual([{ name: 'A', qty: 1, price: 110000, sub: 110000 }]);
   });
 
-  test('applyEstimateTotalAdjustments_ — 카드 수수료는 VAT 포함 총액에 가산한다', () => {
-    const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
-    const result = code.applyEstimateTotalAdjustments_(rows, {
-      cardFeeRate: 0.03,
-      advanceDiscountRate: 0,
-    }, { card: true, advance: false });
-    expect(result.total).toBe(113300);
-    expect(result.adjustment).toBe(3300);
-    expect(rows.at(-1)).toEqual(expect.objectContaining({
-      name: '카드수수료',
-      price: 3300,
-      sub: 3300,
-    }));
-  });
-
   test('applyEstimateTotalAdjustments_ — 선금할인은 VAT 포함 총액에서 차감한다', () => {
     const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
     const result = code.applyEstimateTotalAdjustments_(rows, {
-      cardFeeRate: 0,
       advanceDiscountRate: 0.02,
-    }, { card: false, advance: true });
+    }, { advance: true });
     expect(result.total).toBe(107800);
     expect(result.adjustment).toBe(-2200);
     expect(rows.at(-1)).toEqual(expect.objectContaining({
@@ -201,6 +224,55 @@ describe('순수 유틸 (Apps Script 호환)', () => {
       price: -2200,
       sub: -2200,
     }));
+  });
+
+  test('applyCardFeeLogic(view) — origin/main 3% floor + 기존 qty=1 품목행 합산 parity', () => {
+    const chkCard = { checked: true };
+    const context = loadEstimateViewFunction('applyCardFeeLogic', {
+      document: { getElementById: jest.fn((id) => (id === 'chkCardPay' ? chkCard : null)) },
+      getCardFeeRate: () => 0.03,
+    });
+    const rows = [
+      { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
+      { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
+      { name: '설치비', type: 'item', qty: 1, price: 1000, sub: 1000 },
+    ];
+
+    context.applyCardFeeLogic(rows);
+
+    expect(context.window.CURRENT_CARD_FEE).toBe(5029);
+    expect(rows).toEqual([
+      { name: '세트헤드', type: 'set-head', qty: 1, price: 100000, sub: 100000 },
+      { name: '실내기', type: 'item', qty: 2, price: 33333, sub: 66666 },
+      { name: '설치비', type: 'item', qty: 1, price: 6029, sub: 6029 },
+    ]);
+  });
+
+  test('applyCardFeeLogic(view) — origin/main 타깃 없으면 카드수수료 별도행 parity', () => {
+    const chkCard = { checked: true };
+    const context = loadEstimateViewFunction('applyCardFeeLogic', {
+      document: { getElementById: jest.fn((id) => (id === 'chkCardPay' ? chkCard : null)) },
+      getCardFeeRate: () => 0.03,
+    });
+    const rows = [
+      { name: '세트헤드', type: 'set-head', qty: 2, price: 100000, sub: 200000 },
+      { name: '실내기', type: 'item', qty: 2, price: 100000, sub: 200000 },
+    ];
+
+    context.applyCardFeeLogic(rows);
+
+    expect(context.window.CURRENT_CARD_FEE).toBe(12000);
+    expect(rows.at(-1)).toEqual({
+      name: '카드수수료',
+      model: '카드수수료',
+      unit: '식',
+      qty: 1,
+      price: 12000,
+      sub: 12000,
+      remarks: '',
+      cat: '기타',
+      cardFee: 12000,
+    });
   });
 
   test('detectHomeOrder 모델 prefix (AJ0/AJ1/AM0/AM1) — 라이브 분기 복원', () => {
@@ -225,7 +297,7 @@ describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
     expect(JSON.parse(bs.homemulti)).toEqual([]);
     expect(JSON.parse(bs.singleSets)).toEqual([]);
     expect(JSON.parse(bs.config).homeDiscount).toBe(0.45);
-    expect(JSON.parse(bs.config).cardFeeRate).toBe(0);
+    expect(JSON.parse(bs.config).cardFeeRate).toBe(0.03);
     expect(JSON.parse(bs.config).advanceDiscountRate).toBe(0);
     expect(JSON.parse(bs.config).vatRate).toBe(0.1);
   }, 15000);
@@ -282,6 +354,12 @@ describe('slip-bridge — 견적 finalize → slip-service POST', () => {
 });
 
 describe('sendOrderFromUi — legacy 1762 logic 보존', () => {
+  beforeEach(() => {
+    code.cacheRemoveJSON_('CUS_V6');
+    code.cacheRemoveJSON_('MGR_V1');
+    axios.post.mockClear();
+  });
+
   test('빈 items → 항목없음', async () => {
     const r = await code.sendOrderFromUi({ items: [] });
     expect(r.ok).toBe(false);
@@ -295,6 +373,37 @@ describe('sendOrderFromUi — legacy 1762 logic 보존', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.error).toBe('미등록거래처');
+  });
+
+  test('선결제 + advanceDiscountRate > 0 → 선금할인 행을 slip-service 전송 body에 포함한다', async () => {
+    code.cachePutJSON_('CUS_V6', [
+      { code: 'C1', name: '거래처1', bizno: '1234567890', tel: '010', addr: '대구' },
+    ], 60);
+    code.cachePutJSON_('MGR_V1', [], 60);
+
+    const r = await code.sendOrderFromUi({
+      estimateNumber: 'EST-ADV-1',
+      bizno: '123-45-67890',
+      custName: '거래처1',
+      due: '2026-06-18',
+      payDue: '선결제',
+      addr: '대구',
+      estimateConfig: { advanceDiscountRate: 0.02 },
+      items: [{ section: 'HOME', name: '실내기', model: 'AC181', unit: 'EA', qty: 1, price: 110000, sub: 110000 }],
+    });
+
+    expect(r.ok).toBe(true);
+    const slipPost = axios.post.mock.calls.find(([url]) => /\/internal\/slips\/from-estimate$/.test(url));
+    expect(slipPost).toBeTruthy();
+    const body = slipPost[1];
+    const advanceLine = body.lines.find((line) => line.productCode === '선금할인');
+    expect(advanceLine).toEqual(expect.objectContaining({
+      qty: '1',
+      unitPriceVat: 2200,
+      supplyAmount: -2000,
+      vatAmount: -200,
+      remarks: '',
+    }));
   });
 });
 

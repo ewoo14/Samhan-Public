@@ -12,6 +12,7 @@ describe('EstimatePricingConfigPage contract', () => {
     const layout = read('src/renderer/components/AppLayout.tsx')
     const api = read('src/renderer/api/sales.ts')
     const page = read('src/renderer/routes/EstimatePricingConfigPage.tsx')
+    const mock = read('src/renderer/api/mock.ts')
 
     expect(route).toContain("path: '/sales/estimate-config'")
     expect(route).toContain('pageCode="sales.estimate-config"')
@@ -21,5 +22,7 @@ describe('EstimatePricingConfigPage contract', () => {
     expect(api).toContain('getEstimateConfig')
     expect(api).toContain('updateEstimateConfig')
     expect(page).toContain("canAccess('sales.estimate-config', 'update')")
+    expect(mock).toContain('/api/v1/estimate-config')
+    expect(mock).toContain('cardFeeRate: 0.03')
   })
 })
