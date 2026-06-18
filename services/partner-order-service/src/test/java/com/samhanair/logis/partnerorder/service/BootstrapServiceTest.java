@@ -10,12 +10,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.partnerorder.client.EstimateCatalogClient;
+import com.samhanair.logis.partnerorder.client.EstimateCategory;
 import com.samhanair.logis.partnerorder.client.GoogleSheetsClient;
 import com.samhanair.logis.partnerorder.client.GoogleSheetsClient.ValueRenderMode;
+import com.samhanair.logis.partnerorder.client.UsageScope;
 import com.samhanair.logis.partnerorder.domain.BootstrapCacheConfig;
 import com.samhanair.logis.partnerorder.repository.BootstrapCacheConfigRepository;
 import com.samhanair.logis.partnerorder.web.dto.BootstrapResponse;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
@@ -43,19 +47,31 @@ class BootstrapServiceTest {
     @Mock
     private GoogleSheetsClient sheetsClient;
 
+    @Mock
+    private EstimateCatalogClient estimateCatalogClient;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private BootstrapService bootstrapService;
 
     @BeforeEach
     void setUp() throws Exception {
-        bootstrapService = new BootstrapService(cacheRepository, objectMapper, sheetsClient);
+        bootstrapService = new BootstrapService(
+                cacheRepository, objectMapper, sheetsClient, estimateCatalogClient);
         // @Value 주입 우회 (Reflection)
         setField("bootstrapSheetId", "test-sheet-id");
         setField("sheetPrefetchEnabled", true);
         setField("rangeMap", Map.of(
                 "homemulti", "홈멀티!A1:Z",
                 "homeInc", "홈멀티_단가인상!A1:Z"));
+        lenient().when(estimateCatalogClient.catalog(any(EstimateCategory.class), any(UsageScope.class)))
+                .thenReturn(List.of());
+        lenient().when(estimateCatalogClient.components(any(EstimateCategory.class)))
+                .thenReturn(List.of());
+        lenient().when(estimateCatalogClient.materialPrices())
+                .thenReturn(List.of());
+        lenient().when(estimateCatalogClient.priceBaseline())
+                .thenReturn(List.of());
     }
 
     private void setField(String name, Object value) throws Exception {
@@ -136,7 +152,198 @@ class BootstrapServiceTest {
         verify(sheetsClient, never()).readSheet(anyString(), anyString(), any(ValueRenderMode.class));
     }
 
+    @Test
+    void fetch_productDb_catalog를_legacy_bootstrap_shape로_변환한다() throws Exception {
+        // given — product_db 행은 주문서 legacy key shape 로 변환되어야 한다.
+        setField("sheetPrefetchEnabled", false);
+        when(estimateCatalogClient.catalog(EstimateCategory.HOME_MULTI, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(catalogRow(
+                        "홈 실내기", "HM-1", "EA", "123000", "456000",
+                        "실내기", "4WAY", "소형", true, null, "12.5", false,
+                        "홈 비고", "홈 규격", "7.2")));
+        when(estimateCatalogClient.catalog(EstimateCategory.COMMERCIAL_MULTI, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(catalogRow(
+                        "상업 실외기", "CM-1", "EA", "222000", "333000",
+                        "실외기", "표준형", "", true, null, "7", false,
+                        "상업 비고", "상업 규격", "11.0")));
+        when(estimateCatalogClient.catalog(EstimateCategory.SINGLE_SET, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(catalogRow(
+                        "싱글 세트", "SS-1", "SET", "1000000", "1200000",
+                        "4w", "premium", null, false, "D7", null, false,
+                        "싱글 비고", "싱글 규격", null)));
+        when(estimateCatalogClient.catalog(EstimateCategory.LEGACY, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(catalogRow(
+                        "구형 스탠드", "OLD-1", "EA", "800000", "1600000",
+                        null, null, null, false, null, null, true,
+                        "구형 비고", "구형 규격", null)));
+        when(estimateCatalogClient.components(EstimateCategory.SINGLE_SET))
+                .thenReturn(List.of(componentRow(
+                        "SS-1", "PANEL-1", "싱글 판넬", "EA",
+                        "55000", "66000", "PANEL", "기본", true, "판넬 규격")));
+        when(estimateCatalogClient.components(EstimateCategory.COMMERCIAL_MULTI))
+                .thenReturn(List.of(componentRow(
+                        "CM-1", "COMM-PART-1", "상업 구성품", "EA",
+                        "77000", "88000", "OUTDOOR", "선택", false, "상업 구성 규격")));
+        when(estimateCatalogClient.materialPrices())
+                .thenReturn(List.of(
+                        Map.of("name", "D7", "price", new BigDecimal("43000")),
+                        Map.of("name", "D8", "price", new BigDecimal("51000"))));
+        when(estimateCatalogClient.priceBaseline())
+                .thenReturn(List.of(
+                        baselineRow("HM-1", "HOME_MULTI", "470000"),
+                        baselineRow("CM-1", "COMMERCIAL_MULTI", "340000"),
+                        baselineRow("SS-1", "SINGLE_SET", "1300000")));
+        when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of(
+                makeCacheRow("config", "{\"vatRate\":0.1,\"homeDiscount\":0.45}")));
+
+        // when
+        BootstrapResponse response = bootstrapService.fetch();
+        Map<String, Object> payloads = response.payloads();
+
+        // then — 홈/상업 멀티는 납품가=price, 출고가=list, 변동DC/useK2와 한글 고정DC 키 보존.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> home = ((List<Map<String, Object>>) payloads.get("homemulti")).get(0);
+        assertThat(home).containsEntry("name", "홈 실내기")
+                .containsEntry("model", "HM-1")
+                .containsEntry("unit", "EA")
+                .containsEntry("price", new BigDecimal("123000"))
+                .containsEntry("list", new BigDecimal("456000"))
+                .containsEntry("useK2", true)
+                .containsEntry("고정DC", new BigDecimal("12.5"))
+                .containsEntry("capacity", "7.2")
+                .containsEntry("spec", "홈 규격")
+                .containsEntry("catL", "실내기")
+                .containsEntry("catM", "4WAY")
+                .containsEntry("catS", "소형")
+                .containsEntry("disp", "홈 실내기")
+                .containsEntry("note", "홈 비고");
+
+        // then — 싱글 세트는 납품가를 price/priceRaw/priceRight 에 반복하고 matKey 를 보존.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> single = ((List<Map<String, Object>>) payloads.get("singleSets")).get(0);
+        assertThat(single).containsEntry("name", "싱글 세트")
+                .containsEntry("model", "SS-1")
+                .containsEntry("price", new BigDecimal("1000000"))
+                .containsEntry("priceRaw", new BigDecimal("1000000"))
+                .containsEntry("priceRight", new BigDecimal("1000000"))
+                .containsEntry("matKey", "D7")
+                .containsEntry("catL", "4w")
+                .containsEntry("catM", "premium")
+                .containsEntry("note", "싱글 비고")
+                .containsKey("id");
+
+        // then — 구형은 price/sheetPrice 의미가 반대다: price=출고가, sheetPrice=납품가.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> old = ((List<Map<String, Object>>) payloads.get("oldProducts")).get(0);
+        assertThat(old).containsEntry("name", "구형 스탠드")
+                .containsEntry("model", "OLD-1")
+                .containsEntry("price", new BigDecimal("1600000"))
+                .containsEntry("sheetPrice", new BigDecimal("800000"))
+                .containsEntry("isDisc", true)
+                .containsEntry("remarks", "구형 비고")
+                .containsEntry("spec", "구형 규격");
+
+        // then — 구성품 가격은 싱글=납품가, 상업=출고가 우선.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> singlePart = ((List<Map<String, Object>>) payloads.get("singleParts")).get(0);
+        assertThat(singlePart).containsEntry("setModel", "SS-1")
+                .containsEntry("model", "PANEL-1")
+                .containsEntry("name", "싱글 판넬")
+                .containsEntry("price", new BigDecimal("55000"))
+                .containsEntry("kind", "PANEL")
+                .containsEntry("isDefault", true)
+                .containsEntry("feat", "기본")
+                .containsEntry("spec", "판넬 규격");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> commercialPart = ((List<Map<String, Object>>) payloads.get("commercialParts")).get(0);
+        assertThat(commercialPart).containsEntry("price", new BigDecimal("88000"));
+
+        // then — 자재가격/단가인상은 배열이 아니라 legacy 객체맵이다.
+        assertThat(payloads.get("singleMatPrices"))
+                .isEqualTo(Map.of("D7", new BigDecimal("43000"), "D8", new BigDecimal("51000")));
+        assertThat(payloads.get("homeInc")).isEqualTo(Map.of("HM-1", new BigDecimal("470000")));
+        assertThat(payloads.get("commInc")).isEqualTo(Map.of("CM-1", new BigDecimal("340000")));
+        assertThat(payloads.get("singleInc")).isEqualTo(Map.of("SS-1", new BigDecimal("1300000")));
+        assertThat(payloads.get("singlePartsInc")).isEqualTo(Map.of("SS-1", new BigDecimal("1300000")));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> configMap = (Map<String, Object>) payloads.get("config");
+        assertThat(configMap).containsKey("vatRate").doesNotContainKey("homeDiscount");
+    }
+
     private BootstrapCacheConfig makeCacheRow(String key, String json) {
         return BootstrapCacheConfig.of(key, json);
+    }
+
+    private static Map<String, Object> catalogRow(
+            String name,
+            String modelCode,
+            String unit,
+            String deliveryPrice,
+            String releasePrice,
+            String catL,
+            String catM,
+            String catS,
+            Boolean hasVariableDiscount,
+            String materialKey,
+            String fixedDiscountRate,
+            Boolean legacyDiscountFlag,
+            String remark,
+            String specText,
+            String capacity) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("name", name);
+        row.put("modelCode", modelCode);
+        row.put("unit", unit);
+        row.put("deliveryPrice", bd(deliveryPrice));
+        row.put("releasePrice", bd(releasePrice));
+        row.put("catL", catL);
+        row.put("catM", catM);
+        row.put("catS", catS);
+        row.put("hasVariableDiscount", hasVariableDiscount);
+        row.put("materialKey", materialKey);
+        row.put("fixedDiscountRate", bd(fixedDiscountRate));
+        row.put("legacyDiscountFlag", legacyDiscountFlag);
+        row.put("remark", remark);
+        row.put("specText", specText);
+        row.put("capacity", capacity);
+        return row;
+    }
+
+    private static Map<String, Object> componentRow(
+            String setModelCode,
+            String componentModelCode,
+            String name,
+            String unit,
+            String deliveryPrice,
+            String releasePrice,
+            String kind,
+            String variant,
+            Boolean isDefault,
+            String specText) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("setModelCode", setModelCode);
+        row.put("componentModelCode", componentModelCode);
+        row.put("name", name);
+        row.put("unit", unit);
+        row.put("deliveryPrice", bd(deliveryPrice));
+        row.put("releasePrice", bd(releasePrice));
+        row.put("kind", kind);
+        row.put("variant", variant);
+        row.put("isDefault", isDefault);
+        row.put("specText", specText);
+        return row;
+    }
+
+    private static Map<String, Object> baselineRow(
+            String modelCode, String estimateCategory, String releasePrice) {
+        return Map.of(
+                "modelCode", modelCode,
+                "estimateCategory", estimateCategory,
+                "releasePrice", bd(releasePrice));
+    }
+
+    private static BigDecimal bd(String value) {
+        return value == null ? null : new BigDecimal(value);
     }
 }

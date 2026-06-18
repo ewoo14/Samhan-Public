@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
@@ -32,6 +34,7 @@ import com.samhanair.logis.partnerauth.repository.PartnerSessionRepository;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -117,10 +120,10 @@ class PartnerAuthServiceTest {
     @DisplayName("3회 연속 실패 시 LOCKED — Code.js:2847 보존")
     void login_3회_실패_시_LOCKED() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("rightPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1357"), PartnerStatus.NEED_PW_INPUT);
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
-        TryLoginRequest bad = new TryLoginRequest("1234567890", "wrongPw!9", false);
+        TryLoginRequest bad = new TryLoginRequest("1234567890", "2468", false);
         TryLoginResponse r1 = service.tryLogin(bad, "1.1.1.1", "ua");
         TryLoginResponse r2 = service.tryLogin(bad, "1.1.1.1", "ua");
         TryLoginResponse r3 = service.tryLogin(bad, "1.1.1.1", "ua");
@@ -136,11 +139,11 @@ class PartnerAuthServiceTest {
     @DisplayName("LOCKED 상태에서 옳은 비밀번호여도 로그인 거부")
     void login_LOCKED_에서_옳은_비밀번호여도_거부() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("rightPw!1"), PartnerStatus.LOCKED);
+                "1234567890", "P001", passwordEncoder.encode("1357"), PartnerStatus.LOCKED);
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         TryLoginResponse r = service.tryLogin(
-                new TryLoginRequest("1234567890", "rightPw!1", false), "1.1.1.1", "ua");
+                new TryLoginRequest("1234567890", "1357", false), "1.1.1.1", "ua");
         assertThat(r.status()).isEqualTo(PartnerStatus.LOCKED);
         assertThat(r.token()).isNull();
     }
@@ -150,13 +153,13 @@ class PartnerAuthServiceTest {
     @SuppressWarnings("deprecation")
     void login_성공_시_토큰_발급() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("rightPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1357"), PartnerStatus.NEED_PW_INPUT);
         // 단위 테스트는 영속화 없이 mock 만 사용 — JWT 발급용 id 를 reflect 로 설정.
         setEntityId(pa, UUID.randomUUID());
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         TryLoginResponse r = service.tryLogin(
-                new TryLoginRequest("1234567890", "rightPw!1", false), "1.1.1.1", "ua");
+                new TryLoginRequest("1234567890", "1357", false), "1.1.1.1", "ua");
         assertThat(r.status()).isEqualTo(PartnerStatus.OK);
         assertThat(r.token()).isNotBlank();
         assertThat(pa.getFailedAttempts()).isZero();
@@ -185,7 +188,7 @@ class PartnerAuthServiceTest {
     @DisplayName("30일 미사용 시 LONG_UNUSED — Code.js:2957 보존 (sliding expiration)")
     void login_30일_미사용_시_LONG_UNUSED() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("rightPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1357"), PartnerStatus.NEED_PW_INPUT);
         // 31일 전 lastLogin
         java.lang.reflect.Field f;
         try {
@@ -198,7 +201,7 @@ class PartnerAuthServiceTest {
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         TryLoginResponse r = service.tryLogin(
-                new TryLoginRequest("1234567890", "rightPw!1", false), "1.1.1.1", "ua");
+                new TryLoginRequest("1234567890", "1357", false), "1.1.1.1", "ua");
         assertThat(r.status()).isEqualTo(PartnerStatus.LONG_UNUSED);
         assertThat(pa.getStatus()).isEqualTo(PartnerStatus.LONG_UNUSED);
         assertThat(r.token()).isNull();
@@ -208,13 +211,13 @@ class PartnerAuthServiceTest {
     @DisplayName("password_history 5건 FIFO — 직전 5회 비밀번호 재사용 시 USED_PW")
     void setPassword_history_5건_재사용_차단() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("oldPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1000"), PartnerStatus.NEED_PW_INPUT);
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         // 5회 변경 — history 채움
-        String[] passwords = {"newPw!1A", "newPw!2B", "newPw!3C", "newPw!4D", "newPw!5E"};
+        String[] passwords = {"1001", "1002", "1003", "1004", "1005"};
         for (int i = 0; i < passwords.length; i++) {
-            String prev = i == 0 ? "oldPw!1" : passwords[i - 1];
+            String prev = i == 0 ? "1000" : passwords[i - 1];
             SetPasswordResponse r = service.setPassword(
                     new SetPasswordRequest("1234567890", passwords[i], prev));
             assertThat(r.result()).isEqualTo("OK");
@@ -222,7 +225,7 @@ class PartnerAuthServiceTest {
 
         // 직전 비밀번호 재사용 시도 → USED_PW
         SetPasswordResponse used = service.setPassword(
-                new SetPasswordRequest("1234567890", "newPw!4D", "newPw!5E"));
+                new SetPasswordRequest("1234567890", "1004", "1005"));
         assertThat(used.result()).isEqualTo("USED_PW");
     }
 
@@ -230,11 +233,11 @@ class PartnerAuthServiceTest {
     @DisplayName("setPassword — 현재 비밀번호 틀리면 UNAUTHORIZED")
     void setPassword_현재_비밀번호_틀리면_UNAUTHORIZED() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("oldPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         assertThatThrownBy(() -> service.setPassword(
-                new SetPasswordRequest("1234567890", "newPw!9X", "wrongOldPw!9")))
+                new SetPasswordRequest("1234567890", "5678", "9999")))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.UNAUTHORIZED);
@@ -244,10 +247,15 @@ class PartnerAuthServiceTest {
     @DisplayName("issueTempPassword — SmsClient 큐잉 + status NEED_PW_SET")
     void tempPassword_SMS_큐잉() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("oldPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         var res = service.issueTempPassword(new TempPasswordRequest("1234567890", "01012345678"));
+        ArgumentCaptor<String> tempPin = ArgumentCaptor.forClass(String.class);
+        verify(smsClient).enqueueTempPassword(eq("01012345678"), tempPin.capture());
+
+        assertThat(tempPin.getValue()).matches("\\d{4}");
+        assertThat(passwordEncoder.matches(tempPin.getValue(), pa.getPasswordHash())).isTrue();
         assertThat(res.maskedMobileNo()).startsWith("010").endsWith("5678");
         assertThat(pa.getStatus()).isEqualTo(PartnerStatus.NEED_PW_SET);
     }
@@ -256,7 +264,7 @@ class PartnerAuthServiceTest {
     @DisplayName("getExpiration — lastLoginAt + 30일 = expiresAt")
     void getExpiration_30일_슬라이딩_계산() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("oldPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         try {
             java.lang.reflect.Field f = PartnerAuth.class.getDeclaredField("lastLoginAt");
             f.setAccessible(true);
@@ -275,7 +283,7 @@ class PartnerAuthServiceTest {
     @DisplayName("updateTutorial — PC done = true 시 tutorialPcDone 갱신")
     void updateTutorial_PC_완료() {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567890", "P001", passwordEncoder.encode("oldPw!1"), PartnerStatus.NEED_PW_INPUT);
+                "1234567890", "P001", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         when(authRepository.findByBizNo("1234567890")).thenReturn(Optional.of(pa));
 
         var r = service.updateTutorial(new TutorialUpdateRequest("1234567890", "PC", true));
@@ -298,13 +306,13 @@ class PartnerAuthServiceTest {
     @DisplayName("DelegatingPasswordEncoder — {bcrypt} prefix 신규 + {sha256} legacy 호환")
     void password_encoder_BCrypt_및_legacy_SHA256_호환() {
         // BCrypt 인코딩
-        String bcryptHash = passwordEncoder.encode("hello!1A");
+        String bcryptHash = passwordEncoder.encode("1234");
         assertThat(bcryptHash).startsWith("{bcrypt}");
-        assertThat(passwordEncoder.matches("hello!1A", bcryptHash)).isTrue();
+        assertThat(passwordEncoder.matches("1234", bcryptHash)).isTrue();
 
         // legacy SHA-256 prefix 형식 (해시는 임의값으로 매칭만 시도)
         // DelegatingPasswordEncoder 는 {sha256} prefix 라우팅 기능 보유
         // (실 마이그 시 {sha256}<hex> 형태 시드)
-        assertThat(passwordEncoder.matches("hello!1A", bcryptHash)).isTrue();
+        assertThat(passwordEncoder.matches("1234", bcryptHash)).isTrue();
     }
 }

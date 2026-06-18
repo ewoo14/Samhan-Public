@@ -14,6 +14,7 @@ public interface DcConfigRepository extends JpaRepository<DcConfig, UUID> {
 
     Optional<DcConfig> findByPartner_Id(UUID partnerId);
 
+    @EntityGraph(attributePaths = "partner")
     Optional<DcConfig> findByPartner_PartnerCode(String partnerCode);
 
     /** 데스크탑 영업 "거래처 DC 설정" 화면 — partner.name / partnerCode keyword + pagination. */

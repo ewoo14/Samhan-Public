@@ -167,12 +167,39 @@ class ApiGatewayContextLoadIT {
                         "partner-auth-public-v1",
                         "auth-service-v1",
                         "auth-service-legacy",
+                        "partner-order-public-v1",
                         "partner-auth-service-v1"
                 );
 
         for (String id : noJwtRouteIds) {
             assertHasStripInboundIdentityHeadersFilter(routes, id);
         }
+    }
+
+    /** F6 주문서 bootstrap/gate/log 공개 라우트 — 인증 없이 접근하되 identity header spoof 는 제거. */
+    @Test
+    @DisplayName("partner-order 공개 라우트 — bootstrap/gate/log no-JWT + no-strip + 보호 route 선행")
+    void partnerOrderPublicRoute_hasNoJwt_noStrip_andPrecedesProtectedPartnerOrderRoute() {
+        List<RouteDefinition> routes = routeDefinitionLocator.getRouteDefinitions()
+                .collectList()
+                .block();
+
+        assertThat(routes)
+                .as("RouteDefinitionLocator 가 선언 라우트를 반환해야 한다")
+                .isNotNull()
+                .isNotEmpty();
+
+        assertRoutePath(routes, "partner-order-public-v1",
+                "/api/v1/partner-orders/bootstrap,/api/v1/partner-orders/gate-images,/api/v1/partner-orders/log");
+        assertNoStripPrefix(routes, "partner-order-public-v1");
+        assertHasStripInboundIdentityHeadersFilter(routes, "partner-order-public-v1");
+        assertThat(filterNames(findRoute(routes, "partner-order-public-v1")))
+                .as("partner-order-public-v1 은 JwtAuthentication 없이 공개되어야 한다")
+                .doesNotContain("JwtAuthentication");
+        assertThat(indexOfRoute(routes, "partner-order-public-v1"))
+                .as("공개 partner-order route 는 보호 partner-order catch-all 보다 먼저 선언되어야 한다")
+                .isGreaterThanOrEqualTo(0)
+                .isLessThan(indexOfRoute(routes, "partner-order-service-v1"));
     }
 
     /** #465: default-filters 에 identity strip 을 추가하지 않았는지 회귀 가드. */

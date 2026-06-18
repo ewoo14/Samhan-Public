@@ -4,8 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partnerorder.client.EstimateCatalogClient;
+import com.samhanair.logis.partnerorder.client.EstimateCategory;
 import com.samhanair.logis.partnerorder.client.GoogleSheetsClient;
 import com.samhanair.logis.partnerorder.client.GoogleSheetsClient.ValueRenderMode;
+import com.samhanair.logis.partnerorder.client.UsageScope;
 import com.samhanair.logis.partnerorder.domain.BootstrapCacheConfig;
 import com.samhanair.logis.partnerorder.repository.BootstrapCacheConfigRepository;
 import com.samhanair.logis.partnerorder.web.dto.BootstrapResponse;
@@ -91,6 +94,7 @@ public class BootstrapService {
     private final BootstrapCacheConfigRepository cacheRepository;
     private final ObjectMapper objectMapper;
     private final GoogleSheetsClient sheetsClient;
+    private final EstimateCatalogClient estimateCatalogClient;
 
     @Value("${app.bootstrap.sheet-id:1RJqO3jT-yJTi3NDBhL60o_cZWlVETGTU7UlvIKXuVNQ}")
     private String bootstrapSheetId;
@@ -112,14 +116,18 @@ public class BootstrapService {
     /** 시트 read 결과 캐시 (key=cacheKey, value=시트 raw payload). 부팅/admin trigger 시 갱신. */
     private final Map<String, Object> sheetCache = new ConcurrentHashMap<>();
 
+    /** product_db 카탈로그 변환 캐시 (key=cacheKey, value=legacy bootstrap shape). */
+    private final Map<String, Object> productCatalogCache = new ConcurrentHashMap<>();
+
     /**
      * 부팅 시 16 cache key prefetch — 시트 read 우선, 실패 시 V2 seed fallback.
      * Service Account JSON 부재 등으로 fail 해도 catch + log (부팅 차단 X).
      */
     @PostConstruct
     public void prefetch() {
+        prefetchProductCatalog();
         if (!sheetPrefetchEnabled) {
-            log.info("[BootstrapService] 시트 prefetch 비활성 (app.bootstrap.sheet-prefetch-enabled=false) — V2 seed fallback only");
+            log.info("[BootstrapService] 시트 prefetch 비활성 (app.bootstrap.sheet-prefetch-enabled=false) — product_db/seed fallback only");
             return;
         }
         Map<String, String> effectiveRangeMap = rangeMap == null ? Map.of() : rangeMap;
@@ -163,18 +171,26 @@ public class BootstrapService {
     @Transactional(readOnly = true)
     public BootstrapResponse fetch() {
         Map<String, Object> payloads = new LinkedHashMap<>();
+        Map<String, Object> productPayloads = productCatalogCache.isEmpty()
+                ? loadProductCatalogPayloadsSafely()
+                : new LinkedHashMap<>(productCatalogCache);
         Map<String, BootstrapCacheConfig> rowsByKey = new HashMap<>();
         cacheRepository.findAllByOrderByCacheKeyAsc()
                 .forEach(row -> rowsByKey.put(row.getCacheKey(), row));
 
         for (String key : CACHE_KEYS) {
-            // 1) 시트 prefetch 결과 우선
+            // 1) product_db 변환 결과 우선 — order-app 0행 방지.
+            if (productPayloads.containsKey(key)) {
+                payloads.put(key, applyConfigGuard(key, productPayloads.get(key)));
+                continue;
+            }
+            // 2) 시트 prefetch 결과
             Object sheetPayload = sheetCache.get(key);
             if (sheetPayload != null) {
                 payloads.put(key, applyConfigGuard(key, sheetPayload));
                 continue;
             }
-            // 2) V2 seed fallback
+            // 3) V2 seed fallback
             BootstrapCacheConfig row = rowsByKey.get(key);
             if (row == null) {
                 // legacy graceful fallback — 빈 객체
@@ -209,13 +225,228 @@ public class BootstrapService {
     @CacheEvict(value = "bootstrap", allEntries = true)
     public void evictAll() {
         sheetCache.clear();
+        productCatalogCache.clear();
         sheetsClient.invalidateCache();
-        log.info("Bootstrap cache evicted (sheet cache + spring cache)");
+        log.info("Bootstrap cache evicted (product catalog cache + sheet cache + spring cache)");
     }
 
     /** 테스트용 — sheet prefetch 결과 직접 주입 (production 호출 X). */
     void putSheetCacheForTest(String cacheKey, Object payload) {
         sheetCache.put(cacheKey, payload);
+    }
+
+    private void prefetchProductCatalog() {
+        Map<String, Object> productPayloads = loadProductCatalogPayloadsSafely();
+        if (productPayloads.isEmpty()) {
+            return;
+        }
+        productCatalogCache.clear();
+        productCatalogCache.putAll(productPayloads);
+        log.info("[BootstrapService] product_db catalog prefetch 완료: keys={}", productPayloads.keySet());
+    }
+
+    private Map<String, Object> loadProductCatalogPayloadsSafely() {
+        try {
+            return loadProductCatalogPayloads();
+        } catch (Exception ex) {
+            log.warn("[BootstrapService] product_db catalog load 실패 (sheet/seed fallback): err={}",
+                    ex.getMessage());
+            return Map.of();
+        }
+    }
+
+    private Map<String, Object> loadProductCatalogPayloads() {
+        List<Map<String, Object>> homemulti = nullToEmpty(estimateCatalogClient.catalog(
+                EstimateCategory.HOME_MULTI, UsageScope.PARTNER_ORDER));
+        List<Map<String, Object>> commercialMulti = nullToEmpty(estimateCatalogClient.catalog(
+                EstimateCategory.COMMERCIAL_MULTI, UsageScope.PARTNER_ORDER));
+        List<Map<String, Object>> singleSets = nullToEmpty(estimateCatalogClient.catalog(
+                EstimateCategory.SINGLE_SET, UsageScope.PARTNER_ORDER));
+        List<Map<String, Object>> oldProducts = nullToEmpty(estimateCatalogClient.catalog(
+                EstimateCategory.LEGACY, UsageScope.PARTNER_ORDER));
+        List<Map<String, Object>> singleParts = nullToEmpty(estimateCatalogClient.components(
+                EstimateCategory.SINGLE_SET));
+        List<Map<String, Object>> commercialParts = nullToEmpty(estimateCatalogClient.components(
+                EstimateCategory.COMMERCIAL_MULTI));
+        List<Map<String, Object>> materialPrices = nullToEmpty(estimateCatalogClient.materialPrices());
+        List<Map<String, Object>> priceBaseline = nullToEmpty(estimateCatalogClient.priceBaseline());
+
+        boolean hasProductData = !(homemulti.isEmpty()
+                && commercialMulti.isEmpty()
+                && singleSets.isEmpty()
+                && oldProducts.isEmpty()
+                && singleParts.isEmpty()
+                && commercialParts.isEmpty()
+                && materialPrices.isEmpty()
+                && priceBaseline.isEmpty());
+        if (!hasProductData) {
+            return Map.of();
+        }
+
+        Map<String, Object> payloads = new LinkedHashMap<>();
+        payloads.put("homemulti", catalogRows(homemulti, CatalogShape.MULTI));
+        payloads.put("singleSets", singleSetRows(singleSets));
+        payloads.put("singleParts", componentRows(singleParts, false));
+        payloads.put("singleMatPrices", materialPriceMap(materialPrices));
+        payloads.put("commercialMulti", catalogRows(commercialMulti, CatalogShape.MULTI));
+        payloads.put("commercialParts", componentRows(commercialParts, true));
+        payloads.put("oldProducts", catalogRows(oldProducts, CatalogShape.LEGACY));
+        payloads.put("homeInc", priceBaselineMap(priceBaseline, "HOME_MULTI"));
+        payloads.put("commInc", priceBaselineMap(priceBaseline, "COMMERCIAL_MULTI"));
+        payloads.put("singleInc", priceBaselineMap(priceBaseline, "SINGLE_SET"));
+        payloads.put("singlePartsInc", priceBaselineMap(priceBaseline, "SINGLE_SET"));
+        return payloads;
+    }
+
+    private List<Map<String, Object>> catalogRows(List<Map<String, Object>> rows, CatalogShape shape) {
+        return rows.stream()
+                .map(row -> switch (shape) {
+                    case MULTI -> multiRow(row);
+                    case LEGACY -> legacyRow(row);
+                })
+                .toList();
+    }
+
+    private Map<String, Object> multiRow(Map<String, Object> row) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String name = str(row.get("name"));
+        out.put("name", name);
+        out.put("model", row.get("modelCode"));
+        out.put("unit", row.get("unit"));
+        out.put("price", decimal(row.get("deliveryPrice")));
+        out.put("list", decimal(row.get("releasePrice")));
+        out.put("useK2", bool(row.get("hasVariableDiscount")));
+        out.put("고정DC", decimal(row.get("fixedDiscountRate")));
+        out.put("capacity", row.get("capacity"));
+        out.put("spec", row.get("specText"));
+        out.put("catL", row.get("catL"));
+        out.put("catM", row.get("catM"));
+        out.put("catS", row.get("catS"));
+        out.put("disp", name);
+        out.put("note", row.get("remark"));
+        return out;
+    }
+
+    private List<Map<String, Object>> singleSetRows(List<Map<String, Object>> rows) {
+        java.util.concurrent.atomic.AtomicInteger idx = new java.util.concurrent.atomic.AtomicInteger();
+        return rows.stream()
+                .map(row -> {
+                    int rowIndex = idx.getAndIncrement();
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    String name = str(row.get("name"));
+                    Object deliveryPrice = decimal(row.get("deliveryPrice"));
+                    out.put("name", name);
+                    out.put("model", row.get("modelCode"));
+                    out.put("unit", row.get("unit"));
+                    out.put("price", deliveryPrice);
+                    out.put("priceRaw", deliveryPrice);
+                    out.put("priceRight", deliveryPrice);
+                    out.put("matKey", row.get("materialKey"));
+                    out.put("catL", row.get("catL"));
+                    out.put("catM", row.get("catM"));
+                    out.put("note", row.get("remark"));
+                    out.put("id", name + rowIndex);
+                    return out;
+                })
+                .toList();
+    }
+
+    private Map<String, Object> legacyRow(Map<String, Object> row) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("name", row.get("name"));
+        out.put("model", row.get("modelCode"));
+        out.put("unit", row.get("unit"));
+        out.put("price", decimal(row.get("releasePrice")));
+        out.put("sheetPrice", decimal(row.get("deliveryPrice")));
+        out.put("isDisc", bool(row.get("legacyDiscountFlag")));
+        out.put("remarks", row.get("remark"));
+        out.put("spec", row.get("specText"));
+        return out;
+    }
+
+    private List<Map<String, Object>> componentRows(List<Map<String, Object>> rows, boolean commercial) {
+        return rows.stream()
+                .map(row -> {
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    out.put("setModel", row.get("setModelCode"));
+                    out.put("model", row.get("componentModelCode"));
+                    out.put("name", row.get("name"));
+                    out.put("unit", row.get("unit"));
+                    Object price = commercial
+                            ? firstDecimal(row.get("releasePrice"), row.get("deliveryPrice"))
+                            : decimal(row.get("deliveryPrice"));
+                    out.put("price", price);
+                    out.put("kind", row.get("kind"));
+                    out.put("isDefault", bool(row.get("isDefault")));
+                    out.put("feat", row.get("variant"));
+                    out.put("spec", row.get("specText"));
+                    return out;
+                })
+                .toList();
+    }
+
+    private Map<String, Object> materialPriceMap(List<Map<String, Object>> rows) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String name = str(row.get("name"));
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            out.put(name, decimal(row.get("price")));
+        }
+        return out;
+    }
+
+    private Map<String, Object> priceBaselineMap(List<Map<String, Object>> rows, String estimateCategory) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            if (!estimateCategory.equals(str(row.get("estimateCategory")))) {
+                continue;
+            }
+            String modelCode = str(row.get("modelCode"));
+            if (modelCode == null || modelCode.isBlank()) {
+                continue;
+            }
+            out.put(modelCode, decimal(row.get("releasePrice")));
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> nullToEmpty(List<Map<String, Object>> rows) {
+        return rows == null ? List.of() : rows;
+    }
+
+    private Object firstDecimal(Object first, Object fallback) {
+        Object value = decimal(first);
+        return value == null ? decimal(fallback) : value;
+    }
+
+    private java.math.BigDecimal decimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.math.BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return new java.math.BigDecimal(number.toString());
+        }
+        String text = value.toString().trim().replace(",", "");
+        return text.isBlank() ? null : new java.math.BigDecimal(text);
+    }
+
+    private Boolean bool(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(value.toString());
+    }
+
+    private String str(Object value) {
+        return value == null ? null : value.toString();
     }
 
     private Object parsePayload(String json) {
@@ -229,5 +460,10 @@ public class BootstrapService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                     "bootstrap cache payload 파싱 실패", ex);
         }
+    }
+
+    private enum CatalogShape {
+        MULTI,
+        LEGACY
     }
 }

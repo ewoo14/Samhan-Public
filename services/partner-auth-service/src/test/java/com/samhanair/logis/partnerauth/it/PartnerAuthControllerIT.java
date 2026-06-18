@@ -41,12 +41,11 @@ import org.springframework.web.context.WebApplicationContext;
 @Transactional
 class PartnerAuthControllerIT extends AbstractPostgresIT {
 
-    // 테스트용 더미 토큰 — 실제 운영 비밀번호와 형태 불일치 (GitGuardian generic password 회피).
-    // 길이 8 이상 + 패턴 단순화. legacy 비밀번호 hash 검증은 PartnerAuthServiceTest 가 담당.
-    private static final String DUMMY_OK_TOKEN = "it-pwd-ok";
-    private static final String DUMMY_OLD_TOKEN = "it-pwd-old";
-    private static final String DUMMY_NEW_TOKEN = "it-pwd-new";
-    private static final String DUMMY_BAD_TOKEN = "it-pwd-bad";
+    // 테스트용 더미 PIN — BizGate 거래처 비밀번호 정책은 숫자 4자리.
+    private static final String DUMMY_OK_PIN = "1357";
+    private static final String DUMMY_OLD_PIN = "2468";
+    private static final String DUMMY_NEW_PIN = "8642";
+    private static final String DUMMY_BAD_PIN = "9999";
 
     @Autowired
     private WebApplicationContext context;
@@ -122,12 +121,12 @@ class PartnerAuthControllerIT extends AbstractPostgresIT {
     @Test
     void PATCH_partner_password_OK() throws Exception {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567894", "P-IT-004", passwordEncoder.encode(DUMMY_OLD_TOKEN), PartnerStatus.NEED_PW_INPUT);
+                "1234567894", "P-IT-004", passwordEncoder.encode(DUMMY_OLD_PIN), PartnerStatus.NEED_PW_INPUT);
         authRepository.save(pa);
 
         String body = String.format(
                 "{\"bizNo\":\"1234567894\",\"newPassword\":\"%s\",\"currentPassword\":\"%s\"}",
-                DUMMY_NEW_TOKEN, DUMMY_OLD_TOKEN);
+                DUMMY_NEW_PIN, DUMMY_OLD_PIN);
         mvc.perform(patch("/api/v1/auth/partner-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -141,11 +140,11 @@ class PartnerAuthControllerIT extends AbstractPostgresIT {
     @Test
     void POST_partner_login_OK_및_token_발급() throws Exception {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567895", "P-IT-005", passwordEncoder.encode(DUMMY_OK_TOKEN), PartnerStatus.NEED_PW_INPUT);
+                "1234567895", "P-IT-005", passwordEncoder.encode(DUMMY_OK_PIN), PartnerStatus.NEED_PW_INPUT);
         authRepository.save(pa);
 
         String body = String.format(
-                "{\"bizNo\":\"1234567895\",\"password\":\"%s\",\"mobile\":false}", DUMMY_OK_TOKEN);
+                "{\"bizNo\":\"1234567895\",\"password\":\"%s\",\"mobile\":false}", DUMMY_OK_PIN);
         mvc.perform(post("/api/v1/auth/partner-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -157,11 +156,11 @@ class PartnerAuthControllerIT extends AbstractPostgresIT {
     @Test
     void POST_partner_login_3회_fail_시_LOCKED() throws Exception {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567896", "P-IT-006", passwordEncoder.encode(DUMMY_OK_TOKEN), PartnerStatus.NEED_PW_INPUT);
+                "1234567896", "P-IT-006", passwordEncoder.encode(DUMMY_OK_PIN), PartnerStatus.NEED_PW_INPUT);
         authRepository.save(pa);
 
         String wrongJson = String.format(
-                "{\"bizNo\":\"1234567896\",\"password\":\"%s\",\"mobile\":false}", DUMMY_BAD_TOKEN);
+                "{\"bizNo\":\"1234567896\",\"password\":\"%s\",\"mobile\":false}", DUMMY_BAD_PIN);
         mvc.perform(post("/api/v1/auth/partner-login").contentType(MediaType.APPLICATION_JSON).content(wrongJson))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/auth/partner-login").contentType(MediaType.APPLICATION_JSON).content(wrongJson))
@@ -177,7 +176,7 @@ class PartnerAuthControllerIT extends AbstractPostgresIT {
     @Test
     void POST_partner_temp_password_202_및_SMS_큐잉() throws Exception {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567897", "P-IT-007", passwordEncoder.encode("oldPw!1A"), PartnerStatus.NEED_PW_INPUT);
+                "1234567897", "P-IT-007", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         authRepository.save(pa);
 
         mvc.perform(post("/api/v1/auth/partner-temp-password")
@@ -195,7 +194,7 @@ class PartnerAuthControllerIT extends AbstractPostgresIT {
     @Test
     void GET_partner_expiration_30일_슬라이딩() throws Exception {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567898", "P-IT-008", passwordEncoder.encode("oldPw!1A"), PartnerStatus.NEED_PW_INPUT);
+                "1234567898", "P-IT-008", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         authRepository.save(pa);
 
         mvc.perform(get("/api/v1/auth/partner-expiration?bizNo=1234567898"))
@@ -210,7 +209,7 @@ class PartnerAuthControllerIT extends AbstractPostgresIT {
     @Test
     void PATCH_partner_tutorial_PC_완료() throws Exception {
         PartnerAuth pa = PartnerAuth.seedFromLegacy(
-                "1234567899", "P-IT-009", passwordEncoder.encode("oldPw!1A"), PartnerStatus.NEED_PW_INPUT);
+                "1234567899", "P-IT-009", passwordEncoder.encode("1234"), PartnerStatus.NEED_PW_INPUT);
         authRepository.save(pa);
 
         mvc.perform(patch("/api/v1/auth/partner-tutorial")

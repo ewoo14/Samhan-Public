@@ -1,6 +1,8 @@
 package com.samhanair.logis.partnerorder.it;
 
+import com.samhanair.logis.partnerorder.client.EstimateCatalogClient;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.DockerClientFactory;
@@ -15,6 +17,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
 public abstract class AbstractPostgresIT {
+
+    /** product-service estimate-catalog 외부 client 격리 — Eureka 비활성 IT 5xx 회피. */
+    @MockBean
+    protected EstimateCatalogClient estimateCatalogClient;
 
     // Testcontainers 가 임의 ephemeral 컨테이너에 자체 default (test/test) 자동 생성 — 외부 노출 X.
     // username/password 명시 호출 자체를 생략하여 GitGuardian Generic Password / Username Password

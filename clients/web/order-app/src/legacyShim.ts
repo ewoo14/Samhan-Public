@@ -33,6 +33,7 @@ declare global {
     google?: { script?: { run?: GoogleScriptRunChain } }
     UrlFetchApp?: { fetch: (url: string, opts?: unknown) => unknown }
     __SAMHAN_BOOTSTRAP__?: Record<string, unknown>
+    __SAMHAN_BOOTSTRAP_PREFETCHED__?: boolean
   }
 }
 

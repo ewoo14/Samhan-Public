@@ -8,10 +8,42 @@
 <!-- v4: PWA manifest (vite-plugin-pwa 가 빌드 시 자동 주입하지만 dev 환경도 보장) -->
 <link rel="manifest" href="/manifest.webmanifest"/>
 <link rel="icon" type="image/png" href="/icons/icon-192.png"/>
-<!-- v4: legacy shim (window.google.script.run → samhanApi axios) + 부트스트랩 prefetch.
-     반드시 본문 inline script (라인 1230~ HM_RAW=__BS.homemulti) 가 실행되기 전에 await 완료.
-     Vite 가 ESM 모듈로 head 에 두면 defer/async 동작하나, top-level await 로 본문 inline script
-     실행을 가로막아 부트스트랩 prefetch 보장. -->
+<!-- v4: legacy 데이터 const freeze 방지.
+     type=module 은 defer 성격이라 body inline script 의 HOMEMULTI const 평가를 막지 못한다.
+     따라서 parser-blocking classic script 로 bootstrap 을 먼저 채워 Apps Script SSR 주입 순서를 복원한다. -->
+<script>
+(function(){
+  var existing = window.__SAMHAN_BOOTSTRAP__;
+  if (existing && Object.keys(existing).length > 0) {
+    window.__SAMHAN_BOOTSTRAP_PREFETCHED__ = true;
+    return;
+  }
+
+  var viteBase = '%VITE_API_BASE_URL%';
+  if (viteBase.charAt(0) === '%') viteBase = '';
+  var base = (window.__SAMHAN_API_BASE_URL || viteBase || '/api/v1').replace(/\/$/, '');
+  var xhr = new XMLHttpRequest();
+  try {
+    xhr.open('GET', base + '/partner-orders/bootstrap', false);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.send(null);
+
+    if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 304) {
+      var body = JSON.parse(xhr.responseText || '{}');
+      var data = body && body.data ? body.data : body;
+      window.__SAMHAN_BOOTSTRAP__ = data && data.payloads ? data.payloads : (data || {});
+      window.__SAMHAN_BOOTSTRAP_PREFETCHED__ = true;
+    } else {
+      window.__SAMHAN_BOOTSTRAP__ = window.__SAMHAN_BOOTSTRAP__ || {};
+      console.warn('[v4 bootstrap] sync prefetch failed: HTTP ' + xhr.status);
+    }
+  } catch (err) {
+    window.__SAMHAN_BOOTSTRAP__ = window.__SAMHAN_BOOTSTRAP__ || {};
+    console.warn('[v4 bootstrap] sync prefetch error', err);
+  }
+})();
+</script>
+<!-- v4: legacy shim (window.google.script.run → samhanApi axios). -->
 <script type="module" src="/src/main.ts"></script>
 <script src="//t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -148,6 +180,7 @@ dialog#dlgPreview .order-list table thead th{font-weight:800}
 #addrDock{position:fixed;inset:0;background:#fff;z-index:100000;display:none} #addrEmbed{width:100%;height:calc(100dvh - 52px)}
 
 /* 분기버튼 */
+#pageBranch{display:none !important}
 #btnOpenBranch{display:none} 
 body.comm-active #btnOpenBranch{display:inline-flex}
 
@@ -401,6 +434,7 @@ body.history-active .grid { display: none !important; } body.history-active #pag
   .page-gate .btn { height: 60px; font-size: 22px; }
   
   body.no-active .mobile-handle-bar, body.no-active .mobile-handle-side, body.no-active .mobile-drawer, body.no-active .mobile-drawer-side { display:none !important }
+  body:not(.no-active) #mobileGate { display: none !important; }
 
   /* 열숨김 */
   #dlgPreview .model, #dlgPreview .unit, 
@@ -650,10 +684,10 @@ button.tut-highlight { filter: brightness(1.6); }
         
         <div id="authPwGroup" class="hidden">
           <div class="biz-field-row" style="margin-bottom:8px;">
-            <input id="authPw1" type="password" inputmode="numeric" maxlength="4" placeholder="비밀번호 (4자리)" />
+            <input id="authPw1" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="비밀번호 (4자리)" />
           </div>
           <div class="biz-field-row hidden" id="authPw2Row" style="margin-bottom:8px;">
-            <input id="authPw2" type="password" inputmode="numeric" maxlength="4" placeholder="비밀번호 확인" />
+            <input id="authPw2" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="비밀번호 확인" />
           </div>
         </div>
 
@@ -959,7 +993,7 @@ button.tut-highlight { filter: brightness(1.6); }
   </div>
 
   <!-- 분기계산 -->
-  <section id="pageBranch" class="branch">
+  <section id="pageBranch" class="branch hidden">
     <div class="card">
       <div class="card-head">
         <div class="card-title">임의 분기계산</div>
@@ -1319,6 +1353,9 @@ let CONFIG=J(CFG_RAW,{
   homeDiscount: 0.45,
   commDiscount: 0.45,
   showIHose: false,
+  discount360: 0,
+  discount4way: 0,
+  discountStand: 0,
   singleSetDiscount: 0,
   oneWayDiscount: 0,
   deluxeDiscount: 0,
@@ -1361,12 +1398,42 @@ function getModelFlags(model) {
   return { is360, is4way, is1way, isStand, isDeluxe, isGrade1 };
 }
 
+function configNumber(v, fallback){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeDcRate(v, fallback){
+  const n = configNumber(v, fallback);
+  // BE dc.*Rate 는 0~1 비율이다. 과거/수기 값이 48처럼 들어오면 48%로 보정한다.
+  return n > 1 ? n / 100 : n;
+}
+
+function normalizePartnerConfig(cfg){
+  const src = cfg || {};
+  const dc = (src.dc && typeof src.dc === 'object') ? src.dc : {};
+
+  return Object.assign({}, src, {
+    homeDiscount: normalizeDcRate(src.homeDiscount ?? dc.homeDiscountRate, CONFIG.homeDiscount),
+    commDiscount: normalizeDcRate(src.commDiscount ?? dc.commercialDiscountRate, CONFIG.commDiscount),
+    showIHose: (src.showIHose ?? dc.showIHose) === true,
+    discount360: configNumber(src.discount360 ?? dc.discount360Amount, CONFIG.discount360 || 0),
+    discount4way: configNumber(src.discount4way ?? dc.discount4wayAmount ?? dc.discount4WayAmount, CONFIG.discount4way || 0),
+    discountStand: configNumber(src.discountStand ?? dc.discountStandAmount, CONFIG.discountStand || 0),
+    oneWayDiscount: configNumber(src.oneWayDiscount ?? dc.discount1wayAmount ?? dc.discount1WayAmount, CONFIG.oneWayDiscount || 0),
+    deluxeDiscount: configNumber(src.deluxeDiscount ?? dc.discountDeluxeAmount, CONFIG.deluxeDiscount || 0),
+    firstGradeDiscount: configNumber(src.firstGradeDiscount ?? dc.discountFirstGradeAmount, CONFIG.firstGradeDiscount || 0),
+    unitRoundTo: configNumber(src.unitRoundTo ?? dc.unitRoundTo, CONFIG.unitRoundTo || 0),
+    unitRoundMode: String(src.unitRoundMode ?? dc.unitRoundMode ?? CONFIG.unitRoundMode ?? 'ROUND').toUpperCase()
+  });
+}
+
 // DC 설정 적용
 function applyConfigFromServer(cfg) {
   if (!cfg) return;
 
   // CONFIG 병합
-  CONFIG = Object.assign({}, CONFIG, cfg);
+  CONFIG = Object.assign({}, CONFIG, normalizePartnerConfig(cfg));
 
   // 전역 DC 적용
   window.DISCOUNT_RATE_HOME = Number(CONFIG.homeDiscount)||0;
@@ -4518,6 +4585,22 @@ function initMobileUI(){
   updateTopControls();
 }
 
+function showMobileGate(){
+  const g = el('#mobileGate');
+  if(!g) return;
+  g.classList.remove('hidden');
+  g.removeAttribute('style');
+  g.setAttribute('aria-hidden', 'false');
+}
+
+function hideMobileGate(){
+  const g = el('#mobileGate');
+  if(!g) return;
+  g.setAttribute('aria-hidden', 'true');
+  g.classList.add('hidden');
+  g.removeAttribute('style');
+}
+
 function onViewportChange(isMobile){
   // 모바일 플래그 토글
   document.body.classList.toggle('mobile-mode', isMobile);
@@ -4527,16 +4610,16 @@ function onViewportChange(isMobile){
     // 모바일에서 아직 선택 전이면 게이트 노출 유지
     if (!mobileActive){
       document.body.classList.add('no-active');
-      el('#mobileGate')?.removeAttribute('aria-hidden');
+      showMobileGate();
       // console.log('🟦 모바일 게이트 활성');
     }
   } else {
     // 데스크톱에서는 no-active를 건드리지 않음
     if (document.body.classList.contains('no-active')){
-      el('#mobileGate')?.removeAttribute('aria-hidden');
+      showMobileGate();
       // console.log('🟦 데스크톱 게이트 활성');
     } else {
-      el('#mobileGate')?.setAttribute('aria-hidden','true');
+      hideMobileGate();
       // console.log('🟦 데스크톱 게이트 비활성');
     }
   }
@@ -4550,10 +4633,11 @@ function enterMobile(which){
   // 상태 기록
   mobileActive = which;
   // 플래그 정리
-  document.body.classList.remove('no-active','home-active','single-active','comm-active');
+  document.body.classList.remove('no-active','home-active','single-active','comm-active','branch-active');
+  hideBranchPageForCategory();
   document.body.classList.add(which + '-active');
   // 게이트 닫기
-  const g = el('#mobileGate'); if(g) g.setAttribute('aria-hidden','true');
+  hideMobileGate();
   // 합계 갱신
   call(syncHomeTotals);
   const ssum = call(sumSingles) || 0;
@@ -5807,9 +5891,17 @@ function aggregateSendRows(rows){
 /* 게이트 진입 */
 let activeSector = null; // 'home' | 'single' | 'comm'
 
+// 분기계산은 btnOpenBranch 진입 전용 페이지라 카테고리 전환 시 항상 닫는다.
+function hideBranchPageForCategory(){
+  const page = document.getElementById('pageBranch');
+  if(page){ page.classList.add('hidden'); }
+}
+
 function showSector(sec){
   activeSector = sec;
   document.body.classList.remove('no-active');
+  document.body.classList.remove('branch-active');
+  hideBranchPageForCategory();
   el('#cardHome')?.classList.toggle('hidden', sec!=='home');
   el('#cardSingle')?.classList.toggle('hidden', sec!=='single');
   el('#cardComm')?.classList.toggle('hidden', sec!=='comm');
@@ -5826,8 +5918,7 @@ function initGate(){
     document.body.classList.remove('no-active');
     document.body.classList.add('home-active');
     
-    el('#mobileGate')?.setAttribute('aria-hidden','true');
-    el('#mobileGate').classList.add('hidden');
+    hideMobileGate();
     showSector('home');   
     renderHome(); 
   });
@@ -5839,8 +5930,7 @@ function initGate(){
     document.body.classList.remove('no-active'); 
     document.body.classList.add('single-active');
     
-    el('#mobileGate')?.setAttribute('aria-hidden','true'); 
-    el('#mobileGate').classList.add('hidden');
+    hideMobileGate();
     showSector('single'); 
     renderSingle();
   });
@@ -5852,8 +5942,7 @@ function initGate(){
     document.body.classList.remove('no-active'); 
     document.body.classList.add('comm-active');
     
-    el('#mobileGate')?.setAttribute('aria-hidden','true'); 
-    el('#mobileGate').classList.add('hidden');
+    hideMobileGate();
     showSector('comm');   
     renderComm(); 
   });
@@ -5865,8 +5954,7 @@ function initGate(){
     document.body.classList.remove('no-active');
     document.body.classList.add('old-active');
     
-    el('#mobileGate')?.setAttribute('aria-hidden','true'); 
-    el('#mobileGate').classList.add('hidden');
+    hideMobileGate();
     
     if(typeof goOld === 'function') {
       goOld();
@@ -6315,6 +6403,7 @@ function goHome(){
   document.body.classList.remove('no-active');
   document.body.classList.add('home-active');
   document.body.classList.remove('single-active', 'comm-active', 'branch-active', 'old-active');
+  hideBranchPageForCategory();
   refreshSelectedBadge?.(); updateTopControls?.(); fitAllTables?.();
   sendLog('섹션이동', '홈멀티 진입');
   forceOrderTitle();
@@ -6324,6 +6413,7 @@ function goSingle(){
   document.body.classList.remove('no-active');
   document.body.classList.add('single-active');
   document.body.classList.remove('home-active', 'comm-active', 'branch-active', 'old-active');
+  hideBranchPageForCategory();
   refreshSelectedBadge?.(); updateTopControls?.(); fitAllTables?.();
   sendLog('섹션이동', '싱글중대형 진입');
   forceOrderTitle();
@@ -6332,7 +6422,8 @@ function goSingle(){
 function goComm(){
   document.body.classList.remove('no-active')
   document.body.classList.add('comm-active')
-  document.body.classList.remove('home-active', 'single-active', 'old-active')
+  document.body.classList.remove('home-active', 'single-active', 'branch-active', 'old-active')
+  hideBranchPageForCategory();
   const body = document.querySelector('#commBody')
   if (body && body.children.length === 0) {
     renderComm?.()                 // 표 생성
@@ -6349,6 +6440,7 @@ function goOld(){
   
   // CSS 활성화 클래스 스위칭
   document.body.classList.remove('home-active', 'single-active', 'comm-active', 'branch-active');
+  hideBranchPageForCategory();
   document.body.classList.add('old-active');
   activeSector = 'old';
   // 데이터가 없으면 렌더링
@@ -7793,7 +7885,7 @@ el('#btnAuthAction').addEventListener('click', () => {
   // 로그인
   else if (AUTH_STEP === 'LOGIN') {
     const pw = el('#authPw1').value;
-    if (!pw) return;
+    if (!/^\d{4}$/.test(pw)) return alert('비밀번호는 4자리 숫자여야 합니다.');
     
     showLoadingGate(true, '비밀번호를 확인 중입니다.');
     google.script.run
@@ -7880,9 +7972,7 @@ function completeLogin(bizNo, config, res) {
   playWelcomeAnimation(res, () => {
     const typeGate = document.getElementById('mobileGate');
     if (typeGate) {
-      typeGate.classList.remove('hidden'); 
-      typeGate.setAttribute('aria-hidden', 'false');
-      typeGate.style.display = 'flex';
+      showMobileGate();
     } else {
       document.body.classList.remove('no-active');
     }
