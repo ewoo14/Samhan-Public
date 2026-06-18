@@ -83,6 +83,18 @@ jest.mock('axios', () => {
         cardFeeRate: 0.03,
         advanceDiscountRate: 0.02,
         comboWarnRate: 0.8,
+        homeNoHose: false,
+        homeNoBranch: false,
+        homeWithFoot: false,
+        homeDefaultPanel: '',
+        singleDefaultWiredRemote: '',
+        singleNoRemote: false,
+        singleWithBase: false,
+        singleDefaultPanel: '',
+        singlePanelShape: '원형',
+        singleDiscount: 0,
+        singleOneWayDiscount: 0,
+        singleMaterialInclusion: '별도',
         footerNotice: '테스트 안내',
       } : global.__ESTIMATE_CONFIG_PAYLOAD__);
     }
@@ -202,6 +214,9 @@ describe('#30 db-catalog → legacy getter shape', () => {
     expect(cfg.cardFeeRate).toBe(0.03);
     expect(cfg.advanceDiscountRate).toBe(0.02);
     expect(cfg.comboWarnRate).toBe(0.8);
+    expect(cfg.homeNoHose).toBe(false);
+    expect(cfg.singlePanelShape).toBe('원형');
+    expect(cfg.singleMaterialInclusion).toBe('별도');
     expect(cfg.footerNotice).toBe('테스트 안내');
   });
 

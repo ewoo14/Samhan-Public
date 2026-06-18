@@ -12,6 +12,18 @@ public record EstimateConfigResponse(
         BigDecimal cardFeeRate,
         BigDecimal advanceDiscountRate,
         BigDecimal comboWarnRate,
+        Boolean homeNoHose,
+        Boolean homeNoBranch,
+        Boolean homeWithFoot,
+        String homeDefaultPanel,
+        String singleDefaultWiredRemote,
+        Boolean singleNoRemote,
+        Boolean singleWithBase,
+        String singleDefaultPanel,
+        String singlePanelShape,
+        BigDecimal singleDiscount,
+        BigDecimal singleOneWayDiscount,
+        String singleMaterialInclusion,
         String footerNotice
 ) {
 
@@ -24,6 +36,18 @@ public record EstimateConfigResponse(
                 config.getCardFeeRate(),
                 config.getAdvanceDiscountRate(),
                 config.getComboWarnRate(),
+                config.getHomeNoHose(),
+                config.getHomeNoBranch(),
+                config.getHomeWithFoot(),
+                config.getHomeDefaultPanel(),
+                config.getSingleDefaultWiredRemote(),
+                config.getSingleNoRemote(),
+                config.getSingleWithBase(),
+                config.getSingleDefaultPanel(),
+                config.getSinglePanelShape(),
+                config.getSingleDiscount(),
+                config.getSingleOneWayDiscount(),
+                config.getSingleMaterialInclusion(),
                 config.getFooterNotice()
         );
     }

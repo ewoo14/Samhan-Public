@@ -13,6 +13,18 @@ public record UpdateEstimateConfigRequest(
         @DecimalMin("0.0000") @DecimalMax("0.9999") BigDecimal cardFeeRate,
         @DecimalMin("0.0000") @DecimalMax("0.9999") BigDecimal advanceDiscountRate,
         @DecimalMin("0.0000") @DecimalMax("0.9999") BigDecimal comboWarnRate,
+        Boolean homeNoHose,
+        Boolean homeNoBranch,
+        Boolean homeWithFoot,
+        String homeDefaultPanel,
+        String singleDefaultWiredRemote,
+        Boolean singleNoRemote,
+        Boolean singleWithBase,
+        String singleDefaultPanel,
+        String singlePanelShape,
+        @DecimalMin("0.00") BigDecimal singleDiscount,
+        @DecimalMin("0.00") BigDecimal singleOneWayDiscount,
+        String singleMaterialInclusion,
         String footerNotice
 ) {
 }

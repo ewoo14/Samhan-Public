@@ -1031,6 +1031,18 @@ export interface EstimateConfig {
   cardFeeRate: number
   advanceDiscountRate: number
   comboWarnRate: number
+  homeNoHose: boolean
+  homeNoBranch: boolean
+  homeWithFoot: boolean
+  homeDefaultPanel: string
+  singleDefaultWiredRemote: string
+  singleNoRemote: boolean
+  singleWithBase: boolean
+  singleDefaultPanel: string
+  singlePanelShape: string
+  singleDiscount: number
+  singleOneWayDiscount: number
+  singleMaterialInclusion: string
   footerNotice: string
 }
 

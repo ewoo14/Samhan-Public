@@ -32,6 +32,18 @@ public class EstimateConfigService {
                 request.cardFeeRate(),
                 request.advanceDiscountRate(),
                 request.comboWarnRate(),
+                request.homeNoHose(),
+                request.homeNoBranch(),
+                request.homeWithFoot(),
+                request.homeDefaultPanel(),
+                request.singleDefaultWiredRemote(),
+                request.singleNoRemote(),
+                request.singleWithBase(),
+                request.singleDefaultPanel(),
+                request.singlePanelShape(),
+                request.singleDiscount(),
+                request.singleOneWayDiscount(),
+                request.singleMaterialInclusion(),
                 request.footerNotice());
         return config;
     }

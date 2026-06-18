@@ -153,6 +153,18 @@ const DEFAULT_ESTIMATE_CONFIG = {
   cardFeeRate: 0.03,
   advanceDiscountRate: 0,
   comboWarnRate: 0,
+  homeNoHose: false,
+  homeNoBranch: false,
+  homeWithFoot: false,
+  homeDefaultPanel: '',
+  singleDefaultWiredRemote: '',
+  singleNoRemote: false,
+  singleWithBase: false,
+  singleDefaultPanel: '',
+  singlePanelShape: '원형',
+  singleDiscount: 0,
+  singleOneWayDiscount: 0,
+  singleMaterialInclusion: '별도',
   footerNotice: [
     '※ 분기관은 임의 산정입니다.',
     '※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.',
@@ -391,6 +403,18 @@ function normalizeEstimateConfig_(raw) {
     const value = Number(rawValue);
     return Number.isFinite(value) ? value : fallback;
   };
+  const bool = (key, fallback) => {
+    const rawValue = src[key];
+    if (typeof rawValue === 'boolean') return rawValue;
+    if (/^(true|TRUE|1|예|Y)$/i.test(String(rawValue || ''))) return true;
+    if (/^(false|FALSE|0|아니오|N)$/i.test(String(rawValue || ''))) return false;
+    return fallback;
+  };
+  const str = (key, fallback) => (src[key] == null ? fallback : String(src[key]));
+  const amount = (key, fallback) => {
+    if (src[key] == null || src[key] === '') return fallback;
+    return parseKRNumber_(src[key]);
+  };
   return {
     commonHomeDiscountRate: num('commonHomeDiscountRate', DEFAULT_ESTIMATE_CONFIG.commonHomeDiscountRate, 'homeDiscount'),
     commonCommercialDiscountRate: num('commonCommercialDiscountRate', DEFAULT_ESTIMATE_CONFIG.commonCommercialDiscountRate, 'commDiscount'),
@@ -399,6 +423,18 @@ function normalizeEstimateConfig_(raw) {
     cardFeeRate: num('cardFeeRate', DEFAULT_ESTIMATE_CONFIG.cardFeeRate),
     advanceDiscountRate: num('advanceDiscountRate', DEFAULT_ESTIMATE_CONFIG.advanceDiscountRate),
     comboWarnRate: num('comboWarnRate', DEFAULT_ESTIMATE_CONFIG.comboWarnRate),
+    homeNoHose: bool('homeNoHose', DEFAULT_ESTIMATE_CONFIG.homeNoHose),
+    homeNoBranch: bool('homeNoBranch', DEFAULT_ESTIMATE_CONFIG.homeNoBranch),
+    homeWithFoot: bool('homeWithFoot', DEFAULT_ESTIMATE_CONFIG.homeWithFoot),
+    homeDefaultPanel: str('homeDefaultPanel', DEFAULT_ESTIMATE_CONFIG.homeDefaultPanel),
+    singleDefaultWiredRemote: str('singleDefaultWiredRemote', DEFAULT_ESTIMATE_CONFIG.singleDefaultWiredRemote),
+    singleNoRemote: bool('singleNoRemote', DEFAULT_ESTIMATE_CONFIG.singleNoRemote),
+    singleWithBase: bool('singleWithBase', DEFAULT_ESTIMATE_CONFIG.singleWithBase),
+    singleDefaultPanel: str('singleDefaultPanel', DEFAULT_ESTIMATE_CONFIG.singleDefaultPanel),
+    singlePanelShape: str('singlePanelShape', DEFAULT_ESTIMATE_CONFIG.singlePanelShape),
+    singleDiscount: amount('singleDiscount', DEFAULT_ESTIMATE_CONFIG.singleDiscount),
+    singleOneWayDiscount: amount('singleOneWayDiscount', DEFAULT_ESTIMATE_CONFIG.singleOneWayDiscount),
+    singleMaterialInclusion: str('singleMaterialInclusion', DEFAULT_ESTIMATE_CONFIG.singleMaterialInclusion),
     footerNotice: typeof src.footerNotice === 'string'
       ? src.footerNotice
       : DEFAULT_ESTIMATE_CONFIG.footerNotice,
@@ -1176,7 +1212,18 @@ function getOldProducts_() {
  * legacy getHomeDefaults() — 홈멀티 시트 상단 (1~2행) 기본값.
  * estimate-legacy/lib/code.js (line 1401) 1:1 포팅.
  */
-function getHomeDefaults() {
+function getHomeDefaults(estimateConfig) {
+  if (estimateConfig && typeof estimateConfig === 'object') {
+    const cfg = normalizeEstimateConfig_(estimateConfig);
+    return {
+      '유연호스 제외': !!cfg.homeNoHose,
+      '분기관 제외': !!cfg.homeNoBranch,
+      '발통포함': !!cfg.homeWithFoot,
+      '리모컨': '선택 안함',
+      '판넬변경': String(cfg.homeDefaultPanel || ''),
+    };
+  }
+
   const sh = SpreadsheetApp.openById(SRC_SHEET_ID).getSheetByName(HOME_NAME);
   if (!sh) return {};
   const H = sh.getRange(1, 1, 2, 24).getDisplayValues();
@@ -1206,7 +1253,21 @@ function getHomeDefaults() {
  * legacy getSingleDefaults() — 싱글 시트 상단 기본값.
  * estimate-legacy/lib/code.js (line 1426) 1:1 포팅.
  */
-function getSingleDefaults() {
+function getSingleDefaults(estimateConfig) {
+  if (estimateConfig && typeof estimateConfig === 'object') {
+    const cfg = normalizeEstimateConfig_(estimateConfig);
+    return {
+      '유선리모컨': String(cfg.singleDefaultWiredRemote || ''),
+      '리모컨 제외': !!cfg.singleNoRemote,
+      '실외기 받침대 포함': !!cfg.singleWithBase,
+      '판넬변경': String(cfg.singleDefaultPanel || ''),
+      '360판넬': String(cfg.singlePanelShape || '원형'),
+      '할인': parseKRNumber_(cfg.singleDiscount),
+      '1WAY할인': parseKRNumber_(cfg.singleOneWayDiscount),
+      '자재 포함 여부': String(cfg.singleMaterialInclusion || '별도'),
+    };
+  }
+
   const sh = SpreadsheetApp.openById(SRC_SHEET_ID).getSheetByName(SINGLE_NAME);
   if (!sh) return {};
   const H = sh.getRange(1, 1, 2, 24).getDisplayValues();
@@ -1787,18 +1848,20 @@ async function bootstrap(userEmail) {
   const useDb = String(process.env.CATALOG_SOURCE || 'sheet').toLowerCase() === 'db';
 
   // legacy 가 read 하는 전 탭 prefetch (병렬). 누락 탭은 빈 sheet 반환.
-  // DB 모드에서 specDetailMap 은 product-service DB. 3탭 prefetch 는 기본값 등 잔여 legacy getter 용.
+  // DB 모드에서는 카탈로그/spec/default 모두 DB endpoint 에서 주입하므로 시트 prefetch 를 생략한다.
   const sheetsToPreload = useDb
-    ? [HOME_NAME, SINGLE_NAME, COMM_NAME]
+    ? []
     : [
       HOME_NAME, SINGLE_NAME, SINGLE_PARTS_NAME, COMM_NAME, COMM_PARTS_NAME,
       '싱글 자재가격', '구형', '추천실외기',
       '홈멀티', '상업멀티', '상업멀티 구성', '싱글 세트', '싱글 구성품',
     ];
-  try {
-    await preloadSheets(SRC_SHEET_ID, sheetsToPreload);
-  } catch (e) {
-    Logger.log('[bootstrap] preloadSheets 실패: ' + (e && e.message));
+  if (sheetsToPreload.length > 0) {
+    try {
+      await preloadSheets(SRC_SHEET_ID, sheetsToPreload);
+    } catch (e) {
+      Logger.log('[bootstrap] preloadSheets 실패: ' + (e && e.message));
+    }
   }
   try {
     await preloadDirectoryCache_();
@@ -1812,9 +1875,11 @@ async function bootstrap(userEmail) {
   try { t.authData = JSON.stringify(await checkUserAuth(email)); } catch (_) { t.authData = '{}'; }
 
   let dbCatalog = null;
+  let estimateConfig = normalizeEstimateConfig_(null);
   if (useDb) {
     // #30 — 카탈로그 9종을 product-service 벌크 endpoint 에서 read (시트 직접 read 폐기).
     dbCatalog = require('./db-catalog');
+    try { estimateConfig = normalizeEstimateConfig_(await dbCatalog.estimateConfig()); } catch (e) { Logger.log('[bootstrap] db estimateConfig: ' + e.message); }
     try { t.homemulti = JSON.stringify(await dbCatalog.multiCatalog('HOME_MULTI', classifyHome_)); } catch (e) { Logger.log('[bootstrap] db homemulti: ' + e.message); t.homemulti = '[]'; }
     try { t.singleSets = JSON.stringify(await dbCatalog.singleSets(classifySingleSetLM_, normalizeSize_, sanitizeDisp_)); } catch (e) { Logger.log('[bootstrap] db singleSets: ' + e.message); t.singleSets = '[]'; }
     try { t.singleParts = JSON.stringify(await dbCatalog.components('SINGLE_SET', sanitizeDisp_)); } catch (e) { Logger.log('[bootstrap] db singleParts: ' + e.message); t.singleParts = '[]'; }
@@ -1836,12 +1901,8 @@ async function bootstrap(userEmail) {
     try { t.priceInc = JSON.stringify(getPriceIncData_()); } catch (_) { t.priceInc = '{"home":{},"comm":{},"single":{}}'; }
   }
 
-  try { t.homeDefaults = JSON.stringify(getHomeDefaults()); } catch (_) { t.homeDefaults = '{}'; }
-  try { t.singleDefaults = JSON.stringify(getSingleDefaults()); } catch (_) { t.singleDefaults = '{}'; }
-  let estimateConfig = normalizeEstimateConfig_(null);
-  if (useDb && dbCatalog) {
-    try { estimateConfig = normalizeEstimateConfig_(await dbCatalog.estimateConfig()); } catch (e) { Logger.log('[bootstrap] db estimateConfig: ' + e.message); }
-  }
+  try { t.homeDefaults = JSON.stringify(useDb ? getHomeDefaults(estimateConfig) : getHomeDefaults()); } catch (_) { t.homeDefaults = '{}'; }
+  try { t.singleDefaults = JSON.stringify(useDb ? getSingleDefaults(estimateConfig) : getSingleDefaults()); } catch (_) { t.singleDefaults = '{}'; }
   if (useDb && dbCatalog) {
     try { t.specDetailMap = JSON.stringify(await dbCatalog.specDetailMap()); } catch (e) { Logger.log('[bootstrap] db specDetailMap: ' + e.message); t.specDetailMap = '{}'; }
   } else {
