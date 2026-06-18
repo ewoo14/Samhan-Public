@@ -183,9 +183,10 @@ class ProductPermissionControllerIT {
                 BigDecimal.valueOf(1000), BigDecimal.valueOf(800), "KRW",
                 ProductStatus.ACTIVE, Map.of(), "memo",
                 ProductCategory.HOME_MULTI,
+                null, null, null,
                 com.samhanair.logis.product.web.dto.ProductItemKind.GENERAL,
                 null, null, null, "EA",
-                BigDecimal.valueOf(1000), BigDecimal.valueOf(800),
+                BigDecimal.valueOf(1000), BigDecimal.valueOf(800), null,
                 com.samhanair.logis.product.domain.ProductGoodsType.GOODS,
                 com.samhanair.logis.product.domain.UsageScope.BOTH,
                 com.samhanair.logis.product.domain.EstimateCategory.HOME_MULTI,
@@ -219,6 +220,10 @@ class ProductPermissionControllerIT {
         lenient().when(productService.updateVariableDiscountAndReturn(anyString(), any()))
                 .thenReturn(byCodeProduct);
         lenient().doNothing().when(productService).clearVariableDiscountOverride(anyString());
+        lenient().when(productService.updateClassificationAndFixedDiscount(anyString(), any()))
+                .thenReturn(byCodeProduct);
+        lenient().when(productService.updateFixedDiscountAndReturn(anyString(), any()))
+                .thenReturn(byCodeProduct);
         lenient().when(productService.getOne(any())).thenReturn(response);
         lenient().when(productService.getByModelName(anyString())).thenReturn(response);
         lenient().when(productService.lookup(any())).thenReturn(List.of(summary));
@@ -362,6 +367,14 @@ class ProductPermissionControllerIT {
                                 .content("{\"hasVariableDiscount\":true}")),
                 new EndpointCase("product catalog variable discount delete", "products.admin", PermissionAction.UPDATE, "MANAGER", 204,
                         () -> delete("/api/v1/products/MODEL-1/variable-discount")),
+                new EndpointCase("product catalog classification patch", "products.admin", PermissionAction.UPDATE, "MANAGER", 200,
+                        () -> patch("/api/v1/products/MODEL-1/classification")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"catLId\":null,\"catMId\":null,\"catSId\":null}")),
+                new EndpointCase("product catalog fixed discount patch", "products.admin", PermissionAction.UPDATE, "MANAGER", 200,
+                        () -> patch("/api/v1/products/MODEL-1/fixed-discount")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"fixedDiscountRate\":null}")),
                 new EndpointCase("product catalog specs list", "products.list", PermissionAction.VIEW, "SALES", 200,
                         () -> get("/api/v1/products/MODEL-1/specs")),
                 new EndpointCase("product catalog spec add", "products.admin", PermissionAction.CREATE, "MANAGER", 201,

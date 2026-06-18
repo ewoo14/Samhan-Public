@@ -23,6 +23,8 @@ import com.samhanair.logis.product.web.dto.DisplayOrderRequest;
 import com.samhanair.logis.product.web.dto.ProductCatalogResponse;
 import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import com.samhanair.logis.product.web.dto.SpecKeyTemplateResponse;
+import com.samhanair.logis.product.web.dto.UpdateProductClassificationRequest;
+import com.samhanair.logis.product.web.dto.UpdateProductFixedDiscountRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductUsageRequest;
 import com.samhanair.logis.product.web.dto.UpdateProductVariableDiscountRequest;
 import com.samhanair.logis.security.permission.PermissionAction;
@@ -40,6 +42,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -71,6 +74,7 @@ import org.springframework.web.bind.annotation.RestController;
  *     <li>DELETE /api/v1/products/{code}/usage — products.admin UPDATE</li>
  *     <li>PATCH /api/v1/products/{code}/variable-discount — products.admin UPDATE</li>
  *     <li>DELETE /api/v1/products/{code}/variable-discount — products.admin UPDATE</li>
+ *     <li>PATCH /api/v1/products/{code}/fixed-discount — products.admin UPDATE</li>
  *     <li>GET /api/v1/products/{code}/specs — products.list VIEW</li>
  *     <li>POST /api/v1/products/{code}/specs — products.admin CREATE</li>
  *     <li>PATCH /api/v1/products/{code}/specs/{id} — products.admin UPDATE</li>
@@ -144,6 +148,7 @@ public class ProductCatalogController {
      */
     @GetMapping("/products")
     @RequirePermission(page = "products.list", action = PermissionAction.VIEW)
+    @Transactional(readOnly = true)
     public Page<ProductCatalogResponse> listProducts(
             @RequestParam(required = false) UsageScope usageScope,
             @RequestParam(required = false, name = "category") EstimateCategory estimateCategory,
@@ -214,6 +219,7 @@ public class ProductCatalogController {
      */
     @PatchMapping("/products/{modelCode}/usage")
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
     public ProductCatalogResponse changeUsage(@PathVariable @NotBlank String modelCode,
                                               @Valid @RequestBody UpdateProductUsageRequest req) {
         Product product = productService.updateUsageAndReturn(modelCode, req);
@@ -254,6 +260,7 @@ public class ProductCatalogController {
      */
     @PatchMapping("/products/{modelCode}/variable-discount")
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
     public ProductCatalogResponse changeVariableDiscount(@PathVariable @NotBlank String modelCode,
                                                          @Valid @RequestBody UpdateProductVariableDiscountRequest req) {
         Product product = productService.updateVariableDiscountAndReturn(modelCode, req);
@@ -263,13 +270,32 @@ public class ProductCatalogController {
         return response;
     }
 
-    /**
-     * 품목 변동DC 수동 override 해제 (V19, 2026-06-17).
-     *
-     * <p>{@code variableDiscountManual=false} 로 복귀. 다음 시트 sync 에서 시트 기준으로 재적재된다.
-     *
-     * @param modelCode override 해제 대상 품목의 모델코드 (카탈로그 노출 식별자)
-     */
+    /** 품목별 L/M/S 분류를 FE F1-b PATCH body 계약 그대로 저장한다. */
+    @PatchMapping("/products/{modelCode}/classification")
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
+    public ProductCatalogResponse changeClassification(@PathVariable @NotBlank String modelCode,
+                                                       @Valid @RequestBody UpdateProductClassificationRequest req) {
+        Product product = productService.updateClassificationAndFixedDiscount(modelCode, req);
+        ProductCatalogResponse response = ProductCatalogResponse.from(
+                product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+        return response;
+    }
+
+    /** 품목별 0~100 percent 고정DC율을 인라인 자동저장 계약 그대로 저장한다. */
+    @PatchMapping("/products/{modelCode}/fixed-discount")
+    @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)
+    @Transactional
+    public ProductCatalogResponse changeFixedDiscount(@PathVariable @NotBlank String modelCode,
+                                                      @Valid @RequestBody UpdateProductFixedDiscountRequest req) {
+        Product product = productService.updateFixedDiscountAndReturn(modelCode, req);
+        ProductCatalogResponse response = ProductCatalogResponse.from(
+                product, exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()));
+        catalogChangePublisher.publishCatalogChanged(modelCode);
+        return response;
+    }
+
     @DeleteMapping("/products/{modelCode}/variable-discount")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @RequirePermission(page = "products.admin", action = PermissionAction.UPDATE)

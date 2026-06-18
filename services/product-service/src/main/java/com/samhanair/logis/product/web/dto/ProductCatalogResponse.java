@@ -1,6 +1,7 @@
 package com.samhanair.logis.product.web.dto;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductEstimateExposure;
@@ -43,11 +44,15 @@ public record ProductCatalogResponse(
         UsageScope usageScope,
         EstimateCategory estimateCategory,
         ProductCategory productCategory,
+        ClassificationView catL,
+        ClassificationView catM,
+        ClassificationView catS,
         boolean usageScopeManual,
         Integer displayOrder,
         List<EstimateCategoryExposureView> estimateCategories,
         BigDecimal releasePrice,
         BigDecimal deliveryPrice,
+        BigDecimal fixedDiscountRate,
         boolean hasVariableDiscount,
         boolean variableDiscountManual,
         boolean legacyDiscountFlag,
@@ -88,11 +93,15 @@ public record ProductCatalogResponse(
                 p.getUsageScope(),
                 firstCategory,
                 p.getProductCategory(),
+                ClassificationView.from(p.getCatL()),
+                ClassificationView.from(p.getCatM()),
+                ClassificationView.from(p.getCatS()),
                 p.isUsageScopeManual(),
                 firstDisplayOrder,
                 exposureViews,
                 p.getReleasePrice(),
                 p.getDeliveryPrice(),
+                p.getFixedDiscountRate(),
                 Boolean.TRUE.equals(p.getHasVariableDiscount()),
                 p.isVariableDiscountManual(),
                 Boolean.TRUE.equals(p.getLegacyDiscountFlag()),
@@ -114,8 +123,8 @@ public record ProductCatalogResponse(
     public ProductCatalogResponse withComponentCount(int count) {
         return new ProductCatalogResponse(
                 modelCode, name, usageScope, estimateCategory,
-                productCategory, usageScopeManual, displayOrder, estimateCategories,
-                releasePrice, deliveryPrice,
+                productCategory, catL, catM, catS, usageScopeManual, displayOrder, estimateCategories,
+                releasePrice, deliveryPrice, fixedDiscountRate,
                 hasVariableDiscount, variableDiscountManual, legacyDiscountFlag, discountFlags,
                 productType, count
         );
@@ -136,5 +145,15 @@ public record ProductCatalogResponse(
 
     /** 카테고리별 견적 노출 표시 정보. */
     public record EstimateCategoryExposureView(EstimateCategory category, Integer displayOrder) {
+    }
+
+    /** Classification 표시 정보. */
+    public record ClassificationView(String id, String name) {
+        public static ClassificationView from(Classification classification) {
+            if (classification == null) {
+                return null;
+            }
+            return new ClassificationView(classification.getId().toString(), classification.getName());
+        }
     }
 }

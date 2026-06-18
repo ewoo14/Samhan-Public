@@ -12,6 +12,7 @@ import com.samhanair.logis.product.client.GoogleSheetsClient;
 import com.samhanair.logis.product.client.GoogleSheetsClient.ValueRenderMode;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
@@ -19,15 +20,18 @@ import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.domain.PriceHistory;
 import com.samhanair.logis.product.domain.ProductSpec;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
+import com.samhanair.logis.product.repository.ClassificationRepository;
 import com.samhanair.logis.product.repository.PriceHistoryRepository;
 import com.samhanair.logis.product.repository.ProductEstimateExposureRepository;
 import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.service.ProductSheetSyncService;
 import com.samhanair.logis.product.service.ProductService;
+import com.samhanair.logis.product.web.dto.UpdateProductClassificationRequest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,6 +90,9 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
 
     @Autowired
     private ProductEstimateExposureRepository exposureRepository;
+
+    @Autowired
+    private ClassificationRepository classificationRepository;
 
     @BeforeEach
     void resetState() throws Exception {
@@ -229,6 +236,37 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(product.get().getProductCategory()).isEqualTo(ProductCategory.SINGLE_SET);
         assertThat(product.get().getReleasePrice()).isEqualByComparingTo(new BigDecimal("2488200"));
         assertThat(product.get().getDeliveryPrice()).isEqualByComparingTo(new BigDecimal("1490000"));
+    }
+
+    @Test
+    void sync_GAS_singleSet_화면분류기와_catL_catM_분류가_일치한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "평형", "모델명", "단위", "출고가", "수량", "납품가", "납품가", "소계"),
+                row("360 CST UV", "15", "SS_PARITY_360", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-"),
+                row("무풍 4way 냉난방 프레스티지", "30", "SS_PARITY_4WAY", "SET", "3,000,000", "", "2,100,000", "2,100,000", "-"),
+                row("무풍 1way 냉난방", "18", "SS_PARITY_1WAY", "SET", "2,100,000", "", "1,260,000", "1,260,000", "-"),
+                row("비스포크 스탠드(콰이엇 그레이)", "25", "SS_PARITY_BESPOKE", "SET", "2,500,000", "", "1,800,000", "1,800,000", "-"),
+                row("24년형 가정용 에어컨 무풍갤러리", "18", "SS_PARITY_HOME", "SET", "2,200,000", "", "1,500,000", "1,500,000", "-")
+        ));
+
+        syncService.syncAll();
+
+        assertSingleClassification("SS_PARITY_360", "360", "CST UV");
+        assertSingleClassification("SS_PARITY_4WAY", "4way 냉난방", "프레스티지");
+        assertSingleClassification("SS_PARITY_1WAY", "1way 냉난방", "");
+        assertSingleClassification("SS_PARITY_BESPOKE", "비스포크 스탠드", "콰이엇 그레이");
+        assertSingleClassification("SS_PARITY_HOME", "가정용 에어컨", "무풍갤러리");
+
+        List<Product> singleSets = productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.SINGLE_SET);
+        assertThat(singleSets)
+                .as("싱글 세트 대표 품목은 홈멀티 fallback 부자재로 쏠리면 안 된다")
+                .noneSatisfy(product -> assertThat(product.getCatL())
+                        .extracting(Classification::getName)
+                        .isEqualTo("부자재"));
+        assertThat(singleSets.stream().map(product -> product.getCatL().getName()).distinct().count())
+                .as("싱글 세트 catL 분포")
+                .isGreaterThan(1);
     }
 
     @Test
@@ -881,6 +919,161 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     /**
+     * F1-a 수동 분류/고정DC 보존 — PATCH 후 rowHash evict 로 update 경로에 진입해도
+     * 사용자가 저장한 분류와 고정DC는 시트/GAS 기본값으로 되돌아가면 안 된다.
+     */
+    @Test
+    void sync_classificationManual_true인_품목은_분류와_고정DC_불변() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        List<List<Object>> sameRows = rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("공기청정 WIFI 판넬", "CLASS_MANUAL_01", "", "100,000", "", "80,000", "12.5%")
+        );
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(sameRows);
+
+        syncService.syncAll();
+        Product synced = productRepository.findByModelCodeAndIsDeletedFalse("CLASS_MANUAL_01").orElseThrow();
+        assertThat(synced.getCatL()).extracting(Classification::getName).isEqualTo("판넬");
+        assertThat(synced.getFixedDiscountRate()).isEqualByComparingTo("12.5");
+
+        Classification manualL = classificationRepository.save(Classification.create(
+                EstimateCategory.HOME_MULTI, Classification.CatLevel.L, null, "수동 대분류", 99, true));
+        classificationRepository.flush();
+
+        productService.updateClassificationAndFixedDiscount(
+                "CLASS_MANUAL_01",
+                new UpdateProductClassificationRequest(manualL.getId(), null, null));
+        productService.updateFixedDiscountAndReturn(
+                "CLASS_MANUAL_01",
+                new com.samhanair.logis.product.web.dto.UpdateProductFixedDiscountRequest("33.33"));
+
+        Product afterPatch = productRepository.findByModelCodeAndIsDeletedFalse("CLASS_MANUAL_01").orElseThrow();
+        assertThat(afterPatch.isClassificationManual()).isTrue();
+        assertThat(afterPatch.isFixedDiscountManual()).isTrue();
+
+        ProductSheetSyncService.SyncSummary summary = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult homeTab = summary.byTab.get("홈멀티");
+        assertThat(homeTab.updated)
+                .as("classification PATCH 후 rowHash evict 로 행 무변경에도 update 경로 진입")
+                .isEqualTo(1);
+
+        Product afterSync = productRepository.findByModelCodeAndIsDeletedFalse("CLASS_MANUAL_01").orElseThrow();
+        assertThat(afterSync.getCatL()).extracting(Classification::getName).isEqualTo("수동 대분류");
+        assertThat(afterSync.getFixedDiscountRate()).isEqualByComparingTo("33.33");
+    }
+
+    /**
+     * F1-a GAS parity — 홈멀티 품명 정규식 분류 + 고정DC% 시트값 적재.
+     */
+    @Test
+    void sync_GAS_home_품명분류와_고정DC를_Classification으로_적재한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("공기청정 WIFI 판넬", "PANEL_WIFI_01", "", "100,000", "", "80,000", "12.5%")
+        ));
+
+        syncService.syncAll();
+
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse("PANEL_WIFI_01").orElseThrow();
+        assertThat(product.getCatL()).extracting(Classification::getName).isEqualTo("판넬");
+        assertThat(product.getCatM()).extracting(Classification::getName).isEqualTo("공기청정 WIFI");
+        assertThat(product.getCatS()).isNull();
+        assertThat(product.getFixedDiscountRate()).isEqualByComparingTo(new BigDecimal("12.5"));
+        assertThat(classificationRepository.findByEstimateCategoryAndParentIsNullOrderByDisplayOrderAsc(
+                        EstimateCategory.HOME_MULTI))
+                .extracting(Classification::getName)
+                .contains("판넬");
+    }
+
+    /**
+     * F1-a GAS parity — 상업멀티 DUCT 고정압 소분류와 0-분류 전수 가드.
+     */
+    @Test
+    void sync_GAS_commercial_품명분류는_catL_catM_catS_0분류가_없다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "단위", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("DUCT 고정압 실내기", "AM120BNHDCH1", "EA", "", "1,000,000", "", "700,000", "0"),
+                row("상업용 전열교환기", "ERV_COMM_01", "EA", "", "2,000,000", "", "1,400,000", "")
+        ));
+
+        syncService.syncAll();
+
+        Product duct = productRepository.findByModelCodeAndIsDeletedFalse("AM120BNHDCH1").orElseThrow();
+        assertThat(duct.getCatL()).extracting(Classification::getName).isEqualTo("실내기");
+        assertThat(duct.getCatM()).extracting(Classification::getName).isEqualTo("DUCT");
+        assertThat(duct.getCatS()).extracting(Classification::getName).isEqualTo("고정압");
+        assertThat(duct.getFixedDiscountRate()).isEqualByComparingTo(BigDecimal.ZERO);
+
+        List<Product> synced = productRepository.findByProductCategoryAndIsDeletedFalse(
+                ProductCategory.COMMERCIAL_MULTI);
+        assertThat(synced)
+                .as("GAS 규칙 대상 row 는 catL 0-분류가 없어야 한다")
+                .allSatisfy(product -> assertThat(product.getCatL()).isNotNull());
+    }
+
+    /**
+     * [[spec-sync-full-db-distribution-check]]
+     * F1-a GAS parity — 실 카탈로그 수준 다건 픽스처의 카테고리별 0-분류 분포 가드.
+     *
+     * <p>분류 정규식이 대량 회귀하면 특정 카테고리 전체가 {@code catL IS NULL} 로 손상된다.
+     * GAS 기대 분포는 견적 카탈로그 3종 + 구성품 2종 모두 0건이다.
+     */
+    @Test
+    void sync_GAS_다건_카탈로그_카테고리별_catL_0분류_분포를_검증한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("공기청정 WIFI 판넬", "HM_PANEL_WIFI", "", "100,000", "", "80,000", "12.5%"),
+                row("실외기 단배관", "HM_ODU_SINGLE", "", "200,000", "", "160,000", ""),
+                row("벽걸이 실내기 소형", "HM_INDOOR_WALL", "", "300,000", "", "240,000", "0"),
+                row("리모컨 유선", "HM_REMOTE", "", "40,000", "", "30,000", "")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "평형", "모델명", "단위", "출고가", "수량", "납품가", "납품가", "소계"),
+                row("360 CST UV 세트", "15", "SS_360_UV", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-"),
+                row("1-Way WIFI 내장 세트", "18", "SS_1WAY_WIFI", "SET", "2,100,000", "", "1,260,000", "1,260,000", "-"),
+                row("벽걸이 실내기 세트", "6", "SS_WALL", "SET", "900,000", "", "600,000", "600,000", "-"),
+                row("분기관 패키지", "", "SS_BRANCH", "SET", "100,000", "", "70,000", "70,000", "-")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 구성품_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "평형", "모델명", "단위", "수량", "출고가", "비고", "납품가", "세트"),
+                row("유선 리모컨", "", "SP_REMOTE_DIST", "EA", "", "40,000", "", "30,000", "SS_360_UV"),
+                row("판넬 공기청정 WIFI", "", "SP_PANEL_DIST", "EA", "", "100,000", "", "80,000", "SS_360_UV")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "단위", "비고", "출고가", "비고", "납품가", "고정DC"),
+                row("DVM S2 프라임 8HP 실외기", "AM080AXVHHH1_DIST", "대", "", "8,012,400", "", "4,406,820", ""),
+                row("DUCT 고정압 실내기", "AM120BNHDCH1_DIST", "EA", "", "1,000,000", "", "700,000", "0"),
+                row("상업용 전열교환기", "ERV_COMM_DIST", "EA", "", "2,000,000", "", "1,400,000", ""),
+                row("분기관 세트", "COMM_BRANCH_DIST", "EA", "", "80,000", "", "60,000", "")
+        ));
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "상업멀티 구성_단가인상!A1:Z")).thenReturn(rows(
+                row("품명", "모델명", "단위", "출고가", "수량", "납품가", "소계", "비고", "세트", "고정DC"),
+                row("분기관 세트", "COMM_PART_BRANCH_DIST", "EA", "80,000", "", "60,000", "-", "", "AM080AXVHHH1_DIST", ""),
+                row("DUCT 고정압 실내기", "COMM_PART_DUCT_DIST", "EA", "1,000,000", "", "700,000", "-", "", "AM080AXVHHH1_DIST", "0")
+        ));
+
+        syncService.syncAll();
+
+        Map<ProductCategory, Long> expectedNullCatLCounts = Map.of(
+                ProductCategory.HOME_MULTI, 0L,
+                ProductCategory.SINGLE_SET, 0L,
+                ProductCategory.SINGLE_PART, 0L,
+                ProductCategory.COMMERCIAL_MULTI, 0L,
+                ProductCategory.COMMERCIAL_PART, 0L);
+        expectedNullCatLCounts.forEach((category, expected) -> {
+            long actual = productRepository.findByProductCategoryAndIsDeletedFalse(category).stream()
+                    .filter(product -> product.getCatL() == null)
+                    .count();
+            assertThat(actual)
+                    .as("%s GAS catL IS NULL(0-분류) 분포", category)
+                    .isEqualTo(expected);
+        });
+    }
+
+    /**
      * V14 rowHash 캐시 evict — 수동 override 해제(DELETE /usage) 후 행 내용 무변경 상태로
      * sync 재실행 시 시트 기준으로 재분류되어야 한다 (지적 [2], PR-B 2026-06-11).
      *
@@ -979,6 +1172,17 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         return exposureRepository.findByProductIdAndEstimateCategoryAndIsDeletedFalse(product.getId(), category)
                 .orElseThrow()
                 .getDisplayOrder();
+    }
+
+    private void assertSingleClassification(String modelCode, String catL, String catM) {
+        Product product = productRepository.findByModelCodeAndIsDeletedFalse(modelCode).orElseThrow();
+        assertThat(product.getCatL()).extracting(Classification::getName).isEqualTo(catL);
+        if (catM == null || catM.isBlank()) {
+            assertThat(product.getCatM()).isNull();
+        } else {
+            assertThat(product.getCatM()).extracting(Classification::getName).isEqualTo(catM);
+        }
+        assertThat(product.getCatS()).isNull();
     }
 
     private static List<Object> row(Object... vals) {

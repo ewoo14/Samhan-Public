@@ -3,6 +3,7 @@ package com.samhanair.logis.product.web.dto;
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.BundleMode;
+import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductGoodsType;
@@ -41,6 +42,9 @@ public record ProductResponse(
         Map<String, String> tags,
         String description,
         ProductCategory productCategory,
+        ClassificationRef catL,
+        ClassificationRef catM,
+        ClassificationRef catS,
         ProductItemKind itemKind,
         BundleMode bundleMode,
         String parentSetModelCode,
@@ -48,6 +52,7 @@ public record ProductResponse(
         String unit,
         BigDecimal releasePrice,
         BigDecimal deliveryPrice,
+        BigDecimal fixedDiscountRate,
         ProductGoodsType goodsType,
         UsageScope usageScope,
         EstimateCategory estimateCategory,
@@ -92,6 +97,9 @@ public record ProductResponse(
                 p.getTags(),
                 p.getDescription(),
                 p.getProductCategory(),
+                ClassificationRef.from(p.getCatL()),
+                ClassificationRef.from(p.getCatM()),
+                ClassificationRef.from(p.getCatS()),
                 itemKind,
                 p.getBundleMode(),
                 parentSetModelCode,
@@ -99,6 +107,7 @@ public record ProductResponse(
                 p.getUnit(),
                 p.getReleasePrice(),
                 p.getDeliveryPrice(),
+                p.getFixedDiscountRate(),
                 p.getGoodsType(),
                 p.getUsageScope(),
                 null,
@@ -109,5 +118,15 @@ public record ProductResponse(
                 p.getModifiedAt(),
                 p.getModifiedBy(),
                 specs == null ? List.of() : specs);
+    }
+
+    /** 품목 상세 화면용 분류 참조. */
+    public record ClassificationRef(UUID id, String name) {
+        public static ClassificationRef from(Classification classification) {
+            if (classification == null) {
+                return null;
+            }
+            return new ClassificationRef(classification.getId(), classification.getName());
+        }
     }
 }

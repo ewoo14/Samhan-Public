@@ -56,6 +56,8 @@ import {
   updateDisplayOrders,
   updateBundleComponents,
   updateProductUsage,
+  updateProductClassificationSettings,
+  updateProductFixedDiscount,
   updateProductVariableDiscount,
   type BundleComponentInput,
   type ComponentKind,
@@ -63,6 +65,10 @@ import {
   type ProductCatalogRow,
   type UsageScope,
 } from '../api/productCatalogApi'
+import {
+  listClassifications,
+  type Classification,
+} from '../api/classificationApi'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { usePermissions } from '../hooks/usePermissions'
 import { usePageTitleStore } from '../stores/pageTitle'
@@ -70,10 +76,15 @@ import {
   buildCategoryDisplayOrderInputs,
   estimateCategoryValues,
   exposureDisplayOrder,
+  filterClassificationsByParent,
+  formatClassificationPath,
   isVariableDiscountEligible,
+  nextClassificationSelection,
   nextScopeForEstimateCategoryRemoval,
   normalizeEstimateCategoryExposures,
+  resolveFixedDiscountAutoSave,
   resolveEstimateItemsPageTotals,
+  type ClassificationSelection,
 } from './ProductCatalogPageModel'
 import {
   buildBundleComponentInputs,
@@ -133,6 +144,49 @@ function fromUsageScope(scope: UsageScope): { estimate: boolean; order: boolean 
     estimate: scope === 'ESTIMATE' || scope === 'BOTH',
     order: scope === 'PARTNER_ORDER' || scope === 'BOTH',
   }
+}
+
+export interface EstimateItemsCatalogSuccessEffects {
+  clearMutationError: () => void
+  clearPatchingCode: () => void
+  closeClassificationModal: () => void
+  invalidateCatalogQueries: () => void
+}
+
+/** usage scope PATCH 성공은 분류 모달 상태를 건드리지 않는다. */
+export function applyUsagePatchSuccessEffects(effects: EstimateItemsCatalogSuccessEffects): void {
+  effects.clearMutationError()
+  effects.clearPatchingCode()
+  effects.invalidateCatalogQueries()
+}
+
+/** 고정DC 인라인 자동저장 성공은 분류 모달 상태를 건드리지 않는다. */
+export function applyFixedDiscountPatchSuccessEffects(effects: EstimateItemsCatalogSuccessEffects): void {
+  effects.clearMutationError()
+  effects.clearPatchingCode()
+  effects.invalidateCatalogQueries()
+}
+
+/** 분류 저장 성공 시 stale row 를 남기지 않도록 모달을 닫는다. */
+export function applyClassificationSettingsSuccessEffects(
+  effects: EstimateItemsCatalogSuccessEffects,
+): void {
+  effects.clearMutationError()
+  effects.clearPatchingCode()
+  effects.closeClassificationModal()
+  effects.invalidateCatalogQueries()
+}
+
+async function fetchClassificationTree(estimateCategory: EstimateCategory): Promise<Classification[]> {
+  const roots = await listClassifications({ estimateCategory })
+  const midsByRoot = await Promise.all(
+    roots.map((root) => listClassifications({ estimateCategory, parentId: root.id })),
+  )
+  const mids = midsByRoot.flat()
+  const subsByMid = await Promise.all(
+    mids.map((mid) => listClassifications({ estimateCategory, parentId: mid.id })),
+  )
+  return [...roots, ...mids, ...subsByMid.flat()]
 }
 
 function errorMsg(err: unknown): string {
@@ -218,7 +272,7 @@ interface VariableDiscountCellProps {
   patchLoading: boolean
 }
 
-function VariableDiscountCell({
+export function VariableDiscountCell({
   row,
   canEdit,
   onVariableDiscountPatch,
@@ -231,7 +285,7 @@ function VariableDiscountCell({
   return (
     <span style={variableDiscountGroupStyle}>
       <label
-        style={checkboxLabelStyle}
+        style={variableDiscountCheckboxLabelStyle}
         title="변동DC: 전역할인율 영향 없이 기초 납품가 그대로 표시"
       >
         <input
@@ -242,9 +296,242 @@ function VariableDiscountCell({
           data-testid={`estimate-items-vdc-toggle-${row.modelCode}`}
           aria-label="변동DC"
         />
-        변동DC
       </label>
     </span>
+  )
+}
+
+interface FixedDiscountCellProps {
+  row: ProductCatalogRow
+  canEdit: boolean
+  onFixedDiscountPatch: (modelCode: string, fixedDiscountRate: string | null) => void
+  patchLoading: boolean
+}
+
+function FixedDiscountCell({
+  row,
+  canEdit,
+  onFixedDiscountPatch,
+  patchLoading,
+}: FixedDiscountCellProps) {
+  const initialValue = row.fixedDiscountRate == null ? '' : String(row.fixedDiscountRate)
+  const [draft, setDraft] = useState(initialValue)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraft(initialValue)
+    setLocalError(null)
+  }, [initialValue])
+
+  const handleBlur = () => {
+    const decision = resolveFixedDiscountAutoSave(row.fixedDiscountRate, draft)
+    if (decision.error) {
+      setLocalError(decision.error)
+      return
+    }
+    setLocalError(null)
+    if (!decision.shouldPatch) return
+    onFixedDiscountPatch(row.modelCode, decision.fixedDiscountRate)
+  }
+
+  return (
+    <div style={fixedDiscountCellStyle}>
+      <span style={fixedDiscountInputWrapStyle}>
+        <Input
+          type="number"
+          min="0"
+          max="100"
+          step="0.01"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur()
+            }
+          }}
+          disabled={!canEdit || patchLoading}
+          data-testid={`estimate-items-fixed-dc-${row.modelCode}`}
+          aria-label="고정DC율"
+          inputSize="sm"
+          fullWidth={false}
+          style={{ width: 72 }}
+        />
+        <span style={fixedDiscountSuffixStyle}>%</span>
+      </span>
+      {localError ? (
+        <span
+          role="alert"
+          title={localError}
+          style={fixedDiscountErrorStyle}
+          data-testid={`estimate-items-fixed-dc-error-${row.modelCode}`}
+        >
+          오류
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+interface ClassificationSettingsModalProps {
+  open: boolean
+  row: ProductCatalogRow
+  classifications: Classification[]
+  canEdit: boolean
+  onPatch: (modelCode: string, selection: ClassificationSelection) => void
+  patchLoading: boolean
+  onClose: () => void
+}
+
+function ClassificationSettingsModal({
+  open,
+  row,
+  classifications,
+  canEdit,
+  onPatch,
+  patchLoading,
+  onClose,
+}: ClassificationSettingsModalProps) {
+  const initialSelection: ClassificationSelection = {
+    catLId: row.catL?.id ?? null,
+    catMId: row.catM?.id ?? null,
+    catSId: row.catS?.id ?? null,
+  }
+  const [selection, setSelection] = useState<ClassificationSelection>(initialSelection)
+
+  useEffect(() => {
+    if (!open) return
+    setSelection(initialSelection)
+  }, [
+    open,
+    initialSelection.catLId,
+    initialSelection.catMId,
+    initialSelection.catSId,
+  ])
+
+  const catLOptions = filterClassificationsByParent(classifications, 'L', null)
+  const catMOptions = filterClassificationsByParent(classifications, 'M', selection.catLId)
+  const catSOptions = filterClassificationsByParent(classifications, 'S', selection.catMId)
+
+  const handleChange = (level: 'L' | 'M' | 'S', value: string) => {
+    const next = nextClassificationSelection(selection, level, value || null)
+    setSelection(next)
+  }
+
+  const handleSave = () => {
+    onPatch(row.modelCode, selection)
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`분류 설정 — ${row.modelCode}`}
+      size="md"
+      footer={
+        canEdit ? (
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={onClose} disabled={patchLoading}>
+              닫기
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={patchLoading}
+              disabled={patchLoading}
+              data-testid="estimate-items-classification-modal-save"
+            >
+              저장
+            </Button>
+          </div>
+        ) : (
+          <Button variant="secondary" onClick={onClose}>닫기</Button>
+        )
+      }
+    >
+      <div
+        style={classificationModalBodyStyle}
+        data-testid={`estimate-items-classification-modal-${row.modelCode}`}
+      >
+        <div style={classificationModalGridStyle}>
+          <Select
+            label="대분류"
+            value={selection.catLId ?? ''}
+            disabled={!canEdit || patchLoading}
+            onChange={(e) => handleChange('L', e.target.value)}
+            data-testid={`estimate-items-cat-l-${row.modelCode}`}
+            selectSize="sm"
+            aria-label="대분류"
+          >
+            <option value="">대분류 선택</option>
+            {catLOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </Select>
+          <Select
+            label="중분류"
+            value={selection.catMId ?? ''}
+            disabled={!canEdit || patchLoading || !selection.catLId}
+            onChange={(e) => handleChange('M', e.target.value)}
+            data-testid={`estimate-items-cat-m-${row.modelCode}`}
+            selectSize="sm"
+            aria-label="중분류"
+          >
+            <option value="">중분류 선택</option>
+            {catMOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </Select>
+          <Select
+            label="소분류"
+            value={selection.catSId ?? ''}
+            disabled={!canEdit || patchLoading || !selection.catMId}
+            onChange={(e) => handleChange('S', e.target.value)}
+            data-testid={`estimate-items-cat-s-${row.modelCode}`}
+            selectSize="sm"
+            aria-label="소분류"
+          >
+            <option value="">소분류 선택</option>
+            {catSOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </Select>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function ClassificationSummaryCell({
+  row,
+  canEdit,
+  patchLoading,
+  onOpen,
+}: {
+  row: ProductCatalogRow
+  canEdit: boolean
+  patchLoading: boolean
+  onOpen: () => void
+}) {
+  const summary = formatClassificationPath(row)
+
+  return (
+    <div style={classificationSummaryCellStyle} data-testid={`estimate-items-classification-${row.modelCode}`}>
+      <div style={classificationSummaryTextStyle}>
+        <span title={summary.pathText}>{summary.pathText}</span>
+      </div>
+      {canEdit ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onOpen}
+          disabled={patchLoading}
+          data-testid={`estimate-items-classification-settings-${row.modelCode}`}
+        >
+          설정
+        </Button>
+      ) : null}
+    </div>
   )
 }
 
@@ -839,6 +1126,7 @@ export function EstimateItemsCatalogPage() {
     modelCode: string
     productName: string | null
   } | null>(null)
+  const [classificationModalTarget, setClassificationModalTarget] = useState<ProductCatalogRow | null>(null)
 
   const hasCommittedSearch = committedSearch.trim().length > 0
   const isDragEnabled = canEdit && !hasCommittedSearch
@@ -892,6 +1180,12 @@ export function EstimateItemsCatalogPage() {
     staleTime: 30_000,
   })
 
+  const classificationsQuery = useQuery({
+    queryKey: ['classifications-tree', committedCategory],
+    queryFn: () => fetchClassificationTree(committedCategory),
+    staleTime: 30_000,
+  })
+
   const rawRows = listQuery.data?.content ?? []
   const rows = rawRows.filter((row) => row.usageScope !== 'NONE')
 
@@ -900,6 +1194,16 @@ export function EstimateItemsCatalogPage() {
       setSortableRows(rows)
     }
   }, [rows, orderDirty])
+
+  const catalogSuccessEffects: EstimateItemsCatalogSuccessEffects = {
+    clearMutationError: () => setMutationError(null),
+    clearPatchingCode: () => setPatchingCode(null),
+    closeClassificationModal: () => setClassificationModalTarget(null),
+    invalidateCatalogQueries: () => {
+      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
+      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+    },
+  }
 
   const patchMutation = useMutation({
     mutationFn: ({
@@ -918,10 +1222,7 @@ export function EstimateItemsCatalogPage() {
           : [],
       }),
     onSuccess: () => {
-      setMutationError(null)
-      setPatchingCode(null)
-      void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
-      void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+      applyUsagePatchSuccessEffects(catalogSuccessEffects)
     },
     onError: (err) => {
       setMutationError(errorMsg(err))
@@ -942,6 +1243,43 @@ export function EstimateItemsCatalogPage() {
       setPatchingCode(null)
       void queryClient.invalidateQueries({ queryKey: ['estimate-items-catalog'] })
       void queryClient.invalidateQueries({ queryKey: ['product-catalog'] })
+    },
+    onError: (err) => {
+      setMutationError(errorMsg(err))
+      setPatchingCode(null)
+    },
+  })
+
+  const fixedDiscountMutation = useMutation({
+    mutationFn: ({
+      modelCode,
+      fixedDiscountRate,
+    }: {
+      modelCode: string
+      fixedDiscountRate: string | null
+    }) => updateProductFixedDiscount(modelCode, fixedDiscountRate),
+    onSuccess: () => {
+      applyFixedDiscountPatchSuccessEffects(catalogSuccessEffects)
+    },
+    onError: (err) => {
+      setMutationError(errorMsg(err))
+      setPatchingCode(null)
+    },
+  })
+
+  const classificationSettingsMutation = useMutation({
+    mutationFn: ({
+      modelCode,
+      selection,
+    }: {
+      modelCode: string
+      selection: ClassificationSelection
+    }) =>
+      updateProductClassificationSettings(modelCode, {
+        ...selection,
+      }),
+    onSuccess: () => {
+      applyClassificationSettingsSuccessEffects(catalogSuccessEffects)
     },
     onError: (err) => {
       setMutationError(errorMsg(err))
@@ -1021,6 +1359,24 @@ export function EstimateItemsCatalogPage() {
       variableDiscountMutation.mutate({ modelCode, hasVariableDiscount })
     },
     [variableDiscountMutation],
+  )
+
+  const handleFixedDiscountPatch = useCallback(
+    (modelCode: string, fixedDiscountRate: string | null) => {
+      setPatchingCode(modelCode)
+      setMutationError(null)
+      fixedDiscountMutation.mutate({ modelCode, fixedDiscountRate })
+    },
+    [fixedDiscountMutation],
+  )
+
+  const handleClassificationSettingsPatch = useCallback(
+    (modelCode: string, selection: ClassificationSelection) => {
+      setPatchingCode(modelCode)
+      setMutationError(null)
+      classificationSettingsMutation.mutate({ modelCode, selection })
+    },
+    [classificationSettingsMutation],
   )
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -1138,6 +1494,19 @@ export function EstimateItemsCatalogPage() {
       width: '220px',
     },
     {
+      key: 'catL',
+      header: '분류',
+      width: '240px',
+      render: (row) => (
+        <ClassificationSummaryCell
+          row={row}
+          canEdit={canEdit}
+          patchLoading={patchingCode === row.modelCode}
+          onOpen={() => setClassificationModalTarget(row)}
+        />
+      ),
+    },
+    {
       key: 'estimateCategory',
       header: '카테고리',
       width: '280px',
@@ -1172,6 +1541,19 @@ export function EstimateItemsCatalogPage() {
           row={row}
           canEdit={canEdit}
           onVariableDiscountPatch={handleVariableDiscountPatch}
+          patchLoading={patchingCode === row.modelCode}
+        />
+      ),
+    },
+    {
+      key: 'fixedDiscountRate',
+      header: '고정DC%',
+      width: '110px',
+      render: (row) => (
+        <FixedDiscountCell
+          row={row}
+          canEdit={canEdit}
+          onFixedDiscountPatch={handleFixedDiscountPatch}
           patchLoading={patchingCode === row.modelCode}
         />
       ),
@@ -1371,6 +1753,12 @@ export function EstimateItemsCatalogPage() {
         </div>
       ) : null}
 
+      {classificationsQuery.isError ? (
+        <div role="alert" style={errorBannerStyle} data-testid="estimate-items-classifications-error">
+          분류 옵션을 불러오지 못했습니다. {errorMsg(classificationsQuery.error)}
+        </div>
+      ) : null}
+
       <section style={tableSectionStyle} data-testid="estimate-items-table">
         {isDragEnabled ? (
           <DndContext
@@ -1500,6 +1888,18 @@ export function EstimateItemsCatalogPage() {
           onSaved={() => setComponentsModalTarget(null)}
         />
       ) : null}
+
+      {classificationModalTarget ? (
+        <ClassificationSettingsModal
+          open={true}
+          row={classificationModalTarget}
+          classifications={classificationsQuery.data ?? []}
+          canEdit={canEdit}
+          onPatch={handleClassificationSettingsPatch}
+          patchLoading={patchingCode === classificationModalTarget.modelCode}
+          onClose={() => setClassificationModalTarget(null)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -1615,15 +2015,76 @@ const categoryChipRemoveStyle: CSSProperties = {
 }
 
 const variableDiscountGroupStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+}
+
+const variableDiscountCheckboxLabelStyle: CSSProperties = {
+  ...checkboxLabelStyle,
+  justifyContent: 'center',
+  gap: 0,
+}
+
+const fixedDiscountCellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+}
+
+const fixedDiscountInputWrapStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 4,
+  gap: 3,
+}
+
+const fixedDiscountSuffixStyle: CSSProperties = {
+  fontSize: 12,
+  color: 'var(--color-neutral-500, #6B7280)',
+}
+
+const fixedDiscountErrorStyle: CSSProperties = {
+  fontSize: 11,
+  color: 'var(--color-danger-700, #991B1B)',
+  whiteSpace: 'nowrap',
 }
 
 const tableSectionStyle: CSSProperties = {
   flex: 1,
   minHeight: 0,
   overflow: 'auto',
+}
+
+const classificationSummaryCellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  minWidth: 0,
+}
+
+const classificationSummaryTextStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 0,
+  fontSize: 12,
+  color: 'var(--color-neutral-700, #363D49)',
+}
+
+const classificationModalBodyStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  minHeight: 120,
+}
+
+const classificationModalGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(120px, 1fr))',
+  gap: 10,
+  alignItems: 'end',
 }
 
 const summaryStyle: CSSProperties = {

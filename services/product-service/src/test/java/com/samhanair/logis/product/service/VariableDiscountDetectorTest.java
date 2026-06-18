@@ -79,7 +79,7 @@ class VariableDiscountDetectorTest {
 
     @Test
     void 룰3_legacyFixedRate_50퍼센트() {
-        assertThat(detector.legacyFixedDiscountRate()).isEqualByComparingTo("0.5000");
+        assertThat(detector.legacyFixedDiscountRate()).isEqualByComparingTo("50.00");
     }
 
     // ---------- discountFlags 6 비트 ----------

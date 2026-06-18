@@ -305,6 +305,7 @@ import { ApprovalDocView } from '../print/ApprovalDocView'
 // [PR-B] 품목 관리 — 품목별 노출 범위 수동 토글 (products.list VIEW 게이트).
 import { ProductCatalogPage } from './ProductCatalogPage'
 import { EstimateItemsCatalogPage } from './EstimateItemsCatalogPage'
+import { ProductClassificationsPage } from './ProductClassificationsPage'
 import { ProductFormPage } from './ProductFormPage'
 
 /**
@@ -1273,6 +1274,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="products.list" action="view">
             <EstimateItemsCatalogPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/products/classifications',
+        element: (
+          <PermissionGuard pageCode="products.list" action="view">
+            <ProductClassificationsPage />
           </PermissionGuard>
         ),
       },

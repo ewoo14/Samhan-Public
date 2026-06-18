@@ -72,13 +72,16 @@ public class EstimateCatalogInternalController {
     private final BranchPipeLookupRepository branchPipeLookupRepository;
     private final ProductEstimateExposureRepository exposureRepository;
 
-    /** 카탈로그 행 — legacy 시트 row 동등 (분류 catL/M/S·disp 는 estimate-app 이 name 으로 계산). */
+    /** 카탈로그 행 — legacy 시트 row 동등 + F1-a DB 분류(catL/M/S) 보강. */
     public record CatalogRow(
             String name,
             String modelCode,
             String unit,
             BigDecimal deliveryPrice,
             BigDecimal releasePrice,
+            String catL,
+            String catM,
+            String catS,
             Boolean hasVariableDiscount,
             String materialKey,
             BigDecimal fixedDiscountRate,
@@ -139,6 +142,9 @@ public class EstimateCatalogInternalController {
                             p.getUnit(),
                             p.getDeliveryPrice(),
                             p.getReleasePrice(),
+                            p.getCatL() == null ? null : p.getCatL().getName(),
+                            p.getCatM() == null ? null : p.getCatM().getName(),
+                            p.getCatS() == null ? null : p.getCatS().getName(),
                             p.getHasVariableDiscount(),
                             p.getSetMaterialKey() == null ? null : p.getSetMaterialKey().name(),
                             p.getFixedDiscountRate(),

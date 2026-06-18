@@ -66,13 +66,14 @@ class ApiGatewayContextLoadIT {
     }
 
     /**
-     * PR #461 (RC9 후속) 신규 product-service 풀패스 라우트 3종 계약 박제.
+     * PR #461 (RC9 후속) 신규 product-service 풀패스 라우트 계약 박제.
      *
      * <p>대상 라우트 — 모두 풀패스 컨트롤러(@RequestMapping("/api/v1...")) 라 StripPrefix 금지(no-strip):
      * <ul>
      *   <li>{@code product-components-v1} → {@code /api/v1/products/*&#47;components} (구성품 CRUD)</li>
      *   <li>{@code product-display-orders-v1} → {@code /api/v1/products/display-orders} (표시순서 일괄 갱신)</li>
      *   <li>{@code product-catalog-realtime-v1} → {@code /api/v1/products/catalog-realtime} (목록 SSE 구독)</li>
+     *   <li>{@code product-fixed-discount-v1} → {@code /api/v1/products/*&#47;fixed-discount} (고정DC 인라인 자동저장)</li>
      * </ul>
      *
      * <p>단언 4축:
@@ -89,7 +90,7 @@ class ApiGatewayContextLoadIT {
      * 동기 단언. {@code getRouteDefinitions()} 는 application.yml 선언 순서를 보존한다.
      */
     @Test
-    @DisplayName("RC9 신규 product 라우트 3종 — Path + no-strip + product-service-v1 선행 선언")
+    @DisplayName("RC9 product 라우트 — Path + no-strip + product-service-v1 선행 선언")
     void productCatalogRoutes_haveExpectedPath_noStrip_andPrecedeGenericRoute() {
         List<RouteDefinition> routes = routeDefinitionLocator.getRouteDefinitions()
                 .collectList()
@@ -104,11 +105,13 @@ class ApiGatewayContextLoadIT {
         assertRoutePath(routes, "product-components-v1", "/api/v1/products/*/components");
         assertRoutePath(routes, "product-display-orders-v1", "/api/v1/products/display-orders");
         assertRoutePath(routes, "product-catalog-realtime-v1", "/api/v1/products/catalog-realtime");
+        assertRoutePath(routes, "product-fixed-discount-v1", "/api/v1/products/*/fixed-discount");
 
         // (2) no-strip — 세 라우트 모두 StripPrefix 필터 미보유.
         assertNoStripPrefix(routes, "product-components-v1");
         assertNoStripPrefix(routes, "product-display-orders-v1");
         assertNoStripPrefix(routes, "product-catalog-realtime-v1");
+        assertNoStripPrefix(routes, "product-fixed-discount-v1");
 
         // (3) 선언 순서 — 세 라우트 모두 generic product-service-v1 보다 먼저 선언.
         int genericIndex = indexOfRoute(routes, "product-service-v1");
@@ -116,7 +119,8 @@ class ApiGatewayContextLoadIT {
                 .as("generic product-service-v1 라우트가 선언돼 있어야 한다")
                 .isGreaterThanOrEqualTo(0);
         for (String id : List.of(
-                "product-components-v1", "product-display-orders-v1", "product-catalog-realtime-v1")) {
+                "product-components-v1", "product-display-orders-v1", "product-catalog-realtime-v1",
+                "product-fixed-discount-v1")) {
             assertThat(indexOfRoute(routes, id))
                     .as("%s 는 generic product-service-v1 보다 먼저 선언돼야 한다(선언 순서=우선순위)", id)
                     .isGreaterThanOrEqualTo(0)
@@ -127,6 +131,7 @@ class ApiGatewayContextLoadIT {
         assertHasJwtAuthenticationFilter(routes, "product-components-v1");
         assertHasJwtAuthenticationFilter(routes, "product-display-orders-v1");
         assertHasJwtAuthenticationFilter(routes, "product-catalog-realtime-v1");
+        assertHasJwtAuthenticationFilter(routes, "product-fixed-discount-v1");
     }
 
     /**

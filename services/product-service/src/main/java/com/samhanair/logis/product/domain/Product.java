@@ -110,8 +110,23 @@ public class Product extends BaseEntity {
     private Boolean hasVariableDiscount = Boolean.FALSE;
 
     /** DOMAIN-EXTENSIONS §1 — 룰 3 (구형 50%) 또는 행별 고정DC L 컬럼. */
-    @Column(name = "fixed_discount_rate", precision = 5, scale = 4)
+    @Column(name = "fixed_discount_rate", precision = 5, scale = 2)
     private BigDecimal fixedDiscountRate;
+
+    /** F1-a 견적 품목 대분류. 카테고리별 Classification 마스터를 참조한다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cat_l_id")
+    private Classification catL;
+
+    /** F1-a 견적 품목 중분류. {@code catL} 의 자식 Classification 을 참조한다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cat_m_id")
+    private Classification catM;
+
+    /** F1-a 견적 품목 소분류. {@code catM} 의 자식 Classification 을 참조한다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cat_s_id")
+    private Classification catS;
 
     /** DOMAIN-EXTENSIONS §1 — 룰 2 (D4 default / D7 미포함 / D8 포함) — 싱글 세트만. */
     @Enumerated(EnumType.STRING)
@@ -141,6 +156,22 @@ public class Product extends BaseEntity {
      */
     @Column(name = "variable_discount_manual", nullable = false)
     private boolean variableDiscountManual = false;
+
+    /**
+     * F1-a 분류 수동 override 플래그.
+     *
+     * <p>{@code true} 이면 시트 sync 가 품명 정규식 기본 분류로 {@code catL/M/S} 를 덮어쓰지 않는다.
+     */
+    @Column(name = "classification_manual", nullable = false)
+    private boolean classificationManual = false;
+
+    /**
+     * F1-a 고정DC 수동 override 플래그.
+     *
+     * <p>{@code true} 이면 시트 sync 가 고정DC 셀 기본값으로 {@code fixedDiscountRate} 를 덮어쓰지 않는다.
+     */
+    @Column(name = "fixed_discount_manual", nullable = false)
+    private boolean fixedDiscountManual = false;
 
     /** 시트 D/E 출고가 (베이스 — 정적가). 시점별 가격은 PriceHistory 참조. */
     @Column(name = "release_price", nullable = false, precision = 12, scale = 2)
@@ -514,6 +545,35 @@ public class Product extends BaseEntity {
         this.setMaterialKey = setMaterialKey;
         this.legacyDiscountFlag = legacyDiscountFlag;
         this.fixedDiscountRate = fixedDiscountRate;
+    }
+
+    /**
+     * 견적 품목 L/M/S 분류를 갱신한다.
+     *
+     * <p>계층 정합은 {@code ClassificationService/ProductSheetSyncService} 에서 검증한 뒤 전달한다.
+     * null 은 해당 단계 미분류를 뜻한다.
+     */
+    public void changeClassifications(Classification catL, Classification catM, Classification catS) {
+        this.catL = catL;
+        this.catM = catM;
+        this.catS = catS;
+    }
+
+    /** 분류 수동 override 를 저장한다. null 은 해당 단계 미분류를 의미하며 이후 sync 에서 보존된다. */
+    public void markClassificationManual(Classification catL, Classification catM, Classification catS) {
+        changeClassifications(catL, catM, catS);
+        this.classificationManual = true;
+    }
+
+    /** 품목별 고정DC율을 변경한다. null 은 고정DC 미지정으로 저장한다. */
+    public void changeFixedDiscountRate(BigDecimal fixedDiscountRate) {
+        this.fixedDiscountRate = fixedDiscountRate;
+    }
+
+    /** 고정DC 수동 override 를 저장한다. null 은 고정DC 미지정을 의미하며 이후 sync 에서 보존된다. */
+    public void markFixedDiscountManual(BigDecimal fixedDiscountRate) {
+        changeFixedDiscountRate(fixedDiscountRate);
+        this.fixedDiscountManual = true;
     }
 
     /** Bundle 모드 set (마이그 + 운영). */

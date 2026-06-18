@@ -84,7 +84,7 @@ public class VariableDiscountDetector {
 
     /**
      * 룰 3 — 구형 시트 F열 수식에 `$I$1` 포함 시 legacyDiscountFlag=TRUE +
-     * fixedDiscountRate=0.50.
+     * fixedDiscountRate=50.00(%).
      *
      * @param formulaF F열 수식 (구형 시트 한정)
      * @return 구형 50% DC 트리거 여부
@@ -98,7 +98,7 @@ public class VariableDiscountDetector {
 
     /** 구형 50% DC fixed rate. */
     public BigDecimal legacyFixedDiscountRate() {
-        return new BigDecimal("0.5000");
+        return new BigDecimal("50.00");
     }
 
     /**

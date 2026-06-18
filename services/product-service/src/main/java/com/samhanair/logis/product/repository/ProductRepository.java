@@ -251,6 +251,17 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     List<Product> findByProductCategoryAndIsDeletedFalse(ProductCategory productCategory);
 
+    /** Classification 삭제 차단용 — catL/catM/catS 중 하나라도 참조하는 활성 품목 수. */
+    @Query("""
+            SELECT COUNT(p)
+              FROM Product p
+             WHERE p.isDeleted = false
+               AND ((p.catL IS NOT NULL AND p.catL.id = :classificationId)
+                    OR (p.catM IS NOT NULL AND p.catM.id = :classificationId)
+                    OR (p.catS IS NOT NULL AND p.catS.id = :classificationId))
+            """)
+    long countUsingClassification(@Param("classificationId") UUID classificationId);
+
     /**
      * 견적/주문 카탈로그 — M:N 견적 카테고리 + 노출범위(usageScope) 필터 + 카테고리별 순서 정렬.
      * 개발책임자 결정(2026-06-10): 견적/주문엔 designated 품목만, 구글 시트 순서 유지.
