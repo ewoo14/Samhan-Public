@@ -1,6 +1,5 @@
 -- V21: F1.5 수식 빌더 — Product 판넬/리모컨 attribute 적재용 nullable 컬럼.
--- F4부터 BundleExpander 옵션 매칭이 이 컬럼을 우선 소비한다.
--- attribute 누락/불일치 시 기존 regex fallback을 유지해 견적 출력/FE parity를 보존한다.
+-- parity-safe: 견적 출력/BundleExpander/FE 로직은 이 컬럼을 아직 소비하지 않는다.
 
 ALTER TABLE products
     ADD COLUMN IF NOT EXISTS panel_type VARCHAR(32),
