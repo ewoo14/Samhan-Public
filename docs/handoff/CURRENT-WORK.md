@@ -4,7 +4,21 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-18 최신) — 수식 빌더 G1(#502) specDetailMap DB 승격 머지 완료
+## 🟢 현재 상태 (2026-06-18 최신) — 수식 빌더 Phase 1(#503) estimate_configs 머지 완료 → F1.5 착수
+
+> **수식 빌더 진행**: G1(specDetailMap DB #502) + Phase1(전역 가격 파라미터 estimate_configs #503) 머지 완료. 개발책임자 결정 시퀀스 **F1.5→F3→F4→F5** 자율 진행.
+
+- ✅ **Phase 1 머지** (PR #503, merge `162b9f9d`). `estimate_configs` 싱글톤(dc-config-service): 변동DC공통율(0.45)·구형DC(0.5)·VAT(0.1)·**카드수수료(0.03)**·선금할인(0)·조합비경고(0)·footerNotice. V4(CHECK·partial unique singleton·시드) + admin GET/PUT(`/api/v1/estimate-config`) + internal endpoint + 데스크톱 `EstimatePricingConfigPage`(`/sales/estimate-config`, 권한 V58 `sales.estimate-config` MASTER/MANAGER) + estimate-app 통합(상수→DB: 변동DC공통율·구형DC·VAT `splitVatAmount_`·카드 `applyCardFeeLogic`·선금 `applyEstimateTotalAdjustments_`·footer). 🚨 **카드수수료 현행 3% parity**(정찰 '미구현' 오인 정정 → 개발책임자 '현행 복원': seed 0.03·구 동작·요율만 설정화). 다모델 Opus5(카드 P1 2-agent 적발)→Codex fix→교차(골든 P2)→fix2(CI-robust)→Opus 수렴 **blocking0**(VAT split 571K값 전수동일). 라이브QA: BE PUT200·estimate-app t.config 반영.
+- **🪤 교훈**: ①**카드수수료 정찰 오류**(현행 applyCardFeeLogic 3%를 '미구현' 오인) → 신규 도입 전 **현행 코드 grep 필수**. ②골든 ground-truth=origin/main 동결값(런타임 `git show origin/main`은 CI shallow checkout서 RED → 동결 fixture). ③estimate-app 재기동 시 5183 점유(EADDRINUSE)→pkill 불충분, **netstat 포트 PID 종료 후 fresh**. ④VAT split 571K값 전수 대조로 parity 실증.
+
+### 🌅 개발책임자 결정 (2026-06-18 야간 확정) — 수식 빌더 후속 시퀀스
+- **F3/F4 설계 = B 경량 휴리스틱**(품목 attribute 분류 + 옵션 토글 시 setModel 그룹 내 매칭 자동선택, 룰테이블 없음). 자동매칭 후보다수 = **세트 기본 구성품(isDefault) 우선**. Phase 1 착수(완료). **카드수수료 현행 3% 유지**.
+- **자율 진행 순서**: **F1.5**(품목 attribute 분류 panelType/remoteType, B 토대) → **F3**(옵션 default 설정 UI + homeDefaults/singleDefaults DB 승격 + 3탭 prefetch 완전 제거) → **F4**(옵션 자동매칭 B·isDefault) → **F5**(estimate-app 설정 기반 계산 전환·golden parity). 브리프 [docs/handoff/2026-06-18-formula-f3-f4-decision-brief.md](2026-06-18-formula-f3-f4-decision-brief.md).
+- **F2 이미 구현됨**(SalesPartnerDcConfigPage). F7(VAT/배분)·멀티 동적가격 #19 = 비대상/정책.
+
+---
+
+## 🟢 (이력) 수식 빌더 G1(#502) specDetailMap DB 승격 머지 완료
 
 > **G1** = estimate-app 종합견적서 사양맵(specDetailMap)을 런타임 Google Sheets 스크랩 → product-service DB endpoint 전환([[project_sheets_to_db_full_migration]] "외부 전면 DB 치환" 이행).
 

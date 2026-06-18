@@ -1,6 +1,6 @@
 ---
 name: project-formula-builder-epic
-description: "수식 빌더 에픽 — 종합견적서/주문서 하드코딩 수식 → 메뉴 설정 기반 계산 전환. F1+F6 완결, F2~F7 다음"
+description: "수식 빌더 에픽 — 종합견적서/주문서 하드코딩 수식 → 메뉴 설정 기반 계산 전환. F1·F6·G1·Phase1 완결, 결정 시퀀스 F1.5→F3→F4→F5"
 metadata: 
   node_type: memory
   type: project
@@ -14,8 +14,11 @@ metadata:
 - **F6 (#501, `68b0d634`)**: 주문서 product_db 적용(EstimateCatalogClient+BootstrapService, **inc map=인상후 catalog**[price-baseline 2000-01-01 인상전 아님], modelCode→model/hasVariableDiscount→useK2/fixedDiscountRate→고정DC 변환) + DC율 + gateway bootstrap 공개 route + dc-config 단건 @EntityGraph + **비번 4자리 PIN**(@Pattern \d{4}, 거래처코드/사업자번호 10자리는 로그인 ID 별개) + 분기계산/모바일서랍 데스크톱 숨김. 노션 거래처 DC율 재시드 259. 실QA 제이시스템(8428102605).
 
 - **G1 (#502, `a2d36319`)**: estimate-app specDetailMap 런타임 Google Sheets → product-service DB endpoint(`/products/internal/estimate-catalog/spec-detail-map`, 이미 적재된 ProductSpec reshape·신규 스크랩/sync 0). specKey(한글 라벨, ProductSheetSyncService 저장형식)→getSpecDetailMap_ JS 필드명 매핑(home 18/single 21/comm 17/ERV 23 + **판넬 overlay** 타공사이즈/전산볼트간격→cool_kw·cool_power). estimate-app 마지막 런타임 시트 의존 제거(homeDefaults/singleDefaults 잔존→후속). 다모델 Opus5→Codex fix(canary)→Codex 교차(**판넬 회귀 P1 단독 적발**)→판넬fix→Opus 수렴 blocking0. 라이브QA 733모델·판넬 타공860/볼트798. 🪤 #488이 판넬 타공/볼트를 전용 specKey로 정규화 → reshape가 렌더 legacy 필드로 안 돌리면 시트모드 대비 회귀(교차리뷰 적발).
+- **Phase1 (#503, `162b9f9d`)**: `estimate_configs` 싱글톤(dc-config-service, 전역 가격 파라미터: 변동DC공통율0.45·구형DC0.5·VAT0.1·**카드수수료0.03**·선금할인0·조합비경고0·footer) + V4(CHECK·partial unique singleton·시드) + admin GET/PUT(`/api/v1/estimate-config`) + internal endpoint + 데스크톱 EstimatePricingConfigPage(`/sales/estimate-config`, 권한 V58 sales.estimate-config MASTER/MANAGER) + estimate-app 통합(상수→DB: 변동DC공통율·구형DC·VAT `splitVatAmount_`·카드 `applyCardFeeLogic`·선금 `applyEstimateTotalAdjustments_`·footer). 🚨 **카드수수료 현행 3% parity**(정찰 '미구현' 오인 → applyCardFeeLogic 3% 기존재 → 개발책임자 '현행 복원': seed 0.03·구 동작·요율만 설정화). 다모델 Opus5(카드 P1 2-agent 적발)→Codex fix→교차(골든 자기참조 P2)→fix2(CI-robust 골든·git show 제거)→Opus 수렴 blocking0(VAT split 571K값 전수동일). 라이브QA BE PUT200 persist·estimate-app t.config 반영. 🪤 카드 정찰오류(신규 전 현행 grep 필수)·골든 ground-truth=origin/main 동결(런타임 git show는 CI shallow서 RED)·estimate-app 재기동 EADDRINUSE(5183 점유 PID netstat 종료 후 fresh).
 
-## 다음 (수식 빌더 후속 — 정찰 확정)
-**F2 = ✅ 이미 구현됨**(SalesPartnerDcConfigPage 거래처 DC 11컬럼 인라인+CSV+audit, 재작업 불요). **F3(옵션 설정 UI)+F4(번들 자동매칭 룰엔진) = 🔒 게이트**(스펙§4 D1 "옵션 자동매칭 신규 설계·개발책임자 확인"; F4 수동선택은 BundleExpander 기구현, 자동매칭만 신규). **F5 = F3/F4 선행 의존**. **F7(VAT/배분) = 기획서§7 비대상**(우선순위 낮음·현행 유지). **멀티 세트 동적가격 #19 = 🔒 견적금액 변동 정책**. **수식 빌더 Phase 우선순위(기획서§8 A 파라미터/B 템플릿/C 노코드빌더) = 🔒 개발책임자 확정 필요**. **비게이트 자율 후속 = homeDefaults/singleDefaults DB 승격**(3탭 prefetch 완전 제거 → estimate-app 시트 의존 0 완결).
+## 다음 (개발책임자 결정 확정 시퀀스 — 자율 진행)
+**개발책임자 결정(2026-06-18 야간)**: F3/F4 설계=**B 경량 휴리스틱**(품목 attribute 분류 + 옵션 토글 시 setModel 그룹 내 매칭 자동선택, 룰테이블 없음)·자동매칭 후보다수=**세트 기본 구성품(isDefault) 우선**·Phase1 착수(완료)·카드수수료 **현행 3% 유지**.
+**진행 순서**: **F1.5**(품목 attribute 분류 panelType/remoteType, F1 catL/M/S 인프라 재사용, B 토대) → **F3**(옵션 default 설정 UI + homeDefaults/singleDefaults DB 승격 + 3탭 prefetch 완전 제거) → **F4**(옵션 자동매칭 B·isDefault 우선·setModel 그룹) → **F5**(estimate-app 설정 기반 계산 전환·golden parity 회귀).
+**F2 = ✅ 이미 구현됨**(SalesPartnerDcConfigPage). F7(VAT/배분)=기획서§7 비대상. 멀티 동적가격#19=🔒견적금액 변동 정책. 브리프 [[]] `docs/handoff/2026-06-18-formula-f3-f4-decision-brief.md`.
 
 기획서 `.claude/tmp/estimate-formula-builder-plan.md`. [[project_quotation_estimate_app_state]] [[project_estimate_spec_data_sources]] [[feedback_stacked_pr_ci_false_green]]
