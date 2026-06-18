@@ -424,14 +424,14 @@ describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
     delete process.env.CATALOG_SOURCE;
   });
 
-  test('bootstrap 빈 카탈로그 반환', async () => {
+  test('bootstrap CATALOG_SOURCE 미설정 시 DB 기본으로 빈 카탈로그 반환', async () => {
     const bs = await code.bootstrap('test@samhan-air.com');
     expect(bs.userEmail).toBe('test@samhan-air.com');
     expect(JSON.parse(bs.homemulti)).toEqual([]);
     expect(JSON.parse(bs.singleSets)).toEqual([]);
-    expect(JSON.parse(bs.config).homeDiscount).toBe(0.45);
+    expect(JSON.parse(bs.config).homeDiscount).toBe(0.42);
     expect(JSON.parse(bs.config).cardFeeRate).toBe(0.03);
-    expect(JSON.parse(bs.config).advanceDiscountRate).toBe(0);
+    expect(JSON.parse(bs.config).advanceDiscountRate).toBe(0.02);
     expect(JSON.parse(bs.config).vatRate).toBe(0.1);
   }, 15000);
 

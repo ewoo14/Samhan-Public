@@ -1840,12 +1840,11 @@ function getGateImages() {
  * @returns {Promise<object>} EJS render 데이터 (legacy doGet 가 t.* 로 채우는 항목)
  */
 async function bootstrap(userEmail) {
-  // #30: 카탈로그 소스 — CATALOG_SOURCE=db 시 product-service 벌크 endpoint, 기본 legacy 시트.
+  // #30: 카탈로그 소스 — 기본 db(product-service 벌크 endpoint), 시트는 CATALOG_SOURCE=sheet 명시 opt-out.
   // 거래처/담당자는 G2부터 partner-service/user-service directory cache 로 치환.
-  // 기본값 'sheet': DB 카탈로그는 가격/단위/규격/구성품/자재/추천/baseline/pyong + 홈·싱글·구형
-  // 변동DC 까지 시트 동등 검증 완료. 상업멀티 useK2 검출 parity 미달(QA RESULTS 명시) → 해당
-  // 항목 parity 종결 시 운영 default 를 db 로 전환(현재는 opt-in).
-  const useDb = String(process.env.CATALOG_SOURCE || 'sheet').toLowerCase() === 'db';
+  // DB 카탈로그는 가격/단위/규격/구성품/자재/추천/baseline/pyong + 홈·싱글·구형
+  // 변동DC 까지 시트 동등 검증 완료. 백엔드 미도달 운영 환경은 CATALOG_SOURCE=sheet override 로 보호한다.
+  const useDb = String(process.env.CATALOG_SOURCE || 'db').toLowerCase() === 'db';
 
   // legacy 가 read 하는 전 탭 prefetch (병렬). 누락 탭은 빈 sheet 반환.
   // DB 모드에서는 카탈로그/spec/default 모두 DB endpoint 에서 주입하므로 시트 prefetch 를 생략한다.

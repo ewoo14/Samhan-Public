@@ -45,6 +45,10 @@ services:
       # cafe24 deploy template 의 --max-old-space-size=512 가드와 동일 정책.
       - key: NODE_OPTIONS
         value: "--max-old-space-size=400"
+      # Phase 11 백엔드(product-service 등) 배포 전 프로덕션은 legacy 시트 카탈로그 유지.
+      # PRODUCT_SERVICE_URL/DC_CONFIG_SERVICE_URL/SAMHAN_INTERNAL_TOKEN 등록·도달 후 이 override 제거 → 프로덕션 DB 카탈로그.
+      - key: CATALOG_SOURCE
+        value: sheet
       # PORT 는 Render 가 auto-inject 하므로 hardcode 제거.
       # server.js:50 에 process.env.PORT || '5183' fallback 보유.
       # === Phase 7 backend staging endpoint (호스팅 결정 후 등록) ===

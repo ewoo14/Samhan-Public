@@ -60,6 +60,13 @@
 
 - [ ] `qa/playwright/tests/` 의 `web-estimate-app` project 시나리오 60 cell PASS (Phase 7 staging 환경)
 
+## Phase 11 카탈로그 DB cutover
+
+- [ ] 백엔드 `product-service` 와 `dc-config-service` 배포 완료
+- [ ] estimate-app 운영 환경변수 등록: `PRODUCT_SERVICE_URL`, `DC_CONFIG_SERVICE_URL`, `SAMHAN_INTERNAL_TOKEN` (또는 표준 internal token alias)
+- [ ] Render `samhan-estimate-app` 에서 `CATALOG_SOURCE=sheet` override 제거
+- [ ] 수동 deploy 후 `CATALOG_SOURCE` 미설정 기본값으로 프로덕션 DB 카탈로그 로드 확인
+
 ## Rollback 절차
 
 배포 직후 critical 결함 발견 시:
