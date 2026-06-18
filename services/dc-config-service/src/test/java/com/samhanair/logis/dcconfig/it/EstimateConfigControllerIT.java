@@ -105,6 +105,32 @@ class EstimateConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("admin PUT은 옵션 기본값 문자열/금액 자리수 초과를 400으로 거부한다")
+    void adminPut_rejectsOptionDefaultOverflow() throws Exception {
+        mockMvc.perform(put("/api/v1/estimate-config")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000102")
+                        .header("X-Is-System-Master", "true")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "homeDefaultPanel": "12345678901234567890123456789012345678901234567890123456789012345"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(put("/api/v1/estimate-config")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000103")
+                        .header("X-Is-System-Master", "true")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "singleDiscount": 1234567890123.45
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("internal GET은 X-Internal-Token 없으면 401, 있으면 기본값을 반환한다")
     void internalGet_requiresInternalToken() throws Exception {
         mockMvc.perform(get("/internal/estimate-config"))
