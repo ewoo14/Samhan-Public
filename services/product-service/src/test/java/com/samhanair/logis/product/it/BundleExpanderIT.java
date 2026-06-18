@@ -329,6 +329,27 @@ class BundleExpanderIT extends AbstractPostgresIT {
     }
 
     @Test
+    void 옵션_리모컨_synced_기본유선이면_유선선택은_기본리모컨_noop이다() {
+        Category cat = categoryRepository.save(Category.create("OPT-REMOTE-SYNCED-NOOP", "test", null, 129));
+        Product parent = bundleSet("OPT_REMOTE_SYNCED_NOOP", "1way 냉난방", cat, new BigDecimal("500000"));
+        productWithAttributes("AR-EH05", "기본 유선리모컨", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("20000"), null, "유선");
+        productWithAttributes("RMT_WIRED_OPTION", "옵션 유선리모컨", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("35000"), null, "유선");
+        comp(parent, "AR-EH05", BundleComponent.ComponentKind.REMOTE, "기본", true, 1);
+        comp(parent, "RMT_WIRED_OPTION", BundleComponent.ComponentKind.REMOTE, null, false, 2);
+        flush();
+
+        var opts = new BundleExpander.ExpandOptions("유선리모컨", false, "", "원형", false, null);
+        var lines = expander.expand("OPT_REMOTE_SYNCED_NOOP", BigDecimal.ONE, opts);
+
+        assertThat(lines).extracting(BundleExpander.ExpandedLine::modelCode)
+                .containsExactly("AR-EH05");
+        assertThat(lines).filteredOn(line -> line.componentKind() == BundleComponent.ComponentKind.REMOTE)
+                .hasSize(1);
+    }
+
+    @Test
     void 옵션_기본리모컨_없으면_리모컨_전부제외() {
         Category cat = categoryRepository.save(Category.create("RMT-SET", "test", null, 13));
         Product parent = bundleSet("RMT_SET", "1way 냉난방", cat, new BigDecimal("500000"));
