@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -167,6 +168,7 @@ public class ProductSheetSyncService {
     private final ProductSpecRepository productSpecRepository;
     private final ProductEstimateExposureRepository exposureRepository;
     private final VariableDiscountDetector discountDetector;
+    private final ProductAttributeClassifier attributeClassifier;
     private final ProductSheetSyncService self;
 
     /** rowHash 캐시 — JVM 메모리. (시트 row → SHA-256). 다음 sync 시 비교. */
@@ -181,6 +183,7 @@ public class ProductSheetSyncService {
                                    ProductSpecRepository productSpecRepository,
                                    ProductEstimateExposureRepository exposureRepository,
                                    VariableDiscountDetector discountDetector,
+                                   ProductAttributeClassifier attributeClassifier,
                                    @Lazy ProductSheetSyncService self) {
         this.sheetsClient = sheetsClient;
         this.productRepository = productRepository;
@@ -191,6 +194,7 @@ public class ProductSheetSyncService {
         this.productSpecRepository = productSpecRepository;
         this.exposureRepository = exposureRepository;
         this.discountDetector = discountDetector;
+        this.attributeClassifier = attributeClassifier;
         this.self = self;
     }
 
@@ -1184,6 +1188,7 @@ public class ProductSheetSyncService {
                 p.applyDiscountRules(hasVariableDiscount, materialKey, legacyDiscount, fixedRate);
                 p.changeDiscountFlags(discountFlags);
                 p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
+                applyAttributes(p, name, modelCode);
                 applyPyongSize(p, mapping, cells);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
@@ -1222,6 +1227,7 @@ public class ProductSheetSyncService {
                     }
                     applyPyongSize(p, mapping, cells);
                 }
+                applyAttributes(p, name, modelCode);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
@@ -1230,10 +1236,19 @@ public class ProductSheetSyncService {
                 result.updated++;
             } else {
                 Product p = existing.get();
-                productId = p.getId();
-                productForExposure = p;
-                upsertPriceHistory(productId, PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
-                result.unchanged++;
+                if (applyAttributes(p, name, modelCode)) {
+                    productRepository.save(p);
+                    lastKnownRowHash.put(modelCode, rowHash);
+                    productId = p.getId();
+                    productForExposure = p;
+                    upsertPriceHistory(productId, PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
+                    result.updated++;
+                } else {
+                    productId = p.getId();
+                    productForExposure = p;
+                    upsertPriceHistory(productId, PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
+                    result.unchanged++;
+                }
             }
 
             upsertSheetExposure(productForExposure, mapping.estimateCategory, displayOrder);
@@ -1300,6 +1315,17 @@ public class ProductSheetSyncService {
                         },
                         () -> exposureRepository.save(ProductEstimateExposure.create(
                                 product.getId(), estimateCategory, displayOrder)));
+    }
+
+    private boolean applyAttributes(Product product, String name, String modelCode) {
+        String panelType = attributeClassifier.classifyPanelType(name, modelCode);
+        String remoteType = attributeClassifier.classifyRemoteType(name);
+        if (Objects.equals(product.getPanelType(), panelType)
+                && Objects.equals(product.getRemoteType(), remoteType)) {
+            return false;
+        }
+        product.changeAttributes(panelType, remoteType);
+        return true;
     }
 
     private void softDeleteExposures(UUID productId, String actor) {

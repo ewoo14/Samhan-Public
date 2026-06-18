@@ -173,6 +173,14 @@ public class Product extends BaseEntity {
     @Column(name = "fixed_discount_manual", nullable = false)
     private boolean fixedDiscountManual = false;
 
+    /** F1.5 — GAS 판넬 품명 정규식으로 1회 분류한 판넬 attribute. */
+    @Column(name = "panel_type", length = 32)
+    private String panelType;
+
+    /** F1.5 — BundleExpander 리모컨 옵션 정규식으로 1회 분류한 리모컨 attribute. */
+    @Column(name = "remote_type", length = 32)
+    private String remoteType;
+
     /** 시트 D/E 출고가 (베이스 — 정적가). 시점별 가격은 PriceHistory 참조. */
     @Column(name = "release_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal releasePrice = BigDecimal.ZERO;
@@ -576,6 +584,12 @@ public class Product extends BaseEntity {
         this.fixedDiscountManual = true;
     }
 
+    /** F1.5 품목 attribute 갱신. blank 는 null 로 정규화한다. */
+    public void changeAttributes(String panelType, String remoteType) {
+        this.panelType = normalizeAttribute(panelType);
+        this.remoteType = normalizeAttribute(remoteType);
+    }
+
     /** Bundle 모드 set (마이그 + 운영). */
     public void changeBundle(ProductType productType, BundleMode bundleMode) {
         this.productType = productType == null ? ProductType.SINGLE : productType;
@@ -774,5 +788,9 @@ public class Product extends BaseEntity {
             throw new IllegalArgumentException("통화 코드는 ISO 4217 3자리여야 합니다: " + currency);
         }
         return currency.toUpperCase();
+    }
+
+    private static String normalizeAttribute(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

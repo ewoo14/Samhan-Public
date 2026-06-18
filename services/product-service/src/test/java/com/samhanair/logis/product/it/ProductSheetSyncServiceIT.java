@@ -589,6 +589,31 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     @Test
+    void sync_Product_attribute_panelType_remoteType을_자동_적재한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("공기청정 WIFI 판넬", "HM_PANEL_ATTR", "", "100,000", "", "80,000"),
+                row("컬러유선리모컨", "HM_REMOTE_ATTR", "", "40,000", "", "30,000"),
+                row("Hi-Multi 4-Way 실내기", "HM_NORMAL_ATTR", "", "1,500,000", "", "1,200,000")
+        ));
+
+        syncService.syncAll();
+
+        Product panel = productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_ATTR").orElseThrow();
+        assertThat(panel.getPanelType()).isEqualTo("공기청정 WIFI");
+        assertThat(panel.getRemoteType()).isNull();
+
+        Product remote = productRepository.findByModelCodeAndIsDeletedFalse("HM_REMOTE_ATTR").orElseThrow();
+        assertThat(remote.getPanelType()).isNull();
+        assertThat(remote.getRemoteType()).isEqualTo("컬러유선리모컨");
+
+        Product normal = productRepository.findByModelCodeAndIsDeletedFalse("HM_NORMAL_ATTR").orElseThrow();
+        assertThat(normal.getPanelType()).isNull();
+        assertThat(normal.getRemoteType()).isNull();
+    }
+
+    @Test
     void sync_사양키_사라졌다_재등장해도_UNIQUE위반없이_재활성() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         // 1차: 냉매가스 사양 존재
