@@ -110,7 +110,7 @@ class ApiGatewayContextLoadIT {
         assertRoutePath(routes, "product-fixed-discount-v1", "/api/v1/products/*/fixed-discount");
         assertRoutePath(routes, "product-classification-v1", "/api/v1/products/*/classification");
         assertRoutePath(routes, "product-classifications-v1",
-                "/api/v1/classifications,/api/v1/classifications/**");
+                "/api/v1/classifications", "/api/v1/classifications/**");
 
         // (2) no-strip — 세 라우트 모두 StripPrefix 필터 미보유.
         assertNoStripPrefix(routes, "product-components-v1");
@@ -199,7 +199,9 @@ class ApiGatewayContextLoadIT {
                 .isNotEmpty();
 
         assertRoutePath(routes, "partner-order-public-v1",
-                "/api/v1/partner-orders/bootstrap,/api/v1/partner-orders/gate-images,/api/v1/partner-orders/log");
+                "/api/v1/partner-orders/bootstrap",
+                "/api/v1/partner-orders/gate-images",
+                "/api/v1/partner-orders/log");
         assertNoStripPrefix(routes, "partner-order-public-v1");
         assertHasStripInboundIdentityHeadersFilter(routes, "partner-order-public-v1");
         assertThat(filterNames(findRoute(routes, "partner-order-public-v1")))
@@ -221,10 +223,10 @@ class ApiGatewayContextLoadIT {
                 .doesNotContain("StripInboundIdentityHeaders", "RemoveRequestHeader");
     }
 
-    /** 주어진 id 의 라우트가 존재하고 단일 Path predicate 가 기대 패턴과 정확히 일치하는지 단언. */
-    private static void assertRoutePath(List<RouteDefinition> routes, String id, String expectedPath) {
+    /** 주어진 id 의 라우트가 존재하고 단일 Path predicate 가 기대 패턴들과 정확히 일치하는지 단언. */
+    private static void assertRoutePath(List<RouteDefinition> routes, String id, String... expectedPaths) {
         RouteDefinition route = findRoute(routes, id);
-        // Path predicate 1개 보유 — args 값(Spring 이 _genkey_0 키로 저장)이 기대 경로와 일치.
+        // Path predicate 1개 보유 — 콤마로 선언한 다중 경로는 Spring 이 _genkey_N args 로 분리 저장한다.
         assertThat(route.getPredicates())
                 .as("%s 는 Path predicate 1개를 보유해야 한다", id)
                 .hasSize(1);
@@ -232,8 +234,8 @@ class ApiGatewayContextLoadIT {
                 .as("%s predicate 는 Path 여야 한다", id)
                 .isEqualTo("Path");
         assertThat(route.getPredicates().get(0).getArgs().values())
-                .as("%s 의 Path 패턴은 %s 여야 한다", id, expectedPath)
-                .containsExactly(expectedPath);
+                .as("%s 의 Path 패턴은 %s 여야 한다", id, List.of(expectedPaths))
+                .containsExactly(expectedPaths);
     }
 
     /** 주어진 id 의 라우트가 StripPrefix 필터를 보유하지 않는지(no-strip) 단언. */
