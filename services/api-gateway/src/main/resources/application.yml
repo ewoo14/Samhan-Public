@@ -496,6 +496,15 @@ spring:
           filters:
             - JwtAuthentication
 
+        # dc-config-service — 데스크톱 종합견적서 전역 가격 설정 화면.
+        # controller 가 /api/v1/estimate-config 풀패스를 보유하므로 StripPrefix 없음.
+        - id: dc-config-estimate-config-v1
+          uri: lb://dc-config-service
+          predicates:
+            - Path=/api/v1/estimate-config
+          filters:
+            - JwtAuthentication
+
         # ============================================================
         # No-prefix routes — desktop API client legacy 호환 (PR-D 이전).
         # baseURL=http://localhost:8080 + 직접 path (예: /slips/query, /inventory/transfers,

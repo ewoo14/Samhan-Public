@@ -118,6 +118,7 @@ import { SalesPartnerOrderListPage } from './SalesPartnerOrderListPage'
 import { SalesPartnerOrderDetailPage } from './SalesPartnerOrderDetailPage'
 import { SalesOrderApprovalsPage } from './SalesOrderApprovalsPage'
 import { SalesPartnerDcConfigPage } from './SalesPartnerDcConfigPage'
+import { EstimatePricingConfigPage } from './EstimatePricingConfigPage'
 // Phase 10 P0-2 — 본인 비밀번호 변경 페이지 (재로그인 강제)
 import { PasswordChangePage } from './PasswordChangePage'
 // P0-2 셀프 재설정 — 비인증 page 방식 2종 (AuthGuard 외부 최상위 등록)
@@ -475,16 +476,24 @@ const router = createHashRouter([
           </PermissionGuard>
         ),
       },
-      {
-        path: '/sales/partner-dc-config',
-        element: (
-          <PermissionGuard pageCode="sales.partner-dc-config" action="view">
-            <SalesPartnerDcConfigPage />
-          </PermissionGuard>
-        ),
-      },
+        {
+          path: '/sales/partner-dc-config',
+          element: (
+            <PermissionGuard pageCode="sales.partner-dc-config" action="view">
+              <SalesPartnerDcConfigPage />
+            </PermissionGuard>
+          ),
+        },
+        {
+          path: '/sales/estimate-config',
+          element: (
+            <PermissionGuard pageCode="sales.estimate-config" action="view">
+              <EstimatePricingConfigPage />
+            </PermissionGuard>
+          ),
+        },
 
-      // P0-4 견적서 인쇄 (estimateNumber path param) — Designer commit 5dcbbef QuoteView 재사용.
+        // P0-4 견적서 인쇄 (estimateNumber path param) — Designer commit 5dcbbef QuoteView 재사용.
       // P2-1 견적서 상세/편집 (id UUID path param) — `/sales/:id` 보다 먼저 매칭되어야 함.
       { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
       { path: '/sales/estimates/:id/edit', element: <EstimateFormPage /> },

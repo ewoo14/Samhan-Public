@@ -134,6 +134,75 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     expect(cfg.unitRoundMode).toBe('ROUND');
   });
 
+  test('buildDefaultDcConfig_ — estimateConfig 전역 DC 기본율 주입', () => {
+    const cfg = code.buildDefaultDcConfig_({
+      commonHomeDiscountRate: 0.42,
+      commonCommercialDiscountRate: 0.43,
+    });
+    expect(cfg.homeDiscount).toBe(0.42);
+    expect(cfg.commDiscount).toBe(0.43);
+    expect(cfg.showIHose).toBe(false);
+  });
+
+  test('splitVatAmount_ — 기본 VAT 10%는 기존 1.1 하드코딩과 동일', () => {
+    expect(code.splitVatAmount_(110000, { vatRate: 0.1 })).toEqual({
+      supply: 100000,
+      vat: 10000,
+    });
+    expect(code.splitVatAmount_(-110000, { vatRate: 0.1 })).toEqual({
+      supply: -100000,
+      vat: -10000,
+    });
+  });
+
+  test('splitVatAmount_ — VAT 설정 변경 시 1+vatRate로 분리한다', () => {
+    expect(code.splitVatAmount_(120000, { vatRate: 0.2 })).toEqual({
+      supply: 100000,
+      vat: 20000,
+    });
+  });
+
+  test('applyEstimateTotalAdjustments_ — 카드/선금 기본 0은 총액 무변경 parity', () => {
+    const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
+    const result = code.applyEstimateTotalAdjustments_(rows, {
+      cardFeeRate: 0,
+      advanceDiscountRate: 0,
+    }, { card: true, advance: true });
+    expect(result.total).toBe(110000);
+    expect(result.adjustment).toBe(0);
+    expect(rows).toEqual([{ name: 'A', qty: 1, price: 110000, sub: 110000 }]);
+  });
+
+  test('applyEstimateTotalAdjustments_ — 카드 수수료는 VAT 포함 총액에 가산한다', () => {
+    const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
+    const result = code.applyEstimateTotalAdjustments_(rows, {
+      cardFeeRate: 0.03,
+      advanceDiscountRate: 0,
+    }, { card: true, advance: false });
+    expect(result.total).toBe(113300);
+    expect(result.adjustment).toBe(3300);
+    expect(rows.at(-1)).toEqual(expect.objectContaining({
+      name: '카드수수료',
+      price: 3300,
+      sub: 3300,
+    }));
+  });
+
+  test('applyEstimateTotalAdjustments_ — 선금할인은 VAT 포함 총액에서 차감한다', () => {
+    const rows = [{ name: 'A', qty: 1, price: 110000, sub: 110000 }];
+    const result = code.applyEstimateTotalAdjustments_(rows, {
+      cardFeeRate: 0,
+      advanceDiscountRate: 0.02,
+    }, { card: false, advance: true });
+    expect(result.total).toBe(107800);
+    expect(result.adjustment).toBe(-2200);
+    expect(rows.at(-1)).toEqual(expect.objectContaining({
+      name: '선금할인',
+      price: -2200,
+      sub: -2200,
+    }));
+  });
+
   test('detectHomeOrder 모델 prefix (AJ0/AJ1/AM0/AM1) — 라이브 분기 복원', () => {
     expect(code.detectHomeOrder([{ section: 'COMM', model: 'AJ050TXJ3CH' }], {})).toBe(true);
     expect(code.detectHomeOrder([{ section: 'COMM', model: 'AC145' }], {})).toBe(false);
@@ -156,6 +225,9 @@ describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
     expect(JSON.parse(bs.homemulti)).toEqual([]);
     expect(JSON.parse(bs.singleSets)).toEqual([]);
     expect(JSON.parse(bs.config).homeDiscount).toBe(0.45);
+    expect(JSON.parse(bs.config).cardFeeRate).toBe(0);
+    expect(JSON.parse(bs.config).advanceDiscountRate).toBe(0);
+    expect(JSON.parse(bs.config).vatRate).toBe(0.1);
   }, 15000);
 
   test('checkUserAuth — user-service by-email 매핑 (#31)', async () => {

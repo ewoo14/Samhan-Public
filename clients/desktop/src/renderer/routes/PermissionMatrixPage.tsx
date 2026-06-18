@@ -187,6 +187,7 @@ export const PAGE_GROUPS: PageGroup[] = [
       'sales.slip.confirm',
       'sales.slip.cancel',
       'sales.partner-dc-config',
+      'sales.estimate-config',
     ],
   },
   {
@@ -411,6 +412,7 @@ export const PAGE_LABEL: Record<PageCode, string> = {
   'sales.slip.confirm': '전표 확정',
   'sales.slip.cancel': '전표 취소',
   'sales.partner-dc-config': '거래처 DC 설정',
+  'sales.estimate-config': '견적 가격 설정',
   'slip.transfer.process': '전표 처리',
   'slip.reject': '전표 반려',
   'slip.period-lock': '기간 잠금',

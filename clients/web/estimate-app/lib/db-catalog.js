@@ -22,6 +22,11 @@
 const axios = require('axios');
 
 const PRODUCT_BASE = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8084';
+const DC_CONFIG_BASE =
+  process.env.DC_CONFIG_SERVICE_URL ||
+  process.env.PARTNER_SERVICE_URL ||
+  process.env.SAMHAN_API_BASE_URL ||
+  'http://localhost:8089';
 const INTERNAL_TOKEN =
   process.env.SAMHAN_INTERNAL_TOKEN ||
   process.env.INTERNAL_AUTH_TOKEN ||
@@ -38,6 +43,16 @@ async function get(pathAndQuery) {
     throw new Error(`estimate-catalog GET ${pathAndQuery} → HTTP ${resp.status}`);
   }
   return (resp.data && resp.data.data) || [];
+}
+
+async function getDcConfig(pathAndQuery) {
+  const resp = await ax.get(`${DC_CONFIG_BASE}/internal${pathAndQuery}`, {
+    headers: { 'X-Internal-Token': INTERNAL_TOKEN },
+  });
+  if (resp.status !== 200) {
+    throw new Error(`dc-config GET ${pathAndQuery} → HTTP ${resp.status}`);
+  }
+  return (resp.data && resp.data.data) || {};
 }
 
 const num = (v) => (v == null ? 0 : Number(v) || 0);
@@ -197,6 +212,12 @@ async function specDetailMap() {
   return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
 }
 
+/** 종합견적서 전역 가격 파라미터. */
+async function estimateConfig() {
+  const config = await getDcConfig('/estimate-config');
+  return config && typeof config === 'object' && !Array.isArray(config) ? config : {};
+}
+
 module.exports = {
   multiCatalog,
   singleSets,
@@ -206,4 +227,5 @@ module.exports = {
   recommendOduData,
   priceIncData,
   specDetailMap,
+  estimateConfig,
 };

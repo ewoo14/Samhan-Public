@@ -2303,6 +2303,12 @@ let CONFIG=J(CFG_RAW,{
   commDiscount: 0.45,
   showIHose: false,
   singleSetDiscount: 0,
+  oldDiscount: 0.5,
+  vatRate: 0.1,
+  cardFeeRate: 0,
+  advanceDiscountRate: 0,
+  comboWarnRate: 0,
+  footerNotice: '※ 분기관은 임의 산정입니다.\n※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.\n※ 본 견적은 견적일로부터 30일 이내에만 유효합니다.\n※ 공공기관 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.',
   oneWayDiscount: 0,
   deluxeDiscount: 0,
   firstGradeDiscount: 0,
@@ -2365,7 +2371,7 @@ function getRealOldPrice(model) {
   if (oldCustomPrices.has(model)) return oldCustomPrices.get(model);
   const item = OLD_PRODUCTS.find(p=>p.model===model);
   if(!item) return 0;
-  const rateVal = parseInt(el('#old_rate')?.value || '50', 10);
+  const rateVal = parseInt(el('#old_rate')?.value || String(getOldDiscountPercent()), 10);
   
   let p = Math.round(Number(item.price)||0);
   let isCustom = false;
@@ -2405,6 +2411,63 @@ function applyConfigFromServer(cfg) {
   window.FIRSTGRADE_DISCOUNT_AMT  = Number(CONFIG.firstGradeDiscount)||0;
   window.UNIT_ROUND_TO            = Number(CONFIG.unitRoundTo||0);
   window.UNIT_ROUND_MODE          = String(CONFIG.unitRoundMode||'').toUpperCase() || 'ROUND';
+  window.ESTIMATE_CONFIG = CONFIG;
+  const oldRate = document.getElementById('old_rate');
+  if (oldRate) oldRate.value = getOldDiscountPercent();
+}
+
+function estimateConfigNumber(key, fallback) {
+  const n = Number(CONFIG && CONFIG[key]);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getOldDiscountPercent() {
+  return Math.round(estimateConfigNumber('oldDiscount', 0.5) * 100);
+}
+
+function escapeEstimateHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getFooterNoticeHtml() {
+  const text = String(CONFIG.footerNotice || '').trim();
+  const fallback = '※ 분기관은 임의 산정입니다.\n※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.\n※ 본 견적은 견적일로부터 30일 이내에만 유효합니다.\n※ 공공기관 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.';
+  return (text || fallback)
+    .split(/\r?\n/)
+    .map(line => escapeEstimateHtml(line))
+    .join('<br>');
+}
+
+function applyEstimateTotalAdjustments(rows, opts) {
+  if (!Array.isArray(rows)) return { total: 0, adjustment: 0 };
+  const baseTotal = rows.reduce((acc, r) => acc + (Number(r.sub) || ((Number(r.price) || 0) * (Number(r.qty) || 0))), 0);
+  let adjustment = 0;
+  const cardRate = estimateConfigNumber('cardFeeRate', 0);
+  const advanceRate = estimateConfigNumber('advanceDiscountRate', 0);
+
+  if (opts && opts.card === true && cardRate > 0
+      && !rows.some(r => String(r.name || '').includes('카드수수료') || r.cardFee)) {
+    const fee = Math.round(baseTotal * cardRate);
+    if (fee !== 0) {
+      rows.push({ section:'ETC', type:'item', name:'카드수수료', model:'카드수수료', unit:'식', qty:1, price:fee, sub:fee, remarks:'카드 수수료', cat:'기타', cardFee:fee });
+      adjustment += fee;
+    }
+  }
+
+  if (opts && opts.advance === true && advanceRate > 0
+      && !rows.some(r => String(r.name || '').includes('선금할인') || r.advanceDiscount)) {
+    const discount = -Math.round(baseTotal * advanceRate);
+    if (discount !== 0) {
+      rows.push({ section:'ETC', type:'item', name:'선금할인', model:'선금할인', unit:'식', qty:1, price:discount, sub:discount, remarks:'선금 할인', cat:'기타', advanceDiscount:discount });
+      adjustment += discount;
+    }
+  }
+  return { total: baseTotal + adjustment, adjustment };
 }
 
 // 거래처 노션 할인설정 자동적용
@@ -2700,7 +2763,7 @@ function handlePriceInput(e, type, key) {
     else if (type === 'single') { const s = SINGLE_SETS.find(x=>String(x.id)===String(key)); if(s) autoPrice = calcSetUnitPrice(s); }
     else if (type === 'old') {
       const item = OLD_PRODUCTS.find(x=>x.model===key);
-      const rateVal = parseInt(document.getElementById('old_rate')?.value || '50', 10);
+      const rateVal = parseInt(document.getElementById('old_rate')?.value || String(getOldDiscountPercent()), 10);
       const listP = Math.round(Number(item?.price)||0);
       autoPrice = roundByConfig(item?.isDisc ? listP*(1-rateVal/100) : Number(item?.sheetPrice)||0, 'old');
     }
@@ -7220,7 +7283,7 @@ function renderOldOptions() {
 
   box.innerHTML = '';
   // 옵션 내용 추가
-  box.appendChild(numInp('할인율(%)', 'old_rate', 50, 1));
+  box.appendChild(numInp('할인율(%)', 'old_rate', getOldDiscountPercent(), 1));
   box.appendChild(roundSel('old'));
 
   // 이벤트 연결
@@ -7240,7 +7303,7 @@ function renderOld(){
   if(!body) return; 
   body.innerHTML = '';
   
-  const rateVal = parseInt(el('#old_rate')?.value || '50', 10);
+  const rateVal = parseInt(el('#old_rate')?.value || String(getOldDiscountPercent()), 10);
   const discountRate = rateVal / 100;
 
   OLD_PRODUCTS.forEach((item, idx) => {
@@ -8719,7 +8782,7 @@ function refreshSelectedBadge() {
     rates.push(`상업:${r}%`);
   }
   if (hasOld) {
-    const r = document.getElementById('old_rate')?.value || '50';
+    const r = document.getElementById('old_rate')?.value || String(getOldDiscountPercent());
     rates.push(`구형:${r}%`);
   }
 
@@ -9398,7 +9461,10 @@ function buildSendRows(){
 
     let rem = getLiveSpec('OLD', item.model, item.remarks, true);
     rem = rem ? rem.trim() : (item._tempRemarks || '').trim();
-    if(item.isDisc === true) rem = rem ? rem + ' (50% DC)' : '(50% DC)';
+  if(item.isDisc === true) {
+    const dcText = '(' + getOldDiscountPercent() + '% DC)';
+    rem = rem ? rem + ' ' + dcText : dcText;
+  }
 
     const oBase = getBaseListPrice('old', item.model, pMap.get(item.model) || item.price || 0);
     let oList = getRealListPrice('OLD', item.model, oBase);
@@ -10069,7 +10135,7 @@ function resetOld() {
 
   document.querySelectorAll('#oldBody .qty-input').forEach(i => i.value = '');
   
-  if (el('#old_rate')) el('#old_rate').value = 50;
+  if (el('#old_rate')) el('#old_rate').value = getOldDiscountPercent();
   if (el('#old_round_unit')) el('#old_round_unit').value = 0;
 
   const oldBody = document.getElementById('oldCustomBody');
@@ -10384,7 +10450,8 @@ function fixFootersForMobile(isMobile){
       receiver: document.getElementById('tel').value,
       memo: document.getElementById('memo').value,
       isMobile: typeof isMobileNow === 'function' ? isMobileNow() : false,
-      items: items
+      items: items,
+      estimateConfig: CONFIG
     };
 
     // 진행 상태 표시
@@ -11120,23 +11187,26 @@ function getStructuredQuoteData() {
     sections.push({ id: 'OLD', title: '<구형>', subLabel: '구형 합계', rows: oldRows, total: sum });
   }
 
-  // 카드
+  // 총액 조정(카드수수료/선금할인)
   const box = document.getElementById('chkCardPay');
-  if (box && box.checked) {
+  const pre = document.getElementById('payDuePre');
+  if ((box && box.checked) || (pre && pre.checked)) {
     // 평탄화
     const allRows = [];
     sections.forEach(s => allRows.push(...s.rows));
     const oldLen = allRows.length;
     
-    // 수수료
-    applyCardFeeLogic(allRows);
+    applyEstimateTotalAdjustments(allRows, {
+      card: !!(box && box.checked),
+      advance: !!(pre && pre.checked)
+    });
     
     if (allRows.length > oldLen) {
-      const newRow = allRows[allRows.length - 1];
+      const newRows = allRows.slice(oldLen);
       sections.push({
         title: '기타',
-        rows: [newRow],
-        total: newRow.sub,
+        rows: newRows,
+        total: newRows.reduce((sum, r) => sum + (r.sub || 0), 0),
         subLabel: '소계'
       });
     }
@@ -11241,12 +11311,14 @@ function getStructuredQuoteData() {
 function getVatLabel() {
   const optVatVal = document.querySelector('input[name="optVatDisplay"]:checked')?.value || 'inc';
   const isCard = document.getElementById('chkCardPay')?.checked;
+  const isAdvance = document.getElementById('payDuePre')?.checked;
   const parts = [];
   
   if (optVatVal === 'inc') parts.push('VAT 포함');
   else if (optVatVal === 'exc') parts.push('VAT 별도');
   
   if (isCard) parts.push('카드 수수료 포함');
+  if (isAdvance) parts.push('선금 할인 포함');
   
   if (parts.length === 0) return '';
   return `(${parts.join('/')})`;
@@ -11560,10 +11632,12 @@ function renderPreviewContent() {
     // 라벨 생성
     const optVatVal = document.querySelector('input[name="optVatDisplay"]:checked')?.value || 'inc';
     const isCard = document.getElementById('chkCardPay')?.checked;
+    const isAdvance = document.getElementById('payDuePre')?.checked;
     const vParts = [];
     if (optVatVal === 'inc') vParts.push('VAT 포함');
     else if (optVatVal === 'exc') vParts.push('VAT 별도');
     if (isCard) vParts.push('카드 수수료 포함');
+    if (isAdvance) vParts.push('선금 할인 포함');
     const vLabel = vParts.length > 0 ? `(${vParts.join('/')})` : '';
 
     let html = `
@@ -11582,16 +11656,10 @@ function renderPreviewContent() {
       </tr>
       <tr>
         <td class="pc-only" colspan="${totalCols}" style="padding: 6px 8px; text-align: left; font-size: 0.85em; color: #555; line-height: 1.4;">
-          ※ 분기관은 <b>임의 산정</b>입니다.<br>
-          ※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.<br>
-          ※ 본 견적은 견적일로부터 <b>30일 이내</b>에만 유효합니다.<br>
-          ※ <b>공공기관</b> 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.
+          ${getFooterNoticeHtml()}
         </td>
         <td class="mobile-only" colspan="${totalCols - 2}" style="padding: 6px 8px; text-align: left; font-size: 0.85em; color: #555; line-height: 1.4;">
-          ※ 분기관은 <b>임의 산정</b>입니다.<br>
-          ※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.<br>
-          ※ 본 견적은 견적일로부터 <b>30일 이내</b>에만 유효합니다.<br>
-          ※ <b>공공기관</b> 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.
+          ${getFooterNoticeHtml()}
         </td>
       </tr>`;
     foot.innerHTML = html;
@@ -11862,10 +11930,12 @@ async function processPCExport(type) {
   // 총계
   const optVatVal = document.querySelector('input[name="optVatDisplay"]:checked')?.value || 'inc';
   const isCard = document.getElementById('chkCardPay')?.checked;
+  const isAdvance = document.getElementById('payDuePre')?.checked;
   const vParts = [];
   if (optVatVal === 'inc') vParts.push('VAT 포함');
   else if (optVatVal === 'exc') vParts.push('VAT 별도');
   if (isCard) vParts.push('카드 수수료 포함');
+  if (isAdvance) vParts.push('선금 할인 포함');
   
   const vLabelHtml = vParts.length > 0 ? ` <span style="font-weight:normal; font-size:12px !important; margin-left:4px;">(${vParts.join('/')})</span>` : '';
 
@@ -11881,10 +11951,7 @@ async function processPCExport(type) {
   const trNote = document.createElement('tr');
   trNote.innerHTML = `
     <td colspan="${totalCols}" style="padding: 6px 8px !important; text-align: left; font-size: 8px !important; color: #555; line-height: 1.4 !important; border-left:${B_SIDE}; border-right:${B_SIDE}; border-bottom:${B_SIDE};">
-      ※ 분기관은 <b>임의 산정</b>입니다.<br>
-      ※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.<br>
-      ※ 본 견적은 견적일로부터 <b>30일 이내</b>에만 유효합니다.<br>
-      ※ <b>공공기관</b> 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.
+      ${getFooterNoticeHtml()}
     </td>
   `;
   tFoot.appendChild(trNote);
@@ -15679,6 +15746,7 @@ function submitOrderCard() {
       items: JSON.stringify(items),
       auth: USER_AUTH,
       isMobile: (typeof isMobileNow === 'function') ? isMobileNow() : false,
+      estimateConfig: CONFIG,
       dcInfo: dcInfoStr // 이카운트 ADD_TXT_06_T에 주입할 정보 (홈/상업/싱글 할인 내역 통합)
     };
     
@@ -16267,34 +16335,18 @@ window.CURRENT_CARD_FEE = 0;
 /* 카드수수료 적용 */
 function applyCardFeeLogic(rows) {
   const box = document.getElementById('chkCardPay');
+  const pre = document.getElementById('payDuePre');
   window.CURRENT_CARD_FEE = 0;
-  if (!box || !box.checked) return;
+  if (!(box && box.checked) && !(pre && pre.checked)) return;
 
-  if (rows.some(r => r.name === '카드' || (r.remarks && r.remarks.includes('수수료')))) {
-    return;
-  }
-
-  /* 수수료 계산 */
-  const total = rows.reduce((acc, r) => acc + (r.sub || (r.price * r.qty) || 0), 0);
-  const fee = Math.floor(total * 0.03);
-
-  window.CURRENT_CARD_FEE = fee;
-
-  /* 타겟 선정 */
-  let target = rows.find(r => r.qty === 1 && r.type !== 'set-head');
-  if (!target) target = rows.find(r => r.qty === 1);
-
-  if (target) {
-    target.price += fee;
-    if (target.sub !== undefined) target.sub += fee;
-  } else {
-    // 신규 생성
-    rows.push({
-      name: '카드수수료', model: '카드수수료', unit: '식', 
-      qty: 1, price: fee, sub: fee, remarks: '', cat: '기타',
-      cardFee: fee
-    });
-  }
+  const oldLen = Array.isArray(rows) ? rows.length : 0;
+  applyEstimateTotalAdjustments(rows, {
+    card: !!(box && box.checked),
+    advance: !!(pre && pre.checked)
+  });
+  const newRows = Array.isArray(rows) ? rows.slice(oldLen) : [];
+  const cardRow = newRows.find(r => r.cardFee);
+  window.CURRENT_CARD_FEE = cardRow ? Number(cardRow.cardFee) || 0 : 0;
 }
 
 /* 절삭처리 */
@@ -17340,10 +17392,12 @@ async function handleSaveSnapshot(customTheme) {
       // 총계
       const optVatVal = document.querySelector('input[name="optVatDisplay"]:checked')?.value || 'inc';
       const isCard = document.getElementById('chkCardPay')?.checked;
+      const isAdvance = document.getElementById('payDuePre')?.checked;
       const vParts = [];
       if (optVatVal === 'inc') vParts.push('VAT 포함');
       else if (optVatVal === 'exc') vParts.push('VAT 별도');
       if (isCard) vParts.push('카드 수수료 포함');
+      if (isAdvance) vParts.push('선금 할인 포함');
       
       const vLabelHtml = vParts.length > 0 ? ' <span style="font-weight:normal; font-size:12px !important; margin-left:4px;">(' + vParts.join('/') + ')</span>' : '';
 
@@ -17355,7 +17409,7 @@ async function handleSaveSnapshot(customTheme) {
 
       // 안내
       const trNote = document.createElement('tr');
-      trNote.innerHTML = '<td colspan="' + totalCols + '" style="padding: 6px 4px !important; text-align: left; font-size: 8px !important; color: #555; line-height: 1.4 !important; border-left:' + B_SIDE + '; border-right:' + B_SIDE + '; border-bottom:' + B_SIDE + ';">※ 분기관은 <b>임의 산정</b>입니다.<br>※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.<br>※ 본 견적은 견적일로부터 <b>30일 이내</b>에만 유효합니다.<br>※ <b>공공기관</b> 발주 현장의 경우 본 견적은 무효이며, 별도의 검토가 필요합니다.</td>';
+      trNote.innerHTML = '<td colspan="' + totalCols + '" style="padding: 6px 4px !important; text-align: left; font-size: 8px !important; color: #555; line-height: 1.4 !important; border-left:' + B_SIDE + '; border-right:' + B_SIDE + '; border-bottom:' + B_SIDE + ';">' + getFooterNoticeHtml() + '</td>';
       tFoot.appendChild(trNote);
 
       // 축소
