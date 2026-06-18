@@ -49,3 +49,15 @@
 5. (F5) estimate-app 설정 기반 계산 전환(golden parity 회귀).
 
 → **개발책임자 결정 1·2·3 회신 시 PM 즉시 착수.** 회신 전까지 수식 빌더 진행 보류(rework 방지).
+
+## ✅ 개발책임자 결정 (2026-06-18 야간 확정)
+1. **F3/F4 설계 = B 경량 휴리스틱** — 품목 attribute(공청/일반/360원형·사각 등) 1회 분류 + 옵션 토글 시 같은 세트(setModel) 그룹 내 매칭 구성품 자동선택. 룰 테이블 없이 코드 고정.
+2. **자동매칭 후보 다수 시 = 세트 기본 구성품(isDefault) 우선**.
+3. **Phase 1(가격 파라미터 설정 메뉴) 착수** — F3/F4와 별개 선행.
+
+### PM 진행 순서 (확정)
+1. **Phase 1 — 가격 파라미터 설정 UI + `estimate_configs`** (전역) + dc-config 확장(카드수수료·선금할인 per-partner). ← **다음 슬라이스**
+2. F1.5 — 품목 attribute 분류(panelType/remoteType, F1 catL/M/S 인프라 재사용) = B안 토대.
+3. F3 — 옵션 default 설정 UI + homeDefaults/singleDefaults DB 승격 + estimate-app 3탭 prefetch 완전 제거.
+4. F4 — 옵션 토글 자동매칭(B 휴리스틱, isDefault 우선, setModel 그룹 내).
+5. F5 — estimate-app 설정 기반 계산 전환(golden parity 회귀).
