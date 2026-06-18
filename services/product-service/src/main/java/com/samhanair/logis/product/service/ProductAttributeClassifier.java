@@ -8,7 +8,8 @@ import org.springframework.stereotype.Service;
  *
  * <p>panelType 은 F4 옵션 매칭 버킷(pickPanelRow/옵션 셀렉터 기준)이며,
  * GAS classifyHome_ 의 catM(WIFI/미내장/인피니트 세분) 이 아니다.
- * 견적 출력/BundleExpander 런타임 매칭은 변경하지 않고 Product 컬럼에만 적재한다.
+ * BundleExpander 는 F4부터 이 attribute 를 우선 사용하고, 누락/불일치 시 기존
+ * 정규식 fallback 으로 견적 출력 parity 를 보존한다.
  */
 @Service
 public class ProductAttributeClassifier {
