@@ -714,7 +714,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         // 싱글 세트(BOTH, 견적 탭 — TAB_MAPPINGS 상 구성품 탭보다 먼저 처리)
         when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
                 row("품명", "평형", "모델명", "단위", "출고가", "수량", "납품가", "납품가", "소계"),
-                row("360 CST UV", "15", "STOMP_TEST", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-")
+                row("공기청정 WIFI 판넬", "15", "STOMP_TEST", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-")
         ));
         // 싱글 구성품(NONE) — 같은 modelCode 가 구성품 행으로 재출현(col2=model, col8=세트).
         when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 구성품_단가인상!A1:Z")).thenReturn(rows(
@@ -729,6 +729,8 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(p.getProductCategory()).isEqualTo(ProductCategory.SINGLE_SET);
         assertThat(p.getUsageScope())
                 .isEqualTo(com.samhanair.logis.product.domain.UsageScope.BOTH);
+        assertThat(p.getPanelType()).isEqualTo("공청");
+        assertThat(p.getRemoteType()).isNull();
         assertThat(exposureOrder("STOMP_TEST", EstimateCategory.SINGLE_SET)).isEqualTo(1);
         // 노출 카탈로그에 정상 노출(NONE 으로 stomp 되었다면 미반환)
         assertThat(productRepository.findExposedCatalog(

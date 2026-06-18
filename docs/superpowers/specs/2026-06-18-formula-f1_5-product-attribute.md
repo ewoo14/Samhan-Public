@@ -19,7 +19,7 @@
 ## 3. 구현 (Codex)
 ### BE — product-service
 - `Product` 신규 컬럼: `panel_type VARCHAR(32) NULL`, `remote_type VARCHAR(32) NULL` + Flyway `V_`(fresh PG probe 검증). 엔티티 getter/세터(seed/sync 경유).
-- `ProductAttributeClassifier`(신규): 
+- `ProductAttributeClassifier`(신규):
   - `classifyPanelType(name, model)`: 공청(공기청정/공청)·일반(WIFI/미내장)·인피니트·블랙·승강·360 등 — GAS `classifyHome_` 판넬 분기(code.js:542-551) 정규식 1:1. 비판넬=null.
   - `classifyRemoteType(name)`: 유선·컬러유선·무선 — `matchOptionRemote`(BundleExpander:221-228) + 무선 fallback. 비리모컨=null.
 - `ProductSheetSyncService` 통합: Product 적재/업데이트 시 classifier 호출 → panelType/remoteType set. 기존 sync 흐름 무변경(추가만). 재sync 시 백필.

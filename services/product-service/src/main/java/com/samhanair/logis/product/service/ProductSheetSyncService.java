@@ -1225,9 +1225,9 @@ public class ProductSheetSyncService {
                     if (!p.isClassificationManual()) {
                         p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
                     }
+                    applyAttributes(p, name, modelCode);
                     applyPyongSize(p, mapping, cells);
                 }
-                applyAttributes(p, name, modelCode);
                 productRepository.save(p);
                 upsertPriceHistory(p.getId(), PRICE_INCREASE_EFFECTIVE_DATE, releasePrice, deliveryPrice);
                 lastKnownRowHash.put(modelCode, rowHash);
@@ -1236,7 +1236,7 @@ public class ProductSheetSyncService {
                 result.updated++;
             } else {
                 Product p = existing.get();
-                if (applyAttributes(p, name, modelCode)) {
+                if (p.getProductCategory() == mapping.productCategory && applyAttributes(p, name, modelCode)) {
                     productRepository.save(p);
                     lastKnownRowHash.put(modelCode, rowHash);
                     productId = p.getId();
