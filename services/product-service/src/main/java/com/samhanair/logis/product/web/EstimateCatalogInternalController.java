@@ -1,5 +1,6 @@
 package com.samhanair.logis.product.web;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.product.domain.BranchPipeLookup;
 import com.samhanair.logis.product.domain.BundleComponent;
@@ -24,7 +25,9 @@ import com.samhanair.logis.product.web.dto.ProductSpecResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,6 +65,100 @@ public class EstimateCatalogInternalController {
     private static final LocalDate BASELINE_DATE = LocalDate.of(2000, 1, 1);
     private static final String SPEC_CAPACITY = "용량";
     private static final String SPEC_MAX_INDOOR = "최대연결실내기대수";
+    private static final List<String> HOME_SPEC_FIELDS = List.of(
+            "pipeDia", "gas", "breaker", "powerLine", "size", "weight", "packSize", "packWeight",
+            "maxPipe", "maxDrop", "cool_kcal", "cool_kw", "cool_power", "effGrade",
+            "cool_cap_kcal", "cool_cap_kw", "cool_pow_kw", "grade");
+    private static final List<String> SINGLE_SPEC_FIELDS = List.of(
+            "grade", "pipeDia", "cool_pow_kw", "heat_pow_kw", "cool_cap_kw", "heat_cap_kw",
+            "cool_cap_kcal", "heat_cap_kcal", "powerLine", "breaker", "inSize", "outSize",
+            "inWeight", "outWeight", "inPackSize", "outPackSize", "inPackWeight", "outPackWeight",
+            "pipeLen", "drop", "gas");
+    private static final List<String> COMM_SPEC_FIELDS = List.of(
+            "pipeDia", "gas", "cool_cap_kcal", "cool_cap_kw", "heat_cap_kcal", "heat_cap_kw",
+            "cool_pow_kw", "heat_pow_kw", "breaker", "powerLine", "size", "weight",
+            "packSize", "packWeight", "grade", "maxPipe", "maxDrop");
+    private static final List<String> COMM_ERV_SPEC_FIELDS = List.of(
+            "gas", "cool_kcal", "cool_power", "heat_kcal", "heat_power", "pipeDia",
+            "cool_kw", "heat_kw", "cool_cap_kcal", "cool_cap_kw", "heat_cap_kcal",
+            "heat_cap_kw", "cool_pow_kw", "heat_pow_kw", "breaker", "powerLine",
+            "size", "weight", "packSize", "packWeight", "grade", "maxPipe", "maxDrop");
+
+    private static final Map<String, List<String>> HOME_SPEC_KEY_TO_FIELDS = Map.ofEntries(
+            Map.entry("배관경", List.of("pipeDia")),
+            Map.entry("냉매가스", List.of("gas")),
+            Map.entry("차단기, A", List.of("breaker")),
+            Map.entry("전원선, mm²", List.of("powerLine")),
+            Map.entry("제품크기, mm", List.of("size")),
+            Map.entry("제품중량, kg", List.of("weight")),
+            Map.entry("포장치수, mm", List.of("packSize")),
+            Map.entry("포장중량, kg", List.of("packWeight")),
+            Map.entry("배관길이, m", List.of("maxPipe")),
+            Map.entry("고낙차, m", List.of("maxDrop")),
+            Map.entry("냉방능력, kcal/h", List.of("cool_kcal", "cool_cap_kcal")),
+            Map.entry("냉방능력, kW", List.of("cool_kw", "cool_cap_kw")),
+            Map.entry("냉방소비전력, kW", List.of("cool_power", "cool_pow_kw")),
+            Map.entry("에너지소비효율등급", List.of("effGrade", "grade")));
+
+    private static final Map<String, List<String>> SINGLE_SPEC_KEY_TO_FIELDS = Map.ofEntries(
+            Map.entry("에너지소비효율등급", List.of("grade")),
+            Map.entry("배관경", List.of("pipeDia")),
+            Map.entry("냉방소비전력, kW", List.of("cool_pow_kw")),
+            Map.entry("난방소비전력, kW", List.of("heat_pow_kw")),
+            Map.entry("냉방능력, kW", List.of("cool_cap_kw")),
+            Map.entry("난방능력, kW", List.of("heat_cap_kw")),
+            Map.entry("냉방능력, kcal/h", List.of("cool_cap_kcal")),
+            Map.entry("난방능력, kcal/h", List.of("heat_cap_kcal")),
+            Map.entry("전원선, mm²", List.of("powerLine")),
+            Map.entry("차단기, A", List.of("breaker")),
+            Map.entry("실내기크기, mm", List.of("inSize")),
+            Map.entry("실외기크기, mm", List.of("outSize")),
+            Map.entry("실내기중량, kg", List.of("inWeight")),
+            Map.entry("실외기중량, kg", List.of("outWeight")),
+            Map.entry("실내기포장, mm", List.of("inPackSize")),
+            Map.entry("실외기포장, mm", List.of("outPackSize")),
+            Map.entry("실내기포장중량, kg", List.of("inPackWeight")),
+            Map.entry("실외기포장중량, kg", List.of("outPackWeight")),
+            Map.entry("배관길이, m", List.of("pipeLen")),
+            Map.entry("고낙차, m", List.of("drop")),
+            Map.entry("냉매가스", List.of("gas")));
+
+    private static final Map<String, List<String>> COMM_SPEC_KEY_TO_FIELDS = Map.ofEntries(
+            Map.entry("배관경", List.of("pipeDia")),
+            Map.entry("냉매가스", List.of("gas")),
+            Map.entry("냉방능력, kcal/h", List.of("cool_cap_kcal")),
+            Map.entry("냉방능력, kW", List.of("cool_cap_kw")),
+            Map.entry("난방능력, kcal/h", List.of("heat_cap_kcal")),
+            Map.entry("난방능력, kW", List.of("heat_cap_kw")),
+            Map.entry("냉방소비전력, kW", List.of("cool_pow_kw")),
+            Map.entry("난방소비전력, kW", List.of("heat_pow_kw")),
+            Map.entry("차단기, A", List.of("breaker")),
+            Map.entry("전원선, mm²", List.of("powerLine")),
+            Map.entry("제품크기, mm", List.of("size")),
+            Map.entry("제품중량, kg", List.of("weight")),
+            Map.entry("포장치수, mm", List.of("packSize")),
+            Map.entry("포장중량, kg", List.of("packWeight")),
+            Map.entry("소비효율등급", List.of("grade")),
+            Map.entry("에너지소비효율등급", List.of("grade")),
+            Map.entry("배관길이, m", List.of("maxPipe")),
+            Map.entry("고낙차, m", List.of("maxDrop")));
+
+    private static final Map<String, List<String>> COMM_ERV_SPEC_KEY_TO_FIELDS = Map.ofEntries(
+            Map.entry("냉매가스", List.of("gas")),
+            Map.entry("냉방능력, kcal/h", List.of("cool_kcal")),
+            Map.entry("냉방소비전력, kW", List.of("cool_power")),
+            Map.entry("난방능력, kcal/h", List.of("heat_kcal")),
+            Map.entry("난방소비전력, kW", List.of("heat_power")),
+            Map.entry("차단기, A", List.of("breaker")),
+            Map.entry("전원선, mm²", List.of("powerLine")),
+            Map.entry("제품크기, mm", List.of("size")),
+            Map.entry("제품중량, kg", List.of("weight")),
+            Map.entry("포장치수, mm", List.of("packSize")),
+            Map.entry("포장중량, kg", List.of("packWeight")),
+            Map.entry("소비효율등급", List.of("grade")),
+            Map.entry("에너지소비효율등급", List.of("grade")),
+            Map.entry("배관길이, m", List.of("maxPipe")),
+            Map.entry("고낙차, m", List.of("maxDrop")));
 
     private final ProductRepository productRepository;
     private final ProductSpecRepository productSpecRepository;
@@ -113,6 +210,11 @@ public class EstimateCatalogInternalController {
     /** 인상 전 단가 baseline 행 — legacy getPriceIncData_ 동등. */
     public record PriceBaselineRow(String modelCode, String estimateCategory,
             BigDecimal releasePrice, BigDecimal deliveryPrice) {
+    }
+
+    /** legacy getSpecDetailMap_ 모델별 상세 사양 sub-object. null scope 는 JSON 에서 생략한다. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SpecDetail(Map<String, String> home, Map<String, String> single, Map<String, String> comm) {
     }
 
     /**
@@ -284,6 +386,44 @@ public class EstimateCatalogInternalController {
         return ApiResponse.ok(rows);
     }
 
+    /** 사양 상세 맵 — ProductSpec 을 legacy getSpecDetailMap_ 출력 shape 로 reshape. */
+    @Operation(summary = "[내부] estimate 사양 상세 맵 벌크 (ProductSpec→getSpecDetailMap_ shape)")
+    @GetMapping("/spec-detail-map")
+    @Transactional(readOnly = true)
+    public ApiResponse<Map<String, SpecDetail>> specDetailMap() {
+        List<Product> products = new ArrayList<>();
+        products.addAll(productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.HOME_MULTI));
+        products.addAll(productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.SINGLE_SET));
+        products.addAll(productRepository.findByProductCategoryAndIsDeletedFalse(ProductCategory.COMMERCIAL_MULTI));
+
+        Map<UUID, Map<String, String>> specByProduct = loadAllSpecs(
+                products.stream().map(Product::getId).toList());
+
+        Map<String, SpecDetail> out = new LinkedHashMap<>();
+        for (Product product : products) {
+            String modelCode = normalizeModelCode(product.getModelCode(), product.getModelName());
+            if (modelCode.isBlank()) {
+                continue;
+            }
+            Map<String, String> specs = specByProduct.getOrDefault(product.getId(), Map.of());
+            SpecDetail current = out.get(modelCode);
+            Map<String, String> home = current == null ? null : current.home();
+            Map<String, String> single = current == null ? null : current.single();
+            Map<String, String> comm = current == null ? null : current.comm();
+
+            switch (specScope(product)) {
+                case HOME -> home = buildSpecMap(HOME_SPEC_FIELDS, HOME_SPEC_KEY_TO_FIELDS, specs);
+                case SINGLE -> single = buildSpecMap(SINGLE_SPEC_FIELDS, SINGLE_SPEC_KEY_TO_FIELDS, specs);
+                case COMM -> comm = buildCommSpecMap(product, specs);
+                case NONE -> {
+                    continue;
+                }
+            }
+            out.put(modelCode, new SpecDetail(home, single, comm));
+        }
+        return ApiResponse.ok(out);
+    }
+
     private Map<UUID, Map<String, String>> loadSpecs(List<UUID> productIds) {
         if (productIds.isEmpty()) {
             return Map.of();
@@ -295,5 +435,97 @@ public class EstimateCatalogInternalController {
                     .put(spec.getSpecKey(), spec.getSpecValue());
         }
         return out;
+    }
+
+    private Map<UUID, Map<String, String>> loadAllSpecs(List<UUID> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, Map<String, String>> out = new HashMap<>();
+        for (ProductSpec spec : productSpecRepository.findByProductIdInOrderByDisplayOrderAsc(productIds)) {
+            out.computeIfAbsent(spec.getProductId(), k -> new HashMap<>())
+                    .put(spec.getSpecKey(), spec.getSpecValue());
+        }
+        return out;
+    }
+
+    private static Map<String, String> buildCommSpecMap(Product product, Map<String, String> specs) {
+        boolean erv = isErv(product, specs);
+        return buildSpecMap(
+                erv ? COMM_ERV_SPEC_FIELDS : COMM_SPEC_FIELDS,
+                erv ? COMM_ERV_SPEC_KEY_TO_FIELDS : COMM_SPEC_KEY_TO_FIELDS,
+                specs);
+    }
+
+    private static Map<String, String> buildSpecMap(List<String> fields,
+                                                    Map<String, List<String>> specKeyToFields,
+                                                    Map<String, String> specs) {
+        Map<String, String> out = new LinkedHashMap<>();
+        fields.forEach(field -> out.put(field, ""));
+        for (Map.Entry<String, List<String>> entry : specKeyToFields.entrySet()) {
+            String value = specs.get(entry.getKey());
+            if (value == null) {
+                continue;
+            }
+            for (String field : entry.getValue()) {
+                if (out.containsKey(field)) {
+                    out.put(field, value);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static SpecScope specScope(Product product) {
+        ProductCategory productCategory = product.getProductCategory();
+        if (productCategory == ProductCategory.HOME_MULTI) {
+            return SpecScope.HOME;
+        }
+        if (productCategory == ProductCategory.SINGLE_SET) {
+            return SpecScope.SINGLE;
+        }
+        if (productCategory == ProductCategory.COMMERCIAL_MULTI) {
+            return SpecScope.COMM;
+        }
+        EstimateCategory estimateCategory = product.getEstimateCategory();
+        if (estimateCategory == EstimateCategory.HOME_MULTI) {
+            return SpecScope.HOME;
+        }
+        if (estimateCategory == EstimateCategory.SINGLE_SET) {
+            return SpecScope.SINGLE;
+        }
+        if (estimateCategory == EstimateCategory.COMMERCIAL_MULTI) {
+            return SpecScope.COMM;
+        }
+        return SpecScope.NONE;
+    }
+
+    private static boolean isErv(Product product, Map<String, String> specs) {
+        String haystack = ((product.getName() == null ? "" : product.getName()) + " "
+                + (product.getModelCode() == null ? "" : product.getModelCode()) + " "
+                + (product.getModelName() == null ? "" : product.getModelName())).toLowerCase();
+        if (haystack.contains("전열교환기") || haystack.contains("erv")) {
+            return true;
+        }
+        return List.of("냉방능력, kcal/h", "난방능력, kcal/h", "냉방소비전력, kW", "난방소비전력, kW")
+                .stream()
+                .map(specs::get)
+                .filter(v -> v != null)
+                .anyMatch(v -> v.contains(" / "));
+    }
+
+    private static String normalizeModelCode(String modelCode, String fallbackModelName) {
+        String key = modelCode == null ? "" : modelCode.trim();
+        if (!key.isBlank()) {
+            return key;
+        }
+        return fallbackModelName == null ? "" : fallbackModelName.trim();
+    }
+
+    private enum SpecScope {
+        HOME,
+        SINGLE,
+        COMM,
+        NONE
     }
 }

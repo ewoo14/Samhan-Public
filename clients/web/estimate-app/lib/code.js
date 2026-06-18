@@ -1709,7 +1709,7 @@ async function bootstrap(userEmail) {
   const useDb = String(process.env.CATALOG_SOURCE || 'sheet').toLowerCase() === 'db';
 
   // legacy 가 read 하는 전 탭 prefetch (병렬). 누락 탭은 빈 sheet 반환.
-  // DB 모드에서도 사양맵/기본값/추천(homeEx)은 시트 의존이라 prefetch 유지.
+  // DB 모드에서 specDetailMap 은 product-service DB. 3탭 prefetch 는 기본값 등 잔여 legacy getter 용.
   const sheetsToPreload = useDb
     ? [HOME_NAME, SINGLE_NAME, COMM_NAME]
     : [
@@ -1733,9 +1733,10 @@ async function bootstrap(userEmail) {
   t.userEmail = email;
   try { t.authData = JSON.stringify(await checkUserAuth(email)); } catch (_) { t.authData = '{}'; }
 
+  let dbCatalog = null;
   if (useDb) {
     // #30 — 카탈로그 9종을 product-service 벌크 endpoint 에서 read (시트 직접 read 폐기).
-    const dbCatalog = require('./db-catalog');
+    dbCatalog = require('./db-catalog');
     try { t.homemulti = JSON.stringify(await dbCatalog.multiCatalog('HOME_MULTI', classifyHome_)); } catch (e) { Logger.log('[bootstrap] db homemulti: ' + e.message); t.homemulti = '[]'; }
     try { t.singleSets = JSON.stringify(await dbCatalog.singleSets(classifySingleSetLM_, normalizeSize_, sanitizeDisp_)); } catch (e) { Logger.log('[bootstrap] db singleSets: ' + e.message); t.singleSets = '[]'; }
     try { t.singleParts = JSON.stringify(await dbCatalog.components('SINGLE_SET', sanitizeDisp_)); } catch (e) { Logger.log('[bootstrap] db singleParts: ' + e.message); t.singleParts = '[]'; }
@@ -1759,7 +1760,11 @@ async function bootstrap(userEmail) {
 
   try { t.homeDefaults = JSON.stringify(getHomeDefaults()); } catch (_) { t.homeDefaults = '{}'; }
   try { t.singleDefaults = JSON.stringify(getSingleDefaults()); } catch (_) { t.singleDefaults = '{}'; }
-  try { t.specDetailMap = JSON.stringify(getSpecDetailMap_()); } catch (_) { t.specDetailMap = '{}'; }
+  if (useDb && dbCatalog) {
+    try { t.specDetailMap = JSON.stringify(await dbCatalog.specDetailMap()); } catch (e) { Logger.log('[bootstrap] db specDetailMap: ' + e.message); t.specDetailMap = '{}'; }
+  } else {
+    try { t.specDetailMap = JSON.stringify(getSpecDetailMap_()); } catch (_) { t.specDetailMap = '{}'; }
+  }
   try { t.logoData = getLogoImage(); } catch (_) { t.logoData = ''; }
   t.config = JSON.stringify({
     homeDiscount: DISCOUNT_RATE_HOME,

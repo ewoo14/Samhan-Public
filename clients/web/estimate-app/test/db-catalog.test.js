@@ -56,6 +56,24 @@ jest.mock('axios', () => {
         { modelCode: 'AM040', estimateCategory: 'COMMERCIAL_MULTI', releasePrice: 5800000, deliveryPrice: 4700000 },
       ]);
     }
+    if (/\/spec-detail-map/.test(url)) {
+      return ok({
+        AJ060: {
+          home: {
+            pipeDia: 'Φ6.35',
+            cool_kcal: '1892',
+            cool_cap_kcal: '1892',
+            grade: '1등급',
+          },
+        },
+        AC060: {
+          single: {
+            cool_pow_kw: '0.5/1.8/2.5',
+            breaker: '20',
+          },
+        },
+      });
+    }
     return ok([]);
   });
   return { create: jest.fn(() => ({ get })), get };
@@ -141,5 +159,12 @@ describe('#30 db-catalog → legacy getter shape', () => {
     expect(p.home.AJ060).toBe(3800000);
     expect(p.comm.AM040).toBe(5800000);
     expect(p.single.AC060).toEqual({ list: 1900000, price: 1400000 });
+  });
+
+  test('specDetailMap — product-service shape 그대로 반환', async () => {
+    const map = await db.specDetailMap();
+    expect(map.AJ060.home.pipeDia).toBe('Φ6.35');
+    expect(map.AJ060.home.cool_cap_kcal).toBe('1892');
+    expect(map.AC060.single.breaker).toBe('20');
   });
 });
