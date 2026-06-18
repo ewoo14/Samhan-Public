@@ -56,6 +56,24 @@ jest.mock('axios', () => {
         { modelCode: 'AM040', estimateCategory: 'COMMERCIAL_MULTI', releasePrice: 5800000, deliveryPrice: 4700000 },
       ]);
     }
+    if (/\/spec-detail-map/.test(url)) {
+      return ok(global.__SPEC_DETAIL_MAP_PAYLOAD__ === undefined ? {
+        AJ060: {
+          home: {
+            pipeDia: 'Φ6.35',
+            cool_kcal: '1892',
+            cool_cap_kcal: '1892',
+            grade: '1등급',
+          },
+        },
+        AC060: {
+          single: {
+            cool_pow_kw: '0.5/1.8/2.5',
+            breaker: '20',
+          },
+        },
+      } : global.__SPEC_DETAIL_MAP_PAYLOAD__);
+    }
     return ok([]);
   });
   return { create: jest.fn(() => ({ get })), get };
@@ -71,6 +89,10 @@ const normalizeSize = (v) => String(v || '').replace(/[^\d.]/g, '');
 const sanitizeDisp = (s) => String(s || '').trim();
 
 describe('#30 db-catalog → legacy getter shape', () => {
+  afterEach(() => {
+    delete global.__SPEC_DETAIL_MAP_PAYLOAD__;
+  });
+
   test('multiCatalog HOME_MULTI — useK2/capacity/maxIndoor/고정DC', async () => {
     const rows = await db.multiCatalog('HOME_MULTI', classifyHome);
     expect(rows).toHaveLength(1);
@@ -141,5 +163,20 @@ describe('#30 db-catalog → legacy getter shape', () => {
     expect(p.home.AJ060).toBe(3800000);
     expect(p.comm.AM040).toBe(5800000);
     expect(p.single.AC060).toEqual({ list: 1900000, price: 1400000 });
+  });
+
+  test('specDetailMap — product-service shape 그대로 반환', async () => {
+    const map = await db.specDetailMap();
+    expect(map.AJ060.home.pipeDia).toBe('Φ6.35');
+    expect(map.AJ060.home.cool_cap_kcal).toBe('1892');
+    expect(map.AC060.single.breaker).toBe('20');
+  });
+
+  test('specDetailMap — 배열/null 응답은 빈 객체로 fallback', async () => {
+    global.__SPEC_DETAIL_MAP_PAYLOAD__ = [];
+    await expect(db.specDetailMap()).resolves.toEqual({});
+
+    global.__SPEC_DETAIL_MAP_PAYLOAD__ = null;
+    await expect(db.specDetailMap()).resolves.toEqual({});
   });
 });

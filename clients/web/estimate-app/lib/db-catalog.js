@@ -191,6 +191,12 @@ async function priceIncData() {
   return out;
 }
 
+/** 사양 상세 맵 → getSpecDetailMap_() 동일 shape. */
+async function specDetailMap() {
+  const map = await get('/spec-detail-map');
+  return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
+}
+
 module.exports = {
   multiCatalog,
   singleSets,
@@ -199,4 +205,5 @@ module.exports = {
   materialPrices,
   recommendOduData,
   priceIncData,
+  specDetailMap,
 };
