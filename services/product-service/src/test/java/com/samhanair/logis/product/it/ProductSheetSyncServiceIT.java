@@ -589,6 +589,58 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
     }
 
     @Test
+    void sync_Product_attribute_panelType_remoteType을_자동_적재한다() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("공기청정 WIFI 판넬", "HM_PANEL_ATTR", "", "100,000", "", "80,000"),
+                row("컬러유선리모컨", "HM_REMOTE_ATTR", "", "40,000", "", "30,000"),
+                row("Hi-Multi 4-Way 실내기", "HM_NORMAL_ATTR", "", "1,500,000", "", "1,200,000")
+        ));
+
+        syncService.syncAll();
+
+        Product panel = productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_ATTR").orElseThrow();
+        assertThat(panel.getPanelType()).isEqualTo("공청");
+        assertThat(panel.getRemoteType()).isNull();
+
+        Product remote = productRepository.findByModelCodeAndIsDeletedFalse("HM_REMOTE_ATTR").orElseThrow();
+        assertThat(remote.getPanelType()).isNull();
+        assertThat(remote.getRemoteType()).isEqualTo("컬러유선");
+
+        Product normal = productRepository.findByModelCodeAndIsDeletedFalse("HM_NORMAL_ATTR").orElseThrow();
+        assertThat(normal.getPanelType()).isNull();
+        assertThat(normal.getRemoteType()).isNull();
+    }
+
+    @Test
+    void sync_rowHash_동일해도_attribute_null이면_백필하고_다음_sync는_unchanged() throws Exception {
+        when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
+        List<List<Object>> sameRows = rows(
+                row("품 명", "모델명", "비고", "출고가", "비고", "납품가"),
+                row("공기청정 WIFI 판넬", "HM_PANEL_BACKFILL", "", "100,000", "", "80,000")
+        );
+        when(sheetsClient.readSheetDisplay("test-sheet-id", "홈멀티_단가인상!A1:Z")).thenReturn(sameRows);
+
+        syncService.syncAll();
+        Product panel = productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_BACKFILL").orElseThrow();
+        panel.changeAttributes(null, null);
+        productRepository.save(panel);
+
+        ProductSheetSyncService.SyncSummary second = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult secondHome = second.byTab.get("홈멀티");
+        assertThat(secondHome.updated).isEqualTo(1);
+        assertThat(secondHome.unchanged).isZero();
+        assertThat(productRepository.findByModelCodeAndIsDeletedFalse("HM_PANEL_BACKFILL").orElseThrow()
+                .getPanelType()).isEqualTo("공청");
+
+        ProductSheetSyncService.SyncSummary third = syncService.syncAll();
+        ProductSheetSyncService.TabSyncResult thirdHome = third.byTab.get("홈멀티");
+        assertThat(thirdHome.updated).isZero();
+        assertThat(thirdHome.unchanged).isEqualTo(1);
+    }
+
+    @Test
     void sync_사양키_사라졌다_재등장해도_UNIQUE위반없이_재활성() throws Exception {
         when(sheetsClient.readSheetDisplay(anyString(), anyString())).thenReturn(List.of());
         // 1차: 냉매가스 사양 존재
@@ -662,7 +714,7 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         // 싱글 세트(BOTH, 견적 탭 — TAB_MAPPINGS 상 구성품 탭보다 먼저 처리)
         when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 세트_단가인상!A1:Z")).thenReturn(rows(
                 row("품명", "평형", "모델명", "단위", "출고가", "수량", "납품가", "납품가", "소계"),
-                row("360 CST UV", "15", "STOMP_TEST", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-")
+                row("공기청정 WIFI 판넬", "15", "STOMP_TEST", "SET", "2,488,200", "", "1,490,000", "1,490,000", "-")
         ));
         // 싱글 구성품(NONE) — 같은 modelCode 가 구성품 행으로 재출현(col2=model, col8=세트).
         when(sheetsClient.readSheetDisplay("test-sheet-id", "싱글 구성품_단가인상!A1:Z")).thenReturn(rows(
@@ -677,6 +729,8 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
         assertThat(p.getProductCategory()).isEqualTo(ProductCategory.SINGLE_SET);
         assertThat(p.getUsageScope())
                 .isEqualTo(com.samhanair.logis.product.domain.UsageScope.BOTH);
+        assertThat(p.getPanelType()).isEqualTo("공청");
+        assertThat(p.getRemoteType()).isNull();
         assertThat(exposureOrder("STOMP_TEST", EstimateCategory.SINGLE_SET)).isEqualTo(1);
         // 노출 카탈로그에 정상 노출(NONE 으로 stomp 되었다면 미반환)
         assertThat(productRepository.findExposedCatalog(
@@ -684,6 +738,12 @@ class ProductSheetSyncServiceIT extends AbstractPostgresIT {
                 List.of(com.samhanair.logis.product.domain.UsageScope.ESTIMATE,
                         com.samhanair.logis.product.domain.UsageScope.BOTH)))
                 .extracting(Product::getModelCode).contains("STOMP_TEST");
+
+        // 2차 sync — rowHash 동일 경로에서도 구성품 탭 재출현이 attribute 를 덮어쓰지 않아야 한다.
+        syncService.syncAll();
+        Product afterSecondSync = productRepository.findByModelCodeAndIsDeletedFalse("STOMP_TEST").orElseThrow();
+        assertThat(afterSecondSync.getPanelType()).isEqualTo("공청");
+        assertThat(afterSecondSync.getRemoteType()).isNull();
     }
 
     /**
