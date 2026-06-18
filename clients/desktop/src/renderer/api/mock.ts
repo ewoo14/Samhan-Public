@@ -126,6 +126,18 @@ const DEFAULT_ESTIMATE_CONFIG_MOCK = {
   cardFeeRate: 0.03,
   advanceDiscountRate: 0,
   comboWarnRate: 0,
+  homeNoHose: false,
+  homeNoBranch: false,
+  homeWithFoot: false,
+  homeDefaultPanel: '',
+  singleDefaultWiredRemote: '',
+  singleNoRemote: false,
+  singleWithBase: false,
+  singleDefaultPanel: '',
+  singlePanelShape: '원형',
+  singleDiscount: 0,
+  singleOneWayDiscount: 0,
+  singleMaterialInclusion: '별도',
   footerNotice:
     '※ 분기관은 임의 산정입니다.\n'
     + '※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.\n'

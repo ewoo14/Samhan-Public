@@ -28,6 +28,11 @@ public class EstimateConfig extends BaseEntity {
     public static final BigDecimal DEFAULT_VAT_RATE = new BigDecimal("0.1000");
     public static final BigDecimal DEFAULT_CARD_FEE_RATE = new BigDecimal("0.0300");
     public static final BigDecimal DEFAULT_ZERO_RATE = new BigDecimal("0.0000");
+    public static final BigDecimal DEFAULT_ZERO_AMOUNT = new BigDecimal("0.00");
+    public static final Boolean DEFAULT_FALSE = Boolean.FALSE;
+    public static final String DEFAULT_EMPTY = "";
+    public static final String DEFAULT_SINGLE_PANEL_SHAPE = "원형";
+    public static final String DEFAULT_SINGLE_MATERIAL_INCLUSION = "별도";
     public static final String DEFAULT_FOOTER_NOTICE = """
             ※ 분기관은 임의 산정입니다.
             ※ 견적 내용 확정 시 재고확인 요청 부탁드립니다.
@@ -69,6 +74,42 @@ public class EstimateConfig extends BaseEntity {
     @Column(name = "footer_notice", columnDefinition = "TEXT")
     private String footerNotice = DEFAULT_FOOTER_NOTICE;
 
+    @Column(name = "home_no_hose")
+    private Boolean homeNoHose = DEFAULT_FALSE;
+
+    @Column(name = "home_no_branch")
+    private Boolean homeNoBranch = DEFAULT_FALSE;
+
+    @Column(name = "home_with_foot")
+    private Boolean homeWithFoot = DEFAULT_FALSE;
+
+    @Column(name = "home_default_panel", length = 64)
+    private String homeDefaultPanel = DEFAULT_EMPTY;
+
+    @Column(name = "single_default_wired_remote", length = 64)
+    private String singleDefaultWiredRemote = DEFAULT_EMPTY;
+
+    @Column(name = "single_no_remote")
+    private Boolean singleNoRemote = DEFAULT_FALSE;
+
+    @Column(name = "single_with_base")
+    private Boolean singleWithBase = DEFAULT_FALSE;
+
+    @Column(name = "single_default_panel", length = 64)
+    private String singleDefaultPanel = DEFAULT_EMPTY;
+
+    @Column(name = "single_panel_shape", length = 16)
+    private String singlePanelShape = DEFAULT_SINGLE_PANEL_SHAPE;
+
+    @Column(name = "single_discount", precision = 14, scale = 2)
+    private BigDecimal singleDiscount = DEFAULT_ZERO_AMOUNT;
+
+    @Column(name = "single_one_way_discount", precision = 14, scale = 2)
+    private BigDecimal singleOneWayDiscount = DEFAULT_ZERO_AMOUNT;
+
+    @Column(name = "single_material_inclusion", length = 16)
+    private String singleMaterialInclusion = DEFAULT_SINGLE_MATERIAL_INCLUSION;
+
     public static EstimateConfig defaults() {
         return new EstimateConfig();
     }
@@ -81,6 +122,18 @@ public class EstimateConfig extends BaseEntity {
             BigDecimal cardFeeRate,
             BigDecimal advanceDiscountRate,
             BigDecimal comboWarnRate,
+            Boolean homeNoHose,
+            Boolean homeNoBranch,
+            Boolean homeWithFoot,
+            String homeDefaultPanel,
+            String singleDefaultWiredRemote,
+            Boolean singleNoRemote,
+            Boolean singleWithBase,
+            String singleDefaultPanel,
+            String singlePanelShape,
+            BigDecimal singleDiscount,
+            BigDecimal singleOneWayDiscount,
+            String singleMaterialInclusion,
             String footerNotice) {
         this.commonHomeDiscountRate = rateOrCurrent(commonHomeDiscountRate, this.commonHomeDiscountRate);
         this.commonCommercialDiscountRate = rateOrCurrent(commonCommercialDiscountRate, this.commonCommercialDiscountRate);
@@ -89,6 +142,18 @@ public class EstimateConfig extends BaseEntity {
         this.cardFeeRate = rateOrCurrent(cardFeeRate, this.cardFeeRate);
         this.advanceDiscountRate = rateOrCurrent(advanceDiscountRate, this.advanceDiscountRate);
         this.comboWarnRate = rateOrCurrent(comboWarnRate, this.comboWarnRate);
+        this.homeNoHose = booleanOrCurrent(homeNoHose, this.homeNoHose);
+        this.homeNoBranch = booleanOrCurrent(homeNoBranch, this.homeNoBranch);
+        this.homeWithFoot = booleanOrCurrent(homeWithFoot, this.homeWithFoot);
+        this.homeDefaultPanel = stringOrCurrent(homeDefaultPanel, this.homeDefaultPanel);
+        this.singleDefaultWiredRemote = stringOrCurrent(singleDefaultWiredRemote, this.singleDefaultWiredRemote);
+        this.singleNoRemote = booleanOrCurrent(singleNoRemote, this.singleNoRemote);
+        this.singleWithBase = booleanOrCurrent(singleWithBase, this.singleWithBase);
+        this.singleDefaultPanel = stringOrCurrent(singleDefaultPanel, this.singleDefaultPanel);
+        this.singlePanelShape = stringOrCurrent(singlePanelShape, this.singlePanelShape);
+        this.singleDiscount = amountOrCurrent(singleDiscount, this.singleDiscount);
+        this.singleOneWayDiscount = amountOrCurrent(singleOneWayDiscount, this.singleOneWayDiscount);
+        this.singleMaterialInclusion = stringOrCurrent(singleMaterialInclusion, this.singleMaterialInclusion);
         if (footerNotice != null) {
             this.footerNotice = footerNotice;
         }
@@ -103,5 +168,23 @@ public class EstimateConfig extends BaseEntity {
         }
         BigDecimal max = new BigDecimal("0.9999");
         return value.compareTo(max) > 0 ? max : value;
+    }
+
+    private static Boolean booleanOrCurrent(Boolean value, Boolean current) {
+        return value == null ? current : value;
+    }
+
+    private static String stringOrCurrent(String value, String current) {
+        return value == null ? current : value;
+    }
+
+    private static BigDecimal amountOrCurrent(BigDecimal value, BigDecimal current) {
+        if (value == null) {
+            return current;
+        }
+        if (value.signum() < 0) {
+            throw new IllegalArgumentException("금액은 0 이상이어야 합니다");
+        }
+        return value;
     }
 }

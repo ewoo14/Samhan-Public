@@ -29,6 +29,34 @@ jest.mock('axios', () => {
     }
     if (/\/api\/v1\/partner-orders($|\?|\/$)/.test(url)) return ok([]);
     if (/\/internal\/estimates\/snapshots/.test(url)) return ok([]); // P0-A 하드닝
+    if (/\/products\/internal\/estimate-catalog\//.test(url)) return ok({ success: true, data: [] });
+    if (/\/internal\/estimate-config$/.test(url)) {
+      return ok({
+        success: true,
+        data: global.__ESTIMATE_CONFIG_PAYLOAD__ || {
+          commonHomeDiscountRate: 0.42,
+          commonCommercialDiscountRate: 0.43,
+          oldProductDiscountRate: 0.55,
+          vatRate: 0.1,
+          cardFeeRate: 0.03,
+          advanceDiscountRate: 0.02,
+          comboWarnRate: 0.8,
+          homeNoHose: false,
+          homeNoBranch: false,
+          homeWithFoot: false,
+          homeDefaultPanel: '',
+          singleDefaultWiredRemote: '',
+          singleNoRemote: false,
+          singleWithBase: false,
+          singleDefaultPanel: '',
+          singlePanelShape: '원형',
+          singleDiscount: 0,
+          singleOneWayDiscount: 0,
+          singleMaterialInclusion: '별도',
+          footerNotice: '테스트 안내',
+        },
+      });
+    }
     if (/\/dc-config$/.test(url)) return ok(null);
     return ok({});
   });
@@ -202,6 +230,43 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     expect(cfg.showIHose).toBe(false);
   });
 
+  test('getHomeDefaults — DB estimateConfig를 legacy 한글 키 shape로 변환한다', () => {
+    expect(code.getHomeDefaults({
+      homeNoHose: true,
+      homeNoBranch: false,
+      homeWithFoot: true,
+      homeDefaultPanel: '공청판넬',
+    })).toEqual({
+      '유연호스 제외': true,
+      '분기관 제외': false,
+      '발통포함': true,
+      '리모컨': '선택 안함',
+      '판넬변경': '공청판넬',
+    });
+  });
+
+  test('getSingleDefaults — DB estimateConfig를 legacy 한글 키 shape로 변환한다', () => {
+    expect(code.getSingleDefaults({
+      singleDefaultWiredRemote: '컬러유선리모컨',
+      singleNoRemote: true,
+      singleWithBase: true,
+      singleDefaultPanel: '블랙판넬',
+      singlePanelShape: '사각',
+      singleDiscount: 12345,
+      singleOneWayDiscount: 6789,
+      singleMaterialInclusion: '포함',
+    })).toEqual({
+      '유선리모컨': '컬러유선리모컨',
+      '리모컨 제외': true,
+      '실외기 받침대 포함': true,
+      '판넬변경': '블랙판넬',
+      '360판넬': '사각',
+      '할인': 12345,
+      '1WAY할인': 6789,
+      '자재 포함 여부': '포함',
+    });
+  });
+
   test('splitVatAmount_ — 기본 VAT 10%는 기존 1.1 하드코딩과 동일', () => {
     expect(code.splitVatAmount_(110000, { vatRate: 0.1 })).toEqual({
       supply: 100000,
@@ -328,6 +393,16 @@ describe('순수 유틸 (Apps Script 호환)', () => {
     });
   });
 
+  test('single option controls(view) — 360판넬 초기값은 SINGLE_DEFAULTS를 사용한다', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../views/index.ejs'), 'utf8');
+    expect(source).toContain(
+      "sel('360판넬',['원형','사각'],SINGLE_DEFAULTS['360판넬']||'원형','ss_p360')",
+    );
+    expect(source).toContain(
+      "if (el('#ss_p360')) el('#ss_p360').value = SINGLE_DEFAULTS['360판넬']||'원형';",
+    );
+  });
+
   test('detectHomeOrder 모델 prefix (AJ0/AJ1/AM0/AM1) — 라이브 분기 복원', () => {
     expect(code.detectHomeOrder([{ section: 'COMM', model: 'AJ050TXJ3CH' }], {})).toBe(true);
     expect(code.detectHomeOrder([{ section: 'COMM', model: 'AC145' }], {})).toBe(false);
@@ -344,6 +419,11 @@ describe('캐시 유틸', () => {
 });
 
 describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
+  afterEach(() => {
+    delete global.__ESTIMATE_CONFIG_PAYLOAD__;
+    delete process.env.CATALOG_SOURCE;
+  });
+
   test('bootstrap 빈 카탈로그 반환', async () => {
     const bs = await code.bootstrap('test@samhan-air.com');
     expect(bs.userEmail).toBe('test@samhan-air.com');
@@ -353,6 +433,52 @@ describe('부트스트랩 (axios mock — 실 endpoint 응답 stub)', () => {
     expect(JSON.parse(bs.config).cardFeeRate).toBe(0.03);
     expect(JSON.parse(bs.config).advanceDiscountRate).toBe(0);
     expect(JSON.parse(bs.config).vatRate).toBe(0.1);
+  }, 15000);
+
+  test('bootstrap DB 모드는 estimateConfig default를 homeDefaults/singleDefaults에 주입한다', async () => {
+    process.env.CATALOG_SOURCE = 'db';
+    global.__ESTIMATE_CONFIG_PAYLOAD__ = {
+      commonHomeDiscountRate: 0.42,
+      commonCommercialDiscountRate: 0.43,
+      oldProductDiscountRate: 0.55,
+      vatRate: 0.1,
+      cardFeeRate: 0.03,
+      advanceDiscountRate: 0.02,
+      comboWarnRate: 0.8,
+      homeNoHose: true,
+      homeNoBranch: false,
+      homeWithFoot: true,
+      homeDefaultPanel: '공청판넬',
+      singleDefaultWiredRemote: '유선리모컨',
+      singleNoRemote: true,
+      singleWithBase: true,
+      singleDefaultPanel: '승강판넬',
+      singlePanelShape: '사각',
+      singleDiscount: 1111,
+      singleOneWayDiscount: 2222,
+      singleMaterialInclusion: '포함',
+      footerNotice: '테스트 안내',
+    };
+
+    const bs = await code.bootstrap('test@samhan-air.com');
+
+    expect(JSON.parse(bs.homeDefaults)).toEqual({
+      '유연호스 제외': true,
+      '분기관 제외': false,
+      '발통포함': true,
+      '리모컨': '선택 안함',
+      '판넬변경': '공청판넬',
+    });
+    expect(JSON.parse(bs.singleDefaults)).toEqual({
+      '유선리모컨': '유선리모컨',
+      '리모컨 제외': true,
+      '실외기 받침대 포함': true,
+      '판넬변경': '승강판넬',
+      '360판넬': '사각',
+      '할인': 1111,
+      '1WAY할인': 2222,
+      '자재 포함 여부': '포함',
+    });
   }, 15000);
 
   test('checkUserAuth — user-service by-email 매핑 (#31)', async () => {
