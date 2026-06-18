@@ -193,7 +193,7 @@ public class BundleExpander {
             case "공청판넬" -> p -> textOf(p).matches(".*(공기청정|공청).*");
             default -> null;
         };
-        if (kw != null && panels.stream().noneMatch(p -> attributeOf(p.panelType) != null)) {
+        if (kw != null) {
             Part m = pickPreferred(panels.stream().filter(kw).toList());
             if (m != null) {
                 return m;
@@ -270,6 +270,7 @@ public class BundleExpander {
         }
         return pickPreferred(remotes.stream()
                 .filter(p -> targetRemoteType.equals(attributeOf(p.remoteType)))
+                .filter(p -> !"유선".equals(targetRemoteType) || !textOf(p).matches(".*컬러.*"))
                 .toList());
     }
 

@@ -22,7 +22,7 @@
 - **Part 확장**: `panelType`/`remoteType` 필드 추가. `expand()`서 각 component 의 Product panelType/remoteType 할당(componentRepository 조회에 Product attribute 포함 — join/batch-fetch by modelCode; 누락 시 null).
 - **pickPanel attribute 전환**: 옵션→panelType 매핑(공청판넬→'공청'·블랙판넬→'블랙'·승강판넬→'승강'·360→'360'). 매칭: ① attribute(panelType==target) 후보 중 **isDefault 우선** → ② attribute 후보 비기본 → ③ **attribute 전무(null) 시 기존 정규식 fallback**(isDefault 우선 적용) → ④ basePanel/first. 360 형상=panelType '360' + variant(원형/사각) + isDefault 우선.
 - **resolveRemotes attribute 전환**: matchOptionRemoteByType(remoteType=='유선'/'컬러유선' 우선, null/미매칭 시 기존 matchOptionRemote 정규식 fallback). isDefault 그룹 우선 유지. 교체 로직(drop+add) 보존.
-- **classifyRemoteType variant 보강**(P2): F1.5 classifyRemoteType 가 name만 봄 → ProductAttributeClassifier/sync 가 componentVariant 도 반영하도록(컬러유선 variant 누수 방지). ※ Product attribute 적재 경로라 product-service. (범위 큰 경우 F5 이관 — Codex 판단 후 보고.)
+- **classifyRemoteType variant 보강**(P2): F1.5 classifyRemoteType 가 name만 봄. F4에서는 Product attribute 전역 부작용을 피하기 위해 BundleExpander의 유선 매칭에서 컬러 텍스트를 배제하고, componentVariant 기반 재분류는 **F5 이관**으로 명시한다.
 
 ### 무변경
 estimate-app/desktop FE·가격 계산·견적 금액. 옵션 전달(panelOption/remoteOption/panelShape360) 인터페이스 동일.
@@ -43,4 +43,4 @@ Opus 5-agent(BE 매칭 parity/isDefault/attribute·QA·DevOps) → Codex 교차 
 - 🚨 견적 출력 영향(다중후보 isDefault 변경) — golden IT 로 단일=parity·다중=isDefault 명시 검증. 라이브 fallback parity.
 - attribute 미populate(dev) → attribute-match 라이브 미검증(IT 보완·정직 보고).
 - Part 에 Product attribute 할당 시 repository 조회 비용(N+1 주의·batch).
-- classifyRemoteType variant 보강이 F1.5 재sync 필요할 수 있음(범위 평가).
+- classifyRemoteType variant 보강은 F1.5 재sync 및 Product attribute 전역 의미 변경이 필요할 수 있어 F5에서 별도 설계한다.

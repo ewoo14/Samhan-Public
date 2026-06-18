@@ -202,6 +202,69 @@ class BundleExpanderIT extends AbstractPostgresIT {
     }
 
     @Test
+    void 옵션_패널_attribute가_target과_달라도_정규식_fallback으로_복합명칭을_선택한다() {
+        Category cat = categoryRepository.save(Category.create("OPT-MIXED-PANEL", "test", null, 125));
+        Product parent = bundleSet("OPT_MIXED_PANEL", "1way 냉난방", cat, new BigDecimal("500000"));
+        productWithAttributes("PNL_BASE_MIXED", "기본 판넬", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("50000"), "일반", null);
+        productWithAttributes("PNL_BLACK_AIR", "블랙 공기청정 판넬", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("65000"), "공청", null);
+        comp(parent, "PNL_BASE_MIXED", BundleComponent.ComponentKind.PANEL, "기본", true, 1);
+        comp(parent, "PNL_BLACK_AIR", BundleComponent.ComponentKind.PANEL, null, false, 2);
+        flush();
+
+        var opts = new BundleExpander.ExpandOptions("", false, "블랙판넬", "원형", false, null);
+        var lines = expander.expand("OPT_MIXED_PANEL", BigDecimal.ONE, opts);
+
+        assertThat(lines).extracting(BundleExpander.ExpandedLine::modelCode)
+                .containsExactly("PNL_BLACK_AIR");
+    }
+
+    @Test
+    void 옵션_패널_attribute_null과_non_null_혼재에서도_정규식_fallback으로_null_target을_선택한다() {
+        Category cat = categoryRepository.save(Category.create("OPT-PARTIAL-PANEL", "test", null, 126));
+        Product parent = bundleSet("OPT_PARTIAL_PANEL", "1way 냉난방", cat, new BigDecimal("500000"));
+        productWithAttributes("PNL_BASE_PARTIAL", "기본 판넬", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("50000"), "일반", null);
+        product("PNL_BLACK_PARTIAL", "블랙 판넬", cat, ProductCategory.SINGLE_PART, new BigDecimal("60000"));
+        comp(parent, "PNL_BASE_PARTIAL", BundleComponent.ComponentKind.PANEL, "기본", true, 1);
+        comp(parent, "PNL_BLACK_PARTIAL", BundleComponent.ComponentKind.PANEL, null, false, 2);
+        flush();
+
+        var opts = new BundleExpander.ExpandOptions("", false, "블랙판넬", "원형", false, null);
+        var lines = expander.expand("OPT_PARTIAL_PANEL", BigDecimal.ONE, opts);
+
+        assertThat(lines).extracting(BundleExpander.ExpandedLine::modelCode)
+                .containsExactly("PNL_BLACK_PARTIAL");
+    }
+
+    @Test
+    void 옵션_패널_attribute_공청과_승강_arm으로_선택한다() {
+        Category cat = categoryRepository.save(Category.create("OPT-PANEL-ARMS", "test", null, 127));
+        Product parent = bundleSet("OPT_PANEL_ARMS", "1way 냉난방", cat, new BigDecimal("500000"));
+        productWithAttributes("PNL_BASE_ARMS", "기본 판넬", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("50000"), "일반", null);
+        productWithAttributes("PNL_AIR_ATTR", "옵션 판넬 A", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("60000"), "공청", null);
+        productWithAttributes("PNL_LIFT_ATTR", "옵션 판넬 B", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("65000"), "승강", null);
+        comp(parent, "PNL_BASE_ARMS", BundleComponent.ComponentKind.PANEL, "기본", true, 1);
+        comp(parent, "PNL_AIR_ATTR", BundleComponent.ComponentKind.PANEL, null, false, 2);
+        comp(parent, "PNL_LIFT_ATTR", BundleComponent.ComponentKind.PANEL, null, false, 3);
+        flush();
+
+        var airOpts = new BundleExpander.ExpandOptions("", false, "공청판넬", "원형", false, null);
+        var liftOpts = new BundleExpander.ExpandOptions("", false, "승강판넬", "원형", false, null);
+
+        assertThat(expander.expand("OPT_PANEL_ARMS", BigDecimal.ONE, airOpts))
+                .extracting(BundleExpander.ExpandedLine::modelCode)
+                .containsExactly("PNL_AIR_ATTR");
+        assertThat(expander.expand("OPT_PANEL_ARMS", BigDecimal.ONE, liftOpts))
+                .extracting(BundleExpander.ExpandedLine::modelCode)
+                .containsExactly("PNL_LIFT_ATTR");
+    }
+
+    @Test
     void 옵션_360판넬은_panelType과_형상_variant가_맞는_기본후보를_선택한다() {
         Category cat = categoryRepository.save(Category.create("OPT-360-PANEL", "test", null, 123));
         Product parent = bundleSet("OPT_360_PANEL", "360 CST 냉난방", cat, new BigDecimal("500000"));
@@ -242,6 +305,27 @@ class BundleExpanderIT extends AbstractPostgresIT {
 
         assertThat(lines).extracting(BundleExpander.ExpandedLine::modelCode)
                 .containsExactly("RMT_WIRED_DEFAULT");
+    }
+
+    @Test
+    void 옵션_리모컨_유선_attribute_match는_컬러_텍스트를_제외한다() {
+        Category cat = categoryRepository.save(Category.create("OPT-REMOTE-COLOR-LEAK", "test", null, 128));
+        Product parent = bundleSet("OPT_REMOTE_COLOR_LEAK", "1way 냉난방", cat, new BigDecimal("500000"));
+        product("AR-EH05", "기본 유선리모컨", cat, ProductCategory.SINGLE_PART, new BigDecimal("20000"));
+        productWithAttributes("RMT_COLOR_AS_WIRED", "컬러 유선리모컨 옵션", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("30000"), null, "유선");
+        productWithAttributes("RMT_PLAIN_WIRED", "유선리모컨 옵션", cat,
+                ProductCategory.SINGLE_PART, new BigDecimal("35000"), null, "유선");
+        comp(parent, "AR-EH05", BundleComponent.ComponentKind.REMOTE, "기본", true, 1);
+        comp(parent, "RMT_COLOR_AS_WIRED", BundleComponent.ComponentKind.REMOTE, null, false, 2);
+        comp(parent, "RMT_PLAIN_WIRED", BundleComponent.ComponentKind.REMOTE, null, false, 3);
+        flush();
+
+        var opts = new BundleExpander.ExpandOptions("유선리모컨", false, "", "원형", false, null);
+        var lines = expander.expand("OPT_REMOTE_COLOR_LEAK", BigDecimal.ONE, opts);
+
+        assertThat(lines).extracting(BundleExpander.ExpandedLine::modelCode)
+                .containsExactly("RMT_PLAIN_WIRED");
     }
 
     @Test
