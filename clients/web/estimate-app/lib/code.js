@@ -2089,6 +2089,11 @@ function getManagers_() {
   return cacheGetJSON_('MGR_V1') || [];
 }
 
+async function getAllManagers(forceRefresh) {
+  await preloadDirectoryCache_(forceRefresh === true);
+  return getManagers_();
+}
+
 function searchManagersByName_(query) {
   const q = String(query || '').trim().toLowerCase().replace(/\s+/g, '');
   if (!q) return [];
@@ -2336,8 +2341,9 @@ async function sendOrderFromUi(data) {
     const whCd = (order && order.whCode) ? order.whCode : decideWarehouseCode_(merged);
 
     // G2: 거래처 시트 담당자명 컬럼 제거(custRec.manager 항상 빈값)로 거래처→담당자 역참조 폐기.
-    // empCd = 주문 작성 로그인 사용자(managerCode) 우선, 없으면 기본 EMP_CD.
-    let empCdFinal = authInfo.managerCode || getScriptCreds_().EMP_CD;
+    // 선택 담당자가 있으면 전표/eCount 담당자로 우선 사용하고, 미선택 시 로그인 사용자로 fallback.
+    let empCdFinal = order.managerCode || authInfo.managerCode || getScriptCreds_().EMP_CD;
+    order.manager = String(order.manager || authInfo.managerName || '').trim();
 
     const SaleList = [];
 
@@ -2810,7 +2816,7 @@ module.exports = {
   doGet, bootstrap, clearSheetCache,
   // §5 거래처/담당자
   getCustomerDataAsync, getCustomers_, searchCustomerByBizOrCode,
-  searchCustomerByBizno, getManagers_, searchManagersByName_,
+  searchCustomerByBizno, getManagers_, getAllManagers, searchManagersByName_,
   findManagerByNameExact_, getManagersForInput,
   initDcConfigFromNotion, fetchNotionDcConfig_,
   // §6 e-Count (deprecated stub)

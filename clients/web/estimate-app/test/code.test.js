@@ -27,6 +27,15 @@ jest.mock('axios', () => {
       // #31 — user-service by-email (ApiResponse 봉투)
       return ok({ success: true, data: { fullName: '테스트담당자', loginId: 'TST-001' } });
     }
+    if (/\/internal\/users\/employees/.test(url)) {
+      return ok({
+        success: true,
+        data: [
+          { fullName: '선택담당자', ecountCode: 'EMP-SEL' },
+          { fullName: '로그인담당자', ecountCode: 'EMP-AUTH' },
+        ],
+      });
+    }
     if (/\/api\/v1\/partner-orders($|\?|\/$)/.test(url)) return ok([]);
     if (/\/internal\/estimates\/snapshots/.test(url)) return ok([]); // P0-A 하드닝
     if (/\/products\/internal\/estimate-catalog\//.test(url)) return ok({ success: true, data: [] });
@@ -584,6 +593,58 @@ describe('sendOrderFromUi — legacy 1762 logic 보존', () => {
       remarks: '',
     }));
   });
+
+  test('선택 담당자가 있으면 로그인자보다 우선해 전표 EMP_CD와 표시 담당자에 반영한다', async () => {
+    code.cachePutJSON_('CUS_V6', [
+      { code: 'C1', name: '거래처1', bizno: '1234567890', tel: '010', addr: '대구' },
+    ], 60);
+    code.cachePutJSON_('MGR_V1', [
+      { '담당자명': '선택담당자', '담당자코드': 'EMP-SEL', manager: '선택담당자', empCd: 'EMP-SEL' },
+    ], 60);
+
+    const r = await code.sendOrderFromUi({
+      estimateNumber: 'EST-MGR-1',
+      bizno: '123-45-67890',
+      custName: '거래처1',
+      due: '2026-06-18',
+      addr: '대구',
+      manager: '선택담당자',
+      managerCode: 'EMP-SEL',
+      auth: { managerName: '로그인담당자', managerCode: 'EMP-AUTH' },
+      items: [{ section: 'HOME', name: '실내기', model: 'AC181', unit: 'EA', qty: 1, price: 110000, sub: 110000 }],
+    });
+
+    expect(r.ok).toBe(true);
+    const slipPost = axios.post.mock.calls.find(([url]) => /\/internal\/slips\/from-estimate$/.test(url));
+    expect(slipPost).toBeTruthy();
+    const body = slipPost[1];
+    expect(body.employeeCode).toBe('EMP-SEL');
+    expect(body.manager).toBe('선택담당자');
+  });
+});
+
+describe('담당자 RPC', () => {
+  beforeEach(() => {
+    code.cacheRemoveJSON_('MGR_V1');
+    axios.get.mockClear();
+  });
+
+  test('getManagersForInput 빈 쿼리는 기존 계약대로 빈 배열을 유지한다', () => {
+    code.cachePutJSON_('MGR_V1', [
+      { '담당자명': '선택담당자', '담당자코드': 'EMP-SEL' },
+    ], 60);
+
+    expect(code.getManagersForInput('')).toEqual([]);
+  });
+
+  test('getAllManagers는 전체 담당자 캐시를 반환해 FE 초기 적재에 사용된다', async () => {
+    await code.getCustomerDataAsync(true);
+
+    await expect(code.getAllManagers()).resolves.toEqual([
+      { '담당자명': '선택담당자', '담당자코드': 'EMP-SEL', manager: '선택담당자', empCd: 'EMP-SEL' },
+      { '담당자명': '로그인담당자', '담당자코드': 'EMP-AUTH', manager: '로그인담당자', empCd: 'EMP-AUTH' },
+    ]);
+  });
 });
 
 describe('RPC dispatch 호환성 — 76 함수 inventory', () => {
@@ -607,7 +668,7 @@ describe('RPC dispatch 호환성 — 76 함수 inventory', () => {
       'formatWonDiscountLabel_', 'formatPercentLabel_', 'combineRemarks_',
       'getOldProducts_', 'sendOrderFromUi', 'detectHomeOrder',
       'buildDefaultDcConfig_', 'fetchNotionDcConfig_', 'initDcConfigFromNotion',
-      'searchCustomerByBizno', 'getManagersForInput', 'forceAuth',
+      'searchCustomerByBizno', 'getManagersForInput', 'getAllManagers', 'forceAuth',
       'saveOrderToNotion', 'getNotionHistory', 'logFrontEvent',
       'checkUserAuth', 'getInventoryTableHtml', 'getInventoryTable',
       'include', 'saveQuoteSnapshot', 'getQuoteHistory', 'getPriceIncData_',

@@ -108,6 +108,7 @@ function buildSlipRequest(legacyOrder, saleList) {
     partnerCode: head.CUST,               // 거래처 코드
     partnerName: head.CUST_DES || '',
     employeeCode: head.EMP_CD,            // 담당자 코드
+    manager: legacyOrder.manager || '',
     warehouseCode: head.WH_CD,
     ioType: head.IO_TYPE || '10',
     shippingAddress: head.U_TXT1 || '',
