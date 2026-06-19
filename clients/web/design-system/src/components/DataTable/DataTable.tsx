@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import styles from './DataTable.module.css'
-import { Spinner } from '../Spinner/Spinner'
+import { MascotEmptyState } from '../MascotEmptyState/MascotEmptyState'
+import { MascotLoader } from '../MascotLoader/MascotLoader'
 
 export interface DataTableColumn<T> {
   /** row 의 key 또는 임의 식별자. */
@@ -107,7 +108,7 @@ export function DataTable<T>({
             {isEmpty ? (
               <tr className={styles['emptyRow']}>
                 <td className={styles['emptyCell']} colSpan={columns.length}>
-                  {emptyMessage}
+                  <MascotEmptyState title={emptyMessage} />
                 </td>
               </tr>
             ) : (
@@ -151,8 +152,8 @@ export function DataTable<T>({
         </table>
       </div>
       {loading ? (
-        <div className={styles['loadingOverlay']} role="status" aria-live="polite">
-          <Spinner size="md" tone="var(--color-brand-500)" label="데이터 로딩 중" />
+        <div className={styles['loadingOverlay']} aria-live="polite">
+          <MascotLoader size="md" label="데이터 로딩 중" />
         </div>
       ) : null}
     </div>

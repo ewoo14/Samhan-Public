@@ -19,7 +19,7 @@
  */
 import { Navigate, NavLink, Outlet } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Spinner } from '@samhan/design-system'
+import { MascotLoader } from '@samhan/design-system'
 import { RoleGuard } from './RoleGuard'
 import { fetchIsExecutiveOffice } from '../api/adminApi'
 
@@ -56,7 +56,7 @@ function AdminLayoutInner() {
           minHeight: 'calc(100vh - 120px)',
         }}
       >
-        <Spinner size="md" label="권한 확인 중" />
+        <MascotLoader size="md" label="권한 확인 중" />
       </div>
     )
   }
