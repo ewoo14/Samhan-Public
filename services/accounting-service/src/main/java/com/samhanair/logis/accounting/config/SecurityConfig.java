@@ -1,5 +1,6 @@
 package com.samhanair.logis.accounting.config;
 
+import com.samhanair.logis.security.InternalAuthProperties;
 import com.samhanair.logis.security.InternalTokenFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +21,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, InternalTokenFilter internalTokenFilter)
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            InternalTokenFilter internalTokenFilter,
+            InternalAuthProperties internalAuthProperties)
             throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -30,6 +34,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
+                .addFilterBefore(new AccountingInternalTokenFilter(internalAuthProperties),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
