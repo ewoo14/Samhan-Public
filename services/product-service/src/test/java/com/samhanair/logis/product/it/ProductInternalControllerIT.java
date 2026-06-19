@@ -14,6 +14,7 @@ import com.samhanair.logis.product.ProductServiceApplication;
 import com.samhanair.logis.product.domain.BundleComponent;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductType;
 import com.samhanair.logis.product.repository.BundleComponentRepository;
 import com.samhanair.logis.product.repository.CategoryRepository;
@@ -122,6 +123,7 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 "KRW",
                 null,
                 "serialManaged IT 검증용 에어컨"));
+        serialProduct.changeProductCategory(ProductCategory.HOME_MULTI);
         serialProduct.updateEcountMeta("AC-SERIAL-IT", null, null, null, true, null);
         serialProductId = serialProduct.getId();
 
@@ -135,6 +137,7 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 "KRW",
                 null,
                 "serialManaged=false IT 검증용 batch 품목"));
+        batchProduct.changeProductCategory(ProductCategory.COMMERCIAL_MULTI);
         batchProduct.updateEcountMeta("PIPE-BATCH-IT", null, null, null, true, null);
         batchProductId = batchProduct.getId();
 
@@ -150,6 +153,7 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 null,
                 null,
                 null));
+        bundleProduct.changeProductCategory(ProductCategory.SINGLE_SET);
         bundleProduct.updateEcountMeta(bundleProductCode, null, null, null, true, null);
         bundleProductId = bundleProduct.getId();
     }
@@ -173,6 +177,7 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].serialManaged", is(true)))
                 .andExpect(jsonPath("$.data[0].productCode", is("AC-SERIAL-IT")))
+                .andExpect(jsonPath("$.data[0].categoryKey", is("homemulti")))
                 .andExpect(jsonPath("$.data[0].id").exists());
     }
 
@@ -189,6 +194,7 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].serialManaged", is(false)))
+                .andExpect(jsonPath("$.data[0].categoryKey", is("commercialMulti")))
                 .andExpect(jsonPath("$.data[0].id").exists());
     }
 
@@ -217,7 +223,8 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id", is(bundleProductId.toString())))
                 .andExpect(jsonPath("$.data[0].productCode", is(bundleProductCode)))
-                .andExpect(jsonPath("$.data[0].productType", is("BUNDLE")));
+                .andExpect(jsonPath("$.data[0].productType", is("BUNDLE")))
+                .andExpect(jsonPath("$.data[0].categoryKey", is("singleSets")));
     }
 
     @Test

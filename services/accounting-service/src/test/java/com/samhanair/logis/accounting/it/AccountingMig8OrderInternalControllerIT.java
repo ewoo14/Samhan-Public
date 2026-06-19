@@ -42,9 +42,17 @@ class AccountingMig8OrderInternalControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    void mig8_orders_without_token_returns_403() throws Exception {
+    void mig8_orders_without_token_returns_401() throws Exception {
         mockMvc.perform(get(URL))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void mig8_orders_with_forged_user_header_without_token_returns_401() throws Exception {
+        mockMvc.perform(get(URL)
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000001")
+                        .header("X-User-Role", "MASTER"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

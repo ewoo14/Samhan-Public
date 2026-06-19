@@ -11,6 +11,7 @@ import com.samhanair.logis.partnerorder.mig8.client.Mig8OrderPage;
 import com.samhanair.logis.partnerorder.mig8.client.PartnerMig8LookupClient;
 import com.samhanair.logis.partnerorder.mig8.client.PartnerMig8Summary;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -143,6 +144,8 @@ public class Mig8OrderImportService {
     private void insertLine(UUID orderId, String orderNo, Mig8OrderLineExport line,
                             ProductSummary product, LocalDateTime now) {
         int quantity = quantity(line.quantity());
+        BigDecimal subtotal = zero(line.supplyAmount()).add(zero(line.vatAmount()));
+        BigDecimal priceVat = subtotal.divide(BigDecimal.valueOf(quantity), 2, RoundingMode.HALF_UP);
         jdbcTemplate.update("""
                 INSERT INTO partner_order_lines (
                     id, partner_order_id, product_id, model_name, product_name, category_key,
@@ -157,9 +160,9 @@ public class Mig8OrderImportService {
                 product.name(),
                 product.categoryKey(),
                 quantity,
-                zero(line.unitPrice()),
-                zero(line.supplyAmount()).add(zero(line.vatAmount())),
-                quantity,
+                priceVat,
+                subtotal,
+                0,
                 now,
                 ACTOR);
     }

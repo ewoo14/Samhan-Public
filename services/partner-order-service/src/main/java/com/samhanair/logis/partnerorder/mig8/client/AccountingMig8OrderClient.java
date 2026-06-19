@@ -61,26 +61,28 @@ public class AccountingMig8OrderClient {
                 throw new BusinessException(ErrorCode.FORBIDDEN,
                         "accounting-service MIG-8 export 내부 권한 거부", ex);
             }
-            log.warn("AccountingMig8OrderClient fail-soft — status={} page={} size={}",
-                    status, page, size);
-            return Mig8OrderPage.empty(true);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "accounting-service MIG-8 export 응답 오류: " + status, ex);
         } catch (RuntimeException ex) {
-            log.warn("AccountingMig8OrderClient network fail-soft — page={} size={} msg={}",
+            log.warn("AccountingMig8OrderClient network fail-fast — page={} size={} msg={}",
                     page, size, ex.getMessage());
-            return Mig8OrderPage.empty(true);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "accounting-service MIG-8 export 호출 실패", ex);
         }
     }
 
     private Mig8OrderPage parsePage(String body) {
         if (body == null || body.isBlank()) {
-            return Mig8OrderPage.empty(true);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "accounting-service MIG-8 export 응답이 비어 있습니다");
         }
         try {
             JsonNode root = objectMapper.readTree(body);
             JsonNode data = root.has("data") ? root.get("data") : root;
             JsonNode content = data.path("content");
             if (!content.isArray()) {
-                return Mig8OrderPage.empty(true);
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "accounting-service MIG-8 export 응답 형식 오류 (content)");
             }
             List<Mig8OrderExport> orders = new ArrayList<>();
             for (JsonNode node : content) {
@@ -88,9 +90,12 @@ public class AccountingMig8OrderClient {
             }
             boolean last = data.path("last").asBoolean(orders.isEmpty());
             return new Mig8OrderPage(orders, last);
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (RuntimeException | java.io.IOException ex) {
-            log.warn("AccountingMig8OrderClient response parse fail-soft — msg={}", ex.getMessage());
-            return Mig8OrderPage.empty(true);
+            log.warn("AccountingMig8OrderClient response parse fail-fast — msg={}", ex.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "accounting-service MIG-8 export 응답 파싱 실패", ex);
         }
     }
 

@@ -33,6 +33,11 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/prometheus").authenticated()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/internal/**").access((authentication, context) ->
+                                new org.springframework.security.authorization.AuthorizationDecision(
+                                        authentication.get() != null
+                                                && com.samhanair.logis.security.InternalTokenFilter.INTERNAL_PRINCIPAL
+                                                        .equals(authentication.get().getName())))
                         .anyRequest().authenticated())
                 .addFilterBefore(new AccountingInternalTokenFilter(internalAuthProperties),
                         UsernamePasswordAuthenticationFilter.class)

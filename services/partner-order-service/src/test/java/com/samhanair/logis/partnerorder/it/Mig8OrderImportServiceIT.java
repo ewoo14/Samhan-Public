@@ -98,7 +98,7 @@ class Mig8OrderImportServiceIT extends AbstractPostgresIT {
         assertOrder("2026/06/20-1", "CONFIRMED", "PUBLISHED", "110000", "2026-07-20", "ref-complete");
         assertOrder("2026/06/20-2", "DRAFT", "NOT_REQUIRED", "330000", "2026-07-21", "ref-progress");
         assertOrder("2026/06/20-3", "CANCELED", "NOT_REQUIRED", "110000", "2026-07-22", "ref-canceled");
-        assertLine("2026/06/20-1", PRODUCT_A, "MODEL-A", "제품 A", "homemulti", 2, "55000", "110000", 2);
+        assertLine("2026/06/20-1", PRODUCT_A, "MODEL-A", "제품 A", "homemulti", 2, "55000", "110000", 0);
 
         Mig8OrderImportResult second = importService.importMig8Orders(100);
 
@@ -173,7 +173,7 @@ class Mig8OrderImportServiceIT extends AbstractPostgresIT {
                 productId,
                 "item-" + lineNo,
                 BigDecimal.valueOf(lineNo + 1L),
-                BigDecimal.valueOf(55000L),
+                supply,
                 supply,
                 vat,
                 LocalDate.of(2026, 7, 31));

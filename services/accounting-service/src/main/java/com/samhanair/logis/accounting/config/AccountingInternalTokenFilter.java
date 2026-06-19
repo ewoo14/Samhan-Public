@@ -41,7 +41,7 @@ public class AccountingInternalTokenFilter extends OncePerRequestFilter {
 
         String supplied = request.getHeader(INTERNAL_TOKEN_HEADER);
         if (supplied == null || supplied.isBlank()) {
-            chain.doFilter(request, response);
+            writeUnauthorized(response);
             return;
         }
 
