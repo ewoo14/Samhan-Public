@@ -66,6 +66,7 @@ export function usePresence({
 
     let cancelled = false
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+    const joinAbort = new AbortController()
     const sessionId = createSessionId()
     currentUserRef.current = { sessionId, displayName: '사용자' }
 
@@ -85,10 +86,11 @@ export function usePresence({
       if (cancelled || !currentUser) return
       try {
         if (cancelled) return
-        const entry = await client.join(entityId, currentUser)
-        if (cancelled) return
+        const entry = await client.join(entityId, currentUser, joinAbort.signal)
+        if (cancelled || entry === null) return
         setEntries((prev) => upsertPresence(prev, entry))
       } catch (err) {
+        if (joinAbort.signal.aborted) return
         console.warn('[presence] join/heartbeat 실패', err)
       }
     }
@@ -137,6 +139,7 @@ export function usePresence({
 
     return () => {
       cancelled = true
+      joinAbort.abort()
       ctrl.abort()
       if (heartbeatTimer !== null) clearInterval(heartbeatTimer)
       void leave(true)

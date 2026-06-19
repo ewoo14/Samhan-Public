@@ -16,7 +16,6 @@ export interface PresenceEntry {
   sessionId: string
   displayName: string
   color: PresenceColor
-  lastSeenAt?: string
 }
 
 export interface PresenceUser {
@@ -32,8 +31,8 @@ export interface PresenceClientConfig {
 
 export interface PresenceClient {
   list: (entityId: string) => Promise<PresenceEntry[]>
-  join: (entityId: string, user: PresenceUser) => Promise<PresenceEntry>
-  leave: (entityId: string, user: PresenceUser) => Promise<void>
+  join: (entityId: string, user: PresenceUser, signal?: AbortSignal) => Promise<PresenceEntry | null>
+  leave: (entityId: string, user: PresenceUser, signal?: AbortSignal) => Promise<void>
   subscribe: (entityId: string, onEvent: (event: RealtimeEvent) => void) => AbortController
 }
 
@@ -63,20 +62,32 @@ export function createPresenceClient(config: PresenceClientConfig): PresenceClie
     return res.data.data
   }
 
-  async function join(entityId: string, user: PresenceUser): Promise<PresenceEntry> {
+  async function join(
+    entityId: string,
+    user: PresenceUser,
+    signal?: AbortSignal,
+  ): Promise<PresenceEntry | null> {
+    const headers = await collabHeaders()
+    if (signal?.aborted) return null
     const res = await apiClient.post<ApiEnvelope<PresenceEntry>>(
       config.presencePath(entityId, 'join'),
       user,
-      { headers: await collabHeaders() },
+      { headers, signal },
     )
     return res.data.data
   }
 
-  async function leave(entityId: string, user: PresenceUser): Promise<void> {
+  async function leave(
+    entityId: string,
+    user: PresenceUser,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const headers = await collabHeaders()
+    if (signal?.aborted) return
     await apiClient.post<ApiEnvelope<null>>(
       config.presencePath(entityId, 'leave'),
       user,
-      { headers: await collabHeaders() },
+      { headers, signal },
     )
   }
 

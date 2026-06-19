@@ -1,5 +1,6 @@
 package com.samhanair.logis.shared.realtime.presence;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.Instant;
 
 /**
@@ -14,6 +15,7 @@ public record PresenceEntry(
         String sessionId,
         String displayName,
         PresenceColor color,
+        @JsonIgnore
         Instant lastSeenAt) {
 
     public PresenceEntry withLastSeenAt(Instant nextLastSeenAt) {
