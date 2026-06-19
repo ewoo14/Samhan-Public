@@ -1,12 +1,6 @@
-/**
- * `<PrintPreview>` 단위 테스트 — Vitest 도입 시 활성화 (EstimateLineRow.test.tsx 참조).
- *
- * 출처: migration/analysis/06-frontend-design.md §3.2 / DECISIONS.md F3
- */
-
-/*
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { PrintPreview } from './PrintPreview'
 
 describe('PrintPreview', () => {
@@ -16,19 +10,21 @@ describe('PrintPreview', () => {
         <div>본문</div>
       </PrintPreview>,
     )
-    expect(screen.getByText(/fallback/)).toBeInTheDocument()
-    expect(screen.getByText('본문')).toBeInTheDocument()
+
+    expect(screen.getByText(/fallback/)).toBeTruthy()
+    expect(screen.getByText('본문')).toBeTruthy()
   })
 
   it('mode=pdf + pdfRenderer 주입 → renderer 호출', () => {
-    const renderer = vi.fn((node) => <div data-testid="pdf-frame">{node}</div>)
+    const renderer = vi.fn((node: ReactNode) => <div data-testid="pdf-frame">{node}</div>)
     render(
       <PrintPreview mode="pdf" pdfRenderer={renderer}>
         <div>본문</div>
       </PrintPreview>,
     )
+
     expect(renderer).toHaveBeenCalled()
-    expect(screen.getByTestId('pdf-frame')).toBeInTheDocument()
+    expect(screen.getByTestId('pdf-frame')).toBeTruthy()
   })
 
   it('paperSize / orientation 에 따라 paper 크기 변경 (A4 portrait)', () => {
@@ -38,6 +34,7 @@ describe('PrintPreview', () => {
       </PrintPreview>,
     )
     const paper = container.querySelector('[data-printable="true"]') as HTMLElement
+
     expect(paper.style.width).toBe('210mm')
     expect(paper.style.height).toBe('297mm')
   })
@@ -49,6 +46,7 @@ describe('PrintPreview', () => {
       </PrintPreview>,
     )
     const paper = container.querySelector('[data-printable="true"]') as HTMLElement
+
     expect(paper.style.width).toBe('297mm')
     expect(paper.style.height).toBe('210mm')
   })
@@ -60,10 +58,9 @@ describe('PrintPreview', () => {
         <div>본문</div>
       </PrintPreview>,
     )
+
     fireEvent.click(screen.getByRole('button', { name: '인쇄' }))
+
     expect(onPrint).toHaveBeenCalled()
   })
 })
-*/
-
-export {}

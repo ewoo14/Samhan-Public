@@ -131,6 +131,14 @@ export function isSingleNumeric(value: string): boolean {
   return next.length === 0 || /^[-+]?\d*\.?\d+$/.test(next)
 }
 
+export function reconcileSpecValueType(
+  templateValueType: SpecKeyValueType,
+  specValue: string,
+): SpecKeyValueType {
+  if (templateValueType === 'NUMBER' && !isSingleNumeric(specValue)) return 'TEXT'
+  return templateValueType
+}
+
 function nullableText(value: string): string | null {
   const next = trimmed(value)
   return next.length > 0 ? next : null
@@ -199,12 +207,14 @@ export function specPatchForKeyChange(
     return current ? { specKey } : { specKey, unit: '', valueType: 'TEXT' }
   }
 
+  const valueType = reconcileSpecValueType(template.valueType, current?.specValue ?? '')
   // valueType 이 바뀔 때만 값 초기화(입력 포맷 전환) — 동일 타입 선택은 입력값 보존.
-  const resetValue = template.valueType !== current?.valueType
+  // 단, legacy 다중값이 NUMBER 템플릿에 걸린 경우에는 TEXT 로 유지해 값 손실을 막는다.
+  const resetValue = valueType !== current?.valueType
   return {
     specKey: template.specKey,
     unit: template.defaultUnit ?? '',
-    valueType: template.valueType,
+    valueType,
     ...(resetValue ? { specValue: '' } : {}),
   }
 }

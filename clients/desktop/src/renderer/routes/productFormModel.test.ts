@@ -191,6 +191,24 @@ describe('productFormModel', () => {
     })
   })
 
+  it('NUMBER 템플릿이라도 legacy 다중값은 TEXT 로 유지한다', () => {
+    const current = { specKey: '능력', specValue: '688 / 0.8', unit: '', valueType: 'TEXT' as const }
+
+    expect({
+      ...current,
+      ...specPatchForKeyChange(current, '능력', {
+        specKey: '능력',
+        defaultUnit: '',
+        valueType: 'NUMBER',
+      }),
+    }).toEqual({
+      specKey: '능력',
+      specValue: '688 / 0.8',
+      unit: '',
+      valueType: 'TEXT',
+    })
+  })
+
   it('SET 선택 시 bundleMode 를 포함한다', () => {
     const request = buildCreateProductRequest({
       ...baseForm,

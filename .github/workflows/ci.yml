@@ -201,6 +201,9 @@ jobs:
       - name: typecheck (dev config — stories/tests 포함)
         run: npx tsc -p tsconfig.json --noEmit
 
+      - name: 단위 테스트(vitest)
+        run: npm test
+
       - name: lint
         run: npm run lint
         continue-on-error: true   # legacy 코드 사전 존재 오류 허용 — feature 브랜치별 신규 코드 검증은 PR 검토에서

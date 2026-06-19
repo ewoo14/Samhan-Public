@@ -1,17 +1,10 @@
-/**
- * `<SpecAddModal>` 단위 테스트 — Vitest 도입 시 활성화 (EstimateLineRow.test.tsx 참조).
- *
- * 출처: migration/analysis/06-frontend-design.md §3.2 / DOMAIN-EXTENSIONS §4 D15
- */
-
-/*
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { SpecAddModal, type SpecKeyTemplate } from './SpecAddModal'
 
 const tpl: SpecKeyTemplate[] = [
   { specKey: '냉방성능', defaultUnit: 'kW', displayOrder: 1, isRecommended: true },
-  { specKey: '전원선', defaultUnit: 'mm²', displayOrder: 2, isRecommended: true },
+  { specKey: '전원선', defaultUnit: 'mm2', displayOrder: 2, isRecommended: true },
 ]
 
 describe('SpecAddModal', () => {
@@ -26,8 +19,9 @@ describe('SpecAddModal', () => {
         onAdd={() => {}}
       />,
     )
-    const chip = screen.getByRole('button', { name: /냉방성능/ })
-    expect(chip).toBeDisabled()
+    const chip = screen.getByRole('button', { name: /냉방성능/ }) as HTMLButtonElement
+
+    expect(chip.disabled).toBe(true)
   })
 
   it('chip 선택 시 키 input 자동 입력 + defaultUnit 전파', () => {
@@ -41,11 +35,11 @@ describe('SpecAddModal', () => {
         onAdd={() => {}}
       />,
     )
+
     fireEvent.click(screen.getByRole('button', { name: /냉방성능/ }))
-    const keyInput = screen.getByLabelText(/스펙 키/) as HTMLInputElement
-    expect(keyInput.value).toBe('냉방성능')
-    const unitInput = screen.getByLabelText(/단위/) as HTMLInputElement
-    expect(unitInput.value).toBe('kW')
+
+    expect((screen.getByPlaceholderText('예: 냉방성능') as HTMLInputElement).value).toBe('냉방성능')
+    expect((screen.getByPlaceholderText('예: kW') as HTMLInputElement).value).toBe('kW')
   })
 
   it('자유 입력으로 중복 키 입력 시 추가 버튼 disabled + 에러 메시지', () => {
@@ -59,10 +53,11 @@ describe('SpecAddModal', () => {
         onAdd={() => {}}
       />,
     )
-    const keyInput = screen.getByLabelText(/스펙 키/) as HTMLInputElement
-    fireEvent.change(keyInput, { target: { value: '냉방성능' } })
-    expect(screen.getByText('이미 등록된 키입니다.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '추가' })).toBeDisabled()
+
+    fireEvent.change(screen.getByPlaceholderText('예: 냉방성능'), { target: { value: '냉방성능' } })
+
+    expect(screen.getByText('이미 등록된 키입니다.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('정상 입력 시 onAdd 호출 후 onClose', () => {
@@ -78,14 +73,13 @@ describe('SpecAddModal', () => {
         onAdd={onAdd}
       />,
     )
-    fireEvent.change(screen.getByLabelText(/스펙 키/), { target: { value: '신규키' } })
-    fireEvent.change(screen.getByLabelText(/값/), { target: { value: '값1' } })
-    fireEvent.change(screen.getByLabelText(/단위/), { target: { value: '단위1' } })
+
+    fireEvent.change(screen.getByPlaceholderText('예: 냉방성능'), { target: { value: '신규키' } })
+    fireEvent.change(screen.getByPlaceholderText('예: 5.6'), { target: { value: '값1' } })
+    fireEvent.change(screen.getByPlaceholderText('예: kW'), { target: { value: '단위1' } })
     fireEvent.click(screen.getByRole('button', { name: '추가' }))
+
     expect(onAdd).toHaveBeenCalledWith('신규키', '값1', '단위1')
     expect(onClose).toHaveBeenCalled()
   })
 })
-*/
-
-export {}
