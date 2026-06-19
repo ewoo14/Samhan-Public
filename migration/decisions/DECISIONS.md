@@ -2922,3 +2922,15 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-ECT-FOLD-01 | 이카운트 이관 자료 네이티브 편입 슬1: 잔액 스냅샷 silo(page-code `ecount.mig14.aging-snapshot`) 폐기 → 네이티브 거래처 미수/미지급 보고서 `GET /accounting/reports/partner-aging`(`PartnerAgingController`, journals POSTED 110/201 직접 집계, 재무 보고서 메뉴 도달)로 대체. FE 메뉴/route/`PartnerAgingSnapshotPage`/`accountingAdminApi` aging 함수·타입/permissions/mock 제거, BE `GET /accounting/aging-snapshot`·`POST /admin/accounting/aging-snapshot/refresh` endpoint + DTO(`PartnerAgingSnapshotResponse`, `AgingSnapshotRefreshResult`) 제거, auth `PageCode` enum 값 제거. MIG-14 admin UI 4 → 3 화면(cash-list / order-list / ledger). |
 | D-ECT-FOLD-02 | LINEAGE 유지 — MV `partner_aging_snapshot` DDL 과 `Mig9AgingSnapshotRefreshService`(EcountReimportService 재import wiring)는 보존(cutover 후 물리 제거). silo 화면/endpoint/page-code 만 폐기하고 재import 계보는 끊지 않는다. |
 | D-ECT-FOLD-03 | V59 마이그 = page-code 권한 정리. `role_page_permissions` 는 hard delete, `role_page_permission_templates`/`account_page_permissions`/`group_page_permissions`/`account_permission_overrides` 는 soft delete. |
+
+---
+
+## 이카운트 이관 자료 네이티브 편입 슬2 — 현금 지출/입금 silo 폐기 (2026-06-19, PR #520)
+
+**배경**: 에픽 "이카운트 이관 자료 네이티브 편입"([[ecount-native-fold]]) 슬2. 슬1(잔액 스냅샷, PR #518)과 동형으로, MIG-14 admin UI 의 현금 지출/입금 트랜잭션 조회 silo(page-code `ecount.mig14.cash-list`)를 제거한다. 현금 자료는 MIG-9 가 이미 네이티브 회계 journals 에 편입해 분개장·입금매칭·원장으로 노출하므로 cash-list 화면은 중복 silo 다. dev-report `docs/dev-reports/2026-06-19-ecount-native-fold-slice2-cash.md`.
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-ECT-FOLD-04 | 이카운트 이관 자료 네이티브 편입 슬2: 현금 지출/입금 트랜잭션 silo(page-code `ecount.mig14.cash-list`) 폐기 → 현금 자료는 MIG-9 가 이미 네이티브 journals 에 편입(분개장 `GET /accounting/journals` + 입금매칭 `GET /accounting/deposit-match` + 원장 노출)했으므로 별도 조회 화면 불요. FE 지출/입금 메뉴·route·`CashDisbursementListPage`/`CashReceiptListPage`/`CashTransactionList`/`accountingAdminApi` cash 함수·타입/permissions/mock/PermissionMatrix/Playwright(`mig-14-cash-admin`)/pagecodes 제거, BE accounting `GET /accounting/cash-disbursements`·`/cash-receipts` endpoint + `CASH_PAGE_CODE` + `listCash*` + DTO(`CashDisbursementResponse`, `CashReceiptResponse`) 제거, auth `PageCode.ECOUNT_MIG14_CASH_LIST` enum 값 제거. MIG-14 admin UI 3 → **2 화면**(order-list / ledger). |
+| D-ECT-FOLD-05 | LINEAGE 유지 — `CashDisbursement`/`CashReceipt` 엔티티·repository·`cash_*` 테이블, `Mig7Cash*TransformController`(`/transform-from-staging`, page-code `ecount.mig7.*`), `Mig9CashJournalController`(page-code `ecount.mig9.*`)는 보존(cutover 후 물리 제거). silo 화면/조회 endpoint/page-code 만 폐기하고 staging→Cash→Journal 편입 계보는 끊지 않는다. |
+| D-ECT-FOLD-06 | V60 마이그 = page-code 권한 정리(V59 패턴 동일). `cash-list` 권한 행은 `role_page_permissions` hard delete, `role_page_permission_templates`/`account_page_permissions`/`group_page_permissions`/`account_permission_overrides` soft delete. |

@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** MIG-14 admin UI read endpoints. */
+/** MIG-14 admin 주문/원장 조회 endpoint. */
 @Slf4j
 @RestController
 @RequestMapping("/accounting")
@@ -42,7 +42,7 @@ public class AccountingAdminQueryController {
 
     @GetMapping("/orders")
     @RequirePermission(page = ORDER_PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
-    @Operation(summary = "MIG-14 order admin list")
+    @Operation(summary = "MIG-14 주문서 admin 목록 조회")
     public ApiResponse<Page<OrderSummaryResponse>> orders(
             @RequestParam(required = false) OrderProgressStatus progressStatus,
             @RequestParam(required = false) String managerName,
@@ -56,7 +56,7 @@ public class AccountingAdminQueryController {
 
     @GetMapping("/orders/{orderNo}")
     @RequirePermission(page = ORDER_PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
-    @Operation(summary = "MIG-14 order admin detail")
+    @Operation(summary = "MIG-14 주문서 admin 상세 조회")
     public ApiResponse<OrderDetailResponse> orderDetail(
             @PathVariable String orderNo,
             @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
@@ -66,7 +66,7 @@ public class AccountingAdminQueryController {
 
     @GetMapping("/ledger/sales")
     @RequirePermission(page = LEDGER_PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
-    @Operation(summary = "MIG-14 sales ledger staging list")
+    @Operation(summary = "MIG-14 이카운트 매출장 staging 조회")
     public ApiResponse<Page<LedgerStagingResponse>> salesLedger(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -81,7 +81,7 @@ public class AccountingAdminQueryController {
 
     @GetMapping("/ledger/purchase")
     @RequirePermission(page = LEDGER_PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
-    @Operation(summary = "MIG-14 purchase ledger staging list")
+    @Operation(summary = "MIG-14 이카운트 매입장 staging 조회")
     public ApiResponse<Page<LedgerStagingResponse>> purchaseLedger(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -99,9 +99,10 @@ public class AccountingAdminQueryController {
             return;
         }
         if (!dynamicPermissionClient.canView(roleCode, pageCode)) {
-            log.warn("[MIG-14] admin VIEW permission denied roleCode={} pageCode={}", roleCode, pageCode);
+            log.warn("[MIG-14] admin VIEW 동적 권한 차단 — roleCode={} pageCode={}",
+                    roleCode, pageCode);
             throw new BusinessException(ErrorCode.FORBIDDEN,
-                    "MIG-14 admin view permission denied.");
+                    "동적 권한 설정에 의해 MIG-14 admin 조회 권한이 차단되었습니다.");
         }
     }
 }

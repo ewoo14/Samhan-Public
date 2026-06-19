@@ -25,7 +25,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** MIG-14 admin read service. */
+/** MIG-14 admin 주문/원장 전용 읽기 service. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -43,7 +43,7 @@ public class AccountingAdminQueryService {
     public OrderDetailResponse getOrderDetail(String orderNo) {
         Order order = orderRepository.findByOrderNo(orderNo)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "Order not found: " + orderNo));
+                        "주문서를 찾을 수 없습니다: " + orderNo));
         return toOrderDetail(order);
     }
 

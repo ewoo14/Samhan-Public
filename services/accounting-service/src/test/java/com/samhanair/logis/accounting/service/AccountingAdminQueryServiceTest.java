@@ -52,14 +52,14 @@ class AccountingAdminQueryServiceTest {
         Order order = Order.fromMig8Staging(
                 "OR-20260521-001",
                 PARTNER_ID,
-                "Daehan Trading",
-                "Manager Kim",
+                "삼한상사",
+                "김매니저",
                 LocalDate.of(2026, 6, 30),
-                "month-end",
-                "urgent",
+                "월말결제",
+                "긴급",
                 OrderProgressStatus.IN_PROGRESS,
                 "mig8:order:1");
-        order.addLine(1, PRODUCT_ID, "Delivery Item", new BigDecimal("2.000"),
+        order.addLine(1, PRODUCT_ID, "항공 운송", new BigDecimal("2.000"),
                 new BigDecimal("50000.00"), new BigDecimal("100000.00"),
                 new BigDecimal("10000.00"), LocalDate.of(2026, 6, 1));
         when(orderRepository.findByOrderNo("OR-20260521-001")).thenReturn(Optional.of(order));
@@ -68,7 +68,7 @@ class AccountingAdminQueryServiceTest {
 
         assertThat(response.orderNo()).isEqualTo("OR-20260521-001");
         assertThat(response.lines()).hasSize(1);
-        assertThat(response.lines().get(0).itemName()).isEqualTo("Delivery Item");
+        assertThat(response.lines().get(0).itemName()).isEqualTo("항공 운송");
 
         String json = objectMapper.writeValueAsString(response);
         assertThat(json).contains("orderNo", "partnerName", "managerName", "progressStatus", "lines");
@@ -87,7 +87,7 @@ class AccountingAdminQueryServiceTest {
         service.listSalesLedger(
                 LocalDate.of(2026, 5, 1),
                 LocalDate.of(2026, 5, 31),
-                "Daehan",
+                "삼한",
                 "TRANSFORMED",
                 PageRequest.of(0, 20));
 

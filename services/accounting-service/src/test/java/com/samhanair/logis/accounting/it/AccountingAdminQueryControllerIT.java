@@ -31,7 +31,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-/** MIG-14 admin query controller dynamic VIEW PageCode contract. */
+/** MIG-14 admin 조회 컨트롤러의 정적 role + 동적 VIEW PageCode 시행 계약. */
 @SpringBootTest(classes = AccountingServiceApplication.class)
 @AutoConfigureMockMvc
 class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
@@ -63,7 +63,7 @@ class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
 
     @ParameterizedTest(name = "{0} -> {1}")
     @MethodSource("mig14ViewEndpoints")
-    @DisplayName("MIG-14 canView=false blocks each remaining query PageCode with 403")
+    @DisplayName("MIG-14 canView=false이면 PageCode별 조회를 403으로 차단한다")
     void canViewFalseDenied(String url, String pageCode) throws Exception {
         when(dynamicPermissionClient.check(
                         org.mockito.ArgumentMatchers.any(UUID.class),
