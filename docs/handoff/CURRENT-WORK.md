@@ -28,7 +28,11 @@
 - 가드: page-code 제거=permissions/matrix/mock seed 동기화+전체 mock suite([[fe-guard-removal-contract-tests]]·[[defect-family-sweep-fix]]), BE/마이그=fresh Postgres probe+Linux CI IT.
 
 ### 다음 진행 (개발책임자)
-작업1(presence) **완료 머지**. → **작업2(eCount 편입) 슬1부터 연속 슬라이스** 진행. 무중단 원칙(상단 🔴) 준수: 슬라이스별 commit/push, Codex MCP 단절 시 `codex exec` 폴백, Docker 실QA 캡처.
+작업1(presence) **완료 머지**.
+- ✅ **슬1(잔액 스냅샷 silo 폐기) 머지 #518**(`0d09e936`): page-code `ecount.mig14.aging-snapshot` 완전 제거(FE 메뉴/route/page/api/mock + BE GET·refresh 엔드포인트·DTO + auth PageCode + **V59 권한모델 5테이블** role_page_permissions hard delete + templates/account/group/override soft delete) → 네이티브 `/accounting/reports/partner-aging` 대체. MV+Mig9AgingSnapshotRefreshService lineage 유지. 듀얼리뷰(Opus 5+Codex 5 수렴 V59불완전 적발→5테이블 fix) + V59 실DB probe + Docker 실QA 3컷.
+- ✅ **시드 정합 머지 #519**(`0501ac99`, 개발책임자 "거래처 미조회" 지적 해소): partner-service `PartnerSeeder` 가 forceId→@UuidGenerator 랜덤 v4 덮임으로 accounting/slip deterministic v3 와 cross-service join 깨짐([[seed-product-uuid-catalog]] 동일 버그) → native INSERT 로 deterministic UUID 박제 + PartnerSeederIT(Testcontainers 회귀가드) + compose seed 플래그. 재시드 후 journal-110 매칭 0/43→40/43, partner-aging 실 거래처(P-2026-NNNN+실명) 표시. ※ **기존 dev 스택은 P-2026 삭제 후 partner-service 재기동 1회 필요**(이 PC 는 완료).
+- 🪤 **교훈**: ①네이티브 대체화면의 UUID 노출/거래처 미조회는 슬1 회귀 아닌 선재 데이터-배선 갭이었음(silo 도 동일) — 라이브 실QA 가 단독 적발. ②deterministic-UUID 시더는 forceId 가 @UuidGenerator 에 덮이므로 **native INSERT 필수**(제품·거래처 동일). ③accounting JournalSeeder.deterministicId charset 미명시(P3, ASCII-safe moot) = 후속 cleanup 후보.
+- → **다음 = 슬2(현금 지출/입금 silo 폐기 → 분개장/입금매칭)**. cash_*/silo 화면·route·page-code(`ecount.mig14.cash-list`) 제거, cash 테이블 lineage 유지(DROP 금지). D2=통합표시이므로 분개장 변경 없음. 이후 슬4(원장대조/운영대시보드 격리)·슬5(토글그룹 해체)·슬6(주문 이식 대형). 무중단 원칙(상단 🔴) 준수.
 
 ---
 
