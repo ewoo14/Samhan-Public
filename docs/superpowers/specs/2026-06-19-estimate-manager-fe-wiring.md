@@ -4,7 +4,7 @@
 
 ## 변경 (Codex — `clients/web/estimate-app/views/index.ejs`)
 1. **담당자 입력 필드**: 주문정보 폼(거래처 custSearch ~1618-1725 인근)에 `id="managerSearch"` input + 자동완성 드롭다운 div(거래처 `custSuggestions` 패턴). 위치=요청사항 전.
-2. **`initManagerSearch()`**: `initCustomerSearch()`(~15823-15953) 미러. `google.script.run.getManagersForInput()`(RPC, 서버 라우트 불요) → `MANAGERS` 글로벌 배열 → input 이벤트 필터 → 드롭다운 렌더 → 선택 시 value+dataset.code 저장. 부트스트랩 `initCustomerSearch()` 호출부(~19331)에 `initManagerSearch()` 추가.
+2. **`initManagerSearch()`**: `initCustomerSearch()`(~15823-15953) 미러. **`getAllManagers()`**(신규 RPC, MGR_V1 전체 캐시 반환 — `getManagersForInput('')`은 빈쿼리→[] 계약이라 전체적재 불가, 거래처 `getCustomerDataAsync` 진의 적용) → `MANAGERS` 글로벌 배열 → input 이벤트 클라 필터 → 드롭다운 렌더 → 선택 시 value+dataset.code 저장. 부트스트랩 `initCustomerSearch()` 호출부에 `initManagerSearch()` 추가. ※ 선택 담당자 → `sendOrderFromUi` EMP_CD(order.managerCode 우선·미선택 로그인 fallback).
 3. **제출 수집**: `sendOrderFromUi()`(~14700) 필드 수집에 `managerSearch` value(+code) 추가 → 주문/전표 payload 의 manager 필드에 포함. 스냅샷(`saveQuoteSnapshot`) work-state 에 자연 포함되면 유지(별도 스키마 변경 불요).
 4. 담당자 = **선택 입력**(필수 아님, 거래처처럼 optional). 출고전표 `${d.manager}` 가 입력값 반영되는지 확인.
 
