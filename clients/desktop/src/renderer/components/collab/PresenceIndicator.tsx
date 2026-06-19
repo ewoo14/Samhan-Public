@@ -3,18 +3,18 @@ import type { PresenceColor, PresenceEntry } from '../../realtime/createPresence
 
 const COLOR_HEX: Record<PresenceColor, string> = {
   BLUE: '#2563EB',
-  GREEN: '#16A34A',
-  AMBER: '#D97706',
+  GREEN: '#15803D',
+  AMBER: '#B45309',
   ROSE: '#E11D48',
   VIOLET: '#7C3AED',
-  CYAN: '#0891B2',
-  LIME: '#65A30D',
+  CYAN: '#0E7490',
+  LIME: '#4D7C0F',
   PINK: '#DB2777',
 }
 
 function initialOf(displayName: string): string {
   const trimmed = displayName.trim()
-  return trimmed.length > 0 ? trimmed.slice(0, 1) : '?'
+  return trimmed.length > 0 ? [...trimmed][0] ?? '?' : '?'
 }
 
 function isPresenceEntry(value: unknown): value is PresenceEntry {
@@ -33,12 +33,14 @@ export function PresenceIndicator({ entries }: PresenceIndicatorProps) {
   const list = Array.isArray(entries) ? entries.filter(isPresenceEntry) : []
   const deduped = Array.from(
     list.reduce((acc, entry) => {
-      if (!acc.has(entry.displayName)) acc.set(entry.displayName, entry)
+      const key = `${entry.displayName}|${entry.color}`
+      if (!acc.has(key)) acc.set(key, entry)
       return acc
     }, new Map<string, PresenceEntry>()).values(),
   )
   const visible = deduped.slice(0, 3)
   const hiddenCount = Math.max(deduped.length - visible.length, 0)
+  const hiddenNames = deduped.slice(3).map((entry) => entry.displayName).join(', ')
   if (deduped.length === 0) return null
 
   return (
@@ -75,7 +77,9 @@ export function PresenceIndicator({ entries }: PresenceIndicatorProps) {
         ))}
       </div>
       {hiddenCount > 0 ? (
-        <Badge variant="neutral">+{hiddenCount}</Badge>
+        <Badge variant="neutral" title={hiddenNames} aria-label={hiddenNames}>
+          +{hiddenCount}
+        </Badge>
       ) : null}
     </div>
   )
