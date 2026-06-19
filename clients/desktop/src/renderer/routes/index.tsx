@@ -257,7 +257,6 @@ import { CashDisbursementListPage } from './accounting/admin/CashDisbursementLis
 import { CashReceiptListPage } from './accounting/admin/CashReceiptListPage'
 import { OrderListPage } from './accounting/admin/OrderListPage'
 import { OrderDetailPage } from './accounting/admin/OrderDetailPage'
-import { PartnerAgingSnapshotPage } from './accounting/admin/PartnerAgingSnapshotPage'
 import { SalesLedgerPage } from './accounting/admin/SalesLedgerPage'
 import { PurchaseLedgerPage } from './accounting/admin/PurchaseLedgerPage'
 import { MigOpsDashboardPage } from './accounting/admin/MigOpsDashboardPage'
@@ -1068,14 +1067,6 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="ecount.mig14.order-list" action="view">
             <OrderDetailPage />
-          </PermissionGuard>
-        ),
-      },
-      {
-        path: '/accounting/admin/aging-snapshot',
-        element: (
-          <PermissionGuard pageCode="ecount.mig14.aging-snapshot" action="view">
-            <PartnerAgingSnapshotPage />
           </PermissionGuard>
         ),
       },

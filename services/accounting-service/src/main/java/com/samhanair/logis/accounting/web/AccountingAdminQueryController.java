@@ -9,7 +9,6 @@ import com.samhanair.logis.accounting.web.dto.CashReceiptResponse;
 import com.samhanair.logis.accounting.web.dto.LedgerStagingResponse;
 import com.samhanair.logis.accounting.web.dto.OrderDetailResponse;
 import com.samhanair.logis.accounting.web.dto.OrderSummaryResponse;
-import com.samhanair.logis.accounting.web.dto.PartnerAgingSnapshotResponse;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -20,7 +19,6 @@ import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -32,7 +30,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** MIG-14 admin UI 4 화면용 회계 읽기 endpoint. */
+/** MIG-14 admin UI 3 화면용 회계 읽기 endpoint. */
 @Slf4j
 @RestController
 @RequestMapping("/accounting")
@@ -42,7 +40,6 @@ public class AccountingAdminQueryController {
 
     private static final String CASH_PAGE_CODE = "ecount.mig14.cash-list";
     private static final String ORDER_PAGE_CODE = "ecount.mig14.order-list";
-    private static final String AGING_PAGE_CODE = "ecount.mig14.aging-snapshot";
     private static final String LEDGER_PAGE_CODE = "ecount.mig14.ledger";
     private static final String ROLE_HEADER = "X-User-Role";
 
@@ -105,19 +102,6 @@ public class AccountingAdminQueryController {
         return ApiResponse.ok(service.getOrderDetail(orderNo));
     }
 
-    @GetMapping("/aging-snapshot")
-    @RequirePermission(page = AGING_PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
-    @Operation(summary = "MIG-14 거래처 aging snapshot 조회")
-    public ApiResponse<Page<PartnerAgingSnapshotResponse>> agingSnapshot(
-            @RequestParam(required = false) String partnerName,
-            @RequestParam(required = false) String sort,
-            @PageableDefault(size = AccountingAdminQueryService.AGING_DEFAULT_PAGE_SIZE)
-            Pageable pageable,
-            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
-        checkViewPermission(AGING_PAGE_CODE, roleHeader);
-        return ApiResponse.ok(service.listAgingSnapshot(boundAgingPageable(pageable), partnerName, sort));
-    }
-
     @GetMapping("/ledger/sales")
     @RequirePermission(page = LEDGER_PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     @Operation(summary = "MIG-14 이카운트 매출장 staging 조회")
@@ -160,12 +144,4 @@ public class AccountingAdminQueryController {
         }
     }
 
-    private static Pageable boundAgingPageable(Pageable pageable) {
-        int page = pageable == null ? 0 : pageable.getPageNumber();
-        int requestedSize = pageable == null
-                ? AccountingAdminQueryService.AGING_DEFAULT_PAGE_SIZE
-                : pageable.getPageSize();
-        int size = Math.min(Math.max(requestedSize, 1), AccountingAdminQueryService.AGING_MAX_PAGE_SIZE);
-        return PageRequest.of(page, size);
-    }
 }

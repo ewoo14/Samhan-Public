@@ -78,31 +78,6 @@ export interface OrderDetailResponse extends OrderSummaryRow {
   lines: OrderLineRow[]
 }
 
-export interface AgingSnapshotOptions {
-  page?: number
-  size?: number
-  partnerName?: string
-  sort?: string
-}
-
-export interface PartnerAgingSnapshotRow {
-  partnerCode?: string | null
-  partnerName: string
-  totalReceivable: string
-  totalPayable: string
-  totalReceipt: string
-  totalDisbursement: string
-  netReceivable: string
-  netPayable: string
-  netCash: string
-  lastRefreshedAt?: string | null
-}
-
-export interface AgingSnapshotRefreshResult {
-  refreshedAt: string
-  status: string
-}
-
 export interface LedgerListOptions {
   page?: number
   size?: number
@@ -138,25 +113,6 @@ function compactParams(
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== ''),
   ) as Record<string, string | number>
-}
-
-function pageFromArray<T>(
-  rows: T[],
-  page: number,
-  size: number,
-): PageResponse<T> {
-  const start = page * size
-  const content = rows.slice(start, start + size)
-  const totalPages = Math.ceil(rows.length / size) || 1
-  return {
-    content,
-    totalElements: rows.length,
-    totalPages,
-    number: page,
-    size,
-    first: page <= 0,
-    last: page >= totalPages - 1,
-  }
 }
 
 export async function listCashDisbursements(
@@ -224,36 +180,6 @@ export async function getAccountingOrder(
     `/accounting/orders/${encodeURIComponent(orderNo)}`,
   )
   return res.data.data
-}
-
-export async function listPartnerAgingSnapshots(
-  options: AgingSnapshotOptions = {},
-): Promise<PageResponse<PartnerAgingSnapshotRow>> {
-  const page = options.page ?? 0
-  const size = options.size ?? 50
-  const res = await apiClient.get<ApiEnvelope<PartnerAgingSnapshotRow[] | PageResponse<PartnerAgingSnapshotRow>>>(
-    '/accounting/aging-snapshot',
-    {
-      params: compactParams({
-        page,
-        size,
-        partnerName: options.partnerName,
-        sort: options.sort,
-      }),
-    },
-  )
-  if (Array.isArray(res.data.data)) {
-    return pageFromArray(res.data.data, page, size)
-  }
-  return res.data.data
-}
-
-export async function refreshPartnerAgingSnapshot(): Promise<AgingSnapshotRefreshResult> {
-  const res = await apiClient.post<AgingSnapshotRefreshResult>(
-    '/admin/accounting/aging-snapshot/refresh',
-    {},
-  )
-  return res.data
 }
 
 export async function listSalesLedgers(
