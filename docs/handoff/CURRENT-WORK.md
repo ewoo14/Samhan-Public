@@ -4,7 +4,7 @@
 
 ---
 
-## 🟢 현재 상태 (2026-06-19 최신) — ✅ 수식빌더(5슬)+기초품목↔견적품목(1번)+카탈로그DB(3번)+품목고도화/재고세트제외 완료 → 슬4(변동DC 단가) 다음
+## 🟢 현재 상태 (2026-06-19 최신) — ✅ 수식빌더+기초품목↔견적품목+카탈로그DB+품목고도화/재고세트제외+슬4(변동DC=moot) 완료 → 다음 우선순위 대기
 
 > **✅ 수식 빌더 에픽 완료**(2026-06-19 개발책임자 선언): G1(#502)·Phase1(#503)·F1.5(#504)·F3(#505)·F4(#506) 5슬라이스로 '하드코딩 수식→설정 기반 계산' 핵심 달성. **F5 미구현** — 정찰이 F5 주 목표(estimate-app 계산 전환)가 Phase1/F3 기달성을 확인(잔여 classifyRemoteType variant·반올림=저가치).
 >
@@ -13,7 +13,8 @@
 > - ✅ **1번(기초품목↔견적품목) 핵심 완료**: 슬1#496·슬2#497·슬3-1(FORMULA read parity+변동DC토글 `d508a020`, DB useK2 313/107 검증)·슬3-2=G1#502. 잔여 슬4(변동DC 실 단가 적용)=견적 금액 가격 정책 gate.
 > - ✅ **3번(카탈로그/거래처 DB) 완료**: G2 거래처/담당자 DB(#491, 7034건)·CATALOG_SOURCE=db 기본 전환(#507 `39b0f252`, 프로덕션 sheet override·Phase 11 cutover). estimate-app 시트 의존 0(백엔드 도달 환경).
 > - ✅ **품목 고도화(개발책임자 '2번') 핵심 완료**: 등록폼(종류 단일/세트·상품/비상품·사양·가격 #493)·노출/정렬(#494/#495)·**재고게이트 세트(BUNDLE) 제외=단일+구성품만 재고**(#508 `970110a5`, 개발책임자 모델 "세트는 재고 무관"; 상업멀티 72+싱글세트 271 세트 productType 기준 제외, InboundInspection 우회 포함 생성게이트 5경로). AsyncAutocomplete 방향키 기구현. [[project_product_master_registration]]
-> - ▶️ **다음(개발책임자 '2,3번' 큐) = 슬4(변동DC 실 단가 적용)**: 변동DC(useK2) 플래그→견적 단가 계산 반영 = **견적 금액 behavior-change + 가격 적용 규칙 정책 gate**(어떻게 할인 — 개발책임자 확인 필요). 그 외 잔여: 외부연동([[project_external_integration_research]] 전자세금계산서 ASP·법인계좌, 벤더 결정).
+> - ✅ **슬4(변동DC 실 단가 적용) = moot**(2026-06-19 실측+개발책임자 확정): estimate-app 현행 이미 정확 — 변동DC **체크→할인**(출고가×(1−DC율))·**미체크→기초납품가 그대로**(`index.ejs:4256-4264` homeUnitPrice/commUnitPrice, GAS 동일, 이전 실QA 스크린샷 일치). 🪤 스펙 `2026-06-17-formula-builder-epic.md:30`("변동DC=기초납품가 그대로")가 토글 의미 **반대 기술**→정찰 'fix 필요' 오판, 실 코드+의도+QA 모두 "체크→할인"=현행 정확, 구현 불요.
+> - ▶️ **개발책임자 '2,3번' 큐 소진**(2번 품목고도화/재고세트제외 #508 + 슬4 moot) → 다음 우선순위 지정 대기: 외부연동([[project_external_integration_research]] 전자세금계산서 ASP·법인계좌, 벤더 결정)·기타.
 > - ✅ (이력) **F3 머지**(#505 `6e3b786d`): homeDefaults/singleDefaults→estimate_configs(V5) DB 승격 + 설정 UI + estimate-app 시트 의존 0. parity 완전 보존(라이브 Row2 검증).
 >
 > - ✅ **F1.5 머지**(PR #504, `ecdb78b8`): Product `panel_type`/`remote_type`(V21 nullable+partial index) + `ProductAttributeClassifier`(panelType={공청[공기청정|공청 전부]/블랙/승강/360/일반/null}=F4 `pickPanelRow` 옵션 매칭 정합·classifyHome_ catM 아님; remoteType={유선/컬러유선/무선/null}) + `ProductSheetSyncService` 통합(productCategory guard 내=교차탭 stomp 방지). 🚨 **parity-safe**(컬럼 write-only, 견적 출력 무변경, F4가 소비). dual-model: Opus(P1 taxonomy F4-misalign)→Codex fix→**Codex 교차(P1 cross-tab stomp 단독 적발)**→stomp fix→Opus 수렴 blocking0(실 테스트 실행). 🪤 라이브 분포=dev product-service SA키 부재로 미populate(Testcontainers IT 메커니즘 실증·정직 보고). P2(remoteType variant 미반영=name만)·실 카탈로그 분포·컬러리모컨 누수=**F4 소비 시 검증**.
