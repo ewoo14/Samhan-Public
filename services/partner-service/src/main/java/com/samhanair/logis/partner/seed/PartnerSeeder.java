@@ -35,9 +35,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>Idempotency</b>: {@link PartnerRepository#existsByPartnerCode(String)} 로 partnerCode 중복 확인 후
  * 이미 존재하면 skip. 부분 시드 (예: 30/50) 후 재실행 시 누락 분만 생성.
  *
- * <p><b>도메인 메서드만 사용</b>: {@link Partner#register} factory 로 생성 → {@code updateBusinessProfile} /
- * {@code updateContactChannels} / {@code updateAddresses} / {@code updateCreditPolicy} / {@code suspend} 등
- * 의 도메인 메서드로만 후속 필드 채움. reflection 으로 status 직접 set 금지 가드 준수.
+ * <p><b>도메인 구성 + native INSERT</b>: 필드 값은 {@link Partner#register} factory 와
+ * {@code updateBusinessProfile} / {@code updateContactChannels} / {@code updateAddresses} /
+ * {@code updateCreditPolicy} / {@code suspend} 등 도메인 메서드로 구성한다. 영속화는 deterministic
+ * UUID 명시를 위해 {@link NamedParameterJdbcTemplate} native INSERT 를 사용해 Hibernate
+ * {@code @UuidGenerator} random v4 덮어쓰기를 회피한다.
  *
  * <p>50개 회사명은 한국 가상 HVAC 협력사 큐레이션 (실제 회사명 상표 침해 금지 — "(주)서울에어컨" 등 가공).
  * SUSPENDED 5건 (seq % 10 == 0).
