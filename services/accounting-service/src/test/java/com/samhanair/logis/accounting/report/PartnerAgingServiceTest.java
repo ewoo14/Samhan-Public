@@ -167,7 +167,7 @@ class PartnerAgingServiceTest {
     }
 
     @Test
-    @DisplayName("SP-08-FU2 P2-3 회귀 — findByPartnerId empty 반환 시 UUID fallback + 미조회 표시")
+    @DisplayName("UUID 비노출 회귀 — findByPartnerId empty 반환 시 미등록 + 미조회 표시")
     void findReceivable_partnerIdLookup_emptyFallback() {
         // PARTNER_B 는 setUp 에서 findByPartnerId → empty stub 이미 설정됨. 잔액은 0 이므로 제외됨.
         // 잔액 있는 별도 거래처 C 로 검증
@@ -185,8 +185,10 @@ class PartnerAgingServiceTest {
 
         assertThat(resp.lines()).hasSize(1);
         PartnerAgingLine lineC = resp.lines().get(0);
-        // empty fallback: partnerCode = partnerId.toString(), partnerName = "(미조회)"
-        assertThat(lineC.partnerCode()).isEqualTo(partnerC.toString());
+        // empty fallback: UUID 를 화면 응답에 노출하지 않는다.
+        assertThat(lineC.partnerId()).isNull();
+        assertThat(lineC.partnerCode()).isEqualTo("미등록");
+        assertThat(lineC.partnerCode()).isNotEqualTo(partnerC.toString());
         assertThat(lineC.partnerName()).isEqualTo("(미조회)");
     }
 

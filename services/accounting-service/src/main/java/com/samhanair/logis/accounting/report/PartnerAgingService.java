@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>partnerCode / partnerName 조회: PartnerLookupClient.findByPartnerId 호출.
  * 현재 partner-service 가 UUID 기반 internal lookup 을 제공하지 않으므로
- * 실패 시 UUID 문자열 / "(미조회)" 를 fallback 으로 사용한다.
+ * 실패 시 "미등록" / "(미조회)" 를 fallback 으로 사용한다.
  * partner-service 에 UUID 기반 endpoint 추가 시 자동 반영.
  */
 @Service
@@ -56,6 +56,8 @@ public class PartnerAgingService {
     /** partnerId null 분개 표시용 식별자. */
     private static final String ETC_PARTNER_CODE = "ETC";
     private static final String ETC_PARTNER_NAME = "기타";
+    private static final String UNRESOLVED_PARTNER_CODE = "미등록";
+    private static final String UNRESOLVED_PARTNER_NAME = "(미조회)";
 
     private final JournalLineRepository journalLineRepository;
     private final PartnerLookupClient partnerLookupClient;
@@ -113,9 +115,11 @@ public class PartnerAgingService {
             // partnerCode / partnerName 조회 (fail-soft)
             Optional<PartnerSummary> summary = partnerLookupClient.findByPartnerId(partnerId);
             String partnerCode = summary.map(PartnerSummary::partnerCode)
-                    .orElse(partnerId.toString());
+                    .filter(code -> code != null && !code.isBlank())
+                    .orElse(UNRESOLVED_PARTNER_CODE);
             String partnerName = summary.map(PartnerSummary::name)
-                    .orElse("(미조회)");
+                    .filter(name -> name != null && !name.isBlank())
+                    .orElse(UNRESOLVED_PARTNER_NAME);
 
             // oldestUnpaidDate 조회
             Optional<LocalDate> oldest = journalLineRepository
@@ -126,7 +130,7 @@ public class PartnerAgingService {
                     : 0;
 
             lines.add(new PartnerAgingLine(
-                    partnerId.toString(),
+                    null,
                     partnerCode,
                     partnerName,
                     balance,
