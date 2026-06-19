@@ -33,8 +33,12 @@ describe('PresenceIndicator', () => {
     )
 
     expect(html).toContain('현재 보고 있음 3명')
+    expect(html).toContain('현재 보는 중:')
+    expect(html).toContain('>홍길동</span>')
+    expect(html).toContain('>김관리</span>')
     expect(html).toContain('홍길동 현재 보고 있음')
     expect(html).toContain('김관리 현재 보고 있음')
+    expect(html.match(/title="홍길동 현재 보고 있음"/g)).toHaveLength(2)
   })
 
   test('접힌 시청자 명단은 +N Badge title 과 aria-label 에 displayName 만 노출한다', () => {
@@ -55,14 +59,15 @@ describe('PresenceIndicator', () => {
     expect(html).toContain('+2')
   })
 
-  test('이모지 표시명 initial 은 코드포인트 단위로 렌더한다', () => {
+  test('칩은 displayName 전체 텍스트와 기존 aria-label 계약을 함께 렌더한다', () => {
     const html = renderToStaticMarkup(
       createElement(PresenceIndicator, {
-        entries: [{ sessionId: 's1', displayName: '😀사용자', color: 'BLUE' }],
+        entries: [{ sessionId: 's1', displayName: '[DEV-SEED] 오병승', color: 'BLUE' }],
       }),
     )
 
-    expect(html).toContain('>😀</span>')
+    expect(html).toContain('[DEV-SEED] 오병승')
+    expect(html).toContain('aria-label="[DEV-SEED] 오병승 현재 보고 있음"')
   })
 
   test('PresenceColor hex 는 BE enum 대비 보정된 AA 색상을 사용한다', () => {
@@ -76,6 +81,8 @@ describe('PresenceIndicator', () => {
       createElement(PresenceIndicator, { entries }),
     )
 
+    expect(html).toContain('width:8px')
+    expect(html).toContain('height:8px')
     expect(html).toContain('background:#15803D')
     expect(html).toContain('background:#B45309')
     expect(html).toContain('background:#0E7490')

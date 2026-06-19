@@ -12,11 +12,6 @@ const COLOR_HEX: Record<PresenceColor, string> = {
   PINK: '#DB2777',
 }
 
-function initialOf(displayName: string): string {
-  const trimmed = displayName.trim()
-  return trimmed.length > 0 ? [...trimmed][0] ?? '?' : '?'
-}
-
 function isPresenceEntry(value: unknown): value is PresenceEntry {
   return typeof value === 'object'
     && value !== null
@@ -49,33 +44,57 @@ export function PresenceIndicator({ entries }: PresenceIndicatorProps) {
       aria-label={`현재 보고 있음 ${deduped.length}명`}
       style={{ display: 'flex', alignItems: 'center', gap: 8 }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', minHeight: 28 }}>
-        {visible.map((entry, index) => (
+      <span
+        style={{
+          color: 'var(--color-neutral-500, #64748B)',
+          fontSize: 12,
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        현재 보는 중:
+      </span>
+      {visible.map((entry) => (
+        <span
+          key={entry.sessionId}
+          title={`${entry.displayName} 현재 보고 있음`}
+          aria-label={`${entry.displayName} 현재 보고 있음`}
+          style={{
+            borderRadius: 999,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '2px 8px',
+            border: '1px solid var(--color-neutral-200, #E2E8F0)',
+            background: 'var(--color-neutral-50, #F8FAFC)',
+            color: 'var(--color-neutral-900, #0F172A)',
+            fontSize: 12,
+            lineHeight: 1.5,
+            maxWidth: 200,
+            boxSizing: 'border-box',
+          }}
+        >
           <span
-            key={entry.sessionId}
-            title={`${entry.displayName} 현재 보고 있음`}
-            aria-label={`${entry.displayName} 현재 보고 있음`}
+            aria-hidden="true"
             style={{
-              width: 28,
-              height: 28,
+              width: 8,
+              height: 8,
               borderRadius: '50%',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: index === 0 ? 0 : -6,
-              border: '2px solid var(--color-surface, #FFFFFF)',
               background: COLOR_HEX[entry.color] ?? '#64748B',
-              color: '#FFFFFF',
-              fontSize: 12,
-              fontWeight: 700,
-              lineHeight: 1,
-              boxSizing: 'border-box',
+              flex: '0 0 auto',
+            }}
+          />
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            {initialOf(entry.displayName)}
+            {entry.displayName}
           </span>
-        ))}
-      </div>
+        </span>
+      ))}
       {hiddenCount > 0 ? (
         <Badge variant="neutral" title={hiddenNames} aria-label={hiddenNames}>
           +{hiddenCount}
