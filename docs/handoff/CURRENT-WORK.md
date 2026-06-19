@@ -36,7 +36,9 @@
 - ✅ **슬4(회계 관리자 그룹 해체) 머지 #521**(`e82c2858`, 슬5 흡수): 개발책임자 3정정(신규섹션 철회→기존 회계 메뉴 평면 편입+silo 그룹 삭제 / 주문서=판매 도메인 / "주문서 관리 (이관)" 라벨). 원장대조·운영·수정요청=회계 flat, 주문서=판매 flat. route/page-code/RBAC 무변경. 듀얼리뷰("(이관)" 라벨 계약 박제).
 - ✅ **슬6(6a+6b 주문 이식 메커니즘) 머지 #522**(`483740e0`): accounting `/internal/accounting/mig8-orders` export(6a) + partner-order-service `Mig8OrderImportService`(6b, 멱등 native INSERT, 상태매핑 COMPLETED→CONFIRMED 등, partner/product 룩업). **D1 정정: 대상=partner-order-service**(spec "slip-service" 오기). 🪤 정찰이 cross-DB·dev 0행·구조갭 드러냄→개발책임자 B경로(IT 실 Postgres 검증+cutover 실데이터). **듀얼리뷰가 mocked-IT false-green 뒤 4 P1**(보안 fail-open 위조 X-User-Id export·categoryKey 계약·price_vat·converted) **단독 적발→fix+보안 라이브 3-케이스 검증(401/401/200)**.
 - → **🎉 eCount 네이티브 편입 에픽 pre-cutover 스코프 완결.** 잔여=Phase11 cutover 전용: 6c(주문 silo `ecount.mig14.order-list` 폐기, import job 전량 검증 후)·D3(cash_*/orders/MV 물리 DROP)·D4(원장대조/운영대시보드 최종). 슬3=폐기(D2).
-- → **다음 = 개발책임자 지정 다음 우선작업**(품목/견적 에픽 잔여·외부연동[전자세금계산서 ASP·법인계좌]·G2 등). 무중단 원칙(상단 🔴) 준수.
+- ✅ **cutover 마무리 runbook 작성**(`docs/migration/2026-06-20-ecount-native-fold-cutover-runbook.md`): Step A 주문 이식 실행(`POST /admin/partner-orders/mig8-import`)+검증게이트 → B 6c silo 폐기(파일/변경 명세) → C D3 물리 DROP → D D4. 메인 ECOUNT-CUTOVER-GUIDE 교차참조. 6c/D3 코드는 bit-rot 회피로 cutover 시점 작성(runbook 에 정확 명세).
+- ✅ **품목/견적 영역 완결 확인**: item-separation 슬1/2/3·수식빌더·품목고도화 전부 머지. **#19 멀티 동적가격=moot**(정찰: 멀티는 이미 세트 base+구성품 별도라인 청구 index.ejs:4653/4677, 옵션은 부품모델 변경으로 동적 반영 → 구성품 합산 시 이중계상. 싱글[합산]vs멀티[itemized]=의도된 청구모델 차이).
+- → **다음 = 개발책임자 지정 다음 우선작업**(외부연동[전자세금계산서 ASP·법인계좌] 리서치/spec·cutover Step별 실행·소규모 품질 sweep 등). 무중단 원칙(상단 🔴) 준수.
 
 ---
 
