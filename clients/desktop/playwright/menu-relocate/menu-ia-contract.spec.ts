@@ -129,6 +129,17 @@ function assertSidebarLink(
   expect(linkBlock, `${testId}: 라벨 "${label}" 단언`).toContain(label)
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function assertSidebarLinkExactLabel(block: string, testId: string, label: string): void {
+  const linkBlock = sidebarLinkBlock(block, testId)
+  expect(linkBlock, `${testId}: 라벨 "${label}" 정확 단언`).toMatch(
+    new RegExp(`>\\s*${escapeRegExp(label)}\\s*</SidebarLink>`),
+  )
+}
+
 function compactLabel(label: string): string {
   return label.replace(/\s+/g, '')
 }
@@ -267,7 +278,11 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
   test('이동 항목: 각 카테고리 블록 안에서 route+testid+label 동일 블록 hard 보존', () => {
     const salesBlock = categoryBlock(appLayout, '판매')
     assertSidebarLink(salesBlock, 'sidebar-sales', '/sales', '판매관리')
-    assertSidebarLink(salesBlock, 'sidebar-accounting-admin-orders', '/accounting/admin/orders', '주문서 관리')
+    assertSidebarLink(salesBlock, 'sidebar-sales-partner-orders', '/sales/partner-orders', '주문서 관리')
+    assertSidebarLink(salesBlock, 'sidebar-accounting-admin-orders', '/accounting/admin/orders', '주문서 관리 (이관)')
+    // 슬6에서 이관 링크 제거 시 아래 양방향 라벨 잠금도 함께 정리한다.
+    assertSidebarLinkExactLabel(salesBlock, 'sidebar-sales-partner-orders', '주문서 관리')
+    assertSidebarLinkExactLabel(salesBlock, 'sidebar-accounting-admin-orders', '주문서 관리 (이관)')
     assertSidebarLink(salesBlock, 'sidebar-products-catalog', '/products/catalog', '기초품목 관리')
     assertSidebarLink(
       salesBlock,

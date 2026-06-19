@@ -54,6 +54,7 @@ test('MASTER — 회계 관리자 그룹 해체: 원장대조·운영·수정요
   await expect(page.getByTestId('sidebar-accounting-admin-group-toggle'), '회계 관리자 그룹 토글(삭제됨)').toHaveCount(0)
   // 원장대조/운영/수정요청은 회계 flat 으로 가시
   await expect(page.getByTestId('sidebar-accounting-admin-sales-ledger'), '매출 원장 대조(회계 flat)').toBeVisible()
+  await expect(page.getByTestId('sidebar-accounting-admin-purchase-ledger'), '매입 원장 대조(회계 flat)').toBeVisible()
   await expect(page.getByTestId('sidebar-accounting-admin-migration-ops'), '운영 대시보드(회계 flat)').toBeVisible()
   await expect(page.getByTestId('sidebar-accounting-admin-edit-requests'), '회계 수정 요청(회계 flat)').toBeVisible()
   await page.getByTestId('sidebar-accounting-admin-edit-requests').scrollIntoViewIfNeeded()
@@ -68,6 +69,7 @@ test('MASTER — 주문서 관리(eCount 주문 silo)는 판매 카테고리 fla
   await page.waitForLoadState('networkidle')
   await openCategory(page, '판매')
   await expect(page.getByTestId('sidebar-accounting-admin-orders'), '주문서 관리(판매 flat)').toBeVisible()
+  await expect(page.getByTestId('sidebar-accounting-admin-orders'), '이관 주문서 라벨 구분').toContainText('주문서 관리 (이관)')
   await page.getByTestId('sidebar-accounting-admin-orders').scrollIntoViewIfNeeded()
   await page.waitForTimeout(300)
   await page.screenshot({ path: path.join(SCREENSHOTS_DIR, 'T2-master-orders-under-sales.png'), fullPage: false })
