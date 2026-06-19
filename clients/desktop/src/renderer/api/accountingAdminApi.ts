@@ -6,34 +6,6 @@
  */
 import { apiClient, type ApiEnvelope, type PageResponse } from './client'
 
-export type CashTransactionKind =
-  | 'EXPENSE_VOUCHER'
-  | 'MANUAL_DISBURSEMENT'
-  | 'DEPOSIT_REPORT'
-  | 'MANUAL_RECEIPT'
-  | string
-
-export interface CashTransactionListOptions {
-  page?: number
-  size?: number
-  partnerName?: string
-  slipNo?: string
-  kind?: string
-  from?: string
-  to?: string
-}
-
-export interface CashTransactionRow {
-  slipNo: string
-  transactionDate: string
-  partnerCode?: string | null
-  partnerName: string
-  kind: CashTransactionKind
-  amount: string
-  journalNo?: string | null
-  memo?: string | null
-}
-
 export type OrderProgressStatus =
   | 'COMPLETED'
   | 'IN_PROGRESS'
@@ -113,46 +85,6 @@ function compactParams(
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== ''),
   ) as Record<string, string | number>
-}
-
-export async function listCashDisbursements(
-  options: CashTransactionListOptions = {},
-): Promise<PageResponse<CashTransactionRow>> {
-  const res = await apiClient.get<ApiEnvelope<PageResponse<CashTransactionRow>>>(
-    '/accounting/cash-disbursements',
-    {
-      params: compactParams({
-        page: options.page ?? 0,
-        size: options.size ?? 50,
-        partnerName: options.partnerName,
-        slipNo: options.slipNo,
-        kind: options.kind,
-        from: options.from,
-        to: options.to,
-      }),
-    },
-  )
-  return res.data.data
-}
-
-export async function listCashReceipts(
-  options: CashTransactionListOptions = {},
-): Promise<PageResponse<CashTransactionRow>> {
-  const res = await apiClient.get<ApiEnvelope<PageResponse<CashTransactionRow>>>(
-    '/accounting/cash-receipts',
-    {
-      params: compactParams({
-        page: options.page ?? 0,
-        size: options.size ?? 50,
-        partnerName: options.partnerName,
-        slipNo: options.slipNo,
-        kind: options.kind,
-        from: options.from,
-        to: options.to,
-      }),
-    },
-  )
-  return res.data.data
 }
 
 export async function listAccountingOrders(

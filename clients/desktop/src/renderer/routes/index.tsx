@@ -253,8 +253,6 @@ import { PurchaseAccountingSlipPage } from './accounting/PurchaseAccountingSlipP
 import { PurchaseAccountingSlipFormPage } from './accounting/PurchaseAccountingSlipFormPage'
 import { TaxInvoiceBatchIssuePage } from './accounting/TaxInvoiceBatchIssuePage'
 import { TaxInvoiceInboundPage } from './accounting/TaxInvoiceInboundPage'
-import { CashDisbursementListPage } from './accounting/admin/CashDisbursementListPage'
-import { CashReceiptListPage } from './accounting/admin/CashReceiptListPage'
 import { OrderListPage } from './accounting/admin/OrderListPage'
 import { OrderDetailPage } from './accounting/admin/OrderDetailPage'
 import { SalesLedgerPage } from './accounting/admin/SalesLedgerPage'
@@ -1035,22 +1033,6 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.purchase-slip.list" action="edit">
             <PurchaseAccountingSlipFormPage />
-          </PermissionGuard>
-        ),
-      },
-      {
-        path: '/accounting/admin/cash-disbursements',
-        element: (
-          <PermissionGuard pageCode="ecount.mig14.cash-list" action="view">
-            <CashDisbursementListPage />
-          </PermissionGuard>
-        ),
-      },
-      {
-        path: '/accounting/admin/cash-receipts',
-        element: (
-          <PermissionGuard pageCode="ecount.mig14.cash-list" action="view">
-            <CashReceiptListPage />
           </PermissionGuard>
         ),
       },

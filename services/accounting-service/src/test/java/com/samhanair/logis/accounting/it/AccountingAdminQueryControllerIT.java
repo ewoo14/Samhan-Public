@@ -2,12 +2,9 @@ package com.samhanair.logis.accounting.it;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.samhanair.logis.accounting.AccountingServiceApplication;
@@ -18,14 +15,12 @@ import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.ProductClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.service.AccountingAdminQueryService;
-import com.samhanair.logis.accounting.web.dto.CashDisbursementResponse;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -33,12 +28,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-/** MIG-14 admin 조회 컨트롤러의 정적 role + 동적 VIEW PageCode 시행 계약. */
+/** MIG-14 admin query controller dynamic VIEW PageCode contract. */
 @SpringBootTest(classes = AccountingServiceApplication.class)
 @AutoConfigureMockMvc
 class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
@@ -66,42 +59,11 @@ class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
                         org.mockito.ArgumentMatchers.any(UUID.class), anyString(),
                         org.mockito.ArgumentMatchers.any(PermissionAction.class)))
                 .thenReturn(true);
-        lenient().when(adminQueryService.listCashDisbursements(
-                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(Pageable.class)))
-                .thenReturn(Page.<CashDisbursementResponse>empty());
-    }
-
-    @Test
-    @DisplayName("MIG-14 Cash 조회는 partnerName 필터를 서비스로 전달한다")
-    void cashListPassesPartnerNameFilterToService() throws Exception {
-        mockMvc.perform(withActor(get("/accounting/cash-disbursements")
-                        .param("partnerName", "삼한상사"), "MANAGER"))
-                .andExpect(status().isOk());
-
-        verify(adminQueryService).listCashDisbursements(
-                isNull(), isNull(), isNull(), isNull(), eq("삼한상사"),
-                org.mockito.ArgumentMatchers.any(Pageable.class));
-    }
-
-    @Test
-    @DisplayName("MIG-14 ACCOUNTANT는 정적 role을 통과하고 CASH_LIST VIEW 권한으로 조회한다")
-    void accountantCanViewCashList() throws Exception {
-        when(dynamicPermissionClient.check(
-                        org.mockito.ArgumentMatchers.any(UUID.class),
-                        eq("ecount.mig14.cash-list"), eq(PermissionAction.VIEW)))
-                .thenReturn(true);
-
-        mockMvc.perform(withActor(get("/accounting/cash-disbursements"), "ACCOUNTANT"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
     }
 
     @ParameterizedTest(name = "{0} -> {1}")
     @MethodSource("mig14ViewEndpoints")
-    @DisplayName("MIG-14 canView=false이면 PageCode별 조회를 403으로 차단한다")
+    @DisplayName("MIG-14 canView=false blocks each remaining query PageCode with 403")
     void canViewFalseDenied(String url, String pageCode) throws Exception {
         when(dynamicPermissionClient.check(
                         org.mockito.ArgumentMatchers.any(UUID.class),
@@ -113,8 +75,6 @@ class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
 
     private static Stream<Arguments> mig14ViewEndpoints() {
         return Stream.of(
-                Arguments.of("/accounting/cash-disbursements", "ecount.mig14.cash-list"),
-                Arguments.of("/accounting/cash-receipts", "ecount.mig14.cash-list"),
                 Arguments.of("/accounting/orders", "ecount.mig14.order-list"),
                 Arguments.of("/accounting/orders/ORD-001", "ecount.mig14.order-list"),
                 Arguments.of("/accounting/ledger/sales", "ecount.mig14.ledger"),

@@ -80,7 +80,6 @@ const SCREENS = [
   ['acc-deposit-match', '/accounting/deposit-match'],
   ['acc-tax-invoices', '/accounting/tax-invoices'],
   ['acc-period-close', '/accounting/period-close'],
-  ['acc-cash-disbursements', '/accounting/admin/cash-disbursements'],
   ['acc-orders', '/accounting/admin/orders'],
   // 아로로지스
   ['arologis-pre-classify', '/arologis/pre-classify'],

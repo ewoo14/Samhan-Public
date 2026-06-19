@@ -93,7 +93,6 @@ const GROUP_GATE_CODES: Record<(typeof GROUP_LABELS)[number], string[]> = {
     'accounting.daily-closing',
     'accounting.general-ledger',
     'accounting.deposit-match',
-    'ecount.mig14.cash-list',
     'ecount.mig14.order-list',
     'ecount.mig14.ledger',
     'ecount.mig.ops-dashboard',
