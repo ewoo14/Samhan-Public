@@ -76,6 +76,21 @@ class StockInstanceServiceBatchTest {
     }
 
     @Test
+    @DisplayName("productType=BUNDLE 세트 SKU는 배치 인스턴스 입고를 no-op skip 하고 행을 생성하지 않는다")
+    void inboundBatch_bundleGoodsProduct_skipsAndCreatesNoInstances() {
+        UUID productId = UUID.randomUUID();
+        when(productClient.requireExists(productId)).thenReturn(bundleProduct(productId));
+
+        var result = service.inboundBatch(
+                productId, "SET-001", UUID.randomUUID(), 3,
+                "구매", "INB-SET-001", new BigDecimal("10000"),
+                LocalDateTime.of(2026, 6, 1, 9, 0));
+
+        assertThat(result).isEmpty();
+        verify(repo, never()).saveAll(any());
+    }
+
+    @Test
     @DisplayName("goods=false 비상품은 수동 인스턴스 생성을 no-op skip 하고 행을 생성하지 않는다")
     void create_nonGoodsProduct_skipsAndCreatesNoInstance() {
         UUID productId = UUID.randomUUID();
@@ -84,6 +99,21 @@ class StockInstanceServiceBatchTest {
         var result = service.create(
                 productId, "FEE-001", UUID.randomUUID(),
                 "구매", new BigDecimal("10000"), "INB-FEE-002",
+                LocalDateTime.of(2026, 6, 1, 9, 0));
+
+        assertThat(result).isNull();
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("productType=BUNDLE 세트 SKU는 수동 인스턴스 생성을 no-op skip 하고 행을 생성하지 않는다")
+    void create_bundleGoodsProduct_skipsAndCreatesNoInstance() {
+        UUID productId = UUID.randomUUID();
+        when(productClient.requireExists(productId)).thenReturn(bundleProduct(productId));
+
+        var result = service.create(
+                productId, "SET-001", UUID.randomUUID(),
+                "구매", new BigDecimal("10000"), "INB-SET-002",
                 LocalDateTime.of(2026, 6, 1, 9, 0));
 
         assertThat(result).isNull();
@@ -172,6 +202,12 @@ class StockInstanceServiceBatchTest {
         return new ProductSummary(
                 productId, "설치비", "FEE-001", "FEE-001",
                 null, new BigDecimal("10000"), "ACTIVE", false, false);
+    }
+
+    private ProductSummary bundleProduct(UUID productId) {
+        return new ProductSummary(
+                productId, "세트 품목", "SET-001", "SET-001",
+                null, new BigDecimal("10000"), "ACTIVE", false, true, "BUNDLE");
     }
 
     private StockInstance instance(UUID productId, String productCode, UUID warehouseId, String slipNo) {

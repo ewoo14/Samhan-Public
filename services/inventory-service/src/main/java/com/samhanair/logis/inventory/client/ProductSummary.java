@@ -16,6 +16,10 @@ import java.util.UUID;
  *
  * <p>2026-06-15 품목 마스터 등록: 상품 여부({@code goods}) 추가 —
  * product-service {@code Product.goodsType == GOODS} 파생. false 이면 어떤 재고도 생성하지 않는다.
+ *
+ * <p>2026-06-19 재고 게이트 세트 제외: {@code productType} 추가 —
+ * product-service {@code Product.productType} 파생. {@code BUNDLE} 이면 세트 SKU 자체는 재고를
+ * 만들지 않고 구성품({@code SINGLE})만 재고 대상으로 둔다.
  */
 public record ProductSummary(
         UUID id,
@@ -26,7 +30,14 @@ public record ProductSummary(
         BigDecimal sellingPrice,
         String status,
         boolean serialManaged,
-        boolean goods) {
+        boolean goods,
+        String productType) {
+
+    public ProductSummary {
+        if (productType == null || productType.isBlank()) {
+            productType = "SINGLE";
+        }
+    }
 
     /**
      * Backward-compatible 생성자 — productCode 미지원 호출자 (기존 14 test) 호환.
@@ -35,7 +46,7 @@ public record ProductSummary(
      */
     public ProductSummary(UUID id, String name, String modelName, UUID categoryId,
                           BigDecimal sellingPrice, String status) {
-        this(id, name, modelName, null, categoryId, sellingPrice, status, false, true);
+        this(id, name, modelName, null, categoryId, sellingPrice, status, false, true, "SINGLE");
     }
 
     /**
@@ -45,7 +56,7 @@ public record ProductSummary(
      */
     public ProductSummary(UUID id, String name, String modelName, String productCode,
                           UUID categoryId, BigDecimal sellingPrice, String status) {
-        this(id, name, modelName, productCode, categoryId, sellingPrice, status, false, true);
+        this(id, name, modelName, productCode, categoryId, sellingPrice, status, false, true, "SINGLE");
     }
 
     /**
@@ -55,6 +66,17 @@ public record ProductSummary(
     public ProductSummary(UUID id, String name, String modelName, String productCode,
                           UUID categoryId, BigDecimal sellingPrice, String status,
                           boolean serialManaged) {
-        this(id, name, modelName, productCode, categoryId, sellingPrice, status, serialManaged, true);
+        this(id, name, modelName, productCode, categoryId, sellingPrice, status, serialManaged, true, "SINGLE");
+    }
+
+    /**
+     * Backward-compatible 생성자 — productType 미지원 호출자 호환.
+     * 기존 product-service 응답/테스트 mock 은 단일 상품으로 취급한다.
+     */
+    public ProductSummary(UUID id, String name, String modelName, String productCode,
+                          UUID categoryId, BigDecimal sellingPrice, String status,
+                          boolean serialManaged, boolean goods) {
+        this(id, name, modelName, productCode, categoryId, sellingPrice, status,
+                serialManaged, goods, "SINGLE");
     }
 }

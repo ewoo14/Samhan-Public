@@ -72,6 +72,7 @@ public class InboundInspectionService {
     /** 검수 허용 슬립 상태 집합. */
     private static final Set<String> INSPECTABLE_STATUSES =
             Set.of("SAVED", "CONFIRMED", "COMPLETED", "PROCESSING", "INSPECTING");
+    private static final String PRODUCT_TYPE_BUNDLE = "BUNDLE";
 
     private final InboundInspectionRepository inspectionRepository;
     private final InboundInspectionLineRepository inspectionLineRepository;
@@ -236,8 +237,10 @@ public class InboundInspectionService {
 
             UUID productId = slipLine.productId();
             ProductSummary product = productClient.requireExists(productId);
-            if (!product.goods()) {
-                continue; // 비상품 — StockService.inbound 와 동일하게 재고 생성 no-op skip
+            if (isInventoryExcluded(product)) {
+                // 비상품/세트 SKU — StockService.inbound 와 동일하게 재고 생성 no-op skip.
+                // 세트는 구성품(SINGLE)만 재고 대상이다.
+                continue;
             }
 
             // StockLot 생성
@@ -323,6 +326,10 @@ public class InboundInspectionService {
                 .findByProductIdAndWarehouse_IdAndIsDeletedFalse(productId, warehouse.getId())
                 .orElseGet(() -> stockBalanceRepository.save(
                         StockBalance.create(productId, warehouse)));
+    }
+
+    private boolean isInventoryExcluded(ProductSummary product) {
+        return !product.goods() || PRODUCT_TYPE_BUNDLE.equals(product.productType());
     }
 
     /**
