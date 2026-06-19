@@ -158,7 +158,8 @@ public class ProductClient {
                         : new java.math.BigDecimal(m.get("sellingPrice").toString()),
                 (String) m.get("status"),
                 (String) m.get("modelCode"),
-                (String) m.get("productType"));
+                (String) m.get("productType"),
+                (String) m.get("categoryKey"));
     }
 
     private String requireToken() {
