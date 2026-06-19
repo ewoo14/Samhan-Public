@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   SlipPresenceClient,
   type PresenceClient,
@@ -11,25 +11,32 @@ const HEARTBEAT_MS = 30_000
 function isPresenceEntry(value: unknown): value is PresenceEntry {
   return typeof value === 'object'
     && value !== null
-    && 'userId' in value
+    && 'sessionId' in value
     && 'displayName' in value
     && 'color' in value
 }
 
 function upsertPresence(entries: PresenceEntry[], next: PresenceEntry): PresenceEntry[] {
-  const without = entries.filter((entry) => entry.userId !== next.userId)
+  const without = entries.filter((entry) => entry.sessionId !== next.sessionId)
   return [...without, next].sort((a, b) => {
     const byName = a.displayName.localeCompare(b.displayName, 'ko')
-    return byName === 0 ? a.userId.localeCompare(b.userId) : byName
+    return byName === 0 ? a.sessionId.localeCompare(b.sessionId) : byName
   })
 }
 
-async function resolveCurrentUser(): Promise<PresenceUser | null> {
+function createSessionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `presence-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+async function resolveCurrentUser(sessionId: string): Promise<PresenceUser | null> {
   try {
     const auth = await window.samhanAuth.getToken()
     if (!auth?.userId) return null
     return {
-      userId: auth.userId,
+      sessionId,
       displayName: auth.fullName?.trim() || '사용자',
     }
   } catch {
@@ -49,40 +56,60 @@ export function usePresence({
   enabled = true,
 }: UsePresenceOptions): PresenceEntry[] {
   const [entries, setEntries] = useState<PresenceEntry[]>([])
-  const stableEntityId = useMemo(() => entityId, [entityId])
+  const currentUserRef = useRef<PresenceUser | null>(null)
 
   useEffect(() => {
-    if (!enabled || !stableEntityId) {
+    if (!enabled || !entityId) {
       setEntries([])
       return
     }
 
-    let active = true
-    let currentUser: PresenceUser | null = null
+    let cancelled = false
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+    const sessionId = createSessionId()
+    currentUserRef.current = { sessionId, displayName: '사용자' }
 
     const refresh = async () => {
       try {
-        const next = await client.list(stableEntityId)
-        if (active) setEntries(next)
+        if (cancelled) return
+        const next = await client.list(entityId)
+        if (cancelled) return
+        setEntries(next)
       } catch (err) {
         console.warn('[presence] 목록 조회 실패', err)
       }
     }
 
     const join = async () => {
-      if (!currentUser) return
+      const currentUser = currentUserRef.current
+      if (cancelled || !currentUser) return
       try {
-        const entry = await client.join(stableEntityId, currentUser)
-        if (active) {
-          setEntries((prev) => upsertPresence(prev, entry))
-        }
+        if (cancelled) return
+        const entry = await client.join(entityId, currentUser)
+        if (cancelled) return
+        setEntries((prev) => upsertPresence(prev, entry))
       } catch (err) {
         console.warn('[presence] join/heartbeat 실패', err)
       }
     }
 
-    const ctrl = client.subscribe(stableEntityId, (evt) => {
+    const leave = async (allowAfterCancel = false) => {
+      const currentUser = currentUserRef.current
+      if ((!allowAfterCancel && cancelled) || !currentUser) return
+      try {
+        await client.leave(entityId, currentUser)
+      } catch (err) {
+        console.warn('[presence] leave 실패', err)
+      }
+    }
+
+    // TODO(presence-rollout): 5문서 롤아웃 시 단일 collab 구독에 presence fan-out 통합 검토.
+    const ctrl = client.subscribe(entityId, (evt) => {
+      if (cancelled) return
+      if (evt.event === 'connected') {
+        void refresh()
+        return
+      }
       if (evt.event === 'presence:join' && isPresenceEntry(evt.data)) {
         const entry = evt.data
         setEntries((prev) => upsertPresence(prev, entry))
@@ -90,30 +117,31 @@ export function usePresence({
       }
       if (evt.event === 'presence:leave' && isPresenceEntry(evt.data)) {
         const entry = evt.data
-        setEntries((prev) => prev.filter((item) => item.userId !== entry.userId))
+        setEntries((prev) => prev.filter((item) => item.sessionId !== entry.sessionId))
       }
     })
 
     void (async () => {
-      currentUser = await resolveCurrentUser()
+      const resolved = await resolveCurrentUser(sessionId)
+      if (cancelled) return
+      if (resolved) currentUserRef.current = resolved
       await refresh()
+      if (cancelled) return
       await join()
+      if (cancelled) return
       heartbeatTimer = setInterval(() => {
+        if (cancelled) return
         void join()
       }, HEARTBEAT_MS)
     })()
 
     return () => {
-      active = false
+      cancelled = true
       ctrl.abort()
       if (heartbeatTimer !== null) clearInterval(heartbeatTimer)
-      if (currentUser) {
-        void client.leave(stableEntityId, currentUser).catch((err) => {
-          console.warn('[presence] leave 실패', err)
-        })
-      }
+      void leave(true)
     }
-  }, [client, enabled, stableEntityId])
+  }, [client, enabled, entityId])
 
   return entries
 }

@@ -22,20 +22,26 @@ export interface PresenceIndicatorProps {
 }
 
 export function PresenceIndicator({ entries }: PresenceIndicatorProps) {
-  const visible = entries.slice(0, 3)
-  const hiddenCount = Math.max(entries.length - visible.length, 0)
-  if (entries.length === 0) return null
+  const deduped = Array.from(
+    entries.reduce((acc, entry) => {
+      if (!acc.has(entry.displayName)) acc.set(entry.displayName, entry)
+      return acc
+    }, new Map<string, PresenceEntry>()).values(),
+  )
+  const visible = deduped.slice(0, 3)
+  const hiddenCount = Math.max(deduped.length - visible.length, 0)
+  if (deduped.length === 0) return null
 
   return (
     <div
       data-testid="presence-indicator"
-      aria-label={`현재 보고 있음 ${entries.length}명`}
+      aria-label={`현재 보고 있음 ${deduped.length}명`}
       style={{ display: 'flex', alignItems: 'center', gap: 8 }}
     >
       <div style={{ display: 'flex', alignItems: 'center', minHeight: 28 }}>
         {visible.map((entry, index) => (
           <span
-            key={entry.userId}
+            key={entry.sessionId}
             title={`${entry.displayName} 현재 보고 있음`}
             aria-label={`${entry.displayName} 현재 보고 있음`}
             style={{

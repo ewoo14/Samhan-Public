@@ -206,8 +206,9 @@ public class SlipCollabController {
             @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
         loadSlip(slipId);
         String userId = resolvePresenceUserId(callerId, request);
+        String sessionId = resolvePresenceSessionId(request);
         String displayName = resolvePresenceDisplayName(callerName, request);
-        return ApiResponse.ok(presenceService.join(slipId, userId, displayName));
+        return ApiResponse.ok(presenceService.join(slipId, sessionId, userId, displayName));
     }
 
     /** 전표 협업 presence leave. 기존 collab SSE stream 으로 presence:leave 이벤트가 발행된다. */
@@ -219,11 +220,12 @@ public class SlipCollabController {
             @RequestBody(required = false) SlipPresenceRequest request,
             @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId) {
         loadSlip(slipId);
-        presenceService.leave(slipId, resolvePresenceUserId(callerId, request));
+        resolvePresenceUserId(callerId, request);
+        presenceService.leave(slipId, resolvePresenceSessionId(request));
         return ApiResponse.ok(null);
     }
 
-    /** 전표 협업 현재 presence 목록. 화면에는 displayName/color 만 사용하고 userId 는 노출하지 않는다. */
+    /** 전표 협업 현재 presence 목록. account UUID 는 wire payload 에 포함하지 않는다. */
     @Operation(summary = "전표 협업 presence 목록")
     @GetMapping("/presence")
     @RequirePermission(page = "slip.comments", action = PermissionAction.VIEW)
@@ -289,21 +291,22 @@ public class SlipCollabController {
 
     private String resolvePresenceUserId(String callerId, SlipPresenceRequest request) {
         String headerUserId = callerId == null ? null : callerId.trim();
-        String bodyUserId = request == null || request.userId() == null
-                ? null
-                : request.userId().trim();
         if (headerUserId != null && !headerUserId.isBlank()) {
-            if (bodyUserId != null && !bodyUserId.isBlank() && !headerUserId.equals(bodyUserId)) {
-                throw new BusinessException(ErrorCode.FORBIDDEN,
-                        "presence 는 인증 사용자 본인만 변경할 수 있습니다");
-            }
             return headerUserId;
         }
-        if (bodyUserId == null || bodyUserId.isBlank()) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED,
-                    "presence 사용자 정보를 확인할 수 없습니다");
+        throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                "presence 사용자 정보를 확인할 수 없습니다");
+    }
+
+    private String resolvePresenceSessionId(SlipPresenceRequest request) {
+        String sessionId = request == null || request.sessionId() == null
+                ? null
+                : request.sessionId().trim();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "presence sessionId 는 필수입니다");
         }
-        return bodyUserId;
+        return sessionId;
     }
 
     private String resolvePresenceDisplayName(String callerName, SlipPresenceRequest request) {

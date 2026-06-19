@@ -47,30 +47,35 @@ public class PresenceService {
         this.clock = Objects.requireNonNull(clock, "clock 은 필수입니다");
     }
 
-    public PresenceEntry join(UUID entityId, String userId, String displayName) {
+    public PresenceEntry join(UUID entityId, String sessionId, String userId, String displayName) {
         Objects.requireNonNull(entityId, "entityId 는 필수입니다");
+        String normalizedSessionId = normalizeSessionId(sessionId);
         String normalizedUserId = normalizeUserId(userId);
         Instant now = clock.instant();
         PresenceEntry next = new PresenceEntry(
-                normalizedUserId,
+                normalizedSessionId,
                 normalizeDisplayName(displayName),
                 PresenceColor.fromUserId(normalizedUserId),
                 now);
 
-        entries.computeIfAbsent(entityId, ignored -> new ConcurrentHashMap<>())
-                .put(normalizedUserId, next);
+        entries.compute(entityId, (ignored, current) -> {
+            ConcurrentHashMap<String, PresenceEntry> entityEntries =
+                    current == null ? new ConcurrentHashMap<>() : current;
+            entityEntries.put(normalizedSessionId, next);
+            return entityEntries;
+        });
         broker.publish(entityId, EVENT_JOIN, next);
         return next;
     }
 
-    public void leave(UUID entityId, String userId) {
+    public void leave(UUID entityId, String sessionId) {
         Objects.requireNonNull(entityId, "entityId 는 필수입니다");
-        String normalizedUserId = normalizeUserId(userId);
+        String normalizedSessionId = normalizeSessionId(sessionId);
         ConcurrentHashMap<String, PresenceEntry> entityEntries = entries.get(entityId);
         if (entityEntries == null) {
             return;
         }
-        PresenceEntry removed = entityEntries.remove(normalizedUserId);
+        PresenceEntry removed = entityEntries.remove(normalizedSessionId);
         if (entityEntries.isEmpty()) {
             entries.remove(entityId, entityEntries);
         }
@@ -87,7 +92,7 @@ public class PresenceService {
         }
         return entityEntries.values().stream()
                 .sorted(Comparator.comparing(PresenceEntry::displayName)
-                        .thenComparing(PresenceEntry::userId))
+                        .thenComparing(PresenceEntry::sessionId))
                 .toList();
     }
 
@@ -99,7 +104,7 @@ public class PresenceService {
             ConcurrentHashMap<String, PresenceEntry> entityEntries = entity.getValue();
             for (PresenceEntry entry : entityEntries.values()) {
                 if (entry.lastSeenAt().isBefore(cutoff)) {
-                    boolean didRemove = entityEntries.remove(entry.userId(), entry);
+                    boolean didRemove = entityEntries.remove(entry.sessionId(), entry);
                     if (didRemove) {
                         removed.add(entry);
                         broker.publish(entityId, EVENT_LEAVE, entry);
@@ -123,6 +128,13 @@ public class PresenceService {
             throw new IllegalArgumentException("userId 는 필수입니다");
         }
         return userId.trim();
+    }
+
+    private String normalizeSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("sessionId 는 필수입니다");
+        }
+        return sessionId.trim();
     }
 
     private String normalizeDisplayName(String displayName) {

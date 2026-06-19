@@ -12,15 +12,15 @@ export type PresenceColor =
   | 'PINK'
 
 export interface PresenceEntry {
-  /** 내부 식별자. React key/API state 전용이며 화면 표시 금지. */
-  userId: string
+  /** 클라이언트 mount 단위 opaque 식별자. account UUID 가 아니다. */
+  sessionId: string
   displayName: string
   color: PresenceColor
   lastSeenAt?: string
 }
 
 export interface PresenceUser {
-  userId: string
+  sessionId: string
   displayName: string
 }
 

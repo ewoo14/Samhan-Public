@@ -33,30 +33,39 @@ class PresenceServiceTest {
 
     @Test
     void join_registersDeterministicColorAndPublishesJoinEvent() {
-        PresenceEntry entry = service.join(entityId, "user-1", "홍길동");
+        PresenceEntry entry = service.join(entityId, "session-1", "account-user-1", "홍길동");
 
-        assertThat(entry.userId()).isEqualTo("user-1");
+        assertThat(entry.sessionId()).isEqualTo("session-1");
         assertThat(entry.displayName()).isEqualTo("홍길동");
-        assertThat(entry.color()).isEqualTo(PresenceColor.fromUserId("user-1"));
+        assertThat(entry.color()).isEqualTo(PresenceColor.fromUserId("account-user-1"));
         assertThat(service.list(entityId)).containsExactly(entry);
         verify(broker).publish(eq(entityId), eq(PresenceService.EVENT_JOIN), eq(entry));
     }
 
     @Test
-    void join_sameUserRefreshesHeartbeatWithoutDuplicateListEntry() {
-        PresenceEntry first = service.join(entityId, "user-1", "홍길동");
+    void join_sameSessionRefreshesHeartbeatWithoutDuplicateListEntry() {
+        PresenceEntry first = service.join(entityId, "session-1", "account-user-1", "홍길동");
         clock.advance(Duration.ofSeconds(30));
-        PresenceEntry refreshed = service.join(entityId, "user-1", "홍길동");
+        PresenceEntry refreshed = service.join(entityId, "session-1", "account-user-1", "홍길동");
 
         assertThat(refreshed.lastSeenAt()).isAfter(first.lastSeenAt());
         assertThat(service.list(entityId)).hasSize(1);
     }
 
     @Test
-    void leave_removesUserAndPublishesLeaveEvent() {
-        PresenceEntry entry = service.join(entityId, "user-1", "홍길동");
+    void join_sameUserDifferentSessions_keepsEachSession() {
+        PresenceEntry first = service.join(entityId, "session-1", "account-user-1", "홍길동");
+        PresenceEntry second = service.join(entityId, "session-2", "account-user-1", "홍길동");
 
-        service.leave(entityId, "user-1");
+        assertThat(service.list(entityId)).containsExactly(first, second);
+        assertThat(second.color()).isEqualTo(first.color());
+    }
+
+    @Test
+    void leave_removesSessionAndPublishesLeaveEvent() {
+        PresenceEntry entry = service.join(entityId, "session-1", "account-user-1", "홍길동");
+
+        service.leave(entityId, "session-1");
 
         assertThat(service.list(entityId)).isEmpty();
         verify(broker).publish(eq(entityId), eq(PresenceService.EVENT_LEAVE), eq(entry));
@@ -71,10 +80,10 @@ class PresenceServiceTest {
 
     @Test
     void pruneExpired_removesStaleEntriesAndPublishesLeaveEvent() {
-        PresenceEntry active = service.join(entityId, "active", "김활성");
-        PresenceEntry stale = service.join(entityId, "stale", "박만료");
+        PresenceEntry active = service.join(entityId, "session-active", "active", "김활성");
+        PresenceEntry stale = service.join(entityId, "session-stale", "stale", "박만료");
         clock.advance(Duration.ofMinutes(4));
-        service.join(entityId, active.userId(), active.displayName());
+        service.join(entityId, active.sessionId(), "active", active.displayName());
         clock.advance(Duration.ofMinutes(2));
 
         List<PresenceEntry> removed = service.pruneExpired();
