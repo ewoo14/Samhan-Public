@@ -1,10 +1,8 @@
 package com.samhanair.logis.shared.realtime;
 
 import com.samhanair.logis.shared.realtime.broker.BrokerConfiguration;
-import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
 import com.samhanair.logis.shared.realtime.lock.DefaultEditLockGuard;
 import com.samhanair.logis.shared.realtime.lock.EditLockGuard;
-import com.samhanair.logis.shared.realtime.presence.PresenceService;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -45,12 +43,5 @@ public class RealtimeAutoConfiguration {
     @ConditionalOnMissingBean(EditLockGuard.class)
     public EditLockGuard editLockGuard() {
         return new DefaultEditLockGuard();
-    }
-
-    /** 동시 접속자 presence registry — 기존 RealtimeBroker 채널로 join/leave 이벤트를 발행한다. */
-    @Bean
-    @ConditionalOnMissingBean(PresenceService.class)
-    public PresenceService presenceService(RealtimeBroker broker) {
-        return new PresenceService(broker);
     }
 }
