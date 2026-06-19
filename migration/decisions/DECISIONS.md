@@ -2910,3 +2910,15 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-SMP-02 | **품목 종류 = 단일(GENERAL)/세트(SET) 2구분** (개발책임자 Option B — D-PMR-01 3구분 대체). '세트구성품' 종류 폐기, 구성품 지정은 세트측 ComponentsModal 에서만(단일 품목 선택). 판넬/리모컨/유연호스=단일 품목이며 노출(usageScope/카테고리) ⊥ 구성품(BundleComponent) 독립 축. BE `ProductItemKind` enum 은 backward-compat 유지. |
 | D-SMP-03 | P1 데이터 손상 픽스 — 세트 구성품인 단일 품목 편집(itemKind=GENERAL) 저장 시 BE가 부모 세트 BundleComponent 링크를 soft-delete 하던 회귀 제거(`ProductService.applyUpdateFields` GENERAL 분기). 구성품 링크는 세트측에서만 관리. 실 BE 회귀 IT 추가(mock 미재현). 머지 게이트 Opus 재리뷰 단독 적발. |
 | D-SMP-04 | 노출 설정 견적 카테고리 사용자 라벨 `레거시`→`구형`(enum 값 LEGACY/OLD 내부 식별자 유지). |
+
+---
+
+## 이카운트 이관 자료 네이티브 편입 슬1 — 잔액 스냅샷 silo 폐기 (2026-06-19, PR #518)
+
+**배경**: 에픽 "이카운트 이관 자료 네이티브 편입"([[ecount-native-fold]]) — 이관 자료를 별도 메뉴/저장(silo)으로 두지 않고 네이티브 도메인에 편입하고 "회계 관리자" silo 를 폐기한다. 슬1 = MIG-9/MIG-14 잔재인 거래처 잔액 스냅샷 silo(page-code `ecount.mig14.aging-snapshot`) 제거. dev-report `docs/dev-reports/2026-06-19-ecount-native-fold-slice1-aging.md`.
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-ECT-FOLD-01 | 이카운트 이관 자료 네이티브 편입 슬1: 잔액 스냅샷 silo(page-code `ecount.mig14.aging-snapshot`) 폐기 → 네이티브 거래처 미수/미지급 보고서 `GET /accounting/reports/partner-aging`(`PartnerAgingController`, journals POSTED 110/201 직접 집계, 재무 보고서 메뉴 도달)로 대체. FE 메뉴/route/`PartnerAgingSnapshotPage`/`accountingAdminApi` aging 함수·타입/permissions/mock 제거, BE `GET /accounting/aging-snapshot`·`POST /admin/accounting/aging-snapshot/refresh` endpoint + DTO(`PartnerAgingSnapshotResponse`, `AgingSnapshotRefreshResult`) 제거, auth `PageCode` enum 값 제거. MIG-14 admin UI 4 → 3 화면(cash-list / order-list / ledger). |
+| D-ECT-FOLD-02 | LINEAGE 유지 — MV `partner_aging_snapshot` DDL 과 `Mig9AgingSnapshotRefreshService`(EcountReimportService 재import wiring)는 보존(cutover 후 물리 제거). silo 화면/endpoint/page-code 만 폐기하고 재import 계보는 끊지 않는다. |
+| D-ECT-FOLD-03 | V59 마이그 = page-code 권한 정리. `role_page_permissions` 는 hard delete, `role_page_permission_templates`/`account_page_permissions`/`group_page_permissions`/`account_permission_overrides` 는 soft delete. |

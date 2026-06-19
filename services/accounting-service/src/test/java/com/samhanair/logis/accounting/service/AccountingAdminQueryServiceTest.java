@@ -188,26 +188,4 @@ class AccountingAdminQueryServiceTest {
         assertThat(sql).doesNotContain("SUM(total_amount) OVER (PARTITION BY transaction_date)");
     }
 
-    @Test
-    void agingSnapshot_usesPageableLimitOffsetAndCountQuery() {
-        when(jdbcTemplate.queryForObject(anyString(), any(MapSqlParameterSource.class), eq(Long.class)))
-                .thenReturn(0L);
-        when(jdbcTemplate.query(anyString(), any(MapSqlParameterSource.class),
-                        org.mockito.ArgumentMatchers.<RowMapper<Object>>any()))
-                .thenReturn(List.of());
-
-        Page<?> result = service.listAgingSnapshot(
-                PageRequest.of(2, 600), "삼한", "net_cash_desc");
-
-        assertThat(result.getTotalElements()).isZero();
-        org.mockito.ArgumentCaptor<MapSqlParameterSource> paramsCaptor =
-                org.mockito.ArgumentCaptor.forClass(MapSqlParameterSource.class);
-        verify(jdbcTemplate).query(
-                anyString(),
-                paramsCaptor.capture(),
-                org.mockito.ArgumentMatchers.<RowMapper<Object>>any());
-        MapSqlParameterSource params = paramsCaptor.getValue();
-        assertThat(params.getValue("limit")).isEqualTo(500);
-        assertThat(params.getValue("offset")).isEqualTo(1000L);
-    }
 }

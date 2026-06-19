@@ -68,7 +68,9 @@ MIG-9는 MIG-7 Cash 도메인의 `journal_id IS NULL` row를 회계 Journal로 �
 |---|---|---|
 | 지출 Journal 생성 | `POST /admin/accounting/cash-journals/generate-from-disbursements` | CashDisbursement → POSTED Journal + JournalLine 2건 |
 | 입금 Journal 생성 | `POST /admin/accounting/cash-journals/generate-from-receipts` | CashReceipt → POSTED Journal + JournalLine 2건 |
-| Aging snapshot refresh | `POST /admin/accounting/aging-snapshot/refresh` | `REFRESH MATERIALIZED VIEW CONCURRENTLY partner_aging_snapshot` |
+| ~~Aging snapshot refresh~~ | ~~`POST /admin/accounting/aging-snapshot/refresh`~~ | **제거됨(슬1 PR #518)** — refresh **endpoint** 폐기. MV `partner_aging_snapshot` 의 `REFRESH MATERIALIZED VIEW CONCURRENTLY`는 `Mig9AgingSnapshotRefreshService`(EcountReimportService 재import wiring) 내부 lineage 로 유지 |
+
+> ⚠️ **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** — `POST /admin/accounting/aging-snapshot/refresh` 와 조회 API `GET /api/v1/accounting/aging-snapshot`(아래 MIG-14 참조)는 제거됐다. 거래처 미수/미지급 잔액은 네이티브 보고서 `GET /accounting/reports/partner-aging`(`PartnerAgingController`, journals POSTED 110/201 직접 집계)로 대체한다. MV DDL 과 `Mig9AgingSnapshotRefreshService` 는 lineage 로 유지(cutover 후 물리 제거 예정).
 
 공통 규칙: `REQUIRES_NEW + READ_COMMITTED`, `pg_advisory_xact_lock` 1 namespace, `journals(source_type, source_ref)` unique 멱등 키, `journal_no = 'J-' + slip_no`, `ROLE_MASTER`/`ROLE_MANAGER`, row-level reject, `DuplicateKeyException` constraint 분기.
 
@@ -110,13 +112,13 @@ MIG-14는 MIG-7~11 결과를 desktop admin UI에서 조회하기 위한 read end
 | Cash 입금 | `GET /api/v1/accounting/cash-receipts` | `slipNo`, `partnerName`, `journalNo`, `kind`, `amount` |
 | Order 목록 | `GET /api/v1/accounting/orders` | `orderNo`, `partnerName`, `managerName`, `progressStatus`, `linkedSlipNo` |
 | Order 상세 | `GET /api/v1/accounting/orders/{orderNo}` | `orderNo` + `lines[]`; 내부 `orderId` path 금지 |
-| Aging snapshot | `GET /api/v1/accounting/aging-snapshot?page=0&size=100&sort=net_receivable_desc` | `partnerName`, `netReceivable`, `netPayable`, `netCash`, `lastRefreshedAt`; 기본 100 / 최대 500 |
+| ~~Aging snapshot~~ | ~~`GET /api/v1/accounting/aging-snapshot`~~ | **제거됨(슬1 PR #518)** — endpoint·DTO(`PartnerAgingSnapshotResponse`, `AgingSnapshotRefreshResult`)·page-code 폐기. 거래처 잔액은 네이티브 `GET /accounting/reports/partner-aging` 사용 |
 | Ledger 매출 | `GET /api/v1/accounting/ledger/sales` | staging row 업무 컬럼 + DailyClosing 대조 결과 |
 | Ledger 매입 | `GET /api/v1/accounting/ledger/purchase` | staging row 업무 컬럼 + DailyClosing 대조 결과 |
 
-권한은 auth-service V25 MIG14 PageCode 4종과 desktop `PermissionGuard`를 사용한다. `DynamicPermissionClient` 테스트 mock은 deprecated service-local 타입 대신 shared/security 통합 인터페이스를 대상으로 정렬한다.
+권한은 auth-service MIG14 PageCode 와 desktop `PermissionGuard`를 사용한다(`ECOUNT_MIG14_AGING_SNAPSHOT` enum 값은 슬1 PR #518에서 제거 — V59 마이그가 권한 행을 정리한다). `DynamicPermissionClient` 테스트 mock은 deprecated service-local 타입 대신 shared/security 통합 인터페이스를 대상으로 정렬한다.
 
-MIG-16 이후 Cash 조회의 `partnerName` 표시는 partner-service batch lookup으로 해결하며, aging snapshot은 Spring `Page` 응답을 반환한다.
+MIG-16 이후 Cash 조회의 `partnerName` 표시는 partner-service batch lookup으로 해결한다. (aging snapshot Spring `Page` 응답은 슬1 PR #518에서 제거 — 네이티브 partner-aging 보고서로 대체.)
 
 ## 공급자 설정 확장 — 연락처·입금계좌(노출 토글)·인감·로고 (PR #459)
 

@@ -360,13 +360,12 @@ export function AppLayout() {
   const showAccountingDepositMatch = dynamicCanAccess('accounting.deposit-match',  'view')
   const showAccountingAdminCash = dynamicCanAccess('ecount.mig14.cash-list', 'view')
   const showAccountingAdminOrder = dynamicCanAccess('ecount.mig14.order-list', 'view')
-  const showAccountingAdminAging = dynamicCanAccess('ecount.mig14.aging-snapshot', 'view')
   const showAccountingAdminLedger = dynamicCanAccess('ecount.mig14.ledger', 'view')
   const showAccountingAdminMigOps = dynamicCanAccess('ecount.mig.ops-dashboard', 'view')
   const showAccountingEditRequests = dynamicCanAccess('accounting.edit-requests.decide', 'view')
   const showAccountingAdminGroup =
     showAccountingAdminCash || showAccountingAdminOrder
-    || showAccountingAdminAging || showAccountingAdminLedger
+    || showAccountingAdminLedger
     || showAccountingAdminMigOps || showAccountingEditRequests
   // 회계 카테고리 헤더: 회계 PageCode 중 1개라도 가시이면 표시.
   // [Round B P1] 세금계산서 발행 묶음(batch-issue)·수신 세금계산서(inbound) 누락 보강 —
@@ -757,7 +756,6 @@ export function AppLayout() {
               '/accounting/admin/cash-disbursements',
               '/accounting/admin/cash-receipts',
               '/accounting/admin/orders',
-              '/accounting/admin/aging-snapshot',
               '/accounting/admin/ledger/sales',
               '/accounting/admin/ledger/purchase',
               '/accounting/admin/migration-ops',
@@ -1017,14 +1015,6 @@ export function AppLayout() {
                         style={{ paddingLeft: 28, fontSize: 13 }}
                       >
                         주문서 관리
-                      </SidebarLink>
-                      <SidebarLink
-                        to="/accounting/admin/aging-snapshot"
-                        show={showAccountingAdminAging}
-                        data-testid="sidebar-accounting-admin-aging-snapshot"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        잔액 스냅샷
                       </SidebarLink>
                       <SidebarLink
                         to="/accounting/admin/ledger/sales"

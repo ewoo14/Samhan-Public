@@ -6,7 +6,6 @@ import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.
 import static com.samhanair.logis.accounting.it.EcountMigPartialIdentitySupport.suppressRoleForPartialIdentityCase;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -18,7 +17,6 @@ import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
-import com.samhanair.logis.accounting.service.Mig9AgingSnapshotRefreshService;
 import com.samhanair.logis.accounting.service.Mig9CashJournalService;
 import com.samhanair.logis.common.ecount.EcountMig9JournalResult;
 import com.samhanair.logis.common.exception.BusinessException;
@@ -28,8 +26,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -50,7 +46,6 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
     private MockMvc mockMvc;
 
     @MockBean private Mig9CashJournalService cashJournalService;
-    @MockBean private Mig9AgingSnapshotRefreshService agingSnapshotRefreshService;
     @MockBean(classes = com.samhanair.logis.security.permission.DynamicPermissionClient.class) private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private ETaxClient eTaxClient;
     @MockBean private KftcClient kftcClient;
@@ -73,9 +68,6 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         }
         if ("noRows".equals(label)) {
             whenNoRows(url);
-        }
-        if ("refreshFailed".equals(label)) {
-            whenRefreshFailed();
         }
         if (expectedStatus == 403 && role != null) {
             denyRequirePermission(pageCode(url), action(url));
@@ -104,37 +96,12 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         if ("noRows".equals(label)) {
             actions.andExpect(content().string(org.hamcrest.Matchers.containsString("MIG9_CASH_ROW_NOT_FOUND")));
         }
-        if ("refreshSuccess".equals(label)) {
-            actions.andExpect(content().string(org.hamcrest.Matchers.containsString("\"status\":\"REFRESHED\"")))
-                    .andExpect(content().string(org.hamcrest.Matchers.containsString("\"refreshedAt\"")));
-        }
-        if ("refreshFailed".equals(label)) {
-            actions.andExpect(content().string(org.hamcrest.Matchers.containsString("MIG9_AGING_REFRESH_FAILED")));
-        }
-    }
-
-    @Test
-    @DisplayName("MIG-14 AgingSnapshot refresh는 canEdit=false + canView=true이면 403")
-    void refreshAgingSnapshot_viewOnlyDynamicPermissionDenied() throws Exception {
-        denyRequirePermission("ecount.mig14.aging-snapshot", PermissionAction.UPDATE);
-        when(dynamicPermissionClient.canEdit("MANAGER", "ecount.mig14.aging-snapshot"))
-                .thenReturn(false);
-        when(dynamicPermissionClient.canView("MANAGER", "ecount.mig14.aging-snapshot"))
-                .thenReturn(true);
-
-        mockMvc.perform(post("/admin/accounting/aging-snapshot/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}")
-                        .header("X-User-Id", "00000000-0000-0000-0000-000000000115")
-                        .header("X-User-Role", "MANAGER"))
-                .andExpect(status().isForbidden());
     }
 
     private static Stream<Arguments> cases() {
         return Stream.of(
                 endpointCases("/admin/accounting/cash-journals/generate-from-disbursements"),
-                endpointCases("/admin/accounting/cash-journals/generate-from-receipts"),
-                refreshEndpointCases()
+                endpointCases("/admin/accounting/cash-journals/generate-from-receipts")
         ).flatMap(s -> s);
     }
 
@@ -152,43 +119,20 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         );
     }
 
-    private static Stream<Arguments> refreshEndpointCases() {
-        String url = "/admin/accounting/aging-snapshot/refresh";
-        return Stream.of(
-                Arguments.of("refreshSuccess", url, "MANAGER", true, "{}", 200),
-                // C5 후속: 부분-identity 신호 = groups/isSystemMaster (role 헤더는 무시 대상).
-                Arguments.of("refreshMissingUserId", url, "MANAGER", false, "{}", 401),
-                Arguments.of("refreshMissingUserIdSystemMaster", url, null, false, "{}", 401),
-                // C5 후속: X-User-Role 단독은 부분-identity 신호가 아니므로 anonymous 계약(403).
-                Arguments.of("refreshMissingUserIdRoleOnly", url, "MANAGER", false, "{}", 403),
-                Arguments.of("refreshMemberForbidden", url, "MEMBER", true, "{}", 403),
-                Arguments.of("refreshBadBody", url, "MANAGER", true, "{", 400),
-                Arguments.of("refreshFailed", url, "MANAGER", true, "{}", 422)
-        );
-    }
-
     private static String pageCode(String url) {
         if (url.endsWith("disbursements")) {
             return "ecount.mig9.cash-journal.disbursement";
         }
-        if (url.endsWith("receipts")) {
-            return "ecount.mig9.cash-journal.receipt";
-        }
-        return "ecount.mig14.aging-snapshot";
+        return "ecount.mig9.cash-journal.receipt";
     }
 
     private static PermissionAction action(String url) {
-        if (url.endsWith("aging-snapshot/refresh")) {
-            return PermissionAction.UPDATE;
-        }
         return PermissionAction.CREATE;
     }
 
 
     private void whenSuccess(String url) {
-        if (url.endsWith("aging-snapshot/refresh")) {
-            return;
-        } else if (url.endsWith("disbursements")) {
+        if (url.endsWith("disbursements")) {
             when(cashJournalService.generateFromDisbursements(anyInt(), anyString())).thenReturn(result());
         } else {
             when(cashJournalService.generateFromReceipts(anyInt(), anyString())).thenReturn(result());
@@ -203,12 +147,6 @@ class EcountMig9CashJournalControllerIT extends AbstractPostgresIT {
         } else {
             when(cashJournalService.generateFromReceipts(anyInt(), anyString())).thenThrow(ex);
         }
-    }
-
-    private void whenRefreshFailed() {
-        doThrow(new BusinessException(ErrorCode.MIG9_AGING_REFRESH_FAILED,
-                "MIG9_AGING_REFRESH_FAILED"))
-                .when(agingSnapshotRefreshService).refresh();
     }
 
     private static EcountMig9JournalResult result() {

@@ -72,11 +72,6 @@ class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(Pageable.class)))
                 .thenReturn(Page.<CashDisbursementResponse>empty());
-        lenient().when(adminQueryService.listAgingSnapshot(
-                        org.mockito.ArgumentMatchers.any(Pageable.class),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any()))
-                .thenReturn(Page.empty());
     }
 
     @Test
@@ -104,24 +99,6 @@ class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.success").value(true));
     }
 
-    @Test
-    @DisplayName("MIG-16 AgingSnapshot 조회 size는 최대 500으로 clamp 한다")
-    void agingSnapshotPageSizeIsClampedToFiveHundred() throws Exception {
-        mockMvc.perform(withActor(get("/accounting/aging-snapshot")
-                        .param("page", "1")
-                        .param("size", "700"), "MANAGER"))
-                .andExpect(status().isOk());
-
-        org.mockito.ArgumentCaptor<Pageable> pageableCaptor =
-                org.mockito.ArgumentCaptor.forClass(Pageable.class);
-        verify(adminQueryService).listAgingSnapshot(
-                pageableCaptor.capture(),
-                isNull(),
-                isNull());
-        org.assertj.core.api.Assertions.assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
-        org.assertj.core.api.Assertions.assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(500);
-    }
-
     @ParameterizedTest(name = "{0} -> {1}")
     @MethodSource("mig14ViewEndpoints")
     @DisplayName("MIG-14 canView=false이면 PageCode별 조회를 403으로 차단한다")
@@ -140,7 +117,6 @@ class AccountingAdminQueryControllerIT extends AbstractPostgresIT {
                 Arguments.of("/accounting/cash-receipts", "ecount.mig14.cash-list"),
                 Arguments.of("/accounting/orders", "ecount.mig14.order-list"),
                 Arguments.of("/accounting/orders/ORD-001", "ecount.mig14.order-list"),
-                Arguments.of("/accounting/aging-snapshot", "ecount.mig14.aging-snapshot"),
                 Arguments.of("/accounting/ledger/sales", "ecount.mig14.ledger"),
                 Arguments.of("/accounting/ledger/purchase", "ecount.mig14.ledger")
         );

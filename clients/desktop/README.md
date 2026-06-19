@@ -128,9 +128,11 @@ npm run build:print-renderer
 - 본 단계는 route/UI 변경 없이 기존 endpoint와 후속 history endpoint matrix를 잠근다.
 - SP-08-3-2~4에서 6 화면 모두 `실행 / 저장내역` 2탭과 `*-history-row-{i}` 기반 UUID 비노출 testid를 적용한다.
 
-## MIG-14 — 회계 마이그레이션 admin UI 4 화면 (2026-05-21)
+## MIG-14 — 회계 마이그레이션 admin UI (2026-05-21)
 
-MIG-14는 Cash / Order / AgingSnapshot / Ledger 조회 화면을 `clients/desktop/src/renderer/routes/accounting/admin/` 아래에 통합한다.
+MIG-14는 Cash / Order / Ledger 조회 화면을 `clients/desktop/src/renderer/routes/accounting/admin/` 아래에 통합한다.
+
+> ⚠️ **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** — `PartnerAgingSnapshotPage.tsx`(page-code `ecount.mig14.aging-snapshot`)는 제거됨. 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`(재무 보고서 메뉴)로 대체되며, admin UI 는 4 화면 → **3 화면**(Cash / Order / Ledger)으로 축소됐다.
 
 | route/page | 목적 |
 |---|---|
@@ -138,21 +140,22 @@ MIG-14는 Cash / Order / AgingSnapshot / Ledger 조회 화면을 `clients/deskto
 | `CashReceiptListPage.tsx` | 이카운트 입금보고서 기반 CashReceipt 조회 |
 | `OrderListPage.tsx` | 주문 목록 + 진행상태/담당자/거래처 필터 |
 | `OrderDetailPage.tsx` | `orderNo` 기반 주문 상세 + 라인 조회 |
-| `PartnerAgingSnapshotPage.tsx` | partner aging materialized view + net 컬럼 조회/refresh |
 | `SalesLedgerPage.tsx` | 매출장 staging + DailyClosing 대조 조회 |
 | `PurchaseLedgerPage.tsx` | 매입장 staging + DailyClosing 대조 조회 |
 
 공통 UI 계약:
 
-- `PermissionGuard`로 MIG14 PageCode 4종을 적용한다.
+- `PermissionGuard`로 MIG14 PageCode를 적용한다.
 - 화면과 `data-testid`는 내부 UUID를 포함하지 않는다. 사용자 식별자는 `slipNo`, `journalNo`, `orderNo`, `partnerName`, `managerName` 중심으로 둔다.
 - Playwright fixture는 placeholder만 사용한다. 실 계정, API key, token, 사업자등록번호, Sheet ID를 추가하지 않으며 CI `credential-plaintext-guard` 기준을 따른다.
 - desktop CI는 `.github/workflows/ci.yml`의 `frontend-desktop` job에서 `npm run typecheck`, `npm run lint`, `npm run build`로 검증된다.
 
-## MIG-16 — AgingSnapshot refresh toast + 권한 로딩 deny (2026-05-21)
+## MIG-16 — 권한 로딩 deny (2026-05-21)
 
-- `PartnerAgingSnapshotPage`는 refresh 성공 시 `새로고침 완료 — refreshedAt`, 실패 시 `새로고침 실패 — 운영자 문의` toast를 표시한다.
-- `listPartnerAgingSnapshots`는 `/accounting/aging-snapshot?page&size&sort` Page 응답을 우선 사용하고, 배열 응답 fallback을 유지한다.
+> ⚠️ 본 절의 AgingSnapshot refresh toast / `listPartnerAgingSnapshots` 항목은 **이카운트 네이티브 편입 슬1(PR #518)** 에서 화면·API 와 함께 제거됨(이력 보존). 거래처 잔액은 네이티브 `/accounting/reports/partner-aging` 보고서를 사용한다.
+
+- ~~`PartnerAgingSnapshotPage`는 refresh 성공 시 `새로고침 완료 — refreshedAt`, 실패 시 `새로고침 실패 — 운영자 문의` toast를 표시한다.~~ (제거됨)
+- ~~`listPartnerAgingSnapshots`는 `/accounting/aging-snapshot?page&size&sort` Page 응답을 우선 사용하고, 배열 응답 fallback을 유지한다.~~ (`accountingAdminApi` aging 함수·타입과 함께 제거됨)
 - `usePermissions().canAccess()`는 권한 캐시 미로드 시 false를 반환해 AppLayout admin 메뉴 flash를 방지한다.
 
 ## 인쇄 공급자 정보 단일 출처 — useCompanyProfile (2026-06-10, PR #459)

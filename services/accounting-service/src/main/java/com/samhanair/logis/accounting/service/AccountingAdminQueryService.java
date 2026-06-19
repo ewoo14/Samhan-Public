@@ -19,7 +19,6 @@ import com.samhanair.logis.accounting.web.dto.CashReceiptResponse;
 import com.samhanair.logis.accounting.web.dto.LedgerStagingResponse;
 import com.samhanair.logis.accounting.web.dto.OrderDetailResponse;
 import com.samhanair.logis.accounting.web.dto.OrderSummaryResponse;
-import com.samhanair.logis.accounting.web.dto.PartnerAgingSnapshotResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
@@ -45,14 +44,11 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** MIG-14 admin 4 화면 전용 읽기 service. */
+/** MIG-14 admin 3 화면 전용 읽기 service. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AccountingAdminQueryService {
-
-    public static final int AGING_DEFAULT_PAGE_SIZE = 100;
-    public static final int AGING_MAX_PAGE_SIZE = 500;
 
     private final CashDisbursementRepository cashDisbursementRepository;
     private final CashReceiptRepository cashReceiptRepository;
@@ -128,36 +124,6 @@ public class AccountingAdminQueryService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "주문서를 찾을 수 없습니다: " + orderNo));
         return toOrderDetail(order);
-    }
-
-    public Page<PartnerAgingSnapshotResponse> listAgingSnapshot(
-            Pageable pageable, String partnerName, String sort) {
-        Pageable boundedPageable = boundAgingPageable(pageable);
-        String orderBy = switch (sort == null ? "" : sort) {
-            case "net_payable_desc" -> "net_payable DESC, partner_name ASC NULLS LAST";
-            case "net_cash_desc" -> "net_cash DESC, partner_name ASC NULLS LAST";
-            case "partner_name_asc" -> "partner_name ASC NULLS LAST";
-            default -> "net_receivable DESC, partner_name ASC NULLS LAST";
-        };
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("partnerName", like(partnerName))
-                .addValue("limit", boundedPageable.getPageSize())
-                .addValue("offset", boundedPageable.getOffset());
-        long total = jdbcTemplate.queryForObject("""
-                SELECT COUNT(1)
-                  FROM partner_aging_snapshot
-                 WHERE (CAST(:partnerName AS text) IS NULL OR LOWER(COALESCE(partner_name, '')) LIKE CAST(:partnerName AS text))
-                """, params, Long.class);
-        List<PartnerAgingSnapshotResponse> rows = jdbcTemplate.query("""
-                SELECT partner_name, total_receivable, total_payable, total_receipt,
-                       total_disbursement, net_receivable, net_payable, net_cash,
-                       last_refreshed_at
-                  FROM partner_aging_snapshot
-                 WHERE (CAST(:partnerName AS text) IS NULL OR LOWER(COALESCE(partner_name, '')) LIKE CAST(:partnerName AS text))
-                 ORDER BY %s
-                 LIMIT :limit OFFSET :offset
-                """.formatted(orderBy), params, this::mapAging);
-        return new PageImpl<>(rows, boundedPageable, total);
     }
 
     public Page<LedgerStagingResponse> listSalesLedger(
@@ -373,19 +339,6 @@ public class AccountingAdminQueryService {
                 .orElse(null);
     }
 
-    private PartnerAgingSnapshotResponse mapAging(ResultSet rs, int rowNum) throws SQLException {
-        return new PartnerAgingSnapshotResponse(
-                rs.getString("partner_name"),
-                rs.getBigDecimal("total_receivable"),
-                rs.getBigDecimal("total_payable"),
-                rs.getBigDecimal("total_receipt"),
-                rs.getBigDecimal("total_disbursement"),
-                rs.getBigDecimal("net_receivable"),
-                rs.getBigDecimal("net_payable"),
-                rs.getBigDecimal("net_cash"),
-                rs.getTimestamp("last_refreshed_at").toLocalDateTime());
-    }
-
     private LedgerStagingResponse mapLedger(ResultSet rs, int rowNum) throws SQLException {
         return new LedgerStagingResponse(
                 rs.getString("transaction_ref"),
@@ -426,13 +379,6 @@ public class AccountingAdminQueryService {
 
     private static String blankToNull(String value) {
         return notBlank(value) ? value.trim() : null;
-    }
-
-    private static Pageable boundAgingPageable(Pageable pageable) {
-        int page = pageable == null ? 0 : pageable.getPageNumber();
-        int requestedSize = pageable == null ? AGING_DEFAULT_PAGE_SIZE : pageable.getPageSize();
-        int size = Math.min(Math.max(requestedSize, 1), AGING_MAX_PAGE_SIZE);
-        return org.springframework.data.domain.PageRequest.of(page, size);
     }
 
     private static boolean notBlank(String value) {

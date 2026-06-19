@@ -11539,10 +11539,9 @@ const SP_D1_PAGES = [
   'products.admin',
   'arologis.admin',
   'arologis.region',
-  // MIG-14 admin UI 4 groups
+  // MIG-14 admin UI 3 groups
   'ecount.mig14.cash-list',
   'ecount.mig14.order-list',
-  'ecount.mig14.aging-snapshot',
   'ecount.mig14.ledger',
     // C2b 단독→PermissionGuard 전환 page-codes (V29/V30/V33/V34/V36 seed 기반)
     'sales.slip.create',
@@ -11666,7 +11665,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'products.list', 'products.admin', 'arologis.admin', 'arologis.region',
     // MIG-14 admin UI
     'ecount.mig14.cash-list', 'ecount.mig14.order-list',
-    'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
+    'ecount.mig14.ledger',
     // Issue 4 Slice 4
     'accounting.edit-requests', 'accounting.edit-requests.decide',
     // C2b PermissionGuard 전환 — MANAGER: 전 12개 page view 허용 (V29/V30/V33/V34/V36 seed)
@@ -11742,7 +11741,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'partners.list', 'partners.detail',
     // MIG-14 admin UI — ACCOUNTANT: view 전용
     'ecount.mig14.cash-list', 'ecount.mig14.order-list',
-    'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
+    'ecount.mig14.ledger',
     // C2b PermissionGuard 전환 — ACCOUNTANT: slip.edit-requests view (V38 broadened)
     'slip.edit-requests',
     // C5-2c: V36 seed 기반 ACCOUNTANT VIEW 추가
@@ -11841,7 +11840,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'products.list', 'products.admin', 'arologis.admin', 'arologis.region',
     // MIG-14 admin UI
     'ecount.mig14.cash-list', 'ecount.mig14.order-list',
-    'ecount.mig14.aging-snapshot', 'ecount.mig14.ledger',
+    'ecount.mig14.ledger',
     // Issue 4 Slice 4
     'accounting.edit-requests', 'accounting.edit-requests.decide',
     // C2b PermissionGuard 전환 — MANAGER: 전 12개 page edit 허용 (V29/V30/V33/V34/V36 seed)

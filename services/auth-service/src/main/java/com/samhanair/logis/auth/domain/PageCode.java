@@ -615,9 +615,6 @@ public enum PageCode {
     /** MIG-14 Order admin 목록/상세 화면. */
     ECOUNT_MIG14_ORDER_LIST("ecount.mig14.order-list", "이카운트 주문서 admin 조회"),
 
-    /** MIG-14 Partner aging snapshot admin 화면. */
-    ECOUNT_MIG14_AGING_SNAPSHOT("ecount.mig14.aging-snapshot", "이카운트 거래처 aging snapshot 조회"),
-
     /** MIG-14 Ledger admin 화면. */
     ECOUNT_MIG14_LEDGER("ecount.mig14.ledger", "이카운트 매출장/매입장 admin 조회"),
 
