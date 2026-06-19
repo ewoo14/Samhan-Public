@@ -10,6 +10,8 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.presence.PresenceEntry;
+import com.samhanair.logis.shared.realtime.presence.PresenceService;
 import com.samhanair.logis.slip.collab.SlipCollabComment;
 import com.samhanair.logis.slip.collab.SlipCollabEditService;
 import com.samhanair.logis.slip.collab.SlipCollabSuggestionRepository;
@@ -22,6 +24,7 @@ import com.samhanair.logis.slip.web.collab.dto.CommitSlipCollabEditRequest;
 import com.samhanair.logis.slip.web.collab.dto.SlipCollabEditResponse;
 import com.samhanair.logis.slip.web.collab.dto.SlipCollabCommentResponse;
 import com.samhanair.logis.slip.web.collab.dto.SlipCollabSuggestionResponse;
+import com.samhanair.logis.slip.web.collab.dto.SlipPresenceRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -63,6 +66,7 @@ public class SlipCollabController {
     private final SlipCollabSuggestionRepository suggestionRepository;
     private final SlipRepository slipRepository;
     private final RealtimeBroker broker;
+    private final PresenceService presenceService;
     /**
      * 포트는 concrete 타입으로 주입한다 — 수정완료 시점
      * {@link SlipDocumentCollaborationPort#validateChangeSet} 조기 검증 호출용 (Round C P2).
@@ -76,6 +80,7 @@ public class SlipCollabController {
             SlipCollabSuggestionRepository suggestionRepository,
             SlipRepository slipRepository,
             RealtimeBroker broker,
+            PresenceService presenceService,
             @Qualifier("slipOutboundCollaborationPort") SlipDocumentCollaborationPort outboundPort,
             @Qualifier("slipInboundCollaborationPort") SlipDocumentCollaborationPort inboundPort) {
         this.commentService = commentService;
@@ -83,6 +88,7 @@ public class SlipCollabController {
         this.suggestionRepository = suggestionRepository;
         this.slipRepository = slipRepository;
         this.broker = broker;
+        this.presenceService = presenceService;
         this.outboundPort = outboundPort;
         this.inboundPort = inboundPort;
     }
@@ -189,6 +195,43 @@ public class SlipCollabController {
         return ApiResponse.ok(items);
     }
 
+    /** 전표 협업 presence join/heartbeat. 기존 collab SSE stream 으로 presence:join 이벤트가 발행된다. */
+    @Operation(summary = "전표 협업 presence join/heartbeat")
+    @PostMapping("/presence/join")
+    @RequirePermission(page = "slip.comments", action = PermissionAction.VIEW)
+    public ApiResponse<PresenceEntry> joinPresence(
+            @PathVariable UUID slipId,
+            @RequestBody(required = false) SlipPresenceRequest request,
+            @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        loadSlip(slipId);
+        String userId = resolvePresenceUserId(callerId, request);
+        String displayName = resolvePresenceDisplayName(callerName, request);
+        return ApiResponse.ok(presenceService.join(slipId, userId, displayName));
+    }
+
+    /** 전표 협업 presence leave. 기존 collab SSE stream 으로 presence:leave 이벤트가 발행된다. */
+    @Operation(summary = "전표 협업 presence leave")
+    @PostMapping("/presence/leave")
+    @RequirePermission(page = "slip.comments", action = PermissionAction.VIEW)
+    public ApiResponse<Void> leavePresence(
+            @PathVariable UUID slipId,
+            @RequestBody(required = false) SlipPresenceRequest request,
+            @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId) {
+        loadSlip(slipId);
+        presenceService.leave(slipId, resolvePresenceUserId(callerId, request));
+        return ApiResponse.ok(null);
+    }
+
+    /** 전표 협업 현재 presence 목록. 화면에는 displayName/color 만 사용하고 userId 는 노출하지 않는다. */
+    @Operation(summary = "전표 협업 presence 목록")
+    @GetMapping("/presence")
+    @RequirePermission(page = "slip.comments", action = PermissionAction.VIEW)
+    public ApiResponse<List<PresenceEntry>> listPresence(@PathVariable UUID slipId) {
+        loadSlip(slipId);
+        return ApiResponse.ok(presenceService.list(slipId));
+    }
+
     /** 전표 협업 SSE stream. 댓글/제안/복원 이벤트는 slipId 채널로 전달된다. */
     @Operation(summary = "전표 협업 SSE stream 구독")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -242,5 +285,32 @@ public class SlipCollabController {
 
     private String resolveDeleter(String callerId) {
         return (callerId == null || callerId.isBlank()) ? "system" : callerId;
+    }
+
+    private String resolvePresenceUserId(String callerId, SlipPresenceRequest request) {
+        String headerUserId = callerId == null ? null : callerId.trim();
+        String bodyUserId = request == null || request.userId() == null
+                ? null
+                : request.userId().trim();
+        if (headerUserId != null && !headerUserId.isBlank()) {
+            if (bodyUserId != null && !bodyUserId.isBlank() && !headerUserId.equals(bodyUserId)) {
+                throw new BusinessException(ErrorCode.FORBIDDEN,
+                        "presence 는 인증 사용자 본인만 변경할 수 있습니다");
+            }
+            return headerUserId;
+        }
+        if (bodyUserId == null || bodyUserId.isBlank()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                    "presence 사용자 정보를 확인할 수 없습니다");
+        }
+        return bodyUserId;
+    }
+
+    private String resolvePresenceDisplayName(String callerName, SlipPresenceRequest request) {
+        if (callerName != null && !callerName.isBlank()) {
+            String resolved = resolveActorName(callerName);
+            return "system".equals(resolved) ? null : resolved;
+        }
+        return request == null ? null : request.displayName();
     }
 }
