@@ -1702,6 +1702,13 @@ body.history-snapshot-open .mobile-drawer-side {
               <button class="btn btn-ghost" onclick="syncRepTel()" style="height:36px; padding:0 12px; white-space:nowrap; border:none; background:#f3f4f6;">대표번호 동기화</button>
             </div>
 
+            <div>담당자</div>
+            <div class="search-wrapper" style="width:100%;">
+              <input id="managerSearch" placeholder="담당자 검색" autocomplete="off"
+                    style="width:100%;height:36px;border:1px solid var(--c-line);border-radius:8px;padding:0 10px"/>
+              <div id="managerSuggestions" class="autocomplete-items hidden"></div>
+            </div>
+
             <div>요청사항 <span class="form-hint">필수</span></div>
             <div style="display:flex; flex-direction:column; gap:6px;">
               <input id="memo" placeholder="예: 오전 9시" style="width:100%;height:36px;border:1px solid var(--c-line);border-radius:8px;padding:0 10px"/>
@@ -2294,6 +2301,7 @@ COMMULTI.sort((a, b) => {
 const OLD_PRODUCTS=J(OLD_RAW,[]);
 const oldQty=new Map();
 let CUSTOMERS = [];
+let MANAGERS = [];
 let HOME_RATIO_VAL = '';
 let HOME_RATIO_LIMIT = '';
 let COMM_RATIO_VAL = '';
@@ -10231,7 +10239,7 @@ function initEvents() {
     'memo', 
     'addrBase', 'addrDetail',
     'addrAuditBase', 'addrAuditDetail',
-    'tel', 'due', 'payDue', 'whCode', 'custSearch'
+    'tel', 'due', 'payDue', 'whCode', 'custSearch', 'managerSearch'
   ];
   inputs.forEach(id => {
     const elem = el('#' + id);
@@ -10420,6 +10428,9 @@ function fixFootersForMobile(isMobile){
     var custInput = document.getElementById('custSearch');
     var custCode = custInput ? (custInput.dataset.code || '') : ''; 
     var custName = custInput ? custInput.value.trim() : '';
+    var managerInput = document.getElementById('managerSearch');
+    var managerName = managerInput ? managerInput.value.trim() : '';
+    var managerCode = managerInput ? (managerInput.dataset.code || '') : '';
 
     if (!custCode && !custName) {
       alert('거래처를 선택해주세요.');
@@ -10451,6 +10462,8 @@ function fixFootersForMobile(isMobile){
       whCode: whCode,
       addr: fullAddr,
       addrAudit: fullAuditAddr,
+      manager: managerName,
+      managerCode: managerCode,
       receiver: document.getElementById('tel').value,
       memo: document.getElementById('memo').value,
       isMobile: typeof isMobileNow === 'function' ? isMobileNow() : false,
@@ -14662,6 +14675,8 @@ function getCurrentSlipSnapshot() {
   };
   const cust = document.getElementById('custSearch');
   const custCode = cust ? (cust.dataset.code || '') : '';
+  const manager = document.getElementById('managerSearch');
+  const managerCode = manager ? (manager.dataset.code || '') : '';
   let itemsKey = '';
   if (typeof buildSendRows === 'function') {
     const rows = buildSendRows();
@@ -14672,6 +14687,8 @@ function getCurrentSlipSnapshot() {
   return [
     custCode,
     getVal('custSearch'),
+    managerCode,
+    getVal('managerSearch'),
     getVal('due'),
     getVal('whCode'),
     getVal('addrBase'),
@@ -15357,6 +15374,9 @@ function resetCardData() {
   setVal('custAddr', '');
   setVal('custGroup', '');
   setVal('custNote', '');
+  setVal('managerSearch', '');
+  const managerInput = document.getElementById('managerSearch');
+  if (managerInput) managerInput.dataset.code = '';
   setVal('due', today);
   setVal('whCode', '00003');
   setVal('addrBase', '');
@@ -15487,6 +15507,9 @@ function submitOrderCard() {
     const custInput = getEl('custSearch');
     const custCode = custInput?.dataset.code || '';
     const custName = custInput?.value || '';
+    const managerInput = getEl('managerSearch');
+    const managerName = managerInput?.value || '';
+    const managerCode = managerInput?.dataset.code || '';
     const fullAddr = (getVal('addrBase') + ' ' + getVal('addrDetail')).trim();
     
     // 입력창 값 읽기
@@ -15742,6 +15765,8 @@ function submitOrderCard() {
       payDue: document.getElementById('chkCardPay')?.checked ? '카드결제' : 
               (document.getElementById('payDueStar')?.checked ? '*' : 
               (document.getElementById('payDuePre')?.checked ? '선결제' : getVal('payDue'))),
+      manager: managerName.trim(),
+      managerCode: managerCode,
       addr: fullAddr,
       tel: getVal('tel'),
       memo: getVal('memo'),
@@ -15952,6 +15977,129 @@ function initCustomerSearch() {
   });
 }
 
+function getManagerName_(manager) {
+  return String((manager && (manager['담당자명'] || manager.manager || manager.name || manager.fullName)) || '');
+}
+
+function getManagerCode_(manager) {
+  return String((manager && (manager['담당자코드'] || manager.empCd || manager.managerCode || manager.code)) || '');
+}
+
+function initManagerSearch() {
+  const inp = document.getElementById('managerSearch');
+  if (!inp) return;
+
+  inp.placeholder = "담당자 데이터 로딩중...";
+  inp.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      MANAGERS = data || [];
+      inp.placeholder = "담당자 검색";
+      inp.disabled = false;
+    })
+    .withFailureHandler(function(err) {
+      console.error(err);
+      inp.placeholder = "데이터 로드 실패";
+    })
+    .getAllManagers();
+
+  let currentFocus = -1;
+
+  // 입력감지 이벤트 핸들러
+  inp.addEventListener('input', function(e) {
+    // 코드 정보 초기화
+    this.dataset.code = '';
+    if(typeof toggleSlipButton === 'function') toggleSlipButton();
+
+    const val = this.value;
+    closeAllLists();
+    
+    // 값이 없으면 리턴
+    if (!val) return;
+
+    currentFocus = -1;
+    const list = document.getElementById('managerSuggestions');
+    list.classList.remove('hidden');
+    list.innerHTML = '';
+
+    // 검색 및 렌더링 로직
+    const targets = (typeof MANAGERS !== 'undefined') ? MANAGERS : [];
+    const matches = targets.filter(m => getManagerName_(m).toLowerCase().includes(val.toLowerCase()));
+
+    if (matches.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'ac-row';
+      empty.innerHTML = '<span style="color:#999;">검색 결과 없음</span>';
+      list.appendChild(empty);
+      return;
+    }
+
+    matches.forEach(m => {
+      const item = document.createElement('div');
+      item.className = 'ac-row';
+      const name = getManagerName_(m);
+      const code = getManagerCode_(m);
+      const regex = new RegExp(`(${val})`, 'gi');
+      const highlightName = name.replace(regex, "<span style='color:#2563eb; font-weight:bold;'>$1</span>");
+
+      item.innerHTML = `
+        <div class="ac-col-name">${highlightName}</div>
+        <div class="ac-col-meta">${code}</div>
+      `;
+
+      item.addEventListener('mousedown', function(e) {
+        inp.value = name;
+        inp.dataset.code = code;
+
+        if(typeof toggleSlipButton === 'function') toggleSlipButton();
+        closeAllLists();
+      });
+
+      list.appendChild(item);
+    });
+  });
+
+  inp.addEventListener('keydown', function(e) {
+    let list = document.getElementById('managerSuggestions');
+    let items = list ? list.getElementsByClassName('ac-row') : [];
+    if (e.key === 'ArrowDown') { currentFocus++; addActive(items); } 
+    else if (e.key === 'ArrowUp') { currentFocus--; addActive(items); } 
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (currentFocus > -1 && items) {
+        const event = new MouseEvent('mousedown');
+        items[currentFocus].dispatchEvent(event);
+      }
+    }
+  });
+
+  function addActive(x) {
+    if (!x || x.length === 0) return false;
+    removeActive(x);
+    if (currentFocus >= x.length) currentFocus = 0;
+    if (currentFocus < 0) currentFocus = (x.length - 1);
+    x[currentFocus].classList.add('autocomplete-active');
+    x[currentFocus].scrollIntoView({block: 'nearest'});
+  }
+
+  function removeActive(x) {
+    for (let i = 0; i < x.length; i++) x[i].classList.remove('autocomplete-active');
+  }
+
+  function closeAllLists(elmnt) {
+    const list = document.getElementById('managerSuggestions');
+    if (elmnt !== inp && elmnt !== list) {
+      list.innerHTML = '';
+      list.classList.add('hidden');
+    }
+  }
+
+  document.addEventListener('click', function(e) {
+    closeAllLists(e.target);
+  });
+}
+
 /* 거래처 동기화 */
 function syncCustomers() {
   const dlg = document.getElementById('dlgProgress');
@@ -16069,8 +16217,8 @@ function initExcelUX() {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(k)) return;
 
     // 검색창 예외
-    if (el.id === 'custSearch') {
-      const list = document.getElementById('custSuggestions');
+    if (el.id === 'custSearch' || el.id === 'managerSearch') {
+      const list = document.getElementById(el.id === 'custSearch' ? 'custSuggestions' : 'managerSuggestions');
       if (list && !list.classList.contains('hidden') && list.children.length > 0) {
          if (k === 'ArrowUp' || k === 'ArrowDown' || k === 'Enter') return;
       }
@@ -16806,6 +16954,11 @@ function applySnapshot(shot, custName) {
             if(document.getElementById('custGroup')) document.getElementById('custGroup').value = matched.group || '';
             if(document.getElementById('custNote')) document.getElementById('custNote').value = matched.note || '';
           }
+        }
+
+        if (k === 'managerSearch' && v) {
+          const matched = (typeof MANAGERS !== 'undefined') ? MANAGERS.find(m => getManagerName_(m) === v) : null;
+          if (matched) el.dataset.code = getManagerCode_(matched);
         }
 
         // 예외처리
@@ -19329,6 +19482,7 @@ window.addEventListener('DOMContentLoaded', () => {
   toggleSameAddr_();
 
   initCustomerSearch();
+  initManagerSearch();
   initInventoryModal();
 
   startAuth();
