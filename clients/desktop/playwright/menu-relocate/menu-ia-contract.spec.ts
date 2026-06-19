@@ -133,6 +133,16 @@ function compactLabel(label: string): string {
   return label.replace(/\s+/g, '')
 }
 
+function constBlock(text: string, constName: string, nextConstName: string): string {
+  const startToken = `const ${constName} =`
+  const start = text.indexOf(startToken)
+  expect(start, `${startToken} 선언이 존재해야 함`).toBeGreaterThanOrEqual(0)
+  const endToken = `const ${nextConstName} =`
+  const end = text.indexOf(endToken, start + startToken.length)
+  expect(end, `${endToken} 선언이 ${startToken} 뒤에 존재해야 함`).toBeGreaterThan(start)
+  return text.slice(start, end)
+}
+
 test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
   const appLayout = read('clients/desktop/src/renderer/components/AppLayout.tsx')
 
@@ -141,7 +151,7 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
     // 홈 NavLink 블록 한정 — 상단 주석의 "홈"·회계 그룹 "홈택스" 오매칭 방지.
     expect(appLayout).toMatch(/<NavLink to="\/" end>[\s\S]*?홈[\s\S]*?<\/NavLink>/)
     // [Round C P3 #10] 같은 to="/" end NavLink 의 라벨(여는/닫는 태그 사이 \s* 텍스트)이 "대시보드" 가
-    //   아니어야 함(라벨 폐기 박제). 라벨을 태그 사이로 한정해 '운영 대시보드'(회계 관리자 SidebarLink)
+    //   아니어야 함(라벨 폐기 박제). 라벨을 태그 사이로 한정해 '운영 대시보드'(회계 SidebarLink)
     //   오매칭을 차단한다(기존 [\s\S]*? 광역 매칭 위험 제거).
     expect(appLayout).not.toMatch(/<NavLink to="\/" end>\s*대시보드\s*<\/NavLink>/)
     // 홈 NavLink 의 라벨 텍스트(태그 사이)가 정확히 '홈' 이어야 함(>홈< 정밀 토큰).
@@ -215,23 +225,29 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
     expect(activeTargetsBody, "판매 activeTargets 에 '/sales/partner-orders' 보존").toContain(
       "'/sales/partner-orders'",
     )
+    expect(activeTargetsBody, "판매 activeTargets 에 eCount 주문 silo route 포함").toContain(
+      "'/accounting/admin/orders'",
+    )
   })
 
   // [Round C P3 #12] 그룹 가시성 OR 구성원 정적 단언 — Round A/B 의 OR fix(단독 권한자 그룹 누락
   //   해소)가 향후 revert 되면 CI 에서 즉시 적발되도록 박제한다. AppLayout 의 show* 집계식이
   //   각 핵심 구성원을 포함하는지 소스 텍스트로 단언한다(런타임 의존 없음).
-  test('그룹 가시성 OR 구성원 정적 박제 — showAccounting/showArologisGroup/showAdminHrGroup', () => {
+  test('그룹 가시성 OR 구성원 정적 박제 — showSales/showAccounting/showArologisGroup/showAdminHrGroup', () => {
+    const salesVisibility = constBlock(appLayout, 'showSales', 'showPurchase')
+    const accountingVisibility = constBlock(appLayout, 'showAccounting', 'showDeliveryBatch')
+
+    // (판매) eCount 주문 silo 는 네이티브 판매 ▸ 주문서 대체 전까지 판매 flat 항목으로 노출한다.
+    expect(salesVisibility, '판매 OR 식에 주문서 관리 권한 포함').toContain('showAccountingAdminOrder')
+
     // (회계) Round B 보강: 세금계산서 발행 묶음(batch-issue)·수신 세금계산서(inbound) 단독 권한자도
     //   회계 그룹을 얻어야 한다 → OR 식에 두 변수가 포함되어야 한다.
-    expect(appLayout, '회계 OR 식에 showAccountingTaxInvoiceBatch 포함').toMatch(
-      /const showAccounting\s*=[\s\S]*?showAccountingTaxInvoiceBatch/,
-    )
-    expect(appLayout, '회계 OR 식에 showAccountingTaxInvoiceInbound 포함').toMatch(
-      /const showAccounting\s*=[\s\S]*?showAccountingTaxInvoiceInbound/,
-    )
-    expect(appLayout, '회계 OR 식에 회계 관리자 그룹(showAccountingAdminGroup) 포함').toMatch(
-      /const showAccounting\s*=[\s\S]*?showAccountingAdminGroup/,
-    )
+    expect(accountingVisibility, '회계 OR 식에 showAccountingTaxInvoiceBatch 포함').toContain('showAccountingTaxInvoiceBatch')
+    expect(accountingVisibility, '회계 OR 식에 showAccountingTaxInvoiceInbound 포함').toContain('showAccountingTaxInvoiceInbound')
+    expect(accountingVisibility, '회계 OR 식에서 주문서 관리 권한 제외').not.toContain('showAccountingAdminOrder')
+    expect(accountingVisibility, '회계 OR 식에 원장 대조 권한 포함').toContain('showAccountingAdminLedger')
+    expect(accountingVisibility, '회계 OR 식에 운영 대시보드 권한 포함').toContain('showAccountingAdminMigOps')
+    expect(accountingVisibility, '회계 OR 식에 회계 수정 요청 권한 포함').toContain('showAccountingEditRequests')
 
     // (배차) Round A 보강: 배차지역 관리 단독 권한자(showRegionMgmt)도 배차 그룹을 얻어야 한다.
     expect(appLayout, '배차 OR 식 = showDispatchBoard || showArologis || showRegionMgmt').toMatch(
@@ -251,6 +267,7 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
   test('이동 항목: 각 카테고리 블록 안에서 route+testid+label 동일 블록 hard 보존', () => {
     const salesBlock = categoryBlock(appLayout, '판매')
     assertSidebarLink(salesBlock, 'sidebar-sales', '/sales', '판매관리')
+    assertSidebarLink(salesBlock, 'sidebar-accounting-admin-orders', '/accounting/admin/orders', '주문서 관리')
     assertSidebarLink(salesBlock, 'sidebar-products-catalog', '/products/catalog', '기초품목 관리')
     assertSidebarLink(
       salesBlock,
@@ -270,6 +287,20 @@ test.describe('SP-04/Round A 좌측 메뉴 5대분류 IA 정적 계약', () => {
     assertSidebarLink(purchaseBlock, 'sidebar-purchases', '/purchases', '구매관리')
     assertSidebarLink(purchaseBlock, 'sidebar-purchases-receipt-ocr', '/purchases/receipt-ocr', '영수증 OCR')
     assertSidebarLink(purchaseBlock, 'sidebar-transfers', '/transfers', '재고이동 관리')
+
+    const accountingBlock = categoryBlock(appLayout, '회계')
+    expect(accountingBlock, '회계 관리자 중첩 그룹 토글은 제거되어야 함').not.toContain('sidebar-accounting-admin-group-toggle')
+    expect(accountingBlock, '회계 관리자 중첩 그룹 컨테이너는 제거되어야 함').not.toContain('sidebar-accounting-admin-group')
+    expect(accountingBlock, '주문서 route 는 판매 activeTargets 소속이어야 하므로 회계 블록에서 제외').not.toContain(
+      "'/accounting/admin/orders'",
+    )
+    expect(accountingBlock, '주문서 관리는 판매 flat 항목이어야 하므로 회계 블록에서 제외').not.toContain(
+      'sidebar-accounting-admin-orders',
+    )
+    assertSidebarLink(accountingBlock, 'sidebar-accounting-admin-sales-ledger', '/accounting/admin/ledger/sales', '매출 원장 대조')
+    assertSidebarLink(accountingBlock, 'sidebar-accounting-admin-purchase-ledger', '/accounting/admin/ledger/purchase', '매입 원장 대조')
+    assertSidebarLink(accountingBlock, 'sidebar-accounting-admin-migration-ops', '/accounting/admin/migration-ops', '운영 대시보드')
+    assertSidebarLink(accountingBlock, 'sidebar-accounting-admin-edit-requests', '/admin/accounting-edit-requests', '회계 수정 요청')
 
     const groupwareBlock = categoryBlock(appLayout, '그룹웨어')
     assertSidebarLink(groupwareBlock, 'sidebar-link-dispatch', '/sales/link-dispatch', '링크발송')

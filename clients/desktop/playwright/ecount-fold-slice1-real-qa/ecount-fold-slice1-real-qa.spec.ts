@@ -2,7 +2,7 @@
  * 이카운트 네이티브 편입 슬1 — 잔액 스냅샷 silo 폐기 Docker 실서버 QA.
  *
  * 대상: page-code ecount.mig14.aging-snapshot 완전 제거 검증.
- *   1) 회계 관리자 그룹에 '잔액 스냅샷' 메뉴 미노출(형제 항목은 유지)
+ *   1) 회계 카테고리 flat 항목에 '잔액 스냅샷' 메뉴 미노출(형제 항목은 유지)
  *   2) 네이티브 대체 보고서 /accounting/reports/partner-aging 도달·렌더(거래처 미수/미지급)
  *   3) 구 silo route #/accounting/admin/aging-snapshot 진입 시 silo 화면 미렌더
  *
@@ -76,7 +76,7 @@ async function gotoHash(page: Page, hashPath: string): Promise<void> {
   await page.goto(`${BASE_URL}/#${hashPath}`, { waitUntil: 'domcontentloaded' })
 }
 
-test('MASTER — 회계 관리자 그룹에 잔액 스냅샷 미노출 + 형제 항목 유지', async ({ page }) => {
+test('MASTER — 회계 카테고리 flat 항목에 잔액 스냅샷 미노출 + 형제 항목 유지', async ({ page }) => {
   const login = await realLogin(page, 'dev_master')
   await installAuthStub(page, login)
   await gotoHash(page, '/')
@@ -89,24 +89,18 @@ test('MASTER — 회계 관리자 그룹에 잔액 스냅샷 미노출 + 형제 
     await accountingCat.click()
   }
 
-  // 회계 관리자 그룹 토글 펼치기
-  const adminToggle = page.getByTestId('sidebar-accounting-admin-group-toggle')
-  await expect(adminToggle, '회계 관리자 그룹 토글').toBeVisible({ timeout: 10_000 })
-  if ((await adminToggle.getAttribute('aria-expanded')) !== 'true') {
-    await adminToggle.click()
-  }
-  const adminGroup = page.getByTestId('sidebar-accounting-admin-group')
-  await expect(adminGroup, '회계 관리자 그룹 컨테이너').toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('sidebar-accounting-admin-group-toggle'), '회계 관리자 그룹 토글 제거').toHaveCount(0)
+  await expect(page.getByTestId('sidebar-accounting-admin-group'), '회계 관리자 그룹 컨테이너 제거').toHaveCount(0)
 
   // 핵심 단언: 잔액 스냅샷 링크/항목 미존재
   await expect(
     page.getByTestId('sidebar-accounting-admin-aging-snapshot'),
     '잔액 스냅샷 메뉴(제거됨)',
   ).toHaveCount(0)
-  await expect(adminGroup, '회계 관리자 그룹 텍스트에 잔액 스냅샷 없음').not.toContainText('잔액 스냅샷')
-
-  // 형제 항목은 유지(silo 폐기는 aging·cash 한정 — 원장 대조/주문서 등)
-  await expect(page.getByTestId('sidebar-accounting-admin-sales-ledger'), '매출 원장 대조 유지').toBeVisible()
+  // 형제 항목은 유지(silo 폐기는 aging·cash 한정 — 원장 대조/운영 대시보드/회계 수정 요청 등)
+  const salesLedger = page.getByTestId('sidebar-accounting-admin-sales-ledger')
+  await expect(salesLedger, '매출 원장 대조 유지').toBeVisible()
+  await salesLedger.scrollIntoViewIfNeeded()
 
   await page.screenshot({
     path: path.join(SCREENSHOTS_DIR, 'T1-master-accounting-admin-no-aging.png'),

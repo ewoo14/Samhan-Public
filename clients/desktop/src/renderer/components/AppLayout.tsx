@@ -11,7 +11,7 @@
  * 7 SidebarCategory 그룹 (각 그룹은 권한 1개라도 보이면 헤더+자식 노출, 전무 시 완전 미렌더):
  * - 판매     — 판매관리/견적서/주문서/거래처/DC설정/발송금지/전표정리/내일자전표/vendor OCR/품목 관리/시트 동기화
  * - 구매     — 구매관리/영수증 OCR/재고이동 관리/입고 검수/재고실사/DPS 비교
- * - 회계     — 매출·매입전표/계정과목/분개장/세금계산서/시산표/재무보고서/마감/원장/회계 관리자(중첩 토글)
+ * - 회계     — 매출·매입전표/계정과목/분개장/세금계산서/시산표/재무보고서/마감/원장/운영 회계 항목
  * - 그룹웨어 — 링크발송/알리고 주소록/단톡방 매핑
  * - 인사     — 인사 관리/권한설정/권한 일괄/그룹 권한/권한그룹 관리/권한 위임
  * - 배차     — 배차현황/가배차리스트/미배차리스트/배차안내 SMS/실배차 비교/배차지역 관리/배차 admin
@@ -295,7 +295,6 @@ export function AppLayout() {
   const navigate = useNavigate()
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [accountingAdminOpen, setAccountingAdminOpen] = useState(true)
   const userMenuRef = useRef<HTMLDivElement | null>(null)
 
   // [SP-D1 cycle 2] 동적 RBAC 권한 훅 — 5분 캐시. 사이드바 메뉴 hidden 연동.
@@ -362,10 +361,6 @@ export function AppLayout() {
   const showAccountingAdminLedger = dynamicCanAccess('ecount.mig14.ledger', 'view')
   const showAccountingAdminMigOps = dynamicCanAccess('ecount.mig.ops-dashboard', 'view')
   const showAccountingEditRequests = dynamicCanAccess('accounting.edit-requests.decide', 'view')
-  const showAccountingAdminGroup =
-    showAccountingAdminOrder
-    || showAccountingAdminLedger
-    || showAccountingAdminMigOps || showAccountingEditRequests
   // 회계 카테고리 헤더: 회계 PageCode 중 1개라도 가시이면 표시.
   // [Round B P1] 세금계산서 발행 묶음(batch-issue)·수신 세금계산서(inbound) 누락 보강 —
   //   해당 권한 단독 보유자(자식 링크 597/604행 존재)가 회계 그룹 전체를 잃던 갭 해소.
@@ -377,7 +372,8 @@ export function AppLayout() {
     || showAccountingTaxInvoiceBatch || showAccountingTaxInvoiceInbound
     || showAccountingDailyClose
     || showAccountingLedger || showAccountingDepositMatch
-    || showAccountingAdminGroup
+    || showAccountingAdminLedger
+    || showAccountingAdminMigOps || showAccountingEditRequests
   const showDeliveryBatch = dynamicCanAccess('slip.delivery-batch', 'view')
 
   // [SP-D4] 잔여 7 도메인 22 PageCode 동적 RBAC 연동.
@@ -473,7 +469,7 @@ export function AppLayout() {
     showSalesSlipList || showEstimatesList || showPartnerOrderList
     || showPartnerDcConfig || showEstimateConfig || showPartnerManagement || showSlipCleanup
     || showNextDaySlip || showVendorOrderOcr || showBlockedPartners
-    || showProductsList || showSheetSync
+    || showAccountingAdminOrder || showProductsList || showSheetSync
   const showPurchase =
     showPurchaseSlipList || showReceiptOcr || showInventoryStockTransfer
     || showInboundInspection || showAudit || showDpsCompare || showDpsByProduct
@@ -512,6 +508,7 @@ export function AppLayout() {
             activeTargets={[
               '/sales/estimates',
               '/sales/partner-orders',
+              '/accounting/admin/orders',
                 '/sales/order-approvals',
                 '/admin/partners',
                 '/sales/partner-dc-config',
@@ -549,6 +546,15 @@ export function AppLayout() {
               data-testid="sidebar-sales-partner-orders"
             >
               주문서 관리
+            </SidebarLink>
+            {/* [이카운트 네이티브 편입 슬4→슬6] eCount 이관 주문(MIG-8) silo — 네이티브 '주문서 관리'(/sales/partner-orders)와
+                구분 위해 '(이관)' 표기. 슬6 에서 partner_orders 로 이식 후 본 링크/route 제거 예정. */}
+            <SidebarLink
+              to="/accounting/admin/orders"
+              show={showAccountingAdminOrder}
+              data-testid="sidebar-accounting-admin-orders"
+            >
+              주문서 관리 (이관)
             </SidebarLink>
             <SidebarLink
               to="/sales/order-approvals"
@@ -752,7 +758,6 @@ export function AppLayout() {
               '/accounting/deposit-match',
               '/accounting/daily-closing',
               '/accounting/ledgers',
-              '/accounting/admin/orders',
               '/accounting/admin/ledger/sales',
               '/accounting/admin/ledger/purchase',
               '/accounting/admin/migration-ops',
@@ -977,62 +982,34 @@ export function AppLayout() {
               >
                 원장
               </SidebarLink>
-              {/* [MIG-18] 회계 관리자 그룹 — 동적 RBAC 캐시 false 시 그룹 전체 hidden. */}
-              {showAccountingAdminGroup ? (
-                <>
-                  <SidebarGroupToggle
-                    label="회계 관리자"
-                    open={accountingAdminOpen}
-                    onToggle={() => setAccountingAdminOpen((value) => !value)}
-                    testId="sidebar-accounting-admin-group-toggle"
-                    controls="sidebar-accounting-admin-group"
-                  />
-                  {accountingAdminOpen ? (
-                    <div id="sidebar-accounting-admin-group" data-testid="sidebar-accounting-admin-group">
-                      <SidebarLink
-                        to="/accounting/admin/orders"
-                        show={showAccountingAdminOrder}
-                        data-testid="sidebar-accounting-admin-orders"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        주문서 관리
-                      </SidebarLink>
-                      <SidebarLink
-                        to="/accounting/admin/ledger/sales"
-                        show={showAccountingAdminLedger}
-                        data-testid="sidebar-accounting-admin-sales-ledger"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        매출 원장 대조
-                      </SidebarLink>
-                      <SidebarLink
-                        to="/accounting/admin/ledger/purchase"
-                        show={showAccountingAdminLedger}
-                        data-testid="sidebar-accounting-admin-purchase-ledger"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        매입 원장 대조
-                      </SidebarLink>
-                      <SidebarLink
-                        to="/accounting/admin/migration-ops"
-                        show={showAccountingAdminMigOps}
-                        data-testid="sidebar-accounting-admin-migration-ops"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        운영 대시보드
-                      </SidebarLink>
-                      <SidebarLink
-                        to="/admin/accounting-edit-requests"
-                        show={showAccountingEditRequests}
-                        data-testid="sidebar-accounting-admin-edit-requests"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        회계 수정 요청
-                      </SidebarLink>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
+              <SidebarLink
+                to="/accounting/admin/ledger/sales"
+                show={showAccountingAdminLedger}
+                data-testid="sidebar-accounting-admin-sales-ledger"
+              >
+                매출 원장 대조
+              </SidebarLink>
+              <SidebarLink
+                to="/accounting/admin/ledger/purchase"
+                show={showAccountingAdminLedger}
+                data-testid="sidebar-accounting-admin-purchase-ledger"
+              >
+                매입 원장 대조
+              </SidebarLink>
+              <SidebarLink
+                to="/accounting/admin/migration-ops"
+                show={showAccountingAdminMigOps}
+                data-testid="sidebar-accounting-admin-migration-ops"
+              >
+                운영 대시보드
+              </SidebarLink>
+              <SidebarLink
+                to="/admin/accounting-edit-requests"
+                show={showAccountingEditRequests}
+                data-testid="sidebar-accounting-admin-edit-requests"
+              >
+                회계 수정 요청
+              </SidebarLink>
           </SidebarCategory>
 
           {/* [SP-D2] MANAGER 전용 단독 노출 블록 폐기 — 동적 RBAC 통합으로 메인 회계 블록에서 처리.
