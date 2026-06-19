@@ -108,17 +108,17 @@ MIG-14는 MIG-7~11 결과를 desktop admin UI에서 조회하기 위한 read end
 
 | 화면군 | Endpoint | 응답 식별자 |
 |---|---|---|
-| Cash 지출 | `GET /api/v1/accounting/cash-disbursements` | `slipNo`, `partnerName`, `journalNo`, `kind`, `amount` |
-| Cash 입금 | `GET /api/v1/accounting/cash-receipts` | `slipNo`, `partnerName`, `journalNo`, `kind`, `amount` |
+| ~~Cash 지출~~ | ~~`GET /api/v1/accounting/cash-disbursements`~~ | **제거됨(슬2 PR #520)** — endpoint·`CASH_PAGE_CODE`·`listCash*`·DTO(`CashDisbursementResponse`)·page-code 폐기. 현금 자료는 MIG-9 가 네이티브 journals 에 편입 → 분개장 `GET /accounting/journals`·입금매칭·원장 사용 |
+| ~~Cash 입금~~ | ~~`GET /api/v1/accounting/cash-receipts`~~ | **제거됨(슬2 PR #520)** — endpoint·DTO(`CashReceiptResponse`)·page-code 폐기. 현금 자료는 네이티브 분개장/입금매칭/원장 사용 |
 | Order 목록 | `GET /api/v1/accounting/orders` | `orderNo`, `partnerName`, `managerName`, `progressStatus`, `linkedSlipNo` |
 | Order 상세 | `GET /api/v1/accounting/orders/{orderNo}` | `orderNo` + `lines[]`; 내부 `orderId` path 금지 |
 | ~~Aging snapshot~~ | ~~`GET /api/v1/accounting/aging-snapshot`~~ | **제거됨(슬1 PR #518)** — endpoint·DTO(`PartnerAgingSnapshotResponse`, `AgingSnapshotRefreshResult`)·page-code 폐기. 거래처 잔액은 네이티브 `GET /accounting/reports/partner-aging` 사용 |
 | Ledger 매출 | `GET /api/v1/accounting/ledger/sales` | staging row 업무 컬럼 + DailyClosing 대조 결과 |
 | Ledger 매입 | `GET /api/v1/accounting/ledger/purchase` | staging row 업무 컬럼 + DailyClosing 대조 결과 |
 
-권한은 auth-service MIG14 PageCode 와 desktop `PermissionGuard`를 사용한다(`ECOUNT_MIG14_AGING_SNAPSHOT` enum 값은 슬1 PR #518에서 제거 — V59 마이그가 권한 행을 정리한다). `DynamicPermissionClient` 테스트 mock은 deprecated service-local 타입 대신 shared/security 통합 인터페이스를 대상으로 정렬한다.
+권한은 auth-service MIG14 PageCode 와 desktop `PermissionGuard`를 사용한다(`ECOUNT_MIG14_AGING_SNAPSHOT` enum 값은 슬1 PR #518에서, `ECOUNT_MIG14_CASH_LIST` enum 값은 슬2 PR #520에서 제거 — V59/V60 마이그가 권한 행을 정리한다). `DynamicPermissionClient` 테스트 mock은 deprecated service-local 타입 대신 shared/security 통합 인터페이스를 대상으로 정렬한다.
 
-MIG-16 이후 Cash 조회의 `partnerName` 표시는 partner-service batch lookup으로 해결한다. (aging snapshot Spring `Page` 응답은 슬1 PR #518에서 제거 — 네이티브 partner-aging 보고서로 대체.)
+> ⚠️ **lineage 유지** — Cash 조회 endpoint·DTO 는 제거됐으나 `CashDisbursement`/`CashReceipt` 도메인·`cash_*` 테이블·MIG-7 transform(`/transform-from-staging`)·MIG-9 cash-journal 생성(`/cash-journals/generate-from-*`)은 보존된다(cutover 후 물리 제거). 현금 자료는 이 계보로 네이티브 journals 에 편입되어 분개장/입금매칭/원장으로 노출된다.
 
 ## 공급자 설정 확장 — 연락처·입금계좌(노출 토글)·인감·로고 (PR #459)
 

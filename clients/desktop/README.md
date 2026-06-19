@@ -130,14 +130,14 @@ npm run build:print-renderer
 
 ## MIG-14 — 회계 마이그레이션 admin UI (2026-05-21)
 
-MIG-14는 Cash / Order / Ledger 조회 화면을 `clients/desktop/src/renderer/routes/accounting/admin/` 아래에 통합한다.
+MIG-14는 Order / Ledger 조회 화면을 `clients/desktop/src/renderer/routes/accounting/admin/` 아래에 통합한다.
 
-> ⚠️ **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** — `PartnerAgingSnapshotPage.tsx`(page-code `ecount.mig14.aging-snapshot`)는 제거됨. 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`(재무 보고서 메뉴)로 대체되며, admin UI 는 4 화면 → **3 화면**(Cash / Order / Ledger)으로 축소됐다.
+> ⚠️ **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** — `PartnerAgingSnapshotPage.tsx`(page-code `ecount.mig14.aging-snapshot`)는 제거됨. 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`(재무 보고서 메뉴)로 대체된다.
+>
+> ⚠️ **이카운트 네이티브 편입 슬2: 현금 지출/입금 silo 폐기(PR #520)** — `CashDisbursementListPage.tsx`·`CashReceiptListPage.tsx`·`CashTransactionList.tsx`(page-code `ecount.mig14.cash-list`)와 `accountingAdminApi` cash 함수·타입은 제거됨. 현금 자료는 MIG-9 가 이미 네이티브 회계 journals 에 편입했으므로 분개장(`/accounting/journals`)·입금매칭(`/accounting/deposit-match`)·원장으로 노출된다. 슬1·슬2 누적으로 admin UI 는 4 화면 → **2 화면**(Order / Ledger)으로 축소됐다.
 
 | route/page | 목적 |
 |---|---|
-| `CashDisbursementListPage.tsx` | 이카운트 지출결의서 기반 CashDisbursement 조회 |
-| `CashReceiptListPage.tsx` | 이카운트 입금보고서 기반 CashReceipt 조회 |
 | `OrderListPage.tsx` | 주문 목록 + 진행상태/담당자/거래처 필터 |
 | `OrderDetailPage.tsx` | `orderNo` 기반 주문 상세 + 라인 조회 |
 | `SalesLedgerPage.tsx` | 매출장 staging + DailyClosing 대조 조회 |

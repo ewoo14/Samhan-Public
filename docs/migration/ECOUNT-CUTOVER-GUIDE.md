@@ -90,12 +90,14 @@ pg_dump -h "$PGHOST" -p "${PGPORT:-5432}" -U "$PGUSER" -d accounting_db \
 | ACCOUNTANT | admin 조회 중심. 일부 실행 endpoint는 403 가능 |
 
 > ⚠️ **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** — AgingSnapshot 화면(page-code `ecount.mig14.aging-snapshot`)과 새로고침은 제거됐습니다. 거래처 미수/미지급 잔액은 네이티브 보고서 `회계 > 재무 보고서 > 거래처 미수/미지급`(`/accounting/reports/partner-aging`)을 사용합니다.
+>
+> ⚠️ **이카운트 네이티브 편입 슬2: 현금 지출/입금 silo 폐기(PR #520)** — Cash 트랜잭션 화면(지출/입금, page-code `ecount.mig14.cash-list`)과 조회 endpoint(`/api/v1/accounting/cash-disbursements`·`/cash-receipts`)는 제거됐습니다. 현금 자료는 MIG-9 가 이미 네이티브 회계 journals 에 편입했으므로 분개장 `회계 > 분개장`(`/accounting/journals`) + 입금매칭(`/accounting/deposit-match`) + 원장에서 확인합니다. (Cash 도메인·`cash_*` 테이블·MIG-7 transform·MIG-9 cash-journal 은 lineage 로 유지)
 
 권한 확인 방법:
 
 1. 데스크톱 앱 로그인
 2. 좌측 메뉴에서 `회계 > 회계 관리자` 그룹이 보이는지 확인
-3. `Cash`, `Order`, `Ledger` 화면 접근 확인 (AgingSnapshot 화면은 슬1에서 제거됨 — 거래처 잔액은 재무 보고서의 네이티브 partner-aging 사용)
+3. `Order`, `Ledger` 화면 접근 확인 (AgingSnapshot 화면은 슬1에서, Cash 트랜잭션 화면은 슬2에서 제거됨 — 거래처 잔액은 재무 보고서의 네이티브 partner-aging, 현금 자료는 네이티브 분개장/입금매칭/원장 사용)
 
 403이 나오면 권한 문제입니다. 데이터 파일을 다시 올리지 말고 권한부터 확인합니다.
 
@@ -655,28 +657,20 @@ file=<매출장 또는 매입장 XLSX>
 
 ## 3. Admin UI 트레이닝
 
-### 3.1 Cash 화면
+### 3.1 (제거됨, 슬2 PR #520) Cash 화면 → 네이티브 분개장/입금매칭/원장
 
-위치: `회계 > 회계 관리자 > Cash`
+> ⚠️ **이카운트 네이티브 편입 슬2: 현금 지출/입금 silo 폐기(PR #520)** — 구 `회계 > 회계 관리자 > Cash`(지출/입금 트랜잭션, page-code `ecount.mig14.cash-list`) 화면과 조회 endpoint(`/api/v1/accounting/cash-disbursements`·`/cash-receipts`)는 제거됐습니다. 현금 자료는 MIG-9 가 이미 네이티브 회계 journals 에 편입했으므로 아래 네이티브 화면에서 확인합니다.
 
-조회 대상:
+현행 위치: `회계 > 분개장`(`/accounting/journals`) + 입금매칭(`/accounting/deposit-match`) + 원장
 
-- CashDisbursement: 지출결의서 기반 지출
-- CashReceipt: 입금보고서 기반 입금
+확인 방법:
 
-사용법:
+1. 분개장에서 지출/입금 Journal 을 거래처명·일자·계정과목 기준으로 조회합니다.
+2. 지출 Journal 번호는 `JD-`, 입금 Journal 번호는 `JR-`로 시작합니다.
+3. 입금 대사(어떤 매출채권에 입금이 맞춰졌는지)는 입금매칭 화면에서 확인합니다.
+4. 화면에는 내부 UUID가 보이면 안 되며, `slipNo`, `journalNo`, `partnerName`, `amount` 등 업무 식별자만 노출됩니다.
 
-1. 거래처명, 전표번호, 유형, 일자 범위를 입력합니다.
-2. `조회`를 누릅니다.
-3. 적용된 조건은 상단 filter chip으로 표시됩니다.
-4. chip의 X를 누르면 해당 조건만 제거됩니다.
-5. `전체 초기화`를 누르면 모든 조건이 사라지고 첫 페이지로 돌아갑니다.
-
-확인 포인트:
-
-- 화면에는 내부 UUID가 보이면 안 됩니다.
-- 운영자는 `slipNo`, `partnerName`, `kind`, `amount`, `transactionDate`를 기준으로 대조합니다.
-- Journal 생성 후에는 Journal 번호가 `JD-` 또는 `JR-`로 연결되었는지 확인합니다.
+> ℹ️ (이력) 구 Cash 화면은 `거래처명/전표번호/유형/일자 범위` filter chip + `전체 초기화` 로 `CashDisbursement`(지출결의서)·`CashReceipt`(입금보고서) row 를 직접 조회했습니다. `CashDisbursement`/`CashReceipt` 엔티티·`cash_*` 테이블·MIG-7 transform·MIG-9 cash-journal 생성은 lineage 로 유지됩니다(cutover 후 물리 제거).
 
 ### 3.2 Order 화면
 
@@ -1074,11 +1068,12 @@ ACCOUNTANT는 조회 권한 중심입니다. import, transform, refresh는 MASTE
 
 | 화면 | PageCode |
 |---|---|
-| Cash | `ecount.mig14.cash-list` |
 | Order | `ecount.mig14.order-list` |
 | Ledger | `ecount.mig14.ledger` |
 
 > ⚠️ **슬1 PR #518** — page-code `ecount.mig14.aging-snapshot` 은 silo 폐기와 함께 제거됐습니다(V59 마이그가 `role_page_permissions` 등 권한 행을 정리). 거래처 잔액은 네이티브 보고서 `/accounting/reports/partner-aging` 를 사용하므로 이 page-code 권한을 다시 seed 하지 마세요.
+>
+> ⚠️ **슬2 PR #520** — page-code `ecount.mig14.cash-list` 도 silo 폐기와 함께 제거됐습니다(V60 마이그가 `role_page_permissions` 등 권한 행을 정리). 현금 자료는 네이티브 분개장(`/accounting/journals`)·입금매칭·원장으로 확인하므로 이 page-code 권한을 다시 seed 하지 마세요.
 
 권한 seed SQL 예시:
 
@@ -1086,10 +1081,10 @@ ACCOUNTANT는 조회 권한 중심입니다. import, transform, refresh는 MASTE
 INSERT INTO role_page_permissions
     (id, role_code, page_code, can_view, can_edit, created_at, created_by, is_deleted)
 VALUES
-    (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.cash-list', TRUE, FALSE, NOW(), 'system', FALSE),
     (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.order-list', TRUE, FALSE, NOW(), 'system', FALSE),
     (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.ledger', TRUE, FALSE, NOW(), 'system', FALSE)
 ON CONFLICT DO NOTHING;
+-- (슬2 PR #520 제거) ecount.mig14.cash-list 행은 더 이상 seed 하지 않습니다 — 현금 자료는 네이티브 분개장/입금매칭/원장으로 노출됩니다.
 ```
 
 ### Q3. (이력) Aging snapshot 새로고침 실패 - MATERIALIZED VIEW REFRESH 트랜잭션 격리
@@ -1296,4 +1291,4 @@ curl -fsS -X POST "https://api.samhan-air.com/admin/ecount/reimport/mig-11" \
 - DailyClosing 불일치가 운영자가 승인한 known diff만 남음
 - sample 5건 거래처 미수/미지급 순잔액 cross-check 완료 (네이티브 partner-aging 보고서 기준)
 - ErrorCode 분포가 lookup/header/권한 문제 없이 안정화됨
-- admin UI 3 화면(Cash / Order / Ledger)에서 UUID 비노출 확인
+- admin UI 2 화면(Order / Ledger)에서 UUID 비노출 확인 (Cash 화면은 슬2 PR #520에서 제거 — 현금 자료는 네이티브 분개장/입금매칭/원장으로 노출)

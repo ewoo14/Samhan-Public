@@ -358,13 +358,12 @@ export function AppLayout() {
   const showAccountingDailyClose  = dynamicCanAccess('accounting.daily-closing',   'view')
   const showAccountingLedger      = dynamicCanAccess('accounting.general-ledger',  'view')
   const showAccountingDepositMatch = dynamicCanAccess('accounting.deposit-match',  'view')
-  const showAccountingAdminCash = dynamicCanAccess('ecount.mig14.cash-list', 'view')
   const showAccountingAdminOrder = dynamicCanAccess('ecount.mig14.order-list', 'view')
   const showAccountingAdminLedger = dynamicCanAccess('ecount.mig14.ledger', 'view')
   const showAccountingAdminMigOps = dynamicCanAccess('ecount.mig.ops-dashboard', 'view')
   const showAccountingEditRequests = dynamicCanAccess('accounting.edit-requests.decide', 'view')
   const showAccountingAdminGroup =
-    showAccountingAdminCash || showAccountingAdminOrder
+    showAccountingAdminOrder
     || showAccountingAdminLedger
     || showAccountingAdminMigOps || showAccountingEditRequests
   // 회계 카테고리 헤더: 회계 PageCode 중 1개라도 가시이면 표시.
@@ -753,8 +752,6 @@ export function AppLayout() {
               '/accounting/deposit-match',
               '/accounting/daily-closing',
               '/accounting/ledgers',
-              '/accounting/admin/cash-disbursements',
-              '/accounting/admin/cash-receipts',
               '/accounting/admin/orders',
               '/accounting/admin/ledger/sales',
               '/accounting/admin/ledger/purchase',
@@ -992,22 +989,6 @@ export function AppLayout() {
                   />
                   {accountingAdminOpen ? (
                     <div id="sidebar-accounting-admin-group" data-testid="sidebar-accounting-admin-group">
-                      <SidebarLink
-                        to="/accounting/admin/cash-disbursements"
-                        show={showAccountingAdminCash}
-                        data-testid="sidebar-accounting-admin-cash-disbursements"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        지출 트랜잭션
-                      </SidebarLink>
-                      <SidebarLink
-                        to="/accounting/admin/cash-receipts"
-                        show={showAccountingAdminCash}
-                        data-testid="sidebar-accounting-admin-cash-receipts"
-                        style={{ paddingLeft: 28, fontSize: 13 }}
-                      >
-                        입금 트랜잭션
-                      </SidebarLink>
                       <SidebarLink
                         to="/accounting/admin/orders"
                         show={showAccountingAdminOrder}

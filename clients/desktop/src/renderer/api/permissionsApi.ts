@@ -261,8 +261,7 @@ export type PageCode =
   | 'arologis.edit-requests'
   | 'arologis.edit-requests.decide'
   | 'arologis.driver'
-  // MIG-14 admin UI 3 groups
-  | 'ecount.mig14.cash-list'
+  // MIG-14 admin UI
   | 'ecount.mig14.order-list'
   | 'ecount.mig14.ledger'
   // MIG-21 migration ops dashboard

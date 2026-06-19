@@ -1,21 +1,9 @@
 package com.samhanair.logis.accounting.service;
 
-import com.samhanair.logis.accounting.client.PartnerLookupClient;
-import com.samhanair.logis.accounting.client.PartnerSummary;
-import com.samhanair.logis.accounting.domain.CashDisbursement;
-import com.samhanair.logis.accounting.domain.CashKind;
-import com.samhanair.logis.accounting.domain.CashReceipt;
-import com.samhanair.logis.accounting.domain.CashReceiptKind;
-import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.Order;
 import com.samhanair.logis.accounting.domain.OrderLine;
 import com.samhanair.logis.accounting.domain.OrderProgressStatus;
-import com.samhanair.logis.accounting.repository.CashDisbursementRepository;
-import com.samhanair.logis.accounting.repository.CashReceiptRepository;
-import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.accounting.repository.OrderRepository;
-import com.samhanair.logis.accounting.web.dto.CashDisbursementResponse;
-import com.samhanair.logis.accounting.web.dto.CashReceiptResponse;
 import com.samhanair.logis.accounting.web.dto.LedgerStagingResponse;
 import com.samhanair.logis.accounting.web.dto.OrderDetailResponse;
 import com.samhanair.logis.accounting.web.dto.OrderSummaryResponse;
@@ -26,14 +14,7 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -44,74 +25,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** MIG-14 admin 3 화면 전용 읽기 service. */
+/** MIG-14 admin 주문/원장 전용 읽기 service. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AccountingAdminQueryService {
 
-    private final CashDisbursementRepository cashDisbursementRepository;
-    private final CashReceiptRepository cashReceiptRepository;
     private final OrderRepository orderRepository;
-    private final JournalRepository journalRepository;
-    private final PartnerLookupClient partnerLookupClient;
     private final NamedParameterJdbcTemplate jdbcTemplate;
-
-    public Page<CashDisbursementResponse> listCashDisbursements(
-            String slipNo, CashKind kind, LocalDate from, LocalDate to, String partnerName, Pageable pageable) {
-        UUID partnerId = resolvePartnerId(partnerName);
-        if (notBlank(partnerName) && partnerId == null) {
-            return Page.empty(pageable);
-        }
-        Page<CashDisbursement> page = cashDisbursementRepository.findAll(
-                cashDisbursementSpec(slipNo, kind, from, to, partnerId), pageable);
-        Map<UUID, String> partnerNames = partnerNames(page.getContent().stream()
-                .map(CashDisbursement::getPartnerId)
-                .collect(Collectors.toSet()));
-        Map<UUID, String> journalNos = journalNos(page.getContent().stream()
-                .map(CashDisbursement::getJournalId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet()));
-        List<CashDisbursementResponse> rows = page.getContent().stream()
-                .map(row -> new CashDisbursementResponse(
-                        row.getSlipNo(),
-                        partnerNames.get(row.getPartnerId()),
-                        row.getAmount(),
-                        row.getTransactionDate(),
-                        row.getKind().name(),
-                        row.getMemo(),
-                        journalNo(journalNos, row.getJournalId())))
-                .toList();
-        return new PageImpl<>(rows, pageable, page.getTotalElements());
-    }
-
-    public Page<CashReceiptResponse> listCashReceipts(
-            String slipNo, CashReceiptKind kind, LocalDate from, LocalDate to, String partnerName, Pageable pageable) {
-        UUID partnerId = resolvePartnerId(partnerName);
-        if (notBlank(partnerName) && partnerId == null) {
-            return Page.empty(pageable);
-        }
-        Page<CashReceipt> page = cashReceiptRepository.findAll(
-                cashReceiptSpec(slipNo, kind, from, to, partnerId), pageable);
-        Map<UUID, String> partnerNames = partnerNames(page.getContent().stream()
-                .map(CashReceipt::getPartnerId)
-                .collect(Collectors.toSet()));
-        Map<UUID, String> journalNos = journalNos(page.getContent().stream()
-                .map(CashReceipt::getJournalId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet()));
-        List<CashReceiptResponse> rows = page.getContent().stream()
-                .map(row -> new CashReceiptResponse(
-                        row.getSlipNo(),
-                        partnerNames.get(row.getPartnerId()),
-                        row.getAmount(),
-                        row.getTransactionDate(),
-                        row.getKind().name(),
-                        row.getMemo(),
-                        journalNo(journalNos, row.getJournalId())))
-                .toList();
-        return new PageImpl<>(rows, pageable, page.getTotalElements());
-    }
 
     public Page<OrderSummaryResponse> listOrders(
             OrderProgressStatus progressStatus, String managerName, String partnerName, Pageable pageable) {
@@ -200,52 +121,6 @@ public class AccountingAdminQueryService {
                 """;
     }
 
-    private static Specification<CashDisbursement> cashDisbursementSpec(
-            String slipNo, CashKind kind, LocalDate from, LocalDate to, UUID partnerId) {
-        return (root, query, cb) -> {
-            List<Predicate> predicates = new java.util.ArrayList<>();
-            if (notBlank(slipNo)) {
-                predicates.add(cb.like(cb.lower(root.get("slipNo")), likeLiteral(slipNo)));
-            }
-            if (partnerId != null) {
-                predicates.add(cb.equal(root.get("partnerId"), partnerId));
-            }
-            if (kind != null) {
-                predicates.add(cb.equal(root.get("kind"), kind));
-            }
-            if (from != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("transactionDate"), from));
-            }
-            if (to != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("transactionDate"), to));
-            }
-            return cb.and(predicates.toArray(Predicate[]::new));
-        };
-    }
-
-    private static Specification<CashReceipt> cashReceiptSpec(
-            String slipNo, CashReceiptKind kind, LocalDate from, LocalDate to, UUID partnerId) {
-        return (root, query, cb) -> {
-            List<Predicate> predicates = new java.util.ArrayList<>();
-            if (notBlank(slipNo)) {
-                predicates.add(cb.like(cb.lower(root.get("slipNo")), likeLiteral(slipNo)));
-            }
-            if (partnerId != null) {
-                predicates.add(cb.equal(root.get("partnerId"), partnerId));
-            }
-            if (kind != null) {
-                predicates.add(cb.equal(root.get("kind"), kind));
-            }
-            if (from != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("transactionDate"), from));
-            }
-            if (to != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("transactionDate"), to));
-            }
-            return cb.and(predicates.toArray(Predicate[]::new));
-        };
-    }
-
     private static Specification<Order> orderSpec(
             OrderProgressStatus progressStatus, String managerName, String partnerName) {
         return (root, query, cb) -> {
@@ -302,41 +177,6 @@ public class AccountingAdminQueryService {
                 order.getTotalVatAmount(),
                 order.getTotalSupplyAmount().add(order.getTotalVatAmount()),
                 lines);
-    }
-
-    private Map<UUID, String> partnerNames(Set<UUID> partnerIds) {
-        return partnerNamesBatch(partnerIds);
-    }
-
-    private Map<UUID, String> partnerNamesBatch(Set<UUID> partnerIds) {
-        if (partnerIds.isEmpty()) {
-            return Map.of();
-        }
-        return new LinkedHashMap<>(partnerLookupClient.findByPartnerIdsBatch(List.copyOf(partnerIds)));
-    }
-
-    private Map<UUID, String> journalNos(Set<UUID> journalIds) {
-        if (journalIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, String> result = new HashMap<>();
-        for (Journal journal : journalRepository.findAllById(journalIds)) {
-            result.put(journal.getId(), journal.getJournalNo());
-        }
-        return result;
-    }
-
-    private static String journalNo(Map<UUID, String> journalNos, UUID journalId) {
-        return journalId == null ? null : journalNos.get(journalId);
-    }
-
-    private UUID resolvePartnerId(String partnerName) {
-        if (!notBlank(partnerName)) {
-            return null;
-        }
-        return partnerLookupClient.findByPartnerName(partnerName)
-                .map(PartnerSummary::partnerId)
-                .orElse(null);
     }
 
     private LedgerStagingResponse mapLedger(ResultSet rs, int rowNum) throws SQLException {

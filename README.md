@@ -128,9 +128,10 @@
   - `accounting-service`와 `partner-service`의 direct POI 선언을 제거하고 `shared:ecount-io` 의존으로 연결한다.
   - `arologis-service`, `slip-service`, `inventory-service`는 각각 `VendorExcelParser`, `SlipExcelExportIT`, `DpsExcelParser` 자체 사용 때문에 POI direct dependency를 유지한다.
 
-- MIG-14 (완료): Cash / Order / Ledger admin UI 통합
+- MIG-14 (완료): Order / Ledger admin UI 통합
   - `clients/desktop/src/renderer/routes/accounting/admin/` 아래 route로 조회 화면을 연결하고, `PermissionGuard` + MIG14 PageCode를 적용한다.
-  - ⚠️ AgingSnapshot 화면(page-code `ecount.mig14.aging-snapshot`)은 **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** 로 제거됨 — 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`로 대체. admin UI 는 4 화면 → **3 화면**(Cash / Order / Ledger)으로 축소.
+  - ⚠️ AgingSnapshot 화면(page-code `ecount.mig14.aging-snapshot`)은 **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** 로 제거됨 — 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`로 대체.
+  - ⚠️ Cash 화면(지출/입금, page-code `ecount.mig14.cash-list`)은 **이카운트 네이티브 편입 슬2: 현금 지출/입금 silo 폐기(PR #520)** 로 제거됨 — 현금 자료는 MIG-9 가 네이티브 journals 에 편입했으므로 분개장(`/accounting/journals`)·입금매칭·원장으로 대체. 슬1·슬2 누적으로 admin UI 는 4 화면 → **2 화면**(Order / Ledger)으로 축소.
   - 조회 DTO/화면은 UUID를 숨기고 `slipNo`, `journalNo`, `orderNo`, `partnerName`, `managerName` 등 업무 식별자만 표시한다.
   - MIG-12 백로그였던 30+ IT의 deprecated `DynamicPermissionClient @MockBean`은 shared/security 통합 인터페이스 mock으로 청소한다.
   - Playwright fixture는 placeholder만 사용하고, 자격 평문은 기존 `credential-plaintext-guard` + GitGuardian 기준으로 금지한다.
