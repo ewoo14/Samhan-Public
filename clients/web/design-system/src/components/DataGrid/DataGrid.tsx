@@ -21,7 +21,8 @@ import {
   type ReactNode,
 } from 'react'
 import styles from './DataGrid.module.css'
-import { Spinner } from '../Spinner/Spinner'
+import { MascotEmptyState } from '../MascotEmptyState/MascotEmptyState'
+import { MascotLoader } from '../MascotLoader/MascotLoader'
 import { useSelection } from './useSelection'
 import { useFilter } from './useFilter'
 import { useClipboard, type PasteCell } from './useClipboard'
@@ -340,7 +341,9 @@ export function DataGrid<T>({
           <tbody>
             {isEmpty ? (
               <tr className={styles['emptyRow']}>
-                <td colSpan={columns.length}>{emptyMessage}</td>
+                <td colSpan={columns.length}>
+                  <MascotEmptyState title={emptyMessage} />
+                </td>
               </tr>
             ) : (
               filteredRows.map((row, rIdx) => (
@@ -386,7 +389,7 @@ export function DataGrid<T>({
 
       {loading ? (
         <div className={styles['loadingOverlay']}>
-          <Spinner />
+          <MascotLoader size="md" label="데이터 로딩 중" />
         </div>
       ) : null}
 

@@ -122,7 +122,7 @@
 
 /* 빈 행 */
 .emptyRow td {
-  padding: 24px;
+  padding: 0;
   text-align: center;
   color: var(--color-neutral-400);
   font-size: 13px;

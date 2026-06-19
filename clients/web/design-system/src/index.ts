@@ -18,6 +18,8 @@ export * from './components/PriceField'
 export * from './components/SlipNumberDisplay'
 export * from './components/SlipStatusBadge'
 export * from './components/Spinner'
+export * from './components/MascotLoader'
+export * from './components/MascotEmptyState'
 export * from './components/TagChip'
 export * from './components/TagInput'
 // WarehouseSelector 제거(2026-06-03) — 전 창고 선택 UI 가 WarehouseAutocomplete 로 일원화됨.

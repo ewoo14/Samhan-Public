@@ -5,7 +5,7 @@
  * 메인 프로세스에서 토큰을 읽어오는 동안 화면 깜빡임을 방지한다.
  */
 import type { ReactNode } from 'react'
-import { Spinner } from '@samhan/design-system'
+import { MascotLoader } from '@samhan/design-system'
 import { useAuthGuard } from '../hooks/useAuthGuard'
 import { useSessionStore } from '../stores/session'
 
@@ -20,7 +20,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   if (!bootstrapped) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
-        <Spinner size="lg" label="세션 확인 중" />
+        <MascotLoader size="lg" label="세션 확인 중" />
       </div>
     )
   }

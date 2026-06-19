@@ -12,7 +12,7 @@
  */
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Spinner } from '@samhan/design-system'
+import { MascotLoader } from '@samhan/design-system'
 import { usePermissions } from '../hooks/usePermissions'
 import type { PageCode, PermissionLookupAction } from '../api/permissionsApi'
 
@@ -43,7 +43,7 @@ export function PermissionGuard({
   if (isLoading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: 'calc(100vh - 120px)' }}>
-        <Spinner size="md" label="권한 확인 중" />
+        <MascotLoader size="md" label="권한 확인 중" />
       </div>
     )
   }

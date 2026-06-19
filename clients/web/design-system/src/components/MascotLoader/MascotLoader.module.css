@@ -1,0 +1,39 @@
+.loader {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2, 8px);
+  color: var(--color-text-muted, #64748b);
+  font-family: var(--font-family-sans, system-ui, sans-serif);
+  font-size: var(--font-size-sm, 14px);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.image {
+  display: block;
+  width: var(--mascot-loader-size);
+  height: var(--mascot-loader-size);
+  object-fit: contain;
+  user-select: none;
+}
+
+.static {
+  display: none;
+}
+
+.label {
+  max-width: 16rem;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated {
+    display: none;
+  }
+
+  .static {
+    display: block;
+  }
+}
