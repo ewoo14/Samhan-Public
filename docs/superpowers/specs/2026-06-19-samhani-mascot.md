@@ -15,7 +15,7 @@
 - `index.ts` export. Spinner 는 유지(저수준), Mascot* 가 브랜드 표면.
 
 ## 2. 배선 (Codex — 공용 전파 우선, 105개 개별 금지)
-- **고레버리지**: 
+- **고레버리지**:
   - 공용 `DataTable`/`DataGrid` 의 **로딩 상태 → MascotLoader**, **빈 상태(empty/noData slot) → MascotEmptyState**(전 소비처 자동 반영).
   - 라우트/페이지 레벨 **로딩 스피너 → MascotLoader**(데스크톱 AppLayout suspense/route loading, 웹 estimate-app/order-app 초기 로딩).
 - **앱**: 데스크톱(clients/desktop) + 웹(estimate-app, order-app). 자산은 design-system 에서 import(소비 앱 빌드가 자산 번들 — Vite asset). mobile/arologis 는 본 슬라이스 제외(후속).
