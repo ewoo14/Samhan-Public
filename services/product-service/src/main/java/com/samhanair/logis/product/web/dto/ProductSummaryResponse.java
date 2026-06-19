@@ -2,6 +2,7 @@ package com.samhanair.logis.product.web.dto;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductGoodsType;
 import com.samhanair.logis.product.domain.ProductStatus;
 import com.samhanair.logis.product.domain.UsageScope;
@@ -38,7 +39,20 @@ public record ProductSummaryResponse(
         UsageScope usageScope,
         EstimateCategory estimateCategory,
         boolean usageScopeManual,
-        Integer displayOrder) {
+        Integer displayOrder,
+        String categoryKey) {
+
+    /**
+     * Backward-compatible 생성자 — categoryKey 추가 전 canonical 호출 호환.
+     */
+    public ProductSummaryResponse(UUID id, String name, String modelName, String productCode,
+                                  UUID categoryId, BigDecimal sellingPrice, ProductStatus status,
+                                  boolean serialManaged, boolean goods, String modelCode, String productType,
+                                  UsageScope usageScope, EstimateCategory estimateCategory,
+                                  boolean usageScopeManual, Integer displayOrder) {
+        this(id, name, modelName, productCode, categoryId, sellingPrice, status, serialManaged, goods,
+                modelCode, productType, usageScope, estimateCategory, usageScopeManual, displayOrder, null);
+    }
 
     /**
      * Backward-compatible 생성자 — productCode 미지원 기존 test 호환 (serialManaged=false 위임).
@@ -46,7 +60,7 @@ public record ProductSummaryResponse(
     public ProductSummaryResponse(UUID id, String name, String modelName, UUID categoryId,
                                   BigDecimal sellingPrice, ProductStatus status) {
         this(id, name, modelName, null, categoryId, sellingPrice, status, false, true, null, null,
-                null, null, false, null);
+                null, null, false, null, null);
     }
 
     /**
@@ -55,7 +69,7 @@ public record ProductSummaryResponse(
     public ProductSummaryResponse(UUID id, String name, String modelName, String productCode,
                                   UUID categoryId, BigDecimal sellingPrice, ProductStatus status) {
         this(id, name, modelName, productCode, categoryId, sellingPrice, status, false, true, null, null,
-                null, null, false, null);
+                null, null, false, null, null);
     }
 
     /**
@@ -65,7 +79,7 @@ public record ProductSummaryResponse(
                                   UUID categoryId, BigDecimal sellingPrice, ProductStatus status,
                                   boolean serialManaged) {
         this(id, name, modelName, productCode, categoryId, sellingPrice, status, serialManaged, true, null, null,
-                null, null, false, null);
+                null, null, false, null, null);
     }
 
     /**
@@ -75,7 +89,7 @@ public record ProductSummaryResponse(
                                   UUID categoryId, BigDecimal sellingPrice, ProductStatus status,
                                   boolean serialManaged, String modelCode, String productType) {
         this(id, name, modelName, productCode, categoryId, sellingPrice, status, serialManaged, true,
-                modelCode, productType, null, null, false, null);
+                modelCode, productType, null, null, false, null, null);
     }
 
     /**
@@ -85,7 +99,7 @@ public record ProductSummaryResponse(
                                   UUID categoryId, BigDecimal sellingPrice, ProductStatus status,
                                   boolean serialManaged, boolean goods, String modelCode, String productType) {
         this(id, name, modelName, productCode, categoryId, sellingPrice, status, serialManaged, goods,
-                modelCode, productType, null, null, false, null);
+                modelCode, productType, null, null, false, null, null);
     }
 
     /**
@@ -111,6 +125,22 @@ public record ProductSummaryResponse(
                 p.getUsageScope(),
                 null,
                 p.isUsageScopeManual(),
-                null);
+                null,
+                categoryKey(p.getProductCategory()));
+    }
+
+    private static String categoryKey(ProductCategory productCategory) {
+        if (productCategory == null) {
+            return null;
+        }
+        return switch (productCategory) {
+            case HOME_MULTI -> "homemulti";
+            case SINGLE_SET -> "singleSets";
+            case SINGLE_PART -> "singleParts";
+            case COMMERCIAL_MULTI -> "commercialMulti";
+            case COMMERCIAL_PART -> "commercialParts";
+            case OLD -> "oldProducts";
+            case MATERIAL -> "singleMatPrices";
+        };
     }
 }
