@@ -65,6 +65,8 @@ test.describe('§7 입출고전표 협업 패널', () => {
 
     const panel = page.getByTestId('slip-collaboration-panel')
     await expect(panel).toBeVisible()
+    await expect(panel.getByTestId('presence-indicator')).toBeVisible()
+    await expect(panel.getByLabel('오병승 현재 보고 있음').first()).toBeVisible()
 
     // 1) 초기 빈 목록 — fresh page = fresh mock store.
     await expect(panel.getByText('아직 코멘트가 없습니다.')).toBeVisible()
