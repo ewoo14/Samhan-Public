@@ -992,6 +992,7 @@ function SortableComponentRow({
         {draft.componentName ? (
           <span style={{ color: 'var(--color-neutral-500)', marginLeft: 6 }}>{draft.componentName}</span>
         ) : null}
+        <ComponentSpecBadge specText={draft.specText} index={index} />
       </span>
       {draft._isNew && canEdit ? (
         <Select
@@ -1054,6 +1055,26 @@ function SortableComponentRow({
         </button>
       ) : null}
     </div>
+  )
+}
+
+interface ComponentSpecBadgeProps {
+  specText: string | null | undefined
+  index: number
+}
+
+export function ComponentSpecBadge({ specText, index }: ComponentSpecBadgeProps) {
+  const componentSpecText = specText?.trim()
+  if (!componentSpecText) return null
+
+  return (
+    <span
+      style={componentSpecStyle}
+      data-testid={`components-modal-spec-${index}`}
+      title={`규격: ${componentSpecText}`}
+    >
+      규격 {componentSpecText}
+    </span>
   )
 }
 
@@ -2234,6 +2255,15 @@ const componentDefaultLabelStyle: CSSProperties = {
   color: 'var(--color-neutral-600, #4B5563)',
   cursor: 'pointer',
   userSelect: 'none',
+  whiteSpace: 'nowrap',
+}
+
+const componentSpecStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  marginLeft: 6,
+  color: 'var(--color-neutral-600, #4B5563)',
+  fontSize: 11,
   whiteSpace: 'nowrap',
 }
 
