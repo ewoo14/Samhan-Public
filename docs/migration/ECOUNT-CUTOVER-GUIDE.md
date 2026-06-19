@@ -85,16 +85,17 @@ pg_dump -h "$PGHOST" -p "${PGPORT:-5432}" -U "$PGUSER" -d accounting_db \
 
 | 역할 | 가능 작업 |
 |---|---|
-| MASTER | 모든 MIG 실행, AgingSnapshot 새로고침 |
-| MANAGER | 모든 MIG 실행, AgingSnapshot 새로고침 |
+| MASTER | 모든 MIG 실행 |
+| MANAGER | 모든 MIG 실행 |
 | ACCOUNTANT | admin 조회 중심. 일부 실행 endpoint는 403 가능 |
+
+> ⚠️ **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** — AgingSnapshot 화면(page-code `ecount.mig14.aging-snapshot`)과 새로고침은 제거됐습니다. 거래처 미수/미지급 잔액은 네이티브 보고서 `회계 > 재무 보고서 > 거래처 미수/미지급`(`/accounting/reports/partner-aging`)을 사용합니다.
 
 권한 확인 방법:
 
 1. 데스크톱 앱 로그인
 2. 좌측 메뉴에서 `회계 > 회계 관리자` 그룹이 보이는지 확인
-3. `Cash`, `Order`, `AgingSnapshot`, `Ledger` 화면 접근 확인
-4. AgingSnapshot `새로고침`은 MASTER/MANAGER만 실행
+3. `Cash`, `Order`, `Ledger` 화면 접근 확인 (AgingSnapshot 화면은 슬1에서 제거됨 — 거래처 잔액은 재무 보고서의 네이티브 partner-aging 사용)
 
 403이 나오면 권한 문제입니다. 데이터 파일을 다시 올리지 말고 권한부터 확인합니다.
 
@@ -493,16 +494,18 @@ Content-Type: application/json
 - 완료 주문은 매출전표와 연결될 수 있습니다.
 - Order admin 화면에서 `progressStatus`가 `완료`, `진행`, `취소`, `대기`로 보이는지 확인합니다.
 
-### Step 9. Cash → Journal + aging snapshot MIG-9
+### Step 9. Cash → Journal MIG-9
 
-목적: CashDisbursement / CashReceipt에서 회계 Journal을 만들고 거래처 aging snapshot을 갱신합니다.
+목적: CashDisbursement / CashReceipt에서 회계 Journal을 만듭니다.
+
+> ⚠️ **슬1 PR #518** — 거래처 aging snapshot 새로고침 endpoint(`POST /admin/accounting/aging-snapshot/refresh`)는 silo 폐기와 함께 제거됐습니다(아래 응답 sample은 이력 표기). MV `partner_aging_snapshot` 의 `REFRESH MATERIALIZED VIEW CONCURRENTLY`는 `Mig9AgingSnapshotRefreshService`(EcountReimportService 재import wiring) 내부 lineage 로 유지되며 별도 운영 호출은 필요 없습니다. 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`(journals POSTED 110/201 직접 집계)를 사용합니다.
 
 Endpoints:
 
 ```http
 POST /admin/accounting/cash-journals/generate-from-disbursements
 POST /admin/accounting/cash-journals/generate-from-receipts
-POST /admin/accounting/aging-snapshot/refresh
+# (제거됨, 슬1 PR #518) POST /admin/accounting/aging-snapshot/refresh
 Content-Type: application/json
 ```
 
@@ -536,7 +539,7 @@ Content-Type: application/json
 }
 ```
 
-AgingSnapshot 새로고침 응답:
+AgingSnapshot 새로고침 응답 (이력 — 슬1 PR #518에서 endpoint 제거됨):
 
 ```json
 {
@@ -550,7 +553,7 @@ AgingSnapshot 새로고침 응답:
 - 지출결의서 Journal 번호는 `JD-`로 시작합니다.
 - 입금보고서 Journal 번호는 `JR-`로 시작합니다.
 - `MIG9_DEFAULT_ACCOUNT_MISSING`이면 계정과목 seed를 먼저 확인합니다.
-- AgingSnapshot 새로고침은 MASTER/MANAGER만 가능합니다.
+- (이력) AgingSnapshot 새로고침은 MASTER/MANAGER만 가능했으나 슬1 PR #518에서 endpoint·화면이 제거됐습니다. 거래처 잔액은 네이티브 partner-aging 보고서를 사용합니다.
 
 ### Step 10. Employee cross-link + aging net MIG-10
 
@@ -596,7 +599,7 @@ Content-Type: application/json
 
 - 직원명이 0건이면 연결하지 않고 warning으로 남깁니다.
 - 직원명이 2건 이상이면 모호하므로 연결하지 않습니다.
-- AgingSnapshot 화면에서 `net_receivable`, `net_payable`, `net_cash` 기준 순잔액을 확인합니다.
+- 거래처별 순잔액(`net_receivable`, `net_payable`, `net_cash`)은 네이티브 보고서 `회계 > 재무 보고서 > 거래처 미수/미지급`(`/accounting/reports/partner-aging`)에서 확인합니다. (구 AgingSnapshot 화면은 슬1 PR #518에서 제거됨.)
 
 ### Step 11. 매출장/매입장 XLSX 검증 MIG-11
 
@@ -700,22 +703,22 @@ file=<매출장 또는 매입장 XLSX>
 - 담당자명이 직원과 연결되지 않은 경우에도 주문 자체는 보존됩니다.
 - 완료 주문은 매출전표 cross-link warning 여부를 함께 확인합니다.
 
-### 3.3 AgingSnapshot 화면
+### 3.3 거래처 미수/미지급 — 네이티브 partner-aging 보고서
 
-위치: `회계 > 회계 관리자 > AgingSnapshot`
+> ⚠️ **슬1 PR #518** — 구 `회계 > 회계 관리자 > AgingSnapshot` 화면(page-code `ecount.mig14.aging-snapshot`)은 silo 폐기와 함께 제거됐습니다. 거래처 잔액은 아래 네이티브 보고서를 사용합니다.
+
+위치: `회계 > 재무 보고서 > 거래처 미수/미지급` (`/accounting/reports/partner-aging`)
 
 사용법:
 
 1. 거래처명을 입력해 조회합니다.
-2. page size는 50 / 100 / 200 / 500 중 선택합니다.
-3. 순잔액은 `net_receivable`, `net_payable`, `net_cash`를 봅니다.
-4. `새로고침`은 MASTER/MANAGER만 실행합니다.
+2. 순잔액은 POSTED journals 110(매출채권)/201(매입채무)을 거래처별로 직접 집계한 값을 봅니다.
+3. 별도 `새로고침` 조작은 필요 없습니다 — 보고서는 분개장 실데이터를 직접 집계하므로 항상 최신입니다. (MV `partner_aging_snapshot` 의 재import lineage 갱신은 EcountReimportService 내부에서 자동 처리됩니다.)
 
 주의:
 
-- ACCOUNTANT는 조회만 가능할 수 있습니다.
-- 새로고침 실패 toast가 나오면 다시 누르기 전에 accounting-service 로그를 확인합니다.
-- 대량 import 직후에는 Cash → Journal 생성이 끝난 뒤 새로고침합니다.
+- 구 AgingSnapshot 화면의 MATERIALIZED VIEW 기반 캐시/새로고침 toast 흐름은 더 이상 사용하지 않습니다.
+- 보고서가 분개장을 직접 집계하므로 대량 import 직후에도 Cash → Journal 생성만 끝나면 즉시 반영됩니다.
 
 ### 3.4 Ledger 화면
 
@@ -960,7 +963,9 @@ SELECT r.transaction_date,
 
 ### 5.2 sample 5건 cross-check
 
-PartnerAgingSnapshot 순잔액과 이카운트 raw를 거래처별로 5건 대조합니다. accounting_db와 partner_db는 service-per-DB라 SQL JOIN을 하지 않습니다. 먼저 accounting_db에서 `partner_id`와 순잔액을 뽑고, 거래처명은 partner-service batch endpoint로 확인합니다.
+거래처별 순잔액과 이카운트 raw를 5건 대조합니다. accounting_db와 partner_db는 service-per-DB라 SQL JOIN을 하지 않습니다. 먼저 accounting_db에서 `partner_id`와 순잔액을 뽑고, 거래처명은 partner-service batch endpoint로 확인합니다.
+
+> ℹ️ 아래 SQL 은 lineage 로 유지되는 MV `partner_aging_snapshot` 을 직접 조회하는 운영 점검용입니다. 운영자 화면 확인은 네이티브 보고서 `/accounting/reports/partner-aging`(슬1 PR #518) 를 사용합니다. (구 AgingSnapshot 화면은 제거됨.)
 
 ```sql
 SELECT s.partner_id,
@@ -990,7 +995,7 @@ X-Internal-Token: <service-to-service token>
 운영 확인 방식:
 
 1. 이카운트 매출장/매입장 원본에서 같은 거래처 5건을 찾습니다.
-2. partner-service lookup 결과의 거래처명으로 Samhan Public AgingSnapshot 화면을 조회합니다.
+2. partner-service lookup 결과의 거래처명으로 Samhan Public 네이티브 거래처 미수/미지급 보고서(`/accounting/reports/partner-aging`)를 조회합니다.
 3. `net_receivable`과 원본 미수 잔액 방향이 같은지 확인합니다.
 4. 금액 차이가 있으면 Cash → Journal 생성 여부와 DailyClosing 차이를 함께 봅니다.
 
@@ -1071,8 +1076,9 @@ ACCOUNTANT는 조회 권한 중심입니다. import, transform, refresh는 MASTE
 |---|---|
 | Cash | `ecount.mig14.cash-list` |
 | Order | `ecount.mig14.order-list` |
-| AgingSnapshot | `ecount.mig14.aging-snapshot` |
 | Ledger | `ecount.mig14.ledger` |
+
+> ⚠️ **슬1 PR #518** — page-code `ecount.mig14.aging-snapshot` 은 silo 폐기와 함께 제거됐습니다(V59 마이그가 `role_page_permissions` 등 권한 행을 정리). 거래처 잔액은 네이티브 보고서 `/accounting/reports/partner-aging` 를 사용하므로 이 page-code 권한을 다시 seed 하지 마세요.
 
 권한 seed SQL 예시:
 
@@ -1082,14 +1088,15 @@ INSERT INTO role_page_permissions
 VALUES
     (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.cash-list', TRUE, FALSE, NOW(), 'system', FALSE),
     (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.order-list', TRUE, FALSE, NOW(), 'system', FALSE),
-    (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.aging-snapshot', TRUE, FALSE, NOW(), 'system', FALSE),
     (gen_random_uuid(), 'ACCOUNTANT', 'ecount.mig14.ledger', TRUE, FALSE, NOW(), 'system', FALSE)
 ON CONFLICT DO NOTHING;
 ```
 
-### Q3. Aging snapshot 새로고침 실패 - MATERIALIZED VIEW REFRESH 트랜잭션 격리
+### Q3. (이력) Aging snapshot 새로고침 실패 - MATERIALIZED VIEW REFRESH 트랜잭션 격리
 
-증상:
+> ⚠️ **슬1 PR #518** — 거래처 잔액은 네이티브 보고서 `/accounting/reports/partner-aging`(POSTED journals 110/201 직접 집계)로 대체됐고, 운영자가 직접 호출하던 aging snapshot 새로고침 endpoint(`MIG9_AGING_REFRESH_FAILED`)는 제거됐습니다. 아래는 이력으로 보존합니다. MV `partner_aging_snapshot` 의 lineage 갱신은 EcountReimportService 내부에서만 일어나므로 운영자가 별도로 새로고침할 필요가 없습니다.
+
+증상 (이력):
 
 ```json
 {
@@ -1099,25 +1106,23 @@ ON CONFLICT DO NOTHING;
 }
 ```
 
-원인:
+원인 (이력):
 
 - `REFRESH MATERIALIZED VIEW CONCURRENTLY`는 별도 트랜잭션에서 실행되어야 합니다.
 - 동시에 다른 대량 변환이 같은 snapshot을 읽고 있을 수 있습니다.
 - unique index가 없으면 concurrent refresh가 실패합니다.
 
-처리 순서:
+처리 순서 (현행 — silo 폐기 후):
 
-1. accounting-service 로그에서 `MIG9_AGING_REFRESH_FAILED` 앞뒤 50줄을 확인합니다.
-2. Cash → Journal 생성이 끝났는지 확인합니다.
-3. 다음 SQL로 unique index를 확인합니다.
+1. 거래처 잔액 확인은 네이티브 보고서 `/accounting/reports/partner-aging` 를 사용합니다.
+2. MV lineage 점검이 필요하면 accounting-service 로그에서 EcountReimportService 재import 로그를 확인합니다.
+3. 다음 SQL로 MV unique index가 유지되는지 점검할 수 있습니다.
 
 ```sql
 SELECT indexname, indexdef
   FROM pg_indexes
  WHERE tablename = 'partner_aging_snapshot';
 ```
-
-4. 대량 import가 끝난 뒤 MASTER/MANAGER 계정으로 다시 새로고침합니다.
 
 ### Q4. 같은 파일을 다시 올려도 되나요?
 
@@ -1285,10 +1290,10 @@ curl -fsS -X POST "https://api.samhan-air.com/admin/ecount/reimport/mig-11" \
 - MIG-1~6 raw 적재 완료
 - MIG-7 Cash 변환 완료
 - MIG-8 Order 변환 완료
-- MIG-9 Cash → Journal 생성 및 AgingSnapshot 새로고침 완료
+- MIG-9 Cash → Journal 생성 완료 (AgingSnapshot 새로고침은 슬1 PR #518에서 폐기 — 거래처 잔액은 네이티브 partner-aging 보고서로 대체)
 - MIG-10 Employee cross-link 완료
 - MIG-11 매출장/매입장 XLSX 대조 완료
 - DailyClosing 불일치가 운영자가 승인한 known diff만 남음
-- sample 5건 거래처 aging 순잔액 cross-check 완료
+- sample 5건 거래처 미수/미지급 순잔액 cross-check 완료 (네이티브 partner-aging 보고서 기준)
 - ErrorCode 분포가 lookup/header/권한 문제 없이 안정화됨
-- admin UI 4 화면에서 UUID 비노출 확인
+- admin UI 3 화면(Cash / Order / Ledger)에서 UUID 비노출 확인

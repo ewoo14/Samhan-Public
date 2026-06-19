@@ -78,11 +78,11 @@
 - MIG-11 완료: 매출장/매입장 XLSX를 Apache POI로 파싱해 accounting-service staging 2표에 보존하고, `DailyClosing(closing_kind,total_amount)`과 일별 합계를 warning 방식으로 대조한다.
 - MIG-12 follow-up 완료: V32로 `tax_invoice_lines(tax_invoice_id,line_no)` UNIQUE를 active row partial UNIQUE로 교체하고, Product/Partner LookupClient 내부 인증 실패를 `MIG12_INTERNAL_AUTH_MISS(503)`로 격상했다.
 - MIG-13 minor cleanup 완료: V32 이후 문서/회고/테스트 주석과 footer 판별 dead branch를 정리했다.
-- MIG-14 완료: Cash / Order / AgingSnapshot / Ledger admin UI 4 화면을 `clients/desktop`에 통합하고, 30+ IT의 deprecated `DynamicPermissionClient @MockBean`을 shared/security 통합 인터페이스 mock으로 청소했다.
+- MIG-14 완료: Cash / Order / Ledger admin UI를 `clients/desktop`에 통합하고, 30+ IT의 deprecated `DynamicPermissionClient @MockBean`을 shared/security 통합 인터페이스 mock으로 청소했다. (이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)로 AgingSnapshot 화면·page-code `ecount.mig14.aging-snapshot` 제거 → admin UI 4 → 3 화면, 거래처 잔액은 네이티브 `/accounting/reports/partner-aging` 보고서로 대체.)
 - MIG-15 완료: POI 의존성을 `shared/common`에서 `shared:ecount-io`로 분리했다.
-- MIG-16 완료: partner-service batch lookup, accounting admin partnerName batch, aging snapshot pagination, refresh toast, 권한 로딩 flash 방지를 정리했다.
+- MIG-16 완료: partner-service batch lookup, accounting admin partnerName batch, aging snapshot pagination, refresh toast, 권한 로딩 flash 방지를 정리했다. (aging snapshot pagination/refresh toast 는 슬1 PR #518에서 화면·API 와 함께 제거됨.)
 - MIG-17 완료: Designer tokens.md와 7개 mock wireframe의 CashKind / CashReceiptKind / OrderProgressStatus 라벨을 화면 API enum 기준으로 동기화했다.
-- MIG-18 완료: admin UI 2단계로 filter chip/reset, AgingSnapshot page size, "회계 관리자" 메뉴 그룹을 연결했다.
+- MIG-18 완료: admin UI 2단계로 filter chip/reset, page size, "회계 관리자" 메뉴 그룹을 연결했다. (AgingSnapshot page size 항목은 슬1 PR #518에서 화면 제거와 함께 폐기.)
 - MIG-19 진행 중: 운영자용 `docs/migration/ECOUNT-CUTOVER-GUIDE.md`를 신규 작성해 raw 다운로드, DB 백업, MIG-1~11 실행, admin UI 확인, rollback, DailyClosing 대조 절차를 묶는다.
 - MIG-20 완료: `POST /admin/ecount/reimport/{slice}` MASTER 전용 endpoint와 `source_file_hash` 멱등 skip, 외부 cron/Task Scheduler 운영 절차를 추가했다.
 - MIG-21 완료: Micrometer/Prometheus 지표, dashboard-service `/api/v1/dashboard/ecount-mig`, desktop 운영 대시보드, Grafana JSON을 추가했다.
@@ -483,7 +483,7 @@
 - **MIG-11** (진행 중, 본 PR) — **매출장/매입장 XLSX staging + DailyClosing 대조** — shared/common `EcountXlsxSupport` Apache POI parser, accounting-service V31 staging 2표, auth-service V24 PageCode 2종, `MIG11_*` ErrorCode 5종, 매출장/매입장 importer/controller 2종을 추가했다. 실제 raw는 row 0 meta + row 1 header이며 매입장은 합계 컬럼이 없어 공급가액+부가세로 total을 산출한다.
 - **MIG-15** (완료) — **POI shared/common → shared/ecount-io module 분리** — `shared:ecount-io` 신규 module을 추가하고 `EcountXlsxSupport` + `ExcelExporter` POI 구현을 이동했다. `shared/common`은 POI 비의존 DTO/exception 중심으로 되돌리고, accounting/partner는 direct POI 선언을 제거했다. arologis/slip/inventory는 자체 POI 사용(`VendorExcelParser` / `SlipExcelExportIT` / `DpsExcelParser`) 때문에 direct dependency를 유지한다.
 - **MIG-17** (완료) — **Designer tokens.md + Mock 라벨 실 enum 동기화** — MIG-14 admin UI `tokens.md`의 CashKind / CashReceiptKind / OrderProgressStatus 라벨과 chip token을 정리하고, 7개 mock wireframe을 같은 라벨 계약으로 맞췄다.
-- **MIG-18** (완료) — **Admin UI 2단계** — Cash / Order / AgingSnapshot / Ledger 목록에 `FilterChipBar`를 적용하고, AgingSnapshot page size 50/100/200/500 및 "회계 관리자" collapse/expand 메뉴 그룹을 연결했다.
+- **MIG-18** (완료) — **Admin UI 2단계** — Cash / Order / Ledger 목록에 `FilterChipBar`를 적용하고, page size 50/100/200/500 및 "회계 관리자" collapse/expand 메뉴 그룹을 연결했다. (당시 AgingSnapshot 목록도 포함됐으나 슬1 PR #518에서 제거 — 네이티브 partner-aging 보고서로 대체.)
 - **MIG-19** (진행 중, 본 PR) — **이카운트 cutover 운영 가이드** — 운영자가 raw 11종 다운로드, `pg_dump accounting_db`, `X-Internal-Token`, MIG-1~11 endpoint 실행, admin UI 확인, soft-delete 복구, staging `PENDING` 재실행, DailyClosing 대조를 한 문서에서 따라갈 수 있도록 `docs/migration/ECOUNT-CUTOVER-GUIDE.md`를 추가한다.
 - **MIG-20** (완료) — **이카운트 raw 자동 재import 스케줄** — 외부 스케줄러가 `POST /admin/ecount/reimport/{slice}`를 호출하고, `source_file_hash` 기준으로 새 raw 파일만 기존 importer/transform 경로에 재투입한다.
 - **MIG-21** (완료, 본 PR) — **마이그레이션 운영 대시보드** — accounting-service Micrometer 지표, dashboard-service `/api/v1/dashboard/ecount-mig`, desktop 6카드 화면, auth-service V27 PageCode, Grafana JSON을 추가한다.

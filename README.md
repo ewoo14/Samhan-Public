@@ -109,8 +109,8 @@
   - soft-delete 복구, `JD-`/`JR-` Journal 접두사 충돌 확인, staging `PENDING` 재실행, DailyClosing 대조 SQL을 포함한다.
 
 - MIG-18 (완료): admin UI 2단계 보강을 완료했다.
-  - Cash / Order / AgingSnapshot / Ledger 목록에 filter chip과 전체 초기화를 적용했다.
-  - AgingSnapshot page size 50/100/200/500과 "회계 관리자" collapse/expand 메뉴 그룹을 연결했다.
+  - Cash / Order / Ledger 목록에 filter chip과 전체 초기화를 적용했다. (당시 AgingSnapshot 목록도 포함됐으나 해당 화면은 슬1 PR #518에서 제거됨 — 네이티브 partner-aging 보고서로 대체.)
+  - page size 50/100/200/500과 "회계 관리자" collapse/expand 메뉴 그룹을 연결했다.
 
 - MIG-17 (완료): Designer tokens.md와 mock 라벨을 실제 화면 API enum 계약으로 동기화했다.
   - CashKind 라벨은 `EXPENSE_VOUCHER=지출결의서`, `MANUAL_DISBURSEMENT=수기 지출`로 고정한다.
@@ -120,16 +120,17 @@
 
 - MIG-16 (완료): MIG-14 사후 BE Minor 백로그를 정리했다.
   - partner-service에 `/internal/partners/lookup-by-ids` batch endpoint를 추가하고, accounting-service admin 조회의 partnerName N+1 호출을 batch 1회로 전환했다.
-  - `/api/v1/accounting/aging-snapshot`은 `Pageable` 기반 page/size 응답으로 바꾸고 기본 100 / 최대 500으로 제한했다.
-  - desktop AgingSnapshot refresh toast와 AppLayout 권한 캐시 로딩 중 보수적 deny를 적용했다.
+  - `/api/v1/accounting/aging-snapshot`은 `Pageable` 기반 page/size 응답으로 바꾸고 기본 100 / 최대 500으로 제한했다. ⚠️ 이 endpoint 와 desktop AgingSnapshot 화면은 **이카운트 네이티브 편입 슬1(PR #518)** 에서 제거됨 — 네이티브 `/accounting/reports/partner-aging` 보고서로 대체.
+  - AppLayout 권한 캐시 로딩 중 보수적 deny를 적용했다.
 
 - MIG-15 (완료): POI 의존성을 `shared/common`에서 `shared/ecount-io`로 분리했다.
   - `EcountXlsxSupport`와 POI 구현체 `ExcelExporter`를 새 module로 이동하고, `shared/common`에는 POI 비의존 DTO/exception만 남긴다.
   - `accounting-service`와 `partner-service`의 direct POI 선언을 제거하고 `shared:ecount-io` 의존으로 연결한다.
   - `arologis-service`, `slip-service`, `inventory-service`는 각각 `VendorExcelParser`, `SlipExcelExportIT`, `DpsExcelParser` 자체 사용 때문에 POI direct dependency를 유지한다.
 
-- MIG-14 (완료): Cash / Order / AgingSnapshot / Ledger admin UI 4 화면 통합
-  - `clients/desktop/src/renderer/routes/accounting/admin/` 아래 7개 route로 조회 화면을 연결하고, `PermissionGuard` + MIG14 PageCode 4종을 적용한다.
+- MIG-14 (완료): Cash / Order / Ledger admin UI 통합
+  - `clients/desktop/src/renderer/routes/accounting/admin/` 아래 route로 조회 화면을 연결하고, `PermissionGuard` + MIG14 PageCode를 적용한다.
+  - ⚠️ AgingSnapshot 화면(page-code `ecount.mig14.aging-snapshot`)은 **이카운트 네이티브 편입 슬1: 잔액 스냅샷 silo 폐기(PR #518)** 로 제거됨 — 거래처 미수/미지급은 네이티브 보고서 `/accounting/reports/partner-aging`로 대체. admin UI 는 4 화면 → **3 화면**(Cash / Order / Ledger)으로 축소.
   - 조회 DTO/화면은 UUID를 숨기고 `slipNo`, `journalNo`, `orderNo`, `partnerName`, `managerName` 등 업무 식별자만 표시한다.
   - MIG-12 백로그였던 30+ IT의 deprecated `DynamicPermissionClient @MockBean`은 shared/security 통합 인터페이스 mock으로 청소한다.
   - Playwright fixture는 placeholder만 사용하고, 자격 평문은 기존 `credential-plaintext-guard` + GitGuardian 기준으로 금지한다.
@@ -162,6 +163,7 @@
   - `cash_disbursements` / `cash_receipts` 의 `journal_id IS NULL` row를 POSTED Journal + JournalLine 2건으로 생성
   - ChartOfAccount 기본 lookup: 지급수수료 / 보통예금 / 외상매출금, missing은 `MIG9_DEFAULT_ACCOUNT_MISSING` reject
   - auth V22 PageCode 2종 + MIG9 ErrorCode 5종 + cash journal endpoint 2종 + aging snapshot refresh endpoint
+  - ⚠️ aging snapshot refresh **endpoint**(`POST /admin/accounting/aging-snapshot/refresh`)는 슬1(PR #518)에서 제거됐으나, MV `partner_aging_snapshot` DDL 과 `Mig9AgingSnapshotRefreshService`(EcountReimportService 재import wiring)는 lineage 로 유지된다.
 - MIG-10 (PR #278): Order Employee cross-link + Partner aging net view 보정
   - accounting V30 `orders.manager_employee_id` UUID + active index, `partner_aging_snapshot` DROP + RECREATE + `net_receivable`/`net_payable`/`net_cash`
   - `POST /admin/accounting/orders/backfill-employee-cross-link`로 `manager_name` → user-service Employee exact lookup backfill

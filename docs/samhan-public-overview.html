@@ -1382,6 +1382,10 @@ body {
     <div><strong>🎉 이카운트 마이그레이션 시리즈 종료 (Phase 10.6, 11 슬라이스, 2026-05-20 하루 완료):</strong> MIG-1 거래처 PoC ✅ · MIG-2~6 마스터/staging ✅ · MIG-7 Cash 도메인 ✅ · MIG-8 Order 도메인 ✅ · MIG-9 Cash → Journal + partner_aging_snapshot view ✅ · MIG-10 Employee cross-link + aging net 계산 ✅ · MIG-11 매출장/매입장 XLSX (Apache POI) + DailyClosing 대조 ✅. 11 슬라이스 모두 9회차 워크플로우 (Claude 5-agent + Codex 5-section + 사이클 N=1) + PM 자동 머지 + 30+ ErrorCode + 10+ Flyway + 200+ test case + 100+ IT.</div>
   </div>
   <div class="callout" style="margin-top: 12px;">
+    <div class="callout-icon">🧹</div>
+    <div><strong>이카운트 네이티브 편입 슬1 — 잔액 스냅샷 silo 폐기 (PR #518, 2026-06-19):</strong> 이관 자료 silo 폐기 에픽 1번 슬라이스. MIG-14 admin UI 의 거래처 잔액 스냅샷 화면(page-code <code>ecount.mig14.aging-snapshot</code>)과 BE <code>/accounting/aging-snapshot</code> · refresh endpoint · DTO · auth PageCode 를 제거(V59 권한 정리)했다. admin UI 는 4 화면 → <strong>3 화면</strong>(Cash / Order / Ledger)으로 축소. 거래처 미수/미지급은 네이티브 보고서 <code>/accounting/reports/partner-aging</code>(POSTED journals 110/201 직접 집계, 재무 보고서 메뉴)로 대체. MV <code>partner_aging_snapshot</code> 과 재import 서비스는 lineage 로 유지(cutover 후 물리 제거).</div>
+  </div>
+  <div class="callout" style="margin-top: 12px;">
     <div class="callout-icon">🛠️</div>
     <div><strong>MIG-23 로컬 검증 환경:</strong> `scripts/launch-local-stack.ps1` 하나로 backend 14 service + infra를 올리고 desktop / mobile / mobile-staff / web 3종 / arologis desktop/mobile을 직접 실행한다. 사용자 5 credential seed와 MIG-1~11 reimport trigger는 `scripts/seed-local-stack.ps1`에서 처리한다.</div>
   </div>
