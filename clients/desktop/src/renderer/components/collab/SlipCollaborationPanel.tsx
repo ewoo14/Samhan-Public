@@ -20,7 +20,9 @@ import {
 } from '../../api/slipCollab'
 import { SlipCollabRealtimeClient } from '../../realtime/SlipCollabRealtimeClient'
 import { usePermissions } from '../../hooks/usePermissions'
+import { usePresence } from '../../hooks/usePresence'
 import { SlipVersionHistoryPanel } from '../audit/SlipVersionHistoryPanel'
+import { PresenceIndicator } from './PresenceIndicator'
 
 export interface SlipCollaborationPanelProps {
   /** 전표 UUID — query key/API path 전용. 화면 텍스트 노출 금지. */
@@ -136,6 +138,7 @@ export function SlipCollaborationPanel({
   const [editReason, setEditReason] = useState('')
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
+  const presenceEntries = usePresence({ entityId: slipId, enabled: !!slipId })
 
   const commentQueryKey = useMemo(() => ['slipCollabComments', slipId] as const, [slipId])
   const editQueryKey = useMemo(() => ['slipCollabEdits', slipId] as const, [slipId])
@@ -259,7 +262,10 @@ export function SlipCollaborationPanel({
   return (
     <section data-testid="slip-collaboration-panel" style={{ marginTop: 24 }}>
       <Card padding={4} shadow="sm">
-        <h4 style={{ margin: 0, marginBottom: 16 }}>협업</h4>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <h4 style={{ margin: 0 }}>협업</h4>
+          <PresenceIndicator entries={presenceEntries} />
+        </div>
 
         <div className="detail-grid" style={{ alignItems: 'start' }}>
           <section aria-label="코멘트">
