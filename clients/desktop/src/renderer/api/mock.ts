@@ -2718,6 +2718,77 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
+  type MockSlipPresenceEntry = {
+    sessionId: string
+    displayName: string
+    color: 'BLUE' | 'GREEN' | 'AMBER' | 'ROSE' | 'VIOLET' | 'CYAN' | 'LIME' | 'PINK'
+  }
+  const gp = globalThis as unknown as {
+    __SAMHAN_MOCK_SLIP_PRESENCE?: Record<string, MockSlipPresenceEntry[]>
+  }
+  if (!gp.__SAMHAN_MOCK_SLIP_PRESENCE) gp.__SAMHAN_MOCK_SLIP_PRESENCE = {}
+  const slipPresenceStore = gp.__SAMHAN_MOCK_SLIP_PRESENCE
+
+  const mockPresenceColors = ['BLUE', 'GREEN', 'AMBER', 'ROSE', 'VIOLET', 'CYAN', 'LIME', 'PINK'] as const
+  const readMockHeader = (headerName: string): string => {
+    const headers = config.headers as unknown
+    if (typeof headers !== 'object' || headers === null) return ''
+    const getHeader = (headers as { get?: (name: string) => unknown }).get
+    if (typeof getHeader === 'function') {
+      const value = getHeader.call(headers, headerName)
+      if (typeof value === 'string') return value.trim()
+    }
+    const lowerHeaderName = headerName.toLowerCase()
+    for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+      if (key.toLowerCase() !== lowerHeaderName || value == null) continue
+      return String(value).trim()
+    }
+    return ''
+  }
+  const colorForPresence = (seed: string): MockSlipPresenceEntry['color'] => {
+    let hash = 0
+    for (let i = 0; i < seed.length; i += 1) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+    }
+    return mockPresenceColors[hash % mockPresenceColors.length]!
+  }
+
+  const presenceActionMatch = url.match(/\/slips\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+  if (presenceActionMatch && method === 'POST') {
+    // Presence mock 은 미매칭 시 실 HTTP 로 fallthrough 되면 401 리다이렉트가 발생한다.
+    // [[inprocess-mock-principles]]: Void 도 envelope(null) 객체로 반환해 non-null 계약을 지킨다.
+    const slipId = presenceActionMatch[1]!
+    const action = presenceActionMatch[2]!
+    const body = parseMockBody(config)
+    const rawSessionId = typeof body['sessionId'] === 'string' ? body['sessionId'].trim() : ''
+    const rawDisplayName = typeof body['displayName'] === 'string' ? body['displayName'].trim() : ''
+    const sessionId = rawSessionId || `mock-presence-${Date.now()}`
+    if (action === 'leave') {
+      slipPresenceStore[slipId] = (slipPresenceStore[slipId] ?? [])
+        .filter((entry) => entry.sessionId !== sessionId)
+      return envelope(null)
+    }
+
+    const displayName = rawDisplayName || MOCK_AUTH.fullName
+    const colorSeed = readMockHeader('X-User-Id') || sessionId
+    const entry: MockSlipPresenceEntry = {
+      sessionId,
+      displayName,
+      color: colorForPresence(colorSeed),
+    }
+    slipPresenceStore[slipId] = [
+      ...(slipPresenceStore[slipId] ?? []).filter((item) => item.sessionId !== sessionId),
+      entry,
+    ]
+    return envelope(entry)
+  }
+
+  const presenceListMatch = url.match(/\/slips\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+  if (presenceListMatch && method === 'GET') {
+    const slipId = presenceListMatch[1]!
+    return envelope([...(slipPresenceStore[slipId] ?? [])])
+  }
+
   // ==========================================================================
   // PR-H2: slip audit-log mock (in-memory per-context — capture-pr-h2.js 지원)
   // - 화면 노출 = actorName (UUID 비공개 가드, actorId 는 색상 hash 입력 전용)

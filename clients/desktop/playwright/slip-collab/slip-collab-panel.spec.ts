@@ -58,6 +58,26 @@ async function installAuthMock(page: Page) {
   })
 }
 
+async function seedOtherViewerOnce(page: Page) {
+  await page.addInitScript(({ slipId }) => {
+    const storageKey = `samhan-presence-seeded:${slipId}`
+    const g = globalThis as unknown as {
+      __SAMHAN_MOCK_SLIP_PRESENCE?: Record<string, Array<{
+        sessionId: string
+        displayName: string
+        color: 'BLUE' | 'GREEN' | 'AMBER' | 'ROSE' | 'VIOLET' | 'CYAN' | 'LIME' | 'PINK'
+      }>>
+    }
+    const seeded = window.localStorage.getItem(storageKey) === '1'
+    g.__SAMHAN_MOCK_SLIP_PRESENCE = {
+      [slipId]: seeded
+        ? []
+        : [{ sessionId: 'presence-kim-manager', displayName: '김관리', color: 'GREEN' }],
+    }
+    window.localStorage.setItem(storageKey, '1')
+  }, { slipId: SLIP_ID })
+}
+
 test.describe('§7 입출고전표 협업 패널', () => {
   test('코멘트 등록 → 목록 반영 → 해결 처리', async ({ page }) => {
     await installAuthMock(page)
@@ -65,6 +85,8 @@ test.describe('§7 입출고전표 협업 패널', () => {
 
     const panel = page.getByTestId('slip-collaboration-panel')
     await expect(panel).toBeVisible()
+    await expect(panel.getByTestId('presence-indicator')).toBeVisible()
+    await expect(panel.getByLabel('오병승 현재 보고 있음').first()).toBeVisible()
 
     // 1) 초기 빈 목록 — fresh page = fresh mock store.
     await expect(panel.getByText('아직 코멘트가 없습니다.')).toBeVisible()
@@ -117,5 +139,25 @@ test.describe('§7 입출고전표 협업 패널', () => {
     await expect(item).toContainText('출고 전 거래처 통화 완료')
     await expect(item).toContainText('사유: 현장 요청 반영')
     await expect(panel.getByText('아직 수정 이력이 없습니다.')).toHaveCount(0)
+  })
+
+  test('presence list 백필은 다른 시청자와 본인 아바타를 함께 표시한다', async ({ page }) => {
+    await installAuthMock(page)
+    await seedOtherViewerOnce(page)
+    await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' })
+
+    const panel = page.getByTestId('slip-collaboration-panel')
+    await expect(panel).toBeVisible()
+    const presence = panel.getByTestId('presence-indicator')
+    await expect(presence).toHaveAttribute('aria-label', '현재 보고 있음 2명')
+    await expect(panel.getByLabel('김관리 현재 보고 있음')).toBeVisible()
+    await expect(panel.getByLabel('오병승 현재 보고 있음')).toBeVisible()
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    const reloadedPanel = page.getByTestId('slip-collaboration-panel')
+    await expect(reloadedPanel).toBeVisible()
+    await expect(reloadedPanel.getByLabel('김관리 현재 보고 있음')).toHaveCount(0)
+    await expect(reloadedPanel.getByLabel('오병승 현재 보고 있음')).toBeVisible()
+    await expect(reloadedPanel.getByTestId('presence-indicator')).toHaveAttribute('aria-label', '현재 보고 있음 1명')
   })
 })
