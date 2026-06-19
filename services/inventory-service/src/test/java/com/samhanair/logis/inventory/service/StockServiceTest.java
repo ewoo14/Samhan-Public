@@ -120,6 +120,23 @@ class StockServiceTest {
     }
 
     @Test
+    void inbound_bundleGoodsProduct_skipsAndCreatesNoInventory() {
+        when(productClient.requireExists(productId)).thenReturn(
+                new ProductSummary(productId, "벽걸이 세트", "SET-W15K", "SET-W15K",
+                        UUID.randomUUID(), new BigDecimal("1500000.00"), "ACTIVE",
+                        false, true, "BUNDLE"));
+
+        var response = service.inbound(new InboundRequest(
+                productId, warehouseId, "SET-LOT", 1, LocalDateTime.now(),
+                new BigDecimal("1500000.00"), "세트 SKU 입고 시도"), "user-1");
+
+        assertThat(response).isNull();
+        verify(stockLotRepository, never()).save(any());
+        verify(stockBalanceRepository, never()).save(any());
+        verify(stockMovementRepository, never()).save(any());
+    }
+
+    @Test
     void reserve_movesAvailableToReserved() {
         StockBalance balance = balanceWith(40, 0, 40);
         when(stockBalanceRepository.findByProductIdAndWarehouse_IdAndIsDeletedFalse(productId, warehouseId))
@@ -200,6 +217,47 @@ class StockServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void deduct_bundleGoodsProduct_skipsAndReturnsZero() {
+        when(productClient.requireExists(productId)).thenReturn(
+                new ProductSummary(productId, "벽걸이 세트", "SET-W15K", "SET-W15K",
+                        UUID.randomUUID(), new BigDecimal("1500000.00"), "ACTIVE",
+                        false, true, "BUNDLE"));
+
+        DeductionResponse response = service.deduct(
+                new DeductRequest(productId, warehouseId, 3, false, null, null, "세트 SKU 차감 시도"),
+                "u1");
+
+        assertThat(response.requestedQuantity()).isZero();
+        assertThat(response.deductedQuantity()).isZero();
+        assertThat(response.availableQty()).isZero();
+        assertThat(response.reservedQty()).isZero();
+        assertThat(response.totalQty()).isZero();
+        assertThat(response.affectedLots()).isEmpty();
+        verify(stockLotRepository, never()).findAvailableLotsForFifo(any(), any());
+        verify(stockMovementRepository, never()).save(any());
+    }
+
+    @Test
+    void adjust_bundleGoodsProduct_skipsAndReturnsZero() {
+        when(productClient.requireExists(productId)).thenReturn(
+                new ProductSummary(productId, "벽걸이 세트", "SET-W15K", "SET-W15K",
+                        UUID.randomUUID(), new BigDecimal("1500000.00"), "ACTIVE",
+                        false, true, "BUNDLE"));
+
+        DeductionResponse response = service.adjust(
+                new AdjustRequest(productId, warehouseId, 5, "세트 SKU 조정 시도"), "u1");
+
+        assertThat(response.requestedQuantity()).isZero();
+        assertThat(response.deductedQuantity()).isZero();
+        assertThat(response.availableQty()).isZero();
+        assertThat(response.reservedQty()).isZero();
+        assertThat(response.totalQty()).isZero();
+        assertThat(response.affectedLots()).isEmpty();
+        verify(stockBalanceRepository, never()).save(any());
+        verify(stockMovementRepository, never()).save(any());
     }
 
     @Test

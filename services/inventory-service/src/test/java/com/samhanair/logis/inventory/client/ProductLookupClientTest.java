@@ -51,7 +51,8 @@ class ProductLookupClientTest {
                 + "\"modelName\":\"MODEL-A\","
                 + "\"categoryId\":\"" + categoryId + "\","
                 + "\"sellingPrice\":1000.00,"
-                + "\"status\":\"ACTIVE\""
+                + "\"status\":\"ACTIVE\","
+                + "\"productType\":\"BUNDLE\""
                 + "}}";
 
         server.expect(requestTo("http://product-service/products/internal/by-name?name=%ED%92%88%EB%AA%A9A"))
@@ -64,6 +65,7 @@ class ProductLookupClientTest {
         assertThat(result).isPresent();
         assertThat(result.get().id()).isEqualTo(id);
         assertThat(result.get().name()).isEqualTo("품목A");
+        assertThat(result.get().productType()).isEqualTo("BUNDLE");
         server.verify();
     }
 

@@ -43,6 +43,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class StockInstanceService {
 
+    private static final String PRODUCT_TYPE_BUNDLE = "BUNDLE";
+
     private final StockInstanceRepository repo;
     private final ProductClient productClient;
 
@@ -68,10 +70,10 @@ public class StockInstanceService {
     @Transactional
     public StockInstance create(UUID productId, String productCode, UUID warehouseId,
                                 String inboundType, BigDecimal unitCost, String inboundSlipNo,
-                                LocalDateTime receivedAt) {
+        LocalDateTime receivedAt) {
         ProductSummary product = productClient.requireExists(productId);
-        if (isNonGoods(product)) {
-            return null; // 비상품 — 시리얼 인스턴스 미생성 no-op skip
+        if (isInventoryExcluded(product)) {
+            return null; // 비상품/세트 SKU — 시리얼 인스턴스 미생성 no-op skip
         }
         if (!product.serialManaged()) {
             throw new BusinessException(ErrorCode.CONFLICT,
@@ -105,8 +107,8 @@ public class StockInstanceService {
                                             int quantity, String inboundType, String inboundSlipNo,
                                             BigDecimal unitCost, LocalDateTime receivedAt) {
         ProductSummary product = productClient.requireExists(productId);
-        if (isNonGoods(product)) {
-            return List.of(); // 비상품 — 시리얼 인스턴스 미생성 no-op skip
+        if (isInventoryExcluded(product)) {
+            return List.of(); // 비상품/세트 SKU — 시리얼 인스턴스 미생성 no-op skip
         }
         if (!product.serialManaged()) {
             throw new BusinessException(ErrorCode.CONFLICT,
@@ -338,9 +340,12 @@ public class StockInstanceService {
         lockBatchKey(recallSlipNo + "|" + productCode);
     }
 
-    /** 비상품 여부 — true 면 시리얼 인스턴스를 생성하지 않고 no-op skip 한다(개발책임자 2026-06-15: inventory 게이트 no-op skip). */
-    private boolean isNonGoods(ProductSummary product) {
-        return !product.goods();
+    /**
+     * 재고 제외 품목 여부 — 비상품과 세트 SKU 는 시리얼 인스턴스를 생성하지 않고 no-op skip 한다.
+     * 세트는 구성품(SINGLE)만 재고 대상이다.
+     */
+    private boolean isInventoryExcluded(ProductSummary product) {
+        return !product.goods() || PRODUCT_TYPE_BUNDLE.equals(product.productType());
     }
 
     private void lockBatchKey(String lockKey) {

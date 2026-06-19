@@ -47,6 +47,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class StockService {
 
+    private static final String PRODUCT_TYPE_BUNDLE = "BUNDLE";
+
     private final StockLotRepository stockLotRepository;
     private final StockBalanceRepository stockBalanceRepository;
     private final StockMovementRepository stockMovementRepository;
@@ -66,8 +68,9 @@ public class StockService {
      */
     public StockLotResponse inbound(InboundRequest req, String actorUserId) {
         ProductSummary product = productClient.requireExists(req.productId());
-        if (isNonGoods(product)) {
-            // 비상품 — 재고(lot/balance/movement) 미생성 no-op. 전표 전환 루프가 비상품 라인을 보내도 깨지지 않게 graceful skip.
+        if (isInventoryExcluded(product)) {
+            // 비상품/세트 SKU — 재고(lot/balance/movement) 미생성 no-op.
+            // 세트는 구성품(SINGLE)만 재고 대상이며, 직접 inventory 호출로 세트가 도달해도 graceful skip.
             return null;
         }
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
@@ -195,6 +198,9 @@ public class StockService {
      *         1회 재시도 후에도 실패할 때
      */
     public DeductionResponse deduct(DeductRequest req, String actorUserId) {
+        if (isInventoryExcluded(productClient.requireExists(req.productId()))) {
+            return new DeductionResponse(req.productId(), req.warehouseId(), 0, 0, 0, 0, 0, List.of());
+        }
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
         StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
 
@@ -244,8 +250,8 @@ public class StockService {
      * @throws BusinessException(CONFLICT) 음수 조정으로 가용 재고가 음수가 되거나 낙관적 락 재시도 실패 시
      */
     public DeductionResponse adjust(AdjustRequest req, String actorUserId) {
-        if (isNonGoods(productClient.requireExists(req.productId()))) {
-            // 비상품 — balance 신규 생성/조정 no-op skip.
+        if (isInventoryExcluded(productClient.requireExists(req.productId()))) {
+            // 비상품/세트 SKU — balance 신규 생성/조정 no-op skip.
             return new DeductionResponse(req.productId(), req.warehouseId(), 0, 0, 0, 0, 0, List.of());
         }
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
@@ -349,14 +355,18 @@ public class StockService {
     }
 
     /**
-     * 비상품(운임/수수료/설치비 등) 여부 — true 면 재고를 생성하지 않고 no-op skip 한다.
+     * 재고 제외 품목 여부 — true 면 재고를 생성/차감/조정하지 않고 no-op skip 한다.
      *
      * <p>개발책임자 2026-06-15 결정: inventory 게이트 no-op skip. 비상품을 reject(throw) 하면
      * 전표/주문 전환 루프가 비상품 라인을 inventory 로 보낼 때 전표 전체가 깨지므로(고아 재고),
      * 재고를 만들지 않고 graceful 하게 건너뛴다. 수동 입고도 조용히 no-op.
+     *
+     * <p>개발책임자 2026-06-19 결정: 세트 SKU({@code productType=BUNDLE}) 자체는 재고 없음.
+     * 견적/전표 정상 경로에서는 이미 구성품({@code SINGLE})으로 전개되지만, 수동/직접/이카운트 경로로
+     * 세트가 들어와도 비상품과 동일하게 no-op skip 한다.
      */
-    private boolean isNonGoods(ProductSummary product) {
-        return !product.goods();
+    private boolean isInventoryExcluded(ProductSummary product) {
+        return !product.goods() || PRODUCT_TYPE_BUNDLE.equals(product.productType());
     }
 
     /**

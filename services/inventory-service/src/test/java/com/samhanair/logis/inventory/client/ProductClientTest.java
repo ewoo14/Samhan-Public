@@ -56,7 +56,8 @@ class ProductClientTest {
                 + "\"modelName\":\"SHA-W15K\","
                 + "\"categoryId\":\"" + categoryId + "\","
                 + "\"sellingPrice\":1500000.00,"
-                + "\"status\":\"ACTIVE\""
+                + "\"status\":\"ACTIVE\","
+                + "\"productType\":\"BUNDLE\""
                 + "}]}";
 
         server.expect(requestTo("http://product-service/products/internal/lookup"))
@@ -70,6 +71,7 @@ class ProductClientTest {
         assertThat(result.get(0).id()).isEqualTo(id);
         assertThat(result.get(0).modelName()).isEqualTo("SHA-W15K");
         assertThat(result.get(0).status()).isEqualTo("ACTIVE");
+        assertThat(result.get(0).productType()).isEqualTo("BUNDLE");
         server.verify();
     }
 
@@ -170,7 +172,8 @@ class ProductClientTest {
                 + "\"categoryId\":\"" + categoryId + "\","
                 + "\"sellingPrice\":100.00,"
                 + "\"status\":\"ACTIVE\","
-                + "\"serialManaged\":true"
+                + "\"serialManaged\":true,"
+                + "\"productType\":\"SINGLE\""
                 + "}}";
 
         server.expect(requestTo("http://product-service/products/internal/lookup-by-code"))
@@ -183,6 +186,7 @@ class ProductClientTest {
         assertThat(result.id()).isEqualTo(id);
         assertThat(result.productCode()).isEqualTo("AC-S3");
         assertThat(result.serialManaged()).isTrue();
+        assertThat(result.productType()).isEqualTo("SINGLE");
         server.verify();
     }
 }
