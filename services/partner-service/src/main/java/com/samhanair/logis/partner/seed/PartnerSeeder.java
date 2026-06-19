@@ -2,10 +2,11 @@ package com.samhanair.logis.partner.seed;
 
 import com.samhanair.logis.partner.domain.Partner;
 import com.samhanair.logis.partner.repository.PartnerRepository;
-import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -13,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,9 +35,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>Idempotency</b>: {@link PartnerRepository#existsByPartnerCode(String)} 로 partnerCode 중복 확인 후
  * 이미 존재하면 skip. 부분 시드 (예: 30/50) 후 재실행 시 누락 분만 생성.
  *
- * <p><b>도메인 메서드만 사용</b>: {@link Partner#register} factory 로 생성 → {@code updateBusinessProfile} /
- * {@code updateContactChannels} / {@code updateAddresses} / {@code updateCreditPolicy} / {@code suspend} 등
- * 의 도메인 메서드로만 후속 필드 채움. reflection 으로 status 직접 set 금지 가드 준수.
+ * <p><b>도메인 구성 + native INSERT</b>: 필드 값은 {@link Partner#register} factory 와
+ * {@code updateBusinessProfile} / {@code updateContactChannels} / {@code updateAddresses} /
+ * {@code updateCreditPolicy} / {@code suspend} 등 도메인 메서드로 구성한다. 영속화는 deterministic
+ * UUID 명시를 위해 {@link NamedParameterJdbcTemplate} native INSERT 를 사용해 Hibernate
+ * {@code @UuidGenerator} random v4 덮어쓰기를 회피한다.
  *
  * <p>50개 회사명은 한국 가상 HVAC 협력사 큐레이션 (실제 회사명 상표 침해 금지 — "(주)서울에어컨" 등 가공).
  * SUSPENDED 5건 (seq % 10 == 0).
@@ -101,9 +106,12 @@ public class PartnerSeeder implements CommandLineRunner {
     );
 
     private final PartnerRepository partnerRepository;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
-    public PartnerSeeder(PartnerRepository partnerRepository) {
+    public PartnerSeeder(PartnerRepository partnerRepository,
+                         NamedParameterJdbcTemplate jdbcTemplate) {
         this.partnerRepository = partnerRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -122,8 +130,7 @@ public class PartnerSeeder implements CommandLineRunner {
                 Partner partner = buildPartner(row, partnerCode);
                 // PM 통합 fix — Stage 2/3/4 seeder 와 cross-service join 위해 deterministic UUID 강제 주입.
                 // 이는 slip.partnerId / journal.partnerId 등이 partnerCode 기반 결정 UUID 와 매칭 되도록 함.
-                forceId(partner, deterministicId("partner", partnerCode));
-                partnerRepository.save(partner);
+                insertPartnerNative(deterministicId("partner", partnerCode), partner);
                 created++;
             } catch (RuntimeException ex) {
                 log.error("Failed to seed partner {}: {}", partnerCode, ex.getMessage(), ex);
@@ -299,18 +306,90 @@ public class PartnerSeeder implements CommandLineRunner {
      * 모두 동일 namespace 패턴 사용 (cross-stage 참조 정합).
      */
     private static UUID deterministicId(String type, String key) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+        return UUID.nameUUIDFromBytes(
+                ("samhan-seed:" + type + ":" + key).getBytes(StandardCharsets.UTF_8));
     }
 
     /** Hibernate 의 {@code @UuidGenerator} 가 random UUID 부여하기 전에 결정 UUID 강제 주입. */
-    private static void forceId(Object entity, UUID id) {
-        try {
-            Field f = entity.getClass().getDeclaredField("id");
-            f.setAccessible(true);
-            f.set(entity, id);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Failed to set deterministic id on "
-                    + entity.getClass().getSimpleName(), e);
-        }
+    private void insertPartnerNative(UUID id, Partner partner) {
+        LocalDateTime now = LocalDateTime.now();
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("id", id)
+                .addValue("partnerCode", partner.getPartnerCode())
+                .addValue("bizNo", partner.getBizNo())
+                .addValue("name", partner.getName())
+                .addValue("address", partner.getAddress())
+                .addValue("phone", partner.getPhone())
+                .addValue("creditLimit", partner.getCreditLimit())
+                .addValue("outstandingBalance", partner.getOutstandingBalance())
+                .addValue("status", partner.getStatus().name())
+                .addValue("subBizNo", partner.getSubBizNo())
+                .addValue("representative", partner.getRepresentative())
+                .addValue("businessType", partner.getBusinessType())
+                .addValue("industry", partner.getIndustry())
+                .addValue("fax", partner.getFax())
+                .addValue("email", partner.getEmail())
+                .addValue("email2", partner.getEmail2())
+                .addValue("mobile", partner.getMobile())
+                .addValue("zipCode1", partner.getZipCode1())
+                .addValue("address1", partner.getAddress1())
+                .addValue("zipCode2", partner.getZipCode2())
+                .addValue("address2", partner.getAddress2())
+                .addValue("searchKeyword", partner.getSearchKeyword())
+                .addValue("partnerGroup1", partner.getPartnerGroup1())
+                .addValue("partnerGroup2", partner.getPartnerGroup2())
+                .addValue("website", partner.getWebsite())
+                .addValue("currency", partner.getCurrency())
+                .addValue("shipmentTarget", partner.getShipmentTarget())
+                .addValue("salesType", partner.getSalesType())
+                .addValue("purchaseType", partner.getPurchaseType())
+                .addValue("receivableNoMgmt", partner.getReceivableNoMgmt())
+                .addValue("payableNoMgmt", partner.getPayableNoMgmt())
+                .addValue("outboundAdjustmentRate", partner.getOutboundAdjustmentRate())
+                .addValue("inboundAdjustmentRate", partner.getInboundAdjustmentRate())
+                .addValue("salesPriceGroup", partner.getSalesPriceGroup())
+                .addValue("purchasePriceGroup", partner.getPurchasePriceGroup())
+                .addValue("creditPeriodDays", partner.getCreditPeriodDays())
+                .addValue("paymentDueDays", partner.getPaymentDueDays())
+                .addValue("registrationDate", partner.getRegistrationDate())
+                .addValue("transferInfo", partner.getTransferInfo())
+                .addValue("note", partner.getNote())
+                .addValue("managerName", partner.getManagerName())
+                .addValue("createdAt", now)
+                .addValue("createdBy", "system")
+                .addValue("isDeleted", false);
+
+        jdbcTemplate.update("""
+                INSERT INTO partners (
+                    id, partner_code, biz_no, name, address, phone,
+                    credit_limit, outstanding_balance, status,
+                    sub_biz_no, representative, business_type, industry,
+                    fax, email, email2, mobile,
+                    zip_code1, address1, zip_code2, address2,
+                    search_keyword, partner_group1, partner_group2, website,
+                    currency, shipment_target, sales_type, purchase_type,
+                    receivable_no_mgmt, payable_no_mgmt,
+                    outbound_adjustment_rate, inbound_adjustment_rate,
+                    sales_price_group, purchase_price_group,
+                    credit_period_days, payment_due_days, registration_date,
+                    transfer_info, note, manager_name,
+                    created_at, created_by, is_deleted
+                ) VALUES (
+                    :id, :partnerCode, :bizNo, :name, :address, :phone,
+                    :creditLimit, :outstandingBalance, :status,
+                    :subBizNo, :representative, :businessType, :industry,
+                    :fax, :email, :email2, :mobile,
+                    :zipCode1, :address1, :zipCode2, :address2,
+                    :searchKeyword, :partnerGroup1, :partnerGroup2, :website,
+                    :currency, :shipmentTarget, :salesType, :purchaseType,
+                    :receivableNoMgmt, :payableNoMgmt,
+                    :outboundAdjustmentRate, :inboundAdjustmentRate,
+                    :salesPriceGroup, :purchasePriceGroup,
+                    :creditPeriodDays, :paymentDueDays, :registrationDate,
+                    :transferInfo, :note, :managerName,
+                    :createdAt, :createdBy, :isDeleted
+                )
+                """, params);
     }
+
 }

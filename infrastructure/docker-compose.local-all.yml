@@ -498,6 +498,10 @@ services:
       SAMHAN_PARTNER_DB_USER: samhan
       SAMHAN_PARTNER_DB_PASSWORD: samhan_dev_pw
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
+      # dev 시드 toggle — accounting/arologis 와 일관. PartnerSeeder(@Profile dev + app.partner.seed-test-data)
+      # 가 P-2026-NNNN 거래처를 결정적 UUID(samhan-seed:partner:..)로 native INSERT → accounting/slip 의
+      # deterministic partner_id 와 cross-service join 정합(거래처 미수/미지급 보고서 실 거래처 표시).
+      SAMHAN_PARTNER_SEED_TEST_DATA: "true"
     ports:
       - "127.0.0.1:8095:8095"
     depends_on: *service-depends
