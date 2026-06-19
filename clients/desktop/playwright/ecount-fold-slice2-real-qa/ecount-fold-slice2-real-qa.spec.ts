@@ -2,7 +2,7 @@
  * 이카운트 네이티브 편입 슬2 — 현금 지출/입금 silo 폐기 Docker 실서버 QA.
  *
  * 대상: page-code ecount.mig14.cash-list 완전 제거 검증.
- *   1) 회계 관리자 그룹에 '지출 트랜잭션'/'입금 트랜잭션' 메뉴 미노출(형제 항목 유지)
+ *   1) 회계 카테고리 flat 항목에 '지출 트랜잭션'/'입금 트랜잭션' 메뉴 미노출(형제 항목 유지)
  *   2) 네이티브 대체 — 분개장(/accounting/journals) + 입금매칭(/accounting/deposit-match) 도달·렌더
  *   3) 구 silo route(#/accounting/admin/cash-disbursements, /cash-receipts) 진입 시 silo 화면 미렌더
  *
@@ -58,7 +58,7 @@ async function gotoHash(page: Page, hashPath: string): Promise<void> {
   await page.goto(`${BASE_URL}/#${hashPath}`, { waitUntil: 'domcontentloaded' })
 }
 
-test('MASTER — 회계 관리자 그룹에 현금 지출/입금 메뉴 미노출 + 형제 항목 유지', async ({ page }) => {
+test('MASTER — 회계 카테고리 flat 항목에 현금 지출/입금 메뉴 미노출 + 형제 항목 유지', async ({ page }) => {
   const login = await realLogin(page, 'dev_master')
   await installAuthStub(page, login)
   await gotoHash(page, '/')
@@ -68,22 +68,17 @@ test('MASTER — 회계 관리자 그룹에 현금 지출/입금 메뉴 미노�
   await expect(accountingCat, '회계 카테고리 토글').toBeVisible({ timeout: 15_000 })
   if ((await accountingCat.getAttribute('aria-expanded')) !== 'true') await accountingCat.click()
 
-  const adminToggle = page.getByTestId('sidebar-accounting-admin-group-toggle')
-  await expect(adminToggle, '회계 관리자 그룹 토글').toBeVisible({ timeout: 10_000 })
-  if ((await adminToggle.getAttribute('aria-expanded')) !== 'true') await adminToggle.click()
-  const adminGroup = page.getByTestId('sidebar-accounting-admin-group')
-  await expect(adminGroup).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('sidebar-accounting-admin-group-toggle'), '회계 관리자 그룹 토글 제거').toHaveCount(0)
+  await expect(page.getByTestId('sidebar-accounting-admin-group'), '회계 관리자 그룹 컨테이너 제거').toHaveCount(0)
 
   // 핵심 단언: 지출/입금 트랜잭션(cash silo) 메뉴 미존재
   await expect(page.getByTestId('sidebar-accounting-admin-cash-disbursements'), '지출 트랜잭션(제거됨)').toHaveCount(0)
   await expect(page.getByTestId('sidebar-accounting-admin-cash-receipts'), '입금 트랜잭션(제거됨)').toHaveCount(0)
-  await expect(adminGroup, '그룹 텍스트에 지출/입금 트랜잭션 없음').not.toContainText('지출 트랜잭션')
-  await expect(adminGroup, '그룹 텍스트에 입금 트랜잭션 없음').not.toContainText('입금 트랜잭션')
-  // 형제 유지(slip 폐기는 cash 한정 — 원장대조/주문 등)
-  await expect(page.getByTestId('sidebar-accounting-admin-sales-ledger'), '매출 원장 대조 유지').toBeVisible()
+  // 형제 유지(slip 폐기는 cash 한정 — 원장대조/운영 대시보드/회계 수정 요청 등)
+  const salesLedger = page.getByTestId('sidebar-accounting-admin-sales-ledger')
+  await expect(salesLedger, '매출 원장 대조 유지').toBeVisible()
 
-  // 회계 관리자 그룹(cash 제거 증명 지점)을 뷰로 스크롤 후 캡처
-  await adminGroup.scrollIntoViewIfNeeded()
+  await salesLedger.scrollIntoViewIfNeeded()
   await page.waitForTimeout(300)
   await page.screenshot({ path: path.join(SCREENSHOTS_DIR, 'T1-master-accounting-admin-no-cash.png'), fullPage: false })
 })

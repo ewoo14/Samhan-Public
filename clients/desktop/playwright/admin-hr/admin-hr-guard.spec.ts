@@ -363,7 +363,7 @@ test('TC-HR4: AdminLayout 헤더 라벨 "인사" 검증 — "관리자" 텍스�
     'TC-HR4: 사이드바 또는 AdminLayout 에 "인사" 라벨이 있어야 함',
   ).toBeTruthy()
 
-  // 구 "관리자" 단독 카테고리 헤더가 잔존하면 실패. "회계 관리자"(별도 회계 그룹) 등 다른 맥락의
+  // 구 "관리자" 단독 카테고리 헤더가 잔존하면 실패. 다른 맥락의
   // "관리자" 를 substring 으로 오탐하지 않도록 정확 매칭(getByText exact)으로 한정한다.
   const navLocator = page.locator('nav, [data-testid="sidebar"]')
   const adminLabelInNav = await navLocator
