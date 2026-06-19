@@ -76,6 +76,12 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
     /** batch 카테고리(serial_managed=false, PIPING)에 속하는 테스트 품목 UUID */
     private UUID batchProductId;
 
+    /** BUNDLE productType 계약 검증용 세트 품목 UUID */
+    private UUID bundleProductId;
+
+    private String bundleProductCode;
+    private String bundleProductName;
+
     /**
      * 픽스처 구성:
      * <ul>
@@ -131,6 +137,21 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 "serialManaged=false IT 검증용 batch 품목"));
         batchProduct.updateEcountMeta("PIPE-BATCH-IT", null, null, null, true, null);
         batchProductId = batchProduct.getId();
+
+        bundleProductCode = "BUNDLE-SUMMARY-IT-" + UUID.randomUUID().toString().substring(0, 8);
+        bundleProductName = "테스트 세트 요약 " + UUID.randomUUID().toString().substring(0, 8);
+        Product bundleProduct = productRepository.save(Product.seedFromSheet(
+                bundleProductName,
+                bundleProductCode,
+                batchCategory,
+                new BigDecimal("900000"),
+                new BigDecimal("700000"),
+                ProductType.BUNDLE,
+                null,
+                null,
+                null));
+        bundleProduct.updateEcountMeta(bundleProductCode, null, null, null, true, null);
+        bundleProductId = bundleProduct.getId();
     }
 
     /**
@@ -183,6 +204,44 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data.productCode", is("AC-SERIAL-IT")))
                 .andExpect(jsonPath("$.data.serialManaged", is(true)))
                 .andExpect(jsonPath("$.data.id").exists());
+    }
+
+    @Test
+    void lookup_bundleProduct_returnsProductTypeBundle() throws Exception {
+        var body = new LookupRequest(List.of(bundleProductId));
+
+        mockMvc.perform(post("/products/internal/lookup")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id", is(bundleProductId.toString())))
+                .andExpect(jsonPath("$.data[0].productCode", is(bundleProductCode)))
+                .andExpect(jsonPath("$.data[0].productType", is("BUNDLE")));
+    }
+
+    @Test
+    void lookupByCode_bundleProduct_returnsProductTypeBundle() throws Exception {
+        var body = java.util.Map.of("productCode", bundleProductCode);
+
+        mockMvc.perform(post("/products/internal/lookup-by-code")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.productCode", is(bundleProductCode)))
+                .andExpect(jsonPath("$.data.productType", is("BUNDLE")));
+    }
+
+    @Test
+    void lookupByName_bundleProduct_returnsProductTypeBundle() throws Exception {
+        mockMvc.perform(get("/products/internal/by-name")
+                        .queryParam("name", bundleProductName)
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name", is(bundleProductName)))
+                .andExpect(jsonPath("$.data.productCode", is(bundleProductCode)))
+                .andExpect(jsonPath("$.data.productType", is("BUNDLE")));
     }
 
     /**

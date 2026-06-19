@@ -286,6 +286,29 @@ class InboundInspectionServiceTest {
         }
 
         @Test
+        @DisplayName("productType=BUNDLE 세트 SKU 라인은 재고를 만들지 않고 검수 완료만 처리")
+        void bundleProduct_skipsStockCreationButCompletes() {
+            InboundInspection inspection = makeInspection(slipId, "2025/01/10-001");
+            InboundInspectionLine line = makeLine(inspection, lineId, productId, 10);
+            line.recordResult(10, 0, null);
+            inspection.addLine(line);
+
+            when(inspectionRepository.findBySlipIdAndIsDeletedFalse(slipId))
+                    .thenReturn(Optional.of(inspection));
+            when(slipClient.getSlip(slipId)).thenReturn(makeSlipDetail(slipId, "INBOUND", "SAVED"));
+            when(warehouseRepository.findById(warehouseId)).thenReturn(Optional.of(makeWarehouse(warehouseId)));
+            when(productClient.requireExists(productId)).thenReturn(bundleProduct(productId));
+
+            var result = service.completeInspection(slipId, actorId);
+
+            assertThat(result.status()).isEqualTo(InspectionStatus.COMPLETED);
+            assertThat(result.stockApplied()).isTrue();
+            verify(stockLotRepository, never()).save(any());
+            verify(stockBalanceRepository, never()).save(any());
+            verify(stockMovementRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("검수 미입력 라인이 있으면 CONFLICT 예외")
         void uninspectedLine_throwsConflict() {
             InboundInspection inspection = makeInspection(slipId, "2025/01/10-001");
@@ -401,5 +424,10 @@ class InboundInspectionServiceTest {
     private ProductSummary nonGoodsProduct(UUID id) {
         return new ProductSummary(id, "설치비", "FEE-INSTALL-001", "FEE-INSTALL-001",
                 UUID.randomUUID(), new BigDecimal("50000"), "ACTIVE", false, false);
+    }
+
+    private ProductSummary bundleProduct(UUID id) {
+        return new ProductSummary(id, "세트 품목", "SET-001", "SET-001",
+                UUID.randomUUID(), new BigDecimal("50000"), "ACTIVE", false, true, "BUNDLE");
     }
 }
