@@ -202,6 +202,67 @@ class SlipCollabIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data.length()").value(1));
     }
 
+    /**
+     * presence join/list endpoint 는 헤더 인증, 입력 검증, UUID 비노출 wire 계약, 조회 권한 가드를 지킨다.
+     */
+    @Test
+    void presence_join_list_validates_header_input_payload_and_permission_guard() throws Exception {
+        UUID unauthorizedSlipId = seedOutboundSlip("2099/06/13-PRS-401-" + SEQ.getAndIncrement()).getId();
+        mvc.perform(post("/slips/{slipId}/collab/presence/join", unauthorizedSlipId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-401",
+                                "displayName", "presence tester"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        UUID invalidSlipId = seedOutboundSlip("2099/06/13-PRS-400-" + SEQ.getAndIncrement()).getId();
+        mvc.perform(post("/slips/{slipId}/collab/presence/join", invalidSlipId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        UUID slipId = seedOutboundSlip("2099/06/13-PRS-OK-" + SEQ.getAndIncrement()).getId();
+        String response = mvc.perform(post("/slips/{slipId}/collab/presence/join", slipId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header(USER_NAME_HEADER, "presence tester")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-1",
+                                "displayName", "ignored body name"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data.displayName").value("presence tester"))
+                .andExpect(jsonPath("$.data.color").exists())
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.accountId").doesNotExist())
+                .andExpect(jsonPath("$.data.lastSeenAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(dataMap(response)).containsOnlyKeys("sessionId", "displayName", "color");
+
+        mvc.perform(get("/slips/{slipId}/collab/presence", slipId)
+                        .header(USER_ID_HEADER, ACTOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data[0].userId").doesNotExist());
+
+        UUID deniedSlipId = seedOutboundSlip("2099/06/13-PRS-403-" + SEQ.getAndIncrement()).getId();
+        when(dynamicPermissionClient.check(
+                any(UUID.class), eq("slip.comments"), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.canView(any(), eq("slip.comments")))
+                .thenReturn(false);
+
+        mvc.perform(post("/slips/{slipId}/collab/presence/join", deniedSlipId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", "presence-session-denied"))))
+                .andExpect(status().isForbidden());
+    }
+
     /* ====================================================================
      * 시나리오 2a — 수정완료 단일 필드 실 적용
      * slip.memo 실 변경 + EDIT revision 1건 캡처 검증

@@ -8,12 +8,12 @@ package com.samhanair.logis.shared.realtime.presence;
  */
 public enum PresenceColor {
     BLUE("#2563EB"),
-    GREEN("#16A34A"),
-    AMBER("#D97706"),
+    GREEN("#15803D"),
+    AMBER("#B45309"),
     ROSE("#E11D48"),
     VIOLET("#7C3AED"),
-    CYAN("#0891B2"),
-    LIME("#65A30D"),
+    CYAN("#0E7490"),
+    LIME("#4D7C0F"),
     PINK("#DB2777");
 
     private final String hex;

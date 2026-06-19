@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -36,6 +38,8 @@ public class PresenceService {
     private final Clock clock;
     private final ConcurrentHashMap<UUID, ConcurrentHashMap<String, PresenceEntry>> entries =
             new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, ConcurrentHashMap<String, String>> owners =
+            new ConcurrentHashMap<>();
 
     public PresenceService(RealtimeBroker broker) {
         this(broker, DEFAULT_TTL, Clock.systemUTC());
@@ -57,33 +61,64 @@ public class PresenceService {
                 normalizeDisplayName(displayName),
                 PresenceColor.fromUserId(normalizedUserId),
                 now);
+        AtomicBoolean newSession = new AtomicBoolean(false);
 
         entries.compute(entityId, (ignored, current) -> {
             ConcurrentHashMap<String, PresenceEntry> entityEntries =
                     current == null ? new ConcurrentHashMap<>() : current;
-            entityEntries.put(normalizedSessionId, next);
+            PresenceEntry previous = entityEntries.put(normalizedSessionId, next);
+            if (previous == null) {
+                newSession.set(true);
+                owners.compute(entityId, (ignoredOwner, currentOwners) -> {
+                    ConcurrentHashMap<String, String> entityOwners =
+                            currentOwners == null ? new ConcurrentHashMap<>() : currentOwners;
+                    entityOwners.put(normalizedSessionId, normalizedUserId);
+                    return entityOwners;
+                });
+            }
             return entityEntries;
         });
-        broker.publish(entityId, EVENT_JOIN, next);
+        if (newSession.get()) {
+            broker.publish(entityId, EVENT_JOIN, next);
+        }
         return next;
     }
 
-    public void leave(UUID entityId, String sessionId) {
+    public void leave(UUID entityId, String sessionId, String callerUserId) {
         Objects.requireNonNull(entityId, "entityId 는 필수입니다");
         String normalizedSessionId = normalizeSessionId(sessionId);
-        ConcurrentHashMap<String, PresenceEntry> entityEntries = entries.get(entityId);
-        if (entityEntries == null) {
-            return;
-        }
-        PresenceEntry removed = entityEntries.remove(normalizedSessionId);
-        if (entityEntries.isEmpty()) {
-            entries.remove(entityId, entityEntries);
-        }
-        if (removed != null) {
-            broker.publish(entityId, EVENT_LEAVE, removed);
+        String normalizedCallerUserId = normalizeUserId(callerUserId);
+        AtomicReference<PresenceEntry> removed = new AtomicReference<>();
+        entries.computeIfPresent(entityId, (ignored, entityEntries) -> {
+            ConcurrentHashMap<String, String> entityOwners = owners.get(entityId);
+            String ownerUserId = entityOwners == null ? null : entityOwners.get(normalizedSessionId);
+            if (!normalizedCallerUserId.equals(ownerUserId)) {
+                return entityEntries;
+            }
+            PresenceEntry removedEntry = entityEntries.remove(normalizedSessionId);
+            if (removedEntry != null) {
+                removed.set(removedEntry);
+                if (entityOwners != null) {
+                    entityOwners.remove(normalizedSessionId);
+                    if (entityOwners.isEmpty()) {
+                        owners.remove(entityId, entityOwners);
+                    }
+                }
+            }
+            return entityEntries.isEmpty() ? null : entityEntries;
+        });
+        if (removed.get() != null) {
+            broker.publish(entityId, EVENT_LEAVE, removed.get());
         }
     }
 
+    /**
+     * 현재 노드가 보유한 presence snapshot 을 반환한다.
+     *
+     * <p>presence registry 는 노드-로컬 ConcurrentHashMap 이다. Redis broker 모드(다중 노드)에서는 list()
+     * 백필이 노드별 부분집합이고, 노드 다운 시 그 노드 세션의 leave 가 미발행되어 타 노드에 잔존한다.
+     * 다중 노드 롤아웃 시 sticky-session 전제 또는 registry 의 Redis 이전이 필요하다.
+     */
     public List<PresenceEntry> list(UUID entityId) {
         Objects.requireNonNull(entityId, "entityId 는 필수입니다");
         ConcurrentHashMap<String, PresenceEntry> entityEntries = entries.get(entityId);
@@ -96,6 +131,13 @@ public class PresenceService {
                 .toList();
     }
 
+    /**
+     * TTL 이 지난 노드-로컬 presence 를 제거하고 leave 이벤트를 발행한다.
+     *
+     * <p>presence registry 는 노드-로컬 ConcurrentHashMap 이다. Redis broker 모드(다중 노드)에서는 list()
+     * 백필이 노드별 부분집합이고, 노드 다운 시 그 노드 세션의 leave 가 미발행되어 타 노드에 잔존한다.
+     * 다중 노드 롤아웃 시 sticky-session 전제 또는 registry 의 Redis 이전이 필요하다.
+     */
     public List<PresenceEntry> pruneExpired() {
         Instant cutoff = clock.instant().minus(ttl);
         List<PresenceEntry> removed = new ArrayList<>();
@@ -107,12 +149,20 @@ public class PresenceService {
                     boolean didRemove = entityEntries.remove(entry.sessionId(), entry);
                     if (didRemove) {
                         removed.add(entry);
+                        ConcurrentHashMap<String, String> entityOwners = owners.get(entityId);
+                        if (entityOwners != null) {
+                            entityOwners.remove(entry.sessionId());
+                            if (entityOwners.isEmpty()) {
+                                owners.remove(entityId, entityOwners);
+                            }
+                        }
                         broker.publish(entityId, EVENT_LEAVE, entry);
                     }
                 }
             }
             if (entityEntries.isEmpty()) {
                 entries.remove(entityId, entityEntries);
+                owners.remove(entityId);
             }
         }
         return removed;

@@ -33,7 +33,10 @@ import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -195,33 +198,33 @@ public class SlipCollabController {
         return ApiResponse.ok(items);
     }
 
-    /** 전표 협업 presence join/heartbeat. 기존 collab SSE stream 으로 presence:join 이벤트가 발행된다. */
+    /** 전표 협업 presence join/heartbeat. 신규 sessionId 는 기존 collab SSE stream 으로 presence:join 이벤트가 발행된다. */
     @Operation(summary = "전표 협업 presence join/heartbeat")
     @PostMapping("/presence/join")
     @RequirePermission(page = "slip.comments", action = PermissionAction.VIEW)
     public ApiResponse<PresenceEntry> joinPresence(
             @PathVariable UUID slipId,
             @RequestBody(required = false) SlipPresenceRequest request,
-            @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId,
+            @RequestHeader(CALLER_ID_HEADER) String callerId,
             @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
         loadSlip(slipId);
-        String userId = resolvePresenceUserId(callerId, request);
+        String userId = resolvePresenceUserId(callerId);
         String sessionId = resolvePresenceSessionId(request);
         String displayName = resolvePresenceDisplayName(callerName, request);
         return ApiResponse.ok(presenceService.join(slipId, sessionId, userId, displayName));
     }
 
-    /** 전표 협업 presence leave. 기존 collab SSE stream 으로 presence:leave 이벤트가 발행된다. */
+    /** 전표 협업 presence leave. 호출자가 session owner 일 때만 presence:leave 이벤트가 발행된다. */
     @Operation(summary = "전표 협업 presence leave")
     @PostMapping("/presence/leave")
     @RequirePermission(page = "slip.comments", action = PermissionAction.VIEW)
     public ApiResponse<Void> leavePresence(
             @PathVariable UUID slipId,
             @RequestBody(required = false) SlipPresenceRequest request,
-            @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId) {
+            @RequestHeader(CALLER_ID_HEADER) String callerId) {
         loadSlip(slipId);
-        resolvePresenceUserId(callerId, request);
-        presenceService.leave(slipId, resolvePresenceSessionId(request));
+        String userId = resolvePresenceUserId(callerId);
+        presenceService.leave(slipId, resolvePresenceSessionId(request), userId);
         return ApiResponse.ok(null);
     }
 
@@ -289,7 +292,7 @@ public class SlipCollabController {
         return (callerId == null || callerId.isBlank()) ? "system" : callerId;
     }
 
-    private String resolvePresenceUserId(String callerId, SlipPresenceRequest request) {
+    private String resolvePresenceUserId(String callerId) {
         String headerUserId = callerId == null ? null : callerId.trim();
         if (headerUserId != null && !headerUserId.isBlank()) {
             return headerUserId;
@@ -315,5 +318,16 @@ public class SlipCollabController {
             return "system".equals(resolved) ? null : resolved;
         }
         return request == null ? null : request.displayName();
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingHeader(MissingRequestHeaderException ex) {
+        if (CALLER_ID_HEADER.equalsIgnoreCase(ex.getHeaderName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.fail(ErrorCode.UNAUTHORIZED,
+                            "presence 사용자 정보를 확인할 수 없습니다"));
+        }
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, ex.getMessage()));
     }
 }

@@ -1,9 +1,11 @@
 package com.samhanair.logis.shared.realtime.presence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
@@ -50,6 +52,8 @@ class PresenceServiceTest {
 
         assertThat(refreshed.lastSeenAt()).isAfter(first.lastSeenAt());
         assertThat(service.list(entityId)).hasSize(1);
+        verify(broker, times(1)).publish(
+                eq(entityId), eq(PresenceService.EVENT_JOIN), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -65,7 +69,7 @@ class PresenceServiceTest {
     void leave_removesSessionAndPublishesLeaveEvent() {
         PresenceEntry entry = service.join(entityId, "session-1", "account-user-1", "홍길동");
 
-        service.leave(entityId, "session-1");
+        service.leave(entityId, "session-1", "account-user-1");
 
         assertThat(service.list(entityId)).isEmpty();
         verify(broker).publish(eq(entityId), eq(PresenceService.EVENT_LEAVE), eq(entry));
@@ -73,9 +77,40 @@ class PresenceServiceTest {
 
     @Test
     void leave_unknownUserDoesNotPublishLeaveEvent() {
-        service.leave(entityId, "missing");
+        service.leave(entityId, "missing", "account-user-1");
 
         verify(broker, never()).publish(eq(entityId), eq(PresenceService.EVENT_LEAVE), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void leave_differentUserDoesNotRemoveOrPublishLeaveEvent() {
+        PresenceEntry entry = service.join(entityId, "session-1", "account-user-1", "홍길동");
+
+        service.leave(entityId, "session-1", "account-user-2");
+
+        assertThat(service.list(entityId)).containsExactly(entry);
+        verify(broker, never()).publish(eq(entityId), eq(PresenceService.EVENT_LEAVE), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void join_normalizesUnsafeDisplayNamesAndRejectsBlankIds() {
+        PresenceEntry uuidName = service.join(
+                entityId,
+                "session-uuid-name",
+                "account-user-1",
+                "550e8400-e29b-41d4-a716-446655440000");
+        PresenceEntry longName = service.join(
+                entityId,
+                "session-long-name",
+                "account-user-2",
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+
+        assertThat(uuidName.displayName()).isEqualTo("사용자");
+        assertThat(longName.displayName()).hasSize(50);
+        assertThatThrownBy(() -> service.join(entityId, " ", "account-user-3", "tester"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.join(entityId, "session-blank-user", " ", "tester"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
