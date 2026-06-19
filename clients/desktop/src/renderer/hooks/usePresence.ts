@@ -75,7 +75,7 @@ export function usePresence({
         if (cancelled) return
         const next = await client.list(entityId)
         if (cancelled) return
-        setEntries(next)
+        setEntries(Array.isArray(next) ? next : [])
       } catch (err) {
         console.warn('[presence] 목록 조회 실패', err)
       }

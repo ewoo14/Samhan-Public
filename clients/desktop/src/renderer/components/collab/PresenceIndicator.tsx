@@ -17,13 +17,22 @@ function initialOf(displayName: string): string {
   return trimmed.length > 0 ? trimmed.slice(0, 1) : '?'
 }
 
+function isPresenceEntry(value: unknown): value is PresenceEntry {
+  return typeof value === 'object'
+    && value !== null
+    && 'sessionId' in value
+    && 'displayName' in value
+    && 'color' in value
+}
+
 export interface PresenceIndicatorProps {
-  entries: PresenceEntry[]
+  entries: PresenceEntry[] | unknown
 }
 
 export function PresenceIndicator({ entries }: PresenceIndicatorProps) {
+  const list = Array.isArray(entries) ? entries.filter(isPresenceEntry) : []
   const deduped = Array.from(
-    entries.reduce((acc, entry) => {
+    list.reduce((acc, entry) => {
       if (!acc.has(entry.displayName)) acc.set(entry.displayName, entry)
       return acc
     }, new Map<string, PresenceEntry>()).values(),

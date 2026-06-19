@@ -55,11 +55,17 @@ export function createPresenceClient(config: PresenceClientConfig): PresenceClie
   })
 
   async function list(entityId: string): Promise<PresenceEntry[]> {
-    const res = await apiClient.get<ApiEnvelope<PresenceEntry[]>>(
+    const res = await apiClient.get<ApiEnvelope<PresenceEntry[]> | PresenceEntry[]>(
       config.presencePath(entityId),
       { headers: await collabHeaders() },
     )
-    return res.data.data
+    const body = res.data
+    const items = Array.isArray(body)
+      ? body
+      : typeof body === 'object' && body !== null && 'data' in body
+        ? body.data
+        : []
+    return Array.isArray(items) ? items : []
   }
 
   async function join(
