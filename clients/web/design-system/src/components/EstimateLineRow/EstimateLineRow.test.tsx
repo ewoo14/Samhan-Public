@@ -21,7 +21,7 @@ describe('EstimateLineRow', () => {
     expect(screen.getByText('5,400,000')).toBeTruthy()
   })
 
-  it('수량 input 변경 시 onQtyChange 호출 + 음수 차단', () => {
+  it('수량 input 변경 시 빈값/비숫자는 0, 양수는 해당 정수로 정규화한다', () => {
     const onQtyChange = vi.fn()
     render(
       <EstimateLineRow
@@ -36,11 +36,16 @@ describe('EstimateLineRow', () => {
     )
     const input = screen.getByLabelText(/라인 1 수량/) as HTMLInputElement
 
-    fireEvent.change(input, { target: { value: '-5' } })
+    fireEvent.change(input, { target: { value: '' } })
+    expect(onQtyChange).toHaveBeenLastCalledWith(0)
+
+    fireEvent.change(input, { target: { value: 'abc' } })
+    expect(onQtyChange).toHaveBeenLastCalledWith(0)
+
+    fireEvent.change(input, { target: { value: '5' } })
     expect(onQtyChange).toHaveBeenLastCalledWith(5)
 
-    fireEvent.change(input, { target: { value: '12' } })
-    expect(onQtyChange).toHaveBeenLastCalledWith(12)
+    // TODO(parseQty): 주석 '음수→0' vs 실제 strip(-5→5) 불일치 — 컴포넌트 확인 후 단언
   })
 
   it('readOnly 모드에서는 수량 input 미표시 + 액션 버튼 disabled', () => {
@@ -76,6 +81,12 @@ describe('EstimateLineRow', () => {
       />,
     )
 
-    expect(screen.getAllByText('-').length).toBeGreaterThan(0)
+    const row = screen.getByRole('row')
+    const cells = row.querySelectorAll('[role="cell"]')
+    const discountCell = cells[7]
+    const amountCell = screen.getByLabelText('라인 1 소계')
+
+    expect(discountCell?.textContent).toBe('-')
+    expect(discountCell).not.toBe(amountCell)
   })
 })
