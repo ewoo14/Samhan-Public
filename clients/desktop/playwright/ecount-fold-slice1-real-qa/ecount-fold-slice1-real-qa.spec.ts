@@ -105,7 +105,7 @@ test('MASTER — 회계 관리자 그룹에 잔액 스냅샷 미노출 + 형제 
   ).toHaveCount(0)
   await expect(adminGroup, '회계 관리자 그룹 텍스트에 잔액 스냅샷 없음').not.toContainText('잔액 스냅샷')
 
-  // Remaining sibling items stay visible after silo removals.
+  // 형제 항목은 유지(silo 폐기는 aging·cash 한정 — 원장 대조/주문서 등)
   await expect(page.getByTestId('sidebar-accounting-admin-sales-ledger'), '매출 원장 대조 유지').toBeVisible()
 
   await page.screenshot({
