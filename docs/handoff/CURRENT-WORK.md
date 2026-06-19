@@ -15,10 +15,10 @@
 4. **Docker 스택 가동 중**(gateway:8080, slip:8086, partner-auth:8091, postgres, auth, eureka — 전부 healthy) → 라이브 실QA 가능([[overnight-live-capture]]: 재빌드해서라도 실 캡처, deferral 금지).
 5. 작업트리에 **docs/qa/*.png ~74개가 dirty**(full Playwright 게이트 실행 부수물, presence 무관) — **커밋 금지, 특정 파일만 명시 staging**. `git add -A` 금지.
 
-### 작업 1 — presence MVP PR #515 (마무리만 남음) `feat/presence-mvp-fixed`
-- **상태**: PR #513 머지→#514 revert(Playwright 8 fail)→본 브랜치 재적용+회귀 2건 fix + dual review(Opus 13 confirmed/Codex 6)+ round-2 BE/FE 하드닝 fold-in **완료**. **CI 30/30 PASS**. slip-collab Playwright 3/3 local PASS. vitest 9/97. 커밋 3개(2c81b28b mock핸들러·785eb3d6 BE하드닝·80abb632 FE하드닝).
-- **잔여(머지 전 의무)**: **Docker 2-세션 presence 실QA 캡처**(VITE_MOCK_MODE off + VITE_API_BASE_URL=:8080, 두 브라우저 컨텍스트 서로 다른 실 로그인 → 같은 슬립 상세 진입 → 상호 아바타 표시 + 1세션 이탈 시 제거, [[real-qa-run]]·[[no-fake-data]]). PR 코멘트 인라인 게시 → 머지.
-- 후속(별도): usePresence hook 단위테스트(jsdom+@testing-library 인프라 필요, O1 P2) — 통합테스트로 커버되어 follow-up.
+### 작업 1 — presence MVP ✅ **완료** (PR #515 머지 `60b5b188`, 2026-06-19)
+- PR #513 머지→#514 revert(Playwright 8 fail)→재적용+회귀 2건 fix + dual review(Opus 13/Codex 6) + round-2 BE/FE 하드닝 + round-3 **이름 칩 UI**(개발책임자 요청) fold-in. CI 30/30 PASS.
+- **Docker 2-세션 실QA 완료**: 실 게이트웨이+dev_master/dev_sales+실 슬립 2026/06/19-1, 2-세션 상호 표시+이탈 제거 라이브 캡처(`docs/qa/collab-presence/01~04.png`), payload UUID 비노출 실증. PR #515 인라인 게시.
+- 후속(별도, 저우선): usePresence hook 단위테스트(jsdom+@testing-library 인프라 필요, O1 P2 — 통합테스트로 커버됨). presence 5문서 롤아웃(회계/주문/견적/배차/그룹웨어)은 §7 collab fan-out 패턴 반복.
 
 ### 작업 2 — 이카운트 이관 자료 네이티브 편입 에픽 (정찰·spec 완료 → 슬라이스 구현)
 - **방침**([[project-ecount-native-fold]]): 이관 자료=시드로 네이티브 편입, "회계 관리자(MIG-14)" silo 메뉴 폐기. **현금은 이미 분개장 편입됨**(중복 화면만 폐기), 주문만 미편입.
@@ -27,8 +27,8 @@
 - **슬라이스 순서**: 슬1(잔액스냅샷 silo 폐기→partner-aging) → 슬2(현금 silo 폐기→분개장/입금매칭, cash_* lineage 유지) → 슬4(원장대조·운영대시보드 운영admin 격리, cutover 전 폐기금지) → 슬5(회계수정요청 재배치+"회계 관리자" 토글 해체) → **슬6(주문 partner_orders cross-service 이식, 대형)**.
 - 가드: page-code 제거=permissions/matrix/mock seed 동기화+전체 mock suite([[fe-guard-removal-contract-tests]]·[[defect-family-sweep-fix]]), BE/마이그=fresh Postgres probe+Linux CI IT.
 
-### 병렬 진행 지시 (개발책임자)
-작업1·2 **병렬**. 권장: 작업1(presence 실QA+머지)을 먼저 빠르게 닫고, 작업2 슬1부터 연속 슬라이스.
+### 다음 진행 (개발책임자)
+작업1(presence) **완료 머지**. → **작업2(eCount 편입) 슬1부터 연속 슬라이스** 진행. 무중단 원칙(상단 🔴) 준수: 슬라이스별 commit/push, Codex MCP 단절 시 `codex exec` 폴백, Docker 실QA 캡처.
 
 ---
 
