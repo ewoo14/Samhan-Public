@@ -27,6 +27,10 @@
 
 ---
 
+### 최신 진행 메모 (2026-06-20)
+
+- **§7 전역 협업 — presence(동시 접속자) 4문서 롤아웃** (PR #545): 슬립 presence MVP(PR #515) 후속으로 **회계전표·주문·견적·그룹웨어 결재 4문서**에 동시 접속자 presence 를 순수 additive 배선했다. 각 `{Doc}CollabController` 에 슬립 `SlipCollabController` 1:1 복제로 `POST /collab/presence/join`·`/leave`·`GET /collab/presence`(200) + presence DTO·helper·`@ExceptionHandler` 를 추가하고(`shared:realtime-abstraction` `PresenceService` 자동 빈 — 추가 설정 0), FE 4 패널에 문서별 `{Doc}PresenceClient` + `usePresence` + `<PresenceIndicator/>` 를 배선했다(client override 로 슬립 경로 교차오염 방지). **신규 권한 page-code·시드·Flyway = 0**(각 문서 기존 댓글 VIEW page-code 재사용). presence wire payload = `{sessionId, displayName, color}` 만(UUID 비공개, IT 박제). 라이브 Docker 실 QA 4/4(API + 2세션 UI `docs/qa/collab-presence-rollout/`, master + 문서별 2차 사용자 동시 진입 "현재 보는 중" 상호 표시) + 각 서비스 presence IT(실 Postgres). 배차(FE 패널 미존재, comment-only)는 **PR2 별도 슬라이스**. dev-report: `docs/dev-reports/2026-06-20-collab-presence-rollout.md`.
+
 ### 최신 진행 메모 (2026-06-13)
 
 - **§7 전역 협업 에픽 — 입출고전표 "수정완료(1-인)" 레퍼런스** (PR #474, 슬라이스 0):
