@@ -20,8 +20,8 @@ import org.springframework.web.util.UriComponentsBuilder;
  * slip-service 호출 클라이언트 — DPS 입고 비교 endpoint (PR-E1 BE-2) 가 사용.
  *
  * <p>legacy GAS 1번 (DPS 입고기록 비교) / 16번 (품목별 DPS 입고내역 비교) 의 자동 조회 절을 위해
- * slip-service 의 출고전표 일괄 조회 endpoint 를 호출한다 — BE-1 의 BE-A0 슬라이스가 추가하는
- * {@code GET /slips/outbound?from=&to=} (날짜 범위 + 라인 포함 응답) 를 가정한다.
+ * slip-service 의 출고전표 일괄 조회 endpoint 를 호출한다 —
+ * {@code GET /internal/slips/outbound?from=&to=} (날짜 범위 + 라인 포함 응답).
  *
  * <p>X-Internal-Token 으로 서비스 간 신뢰 (다른 client 와 동일 패턴). 응답 envelope 은
  * {@code ApiResponse<List<OutboundSlipLineSummary>>} flat 구조 — slip-service 가 (slipNo,
@@ -59,7 +59,7 @@ public class SlipServiceClient {
     /**
      * 출고전표 라인 일괄 조회 — DPS 입고 비교의 기대치(=slip-service) source.
      *
-     * <p>slip-service {@code GET /slips/outbound?from=YYYY-MM-DD&to=YYYY-MM-DD} 호출.
+     * <p>slip-service {@code GET /internal/slips/outbound?from=YYYY-MM-DD&to=YYYY-MM-DD} 호출.
      * 응답 envelope {@code ApiResponse<List<OutboundSlipLineSummary>>} 의 {@code data} 키만 추출.
      *
      * @param from 조회 기간 시작일 (포함, 필수)
@@ -79,7 +79,7 @@ public class SlipServiceClient {
                     "from 은 to 보다 이전이어야 합니다 (from=" + from + ", to=" + to + ")");
         }
 
-        String uri = UriComponentsBuilder.fromPath("/slips/outbound")
+        String uri = UriComponentsBuilder.fromPath("/internal/slips/outbound")
                 .queryParam("from", from.toString())
                 .queryParam("to", to.toString())
                 .build()

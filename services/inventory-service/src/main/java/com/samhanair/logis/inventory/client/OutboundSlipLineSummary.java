@@ -2,9 +2,9 @@ package com.samhanair.logis.inventory.client;
 import java.time.LocalDate;
 
 /**
- * slip-service {@code GET /slips/outbound} 응답의 라인 단위 요약.
+ * slip-service {@code GET /internal/slips/outbound} 응답의 라인 단위 요약.
  *
- * <p>BE-1 의 BE-A0 슬라이스가 추가하는 응답 형태를 가정 — 슬립 헤더(slipNo/slipDate/partner)와
+ * <p>슬립 헤더(slipNo/slipDate/partner)와
  * 라인(productCode/productName/quantity) 을 평탄화한 record. inventory-service 가 slip-service
  * 도메인 클래스를 직접 import 하지 않도록 wire-format 의 record 사본을 둔다.
  *
