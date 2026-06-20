@@ -116,6 +116,24 @@ class Phase26cReserveIT extends AbstractPostgresIT {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    @DisplayName("T1-3: warehouseCode internal endpoint는 X-User-* 위조만으로 접근 불가")
+    void byCode_rejectsForgedUserHeadersWithoutInternalToken() throws Exception {
+        mockMvc.perform(get("/internal/inventory/warehouses/by-code")
+                        .param("code", "NON_EXISTENT_CODE_XYZ")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", MASTER_ROLE))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("T1-4: warehouseCode internal endpoint는 X-Internal-Token 누락 시 접근 불가")
+    void byCode_rejectsMissingInternalToken() throws Exception {
+        mockMvc.perform(get("/internal/inventory/warehouses/by-code")
+                        .param("code", "NON_EXISTENT_CODE_XYZ"))
+                .andExpect(status().isForbidden());
+    }
+
     // ─────────────────────────────────────────────────
     // T2: reserve 정상 + 멱등 + 가용부족 409 + release
     // ─────────────────────────────────────────────────
