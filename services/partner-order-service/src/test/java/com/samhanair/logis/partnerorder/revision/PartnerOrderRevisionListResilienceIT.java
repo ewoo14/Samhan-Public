@@ -83,19 +83,26 @@ class PartnerOrderRevisionListResilienceIT extends AbstractPostgresIT {
 
     @Test
     @WithMockUser(username = "sales", roles = {"SALES"})
-    @DisplayName("슬래시 주문번호 path-id(%2F 인코딩)와 UUID 모두 /revisions 200으로 조회된다")
-    void listWithSummary_acceptsEncodedSlashOrderNumberPathIdAndUuid() throws Exception {
-        UUID orderId = saveOrder("2026/06/19-1");
-        saveRevision(orderId, 1, snapshotWithUnknownFields("2026/06/19-1"));
+    @DisplayName("실 주문번호, 슬래시 주문번호 path-id(%2F 인코딩), UUID 모두 /revisions 200으로 조회된다")
+    void listWithSummary_acceptsRealOrderNumberEncodedSlashOrderNumberPathIdAndUuid() throws Exception {
+        UUID realOrderId = saveOrder("2026/04/15-1");
+        saveRevision(realOrderId, 1, snapshotWithUnknownFields("2026/04/15-1"));
 
-        mockMvc.perform(get("/api/v1/partner-orders/2026%2F06%2F19-1/revisions")
+        mockMvc.perform(get("/api/v1/partner-orders/2026-04-15-1/revisions")
                         .header("X-User-Id", ACCOUNT_ID)
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].revisionNo").value(1));
 
-        mockMvc.perform(get("/api/v1/partner-orders/{id}/revisions", orderId)
+        mockMvc.perform(get("/api/v1/partner-orders/2026%2F04%2F15-1/revisions")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].revisionNo").value(1));
+
+        mockMvc.perform(get("/api/v1/partner-orders/{id}/revisions", realOrderId)
                         .header("X-User-Id", ACCOUNT_ID)
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isOk())

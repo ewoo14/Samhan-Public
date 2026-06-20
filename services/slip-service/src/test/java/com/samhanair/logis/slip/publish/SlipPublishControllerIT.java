@@ -139,7 +139,7 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
 
     @Test
     void publishFromPartnerOrder_returns201() throws Exception {
-        Map<String, Object> body = partnerOrderBody("PO-2026-0001");
+        Map<String, Object> body = partnerOrderBody("2026/04/15-1");
 
         mockMvc.perform(post("/api/v1/slips/from-partner-order")
                         .header("X-User-Id", UUID.randomUUID().toString())
@@ -149,7 +149,7 @@ class SlipPublishControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.sourceType").value("PARTNER_ORDER"))
-                .andExpect(jsonPath("$.data.sourceId").value("PO-2026-0001"));
+                .andExpect(jsonPath("$.data.sourceId").value("2026/04/15-1"));
     }
 
     // ---------------- idempotency: same key + same body → 200 replay ----------------
