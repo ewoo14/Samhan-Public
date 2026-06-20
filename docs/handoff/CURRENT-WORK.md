@@ -38,7 +38,8 @@
 - → **🎉 eCount 네이티브 편입 에픽 pre-cutover 스코프 완결.** 잔여=Phase11 cutover 전용: 6c(주문 silo `ecount.mig14.order-list` 폐기, import job 전량 검증 후)·D3(cash_*/orders/MV 물리 DROP)·D4(원장대조/운영대시보드 최종). 슬3=폐기(D2).
 - ✅ **cutover 마무리 runbook 작성**(`docs/migration/2026-06-20-ecount-native-fold-cutover-runbook.md`): Step A 주문 이식 실행(`POST /admin/partner-orders/mig8-import`)+검증게이트 → B 6c silo 폐기(파일/변경 명세) → C D3 물리 DROP → D D4. 메인 ECOUNT-CUTOVER-GUIDE 교차참조. 6c/D3 코드는 bit-rot 회피로 cutover 시점 작성(runbook 에 정확 명세).
 - ✅ **품목/견적 영역 완결 확인**: item-separation 슬1/2/3·수식빌더·품목고도화 전부 머지. **#19 멀티 동적가격=moot**(정찰: 멀티는 이미 세트 base+구성품 별도라인 청구 index.ejs:4653/4677, 옵션은 부품모델 변경으로 동적 반영 → 구성품 합산 시 이중계상. 싱글[합산]vs멀티[itemized]=의도된 청구모델 차이).
-- → **다음 = 개발책임자 지정 다음 우선작업**(외부연동[전자세금계산서 ASP·법인계좌] 리서치/spec·cutover Step별 실행·소규모 품질 sweep 등). 무중단 원칙(상단 🔴) 준수.
+- ✅ **보안 하드닝 — /internal/ fail-open 전수 sweep 머지 #525**: 슬6 P1(accounting #522)을 계기로 17서비스 감사 → 🔴 실 P1 **inventory `/internal/.../warehouses/by-code` fail-open**(메서드 가드 무) + ⚠️ 5서비스(user/partner/notification/groupware/dashboard) 메서드가드 단일의존 → slip-service **P0-B 가드**(`/internal/**`=INTERNAL_PRINCIPAL) 6서비스 적용 + inventory by-code @PreAuthorize + IT. inventory 라이브 검증(위조 X-User-Id MASTER 토큰무→403, 유효토큰→404). 🪤 Opus 정정: 실 exploit은 inventory 1건뿐(HeaderAuthenticationFilter 가 X-User-Role 무시→@PreAuthorize 보유 5서비스는 위조 차단됨, 가드는 defense-in-depth). 잔존: auth/product/dc-config allow-missing=false 단일의존(후속 권장). → [[identity-header-authz-antipattern]] 4종 갱신.
+- → **다음 = 개발책임자 지정 다음 우선작업**. 주요 백로그(eCount·품목/견적·외부연동) 완결/결정·자격게이트. 후보: 외부연동 벤더-무관 통합 spec·cutover Step별 실행(품목 import 선행 필요)·추가 품질/보안 sweep(product/dc-config 계층가드·CI false-green). 무중단 원칙(상단 🔴) 준수.
 
 ---
 
