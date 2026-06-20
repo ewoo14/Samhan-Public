@@ -11,9 +11,13 @@ import com.samhanair.logis.user.client.AuthClient;
 import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.domain.EmployeeSignatureHandoffToken;
+import com.samhanair.logis.user.domain.SignatureChannel;
 import com.samhanair.logis.user.repository.DepartmentRepository;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.EmployeeSignatureHandoffTokenRepository;
+import com.samhanair.logis.user.service.EmployeeSignatureHandoffService;
+import com.samhanair.logis.user.service.EmployeeSignatureService;
+import com.samhanair.logis.user.web.dto.EmployeeSignatureUploadRequest;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.Base64;
@@ -41,6 +45,8 @@ class PublicSignatureSecurityGateIT extends AbstractPostgresIT {
     @Autowired private DepartmentRepository departmentRepository;
     @Autowired private EmployeeRepository employeeRepository;
     @Autowired private EmployeeSignatureHandoffTokenRepository tokenRepository;
+    @Autowired private EmployeeSignatureService signatureService;
+    @Autowired private EmployeeSignatureHandoffService handoffService;
 
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private AuthClient authClient;
@@ -86,6 +92,31 @@ class PublicSignatureSecurityGateIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(PNG, sha256Hex(PNG))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 관리자_업로드_커밋_후_기존_토큰_공개제출은_404이고_관리자_hash를_유지한다() throws Exception {
+        EmployeeSignatureHandoffToken token = tokenRepository.save(
+                EmployeeSignatureHandoffToken.issue(employee.getId(), null));
+        String adminHash = sha256Hex(PNG);
+        String actor = UUID.randomUUID().toString();
+
+        signatureService.register(employee.getId(),
+                new EmployeeSignatureUploadRequest(
+                        Base64.getEncoder().encodeToString(PNG), adminHash, SignatureChannel.UPLOAD),
+                actor);
+        handoffService.revokeOpenTokens(employee.getId(), actor);
+
+        byte[] lateMobilePng = new byte[] {
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x55
+        };
+        mockMvc.perform(post("/public/employee-signatures/{token}", token.getToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(lateMobilePng, sha256Hex(lateMobilePng))))
+                .andExpect(status().isNotFound());
+
+        Employee saved = employeeRepository.findById(employee.getId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(saved.getSignatureHash()).isEqualTo(adminHash);
     }
 
     private String body(byte[] png, String hash) throws Exception {

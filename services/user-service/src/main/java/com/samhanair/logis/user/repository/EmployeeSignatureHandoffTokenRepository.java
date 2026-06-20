@@ -17,6 +17,10 @@ public interface EmployeeSignatureHandoffTokenRepository
     /** 공개 제출 토큰 검증 — base64url 토큰 단건 lookup. */
     Optional<EmployeeSignatureHandoffToken> findByToken(String token);
 
+    /** 공개 제출 토큰의 사원 id 만 projection 조회 — 토큰 엔티티를 영속성 컨텍스트에 올리지 않는다. */
+    @Query("select t.employeeId from EmployeeSignatureHandoffToken t where t.token = :token")
+    Optional<UUID> findEmployeeIdByToken(@Param("token") String token);
+
     /** 공개 제출 single-use 경합 방지 — 토큰 행을 잠근 뒤 usedAt 를 확인한다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT t FROM EmployeeSignatureHandoffToken t WHERE t.token = :token")

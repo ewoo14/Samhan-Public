@@ -98,7 +98,8 @@ public class EmployeeSignatureHandoffService {
     /**
      * 공개 모바일 서명 제출 — 토큰 게이트 (slice C1b · spec §5.2).
      *
-     * <p>처리: 토큰 lookup(없으면 404) → 만료(410) → 사용됨(409) →
+     * <p>처리: 토큰 employeeId projection(없으면 404) → Employee 잠금 →
+     * 토큰 조회+잠금 → 만료(410) → 사용됨(409) →
      * C1a {@link EmployeeSignatureService#register} 재사용(PNG magic-byte + ≤50KB + SHA-256 재검증
      * + audit RECORD) → 토큰 markUsed 소진.
      *
@@ -109,6 +110,10 @@ public class EmployeeSignatureHandoffService {
      * @throws BusinessException(UNPROCESSABLE_ENTITY) PNG 50KB 초과 / 비-PNG
      */
     public void submitPublic(String token, String signaturePngBase64, String signatureHash) {
+        UUID employeeId = tokenRepository.findEmployeeIdByToken(token)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "유효하지 않은 토큰입니다"));
+        employeeRepository.findByIdForUpdate(employeeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "직원을 찾을 수 없습니다"));
         EmployeeSignatureHandoffToken handoff = tokenRepository.findByTokenForUpdate(token)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "유효하지 않은 토큰입니다"));
         if (handoff.isExpired()) {

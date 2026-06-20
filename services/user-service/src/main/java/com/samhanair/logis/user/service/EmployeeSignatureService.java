@@ -66,7 +66,7 @@ public class EmployeeSignatureService {
     public EmployeeSignatureResponse register(UUID employeeId,
                                               EmployeeSignatureUploadRequest req,
                                               String actorUserId) {
-        Employee employee = employeeRepository.findById(employeeId)
+        Employee employee = employeeRepository.findByIdForUpdate(employeeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "직원을 찾을 수 없습니다: " + employeeId));
 
@@ -107,7 +107,7 @@ public class EmployeeSignatureService {
         if (reason.length() > 500) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "무효화 사유는 최대 500자입니다");
         }
-        Employee employee = employeeRepository.findById(employeeId)
+        Employee employee = employeeRepository.findByIdForUpdate(employeeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "직원을 찾을 수 없습니다: " + employeeId));
         String prevHash = employee.getSignatureHash();

@@ -272,6 +272,7 @@ public class AdminUserController {
     @PatchMapping("/{id}/signature")
     @RequireDepartment(Department.EXECUTIVE_OFFICE)
     @RequirePermission(page = "admin.users", action = PermissionAction.UPDATE)
+    @org.springframework.transaction.annotation.Transactional
     public ApiResponse<EmployeeSignatureResponse> registerSignature(
             @PathVariable UUID id,
             @Valid @RequestBody EmployeeSignatureUploadRequest request,
@@ -296,6 +297,7 @@ public class AdminUserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @RequireDepartment(Department.EXECUTIVE_OFFICE)
     @RequirePermission(page = "admin.users", action = PermissionAction.DELETE)
+    @org.springframework.transaction.annotation.Transactional
     public void invalidateSignature(
             @PathVariable UUID id,
             @RequestParam(value = "reason") String reason,
