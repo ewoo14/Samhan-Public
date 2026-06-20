@@ -2,8 +2,11 @@ package com.samhanair.logis.product.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.product.service.BundleExpander;
+import com.samhanair.logis.product.service.EcountAliasResolveService;
 import com.samhanair.logis.product.service.ProductService;
 import com.samhanair.logis.product.web.dto.BundleIntegrityResponse;
+import com.samhanair.logis.product.web.dto.EcountAliasResolveRequest;
+import com.samhanair.logis.product.web.dto.EcountAliasResolveResponse;
 import com.samhanair.logis.product.web.dto.ExpandRequest;
 import com.samhanair.logis.product.web.dto.ExpandedLineResponse;
 import com.samhanair.logis.product.web.dto.LookupByModelRequest;
@@ -35,6 +38,7 @@ public class ProductInternalController {
 
     private final ProductService productService;
     private final BundleExpander bundleExpander;
+    private final EcountAliasResolveService ecountAliasResolveService;
 
     /**
      * 제품 ID 일괄 조회 — inventory-service 등 internal 호출자가 productId 존재 여부 검증에 사용.
@@ -71,6 +75,19 @@ public class ProductInternalController {
     public ApiResponse<List<ProductSummaryResponse>> lookupByModelCodes(
             @Valid @RequestBody LookupByModelCodesRequest request) {
         return ApiResponse.ok(productService.lookupByModelCodes(request.modelCodes()));
+    }
+
+    @Operation(summary = "Ecount alias batch resolve (internal)",
+            description = "X-Internal-Token authenticated product_db owner lookup for MIG-8 order transform.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Resolved"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "X-Internal-Token missing or invalid")
+    })
+    @PostMapping("/resolve-ecount-aliases")
+    public ApiResponse<EcountAliasResolveResponse> resolveEcountAliases(
+            @Valid @RequestBody EcountAliasResolveRequest request) {
+        return ApiResponse.ok(new EcountAliasResolveResponse(
+                ecountAliasResolveService.resolve(request == null ? null : request.aliasCodes())));
     }
 
     /**

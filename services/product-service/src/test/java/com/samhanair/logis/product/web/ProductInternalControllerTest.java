@@ -13,6 +13,7 @@ import com.samhanair.logis.product.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.security.InternalAuthProperties;
 import com.samhanair.logis.security.InternalTokenFilter;
 import com.samhanair.logis.product.domain.ProductStatus;
+import com.samhanair.logis.product.service.EcountAliasResolveService;
 import com.samhanair.logis.product.service.ProductService;
 import com.samhanair.logis.product.web.dto.LookupByModelRequest;
 import com.samhanair.logis.product.web.dto.LookupRequest;
@@ -38,12 +39,14 @@ class ProductInternalControllerTest {
     private static final String VALID_TOKEN = "test-internal-token";
 
     private ProductService productService;
+    private EcountAliasResolveService ecountAliasResolveService;
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
         productService = Mockito.mock(ProductService.class);
+        ecountAliasResolveService = Mockito.mock(EcountAliasResolveService.class);
         InternalAuthProperties props = new InternalAuthProperties();
         props.setToken(VALID_TOKEN);
         // W10-4 (PR #99) DV-3 — product-service application.yml 호환
@@ -52,7 +55,8 @@ class ProductInternalControllerTest {
         props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new ProductInternalController(productService,
-                        Mockito.mock(com.samhanair.logis.product.service.BundleExpander.class)))
+                        Mockito.mock(com.samhanair.logis.product.service.BundleExpander.class),
+                        ecountAliasResolveService))
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -227,5 +231,38 @@ class ProductInternalControllerTest {
 
         assertThat(response.getStatus()).isEqualTo(401);
         verify(productService, never()).lookupSummaryByName(any());
+    }
+
+    @Test
+    void resolveEcountAliases_blankAlias_returns400AndDoesNotCallService() throws Exception {
+        var body = java.util.Map.of("aliasCodes", List.of("정상품목", " "));
+
+        MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders
+                        .post("/products/internal/resolve-ecount-aliases")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        verify(ecountAliasResolveService, never()).resolve(any());
+    }
+
+    @Test
+    void resolveEcountAliases_over500_returns400AndDoesNotCallService() throws Exception {
+        List<String> aliases = java.util.stream.IntStream.rangeClosed(1, 501)
+                .mapToObj(i -> "품목-" + i)
+                .toList();
+        var body = java.util.Map.of("aliasCodes", aliases);
+
+        MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders
+                        .post("/products/internal/resolve-ecount-aliases")
+                        .header("X-Internal-Token", VALID_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        verify(ecountAliasResolveService, never()).resolve(any());
     }
 }

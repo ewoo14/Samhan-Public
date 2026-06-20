@@ -66,7 +66,8 @@ class ProductInternalLookupByModelTest {
         props.setAllowMissingToken(false);
 
         mockMvc = MockMvcBuilders.standaloneSetup(new ProductInternalController(productService,
-                        Mockito.mock(com.samhanair.logis.product.service.BundleExpander.class)))
+                        Mockito.mock(com.samhanair.logis.product.service.BundleExpander.class),
+                        Mockito.mock(com.samhanair.logis.product.service.EcountAliasResolveService.class)))
                 .setControllerAdvice(new com.samhanair.logis.product.web.GlobalExceptionHandler())
                 .addFilters(new InternalTokenFilter(props), new HeaderAuthenticationFilter())
                 .build();

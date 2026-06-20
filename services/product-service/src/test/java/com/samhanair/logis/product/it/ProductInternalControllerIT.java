@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +71,9 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
 
     @Autowired
     private BundleComponentRepository bundleComponentRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     /** 에어컨 계열 카테고리(serial_managed=true)에 속하는 테스트 품목 UUID */
     private UUID serialProductId;
@@ -264,6 +268,25 @@ class ProductInternalControllerIT extends AbstractPostgresIT {
     /**
      * 정합 점검 — 구성품이 활성 품목으로 해소되는 BUNDLE 은 issues 에 포함되지 않는다(미해소 0 → healthy).
      */
+    @Test
+    void resolveEcountAliases_returnsMatchedOnly() throws Exception {
+        String aliasCode = "ALIAS-IT-" + UUID.randomUUID().toString().substring(0, 8);
+        jdbcTemplate.update("""
+                INSERT INTO staging.ecount_item_alias (
+                  alias_code, main_item_code, main_product_uuid, source_file_hash, source_row_no
+                ) VALUES (?, ?, ?, ?, ?)
+                """, aliasCode, "MAIN-IT", serialProductId, "HASH-ALIAS-IT", 1);
+        var body = java.util.Map.of("aliasCodes", List.of(aliasCode, "ALIAS-NOT-FOUND"));
+
+        mockMvc.perform(post("/products/internal/resolve-ecount-aliases")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolved['" + aliasCode + "']", is(serialProductId.toString())))
+                .andExpect(jsonPath("$.data.resolved['ALIAS-NOT-FOUND']").doesNotExist());
+    }
+
     @Test
     void bundleIntegrity_resolvedComponent_notFlagged() throws Exception {
         Category cat = categoryRepository.findAll().get(0);

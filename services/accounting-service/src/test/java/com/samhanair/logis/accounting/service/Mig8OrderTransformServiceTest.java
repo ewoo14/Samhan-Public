@@ -7,18 +7,20 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.PartnerSummary;
+import com.samhanair.logis.accounting.client.ProductAliasClient;
 import com.samhanair.logis.common.ecount.EcountMig8TransformResult;
 import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +30,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
@@ -38,11 +39,12 @@ class Mig8OrderTransformServiceTest {
 
     @Mock private NamedParameterJdbcTemplate jdbcTemplate;
     @Mock private PartnerLookupClient partnerLookupClient;
+    @Mock private ProductAliasClient productAliasClient;
     private Mig8OrderTransformService service;
 
     @BeforeEach
     void setUp() {
-        service = new Mig8OrderTransformService(jdbcTemplate, partnerLookupClient);
+        service = new Mig8OrderTransformService(jdbcTemplate, partnerLookupClient, productAliasClient);
         lenient().when(jdbcTemplate.queryForObject(anyString(), any(SqlParameterSource.class), eq(Object.class)))
                 .thenReturn(null);
         lenient().when(jdbcTemplate.queryForObject(contains("SELECT COUNT(1)"), any(SqlParameterSource.class), eq(Integer.class)))
@@ -241,8 +243,8 @@ class Mig8OrderTransformServiceTest {
     @Test
     void product_id_lookup_성공시_매핑된다() {
         pending(row(1, "2026-05-20-001", "진행"));
-        doReturn(productId()).when(jdbcTemplate)
-                .queryForObject(contains("FROM staging.ecount_item_alias"), any(SqlParameterSource.class), eq(UUID.class));
+        doReturn(Map.of("테스트품목", productId())).when(productAliasClient)
+                .resolveAliases(List.of("테스트품목"));
 
         service.transformFromStaging(500, "tester");
 
@@ -252,12 +254,34 @@ class Mig8OrderTransformServiceTest {
     @Test
     void product_id_lookup_miss는_NULL_유지() {
         pending(row(1, "2026-05-20-001", "진행"));
-        doThrow(new EmptyResultDataAccessException(1)).when(jdbcTemplate)
-                .queryForObject(contains("FROM staging.ecount_item_alias"), any(SqlParameterSource.class), eq(UUID.class));
+        doReturn(Map.of()).when(productAliasClient).resolveAliases(List.of("테스트품목"));
 
         service.transformFromStaging(500, "tester");
 
         assertThat(lineParams().getValue("productId")).isNull();
+    }
+
+    @Test
+    void product_alias_auth_error는_삼키지_않고_변환을_실패시킨다() {
+        pending(row(1, "2026-05-20-001", "진행"));
+        BusinessException authError =
+                new BusinessException(ErrorCode.MIG12_INTERNAL_AUTH_MISS, "ProductAliasClient 내부 인증 실패");
+        when(productAliasClient.resolveAliases(List.of("테스트품목"))).thenThrow(authError);
+
+        assertThatThrownBy(() -> service.transformFromStaging(500, "tester"))
+                .isSameAs(authError);
+    }
+
+    @Test
+    void product_alias_lookup은_group_안의_distinct_item_name으로_1회만_배치_호출한다() {
+        pending(row(1, "2026-05-20-001", "진행"), row(2, "2026-05-20-001", "진행"));
+        doReturn(Map.of("테스트품목", productId())).when(productAliasClient)
+                .resolveAliases(List.of("테스트품목"));
+
+        service.transformFromStaging(500, "tester");
+
+        verify(productAliasClient).resolveAliases(List.of("테스트품목"));
+        assertThat(lineParams().getValue("productId")).isEqualTo(productId());
     }
 
     private void pending(Mig8OrderTransformService.StagingRow... rows) {

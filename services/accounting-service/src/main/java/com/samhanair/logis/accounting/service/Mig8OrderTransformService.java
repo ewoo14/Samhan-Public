@@ -2,6 +2,7 @@ package com.samhanair.logis.accounting.service;
 
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.PartnerSummary;
+import com.samhanair.logis.accounting.client.ProductAliasClient;
 import com.samhanair.logis.accounting.domain.OrderProgressStatus;
 import com.samhanair.logis.common.ecount.EcountCsvSupport;
 import com.samhanair.logis.common.ecount.EcountMig8TransformResult;
@@ -12,15 +13,16 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -30,6 +32,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** MIG-8 — 주문서 staging -> Order/OrderLine 도메인 변환. */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class Mig8OrderTransformService {
@@ -40,6 +43,7 @@ public class Mig8OrderTransformService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final PartnerLookupClient partnerLookupClient;
+    private final ProductAliasClient productAliasClient;
     @Autowired(required = false)
     private MigOpsMetricsRecorder metricsRecorder;
 
@@ -55,10 +59,11 @@ public class Mig8OrderTransformService {
         EcountMig8TransformResult.Builder result = EcountMig8TransformResult.builder(rows.size());
         String actor = normalizeActor(actorUserId);
         Map<String, List<ValidatedRow>> groups = validateAndGroup(rows, result);
+        Map<String, UUID> productAliasCache = resolveProductAliases(groups);
 
         for (List<ValidatedRow> group : groups.values()) {
             try {
-                transformGroup(group, actor, result);
+                transformGroup(group, actor, result, productAliasCache);
             } catch (BusinessException ex) {
                 rejectGroup(group, ex.getErrorCode().name(), ex.getMessage(), result);
             } catch (DuplicateKeyException ex) {
@@ -88,6 +93,35 @@ public class Mig8OrderTransformService {
             }
         }
         return groups;
+    }
+
+    private Map<String, UUID> resolveProductAliases(Map<String, List<ValidatedRow>> groups) {
+        LinkedHashSet<String> itemNames = new LinkedHashSet<>();
+        for (List<ValidatedRow> group : groups.values()) {
+            for (ValidatedRow row : group) {
+                String itemName = EcountCsvSupport.stripCell(row.row().itemName());
+                if (!itemName.isBlank()) {
+                    itemNames.add(itemName);
+                }
+            }
+        }
+        if (itemNames.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            return productAliasClient.resolveAliases(List.copyOf(itemNames));
+        } catch (BusinessException ex) {
+            if (ex.getErrorCode() == ErrorCode.MIG12_INTERNAL_AUTH_MISS) {
+                throw ex;
+            }
+            log.warn("MIG-8 product alias resolve failed - itemCount={}, code={}, msg={}",
+                    itemNames.size(), ex.getErrorCode(), ex.getMessage());
+            return Map.of();
+        } catch (Exception ex) {
+            log.warn("MIG-8 product alias resolve failed - itemCount={}, msg={}",
+                    itemNames.size(), ex.getMessage());
+            return Map.of();
+        }
     }
 
     private ValidatedRow validate(StagingRow row) {
@@ -121,14 +155,15 @@ public class Mig8OrderTransformService {
     }
 
     private void transformGroup(List<ValidatedRow> group, String actor,
-                                EcountMig8TransformResult.Builder result) {
+                                EcountMig8TransformResult.Builder result,
+                                Map<String, UUID> productAliasCache) {
         ValidatedRow head = group.get(0);
         PartnerSummary partner = lookupPartner(head.row());
         boolean existed = existsAny(head.row().externalRef());
         UUID orderId = upsertOrder(head, partner, actor);
         // 본 슬라이스는 동일 source_file_hash 재실행만 가정 (line_no 안정). partial re-import 시 stale line cleanup 은 MIG-9+ 후속.
         for (int i = 0; i < group.size(); i++) {
-            upsertLine(orderId, i + 1, group.get(i), actor);
+            upsertLine(orderId, i + 1, group.get(i), actor, productAliasCache);
         }
         recalcTotals(orderId, actor);
 
@@ -256,7 +291,8 @@ public class Mig8OrderTransformService {
                 """, orderParams(row, partner, actor), UUID.class);
     }
 
-    private void upsertLine(UUID orderId, int lineNo, ValidatedRow row, String actor) {
+    private void upsertLine(UUID orderId, int lineNo, ValidatedRow row, String actor,
+                            Map<String, UUID> productAliasCache) {
         jdbcTemplate.queryForObject("""
                 WITH restored AS (
                     UPDATE order_lines
@@ -301,7 +337,7 @@ public class Mig8OrderTransformService {
                 UNION ALL
                 SELECT id FROM upserted
                 LIMIT 1
-                """, lineParams(orderId, lineNo, row, actor), UUID.class);
+                """, lineParams(orderId, lineNo, row, actor, productAliasCache), UUID.class);
     }
 
     private void recalcTotals(UUID orderId, String actor) {
@@ -415,13 +451,14 @@ public class Mig8OrderTransformService {
                 .addValue("actor", actor);
     }
 
-    private MapSqlParameterSource lineParams(UUID orderId, int lineNo, ValidatedRow row, String actor) {
+    private MapSqlParameterSource lineParams(UUID orderId, int lineNo, ValidatedRow row, String actor,
+                                             Map<String, UUID> productAliasCache) {
         StagingRow raw = row.row();
         String itemName = EcountCsvSupport.stripCell(raw.itemName());
         return new MapSqlParameterSource()
                 .addValue("orderId", orderId)
                 .addValue("lineNo", lineNo)
-                .addValue("productId", lookupProductId(itemName))
+                .addValue("productId", lookupProductId(itemName, productAliasCache))
                 .addValue("itemName", itemName)
                 .addValue("quantity", raw.quantity())
                 .addValue("unitPrice", raw.unitPrice())
@@ -431,20 +468,11 @@ public class Mig8OrderTransformService {
                 .addValue("actor", actor);
     }
 
-    private UUID lookupProductId(String itemName) {
+    private UUID lookupProductId(String itemName, Map<String, UUID> productAliasCache) {
         if (itemName == null || itemName.isBlank()) {
             return null;
         }
-        try {
-            return jdbcTemplate.queryForObject("""
-                    SELECT main_product_uuid
-                      FROM staging.ecount_item_alias
-                     WHERE alias_code = :name
-                     LIMIT 1
-                    """, new MapSqlParameterSource("name", itemName), UUID.class);
-        } catch (EmptyResultDataAccessException ex) {
-            return null;
-        }
+        return productAliasCache == null ? null : productAliasCache.get(itemName);
     }
 
     private void acquireTransformLock() {
