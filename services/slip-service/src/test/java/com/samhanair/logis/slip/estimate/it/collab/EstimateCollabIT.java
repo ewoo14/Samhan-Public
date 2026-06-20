@@ -482,7 +482,7 @@ class EstimateCollabIT extends AbstractPostgresIT {
      *   <li>sessionId 빈값 → 400 (INVALID_INPUT)</li>
      *   <li>정상 join → 200 + data {sessionId, displayName, color} 만 포함</li>
      *   <li>GET presence → 1건 반환</li>
-     *   <li>permissionGuard.checkView deny → 403</li>
+     *   <li>estimates.list VIEW 동적권한 거부 → 403 (@RequirePermission PermissionAspect 가 컨트롤러 본문 checkView 보다 선행 — 두 가드 모두 deny)</li>
      * </ol>
      */
     @Test
@@ -538,7 +538,7 @@ class EstimateCollabIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data[0].sessionId").value("estimate-presence-session-1"))
                 .andExpect(jsonPath("$.data[0].userId").doesNotExist());
 
-        // (e) permissionGuard.checkView deny → 403 (MASTER bypass 없이 동적 권한 거부)
+        // (e) estimates.list VIEW 동적권한 거부 → 403 (@RequirePermission PermissionAspect 단계가 본문 checkView 보다 선행, MASTER bypass 헤더 없음)
         UUID estimateId403 = seedEstimate("PRS-403").getId();
         when(dynamicPermissionClient.check(
                 any(UUID.class), eq(EstimatePermissionGuard.PAGE_CODE), eq(PermissionAction.VIEW)))
