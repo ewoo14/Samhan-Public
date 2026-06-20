@@ -43,6 +43,9 @@ app:
   # 운영 / staging 데이터 오염 방지 — default false. 복식부기 invariant 강제 (sum(debit)==sum(credit) per journal).
   accounting:
     seed-test-data: ${SAMHAN_ACCOUNTING_SEED_TEST_DATA:false}
+  services:
+    product-service:
+      base-url: ${PRODUCT_SERVICE_BASE_URL:http://product-service}
   # 세금계산서 인쇄용 공급자 (우리 회사) 정보 — P0-4
   company:
     name: ${SAMHAN_COMPANY_NAME:(주)삼한공조시스템}
