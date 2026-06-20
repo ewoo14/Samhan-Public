@@ -2,7 +2,9 @@ package com.samhanair.logis.user.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withCreatedEntity;
@@ -104,6 +106,33 @@ class AuthClientTest {
     }
 
     @Test
+    void unlock_sendsInternalTokenHeader_andSucceedsOn200() {
+        UUID id = UUID.randomUUID();
+        server.expect(requestTo("http://auth-service/auth/internal/accounts/" + id + "/unlock"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withStatus(HttpStatus.OK));
+
+        client.unlock(id);
+        server.verify();
+    }
+
+    @Test
+    void unlock_error_mapsToInternalError() {
+        UUID id = UUID.randomUUID();
+        server.expect(requestTo("http://auth-service/auth/internal/accounts/" + id + "/unlock"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> client.unlock(id))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INTERNAL_ERROR));
+        server.verify();
+    }
+
+    @Test
     void updateDisplayName_sendsInternalTokenHeader() {
         UUID id = UUID.randomUUID();
         server.expect(requestTo("http://auth-service/auth/internal/accounts/" + id + "/display-name"))
@@ -112,6 +141,48 @@ class AuthClientTest {
                 .andRespond(withNoContent());
 
         client.updateDisplayName(id, "새이름");
+        server.verify();
+    }
+
+    @Test
+    void updateDepartmentName_sendsInternalTokenHeaderAndBody() {
+        UUID id = UUID.randomUUID();
+        server.expect(requestTo("http://auth-service/auth/internal/accounts/" + id + "/department-name"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(jsonPath("$.departmentName").value("물류운영팀"))
+                .andRespond(withStatus(HttpStatus.OK));
+
+        client.updateDepartmentName(id, "물류운영팀");
+        server.verify();
+    }
+
+    @Test
+    void updateDepartmentName_allowsNullDepartmentName() {
+        UUID id = UUID.randomUUID();
+        server.expect(requestTo("http://auth-service/auth/internal/accounts/" + id + "/department-name"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(jsonPath("$.departmentName").value(nullValue()))
+                .andRespond(withStatus(HttpStatus.OK));
+
+        client.updateDepartmentName(id, null);
+        server.verify();
+    }
+
+    @Test
+    void updateDepartmentName_error_mapsToInternalError() {
+        UUID id = UUID.randomUUID();
+        server.expect(requestTo("http://auth-service/auth/internal/accounts/" + id + "/department-name"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(jsonPath("$.departmentName").value("물류운영팀"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> client.updateDepartmentName(id, "물류운영팀"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INTERNAL_ERROR));
         server.verify();
     }
 
