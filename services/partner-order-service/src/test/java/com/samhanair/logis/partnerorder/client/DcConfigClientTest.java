@@ -56,7 +56,7 @@ class DcConfigClientTest {
                         containsString("\"lineId\":\"L-1\""),
                         containsString("\"modelCode\":\"AJ040RXH4BC1\""),
                         containsString("\"listPrice\":123456.78901234567890"),
-                        containsString("\"category\":\"HOME_MULTI\""),
+                        containsString("\"category\":\"HOMEMULTI\""),
                         containsString("\"quantity\":2"),
                         containsString("\"is360\":false"),
                         containsString("\"is4Way\":false"),
@@ -74,7 +74,7 @@ class DcConfigClientTest {
 
         Map<String, BigDecimal> prices = client.calculatePrices("P-DC-001", List.of(
                 new PriceLine("L-1", "AJ040RXH4BC1",
-                        new BigDecimal("123456.78901234567890"), "HOME_MULTI", 2),
+                        new BigDecimal("123456.78901234567890"), "HOMEMULTI", 2),
                 new PriceLine("L-2", "AR07B9350HZ",
                         new BigDecimal("333333.33333333333333"), "SINGLE_SET", 1)));
 
@@ -127,7 +127,7 @@ class DcConfigClientTest {
 
     private List<PriceLine> lines() {
         return List.of(new PriceLine("L-1", "AJ040RXH4BC1",
-                new BigDecimal("123456.78901234567890"), "HOME_MULTI", 2));
+                new BigDecimal("123456.78901234567890"), "HOMEMULTI", 2));
     }
 
     private RestClient.Builder mockBoundBuilder(RestClient.Builder delegate) {
