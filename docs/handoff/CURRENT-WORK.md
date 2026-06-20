@@ -4,6 +4,26 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-20 — 집 PC, presence 4문서 롤아웃 PR #545 머지 완료)
+
+> 회사 PC 원격 세션 단절 → 집 PC git pull 후 워크플로우 재개. 개발책임자 지정 = **presence 5문서 롤아웃**.
+
+### ✅ presence 4문서 롤아웃 머지 완료 (PR #545, merge `2f4076f99`)
+- §7 전역 협업 presence(동시 접속자) MVP(슬립 #515) 후속 → **회계전표/주문/견적/그룹웨어 결재 4문서**(FE 패널 보유)에 순수 additive 배선. 각 `{Doc}CollabController` 에 슬립 `SlipCollabController` 1:1 복제(presence join/leave/list 200 + DTO·helper·@ExceptionHandler), FE 4 패널 `{Doc}PresenceClient`+usePresence+PresenceIndicator(client override). **신규 권한/시드/Flyway 0**(기존 댓글 VIEW page-code 재사용).
+- **듀얼리뷰 사이클 1 수렴**: 🔵Opus 라운드1(P3 1=EstimateCollabIT 403 주석)→Opus fix→🟣Codex 교차(P2 1=견적 edit mock false-green)→Codex fix(가변 상세 store, 실 EstimateDocumentCollaborationPort 정합)→🔵Opus 수렴(blocking 0). CI 24/24 green.
+- **🐳 라이브 Docker 실QA 4/4**: 실 게이트웨이+실 JWT 2세션(master+문서별 2차 사용자) PresenceIndicator "현재 보는 중" 상호 표시 캡처(`docs/qa/collab-presence-rollout/`). API-level 4문서 200 + 멀티유저 LIST.
+
+### 🪤 이번 세션 교훈 (메모리 등재)
+- **codex config.toml NUL 손상**: `~/.codex/config.toml` 이 4631바이트 전부 NUL(0x00)로 손상 → codex MCP·exec 둘 다 파싱 실패("Connection closed" 오인). auth.json 정상(재로그인 불요). 백업 후 최소 config 재작성 + **`model="gpt-5.5"` 명시 필수**(기본 `gpt-5.3-codex` = ChatGPT 계정 미지원 400). MCP closed ≠ Codex down — 먼저 config 점검.
+- **real-qa Playwright 프록시 글롭 함정**: `page.route('**/accounting/**')` 같은 넓은 글롭은 앱 lazy 라우트 청크(`/routes/accounting/*.tsx`)까지 매칭→게이트웨이 404→앱 마운트 실패(#root 빈 백지). **`resourceType`(xhr/fetch) 가드 + `/collab/`·`/api/v1/` 전용 글롭**으로 백엔드만 가로채야. 렌더러=`vite --config vite.renderer.dev.config.ts`+`VITE_API_BASE_URL`, networkidle 금지(SSE 재시도로 영원히 busy)→presence-indicator 가시성 대기. (Codex 협업으로 진단)
+- **로컬 Docker DB checksum 드리프트**: accounting V39/groupware V7(#482 신규 마이그)이 로컬 DB(과거 피처브랜치 적용)와 checksum 불일치 → 기동 실패. **내 PR 무관·prod 무해**(status A 신규추가, fresh DB=CI green). flyway repair(checksum 정렬)로 로컬 unblock.
+
+### 🔜 다음 = PR2 배차(dispatch) presence — **스코핑 결정 필요(개발책임자)**
+- 배차는 FE collab 패널 미존재(`DispatchCollabCommentController`=comment-only, `/admin/dispatch-tasks/{id}/collab`). presence 롤아웃하려면 **DispatchCollaborationPanel 신설 + 노출 위치(배차 보드 카드/상세) 결정** 필요 → 4문서와 난이도 별격이라 PR1에서 분리.
+- 그 외 잔여(우선순위 지정 시): SP-08 parity 3·사원서명·배차 query-key UX·재배차 캡처 + 게이트(cutover/벤더).
+
+---
+
 ## 🚨 핸드오프 (2026-06-19 저녁 — 주말 62h 무중단 세션용, 본 섹션 먼저 읽기)
 
 > 개발책임자: 금요일 저녁 정리 후 **새 세션을 다음주 월요일 오전 8시(KST)까지 무중단**으로 돌릴 것. **원격 전용 접속** → 세션·Codex MCP 단절 주의.
