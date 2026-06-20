@@ -154,3 +154,13 @@ export const GroupwareApprovalPresenceClient = createPresenceClient({
   streamPath: (approvalId) =>
     `/admin/groupware/approvals/${encodeURIComponent(approvalId)}/collab/stream`,
 })
+
+export const DispatchPresenceClient = createPresenceClient({
+  name: 'dispatch',
+  presencePath: (taskId, action) => {
+    const base = `/admin/dispatch-tasks/${encodeURIComponent(taskId)}/collab/presence`
+    return action ? `${base}/${action}` : base
+  },
+  streamPath: (taskId) =>
+    `/admin/dispatch-tasks/${encodeURIComponent(taskId)}/collab/stream`,
+})

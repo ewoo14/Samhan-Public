@@ -1,5 +1,6 @@
 package com.samhanair.logis.slip.it.dispatch;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -197,6 +198,77 @@ class DispatchCollabCommentIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("body", "미존재 task"))))
                 .andExpect(status().isNotFound());
+    }
+
+    /**
+     * presence join/list endpoint 는 헤더 인증, 입력 검증, UUID 비노출 wire 계약, 조회 권한 가드를 지킨다.
+     *
+     * <p>(a) X-User-Id 없는 join → 401
+     * (b) sessionId 빈값 → 400
+     * (c) 정상 join → 200 + data 키 = {sessionId, displayName, color} 만, displayName = X-User-Name
+     * (d) GET presence → 1건 반환
+     * (e) dispatch.board VIEW deny → 403
+     */
+    @Test
+    void presence_join_list_validates_header_input_payload_and_permission_guard() throws Exception {
+        // (a) X-User-Id 헤더 없이 join → 401
+        UUID taskId401 = seedTask("2099/06/12-PRS-401").getId();
+        mvc.perform(post("/admin/dispatch-tasks/{taskId}/collab/presence/join", taskId401)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-401",
+                                "displayName", "presence tester"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // (b) sessionId 빈값 → 400
+        UUID taskId400 = seedTask("2099/06/12-PRS-400").getId();
+        mvc.perform(post("/admin/dispatch-tasks/{taskId}/collab/presence/join", taskId400)
+                        .header(USER_ID_HEADER, DISPATCH_ACCOUNT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        // (c) 정상 join → 200, data 키 = {sessionId, displayName, color} 만
+        UUID taskIdOk = seedTask("2099/06/12-PRS-OK").getId();
+        String response = mvc.perform(post("/admin/dispatch-tasks/{taskId}/collab/presence/join", taskIdOk)
+                        .header(USER_ID_HEADER, DISPATCH_ACCOUNT_ID)
+                        .header(USER_NAME_HEADER, "presence tester")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-1",
+                                "displayName", "ignored body name"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data.displayName").value("presence tester"))
+                .andExpect(jsonPath("$.data.color").exists())
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.accountId").doesNotExist())
+                .andExpect(jsonPath("$.data.lastSeenAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(dataMap(response)).containsOnlyKeys("sessionId", "displayName", "color");
+
+        // (d) GET presence → 1건 반환, userId 비노출
+        mvc.perform(get("/admin/dispatch-tasks/{taskId}/collab/presence", taskIdOk)
+                        .header(USER_ID_HEADER, DISPATCH_ACCOUNT_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data[0].userId").doesNotExist());
+
+        // (e) dispatch.board VIEW deny → 403
+        UUID taskIdDeny = seedTask("2099/06/12-PRS-403").getId();
+        when(dynamicPermissionClient.check(
+                        any(UUID.class), eq(DISPATCH_BOARD_PAGE_CODE), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.canView(anyString(), eq(DISPATCH_BOARD_PAGE_CODE)))
+                .thenReturn(false);
+        mvc.perform(post("/admin/dispatch-tasks/{taskId}/collab/presence/join", taskIdDeny)
+                        .header(USER_ID_HEADER, DISPATCH_ACCOUNT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", "presence-session-denied"))))
+                .andExpect(status().isForbidden());
     }
 
     private DispatchTask seedTask(String taskCode) {

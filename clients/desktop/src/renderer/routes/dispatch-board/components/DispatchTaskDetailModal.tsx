@@ -48,6 +48,9 @@ import {
   type DispatchCollabEdit,
 } from '../../../api/dispatchCollab'
 import { DispatchCollabRealtimeClient } from '../../../realtime/DispatchCollabRealtimeClient'
+import { DispatchPresenceClient } from '../../../realtime/createPresenceClient'
+import { usePresence } from '../../../hooks/usePresence'
+import { PresenceIndicator } from '../../../components/collab/PresenceIndicator'
 import { usePermissions } from '../../../hooks/usePermissions'
 import {
   dispatchTaskQueryKey,
@@ -253,6 +256,7 @@ export function DispatchTaskDetailModal({
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  const presenceEntries = usePresence({ entityId: task.id, client: DispatchPresenceClient, enabled: !!task.id })
   const { canAccess } = usePermissions()
   const setMatchedDriverMutation = useSetMatchedDriverMutation(task.id)
   const manualCompleteMutation = useMarkManualDispatchCompleteMutation(task.id)
@@ -793,7 +797,10 @@ export function DispatchTaskDetailModal({
                 flexWrap: 'wrap',
               }}
             >
-              <h4 id="dispatch-collab-edit-heading" style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>수정 이력</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
+                <h4 id="dispatch-collab-edit-heading" style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>수정 이력</h4>
+                <PresenceIndicator entries={presenceEntries} />
+              </div>
               {canStartCollabEdit && !collabEditMode ? (
                 <Button
                   type="button"

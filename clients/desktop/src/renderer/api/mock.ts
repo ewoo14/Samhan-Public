@@ -6535,6 +6535,53 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
+  // ---- dispatch collab stream mock ----
+  {
+    const dispatchCollabStreamMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/collab\/stream(?:\?.*)?$/)
+    if (method === 'GET' && dispatchCollabStreamMatch) {
+      return new Blob([': mock dispatch collab stream\n\n'], { type: 'text/event-stream;charset=utf-8' })
+    }
+  }
+
+  // ---- dispatch presence (join|leave POST + list GET) ----
+  {
+    const gdp = globalThis as unknown as {
+      __SAMHAN_MOCK_DISPATCH_PRESENCE?: Record<string, MockPresenceEntry[]>
+    }
+    if (!gdp.__SAMHAN_MOCK_DISPATCH_PRESENCE) gdp.__SAMHAN_MOCK_DISPATCH_PRESENCE = {}
+    const dispatchPresenceStore = gdp.__SAMHAN_MOCK_DISPATCH_PRESENCE
+
+    const dispatchPresenceActionMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+    if (dispatchPresenceActionMatch && method === 'POST') {
+      const taskId = decodeURIComponent(dispatchPresenceActionMatch[1]!)
+      const action = dispatchPresenceActionMatch[2]!
+      const body = parseMockBody(config)
+      const rawSessionId = typeof body['sessionId'] === 'string' ? body['sessionId'].trim() : ''
+      const rawDisplayName = typeof body['displayName'] === 'string' ? body['displayName'].trim() : ''
+      const sessionId = rawSessionId || `mock-presence-${Date.now()}`
+      if (action === 'leave') {
+        dispatchPresenceStore[taskId] = (dispatchPresenceStore[taskId] ?? [])
+          .filter((entry) => entry.sessionId !== sessionId)
+        // [[inprocess-mock-principles]]: leave 도 envelope(null) non-null 계약 유지.
+        return envelope(null)
+      }
+      const displayName = rawDisplayName || MOCK_AUTH.fullName
+      const colorSeed = readMockHeader(config, 'X-User-Id') || sessionId
+      const entry: MockPresenceEntry = { sessionId, displayName, color: colorForPresence(colorSeed) }
+      dispatchPresenceStore[taskId] = [
+        ...(dispatchPresenceStore[taskId] ?? []).filter((item) => item.sessionId !== sessionId),
+        entry,
+      ]
+      return envelope(entry)
+    }
+
+    const dispatchPresenceListMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+    if (dispatchPresenceListMatch && method === 'GET') {
+      const taskId = decodeURIComponent(dispatchPresenceListMatch[1]!)
+      return envelope([...(dispatchPresenceStore[taskId] ?? [])])
+    }
+  }
+
   if (url.match(/\/admin\/groupware\/approval-templates(?:\?.*)?$/)) {
     const templates = getMockGroupwareApprovalTemplatesStore()
     if (method === 'GET') {
