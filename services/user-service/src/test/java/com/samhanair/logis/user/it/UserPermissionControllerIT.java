@@ -8,6 +8,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -29,6 +30,7 @@ import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
+import com.samhanair.logis.user.service.EmployeeSignatureService;
 import com.samhanair.logis.user.service.EcountDepartmentImporter;
 import com.samhanair.logis.user.service.EcountEmployeeCardImporter;
 import com.samhanair.logis.user.service.EcountEmployeeImporter;
@@ -44,6 +46,7 @@ import com.samhanair.logis.user.web.EmployeeController;
 import com.samhanair.logis.user.web.dto.AdminUserCreateResponse;
 import com.samhanair.logis.user.web.dto.EcountDepartmentImportResult;
 import com.samhanair.logis.user.web.dto.EmployeeResponse;
+import com.samhanair.logis.user.web.dto.EmployeeSignatureResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Method;
@@ -112,6 +115,7 @@ class UserPermissionControllerIT {
 
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private EmployeeProvisioningService provisioningService;
+    @MockBean private EmployeeSignatureService signatureService;
     @MockBean private EmployeeRepository employeeRepository;
     @MockBean private RoleChangeHistoryRepository roleChangeHistoryRepository;
     @MockBean private EcountDepartmentImporter ecountDepartmentImporter;
@@ -150,6 +154,8 @@ class UserPermissionControllerIT {
         lenient().when(provisioningService.updateRole(any(), any(), anyString(), any())).thenReturn(employeeResponse);
         lenient().when(provisioningService.create(any(), any())).thenReturn(employeeResponse);
         lenient().when(provisioningService.update(any(), any(), any())).thenReturn(employeeResponse);
+        lenient().when(signatureService.register(any(), any(), any()))
+                .thenReturn(new EmployeeSignatureResponse(true, "2026-01-01T00:00:00", "UPLOAD"));
         lenient().when(ecountDepartmentImporter.importCsv(any(), anyString()))
                 .thenReturn(new EcountDepartmentImportResult(1, 1, 0, 0, 0, "HASH", List.of()));
         lenient().when(ecountEmployeeImporter.importCsv(any(), anyString())).thenReturn(mig6Result());
@@ -228,6 +234,9 @@ class UserPermissionControllerIT {
         assertDepartmentGate("disable", UUID.class, String.class);
         assertDepartmentGate("unlock", UUID.class, String.class);
         assertDepartmentGate("roleHistory", UUID.class);
+        assertDepartmentGate("registerSignature", UUID.class,
+                com.samhanair.logis.user.web.dto.EmployeeSignatureUploadRequest.class, String.class);
+        assertDepartmentGate("invalidateSignature", UUID.class, String.class, String.class);
     }
 
     @Test
@@ -298,6 +307,15 @@ class UserPermissionControllerIT {
                         () -> patch("/api/v1/admin/users/{id}/role", ID)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"newRole\":\"MANAGER\",\"reason\":\"승진\"}")),
+                new EndpointCase("admin user signature register", "admin.users", PermissionAction.UPDATE,
+                        "MANAGER", 200,
+                        () -> patch("/api/v1/admin/users/{id}/signature", ID)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(signatureUploadBody())),
+                new EndpointCase("admin user signature invalidate", "admin.users", PermissionAction.DELETE,
+                        "MANAGER", 204,
+                        () -> delete("/api/v1/admin/users/{id}/signature", ID)
+                                .param("reason", "오등록 정정")),
                 new EndpointCase("admin user disable", "admin.users", PermissionAction.DELETE, "MANAGER", 204,
                         () -> post("/api/v1/admin/users/{id}/disable", ID)),
                 new EndpointCase("admin user unlock", "admin.users", PermissionAction.UPDATE, "MANAGER", 204,
@@ -355,6 +373,12 @@ class UserPermissionControllerIT {
     private static String employeeCreateBody() {
         return """
                 {"loginId":"emp01","password":"password1","fullName":"직원","position":"사원","role":"SALES","departmentId":"00000000-0000-0000-0000-000000000402","teamLead":false,"hireDate":"2026-01-01","email":"emp@samhan.com","phone":"010-1111-2222"}
+                """;
+    }
+
+    private static String signatureUploadBody() {
+        return """
+                {"signaturePngBase64":"iVBORw0KGgo=","signatureHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","channel":"UPLOAD"}
                 """;
     }
 

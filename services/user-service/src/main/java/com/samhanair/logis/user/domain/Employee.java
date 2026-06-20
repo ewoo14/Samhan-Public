@@ -1,6 +1,8 @@
 package com.samhanair.logis.user.domain;
 
 import com.samhanair.logis.common.entity.BaseEntity;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.common.security.Role;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -97,6 +100,25 @@ public class Employee extends BaseEntity {
     @Column(name = "ecount_code", length = 50)
     private String ecountCode;
 
+    // ----- 서명(인감) 필드 - C1a. 전부 nullable (미등록 = NULL). -----
+
+    /** 서명 PNG 원본 bytes. 서비스 레이어 50KB 이하 가드(PNG_MAX_BYTES). bytea 매핑 명시. */
+    @Column(name = "signature_png")
+    private byte[] signaturePng;
+
+    /** 서명 SHA-256 hex 64자 - 클라 계산·전송, 서버 재검증. */
+    @Column(name = "signature_hash", length = 64)
+    private String signatureHash;
+
+    /** 최종 등록(관리) 시각. 결재란에는 표시 안 함(인감 모델). */
+    @Column(name = "signed_at")
+    private LocalDateTime signedAt;
+
+    /** 서명 입력 채널 - MOBILE_CANVAS / UPLOAD. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "signature_channel", length = 20)
+    private SignatureChannel signatureChannel;
+
     private Employee(UUID id, String loginId, String fullName, String position, Role roleSnapshot,
                      Department department, boolean teamLead, LocalDate hireDate, String email, String phone) {
         this.id = id;
@@ -153,5 +175,59 @@ public class Employee extends BaseEntity {
 
     public void terminate(LocalDate date) {
         this.terminationDate = date;
+    }
+
+    /**
+     * 서명(인감) 등록 - 4필드 원자 set. 재등록 시 기존 서명을 교체한다.
+     *
+     * <p>직접 set 금지 컨벤션 준수 - 본 메서드만이 서명 4필드를 갱신한다. PNG 크기 가드/해시
+     * 재검증/PNG magic-byte 검증은 서비스 레이어 책임(도메인은 순수 mutation).
+     *
+     * @param png 서명 PNG bytes (필수, 비어있으면 IllegalArgument)
+     * @param hash SHA-256 hex 64자 (필수)
+     * @param channel 입력 채널 (필수)
+     * @throws IllegalArgumentException png/hash/channel null 또는 png 비어있음
+     */
+    public void registerSignature(byte[] png, String hash, SignatureChannel channel) {
+        if (png == null || png.length == 0) {
+            throw new IllegalArgumentException("signaturePng 은 필수입니다");
+        }
+        if (hash == null || hash.isBlank()) {
+            throw new IllegalArgumentException("signatureHash 는 필수입니다");
+        }
+        if (channel == null) {
+            throw new IllegalArgumentException("signatureChannel 은 필수입니다");
+        }
+        this.signaturePng = png;
+        this.signatureHash = hash;
+        this.signatureChannel = channel;
+        this.signedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 서명(인감) 무효화 - 서명 4필드 NULL. 미등록 상태에서 호출 시 CONFLICT(409).
+     *
+     * <p>audit INVALIDATE 행 적재는 서비스 레이어 책임. 직전 hash/channel snapshot 은 본 메서드
+     * 호출 <strong>전</strong> 서비스에서 확보해야 한다(호출 후 NULL).
+     *
+     * @param reason 무효화 사유 (필수, 500자 이하)
+     * @throws BusinessException(CONFLICT) signedAt 가 null(미등록) 일 때
+     * @throws IllegalArgumentException reason null/blank 또는 500자 초과
+     */
+    public void invalidateSignature(String reason) {
+        if (this.signedAt == null) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "등록된 서명이 없어 무효화할 수 없습니다");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("reason 은 필수입니다");
+        }
+        if (reason.length() > 500) {
+            throw new IllegalArgumentException("reason 은 최대 500자입니다");
+        }
+        this.signaturePng = null;
+        this.signatureHash = null;
+        this.signatureChannel = null;
+        this.signedAt = null;
     }
 }

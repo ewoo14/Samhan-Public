@@ -45,4 +45,10 @@ SAMSUNG 로고+「거래명세서」제목 → [공급받는자 박스(거래처
 - **B. 전자서명 양식 배치**: 용달기사/인수자 PNG sig-area 렌더 + 공개 share 조회뷰 동일 양식.
 - **C. 사원 서명 등록**: user-service Employee 에 signature PNG(bytea+hash) + 사원등록 메뉴 SignaturePad 등록 UI → 양식 결재란(담당자/출고인/검수인) 자동 스탬프.
 
-관련: [[order-slip-conversion]], [[feedback_print_design_iteration]], [[feedback_no_fake_data_ever]]
+## 슬C(사원 서명 등록) spec+plan 완료 (2026-06-21) — Codex 구현 대기
+- **spec**: `docs/superpowers/specs/2026-06-21-employee-signature-stamp-design.md`. **plan(에픽 인덱스+4슬라이스)**: `docs/superpowers/plans/2026-06-21-employee-signature-stamp-plan.md` (브랜치 `docs/employee-signature-stamp-spec`).
+- 개발책임자 결정: 등록=관리자 desktop+모바일 핸드오프+이미지 업로드 / 스탬프=**인감 실시간 조회**(스냅샷 거부) / 모바일=**공개 웹앱 신규 구축 한 에픽**(mobile-public Phase5 deferred 해소).
+- 9-agent 적대 검증이 초안 교정(비자명): ①결재란 enrichment "확장"이 아니라 **신규 구축**(slip-service 가 dispatcher/inspector fullName 미resolve, FE SlipApprovalActor=BE 미생산) ②서명 엔드포인트=**AdminUserController**(`/api/v1/admin/users`)—EmployeeController(`/users/employees`)는 UI 호출자 0 ③무효화=**MASTER**(slip 패턴 정렬, admin.users DELETE seed) ④join key=**Employee.id**=createdBy=dispatcherUserId ⑤내부인증=X-Internal-Token+hasRole MASTER(P0-B 아님) ⑥신규 admin 엔드포인트=`@RequireDepartment(EXECUTIVE_OFFICE)`+`@RequirePermission(admin.users)` 둘 다.
+- 슬라이스: **C1a**(서명 저장소 user-service V10)→**C1b**(핸드오프 토큰·공개표면 V11+게이트웨이)→**C2**(등록 UX+mobile-public 웹앱)→**C3**(slip enrichment+DispatchView/OutboundView 스탬프). 배포순 user-service 먼저, 미배선=빈 서명 graceful.
+
+관련: [[order-slip-conversion]], [[feedback_print_design_iteration]], [[feedback_no_fake_data_ever]], [[feedback_codex_implements_claude_reviews]], [[feedback_identity_header_authz_antipattern]]

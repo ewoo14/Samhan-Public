@@ -6,6 +6,7 @@ import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.domain.RoleChangeHistory;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
+import com.samhanair.logis.user.service.EmployeeSignatureService;
 import com.samhanair.logis.user.service.EmployeeProvisioningService;
 import com.samhanair.logis.user.web.dto.AdminUserCreateRequest;
 import com.samhanair.logis.user.web.dto.AdminUserCreateResponse;
@@ -13,6 +14,8 @@ import com.samhanair.logis.user.web.dto.AdminUserListResponse;
 import com.samhanair.logis.user.web.dto.AdminUserRoleChangeRequest;
 import com.samhanair.logis.user.web.dto.AdminUserUpdateRequest;
 import com.samhanair.logis.user.web.dto.EmployeeResponse;
+import com.samhanair.logis.user.web.dto.EmployeeSignatureResponse;
+import com.samhanair.logis.user.web.dto.EmployeeSignatureUploadRequest;
 import com.samhanair.logis.user.web.dto.RoleHistoryResponse;
 import com.samhanair.logis.security.department.Department;
 import com.samhanair.logis.security.department.RequireDepartment;
@@ -26,6 +29,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -70,6 +74,7 @@ public class AdminUserController {
     private final EmployeeProvisioningService provisioningService;
     private final EmployeeRepository employeeRepository;
     private final RoleChangeHistoryRepository roleHistoryRepository;
+    private final EmployeeSignatureService signatureService;
 
     // -------------------------------------------------------------------------
     // 목록 / 조회
@@ -245,6 +250,54 @@ public class AdminUserController {
         List<RoleChangeHistory> rows =
                 roleHistoryRepository.findAllByEmployeeIdOrderByCreatedAtDesc(id);
         return ApiResponse.ok(rows.stream().map(RoleHistoryResponse::from).toList());
+    }
+
+    // -------------------------------------------------------------------------
+    // 서명(인감) - C1a
+    // -------------------------------------------------------------------------
+
+    /**
+     * 사원 서명 등록/교체 (대표실 + admin.users UPDATE) - 업로드 또는 모바일 핸드오프 공통 저장.
+     *
+     * <p>서버 가드: PNG magic-byte + 50KB 이하(초과 422) + 클라 hash 재검증(불일치 400). 재등록 시
+     * 기존 서명 교체. audit RECORD 1행 적재.
+     *
+     * @param id 대상 직원 UUID
+     * @param request 서명 업로드 요청 (base64 + hash + channel)
+     * @param callerHeader X-User-Id 헤더 (audit actor)
+     * @return 등록 결과 (registered / signedAt / signatureChannel)
+     */
+    @PatchMapping("/{id}/signature")
+    @RequireDepartment(Department.EXECUTIVE_OFFICE)
+    @RequirePermission(page = "admin.users", action = PermissionAction.UPDATE)
+    public ApiResponse<EmployeeSignatureResponse> registerSignature(
+            @PathVariable UUID id,
+            @Valid @RequestBody EmployeeSignatureUploadRequest request,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        UUID caller = parseCaller(callerHeader);
+        return ApiResponse.ok(signatureService.register(
+                id, request, caller == null ? null : caller.toString()));
+    }
+
+    /**
+     * 사원 서명 무효화 (MASTER 한정 - admin.users DELETE seed 가 MASTER 만 허용).
+     *
+     * <p>등록된 서명 4필드 NULL + audit INVALIDATE 1행. 미등록 상태 무효화는 409.
+     *
+     * @param id 대상 직원 UUID
+     * @param reason 무효화 사유 (필수)
+     * @param callerHeader X-User-Id 헤더 (audit actor)
+     */
+    @DeleteMapping("/{id}/signature")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequireDepartment(Department.EXECUTIVE_OFFICE)
+    @RequirePermission(page = "admin.users", action = PermissionAction.DELETE)
+    public void invalidateSignature(
+            @PathVariable UUID id,
+            @RequestParam(value = "reason") String reason,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        UUID caller = parseCaller(callerHeader);
+        signatureService.invalidate(id, reason, caller == null ? "system" : caller.toString());
     }
 
     // -------------------------------------------------------------------------
