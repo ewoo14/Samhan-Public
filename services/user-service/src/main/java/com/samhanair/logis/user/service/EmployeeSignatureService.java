@@ -101,6 +101,12 @@ public class EmployeeSignatureService {
      * @throws BusinessException(CONFLICT) 미등록 상태 무효화 시도
      */
     public void invalidate(UUID employeeId, String reason, String actorUserId) {
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "무효화 사유(reason)는 필수입니다");
+        }
+        if (reason.length() > 500) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "무효화 사유는 최대 500자입니다");
+        }
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "직원을 찾을 수 없습니다: " + employeeId));

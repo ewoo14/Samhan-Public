@@ -87,6 +87,19 @@ class EmployeeSignatureServiceTest {
     }
 
     @Test
+    void register_대문자_해시도_통과하고_소문자로_저장된다() throws Exception {
+        byte[] png = pngBytes();
+        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        String lowercaseHash = sha256Hex(png);
+        EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
+                b64(png), lowercaseHash.toUpperCase(), SignatureChannel.UPLOAD);
+
+        service.register(empId, req, "actor-1");
+
+        assertThat(employee.getSignatureHash()).isEqualTo(lowercaseHash);
+    }
+
+    @Test
     void register_해시_불일치는_400_INVALID_INPUT() {
         byte[] png = pngBytes();
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));

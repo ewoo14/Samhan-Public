@@ -1,6 +1,7 @@
 package com.samhanair.logis.user.web.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 
@@ -11,6 +12,8 @@ import java.util.UUID;
  * @param userIds 서명을 조회할 user UUID 목록
  */
 public record InternalSignatureBatchRequest(
-        @NotNull List<UUID> userIds
+        @NotNull
+        @Size(max = 50, message = "userIds 는 최대 50개까지 허용됩니다")
+        List<UUID> userIds
 ) {
 }

@@ -16,6 +16,7 @@ import com.samhanair.logis.user.UserServiceApplication;
 import com.samhanair.logis.user.client.AuthClient;
 import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
+import com.samhanair.logis.user.domain.SignatureAuditAction;
 import com.samhanair.logis.user.domain.SignatureChannel;
 import com.samhanair.logis.user.repository.DepartmentRepository;
 import com.samhanair.logis.user.repository.EmployeeRepository;
@@ -154,6 +155,42 @@ class AdminUserSignatureControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void PATCH_미존재_사원은_404() throws Exception {
+        byte[] png = pngBytes();
+
+        mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", UUID.randomUUID()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(uploadBody(png, sha256Hex(png), SignatureChannel.UPLOAD)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void PATCH_dataURI_prefix_base64도_수락된다() throws Exception {
+        UUID id = newEmployee();
+        byte[] png = pngBytes();
+
+        mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", id))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"signaturePngBase64":"data:image/png;base64,%s","signatureHash":"%s","channel":"UPLOAD"}
+                                """.formatted(b64(png), sha256Hex(png))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.registered").value(true));
+    }
+
+    @Test
+    void PATCH_base64_90KB초과는_400() throws Exception {
+        UUID id = newEmployee();
+
+        mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", id))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"signaturePngBase64":"%s","signatureHash":"%s","channel":"UPLOAD"}
+                                """.formatted("A".repeat(90001), "a".repeat(64))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void PATCH_재등록은_기존_서명을_교체한다() throws Exception {
         UUID id = newEmployee();
         byte[] first = pngBytes();
@@ -177,17 +214,52 @@ class AdminUserSignatureControllerIT extends AbstractPostgresIT {
     void DELETE_등록된_서명은_204로_무효화된다() throws Exception {
         UUID id = newEmployee();
         byte[] png = pngBytes();
+        String reason = "오등록 정정";
         mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", id))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(uploadBody(png, sha256Hex(png), SignatureChannel.UPLOAD)))
                 .andExpect(status().isOk());
 
         mockMvc.perform(withMaster(delete("/api/v1/admin/users/{id}/signature", id))
-                        .param("reason", "오등록 정정"))
+                        .param("reason", reason))
                 .andExpect(status().isNoContent());
 
         Employee saved = employeeRepository.findById(id).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(saved.getSignedAt()).isNull();
+        org.assertj.core.api.Assertions.assertThat(
+                        auditRepository.findAllByEmployeeIdOrderByCreatedAtDesc(id))
+                .anySatisfy(audit -> {
+                    org.assertj.core.api.Assertions.assertThat(audit.getAction())
+                            .isEqualTo(SignatureAuditAction.INVALIDATE);
+                    org.assertj.core.api.Assertions.assertThat(audit.getReason()).isEqualTo(reason);
+                });
+    }
+
+    @Test
+    void DELETE_빈_reason은_400() throws Exception {
+        UUID id = newEmployee();
+        byte[] png = pngBytes();
+        mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", id))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(uploadBody(png, sha256Hex(png), SignatureChannel.UPLOAD)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(withMaster(delete("/api/v1/admin/users/{id}/signature", id))
+                        .param("reason", ""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void DELETE_reason_누락은_400() throws Exception {
+        UUID id = newEmployee();
+        byte[] png = pngBytes();
+        mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", id))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(uploadBody(png, sha256Hex(png), SignatureChannel.UPLOAD)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(withMaster(delete("/api/v1/admin/users/{id}/signature", id)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

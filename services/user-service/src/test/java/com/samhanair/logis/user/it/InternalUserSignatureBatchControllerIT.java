@@ -124,6 +124,36 @@ class InternalUserSignatureBatchControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void null_userIds는_400() throws Exception {
+        mockMvc.perform(post("/internal/users/signatures")
+                        .header("X-Internal-Token", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userIds":null}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void userIds_50개초과는_400() throws Exception {
+        StringBuilder ids = new StringBuilder();
+        for (int i = 0; i < 51; i++) {
+            if (i > 0) {
+                ids.append(',');
+            }
+            ids.append('"').append(UUID.randomUUID()).append('"');
+        }
+
+        mockMvc.perform(post("/internal/users/signatures")
+                        .header("X-Internal-Token", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userIds":[%s]}
+                                """.formatted(ids)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void X_Internal_Token_누락은_403() throws Exception {
         mockMvc.perform(post("/internal/users/signatures")
                         .contentType(MediaType.APPLICATION_JSON)
