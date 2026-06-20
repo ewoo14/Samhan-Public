@@ -10,6 +10,8 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.presence.PresenceEntry;
+import com.samhanair.logis.shared.realtime.presence.PresenceService;
 import com.samhanair.logis.slip.dispatch.collab.DispatchCollabComment;
 import com.samhanair.logis.slip.dispatch.collab.DispatchCollabEditService;
 import com.samhanair.logis.slip.dispatch.collab.DispatchCollabSuggestionRepository;
@@ -20,6 +22,7 @@ import com.samhanair.logis.slip.web.dispatch.dto.CommitDispatchCollabEditRequest
 import com.samhanair.logis.slip.web.dispatch.dto.DispatchCollabEditResponse;
 import com.samhanair.logis.slip.web.dispatch.dto.DispatchCollabSuggestionResponse;
 import com.samhanair.logis.slip.web.dispatch.dto.DispatchCommentResponse;
+import com.samhanair.logis.slip.web.dispatch.dto.DispatchPresenceRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -28,7 +31,10 @@ import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,10 +47,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * DispatchTask 협업 댓글/수정완료 REST/SSE endpoint.
+ * DispatchTask 협업 댓글/수정완료/presence REST/SSE endpoint.
  *
  * <p>shared/collab-core 의 {@link CollabCommentService} 를 배차 도메인에 연결하는 첫 reference.
- * arologis 전송/수정 요청 흐름과 분리된 협업 채널이다.
+ * arologis 전송/수정 요청 흐름과 분리된 협업 채널이다. presence 엔드포인트는 slip-service
+ * SlipCollabController 와 동일 패턴을 배차(dispatch.board) page-code 로 재사용한다.
  */
 @RestController
 @RequestMapping("/admin/dispatch-tasks/{taskId}")
@@ -62,6 +69,7 @@ public class DispatchCollabCommentController {
     private final DispatchDocumentCollaborationPort port;
     private final RealtimeBroker broker;
     private final DispatchTaskRepository dispatchTaskRepository;
+    private final PresenceService presenceService;
 
     public DispatchCollabCommentController(
             CollabCommentService<DispatchCollabComment> commentService,
@@ -69,13 +77,15 @@ public class DispatchCollabCommentController {
             DispatchCollabSuggestionRepository suggestionRepository,
             DispatchDocumentCollaborationPort port,
             RealtimeBroker broker,
-            DispatchTaskRepository dispatchTaskRepository) {
+            DispatchTaskRepository dispatchTaskRepository,
+            PresenceService presenceService) {
         this.commentService = commentService;
         this.editService = editService;
         this.suggestionRepository = suggestionRepository;
         this.port = port;
         this.broker = broker;
         this.dispatchTaskRepository = dispatchTaskRepository;
+        this.presenceService = presenceService;
     }
 
     /**
@@ -226,5 +236,122 @@ public class DispatchCollabCommentController {
             log.warn("[DispatchCollabCommentController] 배차 작업 미존재 — taskId={}", taskId);
             throw new BusinessException(ErrorCode.NOT_FOUND, "대상 배차 작업을 찾을 수 없습니다");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Presence 엔드포인트
+    // -----------------------------------------------------------------------
+
+    /**
+     * 배차 협업 presence join/heartbeat.
+     *
+     * <p>신규 sessionId 는 기존 collab SSE stream 으로 {@code presence:join} 이벤트가 발행된다.
+     * entityId 는 taskId(UUID) 를 그대로 사용하며 wire payload 에 userId/accountId 는 포함하지 않는다.
+     */
+    @Operation(summary = "배차 협업 presence join/heartbeat")
+    @PostMapping("/collab/presence/join")
+    @RequirePermission(page = "dispatch.board", action = PermissionAction.VIEW)
+    public ApiResponse<PresenceEntry> joinPresence(
+            @PathVariable UUID taskId,
+            @RequestBody(required = false) DispatchPresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        ensureTaskExists(taskId);
+        String userId = resolvePresenceUserId(callerId);
+        String sessionId = resolvePresenceSessionId(request);
+        String displayName = resolvePresenceDisplayName(callerName, request);
+        return ApiResponse.ok(presenceService.join(taskId, sessionId, userId, displayName));
+    }
+
+    /**
+     * 배차 협업 presence leave.
+     *
+     * <p>호출자가 session owner 일 때만 {@code presence:leave} 이벤트가 발행된다.
+     */
+    @Operation(summary = "배차 협업 presence leave")
+    @PostMapping("/collab/presence/leave")
+    @RequirePermission(page = "dispatch.board", action = PermissionAction.VIEW)
+    public ApiResponse<Void> leavePresence(
+            @PathVariable UUID taskId,
+            @RequestBody(required = false) DispatchPresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId) {
+        ensureTaskExists(taskId);
+        String userId = resolvePresenceUserId(callerId);
+        presenceService.leave(taskId, resolvePresenceSessionId(request), userId);
+        return ApiResponse.ok(null);
+    }
+
+    /**
+     * 배차 협업 현재 presence 목록.
+     *
+     * <p>account UUID 는 wire payload 에 포함하지 않는다 ({@link PresenceEntry#lastSeenAt} 은
+     * {@code @JsonIgnore}). 반환 필드: sessionId / displayName / color 만.
+     */
+    @Operation(summary = "배차 협업 presence 목록")
+    @GetMapping("/collab/presence")
+    @RequirePermission(page = "dispatch.board", action = PermissionAction.VIEW)
+    public ApiResponse<List<PresenceEntry>> listPresence(@PathVariable UUID taskId) {
+        ensureTaskExists(taskId);
+        return ApiResponse.ok(presenceService.list(taskId));
+    }
+
+    // -----------------------------------------------------------------------
+    // Presence helper
+    // -----------------------------------------------------------------------
+
+    /**
+     * X-User-Id 헤더에서 presence userId 를 추출한다. 빈 값이면 401 을 발생시킨다.
+     */
+    private String resolvePresenceUserId(String callerId) {
+        String headerUserId = callerId == null ? null : callerId.trim();
+        if (headerUserId != null && !headerUserId.isBlank()) {
+            return headerUserId;
+        }
+        throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                "presence 사용자 정보를 확인할 수 없습니다");
+    }
+
+    /**
+     * 요청 바디에서 sessionId 를 추출한다. 빈 값이면 400 을 발생시킨다.
+     */
+    private String resolvePresenceSessionId(DispatchPresenceRequest request) {
+        String sessionId = request == null || request.sessionId() == null
+                ? null
+                : request.sessionId().trim();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "presence sessionId 는 필수입니다");
+        }
+        return sessionId;
+    }
+
+    /**
+     * X-User-Name 헤더를 우선하고, 없으면 요청 바디의 displayName 을 사용한다.
+     * UUID 형태 이름은 system 으로 변환하며 wire 에 포함하지 않기 위해 null 반환한다.
+     */
+    private String resolvePresenceDisplayName(String callerName, DispatchPresenceRequest request) {
+        if (callerName != null && !callerName.isBlank()) {
+            String resolved = resolveAuthorName(null, callerName);
+            return "system".equals(resolved) ? null : resolved;
+        }
+        return request == null ? null : request.displayName();
+    }
+
+    // -----------------------------------------------------------------------
+    // ExceptionHandler
+    // -----------------------------------------------------------------------
+
+    /**
+     * X-User-Id 헤더 누락(required=true 설정) 시 401, 그 외 필수 헤더 누락 시 400 을 반환한다.
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingHeader(MissingRequestHeaderException ex) {
+        if (CALLER_ID_HEADER.equalsIgnoreCase(ex.getHeaderName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.fail(ErrorCode.UNAUTHORIZED,
+                            "presence 사용자 정보를 확인할 수 없습니다"));
+        }
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, ex.getMessage()));
     }
 }

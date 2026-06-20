@@ -191,7 +191,8 @@ class DispatchCollabConfigTest {
                         org.mockito.Mockito.mock(DispatchCollabSuggestionRepository.class),
                         org.mockito.Mockito.mock(DispatchDocumentCollaborationPort.class),
                         broker,
-                        taskRepository);
+                        taskRepository,
+                        org.mockito.Mockito.mock(com.samhanair.logis.shared.realtime.presence.PresenceService.class));
         UUID taskId = UUID.randomUUID();
         UUID callerId = UUID.randomUUID();
         String uuidShapedCallerName = UUID.randomUUID().toString();
@@ -247,7 +248,8 @@ class DispatchCollabConfigTest {
                         org.mockito.Mockito.mock(DispatchCollabSuggestionRepository.class),
                         org.mockito.Mockito.mock(DispatchDocumentCollaborationPort.class),
                         broker,
-                        taskRepository);
+                        taskRepository,
+                        org.mockito.Mockito.mock(com.samhanair.logis.shared.realtime.presence.PresenceService.class));
         UUID taskId = UUID.randomUUID();
         UUID callerId = UUID.randomUUID();
         String callerName = "A".repeat(60);
@@ -304,7 +306,8 @@ class DispatchCollabConfigTest {
                         org.mockito.Mockito.mock(DispatchCollabSuggestionRepository.class),
                         org.mockito.Mockito.mock(DispatchDocumentCollaborationPort.class),
                         broker,
-                        taskRepository);
+                        taskRepository,
+                        org.mockito.Mockito.mock(com.samhanair.logis.shared.realtime.presence.PresenceService.class));
         UUID taskId = UUID.randomUUID();
         UUID callerId = UUID.randomUUID();
         DispatchCollabComment saved = DispatchCollabComment.create(
