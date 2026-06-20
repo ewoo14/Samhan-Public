@@ -45,7 +45,12 @@ public class SecurityConfig {
                         .requestMatchers("/auth/admin/permissions/**").authenticated()
                         .requestMatchers("/auth/admin/permission-groups/**").authenticated()
                         .requestMatchers("/auth/admin/accounts/*/groups/**").authenticated()
-                        .requestMatchers("/auth/internal/permissions/**").authenticated()
+                        // P0-B: /internal 은 X-Internal-Token system-internal principal 만 — allow-missing flip/위조 X-User-* 회귀 방어.
+                        .requestMatchers("/auth/internal/**").access((authentication, context) ->
+                                new org.springframework.security.authorization.AuthorizationDecision(
+                                        authentication.get() != null
+                                                && com.samhanair.logis.security.InternalTokenFilter.INTERNAL_PRINCIPAL
+                                                        .equals(authentication.get().getName())))
                         .anyRequest().authenticated())
                 .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new HeaderAuthenticationFilter(), InternalTokenFilter.class);

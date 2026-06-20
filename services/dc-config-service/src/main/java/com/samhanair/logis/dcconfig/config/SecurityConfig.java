@@ -42,6 +42,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        // P0-B: /internal 은 X-Internal-Token system-internal principal 만 — allow-missing flip/위조 X-User-* 회귀 방어.
+                        .requestMatchers("/internal/**").access((authentication, context) ->
+                                new org.springframework.security.authorization.AuthorizationDecision(
+                                        authentication.get() != null
+                                                && com.samhanair.logis.security.InternalTokenFilter.INTERNAL_PRINCIPAL
+                                                        .equals(authentication.get().getName())))
                         .anyRequest().authenticated())
                 .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new HeaderAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
