@@ -749,6 +749,7 @@ export function AppLayout() {
               '/accounting/tax-invoices/inbound',
               '/accounting/balances',
               '/accounting/reports',
+              '/accounting/funds/status',
               '/sales/closing',
               '/accounting/period-close',
               '/accounting/statement-batch',
@@ -909,6 +910,14 @@ export function AppLayout() {
                     style={{ paddingLeft: 20, fontSize: 13 }}
                   >
                     월계표
+                  </NavLink>
+                  <NavLink
+                    to="/accounting/funds/status"
+                    end
+                    data-testid="sidebar-accounting-funds-status"
+                    style={{ paddingLeft: 20, fontSize: 13 }}
+                  >
+                    자금현황
                   </NavLink>
                 </>
               ) : null}

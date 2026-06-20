@@ -165,6 +165,82 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, UUID> 
                                                       @Param("asOfDate") LocalDate asOfDate);
 
     /**
+     * 자금현황 기간 집계 — FUND 계정 목록의 계정코드 + partnerId 별 차/대 합계.
+     *
+     * <p>POSTED 분개만 포함한다. partnerId 가 NULL 인 라인도 "기타" 표시 대상이므로 제외하지 않는다.
+     *
+     * @param accountCodes 자금 계정코드 목록
+     * @param from 조회 시작일
+     * @param to 조회 종료일
+     * @return 계정코드 + partnerId 별 차/대 합계
+     */
+    @Query("""
+            SELECT l.partnerId AS partnerId,
+                   l.accountCode AS accountCode,
+                   COALESCE(SUM(l.debitAmount), 0) AS debitTotal,
+                   COALESCE(SUM(l.creditAmount), 0) AS creditTotal
+            FROM JournalLine l
+            WHERE l.accountCode IN :accountCodes
+              AND l.journal.journalDate >= :from
+              AND l.journal.journalDate <= :to
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            GROUP BY l.partnerId, l.accountCode
+            """)
+    List<PartnerAccountTotal> aggregateFundsByAccountPartner(@Param("accountCodes") List<String> accountCodes,
+                                                             @Param("from") LocalDate from,
+                                                             @Param("to") LocalDate to);
+
+    /**
+     * 자금현황 이월 집계 — 기준일 포함 이전까지 FUND 계정 목록의 계정코드 + partnerId 별 차/대 누계.
+     *
+     * <p>이월잔액은 caller 가 계정 category 별 잔액 부호로 변환한다.
+     *
+     * @param accountCodes 자금 계정코드 목록
+     * @param asOfDate 이월 기준일
+     * @return 계정코드 + partnerId 별 차/대 누계
+     */
+    @Query("""
+            SELECT l.partnerId AS partnerId,
+                   l.accountCode AS accountCode,
+                   COALESCE(SUM(l.debitAmount), 0) AS debitTotal,
+                   COALESCE(SUM(l.creditAmount), 0) AS creditTotal
+            FROM JournalLine l
+            WHERE l.accountCode IN :accountCodes
+              AND l.journal.journalDate <= :asOfDate
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            GROUP BY l.partnerId, l.accountCode
+            """)
+    List<PartnerAccountTotal> aggregateFundsOpeningByAccountPartner(@Param("accountCodes") List<String> accountCodes,
+                                                                    @Param("asOfDate") LocalDate asOfDate);
+
+    /**
+     * 자금 증가 drill-down 대상 라인 조회.
+     *
+     * <p>증가/감소 방향 판정은 계정 category 가 필요하므로 service 에서 수행한다.
+     * 같은 전표의 상대 라인은 {@code line.getJournal().getLines()} 로 조회한다.
+     *
+     * @param accountCode 자금 계정코드
+     * @param partnerId 거래처 UUID 필터. null 이면 전체 거래처
+     * @param from 조회 시작일
+     * @param to 조회 종료일
+     * @return 기간 내 POSTED 대상 계정 라인
+     */
+    @Query("""
+            SELECT l FROM JournalLine l
+            JOIN FETCH l.journal j
+            WHERE l.accountCode = :accountCode
+              AND (:partnerId IS NULL OR l.partnerId = :partnerId)
+              AND j.journalDate >= :from
+              AND j.journalDate <= :to
+              AND j.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            ORDER BY j.journalDate ASC, j.journalNo ASC, l.lineNo ASC
+            """)
+    List<JournalLine> findFundsDetailLines(@Param("accountCode") String accountCode,
+                                           @Param("partnerId") UUID partnerId,
+                                           @Param("from") LocalDate from,
+                                           @Param("to") LocalDate to);
+
+    /**
      * 거래처별 최초 미결 분개 일자 조회 — asOfDate 이전 POSTED 분개 라인 중 가장 이른 날짜.
      *
      * <p>잔액이 양수인 거래처의 oldestUnpaidDate 산출에 사용.

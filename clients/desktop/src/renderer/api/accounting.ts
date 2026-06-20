@@ -1183,3 +1183,139 @@ export async function getGeneralLedger(
   )
   return res.data.data
 }
+
+// --------------------------------------------------------------------------
+// 자금현황 (Funds Status) API — 회계 메뉴 갭 슬라이스 A
+// --------------------------------------------------------------------------
+
+/**
+ * 자금현황 금액 요약.
+ */
+export interface FundsAmountSummary {
+  openingBalance: string
+  increase: string
+  decrease: string
+  closingBalance: string
+}
+
+/**
+ * 자금현황 거래처별 라인.
+ *
+ * UUID 비공개 가드: BE 응답에 partnerId 를 포함하지 않는다. 화면은 거래처명만 표시한다.
+ */
+export interface FundsStatusLine {
+  accountCode: string
+  accountName: string
+  partnerName: string
+  openingBalance: string
+  increase: string
+  decrease: string
+  closingBalance: string
+}
+
+/**
+ * 자금현황 계정 섹션.
+ */
+export interface FundsStatusAccountSection {
+  accountCode: string
+  accountName: string
+  category: 'ASSET' | 'LIABILITY' | string
+  lines: FundsStatusLine[]
+  subtotal: FundsAmountSummary
+}
+
+/**
+ * 자금현황 계정그룹 섹션.
+ */
+export interface FundsStatusAccountGroup {
+  groupCode: string
+  groupName: string
+  accounts: FundsStatusAccountSection[]
+  subtotal: FundsAmountSummary
+}
+
+/**
+ * 자금현황 응답.
+ */
+export interface FundsStatusResponse {
+  fromDate: string
+  toDate: string
+  groups: FundsStatusAccountGroup[]
+  total: FundsAmountSummary
+  generatedAt: string
+}
+
+/**
+ * 자금 증가 상세 라인.
+ */
+export interface FundsIncreaseDetailLine {
+  txDate: string
+  counterAccountName: string
+  counterPartnerName: string
+  description: string | null
+  amount: string
+}
+
+/**
+ * 자금 증가 상세 응답.
+ */
+export interface FundsIncreaseDetailResponse {
+  fromDate: string
+  toDate: string
+  accountCode: string
+  accountName: string
+  partnerName: string | null
+  lines: FundsIncreaseDetailLine[]
+  totalAmount: string
+  generatedAt: string
+}
+
+/**
+ * 자금 증가 상세 조회 옵션.
+ *
+ * partnerId 는 내부 필터용 선택 파라미터다. 화면에는 표시하지 않는다.
+ */
+export interface GetFundsIncreaseDetailOptions {
+  from: string
+  to: string
+  accountCode: string
+  partnerId?: string
+}
+
+/**
+ * 자금현황 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/funds-status?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+ */
+export async function getFundsStatus(
+  from: string,
+  to: string,
+): Promise<FundsStatusResponse> {
+  const res = await apiClient.get<ApiEnvelope<FundsStatusResponse>>(
+    '/accounting/reports/funds-status',
+    { params: { from, to } },
+  )
+  return res.data.data
+}
+
+/**
+ * 자금 증가 상세 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/funds-status/increase-detail`.
+ */
+export async function getFundsIncreaseDetail(
+  options: GetFundsIncreaseDetailOptions,
+): Promise<FundsIncreaseDetailResponse> {
+  const params: Record<string, string> = {
+    from: options.from,
+    to: options.to,
+    accountCode: options.accountCode,
+  }
+  if (options.partnerId) params['partnerId'] = options.partnerId
+
+  const res = await apiClient.get<ApiEnvelope<FundsIncreaseDetailResponse>>(
+    '/accounting/reports/funds-status/increase-detail',
+    { params },
+  )
+  return res.data.data
+}
