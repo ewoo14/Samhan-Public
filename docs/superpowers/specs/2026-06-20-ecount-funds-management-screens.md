@@ -171,8 +171,26 @@
 - **H. 입출금 매칭/반영** = 입/출금계좌 조회 (통장내역→자동/수동 거래처 매핑→입출금보고서→거래처 원장 전기, 미반영/반영 탭). 🆕 트랜잭션 (deposit-match+KFTC+통장계좌 확장).
 - → 최대 신규 = **A·B 자금관리 + H 입출금 매칭/반영**. G 채권/채무 확장. C·D·E·F 기존 통합·보강.
 
-## 확인 필요 (개발책임자)
-1. 수금계획·받을어음·여신한도 = 조회(파생) vs 신규 입력 데이터?
-2. H 입출금 매칭 — 기존 deposit-match(입금매칭)와 통합 vs 별도? 통장 수집 = KFTC 실연동(자격 게이트) vs 수동/Excel 등록?
-3. **전체 화면 수신 완료 여부** (없으면 갭-매핑 Workflow 착수).
-4. A~H 통일안 수용 + 슬라이스 우선순위(A/B 자금관리 + H 입출금 먼저 권장).
+## ✅ 갭-매핑 Workflow 결과 (2026-06-20, 9-agent 코드 검증 — `wf_d81f170b-872`)
+**결론: A 자금현황만 진정 NEW, B~H 전부 기존 보유 EXTEND.** 리포트 컨트롤러 실재 확인(BalanceSheet/IncomeStatement/CashFlowStatement/TrialBalance/DailySummary/MonthlySummary/EquityChanges/CorporateTax/Vat/PartnerAging + Journal/Ledger + DepositMatch/Kftc/BankAccount).
+
+| 보고서 | 상태 | 기존 토대 | 잔여 작업 |
+|---|---|---|---|
+| **A** 자금현황 | 🆕 NEW(L) | JournalLineRepository(aggregatePostedByPartnerAccount/aggregatePostedUpTo/aggregateAgingByAccount), TrialBalanceService.computeBalance, CashFlow 자금계정상수, BankAccount(MIG-6) | FundsStatusService/Controller 신규(계정×거래처×기간 이월/증가/감소/잔액 + increase-detail drill-down) |
+| **B** 현금흐름 | EXTEND(M) | CashFlowStatementController/Service/Response | 2기간 비교(comparePrior) + 계정별 증감 단순나열 뷰 |
+| **C** 시산표/집계 | EXTEND(M) | TrialBalance/Daily/MonthlySummary | 합계잔액 4컬럼+이월잔액(aggregatePostedUpTo from-1)+임의기간 range+일/월/기간 토글 통합 endpoint |
+| **D** 재무제표 | EXTEND(M) | BalanceSheet/IncomeStatement/EquityChanges | 월별손익분석(계정×월 매트릭스)+당기/전기 2기간 비교 |
+| **E** 원장 | EXTEND(M) | LedgerController/AccountingReportController | 계정 grouping+채권채무 방향+계정명세서(특정일 계정×거래처 스냅샷) 신규 |
+| **F** 전표현황 | EXTEND(M) | JournalController(sourceType 노출), JournalSourceType 6종 | list 에 sourceType(Set)+partner 필터+grouping, 거래유형 한글라벨 |
+| **G** 채권/채무 | EXTEND(L) | PartnerAgingController(R/P), Partner.creditLimit/outstandingBalance(internal summary) | direction=ALL + PartnerSummary 파싱확장(여신/미수) + 월별 aging 버킷; 받을어음/수금계획=신규입력(grep 0) |
+| **H** 입출금매칭 | EXTEND(L) | DepositMatchService(DRAFT only), KftcClient(placeholder), BankAccount, Mig9CashJournalService(POSTED 패턴) | BankTransaction 영속 도메인+Flyway CHECK + 목록/탭 + autocomplete 수동지정 + 선택→입출금보고서→POSTED 전기 + 출금 양방향 |
+
+**권장 슬라이스 순서**: 슬0(공통 ReportQuery 레이어 최소) → **슬A(자금현황 조회)** → 슬B(현금흐름 2기간) → 슬H(입출금 조회=BankTransaction+목록·탭, 전기는 후속) → 슬G(ALL+여신/미수) → 슬C → 슬D → 슬E → 슬F → 슬결재란 → 슬IA정합.
+
+**첫 슬라이스 = A 자금현황 조회**: BE FundsStatusService/Controller `GET /accounting/reports/funds-status?from&to`(자금일보=자금현황표 병합) + `/increase-detail` drill-down, JournalLineRepository 신규 `aggregateFundsByAccountPartner`+거래처×계정 asOf 이월, 부호=computeBalance 재사용. FE FundsStatusPage + AppLayout '자금' 진입점. 실 POSTED journals Docker QA.
+
+## 🔑 개발책임자 결정 (구현 착수 전 — 갭-매핑이 식별)
+1. **A 자금현황 계좌별 행**: journal_lines 에 bank_account_id FK 추가(자금분개 생성경로 채움 — 계좌별 정밀, 마이그+backfill) vs chartAccountCode 단위(보통예금 합산 1행, 빠름·계좌별 손실) vs H BankTransaction 연계 도출.
+2. **G 받을어음·수금계획**: 조회(파생) vs 신규 입력 도메인(grep 0 → 입력 가능성). ※여신한도=Partner.creditLimit 이미 존재(조회 가능).
+3. **H 통장 수집**: KFTC 실연동(KFTC_API_KEY/CLIENT_ID/SECRET 자격 게이트, 현 placeholder) vs 통장 CSV/Excel 수동 등록 1차(no_fake_data 준수).
+4. (default 진행) 결재란 권한=accounting.report-approval-config 신설(MASTER+위임), 통일조회레이어=A와 함께 최소골격, C 4컬럼=차변잔액/합계·대변합계/잔액·이월(from-1).
