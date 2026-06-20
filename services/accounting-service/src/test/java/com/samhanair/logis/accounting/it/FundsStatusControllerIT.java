@@ -17,6 +17,7 @@ import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -97,7 +98,7 @@ class FundsStatusControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        String body = result.getResponse().getContentAsString();
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
         JsonNode data = objectMapper.readTree(body).get("data");
 
         JsonNode cashLine = findLine(data, "102", "국민은행 운영계좌");
@@ -132,7 +133,7 @@ class FundsStatusControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        String body = result.getResponse().getContentAsString();
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
         JsonNode data = objectMapper.readTree(body).get("data");
 
         assertAmount(data.get("totalAmount"), "4000.00");
