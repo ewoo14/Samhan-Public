@@ -7,6 +7,7 @@ import com.samhanair.logis.partner.repository.PartnerAttachmentRepository;
 import com.samhanair.logis.partner.repository.PartnerRepository;
 import jakarta.annotation.PostConstruct;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -105,7 +106,8 @@ public class PartnerAttachmentSeeder implements CommandLineRunner {
     /** 결정성 UUID + dummy URL 로 placeholder 첨부 row 생성. */
     private PartnerAttachment buildSeedAttachment(Partner partner, AttachmentType type,
                                                   String partnerCode, String storageKey, int seq) {
-        UUID uploaderId = UUID.nameUUIDFromBytes(("samhan-seed:partner-attachment-uploader:" + partnerCode).getBytes());
+        UUID uploaderId = UUID.nameUUIDFromBytes(
+                ("samhan-seed:partner-attachment-uploader:" + partnerCode).getBytes(StandardCharsets.UTF_8));
         String fileName = buildFileName(partner.getName(), type, seq);
         String mimeType = (type == AttachmentType.CONTRACT) ? "application/pdf" : "image/png";
         long fileSize = pseudoFileSize(partnerCode, type);
@@ -129,7 +131,8 @@ public class PartnerAttachmentSeeder implements CommandLineRunner {
     /** 결정성 UUID storage key — 같은 (partnerCode, type, seq) 조합은 항상 같은 key. */
     private static String buildSeedStorageKey(String partnerCode, AttachmentType type, int seq) {
         UUID deterministic = UUID.nameUUIDFromBytes(
-                ("samhan-seed:partner-attachment:" + partnerCode + ":" + type + ":" + seq).getBytes());
+                ("samhan-seed:partner-attachment:" + partnerCode + ":" + type + ":" + seq)
+                        .getBytes(StandardCharsets.UTF_8));
         String ext = (type == AttachmentType.CONTRACT) ? ".pdf" : ".png";
         return "partner-attachments/seed/" + partnerCode + "/" + deterministic + ext;
     }
@@ -175,7 +178,8 @@ public class PartnerAttachmentSeeder implements CommandLineRunner {
     private static void applyDeterministicId(PartnerAttachment a, String partnerCode,
                                              AttachmentType type, int seq) {
         UUID deterministic = UUID.nameUUIDFromBytes(
-                ("samhan-seed:partner-attachment-id:" + partnerCode + ":" + type + ":" + seq).getBytes());
+                ("samhan-seed:partner-attachment-id:" + partnerCode + ":" + type + ":" + seq)
+                        .getBytes(StandardCharsets.UTF_8));
         try {
             Field idField = PartnerAttachment.class.getDeclaredField("id");
             idField.setAccessible(true);

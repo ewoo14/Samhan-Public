@@ -8,6 +8,7 @@ import com.samhanair.logis.notification.domain.RecipientType;
 import com.samhanair.logis.notification.repository.NotificationLogRepository;
 import com.samhanair.logis.notification.repository.NotificationRequestRepository;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -256,7 +257,7 @@ public class NotificationHistorySeeder implements CommandLineRunner {
     // ------------------------------------------------------------------
 
     static UUID deterministicId(String type, String key) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes(StandardCharsets.UTF_8));
     }
 
     private static void forceId(Object entity, UUID id) {

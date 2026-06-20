@@ -7,6 +7,7 @@ import com.samhanair.logis.accounting.repository.JournalRepository;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -322,7 +323,7 @@ public class JournalSeeder implements CommandLineRunner {
      * 모두 동일 namespace 패턴 사용 의무 (cross-stage 참조 정합).
      */
     static UUID deterministicId(String type, String key) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes(StandardCharsets.UTF_8));
     }
 
     /** Hibernate 의 {@code @UuidGenerator} 가 random UUID 부여하기 전에 결정 UUID 강제 주입. */
