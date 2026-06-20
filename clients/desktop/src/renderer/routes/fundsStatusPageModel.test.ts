@@ -68,7 +68,9 @@ describe('fundsStatusPageModel', () => {
     })
   })
 
-  it('drill-down modal 제목은 거래처명이 있으면 함께 표시한다', () => {
+  it('drill-down modal 제목은 계정 단위 — 거래처명을 포함하지 않는다 (결정 A)', () => {
+    // 결정 A: drill-down = 계정 전체. 모달 합계 = 계정 증가 소계 일치.
+    // 거래처명이 응답에 포함되어도 제목에 노출하지 않는다.
     expect(fundsIncreaseDetailTitle({
       fromDate: '2026-06-01',
       toDate: '2026-06-30',
@@ -78,6 +80,19 @@ describe('fundsStatusPageModel', () => {
       lines: [],
       totalAmount: '0',
       generatedAt: '2026-06-30T00:00:00',
-    })).toBe('102 보통예금 / 국민은행 운영계좌 증가 상세')
+    })).toBe('102 보통예금 — 증가 상세')
+  })
+
+  it('drill-down modal 제목은 partnerName null 이어도 동일 형식', () => {
+    expect(fundsIncreaseDetailTitle({
+      fromDate: '2026-06-01',
+      toDate: '2026-06-30',
+      accountCode: '103',
+      accountName: '당좌예금',
+      partnerName: null,
+      lines: [],
+      totalAmount: '500',
+      generatedAt: '2026-06-30T00:00:00',
+    })).toBe('103 당좌예금 — 증가 상세')
   })
 })

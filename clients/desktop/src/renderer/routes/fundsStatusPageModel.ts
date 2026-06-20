@@ -60,9 +60,13 @@ export function summaryToLine(label: string, summary: FundsAmountSummary): Funds
   }
 }
 
-/** 증가 상세 modal 제목. */
+/**
+ * 증가 상세 modal 제목.
+ *
+ * 결정 A: drill-down 단위 = 계정 전체.
+ * 거래처 정보는 제목에 포함하지 않는다 — 모달 합계가 계정 전체 증가합과 일치해야 하므로.
+ */
 export function fundsIncreaseDetailTitle(detail: FundsIncreaseDetailResponse | null): string {
   if (!detail) return '자금 증가 상세'
-  const partner = detail.partnerName ? ` / ${detail.partnerName}` : ''
-  return `${detail.accountCode} ${detail.accountName}${partner} 증가 상세`
+  return `${detail.accountCode} ${detail.accountName} — 증가 상세`
 }

@@ -146,32 +146,36 @@ export function FundsStatusPage() {
       width: '140px',
       align: 'right',
       render: (row) => {
-        if (row.rowKind === 'subtotal' || Number.parseInt(row.increase, 10) === 0) {
-          return <AmountText value={row.increase} />
+        // 결정 A: 계정 소계 행에서만 drill-down 클릭 허용.
+        // 거래처 행(rowKind === 'line')은 표시전용 — 클릭 시 모달 합계 ≠ 셀 금액 불일치 방지.
+        const isClickable =
+          row.rowKind === 'subtotal' && Number.parseInt(row.increase, 10) !== 0
+        if (isClickable) {
+          return (
+            <button
+              type="button"
+              data-testid={`funds-increase-subtotal-${row.accountCode}`}
+              onClick={() => setDetailTarget({
+                accountCode: row.accountCode,
+                accountName: row.accountName,
+              })}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                padding: 0,
+                margin: 0,
+                cursor: 'pointer',
+                color: 'var(--color-primary-700)',
+                fontWeight: 700,
+                fontVariantNumeric: 'tabular-nums',
+                textDecoration: 'underline',
+              }}
+            >
+              {fmtFundsKrw(row.increase)}
+            </button>
+          )
         }
-        return (
-          <button
-            type="button"
-            data-testid={`funds-increase-cell-${row.accountCode}`}
-            onClick={() => setDetailTarget({
-              accountCode: row.accountCode,
-              accountName: row.accountName,
-            })}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              padding: 0,
-              margin: 0,
-              cursor: 'pointer',
-              color: 'var(--color-primary-700)',
-              fontWeight: 700,
-              fontVariantNumeric: 'tabular-nums',
-              textDecoration: 'underline',
-            }}
-          >
-            {fmtFundsKrw(row.increase)}
-          </button>
-        )
+        return <AmountText value={row.increase} />
       },
     },
     {
@@ -344,7 +348,7 @@ export function FundsStatusPage() {
         title={detail
           ? fundsIncreaseDetailTitle(detail)
           : detailTarget
-            ? `${detailTarget.accountCode} ${detailTarget.accountName} 증가 상세`
+            ? `${detailTarget.accountCode} ${detailTarget.accountName} — 증가 상세`
             : '자금 증가 상세'}
         size="lg"
         footer={(
