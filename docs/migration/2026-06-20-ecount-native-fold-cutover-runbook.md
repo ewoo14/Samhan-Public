@@ -5,8 +5,9 @@
 
 ## 0. 전제 (cutover 시점 충족 필수)
 - MIG-1~11 이관 완료(거래처/마스터/전표/cash/order transform 등 — 메인 가이드 §2).
-- **품목 staging(`staging.ecount_item_alias` 등) populated** — 주문 라인 product 해석 의존. ⚠️ dev 미로드(cross-DB + 원격 eCount product import 갭) → cutover 환경에서 product import(product-service) 선행 필수. 미populate 시 주문 라인 product 룩업 miss → reject.
-- `accounting.orders`/`order_lines` populated(MIG-8 `Mig8OrderTransformService` transform-from-staging 실행, 메인 가이드 Step 8).
+- **품목 import(MIG-2) 선행 필수** — `staging.ecount_item_alias`(product_db) populated. **품목 import = CSV 경로**(`품목/품목관계/품목계층그룹-Excel다운로드.csv` → `POST /admin/products/imports/ecount` itemFile/relationFile/groupFile). eCount API키 불요. 미populate 시 주문 라인 product 룩업 miss → reject.
+- **MIG-8 주문 변환의 product 해석 = product-service 경유**(#529 수정): `Mig8OrderTransformService` 가 product-service `POST /products/internal/resolve-ecount-aliases`(소유 테이블 `staging.ecount_item_alias` 배치 해석)로 alias→product UUID 해석. ⚠️ 과거 버그(accounting_db 직접 cross-DB 쿼리→상시 실패)는 #529 로 해소 — **cutover dry-run 이 단독 적발**(issue #528). product-service 가 떠 있고 X-Internal-Token 설정돼야 변환 성공.
+- `accounting.orders`/`order_lines` populated(MIG-8 `Mig8OrderTransformService` transform-from-staging 실행, 메인 가이드 Step 8 — 품목 import + product-service 가동 후).
 - partner-service 거래처 마스터 + 시드 UUID 정합(#519) — 주문 partner 룩업(partnerId→code/biz) 의존.
 - X-Internal-Token 설정(서비스 간 internal API).
 
@@ -50,5 +51,7 @@
 - Step D: 개발책임자 결정 반영.
 - 전 단계: 슬라이스별 commit/push, dual review, Docker/라이브 실QA, CI green.
 
-## 부록 — dev 환경 제약 (cutover 환경 차이)
-dev 는 eCount 품목 import 파이프라인 미로드(cross-DB `ecount_item_alias` product_db 소유 + 원격 eCount product import API키)로 MIG-8 order transform→accounting.orders 실행 불가 → 슬6 이식은 dev 에서 IT(Testcontainers 합성)로만 검증됨. **cutover 환경에서는 품목 import 선행(전제 0)으로 실 주문 이식 가능.** dev 에서 실 주문 이식 QA 필요 시 별도 인프라(품목 import 파이프라인 dev 로드) 선행.
+## 부록 — cutover dry-run 결과 (2026-06-20) + dev 환경 제약
+**dry-run 단독 적발·수정**: MIG-8 주문 변환이 `accounting_db.staging.ecount_item_alias`(미존재 — product-service V7 가 product_db 에만 생성)를 cross-DB 직접 쿼리 → 'relation does not exist' **상시 실패** = accounting.orders 상시 0 = silo 빈화면의 진짜 원인. **변환이 한 번도 작동한 적 없는 cutover 블로커**(issue #528). → **#529 로 product-service alias 해석 경유 수정**(전제 0). dry-run 이 없었으면 cutover 당일 주문 이관이 실패했을 사안.
+
+**dev 라이브 end-to-end 제약**: 품목 CSV import 가 dev 에선 `duplicate key ux_products_model_name_active`(시드 product model_name 충돌)로 차단 — **dev 전용 artifact**(cutover 는 fresh DB라 무관). → 슬6/MIG-8 fix 는 dev 에서 IT(product-service resolve-ecount-aliases staging seed 배치 + accounting transform client mock)로 검증, 실 주문 end-to-end 는 fresh-DB cutover 환경(Step A)에서 검증. dev 에서 실 주문 QA 필요 시 시드 product 제거(스택 교란 주의) 후 품목 import.
