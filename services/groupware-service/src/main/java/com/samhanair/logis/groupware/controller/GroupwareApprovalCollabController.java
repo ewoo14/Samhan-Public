@@ -16,10 +16,13 @@ import com.samhanair.logis.groupware.web.collab.dto.AddApprovalCollabCommentRequ
 import com.samhanair.logis.groupware.web.collab.dto.ApprovalCollabCommentResponse;
 import com.samhanair.logis.groupware.web.collab.dto.ApprovalCollabEditResponse;
 import com.samhanair.logis.groupware.web.collab.dto.ApprovalCollabSuggestionResponse;
+import com.samhanair.logis.groupware.web.collab.dto.ApprovalPresenceRequest;
 import com.samhanair.logis.groupware.web.collab.dto.CommitApprovalCollabEditRequest;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.presence.PresenceEntry;
+import com.samhanair.logis.shared.realtime.presence.PresenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -28,7 +31,10 @@ import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -63,6 +69,7 @@ public class GroupwareApprovalCollabController {
     private final GroupwareApprovalDocumentCollaborationPort port;
     private final RealtimeBroker broker;
     private final ApprovalLineRepository approvalLineRepository;
+    private final PresenceService presenceService;
 
     public GroupwareApprovalCollabController(
             @Qualifier("groupwareApprovalCollabCommentService")
@@ -71,13 +78,15 @@ public class GroupwareApprovalCollabController {
             ApprovalCollabSuggestionRepository suggestionRepository,
             GroupwareApprovalDocumentCollaborationPort port,
             RealtimeBroker broker,
-            ApprovalLineRepository approvalLineRepository) {
+            ApprovalLineRepository approvalLineRepository,
+            PresenceService presenceService) {
         this.commentService = commentService;
         this.editService = editService;
         this.suggestionRepository = suggestionRepository;
         this.port = port;
         this.broker = broker;
         this.approvalLineRepository = approvalLineRepository;
+        this.presenceService = presenceService;
     }
 
     /** 결재 협업 댓글 등록. */
@@ -187,10 +196,92 @@ public class GroupwareApprovalCollabController {
         return broker.subscribe(approvalId);
     }
 
+    /** 결재 협업 presence join/heartbeat. 신규 sessionId 는 기존 collab SSE stream 으로 presence:join 이벤트가 발행된다. */
+    @Operation(summary = "결재 협업 presence join/heartbeat")
+    @PostMapping("/presence/join")
+    @RequirePermission(page = PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<PresenceEntry> joinPresence(
+            @PathVariable UUID approvalId,
+            @RequestBody(required = false) ApprovalPresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        ensureApprovalExists(approvalId);
+        String userId = resolvePresenceUserId(callerId);
+        String sessionId = resolvePresenceSessionId(request);
+        String displayName = resolvePresenceDisplayName(callerName, request);
+        return ApiResponse.ok(presenceService.join(approvalId, sessionId, userId, displayName));
+    }
+
+    /** 결재 협업 presence leave. 호출자가 session owner 일 때만 presence:leave 이벤트가 발행된다. */
+    @Operation(summary = "결재 협업 presence leave")
+    @PostMapping("/presence/leave")
+    @RequirePermission(page = PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<Void> leavePresence(
+            @PathVariable UUID approvalId,
+            @RequestBody(required = false) ApprovalPresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId) {
+        ensureApprovalExists(approvalId);
+        String userId = resolvePresenceUserId(callerId);
+        presenceService.leave(approvalId, resolvePresenceSessionId(request), userId);
+        return ApiResponse.ok(null);
+    }
+
+    /** 결재 협업 현재 presence 목록. account UUID 는 wire payload 에 포함하지 않는다. */
+    @Operation(summary = "결재 협업 presence 목록")
+    @GetMapping("/presence")
+    @RequirePermission(page = PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<List<PresenceEntry>> listPresence(@PathVariable UUID approvalId) {
+        ensureApprovalExists(approvalId);
+        return ApiResponse.ok(presenceService.list(approvalId));
+    }
+
     private void ensureApprovalExists(UUID approvalId) {
         if (!approvalLineRepository.existsById(approvalId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "대상 결재 문서를 찾을 수 없습니다");
         }
+    }
+
+    private String resolvePresenceUserId(String callerId) {
+        String headerUserId = callerId == null ? null : callerId.trim();
+        if (headerUserId != null && !headerUserId.isBlank()) {
+            return headerUserId;
+        }
+        throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                "presence 사용자 정보를 확인할 수 없습니다");
+    }
+
+    private String resolvePresenceSessionId(ApprovalPresenceRequest request) {
+        String sessionId = request == null || request.sessionId() == null
+                ? null
+                : request.sessionId().trim();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "presence sessionId 는 필수입니다");
+        }
+        return sessionId;
+    }
+
+    private String resolvePresenceDisplayName(String callerName, ApprovalPresenceRequest request) {
+        if (callerName != null && !callerName.isBlank()) {
+            String resolved = resolveActorName(callerName);
+            return "system".equals(resolved) ? null : resolved;
+        }
+        return request == null ? null : request.displayName();
+    }
+
+    /**
+     * {@code X-User-Id} 헤더 누락 시 presence 엔드포인트는 401 로 응답한다.
+     * 그 외 필수 헤더 누락은 400 으로 응답한다.
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingHeader(MissingRequestHeaderException ex) {
+        if (CALLER_ID_HEADER.equalsIgnoreCase(ex.getHeaderName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.fail(ErrorCode.UNAUTHORIZED,
+                            "presence 사용자 정보를 확인할 수 없습니다"));
+        }
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, ex.getMessage()));
     }
 
     private UUID resolveActorId(String header) {

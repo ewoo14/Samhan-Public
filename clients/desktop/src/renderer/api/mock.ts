@@ -1557,6 +1557,47 @@ const mockSupplierProfileList: Record<string, unknown>[] = []
  */
 const mockBatchExclusionList: Record<string, unknown>[] = []
 
+// =============================================================================
+// Presence mock 공용 헬퍼 — 슬립/회계/주문/견적/그룹웨어 4문서 공유
+// [[inprocess-mock-principles]]: 공용 hoist 로 redeclare 컴파일 에러 방지
+// =============================================================================
+
+export type MockPresenceColor = 'BLUE' | 'GREEN' | 'AMBER' | 'ROSE' | 'VIOLET' | 'CYAN' | 'LIME' | 'PINK'
+
+export type MockPresenceEntry = {
+  sessionId: string
+  displayName: string
+  color: MockPresenceColor
+}
+
+const MOCK_PRESENCE_COLORS: readonly MockPresenceColor[] = [
+  'BLUE', 'GREEN', 'AMBER', 'ROSE', 'VIOLET', 'CYAN', 'LIME', 'PINK',
+]
+
+function readMockHeader(config: AxiosRequestConfig, headerName: string): string {
+  const headers = config.headers as unknown
+  if (typeof headers !== 'object' || headers === null) return ''
+  const getHeader = (headers as { get?: (name: string) => unknown }).get
+  if (typeof getHeader === 'function') {
+    const value = getHeader.call(headers, headerName)
+    if (typeof value === 'string') return value.trim()
+  }
+  const lowerHeaderName = headerName.toLowerCase()
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+    if (key.toLowerCase() !== lowerHeaderName || value == null) continue
+    return String(value).trim()
+  }
+  return ''
+}
+
+function colorForPresence(seed: string): MockPresenceColor {
+  let hash = 0
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  }
+  return MOCK_PRESENCE_COLORS[hash % MOCK_PRESENCE_COLORS.length]!
+}
+
 /**
  * URL + method 매칭으로 mock 응답을 반환. 매칭 실패 시 null.
  */
@@ -2718,42 +2759,14 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
-  type MockSlipPresenceEntry = {
-    sessionId: string
-    displayName: string
-    color: 'BLUE' | 'GREEN' | 'AMBER' | 'ROSE' | 'VIOLET' | 'CYAN' | 'LIME' | 'PINK'
-  }
+  // ---- slip presence store (globalThis — 공용 MockPresenceEntry 타입 재사용) ----
   const gp = globalThis as unknown as {
-    __SAMHAN_MOCK_SLIP_PRESENCE?: Record<string, MockSlipPresenceEntry[]>
+    __SAMHAN_MOCK_SLIP_PRESENCE?: Record<string, MockPresenceEntry[]>
   }
   if (!gp.__SAMHAN_MOCK_SLIP_PRESENCE) gp.__SAMHAN_MOCK_SLIP_PRESENCE = {}
   const slipPresenceStore = gp.__SAMHAN_MOCK_SLIP_PRESENCE
 
-  const mockPresenceColors = ['BLUE', 'GREEN', 'AMBER', 'ROSE', 'VIOLET', 'CYAN', 'LIME', 'PINK'] as const
-  const readMockHeader = (headerName: string): string => {
-    const headers = config.headers as unknown
-    if (typeof headers !== 'object' || headers === null) return ''
-    const getHeader = (headers as { get?: (name: string) => unknown }).get
-    if (typeof getHeader === 'function') {
-      const value = getHeader.call(headers, headerName)
-      if (typeof value === 'string') return value.trim()
-    }
-    const lowerHeaderName = headerName.toLowerCase()
-    for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
-      if (key.toLowerCase() !== lowerHeaderName || value == null) continue
-      return String(value).trim()
-    }
-    return ''
-  }
-  const colorForPresence = (seed: string): MockSlipPresenceEntry['color'] => {
-    let hash = 0
-    for (let i = 0; i < seed.length; i += 1) {
-      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
-    }
-    return mockPresenceColors[hash % mockPresenceColors.length]!
-  }
-
-  const presenceActionMatch = url.match(/\/slips\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+  const presenceActionMatch = url.match(/\/api\/v1\/slips\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
   if (presenceActionMatch && method === 'POST') {
     // Presence mock 은 미매칭 시 실 HTTP 로 fallthrough 되면 401 리다이렉트가 발생한다.
     // [[inprocess-mock-principles]]: Void 도 envelope(null) 객체로 반환해 non-null 계약을 지킨다.
@@ -2770,8 +2783,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
 
     const displayName = rawDisplayName || MOCK_AUTH.fullName
-    const colorSeed = readMockHeader('X-User-Id') || sessionId
-    const entry: MockSlipPresenceEntry = {
+    const colorSeed = readMockHeader(config, 'X-User-Id') || sessionId
+    const entry: MockPresenceEntry = {
       sessionId,
       displayName,
       color: colorForPresence(colorSeed),
@@ -2783,7 +2796,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(entry)
   }
 
-  const presenceListMatch = url.match(/\/slips\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+  const presenceListMatch = url.match(/\/api\/v1\/slips\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
   if (presenceListMatch && method === 'GET') {
     const slipId = presenceListMatch[1]!
     return envelope([...(slipPresenceStore[slipId] ?? [])])
@@ -2918,11 +2931,163 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     ])
   }
 
-  // GET /api/v1/slips/estimates/{id} (단건 상세) — EstimateDetail shape.
+  // ---- estimate collab (stream + comments + edits + presence) ----
+  // /slips/estimates/{id}/collab/* — slip list 가드(`url.includes('/slips')`) 보다 앞서 처리.
+  {
+    const gecStore = globalThis as unknown as {
+      __SAMHAN_MOCK_ESTIMATE_COLLAB_COMMENTS?: Record<string, Array<{
+        id: string; anchor: string | null; authorName: string; body: string
+        parentId: string | null; status: 'OPEN' | 'RESOLVED'; createdAt: string
+      }>>
+      __SAMHAN_MOCK_ESTIMATE_COLLAB_EDITS?: Record<string, Array<{
+        id: string; changeSet: string; reason: string | null; proposerName: string
+        status: 'ACCEPTED'; decidedByName: string | null; decidedAt: string | null; createdAt: string
+      }>>
+      __SAMHAN_MOCK_ESTIMATE_PRESENCE?: Record<string, MockPresenceEntry[]>
+    }
+    if (!gecStore.__SAMHAN_MOCK_ESTIMATE_COLLAB_COMMENTS) gecStore.__SAMHAN_MOCK_ESTIMATE_COLLAB_COMMENTS = {}
+    if (!gecStore.__SAMHAN_MOCK_ESTIMATE_COLLAB_EDITS) gecStore.__SAMHAN_MOCK_ESTIMATE_COLLAB_EDITS = {}
+    if (!gecStore.__SAMHAN_MOCK_ESTIMATE_PRESENCE) gecStore.__SAMHAN_MOCK_ESTIMATE_PRESENCE = {}
+    const estimateCommentsStore = gecStore.__SAMHAN_MOCK_ESTIMATE_COLLAB_COMMENTS
+    const estimateEditsStore = gecStore.__SAMHAN_MOCK_ESTIMATE_COLLAB_EDITS
+    const estimatePresenceStore = gecStore.__SAMHAN_MOCK_ESTIMATE_PRESENCE
+
+    const estimateCollabStreamMatch = url.match(/\/slips\/estimates\/([^/?]+)\/collab\/stream(?:\?.*)?$/)
+    if (method === 'GET' && estimateCollabStreamMatch) {
+      return new Blob([': mock estimate collab stream\n\n'], { type: 'text/event-stream;charset=utf-8' })
+    }
+
+    const estimatePresenceActionMatch = url.match(/\/slips\/estimates\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+    if (estimatePresenceActionMatch && method === 'POST') {
+      const estimateId = estimatePresenceActionMatch[1]!
+      const action = estimatePresenceActionMatch[2]!
+      const body = parseMockBody(config)
+      const rawSessionId = typeof body['sessionId'] === 'string' ? body['sessionId'].trim() : ''
+      const rawDisplayName = typeof body['displayName'] === 'string' ? body['displayName'].trim() : ''
+      const sessionId = rawSessionId || `mock-presence-${Date.now()}`
+      if (action === 'leave') {
+        estimatePresenceStore[estimateId] = (estimatePresenceStore[estimateId] ?? [])
+          .filter((entry) => entry.sessionId !== sessionId)
+        return envelope(null)
+      }
+      const displayName = rawDisplayName || MOCK_AUTH.fullName
+      const colorSeed = readMockHeader(config, 'X-User-Id') || sessionId
+      const entry: MockPresenceEntry = { sessionId, displayName, color: colorForPresence(colorSeed) }
+      estimatePresenceStore[estimateId] = [
+        ...(estimatePresenceStore[estimateId] ?? []).filter((item) => item.sessionId !== sessionId),
+        entry,
+      ]
+      return envelope(entry)
+    }
+
+    const estimatePresenceListMatch = url.match(/\/slips\/estimates\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+    if (estimatePresenceListMatch && method === 'GET') {
+      const estimateId = estimatePresenceListMatch[1]!
+      return envelope([...(estimatePresenceStore[estimateId] ?? [])])
+    }
+
+    const estimateCollabCommentCollectionMatch = url.match(/\/slips\/estimates\/([^/?]+)\/collab\/comments(?:\?.*)?$/)
+    if (estimateCollabCommentCollectionMatch) {
+      const estimateId = estimateCollabCommentCollectionMatch[1]!
+      if (method === 'GET') {
+        return envelope([...(estimateCommentsStore[estimateId] ?? [])])
+      }
+      if (method === 'POST') {
+        const body = parseMockBody(config)
+        const created = {
+          id: `mock-estimate-collab-comment-${Date.now()}`,
+          anchor: (body['anchor'] as string | null | undefined) ?? null,
+          authorName: MOCK_AUTH.fullName,
+          body: String(body['body'] ?? ''),
+          parentId: (body['parentId'] as string | null | undefined) ?? null,
+          status: 'OPEN' as const,
+          createdAt: new Date().toISOString(),
+        }
+        estimateCommentsStore[estimateId] = [created, ...(estimateCommentsStore[estimateId] ?? [])]
+        return envelope(created)
+      }
+    }
+
+    const estimateCollabCommentItemMatch = url.match(/\/slips\/estimates\/([^/?]+)\/collab\/comments\/([^/?]+)(?:\/(resolve))?(?:\?.*)?$/)
+    if (estimateCollabCommentItemMatch) {
+      const estimateId = estimateCollabCommentItemMatch[1]!
+      const commentId = estimateCollabCommentItemMatch[2]!
+      const action = estimateCollabCommentItemMatch[3]
+      const list = estimateCommentsStore[estimateId] ?? []
+      const target = list.find((item) => item.id === commentId)
+      if (method === 'POST' && action === 'resolve') {
+        if (!target) return mockError(404, 'NOT_FOUND', '코멘트를 찾을 수 없습니다')
+        target.status = 'RESOLVED'
+        return envelope(target)
+      }
+      if (method === 'DELETE') {
+        estimateCommentsStore[estimateId] = list.filter((item) => item.id !== commentId)
+        return envelope(null)
+      }
+    }
+
+    const estimateCollabEditCollectionMatch = url.match(/\/slips\/estimates\/([^/?]+)\/collab\/edits(?:\?.*)?$/)
+    if (estimateCollabEditCollectionMatch) {
+      const estimateId = estimateCollabEditCollectionMatch[1]!
+      if (method === 'GET') return envelope([...(estimateEditsStore[estimateId] ?? [])])
+      if (method === 'POST') {
+        const body = parseMockBody(config) as { changeSet?: string; reason?: string }
+        const changeSet = String(body.changeSet ?? '{}')
+        const created = {
+          id: `mock-estimate-collab-edit-${Date.now()}`,
+          changeSet,
+          reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null,
+          proposerName: MOCK_AUTH.fullName,
+          status: 'ACCEPTED' as const,
+          decidedByName: MOCK_AUTH.fullName,
+          decidedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        }
+        // 커밋된 편집을 가변 상세에 실제 반영 — memo/validUntil/line.{n}.note 만 (false-green fix)
+        let parsed: Record<string, { after?: unknown }>
+        try {
+          const value = JSON.parse(changeSet)
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return mockError(400, 'INVALID_INPUT', 'changeSet JSON 형식이 올바르지 않습니다')
+          }
+          parsed = value as Record<string, { after?: unknown }>
+        } catch {
+          return mockError(400, 'INVALID_INPUT', 'changeSet JSON 형식이 올바르지 않습니다')
+        }
+        const entries = Object.entries(parsed)
+        if (entries.length === 0) {
+          return mockError(400, 'INVALID_INPUT', 'changeSet에 적용할 필드가 없습니다')
+        }
+        const estimate = getMutableEstimateDetail(estimateId)
+        for (const [rawPath, change] of entries) {
+          const fieldPath = normalizeEstimateEditPath(rawPath)
+          if (!fieldPath || !change || typeof change !== 'object' || Array.isArray(change) || !('after' in change)) {
+            return mockError(400, 'INVALID_INPUT', '견적 협업은 memo, validUntil, line.{lineKey}.note 만 수정할 수 있습니다')
+          }
+          const after = change.after == null ? null : String(change.after)
+          if (fieldPath === 'memo') {
+            estimate.memo = after
+          } else if (fieldPath === 'validUntil') {
+            estimate.validUntil = after
+          } else {
+            const lineKey = Number.parseInt(fieldPath.match(/^line\.(\d+)\.note$/)![1]!, 10)
+            const line = estimate.lines[lineKey - 1]
+            if (!line) return mockError(400, 'INVALID_INPUT', `견적 라인 lineKey 범위가 올바르지 않습니다: ${lineKey}`)
+            line.note = after
+          }
+        }
+        estimate.version += 1
+        estimateEditsStore[estimateId] = [created, ...(estimateEditsStore[estimateId] ?? [])]
+        return envelope({ edit: created, estimate })
+      }
+    }
+  }
+
+  // GET /api/v1/slips/estimates/{id} (단건 상세) — EstimateDetail shape. 협업 edit 반영 가변 상세.
   const estimateSlipsDetailMatch = url.match(/\/slips\/estimates\/([^/?]+)$/)
   if (method === 'GET' && estimateSlipsDetailMatch && !url.includes('/print')) {
     const id = estimateSlipsDetailMatch[1]!
-    return envelope(buildMockEstimateDetail(id))
+    return envelope(getMutableEstimateDetail(id))
   }
 
   // PATCH /api/v1/slips/{slipId}/audit/overlay — 단일 필드 수정 + audit row INSERT
@@ -4067,6 +4232,44 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
       journalCollabSuggestionsStore[journalId] = [created, ...(journalCollabSuggestionsStore[journalId] ?? [])]
       return envelope({ edit: created, journal })
+    }
+  }
+
+  // ---- journal presence (join|leave POST + list GET) ----
+  {
+    const gjp = globalThis as unknown as {
+      __SAMHAN_MOCK_JOURNAL_PRESENCE?: Record<string, MockPresenceEntry[]>
+    }
+    if (!gjp.__SAMHAN_MOCK_JOURNAL_PRESENCE) gjp.__SAMHAN_MOCK_JOURNAL_PRESENCE = {}
+    const journalPresenceStore = gjp.__SAMHAN_MOCK_JOURNAL_PRESENCE
+
+    const journalPresenceActionMatch = url.match(/\/accounting\/journals\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+    if (journalPresenceActionMatch && method === 'POST') {
+      const journalId = journalPresenceActionMatch[1]!
+      const action = journalPresenceActionMatch[2]!
+      const body = parseMockBody(config)
+      const rawSessionId = typeof body['sessionId'] === 'string' ? body['sessionId'].trim() : ''
+      const rawDisplayName = typeof body['displayName'] === 'string' ? body['displayName'].trim() : ''
+      const sessionId = rawSessionId || `mock-presence-${Date.now()}`
+      if (action === 'leave') {
+        journalPresenceStore[journalId] = (journalPresenceStore[journalId] ?? [])
+          .filter((entry) => entry.sessionId !== sessionId)
+        return envelope(null)
+      }
+      const displayName = rawDisplayName || MOCK_AUTH.fullName
+      const colorSeed = readMockHeader(config, 'X-User-Id') || sessionId
+      const entry: MockPresenceEntry = { sessionId, displayName, color: colorForPresence(colorSeed) }
+      journalPresenceStore[journalId] = [
+        ...(journalPresenceStore[journalId] ?? []).filter((item) => item.sessionId !== sessionId),
+        entry,
+      ]
+      return envelope(entry)
+    }
+
+    const journalPresenceListMatch = url.match(/\/accounting\/journals\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+    if (journalPresenceListMatch && method === 'GET') {
+      const journalId = journalPresenceListMatch[1]!
+      return envelope([...(journalPresenceStore[journalId] ?? [])])
     }
   }
 
@@ -6740,6 +6943,44 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
+  // ---- groupware-approval presence (join|leave POST + list GET) ----
+  {
+    const ggap = globalThis as unknown as {
+      __SAMHAN_MOCK_GROUPWARE_APPROVAL_PRESENCE?: Record<string, MockPresenceEntry[]>
+    }
+    if (!ggap.__SAMHAN_MOCK_GROUPWARE_APPROVAL_PRESENCE) ggap.__SAMHAN_MOCK_GROUPWARE_APPROVAL_PRESENCE = {}
+    const groupwareApprovalPresenceStore = ggap.__SAMHAN_MOCK_GROUPWARE_APPROVAL_PRESENCE
+
+    const gapPresenceActionMatch = url.match(/\/admin\/groupware\/approvals\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+    if (gapPresenceActionMatch && method === 'POST') {
+      const approvalId = decodeURIComponent(gapPresenceActionMatch[1]!)
+      const action = gapPresenceActionMatch[2]!
+      const body = parseMockBody(config)
+      const rawSessionId = typeof body['sessionId'] === 'string' ? body['sessionId'].trim() : ''
+      const rawDisplayName = typeof body['displayName'] === 'string' ? body['displayName'].trim() : ''
+      const sessionId = rawSessionId || `mock-presence-${Date.now()}`
+      if (action === 'leave') {
+        groupwareApprovalPresenceStore[approvalId] = (groupwareApprovalPresenceStore[approvalId] ?? [])
+          .filter((entry) => entry.sessionId !== sessionId)
+        return envelope(null)
+      }
+      const displayName = rawDisplayName || MOCK_AUTH.fullName
+      const colorSeed = readMockHeader(config, 'X-User-Id') || sessionId
+      const entry: MockPresenceEntry = { sessionId, displayName, color: colorForPresence(colorSeed) }
+      groupwareApprovalPresenceStore[approvalId] = [
+        ...(groupwareApprovalPresenceStore[approvalId] ?? []).filter((item) => item.sessionId !== sessionId),
+        entry,
+      ]
+      return envelope(entry)
+    }
+
+    const gapPresenceListMatch = url.match(/\/admin\/groupware\/approvals\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+    if (gapPresenceListMatch && method === 'GET') {
+      const approvalId = decodeURIComponent(gapPresenceListMatch[1]!)
+      return envelope([...(groupwareApprovalPresenceStore[approvalId] ?? [])])
+    }
+  }
+
   const groupwareApprovalDecisionMatch = url.match(
     /\/admin\/groupware\/approvals\/([^/?]+)\/(approve|reject)(?:\?.*)?$/,
   )
@@ -7905,6 +8146,44 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       order.updatedAt = new Date().toISOString()
       partnerOrderCollabEditsStore[poId] = [created, ...(partnerOrderCollabEditsStore[poId] ?? [])]
       return envelope({ edit: created, order })
+    }
+  }
+
+  // ---- partner-order presence (join|leave POST + list GET) ----
+  {
+    const gop = globalThis as unknown as {
+      __SAMHAN_MOCK_PARTNER_ORDER_PRESENCE?: Record<string, MockPresenceEntry[]>
+    }
+    if (!gop.__SAMHAN_MOCK_PARTNER_ORDER_PRESENCE) gop.__SAMHAN_MOCK_PARTNER_ORDER_PRESENCE = {}
+    const partnerOrderPresenceStore = gop.__SAMHAN_MOCK_PARTNER_ORDER_PRESENCE
+
+    const poPresenceActionMatch = url.match(/\/api\/v1\/partner-orders\/([^/?]+)\/collab\/presence\/(join|leave)(?:\?.*)?$/)
+    if (poPresenceActionMatch && method === 'POST') {
+      const orderId = poPresenceActionMatch[1]!
+      const action = poPresenceActionMatch[2]!
+      const body = parseMockBody(config)
+      const rawSessionId = typeof body['sessionId'] === 'string' ? body['sessionId'].trim() : ''
+      const rawDisplayName = typeof body['displayName'] === 'string' ? body['displayName'].trim() : ''
+      const sessionId = rawSessionId || `mock-presence-${Date.now()}`
+      if (action === 'leave') {
+        partnerOrderPresenceStore[orderId] = (partnerOrderPresenceStore[orderId] ?? [])
+          .filter((entry) => entry.sessionId !== sessionId)
+        return envelope(null)
+      }
+      const displayName = rawDisplayName || MOCK_AUTH.fullName
+      const colorSeed = readMockHeader(config, 'X-User-Id') || sessionId
+      const entry: MockPresenceEntry = { sessionId, displayName, color: colorForPresence(colorSeed) }
+      partnerOrderPresenceStore[orderId] = [
+        ...(partnerOrderPresenceStore[orderId] ?? []).filter((item) => item.sessionId !== sessionId),
+        entry,
+      ]
+      return envelope(entry)
+    }
+
+    const poPresenceListMatch = url.match(/\/api\/v1\/partner-orders\/([^/?]+)\/collab\/presence(?:\?.*)?$/)
+    if (poPresenceListMatch && method === 'GET') {
+      const orderId = poPresenceListMatch[1]!
+      return envelope([...(partnerOrderPresenceStore[orderId] ?? [])])
     }
   }
 
@@ -11028,6 +11307,40 @@ function buildMockEstimateDetail(id: string) {
     memo: isAccepted ? '대박빌딩 신축 — 채택' : '시스템에어컨 4Way 4HP 2EA 견적',
     lines: MOCK_ESTIMATE_DETAIL_LINES,
   }
+}
+
+/**
+ * 견적 협업 edit 가 반영되는 가변 상세. memo/validUntil/line.note 만 편집 허용(실 EstimateDocumentCollaborationPort 정합).
+ * note: 기존 mock 은 buildMockEstimateDetail 을 매번 새로 반환해 커밋 편집이 상세에 미반영(false-green) — Codex 라운드 P2 fix.
+ */
+type MutableEstimateDetail =
+  & Omit<ReturnType<typeof buildMockEstimateDetail>, 'memo' | 'validUntil' | 'lines'>
+  & { memo: string | null; validUntil: string | null }
+  & { lines: Array<Omit<ReturnType<typeof buildMockEstimateDetail>['lines'][number], 'note'> & { note: string | null }> }
+
+function getMutableEstimateDetail(id: string): MutableEstimateDetail {
+  const g = globalThis as unknown as { __SAMHAN_MOCK_ESTIMATE_DETAILS?: Record<string, MutableEstimateDetail> }
+  if (!g.__SAMHAN_MOCK_ESTIMATE_DETAILS) g.__SAMHAN_MOCK_ESTIMATE_DETAILS = {}
+  const store = g.__SAMHAN_MOCK_ESTIMATE_DETAILS
+  if (!store[id]) {
+    const seed = buildMockEstimateDetail(id)
+    store[id] = {
+      ...seed,
+      memo: seed.memo,
+      validUntil: seed.validUntil,
+      lines: seed.lines.map((line) => ({ ...line, note: line.note as string | null })),
+    }
+  }
+  return store[id]!
+}
+
+/** 견적 협업 changeSet path 정규화 — memo / validUntil / line.{n}.note 만 허용(그 외 null). */
+function normalizeEstimateEditPath(rawPath: string): string | null {
+  const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\//g, '.')
+  if (normalized === 'memo' || normalized === 'validUntil') return normalized
+  const lineNoteMatch = normalized.match(/^line\.(\d+)\.note$/)
+  if (!lineNoteMatch) return null
+  return Number.parseInt(lineNoteMatch[1]!, 10) >= 1 ? normalized : null
 }
 
 /** EstimateDetail status — api/estimateApi.ts EstimateStatus 미러 (mock 전용 타입 별칭). */

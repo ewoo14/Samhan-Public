@@ -20,6 +20,9 @@ import {
 } from '../../api/estimateCollab'
 import { EstimateCollabRealtimeClient } from '../../realtime/EstimateCollabRealtimeClient'
 import { usePermissions } from '../../hooks/usePermissions'
+import { usePresence } from '../../hooks/usePresence'
+import { EstimatePresenceClient } from '../../realtime/createPresenceClient'
+import { PresenceIndicator } from './PresenceIndicator'
 
 export interface EstimateCollabEditableLine {
   /** BE EstimateDocumentCollaborationPort lineKey 와 동일한 1-based 활성 라인 index. */
@@ -155,6 +158,7 @@ export function EstimateCollaborationPanel({
   const [editReason, setEditReason] = useState('')
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
+  const presenceEntries = usePresence({ entityId: estimateId, client: EstimatePresenceClient, enabled: !!estimateId })
 
   const commentQueryKey = useMemo(() => ['estimateCollabComments', estimateId] as const, [estimateId])
   const editQueryKey = useMemo(() => ['estimateCollabEdits', estimateId] as const, [estimateId])
@@ -295,7 +299,10 @@ export function EstimateCollaborationPanel({
   return (
     <section data-testid="estimate-collaboration-panel" style={{ marginTop: 24 }}>
       <Card padding={4} shadow="sm">
-        <h4 style={{ margin: 0, marginBottom: 16 }}>협업</h4>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <h4 style={{ margin: 0 }}>협업</h4>
+          <PresenceIndicator entries={presenceEntries} />
+        </div>
 
         <div className="detail-grid" style={{ alignItems: 'start' }}>
           <section aria-label="코멘트">

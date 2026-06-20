@@ -114,3 +114,43 @@ export const SlipPresenceClient = createPresenceClient({
   streamPath: (slipId) =>
     `/api/v1/slips/${encodeURIComponent(slipId)}/collab/stream`,
 })
+
+export const JournalPresenceClient = createPresenceClient({
+  name: 'journal',
+  presencePath: (journalId, action) => {
+    const base = `/accounting/journals/${encodeURIComponent(journalId)}/collab/presence`
+    return action ? `${base}/${action}` : base
+  },
+  streamPath: (journalId) =>
+    `/accounting/journals/${encodeURIComponent(journalId)}/collab/stream`,
+})
+
+export const PartnerOrderPresenceClient = createPresenceClient({
+  name: 'partner-order',
+  presencePath: (orderId, action) => {
+    const base = `/api/v1/partner-orders/${encodeURIComponent(orderId)}/collab/presence`
+    return action ? `${base}/${action}` : base
+  },
+  streamPath: (orderId) =>
+    `/api/v1/partner-orders/${encodeURIComponent(orderId)}/collab/stream`,
+})
+
+export const EstimatePresenceClient = createPresenceClient({
+  name: 'estimate',
+  presencePath: (estimateId, action) => {
+    const base = `/slips/estimates/${encodeURIComponent(estimateId)}/collab/presence`
+    return action ? `${base}/${action}` : base
+  },
+  streamPath: (estimateId) =>
+    `/slips/estimates/${encodeURIComponent(estimateId)}/collab/stream`,
+})
+
+export const GroupwareApprovalPresenceClient = createPresenceClient({
+  name: 'groupware-approval',
+  presencePath: (approvalId, action) => {
+    const base = `/admin/groupware/approvals/${encodeURIComponent(approvalId)}/collab/presence`
+    return action ? `${base}/${action}` : base
+  },
+  streamPath: (approvalId) =>
+    `/admin/groupware/approvals/${encodeURIComponent(approvalId)}/collab/stream`,
+})
