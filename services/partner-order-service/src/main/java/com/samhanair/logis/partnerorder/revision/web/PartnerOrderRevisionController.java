@@ -163,7 +163,7 @@ public class PartnerOrderRevisionController {
     }
 
     private UUID resolveOrderId(String orderId) {
-        return PartnerOrderIdResolver.findByIdentifier(partnerOrderRepository, orderId)
+        return PartnerOrderIdResolver.findByIdentifierIncludingDeleted(partnerOrderRepository, orderId)
                 .map(PartnerOrder::getId)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.PARTNER_ORDER_NOT_FOUND,

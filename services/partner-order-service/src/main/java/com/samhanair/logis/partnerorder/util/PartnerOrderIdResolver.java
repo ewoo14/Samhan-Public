@@ -29,6 +29,12 @@ public final class PartnerOrderIdResolver {
                 .or(() -> findByUuid(repository, id));
     }
 
+    public static Optional<PartnerOrder> findByIdentifierIncludingDeleted(PartnerOrderRepository repository, String id) {
+        return repository.findByOrderNoIncludingDeleted(id)
+                .or(() -> repository.findByOrderNoIncludingDeleted(toSlashOrderNo(id)))
+                .or(() -> findByUuidIncludingDeleted(repository, id));
+    }
+
     /**
      * 하이픈 날짜형 주문번호를 legacy 슬래시 날짜형 주문번호로 변환한다.
      *
@@ -55,6 +61,14 @@ public final class PartnerOrderIdResolver {
     public static Optional<PartnerOrder> findByUuid(PartnerOrderRepository repository, String value) {
         try {
             return repository.findById(UUID.fromString(value));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<PartnerOrder> findByUuidIncludingDeleted(PartnerOrderRepository repository, String value) {
+        try {
+            return repository.findByIdIncludingDeleted(UUID.fromString(value));
         } catch (IllegalArgumentException ignored) {
             return Optional.empty();
         }
