@@ -42,7 +42,9 @@
 - ✅ **잔여 백로그 전수조사(workflow 5-agent) + 권장작업 진행(2026-06-20)**: 약 44개 잔여 항목 분류(추적버그·테스트부채#531·cutover전용·외부게이트·열린에픽·미해결결정). 비게이트 H 2건 진행 완료 →
   - **#533 (실 버그) 수정 머지 #535**: inventory `SlipServiceClient`가 slip-service 미존재 `/slips/outbound` 호출 → DPS 입고비교 상시 실패(/{id} 400). slip-service `GET /internal/slips/outbound-lines` 신설(기존 findByPeriodWithLines 재사용·라인 평탄화 productCode=modelName·P0-B) + inventory 경로 정정. 🪤 Codex 교차가 arologis(/internal/slips/outbound slip-level dormant) 경로충돌 P1 적발→별도경로 분리. 라이브 실데이터 검증(403/200+실라인/400). *Slip.partnerCode 채움은 별도 후속(DPS partnerCode 매칭 완전정확).*
   - **#531 RestClient 계약테스트 H/M non-skeleton 완료**(배치1~4, #532/534/535/536/537, ~13 client·MockRestServiceServer 실HTTP): inventory Accounting/Slip/SlipService·arologis Auth·partner-order DcConfig/Inventory/Product·accounting Product/SlipQuery·notification User·partner-auth DcConfig. 다운스트림 전수검증(0 추가 BUG). 🪤 false-contract 2건(Codex 교차) 제거·정정. 잔여=arologis 2 skeleton(dormant 저우선).
-- → **다음 = 개발책임자 지정 다음 우선작업**. 주요 백로그(eCount·품목/견적·외부연동) 완결/결정·자격게이트. 후보: 외부연동 벤더-무관 통합 spec·cutover Step별 실행(품목 import 선행)·열린 에픽(회계메뉴갭~13·시리얼재고 S1~4·출고전표 양식·estimate G1/G2·기초↔견적 잔여)·arologis skeleton 계약테스트. 무중단 원칙(상단 🔴) 준수.
+- ✅ **잔여 재검증(현재코드) + actionable fix(2026-06-20)**: 개발책임자 "이미 처리한 줄 알았는데 잔여 많나" 지적 → 재검증 결과 STALE 16/GATED 12/DECISION 8/ACTIONABLE 11. **클린 결함 전부 fix·머지**: path-id 400+주문번호 표준(YYYY/MM/DD-N)+PO- dev 재시드(#539), 시더 charset UTF-8 cross-DB(#540), AuthClient 계약테스트(#541). path-id fix의 CI 회귀 2건(soft-deleted resolve·%2F)도 라이브 검증 수정.
+- ✅ **DECISION 9건 "전부 권장대로" 해소(2026-06-20)**: 대부분 **이미 구현/현행=권장**(또 stale 발견) — #6c ON_HOLD=Phase2.5 완료(메모리 정정), #8 결재선=ApprovalLine+Step 구현(수동), #4 결재유형=GroupwareApprovalTemplateController CRUD 존재, #1 productType read-enrich·#6a self-accept 금지·#6b 전체복원·#7 카탈로그만·#9 deliveryTag 주소프리픽스 모두 현행 유지. #2 D4·#5 품목코드1:N=보류/cutover. **신규 코드 0**. **여전히 최소 입력 필요 3건**: #3 회계 "13건"=구체 화면 목록 미정의(개발책임자 목록 필요), #4 지출결의서/품의서=결재유형 관리 메뉴서 생성(양식 필드), #8 자동 부서장=조직 직급/부서 규칙.
+- → **다음 = 개발책임자 지정 다음 우선작업**. 클린 결함·결정 소진. 남은 substantial=presence 5문서 롤아웃·SP-08 parity 3·사원서명·배차 query-key UX·재배차 캡처(기능 잔여, 우선순위 지정 시 진행) + 게이트(cutover/벤더). 무중단 원칙(상단 🔴) 준수.
 
 ---
 

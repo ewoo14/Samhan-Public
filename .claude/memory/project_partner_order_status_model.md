@@ -18,7 +18,7 @@ metadata:
 |---|---|---|---|
 | **진행 중** | `DRAFT` | 편집·복원 가능 | 주문 진입 자동(createFromEstimate), 리스트 기본 필터 |
 | **완료** | `CONFIRMED` | 복원 가능(slip 경고) | confirm = 출고전표 전환 시점 |
-| **보류** | **신규 `ON_HOLD`** (미구현) | 편집·복원 가능 | "진행중에서 멈춘 편집가능 상태" |
+| **보류** | **`ON_HOLD`** (✅ Phase 2.5 구현 완료 — PartnerOrderHoldController hold/release + HoldService + QueryService 상태필터) | 편집·복원 가능 | "진행중에서 멈춘 편집가능 상태" |
 | (전환 순간) | `CONFIRMING` | 불가 | advisory lock transient, 사용자 비노출, 복원 409 |
 | (취소) | `CANCELED` | 불가 | 유지, 복원 409 |
 
@@ -29,9 +29,10 @@ metadata:
 - **삭제된 주문도 복원 가능** (개발책임자 2026-05-30): delete = DELETE revision 캡처(soft-delete 직전). 복원 조회는 soft-deleted 포함(@SQLRestriction 우회) → undelete + 시점 내용 적용. 권한은 기존 RESTORE 동일. revision_type 에 DELETE 추가.
 
 ## 별도 슬라이스 (Phase 2.4 RESTORE 와 분리 — 개발책임자 결정)
-1. **보류(ON_HOLD) 상태 추가** + 전이 메서드 + 마이그레이션
-2. **주문 리스트 상태 필터** (기본 진행중, 진행중/완료/보류 선택)
+1. ~~보류(ON_HOLD) 상태 추가~~ — ✅ **Phase 2.5 구현 완료**(enum+HoldService hold/release+Controller POST /{id}/hold·/release 409 가드, edit 권한 재사용)
+2. ~~주문 리스트 상태 필터~~ — ✅ **구현 완료**(PartnerOrderQueryService status 필터 DRAFT/CONFIRMED/ON_HOLD)
 3. 주문→출고전표 전환 고도화([[project-order-slip-conversion]]) — 품목별 부분전환 + 다중주문 병합
+※ 2026-06-20 "전부 권장대로" 결정 시 재확인: 6c ON_HOLD 도입=이미 완료(메모리 stale 정정). self-accept=금지 유지, restore=전체복원(현행), 수동품목 카테고리=카탈로그만(현행) 모두 현행 유지 확정.
 
 ## 관련
 - [[project-order-slip-conversion]]
