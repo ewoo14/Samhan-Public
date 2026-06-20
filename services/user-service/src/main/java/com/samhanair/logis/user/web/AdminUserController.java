@@ -7,6 +7,7 @@ import com.samhanair.logis.user.domain.RoleChangeHistory;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
 import com.samhanair.logis.user.service.EmployeeSignatureService;
+import com.samhanair.logis.user.service.EmployeeSignatureHandoffService;
 import com.samhanair.logis.user.service.EmployeeProvisioningService;
 import com.samhanair.logis.user.web.dto.AdminUserCreateRequest;
 import com.samhanair.logis.user.web.dto.AdminUserCreateResponse;
@@ -75,6 +76,7 @@ public class AdminUserController {
     private final EmployeeRepository employeeRepository;
     private final RoleChangeHistoryRepository roleHistoryRepository;
     private final EmployeeSignatureService signatureService;
+    private final EmployeeSignatureHandoffService handoffService;
 
     // -------------------------------------------------------------------------
     // 목록 / 조회
@@ -298,6 +300,33 @@ public class AdminUserController {
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
         UUID caller = parseCaller(callerHeader);
         signatureService.invalidate(id, reason, caller == null ? "system" : caller.toString());
+    }
+
+    /**
+     * 모바일 핸드오프 토큰 발급 — "모바일로 그리기" (slice C1b · spec §5.2).
+     *
+     * <p>동일 사원 미사용 토큰 무효화 후 신규 1회용 토큰 발급. desktop 이 QR + 복사링크 표시.
+     */
+    @PostMapping("/{id}/signature/handoff-token")
+    @RequireDepartment(Department.EXECUTIVE_OFFICE)
+    @RequirePermission(page = "admin.users", action = PermissionAction.UPDATE)
+    public ApiResponse<com.samhanair.logis.user.web.dto.HandoffTokenResponse> issueHandoffToken(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        UUID caller = parseCaller(callerHeader);
+        return ApiResponse.ok(handoffService.issueToken(id, caller == null ? null : caller.toString()));
+    }
+
+    /**
+     * 핸드오프 토큰 상태 조회 — desktop 폴링 (2s, slice C1b · spec §5.2).
+     */
+    @GetMapping("/{id}/signature/handoff/{token}/status")
+    @RequireDepartment(Department.EXECUTIVE_OFFICE)
+    @RequirePermission(page = "admin.users", action = PermissionAction.VIEW)
+    public ApiResponse<com.samhanair.logis.user.web.dto.HandoffStatusResponse> handoffStatus(
+            @PathVariable UUID id,
+            @PathVariable String token) {
+        return ApiResponse.ok(handoffService.status(id, token));
     }
 
     // -------------------------------------------------------------------------

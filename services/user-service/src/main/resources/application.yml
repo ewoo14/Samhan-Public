@@ -39,6 +39,9 @@ samhan:
     url: ${SAMHAN_AUTH_SERVICE_URL:http://localhost:8081}
 
 app:
+  signature:
+    # 모바일 공개 서명 웹앱 origin (C2 DevOps 확정 — 기본 게이트웨이 localhost). qrUrl 결합 base.
+    public-base-url: ${SAMHAN_SIGNATURE_PUBLIC_BASE_URL:http://localhost:8080}
   security:
     internal:
       # Phase 8 2차 — SAMHAN_INTERNAL_TOKEN 우선, INTERNAL_AUTH_TOKEN legacy fallback (Phase 10 cutover 시점 단일화)
