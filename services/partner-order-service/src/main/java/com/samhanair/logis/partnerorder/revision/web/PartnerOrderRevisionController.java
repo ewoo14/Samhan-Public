@@ -1,11 +1,16 @@
 package com.samhanair.logis.partnerorder.revision.web;
 
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partnerorder.domain.PartnerOrder;
+import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
 import com.samhanair.logis.partnerorder.revision.service.PartnerOrderRevisionService;
 import com.samhanair.logis.partnerorder.revision.service.PartnerOrderRestoreResult;
 import com.samhanair.logis.partnerorder.revision.web.dto.PartnerOrderRestoreResponse;
 import com.samhanair.logis.partnerorder.revision.web.dto.PartnerOrderRevisionDetailResponse;
 import com.samhanair.logis.partnerorder.revision.web.dto.PartnerOrderRevisionResponse;
+import com.samhanair.logis.partnerorder.util.PartnerOrderIdResolver;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import io.swagger.v3.oas.annotations.Operation;
@@ -68,11 +73,12 @@ public class PartnerOrderRevisionController {
     private static final String CALLER_NAME_HEADER = "X-User-Name";
 
     private final PartnerOrderRevisionService revisionService;
+    private final PartnerOrderRepository partnerOrderRepository;
 
     /**
      * 거래처 주문 버전 타임라인 조회 — 최신 revision 우선, 각 항목에 직전 revision 대비 changeSummary 포함.
      *
-     * @param id 대상 거래처 주문 UUID (경로 변수)
+     * @param id 대상 거래처 주문 식별자(UUID 또는 주문번호 path-id)
      * @return revisionNo 내림차순 버전 목록 (changeSummary 포함)
      */
     @Operation(summary = "거래처 주문 버전이력 목록",
@@ -84,14 +90,15 @@ public class PartnerOrderRevisionController {
     @GetMapping("/revisions")
     @RequirePermission(page = "sales.partner-order.history.view", action = PermissionAction.VIEW)
     public ApiResponse<List<PartnerOrderRevisionResponse>> listRevisions(
-            @PathVariable UUID id) {
-        return ApiResponse.ok(revisionService.listWithSummary(id));
+            @PathVariable String id) {
+        UUID resolvedOrderId = resolveOrderId(id);
+        return ApiResponse.ok(revisionService.listWithSummary(resolvedOrderId));
     }
 
     /**
      * 거래처 주문 특정 revision 단일 스냅샷 상세 조회.
      *
-     * @param id  대상 거래처 주문 UUID (경로 변수)
+     * @param id  대상 거래처 주문 식별자(UUID 또는 주문번호 path-id)
      * @param no  조회할 버전 번호 (경로 변수)
      * @return 단일 스냅샷 헤더 + 라인 상세
      */
@@ -105,9 +112,10 @@ public class PartnerOrderRevisionController {
     @GetMapping("/revisions/{no}")
     @RequirePermission(page = "sales.partner-order.history.view", action = PermissionAction.VIEW)
     public ApiResponse<PartnerOrderRevisionDetailResponse> getRevision(
-            @PathVariable UUID id,
+            @PathVariable String id,
             @PathVariable int no) {
-        return ApiResponse.ok(revisionService.getRevisionDetail(id, no));
+        UUID resolvedOrderId = resolveOrderId(id);
+        return ApiResponse.ok(revisionService.getRevisionDetail(resolvedOrderId, no));
     }
 
     /**
@@ -123,7 +131,7 @@ public class PartnerOrderRevisionController {
      * {@link PartnerOrderRevisionService#restore} 에 위임한다.
      * UUID 파싱/actorName 비공개 가드는 service 책임.
      *
-     * @param id         대상 거래처 주문 UUID (경로 변수)
+     * @param id         대상 거래처 주문 식별자(UUID 또는 주문번호 path-id)
      * @param no         복원할 시점의 revisionNo (경로 변수)
      * @param callerId   호출자 UUID 문자열 (X-User-Id, 선택)
      * @param callerName 호출자 표시명 (X-User-Name, 선택)
@@ -143,14 +151,23 @@ public class PartnerOrderRevisionController {
     @PostMapping("/revisions/{no}/restore")
     @RequirePermission(page = "sales.partner-order.revisions", action = PermissionAction.RESTORE)
     public ApiResponse<PartnerOrderRestoreResponse> restoreRevision(
-            @PathVariable UUID id,
+            @PathVariable String id,
             @PathVariable int no,
             @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId,
             @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
 
+        UUID resolvedOrderId = resolveOrderId(id);
         UUID actorId = callerId != null ? tryParseUuid(callerId) : null;
-        PartnerOrderRestoreResult result = revisionService.restore(id, no, actorId, callerName, null);
+        PartnerOrderRestoreResult result = revisionService.restore(resolvedOrderId, no, actorId, callerName, null);
         return ApiResponse.ok(PartnerOrderRestoreResponse.from(result));
+    }
+
+    private UUID resolveOrderId(String orderId) {
+        return PartnerOrderIdResolver.findByIdentifier(partnerOrderRepository, orderId)
+                .map(PartnerOrder::getId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.PARTNER_ORDER_NOT_FOUND,
+                        ErrorCode.PARTNER_ORDER_NOT_FOUND.getDefaultMessage()));
     }
 
     /**

@@ -83,6 +83,28 @@ class PartnerOrderRevisionListResilienceIT extends AbstractPostgresIT {
 
     @Test
     @WithMockUser(username = "sales", roles = {"SALES"})
+    @DisplayName("슬래시 주문번호 path-id(%2F 인코딩)와 UUID 모두 /revisions 200으로 조회된다")
+    void listWithSummary_acceptsEncodedSlashOrderNumberPathIdAndUuid() throws Exception {
+        UUID orderId = saveOrder("2026/06/19-1");
+        saveRevision(orderId, 1, snapshotWithUnknownFields("2026/06/19-1"));
+
+        mockMvc.perform(get("/api/v1/partner-orders/2026%2F06%2F19-1/revisions")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].revisionNo").value(1));
+
+        mockMvc.perform(get("/api/v1/partner-orders/{id}/revisions", orderId)
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].revisionNo").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "sales", roles = {"SALES"})
     @DisplayName("① unknown 필드가 추가된 snapshot 은 /revisions 200으로 유지된다")
     void listWithSummary_toleratesUnknownFieldsInStoredSnapshot() throws Exception {
         UUID orderId = saveOrder("2026/06/01-310");

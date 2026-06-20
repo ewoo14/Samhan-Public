@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,11 +19,13 @@ import com.samhanair.logis.partnerorder.client.PartnerAuthClient;
 import com.samhanair.logis.partnerorder.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.partnerorder.audit.service.PartnerOrderAuditLogService;
 import com.samhanair.logis.partnerorder.audit.web.PartnerOrderAuditLogController;
+import com.samhanair.logis.partnerorder.domain.PartnerOrder;
 import com.samhanair.logis.partnerorder.editrequest.domain.PartnerOrderEditRequest;
 import com.samhanair.logis.partnerorder.editrequest.service.PartnerOrderEditRequestService;
 import com.samhanair.logis.partnerorder.editrequest.web.PartnerOrderEditRequestController;
 import com.samhanair.logis.partnerorder.realtime.PartnerOrderRealtimeBroker;
 import com.samhanair.logis.partnerorder.realtime.PartnerOrderRealtimeController;
+import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
 import com.samhanair.logis.partnerorder.repository.TutorialStateRepository;
 import com.samhanair.logis.partnerorder.service.PartnerOrderConfirmService;
 import com.samhanair.logis.partnerorder.service.PartnerOrderDeleteService;
@@ -153,6 +156,7 @@ class PartnerOrderPermissionControllerIT {
     @MockBean private PartnerAuthClient partnerAuthClient;
     @MockBean private PartnerOrderAuditLogService auditLogService;
     @MockBean private PartnerOrderRealtimeBroker realtimeBroker;
+    @MockBean private PartnerOrderRepository partnerOrderRepository;
     @MockBean private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     @BeforeEach
@@ -223,6 +227,10 @@ class PartnerOrderPermissionControllerIT {
         lenient().when(tutorialStateRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(auditLogService.listByOrderIdentifier(anyString())).thenReturn(List.of());
         lenient().when(realtimeBroker.subscribe(any())).thenReturn(new SseEmitter(100L));
+        PartnerOrder order = mock(PartnerOrder.class);
+        lenient().when(order.getId()).thenReturn(ORDER_ID);
+        lenient().when(partnerOrderRepository.findByOrderNo(anyString())).thenReturn(Optional.empty());
+        lenient().when(partnerOrderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
     }
 
     @ParameterizedTest(name = "{0} grant")

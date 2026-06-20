@@ -1,5 +1,10 @@
 package com.samhanair.logis.partnerorder.realtime;
 
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partnerorder.domain.PartnerOrder;
+import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
+import com.samhanair.logis.partnerorder.util.PartnerOrderIdResolver;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.security.permission.PermissionAction;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +49,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class PartnerOrderRealtimeController {
 
     private final PartnerOrderRealtimeBroker broker;
+    private final PartnerOrderRepository partnerOrderRepository;
 
     /**
      * SSE 구독. 무한 timeout — 30s heartbeat 로 keep-alive.
@@ -55,7 +61,16 @@ public class PartnerOrderRealtimeController {
     })
     @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequirePermission(page = "sales.partner-order.history.view", action = PermissionAction.VIEW)
-    public SseEmitter subscribe(@PathVariable UUID partnerOrderId) {
-        return broker.subscribe(partnerOrderId);
+    public SseEmitter subscribe(@PathVariable String partnerOrderId) {
+        UUID resolvedOrderId = resolveOrderId(partnerOrderId);
+        return broker.subscribe(resolvedOrderId);
+    }
+
+    private UUID resolveOrderId(String orderId) {
+        return PartnerOrderIdResolver.findByIdentifier(partnerOrderRepository, orderId)
+                .map(PartnerOrder::getId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.PARTNER_ORDER_NOT_FOUND,
+                        ErrorCode.PARTNER_ORDER_NOT_FOUND.getDefaultMessage()));
     }
 }
