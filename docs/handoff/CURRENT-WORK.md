@@ -18,6 +18,10 @@
 - **real-qa Playwright 프록시 글롭 함정**: `page.route('**/accounting/**')` 같은 넓은 글롭은 앱 lazy 라우트 청크(`/routes/accounting/*.tsx`)까지 매칭→게이트웨이 404→앱 마운트 실패(#root 빈 백지). **`resourceType`(xhr/fetch) 가드 + `/collab/`·`/api/v1/` 전용 글롭**으로 백엔드만 가로채야. 렌더러=`vite --config vite.renderer.dev.config.ts`+`VITE_API_BASE_URL`, networkidle 금지(SSE 재시도로 영원히 busy)→presence-indicator 가시성 대기. (Codex 협업으로 진단)
 - **로컬 Docker DB checksum 드리프트**: accounting V39/groupware V7(#482 신규 마이그)이 로컬 DB(과거 피처브랜치 적용)와 checksum 불일치 → 기동 실패. **내 PR 무관·prod 무해**(status A 신규추가, fresh DB=CI green). flyway repair(checksum 정렬)로 로컬 unblock.
 
+### ✅ 열린 PR 2건 해결 완료 (개발책임자 "나머지 열린 PR도 해결" 요청)
+- **#543** 회계 메뉴 갭-매핑 결과(A=NEW, B~H 기존 확장) spec — 머지(docs, clean).
+- **#544** 회계 자금현황 조회 슬A — 머지(merge `389ec1c23`). 🪤 주말 산출이 CI UNSTABLE 로 열려있던 것: ①CI 실패 근본=IT `getContentAsString()` ISO-8859-1 한글깨짐(서비스/시드 정상, [[mockmvc-getcontentasstring-charset]])→UTF_8 fix. ②듀얼리뷰: 🔵Opus 머지가능 판정→🟣**Codex 단독 P2 적발**(거래처별 증가 drill-down 이 accountCode만 전송→계정전체 상세 반환, 모달합계≠클릭셀 금액; UUID 비공개라 거래처 필터 불가)→개발책임자 **결정 A(계정 단위 drill-down)**→fix→🔵Opus 수렴 blocking0. ③라이브 QA: 자금현황 실 분개 렌더+모달 "101 현금—증가상세" 합계=계정 소계 일치. **잔여: 거래처별 drill-down=불투명 토큰 후속, #543 4결정=슬B~H 미래.** → **열린 PR 0건.**
+
 ### 🔜 다음 = PR2 배차(dispatch) presence — **스코핑 결정 필요(개발책임자)**
 - 배차는 FE collab 패널 미존재(`DispatchCollabCommentController`=comment-only, `/admin/dispatch-tasks/{id}/collab`). presence 롤아웃하려면 **DispatchCollaborationPanel 신설 + 노출 위치(배차 보드 카드/상세) 결정** 필요 → 4문서와 난이도 별격이라 PR1에서 분리.
 - 그 외 잔여(우선순위 지정 시): SP-08 parity 3·사원서명·배차 query-key UX·재배차 캡처 + 게이트(cutover/벤더).
