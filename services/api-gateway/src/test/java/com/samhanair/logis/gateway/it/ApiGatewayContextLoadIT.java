@@ -172,6 +172,7 @@ class ApiGatewayContextLoadIT {
                 .as("JwtAuthentication 미적용 공개 라우트 전수")
                 .containsExactly(
                         "auth-service",
+                        "user-service-employee-signatures-public",
                         "slip-service-public",
                         "partner-auth-public-v1",
                         "auth-service-v1",
@@ -183,6 +184,12 @@ class ApiGatewayContextLoadIT {
         for (String id : noJwtRouteIds) {
             assertHasStripInboundIdentityHeadersFilter(routes, id);
         }
+
+        assertHasStripInboundIdentityHeadersFilter(routes, "user-service-employee-signatures-public");
+        assertThat(filterNames(findRoute(routes, "user-service-employee-signatures-public")))
+                .as("user-service-employee-signatures-public 은 JwtAuthentication 없이 공개되어야 한다")
+                .doesNotContain("JwtAuthentication");
+        assertHasStripPrefix(routes, "user-service-employee-signatures-public", "1");
     }
 
     /** F6 주문서 bootstrap/gate/log 공개 라우트 — 인증 없이 접근하되 identity header spoof 는 제거. */
@@ -245,6 +252,17 @@ class ApiGatewayContextLoadIT {
                 .as("%s 는 no-strip 이어야 한다 — StripPrefix 필터 미보유", id)
                 .extracting(FilterDefinition::getName)
                 .doesNotContain("StripPrefix");
+    }
+
+    /** 주어진 id 의 라우트가 기대 StripPrefix 값을 보유하는지 단언. */
+    private static void assertHasStripPrefix(List<RouteDefinition> routes, String id, String parts) {
+        RouteDefinition route = findRoute(routes, id);
+        assertThat(route.getFilters())
+                .as("%s 는 StripPrefix=%s 필터를 보유해야 한다", id, parts)
+                .anySatisfy(filter -> {
+                    assertThat(filter.getName()).isEqualTo("StripPrefix");
+                    assertThat(filter.getArgs().values()).containsExactly(parts);
+                });
     }
 
     /** 주어진 id 의 라우트가 {@code JwtAuthentication} 필터를 보유하는지(#24 인증 우회 회귀 가드) 단언. */

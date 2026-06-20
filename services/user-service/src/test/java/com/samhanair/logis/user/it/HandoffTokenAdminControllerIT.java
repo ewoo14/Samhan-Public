@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,11 +17,14 @@ import com.samhanair.logis.user.UserServiceApplication;
 import com.samhanair.logis.user.client.AuthClient;
 import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
+import com.samhanair.logis.user.domain.SignatureChannel;
 import com.samhanair.logis.user.repository.DepartmentRepository;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.EmployeeSignatureHandoffTokenRepository;
 import com.samhanair.logis.user.service.EmployeeSignatureHandoffService;
+import java.security.MessageDigest;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -31,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** 핸드오프 토큰 발급/상태 admin 엔드포인트 IT (slice C1b). */
@@ -42,6 +47,8 @@ class HandoffTokenAdminControllerIT extends AbstractPostgresIT {
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String ROLE_HEADER = "X-User-Role";
     private static final String DEPARTMENT_HEADER = "X-User-Department";
+    private static final byte[] PNG = Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
 
     @Autowired private MockMvc mockMvc;
     @Autowired private DepartmentRepository departmentRepository;
@@ -107,6 +114,41 @@ class HandoffTokenAdminControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void 다른_사원_ID로_유효토큰_조회는_404() throws Exception {
+        String token = postTokenAndExtract();
+        Employee other = employeeRepository.save(Employee.create(
+                UUID.randomUUID(), "handoff-other-" + UUID.randomUUID(), "다른핸드오프대상", "사원",
+                Role.SALES, employee.getDepartment(), false, LocalDate.of(2026, 1, 1), null, null));
+
+        mockMvc.perform(withMaster(get("/api/v1/admin/users/{id}/signature/handoff/{token}/status",
+                        other.getId(), token)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 관리자_직접업로드_후_기존_미사용_핸드오프_토큰_제출은_404이고_서명은_유지된다() throws Exception {
+        String token = postTokenAndExtract();
+        byte[] adminPng = PNG;
+        String adminHash = sha256Hex(adminPng);
+
+        mockMvc.perform(withMaster(patch("/api/v1/admin/users/{id}/signature", employee.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(uploadBody(adminPng, adminHash, SignatureChannel.UPLOAD)))
+                .andExpect(status().isOk());
+
+        byte[] mobilePng = new byte[] {
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x55
+        };
+        mockMvc.perform(post("/public/employee-signatures/{token}", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(publicBody(mobilePng, sha256Hex(mobilePng))))
+                .andExpect(status().isNotFound());
+
+        Employee saved = employeeRepository.findById(employee.getId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(saved.getSignatureHash()).isEqualTo(adminHash);
+    }
+
+    @Test
     void 동시_발급도_최종_미사용토큰은_1개만_남는다() throws Exception {
         var executor = Executors.newFixedThreadPool(2);
         try {
@@ -131,6 +173,27 @@ class HandoffTokenAdminControllerIT extends AbstractPostgresIT {
                 .andReturn();
         String body = result.getResponse().getContentAsString();
         return com.jayway.jsonpath.JsonPath.read(body, "$.data.token");
+    }
+
+    private String uploadBody(byte[] png, String hash, SignatureChannel channel) {
+        return """
+                {"signaturePngBase64":"%s","signatureHash":"%s","channel":"%s"}
+                """.formatted(Base64.getEncoder().encodeToString(png), hash, channel.name());
+    }
+
+    private String publicBody(byte[] png, String hash) {
+        return """
+                {"signaturePngBase64":"%s","signatureHash":"%s"}
+                """.formatted(Base64.getEncoder().encodeToString(png), hash);
+    }
+
+    private static String sha256Hex(byte[] data) throws Exception {
+        byte[] d = MessageDigest.getInstance("SHA-256").digest(data);
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : d) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder withMaster(

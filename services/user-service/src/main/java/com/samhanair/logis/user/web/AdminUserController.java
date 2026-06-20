@@ -277,8 +277,10 @@ public class AdminUserController {
             @Valid @RequestBody EmployeeSignatureUploadRequest request,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
         UUID caller = parseCaller(callerHeader);
-        return ApiResponse.ok(signatureService.register(
-                id, request, caller == null ? null : caller.toString()));
+        String callerUserId = caller == null ? null : caller.toString();
+        EmployeeSignatureResponse response = signatureService.register(id, request, callerUserId);
+        handoffService.revokeOpenTokens(id, callerUserId);
+        return ApiResponse.ok(response);
     }
 
     /**
@@ -299,7 +301,9 @@ public class AdminUserController {
             @RequestParam(value = "reason") String reason,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
         UUID caller = parseCaller(callerHeader);
-        signatureService.invalidate(id, reason, caller == null ? "system" : caller.toString());
+        String callerUserId = caller == null ? "system" : caller.toString();
+        signatureService.invalidate(id, reason, callerUserId);
+        handoffService.revokeOpenTokens(id, callerUserId);
     }
 
     /**

@@ -68,6 +68,21 @@ public class EmployeeSignatureHandoffService {
     }
 
     /**
+     * 동일 사원의 열린 미사용 토큰 전체 무효화.
+     *
+     * <p>관리자가 서명을 직접 업로드하거나 무효화한 뒤 기존 모바일 핸드오프 링크가
+     * TTL 내에 뒤늦게 제출되어 현재 서명을 덮어쓰지 못하게 soft-delete 한다.
+     *
+     * @param employeeId 서명 대상 사원
+     * @param actorUserId 무효화 처리자 user-id (blank 이면 system)
+     */
+    public void revokeOpenTokens(UUID employeeId, String actorUserId) {
+        String deletedBy = actorUserId == null || actorUserId.isBlank() ? "system" : actorUserId;
+        tokenRepository.findAllByEmployeeIdAndUsedAtIsNull(employeeId)
+                .forEach(token -> token.markDeleted(deletedBy));
+    }
+
+    /**
      * 토큰 상태 — desktop 폴링용. 토큰 미발견(또는 무효화) 시 404.
      *
      * @throws BusinessException(NOT_FOUND) 토큰 미발견/무효화
@@ -83,12 +98,13 @@ public class EmployeeSignatureHandoffService {
     /**
      * 공개 모바일 서명 제출 — 토큰 게이트 (slice C1b · spec §5.2).
      *
-     * <p>처리: 토큰 lookup(없으면 404) → 만료(410 컨트롤러 매핑) → 사용됨(409) →
+     * <p>처리: 토큰 lookup(없으면 404) → 만료(410) → 사용됨(409) →
      * C1a {@link EmployeeSignatureService#register} 재사용(PNG magic-byte + ≤50KB + SHA-256 재검증
      * + audit RECORD) → 토큰 markUsed 소진.
      *
      * @throws BusinessException(NOT_FOUND) 토큰 미발견/사원 미발견
-     * @throws BusinessException(CONFLICT) 토큰 만료(컨트롤러 410 매핑) / 이미 사용
+     * @throws BusinessException(TOKEN_EXPIRED) 토큰 만료
+     * @throws BusinessException(CONFLICT) 이미 사용
      * @throws BusinessException(INVALID_INPUT) hash mismatch / base64 디코드 실패
      * @throws BusinessException(UNPROCESSABLE_ENTITY) PNG 50KB 초과 / 비-PNG
      */
@@ -96,7 +112,7 @@ public class EmployeeSignatureHandoffService {
         EmployeeSignatureHandoffToken handoff = tokenRepository.findByTokenForUpdate(token)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "유효하지 않은 토큰입니다"));
         if (handoff.isExpired()) {
-            throw new BusinessException(ErrorCode.CONFLICT, "토큰이 만료되었습니다");
+            throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "토큰이 만료되었습니다");
         }
         if (handoff.isUsed()) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용된 토큰입니다");

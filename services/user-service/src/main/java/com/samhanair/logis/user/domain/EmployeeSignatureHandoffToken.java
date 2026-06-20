@@ -55,7 +55,7 @@ public class EmployeeSignatureHandoffToken extends BaseEntity {
     @Column(name = "employee_id", nullable = false)
     private UUID employeeId;
 
-    @Column(name = "token", nullable = false, length = 64, unique = true)
+    @Column(name = "token", nullable = false, length = 64)
     private String token;
 
     @Column(name = "expires_at", nullable = false)

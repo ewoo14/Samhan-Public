@@ -78,6 +78,16 @@ class PublicSignatureSecurityGateIT extends AbstractPostgresIT {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 위조_identity_헤더로도_미발견_토큰_게이트를_우회할_수_없다_404() throws Exception {
+        mockMvc.perform(post("/public/employee-signatures/{token}", "missing-token-with-forged-headers")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MASTER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(PNG, sha256Hex(PNG))))
+                .andExpect(status().isNotFound());
+    }
+
     private String body(byte[] png, String hash) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
                 "signaturePngBase64", Base64.getEncoder().encodeToString(png),
