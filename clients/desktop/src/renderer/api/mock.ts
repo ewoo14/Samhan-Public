@@ -3032,9 +3032,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       if (method === 'GET') return envelope([...(estimateEditsStore[estimateId] ?? [])])
       if (method === 'POST') {
         const body = parseMockBody(config) as { changeSet?: string; reason?: string }
+        const changeSet = String(body.changeSet ?? '{}')
         const created = {
           id: `mock-estimate-collab-edit-${Date.now()}`,
-          changeSet: String(body.changeSet ?? '{}'),
+          changeSet,
           reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null,
           proposerName: MOCK_AUTH.fullName,
           status: 'ACCEPTED' as const,
@@ -3042,17 +3043,51 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
           decidedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         }
+        // 커밋된 편집을 가변 상세에 실제 반영 — memo/validUntil/line.{n}.note 만 (false-green fix)
+        let parsed: Record<string, { after?: unknown }>
+        try {
+          const value = JSON.parse(changeSet)
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return mockError(400, 'INVALID_INPUT', 'changeSet JSON 형식이 올바르지 않습니다')
+          }
+          parsed = value as Record<string, { after?: unknown }>
+        } catch {
+          return mockError(400, 'INVALID_INPUT', 'changeSet JSON 형식이 올바르지 않습니다')
+        }
+        const entries = Object.entries(parsed)
+        if (entries.length === 0) {
+          return mockError(400, 'INVALID_INPUT', 'changeSet에 적용할 필드가 없습니다')
+        }
+        const estimate = getMutableEstimateDetail(estimateId)
+        for (const [rawPath, change] of entries) {
+          const fieldPath = normalizeEstimateEditPath(rawPath)
+          if (!fieldPath || !change || typeof change !== 'object' || Array.isArray(change) || !('after' in change)) {
+            return mockError(400, 'INVALID_INPUT', '견적 협업은 memo, validUntil, line.{lineKey}.note 만 수정할 수 있습니다')
+          }
+          const after = change.after == null ? null : String(change.after)
+          if (fieldPath === 'memo') {
+            estimate.memo = after
+          } else if (fieldPath === 'validUntil') {
+            estimate.validUntil = after
+          } else {
+            const lineKey = Number.parseInt(fieldPath.match(/^line\.(\d+)\.note$/)![1]!, 10)
+            const line = estimate.lines[lineKey - 1]
+            if (!line) return mockError(400, 'INVALID_INPUT', `견적 라인 lineKey 범위가 올바르지 않습니다: ${lineKey}`)
+            line.note = after
+          }
+        }
+        estimate.version += 1
         estimateEditsStore[estimateId] = [created, ...(estimateEditsStore[estimateId] ?? [])]
-        return envelope({ edit: created, estimate: buildMockEstimateDetail(estimateId) })
+        return envelope({ edit: created, estimate })
       }
     }
   }
 
-  // GET /api/v1/slips/estimates/{id} (단건 상세) — EstimateDetail shape.
+  // GET /api/v1/slips/estimates/{id} (단건 상세) — EstimateDetail shape. 협업 edit 반영 가변 상세.
   const estimateSlipsDetailMatch = url.match(/\/slips\/estimates\/([^/?]+)$/)
   if (method === 'GET' && estimateSlipsDetailMatch && !url.includes('/print')) {
     const id = estimateSlipsDetailMatch[1]!
-    return envelope(buildMockEstimateDetail(id))
+    return envelope(getMutableEstimateDetail(id))
   }
 
   // PATCH /api/v1/slips/{slipId}/audit/overlay — 단일 필드 수정 + audit row INSERT
@@ -11272,6 +11307,40 @@ function buildMockEstimateDetail(id: string) {
     memo: isAccepted ? '대박빌딩 신축 — 채택' : '시스템에어컨 4Way 4HP 2EA 견적',
     lines: MOCK_ESTIMATE_DETAIL_LINES,
   }
+}
+
+/**
+ * 견적 협업 edit 가 반영되는 가변 상세. memo/validUntil/line.note 만 편집 허용(실 EstimateDocumentCollaborationPort 정합).
+ * note: 기존 mock 은 buildMockEstimateDetail 을 매번 새로 반환해 커밋 편집이 상세에 미반영(false-green) — Codex 라운드 P2 fix.
+ */
+type MutableEstimateDetail =
+  & Omit<ReturnType<typeof buildMockEstimateDetail>, 'memo' | 'validUntil' | 'lines'>
+  & { memo: string | null; validUntil: string | null }
+  & { lines: Array<Omit<ReturnType<typeof buildMockEstimateDetail>['lines'][number], 'note'> & { note: string | null }> }
+
+function getMutableEstimateDetail(id: string): MutableEstimateDetail {
+  const g = globalThis as unknown as { __SAMHAN_MOCK_ESTIMATE_DETAILS?: Record<string, MutableEstimateDetail> }
+  if (!g.__SAMHAN_MOCK_ESTIMATE_DETAILS) g.__SAMHAN_MOCK_ESTIMATE_DETAILS = {}
+  const store = g.__SAMHAN_MOCK_ESTIMATE_DETAILS
+  if (!store[id]) {
+    const seed = buildMockEstimateDetail(id)
+    store[id] = {
+      ...seed,
+      memo: seed.memo,
+      validUntil: seed.validUntil,
+      lines: seed.lines.map((line) => ({ ...line, note: line.note as string | null })),
+    }
+  }
+  return store[id]!
+}
+
+/** 견적 협업 changeSet path 정규화 — memo / validUntil / line.{n}.note 만 허용(그 외 null). */
+function normalizeEstimateEditPath(rawPath: string): string | null {
+  const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\//g, '.')
+  if (normalized === 'memo' || normalized === 'validUntil') return normalized
+  const lineNoteMatch = normalized.match(/^line\.(\d+)\.note$/)
+  if (!lineNoteMatch) return null
+  return Number.parseInt(lineNoteMatch[1]!, 10) >= 1 ? normalized : null
 }
 
 /** EstimateDetail status — api/estimateApi.ts EstimateStatus 미러 (mock 전용 타입 별칭). */
