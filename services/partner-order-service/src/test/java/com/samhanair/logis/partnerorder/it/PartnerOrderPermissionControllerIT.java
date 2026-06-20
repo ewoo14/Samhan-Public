@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,11 +19,13 @@ import com.samhanair.logis.partnerorder.client.PartnerAuthClient;
 import com.samhanair.logis.partnerorder.config.HeaderAuthenticationFilter;
 import com.samhanair.logis.partnerorder.audit.service.PartnerOrderAuditLogService;
 import com.samhanair.logis.partnerorder.audit.web.PartnerOrderAuditLogController;
+import com.samhanair.logis.partnerorder.domain.PartnerOrder;
 import com.samhanair.logis.partnerorder.editrequest.domain.PartnerOrderEditRequest;
 import com.samhanair.logis.partnerorder.editrequest.service.PartnerOrderEditRequestService;
 import com.samhanair.logis.partnerorder.editrequest.web.PartnerOrderEditRequestController;
 import com.samhanair.logis.partnerorder.realtime.PartnerOrderRealtimeBroker;
 import com.samhanair.logis.partnerorder.realtime.PartnerOrderRealtimeController;
+import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
 import com.samhanair.logis.partnerorder.repository.TutorialStateRepository;
 import com.samhanair.logis.partnerorder.service.PartnerOrderConfirmService;
 import com.samhanair.logis.partnerorder.service.PartnerOrderDeleteService;
@@ -69,6 +72,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -89,6 +93,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -153,6 +158,7 @@ class PartnerOrderPermissionControllerIT {
     @MockBean private PartnerAuthClient partnerAuthClient;
     @MockBean private PartnerOrderAuditLogService auditLogService;
     @MockBean private PartnerOrderRealtimeBroker realtimeBroker;
+    @MockBean private PartnerOrderRepository partnerOrderRepository;
     @MockBean private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     @BeforeEach
@@ -223,6 +229,10 @@ class PartnerOrderPermissionControllerIT {
         lenient().when(tutorialStateRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(auditLogService.listByOrderIdentifier(anyString())).thenReturn(List.of());
         lenient().when(realtimeBroker.subscribe(any())).thenReturn(new SseEmitter(100L));
+        PartnerOrder order = mock(PartnerOrder.class);
+        lenient().when(order.getId()).thenReturn(ORDER_ID);
+        lenient().when(partnerOrderRepository.findByOrderNo(anyString())).thenReturn(Optional.empty());
+        lenient().when(partnerOrderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
     }
 
     @ParameterizedTest(name = "{0} grant")
@@ -277,6 +287,28 @@ class PartnerOrderPermissionControllerIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body), role))
                 .andExpect(status().is(expectedStatus));
+    }
+
+    @Test
+    void realtime_withExistingNonUuidPathId_startsSseStream() throws Exception {
+        PartnerOrder order = mock(PartnerOrder.class);
+        when(order.getId()).thenReturn(ORDER_ID);
+        when(partnerOrderRepository.findByOrderNo("2026-04-15-1")).thenReturn(Optional.empty());
+        when(partnerOrderRepository.findByOrderNo("2026/04/15-1")).thenReturn(Optional.of(order));
+
+        MvcResult result = mockMvc.perform(withActor(get("/api/v1/partner-orders/2026-04-15-1/realtime"), "STAFF"))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(result.getRequest().isAsyncStarted()).isTrue();
+    }
+
+    @Test
+    void realtime_withUnknownNonUuidPathId_returns404() throws Exception {
+        when(partnerOrderRepository.findByOrderNo("2099-01-01-9")).thenReturn(Optional.empty());
+        when(partnerOrderRepository.findByOrderNo("2099/01/01-9")).thenReturn(Optional.empty());
+
+        mockMvc.perform(withActor(get("/api/v1/partner-orders/2099-01-01-9/realtime"), "STAFF"))
+                .andExpect(status().isNotFound());
     }
 
     static Stream<EndpointCase> endpoints() {

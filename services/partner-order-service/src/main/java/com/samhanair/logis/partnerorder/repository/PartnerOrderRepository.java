@@ -32,6 +32,9 @@ public interface PartnerOrderRepository extends JpaRepository<PartnerOrder, UUID
     @Query(value = "SELECT * FROM partner_orders WHERE id = :id", nativeQuery = true)
     Optional<PartnerOrder> findByIdIncludingDeleted(@Param("id") UUID id);
 
+    @Query(value = "SELECT * FROM partner_orders WHERE order_no = :orderNo", nativeQuery = true)
+    Optional<PartnerOrder> findByOrderNoIncludingDeleted(@Param("orderNo") String orderNo);
+
     /** 거래처 history 페이지 조회 (UUID 미노출 — bizCode 만 사용자 노출). */
     Page<PartnerOrder> findAllByBizCodeAndConfirmedAtBetweenOrderByConfirmedAtDesc(
             String bizCode, LocalDateTime from, LocalDateTime to, Pageable pageable);
