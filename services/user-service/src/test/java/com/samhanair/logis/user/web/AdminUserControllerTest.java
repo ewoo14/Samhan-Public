@@ -13,6 +13,7 @@ import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
+import com.samhanair.logis.user.service.EmployeeSignatureHandoffService;
 import com.samhanair.logis.user.service.EmployeeSignatureService;
 import com.samhanair.logis.user.service.EmployeeProvisioningService;
 import com.samhanair.logis.user.web.dto.AdminUserCreateRequest;
@@ -48,9 +49,11 @@ class AdminUserControllerTest {
             mock(RoleChangeHistoryRepository.class);
     private final EmployeeSignatureService signatureService =
             mock(EmployeeSignatureService.class);
+    private final EmployeeSignatureHandoffService handoffService =
+            mock(EmployeeSignatureHandoffService.class);
 
     private final AdminUserController controller = new AdminUserController(
-            provisioningService, employeeRepository, roleHistoryRepository, signatureService);
+            provisioningService, employeeRepository, roleHistoryRepository, signatureService, handoffService);
 
     // -------------------------------------------------------------------------
     // list
