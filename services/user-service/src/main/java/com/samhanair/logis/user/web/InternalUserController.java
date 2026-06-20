@@ -4,12 +4,15 @@ import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.user.repository.EmployeeRepository;
+import com.samhanair.logis.user.service.EmployeeSignatureService;
 import com.samhanair.logis.user.web.dto.BulkDisplayNameRequest;
 import com.samhanair.logis.user.web.dto.BulkVerifyRequest;
 import com.samhanair.logis.user.web.dto.BulkVerifyResponse;
+import com.samhanair.logis.user.web.dto.EmployeeSignatureDto;
 import com.samhanair.logis.user.web.dto.InternalEmployeeDirectoryResponse;
 import com.samhanair.logis.user.web.dto.InternalEmployeeLookupResponse;
 import com.samhanair.logis.user.web.dto.InternalEmployeeSearchResponse;
+import com.samhanair.logis.user.web.dto.InternalSignatureBatchRequest;
 import com.samhanair.logis.user.web.dto.InternalUserResponse;
 import jakarta.validation.Valid;
 import java.util.HashMap;
@@ -49,6 +52,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalUserController {
 
     private final EmployeeRepository employeeRepository;
+    private final EmployeeSignatureService signatureService;
 
     /**
      * 종합견적서 담당자 directory 조회.
@@ -213,5 +217,22 @@ public class InternalUserController {
         employeeRepository.findAllByIdIn(distinct)
                 .forEach(employee -> displayNames.put(employee.getId(), employee.getFullName()));
         return ApiResponse.ok(displayNames);
+    }
+
+    /**
+     * 사원 서명 다건 조회 - C1a. slip-service 가 출고전표 결재란(작성자/출고인/검수인) 인감을
+     * enrich 할 때 dispatcher/inspector/owner userId 의 서명을 한 번의 RPC 로 해석한다.
+     *
+     * <p>join key = {@code Employee.id} = slip 의 createdBy/dispatcherUserId/inspectorUserId (P4).
+     * display-names/verify-bulk 배치 패턴 미러 - {@code findAllByIdIn}. 미등록 사원은 맵에서 생략한다.
+     *
+     * @param req 조회 대상 user UUID 목록
+     * @return 존재·등록 사원의 {@code userId -> EmployeeSignatureDto} 매핑
+     */
+    @PostMapping("/signatures")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<Map<UUID, EmployeeSignatureDto>> signatures(
+            @Valid @RequestBody InternalSignatureBatchRequest req) {
+        return ApiResponse.ok(signatureService.resolveSignatures(req.userIds()));
     }
 }
