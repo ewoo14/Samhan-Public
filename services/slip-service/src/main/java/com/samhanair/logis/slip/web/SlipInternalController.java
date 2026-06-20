@@ -14,6 +14,7 @@ import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipSignatureService;
 import com.samhanair.logis.slip.web.dto.InternalSignatureRegistrationRequest;
 import com.samhanair.logis.slip.web.dto.InternalSignatureResponse;
+import com.samhanair.logis.slip.web.dto.OutboundSlipLineResponse;
 import com.samhanair.logis.slip.web.dto.SlipLineSnapshot;
 import com.samhanair.logis.slip.web.dto.SlipSummary;
 import io.swagger.v3.oas.annotations.Operation;
@@ -222,6 +223,54 @@ public class SlipInternalController {
      * @param status 슬립 상태 (SIGNABLE_STATUSES 가드용 hint)
      */
     public record LookupResponse(UUID slipId, String slipNo, String status) {}
+
+    /**
+     * DPS 입고비교용 출고전표 라인 조회 — inventory-service DpsCompareService source.
+     *
+     * <p>기존 기간별 조회 query({@link SlipRepository#findByPeriodWithLines}) 를 재사용해 OUTBOUND
+     * 슬립과 라인을 함께 가져온 뒤 라인 단위로 평탄화한다. productCode 는 SlipLine 에 별도 필드가
+     * 없으므로 품번 snapshot 으로 쓰이는 {@code modelName} 을 내려보낸다.
+     *
+     * @param from 조회 시작일 (포함)
+     * @param to 조회 종료일 (포함)
+     * <p>경로: {@code GET /internal/slips/outbound-lines}. arologis slip-level
+     * {@code /internal/slips/outbound} 계약과 충돌하지 않도록 line-level 전용 경로를 사용한다.
+     *
+     * @return ApiResponse wrapper 안 출고전표 라인 목록
+     */
+    @Operation(summary = "Internal 출고전표 라인 조회 (DPS 입고비교)",
+            description = "X-Internal-Token 인증. OUTBOUND 슬립을 기간 조회 후 라인 단위로 평탄화한다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "조회 성공 (빈 결과는 빈 리스트)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+                    description = "from/to 필수 누락 또는 to < from"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
+                    description = "X-Internal-Token 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+                    description = "X-Internal-Token 누락")
+    })
+    @GetMapping("/outbound-lines")
+    @PreAuthorize("hasRole('MASTER')")
+    public ApiResponse<List<OutboundSlipLineResponse>> findOutboundSlips(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        if (from == null || to == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "from/to 날짜는 필수입니다");
+        }
+        if (to.isBefore(from)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "to 날짜는 from 날짜 이후여야 합니다");
+        }
+
+        List<OutboundSlipLineResponse> lines = slipRepository
+                .findByPeriodWithLines(SlipType.OUTBOUND, from, to, null)
+                .stream()
+                .flatMap(slip -> slip.getLines().stream()
+                        .map(line -> OutboundSlipLineResponse.from(slip, line)))
+                .toList();
+        return ApiResponse.ok(lines);
+    }
 
     // ---- SP-SAS-1 Task 7 — accounting-service cross-service read-only contract ----
 
