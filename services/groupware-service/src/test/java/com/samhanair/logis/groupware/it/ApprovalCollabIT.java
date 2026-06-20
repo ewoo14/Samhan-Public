@@ -2,6 +2,7 @@ package com.samhanair.logis.groupware.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -315,6 +316,86 @@ class ApprovalCollabIT extends AbstractPostgresIT {
         mvc.perform(get("/admin/groupware/approvals/{approvalId}/collab/stream", approvalId)
                         .header(USER_ID_HEADER, ACTOR_ID)
                         .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isForbidden());
+    }
+
+    /**
+     * presence join/list endpoint 는 헤더 인증, 입력 검증, UUID 비노출 wire 계약, 조회 권한 가드를 지킨다.
+     *
+     * <p>단언 순서:
+     * <ol>
+     *   <li>X-User-Id 헤더 누락 → 401</li>
+     *   <li>sessionId 빈값 → 400</li>
+     *   <li>정상 join → 200 + data keys = {sessionId, displayName, color} (userId/lastSeenAt 비노출)</li>
+     *   <li>GET /presence → 1건</li>
+     *   <li>groupware.approvals VIEW 권한 거부 → 403</li>
+     * </ol>
+     */
+    @Test
+    void presence_join_list_validates_header_input_payload_and_permission_guard() throws Exception {
+        // (a) X-User-Id 헤더 누락 → 401
+        UUID approvalId401 = seedApproval("presence-401-제목", "본문", 1).getId();
+        mvc.perform(post("/admin/groupware/approvals/{approvalId}/collab/presence/join", approvalId401)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-401",
+                                "displayName", "presence tester"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // (b) sessionId 빈값 → 400
+        UUID approvalId400 = seedApproval("presence-400-제목", "본문", 1).getId();
+        mvc.perform(post("/admin/groupware/approvals/{approvalId}/collab/presence/join", approvalId400)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        // (c) 정상 join → 200 + data keys = {sessionId, displayName, color}
+        UUID approvalIdOk = seedApproval("presence-ok-제목", "본문", 1).getId();
+        String response = mvc.perform(post(
+                        "/admin/groupware/approvals/{approvalId}/collab/presence/join", approvalIdOk)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header("X-User-Name", "presence 테스터")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-1",
+                                "displayName", "ignored body name"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data.displayName").value("presence 테스터"))
+                .andExpect(jsonPath("$.data.color").exists())
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.accountId").doesNotExist())
+                .andExpect(jsonPath("$.data.lastSeenAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>)
+                objectMapper.readValue(response, Map.class).get("data");
+        assertThat(data).containsOnlyKeys("sessionId", "displayName", "color");
+
+        // (d) GET /presence → 1건
+        mvc.perform(get("/admin/groupware/approvals/{approvalId}/collab/presence", approvalIdOk)
+                        .header(USER_ID_HEADER, ACTOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data[0].userId").doesNotExist());
+
+        // (e) VIEW 권한 거부 → 403
+        UUID approvalId403 = seedApproval("presence-403-제목", "본문", 1).getId();
+        when(dynamicPermissionClient.check(
+                any(UUID.class), eq(PAGE_CODE), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.canView(anyString(), eq(PAGE_CODE))).thenReturn(false);
+
+        mvc.perform(post("/admin/groupware/approvals/{approvalId}/collab/presence/join", approvalId403)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-denied"))))
                 .andExpect(status().isForbidden());
     }
 

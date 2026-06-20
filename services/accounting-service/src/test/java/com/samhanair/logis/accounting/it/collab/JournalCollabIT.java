@@ -2,6 +2,7 @@ package com.samhanair.logis.accounting.it.collab;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,6 +26,7 @@ import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.accounting.it.AbstractPostgresIT;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.collab.CollabDocumentType;
+import com.samhanair.logis.security.permission.PermissionAction;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
@@ -286,6 +288,77 @@ class JournalCollabIT extends AbstractPostgresIT {
                         "0, NOW(), 'system', false)",
                 UUID.randomUUID(), journalId, authorId))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * presence join/list endpoint 는 헤더 인증, 입력 검증, UUID 비노출 wire 계약, 조회 권한 가드를 지킨다.
+     *
+     * <p>단언:
+     * <ol>
+     *   <li>X-User-Id 없는 join → 401 UNAUTHORIZED</li>
+     *   <li>sessionId 빈값 → 400 INVALID_INPUT</li>
+     *   <li>정상 join → 200 + data 키 정확히 {sessionId, displayName, color} 만 (userId/accountId/lastSeenAt 부재)</li>
+     *   <li>displayName 은 X-User-Name 헤더 우선 (body name 무시)</li>
+     *   <li>GET presence → 1건 + userId 부재</li>
+     *   <li>accounting.journals VIEW 권한 deny stub → 403</li>
+     * </ol>
+     */
+    @Test
+    void presence_join_list_validates_header_input_payload_and_permission_guard() throws Exception {
+        UUID unauthorizedJournalId = seedPostedJournal("20990613-PRS-401-" + SEQ.getAndIncrement()).getId();
+        mvc.perform(post("/accounting/journals/{journalId}/collab/presence/join", unauthorizedJournalId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-401",
+                                "displayName", "presence tester"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        UUID invalidJournalId = seedPostedJournal("20990613-PRS-400-" + SEQ.getAndIncrement()).getId();
+        mvc.perform(post("/accounting/journals/{journalId}/collab/presence/join", invalidJournalId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        UUID journalId = seedPostedJournal("20990613-PRS-OK-" + SEQ.getAndIncrement()).getId();
+        String response = mvc.perform(post("/accounting/journals/{journalId}/collab/presence/join", journalId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header(USER_NAME_HEADER, "presence tester")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-1",
+                                "displayName", "ignored body name"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data.displayName").value("presence tester"))
+                .andExpect(jsonPath("$.data.color").exists())
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.accountId").doesNotExist())
+                .andExpect(jsonPath("$.data.lastSeenAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(dataMap(response)).containsOnlyKeys("sessionId", "displayName", "color");
+
+        mvc.perform(get("/accounting/journals/{journalId}/collab/presence", journalId)
+                        .header(USER_ID_HEADER, ACTOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data[0].userId").doesNotExist());
+
+        UUID deniedJournalId = seedPostedJournal("20990613-PRS-403-" + SEQ.getAndIncrement()).getId();
+        when(dynamicPermissionClient.check(
+                any(UUID.class), eq("accounting.journals"), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.canView(any(), eq("accounting.journals")))
+                .thenReturn(false);
+
+        mvc.perform(post("/accounting/journals/{journalId}/collab/presence/join", deniedJournalId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", "presence-session-denied"))))
+                .andExpect(status().isForbidden());
     }
 
     /** 정책: COLLAB_LOCKED 은 REVERSED 만 — DRAFT 회계전표도 적요/라인메모 수정완료가 허용된다. */

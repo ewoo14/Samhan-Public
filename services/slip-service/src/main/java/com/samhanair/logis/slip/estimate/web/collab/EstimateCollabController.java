@@ -10,6 +10,8 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.presence.PresenceEntry;
+import com.samhanair.logis.shared.realtime.presence.PresenceService;
 import com.samhanair.logis.slip.estimate.collab.EstimateCollabComment;
 import com.samhanair.logis.slip.estimate.collab.EstimateCollabEditService;
 import com.samhanair.logis.slip.estimate.collab.EstimateCollabSuggestionRepository;
@@ -21,6 +23,7 @@ import com.samhanair.logis.slip.estimate.web.collab.dto.CommitEstimateCollabEdit
 import com.samhanair.logis.slip.estimate.web.collab.dto.EstimateCollabCommentResponse;
 import com.samhanair.logis.slip.estimate.web.collab.dto.EstimateCollabEditResponse;
 import com.samhanair.logis.slip.estimate.web.collab.dto.EstimateCollabSuggestionResponse;
+import com.samhanair.logis.slip.estimate.web.collab.dto.EstimatePresenceRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -28,7 +31,10 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -63,6 +69,7 @@ public class EstimateCollabController {
     private final RealtimeBroker broker;
     private final EstimateRepository estimateRepository;
     private final EstimatePermissionGuard permissionGuard;
+    private final PresenceService presenceService;
 
     public EstimateCollabController(CollabCommentService<EstimateCollabComment> commentService,
                                     EstimateCollabEditService editService,
@@ -70,7 +77,8 @@ public class EstimateCollabController {
                                     EstimateDocumentCollaborationPort port,
                                     RealtimeBroker broker,
                                     EstimateRepository estimateRepository,
-                                    EstimatePermissionGuard permissionGuard) {
+                                    EstimatePermissionGuard permissionGuard,
+                                    PresenceService presenceService) {
         this.commentService = commentService;
         this.editService = editService;
         this.suggestionRepository = suggestionRepository;
@@ -78,6 +86,7 @@ public class EstimateCollabController {
         this.broker = broker;
         this.estimateRepository = estimateRepository;
         this.permissionGuard = permissionGuard;
+        this.presenceService = presenceService;
     }
 
     /** 견적 협업 댓글 등록. */
@@ -207,6 +216,69 @@ public class EstimateCollabController {
         return broker.subscribe(estimateId);
     }
 
+    /**
+     * 견적 협업 presence join/heartbeat.
+     *
+     * <p>신규 sessionId 의 경우 기존 collab SSE stream 으로 {@code presence:join} 이벤트가 발행된다.
+     * {@code X-User-Id} 헤더는 presence userId 로 필수이며, 없으면 401 을 반환한다.
+     * 조회 권한 가드({@link EstimatePermissionGuard#checkView}) 가 함께 적용된다.
+     */
+    @Operation(summary = "견적 협업 presence join/heartbeat")
+    @PostMapping("/{estimateId}/collab/presence/join")
+    @RequirePermission(page = EstimatePermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<PresenceEntry> joinPresence(
+            @PathVariable UUID estimateId,
+            @RequestBody(required = false) EstimatePresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName,
+            @RequestHeader(value = SYSTEM_MASTER_HEADER, required = false) String isSystemMaster) {
+        ensureEstimateExists(estimateId);
+        permissionGuard.checkView(parseAccountIdOrNull(callerId), isSystemMaster);
+        String userId = resolvePresenceUserId(callerId);
+        String sessionId = resolvePresenceSessionId(request);
+        String displayName = resolvePresenceDisplayName(callerName, request);
+        return ApiResponse.ok(presenceService.join(estimateId, sessionId, userId, displayName));
+    }
+
+    /**
+     * 견적 협업 presence leave.
+     *
+     * <p>호출자가 session owner 일 때만 {@code presence:leave} 이벤트가 발행된다.
+     * {@code X-User-Id} 헤더는 필수이며, 없으면 401 을 반환한다.
+     */
+    @Operation(summary = "견적 협업 presence leave")
+    @PostMapping("/{estimateId}/collab/presence/leave")
+    @RequirePermission(page = EstimatePermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<Void> leavePresence(
+            @PathVariable UUID estimateId,
+            @RequestBody(required = false) EstimatePresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId,
+            @RequestHeader(value = SYSTEM_MASTER_HEADER, required = false) String isSystemMaster) {
+        ensureEstimateExists(estimateId);
+        permissionGuard.checkView(parseAccountIdOrNull(callerId), isSystemMaster);
+        String userId = resolvePresenceUserId(callerId);
+        presenceService.leave(estimateId, resolvePresenceSessionId(request), userId);
+        return ApiResponse.ok(null);
+    }
+
+    /**
+     * 견적 협업 현재 presence 목록.
+     *
+     * <p>account UUID 는 wire payload 에 포함하지 않는다({@link PresenceEntry#lastSeenAt()} 은
+     * {@code @JsonIgnore} 처리됨). VIEW 권한이 없으면 403 을 반환한다.
+     */
+    @Operation(summary = "견적 협업 presence 목록")
+    @GetMapping("/{estimateId}/collab/presence")
+    @RequirePermission(page = EstimatePermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<List<PresenceEntry>> listPresence(
+            @PathVariable UUID estimateId,
+            @RequestHeader(value = CALLER_ID_HEADER, required = false) String callerId,
+            @RequestHeader(value = SYSTEM_MASTER_HEADER, required = false) String isSystemMaster) {
+        ensureEstimateExists(estimateId);
+        permissionGuard.checkView(parseAccountIdOrNull(callerId), isSystemMaster);
+        return ApiResponse.ok(presenceService.list(estimateId));
+    }
+
     private void ensureEstimateExists(UUID estimateId) {
         if (!estimateRepository.existsById(estimateId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "대상 견적을 찾을 수 없습니다");
@@ -250,5 +322,66 @@ public class EstimateCollabController {
 
     private String resolveDeleter(String callerId) {
         return (callerId == null || callerId.isBlank()) ? "system" : callerId;
+    }
+
+    /**
+     * presence 엔드포인트 전용 userId 해석.
+     *
+     * <p>가드용 {@link #parseAccountIdOrNull} 과 달리 null/공백이면 즉시 401 예외를 던진다.
+     * presence 는 반드시 식별된 사용자여야 한다.
+     */
+    private String resolvePresenceUserId(String callerId) {
+        String trimmed = callerId == null ? null : callerId.trim();
+        if (trimmed != null && !trimmed.isBlank()) {
+            return trimmed;
+        }
+        throw new BusinessException(ErrorCode.UNAUTHORIZED, "presence 사용자 정보를 확인할 수 없습니다");
+    }
+
+    /**
+     * presence 요청 body 에서 sessionId 를 추출한다.
+     *
+     * <p>sessionId 가 null/공백이면 400 예외를 던진다.
+     */
+    private String resolvePresenceSessionId(EstimatePresenceRequest request) {
+        String sessionId = request == null || request.sessionId() == null
+                ? null
+                : request.sessionId().trim();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "presence sessionId 는 필수입니다");
+        }
+        return sessionId;
+    }
+
+    /**
+     * X-User-Name 헤더 우선, 없으면 body displayName 을 사용한다.
+     *
+     * <p>헤더가 UUID 형태이거나 공백이면 body 로 fallback 하거나 null 을 반환한다.
+     * null 은 {@link PresenceService} 가 기본 표시명으로 대체한다.
+     */
+    private String resolvePresenceDisplayName(String callerName, EstimatePresenceRequest request) {
+        if (callerName != null && !callerName.isBlank()) {
+            String resolved = resolveActorName(callerName);
+            return "system".equals(resolved) ? null : resolved;
+        }
+        return request == null ? null : request.displayName();
+    }
+
+    /**
+     * {@code X-User-Id} 헤더 누락 시 401 응답 처리.
+     *
+     * <p>presence join/leave 는 해당 헤더를 {@code required = true} 로 선언하므로
+     * 헤더 누락 시 Spring 이 {@link MissingRequestHeaderException} 을 던진다.
+     * 이를 UNAUTHORIZED 로 매핑한다.
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingHeader(MissingRequestHeaderException ex) {
+        if (CALLER_ID_HEADER.equalsIgnoreCase(ex.getHeaderName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.fail(ErrorCode.UNAUTHORIZED,
+                            "presence 사용자 정보를 확인할 수 없습니다"));
+        }
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, ex.getMessage()));
     }
 }

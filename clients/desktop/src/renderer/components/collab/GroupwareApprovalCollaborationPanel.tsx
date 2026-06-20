@@ -23,6 +23,9 @@ import type { ApprovalTemplateField } from '../../api/groupwareApprovalTemplate'
 import { DynamicApprovalFieldInput } from '../groupware/DynamicApprovalFieldInput'
 import { GroupwareApprovalCollabRealtimeClient } from '../../realtime/GroupwareApprovalCollabRealtimeClient'
 import { usePermissions } from '../../hooks/usePermissions'
+import { usePresence } from '../../hooks/usePresence'
+import { GroupwareApprovalPresenceClient } from '../../realtime/createPresenceClient'
+import { PresenceIndicator } from './PresenceIndicator'
 
 export interface GroupwareApprovalCollabCurrentValues {
   title: string
@@ -132,6 +135,7 @@ export function GroupwareApprovalCollaborationPanel({
   const [editReason, setEditReason] = useState('')
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
+  const presenceEntries = usePresence({ entityId: approvalId, client: GroupwareApprovalPresenceClient, enabled: !!approvalId })
 
   const commentQueryKey = useMemo(() => ['groupwareApprovalCollabComments', approvalId] as const, [approvalId])
   const editQueryKey = useMemo(() => ['groupwareApprovalCollabEdits', approvalId] as const, [approvalId])
@@ -257,9 +261,12 @@ export function GroupwareApprovalCollaborationPanel({
       <Card padding={4} shadow="sm">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
           <h4 style={{ margin: 0 }}>협업</h4>
-          <span style={{ fontSize: 12, color: 'var(--color-neutral-500)', fontVariantNumeric: 'tabular-nums' }}>
-            {approvalNo}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <PresenceIndicator entries={presenceEntries} />
+            <span style={{ fontSize: 12, color: 'var(--color-neutral-500)', fontVariantNumeric: 'tabular-nums' }}>
+              {approvalNo}
+            </span>
+          </div>
         </div>
 
         <div className="detail-grid" style={{ alignItems: 'start' }}>

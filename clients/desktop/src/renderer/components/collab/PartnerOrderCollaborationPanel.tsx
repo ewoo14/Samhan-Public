@@ -20,6 +20,9 @@ import {
 } from '../../api/partnerOrderCollab'
 import { PartnerOrderCollabRealtimeClient } from '../../realtime/PartnerOrderCollabRealtimeClient'
 import { usePermissions } from '../../hooks/usePermissions'
+import { usePresence } from '../../hooks/usePresence'
+import { PartnerOrderPresenceClient } from '../../realtime/createPresenceClient'
+import { PresenceIndicator } from './PresenceIndicator'
 
 export interface PartnerOrderCollabEditableLine {
   /** BE PartnerOrderDocumentCollaborationPort lineKey 와 동일한 1-based 활성 라인 index. */
@@ -152,6 +155,7 @@ export function PartnerOrderCollaborationPanel({
   const [editReason, setEditReason] = useState('')
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
+  const presenceEntries = usePresence({ entityId: orderId, client: PartnerOrderPresenceClient, enabled: !!orderId })
 
   const commentQueryKey = useMemo(() => ['partnerOrderCollabComments', orderId] as const, [orderId])
   const editQueryKey = useMemo(() => ['partnerOrderCollabEdits', orderId] as const, [orderId])
@@ -300,7 +304,10 @@ export function PartnerOrderCollaborationPanel({
   return (
     <section data-testid="partner-order-collaboration-panel" style={{ marginTop: 24 }}>
       <Card padding={4} shadow="sm">
-        <h4 style={{ margin: 0, marginBottom: 16 }}>협업</h4>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <h4 style={{ margin: 0 }}>협업</h4>
+          <PresenceIndicator entries={presenceEntries} />
+        </div>
 
         <div className="detail-grid" style={{ alignItems: 'start' }}>
           <section aria-label="코멘트">

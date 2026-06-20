@@ -453,6 +453,92 @@ class PartnerOrderCollabIT extends AbstractPostgresIT {
                 "초기 2번 비고"));
     }
 
+    /**
+     * presence join/list endpoint 는 헤더 인증, 입력 검증, UUID 비노출 wire 계약, 조회 권한 가드를 지킨다.
+     *
+     * <p>orderId 는 UUID 또는 하이픈형 orderNo path identifier 둘 다 허용한다.
+     * (a) X-User-Id 누락 join → 401 UNAUTHORIZED
+     * (b) sessionId 빈값 → 400 INVALID_INPUT
+     * (c) 정상 join → 200 + data = {sessionId, displayName, color} 만 (userId/accountId/lastSeenAt 부재)
+     * (d) GET presence → 1건 + userId 부재
+     * (e) VIEW 권한 deny → 403
+     */
+    @Test
+    void presence_join_list_validates_header_input_payload_and_permission_guard() throws Exception {
+        // (a) X-User-Id 헤더 누락 → 401 UNAUTHORIZED
+        UUID unauthorizedOrderId = seedConfirmedOrder("2099/06/20-PRS-401-" + SEQ.getAndIncrement()).getId();
+        mvc.perform(post("/api/v1/partner-orders/{orderId}/collab/presence/join", unauthorizedOrderId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-401",
+                                "displayName", "presence tester"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // (b) sessionId 빈값 → 400 INVALID_INPUT
+        UUID invalidOrderId = seedConfirmedOrder("2099/06/20-PRS-400-" + SEQ.getAndIncrement()).getId();
+        mvc.perform(post("/api/v1/partner-orders/{orderId}/collab/presence/join", invalidOrderId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        // (c) 정상 join → 200 + wire payload = {sessionId, displayName, color} 만
+        PartnerOrder order = seedConfirmedOrder("2099/06/20-PRS-OK-" + SEQ.getAndIncrement());
+        UUID orderId = order.getId();
+        String response = mvc.perform(post("/api/v1/partner-orders/{orderId}/collab/presence/join", orderId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header(USER_NAME_HEADER, "presence tester")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-1",
+                                "displayName", "ignored body name"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data.displayName").value("presence tester"))
+                .andExpect(jsonPath("$.data.color").exists())
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.accountId").doesNotExist())
+                .andExpect(jsonPath("$.data.lastSeenAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(dataMap(response)).containsOnlyKeys("sessionId", "displayName", "color");
+
+        // (d) GET presence → 1건, userId 비노출
+        mvc.perform(get("/api/v1/partner-orders/{orderId}/collab/presence", orderId)
+                        .header(USER_ID_HEADER, ACTOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sessionId").value("presence-session-1"))
+                .andExpect(jsonPath("$.data[0].userId").doesNotExist());
+
+        // (c-2) 하이픈형 orderNo path-id 로도 join/presence 동작 — UUID resolve 정합
+        String pathId = order.getOrderNo().replace("/", "-");
+        mvc.perform(post("/api/v1/partner-orders/{orderId}/collab/presence/join", pathId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header(USER_NAME_HEADER, "path tester")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", "presence-session-path"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("presence-session-path"));
+
+        // (e) VIEW 권한 deny → 403
+        UUID deniedOrderId = seedConfirmedOrder("2099/06/20-PRS-403-" + SEQ.getAndIncrement()).getId();
+        String readPageCode = com.samhanair.logis.partnerorder.collab.PartnerOrderDocumentCollaborationPort
+                .PARTNER_ORDER_COLLAB_READ_PAGE_CODE;
+        when(dynamicPermissionClient.check(
+                any(UUID.class), eq(readPageCode), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.canView(any(), eq(readPageCode)))
+                .thenReturn(false);
+
+        mvc.perform(post("/api/v1/partner-orders/{orderId}/collab/presence/join", deniedOrderId)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", "presence-session-denied"))))
+                .andExpect(status().isForbidden());
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> dataMap(String responseBody) throws Exception {
         return (Map<String, Object>) objectMapper.readValue(responseBody, Map.class).get("data");

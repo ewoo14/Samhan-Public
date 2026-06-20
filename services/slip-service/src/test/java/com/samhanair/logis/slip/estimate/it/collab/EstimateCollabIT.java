@@ -34,6 +34,7 @@ import com.samhanair.logis.slip.estimate.collab.EstimateCollabComment;
 import com.samhanair.logis.slip.estimate.collab.EstimateCollabCommentRepository;
 import com.samhanair.logis.slip.estimate.collab.EstimateCollabSuggestion;
 import com.samhanair.logis.slip.estimate.collab.EstimateCollabSuggestionRepository;
+import com.samhanair.logis.slip.estimate.web.EstimatePermissionGuard;
 import com.samhanair.logis.slip.estimate.domain.Estimate;
 import com.samhanair.logis.slip.estimate.domain.EstimateLine;
 import com.samhanair.logis.slip.estimate.repository.EstimateRepository;
@@ -469,6 +470,88 @@ class EstimateCollabIT extends AbstractPostgresIT {
                         "(?, 'INVALID_TYPE', ?, NULL, ?, 'tester', '본문', 'OPEN', NOW(), 'system', false)",
                 UUID.randomUUID(), estimateId, authorId))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * presence join/list 엔드포인트가 헤더 인증, 입력 검증, UUID 비노출 wire 계약,
+     * EstimatePermissionGuard 이중 가드를 지킨다.
+     *
+     * <p>검증 시나리오:
+     * <ol>
+     *   <li>X-User-Id 없는 join → 401 (MissingRequestHeaderException 매핑)</li>
+     *   <li>sessionId 빈값 → 400 (INVALID_INPUT)</li>
+     *   <li>정상 join → 200 + data {sessionId, displayName, color} 만 포함</li>
+     *   <li>GET presence → 1건 반환</li>
+     *   <li>permissionGuard.checkView deny → 403</li>
+     * </ol>
+     */
+    @Test
+    void presence_join_list_validates_header_input_payload_and_permission_guard() throws Exception {
+        // (a) X-User-Id 없는 join → 401
+        UUID estimateId401 = seedEstimate("PRS-401").getId();
+        mvc.perform(post("/slips/estimates/{estimateId}/collab/presence/join", estimateId401)
+                        .header(SYSTEM_MASTER_HEADER, "true")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "presence-session-401",
+                                "displayName", "presence tester"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // (b) sessionId 빈값 → 400
+        UUID estimateId400 = seedEstimate("PRS-400").getId();
+        mvc.perform(post("/slips/estimates/{estimateId}/collab/presence/join", estimateId400)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header(SYSTEM_MASTER_HEADER, "true")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("sessionId", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        // (c) 정상 join → 200 + data {sessionId, displayName, color} 만
+        UUID estimateIdOk = seedEstimate("PRS-OK").getId();
+        String presenceResponse = mvc.perform(
+                        post("/slips/estimates/{estimateId}/collab/presence/join", estimateIdOk)
+                                .header(USER_ID_HEADER, ACTOR_ID)
+                                .header(USER_NAME_HEADER, "presence 테스터")
+                                .header(SYSTEM_MASTER_HEADER, "true")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(Map.of(
+                                        "sessionId", "estimate-presence-session-1",
+                                        "displayName", "ignored body name"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("estimate-presence-session-1"))
+                .andExpect(jsonPath("$.data.displayName").value("presence 테스터"))
+                .andExpect(jsonPath("$.data.color").exists())
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.accountId").doesNotExist())
+                .andExpect(jsonPath("$.data.lastSeenAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(dataMap(presenceResponse)).containsOnlyKeys("sessionId", "displayName", "color");
+
+        // (d) GET presence → 1건
+        mvc.perform(get("/slips/estimates/{estimateId}/collab/presence", estimateIdOk)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .header(SYSTEM_MASTER_HEADER, "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sessionId").value("estimate-presence-session-1"))
+                .andExpect(jsonPath("$.data[0].userId").doesNotExist());
+
+        // (e) permissionGuard.checkView deny → 403 (MASTER bypass 없이 동적 권한 거부)
+        UUID estimateId403 = seedEstimate("PRS-403").getId();
+        when(dynamicPermissionClient.check(
+                any(UUID.class), eq(EstimatePermissionGuard.PAGE_CODE), eq(PermissionAction.VIEW)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.canView(any(), eq(EstimatePermissionGuard.PAGE_CODE)))
+                .thenReturn(false);
+
+        mvc.perform(post("/slips/estimates/{estimateId}/collab/presence/join", estimateId403)
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionId", "estimate-presence-denied"))))
+                .andExpect(status().isForbidden());
     }
 
     /**

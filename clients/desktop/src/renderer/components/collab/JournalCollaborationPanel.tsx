@@ -20,6 +20,9 @@ import {
 } from '../../api/journalCollab'
 import { JournalCollabRealtimeClient } from '../../realtime/JournalCollabRealtimeClient'
 import { usePermissions } from '../../hooks/usePermissions'
+import { usePresence } from '../../hooks/usePresence'
+import { JournalPresenceClient } from '../../realtime/createPresenceClient'
+import { PresenceIndicator } from './PresenceIndicator'
 
 export interface JournalCollabEditableLine {
   lineNo: number
@@ -143,6 +146,7 @@ export function JournalCollaborationPanel({
   const [editReason, setEditReason] = useState('')
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
+  const presenceEntries = usePresence({ entityId: journalId, client: JournalPresenceClient, enabled: !!journalId })
 
   const commentQueryKey = useMemo(() => ['journalCollabComments', journalId] as const, [journalId])
   const editQueryKey = useMemo(() => ['journalCollabEdits', journalId] as const, [journalId])
@@ -280,7 +284,10 @@ export function JournalCollaborationPanel({
   return (
     <section data-testid="journal-collaboration-panel" style={{ marginTop: 24 }}>
       <Card padding={4} shadow="sm">
-        <h4 style={{ margin: 0, marginBottom: 16 }}>협업</h4>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <h4 style={{ margin: 0 }}>협업</h4>
+          <PresenceIndicator entries={presenceEntries} />
+        </div>
 
         <div className="detail-grid" style={{ alignItems: 'start' }}>
           <section aria-label="코멘트">
