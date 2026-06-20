@@ -11,6 +11,7 @@ import com.samhanair.logis.groupware.repository.MessageRepository;
 import com.samhanair.logis.groupware.repository.ScheduleRepository;
 import com.samhanair.logis.groupware.service.ApprovalNumberService;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -318,11 +319,11 @@ public class GroupwareSeeder implements CommandLineRunner {
      * (별도 DB), 본 seed 데이터 검증 / cross-stage 시나리오 테스트 시 동일 키 도출 가능.
      */
     static UUID employeeId(String loginId) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:employee:" + loginId).getBytes());
+        return UUID.nameUUIDFromBytes(("samhan-seed:employee:" + loginId).getBytes(StandardCharsets.UTF_8));
     }
 
     static UUID deterministicId(String type, String key) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes(StandardCharsets.UTF_8));
     }
 
     private static void forceId(Object entity, UUID id) {

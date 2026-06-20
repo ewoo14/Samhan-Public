@@ -11,6 +11,7 @@ import com.samhanair.logis.dashboard.service.MaterializedViewRefreshService;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -246,7 +247,7 @@ public class DashboardSnapshotSeeder implements CommandLineRunner {
     // ------------------------------------------------------------------
 
     static UUID deterministicId(String type, String key) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes());
+        return UUID.nameUUIDFromBytes(("samhan-seed:" + type + ":" + key).getBytes(StandardCharsets.UTF_8));
     }
 
     private static void forceId(Object entity, UUID id) {

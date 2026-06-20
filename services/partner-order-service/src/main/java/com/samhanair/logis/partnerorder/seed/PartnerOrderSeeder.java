@@ -8,6 +8,7 @@ import com.samhanair.logis.partnerorder.repository.PartnerOrderRepository;
 import jakarta.annotation.PostConstruct;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -225,7 +226,7 @@ public class PartnerOrderSeeder implements CommandLineRunner {
      * @return 결정적 product UUID
      */
     static UUID deterministicProductId(String modelName) {
-        return UUID.nameUUIDFromBytes(("samhan-seed:product:" + modelName).getBytes());
+        return UUID.nameUUIDFromBytes(("samhan-seed:product:" + modelName).getBytes(StandardCharsets.UTF_8));
     }
 
     /** Reflection 으로 BaseEntity / PartnerOrder 의 private 필드 강제 세팅 (시드 fixture 한정). */

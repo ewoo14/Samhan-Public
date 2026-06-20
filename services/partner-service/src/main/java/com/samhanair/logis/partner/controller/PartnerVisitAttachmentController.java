@@ -13,6 +13,7 @@ import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.security.permission.PermissionAction;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
@@ -190,12 +191,12 @@ public class PartnerVisitAttachmentController {
     private static UUID resolveUserUuid(Principal principal) {
         String name = (principal == null) ? null : principal.getName();
         if (name == null || name.isBlank()) {
-            return UUID.nameUUIDFromBytes("anonymous".getBytes());
+            return UUID.nameUUIDFromBytes("anonymous".getBytes(StandardCharsets.UTF_8));
         }
         try {
             return UUID.fromString(name);
         } catch (IllegalArgumentException ex) {
-            return UUID.nameUUIDFromBytes(name.getBytes());
+            return UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8));
         }
     }
 }
