@@ -19,9 +19,12 @@ import com.samhanair.logis.partnerorder.web.collab.dto.CommitPartnerOrderCollabE
 import com.samhanair.logis.partnerorder.web.collab.dto.PartnerOrderCollabCommentResponse;
 import com.samhanair.logis.partnerorder.web.collab.dto.PartnerOrderCollabEditResponse;
 import com.samhanair.logis.partnerorder.web.collab.dto.PartnerOrderCollabSuggestionResponse;
+import com.samhanair.logis.partnerorder.web.collab.dto.PartnerOrderPresenceRequest;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.shared.realtime.broker.RealtimeBroker;
+import com.samhanair.logis.shared.realtime.presence.PresenceEntry;
+import com.samhanair.logis.shared.realtime.presence.PresenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -29,7 +32,9 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,6 +44,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -64,19 +70,22 @@ public class PartnerOrderCollabController {
     private final PartnerOrderDocumentCollaborationPort port;
     private final RealtimeBroker broker;
     private final PartnerOrderRepository partnerOrderRepository;
+    private final PresenceService presenceService;
 
     public PartnerOrderCollabController(CollabCommentService<PartnerOrderCollabComment> commentService,
                                         PartnerOrderCollabEditService editService,
                                         PartnerOrderCollabSuggestionRepository suggestionRepository,
                                         PartnerOrderDocumentCollaborationPort port,
                                         RealtimeBroker broker,
-                                        PartnerOrderRepository partnerOrderRepository) {
+                                        PartnerOrderRepository partnerOrderRepository,
+                                        PresenceService presenceService) {
         this.commentService = commentService;
         this.editService = editService;
         this.suggestionRepository = suggestionRepository;
         this.port = port;
         this.broker = broker;
         this.partnerOrderRepository = partnerOrderRepository;
+        this.presenceService = presenceService;
     }
 
     /** 주문 협업 댓글 등록. */
@@ -221,5 +230,124 @@ public class PartnerOrderCollabController {
 
     private String resolveDeleter(String callerId) {
         return (callerId == null || callerId.isBlank()) ? "system" : callerId;
+    }
+
+    // ===================================================================
+    // Presence — 주문 협업 동시 접속자 (SlipCollabController 1:1 복제, orderId resolve 특이)
+    // ===================================================================
+
+    /**
+     * 주문 협업 presence join/heartbeat.
+     *
+     * <p>신규 sessionId 는 기존 collab SSE stream 으로 {@code presence:join} 이벤트가 발행된다.
+     * orderId 는 UUID 또는 주문번호 하이픈형을 모두 허용하며, resolveOrderId 를 통해 실 UUID 로 변환된다.
+     * SSE stream 과 동일 UUID 채널을 사용하므로 presence 이벤트가 정합하게 전달된다.
+     */
+    @Operation(summary = "주문 협업 presence join/heartbeat")
+    @PostMapping("/presence/join")
+    @RequirePermission(page = READ_PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<PresenceEntry> joinPresence(
+            @PathVariable String orderId,
+            @RequestBody(required = false) PartnerOrderPresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        UUID resolvedOrderId = resolveOrderId(orderId);
+        String userId = resolvePresenceUserId(callerId);
+        String sessionId = resolvePresenceSessionId(request);
+        String displayName = resolvePresenceDisplayName(callerName, request);
+        return ApiResponse.ok(presenceService.join(resolvedOrderId, sessionId, userId, displayName));
+    }
+
+    /**
+     * 주문 협업 presence leave.
+     *
+     * <p>호출자가 session owner 일 때만 {@code presence:leave} 이벤트가 발행된다.
+     */
+    @Operation(summary = "주문 협업 presence leave")
+    @PostMapping("/presence/leave")
+    @RequirePermission(page = READ_PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<Void> leavePresence(
+            @PathVariable String orderId,
+            @RequestBody(required = false) PartnerOrderPresenceRequest request,
+            @RequestHeader(CALLER_ID_HEADER) String callerId) {
+        UUID resolvedOrderId = resolveOrderId(orderId);
+        String userId = resolvePresenceUserId(callerId);
+        presenceService.leave(resolvedOrderId, resolvePresenceSessionId(request), userId);
+        return ApiResponse.ok(null);
+    }
+
+    /**
+     * 주문 협업 현재 presence 목록.
+     *
+     * <p>account UUID 는 wire payload 에 포함하지 않는다.
+     */
+    @Operation(summary = "주문 협업 presence 목록")
+    @GetMapping("/presence")
+    @RequirePermission(page = READ_PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<List<PresenceEntry>> listPresence(@PathVariable String orderId) {
+        UUID resolvedOrderId = resolveOrderId(orderId);
+        return ApiResponse.ok(presenceService.list(resolvedOrderId));
+    }
+
+    /**
+     * presence 사용자 ID 를 X-User-Id 헤더에서 추출한다.
+     *
+     * <p>color hash 입력으로 사용되므로 UUID 변환 없이 원문 그대로 반환한다.
+     * 헤더가 없거나 공백이면 UNAUTHORIZED 예외를 던진다.
+     */
+    private String resolvePresenceUserId(String callerId) {
+        String headerUserId = callerId == null ? null : callerId.trim();
+        if (headerUserId != null && !headerUserId.isBlank()) {
+            return headerUserId;
+        }
+        throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                "presence 사용자 정보를 확인할 수 없습니다");
+    }
+
+    /**
+     * presence sessionId 를 요청 body 에서 추출한다.
+     *
+     * <p>sessionId 가 없거나 공백이면 INVALID_INPUT 예외를 던진다.
+     */
+    private String resolvePresenceSessionId(PartnerOrderPresenceRequest request) {
+        String sessionId = request == null || request.sessionId() == null
+                ? null
+                : request.sessionId().trim();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "presence sessionId 는 필수입니다");
+        }
+        return sessionId;
+    }
+
+    /**
+     * presence 표시명을 결정한다.
+     *
+     * <p>X-User-Name 헤더가 있으면 우선 적용하고, UUID 형태이거나 비어있으면 null 을 반환하여
+     * PresenceService 의 기본값("사용자")이 적용되도록 한다.
+     * 헤더가 없으면 body 의 displayName 을 사용한다.
+     */
+    private String resolvePresenceDisplayName(String callerName, PartnerOrderPresenceRequest request) {
+        if (callerName != null && !callerName.isBlank()) {
+            String resolved = resolveActorName(callerName);
+            return "system".equals(resolved) ? null : resolved;
+        }
+        return request == null ? null : request.displayName();
+    }
+
+    /**
+     * 필수 헤더 누락 예외를 처리한다.
+     *
+     * <p>X-User-Id 누락 시 401 UNAUTHORIZED, 그 외 필수 헤더 누락 시 400 INVALID_INPUT 을 반환한다.
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingHeader(MissingRequestHeaderException ex) {
+        if (CALLER_ID_HEADER.equalsIgnoreCase(ex.getHeaderName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.fail(ErrorCode.UNAUTHORIZED,
+                            "presence 사용자 정보를 확인할 수 없습니다"));
+        }
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, ex.getMessage()));
     }
 }
