@@ -85,7 +85,7 @@ public class ProductInternalController {
     })
     @PostMapping("/resolve-ecount-aliases")
     public ApiResponse<EcountAliasResolveResponse> resolveEcountAliases(
-            @RequestBody EcountAliasResolveRequest request) {
+            @Valid @RequestBody EcountAliasResolveRequest request) {
         return ApiResponse.ok(new EcountAliasResolveResponse(
                 ecountAliasResolveService.resolve(request == null ? null : request.aliasCodes())));
     }

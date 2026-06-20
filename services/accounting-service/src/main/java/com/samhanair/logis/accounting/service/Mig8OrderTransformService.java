@@ -110,6 +110,13 @@ public class Mig8OrderTransformService {
         }
         try {
             return productAliasClient.resolveAliases(List.copyOf(itemNames));
+        } catch (BusinessException ex) {
+            if (ex.getErrorCode() == ErrorCode.MIG12_INTERNAL_AUTH_MISS) {
+                throw ex;
+            }
+            log.warn("MIG-8 product alias resolve failed - itemCount={}, code={}, msg={}",
+                    itemNames.size(), ex.getErrorCode(), ex.getMessage());
+            return Map.of();
         } catch (Exception ex) {
             log.warn("MIG-8 product alias resolve failed - itemCount={}, msg={}",
                     itemNames.size(), ex.getMessage());

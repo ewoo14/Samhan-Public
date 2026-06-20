@@ -16,6 +16,7 @@ import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.client.ProductAliasClient;
 import com.samhanair.logis.common.ecount.EcountMig8TransformResult;
 import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -258,6 +259,17 @@ class Mig8OrderTransformServiceTest {
         service.transformFromStaging(500, "tester");
 
         assertThat(lineParams().getValue("productId")).isNull();
+    }
+
+    @Test
+    void product_alias_auth_error는_삼키지_않고_변환을_실패시킨다() {
+        pending(row(1, "2026-05-20-001", "진행"));
+        BusinessException authError =
+                new BusinessException(ErrorCode.MIG12_INTERNAL_AUTH_MISS, "ProductAliasClient 내부 인증 실패");
+        when(productAliasClient.resolveAliases(List.of("테스트품목"))).thenThrow(authError);
+
+        assertThatThrownBy(() -> service.transformFromStaging(500, "tester"))
+                .isSameAs(authError);
     }
 
     @Test

@@ -2,7 +2,10 @@ package com.samhanair.logis.accounting.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.InternalAuthProperties;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,6 +25,7 @@ public class ProductAliasClient {
 
     private static final Logger log = LoggerFactory.getLogger(ProductAliasClient.class);
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final int RESOLVE_CHUNK_SIZE = 200;
 
     private final RestClient restClient;
     private final InternalAuthProperties internalAuthProperties;
@@ -44,25 +48,40 @@ public class ProductAliasClient {
         }
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
-            log.warn("ProductAliasClient - X-Internal-Token missing (aliasCount={})", distinct.size());
-            return Map.of();
+            throw internalAuthMiss(distinct.size(), 0);
         }
+        Map<String, UUID> resolved = new LinkedHashMap<>();
+        List<String> aliases = new ArrayList<>(distinct);
+        for (int start = 0; start < aliases.size(); start += RESOLVE_CHUNK_SIZE) {
+            int end = Math.min(start + RESOLVE_CHUNK_SIZE, aliases.size());
+            resolved.putAll(resolveChunk(aliases.subList(start, end), token));
+        }
+        return resolved;
+    }
+
+    private Map<String, UUID> resolveChunk(List<String> aliasCodes, String token) {
         try {
             String body = restClient.post()
                     .uri("/products/internal/resolve-ecount-aliases")
                     .header(INTERNAL_TOKEN_HEADER, token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("aliasCodes", List.copyOf(distinct)))
+                    .body(Map.of("aliasCodes", aliasCodes))
                     .retrieve()
                     .body(String.class);
             return parseResolved(body);
         } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 401 || status == 403) {
+                throw internalAuthMiss(aliasCodes.size(), status);
+            }
             log.warn("ProductAliasClient resolve failed - aliasCount={}, status={}",
-                    distinct.size(), ex.getStatusCode().value());
+                    aliasCodes.size(), status);
             return Map.of();
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.warn("ProductAliasClient resolve failed - aliasCount={}, msg={}",
-                    distinct.size(), ex.getMessage());
+                    aliasCodes.size(), ex.getMessage());
             return Map.of();
         }
     }
@@ -101,5 +120,16 @@ public class ProductAliasClient {
             }
         }
         return distinct;
+    }
+
+    private BusinessException internalAuthMiss(int aliasCount, int status) {
+        if (status == 0) {
+            log.error("ProductAliasClient — X-Internal-Token 미설정 (aliasCount={})", aliasCount);
+            return new BusinessException(ErrorCode.MIG12_INTERNAL_AUTH_MISS,
+                    "ProductAliasClient 내부 인증 토큰 미설정");
+        }
+        log.error("ProductAliasClient — aliasCount={} status={} (내부 인증 실패)", aliasCount, status);
+        return new BusinessException(ErrorCode.MIG12_INTERNAL_AUTH_MISS,
+                "ProductAliasClient 내부 인증 실패: status=" + status);
     }
 }
