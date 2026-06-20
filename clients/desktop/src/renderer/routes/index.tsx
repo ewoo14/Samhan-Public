@@ -247,6 +247,7 @@ import { DriverAssignmentPage } from './DriverAssignmentPage'
 // BE: accounting-service `/accounting/daily-closings` + `/accounting/ledgers`
 import { DailyClosingPage } from './DailyClosingPage'
 import { GeneralLedgerPage } from './GeneralLedgerPage'
+import { FundsStatusPage } from './FundsStatusPage'
 import { SalesAccountingSlipPage } from './accounting/SalesAccountingSlipPage'
 import { SalesAccountingSlipFormPage } from './accounting/SalesAccountingSlipFormPage'
 import { PurchaseAccountingSlipPage } from './accounting/PurchaseAccountingSlipPage'
@@ -818,6 +819,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.reports" action="view">
             <MonthlySummaryPrintLayout />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/funds/status',
+        element: (
+          <PermissionGuard pageCode="accounting.reports" action="view">
+            <FundsStatusPage />
           </PermissionGuard>
         ),
       },

@@ -233,6 +233,26 @@ export function ReportListPage() {
           path="/accounting/reports/monthly-summary"
         />
       </div>
+
+      <SectionLabel label="자금 관리" />
+      <div
+        data-testid="accounting-report-list-funds"
+        style={{
+          display: 'flex',
+          gap: 20,
+          flexWrap: 'wrap',
+          alignItems: 'stretch',
+          marginTop: 12,
+        }}
+      >
+        <ReportCard
+          icon="💰"
+          title="자금현황"
+          badge="자금"
+          description="자금일보와 자금현황표를 기간 조회로 통합하고 증가 상세를 확인합니다."
+          path="/accounting/funds/status"
+        />
+      </div>
     </>
   )
 }
