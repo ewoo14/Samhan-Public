@@ -2,7 +2,7 @@ package com.samhanair.logis.inventory.client;
 import java.time.LocalDate;
 
 /**
- * slip-service {@code GET /internal/slips/outbound} 응답의 라인 단위 요약.
+ * slip-service {@code GET /internal/slips/outbound-lines} 응답의 라인 단위 요약.
  *
  * <p>슬립 헤더(slipNo/slipDate/partner)와
  * 라인(productCode/productName/quantity) 을 평탄화한 record. inventory-service 가 slip-service

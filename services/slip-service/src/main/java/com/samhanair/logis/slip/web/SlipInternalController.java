@@ -233,6 +233,9 @@ public class SlipInternalController {
      *
      * @param from 조회 시작일 (포함)
      * @param to 조회 종료일 (포함)
+     * <p>경로: {@code GET /internal/slips/outbound-lines}. arologis slip-level
+     * {@code /internal/slips/outbound} 계약과 충돌하지 않도록 line-level 전용 경로를 사용한다.
+     *
      * @return ApiResponse wrapper 안 출고전표 라인 목록
      */
     @Operation(summary = "Internal 출고전표 라인 조회 (DPS 입고비교)",
@@ -247,7 +250,7 @@ public class SlipInternalController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
                     description = "X-Internal-Token 누락")
     })
-    @GetMapping("/outbound")
+    @GetMapping("/outbound-lines")
     @PreAuthorize("hasRole('MASTER')")
     public ApiResponse<List<OutboundSlipLineResponse>> findOutboundSlips(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

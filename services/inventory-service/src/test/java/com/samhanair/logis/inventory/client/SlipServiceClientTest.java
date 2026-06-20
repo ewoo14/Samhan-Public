@@ -29,7 +29,7 @@ class SlipServiceClientTest {
     private static final LocalDate FROM = LocalDate.of(2026, 6, 1);
     private static final LocalDate TO = LocalDate.of(2026, 6, 30);
     private static final String ENDPOINT =
-            "http://slip-service/internal/slips/outbound?from=2026-06-01&to=2026-06-30";
+            "http://slip-service/internal/slips/outbound-lines?from=2026-06-01&to=2026-06-30";
 
     private MockRestServiceServer server;
     private SlipServiceClient client;

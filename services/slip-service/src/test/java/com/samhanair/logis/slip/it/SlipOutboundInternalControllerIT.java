@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
  * DPS 입고비교용 internal 출고전표 라인 조회 IT.
  *
  * <p>inventory-service {@code SlipServiceClient.getOutboundSlips} 의 실제 호출 대상인
- * {@code GET /internal/slips/outbound} 계약을 검증한다.
+ * {@code GET /internal/slips/outbound-lines} 계약을 검증한다.
  */
 @SpringBootTest(classes = SlipServiceApplication.class)
 @AutoConfigureMockMvc
@@ -42,7 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 class SlipOutboundInternalControllerIT extends AbstractPostgresIT {
 
     private static final String INTERNAL_TOKEN = "test-internal-token";
-    private static final String URL = "/internal/slips/outbound";
+    private static final String URL = "/internal/slips/outbound-lines";
 
     @Autowired
     private MockMvc mockMvc;
