@@ -22,8 +22,10 @@
 - **#543** 회계 메뉴 갭-매핑 결과(A=NEW, B~H 기존 확장) spec — 머지(docs, clean).
 - **#544** 회계 자금현황 조회 슬A — 머지(merge `389ec1c23`). 🪤 주말 산출이 CI UNSTABLE 로 열려있던 것: ①CI 실패 근본=IT `getContentAsString()` ISO-8859-1 한글깨짐(서비스/시드 정상, [[mockmvc-getcontentasstring-charset]])→UTF_8 fix. ②듀얼리뷰: 🔵Opus 머지가능 판정→🟣**Codex 단독 P2 적발**(거래처별 증가 drill-down 이 accountCode만 전송→계정전체 상세 반환, 모달합계≠클릭셀 금액; UUID 비공개라 거래처 필터 불가)→개발책임자 **결정 A(계정 단위 drill-down)**→fix→🔵Opus 수렴 blocking0. ③라이브 QA: 자금현황 실 분개 렌더+모달 "101 현금—증가상세" 합계=계정 소계 일치. **잔여: 거래처별 drill-down=불투명 토큰 후속, #543 4결정=슬B~H 미래.** → **열린 PR 0건.**
 
-### 🔜 다음 = PR2 배차(dispatch) presence — **스코핑 결정 필요(개발책임자)**
-- 배차는 FE collab 패널 미존재(`DispatchCollabCommentController`=comment-only, `/admin/dispatch-tasks/{id}/collab`). presence 롤아웃하려면 **DispatchCollaborationPanel 신설 + 노출 위치(배차 보드 카드/상세) 결정** 필요 → 4문서와 난이도 별격이라 PR1에서 분리.
+### 🔜 다음 = PR2 배차(dispatch) presence — **정찰 완료, 클린 additive (4문서 동일 난이도)**
+- 🪤 정찰 정정: 배차는 **`DispatchTaskDetailModal` 상세 모달이 이미 존재**(`clients/desktop/src/renderer/routes/dispatch-board/components/DispatchTaskDetailModal.tsx`)하고 수정이력+댓글(`DispatchCommentThread`) collab 배선됨. "패널 신설 필요"는 오판 — **새 패널 불요, 4문서와 동일 additive presence**.
+- **work-list**: ①BE `DispatchCollabCommentController`(`services/slip-service/.../web/dispatch/`, page-code `dispatch.board` VIEW, taskId UUID)에 presence join/leave/list 3엔드포인트(슬립 1:1 복제) + DTO/helper/@ExceptionHandler. ②FE `createPresenceClient.ts` 에 `DispatchPresenceClient`(presence `/admin/dispatch-tasks/${id}/collab/presence`, stream `/admin/dispatch-tasks/${id}/collab/stream`) + `DispatchTaskDetailModal` 헤더(상태배너 상단 or 코멘트 섹션 헤더)에 `usePresence`+`PresenceIndicator`. ③mock + DispatchCollab IT presence 테스트. **신규 권한/시드/Flyway 0**(dispatch.board 재사용).
+- 노출점=상세 모달 헤더(명확). 슬립 패턴 그대로. [[realqa-proxy-glob-resourcetype]] 캡처 방식 재사용(2세션 모달 진입).
 - 그 외 잔여(우선순위 지정 시): SP-08 parity 3·사원서명·배차 query-key UX·재배차 캡처 + 게이트(cutover/벤더).
 
 ---
