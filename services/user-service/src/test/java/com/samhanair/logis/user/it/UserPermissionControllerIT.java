@@ -29,6 +29,7 @@ import com.samhanair.logis.user.domain.Department;
 import com.samhanair.logis.user.domain.Employee;
 import com.samhanair.logis.user.repository.EmployeeRepository;
 import com.samhanair.logis.user.repository.RoleChangeHistoryRepository;
+import com.samhanair.logis.user.service.EmployeeSignatureService;
 import com.samhanair.logis.user.service.EcountDepartmentImporter;
 import com.samhanair.logis.user.service.EcountEmployeeCardImporter;
 import com.samhanair.logis.user.service.EcountEmployeeImporter;
@@ -112,6 +113,7 @@ class UserPermissionControllerIT {
 
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private EmployeeProvisioningService provisioningService;
+    @MockBean private EmployeeSignatureService signatureService;
     @MockBean private EmployeeRepository employeeRepository;
     @MockBean private RoleChangeHistoryRepository roleChangeHistoryRepository;
     @MockBean private EcountDepartmentImporter ecountDepartmentImporter;
@@ -228,6 +230,9 @@ class UserPermissionControllerIT {
         assertDepartmentGate("disable", UUID.class, String.class);
         assertDepartmentGate("unlock", UUID.class, String.class);
         assertDepartmentGate("roleHistory", UUID.class);
+        assertDepartmentGate("registerSignature", UUID.class,
+                com.samhanair.logis.user.web.dto.EmployeeSignatureUploadRequest.class, String.class);
+        assertDepartmentGate("invalidateSignature", UUID.class, String.class, String.class);
     }
 
     @Test
