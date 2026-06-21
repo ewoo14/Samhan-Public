@@ -57,6 +57,14 @@ const configs = {
     command: ['npx', 'vite', '--host', '127.0.0.1', '--port', '5176'],
     env: {},
   },
+  'web-mobile-public': {
+    command: ['npm', 'run', 'dev'],
+    // VITE_API_BASE_URL 주입 안 함(plan C2.4 갱신 반영).
+    // mobile-public 은 same-origin(빈 baseURL → vite proxy /api→8080)으로 POST.
+    // commonApi(http://localhost:8080) 절대 주입 시 폰(LAN)이 자기 localhost 로 직타 → 제출 실패.
+    // 폰 접근 origin 은 SAMHAN_SIGNATURE_PUBLIC_BASE_URL=http://<PC-LAN-IP>:5185(Task C2.6)로 분리 주입.
+    env: {},
+  },
 };
 
 if (!configs[target]) {

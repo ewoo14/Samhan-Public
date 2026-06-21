@@ -1,0 +1,35 @@
+{
+  "name": "@samhan/mobile-public",
+  "version": "0.1.0",
+  "private": true,
+  "description": "삼한공조시스템 모바일 공개 서명 웹앱 — 사원 서명 손그림 제출 (NO-AUTH 토큰 게이트). slip 인수자 공개 서명도 향후 재사용.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "local-dev": "node ../../../scripts/run-client-local-dev.cjs web-mobile-public",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@samhan/design-system": "file:../design-system",
+    "axios": "^1.7.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "eslint": "^9.14.0",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}
