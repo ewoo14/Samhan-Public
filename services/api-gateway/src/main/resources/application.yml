@@ -74,6 +74,18 @@ spring:
             - StripPrefix=1
             - JwtAuthentication
 
+        # slice C1b — 사원 서명 공개 제출 (no auth, 토큰만 검증).
+        # Spring Cloud Gateway 는 선언 순서(first-match-wins) 기준이므로
+        # /api/public/** slip-service-public catch-all 보다 반드시 먼저 선언.
+        # JwtAuthentication 미적용 + identity 헤더 strip (위조 차단).
+        - id: user-service-employee-signatures-public
+          uri: lb://user-service
+          predicates:
+            - Path=/api/public/employee-signatures/**
+          filters:
+            - StripInboundIdentityHeaders
+            - StripPrefix=1
+
         # Slice B — 공개 모바일 endpoint (no auth, 토큰만 검증)
         # JwtAuthentication 필터 미적용 — 기사 모바일 직접 접근.
         - id: slip-service-public

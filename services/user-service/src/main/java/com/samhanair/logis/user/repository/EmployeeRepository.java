@@ -2,6 +2,7 @@ package com.samhanair.logis.user.repository;
 
 import com.samhanair.logis.common.security.Role;
 import com.samhanair.logis.user.domain.Employee;
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -10,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.lang.NonNull;
@@ -36,6 +38,10 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
     @NonNull
     @EntityGraph(attributePaths = "department")
     Optional<Employee> findById(@NonNull UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from Employee e where e.id = :id")
+    Optional<Employee> findByIdForUpdate(@Param("id") UUID id);
 
     @EntityGraph(attributePaths = "department")
     List<Employee> findAllByIdIn(Collection<UUID> ids);

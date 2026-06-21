@@ -35,6 +35,7 @@ import com.samhanair.logis.user.service.EcountDepartmentImporter;
 import com.samhanair.logis.user.service.EcountEmployeeCardImporter;
 import com.samhanair.logis.user.service.EcountEmployeeImporter;
 import com.samhanair.logis.user.service.EcountPayrollEmployeeImporter;
+import com.samhanair.logis.user.service.EmployeeSignatureHandoffService;
 import com.samhanair.logis.user.service.EmployeeProvisioningService;
 import com.samhanair.logis.user.service.OrgChartService;
 import com.samhanair.logis.user.web.AdminUserController;
@@ -47,6 +48,8 @@ import com.samhanair.logis.user.web.dto.AdminUserCreateResponse;
 import com.samhanair.logis.user.web.dto.EcountDepartmentImportResult;
 import com.samhanair.logis.user.web.dto.EmployeeResponse;
 import com.samhanair.logis.user.web.dto.EmployeeSignatureResponse;
+import com.samhanair.logis.user.web.dto.HandoffStatusResponse;
+import com.samhanair.logis.user.web.dto.HandoffTokenResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Method;
@@ -116,6 +119,7 @@ class UserPermissionControllerIT {
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private EmployeeProvisioningService provisioningService;
     @MockBean private EmployeeSignatureService signatureService;
+    @MockBean private EmployeeSignatureHandoffService handoffService;
     @MockBean private EmployeeRepository employeeRepository;
     @MockBean private RoleChangeHistoryRepository roleChangeHistoryRepository;
     @MockBean private EcountDepartmentImporter ecountDepartmentImporter;
@@ -156,6 +160,13 @@ class UserPermissionControllerIT {
         lenient().when(provisioningService.update(any(), any(), any())).thenReturn(employeeResponse);
         lenient().when(signatureService.register(any(), any(), any()))
                 .thenReturn(new EmployeeSignatureResponse(true, "2026-01-01T00:00:00", "UPLOAD"));
+        lenient().when(handoffService.issueToken(any(), any()))
+                .thenReturn(new HandoffTokenResponse(
+                        "tok",
+                        "http://localhost:8080/api/public/employee-signatures/tok",
+                        "2026-01-01T00:00:00"));
+        lenient().when(handoffService.status(any(), any()))
+                .thenReturn(new HandoffStatusResponse(false, false));
         lenient().when(ecountDepartmentImporter.importCsv(any(), anyString()))
                 .thenReturn(new EcountDepartmentImportResult(1, 1, 0, 0, 0, "HASH", List.of()));
         lenient().when(ecountEmployeeImporter.importCsv(any(), anyString())).thenReturn(mig6Result());
@@ -237,6 +248,8 @@ class UserPermissionControllerIT {
         assertDepartmentGate("registerSignature", UUID.class,
                 com.samhanair.logis.user.web.dto.EmployeeSignatureUploadRequest.class, String.class);
         assertDepartmentGate("invalidateSignature", UUID.class, String.class, String.class);
+        assertDepartmentGate("issueHandoffToken", UUID.class, String.class);
+        assertDepartmentGate("handoffStatus", UUID.class, String.class);
     }
 
     @Test
@@ -316,6 +329,12 @@ class UserPermissionControllerIT {
                         "MANAGER", 204,
                         () -> delete("/api/v1/admin/users/{id}/signature", ID)
                                 .param("reason", "오등록 정정")),
+                new EndpointCase("admin user signature handoff token", "admin.users", PermissionAction.UPDATE,
+                        "MANAGER", 200,
+                        () -> post("/api/v1/admin/users/{id}/signature/handoff-token", ID)),
+                new EndpointCase("admin user signature handoff status", "admin.users", PermissionAction.VIEW,
+                        "MANAGER", 200,
+                        () -> get("/api/v1/admin/users/{id}/signature/handoff/tok/status", ID)),
                 new EndpointCase("admin user disable", "admin.users", PermissionAction.DELETE, "MANAGER", 204,
                         () -> post("/api/v1/admin/users/{id}/disable", ID)),
                 new EndpointCase("admin user unlock", "admin.users", PermissionAction.UPDATE, "MANAGER", 204,

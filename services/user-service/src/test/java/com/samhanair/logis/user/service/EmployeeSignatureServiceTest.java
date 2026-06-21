@@ -73,7 +73,7 @@ class EmployeeSignatureServiceTest {
     @Test
     void register_정상_업로드는_서명을_저장하고_RECORD_audit를_적재한다() throws Exception {
         byte[] png = pngBytes();
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
         EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
                 b64(png), sha256Hex(png), SignatureChannel.UPLOAD);
 
@@ -89,7 +89,7 @@ class EmployeeSignatureServiceTest {
     @Test
     void register_대문자_해시도_통과하고_소문자로_저장된다() throws Exception {
         byte[] png = pngBytes();
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
         String lowercaseHash = sha256Hex(png);
         EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
                 b64(png), lowercaseHash.toUpperCase(), SignatureChannel.UPLOAD);
@@ -102,7 +102,7 @@ class EmployeeSignatureServiceTest {
     @Test
     void register_해시_불일치는_400_INVALID_INPUT() {
         byte[] png = pngBytes();
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
         EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
                 b64(png), "f".repeat(64), SignatureChannel.UPLOAD);
 
@@ -115,7 +115,7 @@ class EmployeeSignatureServiceTest {
     @Test
     void register_PNG_magic_byte_아니면_422() throws Exception {
         byte[] notPng = new byte[] {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
         EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
                 b64(notPng), sha256Hex(notPng), SignatureChannel.UPLOAD);
 
@@ -130,7 +130,7 @@ class EmployeeSignatureServiceTest {
         byte[] big = new byte[EmployeeSignatureService.PNG_MAX_BYTES + 1];
         big[0] = (byte) 0x89; big[1] = 0x50; big[2] = 0x4E; big[3] = 0x47;
         big[4] = 0x0D; big[5] = 0x0A; big[6] = 0x1A; big[7] = 0x0A;
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
         EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
                 b64(big), sha256Hex(big), SignatureChannel.UPLOAD);
 
@@ -142,7 +142,7 @@ class EmployeeSignatureServiceTest {
 
     @Test
     void register_미존재_사원은_404() throws Exception {
-        when(employeeRepository.findById(empId)).thenReturn(Optional.empty());
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.empty());
         byte[] png = pngBytes();
         EmployeeSignatureUploadRequest req = new EmployeeSignatureUploadRequest(
                 b64(png), sha256Hex(png), SignatureChannel.UPLOAD);
@@ -155,7 +155,7 @@ class EmployeeSignatureServiceTest {
 
     @Test
     void invalidate_미등록_사원은_409_CONFLICT() {
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
 
         assertThatThrownBy(() -> service.invalidate(empId, "사유", "master-1"))
                 .isInstanceOf(BusinessException.class)
@@ -167,7 +167,7 @@ class EmployeeSignatureServiceTest {
     void invalidate_등록된_서명을_NULL로_만들고_INVALIDATE_audit를_적재한다() throws Exception {
         byte[] png = pngBytes();
         employee.registerSignature(png, sha256Hex(png), SignatureChannel.UPLOAD);
-        when(employeeRepository.findById(empId)).thenReturn(Optional.of(employee));
+        when(employeeRepository.findByIdForUpdate(empId)).thenReturn(Optional.of(employee));
 
         service.invalidate(empId, "오등록", "master-1");
 

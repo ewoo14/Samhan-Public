@@ -13,6 +13,7 @@ public enum ErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     CONFLICT(HttpStatus.CONFLICT, "리소스 상태가 충돌합니다."),
+    TOKEN_EXPIRED(HttpStatus.GONE, "토큰이 만료되었습니다"),
     UNPROCESSABLE_ENTITY(HttpStatus.UNPROCESSABLE_ENTITY, "처리할 수 없는 요청입니다."),
     DISPATCH_HISTORY_PAYLOAD_TOO_LARGE(HttpStatus.UNPROCESSABLE_ENTITY, "배차 저장내역 payload 가 너무 큽니다."),
     SLIP_CLEANUP_HISTORY_NOT_FOUND(HttpStatus.NOT_FOUND,

@@ -29,6 +29,9 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
+                        // C1b: 공개 서명 제출은 NO-AUTH 토큰 게이트. Gateway 가 inbound identity 헤더를 strip 하고,
+                        // downstream 은 X-User-* 가 아닌 handoff token 만 신뢰한다.
+                        .requestMatchers("/public/**").permitAll()
                         // P0-B: /internal/** 는 X-Internal-Token system-internal principal 만 — X-User-* 위조 우회 차단
                         .requestMatchers("/internal/**").access((authentication, context) ->
                                 new org.springframework.security.authorization.AuthorizationDecision(
