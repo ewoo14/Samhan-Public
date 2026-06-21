@@ -163,7 +163,7 @@ class UserPermissionControllerIT {
         lenient().when(handoffService.issueToken(any(), any()))
                 .thenReturn(new HandoffTokenResponse(
                         "tok",
-                        "http://localhost:8080/api/public/employee-signatures/tok",
+                        "http://localhost:8080/s/tok",
                         "2026-01-01T00:00:00"));
         lenient().when(handoffService.status(any(), any()))
                 .thenReturn(new HandoffStatusResponse(false, false));

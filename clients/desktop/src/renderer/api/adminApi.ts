@@ -286,6 +286,84 @@ export async function listRoleHistory(
 }
 
 // ---------------------------------------------------------------------------
+// 사원 서명 등록 (signature-slice-C C2) — AdminUserController .../signature
+// 공유 계약: PATCH 업로드 / POST 핸드오프 토큰 / GET 핸드오프 status.
+// UUID 비공개: id 는 path key 전용, 응답에 UUID 없음 (signedAt/channel 만).
+// ---------------------------------------------------------------------------
+
+/** 서명 입력 경로 — BE SignatureChannel enum 과 1:1 (CHECK IN ('MOBILE_CANVAS','UPLOAD')). */
+export type SignatureChannel = 'MOBILE_CANVAS' | 'UPLOAD'
+
+/** 서명 업로드 요청 — BE EmployeeSignatureUploadRequest 와 1:1. base64 dataURL + SHA-256 hex. */
+export interface EmployeeSignatureUploadRequest {
+  signaturePngBase64: string
+  signatureHash: string
+  channel: SignatureChannel
+}
+
+/** 서명 등록 응답 — BE EmployeeSignatureResponse 와 1:1. */
+export interface EmployeeSignatureResponse {
+  registered: boolean
+  signedAt: string | null
+  signatureChannel: SignatureChannel | null
+}
+
+/** 핸드오프 토큰 발급 응답 — BE HandoffTokenResponse 와 1:1. qrUrl = 모바일 공개 웹앱 실 origin. */
+export interface HandoffTokenResponse {
+  token: string
+  qrUrl: string
+  expiresAt: string
+}
+
+/** 핸드오프 상태 폴링 응답 — BE HandoffStatusResponse 와 1:1. */
+export interface HandoffStatusResponse {
+  used: boolean
+  expired: boolean
+}
+
+/**
+ * 서명 이미지 업로드 — PATCH /api/v1/admin/users/{id}/signature.
+ * 권한 admin.users UPDATE. BE 가 hash 재검증 + PNG magic-byte + ≤50KB 가드(초과 422).
+ */
+export async function uploadUserSignature(
+  id: string,
+  body: EmployeeSignatureUploadRequest,
+): Promise<EmployeeSignatureResponse> {
+  const res = await apiClient.patch<ApiEnvelope<EmployeeSignatureResponse>>(
+    `/api/v1/admin/users/${id}/signature`,
+    body,
+  )
+  return res.data.data
+}
+
+/**
+ * 모바일 핸드오프 토큰 발급 — POST /api/v1/admin/users/{id}/signature/handoff-token.
+ * 재발급 시 동일 사원 미사용 토큰은 BE 가 무효화. TTL 10분.
+ */
+export async function createSignatureHandoffToken(
+  id: string,
+): Promise<HandoffTokenResponse> {
+  const res = await apiClient.post<ApiEnvelope<HandoffTokenResponse>>(
+    `/api/v1/admin/users/${id}/signature/handoff-token`,
+  )
+  return res.data.data
+}
+
+/**
+ * 핸드오프 상태 폴링 — GET /api/v1/admin/users/{id}/signature/handoff/{token}/status.
+ * used/expired 둘 다 true 가능(만료 후 소진 불가). 권한 admin.users VIEW.
+ */
+export async function fetchSignatureHandoffStatus(
+  id: string,
+  token: string,
+): Promise<HandoffStatusResponse> {
+  const res = await apiClient.get<ApiEnvelope<HandoffStatusResponse>>(
+    `/api/v1/admin/users/${id}/signature/handoff/${token}/status`,
+  )
+  return res.data.data
+}
+
+// ---------------------------------------------------------------------------
 // 부서 (user-service)
 // ---------------------------------------------------------------------------
 

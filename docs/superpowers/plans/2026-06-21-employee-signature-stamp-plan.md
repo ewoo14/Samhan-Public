@@ -57,7 +57,7 @@
 
 - **user-service BE (C1a)**: `domain/{SignatureChannel,EmployeeSignatureAudit,SignatureAuditAction}.java` 신규 · `domain/Employee.java` 4필드+도메인메서드 · `repository/EmployeeSignatureAuditRepository.java` · `service/EmployeeSignatureService.java` · `web/AdminUserController.java`(PATCH/DELETE) · `web/InternalUserController.java`(배치) · `web/dto/*`(5종) · `db/migration/V10__add_employee_signature.sql` · IT 4종.
 - **user-service BE + gateway (C1b)**: `domain/EmployeeSignatureHandoffToken.java` · `repository/*` · `service/EmployeeSignatureHandoffService.java` · `web/AdminUserController.java`(handoff-token/status) · `web/PublicEmployeeSignatureController.java` · `config/SecurityConfig.java` · `db/migration/V11__*.sql` · `api-gateway/.../application.yml` · 보안 IT.
-- **desktop FE + mobile-public (C2)**: `clients/desktop/.../routes/admin/UsersPage.tsx` + 서명 모달 컴포넌트 · `api/adminApi.ts` 신규 함수 · 신규 `clients/mobile-public/*`(Vite 앱, SignaturePad 페이지) · Playwright.
+- **desktop FE + mobile-public (C2)**: `clients/desktop/.../routes/admin/UsersPage.tsx` + 서명 모달 컴포넌트 · `api/adminApi.ts` 신규 함수 · 신규 `clients/web/mobile-public/*`(Vite 앱, SignaturePad 페이지) · Playwright.
 - **slip-service BE + desktop FE (C3)**: `slip/client/UserInternalClient.java`(resolveSignatures) · `slip/service/SlipService.java`(getOne enrichment) · `slip/web/dto/SlipDetailResponse.java`(reshape) · 계약테스트 · `clients/desktop/.../api/slip.ts` 타입 · `print/DispatchView.tsx`·`print/OutboundView.tsx` 주입.
 
 ---
@@ -80,7 +80,7 @@
 - **`BusinessException` errorCode getter 명**: C1a 테스트가 `getErrorCode()` 가정 — 실 클래스에서 컴파일 안 되면 실 getter 명으로 정렬(slip 동일 클래스 사용).
 - **admin.users DELETE seed = MASTER 한정 실증**: 권한 seed(V6 계열)가 실제로 MASTER 만 `admin.users` DELETE 보유하는지 재확인. 다른 role 보유 시 spec P2 'MASTER 한정' 위배 → 별도 게이트 검토.
 - **QR 라이브러리(C2)**: 기존 의존성 확인 후 없으면 추가 최소화(또는 BE 가 QR PNG 생성).
-- **mobile-public origin/DNS(C2)**: 실 URL 베이스·게이트웨이 정적 서빙·Phase 11 cutover 연계 = DevOps 확정.
+- **mobile-public origin/DNS(C2)**: 실 URL 베이스·**nginx** 정적 서빙(api-gateway 는 reactive 라 정적 native 불가)·Phase 11 cutover 연계 = DevOps 확정. qrUrl = 웹앱 페이지 `/s/{token}`(C2.0 정합).
 
 ---
 

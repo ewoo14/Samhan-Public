@@ -1,6 +1,6 @@
 ---
 name: codex-plugin-setup
-description: Codex CLI MCP 서버 사용 (mcp__codex__codex). 2026-05-21 사용자 명시 "코덱스에게 전체 권한 부여" — 모든 호출 sandbox=danger-full-access 통일 (workspace-write 폐기).
+description: Codex 사용 = MCP mcp__codex__codex + sandbox=danger-full-access (2026-06-21 실측 유일 작동). workspace-write 는 codex Windows 환경에서 read-only 강등(MCP·exec·Bash샌드박스해제 모두), codex exec(Bash)+bypass 는 auto-mode 하드 차단. → MCP danger-full-access 만 auto-mode 세션에서 작동.
 metadata:
   type: feedback
 ---

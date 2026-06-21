@@ -4946,7 +4946,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // ==========================================================================
 
   // GET /admin/users — admin/UsersPage list (AdminPage<AdminUser>)
-  if (method === 'GET' && url.includes('/admin/users') && !url.includes('/role-history') && !url.match(/\/admin\/users\/roles/)) {
+  if (method === 'GET' && url.includes('/admin/users') && !url.includes('/signature/') && !url.includes('/role-history') && !url.match(/\/admin\/users\/roles/)) {
     return envelope({
       items: MOCK_ADMIN_USERS,
       total: MOCK_ADMIN_USERS.length,
@@ -5028,6 +5028,44 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         reason: '신규 입사 초기 권한',
       },
     ])
+  }
+
+  // PATCH /api/v1/admin/users/{id}/signature — 업로드 등록 (C2.3)
+  if (method === 'PATCH' && /\/api\/v1\/admin\/users\/[^/]+\/signature$/.test(url)) {
+    const body = parseMockBody(config)
+    if (typeof body['signatureHash'] !== 'string' || (body['signatureHash'] as string).length !== 64) {
+      return mockError(400, 'SIGNATURE_HASH_MISMATCH', '서명 해시가 올바르지 않습니다.')
+    }
+    return envelope({ registered: true, signedAt: '2026-06-21T10:00:00', signatureChannel: body['channel'] ?? 'UPLOAD' })
+  }
+  // POST /api/v1/admin/users/{id}/signature/handoff-token — 토큰 발급 (C2.3)
+  if (method === 'POST' && /\/api\/v1\/admin\/users\/[^/]+\/signature\/handoff-token$/.test(url)) {
+    const w = window as unknown as {
+      __SIG_HANDOFF__?: { nextIssue: number; polls: Record<string, number>; expiredOnceIssued: boolean }
+    }
+    const state = w.__SIG_HANDOFF__ ?? { nextIssue: 0, polls: {}, expiredOnceIssued: false }
+    w.__SIG_HANDOFF__ = state
+    state.nextIssue += 1
+    const scenario = mockLocationParams().get('mockSignatureHandoff')
+    const shouldExpire = scenario === 'expired-once' && !state.expiredOnceIssued
+    if (shouldExpire) state.expiredOnceIssued = true
+    const token = shouldExpire ? `mock-token-expired-${state.nextIssue}` : `mock-token-${state.nextIssue}`
+    state.polls[token] = 0
+    return envelope({ token, qrUrl: `https://sign.samhan-air.com/s/${token}`, expiresAt: '2026-06-21T10:10:00' })
+  }
+  // GET /api/v1/admin/users/{id}/signature/handoff/{token}/status — 폴링 (2번째부터 used, C2.3)
+  if (method === 'GET' && /\/api\/v1\/admin\/users\/[^/]+\/signature\/handoff\/[^/]+\/status$/.test(url)) {
+    const token = decodeURIComponent(url.match(/\/signature\/handoff\/([^/]+)\/status$/)?.[1] ?? '')
+    const w = window as unknown as {
+      __SIG_HANDOFF__?: { nextIssue: number; polls: Record<string, number>; expiredOnceIssued: boolean }
+    }
+    const state = w.__SIG_HANDOFF__ ?? { nextIssue: 0, polls: {}, expiredOnceIssued: false }
+    w.__SIG_HANDOFF__ = state
+    state.polls[token] = (state.polls[token] ?? 0) + 1
+    if (token.startsWith('mock-token-expired-')) {
+      return envelope({ used: false, expired: true })
+    }
+    return envelope({ used: state.polls[token] >= 2, expired: false })
   }
 
   // GET /users/departments — 부서 목록 (5건)

@@ -296,6 +296,49 @@ jobs:
       - name: vite build
         run: npm run build
 
+  frontend-mobile-public:
+    name: Frontend Mobile-Public (typecheck + lint + test + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [frontend-ds]   # design-system 빌드 후 mobile-public (file: dependency)
+    defaults:
+      run:
+        working-directory: clients/web/mobile-public
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            clients/web/design-system/package-lock.json
+            clients/web/mobile-public/package-lock.json
+
+      - name: "design-system 사전 빌드 (file: dependency)"
+        working-directory: clients/web/design-system
+        run: |
+          npm ci
+          npm run build
+
+      - name: mobile-public 의존성 설치
+        run: npm ci
+
+      - name: typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
+      - name: 단위 테스트(vitest)
+        run: npm run test
+
+      - name: vite build
+        run: npm run build
+
   frontend-mobile-staff:
     name: Frontend Mobile-Staff (typecheck + expo doctor + prebuild dry-run)
     runs-on: ubuntu-latest
