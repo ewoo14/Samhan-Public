@@ -1649,6 +1649,7 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
   const [tab, setTab] = useState<'upload' | 'mobile'>('upload')
   const [preview, setPreview] = useState<{ dataUrl: string; hash: string } | null>(null)
   const [tooLarge, setTooLarge] = useState(false)
+  const [decodeError, setDecodeError] = useState<string | null>(null)
   const [uploadDone, setUploadDone] = useState<EmployeeSignatureResponse | null>(null)
   const [handoff, setHandoff] = useState<{ token: string; qrUrl: string; qrDataUrl: string } | null>(null)
   const [mobileDone, setMobileDone] = useState(false)
@@ -1668,12 +1669,14 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
 
   const handleFile = async (file: File) => {
     setTooLarge(false)
+    setDecodeError(null)
     try {
       const { dataUrl, hash } = await normalizeSignaturePng(file)
       setPreview({ dataUrl, hash })
     } catch (err) {
+      setPreview(null)
       if (err instanceof Error && err.message === 'SIGNATURE_TOO_LARGE') setTooLarge(true)
-      else setPreview(null)
+      else setDecodeError('이미지를 읽을 수 없습니다. PNG/JPG 파일을 선택하세요.')
     }
   }
 
@@ -1681,6 +1684,8 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
     mutationFn: () => createSignatureHandoffToken(user.id),
     onSuccess: async (res) => {
       const qrDataUrl = await QRCode.toDataURL(res.qrUrl, { width: 220, margin: 1 })
+      setMobileExpired(false)
+      setMobileDone(false)
       setHandoff({ token: res.token, qrUrl: res.qrUrl, qrDataUrl })
     },
   })
@@ -1715,8 +1720,8 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
     >
       <div data-testid="admin-user-signature-modal" style={formColStyle}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant={tab === 'upload' ? 'primary' : 'ghost'} size="sm" data-testid="signature-tab-upload" onClick={() => setTab('upload')}>이미지 업로드</Button>
-          <Button variant={tab === 'mobile' ? 'primary' : 'ghost'} size="sm" data-testid="signature-tab-mobile" onClick={() => setTab('mobile')}>모바일로 그리기</Button>
+          <Button variant={tab === 'upload' ? 'primary' : 'ghost'} size="sm" data-testid="signature-tab-upload" aria-pressed={tab === 'upload'} onClick={() => setTab('upload')}>이미지 업로드</Button>
+          <Button variant={tab === 'mobile' ? 'primary' : 'ghost'} size="sm" data-testid="signature-tab-mobile" aria-pressed={tab === 'mobile'} onClick={() => setTab('mobile')}>모바일로 그리기</Button>
         </div>
 
         {tab === 'upload' ? (
@@ -1735,6 +1740,11 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
                   서명 이미지가 50KB 를 초과합니다. 더 작은 이미지를 선택하세요.
                 </div>
               ) : null}
+              {decodeError ? (
+                <div role="alert" data-testid="signature-decode-error" style={{ color: 'var(--state-danger)', fontSize: 13 }}>
+                  {decodeError}
+                </div>
+              ) : null}
               {preview ? (
                 <div data-testid="signature-preview">
                   <SignatureViewer signaturePngBase64={preview.dataUrl} signerName={user.fullName} signedAt="" signatureHash={preview.hash} />
@@ -1750,7 +1760,23 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
             ) : mobileDone ? (
               <div data-testid="signature-mobile-done" style={{ fontSize: 14 }}>모바일 서명이 등록되었습니다.</div>
             ) : mobileExpired ? (
-              <div data-testid="signature-mobile-expired" style={{ color: 'var(--state-danger)', fontSize: 13 }}>링크가 만료되었습니다. 다시 발급하세요.</div>
+              <div data-testid="signature-mobile-expired" style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                <div role="alert" style={{ color: 'var(--state-danger)', fontSize: 13 }}>
+                  링크가 만료되었습니다. 다시 발급하세요.
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="signature-handoff-reissue"
+                  onClick={() => {
+                    setHandoff(null)
+                    setMobileExpired(false)
+                    setMobileDone(false)
+                  }}
+                >
+                  다시 발급
+                </Button>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <img data-testid="signature-qr-image" src={handoff.qrDataUrl} alt="모바일 서명 QR" width={220} height={220} />
