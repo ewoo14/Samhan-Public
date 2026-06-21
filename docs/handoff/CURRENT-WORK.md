@@ -4,6 +4,34 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-22 야간 자율 완료 — **A2 결재 워크플로우 에픽 완결**, 다음 = 개발책임자 지정)
+
+### ✅ A2 결재 워크플로우 에픽 — 5 PR 머지 완료 (야간 자율 #555·#556 추가)
+| PR | 내용 | main |
+|---|---|---|
+| #552 | A2-1 결재라인 설정 메뉴 + 선언 approval_line_config | `791dea719` |
+| #553 | A2-1 후속(자동저장 desync 복원 + CREATOR invariant) | `1332a54d4` |
+| #554 | A2-1b 순서변경(드래그)+라벨 인라인 | `b3e11e885` |
+| #555 | A2-1c **다중 결재자(그룹+개인 캡슐)** | `9f85a3219` |
+| #556 | A2-2 **출고전표 accept/inspect enforcement** | `14adce10a` |
+
+- **A2-2 산출**: A2-1c 결재자(그룹∪개인)를 출고전표 accept/inspect 게이트로 **동적 강제**. auth `POST /auth/internal/approval-line/authorize`(X-Internal-Token) → slip `ApprovalLineAuthorizeClient` → SlipService.accept(`OUTBOUND_DISPATCH`)·inspect(`OUTBOUND_INSPECT`). **slipType==OUTBOUND·실사용자·opt-in(미설정 무중단)·system bypass·INBOUND 무영향**. B 게이트(자동채움 유지). Flyway 신규 없음. spec=[A2-2](../superpowers/specs/2026-06-21-approval-outbound-enforcement-a2-2-design.md).
+- **듀얼리뷰 R1~R4 양쪽 0 수렴**(#555·#556 각). 🐳 라이브 2서비스 QA: accept 비결재자 403·INBOUND 200·inspect 403"출고 검수 권한"·authorize 계약·**라이브가 DI 빈 생성 P1·inbound.inspection 선차단 P1 단독 적발**.
+
+### 다음 = 개발책임자 지정 대기 (새 에픽 = brainstorming 필요)
+A2 는 **출고전표(SLIP_OUTBOUND)만** enforcement. 원 에픽 "전 전표 명시 결재"의 잔여 — **결정 필요**:
+- **타 전표/문서 결재라인**: 입고(INBOUND)·회계전표·주문·견적·배차·그룹웨어 결재. 각 documentType config 시드 + 모델(B 게이트 vs 명시 결재) **개발책임자 결정 필요**(E12 는 출고=B 게이트만 확정).
+- **action_key 견고화**: V62 row_number 매핑이 **V62 적용 전 reorder(swap)한 DB 에서 뒤바뀜**(신규 배포 무관, dev DB 한정). 타 documentType 추가 시 재검토.
+- **CI 갭(후속 권장)**: 전 slip IT 가 `ApprovalLineAuthorizeClient` @MockBean → 실 RestClient 빈 생성/LB resolution 미검(R1 DI P1 을 라이브 부팅만 적발). context-load 테스트로 실 빈 생성 가드 추가 권장.
+
+### 🔑 야간 자율 워크플로우 교훈 (메모리 박제)
+- **라이브 QA 가 정적/IT 가 못 잡는 런타임 P1 단독 적발**: ①client 생성자 2개+@Autowired 누락→실 컨테이너만 기동 실패(전 IT @MockBean) ②OUTBOUND inspect 가 inbound.inspection hard gate 선차단. **MSA 외부 client @MockBean IT 는 실 빈/계약 미검 → 라이브 부팅·실 QA 의무**.
+- **듀얼리뷰 순차**(Opus 완료·게시 → Codex cross-check, **병렬 금지** — 개발책임자 재지적). **Opus 라운드 fix=Opus(Claude) 직접, Codex 라운드 fix=Codex**(line29, fix 일괄 Codex 디스패치 금지).
+- **Codex write = danger-full-access**(workspace-write read-only 강등). **FE green = typecheck+lint+vitest**(lint 누락 false-green).
+- **로컬 환경**: slip-service 호스트 8086 = influxd 충돌(호스트 포트만 18086 회피, 게이트웨이는 eureka 내부라 무관). 서비스 재시작 후 eureka 레지스트리 페치 지연(~40s) → "No instances available" transient.
+
+---
+
 ## 🟢 핸드오프 (2026-06-21 야간 자율 — **A2-1c 다중 결재자 머지**, 다음 = A2-2 enforcement)
 
 ### ✅ A2-1c 다중 결재자(그룹+개인 캡슐) — PR #555 머지(main `9f85a3219`)
