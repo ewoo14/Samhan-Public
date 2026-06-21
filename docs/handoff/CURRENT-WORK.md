@@ -4,6 +4,30 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-21 — **A2-1 결재라인 설정 메뉴 머지 완료 PR #552**, 다음 = A2-2)
+
+### ✅ A2-1 머지 완료 (PR #552, main `791dea719`)
+- **에픽**: 전 전표 명시 결재 워크플로우 A2. **A2 재분해**(5렌즈 적대검증 wf_3f36aa36, 11 BLOCKER): A2-1=설정 메뉴+선언 config / A2-2=slip 게이트 refactor.
+- **A2-1 산출**([spec](../superpowers/specs/2026-06-21-approval-line-config-a2-design.md)·[plan](../superpowers/plans/2026-06-21-approval-line-config-a2-1.md)): 인사 그룹 "결재라인 설정" 메뉴 — 전표종류별 결재 역할(작성자=requesterId 자동/출고인·검수인=권한그룹)에 권한 그룹·필수여부를 **선언적 중앙 정의·저장**(auth `approval_line_config` 자체 테이블, group_page_permissions 미조작=split-truth 회피). page-code `admin.approval-line-config`(일반, MANAGEMENT 미편입). **자동저장**(저장 버튼 없음, 개발책임자 정정).
+- **에픽 E12 정정 박제**: 출고=**B(게이트, 자동채움 유지)** — 초기 '대체' 번복(기존 출고 결재란=명시결재 아닌 '처리=자동서명'). **작성자=requesterId**(createdBy='system' 폴백 오류 정정).
+- **워크플로우**: Codex 구현 → 🔵Opus R1+🐳라이브QA → 🟣Codex R2 → 개발책임자 자동저장 → 🔵Opus R3+재검증. **CI 26/26**. 3 라운드 수렴 blocking 0.
+- 🐳 **라이브 QA 가 IT/단위가 가린 2 실버그 단독 적발**: ①V61 account_page_permissions materialize 누락(MANAGER 락아웃, IT 가 materializeForAccount 명시호출로 false-green) → V56/V57 패턴 + ControllerIT explicit materialize 제거. ②group picker 가 system.permission-admin 게이트 → 위임 MANAGER 403 → 전용 `/groups`(admin.approval-line-config) 신설. **QA 캡처**=`docs/qa/approval-line-config-a2-1/` (비-MASTER MANAGER dev_manager).
+
+### 다음 = A2-2 (slip 출고 권한 그룹 게이트 refactor) — **착수 시 brainstorming**
+- A2-1 의 approval_line_config(출고인/검수인 권한 그룹)를 **출고전표 accept/inspect 게이트로 enforce**. spec §8 박제 요건:
+  - **공유 엔드포인트 slipType 분기**: `accept`(`SlipController.java:406`)·`inspect`(:434)는 입·출고 공통 → 출고 게이트는 **slipType==OUTBOUND 만**(`checkEditPermissionBySlipType` :726 패턴). 입고 회귀 금지.
+  - **단일코드 분리**: `slip.transfer.process`(6전이 공유) → 출고인=accept·검수인=inspect 전용 page-code 신설 + 두 엔드포인트만 교체(4-eye 분리). 14 소비처 회귀 매트릭스.
+  - **dead-gate 정합**: inspect 본문 `checkEditPermission(inbound.inspection)`(:441)=Samhan no-op+fail-open → account 경로 @RequirePermission 로 실효화. arologis(roleBasedEnforcement) 영향 점검.
+  - **실 HTTP 회귀 필수**([[enforcement-real-http-test]]): @MockBean 금지, 입고 accept/inspect 200 케이스 + fail-open negative 포함.
+  - config→게이트 연결: approval_line_config 의 출고인/검수인 그룹을 그 전용 page-code 로 grant(materialize 동반!) — A2-1 가 적발한 materialize 함정 재적용.
+
+### 워크플로우 메모 (이 세션 검증/위반 교훈)
+- **라이브 QA 는 IT/단위가 가리는 실버그(materialize 캐시·권한 불일치)를 단독 적발** — 매 라운드 QA 에이전트 라이브 캡처 의무([[feedback_temp_multimodel_workflow]] §31-34), fix→다음 라운드(§42). 본 세션 PM 이 R1/R2/R3 게시·QA 를 반복 누락 → 개발책임자 3회 지적.
+- **page-code grant seed = group_page_permissions + account_page_permissions materialize 둘 다**(V56/V57 패턴). group grant 만 하면 기존 배속 계정 락아웃(materializer 미트리거). raw seed 는 materializer 안 거침.
+- **라이브 데스크톱 캡처**: 렌더러 `vite --config vite.renderer.dev.config.ts`(5175, VITE_API_BASE_URL=:8080, mock off) + Playwright `window.samhanAuth` 브리지(dev_manager `dev_p05_pass!`, a000…0003, 비-MASTER MANAGER=MASTER bypass 회피). **auth 컨테이너 stale jar 주의**(launch 후 코드 fix 시 재빌드+V61 history 삭제 재적용). DS Select 는 renderToStaticMarkup SSR 불가→onChange 순수함수 추출 단위테스트.
+
+---
+
 ## 🟢 핸드오프 (2026-06-21 — **A1 공통 결재 엔진 일반화 머지 완료 PR #551**, 다음 = A2)
 
 ### ✅ A1 머지 완료 (PR #551, main `f3783f8d7`)
