@@ -12671,6 +12671,25 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     approvers: [],
     required: true,
   },
+  // A2-4 주문 — V64 시드(작성자/승인자=PARTNER_ORDER_CONVERT)와 mock 패리티.
+  {
+    id: 'mock-approval-line-partner-order-creator',
+    documentType: 'PARTNER_ORDER',
+    sequence: 0,
+    label: '작성자',
+    stepType: 'CREATOR',
+    approvers: [],
+    required: true,
+  },
+  {
+    id: 'mock-approval-line-partner-order-approver',
+    documentType: 'PARTNER_ORDER',
+    sequence: 1,
+    label: '승인자',
+    stepType: 'GROUP',
+    approvers: [],
+    required: true,
+  },
 ]
 
 const _mockPermissionGroupMatrices: Record<string, Record<string, MockActionMatrix>> = {

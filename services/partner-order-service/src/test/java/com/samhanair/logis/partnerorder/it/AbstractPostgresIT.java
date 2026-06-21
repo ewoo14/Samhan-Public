@@ -1,6 +1,14 @@
 package com.samhanair.logis.partnerorder.it;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+
+import com.samhanair.logis.partnerorder.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.partnerorder.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.partnerorder.client.EstimateCatalogClient;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -21,6 +29,16 @@ public abstract class AbstractPostgresIT {
     /** product-service estimate-catalog 외부 client 격리 — Eureka 비활성 IT 5xx 회피. */
     @MockBean
     protected EstimateCatalogClient estimateCatalogClient;
+
+    /** auth-service 결재라인 인가 client 격리 — 기본 opt-in 미설정(configured=false). */
+    @MockBean
+    protected ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
+
+    @BeforeEach
+    void setUpApprovalLineAuthorizeClient() {
+        lenient().when(approvalLineAuthorizeClient.authorize(anyString(), anyString(), any(UUID.class)))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
+    }
 
     // Testcontainers 가 임의 ephemeral 컨테이너에 자체 default (test/test) 자동 생성 — 외부 노출 X.
     // username/password 명시 호출 자체를 생략하여 GitGuardian Generic Password / Username Password

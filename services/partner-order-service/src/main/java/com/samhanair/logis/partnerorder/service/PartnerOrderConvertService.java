@@ -2,6 +2,8 @@ package com.samhanair.logis.partnerorder.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partnerorder.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.partnerorder.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.partnerorder.client.InventoryClient;
 import com.samhanair.logis.partnerorder.client.InventoryClient.ReservationResult;
 import com.samhanair.logis.partnerorder.client.SlipServiceClient;
@@ -60,11 +62,16 @@ public class PartnerOrderConvertService {
 
     private static final Logger log = LoggerFactory.getLogger(PartnerOrderConvertService.class);
     private static final DateTimeFormatter IO_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final String APPROVAL_DOCUMENT_TYPE = "PARTNER_ORDER";
+    private static final String APPROVAL_ACTION_KEY = "PARTNER_ORDER_CONVERT";
+    private static final String APPROVAL_FORBIDDEN_MESSAGE =
+            "주문 출고전환 권한이 없습니다 — 승인자 결재자(그룹/개인)만 전환할 수 있습니다";
     private static final String RESERVE_REF_TYPE = "PARTNER_ORDER_CONVERT";
 
     private final PartnerOrderRepository orderRepository;
     private final SlipServiceClient slipServiceClient;
     private final InventoryClient inventoryClient;
+    private final ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
 
     /**
      * 주문의 선택 라인을 출고전표로 부분전환한다 (Phase 2.6c — reserve 예약 모델).
@@ -94,6 +101,8 @@ public class PartnerOrderConvertService {
     @Transactional
     public ConvertResultResponse convert(String id, ConvertToSlipRequest req,
                                          UUID actorId, String actorName) {
+        enforceApprovalLine(actorId);
+
         // 1. 주문 조회 + 전환 가능 검증 (DRAFT/ON_HOLD 화이트리스트)
         PartnerOrder order = PartnerOrderIdResolver.findByIdentifier(orderRepository, id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PARTNER_ORDER_NOT_FOUND,
@@ -210,6 +219,21 @@ public class PartnerOrderConvertService {
                 result.slipNo(),
                 order.getStatus().name(),
                 order.getLines().stream().allMatch(PartnerOrderLine::isFullyConverted));
+    }
+
+    private void enforceApprovalLine(UUID actorId) {
+        if (!isRealUser(actorId)) {
+            return;
+        }
+        ApprovalLineAuthorizeResult result = approvalLineAuthorizeClient.authorize(
+                APPROVAL_DOCUMENT_TYPE, APPROVAL_ACTION_KEY, actorId);
+        if (result.configured() && !result.allowed()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, APPROVAL_FORBIDDEN_MESSAGE);
+        }
+    }
+
+    private boolean isRealUser(UUID actorId) {
+        return actorId != null;
     }
 
     /**

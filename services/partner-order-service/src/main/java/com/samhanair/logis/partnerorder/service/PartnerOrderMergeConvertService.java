@@ -2,6 +2,8 @@ package com.samhanair.logis.partnerorder.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.partnerorder.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.partnerorder.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.partnerorder.client.InventoryClient;
 import com.samhanair.logis.partnerorder.client.InventoryClient.ReservationResult;
 import com.samhanair.logis.partnerorder.client.SlipServiceClient;
@@ -62,12 +64,17 @@ public class PartnerOrderMergeConvertService {
 
     private static final Logger log = LoggerFactory.getLogger(PartnerOrderMergeConvertService.class);
     private static final DateTimeFormatter IO_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final String APPROVAL_DOCUMENT_TYPE = "PARTNER_ORDER";
+    private static final String APPROVAL_ACTION_KEY = "PARTNER_ORDER_CONVERT";
+    private static final String APPROVAL_FORBIDDEN_MESSAGE =
+            "주문 출고전환 권한이 없습니다 — 승인자 결재자(그룹/개인)만 전환할 수 있습니다";
     /** inventory reserve 참조 유형 — 단일주문({@code PARTNER_ORDER_CONVERT}) 과 구분. */
     private static final String RESERVE_REF_TYPE = "PARTNER_ORDER_MERGE_CONVERT";
 
     private final PartnerOrderRepository orderRepository;
     private final SlipServiceClient slipServiceClient;
     private final InventoryClient inventoryClient;
+    private final ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
 
     /**
      * 여러 주문의 선택 라인을 단일 출고전표로 병합 발행한다 (Phase 2.6b D2).
@@ -91,6 +98,8 @@ public class PartnerOrderMergeConvertService {
     @Transactional
     public MergeConvertResultResponse convertMerge(MergeConvertToSlipRequest req,
                                                     UUID actorId, String actorName) {
+        enforceApprovalLine(actorId);
+
         // 1. warehouseCode 사전 검증 (blank → 즉시 409)
         if (req.warehouseCode() == null || req.warehouseCode().isBlank()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -239,6 +248,21 @@ public class PartnerOrderMergeConvertService {
         log.info("[D2] 병합 전환 완료 — {}개 주문 → slip {} (idemKey={})",
                 orders.size(), result.slipNo(), idempotencyKey);
         return new MergeConvertResultResponse(result.slipNo(), results);
+    }
+
+    private void enforceApprovalLine(UUID actorId) {
+        if (!isRealUser(actorId)) {
+            return;
+        }
+        ApprovalLineAuthorizeResult result = approvalLineAuthorizeClient.authorize(
+                APPROVAL_DOCUMENT_TYPE, APPROVAL_ACTION_KEY, actorId);
+        if (result.configured() && !result.allowed()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, APPROVAL_FORBIDDEN_MESSAGE);
+        }
+    }
+
+    private boolean isRealUser(UUID actorId) {
+        return actorId != null;
     }
 
     /**

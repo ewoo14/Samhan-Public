@@ -32,6 +32,7 @@ export interface ApprovalLineUserOption {
 export const DOC_TYPES: { value: string; label: string }[] = [
   { value: 'SLIP_OUTBOUND', label: '출고전표' },
   { value: 'SLIP_INBOUND', label: '입고전표' },
+  { value: 'PARTNER_ORDER', label: '주문' },
 ]
 
 export async function fetchApprovalLineRoles(documentType: string): Promise<ApprovalLineRole[]> {
