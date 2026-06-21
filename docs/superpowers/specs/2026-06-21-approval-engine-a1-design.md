@@ -104,10 +104,10 @@ shared/approval-core  (신규 java-library — collab-core 와 동일 모듈 패
 ## 5. Flyway / 마이그레이션 (additive · NOT NULL 금지)
 
 - **groupware = 다음 V8**(현 최신 V7). slip = 다음 V49(A2 에서). service-per-DB 라 순서 의존 없음.
-- **groupware V8 = ALTER ADD nullable 만**: `approval_lines` 에 `document_type`/`document_id`(nullable), `approval_steps` 에 `step_type`(VARCHAR, default 'USER' for 기존행)·`approver_group_id`·`required_page_code`·`approved_by_user_id`·`signature_png_snapshot`(bytea)·`signed_at`(timestamptz) 전부 nullable ADD.
+- **groupware V8 = ALTER `ADD COLUMN IF NOT EXISTS`(V4 컨벤션)·nullable 만**: `approval_lines` 에 `document_type`/`document_id`(nullable), `approval_steps` 에 `step_type`(VARCHAR)·`approver_group_id`·`required_page_code`·`approved_by_user_id`·`signature_png_snapshot`(bytea)·`signed_at`(TIMESTAMP) 전부 nullable ADD. `step_type` 만 기존행='USER' 결정적 backfill 후 NOT NULL. **기존 처리완료 USER step `approved_by_user_id = approver_id` 백필**(status IN APPROVED/REJECTED — USER 모드는 결재자=실승인자, 듀얼리뷰 R1 Codex 발견).
   - **NOT NULL backfill 절대 금지**: 기존 라이브 결재행의 `approver_id`(사원)→권한그룹 역매핑은 1:N 비결정적이라 불가. `approver_group_id` 등을 NOT NULL 로 못 박으면 기존행에서 SET NOT NULL 실패. 기존행=USER 모드(approver_id) 영속, document_type/id=NULL(독립형 결재).
   - 기존 `approver_id` 컬럼/엔티티 필드는 **그대로 유지**(USER 모드). `approverUserId` = 기존 `approverId` 재명명 없이 매핑 정렬.
-- **시각 컬럼은 timestamptz**([[project_kst_timezone_standard]] — naive TIMESTAMP 는 컨테이너 TZ 전환 시 9h 분열, V44 decided_at 교훈). 단 base 일반화 시 기존 `decidedAt`(현 LocalDateTime)의 일관성 점검.
+- **시각 컬럼 규약 = plain TIMESTAMP**(듀얼리뷰 R1 확정 — 초기 timestamptz 권고 정정): `ApprovalStepBase.signedAt`/`decidedAt` 은 `LocalDateTime`(wall-clock) 매핑이라 plain TIMESTAMP 가 정합. 기존 `decided_at`(V1)·BaseEntity audit 전부 naive TIMESTAMP 이고 KST 전역표준은 postgres GUC(`-c timezone`)+JVM(`-Duser.timezone`)로 처리([[project_kst_timezone_standard]]). timestamptz 로 바꾸면 LocalDateTime 바인딩에 세션-TZ 변환이 끼어 오히려 위험. **timestamptz 는 향후 신규 service(slip A2) 가 `Instant`(절대시각) 컬럼을 쓸 때 그 컬럼에 한해 적용**(V44 decided_at 교훈=Instant 전용).
 - **document_type CHECK 제약**: 신규 전표종류 추가 시 CHECK 재마이그가 필요해진다([[feedback_enum_expansion_check_constraint]]). A1 은 그룹웨어만이라 값은 NULL/APPROVAL_LINE 뿐 → **CHECK 생략하고 application-side(CollabDocumentType enum)로 가드**(loose-ref 정신과 일관, slip 도입 시 CHECK 누락 INSERT 거부 위험 회피). 결정 시 spec 에 명문화.
 - **[[feedback_applied_migration_immutable]]**: 적용된 V*.sql(주석조차) 수정 금지. V8 은 신규 파일.
 - **[[feedback_migration_fresh_postgres_probe]]**: V8 을 push 전 fresh Postgres + 라이브 유사 픽스처(approver_id 채워진 기존행)에 `cat V8.sql | psql ON_ERROR_STOP` 직접 적용 → NOT NULL 미강제·기존행 무손상 실증. + jar standalone 부팅으로 @MappedSuperclass 컬럼↔DDL 컬럼 validate 통과 확인.
@@ -160,6 +160,13 @@ shared/approval-core  (신규 java-library — collab-core 와 동일 모듈 패
 - **결재선 구성 권한 게이트**: 현 그룹웨어는 "롤/위임 게이트 없음, 전 사원 자유선택"(에픽 spec §3). E5 page-code 위임(D-PB-01) enforce 지점을 A2 에서 확정.
 - **배차 결재 경유**: 에픽 §1 "배차=출고 결재 경유(추가작업 0)" 주장 타당성 미검증 → 해당 슬라이스에서.
 - **A3 서명 동결 무결성**: `/internal/users/signatures` 는 internal token=ROLE_MASTER 라 임의 user 서명 조회 가능 → "동결 대상=현 승인 actor 본인"을 **호출측(approval-core/서비스)이 강제**(endpoint 가 안 막아줌).
+- **A3 서명 LAZY**: `ApprovalStepBase.signaturePngSnapshot` 의 `@Basic(LAZY)` 는 bytecode enhancement 없으면 EAGER 강등(현재 groupware 빌드 미적용). A3 서명 동결 시 **enhancement 또는 projection/별도 1:1 테이블 동반 필수**(목록 N건×PNG EAGER 로딩 회피).
+
+**듀얼리뷰 R1(🔵Opus+🟣Codex) 도출 A2 박제 (A1 무회귀, 후속 의무)**:
+- **approver_id DROP NOT NULL**: V8 은 `approver_id` NOT NULL 유지(USER 단독). A2 GROUP/CREATOR step(`approver_id`=null, `approver_group_id`/`required_page_code` 사용) INSERT 전 `ALTER COLUMN approver_id DROP NOT NULL` 마이그 필수.
+- **`matchesActor` 확장 hook**: 현 `ApprovalStepBase.matchesActor` 는 package-private + USER 동일성 하드코딩. A2 에서 GROUP/CREATOR 권한 판정(page-code `DynamicPermissionClient.check`)을 위해 **protected hook 또는 권한 판정 port/context** 설계.
+- **`resolveDisplayNames` null 필터**: groupware `ApprovalLineService.resolveDisplayNames` 의 `List.copyOf(ids)` 는 null 불허 → A2 GROUP/CREATOR(approverUserId=null) 시 NPE. null 필터 동반.
+- **제네릭 엔진 실 통합 IT**: `ApprovalLineService<L>`/`ApprovalRepositoryPort` 는 A1 production 무소비(FakePort 단위만). A2 slip 배선 시 **Testcontainers 실 영속(@Version 낙관락·findByDocument 실 쿼리) IT** 첫 검증 의무.
 
 ---
 
