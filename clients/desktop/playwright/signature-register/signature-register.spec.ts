@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 
 // VITE_MOCK_MODE dev server (webServer) 위에서 실행. UsersPage 진입 = MASTER mock 세션.
 const USERS_URL = '/#/admin/users?mockRole=MASTER&mockDepartment=대표실'
+const USERS_EXPIRED_URL = `${USERS_URL}&mockSignatureHandoff=expired-once`
 
 test.describe('사원 서명 등록 모달 (C2)', () => {
   test('관리 셀 서명 등록 버튼 → 모달 오픈', async ({ page }) => {
@@ -34,5 +35,20 @@ test.describe('사원 서명 등록 모달 (C2)', () => {
     await expect(page.getByTestId('signature-qr-image')).toBeVisible()
     await expect(page.getByTestId('signature-copy-link')).toBeVisible()
     await expect(page.getByTestId('signature-mobile-done')).toBeVisible({ timeout: 8000 })
+  })
+
+  test('모바일 링크 만료 감지 후 다시 발급하면 QR이 재표시된다', async ({ page }) => {
+    await page.goto(USERS_EXPIRED_URL)
+    await page.getByTestId('admin-users-table').waitFor()
+    await page.getByTestId('admin-user-signature-button').first().click()
+    await page.getByTestId('signature-tab-mobile').click()
+    await page.getByTestId('signature-handoff-issue').click()
+    await expect(page.getByTestId('signature-qr-image')).toBeVisible()
+    await expect(page.getByTestId('signature-mobile-expired')).toBeVisible({ timeout: 8000 })
+
+    await page.getByTestId('signature-handoff-reissue').click()
+    await expect(page.getByTestId('signature-mobile-expired')).toBeHidden()
+    await expect(page.getByTestId('signature-qr-image')).toBeVisible()
+    await expect(page.getByTestId('signature-copy-link')).toBeVisible()
   })
 })

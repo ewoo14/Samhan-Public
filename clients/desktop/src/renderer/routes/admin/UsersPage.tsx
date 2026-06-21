@@ -1768,10 +1768,12 @@ function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: (
                   variant="primary"
                   size="sm"
                   data-testid="signature-handoff-reissue"
+                  loading={issueMutation.isPending}
                   onClick={() => {
                     setHandoff(null)
                     setMobileExpired(false)
                     setMobileDone(false)
+                    issueMutation.mutate()
                   }}
                 >
                   다시 발급

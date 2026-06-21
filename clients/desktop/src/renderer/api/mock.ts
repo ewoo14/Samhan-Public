@@ -5040,14 +5040,32 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   }
   // POST /api/v1/admin/users/{id}/signature/handoff-token — 토큰 발급 (C2.3)
   if (method === 'POST' && /\/api\/v1\/admin\/users\/[^/]+\/signature\/handoff-token$/.test(url)) {
-    ;(window as unknown as { __SIG_POLL__?: number }).__SIG_POLL__ = 0
-    return envelope({ token: 'mock-token-1', qrUrl: 'https://sign.samhan-air.com/s/mock-token-1', expiresAt: '2026-06-21T10:10:00' })
+    const w = window as unknown as {
+      __SIG_HANDOFF__?: { nextIssue: number; polls: Record<string, number>; expiredOnceIssued: boolean }
+    }
+    const state = w.__SIG_HANDOFF__ ?? { nextIssue: 0, polls: {}, expiredOnceIssued: false }
+    w.__SIG_HANDOFF__ = state
+    state.nextIssue += 1
+    const scenario = mockLocationParams().get('mockSignatureHandoff')
+    const shouldExpire = scenario === 'expired-once' && !state.expiredOnceIssued
+    if (shouldExpire) state.expiredOnceIssued = true
+    const token = shouldExpire ? `mock-token-expired-${state.nextIssue}` : `mock-token-${state.nextIssue}`
+    state.polls[token] = 0
+    return envelope({ token, qrUrl: `https://sign.samhan-air.com/s/${token}`, expiresAt: '2026-06-21T10:10:00' })
   }
   // GET /api/v1/admin/users/{id}/signature/handoff/{token}/status — 폴링 (2번째부터 used, C2.3)
   if (method === 'GET' && /\/api\/v1\/admin\/users\/[^/]+\/signature\/handoff\/[^/]+\/status$/.test(url)) {
-    const w = window as unknown as { __SIG_POLL__?: number }
-    w.__SIG_POLL__ = (w.__SIG_POLL__ ?? 0) + 1
-    return envelope({ used: w.__SIG_POLL__ >= 2, expired: false })
+    const token = decodeURIComponent(url.match(/\/signature\/handoff\/([^/]+)\/status$/)?.[1] ?? '')
+    const w = window as unknown as {
+      __SIG_HANDOFF__?: { nextIssue: number; polls: Record<string, number>; expiredOnceIssued: boolean }
+    }
+    const state = w.__SIG_HANDOFF__ ?? { nextIssue: 0, polls: {}, expiredOnceIssued: false }
+    w.__SIG_HANDOFF__ = state
+    state.polls[token] = (state.polls[token] ?? 0) + 1
+    if (token.startsWith('mock-token-expired-')) {
+      return envelope({ used: false, expired: true })
+    }
+    return envelope({ used: state.polls[token] >= 2, expired: false })
   }
 
   // GET /users/departments — 부서 목록 (5건)
