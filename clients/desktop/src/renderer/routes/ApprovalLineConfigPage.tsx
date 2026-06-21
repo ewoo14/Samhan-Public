@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Select, Spinner } from '@samhan/design-system'
 import {
   DOC_TYPES,
+  fetchApprovalLineGroups,
   fetchApprovalLineRoles,
   updateApprovalLineRole,
+  type ApprovalLineGroupOption,
   type ApprovalLineRole,
 } from '../api/approvalLineConfigApi'
-import { fetchPermissionGroups, type PermissionGroupSummary } from '../api/permissionGroupsApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 /** 결재라인 설정 — 전표 종류별 역할에 권한 그룹/필수 지정(선언적, enforcement=A2-2). */
@@ -24,8 +25,8 @@ export function ApprovalLineConfigPage() {
   })
 
   const groupsQuery = useQuery({
-    queryKey: ['admin', 'permission-groups'],
-    queryFn: fetchPermissionGroups,
+    queryKey: ['admin', 'approval-line-config', 'groups'],
+    queryFn: fetchApprovalLineGroups,
   })
 
   const updateMutation = useMutation({
@@ -71,40 +72,47 @@ export function ApprovalLineConfigPage() {
       </div>
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        {rolesQuery.isLoading || groupsQuery.isLoading ? (
+        {rolesQuery.isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spinner /></div>
         ) : null}
 
-        {rolesQuery.isError || groupsQuery.isError ? (
+        {rolesQuery.isError ? (
           <div style={{ padding: 24, color: 'var(--color-danger-600)' }}>
             결재라인 설정 정보를 불러오지 못했습니다.
           </div>
         ) : null}
 
-        {!rolesQuery.isLoading && !groupsQuery.isLoading && !rolesQuery.isError && !groupsQuery.isError ? (
-          <table data-testid="approval-line-role-table" style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={headCellStyle}>순서</th>
-                <th style={headCellStyle}>역할</th>
-                <th style={headCellStyle}>권한 그룹</th>
-                <th style={headCellStyle}>필수</th>
-                <th style={headCellStyle}>작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(rolesQuery.data ?? []).map((role) => (
-                <ApprovalRoleRow
-                  key={role.id}
-                  role={role}
-                  groups={groups}
-                  saving={updateMutation.isPending}
-                  onSave={(approverGroupId, required) =>
-                    updateMutation.mutate({ id: role.id, approverGroupId, required })}
-                />
-              ))}
-            </tbody>
-          </table>
+        {!rolesQuery.isLoading && !rolesQuery.isError ? (
+          <>
+            {groupsQuery.isError ? (
+              <div style={{ padding: '10px 12px', color: 'var(--color-warning-700)', fontSize: 13 }}>
+                권한 그룹 목록을 불러오지 못했습니다. 역할 목록은 계속 표시됩니다.
+              </div>
+            ) : null}
+            <table data-testid="approval-line-role-table" style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={headCellStyle}>순서</th>
+                  <th style={headCellStyle}>역할</th>
+                  <th style={headCellStyle}>권한 그룹</th>
+                  <th style={headCellStyle}>필수</th>
+                  <th style={headCellStyle}>작업</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(rolesQuery.data ?? []).map((role) => (
+                  <ApprovalRoleRow
+                    key={role.id}
+                    role={role}
+                    groups={groups}
+                    saving={updateMutation.isPending}
+                    onSave={(approverGroupId, required) =>
+                      updateMutation.mutate({ id: role.id, approverGroupId, required })}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </>
         ) : null}
       </Card>
 
@@ -140,7 +148,7 @@ export function ApprovalRoleRow({
   onSave,
 }: {
   role: ApprovalLineRole
-  groups: PermissionGroupSummary[]
+  groups: ApprovalLineGroupOption[]
   saving: boolean
   onSave: (approverGroupId: string | null, required: boolean) => void
 }) {

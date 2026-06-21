@@ -9200,6 +9200,15 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // ==========================================================================
 
   // Permission Groups Phase A — stateful in-process mock.
+  if (method === 'GET' && (url.endsWith('/auth/admin/approval-line-configs/groups') || url.endsWith('/admin/approval-line-configs/groups'))) {
+    return envelope(
+      _mockPermissionGroups
+        .filter((group) => !group.systemMaster)
+        .map((group) => ({ id: group.id, name: group.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+    )
+  }
+
   if (method === 'GET' && (url.endsWith('/auth/admin/permission-groups') || url.endsWith('/admin/permission-groups'))) {
     return envelope(_mockPermissionGroups.map(mockPermissionGroupSummary))
   }

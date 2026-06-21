@@ -1,6 +1,7 @@
 package com.samhanair.logis.auth.web;
 
 import com.samhanair.logis.auth.service.ApprovalLineConfigService;
+import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.auth.web.dto.UpdateApprovalLineRoleRequest;
 import com.samhanair.logis.common.dto.ApiResponse;
@@ -30,6 +31,13 @@ public class ApprovalLineConfigController {
     @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.VIEW)
     public ApiResponse<List<ApprovalLineRoleView>> listRoles(@RequestParam String documentType) {
         return ApiResponse.ok(service.listRoles(documentType));
+    }
+
+    /** 결재라인 설정 picker 용 권한그룹 목록. */
+    @GetMapping("/approval-line-configs/groups")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.VIEW)
+    public ApiResponse<List<ApprovalLineGroupOption>> listGroups() {
+        return ApiResponse.ok(service.listSelectableGroups());
     }
 
     /** 역할에 권한 그룹/필수 갱신. */

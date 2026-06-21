@@ -80,6 +80,22 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("GET 그룹목록 — system.permission-admin 없이 admin.approval-line-config VIEW 로 200")
+    void listGroups_managerWithApprovalLineGrant_returns200() throws Exception {
+        MvcResult result = mockMvc.perform(get("/auth/admin/approval-line-configs/groups")
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains(WAREHOUSE_GROUP_ID.toString())
+                .contains("창고원")
+                .doesNotContain("마스터");
+    }
+
+    @Test
     @DisplayName("PUT 출고인 역할 — V61 seed MANAGER UPDATE 권한으로 권한그룹 지정 200")
     void updateDispatcherRole_managerWithSeedGrant_returns200() throws Exception {
         UUID roleId = outboundRoleId("출고인");

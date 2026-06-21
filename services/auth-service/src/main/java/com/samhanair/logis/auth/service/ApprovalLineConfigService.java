@@ -3,9 +3,11 @@ package com.samhanair.logis.auth.service;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
+import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,16 @@ public class ApprovalLineConfigService {
     public List<ApprovalLineRoleView> listRoles(String documentType) {
         return repository.findByDocumentTypeOrderBySequenceAsc(documentType).stream()
                 .map(this::toView)
+                .toList();
+    }
+
+    /** 결재 역할에 지정 가능한 권한그룹 목록. 시스템마스터 그룹은 결재자 그룹 후보에서 제외한다. */
+    @Transactional(readOnly = true)
+    public List<ApprovalLineGroupOption> listSelectableGroups() {
+        return groupRepository.findByIsDeletedFalse().stream()
+                .filter(group -> !group.isSystemMaster())
+                .sorted(Comparator.comparing(group -> group.getName()))
+                .map(group -> new ApprovalLineGroupOption(group.getId(), group.getName()))
                 .toList();
     }
 

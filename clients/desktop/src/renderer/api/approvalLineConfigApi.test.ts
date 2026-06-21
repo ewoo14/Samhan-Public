@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClient } from './client'
-import { fetchApprovalLineRoles, updateApprovalLineRole } from './approvalLineConfigApi'
+import {
+  fetchApprovalLineGroups,
+  fetchApprovalLineRoles,
+  updateApprovalLineRole,
+} from './approvalLineConfigApi'
 
 vi.mock('./client', () => ({
   apiClient: {
@@ -55,5 +59,14 @@ describe('approvalLineConfigApi contract', () => {
       '/auth/admin/approval-line-configs/role%2F1',
       payload,
     )
+  })
+
+  it('GET /approval-line-configs/groups 로 picker 권한그룹 목록을 조회한다', async () => {
+    const groups = [{ id: 'g1', name: '창고원' }]
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: groups } })
+
+    await expect(fetchApprovalLineGroups()).resolves.toBe(groups)
+
+    expect(apiClient.get).toHaveBeenCalledWith('/auth/admin/approval-line-configs/groups')
   })
 })
