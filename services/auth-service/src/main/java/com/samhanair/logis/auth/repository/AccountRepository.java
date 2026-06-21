@@ -1,9 +1,13 @@
 package com.samhanair.logis.auth.repository;
 
 import com.samhanair.logis.auth.domain.Account;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.repository.query.Param;
 
 /** JPA repository for {@link Account}. Soft-delete filter is applied at the entity level. */
 public interface AccountRepository extends JpaRepository<Account, UUID> {
@@ -27,4 +31,23 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
      * @return 계정
      */
     Optional<Account> findByLoginIdAndEmail(String loginId, String email);
+
+    @Query("""
+            SELECT a
+            FROM Account a
+            WHERE a.id = :id
+              AND a.enabled = true
+              AND a.isDeleted = false
+            """)
+    Optional<Account> findActiveById(@Param("id") UUID id);
+
+    @Query("""
+            SELECT a
+            FROM Account a
+            WHERE a.enabled = true
+              AND a.isDeleted = false
+              AND (:q = '' OR LOWER(a.displayName) LIKE LOWER(CONCAT('%', :q, '%')))
+            ORDER BY a.displayName ASC
+            """)
+    List<Account> searchActiveByDisplayName(@Param("q") String q, Pageable pageable);
 }

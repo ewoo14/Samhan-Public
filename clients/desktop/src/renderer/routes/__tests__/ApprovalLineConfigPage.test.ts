@@ -8,9 +8,11 @@ import {
   areApprovalRoleOrdersEqual,
   computeApprovalRoleReorder,
   getOrderedApprovalRoleIds,
-  notifyApprovalRoleGroupChange,
+  notifyApprovalRoleApproverSelected,
   notifyApprovalRoleLabelChange,
   notifyApprovalRoleRequiredChange,
+  optimisticallyAddApprovalLineApprover,
+  optimisticallyRemoveApprovalLineApprover,
   optimisticallyUpdateApprovalLineRoles,
   restoreApprovalLineRolesSnapshot,
 } from '../ApprovalLineConfigPage'
@@ -23,8 +25,7 @@ describe('ApprovalRoleRow', () => {
       sequence: 0,
       label: '작성자',
       stepType: 'CREATOR',
-      approverGroupId: null,
-      approverGroupName: null,
+      approvers: [],
       required: true,
     }
 
@@ -33,7 +34,7 @@ describe('ApprovalRoleRow', () => {
         role,
         groups: [],
         saving: false,
-        onSave: () => undefined,
+        onRequiredChange: () => undefined,
       }),
     )
 
@@ -42,24 +43,26 @@ describe('ApprovalRoleRow', () => {
     expect(html).toContain('disabled=""')
   })
 
-  test('GROUP 자동저장은 권한그룹 변경값과 현재 필수값을 onSave 로 전달한다', () => {
-    const onSave = vi.fn()
+  test('결재자 선택은 APPROVER 역할에서만 onAddApprover 로 전달한다', () => {
+    const onAdd = vi.fn()
+    const option = { type: 'GROUP' as const, refId: 'g1', displayName: '창고원' }
 
-    notifyApprovalRoleGroupChange(onSave, 'g1', true)
-    notifyApprovalRoleGroupChange(onSave, '', false)
+    notifyApprovalRoleApproverSelected(roleDispatcher, option, onAdd)
+    notifyApprovalRoleApproverSelected(roleCreator, option, onAdd)
+    notifyApprovalRoleApproverSelected(roleDispatcher, null, onAdd)
 
-    expect(onSave).toHaveBeenNthCalledWith(1, 'g1', true)
-    expect(onSave).toHaveBeenNthCalledWith(2, null, false)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(onAdd).toHaveBeenCalledWith(option)
   })
 
-  test('GROUP 자동저장은 필수 변경값과 현재 권한그룹값을 onSave 로 전달한다', () => {
+  test('GROUP 자동저장은 필수 변경값만 onSave 로 전달한다', () => {
     const onSave = vi.fn()
 
-    notifyApprovalRoleRequiredChange(onSave, 'g1', false)
-    notifyApprovalRoleRequiredChange(onSave, '', true)
+    notifyApprovalRoleRequiredChange(onSave, false)
+    notifyApprovalRoleRequiredChange(onSave, true)
 
-    expect(onSave).toHaveBeenNthCalledWith(1, 'g1', false)
-    expect(onSave).toHaveBeenNthCalledWith(2, null, true)
+    expect(onSave).toHaveBeenNthCalledWith(1, false)
+    expect(onSave).toHaveBeenNthCalledWith(2, true)
   })
 
   test('자동저장 낙관적 업데이트 실패 시 이전 역할 스냅샷으로 롤백한다', () => {
@@ -71,8 +74,7 @@ describe('ApprovalRoleRow', () => {
         sequence: 1,
         label: '출고인',
         stepType: 'GROUP',
-        approverGroupId: 'g0',
-        approverGroupName: '기존그룹',
+        approvers: [{ id: 'a0', type: 'GROUP', refId: 'g0', displayName: '기존그룹' }],
         required: true,
       },
     ]
@@ -81,21 +83,40 @@ describe('ApprovalRoleRow', () => {
     queryClient.setQueryData<ApprovalLineRole[]>(key, (current) =>
       optimisticallyUpdateApprovalLineRoles(current, {
         id: 'r1',
-        approverGroupId: 'g1',
         required: false,
       }))
 
     expect(queryClient.getQueryData<ApprovalLineRole[]>(key)?.[0]).toMatchObject({
-      approverGroupId: 'g1',
       required: false,
     })
 
     restoreApprovalLineRolesSnapshot(queryClient, key, prev)
 
     expect(queryClient.getQueryData<ApprovalLineRole[]>(key)?.[0]).toMatchObject({
-      approverGroupId: 'g0',
       required: true,
     })
+  })
+
+  test('결재자 추가/제거 낙관 업데이트는 approvers 배열만 갱신한다', () => {
+    const current: ApprovalLineRole[] = [{
+      id: 'r1',
+      sequence: 1,
+      label: '출고인',
+      stepType: 'GROUP',
+      approvers: [],
+      required: true,
+    }]
+
+    const added = optimisticallyAddApprovalLineApprover(current, 'r1', {
+      type: 'USER',
+      refId: 'u1',
+      displayName: '홍길동',
+    })
+    expect(added?.[0]?.approvers).toHaveLength(1)
+    expect(added?.[0]?.approvers[0]).toMatchObject({ type: 'USER', refId: 'u1', displayName: '홍길동' })
+
+    const removed = optimisticallyRemoveApprovalLineApprover(added, 'r1', 'pending-USER-u1')
+    expect(removed?.[0]?.approvers).toHaveLength(0)
   })
 })
 
@@ -105,8 +126,7 @@ const roleCreator: ApprovalLineRole = {
   sequence: 0,
   label: '작성자',
   stepType: 'CREATOR',
-  approverGroupId: null,
-  approverGroupName: null,
+  approvers: [],
   required: true,
 }
 
@@ -115,8 +135,7 @@ const roleDispatcher: ApprovalLineRole = {
   sequence: 1,
   label: '출고인',
   stepType: 'GROUP',
-  approverGroupId: null,
-  approverGroupName: null,
+  approvers: [],
   required: true,
 }
 
@@ -125,8 +144,7 @@ const roleInspector: ApprovalLineRole = {
   sequence: 2,
   label: '검수인',
   stepType: 'GROUP',
-  approverGroupId: null,
-  approverGroupName: null,
+  approvers: [],
   required: true,
 }
 

@@ -2,10 +2,14 @@ package com.samhanair.logis.auth.service;
 
 import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
+import com.samhanair.logis.auth.domain.ApprovalLineApprover;
+import com.samhanair.logis.auth.repository.AccountRepository;
+import com.samhanair.logis.auth.repository.ApprovalLineApproverRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
+import com.samhanair.logis.auth.web.dto.ApproverView;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import java.util.Comparator;
@@ -25,7 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class ApprovalLineConfigService {
 
     private final ApprovalLineConfigRepository repository;
+    private final ApprovalLineApproverRepository approverRepository;
     private final PermissionGroupRepository groupRepository;
+    private final AccountRepository accountRepository;
 
     /** 전표 종류별 결재 역할(sequence 순). */
     @Transactional(readOnly = true)
@@ -45,34 +51,24 @@ public class ApprovalLineConfigService {
                 .toList();
     }
 
-    /** 역할에 권한 그룹/필수 갱신. CREATOR 역할 그룹 지정은 거부. groupId=null 이면 그룹 해제. */
+    /** 역할 필수여부 갱신. CREATOR 역할은 자동 작성자라 변경을 거부한다. */
     @Transactional
-    public ApprovalLineRoleView updateRole(UUID id, UUID approverGroupId, boolean required) {
+    public ApprovalLineRoleView updateRole(UUID id, boolean required) {
         ApprovalLineConfig role = repository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "결재 역할을 찾을 수 없습니다: " + id));
         if (role.getStepType() == StepType.CREATOR) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "작성자 역할은 변경할 수 없습니다");
         }
-        try {
-            if (approverGroupId == null) {
-                role.clearGroup();
-            } else {
-                var group = groupRepository.findById(approverGroupId)
-                        .orElseThrow(() -> new BusinessException(
-                                ErrorCode.INVALID_INPUT,
-                                "존재하지 않는 권한 그룹입니다: " + approverGroupId));
-                if (group.isSystemMaster()) {
-                    throw new BusinessException(
-                            ErrorCode.INVALID_INPUT,
-                            "시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다");
-                }
-                role.assignGroup(approverGroupId);
-            }
-        } catch (IllegalStateException ex) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
-        }
         role.changeRequired(required);
         return toView(repository.save(role));
+    }
+
+    /** 결재 역할 단건 뷰 조회. add/remove 후 최신 approvers 배열 반환에 사용한다. */
+    @Transactional(readOnly = true)
+    public ApprovalLineRoleView getRoleView(UUID id) {
+        ApprovalLineConfig role = repository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "결재 역할을 찾을 수 없습니다: " + id));
+        return toView(role);
     }
 
     /**
@@ -172,10 +168,34 @@ public class ApprovalLineConfigService {
     }
 
     private ApprovalLineRoleView toView(ApprovalLineConfig role) {
-        String groupName = role.getApproverGroupId() == null ? null
-                : groupRepository.findById(role.getApproverGroupId())
-                        .map(g -> g.getName()).orElse(null);
+        List<ApproverView> approvers = approverRepository.findByConfigRoleIdAndIsDeletedFalse(role.getId()).stream()
+                .map(this::toApproverView)
+                .toList();
         return new ApprovalLineRoleView(role.getId(), role.getSequence(), role.getLabel(),
-                role.getStepType(), role.getApproverGroupId(), groupName, role.isRequired());
+                role.getStepType(), approvers, role.isRequired());
+    }
+
+    private ApproverView toApproverView(ApprovalLineApprover approver) {
+        String displayName = switch (approver.getApproverType()) {
+            case GROUP -> groupRepository.findByIdAndIsDeletedFalse(approver.getApproverRefId())
+                    .map(group -> group.getName())
+                    .orElse("(삭제된 그룹)");
+            case USER -> accountRepository.findActiveById(approver.getApproverRefId())
+                    .map(this::accountDisplayName)
+                    .orElse("(삭제된 사원)");
+        };
+        return new ApproverView(
+                approver.getId(),
+                approver.getApproverType().name(),
+                approver.getApproverRefId(),
+                displayName);
+    }
+
+    private String accountDisplayName(com.samhanair.logis.auth.domain.Account account) {
+        String department = account.getDepartmentName();
+        if (department == null || department.isBlank()) {
+            return account.getDisplayName();
+        }
+        return account.getDisplayName() + " (" + department + ")";
     }
 }

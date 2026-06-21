@@ -7,14 +7,25 @@ export interface ApprovalLineRole {
   sequence: number
   label: string
   stepType: StepType
-  approverGroupId: string | null
-  approverGroupName: string | null
+  approvers: ApprovalLineApprover[]
   required: boolean
 }
 
 export interface ApprovalLineGroupOption {
   id: string
   name: string
+}
+
+export interface ApprovalLineApprover {
+  id: string
+  type: 'GROUP' | 'USER'
+  refId: string
+  displayName: string
+}
+
+export interface ApprovalLineUserOption {
+  id: string
+  displayName: string
 }
 
 /** 결재라인 설정 대상 전표 종류(A2-1=출고만 seed). */
@@ -38,11 +49,40 @@ export async function fetchApprovalLineGroups(): Promise<ApprovalLineGroupOption
 
 export async function updateApprovalLineRole(
   id: string,
-  payload: { approverGroupId: string | null; required: boolean },
+  payload: { required: boolean },
 ): Promise<ApprovalLineRole> {
   const res = await apiClient.put<ApiEnvelope<ApprovalLineRole>>(
     `/auth/admin/approval-line-configs/${encodeURIComponent(id)}`,
     payload,
+  )
+  return res.data.data
+}
+
+export async function searchApprovalLineUsers(q: string, limit = 20): Promise<ApprovalLineUserOption[]> {
+  const res = await apiClient.get<ApiEnvelope<ApprovalLineUserOption[]>>(
+    `/auth/admin/approval-line-configs/users?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`,
+  )
+  return res.data.data ?? []
+}
+
+export async function addApprovalLineApprover(
+  roleId: string,
+  type: 'GROUP' | 'USER',
+  refId: string,
+): Promise<ApprovalLineRole> {
+  const res = await apiClient.post<ApiEnvelope<ApprovalLineRole>>(
+    `/auth/admin/approval-line-configs/${encodeURIComponent(roleId)}/approvers`,
+    { type, refId },
+  )
+  return res.data.data
+}
+
+export async function removeApprovalLineApprover(
+  roleId: string,
+  approverId: string,
+): Promise<ApprovalLineRole> {
+  const res = await apiClient.delete<ApiEnvelope<ApprovalLineRole>>(
+    `/auth/admin/approval-line-configs/${encodeURIComponent(roleId)}/approvers/${encodeURIComponent(approverId)}`,
   )
   return res.data.data
 }

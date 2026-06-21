@@ -9209,6 +9209,23 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     )
   }
 
+  const approvalLineUsersMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/users(?:\?([^#]*))?$/)
+  if (method === 'GET' && approvalLineUsersMatch) {
+    const params = new URLSearchParams(approvalLineUsersMatch[1] ?? '')
+    const q = (params.get('q') ?? '').trim().toLocaleLowerCase()
+    const limit = Math.max(1, Math.min(Number(params.get('limit') ?? '20') || 20, 50))
+    return envelope(
+      MOCK_ADMIN_USERS
+        .filter((user) => user.terminationDate === null)
+        .filter((user) => !q || user.fullName.toLocaleLowerCase().includes(q))
+        .slice(0, limit)
+        .map((user) => ({
+          id: user.id,
+          displayName: user.departmentName ? `${user.fullName} (${user.departmentName})` : user.fullName,
+        })),
+    )
+  }
+
   const approvalLineConfigListMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs(?:\?([^#]*))?$/)
   if (method === 'GET' && approvalLineConfigListMatch) {
     const params = new URLSearchParams(approvalLineConfigListMatch[1] ?? '')
@@ -9219,6 +9236,51 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         .sort((a, b) => a.sequence - b.sequence)
         .map(mockApprovalLineRoleView),
     )
+  }
+
+  const approvalLineApproverMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)\/approvers(?:\/([^/?]+))?$/)
+  if (approvalLineApproverMatch && method === 'POST') {
+    const roleId = decodeURIComponent(approvalLineApproverMatch[1]!)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
+    if (role.stepType === 'CREATOR') {
+      return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
+    }
+    const body = parseMockBody(config)
+    const type = String(body['type'] ?? '').toUpperCase()
+    const refId = String(body['refId'] ?? '').trim()
+    if (type !== 'GROUP' && type !== 'USER') {
+      return mockError(400, 'INVALID_INPUT', '결재자 유형은 GROUP 또는 USER 여야 합니다.')
+    }
+    if (!refId) return mockError(400, 'INVALID_INPUT', '결재자 참조 ID를 입력해야 합니다.')
+    if (type === 'GROUP') {
+      const group = _mockPermissionGroups.find((item) => item.id === refId)
+      if (!group) return mockError(400, 'INVALID_INPUT', '존재하지 않는 권한 그룹입니다.')
+      if (group.systemMaster) return mockError(400, 'INVALID_INPUT', '시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다.')
+    } else if (!mockAccountById(refId)) {
+      return mockError(400, 'INVALID_INPUT', '존재하지 않는 사원입니다.')
+    }
+    if (role.approvers.some((item) => item.type === type && item.refId === refId)) {
+      return mockError(400, 'INVALID_INPUT', '이미 지정된 결재자입니다.')
+    }
+    role.approvers.push({
+      id: `mock-approval-line-approver-${Date.now()}-${role.approvers.length}`,
+      type: type as 'GROUP' | 'USER',
+      refId,
+    })
+    return envelope(mockApprovalLineRoleView(role))
+  }
+
+  if (approvalLineApproverMatch && method === 'DELETE') {
+    const roleId = decodeURIComponent(approvalLineApproverMatch[1]!)
+    const approverId = decodeURIComponent(approvalLineApproverMatch[2] ?? '')
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
+    if (role.stepType === 'CREATOR') {
+      return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
+    }
+    role.approvers = role.approvers.filter((item) => item.id !== approverId)
+    return envelope(mockApprovalLineRoleView(role))
   }
 
   // PUT /approval-line-configs/{id}/label — 역할 라벨 인라인 편집 (stateful)
@@ -9286,21 +9348,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
     if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
 
+    if (role.stepType === 'CREATOR') {
+      return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
+    }
     const body = parseMockBody(config)
-    const nextGroupId = body['approverGroupId'] == null || String(body['approverGroupId']).trim() === ''
-      ? null
-      : String(body['approverGroupId'])
-    if (nextGroupId != null) {
-      const group = _mockPermissionGroups.find((item) => item.id === nextGroupId)
-      if (!group) return mockError(400, 'INVALID_INPUT', '존재하지 않는 권한 그룹입니다.')
-      if (group.systemMaster) {
-        return mockError(400, 'INVALID_INPUT', '시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다')
-      }
-    }
-    if (role.stepType === 'CREATOR' && nextGroupId != null) {
-      return mockError(400, 'INVALID_INPUT', 'CREATOR 역할에는 GROUP 역할 권한그룹을 지정할 수 없습니다.')
-    }
-    role.approverGroupId = nextGroupId
     role.required = Boolean(body['required'])
     return envelope(mockApprovalLineRoleView(role))
   }
@@ -12483,8 +12534,14 @@ type MockApprovalLineRole = {
   sequence: number
   label: string
   stepType: 'CREATOR' | 'GROUP' | 'USER'
-  approverGroupId: string | null
+  approvers: MockApprovalLineApprover[]
   required: boolean
+}
+
+type MockApprovalLineApprover = {
+  id: string
+  type: 'GROUP' | 'USER'
+  refId: string
 }
 
 type MockActionMatrix = {
@@ -12559,7 +12616,7 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     sequence: 0,
     label: '작성자',
     stepType: 'CREATOR',
-    approverGroupId: null,
+    approvers: [],
     required: true,
   },
   {
@@ -12568,7 +12625,7 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     sequence: 1,
     label: '출고인',
     stepType: 'GROUP',
-    approverGroupId: null,
+    approvers: [],
     required: true,
   },
   {
@@ -12577,7 +12634,7 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     sequence: 2,
     label: '검수인',
     stepType: 'GROUP',
-    approverGroupId: null,
+    approvers: [],
     required: true,
   },
 ]
@@ -12631,18 +12688,27 @@ function mockPermissionGroupSummary(group: MockPermissionGroup) {
 }
 
 function mockApprovalLineRoleView(role: MockApprovalLineRole) {
-  const group = role.approverGroupId == null
-    ? null
-    : _mockPermissionGroups.find((item) => item.id === role.approverGroupId) ?? null
   return {
     id: role.id,
     sequence: role.sequence,
     label: role.label,
     stepType: role.stepType,
-    approverGroupId: role.approverGroupId,
-    approverGroupName: group?.name ?? null,
+    approvers: role.approvers.map((approver) => ({
+      id: approver.id,
+      type: approver.type,
+      refId: approver.refId,
+      displayName: mockApprovalLineApproverDisplayName(approver),
+    })),
     required: role.required,
   }
+}
+
+function mockApprovalLineApproverDisplayName(approver: MockApprovalLineApprover) {
+  if (approver.type === 'GROUP') {
+    return _mockPermissionGroups.find((item) => item.id === approver.refId)?.name ?? '(삭제된 그룹)'
+  }
+  const account = mockAccountById(approver.refId)
+  return account?.displayName ?? '(삭제된 사원)'
 }
 
 function mockAccountById(accountId: string) {

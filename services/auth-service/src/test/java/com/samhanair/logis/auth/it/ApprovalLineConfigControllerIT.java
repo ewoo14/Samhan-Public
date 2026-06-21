@@ -1,7 +1,9 @@
 package com.samhanair.logis.auth.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.samhanair.logis.auth.AuthServiceApplication;
@@ -53,6 +55,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @BeforeEach
     void setUp() {
         cleanPermissionRowsWithoutTouchingManagerSeed();
+        cleanApprovalLineApprovers();
         resetOutboundDispatcherRole();
         resetApprovalLineConfigToSeedState();
     }
@@ -61,6 +64,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     void tearDown() {
         resetApprovalLineConfigToSeedState();
         resetOutboundDispatcherRole();
+        cleanApprovalLineApprovers();
         cleanPermissionRowsWithoutTouchingManagerSeed();
     }
 
@@ -98,7 +102,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("PUT 출고인 역할 — V61 seed MANAGER UPDATE 권한으로 권한그룹 지정 200")
+    @DisplayName("PUT 출고인 역할 — V61 seed MANAGER UPDATE 권한으로 필수여부 변경 200")
     void updateDispatcherRole_managerWithSeedGrant_returns200() throws Exception {
         UUID roleId = outboundRoleId("출고인");
 
@@ -108,40 +112,137 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                         .header("X-Is-System-Master", "false")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"approverGroupId":"%s","required":true}
-                                """.formatted(WAREHOUSE_GROUP_ID)))
+                                {"required":false}
+                                """))
                 .andReturn();
 
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
-                .contains(WAREHOUSE_GROUP_ID.toString());
+                .contains("\"required\":false");
         assertThat(jdbcTemplate.queryForObject("""
-                SELECT approver_group_id
+                SELECT required
                 FROM approval_line_config
                 WHERE id = ?
                   AND is_deleted = FALSE
-                """, UUID.class, roleId)).isEqualTo(WAREHOUSE_GROUP_ID);
+                """, Boolean.class, roleId)).isFalse();
     }
 
     @Test
-    @DisplayName("PUT 출고인 역할 — 미존재 권한그룹 지정은 4xx")
+    @DisplayName("POST 출고인 결재자 — 미존재 권한그룹 지정은 4xx")
     void updateDispatcherRole_unknownGroup_returns4xx() throws Exception {
         UUID roleId = outboundRoleId("출고인");
         UUID unknownGroupId = UUID.randomUUID();
 
-        MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}", roleId)
+        MvcResult result = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
                         .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
                         .header("X-User-Role", "MANAGER")
                         .header("X-Is-System-Master", "false")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"approverGroupId":"%s","required":true}
+                                {"type":"GROUP","refId":"%s"}
                                 """.formatted(unknownGroupId)))
                 .andReturn();
 
         assertThat(result.getResponse().getStatus()).isBetween(400, 499);
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
                 .contains("존재하지 않는 권한 그룹");
+    }
+
+    @Test
+    @DisplayName("POST/DELETE 결재자 — 비MASTER MANAGER 가 GROUP+USER 추가 후 제거 200")
+    void addAndRemoveApprovers_managerWithSeedGrant_returns200() throws Exception {
+        UUID roleId = outboundRoleId("출고인");
+
+        MvcResult groupResult = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"GROUP","refId":"%s"}
+                                """.formatted(WAREHOUSE_GROUP_ID)))
+                .andReturn();
+
+        assertThat(groupResult.getResponse().getStatus()).isEqualTo(200);
+        assertThat(groupResult.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("\"type\":\"GROUP\"")
+                .contains("창고원");
+
+        MvcResult userResult = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"USER","refId":"%s"}
+                                """.formatted(SALES_ACCOUNT_ID)))
+                .andReturn();
+
+        assertThat(userResult.getResponse().getStatus()).isEqualTo(200);
+        assertThat(userResult.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("\"type\":\"USER\"")
+                .contains("[DEV-SEED] 개발영업");
+
+        UUID approverId = jdbcTemplate.queryForObject("""
+                SELECT id
+                  FROM approval_line_approver
+                 WHERE config_role_id = ?
+                   AND approver_type = 'GROUP'
+                   AND approver_ref_id = ?
+                   AND is_deleted = FALSE
+                 LIMIT 1
+                """, UUID.class, roleId, WAREHOUSE_GROUP_ID);
+
+        MvcResult deleteResult = mockMvc.perform(delete(
+                        "/auth/admin/approval-line-configs/{roleId}/approvers/{approverId}",
+                        roleId, approverId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(deleteResult.getResponse().getStatus()).isEqualTo(200);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT is_deleted
+                  FROM approval_line_approver
+                 WHERE id = ?
+                """, Boolean.class, approverId)).isTrue();
+    }
+
+    @Test
+    @DisplayName("POST 결재자 — 작성자(CREATOR) 역할은 4xx")
+    void addApprover_creatorRole_returns4xx() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+
+        MvcResult result = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", creatorId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"USER","refId":"%s"}
+                                """.formatted(SALES_ACCOUNT_ID)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("작성자 역할은 변경할 수 없습니다");
+    }
+
+    @Test
+    @DisplayName("GET 사원검색 — admin.approval-line-config VIEW 권한으로 200")
+    void searchUsers_managerWithSeedGrant_returns200() throws Exception {
+        MvcResult result = mockMvc.perform(get("/auth/admin/approval-line-configs/users")
+                        .param("q", "개발")
+                        .param("limit", "5")
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("[DEV-SEED] 개발");
     }
 
     @Test
@@ -404,5 +505,16 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 WHERE account_id = ?
                   AND page_code = ?
                 """, SALES_ACCOUNT_ID, PAGE);
+    }
+
+    private void cleanApprovalLineApprovers() {
+        jdbcTemplate.update("""
+                DELETE FROM approval_line_approver
+                WHERE created_by <> 'v62-seed'
+                   OR created_by IS NULL
+                   OR config_role_id IN (
+                       SELECT id FROM approval_line_config WHERE document_type = ?
+                   )
+                """, DOCUMENT_TYPE);
     }
 }

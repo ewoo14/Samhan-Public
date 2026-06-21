@@ -16,20 +16,30 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Card, DragHandle, Select, Spinner } from '@samhan/design-system'
+import { AsyncAutocomplete, Card, DragHandle, Select, Spinner, TagChip } from '@samhan/design-system'
 import {
   DOC_TYPES,
+  addApprovalLineApprover,
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
+  removeApprovalLineApprover,
   reorderApprovalLineRoles,
   renameApprovalLineRole,
+  searchApprovalLineUsers,
   updateApprovalLineRole,
+  type ApprovalLineApprover,
   type ApprovalLineGroupOption,
   type ApprovalLineRole,
 } from '../api/approvalLineConfigApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 
-/** 결재라인 설정 — 전표 종류별 역할에 권한 그룹/필수 지정, 드래그 순서변경, 라벨 인라인 편집. */
+export type ApprovalLineApproverOption = {
+  type: 'GROUP' | 'USER'
+  refId: string
+  displayName: string
+}
+
+/** 결재라인 설정 — 전표 종류별 역할에 결재자 칩/필수 지정, 드래그 순서변경, 라벨 인라인 편집. */
 export function ApprovalLineConfigPage() {
   usePageTitle('결재라인 설정')
 
@@ -49,10 +59,23 @@ export function ApprovalLineConfigPage() {
     queryFn: fetchApprovalLineGroups,
   })
 
-  // ── 그룹/필수 업데이트 뮤테이션 (기존 A2-1 패턴 유지) ──
+  const searchApproverOptions = useCallback(async (q: string): Promise<ApprovalLineApproverOption[]> => {
+    const keyword = q.trim()
+    const groupOptions = groupsQuery.data ?? []
+    const matchedGroups = groupOptions
+      .filter((group) => !keyword || group.name.toLocaleLowerCase().includes(keyword.toLocaleLowerCase()))
+      .map((group) => ({ type: 'GROUP' as const, refId: group.id, displayName: group.name }))
+    const users = await searchApprovalLineUsers(keyword, 20)
+    return [
+      ...matchedGroups,
+      ...users.map((user) => ({ type: 'USER' as const, refId: user.id, displayName: user.displayName })),
+    ]
+  }, [groupsQuery.data])
+
+  // ── 필수 업데이트 뮤테이션 (A2-1c: 결재자 지정은 별도 add/remove endpoint) ──
   const updateMutation = useMutation({
-    mutationFn: (value: { id: string; approverGroupId: string | null; required: boolean }) =>
-      updateApprovalLineRole(value.id, { approverGroupId: value.approverGroupId, required: value.required }),
+    mutationFn: (value: { id: string; required: boolean }) =>
+      updateApprovalLineRole(value.id, { required: value.required }),
     onMutate: async (value) => {
       setPendingRoleIds((prev) => {
         const next = new Set(prev)
@@ -78,6 +101,78 @@ export function ApprovalLineConfigPage() {
       setPendingRoleIds((prev) => {
         const next = new Set(prev)
         next.delete(value.id)
+        return next
+      })
+      void queryClient.invalidateQueries({ queryKey: rolesQueryKey })
+    },
+  })
+
+  const addApproverMutation = useMutation({
+    mutationFn: (value: { roleId: string; option: ApprovalLineApproverOption }) =>
+      addApprovalLineApprover(value.roleId, value.option.type, value.option.refId),
+    onMutate: async (value) => {
+      setPendingRoleIds((prev) => {
+        const next = new Set(prev)
+        next.add(value.roleId)
+        return next
+      })
+      await queryClient.cancelQueries({ queryKey: rolesQueryKey })
+      const prev = queryClient.getQueryData<ApprovalLineRole[]>(rolesQueryKey)
+      queryClient.setQueryData<ApprovalLineRole[]>(
+        rolesQueryKey,
+        (current) => optimisticallyAddApprovalLineApprover(current, value.roleId, value.option),
+      )
+      return { prev }
+    },
+    onSuccess: (role) => {
+      queryClient.setQueryData<ApprovalLineRole[]>(rolesQueryKey, (current) =>
+        current?.map((item) => item.id === role.id ? role : item))
+      setToast({ type: 'success', message: '결재자를 추가했습니다.' })
+    },
+    onError: (_error, _value, context) => {
+      restoreApprovalLineRolesSnapshot(queryClient, rolesQueryKey, context?.prev)
+      setToast({ type: 'error', message: '결재자 추가 중 오류가 발생했습니다.' })
+    },
+    onSettled: (_data, _error, value) => {
+      setPendingRoleIds((prev) => {
+        const next = new Set(prev)
+        next.delete(value.roleId)
+        return next
+      })
+      void queryClient.invalidateQueries({ queryKey: rolesQueryKey })
+    },
+  })
+
+  const removeApproverMutation = useMutation({
+    mutationFn: (value: { roleId: string; approverId: string }) =>
+      removeApprovalLineApprover(value.roleId, value.approverId),
+    onMutate: async (value) => {
+      setPendingRoleIds((prev) => {
+        const next = new Set(prev)
+        next.add(value.roleId)
+        return next
+      })
+      await queryClient.cancelQueries({ queryKey: rolesQueryKey })
+      const prev = queryClient.getQueryData<ApprovalLineRole[]>(rolesQueryKey)
+      queryClient.setQueryData<ApprovalLineRole[]>(
+        rolesQueryKey,
+        (current) => optimisticallyRemoveApprovalLineApprover(current, value.roleId, value.approverId),
+      )
+      return { prev }
+    },
+    onSuccess: (role) => {
+      queryClient.setQueryData<ApprovalLineRole[]>(rolesQueryKey, (current) =>
+        current?.map((item) => item.id === role.id ? role : item))
+      setToast({ type: 'success', message: '결재자를 제거했습니다.' })
+    },
+    onError: (_error, _value, context) => {
+      restoreApprovalLineRolesSnapshot(queryClient, rolesQueryKey, context?.prev)
+      setToast({ type: 'error', message: '결재자 제거 중 오류가 발생했습니다.' })
+    },
+    onSettled: (_data, _error, value) => {
+      setPendingRoleIds((prev) => {
+        const next = new Set(prev)
+        next.delete(value.roleId)
         return next
       })
       void queryClient.invalidateQueries({ queryKey: rolesQueryKey })
@@ -176,7 +271,6 @@ export function ApprovalLineConfigPage() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
-  const groups = groupsQuery.data ?? []
   const roles = rolesQuery.data ?? []
 
   return (
@@ -243,7 +337,7 @@ export function ApprovalLineConfigPage() {
                       <th style={dragHeadCellStyle} aria-label="드래그 핸들" />
                       <th style={sequenceHeadCellStyle}>순서</th>
                       <th style={roleHeadCellStyle}>역할</th>
-                      <th style={groupHeadCellStyle}>권한 그룹</th>
+                      <th style={groupHeadCellStyle}>결재자</th>
                       <th style={requiredHeadCellStyle}>필수</th>
                     </tr>
                   </thead>
@@ -252,10 +346,14 @@ export function ApprovalLineConfigPage() {
                       <SortableApprovalRoleRow
                         key={role.id}
                         role={role}
-                        groups={groups}
                         saving={pendingRoleIds.has(role.id)}
-                        onSave={(approverGroupId, required) =>
-                          updateMutation.mutate({ id: role.id, approverGroupId, required })}
+                        searchApproverOptions={searchApproverOptions}
+                        onRequiredChange={(required) =>
+                          updateMutation.mutate({ id: role.id, required })}
+                        onAddApprover={(option) =>
+                          addApproverMutation.mutate({ roleId: role.id, option })}
+                        onRemoveApprover={(approverId) =>
+                          removeApproverMutation.mutate({ roleId: role.id, approverId })}
                         onRename={(label) =>
                           renameMutation.mutate({ id: role.id, label })}
                       />
@@ -296,15 +394,19 @@ export function ApprovalLineConfigPage() {
 // ── Sortable 행 컴포넌트 (dnd-kit) ──
 function SortableApprovalRoleRow({
   role,
-  groups,
   saving,
-  onSave,
+  searchApproverOptions,
+  onRequiredChange,
+  onAddApprover,
+  onRemoveApprover,
   onRename,
 }: {
   role: ApprovalLineRole
-  groups: ApprovalLineGroupOption[]
   saving: boolean
-  onSave: (approverGroupId: string | null, required: boolean) => void
+  searchApproverOptions: (q: string) => Promise<ApprovalLineApproverOption[]>
+  onRequiredChange: (required: boolean) => void
+  onAddApprover: (option: ApprovalLineApproverOption) => void
+  onRemoveApprover: (approverId: string) => void
   onRename: (label: string) => void
 }) {
   const isCreator = role.stepType === 'CREATOR'
@@ -372,22 +474,13 @@ function SortableApprovalRoleRow({
             전표 작성자 자동
           </span>
         ) : (
-          <Select
-            value={role.approverGroupId ?? ''}
-            onChange={(event) => {
-              const nextGroupId = event.target.value
-              notifyApprovalRoleGroupChange(onSave, nextGroupId, role.required)
-            }}
-            aria-label={`${role.label} 권한 그룹`}
-            data-testid={`approval-role-group-${role.label}`}
-            disabled={saving}
-            style={{ minWidth: 220 }}
-          >
-            <option value="">(미지정)</option>
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>{group.name}</option>
-            ))}
-          </Select>
+          <ApprovalRoleApproverChips
+            role={role}
+            saving={saving}
+            searchApproverOptions={searchApproverOptions}
+            onAddApprover={onAddApprover}
+            onRemoveApprover={onRemoveApprover}
+          />
         )}
       </td>
       <td style={requiredBodyCellStyle}>
@@ -397,13 +490,67 @@ function SortableApprovalRoleRow({
           disabled={isCreator || saving}
           onChange={(event) => {
             const nextRequired = event.target.checked
-            notifyApprovalRoleRequiredChange(onSave, role.approverGroupId ?? '', nextRequired)
+            notifyApprovalRoleRequiredChange(onRequiredChange, nextRequired)
           }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
         />
       </td>
     </tr>
+  )
+}
+
+function ApprovalRoleApproverChips({
+  role,
+  saving,
+  searchApproverOptions,
+  onAddApprover,
+  onRemoveApprover,
+}: {
+  role: ApprovalLineRole
+  saving: boolean
+  searchApproverOptions: (q: string) => Promise<ApprovalLineApproverOption[]>
+  onAddApprover: (option: ApprovalLineApproverOption) => void
+  onRemoveApprover: (approverId: string) => void
+}) {
+  return (
+    <div style={{ display: 'grid', gap: 8, minWidth: 280 }}>
+      <AsyncAutocomplete<ApprovalLineApproverOption>
+        value={null}
+        onChange={(option) => notifyApprovalRoleApproverSelected(role, option, onAddApprover)}
+        search={searchApproverOptions}
+        getKey={(option) => `${option.type}:${option.refId}`}
+        getInputLabel={(option) => option.displayName}
+        renderOption={(option) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={approverTypeBadgeStyle}>{option.type === 'GROUP' ? '그룹' : '사원'}</span>
+            <span>{option.displayName}</span>
+          </span>
+        )}
+        listboxLabel={`${role.label} 결재자 검색 결과`}
+        ariaLabel={`${role.label} 결재자 검색`}
+        inputTestId={`approval-role-approver-search-${role.label}`}
+        placeholder="그룹 또는 사원 검색"
+        minChars={1}
+        disabled={saving}
+      />
+      {role.approvers.length > 0 ? (
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          {role.approvers.map((approver) => (
+            <TagChip
+              key={approver.id}
+              label={approver.type === 'GROUP' ? '그룹' : '사원'}
+              value={approver.displayName}
+              removeLabel={approver.displayName}
+              onRemove={() => onRemoveApprover(approver.id)}
+              data-testid="approval-role-approver-chip"
+            />
+          ))}
+        </div>
+      ) : (
+        <span style={{ color: 'var(--color-neutral-400)', fontSize: 12 }}>미지정</span>
+      )}
+    </div>
   )
 }
 
@@ -506,14 +653,17 @@ function ApprovalRoleLabelInput({
 // ── 기존 ApprovalRoleRow (단위테스트·SSR 호환용, CREATOR SSR 테스트 대상) ──
 export function ApprovalRoleRow({
   role,
-  groups,
   saving,
-  onSave,
+  onRequiredChange,
+  onAddApprover,
+  onRemoveApprover,
 }: {
   role: ApprovalLineRole
   groups: ApprovalLineGroupOption[]
   saving: boolean
-  onSave: (approverGroupId: string | null, required: boolean) => void
+  onRequiredChange: (required: boolean) => void
+  onAddApprover?: (option: ApprovalLineApproverOption) => void
+  onRemoveApprover?: (approverId: string) => void
 }) {
   const isCreator = role.stepType === 'CREATOR'
 
@@ -529,22 +679,21 @@ export function ApprovalRoleRow({
             전표 작성자 자동
           </span>
         ) : (
-          <Select
-            value={role.approverGroupId ?? ''}
-            onChange={(event) => {
-              const nextGroupId = event.target.value
-              notifyApprovalRoleGroupChange(onSave, nextGroupId, role.required)
-            }}
-            aria-label={`${role.label} 권한 그룹`}
-            data-testid={`approval-role-group-${role.label}`}
-            disabled={saving}
-            style={{ minWidth: 220 }}
-          >
-            <option value="">(미지정)</option>
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>{group.name}</option>
+          <div>
+            {role.approvers.map((approver) => (
+              <span key={approver.id} data-testid="approval-role-approver-chip">
+                [{approver.type === 'GROUP' ? '그룹' : '사원'}] {approver.displayName}
+                <button type="button" onClick={() => onRemoveApprover?.(approver.id)}>×</button>
+              </span>
             ))}
-          </Select>
+            <button
+              type="button"
+              onClick={() => onAddApprover?.({ type: 'GROUP', refId: 'g1', displayName: '창고원' })}
+              disabled={saving}
+            >
+              결재자 추가
+            </button>
+          </div>
         )}
       </td>
       <td style={bodyCellStyle}>
@@ -554,7 +703,7 @@ export function ApprovalRoleRow({
           disabled={isCreator || saving}
           onChange={(event) => {
             const nextRequired = event.target.checked
-            notifyApprovalRoleRequiredChange(onSave, role.approverGroupId ?? '', nextRequired)
+            notifyApprovalRoleRequiredChange(onRequiredChange, nextRequired)
           }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
@@ -566,8 +715,8 @@ export function ApprovalRoleRow({
 
 // ── 순수 핸들러 / 헬퍼 (단위테스트 대상) ──
 
-type ApprovalRoleSaveHandler = (approverGroupId: string | null, required: boolean) => void
-type ApprovalRoleUpdateValue = { id: string; approverGroupId: string | null; required: boolean }
+type ApprovalRoleRequiredHandler = (required: boolean) => void
+type ApprovalRoleUpdateValue = { id: string; required: boolean }
 
 export function approvalLineRolesQueryKey(documentType: string) {
   return ['admin', 'approval-line-config', documentType] as const
@@ -580,10 +729,39 @@ export function optimisticallyUpdateApprovalLineRoles(
   return current?.map((role) => role.id === value.id
     ? {
         ...role,
-        approverGroupId: value.approverGroupId,
-        approverGroupName: value.approverGroupId == null ? null : role.approverGroupName,
         required: value.required,
       }
+    : role)
+}
+
+export function optimisticallyAddApprovalLineApprover(
+  current: ApprovalLineRole[] | undefined,
+  roleId: string,
+  option: ApprovalLineApproverOption,
+) {
+  return current?.map((role) => {
+    if (role.id !== roleId) return role
+    if (role.stepType === 'CREATOR') return role
+    if (role.approvers.some((approver) => approver.type === option.type && approver.refId === option.refId)) {
+      return role
+    }
+    const optimisticApprover: ApprovalLineApprover = {
+      id: `pending-${option.type}-${option.refId}`,
+      type: option.type,
+      refId: option.refId,
+      displayName: option.displayName,
+    }
+    return { ...role, approvers: [...role.approvers, optimisticApprover] }
+  })
+}
+
+export function optimisticallyRemoveApprovalLineApprover(
+  current: ApprovalLineRole[] | undefined,
+  roleId: string,
+  approverId: string,
+) {
+  return current?.map((role) => role.id === roleId
+    ? { ...role, approvers: role.approvers.filter((approver) => approver.id !== approverId) }
     : role)
 }
 
@@ -597,22 +775,24 @@ export function restoreApprovalLineRolesSnapshot(
   }
 }
 
-/** 권한그룹 Select 자동저장 계약. 빈 문자열은 그룹 해제(null)로 전송한다. */
-export function notifyApprovalRoleGroupChange(
-  onSave: ApprovalRoleSaveHandler,
-  nextGroupId: string,
-  currentRequired: boolean,
+/** 결재자 검색 선택 계약. CREATOR 는 호출하지 않는다. */
+export function notifyApprovalRoleApproverSelected(
+  role: ApprovalLineRole,
+  option: ApprovalLineApproverOption | null,
+  onAddApprover: (option: ApprovalLineApproverOption) => void,
 ) {
-  onSave(nextGroupId === '' ? null : nextGroupId, currentRequired)
+  if (!option) return
+  if (role.stepType === 'CREATOR') return
+  if (role.approvers.some((approver) => approver.type === option.type && approver.refId === option.refId)) return
+  onAddApprover(option)
 }
 
-/** 필수 여부 checkbox 자동저장 계약. 현재 권한그룹 선택값과 다음 required 값을 전송한다. */
+/** 필수 여부 checkbox 자동저장 계약. */
 export function notifyApprovalRoleRequiredChange(
-  onSave: ApprovalRoleSaveHandler,
-  currentGroupId: string,
+  onSave: ApprovalRoleRequiredHandler,
   nextRequired: boolean,
 ) {
-  onSave(currentGroupId === '' ? null : currentGroupId, nextRequired)
+  onSave(nextRequired)
 }
 
 /**
@@ -725,3 +905,16 @@ const sequenceBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...sequen
 const roleBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...roleColumnStyle }
 const groupBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...groupColumnStyle }
 const requiredBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...requiredColumnStyle }
+
+const approverTypeBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minWidth: 34,
+  justifyContent: 'center',
+  padding: '1px 5px',
+  borderRadius: 4,
+  background: 'var(--color-neutral-100)',
+  color: 'var(--color-neutral-600)',
+  fontSize: 11,
+  fontWeight: 700,
+}
