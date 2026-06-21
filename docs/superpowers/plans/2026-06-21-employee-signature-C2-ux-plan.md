@@ -2,7 +2,7 @@
 
 ## Slice C2: 등록 UX + 모바일 공개 웹앱 (desktop FE + 신규 mobile-public)
 
-**PR boundary:** 이 슬라이스 = PR 1개. `[FEAT] 사원 서명 등록 UX + 모바일 공개 웹앱 (C2)`. BE 무변경(순수 desktop FE + 신규 web 번들 + 게이트웨이 정적 서빙/배포 메모). 의존 = C1a/C1b 의 공개·관리자 엔드포인트 **계약**(아래 공유 계약 그대로). C1a/C1b 미배포 구간에도 desktop 모달은 mock(`VITE_MOCK_MODE=1`)로 Playwright green, 실 BE 연동은 C1a/C1b 머지 후 Docker 2-디바이스 실QA. 조기 PR([[feedback_open_pr_early]]): Task C2.1 첫 push 직후 PR 오픈.
+**PR boundary:** 이 슬라이스 = PR 1개. `[FEAT] 사원 서명 등록 UX + 모바일 공개 웹앱 (C2)`. **FE 중심 + BE qrUrl 1줄 정합(Task C2.0)** — C1b 가 발급하는 `qrUrl` 이 모바일 공개 웹앱 페이지가 아니라 POST API 엔드포인트(`/api/public/employee-signatures/{token}`)를 가리키는 계약 불일치를 바로잡는 user-service 1파일 수정(+IT 단언 갱신)을 본 슬라이스에 포함한다(아래 Task C2.0). 그 외는 desktop FE + 신규 web 번들 + nginx 정적 서빙/배포 메모. 의존 = **C1a/C1b 이미 머지**(PR #547/#548, main `12097acba`) — 공개·관리자 엔드포인트 **실 계약**(아래 공유 계약, 검증 완료 ground truth 그대로). desktop 모달은 mock(`VITE_MOCK_MODE=1`)로 Playwright green, 실 BE 연동은 Docker 2-디바이스 실QA. 조기 PR([[feedback_open_pr_early]]): Task C2.0 첫 push 직후 PR 오픈.
 
 > 정찰로 확정한 ground truth (구현자는 이 전제를 신뢰하고 시작):
 > - QR 라이브러리는 모노레포에 **없음**(`grep qrcode|react-qr` 0건). → desktop renderer 에 `qrcode@^1.5.4`(순수 JS, native dep 0, MIT, `QRCode.toDataURL()`) 1개만 추가. design-system 에는 QR 컴포넌트 없음 → 추가 안 함.
@@ -10,7 +10,47 @@
 > - desktop mock: `apiClient` 인터셉터가 `VITE_MOCK_MODE=1` 시 `getMockResponse(config)`(`mock.ts:1604`)를 axios adapter 로 주입. 핸들러는 `method`/`url` 매칭 → `envelope(data)` 또는 `mockError(status, code, msg)` 반환. Playwright 는 mock 위에서 회귀(`page.route` 미사용, `playwright.config.ts`).
 > - `UsersPage.tsx` 행 "관리" 셀(`:282-356`)에 버튼들 존재 → 여기 "서명 등록" 버튼 추가. modal 은 `CreateUserModal` 패턴(design-system `Modal`/`Button`/`FormField`/`Input`) 재사용.
 > - 모바일 mock(`MobileSignaturePage.tsx`)은 slip 인수자 전용. 신규 mobile-public 은 **사원 서명 전용** → `SignaturePad` 만 재사용. `sha256OfDataURL` 헬퍼(`MobileSignaturePage.tsx:36-45`)는 복제.
-> - `mobile-public` 은 `/api/public/employee-signatures/{token}` 에 직접 POST. dev 는 vite proxy → api-gateway(8080), 운영은 게이트웨이 정적 서빙(Task C2.6).
+> - `mobile-public` 은 `/api/public/employee-signatures/{token}` 에 직접 POST. dev 는 vite proxy → api-gateway(8080), 운영은 **nginx** 정적 서빙(Task C2.6 — api-gateway 는 reactive WebFlux 라 정적 서빙 native 불가).
+> - **⚠️ qrUrl 계약 정합(2026-06-21 재검토 확정)**: C1b 실제 머지본은 `qrUrl = {public-base-url}/api/public/employee-signatures/{token}`(=POST API URL, `EmployeeSignatureHandoffService.java:63`)를 발급 → 폰으로 열면 SignaturePad 페이지가 아니라 API 엔드포인트로 연결됨. **본 슬라이스 Task C2.0 이 qrUrl 을 웹앱 페이지 origin `{web-base-url}/s/{token}` 으로 바로잡는다.** desktop mock/테스트(C2.1·C2.3)와 mobile-public `readToken()`(C2.4)은 **이미 `/s/{token}` 형식을 가정**하고 있으므로 FE 측 변경 불요 — BE 만 정합시키면 끝. `HandoffTokenAdminControllerIT:83` 의 `containsString("/api/public/employee-signatures/")` 단언만 `/s/` 로 동반 갱신.
+
+---
+
+### Task C2.0: BE qrUrl 정합 — 모바일 웹앱 페이지 origin (`/s/{token}`) 발급 (user-service)
+
+**근거(2026-06-21 재검토):** C1b 머지본(`EmployeeSignatureHandoffService.java:63`)은 `qrUrl = {public-base-url}/api/public/employee-signatures/{token}`(=POST API URL)를 발급한다. 사원이 폰으로 이 QR 을 열면 SignaturePad 웹앱이 아니라 **POST 전용 API 엔드포인트를 GET 으로 여는 꼴**(405/오류) → 모바일 손서명 화면으로 진입 불가. spec §5.2 의 "qrUrl(실 origin)" 의도는 **사람이 여는 웹앱 페이지**다. desktop mock/테스트(C2.1·C2.3)와 mobile-public `readToken()`(C2.4)은 **이미 `/s/{token}` 형식을 가정** → BE 만 정합시키면 전체 흐름이 닫힌다. C1b 머지됐지만 동일 에픽 후속 슬라이스라 본 PR 에 포함(개발책임자 2026-06-21 옵션 A 승인).
+
+**Files:**
+- modify: `services/user-service/src/main/java/com/samhanair/logis/user/service/EmployeeSignatureHandoffService.java`
+- modify: `services/user-service/src/main/java/com/samhanair/logis/user/web/dto/HandoffTokenResponse.java` (record javadoc 의 qrUrl 설명 sweep)
+- modify: `services/user-service/src/test/java/com/samhanair/logis/user/it/HandoffTokenAdminControllerIT.java`
+- modify: `services/user-service/src/test/java/com/samhanair/logis/user/it/UserPermissionControllerIT.java` (@MockBean stub qrUrl 구경로 sweep — 테스트는 GREEN 이나 stale 박제 제거)
+
+**Interfaces (Produces):** `HandoffTokenResponse.qrUrl = {public-base-url}/s/{token}` (token/expiresAt 불변). `app.signature.public-base-url`(env `SAMHAN_SIGNATURE_PUBLIC_BASE_URL`) 의미 = **모바일 공개 웹앱 origin** — 운영은 nginx same-origin 정적 서빙 origin(api-gateway 는 reactive 라 정적 native 불가), dev 는 vite mobile-public LAN origin(예 `http://192.168.x.x:5185`). API 제출 경로(`/api/public/employee-signatures/{token}`)는 mobile-public 앱이 **same-origin** 으로 POST(dev=C2.4 vite proxy `/api`→8080, 운영=nginx `proxy_pass`→api-gateway).
+
+> ⚠️ 마이그레이션 무(코드+테스트만). **user-service 재배포 동반** — "C2=순수 FE" 전제는 본 Task 로 폐기됨(PR boundary 참조). Codex files-only(git/gradle 금지), Claude 가 `./gradlew` 검증 + 커밋 대행([[feedback_codex_sandbox_git]], 본 세션 교훈 3: `cmd /c gradlew.bat` 금지 → `./gradlew` 사용).
+
+- [ ] **Step 1: 실패 테스트 — IT 단언 갱신.** `HandoffTokenAdminControllerIT.java` `토큰_발급_200_token64자_qrUrl_expiresAt` 의 단언을 교체. ⚠️ **구 단언은 `:83-84` 2줄에 걸쳐 있음**(`containsString(` 인자가 다음 줄로 wrap) → 두 줄을 함께 교체:
+  ```java
+  // 구(:83-84 2줄):
+  //   .andExpect(jsonPath("$.data.qrUrl").value(org.hamcrest.Matchers.containsString(
+  //           "/api/public/employee-signatures/")))
+  // 신:
+  .andExpect(jsonPath("$.data.qrUrl").value(org.hamcrest.Matchers.containsString("/s/")))
+  .andExpect(jsonPath("$.data.qrUrl").value(org.hamcrest.Matchers.matchesPattern(".*/s/[A-Za-z0-9_-]{64}$")))
+  ```
+  (웹앱 페이지 `/s/{token}` 형식 + token 으로 끝남을 박제 — API 경로가 다시 새어들지 못하게.)
+- [ ] **Step 2: 실행 (FAIL 예상).** `./gradlew :services:user-service:test --tests "*HandoffTokenAdminControllerIT"` → 구 경로(`/api/public/...`)라 `/s/` 단언 FAIL. (Windows Bash 도구는 `./gradlew` 사용; `cmd /c "gradlew.bat"` 미작동 — 본 에픽 세션 교훈 3.)
+- [ ] **Step 3: 구현.** `EmployeeSignatureHandoffService.java:63` 의 qrUrl 빌드 1줄 교체:
+  ```java
+  // 모바일 공개 웹앱 페이지 origin + /s/{token} (사원이 폰으로 여는 SignaturePad 페이지).
+  // API 제출(/api/public/employee-signatures/{token})은 웹앱이 same-origin 으로 POST.
+  String qrUrl = normalizedPublicBaseUrl() + "/s/" + token.getToken();
+  ```
+  클래스 javadoc 의 "게이트웨이 공개 라우트 `/api/public/employee-signatures/{token}` 결합"(실제 `:29` 단독 — `:28` 의 "public-base-url = 모바일 공개 웹앱 origin" 은 이미 정합, 유지) → "웹앱 페이지 `/s/{token}` 경로 결합(API 제출은 웹앱 same-origin)" 로 갱신.
+- [ ] **Step 3b: 구경로 전수 sweep([[feedback_defect_family_sweep_fix]]).** (a) `HandoffTokenResponse.java` record javadoc 의 `@param qrUrl ... 실 origin + /api/public/employee-signatures/{token}` → `웹앱 페이지 origin + /s/{token}` 갱신. (b) `UserPermissionControllerIT.java` 의 `@MockBean handoffService.issueToken()` stub qrUrl(`http://localhost:8080/api/public/employee-signatures/tok`) → `http://localhost:8080/s/tok` 갱신(테스트는 GREEN 이나 stale 박제 제거). (c) `grep -rn "/api/public/employee-signatures" services/user-service/src` 로 **qrUrl 참조** 잔존 0 확인 — ⚠️ 게이트웨이 `application.yml` 라우트·`PublicEmployeeSignatureController` `@RequestMapping`·mobile-public POST 경로는 **실 API 제출 경로라 정상값, 변경 금지**(QR 타깃 qrUrl 만 sweep).
+- [ ] **Step 4: 실행 (PASS 예상).** `./gradlew :services:user-service:test --tests "*HandoffTokenAdminControllerIT"` → PASS.
+- [ ] **Step 5: 변경 모듈 전체 test 완주.** `./gradlew :services:user-service:test`([[feedback_changed_module_full_test_before_push]] — 기존 서명/핸드오프 IT 회귀 동반 확인).
+- [ ] **Step 6: 커밋(Claude 대행).** `git add services/user-service/src/main/java/com/samhanair/logis/user/service/EmployeeSignatureHandoffService.java services/user-service/src/test/java/com/samhanair/logis/user/it/HandoffTokenAdminControllerIT.java && git commit -F <파일>` 메시지: `fix(user): 핸드오프 qrUrl 을 모바일 웹앱 페이지 /s/{token} origin 으로 정합 (C2.0)`
 
 ---
 
@@ -295,7 +335,7 @@
 - UsersPage 행 "관리" 셀에 `data-testid="admin-user-signature-button"` 버튼 → `SignatureRegisterModal` 오픈.
 - `SignatureRegisterModal` (UsersPage 내부 컴포넌트): `data-testid="admin-user-signature-modal"`. 탭 2: `signature-tab-upload` / `signature-tab-mobile`.
 - 업로드: `<input type="file" data-testid="signature-file-input">` → `normalizeSignaturePng` → `SignatureViewer` 미리보기(`signature-preview`) → `uploadUserSignature`. 50KB 초과 시 `signature-too-large-error`.
-- 모바일: `createSignatureHandoffToken` → QR `<img data-testid="signature-qr-image">` (`QRCode.toDataURL(qrUrl)`) + `CopyButton`(`signature-copy-link`) + 2s 폴링(`fetchSignatureHandoffStatus`) until used/expired/모달닫힘. used → `signature-mobile-done`.
+- 모바일: `createSignatureHandoffToken` → QR `<img data-testid="signature-qr-image">` (`QRCode.toDataURL(qrUrl)`) + `<span data-testid="signature-copy-link"><CopyButton text={qrUrl} /></span>`(⚠️ CopyButton prop=`text`, testid 는 래퍼 span — CopyButton 은 임의 prop spread 안 함) + 2s 폴링(`fetchSignatureHandoffStatus`) until used/expired/모달닫힘. used → `signature-mobile-done`.
 
 **Consumes:** Task C2.1 (`uploadUserSignature`/`createSignatureHandoffToken`/`fetchSignatureHandoffStatus`), Task C2.2 (`normalizeSignaturePng`/`PNG_MAX_BYTES`), design-system `SignatureViewer`/`CopyButton`/`Modal`/`Button`, `qrcode`.
 
@@ -503,7 +543,8 @@
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                   <img data-testid="signature-qr-image" src={handoff.qrDataUrl} alt="모바일 서명 QR" width={220} height={220} />
-                  <CopyButton data-testid="signature-copy-link" value={handoff.qrUrl} />
+                  {/* ⚠️ CopyButton prop = text(필수), value 아님. data-testid 는 CopyButton 이 ...rest spread 안 하므로 래퍼 span 에 부착(검증 P1). */}
+                  <span data-testid="signature-copy-link"><CopyButton text={handoff.qrUrl} label="링크 복사" /></span>
                   <span style={{ fontSize: 12, color: 'var(--ink-tertiary)' }}>휴대폰으로 QR 을 스캔해 서명하세요. (10분 유효)</span>
                 </div>
               )}
@@ -535,7 +576,7 @@
 **Interfaces (Produces):**
 - `clients/web/mobile-public/src/api.ts`: `export interface PublicEmployeeSignatureRequest { signaturePngBase64: string; signatureHash: string }` + `export async function submitPublicSignature(token: string, body: PublicEmployeeSignatureRequest): Promise<void>` → `POST /api/public/employee-signatures/{token}` (200 성공 / 404·409·410 → throw) + `export async function sha256OfDataUrl(dataUrl: string): Promise<string>`.
 
-**Consumes:** `@samhan/design-system` (`SignaturePad`/`SignaturePadHandle`/`Button`), 공유 계약 공개 엔드포인트 `POST /api/public/employee-signatures/{token}`. order-app `vite.config.ts`/`tsconfig.json`/`tsconfig.node.json` 패턴 (React plugin 추가).
+**Consumes:** `@samhan/design-system` (`SignaturePad`/`SignaturePadHandle`/`Button`), 공유 계약 공개 엔드포인트 `POST /api/public/employee-signatures/{token}`. ⚠️ **`vite.config.ts` 는 아래 Step 2 스니펫 그대로 신규 작성**(order-app 은 vanilla-JS PWA — `@vitejs/plugin-react`·design-system 미포함 → React 클론 원본 아님; React+design-system+file:junction 선례는 `clients/desktop`). `tsconfig.json`/`tsconfig.node.json` 만 order-app 복제(React 비의존이라 무방, `jsx: "react-jsx"` 추가).
 
 - [ ] **Step 1: package.json.** `clients/web/mobile-public/package.json`:
   ```json
@@ -582,7 +623,7 @@
     import react from '@vitejs/plugin-react'
     import { resolve } from 'node:path'
 
-    // 모바일 공개 서명 웹앱 — 운영은 게이트웨이 정적 서빙(sign.samhan-air.com), dev 는 proxy → api-gateway(8080).
+    // 모바일 공개 서명 웹앱 — 운영은 nginx 정적 서빙(sign.samhan-air.com), dev 는 proxy → api-gateway(8080).
     export default defineConfig({
       plugins: [react()],
       resolve: { alias: { '@': resolve(__dirname, 'src') } },
@@ -673,10 +714,13 @@
   ```js
   'web-mobile-public': {
     command: ['npm', 'run', 'dev'],
-    env: { VITE_API_BASE_URL: commonApi },
+    // ⚠️ VITE_API_BASE_URL 주입 안 함(검증 P2). mobile-public 은 same-origin(빈 baseURL → vite proxy /api→8080)
+    // 으로 POST. commonApi(http://localhost:8080) 절대 주입 시 폰(LAN)이 자기 localhost 로 직타 → 제출 실패.
+    // 폰 접근 origin 은 SAMHAN_SIGNATURE_PUBLIC_BASE_URL=http://<PC-LAN-IP>:5185(=qrUrl base, Task C2.6)로 분리 주입.
+    env: {},
   },
   ```
-  typecheck 가 `EmployeeSignaturePage` import 로 깨지지 않도록, 본 Task 에서 임시 stub `clients/web/mobile-public/src/EmployeeSignaturePage.tsx` = `export function EmployeeSignaturePage(_props: { token: string }) { return null }` 생성(Task C2.5 가 본구현으로 대체). `cd clients/web/mobile-public && npm install` (file: junction 생성).
+  typecheck 가 `EmployeeSignaturePage` import 로 깨지지 않도록, 본 Task 에서 임시 stub `clients/web/mobile-public/src/EmployeeSignaturePage.tsx` = `export function EmployeeSignaturePage(_props: { token: string }) { return null }` 생성(Task C2.5 가 본구현으로 대체). `cd clients/web/mobile-public && npm install` (file: junction 생성). ⚠️ `@samhan/design-system/{style.css,tokens.css}` import 는 design-system `dist/` 산출물을 가리키므로 **dist 존재 전제** — 부재 시(클린 체크아웃/회사 PC) `cd clients/web/design-system && npm run build` 선행(desktop 이 이미 소비 중이라 통상 존재).
 - [ ] **Step 5: 빌드 검증 (PASS).** `cd clients/web/mobile-public && npm run typecheck` 통과.
 - [ ] **Step 6: 커밋.** `git add clients/web/mobile-public/package.json clients/web/mobile-public/vite.config.ts clients/web/mobile-public/tsconfig.json clients/web/mobile-public/tsconfig.node.json clients/web/mobile-public/index.html clients/web/mobile-public/src/main.tsx clients/web/mobile-public/src/vite-env.d.ts clients/web/mobile-public/src/api.ts clients/web/mobile-public/src/EmployeeSignaturePage.tsx clients/web/mobile-public/package-lock.json scripts/run-client-local-dev.cjs && git commit -F <파일>` 메시지: `feat(mobile-public): 모바일 공개 서명 웹앱 스캐폴딩 (vite+React+design-system) (C2)`
 
@@ -837,9 +881,9 @@
 - create: `docs/dev-reports/signature-slice-C/c2-mobile-public-deploy.md`
 - create: `clients/web/mobile-public/README.md`
 
-**Interfaces (Consumes):** 공유 계약 `POST /api/public/employee-signatures/**` → user-service (게이트웨이 신규 라우트, C1b 소관). 본 Task 는 **문서 only** — 실 게이트웨이 yml 변경은 C1b. 여기서는 C2 산출물(mobile-public dist) 의 정적 서빙 경로·배포 origin·dev proxy 를 명문화하여 C1b/DevOps 가 라우트를 정확히 매핑하도록 한다.
+**Interfaces (Consumes):** 공유 계약 `POST /api/public/employee-signatures/**` → user-service (게이트웨이 라우트, **C1b 머지 완료**). 본 Task 는 **문서 only** — 실 게이트웨이 yml 은 C1b 가 이미 추가. 여기서는 C2 산출물(mobile-public dist) 의 **nginx** 정적 서빙 경로·배포 origin·dev proxy 를 명문화하여 DevOps 가 두 경로(게이트웨이 API 라우트 + nginx `/s/**` 정적)를 정확히 매핑하도록 한다.
 
-- [ ] **Step 1: 배포 문서 작성.** `docs/dev-reports/signature-slice-C/c2-mobile-public-deploy.md` 에: (1) 빌드 = `npm run build` → `dist/`(정적 SPA), (2) 운영 origin = `https://sign.samhan-air.com/s/:token`(Phase 5 deferred 해소 — 기존 nginx 404 를 mobile-public dist 로 교체, `nginx-sign-deferred.md` 연계), (3) 게이트웨이 공개 라우트 = `/api/public/employee-signatures/**` → user-service(StripPrefix=1, JwtAuthentication 미적용, `StripInboundIdentityHeaders`) — 기존 `/api/public/**`→slip(`application.yml:79-86`)보다 **더 구체 경로**라 우선순위 확보(C1b 가 yml 추가; 충돌 회피), (4) dev = `mobile-public` vite proxy `/api`→8080, desktop QR 의 `qrUrl` 은 BE(`HandoffTokenResponse.qrUrl`)가 환경별 origin 주입, (5) 재사용: 동일 앱이 slip 인수자 공개 서명(Phase 5) 호스트 가능. 표로 dev/staging/prod origin 정리.
+- [ ] **Step 1: 배포 문서 작성.** `docs/dev-reports/signature-slice-C/c2-mobile-public-deploy.md` 에: (1) 빌드 = `npm run build` → `dist/`(정적 SPA), (2) **운영 웹앱 origin(=qrUrl base) = `https://sign.samhan-air.com` → 웹앱 페이지 `https://sign.samhan-air.com/s/:token`**(Phase 5 deferred 해소 — 기존 nginx 404 를 mobile-public dist 로 교체, `nginx-sign-deferred.md` 연계). **권장 배치 = nginx 리버스프록시 same-origin**(`sign.samhan-air.com`): 동일 origin 에서 `/s/**` 는 mobile-public dist 정적(nginx `try_files` SPA fallback), `/api/public/employee-signatures/**` 는 `proxy_pass`→api-gateway:8080 → 웹앱이 same-origin POST(CORS 0). ⚠️ **api-gateway 는 reactive WebFlux(spring-cloud-gateway) 라 정적 파일 서빙 native 불가**(`spring-boot-starter-web` 금지 제약) → 정적 서빙 주체는 **게이트웨이가 아니라 nginx**(`nginx-sign-deferred.md:16-56` 실 경로, root `/var/www/sign-mobile` + `/public/` proxy_pass). 본 정적 서빙 와이어링은 **Phase 11 cutover 의 nginx 작업**(C2 코드 스코프 밖, deferred). (3) 게이트웨이 공개 라우트 = `/api/public/employee-signatures/**` → user-service(StripPrefix=1, JwtAuthentication 미적용, `StripInboundIdentityHeaders`) — 기존 `/api/public/**`→slip(`application.yml:79-86`)보다 **더 구체 경로**라 우선순위 확보(C1b 가 yml 추가 완료; 충돌 회피). (4) **qrUrl origin = `app.signature.public-base-url`(env `SAMHAN_SIGNATURE_PUBLIC_BASE_URL`) 가 환경별 주입(Task C2.0 으로 경로 `/s/{token}` 확정)** — ⚠️ **dev 는 폰이 PC 로 접속해야 하므로 `localhost`/`127.0.0.1` 불가 → `SAMHAN_SIGNATURE_PUBLIC_BASE_URL=http://<PC-LAN-IP>:5185`(vite mobile-public)** 로 주입하고, mobile-public vite proxy `/api`→8080 이 API 를 게이트웨이로 중계. (5) 재사용: 동일 앱이 slip 인수자 공개 서명(Phase 5) 호스트 가능. dev/staging/prod **웹앱 origin + API same-origin 결합**을 표로 정리(각 환경 `SAMHAN_SIGNATURE_PUBLIC_BASE_URL` 값 명시).
 - [ ] **Step 2: README.** `clients/web/mobile-public/README.md` 에 목적(사원 서명 NO-AUTH 손그림), 실행(`npm run dev` :5185, proxy→8080), 빌드(`npm run build`→dist), 토큰 진입(`/s/:token` 또는 `?token=`), 보안(토큰 게이트·identity 헤더 strip은 게이트웨이) 명시.
 - [ ] **Step 3: 커밋.** `git add docs/dev-reports/signature-slice-C/c2-mobile-public-deploy.md clients/web/mobile-public/README.md && git commit -F <파일>` 메시지: `docs(mobile-public): C2 배포 origin + 게이트웨이 공개 라우트 충돌회피 메모 (C2)`
 
@@ -849,7 +893,8 @@
 
 **Files:** (변경 없음 — 검증 only)
 
+- [ ] **Step 0: BE 회귀 (C2.0).** `./gradlew :services:user-service:test` → PASS (C2.0 qrUrl `/s/{token}` 정합 + 기존 서명/핸드오프/공개제출 IT 회귀 동반, [[feedback_changed_module_full_test_before_push]]).
 - [ ] **Step 1: desktop 전수.** `cd clients/desktop && npm run typecheck && npm run lint && npx vitest run && npx playwright test signature-register/signature-register.spec.ts --reporter=line` → 전부 PASS (변경 모듈 전체 test 완주, [[feedback_changed_module_full_test_before_push]]).
 - [ ] **Step 2: mobile-public 전수.** `cd clients/web/mobile-public && npm run typecheck && npm run lint && npx vitest run && npm run build` → 전부 PASS (dist 생성 확인).
-- [ ] **Step 3: Docker 실QA (C1a/C1b 머지 후).** `docker compose up --build` 로 user-service(C1a/C1b)+api-gateway 기동([[feedback_overnight_live_capture]]). (a) desktop UsersPage → 사원 행 "서명 등록" → 이미지 업로드 → SignatureViewer 미리보기 → 등록 200, (b) "모바일로 그리기" → QR 발급 → 실 폰으로 QR 스캔 → mobile-public 손서명 → 제출 200 → desktop 폴링 used 감지 캡처([[feedback_no_fake_data_ever]] 실 캡처만, PIL 합성 금지). UUID 비노출 실증([[feedback_uuid_no_user_visibility]]). 캡처를 해당 라운드 리뷰 코멘트에 인라인 게시([[feedback_temp_multimodel_workflow]]).
+- [ ] **Step 3: Docker 실QA (C1a/C1b 머지 완료 — C2.0 qrUrl fix 포함 user-service 재빌드).** `docker compose up --build` 로 user-service(C1a/C1b + **C2.0 qrUrl 정합**)+api-gateway 기동([[feedback_overnight_live_capture]]). **⚠️ dev 전제: `SAMHAN_SIGNATURE_PUBLIC_BASE_URL=http://<PC-LAN-IP>:5185` 주입(localhost 면 폰 접근 불가) + mobile-public vite(:5185) 기동 + 폰이 동일 LAN.** (a) desktop UsersPage → 사원 행 "서명 등록" → 이미지 업로드 → SignatureViewer 미리보기 → 등록 200, (b) "모바일로 그리기" → QR 발급 → **실 폰으로 QR 스캔 시 mobile-public 손서명 페이지(`/s/{token}`)가 실제로 열리는지 확인**(C2.0 회귀 가드 — API URL 이 아니라 웹앱 페이지) → 손서명 → 제출 200 → desktop 폴링 used 감지 캡처([[feedback_no_fake_data_ever]] 실 캡처만, PIL 합성 금지). UUID 비노출 실증([[feedback_uuid_no_user_visibility]]). 캡처를 해당 라운드 리뷰 코멘트에 인라인 게시([[feedback_temp_multimodel_workflow]]).
 - [ ] **Step 4: 산출.** 캡처는 `docs/qa/signature-c2/*.png` 저장 + PR 본문 인라인([[feedback_pr_qa_screenshots]]). 커밋 불필요(검증 게이트).

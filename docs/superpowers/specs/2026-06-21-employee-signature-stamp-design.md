@@ -59,7 +59,7 @@
    │        └─► POST /api/v1/admin/users/{id}/signature/handoff-token ─► {token, qrUrl, expiresAt}
    │              desktop: QR + 복사링크 표시 + 등록완료 폴링(2s, GET .../handoff/{token}/status)
    ▼
-[사원 폰 브라우저]  qrUrl(실 origin) 열기  ── ※ NEW 모바일 공개 웹앱(mobile-public 번들)
+[사원 폰 브라우저]  qrUrl(=/s/{token} 웹앱 페이지·API URL 아님) 열기 ── ※ NEW 모바일 공개 웹앱(mobile-public 번들)
    └─► design-system SignaturePad 페이지 → 손서명 → 제출
          └─► POST /api/public/employee-signatures/{token} {png(base64), hash}  (NO-AUTH, 토큰 게이트)
                user-service: 토큰 검증(미만료·미사용) → registerSignature(MOBILE_CANVAS) → 토큰 used 소진
@@ -115,7 +115,7 @@ slip 서명 모델(검증된 패턴, `Slip.java` / `V5__add_slip_signature.sql`)
 4. BE(AdminUserController): hash 재검증 + PNG magic-byte 검증 + ≤50KB 서버 가드(초과 422) → `Employee.registerSignature` → 200. 권한 = `admin.users`.
 
 ### 5.2 경로 (b) — 모바일 손그림 (핸드오프)
-1. 모달 "모바일로 그리기" → `POST /api/v1/admin/users/{id}/signature/handoff-token` → `{token, qrUrl(실 origin), expiresAt}`.
+1. 모달 "모바일로 그리기" → `POST /api/v1/admin/users/{id}/signature/handoff-token` → `{token, qrUrl, expiresAt}`. **qrUrl = 모바일 공개 웹앱 페이지 origin `/s/{token}`**(사람이 폰으로 여는 SignaturePad 페이지 — POST API URL 아님). ⚠️ C1b 머지 초기본은 `/api/public/employee-signatures/{token}`(API URL)을 발급 → **C2 Task C2.0 이 `/s/{token}` 로 정합**(2026-06-21 재검토). origin 은 환경별 주입(`SAMHAN_SIGNATURE_PUBLIC_BASE_URL`).
 2. desktop: **QR(주) + 복사 링크(부)** + **폴링**(`GET /api/v1/admin/users/{id}/signature/handoff/{token}/status → {used, expired}`, 2s 간격, 최대=TTL 10분, used/expired/취소 시 종료). *SSE 비채택(YAGNI).*
 3. 사원이 폰으로 QR 스캔 → `qrUrl` 열기 (**NEW 모바일 공개 웹앱**, D4).
 4. design-system `SignaturePad`(`toDataURL('image/png')`) → 손서명 → 제출.
@@ -123,8 +123,8 @@ slip 서명 모델(검증된 패턴, `Slip.java` / `V5__add_slip_signature.sql`)
 6. desktop 폴링이 used 감지 → 모달 미리보기 반영.
 
 ### 5.3 모바일 공개 웹앱 (D4 — NEW, Phase 5 deferred 해소)
-- slip 인수자 "공개 서명 페이지"는 **실재 배포본이 없음** — 현 MobileSignaturePage/MobileRecipientPage는 **Electron desktop 렌더러 내 '모바일 mock'**(`createHashRouter`), 실 공개 웹앱(`sign.samhan-air.com`/`clients/mobile-public/dist`)은 **Phase 5 deferred**(DNS만, nginx 404, 번들 미빌드 — `docs/dev-reports/signature-slice-C/nginx-sign-deferred.md`).
-- **신규 산출물**: `clients/mobile-public`(또는 동등) vite 번들 — 단일 SignaturePad 서명 페이지(`@samhan/design-system` 재사용) + 제출. 빌드 산출물·배포 origin(실 URL 베이스)·게이트웨이 정적 서빙 경로 정의.
+- slip 인수자 "공개 서명 페이지"는 **실재 배포본이 없음** — 현 MobileSignaturePage/MobileRecipientPage는 **Electron desktop 렌더러 내 '모바일 mock'**(`createHashRouter`), 실 공개 웹앱(`sign.samhan-air.com`/`clients/mobile-public/dist`(과거 Phase5 가정 경로 — **C2 신규 산출물 위치는 `clients/web/mobile-public`**))은 **Phase 5 deferred**(DNS만, nginx 404, 번들 미빌드 — `docs/dev-reports/signature-slice-C/nginx-sign-deferred.md`).
+- **신규 산출물**: `clients/web/mobile-public` vite 번들(모노레포 컨벤션 = 모든 web 앱은 `clients/web/` 하위; order-app/estimate-app/design-system 과 동일 위치) — 단일 SignaturePad 서명 페이지(`@samhan/design-system` 재사용) + 제출. 빌드 산출물·배포 origin(실 URL 베이스)·nginx 정적 서빙 경로 정의.
 - **재사용 자산**: 동일 앱이 slip 인수자 공개 서명(Phase 5)도 호스트 가능 → 향후 slip 핸드오프 unblock.
 
 ---
@@ -156,7 +156,7 @@ slip 서명 모델(검증된 패턴, `Slip.java` / `V5__add_slip_signature.sql`)
 - 등록·업로드 = `admin.users` UPDATE(AdminUserController 기존 게이트, P1). 무효화 = **MASTER 한정**(P2).
 - 모바일 제출 = `/api/public/employee-signatures/**` **NO-AUTH 토큰 게이트**.
 - 내부 서명 조회 = `/internal/users/signatures` X-Internal-Token + hasRole MASTER(P5).
-- **게이트웨이 라우팅(신규, BLOCKER 교정)**: 현 `/api/public/**`는 slip-service 단독 바인딩(`slip-service-public`, `application.yml:77-86`). user-service 공개 라우트는 **신규 정의 + 경로 충돌 회피** 필요 → `/api/public/employee-signatures/**`를 user-service로 (더 구체 경로 우선순위 or 전용 prefix), JWT 필터 없이 strip-only + `StripInboundIdentityHeaders`. user-service SecurityConfig에 해당 공개 경로 permitAll + identity 헤더 fail-CLOSED([[feedback_identity_header_authz_antipattern]]).
+- **게이트웨이 라우팅(C1b 머지 완료)**: user-service 공개 라우트 `user-service-employee-signatures-public`(`application.yml`, Path=`/api/public/employee-signatures/**`)가 slip catch-all(`slip-service-public`, `/api/public/**`)보다 **먼저 선언**되어 first-match-wins 로 우선 — 더 구체 경로 충돌 회피 충족. JWT 필터 미적용 + `StripPrefix=1` + `StripInboundIdentityHeaders`. user-service SecurityConfig `/public/**` permitAll + identity 헤더 fail-CLOSED([[feedback_identity_header_authz_antipattern]]). ✅ 검증으로 실재 확인(C2 가 중복 정의할 필요 없음).
 - page-code/시드 **신규 0** 목표(기존 `admin.users` 재사용). 무효화 MASTER는 기존 MASTER seed로 통과(신규 page-code 불요).
 - 범위 = **출고전표(DispatchView+OutboundView) 결재란만**. 거래명세서·arologis 제외.
 - ⚠️ 기존 불일치 상속 기록: FE 메뉴는 `admin.employees` 가드인데 호출 엔드포인트는 `admin.users` 가드(선재 FE/BE mismatch). 서명 엔드포인트는 호출 컨트롤러(AdminUserController=`admin.users`)에 맞춤.
@@ -167,7 +167,7 @@ slip 서명 모델(검증된 패턴, `Slip.java` / `V5__add_slip_signature.sql`)
 
 (검증·결정으로 대부분 해소. 잔여 경미 항목만.)
 - **이미지 투명화 정책**: best-effort canvas(외부 의존성 0) 기본. 디자이너 가이드에서 인감 비율·최대 치수 확정. *투명화를 비목표로 뺄지(업로드 원본+리사이즈·용량만)는 디자이너 검토.*
-- **모바일 공개 웹앱 origin/배포**: 실 URL 베이스·게이트웨이 정적 서빙·DNS(Phase 11 cutover 연계?)는 C2 착수 시 DevOps 확정.
+- **모바일 공개 웹앱 origin/배포** (2026-06-21 확정, 옵션 A): qrUrl = **웹앱 페이지 origin `/s/{token}`**(C2 Task C2.0 이 user-service `EmployeeSignatureHandoffService` qrUrl 빌드를 API 경로 → 웹앱 경로로 정합 + IT 단언 갱신). 운영 = **nginx 리버스프록시 same-origin**(`/s/**`=mobile-public dist 정적 `try_files` SPA fallback, `/api/public/employee-signatures/**`=`proxy_pass`→api-gateway → 웹앱 same-origin POST, CORS 0). ⚠️ **api-gateway 는 reactive WebFlux(spring-cloud-gateway) 라 정적 파일 서빙 native 불가 → 정적 서빙 주체는 nginx**(`nginx-sign-deferred.md:16-56`), Phase 11 cutover 작업. dev = `SAMHAN_SIGNATURE_PUBLIC_BASE_URL=http://<PC-LAN-IP>:5185`(localhost 면 폰 접근 불가). 실 URL 베이스(`sign.samhan-air.com`)·DNS 는 Phase 11 cutover 연계.
 
 > B2(무효화 권한)·B3(거래명세서)는 §2 P2 / §1 비목표로 **확정 해소**(미해결 아님).
 
@@ -179,7 +179,7 @@ slip 서명 모델(검증된 패턴, `Slip.java` / `V5__add_slip_signature.sql`)
 
 - **C1a (서명 저장소 · 인증 경로)**: Employee 4컬럼 + Flyway(CHECK+audit) + `registerSignature`/`invalidateSignature` 도메인 + AdminUserController `PATCH .../signature`(업로드) + `DELETE .../signature`(무효화 MASTER) + `POST /internal/users/signatures` 배치. JUnit IT(Testcontainers) + fresh Postgres probe.
 - **C1b (핸드오프 토큰 · 공개 인증우회 표면)**: `employee_signature_handoff_token` 테이블 + 토큰 발급/상태 엔드포인트 + **공개 제출 `POST /api/public/employee-signatures/{token}`** + 게이트웨이 공개 라우트 + user-service SecurityConfig. ⚠️ **보안 표면 집중** → 5-agent 리뷰가 토큰 위협모델(만료/재사용/위조/충돌)에 집중하도록 분리.
-- **C2 (등록 UX + 모바일 공개 웹앱)**: desktop 서명 모달(업로드 + QR + 폴링) + **NEW `clients/mobile-public` 서명 페이지**(빌드·배포·게이트웨이 정적). Playwright(desktop) + 실 폰 캡처.
+- **C2 (등록 UX + 모바일 공개 웹앱 + BE qrUrl 정합)**: **C2.0 user-service qrUrl `/s/{token}` 정합**(C1b 초기본이 API URL 발급 → 웹앱 페이지 origin 으로 BE 1파일+IT 수정, 2026-06-21 재검토) + desktop 서명 모달(업로드 + QR + 폴링) + **NEW `clients/web/mobile-public` 서명 페이지**(빌드·배포·nginx 정적 서빙). Playwright(desktop) + 실 폰 캡처. ⚠️ "순수 FE" 아님 — C2.0 으로 user-service 재배포 동반.
 - **C3 (스탬프 · enrichment 구축)**: slip-service `getOne` dispatcher/inspector 이름+서명 resolve(신규) + `SlipDetailResponse` reshape(+`ownerSignaturePng`) + DispatchView·OutboundView RoleCell 주입. RestClient 계약테스트 다운스트림 선검증([[feedback_restclient_contract_test_false_green]]) + 라이브 전표 스탬프 캡처.
 
 > 의존: C3는 C1a `POST /internal/users/signatures` 응답 DTO 확정 후 착수. C1a 머지 후 internal DTO 고정 전제 하에 C2/C3 병행 가능.
