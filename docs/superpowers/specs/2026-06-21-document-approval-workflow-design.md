@@ -37,7 +37,7 @@
 | E9 | 설정 단위 | **전표 종류별 단일** 결재라인(거래처/금액 조건 분기 없음). |
 | E10 | 알림 | **기존 구현 재사용** — 전표 관계자 + 다음 결재자 자동 알림(§7 collab `resolveNotificationRecipients`). 신규 없음, 결재 워크플로우 연결만 확인. |
 | E11 | 결재 필수 여부 | **결재라인 설정에서 전표 종류별 설정 가능**(필수/선택 토글). 필수=결재 완료 후 전표 유효, 선택=결재란 표시용(미완 허용). |
-| E12 | lifecycle 관계 | **대체** — 기존 출고 lifecycle(`accept`→`dispatcherUserId` 자동 채움 / `inspect`→`inspectorUserId`)을 **폐기**하고, 결재라인 설정의 권한 그룹 명시 결재로 일원화. 자동 채움 제거 → 명시 결재 단계로 전환. |
+| E12 | lifecycle 관계 | **🔄 2026-06-21 개발책임자 정정 — 출고전표=B(게이트) 모델** (초기 '대체' 번복): 기존 `accept`→`dispatcherUserId`/`inspect`→`inspectorUserId` **자동채움·결재란 유지**(폐기 아님). 명시 결재(approve/reject)로 대체하지 않고 그 **처리 액션을 권한 그룹 page-code 로 게이트만 추가**(처리=결재). 근거: 기존 출고 결재란은 명시 결재가 아니라 '처리=자동서명'이었음. ※ A2 적대검증(wf_3f36aa36)이 초기 '대체' 결정과의 미추적 모순 적발 → 본 정정. **명시 결재(approve/reject, approval-core 엔진)는 groupware 및 향후 명시 결재 필요 전표용**. 전표별 모델(게이트 vs 명시)은 각 슬라이스에서 확정. |
 
 ---
 
@@ -77,7 +77,7 @@
 
 | 전표 | 기본 결재라인 | 비고 |
 |---|---|---|
-| 출고전표(Dispatch/Outbound/Invoice) | 작성자 / 출고인 / 검수인 | 기존 createdBy/dispatcherUserId/inspectorUserId 가 기본 결재자 |
+| 출고전표(Dispatch/Outbound/Invoice) | 작성자 / 출고인 / 검수인 (**B 게이트**) | 작성자=**`requesterId`**(전표 작성자 — ※ `createdBy`='system' 폴백이라 작성자 아님, A2 검증 적발) / 출고인=`accept` 처리자 / 검수인=`inspect` 처리자. 자동채움 유지 + 권한 그룹 page-code 게이트. |
 | 입고전표 | 작성자 | 검수자 없음(개발책임자 정정) |
 | 회계전표 | (동적, 기본 최소) | 전용 print 신설 동반 |
 | 그룹웨어 결재 | (동적, 기존) | 이미 동적 — placeholder 서명만 채움 |

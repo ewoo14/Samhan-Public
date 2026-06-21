@@ -2,6 +2,7 @@ package com.samhanair.logis.auth.service;
 
 import com.samhanair.logis.auth.domain.PermissionGroup;
 import com.samhanair.logis.auth.repository.AccountGroupRepository;
+import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -22,6 +23,7 @@ public class PermissionGroupService {
 
     private final PermissionGroupRepository permissionGroupRepository;
     private final AccountGroupRepository accountGroupRepository;
+    private final ApprovalLineConfigRepository approvalLineConfigRepository;
 
     /**
      * 활성 권한그룹 목록을 조회한다.
@@ -92,6 +94,9 @@ public class PermissionGroupService {
         long assignedAccounts = accountGroupRepository.countByGroupIdAndIsDeletedFalse(groupId);
         if (assignedAccounts > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "배속 계정이 있는 권한그룹은 삭제할 수 없습니다.");
+        }
+        if (approvalLineConfigRepository.existsByApproverGroupIdAndIsDeletedFalse(groupId)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "결재라인에 지정된 권한 그룹은 삭제할 수 없습니다");
         }
         group.markDeleted(ACTOR);
         permissionGroupRepository.save(group);

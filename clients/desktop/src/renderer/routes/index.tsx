@@ -293,6 +293,7 @@ import { PermissionMatrixBulkPage } from './PermissionMatrixBulkPage'
 import { PermissionGroupMatrixPage } from './PermissionGroupMatrixPage'
 import { PermissionGroupManagePage } from './PermissionGroupManagePage'
 import { PermissionDelegationPage } from './PermissionDelegationPage'
+import { ApprovalLineConfigPage } from './ApprovalLineConfigPage'
 // [SP-D1 cycle 2] 동적 RBAC PermissionGuard — 서버 권한 매트릭스 기반 라우트 가드.
 import { PermissionGuard } from '../components/PermissionGuard'
 // §7 그룹웨어 결재 — 목록/상세 + 협업 패널.
@@ -1395,6 +1396,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="system.permission-admin" action="view">
             <PermissionDelegationPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/admin/approval-line-config',
+        element: (
+          <PermissionGuard pageCode="admin.approval-line-config" action="view">
+            <ApprovalLineConfigPage />
           </PermissionGuard>
         ),
       },
