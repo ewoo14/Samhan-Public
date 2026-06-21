@@ -3,6 +3,8 @@ import { apiClient } from './client'
 import {
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
+  renameApprovalLineRole,
+  reorderApprovalLineRoles,
   updateApprovalLineRole,
 } from './approvalLineConfigApi'
 
@@ -68,5 +70,42 @@ describe('approvalLineConfigApi contract', () => {
     await expect(fetchApprovalLineGroups()).resolves.toBe(groups)
 
     expect(apiClient.get).toHaveBeenCalledWith('/auth/admin/approval-line-configs/groups')
+  })
+
+  it('PUT /approval-line-configs/{id}/label 에 라벨 payload 를 전송한다', async () => {
+    const row = {
+      id: 'r-out',
+      sequence: 1,
+      label: '출고담당',
+      stepType: 'GROUP',
+      approverGroupId: null,
+      approverGroupName: null,
+      required: true,
+    }
+    vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: row } })
+
+    await expect(renameApprovalLineRole('r-out', '출고담당')).resolves.toBe(row)
+
+    expect(apiClient.put).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs/r-out/label',
+      { label: '출고담당' },
+    )
+  })
+
+  it('PUT /approval-line-configs/reorder?documentType= 에 orderedIds body 를 전송한다', async () => {
+    const rows = [
+      { id: 'r0', sequence: 0, label: '작성자', stepType: 'CREATOR', approverGroupId: null, approverGroupName: null, required: true },
+      { id: 'r2', sequence: 1, label: '검수인', stepType: 'GROUP',   approverGroupId: null, approverGroupName: null, required: true },
+      { id: 'r1', sequence: 2, label: '출고인', stepType: 'GROUP',   approverGroupId: null, approverGroupName: null, required: true },
+    ]
+    vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: rows } })
+
+    const result = await reorderApprovalLineRoles('SLIP_OUTBOUND', ['r0', 'r2', 'r1'])
+    expect(result).toBe(rows)
+
+    expect(apiClient.put).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs/reorder?documentType=SLIP_OUTBOUND',
+      { orderedIds: ['r0', 'r2', 'r1'] },
+    )
   })
 })

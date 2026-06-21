@@ -2,6 +2,7 @@ package com.samhanair.logis.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.approval.StepType;
@@ -10,6 +11,7 @@ import com.samhanair.logis.auth.domain.PermissionGroup;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
+import com.samhanair.logis.common.exception.BusinessException;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
@@ -114,6 +116,201 @@ class ApprovalLineConfigServiceTest {
         when(repository.findById(id)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.updateRole(id, null, true))
                 .hasMessageContaining("찾을 수 없습니다");
+    }
+
+    // ===== renameRole 테스트 =====
+
+    @Test
+    void renameRole_은_GROUP역할_라벨을_변경한다() {
+        UUID id = UUID.randomUUID();
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        when(repository.findById(id)).thenReturn(Optional.of(outbound));
+        when(repository.save(outbound)).thenReturn(outbound);
+
+        ApprovalLineRoleView view = service.renameRole(id, "출고담당");
+
+        assertThat(view.label()).isEqualTo("출고담당");
+    }
+
+    @Test
+    void renameRole_은_앞뒤_공백을_trim한다() {
+        UUID id = UUID.randomUUID();
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        when(repository.findById(id)).thenReturn(Optional.of(outbound));
+        when(repository.save(outbound)).thenReturn(outbound);
+
+        ApprovalLineRoleView view = service.renameRole(id, "  출고담당  ");
+
+        assertThat(view.label()).isEqualTo("출고담당");
+    }
+
+    @Test
+    void renameRole_은_blank_라벨을_거부한다() {
+        UUID id = UUID.randomUUID();
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        when(repository.findById(id)).thenReturn(Optional.of(outbound));
+
+        assertThatThrownBy(() -> service.renameRole(id, "  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("라벨은 비어 있을 수 없습니다");
+    }
+
+    @Test
+    void renameRole_은_null_라벨을_거부한다() {
+        UUID id = UUID.randomUUID();
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        when(repository.findById(id)).thenReturn(Optional.of(outbound));
+
+        assertThatThrownBy(() -> service.renameRole(id, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("라벨은 비어 있을 수 없습니다");
+    }
+
+    @Test
+    void renameRole_은_CREATOR역할을_거부한다() {
+        UUID id = UUID.randomUUID();
+        when(repository.findById(id)).thenReturn(Optional.of(role(0, "작성자", StepType.CREATOR)));
+
+        assertThatThrownBy(() -> service.renameRole(id, "새작성자"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("작성자 역할은 변경할 수 없습니다");
+    }
+
+    @Test
+    void renameRole_은_미존재_역할에_NOT_FOUND를_반환한다() {
+        UUID id = UUID.randomUUID();
+        when(repository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.renameRole(id, "새라벨"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("찾을 수 없습니다");
+    }
+
+    // ===== reorderRoles 테스트 =====
+
+    @Test
+    void reorderRoles_는_blank_documentType을_거부한다() {
+        assertThatThrownBy(() -> service.reorderRoles(" ", List.of(UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("전표 종류(documentType)를 입력해야 합니다");
+    }
+
+    @Test
+    void reorderRoles_는_미존재_documentType을_거부한다() {
+        when(repository.findByDocumentTypeOrderBySequenceAsc("UNKNOWN"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.reorderRoles("UNKNOWN", List.of(UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("결재라인을 찾을 수 없습니다");
+    }
+
+    @Test
+    void reorderRoles_는_순서를_재할당한다() {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수인", StepType.GROUP);
+
+        UUID creatorId = creator.getId();
+        UUID outboundId = outbound.getId();
+        UUID inspectorId = inspector.getId();
+
+        List<ApprovalLineConfig> active = List.of(creator, outbound, inspector);
+        // saveAllAndFlush 호출은 2회 → 각 호출마다 동일 리스트 반환
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(active)                  // 1차: 활성 조회
+                .thenReturn(active);                 // 2차: 최종 재조회(결과 반환용)
+        when(repository.saveAllAndFlush(anyList())).thenReturn(active);
+
+        // 출고인 ↔ 검수인 swap: [creator, inspector, outbound]
+        List<ApprovalLineRoleView> result = service.reorderRoles(
+                "SLIP_OUTBOUND", List.of(creatorId, inspectorId, outboundId));
+
+        // Phase 1 후 음수 오프셋 확인
+        // Phase 2 후 sequence 재할당: creator=0, inspector=1, outbound=2
+        // creator 는 항상 0 고정
+        assertThat(creator.getSequence()).isEqualTo(0);
+        assertThat(inspector.getSequence()).isEqualTo(1);
+        assertThat(outbound.getSequence()).isEqualTo(2);
+    }
+
+    @Test
+    void reorderRoles_는_CREATOR가_1순위_아니면_거부한다() {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수인", StepType.GROUP);
+
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(List.of(creator, outbound, inspector));
+
+        // 작성자가 첫 번째가 아닌 순서 요청 — outbound 가 첫 번째
+        assertThatThrownBy(() -> service.reorderRoles("SLIP_OUTBOUND",
+                List.of(outbound.getId(), creator.getId(), inspector.getId())))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("작성자는 항상 첫 순서여야 합니다");
+    }
+
+    @Test
+    void reorderRoles_는_누락된_역할이_있으면_거부한다() {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수인", StepType.GROUP);
+
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(List.of(creator, outbound, inspector));
+
+        // 검수인 누락
+        assertThatThrownBy(() -> service.reorderRoles("SLIP_OUTBOUND",
+                List.of(creator.getId(), outbound.getId())))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("전체를 순서대로 전달해야 합니다");
+    }
+
+    @Test
+    void reorderRoles_는_중복ID를_거부한다() {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수인", StepType.GROUP);
+
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(List.of(creator, outbound, inspector));
+
+        assertThatThrownBy(() -> service.reorderRoles("SLIP_OUTBOUND",
+                List.of(creator.getId(), outbound.getId(), outbound.getId())))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("역할이 중복 전달되었습니다");
+    }
+
+    @Test
+    void reorderRoles_는_잉여_ID가_포함되면_거부한다() {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수인", StepType.GROUP);
+
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(List.of(creator, outbound, inspector));
+
+        UUID extraId = UUID.randomUUID();
+        assertThatThrownBy(() -> service.reorderRoles("SLIP_OUTBOUND",
+                List.of(creator.getId(), outbound.getId(), inspector.getId(), extraId)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("전체를 순서대로 전달해야 합니다");
+    }
+
+    @Test
+    void reorderRoles_는_타documentType_ID가_포함되면_거부한다() {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig outbound = role(1, "출고인", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수인", StepType.GROUP);
+
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(List.of(creator, outbound, inspector));
+
+        UUID otherId = UUID.randomUUID(); // 다른 documentType 역할 ID
+        assertThatThrownBy(() -> service.reorderRoles("SLIP_OUTBOUND",
+                List.of(creator.getId(), outbound.getId(), otherId)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("전체를 순서대로 전달해야 합니다");
     }
 
     static PermissionGroup systemMasterGroup() {

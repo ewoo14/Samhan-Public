@@ -9,7 +9,11 @@ import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -69,6 +73,102 @@ public class ApprovalLineConfigService {
         }
         role.changeRequired(required);
         return toView(repository.save(role));
+    }
+
+    /**
+     * 결재 역할 라벨(표시 명칭)을 변경한다.
+     *
+     * <p>CREATOR 역할의 라벨은 고정이므로 변경 요청 시 거부한다.
+     * 빈 라벨은 도메인 메서드에서 거부된다.
+     *
+     * @param id    변경 대상 결재 역할 ID
+     * @param label 새 라벨(공백 불가)
+     * @return 갱신된 역할 뷰
+     * @throws BusinessException 역할 미존재(NOT_FOUND) / CREATOR 역할(INVALID_INPUT) / 빈 라벨(INVALID_INPUT)
+     */
+    @Transactional
+    public ApprovalLineRoleView renameRole(UUID id, String label) {
+        ApprovalLineConfig role = repository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "결재 역할을 찾을 수 없습니다: " + id));
+        if (role.getStepType() == StepType.CREATOR) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "작성자 역할은 변경할 수 없습니다");
+        }
+        role.rename(label);
+        return toView(repository.save(role));
+    }
+
+    /**
+     * 결재 역할 순서를 재할당한다(2-phase swap — unique 제약 중간 충돌 회피).
+     *
+     * <p>처리 절차:
+     * <ol>
+     *   <li>부분요청 가드: {@code orderedIds} 집합이 활성 역할 전체 ID 집합과 일치해야 함.</li>
+     *   <li>CREATOR-first 가드: {@code orderedIds.get(0)}이 CREATOR 역할이어야 함.</li>
+     *   <li>Phase 1 — 전 역할을 임시 음수 오프셋으로 이동({@code -(sequence+1)})하여
+     *       unique 충돌 없이 공간을 비운다.</li>
+     *   <li>Phase 2 — {@code orderedIds} 순서대로 0-base sequence 재할당.</li>
+     * </ol>
+     *
+     * @param documentType 전표 종류 (SLIP_OUTBOUND 등)
+     * @param orderedIds   새 순서로 나열된 역할 UUID 목록(첫 번째=작성자)
+     * @return 갱신 후 sequence 순 역할 뷰 목록
+     * @throws BusinessException documentType 공백(INVALID_INPUT) / 미존재 결재라인(NOT_FOUND) /
+     *                           중복 ID(INVALID_INPUT) / 부분요청(INVALID_INPUT) /
+     *                           CREATOR 비1순위(INVALID_INPUT)
+     */
+    @Transactional
+    public List<ApprovalLineRoleView> reorderRoles(String documentType, List<UUID> orderedIds) {
+        if (documentType == null || documentType.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "전표 종류(documentType)를 입력해야 합니다");
+        }
+        String normalizedDocumentType = documentType.trim();
+        List<ApprovalLineConfig> active =
+                repository.findByDocumentTypeOrderBySequenceAsc(normalizedDocumentType);
+        if (active.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "결재라인을 찾을 수 없습니다: " + normalizedDocumentType);
+        }
+
+        // 부분요청 가드: 집합 크기 + 동일성 검증
+        Set<UUID> activeIds = new HashSet<>();
+        Map<UUID, ApprovalLineConfig> byId = new HashMap<>();
+        for (ApprovalLineConfig r : active) {
+            activeIds.add(r.getId());
+            byId.put(r.getId(), r);
+        }
+        if (new HashSet<>(orderedIds).size() != orderedIds.size()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "역할이 중복 전달되었습니다");
+        }
+        if (orderedIds.size() != activeIds.size() || !activeIds.containsAll(orderedIds)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "결재라인 역할 전체를 순서대로 전달해야 합니다");
+        }
+
+        // CREATOR-first 가드
+        ApprovalLineConfig first = byId.get(orderedIds.get(0));
+        if (first == null || first.getStepType() != StepType.CREATOR) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "작성자는 항상 첫 순서여야 합니다");
+        }
+
+        // Phase 1: 음수 오프셋으로 일괄 이동 (unique 제약 중간 충돌 회피)
+        for (ApprovalLineConfig r : active) {
+            r.changeSequence(-(r.getSequence() + 1));
+        }
+        repository.saveAllAndFlush(active);
+
+        // Phase 2: orderedIds 순서대로 0-base sequence 재할당
+        for (int i = 0; i < orderedIds.size(); i++) {
+            byId.get(orderedIds.get(i)).changeSequence(i);
+        }
+        repository.saveAllAndFlush(active);
+
+        return repository.findByDocumentTypeOrderBySequenceAsc(normalizedDocumentType).stream()
+                .map(this::toView)
+                .toList();
     }
 
     private ApprovalLineRoleView toView(ApprovalLineConfig role) {

@@ -9221,6 +9221,65 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     )
   }
 
+  // PUT /approval-line-configs/{id}/label — 역할 라벨 인라인 편집 (stateful)
+  const approvalLineConfigLabelMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)\/label$/)
+  if (method === 'PUT' && approvalLineConfigLabelMatch) {
+    const roleId = decodeURIComponent(approvalLineConfigLabelMatch[1]!)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
+    if (role.stepType === 'CREATOR') {
+      return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
+    }
+    const body = parseMockBody(config)
+    const nextLabel = String(body['label'] ?? '').trim()
+    if (!nextLabel) return mockError(400, 'INVALID_INPUT', '라벨은 빈 값일 수 없습니다.')
+    role.label = nextLabel
+    return envelope(mockApprovalLineRoleView(role))
+  }
+
+  // PUT /approval-line-configs/reorder?documentType= — 역할 순서 변경 (stateful, 2-phase in-process)
+  const approvalLineConfigReorderMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/reorder(\?.*)?$/)
+  if (method === 'PUT' && approvalLineConfigReorderMatch) {
+    const params = new URLSearchParams(approvalLineConfigReorderMatch[1]?.replace(/^\?/, '') ?? '')
+    const documentType = params.get('documentType') ?? 'SLIP_OUTBOUND'
+    const body = parseMockBody(config)
+    const orderedIds: string[] = Array.isArray(body['orderedIds'])
+      ? (body['orderedIds'] as unknown[]).map(String)
+      : []
+
+    const active = _mockApprovalLineConfigRoles.filter((r) => r.documentType === documentType)
+
+    // 부분요청 가드: orderedIds 집합 == active 집합
+    const activeIdSet = new Set(active.map((r) => r.id))
+    const requestedIdSet = new Set(orderedIds)
+    if (
+      orderedIds.length !== active.length ||
+      orderedIds.some((id) => !activeIdSet.has(id)) ||
+      active.some((r) => !requestedIdSet.has(r.id))
+    ) {
+      return mockError(400, 'INVALID_INPUT', '결재라인 역할 전체를 순서대로 전달해야 합니다.')
+    }
+
+    // CREATOR 1순위 가드
+    const firstRole = _mockApprovalLineConfigRoles.find((r) => r.id === orderedIds[0])
+    if (!firstRole || firstRole.stepType !== 'CREATOR') {
+      return mockError(400, 'INVALID_INPUT', '작성자는 항상 첫 순서여야 합니다.')
+    }
+
+    // sequence 재할당
+    orderedIds.forEach((id, index) => {
+      const r = _mockApprovalLineConfigRoles.find((item) => item.id === id)
+      if (r) r.sequence = index
+    })
+
+    return envelope(
+      _mockApprovalLineConfigRoles
+        .filter((r) => r.documentType === documentType)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(mockApprovalLineRoleView),
+    )
+  }
+
   const approvalLineConfigRoleMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)$/)
   if (method === 'PUT' && approvalLineConfigRoleMatch) {
     const roleId = decodeURIComponent(approvalLineConfigRoleMatch[1]!)

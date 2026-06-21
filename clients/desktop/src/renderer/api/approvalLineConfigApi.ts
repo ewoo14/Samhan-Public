@@ -46,3 +46,33 @@ export async function updateApprovalLineRole(
   )
   return res.data.data
 }
+
+/**
+ * 결재라인 역할 라벨 인라인 편집 — PUT /auth/admin/approval-line-configs/{id}/label.
+ * CREATOR 역할은 BE 에서 거부(400). blank 입력은 FE 에서 사전 차단.
+ */
+export async function renameApprovalLineRole(
+  id: string,
+  label: string,
+): Promise<ApprovalLineRole> {
+  const res = await apiClient.put<ApiEnvelope<ApprovalLineRole>>(
+    `/auth/admin/approval-line-configs/${encodeURIComponent(id)}/label`,
+    { label },
+  )
+  return res.data.data
+}
+
+/**
+ * 결재라인 역할 순서 변경 — PUT /auth/admin/approval-line-configs/reorder?documentType=.
+ * orderedIds[0] 는 CREATOR 강제(BE 검증). 비-CREATOR 행만 재배치 대상.
+ */
+export async function reorderApprovalLineRoles(
+  documentType: string,
+  orderedIds: string[],
+): Promise<ApprovalLineRole[]> {
+  const res = await apiClient.put<ApiEnvelope<ApprovalLineRole[]>>(
+    `/auth/admin/approval-line-configs/reorder?documentType=${encodeURIComponent(documentType)}`,
+    { orderedIds },
+  )
+  return res.data.data ?? []
+}

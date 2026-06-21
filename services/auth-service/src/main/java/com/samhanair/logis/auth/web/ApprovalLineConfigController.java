@@ -3,10 +3,15 @@ package com.samhanair.logis.auth.web;
 import com.samhanair.logis.auth.service.ApprovalLineConfigService;
 import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
+import com.samhanair.logis.auth.web.dto.ReorderApprovalLineRequest;
+import com.samhanair.logis.auth.web.dto.RenameApprovalLineRoleRequest;
 import com.samhanair.logis.auth.web.dto.UpdateApprovalLineRoleRequest;
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -46,5 +51,48 @@ public class ApprovalLineConfigController {
     public ApiResponse<ApprovalLineRoleView> updateRole(
             @PathVariable UUID id, @RequestBody UpdateApprovalLineRoleRequest request) {
         return ApiResponse.ok(service.updateRole(id, request.approverGroupId(), request.required()));
+    }
+
+    /**
+     * 결재 역할 라벨(표시 명칭) 변경.
+     *
+     * <p>CREATOR(작성자) 역할의 라벨은 변경 불가 — 400 반환.
+     *
+     * @param id      변경 대상 역할 ID
+     * @param request 새 라벨을 담은 요청 본문
+     * @return 갱신된 역할 단건
+     */
+    @PutMapping("/approval-line-configs/{id}/label")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
+    public ApiResponse<ApprovalLineRoleView> renameRole(
+            @PathVariable UUID id,
+            @Valid @RequestBody RenameApprovalLineRoleRequest request) {
+        return ApiResponse.ok(service.renameRole(id, request.label()));
+    }
+
+    /**
+     * 전표 종류별 결재 역할 순서 재배치(2-phase swap).
+     *
+     * <p>요청의 {@code orderedIds} 는 해당 {@code documentType} 활성 역할 전체와 정확히 일치해야 한다.
+     * 작성자(CREATOR) 역할은 항상 첫 번째여야 한다.
+     *
+     * @param documentType 전표 종류 (SLIP_OUTBOUND 등)
+     * @param request      새 순서로 나열된 역할 UUID 목록
+     * @return 순서 재할당 후 역할 목록(sequence 오름차순)
+     */
+    @PutMapping("/approval-line-configs/reorder")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
+    public ApiResponse<List<ApprovalLineRoleView>> reorderRoles(
+            @RequestParam String documentType,
+            @Valid @RequestBody ReorderApprovalLineRequest request) {
+        return ApiResponse.ok(service.reorderRoles(requireDocumentType(documentType), request.orderedIds()));
+    }
+
+    private static String requireDocumentType(String documentType) {
+        if (documentType == null || documentType.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "전표 종류(documentType)를 입력해야 합니다");
+        }
+        return documentType.trim();
     }
 }

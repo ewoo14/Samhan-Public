@@ -5,7 +5,11 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   ApprovalRoleRow,
   approvalLineRolesQueryKey,
+  areApprovalRoleOrdersEqual,
+  computeApprovalRoleReorder,
+  getOrderedApprovalRoleIds,
   notifyApprovalRoleGroupChange,
+  notifyApprovalRoleLabelChange,
   notifyApprovalRoleRequiredChange,
   optimisticallyUpdateApprovalLineRoles,
   restoreApprovalLineRolesSnapshot,
@@ -92,5 +96,104 @@ describe('ApprovalRoleRow', () => {
       approverGroupId: 'g0',
       required: true,
     })
+  })
+})
+
+// ── 샘플 역할 픽스처 ──
+const roleCreator: ApprovalLineRole = {
+  id: 'r0',
+  sequence: 0,
+  label: '작성자',
+  stepType: 'CREATOR',
+  approverGroupId: null,
+  approverGroupName: null,
+  required: true,
+}
+
+const roleDispatcher: ApprovalLineRole = {
+  id: 'r1',
+  sequence: 1,
+  label: '출고인',
+  stepType: 'GROUP',
+  approverGroupId: null,
+  approverGroupName: null,
+  required: true,
+}
+
+const roleInspector: ApprovalLineRole = {
+  id: 'r2',
+  sequence: 2,
+  label: '검수인',
+  stepType: 'GROUP',
+  approverGroupId: null,
+  approverGroupName: null,
+  required: true,
+}
+
+describe('notifyApprovalRoleLabelChange (Task 3)', () => {
+  test('정상 라벨 변경 시 onRename 을 호출한다', () => {
+    const onRename = vi.fn()
+    notifyApprovalRoleLabelChange('출고담당', roleDispatcher, onRename)
+    expect(onRename).toHaveBeenCalledWith('출고담당')
+  })
+
+  test('blank 입력은 onRename 을 호출하지 않는다', () => {
+    const onRename = vi.fn()
+    notifyApprovalRoleLabelChange('', roleDispatcher, onRename)
+    notifyApprovalRoleLabelChange('   ', roleDispatcher, onRename)
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  test('동일 값 입력은 onRename 을 호출하지 않는다', () => {
+    const onRename = vi.fn()
+    notifyApprovalRoleLabelChange('출고인', roleDispatcher, onRename)
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  test('CREATOR 역할은 onRename 을 호출하지 않는다', () => {
+    const onRename = vi.fn()
+    notifyApprovalRoleLabelChange('새이름', roleCreator, onRename)
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  test('앞뒤 공백을 trim 하여 호출한다', () => {
+    const onRename = vi.fn()
+    notifyApprovalRoleLabelChange('  출고담당  ', roleDispatcher, onRename)
+    expect(onRename).toHaveBeenCalledWith('출고담당')
+  })
+})
+
+describe('computeApprovalRoleReorder (Task 4)', () => {
+  const roles = [roleCreator, roleDispatcher, roleInspector]
+
+  test('비-CREATOR 드롭 시 작성자는 항상 index 0', () => {
+    const result = computeApprovalRoleReorder(roles, 'r1', 'r2')
+    expect(result[0]).toBe('r0') // CREATOR 고정
+  })
+
+  test('출고인(r1) → 검수인(r2) 위치로 드래그 시 순서 [r0, r2, r1]', () => {
+    const result = computeApprovalRoleReorder(roles, 'r1', 'r2')
+    expect(result).toEqual(['r0', 'r2', 'r1'])
+  })
+
+  test('검수인(r2) → 출고인(r1) 위치로 드래그 시 순서 [r0, r2, r1]', () => {
+    // r2 를 r1 위치(앞)로 드래그 → r2, r1 순
+    const result = computeApprovalRoleReorder(roles, 'r2', 'r1')
+    expect(result).toEqual(['r0', 'r2', 'r1'])
+  })
+
+  test('CREATOR 가 active 이면 현재 순서 그대로 반환한다', () => {
+    const result = computeApprovalRoleReorder(roles, 'r0', 'r1')
+    expect(result).toEqual(['r0', 'r1', 'r2'])
+  })
+
+  test('CREATOR 가 over 이면 현재 순서 그대로 반환한다 (작성자 위로 드롭 불가)', () => {
+    const result = computeApprovalRoleReorder(roles, 'r1', 'r0')
+    expect(result).toEqual(['r0', 'r1', 'r2'])
+  })
+
+  test('작성자 위 드롭 결과가 현재 순서와 같으면 변경 없음으로 판정한다', () => {
+    const result = computeApprovalRoleReorder(roles, 'r1', 'r0')
+    expect(areApprovalRoleOrdersEqual(result, getOrderedApprovalRoleIds(roles))).toBe(true)
   })
 })
