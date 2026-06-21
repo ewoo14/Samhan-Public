@@ -56,7 +56,7 @@
  * memory feedback_role_naming_full — role label 풀네임 (BE Role.displayName 사용).
  * memory feedback_uuid_no_user_visibility — loginId/fullName 만 노출, 그룹/계정 UUID 비공개.
  */
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   useMutation,
   useQuery,
@@ -65,16 +65,20 @@ import {
 import {
   Badge,
   Button,
+  CopyButton,
   DataTable,
   FormField,
   Input,
   Modal,
+  SignatureViewer,
   type DataTableColumn,
 } from '@samhan/design-system'
 import {
   ADMIN_ROLE_LABEL,
   createAdminUser,
+  createSignatureHandoffToken,
   disableAdminUser,
+  fetchSignatureHandoffStatus,
   listAdminRoles,
   listAdminUsers,
   listDepartments,
@@ -82,11 +86,15 @@ import {
   unlockAdminUser,
   updateAdminUser,
   updateAdminUserRole,
+  uploadUserSignature,
   type AdminRole,
   type AdminUser,
   type CreateAdminUserResponse,
+  type EmployeeSignatureResponse,
   type RoleHistoryEntry,
 } from '../../api/adminApi'
+import { normalizeSignaturePng } from '../../utils/signatureImage'
+import QRCode from 'qrcode'
 import {
   assignAccountGroup,
   fetchAccountGroups,
@@ -210,6 +218,7 @@ export function UsersPage() {
   const [roleModal, setRoleModal] = useState<AdminUser | null>(null)
   const [historyModal, setHistoryModal] = useState<AdminUser | null>(null)
   const [disableModal, setDisableModal] = useState<AdminUser | null>(null)
+  const [signatureModal, setSignatureModal] = useState<AdminUser | null>(null)
 
   // 쿼리
   const usersQuery = useQuery({
@@ -352,6 +361,18 @@ export function UsersPage() {
                 탈퇴
               </Button>
             ) : null}
+            {/* 서명 등록 (C2.3) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="admin-user-signature-button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setSignatureModal(u)
+              }}
+            >
+              서명 등록
+            </Button>
           </div>
         ),
       },
@@ -549,6 +570,14 @@ export function UsersPage() {
             }}
           />
         </div>
+      ) : null}
+
+      {/* 서명 등록 Modal (C2.3) */}
+      {signatureModal ? (
+        <SignatureRegisterModal
+          user={signatureModal}
+          onClose={() => setSignatureModal(null)}
+        />
       ) : null}
     </>
   )
@@ -1607,6 +1636,132 @@ function DisableUserModal({ user, onClose, onCommitted }: DisableUserModalProps)
           </div>
         ) : null}
       </form>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SignatureRegisterModal — 사원 서명 등록 (이미지 업로드 + 모바일 핸드오프)
+// 공유 계약: PATCH .../signature (UPLOAD) / POST .../handoff-token / GET .../status
+// UUID 비공개: user.id 는 path key 전용, 화면 라벨은 fullName/loginId.
+// ---------------------------------------------------------------------------
+function SignatureRegisterModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const [tab, setTab] = useState<'upload' | 'mobile'>('upload')
+  const [preview, setPreview] = useState<{ dataUrl: string; hash: string } | null>(null)
+  const [tooLarge, setTooLarge] = useState(false)
+  const [uploadDone, setUploadDone] = useState<EmployeeSignatureResponse | null>(null)
+  const [handoff, setHandoff] = useState<{ token: string; qrUrl: string; qrDataUrl: string } | null>(null)
+  const [mobileDone, setMobileDone] = useState(false)
+  const [mobileExpired, setMobileExpired] = useState(false)
+
+  const uploadMutation = useMutation({
+    mutationFn: () => {
+      if (!preview) throw new Error('NO_PREVIEW')
+      return uploadUserSignature(user.id, {
+        signaturePngBase64: preview.dataUrl,
+        signatureHash: preview.hash,
+        channel: 'UPLOAD',
+      })
+    },
+    onSuccess: (res) => setUploadDone(res),
+  })
+
+  const handleFile = async (file: File) => {
+    setTooLarge(false)
+    try {
+      const { dataUrl, hash } = await normalizeSignaturePng(file)
+      setPreview({ dataUrl, hash })
+    } catch (err) {
+      if (err instanceof Error && err.message === 'SIGNATURE_TOO_LARGE') setTooLarge(true)
+      else setPreview(null)
+    }
+  }
+
+  const issueMutation = useMutation({
+    mutationFn: () => createSignatureHandoffToken(user.id),
+    onSuccess: async (res) => {
+      const qrDataUrl = await QRCode.toDataURL(res.qrUrl, { width: 220, margin: 1 })
+      setHandoff({ token: res.token, qrUrl: res.qrUrl, qrDataUrl })
+    },
+  })
+
+  // 2s 폴링 — handoff 발급 후 used/expired/언마운트 시 종료
+  useEffect(() => {
+    if (!handoff || mobileDone || mobileExpired) return
+    let cancelled = false
+    const timer = setInterval(async () => {
+      try {
+        const s = await fetchSignatureHandoffStatus(user.id, handoff.token)
+        if (cancelled) return
+        if (s.used) setMobileDone(true)
+        else if (s.expired) setMobileExpired(true)
+      } catch {
+        // 폴링 일시 실패 무시 (다음 tick 재시도)
+      }
+    }, 2000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [handoff, mobileDone, mobileExpired, user.id])
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`서명 등록 — ${user.fullName} (${user.loginId})`}
+      size="lg"
+      footer={<Button variant="ghost" onClick={onClose}>닫기</Button>}
+    >
+      <div data-testid="admin-user-signature-modal" style={formColStyle}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant={tab === 'upload' ? 'primary' : 'ghost'} size="sm" data-testid="signature-tab-upload" onClick={() => setTab('upload')}>이미지 업로드</Button>
+          <Button variant={tab === 'mobile' ? 'primary' : 'ghost'} size="sm" data-testid="signature-tab-mobile" onClick={() => setTab('mobile')}>모바일로 그리기</Button>
+        </div>
+
+        {tab === 'upload' ? (
+          uploadDone ? (
+            <div data-testid="signature-upload-done" style={{ fontSize: 14 }}>서명이 등록되었습니다.</div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                data-testid="signature-file-input"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }}
+              />
+              {tooLarge ? (
+                <div role="alert" data-testid="signature-too-large-error" style={{ color: 'var(--state-danger)', fontSize: 13 }}>
+                  서명 이미지가 50KB 를 초과합니다. 더 작은 이미지를 선택하세요.
+                </div>
+              ) : null}
+              {preview ? (
+                <div data-testid="signature-preview">
+                  <SignatureViewer signaturePngBase64={preview.dataUrl} signerName={user.fullName} signedAt="" signatureHash={preview.hash} />
+                </div>
+              ) : null}
+              <Button variant="primary" data-testid="signature-upload-submit" disabled={!preview} loading={uploadMutation.isPending} onClick={() => uploadMutation.mutate()}>등록</Button>
+            </>
+          )
+        ) : (
+          <>
+            {!handoff ? (
+              <Button variant="primary" data-testid="signature-handoff-issue" loading={issueMutation.isPending} onClick={() => issueMutation.mutate()}>모바일 링크 발급</Button>
+            ) : mobileDone ? (
+              <div data-testid="signature-mobile-done" style={{ fontSize: 14 }}>모바일 서명이 등록되었습니다.</div>
+            ) : mobileExpired ? (
+              <div data-testid="signature-mobile-expired" style={{ color: 'var(--state-danger)', fontSize: 13 }}>링크가 만료되었습니다. 다시 발급하세요.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <img data-testid="signature-qr-image" src={handoff.qrDataUrl} alt="모바일 서명 QR" width={220} height={220} />
+                {/* ⚠️ CopyButton prop = text(필수), value 아님. data-testid 는 CopyButton 이 ...rest spread 안 하므로 래퍼 span 에 부착(검증 P1). */}
+                <span data-testid="signature-copy-link"><CopyButton text={handoff.qrUrl} label="링크 복사" /></span>
+                <span style={{ fontSize: 12, color: 'var(--ink-tertiary)' }}>휴대폰으로 QR 을 스캔해 서명하세요. (10분 유효)</span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </Modal>
   )
 }

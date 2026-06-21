@@ -4946,7 +4946,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // ==========================================================================
 
   // GET /admin/users — admin/UsersPage list (AdminPage<AdminUser>)
-  if (method === 'GET' && url.includes('/admin/users') && !url.includes('/role-history') && !url.match(/\/admin\/users\/roles/)) {
+  if (method === 'GET' && url.includes('/admin/users') && !url.includes('/signature/') && !url.includes('/role-history') && !url.match(/\/admin\/users\/roles/)) {
     return envelope({
       items: MOCK_ADMIN_USERS,
       total: MOCK_ADMIN_USERS.length,
@@ -5028,6 +5028,26 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         reason: '신규 입사 초기 권한',
       },
     ])
+  }
+
+  // PATCH /api/v1/admin/users/{id}/signature — 업로드 등록 (C2.3)
+  if (method === 'PATCH' && /\/api\/v1\/admin\/users\/[^/]+\/signature$/.test(url)) {
+    const body = parseMockBody(config)
+    if (typeof body['signatureHash'] !== 'string' || (body['signatureHash'] as string).length !== 64) {
+      return mockError(400, 'SIGNATURE_HASH_MISMATCH', '서명 해시가 올바르지 않습니다.')
+    }
+    return envelope({ registered: true, signedAt: '2026-06-21T10:00:00', signatureChannel: body['channel'] ?? 'UPLOAD' })
+  }
+  // POST /api/v1/admin/users/{id}/signature/handoff-token — 토큰 발급 (C2.3)
+  if (method === 'POST' && /\/api\/v1\/admin\/users\/[^/]+\/signature\/handoff-token$/.test(url)) {
+    ;(window as unknown as { __SIG_POLL__?: number }).__SIG_POLL__ = 0
+    return envelope({ token: 'mock-token-1', qrUrl: 'https://sign.samhan-air.com/s/mock-token-1', expiresAt: '2026-06-21T10:10:00' })
+  }
+  // GET /api/v1/admin/users/{id}/signature/handoff/{token}/status — 폴링 (2번째부터 used, C2.3)
+  if (method === 'GET' && /\/api\/v1\/admin\/users\/[^/]+\/signature\/handoff\/[^/]+\/status$/.test(url)) {
+    const w = window as unknown as { __SIG_POLL__?: number }
+    w.__SIG_POLL__ = (w.__SIG_POLL__ ?? 0) + 1
+    return envelope({ used: w.__SIG_POLL__ >= 2, expired: false })
   }
 
   // GET /users/departments — 부서 목록 (5건)
