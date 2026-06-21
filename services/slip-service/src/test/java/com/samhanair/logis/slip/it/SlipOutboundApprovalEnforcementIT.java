@@ -132,7 +132,7 @@ class SlipOutboundApprovalEnforcementIT extends AbstractPostgresIT {
     }
 
     @Test
-    void inboundAcceptAndInspect_skipOutboundGate() throws Exception {
+    void inboundAcceptAndInspect_invokesInboundApprovalGate() throws Exception {
         String slipId = createSentSlip("INBOUND");
         UUID userId = user("0005");
         when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_RECEIVE", userId))
