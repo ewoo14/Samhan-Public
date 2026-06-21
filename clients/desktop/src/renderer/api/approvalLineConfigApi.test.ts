@@ -29,8 +29,9 @@ describe('approvalLineConfigApi contract', () => {
     vi.mocked(apiClient.delete).mockReset()
   })
 
-  it('DOC_TYPES 에 입고전표 옵션을 포함한다', () => {
+  it('DOC_TYPES 에 입고전표와 주문 옵션을 포함한다', () => {
     expect(DOC_TYPES).toContainEqual({ value: 'SLIP_INBOUND', label: '입고전표' })
+    expect(DOC_TYPES).toContainEqual({ value: 'PARTNER_ORDER', label: '주문' })
   })
 
   it('GET /approval-line-configs 에 documentType query 를 전송한다', async () => {

@@ -79,6 +79,24 @@ class ApprovalLineAuthorizationServiceTest {
     }
 
     @Test
+    void authorize_PARTNER_ORDER_USER결재자_일치시_allowedTrue() {
+        // A2-4 회귀 가드 — PARTNER_ORDER/PARTNER_ORDER_CONVERT 도 동일 generic authorize 경로를 사용한다.
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(
+                "PARTNER_ORDER", "PARTNER_ORDER_CONVERT")).thenReturn(Optional.of(role(
+                        roleId, "PARTNER_ORDER", "PARTNER_ORDER_CONVERT", "승인자")));
+        when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
+                .thenReturn(List.of(ApprovalLineApprover.create(roleId, ApproverType.USER, userId)));
+
+        ApprovalLineAuthorizeResponse result = service.authorize(
+                "PARTNER_ORDER", "PARTNER_ORDER_CONVERT", userId);
+
+        assertThat(result.configured()).isTrue();
+        assertThat(result.allowed()).isTrue();
+    }
+
+    @Test
     void authorize_GROUP_소속시_allowedTrue() {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -159,16 +177,20 @@ class ApprovalLineAuthorizationServiceTest {
     }
 
     private static ApprovalLineConfig role(UUID id) {
+        return role(id, DOCUMENT_TYPE, ACTION_KEY, "출고인");
+    }
+
+    private static ApprovalLineConfig role(UUID id, String documentType, String actionKey, String label) {
         try {
             var ctor = ApprovalLineConfig.class.getDeclaredConstructor();
             ctor.setAccessible(true);
             ApprovalLineConfig role = ctor.newInstance();
             set(role, "id", id);
-            set(role, "documentType", DOCUMENT_TYPE);
+            set(role, "documentType", documentType);
             set(role, "sequence", 1);
-            set(role, "label", "출고인");
+            set(role, "label", label);
             set(role, "stepType", StepType.GROUP);
-            set(role, "actionKey", ACTION_KEY);
+            set(role, "actionKey", actionKey);
             set(role, "required", true);
             return role;
         } catch (Exception ex) {
