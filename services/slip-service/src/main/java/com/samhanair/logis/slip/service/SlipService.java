@@ -3,6 +3,8 @@ package com.samhanair.logis.slip.service;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
+import com.samhanair.logis.slip.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.slip.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.PartnerInternalClient;
 import com.samhanair.logis.slip.client.ExpandedLineDto;
@@ -76,11 +78,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class SlipService {
 
     private static final String SLIP_REF_TYPE = "SLIP";
+    private static final String SLIP_OUTBOUND_DOCUMENT_TYPE = "SLIP_OUTBOUND";
+    private static final String OUTBOUND_DISPATCH_ACTION_KEY = "OUTBOUND_DISPATCH";
+    private static final String OUTBOUND_INSPECT_ACTION_KEY = "OUTBOUND_INSPECT";
 
     private final SlipRepository slipRepository;
     private final SlipNumberService slipNumberService;
     private final ProductClient productClient;
     private final InventoryClient inventoryClient;
+    private final ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
     private final SlipAuditLogService auditLogService;
     /** PR-H3 — 사용자 명시 잠금 정책 mutation 가드 + APPROVED 1회 소진. */
     private final SlipEditRequestService editRequestService;
@@ -768,6 +774,11 @@ public class SlipService {
      */
     public SlipDetailResponse accept(UUID id, String acceptorUserId) {
         Slip slip = loadOrThrow(id);
+        enforceOutboundApprovalLine(
+                slip,
+                acceptorUserId,
+                OUTBOUND_DISPATCH_ACTION_KEY,
+                "출고 수락 권한이 없습니다 — 출고인 결재자(그룹/개인)만 처리할 수 있습니다");
         applyMutation(() -> slip.accept(acceptorUserId));
         if (slip.getSlipType() == SlipType.OUTBOUND) {
             Map<UUID, ProductSummary> productsById = loadProductsByLine(slip);
@@ -827,8 +838,38 @@ public class SlipService {
      */
     public SlipDetailResponse inspect(UUID id, String inspectorUserId) {
         Slip slip = loadOrThrow(id);
+        enforceOutboundApprovalLine(
+                slip,
+                inspectorUserId,
+                OUTBOUND_INSPECT_ACTION_KEY,
+                "출고 검수 권한이 없습니다 — 검수인 결재자(그룹/개인)만 처리할 수 있습니다");
         applyMutation(() -> slip.inspect(inspectorUserId));
         return SlipDetailResponse.from(slip);
+    }
+
+    private void enforceOutboundApprovalLine(
+            Slip slip, String actorUserId, String actionKey, String forbiddenMessage) {
+        if (slip.getSlipType() != SlipType.OUTBOUND || !isRealUser(actorUserId)) {
+            return;
+        }
+        UUID userId = UUID.fromString(actorUserId);
+        ApprovalLineAuthorizeResult result = approvalLineAuthorizeClient.authorize(
+                SLIP_OUTBOUND_DOCUMENT_TYPE, actionKey, userId);
+        if (result.configured() && !result.allowed()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, forbiddenMessage);
+        }
+    }
+
+    private boolean isRealUser(String actorUserId) {
+        if (actorUserId == null || actorUserId.isBlank() || "system".equals(actorUserId)) {
+            return false;
+        }
+        try {
+            UUID.fromString(actorUserId);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     /**
