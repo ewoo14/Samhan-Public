@@ -423,7 +423,7 @@ public class SlipController {
      * PROCESSING → INSPECTING — Slice A (sales-polish-2) 신규 단계.
      * 검수자가 picking 결과 검증 시작. inspectorUserId/SignedAt 자동 기입.
      *
-     * <p>SP-D3 동적 권한: {@code inbound.inspection} 페이지 코드 EDIT 가드 적용.
+     * <p>SP-D3 동적 권한: 입고(INBOUND) 전표에만 {@code inbound.inspection} 페이지 코드 EDIT 가드 적용.
      */
     @Operation(summary = "검수 시작",
             description = "PROCESSING → INSPECTING. inspectorUserId/SignedAt 자동 기입 (Slice A 신규)")
@@ -437,8 +437,10 @@ public class SlipController {
             @PathVariable UUID id,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
             @RequestHeader(value = "X-User-Role", required = false) String roleHeader) {
-        // SP-D3 동적 권한 EDIT 가드 — inbound.inspection
-        checkEditPermission(roleHeader, INBOUND_INSPECTION_PAGE_CODE);
+        SlipType slipType = slipService.getOne(id).slipType();
+        if (SlipType.INBOUND.equals(slipType)) {
+            checkEditPermission(roleHeader, INBOUND_INSPECTION_PAGE_CODE);
+        }
         return ApiResponse.ok(slipService.inspect(id, callerOrSystem(callerHeader)));
     }
 

@@ -94,13 +94,19 @@ public class ApprovalLineAuthorizeClient {
     private ApprovalLineAuthorizeResult parse(String body) {
         try {
             JsonNode root = objectMapper.readTree(body);
-            JsonNode data = root.has("data") ? root.get("data") : root;
+            if (!root.path("success").asBoolean(false) || !root.hasNonNull("data")) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "결재라인 인가 응답 형식 오류");
+            }
+            JsonNode data = root.get("data");
             return new ApprovalLineAuthorizeResult(
                     data.path("configured").asBoolean(false),
                     data.path("allowed").asBoolean(false));
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    "결재라인 인가 응답을 해석할 수 없습니다");
+                    "결재라인 인가 응답 형식 오류");
         }
     }
 }

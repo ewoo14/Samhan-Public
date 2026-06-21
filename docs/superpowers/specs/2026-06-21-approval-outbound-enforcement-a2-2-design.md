@@ -30,8 +30,9 @@
 `ApprovalLineAuthorizeClient`(RestClient + X-Internal-Token, 기존 *InternalClient 패턴):
 - `SlipService.accept(id, acceptorUserId)`: 슬립 로드 후 **`slip.slipType==OUTBOUND` && acceptorUserId 가 실 사용자('system' 아님)** 이면 `authorize(SLIP_OUTBOUND, OUTBOUND_DISPATCH, acceptorUserId)` 호출 → `configured && !allowed` 면 `BusinessException(FORBIDDEN, "출고 수락 권한이 없습니다 — 출고인 결재자(그룹/개인)만 처리할 수 있습니다")`. (자동채움·inventory.reserve 전에 가드.)
 - `SlipService.inspect(id, inspectorUserId)`: 동일하게 `OUTBOUND` && 실 사용자면 `authorize(SLIP_OUTBOUND, OUTBOUND_INSPECT, inspectorUserId)` → `configured && !allowed` 면 FORBIDDEN("출고 검수 권한이 없습니다 …").
-- **위치**: 컨트롤러는 슬립 slipType 미지 → service(슬립 로드 후)에서 가드. 기존 `@RequirePermission(slip.transfer.process)`(컨트롤러)는 유지(opt-in 베이스 게이트). 기존 inspect 의 `checkEditPermission(inbound.inspection)`(입고 검수)는 유지(INBOUND 가드).
-- **'system' bypass**: acceptorUserId='system'(내부/무사용자 폴백)이면 결재자 검증 skip(내부 연산). 실 사용자는 게이트웨이 X-User-Id 로 식별.
+- **위치**: 컨트롤러는 `@RequirePermission(slip.transfer.process)`를 유지하고, service(슬립 로드 후)에서 OUTBOUND 결재라인 가드를 수행한다. `POST /slips/{id}/inspect` 의 기존 `checkEditPermission(inbound.inspection)` 보조 가드는 컨트롤러가 `slipService.getOne(id).slipType()` 으로 유형을 확인한 뒤 **INBOUND 일 때만** 실행한다. OUTBOUND inspect 는 `SlipService.inspect` 의 `OUTBOUND_INSPECT` 결재라인 게이트만 적용한다.
+- **auth-down fail-closed**: `ApprovalLineAuthorizeClient` 호출 실패 또는 응답 형식 오류는 `INTERNAL_ERROR` 로 닫는다. 이는 기존 JWT / `@RequirePermission` 기반 사용자 요청 경로와 같은 auth 결합이며, 출고 결재라인 enforcement 가 신규 가용성 결합을 추가한다는 의미가 아니다.
+- **'system' bypass**: acceptorUserId='system'(내부/무사용자 폴백)이면 결재자 검증 skip(내부 연산). 실 사용자는 게이트웨이 X-User-Id 로 식별하며, 이 신뢰 경계는 게이트웨이 header strip 단일권위([[identity-header-authz-antipattern]])에 한정한다.
 
 ### action_key 앵커 (A2-1c)
 출고인=`OUTBOUND_DISPATCH`, 검수인=`OUTBOUND_INSPECT`(라벨/순서 무관 안정 매핑). accept→DISPATCH, inspect→INSPECT.

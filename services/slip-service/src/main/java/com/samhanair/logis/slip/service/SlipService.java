@@ -847,6 +847,18 @@ public class SlipService {
         return SlipDetailResponse.from(slip);
     }
 
+    /**
+     * 출고전표 결재라인 action 권한을 강제한다.
+     *
+     * <p>OUTBOUND 전표와 실사용자 UUID에만 적용한다. auth-service 호출 실패 또는 응답 형식 오류는
+     * fail-closed 로 처리되며, 이는 기존 JWT / {@code @RequirePermission} 기반 인증·인가 결합과
+     * 같은 계층의 결합이다. 별도 가용성 결합을 새로 만들지 않고 이미 모든 사용자 요청이 통과하는
+     * auth 경로에 출고 결재라인 판단만 추가한다.
+     *
+     * <p>{@code system} 호출은 내부 연산 fallback 전용으로 우회한다. 사용자 요청의
+     * {@code X-User-Id} 신뢰 경계는 게이트웨이의 identity header strip 단일권위
+     * ([[identity-header-authz-antipattern]])에 한정한다.
+     */
     private void enforceOutboundApprovalLine(
             Slip slip, String actorUserId, String actionKey, String forbiddenMessage) {
         if (slip.getSlipType() != SlipType.OUTBOUND || !isRealUser(actorUserId)) {

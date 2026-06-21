@@ -1,6 +1,7 @@
 package com.samhanair.logis.slip.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -8,6 +9,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.security.InternalAuthProperties;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +52,36 @@ class ApprovalLineAuthorizeClientTest {
 
         assertThat(result.configured()).isTrue();
         assertThat(result.allowed()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void authorize_dataMissing_failClosed() {
+        UUID userId = UUID.randomUUID();
+        server.expect(once(), requestTo("http://auth-service/auth/internal/approval-line/authorize"))
+                .andRespond(withSuccess("""
+                        {"success":true}
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.authorize(
+                "SLIP_OUTBOUND", "OUTBOUND_INSPECT", userId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("결재라인 인가 응답 형식 오류");
+        server.verify();
+    }
+
+    @Test
+    void authorize_successFalse_failClosed() {
+        UUID userId = UUID.randomUUID();
+        server.expect(once(), requestTo("http://auth-service/auth/internal/approval-line/authorize"))
+                .andRespond(withSuccess("""
+                        {"success":false,"data":{"configured":false,"allowed":false}}
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.authorize(
+                "SLIP_OUTBOUND", "OUTBOUND_INSPECT", userId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("결재라인 인가 응답 형식 오류");
         server.verify();
     }
 }
