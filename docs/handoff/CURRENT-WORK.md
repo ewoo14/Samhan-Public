@@ -4,6 +4,30 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-21 — **A1 공통 결재 엔진 일반화 머지 완료 PR #551**, 다음 = A2)
+
+### ✅ A1 머지 완료 (PR #551, main `f3783f8d7`)
+- **에픽**: 전 전표 명시 결재 워크플로우([spec](../superpowers/specs/2026-06-21-document-approval-workflow-design.md)). A1 = **`shared:approval-core` 추출 + groupware 이관(무회귀)**.
+- **설계**(brainstorming + 6렌즈 적대검증 9 BLOCKER 반영, [A1 spec](../superpowers/specs/2026-06-21-approval-engine-a1-design.md) · [plan](../superpowers/plans/2026-06-21-approval-engine-a1.md)):
+  - **분산** — approval-core `@MappedSuperclass` 베이스 + 각 서비스 자기 DB(collab-core 동형).
+  - **base/concrete 분리**(JPA 제약): `@MappedSuperclass` 는 per-service `@OneToMany steps` 매핑 불가 → base=스칼라+무상태 chain 로직(`ApprovalLineBase`/`ApprovalStepBase`) / concrete=@Id·@Version·steps·전용필드.
+  - **step 모델 = `stepType(CREATOR|GROUP|USER)` union**, 전 컬럼 nullable. **A1=USER 실배선**(groupware 회귀), GROUP/CREATOR 선반영.
+  - **E8 결재권한 = page-code enforcement(경로B)** — `DynamicPermissionClient.check(actorAccountId, requiredPageCode, APPROVE)`. 계정→권한그룹 page-code **계승 검증 완료**(개인 우선·scoped, `EffectivePermissionMaterializer`). enforce 실배선=A2.
+  - **연계=loose ref**(document_type/id) · **서명 컬럼 nullable**(A3 동결) · **signed_at=plain TIMESTAMP 확정**(LocalDateTime 매핑, timestamptz=Instant 전용 A2).
+- **워크플로우**: Opus 계획/PR → **Codex 구현**(MCP danger-full-access) → 🔵Opus R1(5렌즈 APPROVE_WITH_NITS·P1=0) → 🟣Codex R2(조건부 머지) → fix → 🔵Opus R3(머지 가능·blocking 0). **CI 27/27 green**. 🐳 라이브 Docker 결재 목록/상세 UI 무회귀 캡처(`docs/qa/approval-engine-a1/`).
+- **검증**: approval-core 13 단위 + groupware 96 test(62 Testcontainers IT skipped=0) + V8 fresh probe ×2(백필·IF NOT EXISTS) + Linux CI + 라이브 Flyway v8+validate.
+
+### 다음 = A2 (결재라인 설정 메뉴 + slip 출고 결재선 골격) — **착수 시 상세 brainstorming 의무**
+- A2 = **결재라인 관리 메뉴(인사그룹 중앙통제, 설정 전용)** + 전표 종류별 결재라인 설정(`approval_line_config` 류) + slip 출고 결재선 골격(step 모델 확정 후) + GROUP step page-code enforce 실배선.
+- **A2 brainstorming 필수 결정**(spec §9 박제): `approver_id DROP NOT NULL`(GROUP/CREATOR) · `matchesActor` protected hook(권한 판정 port) · `resolveDisplayNames` null 필터 · 제네릭 엔진 Testcontainers 실통합 IT · 설정↔실행 2층 인스턴스 생성 · E11 필수여부 enforce 지점 · E2/E5 동적변경 vs append-only.
+- ⚠️ **A2 는 신규 업무규칙(설정 메뉴 UX·동적 결재선 변경 정책) 동반** → 착수 brainstorming 에서 개발책임자 결정 필요.
+
+### 워크플로우 메모 (검증됨, 이 세션)
+- **Codex 쓰기 = MCP `mcp__codex__codex` + `sandbox: danger-full-access` + `approval-policy: never` + `config:{model_reasoning_effort:high}`** 작동(이 세션). files-only(git/gradle 금지) → Claude 가 빌드·테스트·커밋·probe·QA 대행.
+- **라이브 데스크톱 UI 캡처**: 렌더러 `vite --config vite.renderer.dev.config.ts`(port 5175, `VITE_API_BASE_URL=:8080`, mock off) + Playwright `addInitScript` 로 `window.samhanAuth.getToken` 를 라이브 dev_master JWT(`dev_p05_pass!`)로 브리지(Electron IPC 우회) → HashRouter `/#/groupware/approvals` 캡처.
+
+---
+
 ## 🟢 핸드오프 (2026-06-21 — 에픽 재정의: **전 전표 명시 결재 워크플로우 spec 머지 PR #550**, 다음 = A1)
 
 ### 에픽 근본 재정의 (재브레인스토밍 → spec 확정·머지)
