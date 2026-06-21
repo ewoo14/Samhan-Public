@@ -39,6 +39,8 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
 
     private static final UUID MANAGER_ACCOUNT_ID =
             UUID.fromString("a0000000-0000-0000-0000-000000000003");
+    private static final UUID MASTER_ACCOUNT_ID =
+            UUID.fromString("a0000000-0000-0000-0000-000000000001");
     private static final UUID SALES_ACCOUNT_ID =
             UUID.fromString("a0000000-0000-0000-0000-000000000004");
     private static final UUID WAREHOUSE_GROUP_ID =
@@ -257,6 +259,26 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("POST 결재자 — 시스템 마스터 계정 USER 지정은 4xx")
+    void addApprover_systemMasterUser_returns4xx() throws Exception {
+        UUID roleId = outboundRoleId("출고인");
+
+        MvcResult result = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"USER","refId":"%s"}
+                                """.formatted(MASTER_ACCOUNT_ID)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("시스템 마스터 계정");
+    }
+
+    @Test
     @DisplayName("GET 사원검색 — admin.approval-line-config VIEW 권한으로 200")
     void searchUsers_managerWithSeedGrant_returns200() throws Exception {
         MvcResult result = mockMvc.perform(get("/auth/admin/approval-line-configs/users")
@@ -270,6 +292,23 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
                 .contains("[DEV-SEED] 개발");
+    }
+
+    @Test
+    @DisplayName("GET 사원검색 — 시스템 마스터 계정은 결과에서 제외")
+    void searchUsers_excludesSystemMasterAccount() throws Exception {
+        MvcResult result = mockMvc.perform(get("/auth/admin/approval-line-configs/users")
+                        .param("q", "개발마스터")
+                        .param("limit", "5")
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .doesNotContain(MASTER_ACCOUNT_ID.toString())
+                .doesNotContain("[DEV-SEED] 개발마스터");
     }
 
     @Test

@@ -48,6 +48,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_approval_line_approver_active
     ON approval_line_approver (config_role_id, approver_type, approver_ref_id)
     WHERE is_deleted = FALSE;
 
+CREATE INDEX IF NOT EXISTS idx_approval_line_approver_ref
+    ON approval_line_approver (approver_type, approver_ref_id)
+    WHERE is_deleted = FALSE;
+
 INSERT INTO approval_line_approver
     (id, config_role_id, approver_type, approver_ref_id,
      created_at, created_by, modified_at, modified_by, deleted_at, deleted_by, is_deleted)

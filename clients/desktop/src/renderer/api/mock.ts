@@ -9217,6 +9217,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(
       MOCK_ADMIN_USERS
         .filter((user) => user.terminationDate === null)
+        .filter((user) => !mockAccountBelongsToSystemMaster(user.id))
         .filter((user) => !q || user.fullName.toLocaleLowerCase().includes(q))
         .slice(0, limit)
         .map((user) => ({
@@ -9257,8 +9258,13 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       const group = _mockPermissionGroups.find((item) => item.id === refId)
       if (!group) return mockError(400, 'INVALID_INPUT', '존재하지 않는 권한 그룹입니다.')
       if (group.systemMaster) return mockError(400, 'INVALID_INPUT', '시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다.')
-    } else if (!mockAccountById(refId)) {
-      return mockError(400, 'INVALID_INPUT', '존재하지 않는 사원입니다.')
+    } else {
+      if (!mockAccountById(refId)) {
+        return mockError(400, 'INVALID_INPUT', '존재하지 않는 사원입니다.')
+      }
+      if (mockAccountBelongsToSystemMaster(refId)) {
+        return mockError(400, 'INVALID_INPUT', '시스템 마스터 계정은 결재자로 지정할 수 없습니다')
+      }
     }
     if (role.approvers.some((item) => item.type === type && item.refId === refId)) {
       return mockError(400, 'INVALID_INPUT', '이미 지정된 결재자입니다.')
@@ -12733,6 +12739,12 @@ function mockAccountById(accountId: string) {
   }
 
   return undefined
+}
+
+function mockAccountBelongsToSystemMaster(accountId: string) {
+  return (_mockAccountGroups[accountId] ?? []).some((groupId) =>
+    Boolean(_mockPermissionGroups.find((group) => group.id === groupId)?.systemMaster),
+  )
 }
 
 function mockAccountGroupSummary(accountId: string, group: MockPermissionGroup) {
