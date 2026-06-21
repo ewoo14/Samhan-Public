@@ -40,29 +40,30 @@ const MAX_H = 200
 export async function normalizeSignaturePng(
   file: File,
 ): Promise<{ dataUrl: string; hash: string; bytes: number }> {
-  const objectUrl = URL.createObjectURL(file)
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('SIGNATURE_IMAGE_DECODE_FAILED'))
-      el.src = objectUrl
-    })
-    const scale = Math.min(MAX_W / img.width, MAX_H / img.height, 1)
-    const w = Math.max(1, Math.round(img.width * scale))
-    const h = Math.max(1, Math.round(img.height * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('SIGNATURE_CANVAS_UNAVAILABLE')
-    ctx.drawImage(img, 0, 0, w, h)
-    const dataUrl = canvas.toDataURL('image/png')
-    const bytes = dataUrlByteLength(dataUrl)
-    if (bytes > PNG_MAX_BYTES) throw new Error('SIGNATURE_TOO_LARGE')
-    const hash = await sha256OfDataUrl(dataUrl)
-    return { dataUrl, hash, bytes }
-  } finally {
-    URL.revokeObjectURL(objectUrl)
-  }
+  const sourceDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('SIGNATURE_FILE_READ_FAILED'))
+    reader.readAsDataURL(file)
+  })
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image()
+    el.onload = () => resolve(el)
+    el.onerror = () => reject(new Error('SIGNATURE_IMAGE_DECODE_FAILED'))
+    el.src = sourceDataUrl
+  })
+  const scale = Math.min(MAX_W / img.width, MAX_H / img.height, 1)
+  const w = Math.max(1, Math.round(img.width * scale))
+  const h = Math.max(1, Math.round(img.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('SIGNATURE_CANVAS_UNAVAILABLE')
+  ctx.drawImage(img, 0, 0, w, h)
+  const dataUrl = canvas.toDataURL('image/png')
+  const bytes = dataUrlByteLength(dataUrl)
+  if (bytes > PNG_MAX_BYTES) throw new Error('SIGNATURE_TOO_LARGE')
+  const hash = await sha256OfDataUrl(dataUrl)
+  return { dataUrl, hash, bytes }
 }
