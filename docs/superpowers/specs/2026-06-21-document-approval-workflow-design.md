@@ -31,7 +31,8 @@
 | E3 | 기본 결재라인 | 출고전표=작성자/출고인/검수인, 입고전표=작성자(검수자 없음), 회계=동적, 그룹웨어=동적(기존). |
 | E4 | 서명 | **결재 시점 동결(Model B)** — 결재자 승인 시 사원 등록 서명(C1 `Employee.signaturePng`) snapshot 삽입. 실시간 조회 아님. |
 | E5 | 결재선 구성 권한 | **MASTER + 위임받은 MANAGER**. auth-service page-code 위임(D-PB-01) 재사용. |
-| E6 | 엔진 | **그룹웨어 `ApprovalLine`/`ApprovalStep` 재사용·일반화**(전표 종류 무관 공통 엔진). 신설 아님. |
+| E6 | 엔진 | **그룹웨어 `ApprovalLine`/`ApprovalStep` 재사용·일반화**(전표 종류 무관 공통 실행 엔진). 신설 아님. |
+| E7 | 중앙통제 메뉴 | **결재라인 설정 메뉴(인사그룹 신규)** — 모든 전표 종류의 결재라인(**인원수·순서·명칭·권한**)을 한 곳에서 정의·통제. MASTER + 위임 MANAGER. **설정(중앙 템플릿) ↔ 실행(전표별 `ApprovalLine` 인스턴스)** 2층 구조 — 전표 발행 시 설정을 조회해 인스턴스 생성. ad-hoc per-document 선택 아님. |
 
 ---
 
@@ -85,7 +86,7 @@
 > ⚠️ C1a/C1b/C2(사원 서명 등록·mobile-public) **머지 완료** → 서명 소스로 재사용. C3(출고 인감 plan)은 본 에픽으로 **재설계**.
 
 - **A1 (공통 결재 엔진 일반화)**: 그룹웨어 `ApprovalLine`/`ApprovalStep` 을 전표 종류 무관 공통 엔진으로 추출/일반화 + 전표↔ApprovalLine 연계 골격 + 결재선 발의 internal API. (기반 슬라이스)
-- **A2 (위임 게이트 + 기본 템플릿)**: 결재선 구성 권한 page-code 신설 + auth-service 위임 적용(MASTER→MANAGER) + 전표 종류별 기본 결재라인 템플릿.
+- **A2 (결재라인 설정 메뉴 — 인사그룹 중앙통제)**: 모든 전표 종류의 결재라인(**인원수·순서·명칭·권한**)을 정의하는 **신규 메뉴(인사그룹)**. MASTER + 위임 MANAGER(page-code 위임 D-PB-01) 통제. 전표 종류 ↔ 결재라인 설정(`approval_line_config` 류) 저장 + 결재선 구성 권한 page-code 신설. 전표 발행 시 이 설정으로 `ApprovalLine` 인스턴스 생성(**설정↔실행 2층**, E7).
 - **A3 (결재 시점 서명 동결)**: approve() 시 `Employee.signaturePng` snapshot 저장(approval_step_signature) + PrintLayout SignatureViewer 실연동(placeholder 해소).
 - **A4 (출고전표 결재 배선)**: 출고전표 발의/승인 + DispatchView/OutboundView/InvoiceView 결재란 + lifecycle 관계 확정.
 - **A5 (입고전표 결재 배선)**: 입고전표(작성자 기본) + InboundView 결재란 신설.
@@ -102,6 +103,9 @@
 - **결재 시점 서명 동결 위치**: approval_step_signature 신규 테이블 vs ApprovalStep 컬럼.
 - **회계 결재 = 그룹웨어 엔진 재사용 vs 회계 자체**(조사 reuseVerdict=재사용 가능, 단 연계 설계).
 - **결재자 검색 범위**: 현 그룹웨어는 전 사원 자유선택 — 위임 게이트 적용 시 범위 제한 정책.
+- **결재 단계 결재자 소스(A2 핵심)**: 각 단계 결재자를 (a) 전표 컨텍스트 actor 매핑(작성자=`createdBy`/출고인=`dispatcherUserId`/검수인=`inspectorUserId`) vs (b) 권한(롤/page-code) 보유자 vs (c) 사원 직접 지정 vs (d) 혼합 — 출고는 전표 actor 자동이 자연스럽고 회계/추가단계는 권한·지정일 수 있음.
+- **결재라인 '권한'의 의미(E7)**: 단계별 '권한'이 그 단계를 결재할 수 있는 롤/page-code 인지, 결재라인 설정 자체를 변경하는 권한인지 구분.
+- **설정 단위**: 결재라인 설정이 전표 종류별 단일 vs 거래처/부서/금액 조건별 분기 가능 여부.
 
 ---
 
