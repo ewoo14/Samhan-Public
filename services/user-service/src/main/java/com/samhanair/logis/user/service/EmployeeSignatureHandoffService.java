@@ -26,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 상태: 토큰 단건 lookup → {used, expired} 폴링 응답.
  *
  * <p>qrUrl base 는 {@code app.signature.public-base-url} — 모바일 공개 웹앱 origin
- * (C2 DevOps 확정). 게이트웨이 공개 라우트 {@code /api/public/employee-signatures/{token}} 결합.
+ * (C2 DevOps 확정). 웹앱 페이지 {@code /s/{token}} 경로 결합 (API 제출은 웹앱 same-origin).
  */
 @Service
 @Transactional
@@ -60,7 +60,9 @@ public class EmployeeSignatureHandoffService {
                 .forEach(token -> token.markDeleted(deletedBy));
         EmployeeSignatureHandoffToken token = tokenRepository.save(
                 EmployeeSignatureHandoffToken.issue(employeeId, actorUserId));
-        String qrUrl = normalizedPublicBaseUrl() + "/api/public/employee-signatures/" + token.getToken();
+        // 모바일 공개 웹앱 페이지 origin + /s/{token} (사원이 폰으로 여는 SignaturePad 페이지).
+        // API 제출(/api/public/employee-signatures/{token})은 웹앱이 same-origin 으로 POST.
+        String qrUrl = normalizedPublicBaseUrl() + "/s/" + token.getToken();
         return new HandoffTokenResponse(
                 token.getToken(),
                 qrUrl,

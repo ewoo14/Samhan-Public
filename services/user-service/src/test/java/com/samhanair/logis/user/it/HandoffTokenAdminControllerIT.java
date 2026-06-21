@@ -80,8 +80,8 @@ class HandoffTokenAdminControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.token").isNotEmpty())
                 .andExpect(jsonPath("$.data.token").value(org.hamcrest.Matchers.matchesPattern("[A-Za-z0-9_-]{64}")))
-                .andExpect(jsonPath("$.data.qrUrl").value(org.hamcrest.Matchers.containsString(
-                        "/api/public/employee-signatures/")))
+                .andExpect(jsonPath("$.data.qrUrl").value(org.hamcrest.Matchers.containsString("/s/")))
+                .andExpect(jsonPath("$.data.qrUrl").value(org.hamcrest.Matchers.matchesPattern(".*/s/[A-Za-z0-9_-]{64}$")))
                 .andExpect(jsonPath("$.data.expiresAt").isNotEmpty());
     }
 
