@@ -3,22 +3,29 @@ import { apiClient } from './client'
 import {
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
+  addApprovalLineApprover,
+  removeApprovalLineApprover,
   renameApprovalLineRole,
   reorderApprovalLineRoles,
+  searchApprovalLineUsers,
   updateApprovalLineRole,
 } from './approvalLineConfigApi'
 
 vi.mock('./client', () => ({
   apiClient: {
     get: vi.fn(),
+    post: vi.fn(),
     put: vi.fn(),
+    delete: vi.fn(),
   },
 }))
 
 describe('approvalLineConfigApi contract', () => {
   beforeEach(() => {
     vi.mocked(apiClient.get).mockReset()
+    vi.mocked(apiClient.post).mockReset()
     vi.mocked(apiClient.put).mockReset()
+    vi.mocked(apiClient.delete).mockReset()
   })
 
   it('GET /approval-line-configs 에 documentType query 를 전송한다', async () => {
@@ -28,8 +35,7 @@ describe('approvalLineConfigApi contract', () => {
         sequence: 1,
         label: '출고인',
         stepType: 'GROUP',
-        approverGroupId: null,
-        approverGroupName: null,
+        approvers: [],
         required: true,
       },
     ]
@@ -42,17 +48,16 @@ describe('approvalLineConfigApi contract', () => {
     )
   })
 
-  it('PUT /approval-line-configs/{id} 에 그룹/필수 payload 를 전송한다', async () => {
+  it('PUT /approval-line-configs/{id} 에 필수 payload 만 전송한다', async () => {
     const row = {
       id: 'role/1',
       sequence: 1,
       label: '출고인',
       stepType: 'GROUP',
-      approverGroupId: 'g1',
-      approverGroupName: '창고원',
+      approvers: [],
       required: false,
     }
-    const payload = { approverGroupId: 'g1', required: false }
+    const payload = { required: false }
     vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: row } })
 
     await expect(updateApprovalLineRole('role/1', payload)).resolves.toBe(row)
@@ -60,6 +65,54 @@ describe('approvalLineConfigApi contract', () => {
     expect(apiClient.put).toHaveBeenCalledWith(
       '/auth/admin/approval-line-configs/role%2F1',
       payload,
+    )
+  })
+
+  it('GET /approval-line-configs/users 에 q/limit query 를 전송한다', async () => {
+    const users = [{ id: 'u1', displayName: '홍길동 (물류팀)' }]
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: users } })
+
+    await expect(searchApprovalLineUsers('홍 길', 10)).resolves.toBe(users)
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs/users?q=%ED%99%8D%20%EA%B8%B8&limit=10',
+    )
+  })
+
+  it('POST /approval-line-configs/{roleId}/approvers 에 type/refId body 를 전송한다', async () => {
+    const row = {
+      id: 'role/1',
+      sequence: 1,
+      label: '출고인',
+      stepType: 'GROUP',
+      approvers: [{ id: 'a1', type: 'GROUP', refId: 'g1', displayName: '창고원' }],
+      required: true,
+    }
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: row } })
+
+    await expect(addApprovalLineApprover('role/1', 'GROUP', 'g1')).resolves.toBe(row)
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs/role%2F1/approvers',
+      { type: 'GROUP', refId: 'g1' },
+    )
+  })
+
+  it('DELETE /approval-line-configs/{roleId}/approvers/{approverId} 로 결재자를 제거한다', async () => {
+    const row = {
+      id: 'role/1',
+      sequence: 1,
+      label: '출고인',
+      stepType: 'GROUP',
+      approvers: [],
+      required: true,
+    }
+    vi.mocked(apiClient.delete).mockResolvedValueOnce({ data: { data: row } })
+
+    await expect(removeApprovalLineApprover('role/1', 'approver/1')).resolves.toBe(row)
+
+    expect(apiClient.delete).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs/role%2F1/approvers/approver%2F1',
     )
   })
 
@@ -78,8 +131,7 @@ describe('approvalLineConfigApi contract', () => {
       sequence: 1,
       label: '출고담당',
       stepType: 'GROUP',
-      approverGroupId: null,
-      approverGroupName: null,
+      approvers: [],
       required: true,
     }
     vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: row } })
@@ -94,9 +146,9 @@ describe('approvalLineConfigApi contract', () => {
 
   it('PUT /approval-line-configs/reorder?documentType= 에 orderedIds body 를 전송한다', async () => {
     const rows = [
-      { id: 'r0', sequence: 0, label: '작성자', stepType: 'CREATOR', approverGroupId: null, approverGroupName: null, required: true },
-      { id: 'r2', sequence: 1, label: '검수인', stepType: 'GROUP',   approverGroupId: null, approverGroupName: null, required: true },
-      { id: 'r1', sequence: 2, label: '출고인', stepType: 'GROUP',   approverGroupId: null, approverGroupName: null, required: true },
+      { id: 'r0', sequence: 0, label: '작성자', stepType: 'CREATOR', approvers: [], required: true },
+      { id: 'r2', sequence: 1, label: '검수인', stepType: 'GROUP',   approvers: [], required: true },
+      { id: 'r1', sequence: 2, label: '출고인', stepType: 'GROUP',   approvers: [], required: true },
     ]
     vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: rows } })
 

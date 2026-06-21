@@ -3,11 +3,15 @@ package com.samhanair.logis.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
 import com.samhanair.logis.auth.domain.PermissionGroup;
+import com.samhanair.logis.auth.repository.AccountRepository;
+import com.samhanair.logis.auth.repository.ApprovalLineApproverRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
@@ -17,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -26,8 +31,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ApprovalLineConfigServiceTest {
 
     @Mock ApprovalLineConfigRepository repository;
+    @Mock ApprovalLineApproverRepository approverRepository;
     @Mock PermissionGroupRepository groupRepository;
+    @Mock AccountRepository accountRepository;
     @InjectMocks ApprovalLineConfigService service;
+
+    @BeforeEach
+    void defaults() {
+        lenient().when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(any()))
+                .thenReturn(List.of());
+    }
 
     /** 리플렉션으로 테스트 픽스처 엔티티 생성(생성자 protected). */
     static ApprovalLineConfig role(int seq, String label, StepType type) {
@@ -59,46 +72,21 @@ class ApprovalLineConfigServiceTest {
     }
 
     @Test
-    void updateRole_은_GROUP역할에_권한그룹과_필수를_갱신한다() {
+    void updateRole_은_GROUP역할의_필수여부만_갱신한다() {
         UUID id = UUID.randomUUID();
-        UUID groupId = UUID.randomUUID();
         ApprovalLineConfig group = role(1, "출고인", StepType.GROUP);
         when(repository.findById(id)).thenReturn(Optional.of(group));
-        when(groupRepository.findById(groupId)).thenReturn(Optional.of(PermissionGroup.create("창고원", null)));
         when(repository.save(group)).thenReturn(group);
-        ApprovalLineRoleView view = service.updateRole(id, groupId, false);
-        assertThat(view.approverGroupId()).isEqualTo(groupId);
+        ApprovalLineRoleView view = service.updateRole(id, false);
+        assertThat(view.approvers()).isEmpty();
         assertThat(view.required()).isFalse();
     }
 
     @Test
-    void updateRole_은_미존재_권한그룹지정시_거부한다() {
+    void updateRole_은_CREATOR역할_변경을_거부한다() {
         UUID id = UUID.randomUUID();
-        UUID randomGroupId = UUID.randomUUID();
-        ApprovalLineConfig group = role(1, "출고인", StepType.GROUP);
-        when(repository.findById(id)).thenReturn(Optional.of(group));
-        when(groupRepository.findById(randomGroupId)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.updateRole(id, randomGroupId, true))
-                .hasMessageContaining("존재하지 않는 권한 그룹");
-    }
-
-    @Test
-    void updateRole_은_시스템마스터_권한그룹지정시_거부한다() {
-        UUID id = UUID.randomUUID();
-        UUID groupId = UUID.randomUUID();
-        ApprovalLineConfig group = role(1, "출고인", StepType.GROUP);
-        when(repository.findById(id)).thenReturn(Optional.of(group));
-        when(groupRepository.findById(groupId)).thenReturn(Optional.of(systemMasterGroup()));
-        assertThatThrownBy(() -> service.updateRole(id, groupId, true))
-                .hasMessageContaining("시스템 마스터 그룹");
-    }
-
-    @Test
-    void updateRole_은_CREATOR역할에_권한그룹지정시_거부한다() {
-        UUID id = UUID.randomUUID();
-        UUID groupId = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.of(role(0, "작성자", StepType.CREATOR)));
-        assertThatThrownBy(() -> service.updateRole(id, groupId, true))
+        assertThatThrownBy(() -> service.updateRole(id, true))
                 .hasMessageContaining("작성자 역할은 변경할 수 없습니다");
     }
 
@@ -106,7 +94,7 @@ class ApprovalLineConfigServiceTest {
     void updateRole_은_CREATOR역할의_필수여부변경도_거부한다() {
         UUID id = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.of(role(0, "작성자", StepType.CREATOR)));
-        assertThatThrownBy(() -> service.updateRole(id, null, false))
+        assertThatThrownBy(() -> service.updateRole(id, false))
                 .hasMessageContaining("작성자 역할은 변경할 수 없습니다");
     }
 
@@ -114,7 +102,7 @@ class ApprovalLineConfigServiceTest {
     void updateRole_은_미존재시_404() {
         UUID id = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.updateRole(id, null, true))
+        assertThatThrownBy(() -> service.updateRole(id, true))
                 .hasMessageContaining("찾을 수 없습니다");
     }
 

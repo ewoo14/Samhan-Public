@@ -19,7 +19,7 @@ import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UuidGenerator;
 
 /**
- * 전표 종류별 결재 역할 1건(선언적 카탈로그). 결재라인 설정 메뉴가 역할에 권한 그룹/필수여부를 지정한다.
+ * 전표 종류별 결재 역할 1건(선언적 카탈로그). 결재라인 설정 메뉴가 역할에 결재자/필수여부를 지정한다.
  *
  * <p>enforcement(게이트/명시 결재)는 본 config 를 소비하는 슬라이스(A2-2 등)가 수행한다. 본 엔티티는
  * {@code group_page_permissions} 를 건드리지 않는 선언적 정의만 보관한다(권한그룹 관리와 진실원 분리).
@@ -54,15 +54,20 @@ public class ApprovalLineConfig extends BaseEntity {
     @Column(name = "step_type", nullable = false, updatable = false, length = 20)
     private StepType stepType;
 
-    /** GROUP 역할의 지정 권한 그룹(nullable — 미지정 또는 CREATOR). */
+    /** GROUP 역할의 지정 권한 그룹(nullable — A2-1c 이후 approval_line_approver 로 이관, 후속 제거 예정). */
     @Column(name = "approver_group_id")
     private UUID approverGroupId;
+
+    /** enforcement 에서 사용하는 안정 액션 앵커. 라벨/순서 변경과 무관하다. */
+    @Column(name = "action_key", updatable = false, length = 40)
+    private String actionKey;
 
     /** 결재 필수여부(E11). */
     @Column(name = "required", nullable = false)
     private boolean required;
 
     /** GROUP 역할에 권한 그룹 지정. CREATOR 역할은 거부. */
+    @Deprecated
     public void assignGroup(UUID groupId) {
         if (this.stepType != StepType.GROUP) {
             throw new IllegalStateException("권한 그룹은 GROUP 역할에만 지정할 수 있습니다: " + this.label);
@@ -71,6 +76,7 @@ public class ApprovalLineConfig extends BaseEntity {
     }
 
     /** 권한 그룹 해제. */
+    @Deprecated
     public void clearGroup() {
         this.approverGroupId = null;
     }

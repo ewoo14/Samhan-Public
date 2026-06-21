@@ -1,6 +1,4 @@
 package com.samhanair.logis.auth.web.dto;
 
-import java.util.UUID;
-
-/** 역할 갱신 요청 — approverGroupId null=그룹 해제. */
-public record UpdateApprovalLineRoleRequest(UUID approverGroupId, boolean required) {}
+/** 역할 갱신 요청 — A2-1c 이후 필수여부만 변경한다. */
+public record UpdateApprovalLineRoleRequest(boolean required) {}

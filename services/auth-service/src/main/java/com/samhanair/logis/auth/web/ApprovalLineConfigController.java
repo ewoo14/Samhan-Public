@@ -1,6 +1,10 @@
 package com.samhanair.logis.auth.web;
 
+import com.samhanair.logis.auth.domain.ApproverType;
+import com.samhanair.logis.auth.service.ApprovalLineApproverService;
 import com.samhanair.logis.auth.service.ApprovalLineConfigService;
+import com.samhanair.logis.auth.web.dto.AccountSearchResult;
+import com.samhanair.logis.auth.web.dto.AddApproverRequest;
 import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.auth.web.dto.ReorderApprovalLineRequest;
@@ -16,7 +20,9 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ApprovalLineConfigController {
 
     private final ApprovalLineConfigService service;
+    private final ApprovalLineApproverService approverService;
 
     /** 전표 종류별 결재 역할 조회. */
     @GetMapping("/approval-line-configs")
@@ -45,12 +52,41 @@ public class ApprovalLineConfigController {
         return ApiResponse.ok(service.listSelectableGroups());
     }
 
+    /** 결재라인 설정 picker 용 사원 목록. */
+    @GetMapping("/approval-line-configs/users")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.VIEW)
+    public ApiResponse<List<AccountSearchResult>> searchUsers(
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "20") int limit) {
+        return ApiResponse.ok(approverService.searchUsers(q, limit));
+    }
+
     /** 역할에 권한 그룹/필수 갱신. */
     @PutMapping("/approval-line-configs/{id}")
     @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
     public ApiResponse<ApprovalLineRoleView> updateRole(
             @PathVariable UUID id, @RequestBody UpdateApprovalLineRoleRequest request) {
-        return ApiResponse.ok(service.updateRole(id, request.approverGroupId(), request.required()));
+        return ApiResponse.ok(service.updateRole(id, request.required()));
+    }
+
+    /** 결재 역할에 그룹/개인 결재자를 추가한다. */
+    @PostMapping("/approval-line-configs/{roleId}/approvers")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
+    public ApiResponse<ApprovalLineRoleView> addApprover(
+            @PathVariable UUID roleId,
+            @RequestBody AddApproverRequest request) {
+        approverService.addApprover(roleId, parseApproverType(request.type()), request.refId());
+        return ApiResponse.ok(service.getRoleView(roleId));
+    }
+
+    /** 결재 역할에서 결재자 1명을 제거한다. */
+    @DeleteMapping("/approval-line-configs/{roleId}/approvers/{approverId}")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
+    public ApiResponse<ApprovalLineRoleView> removeApprover(
+            @PathVariable UUID roleId,
+            @PathVariable UUID approverId) {
+        approverService.removeApprover(roleId, approverId);
+        return ApiResponse.ok(service.getRoleView(roleId));
     }
 
     /**
@@ -94,5 +130,13 @@ public class ApprovalLineConfigController {
                     "전표 종류(documentType)를 입력해야 합니다");
         }
         return documentType.trim();
+    }
+
+    private static ApproverType parseApproverType(String type) {
+        try {
+            return ApproverType.valueOf(type == null ? "" : type.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "결재자 유형은 GROUP 또는 USER 여야 합니다");
+        }
     }
 }
