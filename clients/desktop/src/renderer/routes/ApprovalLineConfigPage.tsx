@@ -18,6 +18,7 @@ export function ApprovalLineConfigPage() {
   const queryClient = useQueryClient()
   const [docType, setDocType] = useState(DOC_TYPES[0]!.value)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [pendingRoleIds, setPendingRoleIds] = useState<Set<string>>(() => new Set())
 
   const rolesQuery = useQuery({
     queryKey: ['admin', 'approval-line-config', docType],
@@ -32,11 +33,28 @@ export function ApprovalLineConfigPage() {
   const updateMutation = useMutation({
     mutationFn: (value: { id: string; approverGroupId: string | null; required: boolean }) =>
       updateApprovalLineRole(value.id, { approverGroupId: value.approverGroupId, required: value.required }),
+    onMutate: (value) => {
+      setPendingRoleIds((prev) => {
+        const next = new Set(prev)
+        next.add(value.id)
+        return next
+      })
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'approval-line-config', docType] })
       setToast({ type: 'success', message: '결재라인 설정을 저장했습니다.' })
     },
-    onError: () => setToast({ type: 'error', message: '저장 중 오류가 발생했습니다.' }),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'approval-line-config', docType] })
+      setToast({ type: 'error', message: '저장 중 오류가 발생했습니다.' })
+    },
+    onSettled: (_data, _error, value) => {
+      setPendingRoleIds((prev) => {
+        const next = new Set(prev)
+        next.delete(value.id)
+        return next
+      })
+    },
   })
 
   useEffect(() => {
@@ -104,7 +122,7 @@ export function ApprovalLineConfigPage() {
                     key={role.id}
                     role={role}
                     groups={groups}
-                    saving={updateMutation.isPending}
+                    saving={pendingRoleIds.has(role.id)}
                     onSave={(approverGroupId, required) =>
                       updateMutation.mutate({ id: role.id, approverGroupId, required })}
                   />
@@ -160,10 +178,6 @@ export function ApprovalRoleRow({
     setRequired(role.required)
   }, [role.approverGroupId, role.required])
 
-  function save(nextGroupId: string, nextRequired: boolean) {
-    onSave(nextGroupId === '' ? null : nextGroupId, nextRequired)
-  }
-
   return (
     <tr data-testid={`approval-role-${role.label}`}>
       <td style={bodyCellStyle}>{role.sequence + 1}</td>
@@ -181,7 +195,7 @@ export function ApprovalRoleRow({
             onChange={(event) => {
               const nextGroupId = event.target.value
               setGroupId(nextGroupId)
-              save(nextGroupId, required)
+              notifyApprovalRoleGroupChange(onSave, nextGroupId, required)
             }}
             aria-label={`${role.label} 권한 그룹`}
             data-testid={`approval-role-group-${role.label}`}
@@ -203,7 +217,7 @@ export function ApprovalRoleRow({
           onChange={(event) => {
             const nextRequired = event.target.checked
             setRequired(nextRequired)
-            save(groupId, nextRequired)
+            notifyApprovalRoleRequiredChange(onSave, groupId, nextRequired)
           }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
@@ -211,6 +225,26 @@ export function ApprovalRoleRow({
       </td>
     </tr>
   )
+}
+
+type ApprovalRoleSaveHandler = (approverGroupId: string | null, required: boolean) => void
+
+/** 권한그룹 Select 자동저장 계약. 빈 문자열은 그룹 해제(null)로 전송한다. */
+export function notifyApprovalRoleGroupChange(
+  onSave: ApprovalRoleSaveHandler,
+  nextGroupId: string,
+  currentRequired: boolean,
+) {
+  onSave(nextGroupId === '' ? null : nextGroupId, currentRequired)
+}
+
+/** 필수 여부 checkbox 자동저장 계약. 현재 권한그룹 선택값과 다음 required 값을 전송한다. */
+export function notifyApprovalRoleRequiredChange(
+  onSave: ApprovalRoleSaveHandler,
+  currentGroupId: string,
+  nextRequired: boolean,
+) {
+  onSave(currentGroupId === '' ? null : currentGroupId, nextRequired)
 }
 
 const tableStyle: React.CSSProperties = {
