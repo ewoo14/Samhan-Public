@@ -70,9 +70,9 @@ claude mcp list
 ## fix dispatch 패턴
 
 - review 결과 종합 후 1회 통합 prompt
-- `sandbox: "workspace-write"` 로 파일 수정 + `git add` + `git commit` 까지
+- **`sandbox: "danger-full-access"`** 로 파일 수정 (⚠️ `workspace-write` = read-only 강등 trap, write-blocked → 2026-06-21 A2-1b 에서 재실수: workspace-write 줬다가 Codex write 차단됨, 개발책임자 정정)
 - `approval-policy: "never"` (interactive 금지)
-- 또는 Claude 직접 fix (간단한 결함 1~2건 시)
+- git commit 은 Claude 대행(Codex 파일만 수정) 또는 Codex 직접 (danger-full-access 면 가능)
 
 ## Plugin 폐기 이유 (2026-05-17 사용자 정정)
 
@@ -86,7 +86,7 @@ claude mcp list
 | 증상 | 원인 | 해결 |
 |---|---|---|
 | `mcp__codex__codex` 도구 미인식 | MCP server 미연결 | `claude mcp list` 확인 → `codex` 미등록 시 `.mcp.json` 점검 |
-| `apply_patch 실패` 0 files | `sandbox: "read-only"` 로 write 시도 | `sandbox: "workspace-write"` 로 변경 |
+| `apply_patch 실패` 0 files / "writing is blocked by read-only sandbox" | `sandbox: "workspace-write"` 도 read-only 강등됨 | **`sandbox: "danger-full-access"`** 로 변경 (workspace-write 신뢰 금지) |
 | MCP 호출 hang | interactive prompt 대기 | `approval-policy: "never"` 추가 |
 | `unknown variant 'none'` | sandbox 값 오타 | `"read-only"` / `"workspace-write"` / `"danger-full-access"` 만 허용 |
 

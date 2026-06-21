@@ -4,6 +4,36 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-21 — **A2 결재라인 설정 에픽 완결**(A2-1+후속+A2-1b 머지), 다음 = A2-2 enforcement)
+
+### ✅ A2 결재라인 설정 에픽 — 3 PR 머지 완료
+| PR | 내용 | main |
+|---|---|---|
+| #552 | A2-1 결재라인 설정 메뉴 + 선언적 approval_line_config(auth) | `791dea719` |
+| #553 | A2-1 후속 fix — 자동저장 desync 복원(controlled+낙관/롤백) + CREATOR invariant | `1332a54d4` |
+| #554 | A2-1b 역할 **순서변경(드래그)** + **라벨 인라인 편집** | `b3e11e885` |
+
+- **산출**: "결재라인 설정" 메뉴 — 전표종류별 역할(작성자=requesterId 자동/출고인·검수인=권한 그룹)에 ①권한 그룹 ②필수여부 ③**드래그 순서변경**(작성자 1순위 잠금) ④**라벨 인라인 편집**(작성자 고정)을 **선언적 중앙 정의·자동저장**(auth `approval_line_config`). page-code `admin.approval-line-config`.
+- **BE 핵심**: reorder=2-phase 음수오프셋 swap·작성자 1순위·부분요청+**HashSet distinct 중복** 가드. rename/reorder CREATOR 거부. 스키마 변경 0(updatable JPA, **Flyway 신규 없음**, V61 불변).
+- **FE 핵심**: DndContext/useSortable(작성자 disabled+🔒, tableLayout fixed+colgroup 폭고정=tr-transform 붕괴 방지) + 라벨 인라인(작성자 static) + 낙관/onError 롤백. QA=`docs/qa/approval-line-reorder-rename-a2-1b/`.
+
+### 다음 = A2-2 (slip 출고 권한 그룹 게이트 enforcement) — **착수 시 brainstorming**
+approval_line_config(출고인/검수인 그룹)를 **출고전표 accept/inspect 게이트로 enforce**. [A2-1 spec §8](../superpowers/specs/2026-06-21-approval-line-config-a2-design.md):
+- **slipType 분기**: `accept`(`SlipController.java:406`)·`inspect`(:434)=입·출고 공통 → 출고 게이트는 **slipType==OUTBOUND 만**(입고 회귀 금지).
+- **단일코드 분리**: `slip.transfer.process`(6전이 공유) → 출고인/검수인 전용 page-code 신설+두 엔드포인트만 교체(4-eye). 14 소비처 회귀.
+- **dead-gate**: inspect 본문 `checkEditPermission(inbound.inspection)`(:441)=no-op fail-open → account 경로 실효화. arologis 영향.
+- **실HTTP 회귀**([[enforcement-real-http-test]]) + config→게이트 grant **materialize 동반**(A2-1 함정).
+
+### 🔑 이 세션 워크플로우 교훈 (반복 방지)
+- **Codex write = `danger-full-access`**(approval never). `workspace-write` 가 이 세션 read-only 차단 → write-blocked. 개발책임자 정정.
+- **FE "green" = typecheck + lint + vitest 전부**. typecheck만 돌리면 CI Frontend Desktop **lint FAIL 가림**(미등록 eslint 룰). `npm run lint` 필수.
+- **reorder 부분요청 가드 = `containsAll` 불충분**(bijection 미보장) → `HashSet distinct` 동반(중복 ID 손상).
+- **`<tr>` + dnd transform = table-layout 붕괴** → tableLayout fixed + colgroup 폭고정. 라이브 드래그 QA=마우스(키보드 flaky).
+- **page-code grant = group_page_permissions + account_page_permissions materialize 둘 다**(A2-1 라이브 QA 단독 적발 락아웃).
+- **머지 금지(개발책임자)**: 듀얼리뷰 Opus·Codex **양쪽 0 수렴까지**. 마지막 한 모델 단독=미수렴(Codex 가 Opus 놓친 P1 단독 적발 #553).
+
+---
+
 ## 🟢 핸드오프 (2026-06-21 — **A2-1 결재라인 설정 메뉴 머지 완료 PR #552**, 다음 = A2-2)
 
 ### ✅ A2-1 머지 완료 (PR #552, main `791dea719`)
