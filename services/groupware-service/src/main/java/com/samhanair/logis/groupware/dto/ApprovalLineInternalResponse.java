@@ -1,7 +1,7 @@
 package com.samhanair.logis.groupware.dto;
 
 import com.samhanair.logis.groupware.domain.ApprovalLine;
-import com.samhanair.logis.groupware.domain.ApprovalStatus;
+import com.samhanair.logis.approval.ApprovalStatus;
 import java.util.UUID;
 
 /**

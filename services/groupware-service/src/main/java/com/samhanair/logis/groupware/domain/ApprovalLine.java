@@ -1,5 +1,7 @@
 package com.samhanair.logis.groupware.domain;
 
+import com.samhanair.logis.approval.ApprovalStatus;
+import com.samhanair.logis.approval.ApprovalStepStatus;
 import com.samhanair.logis.common.entity.BaseEntity;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;

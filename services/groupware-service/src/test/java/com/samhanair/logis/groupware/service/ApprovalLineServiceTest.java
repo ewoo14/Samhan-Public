@@ -3,10 +3,10 @@ package com.samhanair.logis.groupware.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.samhanair.logis.approval.ApprovalStatus;
+import com.samhanair.logis.approval.ApprovalStepStatus;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
-import com.samhanair.logis.groupware.domain.ApprovalStatus;
 import com.samhanair.logis.groupware.domain.ApprovalStep;
-import com.samhanair.logis.groupware.domain.ApprovalStepStatus;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 

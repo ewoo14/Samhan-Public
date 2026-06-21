@@ -1,4 +1,4 @@
-package com.samhanair.logis.groupware.domain;
+package com.samhanair.logis.approval;
 
 /**
  * 결재 chain 의 단일 단계 상태.

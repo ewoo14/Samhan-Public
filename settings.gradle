@@ -36,6 +36,7 @@ include 'shared:user-client-abstraction'
 include 'shared:security'
 include 'shared:realtime-abstraction'
 include 'shared:collab-core'
+include 'shared:approval-core'
 include 'shared:ecount-io'
 include 'shared:notification-publisher'
 include 'services:eureka-server'
@@ -62,6 +63,7 @@ project(':shared:user-client-abstraction').projectDir   = file('shared/user-clie
 project(':shared:security').projectDir                  = file('shared/security')
 project(':shared:realtime-abstraction').projectDir      = file('shared/realtime-abstraction')
 project(':shared:collab-core').projectDir               = file('shared/collab-core')
+project(':shared:approval-core').projectDir            = file('shared/approval-core')
 project(':shared:ecount-io').projectDir                 = file('shared/ecount-io')
 project(':shared:notification-publisher').projectDir     = file('shared/notification-publisher')
 project(':services:eureka-server').projectDir           = file('services/eureka-server')

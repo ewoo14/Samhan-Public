@@ -1,9 +1,9 @@
 package com.samhanair.logis.groupware.dto;
 
+import com.samhanair.logis.approval.ApprovalStatus;
+import com.samhanair.logis.approval.ApprovalStepStatus;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
-import com.samhanair.logis.groupware.domain.ApprovalStatus;
 import com.samhanair.logis.groupware.domain.ApprovalStep;
-import com.samhanair.logis.groupware.domain.ApprovalStepStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
