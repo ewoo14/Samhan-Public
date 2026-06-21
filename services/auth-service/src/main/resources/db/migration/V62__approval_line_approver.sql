@@ -6,23 +6,27 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 ALTER TABLE approval_line_config
     ADD COLUMN IF NOT EXISTS action_key VARCHAR(40);
 
-UPDATE approval_line_config
-   SET action_key = 'OUTBOUND_DISPATCH',
+-- action_key 안정 앵커 seed (A2-2 enforcement 가 accept/inspect 를 이걸로 매핑).
+-- ⚠️ label 이 아니라 sequence 순서로 매핑 — A2-1b 라벨 rename(출고인→출고담당) 후에도 앵커 생존.
+--    SLIP_OUTBOUND 의 GROUP 역할은 정확히 2개(출고인=seq1, 검수인=seq2). sequence ASC 순서로
+--    첫째=OUTBOUND_DISPATCH, 둘째=OUTBOUND_INSPECT. rename 은 sequence 불변이므로 무관.
+--    한계: V62 적용 전 두 역할 sequence 를 swap(A2-1b reorder)한 DB 는 매핑이 뒤바뀜 — 신규 배포
+--    (V61 seed 직후 V62)는 무관하며, edited DB cutover 시 action_key 점검 필요(스펙 박제).
+WITH ranked AS (
+    SELECT id, ROW_NUMBER() OVER (ORDER BY sequence ASC) AS rn
+      FROM approval_line_config
+     WHERE document_type = 'SLIP_OUTBOUND'
+       AND step_type = 'GROUP'
+       AND is_deleted = FALSE
+)
+UPDATE approval_line_config c
+   SET action_key = CASE r.rn WHEN 1 THEN 'OUTBOUND_DISPATCH'
+                              WHEN 2 THEN 'OUTBOUND_INSPECT' END,
        modified_at = NOW(),
        modified_by = 'v62-seed'
- WHERE document_type = 'SLIP_OUTBOUND'
-   AND step_type = 'GROUP'
-   AND label = '출고인'
-   AND is_deleted = FALSE;
-
-UPDATE approval_line_config
-   SET action_key = 'OUTBOUND_INSPECT',
-       modified_at = NOW(),
-       modified_by = 'v62-seed'
- WHERE document_type = 'SLIP_OUTBOUND'
-   AND step_type = 'GROUP'
-   AND label = '검수인'
-   AND is_deleted = FALSE;
+  FROM ranked r
+ WHERE c.id = r.id
+   AND r.rn <= 2;
 
 CREATE TABLE IF NOT EXISTS approval_line_approver (
     id                  UUID         NOT NULL DEFAULT gen_random_uuid(),

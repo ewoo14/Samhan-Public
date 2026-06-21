@@ -1,7 +1,9 @@
 package com.samhanair.logis.auth.service;
 
+import com.samhanair.logis.auth.domain.ApproverType;
 import com.samhanair.logis.auth.domain.PermissionGroup;
 import com.samhanair.logis.auth.repository.AccountGroupRepository;
+import com.samhanair.logis.auth.repository.ApprovalLineApproverRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.common.exception.BusinessException;
@@ -24,6 +26,7 @@ public class PermissionGroupService {
     private final PermissionGroupRepository permissionGroupRepository;
     private final AccountGroupRepository accountGroupRepository;
     private final ApprovalLineConfigRepository approvalLineConfigRepository;
+    private final ApprovalLineApproverRepository approvalLineApproverRepository;
 
     /**
      * 활성 권한그룹 목록을 조회한다.
@@ -95,7 +98,12 @@ public class PermissionGroupService {
         if (assignedAccounts > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "배속 계정이 있는 권한그룹은 삭제할 수 없습니다.");
         }
-        if (approvalLineConfigRepository.existsByApproverGroupIdAndIsDeletedFalse(groupId)) {
+        // 결재라인 참조 가드 — 레거시 approver_group_id 컬럼(A2-1 이관분) + A2-1c 신규 approval_line_approver
+        // 테이블(GROUP 결재자) 양쪽 모두 검사. 칩으로 새로 추가한 결재 그룹이 무방비 삭제되어 orphan 되는 것 방지.
+        boolean referencedByLegacy = approvalLineConfigRepository.existsByApproverGroupIdAndIsDeletedFalse(groupId);
+        boolean referencedByApprover = approvalLineApproverRepository
+                .existsByApproverTypeAndApproverRefIdAndIsDeletedFalse(ApproverType.GROUP, groupId);
+        if (referencedByLegacy || referencedByApprover) {
             throw new BusinessException(ErrorCode.CONFLICT, "결재라인에 지정된 권한 그룹은 삭제할 수 없습니다");
         }
         group.markDeleted(ACTOR);

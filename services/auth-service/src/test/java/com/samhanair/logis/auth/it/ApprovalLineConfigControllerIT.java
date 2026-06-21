@@ -210,6 +210,33 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("POST 결재자 — 동일 그룹 2회는 4xx(이미 지정된 결재자)")
+    void addApprover_duplicateGroup_returns4xx() throws Exception {
+        UUID roleId = outboundRoleId("출고인");
+        String body = "{\"type\":\"GROUP\",\"refId\":\"%s\"}".formatted(WAREHOUSE_GROUP_ID);
+
+        MvcResult first = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn();
+        assertThat(first.getResponse().getStatus()).isEqualTo(200);
+
+        MvcResult dup = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn();
+        assertThat(dup.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(dup.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("이미 지정된 결재자");
+    }
+
+    @Test
     @DisplayName("POST 결재자 — 작성자(CREATOR) 역할은 4xx")
     void addApprover_creatorRole_returns4xx() throws Exception {
         UUID creatorId = outboundRoleId("작성자");

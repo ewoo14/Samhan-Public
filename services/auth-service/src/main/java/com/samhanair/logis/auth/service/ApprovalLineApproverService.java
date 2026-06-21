@@ -90,9 +90,16 @@ public class ApprovalLineApproverService {
                             "시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다");
                 }
             }
-            case USER -> accountRepository.findActiveById(refId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
-                            "존재하지 않는 사원입니다: " + refId));
+            case USER -> {
+                accountRepository.findActiveById(refId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
+                                "존재하지 않는 사원입니다: " + refId));
+                // GROUP 결재자가 system-master 그룹을 거부하는 것과 대칭 — 개인 결재자도 시스템 마스터 계정 거부.
+                if (groupRepository.existsByAccountIdAndSystemMasterTrue(refId)) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT,
+                            "시스템 마스터 계정은 결재자로 지정할 수 없습니다");
+                }
+            }
         }
     }
 

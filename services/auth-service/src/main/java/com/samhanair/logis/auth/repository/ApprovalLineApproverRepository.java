@@ -15,5 +15,12 @@ public interface ApprovalLineApproverRepository extends JpaRepository<ApprovalLi
     boolean existsByConfigRoleIdAndApproverTypeAndApproverRefIdAndIsDeletedFalse(
             UUID configRoleId, ApproverType approverType, UUID approverRefId);
 
+    /**
+     * 특정 (유형, 참조 ID) 결재자가 활성 결재라인에 지정되어 있는지 — 권한그룹/계정 삭제 참조무결성 가드용.
+     * A2-1c 가 결재자를 이 자식 테이블로 이관했으므로 레거시 approver_group_id 컬럼만 보는 가드는 불완전.
+     */
+    boolean existsByApproverTypeAndApproverRefIdAndIsDeletedFalse(
+            ApproverType approverType, UUID approverRefId);
+
     Optional<ApprovalLineApprover> findByIdAndIsDeletedFalse(UUID id);
 }

@@ -352,8 +352,12 @@ export function ApprovalLineConfigPage() {
                           updateMutation.mutate({ id: role.id, required })}
                         onAddApprover={(option) =>
                           addApproverMutation.mutate({ roleId: role.id, option })}
-                        onRemoveApprover={(approverId) =>
-                          removeApproverMutation.mutate({ roleId: role.id, approverId })}
+                        onRemoveApprover={(approverId) => {
+                          // 낙관 add 진행 중(pending-* id)인 칩 제거 시 비-UUID 로 DELETE → 400 회피.
+                          // 서버 응답 도착(onSuccess)으로 실 id 치환된 뒤에만 삭제 허용.
+                          if (approverId.startsWith('pending-')) return
+                          removeApproverMutation.mutate({ roleId: role.id, approverId })
+                        }}
                         onRename={(label) =>
                           renameMutation.mutate({ id: role.id, label })}
                       />

@@ -93,6 +93,18 @@ class ApprovalLineApproverServiceTest {
     }
 
     @Test
+    void addApprover_systemMaster_USER는_거부한다() {
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(roleRepository.findById(roleId)).thenReturn(Optional.of(role(roleId, StepType.GROUP)));
+        when(accountRepository.findActiveById(userId)).thenReturn(Optional.of(account(userId, "개발마스터", "대표실")));
+        when(groupRepository.existsByAccountIdAndSystemMasterTrue(userId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.addApprover(roleId, ApproverType.USER, userId))
+                .hasMessageContaining("시스템 마스터 계정");
+    }
+
+    @Test
     void addApprover_미존재_USER는_거부한다() {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
