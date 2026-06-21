@@ -79,8 +79,11 @@ public class SlipService {
 
     private static final String SLIP_REF_TYPE = "SLIP";
     private static final String SLIP_OUTBOUND_DOCUMENT_TYPE = "SLIP_OUTBOUND";
+    private static final String SLIP_INBOUND_DOCUMENT_TYPE = "SLIP_INBOUND";
     private static final String OUTBOUND_DISPATCH_ACTION_KEY = "OUTBOUND_DISPATCH";
     private static final String OUTBOUND_INSPECT_ACTION_KEY = "OUTBOUND_INSPECT";
+    private static final String INBOUND_RECEIVE_ACTION_KEY = "INBOUND_RECEIVE";
+    private static final String INBOUND_INSPECT_ACTION_KEY = "INBOUND_INSPECT";
 
     private final SlipRepository slipRepository;
     private final SlipNumberService slipNumberService;
@@ -774,11 +777,7 @@ public class SlipService {
      */
     public SlipDetailResponse accept(UUID id, String acceptorUserId) {
         Slip slip = loadOrThrow(id);
-        enforceOutboundApprovalLine(
-                slip,
-                acceptorUserId,
-                OUTBOUND_DISPATCH_ACTION_KEY,
-                "출고 수락 권한이 없습니다 — 출고인 결재자(그룹/개인)만 처리할 수 있습니다");
+        enforceSlipApprovalLine(slip, acceptorUserId, approvalGateForAccept(slip.getSlipType()));
         applyMutation(() -> slip.accept(acceptorUserId));
         if (slip.getSlipType() == SlipType.OUTBOUND) {
             Map<UUID, ProductSummary> productsById = loadProductsByLine(slip);
@@ -838,38 +837,63 @@ public class SlipService {
      */
     public SlipDetailResponse inspect(UUID id, String inspectorUserId) {
         Slip slip = loadOrThrow(id);
-        enforceOutboundApprovalLine(
-                slip,
-                inspectorUserId,
-                OUTBOUND_INSPECT_ACTION_KEY,
-                "출고 검수 권한이 없습니다 — 검수인 결재자(그룹/개인)만 처리할 수 있습니다");
+        enforceSlipApprovalLine(slip, inspectorUserId, approvalGateForInspect(slip.getSlipType()));
         applyMutation(() -> slip.inspect(inspectorUserId));
         return SlipDetailResponse.from(slip);
     }
 
     /**
-     * 출고전표 결재라인 action 권한을 강제한다.
+     * 전표 종류별 결재라인 action 권한을 강제한다.
      *
-     * <p>OUTBOUND 전표와 실사용자 UUID에만 적용한다. auth-service 호출 실패 또는 응답 형식 오류는
+     * <p>지원하는 전표 종류와 실사용자 UUID에만 적용한다. auth-service 호출 실패 또는 응답 형식 오류는
      * fail-closed 로 처리되며, 이는 기존 JWT / {@code @RequirePermission} 기반 인증·인가 결합과
      * 같은 계층의 결합이다. 별도 가용성 결합을 새로 만들지 않고 이미 모든 사용자 요청이 통과하는
-     * auth 경로에 출고 결재라인 판단만 추가한다.
+     * auth 경로에 결재라인 판단만 추가한다.
      *
      * <p>{@code system} 호출은 내부 연산 fallback 전용으로 우회한다. 사용자 요청의
      * {@code X-User-Id} 신뢰 경계는 게이트웨이의 identity header strip 단일권위
      * ([[identity-header-authz-antipattern]])에 한정한다.
      */
-    private void enforceOutboundApprovalLine(
-            Slip slip, String actorUserId, String actionKey, String forbiddenMessage) {
-        if (slip.getSlipType() != SlipType.OUTBOUND || !isRealUser(actorUserId)) {
+    private void enforceSlipApprovalLine(
+            Slip slip, String actorUserId, SlipApprovalGate gate) {
+        if (gate == null || !isRealUser(actorUserId)) {
             return;
         }
         UUID userId = UUID.fromString(actorUserId);
         ApprovalLineAuthorizeResult result = approvalLineAuthorizeClient.authorize(
-                SLIP_OUTBOUND_DOCUMENT_TYPE, actionKey, userId);
+                gate.documentType(), gate.actionKey(), userId);
         if (result.configured() && !result.allowed()) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, forbiddenMessage);
+            throw new BusinessException(ErrorCode.FORBIDDEN, gate.forbiddenMessage());
         }
+    }
+
+    private SlipApprovalGate approvalGateForAccept(SlipType slipType) {
+        return switch (slipType) {
+            case OUTBOUND -> new SlipApprovalGate(
+                    SLIP_OUTBOUND_DOCUMENT_TYPE,
+                    OUTBOUND_DISPATCH_ACTION_KEY,
+                    "출고 수락 권한이 없습니다 — 출고인 결재자(그룹/개인)만 처리할 수 있습니다");
+            case INBOUND -> new SlipApprovalGate(
+                    SLIP_INBOUND_DOCUMENT_TYPE,
+                    INBOUND_RECEIVE_ACTION_KEY,
+                    "입고 수령 권한이 없습니다 — 입고인 결재자(그룹/개인)만 처리할 수 있습니다");
+        };
+    }
+
+    private SlipApprovalGate approvalGateForInspect(SlipType slipType) {
+        return switch (slipType) {
+            case OUTBOUND -> new SlipApprovalGate(
+                    SLIP_OUTBOUND_DOCUMENT_TYPE,
+                    OUTBOUND_INSPECT_ACTION_KEY,
+                    "출고 검수 권한이 없습니다 — 검수인 결재자(그룹/개인)만 처리할 수 있습니다");
+            case INBOUND -> new SlipApprovalGate(
+                    SLIP_INBOUND_DOCUMENT_TYPE,
+                    INBOUND_INSPECT_ACTION_KEY,
+                    "입고 검수 권한이 없습니다 — 검수인 결재자(그룹/개인)만 처리할 수 있습니다");
+        };
+    }
+
+    private record SlipApprovalGate(String documentType, String actionKey, String forbiddenMessage) {
     }
 
     private boolean isRealUser(String actorUserId) {

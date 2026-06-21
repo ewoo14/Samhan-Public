@@ -28,9 +28,10 @@ export interface ApprovalLineUserOption {
   displayName: string
 }
 
-/** 결재라인 설정 대상 전표 종류(A2-1=출고만 seed). */
+/** 결재라인 설정 대상 전표 종류. */
 export const DOC_TYPES: { value: string; label: string }[] = [
   { value: 'SLIP_OUTBOUND', label: '출고전표' },
+  { value: 'SLIP_INBOUND', label: '입고전표' },
 ]
 
 export async function fetchApprovalLineRoles(documentType: string): Promise<ApprovalLineRole[]> {

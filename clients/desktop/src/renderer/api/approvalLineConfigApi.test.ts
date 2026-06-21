@@ -4,6 +4,7 @@ import {
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
   addApprovalLineApprover,
+  DOC_TYPES,
   removeApprovalLineApprover,
   renameApprovalLineRole,
   reorderApprovalLineRoles,
@@ -26,6 +27,10 @@ describe('approvalLineConfigApi contract', () => {
     vi.mocked(apiClient.post).mockReset()
     vi.mocked(apiClient.put).mockReset()
     vi.mocked(apiClient.delete).mockReset()
+  })
+
+  it('DOC_TYPES 에 입고전표 옵션을 포함한다', () => {
+    expect(DOC_TYPES).toContainEqual({ value: 'SLIP_INBOUND', label: '입고전표' })
   })
 
   it('GET /approval-line-configs 에 documentType query 를 전송한다', async () => {
