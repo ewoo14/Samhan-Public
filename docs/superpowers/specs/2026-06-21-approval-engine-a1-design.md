@@ -167,6 +167,7 @@ shared/approval-core  (신규 java-library — collab-core 와 동일 모듈 패
 - **`matchesActor` 확장 hook**: 현 `ApprovalStepBase.matchesActor` 는 package-private + USER 동일성 하드코딩. A2 에서 GROUP/CREATOR 권한 판정(page-code `DynamicPermissionClient.check`)을 위해 **protected hook 또는 권한 판정 port/context** 설계.
 - **`resolveDisplayNames` null 필터**: groupware `ApprovalLineService.resolveDisplayNames` 의 `List.copyOf(ids)` 는 null 불허 → A2 GROUP/CREATOR(approverUserId=null) 시 NPE. null 필터 동반.
 - **제네릭 엔진 실 통합 IT**: `ApprovalLineService<L>`/`ApprovalRepositoryPort` 는 A1 production 무소비(FakePort 단위만). A2 slip 배선 시 **Testcontainers 실 영속(@Version 낙관락·findByDocument 실 쿼리) IT** 첫 검증 의무.
+- **loose-ref 인덱스**(A1 사후 보강 라운드 발견): `findByDocument(document_type, document_id)` 실배선 슬라이스(A2)에서 `CREATE INDEX IF NOT EXISTS ... ON approval_lines (document_type, document_id) WHERE is_deleted=FALSE` 동반(부분 인덱스 컨벤션). 미동반 시 전 결재선 풀스캔.
 
 ---
 
