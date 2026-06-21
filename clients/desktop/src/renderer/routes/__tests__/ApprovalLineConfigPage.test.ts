@@ -1,10 +1,14 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, test, vi } from 'vitest'
 import {
   ApprovalRoleRow,
+  approvalLineRolesQueryKey,
   notifyApprovalRoleGroupChange,
   notifyApprovalRoleRequiredChange,
+  optimisticallyUpdateApprovalLineRoles,
+  restoreApprovalLineRolesSnapshot,
 } from '../ApprovalLineConfigPage'
 import type { ApprovalLineRole } from '../../api/approvalLineConfigApi'
 
@@ -52,5 +56,41 @@ describe('ApprovalRoleRow', () => {
 
     expect(onSave).toHaveBeenNthCalledWith(1, 'g1', false)
     expect(onSave).toHaveBeenNthCalledWith(2, null, true)
+  })
+
+  test('자동저장 낙관적 업데이트 실패 시 이전 역할 스냅샷으로 롤백한다', () => {
+    const queryClient = new QueryClient()
+    const key = approvalLineRolesQueryKey('SLIP_OUTBOUND')
+    const prev: ApprovalLineRole[] = [
+      {
+        id: 'r1',
+        sequence: 1,
+        label: '출고인',
+        stepType: 'GROUP',
+        approverGroupId: 'g0',
+        approverGroupName: '기존그룹',
+        required: true,
+      },
+    ]
+    queryClient.setQueryData(key, prev)
+
+    queryClient.setQueryData<ApprovalLineRole[]>(key, (current) =>
+      optimisticallyUpdateApprovalLineRoles(current, {
+        id: 'r1',
+        approverGroupId: 'g1',
+        required: false,
+      }))
+
+    expect(queryClient.getQueryData<ApprovalLineRole[]>(key)?.[0]).toMatchObject({
+      approverGroupId: 'g1',
+      required: false,
+    })
+
+    restoreApprovalLineRolesSnapshot(queryClient, key, prev)
+
+    expect(queryClient.getQueryData<ApprovalLineRole[]>(key)?.[0]).toMatchObject({
+      approverGroupId: 'g0',
+      required: true,
+    })
   })
 })

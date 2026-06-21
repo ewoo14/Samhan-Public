@@ -1,5 +1,6 @@
 package com.samhanair.logis.auth.service;
 
+import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
@@ -45,6 +46,9 @@ public class ApprovalLineConfigService {
     public ApprovalLineRoleView updateRole(UUID id, UUID approverGroupId, boolean required) {
         ApprovalLineConfig role = repository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "결재 역할을 찾을 수 없습니다: " + id));
+        if (role.getStepType() == StepType.CREATOR) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "작성자 역할은 변경할 수 없습니다");
+        }
         try {
             if (approverGroupId == null) {
                 role.clearGroup();
