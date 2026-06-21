@@ -4,6 +4,31 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-21 — 에픽 재정의: **전 전표 명시 결재 워크플로우 spec 머지 PR #550**, 다음 = A1)
+
+### 에픽 근본 재정의 (재브레인스토밍 → spec 확정·머지)
+- C2 머지(PR #549) 후 C3 진입 → 개발책임자 "결재란이 전 전표단위(출고/입고/회계/배차/그룹웨어), 모든 결재라인 동적, 명시 결재 통일, **결재라인 설정 메뉴(인사그룹) 중앙통제**" → 에픽 격상.
+- **새 spec 머지**: `docs/superpowers/specs/2026-06-21-document-approval-workflow-design.md` (PR #550, main `69f2fe320`).
+- **확정 (E1~E12)**:
+  - E1 전 전표 명시 결재 워크플로우 통일(**인감 자동 스탬프 폐기**). E6 그룹웨어 `ApprovalLine` 재사용·일반화.
+  - E7 **결재라인 설정 메뉴(인사그룹·MASTER)** 중앙통제, 설정↔실행 2층. E9 전표 종류별 단일.
+  - E8 결재자=**권한 그룹**(기존 권한그룹 재사용, 예 "창고사원"→출고인/검수인). E5 위임=page-code(D-PB-01).
+  - E4 서명=**결재 시점 동결**(C1 `Employee.signaturePng` snapshot). E10 알림=기존 `resolveNotificationRecipients` 재사용.
+  - E11 결재 필수 여부=**설정 토글**. E12 lifecycle=**대체**(출고 `accept`/`inspect` 자동 채움 폐기→명시 결재).
+- **재사용 기반 거의 완비**(조사 wf_8d35f9af/wstbi1u5w): 동적 결재선 엔진·권한 그룹·page-code 위임·서명 저장소·알림 모두 기존. 신설=결재라인 설정 메뉴+전표 연계+서명 동결.
+- C1a/C1b/C2 머지분=**서명 소스 재사용**. C3(출고 인감 plan)=폐기/재설계.
+
+### 슬라이스 (A1~A7) — 다음 = **A1**
+- **A1 (공통 결재 엔진 일반화)**: 그룹웨어 `ApprovalLine`/`ApprovalStep` 을 전표 종류 무관 공통 엔진으로 추출/일반화 + 전표↔ApprovalLine 연계 골격 + 결재선 발의 internal API. **대형 BE, 착수 시 상세 brainstorming**(연계 방식 FK vs ref_doc_no / 엔진 추출 방식: 공통모듈 vs groupware 호출).
+- A2 결재라인 설정 메뉴(인사그룹) · A3 서명 동결 · A4 출고(**E12 lifecycle 대체 회귀 sweep**: `dispatcherUserId`/`inspectorUserId` 소비처=progress-bar 등) · A5 입고 · A6 회계 · A7 그룹웨어 placeholder 해소.
+- 잔여 구현 상세(연계/서명동결 위치/회계 경로)=각 슬라이스 brainstorming.
+
+### 워크플로우 (다음 세션 필수)
+- **Codex 쓰기 = MCP `mcp__codex__codex` + danger-full-access 만 작동**(이 auto-mode 세션, [[feedback_codex_plugin_setup]]). workspace-write/exec bypass 전부 read-only 강등·차단.
+- 사이클 N=3(🔵Opus R1 → 🟣Codex R2 fix → 🔵Opus R3 검증). **리뷰마다 Docker 라이브 캡처**. 슬라이스마다 상세 brainstorming → Codex 구현 → 듀얼리뷰 → 라이브 QA → 머지.
+
+---
+
 ## 🟢 핸드오프 (2026-06-21 — 사원 서명 에픽 **C2 머지 완료 PR #549**, 다음 = C3)
 
 ### ✅ C2 머지 완료 (PR #549, main `c7f0e62c5`)
