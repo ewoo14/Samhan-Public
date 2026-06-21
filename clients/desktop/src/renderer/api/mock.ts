@@ -9209,6 +9209,43 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     )
   }
 
+  const approvalLineConfigListMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs(?:\?([^#]*))?$/)
+  if (method === 'GET' && approvalLineConfigListMatch) {
+    const params = new URLSearchParams(approvalLineConfigListMatch[1] ?? '')
+    const documentType = params.get('documentType') ?? 'SLIP_OUTBOUND'
+    return envelope(
+      _mockApprovalLineConfigRoles
+        .filter((role) => role.documentType === documentType)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(mockApprovalLineRoleView),
+    )
+  }
+
+  const approvalLineConfigRoleMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)$/)
+  if (method === 'PUT' && approvalLineConfigRoleMatch) {
+    const roleId = decodeURIComponent(approvalLineConfigRoleMatch[1]!)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
+
+    const body = parseMockBody(config)
+    const nextGroupId = body['approverGroupId'] == null || String(body['approverGroupId']).trim() === ''
+      ? null
+      : String(body['approverGroupId'])
+    if (nextGroupId != null) {
+      const group = _mockPermissionGroups.find((item) => item.id === nextGroupId)
+      if (!group) return mockError(400, 'INVALID_INPUT', '존재하지 않는 권한 그룹입니다.')
+      if (group.systemMaster) {
+        return mockError(400, 'INVALID_INPUT', '시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다')
+      }
+    }
+    if (role.stepType === 'CREATOR' && nextGroupId != null) {
+      return mockError(400, 'INVALID_INPUT', 'CREATOR 역할에는 GROUP 역할 권한그룹을 지정할 수 없습니다.')
+    }
+    role.approverGroupId = nextGroupId
+    role.required = Boolean(body['required'])
+    return envelope(mockApprovalLineRoleView(role))
+  }
+
   if (method === 'GET' && (url.endsWith('/auth/admin/permission-groups') || url.endsWith('/admin/permission-groups'))) {
     return envelope(_mockPermissionGroups.map(mockPermissionGroupSummary))
   }
@@ -12381,6 +12418,16 @@ type MockPermissionGroup = {
   systemMaster: boolean
 }
 
+type MockApprovalLineRole = {
+  id: string
+  documentType: string
+  sequence: number
+  label: string
+  stepType: 'CREATOR' | 'GROUP' | 'USER'
+  approverGroupId: string | null
+  required: boolean
+}
+
 type MockActionMatrix = {
   view: boolean
   create: boolean
@@ -12446,6 +12493,36 @@ const _mockPermissionGroups: MockPermissionGroup[] = [
   { id: 'mock-group-custom-accounting', name: '회계팀',  description: '회계 처리 담당 커스텀 그룹',     builtin: false, systemMaster: false },
 ]
 
+const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
+  {
+    id: 'mock-approval-line-slip-outbound-creator',
+    documentType: 'SLIP_OUTBOUND',
+    sequence: 0,
+    label: '작성자',
+    stepType: 'CREATOR',
+    approverGroupId: null,
+    required: true,
+  },
+  {
+    id: 'mock-approval-line-slip-outbound-dispatcher',
+    documentType: 'SLIP_OUTBOUND',
+    sequence: 1,
+    label: '출고인',
+    stepType: 'GROUP',
+    approverGroupId: null,
+    required: true,
+  },
+  {
+    id: 'mock-approval-line-slip-outbound-inspector',
+    documentType: 'SLIP_OUTBOUND',
+    sequence: 2,
+    label: '검수인',
+    stepType: 'GROUP',
+    approverGroupId: null,
+    required: true,
+  },
+]
+
 const _mockPermissionGroupMatrices: Record<string, Record<string, MockActionMatrix>> = {
   [BUILTIN_GROUP_ID_MASTER]: {},
   [BUILTIN_GROUP_ID_MANAGER]:    Object.fromEntries(SP_D1_PAGES.map((page) => [page, mockActionMatrixFromRole('MANAGER',    page)])) as Record<string, MockActionMatrix>,
@@ -12491,6 +12568,21 @@ function mockPermissionGroupSummary(group: MockPermissionGroup) {
     isBuiltin: group.builtin,
     isSystemMaster: group.systemMaster,
     assignedAccountCount,
+  }
+}
+
+function mockApprovalLineRoleView(role: MockApprovalLineRole) {
+  const group = role.approverGroupId == null
+    ? null
+    : _mockPermissionGroups.find((item) => item.id === role.approverGroupId) ?? null
+  return {
+    id: role.id,
+    sequence: role.sequence,
+    label: role.label,
+    stepType: role.stepType,
+    approverGroupId: role.approverGroupId,
+    approverGroupName: group?.name ?? null,
+    required: role.required,
   }
 }
 

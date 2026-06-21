@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS approval_line_config (
     deleted_at          TIMESTAMP,
     deleted_by          VARCHAR(50),
     is_deleted          BOOLEAN      NOT NULL DEFAULT FALSE,
-    CONSTRAINT approval_line_config_pk PRIMARY KEY (id)
+    CONSTRAINT approval_line_config_pk PRIMARY KEY (id),
+    CONSTRAINT approval_line_config_step_type_chk CHECK (step_type IN ('CREATOR','GROUP','USER'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_approval_line_config_doctype_seq_active

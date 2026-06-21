@@ -49,10 +49,15 @@ public class ApprovalLineConfigService {
             if (approverGroupId == null) {
                 role.clearGroup();
             } else {
-                groupRepository.findById(approverGroupId)
+                var group = groupRepository.findById(approverGroupId)
                         .orElseThrow(() -> new BusinessException(
                                 ErrorCode.INVALID_INPUT,
                                 "존재하지 않는 권한 그룹입니다: " + approverGroupId));
+                if (group.isSystemMaster()) {
+                    throw new BusinessException(
+                            ErrorCode.INVALID_INPUT,
+                            "시스템 마스터 그룹은 결재 그룹으로 지정할 수 없습니다");
+                }
                 role.assignGroup(approverGroupId);
             }
         } catch (IllegalStateException ex) {

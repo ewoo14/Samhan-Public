@@ -81,6 +81,17 @@ class ApprovalLineConfigServiceTest {
     }
 
     @Test
+    void updateRole_은_시스템마스터_권한그룹지정시_거부한다() {
+        UUID id = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        ApprovalLineConfig group = role(1, "출고인", StepType.GROUP);
+        when(repository.findById(id)).thenReturn(Optional.of(group));
+        when(groupRepository.findById(groupId)).thenReturn(Optional.of(systemMasterGroup()));
+        assertThatThrownBy(() -> service.updateRole(id, groupId, true))
+                .hasMessageContaining("시스템 마스터 그룹");
+    }
+
+    @Test
     void updateRole_은_CREATOR역할에_권한그룹지정시_거부한다() {
         UUID id = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
@@ -96,5 +107,15 @@ class ApprovalLineConfigServiceTest {
         when(repository.findById(id)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.updateRole(id, null, true))
                 .hasMessageContaining("찾을 수 없습니다");
+    }
+
+    static PermissionGroup systemMasterGroup() {
+        try {
+            PermissionGroup group = PermissionGroup.create("마스터", null);
+            Field fld = PermissionGroup.class.getDeclaredField("systemMaster");
+            fld.setAccessible(true);
+            fld.set(group, true);
+            return group;
+        } catch (Exception ex) { throw new RuntimeException(ex); }
     }
 }

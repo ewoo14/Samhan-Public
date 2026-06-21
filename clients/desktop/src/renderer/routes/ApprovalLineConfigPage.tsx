@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, Select, Spinner } from '@samhan/design-system'
+import { Card, Select, Spinner } from '@samhan/design-system'
 import {
   DOC_TYPES,
   fetchApprovalLineGroups,
@@ -96,7 +96,6 @@ export function ApprovalLineConfigPage() {
                   <th style={headCellStyle}>역할</th>
                   <th style={headCellStyle}>권한 그룹</th>
                   <th style={headCellStyle}>필수</th>
-                  <th style={headCellStyle}>작업</th>
                 </tr>
               </thead>
               <tbody>
@@ -161,6 +160,10 @@ export function ApprovalRoleRow({
     setRequired(role.required)
   }, [role.approverGroupId, role.required])
 
+  function save(nextGroupId: string, nextRequired: boolean) {
+    onSave(nextGroupId === '' ? null : nextGroupId, nextRequired)
+  }
+
   return (
     <tr data-testid={`approval-role-${role.label}`}>
       <td style={bodyCellStyle}>{role.sequence + 1}</td>
@@ -175,9 +178,14 @@ export function ApprovalRoleRow({
         ) : (
           <Select
             value={groupId}
-            onChange={(event) => setGroupId(event.target.value)}
+            onChange={(event) => {
+              const nextGroupId = event.target.value
+              setGroupId(nextGroupId)
+              save(nextGroupId, required)
+            }}
             aria-label={`${role.label} 권한 그룹`}
             data-testid={`approval-role-group-${role.label}`}
+            disabled={saving}
             style={{ minWidth: 220 }}
           >
             <option value="">(미지정)</option>
@@ -191,24 +199,15 @@ export function ApprovalRoleRow({
         <input
           type="checkbox"
           checked={required}
-          disabled={isCreator}
-          onChange={(event) => setRequired(event.target.checked)}
+          disabled={isCreator || saving}
+          onChange={(event) => {
+            const nextRequired = event.target.checked
+            setRequired(nextRequired)
+            save(groupId, nextRequired)
+          }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
         />
-      </td>
-      <td style={bodyCellStyle}>
-        {!isCreator ? (
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={saving}
-            data-testid={`approval-role-save-${role.label}`}
-            onClick={() => onSave(groupId === '' ? null : groupId, required)}
-          >
-            저장
-          </Button>
-        ) : null}
       </td>
     </tr>
   )
