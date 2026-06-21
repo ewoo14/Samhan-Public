@@ -4,21 +4,37 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-22 야간 자율 완료 — **출고+입고 enforcement 완결**, 다음 = 타 전표 순차)
+## 🟢 핸드오프 (2026-06-22 야간 자율 — **출고·입고·주문 enforcement 완결**, 세션 종료/회사PC 재개)
 
-### ✅ A2 결재 워크플로우 — 7 PR 머지 완료 (야간 자율 #555~#558 추가)
+> 🖥️ **회사 PC 재개**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 본 파일 읽기. 야간 자율(집 PC 22시~07시 40분) 8 PR 머지 완료, git clean·스택 정지·compose 정상.
+
+### ✅ A2 결재 워크플로우 — 9 PR 머지 (야간 #555~#559)
 | PR | 내용 | main |
 |---|---|---|
-| #552 | A2-1 결재라인 설정 메뉴 + 선언 approval_line_config | `791dea719` |
-| #553 | A2-1 후속(자동저장 desync 복원 + CREATOR invariant) | `1332a54d4` |
-| #554 | A2-1b 순서변경(드래그)+라벨 인라인 | `b3e11e885` |
+| #552~#554 | A2-1 메뉴·후속·A2-1b 순서/라벨 | `b3e11e885` |
 | #555 | A2-1c **다중 결재자(그룹+개인 캡슐)** | `9f85a3219` |
-| #556 | A2-2 **출고전표 enforcement** | `14adce10a` |
-| #557 | A2-2 DI 가드 테스트(라이브 적발 빈 생성 P1 CI 박제) | `2806ef83b` |
-| #558 | A2-3 **입고전표 enforcement**(개발책임자 "입고도 적용") | `7b63e23b9` |
+| #556·#557 | A2-2 **출고 enforcement** + DI 가드 테스트 | `2806ef83b` |
+| #558 | A2-3 **입고 enforcement** | `7b63e23b9` |
+| #559 | A2-4 **주문(PARTNER_ORDER) 출고전환 enforcement** | `48bd52f5b` |
 
-- **A2-3 산출**: A2-2 출고 패턴을 입고에 미러. auth V63 SLIP_INBOUND 시드(입고인=`INBOUND_RECEIVE`/검수인=`INBOUND_INSPECT`) + slip 게이트 **slipType 일반화**(OUTBOUND/INBOUND→documentType+actionKey) + FE 입고전표 전표종류. opt-in·system bypass·자동채움·inbound.inspection 공존. **OUTBOUND 회귀 0**. 양쪽 0 수렴(R1/R2/R3) + 라이브 INBOUND QA(입고인 미지정 200·지정 403 "입고 수령 권한"). spec=[A2-3](../superpowers/specs/2026-06-22-approval-inbound-enforcement-a2-3-design.md).
-- **다음 = 타 전표 순차**(개발책임자 "타전표는 순차적으로"): 회계전표·주문·견적·배차·그룹웨어 결재 — **각 documentType 시드 + 모델(B 게이트 vs 명시 결재) 개발책임자 지정 대기**. 슬립(출고/입고)에서 패턴 확립(authorize generic·게이트 slipType 일반화·V## 시드·결재라인 설정 메뉴 documentType generic)되어 빠르게 진행 가능.
+- **A2-4 산출**(개발책임자 "타전표 자율선택" → 5 후보 정찰로 **주문** 선택): auth V64 PARTNER_ORDER 시드(승인자=`PARTNER_ORDER_CONVERT`) + partner-order **ApprovalLineAuthorizeClient**(slip 1:1 미러·@Autowired·MockRestServiceServer 계약·DI 가드) + `PartnerOrderConvertService`(개별)·`PartnerOrderMergeConvertService`(병합) convert 게이트(opt-in·system bypass·403). FE 주문 전표종류. 양쪽 0 + 라이브 convert QA(비결재자 403 "주문 출고전환 권한"·opt-in 통과). spec=[A2-4](../superpowers/specs/2026-06-22-approval-order-convert-enforcement-a2-4-design.md).
+
+### ✅ enforcement 패턴 확립 (재사용 토대)
+**auth `POST /auth/internal/approval-line/authorize`**(X-Internal-Token, documentType+actionKey generic) ← 각 서비스 **ApprovalLineAuthorizeClient**(loadBalanced RestClient·운영 생성자 **@Autowired 필수**·parse fail-closed·MockRestServiceServer 계약·**DI 가드 테스트**) → **액션 직전 게이트**(opt-in: configured=false 통과·system bypass·configured&&!allowed→403). **V## 시드**(documentType 2~3역할·action_key·WHERE NOT EXISTS 멱등). **FE DOC_TYPES + mock 시드**. AbstractPostgresIT **@MockBean(configured=false)** 회귀 차단.
+
+### ⏭️ 다음 = 타 전표 잔여 (회사PC, 개발책임자 모델 결정 필요)
+5 후보 정찰(wf 결과): **주문=B게이트 GOOD(완료)**. 잔여 4종은 **B-게이트 부적합**이라 모델 결정 필요:
+- **회계전표**: POOR(작성자=게시자 역할분리 약함, 월말마감 별도) — 도입 시 정책/spec 필요.
+- **견적**: POOR/EXPLICIT(send/accept=거래처-facing 외부응답, estimate-app 별 아키텍처).
+- **배차**: POOR(복잡 상태머신·arologis 외부 회신).
+- **그룹웨어 결재**: 이미 자체 결재선(EXPLICIT chain) — approval-line config 와 중복/보완 검토.
+→ **명시 결재 chain 모델(순차 승인)** 신규 설계가 필요한 후보들. 개발책임자 "어느 것/어떤 모델" 지정 시 brainstorming 부터.
+
+### 🔑 야간 자율 워크플로우 교훈(메모리 박제 완료)
+- **라이브 QA 가 정적/IT 못잡는 런타임 P1 단독 적발**: client @Autowired 누락(빈 생성)·OUTBOUND inspect inbound.inspection 선차단. **MSA 외부 client @MockBean IT 는 실 빈/계약 미검 → 라이브 부팅 의무** + DI 가드 테스트([[restclient-contract-test-false-green]] 위험3종).
+- **듀얼리뷰 순차**(Opus 완료·게시→Codex, **병렬 금지**) · **Opus 라운드 fix=Opus직접/Codex=Codex**(line29) · Codex **danger-full-access** · FE green=typecheck+**lint**+vitest.
+- **로컬 포트 충돌**: slip 8086=influxd / partner-order 8088=호스트 프로세스 → 라이브 QA 시 호스트 포트만 18086/18088 임시변경(게이트웨이 eureka 내부 무관, QA 후 revert). 서비스 재시작 후 eureka 페치 ~40s "No instances available" transient.
+- **마이그 fresh probe**(V## 추가 시 `MSYS_NO_PATHCONV=1` + docker cp + sort -V).
 
 - **A2-2 산출**: A2-1c 결재자(그룹∪개인)를 출고전표 accept/inspect 게이트로 **동적 강제**. auth `POST /auth/internal/approval-line/authorize`(X-Internal-Token) → slip `ApprovalLineAuthorizeClient` → SlipService.accept(`OUTBOUND_DISPATCH`)·inspect(`OUTBOUND_INSPECT`). **slipType==OUTBOUND·실사용자·opt-in(미설정 무중단)·system bypass·INBOUND 무영향**. B 게이트(자동채움 유지). Flyway 신규 없음. spec=[A2-2](../superpowers/specs/2026-06-21-approval-outbound-enforcement-a2-2-design.md).
 - **듀얼리뷰 R1~R4 양쪽 0 수렴**(#555·#556 각). 🐳 라이브 2서비스 QA: accept 비결재자 403·INBOUND 200·inspect 403"출고 검수 권한"·authorize 계약·**라이브가 DI 빈 생성 P1·inbound.inspection 선차단 P1 단독 적발**.
