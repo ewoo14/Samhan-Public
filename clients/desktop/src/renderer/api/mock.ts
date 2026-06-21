@@ -12643,6 +12643,34 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     approvers: [],
     required: true,
   },
+  // A2-3 입고전표 — V63 시드(작성자/입고인=INBOUND_RECEIVE/검수인=INBOUND_INSPECT)와 mock 패리티.
+  {
+    id: 'mock-approval-line-slip-inbound-creator',
+    documentType: 'SLIP_INBOUND',
+    sequence: 0,
+    label: '작성자',
+    stepType: 'CREATOR',
+    approvers: [],
+    required: true,
+  },
+  {
+    id: 'mock-approval-line-slip-inbound-receiver',
+    documentType: 'SLIP_INBOUND',
+    sequence: 1,
+    label: '입고인',
+    stepType: 'GROUP',
+    approvers: [],
+    required: true,
+  },
+  {
+    id: 'mock-approval-line-slip-inbound-inspector',
+    documentType: 'SLIP_INBOUND',
+    sequence: 2,
+    label: '검수인',
+    stepType: 'GROUP',
+    approvers: [],
+    required: true,
+  },
 ]
 
 const _mockPermissionGroupMatrices: Record<string, Record<string, MockActionMatrix>> = {

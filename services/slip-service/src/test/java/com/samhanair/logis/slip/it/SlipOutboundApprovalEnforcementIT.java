@@ -4,7 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -38,7 +38,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A2-2 출고전표 accept/inspect 결재자 enforcement 실HTTP 회귀 테스트. */
+/** A2-2/A2-3 출고·입고전표 accept/inspect 결재자 enforcement 실HTTP 회귀 테스트. */
 @SpringBootTest(classes = {
         SlipServiceApplication.class,
         SlipOutboundApprovalEnforcementIT.ExternalClientTestConfig.class
@@ -132,31 +132,36 @@ class SlipOutboundApprovalEnforcementIT extends AbstractPostgresIT {
     }
 
     @Test
-    void inboundAcceptAndInspect_skipOutboundGate() throws Exception {
+    void inboundAcceptAndInspect_invokesInboundApprovalGate() throws Exception {
         String slipId = createSentSlip("INBOUND");
-        reset(approvalLineAuthorizeClient);
+        UUID userId = user("0005");
+        when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_RECEIVE", userId))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
+        when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_INSPECT", userId))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
 
         mockMvc.perform(post("/slips/{id}/accept", slipId)
-                        .header("X-User-Id", user("0005").toString())
+                        .header("X-User-Id", userId.toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ACCEPTED"));
 
         mockMvc.perform(post("/slips/{id}/process", slipId)
-                        .header("X-User-Id", user("0005").toString())
+                        .header("X-User-Id", userId.toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/slips/{id}/complete", slipId)
-                        .header("X-User-Id", user("0005").toString())
+                        .header("X-User-Id", userId.toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/slips/{id}/inspect", slipId)
-                        .header("X-User-Id", user("0005").toString())
+                        .header("X-User-Id", userId.toString())
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"));
 
-        verifyNoInteractions(approvalLineAuthorizeClient);
+        verify(approvalLineAuthorizeClient).authorize("SLIP_INBOUND", "INBOUND_RECEIVE", userId);
+        verify(approvalLineAuthorizeClient).authorize("SLIP_INBOUND", "INBOUND_INSPECT", userId);
     }
 
     @Test
@@ -171,6 +176,54 @@ class SlipOutboundApprovalEnforcementIT extends AbstractPostgresIT {
                         .header("X-User-Role", "WAREHOUSE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.dispatcherUserId").value(dispatcherId.toString()));
+    }
+
+    @Test
+    void inboundAccept_nonApprover403_approver200_andReceiverAutofill() throws Exception {
+        String deniedSlipId = createSentSlip("INBOUND");
+        when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_RECEIVE", user("0007")))
+                .thenReturn(new ApprovalLineAuthorizeResult(true, false));
+
+        mockMvc.perform(post("/slips/{id}/accept", deniedSlipId)
+                        .header("X-User-Id", user("0007").toString())
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isForbidden());
+
+        String allowedSlipId = createSentSlip("INBOUND");
+        UUID receiverId = user("0008");
+        when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_RECEIVE", receiverId))
+                .thenReturn(new ApprovalLineAuthorizeResult(true, true));
+
+        mockMvc.perform(post("/slips/{id}/accept", allowedSlipId)
+                        .header("X-User-Id", receiverId.toString())
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.dispatcherUserId").value(receiverId.toString()));
+    }
+
+    @Test
+    void inboundInspect_nonApprover403_approver200() throws Exception {
+        String deniedSlipId = createInspectingSlip("INBOUND");
+        when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_INSPECT", user("0009")))
+                .thenReturn(new ApprovalLineAuthorizeResult(true, false));
+
+        mockMvc.perform(post("/slips/{id}/inspect", deniedSlipId)
+                        .header("X-User-Id", user("0009").toString())
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isForbidden());
+
+        String allowedSlipId = createInspectingSlip("INBOUND");
+        UUID inspectorId = user("0010");
+        when(approvalLineAuthorizeClient.authorize("SLIP_INBOUND", "INBOUND_INSPECT", inspectorId))
+                .thenReturn(new ApprovalLineAuthorizeResult(true, true));
+
+        mockMvc.perform(post("/slips/{id}/inspect", allowedSlipId)
+                        .header("X-User-Id", inspectorId.toString())
+                        .header("X-User-Role", "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.inspectorUserId").value(inspectorId.toString()));
     }
 
     private String createInspectingSlip(String slipType) throws Exception {
