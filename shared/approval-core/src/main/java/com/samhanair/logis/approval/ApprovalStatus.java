@@ -1,4 +1,4 @@
-package com.samhanair.logis.groupware.domain;
+package com.samhanair.logis.approval;
 
 /**
  * 결재선 전체 상태.

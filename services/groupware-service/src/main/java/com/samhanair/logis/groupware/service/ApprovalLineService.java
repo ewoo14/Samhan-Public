@@ -1,10 +1,10 @@
 package com.samhanair.logis.groupware.service;
 
+import com.samhanair.logis.approval.ApprovalStatus;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
-import com.samhanair.logis.groupware.domain.ApprovalStatus;
 import com.samhanair.logis.groupware.dto.ApprovalLineAdminResponse;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;
 import com.samhanair.logis.groupware.repository.ApprovalLineRepository;
@@ -125,7 +125,7 @@ public class ApprovalLineService {
         Set<UUID> ids = new LinkedHashSet<>();
         for (ApprovalLine line : lines) {
             ids.add(line.getRequesterId());
-            line.getStepsView().forEach(step -> ids.add(step.getApproverId()));
+            line.getStepsView().forEach(step -> ids.add(step.getApproverUserId()));
         }
         if (ids.isEmpty()) {
             return Map.of();

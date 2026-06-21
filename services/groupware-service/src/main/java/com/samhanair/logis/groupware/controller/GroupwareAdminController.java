@@ -2,7 +2,7 @@ package com.samhanair.logis.groupware.controller;
 
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.groupware.client.UserClient;
-import com.samhanair.logis.groupware.domain.ApprovalStatus;
+import com.samhanair.logis.approval.ApprovalStatus;
 import com.samhanair.logis.groupware.dto.ApprovalDecisionRequest;
 import com.samhanair.logis.groupware.dto.ApprovalLineAdminResponse;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;

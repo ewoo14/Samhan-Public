@@ -189,7 +189,7 @@ public class GroupwareApprovalDocumentCollaborationPort implements DocumentColla
         ApprovalLine approval = loadApprovalWithSteps(documentId);
         Set<String> recipients = new LinkedHashSet<>();
         addRecipient(recipients, approval.getRequesterId(), excludeUserId);
-        approval.getStepsView().forEach(step -> addRecipient(recipients, step.getApproverId(), excludeUserId));
+        approval.getStepsView().forEach(step -> addRecipient(recipients, step.getApproverUserId(), excludeUserId));
         commentRepository.findByDocumentTypeAndDocumentIdOrderByCreatedAtDesc(documentType(), documentId)
                 .forEach(comment -> addRecipient(recipients, comment.getAuthorId(), excludeUserId));
         return recipients;

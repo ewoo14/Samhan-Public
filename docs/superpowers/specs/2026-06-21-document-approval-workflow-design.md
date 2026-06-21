@@ -90,7 +90,7 @@
 
 > ⚠️ C1a/C1b/C2(사원 서명 등록·mobile-public) **머지 완료** → 서명 소스로 재사용. C3(출고 인감 plan)은 본 에픽으로 **재설계**.
 
-- **A1 (공통 결재 엔진 일반화)**: 그룹웨어 `ApprovalLine`/`ApprovalStep` 을 전표 종류 무관 공통 엔진으로 추출/일반화 + 전표↔ApprovalLine 연계 골격 + 결재선 발의 internal API. (기반 슬라이스)
+- **A1 (공통 결재 엔진 일반화)** — **상세 설계 확정: [2026-06-21-approval-engine-a1-design.md](2026-06-21-approval-engine-a1-design.md)** (6렌즈 적대검증 wf_49f53117 → 9 BLOCKER 반영). **재단됨(개발책임자 2026-06-21)**: A1 = `shared:approval-core` 추출 + **groupware 이관/회귀(BE+FE)만**. slip 출고 결재선 골격은 step 모델·lifecycle 확정되는 **A2 로 이연**(dead-weight 회피). ⚠️ 본 §3 의 "collab-core 동형 단순 추출, 테이블 동일" 전제는 **반증·정정**됨 — `@MappedSuperclass` base 는 steps 컬렉션을 보유 못 함(base=스칼라+무상태 로직 / concrete=관계매핑+전용필드). E8=**page-code enforcement**(경로B, 계승 검증 참). step 모델=`stepType(CREATOR|GROUP|USER)` union(nullable, NOT NULL 금지).
 - **A2 (결재라인 설정 메뉴 — 인사그룹 중앙통제)**: 모든 전표 종류의 결재라인(**인원수·순서·명칭·권한**)을 정의하는 **신규 메뉴(인사그룹)**. MASTER + 위임 MANAGER(page-code 위임 D-PB-01) 통제. 전표 종류 ↔ 결재라인 설정(`approval_line_config` 류) 저장 + 결재선 구성 권한 page-code 신설. 전표 발행 시 이 설정으로 `ApprovalLine` 인스턴스 생성(**설정↔실행 2층**, E7).
 - **A3 (결재 시점 서명 동결)**: approve() 시 `Employee.signaturePng` snapshot 저장(approval_step_signature) + PrintLayout SignatureViewer 실연동(placeholder 해소).
 - **A4 (출고전표 결재 배선)**: 출고전표 발의/승인 + DispatchView/OutboundView/InvoiceView 결재란 + lifecycle 관계 확정.
