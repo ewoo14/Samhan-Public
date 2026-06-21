@@ -7,6 +7,8 @@ import com.samhanair.logis.auth.web.dto.ReorderApprovalLineRequest;
 import com.samhanair.logis.auth.web.dto.RenameApprovalLineRoleRequest;
 import com.samhanair.logis.auth.web.dto.UpdateApprovalLineRoleRequest;
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import jakarta.validation.Valid;
@@ -83,6 +85,14 @@ public class ApprovalLineConfigController {
     public ApiResponse<List<ApprovalLineRoleView>> reorderRoles(
             @RequestParam String documentType,
             @Valid @RequestBody ReorderApprovalLineRequest request) {
-        return ApiResponse.ok(service.reorderRoles(documentType, request.orderedIds()));
+        return ApiResponse.ok(service.reorderRoles(requireDocumentType(documentType), request.orderedIds()));
+    }
+
+    private static String requireDocumentType(String documentType) {
+        if (documentType == null || documentType.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "전표 종류(documentType)를 입력해야 합니다");
+        }
+        return documentType.trim();
     }
 }

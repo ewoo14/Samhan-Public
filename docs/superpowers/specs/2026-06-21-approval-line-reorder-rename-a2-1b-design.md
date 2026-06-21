@@ -57,6 +57,7 @@ A2-1 후속(PR #553)에서 `updateRole` 이 CREATOR 의 group/required 변경을
 - **라벨 인라인 편집**: 비-CREATOR 행의 역할 라벨을 인라인 텍스트(또는 편집 아이콘 ✎). blur/Enter 시 `rename` 호출(blank 거부). CREATOR 라벨은 정적 텍스트.
 - **자동저장**: rename(blur/Enter)·reorder(drop) 즉시 저장(저장 버튼 없음, A2-1 자동저장 일관). 낙관/롤백.
 - `api/approvalLineConfigApi.ts`: `renameApprovalLineRole(id, label)` · `reorderApprovalLineRoles(documentType, orderedIds)`. mock(`mock.ts`) 동반(stateful: label/sequence 갱신).
+- **동시 편집**: 낮은 동시성 전제로 별도 잠금/버전 충돌 처리는 미지원. 각 mutation 의 `onSettled` invalidate 로 최종 서버 상태에 수렴한다.
 
 ## 테스트
 

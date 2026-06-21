@@ -113,12 +113,23 @@ public class ApprovalLineConfigService {
      * @param documentType 전표 종류 (SLIP_OUTBOUND 등)
      * @param orderedIds   새 순서로 나열된 역할 UUID 목록(첫 번째=작성자)
      * @return 갱신 후 sequence 순 역할 뷰 목록
-     * @throws BusinessException 부분요청(INVALID_INPUT) / CREATOR 비1순위(INVALID_INPUT)
+     * @throws BusinessException documentType 공백(INVALID_INPUT) / 미존재 결재라인(NOT_FOUND) /
+     *                           중복 ID(INVALID_INPUT) / 부분요청(INVALID_INPUT) /
+     *                           CREATOR 비1순위(INVALID_INPUT)
      */
     @Transactional
     public List<ApprovalLineRoleView> reorderRoles(String documentType, List<UUID> orderedIds) {
+        if (documentType == null || documentType.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "전표 종류(documentType)를 입력해야 합니다");
+        }
+        String normalizedDocumentType = documentType.trim();
         List<ApprovalLineConfig> active =
-                repository.findByDocumentTypeOrderBySequenceAsc(documentType);
+                repository.findByDocumentTypeOrderBySequenceAsc(normalizedDocumentType);
+        if (active.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "결재라인을 찾을 수 없습니다: " + normalizedDocumentType);
+        }
 
         // 부분요청 가드: 집합 크기 + 동일성 검증
         Set<UUID> activeIds = new HashSet<>();
@@ -126,6 +137,10 @@ public class ApprovalLineConfigService {
         for (ApprovalLineConfig r : active) {
             activeIds.add(r.getId());
             byId.put(r.getId(), r);
+        }
+        if (new HashSet<>(orderedIds).size() != orderedIds.size()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "역할이 중복 전달되었습니다");
         }
         if (orderedIds.size() != activeIds.size() || !activeIds.containsAll(orderedIds)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
@@ -151,7 +166,7 @@ public class ApprovalLineConfigService {
         }
         repository.saveAllAndFlush(active);
 
-        return repository.findByDocumentTypeOrderBySequenceAsc(documentType).stream()
+        return repository.findByDocumentTypeOrderBySequenceAsc(normalizedDocumentType).stream()
                 .map(this::toView)
                 .toList();
     }

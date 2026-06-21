@@ -166,6 +166,7 @@ export function ApprovalLineConfigPage() {
     if (!over || active.id === over.id) return
     const roles = rolesQuery.data ?? []
     const orderedIds = computeApprovalRoleReorder(roles, String(active.id), String(over.id))
+    if (areApprovalRoleOrdersEqual(orderedIds, getOrderedApprovalRoleIds(roles))) return
     reorderMutation.mutate({ orderedIds })
   }, [rolesQuery.data, reorderMutation])
 
@@ -230,13 +231,20 @@ export function ApprovalLineConfigPage() {
                 strategy={verticalListSortingStrategy}
               >
                 <table data-testid="approval-line-role-table" style={tableStyle}>
+                  <colgroup>
+                    <col style={dragColumnStyle} />
+                    <col style={sequenceColumnStyle} />
+                    <col style={roleColumnStyle} />
+                    <col style={groupColumnStyle} />
+                    <col style={requiredColumnStyle} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th style={headCellStyle} aria-label="드래그 핸들" />
-                      <th style={headCellStyle}>순서</th>
-                      <th style={headCellStyle}>역할</th>
-                      <th style={headCellStyle}>권한 그룹</th>
-                      <th style={headCellStyle}>필수</th>
+                      <th style={dragHeadCellStyle} aria-label="드래그 핸들" />
+                      <th style={sequenceHeadCellStyle}>순서</th>
+                      <th style={roleHeadCellStyle}>역할</th>
+                      <th style={groupHeadCellStyle}>권한 그룹</th>
+                      <th style={requiredHeadCellStyle}>필수</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -315,6 +323,8 @@ function SortableApprovalRoleRow({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    position: 'relative',
+    zIndex: isDragging ? 2 : 'auto',
   }
 
   return (
@@ -323,7 +333,7 @@ function SortableApprovalRoleRow({
       style={rowStyle}
       data-testid={`approval-role-${role.label}`}
     >
-      <td style={bodyCellStyle}>
+      <td style={dragBodyCellStyle}>
         {isCreator ? (
           // CREATOR 는 드래그 핸들 없음 — 잠금 아이콘으로 고정 표시
           <span
@@ -343,8 +353,8 @@ function SortableApprovalRoleRow({
           />
         )}
       </td>
-      <td style={bodyCellStyle}>{role.sequence + 1}</td>
-      <td style={bodyCellStyle}>
+      <td style={sequenceBodyCellStyle}>{role.sequence + 1}</td>
+      <td style={roleBodyCellStyle}>
         {isCreator ? (
           // CREATOR 라벨은 정적 텍스트 (편집 불가)
           <strong data-testid={`approval-role-label-static-${role.id}`}>{role.label}</strong>
@@ -356,7 +366,7 @@ function SortableApprovalRoleRow({
           />
         )}
       </td>
-      <td style={bodyCellStyle}>
+      <td style={groupBodyCellStyle}>
         {isCreator ? (
           <span data-testid="approval-line-creator-auto" style={{ color: 'var(--color-neutral-500)' }}>
             전표 작성자 자동
@@ -380,7 +390,7 @@ function SortableApprovalRoleRow({
           </Select>
         )}
       </td>
-      <td style={bodyCellStyle}>
+      <td style={requiredBodyCellStyle}>
         <input
           type="checkbox"
           checked={role.required}
@@ -418,6 +428,12 @@ function ApprovalRoleLabelInput({
     }
   }, [role.label, editing])
 
+  useEffect(() => {
+    if (!editing) return
+    inputRef.current?.focus()
+    inputRef.current?.select?.()
+  }, [editing])
+
   function commitEdit() {
     setEditing(false)
     notifyApprovalRoleLabelChange(inputValue, role, onRename)
@@ -453,8 +469,6 @@ function ApprovalRoleLabelInput({
           outline: 'none',
           minWidth: 80,
         }}
-        // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
       />
     )
   }
@@ -663,10 +677,25 @@ export function computeApprovalRoleReorder(
   return result.map((r) => r.id)
 }
 
+export function getOrderedApprovalRoleIds(roles: ApprovalLineRole[]): string[] {
+  return [...roles].sort((a, b) => a.sequence - b.sequence).map((role) => role.id)
+}
+
+export function areApprovalRoleOrdersEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
+}
+
 const tableStyle: React.CSSProperties = {
   width: '100%',
+  tableLayout: 'fixed',
   borderCollapse: 'collapse',
 }
+
+const dragColumnStyle: React.CSSProperties = { width: 48 }
+const sequenceColumnStyle: React.CSSProperties = { width: 72 }
+const roleColumnStyle: React.CSSProperties = { width: '24%' }
+const groupColumnStyle: React.CSSProperties = { width: '42%' }
+const requiredColumnStyle: React.CSSProperties = { width: 88 }
 
 const headCellStyle: React.CSSProperties = {
   padding: '10px 12px',
@@ -678,9 +707,21 @@ const headCellStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const dragHeadCellStyle: React.CSSProperties = { ...headCellStyle, ...dragColumnStyle }
+const sequenceHeadCellStyle: React.CSSProperties = { ...headCellStyle, ...sequenceColumnStyle }
+const roleHeadCellStyle: React.CSSProperties = { ...headCellStyle, ...roleColumnStyle }
+const groupHeadCellStyle: React.CSSProperties = { ...headCellStyle, ...groupColumnStyle }
+const requiredHeadCellStyle: React.CSSProperties = { ...headCellStyle, ...requiredColumnStyle }
+
 const bodyCellStyle: React.CSSProperties = {
   padding: '11px 12px',
   borderBottom: '1px solid var(--color-neutral-200)',
   fontSize: 13,
   verticalAlign: 'middle',
 }
+
+const dragBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...dragColumnStyle }
+const sequenceBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...sequenceColumnStyle }
+const roleBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...roleColumnStyle }
+const groupBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...groupColumnStyle }
+const requiredBodyCellStyle: React.CSSProperties = { ...bodyCellStyle, ...requiredColumnStyle }

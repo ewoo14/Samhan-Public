@@ -5,7 +5,9 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   ApprovalRoleRow,
   approvalLineRolesQueryKey,
+  areApprovalRoleOrdersEqual,
   computeApprovalRoleReorder,
+  getOrderedApprovalRoleIds,
   notifyApprovalRoleGroupChange,
   notifyApprovalRoleLabelChange,
   notifyApprovalRoleRequiredChange,
@@ -188,5 +190,10 @@ describe('computeApprovalRoleReorder (Task 4)', () => {
   test('CREATOR 가 over 이면 현재 순서 그대로 반환한다 (작성자 위로 드롭 불가)', () => {
     const result = computeApprovalRoleReorder(roles, 'r1', 'r0')
     expect(result).toEqual(['r0', 'r1', 'r2'])
+  })
+
+  test('작성자 위 드롭 결과가 현재 순서와 같으면 변경 없음으로 판정한다', () => {
+    const result = computeApprovalRoleReorder(roles, 'r1', 'r0')
+    expect(areApprovalRoleOrdersEqual(result, getOrderedApprovalRoleIds(roles))).toBe(true)
   })
 })

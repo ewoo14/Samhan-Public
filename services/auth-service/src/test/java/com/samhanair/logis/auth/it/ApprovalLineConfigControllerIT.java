@@ -268,6 +268,53 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 .contains("작성자는 항상 첫 순서여야 합니다");
     }
 
+    @Test
+    @DisplayName("PUT 순서변경 — 중복 역할 ID 전달은 4xx")
+    void reorderRoles_duplicateRoleId_returns4xx() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+        UUID outboundId = outboundRoleId("출고인");
+
+        MvcResult result = mockMvc.perform(
+                        put("/auth/admin/approval-line-configs/reorder")
+                                .param("documentType", DOCUMENT_TYPE)
+                                .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                                .header("X-User-Role", "MANAGER")
+                                .header("X-Is-System-Master", "false")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"orderedIds":["%s","%s","%s"]}
+                                        """.formatted(creatorId, outboundId, outboundId)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("역할이 중복 전달되었습니다");
+    }
+
+    @Test
+    @DisplayName("PUT 순서변경 — documentType blank 는 4xx")
+    void reorderRoles_blankDocumentType_returns4xx() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+        UUID outboundId = outboundRoleId("출고인");
+        UUID inspectorId = outboundRoleId("검수인");
+
+        MvcResult result = mockMvc.perform(
+                        put("/auth/admin/approval-line-configs/reorder")
+                                .param("documentType", " ")
+                                .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                                .header("X-User-Role", "MANAGER")
+                                .header("X-Is-System-Master", "false")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"orderedIds":["%s","%s","%s"]}
+                                        """.formatted(creatorId, outboundId, inspectorId)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("전표 종류(documentType)를 입력해야 합니다");
+    }
+
     private UUID outboundRoleId(String label) {
         return jdbcTemplate.queryForObject("""
                 SELECT id
@@ -288,7 +335,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                     modified_at = NOW(),
                     modified_by = 'approval-line-config-it'
                 WHERE document_type = ?
-                  AND label = '출고인'
+                  AND label IN ('출고인', '출고담당')
                   AND is_deleted = FALSE
                 """, DOCUMENT_TYPE);
     }
@@ -297,41 +344,52 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
      * 테스트 전후 approval_line_config 의 label/sequence 를 V61 seed 초기값으로 원복.
      * rename/reorder 테스트 간 DB 공유 오염을 방지한다.
      *
-     * <p>reorder 후에는 sequence 가 바뀌고, rename 후에는 label 이 바뀔 수 있다.
-     * GROUP 역할의 id 를 sequence 기준으로 읽어 원복 순서를 결정하는 방식을 사용한다.
+     * <p>reorder 후에도 역할 라벨을 stable key 로 삼아 seed sequence 를 복원한다.
+     * sequence 재랭킹에 의존하지 않아 출고인/검수인 row identity 가 섞이지 않는다.
      */
     private void resetApprovalLineConfigToSeedState() {
-        // Phase 1: GROUP 역할을 임시 음수로 이동(unique 충돌 회피)
+        // Phase 1: seed 역할을 고정 음수 슬롯으로 이동(unique 충돌 회피)
         jdbcTemplate.update("""
                 UPDATE approval_line_config
-                SET sequence = -(ABS(sequence) + 100),
-                    modified_at = NOW(), modified_by = 'approval-line-config-it'
-                WHERE document_type = ? AND step_type = 'GROUP' AND is_deleted = FALSE
-                """, DOCUMENT_TYPE);
-
-        // Phase 2: id 기준 row 1(낮은 음수 — 원래 seq 1)을 sequence=1, label='출고인'으로 복원
-        // CTE 로 GROUP 역할을 음수 sequence 오름차순으로 순번 매겨 복원
-        jdbcTemplate.update("""
-                WITH ranked AS (
-                    SELECT id, ROW_NUMBER() OVER (ORDER BY sequence ASC) AS rn
-                    FROM approval_line_config
-                    WHERE document_type = ? AND step_type = 'GROUP' AND is_deleted = FALSE
-                )
-                UPDATE approval_line_config ac
-                SET sequence = CASE WHEN r.rn = 1 THEN 1 ELSE 2 END,
-                    label    = CASE WHEN r.rn = 1 THEN '출고인' ELSE '검수인' END,
+                SET sequence = CASE
+                        WHEN step_type = 'CREATOR' THEN -1
+                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고담당') THEN -2
+                        WHEN step_type = 'GROUP' AND label = '검수인' THEN -3
+                        ELSE sequence
+                    END,
                     modified_at = NOW(),
                     modified_by = 'approval-line-config-it'
-                FROM ranked r
-                WHERE ac.id = r.id
+                WHERE document_type = ?
+                  AND is_deleted = FALSE
+                  AND (
+                      step_type = 'CREATOR'
+                      OR label IN ('출고인', '출고담당', '검수인')
+                  )
                 """, DOCUMENT_TYPE);
 
-        // CREATOR 복원(label 변경 불가이므로 sequence 만)
+        // Phase 2: seed label map 으로 원래 label/sequence 복원
         jdbcTemplate.update("""
                 UPDATE approval_line_config
-                SET label = '작성자', sequence = 0,
-                    modified_at = NOW(), modified_by = 'approval-line-config-it'
-                WHERE document_type = ? AND step_type = 'CREATOR' AND is_deleted = FALSE
+                SET label = CASE
+                        WHEN step_type = 'CREATOR' THEN '작성자'
+                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고담당') THEN '출고인'
+                        WHEN step_type = 'GROUP' AND label = '검수인' THEN '검수인'
+                        ELSE label
+                    END,
+                    sequence = CASE
+                        WHEN step_type = 'CREATOR' THEN 0
+                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고담당') THEN 1
+                        WHEN step_type = 'GROUP' AND label = '검수인' THEN 2
+                        ELSE sequence
+                    END,
+                    modified_at = NOW(),
+                    modified_by = 'approval-line-config-it'
+                WHERE document_type = ?
+                  AND is_deleted = FALSE
+                  AND (
+                      step_type = 'CREATOR'
+                      OR label IN ('출고인', '출고담당', '검수인')
+                  )
                 """, DOCUMENT_TYPE);
     }
 
