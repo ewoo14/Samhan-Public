@@ -54,10 +54,12 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     void setUp() {
         cleanPermissionRowsWithoutTouchingManagerSeed();
         resetOutboundDispatcherRole();
+        resetApprovalLineConfigToSeedState();
     }
 
     @AfterEach
     void tearDown() {
+        resetApprovalLineConfigToSeedState();
         resetOutboundDispatcherRole();
         cleanPermissionRowsWithoutTouchingManagerSeed();
     }
@@ -155,6 +157,117 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getStatus()).isEqualTo(403);
     }
 
+    @Test
+    @DisplayName("PUT 라벨변경 — 출고인 라벨을 '출고담당'으로 변경 200")
+    void renameRole_outboundRole_returns200AndUpdatedLabel() throws Exception {
+        UUID roleId = outboundRoleId("출고인");
+
+        MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}/label", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"label":"출고담당"}
+                                """))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("출고담당");
+
+        // DB에도 실제 반영되었는지 확인
+        String dbLabel = jdbcTemplate.queryForObject("""
+                SELECT label
+                FROM approval_line_config
+                WHERE id = ? AND is_deleted = FALSE
+                """, String.class, roleId);
+        assertThat(dbLabel).isEqualTo("출고담당");
+    }
+
+    @Test
+    @DisplayName("PUT 라벨변경 — 작성자(CREATOR) 라벨 변경 시도는 4xx")
+    void renameRole_creatorRole_returns4xx() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+
+        MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}/label", creatorId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"label":"새작성자"}
+                                """))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("작성자 역할은 변경할 수 없습니다");
+    }
+
+    @Test
+    @DisplayName("PUT 순서변경 — 출고인↔검수인 swap 후 순서 반영 200")
+    void reorderRoles_swapOutboundAndInspector_returns200AndCorrectOrder() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+        UUID outboundId = outboundRoleId("출고인");
+        UUID inspectorId = outboundRoleId("검수인");
+
+        // 검수인을 2번째, 출고인을 3번째로 변경
+        MvcResult result = mockMvc.perform(
+                        put("/auth/admin/approval-line-configs/reorder")
+                                .param("documentType", DOCUMENT_TYPE)
+                                .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                                .header("X-User-Role", "MANAGER")
+                                .header("X-Is-System-Master", "false")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"orderedIds":["%s","%s","%s"]}
+                                        """.formatted(creatorId, inspectorId, outboundId)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        // 응답이 배열 형태이며 검수인이 출고인보다 앞에 위치
+        int inspectorPos = body.indexOf("검수인");
+        int outboundPos = body.indexOf("출고인");
+        assertThat(inspectorPos).isLessThan(outboundPos);
+
+        // DB sequence 확인
+        Integer inspectorSeq = jdbcTemplate.queryForObject("""
+                SELECT sequence FROM approval_line_config
+                WHERE id = ? AND is_deleted = FALSE
+                """, Integer.class, inspectorId);
+        Integer outboundSeq = jdbcTemplate.queryForObject("""
+                SELECT sequence FROM approval_line_config
+                WHERE id = ? AND is_deleted = FALSE
+                """, Integer.class, outboundId);
+        assertThat(inspectorSeq).isLessThan(outboundSeq);
+    }
+
+    @Test
+    @DisplayName("PUT 순서변경 — 작성자가 첫 번째가 아니면 4xx")
+    void reorderRoles_creatorNotFirst_returns4xx() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+        UUID outboundId = outboundRoleId("출고인");
+        UUID inspectorId = outboundRoleId("검수인");
+
+        MvcResult result = mockMvc.perform(
+                        put("/auth/admin/approval-line-configs/reorder")
+                                .param("documentType", DOCUMENT_TYPE)
+                                .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                                .header("X-User-Role", "MANAGER")
+                                .header("X-Is-System-Master", "false")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"orderedIds":["%s","%s","%s"]}
+                                        """.formatted(outboundId, creatorId, inspectorId)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("작성자는 항상 첫 순서여야 합니다");
+    }
+
     private UUID outboundRoleId(String label) {
         return jdbcTemplate.queryForObject("""
                 SELECT id
@@ -177,6 +290,48 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 WHERE document_type = ?
                   AND label = '출고인'
                   AND is_deleted = FALSE
+                """, DOCUMENT_TYPE);
+    }
+
+    /**
+     * 테스트 전후 approval_line_config 의 label/sequence 를 V61 seed 초기값으로 원복.
+     * rename/reorder 테스트 간 DB 공유 오염을 방지한다.
+     *
+     * <p>reorder 후에는 sequence 가 바뀌고, rename 후에는 label 이 바뀔 수 있다.
+     * GROUP 역할의 id 를 sequence 기준으로 읽어 원복 순서를 결정하는 방식을 사용한다.
+     */
+    private void resetApprovalLineConfigToSeedState() {
+        // Phase 1: GROUP 역할을 임시 음수로 이동(unique 충돌 회피)
+        jdbcTemplate.update("""
+                UPDATE approval_line_config
+                SET sequence = -(ABS(sequence) + 100),
+                    modified_at = NOW(), modified_by = 'approval-line-config-it'
+                WHERE document_type = ? AND step_type = 'GROUP' AND is_deleted = FALSE
+                """, DOCUMENT_TYPE);
+
+        // Phase 2: id 기준 row 1(낮은 음수 — 원래 seq 1)을 sequence=1, label='출고인'으로 복원
+        // CTE 로 GROUP 역할을 음수 sequence 오름차순으로 순번 매겨 복원
+        jdbcTemplate.update("""
+                WITH ranked AS (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY sequence ASC) AS rn
+                    FROM approval_line_config
+                    WHERE document_type = ? AND step_type = 'GROUP' AND is_deleted = FALSE
+                )
+                UPDATE approval_line_config ac
+                SET sequence = CASE WHEN r.rn = 1 THEN 1 ELSE 2 END,
+                    label    = CASE WHEN r.rn = 1 THEN '출고인' ELSE '검수인' END,
+                    modified_at = NOW(),
+                    modified_by = 'approval-line-config-it'
+                FROM ranked r
+                WHERE ac.id = r.id
+                """, DOCUMENT_TYPE);
+
+        // CREATOR 복원(label 변경 불가이므로 sequence 만)
+        jdbcTemplate.update("""
+                UPDATE approval_line_config
+                SET label = '작성자', sequence = 0,
+                    modified_at = NOW(), modified_by = 'approval-line-config-it'
+                WHERE document_type = ? AND step_type = 'CREATOR' AND is_deleted = FALSE
                 """, DOCUMENT_TYPE);
     }
 

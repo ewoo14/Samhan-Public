@@ -2,6 +2,8 @@ package com.samhanair.logis.auth.domain;
 
 import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.common.entity.BaseEntity;
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -39,11 +41,11 @@ public class ApprovalLineConfig extends BaseEntity {
     @Column(name = "document_type", nullable = false, updatable = false, length = 40)
     private String documentType;
 
-    /** 역할 순서(0-base). */
-    @Column(name = "sequence", nullable = false, updatable = false)
+    /** 역할 순서(0-base). reorder 도메인 메서드로만 변경. */
+    @Column(name = "sequence", nullable = false)
     private int sequence;
 
-    /** 역할 표시 명칭(작성자/출고인/검수인). */
+    /** 역할 표시 명칭(작성자/출고인/검수인). rename 도메인 메서드로만 변경. */
     @Column(name = "label", nullable = false, length = 50)
     private String label;
 
@@ -76,5 +78,31 @@ public class ApprovalLineConfig extends BaseEntity {
     /** 필수여부 변경. */
     public void changeRequired(boolean required) {
         this.required = required;
+    }
+
+    /**
+     * 역할 라벨(표시 명칭)을 변경한다.
+     *
+     * <p>빈 문자열 또는 공백만으로 이루어진 라벨은 거부한다. 전달값은 trim 후 저장한다.
+     *
+     * @param label 변경할 라벨(공백 포함 불가)
+     * @throws com.samhanair.logis.common.exception.BusinessException 빈 라벨인 경우
+     */
+    public void rename(String label) {
+        if (label == null || label.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "라벨은 비어 있을 수 없습니다");
+        }
+        this.label = label.trim();
+    }
+
+    /**
+     * 역할 순서(sequence)를 변경한다.
+     *
+     * <p>2-phase swap 에서 음수 임시값과 최종 0-base 인덱스 양쪽에서 호출된다.
+     *
+     * @param seq 새 순서 값(음수 포함 허용 — 2-phase 중간 단계)
+     */
+    public void changeSequence(int seq) {
+        this.sequence = seq;
     }
 }
