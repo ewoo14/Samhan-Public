@@ -80,7 +80,7 @@ A1 이 `shared:approval-core` 엔진을 추출하고 groupware **명시 결재**
 - **위치**: 데스크톱 좌측 "인사" 카테고리, 권한그룹 관리 형제(`AppLayout.tsx:1093-1150`). 신규 `/admin/approval-line-config`.
 - **UI**: 전표 종류 선택 → 역할 리스트(순서·명칭·step_type 표시) + GROUP 역할별 **권한 그룹 지정**(AsyncAutocomplete 칩, [[feedback_chip_ui_multi_input]]) + 필수 토글. CREATOR 역할="전표 작성자 자동"(편집 불가).
 - **page-code `admin.approval-line-config`**("결재라인 설정") — `PageCode` enum + Flyway seed + FE `permissionPageCatalog`.
-  - **위임 정책(§ 검증 정밀화)**: `MANAGEMENT_PAGE_CODES` 편입(grant/revoke=MASTER 전용, `ManagementPageMutationGuard`) **+ `updateDelegations` 로 MANAGER 사용 위임 가능**(D-PB-01). 즉 page-code 부여 권위는 MASTER, 메뉴 사용은 위임 MANAGER. (검증 confirmation: 두 경로 양립 — grant 봉쇄 ≠ 위임 봉쇄)
+  - **위임 정책(정찰 정정)**: **일반 page-code**(MANAGEMENT_PAGE_CODES **미편입**). 이유: `updateDelegations`(`GroupPermissionService`)는 기존 3개 management 코드(system.permission-admin/hr.role-management/admin.permission-groups)에 **하드코딩**이라 신규 코드는 그 위임 경로 불가. 일반 page-code 면 MASTER + 위임받은 MANAGER 가 `updateGroupMatrix` 의 정상 grant 경로로 다룰 수 있음(D-PB-01 의도 충족, [[feedback_pgc_c2_widening_option_a]] 류 정합). seed=MASTER+MANAGER 기본 부여.
 - **BE**: auth-service `ApprovalLineConfigController`(admin: 카탈로그 조회/역할 group 지정/필수 토글) + `Service`(approval_line_config CRUD). FE canAccess page-code = 실제 BE `@RequirePermission` **정확 일치**([[feedback_fe_canaccess_pagecode_be_match]]).
 - **권한 그룹 picker**: auth 권한 그룹 목록 조회 API(기존 `GroupPermissionService`/권한그룹 관리 화면 소비 API) 재사용.
 
