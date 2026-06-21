@@ -141,7 +141,7 @@ class ApprovalLineServiceTest {
         // currentStep snapshot 도 1번째 step (PENDING) 인지 확인
         ApprovalStep current = line.currentStep();
         assertThat(current).isNotNull();
-        assertThat(current.getApproverId()).isEqualTo(a1);
+        assertThat(current.getApproverUserId()).isEqualTo(a1);
     }
 
     private ApprovalLine open(UUID requester, String title, String content) {

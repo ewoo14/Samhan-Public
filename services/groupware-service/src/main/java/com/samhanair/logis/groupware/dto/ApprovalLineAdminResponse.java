@@ -55,7 +55,7 @@ public record ApprovalLineAdminResponse(
         }
 
         static StepView from(ApprovalStep s, Map<UUID, String> nameMap) {
-            return new StepView(s.getSequence(), s.getApproverId(), displayName(nameMap, s.getApproverId()), s.getStatus(),
+            return new StepView(s.getSequence(), s.getApproverUserId(), displayName(nameMap, s.getApproverUserId()), s.getStatus(),
                     s.getDecidedAt(), s.getReason());
         }
     }

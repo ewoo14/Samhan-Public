@@ -125,7 +125,7 @@ public class ApprovalLineService {
         Set<UUID> ids = new LinkedHashSet<>();
         for (ApprovalLine line : lines) {
             ids.add(line.getRequesterId());
-            line.getStepsView().forEach(step -> ids.add(step.getApproverId()));
+            line.getStepsView().forEach(step -> ids.add(step.getApproverUserId()));
         }
         if (ids.isEmpty()) {
             return Map.of();
