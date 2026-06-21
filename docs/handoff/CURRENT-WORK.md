@@ -4,16 +4,21 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-22 야간 자율 완료 — **A2 결재 워크플로우 에픽 완결**, 다음 = 개발책임자 지정)
+## 🟢 핸드오프 (2026-06-22 야간 자율 완료 — **출고+입고 enforcement 완결**, 다음 = 타 전표 순차)
 
-### ✅ A2 결재 워크플로우 에픽 — 5 PR 머지 완료 (야간 자율 #555·#556 추가)
+### ✅ A2 결재 워크플로우 — 7 PR 머지 완료 (야간 자율 #555~#558 추가)
 | PR | 내용 | main |
 |---|---|---|
 | #552 | A2-1 결재라인 설정 메뉴 + 선언 approval_line_config | `791dea719` |
 | #553 | A2-1 후속(자동저장 desync 복원 + CREATOR invariant) | `1332a54d4` |
 | #554 | A2-1b 순서변경(드래그)+라벨 인라인 | `b3e11e885` |
 | #555 | A2-1c **다중 결재자(그룹+개인 캡슐)** | `9f85a3219` |
-| #556 | A2-2 **출고전표 accept/inspect enforcement** | `14adce10a` |
+| #556 | A2-2 **출고전표 enforcement** | `14adce10a` |
+| #557 | A2-2 DI 가드 테스트(라이브 적발 빈 생성 P1 CI 박제) | `2806ef83b` |
+| #558 | A2-3 **입고전표 enforcement**(개발책임자 "입고도 적용") | `7b63e23b9` |
+
+- **A2-3 산출**: A2-2 출고 패턴을 입고에 미러. auth V63 SLIP_INBOUND 시드(입고인=`INBOUND_RECEIVE`/검수인=`INBOUND_INSPECT`) + slip 게이트 **slipType 일반화**(OUTBOUND/INBOUND→documentType+actionKey) + FE 입고전표 전표종류. opt-in·system bypass·자동채움·inbound.inspection 공존. **OUTBOUND 회귀 0**. 양쪽 0 수렴(R1/R2/R3) + 라이브 INBOUND QA(입고인 미지정 200·지정 403 "입고 수령 권한"). spec=[A2-3](../superpowers/specs/2026-06-22-approval-inbound-enforcement-a2-3-design.md).
+- **다음 = 타 전표 순차**(개발책임자 "타전표는 순차적으로"): 회계전표·주문·견적·배차·그룹웨어 결재 — **각 documentType 시드 + 모델(B 게이트 vs 명시 결재) 개발책임자 지정 대기**. 슬립(출고/입고)에서 패턴 확립(authorize generic·게이트 slipType 일반화·V## 시드·결재라인 설정 메뉴 documentType generic)되어 빠르게 진행 가능.
 
 - **A2-2 산출**: A2-1c 결재자(그룹∪개인)를 출고전표 accept/inspect 게이트로 **동적 강제**. auth `POST /auth/internal/approval-line/authorize`(X-Internal-Token) → slip `ApprovalLineAuthorizeClient` → SlipService.accept(`OUTBOUND_DISPATCH`)·inspect(`OUTBOUND_INSPECT`). **slipType==OUTBOUND·실사용자·opt-in(미설정 무중단)·system bypass·INBOUND 무영향**. B 게이트(자동채움 유지). Flyway 신규 없음. spec=[A2-2](../superpowers/specs/2026-06-21-approval-outbound-enforcement-a2-2-design.md).
 - **듀얼리뷰 R1~R4 양쪽 0 수렴**(#555·#556 각). 🐳 라이브 2서비스 QA: accept 비결재자 403·INBOUND 200·inspect 403"출고 검수 권한"·authorize 계약·**라이브가 DI 빈 생성 P1·inbound.inspection 선차단 P1 단독 적발**.
