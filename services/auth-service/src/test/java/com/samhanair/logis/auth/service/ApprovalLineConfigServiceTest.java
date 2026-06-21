@@ -96,9 +96,16 @@ class ApprovalLineConfigServiceTest {
         UUID id = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.of(role(0, "작성자", StepType.CREATOR)));
-        when(groupRepository.findById(groupId)).thenReturn(Optional.of(PermissionGroup.create("창고원", null)));
         assertThatThrownBy(() -> service.updateRole(id, groupId, true))
-                .hasMessageContaining("GROUP 역할");
+                .hasMessageContaining("작성자 역할은 변경할 수 없습니다");
+    }
+
+    @Test
+    void updateRole_은_CREATOR역할의_필수여부변경도_거부한다() {
+        UUID id = UUID.randomUUID();
+        when(repository.findById(id)).thenReturn(Optional.of(role(0, "작성자", StepType.CREATOR)));
+        assertThatThrownBy(() -> service.updateRole(id, null, false))
+                .hasMessageContaining("작성자 역할은 변경할 수 없습니다");
     }
 
     @Test

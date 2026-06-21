@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { Card, Select, Spinner } from '@samhan/design-system'
 import {
   DOC_TYPES,
@@ -19,9 +19,10 @@ export function ApprovalLineConfigPage() {
   const [docType, setDocType] = useState(DOC_TYPES[0]!.value)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [pendingRoleIds, setPendingRoleIds] = useState<Set<string>>(() => new Set())
+  const rolesQueryKey = approvalLineRolesQueryKey(docType)
 
   const rolesQuery = useQuery({
-    queryKey: ['admin', 'approval-line-config', docType],
+    queryKey: rolesQueryKey,
     queryFn: () => fetchApprovalLineRoles(docType),
   })
 
@@ -33,19 +34,25 @@ export function ApprovalLineConfigPage() {
   const updateMutation = useMutation({
     mutationFn: (value: { id: string; approverGroupId: string | null; required: boolean }) =>
       updateApprovalLineRole(value.id, { approverGroupId: value.approverGroupId, required: value.required }),
-    onMutate: (value) => {
+    onMutate: async (value) => {
       setPendingRoleIds((prev) => {
         const next = new Set(prev)
         next.add(value.id)
         return next
       })
+      await queryClient.cancelQueries({ queryKey: rolesQueryKey })
+      const prev = queryClient.getQueryData<ApprovalLineRole[]>(rolesQueryKey)
+      queryClient.setQueryData<ApprovalLineRole[]>(
+        rolesQueryKey,
+        (current) => optimisticallyUpdateApprovalLineRoles(current, value),
+      )
+      return { prev }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'approval-line-config', docType] })
       setToast({ type: 'success', message: '결재라인 설정을 저장했습니다.' })
     },
-    onError: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'approval-line-config', docType] })
+    onError: (_error, _value, context) => {
+      restoreApprovalLineRolesSnapshot(queryClient, rolesQueryKey, context?.prev)
       setToast({ type: 'error', message: '저장 중 오류가 발생했습니다.' })
     },
     onSettled: (_data, _error, value) => {
@@ -54,6 +61,7 @@ export function ApprovalLineConfigPage() {
         next.delete(value.id)
         return next
       })
+      void queryClient.invalidateQueries({ queryKey: rolesQueryKey })
     },
   })
 
@@ -170,13 +178,6 @@ export function ApprovalRoleRow({
   onSave: (approverGroupId: string | null, required: boolean) => void
 }) {
   const isCreator = role.stepType === 'CREATOR'
-  const [groupId, setGroupId] = useState(role.approverGroupId ?? '')
-  const [required, setRequired] = useState(role.required)
-
-  useEffect(() => {
-    setGroupId(role.approverGroupId ?? '')
-    setRequired(role.required)
-  }, [role.approverGroupId, role.required])
 
   return (
     <tr data-testid={`approval-role-${role.label}`}>
@@ -191,11 +192,10 @@ export function ApprovalRoleRow({
           </span>
         ) : (
           <Select
-            value={groupId}
+            value={role.approverGroupId ?? ''}
             onChange={(event) => {
               const nextGroupId = event.target.value
-              setGroupId(nextGroupId)
-              notifyApprovalRoleGroupChange(onSave, nextGroupId, required)
+              notifyApprovalRoleGroupChange(onSave, nextGroupId, role.required)
             }}
             aria-label={`${role.label} 권한 그룹`}
             data-testid={`approval-role-group-${role.label}`}
@@ -212,12 +212,11 @@ export function ApprovalRoleRow({
       <td style={bodyCellStyle}>
         <input
           type="checkbox"
-          checked={required}
+          checked={role.required}
           disabled={isCreator || saving}
           onChange={(event) => {
             const nextRequired = event.target.checked
-            setRequired(nextRequired)
-            notifyApprovalRoleRequiredChange(onSave, groupId, nextRequired)
+            notifyApprovalRoleRequiredChange(onSave, role.approverGroupId ?? '', nextRequired)
           }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
@@ -228,6 +227,35 @@ export function ApprovalRoleRow({
 }
 
 type ApprovalRoleSaveHandler = (approverGroupId: string | null, required: boolean) => void
+type ApprovalRoleUpdateValue = { id: string; approverGroupId: string | null; required: boolean }
+
+export function approvalLineRolesQueryKey(documentType: string) {
+  return ['admin', 'approval-line-config', documentType] as const
+}
+
+export function optimisticallyUpdateApprovalLineRoles(
+  current: ApprovalLineRole[] | undefined,
+  value: ApprovalRoleUpdateValue,
+) {
+  return current?.map((role) => role.id === value.id
+    ? {
+        ...role,
+        approverGroupId: value.approverGroupId,
+        approverGroupName: value.approverGroupId == null ? null : role.approverGroupName,
+        required: value.required,
+      }
+    : role)
+}
+
+export function restoreApprovalLineRolesSnapshot(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+  prev: ApprovalLineRole[] | undefined,
+) {
+  if (prev) {
+    queryClient.setQueryData(queryKey, prev)
+  }
+}
 
 /** 권한그룹 Select 자동저장 계약. 빈 문자열은 그룹 해제(null)로 전송한다. */
 export function notifyApprovalRoleGroupChange(
