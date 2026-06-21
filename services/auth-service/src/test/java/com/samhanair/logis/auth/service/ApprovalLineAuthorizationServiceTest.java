@@ -63,6 +63,22 @@ class ApprovalLineAuthorizationServiceTest {
     }
 
     @Test
+    void authorize_SLIP_INBOUND_USER결재자_일치시_allowedTrue() {
+        // A2-3 회귀 가드 — authorize 는 documentType/actionKey generic. SLIP_INBOUND/INBOUND_RECEIVE 도 동일 동작.
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(
+                "SLIP_INBOUND", "INBOUND_RECEIVE")).thenReturn(Optional.of(role(roleId)));
+        when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
+                .thenReturn(List.of(ApprovalLineApprover.create(roleId, ApproverType.USER, userId)));
+
+        ApprovalLineAuthorizeResponse result = service.authorize("SLIP_INBOUND", "INBOUND_RECEIVE", userId);
+
+        assertThat(result.configured()).isTrue();
+        assertThat(result.allowed()).isTrue();
+    }
+
+    @Test
     void authorize_GROUP_소속시_allowedTrue() {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
