@@ -37,6 +37,10 @@ public class ApprovalLineConfigService {
             if (approverGroupId == null) {
                 role.clearGroup();
             } else {
+                groupRepository.findById(approverGroupId)
+                        .orElseThrow(() -> new BusinessException(
+                                ErrorCode.INVALID_INPUT,
+                                "존재하지 않는 권한 그룹입니다: " + approverGroupId));
                 role.assignGroup(approverGroupId);
             }
         } catch (IllegalStateException ex) {

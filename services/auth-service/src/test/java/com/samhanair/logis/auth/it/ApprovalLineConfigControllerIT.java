@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.samhanair.logis.auth.AuthServiceApplication;
-import com.samhanair.logis.auth.service.EffectivePermissionMaterializer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -51,21 +50,16 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private EffectivePermissionMaterializer materializer;
-
     @BeforeEach
     void setUp() {
-        cleanEffectiveOverrideRows();
+        cleanPermissionRowsWithoutTouchingManagerSeed();
         resetOutboundDispatcherRole();
-        materializer.materializeForAccount(MANAGER_ACCOUNT_ID);
-        materializer.materializeForAccount(SALES_ACCOUNT_ID);
     }
 
     @AfterEach
     void tearDown() {
         resetOutboundDispatcherRole();
-        cleanEffectiveOverrideRows();
+        cleanPermissionRowsWithoutTouchingManagerSeed();
     }
 
     @Test
@@ -112,6 +106,27 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("PUT 출고인 역할 — 미존재 권한그룹 지정은 4xx")
+    void updateDispatcherRole_unknownGroup_returns4xx() throws Exception {
+        UUID roleId = outboundRoleId("출고인");
+        UUID unknownGroupId = UUID.randomUUID();
+
+        MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"approverGroupId":"%s","required":true}
+                                """.formatted(unknownGroupId)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("존재하지 않는 권한 그룹");
+    }
+
+    @Test
     @DisplayName("GET 역할목록 — admin.approval-line-config 미보유 계정은 403")
     void listRoles_salesWithoutGrant_returns403() throws Exception {
         MvcResult result = mockMvc.perform(get("/auth/admin/approval-line-configs")
@@ -149,7 +164,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 """, DOCUMENT_TYPE);
     }
 
-    private void cleanEffectiveOverrideRows() {
+    private void cleanPermissionRowsWithoutTouchingManagerSeed() {
         jdbcTemplate.update("""
                 DELETE FROM account_permission_overrides
                 WHERE account_id IN (?, ?)
@@ -157,8 +172,8 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 """, MANAGER_ACCOUNT_ID, SALES_ACCOUNT_ID, PAGE);
         jdbcTemplate.update("""
                 DELETE FROM account_page_permissions
-                WHERE account_id IN (?, ?)
+                WHERE account_id = ?
                   AND page_code = ?
-                """, MANAGER_ACCOUNT_ID, SALES_ACCOUNT_ID, PAGE);
+                """, SALES_ACCOUNT_ID, PAGE);
     }
 }

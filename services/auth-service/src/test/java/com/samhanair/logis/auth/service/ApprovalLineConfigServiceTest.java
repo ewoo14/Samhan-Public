@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
+import com.samhanair.logis.auth.domain.PermissionGroup;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
@@ -61,6 +62,7 @@ class ApprovalLineConfigServiceTest {
         UUID groupId = UUID.randomUUID();
         ApprovalLineConfig group = role(1, "출고인", StepType.GROUP);
         when(repository.findById(id)).thenReturn(Optional.of(group));
+        when(groupRepository.findById(groupId)).thenReturn(Optional.of(PermissionGroup.create("창고원", null)));
         when(repository.save(group)).thenReturn(group);
         ApprovalLineRoleView view = service.updateRole(id, groupId, false);
         assertThat(view.approverGroupId()).isEqualTo(groupId);
@@ -68,10 +70,23 @@ class ApprovalLineConfigServiceTest {
     }
 
     @Test
+    void updateRole_은_미존재_권한그룹지정시_거부한다() {
+        UUID id = UUID.randomUUID();
+        UUID randomGroupId = UUID.randomUUID();
+        ApprovalLineConfig group = role(1, "출고인", StepType.GROUP);
+        when(repository.findById(id)).thenReturn(Optional.of(group));
+        when(groupRepository.findById(randomGroupId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.updateRole(id, randomGroupId, true))
+                .hasMessageContaining("존재하지 않는 권한 그룹");
+    }
+
+    @Test
     void updateRole_은_CREATOR역할에_권한그룹지정시_거부한다() {
         UUID id = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.of(role(0, "작성자", StepType.CREATOR)));
-        assertThatThrownBy(() -> service.updateRole(id, UUID.randomUUID(), true))
+        when(groupRepository.findById(groupId)).thenReturn(Optional.of(PermissionGroup.create("창고원", null)));
+        assertThatThrownBy(() -> service.updateRole(id, groupId, true))
                 .hasMessageContaining("GROUP 역할");
     }
 
