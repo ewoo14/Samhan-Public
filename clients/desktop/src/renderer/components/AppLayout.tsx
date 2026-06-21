@@ -398,6 +398,7 @@ export function AppLayout() {
   // [C5-2b] MASTER role 문자열 fallback 제거 → system.permission-admin 동적 권한만 사용.
   // BE @RequirePermission(page="system.permission-admin") 가 MASTER bypass 포함 단일 가드.
   const showPermissionDelegation   = showPermissionAdmin
+  const showApprovalLineConfig     = dynamicCanAccess('admin.approval-line-config', 'view')
   const showPartnersList           = dynamicCanAccess('partners.list',                'view')
   const showPartnersBlock          = dynamicCanAccess('partners.block',               'view')
   // partners.edit-request — 현재 미사용 (사이드바 직접 노출/라우트 가드 소비처 없음 — 향후 메뉴 연결 예약).
@@ -411,7 +412,7 @@ export function AppLayout() {
   // [Round A P3] 구 showInventoryGroup 집계 변수 삭제 — 창고운영 그룹 게이트는
   // showWarehouseOpsGroup(창고운영 자식 6개와 1:1 정합) 로 교체되어 미소비(dead) 였음.
   // (사이클1 Codex fix C-4) showPartnersGroup 제거 — /admin/partners 직접 링크는 partners.list 1:1.
-  const showAdminHrGroup   = showAdminEmployees || showPermissionAdmin || showPermissionDelegation
+  const showAdminHrGroup   = showAdminEmployees || showPermissionAdmin || showPermissionDelegation || showApprovalLineConfig
 
   // [C5 follow-up 사이클1 fix] arologis 메뉴 가시성 = 라우트 PermissionGuard 와 동일 page-code 단일 소스.
   // (사이클1 리뷰 FE P1-2 + Designer D-002: 그룹 UUID 매칭은 라우트 가드와 소스 이원화 — seed 불일치 시
@@ -1101,6 +1102,7 @@ export function AppLayout() {
               '/admin/permission-groups/matrix',
               '/admin/permission-groups/manage',
               '/admin/permission-groups/delegation',
+              '/admin/approval-line-config',
             ]}
           >
             {/* admin.employees — MASTER/MANAGER (SP-D4 §2). */}
@@ -1146,6 +1148,13 @@ export function AppLayout() {
               data-testid="sidebar-hr-permission-delegation"
             >
               권한 위임
+            </SidebarLink>
+            <SidebarLink
+              to="/admin/approval-line-config"
+              show={showApprovalLineConfig}
+              data-testid="sidebar-hr-approval-line-config"
+            >
+              결재라인 설정
             </SidebarLink>
           </SidebarCategory>
 

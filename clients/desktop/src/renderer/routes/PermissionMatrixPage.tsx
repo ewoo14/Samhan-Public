@@ -311,6 +311,7 @@ export const PAGE_GROUPS: PageGroup[] = [
     pages: [
       'admin.employees',
       'admin.users',
+      'admin.approval-line-config',
       'ecount.mig2.department',
       'ecount.mig6.employee',
       'ecount.mig6.employee-card',
@@ -439,6 +440,7 @@ export const PAGE_LABEL: Record<PageCode, string> = {
   'dispatch.batch': '배차 SMS batch',
   'admin.permissions': '권한 관리',
   'admin.permission-groups': '권한그룹',
+  'admin.approval-line-config': '결재라인 설정',
   'hr.role-management': '인사 역할관리',
   'system.permission-admin': '시스템 권한',
   'system.password-admin': '비밀번호 관리',
