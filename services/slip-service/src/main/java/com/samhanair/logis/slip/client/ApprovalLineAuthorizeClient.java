@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -28,6 +29,7 @@ public class ApprovalLineAuthorizeClient {
     private final InternalAuthProperties internalAuthProperties;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public ApprovalLineAuthorizeClient(
             @Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
             InternalAuthProperties internalAuthProperties,

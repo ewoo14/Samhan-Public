@@ -36,7 +36,7 @@ public class ApprovalLineAuthorizationService {
     @Transactional(readOnly = true)
     public ApprovalLineAuthorizeResponse authorize(String documentType, String actionKey, UUID userId) {
         return approvalLineConfigRepository
-                .findByDocumentTypeAndActionKeyAndIsDeletedFalse(documentType, actionKey)
+                .findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(documentType, actionKey)
                 .map(role -> authorizeRole(role.getId(), userId))
                 .orElseGet(() -> new ApprovalLineAuthorizeResponse(false, false));
     }

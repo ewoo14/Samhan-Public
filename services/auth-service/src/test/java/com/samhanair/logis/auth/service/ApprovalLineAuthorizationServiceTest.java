@@ -37,7 +37,7 @@ class ApprovalLineAuthorizationServiceTest {
     void authorize_결재자0명은_configuredFalse_allowedFalse() {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        when(configRepository.findByDocumentTypeAndActionKeyAndIsDeletedFalse(DOCUMENT_TYPE, ACTION_KEY))
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, ACTION_KEY))
                 .thenReturn(Optional.of(role(roleId)));
         when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId)).thenReturn(List.of());
 
@@ -51,7 +51,7 @@ class ApprovalLineAuthorizationServiceTest {
     void authorize_USER_결재자_일치시_allowedTrue() {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        when(configRepository.findByDocumentTypeAndActionKeyAndIsDeletedFalse(DOCUMENT_TYPE, ACTION_KEY))
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, ACTION_KEY))
                 .thenReturn(Optional.of(role(roleId)));
         when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
                 .thenReturn(List.of(ApprovalLineApprover.create(roleId, ApproverType.USER, userId)));
@@ -67,7 +67,7 @@ class ApprovalLineAuthorizationServiceTest {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
-        when(configRepository.findByDocumentTypeAndActionKeyAndIsDeletedFalse(DOCUMENT_TYPE, ACTION_KEY))
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, ACTION_KEY))
                 .thenReturn(Optional.of(role(roleId)));
         when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
                 .thenReturn(List.of(ApprovalLineApprover.create(roleId, ApproverType.GROUP, groupId)));
@@ -84,7 +84,7 @@ class ApprovalLineAuthorizationServiceTest {
     void authorize_비결재자는_configuredTrue_allowedFalse() {
         UUID roleId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        when(configRepository.findByDocumentTypeAndActionKeyAndIsDeletedFalse(DOCUMENT_TYPE, ACTION_KEY))
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, ACTION_KEY))
                 .thenReturn(Optional.of(role(roleId)));
         when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
                 .thenReturn(List.of(
@@ -100,9 +100,40 @@ class ApprovalLineAuthorizationServiceTest {
     }
 
     @Test
+    void authorize_userId_null이면_configuredTrue_allowedFalse() {
+        UUID roleId = UUID.randomUUID();
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, ACTION_KEY))
+                .thenReturn(Optional.of(role(roleId)));
+        when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
+                .thenReturn(List.of(ApprovalLineApprover.create(roleId, ApproverType.USER, UUID.randomUUID())));
+
+        ApprovalLineAuthorizeResponse result = service.authorize(DOCUMENT_TYPE, ACTION_KEY, null);
+
+        assertThat(result.configured()).isTrue();
+        assertThat(result.allowed()).isFalse();
+    }
+
+    @Test
+    void authorize_USER결재자만_불일치시_accountGroup조회없이_allowedFalse() {
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, ACTION_KEY))
+                .thenReturn(Optional.of(role(roleId)));
+        when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(roleId))
+                .thenReturn(List.of(ApprovalLineApprover.create(roleId, ApproverType.USER, UUID.randomUUID())));
+
+        ApprovalLineAuthorizeResponse result = service.authorize(DOCUMENT_TYPE, ACTION_KEY, userId);
+
+        assertThat(result.configured()).isTrue();
+        assertThat(result.allowed()).isFalse();
+        // GROUP 결재자 0 → account_groups 조회 early-return(불필요 쿼리 미발생)
+        org.mockito.Mockito.verifyNoInteractions(accountGroupRepository);
+    }
+
+    @Test
     void authorize_미존재_actionKey는_configuredFalse_allowedFalse() {
         UUID userId = UUID.randomUUID();
-        when(configRepository.findByDocumentTypeAndActionKeyAndIsDeletedFalse(DOCUMENT_TYPE, "UNKNOWN"))
+        when(configRepository.findFirstByDocumentTypeAndActionKeyAndIsDeletedFalseOrderBySequenceAsc(DOCUMENT_TYPE, "UNKNOWN"))
                 .thenReturn(Optional.empty());
 
         ApprovalLineAuthorizeResponse result = service.authorize(DOCUMENT_TYPE, "UNKNOWN", userId);
