@@ -143,6 +143,9 @@ public enum PageCode {
     /** 그룹웨어 결재유형 템플릿 빌더 — §7 결재 양식 관리. */
     GROUPWARE_APPROVAL_TEMPLATES("groupware.approval-templates", "결재 양식 관리"),
 
+    /** 결재라인 설정 — 전표종류별 결재 역할에 권한 그룹/필수여부 중앙 정의(인사 그룹). */
+    ADMIN_APPROVAL_LINE_CONFIG("admin.approval-line-config", "결재라인 설정"),
+
     // ---- 매입 (purchases) ----
 
     /** Naver Clova OCR 영수증 발급 화면 (SP-09-3). */
