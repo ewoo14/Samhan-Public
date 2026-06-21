@@ -4,7 +4,24 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-21 — **A2 결재라인 설정 에픽 완결**(A2-1+후속+A2-1b 머지), 다음 = A2-2 enforcement)
+## 🟢 핸드오프 (2026-06-21 야간 자율 — **A2-1c 다중 결재자 머지**, 다음 = A2-2 enforcement)
+
+### ✅ A2-1c 다중 결재자(그룹+개인 캡슐) — PR #555 머지(main `9f85a3219`)
+- **개발책임자 요구(야간)**: "권한그룹 말고 개인도, 캡슐로 여러 개 — 그룹웨어 특정 문서를 특정 인물만 결재."
+- **모델**: `approval_line_approver` 자식(approver_type **GROUP|USER**, N/역할) + `approval_line_config.action_key` 안정앵커(출고인=`OUTBOUND_DISPATCH`/검수인=`OUTBOUND_INSPECT`, **sequence ROW_NUMBER 매핑 — rename 무관**). V62(approverGroupId→GROUP 이관). shared StepType 불변.
+- **FE**: 권한그룹 Select→**결재자 칩 다중입력**(AsyncAutocomplete 그룹+사원 + TagChip, §7 GroupwareApprovalCreatePage 패턴). updateRole→required 전용. 보안: GROUP·USER 모두 **system-master 거부**(대칭).
+- **듀얼리뷰 R1~R4 양쪽 0 수렴**(Opus R1 fix→Codex R2 fix→Opus R3 0→Codex R4 0). 라이브 QA: 칩 persist + system-master 검색 제외·POST 400. QA=`docs/qa/approval-multi-approver-a2-1c/`.
+- **워크플로우 교훈**: 듀얼리뷰 **순차**(Opus 완료·게시→Codex cross-check, **병렬 금지** — 개발책임자 야간 재지적). **Opus 라운드 fix=Opus(Claude) 직접, Codex 라운드 fix=Codex**(line29 — fix 일괄 Codex 디스패치 금지).
+
+### 다음 = A2-2 (출고전표 accept/inspect enforcement)
+A2-1c 의 결재자(그룹∪개인)를 **출고전표 accept/inspect 게이트로 동적 검증**. 설계(brainstorming 확정):
+- **동적 config 조회**(page-code grant E8 폐기 — 개인이 grant 부적합). auth 내부 엔드포인트 `POST /internal/approval-line/authorize {documentType, actionKey, userId}` → 역할(action_key) 결재자집합에 userId ∈ (그룹∪개인) 검증.
+- slip-service accept(`OUTBOUND_DISPATCH`)·inspect(`OUTBOUND_INSPECT`) 게이트 — **slipType==OUTBOUND 만**(입고 회귀 금지). **opt-in**(결재자 0개면 기존 slip.transfer.process 유지). **4-eye 없음**(권장만, 동일인 허용).
+- **실HTTP 회귀 필수**(입고 accept/inspect 200 + @MockBean 없음, [[restclient-contract-test-false-green]]).
+
+---
+
+## 🟢 핸드오프 (2026-06-21 — **A2 결재라인 설정 에픽 완결**(A2-1+후속+A2-1b 머지))
 
 ### ✅ A2 결재라인 설정 에픽 — 3 PR 머지 완료
 | PR | 내용 | main |

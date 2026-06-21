@@ -6,6 +6,8 @@ import static org.mockito.Mockito.lenient;
 
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
+import com.samhanair.logis.slip.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.slip.client.ApprovalLineAuthorizeResult;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,12 +41,17 @@ public abstract class AbstractPostgresIT {
     @MockBean
     protected DynamicPermissionClient dynamicPermissionClient;
 
+    @MockBean
+    protected ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
+
     @BeforeEach
     void setUpDynamicPermissionClient() {
         lenient().when(dynamicPermissionClient.canView(anyString(), anyString())).thenReturn(true);
         lenient().when(dynamicPermissionClient.canEdit(anyString(), anyString())).thenReturn(true);
         lenient().when(dynamicPermissionClient.check(any(UUID.class), anyString(), any(PermissionAction.class)))
                 .thenReturn(true);
+        lenient().when(approvalLineAuthorizeClient.authorize(anyString(), anyString(), any(UUID.class)))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
     }
 
     @SuppressWarnings("resource")
