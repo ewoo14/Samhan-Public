@@ -4,6 +4,29 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-21 — 사원 서명 에픽 **C2 머지 완료 PR #549**, 다음 = C3)
+
+### ✅ C2 머지 완료 (PR #549, main `c7f0e62c5`)
+- **C2.0** BE qrUrl `/api/public/...` → `/s/{token}` 정합 (**brainstorming 재검토가 단독 발견** — C1b 가 웹앱 페이지 아닌 POST API URL 발급, 폰으로 열면 SignaturePad 미진입). user-service IT 전량.
+- **C2.1~C2.3** desktop 서명 등록 모달(업로드+QR 핸드오프+2s 폴링) — adminApi 3함수, signatureImage(canvas≤50KB+SHA-256, **CSP `img-src` blob 차단→FileReader**), SignatureRegisterModal+mock.
+- **C2.4/C2.5** 신규 `clients/web/mobile-public` 공개 손서명 웹앱(vite+React, design-system SignaturePad, NO-AUTH 토큰 게이트, `/s/:token` 진입).
+- **C2.6** nginx 배포 문서(api-gateway reactive 라 정적 native 불가→nginx) + **C2.7 ci.yml frontend-mobile-public 잡**(false-green 차단).
+- **듀얼리뷰 사이클 N=3 수렴**: 🔵Opus R1(P2 3+P3 다수) → 🟣Codex R2(새 P2 2: 만료 재발급 mutate·crypto.subtle 폴백 + P3 2) → 🔵Opus R3 검증(JS SHA-256 폴백 Node crypto 18길이 byte 일치 실증) = blocking 0. CI 26/26. 🐳 라이브 실QA 2라운드 실 BE 제출 200(`docs/qa/signature-c2/`).
+
+### 🪤 이번 세션 교훈 (다음 세션 적용)
+1. **Codex 쓰기 = MCP danger-full-access 만 작동**(이 auto-mode 세션). workspace-write(MCP·exec·Bash샌드박스해제 전부)=read-only 강등, exec bypass=auto-mode 하드 차단. [[feedback_codex_plugin_setup]] description 갱신. (개발책임자 "auto-mode 에서 잘 됐는데 방법?" 추궁이 진단 촉발 — MCP danger-full-access 가 과거 작동 경로)
+2. **사이클 N=3 = Opus R1 → Codex R2 fix → Opus R3 검증** 의무. Codex fix 후 Opus 최종 검증 없이 머지 시도 = 개발책임자 적발. [[feedback_dual_5agent_review]] 재강조. R3 가 단위테스트 미커버 영역(JS SHA-256 멀티블록) 단독 검증.
+3. **crypto.subtle 은 LAN HTTP(비 secure-context)에서 비활성** — dev 실폰(`http://LAN-IP:5185`) 제출 실패. 순수 JS SHA-256 폴백(BE MessageDigest byte 일치). 단위 'abc'(단일블록)≠멀티블록.
+4. **desktop renderer 라이브 QA = Electron IPC(`window.samhanAuth`) 라 순수 브라우저 부팅 불가** — desktop 모달 실 캡처 불가, API 레벨+Playwright(mock) 갈음. mobile-public 은 순수 web 이라 실 캡처 가능.
+5. **로컬 api-gateway Docker 이미지 stale** — C1b 공개 라우트 머지 전 빌드본이라 `/api/public/employee-signatures/**` slip 오라우팅 500. 라이브 QA 단독 적발(재빌드 해소). 코드(application.yml) 무해, fresh CI/prod 무관.
+
+### 다음 = C3 (slip enrichment + 출고전표 결재란 스탬프)
+- spec: `docs/superpowers/specs/2026-06-21-employee-signature-stamp-design.md` §6 / plan: `…-C3-stamp-plan.md`
+- 내용: slip-service `getOne` dispatcher/inspector 이름+서명 resolve(**신규 구축**, 현재 raw UUID 저장) + `SlipDetailResponse` reshape(+`ownerSignaturePng`) + DispatchView/OutboundView RoleCell `signaturePng` stub 주입(작성자/출고인/검수인 3자). RestClient 계약테스트 다운스트림 선검증([[feedback_restclient_contract_test_false_green]]) + 라이브 전표 스탬프 캡처.
+- 의존: C1a `POST /internal/users/signatures` 배치(머지됨, join key=Employee.id). 인감=실시간 조회(스냅샷 거부).
+
+---
+
 ## 🟢 핸드오프 (2026-06-21 야간 — 사원 서명 에픽 C1a·C1b 머지 완료, **다음 = C2**)
 
 ### 완료

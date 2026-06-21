@@ -48,3 +48,14 @@
 ## 4. react-query 캐시 stale
 - 편집 mutation 이 연관 list 쿼리(`['partnerRevisions', code]` 등)를 invalidate 안 하면 탭 전환만으로는
   최신 안 보임. 같은 SPA 세션 재오픈으로도 안 되면 문서 리로드 필요. → 근본 fix 는 onSuccess invalidate.
+
+## 5. crypto.subtle 은 LAN HTTP(비 secure-context)에서 비활성 (2026-06-21 C2 mobile-public)
+- 공개 모바일 web 앱(`clients/web/mobile-public` 등)이 `window.crypto.subtle.digest`(SHA-256)에 의존하면,
+  **dev 실폰 접속 origin `http://<PC-LAN-IP>:5185`(비 secure-context)에서 subtle=undefined** → 제출 전 throw.
+  (Chrome 은 `http://localhost` 만 secure 취급, LAN IP HTTP 는 insecure.) prod HTTPS·localhost 는 정상이라
+  **localhost 라이브 QA 로는 안 잡힘**(C2 Codex R2 적발, Opus R3 가 폴백 정확성 검증).
+- 해법: `globalThis.crypto?.subtle` 가용 시 사용, 없으면 **순수 JS SHA-256 폴백**(외부의존 0, BE `MessageDigest`
+  와 byte-for-byte 일치). ⚠️ 단위 'abc'(단일블록) 벡터만으로 불충분 — 멀티블록(>55byte)·대용량은 Node crypto 대조
+  필수. slip 인수자 공개 서명 등 향후 공개 web 서명 동일 적용.
+- **desktop renderer 는 Electron IPC(`window.samhanAuth`) 라 순수 브라우저 부팅 불가** → 실 캡처 시 §3 shim
+  필수. mobile-public 같은 순수 web 앱은 shim 없이 실 브라우저 캡처 가능(C2 desktop 모달은 캡처 불가, API+mock 갈음).
