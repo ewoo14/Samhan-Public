@@ -31,7 +31,7 @@ public abstract class ApprovalStepBase extends BaseEntity {
     private StepType stepType;
 
     /** USER 모드 결재자 사원 UUID. 기존 컬럼 {@code approver_id} 에 매핑(컬럼명 불변). */
-    @Column(name = "approver_id")
+    @Column(name = "approver_id", updatable = false)
     private UUID approverUserId;
 
     /** GROUP 모드 권한 그룹 UUID(표시·설정용, A2). */
@@ -62,7 +62,10 @@ public abstract class ApprovalStepBase extends BaseEntity {
     @Column(name = "reason", length = 500)
     private String reason;
 
-    /** 결재 시점 동결 서명 PNG(A3 에서 채움). list 조회 부하 회피 위해 LAZY. */
+    /**
+     * 결재 시점 동결 서명 PNG(A3 에서 채움). LAZY 는 Hibernate bytecode enhancement 전제이며,
+     * 미적용 시 EAGER 로 강등된다. A3 서명 동결 시 enhancement 또는 projection/별도 테이블 병행이 필수다.
+     */
     @Basic(fetch = FetchType.LAZY)
     @Column(name = "signature_png_snapshot")
     private byte[] signaturePngSnapshot;

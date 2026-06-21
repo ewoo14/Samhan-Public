@@ -93,7 +93,7 @@ public class ApprovalLine extends ApprovalLineBase {
     /** 결재 chain 에 USER 단계 추가. sequence 0-base 자동, 요청자 본인 차단. */
     public ApprovalStep appendStep(UUID approverUserId) {
         if (approverUserId == null) {
-            throw new IllegalArgumentException("approverId 필수");
+            throw new IllegalArgumentException("approverUserId 필수");
         }
         if (approverUserId.equals(getRequesterId())) {
             throw new IllegalArgumentException("요청자 본인은 결재자가 될 수 없습니다");
