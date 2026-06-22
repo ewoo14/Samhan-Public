@@ -20,6 +20,13 @@ export interface ApprovalLineStructure {
   actionKey: string | null
 }
 
+export interface ApprovalLineDefaultApprover {
+  sequence: number
+  label: string
+  userId: string
+  displayName: string
+}
+
 export interface ApprovalLineGroupOption {
   id: string
   name: string
@@ -93,6 +100,17 @@ export async function fetchApprovalLineStructure(documentType: string): Promise<
     `/auth/approval-line-configs/${encodeURIComponent(documentType)}/structure`,
   )
   return res.data.data ?? []
+}
+
+export async function fetchDefaultApprovers(documentType: string): Promise<ApprovalLineDefaultApprover[]> {
+  try {
+    const res = await apiClient.get<ApiEnvelope<ApprovalLineDefaultApprover[]>>(
+      `/auth/approval-line-configs/${encodeURIComponent(documentType)}/default-approvers`,
+    )
+    return res.data.data ?? []
+  } catch {
+    return []
+  }
 }
 
 export async function fetchApprovalLineGroups(): Promise<ApprovalLineGroupOption[]> {
