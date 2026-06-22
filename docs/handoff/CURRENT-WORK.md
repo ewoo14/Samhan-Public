@@ -4,7 +4,31 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-22 집PC — **🎉 동적 결재라인 에픽 종료. 슬5 capstone 머지 PR #567. 다음=개발책임자 지정 대기**)
+
+### ✅ 슬5 capstone 머지 완료 (PR #567, main `b8ffe1e59`) — 에픽 종료
+- **메뉴↔권한설정 정합 + 권한설정 동작 검증**(검증 중심 슬라이스). 3원 정합(사이드바60↔매트릭스179↔BE enum) clean, admin.approval-line-config 4중 정합. 라이브 QA 3캡처(매트릭스 MASTER / 결재라인 설정 / MANAGER 가드 차단 redirect) `docs/qa/menu-permission-capstone-s5/`.
+- **적발+fix**: `sales.partner-order.convert` BE PageCode enum 누락 → `SALES_PARTNER_ORDER_CONVERT` 추가(매트릭스↔enum C=0). **저심각도 카탈로그 정합**(접근차단 아님 — `getMyPermissions`: MASTER=allPageActions(enum)/비-MASTER=bulkLoad(DB,enum무관)). 코드 변경=enum 1상수(additive·Flyway 0).
+- dev-report `docs/dev-reports/2026-06-22-menu-permission-capstone-s5.md`. duo리뷰(Claude QA 갭적발+Codex 확인) 수렴, CI 25 pass·GitGuardian skipping.
+
+### ⏭️ 후속 (에픽 외, 문서화됨 — 개발책임자 지정 대기)
+- **카탈로그 드리프트 family**: legacy 시드 page-code 3종(`ecount.mig14.cash-list`·`ecount.mig14.aging-snapshot`·`sales.partner-order.revisions`)이 BE enum 누락(저심각도, MASTER /my 목록만 영향). **부활/폐기 판단 동반** 별도 슬라이스.
+- **enum↔Flyway seed↔FE 매트릭스 3원 자동 대조 가드 테스트**(drift CI fail) — 근본원인 해소 권장.
+- **arologis Phase B 6 page-code**(arologis.hr.*·accounting.*) — arologis-desktop 백오피스 소관(별도 클라이언트).
+- **슬4d 후속**: structure 엔드포인트 게이트웨이 403(slice-3 재사용, fresh 스택 재확인 권장).
+
+### 🔑 이 세션 워크플로우 교훈 (메모리 박제)
+- **[[per-round-live-qa]] 강화**: 라이브 QA를 "변화 없으니 스킵" 합리화 금지 → 리뷰 R1 전 스택 먼저 기동 + 캡처 없는 라운드=미완. **추가**: 라이브 결과 해석도 **코드로 검증**(슬5에서 "RBAC 버그" 과장 → getMyPermissions 코드 확인 후 "저심각도 카탈로그 정합" 2회 정정).
+
+### 🖥️ 세션 종료 상태
+- 동적 결재라인 에픽 **완결**(슬1 #560·슬2 #561·슬3 #562·슬4a #563·슬4b #564·슬4c #565·슬4d #566·슬5 #567).
+- Docker 스택(gateway/auth/user/slip/partner-order/postgres/eureka, **auth·slip 신 이미지**) + standalone 렌더러 :5175 가동 중 → 세션 종료 시 `docker compose ... down` + 렌더러 종료. (재개 시 git pull + sync-claude-memory.ps1.)
+
+---
+
 ## 🟢 핸드오프 (2026-06-22 집PC — **슬4d 입고전표 결재란 머지 완료 PR #566. 다음=슬5(capstone)로 에픽 종료**)
+
+### ✅ 슬4d 머지 완료 (PR #566, main `b60acebc3`)
 
 ### ✅ 슬4d 머지 완료 (PR #566, main `b60acebc3`)
 - **입고전표(매입전표) 설정기반 결재란 + 결재 서명자 이름 자동채움**. 정식 입고 인쇄=`PurchaseSlipPrintPage`(`/purchases/:id/print/purchase`). 고아 `InboundView`(`/print/inbound`) 폐기(슬1 OutboundView 선례).
