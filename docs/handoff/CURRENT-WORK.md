@@ -4,7 +4,7 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-22 — **동적 결재라인 에픽 착수: 슬1 판매전표 양식통일+명칭 머지 #560**)
+## 🟢 핸드오프 (2026-06-22 — **동적 결재라인 에픽: 슬1 #560 + 슬2 #561 머지, 다음=슬3**)
 
 > "결재라인 확장" = 개발책임자 클래리피케이션: **결재라인 동적 변경(단계 추가/삭제/이름 즉시적용) + 실시간 렌더링 + 전 전표 + 시드 삭제 경고 모달**. brainstorming(superpowers)로 재정의 → 에픽 spec 작성.
 
@@ -18,11 +18,17 @@
 - 판매 도메인 사용자 노출 "출고전표"/"작업지시서" → **"판매전표"** 전체 스윕(리스트/대시보드/주문전환/병합/견적변환/SlipForm/SlipList + 인쇄버튼 "판매전표 출력"). 기술키 SLIP_OUTBOUND·입고전표·groupware enum 불변.
 - 듀얼리뷰 Opus 5-agent(Designer P2 명칭공존 적발→전체스윕) + Codex 5-agent 크로스체크 = **양쪽 0 blocking**. Docker 라이브 실QA 5/5(`docs/qa/sales-slip-form-unify-rename-s1/`). CI green(GitGuardian dev_p05_pass! = PM false-positive 판정).
 
-### ⏭️ 슬2 착수 예정 = 결재라인 단계 동적 추가/삭제 + 경고 모달 (auth BE + FE)
-- BE: `POST /auth/admin/approval-line-configs`(단계 추가·action_key=NULL·sequence=max+1) + `DELETE /{id}`(soft-delete+자식 결재자 cascade·CREATOR 거부). 조회 응답에 `enforced`(action_key≠NULL)·`seedManaged` 노출. **Flyway 신규 없음**.
-- FE: 단계 추가 버튼 + 삭제 아이콘. enforced/시드 단계 삭제 시 **design-system Modal 경고**("이 단계 삭제 시 해당 동작 결재강제 해제"). 자동저장.
-- **🔖 슬2 동반 편입**: 결재 역할 라벨 **출고인→출고자, 검수인→검수자**("인"→"자") 정정 = **신규 V65**(`UPDATE approval_line_config SET label='출고자'/'검수자' WHERE document_type='SLIP_OUTBOUND' AND created_by='v61-seed' AND label IN('출고인'/'검수인')`, V61 불변 [[applied-migration-immutable]], created_by 가드로 사용자 rename 보존, fresh probe) + mock(`mock.ts` 출고인/검수인) + 인쇄 결재란(DispatchView 작업지시서 결재란). ※ action_key는 sequence 매핑이라 rename 무관(enforcement 무영향).
-- 회귀: 실HTTP authorize 계약([[restclient-contract-test-false-green]]·[[enforcement-real-http-test]]). Docker 라이브 QA.
+### ✅ 슬2 머지 완료 (PR #561, main `875ceffc`)
+- BE(auth): `POST /auth/admin/approval-line-configs`(추가·action_key=NULL 표시·서명용·sequence max+1) + `DELETE /{id}`(soft-delete+자식 cascade·CREATOR 거부·멱등) + `ApprovalLineRoleView` enforced/seedManaged. authorize 회귀 IT(추가 무게이트·enforced 삭제후 configured=false·입고/주문 무회귀). **V65** 출고인→출고자·검수인→검수자(created_by 가드·fresh probe). **Flyway=V65뿐**.
+- FE: 단계 추가 버튼+삭제 아이콘+`getApprovalLineDeleteConfirmation`(enforced||seedManaged→강제 경고 Modal) optimistic+rollback. mock add/delete stateful.
+- 듀얼리뷰 Opus 5-agent(0 blocking+2 fix: @Size·slip 메시지 출고자/검수자) + Codex 5-agent(BLOCKING 1 자체적발: Rename DTO @Size+IT) = **양쪽 0 수렴**, 리뷰 3건+GG판정 PR 게시. CI all green(GG dev_p05_pass! false-positive). V65 실QA 2/2(`docs/qa/dynamic-approval-step-crud-s2/`).
+- 🔑 **config 페이지 라이브 QA 한계**: `/admin/approval-line-config`=PermissionGuard(admin.approval-line-config). standalone QA-env에서 **실 admin 엔드포인트 403**(미변경 GET도 동일=게이트웨이 identity/권한해석, 슬2 무관 [[local-stack-qa-gotchas]])·**mock은 기본 MANAGER 권한무보유 대시보드 리다이렉트** → config UI 라이브 캡처 불가. **동작=실 Testcontainers IT 증명**(add/delete/CREATOR/authorize). 단계 추가/삭제 UI 실캡처는 향후 권한 보유 계정/방법 확보 시.
+
+### ⏭️ 다음 = 슬3 (판매전표 결재란 설정기반 렌더 + 실시간 미리보기 + print-renderer 재타깃) — FE
+- `DispatchView` 결재란 가운데 3칸(작성자/출고자/검수자) → SLIP_OUTBOUND 설정 기반 렌더. 서명자 매핑: CREATOR→ownerFullName, action_key=OUTBOUND_DISPATCH→dispatcher, OUTBOUND_INSPECT→inspector, **추가 단계(action_key=NULL)→빈 서명칸**. 담당부서/결제예정일 정보칸 유지.
+- 설정 페이지 결재란 **실시간 미리보기** 패널.
+- **print-renderer 재타깃**(슬1/슬2 이연): `PrintRendererApp.tsx`(헤드리스 사본, 현 OutboundView 금액 클론·`:273` "출고인" 잔존) → 판매전표(작업지시서) 레이아웃 + 설정기반 결재란. DispatchView props 기반 재사용 컴포넌트화.
+- spec §4 슬3. 착수 시 plan.
 
 ### 🔑 슬1 워크플로우 교훈 (메모리/박제)
 - **CI에 "Desktop Playwright (mock 회귀 hard gate)" 잡 존재**(ci.yml 아닌 별도 워크플로, ~7~8분) → playwright/mock 변경 CI 검증됨. (정적 리뷰어가 "Playwright job 없음" 오판 — 별도 워크플로 확인 필요.)
