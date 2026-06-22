@@ -27,60 +27,13 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@samhan/design-system'
-import { getSlip, type SlipDetail, type SlipLineDetail } from '../api/slip'
+import { getSlip } from '../api/slip'
 import { listWarehouses, type Warehouse } from '../api/inventory'
+import { fetchApprovalLineStructure } from '../api/approvalLineConfigApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { stripSlipNoZeros } from '../utils/orderNo'
+import { DispatchDocument } from './DispatchDocument'
 import { useFitOneA4 } from './useFitOneA4'
-
-/**
- * 품목명 표시 — 원본 양식은 모델코드 + 괄호 설명 한 컬럼 (예: "AJ040MXHNBC1 (MX단배관)").
- * 모델명과 품목명이 다르면 결합, 같거나 한쪽만 있으면 그 값.
- */
-function lineDisplayName(l: SlipLineDetail): string {
-  const model = l.modelName?.trim() || ''
-  const product = l.productName?.trim() || ''
-  if (model && product && product !== model) return `${model} (${product})`
-  return model || product || '-'
-}
-
-/** "YYYY-MM-DD" → "MM/DD" (원본 양식 월/일 컬럼). */
-function toMonthDay(isoDate: string | null | undefined): string {
-  if (!isoDate || isoDate.length < 10) return ''
-  return `${isoDate.slice(5, 7)}/${isoDate.slice(8, 10)}`
-}
-
-/**
- * `<RoleCell>` — 결재란 5칸 셀 (Designer components.md § 4.4).
- *
- * 2026-06-10 개발책임자 정정: 작성자/출고자/검수자 칸은 **서명(위) + 바로 아래 이름** 구조.
- * 서명 이미지는 사원 서명 등록 슬라이스(별도 PR — 사원등록 메뉴) 후 signaturePng 주입,
- * 그 전까지는 서명 영역 placeholder 빈 공간 + 이름만 하단 표시. time(HH:mm) 표시는 폐기.
- */
-function RoleCell({
-  label,
-  value,
-  signaturePng,
-}: {
-  label: string
-  value?: string | null
-  /** 사원 등록 서명 PNG dataURL — 사원 서명 슬라이스 후 배선 (현재 undefined). */
-  signaturePng?: string | null
-}) {
-  return (
-    <div className="dispatch-role-cell">
-      <div className="dispatch-role-label">{label}</div>
-      <div className="dispatch-role-value">
-        {signaturePng ? (
-          <img className="dispatch-role-stamp" src={signaturePng} alt={`${label} 서명`} />
-        ) : (
-          <span className="dispatch-role-stamp-space" />
-        )}
-        {value ? <span className="name">{value}</span> : null}
-      </div>
-    </div>
-  )
-}
 
 export function DispatchView() {
   const params = useParams<{ id: string }>()
@@ -94,6 +47,10 @@ export function DispatchView() {
   const warehousesQuery = useQuery<Warehouse[]>({
     queryKey: ['warehouses'],
     queryFn: listWarehouses,
+  })
+  const approvalLineStructureQuery = useQuery({
+    queryKey: ['approval-line-structure', 'SLIP_OUTBOUND'],
+    queryFn: () => fetchApprovalLineStructure('SLIP_OUTBOUND'),
   })
 
   // 한 A4 자동 비율 — 품목 수 변동 시 재측정 (개발책임자 2026-06-10)
@@ -114,17 +71,12 @@ export function DispatchView() {
     )
   }
 
-  const slip: SlipDetail = detailQuery.data
-  const totalQty = slip.lines.reduce((sum, l) => sum + l.quantity, 0)
+  const slip = detailQuery.data
   const sourceWarehouseName =
     warehousesQuery.data?.find((w) => w.id === slip.sourceWarehouseId)?.name ?? '-'
-  const displaySlipNoFallback = stripSlipNoZeros(
-    slip.slipNo ?? `${(slip.slipDate ?? '').split('-').join('/')}-${slip.seqNo}`,
-  )
-  const monthDay = toMonthDay(slip.slipDate)
-  /** 결재칸 발행일 MMDD (샘플 '0610' = 발행 당일). */
-  // 결제예정일 (개발책임자 정정 2026-06-10: '결제' → '결제예정일', 값 = slip.paymentDueDate MM/DD)
-  const paymentDueMmdd = slip.paymentDueDate ? toMonthDay(slip.paymentDueDate) : ''
+  const approvalRoles = approvalLineStructureQuery.isSuccess
+    ? approvalLineStructureQuery.data
+    : null
 
   return (
     <div>
@@ -137,137 +89,12 @@ export function DispatchView() {
         </Button>
       </div>
 
-      <div className="dispatch-page" ref={fitRef} style={{ zoom }}>
-        <div className="dispatch-logo-strip">
-          <span className="dispatch-logo-placeholder">SAMSUNG</span>
-        </div>
-
-        <header className="dispatch-header-row">
-          <div className="dispatch-partner-name-box">
-            {slip.partnerName ?? '-'}
-          </div>
-          {/* 2026-06-10 개발책임자 정정: 담당자→작성자, 결제→결제예정일. 작성자/출고자/검수자 = 서명+이름 */}
-          <div className="dispatch-roles" aria-label="작성자 및 결재">
-            <RoleCell label="담당부서" value={slip.ownerDepartment ?? null} />
-            <RoleCell label="작성자" value={slip.ownerFullName ?? null} />
-            <RoleCell label="출고자" value={slip.dispatcher?.fullName ?? null} />
-            <RoleCell label="검수자" value={slip.inspector?.fullName ?? null} />
-            <RoleCell label="결제예정일" value={paymentDueMmdd} />
-          </div>
-        </header>
-
-        <div className="dispatch-meta-row">
-          {/* 전표번호 표준 저장값은 유지하고, 인쇄 표시에서만 뒤 번호부 0을 제거한다. */}
-          <div className="dispatch-slip-no-box">
-            {displaySlipNoFallback}
-          </div>
-          <div className="dispatch-warehouse-emphasis">
-            {sourceWarehouseName}
-          </div>
-        </div>
-
-        {/* 원본 양식(2026-06-10 샘플): 월/일 | 품목명(모델+명 결합) | 규격 | 수량 */}
-        <table className="dispatch-table">
-          <thead>
-            <tr>
-              <th className="col-date">월/일</th>
-              <th className="col-product">품목명</th>
-              <th className="col-spec">규격</th>
-              <th className="col-qty">수량</th>
-            </tr>
-          </thead>
-          <tbody>
-            {slip.lines.map((l) => (
-              <tr key={l.id}>
-                <td className="col-date">{monthDay}</td>
-                <td className="col-product">{lineDisplayName(l)}</td>
-                <td className="col-spec">{l.specification || ''}</td>
-                <td className="col-qty">{l.quantity.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td className="col-date" />
-              <td className="total-label">총합계</td>
-              <td className="col-spec" />
-              <td className="col-qty total-qty">{totalQty.toLocaleString()}</td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <div className="dispatch-bottom-group">
-          <div className="dispatch-address-box">
-            {slip.shippingAddress ?? '-'}
-          </div>
-          <div className="dispatch-info-box">
-            <span className="label">연락처:</span>
-            <span className="content">{slip.contactPhone ?? '-'}</span>
-          </div>
-          <div className="dispatch-info-box">
-            <span className="label">특이사항:</span>
-            <span className="content">{slip.memo ?? '-'}</span>
-          </div>
-
-          <p className="dispatch-driver-call-notice">
-            기사님 출발전에 수요처에 전화주세요~ 감사합니다^^
-          </p>
-
-          {/* 사용자 명시 (Slice C2 follow-up): confirm + signatures + liability 한 박스로 묶기 */}
-          <div className="dispatch-liability-box">
-          <p className="dispatch-confirm-notice">
-            ※ 제품수량 및 이상유무 확인 후 서명 必
-          </p>
-
-          <div className="dispatch-signatures" aria-label="서명">
-            {/*
-              link-dispatch-slice: 기사명이 입력된 경우 라벨에 자동 노출 (괄호 안).
-              인쇄 본문 디자인 자체는 변경 X (피드백 `feedback_print_design_iteration.md` 가드).
-            */}
-            <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
-              용달기사 서명
-              {slip.driverSignaturePng ? (
-                <>
-                  <img
-                    className="dispatch-role-signature-img"
-                    src={slip.driverSignaturePng}
-                    alt="용달기사 서명"
-                  />
-                  <div className="dispatch-role-signature-meta">
-                    <span className="date">{slip.driverSignedAt?.slice(0, 10) ?? ''}</span>
-                  </div>
-                </>
-              ) : null}
-            </div>
-            {/*
-              signature-slice-C 신규: 인수자 서명 셀 안에 signaturePng 있으면 <img> 렌더.
-              CSS-only 추가 (Designer wireframes.md §4.3 / tokens.md §1.3 — max-width 100% +
-              max-height 18mm + object-fit contain). 셀 자체 grid / 폭 변경 없음.
-              PNG 미존재 시 기존 라벨 유지 (서명 없음 분기 — wireframes.md §4.2).
-            */}
-            <div className="dispatch-sign-label-only dispatch-recipient-sign-cell">
-              인수자 서명
-              {slip.signaturePng ? (
-                <>
-                  <img
-                    className="dispatch-role-signature-img"
-                    src={slip.signaturePng}
-                    alt="인수자 서명"
-                  />
-                  <div className="dispatch-role-signature-meta">
-                    <span className="date">{slip.signedAt?.slice(0, 10) ?? ''}</span>
-                  </div>
-                </>
-              ) : null}
-            </div>
-          </div>
-
-          <p className="dispatch-liability-notice">
-            제품 인수시 수량 제품상태 이상 유무 확인 후 서명 부탁드립니다.<br />
-            서명 후 생긴 문제는 당사가 책임지지 않습니다.
-          </p>
-          </div>
-        </div>
+      <div ref={fitRef} style={{ zoom }}>
+        <DispatchDocument
+          slip={slip}
+          roles={approvalRoles}
+          sourceWarehouseName={sourceWarehouseName}
+        />
       </div>
     </div>
   )

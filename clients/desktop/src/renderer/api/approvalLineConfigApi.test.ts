@@ -3,6 +3,7 @@ import { apiClient } from './client'
 import {
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
+  fetchApprovalLineStructure,
   addApprovalLineApprover,
   addApprovalLineStep,
   DOC_TYPES,
@@ -55,6 +56,20 @@ describe('approvalLineConfigApi contract', () => {
 
     expect(apiClient.get).toHaveBeenCalledWith(
       '/auth/admin/approval-line-configs?documentType=SLIP_OUTBOUND',
+    )
+  })
+
+  it('GET /approval-line-configs/{documentType}/structure 로 비-admin 구조를 조회한다', async () => {
+    const rows = [
+      { sequence: 0, label: '작성자', stepType: 'CREATOR', actionKey: null },
+      { sequence: 1, label: '출고자', stepType: 'GROUP', actionKey: 'OUTBOUND_DISPATCH' },
+    ]
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: rows } })
+
+    await expect(fetchApprovalLineStructure('SLIP_OUTBOUND')).resolves.toBe(rows)
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/auth/approval-line-configs/SLIP_OUTBOUND/structure',
     )
   })
 

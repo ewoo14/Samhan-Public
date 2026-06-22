@@ -4,6 +4,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, test, vi } from 'vitest'
 import {
   ApprovalRoleRow,
+  ApprovalLinePreviewPanel,
   approvalLineRolesQueryKey,
   areApprovalRoleOrdersEqual,
   computeApprovalRoleReorder,
@@ -157,6 +158,21 @@ describe('ApprovalRoleRow', () => {
     expect(getApprovalLineDeleteConfirmation({ ...roleDispatcher, enforced: false, seedManaged: false }).message)
       .toBe('이 단계를 삭제할까요?')
   })
+
+  test('미리보기 패널은 편집 중 역할 라벨과 단계 수를 즉시 반영한다', () => {
+    const html = renderToStaticMarkup(
+      createElement(ApprovalLinePreviewPanel, {
+        roles: [roleCreator, { ...roleDispatcher, label: '출고담당' }, roleInspector, roleExtra],
+      }),
+    )
+
+    expect(html).toContain('결재란 미리보기')
+    expect(html).toContain('작성자')
+    expect(html).toContain('출고담당')
+    expect(html).toContain('검수자')
+    expect(html).toContain('확인자')
+    expect(html).toContain('preview-signature-placeholder')
+  })
 })
 
 // ── 샘플 역할 픽스처 ──
@@ -191,6 +207,17 @@ const roleInspector: ApprovalLineRole = {
   required: true,
   enforced: true,
   seedManaged: true,
+}
+
+const roleExtra: ApprovalLineRole = {
+  id: 'r3',
+  sequence: 3,
+  label: '확인자',
+  stepType: 'GROUP',
+  approvers: [],
+  required: true,
+  enforced: false,
+  seedManaged: false,
 }
 
 describe('notifyApprovalRoleLabelChange (Task 3)', () => {

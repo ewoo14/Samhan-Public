@@ -13,6 +13,13 @@ export interface ApprovalLineRole {
   seedManaged: boolean
 }
 
+export interface ApprovalLineStructure {
+  sequence: number
+  label: string
+  stepType: StepType
+  actionKey: string | null
+}
+
 export interface ApprovalLineGroupOption {
   id: string
   name: string
@@ -40,6 +47,13 @@ export const DOC_TYPES: { value: string; label: string }[] = [
 export async function fetchApprovalLineRoles(documentType: string): Promise<ApprovalLineRole[]> {
   const res = await apiClient.get<ApiEnvelope<ApprovalLineRole[]>>(
     `/auth/admin/approval-line-configs?documentType=${encodeURIComponent(documentType)}`,
+  )
+  return res.data.data ?? []
+}
+
+export async function fetchApprovalLineStructure(documentType: string): Promise<ApprovalLineStructure[]> {
+  const res = await apiClient.get<ApiEnvelope<ApprovalLineStructure[]>>(
+    `/auth/approval-line-configs/${encodeURIComponent(documentType)}/structure`,
   )
   return res.data.data ?? []
 }

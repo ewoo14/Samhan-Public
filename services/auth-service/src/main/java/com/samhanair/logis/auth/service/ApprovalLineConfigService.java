@@ -9,6 +9,7 @@ import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
+import com.samhanair.logis.auth.web.dto.ApprovalLineStructureView;
 import com.samhanair.logis.auth.web.dto.ApproverView;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -41,6 +42,18 @@ public class ApprovalLineConfigService {
     public List<ApprovalLineRoleView> listRoles(String documentType) {
         return repository.findByDocumentTypeOrderBySequenceAsc(documentType).stream()
                 .map(this::toView)
+                .toList();
+    }
+
+    /** 전표 인쇄 결재란 렌더용 구조(sequence/label/type/actionKey)만 조회한다. */
+    @Transactional(readOnly = true)
+    public List<ApprovalLineStructureView> listStructure(String documentType) {
+        return repository.findByDocumentTypeOrderBySequenceAsc(documentType).stream()
+                .map(role -> new ApprovalLineStructureView(
+                        role.getSequence(),
+                        role.getLabel(),
+                        role.getStepType(),
+                        role.getActionKey()))
                 .toList();
     }
 
