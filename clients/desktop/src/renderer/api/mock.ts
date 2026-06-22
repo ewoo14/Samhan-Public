@@ -9252,6 +9252,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     )
   }
 
+  const approvalLineDefaultApproversMatch = url.match(/\/(?:auth\/)?approval-line-configs\/([^/?]+)\/default-approvers$/)
+  if (method === 'GET' && approvalLineDefaultApproversMatch) {
+    const documentType = decodeURIComponent(approvalLineDefaultApproversMatch[1] ?? '')
+    return envelope(
+      _mockApprovalLineConfigRoles
+        .filter((role) => role.documentType === documentType && !role.isDeleted)
+        .sort((a, b) => a.sequence - b.sequence)
+        .flatMap(mockApprovalLineDefaultApproverViews),
+    )
+  }
+
   if (method === 'POST' && url.match(/\/(?:auth\/)?admin\/approval-line-configs$/)) {
     const body = parseMockBody(config)
     const documentType = String(body['documentType'] ?? '').trim()
@@ -12767,6 +12778,29 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     actionKey: 'PARTNER_ORDER_CONVERT',
     createdBy: 'v64-seed',
   },
+  // 슬4c 그룹웨어 지출결의서 — default-approvers 프리필 검증용 USER 결재자.
+  {
+    id: 'mock-approval-line-groupware-expense-reviewer',
+    documentType: 'GROUPWARE_EXPENSE_REPORT',
+    sequence: 1,
+    label: '검토자',
+    stepType: 'USER',
+    approvers: [{ id: 'mock-approval-line-groupware-expense-reviewer-user', type: 'USER', refId: 'user-002' }],
+    required: true,
+    actionKey: null,
+    createdBy: 'mock-s4c-seed',
+  },
+  {
+    id: 'mock-approval-line-groupware-expense-approver',
+    documentType: 'GROUPWARE_EXPENSE_REPORT',
+    sequence: 2,
+    label: '승인자',
+    stepType: 'USER',
+    approvers: [{ id: 'mock-approval-line-groupware-expense-approver-user', type: 'USER', refId: 'user-005' }],
+    required: true,
+    actionKey: null,
+    createdBy: 'mock-s4c-seed',
+  },
 ]
 
 const _mockPermissionGroupMatrices: Record<string, Record<string, MockActionMatrix>> = {
@@ -12842,6 +12876,17 @@ function mockApprovalLineStructureView(role: MockApprovalLineRole) {
     stepType: role.stepType,
     actionKey: role.actionKey,
   }
+}
+
+function mockApprovalLineDefaultApproverViews(role: MockApprovalLineRole) {
+  return role.approvers
+    .filter((approver) => approver.type === 'USER')
+    .map((approver) => ({
+      sequence: role.sequence,
+      label: role.label,
+      userId: approver.refId,
+      displayName: mockApprovalLineApproverDisplayName(approver),
+    }))
 }
 
 function mockApprovalLineApproverDisplayName(approver: MockApprovalLineApprover) {

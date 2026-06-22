@@ -4,6 +4,7 @@ import {
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
   fetchApprovalLineStructure,
+  fetchDefaultApprovers,
   addApprovalLineApprover,
   addApprovalLineStep,
   DOC_TYPES,
@@ -104,6 +105,26 @@ describe('approvalLineConfigApi contract', () => {
     expect(apiClient.get).toHaveBeenCalledWith(
       '/auth/approval-line-configs/SLIP_OUTBOUND/structure',
     )
+  })
+
+  it('GET /approval-line-configs/{documentType}/default-approvers 로 기본 결재자를 조회한다', async () => {
+    const rows = [
+      { sequence: 2, label: '최종승인', userId: 'user-008', displayName: '김관리' },
+      { sequence: 1, label: '검토', userId: 'user-002', displayName: '이회계' },
+    ]
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: rows } })
+
+    await expect(fetchDefaultApprovers('GROUPWARE_EXPENSE/REPORT')).resolves.toBe(rows)
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/auth/approval-line-configs/GROUPWARE_EXPENSE%2FREPORT/default-approvers',
+    )
+  })
+
+  it('기본 결재자 조회 실패 시 빈 배열을 반환하고 throw 하지 않는다', async () => {
+    vi.mocked(apiClient.get).mockRejectedValueOnce(new Error('auth unavailable'))
+
+    await expect(fetchDefaultApprovers('GROUPWARE_EXPENSE_REPORT')).resolves.toEqual([])
   })
 
   it('PUT /approval-line-configs/{id} 에 필수 payload 만 전송한다', async () => {

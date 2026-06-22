@@ -4,7 +4,7 @@
  * 생성 본문은 ApprovalLineCreateRequest 계약(templateId/fieldValues/title/content/approverIds)과
  * 일치한다. 첨부는 결재 생성 후 전용 endpoint 로 순차 등록한다.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -27,6 +27,10 @@ import {
   listActiveApprovalTemplates,
   type ApprovalTemplate,
 } from '../api/groupwareApprovalTemplate'
+import {
+  fetchDefaultApprovers,
+  type ApprovalLineDefaultApprover,
+} from '../api/approvalLineConfigApi'
 import { DynamicApprovalFieldInput } from '../components/groupware/DynamicApprovalFieldInput'
 import { DocumentReferencePicker, type DocumentReferenceValue } from '../components/groupware/DocumentReferencePicker'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -94,6 +98,47 @@ function approverLabel(approver: ApproverOption): string {
   return approver.department ? `${approver.name} (${approver.department})` : approver.name
 }
 
+export function mapDefaultApproversToApproverOptions(defaultApprovers: ApprovalLineDefaultApprover[]): ApproverOption[] {
+  return [...defaultApprovers]
+    .sort((a, b) => a.sequence - b.sequence)
+    .map((approver) => ({
+      userId: approver.userId,
+      name: approver.displayName,
+      department: null,
+    }))
+}
+
+export async function loadDefaultApproverOptions(
+  templateCode: string | null | undefined,
+  fetcher: (documentType: string) => Promise<ApprovalLineDefaultApprover[]> = fetchDefaultApprovers,
+): Promise<ApproverOption[]> {
+  if (!templateCode) return []
+  try {
+    const defaultApprovers = await fetcher(`GROUPWARE_${templateCode}`)
+    return mapDefaultApproversToApproverOptions(defaultApprovers)
+  } catch {
+    return []
+  }
+}
+
+export function shouldApplyDefaultApproverPrefill(
+  capturedEditVersion: number,
+  currentEditVersion: number,
+  cancelled: boolean,
+): boolean {
+  return !cancelled && capturedEditVersion === currentEditVersion
+}
+
+export function addApproverOption(current: ApproverOption[], item: ApproverOption): ApproverOption[] {
+  return current.some((approver) => approver.userId === item.userId)
+    ? current
+    : [...current, item]
+}
+
+export function removeApproverAt(current: ApproverOption[], index: number): ApproverOption[] {
+  return current.filter((_, itemIndex) => itemIndex !== index)
+}
+
 function referenceChipValue(ref: ReferenceDraft): string {
   return ref.refDocNo ?? ref.refPartnerName ?? ref.refDocLabel ?? '(미입력)'
 }
@@ -114,6 +159,7 @@ export function GroupwareApprovalCreatePage() {
   const [references, setReferences] = useState<ReferenceDraft[]>([])
   const [files, setFiles] = useState<FileDraft[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const approverEditVersionRef = useRef(0)
 
   usePageTitle('결재 작성')
 
@@ -126,10 +172,29 @@ export function GroupwareApprovalCreatePage() {
 
   const templates = Array.isArray(templatesQuery.data) ? templatesQuery.data : []
   const selectedTemplate: ApprovalTemplate | undefined = templates.find((template) => template.id === templateId)
+  const selectedTemplateCode = selectedTemplate?.code ?? ''
   const sortedFields = useMemo(
     () => selectedTemplate ? [...selectedTemplate.fields].sort((a, b) => a.displayOrder - b.displayOrder) : [],
     [selectedTemplate],
   )
+
+  useEffect(() => {
+    let cancelled = false
+    const capturedEditVersion = approverEditVersionRef.current
+    setApprovers([])
+    void loadDefaultApproverOptions(selectedTemplateCode).then((defaultApprovers) => {
+      if (shouldApplyDefaultApproverPrefill(
+        capturedEditVersion,
+        approverEditVersionRef.current,
+        cancelled,
+      )) {
+        setApprovers(defaultApprovers)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTemplateCode])
 
   const approverIds = approvers.map((approver) => approver.userId)
   const missingRequired = sortedFields.some((field) =>
@@ -194,15 +259,13 @@ export function GroupwareApprovalCreatePage() {
 
   const addApprover = (item: ApproverOption | null) => {
     if (!item) return
-    setApprovers((current) =>
-      current.some((approver) => approver.userId === item.userId)
-        ? current
-        : [...current, item],
-    )
+    approverEditVersionRef.current += 1
+    setApprovers((current) => addApproverOption(current, item))
   }
 
   const removeApprover = (index: number) => {
-    setApprovers((current) => current.filter((_, itemIndex) => itemIndex !== index))
+    approverEditVersionRef.current += 1
+    setApprovers((current) => removeApproverAt(current, index))
   }
 
   if (templatesQuery.isLoading) {
