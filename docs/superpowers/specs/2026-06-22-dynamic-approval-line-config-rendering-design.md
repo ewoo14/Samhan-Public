@@ -98,15 +98,19 @@
 - mock: 단계 추가/삭제 lifecycle 반영(in-process mock 3원칙 [[inprocess-mock-principles]]).
 **검증**: Docker 실서버 라이브 — 단계 추가/삭제 persist, enforced 단계 삭제 시 경고 모달 + 삭제 후 해당 동작 게이트 해제 실증, 추가 단계는 게이트 무영향. 캡처 PR 인라인.
 
-### 슬3 — 판매전표 결재란 설정기반 렌더 + 실시간 미리보기 (FE)
-**범위**
-- `DispatchView` `dispatch-roles` 가운데 3칸(작성자/출고인/검수인) → **SLIP_OUTBOUND 설정 기반 렌더**. 설정 조회(역할 목록, sequence 순) → 역할별 셀 = `{설정 label} + 매칭 서명자`.
+### 슬3 — 판매전표 결재란 설정기반 렌더 + 실시간 미리보기 + print-renderer 통일 (auth BE read + FE) [개발책임자 2026-06-22 승인]
+**범위** (구현 순서: ①→②→④→③)
+- **① BE 비-admin read 엔드포인트**(auth): `GET /auth/approval-line-configs/{documentType}/structure` — **인증 사용자면 누구나**, **구조만**(sequence/label/stepType/actionKey). **결재자 신원·권한 제외**(저민감). admin 편집 엔드포인트 불변. 인쇄/문서뷰(판매 사용자)가 결재란 구조 read 용. IT: 인증 200·구조 정확·비인증 401.
+- **② `DispatchView` `dispatch-roles` 가운데 3칸(작성자/출고자/검수자) → SLIP_OUTBOUND 설정 기반 렌더**. ① read 엔드포인트 useQuery → 역할별 셀 = `{설정 label} + 매칭 서명자`. 구조 페치 실패 시 기존 3역할 폴백(graceful).
   - **서명자 매핑**: `step_type=CREATOR` → 작성자(`slip.ownerFullName`); `action_key=OUTBOUND_DISPATCH` → `slip.dispatcher?.fullName`; `action_key=OUTBOUND_INSPECT` → `slip.inspector?.fullName`; **추가 단계(action_key=NULL)** → 빈 서명칸(이름·서명 공백, 수기/후속 서명 등록 대상).
   - `담당부서`·`결제예정일`은 결재 역할 아님 → **정보칸으로 현행 유지**(설정 비편입).
-- 설정 페이지: 편집 중 결재란 **실시간 미리보기 패널**(라벨/순서/추가/삭제 즉시 반영). 가능하면 `PrintLayout` approval grid 패턴 재사용.
-- **print-renderer 재타깃**(슬1 이연분): `DispatchView`를 props 기반 재사용 컴포넌트로 분리하면서 `print-renderer/PrintRendererApp.tsx`(헤드리스 사본 합성)가 OutboundView 금액 클론 대신 **판매전표(작업지시서) 레이아웃 + 설정기반 결재란**을 사용하도록 전환. 사본(창고/기사/인수자) 인쇄도 판매전표 단일 양식으로 통일.
-**검증**: 설정에서 라벨 변경/단계 추가 → 판매전표 인쇄 결재란 반영 라이브 캡처. UUID 비공개([[uuid-no-user-visibility]]) — 이름만, action_key/UUID 비노출.
+  - **④ print-renderer 통일**(슬3 포함 — 개발책임자 결정): `DispatchView`를 **props 기반 재사용 presentational 컴포넌트**로 추출(작업지시서 양식 + 설정기반 결재란). 인터랙티브 라우트 + `print-renderer/PrintRendererApp.tsx`(헤드리스 사본 합성) **양쪽이 공유** → 사본(창고/기사/인수자)도 판매전표 단일 양식·금액 없음·출고자/검수자. OutboundView 금액 클론·`PrintRendererApp.tsx:273` "출고인" 제거.
+- **③ 설정 페이지 실시간 미리보기 패널**(`ApprovalLineConfigPage`): 편집 중 라벨/순서/추가/삭제 즉시 반영. 가능하면 ② 공유 컴포넌트/`PrintLayout` 패턴 재사용.
+**검증/QA**:
+- DispatchView 설정기반 결재란: **실 read 엔드포인트 + 판매 사용자 토큰 → 라이브 실캡처 가능**(설정 라벨/추가단계 반영). UUID 비공개([[uuid-no-user-visibility]]) — 이름만.
+- ⚠️ 설정 페이지 **미리보기는 admin 페이지 내** → 슬2 동일 admin-게이트(QA-env 403/리다이렉트)로 라이브 캡처 한계 → **미리보기 로직 vitest 검증**(정직 명시).
 **위험**: 매핑이 action_key 의존 → 사용자가 enforced 단계 삭제 후 재추가(action_key=NULL)하면 서명자 자동매핑 끊김(빈칸). 경고 모달로 사전 고지(D2).
+**듀얼리뷰 순차 강제([[temp-multimodel-workflow]] line29)**: 🔵 Opus 5-agent 완료·게시 → 🟣 Codex 5-agent 완료·게시 → PM 종합. **동시 금지**. Opus fix=Claude 직접/Codex fix=Codex. 0 수렴까지.
 
 ### 슬4+ (이후) — 전 전표 확장
 - 슬2~3을 입고전표(INBOUND)·주문(PARTNER_ORDER)·회계전표·견적·배차·거래명세서로 순차 적용. 전표별 (a) 설정 DOC_TYPE 시드/노출 (b) 인쇄 뷰 결재란 설정기반 전환 (c) 서명자 매핑.
