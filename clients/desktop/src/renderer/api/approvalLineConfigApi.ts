@@ -37,12 +37,49 @@ export interface ApprovalLineUserOption {
   displayName: string
 }
 
+export type ConfigurableDocType = {
+  value: string
+  label: string
+  kind: 'SLIP' | 'GROUPWARE'
+}
+
+interface ActiveApprovalTemplateDto {
+  code: string
+  name: string
+  active?: boolean
+  displayOrder?: number
+}
+
 /** 결재라인 설정 대상 전표 종류. */
 export const DOC_TYPES: { value: string; label: string }[] = [
   { value: 'SLIP_OUTBOUND', label: '판매전표' },
   { value: 'SLIP_INBOUND', label: '입고전표' },
   { value: 'PARTNER_ORDER', label: '주문' },
 ]
+
+const SLIP_CONFIGURABLE_DOC_TYPES: ConfigurableDocType[] = DOC_TYPES.map((type) => ({
+  ...type,
+  kind: 'SLIP',
+}))
+
+export async function fetchConfigurableDocTypes(): Promise<ConfigurableDocType[]> {
+  try {
+    const res = await apiClient.get<ApiEnvelope<ActiveApprovalTemplateDto[]>>(
+      '/groupware/approval-templates/active',
+    )
+    const groupwareDocTypes = (res.data.data ?? [])
+      .filter((template) => template.active !== false)
+      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+      .map((template) => ({
+        value: `GROUPWARE_${template.code}`,
+        label: template.name,
+        kind: 'GROUPWARE' as const,
+      }))
+    return [...SLIP_CONFIGURABLE_DOC_TYPES, ...groupwareDocTypes]
+  } catch {
+    return [...SLIP_CONFIGURABLE_DOC_TYPES]
+  }
+}
 
 export async function fetchApprovalLineRoles(documentType: string): Promise<ApprovalLineRole[]> {
   const res = await apiClient.get<ApiEnvelope<ApprovalLineRole[]>>(

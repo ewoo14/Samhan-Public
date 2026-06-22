@@ -8,6 +8,7 @@ import {
   addApprovalLineStep,
   DOC_TYPES,
   deleteApprovalLineStep,
+  fetchConfigurableDocTypes,
   removeApprovalLineApprover,
   renameApprovalLineRole,
   reorderApprovalLineRoles,
@@ -35,6 +36,38 @@ describe('approvalLineConfigApi contract', () => {
   it('DOC_TYPES 에 입고전표와 주문 옵션을 포함한다', () => {
     expect(DOC_TYPES).toContainEqual({ value: 'SLIP_INBOUND', label: '입고전표' })
     expect(DOC_TYPES).toContainEqual({ value: 'PARTNER_ORDER', label: '주문' })
+  })
+
+  it('전표 3종과 활성 그룹웨어 템플릿을 설정 가능한 문서종류로 조합한다', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        data: [
+          { code: 'EXPENSE_REPORT', name: '지출결의서', active: true, displayOrder: 1 },
+          { code: 'LEAVE_REQUEST', name: '휴가신청서', active: true, displayOrder: 2 },
+          { code: 'INACTIVE_TEMPLATE', name: '비활성 양식', active: false, displayOrder: 3 },
+        ],
+      },
+    })
+
+    await expect(fetchConfigurableDocTypes()).resolves.toEqual([
+      { value: 'SLIP_OUTBOUND', label: '판매전표', kind: 'SLIP' },
+      { value: 'SLIP_INBOUND', label: '입고전표', kind: 'SLIP' },
+      { value: 'PARTNER_ORDER', label: '주문', kind: 'SLIP' },
+      { value: 'GROUPWARE_EXPENSE_REPORT', label: '지출결의서', kind: 'GROUPWARE' },
+      { value: 'GROUPWARE_LEAVE_REQUEST', label: '휴가신청서', kind: 'GROUPWARE' },
+    ])
+
+    expect(apiClient.get).toHaveBeenCalledWith('/groupware/approval-templates/active')
+  })
+
+  it('그룹웨어 템플릿 조회 실패 시 전표 3종만 반환하고 throw 하지 않는다', async () => {
+    vi.mocked(apiClient.get).mockRejectedValueOnce(new Error('groupware unavailable'))
+
+    await expect(fetchConfigurableDocTypes()).resolves.toEqual([
+      { value: 'SLIP_OUTBOUND', label: '판매전표', kind: 'SLIP' },
+      { value: 'SLIP_INBOUND', label: '입고전표', kind: 'SLIP' },
+      { value: 'PARTNER_ORDER', label: '주문', kind: 'SLIP' },
+    ])
   })
 
   it('GET /approval-line-configs 에 documentType query 를 전송한다', async () => {

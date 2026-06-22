@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, test, vi } from 'vitest'
 import {
+  ApprovalLineDocTypeOptionGroups,
   ApprovalRoleRow,
   ApprovalLinePreviewPanel,
   approvalLineRolesQueryKey,
@@ -18,9 +19,10 @@ import {
   optimisticallyDeleteApprovalLineStep,
   optimisticallyRemoveApprovalLineApprover,
   optimisticallyUpdateApprovalLineRoles,
+  resolveApprovalLineDocTypeSelection,
   restoreApprovalLineRolesSnapshot,
 } from '../ApprovalLineConfigPage'
-import type { ApprovalLineRole } from '../../api/approvalLineConfigApi'
+import type { ApprovalLineRole, ConfigurableDocType } from '../../api/approvalLineConfigApi'
 
 describe('ApprovalRoleRow', () => {
   test('CREATOR 역할은 전표 작성자 자동 텍스트와 비활성 필수 체크박스를 렌더한다', () => {
@@ -172,6 +174,35 @@ describe('ApprovalRoleRow', () => {
     expect(html).toContain('검수자')
     expect(html).toContain('확인자')
     expect(html).toContain('preview-signature-placeholder')
+  })
+})
+
+describe('ApprovalLineDocTypeSelect', () => {
+  const docTypes: ConfigurableDocType[] = [
+    { value: 'SLIP_OUTBOUND', label: '판매전표', kind: 'SLIP' },
+    { value: 'SLIP_INBOUND', label: '입고전표', kind: 'SLIP' },
+    { value: 'PARTNER_ORDER', label: '주문', kind: 'SLIP' },
+    { value: 'GROUPWARE_EXPENSE_REPORT', label: '지출결의서', kind: 'GROUPWARE' },
+    { value: 'GROUPWARE_LEAVE_REQUEST', label: '휴가신청서', kind: 'GROUPWARE' },
+  ]
+
+  test('전표와 그룹웨어 문서종류를 optgroup 으로 나누어 렌더한다', () => {
+    const html = renderToStaticMarkup(
+      createElement(ApprovalLineDocTypeOptionGroups, {
+        docTypes,
+      }),
+    )
+
+    expect(html).toContain('label="전표"')
+    expect(html).toContain('label="그룹웨어"')
+    expect(html).toContain('판매전표')
+    expect(html).toContain('지출결의서')
+    expect(html).toContain('GROUPWARE_EXPENSE_REPORT')
+  })
+
+  test('현재 선택값이 동적 목록에 없으면 첫 문서종류로 보정한다', () => {
+    expect(resolveApprovalLineDocTypeSelection('UNKNOWN', docTypes)).toBe('SLIP_OUTBOUND')
+    expect(resolveApprovalLineDocTypeSelection('GROUPWARE_LEAVE_REQUEST', docTypes)).toBe('GROUPWARE_LEAVE_REQUEST')
   })
 })
 
