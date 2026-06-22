@@ -12,17 +12,18 @@
 - dev-report `docs/dev-reports/2026-06-22-menu-permission-capstone-s5.md`. duo리뷰(Claude QA 갭적발+Codex 확인) 수렴, CI 25 pass·GitGuardian skipping.
 
 ### ⏭️ 후속 (에픽 외, 문서화됨 — 개발책임자 지정 대기)
-- ✅ **후속1 머지(PR #568, main `42b850719`)** — 카탈로그 드리프트 해소 + 시드↔enum 자동 가드: `sales.partner-order.revisions`(활성 RESTORE) enum 편입 + `PageCodeSeedConsistencyIT`(실 DB 5테이블 page_code↔enum∪legacy, drift CI fail). legacy 2종(cash-list/aging-snapshot)=의도적 폐기 allowlist. 드리프트 적발 실증(false-green 아님).
-- ✅ **후속2 해소(코드변경 0)** — 슬4d structure 403 = **stale 게이트웨이 이미지 artifact**(QA 스택 게이트웨이가 #562 머지 전 06-21 이미지). 현재 코드 정확(application.yml:186 라우트 존재) → 게이트웨이 재빌드 후 structure **200**(3역할) 확인. fresh 스택/프로덕션 정상. 교훈: QA 스택은 변경 무관 서비스도 최신 머지 반영 위해 재빌드 필요([[local-stack-qa-gotchas]]).
-- ⏭️ **후속3 (다음, 대형)**: arologis Phase B 6 page-code(arologis.hr.*·accounting.*) — arologis-desktop 백오피스 매트릭스/메뉴/시드 동기화(부활/폐기 판단 동반). 별도 클라이언트.
+- ✅ **후속1 머지(PR #568, main `42b850719`)** — 카탈로그 드리프트 해소 + 시드↔enum 자동 가드: `sales.partner-order.revisions`(활성 RESTORE) enum 편입 + `PageCodeSeedConsistencyIT`(실 DB 5테이블 page_code↔enum∪legacy, drift CI fail). legacy 2종(cash-list/aging-snapshot)=의도적 폐기 allowlist. 드리프트 적발 실증(false-green 아님). **라이브 검증**: auth 재빌드 후 MASTER `/my` total 186 에 revisions·convert 실노출 확인.
+- ✅ **후속2 해소(코드변경 0)** — 슬4d structure 403 = **stale 게이트웨이 이미지 artifact**(QA 스택 게이트웨이가 #562 머지 전 06-21 이미지). 현재 코드 정확(application.yml:186 라우트 존재) → 게이트웨이 재빌드 후 structure **200**(3역할) 라이브 확인. fresh 스택/프로덕션 정상. 교훈: QA 스택은 변경 무관 서비스도 최신 머지 반영 위해 재빌드 필요([[local-stack-qa-gotchas]]).
+- ⏭️ **후속3 (다음 세션, 대형) = arologis Phase B 백오피스 배선**: 정찰 확정 — 6 page-code 중 **5개가 arologis-desktop 미배선**(`arologis.hr.employees`·`arologis.hr.departments`·`arologis.accounting.cashbook`·`arologis.accounting.summary`·`arologis.admin.permissions` = clients/arologis-desktop/src 0파일; `arologis.accounting.accounts`만 3파일 일부). BE PageCode enum/시드엔 정의(PageCodeTest 단언). arologis-desktop엔 `routes/admin/PermissionsPage.tsx`(권한A) 존재. → **착수=brainstorming**(어떤 Phase B 백오피스 기능 활성/보류·기능 존부·매트릭스/메뉴/시드 동기화·부활/폐기). 별도 독립 클라이언트([[project_arologis_independent]]).
 - 잔여 권장: enum↔**FE 매트릭스** 크로스언어 가드(현 후속1 가드는 시드↔enum 축; convert/revisions 는 시드에도 있어 커버됨).
 
 ### 🔑 이 세션 워크플로우 교훈 (메모리 박제)
 - **[[per-round-live-qa]] 강화**: 라이브 QA를 "변화 없으니 스킵" 합리화 금지 → 리뷰 R1 전 스택 먼저 기동 + 캡처 없는 라운드=미완. **추가**: 라이브 결과 해석도 **코드로 검증**(슬5에서 "RBAC 버그" 과장 → getMyPermissions 코드 확인 후 "저심각도 카탈로그 정합" 2회 정정).
 
-### 🖥️ 세션 종료 상태
-- 동적 결재라인 에픽 **완결**(슬1 #560·슬2 #561·슬3 #562·슬4a #563·슬4b #564·슬4c #565·슬4d #566·슬5 #567).
-- Docker 스택(gateway/auth/user/slip/partner-order/postgres/eureka, **auth·slip 신 이미지**) + standalone 렌더러 :5175 가동 중 → 세션 종료 시 `docker compose ... down` + 렌더러 종료. (재개 시 git pull + sync-claude-memory.ps1.)
+### 🖥️ 세션 종료 상태 (집PC, 정리 완료)
+- 동적 결재라인 에픽 **완결**(슬1 #560·슬2 #561·슬3 #562·슬4a #563·슬4b #564·슬4c #565·슬4d #566·슬5 #567) + 후속1 #568(드리프트 가드)·후속2 해소(structure 403). git clean, main `eb20eb001`+.
+- **Docker 스택·렌더러 정리(down) 완료.** (재개 시: `git pull` → `.\scripts\sync-claude-memory.ps1` → 본 파일 읽기.)
+- **다음 세션 = 후속3 (arologis Phase B 백오피스 배선)** — brainstorming부터. 위 ⏭️후속3 정찰 결과 참조.
 
 ---
 
