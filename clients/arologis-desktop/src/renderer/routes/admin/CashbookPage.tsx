@@ -34,7 +34,7 @@ import {
   type SimpleAccountView,
 } from '../../api/arologisAccounting'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { canManageHr, useAuthStore } from '../../stores/authStore'
+import { usePermissions } from '../../hooks/usePermissions'
 
 /** 기간 선택 방식 — 월별 또는 직접 지정(from~to). */
 type PeriodMode = 'month' | 'range'
@@ -62,8 +62,8 @@ export function CashbookPage(): JSX.Element {
   usePageTitle('회계 — 현금출납장')
 
   const queryClient = useQueryClient()
-  const auth = useAuthStore((s) => s.auth)
-  const canManage = canManageHr(auth?.role)
+  const { canAccess } = usePermissions()
+  const canManage = canAccess('arologis.accounting.cashbook', 'update')
 
   const today = useMemo(() => new Date(), [])
   const [periodMode, setPeriodMode] = useState<PeriodMode>('month')

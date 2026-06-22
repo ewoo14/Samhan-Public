@@ -31,7 +31,8 @@ import {
   type RoleHistoryRow,
 } from '../../api/arologisHr'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { canGrantMaster, canManageHr, useAuthStore } from '../../stores/authStore'
+import { usePermissions } from '../../hooks/usePermissions'
+import { canGrantMaster, useAuthStore } from '../../stores/authStore'
 
 type EmployeeModalState =
   | { mode: 'create' }
@@ -71,7 +72,8 @@ export function EmployeesPage(): JSX.Element {
   const [modal, setModal] = useState<EmployeeModalState>(null)
   const [provisioned, setProvisioned] = useState<ProvisionedEmployee | null>(null)
   const auth = useAuthStore((s) => s.auth)
-  const canManage = canManageHr(auth?.role)
+  const { canAccess } = usePermissions()
+  const canManage = canAccess('arologis.hr.employees', 'update')
   const canGrantMasterRole = canGrantMaster(auth?.role)
 
   const departmentsQuery = useQuery({

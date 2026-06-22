@@ -5,8 +5,8 @@
  * 노출될 계정의 "활성상태"를 토글한다. 비활성 계정은 거래 등록 드롭다운에서 숨겨지나 과거 거래는
  * 그대로 보존된다(계정 삭제 아님).
  *
- * 권한: 대표실(마스터)·회계팀(회계사원)만 — canManageAccounts. BE page-code
- * `arologis.accounting.accounts` @RequirePermission 이 최종 방어한다.
+ * 권한: `arologis.accounting.accounts` page-code update 권한 보유자만 활성상태를 변경한다.
+ * BE @RequirePermission 이 최종 방어한다.
  *
  * 표기 규칙(개발책임자 2026-06-09): 내부 필드명 'active'를 화면에 노출하지 않고 "활성상태"로 표시한다.
  */
@@ -21,7 +21,7 @@ import {
   type SimpleAccountView,
 } from '../../api/arologisAccounting'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { canManageAccounts, useAuthStore } from '../../stores/authStore'
+import { usePermissions } from '../../hooks/usePermissions'
 
 /** 활성상태 필터 — 전체/활성만/비활성만. */
 type ActiveFilter = 'all' | 'active' | 'inactive'
@@ -43,8 +43,8 @@ export function AccountsPage(): JSX.Element {
   usePageTitle('회계 — 계정과목 관리')
 
   const queryClient = useQueryClient()
-  const auth = useAuthStore((s) => s.auth)
-  const canManage = canManageAccounts(auth?.role)
+  const { canAccess } = usePermissions()
+  const canManage = canAccess('arologis.accounting.accounts', 'update')
 
   const [typeFilter, setTypeFilter] = useState<AccountType | ''>('')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all')
@@ -149,7 +149,7 @@ export function AccountsPage(): JSX.Element {
 
       {!canManage ? (
         <div role="note" style={noticeStyle}>
-          활성상태 변경은 대표실·회계팀(마스터·회계사원)만 가능합니다. 현재 계정은 조회만 됩니다.
+          활성상태 변경 권한이 없습니다. 현재 계정은 조회만 됩니다.
         </div>
       ) : null}
 

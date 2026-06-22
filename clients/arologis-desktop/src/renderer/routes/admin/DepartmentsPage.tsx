@@ -21,7 +21,7 @@ import {
   type DepartmentRow,
 } from '../../api/arologisHr'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { canManageHr, useAuthStore } from '../../stores/authStore'
+import { usePermissions } from '../../hooks/usePermissions'
 
 type DepartmentModalState =
   | { mode: 'create' }
@@ -34,8 +34,8 @@ export function DepartmentsPage(): JSX.Element {
 
   const queryClient = useQueryClient()
   const [modal, setModal] = useState<DepartmentModalState>(null)
-  const auth = useAuthStore((s) => s.auth)
-  const canManage = canManageHr(auth?.role)
+  const { canAccess } = usePermissions()
+  const canManage = canAccess('arologis.hr.departments', 'update')
 
   const departmentsQuery = useQuery({
     queryKey: ['arologis', 'hr', 'departments'],

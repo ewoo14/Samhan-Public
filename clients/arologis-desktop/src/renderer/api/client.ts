@@ -18,7 +18,20 @@ import axios, {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios'
+import { getMockResponse, isMockMode } from './mock'
 import { useAuthStore } from '../stores/authStore'
+
+interface MockHttpResponse {
+  __mockStatus: number
+  body: unknown
+}
+
+function isMockHttpResponse(value: unknown): value is MockHttpResponse {
+  return typeof value === 'object'
+    && value !== null
+    && '__mockStatus' in value
+    && 'body' in value
+}
 
 const BASE_URL =
   import.meta.env.VITE_AROLOGIS_API_BASE ?? 'http://localhost:8097'
@@ -35,6 +48,28 @@ export const apiClient: AxiosInstance = axios.create({
 
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    if (isMockMode()) {
+      const mock = getMockResponse(config)
+      if (mock !== null) {
+        const status = isMockHttpResponse(mock) ? mock.__mockStatus : 200
+        config.adapter = async () => {
+          const response = {
+            data: isMockHttpResponse(mock) ? mock.body : mock,
+            status,
+            statusText: status >= 400 ? 'Mock Error' : 'OK',
+            headers: {},
+            config,
+            request: {},
+          }
+          if (status >= 400) {
+            throw new axios.AxiosError('Mock Error', undefined, config, {}, response)
+          }
+          return response
+        }
+        return config
+      }
+    }
+
     // 1순위 — zustand 캐시 (동기, 매 요청 비용 0).
     let token = useAuthStore.getState().getAccessToken()
     // 2순위 — IPC 조회 (앱 부팅 직후 등 캐시 미스).
