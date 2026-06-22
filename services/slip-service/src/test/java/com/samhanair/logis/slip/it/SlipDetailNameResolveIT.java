@@ -9,6 +9,7 @@ import static org.mockito.Mockito.lenient;
 import static org.springframework.test.web.client.ExpectedCount.manyTimes;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withResourceNotFound;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -136,8 +137,28 @@ class SlipDetailNameResolveIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.acceptedByFullName", is("입고담당")))
                 .andExpect(jsonPath("$.data.inspectorFullName", is("검수담당")))
-                // accept() 가 slipType 무관 acceptedBy==dispatcherUserId 동일 설정(Slip.java:932) → INBOUND 도 dispatcherFullName 채워짐(FE INBOUND 매핑은 미사용).
-                .andExpect(jsonPath("$.data.dispatcherFullName", is("입고담당")));
+                // getOne 이 INBOUND 에서는 dispatcherFullName 을 resolve 하지 않는다(출고자=OUTBOUND 만).
+                // accept() 가 acceptedBy==dispatcherUserId 동일 설정해도 INBOUND 응답엔 노출 안 함.
+                .andExpect(jsonPath("$.data.dispatcherFullName", nullValue()));
+    }
+
+    @Test
+    @DisplayName("user-service 404(미존재 서명자)는 graceful 하게 이름 null + GET 200 정상 반환")
+    void getInboundDetail_gracefulNullWhenUserServiceMissing() throws Exception {
+        UUID acceptedBy = UUID.randomUUID();
+        UUID inspector = UUID.randomUUID();
+        Slip slip = saveInboundCompleted(acceptedBy.toString(), inspector.toString());
+
+        // 입고자만 등록 → 검수자(inspector) 는 미등록 → user-service 404 → graceful null.
+        registerUserName(acceptedBy, "입고담당");
+        expectUserNameRequests();
+
+        mockMvc.perform(get("/slips/{id}", slip.getId())
+                        .header(USER_ID_HEADER, UUID.randomUUID().toString())
+                        .header(USER_ROLE_HEADER, "WAREHOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.acceptedByFullName", is("입고담당")))
+                .andExpect(jsonPath("$.data.inspectorFullName", nullValue()));
     }
 
     @Test
@@ -157,7 +178,8 @@ class SlipDetailNameResolveIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.dispatcherFullName", is("출고담당")))
                 .andExpect(jsonPath("$.data.inspectorFullName", is("검수담당")))
-                .andExpect(jsonPath("$.data.acceptedByFullName", is("출고담당")));
+                // getOne 이 OUTBOUND 에서는 acceptedByFullName 을 resolve 하지 않는다(입고자=INBOUND 만).
+                .andExpect(jsonPath("$.data.acceptedByFullName", nullValue()));
     }
 
     @Test
@@ -234,7 +256,11 @@ class SlipDetailNameResolveIT extends AbstractPostgresIT {
                 .andRespond(request -> {
                     String uri = request.getURI().toString();
                     String id = uri.substring(uri.lastIndexOf('/') + 1);
-                    String name = NAME_BY_ID.getOrDefault(UUID.fromString(id), "기타");
+                    String name = NAME_BY_ID.get(UUID.fromString(id));
+                    // 미등록 id(예: createdBy 또는 미존재 서명자) → 404 → client graceful null.
+                    if (name == null) {
+                        return withResourceNotFound().createResponse(request);
+                    }
                     return withSuccess("""
                             {"success":true,"data":{"id":"%s","fullName":"%s"}}
                             """.formatted(id, name), MediaType.APPLICATION_JSON)

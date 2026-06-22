@@ -2930,9 +2930,11 @@ button {
 /* 매입 전표 결재란 — SLIP_INBOUND 설정 구조 기반 */
 .purchase-print-approval {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(28mm, 1fr));
+  /* 기본 3열(작성자/입고자/검수자) — 단계 N개는 컴포넌트가 inline gridTemplateColumns 로 override. */
+  grid-template-columns: repeat(3, 1fr);
   border: 1px solid #000;
   margin-bottom: 2mm;
+  page-break-inside: avoid;
 }
 
 .purchase-print-approval-title {

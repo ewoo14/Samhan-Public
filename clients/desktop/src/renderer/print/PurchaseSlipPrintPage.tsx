@@ -34,7 +34,7 @@ import {
 } from './PrintLayout'
 import { nowPrintedAt, fmtDatetime } from './printUtils'
 import { useCompanyProfile } from './useCompanyProfile'
-import { ApprovalRoleCells } from './approvalRoleCells'
+import { ApprovalRoleCells, fallbackRoles } from './approvalRoleCells'
 
 export function PurchaseSlipPrintPage() {
   const params = useParams<{ id: string }>()
@@ -234,8 +234,13 @@ export function PurchaseSlipPrintPage() {
           </div>
         </section>
 
-        {/* 결재란 — SLIP_INBOUND 설정 구조 기반 */}
-        <section className="purchase-print-approval">
+        {/* 결재란 — SLIP_INBOUND 설정 구조 기반. 단계 수(N)에 맞춰 그리드 열 고정(auto-fit 줄바꿈 붕괴 방지, DispatchView 패턴). */}
+        <section
+          className="purchase-print-approval"
+          style={{
+            gridTemplateColumns: `repeat(${(structureQuery.data ?? fallbackRoles('INBOUND')).length}, 1fr)`,
+          }}
+        >
           <div className="purchase-print-approval-title">결 재 란</div>
           <ApprovalRoleCells
             slip={slip}

@@ -1240,10 +1240,14 @@ public class SlipService {
     @Transactional(readOnly = true)
     public SlipDetailResponse getOne(UUID id) {
         Slip slip = loadOrThrow(id);
+        boolean outbound = slip.getSlipType() == SlipType.OUTBOUND;
         String ownerFullName = resolveOwnerFullName(slip.getCreatedBy());
-        String dispatcherFullName = resolveUserFullName(slip.getDispatcherUserId());
+        // 서명자 이름은 slipType 별 의미 있는 역할만 resolve 한다 (응답 계약 정직성 + 중복 호출 회피).
+        // accept() 가 slipType 무관하게 acceptedBy==dispatcherUserId 동일 설정(Slip.java) 하므로,
+        // 출고자(dispatcher)=OUTBOUND 만 / 입고자(acceptedBy)=INBOUND 만 / 검수자(inspector)=양쪽 으로 분기.
+        String dispatcherFullName = outbound ? resolveUserFullName(slip.getDispatcherUserId()) : null;
+        String acceptedByFullName = outbound ? null : resolveUserFullName(slip.getAcceptedBy());
         String inspectorFullName = resolveUserFullName(slip.getInspectorUserId());
-        String acceptedByFullName = resolveUserFullName(slip.getAcceptedBy());
         return SlipDetailResponse.from(slip, ownerFullName, dispatcherFullName,
                 inspectorFullName, acceptedByFullName);
     }
@@ -1500,8 +1504,9 @@ public class SlipService {
         try {
             UUID parsedUserId = UUID.fromString(userId);
             return userInternalClient.resolveFullName(parsedUserId).orElse(null);
-        } catch (IllegalArgumentException ex) {
-            // userId 가 UUID 형식이 아닌 경우 (예: "system") — fallback
+        } catch (Exception ex) {
+            // userId 가 UUID 형식이 아니거나(예: "system") client 가 예외를 전파해도
+            // 상세 조회(getOne)는 정상 반환해야 하므로 graceful fallback — 이름 null.
             return null;
         }
     }
