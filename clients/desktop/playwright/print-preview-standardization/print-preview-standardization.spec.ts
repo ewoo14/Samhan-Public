@@ -90,7 +90,6 @@ test.describe('print preview standardization slice 1 source contract', () => {
     for (const file of [
       'clients/desktop/src/renderer/print/InboundView.tsx',
       'clients/desktop/src/renderer/print/QuoteView.tsx',
-      'clients/desktop/src/renderer/print/OutboundView.tsx',
       'clients/desktop/src/renderer/print/SalesTransactionStatementPrintPage.tsx',
       'clients/desktop/src/renderer/print/SalesInvoicePrintPage.tsx',
       'clients/desktop/src/renderer/print/TaxInvoiceView.tsx',

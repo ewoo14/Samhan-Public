@@ -120,17 +120,16 @@ test.describe('인쇄 뷰 보완 캡처 (실 슬립 ID)', () => {
     )
   })
 
-  test('SUPP-T3b: 거래명세서 인쇄 — OutboundView (출고전표)', async ({ page }) => {
+  test('SUPP-T3b: 판매전표 인쇄 — DispatchView', async ({ page }) => {
     await injectAuthStub(page, MASTER_USER_ID, MASTER_USER_NAME, 'MASTER')
     await setupPermissionStub(page)
     await page.route('**/api/v1/accounting/**', async (route) => {
       await proxyToAccounting(route, MASTER_USER_ID, MASTER_USER_NAME, 'MASTER')
     })
 
-    // OutboundView 인쇄 라우트
-    await page.goto(`${BASE_URL}/#/sales/${REAL_SLIP_ID}/print/outbound`)
+    await page.goto(`${BASE_URL}/#/sales/${REAL_SLIP_ID}/print/dispatch`)
     await page.waitForTimeout(5000)
-    await capture(page, 'T3b-outbound-real-slip')
+    await capture(page, 'T3b-sales-slip-dispatch-real-slip')
 
     const bodyText = await page.locator('body').innerText()
     const hasCompanyName = bodyText.includes('삼한') || bodyText.includes('공조')
@@ -143,7 +142,7 @@ test.describe('인쇄 뷰 보완 캡처 (실 슬립 ID)', () => {
     console.log(`[SUPP-T3b] body 앞 500자:\n${bodyText.slice(0, 500)}`)
 
     fs.writeFileSync(
-      path.join(SCREENSHOT_DIR, 'SUPP-T3b-outbound-body-text.txt'),
+      path.join(SCREENSHOT_DIR, 'SUPP-T3b-sales-slip-dispatch-body-text.txt'),
       `hasCompanyName: ${hasCompanyName}\nhasBankInfo: ${hasBankInfo}\nstampImgCount: ${hasStamp}\n\nbody:\n${bodyText.slice(0, 1500)}`,
       'utf-8',
     )
@@ -172,7 +171,7 @@ test.describe('인쇄 뷰 보완 캡처 (실 슬립 ID)', () => {
     )
   })
 
-  test('SUPP-T9: SALES role OutboundView 인쇄 접근', async ({ page }) => {
+  test('SUPP-T9: SALES role 판매전표 인쇄 접근', async ({ page }) => {
     await injectAuthStub(page, SALES_USER_ID, SALES_USER_NAME, 'SALES')
     await page.route('**/permission-matrix/**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 'OK', data: { canAccess: true, canUpdate: false, canCreate: false, canDelete: false }, timestamp: new Date().toISOString() }) })
@@ -184,9 +183,9 @@ test.describe('인쇄 뷰 보완 캡처 (실 슬립 ID)', () => {
       await proxyToAccounting(route, SALES_USER_ID, SALES_USER_NAME, 'SALES')
     })
 
-    await page.goto(`${BASE_URL}/#/sales/${REAL_SLIP_ID}/print/outbound`)
+    await page.goto(`${BASE_URL}/#/sales/${REAL_SLIP_ID}/print/dispatch`)
     await page.waitForTimeout(5000)
-    await capture(page, 'T9-sales-outbound-print')
+    await capture(page, 'T9-sales-slip-dispatch-print')
 
     const bodyText = await page.locator('body').innerText()
     const hasBankInfo = bodyText.includes('국민은행') || bodyText.includes('기업은행') || bodyText.includes('계좌')

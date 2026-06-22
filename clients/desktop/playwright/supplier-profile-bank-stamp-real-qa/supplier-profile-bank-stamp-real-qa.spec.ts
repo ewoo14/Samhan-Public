@@ -1034,7 +1034,7 @@ test.describe('PR #459 supplier-profile-bank-stamp 실서버 QA', () => {
       const printBody8 = await page.locator('body').innerHTML()
       const hasLogoImgSrc = printBody8.includes('data:image/png;base64')
       console.log(`[T8] 인쇄 뷰 data:image/png;base64 포함: ${hasLogoImgSrc}`)
-      // 로고 렌더링 여부는 InvoiceView / OutboundView 구현에 따라 conditional
+      // 로고 렌더링 여부는 인쇄 뷰 구현에 따라 conditional
       // (logoPngBase64 → logoPath 가 data: URL) — 포함되면 PASS
       if (hasLogoImgSrc) {
         console.log('[T8] PASS: 인쇄 뷰 로고 img base64 src 확인')
@@ -1180,9 +1180,9 @@ test.describe('PR #459 supplier-profile-bank-stamp 실서버 QA', () => {
       await page.waitForTimeout(4000)
       await capture(page, 'T9-01-sales-role-statement-print')
 
-      await page.goto(`${BASE_URL}/#/sales/${REAL_SLIP_T9}/print/outbound`)
+      await page.goto(`${BASE_URL}/#/sales/${REAL_SLIP_T9}/print/dispatch`)
       await page.waitForTimeout(4000)
-      await capture(page, 'T9-02-sales-role-outbound-print')
+      await capture(page, 'T9-02-sales-role-dispatch-print')
     }
   })
 })

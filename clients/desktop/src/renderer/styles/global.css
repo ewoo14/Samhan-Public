@@ -1751,7 +1751,7 @@ button {
  *
  * 5 양식 + 공통 PrintLayout shell 스타일.
  * - InvoiceView v2 (거래명세서) — A4 세로
- * - OutboundView (출고전표) — 88mm 영수증 / A4 분기
+ * - Legacy outbound print renderer — 88mm 영수증 / A4 분기
  * - InboundView (입고전표) — A4 세로 / 88mm 분기
  * - QuoteView (견적서) — A4 세로 + 유효기간 + 직인
  * - TaxInvoiceView (세금계산서) — 한국 e-Tax 표준, 빨간 타이틀
@@ -2332,7 +2332,7 @@ button {
   transform: rotate(-8deg);
 }
 
-/* --- OutboundView / InboundView (출고·입고전표 공통) — 88mm / A4 분기 --- */
+/* --- Legacy outbound / InboundView (출고·입고전표 공통) — 88mm / A4 분기 --- */
 .outbound-page,
 .inbound-page {
   display: flex;
