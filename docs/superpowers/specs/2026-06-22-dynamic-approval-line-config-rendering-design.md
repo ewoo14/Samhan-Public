@@ -76,7 +76,8 @@
 **범위**
 - `OutboundView` + `/sales/:id/print/outbound` 라우트(routes/index.tsx:532) **폐기**. 컴포넌트 제거.
 - 참조 정리: playwright(`supplier-profile-bank-stamp-real-qa`·`print-supplement-real-qa`·`print-preview-standardization`·`audit/full-screen-audit`)의 `/print/outbound` 케이스 → `/print/dispatch`로 전환 또는 제거.
-- 인쇄 뷰 인벤토리 점검: 거래명세서/세금계산서(`/print/invoice`=`SalesInvoicePrintPage`) 별도 유지 확인, 고아 컴포넌트(`InvoiceView` 사용처 0이면 정리 검토 — 별도 결정).
+- 인쇄 뷰 인벤토리 점검: 거래명세서(`/print/statement`=`SalesTransactionStatementPrintPage`)·세금계산서(`/print/invoice`=`SalesInvoicePrintPage`) 별도 유지 확인, 고아 컴포넌트(`InvoiceView` 사용처 0이면 정리 검토 — 별도 결정).
+- **print-renderer 비범위(슬3 이연)**: `print-renderer/PrintRendererApp.tsx`(Phase F 헤드리스 사본 합성)는 OutboundView a4 레이아웃을 **자체 복제**(import 아님)하므로 OutboundView.tsx 삭제에 안 깨짐. 단 사본 인쇄가 여전히 금액 포함 "출고전표" → **판매전표(금액X) 사본 통일은 슬3**(DispatchView 재사용화 시 PrintRendererApp이 그 레이아웃 사용)로 이연. 슬1 후 인터랙티브 미리보기=판매전표(작업지시서)지만 헤드리스 사본=구 금액양식 잔존(슬3에서 해소).
 - **명칭 정정(D5)** — 사용자 노출 surface 한정:
   - `DispatchView.tsx:105` 화면명 `'출고전표 작업지시서'` → `'판매전표'`. 인쇄 양식 제목 표기도 정합.
   - `SlipDetailPage.tsx:412` `'출고전표 상세'` → `'판매전표 상세'`(OUTBOUND), 인쇄 메뉴 항목 라벨.
@@ -103,6 +104,7 @@
   - **서명자 매핑**: `step_type=CREATOR` → 작성자(`slip.ownerFullName`); `action_key=OUTBOUND_DISPATCH` → `slip.dispatcher?.fullName`; `action_key=OUTBOUND_INSPECT` → `slip.inspector?.fullName`; **추가 단계(action_key=NULL)** → 빈 서명칸(이름·서명 공백, 수기/후속 서명 등록 대상).
   - `담당부서`·`결제예정일`은 결재 역할 아님 → **정보칸으로 현행 유지**(설정 비편입).
 - 설정 페이지: 편집 중 결재란 **실시간 미리보기 패널**(라벨/순서/추가/삭제 즉시 반영). 가능하면 `PrintLayout` approval grid 패턴 재사용.
+- **print-renderer 재타깃**(슬1 이연분): `DispatchView`를 props 기반 재사용 컴포넌트로 분리하면서 `print-renderer/PrintRendererApp.tsx`(헤드리스 사본 합성)가 OutboundView 금액 클론 대신 **판매전표(작업지시서) 레이아웃 + 설정기반 결재란**을 사용하도록 전환. 사본(창고/기사/인수자) 인쇄도 판매전표 단일 양식으로 통일.
 **검증**: 설정에서 라벨 변경/단계 추가 → 판매전표 인쇄 결재란 반영 라이브 캡처. UUID 비공개([[uuid-no-user-visibility]]) — 이름만, action_key/UUID 비노출.
 **위험**: 매핑이 action_key 의존 → 사용자가 enforced 단계 삭제 후 재추가(action_key=NULL)하면 서명자 자동매핑 끊김(빈칸). 경고 모달로 사전 고지(D2).
 
