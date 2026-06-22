@@ -357,7 +357,32 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("PUT 라벨변경 — 작성자(CREATOR) 라벨 변경 시도는 4xx")
+    @DisplayName("PUT label rename rejects labels longer than column")
+    void renameRole_labelLongerThanColumn_returns4xx() throws Exception {
+        UUID roleId = jdbcTemplate.queryForObject("""
+                SELECT id
+                  FROM approval_line_config
+                 WHERE document_type = ?
+                   AND action_key = 'OUTBOUND_DISPATCH'
+                   AND is_deleted = FALSE
+                 ORDER BY sequence
+                 LIMIT 1
+                """, UUID.class, DOCUMENT_TYPE);
+        String longLabel = "A".repeat(51);
+
+        MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}/label", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"%s\"}".formatted(longLabel)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+    }
+
+    @Test
+    @DisplayName("PUT 라벨변경 — CREATOR 라벨 변경은 4xx")
     void renameRole_creatorRole_returns4xx() throws Exception {
         UUID creatorId = outboundRoleId("작성자");
 
