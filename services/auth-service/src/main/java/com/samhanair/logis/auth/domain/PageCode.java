@@ -335,6 +335,9 @@ public enum PageCode {
     /** 거래처 주문 → 출고전표 전환 (A2-4) — partner-order-service convert-to-slip 엔드포인트 권한, CREATE. V41 시드. */
     SALES_PARTNER_ORDER_CONVERT("sales.partner-order.convert", "거래처주문 출고전환"),
 
+    /** 거래처 주문 리비전 복원 — partner-order-service PartnerOrderRevisionController RESTORE 권한. */
+    SALES_PARTNER_ORDER_REVISIONS("sales.partner-order.revisions", "거래처주문 리비전 복원"),
+
     /** 벤더(외주) 발주서 업로드/확정 화면 (SP-D4) — VendorOrderController. */
     SALES_VENDOR_ORDER("sales.vendor-order", "벤더(외주) 주문"),
 
