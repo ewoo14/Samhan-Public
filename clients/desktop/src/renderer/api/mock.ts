@@ -6670,6 +6670,19 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
   }
 
+  if (method === 'GET' && url.match(/\/(?:admin\/)?groupware\/approval-templates\/active(?:\?.*)?$/)) {
+    if (url.match(/\/admin\/groupware\/approval-templates\/active(?:\?.*)?$/)) {
+      const denied = mockRequirePermission('groupware.approvals', 'view')
+      if (denied) return denied
+    }
+    return envelope(
+      getMockGroupwareApprovalTemplatesStore()
+        .filter((template) => template.active)
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .map(mockTemplateDto),
+    )
+  }
+
   const groupwareApprovalTemplateDetailMatch = url.match(
     /\/admin\/groupware\/approval-templates\/([^/?]+)(?:\?.*)?$/,
   )
@@ -6719,17 +6732,6 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       template.active = false
       return envelope(null)
     }
-  }
-
-  if (method === 'GET' && url.match(/\/admin\/groupware\/approval-templates\/active(?:\?.*)?$/)) {
-    const denied = mockRequirePermission('groupware.approvals', 'view')
-    if (denied) return denied
-    return envelope(
-      getMockGroupwareApprovalTemplatesStore()
-        .filter((template) => template.active)
-        .sort((a, b) => a.displayOrder - b.displayOrder)
-        .map(mockTemplateDto),
-    )
   }
 
   const groupwareApprovalAttachmentDownloadMatch = url.match(
@@ -9386,7 +9388,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const roleId = decodeURIComponent(approvalLineConfigRoleMatch[1]!)
     const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
     if (!role || role.isDeleted) return envelope(null)
-    if (role.stepType === 'CREATOR' || role.sequence === 0) {
+    if (role.stepType === 'CREATOR') {
       return mockError(400, 'INVALID_INPUT', '작성자 역할은 삭제할 수 없습니다.')
     }
     role.isDeleted = true
@@ -10678,6 +10680,17 @@ const MOCK_GROUPWARE_APPROVAL_TEMPLATES: ApprovalTemplate[] = [
       { fieldKey: 'reason', label: '사유', fieldType: 'TEXTAREA', required: true, displayOrder: 4, options: [], placeholder: '휴가 사유' },
     ],
   },
+  {
+    id: '77777777-dddd-4ddd-8ddd-000000000003',
+    code: 'INACTIVE_TEMPLATE',
+    name: '비활성 양식',
+    description: '비활성 템플릿은 active 목록에서 제외된다.',
+    active: false,
+    displayOrder: 3,
+    fields: [
+      { fieldKey: 'title', label: '제목', fieldType: 'TEXT', required: true, displayOrder: 1, options: [], placeholder: null },
+    ],
+  },
 ]
 
 const MOCK_GROUPWARE_APPROVER_OPTIONS: ApproverOption[] = [
@@ -10878,7 +10891,7 @@ const MOCK_GROUPWARE_APPROVAL_ATTACHMENTS: Record<string, ApprovalAttachment[]> 
 
 let mockGroupwareApprovalCommentSequence = 2
 let mockGroupwareApprovalEditSequence = 2
-let mockGroupwareApprovalTemplateSequence = 3
+let mockGroupwareApprovalTemplateSequence = 4
 let mockGroupwareApprovalAttachmentSequence = 3
 
 type GroupwareApprovalMockStores = {

@@ -24,6 +24,7 @@ import {
   deleteApprovalLineStep,
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
+  fetchConfigurableDocTypes,
   removeApprovalLineApprover,
   reorderApprovalLineRoles,
   renameApprovalLineRole,
@@ -32,6 +33,7 @@ import {
   type ApprovalLineApprover,
   type ApprovalLineGroupOption,
   type ApprovalLineRole,
+  type ConfigurableDocType,
 } from '../api/approvalLineConfigApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -39,6 +41,62 @@ export type ApprovalLineApproverOption = {
   type: 'GROUP' | 'USER'
   refId: string
   displayName: string
+}
+
+const FALLBACK_CONFIGURABLE_DOC_TYPES: ConfigurableDocType[] = DOC_TYPES.map((type) => ({
+  ...type,
+  kind: 'SLIP',
+}))
+
+export function resolveApprovalLineDocTypeSelection(current: string, docTypes: ConfigurableDocType[]): string {
+  if (docTypes.some((type) => type.value === current)) return current
+  return docTypes[0]?.value ?? current
+}
+
+export function ApprovalLineDocTypeSelect({
+  value,
+  docTypes,
+  loading,
+  onChange,
+}: {
+  value: string
+  docTypes: ConfigurableDocType[]
+  loading: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <Select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      aria-label="문서 종류"
+      data-testid="approval-line-doc-type-select"
+      disabled={loading && docTypes.length === 0}
+    >
+      <ApprovalLineDocTypeOptionGroups docTypes={docTypes} />
+    </Select>
+  )
+}
+
+export function ApprovalLineDocTypeOptionGroups({ docTypes }: { docTypes: ConfigurableDocType[] }) {
+  const slipDocTypes = docTypes.filter((type) => type.kind === 'SLIP')
+  const groupwareDocTypes = docTypes.filter((type) => type.kind === 'GROUPWARE')
+
+  return (
+    <>
+      <optgroup label="전표">
+        {slipDocTypes.map((type) => (
+          <option key={type.value} value={type.value}>{type.label}</option>
+        ))}
+      </optgroup>
+      {groupwareDocTypes.length > 0 ? (
+        <optgroup label="그룹웨어">
+          {groupwareDocTypes.map((type) => (
+            <option key={type.value} value={type.value}>{type.label}</option>
+          ))}
+        </optgroup>
+      ) : null}
+    </>
+  )
 }
 
 /** 결재라인 설정 — 전표 종류별 역할에 결재자 칩/필수 지정, 드래그 순서변경, 라벨 인라인 편집. */
@@ -52,6 +110,11 @@ export function ApprovalLineConfigPage() {
   const [newStepLabel, setNewStepLabel] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<ApprovalLineRole | null>(null)
   const rolesQueryKey = approvalLineRolesQueryKey(docType)
+
+  const docTypesQuery = useQuery({
+    queryKey: ['admin', 'approval-line-config', 'configurable-doc-types'],
+    queryFn: fetchConfigurableDocTypes,
+  })
 
   const rolesQuery = useQuery({
     queryKey: rolesQueryKey,
@@ -329,6 +392,12 @@ export function ApprovalLineConfigPage() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
+  const docTypes = docTypesQuery.data ?? FALLBACK_CONFIGURABLE_DOC_TYPES
+
+  useEffect(() => {
+    setDocType((current) => resolveApprovalLineDocTypeSelection(current, docTypes))
+  }, [docTypes])
+
   const roles = rolesQuery.data ?? []
   const trimmedNewStepLabel = newStepLabel.trim()
   const deleteConfirmation = deleteTarget ? getApprovalLineDeleteConfirmation(deleteTarget) : null
@@ -339,21 +408,17 @@ export function ApprovalLineConfigPage() {
         <div>
           <h3 style={{ margin: 0 }}>결재라인 설정</h3>
           <p style={{ margin: '4px 0 0', color: 'var(--color-neutral-500)', fontSize: 13 }}>
-            전표 종류별 결재 역할에 권한 그룹과 필수여부를 지정합니다.
+            문서 종류별 결재 역할에 권한 그룹과 필수여부를 지정합니다.
           </p>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180 }}>
-          <span style={{ fontSize: 13, fontWeight: 700 }}>전표 종류</span>
-          <Select
+          <span style={{ fontSize: 13, fontWeight: 700 }}>문서 종류</span>
+          <ApprovalLineDocTypeSelect
             value={docType}
-            onChange={(event) => setDocType(event.target.value)}
-            aria-label="전표 종류"
-            data-testid="approval-line-doc-type-select"
-          >
-            {DOC_TYPES.map((type) => (
-              <option key={type.value} value={type.value}>{type.label}</option>
-            ))}
-          </Select>
+            docTypes={docTypes}
+            loading={docTypesQuery.isLoading}
+            onChange={setDocType}
+          />
         </label>
       </div>
 
