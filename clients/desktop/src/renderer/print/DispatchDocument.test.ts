@@ -39,9 +39,9 @@ describe('DispatchDocument', () => {
     expect(html).toContain('작성자')
     expect(html).toContain('출고자')
     expect(html).toContain('검수자')
-    expect(html).toContain('홍작성')
-    expect(html).toContain('박출고')
-    expect(html).toContain('김검수')
+  expect(html).toContain('홍작성')
+  expect(html).toContain('박출고')
+  expect(html).toContain('김검수')
   })
 
   test('사용자 UUID와 창고 UUID는 화면에 노출하지 않는다', () => {
@@ -84,14 +84,17 @@ const sampleSlip: SlipDetail = {
   memo: '특이사항',
   ownerDepartment: '영업팀',
   ownerFullName: '홍작성',
+  dispatcherFullName: '박출고',
+  inspectorFullName: '김검수',
+  acceptedByFullName: null,
   dispatcher: {
     userId: '44444444-4444-4444-4444-444444444444',
-    fullName: '박출고',
+    fullName: '중첩출고',
     signedAt: '2026-06-22T10:00:00+09:00',
   },
   inspector: {
     userId: '55555555-5555-5555-5555-555555555555',
-    fullName: '김검수',
+    fullName: '중첩검수',
     signedAt: '2026-06-22T11:00:00+09:00',
   },
   shippingAddress: '서울시 중구',

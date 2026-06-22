@@ -9,8 +9,8 @@
  *
  * 5 case:
  *   T1 — FE 라우트 계약: `/purchases/:id/print/purchase` 존재 + useParams slipId + useQuery(['slip', id]) 재사용
- *   T2 — 인쇄 영역 구조: paper-a4-portrait 클래스 + 헤더/거래처/라인테이블/합계/검수란/푸터 6 섹션
- *   T3 — 한국어 라벨: "매입 전표", "거래처", "사업자번호", "입고창고", "수량", "단가", "합계", "검수일자", "검수자"
+ *   T2 — 인쇄 영역 구조: paper-a4-portrait 클래스 + 헤더/거래처/라인테이블/합계/결재란/푸터 6 섹션
+ *   T3 — 한국어 라벨: "매입 전표", "거래처", "사업자번호", "입고창고", "수량", "단가", "합계", "결 재 란", "입고자", "검수자"
  *   T4 — UUID 비공개: internal id 미노출, slipNo 만 표시
  *   T5 — @media print + 인쇄 트리거: @media print CSS + window.print() 호출 또는 인쇄 버튼
  */
@@ -47,8 +47,7 @@ function resolvePrintComponent(): string {
   for (const candidate of PRINT_COMPONENT_CANDIDATES) {
     if (fileExists(candidate)) return candidate
   }
-  // fallback: 기존 InboundView 가 SP-08-5-5 확장을 흡수한 경우
-  return 'clients/desktop/src/renderer/print/InboundView.tsx'
+  return 'clients/desktop/src/renderer/print/PurchaseSlipPrintPage.tsx'
 }
 
 const routesPath = 'clients/desktop/src/renderer/routes/index.tsx'
@@ -71,8 +70,7 @@ test.describe('SP-08-5-5 매입 인쇄 양식 정적 계약', () => {
     // 라우트 등록 단언 — /print/purchase 또는 동등 경로
     const hasPurchasePrintRoute =
       routes.includes('/purchases/:id/print/purchase') ||
-      routes.includes('/slips/:id/print') ||
-      routes.includes('/purchases/:id/print/inbound')
+      routes.includes('/slips/:id/print')
     expect(hasPurchasePrintRoute).toBeTruthy()
 
     // useParams 로 id 추출
@@ -88,10 +86,10 @@ test.describe('SP-08-5-5 매입 인쇄 양식 정적 계약', () => {
    * T2 — 인쇄 영역 구조 단언
    *
    * A4 portrait 클래스 (`paper-a4-portrait` 또는 `a4-portrait`) +
-   * 헤더 / 거래처 / 라인 테이블 / 합계 / 검수란 / 푸터 6 섹션이
+   * 헤더 / 거래처 / 라인 테이블 / 합계 / 결재란 / 푸터 6 섹션이
    * 컴포넌트 또는 PrintLayout 에 존재함을 단언한다.
    */
-  test('T2: 인쇄 영역 구조 — A4 portrait + 6 섹션 (헤더/거래처/라인테이블/합계/검수란/푸터)', () => {
+  test('T2: 인쇄 영역 구조 — A4 portrait + 6 섹션 (헤더/거래처/라인테이블/합계/결재란/푸터)', () => {
     const printComponent = read(resolvePrintComponent())
     const printLayout = read(printLayoutPath)
 
@@ -127,13 +125,10 @@ test.describe('SP-08-5-5 매입 인쇄 양식 정적 계약', () => {
       printComponent.includes('합계')
     expect(hasTotals).toBeTruthy()
 
-    // 검수란 (inspector sign row)
-    const hasInspector =
-      printComponent.includes('inbound-sign-row') ||
-      printComponent.includes('purchase-sign-row') ||
-      printComponent.includes('inspector') ||
-      printComponent.includes('검수')
-    expect(hasInspector).toBeTruthy()
+    // 결재란 (SLIP_INBOUND 설정 구조 기반)
+    expect(printComponent).toContain('purchase-print-approval')
+    expect(printComponent).toContain('ApprovalRoleCells')
+    expect(printComponent).toContain('SLIP_INBOUND')
 
     // 푸터 섹션
     const hasFooter =
@@ -146,18 +141,15 @@ test.describe('SP-08-5-5 매입 인쇄 양식 정적 계약', () => {
   /**
    * T3 — 한국어 라벨 단언
    *
-   * 매입 전표 인쇄 화면에 필수 한국어 라벨 9종이 모두 존재해야 한다.
-   * "매입 전표" 타이틀은 신규 컴포넌트 전용 라벨이며, 나머지는 기존
-   * InboundView 에서 재사용된다.
+   * 매입 전표 인쇄 화면에 필수 한국어 라벨과 결재란 fallback 구조가 존재해야 한다.
    */
-  test('T3: 한국어 라벨 — 매입 전표 / 거래처 / 사업자번호 / 입고창고 / 수량 / 단가 / 합계 / 검수일자 / 검수자', () => {
+  test('T3: 한국어 라벨 — 매입 전표 / 거래처 / 사업자번호 / 입고창고 / 수량 / 단가 / 합계 / 결재란', () => {
     const printComponent = read(resolvePrintComponent())
 
     // 매입 전표 타이틀 (신규 SP-08-5-5 고유 라벨)
     const hasPurchaseTitle =
       printComponent.includes('매입 전표') ||
-      printComponent.includes('매입 전표') || // unicode escape
-      printComponent.includes('입 고 전 표') // 기존 InboundView 재사용 허용
+      printComponent.includes('매 입 전 표')
     expect(hasPurchaseTitle).toBeTruthy()
 
     // 거래처 / 공급처
@@ -184,18 +176,8 @@ test.describe('SP-08-5-5 매입 인쇄 양식 정적 계약', () => {
     // 합계
     expect(printComponent).toContain('합계')
 
-    // 검수일자 (SP-08-5-5 신규 — 검수 완료일 표기)
-    const hasInspectionDate =
-      printComponent.includes('검수일자') ||
-      printComponent.includes('inspectedAt') ||
-      printComponent.includes('검수 완료')
-    expect(hasInspectionDate).toBeTruthy()
-
-    // 검수자
-    const hasInspector =
-      printComponent.includes('검수자') ||
-      printComponent.includes('inspector')
-    expect(hasInspector).toBeTruthy()
+    expect(printComponent).toContain('결 재 란')
+    expect(printComponent).toContain('slipType="INBOUND"')
   })
 
   /**

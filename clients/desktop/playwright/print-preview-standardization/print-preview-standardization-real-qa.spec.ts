@@ -121,15 +121,15 @@ async function suppressPrint(page: Page): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// C1: 입고전표 미리보기 — 출고전표와 통일된 전표 양식 확인
+// C1: 매입 전표 미리보기 — 설정기반 결재란과 실 데이터 확인
 // ────────────────────────────────────────────────────────────────────────────
-test('C1: 입고전표 미리보기 — 출고전표 통일 양식과 실 데이터 확인', async ({ page }) => {
+test('C1: 매입 전표 미리보기 — 설정기반 결재란과 실 데이터 확인', async ({ page }) => {
   const token = await fetchRealToken()
   await installRealAuth(page, token)
   await setupApiProxy(page, token)
   await suppressPrint(page)
 
-  const url = hashUrl(`/purchases/${INBOUND_SLIP_ID}/print/inbound`)
+  const url = hashUrl(`/purchases/${INBOUND_SLIP_ID}/print/purchase`)
   console.log('[NAVIGATE]', url)
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 })
   await page.waitForTimeout(2500)
@@ -139,13 +139,14 @@ test('C1: 입고전표 미리보기 — 출고전표 통일 양식과 실 데이
   const bodyText = await page.locator('body').textContent() ?? ''
   console.log('[BODY SAMPLE]', bodyText.slice(0, 400).replace(/\s+/g, ' '))
 
-  // 1) 결재문서 후속 에픽용 approvalDoc 은 입고전표에 적용하지 않는다.
-  const approvalSection = page.locator('[aria-label="전자서명 결재란"]')
-  const approvalCount = await approvalSection.count()
-  console.log('[CHECK] 결재란 섹션 없음:', approvalCount === 0)
+  // 1) 매입 전표는 PrintLayout approvalDoc 이 아니라 설정기반 결재란을 렌더한다.
+  const approvalDocSection = page.locator('[aria-label="전자서명 결재란"]')
+  const approvalDocCount = await approvalDocSection.count()
+  const hasApprovalGrid = bodyText.includes('결 재 란')
+  console.log('[CHECK] 설정기반 결재란:', hasApprovalGrid)
 
-  // 2) 출고전표와 통일된 전표 본문이 실 데이터로 표시되어야 한다.
-  const hasDocTitle = bodyText.includes('입 고 전 표') || bodyText.includes('입고전표')
+  // 2) 매입 전표 본문이 실 데이터로 표시되어야 한다.
+  const hasDocTitle = bodyText.includes('매 입 전 표') || bodyText.includes('매입 전표')
   console.log('[CHECK] 문서 제목:', hasDocTitle)
   const hasSlipNo = bodyText.includes('2026/04/08-1') || bodyText.includes('2026/04/08')
   console.log('[CHECK] 전표번호 표시:', hasSlipNo)
@@ -158,7 +159,8 @@ test('C1: 입고전표 미리보기 — 출고전표 통일 양식과 실 데이
 
   // 핵심 단언: 에러 페이지 false-green 방지 + 입고전표 통일 양식 확인.
   expect(bodyText).not.toContain('불러오지 못')
-  expect(approvalCount).toBe(0)
+  expect(approvalDocCount).toBe(0)
+  expect(hasApprovalGrid).toBeTruthy()
   expect(hasCompany).toBeTruthy()
   expect(hasDocTitle).toBeTruthy()
   expect(hasSlipNo).toBeTruthy()

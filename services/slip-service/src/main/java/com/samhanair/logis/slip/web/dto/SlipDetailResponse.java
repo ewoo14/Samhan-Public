@@ -37,6 +37,9 @@ import java.util.UUID;
  *   <li>{@code ownerFullName} — 담당자 성명. user-service {@code GET /internal/users/{createdBy}} 로
  *       단건 조회 resolve. null 이면 FE 는 {@code '-'} 표시. 인쇄 양식 담당자 영역 자동 표시 목적.
  *       단건 GET 전용 — mutation 응답은 null 반환 (graceful fallback).</li>
+ *   <li>{@code dispatcherFullName}/{@code inspectorFullName}/{@code acceptedByFullName} —
+ *       결재란 표시용 서명자 성명. 전표 상세 단건 GET 에서만 user-service 단건 조회로 resolve 하며,
+ *       mutation 응답 및 조회 실패 시 null 을 반환한다.</li>
  * </ul>
  *
  * <p>SP-08-FU2 P2-2 신규 필드:
@@ -111,6 +114,21 @@ public record SlipDetailResponse(
          */
         String ownerFullName,
         /**
+         * 출고자 성명 — 결재라인 OUTBOUND_DISPATCH 표시용 user-service lookup 결과.
+         * 단건 GET 전용. mutation 응답 / user-service 호출 실패 시 null.
+         */
+        String dispatcherFullName,
+        /**
+         * 검수자 성명 — 결재라인 OUTBOUND_INSPECT/INBOUND_INSPECT 표시용 user-service lookup 결과.
+         * 단건 GET 전용. mutation 응답 / user-service 호출 실패 시 null.
+         */
+        String inspectorFullName,
+        /**
+         * 입고자 성명 — 결재라인 INBOUND_RECEIVE 표시용 user-service lookup 결과.
+         * 단건 GET 전용. mutation 응답 / user-service 호출 실패 시 null.
+         */
+        String acceptedByFullName,
+        /**
          * 도착지 창고명 snapshot — SP-08-FU2 P2-2 (V26). inventory-service lookup 결과.
          * FE {@code InboundInspectionDialog} 가 {@code detail.destinationWarehouseName ?? '—'} 사용.
          * null 허용 — lookup 실패 또는 legacy row.
@@ -125,7 +143,7 @@ public record SlipDetailResponse(
      * @return 담당자 성명 null 인 SlipDetailResponse
      */
     public static SlipDetailResponse from(Slip slip) {
-        return from(slip, null);
+        return from(slip, null, null, null, null);
     }
 
     /**
@@ -136,6 +154,25 @@ public record SlipDetailResponse(
      * @return ownerFullName 이 채워진 SlipDetailResponse
      */
     public static SlipDetailResponse from(Slip slip, String ownerFullName) {
+        return from(slip, ownerFullName, null, null, null);
+    }
+
+    /**
+     * 결재 서명자 성명 포함 변환 — 단건 GET 에서 user-service lookup 결과를 전달할 때 사용.
+     *
+     * @param slip 전표 도메인 객체
+     * @param ownerFullName user-service 로 조회한 담당자 성명. null 허용.
+     * @param dispatcherFullName user-service 로 조회한 출고자 성명. null 허용.
+     * @param inspectorFullName user-service 로 조회한 검수자 성명. null 허용.
+     * @param acceptedByFullName user-service 로 조회한 입고자 성명. null 허용.
+     * @return 결재 서명자 성명이 채워진 SlipDetailResponse
+     */
+    public static SlipDetailResponse from(
+            Slip slip,
+            String ownerFullName,
+            String dispatcherFullName,
+            String inspectorFullName,
+            String acceptedByFullName) {
         return new SlipDetailResponse(
                 slip.getId(),
                 slip.getSlipType(),
@@ -184,6 +221,9 @@ public record SlipDetailResponse(
                 slip.getPrintedAt() != null,
                 inspectionStatusOf(slip),
                 ownerFullName,
+                dispatcherFullName,
+                inspectorFullName,
+                acceptedByFullName,
                 // SP-08-FU2 P2-2 — 도착지 창고명 snapshot
                 slip.getDestinationWarehouseName(),
                 slip.getLines().stream().map(SlipLineResponse::from).toList());

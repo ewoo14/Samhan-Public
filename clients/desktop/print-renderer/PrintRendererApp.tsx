@@ -103,15 +103,12 @@ function toSlipDetail(slipData: SlipData): SlipDetail {
     })),
     ownerDepartment: null,
     ownerFullName: null,
+    dispatcherFullName: slipData.dispatcherName ?? null,
+    inspectorFullName: null,
+    acceptedByFullName: null,
     shippingAddress: slipData.recipientAddress,
     contactPhone: slipData.contactPhone ?? null,
-    dispatcher: slipData.dispatcherName
-      ? {
-          userId: 'print-renderer-dispatcher',
-          fullName: slipData.dispatcherName,
-          signedAt: slipData.slipDate,
-        }
-      : null,
+    dispatcher: null,
     inspector: null,
     driverName: slipData.driverName ?? null,
     driverPhone: slipData.driverPhone ?? null,

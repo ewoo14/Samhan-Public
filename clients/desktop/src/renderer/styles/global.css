@@ -1117,18 +1117,21 @@ button {
   /* 거래처명 박스 높이와 맞추기 위해 grid stretch 사용 — height 고정 제거 */
 }
 
-.dispatch-role-cell {
+.dispatch-role-cell,
+.approval-role-cell {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #000;
   min-height: 0;
 }
 
-.dispatch-role-cell:last-child {
+.dispatch-role-cell:last-child,
+.approval-role-cell:last-child {
   border-right: none;
 }
 
-.dispatch-role-label {
+.dispatch-role-label,
+.approval-role-label {
   background: #F5F5F5;
   border-bottom: 1px solid #000;
   font-size: 7pt;
@@ -1137,7 +1140,8 @@ button {
   padding: 0.5mm 0;
 }
 
-.dispatch-role-value {
+.dispatch-role-value,
+.approval-role-value {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1147,7 +1151,8 @@ button {
   padding: 0.5mm;
 }
 
-.dispatch-role-value .name {
+.dispatch-role-value .name,
+.approval-role-value .name {
   font-size: 8pt;
   font-weight: 600;
   white-space: nowrap;
@@ -1156,7 +1161,8 @@ button {
   max-width: 100%;
 }
 
-.dispatch-role-value .time {
+.dispatch-role-value .time,
+.approval-role-value .time {
   font-size: 6.5pt;
   color: #666;
   font-variant-numeric: tabular-nums;
@@ -1240,9 +1246,12 @@ button {
 .dispatch-table tfoot td.total-qty   { text-align: center; font-size: 13pt; font-style: italic; }
 
 /* 결재칸 서명 스탬프 — 서명(위) + 이름(아래). 사원 서명 슬라이스 전까지 placeholder 공간 */
-.dispatch-role-stamp { max-width: 100%; max-height: 9mm; object-fit: contain; display: block; margin: 0 auto; }
-.dispatch-role-stamp-space { display: block; min-height: 6mm; }
-.dispatch-role-value .name { display: block; text-align: center; }
+.dispatch-role-stamp,
+.approval-role-stamp { max-width: 100%; max-height: 9mm; object-fit: contain; display: block; margin: 0 auto; }
+.dispatch-role-stamp-space,
+.approval-role-stamp-space { display: block; min-height: 6mm; }
+.dispatch-role-value .name,
+.approval-role-value .name { display: block; text-align: center; }
 
 /* 하단 묶음 — 배송지/연락처/특이사항 박스, 안내문, 서명 라벨, 책임 안내 */
 .dispatch-bottom-group {
@@ -1752,7 +1761,7 @@ button {
  * 5 양식 + 공통 PrintLayout shell 스타일.
  * - InvoiceView v2 (거래명세서) — A4 세로
  * - Legacy outbound print renderer — 88mm 영수증 / A4 분기
- * - InboundView (입고전표) — A4 세로 / 88mm 분기
+ * - Legacy inbound print classes — A4 세로 / 88mm 분기
  * - QuoteView (견적서) — A4 세로 + 유효기간 + 직인
  * - TaxInvoiceView (세금계산서) — 한국 e-Tax 표준, 빨간 타이틀
  *
@@ -2332,7 +2341,7 @@ button {
   transform: rotate(-8deg);
 }
 
-/* --- Legacy outbound / InboundView (출고·입고전표 공통) — 88mm / A4 분기 --- */
+/* --- Legacy outbound / inbound print classes (출고·입고전표 공통) — 88mm / A4 분기 --- */
 .outbound-page,
 .inbound-page {
   display: flex;
@@ -2915,6 +2924,37 @@ button {
 }
 
 .purchase-print-inspection-blank {
+  min-height: 16mm;
+}
+
+/* 매입 전표 결재란 — SLIP_INBOUND 설정 구조 기반 */
+.purchase-print-approval {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(28mm, 1fr));
+  border: 1px solid #000;
+  margin-bottom: 2mm;
+}
+
+.purchase-print-approval-title {
+  grid-column: 1 / -1;
+  background: #F0F0F0;
+  font-weight: 700;
+  font-size: 10pt;
+  text-align: center;
+  letter-spacing: 0.3em;
+  padding: 1mm 0;
+  border-bottom: 1px solid #000;
+}
+
+.purchase-print-approval .approval-role-cell {
+  min-height: 20mm;
+}
+
+.purchase-print-approval .approval-role-label {
+  font-size: 9pt;
+}
+
+.purchase-print-approval .approval-role-value {
   min-height: 16mm;
 }
 
