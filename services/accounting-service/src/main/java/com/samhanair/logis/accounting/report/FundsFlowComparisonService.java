@@ -157,8 +157,9 @@ public class FundsFlowComparisonService {
          * <p>현금성 계정 간 내부이체는 통합 현금성 잔액을 바꾸지 않으므로 상대 라인의
          * accountCode 가 {@link FundsStatusService#CASH_EQUIVALENT_ACCOUNT_CODES} 에 속하면
          * 증가/감소 분해 대상에서 제외한다. 한 전표의 모든 상대 라인이 현금성이면 해당
-         * cashLine 은 0원 기여로 처리한다. 반대 방향 상대가 없거나 배분 기준 합계가 0이면
-         * {@code UNKNOWN(상대계정 없음)} 으로 귀속한다.
+         * cashLine 은 0원 기여로 처리한다. 비현금성 반대 방향 상대가 없더라도 반대편
+         * 현금성 라인이 있으면 혼합 전표의 내부 현금 이동으로 보고 0원 기여 처리한다.
+         * 배분할 상대 라인을 전혀 찾지 못하면 {@code UNKNOWN(상대계정 없음)} 으로 귀속한다.
          */
         private void distribute(JournalLine cashLine, boolean increase) {
             BigDecimal cashAmount = increase ? cashLine.getDebitAmount() : cashLine.getCreditAmount();
@@ -167,6 +168,9 @@ public class FundsFlowComparisonService {
             }
             List<JournalLine> counters = counterLines(cashLine, increase);
             if (counters.isEmpty()) {
+                if (hasOppositeCashEquivalentLine(cashLine, increase)) {
+                    return;
+                }
                 add(increase, UNKNOWN_ACCOUNT_CODE, cashAmount);
                 return;
             }
@@ -196,11 +200,10 @@ public class FundsFlowComparisonService {
          * 배분 대상 상대 라인.
          *
          * <p>증가는 대변, 감소는 차변의 반대 방향 라인을 우선 사용하고, 상대 라인이 없으면
-         * UNKNOWN 귀속을 위해 같은 전표의 비현금성 상대 라인을 반환한다. 현금성 상대 라인은
-         * 내부이체이므로 항상 제외한다.
+         * UNKNOWN 귀속 여부를 distribute 에서 판단한다. 현금성 상대 라인은 내부이체이므로 항상 제외한다.
          */
         private List<JournalLine> counterLines(JournalLine cashLine, boolean increase) {
-            List<JournalLine> opposite = cashLine.getJournal().getLines().stream()
+            return cashLine.getJournal().getLines().stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
                     .filter(line -> !isCashEquivalentAccount(line.getAccountCode()))
                     .filter(line -> increase
@@ -208,14 +211,15 @@ public class FundsFlowComparisonService {
                             : line.getDebitAmount().signum() > 0)
                     .sorted(Comparator.comparingInt(JournalLine::getLineNo))
                     .toList();
-            if (!opposite.isEmpty()) {
-                return opposite;
-            }
+        }
+
+        private boolean hasOppositeCashEquivalentLine(JournalLine cashLine, boolean increase) {
             return cashLine.getJournal().getLines().stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
-                    .filter(line -> !isCashEquivalentAccount(line.getAccountCode()))
-                    .sorted(Comparator.comparingInt(JournalLine::getLineNo))
-                    .toList();
+                    .filter(line -> isCashEquivalentAccount(line.getAccountCode()))
+                    .anyMatch(line -> increase
+                            ? line.getCreditAmount().signum() > 0
+                            : line.getDebitAmount().signum() > 0);
         }
 
         private boolean allCounterLinesAreCashEquivalent(JournalLine cashLine) {

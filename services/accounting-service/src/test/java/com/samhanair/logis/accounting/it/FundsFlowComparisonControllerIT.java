@@ -84,15 +84,17 @@ class FundsFlowComparisonControllerIT extends AbstractPostgresIT {
         assertAmount(findLine(current.get("increases"), "120").get("amount"), "33.33");
         assertAmount(findLine(current.get("increases"), "130").get("amount"), "33.33");
         assertAmount(findLine(current.get("increases"), "140").get("amount"), "33.34");
+        assertAmount(findLine(current.get("increases"), "150").get("amount"), "70.00");
         assertAmount(findLine(current.get("increases"), "901").get("amount"), "30.00");
-        assertAmount(current.get("increaseSubtotal"), "630.00");
+        assertAmount(current.get("increaseSubtotal"), "700.00");
         assertAmount(findLine(current.get("decreases"), "801").get("amount"), "120.00");
-        assertAmount(current.get("decreaseSubtotal"), "120.00");
+        assertAmount(findLine(current.get("decreases"), "850").get("amount"), "80.00");
+        assertAmount(current.get("decreaseSubtotal"), "200.00");
         assertLineAbsent(current.get("increases"), "101");
         assertLineAbsent(current.get("decreases"), "102");
         assertLineAbsent(current.get("increases"), "UNKNOWN");
         assertLineAbsent(current.get("decreases"), "UNKNOWN");
-        assertPeriodDelta(current, "510.00");
+        assertPeriodDelta(current, "500.00");
         assertReconciled(current);
 
         assertAmount(findLine(prior.get("increases"), "110").get("amount"), "200.00");
@@ -160,6 +162,14 @@ class FundsFlowComparisonControllerIT extends AbstractPostgresIT {
                 line("120", "0.00", "33.33", COUNTER_PARTNER_ID, "상대 대변 1"),
                 line("130", "0.00", "33.33", COUNTER_PARTNER_ID, "상대 대변 2"),
                 line("140", "0.00", "33.34", COUNTER_PARTNER_ID, "상대 대변 3"));
+        seedPosted("FUNDS-FLOW-CUR-MIXED-INTER-CASH-IN", LocalDate.of(2026, 6, 12), "현금성 혼합 입금",
+                line("102", "100.00", "0.00", CASH_PARTNER_ID, "보통예금 입금"),
+                line("101", "0.00", "30.00", CASH_PARTNER_ID, "현금 내부이체"),
+                line("150", "0.00", "70.00", COUNTER_PARTNER_ID, "비현금성 상대"));
+        seedPosted("FUNDS-FLOW-CUR-MIXED-INTER-CASH-OUT", LocalDate.of(2026, 6, 12), "현금성 혼합 출금",
+                line("850", "80.00", "0.00", COUNTER_PARTNER_ID, "비현금성 상대"),
+                line("101", "20.00", "0.00", CASH_PARTNER_ID, "현금 내부이체"),
+                line("102", "0.00", "100.00", CASH_PARTNER_ID, "보통예금 출금"));
         seedPosted("FUNDS-FLOW-CUR-INTER-CASH", LocalDate.of(2026, 6, 12), "현금성 내부이체",
                 line("101", "0.00", "70.00", CASH_PARTNER_ID, "현금 출금"),
                 line("102", "70.00", "0.00", CASH_PARTNER_ID, "보통예금 입금"));
