@@ -8,7 +8,7 @@
 |---|---|---|
 | 좌측 사이드바 메뉴(canAccess 가드) | 60 | `clients/desktop/src/renderer/components/AppLayout.tsx` |
 | 권한설정 매트릭스(PAGE_GROUPS) | 179 | `clients/desktop/src/renderer/routes/PermissionMatrixPage.tsx` |
-| BE PageCode enum(.code) | 151 | `services/auth-service/.../domain/PageCode.java` |
+| BE PageCode enum(.code) | 185 | `services/auth-service/.../domain/PageCode.java` |
 
 ### 대조 결과
 | 검사 | 결과 | 판정 |
