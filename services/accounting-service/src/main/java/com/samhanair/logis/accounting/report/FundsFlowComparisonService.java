@@ -203,7 +203,7 @@ public class FundsFlowComparisonService {
          * UNKNOWN 귀속 여부를 distribute 에서 판단한다. 현금성 상대 라인은 내부이체이므로 항상 제외한다.
          */
         private List<JournalLine> counterLines(JournalLine cashLine, boolean increase) {
-            return cashLine.getJournal().getLines().stream()
+            return distinctJournalLines(cashLine).stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
                     .filter(line -> !isCashEquivalentAccount(line.getAccountCode()))
                     .filter(line -> increase
@@ -214,7 +214,7 @@ public class FundsFlowComparisonService {
         }
 
         private boolean hasOppositeCashEquivalentLine(JournalLine cashLine, boolean increase) {
-            return cashLine.getJournal().getLines().stream()
+            return distinctJournalLines(cashLine).stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
                     .filter(line -> isCashEquivalentAccount(line.getAccountCode()))
                     .anyMatch(line -> increase
@@ -223,12 +223,21 @@ public class FundsFlowComparisonService {
         }
 
         private boolean allCounterLinesAreCashEquivalent(JournalLine cashLine) {
-            List<JournalLine> counterLines = cashLine.getJournal().getLines().stream()
+            List<JournalLine> counterLines = distinctJournalLines(cashLine).stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
                     .toList();
             return !counterLines.isEmpty()
                     && counterLines.stream()
                             .allMatch(line -> isCashEquivalentAccount(line.getAccountCode()));
+        }
+
+        private List<JournalLine> distinctJournalLines(JournalLine cashLine) {
+            Map<Object, JournalLine> uniqueLines = new LinkedHashMap<>();
+            for (JournalLine line : cashLine.getJournal().getLines()) {
+                Object key = line.getId() == null ? line : line.getId();
+                uniqueLines.putIfAbsent(key, line);
+            }
+            return new ArrayList<>(uniqueLines.values());
         }
 
         private boolean isCashEquivalentAccount(String accountCode) {

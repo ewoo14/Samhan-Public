@@ -111,6 +111,37 @@ class FundsFlowComparisonControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("자금 입출금내역 — 한 분개의 다중 현금성 라인은 상대 라인을 중복 배분하지 않음")
+    void fundsFlowComparisonDeduplicatesFetchedJournalLinesWithMultipleCashEquivalents() throws Exception {
+        seedPosted("FUNDS-FLOW-MULTI-CASH-IN", LocalDate.of(2026, 7, 10), "다중 현금성 입금",
+                line("101", "10000000.00", "0.00", CASH_PARTNER_ID, "현금 입금"),
+                line("102", "0.00", "3000000.00", CASH_PARTNER_ID, "보통예금 내부이체"),
+                line("110", "0.00", "7000000.00", COUNTER_PARTNER_ID, "외상매출금 회수"));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/funds-flow-comparison")
+                        .param("from", "2026-07-10")
+                        .param("to", "2026-07-10")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode current = objectMapper.readTree(
+                result.getResponse().getContentAsString(StandardCharsets.UTF_8)).get("data").get("current");
+
+        assertAmount(findLine(current.get("increases"), "110").get("amount"), "7000000.00");
+        assertAmount(current.get("increaseSubtotal"), "7000000.00");
+        assertAmount(current.get("decreaseSubtotal"), "0.00");
+        assertPeriodDelta(current, "7000000.00");
+        assertLineAbsent(current.get("increases"), "101");
+        assertLineAbsent(current.get("increases"), "102");
+        assertLineAbsent(current.get("decreases"), "101");
+        assertLineAbsent(current.get("decreases"), "102");
+        assertLineAbsent(current.get("increases"), "UNKNOWN");
+        assertReconciled(current);
+    }
+
+    @Test
     @DisplayName("자금 입출금내역 — 분개가 없는 기간은 빈 라인과 0원 검산을 반환")
     void fundsFlowComparisonReturnsEmptyPeriod() throws Exception {
         MvcResult result = mockMvc.perform(get("/accounting/reports/funds-flow-comparison")
