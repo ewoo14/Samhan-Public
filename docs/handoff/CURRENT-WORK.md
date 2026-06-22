@@ -4,7 +4,7 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-22 — **동적 결재라인 에픽: 슬1 #560 + 슬2 #561 머지, 다음=슬3**)
+## 🟢 핸드오프 (2026-06-22 — **동적 결재라인 에픽: 슬1 #560 + 슬2 #561 + 슬3 #562 머지(3/5), 다음=슬4 전표확대**)
 
 > "결재라인 확장" = 개발책임자 클래리피케이션: **결재라인 동적 변경(단계 추가/삭제/이름 즉시적용) + 실시간 렌더링 + 전 전표 + 시드 삭제 경고 모달**. brainstorming(superpowers)로 재정의 → 에픽 spec 작성.
 
@@ -24,11 +24,19 @@
 - 듀얼리뷰 Opus 5-agent(0 blocking+2 fix: @Size·slip 메시지 출고자/검수자) + Codex 5-agent(BLOCKING 1 자체적발: Rename DTO @Size+IT) = **양쪽 0 수렴**, 리뷰 3건+GG판정 PR 게시. CI all green(GG dev_p05_pass! false-positive). V65 실QA 2/2(`docs/qa/dynamic-approval-step-crud-s2/`).
 - 🔑 **config 페이지 라이브 QA 한계**: `/admin/approval-line-config`=PermissionGuard(admin.approval-line-config). standalone QA-env에서 **실 admin 엔드포인트 403**(미변경 GET도 동일=게이트웨이 identity/권한해석, 슬2 무관 [[local-stack-qa-gotchas]])·**mock은 기본 MANAGER 권한무보유 대시보드 리다이렉트** → config UI 라이브 캡처 불가. **동작=실 Testcontainers IT 증명**(add/delete/CREATOR/authorize). 단계 추가/삭제 UI 실캡처는 향후 권한 보유 계정/방법 확보 시.
 
-### ⏭️ 다음 = 슬3 (판매전표 결재란 설정기반 렌더 + 실시간 미리보기 + print-renderer 재타깃) — FE
-- `DispatchView` 결재란 가운데 3칸(작성자/출고자/검수자) → SLIP_OUTBOUND 설정 기반 렌더. 서명자 매핑: CREATOR→ownerFullName, action_key=OUTBOUND_DISPATCH→dispatcher, OUTBOUND_INSPECT→inspector, **추가 단계(action_key=NULL)→빈 서명칸**. 담당부서/결제예정일 정보칸 유지.
-- 설정 페이지 결재란 **실시간 미리보기** 패널.
-- **print-renderer 재타깃**(슬1/슬2 이연): `PrintRendererApp.tsx`(헤드리스 사본, 현 OutboundView 금액 클론·`:273` "출고인" 잔존) → 판매전표(작업지시서) 레이아웃 + 설정기반 결재란. DispatchView props 기반 재사용 컴포넌트화.
-- spec §4 슬3. 착수 시 plan.
+### ✅ 슬3 머지 완료 (PR #562, main `11d56093`)
+- **① BE 비-admin read**: `GET /auth/approval-line-configs/{docType}/structure`(인증만·@RequirePermission 없음·구조만 sequence/label/stepType/actionKey·결재자 제외) + IT. **② DispatchView 설정기반 렌더** + **DispatchDocument 공유 presentational**(서명자 매핑 CREATOR→ownerFullName/DISPATCH→dispatcher/INSPECT→inspector/추가단계→빈칸·roles=null 폴백). **③ 설정 미리보기 패널**. **④ print-renderer(PrintRendererApp) DispatchDocument 사용**(금액/출고인/출고전표 타이틀 제거, 사본 판매전표 통일).
+- 듀얼리뷰 **순차** 0 수렴: 🔵 Opus 5-agent **B1(게이트웨이 라우트 누락→실 401)** 적발→Claude fix(application.yml structure 경로 JwtAuthentication) → 🟣 Codex **B1 회귀 가드 부재** 적발→route 계약 IT 추가. + CI fix(structure IT 비인증 단언 401→403). 리뷰 3건+GG판정 PR 게시.
+- 라이브 실QA: structure 엔드포인트 실 게이트웨이 **200(인증)/401(비인증)** + DispatchView 설정기반 결재란 실캡처(`docs/qa/approval-line-config-render-s3/`). CI all green(GG false-positive).
+
+### 🔑 슬3 워크플로우 교훈
+- **신규 auth 엔드포인트 = 게이트웨이 라우트 동반 필수**: /auth/admin/** 외 신규 /auth/** 인증 엔드포인트는 catch-all(`auth-service-legacy`, JwtAuthentication 없음)로 떨어져 X-User-Id 미주입→실 게이트웨이 401. `auth-service-admin-authenticated` Path 에 추가(또는 전용 JwtAuthentication 라우트). **route 계약 IT(ApiGatewayContextLoadIT)로 박제**. [[identity-header-authz-antipattern]] 확장.
+- **auth 직접(MockMvc) 비인증=403 / 게이트웨이 경유=401**(JwtAuthentication 선차단). IT는 auth 직접이라 403 단언.
+- **Testcontainers Windows npipe skip → Codex 로컬 false-PASS**([[testcontainers-windows-docker]]·[[changed-module-full-test-before-push]]): 신규 Testcontainers IT는 로컬 skip→CI Linux fresh 가 단독 적발. auth IT 추가 시 CI 결과 확인 의무(로컬 BUILD SUCCESSFUL≠실행).
+
+### ⏭️ 다음 = 슬4 (전 전표 확대) — spec §4 슬4
+- 슬2~3 패턴(설정 단계 CRUD + 설정기반 결재란 렌더)을 **입고전표(SLIP_INBOUND)·주문(PARTNER_ORDER)** 부터 순차 확대(이미 enforcement·시드 존재). 회계전표·견적·배차·거래명세서는 enforcement 모델 상이→결재란 표시 렌더만 우선, 각 착수 시 brainstorming.
+- 전표별 (a) 인쇄/상세 뷰 결재란 설정기반 전환(구조 엔드포인트 재사용·documentType만 교체) (b) 서명자 매핑 (c) DispatchDocument 류 공유. 착수 시 brainstorming + plan.
 
 ### 🔑 슬1 워크플로우 교훈 (메모리/박제)
 - **CI에 "Desktop Playwright (mock 회귀 hard gate)" 잡 존재**(ci.yml 아닌 별도 워크플로, ~7~8분) → playwright/mock 변경 CI 검증됨. (정적 리뷰어가 "Playwright job 없음" 오판 — 별도 워크플로 확인 필요.)
