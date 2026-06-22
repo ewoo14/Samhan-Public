@@ -88,9 +88,9 @@ public class FundsFlowComparisonService {
         List<FundsFlowComparisonResponse.CounterAccountLine> decreases = accumulator.decreaseLines();
         BigDecimal increaseSubtotal = sum(increases);
         BigDecimal decreaseSubtotal = sum(decreases);
-        BigDecimal closing = opening.add(increaseSubtotal).subtract(decreaseSubtotal);
+        BigDecimal calculatedClosing = opening.add(increaseSubtotal).subtract(decreaseSubtotal);
         BigDecimal actualClosing = sumCashEquivalentBalance(to);
-        boolean reconciled = closing.subtract(actualClosing).abs().compareTo(RECONCILE_TOLERANCE) <= 0;
+        boolean reconciled = calculatedClosing.subtract(actualClosing).abs().compareTo(RECONCILE_TOLERANCE) <= 0;
 
         return new FundsFlowComparisonResponse.PeriodFlow(
                 from,
@@ -151,8 +151,20 @@ public class FundsFlowComparisonService {
             distribute(cashLine, false);
         }
 
+        /**
+         * 현금성 라인 금액을 비현금성 상대계정에 배분한다.
+         *
+         * <p>현금성 계정 간 내부이체는 통합 현금성 잔액을 바꾸지 않으므로 상대 라인의
+         * accountCode 가 {@link FundsStatusService#CASH_EQUIVALENT_ACCOUNT_CODES} 에 속하면
+         * 증가/감소 분해 대상에서 제외한다. 한 전표의 모든 상대 라인이 현금성이면 해당
+         * cashLine 은 0원 기여로 처리한다. 반대 방향 상대가 없거나 배분 기준 합계가 0이면
+         * {@code UNKNOWN(상대계정 없음)} 으로 귀속한다.
+         */
         private void distribute(JournalLine cashLine, boolean increase) {
             BigDecimal cashAmount = increase ? cashLine.getDebitAmount() : cashLine.getCreditAmount();
+            if (allCounterLinesAreCashEquivalent(cashLine)) {
+                return;
+            }
             List<JournalLine> counters = counterLines(cashLine, increase);
             if (counters.isEmpty()) {
                 add(increase, UNKNOWN_ACCOUNT_CODE, cashAmount);
@@ -167,21 +179,30 @@ public class FundsFlowComparisonService {
                 return;
             }
 
+            BigDecimal distributableAmount = cashAmount.min(counterTotal);
             BigDecimal assigned = BigDecimal.ZERO;
             for (int i = 0; i < counters.size(); i++) {
                 JournalLine counter = counters.get(i);
                 BigDecimal base = increase ? counter.getCreditAmount() : counter.getDebitAmount();
                 BigDecimal amount = i == counters.size() - 1
-                        ? cashAmount.subtract(assigned)
-                        : cashAmount.multiply(base).divide(counterTotal, 2, RoundingMode.HALF_UP);
+                        ? distributableAmount.subtract(assigned)
+                        : distributableAmount.multiply(base).divide(counterTotal, 2, RoundingMode.HALF_UP);
                 assigned = assigned.add(amount);
                 add(increase, counter.getAccountCode(), amount);
             }
         }
 
+        /**
+         * 배분 대상 상대 라인.
+         *
+         * <p>증가는 대변, 감소는 차변의 반대 방향 라인을 우선 사용하고, 상대 라인이 없으면
+         * UNKNOWN 귀속을 위해 같은 전표의 비현금성 상대 라인을 반환한다. 현금성 상대 라인은
+         * 내부이체이므로 항상 제외한다.
+         */
         private List<JournalLine> counterLines(JournalLine cashLine, boolean increase) {
             List<JournalLine> opposite = cashLine.getJournal().getLines().stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
+                    .filter(line -> !isCashEquivalentAccount(line.getAccountCode()))
                     .filter(line -> increase
                             ? line.getCreditAmount().signum() > 0
                             : line.getDebitAmount().signum() > 0)
@@ -192,8 +213,22 @@ public class FundsFlowComparisonService {
             }
             return cashLine.getJournal().getLines().stream()
                     .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
+                    .filter(line -> !isCashEquivalentAccount(line.getAccountCode()))
                     .sorted(Comparator.comparingInt(JournalLine::getLineNo))
                     .toList();
+        }
+
+        private boolean allCounterLinesAreCashEquivalent(JournalLine cashLine) {
+            List<JournalLine> counterLines = cashLine.getJournal().getLines().stream()
+                    .filter(line -> !Objects.equals(line.getId(), cashLine.getId()))
+                    .toList();
+            return !counterLines.isEmpty()
+                    && counterLines.stream()
+                            .allMatch(line -> isCashEquivalentAccount(line.getAccountCode()));
+        }
+
+        private boolean isCashEquivalentAccount(String accountCode) {
+            return FundsStatusService.CASH_EQUIVALENT_ACCOUNT_CODES.contains(accountCode);
         }
 
         private void add(boolean increase, String accountCode, BigDecimal amount) {

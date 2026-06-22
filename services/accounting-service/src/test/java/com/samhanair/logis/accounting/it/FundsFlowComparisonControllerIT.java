@@ -81,11 +81,18 @@ class FundsFlowComparisonControllerIT extends AbstractPostgresIT {
         assertText(prior.get("toDate"), "2026-06-09");
 
         assertAmount(findLine(current.get("increases"), "110").get("amount"), "500.00");
+        assertAmount(findLine(current.get("increases"), "120").get("amount"), "33.33");
+        assertAmount(findLine(current.get("increases"), "130").get("amount"), "33.33");
+        assertAmount(findLine(current.get("increases"), "140").get("amount"), "33.34");
         assertAmount(findLine(current.get("increases"), "901").get("amount"), "30.00");
-        assertAmount(current.get("increaseSubtotal"), "530.00");
+        assertAmount(current.get("increaseSubtotal"), "630.00");
         assertAmount(findLine(current.get("decreases"), "801").get("amount"), "120.00");
         assertAmount(current.get("decreaseSubtotal"), "120.00");
-        assertPeriodDelta(current, "410.00");
+        assertLineAbsent(current.get("increases"), "101");
+        assertLineAbsent(current.get("decreases"), "102");
+        assertLineAbsent(current.get("increases"), "UNKNOWN");
+        assertLineAbsent(current.get("decreases"), "UNKNOWN");
+        assertPeriodDelta(current, "510.00");
         assertReconciled(current);
 
         assertAmount(findLine(prior.get("increases"), "110").get("amount"), "200.00");
@@ -148,6 +155,14 @@ class FundsFlowComparisonControllerIT extends AbstractPostgresIT {
         seedPosted("FUNDS-FLOW-CUR-INTEREST", LocalDate.of(2026, 6, 12), "이자 입금",
                 line("102", "30.00", "0.00", CASH_PARTNER_ID, "이자 입금"),
                 line("901", "0.00", "30.00", COUNTER_PARTNER_ID, "이자수익"));
+        seedPosted("FUNDS-FLOW-CUR-COMPLEX-IN", LocalDate.of(2026, 6, 12), "복합 상대 입금",
+                line("102", "100.00", "0.00", CASH_PARTNER_ID, "복합 입금"),
+                line("120", "0.00", "33.33", COUNTER_PARTNER_ID, "상대 대변 1"),
+                line("130", "0.00", "33.33", COUNTER_PARTNER_ID, "상대 대변 2"),
+                line("140", "0.00", "33.34", COUNTER_PARTNER_ID, "상대 대변 3"));
+        seedPosted("FUNDS-FLOW-CUR-INTER-CASH", LocalDate.of(2026, 6, 12), "현금성 내부이체",
+                line("101", "0.00", "70.00", CASH_PARTNER_ID, "현금 출금"),
+                line("102", "70.00", "0.00", CASH_PARTNER_ID, "보통예금 입금"));
         seedDraft("FUNDS-FLOW-DRAFT", LocalDate.of(2026, 6, 12), "미게시 제외",
                 line("102", "999.00", "0.00", CASH_PARTNER_ID, "미게시"),
                 line("110", "0.00", "999.00", COUNTER_PARTNER_ID, "미게시"));
@@ -191,6 +206,14 @@ class FundsFlowComparisonControllerIT extends AbstractPostgresIT {
             }
         }
         throw new AssertionError("상대계정 라인을 찾지 못했습니다: " + accountCode);
+    }
+
+    private void assertLineAbsent(JsonNode lines, String accountCode) {
+        for (JsonNode line : lines) {
+            if (accountCode.equals(line.get("counterAccountCode").asText())) {
+                throw new AssertionError("반환되지 않아야 할 상대계정 라인입니다: " + accountCode);
+            }
+        }
     }
 
     private void assertReconciled(JsonNode period) {
