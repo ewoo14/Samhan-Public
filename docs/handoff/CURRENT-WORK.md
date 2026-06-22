@@ -4,6 +4,33 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-22 — **동적 결재라인 에픽 착수: 슬1 판매전표 양식통일+명칭 머지 #560**)
+
+> "결재라인 확장" = 개발책임자 클래리피케이션: **결재라인 동적 변경(단계 추가/삭제/이름 즉시적용) + 실시간 렌더링 + 전 전표 + 시드 삭제 경고 모달**. brainstorming(superpowers)로 재정의 → 에픽 spec 작성.
+
+### 📐 에픽 = 동적 결재라인 + 설정=결재란 진실원 (전 전표)
+- **spec**: `docs/superpowers/specs/2026-06-22-dynamic-approval-line-config-rendering-design.md` (확정 D1~D6).
+- **핵심 결정**: D1 설정=결재란 진실원 / D2 추가 단계=표시·서명용(enforced 단계는 코드배선 유지·삭제 시 경고) / D3 자동저장 / D4 판매전표 양식 통일(OutboundView 폐기, 거래명세서 별도) / D5 명칭 "판매전표"([[project_sales_slip_naming]]) / D6 슬라이싱.
+- **슬라이스**: 슬1 양식통일+명칭(✅ #560) → 슬2 단계 동적 추가/삭제+경고모달 → 슬3 결재란 설정기반 렌더+미리보기 → 슬4 전표확대 → 슬5 메뉴↔권한설정 정합+동작 검증.
+
+### ✅ 슬1 머지 완료 (PR #560, main `6a6034b2`)
+- `OutboundView`+`/print/outbound` 폐기(금액 단 출고전표=거래명세서 중복). `DispatchView`(작업지시서)=판매전표 단일.
+- 판매 도메인 사용자 노출 "출고전표"/"작업지시서" → **"판매전표"** 전체 스윕(리스트/대시보드/주문전환/병합/견적변환/SlipForm/SlipList + 인쇄버튼 "판매전표 출력"). 기술키 SLIP_OUTBOUND·입고전표·groupware enum 불변.
+- 듀얼리뷰 Opus 5-agent(Designer P2 명칭공존 적발→전체스윕) + Codex 5-agent 크로스체크 = **양쪽 0 blocking**. Docker 라이브 실QA 5/5(`docs/qa/sales-slip-form-unify-rename-s1/`). CI green(GitGuardian dev_p05_pass! = PM false-positive 판정).
+
+### ⏭️ 슬2 착수 예정 = 결재라인 단계 동적 추가/삭제 + 경고 모달 (auth BE + FE)
+- BE: `POST /auth/admin/approval-line-configs`(단계 추가·action_key=NULL·sequence=max+1) + `DELETE /{id}`(soft-delete+자식 결재자 cascade·CREATOR 거부). 조회 응답에 `enforced`(action_key≠NULL)·`seedManaged` 노출. **Flyway 신규 없음**.
+- FE: 단계 추가 버튼 + 삭제 아이콘. enforced/시드 단계 삭제 시 **design-system Modal 경고**("이 단계 삭제 시 해당 동작 결재강제 해제"). 자동저장.
+- **🔖 슬2 동반 편입**: 결재 역할 라벨 **출고인→출고자, 검수인→검수자**("인"→"자") 정정 = **신규 V65**(`UPDATE approval_line_config SET label='출고자'/'검수자' WHERE document_type='SLIP_OUTBOUND' AND created_by='v61-seed' AND label IN('출고인'/'검수인')`, V61 불변 [[applied-migration-immutable]], created_by 가드로 사용자 rename 보존, fresh probe) + mock(`mock.ts` 출고인/검수인) + 인쇄 결재란(DispatchView 작업지시서 결재란). ※ action_key는 sequence 매핑이라 rename 무관(enforcement 무영향).
+- 회귀: 실HTTP authorize 계약([[restclient-contract-test-false-green]]·[[enforcement-real-http-test]]). Docker 라이브 QA.
+
+### 🔑 슬1 워크플로우 교훈 (메모리/박제)
+- **CI에 "Desktop Playwright (mock 회귀 hard gate)" 잡 존재**(ci.yml 아닌 별도 워크플로, ~7~8분) → playwright/mock 변경 CI 검증됨. (정적 리뷰어가 "Playwright job 없음" 오판 — 별도 워크플로 확인 필요.)
+- **GitGuardian GitHub App 체크는 repo `.gitguardian.yaml`(ggshield CLI용) 미적용** → dashboard 규칙 기반이라 allowlist 등재된 dev 시드(dev_p05_pass!)도 신규 occurrence 적색. PM false-positive 판정 후 머지([[gitguardian-false-positive]]).
+- 라이브 실QA: standalone 렌더러(`vite.renderer.dev.config.ts` :5175 + `VITE_API_BASE_URL=:8080` mock off) + real-qa config + 실 시드 전표 ID 조회(시드 고정 ID는 DB마다 다름 → `GET /slips?slipType=OUTBOUND`로 실재 ID 확보). SalesQueryPage(/sales)는 standalone QA-env 권한매트릭스 미로드로 canAccess 게이트 비노출(rename 결함 아님 [[local-stack-qa-gotchas]]).
+
+---
+
 ## 🟢 핸드오프 (2026-06-22 야간 자율 — **출고·입고·주문 enforcement 완결**, 세션 종료/회사PC 재개)
 
 > 🖥️ **회사 PC 재개**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 본 파일 읽기. 야간 자율(집 PC 22시~07시 40분) 8 PR 머지 완료, git clean·스택 정지·compose 정상.
