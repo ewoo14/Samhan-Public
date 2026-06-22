@@ -87,11 +87,14 @@ class ApprovalLineStructureControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("GET structure — 비인증 요청은 401")
-    void getStructure_anonymous_returns401() throws Exception {
+    @DisplayName("GET structure — 비인증(X-User-Id 미주입) 직접 호출은 403 (게이트웨이 JwtAuthentication 단계는 401)")
+    void getStructure_anonymous_returns403() throws Exception {
+        // auth-service 직접(MockMvc·게이트웨이 미경유): X-User-Id 없으면 SecurityConfig
+        // .anyRequest().authenticated() 거부 → 403(기존 admin 엔드포인트 IT 컨벤션 동일).
+        // 게이트웨이 경유 시에는 JwtAuthentication 필터가 토큰 없는 요청을 401 로 선차단.
         MvcResult result = mockMvc.perform(get("/auth/approval-line-configs/{documentType}/structure", DOCUMENT_TYPE))
                 .andReturn();
 
-        assertThat(result.getResponse().getStatus()).isEqualTo(401);
+        assertThat(result.getResponse().getStatus()).isEqualTo(403);
     }
 }
