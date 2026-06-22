@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import com.samhanair.logis.groupware.GroupwareServiceApplication;
+import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalTemplate;
 import com.samhanair.logis.groupware.repository.ApprovalTemplateFieldRepository;
 import com.samhanair.logis.groupware.repository.ApprovalTemplateRepository;
+import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +37,16 @@ class ApprovalTemplateActiveEndpointIT extends AbstractPostgresIT {
 
     @Autowired
     private ApprovalTemplateFieldRepository fieldRepository;
+
+    // 외부 client @MockBean — 누락 시 SpringBootTest 컨텍스트 로드 실패(NoSuchBeanDefinition).
+    // ([[it-mockbean-external-clients]] — 기존 ApprovalCollabIT/ApprovalTemplateAttachmentIT 패턴 일치)
+    @MockBean
+    @SuppressWarnings("unused")
+    private UserClient userClient;
+
+    @MockBean
+    @SuppressWarnings("unused")
+    private DynamicPermissionClient dynamicPermissionClient;
 
     @BeforeEach
     void setUp() {
