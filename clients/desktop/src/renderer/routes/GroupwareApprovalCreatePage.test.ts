@@ -4,6 +4,7 @@ import {
   loadDefaultApproverOptions,
   mapDefaultApproversToApproverOptions,
   removeApproverAt,
+  shouldApplyDefaultApproverPrefill,
 } from './GroupwareApprovalCreatePage'
 import type { ApprovalLineDefaultApprover } from '../api/approvalLineConfigApi'
 import type { ApproverOption } from '../api/groupwareApprovalApprover'
@@ -59,5 +60,11 @@ describe('GroupwareApprovalCreatePage default approver prefill', () => {
       { userId: 'user-002', name: '김회계', department: null },
       extra,
     ])
+  })
+
+  it('프리필 응답이 늦게 도착하면 사용자 override 를 덮어쓰지 않는다', () => {
+    expect(shouldApplyDefaultApproverPrefill(3, 3, false)).toBe(true)
+    expect(shouldApplyDefaultApproverPrefill(3, 4, false)).toBe(false)
+    expect(shouldApplyDefaultApproverPrefill(3, 3, true)).toBe(false)
   })
 })

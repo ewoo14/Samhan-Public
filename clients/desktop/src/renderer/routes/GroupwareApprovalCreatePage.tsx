@@ -4,7 +4,7 @@
  * 생성 본문은 ApprovalLineCreateRequest 계약(templateId/fieldValues/title/content/approverIds)과
  * 일치한다. 첨부는 결재 생성 후 전용 endpoint 로 순차 등록한다.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -121,6 +121,14 @@ export async function loadDefaultApproverOptions(
   }
 }
 
+export function shouldApplyDefaultApproverPrefill(
+  capturedEditVersion: number,
+  currentEditVersion: number,
+  cancelled: boolean,
+): boolean {
+  return !cancelled && capturedEditVersion === currentEditVersion
+}
+
 export function addApproverOption(current: ApproverOption[], item: ApproverOption): ApproverOption[] {
   return current.some((approver) => approver.userId === item.userId)
     ? current
@@ -151,6 +159,7 @@ export function GroupwareApprovalCreatePage() {
   const [references, setReferences] = useState<ReferenceDraft[]>([])
   const [files, setFiles] = useState<FileDraft[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const approverEditVersionRef = useRef(0)
 
   usePageTitle('결재 작성')
 
@@ -171,9 +180,16 @@ export function GroupwareApprovalCreatePage() {
 
   useEffect(() => {
     let cancelled = false
+    const capturedEditVersion = approverEditVersionRef.current
     setApprovers([])
     void loadDefaultApproverOptions(selectedTemplateCode).then((defaultApprovers) => {
-      if (!cancelled) setApprovers(defaultApprovers)
+      if (shouldApplyDefaultApproverPrefill(
+        capturedEditVersion,
+        approverEditVersionRef.current,
+        cancelled,
+      )) {
+        setApprovers(defaultApprovers)
+      }
     })
     return () => {
       cancelled = true
@@ -243,10 +259,12 @@ export function GroupwareApprovalCreatePage() {
 
   const addApprover = (item: ApproverOption | null) => {
     if (!item) return
+    approverEditVersionRef.current += 1
     setApprovers((current) => addApproverOption(current, item))
   }
 
   const removeApprover = (index: number) => {
+    approverEditVersionRef.current += 1
     setApprovers((current) => removeApproverAt(current, index))
   }
 
