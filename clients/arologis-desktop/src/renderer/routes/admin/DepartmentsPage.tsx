@@ -98,6 +98,12 @@ export function DepartmentsPage(): JSX.Element {
         ) : null}
       </header>
 
+      {!canManage ? (
+        <div role="note" style={noticeStyle}>
+          부서 등록·수정·삭제 권한이 없습니다. 현재 부서는 조회만 됩니다.
+        </div>
+      ) : null}
+
       {departmentsQuery.error ? (
         <ErrorBanner message={toErrorMessage(departmentsQuery.error, '부서 목록을 불러오지 못했습니다.')} />
       ) : null}
@@ -318,6 +324,14 @@ const descStyle: CSSProperties = { color: 'var(--color-text-muted)', margin: '6p
 const actionRowStyle: CSSProperties = { display: 'flex', gap: 6, flexWrap: 'wrap' }
 const modalFooterStyle: CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: 8 }
 const formColStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 14 }
+const noticeStyle: CSSProperties = {
+  padding: '10px 12px',
+  border: '1px solid var(--color-border)',
+  borderRadius: 4,
+  background: 'var(--color-surface-muted, #f9fafb)',
+  color: 'var(--color-text-muted)',
+  fontSize: 13,
+}
 const errorStyle: CSSProperties = {
   padding: '10px 12px',
   border: '1px solid var(--state-danger, #dc2626)',

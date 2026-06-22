@@ -81,7 +81,7 @@ export async function listAllAccounts(): Promise<SimpleAccountView[]> {
   return res.data.data
 }
 
-/** 계정과목 활성상태 변경(관리). 마스터·회계사원만 — BE @RequirePermission 최종 방어. */
+/** 계정과목 활성상태 변경(관리). `arologis.accounting.accounts` update 권한 기준 — BE @RequirePermission 최종 방어. */
 export async function setAccountActive(code: string, active: boolean): Promise<SimpleAccountView> {
   const res = await apiClient.put<ApiEnvelope<SimpleAccountView>>(
     `${ACCOUNTING_BASE}/accounts/${encodeURIComponent(code)}/active`,

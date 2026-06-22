@@ -17,6 +17,7 @@
  */
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { adminLogin, fetchMe } from '../../api/auth'
 import { useAuthStore } from '../../stores/authStore'
@@ -72,6 +73,7 @@ const errorStyle: React.CSSProperties = {
 
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const [loginId, setLoginId] = useState('')
@@ -86,6 +88,7 @@ export function LoginPage(): JSX.Element {
     setSubmitting(true)
     try {
       const tokens = await adminLogin(loginId.trim(), password)
+      queryClient.removeQueries({ queryKey: ['permissions', 'my'] })
       // /auth/me 호출 시 새 토큰을 즉시 사용하려면 store 에 임시로 넣는다.
       await setAuth({
         accessToken: tokens.accessToken,
@@ -108,6 +111,7 @@ export function LoginPage(): JSX.Element {
         fullName: profileFullName,
         expiresAt: tokens.expiresAt,
       })
+      queryClient.removeQueries({ queryKey: ['permissions', 'my'] })
       navigate('/dispatches', { replace: true })
     } catch (err) {
       if (axios.isAxiosError(err)) {

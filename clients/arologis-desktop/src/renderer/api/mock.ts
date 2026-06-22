@@ -22,6 +22,7 @@ const ALL_ADMIN_PERMISSIONS: PermissionMap = {
   'arologis.hr.employees': fullActions(),
   'arologis.hr.departments': fullActions(),
   'arologis.accounting.cashbook': fullActions(),
+  'arologis.accounting.summary': fullActions(),
   'arologis.accounting.accounts': fullActions(),
   'arologis.admin.permissions': fullActions(),
 }
@@ -32,30 +33,25 @@ const ROLE_PERMISSION_FIXTURES: Record<string, PermissionMap> = {
     'arologis.hr.employees': fullActions(),
     'arologis.hr.departments': fullActions(),
     'arologis.accounting.cashbook': fullActions(),
+    'arologis.accounting.summary': fullActions(),
   },
   AROLOGIS_DEVELOPER: {
     'arologis.accounting.cashbook': fullActions(),
+    'arologis.accounting.summary': fullActions(),
   },
   AROLOGIS_ACCOUNTANT: {
     'arologis.accounting.cashbook': fullActions(),
+    'arologis.accounting.summary': fullActions(),
     'arologis.accounting.accounts': fullActions(),
   },
   AROLOGIS_SALES: {},
   AROLOGIS_DRIVER: {},
 }
 
-let permissionFixtures: Record<string, PermissionMap> = clonePermissionFixtures(ROLE_PERMISSION_FIXTURES)
+const permissionFixtures: Record<string, PermissionMap> = clonePermissionFixtures(ROLE_PERMISSION_FIXTURES)
 
 export function isMockMode(): boolean {
   return import.meta.env['VITE_MOCK_MODE'] === '1'
-}
-
-export function resetArologisPermissionMock(): void {
-  permissionFixtures = clonePermissionFixtures(ROLE_PERMISSION_FIXTURES)
-}
-
-export function setArologisPermissionMock(role: string, permissions: PermissionMap): void {
-  permissionFixtures[role] = clonePermissionMap(permissions)
 }
 
 export function getMockResponse(config: AxiosRequestConfig): unknown | null {

@@ -2,7 +2,7 @@
  * 아로로지스 현재 사용자 page-code 권한 API.
  *
  * BE `GET /admin/arologis/permissions/my` 응답을 메인 desktop 과 같은
- * `MyPermission[]` 캐시 형태로 정규화한다. 캐시가 없거나 page/action 이 없으면
+ * `MyPermission[]` 형태로 정규화한다. 권한 데이터가 없거나 page/action 이 없으면
  * fail-closed 로 false 를 반환한다.
  */
 import { apiClient, type ApiEnvelope } from './client'
@@ -58,19 +58,14 @@ export async function fetchMyPermissions(): Promise<MyPermission[]> {
   }))
 }
 
-let _permissionsCache: MyPermission[] | null = null
-
-/** usePermissions hook 이 조회 완료 후 동기 canAccess 캐시를 갱신한다. */
-export function setPermissionsCache(perms: MyPermission[] | null): void {
-  _permissionsCache = perms
-}
-
+/** 주어진 권한 데이터에서 page-code/action 접근 가능 여부를 fail-closed 로 판정한다. */
 export function canAccess(
+  permissions: MyPermission[] | null | undefined,
   pageCode: string,
   action: PermissionLookupAction = 'view',
 ): boolean {
-  if (_permissionsCache === null) return false
-  const entry = _permissionsCache.find((permission) => permission.pageCode === pageCode)
+  if (!permissions) return false
+  const entry = permissions.find((permission) => permission.pageCode === pageCode)
   if (!entry) return false
   return entry.actions.includes(normalizePermissionAction(action))
 }

@@ -20,7 +20,7 @@ export function PermissionGuard({
   action = 'view',
   children,
 }: PermissionGuardProps): JSX.Element {
-  const { canAccess, isLoading } = usePermissions()
+  const { canAccess, isLoading, isError } = usePermissions()
 
   if (isLoading) {
     return (
@@ -28,6 +28,10 @@ export function PermissionGuard({
         <MascotLoader size="md" label="권한 확인 중" />
       </div>
     )
+  }
+
+  if (isError) {
+    return <Navigate to="/" replace />
   }
 
   if (!canAccess(pageCode, action)) {

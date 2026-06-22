@@ -33,10 +33,18 @@ class ArologisMyPermissionServiceTest {
                                 "arologis.accounting.cashbook",
                                 "현금출납장",
                                 true,
-                                true))));
+                                true),
+                        "arologis.admin.permissions",
+                        new RolePagePermissionView(
+                                "MASTER",
+                                "arologis.admin.permissions",
+                                "권한 관리",
+                                false,
+                                false))));
 
         Map<String, List<String>> result = service.getMyPermissions("MASTER");
 
+        assertThat(result).containsOnlyKeys("arologis.accounting.cashbook");
         assertThat(result.get("arologis.accounting.cashbook"))
                 .containsExactly("VIEW", "CREATE", "UPDATE", "DELETE", "RESTORE", "DOWNLOAD", "PRINT");
     }

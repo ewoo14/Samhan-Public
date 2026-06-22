@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
@@ -85,6 +86,7 @@ class ArologisMyPermissionsControllerIT {
     }
 
     @Test
+    @WithMockUser(username = "arologis-master", authorities = {"ROLE_AROLOGIS_MASTER"})
     void arologis_master는_MASTER_row를_조회해_view와_편집_action을_반환한다() throws Exception {
         expectMatrix("""
                 {"success":true,"data":{
@@ -99,9 +101,7 @@ class ArologisMyPermissionsControllerIT {
                   }
                 }}""");
 
-        mockMvc.perform(get("/admin/arologis/permissions/my")
-                        .header("X-User-Id", "admin-001")
-                        .header("X-User-Role", "AROLOGIS_MASTER"))
+        mockMvc.perform(get("/admin/arologis/permissions/my"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data['arologis.accounting.cashbook'][0]").value("VIEW"))
                 .andExpect(jsonPath("$.data['arologis.accounting.cashbook'][1]").value("CREATE"))
@@ -115,6 +115,7 @@ class ArologisMyPermissionsControllerIT {
     }
 
     @Test
+    @WithMockUser(username = "arologis-accountant", authorities = {"ROLE_AROLOGIS_ACCOUNTANT"})
     void arologis_accountant는_ACCOUNTANT_row를_조회해_회계_page_action을_반환한다() throws Exception {
         expectMatrix("""
                 {"success":true,"data":{
@@ -129,9 +130,7 @@ class ArologisMyPermissionsControllerIT {
                   }
                 }}""");
 
-        mockMvc.perform(get("/admin/arologis/permissions/my")
-                        .header("X-User-Id", "accountant-001")
-                        .header("X-User-Role", "AROLOGIS_ACCOUNTANT"))
+        mockMvc.perform(get("/admin/arologis/permissions/my"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data['arologis.accounting.accounts'][0]").value("VIEW"))
                 .andExpect(jsonPath("$.data['arologis.accounting.accounts'].length()").value(1));
@@ -140,6 +139,7 @@ class ArologisMyPermissionsControllerIT {
     }
 
     @Test
+    @WithMockUser(username = "arologis-driver", authorities = {"ROLE_AROLOGIS_DRIVER"})
     void 매트릭스에_없는_롤은_빈_map을_200으로_반환한다() throws Exception {
         expectMatrix("""
                 {"success":true,"data":{
@@ -154,9 +154,30 @@ class ArologisMyPermissionsControllerIT {
                   }
                 }}""");
 
+        mockMvc.perform(get("/admin/arologis/permissions/my"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        server.verify();
+    }
+
+    @Test
+    void 인증_없는_요청은_401_또는_403으로_차단한다() throws Exception {
+        mockMvc.perform(get("/admin/arologis/permissions/my"))
+                .andExpect(status().is4xxClientError())
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    org.assertj.core.api.Assertions.assertThat(status).isIn(401, 403);
+                });
+
+        server.verify();
+    }
+
+    @Test
+    void role_authority_없는_헤더_spoof는_빈_권한으로_fail_closed한다() throws Exception {
         mockMvc.perform(get("/admin/arologis/permissions/my")
-                        .header("X-User-Id", "driver-001")
-                        .header("X-User-Role", "AROLOGIS_DRIVER"))
+                        .header("X-User-Id", "spoof-001")
+                        .header("X-User-Role", "AROLOGIS_MASTER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty());
 

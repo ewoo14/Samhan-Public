@@ -4,6 +4,7 @@ import com.samhanair.logis.arologis.client.AuthPermissionAdminClient;
 import com.samhanair.logis.arologis.client.AuthPermissionAdminClient.RolePagePermissionView;
 import com.samhanair.logis.arologis.util.ArologisRoleCodeNormalizer;
 import com.samhanair.logis.security.permission.PermissionAction;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,12 @@ public class ArologisMyPermissionService {
      * {@code arologis.} prefix 매트릭스에서 해당 행만 선택한다. 행이 없으면 빈 map 을 반환하여
      * FE 접근을 fail-closed 로 유지한다.
      *
+     * <p>MASTER divergence 고정 기록: {@code getRoleMatrix} 는 실 grant 행만 반환한다.
+     * 실 enforcement 는 {@code AROLOGIS_MASTER} 에 대해 매트릭스와 무관하게 bypass 한다.
+     * 현재 V50~V54 가 6개 백오피스 page-code 전부에 MASTER V/E 를 seed 하므로 무해하다.
+     * 신규 arologis page-code 추가 시 MASTER seed 행은 필수다. 누락하면 {@code /my} 응답상
+     * MASTER UI 가 해당 화면을 차단한다.
+     *
      * @param rawRoleCode 원본 {@code X-User-Role} 헤더 값
      * @return pageCode → 허용 action enum name 목록
      */
@@ -69,13 +76,16 @@ public class ArologisMyPermissionService {
         Map<String, List<String>> result = new LinkedHashMap<>();
         for (Map.Entry<String, RolePagePermissionView> entry : roleRow.entrySet()) {
             RolePagePermissionView permission = entry.getValue();
-            result.put(entry.getKey(), toActionNames(permission));
+            List<String> actions = toActionNames(permission);
+            if (!actions.isEmpty()) {
+                result.put(entry.getKey(), actions);
+            }
         }
         return result;
     }
 
     private List<String> toActionNames(RolePagePermissionView permission) {
-        java.util.ArrayList<String> actions = new java.util.ArrayList<>();
+        ArrayList<String> actions = new ArrayList<>();
         if (permission.canView()) {
             actions.add(PermissionAction.VIEW.name());
         }

@@ -209,6 +209,12 @@ export function CashbookPage(): JSX.Element {
         ) : null}
       </header>
 
+      {!canManage ? (
+        <div role="note" style={noticeStyle}>
+          거래 입력·수정·삭제 권한이 없습니다. 현재 현금출납장은 조회만 됩니다.
+        </div>
+      ) : null}
+
       <div style={filterRowStyle}>
         <Select
           label="기간 방식"
@@ -811,6 +817,14 @@ const cardCountStyle: CSSProperties = { ...cardAmountBase, color: 'var(--color-t
 const amountBase: CSSProperties = { fontWeight: 600 }
 const amountIncomeStyle: CSSProperties = { ...amountBase, color: 'var(--state-success, #15803d)' }
 const amountExpenseStyle: CSSProperties = { ...amountBase, color: 'var(--state-danger, #b91c1c)' }
+const noticeStyle: CSSProperties = {
+  padding: '10px 12px',
+  border: '1px solid var(--color-border)',
+  borderRadius: 4,
+  background: 'var(--color-surface-muted, #f9fafb)',
+  color: 'var(--color-text-muted)',
+  fontSize: 13,
+}
 const detailListStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, margin: 0 }
 const detailRowStyle: CSSProperties = { display: 'flex', gap: 12 }
 const detailLabelStyle: CSSProperties = { width: 64, color: 'var(--color-text-muted)', fontSize: 13, margin: 0 }
