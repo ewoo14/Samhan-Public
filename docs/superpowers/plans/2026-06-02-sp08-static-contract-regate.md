@@ -188,7 +188,8 @@ git commit -m "test(3-A2): slip 정적계약 4스펙 RBAC 드리프트 + IT rena
 - [ ] **Step 2: sp-08-3-2** (line 62)
 ```ts
 // 변경 후:
-expect(controller).toContain('@RequirePermission(page = "arologis.dispatch.ops"')
+expect(controller).toContain('@RequirePermission(page = ArologisPageCodes.DISPATCH_OPS')
+expect(pageCodes).toContain('DISPATCH_OPS = "arologis.dispatch.ops"')
 ```
 
 - [ ] **Step 3: sp-08-3-3** (line 63)

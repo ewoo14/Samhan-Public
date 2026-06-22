@@ -162,6 +162,10 @@ jobs:
         working-directory: clients/arologis-desktop
         run: npm run lint
 
+      - name: 단위 테스트(vitest) (arologis-desktop)
+        working-directory: clients/arologis-desktop
+        run: npm test
+
       - name: build (arologis-desktop)
         working-directory: clients/arologis-desktop
         run: npm run build

@@ -1,6 +1,7 @@
 package com.samhanair.logis.arologis.controller;
 
 import com.samhanair.logis.arologis.domain.auth.AdminUserRole;
+import com.samhanair.logis.arologis.security.ArologisPageCodes;
 import com.samhanair.logis.arologis.service.ArologisDepartmentService;
 import com.samhanair.logis.arologis.service.ArologisEmployeeService;
 import com.samhanair.logis.common.dto.ApiResponse;
@@ -44,7 +45,7 @@ public class ArologisHrController {
     /** 직원 목록 조회. */
     @Operation(summary = "아로로지스 직원 목록 조회")
     @GetMapping("/employees")
-    @RequirePermission(page = "arologis.hr.employees", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.HR_EMPLOYEES, action = PermissionAction.VIEW)
     public ApiResponse<List<ArologisEmployeeService.EmployeeView>> listEmployees(
             @RequestParam(required = false) String departmentCode) {
         return ApiResponse.ok(employeeService.list(departmentCode));
@@ -53,7 +54,7 @@ public class ArologisHrController {
     /** 직원 생성 + AdminUser 자동 provisioning. */
     @Operation(summary = "아로로지스 직원 생성")
     @PostMapping("/employees")
-    @RequirePermission(page = "arologis.hr.employees", action = PermissionAction.CREATE)
+    @RequirePermission(page = ArologisPageCodes.HR_EMPLOYEES, action = PermissionAction.CREATE)
     public ApiResponse<ArologisEmployeeService.ProvisionedEmployee> createEmployee(
             @Valid @RequestBody CreateEmployeeRequest request,
             @RequestHeader(value = USER_ID_HEADER, required = false) String actor,
@@ -64,7 +65,7 @@ public class ArologisHrController {
     /** 직원 기본 정보 수정. */
     @Operation(summary = "아로로지스 직원 수정")
     @PutMapping("/employees/{loginId}")
-    @RequirePermission(page = "arologis.hr.employees", action = PermissionAction.UPDATE)
+    @RequirePermission(page = ArologisPageCodes.HR_EMPLOYEES, action = PermissionAction.UPDATE)
     public ApiResponse<ArologisEmployeeService.EmployeeView> updateEmployee(
             @PathVariable String loginId,
             @Valid @RequestBody UpdateEmployeeRequest request) {
@@ -74,7 +75,7 @@ public class ArologisHrController {
     /** 직원 롤 변경. */
     @Operation(summary = "아로로지스 직원 롤 변경")
     @PutMapping("/employees/{loginId}/role")
-    @RequirePermission(page = "arologis.hr.employees", action = PermissionAction.UPDATE)
+    @RequirePermission(page = ArologisPageCodes.HR_EMPLOYEES, action = PermissionAction.UPDATE)
     public ApiResponse<ArologisEmployeeService.EmployeeView> changeRole(
             @PathVariable String loginId,
             @Valid @RequestBody ChangeRoleRequest request,
@@ -86,7 +87,7 @@ public class ArologisHrController {
     /** 직원 퇴직 처리. */
     @Operation(summary = "아로로지스 직원 퇴직 처리")
     @PutMapping("/employees/{loginId}/terminate")
-    @RequirePermission(page = "arologis.hr.employees", action = PermissionAction.DELETE)
+    @RequirePermission(page = ArologisPageCodes.HR_EMPLOYEES, action = PermissionAction.DELETE)
     public ApiResponse<ArologisEmployeeService.EmployeeView> terminate(
             @PathVariable String loginId,
             @Valid @RequestBody TerminateEmployeeRequest request,
@@ -97,7 +98,7 @@ public class ArologisHrController {
     /** 직원 롤 변경 이력 조회. */
     @Operation(summary = "아로로지스 직원 롤 변경 이력 조회")
     @GetMapping("/employees/{loginId}/role-histories")
-    @RequirePermission(page = "arologis.hr.employees", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.HR_EMPLOYEES, action = PermissionAction.VIEW)
     public ApiResponse<List<ArologisEmployeeService.RoleHistoryView>> roleHistories(
             @PathVariable String loginId) {
         return ApiResponse.ok(employeeService.roleHistories(loginId));
@@ -106,7 +107,7 @@ public class ArologisHrController {
     /** 부서 목록 조회. */
     @Operation(summary = "아로로지스 부서 목록 조회")
     @GetMapping("/departments")
-    @RequirePermission(page = "arologis.hr.departments", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.HR_DEPARTMENTS, action = PermissionAction.VIEW)
     public ApiResponse<List<ArologisDepartmentService.DepartmentView>> listDepartments() {
         return ApiResponse.ok(departmentService.list());
     }
@@ -114,7 +115,7 @@ public class ArologisHrController {
     /** 부서 생성. */
     @Operation(summary = "아로로지스 부서 생성")
     @PostMapping("/departments")
-    @RequirePermission(page = "arologis.hr.departments", action = PermissionAction.CREATE)
+    @RequirePermission(page = ArologisPageCodes.HR_DEPARTMENTS, action = PermissionAction.CREATE)
     public ApiResponse<ArologisDepartmentService.DepartmentView> createDepartment(
             @Valid @RequestBody CreateDepartmentRequest request) {
         return ApiResponse.ok(departmentService.create(request.toCommand()));
@@ -123,7 +124,7 @@ public class ArologisHrController {
     /** 부서 수정. */
     @Operation(summary = "아로로지스 부서 수정")
     @PutMapping("/departments/{code}")
-    @RequirePermission(page = "arologis.hr.departments", action = PermissionAction.UPDATE)
+    @RequirePermission(page = ArologisPageCodes.HR_DEPARTMENTS, action = PermissionAction.UPDATE)
     public ApiResponse<ArologisDepartmentService.DepartmentView> updateDepartment(
             @PathVariable String code,
             @Valid @RequestBody UpdateDepartmentRequest request) {
@@ -133,7 +134,7 @@ public class ArologisHrController {
     /** 부서 soft-delete. */
     @Operation(summary = "아로로지스 부서 삭제")
     @PutMapping("/departments/{code}/delete")
-    @RequirePermission(page = "arologis.hr.departments", action = PermissionAction.DELETE)
+    @RequirePermission(page = ArologisPageCodes.HR_DEPARTMENTS, action = PermissionAction.DELETE)
     public ApiResponse<Void> deleteDepartment(
             @PathVariable String code,
             @RequestHeader(value = USER_ID_HEADER, required = false) String actor) {
