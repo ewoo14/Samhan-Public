@@ -1,6 +1,7 @@
 import type { SlipDetail, SlipLineDetail } from '../api/slip'
 import type { ApprovalLineStructure } from '../api/approvalLineConfigApi'
 import { stripSlipNoZeros } from '../utils/orderNo'
+import { ApprovalRoleCells, RoleCell, fallbackRoles } from './approvalRoleCells'
 
 export interface DispatchDocumentSignatures {
   driverSignaturePng?: string | null
@@ -31,53 +32,9 @@ function toMonthDay(isoDate: string | null | undefined): string {
   return `${isoDate.slice(5, 7)}/${isoDate.slice(8, 10)}`
 }
 
-function roleValue(slip: SlipDetail, role: ApprovalLineStructure): string | null {
-  if (role.stepType === 'CREATOR') return slip.ownerFullName ?? null
-  if (role.actionKey === 'OUTBOUND_DISPATCH') return slip.dispatcher?.fullName ?? null
-  if (role.actionKey === 'OUTBOUND_INSPECT') return slip.inspector?.fullName ?? null
-  return null
-}
-
-function fallbackRoles(): ApprovalLineStructure[] {
-  return [
-    { sequence: 0, label: '작성자', stepType: 'CREATOR', actionKey: null },
-    { sequence: 1, label: '출고자', stepType: 'GROUP', actionKey: 'OUTBOUND_DISPATCH' },
-    { sequence: 2, label: '검수자', stepType: 'GROUP', actionKey: 'OUTBOUND_INSPECT' },
-  ]
-}
-
 function normalizeSignature(src: string | null | undefined): string | null {
   if (!src) return null
   return src.startsWith('data:') ? src : `data:image/png;base64,${src}`
-}
-
-/**
- * `<RoleCell>` — 결재란 셀.
- *
- * 작성자/출고자/검수자 칸은 서명(위) + 이름(아래) 구조이며, 추가 단계는 라벨만 렌더한다.
- */
-function RoleCell({
-  label,
-  value,
-  signaturePng,
-}: {
-  label: string
-  value?: string | null
-  signaturePng?: string | null
-}) {
-  return (
-    <div className="dispatch-role-cell">
-      <div className="dispatch-role-label">{label}</div>
-      <div className="dispatch-role-value">
-        {signaturePng ? (
-          <img className="dispatch-role-stamp" src={signaturePng} alt={`${label} 서명`} />
-        ) : (
-          <span className="dispatch-role-stamp-space" />
-        )}
-        {value ? <span className="name">{value}</span> : null}
-      </div>
-    </div>
-  )
 }
 
 /** 판매전표 인쇄 본문. 라우터/쿼리 없이 props 만으로 렌더한다. */
@@ -93,7 +50,9 @@ export function DispatchDocument({
   )
   const monthDay = toMonthDay(slip.slipDate)
   const paymentDueMmdd = slip.paymentDueDate ? toMonthDay(slip.paymentDueDate) : ''
-  const roleCells = (roles ?? fallbackRoles()).slice().sort((a, b) => a.sequence - b.sequence)
+  const roleCells = (roles ?? fallbackRoles('OUTBOUND'))
+    .slice()
+    .sort((a, b) => a.sequence - b.sequence)
   const driverSignaturePng = normalizeSignature(signatures?.driverSignaturePng ?? slip.driverSignaturePng)
   const recipientSignaturePng = normalizeSignature(signatures?.recipientSignaturePng ?? slip.signaturePng)
 
@@ -113,13 +72,7 @@ export function DispatchDocument({
           style={{ gridTemplateColumns: `repeat(${roleCells.length + 2}, 1fr)` }}
         >
           <RoleCell label="담당부서" value={slip.ownerDepartment ?? null} />
-          {roleCells.map((role) => (
-            <RoleCell
-              key={`${role.sequence}-${role.label}-${role.actionKey ?? 'display'}`}
-              label={role.label}
-              value={roleValue(slip, role)}
-            />
-          ))}
+          <ApprovalRoleCells slip={slip} roles={roleCells} slipType="OUTBOUND" />
           <RoleCell label="결제예정일" value={paymentDueMmdd} />
         </div>
       </header>

@@ -114,7 +114,7 @@ const ROUTES: RouteCase[] = [
   { path: '/purchases' },
   { path: '/purchases/new' },
   { path: '/purchases/slip-003' },
-  { path: '/purchases/slip-003/print/inbound' },
+  { path: '/purchases/slip-003/print/purchase' },
 
   // 재고이동
   { path: '/transfers' },

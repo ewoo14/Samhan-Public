@@ -1228,9 +1228,10 @@ public class SlipService {
     /**
      * 단건 조회 — 라인 포함 상세.
      *
-     * <p>SP-08-5-5: user-service internal lookup 으로 {@code ownerFullName} 을 채운다.
-     * user-service 호출 실패 시 graceful fallback — ownerFullName null 로 응답 정상 반환.
-     * {@code createdBy} 파싱 실패(UUID 형식 오류) 시에도 fallback.
+     * <p>SP-08-5-5/S4D: user-service internal lookup 으로 {@code ownerFullName} 과
+     * 결재 서명자 성명({@code dispatcherFullName/inspectorFullName/acceptedByFullName})을 채운다.
+     * user-service 호출 실패 시 graceful fallback — 각 이름 null 로 응답 정상 반환.
+     * userId 파싱 실패(UUID 형식 오류) 시에도 fallback.
      *
      * @param id 전표 ID
      * @return 상세 응답 (ownerFullName 포함)
@@ -1239,8 +1240,16 @@ public class SlipService {
     @Transactional(readOnly = true)
     public SlipDetailResponse getOne(UUID id) {
         Slip slip = loadOrThrow(id);
+        boolean outbound = slip.getSlipType() == SlipType.OUTBOUND;
         String ownerFullName = resolveOwnerFullName(slip.getCreatedBy());
-        return SlipDetailResponse.from(slip, ownerFullName);
+        // 서명자 이름은 slipType 별 의미 있는 역할만 resolve 한다 (응답 계약 정직성 + 중복 호출 회피).
+        // accept() 가 slipType 무관하게 acceptedBy==dispatcherUserId 동일 설정(Slip.java) 하므로,
+        // 출고자(dispatcher)=OUTBOUND 만 / 입고자(acceptedBy)=INBOUND 만 / 검수자(inspector)=양쪽 으로 분기.
+        String dispatcherFullName = outbound ? resolveUserFullName(slip.getDispatcherUserId()) : null;
+        String acceptedByFullName = outbound ? null : resolveUserFullName(slip.getAcceptedBy());
+        String inspectorFullName = resolveUserFullName(slip.getInspectorUserId());
+        return SlipDetailResponse.from(slip, ownerFullName, dispatcherFullName,
+                inspectorFullName, acceptedByFullName);
     }
 
     /**
@@ -1470,23 +1479,34 @@ public class SlipService {
     }
 
     /**
-     * createdBy (UUID 문자열) → 담당자 성명 resolve — user-service internal lookup.
-     *
-     * <p>SP-08-5-5 신규. {@code createdBy} 가 UUID 형식이 아니거나 null 이면 null 반환.
-     * user-service 호출 실패 시 null 반환 (graceful fallback).
+     * createdBy (UUID 문자열) → 담당자 성명 resolve — 기존 SP-08-5-5 호출 의미 보존.
      *
      * @param createdBy BaseEntity.createdBy (UUID 문자열 또는 null)
      * @return 담당자 성명, 실패 시 null
      */
     private String resolveOwnerFullName(String createdBy) {
-        if (createdBy == null || createdBy.isBlank()) {
+        return resolveUserFullName(createdBy);
+    }
+
+    /**
+     * userId 문자열 → 사용자 성명 resolve — user-service internal lookup.
+     *
+     * <p>SP-08-5-5/S4D. {@code userId} 가 UUID 형식이 아니거나 null 이면 null 반환.
+     * user-service 호출 실패 시 null 반환 (graceful fallback).
+     *
+     * @param userId 사용자 UUID 문자열 또는 null
+     * @return 사용자 성명, 실패 시 null
+     */
+    private String resolveUserFullName(String userId) {
+        if (userId == null || userId.isBlank()) {
             return null;
         }
         try {
-            UUID userId = UUID.fromString(createdBy);
-            return userInternalClient.resolveFullName(userId).orElse(null);
-        } catch (IllegalArgumentException ex) {
-            // createdBy 가 UUID 형식이 아닌 경우 (예: "system") — fallback
+            UUID parsedUserId = UUID.fromString(userId);
+            return userInternalClient.resolveFullName(parsedUserId).orElse(null);
+        } catch (Exception ex) {
+            // userId 가 UUID 형식이 아니거나(예: "system") client 가 예외를 전파해도
+            // 상세 조회(getOne)는 정상 반환해야 하므로 graceful fallback — 이름 null.
             return null;
         }
     }

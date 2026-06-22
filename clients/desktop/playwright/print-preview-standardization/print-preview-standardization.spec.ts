@@ -58,19 +58,19 @@ test.describe('print preview standardization slice 1 source contract', () => {
     }
   })
 
-  test('InboundView and QuoteView keep non-approval print forms', () => {
-    const inbound = read('clients/desktop/src/renderer/print/InboundView.tsx')
+  test('PurchaseSlipPrintPage and QuoteView keep non-approval document layouts', () => {
+    const purchase = read('clients/desktop/src/renderer/print/PurchaseSlipPrintPage.tsx')
     const quote = read('clients/desktop/src/renderer/print/QuoteView.tsx')
 
-    // 입고전표는 출고전표와 통일된 전표 양식이며 결재문서 골격을 사용하지 않는다.
-    expect(inbound).not.toContain('approvalDoc')
-    expect(inbound).not.toContain('approvalSteps')
-    expect(inbound).not.toContain('closingNote')
-    expect(inbound).toContain('입 고 전 표')
-    expect(inbound).toContain('inbound-page')
-    expect(inbound).toContain('inbound-table')
-    expect(inbound).not.toContain('[인]')
-    expect(inbound).not.toContain('inbound-logo')
+    // 매입 전표는 설정기반 결재란을 사용하지만 결재문서 골격(PrintLayout approvalDoc)은 사용하지 않는다.
+    expect(purchase).not.toContain('approvalDoc')
+    expect(purchase).not.toContain('approvalSteps')
+    expect(purchase).not.toContain('closingNote')
+    expect(purchase).toContain('매 입 전 표')
+    expect(purchase).toContain('purchase-print-page')
+    expect(purchase).toContain('purchase-print-table')
+    expect(purchase).toContain('ApprovalRoleCells')
+    expect(purchase).not.toContain('[인]')
 
     // 견적 인쇄는 origin 견적서 양식으로 보존하고 종합견적서 에픽에서 재작업한다.
     expect(quote).not.toContain('approvalDoc')
@@ -88,7 +88,6 @@ test.describe('print preview standardization slice 1 source contract', () => {
   test('excluded print views do not opt into the approval document layout', () => {
     // 라우트 테이블의 실연결 인쇄 컴포넌트만 검사한다.
     for (const file of [
-      'clients/desktop/src/renderer/print/InboundView.tsx',
       'clients/desktop/src/renderer/print/QuoteView.tsx',
       'clients/desktop/src/renderer/print/SalesTransactionStatementPrintPage.tsx',
       'clients/desktop/src/renderer/print/SalesInvoicePrintPage.tsx',

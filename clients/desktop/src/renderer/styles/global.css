@@ -1117,18 +1117,21 @@ button {
   /* 거래처명 박스 높이와 맞추기 위해 grid stretch 사용 — height 고정 제거 */
 }
 
-.dispatch-role-cell {
+.dispatch-role-cell,
+.approval-role-cell {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #000;
   min-height: 0;
 }
 
-.dispatch-role-cell:last-child {
+.dispatch-role-cell:last-child,
+.approval-role-cell:last-child {
   border-right: none;
 }
 
-.dispatch-role-label {
+.dispatch-role-label,
+.approval-role-label {
   background: #F5F5F5;
   border-bottom: 1px solid #000;
   font-size: 7pt;
@@ -1137,7 +1140,8 @@ button {
   padding: 0.5mm 0;
 }
 
-.dispatch-role-value {
+.dispatch-role-value,
+.approval-role-value {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1147,7 +1151,8 @@ button {
   padding: 0.5mm;
 }
 
-.dispatch-role-value .name {
+.dispatch-role-value .name,
+.approval-role-value .name {
   font-size: 8pt;
   font-weight: 600;
   white-space: nowrap;
@@ -1156,7 +1161,8 @@ button {
   max-width: 100%;
 }
 
-.dispatch-role-value .time {
+.dispatch-role-value .time,
+.approval-role-value .time {
   font-size: 6.5pt;
   color: #666;
   font-variant-numeric: tabular-nums;
@@ -1240,9 +1246,12 @@ button {
 .dispatch-table tfoot td.total-qty   { text-align: center; font-size: 13pt; font-style: italic; }
 
 /* 결재칸 서명 스탬프 — 서명(위) + 이름(아래). 사원 서명 슬라이스 전까지 placeholder 공간 */
-.dispatch-role-stamp { max-width: 100%; max-height: 9mm; object-fit: contain; display: block; margin: 0 auto; }
-.dispatch-role-stamp-space { display: block; min-height: 6mm; }
-.dispatch-role-value .name { display: block; text-align: center; }
+.dispatch-role-stamp,
+.approval-role-stamp { max-width: 100%; max-height: 9mm; object-fit: contain; display: block; margin: 0 auto; }
+.dispatch-role-stamp-space,
+.approval-role-stamp-space { display: block; min-height: 6mm; }
+.dispatch-role-value .name,
+.approval-role-value .name { display: block; text-align: center; }
 
 /* 하단 묶음 — 배송지/연락처/특이사항 박스, 안내문, 서명 라벨, 책임 안내 */
 .dispatch-bottom-group {
@@ -1752,7 +1761,7 @@ button {
  * 5 양식 + 공통 PrintLayout shell 스타일.
  * - InvoiceView v2 (거래명세서) — A4 세로
  * - Legacy outbound print renderer — 88mm 영수증 / A4 분기
- * - InboundView (입고전표) — A4 세로 / 88mm 분기
+ * - Legacy inbound print classes — A4 세로 / 88mm 분기
  * - QuoteView (견적서) — A4 세로 + 유효기간 + 직인
  * - TaxInvoiceView (세금계산서) — 한국 e-Tax 표준, 빨간 타이틀
  *
@@ -2332,7 +2341,7 @@ button {
   transform: rotate(-8deg);
 }
 
-/* --- Legacy outbound / InboundView (출고·입고전표 공통) — 88mm / A4 분기 --- */
+/* --- Legacy outbound / inbound print classes (출고·입고전표 공통) — 88mm / A4 분기 --- */
 .outbound-page,
 .inbound-page {
   display: flex;
@@ -2626,13 +2635,6 @@ button {
   gap: 3mm;
 }
 
-.purchase-print-logo {
-  height: 12mm;
-  width: auto;
-  max-width: 50mm;
-  object-fit: contain;
-}
-
 .purchase-print-company-name {
   font-size: 11pt;
   font-weight: 700;
@@ -2823,10 +2825,6 @@ button {
 .purchase-print-table .num         { text-align: right; font-variant-numeric: tabular-nums; }
 .purchase-print-table .strong      { font-weight: 700; }
 
-.purchase-print-pad-row td {
-  color: transparent;
-}
-
 .purchase-print-table-totals-label {
   text-align: right;
   font-weight: 700;
@@ -2838,50 +2836,18 @@ button {
   font-weight: 700;
 }
 
-/* 합계 영역 — 우측 배치 (align-self + margin-left: auto) */
-.purchase-print-totals {
-  display: flex;
-  flex-direction: column;
-  gap: 1mm;
-  padding: 2mm 4mm;
-  background: #F5F5F5;
+/* 매입 전표 결재란 — SLIP_INBOUND 설정 구조 기반 */
+.purchase-print-approval {
+  display: grid;
+  /* 기본 3열(작성자/입고자/검수자) — 단계 N개는 컴포넌트가 inline gridTemplateColumns 로 override. */
+  grid-template-columns: repeat(3, 1fr);
   border: 1px solid #000;
   margin-bottom: 2mm;
-  align-self: flex-end;
-  margin-left: auto;
-  min-width: 80mm;
+  page-break-inside: avoid;
 }
 
-.purchase-print-totals-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11pt;
-  gap: 4mm;
-}
-
-.purchase-print-totals-row.strong {
-  font-weight: 700;
-  font-size: 13pt;
-  border-top: 1.5pt solid #000;
-  padding-top: 1mm;
-  margin-top: 1mm;
-}
-
-.purchase-print-totals-label {
-  font-weight: 600;
-}
-
-.purchase-print-totals-value.num {
-  font-variant-numeric: tabular-nums;
-}
-
-/* 검수란 */
-.purchase-print-inspection {
-  border: 1px solid #000;
-  margin-bottom: 2mm;
-}
-
-.purchase-print-inspection-title {
+.purchase-print-approval-title {
+  grid-column: 1 / -1;
   background: #F0F0F0;
   font-weight: 700;
   font-size: 10pt;
@@ -2891,30 +2857,15 @@ button {
   border-bottom: 1px solid #000;
 }
 
-.purchase-print-inspection-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.purchase-print-inspection-cell {
-  border-right: 1px solid #000;
+.purchase-print-approval .approval-role-cell {
   min-height: 20mm;
 }
 
-.purchase-print-inspection-cell:last-child {
-  border-right: none;
-}
-
-.purchase-print-inspection-label {
+.purchase-print-approval .approval-role-label {
   font-size: 9pt;
-  font-weight: 700;
-  background: #F8F8F8;
-  text-align: center;
-  padding: 0.5mm 0;
-  border-bottom: 1px solid #ddd;
 }
 
-.purchase-print-inspection-blank {
+.purchase-print-approval .approval-role-value {
   min-height: 16mm;
 }
 
@@ -2973,10 +2924,6 @@ button {
   .purchase-print-page {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-  }
-  .purchase-print-totals {
-    align-self: flex-end;
-    margin-left: auto;
   }
   .purchase-print-table tr {
     page-break-inside: avoid;

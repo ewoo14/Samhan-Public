@@ -6,16 +6,15 @@
  * (memory `feedback_print_design_iteration.md`).
  *
  * 구성 (A4 portrait 210mm × 297mm, padding 12mm):
- * - 상단 헤더: 좌(회사명/로고) / 중앙("매 입 전 표" 20pt 700) / 우(전표번호/일자/담당자) — 3열
- * - 슬립 정보 행: 슬립번호 / 슬립일자 / 입고창고명 / 담당자
+ * - 상단 헤더: 좌(회사명) / 중앙("매 입 전 표" 20pt 700) / 우(전표번호/담당자/출력일시) — 3열
  * - 거래처 정보 영역: 좌(거래처명/사업자번호/대표자) + 우(입고창고/담당자/주소) — 2열 그리드
  * - 라인 테이블: No./품목명/규격/수량/단가/공급가액/부가세/적요 (8컬럼)
- * - 합계 영역: 공급가액 / 부가세 / 합계
- * - 검수란 (수기 작성 공란): 검수일자 / 검수자 / 검수결과 / 비고
+ * - 라인 테이블 tfoot 합계: 공급가액 / 부가세
+ * - 결재란: SLIP_INBOUND 설정 기반 작성자 / 입고자 / 검수자 / 추가단계
  * - 푸터: 비고 / audit (createdBy + modifiedBy + updatedAt)
  *
  * UUID 비공개 가드: `id` 는 path param / QueryKey 전용. 화면 노출 X.
- * 슬립번호(slipNo) 만 사용자 노출.
+ * 전표번호(slipNo) 만 사용자 노출.
  *
  * Iteration 가드: 본 2차 mock — 사용자 Edge 캡처 검토 후 추가 갱신 예정.
  */
@@ -23,16 +22,17 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getSlip, type SlipDetail } from '../api/slip'
 import { listWarehouses, type Warehouse } from '../api/inventory'
+import { fetchApprovalLineStructure } from '../api/approvalLineConfigApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { stripSlipNoZeros } from '../utils/orderNo'
 import {
   PrintLayout,
   krw,
-  krDate,
   calcAmounts,
 } from './PrintLayout'
 import { nowPrintedAt, fmtDatetime } from './printUtils'
 import { useCompanyProfile } from './useCompanyProfile'
+import { ApprovalRoleCells, fallbackRoles } from './approvalRoleCells'
 
 export function PurchaseSlipPrintPage() {
   const params = useParams<{ id: string }>()
@@ -47,6 +47,11 @@ export function PurchaseSlipPrintPage() {
   const warehousesQuery = useQuery<Warehouse[]>({
     queryKey: ['warehouses'],
     queryFn: listWarehouses,
+  })
+
+  const structureQuery = useQuery({
+    queryKey: ['approval-line-structure', 'SLIP_INBOUND'],
+    queryFn: () => fetchApprovalLineStructure('SLIP_INBOUND'),
   })
 
   const displaySlipNo = stripSlipNoZeros(detailQuery.data?.slipNo)
@@ -68,8 +73,7 @@ export function PurchaseSlipPrintPage() {
   const slip: SlipDetail = detailQuery.data
 
   const totalSupply = slip.lines.reduce((sum, l) => sum + Number(l.lineTotal), 0)
-  const totalQty = slip.lines.reduce((sum, l) => sum + l.quantity, 0)
-  const { supply, vat, total } = calcAmounts(totalSupply)
+  const { supply, vat } = calcAmounts(totalSupply)
 
   const destWarehouseName =
     warehousesQuery.data?.find((w) => w.id === slip.destinationWarehouseId)?.name ?? '-'
@@ -84,14 +88,9 @@ export function PurchaseSlipPrintPage() {
     <PrintLayout paper="a4-portrait" backTo={`/purchases/${id}`}>
       <div className="purchase-print-page" data-testid="purchase-print-area">
 
-        {/* 상단 헤더 — 3열 그리드: 좌(로고+회사명) / 중앙(양식 제목) / 우(전표번호/일자/담당자) */}
+        {/* 상단 헤더 — 3열 그리드: 좌(회사명) / 중앙(양식 제목) / 우(전표번호/담당자/출력일시) */}
         <header className="purchase-print-header purchase-print-header-3col">
           <div className="purchase-print-header-left">
-            <img
-              className="purchase-print-logo"
-              src={company.logoPath}
-              alt={company.legalName}
-            />
             <span className="purchase-print-company-name">{company.legalName}</span>
           </div>
           <div className="purchase-print-header-center">
@@ -101,10 +100,6 @@ export function PurchaseSlipPrintPage() {
             <div className="purchase-print-header-meta-row">
               <span className="purchase-print-meta-label">전표번호</span>
               <span className="purchase-print-meta-value strong">{displaySlipNo}</span>
-            </div>
-            <div className="purchase-print-header-meta-row">
-              <span className="purchase-print-meta-label">전표일자</span>
-              <span className="purchase-print-meta-value">{krDate(slip.slipDate)}</span>
             </div>
             <div className="purchase-print-header-meta-row">
               <span className="purchase-print-meta-label">담당자</span>
@@ -188,19 +183,6 @@ export function PurchaseSlipPrintPage() {
                 </tr>
               )
             })}
-            {/* 최소 5행 유지 — 여백 행 */}
-            {Array.from({ length: Math.max(0, 5 - lines.length) }).map((_, i) => (
-              <tr key={`pad-${i}`} className="purchase-print-pad-row">
-                <td className="col-no">&nbsp;</td>
-                <td className="col-product">&nbsp;</td>
-                <td className="col-spec">&nbsp;</td>
-                <td className="col-qty">&nbsp;</td>
-                <td className="col-price">&nbsp;</td>
-                <td className="col-supply">&nbsp;</td>
-                <td className="col-vat">&nbsp;</td>
-                <td className="col-memo">&nbsp;</td>
-              </tr>
-            ))}
           </tbody>
           <tfoot>
             <tr>
@@ -212,43 +194,19 @@ export function PurchaseSlipPrintPage() {
           </tfoot>
         </table>
 
-        {/* 합계 영역 */}
-        <section className="purchase-print-totals">
-          <div className="purchase-print-totals-row">
-            <span className="purchase-print-totals-label">공급가액</span>
-            <span className="purchase-print-totals-value num">{krw(supply)}</span>
-          </div>
-          <div className="purchase-print-totals-row">
-            <span className="purchase-print-totals-label">부가세 (10%)</span>
-            <span className="purchase-print-totals-value num">{krw(vat)}</span>
-          </div>
-          <div className="purchase-print-totals-row strong">
-            <span className="purchase-print-totals-label">합계</span>
-            <span className="purchase-print-totals-value num">{krw(total)} 원</span>
-          </div>
-        </section>
-
-        {/* 검수란 (수기 작성 공란) */}
-        <section className="purchase-print-inspection">
-          <div className="purchase-print-inspection-title">검 수 란</div>
-          <div className="purchase-print-inspection-grid">
-            <div className="purchase-print-inspection-cell">
-              <div className="purchase-print-inspection-label">검수일자</div>
-              <div className="purchase-print-inspection-blank">&nbsp;</div>
-            </div>
-            <div className="purchase-print-inspection-cell">
-              <div className="purchase-print-inspection-label">검수자</div>
-              <div className="purchase-print-inspection-blank">&nbsp;</div>
-            </div>
-            <div className="purchase-print-inspection-cell">
-              <div className="purchase-print-inspection-label">검수결과</div>
-              <div className="purchase-print-inspection-blank">&nbsp;</div>
-            </div>
-            <div className="purchase-print-inspection-cell">
-              <div className="purchase-print-inspection-label">비고</div>
-              <div className="purchase-print-inspection-blank">&nbsp;</div>
-            </div>
-          </div>
+        {/* 결재란 — SLIP_INBOUND 설정 구조 기반. 단계 수(N)에 맞춰 그리드 열 고정(auto-fit 줄바꿈 붕괴 방지, DispatchView 패턴). */}
+        <section
+          className="purchase-print-approval"
+          style={{
+            gridTemplateColumns: `repeat(${(structureQuery.data ?? fallbackRoles('INBOUND')).length}, 1fr)`,
+          }}
+        >
+          <div className="purchase-print-approval-title">결 재 란</div>
+          <ApprovalRoleCells
+            slip={slip}
+            roles={structureQuery.data ?? null}
+            slipType="INBOUND"
+          />
         </section>
 
         {/* 푸터 — 비고 + audit (담당자 / 최종수정일시 / 출력일시) */}

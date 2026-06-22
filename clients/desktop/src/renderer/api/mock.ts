@@ -570,6 +570,10 @@ const MOCK_SLIPS = [
     memo: '회차 입고',
     ownerDepartment: '구매팀',
     ownerFullName: '이정훈',
+    acceptedBy: '00000000-0000-0000-0000-000000020003',
+    acceptedAt: '2026-05-03T10:12:00+09:00',
+    acceptedByFullName: '최입고',
+    inspectorFullName: '김검수',
     shippingAddress: null,
     contactPhone: null,
     dispatcher: null,
@@ -681,6 +685,11 @@ const MOCK_SLIPS = [
 // §7 협업 수정완료: BE SlipDetailResponse 가 V16 audit overlay 10필드를 상세 응답에 포함한다.
 // mock 시드가 누락한 필드는 기존 표시 필드에서 보수적으로 보강해 mock QA가 빈 현재값으로 통과하지 않게 한다.
 for (const slip of MOCK_SLIPS as Array<Record<string, unknown>>) {
+  const dispatcher = slip.dispatcher as { fullName?: string } | null | undefined
+  const inspector = slip.inspector as { fullName?: string } | null | undefined
+  if (slip.dispatcherFullName === undefined) slip.dispatcherFullName = dispatcher?.fullName ?? null
+  if (slip.inspectorFullName === undefined) slip.inspectorFullName = inspector?.fullName ?? null
+  if (slip.acceptedByFullName === undefined) slip.acceptedByFullName = null
   if (slip.inspectionAddress === undefined) slip.inspectionAddress = null
   if (slip.receiverPhone === undefined) slip.receiverPhone = slip.contactPhone ?? null
   if (slip.customerTel === undefined) slip.customerTel = slip.contactPhone ?? null
@@ -3710,6 +3719,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       paymentDueDate: reqBody.paymentDueDate ?? null,
       businessNumber: null,
       printed: false,
+      dispatcherFullName: null,
+      inspectorFullName: null,
+      acceptedByFullName: null,
       lines: SAMPLE_LINES,
     })
   }
@@ -3758,6 +3770,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       status: nextStatus[action] ?? found.status,
       dispatcher,
       inspector,
+      dispatcherFullName: null,
+      inspectorFullName: null,
+      acceptedByFullName: null,
       lines: SAMPLE_LINES,
     })
   }

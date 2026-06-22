@@ -142,3 +142,54 @@
 2. **OutboundView 88mm 영수증 수요**: 폐기 시 88mm 열전사 출력 필요성 없는지(현 가정=불요, A4 판매전표 단일).
 3. **추가 단계 step_type**: 'GROUP' 고정 vs GROUP/USER 선택(현 스펙=행은 GROUP, 결재자는 혼합 칩). 
 4. **슬4 전표 우선순위**: 입고 다음? (현 스펙=입고→주문→회계/견적/배차 순, 개발책임자 지정 가능).
+
+---
+
+## 7. 슬4d·슬5 확정 결정 (2026-06-22 집PC 재개 — 개발책임자 승인)
+
+> 슬1~3(#560/#561/#562) + 그룹웨어 슬4a/4b/4c(#563/#564/#565) 머지 후 **잔여 2 슬라이스**로 에픽 종료. 2 Explore 정찰(입고 인쇄·메뉴/권한 정합) + brainstorming 으로 확정. 진행 모드 = PM auto-continuous(슬4d 머지 후 슬5 자동 진입, 에픽 종료 시 보고).
+
+### 슬4d — 입고전표(SLIP_INBOUND) 설정기반 결재란 렌더
+
+**정찰 확정 사실**
+- **정식 입고 인쇄 = `PurchaseSlipPrintPage`**(`/purchases/:id/print/purchase`). 상세화면(`SlipDetailPage.tsx:1086`) "매입 전표 인쇄" 버튼이 연결된 정본. 현재 **빈 수기 "검수란"**(검수일자/검수자/검수결과/비고 공란, `PurchaseSlipPrintPage.tsx:231-252`)만 보유 — 설정 미연동.
+- **`InboundView`(`/purchases/:id/print/inbound`) = 고아**(P0-4 1차 mock, 어느 버튼에도 미연결) → **슬1 `OutboundView` 폐기 선례 그대로 폐기**.
+- V63 시드(SLIP_INBOUND): CREATOR=작성자(action_key=NULL) / GROUP=입고인(INBOUND_RECEIVE) / GROUP=검수인(INBOUND_INSPECT). `GET /auth/approval-line-configs/SLIP_INBOUND/structure`·DOC_TYPES·미리보기 패널 모두 슬3에서 generic 완비 → **재사용**.
+
+**확정 결정 (개발책임자 — 입고 결재란 = Option A)**
+| # | 항목 | 확정 |
+|---|---|---|
+| D-S4D-1 | 결재란 레이아웃 | 빈 수기 **검수란 제거 → 설정기반 결재란으로 전환**. 작성자/입고자/검수자 + 추가단계 셀을 설정 구조로 렌더, 서명자 **자동채움**. 출고 `DispatchDocument`와 양식 일관. |
+| D-S4D-2 | 검수 상세필드 | 기존 검수란의 `검수일자/검수결과` 칸은 **폐지**, `비고`는 footer 비고(`PurchaseSlipPrintPage.tsx:255-261`)로 **흡수**(중복 제거). |
+| D-S4D-3 | 고아 뷰 | `InboundView.tsx` + `/purchases/:id/print/inbound` 라우트 **폐기** + 잔존 import/참조(playwright 등) 스윕. |
+| D-S4D-4 | BE 신규 | **정찰 정정**: BE `SlipDetailResponse`는 결재 서명자를 **userId만**(`dispatcherUserId`/`inspectorUserId`/`acceptedBy`) 노출, 이름은 **`ownerFullName`(작성자)만** resolve. FE `dispatcher.fullName`/`inspector.fullName` nested 타입은 **미구현("Option A 권장")** → 런타임 undefined → **현 판매전표 결재란 출고자/검수자 칸도 이름 공백**(작성자만 채움). |
+| D-S4D-4b | 자동채움 범위 (개발책임자 2026-06-22) | **입고+판매 둘 다 제대로**. slip-service GET 상세에서 `dispatcherUserId`·`inspectorUserId`·`acceptedBy` 3 userId 를 `ownerFullName` 과 **동일 패턴**(`UserInternalClient.GET /internal/users/{userId}`, graceful fallback null)으로 resolve → `SlipDetailResponse` 에 **flat `dispatcherFullName`·`inspectorFullName`·`acceptedByFullName` additive**. **nullable·additive → 무회귀, Flyway 0.** (판매전표 공백 잠재갭 동시 해소.) |
+
+**서명자 매핑(FE, slipType 분기)** — 공유 `roleSignerName(slip, role, slipType)`:
+- `step_type=CREATOR` → `slip.ownerFullName`
+- OUTBOUND: `action_key=OUTBOUND_DISPATCH` → `slip.dispatcherFullName`(신규 flat) / `OUTBOUND_INSPECT` → `slip.inspectorFullName`(신규 flat)
+- INBOUND: `action_key=INBOUND_RECEIVE` → `slip.acceptedByFullName`(신규 flat) / `INBOUND_INSPECT` → `slip.inspectorFullName`(신규 flat)
+- `action_key=NULL`(추가 단계) → 빈 서명칸
+- 구조 페치 실패 → slipType별 3역할(작성자/출고자·입고자/검수자) 폴백(슬3 패턴)
+
+> 정찰 확정: 입고자 서명자 = INBOUND accept 시 기록되는 `Slip.acceptedBy`(userId). 검수자 = `inspectorUserId`(출고·입고 공용 필드). resolve 메커니즘 = 기존 `SlipService.resolveOwnerFullName`(SlipService.java:1242) 과 동일 `UserInternalClient` 단건 GET. FE nested `dispatcher`/`inspector` 타입은 미사용이므로 건드리지 않고 flat `*FullName` 필드 신규 추가(roleSignerName 만 그 flat 필드 사용).
+
+**OUTBOUND 동반 변경**(D-S4D-4b 수반): `DispatchDocument.roleValue` 가 `slip.dispatcher?.fullName`(undefined·공백) → `slip.dispatcherFullName`(신규)로 전환되어 판매전표 결재란이 **이제 출고자/검수자 이름을 실제 표시**. 슬3 계약테스트(`DispatchDocument.test`·`PrintRendererAppContract.test`)는 채워진 이름 반영하도록 갱신(회귀 아님·잠재갭 해소).
+
+**공유 컴포넌트**: 슬3 `DispatchDocument`(RoleCell/결재란 골격)를 **출고/입고 공용 presentational**로 재사용. 서명자 매핑만 slipType 분기. 매입 8컬럼 라인표·합계·공급처 영역은 PurchaseSlipPrintPage 고유로 유지.
+
+**검증**: ① slip-service `acceptedByFullName` resolve 단위/IT(INBOUND 채움 + OUTBOUND additive 무회귀) ② FE 입고 서명자 매핑 순수함수 vitest(4분기+폴백) + DispatchDocument 공용화 출고 무회귀 계약테스트 ③ mock `SLIP_INBOUND` structure + InboundView 폐기 라우트/import 회귀 ④ **🐳 라이브 Docker 실QA**: 실 게이트웨이 :8080·실 입고전표 ID → "매입 전표 인쇄" → 설정기반 결재란 자동채움 실캡처(`docs/qa/inbound-approval-render-s4d/`).
+
+### 슬5 — 메뉴↔권한설정 정합 + 권한설정 동작 검증 (capstone, 검증 중심)
+
+**정찰 확정**: 정적 대조 **이미 완벽 정합** — 사이드바 60 page-code 전부 `PermissionMatrixPage.PAGE_GROUPS` 등재, 신규 `admin.approval-line-config`는 BE `PageCode` enum / FE 매트릭스 / 사이드바 / 라우트 **4중 정합**. → 슬5 = **코드 산출 최소·라이브 동작 증명 중심, 발견 갭만 fix**(개발책임자 = 검증 중심 Option A).
+
+**산출물**
+1. **3원 정합 대조표**(dev-report): 사이드바 page-code ↔ `PermissionMatrixPage.PAGE_GROUPS` ↔ BE `PageCode` enum. **역방향(매트릭스엔 있으나 사이드바 미노출)** = `admin.permissions`·`admin.permission-groups`·`hr.role-management`·`system.password-admin`·`system.account-admin`·`dc-config.import`·`dashboard.admin` → **의도적(MASTER 전용/직접 URL·이중가드)** 명시(고아 아님). FE `canAccess` page-code = BE `@RequirePermission` 정확 일치 재확인([[fe-canaccess-pagecode-be-match]]).
+2. **Playwright real-qa E2E**: (a) MASTER가 비-MASTER에 `admin.approval-line-config` VIEW grant→`group/account_page_permissions` materialize→사이드바 "결재라인 설정" 노출, revoke→제거 (b) 권한 없는 계정 `/admin/approval-line-config`·`/admin/permission-matrix` 직접 진입 → 403/ForbiddenPage (c) 권한설정 CRUD: 역할 매트릭스 batch 저장·계정별 override·권한그룹 생성/할당/배속·MANAGEMENT_PAGE_CODES 위임 거부.
+3. **발견 갭만 fix**: 캐시 race·신규 page-code 누락·가드 미적용 경로 등 라이브에서 실제 발견된 것만 보강(계열 전수 sweep [[defect-family-sweep-fix]]). 규모 크면 별도 슬라이스 분리.
+
+**검증/QA**: 🐳 라이브 Docker E2E 중심(`docs/qa/menu-permission-capstone-s5/`). admin 게이트 우회 = 핸드오프 박제 `?mockRole=MASTER&mockPerms=<base64>` 또는 실 권한 계정. materialize 둘 다 함정([[local-stack-qa-gotchas]]) 회귀.
+
+### 공통 워크플로우(메모리 의무)
+Codex 구현 → 🔵 Opus 5-agent(QA 포함·라운드 인라인 라이브 QA [[per-round-live-qa]]) → 🟣 Codex 5-agent 크로스체크 → **양쪽 0 blocking 수렴**([[rereview-converge-after-fix]], CI-green만 머지 금지) → 라이브 캡처 PR 인라인 → CI green → 머지. Opus 라운드 fix=Claude 직접 / Codex 라운드 fix=Codex. 슬4d Flyway 0·게이트웨이 라우트 영향 0(기존 `/slips/{id}` 응답 확장).

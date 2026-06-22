@@ -13,6 +13,7 @@ describe('PrintRendererApp outbound copy contract', () => {
 
     expect(html).toContain('SAMSUNG')
     expect(html).toContain('판매거래처')
+    expect(html).toContain('박출고')
     expect(html).toContain('용달기사 서명')
     expect(html).toContain('data:image/png;base64,driver-base64')
     expect(html).toContain('data:image/png;base64,recipient-base64')

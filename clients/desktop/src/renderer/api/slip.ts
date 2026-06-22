@@ -124,6 +124,21 @@ export interface SlipDetail extends SlipSummary {
   ownerDepartment?: string | null
   /** 담당자 (slip.createdBy 의 fullName). */
   ownerFullName?: string | null
+  /**
+   * 출고자 이름 — 결재란 OUTBOUND_DISPATCH 표시용 flat 필드.
+   * BE 상세 GET 에서만 resolve 되며 mutation 응답/lookup 실패 시 null.
+   */
+  dispatcherFullName?: string | null
+  /**
+   * 검수자 이름 — 결재란 OUTBOUND_INSPECT/INBOUND_INSPECT 표시용 flat 필드.
+   * BE 상세 GET 에서만 resolve 되며 mutation 응답/lookup 실패 시 null.
+   */
+  inspectorFullName?: string | null
+  /**
+   * 입고자 이름 — 결재란 INBOUND_RECEIVE 표시용 flat 필드.
+   * BE 상세 GET 에서만 resolve 되며 mutation 응답/lookup 실패 시 null.
+   */
+  acceptedByFullName?: string | null
   /** 배송지 — DispatchView 에서 14pt 본문으로 표시. */
   shippingAddress?: string | null
   /** 검수지 주소 — audit overlay / 협업 수정완료 대상. */

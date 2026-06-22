@@ -79,8 +79,7 @@ import { TransferDetailPage } from './TransferDetailPage'
 import { LinkDispatchListPage } from './LinkDispatchListPage'
 // InvoiceView (P0-4 거래명세서 1차 mock) 은 SP-08-6-4 SalesInvoicePrintPage 로 대체됨.
 import { DispatchView } from '../print/DispatchView'
-// P0-4 인쇄 양식 5건 1차 mock — Designer 단계 신규 (출고/입고/견적/세금계산서)
-import { InboundView } from '../print/InboundView'
+// P0-4 인쇄 양식 1차 mock — Designer 단계 신규 (견적/세금계산서)
 import { QuoteView } from '../print/QuoteView'
 import { TaxInvoiceView } from '../print/TaxInvoiceView'
 // SP-08-5-5 — 매입 전표 인쇄 양식 (A4 portrait, legacy GAS 동등)
@@ -550,8 +549,6 @@ const router = createHashRouter([
         ),
       },
       { path: '/purchases/:id', element: <SlipDetailPage mode="INBOUND" /> },
-      // P0-4 신규 — 입고전표 (A4/88mm 분기)
-      { path: '/purchases/:id/print/inbound', element: <InboundView /> },
       // SP-08-5-5 — 매입 전표 인쇄 양식 (A4 portrait, 창고/관리자 권한)
       { path: '/purchases/:id/print/purchase', element: <PurchaseSlipPrintPage /> },
 
