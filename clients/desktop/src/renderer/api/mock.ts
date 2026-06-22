@@ -9239,6 +9239,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     )
   }
 
+  const approvalLineStructureMatch = url.match(/\/(?:auth\/)?approval-line-configs\/([^/?]+)\/structure$/)
+  if (method === 'GET' && approvalLineStructureMatch) {
+    const documentType = decodeURIComponent(approvalLineStructureMatch[1] ?? 'SLIP_OUTBOUND')
+    return envelope(
+      _mockApprovalLineConfigRoles
+        .filter((role) => role.documentType === documentType && !role.isDeleted)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(mockApprovalLineStructureView),
+    )
+  }
+
   if (method === 'POST' && url.match(/\/(?:auth\/)?admin\/approval-line-configs$/)) {
     const body = parseMockBody(config)
     const documentType = String(body['documentType'] ?? '').trim()
@@ -12808,6 +12819,15 @@ function mockApprovalLineRoleView(role: MockApprovalLineRole) {
     required: role.required,
     enforced: Boolean(role.actionKey),
     seedManaged: ['v61-seed', 'v63-seed', 'v64-seed'].includes(role.createdBy),
+  }
+}
+
+function mockApprovalLineStructureView(role: MockApprovalLineRole) {
+  return {
+    sequence: role.sequence,
+    label: role.label,
+    stepType: role.stepType,
+    actionKey: role.actionKey,
   }
 }
 

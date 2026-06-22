@@ -464,6 +464,10 @@ export function ApprovalLineConfigPage() {
         ) : null}
       </Card>
 
+      {!rolesQuery.isLoading && !rolesQuery.isError ? (
+        <ApprovalLinePreviewPanel roles={roles} />
+      ) : null}
+
       {toast ? (
         <div
           role="status"
@@ -522,6 +526,43 @@ export function ApprovalLineConfigPage() {
         </p>
       </Modal>
     </div>
+  )
+}
+
+export function ApprovalLinePreviewPanel({ roles }: { roles: ApprovalLineRole[] }) {
+  const sortedRoles = [...roles].sort((a, b) => a.sequence - b.sequence)
+  return (
+    <section
+      aria-label="결재란 미리보기"
+      data-testid="approval-line-preview"
+      style={{
+        marginTop: 16,
+        padding: 12,
+        border: '1px solid var(--color-neutral-200)',
+        borderRadius: 6,
+        background: 'var(--color-neutral-0)',
+      }}
+    >
+      <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>결재란 미리보기</h4>
+      <div
+        className="dispatch-roles"
+        style={{
+          maxWidth: 720,
+          minHeight: 72,
+          gridTemplateColumns: `repeat(${sortedRoles.length}, minmax(72px, 1fr))`,
+        }}
+      >
+        {sortedRoles.map((role) => (
+          <div key={role.id} className="dispatch-role-cell">
+            <div className="dispatch-role-label">{role.label}</div>
+            <div className="dispatch-role-value">
+              <span className="dispatch-role-stamp-space preview-signature-placeholder" />
+              <span className="name">예시 서명</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 

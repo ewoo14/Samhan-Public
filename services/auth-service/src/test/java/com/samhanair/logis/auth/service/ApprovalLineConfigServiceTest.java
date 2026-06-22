@@ -15,6 +15,7 @@ import com.samhanair.logis.auth.repository.ApprovalLineApproverRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
+import com.samhanair.logis.auth.web.dto.ApprovalLineStructureView;
 import com.samhanair.logis.common.exception.BusinessException;
 import java.lang.reflect.Field;
 import java.util.List;
@@ -69,6 +70,26 @@ class ApprovalLineConfigServiceTest {
         assertThat(views).hasSize(2);
         assertThat(views.get(0).label()).isEqualTo("작성자");
         assertThat(views.get(1).stepType()).isEqualTo(StepType.GROUP);
+    }
+
+    @Test
+    void listStructure_은_결재자_없이_구조와_actionKey만_반환한다() throws Exception {
+        ApprovalLineConfig creator = role(0, "작성자", StepType.CREATOR);
+        ApprovalLineConfig dispatcher = role(1, "출고자", StepType.GROUP);
+        ApprovalLineConfig inspector = role(2, "검수자", StepType.GROUP);
+        set(dispatcher, "actionKey", "OUTBOUND_DISPATCH");
+        set(inspector, "actionKey", "OUTBOUND_INSPECT");
+        when(repository.findByDocumentTypeOrderBySequenceAsc("SLIP_OUTBOUND"))
+                .thenReturn(List.of(creator, dispatcher, inspector));
+
+        List<ApprovalLineStructureView> views = service.listStructure("SLIP_OUTBOUND");
+
+        assertThat(views)
+                .extracting(ApprovalLineStructureView::label)
+                .containsExactly("작성자", "출고자", "검수자");
+        assertThat(views)
+                .extracting(ApprovalLineStructureView::actionKey)
+                .containsExactly(null, "OUTBOUND_DISPATCH", "OUTBOUND_INSPECT");
     }
 
     @Test
