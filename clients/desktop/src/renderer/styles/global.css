@@ -2635,13 +2635,6 @@ button {
   gap: 3mm;
 }
 
-.purchase-print-logo {
-  height: 12mm;
-  width: auto;
-  max-width: 50mm;
-  object-fit: contain;
-}
-
 .purchase-print-company-name {
   font-size: 11pt;
   font-weight: 700;
@@ -2832,10 +2825,6 @@ button {
 .purchase-print-table .num         { text-align: right; font-variant-numeric: tabular-nums; }
 .purchase-print-table .strong      { font-weight: 700; }
 
-.purchase-print-pad-row td {
-  color: transparent;
-}
-
 .purchase-print-table-totals-label {
   text-align: right;
   font-weight: 700;
@@ -2845,43 +2834,6 @@ button {
 .purchase-print-table tfoot td {
   background: #FAFAFA;
   font-weight: 700;
-}
-
-/* 합계 영역 — 우측 배치 (align-self + margin-left: auto) */
-.purchase-print-totals {
-  display: flex;
-  flex-direction: column;
-  gap: 1mm;
-  padding: 2mm 4mm;
-  background: #F5F5F5;
-  border: 1px solid #000;
-  margin-bottom: 2mm;
-  align-self: flex-end;
-  margin-left: auto;
-  min-width: 80mm;
-}
-
-.purchase-print-totals-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11pt;
-  gap: 4mm;
-}
-
-.purchase-print-totals-row.strong {
-  font-weight: 700;
-  font-size: 13pt;
-  border-top: 1.5pt solid #000;
-  padding-top: 1mm;
-  margin-top: 1mm;
-}
-
-.purchase-print-totals-label {
-  font-weight: 600;
-}
-
-.purchase-print-totals-value.num {
-  font-variant-numeric: tabular-nums;
 }
 
 /* 매입 전표 결재란 — SLIP_INBOUND 설정 구조 기반 */
@@ -2972,10 +2924,6 @@ button {
   .purchase-print-page {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-  }
-  .purchase-print-totals {
-    align-self: flex-end;
-    margin-left: auto;
   }
   .purchase-print-table tr {
     page-break-inside: avoid;

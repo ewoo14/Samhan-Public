@@ -118,12 +118,15 @@ test.describe('SP-08-5-5 매입 인쇄 양식 정적 계약', () => {
     // 라인 테이블 (tbody + SlipLineDetail)
     expect(printComponent).toMatch(/tbody|inbound-table|purchase-table/)
 
-    // 합계 섹션
-    const hasTotals =
-      printComponent.includes('inbound-totals') ||
-      printComponent.includes('purchase-totals') ||
+    // 합계는 하단 별도 박스가 아니라 라인 테이블 tfoot에만 유지한다.
+    const hasTableTotals =
+      printComponent.includes('purchase-print-table-totals-label') ||
       printComponent.includes('합계')
-    expect(hasTotals).toBeTruthy()
+    expect(hasTableTotals).toBeTruthy()
+    expect(printComponent).not.toContain('purchase-print-totals')
+    expect(printComponent).not.toContain('purchase-print-pad-row')
+    expect(printComponent).not.toContain('purchase-print-logo')
+    expect(printComponent).not.toContain('전표일자')
 
     // 결재란 (SLIP_INBOUND 설정 구조 기반)
     expect(printComponent).toContain('purchase-print-approval')

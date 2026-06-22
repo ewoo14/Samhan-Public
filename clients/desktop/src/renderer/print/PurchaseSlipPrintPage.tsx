@@ -6,11 +6,10 @@
  * (memory `feedback_print_design_iteration.md`).
  *
  * 구성 (A4 portrait 210mm × 297mm, padding 12mm):
- * - 상단 헤더: 좌(회사명/로고) / 중앙("매 입 전 표" 20pt 700) / 우(전표번호/일자/담당자) — 3열
- * - 전표 정보 행: 전표번호 / 전표일자 / 입고창고명 / 담당자
+ * - 상단 헤더: 좌(회사명) / 중앙("매 입 전 표" 20pt 700) / 우(전표번호/담당자/출력일시) — 3열
  * - 거래처 정보 영역: 좌(거래처명/사업자번호/대표자) + 우(입고창고/담당자/주소) — 2열 그리드
  * - 라인 테이블: No./품목명/규격/수량/단가/공급가액/부가세/적요 (8컬럼)
- * - 합계 영역: 공급가액 / 부가세 / 합계
+ * - 라인 테이블 tfoot 합계: 공급가액 / 부가세
  * - 결재란: SLIP_INBOUND 설정 기반 작성자 / 입고자 / 검수자 / 추가단계
  * - 푸터: 비고 / audit (createdBy + modifiedBy + updatedAt)
  *
@@ -29,7 +28,6 @@ import { stripSlipNoZeros } from '../utils/orderNo'
 import {
   PrintLayout,
   krw,
-  krDate,
   calcAmounts,
 } from './PrintLayout'
 import { nowPrintedAt, fmtDatetime } from './printUtils'
@@ -75,7 +73,7 @@ export function PurchaseSlipPrintPage() {
   const slip: SlipDetail = detailQuery.data
 
   const totalSupply = slip.lines.reduce((sum, l) => sum + Number(l.lineTotal), 0)
-  const { supply, vat, total } = calcAmounts(totalSupply)
+  const { supply, vat } = calcAmounts(totalSupply)
 
   const destWarehouseName =
     warehousesQuery.data?.find((w) => w.id === slip.destinationWarehouseId)?.name ?? '-'
@@ -90,14 +88,9 @@ export function PurchaseSlipPrintPage() {
     <PrintLayout paper="a4-portrait" backTo={`/purchases/${id}`}>
       <div className="purchase-print-page" data-testid="purchase-print-area">
 
-        {/* 상단 헤더 — 3열 그리드: 좌(로고+회사명) / 중앙(양식 제목) / 우(전표번호/일자/담당자) */}
+        {/* 상단 헤더 — 3열 그리드: 좌(회사명) / 중앙(양식 제목) / 우(전표번호/담당자/출력일시) */}
         <header className="purchase-print-header purchase-print-header-3col">
           <div className="purchase-print-header-left">
-            <img
-              className="purchase-print-logo"
-              src={company.logoPath}
-              alt={company.legalName}
-            />
             <span className="purchase-print-company-name">{company.legalName}</span>
           </div>
           <div className="purchase-print-header-center">
@@ -107,10 +100,6 @@ export function PurchaseSlipPrintPage() {
             <div className="purchase-print-header-meta-row">
               <span className="purchase-print-meta-label">전표번호</span>
               <span className="purchase-print-meta-value strong">{displaySlipNo}</span>
-            </div>
-            <div className="purchase-print-header-meta-row">
-              <span className="purchase-print-meta-label">전표일자</span>
-              <span className="purchase-print-meta-value">{krDate(slip.slipDate)}</span>
             </div>
             <div className="purchase-print-header-meta-row">
               <span className="purchase-print-meta-label">담당자</span>
@@ -194,19 +183,6 @@ export function PurchaseSlipPrintPage() {
                 </tr>
               )
             })}
-            {/* 최소 5행 유지 — 여백 행 */}
-            {Array.from({ length: Math.max(0, 5 - lines.length) }).map((_, i) => (
-              <tr key={`pad-${i}`} className="purchase-print-pad-row">
-                <td className="col-no">&nbsp;</td>
-                <td className="col-product">&nbsp;</td>
-                <td className="col-spec">&nbsp;</td>
-                <td className="col-qty">&nbsp;</td>
-                <td className="col-price">&nbsp;</td>
-                <td className="col-supply">&nbsp;</td>
-                <td className="col-vat">&nbsp;</td>
-                <td className="col-memo">&nbsp;</td>
-              </tr>
-            ))}
           </tbody>
           <tfoot>
             <tr>
@@ -217,22 +193,6 @@ export function PurchaseSlipPrintPage() {
             </tr>
           </tfoot>
         </table>
-
-        {/* 합계 영역 */}
-        <section className="purchase-print-totals">
-          <div className="purchase-print-totals-row">
-            <span className="purchase-print-totals-label">공급가액</span>
-            <span className="purchase-print-totals-value num">{krw(supply)}</span>
-          </div>
-          <div className="purchase-print-totals-row">
-            <span className="purchase-print-totals-label">부가세 (10%)</span>
-            <span className="purchase-print-totals-value num">{krw(vat)}</span>
-          </div>
-          <div className="purchase-print-totals-row strong">
-            <span className="purchase-print-totals-label">합계</span>
-            <span className="purchase-print-totals-value num">{krw(total)} 원</span>
-          </div>
-        </section>
 
         {/* 결재란 — SLIP_INBOUND 설정 구조 기반. 단계 수(N)에 맞춰 그리드 열 고정(auto-fit 줄바꿈 붕괴 방지, DispatchView 패턴). */}
         <section
