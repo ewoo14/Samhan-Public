@@ -70,9 +70,9 @@ test('S4D-A: 매입전표 인쇄 결재란 — 입고자 이름 자동채움', a
   const body = (await page.locator('body').textContent()) ?? ''
   expect(body).not.toContain('불러오지 못')
   expect(body).toContain('결 재 란')
-  expect(body).toContain('입고자')
-  expect(body).toContain('검수자')
-  // 입고자(acceptedBy) 이름 자동채움 — slip-service resolve 결과
+  expect(body).toContain('입고인')
+  expect(body).toContain('검수인')
+  // 입고인(acceptedBy) 이름 자동채움 — slip-service resolve 결과
   expect(body).toContain('개발마스터')
 })
 

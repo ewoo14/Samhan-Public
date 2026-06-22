@@ -2884,49 +2884,6 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/* 검수란 */
-.purchase-print-inspection {
-  border: 1px solid #000;
-  margin-bottom: 2mm;
-}
-
-.purchase-print-inspection-title {
-  background: #F0F0F0;
-  font-weight: 700;
-  font-size: 10pt;
-  text-align: center;
-  letter-spacing: 0.3em;
-  padding: 1mm 0;
-  border-bottom: 1px solid #000;
-}
-
-.purchase-print-inspection-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.purchase-print-inspection-cell {
-  border-right: 1px solid #000;
-  min-height: 20mm;
-}
-
-.purchase-print-inspection-cell:last-child {
-  border-right: none;
-}
-
-.purchase-print-inspection-label {
-  font-size: 9pt;
-  font-weight: 700;
-  background: #F8F8F8;
-  text-align: center;
-  padding: 0.5mm 0;
-  border-bottom: 1px solid #ddd;
-}
-
-.purchase-print-inspection-blank {
-  min-height: 16mm;
-}
-
 /* 매입 전표 결재란 — SLIP_INBOUND 설정 구조 기반 */
 .purchase-print-approval {
   display: grid;

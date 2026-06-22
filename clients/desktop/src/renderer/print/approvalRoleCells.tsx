@@ -21,7 +21,7 @@ function normalizeSignature(src: string | null | undefined): string | null {
 }
 
 /**
- * 결재란 셀 — 작성자/입고자/출고자/검수자 및 추가 단계 공통 표시 단위.
+ * 결재란 셀 — 작성자/입고인/출고자/검수인 및 추가 단계 공통 표시 단위.
  */
 export function RoleCell({ label, value, signaturePng }: RoleCellProps) {
   const normalizedSignature = normalizeSignature(signaturePng)
@@ -70,8 +70,8 @@ export function fallbackRoles(slipType: ApprovalSlipType): ApprovalLineStructure
 
   return [
     { sequence: 0, label: '작성자', stepType: 'CREATOR', actionKey: null },
-    { sequence: 1, label: '입고자', stepType: 'GROUP', actionKey: 'INBOUND_RECEIVE' },
-    { sequence: 2, label: '검수자', stepType: 'GROUP', actionKey: 'INBOUND_INSPECT' },
+    { sequence: 1, label: '입고인', stepType: 'GROUP', actionKey: 'INBOUND_RECEIVE' },
+    { sequence: 2, label: '검수인', stepType: 'GROUP', actionKey: 'INBOUND_INSPECT' },
   ]
 }
 

@@ -38,7 +38,7 @@ describe('approvalRoleCells', () => {
 
   test('fallbackRoles returns slipType-specific default labels', () => {
     expect(fallbackRoles('INBOUND').map((role) => role.label))
-      .toEqual(['작성자', '입고자', '검수자'])
+      .toEqual(['작성자', '입고인', '검수인'])
     expect(fallbackRoles('OUTBOUND').map((role) => role.label))
       .toEqual(['작성자', '출고자', '검수자'])
   })
