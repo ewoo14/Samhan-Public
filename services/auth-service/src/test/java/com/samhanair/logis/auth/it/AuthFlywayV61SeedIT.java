@@ -38,8 +38,8 @@ class AuthFlywayV61SeedIT extends AbstractPostgresIT {
                    AND is_deleted = FALSE
                    AND (sequence, label, step_type) IN (
                        (0, '작성자', 'CREATOR'),
-                       (1, '출고인', 'GROUP'),
-                       (2, '검수인', 'GROUP')
+                       (1, '출고자', 'GROUP'),
+                       (2, '검수자', 'GROUP')
                    )
                 """,
                 Integer.class);

@@ -45,7 +45,7 @@ public class ApprovalLineConfig extends BaseEntity {
     @Column(name = "sequence", nullable = false)
     private int sequence;
 
-    /** 역할 표시 명칭(작성자/출고인/검수인). rename 도메인 메서드로만 변경. */
+    /** 역할 표시 명칭(작성자/출고자/검수자). rename 도메인 메서드로만 변경. */
     @Column(name = "label", nullable = false, length = 50)
     private String label;
 
@@ -65,6 +65,24 @@ public class ApprovalLineConfig extends BaseEntity {
     /** 결재 필수여부(E11). */
     @Column(name = "required", nullable = false)
     private boolean required;
+
+    /** 표시·서명용 동적 결재 역할 생성. action_key 는 null 로 유지하여 authorize 게이트에 연결하지 않는다. */
+    public static ApprovalLineConfig createDisplayStep(String documentType, int sequence, String label) {
+        if (documentType == null || documentType.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "전표 종류(documentType)를 입력해야 합니다");
+        }
+        if (label == null || label.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "라벨은 비어 있을 수 없습니다");
+        }
+        ApprovalLineConfig role = new ApprovalLineConfig();
+        role.documentType = documentType.trim();
+        role.sequence = sequence;
+        role.label = label.trim();
+        role.stepType = StepType.GROUP;
+        role.actionKey = null;
+        role.required = true;
+        return role;
+    }
 
     /** GROUP 역할에 권한 그룹 지정. CREATOR 역할은 거부. */
     @Deprecated

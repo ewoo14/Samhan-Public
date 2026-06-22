@@ -872,7 +872,7 @@ public class SlipService {
             case OUTBOUND -> new SlipApprovalGate(
                     SLIP_OUTBOUND_DOCUMENT_TYPE,
                     OUTBOUND_DISPATCH_ACTION_KEY,
-                    "출고 수락 권한이 없습니다 — 출고인 결재자(그룹/개인)만 처리할 수 있습니다");
+                    "출고 수락 권한이 없습니다 — 출고자 결재자(그룹/개인)만 처리할 수 있습니다");
             case INBOUND -> new SlipApprovalGate(
                     SLIP_INBOUND_DOCUMENT_TYPE,
                     INBOUND_RECEIVE_ACTION_KEY,
@@ -885,7 +885,7 @@ public class SlipService {
             case OUTBOUND -> new SlipApprovalGate(
                     SLIP_OUTBOUND_DOCUMENT_TYPE,
                     OUTBOUND_INSPECT_ACTION_KEY,
-                    "출고 검수 권한이 없습니다 — 검수인 결재자(그룹/개인)만 처리할 수 있습니다");
+                    "출고 검수 권한이 없습니다 — 검수자 결재자(그룹/개인)만 처리할 수 있습니다");
             case INBOUND -> new SlipApprovalGate(
                     SLIP_INBOUND_DOCUMENT_TYPE,
                     INBOUND_INSPECT_ACTION_KEY,

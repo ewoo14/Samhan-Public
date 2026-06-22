@@ -95,6 +95,125 @@ class ApprovalLineAuthorizeControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("authorize — action_key NULL 추가 단계는 어떤 actionKey 와도 매칭되지 않는다")
+    void authorize_displayOnlyAddedStep_doesNotGateAction() throws Exception {
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_config
+                    (id, document_type, sequence, label, step_type, action_key, required, created_at, created_by, is_deleted)
+                VALUES (?, 'SLIP_OUTBOUND', 99, '확인자', 'GROUP', NULL, TRUE, NOW(), 'it-seed', FALSE)
+                """, roleId);
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'USER', ?, NOW(), 'it-seed', FALSE)
+                """, UUID.randomUUID(), roleId, userId);
+        try {
+            mockMvc.perform(post("/auth/internal/approval-line/authorize")
+                            .header(INTERNAL_TOKEN_HEADER, "test-internal-token")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"documentType":"SLIP_OUTBOUND","actionKey":"EXTRA_APPROVAL","userId":"%s"}
+                                    """.formatted(userId)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.configured").value(false))
+                    .andExpect(jsonPath("$.data.allowed").value(false));
+        } finally {
+            jdbcTemplate.update("DELETE FROM approval_line_approver WHERE config_role_id = ?", roleId);
+            jdbcTemplate.update("DELETE FROM approval_line_config WHERE id = ?", roleId);
+        }
+    }
+
+    @Test
+    @DisplayName("authorize — enforced 단계 soft-delete 후 configured=false 로 opt-in 통과")
+    void authorize_softDeletedEnforcedStep_returnsConfiguredFalse() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID roleId = roleId("SLIP_OUTBOUND", "OUTBOUND_DISPATCH");
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'USER', ?, NOW(), 'it-seed', FALSE)
+                """, UUID.randomUUID(), roleId, userId);
+        try {
+            jdbcTemplate.update("""
+                    UPDATE approval_line_config
+                       SET is_deleted = TRUE,
+                           deleted_at = NOW(),
+                           deleted_by = 'it-seed'
+                     WHERE id = ?
+                    """, roleId);
+
+            mockMvc.perform(post("/auth/internal/approval-line/authorize")
+                            .header(INTERNAL_TOKEN_HEADER, "test-internal-token")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"documentType":"SLIP_OUTBOUND","actionKey":"OUTBOUND_DISPATCH","userId":"%s"}
+                                    """.formatted(userId)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.configured").value(false))
+                    .andExpect(jsonPath("$.data.allowed").value(false));
+        } finally {
+            jdbcTemplate.update("""
+                    UPDATE approval_line_config
+                       SET is_deleted = FALSE,
+                           deleted_at = NULL,
+                           deleted_by = NULL
+                     WHERE id = ?
+                    """, roleId);
+            jdbcTemplate.update(
+                    "DELETE FROM approval_line_approver WHERE config_role_id = ? AND approver_ref_id = ?",
+                    roleId, userId);
+        }
+    }
+
+    @Test
+    @DisplayName("authorize — 입고/주문 enforced actionKey 는 기존대로 allowed=true")
+    void authorize_inboundAndPartnerOrderRegression_returnsAllowedTrue() throws Exception {
+        UUID inboundUserId = UUID.randomUUID();
+        UUID partnerOrderUserId = UUID.randomUUID();
+        UUID inboundRoleId = roleId("SLIP_INBOUND", "INBOUND_RECEIVE");
+        UUID partnerOrderRoleId = roleId("PARTNER_ORDER", "PARTNER_ORDER_CONVERT");
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'USER', ?, NOW(), 'it-seed', FALSE)
+                """, UUID.randomUUID(), inboundRoleId, inboundUserId);
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'USER', ?, NOW(), 'it-seed', FALSE)
+                """, UUID.randomUUID(), partnerOrderRoleId, partnerOrderUserId);
+        try {
+            mockMvc.perform(post("/auth/internal/approval-line/authorize")
+                            .header(INTERNAL_TOKEN_HEADER, "test-internal-token")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"documentType":"SLIP_INBOUND","actionKey":"INBOUND_RECEIVE","userId":"%s"}
+                                    """.formatted(inboundUserId)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.configured").value(true))
+                    .andExpect(jsonPath("$.data.allowed").value(true));
+
+            mockMvc.perform(post("/auth/internal/approval-line/authorize")
+                            .header(INTERNAL_TOKEN_HEADER, "test-internal-token")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"documentType":"PARTNER_ORDER","actionKey":"PARTNER_ORDER_CONVERT","userId":"%s"}
+                                    """.formatted(partnerOrderUserId)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.configured").value(true))
+                    .andExpect(jsonPath("$.data.allowed").value(true));
+        } finally {
+            jdbcTemplate.update("""
+                    DELETE FROM approval_line_approver
+                     WHERE created_by = 'it-seed'
+                       AND config_role_id IN (?, ?)
+                    """, inboundRoleId, partnerOrderRoleId);
+        }
+    }
+
+    @Test
     @DisplayName("POST /auth/internal/approval-line/authorize — X-Internal-Token 없으면 4xx")
     void authorize_withoutInternalToken_returns4xx() throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/internal/approval-line/authorize")
@@ -105,5 +224,17 @@ class ApprovalLineAuthorizeControllerIT extends AbstractPostgresIT {
                 .andReturn();
 
         assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+    }
+
+    private UUID roleId(String documentType, String actionKey) {
+        return jdbcTemplate.queryForObject("""
+                SELECT id
+                  FROM approval_line_config
+                 WHERE document_type = ?
+                   AND action_key = ?
+                   AND is_deleted = FALSE
+                 ORDER BY sequence
+                 LIMIT 1
+                """, UUID.class, documentType, actionKey);
     }
 }

@@ -28,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ApprovalLineConfigService {
 
+    private static final String ACTOR = "approval-line-config";
+    private static final Set<String> SEED_ACTORS = Set.of("v61-seed", "v63-seed", "v64-seed");
+
     private final ApprovalLineConfigRepository repository;
     private final ApprovalLineApproverRepository approverRepository;
     private final PermissionGroupRepository groupRepository;
@@ -49,6 +52,37 @@ public class ApprovalLineConfigService {
                 .sorted(Comparator.comparing(group -> group.getName()))
                 .map(group -> new ApprovalLineGroupOption(group.getId(), group.getName()))
                 .toList();
+    }
+
+    /** 표시·서명용 결재 단계를 추가한다. action_key 는 null 이므로 authorize 게이트에는 연결되지 않는다. */
+    @Transactional
+    public ApprovalLineRoleView addStep(String documentType, String label) {
+        if (documentType == null || documentType.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "전표 종류(documentType)를 입력해야 합니다");
+        }
+        String normalizedDocumentType = documentType.trim();
+        int nextSequence = repository.findFirstByDocumentTypeOrderBySequenceDesc(normalizedDocumentType)
+                .map(role -> role.getSequence() + 1)
+                .orElse(0);
+        ApprovalLineConfig role = ApprovalLineConfig.createDisplayStep(
+                normalizedDocumentType, nextSequence, label);
+        return toView(repository.save(role));
+    }
+
+    /** 결재 단계를 soft-delete 하고 자식 결재자도 cascade soft-delete 한다. CREATOR 는 삭제할 수 없다. */
+    @Transactional
+    public void deleteStep(UUID id) {
+        ApprovalLineConfig role = repository.findById(id).orElse(null);
+        if (role == null) {
+            return;
+        }
+        if (role.getStepType() == StepType.CREATOR || role.getSequence() == 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "작성자 역할은 삭제할 수 없습니다");
+        }
+        role.markDeleted(ACTOR);
+        approverRepository.findByConfigRoleIdAndIsDeletedFalse(role.getId())
+                .forEach(approver -> approver.markDeleted(ACTOR));
     }
 
     /** 역할 필수여부 갱신. CREATOR 역할은 자동 작성자라 변경을 거부한다. */
@@ -172,7 +206,9 @@ public class ApprovalLineConfigService {
                 .map(this::toApproverView)
                 .toList();
         return new ApprovalLineRoleView(role.getId(), role.getSequence(), role.getLabel(),
-                role.getStepType(), approvers, role.isRequired());
+                role.getStepType(), approvers, role.isRequired(),
+                role.getActionKey() != null && !role.getActionKey().isBlank(),
+                role.getCreatedBy() != null && SEED_ACTORS.contains(role.getCreatedBy()));
     }
 
     private ApproverView toApproverView(ApprovalLineApprover approver) {
