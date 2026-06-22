@@ -69,7 +69,7 @@ test('S2-V65-1: 판매전표 상세 결재정보 — 출고자/검수자', async
   await boot(page)
   await page.goto(hashUrl(`/sales/${OUTBOUND_SLIP_ID}`), { waitUntil: 'networkidle', timeout: 30_000 })
   await page.waitForTimeout(2500)
-  await capture(page, 'detail-결재정보-출고자검수자')
+  await capture(page, 'detail-approval-info')
   const body = (await page.locator('body').textContent()) ?? ''
   expect(body).not.toContain('불러오지 못')
   expect(body).toContain('출고자')
@@ -81,7 +81,7 @@ test('S2-V65-2: 판매전표 인쇄 결재란 — 출고자/검수자', async ({
   await boot(page)
   await page.goto(hashUrl(`/sales/${OUTBOUND_SLIP_ID}/print/dispatch`), { waitUntil: 'networkidle', timeout: 30_000 })
   await page.waitForTimeout(2500)
-  await capture(page, 'print-결재란-출고자검수자')
+  await capture(page, 'print-approval-block')
   const body = (await page.locator('body').textContent()) ?? ''
   expect(body).toContain('출고자')
   expect(body).toContain('검수자')
