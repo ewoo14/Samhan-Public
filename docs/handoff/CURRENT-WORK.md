@@ -4,7 +4,7 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 야간 자율 — **후속3 = arologis page-code canAccess 정렬 완료. PR #569 머지 대기(D-AF3-05 확인). 다음=개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 — **후속3 = arologis page-code canAccess 정렬 ✅ 머지 완료(PR #569, main `9f67e3b43`). 다음=개발책임자 지정 대기**)
 
 ### ✅ 후속3 완료 — PR #569 (머지 대기, CI green·듀얼리뷰 0·라이브 QA 실증)
 - **정찰 premise 정정**: 핸드오프 후속3의 "5개 백오피스 page-code 미배선(0파일)"은 **오판**. 5페이지(Employees/Departments/Cashbook/Accounts/Permissions) 전부 존재·머지(#426~#433). "0파일"=page-code 문자열 grep 0매치를 미배선으로 오해 — 실제는 **FE가 page-code 아닌 롤로 게이팅**. 실제 작업=FE 롤→canAccess 정렬(spec §4.2 원 의도).
@@ -12,7 +12,7 @@
 - **갭 해소**: G2(회계 메뉴가 canManageHr로 막혀 ACCOUNTANT/DEVELOPER가 못 보던 결함 → page-code 정렬, BE seed 정합) + G3(매트릭스=FE 진실원).
 - **듀얼리뷰 0-수렴**: Opus 5-agent(BLOCKING 0)→fix(B1~B5 BE/F1~F7 FE)→Codex 5-agent(신규 0·무회귀). **보안 B2**: /my 롤을 raw X-User-Role→SecurityContext ROLE_AROLOGIS_* authority(헤더 위조 차단). **F1**: 로그인/로그아웃 권한캐시 제거(세션 누출).
 - **🐳 라이브 Docker 실QA**(실 arologis-service:8097+auth+Postgres, mock off, 실 admin JWT): 3롤 메뉴 전부 다르고 BE 매트릭스 정확 일치(MASTER 7+매트릭스 / ACCOUNTANT 회계·계정과목+현금출납장 접근=G2실증·인사 차단 / MANAGER 인사·부서·회계). BE /my: spoof 차단(JWT 없이 X-User-Role:MASTER→data:{}). 증빙 `docs/qa/arologis-pagecode-canaccess-alignment-s/`. dev-report `docs/dev-reports/2026-06-23-arologis-pagecode-canaccess-alignment.md`.
-- **머지 대기**: 슬2 FE=사용자 가시 변경(회계 메뉴 ACCOUNTANT/DEVELOPER 노출). **@개발책임자 D-AF3-05 확인**: 회계사원/개발자가 회계 메뉴 보는 것 의도 일치면 PR #569 머지(불일치면 BE seed V51/V53 정정이 정답). 설계 §6 약속대로 머지 보류.
+- **✅ 머지 완료**: 슬2 FE=사용자 가시 widening(회계 메뉴 ACCOUNTANT/DEVELOPER 노출). 개발책임자 **D-AF3-05 확인("그래 맞아"** — 회계사원/개발자가 현금출납장 보는 BE 정책 정상, 6롤 모델상 개발자=인사·권한 제외 전권) → PM 머지(#569, `9f67e3b43`). [[pm-permission-autonomy]] widening 멈춤점 해소.
 
 ### 🔑 후속3 워크플로우 교훈
 - **stale jar 함정 재현**([[local-stack-qa-gotchas]]): local-all Dockerfile은 `build/libs/*.jar` 호스트 사전빌드 jar를 COPY → Codex가 compileJava/test만 하고 bootJar 미실행 → 06-21 stale jar 기동 → /my 500("No static resource"). **라이브 QA가 단독 적발**. `./gradlew :svc:bootJar` 후 이미지 재빌드 의무.
