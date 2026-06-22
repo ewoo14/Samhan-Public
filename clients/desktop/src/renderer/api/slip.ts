@@ -81,7 +81,7 @@ export interface SlipLineDetail {
 }
 
 /**
- * 결재란 출고인/검수인 응답 — Slice A 신규 (Designer README.md § 2.3 + ux-flow.md § 2.4).
+ * 결재란 출고자/검수자 응답 — Slice A 신규 (Designer README.md § 2.3 + ux-flow.md § 2.4).
  * BE 가 user-service lookup 후 fullName 포함 (Option A 권장).
  */
 export interface SlipApprovalActor {
@@ -111,12 +111,12 @@ export interface SlipDetail extends SlipSummary {
    */
   driverPhone?: string | null
   /**
-   * ACCEPTED 트랜지션 시점 자동 채워지는 출고인 (피드백 #9).
+   * ACCEPTED 트랜지션 시점 자동 채워지는 출고자 (피드백 #9).
    * 미도달 시 undefined / null. Designer ux-flow.md § 2.1 참고.
    */
   dispatcher?: SlipApprovalActor | null
   /**
-   * INSPECTING 트랜지션 시점 자동 채워지는 검수인 (피드백 #9).
+   * INSPECTING 트랜지션 시점 자동 채워지는 검수자 (피드백 #9).
    * 미도달 시 undefined / null. Designer ux-flow.md § 2.2 참고.
    */
   inspector?: SlipApprovalActor | null
@@ -722,9 +722,9 @@ export async function querySlips(
  *
  * - `save`     DRAFT → SAVED
  * - `send`     SAVED → SENT
- * - `accept`   SENT → ACCEPTED (출고인 자동 채움)
+ * - `accept`   SENT → ACCEPTED (출고자 자동 채움)
  * - `process`  ACCEPTED → PROCESSING
- * - `inspect`  PROCESSING → INSPECTING (검수인 자동 채움) — Slice A 신규
+ * - `inspect`  PROCESSING → INSPECTING (검수자 자동 채움) — Slice A 신규
  * - `complete` INSPECTING → COMPLETED (Slice A 에서 PROCESSING → COMPLETED 가 INSPECTING 거침)
  * - `ship`     COMPLETED → SHIPPING (출고전표 한정)
  * - `deliver`  SHIPPING → DELIVERED (출고전표 한정)

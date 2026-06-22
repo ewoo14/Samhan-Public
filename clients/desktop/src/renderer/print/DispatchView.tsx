@@ -53,7 +53,7 @@ function toMonthDay(isoDate: string | null | undefined): string {
 /**
  * `<RoleCell>` — 결재란 5칸 셀 (Designer components.md § 4.4).
  *
- * 2026-06-10 개발책임자 정정: 작성자/출고인/검수인 칸은 **서명(위) + 바로 아래 이름** 구조.
+ * 2026-06-10 개발책임자 정정: 작성자/출고자/검수자 칸은 **서명(위) + 바로 아래 이름** 구조.
  * 서명 이미지는 사원 서명 등록 슬라이스(별도 PR — 사원등록 메뉴) 후 signaturePng 주입,
  * 그 전까지는 서명 영역 placeholder 빈 공간 + 이름만 하단 표시. time(HH:mm) 표시는 폐기.
  */
@@ -146,12 +146,12 @@ export function DispatchView() {
           <div className="dispatch-partner-name-box">
             {slip.partnerName ?? '-'}
           </div>
-          {/* 2026-06-10 개발책임자 정정: 담당자→작성자, 결제→결제예정일. 작성자/출고인/검수인 = 서명+이름 */}
+          {/* 2026-06-10 개발책임자 정정: 담당자→작성자, 결제→결제예정일. 작성자/출고자/검수자 = 서명+이름 */}
           <div className="dispatch-roles" aria-label="작성자 및 결재">
             <RoleCell label="담당부서" value={slip.ownerDepartment ?? null} />
             <RoleCell label="작성자" value={slip.ownerFullName ?? null} />
-            <RoleCell label="출고인" value={slip.dispatcher?.fullName ?? null} />
-            <RoleCell label="검수인" value={slip.inspector?.fullName ?? null} />
+            <RoleCell label="출고자" value={slip.dispatcher?.fullName ?? null} />
+            <RoleCell label="검수자" value={slip.inspector?.fullName ?? null} />
             <RoleCell label="결제예정일" value={paymentDueMmdd} />
           </div>
         </header>

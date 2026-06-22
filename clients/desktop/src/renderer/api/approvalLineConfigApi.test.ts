@@ -4,7 +4,9 @@ import {
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
   addApprovalLineApprover,
+  addApprovalLineStep,
   DOC_TYPES,
+  deleteApprovalLineStep,
   removeApprovalLineApprover,
   renameApprovalLineRole,
   reorderApprovalLineRoles,
@@ -39,10 +41,12 @@ describe('approvalLineConfigApi contract', () => {
       {
         id: 'r1',
         sequence: 1,
-        label: '출고인',
+        label: '출고자',
         stepType: 'GROUP',
         approvers: [],
         required: true,
+        enforced: true,
+        seedManaged: true,
       },
     ]
     vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: rows } })
@@ -58,10 +62,12 @@ describe('approvalLineConfigApi contract', () => {
     const row = {
       id: 'role/1',
       sequence: 1,
-      label: '출고인',
+      label: '출고자',
       stepType: 'GROUP',
       approvers: [],
       required: false,
+      enforced: true,
+      seedManaged: true,
     }
     const payload = { required: false }
     vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: row } })
@@ -89,10 +95,12 @@ describe('approvalLineConfigApi contract', () => {
     const row = {
       id: 'role/1',
       sequence: 1,
-      label: '출고인',
+      label: '출고자',
       stepType: 'GROUP',
       approvers: [{ id: 'a1', type: 'GROUP', refId: 'g1', displayName: '창고원' }],
       required: true,
+      enforced: true,
+      seedManaged: true,
     }
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: row } })
 
@@ -108,10 +116,12 @@ describe('approvalLineConfigApi contract', () => {
     const row = {
       id: 'role/1',
       sequence: 1,
-      label: '출고인',
+      label: '출고자',
       stepType: 'GROUP',
       approvers: [],
       required: true,
+      enforced: true,
+      seedManaged: true,
     }
     vi.mocked(apiClient.delete).mockResolvedValueOnce({ data: { data: row } })
 
@@ -139,6 +149,8 @@ describe('approvalLineConfigApi contract', () => {
       stepType: 'GROUP',
       approvers: [],
       required: true,
+      enforced: true,
+      seedManaged: true,
     }
     vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: row } })
 
@@ -152,9 +164,9 @@ describe('approvalLineConfigApi contract', () => {
 
   it('PUT /approval-line-configs/reorder?documentType= 에 orderedIds body 를 전송한다', async () => {
     const rows = [
-      { id: 'r0', sequence: 0, label: '작성자', stepType: 'CREATOR', approvers: [], required: true },
-      { id: 'r2', sequence: 1, label: '검수인', stepType: 'GROUP',   approvers: [], required: true },
-      { id: 'r1', sequence: 2, label: '출고인', stepType: 'GROUP',   approvers: [], required: true },
+      { id: 'r0', sequence: 0, label: '작성자', stepType: 'CREATOR', approvers: [], required: true, enforced: false, seedManaged: true },
+      { id: 'r2', sequence: 1, label: '검수자', stepType: 'GROUP', approvers: [], required: true, enforced: true, seedManaged: true },
+      { id: 'r1', sequence: 2, label: '출고자', stepType: 'GROUP', approvers: [], required: true, enforced: true, seedManaged: true },
     ]
     vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: rows } })
 
@@ -164,6 +176,37 @@ describe('approvalLineConfigApi contract', () => {
     expect(apiClient.put).toHaveBeenCalledWith(
       '/auth/admin/approval-line-configs/reorder?documentType=SLIP_OUTBOUND',
       { orderedIds: ['r0', 'r2', 'r1'] },
+    )
+  })
+
+  it('POST /approval-line-configs 에 documentType/label 로 단계를 추가한다', async () => {
+    const row = {
+      id: 'r-new',
+      sequence: 3,
+      label: '확인자',
+      stepType: 'GROUP',
+      approvers: [],
+      required: true,
+      enforced: false,
+      seedManaged: false,
+    }
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: row } })
+
+    await expect(addApprovalLineStep('SLIP_OUTBOUND', '확인자')).resolves.toBe(row)
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs',
+      { documentType: 'SLIP_OUTBOUND', label: '확인자' },
+    )
+  })
+
+  it('DELETE /approval-line-configs/{id} 로 단계를 삭제한다', async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce({ data: { data: null } })
+
+    await expect(deleteApprovalLineStep('role/1')).resolves.toBeUndefined()
+
+    expect(apiClient.delete).toHaveBeenCalledWith(
+      '/auth/admin/approval-line-configs/role%2F1',
     )
   })
 })

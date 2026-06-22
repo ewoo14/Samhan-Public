@@ -29,8 +29,8 @@ class AuthFlywayV62SeedIT extends AbstractPostgresIT {
                  WHERE document_type = 'SLIP_OUTBOUND'
                    AND is_deleted = FALSE
                    AND (label, action_key) IN (
-                       ('출고인', 'OUTBOUND_DISPATCH'),
-                       ('검수인', 'OUTBOUND_INSPECT')
+                       ('출고자', 'OUTBOUND_DISPATCH'),
+                       ('검수자', 'OUTBOUND_INSPECT')
                    )
                 """,
                 Integer.class);

@@ -58,6 +58,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     void setUp() {
         cleanPermissionRowsWithoutTouchingManagerSeed();
         cleanApprovalLineApprovers();
+        cleanDynamicApprovalLineRoles();
         resetOutboundDispatcherRole();
         resetApprovalLineConfigToSeedState();
     }
@@ -67,6 +68,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
         resetApprovalLineConfigToSeedState();
         resetOutboundDispatcherRole();
         cleanApprovalLineApprovers();
+        cleanDynamicApprovalLineRoles();
         cleanPermissionRowsWithoutTouchingManagerSeed();
     }
 
@@ -83,8 +85,10 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
                 .contains("작성자")
-                .contains("출고인")
-                .contains("검수인");
+                .contains("출고자")
+                .contains("검수자")
+                .contains("\"enforced\":true")
+                .contains("\"seedManaged\":true");
     }
 
     @Test
@@ -104,9 +108,9 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("PUT 출고인 역할 — V61 seed MANAGER UPDATE 권한으로 필수여부 변경 200")
+    @DisplayName("PUT 출고자 역할 — V61 seed MANAGER UPDATE 권한으로 필수여부 변경 200")
     void updateDispatcherRole_managerWithSeedGrant_returns200() throws Exception {
-        UUID roleId = outboundRoleId("출고인");
+        UUID roleId = outboundRoleId("출고자");
 
         MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}", roleId)
                         .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
@@ -130,9 +134,9 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("POST 출고인 결재자 — 미존재 권한그룹 지정은 4xx")
+    @DisplayName("POST 출고자 결재자 — 미존재 권한그룹 지정은 4xx")
     void updateDispatcherRole_unknownGroup_returns4xx() throws Exception {
-        UUID roleId = outboundRoleId("출고인");
+        UUID roleId = outboundRoleId("출고자");
         UUID unknownGroupId = UUID.randomUUID();
 
         MvcResult result = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
@@ -153,7 +157,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("POST/DELETE 결재자 — 비MASTER MANAGER 가 GROUP+USER 추가 후 제거 200")
     void addAndRemoveApprovers_managerWithSeedGrant_returns200() throws Exception {
-        UUID roleId = outboundRoleId("출고인");
+        UUID roleId = outboundRoleId("출고자");
 
         MvcResult groupResult = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
                         .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
@@ -214,7 +218,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("POST 결재자 — 동일 그룹 2회는 4xx(이미 지정된 결재자)")
     void addApprover_duplicateGroup_returns4xx() throws Exception {
-        UUID roleId = outboundRoleId("출고인");
+        UUID roleId = outboundRoleId("출고자");
         String body = "{\"type\":\"GROUP\",\"refId\":\"%s\"}".formatted(WAREHOUSE_GROUP_ID);
 
         MvcResult first = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
@@ -261,7 +265,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("POST 결재자 — 시스템 마스터 계정 USER 지정은 4xx")
     void addApprover_systemMasterUser_returns4xx() throws Exception {
-        UUID roleId = outboundRoleId("출고인");
+        UUID roleId = outboundRoleId("출고자");
 
         MvcResult result = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
                         .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
@@ -325,9 +329,9 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("PUT 라벨변경 — 출고인 라벨을 '출고담당'으로 변경 200")
+    @DisplayName("PUT 라벨변경 — 출고자 라벨을 '출고담당'으로 변경 200")
     void renameRole_outboundRole_returns200AndUpdatedLabel() throws Exception {
-        UUID roleId = outboundRoleId("출고인");
+        UUID roleId = outboundRoleId("출고자");
 
         MvcResult result = mockMvc.perform(put("/auth/admin/approval-line-configs/{id}/label", roleId)
                         .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
@@ -373,13 +377,13 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("PUT 순서변경 — 출고인↔검수인 swap 후 순서 반영 200")
+    @DisplayName("PUT 순서변경 — 출고자↔검수자 swap 후 순서 반영 200")
     void reorderRoles_swapOutboundAndInspector_returns200AndCorrectOrder() throws Exception {
         UUID creatorId = outboundRoleId("작성자");
-        UUID outboundId = outboundRoleId("출고인");
-        UUID inspectorId = outboundRoleId("검수인");
+        UUID outboundId = outboundRoleId("출고자");
+        UUID inspectorId = outboundRoleId("검수자");
 
-        // 검수인을 2번째, 출고인을 3번째로 변경
+        // 검수자를 2번째, 출고자를 3번째로 변경
         MvcResult result = mockMvc.perform(
                         put("/auth/admin/approval-line-configs/reorder")
                                 .param("documentType", DOCUMENT_TYPE)
@@ -394,9 +398,9 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
 
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
         String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
-        // 응답이 배열 형태이며 검수인이 출고인보다 앞에 위치
-        int inspectorPos = body.indexOf("검수인");
-        int outboundPos = body.indexOf("출고인");
+        // 응답이 배열 형태이며 검수자가 출고자보다 앞에 위치
+        int inspectorPos = body.indexOf("검수자");
+        int outboundPos = body.indexOf("출고자");
         assertThat(inspectorPos).isLessThan(outboundPos);
 
         // DB sequence 확인
@@ -412,11 +416,104 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("POST 역할추가 — 표시·서명용 GROUP 단계를 max sequence+1/action_key null 로 생성")
+    void addStep_managerWithSeedGrant_returnsDisplayOnlyRole() throws Exception {
+        MvcResult result = mockMvc.perform(post("/auth/admin/approval-line-configs")
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentType":"SLIP_OUTBOUND","label":"확인자"}
+                                """))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(body)
+                .contains("확인자")
+                .contains("\"stepType\":\"GROUP\"")
+                .contains("\"sequence\":3")
+                .contains("\"required\":true")
+                .contains("\"enforced\":false")
+                .contains("\"seedManaged\":false");
+
+        UUID roleId = outboundRoleId("확인자");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT action_key IS NULL
+                  FROM approval_line_config
+                 WHERE id = ?
+                   AND is_deleted = FALSE
+                """, Boolean.class, roleId)).isTrue();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT created_by
+                  FROM approval_line_config
+                 WHERE id = ?
+                   AND is_deleted = FALSE
+                """, String.class, roleId)).isEqualTo(MANAGER_ACCOUNT_ID.toString());
+    }
+
+    @Test
+    @DisplayName("DELETE 역할삭제 — soft-delete + 자식 결재자 cascade soft-delete 후 목록에서 제외")
+    void deleteStep_softDeletesRoleAndApprovers() throws Exception {
+        UUID roleId = insertDisplayOnlyRole("확인자", 3);
+        UUID approverId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'GROUP', ?, NOW(), 'it-seed', FALSE)
+                """, approverId, roleId, WAREHOUSE_GROUP_ID);
+
+        MvcResult result = mockMvc.perform(delete("/auth/admin/approval-line-configs/{id}", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT is_deleted
+                  FROM approval_line_config
+                 WHERE id = ?
+                """, Boolean.class, roleId)).isTrue();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT is_deleted
+                  FROM approval_line_approver
+                 WHERE id = ?
+                """, Boolean.class, approverId)).isTrue();
+
+        MvcResult list = mockMvc.perform(get("/auth/admin/approval-line-configs")
+                        .param("documentType", DOCUMENT_TYPE)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+        assertThat(list.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .doesNotContain("확인자");
+    }
+
+    @Test
+    @DisplayName("DELETE 역할삭제 — CREATOR(sequence 0)는 거부")
+    void deleteStep_creatorRole_returns4xx() throws Exception {
+        UUID creatorId = outboundRoleId("작성자");
+
+        MvcResult result = mockMvc.perform(delete("/auth/admin/approval-line-configs/{id}", creatorId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isBetween(400, 499);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("작성자 역할은 삭제할 수 없습니다");
+    }
+
+    @Test
     @DisplayName("PUT 순서변경 — 작성자가 첫 번째가 아니면 4xx")
     void reorderRoles_creatorNotFirst_returns4xx() throws Exception {
         UUID creatorId = outboundRoleId("작성자");
-        UUID outboundId = outboundRoleId("출고인");
-        UUID inspectorId = outboundRoleId("검수인");
+        UUID outboundId = outboundRoleId("출고자");
+        UUID inspectorId = outboundRoleId("검수자");
 
         MvcResult result = mockMvc.perform(
                         put("/auth/admin/approval-line-configs/reorder")
@@ -439,7 +536,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @DisplayName("PUT 순서변경 — 중복 역할 ID 전달은 4xx")
     void reorderRoles_duplicateRoleId_returns4xx() throws Exception {
         UUID creatorId = outboundRoleId("작성자");
-        UUID outboundId = outboundRoleId("출고인");
+        UUID outboundId = outboundRoleId("출고자");
 
         MvcResult result = mockMvc.perform(
                         put("/auth/admin/approval-line-configs/reorder")
@@ -462,8 +559,8 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     @DisplayName("PUT 순서변경 — documentType blank 는 4xx")
     void reorderRoles_blankDocumentType_returns4xx() throws Exception {
         UUID creatorId = outboundRoleId("작성자");
-        UUID outboundId = outboundRoleId("출고인");
-        UUID inspectorId = outboundRoleId("검수인");
+        UUID outboundId = outboundRoleId("출고자");
+        UUID inspectorId = outboundRoleId("검수자");
 
         MvcResult result = mockMvc.perform(
                         put("/auth/admin/approval-line-configs/reorder")
@@ -494,6 +591,16 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 """, UUID.class, DOCUMENT_TYPE, label);
     }
 
+    private UUID insertDisplayOnlyRole(String label, int sequence) {
+        UUID roleId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_config
+                    (id, document_type, sequence, label, step_type, action_key, required, created_at, created_by, is_deleted)
+                VALUES (?, ?, ?, ?, 'GROUP', NULL, TRUE, NOW(), 'it-seed', FALSE)
+                """, roleId, DOCUMENT_TYPE, sequence, label);
+        return roleId;
+    }
+
     private void resetOutboundDispatcherRole() {
         jdbcTemplate.update("""
                 UPDATE approval_line_config
@@ -502,7 +609,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                     modified_at = NOW(),
                     modified_by = 'approval-line-config-it'
                 WHERE document_type = ?
-                  AND label IN ('출고인', '출고담당')
+                  AND label IN ('출고인', '출고자', '출고담당')
                   AND is_deleted = FALSE
                 """, DOCUMENT_TYPE);
     }
@@ -512,7 +619,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
      * rename/reorder 테스트 간 DB 공유 오염을 방지한다.
      *
      * <p>reorder 후에도 역할 라벨을 stable key 로 삼아 seed sequence 를 복원한다.
-     * sequence 재랭킹에 의존하지 않아 출고인/검수인 row identity 가 섞이지 않는다.
+     * sequence 재랭킹에 의존하지 않아 출고자/검수자 row identity 가 섞이지 않는다.
      */
     private void resetApprovalLineConfigToSeedState() {
         // Phase 1: seed 역할을 고정 음수 슬롯으로 이동(unique 충돌 회피)
@@ -520,8 +627,8 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 UPDATE approval_line_config
                 SET sequence = CASE
                         WHEN step_type = 'CREATOR' THEN -1
-                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고담당') THEN -2
-                        WHEN step_type = 'GROUP' AND label = '검수인' THEN -3
+                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고자', '출고담당') THEN -2
+                        WHEN step_type = 'GROUP' AND label IN ('검수인', '검수자') THEN -3
                         ELSE sequence
                     END,
                     modified_at = NOW(),
@@ -530,7 +637,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                   AND is_deleted = FALSE
                   AND (
                       step_type = 'CREATOR'
-                      OR label IN ('출고인', '출고담당', '검수인')
+                      OR label IN ('출고인', '출고자', '출고담당', '검수인', '검수자')
                   )
                 """, DOCUMENT_TYPE);
 
@@ -539,14 +646,14 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 UPDATE approval_line_config
                 SET label = CASE
                         WHEN step_type = 'CREATOR' THEN '작성자'
-                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고담당') THEN '출고인'
-                        WHEN step_type = 'GROUP' AND label = '검수인' THEN '검수인'
+                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고자', '출고담당') THEN '출고자'
+                        WHEN step_type = 'GROUP' AND label IN ('검수인', '검수자') THEN '검수자'
                         ELSE label
                     END,
                     sequence = CASE
                         WHEN step_type = 'CREATOR' THEN 0
-                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고담당') THEN 1
-                        WHEN step_type = 'GROUP' AND label = '검수인' THEN 2
+                        WHEN step_type = 'GROUP' AND label IN ('출고인', '출고자', '출고담당') THEN 1
+                        WHEN step_type = 'GROUP' AND label IN ('검수인', '검수자') THEN 2
                         ELSE sequence
                     END,
                     modified_at = NOW(),
@@ -555,7 +662,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                   AND is_deleted = FALSE
                   AND (
                       step_type = 'CREATOR'
-                      OR label IN ('출고인', '출고담당', '검수인')
+                      OR label IN ('출고인', '출고자', '출고담당', '검수인', '검수자')
                   )
                 """, DOCUMENT_TYPE);
     }
@@ -581,6 +688,14 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                    OR config_role_id IN (
                        SELECT id FROM approval_line_config WHERE document_type = ?
                    )
+                """, DOCUMENT_TYPE);
+    }
+
+    private void cleanDynamicApprovalLineRoles() {
+        jdbcTemplate.update("""
+                DELETE FROM approval_line_config
+                WHERE document_type = ?
+                  AND created_by NOT IN ('v61-seed', 'v63-seed', 'v64-seed')
                 """, DOCUMENT_TYPE);
     }
 }

@@ -5,7 +5,7 @@
  * - 사용자 피드백 #1 ("라이프사이클" 모호) 해결 → `<ProgressBar>` 신규 컴포넌트로 대체
  *   ProgressBar 헤더 정보 위에 위치 (사용자 진입 시 즉시 단계 확인)
  *   기존 transition 버튼 영역은 "다음 단계 액션" 으로 ProgressBar 아래 유지
- * - 사용자 피드백 #9 — 결재 정보 카드 (출고인/검수인 자동 채움) 신규 표시
+ * - 사용자 피드백 #9 — 결재 정보 카드 (출고자/검수자 자동 채움) 신규 표시
  * - INSPECTING 신규 단계 transition (`PROCESSING → INSPECTING → COMPLETED`) 지원
  * - usePageTitle 로 AppHeader 동적 화면명 ("출고전표 상세 [2026/05/04-1]")
  *
@@ -1690,14 +1690,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       />
 
       {/*
-        Slice A: 결재 정보 카드 — 출고인/검수인 자동 채움 (Designer wireframes.md § 5 + ux-flow.md § 2)
+        Slice A: 결재 정보 카드 — 출고자/검수자 자동 채움 (Designer wireframes.md § 5 + ux-flow.md § 2)
         피드백 #9 해결.
       */}
       <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
         <h4 style={{ marginTop: 0 }}>결재 정보</h4>
         <div className="detail-grid">
           <div>
-            <span className="detail-label">출고인</span>
+            <span className="detail-label">출고자</span>
             <span className="detail-value">
               {slip.dispatcher?.fullName
                 ? `${slip.dispatcher.fullName} · ${formatHHmm(slip.dispatcher.signedAt)}`
@@ -1705,7 +1705,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </span>
           </div>
           <div>
-            <span className="detail-label">검수인</span>
+            <span className="detail-label">검수자</span>
             <span className="detail-value">
               {slip.inspector?.fullName
                 ? `${slip.inspector.fullName} · ${formatHHmm(slip.inspector.signedAt)}`

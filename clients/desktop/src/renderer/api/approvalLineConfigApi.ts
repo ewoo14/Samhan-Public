@@ -9,6 +9,8 @@ export interface ApprovalLineRole {
   stepType: StepType
   approvers: ApprovalLineApprover[]
   required: boolean
+  enforced: boolean
+  seedManaged: boolean
 }
 
 export interface ApprovalLineGroupOption {
@@ -58,6 +60,23 @@ export async function updateApprovalLineRole(
     payload,
   )
   return res.data.data
+}
+
+export async function addApprovalLineStep(
+  documentType: string,
+  label: string,
+): Promise<ApprovalLineRole> {
+  const res = await apiClient.post<ApiEnvelope<ApprovalLineRole>>(
+    '/auth/admin/approval-line-configs',
+    { documentType, label },
+  )
+  return res.data.data
+}
+
+export async function deleteApprovalLineStep(id: string): Promise<void> {
+  await apiClient.delete<ApiEnvelope<null>>(
+    `/auth/admin/approval-line-configs/${encodeURIComponent(id)}`,
+  )
 }
 
 export async function searchApprovalLineUsers(q: string, limit = 20): Promise<ApprovalLineUserOption[]> {

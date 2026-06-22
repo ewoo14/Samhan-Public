@@ -16,10 +16,12 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AsyncAutocomplete, Card, DragHandle, Select, Spinner, TagChip } from '@samhan/design-system'
+import { AsyncAutocomplete, Button, Card, DragHandle, Modal, Select, Spinner, TagChip } from '@samhan/design-system'
 import {
   DOC_TYPES,
   addApprovalLineApprover,
+  addApprovalLineStep,
+  deleteApprovalLineStep,
   fetchApprovalLineGroups,
   fetchApprovalLineRoles,
   removeApprovalLineApprover,
@@ -47,6 +49,8 @@ export function ApprovalLineConfigPage() {
   const [docType, setDocType] = useState(DOC_TYPES[0]!.value)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [pendingRoleIds, setPendingRoleIds] = useState<Set<string>>(() => new Set())
+  const [newStepLabel, setNewStepLabel] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<ApprovalLineRole | null>(null)
   const rolesQueryKey = approvalLineRolesQueryKey(docType)
 
   const rolesQuery = useQuery({
@@ -179,6 +183,60 @@ export function ApprovalLineConfigPage() {
     },
   })
 
+  const addStepMutation = useMutation({
+    mutationFn: (value: { documentType: string; label: string }) =>
+      addApprovalLineStep(value.documentType, value.label),
+    onMutate: async (value) => {
+      await queryClient.cancelQueries({ queryKey: rolesQueryKey })
+      const prev = queryClient.getQueryData<ApprovalLineRole[]>(rolesQueryKey)
+      queryClient.setQueryData<ApprovalLineRole[]>(
+        rolesQueryKey,
+        (current) => optimisticallyAddApprovalLineStep(current, value),
+      )
+      return { prev }
+    },
+    onSuccess: (role) => {
+      queryClient.setQueryData<ApprovalLineRole[]>(rolesQueryKey, (current) => {
+        if (!current) return [role]
+        const withoutPending = current.filter((item) => !item.id.startsWith(`pending-step-${docType}-`))
+        return [...withoutPending, role].sort((a, b) => a.sequence - b.sequence)
+      })
+      setNewStepLabel('')
+      setToast({ type: 'success', message: '결재 단계를 추가했습니다.' })
+    },
+    onError: (_error, _value, context) => {
+      restoreApprovalLineRolesSnapshot(queryClient, rolesQueryKey, context?.prev)
+      setToast({ type: 'error', message: '단계 추가 중 오류가 발생했습니다.' })
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: rolesQueryKey })
+    },
+  })
+
+  const deleteStepMutation = useMutation({
+    mutationFn: (value: { id: string }) => deleteApprovalLineStep(value.id),
+    onMutate: async (value) => {
+      await queryClient.cancelQueries({ queryKey: rolesQueryKey })
+      const prev = queryClient.getQueryData<ApprovalLineRole[]>(rolesQueryKey)
+      queryClient.setQueryData<ApprovalLineRole[]>(
+        rolesQueryKey,
+        (current) => optimisticallyDeleteApprovalLineStep(current, value.id),
+      )
+      return { prev }
+    },
+    onSuccess: () => {
+      setDeleteTarget(null)
+      setToast({ type: 'success', message: '결재 단계를 삭제했습니다.' })
+    },
+    onError: (_error, _value, context) => {
+      restoreApprovalLineRolesSnapshot(queryClient, rolesQueryKey, context?.prev)
+      setToast({ type: 'error', message: '단계 삭제 중 오류가 발생했습니다.' })
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: rolesQueryKey })
+    },
+  })
+
   // ── 라벨 rename 뮤테이션 (Task 3) ──
   const renameMutation = useMutation({
     mutationFn: (value: { id: string; label: string }) =>
@@ -272,6 +330,8 @@ export function ApprovalLineConfigPage() {
   }, [toast])
 
   const roles = rolesQuery.data ?? []
+  const trimmedNewStepLabel = newStepLabel.trim()
+  const deleteConfirmation = deleteTarget ? getApprovalLineDeleteConfirmation(deleteTarget) : null
 
   return (
     <div data-testid="approval-line-config-page" style={{ maxWidth: 1120 }}>
@@ -310,6 +370,39 @@ export function ApprovalLineConfigPage() {
 
         {!rolesQuery.isLoading && !rolesQuery.isError ? (
           <>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 12, borderBottom: '1px solid var(--color-neutral-200)' }}>
+              <input
+                type="text"
+                value={newStepLabel}
+                onChange={(event) => setNewStepLabel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && trimmedNewStepLabel && !addStepMutation.isPending) {
+                    addStepMutation.mutate({ documentType: docType, label: trimmedNewStepLabel })
+                  }
+                }}
+                placeholder="새 단계 라벨"
+                aria-label="새 결재 단계 라벨"
+                data-testid="approval-line-new-step-label"
+                disabled={addStepMutation.isPending}
+                style={{
+                  width: 220,
+                  padding: '7px 9px',
+                  border: '1px solid var(--color-neutral-300)',
+                  borderRadius: 4,
+                  fontSize: 13,
+                }}
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => addStepMutation.mutate({ documentType: docType, label: trimmedNewStepLabel })}
+                disabled={!trimmedNewStepLabel || addStepMutation.isPending}
+                loading={addStepMutation.isPending}
+                data-testid="approval-line-add-step"
+              >
+                단계 추가
+              </Button>
+            </div>
             {groupsQuery.isError ? (
               <div style={{ padding: '10px 12px', color: 'var(--color-warning-700)', fontSize: 13 }}>
                 권한 그룹 목록을 불러오지 못했습니다. 역할 목록은 계속 표시됩니다.
@@ -360,6 +453,7 @@ export function ApprovalLineConfigPage() {
                         }}
                         onRename={(label) =>
                           renameMutation.mutate({ id: role.id, label })}
+                        onDeleteStep={() => setDeleteTarget(role)}
                       />
                     ))}
                   </tbody>
@@ -391,6 +485,42 @@ export function ApprovalLineConfigPage() {
           {toast.message}
         </div>
       ) : null}
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => {
+          if (!deleteStepMutation.isPending) setDeleteTarget(null)
+        }}
+        title={deleteConfirmation?.title ?? '단계 삭제'}
+        size="sm"
+        closeOnEsc={!deleteStepMutation.isPending}
+        closeOnBackdropClick={!deleteStepMutation.isPending}
+        footer={(
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteStepMutation.isPending}
+            >
+              취소
+            </Button>
+            <Button
+              variant="danger"
+              loading={deleteStepMutation.isPending}
+              onClick={() => {
+                if (deleteTarget) deleteStepMutation.mutate({ id: deleteTarget.id })
+              }}
+              data-testid="approval-line-delete-confirm"
+            >
+              삭제
+            </Button>
+          </>
+        )}
+      >
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+          {deleteConfirmation?.message}
+        </p>
+      </Modal>
     </div>
   )
 }
@@ -404,6 +534,7 @@ function SortableApprovalRoleRow({
   onAddApprover,
   onRemoveApprover,
   onRename,
+  onDeleteStep,
 }: {
   role: ApprovalLineRole
   saving: boolean
@@ -412,6 +543,7 @@ function SortableApprovalRoleRow({
   onAddApprover: (option: ApprovalLineApproverOption) => void
   onRemoveApprover: (approverId: string) => void
   onRename: (label: string) => void
+  onDeleteStep: () => void
 }) {
   const isCreator = role.stepType === 'CREATOR'
 
@@ -465,11 +597,24 @@ function SortableApprovalRoleRow({
           // CREATOR 라벨은 정적 텍스트 (편집 불가)
           <strong data-testid={`approval-role-label-static-${role.id}`}>{role.label}</strong>
         ) : (
-          <ApprovalRoleLabelInput
-            role={role}
-            saving={saving}
-            onRename={onRename}
-          />
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <ApprovalRoleLabelInput
+              role={role}
+              saving={saving}
+              onRename={onRename}
+            />
+            <button
+              type="button"
+              onClick={onDeleteStep}
+              disabled={saving}
+              aria-label={`${role.label} 단계 삭제`}
+              title="단계 삭제"
+              data-testid={`approval-role-delete-${role.id}`}
+              style={deleteStepButtonStyle}
+            >
+              ×
+            </button>
+          </div>
         )}
       </td>
       <td style={groupBodyCellStyle}>
@@ -721,6 +866,7 @@ export function ApprovalRoleRow({
 
 type ApprovalRoleRequiredHandler = (required: boolean) => void
 type ApprovalRoleUpdateValue = { id: string; required: boolean }
+type ApprovalLineAddStepValue = { documentType: string; label: string }
 
 export function approvalLineRolesQueryKey(documentType: string) {
   return ['admin', 'approval-line-config', documentType] as const
@@ -767,6 +913,47 @@ export function optimisticallyRemoveApprovalLineApprover(
   return current?.map((role) => role.id === roleId
     ? { ...role, approvers: role.approvers.filter((approver) => approver.id !== approverId) }
     : role)
+}
+
+export function optimisticallyAddApprovalLineStep(
+  current: ApprovalLineRole[] | undefined,
+  value: ApprovalLineAddStepValue,
+) {
+  const roles = current ?? []
+  const nextSequence = roles.reduce((max, role) => Math.max(max, role.sequence), -1) + 1
+  const trimmedLabel = value.label.trim()
+  if (!trimmedLabel) return current
+  const optimisticRole: ApprovalLineRole = {
+    id: `pending-step-${value.documentType}-${Date.now()}`,
+    sequence: nextSequence,
+    label: trimmedLabel,
+    stepType: 'GROUP',
+    approvers: [],
+    required: true,
+    enforced: false,
+    seedManaged: false,
+  }
+  return [...roles, optimisticRole]
+}
+
+export function optimisticallyDeleteApprovalLineStep(
+  current: ApprovalLineRole[] | undefined,
+  id: string,
+) {
+  return current?.filter((role) => role.id !== id)
+}
+
+export function getApprovalLineDeleteConfirmation(role: ApprovalLineRole) {
+  if (role.enforced || role.seedManaged) {
+    return {
+      title: '강제 결재 단계 삭제',
+      message: `이 단계는 ${role.label} 결재 강제와 연결됩니다. 삭제하면 해당 동작이 더 이상 결재 강제되지 않습니다. 계속할까요?`,
+    }
+  }
+  return {
+    title: '단계 삭제',
+    message: '이 단계를 삭제할까요?',
+  }
 }
 
 export function restoreApprovalLineRolesSnapshot(
@@ -921,4 +1108,19 @@ const approverTypeBadgeStyle: React.CSSProperties = {
   color: 'var(--color-neutral-600)',
   fontSize: 11,
   fontWeight: 700,
+}
+
+const deleteStepButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 24,
+  height: 24,
+  border: '1px solid var(--color-danger-200)',
+  borderRadius: 4,
+  background: 'var(--color-neutral-0)',
+  color: 'var(--color-danger-600)',
+  cursor: 'pointer',
+  fontSize: 16,
+  lineHeight: 1,
 }

@@ -9233,16 +9233,38 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const documentType = params.get('documentType') ?? 'SLIP_OUTBOUND'
     return envelope(
       _mockApprovalLineConfigRoles
-        .filter((role) => role.documentType === documentType)
+        .filter((role) => role.documentType === documentType && !role.isDeleted)
         .sort((a, b) => a.sequence - b.sequence)
         .map(mockApprovalLineRoleView),
     )
   }
 
+  if (method === 'POST' && url.match(/\/(?:auth\/)?admin\/approval-line-configs$/)) {
+    const body = parseMockBody(config)
+    const documentType = String(body['documentType'] ?? '').trim()
+    const label = String(body['label'] ?? '').trim()
+    if (!documentType) return mockError(400, 'INVALID_INPUT', '전표 종류(documentType)를 입력해야 합니다.')
+    if (!label) return mockError(400, 'INVALID_INPUT', '라벨은 빈 값일 수 없습니다.')
+    const active = _mockApprovalLineConfigRoles.filter((role) => role.documentType === documentType && !role.isDeleted)
+    const role: MockApprovalLineRole = {
+      id: `mock-approval-line-${documentType.toLocaleLowerCase()}-${Date.now()}`,
+      documentType,
+      sequence: active.reduce((max, item) => Math.max(max, item.sequence), -1) + 1,
+      label,
+      stepType: 'GROUP',
+      approvers: [],
+      required: true,
+      actionKey: null,
+      createdBy: 'mock-actor',
+    }
+    _mockApprovalLineConfigRoles.push(role)
+    return envelope(mockApprovalLineRoleView(role))
+  }
+
   const approvalLineApproverMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)\/approvers(?:\/([^/?]+))?$/)
   if (approvalLineApproverMatch && method === 'POST') {
     const roleId = decodeURIComponent(approvalLineApproverMatch[1]!)
-    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId && !item.isDeleted)
     if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
     if (role.stepType === 'CREATOR') {
       return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
@@ -9280,7 +9302,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (approvalLineApproverMatch && method === 'DELETE') {
     const roleId = decodeURIComponent(approvalLineApproverMatch[1]!)
     const approverId = decodeURIComponent(approvalLineApproverMatch[2] ?? '')
-    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId && !item.isDeleted)
     if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
     if (role.stepType === 'CREATOR') {
       return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
@@ -9293,7 +9315,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   const approvalLineConfigLabelMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)\/label$/)
   if (method === 'PUT' && approvalLineConfigLabelMatch) {
     const roleId = decodeURIComponent(approvalLineConfigLabelMatch[1]!)
-    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId && !item.isDeleted)
     if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
     if (role.stepType === 'CREATOR') {
       return mockError(400, 'INVALID_INPUT', '작성자 역할은 변경할 수 없습니다.')
@@ -9315,7 +9337,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       ? (body['orderedIds'] as unknown[]).map(String)
       : []
 
-    const active = _mockApprovalLineConfigRoles.filter((r) => r.documentType === documentType)
+    const active = _mockApprovalLineConfigRoles.filter((r) => r.documentType === documentType && !r.isDeleted)
 
     // 부분요청 가드: orderedIds 집합 == active 집합
     const activeIdSet = new Set(active.map((r) => r.id))
@@ -9329,29 +9351,41 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
 
     // CREATOR 1순위 가드
-    const firstRole = _mockApprovalLineConfigRoles.find((r) => r.id === orderedIds[0])
+    const firstRole = _mockApprovalLineConfigRoles.find((r) => r.id === orderedIds[0] && !r.isDeleted)
     if (!firstRole || firstRole.stepType !== 'CREATOR') {
       return mockError(400, 'INVALID_INPUT', '작성자는 항상 첫 순서여야 합니다.')
     }
 
     // sequence 재할당
     orderedIds.forEach((id, index) => {
-      const r = _mockApprovalLineConfigRoles.find((item) => item.id === id)
+      const r = _mockApprovalLineConfigRoles.find((item) => item.id === id && !item.isDeleted)
       if (r) r.sequence = index
     })
 
     return envelope(
       _mockApprovalLineConfigRoles
-        .filter((r) => r.documentType === documentType)
+        .filter((r) => r.documentType === documentType && !r.isDeleted)
         .sort((a, b) => a.sequence - b.sequence)
         .map(mockApprovalLineRoleView),
     )
   }
 
   const approvalLineConfigRoleMatch = url.match(/\/(?:auth\/)?admin\/approval-line-configs\/([^/?]+)$/)
-  if (method === 'PUT' && approvalLineConfigRoleMatch) {
+  if (method === 'DELETE' && approvalLineConfigRoleMatch) {
     const roleId = decodeURIComponent(approvalLineConfigRoleMatch[1]!)
     const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
+    if (!role || role.isDeleted) return envelope(null)
+    if (role.stepType === 'CREATOR' || role.sequence === 0) {
+      return mockError(400, 'INVALID_INPUT', '작성자 역할은 삭제할 수 없습니다.')
+    }
+    role.isDeleted = true
+    role.approvers = []
+    return envelope(null)
+  }
+
+  if (method === 'PUT' && approvalLineConfigRoleMatch) {
+    const roleId = decodeURIComponent(approvalLineConfigRoleMatch[1]!)
+    const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId && !item.isDeleted)
     if (!role) return mockError(404, 'NOT_FOUND', '결재 역할을 찾을 수 없습니다.')
 
     if (role.stepType === 'CREATOR') {
@@ -12542,6 +12576,9 @@ type MockApprovalLineRole = {
   stepType: 'CREATOR' | 'GROUP' | 'USER'
   approvers: MockApprovalLineApprover[]
   required: boolean
+  actionKey: string | null
+  createdBy: string
+  isDeleted?: boolean
 }
 
 type MockApprovalLineApprover = {
@@ -12624,24 +12661,30 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     stepType: 'CREATOR',
     approvers: [],
     required: true,
+    actionKey: null,
+    createdBy: 'v61-seed',
   },
   {
     id: 'mock-approval-line-slip-outbound-dispatcher',
     documentType: 'SLIP_OUTBOUND',
     sequence: 1,
-    label: '출고인',
+    label: '출고자',
     stepType: 'GROUP',
     approvers: [],
     required: true,
+    actionKey: 'OUTBOUND_DISPATCH',
+    createdBy: 'v61-seed',
   },
   {
     id: 'mock-approval-line-slip-outbound-inspector',
     documentType: 'SLIP_OUTBOUND',
     sequence: 2,
-    label: '검수인',
+    label: '검수자',
     stepType: 'GROUP',
     approvers: [],
     required: true,
+    actionKey: 'OUTBOUND_INSPECT',
+    createdBy: 'v61-seed',
   },
   // A2-3 입고전표 — V63 시드(작성자/입고인=INBOUND_RECEIVE/검수인=INBOUND_INSPECT)와 mock 패리티.
   {
@@ -12652,6 +12695,8 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     stepType: 'CREATOR',
     approvers: [],
     required: true,
+    actionKey: null,
+    createdBy: 'v63-seed',
   },
   {
     id: 'mock-approval-line-slip-inbound-receiver',
@@ -12661,6 +12706,8 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     stepType: 'GROUP',
     approvers: [],
     required: true,
+    actionKey: 'INBOUND_RECEIVE',
+    createdBy: 'v63-seed',
   },
   {
     id: 'mock-approval-line-slip-inbound-inspector',
@@ -12670,6 +12717,8 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     stepType: 'GROUP',
     approvers: [],
     required: true,
+    actionKey: 'INBOUND_INSPECT',
+    createdBy: 'v63-seed',
   },
   // A2-4 주문 — V64 시드(작성자/승인자=PARTNER_ORDER_CONVERT)와 mock 패리티.
   {
@@ -12680,6 +12729,8 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     stepType: 'CREATOR',
     approvers: [],
     required: true,
+    actionKey: null,
+    createdBy: 'v64-seed',
   },
   {
     id: 'mock-approval-line-partner-order-approver',
@@ -12689,6 +12740,8 @@ const _mockApprovalLineConfigRoles: MockApprovalLineRole[] = [
     stepType: 'GROUP',
     approvers: [],
     required: true,
+    actionKey: 'PARTNER_ORDER_CONVERT',
+    createdBy: 'v64-seed',
   },
 ]
 
@@ -12753,6 +12806,8 @@ function mockApprovalLineRoleView(role: MockApprovalLineRole) {
       displayName: mockApprovalLineApproverDisplayName(approver),
     })),
     required: role.required,
+    enforced: Boolean(role.actionKey),
+    seedManaged: ['v61-seed', 'v63-seed', 'v64-seed'].includes(role.createdBy),
   }
 }
 

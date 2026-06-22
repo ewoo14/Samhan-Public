@@ -9,9 +9,12 @@ import {
   computeApprovalRoleReorder,
   getOrderedApprovalRoleIds,
   notifyApprovalRoleApproverSelected,
+  getApprovalLineDeleteConfirmation,
   notifyApprovalRoleLabelChange,
   notifyApprovalRoleRequiredChange,
   optimisticallyAddApprovalLineApprover,
+  optimisticallyAddApprovalLineStep,
+  optimisticallyDeleteApprovalLineStep,
   optimisticallyRemoveApprovalLineApprover,
   optimisticallyUpdateApprovalLineRoles,
   restoreApprovalLineRolesSnapshot,
@@ -27,6 +30,8 @@ describe('ApprovalRoleRow', () => {
       stepType: 'CREATOR',
       approvers: [],
       required: true,
+      enforced: false,
+      seedManaged: true,
     }
 
     const html = renderToStaticMarkup(
@@ -72,10 +77,12 @@ describe('ApprovalRoleRow', () => {
       {
         id: 'r1',
         sequence: 1,
-        label: '출고인',
+        label: '출고자',
         stepType: 'GROUP',
         approvers: [{ id: 'a0', type: 'GROUP', refId: 'g0', displayName: '기존그룹' }],
         required: true,
+        enforced: true,
+        seedManaged: true,
       },
     ]
     queryClient.setQueryData(key, prev)
@@ -101,10 +108,12 @@ describe('ApprovalRoleRow', () => {
     const current: ApprovalLineRole[] = [{
       id: 'r1',
       sequence: 1,
-      label: '출고인',
+      label: '출고자',
       stepType: 'GROUP',
       approvers: [],
       required: true,
+      enforced: true,
+      seedManaged: true,
     }]
 
     const added = optimisticallyAddApprovalLineApprover(current, 'r1', {
@@ -118,6 +127,36 @@ describe('ApprovalRoleRow', () => {
     const removed = optimisticallyRemoveApprovalLineApprover(added, 'r1', 'pending-USER-u1')
     expect(removed?.[0]?.approvers).toHaveLength(0)
   })
+
+  test('단계 추가 낙관 업데이트는 임시 GROUP 표시·서명용 역할을 마지막 sequence 로 추가한다', () => {
+    const added = optimisticallyAddApprovalLineStep([roleCreator, roleDispatcher], {
+      documentType: 'SLIP_OUTBOUND',
+      label: '확인자',
+    })
+
+    expect(added?.at(-1)).toMatchObject({
+      label: '확인자',
+      sequence: 2,
+      stepType: 'GROUP',
+      required: true,
+      enforced: false,
+      seedManaged: false,
+    })
+    expect(added?.at(-1)?.id).toContain('pending-step-SLIP_OUTBOUND')
+  })
+
+  test('단계 삭제 낙관 업데이트는 대상 역할을 목록에서 제거한다', () => {
+    const deleted = optimisticallyDeleteApprovalLineStep([roleCreator, roleDispatcher, roleInspector], 'r1')
+
+    expect(deleted?.map((role) => role.id)).toEqual(['r0', 'r2'])
+  })
+
+  test('enforced 또는 seedManaged 역할 삭제는 결재 강제 해제 경고 문구를 반환한다', () => {
+    expect(getApprovalLineDeleteConfirmation(roleDispatcher).message)
+      .toContain('삭제하면 해당 동작이 더 이상 결재 강제되지 않습니다')
+    expect(getApprovalLineDeleteConfirmation({ ...roleDispatcher, enforced: false, seedManaged: false }).message)
+      .toBe('이 단계를 삭제할까요?')
+  })
 })
 
 // ── 샘플 역할 픽스처 ──
@@ -128,24 +167,30 @@ const roleCreator: ApprovalLineRole = {
   stepType: 'CREATOR',
   approvers: [],
   required: true,
+  enforced: false,
+  seedManaged: true,
 }
 
 const roleDispatcher: ApprovalLineRole = {
   id: 'r1',
   sequence: 1,
-  label: '출고인',
+  label: '출고자',
   stepType: 'GROUP',
   approvers: [],
   required: true,
+  enforced: true,
+  seedManaged: true,
 }
 
 const roleInspector: ApprovalLineRole = {
   id: 'r2',
   sequence: 2,
-  label: '검수인',
+  label: '검수자',
   stepType: 'GROUP',
   approvers: [],
   required: true,
+  enforced: true,
+  seedManaged: true,
 }
 
 describe('notifyApprovalRoleLabelChange (Task 3)', () => {
@@ -164,7 +209,7 @@ describe('notifyApprovalRoleLabelChange (Task 3)', () => {
 
   test('동일 값 입력은 onRename 을 호출하지 않는다', () => {
     const onRename = vi.fn()
-    notifyApprovalRoleLabelChange('출고인', roleDispatcher, onRename)
+    notifyApprovalRoleLabelChange('출고자', roleDispatcher, onRename)
     expect(onRename).not.toHaveBeenCalled()
   })
 
@@ -189,12 +234,12 @@ describe('computeApprovalRoleReorder (Task 4)', () => {
     expect(result[0]).toBe('r0') // CREATOR 고정
   })
 
-  test('출고인(r1) → 검수인(r2) 위치로 드래그 시 순서 [r0, r2, r1]', () => {
+  test('출고자(r1) → 검수자(r2) 위치로 드래그 시 순서 [r0, r2, r1]', () => {
     const result = computeApprovalRoleReorder(roles, 'r1', 'r2')
     expect(result).toEqual(['r0', 'r2', 'r1'])
   })
 
-  test('검수인(r2) → 출고인(r1) 위치로 드래그 시 순서 [r0, r2, r1]', () => {
+  test('검수자(r2) → 출고자(r1) 위치로 드래그 시 순서 [r0, r2, r1]', () => {
     // r2 를 r1 위치(앞)로 드래그 → r2, r1 순
     const result = computeApprovalRoleReorder(roles, 'r2', 'r1')
     expect(result).toEqual(['r0', 'r2', 'r1'])

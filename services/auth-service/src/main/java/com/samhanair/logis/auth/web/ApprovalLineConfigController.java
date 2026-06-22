@@ -5,6 +5,7 @@ import com.samhanair.logis.auth.service.ApprovalLineApproverService;
 import com.samhanair.logis.auth.service.ApprovalLineConfigService;
 import com.samhanair.logis.auth.web.dto.AccountSearchResult;
 import com.samhanair.logis.auth.web.dto.AddApproverRequest;
+import com.samhanair.logis.auth.web.dto.AddApprovalLineStepRequest;
 import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.auth.web.dto.ReorderApprovalLineRequest;
@@ -59,6 +60,22 @@ public class ApprovalLineConfigController {
             @RequestParam(defaultValue = "") String q,
             @RequestParam(defaultValue = "20") int limit) {
         return ApiResponse.ok(approverService.searchUsers(q, limit));
+    }
+
+    /** 표시·서명용 결재 단계를 추가한다(action_key null). */
+    @PostMapping("/approval-line-configs")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
+    public ApiResponse<ApprovalLineRoleView> addStep(
+            @Valid @RequestBody AddApprovalLineStepRequest request) {
+        return ApiResponse.ok(service.addStep(requireDocumentType(request.documentType()), request.label()));
+    }
+
+    /** 결재 단계를 soft-delete 하고 연결된 결재자도 함께 soft-delete 한다. */
+    @DeleteMapping("/approval-line-configs/{id}")
+    @RequirePermission(page = "admin.approval-line-config", action = PermissionAction.UPDATE)
+    public ApiResponse<Void> deleteStep(@PathVariable UUID id) {
+        service.deleteStep(id);
+        return ApiResponse.ok(null);
     }
 
     /** 역할에 권한 그룹/필수 갱신. */
