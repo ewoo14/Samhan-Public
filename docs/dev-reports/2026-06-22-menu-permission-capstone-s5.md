@@ -15,8 +15,10 @@
 |---|---|---|
 | (A) 사이드바에 있는데 매트릭스/BE에 **없는** page-code | **0** | ✅ 가드 없는 노출 0 |
 | (B) 매트릭스에 있는데 사이드바 링크 **없는** page-code | 119 | ✅ **의도적** — API 액션 권한(slip.transfer.process·tax-invoice.emit-nts 등)·직접 URL 라우트(PermissionGuard)·이중가드. 메뉴 링크 없이 권한만 부여하는 정상 패턴 |
-| (C) 매트릭스 page-code 중 BE enum에 **없는** 것 | **0** | ✅ FE↔BE 정합 |
+| (C) 매트릭스 page-code 중 BE enum에 **없는** 것 | **1 적발 → fix → 0** | 🔧 **capstone 실 갭 적발+해소**: `sales.partner-order.convert`(A2-4 주문 출고전환)가 V41 Flyway 시드 + FE canAccess(convert CREATE 가드)·매트릭스 등재인데 **BE `PageCode.java` enum 만 누락** → 슬5 에서 `SALES_PARTNER_ORDER_CONVERT` enum 추가 → **C=0**. 런타임은 raw string @RequirePermission + V41 시드로 동작했으나 enum 카탈로그 불완전(정합 위반) 해소 |
 | (D) BE enum 중 메인 매트릭스에 **없는** 것 | 6 (arologis Phase B) | ⚠️ **아로로지스-desktop 백오피스 소관**(별도 클라이언트 [[project_arologis_independent]]) — 메인 데스크톱 갭 아님. **Phase B 후속 플래그** |
+
+> 🔎 **메타 발견(capstone)**: 위 C=1 갭이 그동안 슬립한 원인 = **BE PageCode enum ↔ FE 매트릭스 PAGE_GROUPS ↔ Flyway seed 를 자동 대조하는 정합 테스트 부재**(`PageCodeTest` 는 부분 seed-sync만). → **후속 권장**: 세 소스 page-code 집합 자동 대조 가드 테스트 추가(드리프트 재발 방지). 본 슬5 범위 외(별도 슬라이스).
 
 ### admin.approval-line-config (신규 결재라인 설정 메뉴) — 4중 정합 ✅
 | 체크포인트 | 상태 |
@@ -51,7 +53,7 @@
 ## 4. 결론
 - **메인 데스크톱 3원 정합 = clean**(사이드바↔매트릭스↔BE 불일치 0, admin.approval-line-config 4중 정합).
 - **권한설정 동작 = 라이브 검증 완료**(매트릭스 렌더·CRUD 엔드포인트·가드 403·메뉴 가시성·신규 메뉴 접근).
-- **발견 갭 = 0**(메인 스코프). 프로덕션 코드 변경 없음 — 산출 = 본 dev-report + Playwright real-qa E2E 회귀 스펙 + QA 캡처.
+- **발견 갭 = 1 적발+해소**(메인 스코프): `sales.partner-order.convert` BE enum 누락 → `SALES_PARTNER_ORDER_CONVERT` 추가(C=0 회복). capstone 검증의 실 가치. 그 외 산출 = 본 dev-report + Playwright real-qa E2E 회귀 스펙 + QA 캡처.
 - ⚠️ **후속(에픽 외)**: arologis Phase B 6 page-code(arologis.hr.*·arologis.accounting.*)의 arologis-desktop 매트릭스/메뉴/시드 동기화 — 아로로지스 독립 클라이언트 Phase B 작업으로 분리.
 
 → **동적 결재라인 에픽 종료**(슬1~5 + 그룹웨어 슬4a~c 완결).
