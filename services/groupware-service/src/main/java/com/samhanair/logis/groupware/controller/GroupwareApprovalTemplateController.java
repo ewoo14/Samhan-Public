@@ -94,4 +94,15 @@ public class GroupwareApprovalTemplateController {
     public ApiResponse<List<ApprovalTemplateResponse>> active() {
         return ApiResponse.ok(approvalTemplateService.findActive());
     }
+
+    /**
+     * 결재 생성/설정 공용 활성 템플릿 목록 조회.
+     *
+     * <p>page-code 위임 차이로 작성자/설정자가 막히지 않도록 인증-only 경로로 제공한다.
+     */
+    @Operation(summary = "활성 결재유형 템플릿 목록 조회(인증 사용자)")
+    @GetMapping("/groupware/approval-templates/active")
+    public ApiResponse<List<ApprovalTemplateResponse>> activeForAuthenticatedUsers() {
+        return ApiResponse.ok(approvalTemplateService.findActive());
+    }
 }

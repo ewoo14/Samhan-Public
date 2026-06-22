@@ -193,8 +193,8 @@ class ApiGatewayContextLoadIT {
     }
 
     @Test
-    @DisplayName("approval-line structure route is authenticated no-strip and precedes auth catch-all")
-    void approvalLineStructureRoute_isAuthenticatedNoStrip_andPrecedesLegacyCatchAll() {
+    @DisplayName("approval-line read routes are authenticated no-strip and precede auth catch-all")
+    void approvalLineReadRoutes_areAuthenticatedNoStrip_andPrecedeLegacyCatchAll() {
         List<RouteDefinition> routes = routeDefinitionLocator.getRouteDefinitions()
                 .collectList()
                 .block();
@@ -207,13 +207,33 @@ class ApiGatewayContextLoadIT {
         assertRoutePath(routes, "auth-service-admin-authenticated",
                 "/auth/admin/**",
                 "/auth/password/change",
-                "/auth/approval-line-configs/*/structure");
+                "/auth/approval-line-configs/*/structure",
+                "/auth/approval-line-configs/*/default-approvers");
         assertHasJwtAuthenticationFilter(routes, "auth-service-admin-authenticated");
         assertNoStripPrefix(routes, "auth-service-admin-authenticated");
         assertThat(indexOfRoute(routes, "auth-service-admin-authenticated"))
                 .as("authenticated auth route must be declared before /auth/** legacy catch-all")
                 .isGreaterThanOrEqualTo(0)
                 .isLessThan(indexOfRoute(routes, "auth-service-legacy"));
+    }
+
+    @Test
+    @DisplayName("groupware active templates route is covered by authenticated no-prefix route")
+    void groupwareActiveTemplatesRoute_isCoveredByAuthenticatedNoPrefixRoute() {
+        List<RouteDefinition> routes = routeDefinitionLocator.getRouteDefinitions()
+                .collectList()
+                .block();
+
+        assertThat(routes)
+                .as("RouteDefinitionLocator must return configured routes")
+                .isNotNull()
+                .isNotEmpty();
+
+        assertRoutePath(routes, "groupware-service-noprefix",
+                "/admin/groupware/**",
+                "/groupware/**");
+        assertHasJwtAuthenticationFilter(routes, "groupware-service-noprefix");
+        assertNoStripPrefix(routes, "groupware-service-noprefix");
     }
 
     /** F6 주문서 bootstrap/gate/log 공개 라우트 — 인증 없이 접근하되 identity header spoof 는 제거. */

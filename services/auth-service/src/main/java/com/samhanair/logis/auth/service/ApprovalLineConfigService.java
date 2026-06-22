@@ -3,10 +3,12 @@ package com.samhanair.logis.auth.service;
 import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
 import com.samhanair.logis.auth.domain.ApprovalLineApprover;
+import com.samhanair.logis.auth.domain.ApproverType;
 import com.samhanair.logis.auth.repository.AccountRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineApproverRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
+import com.samhanair.logis.auth.web.dto.ApprovalLineDefaultApproverView;
 import com.samhanair.logis.auth.web.dto.ApprovalLineGroupOption;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.auth.web.dto.ApprovalLineStructureView;
@@ -57,6 +59,22 @@ public class ApprovalLineConfigService {
                 .toList();
     }
 
+    /** 그룹웨어 생성 프리필용 USER 결재자를 sequence 순으로 조회한다. GROUP 결재자는 v1에서 제외한다. */
+    @Transactional(readOnly = true)
+    public List<ApprovalLineDefaultApproverView> listDefaultApprovers(String documentType) {
+        return repository.findByDocumentTypeOrderBySequenceAsc(documentType).stream()
+                .flatMap(role -> approverRepository.findByConfigRoleIdAndIsDeletedFalse(role.getId()).stream()
+                        .filter(approver -> approver.getApproverType() == ApproverType.USER)
+                        .map(approver -> new ApprovalLineDefaultApproverView(
+                                role.getSequence(),
+                                role.getLabel(),
+                                approver.getApproverRefId(),
+                                accountRepository.findActiveById(approver.getApproverRefId())
+                                        .map(this::accountDisplayName)
+                                        .orElse("(삭제된 사원)"))))
+                .toList();
+    }
+
     /** 결재 역할에 지정 가능한 권한그룹 목록. 시스템마스터 그룹은 결재자 그룹 후보에서 제외한다. */
     @Transactional(readOnly = true)
     public List<ApprovalLineGroupOption> listSelectableGroups() {
@@ -90,7 +108,7 @@ public class ApprovalLineConfigService {
         if (role == null) {
             return;
         }
-        if (role.getStepType() == StepType.CREATOR || role.getSequence() == 0) {
+        if (role.getStepType() == StepType.CREATOR) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "작성자 역할은 삭제할 수 없습니다");
         }
         role.markDeleted(ACTOR);

@@ -47,6 +47,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
             UUID.fromString("00000000-0000-0000-0000-000000000103");
     private static final String PAGE = "admin.approval-line-config";
     private static final String DOCUMENT_TYPE = "SLIP_OUTBOUND";
+    private static final String GROUPWARE_DOCUMENT_TYPE = "GROUPWARE_EXPENSE_REPORT";
 
     @Autowired
     private MockMvc mockMvc;
@@ -59,6 +60,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
         cleanPermissionRowsWithoutTouchingManagerSeed();
         cleanApprovalLineApprovers();
         cleanDynamicApprovalLineRoles();
+        cleanGroupwareApprovalLineConfig();
         resetOutboundDispatcherRole();
         resetApprovalLineConfigToSeedState();
     }
@@ -67,6 +69,7 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     void tearDown() {
         resetApprovalLineConfigToSeedState();
         resetOutboundDispatcherRole();
+        cleanGroupwareApprovalLineConfig();
         cleanApprovalLineApprovers();
         cleanDynamicApprovalLineRoles();
         cleanPermissionRowsWithoutTouchingManagerSeed();
@@ -479,6 +482,75 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("GROUPWARE documentType — 단계 추가, USER 결재자 조회, 삭제를 허용")
+    void groupwareDocumentType_addUserApproverAndDelete_returns200() throws Exception {
+        MvcResult addResult = mockMvc.perform(post("/auth/admin/approval-line-configs")
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentType":"GROUPWARE_EXPENSE_REPORT","label":"검토자"}
+                                """))
+                .andReturn();
+
+        assertThat(addResult.getResponse().getStatus()).isEqualTo(200);
+        String addBody = addResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(addBody)
+                .contains("검토자")
+                .contains("\"sequence\":0")
+                .doesNotContain("SLIP_OUTBOUND");
+
+        UUID roleId = groupwareRoleId("검토자");
+
+        MvcResult userResult = mockMvc.perform(post("/auth/admin/approval-line-configs/{roleId}/approvers", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"USER","refId":"%s"}
+                                """.formatted(SALES_ACCOUNT_ID)))
+                .andReturn();
+
+        assertThat(userResult.getResponse().getStatus()).isEqualTo(200);
+        assertThat(userResult.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("\"type\":\"USER\"")
+                .contains(SALES_ACCOUNT_ID.toString())
+                .contains("[DEV-SEED] 개발영업");
+
+        MvcResult list = mockMvc.perform(get("/auth/admin/approval-line-configs")
+                        .param("documentType", GROUPWARE_DOCUMENT_TYPE)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+        assertThat(list.getResponse().getStatus()).isEqualTo(200);
+        assertThat(list.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("검토자")
+                .contains("[DEV-SEED] 개발영업");
+
+        MvcResult deleteResult = mockMvc.perform(delete("/auth/admin/approval-line-configs/{id}", roleId)
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "MANAGER")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(deleteResult.getResponse().getStatus()).isEqualTo(200);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT is_deleted
+                  FROM approval_line_config
+                 WHERE id = ?
+                """, Boolean.class, roleId)).isTrue();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM approval_line_approver
+                 WHERE config_role_id = ?
+                   AND is_deleted = FALSE
+                """, Integer.class, roleId)).isZero();
+    }
+
+    @Test
     @DisplayName("DELETE 역할삭제 — soft-delete + 자식 결재자 cascade soft-delete 후 목록에서 제외")
     void deleteStep_softDeletesRoleAndApprovers() throws Exception {
         UUID roleId = insertDisplayOnlyRole("확인자", 3);
@@ -616,6 +688,18 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 """, UUID.class, DOCUMENT_TYPE, label);
     }
 
+    private UUID groupwareRoleId(String label) {
+        return jdbcTemplate.queryForObject("""
+                SELECT id
+                FROM approval_line_config
+                WHERE document_type = ?
+                  AND label = ?
+                  AND is_deleted = FALSE
+                ORDER BY sequence
+                LIMIT 1
+                """, UUID.class, GROUPWARE_DOCUMENT_TYPE, label);
+    }
+
     private UUID insertDisplayOnlyRole(String label, int sequence) {
         UUID roleId = UUID.randomUUID();
         jdbcTemplate.update("""
@@ -722,5 +806,18 @@ class ApprovalLineConfigControllerIT extends AbstractPostgresIT {
                 WHERE document_type = ?
                   AND created_by NOT IN ('v61-seed', 'v63-seed', 'v64-seed')
                 """, DOCUMENT_TYPE);
+    }
+
+    private void cleanGroupwareApprovalLineConfig() {
+        jdbcTemplate.update("""
+                DELETE FROM approval_line_approver
+                WHERE config_role_id IN (
+                    SELECT id FROM approval_line_config WHERE document_type = ?
+                )
+                """, GROUPWARE_DOCUMENT_TYPE);
+        jdbcTemplate.update("""
+                DELETE FROM approval_line_config
+                WHERE document_type = ?
+                """, GROUPWARE_DOCUMENT_TYPE);
     }
 }
