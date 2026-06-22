@@ -9388,7 +9388,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const roleId = decodeURIComponent(approvalLineConfigRoleMatch[1]!)
     const role = _mockApprovalLineConfigRoles.find((item) => item.id === roleId)
     if (!role || role.isDeleted) return envelope(null)
-    if (role.stepType === 'CREATOR' || role.sequence === 0) {
+    if (role.stepType === 'CREATOR') {
       return mockError(400, 'INVALID_INPUT', '작성자 역할은 삭제할 수 없습니다.')
     }
     role.isDeleted = true
