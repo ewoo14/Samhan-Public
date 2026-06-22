@@ -4,6 +4,22 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-23 — **잔여/후속 전수 검증 + page-code 무결성 가드 3종 머지(#570/#571). 진행 중=회계 보고 스위트 갭검증→빌드**)
+
+### ✅ 남은 후속/백로그 전수 검증 (14항목, 개발책임자 지시)
+- **문서/메모리 불신·코드 검증 원칙**으로 14항목 검증 → **6항목이 stale(이미 해결)**: 주문 ON_HOLD(#324)·배차 presence(#546)·기초품목분리(완결)·종합견적 G1/G2(DB전환 해소)·재고모달(InventoryLookupModal)·slip DI가드(#531~537). **메모리 5건 인덱스 정정**(향후 false premise 방지). 미착수 코드=F1/F2/F3(page-code 가드)·F5(저가치). DECISION-PENDING=A2 결재 4전표(회계/견적/배차/그룹웨어). Phase11=ecount cutover·외부연동.
+
+### ✅ page-code 무결성 가드 3종 머지 (후속1 연장)
+- **F2(#570)**: arologis @RequirePermission 리터럴(13)→`ArologisPageCodes` 상수화(9컨트롤러 64곳, 동작불변)+리플렉션 정합 가드 테스트(인라인 리터럴 0 강제). **F1(#570)**: arologis-desktop vitest 인프라+canAccess 5단위테스트+arologis-ci.yml에 npm test 배선(리뷰 P2 적발—테스트가 CI 미실행 갭). **F3(#571)**: BE PageCode enum↔FE PAGE_GROUPS 크로스언어 정합 가드(desktop vitest, FE⊆BE, 현 orphan 0). 듀얼리뷰 MERGE-OK.
+- 🔑 교훈: **F2 리터럴→상수 리팩터가 소스-텍스트 핀 계약테스트(sp-08-3-2) 깸** → Desktop Playwright 하드게이트 적발, 계약테스트 상수형 갱신. 리터럴 리팩터 전 소스핀 테스트 grep 필요([[fe-guard-removal-contract-tests]] 계열).
+
+### 🔄 진행 중 = 회계 보고 스위트 (개발책임자 "전 화면 정밀 갭분석 후 빌드")
+- **검증 발견**: 회계 보고서 모듈은 문서보다 훨씬 구축됨 — **자금현황(통일안 A) 완전 구현**(FundsStatusService/Controller/Page), 11 보고서 서비스·7 FE 페이지. spec(2026-06-20-ecount-funds-management-screens.md) 갭-매핑(통일안 A~G/H): **A=NEW(✅완료), B~H=기존 EXTEND**(각 델타 명시 L174-188). 슬라이스 순서 A→B(현금흐름 2기간)→H→G→C→D→E→F→결재란→IA.
+- ⚠️ **개발책임자에 슬A '계좌별 행' 결정 질문은 무의미했음(이미 거래처=계좌별 구현)** — 구현 상태 미검증으로 stale premise 3회(후속3·메모리·슬A). 빌드 전 코드검증 강화.
+- **다음**: B~H 현재(2026-06-23) 구현 상태 갭검증 워크플로우(wf 진행 중) → 검증된 델타 표 → 첫 PENDING부터 빌드. C·D·E·F=기존 통합·보강, A·B 자금관리+H 입출금매칭+G 채권채무=실 신규 비중.
+
+---
+
 ## 🟢 핸드오프 (2026-06-23 — **후속3 = arologis page-code canAccess 정렬 ✅ 머지 완료(PR #569, main `9f67e3b43`). 다음=개발책임자 지정 대기**)
 
 ### ✅ 후속3 완료 — PR #569 (머지 대기, CI green·듀얼리뷰 0·라이브 QA 실증)
