@@ -1,7 +1,7 @@
 /**
  * 아로로지스 권한 관리 — 롤×page-code 권한 매트릭스 (Phase A).
  *
- * AROLOGIS_MASTER 전용 화면. arologis.* page-code 의 롤별 조회(view)/편집(edit) 권한을
+ * `arologis.admin.permissions` page-code 권한 기반 화면. arologis.* page-code 의 롤별 조회(view)/편집(edit) 권한을
  * 매트릭스 표로 조회하고, 셀 토글 시 즉시 PUT(updateGrant) → react-query invalidate 로 갱신한다.
  *
  * 표 방향: 행=page-code(displayName 한국어 라벨), 열=롤. 각 셀에 V(조회)/E(편집) 체크박스 2개.
@@ -25,7 +25,7 @@ import {
   type RolePagePermissionView,
 } from '../../api/arologisPermissions'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { canGrantMaster, useAuthStore } from '../../stores/authStore'
+import { usePermissions } from '../../hooks/usePermissions'
 
 /** 중앙 MASTER 롤 코드 — 서버가 변경을 거부하므로 열 전체를 읽기전용 처리. */
 const CENTRAL_MASTER_ROLE = 'MASTER'
@@ -63,15 +63,16 @@ export function PermissionsPage(): JSX.Element {
   usePageTitle('권한 관리')
 
   const queryClient = useQueryClient()
-  const auth = useAuthStore((s) => s.auth)
-  const isMaster = canGrantMaster(auth?.role)
+  const { canAccess } = usePermissions()
+  const canViewPermissions = canAccess('arologis.admin.permissions', 'view')
+  const canUpdatePermissions = canAccess('arologis.admin.permissions', 'update')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<Set<PendingKey>>(new Set())
 
   const matrixQuery = useQuery({
     queryKey: MATRIX_QUERY_KEY,
     queryFn: getMatrix,
-    enabled: isMaster,
+    enabled: canViewPermissions,
   })
 
   const matrix: PermissionMatrix = matrixQuery.data ?? {}
@@ -127,15 +128,15 @@ export function PermissionsPage(): JSX.Element {
     },
   })
 
-  // 비마스터 진입(직접 URL) 방어 — 네비/라우트 게이트와 별개의 화면 자체 가드.
-  if (!isMaster) {
+  // 비권한 진입 방어 — 네비/라우트 게이트와 별개의 화면 자체 가드.
+  if (!canViewPermissions) {
     return (
       <section style={pageStyle}>
         <header style={headerStyle}>
           <h1 style={titleStyle}>권한 관리</h1>
         </header>
         <div role="alert" style={errorStyle}>
-          권한 관리는 아로로지스 마스터 계정만 접근할 수 있습니다.
+          권한 관리 화면에 접근할 수 있는 page-code 권한이 없습니다.
         </div>
       </section>
     )
@@ -146,6 +147,7 @@ export function PermissionsPage(): JSX.Element {
     nextView: boolean,
     nextEdit: boolean,
   ): void => {
+    if (!canUpdatePermissions) return
     // edit=true 면 view 자동 true (서버 도메인 규칙과 정합).
     const view = nextEdit ? true : nextView
     if (view === cell.canView && nextEdit === cell.canEdit) return
@@ -182,6 +184,9 @@ export function PermissionsPage(): JSX.Element {
         <span><strong>E</strong> = 편집(edit)</span>
         <span style={legendMutedStyle}>편집을 켜면 조회가 자동으로 켜집니다.</span>
         <span style={legendMutedStyle}>중앙 마스터 권한은 변경할 수 없습니다.</span>
+        {!canUpdatePermissions ? (
+          <span style={legendMutedStyle}>현재 계정은 조회만 가능합니다.</span>
+        ) : null}
       </div>
 
       {(() => {
@@ -237,7 +242,11 @@ export function PermissionsPage(): JSX.Element {
                       canView: false,
                       canEdit: false,
                     }
-                    const readOnlyHint = readOnly ? '중앙 마스터 권한은 변경할 수 없습니다.' : undefined
+                    const readOnlyHint = readOnly
+                      ? '중앙 마스터 권한은 변경할 수 없습니다.'
+                      : !canUpdatePermissions
+                        ? '권한 매트릭스 편집 권한이 없습니다.'
+                        : undefined
                     return (
                       <td key={key} style={dataCellStyle}>
                         <div style={toggleGroupStyle}>
@@ -246,7 +255,7 @@ export function PermissionsPage(): JSX.Element {
                             ariaLabel={`${roleLabel(roleCode)} ${page.displayName || page.pageCode} 조회`}
                             checked={cell.canView}
                             // edit 가 켜져 있으면 view 는 끌 수 없음(자동 true 유지).
-                            disabled={readOnly || isPending || cell.canEdit}
+                            disabled={!canUpdatePermissions || readOnly || isPending || cell.canEdit}
                             title={readOnlyHint ?? (cell.canEdit ? '편집이 켜져 있어 조회를 끌 수 없습니다.' : undefined)}
                             testId={`arologis-perm-${roleCode}-${page.pageCode}-view`}
                             onChange={(checked) => applyGrant(cell, checked, cell.canEdit)}
@@ -255,7 +264,7 @@ export function PermissionsPage(): JSX.Element {
                             label="E"
                             ariaLabel={`${roleLabel(roleCode)} ${page.displayName || page.pageCode} 편집`}
                             checked={cell.canEdit}
-                            disabled={readOnly || isPending}
+                            disabled={!canUpdatePermissions || readOnly || isPending}
                             title={readOnlyHint}
                             testId={`arologis-perm-${roleCode}-${page.pageCode}-edit`}
                             onChange={(checked) => applyGrant(cell, cell.canView, checked)}

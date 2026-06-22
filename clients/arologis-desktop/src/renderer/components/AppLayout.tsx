@@ -5,7 +5,9 @@
  * Designer (D1~D5) 작업 결과로 후속 PR 에서 확장.
  */
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { canGrantMaster, canManageAccounts, canManageHr, useAuthStore } from '../stores/authStore'
+import { useQueryClient } from '@tanstack/react-query'
+import { usePermissions } from '../hooks/usePermissions'
+import { useAuthStore } from '../stores/authStore'
 
 const navStyle: React.CSSProperties = {
   display: 'flex',
@@ -29,17 +31,33 @@ const activeLinkStyle: React.CSSProperties = {
   fontWeight: 600,
 }
 
+const adminNavStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'center',
+  minWidth: 280,
+  minHeight: 32,
+}
+
+const adminNavPlaceholderStyle: React.CSSProperties = {
+  width: 280,
+  height: 32,
+}
+
 export function AppLayout(): JSX.Element {
   const auth = useAuthStore((s) => s.auth)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
-  const canManageHrMenu = canManageHr(auth?.role)
-  // 계정과목 관리 네비는 대표실·회계팀(마스터·회계사원)만 — 회계 거래만 가능한 매니저엔 미노출.
-  const canManageAccountsMenu = canManageAccounts(auth?.role)
-  // 권한 관리 네비는 아로로지스 마스터만 — 매니저에겐 미노출(canManageHr 아님).
-  const canManagePermissions = canGrantMaster(auth?.role)
+  const queryClient = useQueryClient()
+  const { canAccess, isLoading } = usePermissions()
+  const canViewEmployees = canAccess('arologis.hr.employees', 'view')
+  const canViewDepartments = canAccess('arologis.hr.departments', 'view')
+  const canViewCashbook = canAccess('arologis.accounting.cashbook', 'view')
+  const canViewAccounts = canAccess('arologis.accounting.accounts', 'view')
+  const canViewPermissions = canAccess('arologis.admin.permissions', 'view')
 
   const handleLogout = async (): Promise<void> => {
+    queryClient.removeQueries({ queryKey: ['permissions', 'my'] })
     await logout()
     navigate('/login', { replace: true })
   }
@@ -60,44 +78,49 @@ export function AppLayout(): JSX.Element {
         >
           기사 관리
         </NavLink>
-        {canManageHrMenu ? (
-          <>
+        <div style={adminNavStyle} aria-busy={isLoading}>
+          {isLoading ? <div style={adminNavPlaceholderStyle} aria-hidden="true" /> : null}
+          {!isLoading && canViewEmployees ? (
             <NavLink
               to="/admin/employees"
               style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
             >
               인사
             </NavLink>
+          ) : null}
+          {!isLoading && canViewDepartments ? (
             <NavLink
               to="/admin/departments"
               style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
             >
               부서
             </NavLink>
+          ) : null}
+          {!isLoading && canViewCashbook ? (
             <NavLink
               to="/admin/cashbook"
               style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
             >
               회계
             </NavLink>
-          </>
-        ) : null}
-        {canManageAccountsMenu ? (
-          <NavLink
-            to="/admin/accounts"
-            style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
-          >
-            계정과목
-          </NavLink>
-        ) : null}
-        {canManagePermissions ? (
-          <NavLink
-            to="/admin/permissions"
-            style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
-          >
-            권한
-          </NavLink>
-        ) : null}
+          ) : null}
+          {!isLoading && canViewAccounts ? (
+            <NavLink
+              to="/admin/accounts"
+              style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+            >
+              계정과목
+            </NavLink>
+          ) : null}
+          {!isLoading && canViewPermissions ? (
+            <NavLink
+              to="/admin/permissions"
+              style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+            >
+              권한
+            </NavLink>
+          ) : null}
+        </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
           {auth && (
             <span style={{ color: 'var(--color-text-muted)' }}>

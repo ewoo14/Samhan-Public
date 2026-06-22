@@ -12,7 +12,7 @@
  * - `/admin/employees`    인사 직원 관리
  * - `/admin/departments`  인사 부서 관리
  * - `/admin/cashbook`     회계 현금출납장 (간이 회계 수입/지출)
- * - `/admin/permissions`  권한 관리 (롤×page-code 매트릭스 — AROLOGIS_MASTER 전용)
+ * - `/admin/permissions`  권한 관리 (롤×page-code 매트릭스 — page-code 권한 기반)
  *
  * `ProtectedRoute` 가 토큰 부재 시 `/login` 으로 강제 리다이렉트한다.
  */
@@ -28,6 +28,7 @@ import {
 } from 'react-router-dom'
 import { apiClient, type ApiEnvelope } from '../api/client'
 import { AppLayout } from '../components/AppLayout'
+import { PermissionGuard } from '../components/PermissionGuard'
 import { ProtectedRoute } from '../components/ProtectedRoute'
 import { LoginPage } from './login/LoginPage'
 import { DriverManagementPage } from './drivers/DriverManagementPage'
@@ -127,15 +128,46 @@ const router = createHashRouter([
         ],
       },
       { path: 'drivers', element: <DriverManagementPage /> },
-      { path: 'admin/employees', element: <EmployeesPage /> },
-      { path: 'admin/departments', element: <DepartmentsPage /> },
-      { path: 'admin/cashbook', element: <CashbookPage /> },
-      // 계정과목 관리 = 마스터/회계사원 전용. AccountsPage 내부 canManageAccounts + BE
-      // @RequirePermission(arologis.accounting.accounts) 이중 방어.
-      { path: 'admin/accounts', element: <AccountsPage /> },
-      // 권한 관리 = AROLOGIS_MASTER 전용. PermissionsPage 내부에서도 canGrantMaster 게이트로
-      // 비마스터 직접 진입을 방어한다(BE @RequirePermission 이 최종 방어).
-      { path: 'admin/permissions', element: <PermissionsPage /> },
+      {
+        path: 'admin/employees',
+        element: (
+          <PermissionGuard pageCode="arologis.hr.employees" action="view">
+            <EmployeesPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: 'admin/departments',
+        element: (
+          <PermissionGuard pageCode="arologis.hr.departments" action="view">
+            <DepartmentsPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: 'admin/cashbook',
+        element: (
+          <PermissionGuard pageCode="arologis.accounting.cashbook" action="view">
+            <CashbookPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: 'admin/accounts',
+        element: (
+          <PermissionGuard pageCode="arologis.accounting.accounts" action="view">
+            <AccountsPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: 'admin/permissions',
+        element: (
+          <PermissionGuard pageCode="arologis.admin.permissions" action="view">
+            <PermissionsPage />
+          </PermissionGuard>
+        ),
+      },
     ],
   },
 ])

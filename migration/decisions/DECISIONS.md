@@ -2869,6 +2869,17 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-AROLO-ACCT-03 | **활성상태 관리 = 신규 page-code `arologis.accounting.accounts`**(현금출납장 cashbook 과 분리). 권한 = 대표실·회계팀 → **마스터·회계사원만 V/E**(V54), 매니저는 거래 입력 가능하나 계정 마스터 관리 제외(권한 격리). FE canManageAccounts(MASTER\|ACCOUNTANT) + BE @RequirePermission 이중 방어. |
 | D-AROLO-ACCT-04 | 스코프 = 표준차트 고정 → **활성상태 토글만**(계정 CRUD 아님). UI 표기 = `active` 미노출 **"활성상태"**(개발책임자 지시). |
 
+### D-AF3 (arologis-desktop 백오피스 page-code canAccess 정렬 — 후속3, 2026-06-22~23, PR #569)
+
+| 결정 | 내용 |
+|---|---|
+| D-AF3-01 | arologis-desktop 5 백오피스 페이지(Employees/Departments/Cashbook/Accounts/Permissions)의 FE 접근 게이팅을 **롤 하드코딩 → page-code canAccess** 로 정렬(spec §4.2 2026-06-08 "인사/회계 접근은 page-code 권한으로만 통제" 실현). 메인 desktop 패턴(permissionsApi/usePermissions/PermissionGuard) 복제. ※ 정찰 premise 정정: "5 page-code 미배선(0파일)"은 grep false-negative 오판 — 5페이지 전부 존재·머지(#426~#433). |
+| D-AF3-02 | canAccess 진실원 = 신규 BE `GET /admin/arologis/permissions/my`(`@PreAuthorize isAuthenticated`, 본인 effective arologis.* 권한). 신규 auth 엔드포인트/Flyway **0** — 기존 `AuthPermissionAdminClient.getRoleMatrix("arologis.")` 재사용(arologis-desktop은 게이트웨이 우회 :8097 직접호출이라 메인 `/auth/admin/permissions/my` 불가). |
+| D-AF3-03 | FE page-code/action = BE `@RequirePermission` **정확 일치**(테마틱 금지·FE>BE widening 금지, [[fe-canaccess-pagecode-be-match]]). employees/departments/cashbook=view/CRUD, accounts/permissions=view/update. |
+| D-AF3-04 | `canGrantMaster`(EmployeesPage "MASTER 롤 부여 옵션" 게이트)는 page-code 아닌 **롤-부여 정책**이라 유지. page/메뉴/CRUD 게이트만 canAccess 이관. |
+| D-AF3-05 | **회계(cashbook) 메뉴가 ACCOUNTANT/DEVELOPER에 노출되는 변화 = BE seed(V51/V53) 이미 grant 중인 정책에 FE 정합하는 결함 수정**(회계사원이 권한 있는 회계 메뉴를 못 보던 버그). [[pgc-c2-widening-option-a]] seed=진실원 선례. ⚠️ 사용자 가시 widening → 개발책임자 확인([[pm-permission-autonomy]] "widening 수용" 멈춤점). 라이브 QA로 의도대로 동작 실증. |
+| D-AF3-06 | 보안: `/my` 롤을 raw `X-User-Role` 헤더 아닌 **SecurityContext `ROLE_AROLOGIS_*` authority**(서명 JWT claim)에서 도출 → inbound 헤더 위조 권한상승 차단([[identity-header-authz-antipattern]]). 라이브 실증(JWT 없이 X-User-Role:MASTER→data:{}). 로그인/로그아웃 권한캐시 제거(세션 누출 차단). |
+
 ### D-DMR (배차 #3 수정제안 재배차/수동기입, 2026-06-12)
 
 | 결정 | 내용 |

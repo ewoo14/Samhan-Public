@@ -12,11 +12,11 @@
  * - AROLOGIS_ACCOUNTANT — 회계 중심
  * - AROLOGIS_DRIVER     — 기사앱(모바일) 전용
  *
- * ※ 실제 page 접근은 중앙 role_page_permissions(매트릭스 UI) 가 결정. 아래 가드는
- *   desktop 관리 화면(기사/인사 CUD)의 노출 게이트로, HR 관리 주체는 MASTER|MANAGER 로 유지.
+ * ※ admin page 접근과 CRUD 버튼은 role_page_permissions 기반 canAccess(page-code) 가 결정한다.
+ *   아래 롤 헬퍼는 page-code가 아닌 별도 업무정책에만 남긴다.
  *
  * F1 skeleton 시점에는 bootstrap / setAuth / logout 기본 동작만 제공한다.
- * F3 (LoginPage) 에서 setAuth 호출, F4 (DriverManagementPage) 에서 role 가드 활용.
+ * F3 (LoginPage) 에서 setAuth 호출, F4 (DriverManagementPage) 에서 기사 관리 role 가드 활용.
  */
 import { create } from 'zustand'
 import type { AuthSnapshot } from '../types/electron'
@@ -68,28 +68,11 @@ export function canManageDrivers(role: string | undefined | null): boolean {
 }
 
 /**
- * 인사 관리 CUD 권한 보유 여부.
- */
-export function canManageHr(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'AROLOGIS_MASTER' || role === 'AROLOGIS_MANAGER'
-}
-
-/**
  * 마스터 롤 부여 권한 보유 여부.
+ *
+ * EmployeesPage 의 "AROLOGIS_MASTER 롤 부여/강등" 정책은 page-code CRUD 권한과 별개로
+ * 마스터 actor 에게만 허용하므로 canAccess 로 이관하지 않는다.
  */
 export function canGrantMaster(role: string | undefined | null): boolean {
   return role === 'AROLOGIS_MASTER'
-}
-
-/**
- * 계정과목 관리(활성상태 토글) 권한 보유 여부.
- *
- * 개발책임자 2026-06-09: 계정과목 활성상태 설정 = 대표실·회계팀 → 마스터·회계사원만.
- * BE page-code `arologis.accounting.accounts` grant(V54)와 정합. 매니저는 회계 거래 입력은
- * 가능하나 계정과목 마스터 활성상태 관리는 불가하므로 canManageHr 와 분리한다.
- */
-export function canManageAccounts(role: string | undefined | null): boolean {
-  if (!role) return false
-  return role === 'AROLOGIS_MASTER' || role === 'AROLOGIS_ACCOUNTANT'
 }

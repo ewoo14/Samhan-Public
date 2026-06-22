@@ -53,6 +53,16 @@ clients/arologis-desktop/
 4. `accessToken` 만료 시 응답 인터셉터가 `POST /auth/refresh` 로 rotation.
 5. 로그아웃 = `POST /auth/logout` + 메인 프로세스 토큰 클리어.
 
+## 권한 게이팅 (page-code canAccess)
+
+백오피스 admin 화면(`/admin/*`)의 접근/메뉴/CRUD 버튼은 **롤이 아니라 page-code 권한**으로 게이트한다 (PR #569, [[fe-canaccess-pagecode-be-match]]).
+
+1. `usePermissions()` 가 `GET /admin/arologis/permissions/my` 를 react-query(5분)로 조회 → 본인 effective `arologis.*` page-code/action 맵. 캐시 null = `canAccess` false (fail-closed).
+2. 라우트 = `<PermissionGuard pageCode="arologis.hr.employees" action="view">`, 사이드바/버튼 = `canAccess(pageCode, action)`. page-code/action 은 BE `@RequirePermission` 과 정확 일치.
+3. 진실원 = 중앙 `role_page_permissions`(MASTER 가 `권한 관리` 매트릭스로 관리). 매트릭스 grant/revoke 가 FE 메뉴/접근에 즉시 반영된다.
+4. 보안: `/my` 는 raw `X-User-Role` 헤더가 아니라 서명 JWT claim 기반 `ROLE_AROLOGIS_*` authority 로 롤을 판정(헤더 위조 차단). 로그인/로그아웃 시 권한 캐시 제거(세션 간 누출 방지).
+5. 예외: `canGrantMaster`(MASTER 롤 부여 옵션)는 page-code 아닌 롤-부여 정책이라 롤 기반 유지.
+
 ## UUID 비공개 가드
 
 화면 어디에도 UUID 노출 금지. 사용자 노출 식별자 = `loginId` / `driverCode` / 거래처명 / 슬립번호.
