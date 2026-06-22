@@ -8,12 +8,16 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.approval.StepType;
+import com.samhanair.logis.auth.domain.Account;
+import com.samhanair.logis.auth.domain.ApprovalLineApprover;
 import com.samhanair.logis.auth.domain.ApprovalLineConfig;
+import com.samhanair.logis.auth.domain.ApproverType;
 import com.samhanair.logis.auth.domain.PermissionGroup;
 import com.samhanair.logis.auth.repository.AccountRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineApproverRepository;
 import com.samhanair.logis.auth.repository.ApprovalLineConfigRepository;
 import com.samhanair.logis.auth.repository.PermissionGroupRepository;
+import com.samhanair.logis.auth.web.dto.ApprovalLineDefaultApproverView;
 import com.samhanair.logis.auth.web.dto.ApprovalLineRoleView;
 import com.samhanair.logis.auth.web.dto.ApprovalLineStructureView;
 import com.samhanair.logis.common.exception.BusinessException;
@@ -90,6 +94,36 @@ class ApprovalLineConfigServiceTest {
         assertThat(views)
                 .extracting(ApprovalLineStructureView::actionKey)
                 .containsExactly(null, "OUTBOUND_DISPATCH", "OUTBOUND_INSPECT");
+    }
+
+    @Test
+    void listDefaultApprovers_는_USER결재자만_sequence순_표시명과_함께_반환한다() {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        ApprovalLineConfig groupOnlyRole = role(1, "검토자", StepType.GROUP);
+        ApprovalLineConfig userRole = role(2, "승인자", StepType.GROUP);
+        ApprovalLineApprover groupApprover =
+                ApprovalLineApprover.create(groupOnlyRole.getId(), ApproverType.GROUP, groupId);
+        ApprovalLineApprover userApprover =
+                ApprovalLineApprover.create(userRole.getId(), ApproverType.USER, userId);
+
+        when(repository.findByDocumentTypeOrderBySequenceAsc("GROUPWARE_EXPENSE_REPORT"))
+                .thenReturn(List.of(groupOnlyRole, userRole));
+        when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(groupOnlyRole.getId()))
+                .thenReturn(List.of(groupApprover));
+        when(approverRepository.findByConfigRoleIdAndIsDeletedFalse(userRole.getId()))
+                .thenReturn(List.of(userApprover));
+        when(accountRepository.findActiveById(userId))
+                .thenReturn(Optional.of(Account.createWithId(userId, "approver", "{noop}pw", "김승인")));
+
+        List<ApprovalLineDefaultApproverView> views =
+                service.listDefaultApprovers("GROUPWARE_EXPENSE_REPORT");
+
+        assertThat(views).hasSize(1);
+        assertThat(views.get(0).sequence()).isEqualTo(2);
+        assertThat(views.get(0).label()).isEqualTo("승인자");
+        assertThat(views.get(0).userId()).isEqualTo(userId);
+        assertThat(views.get(0).displayName()).isEqualTo("김승인");
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.samhanair.logis.auth.web;
 
 import com.samhanair.logis.auth.service.ApprovalLineConfigService;
+import com.samhanair.logis.auth.web.dto.ApprovalLineDefaultApproverView;
 import com.samhanair.logis.auth.web.dto.ApprovalLineStructureView;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
@@ -23,6 +24,12 @@ public class ApprovalLineStructureController {
     @GetMapping("/approval-line-configs/{documentType}/structure")
     public ApiResponse<List<ApprovalLineStructureView>> getStructure(@PathVariable String documentType) {
         return ApiResponse.ok(service.listStructure(requireDocumentType(documentType)));
+    }
+
+    @GetMapping("/approval-line-configs/{documentType}/default-approvers")
+    public ApiResponse<List<ApprovalLineDefaultApproverView>> getDefaultApprovers(
+            @PathVariable String documentType) {
+        return ApiResponse.ok(service.listDefaultApprovers(requireDocumentType(documentType)));
     }
 
     private static String requireDocumentType(String documentType) {

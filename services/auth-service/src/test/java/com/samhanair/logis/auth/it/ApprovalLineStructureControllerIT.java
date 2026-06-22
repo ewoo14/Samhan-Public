@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.samhanair.logis.auth.AuthServiceApplication;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,12 +37,27 @@ class ApprovalLineStructureControllerIT extends AbstractPostgresIT {
     private static final UUID WAREHOUSE_GROUP_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000103");
     private static final String DOCUMENT_TYPE = "SLIP_OUTBOUND";
+    private static final String GROUPWARE_DOCUMENT_TYPE = "GROUPWARE_EXPENSE_REPORT";
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @AfterEach
+    void tearDown() {
+        jdbcTemplate.update("""
+                DELETE FROM approval_line_approver
+                WHERE config_role_id IN (
+                    SELECT id FROM approval_line_config WHERE document_type = ?
+                )
+                """, GROUPWARE_DOCUMENT_TYPE);
+        jdbcTemplate.update("""
+                DELETE FROM approval_line_config
+                WHERE document_type = ?
+                """, GROUPWARE_DOCUMENT_TYPE);
+    }
 
     @Test
     @DisplayName("GET structure — 인증 사용자는 admin 권한 없이 판매전표 구조만 sequence 순 조회")
@@ -96,5 +112,78 @@ class ApprovalLineStructureControllerIT extends AbstractPostgresIT {
                 .andReturn();
 
         assertThat(result.getResponse().getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    @DisplayName("GET default-approvers — GROUPWARE 문서의 USER 결재자를 sequence 순으로 표시명과 함께 조회")
+    void getDefaultApprovers_groupwareDocument_returnsUserApproversOnlyInSequenceOrder() throws Exception {
+        UUID reviewRoleId = insertGroupwareRole("검토자", 1);
+        UUID approveRoleId = insertGroupwareRole("승인자", 2);
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'GROUP', ?, NOW(), 'default-approvers-it', FALSE)
+                """, UUID.randomUUID(), reviewRoleId, WAREHOUSE_GROUP_ID);
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_approver
+                    (id, config_role_id, approver_type, approver_ref_id, created_at, created_by, is_deleted)
+                VALUES (?, ?, 'USER', ?, NOW(), 'default-approvers-it', FALSE)
+                """, UUID.randomUUID(), approveRoleId, SALES_ACCOUNT_ID);
+
+        MvcResult result = mockMvc.perform(get(
+                        "/auth/approval-line-configs/{documentType}/default-approvers",
+                        GROUPWARE_DOCUMENT_TYPE)
+                        .header("X-User-Id", SALES_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "SALES")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(body)
+                .contains("\"sequence\":2")
+                .contains("\"label\":\"승인자\"")
+                .contains("\"userId\":\"" + SALES_ACCOUNT_ID + "\"")
+                .contains("\"displayName\":\"[DEV-SEED] 개발영업\"")
+                .doesNotContain("검토자")
+                .doesNotContain(WAREHOUSE_GROUP_ID.toString())
+                .doesNotContain("approverRefId");
+    }
+
+    @Test
+    @DisplayName("GET default-approvers — 미설정 documentType 은 빈 목록")
+    void getDefaultApprovers_unconfiguredDocument_returnsEmptyList() throws Exception {
+        MvcResult result = mockMvc.perform(get(
+                        "/auth/approval-line-configs/{documentType}/default-approvers",
+                        "GROUPWARE_NOT_CONFIGURED")
+                        .header("X-User-Id", SALES_ACCOUNT_ID.toString())
+                        .header("X-User-Role", "SALES")
+                        .header("X-Is-System-Master", "false"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("\"data\":[]");
+    }
+
+    @Test
+    @DisplayName("GET default-approvers — 비인증 직접 호출은 403 (게이트웨이는 401)")
+    void getDefaultApprovers_anonymous_returns403() throws Exception {
+        MvcResult result = mockMvc.perform(get(
+                        "/auth/approval-line-configs/{documentType}/default-approvers",
+                        GROUPWARE_DOCUMENT_TYPE))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(403);
+    }
+
+    private UUID insertGroupwareRole(String label, int sequence) {
+        UUID roleId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO approval_line_config
+                    (id, document_type, sequence, label, step_type, action_key, required, created_at, created_by, is_deleted)
+                VALUES (?, ?, ?, ?, 'GROUP', NULL, TRUE, NOW(), 'default-approvers-it', FALSE)
+                """, roleId, GROUPWARE_DOCUMENT_TYPE, sequence, label);
+        return roleId;
     }
 }
