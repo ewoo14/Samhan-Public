@@ -7,7 +7,7 @@ metadata:
   originSessionId: 527690b1-44aa-46ea-8abd-38502bfd74d3
 ---
 
-**Phase 2.6d (2.6c 머지 후 착수)** — 품목 재고조회 모달.
+**Phase 2.6d** — 품목 재고조회 모달. ✅ **구현 완료(2026-06-23 검증)** — `clients/desktop/src/renderer/routes/components/InventoryLookupModal.tsx`(품목 행 × 창고 열 매트릭스, 셀 가용/실/예약, showZero 토글 기본 OFF, VIRTUAL 창고 제외, bundleOnlyLines 세트 가드, UUID 미노출). 아래는 원 요구 기록(stale 아님, 참고용).
 
 개발책임자 요구(2026-05-31):
 - **주문서 / 출고전표(판매전표) / 입고전표(구매전표) 상세**에서 원하는 품목 선택 → **재고조회 모달** 표시.
