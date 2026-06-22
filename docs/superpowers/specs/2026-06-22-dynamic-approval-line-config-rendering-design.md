@@ -162,16 +162,19 @@
 | D-S4D-1 | 결재란 레이아웃 | 빈 수기 **검수란 제거 → 설정기반 결재란으로 전환**. 작성자/입고자/검수자 + 추가단계 셀을 설정 구조로 렌더, 서명자 **자동채움**. 출고 `DispatchDocument`와 양식 일관. |
 | D-S4D-2 | 검수 상세필드 | 기존 검수란의 `검수일자/검수결과` 칸은 **폐지**, `비고`는 footer 비고(`PurchaseSlipPrintPage.tsx:255-261`)로 **흡수**(중복 제거). |
 | D-S4D-3 | 고아 뷰 | `InboundView.tsx` + `/purchases/:id/print/inbound` 라우트 **폐기** + 잔존 import/참조(playwright 등) 스윕. |
-| D-S4D-4 | BE 신규 | slip-service `SlipDetailResponse`에 **`acceptedByFullName`(입고자 서명자명) additive 필드**. dispatcher/inspector 와 동일 user 이름 resolve. **nullable·additive → OUTBOUND 무회귀, Flyway 0.** |
+| D-S4D-4 | BE 신규 | **정찰 정정**: BE `SlipDetailResponse`는 결재 서명자를 **userId만**(`dispatcherUserId`/`inspectorUserId`/`acceptedBy`) 노출, 이름은 **`ownerFullName`(작성자)만** resolve. FE `dispatcher.fullName`/`inspector.fullName` nested 타입은 **미구현("Option A 권장")** → 런타임 undefined → **현 판매전표 결재란 출고자/검수자 칸도 이름 공백**(작성자만 채움). |
+| D-S4D-4b | 자동채움 범위 (개발책임자 2026-06-22) | **입고+판매 둘 다 제대로**. slip-service GET 상세에서 `dispatcherUserId`·`inspectorUserId`·`acceptedBy` 3 userId 를 `ownerFullName` 과 **동일 패턴**(`UserInternalClient.GET /internal/users/{userId}`, graceful fallback null)으로 resolve → `SlipDetailResponse` 에 **flat `dispatcherFullName`·`inspectorFullName`·`acceptedByFullName` additive**. **nullable·additive → 무회귀, Flyway 0.** (판매전표 공백 잠재갭 동시 해소.) |
 
-**서명자 매핑(FE, 입고 분기)** — `roleValue` slipType 분기 또는 입고 전용 함수:
+**서명자 매핑(FE, slipType 분기)** — 공유 `roleSignerName(slip, role, slipType)`:
 - `step_type=CREATOR` → `slip.ownerFullName`
-- `action_key=INBOUND_RECEIVE` → `slip.acceptedByFullName`(신규)
-- `action_key=INBOUND_INSPECT` → `slip.inspector?.fullName`(INBOUND inspect 시 이미 채워짐 — BE 구현 시 SlipService inspect(INBOUND) 경로로 확인)
+- OUTBOUND: `action_key=OUTBOUND_DISPATCH` → `slip.dispatcherFullName`(신규 flat) / `OUTBOUND_INSPECT` → `slip.inspectorFullName`(신규 flat)
+- INBOUND: `action_key=INBOUND_RECEIVE` → `slip.acceptedByFullName`(신규 flat) / `INBOUND_INSPECT` → `slip.inspectorFullName`(신규 flat)
 - `action_key=NULL`(추가 단계) → 빈 서명칸
-- 구조 페치 실패 → 3역할(작성자/입고자/검수자) 폴백(슬3 패턴)
+- 구조 페치 실패 → slipType별 3역할(작성자/출고자·입고자/검수자) 폴백(슬3 패턴)
 
-> ⚠️ 입고자 서명자 원천 = INBOUND accept 시 기록되는 actor(`acceptedBy`). BE 구현 시 `SlipService.accept` INBOUND 경로에서 실제 기록 필드를 확인하고 그 userId 를 이름 resolve(전용 수령자 필드가 별도면 그것 사용). 추측 금지.
+> 정찰 확정: 입고자 서명자 = INBOUND accept 시 기록되는 `Slip.acceptedBy`(userId). 검수자 = `inspectorUserId`(출고·입고 공용 필드). resolve 메커니즘 = 기존 `SlipService.resolveOwnerFullName`(SlipService.java:1242) 과 동일 `UserInternalClient` 단건 GET. FE nested `dispatcher`/`inspector` 타입은 미사용이므로 건드리지 않고 flat `*FullName` 필드 신규 추가(roleSignerName 만 그 flat 필드 사용).
+
+**OUTBOUND 동반 변경**(D-S4D-4b 수반): `DispatchDocument.roleValue` 가 `slip.dispatcher?.fullName`(undefined·공백) → `slip.dispatcherFullName`(신규)로 전환되어 판매전표 결재란이 **이제 출고자/검수자 이름을 실제 표시**. 슬3 계약테스트(`DispatchDocument.test`·`PrintRendererAppContract.test`)는 채워진 이름 반영하도록 갱신(회귀 아님·잠재갭 해소).
 
 **공유 컴포넌트**: 슬3 `DispatchDocument`(RoleCell/결재란 골격)를 **출고/입고 공용 presentational**로 재사용. 서명자 매핑만 slipType 분기. 매입 8컬럼 라인표·합계·공급처 영역은 PurchaseSlipPrintPage 고유로 유지.
 
