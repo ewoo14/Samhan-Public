@@ -201,7 +201,7 @@ class AccountingPermissionControllerIT {
                         () -> get("/accounting/journals/export.xlsx")
                                 .param("from", "2026-05-01")
                                 .param("to", "2026-05-27")),
-                endpoint("trial balance", "accounting.balances.trial-balance", PermissionAction.VIEW, "ACCOUNTANT",
+                endpoint("trial balance", "accounting.balances", PermissionAction.VIEW, "ACCOUNTANT",
                         () -> get("/accounting/balances").param("period", "202605")),
                 endpoint("tax invoice list", "accounting.tax-invoice.list", PermissionAction.VIEW, "ACCOUNTANT",
                         () -> get("/accounting/tax-invoices")),

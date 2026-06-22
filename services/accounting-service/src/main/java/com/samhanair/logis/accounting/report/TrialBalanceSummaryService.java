@@ -29,6 +29,15 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>ASSET / COST_OF_SALES / SGA / INCOME_TAX = 차변잔액 계정</li>
  *   <li>LIABILITY / EQUITY / REVENUE / NON_OPERATING = 대변잔액 계정</li>
  * </ul>
+ *
+ * <p>기말잔액 4컬럼 배치는 계정 성격과 잔액 부호를 함께 본다. 정상 방향 잔액은 정상
+ * 컬럼에 양수로 표시하고, 음수 잔액은 반대 컬럼에 절대값으로 표시한다. 예를 들어 ASSET
+ * 계정이 대변 초과로 마감되면 {@code debitBalance} 가 아니라 {@code creditBalance} 에
+ * 양수 금액을 표시한다.
+ *
+ * <p>한계: P&amp;L 계정(REVENUE / COST_OF_SALES / SGA / NON_OPERATING / INCOME_TAX)은
+ * 회계연도 경계에서 집합손익 및 이익잉여금으로 대체하는 연말 결산분개가 아직 도입되지
+ * 않았다. 따라서 전년 손익 누적 리셋은 별도 결산 슬라이스에서 처리해야 한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -94,16 +103,18 @@ public class TrialBalanceSummaryService {
                 openingDebit.add(periodDebit), openingCredit.add(periodCredit));
 
         boolean debitBalance = isDebitBalanceCategory(category);
+        BigDecimal debitBalanceAmount = balanceColumnAmount(closingBalance, debitBalance);
+        BigDecimal creditBalanceAmount = balanceColumnAmount(closingBalance, !debitBalance);
         return new TrialBalanceSummaryLine(
                 accountCode,
                 account == null ? UNKNOWN_ACCOUNT_NAME : account.getName(),
                 category,
                 category.getDisplayName(),
                 openingBalance,
-                debitBalance ? closingBalance : BigDecimal.ZERO,
+                debitBalanceAmount,
                 periodDebit,
                 periodCredit,
-                debitBalance ? BigDecimal.ZERO : closingBalance,
+                creditBalanceAmount,
                 closingBalance
         );
     }
@@ -132,7 +143,7 @@ public class TrialBalanceSummaryService {
                 creditTotal,
                 creditBalanceTotal,
                 closingBalanceTotal,
-                debitTotal.compareTo(creditTotal) == 0
+                debitBalanceTotal.compareTo(creditBalanceTotal) == 0
         );
     }
 
@@ -153,6 +164,14 @@ public class TrialBalanceSummaryService {
 
     private BigDecimal computeBalance(AccountCategory category, BigDecimal debit, BigDecimal credit) {
         return isDebitBalanceCategory(category) ? debit.subtract(credit) : credit.subtract(debit);
+    }
+
+    private BigDecimal balanceColumnAmount(BigDecimal closingBalance, boolean normalColumn) {
+        if (closingBalance.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        boolean positiveBalance = closingBalance.signum() > 0;
+        return positiveBalance == normalColumn ? closingBalance.abs() : BigDecimal.ZERO;
     }
 
     private boolean isDebitBalanceCategory(AccountCategory category) {

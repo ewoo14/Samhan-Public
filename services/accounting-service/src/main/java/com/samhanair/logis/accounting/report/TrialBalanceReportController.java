@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>권한: ACCOUNTANT / MANAGER / MASTER.
  *
- * <p>SP-D2 동적 권한: {@link ReportPermissionGuard} VIEW 검증.
+ * <p>권한은 트라이얼밸런스 화면과 동일한 {@code accounting.balances} VIEW 검증을 사용한다.
  */
 @Tag(name = "재무 보고서", description = "손익계산서 / 재무상태표 / 시산표")
 @RestController
@@ -39,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class TrialBalanceReportController {
 
     private static final String ROLE_HEADER = "X-User-Role";
+    private static final String TRIAL_BALANCE_PAGE_CODE = "accounting.balances";
     private static final DateTimeFormatter PERIOD_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final TrialBalanceService trialBalanceService;
@@ -63,7 +64,7 @@ public class TrialBalanceReportController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "period 형식 오류")
     })
     @GetMapping("/trial-balance")
-    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
+    @RequirePermission(page = TRIAL_BALANCE_PAGE_CODE, action = PermissionAction.VIEW)
     public ApiResponse<TrialBalanceResponse> trialBalance(
             @Parameter(description = "회계 월 (yyyyMM, 예: 202604)")
             @RequestParam String period,
@@ -85,6 +86,7 @@ public class TrialBalanceReportController {
      * 기간 합계는 {@code from/to} 임의기간의 차변/대변 합계를 사용한다.
      * {@code granularity} 는 FE 일/월/기간 토글 상태를 보존하는 파라미터이며 집계 범위는
      * 항상 명시된 {@code from/to} 를 따른다.
+     * 권한은 트라이얼밸런스 페이지와 동일하게 {@code accounting.balances} 를 사용한다.
      *
      * @param from 조회 시작일
      * @param to 조회 종료일
@@ -95,15 +97,14 @@ public class TrialBalanceReportController {
             summary = "합계잔액시산표 조회",
             description = "이월잔액 + 기간 차변/대변 합계 + eCount 4컬럼(차변 잔액/합계, 대변 합계/잔액)")
     @GetMapping("/trial-balance/summary")
-    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
+    @RequirePermission(page = TRIAL_BALANCE_PAGE_CODE, action = PermissionAction.VIEW)
     public ApiResponse<TrialBalanceSummaryResponse> trialBalanceSummary(
             @Parameter(description = "조회 시작일 (YYYY-MM-DD)")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @Parameter(description = "조회 종료일 (YYYY-MM-DD)")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @Parameter(description = "조회 단위 (DAY/MONTH/RANGE)")
-            @RequestParam(defaultValue = "RANGE") TrialBalanceGranularity granularity,
-            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+            @RequestParam(defaultValue = "RANGE") TrialBalanceGranularity granularity) {
         return ApiResponse.ok(trialBalanceSummaryService.findSummary(from, to, granularity));
     }
 }

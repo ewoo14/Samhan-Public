@@ -119,7 +119,7 @@ class TrialBalanceControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("권한 — SALES 시산표 조회 403")
     void salesForbidden() throws Exception {
-        denyRequirePermission("accounting.balances.trial-balance", PermissionAction.VIEW);
+        denyRequirePermission("accounting.balances", PermissionAction.VIEW);
         lenient().when(dynamicPermissionClient.canView(eq("SALES"), anyString())).thenReturn(false);
         mockMvc.perform(get("/accounting/balances")
                         .param("period", "202605")
@@ -186,6 +186,42 @@ class TrialBalanceControllerIT extends AbstractPostgresIT {
         JsonNode capital = row(rows, "301");
         assertThat(amount(capital, "openingBalance")).isEqualByComparingTo("1000.00");
         assertThat(amount(capital, "creditBalance")).isEqualByComparingTo("1000.00");
+    }
+
+    @Test
+    @DisplayName("합계잔액시산표 — 차변성 계정 음수 기말잔액은 대변잔액 컬럼에 양수 표시")
+    void trialBalanceSummaryPlacesNegativeAssetClosingOnCreditBalance() throws Exception {
+        createAndPostJournal("2025-02-10", List.of(
+                line("801", "500", "0"),
+                line("101", "0", "500")
+        ));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/trial-balance/summary")
+                        .param("from", "2025-02-01")
+                        .param("to", "2025-02-28")
+                        .param("granularity", "MONTH")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totals.debitTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.creditTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.debitBalanceTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.creditBalanceTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.balanced").value(true))
+                .andReturn();
+
+        JsonNode rows = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("rows");
+        assertThat(rows).hasSize(2);
+
+        JsonNode cash = row(rows, "101");
+        assertThat(amount(cash, "closingBalance")).isEqualByComparingTo("-500.00");
+        assertThat(amount(cash, "debitBalance")).isEqualByComparingTo("0");
+        assertThat(amount(cash, "creditBalance")).isEqualByComparingTo("500.00");
+
+        JsonNode salary = row(rows, "801");
+        assertThat(amount(salary, "debitBalance")).isEqualByComparingTo("500.00");
+        assertThat(amount(salary, "creditBalance")).isEqualByComparingTo("0");
     }
 
     private Map<String, Object> balancedJournalBody(String amount) {

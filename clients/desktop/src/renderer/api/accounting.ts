@@ -368,6 +368,7 @@ export interface TrialBalanceSummaryTotals {
   creditTotal: string
   creditBalanceTotal: string
   closingBalanceTotal: string
+  /** 차변 잔액 컬럼 합계와 대변 잔액 컬럼 합계 일치 여부. */
   balanced: boolean
 }
 
@@ -387,6 +388,7 @@ export interface TrialBalanceSummaryResponse {
  * 합계잔액시산표 조회.
  *
  * BE endpoint: `GET /accounting/reports/trial-balance/summary?from&to&granularity`.
+ * 권한은 트라이얼밸런스 화면과 동일한 `accounting.balances` VIEW 를 사용한다.
  */
 export async function getTrialBalanceSummary(
   from: string,
