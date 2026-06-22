@@ -1,103 +1,145 @@
 /**
- * 시산표 화면 (`/accounting/balances`).
+ * 합계잔액시산표 화면 (`/accounting/balances`).
  *
- * 회계월(YYYYMM) 선택 → BE 가 해당 월 분개 합산 + 카테고리 그룹별 표시.
- * 본 슬라이스는 read-only. PDF 출력 등은 추후 슬라이스에서 추가.
- *
- * P0-1 Slice A 보강: 상단 summary 영역 (총 차변 / 총 대변 / 일치 여부 chip).
- *
- * 권한: ACCOUNTANT / MASTER 만 진입 (RouteGuard).
+ * 이월잔액(from-1 누적) + 임의기간 차변/대변 합계 + eCount 4컬럼
+ * (차변 잔액/합계, 대변 합계/잔액)을 조회한다.
  */
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Badge,
+  Button,
   Card,
   DataTable,
   Spinner,
   type DataTableColumn,
 } from '@samhan/design-system'
-import { getTrialBalance, type TrialBalanceRow } from '../api/accounting'
+import {
+  getTrialBalanceSummary,
+  type TrialBalanceGranularity,
+  type TrialBalanceSummaryLine,
+} from '../api/accounting'
 import { usePageTitle } from '../hooks/usePageTitle'
 
-const CATEGORY_LABEL: Record<string, string> = {
-  '100': '자산',
-  '200': '부채',
-  '300': '자본',
-  '400': '매출',
-  '500': '매출원가',
-  '800': '판매관리비',
-  '900': '영업외',
+const today = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const currentMonth = (): string => today().slice(0, 7)
+
+const monthRange = (month: string): { from: string; to: string } => {
+  const [year, monthText] = month.split('-')
+  const lastDay = new Date(Number(year), Number(monthText), 0).getDate()
+  return {
+    from: `${year}-${monthText}-01`,
+    to: `${year}-${monthText}-${String(lastDay).padStart(2, '0')}`,
+  }
 }
 
 const fmtKrw = (raw: string): string => {
-  const n = Number.parseInt(raw, 10)
+  const n = Number(raw)
   if (!Number.isFinite(n)) return raw
   if (n === 0) return '—'
-  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return n.toLocaleString('ko-KR', { maximumFractionDigits: 0 })
 }
 
-/** YYYYMM 현재 월 (한국 시간 클라이언트 local). */
-const currentPeriod = (): string => {
-  const d = new Date()
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
+const amountColor = (raw: string): string => {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n >= 0) return 'var(--color-neutral-900)'
+  return 'var(--state-danger)'
 }
 
-/** YYYYMM → "2026-05" 표시용. */
-const formatPeriod = (period: string): string =>
-  `${period.slice(0, 4)}-${period.slice(4, 6)}`
+const dateLabel = (from: string, to: string): string =>
+  from === to ? from : `${from} ~ ${to}`
+
+function AmountCell({ value }: { value: string }) {
+  return (
+    <span
+      style={{
+        color: amountColor(value),
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {fmtKrw(value)}
+    </span>
+  )
+}
 
 export function TrialBalancePage() {
-  const [period, setPeriod] = useState<string>(currentPeriod())
+  const [granularity, setGranularity] = useState<TrialBalanceGranularity>('MONTH')
+  const [date, setDate] = useState<string>(today())
+  const [month, setMonth] = useState<string>(currentMonth())
+  const initialMonthRange = monthRange(currentMonth())
+  const [from, setFrom] = useState<string>(initialMonthRange.from)
+  const [to, setTo] = useState<string>(initialMonthRange.to)
 
-  usePageTitle('시산표', formatPeriod(period))
+  const queryRange = useMemo(() => {
+    if (granularity === 'DAY') {
+      return { from: date, to: date }
+    }
+    if (granularity === 'MONTH') {
+      return monthRange(month)
+    }
+    return { from, to }
+  }, [date, from, granularity, month, to])
+
+  usePageTitle('합계잔액시산표', dateLabel(queryRange.from, queryRange.to))
 
   const query = useQuery({
-    queryKey: ['accounting', 'balances', period],
-    queryFn: () => getTrialBalance(period),
+    queryKey: ['accounting', 'trial-balance-summary', queryRange.from, queryRange.to, granularity],
+    queryFn: () => getTrialBalanceSummary(queryRange.from, queryRange.to, granularity),
   })
 
   const grouped = useMemo(() => {
     const rows = query.data?.rows ?? []
-    const map = new Map<string, TrialBalanceRow[]>()
-    for (const r of rows) {
-      const list = map.get(r.category) ?? []
-      list.push(r)
-      map.set(r.category, list)
+    const map = new Map<string, TrialBalanceSummaryLine[]>()
+    for (const row of rows) {
+      const key = row.categoryDisplayName || row.category
+      const list = map.get(key) ?? []
+      list.push(row)
+      map.set(key, list)
     }
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
+    return Array.from(map.entries())
   }, [query.data])
 
-  const columns: DataTableColumn<TrialBalanceRow>[] = [
-    { key: 'accountCode', header: '코드', width: '80px' },
-    { key: 'accountName', header: '계정명', width: '160px' },
+  const columns: DataTableColumn<TrialBalanceSummaryLine>[] = [
+    { key: 'accountCode', header: '코드', width: '72px' },
     {
       key: 'openingBalance',
-      header: '기초잔액',
-      width: '140px',
+      header: '이월잔액',
+      width: '130px',
       align: 'right',
-      render: (r) => fmtKrw(r.openingBalance),
+      render: (row) => <AmountCell value={row.openingBalance} />,
     },
     {
-      key: 'periodDebit',
-      header: '당월 차변',
-      width: '140px',
+      key: 'debitBalance',
+      header: '차변 잔액',
+      width: '130px',
       align: 'right',
-      render: (r) => fmtKrw(r.periodDebit),
+      render: (row) => <AmountCell value={row.debitBalance} />,
     },
     {
-      key: 'periodCredit',
-      header: '당월 대변',
-      width: '140px',
+      key: 'debitTotal',
+      header: '차변 합계',
+      width: '130px',
       align: 'right',
-      render: (r) => fmtKrw(r.periodCredit),
+      render: (row) => <AmountCell value={row.debitTotal} />,
+    },
+    { key: 'accountName', header: '계정명', width: '180px' },
+    {
+      key: 'creditTotal',
+      header: '대변 합계',
+      width: '130px',
+      align: 'right',
+      render: (row) => <AmountCell value={row.creditTotal} />,
     },
     {
-      key: 'closingBalance',
-      header: '기말잔액',
-      width: '140px',
+      key: 'creditBalance',
+      header: '대변 잔액',
+      width: '130px',
       align: 'right',
-      render: (r) => fmtKrw(r.closingBalance),
+      render: (row) => <AmountCell value={row.creditBalance} />,
     },
   ]
 
@@ -107,34 +149,88 @@ export function TrialBalancePage() {
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 16,
+          alignItems: 'flex-start',
           gap: 16,
           flexWrap: 'wrap',
+          marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0 }}>시산표 — {formatPeriod(period)}</h3>
-        <label style={{ fontSize: 13, color: '#374151' }}>
-          회계월:&nbsp;
-          <input
-            type="month"
-            value={`${period.slice(0, 4)}-${period.slice(4, 6)}`}
-            onChange={(e) => {
-              const v = e.target.value.replace('-', '')
-              if (/^\d{6}$/.test(v)) setPeriod(v)
-            }}
-            style={{
-              height: 32,
-              padding: '0 8px',
-              borderRadius: 6,
-              border: '1px solid #D1D5DB',
-              fontSize: 13,
-            }}
-          />
-        </label>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>합계잔액시산표</h3>
+          <div style={{ marginTop: 4, fontSize: 13, color: 'var(--color-neutral-500)' }}>
+            {dateLabel(queryRange.from, queryRange.to)}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {(['DAY', 'MONTH', 'RANGE'] as TrialBalanceGranularity[]).map((unit) => (
+            <Button
+              key={unit}
+              variant={granularity === unit ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setGranularity(unit)}
+            >
+              {unit === 'DAY' ? '일' : unit === 'MONTH' ? '월' : '기간'}
+            </Button>
+          ))}
+          {granularity === 'DAY' ? (
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              style={{
+                height: 32,
+                padding: '0 8px',
+                borderRadius: 6,
+                border: '1px solid var(--color-border)',
+                fontSize: 13,
+              }}
+            />
+          ) : null}
+          {granularity === 'MONTH' ? (
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+              style={{
+                height: 32,
+                padding: '0 8px',
+                borderRadius: 6,
+                border: '1px solid var(--color-border)',
+                fontSize: 13,
+              }}
+            />
+          ) : null}
+          {granularity === 'RANGE' ? (
+            <>
+              <input
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+                style={{
+                  height: 32,
+                  padding: '0 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border)',
+                  fontSize: 13,
+                }}
+              />
+              <input
+                type="date"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                style={{
+                  height: 32,
+                  padding: '0 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border)',
+                  fontSize: 13,
+                }}
+              />
+            </>
+          ) : null}
+        </div>
       </div>
 
-      {/* P0-1 Slice A: 총 차변 / 총 대변 / 일치 여부 summary 영역 */}
       {query.data ? (
         <Card
           data-testid="accounting-trial-balance-summary"
@@ -142,32 +238,24 @@ export function TrialBalancePage() {
         >
           <div
             style={{
-              display: 'flex',
-              gap: 32,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 12,
               alignItems: 'center',
-              flexWrap: 'wrap',
-              padding: '4px 0',
             }}
           >
-            <div style={{ fontSize: 13, color: '#374151' }}>
-              <span style={{ fontWeight: 600 }}>총 차변:&nbsp;</span>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {fmtKrw(query.data.totalDebit)}
-              </span>
-            </div>
-            <div style={{ fontSize: 13, color: '#374151' }}>
-              <span style={{ fontWeight: 600 }}>총 대변:&nbsp;</span>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {fmtKrw(query.data.totalCredit)}
-              </span>
-            </div>
+            <SummaryItem label="이월잔액" value={query.data.totals.openingBalanceTotal} />
+            <SummaryItem label="차변 합계" value={query.data.totals.debitTotal} />
+            <SummaryItem label="대변 합계" value={query.data.totals.creditTotal} />
+            <SummaryItem label="차변 잔액" value={query.data.totals.debitBalanceTotal} />
+            <SummaryItem label="대변 잔액" value={query.data.totals.creditBalanceTotal} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>균형:</span>
-              {query.data.totalDebit === query.data.totalCredit ? (
-                <Badge variant="success">일치</Badge>
-              ) : (
-                <Badge variant="danger">불일치 — 분개 검토 필요</Badge>
-              )}
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-neutral-700)' }}>
+                균형
+              </span>
+              <Badge variant={query.data.totals.balanced ? 'success' : 'danger'}>
+                {query.data.totals.balanced ? '일치' : '불일치'}
+              </Badge>
             </div>
           </div>
         </Card>
@@ -175,11 +263,11 @@ export function TrialBalancePage() {
 
       {query.isLoading ? (
         <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}>
-          <Spinner size="lg" label="시산표 불러오는 중" />
+          <Spinner size="lg" label="합계잔액시산표 불러오는 중" />
         </div>
       ) : query.isError ? (
         <div className="error-banner" role="alert">
-          시산표를 불러오지 못했습니다. 백엔드 연결을 확인하세요.
+          합계잔액시산표를 불러오지 못했습니다. 기간과 백엔드 연결을 확인하세요.
         </div>
       ) : (
         <>
@@ -190,26 +278,25 @@ export function TrialBalancePage() {
                   marginBottom: 8,
                   fontSize: 14,
                   fontWeight: 600,
-                  color: '#111827',
+                  color: 'var(--color-neutral-900)',
                 }}
               >
-                {CATEGORY_LABEL[category] ?? category} ({category})
+                {category}
               </div>
               <DataTable
                 columns={columns}
                 rows={rows}
-                rowKey={(r) => r.accountCode}
-                emptyMessage="해당 카테고리에 데이터가 없습니다."
+                rowKey={(row) => row.accountCode}
+                emptyMessage="해당 구분에 데이터가 없습니다."
               />
             </Card>
           ))}
 
-          {/* 총합 */}
           <Card>
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '80px 160px 140px 140px 140px 140px',
+                gridTemplateColumns: '72px 130px 130px 130px 180px 130px 130px',
                 gap: 8,
                 padding: '8px 0',
                 fontSize: 14,
@@ -218,31 +305,44 @@ export function TrialBalancePage() {
               }}
             >
               <div />
+              <div style={{ textAlign: 'right' }}>
+                {fmtKrw(query.data?.totals.openingBalanceTotal ?? '0')}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {fmtKrw(query.data?.totals.debitBalanceTotal ?? '0')}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {fmtKrw(query.data?.totals.debitTotal ?? '0')}
+              </div>
               <div>총합</div>
-              <div />
               <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totalDebit ?? '0')}
+                {fmtKrw(query.data?.totals.creditTotal ?? '0')}
               </div>
               <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totalCredit ?? '0')}
-              </div>
-              <div
-                style={{
-                  textAlign: 'right',
-                  color:
-                    query.data?.totalDebit === query.data?.totalCredit
-                      ? '#059669'
-                      : '#DC2626',
-                }}
-              >
-                {query.data?.totalDebit === query.data?.totalCredit
-                  ? '균형 ✓'
-                  : '불균형'}
+                {fmtKrw(query.data?.totals.creditBalanceTotal ?? '0')}
               </div>
             </div>
           </Card>
         </>
       )}
     </>
+  )
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ fontSize: 13, color: 'var(--color-neutral-600)' }}>
+      <div style={{ marginBottom: 2 }}>{label}</div>
+      <div
+        style={{
+          color: amountColor(value),
+          fontSize: 16,
+          fontWeight: 700,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {fmtKrw(value)}
+      </div>
+    </div>
   )
 }

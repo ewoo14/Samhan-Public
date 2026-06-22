@@ -3,15 +3,18 @@ package com.samhanair.logis.accounting.report;
 import com.samhanair.logis.accounting.service.TrialBalanceService;
 import com.samhanair.logis.accounting.web.dto.TrialBalanceResponse;
 import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,6 +42,7 @@ public class TrialBalanceReportController {
     private static final DateTimeFormatter PERIOD_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final TrialBalanceService trialBalanceService;
+    private final TrialBalanceSummaryService trialBalanceSummaryService;
 
     /**
      * 시산표 조회 (별칭 endpoint).
@@ -59,7 +63,7 @@ public class TrialBalanceReportController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "period 형식 오류")
     })
     @GetMapping("/trial-balance")
-    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
+    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
     public ApiResponse<TrialBalanceResponse> trialBalance(
             @Parameter(description = "회계 월 (yyyyMM, 예: 202604)")
             @RequestParam String period,
@@ -72,5 +76,34 @@ public class TrialBalanceReportController {
                     "period 는 yyyyMM 형식이어야 합니다 (예: 202604), 입력값: " + period);
         }
         return ApiResponse.ok(trialBalanceService.findByPeriod(ym));
+    }
+
+    /**
+     * 합계잔액시산표 조회.
+     *
+     * <p>이월잔액은 {@code from - 1일} 까지의 POSTED 누적 집계로 산출하고,
+     * 기간 합계는 {@code from/to} 임의기간의 차변/대변 합계를 사용한다.
+     * {@code granularity} 는 FE 일/월/기간 토글 상태를 보존하는 파라미터이며 집계 범위는
+     * 항상 명시된 {@code from/to} 를 따른다.
+     *
+     * @param from 조회 시작일
+     * @param to 조회 종료일
+     * @param granularity 조회 단위 (DAY/MONTH/RANGE)
+     * @return 합계잔액시산표 응답
+     */
+    @Operation(
+            summary = "합계잔액시산표 조회",
+            description = "이월잔액 + 기간 차변/대변 합계 + eCount 4컬럼(차변 잔액/합계, 대변 합계/잔액)")
+    @GetMapping("/trial-balance/summary")
+    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = PermissionAction.VIEW)
+    public ApiResponse<TrialBalanceSummaryResponse> trialBalanceSummary(
+            @Parameter(description = "조회 시작일 (YYYY-MM-DD)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "조회 종료일 (YYYY-MM-DD)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @Parameter(description = "조회 단위 (DAY/MONTH/RANGE)")
+            @RequestParam(defaultValue = "RANGE") TrialBalanceGranularity granularity,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        return ApiResponse.ok(trialBalanceSummaryService.findSummary(from, to, granularity));
     }
 }

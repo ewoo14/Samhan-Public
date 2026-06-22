@@ -338,6 +338,68 @@ export async function getTrialBalance(period: string): Promise<TrialBalance> {
   return res.data.data
 }
 
+export type TrialBalanceGranularity = 'DAY' | 'MONTH' | 'RANGE'
+
+/**
+ * 합계잔액시산표 1행.
+ *
+ * eCount 표준 4컬럼: 차변잔액 / 차변합계 / 대변합계 / 대변잔액.
+ */
+export interface TrialBalanceSummaryLine {
+  accountCode: string
+  accountName: string
+  category: string
+  categoryDisplayName: string
+  openingBalance: string
+  debitBalance: string
+  debitTotal: string
+  creditTotal: string
+  creditBalance: string
+  closingBalance: string
+}
+
+/**
+ * 합계잔액시산표 총계.
+ */
+export interface TrialBalanceSummaryTotals {
+  openingBalanceTotal: string
+  debitBalanceTotal: string
+  debitTotal: string
+  creditTotal: string
+  creditBalanceTotal: string
+  closingBalanceTotal: string
+  balanced: boolean
+}
+
+/**
+ * 합계잔액시산표 응답.
+ */
+export interface TrialBalanceSummaryResponse {
+  fromDate: string
+  toDate: string
+  granularity: TrialBalanceGranularity
+  rows: TrialBalanceSummaryLine[]
+  totals: TrialBalanceSummaryTotals
+  generatedAt: string
+}
+
+/**
+ * 합계잔액시산표 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/trial-balance/summary?from&to&granularity`.
+ */
+export async function getTrialBalanceSummary(
+  from: string,
+  to: string,
+  granularity: TrialBalanceGranularity,
+): Promise<TrialBalanceSummaryResponse> {
+  const res = await apiClient.get<ApiEnvelope<TrialBalanceSummaryResponse>>(
+    '/accounting/reports/trial-balance/summary',
+    { params: { from, to, granularity } },
+  )
+  return res.data.data
+}
+
 // ==========================================================================
 // P0-1 Slice A: 3대 재무 보고서 API (손익계산서 / 재무상태표)
 // ==========================================================================
