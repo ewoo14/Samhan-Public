@@ -192,6 +192,30 @@ class ApiGatewayContextLoadIT {
         assertHasStripPrefix(routes, "user-service-employee-signatures-public", "1");
     }
 
+    @Test
+    @DisplayName("approval-line structure route is authenticated no-strip and precedes auth catch-all")
+    void approvalLineStructureRoute_isAuthenticatedNoStrip_andPrecedesLegacyCatchAll() {
+        List<RouteDefinition> routes = routeDefinitionLocator.getRouteDefinitions()
+                .collectList()
+                .block();
+
+        assertThat(routes)
+                .as("RouteDefinitionLocator must return configured routes")
+                .isNotNull()
+                .isNotEmpty();
+
+        assertRoutePath(routes, "auth-service-admin-authenticated",
+                "/auth/admin/**",
+                "/auth/password/change",
+                "/auth/approval-line-configs/*/structure");
+        assertHasJwtAuthenticationFilter(routes, "auth-service-admin-authenticated");
+        assertNoStripPrefix(routes, "auth-service-admin-authenticated");
+        assertThat(indexOfRoute(routes, "auth-service-admin-authenticated"))
+                .as("authenticated auth route must be declared before /auth/** legacy catch-all")
+                .isGreaterThanOrEqualTo(0)
+                .isLessThan(indexOfRoute(routes, "auth-service-legacy"));
+    }
+
     /** F6 주문서 bootstrap/gate/log 공개 라우트 — 인증 없이 접근하되 identity header spoof 는 제거. */
     @Test
     @DisplayName("partner-order 공개 라우트 — bootstrap/gate/log no-JWT + no-strip + 보호 route 선행")
