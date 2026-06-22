@@ -4,6 +4,25 @@
 
 ---
 
+## 🟢 핸드오프 (2026-06-22 집PC — **슬4d 입고전표 결재란 머지 완료 PR #566. 다음=슬5(capstone)로 에픽 종료**)
+
+### ✅ 슬4d 머지 완료 (PR #566, main `b60acebc3`)
+- **입고전표(매입전표) 설정기반 결재란 + 결재 서명자 이름 자동채움**. 정식 입고 인쇄=`PurchaseSlipPrintPage`(`/purchases/:id/print/purchase`). 고아 `InboundView`(`/print/inbound`) 폐기(슬1 OutboundView 선례).
+- **BE(slip-service)**: `getOne` 이 서명자 이름을 slipType 별 의미 역할만 resolve(출고자=OUTBOUND/입고자=INBOUND/검수자=양쪽, `UserInternalClient` 단건 GET graceful). `SlipDetailResponse` flat `dispatcherFullName/inspectorFullName/acceptedByFullName` additive. **Flyway 0·OUTBOUND 무회귀**. 판매전표 출고자/검수자 공백 잠재갭 동시 해소. `SlipDetailNameResolveIT`(실HTTP MockRestServiceServer + 404 graceful).
+- **FE**: `print/approvalRoleCells.tsx` 공유 모듈(RoleCell·`roleSignerName(slip,role,slipType)`·`fallbackRoles`·`ApprovalRoleCells`). PurchaseSlipPrintPage 빈 수기 검수란→설정기반 결재란. fallback 라벨=V63 정합(작성자/입고인/검수인). DispatchDocument 공유 모듈화(출고자/검수자 이름 실표시).
+- **개발책임자 인쇄 양식 정정(라이브 캡처 리뷰)**: 로고 이미지 제거·전표일자 제거(전표번호 날짜 중복)·빈 여백 행 제거·하단 공급가액/부가세 합계 박스 제거(테이블 tfoot 합계만). 승인 완료.
+- **듀얼리뷰 0-수렴**: Opus R1(BLOCKING 4 Claude fix: slipType 가드·graceful catch+404 IT·동적 grid)→Codex R2(0 blocking + 라벨/dead CSS 정리)→Opus 최종 0. 🐳 **라이브 Docker 실QA**(real-qa 2/2, 입고인/검수인=개발마스터 자동채움 실캡처 `docs/qa/inbound-approval-render-s4d/`). CI 25 pass(GitGuardian dev_p05_pass! FP). 
+- 🔑 **워크플로우 교훈 박제**([[per-round-live-qa]] 강화): 개발책임자 2차 지적("메모리 박제까지 했는데 왜 라이브 QA 안하냐") → **리뷰 R1 착수 전 스택 먼저 기동 + 캡처 없는 라운드=미완** 구조 규칙 추가. 실패 모드="QA 무거우니 마지막 게이트로 미룸" 합리화.
+- 🔑 **라이브 QA 데이터 함정**: 시드 전표 actor=비-UUID 사용자명(이름 resolve 안 됨) → dev_master lifecycle 전환으로 UUID actor 확보. product-service 미시드→INBOUND complete 404(PROCESSING 정지). OUTBOUND accept=A2-2 출고결재 enforcement 403(정상). influxd 8086/8088 점유→`docker-compose.no-host-ports.yml` `!reset []` overlay.
+- ⚠️ **후속 확인 플래그**: `GET /auth/approval-line-configs/SLIP_INBOUND/structure` 가 QA 스택 게이트웨이에서 403(slice-3 재사용 엔드포인트, FE graceful fallback 라벨로 정상 렌더). 스테일 게이트웨이 이미지 가능성 — fresh 스택 재확인 권장.
+
+### ⏭️ 다음 = 슬5 (capstone) — 메뉴↔권한설정 정합 + 권한설정 동작 검증 → **에픽 종료**
+- spec §7(`2026-06-22-dynamic-approval-line-config-rendering-design.md`): 정적 정합 이미 완벽(사이드바 60 page-code 전부 매트릭스 등재·신규 admin.approval-line-config 4중 정합) → **검증 중심**(개발책임자 결정). 산출=3원 정합 대조표(dev-report)+Playwright real-qa E2E(grant→사이드바·가드 403·CRUD)+발견 갭만 fix.
+- 착수: **정찰 먼저→brainstorming**(검증 성격) → plan → 구현/검증 → 라운드별 듀얼리뷰(**스택 먼저 기동·라운드별 라이브 캡처**) → 머지.
+- 🖥️ **집PC 스택 상태**: 머지 시점 Docker 스택 가동 중(gateway/auth/user/slip/postgres/eureka + slip 신 이미지), standalone 렌더러 :5175 가동 중. 세션 종료 시 `docker compose ... down` + 렌더러 종료 필요.
+
+---
+
 ## 🟢 핸드오프 (2026-06-22 세션종료 — **동적 결재라인 에픽: 슬1~3 + 그룹웨어 슬4a/4b/4c 머지 완료. 🏠 다음=집PC에서 슬5(capstone)+슬4d(입고전표)**)
 
 > **세션종료 상태**: 슬4a(#563)·슬4b(#564)·슬4c(#565) 전부 머지(origin main `eecc7902`). 개발책임자 "슬5부터 세션 종료, 집PC 재개" 지시. **집PC: git pull + `.\scripts\sync-claude-memory.ps1` 먼저.**
