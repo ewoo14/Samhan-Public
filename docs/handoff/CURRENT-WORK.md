@@ -4,17 +4,22 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-22 — **동적 결재라인 에픽: 슬1#560·슬2#561·슬3#562 + 슬4 그룹웨어 재초점·슬4a#563 머지, 다음=슬4b/4c**)
+## 🟢 핸드오프 (2026-06-22 세션종료 — **동적 결재라인 에픽: 슬1~3 + 그룹웨어 슬4a/4b/4c 머지 완료. 🏠 다음=집PC에서 슬5(capstone)+슬4d(입고전표)**)
 
-### 🔀 슬4 방향 전환 + 슬4a 머지 (PR #563, main `642555dc`)
-- **개발책임자 방향 전환**: 슬4 "전 전표 확대"(입고=easy로 대기) → **그룹웨어 문서종류별 결재라인 설정**. spec=[groupware-approval-line-config](../superpowers/specs/2026-06-22-groupware-approval-line-config-design.md). 정찰(wf): 그룹웨어 문서종류=ApprovalTemplate(DB정의 EXPENSE_REPORT/LEAVE_REQUEST), 현 결재라인=생성 시 수동 칩(종류별 기본값 없음). 결정: **Option A**(auth approval_line_config를 GROUPWARE_<code> documentType로 확장, 슬1~3 재사용) + 생성 시 **기본값 자동채우+override** + **USER v1**(GROUP 보류).
-- **슬4a(BE) 머지**: approval_line_config GROUPWARE_<code> 수용(삭제가드 CREATOR||seq0→CREATOR만 — 그룹웨어=CREATOR 없음·전표 무회귀) + `GET /auth/approval-line-configs/{docType}/default-approvers`(인증-only, USER 결재자 sequence순+displayName, 게이트웨이 라우트+계약 IT) + groupware `GET /groupware/approval-templates/active`(인증-only). Flyway 없음. 라이브 QA(실 게이트웨이 active 200·default-approvers 200 팀장/dev_master·비인증 401, `docs/qa/groupware-approval-line-config-s4a/`).
-- 🔑 **fix 후 0-수렴 재리뷰 준수**([[rereview-converge-after-fix]] 박제 후 첫 적용): Opus 0 → **CI(@MockBean UserClient/DynamicPermissionClient 누락 컨텍스트로드 단독 적발, [[it-mockbean-external-clients]]·Testcontainers Windows skip)** fix → Codex 0 → **Opus 재확인 0** → 머지.
+> **세션종료 상태**: 슬4a(#563)·슬4b(#564)·슬4c(#565) 전부 머지(origin main `eecc7902`). 개발책임자 "슬5부터 세션 종료, 집PC 재개" 지시. **집PC: git pull + `.\scripts\sync-claude-memory.ps1` 먼저.**
 
-### ⏭️ 다음 = 슬4b (FE 설정 동적 DOC_TYPES) + 슬4c (FE 생성 프리필)
-- **슬4b**: `approvalLineConfigApi.DOC_TYPES` 하드코딩→동적(전표 3종 + `GET /groupware/approval-templates/active` 그룹웨어 템플릿 GROUPWARE_<code>). 그룹웨어 종류 선택 시 슬2 단계 CRUD+USER 결재자 칩으로 기본 결재라인 설정. **여기서 설정 메뉴 UI 스크린샷**(개발책임자 "스크린샷" 요구 — 슬4a는 BE라 API 응답만).
-- **슬4c**: `GroupwareApprovalCreatePage` 템플릿 선택→`GET .../default-approvers` 프리필→결재자 칩 자동채움+override. mock 동기화. 생성 화면 프리필 스크린샷.
-- spec §4. 착수 시 brainstorming(필요시)+plan. 듀얼리뷰 순차+fix 후 0-수렴 엄격.
+### ✅ 그룹웨어 결재라인 설정 에픽 머지 완료 (슬4a/4b/4c)
+- **슬4a(BE) #563** `642555dc`: approval_line_config GROUPWARE_<code> 수용(삭제가드 CREATOR||seq0→**CREATOR만** — 그룹웨어=CREATOR 없음·전표 무회귀) + `GET /auth/approval-line-configs/{docType}/default-approvers`(인증-only, USER 결재자 sequence순+displayName, 게이트웨이 라우트+계약 IT) + groupware `GET /groupware/approval-templates/active`(인증-only). Flyway 없음.
+- **슬4b(FE 설정 동적 doc-type) #564** `376548c4`: `fetchConfigurableDocTypes()`=전표 static 3종 + 그룹웨어 active 템플릿(GROUPWARE_<code>, graceful 폴백). `ApprovalLineConfigPage` 셀렉터 동적(전표/그룹웨어 optgroup). 그룹웨어 종류 선택→슬2 단계 CRUD+USER 칩으로 기본 결재라인 설정. (Codex 라운드: mock 삭제가드 CREATOR-only parity fix.)
+- **슬4c(FE 생성 프리필) #565** `eecc7902`: `GroupwareApprovalCreatePage` 템플릿 선택→`fetchDefaultApprovers('GROUPWARE_'+code)` 프리필→결재자 칩 자동채움+override. (Codex 라운드 BLOCKING 2: 프리필 edit-version race 가드[사용자 override 중 늦은 fetch 덮어쓰기]+ QA spec CI 포함[:5173].)
+- **결정**: Option A(auth config GROUPWARE_<code> 확장·슬1~3 재사용) + 자동채우+override(D-G2) + USER v1(D-G3, GROUP 보류) + enforcement 없음(D-G4).
+- 🔑 **워크플로우 박제(이 세션 2건)**: ① [[rereview-converge-after-fix]] fix 후 0-수렴 재리뷰(CI-green만 머지 금지) ② [[per-round-live-qa]] **실 라이브 QA는 각 리뷰 라운드 QA agent가 수행→그 라운드 코멘트 인라인, PM 종합 아님**.
+- 🔑 **config 페이지 admin-게이트 QA 우회법(집PC 재사용)**: mock 모드 `?mockRole=MASTER&mockPerms=<base64([{pageCode,view,edit}])>` → canAccess grant. 생성 페이지 라이브 QA=`docs/qa/groupware-approval-line-config-s4{b,c}/`.
+
+### 🏠 집PC 다음 — 개발책임자 확정 스코프 = **그룹웨어(완료) + 입고전표** (회계전표 별도, 결재개념 신설 업무결정 필요)
+- **슬4d (입고전표 결재란 렌더)** — 개발책임자 "입고전표 포함" 확정. SLIP_INBOUND는 config 이미 존재(V63 시드·설정 메뉴 노출). InboundView 인쇄뷰 존재하나 **결재란 미렌더** → **슬3 DispatchDocument 패턴 직재사용**(config 기반 결재란 + INBOUND_RECEIVE/INSPECT signer 매핑). easy. spec=dynamic-approval-line §슬4 전표확대.
+- **슬5 (capstone) — 메뉴↔권한설정 정합 + 권한설정 메뉴 동작 검증**: 개발책임자 "기존 메뉴들과 권한설정 메뉴 목록이 서로 맞는지 + 권한설정 메뉴 제대로 동작하는지 확인". 좌측 메뉴 page-code ↔ 권한설정(role-form/account-form) 목록 대조 + 결재라인 설정 메뉴 등 신규 page-code 등재 확인 + 권한설정 CRUD 라이브 동작.
+- 착수: brainstorming(슬5는 검증 성격—정찰 먼저) → plan → Codex → 라운드별 듀얼리뷰(QA 각 라운드 인라인)+0-수렴 → 머지.
 
 > "결재라인 확장" = 개발책임자 클래리피케이션: **결재라인 동적 변경(단계 추가/삭제/이름 즉시적용) + 실시간 렌더링 + 전 전표 + 시드 삭제 경고 모달**. brainstorming(superpowers)로 재정의 → 에픽 spec 작성.
 
