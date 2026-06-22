@@ -80,7 +80,6 @@ import { LinkDispatchListPage } from './LinkDispatchListPage'
 // InvoiceView (P0-4 거래명세서 1차 mock) 은 SP-08-6-4 SalesInvoicePrintPage 로 대체됨.
 import { DispatchView } from '../print/DispatchView'
 // P0-4 인쇄 양식 5건 1차 mock — Designer 단계 신규 (출고/입고/견적/세금계산서)
-import { OutboundView } from '../print/OutboundView'
 import { InboundView } from '../print/InboundView'
 import { QuoteView } from '../print/QuoteView'
 import { TaxInvoiceView } from '../print/TaxInvoiceView'
@@ -528,8 +527,6 @@ const router = createHashRouter([
       // SP-08-6-4 — 세금계산서 (A4 portrait, 공급자/공급받는자 박스 포함). InvoiceView 대체.
       { path: '/sales/:id/print/invoice', element: <SalesInvoicePrintPage /> },
       { path: '/sales/:id/print/dispatch', element: <DispatchView /> },
-      // P0-4 신규 — 출고전표 (88mm/A4 분기). 세금계산서는 별도 accounting-service id 라우트로 이전.
-      { path: '/sales/:id/print/outbound', element: <OutboundView /> },
 
       // [2a 영업·구매 메뉴 통합] 구매관리 — 풍성한 컬럼 + 다중 선택 (PurchaseQueryPage).
       // 기존 SlipListPage 는 `/purchases/slips` 로 이전 — 2c 전표 작성 plumbing 시 활용.

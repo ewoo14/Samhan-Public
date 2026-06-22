@@ -198,7 +198,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const navigate = useNavigate()
   const isOutbound = mode === 'OUTBOUND'
   const listPath = isOutbound ? '/sales' : '/purchases'
-  const titleLabel = isOutbound ? '새 출고전표' : '새 입고전표'
+  const titleLabel = isOutbound ? '새 판매전표' : '새 입고전표'
 
   // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
   usePageTitle(titleLabel)

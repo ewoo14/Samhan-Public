@@ -599,7 +599,7 @@ export function SalesQueryPage() {
             onClick={() => navigate('/sales/new')}
             data-testid="sales-query-new-slip-btn"
           >
-            신규 출고전표
+            신규 판매전표
           </Button>
         ) : null}
 

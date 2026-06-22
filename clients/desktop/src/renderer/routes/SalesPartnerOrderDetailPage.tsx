@@ -214,8 +214,8 @@ export function SalesPartnerOrderDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ['partner-orders'] })
       await queryClient.invalidateQueries({ queryKey: ['partner-order', id] })
       const msg = result.fullyConverted
-        ? `출고전표 ${result.slipNo} 발행 — 전체 수량 전환 완료`
-        : `출고전표 ${result.slipNo} 발행 — 잔여 수량이 남아 있습니다`
+        ? `판매전표 ${result.slipNo} 발행 — 전체 수량 전환 완료`
+        : `판매전표 ${result.slipNo} 발행 — 잔여 수량이 남아 있습니다`
       setConvertSuccessMessage(msg)
       if (convertSuccessTimerRef.current) clearTimeout(convertSuccessTimerRef.current)
       convertSuccessTimerRef.current = setTimeout(() => {
@@ -269,7 +269,7 @@ export function SalesPartnerOrderDetailPage() {
           return
         }
         if (error.response?.status === 403) {
-          setConvertErrorMessage('출고전표 전환 권한이 없습니다. 관리자에게 문의해 주세요.')
+          setConvertErrorMessage('판매전표 전환 권한이 없습니다. 관리자에게 문의해 주세요.')
           return
         }
       }
@@ -568,7 +568,7 @@ export function SalesPartnerOrderDetailPage() {
                   setConvertOpen(true)
                 }}
               >
-                출고전표 전환
+                판매전표 전환
               </Button>
             ) : null}
             {query.data && canDelete ? (
@@ -1068,7 +1068,7 @@ export function SalesPartnerOrderDetailPage() {
             setConvertWarehouse(null)
           }
         }}
-        title="출고전표 전환"
+        title="판매전표 전환"
         size="lg"
         closeOnBackdropClick={!convertMutation.isPending}
         closeOnEsc={!convertMutation.isPending}
@@ -1114,7 +1114,7 @@ export function SalesPartnerOrderDetailPage() {
                 convertMutation.mutate({ items, warehouseCode: convertWarehouse.code })
               }}
             >
-              {convertMutation.isPending ? '전환 중…' : '출고전표로 전환'}
+              {convertMutation.isPending ? '전환 중…' : '판매전표로 전환'}
             </Button>
           </>
         )}
@@ -1132,7 +1132,7 @@ export function SalesPartnerOrderDetailPage() {
           ) : null}
           {/* 비가역 경고 — 출고전표 발행 후 취소 불가 */}
           <div className={styles['convertWarningBanner']} role="note">
-            <strong>주의:</strong> 전환 시 출고전표가 즉시 발행됩니다. 이 작업은 되돌릴 수 없습니다.
+            <strong>주의:</strong> 전환 시 판매전표가 즉시 발행됩니다. 이 작업은 되돌릴 수 없습니다.
             {(() => {
               const convertibleLines = (query.data?.lines ?? []).filter(
                 (l) => (l.quantity - (l.convertedQuantity ?? 0)) > 0,

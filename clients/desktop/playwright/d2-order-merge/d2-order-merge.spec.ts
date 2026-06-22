@@ -417,7 +417,7 @@ test.describe('Phase 2.6b D2 다중주문 병합 전환', () => {
     const convertBtn = page.getByTestId('partner-order-convert-open')
     await expect(convertBtn).toBeVisible({ timeout: 10_000 })
     await expect(convertBtn).toBeEnabled()
-    await expect(convertBtn).toContainText('출고전표 전환')
+    await expect(convertBtn).toContainText('판매전표 전환')
   })
 
   // ──────────────────────────────────────────────────────────

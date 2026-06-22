@@ -153,7 +153,7 @@ export function SalesPartnerOrderListPage() {
     setMergeDialogOpen(false)
     // FE P2: 토스트 카피 — N개 주문 병합 전환 + 4초 소멸 (가이드 §2.7)
     setConvertSuccessMessage(
-      `출고전표 ${slipNo} 발행 완료 — ${convertedOrderNos.length}개 주문 병합 전환`,
+      `판매전표 ${slipNo} 발행 완료 — ${convertedOrderNos.length}개 주문 병합 전환`,
     )
     setSelectedOrderNumbers(new Set())
     // 4초 후 토스트 자동 소멸
@@ -302,7 +302,7 @@ export function SalesPartnerOrderListPage() {
               }
               onClick={() => setMergeDialogOpen(true)}
             >
-              출고전표로 병합 전환
+              판매전표로 병합 전환
             </Button>
             <Button
               type="button"

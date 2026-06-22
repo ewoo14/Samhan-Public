@@ -109,7 +109,6 @@ const ROUTES: RouteCase[] = [
   { path: '/sales/slip-001' },
   { path: '/sales/slip-001/print/invoice' },
   { path: '/sales/slip-001/print/dispatch' },
-  { path: '/sales/slip-001/print/outbound' },
 
   // 구매관리 (입고전표)
   { path: '/purchases' },
