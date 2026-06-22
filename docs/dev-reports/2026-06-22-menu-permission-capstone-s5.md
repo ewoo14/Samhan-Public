@@ -15,10 +15,30 @@
 |---|---|---|
 | (A) 사이드바에 있는데 매트릭스/BE에 **없는** page-code | **0** | ✅ 가드 없는 노출 0 |
 | (B) 매트릭스에 있는데 사이드바 링크 **없는** page-code | 119 | ✅ **의도적** — API 액션 권한(slip.transfer.process·tax-invoice.emit-nts 등)·직접 URL 라우트(PermissionGuard)·이중가드. 메뉴 링크 없이 권한만 부여하는 정상 패턴 |
-| (C) 매트릭스 page-code 중 BE enum에 **없는** 것 | **1 적발 → fix → 0** | 🔧 **capstone 실 갭 적발+해소**: `sales.partner-order.convert`(A2-4 주문 출고전환)가 V41 Flyway 시드 + FE canAccess(convert CREATE 가드)·매트릭스 등재인데 **BE `PageCode.java` enum 만 누락** → 슬5 에서 `SALES_PARTNER_ORDER_CONVERT` enum 추가 → **C=0**. 런타임은 raw string @RequirePermission + V41 시드로 동작했으나 enum 카탈로그 불완전(정합 위반) 해소 |
+| (C) 매트릭스 page-code 중 BE enum에 **없는** 것 | **1 적발 → fix → 0** | 🔧 **카탈로그 정합 fix**: `sales.partner-order.convert`(A2-4 주문 출고전환)가 V41 Flyway 시드 + FE canAccess(convert CREATE 가드)·매트릭스 등재인데 **BE `PageCode.java` enum(정식 카탈로그)만 누락** → `SALES_PARTNER_ORDER_CONVERT` 추가 → **C=0**. 기능 심각도 낮음(아래 §1.1 정확한 영향) |
 | (D) BE enum 중 메인 매트릭스에 **없는** 것 | 6 (arologis Phase B) | ⚠️ **아로로지스-desktop 백오피스 소관**(별도 클라이언트 [[project_arologis_independent]]) — 메인 데스크톱 갭 아님. **Phase B 후속 플래그** |
 
 > 🔎 **메타 발견(capstone)**: 위 C=1 갭이 그동안 슬립한 원인 = **BE PageCode enum ↔ FE 매트릭스 PAGE_GROUPS ↔ Flyway seed 를 자동 대조하는 정합 테스트 부재**(`PageCodeTest` 는 부분 seed-sync만). → **후속 권장**: 세 소스 page-code 집합 자동 대조 가드 테스트 추가(드리프트 재발 방지). 본 슬5 범위 외(별도 슬라이스).
+
+### 1.1 카탈로그 드리프트 — 시드 page-code가 BE enum에 누락 (정확한 영향: 낮음, 접근 차단 아님)
+
+**`GET /auth/admin/permissions/my` 실제 로직**(`PermissionAdminController.getMyPermissions` + `allPageActions`):
+- **MASTER**(X-Is-System-Master): `allPageActions()` = `PageCode.values()` 순회 = **enum 카탈로그 전체**. (단 FE 에서 MASTER 는 canAccess 바이패스.)
+- **비-MASTER**: `accountPermissionService.bulkLoad(accountId)` = **materialized DB 권한(enum 무관)**.
+
+→ enum 에 `sales.partner-order.convert` 가 없어도 **비-MASTER 접근은 안 막힌다**(bulkLoad 는 enum 무관). MASTER 는 바이패스. **따라서 접근 차단(RBAC) 버그는 아니다.** 영향 = MASTER `/my`(allPageActions) 카탈로그 목록에서 누락 + 카탈로그 불일치 = **기능 심각도 낮음**.
+
+**카탈로그 드리프트 family**(전수 sweep: auth Flyway 시드 page-code ⊄ enum) — 시드됐으나 enum 누락 4종:
+| page-code | 시드 | enum | 매트릭스 | 조치 |
+|---|---|---|---|---|
+| `sales.partner-order.convert` | V41 | ❌→✅추가 | ✅ | 슬5 fix(C=0, 실사용·매트릭스 등재 코드) |
+| `ecount.mig14.cash-list` | V25/V31/V32 | ❌ | ❌ | legacy ecount-mig — **후속**(무분별 부활 X, 의미 판단 필요) |
+| `ecount.mig14.aging-snapshot` | V25/V31/V32 | ❌ | ❌ | 동상 — 후속 |
+| `sales.partner-order.revisions` | 시드 | ❌ | ❌ | 후속(매트릭스 미등재) |
+
+> 🔎 **메타 발견 정정**: 본 드리프트가 슬립한 근본 원인 = **enum ↔ Flyway seed ↔ FE 매트릭스 3원 자동 대조 가드 테스트 부재**. → **후속 권장**: 세 소스 page-code 집합 자동 대조 + drift 시 CI fail 가드(`PageCodeTest` 확장). 본 슬5 는 매트릭스↔enum(C) 의 active 코드 1건만 정합, 나머지 legacy 3건은 후속 슬라이스(부활/폐기 판단 동반).
+
+> ⚠️ **워크플로우 정직 기록**: 본 절은 최초 "enum 변화 없음" 합리화(라이브 QA 생략) → 라이브 재검증에서 "RBAC 버그" 과장 → `getMyPermissions` 코드 확인 후 "카탈로그 정합(저심각도)" 으로 **2회 정정**됨. 교훈: 라이브 QA 필수 + **라이브 결과 해석도 코드로 검증**([[per-round-live-qa]]).
 
 ### admin.approval-line-config (신규 결재라인 설정 메뉴) — 4중 정합 ✅
 | 체크포인트 | 상태 |
