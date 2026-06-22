@@ -55,11 +55,13 @@ test.describe('SP-08-3-2 아로로지스 배차 저장내역', () => {
   test('backend 저장내역 DB/API 계약을 고정한다', () => {
     const service = read('services/arologis-service/src/main/java/com/samhanair/logis/arologis/service/DispatchSaveHistoryService.java')
     const controller = read('services/arologis-service/src/main/java/com/samhanair/logis/arologis/web/DispatchSaveHistoryController.java')
+    const pageCodes = read('services/arologis-service/src/main/java/com/samhanair/logis/arologis/security/ArologisPageCodes.java')
     const repository = read('services/arologis-service/src/main/java/com/samhanair/logis/arologis/repository/DispatchSaveHistoryRepository.java')
     const migration = read('services/arologis-service/src/main/resources/db/migration/V12__add_dispatch_save_history.sql')
 
     expect(controller).toContain('@RequestMapping("/admin/arologis/dispatches/history")')
-    expect(controller).toContain('@RequirePermission(page = "arologis.dispatch.ops"')
+    expect(controller).toContain('@RequirePermission(page = ArologisPageCodes.DISPATCH_OPS')
+    expect(pageCodes).toContain('DISPATCH_OPS = "arologis.dispatch.ops"')
     expect(controller).toContain('@Operation(summary = "아로로지스 배차 저장내역 저장"')
     expect(controller).toContain('@GetMapping("/latest")')
     expect(repository).toContain('findByIdAndCreatedBy(UUID id, String createdBy)')
