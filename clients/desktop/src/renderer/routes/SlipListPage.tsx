@@ -118,8 +118,8 @@ export function SlipListPage({ mode }: SlipListPageProps) {
   const { canAccess } = usePermissions()
   const isOutbound = mode === 'OUTBOUND'
   const basePath = isOutbound ? '/sales' : '/purchases'
-  const titleLabel = isOutbound ? '출고전표 목록 (legacy)' : '입고전표 목록 (legacy)'
-  const newButtonLabel = isOutbound ? '새 출고전표' : '새 입고전표'
+  const titleLabel = isOutbound ? '판매전표 목록 (legacy)' : '입고전표 목록 (legacy)'
+  const newButtonLabel = isOutbound ? '새 판매전표' : '새 입고전표'
   const canExport = canAccess('slip.print.export', 'download')
   // [C5-2b] canCreateSlip(role) → canAccess('sales.slip.create', 'create')
   const canCreate = canAccess('sales.slip.create', 'create')
@@ -134,7 +134,7 @@ export function SlipListPage({ mode }: SlipListPageProps) {
   const { downloading, download } = useExcelDownload()
 
   // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
-  usePageTitle(isOutbound ? '출고전표 목록' : '입고전표 목록')
+  usePageTitle(isOutbound ? '판매전표 목록' : '입고전표 목록')
 
   const query = useQuery({
     queryKey: ['slips', 'list', mode, deliveryTagFilter],
@@ -258,7 +258,7 @@ export function SlipListPage({ mode }: SlipListPageProps) {
                       from: `${yyyy}-${mm}-01`,
                       to: `${yyyy}-${mm}-${String(new Date(yyyy, now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`,
                     }),
-                  makeExportFilename(isOutbound ? '출고전표목록' : '입고전표목록'),
+                  makeExportFilename(isOutbound ? '판매전표목록' : '입고전표목록'),
                 )
               }}
               data-testid="slip-list-excel-export"

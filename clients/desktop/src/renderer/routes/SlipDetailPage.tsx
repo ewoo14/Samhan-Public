@@ -1074,7 +1074,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                 size="sm"
                 onClick={() => navigate(`/sales/${id}/print/dispatch`)}
               >
-                판매전표
+                판매전표 출력
               </Button>
             </>
           ) : (
