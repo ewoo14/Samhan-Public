@@ -12,10 +12,10 @@
 - dev-report `docs/dev-reports/2026-06-22-menu-permission-capstone-s5.md`. duo리뷰(Claude QA 갭적발+Codex 확인) 수렴, CI 25 pass·GitGuardian skipping.
 
 ### ⏭️ 후속 (에픽 외, 문서화됨 — 개발책임자 지정 대기)
-- **카탈로그 드리프트 family**: legacy 시드 page-code 3종(`ecount.mig14.cash-list`·`ecount.mig14.aging-snapshot`·`sales.partner-order.revisions`)이 BE enum 누락(저심각도, MASTER /my 목록만 영향). **부활/폐기 판단 동반** 별도 슬라이스.
-- **enum↔Flyway seed↔FE 매트릭스 3원 자동 대조 가드 테스트**(drift CI fail) — 근본원인 해소 권장.
-- **arologis Phase B 6 page-code**(arologis.hr.*·accounting.*) — arologis-desktop 백오피스 소관(별도 클라이언트).
-- **슬4d 후속**: structure 엔드포인트 게이트웨이 403(slice-3 재사용, fresh 스택 재확인 권장).
+- ✅ **후속1 머지(PR #568, main `42b850719`)** — 카탈로그 드리프트 해소 + 시드↔enum 자동 가드: `sales.partner-order.revisions`(활성 RESTORE) enum 편입 + `PageCodeSeedConsistencyIT`(실 DB 5테이블 page_code↔enum∪legacy, drift CI fail). legacy 2종(cash-list/aging-snapshot)=의도적 폐기 allowlist. 드리프트 적발 실증(false-green 아님).
+- ✅ **후속2 해소(코드변경 0)** — 슬4d structure 403 = **stale 게이트웨이 이미지 artifact**(QA 스택 게이트웨이가 #562 머지 전 06-21 이미지). 현재 코드 정확(application.yml:186 라우트 존재) → 게이트웨이 재빌드 후 structure **200**(3역할) 확인. fresh 스택/프로덕션 정상. 교훈: QA 스택은 변경 무관 서비스도 최신 머지 반영 위해 재빌드 필요([[local-stack-qa-gotchas]]).
+- ⏭️ **후속3 (다음, 대형)**: arologis Phase B 6 page-code(arologis.hr.*·accounting.*) — arologis-desktop 백오피스 매트릭스/메뉴/시드 동기화(부활/폐기 판단 동반). 별도 클라이언트.
+- 잔여 권장: enum↔**FE 매트릭스** 크로스언어 가드(현 후속1 가드는 시드↔enum 축; convert/revisions 는 시드에도 있어 커버됨).
 
 ### 🔑 이 세션 워크플로우 교훈 (메모리 박제)
 - **[[per-round-live-qa]] 강화**: 라이브 QA를 "변화 없으니 스킵" 합리화 금지 → 리뷰 R1 전 스택 먼저 기동 + 캡처 없는 라운드=미완. **추가**: 라이브 결과 해석도 **코드로 검증**(슬5에서 "RBAC 버그" 과장 → getMyPermissions 코드 확인 후 "저심각도 카탈로그 정합" 2회 정정).
@@ -27,8 +27,6 @@
 ---
 
 ## 🟢 핸드오프 (2026-06-22 집PC — **슬4d 입고전표 결재란 머지 완료 PR #566. 다음=슬5(capstone)로 에픽 종료**)
-
-### ✅ 슬4d 머지 완료 (PR #566, main `b60acebc3`)
 
 ### ✅ 슬4d 머지 완료 (PR #566, main `b60acebc3`)
 - **입고전표(매입전표) 설정기반 결재란 + 결재 서명자 이름 자동채움**. 정식 입고 인쇄=`PurchaseSlipPrintPage`(`/purchases/:id/print/purchase`). 고아 `InboundView`(`/print/inbound`) 폐기(슬1 OutboundView 선례).
