@@ -47,8 +47,10 @@ public class FundsStatusService {
     private static final String UNRESOLVED_PARTNER_NAME = "(미조회)";
     private static final String UNKNOWN_ACCOUNT_NAME = "미정의 계정";
 
+    static final List<String> CASH_EQUIVALENT_ACCOUNT_CODES = List.of("101", "102", "103", "104");
+
     private static final List<FundAccountGroup> FUND_GROUPS = List.of(
-            new FundAccountGroup("CASH_EQUIVALENT", "현금성", List.of("101", "102", "103", "104")),
+            new FundAccountGroup("CASH_EQUIVALENT", "현금성", CASH_EQUIVALENT_ACCOUNT_CODES),
             new FundAccountGroup("LOAN_RECEIVABLE", "대여금", List.of("114")),
             new FundAccountGroup("BORROWING", "차입금", List.of("230", "260"))
     );

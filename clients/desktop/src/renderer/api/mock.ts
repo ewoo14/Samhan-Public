@@ -4499,6 +4499,62 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // P0-1 Slice C: 분석 보고서 mock endpoint
   // ==========================================================================
 
+  // GET /accounting/reports/funds-flow-comparison?from=&to= — 자금 입출금내역 2기간 비교
+  if (method === 'GET' && url.includes('/accounting/reports/funds-flow-comparison')) {
+    const from = (config.params?.['from'] ?? '2026-06-01') as string
+    const to = (config.params?.['to'] ?? '2026-06-30') as string
+    const fromDate = new Date(`${from}T00:00:00`)
+    const toDate = new Date(`${to}T00:00:00`)
+    const periodMs = toDate.getTime() - fromDate.getTime()
+    const priorToDate = new Date(fromDate)
+    priorToDate.setDate(priorToDate.getDate() - 1)
+    const priorFromDate = new Date(priorToDate)
+    priorFromDate.setTime(priorToDate.getTime() - periodMs)
+    const isoDate = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return envelope({
+      current: {
+        fromDate: from,
+        toDate: to,
+        openingBalance: '12500000',
+        increases: [
+          { counterAccountCode: '110', counterAccountName: '외상매출금', amount: '4200000' },
+          { counterAccountCode: '120', counterAccountName: '미수금', amount: '800000' },
+          { counterAccountCode: '901', counterAccountName: '이자수익', amount: '120000' },
+        ],
+        increaseSubtotal: '5120000',
+        decreases: [
+          { counterAccountCode: '201', counterAccountName: '외상매입금', amount: '2100000' },
+          { counterAccountCode: '210', counterAccountName: '미지급금', amount: '950000' },
+          { counterAccountCode: '801', counterAccountName: '직원급여(판)', amount: '1800000' },
+          { counterAccountCode: '835', counterAccountName: '지급수수료(판)', amount: '310000' },
+        ],
+        decreaseSubtotal: '5160000',
+        closingBalance: '12460000',
+        reconciled: true,
+      },
+      prior: {
+        fromDate: isoDate(priorFromDate),
+        toDate: isoDate(priorToDate),
+        openingBalance: '9800000',
+        increases: [
+          { counterAccountCode: '110', counterAccountName: '외상매출금', amount: '3100000' },
+          { counterAccountCode: '120', counterAccountName: '미수금', amount: '600000' },
+        ],
+        increaseSubtotal: '3700000',
+        decreases: [
+          { counterAccountCode: '201', counterAccountName: '외상매입금', amount: '1500000' },
+          { counterAccountCode: '801', counterAccountName: '직원급여(판)', amount: '1200000' },
+          { counterAccountCode: '835', counterAccountName: '지급수수료(판)', amount: '250000' },
+        ],
+        decreaseSubtotal: '2950000',
+        closingBalance: '10550000',
+        reconciled: true,
+      },
+      generatedAt: '2026-06-23T09:00:00.000Z',
+    })
+  }
+
   // GET /accounting/reports/cash-flow?period=YYYYMM — 현금흐름표
   // B-4 fix (PR #137): CashFlowLine spec — accountCode/accountName/activityType/amount/flowDirection
   // W-3 fix (PR #137): generatedAt 고정 ISO string (캡처 재현성)

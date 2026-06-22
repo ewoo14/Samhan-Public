@@ -1319,3 +1319,56 @@ export async function getFundsIncreaseDetail(
   )
   return res.data.data
 }
+
+// --------------------------------------------------------------------------
+// 자금 입출금내역 2기간 비교 API — 회계 보고 스위트 통일안 B
+// --------------------------------------------------------------------------
+
+/**
+ * 자금 입출금내역 상대계정별 라인.
+ */
+export interface FundsFlowCounterAccountLine {
+  counterAccountCode: string
+  counterAccountName: string
+  amount: string
+}
+
+/**
+ * 자금 입출금내역 단일 기간.
+ */
+export interface FundsFlowPeriod {
+  fromDate: string
+  toDate: string
+  openingBalance: string
+  increases: FundsFlowCounterAccountLine[]
+  increaseSubtotal: string
+  decreases: FundsFlowCounterAccountLine[]
+  decreaseSubtotal: string
+  closingBalance: string
+  reconciled: boolean
+}
+
+/**
+ * 자금 입출금내역 2기간 비교 응답.
+ */
+export interface FundsFlowComparisonResponse {
+  current: FundsFlowPeriod
+  prior: FundsFlowPeriod
+  generatedAt: string
+}
+
+/**
+ * 자금 입출금내역 2기간 비교 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/funds-flow-comparison?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+ */
+export async function getFundsFlowComparison(
+  from: string,
+  to: string,
+): Promise<FundsFlowComparisonResponse> {
+  const res = await apiClient.get<ApiEnvelope<FundsFlowComparisonResponse>>(
+    '/accounting/reports/funds-flow-comparison',
+    { params: { from, to } },
+  )
+  return res.data.data
+}

@@ -750,6 +750,7 @@ export function AppLayout() {
               '/accounting/tax-invoices/inbound',
               '/accounting/balances',
               '/accounting/reports',
+              '/accounting/reports/funds-flow-comparison',
               '/accounting/funds/status',
               '/sales/closing',
               '/accounting/period-close',
@@ -919,6 +920,14 @@ export function AppLayout() {
                     style={{ paddingLeft: 20, fontSize: 13 }}
                   >
                     자금현황
+                  </NavLink>
+                  <NavLink
+                    to="/accounting/reports/funds-flow-comparison"
+                    end
+                    data-testid="sidebar-accounting-funds-flow-comparison"
+                    style={{ paddingLeft: 20, fontSize: 13 }}
+                  >
+                    자금 입출금내역
                   </NavLink>
                 </>
               ) : null}
