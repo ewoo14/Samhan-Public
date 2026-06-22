@@ -241,6 +241,31 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, UUID> 
                                            @Param("to") LocalDate to);
 
     /**
+     * 자금 입출금내역 보고서용 현금성 계정 라인 조회.
+     *
+     * <p>기간 내 POSTED 분개 중 현금성 계정(현금/보통예금 등)에 닿은 라인을 조회하고,
+     * 같은 전표의 상대 라인까지 fetch join 하여 service 레이어에서 상대계정별 증가/감소를 분해한다.
+     *
+     * @param accountCodes 현금성 계정코드 목록
+     * @param from 조회 시작일
+     * @param to 조회 종료일
+     * @return 기간 내 POSTED 현금성 계정 라인
+     */
+    @Query("""
+            SELECT DISTINCT l FROM JournalLine l
+            JOIN FETCH l.journal j
+            LEFT JOIN FETCH j.lines jl
+            WHERE l.accountCode IN :accountCodes
+              AND j.journalDate >= :from
+              AND j.journalDate <= :to
+              AND j.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            ORDER BY j.journalDate ASC, j.journalNo ASC, l.lineNo ASC
+            """)
+    List<JournalLine> findPostedCashEquivalentLines(@Param("accountCodes") List<String> accountCodes,
+                                                    @Param("from") LocalDate from,
+                                                    @Param("to") LocalDate to);
+
+    /**
      * 거래처별 최초 미결 분개 일자 조회 — asOfDate 이전 POSTED 분개 라인 중 가장 이른 날짜.
      *
      * <p>잔액이 양수인 거래처의 oldestUnpaidDate 산출에 사용.

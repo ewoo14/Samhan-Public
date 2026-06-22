@@ -252,6 +252,13 @@ export function ReportListPage() {
           description="자금일보와 자금현황표를 기간 조회로 통합하고 증가 상세를 확인합니다."
           path="/accounting/funds/status"
         />
+        <ReportCard
+          icon="↔️"
+          title="자금 입출금내역"
+          badge="2기간"
+          description="현금성 계정의 입금과 출금을 상대계정별로 분해해 당기와 직전기간을 비교합니다."
+          path="/accounting/reports/funds-flow-comparison"
+        />
       </div>
     </>
   )

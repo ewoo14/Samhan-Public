@@ -246,6 +246,7 @@ import { DriverAssignmentPage } from './DriverAssignmentPage'
 import { DailyClosingPage } from './DailyClosingPage'
 import { GeneralLedgerPage } from './GeneralLedgerPage'
 import { FundsStatusPage } from './FundsStatusPage'
+import { FundsFlowComparisonPage } from './FundsFlowComparisonPage'
 import { SalesAccountingSlipPage } from './accounting/SalesAccountingSlipPage'
 import { SalesAccountingSlipFormPage } from './accounting/SalesAccountingSlipFormPage'
 import { PurchaseAccountingSlipPage } from './accounting/PurchaseAccountingSlipPage'
@@ -822,6 +823,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.reports" action="view">
             <FundsStatusPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/funds-flow-comparison',
+        element: (
+          <PermissionGuard pageCode="accounting.reports" action="view">
+            <FundsFlowComparisonPage />
           </PermissionGuard>
         ),
       },
