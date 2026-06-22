@@ -409,7 +409,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   // Slice A: AppHeader 동적 화면명 — slipNo bracket meta (Designer wireframes.md § 1.3)
   usePageTitle(
-    isOutbound ? '출고전표 상세' : '입고전표 상세',
+    isOutbound ? '판매전표 상세' : '입고전표 상세',
     detailQuery.data?.slipNo,
   )
 
@@ -1074,7 +1074,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                 size="sm"
                 onClick={() => navigate(`/sales/${id}/print/dispatch`)}
               >
-                작업지시서
+                판매전표
               </Button>
             </>
           ) : (

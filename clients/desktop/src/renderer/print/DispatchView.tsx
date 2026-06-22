@@ -102,7 +102,7 @@ export function DispatchView() {
   ])
 
   const displaySlipNo = stripSlipNoZeros(detailQuery.data?.slipNo)
-  usePageTitle('출고전표 작업지시서', displaySlipNo)
+  usePageTitle('판매전표', displaySlipNo)
 
   if (!id) return null
   if (detailQuery.isLoading) return <p>불러오는 중...</p>
