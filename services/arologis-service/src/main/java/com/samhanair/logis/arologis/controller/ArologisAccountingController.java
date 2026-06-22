@@ -1,6 +1,7 @@
 package com.samhanair.logis.arologis.controller;
 
 import com.samhanair.logis.arologis.domain.CashTxnType;
+import com.samhanair.logis.arologis.security.ArologisPageCodes;
 import com.samhanair.logis.arologis.service.ArologisAccountingService;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.security.permission.PermissionAction;
@@ -51,7 +52,7 @@ public class ArologisAccountingController {
     /** 계정과목 목록 조회(활성) — 현금출납장 거래 등록 드롭다운용. */
     @Operation(summary = "아로로지스 간이 계정과목 목록 조회")
     @GetMapping("/accounts")
-    @RequirePermission(page = "arologis.accounting.cashbook", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_CASHBOOK, action = PermissionAction.VIEW)
     public ApiResponse<List<ArologisAccountingService.SimpleAccountView>> listAccounts() {
         return ApiResponse.ok(accountingService.listAccounts());
     }
@@ -64,7 +65,7 @@ public class ArologisAccountingController {
      */
     @Operation(summary = "아로로지스 계정과목 전체 목록 조회(관리)")
     @GetMapping("/accounts/all")
-    @RequirePermission(page = "arologis.accounting.accounts", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_ACCOUNTS, action = PermissionAction.VIEW)
     public ApiResponse<List<ArologisAccountingService.SimpleAccountView>> listAllAccounts() {
         return ApiResponse.ok(accountingService.listAllAccounts());
     }
@@ -74,7 +75,7 @@ public class ArologisAccountingController {
      */
     @Operation(summary = "아로로지스 계정과목 활성상태 변경")
     @PutMapping("/accounts/{code}/active")
-    @RequirePermission(page = "arologis.accounting.accounts", action = PermissionAction.UPDATE)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_ACCOUNTS, action = PermissionAction.UPDATE)
     public ApiResponse<ArologisAccountingService.SimpleAccountView> setAccountActive(
             @PathVariable String code,
             @Valid @RequestBody AccountActiveRequest request,
@@ -85,7 +86,7 @@ public class ArologisAccountingController {
     /** 현금 거래 목록 조회(기간 + 선택적 유형 필터). */
     @Operation(summary = "아로로지스 현금 거래 목록 조회")
     @GetMapping("/cash-txns")
-    @RequirePermission(page = "arologis.accounting.cashbook", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_CASHBOOK, action = PermissionAction.VIEW)
     public ApiResponse<List<ArologisAccountingService.CashTxnView>> listCashTxns(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -96,7 +97,7 @@ public class ArologisAccountingController {
     /** 현금 거래 단건 조회. */
     @Operation(summary = "아로로지스 현금 거래 단건 조회")
     @GetMapping("/cash-txns/{id}")
-    @RequirePermission(page = "arologis.accounting.cashbook", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_CASHBOOK, action = PermissionAction.VIEW)
     public ApiResponse<ArologisAccountingService.CashTxnView> getCashTxn(@PathVariable UUID id) {
         return ApiResponse.ok(accountingService.get(id));
     }
@@ -104,7 +105,7 @@ public class ArologisAccountingController {
     /** 현금 거래 등록. */
     @Operation(summary = "아로로지스 현금 거래 등록")
     @PostMapping("/cash-txns")
-    @RequirePermission(page = "arologis.accounting.cashbook", action = PermissionAction.CREATE)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_CASHBOOK, action = PermissionAction.CREATE)
     public ApiResponse<ArologisAccountingService.CashTxnView> createCashTxn(
             @Valid @RequestBody CashTxnRequest request,
             @RequestHeader(value = USER_ID_HEADER, required = false) String actor) {
@@ -114,7 +115,7 @@ public class ArologisAccountingController {
     /** 현금 거래 수정. */
     @Operation(summary = "아로로지스 현금 거래 수정")
     @PutMapping("/cash-txns/{id}")
-    @RequirePermission(page = "arologis.accounting.cashbook", action = PermissionAction.UPDATE)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_CASHBOOK, action = PermissionAction.UPDATE)
     public ApiResponse<ArologisAccountingService.CashTxnView> updateCashTxn(
             @PathVariable UUID id,
             @Valid @RequestBody CashTxnRequest request,
@@ -125,7 +126,7 @@ public class ArologisAccountingController {
     /** 현금 거래 삭제(soft-delete). */
     @Operation(summary = "아로로지스 현금 거래 삭제")
     @DeleteMapping("/cash-txns/{id}")
-    @RequirePermission(page = "arologis.accounting.cashbook", action = PermissionAction.DELETE)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_CASHBOOK, action = PermissionAction.DELETE)
     public ApiResponse<Void> deleteCashTxn(
             @PathVariable UUID id,
             @RequestHeader(value = USER_ID_HEADER, required = false) String actor) {
@@ -136,7 +137,7 @@ public class ArologisAccountingController {
     /** 월별 집계 조회(연-월 또는 from~to). */
     @Operation(summary = "아로로지스 회계 월별 집계 조회")
     @GetMapping("/summary")
-    @RequirePermission(page = "arologis.accounting.summary", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.ACCOUNTING_SUMMARY, action = PermissionAction.VIEW)
     public ApiResponse<ArologisAccountingService.CashSummaryView> summary(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,

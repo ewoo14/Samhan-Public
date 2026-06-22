@@ -2,6 +2,7 @@ package com.samhanair.logis.arologis.controller;
 
 import com.samhanair.logis.arologis.client.AuthPermissionAdminClient;
 import com.samhanair.logis.arologis.client.AuthPermissionAdminClient.RolePagePermissionView;
+import com.samhanair.logis.arologis.security.ArologisPageCodes;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
@@ -73,7 +74,7 @@ public class ArologisPermissionAdminController {
      */
     @Operation(summary = "아로로지스 권한 매트릭스 조회")
     @GetMapping
-    @RequirePermission(page = "arologis.admin.permissions", action = PermissionAction.VIEW)
+    @RequirePermission(page = ArologisPageCodes.ADMIN_PERMISSIONS, action = PermissionAction.VIEW)
     public ApiResponse<Map<String, Map<String, RolePagePermissionView>>> getMatrix() {
         return ApiResponse.ok(authPermissionAdminClient.getRoleMatrix(AROLOGIS_PAGE_PREFIX));
     }
@@ -100,7 +101,7 @@ public class ArologisPermissionAdminController {
      */
     @Operation(summary = "아로로지스 권한 할당(upsert)")
     @PutMapping
-    @RequirePermission(page = "arologis.admin.permissions", action = PermissionAction.UPDATE)
+    @RequirePermission(page = ArologisPageCodes.ADMIN_PERMISSIONS, action = PermissionAction.UPDATE)
     public ApiResponse<RolePagePermissionView> updateGrant(
             @Valid @RequestBody RoleGrantRequest request,
             @RequestHeader(value = USER_ID_HEADER, required = false) String actorUserId) {

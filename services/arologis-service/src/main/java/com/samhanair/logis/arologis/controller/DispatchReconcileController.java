@@ -1,6 +1,7 @@
 package com.samhanair.logis.arologis.controller;
 
 import com.samhanair.logis.arologis.dto.DispatchReconcileResponse;
+import com.samhanair.logis.arologis.security.ArologisPageCodes;
 import com.samhanair.logis.arologis.service.DispatchReconcileService;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.security.permission.RequirePermission;
@@ -64,7 +65,7 @@ public class DispatchReconcileController {
                     responseCode = "403", description = "권한 부족 (MASTER/MANAGER/DISPATCH 외)")
     })
     @PostMapping(value = "/reconcile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @RequirePermission(page = "arologis.dispatch.ops", action = com.samhanair.logis.security.permission.PermissionAction.CREATE)
+    @RequirePermission(page = ArologisPageCodes.DISPATCH_OPS, action = com.samhanair.logis.security.permission.PermissionAction.CREATE)
     public ApiResponse<DispatchReconcileResponse> reconcile(
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
