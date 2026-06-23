@@ -101,6 +101,40 @@ public interface JournalRepository extends JpaRepository<Journal, UUID> {
             @Param("partnerId") UUID partnerId);
 
     /**
+     * 전표현황 거래처 grouping 전용 라인 거래처별 fan-out 조회.
+     *
+     * <p>전표 전체 합계를 대표 거래처로 몰지 않고 {@code journal_lines.partner_id} 별 차/대
+     * 부분합을 반환한다. 거래처 필터는 UUID 해석 이후 내부 조건으로만 적용한다.
+     */
+    @Query("""
+            SELECT j.id AS journalId,
+                   j.journalNo AS journalNo,
+                   j.journalDate AS journalDate,
+                   j.sourceType AS sourceType,
+                   j.status AS status,
+                   j.description AS description,
+                   l.partnerId AS partnerId,
+                   COALESCE(SUM(l.debitAmount), 0) AS totalDebit,
+                   COALESCE(SUM(l.creditAmount), 0) AS totalCredit
+            FROM Journal j
+            LEFT JOIN j.lines l
+            WHERE j.journalDate >= :from
+              AND j.journalDate <= :to
+              AND j.status = :status
+              AND (:allSourceTypes = true OR j.sourceType IN :sourceTypes)
+              AND (:partnerId IS NULL OR l.partnerId = :partnerId)
+            GROUP BY j.id, j.journalNo, j.journalDate, j.sourceType, j.status, j.description, l.partnerId
+            ORDER BY j.journalDate ASC, j.journalNo ASC
+            """)
+    List<JournalStatusPartnerReportRow> findJournalStatusPartnerReportRows(
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("status") JournalStatus status,
+            @Param("sourceTypes") Collection<JournalSourceType> sourceTypes,
+            @Param("allSourceTypes") boolean allSourceTypes,
+            @Param("partnerId") UUID partnerId);
+
+    /**
      * 전표현황 보고서용 전표별 거래처 ID 목록 조회.
      *
      * <p>응답에는 UUID 를 포함하지 않고 service 에서 거래처명으로 변환한다.
@@ -131,5 +165,18 @@ public interface JournalRepository extends JpaRepository<Journal, UUID> {
     interface JournalPartnerRow {
         UUID getJournalId();
         UUID getPartnerId();
+    }
+
+    /** 전표현황 거래처 grouping fan-out projection. */
+    interface JournalStatusPartnerReportRow {
+        UUID getJournalId();
+        String getJournalNo();
+        LocalDate getJournalDate();
+        JournalSourceType getSourceType();
+        JournalStatus getStatus();
+        String getDescription();
+        UUID getPartnerId();
+        BigDecimal getTotalDebit();
+        BigDecimal getTotalCredit();
     }
 }

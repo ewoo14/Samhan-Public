@@ -103,7 +103,7 @@ export function JournalStatusReportPage() {
     from: isoMonthStart(),
     to: isoToday(),
     sourceTypes: [] as JournalStatusSourceType[],
-    partnerId: undefined as string | undefined,
+    partnerCode: undefined as string | undefined,
     groupBy: 'DATE' as JournalStatusGroupBy,
   }))
 
@@ -117,7 +117,7 @@ export function JournalStatusReportPage() {
       queryFilters.from,
       queryFilters.to,
       queryFilters.sourceTypes.join(','),
-      queryFilters.partnerId ?? '',
+      queryFilters.partnerCode ?? '',
       queryFilters.groupBy,
     ],
     queryFn: () => getJournalStatusReport(queryFilters),
@@ -133,12 +133,6 @@ export function JournalStatusReportPage() {
           {row.journalNo}
         </span>
       ),
-    },
-    {
-      key: 'journalDate',
-      header: '일자',
-      width: '112px',
-      render: (row) => row.rowKind === 'subtotal' ? '—' : row.journalDate,
     },
     {
       key: 'sourceTypeDisplayName',
@@ -186,7 +180,7 @@ export function JournalStatusReportPage() {
       from,
       to,
       sourceTypes,
-      partnerId: selectedPartner?.id || undefined,
+      partnerCode: selectedPartner?.partnerCode || undefined,
       groupBy,
     })
   }
@@ -262,7 +256,7 @@ export function JournalStatusReportPage() {
               value={selectedPartner}
               onChange={setSelectedPartner}
               search={searchJournalStatusPartners}
-              getKey={(partner) => partner.id}
+              getKey={(partner) => partner.partnerCode}
               getInputLabel={(partner) => partner.name}
               listboxLabel="거래처 목록"
               renderOption={(partner) => (

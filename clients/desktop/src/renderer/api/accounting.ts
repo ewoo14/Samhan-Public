@@ -1489,14 +1489,13 @@ export interface GetJournalStatusReportOptions {
   from: string
   to: string
   sourceTypes?: JournalStatusSourceType[]
-  partnerId?: string
+  partnerCode?: string
   groupBy?: JournalStatusGroupBy
   status?: JournalStatus
 }
 
-/** 전표현황 거래처 필터 옵션. id 는 요청 필터 전용이며 화면에는 표시하지 않는다. */
+/** 전표현황 거래처 필터 옵션. UUID 없이 partnerCode 만 요청 필터로 사용한다. */
 export interface JournalStatusPartnerOption {
-  id: string
   partnerCode: string
   name: string
   bizNo?: string | null
@@ -1504,8 +1503,6 @@ export interface JournalStatusPartnerOption {
 }
 
 interface AdminPartnerSearchRow {
-  id?: string | null
-  partnerId?: string | null
   partnerCode: string
   name: string
   bizNo?: string | null
@@ -1533,7 +1530,7 @@ export async function getJournalStatusReport(
   if (options.sourceTypes && options.sourceTypes.length > 0) {
     params['sourceTypes'] = options.sourceTypes.join(',')
   }
-  if (options.partnerId) params['partnerId'] = options.partnerId
+  if (options.partnerCode) params['partnerCode'] = options.partnerCode
 
   const res = await apiClient.get<ApiEnvelope<JournalStatusReportResponse>>(
     '/accounting/reports/journal-status',
@@ -1545,7 +1542,7 @@ export async function getJournalStatusReport(
 /**
  * 전표현황 거래처 필터 자동완성.
  *
- * 화면 표시는 거래처명/코드만 사용하고, id 는 backend partnerId 필터 전송용으로만 보관한다.
+ * BE `PartnerSummaryResponse` 는 UUID 비공개 계약이므로 partnerCode/name 만 보관한다.
  */
 export async function searchJournalStatusPartners(
   keyword: string,
@@ -1558,13 +1555,13 @@ export async function searchJournalStatusPartners(
   const items = Array.isArray(res.data.data?.items) ? res.data.data.items : []
   return items
     .map((row) => ({
-      id: String(row.id ?? row.partnerId ?? ''),
       partnerCode: String(row.partnerCode ?? ''),
       name: String(row.name ?? ''),
       bizNo: row.bizNo ?? null,
       phone: row.phone ?? null,
     }))
-    .filter((row) => row.id && row.name)
+    .filter((row) => row.partnerCode && row.name)
+    .sort((a, b) => a.partnerCode.localeCompare(b.partnerCode, 'ko-KR'))
 }
 
 // --------------------------------------------------------------------------

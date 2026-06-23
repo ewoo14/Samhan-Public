@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.it;
 
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,17 +12,21 @@ import com.samhanair.logis.accounting.AccountingServiceApplication;
 import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
+import com.samhanair.logis.accounting.report.ReportPermissionGuard;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
+import com.samhanair.logis.security.permission.PermissionAction;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +67,17 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
 
     @BeforeEach
     void setUpPartnerLookup() {
+        lenient().when(partnerLookupClient.findByPartnerCode(anyString()))
+                .thenReturn(Optional.empty());
+        lenient().when(partnerLookupClient.findByPartnerCode("P-WILLY-001"))
+                .thenReturn(Optional.of(new PartnerSummary(
+                        PARTNER_WILLY, "P-WILLY-001", "주식회사 윌리", "111-11-11111", null)));
+        lenient().when(partnerLookupClient.findByPartnerCode("P-HANIL-002"))
+                .thenReturn(Optional.of(new PartnerSummary(
+                        PARTNER_HANIL, "P-HANIL-002", "한일빌딩", "222-22-22222", null)));
+        lenient().when(partnerLookupClient.findByPartnerCode("P-NAVER-003"))
+                .thenReturn(Optional.of(new PartnerSummary(
+                        PARTNER_NAVER, "P-NAVER-003", "네이버", "333-33-33333", null)));
         lenient().when(partnerLookupClient.findByPartnerIdsBatch(anyList()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
@@ -111,14 +127,14 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("전표현황 — partnerId 필터와 거래처별 grouping 소계")
-    void journalStatusFiltersByPartnerAndGroupsByPartner() throws Exception {
+    @DisplayName("전표현황 — partnerCode 필터를 내부 UUID 로 해석하고 거래처별 grouping 소계")
+    void journalStatusFiltersByPartnerCodeAndGroupsByPartner() throws Exception {
         seedFixtures();
 
         MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
                         .param("from", "2026-06-01")
                         .param("to", "2026-06-30")
-                        .param("partnerId", PARTNER_WILLY.toString())
+                        .param("partnerCode", "P-WILLY-001")
                         .param("groupBy", "PARTNER")
                         .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
                         .header("X-User-Role", "ACCOUNTANT"))
@@ -145,6 +161,78 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
         assertAmount(group.get("subtotal").get("totalDebit"), "5000.00");
         assertAmount(data.get("total").get("totalCredit"), "5000.00");
         assertNoPartnerUuid(body);
+    }
+
+    @Test
+    @DisplayName("전표현황 — PARTNER grouping 은 복합전표를 라인 거래처별 fan-out 한다")
+    void journalStatusPartnerGroupingFansOutMultiPartnerJournal() throws Exception {
+        seedPosted("STATUS-F-MULTI-PARTNER", LocalDate.of(2026, 6, 6), "복합 거래처 전표",
+                JournalSourceType.MANUAL,
+                line("102", "1000.00", "0.00", PARTNER_WILLY, "윌리 차변"),
+                line("401", "0.00", "1000.00", PARTNER_HANIL, "한일 대변"));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-06")
+                        .param("to", "2026-06-06")
+                        .param("groupBy", "PARTNER")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        JsonNode data = objectMapper.readTree(body).get("data");
+
+        if (data.get("groups").size() != 2) {
+            throw new AssertionError("복합전표 fan-out 그룹 수가 예상과 다릅니다: " + data.get("groups").size());
+        }
+        assertGroup(data, "주식회사 윌리", "수기", 1, "1000.00");
+        assertGroup(data, "한일빌딩", "수기", 1, "0.00");
+        assertAmount(findGroup(data, "한일빌딩").get("subtotal").get("totalCredit"), "1000.00");
+        assertAmount(data.get("total").get("totalDebit"), "1000.00");
+        assertAmount(data.get("total").get("totalCredit"), "1000.00");
+        assertNoPartnerUuid(body);
+    }
+
+    @Test
+    @DisplayName("전표현황 — KFTC_DEPOSIT 과 CASH_RECEIPT 라벨을 구분한다")
+    void journalStatusDistinguishesDepositAndCashReceiptLabels() throws Exception {
+        seedPosted("STATUS-F-KFTC", LocalDate.of(2026, 6, 7), "계좌 입금",
+                JournalSourceType.KFTC_DEPOSIT,
+                line("102", "1200.00", "0.00", PARTNER_WILLY, "계좌입금"),
+                line("401", "0.00", "1200.00", PARTNER_WILLY, "매출"));
+        seedPosted("STATUS-F-CASH", LocalDate.of(2026, 6, 8), "현금 입금",
+                JournalSourceType.CASH_RECEIPT,
+                line("101", "800.00", "0.00", PARTNER_HANIL, "현금입금"),
+                line("401", "0.00", "800.00", PARTNER_HANIL, "매출"));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-07")
+                        .param("to", "2026-06-08")
+                        .param("sourceTypes", "KFTC_DEPOSIT", "CASH_RECEIPT")
+                        .param("groupBy", "SOURCE_TYPE")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse()
+                .getContentAsString(StandardCharsets.UTF_8)).get("data");
+        assertGroup(data, "계좌입금", "계좌입금", 1, "1200.00");
+        assertGroup(data, "현금입금", "현금입금", 1, "800.00");
+    }
+
+    @Test
+    @DisplayName("전표현황 — VIEW 권한 deny 시 403")
+    void journalStatusDeniedPermissionReturns403() throws Exception {
+        denyRequirePermission(ReportPermissionGuard.PAGE_CODE, PermissionAction.VIEW);
+
+        mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-01")
+                        .param("to", "2026-06-30")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -215,16 +303,20 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
 
     private void assertGroup(JsonNode data, String groupLabel, String sourceLabel,
                              int expectedCount, String expectedDebit) {
+        JsonNode group = findGroup(data, groupLabel);
+        if (group.get("lines").size() != expectedCount) {
+            throw new AssertionError("그룹 라인 수가 예상과 다릅니다: " + groupLabel);
+        }
+        if (!sourceLabel.equals(group.get("lines").get(0).get("sourceTypeDisplayName").asText())) {
+            throw new AssertionError("거래유형 라벨이 예상과 다릅니다: " + groupLabel);
+        }
+        assertAmount(group.get("subtotal").get("totalDebit"), expectedDebit);
+    }
+
+    private JsonNode findGroup(JsonNode data, String groupLabel) {
         for (JsonNode group : data.get("groups")) {
             if (groupLabel.equals(group.get("groupLabel").asText())) {
-                if (group.get("lines").size() != expectedCount) {
-                    throw new AssertionError("그룹 라인 수가 예상과 다릅니다: " + groupLabel);
-                }
-                if (!sourceLabel.equals(group.get("lines").get(0).get("sourceTypeDisplayName").asText())) {
-                    throw new AssertionError("거래유형 라벨이 예상과 다릅니다: " + groupLabel);
-                }
-                assertAmount(group.get("subtotal").get("totalDebit"), expectedDebit);
-                return;
+                return group;
             }
         }
         throw new AssertionError("그룹을 찾지 못했습니다: " + groupLabel);

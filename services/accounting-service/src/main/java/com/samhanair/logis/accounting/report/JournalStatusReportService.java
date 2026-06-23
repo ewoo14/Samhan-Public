@@ -1,10 +1,12 @@
 package com.samhanair.logis.accounting.report;
 
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.accounting.domain.JournalStatus;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.accounting.repository.JournalRepository.JournalPartnerRow;
+import com.samhanair.logis.accounting.repository.JournalRepository.JournalStatusPartnerReportRow;
 import com.samhanair.logis.accounting.repository.JournalRepository.JournalStatusReportRow;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -26,9 +28,13 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 전표현황 보고서 Service.
  *
- * <p>POSTED 분개를 전표 단위로 조회하고 sourceType 다중 필터, 거래처 필터,
- * grouping(일자/출처/거래처)을 적용한다. 거래처 UUID 는 내부 필터와 lookup 에만 사용하고
- * 응답에는 거래처명만 포함한다.
+ * <p>POSTED 분개를 전표 단위로 조회하고 sourceType 다중 필터, 거래처코드 필터,
+ * grouping(일자/출처/거래처)을 적용한다. 거래처 UUID 는 {@link PartnerLookupClient} 로
+ * 내부 해석한 뒤 필터와 lookup 에만 사용하고 응답에는 거래처명만 포함한다.
+ *
+ * <p>PARTNER grouping 은 복합전표를 대표거래처로 몰지 않고 라인 거래처별로 fan-out 한다.
+ * 즉 한 전표가 A/B 거래처 라인을 동시에 가지면 A 그룹에는 A 라인의 차/대 부분합만,
+ * B 그룹에는 B 라인의 차/대 부분합만 등재한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,7 +54,7 @@ public class JournalStatusReportService {
      * @param from 조회 시작일
      * @param to 조회 종료일
      * @param sourceTypes 출처 필터. null/empty 면 전체
-     * @param partnerId 거래처 UUID 필터. null 이면 전체
+     * @param partnerCode 거래처코드 필터. null/blank 이면 전체
      * @param groupBy grouping 기준
      * @param status 상태 필터. null 이면 POSTED
      * @return 전표현황 그룹 응답
@@ -56,7 +62,7 @@ public class JournalStatusReportService {
     public JournalStatusReportResponse findStatus(LocalDate from,
                                                   LocalDate to,
                                                   Set<JournalSourceType> sourceTypes,
-                                                  UUID partnerId,
+                                                  String partnerCode,
                                                   JournalStatusGroupBy groupBy,
                                                   JournalStatus status) {
         validateRange(from, to);
@@ -66,6 +72,15 @@ public class JournalStatusReportService {
                 ? EnumSet.allOf(JournalSourceType.class)
                 : EnumSet.copyOf(sourceTypes);
         boolean allSourceTypes = resolvedSourceTypes.size() == JournalSourceType.values().length;
+        UUID partnerId = resolvePartnerId(partnerCode);
+        if (hasText(partnerCode) && partnerId == null) {
+            return emptyResponse(from, to, resolvedStatus, resolvedSourceTypes, resolvedGroupBy);
+        }
+
+        if (resolvedGroupBy == JournalStatusGroupBy.PARTNER) {
+            return findStatusByPartnerGroup(
+                    from, to, resolvedStatus, resolvedSourceTypes, allSourceTypes, partnerId, resolvedGroupBy);
+        }
 
         List<JournalStatusReportRow> rows = journalRepository.findJournalStatusReportRows(
                 from, to, resolvedStatus, resolvedSourceTypes, allSourceTypes, partnerId);
@@ -112,10 +127,80 @@ public class JournalStatusReportService {
             case SLIP -> "전표";
             case MANUAL -> "수기";
             case CLOSING -> "결산";
-            case KFTC_DEPOSIT -> "입금보고서";
+            case KFTC_DEPOSIT -> "계좌입금";
             case CASH_DISBURSEMENT -> "지출결의서";
-            case CASH_RECEIPT -> "입금보고서";
+            case CASH_RECEIPT -> "현금입금";
         };
+    }
+
+    private JournalStatusReportResponse findStatusByPartnerGroup(LocalDate from,
+                                                                 LocalDate to,
+                                                                 JournalStatus status,
+                                                                 EnumSet<JournalSourceType> sourceTypes,
+                                                                 boolean allSourceTypes,
+                                                                 UUID partnerId,
+                                                                 JournalStatusGroupBy groupBy) {
+        List<JournalStatusPartnerReportRow> rows = journalRepository.findJournalStatusPartnerReportRows(
+                from, to, status, sourceTypes, allSourceTypes, partnerId);
+        Map<UUID, String> partnerNames = resolvePartnerNamesFromPartnerRows(rows);
+        List<JournalStatusReportResponse.Line> lines = rows.stream()
+                .map(row -> toPartnerLine(row, partnerNames))
+                .toList();
+
+        LinkedHashMap<GroupKey, List<JournalStatusReportResponse.Line>> grouped = new LinkedHashMap<>();
+        for (JournalStatusReportResponse.Line line : lines) {
+            GroupKey key = groupKey(line, groupBy);
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(line);
+        }
+
+        List<JournalStatusReportResponse.Group> groups = grouped.entrySet().stream()
+                .map(entry -> new JournalStatusReportResponse.Group(
+                        entry.getKey().key(),
+                        entry.getKey().label(),
+                        entry.getValue(),
+                        summarize(entry.getValue())))
+                .toList();
+
+        JournalStatusReportResponse.Summary total = groups.stream()
+                .map(JournalStatusReportResponse.Group::subtotal)
+                .reduce(JournalStatusReportResponse.Summary.zero(), JournalStatusReportResponse.Summary::plus);
+
+        return new JournalStatusReportResponse(
+                from,
+                to,
+                status,
+                sourceTypes.stream().sorted(Comparator.comparing(Enum::name)).toList(),
+                groupBy,
+                groups,
+                total,
+                LocalDateTime.now()
+        );
+    }
+
+    private UUID resolvePartnerId(String partnerCode) {
+        if (!hasText(partnerCode)) {
+            return null;
+        }
+        return partnerLookupClient.findByPartnerCode(partnerCode.trim())
+                .map(PartnerSummary::partnerId)
+                .orElse(null);
+    }
+
+    private JournalStatusReportResponse emptyResponse(LocalDate from,
+                                                      LocalDate to,
+                                                      JournalStatus status,
+                                                      EnumSet<JournalSourceType> sourceTypes,
+                                                      JournalStatusGroupBy groupBy) {
+        return new JournalStatusReportResponse(
+                from,
+                to,
+                status,
+                sourceTypes.stream().sorted(Comparator.comparing(Enum::name)).toList(),
+                groupBy,
+                List.of(),
+                JournalStatusReportResponse.Summary.zero(),
+                LocalDateTime.now()
+        );
     }
 
     private Map<UUID, List<UUID>> partnerIdsByJournal(List<JournalStatusReportRow> rows) {
@@ -146,6 +231,18 @@ public class JournalStatusReportService {
         return resolved == null ? Map.of() : resolved;
     }
 
+    private Map<UUID, String> resolvePartnerNamesFromPartnerRows(List<JournalStatusPartnerReportRow> rows) {
+        LinkedHashSet<UUID> ids = rows.stream()
+                .map(JournalStatusPartnerReportRow::getPartnerId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
+        return resolved == null ? Map.of() : resolved;
+    }
+
     private JournalStatusReportResponse.Line toLine(JournalStatusReportRow row,
                                                     List<UUID> partnerIds,
                                                     Map<UUID, String> partnerNames) {
@@ -155,6 +252,20 @@ public class JournalStatusReportService {
                 row.getSourceType(),
                 sourceTypeDisplayName(row.getSourceType()),
                 partnerDisplayName(partnerIds, partnerNames),
+                row.getDescription(),
+                row.getTotalDebit(),
+                row.getTotalCredit()
+        );
+    }
+
+    private JournalStatusReportResponse.Line toPartnerLine(JournalStatusPartnerReportRow row,
+                                                           Map<UUID, String> partnerNames) {
+        return new JournalStatusReportResponse.Line(
+                row.getJournalNo(),
+                row.getJournalDate(),
+                row.getSourceType(),
+                sourceTypeDisplayName(row.getSourceType()),
+                partnerDisplayName(row.getPartnerId(), partnerNames),
                 row.getDescription(),
                 row.getTotalDebit(),
                 row.getTotalCredit()
@@ -174,6 +285,14 @@ public class JournalStatusReportService {
                 .distinct()
                 .sorted()
                 .collect(Collectors.joining(MULTI_PARTNER_SEPARATOR));
+    }
+
+    private String partnerDisplayName(UUID partnerId, Map<UUID, String> partnerNames) {
+        if (partnerId == null) {
+            return ETC_PARTNER_NAME;
+        }
+        String name = partnerNames.get(partnerId);
+        return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
     }
 
     private GroupKey groupKey(JournalStatusReportResponse.Line line, JournalStatusGroupBy groupBy) {
@@ -199,6 +318,10 @@ public class JournalStatusReportService {
         if (from.isAfter(to)) {
             throw new IllegalArgumentException("from 은 to 보다 늦을 수 없습니다");
         }
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private record GroupKey(String key, String label) {

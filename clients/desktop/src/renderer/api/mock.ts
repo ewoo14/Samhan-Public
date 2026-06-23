@@ -171,7 +171,6 @@ function mockRequirePermission(pageCode: string, action: MockPermissionAction): 
 
 function normalizeAdminPartner(row: Record<string, unknown>) {
   return {
-    id: String(row['id'] ?? row['partnerId'] ?? ''),
     partnerCode: String(row['partnerCode'] ?? ''),
     name: String(row['name'] ?? row['partnerName'] ?? ''),
     bizNo: String(row['bizNo'] ?? row['businessNumber'] ?? ''),
@@ -4680,7 +4679,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope({ ...base, asOfDate })
   }
 
-  // GET /accounting/reports/journal-status?from=&to=&sourceTypes=&partnerId=&groupBy= — 전표현황
+  // GET /accounting/reports/journal-status?from=&to=&sourceTypes=&partnerCode=&groupBy= — 전표현황
   if (method === 'GET' && url.includes('/accounting/reports/journal-status')) {
     const from = (config.params?.['from'] ?? '2026-05-01') as string
     const to = (config.params?.['to'] ?? '2026-05-31') as string
@@ -4693,27 +4692,51 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean)
-    const partnerId = (config.params?.['partnerId'] as string | undefined) ?? ''
-    const partnerIdByName: Record<string, string> = {
-      '주식회사 윌리': '11111111-1111-1111-1111-111111111111',
-      '한일빌딩': '22222222-2222-2222-2222-222222222222',
-      '네이버': '33333333-3333-3333-3333-333333333333',
+    const partnerCode = (config.params?.['partnerCode'] as string | undefined) ?? ''
+    const partnerCodeByName: Record<string, string> = {
+      '주식회사 윌리': 'P-WILLY-001',
+      '한일빌딩': 'P-HANIL-002',
+      '네이버': 'P-NAVER-003',
     }
     const sourceLabel: Record<string, string> = {
       SLIP: '전표',
       MANUAL: '수기',
       CLOSING: '결산',
-      KFTC_DEPOSIT: '입금보고서',
+      KFTC_DEPOSIT: '계좌입금',
       CASH_DISBURSEMENT: '지출결의서',
-      CASH_RECEIPT: '입금보고서',
+      CASH_RECEIPT: '현금입금',
     }
-    const lines = MOCK_JOURNALS
+    const journals = MOCK_JOURNALS
       .filter((journal) => journal.status === status)
       .filter((journal) => journal.journalDate >= from && journal.journalDate <= to)
       .filter((journal) =>
         selectedSourceTypes.length === 0 || selectedSourceTypes.includes(String(journal.sourceType ?? 'MANUAL')),
       )
-      .map((journal) => {
+
+    const lines = groupBy === 'PARTNER'
+      ? journals.flatMap((journal) => {
+        const byPartner = new Map<string, { totalDebit: number; totalCredit: number }>()
+        for (const line of journal.lines) {
+          const partnerName = line.partnerName ?? '기타'
+          if (partnerCode && partnerCodeByName[partnerName] !== partnerCode) continue
+          const prev = byPartner.get(partnerName) ?? { totalDebit: 0, totalCredit: 0 }
+          byPartner.set(partnerName, {
+            totalDebit: prev.totalDebit + Number(line.debit),
+            totalCredit: prev.totalCredit + Number(line.credit),
+          })
+        }
+        return Array.from(byPartner.entries()).map(([partnerName, subtotal]) => ({
+          journalNo: journal.journalNo,
+          journalDate: journal.journalDate,
+          sourceType: journal.sourceType ?? 'MANUAL',
+          sourceTypeDisplayName: journal.sourceTypeDisplayName ?? sourceLabel[String(journal.sourceType ?? 'MANUAL')],
+          partnerName,
+          description: journal.description,
+          totalDebit: String(subtotal.totalDebit),
+          totalCredit: String(subtotal.totalCredit),
+        }))
+      })
+      : journals.map((journal) => {
         const partnerNames = Array.from(new Set(
           journal.lines
             .map((line) => line.partnerName)
@@ -4730,7 +4753,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
           totalCredit: journal.totalCredit,
         }
       })
-      .filter((line) => !partnerId || line.partnerName.split(' / ').some((name) => partnerIdByName[name] === partnerId))
+        .filter((line) => !partnerCode || line.partnerName.split(' / ').some((name) => partnerCodeByName[name] === partnerCode))
 
     const groupKeyOf = (line: typeof lines[number]) => {
       if (groupBy === 'SOURCE_TYPE') return String(line.sourceType)
