@@ -58,6 +58,7 @@ export function buildJournalStatusRows(group: JournalStatusGroup): JournalStatus
     journalDate: '',
     sourceType: 'MANUAL',
     sourceTypeDisplayName: '',
+    bizNo: '',
     partnerName: '',
     description: `${group.subtotal.journalCount}건`,
     totalDebit: group.subtotal.totalDebit,

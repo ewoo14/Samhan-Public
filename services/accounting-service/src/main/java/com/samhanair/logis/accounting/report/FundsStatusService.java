@@ -84,7 +84,7 @@ public class FundsStatusService {
         keys.addAll(openingRows.keySet());
         keys.addAll(periodRows.keySet());
 
-        Map<UUID, String> partnerNames = resolvePartnerNames(keys.stream()
+        Map<UUID, PartnerSummary> partners = resolvePartners(keys.stream()
                 .map(FundKey::partnerId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new)));
@@ -104,10 +104,10 @@ public class FundsStatusService {
                 List<FundsStatusResponse.Line> lines = keys.stream()
                         .filter(key -> accountCode.equals(key.accountCode()))
                         .sorted(Comparator
-                                .comparing((FundKey key) -> partnerDisplayName(key.partnerId(), partnerNames))
+                                .comparing((FundKey key) -> partnerDisplayName(key.partnerId(), partners))
                                 .thenComparing(key -> key.partnerId() == null ? "" : key.partnerId().toString()))
                         .map(key -> buildStatusLine(key, accountName, category,
-                                openingRows.get(key), periodRows.get(key), partnerNames))
+                                openingRows.get(key), periodRows.get(key), partners))
                         .filter(line -> !isAllZero(line.openingBalance(), line.increase(),
                                 line.decrease(), line.closingBalance()))
                         .toList();
@@ -180,16 +180,16 @@ public class FundsStatusService {
                 }
             }
         }
-        Map<UUID, String> partnerNames = resolvePartnerNames(partnerIds);
+        Map<UUID, PartnerSummary> partners = resolvePartners(partnerIds);
 
         List<FundsIncreaseDetailResponse.Line> lines = targetLines.stream()
-                .map(line -> toDetailLine(line, targetCategory, accounts, partnerNames))
+                .map(line -> toDetailLine(line, targetCategory, accounts, partners))
                 .toList();
         BigDecimal totalAmount = lines.stream()
                 .map(FundsIncreaseDetailResponse.Line::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        String partnerName = partnerId == null ? null : partnerDisplayName(partnerId, partnerNames);
+        String partnerName = partnerId == null ? null : partnerDisplayName(partnerId, partners);
         return new FundsIncreaseDetailResponse(
                 from,
                 to,
@@ -207,7 +207,7 @@ public class FundsStatusService {
                                                      AccountCategory category,
                                                      PartnerAccountTotal openingRow,
                                                      PartnerAccountTotal periodRow,
-                                                     Map<UUID, String> partnerNames) {
+                                                     Map<UUID, PartnerSummary> partners) {
         BigDecimal opening = openingRow == null
                 ? BigDecimal.ZERO
                 : computeBalance(category, openingRow.getDebitTotal(), openingRow.getCreditTotal());
@@ -222,7 +222,8 @@ public class FundsStatusService {
         return new FundsStatusResponse.Line(
                 key.accountCode(),
                 accountName,
-                partnerDisplayName(key.partnerId(), partnerNames),
+                partnerBizNoDigits(key.partnerId(), partners),
+                partnerDisplayName(key.partnerId(), partners),
                 opening,
                 increase,
                 decrease,
@@ -233,7 +234,7 @@ public class FundsStatusService {
     private FundsIncreaseDetailResponse.Line toDetailLine(JournalLine targetLine,
                                                           AccountCategory targetCategory,
                                                           Map<String, ChartOfAccount> accounts,
-                                                          Map<UUID, String> partnerNames) {
+                                                          Map<UUID, PartnerSummary> partners) {
         List<JournalLine> counters = counterLines(targetLine);
         String counterAccountName = counters.stream()
                 .map(line -> accountNameOf(accounts.get(line.getAccountCode())))
@@ -244,7 +245,7 @@ public class FundsStatusService {
         }
 
         String counterPartnerName = counters.stream()
-                .map(line -> partnerDisplayName(line.getPartnerId(), partnerNames))
+                .map(line -> partnerDisplayName(line.getPartnerId(), partners))
                 .distinct()
                 .collect(Collectors.joining(" / "));
         if (counterPartnerName.isBlank()) {
@@ -297,7 +298,7 @@ public class FundsStatusService {
         return map;
     }
 
-    private Map<UUID, String> resolvePartnerNames(Set<UUID> partnerIds) {
+    private Map<UUID, PartnerSummary> resolvePartners(Set<UUID> partnerIds) {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return Map.of();
         }
@@ -305,21 +306,31 @@ public class FundsStatusService {
         if (resolved == null || resolved.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> names = new LinkedHashMap<>();
+        Map<UUID, PartnerSummary> partners = new LinkedHashMap<>();
         resolved.forEach((id, summary) -> {
-            if (summary != null && summary.name() != null) {
-                names.put(id, summary.name());
+            if (id != null && summary != null) {
+                partners.put(id, summary);
             }
         });
-        return names;
+        return partners;
     }
 
-    private String partnerDisplayName(UUID partnerId, Map<UUID, String> partnerNames) {
+    private String partnerDisplayName(UUID partnerId, Map<UUID, PartnerSummary> partners) {
         if (partnerId == null) {
             return ETC_PARTNER_NAME;
         }
-        String name = partnerNames.get(partnerId);
+        PartnerSummary summary = partners.get(partnerId);
+        String name = summary == null ? null : summary.name();
         return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
+    }
+
+    private String partnerBizNoDigits(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        if (partnerId == null) {
+            return "";
+        }
+        PartnerSummary summary = partners.get(partnerId);
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     private FundsStatusResponse.AmountSummary sum(List<FundsStatusResponse.Line> lines) {

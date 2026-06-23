@@ -85,15 +85,15 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
                     Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(PARTNER_WILLY)) {
                         names.put(PARTNER_WILLY,
-                                new PartnerSummary(PARTNER_WILLY, "P-WILLY-001", "주식회사 윌리", null, null));
+                                new PartnerSummary(PARTNER_WILLY, "P-WILLY-001", "주식회사 윌리", "111-11-11111", null));
                     }
                     if (ids.contains(PARTNER_HANIL)) {
                         names.put(PARTNER_HANIL,
-                                new PartnerSummary(PARTNER_HANIL, "P-HANIL-002", "한일빌딩", null, null));
+                                new PartnerSummary(PARTNER_HANIL, "P-HANIL-002", "한일빌딩", "222-22-22222", null));
                     }
                     if (ids.contains(PARTNER_NAVER)) {
                         names.put(PARTNER_NAVER,
-                                new PartnerSummary(PARTNER_NAVER, "P-NAVER-003", "네이버", null, null));
+                                new PartnerSummary(PARTNER_NAVER, "P-NAVER-003", "네이버", "333-33-33333", null));
                     }
                     return names;
                 });
@@ -160,6 +160,9 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
         JsonNode line = group.get("lines").get(0);
         if (!"SLIP".equals(line.get("sourceType").asText())) {
             throw new AssertionError("거래처 필터 전표 출처가 예상과 다릅니다: " + line.get("sourceType").asText());
+        }
+        if (!"1111111111".equals(line.get("bizNo").asText())) {
+            throw new AssertionError("거래처코드(bizNo) 숫자화가 예상과 다릅니다: " + line.get("bizNo").asText());
         }
         assertAmount(group.get("subtotal").get("totalDebit"), "5000.00");
         assertAmount(data.get("total").get("totalCredit"), "5000.00");

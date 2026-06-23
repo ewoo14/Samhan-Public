@@ -13,7 +13,7 @@ import java.util.List;
  * {@link LedgerImageResponse} 는 단일 거래처 + 단톡방 정보 포함 버전이고,
  * 본 DTO 는 다중 거래처 통합 원장 + 잔액 합계 요약 버전이다.
  *
- * <p>UUID 비공개 — partnerCode 로만 거래처 식별.
+ * <p>UUID 비공개 — bizNo/partnerCode 로만 거래처 식별.
  *
  * @param periodFrom   조회 기간 시작
  * @param periodTo     조회 기간 종료
@@ -34,7 +34,7 @@ public record LedgerResponse(
 ) {
 
     /**
-     * 원장 라인 1건 — 일자 / 분개번호 / 계정코드 / 계정명 / 계정분류 / 잔액방향 / 거래처코드 / 적요 / 차변 / 대변 / 잔액.
+     * 원장 라인 1건 — 일자 / 분개번호 / 계정코드 / 계정명 / 계정분류 / 잔액방향 / 사업자번호 / 거래처코드 / 적요 / 차변 / 대변 / 잔액.
      *
      * @param date        분개 일자
      * @param journalNo   분개번호 (사용자 노출 비즈니스 식별자)
@@ -45,6 +45,7 @@ public record LedgerResponse(
      * @param accountCategoryDisplayName 계정 카테고리 한국어 표시명.
      * @param balanceDirection 채권/채무 등 정상 잔액 방향 메타.
      * @param balanceDirectionDisplayName 정상 잔액 방향 한국어 표시명.
+     * @param bizNo 사업자번호 숫자 문자열. 미조회 시 빈 문자열
      * @param partnerCode 거래처코드 (해당 라인의 partnerId lookup 결과 — 없으면 null)
      * @param description 적요
      * @param debit       차변
@@ -60,6 +61,7 @@ public record LedgerResponse(
             String accountCategoryDisplayName,
             BalanceDirection balanceDirection,
             String balanceDirectionDisplayName,
+            String bizNo,
             String partnerCode,
             String description,
             BigDecimal debit,
@@ -83,8 +85,24 @@ public record LedgerResponse(
                 BigDecimal credit,
                 BigDecimal balance
         ) {
+            this(date, journalNo, accountCode, accountName, "", partnerCode,
+                    description, debit, credit, balance);
+        }
+
+        public LedgerLine(
+                LocalDate date,
+                String journalNo,
+                String accountCode,
+                String accountName,
+                String bizNo,
+                String partnerCode,
+                String description,
+                BigDecimal debit,
+                BigDecimal credit,
+                BigDecimal balance
+        ) {
             this(date, journalNo, accountCode, accountName, null, null, null, null,
-                    partnerCode, description, debit, credit, balance);
+                    bizNo, partnerCode, description, debit, credit, balance);
         }
     }
 }

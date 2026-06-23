@@ -109,6 +109,7 @@ function buildCsv(
   // 섹션 1 — 집계
   lines.push(
     [
+      '관리코드',
       '거래처코드',
       '거래처명',
       '매출합계',
@@ -124,6 +125,7 @@ function buildCsv(
     lines.push(
       [
         row.partnerCode,
+        row.bizNo,
         row.partnerName,
         row.salesTotal,
         row.paymentTotal,
@@ -454,6 +456,7 @@ export function PartnerLedgerPage() {
                   <th style={{ ...thStyle, width: 36, textAlign: 'center' }}>
                     선택
                   </th>
+                  <th style={thStyle}>관리코드</th>
                   <th style={thStyle}>거래처코드</th>
                   <th style={thStyle}>거래처명</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>매출 합계</th>
@@ -489,6 +492,9 @@ export function PartnerLedgerPage() {
                         />
                       </td>
                       <td style={tdStyle}>{row.partnerCode}</td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>
+                        {row.bizNo?.replace(/\D/g, '') || '-'}
+                      </td>
                       <td style={tdStyle}>{row.partnerName}</td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>
                         {fmtKrw(row.salesTotal)}

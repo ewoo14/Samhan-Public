@@ -18,6 +18,7 @@ describe('journalStatusPageModel', () => {
           journalDate: '2026-06-03',
           sourceType: 'SLIP',
           sourceTypeDisplayName: '전표',
+          bizNo: '1111111111',
           partnerName: '주식회사 윌리',
           description: '매출전표',
           totalDebit: '5000.00',
@@ -37,6 +38,7 @@ describe('journalStatusPageModel', () => {
     expect(rows[0]?.rowKind).toBe('line')
     expect(rows[0]?.sourceTypeDisplayName).toBe('전표')
     expect(rows[1]?.rowKind).toBe('subtotal')
+    expect(rows[1]?.bizNo).toBe('')
     expect(rows[1]?.journalNo).toBe('소계')
     expect(rows[1]?.description).toBe('1건')
   })

@@ -31,11 +31,12 @@ public record DailyClosingDetailResponse(
         List<DailyTaxInvoice> taxInvoices,
         List<DailyProductLine> productSummaries) {
 
-    /** 일별 세금계산서 1건 — 발행번호 / 거래처 / 합계. */
+    /** 일별 세금계산서 1건 — 발행번호 / 사업자번호 / 거래처 / 합계. */
     public record DailyTaxInvoice(
             String taxInvoiceNo,
             String salesSlipNo,
             String sourceSlipNo,
+            String bizNo,
             String partnerName,
             BigDecimal supplyAmount,
             BigDecimal vatAmount,

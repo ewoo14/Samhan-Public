@@ -11,8 +11,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,10 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>partnerId null 분개는 "기타" 그룹으로 통합. 잔액이 0 이하인 거래처는 제외.
  *
- * <p>partnerCode / partnerName 조회: PartnerLookupClient.findByPartnerId 호출.
- * 현재 partner-service 가 UUID 기반 internal lookup 을 제공하지 않으므로
- * 실패 시 "미등록" / "(미조회)" 를 fallback 으로 사용한다.
- * partner-service 에 UUID 기반 endpoint 추가 시 자동 반영.
+ * <p>partnerCode / bizNo / partnerName 조회: PartnerLookupClient.findByPartnerIdsBatch 호출.
+ * 실패 시 "미등록" / 빈 bizNo / "(미조회)" 를 fallback 으로 사용한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -96,6 +97,7 @@ public class PartnerAgingService {
         List<PartnerAccountTotal> totals =
                 journalLineRepository.aggregateAgingByAccount(accountCode, asOfDate);
 
+        Map<UUID, PartnerSummary> partners = resolvePartners(totals);
         List<PartnerAgingLine> lines = new ArrayList<>();
         BigDecimal etcBalance = BigDecimal.ZERO;
 
@@ -112,14 +114,14 @@ public class PartnerAgingService {
                 continue;
             }
 
-            // partnerCode / partnerName 조회 (fail-soft)
-            Optional<PartnerSummary> summary = partnerLookupClient.findByPartnerId(partnerId);
-            String partnerCode = summary.map(PartnerSummary::partnerCode)
-                    .filter(code -> code != null && !code.isBlank())
-                    .orElse(UNRESOLVED_PARTNER_CODE);
-            String partnerName = summary.map(PartnerSummary::name)
-                    .filter(name -> name != null && !name.isBlank())
-                    .orElse(UNRESOLVED_PARTNER_NAME);
+            PartnerSummary summary = partners.get(partnerId);
+            String partnerCode = summary != null && summary.partnerCode() != null && !summary.partnerCode().isBlank()
+                    ? summary.partnerCode()
+                    : UNRESOLVED_PARTNER_CODE;
+            String bizNo = bizNoDigits(summary);
+            String partnerName = summary != null && summary.name() != null && !summary.name().isBlank()
+                    ? summary.name()
+                    : UNRESOLVED_PARTNER_NAME;
 
             // oldestUnpaidDate 조회
             Optional<LocalDate> oldest = journalLineRepository
@@ -132,6 +134,7 @@ public class PartnerAgingService {
             lines.add(new PartnerAgingLine(
                     null,
                     partnerCode,
+                    bizNo,
                     partnerName,
                     balance,
                     oldestUnpaidDate,
@@ -144,6 +147,7 @@ public class PartnerAgingService {
             lines.add(new PartnerAgingLine(
                     null,
                     ETC_PARTNER_CODE,
+                    "",
                     ETC_PARTNER_NAME,
                     etcBalance,
                     null,
@@ -173,6 +177,23 @@ public class PartnerAgingService {
                 lines,
                 LocalDateTime.now()
         );
+    }
+
+    private Map<UUID, PartnerSummary> resolvePartners(List<PartnerAccountTotal> totals) {
+        LinkedHashSet<UUID> ids = totals.stream()
+                .map(PartnerAccountTotal::getPartnerId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
+        return resolved == null ? Map.of() : resolved;
+    }
+
+    private String bizNoDigits(PartnerSummary summary) {
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     /**

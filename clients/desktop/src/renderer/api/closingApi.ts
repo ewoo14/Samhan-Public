@@ -142,6 +142,8 @@ export interface DailyTaxInvoiceRow {
   taxInvoiceNo: string
   salesSlipNo: string | null
   sourceSlipNo: string | null
+  /** 사업자번호 숫자 문자열. */
+  bizNo: string
   /** 거래처명 (사용자 노출). */
   partnerName: string
   /** 공급가액 (KRW BigDecimal — string). */

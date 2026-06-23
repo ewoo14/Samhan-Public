@@ -18,6 +18,7 @@ describe('fundsStatusPageModel', () => {
         {
           accountCode: '102',
           accountName: '보통예금',
+          bizNo: '1112233333',
           partnerName: '국민은행 운영계좌',
           openingBalance: '10000.00',
           increase: '4000.00',
@@ -37,8 +38,10 @@ describe('fundsStatusPageModel', () => {
 
     expect(rows).toHaveLength(2)
     expect(rows[0]?.rowKind).toBe('line')
+    expect(rows[0]?.bizNo).toBe('1112233333')
     expect(rows[0]?.partnerName).toBe('국민은행 운영계좌')
     expect(rows[1]?.rowKind).toBe('subtotal')
+    expect(rows[1]?.bizNo).toBe('')
     expect(rows[1]?.partnerName).toBe('소계')
     expect(rows[1]?.closingBalance).toBe('13000.00')
   })
@@ -60,6 +63,7 @@ describe('fundsStatusPageModel', () => {
     })).toEqual({
       accountCode: '',
       accountName: '',
+      bizNo: '',
       partnerName: '합계',
       openingBalance: '1',
       increase: '2',

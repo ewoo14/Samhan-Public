@@ -1,5 +1,7 @@
 package com.samhanair.logis.accounting.service;
 
+import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.client.ProductClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.domain.AccountingPeriod;
@@ -36,6 +38,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -76,6 +79,7 @@ public class MonthEndCloseService {
     private final SlipServiceClient slipServiceClient;
     private final TaxInvoiceRepository taxInvoiceRepository;
     private final ProductClient productClient;
+    private final PartnerLookupClient partnerLookupClient;
     private final SalesAccountingSlipRepository salesAccountingSlipRepository;
     private final PurchaseAccountingSlipRepository purchaseAccountingSlipRepository;
 
@@ -198,6 +202,9 @@ public class MonthEndCloseService {
         BigDecimal totalVat = BigDecimal.ZERO;
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<DailyTaxInvoice> taxInvoices = new ArrayList<>(issued.size());
+        Map<UUID, PartnerSummary> partners = resolvePartners(issued.stream()
+                .map(TaxInvoice::getPartnerId)
+                .toList());
 
         // 모델별 누적 (productName 기준 — productId 가 분개에 직접 보존되지 않으므로 itemName 키)
         Map<String, ModelAccumulator> byModel = new LinkedHashMap<>();
@@ -210,6 +217,7 @@ public class MonthEndCloseService {
                     ti.getTaxInvoiceNo(),
                     null,
                     null,
+                    partnerBizNoDigits(ti.getPartnerId(), partners),
                     ti.getPartnerName(),
                     ti.getSupplyAmount(),
                     ti.getVatAmount(),
@@ -255,6 +263,9 @@ public class MonthEndCloseService {
         BigDecimal totalVat = BigDecimal.ZERO;
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<DailyTaxInvoice> rows = new ArrayList<>(slips.size());
+        Map<UUID, PartnerSummary> partners = resolvePartners(slips.stream()
+                .map(SalesAccountingSlip::getPartnerId)
+                .toList());
         Map<String, ModelAccumulator> byModel = new LinkedHashMap<>();
 
         for (SalesAccountingSlip slip : slips) {
@@ -265,6 +276,7 @@ public class MonthEndCloseService {
                     null,
                     slip.getSlipNo(),
                     firstSalesSourceSlipNo(slip),
+                    partnerBizNoDigits(slip.getPartnerId(), partners),
                     slip.getPartnerName(),
                     slip.getTotalSupplyAmount(),
                     slip.getTotalVatAmount(),
@@ -285,6 +297,9 @@ public class MonthEndCloseService {
         BigDecimal totalVat = BigDecimal.ZERO;
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<DailyTaxInvoice> rows = new ArrayList<>(slips.size());
+        Map<UUID, PartnerSummary> partners = resolvePartners(slips.stream()
+                .map(PurchaseAccountingSlip::getPartnerId)
+                .toList());
         Map<String, ModelAccumulator> byModel = new LinkedHashMap<>();
 
         for (PurchaseAccountingSlip slip : slips) {
@@ -295,6 +310,7 @@ public class MonthEndCloseService {
                     null,
                     slip.getSlipNo(),
                     firstPurchaseSourceSlipNo(slip),
+                    partnerBizNoDigits(slip.getPartnerId(), partners),
                     slip.getPartnerName(),
                     slip.getTotalSupplyAmount(),
                     slip.getTotalVatAmount(),
@@ -354,6 +370,26 @@ public class MonthEndCloseService {
                     e.getValue().supplyAmount));
         }
         return products;
+    }
+
+    private Map<UUID, PartnerSummary> resolvePartners(List<UUID> partnerIds) {
+        LinkedHashSet<UUID> ids = partnerIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
+        return resolved == null ? Map.of() : resolved;
+    }
+
+    private String partnerBizNoDigits(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        if (partnerId == null) {
+            return "";
+        }
+        PartnerSummary summary = partners.get(partnerId);
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     /**

@@ -265,6 +265,12 @@ export function DailyClosingPage() {
       width: '150px',
       render: (row) => row.sourceSlipNo || '-',
     },
+    {
+      key: 'bizNo',
+      header: '거래처코드',
+      width: '130px',
+      render: (row) => row.bizNo?.replace(/\D/g, '') || '-',
+    },
     { key: 'partnerName', header: '거래처' },
     {
       key: 'supplyAmount',

@@ -49,6 +49,8 @@ import { apiClient, type ApiEnvelope } from './client'
 export interface SalesAggregateRow {
   /** 거래처 코드 (사용자 노출 식별자). */
   partnerCode: string
+  /** 사업자번호 숫자 문자열. */
+  bizNo: string
   /** 거래처 사업자명 (snapshot). */
   partnerName: string
   /** 기간 매출 합계 (KRW BigDecimal — string). */

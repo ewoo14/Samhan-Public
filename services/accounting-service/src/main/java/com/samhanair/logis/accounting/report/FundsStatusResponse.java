@@ -10,7 +10,7 @@ import java.util.List;
  * 자금현황 보고서 응답.
  *
  * <p>자금일보와 자금현황표는 기간만 다른 동일 골격이므로 하나의 DTO 를 공유한다.
- * 계정별/거래처별 금액은 사용자 표시명(accountName, partnerName)만 포함하며 partner UUID 는
+ * 계정별/거래처별 금액은 사용자 표시명(accountName, bizNo, partnerName)만 포함하며 partner UUID 는
  * 응답에 포함하지 않는다.
  *
  * @param fromDate 조회 시작일
@@ -64,10 +64,11 @@ public record FundsStatusResponse(
     /**
      * 자금현황 거래처별 라인.
      *
-     * <p>UUID 비공개 원칙에 따라 partnerId 는 노출하지 않고 partnerName 만 반환한다.
+     * <p>UUID 비공개 원칙에 따라 partnerId 는 노출하지 않고 bizNo/partnerName 만 반환한다.
      *
      * @param accountCode 계정코드
      * @param accountName 계정명
+     * @param bizNo 사업자번호 숫자 문자열. 기타/미조회 라인은 빈 문자열
      * @param partnerName 거래처명 또는 기타
      * @param openingBalance 이월잔액
      * @param increase 기간 증가
@@ -77,6 +78,7 @@ public record FundsStatusResponse(
     public record Line(
             String accountCode,
             String accountName,
+            String bizNo,
             String partnerName,
             BigDecimal openingBalance,
             BigDecimal increase,

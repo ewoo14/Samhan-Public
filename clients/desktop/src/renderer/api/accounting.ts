@@ -676,11 +676,13 @@ export interface CorporateTaxReportResponse {
  * 거래처별 미수/미지급 내역 1행 (BE `PartnerAgingLine`).
  *
  * UUID 비공개 가드: `partnerId` 는 내부 참조용. 화면 미노출.
- * 사용자 노출 식별자: `partnerCode` / `partnerName` 만.
+ * 사용자 노출 식별자: `partnerCode` / `bizNo` / `partnerName` 만.
  */
 export interface PartnerAgingLine {
   /** 거래처 코드 (화면 표시 OK). */
   partnerCode: string
+  /** 사업자번호 숫자 문자열. */
+  bizNo: string
   /** 거래처명 (화면 표시 OK). */
   partnerName: string
   /** 잔액 (KRW 정수, string). */
@@ -1222,6 +1224,8 @@ export interface GeneralLedgerLine {
   balanceDirection?: 'DEBIT' | 'CREDIT' | null
   /** 정상 잔액 방향 한국어 표시명. */
   balanceDirectionDisplayName?: string | null
+  /** 사업자번호 숫자 문자열. */
+  bizNo: string
   /** 거래처 코드 (partnerCode, 화면 표시 OK). */
   partnerCode: string | null
   /** 적요. */
@@ -1399,11 +1403,12 @@ export interface FundsAmountSummary {
 /**
  * 자금현황 거래처별 라인.
  *
- * UUID 비공개 가드: BE 응답에 partnerId 를 포함하지 않는다. 화면은 거래처명만 표시한다.
+ * UUID 비공개 가드: BE 응답에 partnerId 를 포함하지 않는다. 화면은 bizNo/거래처명만 표시한다.
  */
 export interface FundsStatusLine {
   accountCode: string
   accountName: string
+  bizNo: string
   partnerName: string
   openingBalance: string
   increase: string
@@ -1547,6 +1552,7 @@ export interface JournalStatusLine {
   journalDate: string
   sourceType: JournalStatusSourceType
   sourceTypeDisplayName: string
+  bizNo: string
   partnerName: string
   description: string | null
   totalDebit: string

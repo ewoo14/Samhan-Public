@@ -36,6 +36,7 @@ export function buildFundsStatusRows(section: FundsStatusAccountSection): FundsS
   rows.push({
     accountCode: section.accountCode,
     accountName: section.accountName,
+    bizNo: '',
     partnerName: '소계',
     openingBalance: section.subtotal.openingBalance,
     increase: section.subtotal.increase,
@@ -52,6 +53,7 @@ export function summaryToLine(label: string, summary: FundsAmountSummary): Funds
   return {
     accountCode: '',
     accountName: '',
+    bizNo: '',
     partnerName: label,
     openingBalance: summary.openingBalance,
     increase: summary.increase,

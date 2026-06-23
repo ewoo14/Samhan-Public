@@ -4848,6 +4848,11 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       '한일빌딩': 'P-HANIL-002',
       '네이버': 'P-NAVER-003',
     }
+    const bizNoByName: Record<string, string> = {
+      '주식회사 윌리': '1111111111',
+      '한일빌딩': '2222222222',
+      '네이버': '3333333333',
+    }
     const sourceLabel: Record<string, string> = {
       SLIP: '전표',
       MANUAL: '수기',
@@ -4880,6 +4885,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
           journalDate: journal.journalDate,
           sourceType: journal.sourceType ?? 'MANUAL',
           sourceTypeDisplayName: journal.sourceTypeDisplayName ?? sourceLabel[String(journal.sourceType ?? 'MANUAL')],
+          bizNo: bizNoByName[partnerName] ?? '',
           partnerName,
           description: journal.description,
           totalDebit: String(subtotal.totalDebit),
@@ -4897,6 +4903,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
           journalDate: journal.journalDate,
           sourceType: journal.sourceType ?? 'MANUAL',
           sourceTypeDisplayName: journal.sourceTypeDisplayName ?? sourceLabel[String(journal.sourceType ?? 'MANUAL')],
+          bizNo: partnerNames.map((name) => bizNoByName[name] ?? '').filter(Boolean).join(' / '),
           partnerName: partnerNames.length > 0 ? partnerNames.join(' / ') : '기타',
           description: journal.description,
           totalDebit: journal.totalDebit,
@@ -4941,6 +4948,80 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       groupBy,
       groups,
       total: sum(lines),
+      generatedAt: '2026-06-23T09:00:00.000Z',
+    })
+  }
+
+  // GET /accounting/reports/funds-status?from=&to= — 자금현황
+  if (method === 'GET' && url.includes('/accounting/reports/funds-status/increase-detail')) {
+    return envelope({
+      fromDate: (config.params?.['from'] ?? '2026-06-01') as string,
+      toDate: (config.params?.['to'] ?? '2026-06-30') as string,
+      accountCode: (config.params?.['accountCode'] ?? '102') as string,
+      accountName: '보통예금',
+      partnerName: null,
+      lines: [
+        {
+          txDate: '2026-06-10',
+          counterAccountName: '외상매출금',
+          counterPartnerName: '삼한거래처',
+          description: '외상매출금 회수',
+          amount: '4000000',
+        },
+      ],
+      totalAmount: '4000000',
+      generatedAt: '2026-06-23T09:00:00.000Z',
+    })
+  }
+
+  if (method === 'GET' && url.includes('/accounting/reports/funds-status')) {
+    const fromDate = (config.params?.['from'] ?? '2026-06-01') as string
+    const toDate = (config.params?.['to'] ?? '2026-06-30') as string
+    const line = {
+      accountCode: '102',
+      accountName: '보통예금',
+      bizNo: '1112233333',
+      partnerName: '국민은행 운영계좌',
+      openingBalance: '10000000',
+      increase: '4000000',
+      decrease: '1000000',
+      closingBalance: '13000000',
+    }
+    return envelope({
+      fromDate,
+      toDate,
+      groups: [
+        {
+          groupCode: 'CASH_EQUIVALENT',
+          groupName: '현금성',
+          accounts: [
+            {
+              accountCode: '102',
+              accountName: '보통예금',
+              category: 'ASSET',
+              lines: [line],
+              subtotal: {
+                openingBalance: line.openingBalance,
+                increase: line.increase,
+                decrease: line.decrease,
+                closingBalance: line.closingBalance,
+              },
+            },
+          ],
+          subtotal: {
+            openingBalance: line.openingBalance,
+            increase: line.increase,
+            decrease: line.decrease,
+            closingBalance: line.closingBalance,
+          },
+        },
+      ],
+      total: {
+        openingBalance: line.openingBalance,
+        increase: line.increase,
+        decrease: line.decrease,
+        closingBalance: line.closingBalance,
+      },
       generatedAt: '2026-06-23T09:00:00.000Z',
     })
   }
@@ -6357,6 +6438,71 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // GET /accounting/closings/daily — DailyClosingPage detail.
+  if (method === 'GET' && url.includes('/accounting/closings/daily')) {
+    const date = (config.params?.['date'] ?? '2026-06-07') as string
+    return envelope({
+      date,
+      totalTaxInvoiceCount: 1,
+      totalSupply: '1000000',
+      totalVat: '100000',
+      totalAmount: '1100000',
+      totalDiscount: '0',
+      taxInvoices: [
+        {
+          taxInvoiceNo: 'TI-20260607-001',
+          salesSlipNo: 'SA-20260607-001',
+          sourceSlipNo: '2026/06/07-1',
+          bizNo: '1112233333',
+          partnerName: '삼한거래처',
+          supplyAmount: '1000000',
+          vatAmount: '100000',
+          totalAmount: '1100000',
+        },
+      ],
+      productSummaries: [
+        {
+          productName: '시스템에어컨',
+          modelName: '4Way',
+          quantity: '1',
+          supplyAmount: '1000000',
+        },
+      ],
+    })
+  }
+
+  // GET /accounting/ledgers — GeneralLedgerPage.
+  if (method === 'GET' && url.includes('/accounting/ledgers')) {
+    const from = (config.params?.['from'] ?? '2026-06-01') as string
+    const to = (config.params?.['to'] ?? '2026-06-30') as string
+    return envelope({
+      periodFrom: from,
+      periodTo: to,
+      partnerCode: (config.params?.['partnerCode'] as string | undefined) ?? null,
+      totalDebit: '4000000',
+      totalCredit: '4000000',
+      closingBalance: '0',
+      lines: [
+        {
+          date: '2026-06-10',
+          journalNo: 'JV-2026/06-001',
+          accountCode: '102',
+          accountName: '보통예금',
+          accountCategory: 'ASSET',
+          accountCategoryDisplayName: '자산',
+          balanceDirection: 'DEBIT',
+          balanceDirectionDisplayName: '차변잔액',
+          bizNo: '1112233333',
+          partnerCode: 'P-FUND-001',
+          description: '외상매출금 회수',
+          debit: '4000000',
+          credit: '0',
+          balance: '4000000',
+        },
+      ],
+    })
+  }
+
   // GET /accounting/closing — MonthEndClosingPage
   if (method === 'GET' && url.includes('/accounting/closing')) {
     return envelope({
@@ -6378,15 +6524,38 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // GET /accounting/sales/aggregate — PartnerLedgerPage
   if (method === 'GET' && url.includes('/accounting/sales/aggregate')) {
-    return envelope({
-      from: '2026-04-01',
-      to: '2026-04-30',
-      partners: [
-        { partnerCode: '1234567890', partnerName: '엘에이시스템에어', totalSales: 12450000, totalReceived: 8200000, balance: 4250000 },
-        { partnerCode: '2345678901', partnerName: '강남에어솔루션', totalSales: 8700000, totalReceived: 8700000, balance: 0 },
-        { partnerCode: '3456789012', partnerName: '한빛쾌적', totalSales: 5500000, totalReceived: 0, balance: 5500000 },
-      ],
-    })
+    return envelope([
+      {
+        partnerCode: 'P-001',
+        bizNo: '1234567890',
+        partnerName: '엘에이시스템에어',
+        salesTotal: '12450000',
+        paymentTotal: '8200000',
+        receivableBalance: '4250000',
+        periodFrom: '2026-04-01',
+        periodTo: '2026-04-30',
+      },
+      {
+        partnerCode: 'P-002',
+        bizNo: '2345678901',
+        partnerName: '강남에어솔루션',
+        salesTotal: '8700000',
+        paymentTotal: '8700000',
+        receivableBalance: '0',
+        periodFrom: '2026-04-01',
+        periodTo: '2026-04-30',
+      },
+      {
+        partnerCode: 'P-003',
+        bizNo: '3456789012',
+        partnerName: '한빛쾌적',
+        salesTotal: '5500000',
+        paymentTotal: '0',
+        receivableBalance: '5500000',
+        periodFrom: '2026-04-01',
+        periodTo: '2026-04-30',
+      },
+    ])
   }
 
   // GET /accounting/journals/ledger-data — PartnerLedger detail
@@ -6394,15 +6563,15 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope({
       partnerCode: '1234567890',
       partnerName: '엘에이시스템에어',
-      from: '2026-04-01',
-      to: '2026-04-30',
-      openingBalance: 0,
-      closingBalance: 4250000,
+      partnerBusinessNo: '123-45-67890',
+      chatRoomNames: ['서울 1톤 단톡방'],
+      periodFrom: '2026-04-01',
+      periodTo: '2026-04-30',
       lines: [
-        { date: '2026-04-05', type: 'SALE', description: '4월 1주 출고', debit: 3700000, credit: 0, balance: 3700000 },
-        { date: '2026-04-12', type: 'PAYMENT', description: '계좌이체 입금', debit: 0, credit: 2000000, balance: 1700000 },
-        { date: '2026-04-19', type: 'SALE', description: '4월 3주 출고', debit: 4750000, credit: 0, balance: 6450000 },
-        { date: '2026-04-26', type: 'PAYMENT', description: '계좌이체 입금', debit: 0, credit: 2200000, balance: 4250000 },
+        { date: '2026-04-05', journalNo: 'JV-2026/04-001', accountCode: '110', description: '4월 1주 출고', debit: '3700000', credit: '0', balance: '3700000' },
+        { date: '2026-04-12', journalNo: 'JV-2026/04-002', accountCode: '110', description: '계좌이체 입금', debit: '0', credit: '2000000', balance: '1700000' },
+        { date: '2026-04-19', journalNo: 'JV-2026/04-003', accountCode: '110', description: '4월 3주 출고', debit: '4750000', credit: '0', balance: '6450000' },
+        { date: '2026-04-26', journalNo: 'JV-2026/04-004', accountCode: '110', description: '계좌이체 입금', debit: '0', credit: '2200000', balance: '4250000' },
       ],
     })
   }
@@ -12566,6 +12735,7 @@ const MOCK_PARTNER_AGING_RECEIVABLE = {
   lines: [
     {
       partnerCode: 'P-001',
+      bizNo: '1234567890',
       partnerName: '삼성건설(주)',
       balance: '1200000',
       oldestUnpaidDate: '2026-03-15',
@@ -12574,6 +12744,7 @@ const MOCK_PARTNER_AGING_RECEIVABLE = {
     },
     {
       partnerCode: 'P-002',
+      bizNo: '2345678901',
       partnerName: '현대종합개발',
       balance: '800000',
       oldestUnpaidDate: '2026-04-01',
@@ -12582,6 +12753,7 @@ const MOCK_PARTNER_AGING_RECEIVABLE = {
     },
     {
       partnerCode: 'P-003',
+      bizNo: '3456789012',
       partnerName: '대우건설',
       balance: '1500000',
       oldestUnpaidDate: '2026-04-20',
@@ -12590,6 +12762,7 @@ const MOCK_PARTNER_AGING_RECEIVABLE = {
     },
     {
       partnerCode: 'P-004',
+      bizNo: '4567890123',
       partnerName: '롯데건설',
       balance: '1500000',
       oldestUnpaidDate: '2026-05-15',
@@ -12615,6 +12788,7 @@ const MOCK_PARTNER_AGING_PAYABLE = {
   lines: [
     {
       partnerCode: 'V-001',
+      bizNo: '5678901234',
       partnerName: '(주)에어텍',
       balance: '1800000',
       oldestUnpaidDate: '2026-03-01',
@@ -12623,6 +12797,7 @@ const MOCK_PARTNER_AGING_PAYABLE = {
     },
     {
       partnerCode: 'V-002',
+      bizNo: '6789012345',
       partnerName: '대한냉각기',
       balance: '900000',
       oldestUnpaidDate: '2026-04-10',
@@ -12631,6 +12806,7 @@ const MOCK_PARTNER_AGING_PAYABLE = {
     },
     {
       partnerCode: 'V-003',
+      bizNo: '7890123456',
       partnerName: '한국공조부품',
       balance: '500000',
       oldestUnpaidDate: '2026-05-01',

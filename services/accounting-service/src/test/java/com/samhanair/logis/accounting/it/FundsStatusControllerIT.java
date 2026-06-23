@@ -75,15 +75,15 @@ class FundsStatusControllerIT extends AbstractPostgresIT {
                     Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(CASH_PARTNER_ID)) {
                         names.put(CASH_PARTNER_ID,
-                                new PartnerSummary(CASH_PARTNER_ID, "P-FUND-001", "국민은행 운영계좌", null, null));
+                                new PartnerSummary(CASH_PARTNER_ID, "P-FUND-001", "국민은행 운영계좌", "111-22-33333", null));
                     }
                     if (ids.contains(LOAN_PARTNER_ID)) {
                         names.put(LOAN_PARTNER_ID,
-                                new PartnerSummary(LOAN_PARTNER_ID, "P-FUND-002", "기업은행 차입금", null, null));
+                                new PartnerSummary(LOAN_PARTNER_ID, "P-FUND-002", "기업은행 차입금", "222-33-44444", null));
                     }
                     if (ids.contains(COUNTER_PARTNER_ID)) {
                         names.put(COUNTER_PARTNER_ID,
-                                new PartnerSummary(COUNTER_PARTNER_ID, "P-FUND-003", "삼한거래처", null, null));
+                                new PartnerSummary(COUNTER_PARTNER_ID, "P-FUND-003", "삼한거래처", "333-44-55555", null));
                     }
                     return names;
                 });
@@ -106,6 +106,9 @@ class FundsStatusControllerIT extends AbstractPostgresIT {
         JsonNode data = objectMapper.readTree(body).get("data");
 
         JsonNode cashLine = findLine(data, "102", "국민은행 운영계좌");
+        if (!"1112233333".equals(cashLine.get("bizNo").asText())) {
+            throw new AssertionError("자금현황 거래처코드(bizNo)가 예상과 다릅니다: " + cashLine.get("bizNo").asText());
+        }
         assertAmount(cashLine.get("openingBalance"), "10000.00");
         assertAmount(cashLine.get("increase"), "4000.00");
         assertAmount(cashLine.get("decrease"), "1000.00");

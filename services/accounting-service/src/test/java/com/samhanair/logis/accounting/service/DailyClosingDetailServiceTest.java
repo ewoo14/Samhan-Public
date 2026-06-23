@@ -6,6 +6,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.accounting.client.ProductClient;
+import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.domain.AccountingPeriod;
 import com.samhanair.logis.accounting.domain.PeriodStatus;
@@ -52,6 +53,7 @@ class DailyClosingDetailServiceTest {
     @Mock private SlipServiceClient slipServiceClient;
     @Mock private TaxInvoiceRepository taxInvoiceRepository;
     @Mock private ProductClient productClient;
+    @Mock private PartnerLookupClient partnerLookupClient;
     @Mock private SalesAccountingSlipRepository salesAccountingSlipRepository;
     @Mock private PurchaseAccountingSlipRepository purchaseAccountingSlipRepository;
 
