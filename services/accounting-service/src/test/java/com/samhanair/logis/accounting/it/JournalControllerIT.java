@@ -10,6 +10,8 @@ import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.accounting.AccountingServiceApplication;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.accounting.client.ETaxClient;
@@ -70,11 +72,14 @@ class JournalControllerIT extends AbstractPostgresIT {
      * Eureka 비활성 IT 환경에서 loadBalancedRestClientBuilder 빈 해석 실패 또는 실 HTTP 호출 회피.
      */
     @MockBean private PartnerLookupClient partnerLookupClient;
+    @MockBean private ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
 
     @BeforeEach
     void setUpPartnerLookupStub() {
         lenient().when(partnerLookupClient.findByPartnerId(any())).thenReturn(Optional.empty());
         lenient().when(partnerLookupClient.findByPartnerCode(any())).thenReturn(Optional.empty());
+        lenient().when(approvalLineAuthorizeClient.authorize(any(), any(), any()))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
     }
 
     @Test

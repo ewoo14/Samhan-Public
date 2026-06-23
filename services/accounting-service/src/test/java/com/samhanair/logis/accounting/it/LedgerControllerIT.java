@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.accounting.AccountingServiceApplication;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
@@ -62,12 +64,15 @@ class LedgerControllerIT extends AbstractPostgresIT {
     @MockBean(classes = com.samhanair.logis.security.permission.DynamicPermissionClient.class) private DynamicPermissionClient dynamicPermissionClient;
     /** SP-08-FU2 cycle 2 — LedgerService 가 의존하는 외부 RestClient 격리. */
     @MockBean private PartnerLookupClient partnerLookupClient;
+    @MockBean private ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
 
     @BeforeEach
     void setUpStubs() {
         lenient().when(partnerLookupClient.findByPartnerId(any())).thenReturn(Optional.empty());
         lenient().when(partnerLookupClient.findByPartnerIdsBatch(any())).thenReturn(Map.of());
         lenient().when(partnerLookupClient.findByPartnerCode(any())).thenReturn(Optional.empty());
+        lenient().when(approvalLineAuthorizeClient.authorize(any(), any(), any()))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
     }
 
     @Test

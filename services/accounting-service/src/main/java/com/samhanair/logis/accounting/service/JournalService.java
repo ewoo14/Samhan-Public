@@ -4,6 +4,8 @@ import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.accounting.domain.JournalStatus;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.accounting.web.dto.CreateJournalLineRequest;
 import com.samhanair.logis.accounting.web.dto.CreateJournalRequest;
@@ -43,11 +45,14 @@ public class JournalService {
 
     private static final EnumSet<JournalStatus> COLLAB_LOCKED = EnumSet.of(JournalStatus.REVERSED);
     private static final Pattern LINE_MEMO_PATH = Pattern.compile("^line\\.(\\d+)\\.memo$");
+    private static final String APPROVAL_DOCUMENT_TYPE = "ACCOUNTING_JOURNAL";
+    private static final String APPROVAL_ACTION_KEY = "JOURNAL_POST";
 
     private final JournalRepository journalRepository;
     private final JournalNumberService journalNumberService;
     private final AccountService accountService;
     private final MonthEndCloseService monthEndCloseService;
+    private final ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
 
     /**
      * 분개 신규 생성 (DRAFT). 라인 1개 이상 + accountCode leaf 검증 + 라인별 debit/credit 도메인 가드.
@@ -108,6 +113,7 @@ public class JournalService {
      * @return POSTED 분개 단건
      */
     public JournalDetailResponse post(UUID id, String actorUserId) {
+        enforceApprovalLine(parseRealUserId(actorUserId));
         Journal journal = findOrThrow(id);
         journal.post(actorUserId);
         return JournalDetailResponse.of(journal);
@@ -270,6 +276,29 @@ public class JournalService {
         if (COLLAB_LOCKED.contains(journal.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "역분개 처리된 회계전표는 협업 수정완료를 적용할 수 없습니다");
+        }
+    }
+
+    private void enforceApprovalLine(UUID actorId) {
+        if (actorId == null) {
+            return;
+        }
+        ApprovalLineAuthorizeResult result = approvalLineAuthorizeClient.authorize(
+                APPROVAL_DOCUMENT_TYPE, APPROVAL_ACTION_KEY, actorId);
+        if (result.configured() && !result.allowed()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "결재라인 결재자만 회계전표를 게시할 수 있습니다.");
+        }
+    }
+
+    private UUID parseRealUserId(String actorUserId) {
+        if (actorUserId == null || actorUserId.isBlank() || "system".equalsIgnoreCase(actorUserId)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(actorUserId);
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
     }
 
