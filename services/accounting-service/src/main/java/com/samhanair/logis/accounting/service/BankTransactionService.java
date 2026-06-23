@@ -165,7 +165,8 @@ public class BankTransactionService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "partnerCode 는 필수입니다.");
         }
 
-        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(), request.externalRef());
+        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(),
+                request.transactedAt(), request.amount(), request.externalRef());
         PartnerSummary partner = partnerLookupClient.findByPartnerCode(request.partnerCode().trim())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "등록된 거래처를 찾을 수 없습니다: " + request.partnerCode().trim()));
@@ -191,7 +192,8 @@ public class BankTransactionService {
         if (request == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "요청 본문은 필수입니다.");
         }
-        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(), request.externalRef());
+        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(),
+                request.transactedAt(), request.amount(), request.externalRef());
         try {
             transaction.clearPartner();
         } catch (IllegalStateException ex) {
@@ -205,25 +207,30 @@ public class BankTransactionService {
         return partnerId == null ? null : displayOf(partners.get(partnerId));
     }
 
-    private BankTransaction findUniqueByNaturalKey(String bankAccountLabel, String externalRef) {
+    /**
+     * V43 unique index 4-key(bankAccountLabel + transactedAt + amount + externalRef)로 단건 식별.
+     *
+     * <p>2-key(label+externalRef)는 같은 계좌에서 같은 externalRef 가 다른 일시/금액으로 공존하면
+     * 다건이 되어 정당한 매칭을 거부하므로(BLOCKING 회귀), unique index 전체 키를 사용해 단건 보장.
+     */
+    private BankTransaction findUniqueByNaturalKey(String bankAccountLabel, LocalDateTime transactedAt,
+                                                   BigDecimal amount, String externalRef) {
         if (!hasText(bankAccountLabel)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "bankAccountLabel 은 필수입니다.");
+        }
+        if (transactedAt == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "transactedAt 은 필수입니다.");
+        }
+        if (amount == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "amount 는 필수입니다.");
         }
         if (!hasText(externalRef)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "externalRef 는 필수입니다.");
         }
-        List<BankTransaction> rows = repository.findAllByBankAccountLabelAndExternalRefAndIsDeletedFalse(
-                bankAccountLabel.trim(),
-                externalRef.trim());
-        if (rows.isEmpty()) {
-            throw new BusinessException(ErrorCode.NOT_FOUND,
-                    "통장 거래를 찾을 수 없습니다: " + bankAccountLabel.trim() + " / " + externalRef.trim());
-        }
-        if (rows.size() > 1) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "bankAccountLabel + externalRef 로 통장 거래가 단건 식별되지 않습니다.");
-        }
-        return rows.get(0);
+        return repository.findByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse(
+                        bankAccountLabel.trim(), transactedAt, amount, externalRef.trim())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "통장 거래를 찾을 수 없습니다: " + bankAccountLabel.trim() + " / " + externalRef.trim()));
     }
 
     private Specification<BankTransaction> bankTransactionSpec(MatchStatus matchStatus, LocalDate from, LocalDate to,

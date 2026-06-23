@@ -333,9 +333,17 @@ describe('mock bank transaction matching contract', () => {
       matchedPartnerName: '엘에이시스템에어',
     })
 
-    const cleared = mockRequest({
-      method: 'DELETE',
+    // 재지정(덮어쓰기) — 미반영 거래는 다른 거래처로 재매칭 허용
+    const rematched = mockRequest({
+      method: 'PATCH',
       url: '/accounting/bank-transactions/match-partner',
+      data: { bankAccountLabel, externalRef, partnerCode: '2345678901' },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(rematched.data).toMatchObject({ externalRef, matchedPartnerCode: '2345678901' })
+
+    const cleared = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner/clear',
       data: { bankAccountLabel, externalRef },
     }) as MockEnvelope<Record<string, unknown>>
 

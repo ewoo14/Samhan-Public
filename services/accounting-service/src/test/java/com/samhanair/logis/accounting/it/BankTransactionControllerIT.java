@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -63,6 +62,13 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
             "삼한테스트상사",
             "111-22-33333",
             "서울");
+    private static final UUID PARTNER_2_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final PartnerSummary PARTNER_2 = new PartnerSummary(
+            PARTNER_2_ID,
+            "P-2026-0002",
+            "두번째거래처",
+            "222-33-44444",
+            "부산");
 
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -197,7 +203,7 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
 
         assertThatThrownBy(() -> transaction.markForced(UUID.randomUUID()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Cannot transition bank transaction");
+                .hasMessageContaining("전환이 허용되지 않습니다");
 
         mockMvc.perform(get(BASE_URL)
                         .param("matchStatus", "REFLECTED")
@@ -285,7 +291,40 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
         matchPartner("BANK-001", "P-2026-0001")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CONFLICT"))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Cannot transition")));
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("미반영 상태가 아니")));
+    }
+
+    @Test
+    @DisplayName("거래처 수동지정 해제: REFLECTED 거래의 해제는 CONFLICT 409")
+    void clearPartner_rejectsReflectedTransactionWithConflict() throws Exception {
+        importCsv(ms949Csv()).andExpect(status().isOk());
+        BankTransaction transaction = repository.findByExternalRefAndIsDeletedFalse("BANK-001")
+                .orElseThrow();
+        transaction.markReflected(UUID.randomUUID());
+        repository.saveAndFlush(transaction);
+
+        clearPartner("BANK-001")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("미반영 상태가 아니")));
+    }
+
+    @Test
+    @DisplayName("거래처 수동지정: 미반영 거래 재지정(덮어쓰기) 허용")
+    void matchPartner_allowsReMatchOverwriteForUnreflected() throws Exception {
+        importCsv(ms949Csv()).andExpect(status().isOk());
+        when(partnerLookupClient.findByPartnerCode("P-2026-0001")).thenReturn(Optional.of(PARTNER));
+        when(partnerLookupClient.findByPartnerCode("P-2026-0002")).thenReturn(Optional.of(PARTNER_2));
+        matchPartner("BANK-001", "P-2026-0001").andExpect(status().isOk());
+
+        matchPartner("BANK-001", "P-2026-0002")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchStatus").value("UNREFLECTED"))
+                .andExpect(jsonPath("$.data.matchedPartnerCode").value("P-2026-0002"));
+
+        BankTransaction transaction = repository.findByExternalRefAndIsDeletedFalse("BANK-001")
+                .orElseThrow();
+        assertThat(transaction.getMatchedPartnerId()).isEqualTo(PARTNER_2_ID);
     }
 
     private org.springframework.test.web.servlet.ResultActions importCsv(MockMultipartFile file) throws Exception {
@@ -306,29 +345,37 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
 
     private org.springframework.test.web.servlet.ResultActions matchPartner(String externalRef, String partnerCode)
             throws Exception {
+        BankTransaction txn = repository.findByExternalRefAndIsDeletedFalse(externalRef).orElseThrow();
         return mockMvc.perform(patch(BASE_URL + "/match-partner")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
                           "bankAccountLabel": "%s",
+                          "transactedAt": "%s",
+                          "amount": %s,
                           "externalRef": "%s",
                           "partnerCode": "%s"
                         }
-                        """.formatted(BANK_ACCOUNT_LABEL, externalRef, partnerCode))
+                        """.formatted(BANK_ACCOUNT_LABEL, txn.getTransactedAt(),
+                        txn.getAmount().toPlainString(), externalRef, partnerCode))
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "ACCOUNTANT"));
     }
 
     private org.springframework.test.web.servlet.ResultActions clearPartner(String externalRef)
             throws Exception {
-        return mockMvc.perform(delete(BASE_URL + "/match-partner")
+        BankTransaction txn = repository.findByExternalRefAndIsDeletedFalse(externalRef).orElseThrow();
+        return mockMvc.perform(patch(BASE_URL + "/match-partner/clear")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
                           "bankAccountLabel": "%s",
+                          "transactedAt": "%s",
+                          "amount": %s,
                           "externalRef": "%s"
                         }
-                        """.formatted(BANK_ACCOUNT_LABEL, externalRef))
+                        """.formatted(BANK_ACCOUNT_LABEL, txn.getTransactedAt(),
+                        txn.getAmount().toPlainString(), externalRef))
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "ACCOUNTANT"));
     }

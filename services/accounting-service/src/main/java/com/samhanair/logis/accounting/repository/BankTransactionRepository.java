@@ -3,7 +3,6 @@ package com.samhanair.logis.accounting.repository;
 import com.samhanair.logis.accounting.domain.BankTransaction;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,8 +22,11 @@ public interface BankTransactionRepository
 
     Optional<BankTransaction> findByExternalRefAndIsDeletedFalse(String externalRef);
 
-    List<BankTransaction> findAllByBankAccountLabelAndExternalRefAndIsDeletedFalse(
+    /** 매칭/해제 단건 식별 — V43 unique index 4-key 와 동일. */
+    Optional<BankTransaction> findByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse(
             String bankAccountLabel,
+            LocalDateTime transactedAt,
+            BigDecimal amount,
             String externalRef);
 
 }

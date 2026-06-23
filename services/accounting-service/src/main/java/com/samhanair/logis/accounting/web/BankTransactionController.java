@@ -17,7 +17,6 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -90,10 +89,14 @@ public class BankTransactionController {
         return ApiResponse.ok(service.matchPartner(request), "거래처 매칭이 완료되었습니다.");
     }
 
-    /** 미반영 통장 거래의 거래처 수동지정을 해제한다. */
-    @DeleteMapping("/match-partner")
+    /**
+     * 미반영 통장 거래의 거래처 수동지정을 해제한다.
+     *
+     * <p>DELETE 의 본문 사용은 일부 프록시/클라이언트에서 비표준이라 {@code PATCH .../clear} 로 둔다.
+     */
+    @PatchMapping("/match-partner/clear")
     @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
-    @Operation(summary = "통장 거래 거래처 수동지정 해제", description = "bankAccountLabel+externalRef 로 거래를 찾아 매칭 거래처를 해제")
+    @Operation(summary = "통장 거래 거래처 수동지정 해제", description = "4-key 자연키로 거래를 찾아 매칭 거래처를 해제")
     public ApiResponse<BankTransactionResponse> clearPartner(
             @RequestBody BankTransactionMatchPartnerClearRequest request) {
         return ApiResponse.ok(service.clearPartner(request), "거래처 매칭이 해제되었습니다.");

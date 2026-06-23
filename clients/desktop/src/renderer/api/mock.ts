@@ -4938,7 +4938,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(rows)
   }
 
-  if (method === 'PATCH' && url.includes('/accounting/bank-transactions/match-partner')) {
+  if (method === 'PATCH' && url.includes('/accounting/bank-transactions/match-partner')
+    && !url.includes('/match-partner/clear')) {
     const body = parseMockBody(config)
     const bankAccountLabel = String(body.bankAccountLabel ?? '').trim()
     const externalRef = String(body.externalRef ?? '').trim()
@@ -4971,7 +4972,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(next)
   }
 
-  if (method === 'DELETE' && url.includes('/accounting/bank-transactions/match-partner')) {
+  if (method === 'PATCH' && url.includes('/accounting/bank-transactions/match-partner/clear')) {
     const body = parseMockBody(config)
     const bankAccountLabel = String(body.bankAccountLabel ?? '').trim()
     const externalRef = String(body.externalRef ?? '').trim()

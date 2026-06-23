@@ -147,6 +147,45 @@ class BankTransactionPermissionEnforcementIT {
         restClientMockServerHolder.server.verify();
     }
 
+    @Test
+    @DisplayName("BankTransaction match-partner/clear: ACCOUNTANT UPDATE 200, 미허용 계정 403")
+    void clearPartnerUpdatePermission_usesBankMatchingPageCode() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO bank_transaction (
+                    id, transacted_at, txn_type, amount, description, bank_account_label,
+                    source, external_ref, match_status, created_at, created_by, is_deleted
+                ) VALUES (
+                    ?, TIMESTAMP '2026-06-23 09:10:00', 'DEPOSIT', 150000.00, '권한해제테스트 입금',
+                    '국민 권한테스트', 'CSV_IMPORT', 'PERM-CLEAR-001', 'UNREFLECTED',
+                    NOW(), 'it', FALSE
+                )
+                """, UUID.randomUUID());
+        expectPermission(ACCOUNTANT_ACCOUNT, PermissionAction.UPDATE, true);
+        expectPermission(SALES_ACCOUNT, PermissionAction.UPDATE, false);
+
+        clearPartner(ACCOUNTANT_ACCOUNT, "PERM-CLEAR-001")
+                .andExpect(status().isOk());
+        clearPartner(SALES_ACCOUNT, "PERM-CLEAR-001")
+                .andExpect(status().isForbidden());
+
+        restClientMockServerHolder.server.verify();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions clearPartner(UUID accountId, String externalRef)
+            throws Exception {
+        return mockMvc.perform(patch(BASE_URL + "/match-partner/clear")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "bankAccountLabel": "국민 권한테스트",
+                          "transactedAt": "2026-06-23T09:10:00",
+                          "amount": 150000.00,
+                          "externalRef": "%s"
+                        }
+                        """.formatted(externalRef))
+                .header("X-User-Id", accountId.toString()));
+    }
+
     private void expectPermission(UUID accountId, PermissionAction action, boolean allowed) {
         restClientMockServerHolder.server.expect(once(), requestTo("http://auth-service/auth/internal/permissions/check"
                         + "?accountId=" + accountId
@@ -194,6 +233,8 @@ class BankTransactionPermissionEnforcementIT {
                 .content("""
                         {
                           "bankAccountLabel": "국민 권한테스트",
+                          "transactedAt": "2026-06-23T09:10:00",
+                          "amount": 150000.00,
                           "externalRef": "%s",
                           "partnerCode": "P-2026-0001"
                         }

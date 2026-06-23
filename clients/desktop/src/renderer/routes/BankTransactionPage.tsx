@@ -73,7 +73,7 @@ function statusStyle(status: BankMatchStatus): React.CSSProperties {
   const colors: Record<BankMatchStatus, { bg: string; fg: string }> = {
     UNREFLECTED: { bg: 'var(--state-warning-bg)', fg: 'var(--state-warning)' },
     REFLECTED: { bg: 'var(--state-success-bg)', fg: 'var(--state-success)' },
-    FORCED: { bg: 'var(--color-primary-50)', fg: 'var(--color-primary-700)' },
+    FORCED: { bg: 'var(--state-info-bg)', fg: 'var(--state-info)' },
   }
   const color = colors[status]
   return {
@@ -99,8 +99,8 @@ function partnerValueOf(row: BankTransactionRow): PartnerOption | null {
 }
 
 function partnerDisplay(row: BankTransactionRow): string {
+  // 그룹4 규약: 거래처코드 = 사업자번호(숫자만) + 거래처명.
   const parts = [
-    row.matchedPartnerCode,
     row.matchedBizNo ? row.matchedBizNo.replace(/\D/g, '') : null,
     row.matchedPartnerName,
   ].filter(Boolean)
@@ -246,22 +246,18 @@ export function BankTransactionPage() {
           <div style={{ display: 'grid', gridTemplateColumns: matched ? '1fr auto' : '1fr', gap: 8, alignItems: 'end' }}>
             <PartnerAutocomplete
               label=""
-              ariaLabel={`${row.externalRef} 거래처 검색`}
+              ariaLabel={`${row.counterpartyName ?? '통장 거래'} 거래처 검색`}
               placeholder="거래처명/코드"
               value={matched}
               onChange={(partner) => {
+                // 해제는 명시 '해제' 버튼으로만 처리(AsyncAutocomplete 는 onChange(null) 을 발화하지 않음).
                 if (partner) {
                   matchPartnerMutation.mutate({
                     bankAccountLabel: row.bankAccountLabel,
+                    transactedAt: row.transactedAt,
+                    amount: row.amount,
                     externalRef: row.externalRef,
                     partnerCode: partner.partnerCode,
-                  })
-                  return
-                }
-                if (row.matchedPartnerCode) {
-                  clearPartnerMutation.mutate({
-                    bankAccountLabel: row.bankAccountLabel,
-                    externalRef: row.externalRef,
                   })
                 }
               }}
@@ -278,6 +274,8 @@ export function BankTransactionPage() {
                 disabled={!canUpdate || pending}
                 onClick={() => clearPartnerMutation.mutate({
                   bankAccountLabel: row.bankAccountLabel,
+                  transactedAt: row.transactedAt,
+                  amount: row.amount,
                   externalRef: row.externalRef,
                 })}
               >

@@ -2001,12 +2001,16 @@ export interface BankTransactionImportResult {
 
 export interface MatchBankTransactionPartnerRequest {
   bankAccountLabel: string
+  transactedAt: string
+  amount: string | number
   externalRef: string
   partnerCode: string
 }
 
 export interface ClearBankTransactionMatchRequest {
   bankAccountLabel: string
+  transactedAt: string
+  amount: string | number
   externalRef: string
 }
 
@@ -2063,9 +2067,9 @@ export async function matchBankTransactionPartner(
 export async function clearBankTransactionMatch(
   request: ClearBankTransactionMatchRequest,
 ): Promise<BankTransactionRow> {
-  const res = await apiClient.delete<ApiEnvelope<BankTransactionRow>>(
-    '/accounting/bank-transactions/match-partner',
-    { data: request },
+  const res = await apiClient.patch<ApiEnvelope<BankTransactionRow>>(
+    '/accounting/bank-transactions/match-partner/clear',
+    request,
   )
   return res.data.data
 }
