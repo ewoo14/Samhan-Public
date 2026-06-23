@@ -4,7 +4,24 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 — **회계 A~F + G-1(받을어음) 완결. G/H spec 확정. 잔여 G-2/G-3·H-1~4·sweep 그룹2/3·견적. 다음=G-2 수금계획 또는 개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 야간 — **회계 G 완결(G-1/G-2/G-3) + H-1(입출금 CSV) + 관리코드 제거 sweep + 세션 PR 0-수렴 감사·보완 + 🚨워크플로우 단일화. 다음=H-2 매칭화면 또는 개발책임자 지정**)
+
+### 🚨 워크플로우 단일 진실원 ([[feedback_canonical_workflow]] 신설, main `82aa31210`)
+- 개발책임자: 워크플로우 반복 위반 → **canonical 1파일로 통합·과거 변동내역 14파일 폐기**. **Opus 기획+PR → Codex 개발+리뷰 → (Opus 5-agent[FE/BE/Design/DevOps/QA·QA=Docker라이브QA+스샷]+fix+TM통합 → Codex 5-agent+QA라이브+fix+TM통합) error/skip/backlog 0수렴까지 반복 → PM확인+CI → PM머지.** 🚫듀얼리뷰 병렬금지(순차)·단축금지·**리뷰=실QA동반**. 앞으로 본 파일만 따른다.
+
+### ✅ 회계 G·H + sweep 머지 (이번 세션)
+- **G-1 받을어음**(#580)·**G-2 수금계획**(#581 — CollectionPlan 상태전이/자동제안 중복가드/forecast + accounting.receivables write page-code auth V66)·**G-3 채권채무 현황**(#582 — direction ALL+월별aging+여신/어음/수금계획 병기, creditLimit 계약 fix).
+- **H-1 입출금**(#583 — BankTransaction 소스무관+통장 CSV 범용매핑 import 멱등/4-key dedup, accounting.bank-matching auth V67) + **관리코드(P-2026) 표시 제거 sweep**(전 회계 보고서, 거래처코드 bizNo만 — 개발책임자 결정).
+- **세션 PR 0-수렴 감사**: #570/#571/#575=#579커버, #572~574 PM종합, #576/#577 Opus소급+라이브QA, #578 확인, **#569 소급이 단일모델 머지 실결함 2건 적발→#584 fix**(arologis 메타권한 매트릭스 MASTER 전용 경화 defense-in-depth + cashbook summary 게이트).
+- 🪤 **QA 캡처 함정**: Git Bash가 `/route` argv를 Windows 경로로 변환(MSYS path conversion)→404 → `MSYS_NO_PATHCONV=1` 또는 하드코딩. 렌더러 콜드(재기동 직후)=warm-up 후 캡처. arologis admin 로그인=arologis-service:8097 직접(게이트웨이 미라우트), 시드 admin/admin1234(MASTER).
+
+### ⏭️ 잔여 회계 H (spec 있음)
+- H-2 매칭화면(탭·거래처 수동지정·자동제안) → H-3 입출금보고서+거래처원장 POSTED 전기 → H-4 KFTC(후속).
+- 거래처코드 sweep 그룹2(판매/주문)·그룹3(아로로지스)·견적은 잔여(회계 6보고서+관리코드 제거 완료).
+
+---
+
+## 🟢 핸드오프 (2026-06-23 — **회계 A~F + G-1(받을어음). G/H spec 확정**)
 
 ### ✅ 회계 G — spec 확정 + G-1 받을어음 머지 (#580, main `2f2a51229`)
 - **spec**=`docs/superpowers/specs/2026-06-23-accounting-gh-receivables-bank-matching-design.md`. 개발책임자 결정([[project_accounting_gh_decisions]]): G=받을어음+수금계획+aging 전부(어음 4상태 보유/추심/결제완료/부도), H=BankTransaction 소스무관 CSV 범용매핑 MVP→KFTC 후속.
