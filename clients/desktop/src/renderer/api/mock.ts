@@ -4750,6 +4750,134 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(updated)
   }
 
+  // G-2 수금계획 — 등록/목록/상태전이/자동제안/예측. UUID 미노출 mock.
+  if (method === 'GET' && url.includes('/accounting/collection-plans/suggestions')) {
+    const partnerCode = String(config.params?.['partnerCode'] ?? '')
+    const partner = MOCK_ADMIN_PARTNERS.find((row) => row.partnerCode === partnerCode)
+    const aging = MOCK_PARTNER_AGING_RECEIVABLE.lines.find((row) => row.partnerCode === partnerCode)
+    const fallbackName = String(partner?.name ?? partner?.partnerName ?? aging?.partnerName ?? partnerCode)
+    const fallbackBizNo = String(partner?.bizNo ?? partner?.businessNumber ?? aging?.bizNo ?? '').replace(/\D/g, '')
+    const rows = []
+    if (aging && Number(aging.balance) > 0) {
+      rows.push({
+        partnerCode,
+        bizNo: fallbackBizNo,
+        partnerName: fallbackName,
+        plannedDate: new Date().toISOString().slice(0, 10),
+        plannedAmount: String(aging.balance),
+        basis: 'RECEIVABLE_BALANCE' as const,
+        sourceReference: '110',
+        memo: '외상매출금 잔액 기준 자동 제안',
+      })
+    }
+    for (const note of MOCK_NOTES_RECEIVABLE.filter((row) =>
+      row.partnerCode === partnerCode && (row.status === 'BOARDING' || row.status === 'COLLECTING'),
+    )) {
+      rows.push({
+        partnerCode,
+        bizNo: note.bizNo,
+        partnerName: note.partnerName,
+        plannedDate: note.maturityDate,
+        plannedAmount: note.amount,
+        basis: 'NOTE_MATURITY' as const,
+        sourceReference: note.noteNo,
+        memo: '받을어음 만기 기준 자동 제안',
+      })
+    }
+    return envelope(rows.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate)))
+  }
+
+  if (method === 'GET' && url.includes('/accounting/collection-plans/forecast')) {
+    const from = String(config.params?.['from'] ?? '2026-01-01')
+    const to = String(config.params?.['to'] ?? '2026-12-31')
+    const buckets = new Map<string, number>()
+    let year = Number(from.slice(0, 4))
+    let monthIndex = Number(from.slice(5, 7))
+    const endYear = Number(to.slice(0, 4))
+    const endMonth = Number(to.slice(5, 7))
+    while (year < endYear || (year === endYear && monthIndex <= endMonth)) {
+      const month = `${year}-${String(monthIndex).padStart(2, '0')}`
+      buckets.set(month, 0)
+      monthIndex += 1
+      if (monthIndex > 12) {
+        monthIndex = 1
+        year += 1
+      }
+    }
+    for (const row of MOCK_COLLECTION_PLANS) {
+      if (row.status === 'COLLECTED') continue
+      if (row.plannedDate < from || row.plannedDate > to) continue
+      const month = row.plannedDate.slice(0, 7)
+      buckets.set(month, (buckets.get(month) ?? 0) + Number(row.plannedAmount))
+    }
+    const months = Array.from(buckets.entries()).map(([month, plannedAmount]) => ({
+      month,
+      plannedAmount: String(plannedAmount),
+    }))
+    const totalAmount = months.reduce((sum, row) => sum + Number(row.plannedAmount), 0)
+    return envelope({ from, to, totalAmount: String(totalAmount), months })
+  }
+
+  if (method === 'GET' && url.includes('/accounting/collection-plans')) {
+    const status = (config.params?.['status'] as string | undefined) ?? ''
+    const partnerCode = (config.params?.['partnerCode'] as string | undefined) ?? ''
+    const rows = MOCK_COLLECTION_PLANS
+      .filter((row) => !status || row.status === status)
+      .filter((row) => !partnerCode || row.partnerCode === partnerCode)
+      .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.planNo.localeCompare(b.planNo))
+    return envelope(rows)
+  }
+
+  if (method === 'POST' && url.includes('/accounting/collection-plans')) {
+    const body = parseMockBody(config)
+    const partnerCode = String(body.partnerCode ?? 'P-2026-0001')
+    const partner = MOCK_ADMIN_PARTNERS.find((row) => row.partnerCode === partnerCode)
+    const aging = MOCK_PARTNER_AGING_RECEIVABLE.lines.find((row) => row.partnerCode === partnerCode)
+    const plannedDate = String(body.plannedDate ?? new Date().toISOString().slice(0, 10))
+    const planNo = `CP-${plannedDate.replace(/-/g, '')}-${String(Date.now()).slice(-6)}`
+    const row = {
+      planNo,
+      partnerCode,
+      bizNo: String(partner?.bizNo ?? partner?.businessNumber ?? aging?.bizNo ?? '').replace(/\D/g, ''),
+      partnerName: String(partner?.name ?? partner?.partnerName ?? aging?.partnerName ?? ''),
+      plannedDate,
+      plannedAmount: String(body.plannedAmount ?? '0'),
+      basis: String(body.basis ?? 'MANUAL') as 'RECEIVABLE_BALANCE' | 'NOTE_MATURITY' | 'MANUAL',
+      status: 'PLANNED' as 'PLANNED' | 'COLLECTED' | 'OVERDUE',
+      memo: body.memo == null ? null : String(body.memo),
+    }
+    MOCK_COLLECTION_PLANS = [...MOCK_COLLECTION_PLANS, row]
+    return envelope(row)
+  }
+
+  if (method === 'PATCH' && url.includes('/accounting/collection-plans') && url.includes('/status')) {
+    const body = parseMockBody(config)
+    const planNo = decodeURIComponent(url.match(/\/accounting\/collection-plans\/([^/?]+)\/status/)?.[1] ?? '')
+    const status = String(body.status ?? '')
+    const index = MOCK_COLLECTION_PLANS.findIndex((row) => row.planNo === planNo)
+    if (index < 0) return mockError(404, 'NOT_FOUND', '수금계획을 찾을 수 없습니다.')
+    const current = MOCK_COLLECTION_PLANS[index]
+    if (!current) return mockError(404, 'NOT_FOUND', '수금계획을 찾을 수 없습니다.')
+    const canCollectionPlanTransition =
+      (status === 'OVERDUE' && current.status === 'PLANNED') ||
+      (status === 'COLLECTED' && (current.status === 'PLANNED' || current.status === 'OVERDUE'))
+    if (!canCollectionPlanTransition) {
+      return mockError(
+        409,
+        'CONFLICT',
+        `Cannot transition collection plan ${planNo} from ${current.status} to ${status}`,
+      )
+    }
+    const updated = {
+      ...current,
+      status: status as 'PLANNED' | 'COLLECTED' | 'OVERDUE',
+    }
+    MOCK_COLLECTION_PLANS = MOCK_COLLECTION_PLANS.map((row, rowIndex) =>
+      rowIndex === index ? updated : row,
+    )
+    return envelope(updated)
+  }
+
   // GET /accounting/reports/account-statement?asOfDate=&accountCode= — 계정명세서
   if (method === 'GET' && url.includes('/accounting/reports/account-statement')) {
     const asOfDate = (config.params?.['asOfDate'] ?? '2026-06-30') as string
@@ -12922,6 +13050,41 @@ let MOCK_NOTES_RECEIVABLE: Array<{
     amount: '8800000',
     noteType: 'BILL_OF_EXCHANGE',
     status: 'COLLECTING',
+    memo: null,
+  },
+]
+
+let MOCK_COLLECTION_PLANS: Array<{
+  planNo: string
+  partnerCode: string
+  bizNo: string
+  partnerName: string
+  plannedDate: string
+  plannedAmount: string
+  basis: 'RECEIVABLE_BALANCE' | 'NOTE_MATURITY' | 'MANUAL'
+  status: 'PLANNED' | 'COLLECTED' | 'OVERDUE'
+  memo: string | null
+}> = [
+  {
+    planNo: 'CP-20260705-000101',
+    partnerCode: 'P-2026-0001',
+    bizNo: '1112233333',
+    partnerName: '삼한공조 A',
+    plannedDate: '2026-07-05',
+    plannedAmount: '12500000',
+    basis: 'NOTE_MATURITY',
+    status: 'PLANNED',
+    memo: '받을어음 만기 기준',
+  },
+  {
+    planNo: 'CP-20260720-000102',
+    partnerCode: 'P-2026-0002',
+    bizNo: '2223344444',
+    partnerName: '아로물류 B',
+    plannedDate: '2026-07-20',
+    plannedAmount: '8800000',
+    basis: 'MANUAL',
+    status: 'OVERDUE',
     memo: null,
   },
 ]

@@ -24,4 +24,15 @@ public interface NotesReceivableRepository extends JpaRepository<NotesReceivable
             """)
     List<NotesReceivable> search(@Param("status") NoteStatus status,
                                  @Param("partnerId") UUID partnerId);
+
+    @Query("""
+            SELECT n FROM NotesReceivable n
+            WHERE n.partnerId = :partnerId
+              AND n.status IN (
+                com.samhanair.logis.accounting.domain.NoteStatus.BOARDING,
+                com.samhanair.logis.accounting.domain.NoteStatus.COLLECTING
+              )
+            ORDER BY n.maturityDate ASC, n.noteNo ASC
+            """)
+    List<NotesReceivable> findCollectionSuggestionCandidates(@Param("partnerId") UUID partnerId);
 }
