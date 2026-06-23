@@ -113,10 +113,10 @@ public class PartnerInternalController {
     }
 
     /**
-     * partnerId N건으로 거래처명만 batch lookup — accounting-service admin 목록 N+1 제거용.
+     * partnerId N건으로 거래처 식별정보 batch lookup — accounting-service admin 목록 N+1 제거용.
      *
-     * <p>응답은 최소 DTO {@code partners[].id/name} 만 포함한다. 일부 미존재 ID 는 누락하고,
-     * 빈 ids 는 200 + 빈 배열로 반환한다.
+     * <p>응답은 DTO {@code partners[].id/partnerCode/name/bizNo} 를 포함한다(거래처코드=bizNo 표시용,
+     * UUID 는 내부 join 용이며 사용자 화면 미노출). 일부 미존재 ID 는 누락하고, 빈 ids 는 200 + 빈 배열로 반환한다.
      */
     @Operation(summary = "partnerId N건 거래처명 batch lookup",
             description = "accounting-service admin 목록의 partnerName N+1 회피. X-Internal-Token 필수.")
