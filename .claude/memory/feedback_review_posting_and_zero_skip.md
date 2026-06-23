@@ -11,6 +11,7 @@ metadata:
 - **Claude TM 리뷰**(5-agent 종합)와 **Codex TM 리뷰**(5-섹션)를 PR 코멘트로 **각각 따로 게시**(한 코멘트에 합치지 말 것).
 - 마지막에 **PM 종합 리뷰** 코멘트를 **반드시** 게시(양측 리뷰 종합 + 판단 + 머지 사유).
 - 🕒 **제때(라운드별 즉시) 게시 의무** (2026-06-23 개발책임자 재지적, "리뷰 좀 제때 게시 요청. 스크린샷 포함"): 각 리뷰 라운드(R1 Opus·R2 Codex·라운드별 Docker 실QA)가 **완료되는 즉시** 해당 PR에 게시. 수렴/머지까지 batch 보류 금지. **스크린샷(라이브 Docker 실QA)도 그 라운드 코멘트에 인라인 포함**([[per-round-live-qa]]). 리뷰 진행 중이면 "진행 중" 상태라도 QA 먼저 게시.
+- 🚨 **트리비얼/기계적 PR도 듀얼리뷰 단축 금지** (2026-06-23 개발책임자 "재리뷰 안하고 머지한 것도 모두 리뷰 다시 진행"): "sweep이라 기계적", "1줄 정렬", "가드/테스트뿐"이라며 **Codex 단독·단일리뷰로 단축하고 머지하면 안 됨**. 모든 PR에 Opus+Codex 양측 리뷰 각각 게시 + PM 종합 의무. 실제로 #570/#571/#575를 단축머지 → 소급 재리뷰가 page-code parity 갭·union 미검·em-dash 계열누락(P2 3건) 적발(#579 fix). 단축한 듯하면 **소급 재리뷰**라도 반드시 진행. CI/PR 코멘트에 Opus·Codex 둘 다 보이는지 머지 전 확인.
 
 **skip 0 규칙**:
 - Claude+Codex 5-agent & fix 사이클 후, **PM 판단상 skip 이 1건이라도 남으면 해결될 때까지 계속 fix**. (test.skip / false-green / 미실행 = 통과 아님 — [[feedback_no_fake_data_ever]], [[feedback_ci_test_filter_false_green]].) 슬라이스 관련 skip 우선, 불가피한 legacy quarantine 은 정직 명시.

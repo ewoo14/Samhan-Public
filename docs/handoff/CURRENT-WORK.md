@@ -4,7 +4,25 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B·C·D·F 머지(#572/#573/#574/#576). 잔여 E 원장·G·H(L). 다음=E 또는 개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 — **회계 A·B·C·D·E·F 완결 + partner UUID 정합 + 거래처코드 sweep 그룹1. 잔여 G·H(L)·sweep 그룹2/3·견적. 다음=개발책임자 지정**)
+
+### ✅ 회계 보고 스위트 — A·B·C·D·E·F 완결 (6슬라이스, 통일안 G·H만 잔여)
+- 슬E 계정명세서(#577, 특정일 계정×거래처 잔액 스냅샷·채권채무 방향·**거래처코드 열**). 슬F 전표현황(#576). + B/C/D(#572~574). 전부 듀얼리뷰(Opus 5-agent+Codex)+라운드별 Docker 실QA.
+- 잔여 **G 채권채무(받을어음/수금계획 결정)·H 입출금매칭(KFTC vs CSV 결정)** = L·도메인 결정 선행.
+
+### ✅ partner UUID 결정적 정합 (계정명세서 "(미조회)" 근본해소)
+- 🔑 **근본**: partner_db가 구 random v4 시드 + 내 JournalSeeder "fix"(seed-time 조회+b0000001 fallback)가 기존 결정적 스킴(PartnerSeeder/SlipSeeder/원래 JournalSeeder 공유 `nameUUIDFromBytes("samhan-seed:partner:"+partnerCode)`)을 깬 regression. **해소=partner_db 재시드(결정적 UUID)+JournalSeeder main 원복+dev DB b0000001→결정적 UPDATE** → 0 미조회. (운영 실 slip 분개는 이미 실 UUID라 정상이었음.) 거짓 "라우트 끊김" 오진([[realqa-run-and-false-red]] 보강).
+
+### ✅ 거래처코드(사업자번호 숫자) 열 sweep — 그룹1 회계 보고서 (#578)
+- 개발책임자 지시: 거래처명 표시 전 화면(아로로지스 포함)에 **거래처코드(bizNo 숫자, 하이픈제거) 열을 거래처명 앞에** 추가. PartnerLookupClient.findByPartnerIdsBatch(bizNo 반환)·UUID 미노출·시드값. **그룹1=회계 6보고서(전표현황·채권채무[관리코드=partnerCode/거래처코드=bizNo]·거래처원장·자금현황·일마감·총계정원장)**. Opus가 다중거래처 bizNo garble(P2) 적발·fix.
+- **잔여 sweep: 그룹2(판매/주문)·그룹3(아로로지스)·견적**(별도 서비스).
+
+### ✅ 소급 재리뷰 — 듀얼리뷰 누락 3건 (#579 fix)
+- 개발책임자 "재리뷰 안하고 머지한 것 모두 재리뷰" → #570/#571/#575가 듀얼리뷰 없이 머지됨 적발. 소급 Opus+Codex 재리뷰가 P2 3건(arologis page-code parity 갭·permissionsApi union 미검·monthlyIncomeStatement em-dash 누락) 적발 → #579 fix(듀얼리뷰 CLEAN). 🚨 [[review-posting-and-zero-skip]] 보강(트리비얼 PR도 듀얼리뷰 단축 금지).
+
+---
+
+## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B·C·D·F 머지(#572/#573/#574/#576). 슬E·sweep 후속**)
 
 ### ✅ 회계 보고 스위트 — 통일안 F(전표현황) 머지 (#576, main `3fb714b7f`)
 - BE `GET /accounting/reports/journal-status?from&to&sourceTypes&partnerCode&groupBy(DATE|SOURCE_TYPE|PARTNER)` — sourceType 다중필터·**거래처 partnerCode 필터**(PartnerLookupClient→UUID EXISTS, UUID 비노출)·grouping(헤더+소계, PARTNER는 라인 거래처별 fan-out)·거래유형 한글라벨(전표/수기/결산/계좌입금/현금입금). JPA 카르테시안 회피(LEFT JOIN+GROUP BY root). 기존 journals/search 무파손.
