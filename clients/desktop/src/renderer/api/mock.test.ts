@@ -291,3 +291,104 @@ describe('mock collection plan contract', () => {
     expect(Number(forecast.data.totalAmount)).toBeGreaterThan(0)
   })
 })
+
+describe('mock bank transaction matching contract', () => {
+  it('matches and clears a partner by 4-key natural key without UUID fields', () => {
+    const bankAccountLabel = `국민 매칭테스트 ${Date.now()}`
+    mockRequest({
+      method: 'POST',
+      url: '/accounting/bank-transactions/import',
+      data: { bankAccountLabel },
+    })
+
+    const transactedAt = '2026-06-23T09:10:00'
+    const amount = '150000'
+    const externalRef = `mock-csv-${bankAccountLabel}-1`
+    const wrongAmount = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner',
+      data: {
+        bankAccountLabel,
+        transactedAt,
+        amount: '999999',
+        externalRef,
+        partnerCode: '1234567890',
+      },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(wrongAmount.__mockStatus).toBe(404)
+    expect(wrongAmount.body.code).toBe('NOT_FOUND')
+
+    const matched = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner',
+      data: {
+        bankAccountLabel,
+        transactedAt,
+        amount,
+        externalRef,
+        partnerCode: '1234567890',
+      },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(matched.data).toMatchObject({
+      bankAccountLabel,
+      externalRef,
+      matchStatus: 'UNREFLECTED',
+      matchedPartnerCode: '1234567890',
+      matchedBizNo: '1234567890',
+      matchedPartnerName: '엘에이시스템에어',
+    })
+    expect(matched.data).not.toHaveProperty('matchedPartnerId')
+
+    const filtered = mockRequest({
+      method: 'GET',
+      url: '/accounting/bank-transactions',
+      params: { matchStatus: 'UNREFLECTED', bankAccountLabel },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+
+    expect(filtered.data.find((row) => row.externalRef === externalRef)).toMatchObject({
+      matchedPartnerCode: '1234567890',
+      matchedPartnerName: '엘에이시스템에어',
+    })
+
+    // 재지정(덮어쓰기) — 미반영 거래는 다른 거래처로 재매칭 허용
+    const rematched = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner',
+      data: { bankAccountLabel, transactedAt, amount, externalRef, partnerCode: '2345678901' },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(rematched.data).toMatchObject({ externalRef, matchedPartnerCode: '2345678901' })
+
+    const cleared = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner/clear',
+      data: { bankAccountLabel, transactedAt, amount, externalRef },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(cleared.data).toMatchObject({
+      externalRef,
+      matchedPartnerCode: null,
+      matchedBizNo: null,
+      matchedPartnerName: null,
+    })
+    expect(cleared.data).not.toHaveProperty('matchedPartnerId')
+  })
+
+  it('keeps reflected and forced rows immutable for partner matching', () => {
+    const forced = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner',
+      data: {
+        bankAccountLabel: '국민 123-456',
+        transactedAt: '2026-06-22T15:40:00',
+        amount: '45000',
+        externalRef: 'mock-bank-20260622-002',
+        partnerCode: '1234567890',
+      },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(forced.__mockStatus).toBe(409)
+    expect(forced.body.code).toBe('CONFLICT')
+  })
+})

@@ -113,13 +113,26 @@ public class BankTransaction extends BaseEntity {
                 counterpartyAccount, bankAccountLabel, source, externalRef);
     }
 
-    /** 미반영 거래에 거래처를 매칭한다. */
+    /**
+     * 미반영 거래에 거래처를 매칭한다.
+     *
+     * <p>이미 거래처가 매칭된 미반영(UNREFLECTED) 거래의 재지정(덮어쓰기)은 허용한다 — 회계 반영 전
+     * 단순 지정이라 오지정 정정 UX 가 자연스럽다. 변경 이력은 BaseEntity modifiedAt/modifiedBy 로 추적.
+     * 회계반영(REFLECTED)/강제(FORCED) 거래의 재지정은 거부(409).
+     */
     public BankTransaction matchPartner(UUID partnerId) {
         if (partnerId == null) {
             throw new IllegalArgumentException("partnerId 는 필수입니다");
         }
-        requireStatus(MatchStatus.UNREFLECTED, MatchStatus.UNREFLECTED);
+        requireUnreflected("매칭");
         this.matchedPartnerId = partnerId;
+        return this;
+    }
+
+    /** 미반영 거래의 거래처 매칭을 해제한다. 회계반영/강제 거래는 거부(409). */
+    public BankTransaction clearPartner() {
+        requireUnreflected("해제");
+        this.matchedPartnerId = null;
         return this;
     }
 
@@ -145,6 +158,14 @@ public class BankTransaction extends BaseEntity {
         return this;
     }
 
+    /** 거래처 매칭/해제는 미반영(UNREFLECTED) 거래에만 허용한다. */
+    private void requireUnreflected(String action) {
+        if (this.matchStatus != MatchStatus.UNREFLECTED) {
+            throw new IllegalStateException(
+                    "미반영 상태가 아니라(현재 " + matchStatus + ") 거래처 " + action + "을(를) 할 수 없습니다.");
+        }
+    }
+
     private void requireStatus(MatchStatus target, MatchStatus... allowed) {
         for (MatchStatus candidate : allowed) {
             if (this.matchStatus == candidate) {
@@ -152,7 +173,7 @@ public class BankTransaction extends BaseEntity {
             }
         }
         throw new IllegalStateException(
-                "Cannot transition bank transaction " + externalRef + " from " + matchStatus + " to " + target);
+                "현재 상태(" + matchStatus + ")에서는 " + target + " 전환이 허용되지 않습니다.");
     }
 
     private static void validateRequired(LocalDateTime transactedAt, BankTxnType txnType, BigDecimal amount,

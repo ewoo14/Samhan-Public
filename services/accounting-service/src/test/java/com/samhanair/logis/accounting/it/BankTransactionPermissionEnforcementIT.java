@@ -5,7 +5,9 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.samhanair.logis.accounting.AccountingServiceApplication;
@@ -13,12 +15,15 @@ import com.samhanair.logis.accounting.client.ChatRoomMappingClient;
 import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.client.ProductClient;
 import com.samhanair.logis.accounting.client.SlipQueryClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.security.permission.DefaultDynamicPermissionClient;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
+import com.samhanair.logis.security.permission.PermissionAction;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,6 +64,7 @@ class BankTransactionPermissionEnforcementIT {
     private static final UUID MANAGER_ACCOUNT = UUID.fromString("a0000000-0000-0000-0000-000000000003");
     private static final UUID ACCOUNTANT_ACCOUNT = UUID.fromString("a0000000-0000-0000-0000-000000000005");
     private static final UUID SALES_ACCOUNT = UUID.fromString("a0000000-0000-0000-0000-000000000004");
+    private static final UUID PARTNER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -96,9 +102,9 @@ class BankTransactionPermissionEnforcementIT {
     @Test
     @DisplayName("BankTransaction import: MANAGER/ACCOUNTANT CREATE 200, 미허용 계정 403")
     void importCsvWritePermissions_useDirectDynamicPermissionClient() throws Exception {
-        expectPermission(MANAGER_ACCOUNT, true);
-        expectPermission(ACCOUNTANT_ACCOUNT, true);
-        expectPermission(SALES_ACCOUNT, false);
+        expectPermission(MANAGER_ACCOUNT, PermissionAction.CREATE, true);
+        expectPermission(ACCOUNTANT_ACCOUNT, PermissionAction.CREATE, true);
+        expectPermission(SALES_ACCOUNT, PermissionAction.CREATE, false);
 
         importCsv(MANAGER_ACCOUNT, "PERM-MANAGER-001")
                 .andExpect(status().isOk());
@@ -110,11 +116,81 @@ class BankTransactionPermissionEnforcementIT {
         restClientMockServerHolder.server.verify();
     }
 
-    private void expectPermission(UUID accountId, boolean allowed) {
+    @Test
+    @DisplayName("BankTransaction match-partner: ACCOUNTANT UPDATE 200, 미허용 계정 403")
+    void matchPartnerUpdatePermission_usesBankMatchingPageCode() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO bank_transaction (
+                    id, transacted_at, txn_type, amount, description, bank_account_label,
+                    source, external_ref, match_status, created_at, created_by, is_deleted
+                ) VALUES (
+                    ?, TIMESTAMP '2026-06-23 09:10:00', 'DEPOSIT', 150000.00, '권한테스트 입금',
+                    '국민 권한테스트', 'CSV_IMPORT', 'PERM-MATCH-001', 'UNREFLECTED',
+                    NOW(), 'it', FALSE
+                )
+                """, UUID.randomUUID());
+        when(partnerLookupClient.findByPartnerCode("P-2026-0001"))
+                .thenReturn(Optional.of(new PartnerSummary(
+                        PARTNER_ID,
+                        "P-2026-0001",
+                        "권한테스트상사",
+                        "111-22-33333",
+                        "서울")));
+        expectPermission(ACCOUNTANT_ACCOUNT, PermissionAction.UPDATE, true);
+        expectPermission(SALES_ACCOUNT, PermissionAction.UPDATE, false);
+
+        matchPartner(ACCOUNTANT_ACCOUNT, "PERM-MATCH-001")
+                .andExpect(status().isOk());
+        matchPartner(SALES_ACCOUNT, "PERM-MATCH-001")
+                .andExpect(status().isForbidden());
+
+        restClientMockServerHolder.server.verify();
+    }
+
+    @Test
+    @DisplayName("BankTransaction match-partner/clear: ACCOUNTANT UPDATE 200, 미허용 계정 403")
+    void clearPartnerUpdatePermission_usesBankMatchingPageCode() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO bank_transaction (
+                    id, transacted_at, txn_type, amount, description, bank_account_label,
+                    source, external_ref, match_status, created_at, created_by, is_deleted
+                ) VALUES (
+                    ?, TIMESTAMP '2026-06-23 09:10:00', 'DEPOSIT', 150000.00, '권한해제테스트 입금',
+                    '국민 권한테스트', 'CSV_IMPORT', 'PERM-CLEAR-001', 'UNREFLECTED',
+                    NOW(), 'it', FALSE
+                )
+                """, UUID.randomUUID());
+        expectPermission(ACCOUNTANT_ACCOUNT, PermissionAction.UPDATE, true);
+        expectPermission(SALES_ACCOUNT, PermissionAction.UPDATE, false);
+
+        clearPartner(ACCOUNTANT_ACCOUNT, "PERM-CLEAR-001")
+                .andExpect(status().isOk());
+        clearPartner(SALES_ACCOUNT, "PERM-CLEAR-001")
+                .andExpect(status().isForbidden());
+
+        restClientMockServerHolder.server.verify();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions clearPartner(UUID accountId, String externalRef)
+            throws Exception {
+        return mockMvc.perform(patch(BASE_URL + "/match-partner/clear")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "bankAccountLabel": "국민 권한테스트",
+                          "transactedAt": "2026-06-23T09:10:00",
+                          "amount": 150000.00,
+                          "externalRef": "%s"
+                        }
+                        """.formatted(externalRef))
+                .header("X-User-Id", accountId.toString()));
+    }
+
+    private void expectPermission(UUID accountId, PermissionAction action, boolean allowed) {
         restClientMockServerHolder.server.expect(once(), requestTo("http://auth-service/auth/internal/permissions/check"
                         + "?accountId=" + accountId
                         + "&pageCode=" + PAGE_CODE
-                        + "&action=CREATE"))
+                        + "&action=" + action.name()))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", INTERNAL_TOKEN))
                 .andExpect(header("X-User-Id", "system-internal:accounting-service"))
@@ -148,6 +224,22 @@ class BankTransactionPermissionEnforcementIT {
                 "bank-permission.csv",
                 MediaType.TEXT_PLAIN_VALUE,
                 csv.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions matchPartner(UUID accountId, String externalRef)
+            throws Exception {
+        return mockMvc.perform(patch(BASE_URL + "/match-partner")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "bankAccountLabel": "국민 권한테스트",
+                          "transactedAt": "2026-06-23T09:10:00",
+                          "amount": 150000.00,
+                          "externalRef": "%s",
+                          "partnerCode": "P-2026-0001"
+                        }
+                        """.formatted(externalRef))
+                .header("X-User-Id", accountId.toString()));
     }
 
     @TestConfiguration

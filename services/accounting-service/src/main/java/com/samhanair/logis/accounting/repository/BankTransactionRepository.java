@@ -22,4 +22,11 @@ public interface BankTransactionRepository
 
     Optional<BankTransaction> findByExternalRefAndIsDeletedFalse(String externalRef);
 
+    /** 매칭/해제 단건 식별 — V43 unique index 4-key 와 동일. */
+    Optional<BankTransaction> findByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse(
+            String bankAccountLabel,
+            LocalDateTime transactedAt,
+            BigDecimal amount,
+            String externalRef);
+
 }

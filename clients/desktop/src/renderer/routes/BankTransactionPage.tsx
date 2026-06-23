@@ -6,21 +6,26 @@ import {
   Card,
   DataTable,
   Input,
+  PartnerAutocomplete,
   Select,
   Spinner,
   type DataTableColumn,
+  type PartnerOption,
 } from '@samhan/design-system'
 import {
   BANK_MATCH_STATUS_LABEL,
   BANK_TXN_SOURCE_LABEL,
   BANK_TXN_TYPE_LABEL,
+  clearBankTransactionMatch,
   importBankTransactionsCsv,
   listBankTransactions,
+  matchBankTransactionPartner,
   type BankMatchStatus,
   type BankTransactionImportResult,
   type BankTransactionRow,
   type ImportBankTransactionsMapping,
 } from '../api/accounting'
+import { searchPartners } from '../api/partnerApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 
@@ -68,7 +73,7 @@ function statusStyle(status: BankMatchStatus): React.CSSProperties {
   const colors: Record<BankMatchStatus, { bg: string; fg: string }> = {
     UNREFLECTED: { bg: 'var(--state-warning-bg)', fg: 'var(--state-warning)' },
     REFLECTED: { bg: 'var(--state-success-bg)', fg: 'var(--state-success)' },
-    FORCED: { bg: 'var(--color-primary-50)', fg: 'var(--color-primary-700)' },
+    FORCED: { bg: 'var(--state-info-bg)', fg: 'var(--state-info)' },
   }
   const color = colors[status]
   return {
@@ -82,6 +87,24 @@ function statusStyle(status: BankMatchStatus): React.CSSProperties {
     fontSize: 12,
     fontWeight: 700,
   }
+}
+
+function partnerValueOf(row: BankTransactionRow): PartnerOption | null {
+  if (!row.matchedPartnerCode && !row.matchedPartnerName) return null
+  return {
+    partnerCode: row.matchedPartnerCode ?? row.matchedBizNo ?? '',
+    name: row.matchedPartnerName ?? row.matchedPartnerCode ?? '',
+    bizNo: row.matchedBizNo ?? undefined,
+  }
+}
+
+function partnerDisplay(row: BankTransactionRow): string {
+  // 그룹4 규약: 거래처코드 = 사업자번호(숫자만) + 거래처명.
+  const parts = [
+    row.matchedBizNo ? row.matchedBizNo.replace(/\D/g, '') : null,
+    row.matchedPartnerName,
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : '—'
 }
 
 function initialMapping(): ImportBankTransactionsMapping {
@@ -105,6 +128,7 @@ export function BankTransactionPage() {
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
   const canCreate = canAccess('accounting.bank-matching', 'create')
+  const canUpdate = canAccess('accounting.bank-matching', 'update')
   const [activeTab, setActiveTab] = useState<StatusTab>('ALL')
   const [filters, setFilters] = useState({
     from: monthStartIso(),
@@ -152,6 +176,22 @@ export function BankTransactionPage() {
     onError: () => setToast({ type: 'error', message: '통장 CSV import 중 오류가 발생했습니다.' }),
   })
 
+  const matchPartnerMutation = useMutation({
+    mutationFn: matchBankTransactionPartner,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
+    },
+    onError: () => setToast({ type: 'error', message: '거래처 매칭 중 오류가 발생했습니다.' }),
+  })
+
+  const clearPartnerMutation = useMutation({
+    mutationFn: clearBankTransactionMatch,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
+    },
+    onError: () => setToast({ type: 'error', message: '거래처 매칭 해제 중 오류가 발생했습니다.' }),
+  })
+
   const rows = transactionsQuery.data ?? []
   const totalDeposit = rows
     .filter((row) => row.txnType === 'DEPOSIT')
@@ -193,6 +233,60 @@ export function BankTransactionPage() {
       render: (row) => row.counterpartyName || '—',
     },
     {
+      key: 'matchedPartnerCode',
+      header: '거래처 매칭',
+      width: '320px',
+      render: (row) => {
+        if (row.matchStatus !== 'UNREFLECTED') {
+          return <span>{partnerDisplay(row)}</span>
+        }
+        const matched = partnerValueOf(row)
+        const pending = matchPartnerMutation.isPending || clearPartnerMutation.isPending
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: matched ? '1fr auto' : '1fr', gap: 8, alignItems: 'end' }}>
+            <PartnerAutocomplete
+              label=""
+              ariaLabel={`${row.counterpartyName ?? '통장 거래'} 거래처 검색`}
+              placeholder="거래처명/코드"
+              value={matched}
+              onChange={(partner) => {
+                // 해제는 명시 '해제' 버튼으로만 처리(AsyncAutocomplete 는 onChange(null) 을 발화하지 않음).
+                if (partner) {
+                  matchPartnerMutation.mutate({
+                    bankAccountLabel: row.bankAccountLabel,
+                    transactedAt: row.transactedAt,
+                    amount: row.amount,
+                    externalRef: row.externalRef,
+                    partnerCode: partner.partnerCode,
+                  })
+                }
+              }}
+              searchPartners={searchPartners}
+              disabled={!canUpdate || pending}
+              minChars={1}
+              debounceMs={200}
+            />
+            {matched ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!canUpdate || pending}
+                onClick={() => clearPartnerMutation.mutate({
+                  bankAccountLabel: row.bankAccountLabel,
+                  transactedAt: row.transactedAt,
+                  amount: row.amount,
+                  externalRef: row.externalRef,
+                })}
+              >
+                해제
+              </Button>
+            ) : null}
+          </div>
+        )
+      },
+    },
+    {
       key: 'bankAccountLabel',
       header: '은행계좌',
       width: '180px',
@@ -220,7 +314,7 @@ export function BankTransactionPage() {
         </span>
       ),
     },
-  ], [])
+  ], [canUpdate, clearPartnerMutation, matchPartnerMutation])
 
   const canImport = canCreate
     && Boolean(file)
@@ -399,7 +493,7 @@ export function BankTransactionPage() {
         <DataTable<BankTransactionRow>
           columns={columns}
           rows={rows}
-          rowKey={(row) => row.externalRef}
+          rowKey={(row) => `${row.bankAccountLabel}|${row.transactedAt}|${row.amount}|${row.externalRef}`}
           emptyMessage={transactionsQuery.isLoading ? '조회 중' : '입출금 거래가 없습니다'}
         />
       </Card>

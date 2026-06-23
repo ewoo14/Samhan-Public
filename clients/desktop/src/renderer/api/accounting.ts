@@ -1999,6 +1999,21 @@ export interface BankTransactionImportResult {
   duplicateSkippedCount: number
 }
 
+export interface MatchBankTransactionPartnerRequest {
+  bankAccountLabel: string
+  transactedAt: string
+  amount: string | number
+  externalRef: string
+  partnerCode: string
+}
+
+export interface ClearBankTransactionMatchRequest {
+  bankAccountLabel: string
+  transactedAt: string
+  amount: string | number
+  externalRef: string
+}
+
 export async function listBankTransactions(
   options: ListBankTransactionsOptions = {},
 ): Promise<BankTransactionRow[]> {
@@ -2035,6 +2050,26 @@ export async function importBankTransactionsCsv(
   const res = await apiClient.post<ApiEnvelope<BankTransactionImportResult>>(
     '/accounting/bank-transactions/import',
     form,
+  )
+  return res.data.data
+}
+
+export async function matchBankTransactionPartner(
+  request: MatchBankTransactionPartnerRequest,
+): Promise<BankTransactionRow> {
+  const res = await apiClient.patch<ApiEnvelope<BankTransactionRow>>(
+    '/accounting/bank-transactions/match-partner',
+    request,
+  )
+  return res.data.data
+}
+
+export async function clearBankTransactionMatch(
+  request: ClearBankTransactionMatchRequest,
+): Promise<BankTransactionRow> {
+  const res = await apiClient.patch<ApiEnvelope<BankTransactionRow>>(
+    '/accounting/bank-transactions/match-partner/clear',
+    request,
   )
   return res.data.data
 }
