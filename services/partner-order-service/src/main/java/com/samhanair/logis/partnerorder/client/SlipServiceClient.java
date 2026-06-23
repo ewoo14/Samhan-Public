@@ -19,8 +19,11 @@ import org.springframework.web.client.RestClient;
  * Idempotency-Key 헤더와 함께 호출. 응답 분기:
  *
  * <ul>
- *   <li>200 OK → {@link PublishResult#published(String)} (slipNo 채움)</li>
- *   <li>409 Conflict (idempotency duplicate) → {@link PublishResult#duplicate(String)} (기존 slipNo)</li>
+ *   <li>200 OK (멱등 replay) / 201 Created (신규) → {@link PublishResult#published(String)}</li>
+ *   <li>409 Conflict (동일 키 다른 본문/race) → {@link BusinessException}(CONFLICT)</li>
+ *   <li>401 Unauthorized → {@link BusinessException}(UNAUTHORIZED)</li>
+ *   <li>403 Forbidden → {@link BusinessException}(FORBIDDEN)</li>
+ *   <li>기타 4xx → {@link BusinessException}(INVALID_INPUT)</li>
  *   <li>5xx → {@link BusinessException}(INTERNAL_ERROR) — 호출자가 outbox INSERT 로 fallback</li>
  * </ul>
  *
@@ -56,13 +59,13 @@ public class SlipServiceClient {
     }
 
     /**
-     * slip-service 에 partner-order 기반 슬립 발행을 요청한다. 200/409 모두 성공으로 간주
-     * (409 = 동일 Idempotency-Key 재호출).
+     * slip-service 에 partner-order 기반 슬립 발행을 요청한다.
+     * 200 멱등 replay / 201 신규 발행은 published 로 수렴하고, 409 는 충돌로 전파한다.
      *
      * @param requestPayload slip-service 가 요구하는 본문 (라인 + 거래처 정보)
      * @param idempotencyKey {@code PO-CONF-{draftSeq}} 형식 — 재시도 시 동일 키 재사용
-     * @return PublishResult — published / duplicate 구분
-     * @throws BusinessException(INTERNAL_ERROR) slip-service 5xx, 연결 실패 (호출자가 outbox 로 fallback)
+     * @return PublishResult — published 결과
+     * @throws BusinessException slip-service 4xx/5xx, 연결 실패
      */
     public PublishResult publishFromPartnerOrder(Map<String, Object> requestPayload,
                                                  String idempotencyKey) {
@@ -82,27 +85,35 @@ public class SlipServiceClient {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestPayload)
                     .retrieve()
+                    .onStatus(s -> s.value() == 401, (req, res) -> {
+                        throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                                "slip-service 401 내부 인증 실패: " + res.getStatusCode());
+                    })
+                    .onStatus(s -> s.value() == 403, (req, res) -> {
+                        throw new BusinessException(ErrorCode.FORBIDDEN,
+                                "slip-service 403 내부 권한 거부: " + res.getStatusCode());
+                    })
+                    .onStatus(s -> s.value() == 409, (req, res) -> {
+                        throw new BusinessException(ErrorCode.CONFLICT,
+                                "slip-service 409 충돌(동일 키 다른 본문/race): " + res.getStatusCode());
+                    })
+                    .onStatus(s -> s.is4xxClientError()
+                            && s.value() != 401
+                            && s.value() != 403
+                            && s.value() != 409, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INVALID_INPUT,
+                                "slip-service 4xx: " + res.getStatusCode());
+                    })
                     .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
                         throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                                 "slip-service 5xx: " + res.getStatusCode());
                     })
-                    .onStatus(s -> s.is4xxClientError() && s.value() != 409, (req, res) -> {
-                        throw new BusinessException(ErrorCode.INVALID_INPUT,
-                                "slip-service 4xx: " + res.getStatusCode());
-                    })
-                    // MIG-23 사이클 1e fix (Codex Correctness MAJOR) — 409 duplicate 명시 통과.
-                    // RestClient 의 default 4xx handler 가 onStatus 미처리 status 를 throw 하므로
-                    // 409 는 no-op handler 로 explicit pass 처리해야 body parse + duplicate(slipNo) 분기 도달.
-                    .onStatus(s -> s.value() == 409, (req, res) -> { /* no-op, allow body parse */ })
                     .toEntity(new ParameterizedTypeReference<Map<String, Object>>() {});
 
             String slipNo = extractSlipNo(response.getBody());
             if (slipNo == null || slipNo.isBlank()) {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                         "slip-service 응답에 slipNo 누락");
-            }
-            if (response.getStatusCode().value() == 409) {
-                return PublishResult.duplicate(slipNo);
             }
             return PublishResult.published(slipNo);
         } catch (BusinessException ex) {
@@ -116,14 +127,14 @@ public class SlipServiceClient {
     /**
      * slip-service 에 다중 주문 병합 발행을 요청한다 — Phase 2.6b D2.
      *
-     * <p>응답 분기는 {@link #publishFromPartnerOrder} 와 동일하다(200 성공 / 409 멱등 duplicate / 5xx 예외).
+     * <p>응답 분기는 {@link #publishFromPartnerOrder} 와 동일하다(200/201 성공, 409 충돌, 4xx/5xx 예외).
      * 기존 {@code publishFromPartnerOrder} 는 무변경(회귀 0). URI 만 {@code /from-orders-merge}.
      *
      * @param requestPayload 병합 발행 본문 — slip-service {@code PublishFromOrdersMergeRequest} 계약에 맞는 맵.
      *                       필수 키: {@code sourceOrders}(List) / {@code lines}(List) / {@code warehouseCode}
      * @param idempotencyKey {@code PO-MRG-...} 결정적 키 (reserve referenceId 와 공용)
-     * @return PublishResult — published(200) 또는 duplicate(409) 구분
-     * @throws BusinessException(INTERNAL_ERROR) slip-service 5xx / 연결 실패
+     * @return PublishResult — published 결과
+     * @throws BusinessException slip-service 4xx/5xx, 연결 실패
      */
     public PublishResult publishFromOrdersMerge(Map<String, Object> requestPayload,
                                                 String idempotencyKey) {
@@ -143,24 +154,35 @@ public class SlipServiceClient {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestPayload)
                     .retrieve()
+                    .onStatus(s -> s.value() == 401, (req, res) -> {
+                        throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                                "slip-service 401 내부 인증 실패: " + res.getStatusCode());
+                    })
+                    .onStatus(s -> s.value() == 403, (req, res) -> {
+                        throw new BusinessException(ErrorCode.FORBIDDEN,
+                                "slip-service 403 내부 권한 거부: " + res.getStatusCode());
+                    })
+                    .onStatus(s -> s.value() == 409, (req, res) -> {
+                        throw new BusinessException(ErrorCode.CONFLICT,
+                                "slip-service 409 충돌(동일 키 다른 본문/race): " + res.getStatusCode());
+                    })
+                    .onStatus(s -> s.is4xxClientError()
+                            && s.value() != 401
+                            && s.value() != 403
+                            && s.value() != 409, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INVALID_INPUT,
+                                "slip-service 4xx: " + res.getStatusCode());
+                    })
                     .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
                         throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                                 "slip-service 5xx: " + res.getStatusCode());
                     })
-                    .onStatus(s -> s.is4xxClientError() && s.value() != 409, (req, res) -> {
-                        throw new BusinessException(ErrorCode.INVALID_INPUT,
-                                "slip-service 4xx: " + res.getStatusCode());
-                    })
-                    .onStatus(s -> s.value() == 409, (req, res) -> { /* no-op, allow body parse */ })
                     .toEntity(new ParameterizedTypeReference<Map<String, Object>>() {});
 
             String slipNo = extractSlipNo(response.getBody());
             if (slipNo == null || slipNo.isBlank()) {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                         "slip-service 병합 응답에 slipNo 누락");
-            }
-            if (response.getStatusCode().value() == 409) {
-                return PublishResult.duplicate(slipNo);
             }
             return PublishResult.published(slipNo);
         } catch (BusinessException ex) {
@@ -194,7 +216,7 @@ public class SlipServiceClient {
         return token;
     }
 
-    /** slip-service 발행 결과 — 200 (published) 와 409 (duplicate) 구분. */
+    /** slip-service 발행 결과 — duplicate 팩토리는 기존 호출자/테스트 호환을 위해 유지한다. */
     public record PublishResult(String slipNo, boolean duplicate) {
         public static PublishResult published(String slipNo) {
             return new PublishResult(slipNo, false);

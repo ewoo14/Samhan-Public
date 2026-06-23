@@ -69,8 +69,8 @@
 - 듀얼리뷰 R1(Opus: **isLeaf 정합**=소계↔표시행↔기존 IncomeStatementService 일치, **missing-year 500→400** GlobalExceptionHandler, difference Javadoc+FE 비용섹션 중립색)→R2(Codex: mock 영업외손익합계 소계행). **개발책임자 라이브 화면 지적 2건**: 음수 괄호→'-'(빨강유지), 계정명 코드 prefix 제거([[accounting-report-display-conventions]] 박제).
 - 🔑 표시 규약 메모리화: 음수='-X' 빨강·계정명 코드 prefix 금지·0='—'·비용섹션 증감 중립. **신규 슬라이스(E~H) 처음부터 적용**.
 
-### 🔧 후속(미착수): 슬B 현금흐름 상대계정 코드 prefix 제거
-- fundsFlowComparisonPageModel.ts 상대계정도 "110 외상매출금" 코드 prepend → 계정명만으로 정렬(슬D와 일관). 슬C 시산표는 별도 코드열이라 무관. 짧은 FE PR.
+### ✅ 후속(완료 — stale 정정 2026-06-23): 슬B 현금흐름 상대계정 코드 prefix 제거
+- **이미 #575로 머지 완료** (커밋 `9a2042f91`). fundsFlowComparisonPageModel.ts:32 `accountName: name`(코드 prepend 제거 확인), 라이브 스샷 `docs/qa/accounting-funds-flow-comparison-b/05-funds-flow-name-only.png`. 본 항목은 "미착수"로 잘못 박제됐던 것 — 코드 대조 검증으로 stale 적발·정정.
 
 
 ### ✅ 회계 보고 스위트 — 통일안 B(현금흐름 입출금내역 2기간) 머지 (#572, main `a6eb4d2b8`)

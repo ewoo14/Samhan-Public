@@ -31,14 +31,15 @@ DRAFT → POST /confirm → CONFIRMING (idempotency_key=PO-CONF-{draftSeq})
   ├ M1b inventory reserve (라인별)
   ├ partner_order INSERT (status=CONFIRMING, slipPublishStatus=PENDING_RETRY)
   ├ SlipServiceClient.publishFromPartnerOrder(payload, "PO-CONF-{draftSeq}")
-  │   ├ 200 → markSlipPublished(slipNo) + history SLIP_PUBLISHED
-  │   ├ 409 → markSlipPublished(기존 slipNo, duplicate=true)
+  │   ├ 200/201 → markSlipPublished(slipNo) + history SLIP_PUBLISHED
+  │   ├ 409 → BusinessException(CONFLICT) 전파 (동일 키 다른 본문/race, slipNo 없음)
   │   └ 5xx → SlipPublishOutbox.queue + history SLIP_RETRY_QUEUED
   └ 응답: ConfirmResponse{orderNo, slipNo, status, slipPublishStatus}
 
 Scheduler (5분):
   PENDING + nextAttemptAt ≤ now() → publish 재시도
-    ├ 200/409 → COMMITTED + markSlipPublished
+    ├ 200/201 → COMMITTED + markSlipPublished
+    ├ 409 → retry/fail 처리 (동일 키 다른 본문/race, COMMITTED 아님)
     ├ 5xx → markRetry (지수 백오프 5min × 2^attempt, max 60min)
     └ elapsed ≥ 24h → FAILED + markSlipFailedPermanent + alert
 ```
@@ -224,7 +225,7 @@ dev-report: `docs/dev-reports/phase-2-4-partner-order-restore-version-history.md
 
 형식: `PO-CONV-{orderId}-{SHA-256[:16]}`.
 입력: `orderId + 정렬된 "lineId:convertedBefore:qty"`.
-`convertedBefore` 포함 → 같은 라인 2차 전환 시 다른 키(정상 2회 부분전환) / 재시도 시 동일 키(409-dup 안전).
+`convertedBefore` 포함 → 같은 라인 2차 전환 시 다른 키(정상 2회 부분전환) / 재시도 시 동일 키(200 replay 안전).
 
 ### 배포 순서 (필수 준수)
 

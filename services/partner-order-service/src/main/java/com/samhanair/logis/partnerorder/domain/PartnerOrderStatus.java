@@ -6,7 +6,7 @@ package com.samhanair.logis.partnerorder.domain;
  * <pre>
  *   DRAFT → POST /confirm → CONFIRMING (advisory lock)
  *     → DC + reserve + insert + slip 발행
- *     → CONFIRMED (slip 200/409)
+ *     → CONFIRMED (slip 200 replay/201 신규)
  *     → CONFIRMED + slipPublishStatus=PENDING_RETRY (slip 5xx → outbox)
  *   CANCELED — 사용자 취소 (CONFIRMED 후 24h 내, 정책은 슬라이스 외)
  *   DRAFT ↔ ON_HOLD (보류/해제) — Phase 2.5
