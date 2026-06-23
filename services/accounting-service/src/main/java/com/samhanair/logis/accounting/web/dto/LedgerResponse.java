@@ -1,5 +1,7 @@
 package com.samhanair.logis.accounting.web.dto;
 
+import com.samhanair.logis.accounting.domain.AccountCategory;
+import com.samhanair.logis.accounting.report.BalanceDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -32,13 +34,17 @@ public record LedgerResponse(
 ) {
 
     /**
-     * 원장 라인 1건 — 일자 / 분개번호 / 계정코드 / 계정명 / 거래처코드 / 적요 / 차변 / 대변 / 잔액.
+     * 원장 라인 1건 — 일자 / 분개번호 / 계정코드 / 계정명 / 계정분류 / 잔액방향 / 거래처코드 / 적요 / 차변 / 대변 / 잔액.
      *
      * @param date        분개 일자
      * @param journalNo   분개번호 (사용자 노출 비즈니스 식별자)
      * @param accountCode 계정코드 (110/401 등)
      * @param accountName 계정명 — SP-08-FU2 P2-4 신규. ChartOfAccount 마스터 lookup 결과.
      *                    해당 코드의 계정과목이 없거나 조회 실패 시 null.
+     * @param accountCategory 계정 카테고리. 총계정원장 화면 grouping 메타.
+     * @param accountCategoryDisplayName 계정 카테고리 한국어 표시명.
+     * @param balanceDirection 채권/채무 등 정상 잔액 방향 메타.
+     * @param balanceDirectionDisplayName 정상 잔액 방향 한국어 표시명.
      * @param partnerCode 거래처코드 (해당 라인의 partnerId lookup 결과 — 없으면 null)
      * @param description 적요
      * @param debit       차변
@@ -50,10 +56,35 @@ public record LedgerResponse(
             String journalNo,
             String accountCode,
             String accountName,
+            AccountCategory accountCategory,
+            String accountCategoryDisplayName,
+            BalanceDirection balanceDirection,
+            String balanceDirectionDisplayName,
             String partnerCode,
             String description,
             BigDecimal debit,
             BigDecimal credit,
             BigDecimal balance
-    ) {}
+    ) {
+        /**
+         * 기존 총계정원장 호출부/테스트 호환용 생성자.
+         *
+         * <p>신규 화면은 확장 필드를 사용하지만, 기존 코드 경로는 계정 메타가 없어도
+         * 동일 JSON 필드를 null 로 내려받을 수 있다.
+         */
+        public LedgerLine(
+                LocalDate date,
+                String journalNo,
+                String accountCode,
+                String accountName,
+                String partnerCode,
+                String description,
+                BigDecimal debit,
+                BigDecimal credit,
+                BigDecimal balance
+        ) {
+            this(date, journalNo, accountCode, accountName, null, null, null, null,
+                    partnerCode, description, debit, credit, balance);
+        }
+    }
 }

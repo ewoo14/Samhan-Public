@@ -214,6 +214,31 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, UUID> 
                                                                     @Param("asOfDate") LocalDate asOfDate);
 
     /**
+     * 계정명세서 스냅샷 — 기준일 포함 이전까지 대상 계정의 계정코드 + partnerId 별 차/대 누계.
+     *
+     * <p>POSTED 분개만 포함한다. partnerId 가 NULL 인 라인은 service 레이어에서 "기타"로
+     * 표시한다. 컬렉션 JOIN FETCH 없이 GROUP BY 집계만 사용하여 다중 라인 전표의
+     * 카르테시안 증폭을 방지한다.
+     *
+     * @param accountCodes 대상 계정코드 목록
+     * @param asOfDate 기준일
+     * @return 계정코드 + partnerId 별 차/대 누계
+     */
+    @Query("""
+            SELECT l.partnerId AS partnerId,
+                   l.accountCode AS accountCode,
+                   COALESCE(SUM(l.debitAmount), 0) AS debitTotal,
+                   COALESCE(SUM(l.creditAmount), 0) AS creditTotal
+            FROM JournalLine l
+            WHERE l.accountCode IN :accountCodes
+              AND l.journal.journalDate <= :asOfDate
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+            GROUP BY l.partnerId, l.accountCode
+            """)
+    List<PartnerAccountTotal> aggregateAccountStatementByAccountPartner(@Param("accountCodes") List<String> accountCodes,
+                                                                        @Param("asOfDate") LocalDate asOfDate);
+
+    /**
      * 자금 증가 drill-down 대상 라인 조회.
      *
      * <p>증가/감소 방향 판정은 계정 category 가 필요하므로 service 에서 수행한다.

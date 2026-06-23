@@ -4679,6 +4679,167 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope({ ...base, asOfDate })
   }
 
+  // GET /accounting/reports/account-statement?asOfDate=&accountCode= — 계정명세서
+  if (method === 'GET' && url.includes('/accounting/reports/account-statement')) {
+    const asOfDate = (config.params?.['asOfDate'] ?? '2026-06-30') as string
+    const accountCode = ((config.params?.['accountCode'] ?? '') as string).trim()
+    const amount = (
+      openingBalance: number,
+      increase: number,
+      decrease: number,
+      debitTotal: number,
+      creditTotal: number,
+      balance: number,
+    ) => ({
+      openingBalance: String(openingBalance),
+      increase: String(increase),
+      decrease: String(decrease),
+      debitTotal: String(debitTotal),
+      creditTotal: String(creditTotal),
+      balance: String(balance),
+    })
+    const line = (
+      code: string,
+      name: string,
+      partnerName: string,
+      increase: number,
+      decrease: number,
+      debitTotal: number,
+      creditTotal: number,
+      balance: number,
+    ) => ({
+      accountCode: code,
+      accountName: name,
+      partnerName,
+      openingBalance: '0',
+      increase: String(increase),
+      decrease: String(decrease),
+      debitTotal: String(debitTotal),
+      creditTotal: String(creditTotal),
+      balance: String(balance),
+    })
+    const account = (
+      code: string,
+      name: string,
+      category: string,
+      categoryDisplayName: string,
+      balanceDirection: 'DEBIT' | 'CREDIT',
+      lines: ReturnType<typeof line>[],
+    ) => {
+      const subtotal = lines.reduce(
+        (acc, row) => ({
+          openingBalance: acc.openingBalance,
+          increase: acc.increase + Number(row.increase),
+          decrease: acc.decrease + Number(row.decrease),
+          debitTotal: acc.debitTotal + Number(row.debitTotal),
+          creditTotal: acc.creditTotal + Number(row.creditTotal),
+          balance: acc.balance + Number(row.balance),
+        }),
+        { openingBalance: 0, increase: 0, decrease: 0, debitTotal: 0, creditTotal: 0, balance: 0 },
+      )
+      return {
+        accountCode: code,
+        accountName: name,
+        category,
+        categoryDisplayName,
+        balanceDirection,
+        balanceDirectionDisplayName: balanceDirection === 'DEBIT' ? '차변잔액' : '대변잔액',
+        lines,
+        subtotal: amount(
+          subtotal.openingBalance,
+          subtotal.increase,
+          subtotal.decrease,
+          subtotal.debitTotal,
+          subtotal.creditTotal,
+          subtotal.balance,
+        ),
+      }
+    }
+    const groups = [
+      {
+        groupCode: 'RECEIVABLE',
+        groupName: '채권',
+        balanceDirection: 'DEBIT' as const,
+        accounts: [
+          account('110', '외상매출금', 'ASSET', '자산', 'DEBIT', [
+            line('110', '외상매출금', '삼한공조 A', 10000000, 2500000, 10000000, 2500000, 7500000),
+            line('110', '외상매출금', '아로물류 B', 3200000, 0, 3200000, 0, 3200000),
+            line('110', '외상매출금', '임시거래처', 0, 120000, 0, 120000, -120000),
+          ]),
+          account('120', '미수금', 'ASSET', '자산', 'DEBIT', [
+            line('120', '미수금', '세종냉열', 880000, 300000, 880000, 300000, 580000),
+          ]),
+        ],
+      },
+      {
+        groupCode: 'PAYABLE',
+        groupName: '채무',
+        balanceDirection: 'CREDIT' as const,
+        accounts: [
+          account('201', '외상매입금', 'LIABILITY', '부채', 'CREDIT', [
+            line('201', '외상매입금', '대한운송 C', 8000000, 2000000, 2000000, 8000000, 6000000),
+            line('201', '외상매입금', '남부상사', 1450000, 450000, 450000, 1450000, 1000000),
+          ]),
+          account('210', '미지급금', 'LIABILITY', '부채', 'CREDIT', [
+            line('210', '미지급금', '월말 정산', 530000, 0, 0, 530000, 530000),
+          ]),
+        ],
+      },
+    ].map((group) => {
+      const accounts = accountCode
+        ? group.accounts.filter((row) => row.accountCode === accountCode)
+        : group.accounts
+      const subtotal = accounts.reduce(
+        (acc, row) => ({
+          openingBalance: acc.openingBalance + Number(row.subtotal.openingBalance),
+          increase: acc.increase + Number(row.subtotal.increase),
+          decrease: acc.decrease + Number(row.subtotal.decrease),
+          debitTotal: acc.debitTotal + Number(row.subtotal.debitTotal),
+          creditTotal: acc.creditTotal + Number(row.subtotal.creditTotal),
+          balance: acc.balance + Number(row.subtotal.balance),
+        }),
+        { openingBalance: 0, increase: 0, decrease: 0, debitTotal: 0, creditTotal: 0, balance: 0 },
+      )
+      return {
+        ...group,
+        accounts,
+        subtotal: amount(
+          subtotal.openingBalance,
+          subtotal.increase,
+          subtotal.decrease,
+          subtotal.debitTotal,
+          subtotal.creditTotal,
+          subtotal.balance,
+        ),
+      }
+    }).filter((group) => group.accounts.length > 0)
+    const total = groups.reduce(
+      (acc, group) => ({
+        openingBalance: acc.openingBalance + Number(group.subtotal.openingBalance),
+        increase: acc.increase + Number(group.subtotal.increase),
+        decrease: acc.decrease + Number(group.subtotal.decrease),
+        debitTotal: acc.debitTotal + Number(group.subtotal.debitTotal),
+        creditTotal: acc.creditTotal + Number(group.subtotal.creditTotal),
+        balance: acc.balance + Number(group.subtotal.balance),
+      }),
+      { openingBalance: 0, increase: 0, decrease: 0, debitTotal: 0, creditTotal: 0, balance: 0 },
+    )
+    return envelope({
+      asOfDate,
+      accountCode: accountCode || null,
+      groups,
+      total: amount(
+        total.openingBalance,
+        total.increase,
+        total.decrease,
+        total.debitTotal,
+        total.creditTotal,
+        total.balance,
+      ),
+      generatedAt: '2026-06-23T09:00:00.000Z',
+    })
+  }
+
   // GET /accounting/reports/journal-status?from=&to=&sourceTypes=&partnerCode=&groupBy= — 전표현황
   if (method === 'GET' && url.includes('/accounting/reports/journal-status')) {
     const from = (config.params?.['from'] ?? '2026-05-01') as string
