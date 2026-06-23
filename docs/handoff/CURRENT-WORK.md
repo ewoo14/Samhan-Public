@@ -4,7 +4,24 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 — **회계 A·B·C·D·E·F 완결 + partner UUID 정합 + 거래처코드 sweep 그룹1. 잔여 G·H(L)·sweep 그룹2/3·견적. 다음=개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 — **회계 A~F + G-1(받을어음) 완결. G/H spec 확정. 잔여 G-2/G-3·H-1~4·sweep 그룹2/3·견적. 다음=G-2 수금계획 또는 개발책임자 지정**)
+
+### ✅ 회계 G — spec 확정 + G-1 받을어음 머지 (#580, main `2f2a51229`)
+- **spec**=`docs/superpowers/specs/2026-06-23-accounting-gh-receivables-bank-matching-design.md`. 개발책임자 결정([[project_accounting_gh_decisions]]): G=받을어음+수금계획+aging 전부(어음 4상태 보유/추심/결제완료/부도), H=BankTransaction 소스무관 CSV 범용매핑 MVP→KFTC 후속.
+- **슬G-1 받을어음**(NotesReceivable 신규 쓰기 도메인): BaseEntity+soft delete, **상태전이 가드**(BOARDING→COLLECTING/SETTLED/DISHONORED·COLLECTING→SETTLED/DISHONORED만, terminal/역전이/이중결제 409), register BOARDING 강제. Flyway V40(CHECK·active note_no partial unique·만기≥발행 3중). 권한 accounting.reports. FE 등록폼(상태 Select 없음)+목록(거래처코드 bizNo·관리코드·상태전이). UUID 미노출.
+- 🔑 **듀얼리뷰 0-수렴이 BLOCKING 단독 적발**: Opus+Codex 양측 동일하게 상태전이 가드 전무(역전이/이중결제/부도부활 통과) 적발 → fix → 라이브검증(register SETTLED→BOARDING 강제·역전이 409·받을어음 실화면 스크린샷). 개발책임자 "트리비얼도 0-수렴 듀얼리뷰+스크린샷 필수"([[review-posting-and-zero-skip]] 보강).
+- ⏭️ **잔여 G: G-2 수금계획**(거래처별 예정일/금액·자동제안)·**G-3 채권채무 현황**(aging direction=ALL+여신/미수+월별버킷·어음/수금계획 병기).
+
+### ⏭️ 회계 H — 입출금매칭 (전부 잔여, spec 있음)
+- H-1 BankTransaction 도메인+CSV 범용매핑 import → H-2 매칭화면(탭·거래처 수동지정) → H-3 입출금보고서+거래처원장 POSTED 전기 → H-4 KFTC(후속).
+
+### ⏭️ 거래처코드 sweep 잔여 (그룹1 #578 완료)
+- 그룹2(판매/주문)·그룹3(아로로지스)·견적. 개발책임자 "거래처명 나오는 전체 포함" 지시. (회계 그룹1 6보고서=#578 완료.)
+- 🪤 **QA 캡처 함정**: standalone 렌더러 빈화면은 환경 아닌 **캡처 스크립트 구조**(조회 클릭+충분한 wait 누락)였음 — 검증된 capture-e.cjs 패턴(navigate→1.8s→조회 click→2.8s) 재사용. 503은 rebuild 직후 eureka flap(페이지 상호작용 시 무해).
+
+---
+
+## 🟢 핸드오프 (2026-06-23 — **회계 A·B·C·D·E·F 완결 + partner UUID 정합 + 거래처코드 sweep 그룹1**)
 
 ### ✅ 회계 보고 스위트 — A·B·C·D·E·F 완결 (6슬라이스, 통일안 G·H만 잔여)
 - 슬E 계정명세서(#577, 특정일 계정×거래처 잔액 스냅샷·채권채무 방향·**거래처코드 열**). 슬F 전표현황(#576). + B/C/D(#572~574). 전부 듀얼리뷰(Opus 5-agent+Codex)+라운드별 Docker 실QA.
