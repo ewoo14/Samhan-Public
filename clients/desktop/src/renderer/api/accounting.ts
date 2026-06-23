@@ -1349,11 +1349,16 @@ export interface AccountStatementAccountGroup {
   subtotal: AccountStatementAmountSummary
 }
 
+export interface AccountStatementTotal {
+  receivableTotal: AccountStatementAmountSummary | null
+  payableTotal: AccountStatementAmountSummary | null
+}
+
 export interface AccountStatementResponse {
   asOfDate: string
   accountCode: string | null
   groups: AccountStatementAccountGroup[]
-  total: AccountStatementAmountSummary
+  total: AccountStatementTotal
   generatedAt: string
 }
 

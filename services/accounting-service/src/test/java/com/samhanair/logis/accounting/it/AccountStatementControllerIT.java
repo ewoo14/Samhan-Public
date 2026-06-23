@@ -14,8 +14,10 @@ import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
+import com.samhanair.logis.accounting.report.ReportPermissionGuard;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
+import com.samhanair.logis.security.permission.PermissionAction;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -128,6 +130,21 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         assertAmount(payableC.get("decrease"), "2000.00");
         assertAmount(payableC.get("balance"), "6000.00");
 
+        JsonNode etcLine = findLine(data, "201", "기타");
+        assertAmount(etcLine.get("increase"), "1000.00");
+        assertAmount(etcLine.get("decrease"), "0.00");
+        assertAmount(etcLine.get("balance"), "1000.00");
+        assertLineCount(data, "201", "기타", 1);
+
+        JsonNode total = data.get("total");
+        assertAmount(total.get("receivableTotal").get("balance"),
+                findGroup(data, "RECEIVABLE").get("subtotal").get("balance").asText());
+        assertAmount(total.get("payableTotal").get("balance"),
+                findGroup(data, "PAYABLE").get("subtotal").get("balance").asText());
+        if (total.has("balance")) {
+            throw new AssertionError("혼합 계정명세서 total 에 단일 balance 가 노출되었습니다");
+        }
+
         if (body.contains(RECEIVABLE_A_ID.toString())
                 || body.contains(RECEIVABLE_B_ID.toString())
                 || body.contains(PAYABLE_C_ID.toString())) {
@@ -153,10 +170,30 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
 
         assertText(data.get("accountCode"), "110");
         findLine(data, "110", "삼한공조 A");
+        JsonNode receivableGroup = data.get("groups").get(0);
+        assertText(receivableGroup.get("groupCode"), "RECEIVABLE");
+        assertText(receivableGroup.get("groupName"), "채권");
+        assertAmount(data.get("total").get("receivableTotal").get("balance"),
+                receivableGroup.get("subtotal").get("balance").asText());
+        if (!data.get("total").get("payableTotal").isNull()) {
+            throw new AssertionError("accountCode=110 조회에 채무 합계가 노출되었습니다");
+        }
         assertAccountMissing(data, "201");
         if (body.contains("외상매입금")) {
             throw new AssertionError("accountCode=110 조회에 채무 계정이 포함되었습니다");
         }
+    }
+
+    @Test
+    @DisplayName("계정명세서 — VIEW 권한 deny 시 403")
+    void accountStatementDeniedPermissionReturns403() throws Exception {
+        denyRequirePermission(ReportPermissionGuard.PAGE_CODE, PermissionAction.VIEW);
+
+        mockMvc.perform(get("/accounting/reports/account-statement")
+                        .param("asOfDate", "2026-06-30")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "SALES"))
+                .andExpect(status().isForbidden());
     }
 
     private void seedFixtures() {
@@ -169,6 +206,12 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         seedPosted("AST-AR-B", LocalDate.of(2026, 6, 15), "B 외상매출 발생",
                 line("110", "5000.00", "0.00", RECEIVABLE_B_ID, "B 매출채권"),
                 line("401", "0.00", "5000.00", COUNTER_ID, "매출"));
+        seedPosted("AST-AP-ETC-1", LocalDate.of(2026, 6, 16), "기타 외상매입 1",
+                line("500", "400.00", "0.00", COUNTER_ID, "기타 매입 1"),
+                line("201", "0.00", "400.00", null, "기타 매입채무 1"));
+        seedPosted("AST-AP-ETC-2", LocalDate.of(2026, 6, 17), "기타 외상매입 2",
+                line("500", "600.00", "0.00", COUNTER_ID, "기타 매입 2"),
+                line("201", "0.00", "600.00", null, "기타 매입채무 2"));
         seedPosted("AST-AP-C-OPEN", LocalDate.of(2026, 6, 20), "C 외상매입 발생",
                 line("500", "8000.00", "0.00", COUNTER_ID, "매입"),
                 line("201", "0.00", "8000.00", PAYABLE_C_ID, "C 매입채무"));
@@ -225,6 +268,15 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         throw new AssertionError("계정을 찾지 못했습니다: " + accountCode);
     }
 
+    private JsonNode findGroup(JsonNode data, String groupCode) {
+        for (JsonNode group : data.get("groups")) {
+            if (groupCode.equals(group.get("groupCode").asText())) {
+                return group;
+            }
+        }
+        throw new AssertionError("그룹을 찾지 못했습니다: " + groupCode);
+    }
+
     private void assertAccountMissing(JsonNode data, String accountCode) {
         for (JsonNode group : data.get("groups")) {
             for (JsonNode account : group.get("accounts")) {
@@ -247,6 +299,23 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
             }
         }
         throw new AssertionError("계정명세서 라인을 찾지 못했습니다: " + accountCode + " / " + partnerName);
+    }
+
+    private void assertLineCount(JsonNode data, String accountCode, String partnerName, int expected) {
+        int count = 0;
+        for (JsonNode group : data.get("groups")) {
+            for (JsonNode account : group.get("accounts")) {
+                for (JsonNode line : account.get("lines")) {
+                    if (accountCode.equals(line.get("accountCode").asText())
+                            && partnerName.equals(line.get("partnerName").asText())) {
+                        count++;
+                    }
+                }
+            }
+        }
+        if (count != expected) {
+            throw new AssertionError("라인 수 불일치 expected=" + expected + ", actual=" + count);
+        }
     }
 
     private void assertAmount(JsonNode node, String expected) {

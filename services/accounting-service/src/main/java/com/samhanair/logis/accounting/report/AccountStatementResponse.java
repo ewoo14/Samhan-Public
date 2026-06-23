@@ -16,16 +16,31 @@ import java.util.List;
  * @param asOfDate 기준일
  * @param accountCode 요청 계정코드. 전체 조회이면 null
  * @param groups 채권/채무 또는 계정 성격별 그룹
- * @param total 전체 합계
+ * @param total 방향별 전체 합계
  * @param generatedAt 생성 시각
  */
 public record AccountStatementResponse(
         LocalDate asOfDate,
         String accountCode,
         List<AccountGroup> groups,
-        AmountSummary total,
+        StatementTotal total,
         LocalDateTime generatedAt
 ) {
+
+    /**
+     * 계정명세서 방향별 전체 합계.
+     *
+     * <p>채권(차변 정상 잔액)과 채무(대변 정상 잔액)는 서로 부호 방향이 달라 단일 잔액으로
+     * 더하지 않는다.
+     *
+     * @param receivableTotal 채권 합계. 조회 결과에 채권 그룹이 없으면 null
+     * @param payableTotal 채무 합계. 조회 결과에 채무 그룹이 없으면 null
+     */
+    public record StatementTotal(
+            AmountSummary receivableTotal,
+            AmountSummary payableTotal
+    ) {
+    }
 
     /**
      * 계정 그룹 섹션.

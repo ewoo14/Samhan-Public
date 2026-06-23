@@ -27,8 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 계정명세서 Service.
  *
  * <p>POSTED 분개 라인을 기준일 이하로 GROUP BY 계정×거래처 집계하여, 거래처별 잔액
- * 스냅샷을 만든다. 기본 계정은 채권(외상매출금/받을어음/단기대여금/미수금)과
- * 채무(외상매입금/지급어음/미지급금/미지급비용)이다.
+ * 스냅샷을 만든다. 기본 계정은 채권(110 외상매출금/111 받을어음/114 단기대여금/120 미수금)과
+ * 채무(201 외상매입금/202 지급어음/210 미지급금/212 미지급비용)이다.
  *
  * <p>부호 규칙:
  * <ul>
@@ -91,7 +91,7 @@ public class AccountStatementService {
             ChartOfAccount account = accounts.get(code);
             AccountCategory category = categoryOf(account, code);
             BalanceDirection direction = directionOf(category);
-            String groupCode = groupCodeOf(requestedAccountCode, code, direction);
+            String groupCode = groupCodeOf(code, direction);
 
             List<AccountStatementResponse.Line> lines = rows.keySet().stream()
                     .filter(key -> code.equals(key.accountCode()))
@@ -123,7 +123,6 @@ public class AccountStatementService {
         }
 
         List<AccountStatementResponse.AccountGroup> groups = new ArrayList<>();
-        AccountStatementResponse.AmountSummary total = AccountStatementResponse.AmountSummary.zero();
         for (Map.Entry<String, List<AccountStatementResponse.AccountSection>> entry : sectionsByGroup.entrySet()) {
             String groupCode = entry.getKey();
             List<AccountStatementResponse.AccountSection> sections = entry.getValue();
@@ -137,14 +136,13 @@ public class AccountStatementService {
                     sections,
                     subtotal
             ));
-            total = total.plus(subtotal);
         }
 
         return new AccountStatementResponse(
                 asOfDate,
                 requestedAccountCode,
                 groups,
-                total,
+                totalOf(subtotalByGroup),
                 LocalDateTime.now()
         );
     }
@@ -253,10 +251,7 @@ public class AccountStatementService {
         return AccountCategory.ASSET;
     }
 
-    private String groupCodeOf(String requestedAccountCode, String accountCode, BalanceDirection direction) {
-        if (requestedAccountCode != null) {
-            return direction == BalanceDirection.DEBIT ? "DEBIT_BALANCE" : "CREDIT_BALANCE";
-        }
+    private String groupCodeOf(String accountCode, BalanceDirection direction) {
         if (RECEIVABLE_ACCOUNT_CODES.contains(accountCode)) {
             return "RECEIVABLE";
         }
@@ -264,6 +259,14 @@ public class AccountStatementService {
             return "PAYABLE";
         }
         return direction == BalanceDirection.DEBIT ? "DEBIT_BALANCE" : "CREDIT_BALANCE";
+    }
+
+    private AccountStatementResponse.StatementTotal totalOf(
+            Map<String, AccountStatementResponse.AmountSummary> subtotalByGroup) {
+        return new AccountStatementResponse.StatementTotal(
+                subtotalByGroup.get("RECEIVABLE"),
+                subtotalByGroup.get("PAYABLE")
+        );
     }
 
     private String groupNameOf(String groupCode, BalanceDirection direction) {

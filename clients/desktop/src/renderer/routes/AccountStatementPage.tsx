@@ -16,33 +16,23 @@ import {
 import {
   getAccountStatement,
   type AccountStatementAccountSection,
-  type AccountStatementLine,
 } from '../api/accounting'
 import { usePageTitle } from '../hooks/usePageTitle'
+import {
+  accountStatementTotalItems,
+  buildAccountStatementRows,
+  fmtAmount,
+  isNegativeAmount,
+  type AccountStatementAmountValue,
+  type AccountStatementTableRow,
+  type AccountStatementTotalItem,
+} from './accountStatementPageModel'
 
 function isoToday(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function amountNumber(raw: string | number | null | undefined): number {
-  if (raw == null || raw === '') return 0
-  const parsed = typeof raw === 'number' ? raw : Number.parseFloat(raw)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function isNegativeAmount(raw: string | number | null | undefined): boolean {
-  return amountNumber(raw) < 0
-}
-
-function fmtAmount(raw: string | number | null | undefined): string {
-  const value = amountNumber(raw)
-  if (value === 0) return '—'
-  const rounded = Math.round(Math.abs(value))
-  const text = rounded.toLocaleString('ko-KR')
-  return value < 0 ? `-${text}` : text
-}
-
-function amountStyle(raw: string | number | null | undefined): React.CSSProperties {
+function amountStyle(raw: AccountStatementAmountValue): React.CSSProperties {
   return {
     fontVariantNumeric: 'tabular-nums',
     color: isNegativeAmount(raw) ? 'var(--state-danger)' : undefined,
@@ -50,35 +40,36 @@ function amountStyle(raw: string | number | null | undefined): React.CSSProperti
   }
 }
 
-function AmountText({ value }: { value: string }) {
+function AmountText({ value }: { value: AccountStatementAmountValue }) {
   return <span style={amountStyle(value)}>{fmtAmount(value)}</span>
 }
 
-function sectionRowKey(row: AccountStatementLine): string {
-  return `${row.accountCode}:${row.partnerName}`
-}
-
 function TotalBand({
-  label,
-  balance,
+  items,
 }: {
-  label: string
-  balance: string
+  items: AccountStatementTotalItem[]
 }) {
+  if (items.length === 0) return null
+
   return (
     <Card data-testid="accounting-account-statement-total" style={{ marginTop: 16 }}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-end',
           gap: 16,
           fontSize: 14,
           fontWeight: 700,
         }}
       >
-        <span>{label}</span>
-        <span style={amountStyle(balance)}>{fmtAmount(balance)} 원</span>
+        {items.map((item, index) => (
+          <span key={item.label}>
+            {index > 0 ? <span style={{ margin: '0 8px', color: 'var(--color-neutral-400)' }}>/</span> : null}
+            <span>{item.label} </span>
+            <strong style={amountStyle(item.value)}>{fmtAmount(item.value)} 원</strong>
+          </span>
+        ))}
       </div>
     </Card>
   )
@@ -96,7 +87,7 @@ export function AccountStatementPage() {
     queryFn: () => getAccountStatement(query.asOfDate, query.accountCode || undefined),
   })
 
-  const columns = useMemo<DataTableColumn<AccountStatementLine>[]>(() => [
+  const columns = useMemo<DataTableColumn<AccountStatementTableRow>[]>(() => [
     {
       key: 'partnerName',
       header: '거래처명',
@@ -149,7 +140,7 @@ export function AccountStatementPage() {
   }
 
   const groups = statementQuery.data?.groups ?? []
-  const totalBalance = statementQuery.data?.total.balance ?? '0'
+  const totalItems = accountStatementTotalItems(statementQuery.data?.total)
 
   return (
     <>
@@ -273,10 +264,10 @@ export function AccountStatementPage() {
                       {section.categoryDisplayName} · {section.balanceDirectionDisplayName}
                     </span>
                   </div>
-                  <DataTable<AccountStatementLine>
+                  <DataTable<AccountStatementTableRow>
                     columns={columns}
-                    rows={section.lines}
-                    rowKey={sectionRowKey}
+                    rows={buildAccountStatementRows(section)}
+                    rowKey={(row) => row.rowKey}
                     emptyMessage="계정명세서 라인이 없습니다."
                   />
                   <div
@@ -305,7 +296,7 @@ export function AccountStatementPage() {
             </Card>
           ) : null}
 
-          <TotalBand label="합계 잔액" balance={totalBalance} />
+          <TotalBand items={totalItems} />
         </>
       )}
     </>

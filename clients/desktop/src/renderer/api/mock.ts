@@ -4813,29 +4813,14 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         ),
       }
     }).filter((group) => group.accounts.length > 0)
-    const total = groups.reduce(
-      (acc, group) => ({
-        openingBalance: acc.openingBalance + Number(group.subtotal.openingBalance),
-        increase: acc.increase + Number(group.subtotal.increase),
-        decrease: acc.decrease + Number(group.subtotal.decrease),
-        debitTotal: acc.debitTotal + Number(group.subtotal.debitTotal),
-        creditTotal: acc.creditTotal + Number(group.subtotal.creditTotal),
-        balance: acc.balance + Number(group.subtotal.balance),
-      }),
-      { openingBalance: 0, increase: 0, decrease: 0, debitTotal: 0, creditTotal: 0, balance: 0 },
-    )
     return envelope({
       asOfDate,
       accountCode: accountCode || null,
       groups,
-      total: amount(
-        total.openingBalance,
-        total.increase,
-        total.decrease,
-        total.debitTotal,
-        total.creditTotal,
-        total.balance,
-      ),
+      total: {
+        receivableTotal: groups.find((group) => group.groupCode === 'RECEIVABLE')?.subtotal ?? null,
+        payableTotal: groups.find((group) => group.groupCode === 'PAYABLE')?.subtotal ?? null,
+      },
       generatedAt: '2026-06-23T09:00:00.000Z',
     })
   }
