@@ -104,7 +104,7 @@ export function EstimateListPage() {
       width: '140px',
       render: (row) => (
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {row.partnerBusinessNo ?? '—'}
+          {row.partnerBusinessNo ? row.partnerBusinessNo.replace(/\D/g, '') : '—'}
         </span>
       ),
     },

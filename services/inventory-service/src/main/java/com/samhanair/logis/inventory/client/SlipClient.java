@@ -123,6 +123,8 @@ public class SlipClient {
             String slipDate = data.has("slipDate")
                     && !data.get("slipDate").isNull()
                     ? data.get("slipDate").asText() : null;
+            // slip-service SlipDetailResponse 의 실 JSON 키는 'businessNumber'(첫 키, 정상 경로).
+            // 나머지 키는 향후 다운스트림 필드 rename 대비 fallback(현 응답엔 미존재).
             String businessNumber = textOrNull(data,
                     "businessNumber", "partnerBusinessNo", "bizNo", "businessNo",
                     "businessRegistrationNumber");

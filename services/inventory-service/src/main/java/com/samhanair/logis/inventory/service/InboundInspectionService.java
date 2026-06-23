@@ -323,6 +323,13 @@ public class InboundInspectionService {
                         "해당 슬립의 검수 레코드가 없습니다. 먼저 GET 으로 검수를 초기화하세요: slipId=" + slipId));
     }
 
+    /**
+     * 입고검수 목록 행 → 요약 응답. slip snapshot(partnerName/businessNumber/slipDate)을 slipClient 로 보강.
+     *
+     * <p>⚠️ N+1 known issue(기존 부채): listInspections 의 페이지 행마다 {@code slipClient.getSlip()}
+     * 단건 HTTP 호출. 행수 증가 시 latency — 후속에서 InboundInspection 스냅샷 컬럼 백필 또는
+     * slip-service batch-detail 엔드포인트로 해소 예정. slip 조회 실패는 fail-soft(보강값 null → FE '—').
+     */
     private InboundInspectionSummaryResponse toSummaryResponse(InboundInspection inspection) {
         try {
             SlipDetail slipDetail = slipClient.getSlip(inspection.getSlipId());

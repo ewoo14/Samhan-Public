@@ -70,6 +70,11 @@ export function InboundInspectionListPage() {
       key: 'slipNo',
       header: '전표번호',
       width: '180px',
+      render: (row) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+          {row.slipNo}
+        </span>
+      ),
     },
     {
       key: 'partnerBusinessNo',
@@ -77,7 +82,7 @@ export function InboundInspectionListPage() {
       width: '140px',
       render: (row) => (
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {row.partnerBusinessNo ?? '—'}
+          {row.partnerBusinessNo ? row.partnerBusinessNo.replace(/\D/g, '') : '—'}
         </span>
       ),
     },
