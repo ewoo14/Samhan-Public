@@ -4,7 +4,7 @@
  * P0-9 슬라이스. BE `GET /api/v1/inventory/inbound-inspections` backing.
  * 매뉴얼 docs/manual/02-창고/01-입고-처리.md 참조.
  *
- * UUID 비공개 가드 — 화면에는 slipNo / 거래처 / 입고일 / 상태 / 검수자 표시.
+ * UUID 비공개 가드 — 화면에는 slipNo / 거래처 코드 / 거래처 / 입고일 / 상태 / 검수자 표시.
  * `slipId` 는 InboundInspectionDialog 의 path param 으로만 사용.
  *
  * data-testid:
@@ -70,6 +70,16 @@ export function InboundInspectionListPage() {
       key: 'slipNo',
       header: '전표번호',
       width: '180px',
+    },
+    {
+      key: 'partnerBusinessNo',
+      header: '거래처 코드',
+      width: '140px',
+      render: (row) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {row.partnerBusinessNo ?? '—'}
+        </span>
+      ),
     },
     {
       key: 'partnerName',

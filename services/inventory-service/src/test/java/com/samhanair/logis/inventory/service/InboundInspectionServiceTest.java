@@ -366,6 +366,23 @@ class InboundInspectionServiceTest {
         }
 
         @Test
+        @DisplayName("목록 요약은 slip-service snapshot 으로 거래처명/거래처코드/입고일을 보강")
+        void list_enrichesPartnerBusinessNoFromSlipSnapshot() {
+            InboundInspection inspection = makeInspection(slipId, "2025/01/10-001");
+            when(inspectionRepository.findAllByStatusAndIsDeletedFalse(
+                    any(InspectionStatus.class), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(inspection)));
+            when(slipClient.getSlip(slipId)).thenReturn(makeSlipDetail(slipId, "INBOUND", "SAVED"));
+
+            var result = service.listInspections(InspectionStatus.PENDING, Pageable.unpaged());
+
+            assertThat(result.getContent()).hasSize(1);
+            assertThat(result.getContent().get(0).partnerName()).isEqualTo("테스트 거래처");
+            assertThat(result.getContent().get(0).partnerBusinessNo()).isEqualTo("1234567890");
+            assertThat(result.getContent().get(0).slipDate()).isEqualTo("2025-01-10");
+        }
+
+        @Test
         @DisplayName("status null 이면 findAllByIsDeletedFalse 호출")
         void noStatus_callsAllRepo() {
             when(inspectionRepository.findAllByIsDeletedFalse(any(Pageable.class)))
@@ -405,7 +422,7 @@ class InboundInspectionServiceTest {
                 SHARED_SLIP_LINE_ID, productId, "테스트 제품", "MODEL-001",
                 10, new BigDecimal("100000"));
         return new SlipDetail(slipId, "2025/01/10-001", slipType, status,
-                warehouseId, "테스트 거래처", "본사창고", "2025-01-10",
+                warehouseId, "테스트 거래처", "본사창고", "2025-01-10", "1234567890",
                 List.of(slipLine));
     }
 

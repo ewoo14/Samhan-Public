@@ -61,6 +61,7 @@ class SlipClientTest {
                     "partnerName": "삼한테스트",
                     "destinationWarehouseName": "본사창고",
                     "slipDate": "2026-06-20",
+                    "businessNumber": "1234567890",
                     "lines": [{
                       "id": "%s",
                       "productId": "%s",
@@ -88,6 +89,7 @@ class SlipClientTest {
         assertThat(result.partnerName()).isEqualTo("삼한테스트");
         assertThat(result.destinationWarehouseName()).isEqualTo("본사창고");
         assertThat(result.slipDate()).isEqualTo("2026-06-20");
+        assertThat(result.businessNumber()).isEqualTo("1234567890");
         assertThat(result.lines()).hasSize(1);
         SlipLineDetail line = result.lines().get(0);
         assertThat(line.id()).isEqualTo(lineId);

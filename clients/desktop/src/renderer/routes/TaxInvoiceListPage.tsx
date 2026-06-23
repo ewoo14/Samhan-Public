@@ -10,7 +10,7 @@
  *   <li>partner — 거래처명 부분 매칭 (BE 검색 미지원이라 client-side 필터)</li>
  * </ul>
  *
- * <p>컬럼: 세금계산서번호 / 거래처 / 작성일 / 공급가액 / 세액 / 합계 / 상태.
+ * <p>컬럼: 세금계산서번호 / 거래처 코드 / 거래처 / 작성일 / 공급가액 / 세액 / 합계 / 상태.
  * UUID 비공개 가드 — id 컬럼 미포함, 사용자 노출은 taxInvoiceNo + partnerName 만.
  *
  * <p>권한 — RoleGuard 가 ACCOUNTANT / MASTER 만 통과 (라우팅 단계).
@@ -100,24 +100,19 @@ export function TaxInvoiceListPage() {
         ),
     },
     {
+      key: 'partnerBusinessNo',
+      header: '거래처 코드',
+      width: '140px',
+      render: (row) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {row.partnerBusinessNo ?? '—'}
+        </span>
+      ),
+    },
+    {
       key: 'partnerName',
       header: '거래처',
-      render: (row) => (
-        <div>
-          <div>{row.partnerName}</div>
-          {row.partnerBusinessNo ? (
-            <div
-              style={{
-                fontSize: 11,
-                color: '#6B7280',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {row.partnerBusinessNo}
-            </div>
-          ) : null}
-        </div>
-      ),
+      render: (row) => row.partnerName,
     },
     {
       key: 'supplyDate',

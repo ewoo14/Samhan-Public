@@ -104,6 +104,8 @@ export interface InboundInspectionSummary {
   slipNo: string
   /** 거래처명. */
   partnerName: string | null
+  /** 거래처 코드(bizNo). */
+  partnerBusinessNo: string | null
   /** 입고일 (YYYY-MM-DD). */
   slipDate: string
   /** 검수 상태. */

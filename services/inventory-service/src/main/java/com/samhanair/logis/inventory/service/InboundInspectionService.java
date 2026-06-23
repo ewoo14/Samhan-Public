@@ -33,6 +33,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -67,6 +68,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class InboundInspectionService {
 
     /** 검수 허용 슬립 상태 집합. */
@@ -125,11 +127,11 @@ public class InboundInspectionService {
         if (status != null) {
             return inspectionRepository
                     .findAllByStatusAndIsDeletedFalse(status, pageable)
-                    .map(InboundInspectionSummaryResponse::from);
+                    .map(this::toSummaryResponse);
         }
         return inspectionRepository
                 .findAllByIsDeletedFalse(pageable)
-                .map(InboundInspectionSummaryResponse::from);
+                .map(this::toSummaryResponse);
     }
 
     // ─────────────────── 검수 결과 저장 ───────────────────
@@ -319,6 +321,17 @@ public class InboundInspectionService {
         return inspectionRepository.findBySlipIdAndIsDeletedFalse(slipId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "해당 슬립의 검수 레코드가 없습니다. 먼저 GET 으로 검수를 초기화하세요: slipId=" + slipId));
+    }
+
+    private InboundInspectionSummaryResponse toSummaryResponse(InboundInspection inspection) {
+        try {
+            SlipDetail slipDetail = slipClient.getSlip(inspection.getSlipId());
+            return InboundInspectionSummaryResponse.from(inspection, slipDetail, null);
+        } catch (BusinessException ex) {
+            log.warn("입고검수 목록 slip snapshot 조회 실패 — slipNo={}, slipId={}, code={}",
+                    inspection.getSlipNo(), inspection.getSlipId(), ex.getErrorCode());
+            return InboundInspectionSummaryResponse.from(inspection);
+        }
     }
 
     private StockBalance loadOrCreateBalance(UUID productId, Warehouse warehouse) {

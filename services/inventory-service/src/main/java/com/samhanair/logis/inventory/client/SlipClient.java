@@ -123,6 +123,9 @@ public class SlipClient {
             String slipDate = data.has("slipDate")
                     && !data.get("slipDate").isNull()
                     ? data.get("slipDate").asText() : null;
+            String businessNumber = textOrNull(data,
+                    "businessNumber", "partnerBusinessNo", "bizNo", "businessNo",
+                    "businessRegistrationNumber");
 
             List<SlipLineDetail> lines = new ArrayList<>();
             if (data.has("lines") && data.get("lines").isArray()) {
@@ -146,7 +149,7 @@ public class SlipClient {
             }
 
             return new SlipDetail(id, slipNo, slipType, status, destinationWarehouseId,
-                    partnerName, destinationWarehouseName, slipDate, lines);
+                    partnerName, destinationWarehouseName, slipDate, businessNumber, lines);
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -163,5 +166,15 @@ public class SlipClient {
                     "app.security.internal.token 미설정");
         }
         return token;
+    }
+
+    private static String textOrNull(JsonNode node, String... keys) {
+        for (String key : keys) {
+            JsonNode value = node.get(key);
+            if (value != null && !value.isNull() && !value.asText().isBlank()) {
+                return value.asText();
+            }
+        }
+        return null;
     }
 }
