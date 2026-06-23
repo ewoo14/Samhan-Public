@@ -32,8 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <ol>
  *   <li>PENDING + nextAttemptAt &le; now() pick (attemptCount ASC)</li>
  *   <li>각 row 에 대해 PROCESSING 전이 → slip-service 호출 (동일 idempotencyKey)</li>
- *   <li>200/409 → COMMITTED + PartnerOrder.markSlipPublished + history 기록</li>
- *   <li>5xx → markRetry (지수 백오프) + max-retry-hours 검사</li>
+ *   <li>200 replay/201 신규 → COMMITTED + PartnerOrder.markSlipPublished + history 기록</li>
+ *   <li>4xx(409 충돌 등)/5xx → markRetry (지수 백오프) + max-retry-hours 검사</li>
  *   <li>max-retry-hours 초과 → markFailed + PartnerOrder.markSlipFailedPermanent + alert log</li>
  * </ol>
  *

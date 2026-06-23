@@ -20,7 +20,7 @@ import org.hibernate.annotations.UuidGenerator;
  * Outbox row — slip-service 발행 5xx 시 INSERT (PENDING). scheduler 가 5분 마다 picks 후
  * 재시도. 성공 시 COMMITTED, max-retry-hours (기본 24h) 초과 시 FAILED.
  *
- * <p>설계서 §6 — at-least-once 보장 + Idempotency-Key 로 slip-service 가 중복 차단 (409).
+ * <p>설계서 §6 — at-least-once 보장 + Idempotency-Key 로 slip-service 가 중복 발행 차단 (동일 키+본문 재시도 시 200 replay).
  *
  * <p>{@link #idempotencyKey} 는 PartnerOrder 의 동일 키 ({@code PO-CONF-{draftSeq}}) — 재시도
  * 시 동일 키 재사용으로 slip-service 의 중복 발행을 차단.
@@ -113,7 +113,7 @@ public class SlipPublishOutbox extends BaseEntity {
         this.status = OutboxStatus.PROCESSING;
     }
 
-    /** slip-service 200/409 → COMMITTED 종결. */
+    /** slip-service 200 replay/201 신규 → COMMITTED 종결. */
     public void markCommitted() {
         this.status = OutboxStatus.COMMITTED;
         this.lastError = null;

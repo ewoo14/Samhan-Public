@@ -59,7 +59,7 @@ public class PartnerOrder extends BaseEntity {
     private String orderNo;
 
     /**
-     * slip-service 발행 결과의 slip 번호. 발행 성공 후 채워짐 (200/409),
+     * slip-service 발행 결과의 slip 번호. 발행 성공 후 채워짐 (200 replay/201 신규),
      * PENDING_RETRY 상태 동안은 null. UNIQUE constraint 는 SQL 레벨에서 partial index.
      */
     @Column(name = "slip_no", length = 30)
@@ -345,7 +345,7 @@ public class PartnerOrder extends BaseEntity {
     }
 
     /**
-     * slip-service 200 또는 409 idempotency duplicate — slipNo 채움 + status=CONFIRMED.
+     * slip-service 200 replay 또는 201 신규 발행 — slipNo 채움 + status=CONFIRMED.
      *
      * <p><b>레거시(슬라이스 D1 이후)</b>: confirm 자동발행 폐지로 신규 흐름 미사용. 레거시 PENDING_RETRY
      * 주문 / outbox 스케줄러 호환을 위해 유지(코드 물리 제거는 후속).
