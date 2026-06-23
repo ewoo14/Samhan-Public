@@ -118,6 +118,49 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("CSV dedup: 같은 계좌/시각/금액이어도 externalRef 가 다르면 둘 다 적재, 재업로드는 멱등 skip")
+    void importCsv_keepsDistinctExternalRefsForSameAccountTimeAmount() throws Exception {
+        importCsv(sameKeyDifferentExternalRefCsv())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalRows").value(2))
+                .andExpect(jsonPath("$.data.importedCount").value(2))
+                .andExpect(jsonPath("$.data.duplicateSkippedCount").value(0));
+
+        importCsv(sameKeyDifferentExternalRefCsv())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalRows").value(2))
+                .andExpect(jsonPath("$.data.importedCount").value(0))
+                .andExpect(jsonPath("$.data.duplicateSkippedCount").value(2));
+
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM bank_transaction
+                 WHERE bank_account_label = ?
+                   AND transacted_at = TIMESTAMP '2026-06-23 09:10:00'
+                   AND amount = 150000.00
+                """, Integer.class, BANK_ACCOUNT_LABEL);
+        assertThat(count).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("CSV import: 악성/범위초과 컬럼 인덱스는 INVALID_INPUT 400")
+    void importCsv_rejectsMaliciousColumnIndexWithBadRequest() throws Exception {
+        importCsvWithDateColumn(ms949Csv(), "999999999999999999999999999999")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("컬럼 인덱스")));
+
+        importCsvWithDateColumn(ms949Csv(), "-1")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("컬럼 인덱스")));
+
+        importCsvWithDateColumn(ms949Csv(), "99")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("컬럼 인덱스")));
+    }
+
+    @Test
     @DisplayName("CHECK 제약: txn_type/source/match_status/amount native INSERT 거부")
     void checkConstraint_rejectsInvalidEnumAndAmount() {
         assertThatThrownBy(() -> insertNative("TRANSFER", "CSV_IMPORT", "UNREFLECTED", "1000.00", "bad-type"))
@@ -153,11 +196,42 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.data[0].matchStatus").value("REFLECTED"));
     }
 
+    @Test
+    @DisplayName("상태전이 가드: 강제 반영도 journalId null 거부")
+    void domainTransition_markForcedRejectsNullJournalId() throws Exception {
+        importCsv(ms949Csv()).andExpect(status().isOk());
+
+        BankTransaction transaction = repository.findByExternalRefAndIsDeletedFalse("BANK-001")
+                .orElseThrow();
+
+        assertThatThrownBy(() -> transaction.markForced(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("journalId 는 필수입니다");
+    }
+
     private org.springframework.test.web.servlet.ResultActions importCsv(MockMultipartFile file) throws Exception {
         return mockMvc.perform(multipart(BASE_URL + "/import")
                 .file(file)
                 .param("bankAccountLabel", BANK_ACCOUNT_LABEL)
                 .param("dateColumn", "거래일시")
+                .param("depositColumn", "입금액")
+                .param("withdrawalColumn", "출금액")
+                .param("balanceColumn", "잔액")
+                .param("descriptionColumn", "적요")
+                .param("counterpartyColumn", "상대")
+                .param("externalRefColumn", "참조")
+                .param("headerRow", "true")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "ACCOUNTANT"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions importCsvWithDateColumn(
+            MockMultipartFile file,
+            String dateColumn) throws Exception {
+        return mockMvc.perform(multipart(BASE_URL + "/import")
+                .file(file)
+                .param("bankAccountLabel", BANK_ACCOUNT_LABEL)
+                .param("dateColumn", dateColumn)
                 .param("depositColumn", "입금액")
                 .param("withdrawalColumn", "출금액")
                 .param("balanceColumn", "잔액")
@@ -178,6 +252,19 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
         return new MockMultipartFile(
                 "file",
                 "bank-ms949.csv",
+                MediaType.TEXT_PLAIN_VALUE,
+                csv.getBytes(Charset.forName("MS949")));
+    }
+
+    private static MockMultipartFile sameKeyDifferentExternalRefCsv() {
+        String csv = """
+                거래일시,입금액,출금액,잔액,적요,상대,참조
+                2026-06-23 09:10,150000,,1150000,삼한테스트상사 입금,삼한테스트상사,BANK-DIFF-001
+                2026-06-23 09:10,150000,,1300000,동일금액 별도 입금,다른거래처,BANK-DIFF-002
+                """;
+        return new MockMultipartFile(
+                "file",
+                "bank-same-key-different-ref.csv",
                 MediaType.TEXT_PLAIN_VALUE,
                 csv.getBytes(Charset.forName("MS949")));
     }

@@ -136,6 +136,9 @@ public class BankTransaction extends BaseEntity {
 
     /** 미반영 거래를 강제 반영 상태로 전환한다. */
     public BankTransaction markForced(UUID journalId) {
+        if (journalId == null) {
+            throw new IllegalArgumentException("journalId 는 필수입니다");
+        }
         requireStatus(MatchStatus.FORCED, MatchStatus.UNREFLECTED);
         this.matchedJournalId = journalId;
         this.matchStatus = MatchStatus.FORCED;

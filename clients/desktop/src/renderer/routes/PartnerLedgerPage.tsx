@@ -141,7 +141,6 @@ function buildCsv(
     lines.push(
       [
         `[원장] ${ledger.partnerName}`,
-        ledger.partnerName,
         `사업자번호 ${ledger.partnerBusinessNo || '-'}`,
         `단톡방 ${ledger.chatRoomNames.join(' / ') || '-'}`,
         `${ledger.periodFrom} ~ ${ledger.periodTo}`,

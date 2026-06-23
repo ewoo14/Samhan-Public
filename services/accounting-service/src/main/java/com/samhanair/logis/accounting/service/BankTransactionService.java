@@ -214,11 +214,11 @@ public class BankTransactionService {
     }
 
     private boolean isDuplicate(BankTransaction transaction) {
-        return repository.existsByExternalRefAndIsDeletedFalse(transaction.getExternalRef())
-                || repository.existsByBankAccountLabelAndTransactedAtAndAmountAndIsDeletedFalse(
-                        transaction.getBankAccountLabel(),
-                        transaction.getTransactedAt(),
-                        transaction.getAmount());
+        return repository.existsByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse(
+                transaction.getBankAccountLabel(),
+                transaction.getTransactedAt(),
+                transaction.getAmount(),
+                transaction.getExternalRef());
     }
 
     private List<String[]> parseCsv(MultipartFile file) {
@@ -387,8 +387,12 @@ public class BankTransactionService {
     }
 
     private static String cell(String[] row, Integer index) {
-        if (index == null || index < 0 || index >= row.length) {
+        if (index == null) {
             return "";
+        }
+        if (index < 0 || index >= row.length) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "컬럼 인덱스가 CSV 행 범위를 벗어났습니다: " + index);
         }
         String value = row[index];
         return value == null ? "" : value.replace("\t", "").trim();
@@ -445,14 +449,33 @@ public class BankTransactionService {
                 return null;
             }
             String trimmed = spec.trim();
-            if (trimmed.matches("\\d+")) {
-                return Integer.parseInt(trimmed);
+            if (trimmed.matches("[+-]?\\d+")) {
+                int index = parseColumnIndex(trimmed);
+                if (header != null && index >= header.length) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT,
+                            "컬럼 인덱스가 헤더 범위를 벗어났습니다: " + trimmed);
+                }
+                return index;
             }
             if (header == null) {
                 throw new BusinessException(ErrorCode.INVALID_INPUT,
                         "헤더명 매핑은 headerRow=true 일 때만 사용할 수 있습니다: " + spec);
             }
             return headerIndex.get(normalizeHeader(trimmed));
+        }
+
+        private static int parseColumnIndex(String raw) {
+            try {
+                int index = Integer.parseInt(raw);
+                if (index < 0) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT,
+                            "컬럼 인덱스는 0 이상이어야 합니다: " + raw);
+                }
+                return index;
+            } catch (NumberFormatException ex) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "컬럼 인덱스는 0-based 정수여야 합니다: " + raw, ex);
+            }
         }
 
         private static String normalizeHeader(String value) {

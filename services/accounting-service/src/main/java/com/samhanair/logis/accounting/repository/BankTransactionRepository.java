@@ -14,10 +14,11 @@ public interface BankTransactionRepository
 
     boolean existsByExternalRefAndIsDeletedFalse(String externalRef);
 
-    boolean existsByBankAccountLabelAndTransactedAtAndAmountAndIsDeletedFalse(
+    boolean existsByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse(
             String bankAccountLabel,
             LocalDateTime transactedAt,
-            BigDecimal amount);
+            BigDecimal amount,
+            String externalRef);
 
     Optional<BankTransaction> findByExternalRefAndIsDeletedFalse(String externalRef);
 
