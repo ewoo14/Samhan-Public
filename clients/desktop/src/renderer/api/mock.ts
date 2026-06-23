@@ -4679,6 +4679,77 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope({ ...base, asOfDate })
   }
 
+  // G-1 받을어음 — 등록/목록/상태전이. UUID 미노출 mock.
+  if (method === 'GET' && url.includes('/accounting/notes-receivable')) {
+    const noteNoMatch = url.match(/\/accounting\/notes-receivable\/([^/?]+)$/)
+    if (noteNoMatch?.[1]) {
+      const noteNo = decodeURIComponent(noteNoMatch[1])
+      const found = MOCK_NOTES_RECEIVABLE.find((row) => row.noteNo === noteNo)
+      return found ? envelope(found) : mockError(404, 'NOT_FOUND', '받을어음을 찾을 수 없습니다.')
+    }
+    const status = (config.params?.['status'] as string | undefined) ?? ''
+    const partnerCode = (config.params?.['partnerCode'] as string | undefined) ?? ''
+    const rows = MOCK_NOTES_RECEIVABLE
+      .filter((row) => !status || row.status === status)
+      .filter((row) => !partnerCode || row.partnerCode === partnerCode)
+      .sort((a, b) => a.maturityDate.localeCompare(b.maturityDate) || a.noteNo.localeCompare(b.noteNo))
+    return envelope(rows)
+  }
+
+  if (method === 'POST' && url.includes('/accounting/notes-receivable')) {
+    const body = parseMockBody(config)
+    const partnerCode = String(body.partnerCode ?? 'P-2026-0001')
+    const partner = MOCK_ADMIN_PARTNERS.find((row) => row.partnerCode === partnerCode)
+      ?? { partnerCode, bizNo: '', name: '' }
+    const noteNo = String(body.noteNo ?? `NR-MOCK-${Date.now()}`)
+    if (MOCK_NOTES_RECEIVABLE.some((row) => row.noteNo === noteNo)) {
+      return mockError(409, 'CONFLICT', '이미 등록된 어음번호입니다.')
+    }
+    const row = {
+      noteNo,
+      partnerCode: String(partner.partnerCode ?? partnerCode),
+      bizNo: String(partner.bizNo ?? ''),
+      partnerName: String(partner.name ?? ''),
+      issueDate: String(body.issueDate ?? new Date().toISOString().slice(0, 10)),
+      maturityDate: String(body.maturityDate ?? new Date().toISOString().slice(0, 10)),
+      amount: String(body.amount ?? '0'),
+      noteType: String(body.noteType ?? 'PROMISSORY') as 'PROMISSORY' | 'BILL_OF_EXCHANGE',
+      status: 'BOARDING' as 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED',
+      memo: body.memo == null ? null : String(body.memo),
+    }
+    MOCK_NOTES_RECEIVABLE = [...MOCK_NOTES_RECEIVABLE, row]
+    return envelope(row)
+  }
+
+  if (method === 'PATCH' && url.includes('/accounting/notes-receivable') && url.includes('/status')) {
+    const body = parseMockBody(config)
+    const noteNo = decodeURIComponent(url.match(/\/accounting\/notes-receivable\/([^/?]+)\/status/)?.[1] ?? '')
+    const status = String(body.status ?? '')
+    const index = MOCK_NOTES_RECEIVABLE.findIndex((row) => row.noteNo === noteNo)
+    if (index < 0) return mockError(404, 'NOT_FOUND', '받을어음을 찾을 수 없습니다.')
+    const current = MOCK_NOTES_RECEIVABLE[index]
+    if (!current) return mockError(404, 'NOT_FOUND', '받을어음을 찾을 수 없습니다.')
+    const canNotesReceivableTransition =
+      (status === 'COLLECTING' && current.status === 'BOARDING') ||
+      ((status === 'SETTLED' || status === 'DISHONORED') &&
+        (current.status === 'BOARDING' || current.status === 'COLLECTING'))
+    if (!canNotesReceivableTransition) {
+      return mockError(
+        409,
+        'CONFLICT',
+        `Cannot transition notes receivable ${noteNo} from ${current.status} to ${status}`,
+      )
+    }
+    const updated = {
+      ...current,
+      status: status as 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED',
+    }
+    MOCK_NOTES_RECEIVABLE = MOCK_NOTES_RECEIVABLE.map((row, rowIndex) =>
+      rowIndex === index ? updated : row,
+    )
+    return envelope(updated)
+  }
+
   // GET /accounting/reports/account-statement?asOfDate=&accountCode= — 계정명세서
   if (method === 'GET' && url.includes('/accounting/reports/account-statement')) {
     const asOfDate = (config.params?.['asOfDate'] ?? '2026-06-30') as string
@@ -12816,6 +12887,44 @@ const MOCK_PARTNER_AGING_PAYABLE = {
   ],
   generatedAt: '2026-05-10T09:00:00+09:00',
 }
+
+let MOCK_NOTES_RECEIVABLE: Array<{
+  noteNo: string
+  partnerCode: string
+  bizNo: string
+  partnerName: string
+  issueDate: string
+  maturityDate: string
+  amount: string
+  noteType: 'PROMISSORY' | 'BILL_OF_EXCHANGE'
+  status: 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED'
+  memo: string | null
+}> = [
+  {
+    noteNo: 'NR-2026-0001',
+    partnerCode: 'P-2026-0001',
+    bizNo: '1112233333',
+    partnerName: '삼한공조 A',
+    issueDate: '2026-06-01',
+    maturityDate: '2026-07-05',
+    amount: '12500000',
+    noteType: 'PROMISSORY',
+    status: 'BOARDING',
+    memo: '7월 만기',
+  },
+  {
+    noteNo: 'NR-2026-0002',
+    partnerCode: 'P-2026-0002',
+    bizNo: '2223344444',
+    partnerName: '아로물류 B',
+    issueDate: '2026-06-10',
+    maturityDate: '2026-07-20',
+    amount: '8800000',
+    noteType: 'BILL_OF_EXCHANGE',
+    status: 'COLLECTING',
+    memo: null,
+  },
+]
 
 // ==========================================================================
 // 세금계산서 일괄발행 (홈택스 양식) mock — GAS 이식 슬라이스

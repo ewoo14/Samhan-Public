@@ -134,3 +134,91 @@ describe('mock monthly income statement contract', () => {
     )
   })
 })
+
+describe('mock notes receivable transition contract', () => {
+  it('forces BOARDING on register even when final status is posted', () => {
+    const noteNo = `NR-MOCK-FINAL-${Date.now()}`
+    const created = mockRequest({
+      method: 'POST',
+      url: '/accounting/notes-receivable',
+      data: {
+        partnerCode: 'P-2026-0001',
+        noteNo,
+        issueDate: '2026-06-01',
+        maturityDate: '2026-07-01',
+        amount: '1000',
+        noteType: 'PROMISSORY',
+        status: 'SETTLED',
+      },
+    }) as MockEnvelope<{ noteNo: string; status: string }>
+
+    expect(created.data).toMatchObject({ noteNo, status: 'BOARDING' })
+  })
+
+  it('rejects terminal and reverse transitions with 409 envelope', () => {
+    const settledNoteNo = `NR-MOCK-SETTLED-${Date.now()}`
+    mockRequest({
+      method: 'POST',
+      url: '/accounting/notes-receivable',
+      data: {
+        partnerCode: 'P-2026-0001',
+        noteNo: settledNoteNo,
+        issueDate: '2026-06-01',
+        maturityDate: '2026-07-01',
+        amount: '1000',
+        noteType: 'PROMISSORY',
+      },
+    })
+    mockRequest({
+      method: 'PATCH',
+      url: `/accounting/notes-receivable/${encodeURIComponent(settledNoteNo)}/status`,
+      data: { status: 'SETTLED' },
+    })
+
+    const reverse = mockRequest({
+      method: 'PATCH',
+      url: `/accounting/notes-receivable/${encodeURIComponent(settledNoteNo)}/status`,
+      data: { status: 'COLLECTING' },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(reverse.__mockStatus).toBe(409)
+    expect(reverse.body.code).toBe('CONFLICT')
+
+    const doubleSettle = mockRequest({
+      method: 'PATCH',
+      url: `/accounting/notes-receivable/${encodeURIComponent(settledNoteNo)}/status`,
+      data: { status: 'SETTLED' },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(doubleSettle.__mockStatus).toBe(409)
+    expect(doubleSettle.body.code).toBe('CONFLICT')
+
+    const dishonoredNoteNo = `NR-MOCK-DISHONORED-${Date.now()}`
+    mockRequest({
+      method: 'POST',
+      url: '/accounting/notes-receivable',
+      data: {
+        partnerCode: 'P-2026-0001',
+        noteNo: dishonoredNoteNo,
+        issueDate: '2026-06-01',
+        maturityDate: '2026-07-01',
+        amount: '1000',
+        noteType: 'PROMISSORY',
+      },
+    })
+    mockRequest({
+      method: 'PATCH',
+      url: `/accounting/notes-receivable/${encodeURIComponent(dishonoredNoteNo)}/status`,
+      data: { status: 'DISHONORED' },
+    })
+
+    const resurrect = mockRequest({
+      method: 'PATCH',
+      url: `/accounting/notes-receivable/${encodeURIComponent(dishonoredNoteNo)}/status`,
+      data: { status: 'SETTLED' },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(resurrect.__mockStatus).toBe(409)
+    expect(resurrect.body.code).toBe('CONFLICT')
+  })
+})
