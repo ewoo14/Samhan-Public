@@ -37,7 +37,7 @@
 
 ### 4.1 BankTransactionPage 매칭 UI
 - 기존 DataTable 에 **거래처 매칭 열/액션** 추가:
-  - **미반영(UNREFLECTED) 행**: `PartnerAutocomplete`(AC-3, `/admin/partners/search` 백킹) inline 또는 행 클릭 모달 → 거래처 선택 → `matchBankTransactionPartner({bankAccountLabel, externalRef, partnerCode})` mutation → 성공 시 react-query invalidate(목록 갱신, [[project_local_stack_qa_gotchas]] stale 주의).
+  - **미반영(UNREFLECTED) 행**: `PartnerAutocomplete`(AC-3, `/admin/partners/search` 백킹) inline 또는 행 클릭 모달 → 거래처 선택 → `matchBankTransactionPartner({bankAccountLabel, transactedAt, amount, externalRef, partnerCode})` (4-key) mutation → 성공 시 react-query invalidate(목록 갱신, [[project_local_stack_qa_gotchas]] stale 주의).
   - **매칭됨**: `matchedPartnerCode`(bizNo, 하이픈 제거 [[그룹4 규약]]) + `matchedPartnerName` 표시 + 해제 버튼.
 - 탭/필터/import 무변경(H-1 유지). UUID 미노출(응답에 없음).
 - api/accounting.ts 에 `matchBankTransactionPartner`/`clearBankTransactionMatch` 추가. mock.ts 핸들러 동반([[feedback_inprocess_mock_principles]]: parseMockBody·non-null envelope·재seed).
