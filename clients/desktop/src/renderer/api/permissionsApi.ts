@@ -163,6 +163,7 @@ export type PageCode =
   | 'accounting.balances'
   | 'accounting.balances.trial-balance'
   | 'accounting.reports'
+  | 'accounting.receivables'
   | 'accounting.period-close'
   | 'accounting.period-close.reverse'
   | 'accounting.statement-batch'

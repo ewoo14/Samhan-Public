@@ -63,6 +63,9 @@ public enum PageCode {
     /** 재무 보고서 (손익/재무상태/부가세/법인세/거래처/현금/자본/일계/월계) (SP-D2). */
     ACCOUNTING_REPORTS("accounting.reports", "재무 보고서"),
 
+    /** 받을어음/수금계획 채권 관리. */
+    ACCOUNTING_RECEIVABLES("accounting.receivables", "받을어음/수금계획"),
+
     /** 월말 마감 화면 (SP-D2). */
     ACCOUNTING_PERIOD_CLOSE("accounting.period-close", "월말 마감"),
 

@@ -1746,6 +1746,138 @@ export async function updateNotesReceivableStatus(
 }
 
 // --------------------------------------------------------------------------
+// 수금계획 API — 회계 보고 스위트 G-2
+// --------------------------------------------------------------------------
+
+export type PlanBasis = 'RECEIVABLE_BALANCE' | 'NOTE_MATURITY' | 'MANUAL'
+export type PlanStatus = 'PLANNED' | 'COLLECTED' | 'OVERDUE'
+
+export const PLAN_BASIS_LABEL: Record<PlanBasis, string> = {
+  RECEIVABLE_BALANCE: '외상매출잔액',
+  NOTE_MATURITY: '어음만기',
+  MANUAL: '수동',
+}
+
+export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
+  PLANNED: '예정',
+  COLLECTED: '수금완료',
+  OVERDUE: '연체',
+}
+
+/** 수금계획 행. UUID 없이 planNo + 거래처 표시 식별자만 사용한다. */
+export interface CollectionPlanRow {
+  planNo: string
+  partnerCode: string
+  bizNo: string
+  partnerName: string
+  plannedDate: string
+  plannedAmount: string | number
+  basis: PlanBasis
+  status: PlanStatus
+  sourceReference?: string | null
+  memo?: string | null
+}
+
+export interface CreateCollectionPlanPayload {
+  partnerCode?: string
+  bizNo?: string
+  partnerName?: string
+  plannedDate: string
+  plannedAmount: string
+  basis: PlanBasis
+  sourceReference?: string
+  memo?: string
+}
+
+export interface ListCollectionPlanOptions {
+  status?: PlanStatus
+  partnerCode?: string
+  bizNo?: string
+  partnerName?: string
+}
+
+export interface CollectionPlanSuggestion {
+  partnerCode: string
+  bizNo: string
+  partnerName: string
+  plannedDate: string
+  plannedAmount: string | number
+  basis: PlanBasis
+  sourceReference: string
+  memo?: string | null
+}
+
+export interface CollectionPlanForecastMonth {
+  month: string
+  plannedAmount: string | number
+}
+
+export interface CollectionPlanForecast {
+  from: string
+  to: string
+  totalAmount: string | number
+  months: CollectionPlanForecastMonth[]
+}
+
+export async function listCollectionPlans(
+  options: ListCollectionPlanOptions = {},
+): Promise<CollectionPlanRow[]> {
+  const params: Record<string, string> = {}
+  if (options.status) params['status'] = options.status
+  if (options.partnerCode) params['partnerCode'] = options.partnerCode
+  if (options.bizNo) params['bizNo'] = options.bizNo
+  if (options.partnerName) params['partnerName'] = options.partnerName
+
+  const res = await apiClient.get<ApiEnvelope<CollectionPlanRow[]>>(
+    '/accounting/collection-plans',
+    { params },
+  )
+  return res.data.data ?? []
+}
+
+export async function registerCollectionPlan(
+  payload: CreateCollectionPlanPayload,
+): Promise<CollectionPlanRow> {
+  const res = await apiClient.post<ApiEnvelope<CollectionPlanRow>>(
+    '/accounting/collection-plans',
+    payload,
+  )
+  return res.data.data
+}
+
+export async function updateCollectionPlanStatus(
+  planNo: string,
+  status: PlanStatus,
+): Promise<CollectionPlanRow> {
+  const res = await apiClient.patch<ApiEnvelope<CollectionPlanRow>>(
+    `/accounting/collection-plans/${encodeURIComponent(planNo)}/status`,
+    { status },
+  )
+  return res.data.data
+}
+
+export async function getCollectionPlanSuggestions(
+  partnerCode: string,
+): Promise<CollectionPlanSuggestion[]> {
+  const res = await apiClient.get<ApiEnvelope<CollectionPlanSuggestion[]>>(
+    '/accounting/collection-plans/suggestions',
+    { params: { partnerCode } },
+  )
+  return res.data.data ?? []
+}
+
+export async function getCollectionPlanForecast(
+  from: string,
+  to: string,
+): Promise<CollectionPlanForecast> {
+  const res = await apiClient.get<ApiEnvelope<CollectionPlanForecast>>(
+    '/accounting/collection-plans/forecast',
+    { params: { from, to } },
+  )
+  return res.data.data
+}
+
+// --------------------------------------------------------------------------
 // 자금 입출금내역 2기간 비교 API — 회계 보고 스위트 통일안 B
 // --------------------------------------------------------------------------
 

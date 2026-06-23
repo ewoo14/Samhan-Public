@@ -275,11 +275,14 @@ class PageCodeTest {
                 .isEqualTo("accounting.period-close.reverse");
         assertThat(PageCode.ACCOUNTING_BALANCES_TRIAL_BALANCE.getCode())
                 .isEqualTo("accounting.balances.trial-balance");
+        assertThat(PageCode.ACCOUNTING_RECEIVABLES.getCode())
+                .isEqualTo("accounting.receivables");
         assertThat(PageCode.ACCOUNTING_SUPPLIER_PROFILES.getCode())
                 .isEqualTo("accounting.supplier-profiles");
 
         assertThat(PageCode.isValid("accounting.edit-requests.decide")).isTrue();
         assertThat(PageCode.isValid("accounting.hometax-export")).isTrue();
+        assertThat(PageCode.isValid("accounting.receivables")).isTrue();
         assertThat(PageCode.isValid("accounting.supplier-profiles")).isTrue();
     }
 }

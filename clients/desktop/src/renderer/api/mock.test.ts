@@ -222,3 +222,72 @@ describe('mock notes receivable transition contract', () => {
     expect(resurrect.body.code).toBe('CONFLICT')
   })
 })
+
+describe('mock collection plan contract', () => {
+  it('creates PLANNED plans and rejects terminal or reverse transitions', () => {
+    const created = mockRequest({
+      method: 'POST',
+      url: '/accounting/collection-plans',
+      data: {
+        partnerCode: 'P-2026-0001',
+        plannedDate: '2026-08-01',
+        plannedAmount: '1500000',
+        basis: 'MANUAL',
+      },
+    }) as MockEnvelope<{ planNo: string; status: string }>
+
+    expect(created.data.status).toBe('PLANNED')
+
+    const overdue = mockRequest({
+      method: 'PATCH',
+      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      data: { status: 'OVERDUE' },
+    }) as MockEnvelope<{ status: string }>
+    expect(overdue.data.status).toBe('OVERDUE')
+
+    const reverse = mockRequest({
+      method: 'PATCH',
+      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      data: { status: 'PLANNED' },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(reverse.__mockStatus).toBe(409)
+    expect(reverse.body.code).toBe('CONFLICT')
+
+    mockRequest({
+      method: 'PATCH',
+      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      data: { status: 'COLLECTED' },
+    })
+
+    const doubleCollect = mockRequest({
+      method: 'PATCH',
+      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      data: { status: 'COLLECTED' },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(doubleCollect.__mockStatus).toBe(409)
+    expect(doubleCollect.body.code).toBe('CONFLICT')
+  })
+
+  it('returns suggestions and forecast without UUID fields', () => {
+    const suggestions = mockRequest({
+      method: 'GET',
+      url: '/accounting/collection-plans/suggestions',
+      params: { partnerCode: 'P-2026-0001' },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+
+    expect(suggestions.data.length).toBeGreaterThan(0)
+    expect(suggestions.data[0]).not.toHaveProperty('id')
+    expect(suggestions.data[0]).not.toHaveProperty('partnerId')
+
+    const forecast = mockRequest({
+      method: 'GET',
+      url: '/accounting/collection-plans/forecast',
+      params: { from: '2026-07-01', to: '2026-08-31' },
+    }) as MockEnvelope<{ months: Array<{ month: string; plannedAmount: string }>; totalAmount: string }>
+
+    expect(forecast.data.months.map((row) => row.month)).toEqual(['2026-07', '2026-08'])
+    expect(Number(forecast.data.totalAmount)).toBeGreaterThan(0)
+  })
+})

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -25,6 +25,7 @@ import {
   type NotesReceivableRow,
 } from '../api/accounting'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { usePermissions } from '../hooks/usePermissions'
 
 const NOTE_STATUS_OPTIONS: NoteStatus[] = ['BOARDING', 'COLLECTING', 'SETTLED', 'DISHONORED']
 const NOTE_TYPE_OPTIONS: NoteType[] = ['PROMISSORY', 'BILL_OF_EXCHANGE']
@@ -90,9 +91,13 @@ export function NotesReceivablePage() {
   usePageTitle('받을어음', '등록/목록')
 
   const queryClient = useQueryClient()
+  const { canAccess } = usePermissions()
+  const canCreateReceivable = canAccess('accounting.receivables', 'create')
+  const canUpdateReceivable = canAccess('accounting.receivables', 'update')
   const [formPartner, setFormPartner] = useState<JournalStatusPartnerOption | null>(null)
   const [filterPartner, setFilterPartner] = useState<JournalStatusPartnerOption | null>(null)
   const [statusFilter, setStatusFilter] = useState<NoteStatus | ''>('')
+  const [toast, setToast] = useState<{ type: 'error'; message: string } | null>(null)
   const [queryFilters, setQueryFilters] = useState<{
     status?: NoteStatus
     partnerCode?: string
@@ -105,6 +110,12 @@ export function NotesReceivablePage() {
     noteType: 'PROMISSORY' as NoteType,
     memo: '',
   })
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
   const notesQuery = useQuery({
     queryKey: ['accounting', 'notes-receivable', queryFilters.status ?? '', queryFilters.partnerCode ?? ''],
@@ -125,6 +136,7 @@ export function NotesReceivablePage() {
       setFormPartner(null)
       await queryClient.invalidateQueries({ queryKey: ['accounting', 'notes-receivable'] })
     },
+    onError: () => setToast({ type: 'error', message: '받을어음 등록 중 오류가 발생했습니다.' }),
   })
 
   const statusMutation = useMutation({
@@ -133,6 +145,7 @@ export function NotesReceivablePage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['accounting', 'notes-receivable'] })
     },
+    onError: () => setToast({ type: 'error', message: '받을어음 상태 변경 중 오류가 발생했습니다.' }),
   })
 
   const columns = useMemo<DataTableColumn<NotesReceivableRow>[]>(() => [
@@ -191,8 +204,11 @@ export function NotesReceivablePage() {
               key={status}
               size="sm"
               variant={row.status === status ? 'primary' : 'ghost'}
-              disabled={!canTransition(row.status, status) || statusMutation.isPending}
-              onClick={() => statusMutation.mutate({ noteNo: row.noteNo, status })}
+              disabled={!canUpdateReceivable || !canTransition(row.status, status) || statusMutation.isPending}
+              onClick={() => {
+                if (!canUpdateReceivable) return
+                statusMutation.mutate({ noteNo: row.noteNo, status })
+              }}
             >
               {NOTE_STATUS_LABEL[status]}
             </Button>
@@ -200,7 +216,7 @@ export function NotesReceivablePage() {
         </div>
       ),
     },
-  ], [statusMutation])
+  ], [canUpdateReceivable, statusMutation])
 
   const handleSearch = () => {
     setQueryFilters({
@@ -211,7 +227,8 @@ export function NotesReceivablePage() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!formPartner || !form.noteNo.trim() || !form.amount) return
+    const amount = Number(form.amount)
+    if (!canCreateReceivable || !formPartner || !form.noteNo.trim() || !Number.isFinite(amount) || amount <= 0) return
     registerMutation.mutate({
       partnerCode: formPartner.partnerCode,
       noteNo: form.noteNo.trim(),
@@ -223,6 +240,13 @@ export function NotesReceivablePage() {
     })
   }
 
+  const amountValue = Number(form.amount)
+  const canSubmit = canCreateReceivable
+    && Boolean(formPartner)
+    && Boolean(form.noteNo.trim())
+    && Number.isFinite(amountValue)
+    && amountValue > 0
+    && !registerMutation.isPending
   const totalAmount = (notesQuery.data ?? []).reduce((sum, row) => sum + Number(row.amount || 0), 0)
 
   return (
@@ -238,6 +262,23 @@ export function NotesReceivablePage() {
       </div>
 
       <Card style={{ padding: 16 }}>
+        {toast ? (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 12,
+              padding: '10px 12px',
+              border: '1px solid var(--state-danger)',
+              borderRadius: 6,
+              background: 'var(--state-danger-bg)',
+              color: 'var(--state-danger)',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {toast.message}
+          </div>
+        ) : null}
         <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(5, minmax(120px, 1fr)) auto', gap: 10, alignItems: 'end' }}>
           <AsyncAutocomplete<JournalStatusPartnerOption>
             value={formPartner}
@@ -272,7 +313,7 @@ export function NotesReceivablePage() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             금액
-            <Input type="number" min="0" step="1" value={form.amount} onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))} />
+            <Input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             종류
@@ -288,7 +329,7 @@ export function NotesReceivablePage() {
           <Button
             type="submit"
             variant="primary"
-            disabled={!formPartner || !form.noteNo.trim() || !form.amount || registerMutation.isPending}
+            disabled={!canSubmit}
           >
             등록
           </Button>

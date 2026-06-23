@@ -27,9 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 받을어음 CRUD endpoint.
  *
- * <p>PageCode 는 회계 보고 스위트 공통 코드인 {@code accounting.reports} 를 사용한다.
- * 신규 page-code를 만들지 않아 auth-service enum/seed 변경 없이 G-1을 accounting-service 범위에
- * 유지한다.
+ * <p>PageCode 는 받을어음/수금계획 공용 채권관리 코드인 {@code accounting.receivables} 를 사용한다.
  */
 @RestController
 @RequestMapping("/accounting/notes-receivable")
@@ -37,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "받을어음", description = "회계 보고 스위트 G-1 받을어음 등록/목록/상태전이")
 public class NotesReceivableController {
 
-    private static final String PAGE_CODE = "accounting.reports";
+    private static final String PAGE_CODE = "accounting.receivables";
 
     private final NotesReceivableService service;
 

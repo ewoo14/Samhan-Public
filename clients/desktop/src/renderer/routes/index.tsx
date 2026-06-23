@@ -227,6 +227,7 @@ import { MonthlySummaryPage } from './MonthlySummaryPage'
 import { JournalStatusReportPage } from './JournalStatusReportPage'
 import { AccountStatementPage } from './AccountStatementPage'
 import { NotesReceivablePage } from './NotesReceivablePage'
+import { CollectionPlanPage } from './CollectionPlanPage'
 // [P0-1 Slice C] 인쇄 전용 레이아웃 4종.
 import { CashFlowStatementPrintLayout } from './accounting/print/CashFlowStatementPrintLayout'
 import { EquityChangesPrintLayout } from './accounting/print/EquityChangesPrintLayout'
@@ -766,8 +767,16 @@ const router = createHashRouter([
       {
         path: '/accounting/reports/notes-receivable',
         element: (
-          <PermissionGuard pageCode="accounting.reports" action="view">
+          <PermissionGuard pageCode="accounting.receivables" action="view">
             <NotesReceivablePage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/collection-plans',
+        element: (
+          <PermissionGuard pageCode="accounting.receivables" action="view">
+            <CollectionPlanPage />
           </PermissionGuard>
         ),
       },
