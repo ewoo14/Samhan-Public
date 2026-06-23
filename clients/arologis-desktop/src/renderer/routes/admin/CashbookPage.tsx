@@ -64,6 +64,7 @@ export function CashbookPage(): JSX.Element {
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
   const canManage = canAccess('arologis.accounting.cashbook', 'update')
+  const canViewSummary = canAccess('arologis.accounting.summary', 'view')
 
   const today = useMemo(() => new Date(), [])
   const [periodMode, setPeriodMode] = useState<PeriodMode>('month')
@@ -105,7 +106,7 @@ export function CashbookPage(): JSX.Element {
   const summaryQuery = useQuery<CashSummaryView>({
     queryKey: ['arologis', 'accounting', 'summary', period.from, period.to],
     queryFn: () => getPeriodSummary(period.from, period.to),
-    enabled: periodValid,
+    enabled: periodValid && canViewSummary,
   })
 
   const accounts = accountsQuery.data ?? []
@@ -288,11 +289,13 @@ export function CashbookPage(): JSX.Element {
         <Button
           variant="secondary"
           size="sm"
-          loading={txnsQuery.isFetching || summaryQuery.isFetching}
+          loading={txnsQuery.isFetching || (canViewSummary && summaryQuery.isFetching)}
           disabled={!periodValid}
           onClick={() => {
             void txnsQuery.refetch()
-            void summaryQuery.refetch()
+            if (canViewSummary) {
+              void summaryQuery.refetch()
+            }
           }}
         >
           새로고침
@@ -303,7 +306,9 @@ export function CashbookPage(): JSX.Element {
         <ErrorBanner message="시작일은 종료일보다 늦을 수 없습니다." />
       ) : null}
 
-      <SummaryCards summary={summaryQuery.data} loading={summaryQuery.isLoading} error={summaryQuery.error} />
+      {canViewSummary ? (
+        <SummaryCards summary={summaryQuery.data} loading={summaryQuery.isLoading} error={summaryQuery.error} />
+      ) : null}
 
       {txnsQuery.error ? (
         <ErrorBanner message={toErrorMessage(txnsQuery.error, '거래 목록을 불러오지 못했습니다.')} />

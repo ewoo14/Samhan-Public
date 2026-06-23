@@ -163,7 +163,7 @@ const router = createHashRouter([
       {
         path: 'admin/permissions',
         element: (
-          <PermissionGuard pageCode="arologis.admin.permissions" action="view">
+          <PermissionGuard pageCode="arologis.admin.permissions" action="view" requireMaster>
             <PermissionsPage />
           </PermissionGuard>
         ),

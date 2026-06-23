@@ -451,15 +451,7 @@ class ArologisPermissionControllerIT {
                         "AROLOGIS_MANAGER", () -> get("/admin/arologis/accounting/accounts/all")),
                 endpoint("accounting account set active", "arologis.accounting.accounts", PermissionAction.UPDATE,
                         "AROLOGIS_MANAGER", () -> put("/admin/arologis/accounting/accounts/1030/active")
-                                .contentType(MediaType.APPLICATION_JSON).content("{\"active\":false}")),
-                // 권한 게이트 메커니즘만 검증 — AROLOGIS_MASTER 는 PermissionAspect 에서 무조건 bypass 되어
-                // deny 케이스가 성립하지 않으므로(role 모드 isMasterBypass), 비-MASTER 롤로 grant/deny 를 단언한다.
-                // 실제 시드(MASTER 전용 grant)는 V52 + PageCodeTest, 위임/스코프 가드는 ArologisPermissionAdminControllerIT 에서 검증.
-                endpoint("permission matrix", "arologis.admin.permissions", PermissionAction.VIEW,
-                        "AROLOGIS_MANAGER", () -> get("/admin/arologis/permissions")),
-                endpoint("permission grant", "arologis.admin.permissions", PermissionAction.UPDATE,
-                        "AROLOGIS_MANAGER", () -> put("/admin/arologis/permissions")
-                                .contentType(MediaType.APPLICATION_JSON).content(permissionGrantBody()))
+                                .contentType(MediaType.APPLICATION_JSON).content("{\"active\":false}"))
         );
     }
 
@@ -519,10 +511,6 @@ class ArologisPermissionControllerIT {
         return """
                 {"txnDate":"2026-06-08","type":"INCOME","partnerName":"한진택배","amount":150000.00,"accountCode":"4010","description":"운송료"}
                 """;
-    }
-
-    private static String permissionGrantBody() {
-        return "{\"roleCode\":\"MANAGER\",\"pageCode\":\"arologis.region\",\"canView\":true,\"canEdit\":true}";
     }
 
     private static MockMultipartFile csv(String name) {

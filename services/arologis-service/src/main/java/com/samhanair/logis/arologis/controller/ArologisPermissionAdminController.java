@@ -15,6 +15,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,8 +40,9 @@ import org.springframework.web.bind.annotation.RestController;
  * </ul>
  *
  * <p>인증 = X-User-* 헤더(게이트웨이 주입) + {@code @RequirePermission} 동적 권한 가드. 접근 통제는
- * page-code {@code arologis.admin.permissions} grant(MASTER 전용 시드)로만 하며 — ArologisHrController
- * 선례 동일. 응답 DTO 는 roleCode/pageCode 비즈니스 키만 노출하고 UUID 는 비공개한다.
+ * page-code {@code arologis.admin.permissions} grant 와 JWT 기반 {@code ROLE_AROLOGIS_MASTER}
+ * authority 의 AND 조건으로 강제한다. 응답 DTO 는 roleCode/pageCode 비즈니스 키만 노출하고 UUID 는
+ * 비공개한다.
  */
 @RestController
 @RequestMapping("/admin/arologis/permissions")
@@ -61,6 +65,9 @@ public class ArologisPermissionAdminController {
     /** 게이트웨이/JwtFilter 가 주입하는 실 actor userId 헤더 — 감사 actor 전파용. */
     private static final String USER_ID_HEADER = "X-User-Id";
 
+    /** 서명 JWT claim 에서 {@code ArologisJwtFilter} 가 적재한 아로로지스 MASTER authority. */
+    private static final String AROLOGIS_MASTER_AUTHORITY = "ROLE_AROLOGIS_MASTER";
+
     private final AuthPermissionAdminClient authPermissionAdminClient;
 
     /**
@@ -76,6 +83,7 @@ public class ArologisPermissionAdminController {
     @GetMapping
     @RequirePermission(page = ArologisPageCodes.ADMIN_PERMISSIONS, action = PermissionAction.VIEW)
     public ApiResponse<Map<String, Map<String, RolePagePermissionView>>> getMatrix() {
+        assertArologisMasterAuthority();
         return ApiResponse.ok(authPermissionAdminClient.getRoleMatrix(AROLOGIS_PAGE_PREFIX));
     }
 
@@ -105,6 +113,7 @@ public class ArologisPermissionAdminController {
     public ApiResponse<RolePagePermissionView> updateGrant(
             @Valid @RequestBody RoleGrantRequest request,
             @RequestHeader(value = USER_ID_HEADER, required = false) String actorUserId) {
+        assertArologisMasterAuthority();
         if (request.pageCode() == null || !request.pageCode().startsWith(AROLOGIS_PAGE_PREFIX)) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
                     "arologis 외 page-code 변경 불가");
@@ -116,6 +125,25 @@ public class ArologisPermissionAdminController {
         return ApiResponse.ok(authPermissionAdminClient.updateRoleGrant(
                 request.roleCode(), request.pageCode(),
                 request.canView(), request.canEdit(), actorUserId));
+    }
+
+    /**
+     * 권한 매트릭스는 page-code grant 보유 여부와 무관하게 아로로지스 MASTER 만 접근할 수 있다.
+     *
+     * <p>신뢰 경계: inbound {@code X-User-Role} 은 보지 않는다. 자체 JWT 검증 필터가 SecurityContext 에
+     * 적재한 {@code ROLE_AROLOGIS_MASTER} authority 만 사용해 헤더 스푸핑을 차단한다.
+     */
+    private void assertArologisMasterAuthority() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean master = authentication != null
+                && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .anyMatch(AROLOGIS_MASTER_AUTHORITY::equals);
+        if (!master) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "아로로지스 권한 관리는 MASTER만 접근할 수 있습니다");
+        }
     }
 
     /**
