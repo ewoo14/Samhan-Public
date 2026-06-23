@@ -154,8 +154,8 @@ public class BankTransactionService {
     /**
      * 미반영 통장 거래에 거래처를 수동 지정한다.
      *
-     * <p>요청/응답 모두 UUID 를 노출하지 않고, {@code bankAccountLabel + externalRef} 표시 자연키와
-     * {@code partnerCode} 만 사용한다.
+     * <p>요청/응답 모두 UUID 를 노출하지 않고,
+     * {@code bankAccountLabel + transactedAt + amount + externalRef} 자연키와 {@code partnerCode} 만 사용한다.
      */
     public BankTransactionResponse matchPartner(BankTransactionMatchPartnerRequest request) {
         if (request == null) {

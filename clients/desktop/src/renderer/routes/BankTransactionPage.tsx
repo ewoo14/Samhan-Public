@@ -493,7 +493,7 @@ export function BankTransactionPage() {
         <DataTable<BankTransactionRow>
           columns={columns}
           rows={rows}
-          rowKey={(row) => row.externalRef}
+          rowKey={(row) => `${row.bankAccountLabel}|${row.transactedAt}|${row.amount}|${row.externalRef}`}
           emptyMessage={transactionsQuery.isLoading ? '조회 중' : '입출금 거래가 없습니다'}
         />
       </Card>

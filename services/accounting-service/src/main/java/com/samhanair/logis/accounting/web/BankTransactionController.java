@@ -83,7 +83,7 @@ public class BankTransactionController {
     /** 미반영 통장 거래에 거래처를 수동 지정한다. */
     @PatchMapping("/match-partner")
     @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
-    @Operation(summary = "통장 거래 거래처 수동지정", description = "bankAccountLabel+externalRef 로 거래를 찾아 partnerCode 로 매칭")
+    @Operation(summary = "통장 거래 거래처 수동지정", description = "4-key 자연키로 거래를 찾아 partnerCode 로 매칭")
     public ApiResponse<BankTransactionResponse> matchPartner(
             @RequestBody BankTransactionMatchPartnerRequest request) {
         return ApiResponse.ok(service.matchPartner(request), "거래처 매칭이 완료되었습니다.");

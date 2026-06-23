@@ -4942,13 +4942,18 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     && !url.includes('/match-partner/clear')) {
     const body = parseMockBody(config)
     const bankAccountLabel = String(body.bankAccountLabel ?? '').trim()
+    const transactedAt = String(body.transactedAt ?? '').trim()
+    const amount = String(body.amount ?? '').trim()
     const externalRef = String(body.externalRef ?? '').trim()
     const partnerCode = String(body.partnerCode ?? '').trim()
-    if (!bankAccountLabel || !externalRef || !partnerCode) {
-      return mockError(400, 'INVALID_INPUT', 'bankAccountLabel, externalRef, partnerCode 는 필수입니다.')
+    if (!bankAccountLabel || !transactedAt || !amount || !externalRef || !partnerCode) {
+      return mockError(400, 'INVALID_INPUT', 'bankAccountLabel, transactedAt, amount, externalRef, partnerCode 는 필수입니다.')
     }
     const index = MOCK_BANK_TRANSACTIONS.findIndex((row) =>
-      row.bankAccountLabel === bankAccountLabel && row.externalRef === externalRef)
+      row.bankAccountLabel === bankAccountLabel
+      && row.transactedAt === transactedAt
+      && String(row.amount) === amount
+      && row.externalRef === externalRef)
     if (index < 0) {
       return mockError(404, 'NOT_FOUND', '통장 거래를 찾을 수 없습니다.')
     }
@@ -4975,12 +4980,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (method === 'PATCH' && url.includes('/accounting/bank-transactions/match-partner/clear')) {
     const body = parseMockBody(config)
     const bankAccountLabel = String(body.bankAccountLabel ?? '').trim()
+    const transactedAt = String(body.transactedAt ?? '').trim()
+    const amount = String(body.amount ?? '').trim()
     const externalRef = String(body.externalRef ?? '').trim()
-    if (!bankAccountLabel || !externalRef) {
-      return mockError(400, 'INVALID_INPUT', 'bankAccountLabel, externalRef 는 필수입니다.')
+    if (!bankAccountLabel || !transactedAt || !amount || !externalRef) {
+      return mockError(400, 'INVALID_INPUT', 'bankAccountLabel, transactedAt, amount, externalRef 는 필수입니다.')
     }
     const index = MOCK_BANK_TRANSACTIONS.findIndex((row) =>
-      row.bankAccountLabel === bankAccountLabel && row.externalRef === externalRef)
+      row.bankAccountLabel === bankAccountLabel
+      && row.transactedAt === transactedAt
+      && String(row.amount) === amount
+      && row.externalRef === externalRef)
     if (index < 0) {
       return mockError(404, 'NOT_FOUND', '통장 거래를 찾을 수 없습니다.')
     }
