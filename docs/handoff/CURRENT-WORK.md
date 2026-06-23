@@ -4,7 +4,16 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B 현금흐름(#572)·슬C 합계잔액시산표(#573) 머지. 잔여 D·E·F(M)·G·H(L). 다음=D 또는 개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B·C·D 머지(#572/#573/#574). 잔여 E·F(M)·G·H(L) + 슬B 코드prefix 정렬 후속. 다음=E 또는 개발책임자 지정**)
+
+### ✅ 회계 보고 스위트 — 통일안 D(월별손익분석) 머지 (#574, main `93ae39e2b`)
+- BE `GET /accounting/reports/income-statement/monthly?year=YYYY` — 손익계정×1~12월 매트릭스 + 소계(매출총이익/영업이익/영업외손익/법인세차감전순이익/당기순이익) + annualTotal + 전기비교(priorYearTotal/difference). 월별=aggregate 12회 반복(GROUP BY, JOIN FETCH 없음). 기존 income-statement 무파손.
+- 듀얼리뷰 R1(Opus: **isLeaf 정합**=소계↔표시행↔기존 IncomeStatementService 일치, **missing-year 500→400** GlobalExceptionHandler, difference Javadoc+FE 비용섹션 중립색)→R2(Codex: mock 영업외손익합계 소계행). **개발책임자 라이브 화면 지적 2건**: 음수 괄호→'-'(빨강유지), 계정명 코드 prefix 제거([[accounting-report-display-conventions]] 박제).
+- 🔑 표시 규약 메모리화: 음수='-X' 빨강·계정명 코드 prefix 금지·0='—'·비용섹션 증감 중립. **신규 슬라이스(E~H) 처음부터 적용**.
+
+### 🔧 후속(미착수): 슬B 현금흐름 상대계정 코드 prefix 제거
+- fundsFlowComparisonPageModel.ts 상대계정도 "110 외상매출금" 코드 prepend → 계정명만으로 정렬(슬D와 일관). 슬C 시산표는 별도 코드열이라 무관. 짧은 FE PR.
+
 
 ### ✅ 회계 보고 스위트 — 통일안 B(현금흐름 입출금내역 2기간) 머지 (#572, main `a6eb4d2b8`)
 - **개발책임자 "이카운트 그대로"** 확정: eCount #3 구조(기초→증가 계정별소계→감소 계정별소계→기말, 당기/전기 2기간) 그대로. 공식 재무제표 현금흐름표(영업/투자/재무)와 **별개** 신규 보고서.
