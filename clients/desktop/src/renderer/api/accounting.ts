@@ -1698,7 +1698,6 @@ export interface CreateNotesReceivablePayload {
   maturityDate: string
   amount: string
   noteType: NoteType
-  status?: NoteStatus
   memo?: string
 }
 

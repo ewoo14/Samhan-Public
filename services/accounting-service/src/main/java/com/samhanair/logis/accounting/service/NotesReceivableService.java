@@ -55,7 +55,6 @@ public class NotesReceivableService {
                 request.maturityDate(),
                 request.amount(),
                 request.noteType(),
-                request.status(),
                 request.memo()
         );
         NotesReceivable saved = repository.save(note);
@@ -110,14 +109,18 @@ public class NotesReceivableService {
         if (status == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "status 는 필수입니다.");
         }
-        switch (status) {
-            case BOARDING -> {
-                throw new BusinessException(ErrorCode.INVALID_INPUT,
+        try {
+            switch (status) {
+                case BOARDING -> {
+                    throw new IllegalStateException(
                         "BOARDING 은 등록 시 초기 상태로만 지정할 수 있습니다.");
             }
-            case COLLECTING -> note.collect();
-            case SETTLED -> note.settle();
-            case DISHONORED -> note.dishonor();
+                case COLLECTING -> note.collect();
+                case SETTLED -> note.settle();
+                case DISHONORED -> note.dishonor();
+            }
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage(), ex);
         }
         NotesReceivable saved = repository.save(note);
         PartnerSummary partner = partnerLookupClient.findByPartnerId(saved.getPartnerId()).orElse(null);

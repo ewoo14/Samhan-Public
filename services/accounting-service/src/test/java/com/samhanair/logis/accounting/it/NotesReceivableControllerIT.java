@@ -37,6 +37,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 /**
  * G-1 받을어음 통합 테스트.
@@ -132,13 +133,66 @@ class NotesReceivableControllerIT extends AbstractPostgresIT {
 
     @Test
     @DisplayName("목록: 상태/거래처 필터 + 만기 임박순 정렬")
+    void transition_rejectsInvalidTransitions() throws Exception {
+        register("NR-GUARD-1", "P-AR-001", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 10),
+                "2100000", "PROMISSORY", "BOARDING");
+
+        transition("NR-GUARD-1", "SETTLED")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SETTLED"));
+        assertPersistedStatus("NR-GUARD-1", "SETTLED");
+
+        transition("NR-GUARD-1", "COLLECTING")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertPersistedStatus("NR-GUARD-1", "SETTLED");
+
+        transition("NR-GUARD-1", "SETTLED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertPersistedStatus("NR-GUARD-1", "SETTLED");
+
+        register("NR-GUARD-2", "P-AR-001", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 10),
+                "2200000", "PROMISSORY", "BOARDING");
+        transition("NR-GUARD-2", "DISHONORED")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DISHONORED"));
+        assertPersistedStatus("NR-GUARD-2", "DISHONORED");
+
+        transition("NR-GUARD-2", "SETTLED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertPersistedStatus("NR-GUARD-2", "DISHONORED");
+    }
+
+    @Test
+    @DisplayName("register ignores final status payload and persists BOARDING")
+    void register_forcesBoardingWhenPayloadContainsFinalStatus() throws Exception {
+        postRegister("NR-FINAL-SETTLED", "P-AR-001", LocalDate.of(2026, 6, 2), LocalDate.of(2026, 7, 2),
+                        "2300000", "PROMISSORY", "SETTLED")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("BOARDING"));
+        assertPersistedStatus("NR-FINAL-SETTLED", "BOARDING");
+
+        postRegister("NR-FINAL-DISHONORED", "P-AR-001", LocalDate.of(2026, 6, 3), LocalDate.of(2026, 7, 3),
+                        "2400000", "PROMISSORY", "DISHONORED")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("BOARDING"));
+        assertPersistedStatus("NR-FINAL-DISHONORED", "BOARDING");
+    }
+
+    @Test
+    @DisplayName("list filters by status and partner after dishonor transition")
     void list_filtersAndSortsByMaturityDate() throws Exception {
         register("NR-003", "P-AR-001", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 30),
                 "3000000", "PROMISSORY", "BOARDING");
         register("NR-004", "P-AR-001", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 5),
                 "4000000", "BILL_OF_EXCHANGE", "BOARDING");
         register("NR-005", "P-AR-002", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 1),
-                "5000000", "PROMISSORY", "DISHONORED");
+                "5000000", "PROMISSORY", "BOARDING");
+        transition("NR-005", "DISHONORED")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DISHONORED"));
 
         mockMvc.perform(get(BASE_URL)
                         .param("status", "BOARDING")
@@ -185,6 +239,41 @@ class NotesReceivableControllerIT extends AbstractPostgresIT {
                 )
                 """, UUID.randomUUID(), PARTNER_A_ID))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private ResultActions postRegister(String noteNo, String partnerCode, LocalDate issueDate, LocalDate maturityDate,
+                                       String amount, String noteType, String status) throws Exception {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("partnerCode", partnerCode);
+        body.put("noteNo", noteNo);
+        body.put("issueDate", issueDate.toString());
+        body.put("maturityDate", maturityDate.toString());
+        body.put("amount", new BigDecimal(amount));
+        body.put("noteType", noteType);
+        body.put("status", status);
+        body.put("memo", "IT register");
+
+        return mockMvc.perform(post(BASE_URL)
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "ACCOUNTANT")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)));
+    }
+
+    private ResultActions transition(String noteNo, String status) throws Exception {
+        return mockMvc.perform(patch(BASE_URL + "/" + noteNo + "/status")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "ACCOUNTANT")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"" + status + "\"}"));
+    }
+
+    private void assertPersistedStatus(String noteNo, String expectedStatus) {
+        String actual = jdbcTemplate.queryForObject(
+                "SELECT status FROM notes_receivable WHERE note_no = ? AND is_deleted = FALSE",
+                String.class,
+                noteNo);
+        org.assertj.core.api.Assertions.assertThat(actual).isEqualTo(expectedStatus);
     }
 
     private void register(String noteNo, String partnerCode, LocalDate issueDate, LocalDate maturityDate,

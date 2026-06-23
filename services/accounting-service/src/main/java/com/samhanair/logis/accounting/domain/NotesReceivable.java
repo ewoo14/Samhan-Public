@@ -68,7 +68,7 @@ public class NotesReceivable extends BaseEntity {
     private String memo;
 
     private NotesReceivable(UUID partnerId, String noteNo, LocalDate issueDate, LocalDate maturityDate,
-                            BigDecimal amount, NoteType noteType, NoteStatus status, String memo) {
+                            BigDecimal amount, NoteType noteType, String memo) {
         validateRequired(partnerId, noteNo, issueDate, maturityDate, amount);
         this.partnerId = partnerId;
         this.noteNo = noteNo.trim();
@@ -76,7 +76,7 @@ public class NotesReceivable extends BaseEntity {
         this.maturityDate = maturityDate;
         this.amount = amount;
         this.noteType = noteType == null ? NoteType.PROMISSORY : noteType;
-        this.status = status == null ? NoteStatus.BOARDING : status;
+        this.status = NoteStatus.BOARDING;
         this.memo = blankToNull(memo);
     }
 
@@ -95,26 +95,39 @@ public class NotesReceivable extends BaseEntity {
      */
     public static NotesReceivable register(UUID partnerId, String noteNo, LocalDate issueDate,
                                            LocalDate maturityDate, BigDecimal amount,
-                                           NoteType noteType, NoteStatus status, String memo) {
-        return new NotesReceivable(partnerId, noteNo, issueDate, maturityDate, amount, noteType, status, memo);
+                                           NoteType noteType, String memo) {
+        return new NotesReceivable(partnerId, noteNo, issueDate, maturityDate, amount, noteType, memo);
     }
 
     /** 보유 → 추심 상태로 전환한다. */
     public NotesReceivable collect() {
+        requireStatus(NoteStatus.COLLECTING, NoteStatus.BOARDING);
         this.status = NoteStatus.COLLECTING;
         return this;
     }
 
     /** 결제완료 상태로 전환한다. */
     public NotesReceivable settle() {
+        requireStatus(NoteStatus.SETTLED, NoteStatus.BOARDING, NoteStatus.COLLECTING);
         this.status = NoteStatus.SETTLED;
         return this;
     }
 
     /** 부도 상태로 전환한다. */
     public NotesReceivable dishonor() {
+        requireStatus(NoteStatus.DISHONORED, NoteStatus.BOARDING, NoteStatus.COLLECTING);
         this.status = NoteStatus.DISHONORED;
         return this;
+    }
+
+    private void requireStatus(NoteStatus target, NoteStatus... allowed) {
+        for (NoteStatus candidate : allowed) {
+            if (this.status == candidate) {
+                return;
+            }
+        }
+        throw new IllegalStateException(
+                "Cannot transition notes receivable " + noteNo + " from " + status + " to " + target);
     }
 
     private static void validateRequired(UUID partnerId, String noteNo, LocalDate issueDate,

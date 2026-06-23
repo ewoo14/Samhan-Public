@@ -30,6 +30,14 @@ const NOTE_STATUS_OPTIONS: NoteStatus[] = ['BOARDING', 'COLLECTING', 'SETTLED', 
 const NOTE_TYPE_OPTIONS: NoteType[] = ['PROMISSORY', 'BILL_OF_EXCHANGE']
 const TRANSITION_OPTIONS: NoteStatus[] = ['COLLECTING', 'SETTLED', 'DISHONORED']
 
+function canTransition(current: NoteStatus, target: NoteStatus): boolean {
+  if (target === 'COLLECTING') return current === 'BOARDING'
+  if (target === 'SETTLED' || target === 'DISHONORED') {
+    return current === 'BOARDING' || current === 'COLLECTING'
+  }
+  return false
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -95,7 +103,6 @@ export function NotesReceivablePage() {
     maturityDate: nextMonthIso(),
     amount: '',
     noteType: 'PROMISSORY' as NoteType,
-    status: 'BOARDING' as NoteStatus,
     memo: '',
   })
 
@@ -113,7 +120,6 @@ export function NotesReceivablePage() {
         maturityDate: nextMonthIso(),
         amount: '',
         noteType: 'PROMISSORY',
-        status: 'BOARDING',
         memo: '',
       })
       setFormPartner(null)
@@ -185,7 +191,7 @@ export function NotesReceivablePage() {
               key={status}
               size="sm"
               variant={row.status === status ? 'primary' : 'ghost'}
-              disabled={row.status === status || statusMutation.isPending}
+              disabled={!canTransition(row.status, status) || statusMutation.isPending}
               onClick={() => statusMutation.mutate({ noteNo: row.noteNo, status })}
             >
               {NOTE_STATUS_LABEL[status]}
@@ -213,7 +219,6 @@ export function NotesReceivablePage() {
       maturityDate: form.maturityDate,
       amount: form.amount,
       noteType: form.noteType,
-      status: form.status,
       memo: form.memo.trim() || undefined,
     })
   }
@@ -233,7 +238,7 @@ export function NotesReceivablePage() {
       </div>
 
       <Card style={{ padding: 16 }}>
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(6, minmax(120px, 1fr)) auto', gap: 10, alignItems: 'end' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(5, minmax(120px, 1fr)) auto', gap: 10, alignItems: 'end' }}>
           <AsyncAutocomplete<JournalStatusPartnerOption>
             value={formPartner}
             onChange={setFormPartner}
@@ -277,14 +282,9 @@ export function NotesReceivablePage() {
               ))}
             </Select>
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+          <span aria-hidden="true" style={{ display: 'none' }}>
             상태
-            <Select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as NoteStatus }))}>
-              {NOTE_STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>{NOTE_STATUS_LABEL[status]}</option>
-              ))}
-            </Select>
-          </label>
+          </span>
           <Button
             type="submit"
             variant="primary"

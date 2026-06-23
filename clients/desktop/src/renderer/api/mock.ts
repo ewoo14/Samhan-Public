@@ -4714,7 +4714,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       maturityDate: String(body.maturityDate ?? new Date().toISOString().slice(0, 10)),
       amount: String(body.amount ?? '0'),
       noteType: String(body.noteType ?? 'PROMISSORY') as 'PROMISSORY' | 'BILL_OF_EXCHANGE',
-      status: String(body.status ?? 'BOARDING') as 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED',
+      status: 'BOARDING' as 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED',
       memo: body.memo == null ? null : String(body.memo),
     }
     MOCK_NOTES_RECEIVABLE = [...MOCK_NOTES_RECEIVABLE, row]
@@ -4729,6 +4729,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (index < 0) return mockError(404, 'NOT_FOUND', '받을어음을 찾을 수 없습니다.')
     const current = MOCK_NOTES_RECEIVABLE[index]
     if (!current) return mockError(404, 'NOT_FOUND', '받을어음을 찾을 수 없습니다.')
+    const canNotesReceivableTransition =
+      (status === 'COLLECTING' && current.status === 'BOARDING') ||
+      ((status === 'SETTLED' || status === 'DISHONORED') &&
+        (current.status === 'BOARDING' || current.status === 'COLLECTING'))
+    if (!canNotesReceivableTransition) {
+      return mockError(
+        409,
+        'CONFLICT',
+        `Cannot transition notes receivable ${noteNo} from ${current.status} to ${status}`,
+      )
+    }
     const updated = {
       ...current,
       status: status as 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED',
