@@ -10,7 +10,7 @@
  * <ul>
  *   <li>상단: 기간 입력 (from/to, default = 최근 1개월) + [선택 거래처 일괄 인쇄] /
  *       [전체 일괄 인쇄] 액션 버튼 2종</li>
- *   <li>본문: 거래처별 요약 표 (체크박스 / partnerCode / partnerName / 단톡방 /
+ *   <li>본문: 거래처별 요약 표 (체크박스 / bizNo / partnerName / 단톡방 /
  *       slip count / 합계금액)</li>
  * </ul>
  *
@@ -26,7 +26,7 @@
  * 자체 MOCK_DATA 를 사용 — 후속 iteration 에서 BE 응답 wiring.
  *
  * <h2>UUID 비공개</h2>
- * <p>화면 노출 식별자는 partnerCode / partnerName / slipNo (taxInvoiceNo) 만.
+ * <p>화면 노출 식별자는 bizNo / partnerName / slipNo (taxInvoiceNo) 만.
  * BE 응답 wire-format 에 UUID 없음.
  *
  * <h2>접근 제어</h2>
@@ -406,7 +406,7 @@ export function StatementBatchPage() {
                     />
                   </td>
                   <td style={{ padding: '8px 10px', fontFamily: 'monospace' }}>
-                    {row.partnerCode}
+                    {row.bizNo?.replace(/\D/g, '') || '—'}
                   </td>
                   <td style={{ padding: '8px 10px' }}>{row.partnerName}</td>
                   <td

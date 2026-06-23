@@ -26,7 +26,7 @@
  * (PR-E2 FE 단계 활성). 본 1차 mock 단계에서는 데이터 source 미연결 — {@link MOCK_DATA} 사용.
  *
  * <h2>UUID 비공개 가드</h2>
- * <p>화면 노출 식별자는 {@code partnerCode} / {@code partnerName} / {@code slipNo} /
+ * <p>화면 노출 식별자는 {@code businessRegNo} / {@code partnerName} / {@code slipNo} /
  * {@code businessRegNo} 만. UUID 는 useParams 에서 추출하지 않으며, BE 응답에서도
  * partner_id / slip_id 는 제거 대상.
  *
@@ -75,7 +75,7 @@ interface StatementLine {
  * BE-A10 응답 형식 — 거래처 1건 + 슬립 list.
  */
 interface PartnerStatement {
-  /** 거래처 코드 (사용자 노출 식별자). */
+  /** 내부 partnerCode. 선택/조회 key 로만 사용하고 화면에는 표시하지 않는다. */
   partnerCode: string
   /** 거래처명 (snapshot). */
   partnerName: string
@@ -349,9 +349,6 @@ export function StatementBatchView() {
                         <th>상호</th>
                         <td>
                           {partner.partnerName}
-                          <span className={styles.partnerCode}>
-                            ({partner.partnerCode})
-                          </span>
                         </td>
                       </tr>
                       <tr>

@@ -358,6 +358,7 @@ export function AppLayout() {
   const showAccountingDailyClose  = dynamicCanAccess('accounting.daily-closing',   'view')
   const showAccountingLedger      = dynamicCanAccess('accounting.general-ledger',  'view')
   const showAccountingDepositMatch = dynamicCanAccess('accounting.deposit-match',  'view')
+  const showAccountingBankMatching = dynamicCanAccess('accounting.bank-matching',  'view')
   const showAccountingAdminOrder = dynamicCanAccess('ecount.mig14.order-list', 'view')
   const showAccountingAdminLedger = dynamicCanAccess('ecount.mig14.ledger', 'view')
   const showAccountingAdminMigOps = dynamicCanAccess('ecount.mig.ops-dashboard', 'view')
@@ -372,7 +373,7 @@ export function AppLayout() {
     || showAccountingPartnerLedger || showAccountingTaxInvoice
     || showAccountingTaxInvoiceBatch || showAccountingTaxInvoiceInbound
     || showAccountingDailyClose
-    || showAccountingLedger || showAccountingDepositMatch
+    || showAccountingLedger || showAccountingDepositMatch || showAccountingBankMatching
     || showAccountingAdminLedger
     || showAccountingAdminMigOps || showAccountingEditRequests
   const showDeliveryBatch = dynamicCanAccess('slip.delivery-batch', 'view')
@@ -765,6 +766,7 @@ export function AppLayout() {
               '/accounting/hometax-export',
               '/accounting/supplier-profiles',
               '/accounting/deposit-match',
+              '/accounting/bank-transactions',
               '/accounting/daily-closing',
               '/accounting/ledgers',
               '/accounting/admin/ledger/sales',
@@ -1037,6 +1039,13 @@ export function AppLayout() {
                 data-testid="sidebar-accounting-deposit-match"
               >
                 입금 매칭
+              </SidebarLink>
+              <SidebarLink
+                to="/accounting/bank-transactions"
+                show={showAccountingBankMatching}
+                data-testid="sidebar-accounting-bank-transactions"
+              >
+                입출금 매칭
               </SidebarLink>
               {/* [SP-08-6-5 P2] 일마감 — accounting.daily-closing 동적 RBAC. */}
               <SidebarLink

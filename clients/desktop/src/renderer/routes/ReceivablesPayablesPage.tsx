@@ -71,7 +71,6 @@ function sortedLines(lines: ReceivablesPayablesLine[]): ReceivablesPayablesLine[
 function downloadCsv(data: ReceivablesPayablesResponse): void {
   const header = [
     '거래처코드',
-    '관리코드',
     '거래처명',
     '채권잔액',
     '채무잔액',
@@ -89,7 +88,6 @@ function downloadCsv(data: ReceivablesPayablesResponse): void {
   ].join(',')
   const rows = data.lines.map((row) => [
     row.bizNo,
-    row.partnerCode,
     row.partnerName,
     row.receivableBalance,
     row.payableBalance,
@@ -225,7 +223,6 @@ export function ReceivablesPayablesPage() {
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--color-neutral-900)', textAlign: 'left' }}>
                     <Th>거래처코드</Th>
-                    <Th>관리코드</Th>
                     <Th>거래처명</Th>
                     <Th align="right">채권잔액</Th>
                     <Th align="right">채무잔액</Th>
@@ -251,7 +248,6 @@ export function ReceivablesPayablesPage() {
                       }}
                     >
                       <Td>{row.bizNo || '—'}</Td>
-                      <Td>{row.partnerCode || '—'}</Td>
                       <Td strong>{row.partnerName}</Td>
                       <AmountTd value={row.receivableBalance} />
                       <AmountTd value={row.payableBalance} />
@@ -270,7 +266,7 @@ export function ReceivablesPayablesPage() {
                 </tbody>
                 <tfoot>
                   <tr className="report-grand-total-row" style={{ borderTop: '2px solid var(--color-neutral-900)' }}>
-                    <Td colSpan={3} strong>합계</Td>
+                    <Td colSpan={2} strong>합계</Td>
                     <AmountTd value={data.receivableTotal} strong />
                     <AmountTd value={data.payableTotal} strong />
                     <AmountTd value={data.netTotal} strong />

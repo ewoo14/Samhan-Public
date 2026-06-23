@@ -118,6 +118,18 @@ function parseMockBody(config: AxiosRequestConfig): Record<string, unknown> {
   return {}
 }
 
+function readMockFormValue(data: unknown, key: string): string {
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    const value = data.get(key)
+    return value == null ? '' : String(value)
+  }
+  if (data && typeof data === 'object') {
+    const value = (data as Record<string, unknown>)[key]
+    return value == null ? '' : String(value)
+  }
+  return ''
+}
+
 const DEFAULT_ESTIMATE_CONFIG_MOCK = {
   commonHomeDiscountRate: 0.45,
   commonCommercialDiscountRate: 0.45,
@@ -4910,6 +4922,91 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
     MOCK_COLLECTION_PLANS = [...MOCK_COLLECTION_PLANS, row]
     return envelope(row)
+  }
+
+  if (method === 'GET' && url.includes('/accounting/bank-transactions')) {
+    const statusFilter = String(config.params?.['matchStatus'] ?? '')
+    const from = String(config.params?.['from'] ?? '')
+    const to = String(config.params?.['to'] ?? '')
+    const bankAccountLabel = String(config.params?.['bankAccountLabel'] ?? '').trim()
+    const rows = MOCK_BANK_TRANSACTIONS
+      .filter((row) => !statusFilter || row.matchStatus === statusFilter)
+      .filter((row) => !from || row.transactedAt.slice(0, 10) >= from)
+      .filter((row) => !to || row.transactedAt.slice(0, 10) <= to)
+      .filter((row) => !bankAccountLabel || row.bankAccountLabel.includes(bankAccountLabel))
+      .sort((a, b) => b.transactedAt.localeCompare(a.transactedAt))
+    return envelope(rows)
+  }
+
+  if (method === 'POST' && url.includes('/accounting/bank-transactions/import')) {
+    const bankAccountLabel =
+      readMockFormValue(config.data, 'bankAccountLabel').trim() || '국민 123-456'
+    const now = Date.now()
+    const importedRows = [
+      {
+        transactedAt: '2026-06-23T09:10:00',
+        txnType: 'DEPOSIT' as const,
+        amount: '150000',
+        balanceAfter: '1150000',
+        description: '삼한테스트상사 입금',
+        counterpartyName: '삼한테스트상사',
+        counterpartyAccount: null,
+        bankAccountLabel,
+        source: 'CSV_IMPORT' as const,
+        externalRef: `mock-csv-${bankAccountLabel}-1`,
+        matchStatus: 'UNREFLECTED' as const,
+        matchedPartnerCode: null,
+        matchedBizNo: null,
+        matchedPartnerName: null,
+      },
+      {
+        transactedAt: '2026-06-23T11:30:00',
+        txnType: 'WITHDRAWAL' as const,
+        amount: '50000',
+        balanceAfter: '1100000',
+        description: '이체 수수료',
+        counterpartyName: '국민은행',
+        counterpartyAccount: null,
+        bankAccountLabel,
+        source: 'CSV_IMPORT' as const,
+        externalRef: `mock-csv-${bankAccountLabel}-2`,
+        matchStatus: 'UNREFLECTED' as const,
+        matchedPartnerCode: null,
+        matchedBizNo: null,
+        matchedPartnerName: null,
+      },
+      {
+        transactedAt: new Date(now).toISOString().slice(0, 19),
+        txnType: 'DEPOSIT' as const,
+        amount: '300000',
+        balanceAfter: null,
+        description: 'CSV 입금 샘플',
+        counterpartyName: '샘플거래처',
+        counterpartyAccount: null,
+        bankAccountLabel,
+        source: 'CSV_IMPORT' as const,
+        externalRef: `mock-csv-${bankAccountLabel}-3`,
+        matchStatus: 'UNREFLECTED' as const,
+        matchedPartnerCode: null,
+        matchedBizNo: null,
+        matchedPartnerName: null,
+      },
+    ]
+    let importedCount = 0
+    let duplicateSkippedCount = 0
+    for (const row of importedRows) {
+      if (MOCK_BANK_TRANSACTIONS.some((existing) => existing.externalRef === row.externalRef)) {
+        duplicateSkippedCount += 1
+      } else {
+        MOCK_BANK_TRANSACTIONS = [row, ...MOCK_BANK_TRANSACTIONS]
+        importedCount += 1
+      }
+    }
+    return envelope({
+      totalRows: importedRows.length,
+      importedCount,
+      duplicateSkippedCount,
+    })
   }
 
   if (method === 'PATCH' && url.includes('/accounting/collection-plans') && url.includes('/status')) {
@@ -13258,6 +13355,72 @@ let MOCK_COLLECTION_PLANS: Array<{
   },
 ]
 
+let MOCK_BANK_TRANSACTIONS: Array<{
+  transactedAt: string
+  txnType: 'DEPOSIT' | 'WITHDRAWAL'
+  amount: string
+  balanceAfter: string | null
+  description: string
+  counterpartyName: string | null
+  counterpartyAccount: string | null
+  bankAccountLabel: string
+  source: 'CSV_IMPORT' | 'KFTC'
+  externalRef: string
+  matchStatus: 'UNREFLECTED' | 'REFLECTED' | 'FORCED'
+  matchedPartnerCode: string | null
+  matchedBizNo: string | null
+  matchedPartnerName: string | null
+}> = [
+  {
+    transactedAt: '2026-06-23T09:10:00',
+    txnType: 'DEPOSIT',
+    amount: '1500000',
+    balanceAfter: '11500000',
+    description: '삼한상사 입금',
+    counterpartyName: '삼한상사',
+    counterpartyAccount: null,
+    bankAccountLabel: '국민 123-456',
+    source: 'CSV_IMPORT',
+    externalRef: 'mock-bank-20260623-001',
+    matchStatus: 'UNREFLECTED',
+    matchedPartnerCode: null,
+    matchedBizNo: null,
+    matchedPartnerName: null,
+  },
+  {
+    transactedAt: '2026-06-22T15:40:00',
+    txnType: 'WITHDRAWAL',
+    amount: '45000',
+    balanceAfter: '10000000',
+    description: '이체 수수료',
+    counterpartyName: '국민은행',
+    counterpartyAccount: null,
+    bankAccountLabel: '국민 123-456',
+    source: 'CSV_IMPORT',
+    externalRef: 'mock-bank-20260622-002',
+    matchStatus: 'FORCED',
+    matchedPartnerCode: null,
+    matchedBizNo: null,
+    matchedPartnerName: null,
+  },
+  {
+    transactedAt: '2026-06-21T11:20:00',
+    txnType: 'DEPOSIT',
+    amount: '8800000',
+    balanceAfter: '9955000',
+    description: '아로물류 B 수금',
+    counterpartyName: '아로물류 B',
+    counterpartyAccount: null,
+    bankAccountLabel: '신한 777-888',
+    source: 'CSV_IMPORT',
+    externalRef: 'mock-bank-20260621-003',
+    matchStatus: 'REFLECTED',
+    matchedPartnerCode: 'P-2026-0002',
+    matchedBizNo: '2223344444',
+    matchedPartnerName: '아로물류 B',
+  },
+]
+
 // ==========================================================================
 // 세금계산서 일괄발행 (홈택스 양식) mock — GAS 이식 슬라이스
 // ==========================================================================
@@ -13423,6 +13586,7 @@ const SP_D1_PAGES = [
   'accounting.balances',
   'accounting.reports',
   'accounting.receivables',
+  'accounting.bank-matching',
   'accounting.period-close',
   'accounting.statement-batch',
   'accounting.partner-ledger',
@@ -13571,7 +13735,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'inbound.inspection', 'dispatch.board',
     // SP-D2 회계 7개 — MANAGER: view 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
-    'accounting.reports', 'accounting.receivables', 'accounting.period-close', 'accounting.statement-batch',
+    'accounting.reports', 'accounting.receivables', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
     // V37 supplier-profiles — MANAGER: view/edit 허용
     'accounting.supplier-profiles',
@@ -13654,7 +13818,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'purchases.receipt-ocr', 'purchases.slip.list', 'sales.slip.list',
     // SP-D2 회계 7개 — ACCOUNTANT: view + edit 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
-    'accounting.reports', 'accounting.receivables', 'accounting.period-close', 'accounting.statement-batch',
+    'accounting.reports', 'accounting.receivables', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
     // V37 supplier-profiles — ACCOUNTANT: view only
     'accounting.supplier-profiles',
@@ -13748,7 +13912,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'accounting.tax-invoice.batch-issue', 'accounting.tax-invoice.inbound',
     'accounting.sales-slip.list', 'accounting.purchase-slip.list',
     'accounting.daily-closing.run',
-    'accounting.receivables',
+    'accounting.receivables', 'accounting.bank-matching',
     // V37 supplier-profiles — MANAGER: view/edit 허용
     'accounting.supplier-profiles',
     // SP-D1 — MANAGER: edit 미허용 (view 전용)
@@ -13825,7 +13989,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'accounting.daily-closing.run',
     'purchases.receipt-ocr',
     // SP-D2 회계 7개 — ACCOUNTANT: edit 허용 (accounts/journals/period-close/statement-batch)
-    'accounting.accounts', 'accounting.journals', 'accounting.receivables', 'accounting.period-close',
+    'accounting.accounts', 'accounting.journals', 'accounting.receivables', 'accounting.bank-matching', 'accounting.period-close',
     'accounting.statement-batch',
     // SP-D4 — ACCOUNTANT: edit 없음 (모두 view 전용)
     'inventory.edit-requests', 'inventory.edit-requests.decide',

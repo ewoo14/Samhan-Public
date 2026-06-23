@@ -277,12 +277,15 @@ class PageCodeTest {
                 .isEqualTo("accounting.balances.trial-balance");
         assertThat(PageCode.ACCOUNTING_RECEIVABLES.getCode())
                 .isEqualTo("accounting.receivables");
+        assertThat(PageCode.ACCOUNTING_BANK_MATCHING.getCode())
+                .isEqualTo("accounting.bank-matching");
         assertThat(PageCode.ACCOUNTING_SUPPLIER_PROFILES.getCode())
                 .isEqualTo("accounting.supplier-profiles");
 
         assertThat(PageCode.isValid("accounting.edit-requests.decide")).isTrue();
         assertThat(PageCode.isValid("accounting.hometax-export")).isTrue();
         assertThat(PageCode.isValid("accounting.receivables")).isTrue();
+        assertThat(PageCode.isValid("accounting.bank-matching")).isTrue();
         assertThat(PageCode.isValid("accounting.supplier-profiles")).isTrue();
     }
 }

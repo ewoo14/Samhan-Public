@@ -229,6 +229,7 @@ import { AccountStatementPage } from './AccountStatementPage'
 import { ReceivablesPayablesPage } from './ReceivablesPayablesPage'
 import { NotesReceivablePage } from './NotesReceivablePage'
 import { CollectionPlanPage } from './CollectionPlanPage'
+import { BankTransactionPage } from './BankTransactionPage'
 // [P0-1 Slice C] 인쇄 전용 레이아웃 4종.
 import { CashFlowStatementPrintLayout } from './accounting/print/CashFlowStatementPrintLayout'
 import { EquityChangesPrintLayout } from './accounting/print/EquityChangesPrintLayout'
@@ -778,6 +779,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.receivables" action="view">
             <CollectionPlanPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/bank-transactions',
+        element: (
+          <PermissionGuard pageCode="accounting.bank-matching" action="view">
+            <BankTransactionPage />
           </PermissionGuard>
         ),
       },

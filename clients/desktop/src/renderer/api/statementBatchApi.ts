@@ -17,7 +17,7 @@
  * <h2>BE 응답 형식 (StatementBatchRow record)</h2>
  * <pre>
  * [{
- *   partnerCode, partnerName,
+ *   partnerCode, bizNo, partnerName,
  *   chatRoomNames: string[],
  *   slips: [{
  *     slipNo, slipDate,
@@ -34,7 +34,7 @@
  * <p>FE 진입/인쇄 route 와 BE 조회 endpoint 모두 {@code accounting.statement-batch} VIEW 기준.
  *
  * <h2>UUID 비공개 가드</h2>
- * <p>응답 wire-format 에 UUID 없음. 사용자 노출 식별자는 partnerCode +
+ * <p>응답 wire-format 에 UUID 없음. 사용자 노출 식별자는 bizNo +
  * partnerName + slipNo (taxInvoiceNo) 만.
  */
 import { apiClient, type ApiEnvelope } from './client'
@@ -79,8 +79,10 @@ export interface StatementBatchSlip {
  * BE {@code StatementBatchRow} record 와 1:1 — 거래처 1건 + 슬립(세금계산서) list.
  */
 export interface StatementBatchRow {
-  /** 거래처코드 (사용자 노출 식별자 — partner-service Feign lookup 결과). */
+  /** 내부 partnerCode. 선택/인쇄 query key 로만 사용하고 화면에는 표시하지 않는다. */
   partnerCode: string
+  /** 사업자번호 숫자 문자열. */
+  bizNo?: string | null
   /** 거래처명 (snapshot, BE 가 partner lookup 결과로 override 가능). */
   partnerName: string
   /** 단톡방명 매핑 (notification-service Feign 결과, 0~N건). */

@@ -11,7 +11,7 @@
  * <p>권한: ACCOUNTANT / MANAGER / MASTER (RoleGuard 는 routes/index.tsx 적용).
  *
  * <p>UUID 비공개 가드 (`feedback_uuid_no_user_visibility.md`):
- * 화면 표시 식별자 — journalNo / accountCode / partnerCode / partnerName 만.
+ * 화면 표시 식별자 — journalNo / accountCode / bizNo / partnerName 만.
  * 어떤 UUID 도 미노출.
  *
  * data-testid:
@@ -65,7 +65,6 @@ function buildCsv(data: GeneralLedgerResponse): string {
     '일자',
     '분개번호',
     '계정코드',
-    '관리코드',
     '거래처코드',
     '적요',
     '차변',
@@ -80,7 +79,6 @@ function buildCsv(data: GeneralLedgerResponse): string {
       ln.date,
       ln.journalNo,
       ln.accountCode,
-      ln.partnerCode ?? '',
       ln.bizNo ?? '',
       ln.description ?? '',
       ln.debit,
@@ -196,12 +194,6 @@ export function GeneralLedgerPage() {
         header: '계정코드',
         width: '80px',
         render: (ln) => ln.accountCode,
-      },
-      {
-        key: 'partnerCode',
-        header: '관리코드',
-        width: '110px',
-        render: (ln) => ln.partnerCode ?? '—',
       },
       {
         key: 'bizNo',
@@ -445,19 +437,6 @@ export function GeneralLedgerPage() {
                       계정:
                     </span>{' '}
                     {applied.accountCode}
-                  </span>
-                ) : null}
-                {ledgerQuery.data.partnerCode ? (
-                  <span>
-                    <span
-                      style={{
-                        fontWeight: 'var(--font-weight-medium)',
-                        color: 'var(--ink-secondary)',
-                      }}
-                    >
-                      거래처:
-                    </span>{' '}
-                    {ledgerQuery.data.partnerCode}
                   </span>
                 ) : null}
                 <span>
