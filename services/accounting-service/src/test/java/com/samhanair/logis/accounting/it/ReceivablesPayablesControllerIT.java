@@ -177,6 +177,29 @@ class ReceivablesPayablesControllerIT extends AbstractPostgresIT {
         assertLineMissing(data, "P-G3-002");
     }
 
+    @Test
+    @DisplayName("채권채무 현황 aging — 경과일이 1일이어도 전월 발생분은 달력월 기준 1개월로 분류")
+    void agingUsesCalendarMonthNotElapsedDays() throws Exception {
+        seedPosted("G3-AR-A-CALENDAR-MONTH", LocalDate.of(2026, 5, 31), "A 전월말 외상매출",
+                line("110", "100.00", "0.00", PARTNER_A, "A 외상매출"),
+                line("401", "0.00", "100.00", COUNTER, "매출"));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/receivables-payables")
+                        .param("asOfDate", "2026-06-01")
+                        .param("direction", "RECEIVABLE")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode data = objectMapper.readTree(
+                result.getResponse().getContentAsString(StandardCharsets.UTF_8)).get("data");
+        JsonNode partnerA = findLine(data, "P-G3-001");
+
+        assertAmount(partnerA.get("agingBuckets").get("currentMonth"), "0.00");
+        assertAmount(partnerA.get("agingBuckets").get("oneMonthElapsed"), "100.00");
+    }
+
     private void seedFixtures() {
         seedPosted("G3-AR-A-OLD", LocalDate.of(1900, 2, 1), "A 3개월+ 외상매출",
                 line("110", "5000.00", "0.00", PARTNER_A, "A 외상매출"),

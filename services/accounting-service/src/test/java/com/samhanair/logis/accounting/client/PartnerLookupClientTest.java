@@ -164,7 +164,7 @@ class PartnerLookupClientTest {
                         {"ids":["11111111-1111-1111-1111-111111111111"]}
                         """))
                 .andRespond(withSuccess("""
-                        {"success":true,"data":{"partners":[{"id":"11111111-1111-1111-1111-111111111111","partnerCode":"P-2026-0001","name":"삼한상사","bizNo":"123-45-67890"}]}}
+                        {"success":true,"data":{"partners":[{"id":"11111111-1111-1111-1111-111111111111","partnerCode":"P-2026-0001","name":"삼한상사","bizNo":"123-45-67890","creditLimit":7500000}]}}
                         """, MediaType.APPLICATION_JSON));
 
         Map<UUID, PartnerSummary> result = client.findByPartnerIdsBatch(List.of(PARTNER_ID));
@@ -173,6 +173,7 @@ class PartnerLookupClientTest {
         assertThat(result.get(PARTNER_ID).partnerCode()).isEqualTo("P-2026-0001");
         assertThat(result.get(PARTNER_ID).name()).isEqualTo("삼한상사");
         assertThat(result.get(PARTNER_ID).bizNo()).isEqualTo("123-45-67890");
+        assertThat(result.get(PARTNER_ID).creditLimit()).isEqualByComparingTo("7500000");
         server.verify();
     }
 

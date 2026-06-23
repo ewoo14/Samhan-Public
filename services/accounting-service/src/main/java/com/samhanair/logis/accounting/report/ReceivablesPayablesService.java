@@ -188,6 +188,13 @@ public class ReceivablesPayablesService {
                 ));
     }
 
+    /**
+     * 미상계 잔액을 달력월(발생월) 기준으로 연령분류한다.
+     *
+     * <p>경과일 수가 아니라 기준월({@code asOfDate}의 YearMonth) 대비 발생월
+     * ({@code journalDate}의 YearMonth) 차이를 사용한다. 예: 2026-05-31 발생분은
+     * 기준일이 2026-06-01이면 경과 1일이어도 전월 발생분이므로 1개월 버킷이다.
+     */
     private ReceivablesPayablesAgingBuckets allocateOpenBuckets(List<Movement> movements, LocalDate asOfDate) {
         List<Movement> sorted = movements.stream()
                 .sorted(Comparator.comparing(Movement::journalDate))
