@@ -843,6 +843,13 @@ export function AppLayout() {
                     손익계산서
                   </NavLink>
                   <NavLink
+                    to="/accounting/reports/income-statement/monthly"
+                    data-testid="sidebar-accounting-monthly-income-statement"
+                    style={{ paddingLeft: 20, fontSize: 13 }}
+                  >
+                    월별손익분석
+                  </NavLink>
+                  <NavLink
                     to="/accounting/reports/balance-sheet"
                     data-testid="sidebar-accounting-balance-sheet"
                     style={{ paddingLeft: 20, fontSize: 13 }}

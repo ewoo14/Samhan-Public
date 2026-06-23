@@ -136,6 +136,13 @@ export function ReportListPage() {
           path="/accounting/reports/income-statement"
         />
         <ReportCard
+          icon="📆"
+          title="월별손익분석"
+          badge="월별"
+          description="손익계정 × 12개월 매트릭스와 당기/전기 연간 합계를 비교합니다."
+          path="/accounting/reports/income-statement/monthly"
+        />
+        <ReportCard
           icon="⚖️"
           title="재무상태표"
           description="기준일 기준 자산 / 부채 / 자본 잔액을 확인합니다."
