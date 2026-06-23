@@ -4,16 +4,21 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트 착수: 슬B 현금흐름 2기간 머지(#572). 잔여 C·D·E·F(M)·G·H(L). 다음=개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B 현금흐름(#572)·슬C 합계잔액시산표(#573) 머지. 잔여 D·E·F(M)·G·H(L). 다음=D 또는 개발책임자 지정**)
 
 ### ✅ 회계 보고 스위트 — 통일안 B(현금흐름 입출금내역 2기간) 머지 (#572, main `a6eb4d2b8`)
 - **개발책임자 "이카운트 그대로"** 확정: eCount #3 구조(기초→증가 계정별소계→감소 계정별소계→기말, 당기/전기 2기간) 그대로. 공식 재무제표 현금흐름표(영업/투자/재무)와 **별개** 신규 보고서.
 - BE `GET /accounting/reports/funds-flow-comparison?from&to`(현금성계정 POSTED 분개→상대계정별 증가/감소 분해, 직전 동일기간 자동산출, Flyway 0). FE FundsFlowComparisonPage + 회계 메뉴 「자금 입출금내역」.
 - **듀얼리뷰 R1(Opus inter-cash)→R2(Codex 혼합전표)→R3(Opus 수렴판정)→🐳라이브 QA가 JPA 카르테시안 중복 적발→R4(de-dup)**. 🔑 **per-round 라이브 Docker 실QA가 IT·정적 3중리뷰·바이트코드 통과한 JPA JOIN FETCH 카르테시안 중복 버그 단독 적발**([[jpa-joinfetch-cartesian-dedup]]). 실 분개 라이브 검증(110=7M·reconciled=True, FE 실화면 `docs/qa/accounting-funds-flow-comparison-b/`).
 
-### ⏭️ 회계 보고 스위트 잔여 (갭검증 완료 — A·B 완료, C~H PENDING)
-- spec=`docs/superpowers/specs/2026-06-20-ecount-funds-management-screens.md`(통일안 A~H + 델타 L174-188). **A 자금현황(기구현)·B 현금흐름(✅#572)**. 잔여:
-- **C 시산표/집계**(M·결정불요): 합계잔액 4컬럼+이월잔액(aggregatePostedUpTo from-1)+임의기간+일/월/기간 토글 통합. TrialBalance/Daily/MonthlySummary 확장.
+### ✅ 회계 보고 스위트 — 통일안 C(합계잔액시산표) 머지 (#573, main `0d4c436c9`)
+- BE `GET /accounting/reports/trial-balance/summary?from&to&granularity(DAY|MONTH|RANGE)` — 이월잔액(aggregatePostedUpTo from-1)+차변(합계·잔액)/대변(합계·잔액) **4컬럼**+일/월/기간 토글. **JPA 카르테시안 회피=GROUP BY 집계**(JOIN FETCH 없음, 슬B 교훈 적용). 기존 시산표/일계표/월계표 무파손. 권한 accounting.balances 정합.
+- FE TrialBalancePage 확장. design-system **DataTable에 hideHeader/tableLayout='fixed' opt-in prop 추가**(기본=기존동작·무회귀, dist 갱신).
+- 듀얼리뷰 R1(Opus: P1 contra 음수잔액 4컬럼·균형플래그·가드정합)→R2(Codex 권한 IT)→**🐳라이브 화면 QA가 개발책임자 육안으로 2건 적발**: R3 **총합 행 열 정렬**(grid 고정px↔table 셀패딩 어긋남→헤더숨김 1-row DataTable 동일기하), 합계 '—'=**버그 아님**(기본 월 분개 0건, 합계=기간활동·잔액=누적, 0→'—' eCount관행). 📌 개발책임자 결정: **차변/대변 합계 '—' 그대로(eCount 그대로)**.
+- 🔑 contra(음수 기말잔액)=부호로 4컬럼 결정(반대컬럼 abs 양수), balanced=debitBalanceTotal==creditBalanceTotal. 라이브 검증(미수금120 -5M→대변잔액 5M·균형 True, 2027-01 합계 62.6M=62.6M).
+
+### ⏭️ 회계 보고 스위트 잔여 (갭검증 완료 — A·B·C 완료, D~H PENDING)
+- spec=`docs/superpowers/specs/2026-06-20-ecount-funds-management-screens.md`(통일안 A~H + 델타 L174-188). **A 자금현황(기구현)·B 현금흐름(✅#572)·C 합계잔액시산표(✅#573)**. 잔여:
 - **D 재무제표**(M·결정불요): 월별손익분석(손익계정×월 매트릭스)+당기/전기 2기간. IncomeStatement/BalanceSheet 확장.
 - **E 원장**(M·결정불요): 계정 grouping+채권채무 방향+계정명세서(특정일 계정×거래처 스냅샷). Ledger 확장.
 - **F 전표현황**(M·결정불요): sourceType Set+거래처 필터+grouping+거래유형 한글라벨. Journal 확장.
