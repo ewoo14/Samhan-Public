@@ -14,7 +14,7 @@ export interface FundsStatusTableRow extends FundsStatusLine {
 export function fmtFundsKrw(raw: string | number): string {
   const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
   if (!Number.isFinite(n)) return String(raw)
-  if (n === 0) return '-'
+  if (n === 0) return '—'
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 

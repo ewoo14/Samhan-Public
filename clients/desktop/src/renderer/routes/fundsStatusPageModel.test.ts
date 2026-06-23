@@ -46,7 +46,7 @@ describe('fundsStatusPageModel', () => {
   it('금액 표시와 음수 판정을 분리한다', () => {
     expect(fmtFundsKrw('13000.00')).toBe('13,000')
     expect(fmtFundsKrw('-2500.00')).toBe('-2,500')
-    expect(fmtFundsKrw('0.00')).toBe('-')
+    expect(fmtFundsKrw('0.00')).toBe('—')
     expect(isNegativeAmount('-1.00')).toBe(true)
     expect(isNegativeAmount('0.00')).toBe(false)
   })

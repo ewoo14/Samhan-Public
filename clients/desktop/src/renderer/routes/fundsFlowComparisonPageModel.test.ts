@@ -27,7 +27,7 @@ describe('fundsFlowComparisonPageModel', () => {
     )
 
     expect(rows.map((row) => row.key)).toEqual(['increase:110', 'increase:120', 'increase:130'])
-    expect(rows.map((row) => row.accountName)).toEqual(['110 외상매출금', '120 받을어음', '130 미수금'])
+    expect(rows.map((row) => row.accountName)).toEqual(['외상매출금', '받을어음', '미수금'])
     expect(rows.map((row) => [row.current, row.prior])).toEqual([
       ['10.00', '0'],
       ['0', '20.00'],
