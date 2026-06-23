@@ -239,6 +239,13 @@ export function ReportListPage() {
           description="회계 월 계정별 합계 + 일별 breakdown. 균형 검증 + 인쇄."
           path="/accounting/reports/monthly-summary"
         />
+        <ReportCard
+          icon="📑"
+          title="전표현황"
+          badge="전표"
+          description="전표번호·출처·거래처 기준으로 POSTED 전표를 grouping 조회합니다."
+          path="/accounting/reports/journal-status"
+        />
       </div>
 
       <SectionLabel label="자금 관리" />

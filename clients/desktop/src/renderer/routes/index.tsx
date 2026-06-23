@@ -224,6 +224,7 @@ import { CashFlowStatementPage } from './CashFlowStatementPage'
 import { EquityChangesPage } from './EquityChangesPage'
 import { DailySummaryPage } from './DailySummaryPage'
 import { MonthlySummaryPage } from './MonthlySummaryPage'
+import { JournalStatusReportPage } from './JournalStatusReportPage'
 // [P0-1 Slice C] 인쇄 전용 레이아웃 4종.
 import { CashFlowStatementPrintLayout } from './accounting/print/CashFlowStatementPrintLayout'
 import { EquityChangesPrintLayout } from './accounting/print/EquityChangesPrintLayout'
@@ -824,6 +825,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.reports" action="view">
             <MonthlySummaryPrintLayout />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/journal-status',
+        element: (
+          <PermissionGuard pageCode="accounting.reports" action="view">
+            <JournalStatusReportPage />
           </PermissionGuard>
         ),
       },

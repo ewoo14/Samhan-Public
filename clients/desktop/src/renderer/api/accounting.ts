@@ -1430,6 +1430,141 @@ export async function getFundsIncreaseDetail(
 }
 
 // --------------------------------------------------------------------------
+// 전표현황 (Journal Status) API — 회계 보고 스위트 통일안 F
+// --------------------------------------------------------------------------
+
+/** 전표현황 출처 필터. */
+export type JournalStatusSourceType =
+  | 'SLIP'
+  | 'MANUAL'
+  | 'CLOSING'
+  | 'KFTC_DEPOSIT'
+  | 'CASH_DISBURSEMENT'
+  | 'CASH_RECEIPT'
+
+/** 전표현황 grouping 기준. */
+export type JournalStatusGroupBy = 'DATE' | 'SOURCE_TYPE' | 'PARTNER'
+
+/** 전표현황 금액 소계. */
+export interface JournalStatusSummary {
+  totalDebit: string
+  totalCredit: string
+  journalCount: number
+}
+
+/** 전표현황 행. UUID 는 응답/화면에 포함하지 않는다. */
+export interface JournalStatusLine {
+  journalNo: string
+  journalDate: string
+  sourceType: JournalStatusSourceType
+  sourceTypeDisplayName: string
+  partnerName: string
+  description: string | null
+  totalDebit: string
+  totalCredit: string
+}
+
+/** 전표현황 grouping 섹션. */
+export interface JournalStatusGroup {
+  groupKey: string
+  groupLabel: string
+  lines: JournalStatusLine[]
+  subtotal: JournalStatusSummary
+}
+
+/** 전표현황 응답. */
+export interface JournalStatusReportResponse {
+  fromDate: string
+  toDate: string
+  status: JournalStatus
+  sourceTypes: JournalStatusSourceType[]
+  groupBy: JournalStatusGroupBy
+  groups: JournalStatusGroup[]
+  total: JournalStatusSummary
+  generatedAt: string
+}
+
+/** 전표현황 조회 옵션. */
+export interface GetJournalStatusReportOptions {
+  from: string
+  to: string
+  sourceTypes?: JournalStatusSourceType[]
+  partnerCode?: string
+  groupBy?: JournalStatusGroupBy
+  status?: JournalStatus
+}
+
+/** 전표현황 거래처 필터 옵션. UUID 없이 partnerCode 만 요청 필터로 사용한다. */
+export interface JournalStatusPartnerOption {
+  partnerCode: string
+  name: string
+  bizNo?: string | null
+  phone?: string | null
+}
+
+interface AdminPartnerSearchRow {
+  partnerCode: string
+  name: string
+  bizNo?: string | null
+  phone?: string | null
+}
+
+interface AdminPartnerSearchPayload {
+  items: AdminPartnerSearchRow[]
+}
+
+/**
+ * 전표현황 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/journal-status`.
+ */
+export async function getJournalStatusReport(
+  options: GetJournalStatusReportOptions,
+): Promise<JournalStatusReportResponse> {
+  const params: Record<string, string> = {
+    from: options.from,
+    to: options.to,
+    groupBy: options.groupBy ?? 'DATE',
+    status: options.status ?? 'POSTED',
+  }
+  if (options.sourceTypes && options.sourceTypes.length > 0) {
+    params['sourceTypes'] = options.sourceTypes.join(',')
+  }
+  if (options.partnerCode) params['partnerCode'] = options.partnerCode
+
+  const res = await apiClient.get<ApiEnvelope<JournalStatusReportResponse>>(
+    '/accounting/reports/journal-status',
+    { params },
+  )
+  return res.data.data
+}
+
+/**
+ * 전표현황 거래처 필터 자동완성.
+ *
+ * BE `PartnerSummaryResponse` 는 UUID 비공개 계약이므로 partnerCode/name 만 보관한다.
+ */
+export async function searchJournalStatusPartners(
+  keyword: string,
+): Promise<JournalStatusPartnerOption[]> {
+  if (!keyword.trim()) return []
+  const res = await apiClient.get<ApiEnvelope<AdminPartnerSearchPayload>>(
+    '/admin/partners/search',
+    { params: { q: keyword.trim(), page: 0, size: 20 } },
+  )
+  const items = Array.isArray(res.data.data?.items) ? res.data.data.items : []
+  return items
+    .map((row) => ({
+      partnerCode: String(row.partnerCode ?? ''),
+      name: String(row.name ?? ''),
+      bizNo: row.bizNo ?? null,
+      phone: row.phone ?? null,
+    }))
+    .filter((row) => row.partnerCode && row.name)
+    .sort((a, b) => a.partnerCode.localeCompare(b.partnerCode, 'ko-KR'))
+}
+
+// --------------------------------------------------------------------------
 // 자금 입출금내역 2기간 비교 API — 회계 보고 스위트 통일안 B
 // --------------------------------------------------------------------------
 

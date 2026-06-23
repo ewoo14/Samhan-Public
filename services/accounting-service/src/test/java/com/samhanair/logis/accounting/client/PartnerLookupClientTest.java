@@ -97,6 +97,38 @@ class PartnerLookupClientTest {
     }
 
     @Test
+    void findByPartnerCode는_partner_service_internal_response를_wire_parse한다() {
+        server.expect(requestTo("http://partner-service/internal/partners/P-2026-0001"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "code": "OK",
+                          "message": "성공",
+                          "data": {
+                            "partnerId": "11111111-1111-1111-1111-111111111111",
+                            "partnerCode": "P-2026-0001",
+                            "name": "(주)테스트거래처",
+                            "creditLimit": 5000000,
+                            "outstandingBalance": 0,
+                            "status": "ACTIVE"
+                          },
+                          "timestamp": "2026-06-23T00:00:00Z"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        PartnerSummary result = client.findByPartnerCode("P-2026-0001").orElseThrow();
+
+        assertThat(result.partnerId()).isEqualTo(PARTNER_ID);
+        assertThat(result.partnerCode()).isEqualTo("P-2026-0001");
+        assertThat(result.name()).isEqualTo("(주)테스트거래처");
+        assertThat(result.businessNo()).isNull();
+        assertThat(result.address()).isNull();
+        server.verify();
+    }
+
+    @Test
     void findByPartnerCode_404는_empty_유지() {
         server.expect(requestTo("http://partner-service/internal/partners/P-404"))
                 .andExpect(method(HttpMethod.GET))
@@ -104,6 +136,19 @@ class PartnerLookupClientTest {
                 .andRespond(withStatus(HttpStatus.NOT_FOUND));
 
         assertThat(client.findByPartnerCode("P-404")).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void findByPartnerCode_200_data_null은_empty_유지() {
+        server.expect(requestTo("http://partner-service/internal/partners/P-EMPTY"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withSuccess("""
+                        {"success":true,"code":"OK","message":"성공","data":null}
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThat(client.findByPartnerCode("P-EMPTY")).isEmpty();
         server.verify();
     }
 
