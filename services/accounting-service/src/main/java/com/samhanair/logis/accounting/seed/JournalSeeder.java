@@ -3,8 +3,6 @@ package com.samhanair.logis.accounting.seed;
 import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
-import com.samhanair.logis.accounting.client.PartnerLookupClient;
-import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -48,8 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><b>외부 의존</b>:
  * <ul>
- *   <li>Stage 1 partner UUID — partner-service {@code P-2026-NNNN} lookup 결과 우선 사용,
- *       미조회/미가용 시 {@code samhan-seed:partner:P-2026-NNNN} 결정 도출 fallback</li>
+ *   <li>Stage 1 partner UUID — {@code samhan-seed:partner:P-2026-NNNN} 결정 도출 (50건)</li>
  *   <li>Stage 2 slip 번호 — slip-service {@code SlipSeeder.formatSlipNo} 와 동일한 {@code yyyy/MM/dd-N}
  *       포맷으로 전표번호 텍스트를 산출 (SLIP_ISSUE 30건만). 적요/참조 텍스트의 전표번호 표기 일관성 확보가
  *       목적이며, slip 엔티티의 실제 PK 와 매칭하지는 않는다 ({@code slips.id} 는 {@code @UuidGenerator} 가
@@ -95,12 +92,9 @@ public class JournalSeeder implements CommandLineRunner {
     private static final LocalDate JOURNAL_LAST_DATE = LocalDate.of(2026, 5, 9);
 
     private final JournalRepository journalRepository;
-    private final PartnerLookupClient partnerLookupClient;
 
-    public JournalSeeder(JournalRepository journalRepository,
-                         PartnerLookupClient partnerLookupClient) {
+    public JournalSeeder(JournalRepository journalRepository) {
         this.journalRepository = journalRepository;
-        this.partnerLookupClient = partnerLookupClient;
     }
 
     @Override
@@ -111,7 +105,6 @@ public class JournalSeeder implements CommandLineRunner {
         long debitGrand = 0L;
         long creditGrand = 0L;
         Map<LocalDate, Integer> journalNoCounters = new HashMap<>();
-        Map<String, UUID> partnerIdsByCode = resolvePartnerIdsByCode();
 
         // 30 SLIP_ISSUE + 10 PAYMENT + 5 SGA + 5 ADJUSTMENT = 50
         for (int seq = 1; seq <= 50; seq++) {
@@ -130,7 +123,7 @@ public class JournalSeeder implements CommandLineRunner {
             }
 
             try {
-                Journal journal = buildJournal(seq, spec, journalNo, journalDate, journalId, partnerIdsByCode);
+                Journal journal = buildJournal(seq, spec, journalNo, journalDate, journalId);
                 Journal saved = journalRepository.save(journal);
                 created++;
                 BigDecimal d = saved.totalDebit();
@@ -159,10 +152,9 @@ public class JournalSeeder implements CommandLineRunner {
     // ------------------------------------------------------------------
 
     private Journal buildJournal(int seq, JournalSpec spec, String journalNo,
-                                 LocalDate journalDate, UUID journalId,
-                                 Map<String, UUID> partnerIdsByCode) {
-        String partnerCode = partnerCodeForSeq(seq);
-        UUID partnerId = partnerIdsByCode.getOrDefault(partnerCode, deterministicPartnerId(partnerCode));
+                                 LocalDate journalDate, UUID journalId) {
+        UUID partnerId = deterministicId("partner",
+                String.format(PARTNER_CODE_FMT, ((seq - 1) % 50) + 1));
         UUID sourceRefId = null;
         String description;
 
@@ -175,7 +167,7 @@ public class JournalSeeder implements CommandLineRunner {
                 description = String.format("전표 %s 자동 분개 (출하 매출)", slipNo);
             }
             case PAYMENT -> description = String.format("거래처 %s 외상매출금 회수",
-                    partnerCode);
+                    String.format(PARTNER_CODE_FMT, ((seq - 1) % 50) + 1));
             case SGA -> description = (seq % 2 == 0)
                     ? String.format("%s 사원 급여 지급 (SGA)", pickAccountant(seq))
                     : "사무실 통신비 (SGA)";
@@ -320,56 +312,6 @@ public class JournalSeeder implements CommandLineRunner {
 
     private String pickAccountant(int seq) {
         return ACCOUNTANT_LOGINS[seq % ACCOUNTANT_LOGINS.length];
-    }
-
-    /**
-     * DEV 시드가 참조하는 50개 거래처 코드를 partner-service 실제 UUID 로 해석한다.
-     *
-     * <p>partner-service 기동 순서/미가용/미등록 상황에서는 기존 결정 UUID 로 fallback 하여
-     * accounting-service startup seed 자체가 실패하지 않게 한다. 조회 결과는 seed 시작 시 1회 Map 으로
-     * 캐시하고 분개 라인 생성에서는 외부 호출을 반복하지 않는다.
-     */
-    private Map<String, UUID> resolvePartnerIdsByCode() {
-        Map<String, UUID> partnerIdsByCode = new HashMap<>();
-        for (int seq = 1; seq <= 50; seq++) {
-            String partnerCode = partnerCodeForSeq(seq);
-            if (!partnerIdsByCode.containsKey(partnerCode)) {
-                partnerIdsByCode.put(partnerCode, resolvePartnerId(partnerCode));
-            }
-        }
-        return partnerIdsByCode;
-    }
-
-    private UUID resolvePartnerId(String partnerCode) {
-        UUID fallback = deterministicPartnerId(partnerCode);
-        if (partnerLookupClient == null) {
-            log.warn("JournalSeeder partner lookup client unavailable — partnerCode={}, fallbackPartnerId={}",
-                    partnerCode, fallback);
-            return fallback;
-        }
-        try {
-            UUID partnerId = partnerLookupClient.findByPartnerCode(partnerCode)
-                    .map(PartnerSummary::partnerId)
-                    .orElse(null);
-            if (partnerId != null) {
-                return partnerId;
-            }
-            log.warn("JournalSeeder partner lookup miss — partnerCode={}, fallbackPartnerId={}",
-                    partnerCode, fallback);
-            return fallback;
-        } catch (RuntimeException ex) {
-            log.warn("JournalSeeder partner lookup failed — partnerCode={}, fallbackPartnerId={}, msg={}",
-                    partnerCode, fallback, ex.getMessage());
-            return fallback;
-        }
-    }
-
-    private static String partnerCodeForSeq(int seq) {
-        return String.format(PARTNER_CODE_FMT, ((seq - 1) % 50) + 1);
-    }
-
-    private static UUID deterministicPartnerId(String partnerCode) {
-        return deterministicId("partner", partnerCode);
     }
 
     // ------------------------------------------------------------------

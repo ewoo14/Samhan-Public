@@ -23,6 +23,7 @@ import {
   buildAccountStatementRows,
   fmtAmount,
   isNegativeAmount,
+  partnerLabel,
   type AccountStatementAmountValue,
   type AccountStatementTableRow,
   type AccountStatementTotalItem,
@@ -90,11 +91,11 @@ export function AccountStatementPage() {
   const columns = useMemo<DataTableColumn<AccountStatementTableRow>[]>(() => [
     {
       key: 'partnerName',
-      header: '거래처명',
-      width: '220px',
+      header: '거래처',
+      width: '260px',
       render: (row) => (
         <span style={{ fontWeight: 600 }}>
-          {row.partnerName}
+          {partnerLabel(row)}
         </span>
       ),
     },

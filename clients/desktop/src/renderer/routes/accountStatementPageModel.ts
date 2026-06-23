@@ -45,6 +45,13 @@ export function buildAccountStatementRows(
   }))
 }
 
+export function partnerLabel(line: Pick<AccountStatementLine, 'partnerCode' | 'partnerName'>): string {
+  const code = line.partnerCode?.trim()
+  const name = line.partnerName?.trim()
+  if (code && name) return `${code} ${name}`
+  return name || code || ''
+}
+
 export function accountStatementTotalItems(
   total: AccountStatementTotal | null | undefined,
 ): AccountStatementTotalItem[] {

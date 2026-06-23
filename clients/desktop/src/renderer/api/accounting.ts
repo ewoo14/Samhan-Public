@@ -1321,6 +1321,7 @@ export interface AccountStatementAmountSummary {
 export interface AccountStatementLine {
   accountCode: string
   accountName: string
+  partnerCode: string
   partnerName: string
   openingBalance: string
   increase: string

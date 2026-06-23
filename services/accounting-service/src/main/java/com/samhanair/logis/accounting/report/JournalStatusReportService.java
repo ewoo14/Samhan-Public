@@ -227,8 +227,8 @@ public class JournalStatusReportService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
-        return resolved == null ? Map.of() : resolved;
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
+        return partnerNamesFromSummaries(resolved);
     }
 
     private Map<UUID, String> resolvePartnerNamesFromPartnerRows(List<JournalStatusPartnerReportRow> rows) {
@@ -239,8 +239,21 @@ public class JournalStatusReportService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
-        return resolved == null ? Map.of() : resolved;
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
+        return partnerNamesFromSummaries(resolved);
+    }
+
+    private Map<UUID, String> partnerNamesFromSummaries(Map<UUID, PartnerSummary> resolved) {
+        if (resolved == null || resolved.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> names = new LinkedHashMap<>();
+        resolved.forEach((id, summary) -> {
+            if (summary != null && summary.name() != null) {
+                names.put(id, summary.name());
+            }
+        });
+        return names;
     }
 
     private JournalStatusReportResponse.Line toLine(JournalStatusReportRow row,

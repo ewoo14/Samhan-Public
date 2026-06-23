@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.report;
 
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.domain.AccountCategory;
 import com.samhanair.logis.accounting.domain.ChartOfAccount;
 import com.samhanair.logis.accounting.repository.ChartOfAccountRepository;
@@ -36,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>대변성 계정(부채/자본/수익): 잔액 = 대변 - 차변</li>
  * </ul>
  *
- * <p>거래처 UUID 는 내부 집계에만 사용하고 응답에는 거래처명만 포함한다.
+ * <p>거래처 UUID 는 내부 집계에만 사용하고 응답에는 거래처코드/거래처명만 포함한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -79,7 +80,7 @@ public class AccountStatementService {
         Map<String, ChartOfAccount> accounts = accountMap(accountCodes);
         Map<AccountPartnerKey, PartnerAccountTotal> rows = rowsByKey(
                 journalLineRepository.aggregateAccountStatementByAccountPartner(accountCodes, asOfDate));
-        Map<UUID, String> partnerNames = resolvePartnerNames(rows.keySet().stream()
+        Map<UUID, PartnerSummary> partners = resolvePartners(rows.keySet().stream()
                 .map(AccountPartnerKey::partnerId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new)));
@@ -96,9 +97,9 @@ public class AccountStatementService {
             List<AccountStatementResponse.Line> lines = rows.keySet().stream()
                     .filter(key -> code.equals(key.accountCode()))
                     .sorted(Comparator
-                            .comparing((AccountPartnerKey key) -> partnerDisplayName(key.partnerId(), partnerNames))
+                            .comparing((AccountPartnerKey key) -> partnerDisplayName(key.partnerId(), partners))
                             .thenComparing(key -> key.partnerId() == null ? "" : key.partnerId().toString()))
-                    .map(key -> buildLine(key, accountNameOf(account), category, rows.get(key), partnerNames))
+                    .map(key -> buildLine(key, accountNameOf(account), category, rows.get(key), partners))
                     .filter(line -> line.balance().signum() != 0)
                     .toList();
 
@@ -151,7 +152,7 @@ public class AccountStatementService {
                                                     String accountName,
                                                     AccountCategory category,
                                                     PartnerAccountTotal row,
-                                                    Map<UUID, String> partnerNames) {
+                                                    Map<UUID, PartnerSummary> partners) {
         BigDecimal debit = row == null ? BigDecimal.ZERO : row.getDebitTotal();
         BigDecimal credit = row == null ? BigDecimal.ZERO : row.getCreditTotal();
         BigDecimal increase = isDebitBalanceCategory(category) ? debit : credit;
@@ -160,7 +161,8 @@ public class AccountStatementService {
         return new AccountStatementResponse.Line(
                 key.accountCode(),
                 accountName,
-                partnerDisplayName(key.partnerId(), partnerNames),
+                partnerDisplayCode(key.partnerId(), partners),
+                partnerDisplayName(key.partnerId(), partners),
                 BigDecimal.ZERO,
                 increase,
                 decrease,
@@ -185,11 +187,11 @@ public class AccountStatementService {
         return map;
     }
 
-    private Map<UUID, String> resolvePartnerNames(Set<UUID> partnerIds) {
+    private Map<UUID, PartnerSummary> resolvePartners(Set<UUID> partnerIds) {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(partnerIds));
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(partnerIds));
         return resolved == null ? Map.of() : resolved;
     }
 
@@ -283,11 +285,20 @@ public class AccountStatementService {
         return account == null ? UNKNOWN_ACCOUNT_NAME : account.getName();
     }
 
-    private String partnerDisplayName(UUID partnerId, Map<UUID, String> partnerNames) {
+    private String partnerDisplayCode(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        if (partnerId == null) {
+            return "";
+        }
+        PartnerSummary summary = partners.get(partnerId);
+        return summary == null || summary.partnerCode() == null ? "" : summary.partnerCode();
+    }
+
+    private String partnerDisplayName(UUID partnerId, Map<UUID, PartnerSummary> partners) {
         if (partnerId == null) {
             return ETC_PARTNER_NAME;
         }
-        String name = partnerNames.get(partnerId);
+        PartnerSummary summary = partners.get(partnerId);
+        String name = summary == null ? null : summary.name();
         return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
     }
 

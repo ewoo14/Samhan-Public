@@ -11,6 +11,7 @@ import com.samhanair.logis.accounting.AccountingServiceApplication;
 import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
@@ -55,6 +56,8 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
             UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID COUNTER_ID =
             UUID.fromString("44444444-4444-4444-4444-444444444444");
+    private static final UUID UNRESOLVED_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555555");
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -75,18 +78,18 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
                     List<UUID> ids = invocation.getArgument(0, List.class);
-                    Map<UUID, String> names = new HashMap<>();
+                    Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(RECEIVABLE_A_ID)) {
-                        names.put(RECEIVABLE_A_ID, "삼한공조 A");
+                        names.put(RECEIVABLE_A_ID, partner(RECEIVABLE_A_ID, "P-2026-0001", "삼한공조 A"));
                     }
                     if (ids.contains(RECEIVABLE_B_ID)) {
-                        names.put(RECEIVABLE_B_ID, "삼한공조 B");
+                        names.put(RECEIVABLE_B_ID, partner(RECEIVABLE_B_ID, "P-2026-0002", "삼한공조 B"));
                     }
                     if (ids.contains(PAYABLE_C_ID)) {
-                        names.put(PAYABLE_C_ID, "대한운송 C");
+                        names.put(PAYABLE_C_ID, partner(PAYABLE_C_ID, "P-2026-0003", "대한운송 C"));
                     }
                     if (ids.contains(COUNTER_ID)) {
-                        names.put(COUNTER_ID, "상대거래처");
+                        names.put(COUNTER_ID, partner(COUNTER_ID, "P-2026-9999", "상대거래처"));
                     }
                     return names;
                 });
@@ -112,25 +115,34 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         assertText(receivableAccount.get("balanceDirectionDisplayName"), "차변잔액");
 
         JsonNode receivableA = findLine(data, "110", "삼한공조 A");
+        assertText(receivableA.get("partnerCode"), "P-2026-0001");
         assertAmount(receivableA.get("increase"), "10000.00");
         assertAmount(receivableA.get("decrease"), "3000.00");
         assertAmount(receivableA.get("balance"), "7000.00");
 
         JsonNode receivableB = findLine(data, "110", "삼한공조 B");
+        assertText(receivableB.get("partnerCode"), "P-2026-0002");
         assertAmount(receivableB.get("increase"), "5000.00");
         assertAmount(receivableB.get("decrease"), "0.00");
         assertAmount(receivableB.get("balance"), "5000.00");
+
+        JsonNode unresolved = findLine(data, "110", "(미조회)");
+        assertText(unresolved.get("partnerCode"), "");
+        assertAmount(unresolved.get("increase"), "700.00");
+        assertAmount(unresolved.get("balance"), "700.00");
 
         JsonNode payableAccount = findAccount(data, "201");
         assertText(payableAccount.get("balanceDirection"), "CREDIT");
         assertText(payableAccount.get("balanceDirectionDisplayName"), "대변잔액");
 
         JsonNode payableC = findLine(data, "201", "대한운송 C");
+        assertText(payableC.get("partnerCode"), "P-2026-0003");
         assertAmount(payableC.get("increase"), "8000.00");
         assertAmount(payableC.get("decrease"), "2000.00");
         assertAmount(payableC.get("balance"), "6000.00");
 
         JsonNode etcLine = findLine(data, "201", "기타");
+        assertText(etcLine.get("partnerCode"), "");
         assertAmount(etcLine.get("increase"), "1000.00");
         assertAmount(etcLine.get("decrease"), "0.00");
         assertAmount(etcLine.get("balance"), "1000.00");
@@ -147,7 +159,9 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
 
         if (body.contains(RECEIVABLE_A_ID.toString())
                 || body.contains(RECEIVABLE_B_ID.toString())
-                || body.contains(PAYABLE_C_ID.toString())) {
+                || body.contains(PAYABLE_C_ID.toString())
+                || body.contains(UNRESOLVED_ID.toString())
+                || body.contains("\"partnerId\"")) {
             throw new AssertionError("계정명세서 응답에 partner UUID 가 노출되었습니다");
         }
     }
@@ -206,6 +220,9 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         seedPosted("AST-AR-B", LocalDate.of(2026, 6, 15), "B 외상매출 발생",
                 line("110", "5000.00", "0.00", RECEIVABLE_B_ID, "B 매출채권"),
                 line("401", "0.00", "5000.00", COUNTER_ID, "매출"));
+        seedPosted("AST-AR-UNRESOLVED", LocalDate.of(2026, 6, 15), "미조회 외상매출 발생",
+                line("110", "700.00", "0.00", UNRESOLVED_ID, "미조회 매출채권"),
+                line("401", "0.00", "700.00", COUNTER_ID, "미조회 매출"));
         seedPosted("AST-AP-ETC-1", LocalDate.of(2026, 6, 16), "기타 외상매입 1",
                 line("500", "400.00", "0.00", COUNTER_ID, "기타 매입 1"),
                 line("201", "0.00", "400.00", null, "기타 매입채무 1"));
@@ -330,6 +347,10 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         if (!expected.equals(node.asText())) {
             throw new AssertionError("문자열 불일치 expected=" + expected + ", actual=" + node.asText());
         }
+    }
+
+    private PartnerSummary partner(UUID id, String partnerCode, String name) {
+        return new PartnerSummary(id, partnerCode, name, null, null);
     }
 
     private record LineSpec(String accountCode, String debit, String credit, UUID partnerId, String memo) {

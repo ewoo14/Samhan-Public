@@ -11,6 +11,7 @@ import com.samhanair.logis.accounting.AccountingServiceApplication;
 import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
@@ -71,15 +72,18 @@ class FundsStatusControllerIT extends AbstractPostgresIT {
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
                     List<UUID> ids = invocation.getArgument(0, List.class);
-                    Map<UUID, String> names = new HashMap<>();
+                    Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(CASH_PARTNER_ID)) {
-                        names.put(CASH_PARTNER_ID, "국민은행 운영계좌");
+                        names.put(CASH_PARTNER_ID,
+                                new PartnerSummary(CASH_PARTNER_ID, "P-FUND-001", "국민은행 운영계좌", null, null));
                     }
                     if (ids.contains(LOAN_PARTNER_ID)) {
-                        names.put(LOAN_PARTNER_ID, "기업은행 차입금");
+                        names.put(LOAN_PARTNER_ID,
+                                new PartnerSummary(LOAN_PARTNER_ID, "P-FUND-002", "기업은행 차입금", null, null));
                     }
                     if (ids.contains(COUNTER_PARTNER_ID)) {
-                        names.put(COUNTER_PARTNER_ID, "삼한거래처");
+                        names.put(COUNTER_PARTNER_ID,
+                                new PartnerSummary(COUNTER_PARTNER_ID, "P-FUND-003", "삼한거래처", null, null));
                     }
                     return names;
                 });

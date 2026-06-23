@@ -82,15 +82,18 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
                     List<UUID> ids = invocation.getArgument(0, List.class);
-                    Map<UUID, String> names = new HashMap<>();
+                    Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(PARTNER_WILLY)) {
-                        names.put(PARTNER_WILLY, "주식회사 윌리");
+                        names.put(PARTNER_WILLY,
+                                new PartnerSummary(PARTNER_WILLY, "P-WILLY-001", "주식회사 윌리", null, null));
                     }
                     if (ids.contains(PARTNER_HANIL)) {
-                        names.put(PARTNER_HANIL, "한일빌딩");
+                        names.put(PARTNER_HANIL,
+                                new PartnerSummary(PARTNER_HANIL, "P-HANIL-002", "한일빌딩", null, null));
                     }
                     if (ids.contains(PARTNER_NAVER)) {
-                        names.put(PARTNER_NAVER, "네이버");
+                        names.put(PARTNER_NAVER,
+                                new PartnerSummary(PARTNER_NAVER, "P-NAVER-003", "네이버", null, null));
                     }
                     return names;
                 });

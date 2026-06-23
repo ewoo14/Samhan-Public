@@ -134,15 +134,16 @@ public class PartnerLookupClient {
     }
 
     /**
-     * partnerId 목록 → 거래처명 batch lookup. 401/403 은 fail-fast, 5xx/network 는 빈 Map 반환.
+     * partnerId 목록 → PartnerSummary batch lookup. 401/403 은 fail-fast, 5xx/network 는 빈 Map 반환.
      *
      * <p>partner-service {@code POST /internal/partners/lookup-by-ids} 호출. 응답은
-     * {@code data.partners[].id/name} 또는 wrapper 없는 {@code partners[].id/name} 을 모두 허용한다.
+     * {@code data.partners[].id/partnerCode/name} 또는 wrapper 없는
+     * {@code partners[].id/partnerCode/name} 을 모두 허용한다.
      *
      * @param partnerIds 조회할 거래처 UUID 목록
-     * @return partnerId → 거래처명 Map
+     * @return partnerId → PartnerSummary Map
      */
-    public Map<UUID, String> findByPartnerIdsBatch(List<UUID> partnerIds) {
+    public Map<UUID, PartnerSummary> findByPartnerIdsBatch(List<UUID> partnerIds) {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return Map.of();
         }
@@ -162,7 +163,7 @@ public class PartnerLookupClient {
                     .body(Map.of("ids", distinct))
                     .retrieve()
                     .body(String.class);
-            return parsePartnerNames(body);
+            return parsePartnerSummaries(body);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 401 || status == 403) {
@@ -270,8 +271,8 @@ public class PartnerLookupClient {
         }
     }
 
-    /** ApiResponse wrapper 의 data.partners 또는 root.partners → partnerId/name Map 변환. */
-    private Map<UUID, String> parsePartnerNames(String body) {
+    /** ApiResponse wrapper 의 data.partners 또는 root.partners → partnerId/summary Map 변환. */
+    private Map<UUID, PartnerSummary> parsePartnerSummaries(String body) {
         if (body == null || body.isBlank()) {
             return Map.of();
         }
@@ -282,12 +283,15 @@ public class PartnerLookupClient {
             if (partners == null || !partners.isArray()) {
                 return Map.of();
             }
-            Map<UUID, String> result = new LinkedHashMap<>();
+            Map<UUID, PartnerSummary> result = new LinkedHashMap<>();
             for (JsonNode partner : partners) {
                 UUID id = parseUuid(partner, "id", "partnerId");
+                String partnerCode = textOrNull(partner, "partnerCode");
                 String name = textOrNull(partner, "name", "partnerName", "businessName");
-                if (id != null && name != null) {
-                    result.put(id, name);
+                String businessNo = textOrNull(partner, "businessNo", "businessRegistrationNumber");
+                String address = textOrNull(partner, "address");
+                if (id != null && (partnerCode != null || name != null)) {
+                    result.put(id, new PartnerSummary(id, partnerCode, name, businessNo, address));
                 }
             }
             return result;
