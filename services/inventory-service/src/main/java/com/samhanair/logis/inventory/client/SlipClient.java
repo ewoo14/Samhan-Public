@@ -22,12 +22,13 @@ import org.springframework.web.client.RestClient;
  * Internal-token-authenticated client to {@code slip-service} 의 슬립 상세 조회 endpoint.
  *
  * <p>inventory-service 의 입고 검수 슬라이스(P0-9) 에서 슬립 헤더 + 라인 정보를 조회하기 위해 사용.
- * X-Internal-Token 헤더로 인증 (SAMHAN_INTERNAL_TOKEN env).
+ * X-Internal-Token 및 gateway 신뢰 헤더로 인증 (SAMHAN_INTERNAL_TOKEN env).
  *
  * <p>HTTP 상태 매핑:
  * <ul>
  *   <li>404 → BusinessException(NOT_FOUND)</li>
- *   <li>4xx → BusinessException(INVALID_INPUT)</li>
+ *   <li>403 → BusinessException(FORBIDDEN)</li>
+ *   <li>기타 4xx → BusinessException(INVALID_INPUT)</li>
  *   <li>5xx / 연결 실패 → BusinessException(INTERNAL_ERROR)</li>
  * </ul>
  */
@@ -36,6 +37,11 @@ public class SlipClient {
 
     private static final Logger log = LoggerFactory.getLogger(SlipClient.class);
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String USER_ROLE_HEADER = "X-User-Role";
+    private static final String SYSTEM_MASTER_HEADER = "X-Is-System-Master";
+    private static final String INTERNAL_CALLER_ID = "system-internal";
+    private static final String INTERNAL_CALLER_ROLE = "MASTER";
     private static final String SLIP_SERVICE_BASE = "http://slip-service";
 
     private final RestClient restClient;
@@ -52,11 +58,13 @@ public class SlipClient {
 
     /**
      * slip-service 의 {@code GET /slips/{slipId}} 를 호출해 슬립 상세를 조회한다.
-     * X-Internal-Token 헤더로 인증.
+     * X-Internal-Token 및 gateway 신뢰 헤더로 인증.
      *
      * <p>주의: slip-service {@code SlipController} 는 {@code @RequestMapping("/slips")} 로
      * 등록되어 있다 (api-gateway 의 {@code StripPrefix=2} 후 매칭). 본 클라이언트는
      * {@code lb://slip-service} 직접 호출이므로 gateway prefix 를 붙이지 않는다.
+     * 해당 public 상세 endpoint 는 Spring Security {@code HeaderAuthenticationFilter} 와
+     * 매입/매출 조회 guard 를 통과해야 하므로 internal token 외에 system-master 헤더를 함께 보낸다.
      *
      * <p>응답 envelope ({@code ApiResponse}) 의 {@code data} 키에서 슬립 정보를 추출하여
      * {@link SlipDetail} 로 변환한다.
@@ -64,7 +72,8 @@ public class SlipClient {
      * @param slipId 슬립 UUID
      * @return 슬립 상세 정보
      * @throws BusinessException(NOT_FOUND) 슬립을 찾을 수 없을 때 (404)
-     * @throws BusinessException(INVALID_INPUT) slip-service 가 4xx 반환 시
+     * @throws BusinessException(FORBIDDEN) slip-service 가 403 반환 시
+     * @throws BusinessException(INVALID_INPUT) slip-service 가 기타 4xx 반환 시
      * @throws BusinessException(INTERNAL_ERROR) slip-service 5xx / 연결 실패 / 응답 포맷 오류
      */
     public SlipDetail getSlip(UUID slipId) {
@@ -73,10 +82,17 @@ public class SlipClient {
             envelope = restClient.get()
                     .uri("/slips/{slipId}", slipId)
                     .header(INTERNAL_TOKEN_HEADER, requireToken())
+                    .header(USER_ID_HEADER, INTERNAL_CALLER_ID)
+                    .header(USER_ROLE_HEADER, INTERNAL_CALLER_ROLE)
+                    .header(SYSTEM_MASTER_HEADER, "true")
                     .retrieve()
                     .onStatus(status -> status.value() == 404, (req, res) -> {
                         throw new BusinessException(ErrorCode.NOT_FOUND,
                                 "슬립을 찾을 수 없습니다: " + slipId);
+                    })
+                    .onStatus(status -> status.value() == 403, (req, res) -> {
+                        throw new BusinessException(ErrorCode.FORBIDDEN,
+                                "slip-service 조회 권한이 없습니다: " + slipId);
                     })
                     .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
                         throw new BusinessException(ErrorCode.INVALID_INPUT,

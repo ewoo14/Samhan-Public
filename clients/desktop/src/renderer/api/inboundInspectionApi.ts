@@ -107,7 +107,7 @@ export interface InboundInspectionSummary {
   /** 거래처 코드(bizNo). */
   partnerBusinessNo: string | null
   /** 입고일 (YYYY-MM-DD). */
-  slipDate: string
+  slipDate: string | null
   /** 검수 상태. */
   status: InboundInspectionStatus
   /** 검수자 이름 (대기 상태는 null). */

@@ -43,7 +43,7 @@ class SlipClientTest {
     }
 
     @Test
-    void getSlip_sendsInternalToken_andParsesInboundLines() {
+    void getSlip_sendsInternalHeaders_andParsesInboundLines() {
         UUID warehouseId = UUID.fromString("00000000-0000-0000-0000-000000000202");
         UUID lineId = UUID.fromString("00000000-0000-0000-0000-000000000203");
         UUID productId = UUID.fromString("00000000-0000-0000-0000-000000000204");
@@ -77,6 +77,9 @@ class SlipClientTest {
         server.expect(requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", "system-internal"))
+                .andExpect(header("X-User-Role", "MASTER"))
+                .andExpect(header("X-Is-System-Master", "true"))
                 .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
 
         SlipDetail result = client.getSlip(SLIP_ID);
@@ -104,6 +107,9 @@ class SlipClientTest {
         server.expect(requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", "system-internal"))
+                .andExpect(header("X-User-Role", "MASTER"))
+                .andExpect(header("X-Is-System-Master", "true"))
                 .andRespond(withStatus(HttpStatus.NOT_FOUND));
 
         assertThatThrownBy(() -> client.getSlip(SLIP_ID))
@@ -114,10 +120,30 @@ class SlipClientTest {
     }
 
     @Test
+    void getSlip_403_mapsToForbidden() {
+        server.expect(requestTo(ENDPOINT))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", "system-internal"))
+                .andExpect(header("X-User-Role", "MASTER"))
+                .andExpect(header("X-Is-System-Master", "true"))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        assertThatThrownBy(() -> client.getSlip(SLIP_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.FORBIDDEN));
+        server.verify();
+    }
+
+    @Test
     void getSlip_400_mapsToInvalidInput() {
         server.expect(requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", "system-internal"))
+                .andExpect(header("X-User-Role", "MASTER"))
+                .andExpect(header("X-Is-System-Master", "true"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
         assertThatThrownBy(() -> client.getSlip(SLIP_ID))
@@ -132,6 +158,9 @@ class SlipClientTest {
         server.expect(requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", "system-internal"))
+                .andExpect(header("X-User-Role", "MASTER"))
+                .andExpect(header("X-Is-System-Master", "true"))
                 .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
         assertThatThrownBy(() -> client.getSlip(SLIP_ID))
@@ -146,6 +175,9 @@ class SlipClientTest {
         server.expect(requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("X-User-Id", "system-internal"))
+                .andExpect(header("X-User-Role", "MASTER"))
+                .andExpect(header("X-Is-System-Master", "true"))
                 .andRespond(withSuccess("""
                         {"success":true,"code":"OK","message":"성공"}
                         """, MediaType.APPLICATION_JSON));
