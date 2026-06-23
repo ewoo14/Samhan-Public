@@ -22,6 +22,12 @@ real-qa config(`clients/desktop/playwright.real-qa.config.ts`)엔 **webServer �
 서버측 "전체 포함 강제" 가드의 모수는 **FE 가 실제 전송하는 모수와 집합이 동일**해야 함 — BE 가 전체(usageScope 무관), FE 가 부분(usageScope≠NONE)만 보내면 정상 요청도 거부(영구 400). 가드 쿼리에 FE 와 동일 필터(`usageScope IN (ESTIMATE/PARTNER_ORDER/BOTH)`) 적용. Opus BE 리뷰 단독 적발.
 
 ## Git Bash 도구 함정
-`jq` 미설치(Git Bash) → 토큰은 `grep -oE '"token":"[^"]+"'` 추출. 한글 model_code(자재 운임/절삭/발통세트)는 Git Bash 파이프가 UTF-8 멀티바이트를 깨뜨림(0xb9) → 서버 500(JSON parse). docker exec 출력은 **`docker cp` + `curl --data-binary @file`** 로 바이트 보존.
+`jq` 미설치(Git Bash) → 토큰은 `grep -oE '"token":"[^"]+"'` 추출. 한글 model_code(자재 운임/절삭/발통세트)는 Git Bash 파이프가 UTF-8 멀티바이트를 깨뜨림(0xb9) → 서버 500(JSON parse). docker exec 출력은 **`docker cp` + `curl --data-binary @file`** 로 바이트 보존. **curl URL 쿼리의 raw 한글도 깨짐** → `q=서울` 대신 **URL-인코딩**(`q=%EC%84%9C%EC%9A%B8`)으로 보낼 것.
 
-관련: [[temp-multimodel-workflow]] [[qa-docker-real-test]] [[real-server-check-screenshot]] [[local-stack-qa-gotchas]].
+## 🪤 거짓 "플랫폼 갭/라우트 끊김" 오진 (2026-06-23 슬F #576)
+거래처 검색이 "404/500 라우트 끊김 = 플랫폼 사전 갭"이라 오진 → 하마터면 **불필요한 partner-service/gateway 변경**을 할 뻔. 실제론 **내 QA 도구 오류 2개**가 만든 거짓 신호:
+1. **curl에 `/api` 접두를 임의로 붙임**(`/api/admin/partners/search`=404). FE apiClient `baseURL=http://localhost:8080`(게이트웨이, **/api 없음**)이고 FE 경로는 `/admin/partners/search`(200). → **FE가 실제 호출하는 정확한 URL**(baseURL+path)을 client.ts에서 확인하고 그대로 재현할 것. 경로에 /api 등 임의 접두 금지.
+2. **raw 한글 쿼리**(`q=서울`)가 Git Bash에서 깨져 0건(`¼­¿ï` 모지바케) → "이름 검색 안 됨"으로 오인. URL-인코딩하니 정상(서울→2건, 에어→15건).
+**교훈**: "라우트/플랫폼이 끊겼다" 결론 전에 — (a) FE 실호출 URL 정확 재현(접두 임의 추가 X), (b) 한글 쿼리 URL-인코딩, (c) `q` 없는 호출로 200·데이터 유무 먼저 확인. 플랫폼 변경 escalation 전 자기 QA 도구부터 의심. (Opus 리뷰의 진짜 BLOCKING=거래처 UUID 비공개 의존은 별개로 유효 → partnerCode 재설계로 해소.)
+
+관련: [[temp-multimodel-workflow]] [[qa-docker-real-test]] [[real-server-check-screenshot]] [[local-stack-qa-gotchas]] [[uuid-no-user-visibility]].

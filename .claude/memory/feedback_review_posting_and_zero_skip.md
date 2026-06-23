@@ -10,6 +10,7 @@ metadata:
 **리뷰 게시 규칙**:
 - **Claude TM 리뷰**(5-agent 종합)와 **Codex TM 리뷰**(5-섹션)를 PR 코멘트로 **각각 따로 게시**(한 코멘트에 합치지 말 것).
 - 마지막에 **PM 종합 리뷰** 코멘트를 **반드시** 게시(양측 리뷰 종합 + 판단 + 머지 사유).
+- 🕒 **제때(라운드별 즉시) 게시 의무** (2026-06-23 개발책임자 재지적, "리뷰 좀 제때 게시 요청. 스크린샷 포함"): 각 리뷰 라운드(R1 Opus·R2 Codex·라운드별 Docker 실QA)가 **완료되는 즉시** 해당 PR에 게시. 수렴/머지까지 batch 보류 금지. **스크린샷(라이브 Docker 실QA)도 그 라운드 코멘트에 인라인 포함**([[per-round-live-qa]]). 리뷰 진행 중이면 "진행 중" 상태라도 QA 먼저 게시.
 
 **skip 0 규칙**:
 - Claude+Codex 5-agent & fix 사이클 후, **PM 판단상 skip 이 1건이라도 남으면 해결될 때까지 계속 fix**. (test.skip / false-green / 미실행 = 통과 아님 — [[feedback_no_fake_data_ever]], [[feedback_ci_test_filter_false_green]].) 슬라이스 관련 skip 우선, 불가피한 legacy quarantine 은 정직 명시.

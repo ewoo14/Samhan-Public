@@ -4,7 +4,13 @@
 
 ---
 
-## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B·C·D 머지(#572/#573/#574). 잔여 E·F(M)·G·H(L) + 슬B 코드prefix 정렬 후속. 다음=E 또는 개발책임자 지정**)
+## 🟢 핸드오프 (2026-06-23 — **회계 보고 스위트: 슬B·C·D·F 머지(#572/#573/#574/#576). 잔여 E 원장·G·H(L). 다음=E 또는 개발책임자 지정**)
+
+### ✅ 회계 보고 스위트 — 통일안 F(전표현황) 머지 (#576, main `3fb714b7f`)
+- BE `GET /accounting/reports/journal-status?from&to&sourceTypes&partnerCode&groupBy(DATE|SOURCE_TYPE|PARTNER)` — sourceType 다중필터·**거래처 partnerCode 필터**(PartnerLookupClient→UUID EXISTS, UUID 비노출)·grouping(헤더+소계, PARTNER는 라인 거래처별 fan-out)·거래유형 한글라벨(전표/수기/결산/계좌입금/현금입금). JPA 카르테시안 회피(LEFT JOIN+GROUP BY root). 기존 journals/search 무파손.
+- 듀얼리뷰 R1(Opus: 🔴**거래처필터 UUID의존→partnerCode 재설계**·missing 핸들·다거래처 fan-out·라벨)→R2(Codex: PartnerLookupClient wire-parse 테스트 [[restclient-contract-test-false-green]]). **개발책임자 라이브 지적**: 일자 열 제거(전표번호에 일자 포함)·전표번호 순차 채번(journal_number_sequences 날짜별).
+- 🪤 **거짓 "거래처 검색 라우트 끊김" 오진**(QA curl /api 접두 + Git Bash 한글 깨짐) → 하마터면 불필요한 플랫폼 변경. [[realqa-run-and-false-red]] 보강(FE 실호출 URL 정확 재현·한글 URL인코딩). 🕒 "리뷰 제때 게시" [[review-posting-and-zero-skip]] 보강.
+- 🔑 표시 규약([[accounting-report-display-conventions]]) 슬B(#575 정렬)·D·F 전반 적용(음수'-'빨강·계정명 코드없음·0='—').
 
 ### ✅ 회계 보고 스위트 — 통일안 D(월별손익분석) 머지 (#574, main `93ae39e2b`)
 - BE `GET /accounting/reports/income-statement/monthly?year=YYYY` — 손익계정×1~12월 매트릭스 + 소계(매출총이익/영업이익/영업외손익/법인세차감전순이익/당기순이익) + annualTotal + 전기비교(priorYearTotal/difference). 월별=aggregate 12회 반복(GROUP BY, JOIN FETCH 없음). 기존 income-statement 무파손.
