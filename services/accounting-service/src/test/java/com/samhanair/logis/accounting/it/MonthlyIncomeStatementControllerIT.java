@@ -77,6 +77,11 @@ class MonthlyIncomeStatementControllerIT extends AbstractPostgresIT {
         assertAmount(revenue.get("priorYearTotal"), "12000.00");
         assertAmount(revenue.get("difference"), "33000.00");
 
+        JsonNode revenueSubtotal = row(rows, "매출액 합계");
+        assertAmount(revenueSubtotal.get("annualTotal"), "45000.00");
+        assertAmount(revenueSubtotal.get("annualTotal"), sumAccountRows(rows, "REVENUE", "annualTotal"));
+        assertAmount(revenueSubtotal.get("priorYearTotal"), sumAccountRows(rows, "REVENUE", "priorYearTotal"));
+
         JsonNode grossProfit = row(rows, "매출총이익");
         assertAmount(grossProfit.get("monthlyAmounts").get(0), "6000.00");
         assertAmount(grossProfit.get("monthlyAmounts").get(1), "13000.00");
@@ -91,6 +96,10 @@ class MonthlyIncomeStatementControllerIT extends AbstractPostgresIT {
         assertAmount(nonOperatingExpense.get("monthlyAmounts").get(0), "-300.00");
         assertAmount(nonOperatingExpense.get("annualTotal"), "-300.00");
 
+        JsonNode nonOperatingRevenue = row(rows, "이자수익");
+        assertAmount(nonOperatingRevenue.get("monthlyAmounts").get(2), "200.00");
+        assertAmount(nonOperatingRevenue.get("annualTotal"), "200.00");
+
         JsonNode incomeBeforeTax = row(rows, "법인세차감전순이익");
         assertAmount(incomeBeforeTax.get("annualTotal"), "24400.00");
 
@@ -98,6 +107,23 @@ class MonthlyIncomeStatementControllerIT extends AbstractPostgresIT {
         assertThat(netIncome.get("rowKind").asText()).isEqualTo("TOTAL");
         assertAmount(netIncome.get("annualTotal"), "22900.00");
         assertAmount(netIncome.get("priorYearTotal"), "6700.00");
+    }
+
+    @Test
+    @DisplayName("월별손익분석 — year 누락/비숫자 query parameter 는 400 INVALID_INPUT")
+    void monthlyIncomeStatementInvalidYearParameterReturns400() throws Exception {
+        mockMvc.perform(get("/accounting/reports/income-statement/monthly")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        mockMvc.perform(get("/accounting/reports/income-statement/monthly")
+                        .param("year", "abcd")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     private void seedFixtures() {
@@ -123,6 +149,10 @@ class MonthlyIncomeStatementControllerIT extends AbstractPostgresIT {
                 "20000.00", "7000.00", "2000.00", "0.00", "0.00", "0.00");
         seedMonth("MONTHLY-IS-2047-03", LocalDate.of(2047, 3, 10),
                 "15000.00", "5000.00", "1500.00", "200.00", "0.00", "1000.00");
+
+        seedPosted("MONTHLY-IS-2047-03-PARENT-REV", LocalDate.of(2047, 3, 20), "통제 계정 직접 분개 제외",
+                line("101", "777.00", "0.00"),
+                line("400", "0.00", "777.00"));
 
         seedDraft("MONTHLY-IS-2047-04-DRAFT", LocalDate.of(2047, 4, 10), "미게시 제외",
                 line("101", "999.00", "0.00"),
@@ -202,6 +232,21 @@ class MonthlyIncomeStatementControllerIT extends AbstractPostgresIT {
         BigDecimal actual = node.decimalValue();
         BigDecimal expectedAmount = new BigDecimal(expected);
         assertThat(actual).isEqualByComparingTo(expectedAmount);
+    }
+
+    private void assertAmount(JsonNode node, BigDecimal expected) {
+        BigDecimal actual = node.decimalValue();
+        assertThat(actual).isEqualByComparingTo(expected);
+    }
+
+    private BigDecimal sumAccountRows(JsonNode rows, String section, String amountField) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (JsonNode row : rows) {
+            if (section.equals(row.get("section").asText()) && "ACCOUNT".equals(row.get("rowKind").asText())) {
+                total = total.add(row.get(amountField).decimalValue());
+            }
+        }
+        return total;
     }
 
     private record LineSpec(String accountCode, String debit, String credit) {

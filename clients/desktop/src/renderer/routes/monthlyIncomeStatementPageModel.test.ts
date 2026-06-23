@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   fmtMonthlyKrw,
+  isExpenseMonthlySection,
   isNegativeMonthlyAmount,
   isStrongMonthlyRow,
   monthlyAmountAt,
@@ -25,7 +26,7 @@ const row: MonthlyIncomeStatementLine = {
 describe('monthlyIncomeStatementPageModel', () => {
   it('금액을 회계 표기 문자열로 변환한다', () => {
     expect(fmtMonthlyKrw('12345.00')).toBe('12,345')
-    expect(fmtMonthlyKrw('-2500.00')).toBe('(2,500)')
+    expect(fmtMonthlyKrw('-2500.00')).toBe('-2,500')
     expect(fmtMonthlyKrw(0)).toBe('-')
   })
 
@@ -35,8 +36,8 @@ describe('monthlyIncomeStatementPageModel', () => {
     expect(monthlyAmountAt(row, 12)).toBe(0)
   })
 
-  it('계정 행 라벨은 코드와 계정명을 함께 표시한다', () => {
-    expect(rowLabel(row)).toBe('401 상품매출')
+  it('계정 행 라벨은 계정명만 표시한다', () => {
+    expect(rowLabel(row)).toBe('상품매출')
     expect(rowLabel({ ...row, accountCode: null, accountName: '매출총이익' }))
       .toBe('매출총이익')
   })
@@ -49,6 +50,8 @@ describe('monthlyIncomeStatementPageModel', () => {
 
   it('음수와 섹션 라벨을 판정한다', () => {
     expect(isNegativeMonthlyAmount('-1')).toBe(true)
+    expect(isExpenseMonthlySection('SGA')).toBe(true)
+    expect(isExpenseMonthlySection('REVENUE')).toBe(false)
     expect(sectionLabel('NET_INCOME')).toBe('당기순이익')
     expect(sectionLabel('UNKNOWN')).toBe('UNKNOWN')
   })

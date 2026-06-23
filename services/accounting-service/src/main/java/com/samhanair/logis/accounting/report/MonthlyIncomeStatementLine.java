@@ -17,7 +17,7 @@ import java.util.List;
  * @param monthlyAmounts 당기 1월~12월 금액 배열
  * @param annualTotal    당기 연간 합계
  * @param priorYearTotal 전기 연간 합계
- * @param difference     당기 연간 합계 - 전기 연간 합계
+ * @param difference     당기 연간 합계 - 전기 연간 합계. 단순 산술 차이이며 비용 섹션의 증가는 이익 감소로 해석한다.
  * @param sortOrder      표시 순서
  */
 public record MonthlyIncomeStatementLine(

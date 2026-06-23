@@ -100,7 +100,9 @@ public class MonthlyIncomeStatementService {
         Map<String, BigDecimal> amounts = new HashMap<>();
         for (AccountTotal total : journalLineRepository.aggregatePostedByAccount(from, to)) {
             ChartOfAccount account = accountMap.get(total.getAccountCode());
-            if (account == null || !PROFIT_AND_LOSS_CATEGORIES.contains(account.getCategory())) {
+            if (account == null
+                    || !account.isLeaf()
+                    || !PROFIT_AND_LOSS_CATEGORIES.contains(account.getCategory())) {
                 continue;
             }
             amounts.put(
@@ -276,7 +278,7 @@ public class MonthlyIncomeStatementService {
         BigDecimal total = BigDecimal.ZERO;
         for (Map.Entry<String, BigDecimal> entry : amounts.entrySet()) {
             ChartOfAccount account = accountMap.get(entry.getKey());
-            if (account != null && account.getCategory() == category && !INCOME_TAX_CODE.equals(account.getCode())) {
+            if (account != null && account.getCategory() == category) {
                 total = total.add(entry.getValue());
             }
         }

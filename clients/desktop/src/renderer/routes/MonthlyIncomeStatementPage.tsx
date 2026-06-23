@@ -22,6 +22,7 @@ import {
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
   fmtMonthlyKrw,
+  isExpenseMonthlySection,
   isNegativeMonthlyAmount,
   isStrongMonthlyRow,
   monthlyAmountAt,
@@ -36,14 +37,16 @@ function currentYear(): number {
 function AmountCell({
   value,
   strong,
+  neutral = false,
 }: {
   value: string | number
   strong: boolean
+  neutral?: boolean
 }) {
   return (
     <span
       style={{
-        color: isNegativeMonthlyAmount(value)
+        color: !neutral && isNegativeMonthlyAmount(value)
           ? 'var(--state-danger)'
           : 'var(--color-neutral-900)',
         fontWeight: strong ? 700 : 400,
@@ -129,7 +132,13 @@ export function MonthlyIncomeStatementPage() {
         header: '증감',
         width: '120px',
         align: 'right',
-        render: (row) => <AmountCell value={row.difference} strong={isStrongMonthlyRow(row)} />,
+        render: (row) => (
+          <AmountCell
+            value={row.difference}
+            strong={isStrongMonthlyRow(row)}
+            neutral={isExpenseMonthlySection(row.section)}
+          />
+        ),
       },
     ]
   }, [query.data?.months])

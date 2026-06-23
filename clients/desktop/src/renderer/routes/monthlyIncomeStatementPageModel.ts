@@ -13,7 +13,7 @@ export function fmtMonthlyKrw(raw: AmountValue): string {
   const value = numericAmount(raw)
   if (value === 0) return '-'
   const abs = Math.abs(Math.round(value)).toLocaleString('ko-KR')
-  return value < 0 ? `(${abs})` : abs
+  return value < 0 ? `-${abs}` : abs
 }
 
 export function isNegativeMonthlyAmount(raw: AmountValue): boolean {
@@ -24,12 +24,16 @@ export function isStrongMonthlyRow(row: MonthlyIncomeStatementLine): boolean {
   return row.rowKind === 'SUBTOTAL' || row.rowKind === 'TOTAL'
 }
 
+export function isExpenseMonthlySection(section: string): boolean {
+  return section === 'COST_OF_SALES' || section === 'SGA' || section === 'INCOME_TAX'
+}
+
 export function monthlyAmountAt(row: MonthlyIncomeStatementLine, month: number): AmountValue {
   return row.monthlyAmounts[month - 1] ?? 0
 }
 
 export function rowLabel(row: MonthlyIncomeStatementLine): string {
-  return row.accountCode ? `${row.accountCode} ${row.accountName}` : row.accountName
+  return row.accountName
 }
 
 export function sectionLabel(section: string): string {
