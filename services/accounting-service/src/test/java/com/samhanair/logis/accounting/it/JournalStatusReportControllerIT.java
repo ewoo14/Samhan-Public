@@ -1,0 +1,251 @@
+package com.samhanair.logis.accounting.it;
+
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.lenient;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.accounting.AccountingServiceApplication;
+import com.samhanair.logis.accounting.client.ETaxClient;
+import com.samhanair.logis.accounting.client.KftcClient;
+import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.domain.Journal;
+import com.samhanair.logis.accounting.domain.JournalLine;
+import com.samhanair.logis.accounting.domain.JournalSourceType;
+import com.samhanair.logis.accounting.repository.JournalRepository;
+import com.samhanair.logis.security.permission.DynamicPermissionClient;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
+
+/** 전표현황 보고서 IT. */
+@SpringBootTest(classes = AccountingServiceApplication.class)
+@AutoConfigureMockMvc
+@Transactional
+class JournalStatusReportControllerIT extends AbstractPostgresIT {
+
+    private static final UUID PARTNER_WILLY =
+            UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static final UUID PARTNER_HANIL =
+            UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static final UUID PARTNER_NAVER =
+            UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+    @Autowired private MockMvc mockMvc;
+    @Autowired private ObjectMapper objectMapper;
+    @Autowired private JournalRepository journalRepository;
+
+    /** 외부 e-Tax client 격리. */
+    @MockBean private ETaxClient eTaxClient;
+    /** 외부 KFTC client 격리. */
+    @MockBean private KftcClient kftcClient;
+    /** partner-service lookup client 격리. */
+    @MockBean private PartnerLookupClient partnerLookupClient;
+    /** 동적 권한 client 격리. */
+    @MockBean(classes = DynamicPermissionClient.class) private DynamicPermissionClient dynamicPermissionClient;
+
+    @BeforeEach
+    void setUpPartnerLookup() {
+        lenient().when(partnerLookupClient.findByPartnerIdsBatch(anyList()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<UUID> ids = invocation.getArgument(0, List.class);
+                    Map<UUID, String> names = new HashMap<>();
+                    if (ids.contains(PARTNER_WILLY)) {
+                        names.put(PARTNER_WILLY, "주식회사 윌리");
+                    }
+                    if (ids.contains(PARTNER_HANIL)) {
+                        names.put(PARTNER_HANIL, "한일빌딩");
+                    }
+                    if (ids.contains(PARTNER_NAVER)) {
+                        names.put(PARTNER_NAVER, "네이버");
+                    }
+                    return names;
+                });
+    }
+
+    @Test
+    @DisplayName("전표현황 — sourceType 다중 필터와 거래유형 한글 라벨")
+    void journalStatusFiltersBySourceTypesAndLabels() throws Exception {
+        seedFixtures();
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-01")
+                        .param("to", "2026-06-30")
+                        .param("sourceTypes", "SLIP", "CLOSING")
+                        .param("groupBy", "SOURCE_TYPE")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        JsonNode data = objectMapper.readTree(body).get("data");
+
+        if (data.get("groups").size() != 2) {
+            throw new AssertionError("sourceType 그룹 수가 예상과 다릅니다: " + data.get("groups").size());
+        }
+        assertGroup(data, "전표", "전표", 1, "5000.00");
+        assertGroup(data, "결산", "결산", 1, "2000.00");
+        assertAmount(data.get("total").get("totalDebit"), "7000.00");
+        if (body.contains("수기")) {
+            throw new AssertionError("SLIP/CLOSING 필터 결과에 MANUAL 라벨이 포함되었습니다");
+        }
+        assertNoPartnerUuid(body);
+    }
+
+    @Test
+    @DisplayName("전표현황 — partnerId 필터와 거래처별 grouping 소계")
+    void journalStatusFiltersByPartnerAndGroupsByPartner() throws Exception {
+        seedFixtures();
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-01")
+                        .param("to", "2026-06-30")
+                        .param("partnerId", PARTNER_WILLY.toString())
+                        .param("groupBy", "PARTNER")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        JsonNode data = objectMapper.readTree(body).get("data");
+
+        if (data.get("groups").size() != 1) {
+            throw new AssertionError("거래처 그룹 수가 예상과 다릅니다: " + data.get("groups").size());
+        }
+        JsonNode group = data.get("groups").get(0);
+        if (!"주식회사 윌리".equals(group.get("groupLabel").asText())) {
+            throw new AssertionError("거래처 그룹명이 예상과 다릅니다: " + group.get("groupLabel").asText());
+        }
+        if (group.get("lines").size() != 1) {
+            throw new AssertionError("거래처 필터 라인 수가 예상과 다릅니다: " + group.get("lines").size());
+        }
+        JsonNode line = group.get("lines").get(0);
+        if (!"SLIP".equals(line.get("sourceType").asText())) {
+            throw new AssertionError("거래처 필터 전표 출처가 예상과 다릅니다: " + line.get("sourceType").asText());
+        }
+        assertAmount(group.get("subtotal").get("totalDebit"), "5000.00");
+        assertAmount(data.get("total").get("totalCredit"), "5000.00");
+        assertNoPartnerUuid(body);
+    }
+
+    @Test
+    @DisplayName("기존 결재 첨부 분개 검색 endpoint 는 무회귀")
+    void existingJournalSearchStillWorks() throws Exception {
+        seedFixtures();
+
+        mockMvc.perform(get("/admin/accounting/journals/search")
+                        .param("q", "STATUS-F-SLIP")
+                        .param("limit", "5")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk());
+    }
+
+    private void seedFixtures() {
+        seedPosted("STATUS-F-SLIP", LocalDate.of(2026, 6, 3), "매출전표",
+                JournalSourceType.SLIP,
+                line("102", "5000.00", "0.00", PARTNER_WILLY, "입금"),
+                line("401", "0.00", "5000.00", PARTNER_WILLY, "매출"));
+        seedPosted("STATUS-F-MANUAL", LocalDate.of(2026, 6, 4), "수기 지급",
+                JournalSourceType.MANUAL,
+                line("801", "3000.00", "0.00", PARTNER_HANIL, "임차료"),
+                line("102", "0.00", "3000.00", PARTNER_HANIL, "출금"));
+        seedPosted("STATUS-F-CLOSING", LocalDate.of(2026, 6, 30), "결산 전표",
+                JournalSourceType.CLOSING,
+                line("302", "2000.00", "0.00", PARTNER_NAVER, "결산"),
+                line("901", "0.00", "2000.00", PARTNER_NAVER, "결산"));
+        seedDraft("STATUS-F-DRAFT", LocalDate.of(2026, 6, 5), "미게시 제외",
+                JournalSourceType.SLIP,
+                line("102", "999.00", "0.00", PARTNER_WILLY, "미게시"),
+                line("401", "0.00", "999.00", PARTNER_WILLY, "미게시"));
+    }
+
+    private void seedPosted(String journalNo, LocalDate date, String description,
+                            JournalSourceType sourceType, LineSpec... specs) {
+        Journal journal = journal(journalNo, date, description, sourceType, specs);
+        journal.post("journal-status-it");
+        journalRepository.saveAndFlush(journal);
+    }
+
+    private void seedDraft(String journalNo, LocalDate date, String description,
+                           JournalSourceType sourceType, LineSpec... specs) {
+        journalRepository.saveAndFlush(journal(journalNo, date, description, sourceType, specs));
+    }
+
+    private Journal journal(String journalNo, LocalDate date, String description,
+                            JournalSourceType sourceType, LineSpec... specs) {
+        Journal journal = Journal.create(journalNo, date, description, sourceType, null);
+        int lineNo = 1;
+        for (LineSpec spec : specs) {
+            journal.addLine(JournalLine.create(
+                    journal,
+                    lineNo++,
+                    spec.accountCode(),
+                    new BigDecimal(spec.debit()),
+                    new BigDecimal(spec.credit()),
+                    spec.partnerId(),
+                    spec.memo()
+            ));
+        }
+        return journal;
+    }
+
+    private LineSpec line(String accountCode, String debit, String credit, UUID partnerId, String memo) {
+        return new LineSpec(accountCode, debit, credit, partnerId, memo);
+    }
+
+    private void assertGroup(JsonNode data, String groupLabel, String sourceLabel,
+                             int expectedCount, String expectedDebit) {
+        for (JsonNode group : data.get("groups")) {
+            if (groupLabel.equals(group.get("groupLabel").asText())) {
+                if (group.get("lines").size() != expectedCount) {
+                    throw new AssertionError("그룹 라인 수가 예상과 다릅니다: " + groupLabel);
+                }
+                if (!sourceLabel.equals(group.get("lines").get(0).get("sourceTypeDisplayName").asText())) {
+                    throw new AssertionError("거래유형 라벨이 예상과 다릅니다: " + groupLabel);
+                }
+                assertAmount(group.get("subtotal").get("totalDebit"), expectedDebit);
+                return;
+            }
+        }
+        throw new AssertionError("그룹을 찾지 못했습니다: " + groupLabel);
+    }
+
+    private void assertAmount(JsonNode node, String expected) {
+        BigDecimal actual = node.decimalValue();
+        BigDecimal expectedAmount = new BigDecimal(expected);
+        if (actual.compareTo(expectedAmount) != 0) {
+            throw new AssertionError("금액 불일치 expected=" + expectedAmount + ", actual=" + actual);
+        }
+    }
+
+    private void assertNoPartnerUuid(String body) {
+        if (body.contains(PARTNER_WILLY.toString())
+                || body.contains(PARTNER_HANIL.toString())
+                || body.contains(PARTNER_NAVER.toString())) {
+            throw new AssertionError("전표현황 응답에 partner UUID 가 노출되었습니다");
+        }
+    }
+
+    private record LineSpec(String accountCode, String debit, String credit, UUID partnerId, String memo) {
+    }
+}

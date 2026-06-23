@@ -171,6 +171,7 @@ function mockRequirePermission(pageCode: string, action: MockPermissionAction): 
 
 function normalizeAdminPartner(row: Record<string, unknown>) {
   return {
+    id: String(row['id'] ?? row['partnerId'] ?? ''),
     partnerCode: String(row['partnerCode'] ?? ''),
     name: String(row['name'] ?? row['partnerName'] ?? ''),
     bizNo: String(row['bizNo'] ?? row['businessNumber'] ?? ''),
@@ -4677,6 +4678,98 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       ? MOCK_PARTNER_AGING_RECEIVABLE
       : MOCK_PARTNER_AGING_PAYABLE
     return envelope({ ...base, asOfDate })
+  }
+
+  // GET /accounting/reports/journal-status?from=&to=&sourceTypes=&partnerId=&groupBy= — 전표현황
+  if (method === 'GET' && url.includes('/accounting/reports/journal-status')) {
+    const from = (config.params?.['from'] ?? '2026-05-01') as string
+    const to = (config.params?.['to'] ?? '2026-05-31') as string
+    const groupBy = ((config.params?.['groupBy'] ?? 'DATE') as string) || 'DATE'
+    const status = ((config.params?.['status'] ?? 'POSTED') as string) || 'POSTED'
+    const rawSourceTypes = config.params?.['sourceTypes'] as string | string[] | undefined
+    const selectedSourceTypes = Array.isArray(rawSourceTypes)
+      ? rawSourceTypes
+      : String(rawSourceTypes ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    const partnerId = (config.params?.['partnerId'] as string | undefined) ?? ''
+    const partnerIdByName: Record<string, string> = {
+      '주식회사 윌리': '11111111-1111-1111-1111-111111111111',
+      '한일빌딩': '22222222-2222-2222-2222-222222222222',
+      '네이버': '33333333-3333-3333-3333-333333333333',
+    }
+    const sourceLabel: Record<string, string> = {
+      SLIP: '전표',
+      MANUAL: '수기',
+      CLOSING: '결산',
+      KFTC_DEPOSIT: '입금보고서',
+      CASH_DISBURSEMENT: '지출결의서',
+      CASH_RECEIPT: '입금보고서',
+    }
+    const lines = MOCK_JOURNALS
+      .filter((journal) => journal.status === status)
+      .filter((journal) => journal.journalDate >= from && journal.journalDate <= to)
+      .filter((journal) =>
+        selectedSourceTypes.length === 0 || selectedSourceTypes.includes(String(journal.sourceType ?? 'MANUAL')),
+      )
+      .map((journal) => {
+        const partnerNames = Array.from(new Set(
+          journal.lines
+            .map((line) => line.partnerName)
+            .filter((name): name is string => Boolean(name)),
+        )).sort()
+        return {
+          journalNo: journal.journalNo,
+          journalDate: journal.journalDate,
+          sourceType: journal.sourceType ?? 'MANUAL',
+          sourceTypeDisplayName: journal.sourceTypeDisplayName ?? sourceLabel[String(journal.sourceType ?? 'MANUAL')],
+          partnerName: partnerNames.length > 0 ? partnerNames.join(' / ') : '기타',
+          description: journal.description,
+          totalDebit: journal.totalDebit,
+          totalCredit: journal.totalCredit,
+        }
+      })
+      .filter((line) => !partnerId || line.partnerName.split(' / ').some((name) => partnerIdByName[name] === partnerId))
+
+    const groupKeyOf = (line: typeof lines[number]) => {
+      if (groupBy === 'SOURCE_TYPE') return String(line.sourceType)
+      if (groupBy === 'PARTNER') return line.partnerName
+      return line.journalDate
+    }
+    const groupLabelOf = (line: typeof lines[number]) => {
+      if (groupBy === 'SOURCE_TYPE') return line.sourceTypeDisplayName
+      if (groupBy === 'PARTNER') return line.partnerName
+      return line.journalDate
+    }
+    const sum = (rows: typeof lines) => ({
+      totalDebit: String(rows.reduce((acc, row) => acc + Number(row.totalDebit), 0)),
+      totalCredit: String(rows.reduce((acc, row) => acc + Number(row.totalCredit), 0)),
+      journalCount: rows.length,
+    })
+    const grouped = new Map<string, typeof lines>()
+    for (const line of lines) {
+      const key = groupKeyOf(line)
+      grouped.set(key, [...(grouped.get(key) ?? []), line])
+    }
+    const groups = Array.from(grouped.entries()).map(([groupKey, rows]) => ({
+      groupKey,
+      groupLabel: groupLabelOf(rows[0]!),
+      lines: rows,
+      subtotal: sum(rows),
+    }))
+    return envelope({
+      fromDate: from,
+      toDate: to,
+      status,
+      sourceTypes: selectedSourceTypes.length > 0
+        ? selectedSourceTypes
+        : ['SLIP', 'MANUAL', 'CLOSING', 'KFTC_DEPOSIT', 'CASH_DISBURSEMENT', 'CASH_RECEIPT'],
+      groupBy,
+      groups,
+      total: sum(lines),
+      generatedAt: '2026-06-23T09:00:00.000Z',
+    })
   }
 
   // ==========================================================================
@@ -10147,6 +10240,8 @@ const MOCK_JOURNALS = [
     id: 'jv-001',
     journalNo: '2026/05/01-001',
     journalDate: '2026-05-04',
+    sourceType: 'SLIP' as const,
+    sourceTypeDisplayName: '전표',
     status: 'POSTED' as const,
     description: '5월 1주차 제품매출 대금 입금 (윌리)',
     totalDebit: '3700000',
@@ -10185,6 +10280,8 @@ const MOCK_JOURNALS = [
     id: 'jv-002',
     journalNo: '2026/05/03-002',
     journalDate: '2026-05-03',
+    sourceType: 'MANUAL' as const,
+    sourceTypeDisplayName: '수기',
     status: 'POSTED' as const,
     description: '4월 급여 지급',
     totalDebit: '12000000',
@@ -10233,6 +10330,8 @@ const MOCK_JOURNALS = [
     id: 'jv-003',
     journalNo: '2026/05/02-003',
     journalDate: '2026-05-02',
+    sourceType: 'CASH_DISBURSEMENT' as const,
+    sourceTypeDisplayName: '지출결의서',
     status: 'POSTED' as const,
     description: '5월 사무실 임차료',
     totalDebit: '2000000',
@@ -10271,6 +10370,8 @@ const MOCK_JOURNALS = [
     id: 'jv-004',
     journalNo: '2026/05/04-004',
     journalDate: '2026-05-04',
+    sourceType: 'MANUAL' as const,
+    sourceTypeDisplayName: '수기',
     status: 'DRAFT' as const,
     description: '5월 네이버 광고 (검토중)',
     totalDebit: '500000',
@@ -10309,6 +10410,8 @@ const MOCK_JOURNALS = [
     id: 'jv-005',
     journalNo: '2026/05/01-005',
     journalDate: '2026-05-01',
+    sourceType: 'CLOSING' as const,
+    sourceTypeDisplayName: '결산',
     status: 'REVERSED' as const,
     description: '오등록 매출 (월말 정정)',
     totalDebit: '1500000',
@@ -10634,6 +10737,7 @@ const MOCK_ADMIN_USERS = [
  */
 const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
   {
+    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     partnerCode: '1234567890',
     partnerName: '엘에이시스템에어',
     representative: '이엘에이',
@@ -10646,6 +10750,7 @@ const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
     createdAt: '2024-03-15T09:00:00+09:00',
   },
   {
+    id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     partnerCode: '2345678901',
     partnerName: '강남에어솔루션',
     representative: '강솔루',
@@ -10658,6 +10763,7 @@ const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
     createdAt: '2024-05-20T10:00:00+09:00',
   },
   {
+    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
     partnerCode: '3456789012',
     partnerName: '한빛쾌적',
     representative: '한빛이',
@@ -10670,6 +10776,7 @@ const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
     createdAt: '2024-07-01T11:00:00+09:00',
   },
   {
+    id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
     partnerCode: '4567890123',
     partnerName: '미래시스템',
     representative: '미래길',
@@ -10682,6 +10789,7 @@ const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
     createdAt: '2023-11-10T14:00:00+09:00',
   },
   {
+    id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
     partnerCode: '5678901234',
     partnerName: '대박종합건설',
     representative: '김대박',
@@ -10694,6 +10802,7 @@ const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
     createdAt: '2022-08-25T16:00:00+09:00',
   },
   {
+    id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
     partnerCode: '6789012345',
     partnerName: '경기냉난방',
     representative: '경기냉',
@@ -10704,6 +10813,45 @@ const MOCK_ADMIN_PARTNERS: Array<Record<string, unknown>> = [
     creditLimit: '0',
     currentBalance: '0',
     createdAt: '2021-04-12T08:30:00+09:00',
+  },
+  {
+    id: '11111111-1111-1111-1111-111111111111',
+    partnerCode: 'P-WILLY-001',
+    partnerName: '주식회사 윌리',
+    representative: '윌리',
+    businessNumber: '111-11-11111',
+    address: '서울특별시 중구 세종대로 1',
+    phone: '02-1111-1111',
+    status: 'ACTIVE' as const,
+    creditLimit: '50000000',
+    currentBalance: '3700000',
+    createdAt: '2024-01-10T09:00:00+09:00',
+  },
+  {
+    id: '22222222-2222-2222-2222-222222222222',
+    partnerCode: 'P-HANIL-002',
+    partnerName: '한일빌딩',
+    representative: '한일',
+    businessNumber: '222-22-22222',
+    address: '서울특별시 서초구 반포대로 2',
+    phone: '02-2222-2222',
+    status: 'ACTIVE' as const,
+    creditLimit: '20000000',
+    currentBalance: '2000000',
+    createdAt: '2024-02-10T09:00:00+09:00',
+  },
+  {
+    id: '33333333-3333-3333-3333-333333333333',
+    partnerCode: 'P-NAVER-003',
+    partnerName: '네이버',
+    representative: '네이버',
+    businessNumber: '333-33-33333',
+    address: '경기도 성남시 분당구 정자일로 95',
+    phone: '031-3333-3333',
+    status: 'ACTIVE' as const,
+    creditLimit: '10000000',
+    currentBalance: '500000',
+    createdAt: '2024-03-10T09:00:00+09:00',
   },
 ]
 
