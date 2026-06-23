@@ -226,6 +226,7 @@ import { DailySummaryPage } from './DailySummaryPage'
 import { MonthlySummaryPage } from './MonthlySummaryPage'
 import { JournalStatusReportPage } from './JournalStatusReportPage'
 import { AccountStatementPage } from './AccountStatementPage'
+import { ReceivablesPayablesPage } from './ReceivablesPayablesPage'
 import { NotesReceivablePage } from './NotesReceivablePage'
 import { CollectionPlanPage } from './CollectionPlanPage'
 // [P0-1 Slice C] 인쇄 전용 레이아웃 4종.
@@ -868,6 +869,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.reports" action="view">
             <FundsStatusPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/receivables-payables',
+        element: (
+          <PermissionGuard pageCode="accounting.reports" action="view">
+            <ReceivablesPayablesPage />
           </PermissionGuard>
         ),
       },

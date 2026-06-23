@@ -1,6 +1,7 @@
 package com.samhanair.logis.partner.dto;
 
 import com.samhanair.logis.partner.domain.Partner;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,14 +15,15 @@ public record PartnerLookupByIdsResponse(List<PartnerName> partners) {
     }
 
     /** accounting-service admin/report 목록 표시용 최소 거래처 DTO. */
-    public record PartnerName(UUID id, String partnerCode, String name, String bizNo) {
+    public record PartnerName(UUID id, String partnerCode, String name, String bizNo, BigDecimal creditLimit) {
 
         public static PartnerName from(Partner partner) {
             return new PartnerName(
                     partner.getId(),
                     partner.getPartnerCode(),
                     partner.getName(),
-                    partner.getBizNo());
+                    partner.getBizNo(),
+                    partner.getCreditLimit());
         }
     }
 }

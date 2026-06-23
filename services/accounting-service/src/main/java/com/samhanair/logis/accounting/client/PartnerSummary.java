@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.client;
 
 import java.util.UUID;
+import java.math.BigDecimal;
 
 /**
  * partner-service 가 반환하는 거래처 요약 (PR-E2 BE-A8/A9/A10 의존).
@@ -16,7 +17,12 @@ public record PartnerSummary(
         String partnerCode,
         String name,
         String businessNo,
-        String address) {
+        String address,
+        BigDecimal creditLimit) {
+
+    public PartnerSummary(UUID partnerId, String partnerCode, String name, String businessNo, String address) {
+        this(partnerId, partnerCode, name, businessNo, address, null);
+    }
 
     /** partner-service wire field 이름 호환 accessor. */
     public String bizNo() {

@@ -165,6 +165,43 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, UUID> 
                                                       @Param("asOfDate") LocalDate asOfDate);
 
     /**
+     * 채권채무 현황 월별 aging 산출용 — 계정+거래처+분개일자별 차/대 합계.
+     *
+     * <p>컬렉션 JOIN FETCH 없이 GROUP BY 만 사용한다. service 레이어는 일자순 movement 를
+     * FIFO 로 상계하여 남은 미수/미지급 잔액을 발생월 버킷에 배분한다.
+     *
+     * @param accountCodes 채권/채무 대상 계정코드
+     * @param asOfDate 기준일
+     * @return 계정+거래처+분개일자별 movement 집계
+     */
+    @Query("""
+            SELECT l.partnerId AS partnerId,
+                   l.accountCode AS accountCode,
+                   l.journal.journalDate AS journalDate,
+                   COALESCE(SUM(l.debitAmount), 0) AS debitTotal,
+                   COALESCE(SUM(l.creditAmount), 0) AS creditTotal
+            FROM JournalLine l
+            WHERE l.accountCode IN :accountCodes
+              AND l.journal.journalDate <= :asOfDate
+              AND l.journal.status = com.samhanair.logis.accounting.domain.JournalStatus.POSTED
+              AND l.partnerId IS NOT NULL
+            GROUP BY l.partnerId, l.accountCode, l.journal.journalDate
+            ORDER BY l.partnerId ASC, l.accountCode ASC, l.journal.journalDate ASC
+            """)
+    List<PartnerAccountMovement> aggregateAgingMovementsByAccounts(
+            @Param("accountCodes") List<String> accountCodes,
+            @Param("asOfDate") LocalDate asOfDate);
+
+    /** Spring Data JPA projection — 계정+거래처+분개일자별 차/대 합계. */
+    interface PartnerAccountMovement {
+        UUID getPartnerId();
+        String getAccountCode();
+        LocalDate getJournalDate();
+        BigDecimal getDebitTotal();
+        BigDecimal getCreditTotal();
+    }
+
+    /**
      * 자금현황 기간 집계 — FUND 계정 목록의 계정코드 + partnerId 별 차/대 합계.
      *
      * <p>POSTED 분개만 포함한다. partnerId 가 NULL 인 라인도 "기타" 표시 대상이므로 제외하지 않는다.

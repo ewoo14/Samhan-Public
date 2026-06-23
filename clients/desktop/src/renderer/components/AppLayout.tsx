@@ -753,6 +753,7 @@ export function AppLayout() {
               '/accounting/reports',
               '/accounting/reports/journal-status',
               '/accounting/reports/account-statement',
+              '/accounting/reports/receivables-payables',
               '/accounting/reports/notes-receivable',
               '/accounting/reports/collection-plans',
               '/accounting/reports/funds-flow-comparison',
@@ -892,6 +893,14 @@ export function AppLayout() {
                     style={{ paddingLeft: 20, fontSize: 13 }}
                   >
                     미지급금 (거래처별)
+                  </NavLink>
+                  <NavLink
+                    to="/accounting/reports/receivables-payables"
+                    end
+                    data-testid="sidebar-accounting-receivables-payables"
+                    style={{ paddingLeft: 20, fontSize: 13 }}
+                  >
+                    채권채무 현황
                   </NavLink>
                   <NavLink
                     to="/accounting/reports/notes-receivable"
