@@ -8,6 +8,7 @@ const PAGE_CODE_ENUM_PATH = resolve(
   process.cwd(),
   '../../services/auth-service/src/main/java/com/samhanair/logis/auth/domain/PageCode.java',
 )
+const PERMISSIONS_API_PATH = resolve(process.cwd(), 'src/renderer/api/permissionsApi.ts')
 
 function readPageCodeEnumSource(): string {
   if (!existsSync(PAGE_CODE_ENUM_PATH)) {
@@ -25,8 +26,27 @@ function extractBackendPageCodes(source: string): Set<string> {
   return new Set(Array.from(source.matchAll(enumConstantCodePattern), (match) => match[1]))
 }
 
+function readPermissionsApiSource(): string {
+  if (!existsSync(PERMISSIONS_API_PATH)) {
+    throw new Error(
+      `permissionsApi.ts 파일을 읽을 수 없습니다: ${PERMISSIONS_API_PATH}. ` +
+        'desktop vitest는 clients/desktop cwd에서 실행되어야 합니다.',
+    )
+  }
+
+  return readFileSync(PERMISSIONS_API_PATH, 'utf8')
+}
+
+function extractFrontendPageCodeUnion(source: string): Set<string> {
+  const unionBlockPattern = /export\s+type\s+PageCode\s*=([\s\S]*?)(?=\n\/\*\*|\nexport\s+(?:interface|type|const|function|async)|\n\/\/ -{10,}|$)/
+  const unionBlock = source.match(unionBlockPattern)?.[1] ?? ''
+  const pageCodeUnionMemberPattern = /\|\s*'([a-z0-9.-]+)'/g
+  return new Set(Array.from(unionBlock.matchAll(pageCodeUnionMemberPattern), (match) => match[1]))
+}
+
 function extractFrontendPageCodes(): Set<string> {
   const groupedPages = PAGE_GROUPS.flatMap((group) => group.pages)
+  // PAGES_ORDER는 groupedPages를 중복 선언하므로 두 목록 모두 BE enum과의 고아값 검사를 통과해야 한다.
   return new Set([...groupedPages, ...PAGES_ORDER])
 }
 
@@ -48,6 +68,36 @@ describe('permission page catalog parity', () => {
     expect(
       frontendOnlyOrphans,
       `FE 권한 카탈로그가 BE PageCode enum에 없는 page-code를 참조합니다: ${frontendOnlyOrphans.join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('keeps permissionsApi PageCode union aligned with BE PageCode enum', () => {
+    const backendPageCodes = extractBackendPageCodes(readPageCodeEnumSource())
+    const frontendUnionPageCodes = extractFrontendPageCodeUnion(readPermissionsApiSource())
+
+    expect(
+      backendPageCodes.size,
+      `PageCode.java에서 page-code를 0건 추출했습니다. enum 상수 생성자 포맷 변경 여부를 확인하세요: ${PAGE_CODE_ENUM_PATH}`,
+    ).toBeGreaterThan(0)
+    expect(
+      frontendUnionPageCodes.size,
+      `permissionsApi.ts PageCode union에서 page-code를 0건 추출했습니다. union literal 포맷 변경 여부를 확인하세요: ${PERMISSIONS_API_PATH}`,
+    ).toBeGreaterThan(0)
+
+    const frontendUnionOnlyOrphans = Array.from(frontendUnionPageCodes)
+      .filter((pageCode) => !backendPageCodes.has(pageCode))
+      .sort()
+    const backendOnlyMissingUnionMembers = Array.from(backendPageCodes)
+      .filter((pageCode) => !frontendUnionPageCodes.has(pageCode))
+      .sort()
+
+    expect(
+      frontendUnionOnlyOrphans,
+      `permissionsApi.ts PageCode union이 BE PageCode enum에 없는 page-code를 포함합니다: ${frontendUnionOnlyOrphans.join(', ')}`,
+    ).toEqual([])
+    expect(
+      backendOnlyMissingUnionMembers,
+      `permissionsApi.ts PageCode union이 BE PageCode enum page-code를 누락했습니다: ${backendOnlyMissingUnionMembers.join(', ')}`,
     ).toEqual([])
   })
 })

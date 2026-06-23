@@ -8,10 +8,10 @@ export function numericAmount(raw: AmountValue | null | undefined): number {
   return Number.isFinite(value) ? value : 0
 }
 
-/** KRW 정수/소수 string → "5,000" 형식. 0은 eCount 표처럼 대시로 표시한다. */
+/** KRW 정수/소수 string → "5,000" 형식. 0은 eCount 표처럼 em-dash로 표시한다. */
 export function fmtMonthlyKrw(raw: AmountValue): string {
   const value = numericAmount(raw)
-  if (value === 0) return '-'
+  if (value === 0) return '—'
   const abs = Math.abs(Math.round(value)).toLocaleString('ko-KR')
   return value < 0 ? `-${abs}` : abs
 }

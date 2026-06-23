@@ -280,6 +280,7 @@ export const PAGE_GROUPS: PageGroup[] = [
       'sales.partner-order.edit-requests.decide',
       'sales.partner-order.tutorial',
       'sales.partner-order.convert',
+      'sales.partner-order.revisions',
       'sales.vendor-order',
     ],
   },
@@ -362,6 +363,12 @@ export const PAGE_GROUPS: PageGroup[] = [
       'arologis.edit-requests',
       'arologis.edit-requests.decide',
       'arologis.driver',
+      'arologis.hr.employees',
+      'arologis.hr.departments',
+      'arologis.accounting.cashbook',
+      'arologis.accounting.summary',
+      'arologis.admin.permissions',
+      'arologis.accounting.accounts',
     ],
   },
 ]
@@ -501,6 +508,7 @@ export const PAGE_LABEL: Record<PageCode, string> = {
   'sales.partner-order.edit-requests.decide': '주문 요청 승인',
   'sales.partner-order.tutorial': '주문 튜토리얼',
   'sales.partner-order.convert': '주문 출고전환',
+  'sales.partner-order.revisions': '주문 리비전 복원',
   'sales.vendor-order': '벤더 주문',
   'inventory.warehouse': '창고관리',
   'inventory.warehouse.admin': '창고관리 admin',
@@ -556,6 +564,12 @@ export const PAGE_LABEL: Record<PageCode, string> = {
   'arologis.edit-requests': '아로로지스 수정 요청',
   'arologis.edit-requests.decide': '아로로지스 요청 승인',
   'arologis.driver': '기사앱',
+  'arologis.hr.employees': '아로로지스 직원',
+  'arologis.hr.departments': '아로로지스 부서',
+  'arologis.accounting.cashbook': '아로로지스 현금출납장',
+  'arologis.accounting.summary': '아로로지스 회계 집계',
+  'arologis.admin.permissions': '아로로지스 권한',
+  'arologis.accounting.accounts': '아로로지스 계정과목',
 }
 
 const MATRIX_ACTION_LABEL: Record<PermissionAction, string> = {

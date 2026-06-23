@@ -32,7 +32,7 @@ export const JOURNAL_STATUS_GROUP_OPTIONS: Array<{
   { value: 'PARTNER', label: '거래처별' },
 ]
 
-/** KRW 정수/소수 string → "1,234" 형식. 0은 dash, 음수는 "-1,234" 유지. */
+/** KRW 정수/소수 string → "1,234" 형식. 0은 em-dash, 음수는 "-1,234" 유지. */
 export function fmtJournalStatusKrw(raw: string | number): string {
   const n = typeof raw === 'string' ? Number(raw) : raw
   if (!Number.isFinite(n)) return String(raw)

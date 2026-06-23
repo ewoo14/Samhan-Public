@@ -27,7 +27,7 @@ describe('monthlyIncomeStatementPageModel', () => {
   it('금액을 회계 표기 문자열로 변환한다', () => {
     expect(fmtMonthlyKrw('12345.00')).toBe('12,345')
     expect(fmtMonthlyKrw('-2500.00')).toBe('-2,500')
-    expect(fmtMonthlyKrw(0)).toBe('-')
+    expect(fmtMonthlyKrw(0)).toBe('—')
   })
 
   it('월 index 는 1월 기준으로 읽는다', () => {

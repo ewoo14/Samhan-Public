@@ -29,6 +29,10 @@ import org.springframework.web.bind.annotation.RestController;
 class ArologisPageCodesTest {
 
     private static final Pattern PAGE_CODE_PATTERN = Pattern.compile("^arologis\\.[a-z0-9.-]+$");
+    private static final Path AUTH_SERVICE_PAGE_CODE_ENUM_PATH =
+            Path.of("../auth-service/src/main/java/com/samhanair/logis/auth/domain/PageCode.java");
+    private static final Pattern AUTH_SERVICE_PAGE_CODE_ENUM_PATTERN =
+            Pattern.compile("^\\s*[A-Z0-9_]+\\s*\\(\\s*\"([a-z0-9.-]+)\"\\s*,", Pattern.MULTILINE);
     private static final Pattern REQUIRE_PERMISSION_LITERAL_PATTERN =
             Pattern.compile("^\\s*@RequirePermission\\s*\\([\\s\\S]*?page\\s*=\\s*\"", Pattern.MULTILINE);
 
@@ -50,6 +54,23 @@ class ArologisPageCodesTest {
     void controller_require_permission_pages_match_constants() {
         assertThat(controllerRequirePermissionPages())
                 .isEqualTo(pageCodeConstants());
+    }
+
+    @Test
+    void constants_exist_in_auth_service_page_code_enum() {
+        Set<String> authServicePageCodes = authServicePageCodes();
+        Set<String> arologisPageCodes = pageCodeConstants();
+
+        assertThat(authServicePageCodes)
+                .as("auth-service PageCode.java에서 page-code를 0건 추출했습니다. enum 생성자 포맷 변경 여부를 확인하세요: %s",
+                        AUTH_SERVICE_PAGE_CODE_ENUM_PATH.toAbsolutePath().normalize())
+                .isNotEmpty();
+        assertThat(arologisPageCodes)
+                .as("ArologisPageCodes 상수값이 비어 있습니다.")
+                .isNotEmpty();
+        assertThat(authServicePageCodes)
+                .as("ArologisPageCodes 상수값은 모두 auth-service PageCode enum에 등록되어야 합니다.")
+                .containsAll(arologisPageCodes);
     }
 
     @Test
@@ -96,6 +117,23 @@ class ArologisPageCodesTest {
             return (String) field.get(null);
         } catch (IllegalAccessException ex) {
             throw new IllegalStateException("아로로지스 page-code 상수 읽기 실패: " + field.getName(), ex);
+        }
+    }
+
+    private static Set<String> authServicePageCodes() {
+        Path path = AUTH_SERVICE_PAGE_CODE_ENUM_PATH.toAbsolutePath().normalize();
+        if (!Files.exists(path)) {
+            throw new IllegalStateException("auth-service PageCode enum 파일을 찾을 수 없습니다: " + path
+                    + " (services/arologis-service 기준 ../auth-service sibling 경로를 확인하세요)");
+        }
+
+        try {
+            String source = Files.readString(path);
+            return AUTH_SERVICE_PAGE_CODE_ENUM_PATTERN.matcher(source).results()
+                    .map(match -> match.group(1))
+                    .collect(Collectors.toUnmodifiableSet());
+        } catch (IOException ex) {
+            throw new IllegalStateException("auth-service PageCode enum 파일 읽기 실패: " + path, ex);
         }
     }
 

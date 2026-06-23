@@ -27,7 +27,7 @@ export function isNegativeAmount(raw: AccountStatementAmountValue): boolean {
   return amountNumber(raw) < 0
 }
 
-/** KRW 정수/소수 string -> "5,000" 형식. 0은 eCount 표처럼 dash로 표시한다. */
+/** KRW 정수/소수 string -> "5,000" 형식. 0은 eCount 표처럼 em-dash로 표시한다. */
 export function fmtAmount(raw: AccountStatementAmountValue): string {
   const value = amountNumber(raw)
   if (value === 0) return '—'
