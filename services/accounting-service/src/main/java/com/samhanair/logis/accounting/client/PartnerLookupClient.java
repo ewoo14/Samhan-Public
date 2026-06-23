@@ -180,6 +180,49 @@ public class PartnerLookupClient {
     }
 
     /**
+     * partnerCode/name/bizNo 부분일치 directory 조회.
+     *
+     * <p>partner-service {@code GET /internal/partners/list?q=&limit=&page=0} 호출.
+     * G-1 받을어음 등록 화면의 bizNo 단독 resolve 에 사용한다. 응답에 포함된 partnerId 는
+     * 회계 DB 저장용 내부 키이며 API 응답에는 노출하지 않는다.
+     *
+     * @param query partnerCode/name/bizNo 검색어
+     * @param limit 최대 조회 건수
+     * @return 매칭된 거래처 요약 목록. 실패 시 빈 목록
+     */
+    public List<PartnerSummary> searchDirectory(String query, int limit) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        String token = internalAuthProperties.getToken();
+        if (token == null || token.isBlank()) {
+            throw internalAuthMiss("partnerDirectory", query, 0);
+        }
+        try {
+            String body = restClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/internal/partners/list")
+                            .queryParam("q", query.trim())
+                            .queryParam("limit", Math.max(1, limit))
+                            .queryParam("page", 0)
+                            .build())
+                    .header(INTERNAL_TOKEN_HEADER, token)
+                    .retrieve()
+                    .body(String.class);
+            return parseSummaryList(body);
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 401 || status == 403) {
+                throw internalAuthMiss("partnerDirectory", query, status);
+            }
+            log.warn("PartnerLookupClient directory — q={} status={} (예외)", query, status);
+            return List.of();
+        } catch (Exception ex) {
+            log.warn("PartnerLookupClient directory 호출 실패 — q={}, msg={}", query, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * 거래처명 → PartnerSummary fail-soft — MIG-3 이카운트 전표 import 의 거래처명 lookup.
      *
      * <p>partner-service {@code GET /internal/partners/by-name?name=} 호출.
@@ -299,6 +342,36 @@ public class PartnerLookupClient {
             log.warn("PartnerLookupClient batch response 파싱 실패 — bodyLen={}, msg={}",
                     body.length(), ex.getMessage());
             return Map.of();
+        }
+    }
+
+    /** ApiResponse wrapper 의 data 배열 → PartnerSummary 목록 변환. */
+    private List<PartnerSummary> parseSummaryList(String body) {
+        if (body == null || body.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root.has("data") ? root.get("data") : root;
+            if (data == null || !data.isArray()) {
+                return List.of();
+            }
+            java.util.ArrayList<PartnerSummary> result = new java.util.ArrayList<>();
+            for (JsonNode partner : data) {
+                UUID id = parseUuid(partner, "partnerId", "id");
+                String partnerCode = textOrNull(partner, "partnerCode");
+                String name = textOrNull(partner, "name", "partnerName", "businessName");
+                String businessNo = textOrNull(partner, "bizNo", "businessNo", "businessRegistrationNumber");
+                String address = textOrNull(partner, "address");
+                if (id != null && partnerCode != null && !partnerCode.isBlank()) {
+                    result.add(new PartnerSummary(id, partnerCode, name, businessNo, address));
+                }
+            }
+            return result;
+        } catch (Exception ex) {
+            log.warn("PartnerLookupClient directory response 파싱 실패 — bodyLen={}, msg={}",
+                    body.length(), ex.getMessage());
+            return List.of();
         }
     }
 

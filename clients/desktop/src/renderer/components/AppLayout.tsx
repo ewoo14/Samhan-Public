@@ -752,6 +752,7 @@ export function AppLayout() {
               '/accounting/reports',
               '/accounting/reports/journal-status',
               '/accounting/reports/account-statement',
+              '/accounting/reports/notes-receivable',
               '/accounting/reports/funds-flow-comparison',
               '/accounting/funds/status',
               '/sales/closing',
@@ -889,6 +890,14 @@ export function AppLayout() {
                     style={{ paddingLeft: 20, fontSize: 13 }}
                   >
                     미지급금 (거래처별)
+                  </NavLink>
+                  <NavLink
+                    to="/accounting/reports/notes-receivable"
+                    end
+                    data-testid="sidebar-accounting-notes-receivable"
+                    style={{ paddingLeft: 20, fontSize: 13 }}
+                  >
+                    받을어음
                   </NavLink>
                   <NavLink
                     to="/accounting/reports/cash-flow"

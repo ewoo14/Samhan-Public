@@ -1657,6 +1657,96 @@ export async function searchJournalStatusPartners(
 }
 
 // --------------------------------------------------------------------------
+// 받을어음 API — 회계 보고 스위트 G-1
+// --------------------------------------------------------------------------
+
+export type NoteType = 'PROMISSORY' | 'BILL_OF_EXCHANGE'
+export type NoteStatus = 'BOARDING' | 'COLLECTING' | 'SETTLED' | 'DISHONORED'
+
+export const NOTE_TYPE_LABEL: Record<NoteType, string> = {
+  PROMISSORY: '약속어음',
+  BILL_OF_EXCHANGE: '환어음',
+}
+
+export const NOTE_STATUS_LABEL: Record<NoteStatus, string> = {
+  BOARDING: '보유',
+  COLLECTING: '추심',
+  SETTLED: '결제완료',
+  DISHONORED: '부도',
+}
+
+/** 받을어음 행. UUID 없이 noteNo + 거래처 표시 식별자만 사용한다. */
+export interface NotesReceivableRow {
+  noteNo: string
+  partnerCode: string
+  bizNo: string
+  partnerName: string
+  issueDate: string
+  maturityDate: string
+  amount: string | number
+  noteType: NoteType
+  status: NoteStatus
+  memo?: string | null
+}
+
+export interface CreateNotesReceivablePayload {
+  partnerCode?: string
+  bizNo?: string
+  partnerName?: string
+  noteNo: string
+  issueDate: string
+  maturityDate: string
+  amount: string
+  noteType: NoteType
+  status?: NoteStatus
+  memo?: string
+}
+
+export interface ListNotesReceivableOptions {
+  status?: NoteStatus
+  partnerCode?: string
+  bizNo?: string
+  partnerName?: string
+}
+
+export async function listNotesReceivable(
+  options: ListNotesReceivableOptions = {},
+): Promise<NotesReceivableRow[]> {
+  const params: Record<string, string> = {}
+  if (options.status) params['status'] = options.status
+  if (options.partnerCode) params['partnerCode'] = options.partnerCode
+  if (options.bizNo) params['bizNo'] = options.bizNo
+  if (options.partnerName) params['partnerName'] = options.partnerName
+
+  const res = await apiClient.get<ApiEnvelope<NotesReceivableRow[]>>(
+    '/accounting/notes-receivable',
+    { params },
+  )
+  return res.data.data ?? []
+}
+
+export async function registerNotesReceivable(
+  payload: CreateNotesReceivablePayload,
+): Promise<NotesReceivableRow> {
+  const res = await apiClient.post<ApiEnvelope<NotesReceivableRow>>(
+    '/accounting/notes-receivable',
+    payload,
+  )
+  return res.data.data
+}
+
+export async function updateNotesReceivableStatus(
+  noteNo: string,
+  status: NoteStatus,
+): Promise<NotesReceivableRow> {
+  const res = await apiClient.patch<ApiEnvelope<NotesReceivableRow>>(
+    `/accounting/notes-receivable/${encodeURIComponent(noteNo)}/status`,
+    { status },
+  )
+  return res.data.data
+}
+
+// --------------------------------------------------------------------------
 // 자금 입출금내역 2기간 비교 API — 회계 보고 스위트 통일안 B
 // --------------------------------------------------------------------------
 
