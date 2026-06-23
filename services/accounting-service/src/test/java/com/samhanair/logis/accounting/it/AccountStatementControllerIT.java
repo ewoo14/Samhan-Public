@@ -80,16 +80,20 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
                     List<UUID> ids = invocation.getArgument(0, List.class);
                     Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(RECEIVABLE_A_ID)) {
-                        names.put(RECEIVABLE_A_ID, partner(RECEIVABLE_A_ID, "P-2026-0001", "삼한공조 A"));
+                        names.put(RECEIVABLE_A_ID,
+                                partner(RECEIVABLE_A_ID, "P-2026-0001", "111-22-33333", "삼한공조 A"));
                     }
                     if (ids.contains(RECEIVABLE_B_ID)) {
-                        names.put(RECEIVABLE_B_ID, partner(RECEIVABLE_B_ID, "P-2026-0002", "삼한공조 B"));
+                        names.put(RECEIVABLE_B_ID,
+                                partner(RECEIVABLE_B_ID, "P-2026-0002", "222-33-44444", "삼한공조 B"));
                     }
                     if (ids.contains(PAYABLE_C_ID)) {
-                        names.put(PAYABLE_C_ID, partner(PAYABLE_C_ID, "P-2026-0003", "대한운송 C"));
+                        names.put(PAYABLE_C_ID,
+                                partner(PAYABLE_C_ID, "P-2026-0003", "333-44-55555", "대한운송 C"));
                     }
                     if (ids.contains(COUNTER_ID)) {
-                        names.put(COUNTER_ID, partner(COUNTER_ID, "P-2026-9999", "상대거래처"));
+                        names.put(COUNTER_ID,
+                                partner(COUNTER_ID, "P-2026-9999", "999-88-77777", "상대거래처"));
                     }
                     return names;
                 });
@@ -116,18 +120,21 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
 
         JsonNode receivableA = findLine(data, "110", "삼한공조 A");
         assertText(receivableA.get("partnerCode"), "P-2026-0001");
+        assertText(receivableA.get("bizNo"), "1112233333");
         assertAmount(receivableA.get("increase"), "10000.00");
         assertAmount(receivableA.get("decrease"), "3000.00");
         assertAmount(receivableA.get("balance"), "7000.00");
 
         JsonNode receivableB = findLine(data, "110", "삼한공조 B");
         assertText(receivableB.get("partnerCode"), "P-2026-0002");
+        assertText(receivableB.get("bizNo"), "2223344444");
         assertAmount(receivableB.get("increase"), "5000.00");
         assertAmount(receivableB.get("decrease"), "0.00");
         assertAmount(receivableB.get("balance"), "5000.00");
 
         JsonNode unresolved = findLine(data, "110", "(미조회)");
         assertText(unresolved.get("partnerCode"), "");
+        assertText(unresolved.get("bizNo"), "");
         assertAmount(unresolved.get("increase"), "700.00");
         assertAmount(unresolved.get("balance"), "700.00");
 
@@ -137,12 +144,14 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
 
         JsonNode payableC = findLine(data, "201", "대한운송 C");
         assertText(payableC.get("partnerCode"), "P-2026-0003");
+        assertText(payableC.get("bizNo"), "3334455555");
         assertAmount(payableC.get("increase"), "8000.00");
         assertAmount(payableC.get("decrease"), "2000.00");
         assertAmount(payableC.get("balance"), "6000.00");
 
         JsonNode etcLine = findLine(data, "201", "기타");
         assertText(etcLine.get("partnerCode"), "");
+        assertText(etcLine.get("bizNo"), "");
         assertAmount(etcLine.get("increase"), "1000.00");
         assertAmount(etcLine.get("decrease"), "0.00");
         assertAmount(etcLine.get("balance"), "1000.00");
@@ -349,8 +358,8 @@ class AccountStatementControllerIT extends AbstractPostgresIT {
         }
     }
 
-    private PartnerSummary partner(UUID id, String partnerCode, String name) {
-        return new PartnerSummary(id, partnerCode, name, null, null);
+    private PartnerSummary partner(UUID id, String partnerCode, String bizNo, String name) {
+        return new PartnerSummary(id, partnerCode, name, bizNo, null);
     }
 
     private record LineSpec(String accountCode, String debit, String credit, UUID partnerId, String memo) {

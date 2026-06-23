@@ -17,4 +17,9 @@ public record PartnerSummary(
         String name,
         String businessNo,
         String address) {
+
+    /** partner-service wire field 이름 호환 accessor. */
+    public String bizNo() {
+        return businessNo;
+    }
 }

@@ -45,11 +45,13 @@ export function buildAccountStatementRows(
   }))
 }
 
-export function partnerLabel(line: Pick<AccountStatementLine, 'partnerCode' | 'partnerName'>): string {
-  const code = line.partnerCode?.trim()
+export function bizNoDigits(line: Pick<AccountStatementLine, 'bizNo'>): string {
+  return line.bizNo?.replace(/-/g, '').trim() ?? ''
+}
+
+export function partnerLabel(line: Pick<AccountStatementLine, 'partnerName'>): string {
   const name = line.partnerName?.trim()
-  if (code && name) return `${code} ${name}`
-  return name || code || ''
+  return name || ''
 }
 
 export function accountStatementTotalItems(

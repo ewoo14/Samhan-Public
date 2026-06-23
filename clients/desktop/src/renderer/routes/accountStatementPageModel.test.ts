@@ -5,6 +5,7 @@ import type {
 } from '../api/accounting'
 import {
   accountStatementTotalItems,
+  bizNoDigits,
   buildAccountStatementRows,
   fmtAmount,
   isNegativeAmount,
@@ -24,6 +25,7 @@ function sectionWithDuplicatePartnerNames(): AccountStatementAccountSection {
         accountCode: '110',
         accountName: '외상매출금',
         partnerCode: '',
+        bizNo: '',
         partnerName: '(미조회)',
         openingBalance: '0',
         increase: '1000.00',
@@ -36,6 +38,7 @@ function sectionWithDuplicatePartnerNames(): AccountStatementAccountSection {
         accountCode: '110',
         accountName: '외상매출금',
         partnerCode: '',
+        bizNo: '',
         partnerName: '(미조회)',
         openingBalance: '0',
         increase: '2000.00',
@@ -116,9 +119,14 @@ describe('accountStatementPageModel', () => {
     expect(new Set(rows.map((row) => row.rowKey)).size).toBe(rows.length)
   })
 
-  it('거래처코드가 있으면 거래처명 앞에 함께 표시한다', () => {
-    expect(partnerLabel({ partnerCode: 'P-2026-0001', partnerName: '(주)서울에어컨' }))
-      .toBe('P-2026-0001 (주)서울에어컨')
-    expect(partnerLabel({ partnerCode: '', partnerName: '(미조회)' })).toBe('(미조회)')
+  it('사업자번호 하이픈을 제거한 거래처코드를 반환한다', () => {
+    expect(bizNoDigits({ bizNo: '123-45-67890' })).toBe('1234567890')
+    expect(bizNoDigits({ bizNo: '1234567890' })).toBe('1234567890')
+    expect(bizNoDigits({ bizNo: '' })).toBe('')
+  })
+
+  it('거래처명은 partnerCode를 인라인으로 붙이지 않는다', () => {
+    expect(partnerLabel({ partnerName: '(주)서울에어컨' })).toBe('(주)서울에어컨')
+    expect(partnerLabel({ partnerName: '(미조회)' })).toBe('(미조회)')
   })
 })

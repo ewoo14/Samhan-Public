@@ -4702,6 +4702,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       code: string,
       name: string,
       partnerCode: string,
+      bizNo: string,
       partnerName: string,
       increase: number,
       decrease: number,
@@ -4712,6 +4713,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       accountCode: code,
       accountName: name,
       partnerCode,
+      bizNo,
       partnerName,
       openingBalance: '0',
       increase: String(increase),
@@ -4764,12 +4766,12 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         balanceDirection: 'DEBIT' as const,
         accounts: [
           account('110', '외상매출금', 'ASSET', '자산', 'DEBIT', [
-            line('110', '외상매출금', 'P-2026-0001', '삼한공조 A', 10000000, 2500000, 10000000, 2500000, 7500000),
-            line('110', '외상매출금', 'P-2026-0002', '아로물류 B', 3200000, 0, 3200000, 0, 3200000),
-            line('110', '외상매출금', '', '임시거래처', 0, 120000, 0, 120000, -120000),
+            line('110', '외상매출금', 'P-2026-0001', '111-22-33333', '삼한공조 A', 10000000, 2500000, 10000000, 2500000, 7500000),
+            line('110', '외상매출금', 'P-2026-0002', '222-33-44444', '아로물류 B', 3200000, 0, 3200000, 0, 3200000),
+            line('110', '외상매출금', '', '', '임시거래처', 0, 120000, 0, 120000, -120000),
           ]),
           account('120', '미수금', 'ASSET', '자산', 'DEBIT', [
-            line('120', '미수금', 'P-2026-0004', '세종냉열', 880000, 300000, 880000, 300000, 580000),
+            line('120', '미수금', 'P-2026-0004', '444-55-66666', '세종냉열', 880000, 300000, 880000, 300000, 580000),
           ]),
         ],
       },
@@ -4779,11 +4781,11 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         balanceDirection: 'CREDIT' as const,
         accounts: [
           account('201', '외상매입금', 'LIABILITY', '부채', 'CREDIT', [
-            line('201', '외상매입금', 'P-2026-0003', '대한운송 C', 8000000, 2000000, 2000000, 8000000, 6000000),
-            line('201', '외상매입금', 'P-2026-0005', '남부상사', 1450000, 450000, 450000, 1450000, 1000000),
+            line('201', '외상매입금', 'P-2026-0003', '333-44-55555', '대한운송 C', 8000000, 2000000, 2000000, 8000000, 6000000),
+            line('201', '외상매입금', 'P-2026-0005', '555-66-77777', '남부상사', 1450000, 450000, 450000, 1450000, 1000000),
           ]),
           account('210', '미지급금', 'LIABILITY', '부채', 'CREDIT', [
-            line('210', '미지급금', '', '월말 정산', 530000, 0, 0, 530000, 530000),
+            line('210', '미지급금', '', '', '월말 정산', 530000, 0, 0, 530000, 530000),
           ]),
         ],
       },

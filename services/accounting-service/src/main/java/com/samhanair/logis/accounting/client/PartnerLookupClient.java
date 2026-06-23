@@ -258,7 +258,7 @@ public class PartnerLookupClient {
             UUID partnerId = parseUuid(data, "partnerId", "id");
             String partnerCode = textOrNull(data, "partnerCode");
             String name = textOrNull(data, "name", "partnerName", "businessName");
-            String businessNo = textOrNull(data, "businessNo", "businessRegistrationNumber");
+            String businessNo = textOrNull(data, "bizNo", "businessNo", "businessRegistrationNumber");
             String address = textOrNull(data, "address");
             if (partnerCode == null || partnerCode.isBlank()) {
                 return Optional.empty();
@@ -288,7 +288,7 @@ public class PartnerLookupClient {
                 UUID id = parseUuid(partner, "id", "partnerId");
                 String partnerCode = textOrNull(partner, "partnerCode");
                 String name = textOrNull(partner, "name", "partnerName", "businessName");
-                String businessNo = textOrNull(partner, "businessNo", "businessRegistrationNumber");
+                String businessNo = textOrNull(partner, "bizNo", "businessNo", "businessRegistrationNumber");
                 String address = textOrNull(partner, "address");
                 if (id != null && (partnerCode != null || name != null)) {
                     result.put(id, new PartnerSummary(id, partnerCode, name, businessNo, address));

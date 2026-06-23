@@ -11,7 +11,7 @@ import java.util.List;
  *
  * <p>특정 기준일의 계정×거래처 잔액 스냅샷이다. 기본 조회는 채권/채무 계정을 대상으로
  * 하며, {@code accountCode} 지정 시 단일 계정만 조회한다. 거래처 UUID 는 응답에 포함하지
- * 않고, 거래처코드와 거래처명만 표시한다.
+ * 않고, 거래처코드와 거래처명/사업자번호만 표시한다.
  *
  * @param asOfDate 기준일
  * @param accountCode 요청 계정코드. 전체 조회이면 null
@@ -89,7 +89,8 @@ public record AccountStatementResponse(
      *
      * @param accountCode 계정코드
      * @param accountName 계정명
-     * @param partnerCode 거래처코드. 기타/미조회 라인은 빈 문자열
+     * @param partnerCode 내부 거래처코드. 기타/미조회 라인은 빈 문자열
+     * @param bizNo 사업자번호 숫자 문자열. 기타/미조회 라인은 빈 문자열
      * @param partnerName 거래처명 또는 기타
      * @param openingBalance 특정 기간 시작값이 없으므로 현재 버전은 0
      * @param increase 기준일까지 정상 방향 누계
@@ -102,6 +103,7 @@ public record AccountStatementResponse(
             String accountCode,
             String accountName,
             String partnerCode,
+            String bizNo,
             String partnerName,
             BigDecimal openingBalance,
             BigDecimal increase,

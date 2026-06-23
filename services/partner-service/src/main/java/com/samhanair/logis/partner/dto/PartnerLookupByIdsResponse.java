@@ -13,11 +13,15 @@ public record PartnerLookupByIdsResponse(List<PartnerName> partners) {
                 .toList());
     }
 
-    /** accounting-service admin 목록 표시용 최소 거래처 DTO. */
-    public record PartnerName(UUID id, String partnerCode, String name) {
+    /** accounting-service admin/report 목록 표시용 최소 거래처 DTO. */
+    public record PartnerName(UUID id, String partnerCode, String name, String bizNo) {
 
         public static PartnerName from(Partner partner) {
-            return new PartnerName(partner.getId(), partner.getPartnerCode(), partner.getName());
+            return new PartnerName(
+                    partner.getId(),
+                    partner.getPartnerCode(),
+                    partner.getName(),
+                    partner.getBizNo());
         }
     }
 }

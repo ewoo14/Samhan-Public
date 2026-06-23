@@ -37,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>대변성 계정(부채/자본/수익): 잔액 = 대변 - 차변</li>
  * </ul>
  *
- * <p>거래처 UUID 는 내부 집계에만 사용하고 응답에는 거래처코드/거래처명만 포함한다.
+ * <p>거래처 UUID 는 내부 집계에만 사용하고 응답에는 거래처코드/사업자번호/거래처명만 포함한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -162,6 +162,7 @@ public class AccountStatementService {
                 key.accountCode(),
                 accountName,
                 partnerDisplayCode(key.partnerId(), partners),
+                partnerBizNoDigits(key.partnerId(), partners),
                 partnerDisplayName(key.partnerId(), partners),
                 BigDecimal.ZERO,
                 increase,
@@ -300,6 +301,15 @@ public class AccountStatementService {
         PartnerSummary summary = partners.get(partnerId);
         String name = summary == null ? null : summary.name();
         return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
+    }
+
+    private String partnerBizNoDigits(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        if (partnerId == null) {
+            return "";
+        }
+        PartnerSummary summary = partners.get(partnerId);
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     private String normalizeAccountCode(String raw) {

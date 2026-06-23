@@ -20,6 +20,7 @@ import {
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
   accountStatementTotalItems,
+  bizNoDigits,
   buildAccountStatementRows,
   fmtAmount,
   isNegativeAmount,
@@ -90,9 +91,19 @@ export function AccountStatementPage() {
 
   const columns = useMemo<DataTableColumn<AccountStatementTableRow>[]>(() => [
     {
+      key: 'bizNo',
+      header: '거래처코드',
+      width: '130px',
+      render: (row) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {bizNoDigits(row)}
+        </span>
+      ),
+    },
+    {
       key: 'partnerName',
-      header: '거래처',
-      width: '260px',
+      header: '거래처명',
+      width: '240px',
       render: (row) => (
         <span style={{ fontWeight: 600 }}>
           {partnerLabel(row)}

@@ -1322,6 +1322,7 @@ export interface AccountStatementLine {
   accountCode: string
   accountName: string
   partnerCode: string
+  bizNo: string
   partnerName: string
   openingBalance: string
   increase: string
