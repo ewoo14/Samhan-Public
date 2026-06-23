@@ -58,6 +58,7 @@ export function buildJournalStatusRows(group: JournalStatusGroup): JournalStatus
     journalDate: '',
     sourceType: 'MANUAL',
     sourceTypeDisplayName: '',
+    bizNo: '',
     partnerName: '',
     description: `${group.subtotal.journalCount}건`,
     totalDebit: group.subtotal.totalDebit,
@@ -66,6 +67,12 @@ export function buildJournalStatusRows(group: JournalStatusGroup): JournalStatus
     rowKey: `${group.groupKey}:subtotal`,
   })
   return rows
+}
+
+/** 전표현황 거래처코드 표시값. BE 가 다중 거래처 사업자번호를 숫자화 후 " / " 로 join 한다. */
+export function displayJournalStatusBizNo(row: Pick<JournalStatusTableRow, 'rowKind' | 'bizNo'>): string {
+  if (row.rowKind === 'subtotal') return '—'
+  return row.bizNo || '—'
 }
 
 /** 소계/총합 요약 라벨. */

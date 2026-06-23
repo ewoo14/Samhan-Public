@@ -14,6 +14,7 @@ import com.samhanair.logis.accounting.web.dto.SalesAggregateRow;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -86,8 +87,8 @@ class SalesAggregateServiceTest {
     @DisplayName("DcConfig 적용 — 매출 차변(할인) 반영 — 매출 = 대변 - 차변")
     void aggregateWithDiscount() {
         UUID pid = UUID.randomUUID();
-        lenient().when(partnerLookupClient.findByPartnerId(any()))
-                .thenReturn(Optional.of(new PartnerSummary(pid, "P-DC", "할인상사", "111", "")));
+        lenient().when(partnerLookupClient.findByPartnerIdsBatch(any()))
+                .thenReturn(Map.of(pid, new PartnerSummary(pid, "P-DC", "할인상사", "111", "")));
         when(journalLineRepository.aggregatePostedByPartnerAccount(FROM, TO))
                 .thenReturn(List.of(
                         // 매출 1,000,000 + 할인(차변) 50,000 → 순매출 950,000
@@ -106,10 +107,10 @@ class SalesAggregateServiceTest {
     void aggregateMultiPartner() {
         UUID p1 = UUID.randomUUID();
         UUID p2 = UUID.randomUUID();
-        lenient().when(partnerLookupClient.findByPartnerId(p1))
-                .thenReturn(Optional.of(new PartnerSummary(p1, "P-001", "거래처1", "1", "")));
-        lenient().when(partnerLookupClient.findByPartnerId(p2))
-                .thenReturn(Optional.of(new PartnerSummary(p2, "P-002", "거래처2", "2", "")));
+        lenient().when(partnerLookupClient.findByPartnerIdsBatch(any()))
+                .thenReturn(Map.of(
+                        p1, new PartnerSummary(p1, "P-001", "거래처1", "1", ""),
+                        p2, new PartnerSummary(p2, "P-002", "거래처2", "2", "")));
         when(journalLineRepository.aggregatePostedByPartnerAccount(FROM, TO))
                 .thenReturn(List.of(
                         new TestPartnerAccountTotal(p1, "401", BigDecimal.ZERO, new BigDecimal("100")),

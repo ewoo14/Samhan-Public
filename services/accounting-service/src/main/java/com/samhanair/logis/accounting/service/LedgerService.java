@@ -16,7 +16,6 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -105,17 +104,16 @@ public class LedgerService {
             lines = journalLineRepository.findAllPostedLinesInRange(from, to);
         }
 
-        // N+1 방지 (partnerId): 라인의 모든 partnerId 를 일괄 수집 후 단건 lookup 캐시 구성
+        // N+1 방지 (partnerId): 라인의 모든 partnerId 를 일괄 수집 후 batch lookup 캐시 구성
         Set<UUID> partnerIdSet = lines.stream()
                 .map(JournalLine::getPartnerId)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<UUID, String> partnerCodeCache = new HashMap<>();
-        for (UUID pid : partnerIdSet) {
-            String code = partnerLookupClient.findByPartnerId(pid)
-                    .map(PartnerSummary::partnerCode)
-                    .orElse(null);
-            partnerCodeCache.put(pid, code);
+        Map<UUID, PartnerSummary> partnerCache = partnerIdSet.isEmpty()
+                ? Map.of()
+                : partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(partnerIdSet));
+        if (partnerCache == null) {
+            partnerCache = Map.of();
         }
 
         // N+1 방지 (accountCode): 라인의 모든 accountCode 를 일괄 수집 후 ChartOfAccount 캐시 구성
@@ -142,9 +140,11 @@ public class LedgerService {
             totalCredit = totalCredit.add(credit);
 
             // 캐시에서 거래처코드 조회 (HTTP 추가 호출 없음)
-            String linePartnerCode = l.getPartnerId() != null
-                    ? partnerCodeCache.get(l.getPartnerId())
+            PartnerSummary partner = l.getPartnerId() != null
+                    ? partnerCache.get(l.getPartnerId())
                     : null;
+            String lineBizNo = bizNoDigits(partner);
+            String linePartnerCode = partner == null ? null : partner.partnerCode();
 
             // SP-08-FU2 P2-4 + 슬E — 계정명/분류/정상 잔액방향 메타 캐시 조회
             ChartOfAccount account = l.getAccountCode() != null
@@ -163,6 +163,7 @@ public class LedgerService {
                     accountCategory != null ? accountCategory.getDisplayName() : null,
                     balanceDirection,
                     balanceDirection != null ? balanceDirection.getDisplayName() : null,
+                    lineBizNo,
                     linePartnerCode,
                     l.getMemo() != null ? l.getMemo() : l.getJournal().getDescription(),
                     debit,
@@ -221,6 +222,11 @@ public class LedgerService {
             case ASSET, COST_OF_SALES, SGA, INCOME_TAX -> BalanceDirection.DEBIT;
             case LIABILITY, EQUITY, REVENUE, NON_OPERATING -> BalanceDirection.CREDIT;
         };
+    }
+
+    private String bizNoDigits(PartnerSummary summary) {
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
 }

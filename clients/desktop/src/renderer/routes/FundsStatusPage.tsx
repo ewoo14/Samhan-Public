@@ -124,6 +124,12 @@ export function FundsStatusPage() {
 
   const columns = useMemo<DataTableColumn<FundsStatusTableRow>[]>(() => [
     {
+      key: 'bizNo',
+      header: '거래처코드',
+      width: '130px',
+      render: (row) => row.rowKind === 'subtotal' ? '—' : (row.bizNo?.replace(/\D/g, '') || '—'),
+    },
+    {
       key: 'partnerName',
       header: '거래처',
       width: '220px',

@@ -5,8 +5,8 @@
  * 용지: A4 portrait (PrintLayout paper="a4-portrait" 재사용)
  *
  * UUID 비공개 가드:
- * - `partnerId` 필드 화면 노출 금지 (feedback_uuid_no_user_visibility).
- * - 표에는 `partnerCode` / `partnerName` 만 표시.
+ * - 응답/화면에 partner UUID 필드 없음 (feedback_uuid_no_user_visibility).
+ * - 표에는 `partnerCode` / `bizNo` / `partnerName` 만 표시.
  *
  * PR #134 회고:
  * - D1: raw hex 0건 — design-system 토큰만
@@ -218,17 +218,19 @@ function PartnerAgingPrintBody({ data }: BodyProps) {
         </div>
       </div>
 
-      {/* 본문 표 — UUID partnerId 열 없음 (화면 노출 금지) */}
+      {/* 본문 표 — UUID 열 없음 (화면 노출 금지) */}
       <table className="aging-table">
         <colgroup>
           <col style={{ width: '12%' }} />
-          <col style={{ width: '28%' }} />
-          <col style={{ width: '22%' }} />
-          <col style={{ width: '22%' }} />
-          <col style={{ width: '16%' }} />
+          <col style={{ width: '14%' }} />
+          <col style={{ width: '26%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '18%' }} />
+          <col style={{ width: '10%' }} />
         </colgroup>
         <thead>
           <tr>
+            <th>관리코드</th>
             <th>거래처코드</th>
             <th>거래처명</th>
             <th className="amount-col">잔 액</th>
@@ -246,9 +248,12 @@ function PartnerAgingPrintBody({ data }: BodyProps) {
                 key={line.partnerCode}
                 className={rowCls}
               >
-                {/* UUID 비공개: partnerCode 만 — partnerId 절대 미노출 */}
+                {/* UUID 비공개: partnerCode/bizNo 만 표시 */}
                 <td style={{ color: 'var(--color-neutral-700)' }}>
                   {line.partnerCode}
+                </td>
+                <td style={{ color: 'var(--color-neutral-700)' }}>
+                  {line.bizNo?.replace(/\D/g, '') || '—'}
                 </td>
                 <td style={{ fontWeight: 500 }}>{line.partnerName}</td>
                 <td className="amount">{fmtAmount(line.balance)}</td>
@@ -277,7 +282,7 @@ function PartnerAgingPrintBody({ data }: BodyProps) {
             style={{ borderTop: '2pt solid var(--color-neutral-900)' }}
           >
             <td
-              colSpan={2}
+              colSpan={3}
               style={{ fontWeight: 700, fontSize: 'var(--print-text-md)', padding: '5pt 4pt' }}
             >
               합 계 ({data.partnerCount}개 거래처)

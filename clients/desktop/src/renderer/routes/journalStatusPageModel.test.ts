@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildJournalStatusRows,
+  displayJournalStatusBizNo,
   fmtJournalStatusKrw,
   isNegativeJournalStatusAmount,
   summaryLabel,
@@ -18,6 +19,7 @@ describe('journalStatusPageModel', () => {
           journalDate: '2026-06-03',
           sourceType: 'SLIP',
           sourceTypeDisplayName: '전표',
+          bizNo: '1111111111',
           partnerName: '주식회사 윌리',
           description: '매출전표',
           totalDebit: '5000.00',
@@ -37,6 +39,7 @@ describe('journalStatusPageModel', () => {
     expect(rows[0]?.rowKind).toBe('line')
     expect(rows[0]?.sourceTypeDisplayName).toBe('전표')
     expect(rows[1]?.rowKind).toBe('subtotal')
+    expect(rows[1]?.bizNo).toBe('')
     expect(rows[1]?.journalNo).toBe('소계')
     expect(rows[1]?.description).toBe('1건')
   })
@@ -55,5 +58,20 @@ describe('journalStatusPageModel', () => {
       totalCredit: '7000.00',
       journalCount: 2,
     })).toBe('2건 · 차변 7,000 · 대변 7,000')
+  })
+
+  it('다중거래처 사업자번호 join 구분자를 보존한다', () => {
+    expect(displayJournalStatusBizNo({
+      rowKind: 'line',
+      bizNo: '3333333333 / 1111111111',
+    })).toBe('3333333333 / 1111111111')
+    expect(displayJournalStatusBizNo({
+      rowKind: 'line',
+      bizNo: '',
+    })).toBe('—')
+    expect(displayJournalStatusBizNo({
+      rowKind: 'subtotal',
+      bizNo: '3333333333 / 1111111111',
+    })).toBe('—')
   })
 })

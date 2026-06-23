@@ -85,15 +85,15 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
                     Map<UUID, PartnerSummary> names = new HashMap<>();
                     if (ids.contains(PARTNER_WILLY)) {
                         names.put(PARTNER_WILLY,
-                                new PartnerSummary(PARTNER_WILLY, "P-WILLY-001", "주식회사 윌리", null, null));
+                                new PartnerSummary(PARTNER_WILLY, "P-WILLY-001", "주식회사 윌리", "111-11-11111", null));
                     }
                     if (ids.contains(PARTNER_HANIL)) {
                         names.put(PARTNER_HANIL,
-                                new PartnerSummary(PARTNER_HANIL, "P-HANIL-002", "한일빌딩", null, null));
+                                new PartnerSummary(PARTNER_HANIL, "P-HANIL-002", "한일빌딩", "222-22-22222", null));
                     }
                     if (ids.contains(PARTNER_NAVER)) {
                         names.put(PARTNER_NAVER,
-                                new PartnerSummary(PARTNER_NAVER, "P-NAVER-003", "네이버", null, null));
+                                new PartnerSummary(PARTNER_NAVER, "P-NAVER-003", "네이버", "333-33-33333", null));
                     }
                     return names;
                 });
@@ -161,6 +161,9 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
         if (!"SLIP".equals(line.get("sourceType").asText())) {
             throw new AssertionError("거래처 필터 전표 출처가 예상과 다릅니다: " + line.get("sourceType").asText());
         }
+        if (!"1111111111".equals(line.get("bizNo").asText())) {
+            throw new AssertionError("거래처코드(bizNo) 숫자화가 예상과 다릅니다: " + line.get("bizNo").asText());
+        }
         assertAmount(group.get("subtotal").get("totalDebit"), "5000.00");
         assertAmount(data.get("total").get("totalCredit"), "5000.00");
         assertNoPartnerUuid(body);
@@ -194,6 +197,39 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
         assertAmount(findGroup(data, "한일빌딩").get("subtotal").get("totalCredit"), "1000.00");
         assertAmount(data.get("total").get("totalDebit"), "1000.00");
         assertAmount(data.get("total").get("totalCredit"), "1000.00");
+        assertNoPartnerUuid(body);
+    }
+
+    @Test
+    @DisplayName("전표현황 — 복합전표 다중 거래처명과 사업자번호는 같은 정렬 순서로 join 한다")
+    void journalStatusMultiPartnerBizNoKeepsSeparatorAndNameOrder() throws Exception {
+        seedPosted("STATUS-F-MULTI-JOIN", LocalDate.of(2026, 6, 9), "다중 거래처 표시",
+                JournalSourceType.MANUAL,
+                line("102", "1500.00", "0.00", PARTNER_WILLY, "윌리 차변"),
+                line("401", "0.00", "1500.00", PARTNER_NAVER, "네이버 대변"));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-09")
+                        .param("to", "2026-06-09")
+                        .param("groupBy", "DATE")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        JsonNode line = objectMapper.readTree(body).get("data")
+                .get("groups").get(0)
+                .get("lines").get(0);
+
+        if (!"네이버 / 주식회사 윌리".equals(line.get("partnerName").asText())) {
+            throw new AssertionError("복합전표 거래처명 join 순서가 예상과 다릅니다: "
+                    + line.get("partnerName").asText());
+        }
+        if (!"3333333333 / 1111111111".equals(line.get("bizNo").asText())) {
+            throw new AssertionError("복합전표 사업자번호 join 구분자/순서가 예상과 다릅니다: "
+                    + line.get("bizNo").asText());
+        }
         assertNoPartnerUuid(body);
     }
 

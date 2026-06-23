@@ -36,6 +36,7 @@ public record JournalStatusReportResponse(
             LocalDate journalDate,
             JournalSourceType sourceType,
             String sourceTypeDisplayName,
+            String bizNo,
             String partnerName,
             String description,
             BigDecimal totalDebit,

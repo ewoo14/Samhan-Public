@@ -2,6 +2,7 @@ package com.samhanair.logis.accounting.report;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -10,8 +11,10 @@ import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.repository.JournalLineRepository;
 import com.samhanair.logis.accounting.repository.JournalLineRepository.PartnerAccountTotal;
 import java.math.BigDecimal;
+import java.lang.reflect.RecordComponent;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,10 +72,16 @@ class PartnerAgingServiceTest {
                 ));
 
         // partnerLookupClient stub
-        when(partnerLookupClient.findByPartnerId(eq(PARTNER_A)))
-                .thenReturn(Optional.of(new PartnerSummary(PARTNER_A, "P-001", "삼한물류", null, null)));
-        when(partnerLookupClient.findByPartnerId(eq(PARTNER_B)))
-                .thenReturn(Optional.empty());
+        when(partnerLookupClient.findByPartnerIdsBatch(anyList()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<UUID> ids = invocation.getArgument(0, List.class);
+                    if (ids.contains(PARTNER_A)) {
+                        return Map.of(PARTNER_A,
+                                new PartnerSummary(PARTNER_A, "P-001", "삼한물류", "111-22-33333", null));
+                    }
+                    return Map.of();
+                });
 
         // oldestJournalDate stub
         when(journalLineRepository.findOldestJournalDate(eq(PARTNER_A), any(), any(LocalDate.class)))
@@ -103,6 +112,7 @@ class PartnerAgingServiceTest {
                 .orElseThrow(() -> new AssertionError("거래처 A 라인 없음"));
 
         assertThat(lineA.balance()).isEqualByComparingTo("400000");
+        assertThat(lineA.bizNo()).isEqualTo("1112233333");
         assertThat(lineA.partnerName()).isEqualTo("삼한물류");
     }
 
@@ -133,7 +143,9 @@ class PartnerAgingServiceTest {
 
         assertThat(etc.partnerName()).isEqualTo("기타");
         assertThat(etc.balance()).isEqualByComparingTo("150000");
-        assertThat(etc.partnerId()).isNull();
+        assertThat(PartnerAgingLine.class.getRecordComponents())
+                .extracting(RecordComponent::getName)
+                .doesNotContain("partnerId");
     }
 
     @Test
@@ -153,7 +165,7 @@ class PartnerAgingServiceTest {
     @Test
     @DisplayName("SP-08-FU2 P2-3 회귀 — findByPartnerId 실 구현 후 partnerCode/partnerName 정상 표시")
     void findReceivable_partnerIdLookup_returnsCodeAndName() {
-        // PARTNER_A 는 setUp 에서 findByPartnerId → "P-001" / "삼한물류" stub 이미 설정됨.
+        // PARTNER_A 는 setUp 에서 batch lookup → "P-001" / "삼한물류" stub 이미 설정됨.
         PartnerAgingResponse resp = partnerAgingService.findReceivable(AS_OF);
 
         PartnerAgingLine lineA = resp.lines().stream()
@@ -169,15 +181,15 @@ class PartnerAgingServiceTest {
     @Test
     @DisplayName("UUID 비노출 회귀 — findByPartnerId empty 반환 시 미등록 + 미조회 표시")
     void findReceivable_partnerIdLookup_emptyFallback() {
-        // PARTNER_B 는 setUp 에서 findByPartnerId → empty stub 이미 설정됨. 잔액은 0 이므로 제외됨.
+        // PARTNER_B 는 setUp 에서 batch lookup 미포함. 잔액은 0 이므로 제외됨.
         // 잔액 있는 별도 거래처 C 로 검증
         UUID partnerC = UUID.randomUUID();
         when(journalLineRepository.aggregateAgingByAccount(eq("110"), any(LocalDate.class)))
                 .thenReturn(List.of(
                         partnerTotal(partnerC, "110", new BigDecimal("100000"), BigDecimal.ZERO)
                 ));
-        when(partnerLookupClient.findByPartnerId(eq(partnerC)))
-                .thenReturn(Optional.empty());
+        when(partnerLookupClient.findByPartnerIdsBatch(anyList()))
+                .thenReturn(Map.of());
         when(journalLineRepository.findOldestJournalDate(eq(partnerC), any(), any(LocalDate.class)))
                 .thenReturn(Optional.empty());
 
@@ -185,9 +197,12 @@ class PartnerAgingServiceTest {
 
         assertThat(resp.lines()).hasSize(1);
         PartnerAgingLine lineC = resp.lines().get(0);
-        // empty fallback: UUID 를 화면 응답에 노출하지 않는다.
-        assertThat(lineC.partnerId()).isNull();
+        // empty fallback: UUID 를 응답 필드로도 노출하지 않는다.
+        assertThat(PartnerAgingLine.class.getRecordComponents())
+                .extracting(RecordComponent::getName)
+                .doesNotContain("partnerId");
         assertThat(lineC.partnerCode()).isEqualTo("미등록");
+        assertThat(lineC.bizNo()).isEqualTo("");
         assertThat(lineC.partnerCode()).isNotEqualTo(partnerC.toString());
         assertThat(lineC.partnerName()).isEqualTo("(미조회)");
     }

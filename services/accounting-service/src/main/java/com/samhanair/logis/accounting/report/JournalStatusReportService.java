@@ -85,10 +85,10 @@ public class JournalStatusReportService {
         List<JournalStatusReportRow> rows = journalRepository.findJournalStatusReportRows(
                 from, to, resolvedStatus, resolvedSourceTypes, allSourceTypes, partnerId);
         Map<UUID, List<UUID>> partnerIdsByJournal = partnerIdsByJournal(rows);
-        Map<UUID, String> partnerNames = resolvePartnerNames(partnerIdsByJournal);
+        Map<UUID, PartnerSummary> partners = resolvePartners(partnerIdsByJournal);
 
         List<JournalStatusReportResponse.Line> lines = rows.stream()
-                .map(row -> toLine(row, partnerIdsByJournal.getOrDefault(row.getJournalId(), List.of()), partnerNames))
+                .map(row -> toLine(row, partnerIdsByJournal.getOrDefault(row.getJournalId(), List.of()), partners))
                 .toList();
 
         LinkedHashMap<GroupKey, List<JournalStatusReportResponse.Line>> grouped = new LinkedHashMap<>();
@@ -142,9 +142,9 @@ public class JournalStatusReportService {
                                                                  JournalStatusGroupBy groupBy) {
         List<JournalStatusPartnerReportRow> rows = journalRepository.findJournalStatusPartnerReportRows(
                 from, to, status, sourceTypes, allSourceTypes, partnerId);
-        Map<UUID, String> partnerNames = resolvePartnerNamesFromPartnerRows(rows);
+        Map<UUID, PartnerSummary> partners = resolvePartnersFromPartnerRows(rows);
         List<JournalStatusReportResponse.Line> lines = rows.stream()
-                .map(row -> toPartnerLine(row, partnerNames))
+                .map(row -> toPartnerLine(row, partners))
                 .toList();
 
         LinkedHashMap<GroupKey, List<JournalStatusReportResponse.Line>> grouped = new LinkedHashMap<>();
@@ -219,7 +219,7 @@ public class JournalStatusReportService {
         return map;
     }
 
-    private Map<UUID, String> resolvePartnerNames(Map<UUID, List<UUID>> partnerIdsByJournal) {
+    private Map<UUID, PartnerSummary> resolvePartners(Map<UUID, List<UUID>> partnerIdsByJournal) {
         LinkedHashSet<UUID> ids = partnerIdsByJournal.values().stream()
                 .flatMap(List::stream)
                 .filter(Objects::nonNull)
@@ -227,11 +227,10 @@ public class JournalStatusReportService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
-        return partnerNamesFromSummaries(resolved);
+        return safePartnerMap(partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids)));
     }
 
-    private Map<UUID, String> resolvePartnerNamesFromPartnerRows(List<JournalStatusPartnerReportRow> rows) {
+    private Map<UUID, PartnerSummary> resolvePartnersFromPartnerRows(List<JournalStatusPartnerReportRow> rows) {
         LinkedHashSet<UUID> ids = rows.stream()
                 .map(JournalStatusPartnerReportRow::getPartnerId)
                 .filter(Objects::nonNull)
@@ -239,32 +238,32 @@ public class JournalStatusReportService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
-        return partnerNamesFromSummaries(resolved);
+        return safePartnerMap(partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids)));
     }
 
-    private Map<UUID, String> partnerNamesFromSummaries(Map<UUID, PartnerSummary> resolved) {
+    private Map<UUID, PartnerSummary> safePartnerMap(Map<UUID, PartnerSummary> resolved) {
         if (resolved == null || resolved.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> names = new LinkedHashMap<>();
+        Map<UUID, PartnerSummary> partners = new LinkedHashMap<>();
         resolved.forEach((id, summary) -> {
-            if (summary != null && summary.name() != null) {
-                names.put(id, summary.name());
+            if (id != null && summary != null) {
+                partners.put(id, summary);
             }
         });
-        return names;
+        return partners;
     }
 
     private JournalStatusReportResponse.Line toLine(JournalStatusReportRow row,
                                                     List<UUID> partnerIds,
-                                                    Map<UUID, String> partnerNames) {
+                                                    Map<UUID, PartnerSummary> partners) {
         return new JournalStatusReportResponse.Line(
                 row.getJournalNo(),
                 row.getJournalDate(),
                 row.getSourceType(),
                 sourceTypeDisplayName(row.getSourceType()),
-                partnerDisplayName(partnerIds, partnerNames),
+                partnerBizNoDigits(partnerIds, partners),
+                partnerDisplayName(partnerIds, partners),
                 row.getDescription(),
                 row.getTotalDebit(),
                 row.getTotalCredit()
@@ -272,40 +271,83 @@ public class JournalStatusReportService {
     }
 
     private JournalStatusReportResponse.Line toPartnerLine(JournalStatusPartnerReportRow row,
-                                                           Map<UUID, String> partnerNames) {
+                                                           Map<UUID, PartnerSummary> partners) {
         return new JournalStatusReportResponse.Line(
                 row.getJournalNo(),
                 row.getJournalDate(),
                 row.getSourceType(),
                 sourceTypeDisplayName(row.getSourceType()),
-                partnerDisplayName(row.getPartnerId(), partnerNames),
+                partnerBizNoDigits(row.getPartnerId(), partners),
+                partnerDisplayName(row.getPartnerId(), partners),
                 row.getDescription(),
                 row.getTotalDebit(),
                 row.getTotalCredit()
         );
     }
 
-    private String partnerDisplayName(List<UUID> partnerIds, Map<UUID, String> partnerNames) {
+    private String partnerDisplayName(List<UUID> partnerIds, Map<UUID, PartnerSummary> partners) {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return ETC_PARTNER_NAME;
         }
-        return partnerIds.stream()
-                .filter(Objects::nonNull)
+        return sortedPartnerIds(partnerIds, partners).stream()
                 .map(id -> {
-                    String name = partnerNames.get(id);
+                    PartnerSummary summary = partners.get(id);
+                    String name = summary == null ? null : summary.name();
                     return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
                 })
-                .distinct()
-                .sorted()
                 .collect(Collectors.joining(MULTI_PARTNER_SEPARATOR));
     }
 
-    private String partnerDisplayName(UUID partnerId, Map<UUID, String> partnerNames) {
+    private String partnerDisplayName(UUID partnerId, Map<UUID, PartnerSummary> partners) {
         if (partnerId == null) {
             return ETC_PARTNER_NAME;
         }
-        String name = partnerNames.get(partnerId);
+        PartnerSummary summary = partners.get(partnerId);
+        String name = summary == null ? null : summary.name();
         return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
+    }
+
+    private String partnerBizNoDigits(List<UUID> partnerIds, Map<UUID, PartnerSummary> partners) {
+        if (partnerIds == null || partnerIds.isEmpty()) {
+            return "";
+        }
+        return sortedPartnerIds(partnerIds, partners).stream()
+                .map(id -> partnerBizNoDigits(id, partners))
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.joining(MULTI_PARTNER_SEPARATOR));
+    }
+
+    private List<UUID> sortedPartnerIds(List<UUID> partnerIds, Map<UUID, PartnerSummary> partners) {
+        return partnerIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new))
+                .stream()
+                .sorted(Comparator
+                        .comparing((UUID id) -> partnerSortName(id, partners))
+                        .thenComparing(id -> partnerSortCode(id, partners))
+                        .thenComparing(UUID::toString))
+                .toList();
+    }
+
+    private String partnerSortName(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        PartnerSummary summary = partners.get(partnerId);
+        String name = summary == null ? null : summary.name();
+        return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
+    }
+
+    private String partnerSortCode(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        PartnerSummary summary = partners.get(partnerId);
+        String partnerCode = summary == null ? null : summary.partnerCode();
+        return partnerCode == null ? "" : partnerCode;
+    }
+
+    private String partnerBizNoDigits(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        if (partnerId == null) {
+            return "";
+        }
+        PartnerSummary summary = partners.get(partnerId);
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     private GroupKey groupKey(JournalStatusReportResponse.Line line, JournalStatusGroupBy groupBy) {

@@ -11,10 +11,11 @@ import java.time.LocalDateTime;
  * 일마감 snapshot 응답 DTO (SP-08-6-5).
  *
  * <p>UUID 비공개 원칙 — id 필드는 내부 식별자이므로 응답에서 제외.
- * 비즈니스 식별자인 closingDate + partnerCode 를 노출.
+ * 비즈니스 식별자인 closingDate + bizNo + partnerCode 를 노출.
  *
  * @param closingDate  마감 날짜
- * @param partnerCode  거래처코드 (전체 마감이면 null)
+ * @param bizNo        사업자번호 숫자 문자열 (전체/미조회면 빈 문자열)
+ * @param partnerCode  관리코드 (전체 마감이면 null)
  * @param closingKind  매출/매입 구분
  * @param sourceKind   집계 source
  * @param totalSupply  공급가액 합계
@@ -27,6 +28,7 @@ import java.time.LocalDateTime;
  */
 public record DailyClosingResponse(
         LocalDate closingDate,
+        String bizNo,
         String partnerCode,
         DailyClosingKind closingKind,
         DailyClosingSourceKind sourceKind,
@@ -42,12 +44,14 @@ public record DailyClosingResponse(
      * DailyClosing 엔티티 → 응답 DTO 변환 (partnerCode 별도 주입).
      *
      * @param d           DailyClosing 엔티티
-     * @param partnerCode 거래처코드 (partner-service lookup 결과 — 전체 마감이면 null)
+     * @param partnerCode 관리코드 (partner-service lookup 결과 — 전체 마감이면 null)
+     * @param bizNo       사업자번호 숫자 문자열 (전체/미조회면 빈 문자열)
      * @return DailyClosingResponse
      */
-    public static DailyClosingResponse of(DailyClosing d, String partnerCode) {
+    public static DailyClosingResponse of(DailyClosing d, String partnerCode, String bizNo) {
         return new DailyClosingResponse(
                 d.getClosingDate(),
+                bizNo,
                 partnerCode,
                 d.getClosingKind(),
                 d.getSourceKind(),

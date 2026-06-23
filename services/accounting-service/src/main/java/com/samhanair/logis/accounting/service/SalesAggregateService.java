@@ -62,6 +62,7 @@ public class SalesAggregateService {
         // partnerCode 필터가 있으면 partner-service lookup → partnerId 도출
         UUID filterPartnerId = null;
         String filterPartnerName = null;
+        String filterBizNo = null;
         if (partnerCode != null && !partnerCode.isBlank()) {
             PartnerSummary summary = partnerLookupClient.findByPartnerCode(partnerCode)
                     .orElse(null);
@@ -70,6 +71,7 @@ public class SalesAggregateService {
             }
             filterPartnerId = summary.partnerId();
             filterPartnerName = summary.name();
+            filterBizNo = bizNoDigits(summary);
         }
 
         List<PartnerAccountTotal> totals = journalLineRepository
@@ -100,6 +102,13 @@ public class SalesAggregateService {
             }
         }
 
+        Map<UUID, PartnerSummary> partnerSummaries = filterPartnerId == null && !byPartner.isEmpty()
+                ? partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(byPartner.keySet()))
+                : Map.of();
+        if (partnerSummaries == null) {
+            partnerSummaries = Map.of();
+        }
+
         List<SalesAggregateRow> rows = new ArrayList<>(byPartner.size());
         for (Map.Entry<UUID, PartnerAggregate> e : byPartner.entrySet()) {
             PartnerAggregate agg = e.getValue();
@@ -107,17 +116,19 @@ public class SalesAggregateService {
             String code = filterPartnerId != null && filterPartnerId.equals(e.getKey())
                     ? partnerCode : null;
             String name = filterPartnerName;
+            String bizNo = filterBizNo;
             if (code == null) {
-                PartnerSummary fallback = partnerLookupClient.findByPartnerId(e.getKey())
-                        .orElse(null);
+                PartnerSummary fallback = partnerSummaries.get(e.getKey());
                 if (fallback != null) {
                     code = fallback.partnerCode();
                     name = fallback.name();
+                    bizNo = bizNoDigits(fallback);
                 }
             }
             BigDecimal balance = agg.receivableDebit.subtract(agg.paymentTotal);
             rows.add(new SalesAggregateRow(
                     code == null ? "-" : code,
+                    bizNo == null ? "" : bizNo,
                     name == null ? "-" : name,
                     agg.salesTotal,
                     agg.paymentTotal,
@@ -130,6 +141,11 @@ public class SalesAggregateService {
 
     private static BigDecimal nullToZero(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private static String bizNoDigits(PartnerSummary summary) {
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     /** 내부 누적 헬퍼. */

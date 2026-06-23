@@ -65,6 +65,7 @@ function buildCsv(data: GeneralLedgerResponse): string {
     '일자',
     '분개번호',
     '계정코드',
+    '관리코드',
     '거래처코드',
     '적요',
     '차변',
@@ -80,6 +81,7 @@ function buildCsv(data: GeneralLedgerResponse): string {
       ln.journalNo,
       ln.accountCode,
       ln.partnerCode ?? '',
+      ln.bizNo ?? '',
       ln.description ?? '',
       ln.debit,
       ln.credit,
@@ -197,9 +199,15 @@ export function GeneralLedgerPage() {
       },
       {
         key: 'partnerCode',
-        header: '거래처코드',
+        header: '관리코드',
         width: '110px',
         render: (ln) => ln.partnerCode ?? '—',
+      },
+      {
+        key: 'bizNo',
+        header: '거래처코드',
+        width: '130px',
+        render: (ln) => ln.bizNo?.replace(/\D/g, '') || '—',
       },
       {
         key: 'description',
@@ -568,4 +576,3 @@ export function GeneralLedgerPage() {
     </div>
   )
 }
-
