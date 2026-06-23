@@ -60,13 +60,11 @@ PC 이동 직전에 반드시 갱신:
 
 본 repo 의 모든 작업은 `.claude/memory/` 의 규칙을 따릅니다. 특히:
 
-- **5-team agent 패턴** ([feedback_multi_agent_team_pattern.md](.claude/memory/feedback_multi_agent_team_pattern.md))
-- **통합 PR 패턴** ([feedback_integrated_pr_pattern.md](.claude/memory/feedback_integrated_pr_pattern.md))
+- 🚨 **표준 워크플로우 (단일 진실원)** ([feedback_canonical_workflow.md](.claude/memory/feedback_canonical_workflow.md)) — 2026-06-23 개발책임자 확정. Opus 기획+PR개설 → Codex 개발+리뷰게시 → (Opus 5-agent[FE/BE/Design/DevOps/QA, QA=Docker 라이브QA+스샷]+fix+TM통합리뷰게시 → Codex 5-agent+QA라이브+fix+TM통합리뷰게시) **error/skip/backlog 0수렴까지 반복** → PM확인+CI → PM머지. 🚫**듀얼리뷰 병렬금지(순차)**·단축금지·**리뷰=실QA동반**. 과거 워크플로우 변동내역 통합·폐기.
 - **한국어 커밋/PR** ([feedback_korean_commits.md](.claude/memory/feedback_korean_commits.md))
 - **UUID 사용자 비공개** ([feedback_uuid_no_user_visibility.md](.claude/memory/feedback_uuid_no_user_visibility.md))
 - **BaseEntity 7 audit + Soft Delete** ([project_build_conventions.md](.claude/memory/project_build_conventions.md))
 - **아로로지스 독립 운영 단위** ([project_arologis_independent.md](.claude/memory/project_arologis_independent.md)) — 2026-05-14
 - **아로로지스 명칭 규칙** ([feedback_arologis_name.md](.claude/memory/feedback_arologis_name.md)) — 한국어 표기 "아로로지스" 정식
 - **Samhan Public 명칭 규칙** ([feedback_samhan_public_name.md](.claude/memory/feedback_samhan_public_name.md)) — 외부 호칭 통일
-- **Codex CLI MCP 서버 사용** ([feedback_codex_plugin_setup.md](.claude/memory/feedback_codex_plugin_setup.md)) — 2026-05-17 사용자 정정. **`mcp__codex__codex` 도구** 사용 (Plugin 폐기). review = `sandbox: "read-only"`, fix = `sandbox: "workspace-write"`, 5 agents 병렬 호출.
-- **Claude review → Claude fix → Codex review → Codex fix (사이클 1회)** ([feedback_dual_5agent_review.md](.claude/memory/feedback_dual_5agent_review.md)) — 2026-05-17 사용자 정정 (5회차 최종). 사이클 N.5 통합 fix 단계 폐기. 양쪽 reviewer 가 서로 review cross-check 하여 각자 fix. **사이클 N=3 안 완료 의무**, 사이클 4+ 진입 금지.
+- **Codex CLI MCP 서버 사용** ([feedback_codex_plugin_setup.md](.claude/memory/feedback_codex_plugin_setup.md)) — 2026-05-17 사용자 정정. **`mcp__codex__codex` 도구** 사용 (Plugin 폐기). review = `sandbox: "read-only"`, fix = `sandbox: "workspace-write"` 또는 `danger-full-access`. ⚠️ **듀얼리뷰는 순차**(Opus 라운드 완료·게시 후 Codex 라운드) — 동시 실행 금지. → [feedback_canonical_workflow.md](.claude/memory/feedback_canonical_workflow.md)
