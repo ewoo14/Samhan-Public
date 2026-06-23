@@ -8,6 +8,8 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeClient;
+import com.samhanair.logis.accounting.client.ApprovalLineAuthorizeResult;
 import com.samhanair.logis.accounting.domain.Journal;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.accounting.domain.JournalStatus;
@@ -48,6 +50,7 @@ class JournalServiceTest {
     @Mock private JournalNumberService journalNumberService;
     @Mock private AccountService accountService;
     @Mock private MonthEndCloseService monthEndCloseService;
+    @Mock private ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
 
     @InjectMocks private JournalService journalService;
 
@@ -59,6 +62,8 @@ class JournalServiceTest {
         // 마감 가드 — 기본 stub 으로 "마감 없음" 반환 (Phase 10 Step 8 P2-4 service-layer guard).
         lenient().when(monthEndCloseService.findClosedPeriodCovering(any(LocalDate.class)))
                 .thenReturn(Optional.empty());
+        lenient().when(approvalLineAuthorizeClient.authorize(anyString(), anyString(), any(UUID.class)))
+                .thenReturn(new ApprovalLineAuthorizeResult(false, false));
         // accountService.requireLeafAccount 는 void — 기본 no-op (Mockito).
     }
 
