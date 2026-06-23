@@ -6,6 +6,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -81,7 +82,14 @@ class JournalApprovalGateIT extends AbstractPostgresIT {
         mockMvc.perform(post("/accounting/journals/" + id + "/post")
                         .header("X-User-Id", POST_USER)
                         .header("X-User-Role", "ACCOUNTANT"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("결재라인 결재자만 회계전표를 게시할 수 있습니다."))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(POST_USER))))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("ACCOUNTING_JOURNAL"))))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("JOURNAL_POST"))));
 
         holder.server().verify();
     }

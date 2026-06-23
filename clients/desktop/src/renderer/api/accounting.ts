@@ -21,6 +21,7 @@ import {
   type PageResponse,
 } from './client'
 import type { Account, JournalStatus } from '@samhan/design-system'
+import axios from 'axios'
 
 export type { Account } from '@samhan/design-system'
 
@@ -301,11 +302,27 @@ export async function createJournal(
  * BE 가 sum(debit) == sum(credit) 재검증. 불일치 시 422.
  */
 export async function postJournal(id: string): Promise<Journal> {
-  const res = await apiClient.post<ApiEnvelope<RawJournal>>(
-    `/accounting/journals/${id}/post`,
-    {},
-  )
-  return normalizeJournal(res.data.data)
+  try {
+    const res = await apiClient.post<ApiEnvelope<RawJournal>>(
+      `/accounting/journals/${id}/post`,
+      {},
+    )
+    return normalizeJournal(res.data.data)
+  } catch (err) {
+    const message = extractApiErrorMessage(err)
+    if (message) {
+      throw new Error(message)
+    }
+    throw err
+  }
+}
+
+function extractApiErrorMessage(err: unknown): string | null {
+  if (!axios.isAxiosError(err)) return null
+  const data = err.response?.data
+  if (typeof data !== 'object' || data === null || !('message' in data)) return null
+  const message = data.message
+  return typeof message === 'string' && message.trim() ? message : null
 }
 
 /**
