@@ -11,6 +11,8 @@ import com.samhanair.logis.accounting.domain.MatchStatus;
 import com.samhanair.logis.accounting.repository.BankTransactionRepository;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportMapping;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportResult;
+import com.samhanair.logis.accounting.web.dto.BankTransactionMatchPartnerClearRequest;
+import com.samhanair.logis.accounting.web.dto.BankTransactionMatchPartnerRequest;
 import com.samhanair.logis.accounting.web.dto.BankTransactionResponse;
 import com.samhanair.logis.accounting.web.dto.BankTransactionResponse.PartnerDisplay;
 import com.samhanair.logis.common.exception.BusinessException;
@@ -149,9 +151,79 @@ public class BankTransactionService {
                 .toList();
     }
 
+    /**
+     * 미반영 통장 거래에 거래처를 수동 지정한다.
+     *
+     * <p>요청/응답 모두 UUID 를 노출하지 않고, {@code bankAccountLabel + externalRef} 표시 자연키와
+     * {@code partnerCode} 만 사용한다.
+     */
+    public BankTransactionResponse matchPartner(BankTransactionMatchPartnerRequest request) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "요청 본문은 필수입니다.");
+        }
+        if (!hasText(request.partnerCode())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "partnerCode 는 필수입니다.");
+        }
+
+        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(), request.externalRef());
+        PartnerSummary partner = partnerLookupClient.findByPartnerCode(request.partnerCode().trim())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "등록된 거래처를 찾을 수 없습니다: " + request.partnerCode().trim()));
+        if (partner.partnerId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "거래처 내부 식별자를 해석할 수 없습니다: " + request.partnerCode().trim());
+        }
+
+        try {
+            transaction.matchPartner(partner.partnerId());
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage(), ex);
+        }
+        return BankTransactionResponse.of(transaction, displayOf(partner));
+    }
+
+    /**
+     * 미반영 통장 거래의 거래처 수동지정을 해제한다.
+     *
+     * <p>회계반영/강제 상태는 도메인 가드에서 거부하고 409 로 변환한다.
+     */
+    public BankTransactionResponse clearPartner(BankTransactionMatchPartnerClearRequest request) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "요청 본문은 필수입니다.");
+        }
+        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(), request.externalRef());
+        try {
+            transaction.clearPartner();
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage(), ex);
+        }
+        return BankTransactionResponse.of(transaction, null);
+    }
+
     private PartnerDisplay displayOfPartner(BankTransaction row, Map<UUID, PartnerSummary> partners) {
         UUID partnerId = row.getMatchedPartnerId();
         return partnerId == null ? null : displayOf(partners.get(partnerId));
+    }
+
+    private BankTransaction findUniqueByNaturalKey(String bankAccountLabel, String externalRef) {
+        if (!hasText(bankAccountLabel)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "bankAccountLabel 은 필수입니다.");
+        }
+        if (!hasText(externalRef)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "externalRef 는 필수입니다.");
+        }
+        List<BankTransaction> rows = repository.findAllByBankAccountLabelAndExternalRefAndIsDeletedFalse(
+                bankAccountLabel.trim(),
+                externalRef.trim());
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "통장 거래를 찾을 수 없습니다: " + bankAccountLabel.trim() + " / " + externalRef.trim());
+        }
+        if (rows.size() > 1) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "bankAccountLabel + externalRef 로 통장 거래가 단건 식별되지 않습니다.");
+        }
+        return rows.get(0);
     }
 
     private Specification<BankTransaction> bankTransactionSpec(MatchStatus matchStatus, LocalDate from, LocalDate to,

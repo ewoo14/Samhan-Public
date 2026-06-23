@@ -6,21 +6,26 @@ import {
   Card,
   DataTable,
   Input,
+  PartnerAutocomplete,
   Select,
   Spinner,
   type DataTableColumn,
+  type PartnerOption,
 } from '@samhan/design-system'
 import {
   BANK_MATCH_STATUS_LABEL,
   BANK_TXN_SOURCE_LABEL,
   BANK_TXN_TYPE_LABEL,
+  clearBankTransactionMatch,
   importBankTransactionsCsv,
   listBankTransactions,
+  matchBankTransactionPartner,
   type BankMatchStatus,
   type BankTransactionImportResult,
   type BankTransactionRow,
   type ImportBankTransactionsMapping,
 } from '../api/accounting'
+import { searchPartners } from '../api/partnerApi'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 
@@ -84,6 +89,24 @@ function statusStyle(status: BankMatchStatus): React.CSSProperties {
   }
 }
 
+function partnerValueOf(row: BankTransactionRow): PartnerOption | null {
+  if (!row.matchedPartnerCode && !row.matchedPartnerName) return null
+  return {
+    partnerCode: row.matchedPartnerCode ?? row.matchedBizNo ?? '',
+    name: row.matchedPartnerName ?? row.matchedPartnerCode ?? '',
+    bizNo: row.matchedBizNo ?? undefined,
+  }
+}
+
+function partnerDisplay(row: BankTransactionRow): string {
+  const parts = [
+    row.matchedPartnerCode,
+    row.matchedBizNo ? row.matchedBizNo.replace(/\D/g, '') : null,
+    row.matchedPartnerName,
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : '—'
+}
+
 function initialMapping(): ImportBankTransactionsMapping {
   return {
     bankAccountLabel: '국민 123456-78-901234',
@@ -105,6 +128,7 @@ export function BankTransactionPage() {
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
   const canCreate = canAccess('accounting.bank-matching', 'create')
+  const canUpdate = canAccess('accounting.bank-matching', 'update')
   const [activeTab, setActiveTab] = useState<StatusTab>('ALL')
   const [filters, setFilters] = useState({
     from: monthStartIso(),
@@ -152,6 +176,22 @@ export function BankTransactionPage() {
     onError: () => setToast({ type: 'error', message: '통장 CSV import 중 오류가 발생했습니다.' }),
   })
 
+  const matchPartnerMutation = useMutation({
+    mutationFn: matchBankTransactionPartner,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
+    },
+    onError: () => setToast({ type: 'error', message: '거래처 매칭 중 오류가 발생했습니다.' }),
+  })
+
+  const clearPartnerMutation = useMutation({
+    mutationFn: clearBankTransactionMatch,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
+    },
+    onError: () => setToast({ type: 'error', message: '거래처 매칭 해제 중 오류가 발생했습니다.' }),
+  })
+
   const rows = transactionsQuery.data ?? []
   const totalDeposit = rows
     .filter((row) => row.txnType === 'DEPOSIT')
@@ -193,6 +233,62 @@ export function BankTransactionPage() {
       render: (row) => row.counterpartyName || '—',
     },
     {
+      key: 'matchedPartnerCode',
+      header: '거래처 매칭',
+      width: '320px',
+      render: (row) => {
+        if (row.matchStatus !== 'UNREFLECTED') {
+          return <span>{partnerDisplay(row)}</span>
+        }
+        const matched = partnerValueOf(row)
+        const pending = matchPartnerMutation.isPending || clearPartnerMutation.isPending
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: matched ? '1fr auto' : '1fr', gap: 8, alignItems: 'end' }}>
+            <PartnerAutocomplete
+              label=""
+              ariaLabel={`${row.externalRef} 거래처 검색`}
+              placeholder="거래처명/코드"
+              value={matched}
+              onChange={(partner) => {
+                if (partner) {
+                  matchPartnerMutation.mutate({
+                    bankAccountLabel: row.bankAccountLabel,
+                    externalRef: row.externalRef,
+                    partnerCode: partner.partnerCode,
+                  })
+                  return
+                }
+                if (row.matchedPartnerCode) {
+                  clearPartnerMutation.mutate({
+                    bankAccountLabel: row.bankAccountLabel,
+                    externalRef: row.externalRef,
+                  })
+                }
+              }}
+              searchPartners={searchPartners}
+              disabled={!canUpdate || pending}
+              minChars={1}
+              debounceMs={200}
+            />
+            {matched ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!canUpdate || pending}
+                onClick={() => clearPartnerMutation.mutate({
+                  bankAccountLabel: row.bankAccountLabel,
+                  externalRef: row.externalRef,
+                })}
+              >
+                해제
+              </Button>
+            ) : null}
+          </div>
+        )
+      },
+    },
+    {
       key: 'bankAccountLabel',
       header: '은행계좌',
       width: '180px',
@@ -220,7 +316,7 @@ export function BankTransactionPage() {
         </span>
       ),
     },
-  ], [])
+  ], [canUpdate, clearPartnerMutation, matchPartnerMutation])
 
   const canImport = canCreate
     && Boolean(file)

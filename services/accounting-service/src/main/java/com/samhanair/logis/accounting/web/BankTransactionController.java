@@ -4,6 +4,8 @@ import com.samhanair.logis.accounting.domain.MatchStatus;
 import com.samhanair.logis.accounting.service.BankTransactionService;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportMapping;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportResult;
+import com.samhanair.logis.accounting.web.dto.BankTransactionMatchPartnerClearRequest;
+import com.samhanair.logis.accounting.web.dto.BankTransactionMatchPartnerRequest;
 import com.samhanair.logis.accounting.web.dto.BankTransactionResponse;
 import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.security.permission.PermissionAction;
@@ -15,8 +17,11 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -74,5 +79,23 @@ public class BankTransactionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String bankAccountLabel) {
         return ApiResponse.ok(service.list(matchStatus, from, to, bankAccountLabel));
+    }
+
+    /** 미반영 통장 거래에 거래처를 수동 지정한다. */
+    @PatchMapping("/match-partner")
+    @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
+    @Operation(summary = "통장 거래 거래처 수동지정", description = "bankAccountLabel+externalRef 로 거래를 찾아 partnerCode 로 매칭")
+    public ApiResponse<BankTransactionResponse> matchPartner(
+            @RequestBody BankTransactionMatchPartnerRequest request) {
+        return ApiResponse.ok(service.matchPartner(request), "거래처 매칭이 완료되었습니다.");
+    }
+
+    /** 미반영 통장 거래의 거래처 수동지정을 해제한다. */
+    @DeleteMapping("/match-partner")
+    @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
+    @Operation(summary = "통장 거래 거래처 수동지정 해제", description = "bankAccountLabel+externalRef 로 거래를 찾아 매칭 거래처를 해제")
+    public ApiResponse<BankTransactionResponse> clearPartner(
+            @RequestBody BankTransactionMatchPartnerClearRequest request) {
+        return ApiResponse.ok(service.clearPartner(request), "거래처 매칭이 해제되었습니다.");
     }
 }

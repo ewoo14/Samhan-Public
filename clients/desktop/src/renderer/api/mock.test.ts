@@ -291,3 +291,75 @@ describe('mock collection plan contract', () => {
     expect(Number(forecast.data.totalAmount)).toBeGreaterThan(0)
   })
 })
+
+describe('mock bank transaction matching contract', () => {
+  it('matches and clears a partner by bankAccountLabel + externalRef without UUID fields', () => {
+    const bankAccountLabel = `국민 매칭테스트 ${Date.now()}`
+    mockRequest({
+      method: 'POST',
+      url: '/accounting/bank-transactions/import',
+      data: { bankAccountLabel },
+    })
+
+    const externalRef = `mock-csv-${bankAccountLabel}-1`
+    const matched = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner',
+      data: {
+        bankAccountLabel,
+        externalRef,
+        partnerCode: '1234567890',
+      },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(matched.data).toMatchObject({
+      bankAccountLabel,
+      externalRef,
+      matchStatus: 'UNREFLECTED',
+      matchedPartnerCode: '1234567890',
+      matchedBizNo: '1234567890',
+      matchedPartnerName: '엘에이시스템에어',
+    })
+    expect(matched.data).not.toHaveProperty('matchedPartnerId')
+
+    const filtered = mockRequest({
+      method: 'GET',
+      url: '/accounting/bank-transactions',
+      params: { matchStatus: 'UNREFLECTED', bankAccountLabel },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+
+    expect(filtered.data.find((row) => row.externalRef === externalRef)).toMatchObject({
+      matchedPartnerCode: '1234567890',
+      matchedPartnerName: '엘에이시스템에어',
+    })
+
+    const cleared = mockRequest({
+      method: 'DELETE',
+      url: '/accounting/bank-transactions/match-partner',
+      data: { bankAccountLabel, externalRef },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(cleared.data).toMatchObject({
+      externalRef,
+      matchedPartnerCode: null,
+      matchedBizNo: null,
+      matchedPartnerName: null,
+    })
+    expect(cleared.data).not.toHaveProperty('matchedPartnerId')
+  })
+
+  it('keeps reflected and forced rows immutable for partner matching', () => {
+    const forced = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner',
+      data: {
+        bankAccountLabel: '국민 123-456',
+        externalRef: 'mock-bank-20260622-002',
+        partnerCode: '1234567890',
+      },
+    }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
+
+    expect(forced.__mockStatus).toBe(409)
+    expect(forced.body.code).toBe('CONFLICT')
+  })
+})

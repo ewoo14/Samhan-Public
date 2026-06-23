@@ -123,6 +123,13 @@ public class BankTransaction extends BaseEntity {
         return this;
     }
 
+    /** 미반영 거래의 거래처 매칭을 해제한다. */
+    public BankTransaction clearPartner() {
+        requireStatus(MatchStatus.UNREFLECTED, MatchStatus.UNREFLECTED);
+        this.matchedPartnerId = null;
+        return this;
+    }
+
     /** 미반영 거래를 회계 분개 반영 상태로 전환한다. */
     public BankTransaction markReflected(UUID journalId) {
         if (journalId == null) {

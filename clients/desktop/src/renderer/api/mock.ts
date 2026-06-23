@@ -4938,6 +4938,66 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(rows)
   }
 
+  if (method === 'PATCH' && url.includes('/accounting/bank-transactions/match-partner')) {
+    const body = parseMockBody(config)
+    const bankAccountLabel = String(body.bankAccountLabel ?? '').trim()
+    const externalRef = String(body.externalRef ?? '').trim()
+    const partnerCode = String(body.partnerCode ?? '').trim()
+    if (!bankAccountLabel || !externalRef || !partnerCode) {
+      return mockError(400, 'INVALID_INPUT', 'bankAccountLabel, externalRef, partnerCode 는 필수입니다.')
+    }
+    const index = MOCK_BANK_TRANSACTIONS.findIndex((row) =>
+      row.bankAccountLabel === bankAccountLabel && row.externalRef === externalRef)
+    if (index < 0) {
+      return mockError(404, 'NOT_FOUND', '통장 거래를 찾을 수 없습니다.')
+    }
+    const current = MOCK_BANK_TRANSACTIONS[index]!
+    if (current.matchStatus !== 'UNREFLECTED') {
+      return mockError(409, 'CONFLICT', 'UNREFLECTED 거래만 거래처 매칭을 변경할 수 있습니다.')
+    }
+    const partner = MOCK_ADMIN_PARTNERS.map((row) => normalizeAdminPartner(row))
+      .find((row) => row.partnerCode === partnerCode)
+    if (!partner) {
+      return mockError(404, 'NOT_FOUND', `등록된 거래처를 찾을 수 없습니다: ${partnerCode}`)
+    }
+    const next = {
+      ...current,
+      matchedPartnerCode: partner.partnerCode,
+      matchedBizNo: partner.bizNo.replace(/\D/g, ''),
+      matchedPartnerName: partner.name,
+    }
+    MOCK_BANK_TRANSACTIONS = MOCK_BANK_TRANSACTIONS.map((row, rowIndex) =>
+      rowIndex === index ? next : row)
+    return envelope(next)
+  }
+
+  if (method === 'DELETE' && url.includes('/accounting/bank-transactions/match-partner')) {
+    const body = parseMockBody(config)
+    const bankAccountLabel = String(body.bankAccountLabel ?? '').trim()
+    const externalRef = String(body.externalRef ?? '').trim()
+    if (!bankAccountLabel || !externalRef) {
+      return mockError(400, 'INVALID_INPUT', 'bankAccountLabel, externalRef 는 필수입니다.')
+    }
+    const index = MOCK_BANK_TRANSACTIONS.findIndex((row) =>
+      row.bankAccountLabel === bankAccountLabel && row.externalRef === externalRef)
+    if (index < 0) {
+      return mockError(404, 'NOT_FOUND', '통장 거래를 찾을 수 없습니다.')
+    }
+    const current = MOCK_BANK_TRANSACTIONS[index]!
+    if (current.matchStatus !== 'UNREFLECTED') {
+      return mockError(409, 'CONFLICT', 'UNREFLECTED 거래만 거래처 매칭을 해제할 수 있습니다.')
+    }
+    const next = {
+      ...current,
+      matchedPartnerCode: null,
+      matchedBizNo: null,
+      matchedPartnerName: null,
+    }
+    MOCK_BANK_TRANSACTIONS = MOCK_BANK_TRANSACTIONS.map((row, rowIndex) =>
+      rowIndex === index ? next : row)
+    return envelope(next)
+  }
+
   if (method === 'POST' && url.includes('/accounting/bank-transactions/import')) {
     const bankAccountLabel =
       readMockFormValue(config.data, 'bankAccountLabel').trim() || '국민 123-456'
