@@ -48,6 +48,10 @@ class AccountingMig8OrderClientTest {
         UUID partnerId = UUID.fromString("00000000-0000-0000-0000-000000000801");
         UUID productId = UUID.fromString("00000000-0000-0000-0000-000000000901");
 
+        // 통화 필드는 문자열 형태로 픽스처 — 클라 decimal() 헬퍼가 value.asText()→new BigDecimal(...)
+        // 로 파싱하므로 문자열이 정밀 라운드트립 경로(고정밀 unitPrice 도 손실 없음). 실 wire 는
+        // Jackson 기본 BigDecimal numeric 직렬화이나, 클라 parse 가 numeric/string 양립이라 계약상 무해
+        // (numeric 픽스처는 readTree DoubleNode→asText 로 고정밀에서 flaky 위험이라 문자열 채택).
         server.expect(requestTo(ENDPOINT + "?page=1&size=50"))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))

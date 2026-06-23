@@ -56,14 +56,18 @@ class XxxClientTest {
 
 ### 4.1 partner-order `SlipServiceClient`
 생성자 `(RestClient.Builder, InternalAuthProperties)`. baseUrl=`http://slip-service`.
+
+> ⚠️ **실 계약 정정 (듀얼리뷰 #585 BLOCKING)**: slip-service `SlipPublishController` Javadoc(L44-46) 기준 — 신규=**201 Created**, 멱등 재시도(같은 키+같은 본문)=**200 OK**+기존 slipNo, 동일 키+다른 본문/race=**409 Conflict**(GlobalExceptionHandler→`ApiResponse.fail`→**data=null**). 초안의 "409→duplicate(slipNo)"는 발생 불가한 허구 계약(클라 `extractSlipNo`가 data=null→null→INTERNAL_ERROR)이라 폐기. 클라(SlipServiceClient)도 409→`CONFLICT` throw로 fix, dead `duplicate` 분기 제거, 401/403 의미 구분 추가.
+
 - **publishFromPartnerOrder** (`POST /api/v1/slips/from-partner-order`):
-  - 200 → `PublishResult.published(slipNo)` (응답 `{"data":{"slipNo":"..."}}` 파싱). 헤더 `X-Internal-Token=test-token`, `X-User-Id=00000000-0000-0000-0000-000000000000`, `Idempotency-Key=<키>` expect. 바디에 payload 포함 expect.
-  - 409 → `PublishResult.duplicate(slipNo)` (body parse 도달 — onStatus no-op 경로 검증).
-  - 5xx → `BusinessException(INTERNAL_ERROR)`.
-  - 4xx(≠409, 예: 400) → `BusinessException(INVALID_INPUT)`.
-  - 200 인데 slipNo 누락 → `BusinessException(INTERNAL_ERROR)`.
+  - 201 Created(신규) → `PublishResult.published(slipNo)` (응답 `{"data":{"slipNo":"..."}}`). 헤더 `X-Internal-Token=test-token`, `X-User-Id=00000000-0000-0000-0000-000000000000`, `Idempotency-Key=<키>` expect. 바디에 payload 포함 expect.
+  - 200 OK(멱등 replay) → `PublishResult.published(slipNo)` (기존 slipNo 반환).
+  - 409 Conflict(실 응답 `data=null`) → `BusinessException(CONFLICT)`.
+  - 401 → `BusinessException(UNAUTHORIZED)`, 403 → `BusinessException(FORBIDDEN)`.
+  - 그 외 4xx(예: 400) → `BusinessException(INVALID_INPUT)`. 5xx → `BusinessException(INTERNAL_ERROR)`.
+  - 성공(200/201)인데 slipNo 누락 → `BusinessException(INTERNAL_ERROR)`.
   - 입력검증: 빈 payload / blank idempotencyKey → `BusinessException(INVALID_INPUT)` (HTTP 미발생 — `server.verify()` 호출 0건).
-- **publishFromOrdersMerge** (`POST /api/v1/slips/from-orders-merge`): 200 published + 409 duplicate 최소 2케이스(경로만 다르고 분기 동일).
+- **publishFromOrdersMerge** (`POST /api/v1/slips/from-orders-merge`): 201 신규 published + 200 멱등 published + 409 CONFLICT 3케이스(경로만 다르고 분기 동일).
 
 ### 4.2 partner-order `mig8/AccountingMig8OrderClient`
 생성자 `(RestClient.Builder, InternalAuthProperties, ObjectMapper)`. baseUrl=`http://accounting-service`.

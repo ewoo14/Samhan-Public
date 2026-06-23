@@ -24,7 +24,14 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.match.MockRestRequestMatchers;
 import org.springframework.web.client.RestClient;
 
-/** SlipServiceClient — slip-service partner-order publish internal 계약 회귀 가드. */
+/**
+ * SlipServiceClient — slip-service partner-order publish internal 계약 회귀 가드.
+ *
+ * <p>실 다운스트림 계약(SlipPublishController Javadoc L44-46): 신규=201 Created,
+ * 멱등 재시도(같은 키+같은 본문)=200 OK + 기존 slipNo, 동일 키+다른 본문/race=409 Conflict
+ * (GlobalExceptionHandler→ApiResponse.fail→data=null). 201/200 → published(slipNo),
+ * 409 → CONFLICT, 401 → UNAUTHORIZED, 403 → FORBIDDEN, 그 외 4xx → INVALID_INPUT, 5xx → INTERNAL_ERROR.
+ */
 class SlipServiceClientTest {
 
     private static final String TOKEN = "test-token";
@@ -48,7 +55,7 @@ class SlipServiceClientTest {
     }
 
     @Test
-    void publishFromPartnerOrder_200은_경로_헤더_바디를_검증하고_published를_반환한다() {
+    void publishFromPartnerOrder_201_신규발행은_경로_헤더_바디를_검증하고_published를_반환한다() {
         server.expect(requestTo(FROM_PARTNER_ORDER))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-Internal-Token", TOKEN))
@@ -57,6 +64,26 @@ class SlipServiceClientTest {
                 .andExpect(jsonPath("$.partnerCode").value("P1"))
                 .andExpect(jsonPath("$.lines[0].itemName").value("품목-1"))
                 .andExpect(jsonPath("$.lines[0].quantity").value(2))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .body("""
+                                {"success":true,"data":{"slipNo":"SLIP-20260623-001"}}
+                                """)
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        SlipServiceClient.PublishResult result =
+                client.publishFromPartnerOrder(payload(), "PO-CONF-P1-1");
+
+        assertThat(result.slipNo()).isEqualTo("SLIP-20260623-001");
+        assertThat(result.duplicate()).isFalse();
+        server.verify();
+    }
+
+    @Test
+    void publishFromPartnerOrder_200_멱등replay는_기존_slipNo로_published를_반환한다() {
+        server.expect(requestTo(FROM_PARTNER_ORDER))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("Idempotency-Key", "PO-CONF-P1-1"))
                 .andRespond(withSuccess("""
                         {"success":true,"data":{"slipNo":"SLIP-20260623-001"}}
                         """, MediaType.APPLICATION_JSON));
@@ -70,23 +97,47 @@ class SlipServiceClientTest {
     }
 
     @Test
-    void publishFromPartnerOrder_409는_body를_파싱해_duplicate를_반환한다() {
+    void publishFromPartnerOrder_409_충돌은_CONFLICT() {
+        // 실 409 = 동일 키 다른 본문/race → ApiResponse.fail → data=null (slipNo는 message 텍스트만).
         server.expect(requestTo(FROM_PARTNER_ORDER))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-Internal-Token", TOKEN))
-                .andExpect(header("X-User-Id", INTERNAL_CALLER_ID))
                 .andExpect(header("Idempotency-Key", "PO-CONF-P1-1"))
                 .andRespond(withStatus(HttpStatus.CONFLICT)
                         .body("""
-                                {"success":false,"data":{"slipNo":"SLIP-20260623-001"}}
+                                {"success":false,"code":"CONFLICT","message":"이미 다른 본문으로 발행됨(slipNo=SLIP-X)","data":null}
                                 """)
                         .contentType(MediaType.APPLICATION_JSON));
 
-        SlipServiceClient.PublishResult result =
-                client.publishFromPartnerOrder(payload(), "PO-CONF-P1-1");
+        assertBusinessError(
+                () -> client.publishFromPartnerOrder(payload(), "PO-CONF-P1-1"),
+                ErrorCode.CONFLICT);
+        server.verify();
+    }
 
-        assertThat(result.slipNo()).isEqualTo("SLIP-20260623-001");
-        assertThat(result.duplicate()).isTrue();
+    @Test
+    void publishFromPartnerOrder_401은_UNAUTHORIZED() {
+        server.expect(requestTo(FROM_PARTNER_ORDER))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+
+        assertBusinessError(
+                () -> client.publishFromPartnerOrder(payload(), "PO-CONF-P1-1"),
+                ErrorCode.UNAUTHORIZED);
+        server.verify();
+    }
+
+    @Test
+    void publishFromPartnerOrder_403은_FORBIDDEN() {
+        server.expect(requestTo(FROM_PARTNER_ORDER))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        assertBusinessError(
+                () -> client.publishFromPartnerOrder(payload(), "PO-CONF-P1-1"),
+                ErrorCode.FORBIDDEN);
         server.verify();
     }
 
@@ -117,13 +168,15 @@ class SlipServiceClientTest {
     }
 
     @Test
-    void publishFromPartnerOrder_200인데_slipNo가_없으면_INTERNAL_ERROR() {
+    void publishFromPartnerOrder_성공인데_slipNo가_없으면_INTERNAL_ERROR() {
         server.expect(requestTo(FROM_PARTNER_ORDER))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-Internal-Token", TOKEN))
-                .andRespond(withSuccess("""
-                        {"success":true,"data":{}}
-                        """, MediaType.APPLICATION_JSON));
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .body("""
+                                {"success":true,"data":{}}
+                                """)
+                        .contentType(MediaType.APPLICATION_JSON));
 
         assertBusinessError(
                 () -> client.publishFromPartnerOrder(payload(), "PO-CONF-P1-1"),
@@ -148,13 +201,33 @@ class SlipServiceClientTest {
     }
 
     @Test
-    void publishFromOrdersMerge_200은_병합_경로에서_published를_반환한다() {
+    void publishFromOrdersMerge_201_신규는_병합_경로에서_published를_반환한다() {
         server.expect(requestTo(FROM_ORDERS_MERGE))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-Internal-Token", TOKEN))
                 .andExpect(header("X-User-Id", INTERNAL_CALLER_ID))
                 .andExpect(header("Idempotency-Key", "PO-MRG-20260623-1"))
                 .andExpect(MockRestRequestMatchers.content().string(containsString("sourceOrders")))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .body("""
+                                {"success":true,"data":{"slipNo":"SLIP-MRG-20260623-001"}}
+                                """)
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        SlipServiceClient.PublishResult result =
+                client.publishFromOrdersMerge(mergePayload(), "PO-MRG-20260623-1");
+
+        assertThat(result.slipNo()).isEqualTo("SLIP-MRG-20260623-001");
+        assertThat(result.duplicate()).isFalse();
+        server.verify();
+    }
+
+    @Test
+    void publishFromOrdersMerge_200_멱등replay는_병합_경로에서_published를_반환한다() {
+        server.expect(requestTo(FROM_ORDERS_MERGE))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andExpect(header("Idempotency-Key", "PO-MRG-20260623-1"))
                 .andRespond(withSuccess("""
                         {"success":true,"data":{"slipNo":"SLIP-MRG-20260623-001"}}
                         """, MediaType.APPLICATION_JSON));
@@ -168,23 +241,20 @@ class SlipServiceClientTest {
     }
 
     @Test
-    void publishFromOrdersMerge_409는_병합_경로에서_duplicate를_반환한다() {
+    void publishFromOrdersMerge_409_충돌은_병합_경로에서_CONFLICT() {
         server.expect(requestTo(FROM_ORDERS_MERGE))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-Internal-Token", TOKEN))
-                .andExpect(header("X-User-Id", INTERNAL_CALLER_ID))
                 .andExpect(header("Idempotency-Key", "PO-MRG-20260623-1"))
                 .andRespond(withStatus(HttpStatus.CONFLICT)
                         .body("""
-                                {"success":false,"data":{"slipNo":"SLIP-MRG-20260623-001"}}
+                                {"success":false,"code":"CONFLICT","message":"병합 충돌","data":null}
                                 """)
                         .contentType(MediaType.APPLICATION_JSON));
 
-        SlipServiceClient.PublishResult result =
-                client.publishFromOrdersMerge(mergePayload(), "PO-MRG-20260623-1");
-
-        assertThat(result.slipNo()).isEqualTo("SLIP-MRG-20260623-001");
-        assertThat(result.duplicate()).isTrue();
+        assertBusinessError(
+                () -> client.publishFromOrdersMerge(mergePayload(), "PO-MRG-20260623-1"),
+                ErrorCode.CONFLICT);
         server.verify();
     }
 

@@ -21,6 +21,10 @@ metadata:
 - **FE / BE / Design / DevOps / QA** 5인.
 - **QA agent 는 FE/BE/Design/DevOps 4인 리뷰 + fix 이후** 진행(순차) — 실 산출물에 대해 **Docker 라이브 QA**(실 게이트웨이:8080 / 실 서비스 / 실 시드, mock OFF) + **실사용자 화면 스크린샷 캡처**.
 
+## 🚨 리뷰 라운드 fix 주체 (2026-06-23 개발책임자 정정)
+- **그 라운드의 리뷰 모델이 직접 fix.** **Opus 5-agent 라운드의 fix = Opus 가 직접(Edit) 수행 — Codex 디스패치 금지.** Codex 라운드의 fix 만 Codex.
+- "Claude 직접 코드 작성 금지"(2단계 = 초기 구현 한정)는 **리뷰 라운드 fix 에는 적용 안 됨.** Opus 가 자기 리뷰에서 적발한 BLOCKING/P 결함은 Opus 가 그 자리에서 Edit 로 고친다.
+
 ## 절대 규칙
 - 🚫 **듀얼리뷰 병렬 절대 금지** — Claude(Opus) 라운드 **완료·게시** 후에야 Codex 라운드 진입(순차). 서로 cross-check 가능하게. 한 PR 의 Opus·Codex 동시 실행 금지.
 - 🚫 **단축 금지** — 트리비얼/기계적/sweep/1줄 PR 도 동일 워크플로우. Codex 단독·단일모델 머지 금지. 모든 PR 에 Opus·Codex 양측 리뷰 + TM 통합 + 라이브 QA 스크린샷.
