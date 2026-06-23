@@ -246,6 +246,13 @@ export function ReportListPage() {
           description="전표번호·출처·거래처 기준으로 POSTED 전표를 grouping 조회합니다."
           path="/accounting/reports/journal-status"
         />
+        <ReportCard
+          icon="📒"
+          title="계정명세서"
+          badge="원장"
+          description="기준일 계정별 거래처 잔액을 채권·채무 방향으로 조회합니다."
+          path="/accounting/reports/account-statement"
+        />
       </div>
 
       <SectionLabel label="자금 관리" />

@@ -110,6 +110,7 @@ class PartnerLookupClientTest {
                             "partnerId": "11111111-1111-1111-1111-111111111111",
                             "partnerCode": "P-2026-0001",
                             "name": "(주)테스트거래처",
+                            "bizNo": "111-22-33333",
                             "creditLimit": 5000000,
                             "outstandingBalance": 0,
                             "status": "ACTIVE"
@@ -123,7 +124,8 @@ class PartnerLookupClientTest {
         assertThat(result.partnerId()).isEqualTo(PARTNER_ID);
         assertThat(result.partnerCode()).isEqualTo("P-2026-0001");
         assertThat(result.name()).isEqualTo("(주)테스트거래처");
-        assertThat(result.businessNo()).isNull();
+        assertThat(result.businessNo()).isEqualTo("111-22-33333");
+        assertThat(result.bizNo()).isEqualTo("111-22-33333");
         assertThat(result.address()).isNull();
         server.verify();
     }
@@ -153,7 +155,7 @@ class PartnerLookupClientTest {
     }
 
     @Test
-    void findByPartnerIdsBatch는_lookup_by_ids를_1회_호출하고_name_map을_반환한다() {
+    void findByPartnerIdsBatch는_lookup_by_ids를_1회_호출하고_summary_map을_반환한다() {
         server.expect(requestTo("http://partner-service/internal/partners/lookup-by-ids"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-Internal-Token", TOKEN))
@@ -161,12 +163,15 @@ class PartnerLookupClientTest {
                         {"ids":["11111111-1111-1111-1111-111111111111"]}
                         """))
                 .andRespond(withSuccess("""
-                        {"success":true,"data":{"partners":[{"id":"11111111-1111-1111-1111-111111111111","name":"삼한상사"}]}}
+                        {"success":true,"data":{"partners":[{"id":"11111111-1111-1111-1111-111111111111","partnerCode":"P-2026-0001","name":"삼한상사","bizNo":"123-45-67890"}]}}
                         """, MediaType.APPLICATION_JSON));
 
-        Map<UUID, String> result = client.findByPartnerIdsBatch(List.of(PARTNER_ID));
+        Map<UUID, PartnerSummary> result = client.findByPartnerIdsBatch(List.of(PARTNER_ID));
 
-        assertThat(result).containsEntry(PARTNER_ID, "삼한상사");
+        assertThat(result).containsKey(PARTNER_ID);
+        assertThat(result.get(PARTNER_ID).partnerCode()).isEqualTo("P-2026-0001");
+        assertThat(result.get(PARTNER_ID).name()).isEqualTo("삼한상사");
+        assertThat(result.get(PARTNER_ID).bizNo()).isEqualTo("123-45-67890");
         server.verify();
     }
 

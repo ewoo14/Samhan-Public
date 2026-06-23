@@ -289,6 +289,8 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.jsonPath("$.success").value(true))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners.length()").value(2))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners[0].id").exists())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners[*].bizNo")
+                        .value(org.hamcrest.Matchers.containsInAnyOrder("111-22-33333", "222-33-44444")))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners[*].name")
                         .value(org.hamcrest.Matchers.containsInAnyOrder("(주)테스트거래처", "추가 거래처")));
     }
@@ -332,6 +334,8 @@ class PartnerInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners.length()").value(1))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners[0].id")
                         .value(saved.getId().toString()))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners[0].bizNo")
+                        .value("111-22-33333"))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.partners[0].name")
                         .value("(주)테스트거래처"));
     }

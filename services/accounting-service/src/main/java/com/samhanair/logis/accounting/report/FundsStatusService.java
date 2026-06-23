@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.report;
 
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.domain.AccountCategory;
 import com.samhanair.logis.accounting.domain.ChartOfAccount;
 import com.samhanair.logis.accounting.domain.JournalLine;
@@ -300,8 +301,17 @@ public class FundsStatusService {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(partnerIds));
-        return resolved == null ? Map.of() : resolved;
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(partnerIds));
+        if (resolved == null || resolved.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> names = new LinkedHashMap<>();
+        resolved.forEach((id, summary) -> {
+            if (summary != null && summary.name() != null) {
+                names.put(id, summary.name());
+            }
+        });
+        return names;
     }
 
     private String partnerDisplayName(UUID partnerId, Map<UUID, String> partnerNames) {

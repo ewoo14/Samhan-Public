@@ -3,8 +3,10 @@ package com.samhanair.logis.accounting.service;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.PartnerSummary;
+import com.samhanair.logis.accounting.domain.AccountCategory;
 import com.samhanair.logis.accounting.domain.ChartOfAccount;
 import com.samhanair.logis.accounting.domain.JournalLine;
+import com.samhanair.logis.accounting.report.BalanceDirection;
 import com.samhanair.logis.accounting.repository.ChartOfAccountRepository;
 import com.samhanair.logis.accounting.repository.JournalLineRepository;
 import com.samhanair.logis.accounting.web.dto.LedgerResponse;
@@ -122,9 +124,9 @@ public class LedgerService {
                 .map(JournalLine::getAccountCode)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, String> accountNameCache = chartOfAccountRepository.findAllById(accountCodes)
+        Map<String, ChartOfAccount> accountCache = chartOfAccountRepository.findAllById(accountCodes)
                 .stream()
-                .collect(Collectors.toMap(ChartOfAccount::getCode, ChartOfAccount::getName));
+                .collect(Collectors.toMap(ChartOfAccount::getCode, account -> account));
 
         // 원장 라인 변환 + 누적 잔액 계산
         BigDecimal balance = BigDecimal.ZERO;
@@ -144,16 +146,23 @@ public class LedgerService {
                     ? partnerCodeCache.get(l.getPartnerId())
                     : null;
 
-            // SP-08-FU2 P2-4 — 계정명 캐시 조회
-            String accountName = l.getAccountCode() != null
-                    ? accountNameCache.get(l.getAccountCode())
+            // SP-08-FU2 P2-4 + 슬E — 계정명/분류/정상 잔액방향 메타 캐시 조회
+            ChartOfAccount account = l.getAccountCode() != null
+                    ? accountCache.get(l.getAccountCode())
                     : null;
+            String accountName = account != null ? account.getName() : null;
+            AccountCategory accountCategory = account != null ? account.getCategory() : null;
+            BalanceDirection balanceDirection = resolveBalanceDirection(accountCategory);
 
             ledgerLines.add(new LedgerLine(
                     l.getJournal().getJournalDate(),
                     l.getJournal().getJournalNo(),
                     l.getAccountCode(),
                     accountName,
+                    accountCategory,
+                    accountCategory != null ? accountCategory.getDisplayName() : null,
+                    balanceDirection,
+                    balanceDirection != null ? balanceDirection.getDisplayName() : null,
                     linePartnerCode,
                     l.getMemo() != null ? l.getMemo() : l.getJournal().getDescription(),
                     debit,
@@ -193,6 +202,25 @@ public class LedgerService {
             log.debug("[SP-D2] VIEW 동적 권한 false (fallback 또는 deny) — roleCode={} pageCode={}",
                     actorRole, PAGE_CODE);
         }
+    }
+
+    /**
+     * 계정 카테고리별 정상 잔액 방향을 산출한다.
+     *
+     * <p>시산표 요약과 같은 규칙을 사용한다. 자산/비용성 계정은 차변잔액,
+     * 부채/자본/수익성 계정은 대변잔액으로 표시한다.
+     *
+     * @param category 계정 카테고리
+     * @return 정상 잔액 방향. 계정 마스터가 없으면 null.
+     */
+    private BalanceDirection resolveBalanceDirection(AccountCategory category) {
+        if (category == null) {
+            return null;
+        }
+        return switch (category) {
+            case ASSET, COST_OF_SALES, SGA, INCOME_TAX -> BalanceDirection.DEBIT;
+            case LIABILITY, EQUITY, REVENUE, NON_OPERATING -> BalanceDirection.CREDIT;
+        };
     }
 
 }

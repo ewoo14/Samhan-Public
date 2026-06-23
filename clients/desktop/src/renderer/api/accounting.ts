@@ -1212,6 +1212,16 @@ export interface GeneralLedgerLine {
   journalNo: string
   /** 계정 코드. */
   accountCode: string
+  /** 계정명. 화면에서는 코드 prefix 없이 이 필드만 계정명으로 표시한다. */
+  accountName?: string | null
+  /** 계정 카테고리 enum. */
+  accountCategory?: string | null
+  /** 계정 카테고리 한국어 표시명. */
+  accountCategoryDisplayName?: string | null
+  /** 정상 잔액 방향. */
+  balanceDirection?: 'DEBIT' | 'CREDIT' | null
+  /** 정상 잔액 방향 한국어 표시명. */
+  balanceDirectionDisplayName?: string | null
   /** 거래처 코드 (partnerCode, 화면 표시 OK). */
   partnerCode: string | null
   /** 적요. */
@@ -1288,6 +1298,85 @@ export async function getGeneralLedger(
   if (options.partnerCode) params['partnerCode'] = options.partnerCode
   const res = await apiClient.get<ApiEnvelope<GeneralLedgerResponse>>(
     '/accounting/ledgers',
+    { params },
+  )
+  return res.data.data
+}
+
+// --------------------------------------------------------------------------
+// 계정명세서 API — 원장 통일안 E
+// --------------------------------------------------------------------------
+
+export type AccountStatementBalanceDirection = 'DEBIT' | 'CREDIT'
+
+export interface AccountStatementAmountSummary {
+  openingBalance: string
+  increase: string
+  decrease: string
+  debitTotal: string
+  creditTotal: string
+  balance: string
+}
+
+export interface AccountStatementLine {
+  accountCode: string
+  accountName: string
+  partnerCode: string
+  bizNo: string
+  partnerName: string
+  openingBalance: string
+  increase: string
+  decrease: string
+  debitTotal: string
+  creditTotal: string
+  balance: string
+}
+
+export interface AccountStatementAccountSection {
+  accountCode: string
+  accountName: string
+  category: string
+  categoryDisplayName: string
+  balanceDirection: AccountStatementBalanceDirection
+  balanceDirectionDisplayName: string
+  lines: AccountStatementLine[]
+  subtotal: AccountStatementAmountSummary
+}
+
+export interface AccountStatementAccountGroup {
+  groupCode: string
+  groupName: string
+  balanceDirection: AccountStatementBalanceDirection
+  accounts: AccountStatementAccountSection[]
+  subtotal: AccountStatementAmountSummary
+}
+
+export interface AccountStatementTotal {
+  receivableTotal: AccountStatementAmountSummary | null
+  payableTotal: AccountStatementAmountSummary | null
+}
+
+export interface AccountStatementResponse {
+  asOfDate: string
+  accountCode: string | null
+  groups: AccountStatementAccountGroup[]
+  total: AccountStatementTotal
+  generatedAt: string
+}
+
+/**
+ * 계정명세서 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/account-statement?asOfDate=&accountCode=`.
+ */
+export async function getAccountStatement(
+  asOfDate: string,
+  accountCode?: string,
+): Promise<AccountStatementResponse> {
+  const params: Record<string, string> = { asOfDate }
+  if (accountCode && accountCode.trim()) params['accountCode'] = accountCode.trim()
+  const res = await apiClient.get<ApiEnvelope<AccountStatementResponse>>(
+    '/accounting/reports/account-statement',
     { params },
   )
   return res.data.data

@@ -751,6 +751,7 @@ export function AppLayout() {
               '/accounting/balances',
               '/accounting/reports',
               '/accounting/reports/journal-status',
+              '/accounting/reports/account-statement',
               '/accounting/reports/funds-flow-comparison',
               '/accounting/funds/status',
               '/sales/closing',
@@ -928,6 +929,14 @@ export function AppLayout() {
                     style={{ paddingLeft: 20, fontSize: 13 }}
                   >
                     전표현황
+                  </NavLink>
+                  <NavLink
+                    to="/accounting/reports/account-statement"
+                    end
+                    data-testid="sidebar-accounting-account-statement"
+                    style={{ paddingLeft: 20, fontSize: 13 }}
+                  >
+                    계정명세서
                   </NavLink>
                   <NavLink
                     to="/accounting/funds/status"
