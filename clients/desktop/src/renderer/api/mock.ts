@@ -4669,6 +4669,51 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // GET /accounting/reports/receivables-payables?asOfDate=&direction= — 채권채무 현황
+  if (method === 'GET' && url.includes('/accounting/reports/receivables-payables')) {
+    const asOfDate = (config.params?.['asOfDate'] ?? '2026-06-30') as string
+    const direction = (config.params?.['direction'] ?? 'ALL') as 'RECEIVABLE' | 'PAYABLE' | 'ALL'
+    const lines = MOCK_RECEIVABLES_PAYABLES.lines
+      .filter((row) => {
+        if (direction === 'RECEIVABLE') return Number(row.receivableBalance) > 0 || Number(row.notesHeldAmount) > 0
+        if (direction === 'PAYABLE') return Number(row.payableBalance) > 0
+        return true
+      })
+      .map((row) => ({
+        ...row,
+        payableBalance: direction === 'RECEIVABLE' ? '0' : row.payableBalance,
+        receivableBalance: direction === 'PAYABLE' ? '0' : row.receivableBalance,
+        netBalance: direction === 'PAYABLE'
+          ? String(-Number(row.payableBalance))
+          : direction === 'RECEIVABLE'
+          ? String(Number(row.receivableBalance))
+          : row.netBalance,
+        agingBuckets: direction === 'PAYABLE'
+          ? {
+              currentMonth: String(-Math.abs(Number(row.payableAgingBuckets.currentMonth))),
+              oneMonthElapsed: String(-Math.abs(Number(row.payableAgingBuckets.oneMonthElapsed))),
+              twoMonthsElapsed: String(-Math.abs(Number(row.payableAgingBuckets.twoMonthsElapsed))),
+              threeMonthsOver: String(-Math.abs(Number(row.payableAgingBuckets.threeMonthsOver))),
+            }
+          : direction === 'RECEIVABLE'
+          ? row.receivableAgingBuckets
+          : row.agingBuckets,
+      }))
+      .map(({ receivableAgingBuckets: _receivableAgingBuckets, payableAgingBuckets: _payableAgingBuckets, ...row }) => row)
+    const receivableTotal = lines.reduce((sum, row) => sum + Number(row.receivableBalance), 0)
+    const payableTotal = lines.reduce((sum, row) => sum + Number(row.payableBalance), 0)
+    return envelope({
+      asOfDate,
+      direction,
+      receivableTotal: String(receivableTotal),
+      payableTotal: String(payableTotal),
+      netTotal: String(receivableTotal - payableTotal),
+      partnerCount: lines.length,
+      lines,
+      generatedAt: new Date().toISOString(),
+    })
+  }
+
   // GET /accounting/reports/partner-aging?asOfDate=&type= — 거래처별 미수/미지급
   if (method === 'GET' && url.includes('/accounting/reports/partner-aging')) {
     const asOfDate = (config.params?.['asOfDate'] ?? '2026-05-31') as string
@@ -13031,6 +13076,110 @@ const MOCK_PARTNER_AGING_PAYABLE = {
     },
   ],
   generatedAt: '2026-05-10T09:00:00+09:00',
+}
+
+const MOCK_RECEIVABLES_PAYABLES = {
+  lines: [
+    {
+      bizNo: '1234567890',
+      partnerCode: 'P-2026-0001',
+      partnerName: '삼한공조 A',
+      receivableBalance: '6500000',
+      payableBalance: '0',
+      netBalance: '6500000',
+      receivableAgingBuckets: {
+        currentMonth: '1000000',
+        oneMonthElapsed: '2000000',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '3500000',
+      },
+      payableAgingBuckets: {
+        currentMonth: '0',
+        oneMonthElapsed: '0',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '0',
+      },
+      agingBuckets: {
+        currentMonth: '1000000',
+        oneMonthElapsed: '2000000',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '3500000',
+      },
+      creditLimit: '10000000',
+      creditUsageRate: '65.00',
+      notesHeldAmount: '1000000',
+      notesMaturingSoonAmount: '800000',
+      collectionPlanPlannedAmount: '700000',
+      collectionPlanOverdueAmount: '300000',
+      collectionPlanTotalAmount: '1000000',
+    },
+    {
+      bizNo: '2223344444',
+      partnerCode: 'P-2026-0002',
+      partnerName: '아로물류 B',
+      receivableBalance: '1800000',
+      payableBalance: '2500000',
+      netBalance: '-700000',
+      receivableAgingBuckets: {
+        currentMonth: '0',
+        oneMonthElapsed: '1800000',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '0',
+      },
+      payableAgingBuckets: {
+        currentMonth: '500000',
+        oneMonthElapsed: '0',
+        twoMonthsElapsed: '2000000',
+        threeMonthsOver: '0',
+      },
+      agingBuckets: {
+        currentMonth: '-500000',
+        oneMonthElapsed: '1800000',
+        twoMonthsElapsed: '-2000000',
+        threeMonthsOver: '0',
+      },
+      creditLimit: '5000000',
+      creditUsageRate: '36.00',
+      notesHeldAmount: '880000',
+      notesMaturingSoonAmount: '880000',
+      collectionPlanPlannedAmount: '0',
+      collectionPlanOverdueAmount: '880000',
+      collectionPlanTotalAmount: '880000',
+    },
+    {
+      bizNo: '3334455555',
+      partnerCode: 'P-2026-0003',
+      partnerName: '대한운송 C',
+      receivableBalance: '0',
+      payableBalance: '3200000',
+      netBalance: '-3200000',
+      receivableAgingBuckets: {
+        currentMonth: '0',
+        oneMonthElapsed: '0',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '0',
+      },
+      payableAgingBuckets: {
+        currentMonth: '0',
+        oneMonthElapsed: '900000',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '2300000',
+      },
+      agingBuckets: {
+        currentMonth: '0',
+        oneMonthElapsed: '-900000',
+        twoMonthsElapsed: '0',
+        threeMonthsOver: '-2300000',
+      },
+      creditLimit: null,
+      creditUsageRate: null,
+      notesHeldAmount: '0',
+      notesMaturingSoonAmount: '0',
+      collectionPlanPlannedAmount: '0',
+      collectionPlanOverdueAmount: '0',
+      collectionPlanTotalAmount: '0',
+    },
+  ],
 }
 
 let MOCK_NOTES_RECEIVABLE: Array<{

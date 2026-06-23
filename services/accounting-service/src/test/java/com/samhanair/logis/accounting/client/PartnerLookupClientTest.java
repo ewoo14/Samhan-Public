@@ -126,6 +126,7 @@ class PartnerLookupClientTest {
         assertThat(result.name()).isEqualTo("(주)테스트거래처");
         assertThat(result.businessNo()).isEqualTo("111-22-33333");
         assertThat(result.bizNo()).isEqualTo("111-22-33333");
+        assertThat(result.creditLimit()).isEqualByComparingTo("5000000");
         assertThat(result.address()).isNull();
         server.verify();
     }

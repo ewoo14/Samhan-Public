@@ -247,6 +247,13 @@ export function ReportListPage() {
           path="/accounting/reports/journal-status"
         />
         <ReportCard
+          icon="📊"
+          title="채권채무 현황"
+          badge="G-3"
+          description="채권·채무 잔액과 월별 aging, 여신, 받을어음, 수금계획을 함께 조회합니다."
+          path="/accounting/reports/receivables-payables"
+        />
+        <ReportCard
           icon="📒"
           title="계정명세서"
           badge="원장"

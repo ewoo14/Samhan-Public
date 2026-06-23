@@ -763,6 +763,60 @@ export async function getPartnerAging(
   return res.data.data
 }
 
+export type ReceivablesPayablesDirection = 'RECEIVABLE' | 'PAYABLE' | 'ALL'
+
+export interface ReceivablesPayablesAgingBuckets {
+  currentMonth: string | number
+  oneMonthElapsed: string | number
+  twoMonthsElapsed: string | number
+  threeMonthsOver: string | number
+}
+
+/** 채권채무 현황 행. UUID 없이 거래처 표시 식별자와 금액 집계만 사용한다. */
+export interface ReceivablesPayablesLine {
+  bizNo: string
+  partnerCode: string
+  partnerName: string
+  receivableBalance: string | number
+  payableBalance: string | number
+  netBalance: string | number
+  agingBuckets: ReceivablesPayablesAgingBuckets
+  creditLimit: string | number | null
+  creditUsageRate: string | number | null
+  notesHeldAmount: string | number
+  notesMaturingSoonAmount: string | number
+  collectionPlanPlannedAmount: string | number
+  collectionPlanOverdueAmount: string | number
+  collectionPlanTotalAmount: string | number
+}
+
+export interface ReceivablesPayablesResponse {
+  asOfDate: string
+  direction: ReceivablesPayablesDirection
+  receivableTotal: string | number
+  payableTotal: string | number
+  netTotal: string | number
+  partnerCount: number
+  lines: ReceivablesPayablesLine[]
+  generatedAt: string
+}
+
+/**
+ * 채권채무 현황 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/receivables-payables?asOfDate=&direction=`.
+ */
+export async function getReceivablesPayables(
+  asOfDate: string,
+  direction: ReceivablesPayablesDirection,
+): Promise<ReceivablesPayablesResponse> {
+  const res = await apiClient.get<ApiEnvelope<ReceivablesPayablesResponse>>(
+    '/accounting/reports/receivables-payables',
+    { params: { asOfDate, direction } },
+  )
+  return res.data.data
+}
+
 // ==========================================================================
 // P0-1 Slice C: 분석 보고서 API (현금흐름표 / 자본변동표 / 일계표 / 월계표)
 // ==========================================================================

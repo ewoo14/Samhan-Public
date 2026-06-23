@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -303,10 +304,11 @@ public class PartnerLookupClient {
             String name = textOrNull(data, "name", "partnerName", "businessName");
             String businessNo = textOrNull(data, "bizNo", "businessNo", "businessRegistrationNumber");
             String address = textOrNull(data, "address");
+            BigDecimal creditLimit = decimalOrNull(data, "creditLimit");
             if (partnerCode == null || partnerCode.isBlank()) {
                 return Optional.empty();
             }
-            return Optional.of(new PartnerSummary(partnerId, partnerCode, name, businessNo, address));
+            return Optional.of(new PartnerSummary(partnerId, partnerCode, name, businessNo, address, creditLimit));
         } catch (Exception ex) {
             log.warn("PartnerLookupClient response 파싱 실패 — bodyLen={}, msg={}",
                     body.length(), ex.getMessage());
@@ -333,8 +335,9 @@ public class PartnerLookupClient {
                 String name = textOrNull(partner, "name", "partnerName", "businessName");
                 String businessNo = textOrNull(partner, "bizNo", "businessNo", "businessRegistrationNumber");
                 String address = textOrNull(partner, "address");
+                BigDecimal creditLimit = decimalOrNull(partner, "creditLimit");
                 if (id != null && (partnerCode != null || name != null)) {
-                    result.put(id, new PartnerSummary(id, partnerCode, name, businessNo, address));
+                    result.put(id, new PartnerSummary(id, partnerCode, name, businessNo, address, creditLimit));
                 }
             }
             return result;
@@ -363,8 +366,9 @@ public class PartnerLookupClient {
                 String name = textOrNull(partner, "name", "partnerName", "businessName");
                 String businessNo = textOrNull(partner, "bizNo", "businessNo", "businessRegistrationNumber");
                 String address = textOrNull(partner, "address");
+                BigDecimal creditLimit = decimalOrNull(partner, "creditLimit");
                 if (id != null && partnerCode != null && !partnerCode.isBlank()) {
-                    result.add(new PartnerSummary(id, partnerCode, name, businessNo, address));
+                    result.add(new PartnerSummary(id, partnerCode, name, businessNo, address, creditLimit));
                 }
             }
             return result;
@@ -380,6 +384,20 @@ public class PartnerLookupClient {
             JsonNode n = node.get(k);
             if (n != null && !n.isNull() && !n.asText().isBlank()) {
                 return n.asText();
+            }
+        }
+        return null;
+    }
+
+    private static BigDecimal decimalOrNull(JsonNode node, String... keys) {
+        for (String k : keys) {
+            JsonNode n = node.get(k);
+            if (n != null && !n.isNull() && !n.asText().isBlank()) {
+                try {
+                    return n.isNumber() ? n.decimalValue() : new BigDecimal(n.asText());
+                } catch (NumberFormatException ignore) {
+                    return null;
+                }
             }
         }
         return null;
