@@ -160,12 +160,7 @@ export function NotesReceivablePage() {
       key: 'partnerName',
       header: '거래처명',
       width: '180px',
-      render: (row) => (
-        <span>
-          {row.partnerName}
-          <span style={{ color: 'var(--color-neutral-400)' }}> · {row.partnerCode}</span>
-        </span>
-      ),
+      render: (row) => row.partnerName,
     },
     { key: 'issueDate', header: '발행일', width: '110px' },
     { key: 'maturityDate', header: '만기일', width: '110px' },
@@ -291,7 +286,7 @@ export function NotesReceivablePage() {
               <>
                 <span>{partner.name}</span>
                 <span style={{ color: 'var(--color-neutral-400)' }}> · </span>
-                <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? partner.partnerCode}</span>
+                <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? '사업자번호 없음'}</span>
               </>
             )}
             label="거래처"
@@ -354,7 +349,7 @@ export function NotesReceivablePage() {
                 <>
                   <span>{partner.name}</span>
                   <span style={{ color: 'var(--color-neutral-400)' }}> · </span>
-                  <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? partner.partnerCode}</span>
+                  <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? '사업자번호 없음'}</span>
                 </>
               )}
               label="거래처"

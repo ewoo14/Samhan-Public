@@ -12,7 +12,7 @@
  * <h2>구성 (A4 세로)</h2>
  * <ul>
  *   <li>상단: 회사 표기 ((주)삼한공조시스템) + "거래처 원장" 타이틀 + 기간 (from~to)</li>
- *   <li>거래처 정보 박스: partnerCode + 사업자번호 + 거래처명 + 단톡방</li>
+ *   <li>거래처 정보 박스: 사업자번호 + 거래처명 + 단톡방</li>
  *   <li>본문: 분개 line 표 (date / slipNo / 적요 / 차변 / 대변 / 잔액)</li>
  *   <li>합계 row: 차변 합계 / 대변 합계 / 기말 잔액</li>
  *   <li>하단: 발행자 footer</li>
@@ -24,7 +24,7 @@
  * 본 1차 mock 단계에서는 데이터 source 미연결 — {@link MOCK_DATA} 를 사용한다.
  *
  * <h2>UUID 비공개 가드</h2>
- * <p>화면 노출 식별자는 {@code partnerCode} / {@code partnerName} / {@code slipNo} /
+ * <p>화면 노출 식별자는 {@code businessRegNo} / {@code partnerName} / {@code slipNo} /
  * {@code businessRegNo} / {@code chatRoomName} 만. UUID 는 useParams 에서
  * 추출하지 않으며, BE 응답에서도 partner_id 는 제거 대상.
  *
@@ -71,7 +71,7 @@ interface LedgerLine {
  * BE-A9 응답 형식 — 1차 mock 단계 placeholder.
  */
 interface PartnerLedgerData {
-  /** 거래처 코드 (사용자 노출 식별자 — UUID 비공개 가드). */
+  /** 내부 partnerCode. 조회 query key 로만 사용하고 화면에는 표시하지 않는다. */
   partnerCode: string
   /** 거래처명 (snapshot — 인쇄 양식 표시용). */
   partnerName: string
@@ -223,7 +223,7 @@ export function PartnerLedgerView() {
 
   const { company } = useCompanyProfile()
 
-  usePageTitle('거래처 원장', `${data.partnerCode} ${data.partnerName}`)
+  usePageTitle('거래처 원장', data.partnerName)
 
   return (
     <PrintLayout paper="a4-portrait" backTo="/accounting">
@@ -244,7 +244,6 @@ export function PartnerLedgerView() {
                 <th>거래처</th>
                 <td className={styles.partnerName}>
                   {data.partnerName}
-                  <span className={styles.partnerCode}>({data.partnerCode})</span>
                 </td>
                 <th>사업자번호</th>
                 <td className={styles.num}>{data.businessRegNo || '-'}</td>

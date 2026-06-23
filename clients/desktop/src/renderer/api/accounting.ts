@@ -1932,6 +1932,114 @@ export async function getCollectionPlanForecast(
 }
 
 // --------------------------------------------------------------------------
+// 입출금 매칭 API — 회계 보고 스위트 H-1
+// --------------------------------------------------------------------------
+
+export type BankTxnType = 'DEPOSIT' | 'WITHDRAWAL'
+export type BankTxnSource = 'CSV_IMPORT' | 'KFTC'
+export type BankMatchStatus = 'UNREFLECTED' | 'REFLECTED' | 'FORCED'
+
+export const BANK_TXN_TYPE_LABEL: Record<BankTxnType, string> = {
+  DEPOSIT: '입금',
+  WITHDRAWAL: '출금',
+}
+
+export const BANK_TXN_SOURCE_LABEL: Record<BankTxnSource, string> = {
+  CSV_IMPORT: 'CSV',
+  KFTC: 'KFTC',
+}
+
+export const BANK_MATCH_STATUS_LABEL: Record<BankMatchStatus, string> = {
+  UNREFLECTED: '미반영',
+  REFLECTED: '회계반영',
+  FORCED: '강제',
+}
+
+/** 통장 거래 행. UUID 없이 externalRef + 표시 식별자만 사용한다. */
+export interface BankTransactionRow {
+  transactedAt: string
+  txnType: BankTxnType
+  amount: string | number
+  balanceAfter?: string | number | null
+  description: string
+  counterpartyName?: string | null
+  counterpartyAccount?: string | null
+  bankAccountLabel: string
+  source: BankTxnSource
+  externalRef: string
+  matchStatus: BankMatchStatus
+  matchedPartnerCode?: string | null
+  matchedBizNo?: string | null
+  matchedPartnerName?: string | null
+}
+
+export interface ListBankTransactionsOptions {
+  matchStatus?: BankMatchStatus
+  from?: string
+  to?: string
+  bankAccountLabel?: string
+}
+
+export interface ImportBankTransactionsMapping {
+  bankAccountLabel: string
+  dateColumn: string
+  depositColumn?: string
+  withdrawalColumn?: string
+  balanceColumn?: string
+  descriptionColumn: string
+  counterpartyColumn?: string
+  counterpartyAccountColumn?: string
+  externalRefColumn?: string
+  headerRow?: boolean
+}
+
+export interface BankTransactionImportResult {
+  totalRows: number
+  importedCount: number
+  duplicateSkippedCount: number
+}
+
+export async function listBankTransactions(
+  options: ListBankTransactionsOptions = {},
+): Promise<BankTransactionRow[]> {
+  const params: Record<string, string> = {}
+  if (options.matchStatus) params['matchStatus'] = options.matchStatus
+  if (options.from) params['from'] = options.from
+  if (options.to) params['to'] = options.to
+  if (options.bankAccountLabel) params['bankAccountLabel'] = options.bankAccountLabel
+
+  const res = await apiClient.get<ApiEnvelope<BankTransactionRow[]>>(
+    '/accounting/bank-transactions',
+    { params },
+  )
+  return res.data.data ?? []
+}
+
+export async function importBankTransactionsCsv(
+  file: File,
+  mapping: ImportBankTransactionsMapping,
+): Promise<BankTransactionImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('bankAccountLabel', mapping.bankAccountLabel)
+  form.append('dateColumn', mapping.dateColumn)
+  if (mapping.depositColumn) form.append('depositColumn', mapping.depositColumn)
+  if (mapping.withdrawalColumn) form.append('withdrawalColumn', mapping.withdrawalColumn)
+  if (mapping.balanceColumn) form.append('balanceColumn', mapping.balanceColumn)
+  form.append('descriptionColumn', mapping.descriptionColumn)
+  if (mapping.counterpartyColumn) form.append('counterpartyColumn', mapping.counterpartyColumn)
+  if (mapping.counterpartyAccountColumn) form.append('counterpartyAccountColumn', mapping.counterpartyAccountColumn)
+  if (mapping.externalRefColumn) form.append('externalRefColumn', mapping.externalRefColumn)
+  form.append('headerRow', String(mapping.headerRow ?? true))
+
+  const res = await apiClient.post<ApiEnvelope<BankTransactionImportResult>>(
+    '/accounting/bank-transactions/import',
+    form,
+  )
+  return res.data.data
+}
+
+// --------------------------------------------------------------------------
 // 자금 입출금내역 2기간 비교 API — 회계 보고 스위트 통일안 B
 // --------------------------------------------------------------------------
 

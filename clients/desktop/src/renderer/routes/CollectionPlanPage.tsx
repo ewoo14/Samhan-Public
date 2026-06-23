@@ -196,12 +196,7 @@ export function CollectionPlanPage() {
       key: 'partnerName',
       header: '거래처명',
       width: '180px',
-      render: (row) => (
-        <span>
-          {row.partnerName}
-          <span style={{ color: 'var(--color-neutral-400)' }}> · {row.partnerCode}</span>
-        </span>
-      ),
+      render: (row) => row.partnerName,
     },
     { key: 'plannedDate', header: '예정일', width: '110px' },
     {
@@ -328,7 +323,7 @@ export function CollectionPlanPage() {
               <>
                 <span>{partner.name}</span>
                 <span style={{ color: 'var(--color-neutral-400)' }}> · </span>
-                <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? partner.partnerCode}</span>
+                <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? '사업자번호 없음'}</span>
               </>
             )}
             label="거래처"
@@ -438,7 +433,7 @@ export function CollectionPlanPage() {
                 <>
                   <span>{partner.name}</span>
                   <span style={{ color: 'var(--color-neutral-400)' }}> · </span>
-                  <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? partner.partnerCode}</span>
+                  <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? '사업자번호 없음'}</span>
                 </>
               )}
               label="거래처"

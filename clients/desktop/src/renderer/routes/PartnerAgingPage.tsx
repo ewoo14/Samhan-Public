@@ -10,7 +10,7 @@
  *
  * UUID 비공개 가드:
  * - `PartnerAgingLine` 응답에는 partner UUID 를 포함하지 않는다 (feedback_uuid_no_user_visibility).
- * - 사용자에게 노출되는 식별자: `partnerCode` / `bizNo` / `partnerName` 만.
+ * - 사용자에게 노출되는 식별자: `bizNo` / `partnerName` 만.
  *
  * API: `GET /accounting/reports/partner-aging?asOfDate=YYYY-MM-DD&type=RECEIVABLE|PAYABLE`
  *
@@ -118,9 +118,9 @@ function agingBadgeStyle(agingDays: number): React.CSSProperties {
 
 /** CSV 다운로드 — Blob API (UUID 는 포함 안 함). */
 function downloadCsv(data: PartnerAgingResponse): void {
-  const header = '관리코드,거래처코드,거래처명,잔액,가장오래된일자,연체일수'
+  const header = '거래처코드,거래처명,잔액,가장오래된일자,연체일수'
   const rows = (data.lines ?? []).map((l) =>
-    [l.partnerCode, l.bizNo?.replace(/\D/g, '') ?? '', l.partnerName, l.balance, l.oldestUnpaidDate ?? '', l.agingDays].join(','),
+    [l.bizNo?.replace(/\D/g, '') ?? '', l.partnerName, l.balance, l.oldestUnpaidDate ?? '', l.agingDays].join(','),
   )
   const csv = [header, ...rows].join('\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -384,7 +384,6 @@ export function PartnerAgingPage() {
                     textAlign: 'left',
                   }}
                 >
-                  <th style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>관리코드</th>
                   <th style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>거래처코드</th>
                   <th style={{ padding: '6px 8px' }}>거래처명</th>
                   <th style={{ padding: '6px 8px', textAlign: 'right' }}>잔액</th>
@@ -413,16 +412,6 @@ export function PartnerAgingPage() {
                           : 'var(--color-bg-subtle)',
                     }}
                   >
-                    {/* UUID 비공개: partnerCode/bizNo 만 표시. */}
-                    <td
-                      style={{
-                        padding: '6px 8px',
-                        color: 'var(--color-neutral-700)',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {line.partnerCode}
-                    </td>
                     <td
                       style={{
                         padding: '6px 8px',
@@ -472,7 +461,7 @@ export function PartnerAgingPage() {
                   }}
                 >
                   <td
-                    colSpan={3}
+                    colSpan={2}
                     style={{ padding: '6px 8px', fontWeight: 700 }}
                   >
                     합계

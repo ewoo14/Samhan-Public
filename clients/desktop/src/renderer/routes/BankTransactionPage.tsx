@@ -1,0 +1,408 @@
+import { useEffect, useMemo, useState } from 'react'
+import type React from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Button,
+  Card,
+  DataTable,
+  Input,
+  Select,
+  Spinner,
+  type DataTableColumn,
+} from '@samhan/design-system'
+import {
+  BANK_MATCH_STATUS_LABEL,
+  BANK_TXN_SOURCE_LABEL,
+  BANK_TXN_TYPE_LABEL,
+  importBankTransactionsCsv,
+  listBankTransactions,
+  type BankMatchStatus,
+  type BankTransactionImportResult,
+  type BankTransactionRow,
+  type ImportBankTransactionsMapping,
+} from '../api/accounting'
+import { usePageTitle } from '../hooks/usePageTitle'
+import { usePermissions } from '../hooks/usePermissions'
+
+type StatusTab = 'ALL' | BankMatchStatus
+
+const STATUS_TABS: Array<{ key: StatusTab; label: string }> = [
+  { key: 'ALL', label: '전체' },
+  { key: 'UNREFLECTED', label: '미반영' },
+  { key: 'REFLECTED', label: '회계반영' },
+  { key: 'FORCED', label: '강제' },
+]
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function monthStartIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+function formatDateTime(value: string): string {
+  if (!value) return '—'
+  return value.replace('T', ' ').slice(0, 16)
+}
+
+function formatKrw(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') return '—'
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return String(raw)
+  if (n === 0) return '—'
+  const abs = Math.abs(Math.round(n)).toLocaleString('ko-KR')
+  return n < 0 ? `-${abs}` : abs
+}
+
+function amountStyle(row: BankTransactionRow): React.CSSProperties {
+  return {
+    color: row.txnType === 'WITHDRAWAL' ? 'var(--state-danger)' : undefined,
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 700,
+  }
+}
+
+function statusStyle(status: BankMatchStatus): React.CSSProperties {
+  const colors: Record<BankMatchStatus, { bg: string; fg: string }> = {
+    UNREFLECTED: { bg: 'var(--state-warning-bg)', fg: 'var(--state-warning)' },
+    REFLECTED: { bg: 'var(--state-success-bg)', fg: 'var(--state-success)' },
+    FORCED: { bg: 'var(--color-primary-50)', fg: 'var(--color-primary-700)' },
+  }
+  const color = colors[status]
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 24,
+    padding: '0 8px',
+    borderRadius: 6,
+    background: color.bg,
+    color: color.fg,
+    fontSize: 12,
+    fontWeight: 700,
+  }
+}
+
+function initialMapping(): ImportBankTransactionsMapping {
+  return {
+    bankAccountLabel: '국민 123456-78-901234',
+    dateColumn: '거래일시',
+    depositColumn: '입금액',
+    withdrawalColumn: '출금액',
+    balanceColumn: '잔액',
+    descriptionColumn: '적요',
+    counterpartyColumn: '상대',
+    counterpartyAccountColumn: '',
+    externalRefColumn: '',
+    headerRow: true,
+  }
+}
+
+export function BankTransactionPage() {
+  usePageTitle('입출금 매칭', 'CSV import')
+
+  const queryClient = useQueryClient()
+  const { canAccess } = usePermissions()
+  const canCreate = canAccess('accounting.bank-matching', 'create')
+  const [activeTab, setActiveTab] = useState<StatusTab>('ALL')
+  const [filters, setFilters] = useState({
+    from: monthStartIso(),
+    to: todayIso(),
+    bankAccountLabel: '',
+  })
+  const [queryFilters, setQueryFilters] = useState(filters)
+  const [mapping, setMapping] = useState<ImportBankTransactionsMapping>(() => initialMapping())
+  const [file, setFile] = useState<File | null>(null)
+  const [result, setResult] = useState<BankTransactionImportResult | null>(null)
+  const [toast, setToast] = useState<{ type: 'error'; message: string } | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
+  const transactionsQuery = useQuery({
+    queryKey: [
+      'accounting',
+      'bank-transactions',
+      activeTab,
+      queryFilters.from,
+      queryFilters.to,
+      queryFilters.bankAccountLabel,
+    ],
+    queryFn: () => listBankTransactions({
+      matchStatus: activeTab === 'ALL' ? undefined : activeTab,
+      from: queryFilters.from || undefined,
+      to: queryFilters.to || undefined,
+      bankAccountLabel: queryFilters.bankAccountLabel || undefined,
+    }),
+  })
+
+  const importMutation = useMutation({
+    mutationFn: () => {
+      if (!file) throw new Error('CSV 파일을 선택하세요.')
+      return importBankTransactionsCsv(file, mapping)
+    },
+    onSuccess: async (data) => {
+      setResult(data)
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
+    },
+    onError: () => setToast({ type: 'error', message: '통장 CSV import 중 오류가 발생했습니다.' }),
+  })
+
+  const rows = transactionsQuery.data ?? []
+  const totalDeposit = rows
+    .filter((row) => row.txnType === 'DEPOSIT')
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  const totalWithdrawal = rows
+    .filter((row) => row.txnType === 'WITHDRAWAL')
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
+
+  const columns = useMemo<DataTableColumn<BankTransactionRow>[]>(() => [
+    {
+      key: 'transactedAt',
+      header: '거래일시',
+      width: '150px',
+      render: (row) => formatDateTime(row.transactedAt),
+    },
+    {
+      key: 'txnType',
+      header: '입출',
+      width: '72px',
+      render: (row) => BANK_TXN_TYPE_LABEL[row.txnType],
+    },
+    {
+      key: 'amount',
+      header: '금액',
+      align: 'right',
+      width: '130px',
+      render: (row) => <span style={amountStyle(row)}>{formatKrw(row.amount)}</span>,
+    },
+    {
+      key: 'description',
+      header: '적요',
+      width: '240px',
+      render: (row) => <strong>{row.description}</strong>,
+    },
+    {
+      key: 'counterpartyName',
+      header: '상대',
+      width: '160px',
+      render: (row) => row.counterpartyName || '—',
+    },
+    {
+      key: 'bankAccountLabel',
+      header: '은행계좌',
+      width: '180px',
+    },
+    {
+      key: 'balanceAfter',
+      header: '거래후잔액',
+      align: 'right',
+      width: '130px',
+      render: (row) => formatKrw(row.balanceAfter),
+    },
+    {
+      key: 'source',
+      header: '소스',
+      width: '80px',
+      render: (row) => BANK_TXN_SOURCE_LABEL[row.source],
+    },
+    {
+      key: 'matchStatus',
+      header: '매칭상태',
+      width: '100px',
+      render: (row) => (
+        <span style={statusStyle(row.matchStatus)}>
+          {BANK_MATCH_STATUS_LABEL[row.matchStatus]}
+        </span>
+      ),
+    },
+  ], [])
+
+  const canImport = canCreate
+    && Boolean(file)
+    && Boolean(mapping.bankAccountLabel.trim())
+    && Boolean(mapping.dateColumn.trim())
+    && Boolean(mapping.descriptionColumn.trim())
+    && (Boolean(mapping.depositColumn?.trim()) || Boolean(mapping.withdrawalColumn?.trim()))
+    && !importMutation.isPending
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>입출금 매칭</h3>
+          <div style={{ marginTop: 4, fontSize: 13, color: 'var(--color-neutral-500)' }}>
+            입금 {formatKrw(totalDeposit)} · 출금 {formatKrw(totalWithdrawal)} · {rows.length}건
+          </div>
+        </div>
+        {transactionsQuery.isFetching ? <Spinner size="sm" /> : null}
+      </div>
+
+      <Card style={{ padding: 16 }}>
+        {toast ? (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 12,
+              padding: '10px 12px',
+              border: '1px solid var(--state-danger)',
+              borderRadius: 6,
+              background: 'var(--state-danger-bg)',
+              color: 'var(--state-danger)',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {toast.message}
+          </div>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(118px, 1fr)) auto', gap: 10, alignItems: 'end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            CSV 파일
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              data-testid="bank-transaction-file"
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            은행계좌
+            <Input
+              value={mapping.bankAccountLabel}
+              onChange={(event) => setMapping((prev) => ({ ...prev, bankAccountLabel: event.target.value }))}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            일자 컬럼
+            <Input value={mapping.dateColumn} onChange={(event) => setMapping((prev) => ({ ...prev, dateColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            입금 컬럼
+            <Input value={mapping.depositColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, depositColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            출금 컬럼
+            <Input value={mapping.withdrawalColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, withdrawalColumn: event.target.value }))} />
+          </label>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={!canImport}
+            onClick={() => importMutation.mutate()}
+            data-testid="bank-transaction-import"
+          >
+            {importMutation.isPending ? '가져오는 중' : '가져오기'}
+          </Button>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            잔액 컬럼
+            <Input value={mapping.balanceColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, balanceColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            적요 컬럼
+            <Input value={mapping.descriptionColumn} onChange={(event) => setMapping((prev) => ({ ...prev, descriptionColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            상대 컬럼
+            <Input value={mapping.counterpartyColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, counterpartyColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            상대계좌 컬럼
+            <Input value={mapping.counterpartyAccountColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, counterpartyAccountColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            외부참조 컬럼
+            <Input value={mapping.externalRefColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, externalRefColumn: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            헤더
+            <Select
+              value={mapping.headerRow ? 'true' : 'false'}
+              onChange={(event) => setMapping((prev) => ({ ...prev, headerRow: event.target.value === 'true' }))}
+            >
+              <option value="true">있음</option>
+              <option value="false">없음</option>
+            </Select>
+          </label>
+        </div>
+
+        {result ? (
+          <div
+            data-testid="bank-transaction-import-result"
+            style={{
+              marginTop: 12,
+              padding: '10px 12px',
+              border: '1px solid var(--color-neutral-200)',
+              borderRadius: 6,
+              background: 'var(--color-neutral-50)',
+              fontSize: 13,
+            }}
+          >
+            전체 {result.totalRows}건 · 적재 {result.importedCount}건 · 중복 skip {result.duplicateSkippedCount}건
+          </div>
+        ) : null}
+      </Card>
+
+      <Card style={{ padding: 16 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
+          <div style={{ display: 'inline-flex', gap: 4, border: '1px solid var(--color-neutral-200)', borderRadius: 6, padding: 3 }}>
+            {STATUS_TABS.map((tab) => (
+              <Button
+                key={tab.key}
+                size="sm"
+                variant={activeTab === tab.key ? 'primary' : 'ghost'}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </Button>
+            ))}
+          </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            시작일
+            <Input type="date" value={filters.from} onChange={(event) => setFilters((prev) => ({ ...prev, from: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            종료일
+            <Input type="date" value={filters.to} onChange={(event) => setFilters((prev) => ({ ...prev, to: event.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, minWidth: 180 }}>
+            은행계좌
+            <Input value={filters.bankAccountLabel} onChange={(event) => setFilters((prev) => ({ ...prev, bankAccountLabel: event.target.value }))} placeholder="전체" />
+          </label>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={transactionsQuery.isFetching}
+            onClick={() => setQueryFilters(filters)}
+          >
+            조회
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const reset = { from: monthStartIso(), to: todayIso(), bankAccountLabel: '' }
+              setFilters(reset)
+              setQueryFilters(reset)
+              setActiveTab('ALL')
+            }}
+          >
+            초기화
+          </Button>
+        </div>
+
+        <DataTable<BankTransactionRow>
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.externalRef}
+          emptyMessage={transactionsQuery.isLoading ? '조회 중' : '입출금 거래가 없습니다'}
+        />
+      </Card>
+    </div>
+  )
+}

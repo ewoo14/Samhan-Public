@@ -20,7 +20,7 @@
  * MANAGER 호출 시 403 발생 → 화면 error banner 안내.
  *
  * <h2>UUID 비공개 가드</h2>
- * <p>화면 표시 식별자 — partnerCode + partnerName + journalNo + partnerBusinessNo +
+ * <p>화면 표시 식별자 — bizNo + partnerName + journalNo + partnerBusinessNo +
  * chatRoomName 만. 어떤 UUID 도 노출 X.
  *
  * <h2>(주)삼한공조시스템 표기</h2>
@@ -109,7 +109,6 @@ function buildCsv(
   // 섹션 1 — 집계
   lines.push(
     [
-      '관리코드',
       '거래처코드',
       '거래처명',
       '매출합계',
@@ -124,7 +123,6 @@ function buildCsv(
   for (const row of aggregate) {
     lines.push(
       [
-        row.partnerCode,
         row.bizNo,
         row.partnerName,
         row.salesTotal,
@@ -142,8 +140,7 @@ function buildCsv(
     lines.push('')
     lines.push(
       [
-        `[원장] ${ledger.partnerCode}`,
-        ledger.partnerName,
+        `[원장] ${ledger.partnerName}`,
         `사업자번호 ${ledger.partnerBusinessNo || '-'}`,
         `단톡방 ${ledger.chatRoomNames.join(' / ') || '-'}`,
         `${ledger.periodFrom} ~ ${ledger.periodTo}`,
@@ -456,7 +453,6 @@ export function PartnerLedgerPage() {
                   <th style={{ ...thStyle, width: 36, textAlign: 'center' }}>
                     선택
                   </th>
-                  <th style={thStyle}>관리코드</th>
                   <th style={thStyle}>거래처코드</th>
                   <th style={thStyle}>거래처명</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>매출 합계</th>
@@ -491,7 +487,6 @@ export function PartnerLedgerPage() {
                           aria-label={`${row.partnerName} 일괄 인쇄 선택`}
                         />
                       </td>
-                      <td style={tdStyle}>{row.partnerCode}</td>
                       <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>
                         {row.bizNo?.replace(/\D/g, '') || '-'}
                       </td>
@@ -548,18 +543,6 @@ export function PartnerLedgerPage() {
         >
           <h3 style={{ margin: 0 }}>
             Step 2 — 거래처 원장
-            {selectedPartner ? (
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 13,
-                  fontWeight: 400,
-                  color: '#6B7280',
-                }}
-              >
-                {selectedPartner}
-              </span>
-            ) : null}
           </h3>
           <Button
             variant="primary"
@@ -623,8 +606,7 @@ function LedgerDetailTable({ data }: { data: LedgerData }) {
       >
         <span style={{ fontWeight: 600 }}>거래처</span>
         <span>
-          {data.partnerName}{' '}
-          <span style={{ color: '#6B7280' }}>({data.partnerCode})</span>
+          {data.partnerName}
         </span>
         <span style={{ fontWeight: 600 }}>사업자번호</span>
         <span>{data.partnerBusinessNo || '-'}</span>

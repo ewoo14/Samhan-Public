@@ -270,7 +270,7 @@ export function JournalStatusReportPage() {
                 <>
                   <span>{partner.name}</span>
                   <span style={{ color: 'var(--color-neutral-400)' }}> · </span>
-                  <span style={{ color: 'var(--color-neutral-500)' }}>{partner.partnerCode}</span>
+                  <span style={{ color: 'var(--color-neutral-500)' }}>{partner.bizNo ?? '사업자번호 없음'}</span>
                 </>
               )}
               label="거래처"
