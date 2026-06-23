@@ -34,7 +34,7 @@ export function buildAccountRows(
       key: `${section}:${code}`,
       kind: 'line',
       label: section === 'increase' ? '증가' : '감소',
-      accountName: `${code} ${name}`,
+      accountName: name,
       current: currentLine?.amount ?? '0',
       prior: priorLine?.amount ?? '0',
     }
