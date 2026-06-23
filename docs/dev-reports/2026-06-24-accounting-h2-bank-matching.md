@@ -21,3 +21,20 @@
 
 - BE IT: 매칭 성공, 해제, 미등록 거래처 404, 반영 거래 재지정 409, 응답 UUID 미노출.
 - FE mock test: 매칭/해제, 탭 필터, UUID 미노출, 반영/강제 행 변경 409.
+
+## Opus 5-agent 라운드 fix (Opus 직접) + 라이브 QA
+
+4-static 리뷰(BE BLOCKING+P1×2+P2×2+P3×2, FE P1+P3, Design P1, DevOps) → Opus 직접 fix:
+- **🔴 BLOCKING 식별자 4-key**: 매칭/해제 식별을 V43 unique index 전체 키(bankAccountLabel+transactedAt+amount+externalRef)로 변경. 2-key(label+externalRef) 충돌 시 정당 행 INVALID_INPUT 거부 회귀 해소. DTO+repository 단건 Optional+service+FE 4-key 전송+IT.
+- **P1**: requireUnreflected 한국어 가드("미반영 상태가 아니라…"), clearPartner REFLECTED 409 IT + 권한 실HTTP IT, 재지정(덮어쓰기) 정책 Javadoc+IT.
+- **P3**: DELETE-body→`PATCH /match-partner/clear`, 영문 예외→CONFLICT 단언, partnerDisplay=bizNo숫자+명, ariaLabel externalRef 미노출.
+- **Design P1**: FORCED 배지 미존재 토큰 `--color-primary`→`--state-info`(런타임 깨짐 해소).
+- **FE P1**: AsyncAutocomplete onChange(null) 미발화→해제는 명시 버튼만(dead 분기 제거).
+- 스코프-노트: `PartnerLookupClient.findByPartnerCode`(`/internal/partners/{code}`)는 bizNo 미반환이나, **GET list 는 findByPartnerIdsBatch 로 bizNo 정확 해석**(matchedBizNo 채움) → UI(매칭 후 list refetch)는 정상 표시. PATCH 즉시응답 bizNo 공백은 transient·UX 무영향.
+
+### 🐳 라이브 QA (Docker, mock OFF, dev_master/MASTER, accounting-service 재빌드)
+실 스택(게이트웨이:8080) 실연동:
+- **CSV import → 200** (3건 적재, 입금 800,000·출금 120,000).
+- **매칭 PATCH 4-key → 200**: LIVEQA-H2-001 → P0-6-C001 "(주)한국냉동물류", GET list 에서 matchedBizNo `1018100001`(하이픈 제거) 해석.
+- **틀린 amount 4-key → 404**: 4-key 정밀 식별 실증(2-key 모호성 제거, BLOCKING fix 실증).
+- 데스크톱 UI 실화면(`docs/qa/accounting-h2-bank-matching/01-bank-matching-list.png`): 미반영 거래 PartnerAutocomplete(거래처명/코드), 매칭 거래 "(주)한국냉동물류"+해제 버튼, 탭/금액/상태 정상.
