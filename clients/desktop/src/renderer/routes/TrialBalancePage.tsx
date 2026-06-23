@@ -53,11 +53,12 @@ const amountColor = (raw: string): string => {
 const dateLabel = (from: string, to: string): string =>
   from === to ? from : `${from} ~ ${to}`
 
-function AmountCell({ value }: { value: string }) {
+function AmountCell({ value, strong = false }: { value: string; strong?: boolean }) {
   return (
     <span
       style={{
         color: amountColor(value),
+        fontWeight: strong ? 600 : undefined,
         fontVariantNumeric: 'tabular-nums',
       }}
     >
@@ -65,6 +66,8 @@ function AmountCell({ value }: { value: string }) {
     </span>
   )
 }
+
+const isTotalRow = (row: TrialBalanceSummaryLine): boolean => row.category === '__TOTAL__'
 
 export function TrialBalancePage() {
   const [granularity, setGranularity] = useState<TrialBalanceGranularity>('MONTH')
@@ -110,38 +113,60 @@ export function TrialBalancePage() {
       header: '이월잔액',
       width: '130px',
       align: 'right',
-      render: (row) => <AmountCell value={row.openingBalance} />,
+      render: (row) => <AmountCell value={row.openingBalance} strong={isTotalRow(row)} />,
     },
     {
       key: 'debitBalance',
       header: '차변 잔액',
       width: '130px',
       align: 'right',
-      render: (row) => <AmountCell value={row.debitBalance} />,
+      render: (row) => <AmountCell value={row.debitBalance} strong={isTotalRow(row)} />,
     },
     {
       key: 'debitTotal',
       header: '차변 합계',
       width: '130px',
       align: 'right',
-      render: (row) => <AmountCell value={row.debitTotal} />,
+      render: (row) => <AmountCell value={row.debitTotal} strong={isTotalRow(row)} />,
     },
-    { key: 'accountName', header: '계정명', width: '180px' },
+    {
+      key: 'accountName',
+      header: '계정명',
+      width: '180px',
+      render: (row) => (
+        <span style={{ fontWeight: isTotalRow(row) ? 600 : undefined }}>{row.accountName}</span>
+      ),
+    },
     {
       key: 'creditTotal',
       header: '대변 합계',
       width: '130px',
       align: 'right',
-      render: (row) => <AmountCell value={row.creditTotal} />,
+      render: (row) => <AmountCell value={row.creditTotal} strong={isTotalRow(row)} />,
     },
     {
       key: 'creditBalance',
       header: '대변 잔액',
       width: '130px',
       align: 'right',
-      render: (row) => <AmountCell value={row.creditBalance} />,
+      render: (row) => <AmountCell value={row.creditBalance} strong={isTotalRow(row)} />,
     },
   ]
+
+  const totalRow: TrialBalanceSummaryLine | null = query.data
+    ? {
+        accountCode: '',
+        accountName: '총합',
+        category: '__TOTAL__',
+        categoryDisplayName: '총합',
+        openingBalance: query.data.totals.openingBalanceTotal,
+        debitBalance: query.data.totals.debitBalanceTotal,
+        debitTotal: query.data.totals.debitTotal,
+        creditTotal: query.data.totals.creditTotal,
+        creditBalance: query.data.totals.creditBalanceTotal,
+        closingBalance: query.data.totals.closingBalanceTotal,
+      }
+    : null
 
   return (
     <>
@@ -287,42 +312,24 @@ export function TrialBalancePage() {
                 columns={columns}
                 rows={rows}
                 rowKey={(row) => row.accountCode}
+                tableLayout="fixed"
                 emptyMessage="해당 구분에 데이터가 없습니다."
               />
             </Card>
           ))}
 
-          <Card>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '72px 130px 130px 130px 180px 130px 130px',
-                gap: 8,
-                padding: '8px 0',
-                fontSize: 14,
-                fontWeight: 600,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              <div />
-              <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totals.openingBalanceTotal ?? '0')}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totals.debitBalanceTotal ?? '0')}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totals.debitTotal ?? '0')}
-              </div>
-              <div>총합</div>
-              <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totals.creditTotal ?? '0')}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                {fmtKrw(query.data?.totals.creditBalanceTotal ?? '0')}
-              </div>
-            </div>
-          </Card>
+          {totalRow ? (
+            <Card>
+              <DataTable
+                columns={columns}
+                rows={[totalRow]}
+                rowKey={(row) => row.category}
+                hideHeader
+                tableLayout="fixed"
+                emptyMessage="총합 데이터가 없습니다."
+              />
+            </Card>
+          ) : null}
         </>
       )}
     </>

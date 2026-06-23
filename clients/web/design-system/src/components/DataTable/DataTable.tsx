@@ -20,6 +20,10 @@ export interface DataTableProps<T> {
   columns: DataTableColumn<T>[]
   rows: T[]
   loading?: boolean
+  /** 헤더를 화면에서 숨기되 컬럼 폭 계산은 유지한다. */
+  hideHeader?: boolean
+  /** 고정 컬럼 폭이 필요한 표에서 사용한다. 기본은 브라우저 자동 레이아웃. */
+  tableLayout?: 'auto' | 'fixed'
   /** rows 가 비어있을 때 표시할 메시지. 기본 "데이터가 없습니다." */
   emptyMessage?: string
   onRowClick?: (row: T) => void
@@ -60,6 +64,8 @@ export function DataTable<T>({
   columns,
   rows,
   loading = false,
+  hideHeader = false,
+  tableLayout = 'auto',
   emptyMessage = '데이터가 없습니다.',
   onRowClick,
   rowKey,
@@ -69,6 +75,18 @@ export function DataTable<T>({
   const wrapperClasses = [styles['wrapper'], className]
     .filter(Boolean)
     .join(' ')
+  const tableClasses = [
+    styles['table'],
+    tableLayout === 'fixed' ? styles['fixedLayout'] : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const theadClasses = [
+    styles['thead'],
+    hideHeader ? styles['hiddenHeader'] : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   const isEmpty = rows.length === 0 && !loading
   const isClickable = Boolean(onRowClick)
@@ -76,8 +94,16 @@ export function DataTable<T>({
   return (
     <div className={wrapperClasses}>
       <div className={styles['scroll']}>
-        <table className={styles['table']}>
-          <thead className={styles['thead']}>
+        <table className={tableClasses}>
+          <colgroup>
+            {columns.map((col) => (
+              <col
+                key={String(col.key)}
+                style={col.width ? { width: col.width } : undefined}
+              />
+            ))}
+          </colgroup>
+          <thead className={theadClasses} aria-hidden={hideHeader ? true : undefined}>
             <tr>
               {columns.map((col) => {
                 // 헤더 정렬은 headerAlign 우선, 없으면 align 따름.
