@@ -10,7 +10,7 @@
  *   <li>partner — 거래처명 부분 매칭 (client-side filter)</li>
  * </ul>
  *
- * <p>컬럼: 견적번호 / 거래처 / 유효기간 / 합계 / 상태.
+ * <p>컬럼: 견적번호 / 거래처 코드 / 거래처 / 유효기간 / 합계 / 상태.
  * UUID 비공개 가드 — id 컬럼 미포함, 사용자 노출은 estimateNo + partnerName 만.
  */
 import { useMemo, useState } from 'react'
@@ -99,24 +99,19 @@ export function EstimateListPage() {
       ),
     },
     {
+      key: 'partnerBusinessNo',
+      header: '거래처 코드',
+      width: '140px',
+      render: (row) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {row.partnerBusinessNo ? row.partnerBusinessNo.replace(/\D/g, '') : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'partnerName',
       header: '거래처',
-      render: (row) => (
-        <div>
-          <div>{row.partnerName}</div>
-          {row.partnerBusinessNo ? (
-            <div
-              style={{
-                fontSize: 11,
-                color: '#6B7280',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {row.partnerBusinessNo}
-            </div>
-          ) : null}
-        </div>
-      ),
+      render: (row) => row.partnerName,
     },
     {
       key: 'estimateDate',

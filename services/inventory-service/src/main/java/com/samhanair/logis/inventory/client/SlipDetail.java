@@ -15,6 +15,7 @@ import java.util.UUID;
  * @param partnerName            거래처명 snapshot (없으면 null)
  * @param destinationWarehouseName 입고 창고명 snapshot (없으면 null)
  * @param slipDate               입고일 (YYYY-MM-DD, 없으면 null)
+ * @param businessNumber         거래처 사업자등록번호 snapshot (없으면 null)
  * @param lines                  슬립 라인 목록
  */
 public record SlipDetail(
@@ -26,6 +27,19 @@ public record SlipDetail(
         String partnerName,
         String destinationWarehouseName,
         String slipDate,
+        String businessNumber,
         List<SlipLineDetail> lines
 ) {
+    public SlipDetail(UUID id,
+                      String slipNo,
+                      String slipType,
+                      String status,
+                      UUID destinationWarehouseId,
+                      String partnerName,
+                      String destinationWarehouseName,
+                      String slipDate,
+                      List<SlipLineDetail> lines) {
+        this(id, slipNo, slipType, status, destinationWarehouseId, partnerName,
+                destinationWarehouseName, slipDate, null, lines);
+    }
 }

@@ -92,7 +92,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
                 5, new BigDecimal("50000"));
         SlipDetail slipDetail = new SlipDetail(
                 slipId, STANDARD_SLIP_NO, "INBOUND", "SAVED",
-                hqWarehouseId, "테스트 거래처", "본사창고", "2026-05-11",
+                hqWarehouseId, "테스트 거래처", "본사창고", "2026-05-11", "1234567890",
                 List.of(slipLine));
         Mockito.lenient().when(slipClient.getSlip(slipId)).thenReturn(slipDetail);
     }
@@ -257,6 +257,9 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
                         .header("X-User-Role", "MANAGER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content").isArray())
+                .andExpect(jsonPath("$.data.content[0].partnerName").value("테스트 거래처"))
+                .andExpect(jsonPath("$.data.content[0].partnerBusinessNo").value("1234567890"))
+                .andExpect(jsonPath("$.data.content[0].slipDate").value("2026-05-11"))
                 .andExpect(jsonPath("$.data.totalElements").value(notNullValue()));
     }
 
@@ -266,7 +269,7 @@ class InboundInspectionControllerIT extends AbstractPostgresIT {
         UUID outboundSlipId = UUID.randomUUID();
         SlipDetail outbound = new SlipDetail(
                 outboundSlipId, "2026/05/11-1", "OUTBOUND", "SAVED",
-                hqWarehouseId, "테스트 거래처", "본사창고", "2026-05-11",
+                hqWarehouseId, "테스트 거래처", "본사창고", "2026-05-11", "1234567890",
                 List.of());
         Mockito.when(slipClient.getSlip(outboundSlipId)).thenReturn(outbound);
 
