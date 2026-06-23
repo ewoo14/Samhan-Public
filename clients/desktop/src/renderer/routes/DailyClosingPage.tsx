@@ -174,16 +174,16 @@ export function DailyClosingPage() {
         render: (row) => SOURCE_LABEL[row.sourceKind ?? 'TAX_INVOICE'],
       },
       {
-        key: 'bizNo',
-        header: '거래처코드',
-        width: '130px',
-        render: (row) => row.bizNo?.replace(/\D/g, '') || '—',
-      },
-      {
         key: 'partnerCode',
         header: '관리코드',
         width: '120px',
         render: (row) => row.partnerCode ?? '전체',
+      },
+      {
+        key: 'bizNo',
+        header: '거래처코드',
+        width: '130px',
+        render: (row) => row.bizNo?.replace(/\D/g, '') || '—',
       },
       {
         key: 'isLocked',

@@ -289,15 +289,12 @@ public class JournalStatusReportService {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return ETC_PARTNER_NAME;
         }
-        return partnerIds.stream()
-                .filter(Objects::nonNull)
+        return sortedPartnerIds(partnerIds, partners).stream()
                 .map(id -> {
                     PartnerSummary summary = partners.get(id);
                     String name = summary == null ? null : summary.name();
                     return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
                 })
-                .distinct()
-                .sorted()
                 .collect(Collectors.joining(MULTI_PARTNER_SEPARATOR));
     }
 
@@ -314,13 +311,34 @@ public class JournalStatusReportService {
         if (partnerIds == null || partnerIds.isEmpty()) {
             return "";
         }
-        return partnerIds.stream()
-                .filter(Objects::nonNull)
+        return sortedPartnerIds(partnerIds, partners).stream()
                 .map(id -> partnerBizNoDigits(id, partners))
                 .filter(value -> !value.isBlank())
-                .distinct()
-                .sorted()
                 .collect(Collectors.joining(MULTI_PARTNER_SEPARATOR));
+    }
+
+    private List<UUID> sortedPartnerIds(List<UUID> partnerIds, Map<UUID, PartnerSummary> partners) {
+        return partnerIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new))
+                .stream()
+                .sorted(Comparator
+                        .comparing((UUID id) -> partnerSortName(id, partners))
+                        .thenComparing(id -> partnerSortCode(id, partners))
+                        .thenComparing(UUID::toString))
+                .toList();
+    }
+
+    private String partnerSortName(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        PartnerSummary summary = partners.get(partnerId);
+        String name = summary == null ? null : summary.name();
+        return name == null || name.isBlank() ? UNRESOLVED_PARTNER_NAME : name;
+    }
+
+    private String partnerSortCode(UUID partnerId, Map<UUID, PartnerSummary> partners) {
+        PartnerSummary summary = partners.get(partnerId);
+        String partnerCode = summary == null ? null : summary.partnerCode();
+        return partnerCode == null ? "" : partnerCode;
     }
 
     private String partnerBizNoDigits(UUID partnerId, Map<UUID, PartnerSummary> partners) {

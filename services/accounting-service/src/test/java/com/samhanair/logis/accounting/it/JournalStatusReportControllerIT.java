@@ -201,6 +201,39 @@ class JournalStatusReportControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("전표현황 — 복합전표 다중 거래처명과 사업자번호는 같은 정렬 순서로 join 한다")
+    void journalStatusMultiPartnerBizNoKeepsSeparatorAndNameOrder() throws Exception {
+        seedPosted("STATUS-F-MULTI-JOIN", LocalDate.of(2026, 6, 9), "다중 거래처 표시",
+                JournalSourceType.MANUAL,
+                line("102", "1500.00", "0.00", PARTNER_WILLY, "윌리 차변"),
+                line("401", "0.00", "1500.00", PARTNER_NAVER, "네이버 대변"));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/journal-status")
+                        .param("from", "2026-06-09")
+                        .param("to", "2026-06-09")
+                        .param("groupBy", "DATE")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        JsonNode line = objectMapper.readTree(body).get("data")
+                .get("groups").get(0)
+                .get("lines").get(0);
+
+        if (!"네이버 / 주식회사 윌리".equals(line.get("partnerName").asText())) {
+            throw new AssertionError("복합전표 거래처명 join 순서가 예상과 다릅니다: "
+                    + line.get("partnerName").asText());
+        }
+        if (!"3333333333 / 1111111111".equals(line.get("bizNo").asText())) {
+            throw new AssertionError("복합전표 사업자번호 join 구분자/순서가 예상과 다릅니다: "
+                    + line.get("bizNo").asText());
+        }
+        assertNoPartnerUuid(body);
+    }
+
+    @Test
     @DisplayName("전표현황 — KFTC_DEPOSIT 과 CASH_RECEIPT 라벨을 구분한다")
     void journalStatusDistinguishesDepositAndCashReceiptLabels() throws Exception {
         seedPosted("STATUS-F-KFTC", LocalDate.of(2026, 6, 7), "계좌 입금",

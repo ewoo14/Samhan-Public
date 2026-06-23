@@ -27,6 +27,7 @@ import {
   JOURNAL_STATUS_GROUP_OPTIONS,
   JOURNAL_STATUS_SOURCE_OPTIONS,
   buildJournalStatusRows,
+  displayJournalStatusBizNo,
   fmtJournalStatusKrw,
   isNegativeJournalStatusAmount,
   summaryLabel,
@@ -144,7 +145,7 @@ export function JournalStatusReportPage() {
       key: 'bizNo',
       header: '거래처코드',
       width: '130px',
-      render: (row) => row.rowKind === 'subtotal' ? '—' : (row.bizNo?.replace(/\D/g, '') || '—'),
+      render: (row) => displayJournalStatusBizNo(row),
     },
     {
       key: 'partnerName',

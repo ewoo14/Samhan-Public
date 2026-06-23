@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildJournalStatusRows,
+  displayJournalStatusBizNo,
   fmtJournalStatusKrw,
   isNegativeJournalStatusAmount,
   summaryLabel,
@@ -57,5 +58,20 @@ describe('journalStatusPageModel', () => {
       totalCredit: '7000.00',
       journalCount: 2,
     })).toBe('2건 · 차변 7,000 · 대변 7,000')
+  })
+
+  it('다중거래처 사업자번호 join 구분자를 보존한다', () => {
+    expect(displayJournalStatusBizNo({
+      rowKind: 'line',
+      bizNo: '3333333333 / 1111111111',
+    })).toBe('3333333333 / 1111111111')
+    expect(displayJournalStatusBizNo({
+      rowKind: 'line',
+      bizNo: '',
+    })).toBe('—')
+    expect(displayJournalStatusBizNo({
+      rowKind: 'subtotal',
+      bizNo: '3333333333 / 1111111111',
+    })).toBe('—')
   })
 })
