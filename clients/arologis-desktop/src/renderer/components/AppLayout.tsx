@@ -7,7 +7,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePermissions } from '../hooks/usePermissions'
-import { useAuthStore } from '../stores/authStore'
+import { canGrantMaster, useAuthStore } from '../stores/authStore'
 
 const navStyle: React.CSSProperties = {
   display: 'flex',
@@ -54,7 +54,8 @@ export function AppLayout(): JSX.Element {
   const canViewDepartments = canAccess('arologis.hr.departments', 'view')
   const canViewCashbook = canAccess('arologis.accounting.cashbook', 'view')
   const canViewAccounts = canAccess('arologis.accounting.accounts', 'view')
-  const canViewPermissions = canAccess('arologis.admin.permissions', 'view')
+  const canViewPermissions =
+    canAccess('arologis.admin.permissions', 'view') && canGrantMaster(auth?.role)
 
   const handleLogout = async (): Promise<void> => {
     queryClient.removeQueries({ queryKey: ['permissions', 'my'] })

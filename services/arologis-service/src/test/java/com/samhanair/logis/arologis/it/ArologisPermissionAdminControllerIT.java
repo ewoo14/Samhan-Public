@@ -16,10 +16,14 @@ import com.samhanair.logis.arologis.client.AuthPermissionAdminClient.RolePagePer
 import com.samhanair.logis.arologis.controller.ArologisPermissionAdminController;
 import com.samhanair.logis.arologis.exception.ArologisExceptionHandler;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -43,9 +47,15 @@ class ArologisPermissionAdminControllerIT {
                 .build();
     }
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     /** GET 은 client.getRoleMatrix("arologis.") 로 위임하여 매트릭스를 그대로 반환한다. */
     @Test
     void getMatrix_delegatesWithArologisPrefix() throws Exception {
+        authenticateAs("ROLE_AROLOGIS_MASTER");
         RolePagePermissionView view = new RolePagePermissionView(
                 "MASTER", "arologis.admin.permissions", "아로로지스 권한 관리", true, true);
         when(client.getRoleMatrix("arologis."))
@@ -64,6 +74,7 @@ class ArologisPermissionAdminControllerIT {
      */
     @Test
     void updateGrant_withArologisPageCode_delegates() throws Exception {
+        authenticateAs("ROLE_AROLOGIS_MASTER");
         RolePagePermissionView view = new RolePagePermissionView(
                 "MANAGER", "arologis.region", "아로로지스 지역/구역 관리", true, true);
         when(client.updateRoleGrant("MANAGER", "arologis.region", true, true, "actor-1"))
@@ -83,6 +94,7 @@ class ArologisPermissionAdminControllerIT {
     /** PUT 비-arologis page-code 는 FORBIDDEN 가드로 거부하고 client 를 호출하지 않는다. */
     @Test
     void updateGrant_withNonArologisPageCode_isForbiddenAndNotDelegated() throws Exception {
+        authenticateAs("ROLE_AROLOGIS_MASTER");
         mockMvc.perform(put("/admin/arologis/permissions")
                         .header("X-User-Id", "actor-1")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -100,6 +112,7 @@ class ArologisPermissionAdminControllerIT {
      */
     @Test
     void updateGrant_withCentralMasterRole_isForbiddenAndNotDelegated() throws Exception {
+        authenticateAs("ROLE_AROLOGIS_MASTER");
         mockMvc.perform(put("/admin/arologis/permissions")
                         .header("X-User-Id", "actor-1")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -109,5 +122,38 @@ class ArologisPermissionAdminControllerIT {
 
         verify(client, never()).updateRoleGrant(
                 eq("MASTER"), anyString(), anyBoolean(), anyBoolean(), anyString());
+    }
+
+    /** page-code 보유 여부와 별개로 ROLE_AROLOGIS_MASTER authority 가 없으면 조회를 거부한다. */
+    @Test
+    void getMatrix_withoutArologisMasterAuthority_isForbiddenAndNotDelegated() throws Exception {
+        authenticateAs("ROLE_AROLOGIS_MANAGER");
+
+        mockMvc.perform(get("/admin/arologis/permissions"))
+                .andExpect(status().isForbidden());
+
+        verify(client, never()).getRoleMatrix(anyString());
+    }
+
+    /** page-code 보유 여부와 별개로 ROLE_AROLOGIS_MASTER authority 가 없으면 수정을 거부한다. */
+    @Test
+    void updateGrant_withoutArologisMasterAuthority_isForbiddenAndNotDelegated() throws Exception {
+        authenticateAs("ROLE_AROLOGIS_MANAGER");
+
+        mockMvc.perform(put("/admin/arologis/permissions")
+                        .header("X-User-Id", "actor-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roleCode\":\"MANAGER\",\"pageCode\":\"arologis.region\","
+                                + "\"canView\":true,\"canEdit\":true}"))
+                .andExpect(status().isForbidden());
+
+        verify(client, never()).updateRoleGrant(anyString(), anyString(),
+                anyBoolean(), anyBoolean(), anyString());
+    }
+
+    private static void authenticateAs(String authority) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "tester", null, java.util.List.of(new SimpleGrantedAuthority(authority))));
     }
 }

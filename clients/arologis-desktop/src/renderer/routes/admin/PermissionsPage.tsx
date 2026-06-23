@@ -26,6 +26,7 @@ import {
 } from '../../api/arologisPermissions'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { usePermissions } from '../../hooks/usePermissions'
+import { canGrantMaster, useAuthStore } from '../../stores/authStore'
 
 /** 중앙 MASTER 롤 코드 — 서버가 변경을 거부하므로 열 전체를 읽기전용 처리. */
 const CENTRAL_MASTER_ROLE = 'MASTER'
@@ -63,9 +64,13 @@ export function PermissionsPage(): JSX.Element {
   usePageTitle('권한 관리')
 
   const queryClient = useQueryClient()
+  const auth = useAuthStore((s) => s.auth)
+  const canManagePermissionMatrix = canGrantMaster(auth?.role)
   const { canAccess } = usePermissions()
-  const canViewPermissions = canAccess('arologis.admin.permissions', 'view')
-  const canUpdatePermissions = canAccess('arologis.admin.permissions', 'update')
+  const canViewPermissions =
+    canManagePermissionMatrix && canAccess('arologis.admin.permissions', 'view')
+  const canUpdatePermissions =
+    canManagePermissionMatrix && canAccess('arologis.admin.permissions', 'update')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<Set<PendingKey>>(new Set())
 
@@ -136,7 +141,7 @@ export function PermissionsPage(): JSX.Element {
           <h1 style={titleStyle}>권한 관리</h1>
         </header>
         <div role="alert" style={errorStyle}>
-          권한 관리 화면에 접근할 수 있는 page-code 권한이 없습니다.
+          권한 관리 화면은 아로로지스 마스터만 접근할 수 있습니다.
         </div>
       </section>
     )
