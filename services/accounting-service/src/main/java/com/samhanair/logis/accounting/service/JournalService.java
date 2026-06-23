@@ -292,7 +292,7 @@ public class JournalService {
     }
 
     private UUID parseRealUserId(String actorUserId) {
-        if (actorUserId == null || actorUserId.isBlank() || "system".equalsIgnoreCase(actorUserId)) {
+        if (actorUserId == null || actorUserId.isBlank() || "system".equals(actorUserId)) {
             return null;
         }
         try {

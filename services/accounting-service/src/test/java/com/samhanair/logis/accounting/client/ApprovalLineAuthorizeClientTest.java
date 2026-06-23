@@ -71,6 +71,19 @@ class ApprovalLineAuthorizeClientTest {
     }
 
     @Test
+    void authorize_blankToken_throwsInternalError() {
+        InternalAuthProperties blankProps = new InternalAuthProperties();
+        blankProps.setToken("");
+        ApprovalLineAuthorizeClient blankClient = new ApprovalLineAuthorizeClient(
+                RestClient.builder().baseUrl("http://auth-service").build(), blankProps, new ObjectMapper());
+
+        assertThatThrownBy(() -> blankClient.authorize(
+                "ACCOUNTING_JOURNAL", "JOURNAL_POST", UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("internal token");
+    }
+
+    @Test
     void authorize_successFalse_failClosed() {
         UUID userId = UUID.randomUUID();
         server.expect(once(), requestTo("http://auth-service/auth/internal/approval-line/authorize"))

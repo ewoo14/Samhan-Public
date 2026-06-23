@@ -114,6 +114,20 @@ class JournalApprovalGateIT extends AbstractPostgresIT {
         holder.server().verify();
     }
 
+    @Test
+    @DisplayName("X-User-Id(원칙자) 미존재 — 권한 레이어가 403 차단, 결재 게이트 미도달(auth 미호출)")
+    void postBlockedByPermissionLayerWhenNoPrincipal() throws Exception {
+        String id = createJournalAsAccountant("85000");
+        // 원칙자 헤더 없는 요청은 @RequirePermission 에서 먼저 403 차단 → enforceApprovalLine 도달 전.
+        // holder.server() 에 expect 미등록 → authorize 호출 시 MockRestServiceServer 가 실패.
+        // 즉 게이트가 도달조차 안 함(auth 미호출)을 verify() 로 단언 — 헤더 누락이 게이트 우회로 게시되지 않음을 보장.
+        mockMvc.perform(post("/accounting/journals/" + id + "/post")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isForbidden());
+
+        holder.server().verify();
+    }
+
     private void expectAuthorize(MockRestServiceServer server, String userId, boolean configured, boolean allowed) {
         server.expect(once(), requestTo("http://auth-service/auth/internal/approval-line/authorize"))
                 .andExpect(header("X-Internal-Token", INTERNAL_TOKEN))
