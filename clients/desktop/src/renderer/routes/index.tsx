@@ -203,6 +203,7 @@ import { PhotoAuditPage } from './admin/PhotoAuditPage'
 // BE: accounting-service `/accounting/reports/income-statement` + `/balance-sheet`
 import { ReportListPage } from './ReportListPage'
 import { IncomeStatementPage } from './IncomeStatementPage'
+import { MonthlyIncomeStatementPage } from './MonthlyIncomeStatementPage'
 import { BalanceSheetPage } from './BalanceSheetPage'
 // [P0-1 Slice A] D5 fix — 인쇄 전용 컴포넌트 분리 (새 창 열기 패턴).
 // REPORTS-DESIGN.md § 7~8 spec 준수.
@@ -671,6 +672,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="accounting.reports" action="view">
             <IncomeStatementPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/accounting/reports/income-statement/monthly',
+        element: (
+          <PermissionGuard pageCode="accounting.reports" action="view">
+            <MonthlyIncomeStatementPage />
           </PermissionGuard>
         ),
       },

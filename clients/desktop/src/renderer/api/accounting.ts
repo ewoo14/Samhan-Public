@@ -459,6 +459,36 @@ export interface IncomeStatementResponse {
   generatedAt: string
 }
 
+export type MonthlyIncomeStatementRowKind = 'ACCOUNT' | 'SUBTOTAL' | 'TOTAL'
+
+export interface MonthlyIncomeStatementLine {
+  rowKind: MonthlyIncomeStatementRowKind
+  section: string
+  accountCode: string | null
+  accountName: string
+  category: string | null
+  monthlyAmounts: Array<string | number>
+  annualTotal: string | number
+  priorYearTotal: string | number
+  difference: string | number
+  sortOrder: number
+}
+
+/**
+ * 월별손익분석 응답.
+ *
+ * 당기 1~12월 손익계정 매트릭스와 전기 연간 비교 컬럼을 함께 제공한다.
+ */
+export interface MonthlyIncomeStatementResponse {
+  fiscalYear: number
+  priorYear: number
+  fromDate: string
+  toDate: string
+  months: number[]
+  rows: MonthlyIncomeStatementLine[]
+  generatedAt: string
+}
+
 /**
  * 재무상태표 라인 항목 (자산 / 부채 / 자본 공통).
  */
@@ -516,6 +546,21 @@ export async function getIncomeStatement(
   const res = await apiClient.get<ApiEnvelope<IncomeStatementResponse>>(
     '/accounting/reports/income-statement',
     { params: { period } },
+  )
+  return res.data.data
+}
+
+/**
+ * 월별손익분석 조회.
+ *
+ * BE endpoint: `GET /accounting/reports/income-statement/monthly?year=YYYY`.
+ */
+export async function getMonthlyIncomeStatement(
+  year: number,
+): Promise<MonthlyIncomeStatementResponse> {
+  const res = await apiClient.get<ApiEnvelope<MonthlyIncomeStatementResponse>>(
+    '/accounting/reports/income-statement/monthly',
+    { params: { year } },
   )
   return res.data.data
 }

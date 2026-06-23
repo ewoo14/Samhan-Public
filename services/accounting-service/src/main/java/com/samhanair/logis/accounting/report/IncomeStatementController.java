@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>GET /api/v1/accounting/reports/income-statement?period=YYYYMM — 단월</li>
  *   <li>GET /api/v1/accounting/reports/income-statement?fromPeriod=YYYYMM&amp;toPeriod=YYYYMM — 기간</li>
+ *   <li>GET /api/v1/accounting/reports/income-statement/monthly?year=YYYY — 월별손익분석</li>
  * </ul>
  *
  * <p>SP-D2 동적 권한: {@link ReportPermissionGuard} VIEW 검증.
@@ -39,6 +40,7 @@ public class IncomeStatementController {
     private static final DateTimeFormatter PERIOD_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final IncomeStatementService incomeStatementService;
+    private final MonthlyIncomeStatementService monthlyIncomeStatementService;
 
     /**
      * 손익계산서 조회 — 단월 또는 기간.
@@ -84,6 +86,31 @@ public class IncomeStatementController {
 
         throw new IllegalArgumentException(
                 "period 또는 fromPeriod + toPeriod 파라미터가 필요합니다 (예: period=202604)");
+    }
+
+    /**
+     * 월별손익분석 조회.
+     *
+     * <p>당기 회계연도 1~12월 손익계정 매트릭스와 전기 연간 비교 금액을 반환한다.
+     * 기존 손익계산서와 동일한 {@code accounting.reports} VIEW 권한을 사용한다.
+     *
+     * @param year 당기 회계연도
+     * @return 월별손익분석 응답
+     */
+    @Operation(
+            summary = "월별손익분석 조회",
+            description = "POSTED 분개 기준 손익계정 × 월 매트릭스와 전기 연간 비교를 조회합니다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "파라미터 오류")
+    })
+    @GetMapping("/income-statement/monthly")
+    @RequirePermission(page = ReportPermissionGuard.PAGE_CODE, action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
+    public ApiResponse<MonthlyIncomeStatementResponse> monthlyIncomeStatement(
+            @Parameter(description = "회계연도 (yyyy)")
+            @RequestParam int year,
+            @RequestHeader(value = ROLE_HEADER, required = false) String roleHeader) {
+        return ApiResponse.ok(monthlyIncomeStatementService.findByFiscalYear(year));
     }
 
     /**
