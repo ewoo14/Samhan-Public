@@ -4552,6 +4552,18 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         },
         {
           rowKind: 'SUBTOTAL',
+          section: 'NON_OPERATING',
+          accountCode: null,
+          accountName: '영업외손익 합계',
+          category: null,
+          monthlyAmounts: ['-120000', '-120000', '-120000', '-120000', '-120000', '-120000', '0', '0', '0', '0', '0', '0'],
+          annualTotal: '-720000',
+          priorYearTotal: '-650000',
+          difference: '-70000',
+          sortOrder: 9899,
+        },
+        {
+          rowKind: 'SUBTOTAL',
           section: 'INCOME_BEFORE_TAX',
           accountCode: null,
           accountName: '법인세차감전순이익',
