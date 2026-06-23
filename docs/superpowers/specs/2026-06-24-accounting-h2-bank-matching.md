@@ -18,11 +18,13 @@
 ### 3.1 거래처 매칭 엔드포인트 (신규)
 `BankTransactionController` 에 추가. 권한 `@RequirePermission(accounting.bank-matching, UPDATE)`.
 
+> ⚠️ **식별자 4-key 확정 (Opus 라운드 BLOCKING fix)**: 초안의 2-key(bankAccountLabel+externalRef)는 V43 unique index(bank_account_label+transacted_at+amount+external_ref) 와 불일치 — 같은 (label,externalRef)가 다른 일시/금액으로 공존하면 정당 행 거부. 매칭/해제 모두 **4-key 자연키** 사용으로 단건 보장. 해제는 DELETE-body 비표준 회피 위해 **PATCH .../clear**.
+
 - **매칭**: `PATCH /accounting/bank-transactions/match-partner`
-  - body: `{ bankAccountLabel, externalRef, partnerCode }` (UUID 미노출 — FE 가 가진 표시 식별자만).
-  - 처리: (1) `(bankAccountLabel, externalRef)` 로 미삭제 BankTransaction 단건 조회(없으면 404). (2) partnerCode → partnerId 해석 — `PartnerLookupClient`(searchDirectory/by-code 패턴)로 등록 거래처 검증, 미등록 시 404/INVALID. (3) `transaction.matchPartner(partnerId)`(UNREFLECTED 아니면 도메인이 IllegalState→409 매핑). (4) 갱신된 `BankTransactionResponse` 반환(matchedPartnerCode/bizNo/Name 채워짐).
-- **해제**: `DELETE /accounting/bank-transactions/match-partner` (동일 body의 bankAccountLabel+externalRef) 또는 `PATCH` 에 partnerCode=null 허용 → matchedPartnerId=null (UNREFLECTED 한정). 도메인에 `clearPartner()` 추가(UNREFLECTED 가드).
-- **식별자 규약**: `external_ref` non-null·import 4-key dedup → `(bankAccountLabel, externalRef)` 자연키로 단건 식별(UUID 경로/응답 노출 금지 유지). Codex 가 dedup 유니크성 확인 후 repository 조회 메서드 추가.
+  - body: `{ bankAccountLabel, transactedAt, amount, externalRef, partnerCode }` (UUID 미노출 — FE 가 가진 표시 식별자만).
+  - 처리: (1) **4-key 자연키**로 미삭제 BankTransaction 단건 조회(`findByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse`, 없으면 404). (2) partnerCode → partnerId 해석(`PartnerLookupClient.findByPartnerCode`, 미등록 NOT_FOUND). (3) `transaction.matchPartner(partnerId)`(requireUnreflected — UNREFLECTED 아니면 IllegalState→CONFLICT 409). (4) 갱신 `BankTransactionResponse` 반환.
+- **해제**: `PATCH /accounting/bank-transactions/match-partner/clear` (body 4-key) → `clearPartner()` matchedPartnerId=null (UNREFLECTED 한정·409 가드).
+- **식별자 규약**: V43 unique 4-key 와 동일 자연키로 단건 식별(UUID 경로/응답 노출 금지). 모호성(2-key 다건) 제거.
 
 ### 3.2 partnerCode→partnerId 해석
 `PartnerLookupClient` 재사용(accounting-service 기존, searchDirectory/findByCode). 미등록 partnerCode → BusinessException(NOT_FOUND). UUID 미노출 유지(matchedPartnerId 는 내부 보관, 응답은 code/bizNo/name).

@@ -2,15 +2,17 @@
 
 ## 범위
 
-- `PATCH /accounting/bank-transactions/match-partner`: `bankAccountLabel + externalRef + partnerCode` 로 미반영 통장 거래에 거래처를 지정한다.
-- `DELETE /accounting/bank-transactions/match-partner`: `bankAccountLabel + externalRef` 로 미반영 통장 거래의 거래처 지정을 해제한다.
+> ⚠️ 식별자는 **4-key**(Opus 라운드 BLOCKING fix). 초안 2-key 설명은 폐기.
+
+- `PATCH /accounting/bank-transactions/match-partner`: `bankAccountLabel + transactedAt + amount + externalRef + partnerCode` 로 미반영 통장 거래에 거래처를 지정한다.
+- `PATCH /accounting/bank-transactions/match-partner/clear`: `bankAccountLabel + transactedAt + amount + externalRef` 4-key 로 미반영 통장 거래의 거래처 지정을 해제한다(DELETE-body 비표준 회피).
 - 데스크톱 `입출금 매칭` 화면의 미반영 행에 기존 `PartnerAutocomplete`를 재사용해 거래처 지정/해제를 배선했다.
 
 ## 식별자 결정
 
-- 화면/API에는 UUID를 노출하지 않는다. 요청 식별자는 `bankAccountLabel + externalRef`, 거래처 식별자는 `partnerCode`만 사용한다.
-- H-1 Flyway V43의 unique index는 `(bank_account_label, transacted_at, amount, external_ref)`이다. 따라서 `(bankAccountLabel, externalRef)`는 import 생성 externalRef 기준으로 실사용 단건이지만 DB 제약으로는 완전 보장되지 않는다.
-- 신규 조회는 `(bankAccountLabel, externalRef)` 결과가 0건이면 `NOT_FOUND`, 2건 이상이면 `INVALID_INPUT`으로 막아 모호한 매칭 변경을 거부한다. 신규 Flyway는 추가하지 않았다.
+- 화면/API에는 UUID를 노출하지 않는다. 요청 식별자는 **V43 unique index 와 동일한 4-key**(`bankAccountLabel + transactedAt + amount + externalRef`), 거래처 식별자는 `partnerCode`만 사용한다.
+- V43 unique index `(bank_account_label, transacted_at, amount, external_ref)` 전체 키로 단건 식별 보장. (초안 2-key 는 같은 label+externalRef 가 다른 일시/금액으로 공존 시 정당 행 거부 회귀 → 4-key 로 교체.)
+- 신규 조회는 4-key 단건 Optional(`findByBankAccountLabelAndTransactedAtAndAmountAndExternalRefAndIsDeletedFalse`), 0건이면 `NOT_FOUND`. 신규 Flyway는 추가하지 않았다.
 
 ## 상태전이
 

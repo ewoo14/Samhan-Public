@@ -5066,7 +5066,12 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     let importedCount = 0
     let duplicateSkippedCount = 0
     for (const row of importedRows) {
-      if (MOCK_BANK_TRANSACTIONS.some((existing) => existing.externalRef === row.externalRef)) {
+      // BE V43 unique 4-key(bankAccountLabel+transactedAt+amount+externalRef) 와 동일 dedup.
+      if (MOCK_BANK_TRANSACTIONS.some((existing) =>
+        existing.bankAccountLabel === row.bankAccountLabel
+        && existing.transactedAt === row.transactedAt
+        && existing.amount === row.amount
+        && existing.externalRef === row.externalRef)) {
         duplicateSkippedCount += 1
       } else {
         MOCK_BANK_TRANSACTIONS = [row, ...MOCK_BANK_TRANSACTIONS]
