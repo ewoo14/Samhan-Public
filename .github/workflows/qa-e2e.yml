@@ -5,6 +5,7 @@ on:
     paths:
       - 'qa/**'
       - 'clients/**'
+      - 'services/arologis-service/**'
       - '.github/workflows/qa-e2e.yml'
   workflow_dispatch:
 
