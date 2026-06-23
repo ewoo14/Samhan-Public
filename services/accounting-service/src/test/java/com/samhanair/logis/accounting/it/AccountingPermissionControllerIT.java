@@ -39,6 +39,8 @@ import com.samhanair.logis.accounting.service.TaxInvoiceEmitService;
 import com.samhanair.logis.accounting.service.TaxInvoiceInboundService;
 import com.samhanair.logis.accounting.service.TaxInvoiceService;
 import com.samhanair.logis.accounting.service.TrialBalanceService;
+import com.samhanair.logis.accounting.report.TrialBalanceReportController;
+import com.samhanair.logis.accounting.report.TrialBalanceSummaryService;
 import com.samhanair.logis.accounting.web.AccountController;
 import com.samhanair.logis.accounting.web.AccountingReportController;
 import com.samhanair.logis.accounting.web.DailyClosingController;
@@ -106,6 +108,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
                 SupplierProfileController.class,
                 TaxInvoiceController.class,
                 TaxInvoiceInboundController.class,
+                TrialBalanceReportController.class,
                 TrialBalanceController.class
         },
         properties = "spring.application.name=accounting-service")
@@ -150,6 +153,7 @@ class AccountingPermissionControllerIT {
     @MockBean private TaxInvoiceInboundService taxInvoiceInboundService;
     @MockBean private TaxInvoiceService taxInvoiceService;
     @MockBean private TrialBalanceService trialBalanceService;
+    @MockBean private TrialBalanceSummaryService trialBalanceSummaryService;
     @MockBean private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     @BeforeEach
@@ -201,8 +205,15 @@ class AccountingPermissionControllerIT {
                         () -> get("/accounting/journals/export.xlsx")
                                 .param("from", "2026-05-01")
                                 .param("to", "2026-05-27")),
-                endpoint("trial balance", "accounting.balances.trial-balance", PermissionAction.VIEW, "ACCOUNTANT",
+                endpoint("trial balance", "accounting.balances", PermissionAction.VIEW, "ACCOUNTANT",
                         () -> get("/accounting/balances").param("period", "202605")),
+                endpoint("trial balance report alias", "accounting.balances", PermissionAction.VIEW, "ACCOUNTANT",
+                        () -> get("/accounting/reports/trial-balance").param("period", "202605")),
+                endpoint("trial balance summary", "accounting.balances", PermissionAction.VIEW, "ACCOUNTANT",
+                        () -> get("/accounting/reports/trial-balance/summary")
+                                .param("from", "2026-05-01")
+                                .param("to", "2026-05-31")
+                                .param("granularity", "MONTH")),
                 endpoint("tax invoice list", "accounting.tax-invoice.list", PermissionAction.VIEW, "ACCOUNTANT",
                         () -> get("/accounting/tax-invoices")),
                 endpoint("tax invoice print", "accounting.tax-invoice.list", PermissionAction.VIEW, "ACCOUNTANT",

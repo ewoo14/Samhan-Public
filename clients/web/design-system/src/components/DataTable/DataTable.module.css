@@ -23,11 +23,30 @@
   color: var(--color-text);
 }
 
+.fixedLayout {
+  table-layout: fixed;
+}
+
 .thead {
   position: sticky;
   top: 0;
   z-index: 1;
   background-color: var(--color-bg-subtle);
+}
+
+.hiddenHeader {
+  height: 0;
+  visibility: hidden;
+}
+
+.hiddenHeader .th {
+  position: static;
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+  font-size: 0;
+  line-height: 0;
 }
 
 .th {

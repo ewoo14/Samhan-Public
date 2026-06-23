@@ -1,12 +1,14 @@
 package com.samhanair.logis.accounting.it;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 
@@ -117,7 +119,7 @@ class TrialBalanceControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("권한 — SALES 시산표 조회 403")
     void salesForbidden() throws Exception {
-        denyRequirePermission("accounting.balances.trial-balance", PermissionAction.VIEW);
+        denyRequirePermission("accounting.balances", PermissionAction.VIEW);
         lenient().when(dynamicPermissionClient.canView(eq("SALES"), anyString())).thenReturn(false);
         mockMvc.perform(get("/accounting/balances")
                         .param("period", "202605")
@@ -136,6 +138,92 @@ class TrialBalanceControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    @DisplayName("합계잔액시산표 — 이월/기간/4컬럼/균형 및 다중 라인 계정 집계")
+    void trialBalanceSummaryAggregatesOpeningAndEcountColumns() throws Exception {
+        createAndPostJournal("2024-12-31", List.of(
+                line("101", "1000", "0"),
+                line("301", "0", "1000")
+        ));
+        createAndPostJournal("2025-01-05", List.of(
+                line("101", "500", "0"),
+                line("801", "300", "0"),
+                line("101", "200", "0"),
+                line("201", "0", "400"),
+                line("401", "0", "600")
+        ));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/trial-balance/summary")
+                        .param("from", "2025-01-01")
+                        .param("to", "2025-01-31")
+                        .param("granularity", "MONTH")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fromDate").value("2025-01-01"))
+                .andExpect(jsonPath("$.data.toDate").value("2025-01-31"))
+                .andExpect(jsonPath("$.data.granularity").value("MONTH"))
+                .andExpect(jsonPath("$.data.totals.debitTotal").value(1000))
+                .andExpect(jsonPath("$.data.totals.creditTotal").value(1000))
+                .andExpect(jsonPath("$.data.totals.balanced").value(true))
+                .andReturn();
+
+        JsonNode rows = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("rows");
+        assertThat(rows).hasSize(5);
+
+        JsonNode cash = row(rows, "101");
+        assertThat(amount(cash, "openingBalance")).isEqualByComparingTo("1000.00");
+        assertThat(amount(cash, "debitTotal")).isEqualByComparingTo("700.00");
+        assertThat(amount(cash, "creditTotal")).isEqualByComparingTo("0");
+        assertThat(amount(cash, "debitBalance")).isEqualByComparingTo("1700.00");
+        assertThat(amount(cash, "creditBalance")).isEqualByComparingTo("0");
+
+        JsonNode payable = row(rows, "201");
+        assertThat(amount(payable, "debitBalance")).isEqualByComparingTo("0");
+        assertThat(amount(payable, "creditBalance")).isEqualByComparingTo("400.00");
+
+        JsonNode capital = row(rows, "301");
+        assertThat(amount(capital, "openingBalance")).isEqualByComparingTo("1000.00");
+        assertThat(amount(capital, "creditBalance")).isEqualByComparingTo("1000.00");
+    }
+
+    @Test
+    @DisplayName("합계잔액시산표 — 차변성 계정 음수 기말잔액은 대변잔액 컬럼에 양수 표시")
+    void trialBalanceSummaryPlacesNegativeAssetClosingOnCreditBalance() throws Exception {
+        createAndPostJournal("2025-02-10", List.of(
+                line("801", "500", "0"),
+                line("101", "0", "500")
+        ));
+
+        MvcResult result = mockMvc.perform(get("/accounting/reports/trial-balance/summary")
+                        .param("from", "2025-02-01")
+                        .param("to", "2025-02-28")
+                        .param("granularity", "MONTH")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totals.debitTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.creditTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.debitBalanceTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.creditBalanceTotal").value(500))
+                .andExpect(jsonPath("$.data.totals.balanced").value(true))
+                .andReturn();
+
+        JsonNode rows = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("rows");
+        assertThat(rows).hasSize(2);
+
+        JsonNode cash = row(rows, "101");
+        assertThat(amount(cash, "closingBalance")).isEqualByComparingTo("-500.00");
+        assertThat(amount(cash, "debitBalance")).isEqualByComparingTo("0");
+        assertThat(amount(cash, "creditBalance")).isEqualByComparingTo("500.00");
+
+        JsonNode salary = row(rows, "801");
+        assertThat(amount(salary, "debitBalance")).isEqualByComparingTo("500.00");
+        assertThat(amount(salary, "creditBalance")).isEqualByComparingTo("0");
+    }
+
     private Map<String, Object> balancedJournalBody(String amount) {
         Map<String, Object> debitLine = new HashMap<>();
         debitLine.put("accountCode", "101");
@@ -152,5 +240,48 @@ class TrialBalanceControllerIT extends AbstractPostgresIT {
         body.put("description", "테스트 분개");
         body.put("lines", List.of(debitLine, creditLine));
         return body;
+    }
+
+    private void createAndPostJournal(String journalDate, List<Map<String, Object>> lines) throws Exception {
+        Map<String, Object> body = new HashMap<>();
+        body.put("journalDate", journalDate);
+        body.put("description", "합계잔액시산표 테스트 분개");
+        body.put("lines", lines);
+
+        MvcResult create = mockMvc.perform(post("/accounting/journals")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String id = objectMapper.readTree(create.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        mockMvc.perform(post("/accounting/journals/" + id + "/post")
+                        .header("X-User-Id", "00000000-0000-0000-0000-000000000101")
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk());
+    }
+
+    private Map<String, Object> line(String accountCode, String debitAmount, String creditAmount) {
+        Map<String, Object> line = new HashMap<>();
+        line.put("accountCode", accountCode);
+        line.put("debitAmount", new BigDecimal(debitAmount));
+        line.put("creditAmount", new BigDecimal(creditAmount));
+        return line;
+    }
+
+    private JsonNode row(JsonNode rows, String accountCode) {
+        for (JsonNode row : rows) {
+            if (accountCode.equals(row.get("accountCode").asText())) {
+                return row;
+            }
+        }
+        throw new AssertionError("accountCode not found: " + accountCode);
+    }
+
+    private BigDecimal amount(JsonNode row, String fieldName) {
+        return row.get(fieldName).decimalValue();
     }
 }

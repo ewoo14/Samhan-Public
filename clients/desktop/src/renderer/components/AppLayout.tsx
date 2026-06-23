@@ -823,7 +823,7 @@ export function AppLayout() {
                 show={showAccountingBalances}
                 data-testid="sidebar-accounting-balances"
               >
-                시산표
+                합계잔액시산표
               </SidebarLink>
               {/* [P0-1 Slice A+B+C] 재무 보고서 서브메뉴 — accounting.reports PageCode 로 통합. */}
               {showAccountingReports ? (

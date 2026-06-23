@@ -4415,6 +4415,19 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // GET /accounting/reports/trial-balance/summary?from=&to=&granularity= — 합계잔액시산표
+  if (method === 'GET' && url.includes('/accounting/reports/trial-balance/summary')) {
+    const fromDate = (config.params?.['from'] ?? '2026-05-01') as string
+    const toDate = (config.params?.['to'] ?? '2026-05-31') as string
+    const granularity = (config.params?.['granularity'] ?? 'MONTH') as string
+    return envelope({
+      ...MOCK_TRIAL_BALANCE_SUMMARY,
+      fromDate,
+      toDate,
+      granularity,
+    })
+  }
+
   // ==========================================================================
   // P0-1 Slice A: 재무 보고서 mock endpoint
   // ==========================================================================
@@ -10218,6 +10231,108 @@ const MOCK_TRIAL_BALANCE = {
       closingBalance: '2000000',
     },
   ],
+}
+
+const MOCK_TRIAL_BALANCE_SUMMARY = {
+  fromDate: '2026-05-01',
+  toDate: '2026-05-31',
+  granularity: 'MONTH',
+  rows: [
+    {
+      accountCode: '1020',
+      accountName: '보통예금',
+      category: 'ASSET',
+      categoryDisplayName: '자산',
+      openingBalance: '50000000',
+      debitBalance: '40780000',
+      debitTotal: '3700000',
+      creditTotal: '12920000',
+      creditBalance: '0',
+      closingBalance: '40780000',
+    },
+    {
+      accountCode: '2110',
+      accountName: '예수금',
+      category: 'LIABILITY',
+      categoryDisplayName: '부채',
+      openingBalance: '0',
+      debitBalance: '0',
+      debitTotal: '0',
+      creditTotal: '1080000',
+      creditBalance: '1080000',
+      closingBalance: '1080000',
+    },
+    {
+      accountCode: '4010',
+      accountName: '제품매출',
+      category: 'REVENUE',
+      categoryDisplayName: '매출',
+      openingBalance: '0',
+      debitBalance: '0',
+      debitTotal: '0',
+      creditTotal: '3700000',
+      creditBalance: '3700000',
+      closingBalance: '3700000',
+    },
+    {
+      accountCode: '3010',
+      accountName: '자본금',
+      category: 'EQUITY',
+      categoryDisplayName: '자본',
+      openingBalance: '30000000',
+      debitBalance: '0',
+      debitTotal: '0',
+      creditTotal: '0',
+      creditBalance: '30000000',
+      closingBalance: '30000000',
+    },
+    {
+      accountCode: '3020',
+      accountName: '이익잉여금',
+      category: 'EQUITY',
+      categoryDisplayName: '자본',
+      openingBalance: '20000000',
+      debitBalance: '0',
+      debitTotal: '0',
+      creditTotal: '0',
+      creditBalance: '20000000',
+      closingBalance: '20000000',
+    },
+    {
+      accountCode: '8010',
+      accountName: '급여',
+      category: 'SGA',
+      categoryDisplayName: '판매비와관리비',
+      openingBalance: '0',
+      debitBalance: '12000000',
+      debitTotal: '12000000',
+      creditTotal: '0',
+      creditBalance: '0',
+      closingBalance: '12000000',
+    },
+    {
+      accountCode: '8120',
+      accountName: '임차료',
+      category: 'SGA',
+      categoryDisplayName: '판매비와관리비',
+      openingBalance: '0',
+      debitBalance: '2000000',
+      debitTotal: '2000000',
+      creditTotal: '0',
+      creditBalance: '0',
+      closingBalance: '2000000',
+    },
+  ],
+  totals: {
+    openingBalanceTotal: '100000000',
+    debitBalanceTotal: '54780000',
+    debitTotal: '17700000',
+    creditTotal: '17700000',
+    creditBalanceTotal: '54780000',
+    closingBalanceTotal: '109560000',
+    balanced: true,
+  },
+  generatedAt: '2026-05-31T18:00:00',
 }
 
 // ============================================================================

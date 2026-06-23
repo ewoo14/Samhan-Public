@@ -143,8 +143,8 @@ export function ReportListPage() {
         />
         <ReportCard
           icon="📋"
-          title="시산표"
-          description="월별 계정 차변 / 대변 합계 + 잔액 균형 검증."
+          title="합계잔액시산표"
+          description="이월잔액과 차변/대변 합계·잔액 4컬럼을 기간별로 조회합니다."
           path="/accounting/balances"
         />
       </div>
