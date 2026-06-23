@@ -102,6 +102,13 @@ public class SalesAggregateService {
             }
         }
 
+        Map<UUID, PartnerSummary> partnerSummaries = filterPartnerId == null && !byPartner.isEmpty()
+                ? partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(byPartner.keySet()))
+                : Map.of();
+        if (partnerSummaries == null) {
+            partnerSummaries = Map.of();
+        }
+
         List<SalesAggregateRow> rows = new ArrayList<>(byPartner.size());
         for (Map.Entry<UUID, PartnerAggregate> e : byPartner.entrySet()) {
             PartnerAggregate agg = e.getValue();
@@ -111,8 +118,7 @@ public class SalesAggregateService {
             String name = filterPartnerName;
             String bizNo = filterBizNo;
             if (code == null) {
-                PartnerSummary fallback = partnerLookupClient.findByPartnerId(e.getKey())
-                        .orElse(null);
+                PartnerSummary fallback = partnerSummaries.get(e.getKey());
                 if (fallback != null) {
                     code = fallback.partnerCode();
                     name = fallback.name();

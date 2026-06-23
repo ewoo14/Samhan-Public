@@ -16,7 +16,6 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -105,15 +104,16 @@ public class LedgerService {
             lines = journalLineRepository.findAllPostedLinesInRange(from, to);
         }
 
-        // N+1 방지 (partnerId): 라인의 모든 partnerId 를 일괄 수집 후 단건 lookup 캐시 구성
+        // N+1 방지 (partnerId): 라인의 모든 partnerId 를 일괄 수집 후 batch lookup 캐시 구성
         Set<UUID> partnerIdSet = lines.stream()
                 .map(JournalLine::getPartnerId)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<UUID, PartnerSummary> partnerCache = new HashMap<>();
-        for (UUID pid : partnerIdSet) {
-            partnerLookupClient.findByPartnerId(pid)
-                    .ifPresent(summary -> partnerCache.put(pid, summary));
+        Map<UUID, PartnerSummary> partnerCache = partnerIdSet.isEmpty()
+                ? Map.of()
+                : partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(partnerIdSet));
+        if (partnerCache == null) {
+            partnerCache = Map.of();
         }
 
         // N+1 방지 (accountCode): 라인의 모든 accountCode 를 일괄 수집 후 ChartOfAccount 캐시 구성

@@ -66,6 +66,7 @@ class LedgerControllerIT extends AbstractPostgresIT {
     @BeforeEach
     void setUpStubs() {
         lenient().when(partnerLookupClient.findByPartnerId(any())).thenReturn(Optional.empty());
+        lenient().when(partnerLookupClient.findByPartnerIdsBatch(any())).thenReturn(Map.of());
         lenient().when(partnerLookupClient.findByPartnerCode(any())).thenReturn(Optional.empty());
     }
 

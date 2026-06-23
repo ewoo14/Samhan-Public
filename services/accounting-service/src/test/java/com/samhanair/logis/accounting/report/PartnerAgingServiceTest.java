@@ -11,6 +11,7 @@ import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.repository.JournalLineRepository;
 import com.samhanair.logis.accounting.repository.JournalLineRepository.PartnerAccountTotal;
 import java.math.BigDecimal;
+import java.lang.reflect.RecordComponent;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +143,9 @@ class PartnerAgingServiceTest {
 
         assertThat(etc.partnerName()).isEqualTo("기타");
         assertThat(etc.balance()).isEqualByComparingTo("150000");
-        assertThat(etc.partnerId()).isNull();
+        assertThat(PartnerAgingLine.class.getRecordComponents())
+                .extracting(RecordComponent::getName)
+                .doesNotContain("partnerId");
     }
 
     @Test
@@ -194,8 +197,10 @@ class PartnerAgingServiceTest {
 
         assertThat(resp.lines()).hasSize(1);
         PartnerAgingLine lineC = resp.lines().get(0);
-        // empty fallback: UUID 를 화면 응답에 노출하지 않는다.
-        assertThat(lineC.partnerId()).isNull();
+        // empty fallback: UUID 를 응답 필드로도 노출하지 않는다.
+        assertThat(PartnerAgingLine.class.getRecordComponents())
+                .extracting(RecordComponent::getName)
+                .doesNotContain("partnerId");
         assertThat(lineC.partnerCode()).isEqualTo("미등록");
         assertThat(lineC.bizNo()).isEqualTo("");
         assertThat(lineC.partnerCode()).isNotEqualTo(partnerC.toString());

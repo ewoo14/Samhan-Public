@@ -23,7 +23,10 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -112,12 +115,14 @@ public class DailyClosingService {
         // (1) partnerCode → partnerId 도출
         UUID partnerId = null;
         String resolvedPartnerCode = null;
+        String resolvedBizNo = "";
         if (request.partnerCode() != null && !request.partnerCode().isBlank()) {
             PartnerSummary summary = partnerLookupClient.findByPartnerCode(request.partnerCode())
                     .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                             "존재하지 않는 거래처입니다: " + request.partnerCode()));
             partnerId = summary.partnerId();
             resolvedPartnerCode = summary.partnerCode();
+            resolvedBizNo = bizNoDigits(summary);
         }
 
         // (2) sourceKind 별 집계
@@ -154,7 +159,7 @@ public class DailyClosingService {
         closing.recalculate(agg.totalSupply(), agg.totalVat(), agg.totalAmount(), agg.slipCount());
         closing.lock(actorUserId);
 
-        return DailyClosingResponse.of(closing, resolvedPartnerCode);
+        return DailyClosingResponse.of(closing, resolvedPartnerCode, resolvedBizNo);
     }
 
     /**
@@ -192,8 +197,13 @@ public class DailyClosingService {
         }
         Page<DailyClosing> page = dailyClosingRepository.findByDateRangeAndKinds(
                 from, to, closingKind, sourceKind, pageable);
-        List<DailyClosingResponse> rows = page.getContent().stream()
-                .map(d -> DailyClosingResponse.of(d, resolvePartnerCode(d.getPartnerId())))
+        List<DailyClosing> closings = page.getContent();
+        Map<UUID, PartnerSummary> partners = resolvePartners(closings);
+        List<DailyClosingResponse> rows = closings.stream()
+                .map(d -> {
+                    PartnerSummary summary = partnerSummaryOf(partners, d.getPartnerId());
+                    return DailyClosingResponse.of(d, partnerCodeOf(summary), bizNoDigits(summary));
+                })
                 .toList();
         return new PageImpl<>(rows, pageable, page.getTotalElements());
     }
@@ -231,17 +241,19 @@ public class DailyClosingService {
         validateKindSourceMatch(resolvedKind, resolvedSource);
         UUID partnerId = null;
         String resolvedPartnerCode = null;
+        String resolvedBizNo = "";
         if (partnerCode != null && !partnerCode.isBlank()) {
             PartnerSummary summary = partnerLookupClient.findByPartnerCode(partnerCode)
                     .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                             "존재하지 않는 거래처입니다: " + partnerCode));
             partnerId = summary.partnerId();
             resolvedPartnerCode = summary.partnerCode();
+            resolvedBizNo = bizNoDigits(summary);
         }
 
         DailyClosing closing = findExisting(closingDate, partnerId, resolvedKind, resolvedSource);
         closing.unlock(actorUserId);
-        return DailyClosingResponse.of(closing, resolvedPartnerCode);
+        return DailyClosingResponse.of(closing, resolvedPartnerCode, resolvedBizNo);
     }
 
     private AggregationResult aggregateFromTaxInvoices(LocalDate closingDate, UUID partnerId,
@@ -362,14 +374,32 @@ public class DailyClosingService {
         }
     }
 
-    /** partnerId → partnerCode fail-soft 조회 (응답 노출용). */
-    private String resolvePartnerCode(UUID partnerId) {
-        if (partnerId == null) {
-            return null;
+    /** 일마감 페이지 내 partnerId 를 batch 1회로 조회한다. */
+    private Map<UUID, PartnerSummary> resolvePartners(List<DailyClosing> closings) {
+        LinkedHashSet<UUID> ids = new LinkedHashSet<>();
+        for (DailyClosing closing : closings) {
+            if (closing.getPartnerId() != null) {
+                ids.add(closing.getPartnerId());
+            }
         }
-        return partnerLookupClient.findByPartnerId(partnerId)
-                .map(PartnerSummary::partnerCode)
-                .orElse(null);
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, PartnerSummary> resolved = partnerLookupClient.findByPartnerIdsBatch(new ArrayList<>(ids));
+        return resolved == null ? Map.of() : resolved;
+    }
+
+    private static String partnerCodeOf(PartnerSummary summary) {
+        return summary == null ? null : summary.partnerCode();
+    }
+
+    private static PartnerSummary partnerSummaryOf(Map<UUID, PartnerSummary> partners, UUID partnerId) {
+        return partnerId == null || partners == null || partners.isEmpty() ? null : partners.get(partnerId);
+    }
+
+    private static String bizNoDigits(PartnerSummary summary) {
+        String bizNo = summary == null ? null : summary.bizNo();
+        return bizNo == null ? "" : bizNo.replaceAll("[^0-9]", "");
     }
 
     private DailyClosing findExisting(LocalDate closingDate, UUID partnerId,

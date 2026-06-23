@@ -132,7 +132,6 @@ public class PartnerAgingService {
                     : 0;
 
             lines.add(new PartnerAgingLine(
-                    null,
                     partnerCode,
                     bizNo,
                     partnerName,
@@ -145,7 +144,6 @@ public class PartnerAgingService {
         // "기타" 그룹 마지막에 추가
         if (etcBalance.signum() > 0) {
             lines.add(new PartnerAgingLine(
-                    null,
                     ETC_PARTNER_CODE,
                     "",
                     ETC_PARTNER_NAME,

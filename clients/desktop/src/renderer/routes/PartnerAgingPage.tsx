@@ -9,7 +9,7 @@
  * 권한: ACCOUNTANT / MANAGER / MASTER (RoleGuard — AppRouter 적용).
  *
  * UUID 비공개 가드:
- * - `PartnerAgingLine.partnerId` 는 화면에 절대 노출 금지 (feedback_uuid_no_user_visibility).
+ * - `PartnerAgingLine` 응답에는 partner UUID 를 포함하지 않는다 (feedback_uuid_no_user_visibility).
  * - 사용자에게 노출되는 식별자: `partnerCode` / `bizNo` / `partnerName` 만.
  *
  * API: `GET /accounting/reports/partner-aging?asOfDate=YYYY-MM-DD&type=RECEIVABLE|PAYABLE`
@@ -116,7 +116,7 @@ function agingBadgeStyle(agingDays: number): React.CSSProperties {
   }
 }
 
-/** CSV 다운로드 — Blob API (UUID partnerId 는 포함 안 함). */
+/** CSV 다운로드 — Blob API (UUID 는 포함 안 함). */
 function downloadCsv(data: PartnerAgingResponse): void {
   const header = '관리코드,거래처코드,거래처명,잔액,가장오래된일자,연체일수'
   const rows = (data.lines ?? []).map((l) =>
@@ -413,7 +413,7 @@ export function PartnerAgingPage() {
                           : 'var(--color-bg-subtle)',
                     }}
                   >
-                    {/* UUID 비공개: partnerCode 만 표시. partnerId 는 절대 노출 안 함 */}
+                    {/* UUID 비공개: partnerCode/bizNo 만 표시. */}
                     <td
                       style={{
                         padding: '6px 8px',

@@ -109,6 +109,9 @@ class DailyClosingIT extends AbstractPostgresIT {
         Mockito.lenient()
                 .when(partnerLookupClient.findByPartnerId(any(UUID.class)))
                 .thenReturn(Optional.empty());
+        Mockito.lenient()
+                .when(partnerLookupClient.findByPartnerIdsBatch(Mockito.anyList()))
+                .thenReturn(Map.of(PARTNER_UUID, stubPartner));
 
         // ProductClient — lookup 은 UUID 리스트 기반 batch. 본 IT 에서 직접 호출 없음.
         // @MockBean 으로 ApplicationContext 격리만 보장 (lenient stub 불필요).
@@ -233,6 +236,7 @@ class DailyClosingIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.bizNo").value("1234567890"))
                 .andExpect(jsonPath("$.data.partnerCode").value(PARTNER_CODE))
                 .andExpect(jsonPath("$.data.isLocked").value(true));
     }

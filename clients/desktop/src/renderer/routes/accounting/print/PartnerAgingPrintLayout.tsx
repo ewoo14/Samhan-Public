@@ -5,7 +5,7 @@
  * 용지: A4 portrait (PrintLayout paper="a4-portrait" 재사용)
  *
  * UUID 비공개 가드:
- * - `partnerId` 필드 화면 노출 금지 (feedback_uuid_no_user_visibility).
+ * - 응답/화면에 partner UUID 필드 없음 (feedback_uuid_no_user_visibility).
  * - 표에는 `partnerCode` / `bizNo` / `partnerName` 만 표시.
  *
  * PR #134 회고:
@@ -218,7 +218,7 @@ function PartnerAgingPrintBody({ data }: BodyProps) {
         </div>
       </div>
 
-      {/* 본문 표 — UUID partnerId 열 없음 (화면 노출 금지) */}
+      {/* 본문 표 — UUID 열 없음 (화면 노출 금지) */}
       <table className="aging-table">
         <colgroup>
           <col style={{ width: '12%' }} />
@@ -248,7 +248,7 @@ function PartnerAgingPrintBody({ data }: BodyProps) {
                 key={line.partnerCode}
                 className={rowCls}
               >
-                {/* UUID 비공개: partnerCode 만 — partnerId 절대 미노출 */}
+                {/* UUID 비공개: partnerCode/bizNo 만 표시 */}
                 <td style={{ color: 'var(--color-neutral-700)' }}>
                   {line.partnerCode}
                 </td>

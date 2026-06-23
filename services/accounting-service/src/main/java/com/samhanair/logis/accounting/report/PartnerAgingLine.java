@@ -7,12 +7,11 @@ import java.time.LocalDate;
  * 거래처별 미수/미지급금 집계 행 (Partner Aging Line).
  *
  * <p>UUID 사용자 노출 금지 원칙 (메모리 {@code feedback_uuid_no_user_visibility.md}):
- * partnerId 는 내부 참조용으로만 사용하고, 화면에는 partnerCode / bizNo / partnerName 만 노출.
- * partnerId 가 null 인 라인은 "기타" 그룹으로 집계.
+ * partnerId 는 내부 참조용으로만 사용하고 응답에는 포함하지 않는다.
+ * partnerId 가 null 인 라인은 "기타" 그룹으로 집계한다.
  *
  * <p>agingDays 계산: asOfDate - oldestUnpaidDate (일수). oldestUnpaidDate 가 없으면 0.
  *
- * @param partnerId        거래처 UUID (내부 참조용 — 화면 노출 X)
  * @param partnerCode      거래처 코드 (사용자 노출)
  * @param bizNo            사업자번호 숫자 문자열. 기타/미조회 라인은 빈 문자열
  * @param partnerName      거래처명 (사용자 노출)
@@ -21,7 +20,6 @@ import java.time.LocalDate;
  * @param agingDays        경과 일수 (asOfDate - oldestUnpaidDate, 없으면 0)
  */
 public record PartnerAgingLine(
-        String partnerId,
         String partnerCode,
         String bizNo,
         String partnerName,
