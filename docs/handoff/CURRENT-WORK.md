@@ -4,31 +4,26 @@
 
 ---
 
-## 🟡 핸드오프 (2026-06-24 야간 자율 루프 — **슬라이스 ①②✅머지 / ③ Opus+라이브QA완료·Codex보류 / ④ 정책대기. Codex 사용량 한도 차단으로 루프 정지**)
+## ✅ 핸드오프 (2026-06-24 — **슬라이스 ①②③④ 전부 머지 완료. 워크플로우 전 단계 준수. 세션 종료**)
 
-### 🤖 야간 자율 루프 (개발책임자 "취침 중 ~07:00까지 자율 진행" 지시) — 워크플로우 준수 진행
-개발책임자 결정 슬라이스 순서 **3→2→1→4** ([[feedback_autonomous_loop_schedulewakeup]] ScheduleWakeup 매 단계 재자각).
+### 🤖 자율 루프 (개발책임자 "야간 자율 → 재개 → 옵션1만 진행 후 세션 종료") — 슬라이스 순서 **3→2→1→4** 전부 완결
+매 단계 ScheduleWakeup 재자각([[feedback_autonomous_loop_schedulewakeup]] — 활성·전PC 적용 박제). 각 슬라이스 Opus·Codex 순차 듀얼리뷰 + 라운드별 라이브 QA(스샷 인라인) + 0수렴 재리뷰 + CI green 준수.
 
-- **①#531 RestClient 계약테스트 배치5 = ✅머지 #585** (SlipServiceClient·AccountingMig8OrderClient·arologis PartnerClient. 듀얼리뷰 BLOCKING[허구 409 계약]→409 CONFLICT fix, 라이브 201/200/409 round-trip 실증).
-- **②거래처코드 sweep 그룹4 = ✅머지 #586** (EstimateList·TaxInvoiceList·InboundInspection. 라이브 QA가 하이픈 미제거 단독 적발→fix. **Codex 라운드가 SlipClient identity 헤더 BLOCKING[런타임 403] 적발→fix, 라이브 403→200 실증**. cross-cutting auth 갭=**이슈 #587** 박제).
-- **③회계 H-2 입출금매칭 = 🔄 PR #588 (머지 보류)**: Opus 5-agent 라운드 = BLOCKING(식별자 2-key→V43 unique 4-key bankAccountLabel+transactedAt+amount+externalRef)+P1×N+Design P1(FORCED 배지 미존재토큰) Opus 직접 fix. 라이브 QA 실증(CSV import 200·매칭 PATCH 4-key 200·틀린 amount 404·데스크톱 실화면). 검증: accounting 2 IT+desktop typecheck+mock 11 PASS, CI 25 green. **⛔ Codex 라운드 차단** → 보류.
-- **④A2 결재 enforcement = ⏳ DECISION-BLOCKED**: 아래 개발책임자 결정 필요 + Codex 개발 필요.
+- **①#531 RestClient 계약테스트 배치5 = ✅머지 #585** (듀얼리뷰 BLOCKING[허구 409 계약]→CONFLICT fix, 라이브 201/200/409 실증). cross-cutting=#587.
+- **②거래처코드 sweep 그룹4 = ✅머지 #586** (라이브 하이픈 미제거 적발. **Codex 라운드가 SlipClient identity 403 BLOCKING 적발**→fix, 403→200 실증).
+- **③회계 H-2 입출금매칭 = ✅머지 #588** (Opus BLOCKING[식별자 2-key→V43 4-key]+Design 배지토큰, **Codex rowKey 4-key 단독 적발**+mock import/문서 stale. 라이브 CSV import 200·매칭 4-key 200·404 정밀. Codex 한도 차단으로 보류됐다 복구 후 완결).
+- **④회계전표 B-게이트 결재 enforcement = ✅머지 #589** (ApprovalLineAuthorizeClient→JournalService.post 게이트[ACCOUNTING_JOURNAL/JOURNAL_POST, configured&&!allowed→403, actor=UUID만 system skip], auth V68 시드[approver 미시드=configured=false opt-in]. Opus P2[V68 per-row·IT]/P3[equals·blank token]+**3-phase 라이브 QA 200/403/200 실증**, Codex FE 403 한국어 메시지 전파 단독 적발. 0수렴 Codex MERGE-OK).
 
-### ⛔ 루프 정지 사유 (정직 보고)
-**Codex(`mcp__codex__codex`) 계정 사용량 한도 도달** — "try again Jun 25th 6:19 AM"(약 28시간 후, 세션 내 복구 불가). codex exec 우회도 동일 rate limit. → 듀얼리뷰 Codex 라운드·Codex 개발 불가 → 워크플로우상 #588 머지 보류(가짜 Codex 라운드·단일모델 머지 금지), 슬라이스 ④ 착수 불가. **다음 세션(Codex 복구 후) 재개.**
+### 📌 다음 작업 후보 (개발책임자 지정 대기 — 세션 종료로 미착수)
+- **A2 결재 enforcement 잔여**: 회계전표는 ④로 B-게이트 완료. **잔여=그룹웨어 결재(이미 ApprovalStep EXPLICIT chain 보유→보완 검토)·견적(estimate-app 독립)·배차(slip-service 내장)** — 각 아키텍처 상이, 별도 슬라이스. 상세 [[project_approval_enforcement_epic]].
+- **회계전표 B-게이트 운영 안내**: V68은 구조만 시드(opt-in). **회계 관리자가 admin.approval-line-config UI 에서 ACCOUNTING_JOURNAL 결재자(그룹/개인) 지정 시부터 게시 enforced.** 미지정 시 기존대로 자유 게시.
+- 기타: #587(cross-cutting RestClient auth 갭), PartnerLookupClient bizNo 후속.
 
-### 📌 개발책임자 결정 필요 — 슬라이스 ④ A2 결재 enforcement 접근
-정찰 확정: B게이트(ApprovalLineAuthorizeClient)=출고#556/입고#558/주문#559만 적용(slip-service·partner-order). **잔여 4문서 아키텍처 상이**:
-- **회계전표**: `AccountingEditRequest`(EditRequest 패턴) 운영. B게이트 미적용. 작성자=게시자 역할분리 약함(정책 필요).
-- **그룹웨어 결재**: 이미 `ApprovalStep` 자체 EXPLICIT 결재 chain 완성(user/group/creator). approval-line-config 중복/보완 검토만.
-- **견적**: estimate-app 독립(services/ 백엔드 없음)·거래처-facing send/accept.
-- **배차**: slip-service 내장(별도 dispatch-service 없음)·복잡 상태머신.
-→ **결정 질문**: (a) 어느 문서부터(회계/그룹웨어 중)? (b) B게이트(결재라인 결재자=액션게이트) 확장 vs 신규 명시 결재 chain 모델? (c) 견적/배차 포함 여부? 정합 높은 후보=그룹웨어(이미 chain 보유, 보완) 또는 회계(EditRequest→B게이트). 상세 메모리 [[project_approval_enforcement_epic]].
-
-### 🖥️ 세션 스택 상태 (정리 필요)
-- Docker 스택 가동 중(postgres/eureka/gateway/auth/partner/product/inventory/**slip-service:18086·partner-order:18088 override**/**accounting-service:8087 재빌드**/arologis 등). 데스크톱 standalone 렌더러 :5175 가동 중.
-- ⚠️ **dev-only 데이터(정리 대상)**: (1) auth_db account_page_permissions 에 시스템호출자(0000...) slip.publish.from-partner-order 권한 시드(슬라이스① 라이브QA용, 개발책임자 승인). (2) slip_db 에 슬라이스① 라이브 슬립(2026/06/23-1 등). (3) accounting_db LIVEQA-BANK 통장 3건(슬라이스③). 모두 dev 한정·무해, 스택 down 시 소멸.
-- 재개: `git pull` → 본 파일 → Codex 복구 확인(`mcp__codex__codex` 또는 새 세션) → #588 Codex 라운드부터.
+### 🖥️ 세션 스택 상태
+- Docker 스택 가동 중(postgres/eureka/gateway/auth V68/accounting B-게이트 재빌드/partner/product/inventory/slip:18086·partner-order:18088 override 등). 데스크톱 렌더러 :5175.
+- ⚠️ **dev-only 데이터(무해, 스택 down 시 소멸)**: ①slip.publish 권한시드+라이브슬립, ③accounting_db LIVEQA-BANK 통장 3건, ④게시된 회계전표 2건(fb6c2099·03df9dbc DRAFT→POSTED). 운영 영향 0.
+- ⚠️ **로컬 auth_db flyway V68 history 삭제됨**(편집된 per-row V68 재적용 위해) — 다음 auth-service 재기동 시 새 V68 멱등 재적용(approval_line_config 기존 행은 per-row 가드로 skip). 정상 동작.
+- 재개: `git pull` → 본 파일 → 개발책임자 지정 작업.
 
 ---
 
