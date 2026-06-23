@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -28,6 +28,7 @@ import {
   type PlanStatus,
 } from '../api/accounting'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { usePermissions } from '../hooks/usePermissions'
 
 const PLAN_STATUS_OPTIONS: PlanStatus[] = ['PLANNED', 'COLLECTED', 'OVERDUE']
 const PLAN_BASIS_OPTIONS: PlanBasis[] = ['RECEIVABLE_BALANCE', 'NOTE_MATURITY', 'MANUAL']
@@ -100,10 +101,14 @@ export function CollectionPlanPage() {
   usePageTitle('수금계획', '등록/목록')
 
   const queryClient = useQueryClient()
+  const { canAccess } = usePermissions()
+  const canCreateReceivable = canAccess('accounting.receivables', 'create')
+  const canUpdateReceivable = canAccess('accounting.receivables', 'update')
   const [formPartner, setFormPartner] = useState<JournalStatusPartnerOption | null>(null)
   const [filterPartner, setFilterPartner] = useState<JournalStatusPartnerOption | null>(null)
   const [statusFilter, setStatusFilter] = useState<PlanStatus | ''>('')
   const [suggestions, setSuggestions] = useState<CollectionPlanSuggestion[]>([])
+  const [toast, setToast] = useState<{ type: 'error'; message: string } | null>(null)
   const [forecastRange, setForecastRange] = useState({ from: yearStartIso(), to: yearEndIso() })
   const [queryFilters, setQueryFilters] = useState<{
     status?: PlanStatus
@@ -113,8 +118,15 @@ export function CollectionPlanPage() {
     plannedDate: nextWeekIso(),
     plannedAmount: '',
     basis: 'MANUAL' as PlanBasis,
+    sourceReference: '',
     memo: '',
   })
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
   const plansQuery = useQuery({
     queryKey: ['accounting', 'collection-plans', queryFilters.status ?? '', queryFilters.partnerCode ?? ''],
@@ -133,12 +145,14 @@ export function CollectionPlanPage() {
         plannedDate: nextWeekIso(),
         plannedAmount: '',
         basis: 'MANUAL',
+        sourceReference: '',
         memo: '',
       })
       setFormPartner(null)
       setSuggestions([])
       await queryClient.invalidateQueries({ queryKey: ['accounting', 'collection-plans'] })
     },
+    onError: () => setToast({ type: 'error', message: '수금계획 등록 중 오류가 발생했습니다.' }),
   })
 
   const suggestionMutation = useMutation({
@@ -156,6 +170,7 @@ export function CollectionPlanPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['accounting', 'collection-plans'] })
     },
+    onError: () => setToast({ type: 'error', message: '수금계획 상태 변경 중 오류가 발생했습니다.' }),
   })
 
   const applySuggestion = (suggestion: CollectionPlanSuggestion) => {
@@ -164,6 +179,7 @@ export function CollectionPlanPage() {
       plannedDate: suggestion.plannedDate,
       plannedAmount: String(suggestion.plannedAmount),
       basis: suggestion.basis,
+      sourceReference: suggestion.sourceReference,
       memo: suggestion.memo ?? prev.memo,
     }))
   }
@@ -223,8 +239,11 @@ export function CollectionPlanPage() {
               key={status}
               size="sm"
               variant={row.status === status ? 'primary' : 'ghost'}
-              disabled={!canTransition(row.status, status) || statusMutation.isPending}
-              onClick={() => statusMutation.mutate({ planNo: row.planNo, status })}
+              disabled={!canUpdateReceivable || !canTransition(row.status, status) || statusMutation.isPending}
+              onClick={() => {
+                if (!canUpdateReceivable) return
+                statusMutation.mutate({ planNo: row.planNo, status })
+              }}
             >
               {PLAN_STATUS_LABEL[status]}
             </Button>
@@ -232,7 +251,7 @@ export function CollectionPlanPage() {
         </div>
       ),
     },
-  ], [statusMutation])
+  ], [canUpdateReceivable, statusMutation])
 
   const handleSearch = () => {
     setQueryFilters({
@@ -243,16 +262,24 @@ export function CollectionPlanPage() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!formPartner || !form.plannedAmount) return
+    const plannedAmount = Number(form.plannedAmount)
+    if (!canCreateReceivable || !formPartner || !Number.isFinite(plannedAmount) || plannedAmount <= 0) return
     registerMutation.mutate({
       partnerCode: formPartner.partnerCode,
       plannedDate: form.plannedDate,
       plannedAmount: form.plannedAmount,
       basis: form.basis,
+      sourceReference: form.sourceReference.trim() || undefined,
       memo: form.memo.trim() || undefined,
     })
   }
 
+  const plannedAmountValue = Number(form.plannedAmount)
+  const canSubmit = canCreateReceivable
+    && Boolean(formPartner)
+    && Number.isFinite(plannedAmountValue)
+    && plannedAmountValue > 0
+    && !registerMutation.isPending
   const totalAmount = (plansQuery.data ?? []).reduce((sum, row) => sum + Number(row.plannedAmount || 0), 0)
   const forecast = forecastQuery.data
 
@@ -269,6 +296,23 @@ export function CollectionPlanPage() {
       </div>
 
       <Card style={{ padding: 16 }}>
+        {toast ? (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 12,
+              padding: '10px 12px',
+              border: '1px solid var(--state-danger)',
+              borderRadius: 6,
+              background: 'var(--state-danger-bg)',
+              color: 'var(--state-danger)',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {toast.message}
+          </div>
+        ) : null}
         <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(3, minmax(130px, 1fr)) auto auto', gap: 10, alignItems: 'end' }}>
           <AsyncAutocomplete<JournalStatusPartnerOption>
             value={formPartner}
@@ -298,7 +342,7 @@ export function CollectionPlanPage() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             금액
-            <Input type="number" min="0" step="1" value={form.plannedAmount} onChange={(event) => setForm((prev) => ({ ...prev, plannedAmount: event.target.value }))} />
+            <Input type="number" min="0.01" step="0.01" value={form.plannedAmount} onChange={(event) => setForm((prev) => ({ ...prev, plannedAmount: event.target.value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             근거
@@ -319,7 +363,7 @@ export function CollectionPlanPage() {
           <Button
             type="submit"
             variant="primary"
-            disabled={!formPartner || !form.plannedAmount || registerMutation.isPending}
+            disabled={!canSubmit}
           >
             등록
           </Button>

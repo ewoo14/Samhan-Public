@@ -1774,6 +1774,7 @@ export interface CollectionPlanRow {
   plannedAmount: string | number
   basis: PlanBasis
   status: PlanStatus
+  sourceReference?: string | null
   memo?: string | null
 }
 
@@ -1784,6 +1785,7 @@ export interface CreateCollectionPlanPayload {
   plannedDate: string
   plannedAmount: string
   basis: PlanBasis
+  sourceReference?: string
   memo?: string
 }
 

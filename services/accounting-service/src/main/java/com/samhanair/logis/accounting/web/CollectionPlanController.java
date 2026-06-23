@@ -30,8 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 수금계획 CRUD/제안/예측 endpoint.
  *
- * <p>PageCode 는 회계 보고 스위트 공통 코드인 {@code accounting.reports} 를 사용한다.
- * 신규 page-code 없이 accounting-service + desktop 범위에 G-2를 유지한다.
+ * <p>PageCode 는 받을어음/수금계획 공용 채권관리 코드인 {@code accounting.receivables} 를 사용한다.
  */
 @RestController
 @RequestMapping("/accounting/collection-plans")
@@ -39,7 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "수금계획", description = "회계 보고 스위트 G-2 수금계획 등록/목록/상태전이/자동제안/예측")
 public class CollectionPlanController {
 
-    private static final String PAGE_CODE = "accounting.reports";
+    private static final String PAGE_CODE = "accounting.receivables";
 
     private final CollectionPlanService service;
 

@@ -4834,6 +4834,22 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const partner = MOCK_ADMIN_PARTNERS.find((row) => row.partnerCode === partnerCode)
     const aging = MOCK_PARTNER_AGING_RECEIVABLE.lines.find((row) => row.partnerCode === partnerCode)
     const plannedDate = String(body.plannedDate ?? new Date().toISOString().slice(0, 10))
+    const plannedAmount = String(body.plannedAmount ?? '1')
+    if (Number(plannedAmount) <= 0) {
+      return mockError(400, 'INVALID_INPUT', 'plannedAmount 는 0보다 커야 합니다.')
+    }
+    const basis = String(body.basis ?? 'MANUAL') as 'RECEIVABLE_BALANCE' | 'NOTE_MATURITY' | 'MANUAL'
+    const sourceReference = body.sourceReference == null || String(body.sourceReference).trim() === ''
+      ? null
+      : String(body.sourceReference).trim()
+    if (sourceReference && MOCK_COLLECTION_PLANS.some((row) =>
+      row.partnerCode === partnerCode &&
+      row.basis === basis &&
+      row.sourceReference === sourceReference &&
+      (row.status === 'PLANNED' || row.status === 'OVERDUE'),
+    )) {
+      return mockError(409, 'CONFLICT', `이미 등록된 자동제안 출처입니다: ${sourceReference}`)
+    }
     const planNo = `CP-${plannedDate.replace(/-/g, '')}-${String(Date.now()).slice(-6)}`
     const row = {
       planNo,
@@ -4841,9 +4857,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       bizNo: String(partner?.bizNo ?? partner?.businessNumber ?? aging?.bizNo ?? '').replace(/\D/g, ''),
       partnerName: String(partner?.name ?? partner?.partnerName ?? aging?.partnerName ?? ''),
       plannedDate,
-      plannedAmount: String(body.plannedAmount ?? '0'),
-      basis: String(body.basis ?? 'MANUAL') as 'RECEIVABLE_BALANCE' | 'NOTE_MATURITY' | 'MANUAL',
+      plannedAmount,
+      basis,
       status: 'PLANNED' as 'PLANNED' | 'COLLECTED' | 'OVERDUE',
+      sourceReference,
       memo: body.memo == null ? null : String(body.memo),
     }
     MOCK_COLLECTION_PLANS = [...MOCK_COLLECTION_PLANS, row]
@@ -13063,6 +13080,7 @@ let MOCK_COLLECTION_PLANS: Array<{
   plannedAmount: string
   basis: 'RECEIVABLE_BALANCE' | 'NOTE_MATURITY' | 'MANUAL'
   status: 'PLANNED' | 'COLLECTED' | 'OVERDUE'
+  sourceReference: string | null
   memo: string | null
 }> = [
   {
@@ -13074,6 +13092,7 @@ let MOCK_COLLECTION_PLANS: Array<{
     plannedAmount: '12500000',
     basis: 'NOTE_MATURITY',
     status: 'PLANNED',
+    sourceReference: 'NR-2026-0001',
     memo: '받을어음 만기 기준',
   },
   {
@@ -13085,6 +13104,7 @@ let MOCK_COLLECTION_PLANS: Array<{
     plannedAmount: '8800000',
     basis: 'MANUAL',
     status: 'OVERDUE',
+    sourceReference: null,
     memo: null,
   },
 ]
@@ -13253,6 +13273,7 @@ const SP_D1_PAGES = [
   'accounting.journals',
   'accounting.balances',
   'accounting.reports',
+  'accounting.receivables',
   'accounting.period-close',
   'accounting.statement-batch',
   'accounting.partner-ledger',
@@ -13401,7 +13422,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'inbound.inspection', 'dispatch.board',
     // SP-D2 회계 7개 — MANAGER: view 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
-    'accounting.reports', 'accounting.period-close', 'accounting.statement-batch',
+    'accounting.reports', 'accounting.receivables', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
     // V37 supplier-profiles — MANAGER: view/edit 허용
     'accounting.supplier-profiles',
@@ -13484,7 +13505,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'purchases.receipt-ocr', 'purchases.slip.list', 'sales.slip.list',
     // SP-D2 회계 7개 — ACCOUNTANT: view + edit 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
-    'accounting.reports', 'accounting.period-close', 'accounting.statement-batch',
+    'accounting.reports', 'accounting.receivables', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
     // V37 supplier-profiles — ACCOUNTANT: view only
     'accounting.supplier-profiles',
@@ -13578,6 +13599,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'accounting.tax-invoice.batch-issue', 'accounting.tax-invoice.inbound',
     'accounting.sales-slip.list', 'accounting.purchase-slip.list',
     'accounting.daily-closing.run',
+    'accounting.receivables',
     // V37 supplier-profiles — MANAGER: view/edit 허용
     'accounting.supplier-profiles',
     // SP-D1 — MANAGER: edit 미허용 (view 전용)
@@ -13654,7 +13676,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'accounting.daily-closing.run',
     'purchases.receipt-ocr',
     // SP-D2 회계 7개 — ACCOUNTANT: edit 허용 (accounts/journals/period-close/statement-batch)
-    'accounting.accounts', 'accounting.journals', 'accounting.period-close',
+    'accounting.accounts', 'accounting.journals', 'accounting.receivables', 'accounting.period-close',
     'accounting.statement-batch',
     // SP-D4 — ACCOUNTANT: edit 없음 (모두 view 전용)
     'inventory.edit-requests', 'inventory.edit-requests.decide',

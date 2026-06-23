@@ -65,8 +65,11 @@ public class CollectionPlan extends BaseEntity {
     @Column(name = "memo", columnDefinition = "TEXT")
     private String memo;
 
+    @Column(name = "source_reference", length = 100)
+    private String sourceReference;
+
     private CollectionPlan(String planNo, UUID partnerId, LocalDate plannedDate,
-                           BigDecimal plannedAmount, PlanBasis basis, String memo) {
+                           BigDecimal plannedAmount, PlanBasis basis, String memo, String sourceReference) {
         validateRequired(planNo, partnerId, plannedDate, plannedAmount);
         this.planNo = planNo.trim();
         this.partnerId = partnerId;
@@ -75,6 +78,7 @@ public class CollectionPlan extends BaseEntity {
         this.basis = basis == null ? PlanBasis.MANUAL : basis;
         this.status = PlanStatus.PLANNED;
         this.memo = blankToNull(memo);
+        this.sourceReference = blankToNull(sourceReference);
     }
 
     /**
@@ -90,7 +94,19 @@ public class CollectionPlan extends BaseEntity {
      */
     public static CollectionPlan register(String planNo, UUID partnerId, LocalDate plannedDate,
                                           BigDecimal plannedAmount, PlanBasis basis, String memo) {
-        return new CollectionPlan(planNo, partnerId, plannedDate, plannedAmount, basis, memo);
+        return register(planNo, partnerId, plannedDate, plannedAmount, basis, memo, null);
+    }
+
+    /**
+     * 수금계획을 출처키와 함께 등록한다.
+     *
+     * @param sourceReference 자동제안 출처키. 수동 등록이면 null
+     * @return 신규 수금계획
+     */
+    public static CollectionPlan register(String planNo, UUID partnerId, LocalDate plannedDate,
+                                          BigDecimal plannedAmount, PlanBasis basis, String memo,
+                                          String sourceReference) {
+        return new CollectionPlan(planNo, partnerId, plannedDate, plannedAmount, basis, memo, sourceReference);
     }
 
     /** 예정/연체 → 수금완료 상태로 전환한다. */

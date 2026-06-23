@@ -767,7 +767,7 @@ const router = createHashRouter([
       {
         path: '/accounting/reports/notes-receivable',
         element: (
-          <PermissionGuard pageCode="accounting.reports" action="view">
+          <PermissionGuard pageCode="accounting.receivables" action="view">
             <NotesReceivablePage />
           </PermissionGuard>
         ),
@@ -775,7 +775,7 @@ const router = createHashRouter([
       {
         path: '/accounting/reports/collection-plans',
         element: (
-          <PermissionGuard pageCode="accounting.reports" action="view">
+          <PermissionGuard pageCode="accounting.receivables" action="view">
             <CollectionPlanPage />
           </PermissionGuard>
         ),

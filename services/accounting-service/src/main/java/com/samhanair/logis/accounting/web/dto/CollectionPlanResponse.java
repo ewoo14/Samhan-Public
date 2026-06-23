@@ -16,6 +16,7 @@ public record CollectionPlanResponse(
         BigDecimal plannedAmount,
         PlanBasis basis,
         PlanStatus status,
+        String sourceReference,
         String memo
 ) {
     public static CollectionPlanResponse of(CollectionPlan plan, PartnerDisplay partner) {
@@ -28,6 +29,7 @@ public record CollectionPlanResponse(
                 plan.getPlannedAmount(),
                 plan.getBasis(),
                 plan.getStatus(),
+                plan.getSourceReference(),
                 plan.getMemo()
         );
     }

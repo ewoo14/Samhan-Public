@@ -188,6 +188,45 @@ class CollectionPlanControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("자동 제안 적용 등록: sourceReference 영속 + 같은 어음 만기 중복 등록 거부")
+    void registerSuggestion_persistsSourceReferenceAndRejectsDuplicateOpenPlan() throws Exception {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("partnerCode", "P-CP-001");
+        body.put("plannedDate", "2026-08-15");
+        body.put("plannedAmount", new BigDecimal("800000"));
+        body.put("basis", "NOTE_MATURITY");
+        body.put("sourceReference", "CP-NR-DUP-001");
+        body.put("memo", "받을어음 만기 기준 자동 제안");
+
+        mockMvc.perform(post(BASE_URL)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.sourceReference").value("CP-NR-DUP-001"));
+
+        Integer persisted = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM collection_plan
+                 WHERE partner_id = ?
+                   AND basis = 'NOTE_MATURITY'
+                   AND source_reference = 'CP-NR-DUP-001'
+                   AND status = 'PLANNED'
+                   AND is_deleted = FALSE
+                """, Integer.class, PARTNER_A_ID);
+        assertThat(persisted).isEqualTo(1);
+
+        mockMvc.perform(post(BASE_URL)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+    }
+
+    @Test
     @DisplayName("예측: PLANNED/OVERDUE만 월별 합산하고 COLLECTED 제외")
     void forecast_groupsOpenPlansByMonth() throws Exception {
         register("P-CP-001", LocalDate.of(2026, 9, 5), "1000000", "MANUAL");

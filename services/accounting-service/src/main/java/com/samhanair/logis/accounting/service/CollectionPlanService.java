@@ -50,6 +50,7 @@ public class CollectionPlanService {
 
     private static final String ACCOUNT_RECEIVABLE = "110";
     private static final DateTimeFormatter PLAN_NO_DATE = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final List<PlanStatus> OPEN_STATUSES = List.of(PlanStatus.PLANNED, PlanStatus.OVERDUE);
 
     private final CollectionPlanRepository repository;
     private final NotesReceivableRepository notesReceivableRepository;
@@ -65,13 +66,16 @@ public class CollectionPlanService {
     public CollectionPlanResponse register(CreateCollectionPlanRequest request) {
         PartnerSummary partner = resolvePartner(
                 request.partnerCode(), request.bizNo(), request.partnerName());
+        String sourceReference = normalizeSourceReference(request.sourceReference());
+        rejectDuplicateSource(partner.partnerId(), request.basis(), sourceReference);
         CollectionPlan plan = CollectionPlan.register(
                 nextPlanNo(request.plannedDate()),
                 partner.partnerId(),
                 request.plannedDate(),
                 request.plannedAmount(),
                 request.basis(),
-                request.memo()
+                request.memo(),
+                sourceReference
         );
         CollectionPlan saved = repository.save(plan);
         return CollectionPlanResponse.of(saved, displayOf(partner));
@@ -224,6 +228,22 @@ public class CollectionPlanService {
         return repository.findByPlanNoAndIsDeletedFalse(planNo.trim())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "수금계획을 찾을 수 없습니다: " + planNo));
+    }
+
+    private void rejectDuplicateSource(UUID partnerId, PlanBasis basis, String sourceReference) {
+        if (!hasText(sourceReference)) {
+            return;
+        }
+        PlanBasis normalizedBasis = basis == null ? PlanBasis.MANUAL : basis;
+        if (repository.existsByPartnerIdAndBasisAndSourceReferenceAndStatusInAndIsDeletedFalse(
+                partnerId, normalizedBasis, sourceReference, OPEN_STATUSES)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "이미 등록된 자동제안 출처입니다: " + sourceReference);
+        }
+    }
+
+    private static String normalizeSourceReference(String sourceReference) {
+        return hasText(sourceReference) ? sourceReference.trim() : null;
     }
 
     private java.util.Optional<BigDecimal> receivableBalance(UUID partnerId, LocalDate asOfDate) {

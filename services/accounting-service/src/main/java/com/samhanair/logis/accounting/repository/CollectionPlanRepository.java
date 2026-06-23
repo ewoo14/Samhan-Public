@@ -1,6 +1,7 @@
 package com.samhanair.logis.accounting.repository;
 
 import com.samhanair.logis.accounting.domain.CollectionPlan;
+import com.samhanair.logis.accounting.domain.PlanBasis;
 import com.samhanair.logis.accounting.domain.PlanStatus;
 import java.time.LocalDate;
 import java.util.List;
@@ -16,6 +17,12 @@ public interface CollectionPlanRepository extends JpaRepository<CollectionPlan, 
     boolean existsByPlanNoAndIsDeletedFalse(String planNo);
 
     Optional<CollectionPlan> findByPlanNoAndIsDeletedFalse(String planNo);
+
+    boolean existsByPartnerIdAndBasisAndSourceReferenceAndStatusInAndIsDeletedFalse(
+            UUID partnerId,
+            PlanBasis basis,
+            String sourceReference,
+            List<PlanStatus> statuses);
 
     @Query("""
             SELECT p FROM CollectionPlan p

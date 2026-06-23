@@ -346,6 +346,7 @@ export function AppLayout() {
   const showAccountingJournals    = dynamicCanAccess('accounting.journals',        'view')
   const showAccountingBalances    = dynamicCanAccess('accounting.balances',        'view')
   const showAccountingReports     = dynamicCanAccess('accounting.reports',         'view')
+  const showAccountingReceivables = dynamicCanAccess('accounting.receivables',     'view')
   const showAccountingPeriodClose = dynamicCanAccess('accounting.period-close',    'view')
   const showAccountingStatBatch   = dynamicCanAccess('accounting.statement-batch', 'view')
   const showAccountingPartnerLedger = dynamicCanAccess('accounting.partner-ledger', 'view')
@@ -366,7 +367,7 @@ export function AppLayout() {
   //   해당 권한 단독 보유자(자식 링크 597/604행 존재)가 회계 그룹 전체를 잃던 갭 해소.
   const showAccounting =
     showAccountingAccounts || showAccountingJournals || showAccountingBalances
-    || showAccountingReports || showAccountingPeriodClose || showAccountingStatBatch
+    || showAccountingReports || showAccountingReceivables || showAccountingPeriodClose || showAccountingStatBatch
     || showAccountingSalesSlip || showAccountingPurchaseSlip
     || showAccountingPartnerLedger || showAccountingTaxInvoice
     || showAccountingTaxInvoiceBatch || showAccountingTaxInvoiceInbound

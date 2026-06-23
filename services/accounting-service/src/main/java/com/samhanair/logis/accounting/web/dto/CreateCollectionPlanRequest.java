@@ -15,6 +15,7 @@ public record CreateCollectionPlanRequest(
         @NotNull LocalDate plannedDate,
         @NotNull @DecimalMin(value = "0.01") BigDecimal plannedAmount,
         @NotNull PlanBasis basis,
+        @Size(max = 100) String sourceReference,
         @Size(max = 1000) String memo
 ) {
 }
