@@ -14,7 +14,7 @@
 - ⚠️ 환경한계(이 세션): Codex MCP+exec 쓰기 차단(하네스 샌드박스) → 구현=Opus 엔지니어 에이전트, Codex read-only 리뷰로 듀얼모델 보존([[feedback_codex_mcp_session_limit]]).
 
 ### 🔜 슬라이스 큐 (개발책임자 야간 지정)
-- **② 모바일 점검**(다음): 모바일=창고직원 전용 아닌 **전 직원용**, 목표="**데스크탑을 모바일로 사용**"(별도 창고전용 앱 아님). 현 설계/구현(clients/mobile-staff·desktop 반응형) 점검 → 미흡 시 슬라이스로 적용. brainstorming→canonical.
+- **② 모바일 점검 = ✅정찰 완료, 🟡개발책임자 설계 결정 대기**: spec 초안 `docs/superpowers/specs/2026-06-25-mobile-desktop-access-inspection.md`. **결과: 목표와 큰 갭** — mobile-staff=영업 견적WebView만(SalesTab 5탭 미사용)·mobile=거래처 주문만·arologis-mobile=기사만·desktop=Electron 전용(반응형 0·window.samhanAuth IPC 의존·웹배포 없음)→창고/구매/회계/인사 모바일 진입점 0. **대형 아키텍처 에픽**(반응형+Electron 인증 추상화+웹/PWA 배포)이라 자율 멈춤(brainstorming 게이트). **Option A(데스크탑 반응형 웹/PWA — 추천) 권장**, 개발책임자 Q1~Q5(접근법·웹JWT저장·도메인/CORS·범위·기존 WebView앱) 결정 시 spec 확정→슬1 foundation(Electron 인증 추상화+웹 배포 골격)부터 canonical.
 - **③ 버전관리+자동 업데이트**: 개발자 신규버전 배포 시 사용/접속 중 **업데이트 팝업→강제 업데이트** 후 사용. 개발내역 메모(릴리스노트). 팝업 버튼='확인'/'다시 보지 않기'. (강제 vs 다시보지않기 정합·Electron auto-updater 설계 brainstorming.)
 
 ### (이전) 컷오프 슬라이스 재개 지점
