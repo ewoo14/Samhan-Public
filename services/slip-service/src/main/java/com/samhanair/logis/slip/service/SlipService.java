@@ -60,7 +60,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 전표 워크플로우 (Plan §3.1 — 첫 슬라이스 출고/입고만).
+ * 전표 워크플로우 (Plan §3.1 — 출고/입고 + 배송일정 M상N하 V52).
  *
  * <p>Inventory 연계 (Q2 결정):
  * <ul>
@@ -68,6 +68,13 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>OUTBOUND complete → {@code /inventory/deduct} fromReservation=true 라인별 호출</li>
  *   <li>INBOUND complete → {@code /inventory/lots/inbound} 라인별 호출</li>
  *   <li>OUTBOUND reject/cancel after ACCEPTED → {@code /inventory/release} 라인별 호출</li>
+ * </ul>
+ *
+ * <p>배송일정(M상N하):
+ * <ul>
+ *   <li>지방(REGION)/야적(STACK) 태그 시 {@link Slip#applyDeliverySchedule} 로 하차일(N) 자동 계산</li>
+ *   <li>unloadDate override 전달 시 사용자 직접 지정 (당착 = slipDate)</li>
+ *   <li>비적용 태그(DAY/LOGEN 등) 또는 태그 null 이면 unloadDate = null</li>
  * </ul>
  *
  * <p>낙관적 락(@Version) 충돌은 OptimisticLockException → CONFLICT 매핑.
@@ -190,8 +197,8 @@ public class SlipService {
 
     /**
      * 새 전표를 DRAFT 상태로 생성한다 — slipType 분기로 createOutbound/createInbound 호출,
-     * ProductClient 로 라인 productId 일괄 검증, 라인 추가, applyDeliveryTagAutoMemo 자동 호출 후
-     * SlipNumberService 로 채번.
+     * ProductClient 로 라인 productId 일괄 검증, 라인 추가,
+     * {@link Slip#applyDeliverySchedule} 으로 하차일(N) 계산 후 SlipNumberService 로 채번.
      *
      * @param req 생성 요청 (slipType / slipDate / 창고 / 거래처 / 라인 등)
      * @param requesterId 요청자 user-id (gateway X-User-Id 또는 "system", 감사용 actorId)
@@ -244,8 +251,9 @@ public class SlipService {
                     Boolean.TRUE.equals(lineReq.priceVatInclusive()));
         }
 
-        // 5. 자동 메모 (야적/지방 등)
-        slip.applyDeliveryTagAutoMemo();
+        // 5. 배송일정 계산 (지방/야적 태그 시 하차일 N 자동 산출 또는 override 적용)
+        // [게이트①-배송일정] 마감 게이트 통과 직후. override 없으면 규칙 자동 계산.
+        slip.applyDeliverySchedule(slip.getDeliveryTag(), req.unloadDate());
 
         // 6. Slice B — driverName/driverPhone 생성 시점 적용 (모두 nullable, OUTBOUND 한정 의미)
         if (req.driverName() != null || req.driverPhone() != null) {
@@ -326,13 +334,19 @@ public class SlipService {
         // [게이트⑦] 배송태그 확정(신규/변경) 마감 게이트 — applyMutation 직전.
         // 태그 미변경(memo/driver만 수정) 또는 null 보존 경우는 게이트 미적용.
         DeliveryTag incomingTag = req.deliveryTag();
-        if (incomingTag != null && incomingTag != slip.getDeliveryTag()) {
+        boolean tagChanged = incomingTag != null && incomingTag != slip.getDeliveryTag();
+        if (tagChanged) {
             cutoffGuard.assertWithinCutoff(incomingTag, slip.getSlipDate());
         }
         // PR-H2 — memo 변경분 audit 사전 snapshot (도메인 mutation 직전 oldValue 보존)
         String oldMemo = slip.getMemo();
         applyMutation(() -> slip.editHeader(req.partnerId(), req.partnerName(),
                 req.deliveryTag(), req.memo(), req.driverName(), req.driverPhone()));
+        // [게이트⑦-배송일정] 태그 신규/변경 OR unloadDate override 시에만 재계산.
+        // 태그 미변경+unloadDate 미전달이면 기존 unloadDate 유지(사용자 override 보존 — Codex 라운드 회귀 fix).
+        if (tagChanged || req.unloadDate() != null) {
+            slip.applyDeliverySchedule(slip.getDeliveryTag(), req.unloadDate());
+        }
         // PR-H2 — memo 실제 변경 (newValue != oldValue) 감지 시 audit overlay 1행 + SSE broadcast
         String newMemo = slip.getMemo();
         if (req.memo() != null && !java.util.Objects.equals(oldMemo, newMemo)) {
@@ -400,7 +414,8 @@ public class SlipService {
         // [게이트⑧] 배치 헤더 수정 — 배송태그 신규/변경 시 마감 게이트 적용.
         // 태그 미변경(memo/driver/partnerName 등만 수정) 또는 null 보존 경우는 게이트 미적용.
         DeliveryTag incomingTagBatch = req.deliveryTag();
-        if (incomingTagBatch != null && incomingTagBatch != slip.getDeliveryTag()) {
+        boolean tagChangedBatch = incomingTagBatch != null && incomingTagBatch != slip.getDeliveryTag();
+        if (tagChangedBatch) {
             cutoffGuard.assertWithinCutoff(incomingTagBatch, slip.getSlipDate());
         }
         // editHeader 가 partnerId 를 덮어쓰기 전에 캡처 — partnerCode 진짜 변경 판정용 (사이클2 BE)
@@ -439,6 +454,12 @@ public class SlipService {
                 req.projectName(),
                 req.recipientPhone(),
                 req.paymentDueDate());
+
+        // [게이트⑧-배송일정] 태그 신규/변경 OR unloadDate override 시에만 재계산.
+        // 태그 미변경+unloadDate 미전달이면 기존 unloadDate 유지(사용자 override 보존 — Codex 라운드 회귀 fix).
+        if (tagChangedBatch || req.unloadDate() != null) {
+            slip.applyDeliverySchedule(slip.getDeliveryTag(), req.unloadDate());
+        }
 
         // 권한 재편 Phase 2.1 Task 2 — 수정 성공 직후 EDIT 스냅샷 캡처
         // [UUID 비공개 가드] actorName 은 X-User-Name 우선, 없거나 UUID 형태면 null

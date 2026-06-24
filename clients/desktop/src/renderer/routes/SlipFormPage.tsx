@@ -30,6 +30,7 @@ import {
   Card,
   DeliveryTagSelector,
   FormField,
+  Input,
   KOREAN_MOBILE_PHONE_PATTERN,
   LineRow,
   LineTableHeader,
@@ -73,6 +74,12 @@ import {
   type SlipLineInput,
   type SlipType,
 } from '../api/slip'
+import {
+  computeUnloadDate,
+  isScheduledTag,
+  scheduleLabel,
+} from '../utils/deliverySchedule'
+import { toLocalDateISO } from '../utils/dateUtils'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { searchPartners as searchPartnersApi } from '../api/partnerApi'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -208,6 +215,10 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const [partnerName, setPartnerName] = useState('')
   const [memo, setMemo] = useState('')
   const [tag, setTag] = useState<DeliveryTagOption['code'] | null>(null)
+  // 배송일정(M상N하) 에픽 — 지방/야적 선택 시 하차일(N)·당착 토글
+  const [unloadDate, setUnloadDate] = useState<string>('')
+  const [sameDay, setSameDay] = useState(false) // 당착 체크박스 (지방 한정)
+
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   // link-dispatch-slice 신규 — 기사명 + 기사 휴대폰 (LinkDispatchListPage 자동 그룹의 키)
@@ -246,7 +257,8 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     queryFn: listWarehouses,
   })
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  // KST 로컬 날짜 기준 (UTC 기준 toISOString().slice(0,10) 은 오전 0~8:59 에 하루 전 날짜를 반환함)
+  const today = useMemo(() => toLocalDateISO(), [])
 
   // dnd-kit 마우스 + 키보드 sensor (Designer ux-flow.md § 1.2 + § 2.2 인용)
   const sensors = useSensors(
@@ -461,6 +473,11 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         supervisionAddress: supervisionSameAsDelivery
           ? (deliveryAddress.trim() || undefined)
           : (supervisionAddress.trim() || undefined),
+        // 배송일정(M상N하) — 지방/야적 태그 선택 시 하차일 전송.
+        // 당착(sameDay) 시 slipDate(today)와 동일, 일반 시 사용자 편집값 or 계산값.
+        unloadDate: isOutbound && isScheduledTag(tag)
+          ? (sameDay ? today : (unloadDate || undefined))
+          : undefined,
         lines: lines
           .filter((l) => l.productId && Number(l.quantity) > 0)
           .map<SlipLineInput>((l) => ({
@@ -555,7 +572,18 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
               label="출고구분"
               options={OUTBOUND_TAG_OPTIONS}
               value={tag}
-              onChange={(code) => setTag(code)}
+              onChange={(code) => {
+                setTag(code)
+                // 배송일정 자동 채움 — 지방/야적 선택 시 하차일(N) 기본 계산
+                if (isScheduledTag(code)) {
+                  const computed = computeUnloadDate(today, code)
+                  setUnloadDate(computed ?? '')
+                  setSameDay(false) // 태그 변경 시 당착 해제
+                } else {
+                  setUnloadDate('')
+                  setSameDay(false)
+                }
+              }}
               direction="OUTBOUND"
               slipDate={today}
             />
@@ -735,6 +763,105 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         </div>
 
       </Card>
+
+      {/*
+        배송일정(M상N하) — 지방/야적 태그 선택 시만 노출하는 별도 섹션/카드.
+        배송주소 카드와 분리하여 시각적 구분을 명확히 한다.
+        출고일(M) = today(읽기전용 잠금), 하차일(N) = 편집 가능 date input.
+        지방 한정: 당착 체크박스 (체크 시 N=M, 입력 비활성).
+        특이사항 라벨 프리뷰: scheduleLabel 파생.
+      */}
+      {isOutbound && isScheduledTag(tag) ? (
+        <Card padding={6} shadow="sm" className="sfp-card">
+          <div className="sfp-section-title">배송일정</div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
+            {/* 상차일(출고일) — 잠금 */}
+            <div style={{ minWidth: 160 }}>
+              <Input
+                label="상차일"
+                type="date"
+                value={today}
+                readOnly
+                aria-label="출고일(상차일) — 읽기전용"
+                disabled
+                hint="출고일 (잠금)"
+              />
+            </div>
+
+            {/* 하차일 — 편집 가능 */}
+            <div style={{ minWidth: 160 }}>
+              <Input
+                label="하차일"
+                type="date"
+                value={sameDay ? today : unloadDate}
+                onChange={(e) => {
+                  if (!sameDay) setUnloadDate(e.target.value)
+                }}
+                disabled={sameDay}
+                aria-label="하차일"
+                data-testid="slip-form-unload-date"
+              />
+            </div>
+
+            {/* 당착 체크박스 — 지방 한정 */}
+            {tag === 'REGION' ? (
+              <FormField
+                label="당착"
+                render={() => (
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      paddingBottom: 6,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sameDay}
+                      onChange={(e) => {
+                        setSameDay(e.target.checked)
+                        if (!e.target.checked) {
+                          // 당착 해제 시 기본 계산값 복원
+                          setUnloadDate(computeUnloadDate(today, tag) ?? '')
+                        }
+                      }}
+                      data-testid="slip-form-same-day-checkbox"
+                    />
+                    당일 하차
+                  </label>
+                )}
+              />
+            ) : null}
+          </div>
+
+          {/* 특이사항 라벨 프리뷰 */}
+          {(() => {
+            const effectiveUnload = sameDay ? today : unloadDate
+            const label = scheduleLabel(today, effectiveUnload || null, tag)
+            return label ? (
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>배송일정 라벨:</span>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: 'var(--color-primary-700, #1D4ED8)',
+                    background: 'var(--color-primary-50, #EFF6FF)',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                  }}
+                  data-testid="slip-form-schedule-label-preview"
+                >
+                  {label}
+                </span>
+              </div>
+            ) : null
+          })()}
+        </Card>
+      ) : null}
 
       {/* 라인 카드 */}
       <Card padding={6} shadow="sm" className="sfp-card">

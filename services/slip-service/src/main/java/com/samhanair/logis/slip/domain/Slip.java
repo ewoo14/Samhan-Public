@@ -3,6 +3,7 @@ package com.samhanair.logis.slip.domain;
 import com.samhanair.logis.common.entity.BaseEntity;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.slip.domain.schedule.DeliverySchedule;
 import com.samhanair.logis.slip.revision.domain.SlipSnapshot;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -154,6 +155,19 @@ public class Slip extends BaseEntity {
 
     @Column(name = "memo", length = 1000)
     private String memo;
+
+    /**
+     * 하차일 N — V52 신규.
+     *
+     * <p>상차(출고)일 M = {@link #slipDate}(잠금, 불변). 하차일은 배송일정 자동 계산
+     * ({@link com.samhanair.logis.slip.domain.schedule.DeliverySchedule#computeUnloadDate})
+     * 또는 사용자 override 를 {@link #applyDeliverySchedule} 로 기록.
+     *
+     * <p>지방(REGION) / 야적(STACK) 태그 전표만 값 보유. 그 외 태그 및 기존 전표는 null(legacy 호환).
+     * 당착(지방 당일 하차) = unloadDate == slipDate.
+     */
+    @Column(name = "unload_date")
+    private LocalDate unloadDate;
 
     @Column(name = "requester_id", nullable = false, length = 50)
     private String requesterId;
@@ -1559,21 +1573,30 @@ public class Slip extends BaseEntity {
     }
 
     /**
-     * 배송 태그가 야적/지방 등 {@code autoMemo=true} 인 경우, {@code "{slipDate}상차 {slipDate+1}하차"}
-     * 형식의 자동 메모를 기존 메모 앞에 prepend 한다. 태그가 null 이거나 autoMemo=false 면 no-op.
+     * 배송일정 적용 — 하차일(N) 계산 및 저장.
+     *
+     * <p>M = {@link #slipDate} (잠금, 변경 불가). N은 본 메서드가 관리한다.
+     *
+     * <p>처리 우선순위:
+     * <ol>
+     *   <li>{@code override != null} → {@code unloadDate = override} (사용자 직접 지정; 당착 = slipDate)</li>
+     *   <li>{@code override == null} → {@code unloadDate = DeliverySchedule.computeUnloadDate(slipDate, tag)}</li>
+     * </ol>
+     *
+     * <p>비적용 태그(지방/야적 외) 또는 태그 null 이면 {@code unloadDate = null} (배송일정 없음).
+     *
+     * @param tag 배송 태그 (지방/야적 이외면 unloadDate null 처리)
+     * @param override 사용자 직접 지정 하차일 N (null 이면 규칙 자동 계산)
      */
-    public void applyDeliveryTagAutoMemo() {
-        if (this.deliveryTag == null || !this.deliveryTag.isAutoMemo()) {
+    public void applyDeliverySchedule(DeliveryTag tag, LocalDate override) {
+        // 비적용 태그(지방/야적 외) 또는 tag null 이면 unloadDate null — 데이터 오염 방지.
+        if (!DeliverySchedule.isScheduled(tag)) {
+            this.unloadDate = null;
             return;
         }
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("MM/dd");
-        String autoLine = String.format("[%s] %s 상차 %s 하차",
-                this.deliveryTag.getDisplayName(),
-                this.slipDate.format(fmt),
-                this.slipDate.plusDays(1).format(fmt));
-        this.memo = (this.memo == null || this.memo.isBlank())
-                ? autoLine
-                : autoLine + " | " + this.memo;
+        this.unloadDate = (override != null)
+                ? override
+                : DeliverySchedule.computeUnloadDate(this.slipDate, tag);
     }
 
     /**
