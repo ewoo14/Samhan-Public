@@ -16,6 +16,7 @@
  * - `/sales/:id/print/statement` 거래명세서 인쇄 미리보기 (SP-08-6-4)
  * - `/sales/:id/print/invoice`   세금계산서 인쇄 미리보기 (SP-08-6-4)
  * - `/sales/:id/print/dispatch`  출고전표 작업지시서 인쇄
+ * - `/dispatch/external-dispatch/:id/print`  타배송사 배차의뢰서 인쇄 (PRINT/BOTH, dispatch.board view)
  * - `/purchases`        구매관리 (PurchaseQueryPage — 풍성한 컬럼 + 다중 선택) [2a 통합]
  * - `/purchases/slips`  legacy 입고전표 list (SlipListPage) — 2c 작성 plumbing 합류 시 진입점
  * - `/purchases/new`    입고전표 작성
@@ -79,6 +80,7 @@ import { TransferDetailPage } from './TransferDetailPage'
 import { LinkDispatchListPage } from './LinkDispatchListPage'
 // InvoiceView (P0-4 거래명세서 1차 mock) 은 SP-08-6-4 SalesInvoicePrintPage 로 대체됨.
 import { DispatchView } from '../print/DispatchView'
+import { ExternalDispatchRequestView } from '../print/ExternalDispatchRequestView'
 // P0-4 인쇄 양식 1차 mock — Designer 단계 신규 (견적/세금계산서)
 import { QuoteView } from '../print/QuoteView'
 import { TaxInvoiceView } from '../print/TaxInvoiceView'
@@ -1025,6 +1027,14 @@ const router = createHashRouter([
         element: (
           <PermissionGuard pageCode="dispatch.board" action="view">
             <DispatchHistoryPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/dispatch/external-dispatch/:id/print',
+        element: (
+          <PermissionGuard pageCode="dispatch.board" action="view">
+            <ExternalDispatchRequestView />
           </PermissionGuard>
         ),
       },
