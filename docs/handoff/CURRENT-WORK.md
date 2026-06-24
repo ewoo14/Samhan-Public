@@ -4,8 +4,20 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-25 — **✅ 출고전표 컷오프(마감) 시간 설정 머지(#594). 다음=M상N하 배송일정 자동 에픽 brainstorming**)
+## 🔄 세션 재개 지점 (2026-06-25 야간자율 — **✅ M상N하 배송일정 머지(#595). 다음=모바일 점검 에픽(개발책임자 큐)**)
 
+**main `9788fd3a8`**(#595 squash 머지). 🌙야간 자율 진행(개발책임자 7시 취침 위임, canonical 엄수). Docker 풀스택 가동(slip V52 재빌드·라이브). 렌더러 :5175.
+
+### ✅ 출고전표 배송일정(M상N하) 슬라이스 완결 (PR #595, canonical 8단계 완주)
+- 배송태그(지방/야적)별 **상차(M=출고일 잠금)/하차(N)** 일정 규칙 자동계산(`DeliverySchedule`: N=M+1·N이 일요일→월요일 단 야적+M=토→일요일·지방+N==M→당착). `Slip.unload_date`(V52) 구조화 필드 + 응답 `deliveryScheduleLabel` 파생(메모 미저장). 8지점 배선(컷오프와 동일, **태그 신규/변경 OR override 시만 재계산=override 보존**). FE SlipForm 하차일/당착·조회/인쇄 라벨(memoWithoutTagPrefix 정합). `applyDeliveryTagAutoMemo` 폐기.
+- 🔑 교훈: ①Opus 라운드 2 BLOCKING(비적용 태그 데이터오염·FE today UTC 날짜밀림) fix. ②**Codex read-only 라운드가 override 유실 회귀 단독 적발**(메모만 수정 시 사용자 하차일 유실 → tagChanged||override 조건). ③PATCH 부분갱신=변경 의도 필드만 재계산. ④신규 IT ci.yml/nightly 필터 등재. ⑤Opus가 CI필터 BLOCKING 후보를 실 gradle 실행으로 반증(`--tests "...domain.*"`는 하위패키지 커버). 라이브 QA 9/9.
+- ⚠️ 환경한계(이 세션): Codex MCP+exec 쓰기 차단(하네스 샌드박스) → 구현=Opus 엔지니어 에이전트, Codex read-only 리뷰로 듀얼모델 보존([[feedback_codex_mcp_session_limit]]).
+
+### 🔜 슬라이스 큐 (개발책임자 야간 지정)
+- **② 모바일 점검**(다음): 모바일=창고직원 전용 아닌 **전 직원용**, 목표="**데스크탑을 모바일로 사용**"(별도 창고전용 앱 아님). 현 설계/구현(clients/mobile-staff·desktop 반응형) 점검 → 미흡 시 슬라이스로 적용. brainstorming→canonical.
+- **③ 버전관리+자동 업데이트**: 개발자 신규버전 배포 시 사용/접속 중 **업데이트 팝업→강제 업데이트** 후 사용. 개발내역 메모(릴리스노트). 팝업 버튼='확인'/'다시 보지 않기'. (강제 vs 다시보지않기 정합·Electron auto-updater 설계 brainstorming.)
+
+### (이전) 컷오프 슬라이스 재개 지점
 **main `fb80819dc`**(#594 squash 머지). 집 PG 세션(회사PC 비정상종료 이어받음). Docker 풀스택 가동(slip V51·auth V70·gateway slip-cutoffs 재빌드·라이브). 렌더러 :5175.
 
 ### ✅ 출고전표 컷오프 슬라이스 완결 (PR #594, canonical 8단계 완주)
