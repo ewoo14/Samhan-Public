@@ -4,7 +4,31 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-24 — **✅ 검수완료→배차발송 에픽 완결(슬1~4), 다음 에픽=개발책임자 지정 대기**)
+## 🔄 세션 재개 지점 (2026-06-25 — **✅ 출고전표 컷오프(마감) 시간 설정 머지(#594). 다음=M상N하 배송일정 자동 에픽 brainstorming**)
+
+**main `fb80819dc`**(#594 squash 머지). 집 PG 세션(회사PC 비정상종료 이어받음). Docker 풀스택 가동(slip V51·auth V70·gateway slip-cutoffs 재빌드·라이브). 렌더러 :5175.
+
+### ✅ 출고전표 컷오프 슬라이스 완결 (PR #594, canonical 8단계 완주)
+- **마감 게이트**: `OutboundCutoffGuard`(KST Clock) → 출고전표 생성 6경로 + 배송태그 확정(editHeader/v20) 2경로 = **8지점**. 당일·태그 활성 컷오프·now>cutoff → 409("{태그} 당일 마감(HH:mm) 초과 — 익일 출고로 생성하세요"). "배송태그 붙는 순간 마감 적용"(D8).
+- slip V51 `slip_outbound_cutoff`(태그→시각, 4행 시드·태그당 활성1행) · auth V70 `hr.slip-cutoff`(MASTER/MANAGER account-mode) · gateway `/admin/slip-cutoffs` · FE 인사 설정 페이지(CRUD·버튼권한 분리) · 출력문서 `DispatchDocument` 배송주소 앞 배송태그 강조 칩 + 특이사항 `[지방]` 접두 제거.
+- 🔑 교훈: ①게이트 경로 **3→6→8 정정**(정찰 grep — 모바일/견적변환/주문병합 + 태그확정 editHeader 누락). ②Codex MAJOR(slipDate ambient JVM TZ) → KST Clock 통일 하드닝. ③🚨**컷오프 IT가 최초 실행 전까지 false-green**(ci.yml `slip.it.*`가 `slip.it.cutoff.*` 미커버 → 필터 등재 후 CI 첫 실행에서 어서션 버그[201 vs 200·`$.message` vs `$.error.message`]+단위테스트 Clock/cutoffGuard mock NPE 노출). 신규 IT=ci.yml 필터 등재+로컬 실제 실행 필수([[feedback_ci_test_filter_false_green]]·[[feedback_changed_module_full_test_before_push]]). ④라이브 QA가 게이트웨이 stale 이미지 단독 적발.
+- ⚠️ **환경한계(이 세션)**: Codex MCP+exec 모두 하네스 샌드박스로 쓰기 차단(`--dangerously-bypass`는 안전분류기 거부→우회 안 함) → 구현=Opus 엔지니어 에이전트, 듀얼모델은 **Codex read-only 리뷰**로 보존([[feedback_codex_mcp_session_limit]] 예외). 새 세션/회사PC에서 Codex 쓰기 복구 시 직접 fix 전환 가능.
+
+### 🔜 다음 에픽 (개발책임자 Option A 지정): M상N하 배송일정 자동
+출고전표 배송태그(지방/야적)별 **상차(M)/하차(N)** 일정 자동 계산 + 편집 + 당착 태그. 개발책임자 요구:
+- **M(상차)=출고일자(slipDate) 고정·변경불가**. **N(하차)=기본 익일**, 단 **지방=M이 토요일이면 N=일요일 skip→월요일**, **야적=무조건 익일**.
+- **선택 가능(강제 아님)·전표 기본값**, **N 편집 가능**. 태그 제거 → **당착(당일?)** 태그 교체.
+- **종합견적서(estimate-app)도 동일 자동 + 태그로 인식**.
+- 현재 `Slip.applyDeliveryTagAutoMemo`(Slip.java:1565)는 N=익일 고정·주말규칙 없음·생성 시 강제 prepend·편집UI 없음. estimate-app 자동삽입 grep 미검출(brainstorming서 확인 필요). DeliveryTag: DAY(당일,autoMemo=false)·STACK(야적,true)·REGION(지방,true).
+- ⚠️ 미해결(brainstorming 질문): "세트상세에서 설정가능"의 정확 의미, 당착=DAY인지 신규인지, 메모 표기 형식("25상26하" vs "06/25 상차 06/26 하차"), estimate-app 현 자동 위치.
+- 착수 = superpowers brainstorming → spec → 조기 PR → canonical 8단계.
+
+### 📌 다음 작업 후보 (이전 핸드오프 — 컷오프 외)
+- Phase 11 AWS prod cutover(유일 OPEN 인프라). 그 외 후보 대부분 stale/해소(presence·결재 enforcement).
+
+---
+
+## 🔄 (이전) 세션 재개 지점 (2026-06-24 — **✅ 검수완료→배차발송 에픽 완결(슬1~4), 다음 에픽=개발책임자 지정 대기**)
 
 **main `ec9b689e`**(슬4 #593 머지). git clean(로컬 main). Docker 풀스택 가동 중(slip은 슬4 QA로 V50 적용·fresh). **슬1 #590·슬2 #591·슬3 #592·슬4 #593 전부 머지 = 에픽 완결.**
 
