@@ -1,7 +1,32 @@
 import type { SlipDetail, SlipLineDetail } from '../api/slip'
 import type { ApprovalLineStructure } from '../api/approvalLineConfigApi'
+import { OUTBOUND_DELIVERY_TAG_LABELS } from '../api/slipCutoff'
 import { stripSlipNoZeros } from '../utils/orderNo'
 import { ApprovalRoleCells, RoleCell, fallbackRoles } from './approvalRoleCells'
+
+/**
+ * 배송태그 한국어 라벨 맵 — 설정 화면(slipCutoff.ts)과 단일 소스를 공유한다(중복 정의 금지).
+ * 인쇄 양식 배송주소 앞 표시용. slip.deliveryTag(11종) 인덱싱 위해 string 키로 확장.
+ */
+const DISPATCH_TAG_LABELS = OUTBOUND_DELIVERY_TAG_LABELS as Record<string, string>
+
+/**
+ * 특이사항(메모)에서 배송태그 자동 접두("[지방] …")를 제거한다.
+ * 배송태그는 배송주소 앞에 별도 강조 표시하므로 특이사항 중복을 제거한다(개발책임자 2026-06-25).
+ */
+function memoWithoutTagPrefix(
+  memo: string | null | undefined,
+  tagLabel: string | null,
+): string {
+  if (!memo) return '-'
+  if (tagLabel) {
+    const prefix = `[${tagLabel}]`
+    if (memo.startsWith(prefix)) {
+      return memo.slice(prefix.length).trim() || '-'
+    }
+  }
+  return memo
+}
 
 export interface DispatchDocumentSignatures {
   driverSignaturePng?: string | null
@@ -116,6 +141,11 @@ export function DispatchDocument({
       </table>
 
       <div className="dispatch-bottom-group">
+        {slip.deliveryTag ? (
+          <div className="dispatch-delivery-tag-label">
+            [{DISPATCH_TAG_LABELS[slip.deliveryTag] ?? slip.deliveryTag}]
+          </div>
+        ) : null}
         <div className="dispatch-address-box">
           {slip.shippingAddress ?? '-'}
         </div>
@@ -125,7 +155,14 @@ export function DispatchDocument({
         </div>
         <div className="dispatch-info-box">
           <span className="label">특이사항:</span>
-          <span className="content">{slip.memo ?? '-'}</span>
+          <span className="content">
+            {memoWithoutTagPrefix(
+              slip.memo,
+              slip.deliveryTag
+                ? (DISPATCH_TAG_LABELS[slip.deliveryTag] ?? slip.deliveryTag)
+                : null,
+            )}
+          </span>
         </div>
 
         <p className="dispatch-driver-call-notice">

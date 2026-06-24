@@ -11,7 +11,9 @@ import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.mobile.dto.MobilePartnerOrderRequest;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipNumberService;
+import com.samhanair.logis.slip.service.cutoff.OutboundCutoffGuard;
 import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -55,6 +57,10 @@ public class MobilePartnerOrderService {
     private final SlipNumberService slipNumberService;
     private final ProductClient productClient;
     private final PartnerInternalClient partnerInternalClient;
+    /** 출고전표 마감 게이트 — 모바일 주문 발행 생성 경로(게이트③). */
+    private final OutboundCutoffGuard cutoffGuard;
+    /** KST 기준 오늘 — 컷오프 게이트와 동일 Clock. */
+    private final Clock clock;
 
     /**
      * 모바일 거래처 주문 발행 — OUTBOUND DRAFT 슬립 생성.
@@ -98,7 +104,7 @@ public class MobilePartnerOrderService {
         }
 
         // 3. 채번
-        LocalDate slipDate = req.slipDate() != null ? req.slipDate() : LocalDate.now();
+        LocalDate slipDate = req.slipDate() != null ? req.slipDate() : LocalDate.now(clock);
         String slipNo = slipNumberService.next(slipDate, com.samhanair.logis.slip.domain.SlipType.OUTBOUND);
         int seqNo = slipNumberService.extractSeqNo(slipNo);
 
@@ -113,6 +119,11 @@ public class MobilePartnerOrderService {
                 null,           // deliveryTag — 현장 발행 시 미지정
                 req.memo(),
                 requesterId);
+
+        // [게이트③] 모바일 주문 출고전표 생성 마감 게이트 — createOutbound 직후.
+        // deliveryTag null(현장 발행 시 미지정) 이므로 assertWithinCutoff 내부에서 즉시 통과.
+        // 태그 확정(editHeader)은 SlipForm 저장 시 게이트⑦이 잡는다.
+        cutoffGuard.assertWithinCutoff(slip.getDeliveryTag(), slip.getSlipDate());
 
         // 5. partnerCode snapshot 기록 (V15 컬럼)
         slip.setPartnerCode(req.partnerCode());

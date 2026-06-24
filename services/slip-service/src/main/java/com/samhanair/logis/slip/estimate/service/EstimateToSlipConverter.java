@@ -7,6 +7,8 @@ import com.samhanair.logis.slip.estimate.domain.Estimate;
 import com.samhanair.logis.slip.estimate.domain.EstimateLine;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipNumberService;
+import com.samhanair.logis.slip.service.cutoff.OutboundCutoffGuard;
+import java.time.Clock;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,10 @@ public class EstimateToSlipConverter {
 
     private final SlipRepository slipRepository;
     private final SlipNumberService slipNumberService;
+    /** 출고전표 마감 게이트 — 견적 변환 생성 경로(게이트②). */
+    private final OutboundCutoffGuard cutoffGuard;
+    /** KST 기준 오늘 — 컷오프 게이트와 동일 Clock. */
+    private final Clock clock;
 
     /**
      * 견적 → Slip(OUTBOUND DRAFT) 변환.
@@ -43,7 +49,7 @@ public class EstimateToSlipConverter {
      * @return 영속화된 Slip(OUTBOUND DRAFT)
      */
     public Slip convert(Estimate estimate) {
-        LocalDate slipDate = LocalDate.now();
+        LocalDate slipDate = LocalDate.now(clock);
         String slipNo = slipNumberService.next(slipDate, com.samhanair.logis.slip.domain.SlipType.OUTBOUND);
         int seqNo = slipNumberService.extractSeqNo(slipNo);
 
@@ -61,6 +67,11 @@ public class EstimateToSlipConverter {
                 null,
                 buildSlipMemo(estimate),
                 estimate.getRequesterId());
+
+        // [게이트②] 견적→출고전표 변환 마감 게이트 — createOutbound 직후.
+        // deliveryTag null(견적 변환 시 항상 null) 이므로 assertWithinCutoff 내부에서 즉시 통과.
+        // 태그 확정(editHeader)은 SlipForm 저장 시 게이트⑦이 잡는다.
+        cutoffGuard.assertWithinCutoff(slip.getDeliveryTag(), slip.getSlipDate());
 
         // estimate_lines → slip_lines 1:1 copy (lineNo 순). 옵션 A: 세트는 이미 견적에서 구성품으로
         // 전개돼 있으므로 1:1 복사면 전표에 구성품으로 올라간다. 세트 구성품 메타(setHead/부모세트)도 복사.
