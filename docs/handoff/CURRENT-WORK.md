@@ -4,6 +4,19 @@
 
 ---
 
+## ✅ 핸드오프 (2026-06-24 오후 — **검수완료→배차발송 에픽 슬1 머지(#590) + 워크플로우 영구박제. 슬2~4 잔여**)
+
+### 🆕 신규 에픽: 검수 완료 → 배차 발송 (아로로지스/타배송사) — [[project_dispatch_on_inspect_epic]]
+brainstorming(superpowers)로 개발책임자 재정의: **견적 결재 제외**, **배차 = 출고전표 검수인 결재(OUTBOUND_INSPECT) 완료 → 배차 발송(아로로지스 또는 타배송사)** 워크플로우 연동. spec=`docs/superpowers/specs/2026-06-24-dispatch-on-inspect-external-carrier-design.md`, plan(슬1)=`docs/superpowers/plans/2026-06-24-dispatch-send-queue-s1.md`. 결정 D1~D7(견적제외·검수완료→발송대기→운영자 채널선택·아로로지스/타배송사·타배송사=문자+인쇄·외부기사 마스터·묶음[arologis 차량그룹/타배송사 기사별]·슬1 UX=배차현황 통합).
+- **슬1 ✅ 머지(PR #590, main `bc52cbda`)**: 기존 "배차현황"(`dispatch.board`) 미배차 목록에 **검수 완료 게이트**(`status=COMPLETED AND inspectorUserId/inspectorSignedAt NOT NULL AND dispatchStatus=UNDISPATCHED`) + 검수자/검수일시/배송지/수령자 노출. `SlipRepository.findDispatchReadyOutboundSlips`·`DispatchTaskBoardQueryService`(N+1 distinct dedup+graceful catch)·`SlipBoardResponse`(inspectorName/inspectorSignedAt, UUID 미노출)·FE `UnDispatchedSlipList`(KST 직접포맷·null '-'). **arologis/Flyway/page-code/enum 무변경.** 듀얼리뷰 0수렴(Opus fix5+Codex fix1+Opus R2)·라이브 QA PASS(`docs/qa/dispatch-send-queue-inspect-gate-s1/`, 게이트 인과 증명)·CI 25 green(GitGuardian=dev `dev_p05_pass!` false-positive·선례 50건).
+- **🔜 다음 = 슬2 외부기사/배송사 마스터**(`external_carrier` CRUD + 관리 메뉴 + page-code 권한/시드 V## + FE 등록/목록) → 슬3 타배송사 문자(SMS, `external_dispatch`/`external_dispatch_slip` + notification-service 재사용 + dispatchStatus 전이) → 슬4 인쇄 배차의뢰서(A4 PrintLayout).
+- 🔑 슬1 교훈: 검수 상태머신(complete()=PROCESSING→INSPECTING, inspect()=INSPECTING→COMPLETED). 배차현황(DispatchBoardPage)에 미배차 목록+차량그룹+arologis 발송 기구현→게이트+노출만 추가. 타배송사 채널 전무(arologis 단일)→슬3 신규(배차안내 SMS Aligo 재사용). 검수자명 resolve=UserInternalClient 단건만→distinct dedup.
+
+### 🚨 워크플로우 영구박제 (개발책임자 2026-06-24) — [[feedback_canonical_workflow]] 유일 진실원
+**8단계**: Opus 기획+조기PR → Codex 개발+리뷰게시 → (Opus 5-agent+Opus fix+라이브QA스샷+TM게시 ↔ Codex 5-agent+Codex fix+라이브QA스샷+TM게시) **0수렴까지** → **⑥PM 종합 리뷰 게시(머지 전·신설)** → CI green → PM 머지. **5 agents**=FE/BE/Design/DevOps/QA(QA=Docker 라이브+**단계별 다수 스샷[한장 금지]**). **절대규칙**: 각 라운드 즉시 독립게시·fix후 0수렴 재리뷰(CI-green만 머지금지)·단축금지·**미준수 PR 소급보완**·**매 단계 ScheduleWakeup 재자각**([[feedback_autonomous_loop_schedulewakeup]])·머지 게이트 체크리스트. 경쟁/구 워크플로우 5개(github_pr_workflow·user_merge_authority·tm_pr_comment_pre_merge_gate·post_each_review_round_distinctly·rereview_converge_after_fix) **통합·삭제**.
+
+---
+
 ## ✅ 핸드오프 (2026-06-24 — **슬라이스 ①②③④ 전부 머지 완료. 워크플로우 전 단계 준수. 세션 종료**)
 
 ### 🤖 자율 루프 (개발책임자 "야간 자율 → 재개 → 옵션1만 진행 후 세션 종료") — 슬라이스 순서 **3→2→1→4** 전부 완결
