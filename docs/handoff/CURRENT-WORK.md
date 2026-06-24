@@ -14,7 +14,11 @@
 
 ### 다음 에픽 (개발책임자 지정 대기)
 - canonical workflow([[feedback_canonical_workflow]]) 엄수: Opus 기획+조기PR → Codex 개발 → (Opus 5-agent ↔ Codex 5-agent) 0수렴 → PM 종합 → CI green → 머지. **매 단계 ScheduleWakeup 재자각·턴 종료**([[feedback_autonomous_loop_schedulewakeup]]).
-- 후보(이전 핸드오프 잔여): 그룹웨어 결재 enforcement(A2 잔여 — [[project_approval_enforcement_epic]]), §7 collab presence 후속, Phase 11 AWS cutover 등. **개발책임자 지정 시 착수.**
+- **후보 실상태 검증 완료(2026-06-24, Workflow + 직접)** — 이전 핸드오프 후보 대부분 stale/해소:
+  - §7 collab presence = **✅RESOLVED**(PR #515·#545·#546, 6문서 완결 — 후보 아님).
+  - 결재 enforcement(A2) = **실질 잔여 거의 없음**: 회계전표 A2-5(#589) 해소·견적 스코프제외(결재불요)·배차 본 에픽 해소·그룹웨어 이미 자체 결재선(EXPLICIT chain) enforce. "명시 순차 chain 모델"은 개발책임자 원할 시 신규(필수 잔여 아님). [[project_approval_enforcement_epic]].
+  - **Phase 11 AWS = 실질 OPEN(유일)**: terraform IaC 작성됨(infrastructure/terraform/ ec2·rds·lambda·route53·monitoring + render/render.yaml). 잔여=**prod cutover 미실행**(docker-compose.prod.yml[S3]·RDS timezone 파라미터그룹·기존 TIMESTAMP UTC→KST 변환·실 AWS 배포 운영 결정). [[project_phase11_aws]]·[[project_kst_timezone_standard]].
+- ⇒ 신규 슬라이스 에픽 후보가 마땅치 않음(presence·결재 해소). 개발책임자에 **신규 업무 에픽 지정** 요청 또는 Phase 11 prod cutover(인프라·운영 결정) 착수 여부 확인.
 
 ---
 
