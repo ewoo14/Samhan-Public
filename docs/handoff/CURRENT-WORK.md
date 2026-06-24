@@ -15,7 +15,7 @@
 
 ### 🔜 슬라이스 큐 (개발책임자 야간 지정)
 - **② 모바일 점검 = ✅정찰 완료, 🟡개발책임자 설계 결정 대기**: spec 초안 `docs/superpowers/specs/2026-06-25-mobile-desktop-access-inspection.md`. **결과: 목표와 큰 갭** — mobile-staff=영업 견적WebView만(SalesTab 5탭 미사용)·mobile=거래처 주문만·arologis-mobile=기사만·desktop=Electron 전용(반응형 0·window.samhanAuth IPC 의존·웹배포 없음)→창고/구매/회계/인사 모바일 진입점 0. **대형 아키텍처 에픽**(반응형+Electron 인증 추상화+웹/PWA 배포)이라 자율 멈춤(brainstorming 게이트). **Option A(데스크탑 반응형 웹/PWA — 추천) 권장**, 개발책임자 Q1~Q5(접근법·웹JWT저장·도메인/CORS·범위·기존 WebView앱) 결정 시 spec 확정→슬1 foundation(Electron 인증 추상화+웹 배포 골격)부터 canonical.
-- **③ 버전관리+자동 업데이트**: 개발자 신규버전 배포 시 사용/접속 중 **업데이트 팝업→강제 업데이트** 후 사용. 개발내역 메모(릴리스노트). 팝업 버튼='확인'/'다시 보지 않기'. (강제 vs 다시보지않기 정합·Electron auto-updater 설계 brainstorming.)
+- **③ 버전관리+자동 업데이트 = ✅정찰 완료, 🟡설계 결정 대기**: spec 초안 `docs/superpowers/specs/2026-06-25-version-auto-update-inspection.md`. 현재 **auto-update 없음**(electron-builder .exe만·electron-updater 미사용·v0.1.0). 요구=신규버전 배포 시 팝업→강제 업데이트, 릴리스노트, '확인'/'다시 보지 않기'. ⚠️강제 vs 다시보지않기 상충(2단계/단일강제/알림형 해석). **Option B(자체 버전체크 API+팝업+릴리스노트 관리화면 — 웹/Electron 공통, 권장)**, 개발책임자 Q1~Q5(정합·접근·릴리스노트작성처·범위·강제강도) 결정 대기. 모바일 에픽②와 연관(웹 버전관리) → ② 먼저.
 
 ### (이전) 컷오프 슬라이스 재개 지점
 **main `fb80819dc`**(#594 squash 머지). 집 PG 세션(회사PC 비정상종료 이어받음). Docker 풀스택 가동(slip V51·auth V70·gateway slip-cutoffs 재빌드·라이브). 렌더러 :5175.
