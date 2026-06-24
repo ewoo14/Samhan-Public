@@ -159,7 +159,7 @@ const DEFAULT_ESTIMATE_CONFIG_MOCK = {
 
 let estimateConfigMock = { ...DEFAULT_ESTIMATE_CONFIG_MOCK }
 
-type MockPermissionAction = 'view' | 'create' | 'update' | 'delete'
+type MockPermissionAction = 'view' | 'create' | 'update' | 'delete' | 'restore'
 
 function mockCanAccess(pageCode: string, action: MockPermissionAction): boolean {
   const mockPerms = _resolveMockPerms()
@@ -6277,6 +6277,111 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope({ inserted: 4, updated: 1, rejected: [] })
   }
 
+  if (method === 'GET' && url.match(/\/admin\/external-carriers(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('dispatch.external-carriers', 'view')
+    if (denied) return denied
+    const queryStart = url.indexOf('?')
+    const params = new URLSearchParams(queryStart >= 0 ? url.slice(queryStart + 1) : '')
+    const q = (params.get('q') ?? '').trim().toLowerCase()
+    const page = Number.parseInt(params.get('page') ?? '0', 10)
+    const size = Number.parseInt(params.get('size') ?? '20', 10)
+    const filtered = MOCK_EXTERNAL_CARRIERS
+      .filter((row) => !row.deleted)
+      .filter((row) => !q || row.name.toLowerCase().includes(q) || row.phone.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'))
+    const start = Math.max(0, page) * Math.max(1, size)
+    const content = filtered.slice(start, start + Math.max(1, size))
+    return envelope({
+      content,
+      totalElements: filtered.length,
+      totalPages: Math.max(1, Math.ceil(filtered.length / Math.max(1, size))),
+      number: Math.max(0, page),
+      size: Math.max(1, size),
+      first: page <= 0,
+      last: start + Math.max(1, size) >= filtered.length,
+    })
+  }
+  if (method === 'POST' && url.match(/\/admin\/external-carriers(?:\?.*)?$/)) {
+    const denied = mockRequirePermission('dispatch.external-carriers', 'create')
+    if (denied) return denied
+    const body = parseMockBody(config)
+    const phone = String(body['phone'] ?? '').trim()
+    if (MOCK_EXTERNAL_CARRIERS.some((row) => !row.deleted && row.phone === phone)) {
+      return mockError(409, 'CONFLICT', '이미 사용 중인 외부기사/배송사 전화번호입니다.')
+    }
+    const now = new Date().toISOString()
+    const created = {
+      id: `carrier-${Date.now()}`,
+      name: String(body['name'] ?? '').trim(),
+      phone,
+      email: body['email'] == null ? null : String(body['email']),
+      defaultVehicleType: body['defaultVehicleType'] == null ? null : String(body['defaultVehicleType']),
+      memo: body['memo'] == null ? null : String(body['memo']),
+      active: body['active'] == null ? true : Boolean(body['active']),
+      createdAt: now,
+      modifiedAt: now,
+      deleted: false,
+    }
+    MOCK_EXTERNAL_CARRIERS.push(created)
+    return envelope(created)
+  }
+  const externalCarrierRestoreMatch = url.match(/\/admin\/external-carriers\/([^/]+)\/restore(?:\?.*)?$/)
+  if (method === 'POST' && externalCarrierRestoreMatch) {
+    const denied = mockRequirePermission('dispatch.external-carriers', 'restore')
+    if (denied) return denied
+    const id = decodeURIComponent(externalCarrierRestoreMatch[1]!)
+    const row = MOCK_EXTERNAL_CARRIERS.find((item) => item.id === id)
+    if (!row) return mockError(404, 'NOT_FOUND', '외부기사/배송사를 찾을 수 없습니다.')
+    if (MOCK_EXTERNAL_CARRIERS.some((item) => item.id !== id && !item.deleted && item.phone === row.phone)) {
+      return mockError(409, 'CONFLICT', '동일 전화번호의 활성 외부기사/배송사가 이미 존재합니다.')
+    }
+    row.deleted = false
+    row.modifiedAt = new Date().toISOString()
+    return envelope(row)
+  }
+  const externalCarrierDetailMatch = url.match(/\/admin\/external-carriers\/([^/?]+)(?:\?.*)?$/)
+  if (method === 'GET' && externalCarrierDetailMatch) {
+    const denied = mockRequirePermission('dispatch.external-carriers', 'view')
+    if (denied) return denied
+    const id = decodeURIComponent(externalCarrierDetailMatch[1]!)
+    const row = MOCK_EXTERNAL_CARRIERS.find((item) => item.id === id && !item.deleted)
+    return row ? envelope(row) : mockError(404, 'NOT_FOUND', '외부기사/배송사를 찾을 수 없습니다.')
+  }
+  if (method === 'PATCH' && externalCarrierDetailMatch) {
+    const denied = mockRequirePermission('dispatch.external-carriers', 'update')
+    if (denied) return denied
+    const id = decodeURIComponent(externalCarrierDetailMatch[1]!)
+    const row = MOCK_EXTERNAL_CARRIERS.find((item) => item.id === id && !item.deleted)
+    if (!row) return mockError(404, 'NOT_FOUND', '외부기사/배송사를 찾을 수 없습니다.')
+    const body = parseMockBody(config)
+    const nextPhone = body['phone'] == null ? row.phone : String(body['phone']).trim()
+    if (nextPhone !== row.phone && MOCK_EXTERNAL_CARRIERS.some((item) => item.id !== id && !item.deleted && item.phone === nextPhone)) {
+      return mockError(409, 'CONFLICT', '이미 사용 중인 외부기사/배송사 전화번호입니다.')
+    }
+    // PATCH 시맨틱: null=미변경, ""=클리어(null), 값=trim 설정. 필수 name 은 blank 면 기존 유지.
+    row.name = body['name'] == null ? row.name : (String(body['name']).trim() || row.name)
+    row.phone = nextPhone
+    row.email = body['email'] == null ? row.email : (String(body['email']).trim() || null)
+    row.defaultVehicleType =
+      body['defaultVehicleType'] == null
+        ? row.defaultVehicleType
+        : (String(body['defaultVehicleType']).trim() || null)
+    row.memo = body['memo'] == null ? row.memo : (String(body['memo']).trim() || null)
+    row.active = body['active'] == null ? row.active : Boolean(body['active'])
+    row.modifiedAt = new Date().toISOString()
+    return envelope(row)
+  }
+  if (method === 'DELETE' && externalCarrierDetailMatch) {
+    const denied = mockRequirePermission('dispatch.external-carriers', 'delete')
+    if (denied) return denied
+    const id = decodeURIComponent(externalCarrierDetailMatch[1]!)
+    const row = MOCK_EXTERNAL_CARRIERS.find((item) => item.id === id && !item.deleted)
+    if (!row) return mockError(404, 'NOT_FOUND', '외부기사/배송사를 찾을 수 없습니다.')
+    row.deleted = true
+    row.modifiedAt = new Date().toISOString()
+    return envelope(null)
+  }
+
   // GET /admin/chat-rooms — ChatRoomsPage list
   if (method === 'GET' && url.includes('/admin/chat-rooms')) {
     return envelope(MOCK_CHAT_ROOMS)
@@ -10802,6 +10907,20 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       }> = {}
       for (const page of SP_D1_PAGES) {
         const legacyCell = _mockPermissionCells.find((cell) => cell.roleCode === role && cell.pageCode === page)
+        const actionOnly = MOCK_ACTION_ONLY_PAGES[page]
+        if (actionOnly) {
+          const editable = legacyCell?.edit ?? false
+          accountMatrix[page] = {
+            view: legacyCell?.view ?? false,
+            create: editable && actionOnly.includes('CREATE'),
+            update: editable && actionOnly.includes('UPDATE'),
+            delete: editable && actionOnly.includes('DELETE'),
+            restore: editable && actionOnly.includes('RESTORE'),
+            download: editable && actionOnly.includes('DOWNLOAD'),
+            print: editable && actionOnly.includes('PRINT'),
+          }
+          continue
+        }
         accountMatrix[page] = {
           view: legacyCell?.view ?? false,
           create: legacyCell?.edit ?? false,
@@ -11645,6 +11764,53 @@ const MOCK_REGIONS = [
   { id: 'reg-004', groupName: '인천권', keywords: '연수구,남동구,부평구,서구', sortOrder: 4 },
   { id: 'reg-005', groupName: '부산권', keywords: '해운대구,수영구,부산진구,동래구', sortOrder: 5 },
   { id: 'reg-006', groupName: '대구권', keywords: '수성구,중구,달서구', sortOrder: 6 },
+]
+
+const MOCK_EXTERNAL_CARRIERS: Array<{
+  id: string
+  name: string
+  phone: string
+  email: string | null
+  defaultVehicleType: string | null
+  memo: string | null
+  active: boolean
+  createdAt: string
+  modifiedAt: string | null
+  deleted?: boolean
+}> = [
+  {
+    id: 'carrier-001',
+    name: '한빛퀵',
+    phone: '010-7000-0001',
+    email: 'dispatch@hanbit.example',
+    defaultVehicleType: '1톤',
+    memo: '강남/서초 우선 배정',
+    active: true,
+    createdAt: '2026-06-24T09:00:00',
+    modifiedAt: null,
+  },
+  {
+    id: 'carrier-002',
+    name: '서울공조용달',
+    phone: '010-7000-0002',
+    email: null,
+    defaultVehicleType: '다마스',
+    memo: '오전 연락 선호',
+    active: true,
+    createdAt: '2026-06-24T09:10:00',
+    modifiedAt: null,
+  },
+  {
+    id: 'carrier-003',
+    name: '경기북부화물',
+    phone: '010-7000-0003',
+    email: null,
+    defaultVehicleType: '2.5톤',
+    memo: '비활성 예시',
+    active: false,
+    createdAt: '2026-06-24T09:20:00',
+    modifiedAt: null,
+  },
 ]
 
 /**
@@ -13657,6 +13823,7 @@ const SP_D1_PAGES = [
   'sales.slip.list',
   'inbound.inspection',
   'dispatch.board',
+  'dispatch.external-carriers',
   'admin.permissions',
   'admin.permission-groups',
   'hr.role-management',
@@ -13774,6 +13941,7 @@ const MOCK_ACTION_ONLY_PAGES: Record<string, string[]> = {
   'accounting.daily-closing.unlock': ['UPDATE'],
   'sales.partner-order.convert': ['CREATE'],
   'products.sync': ['CREATE'],
+  'dispatch.external-carriers': ['CREATE', 'UPDATE', 'DELETE', 'RESTORE'],
 }
 
 /**
@@ -13812,7 +13980,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'accounting.daily-closing.run',
     'accounting.general-ledger', 'notification.dispatch-sms.send-audit',
     'purchases.receipt-ocr', 'purchases.slip.list', 'sales.slip.list',
-    'inbound.inspection', 'dispatch.board',
+    'inbound.inspection', 'dispatch.board', 'dispatch.external-carriers',
     // SP-D2 회계 7개 — MANAGER: view 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
     'accounting.reports', 'accounting.receivables', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
@@ -13839,7 +14007,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     // C2b PermissionGuard 전환 — MANAGER: 전 12개 page view 허용 (V29/V30/V33/V34/V36 seed)
     'sales.slip.create', 'slip.delivery-batch', 'slip.print.next-day', 'slip.print.export',
     'sales.partner-dc-config', 'sales.estimate-config', 'slip.cleanup',
-    'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch',
+    'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch', 'dispatch.external-carriers',
     'aligo.address-book', 'groupware.approvals', 'groupware.approval-templates', 'messenger.admin', 'slip.edit-requests', 'slip.edit-requests.decide',
     'slip.photo-audit',
     // C2c 동적 권한 전환 — MANAGER: view 허용 (V36/V30/V41 seed)
@@ -13859,7 +14027,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'slip.comments', 'slip.audit-overlay', 'slip.audit-revert',
   ],
   DISPATCH: [
-    'notification.dispatch-sms.send-audit', 'dispatch.board',
+    'notification.dispatch-sms.send-audit', 'dispatch.board', 'dispatch.external-carriers',
     // SP-D4 — DISPATCH: inventory.stock (view 전용) + arologis.*
     'inventory.stock', 'arologis.admin', 'arologis.region',
     // C2b PermissionGuard 전환 — DISPATCH: arologis.dispatch.ops + dispatch.batch view
@@ -14015,7 +14183,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     // C2b PermissionGuard 전환 — MANAGER: 전 12개 page edit 허용 (V29/V30/V33/V34/V36 seed)
     'sales.slip.create', 'slip.delivery-batch', 'slip.print.next-day', 'slip.print.export',
     'sales.partner-dc-config', 'sales.estimate-config', 'slip.cleanup',
-    'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch',
+    'arologis.dispatch.admin', 'arologis.dispatch.ops', 'dispatch.batch', 'dispatch.external-carriers',
     'aligo.address-book', 'groupware.approvals', 'groupware.approval-templates', 'messenger.admin', 'slip.edit-requests', 'slip.edit-requests.decide',
     // slip.photo-audit: MANAGER can_edit=FALSE per V36
     // C2c 동적 권한 전환 — MANAGER: edit 허용 (V36/V30/V41 seed)
@@ -14039,7 +14207,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     // SP-D4 — DISPATCH: arologis.* edit
     'arologis.admin', 'arologis.region',
     // C2b PermissionGuard 전환 — DISPATCH: arologis.dispatch.ops + dispatch.batch edit (V33/V34)
-    'arologis.dispatch.ops', 'dispatch.batch',
+    'arologis.dispatch.ops', 'dispatch.batch', 'dispatch.external-carriers',
   ],
   SALES: [
     'sales.slip.list',
