@@ -4,17 +4,17 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-24 — **슬3 타배송사 SMS 머지(#592) 완료, 다음=슬4 인쇄 배차의뢰서**)
+## 🔄 세션 재개 지점 (2026-06-24 — **✅ 검수완료→배차발송 에픽 완결(슬1~4), 다음 에픽=개발책임자 지정 대기**)
 
-**main `c738e2e2`**(슬3 #592 머지). git clean(로컬 main). Docker 풀스택 가동 중(slip은 슬3 QA로 V50 적용·fresh). **슬1 #590·슬2 #591·슬3 #592 머지 완료. 에픽 잔여=슬4(인쇄)만.**
+**main `ec9b689e`**(슬4 #593 머지). git clean(로컬 main). Docker 풀스택 가동 중(slip은 슬4 QA로 V50 적용·fresh). **슬1 #590·슬2 #591·슬3 #592·슬4 #593 전부 머지 = 에픽 완결.**
 
-### 슬3 결과 (참고)
-- external_dispatch(1)→external_dispatch_slip(N) V50(FK carrier→external_carrier·slip→slips) + ExternalDispatchService(발송대기 검수완료·UNDISPATCHED 전표를 external_carrier별 묶어 SMS, PESSIMISTIC_WRITE row lock) + Slip.markDispatchedExternally + NotificationClient.sendExternalSmsWithResult(/internal/notifications/send 재사용) + FE 발송대기 채널분기+기사선택 모달. 권한=dispatch.board/dispatch.external-carriers 재사용(신규 시드 0). 듀얼리뷰 0수렴 + 라이브 QA 7/7(SMS=Aligo placeholder stub). 교훈=[[project_dispatch_on_inspect_epic]] 슬3 교훈(다중생성자 부팅 IT가림→라이브적발 / 미머지 마이그 수정+로컬재정합 / 동시발송 row lock / SMS FAILED 거짓양성).
+### 에픽 완결 결과 ([[project_dispatch_on_inspect_epic]])
+- 출고전표 검수완료 → 배차현황 발송대기 → 운영자 채널선택: 아로로지스(기존 재사용) / 타배송사(external_carrier 마스터 → SMS·인쇄 A4 배차의뢰서). external_dispatch(V50) 기사별 묶음 발송, dispatchStatus DISPATCHED 전이.
+- 누적 교훈(에픽): account-mode 단일 page-code+V66 4-table seed / 다중생성자 부팅실패(IT 가림→라이브 적발) / 동시발송 PESSIMISTIC row lock / SMS FAILED HTTP200 거짓양성 / **real-qa 디렉토리 `-real-qa` 접미사 필수(CI mock잡 testIgnore)** / window.print 헤드리스 한계. 상세=[[project_dispatch_on_inspect_epic]] 슬2~4 교훈.
 
-### 재개 절차 (슬4 착수 — **개발책임자 확인 후 시작**)
-1. `git pull` + `.\scripts\sync-claude-memory.ps1`.
-2. **다음 = 슬4 타배송사 인쇄 배차의뢰서(A4 PrintLayout)** — spec §5·§8. external_dispatch.channel enum PRINT/BOTH 이미 V50 정의(발송경로만 슬3=SMS 한정). 슬4=발송 시 channel=PRINT/BOTH 허용 + FE A4 배차의뢰서 양식(기사/배송사명·배송지·품목·수령자·날짜, [[project_print_preview_standardization]]) 인쇄/PDF. SMS 본문과 동일 정보. ExternalDispatchService 채널 가드(현재 SMS만 허용 → PRINT/BOTH 분기).
-3. canonical workflow([[feedback_canonical_workflow]]) 엄수: Opus 기획+조기PR → Codex 개발 → (Opus 5-agent ↔ Codex 5-agent) 0수렴 → PM 종합 → CI green → 머지. **매 단계 ScheduleWakeup 재자각·턴 종료**([[feedback_autonomous_loop_schedulewakeup]]). 슬4 머지 시 에픽 완결.
+### 다음 에픽 (개발책임자 지정 대기)
+- canonical workflow([[feedback_canonical_workflow]]) 엄수: Opus 기획+조기PR → Codex 개발 → (Opus 5-agent ↔ Codex 5-agent) 0수렴 → PM 종합 → CI green → 머지. **매 단계 ScheduleWakeup 재자각·턴 종료**([[feedback_autonomous_loop_schedulewakeup]]).
+- 후보(이전 핸드오프 잔여): 그룹웨어 결재 enforcement(A2 잔여 — [[project_approval_enforcement_epic]]), §7 collab presence 후속, Phase 11 AWS cutover 등. **개발책임자 지정 시 착수.**
 
 ---
 
