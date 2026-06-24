@@ -56,6 +56,58 @@ interface UnDispatchedSlipListProps {
  * 50/page default 페이지 크기. 사용자 명세 (2026-05-14).
  */
 const PAGE_SIZE = 50
+const DASH = '-'
+
+/**
+ * 검수 완료 시각을 운영자 화면에 분 단위로 표시한다.
+ *
+ * BE inspectorSignedAt = LocalDateTime(KST 벽시계, 타임존 없음)이므로,
+ * Date 파싱 시 런타임 로컬 존으로 재해석되는 더블 변환을 피하고 ISO 구성요소를 그대로 포맷한다.
+ */
+export function formatInspectorSignedAtKst(value: string | null | undefined): string {
+  if (!value) return DASH
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(value)
+  if (!m) return DASH
+  const [, year, month, day, hour, minute] = m
+  return `${year}. ${month}. ${day}. ${hour}:${minute}`
+}
+
+function nullableText(value: string | null | undefined): string {
+  return value && value.trim() ? value : DASH
+}
+
+/**
+ * 미배차 row 의 보조 정보 셀. 검수 완료 게이트 이후 운영자가 확인해야 하는 필드를 한 곳에 모은다.
+ */
+export function DispatchSlipSummaryCells({ slip }: { slip: SlipBoardResponse }) {
+  const cells = [
+    ['검수자', nullableText(slip.inspectorName)],
+    ['검수일시', formatInspectorSignedAtKst(slip.inspectorSignedAt)],
+    ['배송지', nullableText(slip.deliveryAddress)],
+    ['수령자', nullableText(slip.recipientPhone)],
+  ]
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: '4px 10px',
+        marginTop: 'var(--space-1)',
+        color: 'var(--color-neutral-600)',
+        fontSize: 12,
+        lineHeight: 1.45,
+      }}
+    >
+      {cells.map(([label, value]) => (
+        <span key={label} style={{ minWidth: 0 }}>
+          <span style={{ color: 'var(--color-neutral-500)' }}>{label}</span>
+          <span style={{ marginLeft: 4, overflowWrap: 'anywhere' }}>{value}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
 
 /**
  * 좌측 미배차 출고전표 list.
@@ -318,16 +370,20 @@ function DraggableSlipRow({
           cursor: 'pointer',
           fontSize: 13,
           color: 'var(--color-neutral-800)',
+          minWidth: 0,
         }}
         data-testid={`dispatch-board-slip-open-${slip.slipNo}`}
       >
-        <span style={{ fontWeight: 600, marginRight: 8 }}>{slip.slipNo}</span>
-        <span>{slip.partnerName}</span>
-        <span
-          style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-neutral-500)' }}
-        >
-          ({slip.partnerCode})
+        <span style={{ display: 'block', minWidth: 0 }}>
+          <span style={{ fontWeight: 600, marginRight: 8 }}>{slip.slipNo}</span>
+          <span>{slip.partnerName}</span>
+          <span
+            style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-neutral-500)' }}
+          >
+            ({slip.partnerCode})
+          </span>
         </span>
+        <DispatchSlipSummaryCells slip={slip} />
       </button>
     </li>
   )
