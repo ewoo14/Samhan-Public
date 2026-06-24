@@ -4,19 +4,17 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-24 — **슬2 외부기사/배송사 마스터 머지(#591) 완료, 다음=슬3 타배송사 SMS**)
+## 🔄 세션 재개 지점 (2026-06-24 — **슬3 타배송사 SMS 머지(#592) 완료, 다음=슬4 인쇄 배차의뢰서**)
 
-**main `1ecb5617`**(슬2 #591 머지). git clean(로컬 main). Docker 풀스택 가동 중(slip/auth/gateway는 슬2 QA로 V49/V69 적용·fresh). 슬1 #590·슬2 #591 머지 완료.
+**main `c738e2e2`**(슬3 #592 머지). git clean(로컬 main). Docker 풀스택 가동 중(slip은 슬3 QA로 V50 적용·fresh). **슬1 #590·슬2 #591·슬3 #592 머지 완료. 에픽 잔여=슬4(인쇄)만.**
 
-### 슬2 결과 (참고)
-- external_carrier 마스터 CRUD + 배차메뉴 + 단일 page-code `dispatch.external-carriers` 7-action(account-mode) + V49(단일테이블)/V69(V66 4-table seed) + PageCode enum + gateway 라우트 + FE ExternalCarriersPage. 듀얼리뷰 0수렴 + 라이브 QA 7/7. 교훈은 [[project_dispatch_on_inspect_epic]] 슬2 교훈 참조(account-mode 단일 page-code+V66 seed / PATCH 클리어 3곳정합 / create save+flush / GitGuardian false positive).
-- restore UI(활성/비활성 view)·audit actor 비대칭 = scope-out(후속/전역관행).
+### 슬3 결과 (참고)
+- external_dispatch(1)→external_dispatch_slip(N) V50(FK carrier→external_carrier·slip→slips) + ExternalDispatchService(발송대기 검수완료·UNDISPATCHED 전표를 external_carrier별 묶어 SMS, PESSIMISTIC_WRITE row lock) + Slip.markDispatchedExternally + NotificationClient.sendExternalSmsWithResult(/internal/notifications/send 재사용) + FE 발송대기 채널분기+기사선택 모달. 권한=dispatch.board/dispatch.external-carriers 재사용(신규 시드 0). 듀얼리뷰 0수렴 + 라이브 QA 7/7(SMS=Aligo placeholder stub). 교훈=[[project_dispatch_on_inspect_epic]] 슬3 교훈(다중생성자 부팅 IT가림→라이브적발 / 미머지 마이그 수정+로컬재정합 / 동시발송 row lock / SMS FAILED 거짓양성).
 
-### 재개 절차 (슬3 착수 — **개발책임자 확인 후 시작**)
+### 재개 절차 (슬4 착수 — **개발책임자 확인 후 시작**)
 1. `git pull` + `.\scripts\sync-claude-memory.ps1`.
-2. **다음 = 슬3 타배송사 문자(SMS) 발송** — spec=`docs/superpowers/specs/2026-06-24-dispatch-on-inspect-external-carrier-design.md` §4·§5·§8. external_dispatch/external_dispatch_slip 테이블(슬2서 미생성, **슬3 신규 Flyway**) + notification-service DispatchBatchSendService/SmsAdapter(Aligo) 재사용 + slip.dispatchStatus 전이(기존 enum 재사용, CHECK 마이그 회피) + 발송대기 목록서 타배송사 선택 UI(external_carrier 마스터에서 기사 선택→기사별 묶음). 실HTTP 계약테스트(notification client 다운스트림 선검증 [[restclient-contract-test-false-green]]).
-3. canonical workflow([[feedback_canonical_workflow]]) 엄수: Opus 기획+조기PR → Codex 개발 → (Opus 5-agent+fix+라이브QA스샷+TM게시 ↔ Codex 5-agent+fix+라이브QA스샷+TM게시) 0수렴 → PM 종합 게시 → CI green → PM 머지. **매 단계 ScheduleWakeup 재자각·턴 종료**([[feedback_autonomous_loop_schedulewakeup]]).
-- 슬4 잔여: 타배송사 인쇄 배차의뢰서(A4 PrintLayout).
+2. **다음 = 슬4 타배송사 인쇄 배차의뢰서(A4 PrintLayout)** — spec §5·§8. external_dispatch.channel enum PRINT/BOTH 이미 V50 정의(발송경로만 슬3=SMS 한정). 슬4=발송 시 channel=PRINT/BOTH 허용 + FE A4 배차의뢰서 양식(기사/배송사명·배송지·품목·수령자·날짜, [[project_print_preview_standardization]]) 인쇄/PDF. SMS 본문과 동일 정보. ExternalDispatchService 채널 가드(현재 SMS만 허용 → PRINT/BOTH 분기).
+3. canonical workflow([[feedback_canonical_workflow]]) 엄수: Opus 기획+조기PR → Codex 개발 → (Opus 5-agent ↔ Codex 5-agent) 0수렴 → PM 종합 → CI green → 머지. **매 단계 ScheduleWakeup 재자각·턴 종료**([[feedback_autonomous_loop_schedulewakeup]]). 슬4 머지 시 에픽 완결.
 
 ---
 
