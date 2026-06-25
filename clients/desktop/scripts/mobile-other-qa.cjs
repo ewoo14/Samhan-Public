@@ -5,12 +5,10 @@ const QA = 'C:/dev/Samhan-Public/docs/qa/mobile-other'
 const BASE = 'http://localhost:5175'
 fs.mkdirSync(QA, { recursive: true })
 const PAGES = [
-  { label: 'tax-invoice-list', path: '/accounting/tax-invoices' },
-  { label: 'journal-list', path: '/accounting/journals' },
-  { label: 'inventory-audit-list', path: '/warehouse/audit' },
-  { label: 'groupware-approval-list', path: '/groupware/approvals' },
-  { label: 'inbound-inspection-list', path: '/warehouse/inbound-inspections' },
-  { label: 'order-list', path: '/accounting/admin/orders' },
+  { label: 'tax-invoice-batch', path: '/accounting/tax-invoices/batch' },
+  { label: 'tax-invoice-inbound', path: '/accounting/tax-invoices/inbound' },
+  { label: 'link-dispatch', path: '/sales/link-dispatch' },
+  { label: 'dispatch-sms-audit', path: '/arologis/dispatch-sms/send-audit' },
 ]
 async function launch() { try { return await chromium.launch({ headless: true }) } catch { return await chromium.launch({ headless: true, channel: 'chromium-headless-shell' }) } }
 ;(async () => {

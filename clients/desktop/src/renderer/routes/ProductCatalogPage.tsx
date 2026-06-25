@@ -155,6 +155,7 @@ export function ProductCatalogPage() {
       key: 'modelCode',
       header: '모델명',
       width: '160px',
+      mobilePriority: 'primary',
       render: (row) => (
         <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{row.modelCode}</span>
       ),
@@ -163,11 +164,13 @@ export function ProductCatalogPage() {
       key: 'name',
       header: '품목명',
       width: '220px',
+      mobilePriority: 'secondary',
     },
     {
       key: 'estimateCategory',
       header: '카테고리',
       width: '160px',
+      mobilePriority: 'secondary',
       render: (row) => row.productCategory ? (
         <span style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
           {PRODUCT_CATEGORY_LABEL[row.productCategory]}
@@ -180,6 +183,7 @@ export function ProductCatalogPage() {
       key: 'productType',
       header: '세트',
       width: '100px',
+      mobilePriority: 'hidden',
       render: (row) =>
         row.productType === 'BUNDLE' ? (
           <Badge
@@ -196,6 +200,7 @@ export function ProductCatalogPage() {
       key: '_actions' as const,
       header: '관리',
       width: '80px',
+      mobilePriority: 'hidden',
       render: (row) =>
         canEdit ? (
           <Button
