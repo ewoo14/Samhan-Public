@@ -4,7 +4,32 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-25 회사PC — **슬1 웹 리로드루프 Codex fix 완료+재QA PASS(B1~B4). 🚨다음=0수렴 재리뷰→⑤Codex 5-agent 라운드→⑥PM종합→⑦CI→⑧머지**)
+## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬1 Foundation 완결·머지(PR #596, main `2a950822`). 다음=슬2 반응형 셸 또는 ③버전 에픽(개발책임자 지정)**)
+
+**모바일 슬1(Dual-mode 인증 추상화 + 웹 배포 골격) canonical 8단계 완주 → 개발책임자 스크린샷 확인 후 승인 머지.** 데스크탑 렌더러가 웹 브라우저로도 구동(Electron=IPC Bearer 무회귀 / Web=httpOnly 쿠키 SameSite=Lax). Flyway 0.
+
+### 완결 요약
+- **구현**: authProvider 추상화(electron/web)·~15 소비처 배선·collabHeaders·vite.web.config+build:web·라우터 분기·BE 로그인 Set-Cookie(dual-issue)/logout/me 확장·게이트웨이 access_token 쿠키 fallback(Bearer 우선)+CORS.
+- **듀얼리뷰 0수렴 + 라이브QA가 각각 BLOCKING 단독 적발(상호보완 입증)**:
+  - 🔴 **웹 무한 리로드 루프**(라이브 QA 적발): 401 인터셉터가 부팅 `/auth/me` 401에 풀리로드 → fix=인증프로브(`/auth/(me|login|logout)`+`/auth/password-reset/`) 401 skip(`877717d8`).
+  - 🔴 **Electron 쿠키 logout 우회**(Codex 독립라운드 적발·Opus 미적발): withCredentials/realtime credentials 상시 → fix=Electron 쿠키 미전송(`withCredentials=!isElectronPlatform`·realtime 웹전용)(`6fdf7a3f`). +MAJOR 보호401 store auth 클리어.
+  - 🔴 **mock gate 30분 타임아웃**(CI 적발): 라우터를 런타임 `isElectronPlatform`로 선택 → mock dev server(브라우저) BrowserRouter 오전환 → 27개 해시 spec 실패+retry → fix=빌드타임 `VITE_PLATFORM==='web'` 판별(`8bdaf67b`, mock gate 30분→8분).
+  - **deferred**(PR #596 박제): print해시링크/모바일네비(슬2)·쿠키Secure/nginx(Phase11 cutover)·bootstrap race(저확률)·CSRF(설계 SameSite=Lax).
+- **라이브 QA**: BE curl 6/6 + 웹 Playwright B1~B4(로그인→홈→세션복원→가드) PASS. CI 25 green(GitGuardian=dev시드 `dev_p05_pass!` FP).
+
+### 🔑 교훈 (박제)
+- **리뷰 라운드마다 라이브 Docker QA 동반**(최종1회 금지) — 라이브가 리로드 루프 단독 적발([[feedback_qa_docker_real_test]] 2026-06-25 보강).
+- **듀얼모델 순차 리뷰**가 단일 모델 사각 적발(Codex가 Electron 쿠키 우회 단독, Opus 5차원은 CLEAN이었음).
+- **플랫폼 분기 = 런타임 감지 대신 빌드타임 플래그**(mock/dev 렌더러는 브라우저지만 Electron 거동 emulate). **신규 라우팅/플랫폼 분기는 mock gate 필수 검증**([[feedback_platform_branch_build_time_flag]]).
+
+### 🔜 다음 (개발책임자 지정 대기)
+- **슬2 반응형 셸**: AppLayout 사이드바 ≤768px drawer/하단탭, 테이블 카드화, 화면별 반응형(슬1은 모바일 사이드바 숨김만·네비 deferred). 슬2가 print 링크 platform-aware 헬퍼도 포함.
+- **③ 버전관리+자동업데이트 에픽**: 웹 배포 골격 위 `/app/version` 팝업(Option B, 2단계 강제+admin 릴리스노트). 모바일 최종=iOS/Android 하이브리드 WebView 패키징(후속).
+- 아래 §QA 환경 메모(슬2 재사용 가능).
+
+---
+
+## 🔄 (이전·완결됨) 슬1 진행중 기록 (2026-06-25 회사PC)
 
 > **리로드루프 fix 완료**: Codex가 `api/client.ts` 401 인터셉터 인증프로브 가드 적용+회귀테스트. 라이브 재QA PASS(로그인→홈→새로고침 세션복원→무쿠키 차단). 커밋 `877717d8` 푸시·PR게시.
 >
