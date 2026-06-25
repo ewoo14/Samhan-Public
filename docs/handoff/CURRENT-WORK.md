@@ -4,6 +4,29 @@
 
 ---
 
+## ⏳ 진행 중 — 슬4b 입력 폼 1열 (2026-06-25 brainstorming 설계 확정, **구현 대기** / 세션 길어져 새 세션 인계)
+
+**개발책임자 지정: 슬4b = 공용 반응형 FormGrid 신규 + 핵심 폼 이관(focused).** 슬4a 머지 직후 착수, brainstorming 설계 확정 단계에서 세션 종료(새 세션 재개).
+
+### 정찰 결론 (중요 — 슬3/4a와 다름)
+- 공용 `FormField`(21사용)는 **단일 필드 래퍼**(label+input 세로)일 뿐. 다열 폼 레이아웃 = **화면별 인라인 `gridTemplateColumns`(전수 ~96곳)**, 공용 폼-그리드 컴포넌트 **없음**.
+- ⚠️ **인라인 스타일은 @media로 못 덮음** → 슬3(DataTable)·슬4a(Modal)식 "1변경→전화면" 레버리지 **불가**. 공용 FormGrid 신규 + 인라인 이관 구조.
+
+### 확정 설계 (새 세션은 여기서 spec→plan→조기PR→canonical 진행)
+- ① **공용 `<FormGrid>`(design-system 신규)**: `display:grid; grid-template-columns: repeat(2,1fr); gap; @media(max-width:768px){ grid-template-columns:1fr }` → 데스크탑 2열·≤768px 1열. `columns` prop(기본2), 전폭 필드(주소/설명 `gridColumn:1/-1`)=`<FormGrid.Full>` 또는 fullWidth 지원. 자식=기존 FormField.
+- ② **핵심 입력 폼 이관(3~5개)**: 거래처 등록(`PartnerCreatePage:772`)·거래처 상세 편집(`PartnerDetailDialog:818`)·창고 편집(`EditWarehouseModal:276`)·공급자 설정(`SupplierProfilePage:635`)/견적 등 인라인 `'1fr 1fr'`/`repeat(2,1fr)` → `<FormGrid>` 교체.
+- ③ 검증: 라이브 QA(핵심 폼 모바일 1열·데스크탑 2열 무회귀)+mock gate+스샷 보정. ④ 후속: 나머지 ~90곳 점진 이관(슬4b-2+).
+
+### ⚠️ 새 세션 워크플로우 필수 준수 (개발책임자 반복 지적)
+- **canonical 8단계**([[feedback_canonical_workflow]]): Opus 기획+조기PR → Codex 구현 → ④Opus 5차원↔⑤Codex 0수렴 → ⑥PM종합 → ⑦CI green(mock gate) → ⑧PM 자율머지([[feedback_pm_auto_merge_authority]]).
+- 🚨 **라이브QA = 매 리뷰 라운드 귀속**(구현단계 독립 Task 금지). 각 라운드 리뷰→fix→**그 fix 라이브 재캡처 게시**가 게이트. 캡처 없는 라운드=무효=머지금지. [[qa-docker-real-test]].
+- 🚨 **매 단계 ScheduleWakeup loop + gh pr checks 재조회**([[feedback_autonomous_loop_schedulewakeup]]). 긴 mega-턴 금지.
+- PR은 **OPEN 유지**(draft 금지, 개발책임자 명시). main 직접 push(박제)는 개발책임자 승인 필요.
+- 🚫 Opus 임의구현 금지(Codex 전담). 가짜 데이터 금지·실서버 라이브 캡처만([[feedback_no_fake_data_ever]]).
+- 로컬 스택: Docker up(게이트웨이 :8080)·웹빌드 `npm run build:web`→`:5175`(vite preview). 캡처=scripts/mobile-s*-*.cjs 패턴(dev_master 로그인).
+
+---
+
 ## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬4a 공용 Modal 풀스크린 완결·머지(PR #599, main `8e0eb84a`). 다음=슬4b 입력 폼 1열(개발책임자 지정 대기)**)
 
 **모바일 슬4a(공용 Modal 모바일 풀스크린) canonical 완주 → PM 자율 머지(개발책임자 위임).** ≤768px 모달 풀스크린, 데스크탑/인쇄 무변동. CSS-only·Flyway 0. 상세=[[mobile-s4a-modal-fullscreen]].
