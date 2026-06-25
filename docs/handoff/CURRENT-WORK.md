@@ -4,7 +4,33 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬1 Foundation 완결·머지(PR #596, main `2a950822`). 다음=슬2 반응형 셸 또는 ③버전 에픽(개발책임자 지정)**)
+## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬2 반응형 셸 Drawer 완결·머지(PR #597, main `f2ecd6fc`). 다음=슬3 화면 반응형(DataTable 카드화) 또는 ③버전 에픽(개발책임자 지정)**)
+
+**모바일 슬2(반응형 셸 Drawer) canonical 8단계 완주 → PM 판단 자동 머지(개발책임자 위임).** ≤768px 햄버거→좌측 Drawer 로 기존 사이드바 7분류 nav 재사용(별도 메뉴 없음). 데스크탑(>768px)/Electron 무회귀. FE-only·Flyway 0.
+
+### 완결 요약
+- 구현: AppLayout drawerOpen+햄버거(app-drawer-toggle)+백드롭+`#app-drawer`(기존 .app-sidebar 재사용)·닫힘 5트리거(route-change·링크onClick·ESC·백드롭·resize>768px)·scroll lock·focus trap. global.css `@media(max-width:768px)` Drawer(transform+visibility)+백드롭+safe-area. RTL 테스트(per-file jsdom)+mock spec(playwright/mobile-s2-drawer).
+- **듀얼리뷰 0수렴 — 라이브QA·Opus·Codex 가 각각 다른 a11y 결함 단독 적발(상호보완)**:
+  - 라이브QA: 현재페이지 링크탭 시 Drawer 미닫힘 → nav anchor onClick close.
+  - ④ Opus 5차원=5 MINOR(focus trap·dialog accessible name·하단 safe-area), BLOCKING/MAJOR 0, verified_good 42.
+  - ⑤ Codex MAJOR(Opus 미적발): 닫힘 Drawer 가 transform-only 오프스크린이라 nav 링크가 Tab순서·스크린리더 잔존(슬1 display:none→슬2 transform 회귀) → `visibility:hidden`(transition delay 로 슬라이드 보존)으로 탭/AT 제거.
+- 라이브 QA: mock gate 2/2·반응형 390px S1~S4 PASS·데스크탑 무회귀. vitest 36파일 292/292. CI 25 green(GitGuardian=dev시드 `dev_p05_pass!` FP). **mock gate 8m21s**(슬1 라우터 타임아웃류 없음). 스샷 PR #597 인라인 게시(commit SHA raw URL).
+
+### 🔑 교훈 (박제)
+- **반응형 Drawer 닫힘 = transform-only 는 오프스크린 focusable a11y 회귀**(display:none 과 달리 탭순서·AT 잔존). `visibility:hidden` + transition delay(`transform .25s ease, visibility 0s linear .25s`)로 a11y 제거 + 슬라이드 애니 보존. aria-modal 은 focus trap/inert 동반(과약속 금지). [[feedback_responsive_drawer_offscreen_a11y]].
+- **라이브QA + 듀얼모델 순차가 단위/mock 미검 a11y 결함 단독 적발**(슬1 리로드루프·Electron쿠키에 이어 슬2 a11y 3종) — 매 라운드 라이브QA + 듀얼모델 가치 재입증.
+- 신규 셸 변경 = mock gate 로컬 필수([[feedback_platform_branch_build_time_flag]]) — 슬2 통과(8m21s).
+
+### 🔜 다음 (개발책임자 지정 대기)
+- **슬3 화면 반응형**: 공용 DataTable 모바일 카드화(한 변경으로 전 리스트), 화면별 폼 1열·모달 풀스크린·print 링크 platform-aware 헬퍼.
+- **③ 버전관리+자동업데이트 에픽**(웹 배포 골격 위 `/app/version` 팝업·Option B). 모바일 최종=iOS/Android 하이브리드 WebView.
+
+### ⚙️ 머지 권한 (개발책임자 위임 2026-06-25)
+**PM 판단 하 자동 머지 가능** — 게이트(0수렴·CI green·mock gate·라이브QA) 충족 시 매 승인요청 없이 PM 자율 머지. [[feedback_pm_auto_merge_authority]].
+
+---
+
+## 🔄 (이전) 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬1 Foundation 완결·머지(PR #596, main `2a950822`). 다음=슬2 반응형 셸 또는 ③버전 에픽(개발책임자 지정)**)
 
 **모바일 슬1(Dual-mode 인증 추상화 + 웹 배포 골격) canonical 8단계 완주 → 개발책임자 스크린샷 확인 후 승인 머지.** 데스크탑 렌더러가 웹 브라우저로도 구동(Electron=IPC Bearer 무회귀 / Web=httpOnly 쿠키 SameSite=Lax). Flyway 0.
 
