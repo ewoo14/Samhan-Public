@@ -4,7 +4,28 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬2 반응형 셸 Drawer 완결·머지(PR #597, main `f2ecd6fc`). 다음=슬3 화면 반응형(DataTable 카드화) 또는 ③버전 에픽(개발책임자 지정)**)
+## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬3 DataTable 카드화 완결·머지(PR #598, main `1d195b74`). 다음=슬4 화면별 모바일(폼/모달/상세/와이드보고서, 개발책임자 지정 대기)**)
+
+**모바일 슬3(공용 DataTable 모바일 카드화) canonical 8단계 완주 → PM 자율 머지(개발책임자 위임).** 공용 DataTable `td data-label` + module.css `@media(max-width:768px)` 카드 → **56개 리스트 화면이 ≤768px 행=카드(라벨-값) 자동 전환**. 데스크탑/인쇄 무변동. CSS-only·FE-only·Flyway 0. 상세=[[mobile-s3-datatable-card]].
+
+### 완결 요약
+- 구현(Codex): DataTable.tsx data-label(`5ba9e152`) + @media 카드 CSS. UI 개발용어 "(legacy)" 제거(`fa5b574c`).
+- **듀얼리뷰 0수렴**: ④ Opus MINOR(긴값 줄바꿈 `89a66a74`) + ⑤ Codex MINOR(액션셀 우측정렬 `0d374bac`) + **MAJOR(와이드래퍼)=라이브QA로 슬4 재분류** → ⑤ confirm MERGE-OK.
+- **🔑 라이브QA가 정적리뷰 교정**: ⑤ "와이드래퍼→가로스크롤" MAJOR가 라이브선 클립(≠스크롤, .app-main)+데이터없음. 개발책임자 "OPUS 라운드도 라이브QA" 지적 이행(mock gate만 검증했던 것 보강).
+- 라이브 QA: S1 거래처(7컬럼)·S2 판매전표·W2 외부기사 카드 정상·가로overflow 0(W2=④/⑤fix 시각확인), S3 데스크탑 테이블 무회귀. CI 30 PASS(**mock gate 8m27s, 56화면 무회귀**)+GitGuardian dev시드 FP. 스샷 SendUserFile 전달.
+
+### 🔑 교훈 (박제)
+- **공용 컴포넌트 CSS 카드화 = 1변경 56화면 레버리지** — design-system DataTable 하나로 전 리스트 모바일 전환. 카드 패턴([[mobile-s3-datatable-card]]) 재사용.
+- **라이브QA가 정적 듀얼리뷰 MAJOR를 교정**(클립≠스크롤) — 리뷰마다 라이브QA 필수([[feedback_qa_docker_real_test]]). 와이드 매트릭스(~7 회계보고서)=슬4.
+- 개발책임자 2지시 이행: 매 단계 gh pr checks 재조회 + ScheduleWakeup 자각(긴 mega-턴 지양).
+
+### 🔜 다음 (개발책임자 지정 대기)
+- **슬4 — 화면별 모바일**: 입력 폼(~9+) 1열·모달/다이얼로그(18) 풀스크린·상세(10) 반응형·**와이드 회계보고서(~7)+원시 table(권한매트릭스 등)**.
+- 전 메뉴 모바일 완료까지 = 슬4~슬5 + PWA/네이티브 패키징 잔여(슬3=리스트 한 축 완료, 폼/상세/보고서 미완 — 개발책임자에 정직 보고함).
+
+---
+
+## 🔄 (이전) 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬2 반응형 셸 Drawer 완결·머지(PR #597, main `f2ecd6fc`). 다음=슬3 화면 반응형(DataTable 카드화) 또는 ③버전 에픽(개발책임자 지정)**)
 
 **모바일 슬2(반응형 셸 Drawer) canonical 8단계 완주 → PM 판단 자동 머지(개발책임자 위임).** ≤768px 햄버거→좌측 Drawer 로 기존 사이드바 7분류 nav 재사용(별도 메뉴 없음). 데스크탑(>768px)/Electron 무회귀. FE-only·Flyway 0.
 
