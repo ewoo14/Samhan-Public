@@ -23,7 +23,7 @@
  * UUID 비공개 가드: id 는 path param 으로만 사용. 화면 표시 영역에는 노출 X.
  * dispatcher.userId / inspector.userId 도 화면 미노출 (이름만 표시).
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   useMutation,
@@ -79,9 +79,12 @@ import {
   type SlipEditRequestType,
 } from '../api/slipEditRequest'
 import { SlipCollaborationPanel } from '../components/collab/SlipCollaborationPanel'
+import { MobileActionSheet } from '../components/common/MobileActionSheet'
+import { MobileCollapsible } from '../components/common/MobileCollapsible'
 import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { OUTBOUND_DELIVERY_TAG_LABELS } from '../api/slipCutoff'
 
 /**
@@ -103,6 +106,48 @@ function memoWithoutTagPrefix(
   return memo
 }
 
+function isEmptyDetailValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  return trimmed === '' || trimmed === '-' || trimmed === '—'
+}
+
+function DetailGridItem({
+  value,
+  testId,
+  children,
+}: {
+  value: unknown
+  testId?: string
+  children: ReactNode
+}) {
+  return (
+    <div
+      className={isEmptyDetailValue(value) ? 'detail-grid-item-empty' : undefined}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  )
+}
+
+type SlipLine = SlipDetail['lines'][number]
+
+function slipLineAmounts(line: SlipLine) {
+  const supply = line.supplyAmount != null ? Number(line.supplyAmount) : Number(line.lineTotal)
+  const vat = line.vatAmount != null ? Number(line.vatAmount) : Math.round(supply * 0.1)
+  const unitWithVat = line.unitPriceWithVat != null
+    ? Number(line.unitPriceWithVat)
+    : Number(line.unitPrice)
+  return {
+    supply,
+    vat,
+    totalIncl: supply + vat,
+    unitWithVat,
+  }
+}
+
 export interface SlipDetailPageProps {
   /** OUTBOUND 또는 INBOUND — 라우트별 listPath 결정 + ship/deliver 노출 여부. */
   mode: SlipType
@@ -121,6 +166,29 @@ const SLIP_STATUS_LABEL: Record<string, string> = {
   CONFIRMED: '확정',
   REJECTED: '반려',
   CANCELED: '취소',
+}
+
+function slipStatusBadgeStyle(status: string) {
+  switch (status) {
+    case 'CONFIRMED':
+    case 'DELIVERED':
+      return { background: '#D1FAE5', color: '#065F46' }
+    case 'REJECTED':
+    case 'CANCELED':
+      return { background: '#FEE2E2', color: '#991B1B' }
+    case 'SENT':
+    case 'ACCEPTED':
+    case 'PROCESSING':
+    case 'INSPECTING':
+    case 'COMPLETED':
+    case 'SHIPPING':
+      return { background: '#EDE9FE', color: '#5B21B6' }
+    case 'SAVED':
+      return { background: '#FEF3C7', color: '#92400E' }
+    case 'DRAFT':
+    default:
+      return { background: '#F3F4F6', color: '#4B5563' }
+  }
 }
 
 function slipStatusLabel(status: string): string {
@@ -252,6 +320,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const navigate = useNavigate()
   const { canAccess } = usePermissions()
   const queryClient = useQueryClient()
+  const isMobile = useIsMobile()
   const isOutbound = mode === 'OUTBOUND'
   const listPath = isOutbound ? '/sales' : '/purchases'
 
@@ -269,6 +338,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   // signature-slice-C 신규: 서명 무효화 modal state (MASTER only)
   const [invalidateOpen, setInvalidateOpen] = useState(false)
   const [invalidateReason, setInvalidateReason] = useState('')
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   // PR-H3: 수정/삭제 요청 다이얼로그 state — null 이면 미오픈, 'EDIT'/'DELETE' 면 해당 type 으로 오픈.
   const [editRequestDialogType, setEditRequestDialogType]
     = useState<SlipEditRequestType | null>(null)
@@ -760,6 +830,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   const slip = detailQuery.data
   const possibleActions = actionsForStatus(slip.status, mode)
+  const canRejectSlip = possibleActions.includes('reject')
+    && canAccess('slip.reject', 'update')
+  const canCancelSlip = possibleActions.includes('cancel')
+    && canAccess(slipActionPageCode('cancel').pageCode, 'update')
   const canDirectEditPurchase = mode === 'INBOUND'
     && canAccess('purchases.slip.edit', 'update')
     && (slip.status === 'SAVED' || slip.status === 'DRAFT')
@@ -857,6 +931,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   })()
 
   const handleTransition = (action: SlipTransitionAction) => {
+    if (transitionMutation.isPending) return
+    if (!canAccess(slipActionPageCode(action).pageCode, 'update')) {
+      alert('해당 전표 상태를 변경할 권한이 없습니다.')
+      return
+    }
     if (action === 'reject') {
       const reason = rejectReason.trim()
       if (!reason) {
@@ -939,6 +1018,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       alert(`현재 단계(${slipStatusLabel(slip.status)})에서는 삭제(취소)할 수 없습니다.`)
       return
     }
+    if (!canCancelSlip) {
+      alert('전표를 삭제(취소)할 권한이 없습니다.')
+      return
+    }
+    if (transitionMutation.isPending) return
     if (!window.confirm('정말로 이 전표를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 전표가 취소 상태로 변경됩니다.')) {
       return
     }
@@ -1005,6 +1089,27 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     revertMutation.mutate(revisionNo)
   }
 
+  const mobileSlipTotal = slip.lines.reduce(
+    (sum, line) => sum + slipLineAmounts(line).totalIncl,
+    0,
+  )
+  const mobilePrimaryAction = nextPrimaryAction
+    ? {
+        label: ACTION_LABEL[nextPrimaryAction],
+        onClick: () => handleTransition(nextPrimaryAction),
+        disabled:
+          transitionMutation.isPending
+          || !canAccess(slipActionPageCode(nextPrimaryAction).pageCode, 'update'),
+      }
+    : null
+  const handleMobilePrint = () => {
+    if (isOutbound) {
+      navigate(`/sales/${id}/print/statement`)
+      return
+    }
+    navigate(`/purchases/${id}/print/purchase`)
+  }
+
   return (
     <>
       <div
@@ -1036,7 +1141,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             수정 {revisionCount}회
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {!isMobile ? (
+        <div className="detail-action-bar">
           {/* PR-H2: 복원 dropdown — revertCandidates 가 있을 때만 표시 */}
           {revertCandidates.length > 0 ? (
             <select
@@ -1070,7 +1176,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </select>
           ) : null}
           {isOutbound ? (
-            <>
+            <div className="detail-print-actions">
               {/* SP-08-6-4: 거래명세서 출력 — /sales/:id/print/statement */}
               <Button
                 variant="secondary"
@@ -1096,9 +1202,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               >
                 판매전표 출력
               </Button>
-            </>
+            </div>
           ) : (
             // SP-08-5-5: 매입 전표 인쇄 버튼 (INBOUND — 모든 조회 가능 권한)
+            <div className="detail-print-actions">
             <Button
               variant="secondary"
               size="sm"
@@ -1107,6 +1214,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             >
               매입 전표 인쇄
             </Button>
+            </div>
           )}
           {canDirectEditSales ? (
             <Button
@@ -1182,13 +1290,213 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             목록으로
           </Button>
         </div>
+        ) : null}
       </div>
+
+      {isMobile ? (
+        <>
+          <div className="mobile-summary-card" data-testid="slip-detail-mobile-summary">
+            <div className="mobile-summary-card-header">
+              <span className="mobile-summary-doc-no">
+                {slip.slipDate}/{slip.seqNo}
+              </span>
+              <span
+                className="mobile-status-badge"
+                style={slipStatusBadgeStyle(slip.status)}
+              >
+                {slipStatusLabel(slip.status)}
+              </span>
+            </div>
+            <div className="mobile-summary-partner">{slip.partnerName ?? '-'}</div>
+            <div className="mobile-summary-divider" />
+            <div className="mobile-summary-total-row">
+              <span className="mobile-summary-total-amount">
+                {mobileSlipTotal.toLocaleString()}원
+              </span>
+              <span className="mobile-summary-date">전표일자 {slip.slipDate}</span>
+            </div>
+          </div>
+
+          <div className="mobile-action-bar" role="toolbar" aria-label="전표 액션">
+            {mobilePrimaryAction ? (
+              <button
+                type="button"
+                className="mobile-action-primary"
+                disabled={mobilePrimaryAction.disabled}
+                onClick={mobilePrimaryAction.onClick}
+              >
+                {mobilePrimaryAction.label}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="mobile-action-icon"
+              aria-label="인쇄"
+              onClick={handleMobilePrint}
+            >
+              인쇄
+            </button>
+            <button
+              type="button"
+              className="mobile-action-icon"
+              aria-label="더보기"
+              onClick={() => setMobileMoreOpen(true)}
+            >
+              ···
+            </button>
+            <MobileActionSheet open={mobileMoreOpen} onClose={() => setMobileMoreOpen(false)}>
+                  {isOutbound ? (
+                    <>
+                      <button
+                        type="button"
+                        className="mobile-more-sheet-item"
+                        onClick={() => {
+                          setMobileMoreOpen(false)
+                          navigate(`/sales/${id}/print/invoice`)
+                        }}
+                      >
+                        계산서 출력
+                      </button>
+                      <button
+                        type="button"
+                        className="mobile-more-sheet-item"
+                        onClick={() => {
+                          setMobileMoreOpen(false)
+                          navigate(`/sales/${id}/print/dispatch`)
+                        }}
+                      >
+                        판매전표 출력
+                      </button>
+                    </>
+                  ) : null}
+                  {canDirectEditSales ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item"
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        syncSalesFormFromData(slip)
+                        setSalesConflictMessage(null)
+                        setSalesIsConflict(false)
+                        setSalesReloadSuccessMessage(null)
+                        setSalesEditOpen(true)
+                      }}
+                    >
+                      수정
+                    </button>
+                  ) : null}
+                  {canDirectEditPurchase ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item"
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        syncPurchaseFormFromData(slip)
+                        setPurchaseConflictMessage(null)
+                        setPurchaseIsConflict(false)
+                        setPurchaseReloadSuccessMessage(null)
+                        setPurchaseEditOpen(true)
+                      }}
+                    >
+                      수정
+                    </button>
+                  ) : null}
+                  {canCollabEdit && !canDirectEditSales && !canDirectEditPurchase ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item"
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        setCollabEditMode(true)
+                      }}
+                    >
+                      수정
+                    </button>
+                  ) : null}
+                  {canDirectDeletePurchase ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item danger"
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        setPurchaseDeleteConflict(false)
+                        setPurchaseDeleteInspectionAlert(null)
+                        setPurchaseDeleteOpen(true)
+                      }}
+                    >
+                      매입 전표 삭제
+                    </button>
+                  ) : null}
+                  {canDirectDeleteSales ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item danger"
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        setSalesDeleteConflict(false)
+                        setSalesDeleteShippedAlert(null)
+                        setSalesDeleteOpen(true)
+                      }}
+                    >
+                      매출 전표 삭제
+                    </button>
+                  ) : null}
+                  {possibleActions.includes('reject') ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item danger"
+                      disabled={!canRejectSlip || transitionMutation.isPending}
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        handleTransition('reject')
+                      }}
+                    >
+                      반려
+                    </button>
+                  ) : null}
+                  {possibleActions.includes('cancel') ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item danger"
+                      disabled={!canCancelSlip || transitionMutation.isPending}
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        handleDeleteSlip()
+                      }}
+                    >
+                      전표 취소
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="mobile-more-sheet-item"
+                    onClick={() => {
+                      setMobileMoreOpen(false)
+                      handleDuplicate()
+                    }}
+                  >
+                    전표 복사
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-more-sheet-item"
+                    onClick={() => {
+                      setMobileMoreOpen(false)
+                      navigate(listPath)
+                    }}
+                  >
+                    목록으로
+                  </button>
+            </MobileActionSheet>
+          </div>
+        </>
+      ) : null}
 
       {/*
         Slice A: 전표 진행 단계 ProgressBar (Designer wireframes.md § 2 + 5)
         피드백 #1 ("라이프사이클" 모호) 해결.
       */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="progress-bar-container" style={{ marginBottom: 16 }}>
         <ProgressBar currentStatus={slip.status} branchReason={branchReason} />
       </div>
 
@@ -1398,16 +1706,85 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </div>
       </Card>
 
-      <SlipCollaborationPanel
-        slipId={id}
-        currentValues={collabEditValues}
-        editMode={collabEditMode}
-        onEditModeChange={setCollabEditMode}
-        onCommitted={() => {
-          void queryClient.invalidateQueries({ queryKey: ['slip', id] })
-          void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
-        }}
-      />
+      {isMobile ? (
+        <MobileCollapsible title="협업 · 코멘트" defaultOpen>
+          <SlipCollaborationPanel
+            slipId={id}
+            currentValues={collabEditValues}
+            editMode={collabEditMode}
+            onEditModeChange={setCollabEditMode}
+            onCommitted={() => {
+              void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+              void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+            }}
+          />
+        </MobileCollapsible>
+      ) : (
+        <SlipCollaborationPanel
+          slipId={id}
+          currentValues={collabEditValues}
+          editMode={collabEditMode}
+          onEditModeChange={setCollabEditMode}
+          onCommitted={() => {
+            void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+            void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+          }}
+        />
+      )}
+
+      {isMobile ? (
+        <>
+          <MobileCollapsible title="버전 이력" className="mobile-section-card">
+            {revertCandidates.length === 0 ? (
+              <div className="mobile-field-row">
+                <span className="mobile-field-label">복원</span>
+                <span className="mobile-field-value mobile-field-value-empty">-</span>
+              </div>
+            ) : (
+              revertCandidates.map((rev) => (
+                <div key={rev} className="mobile-field-row">
+                  <span className="mobile-field-label">revision #{rev}</span>
+                  <button
+                    type="button"
+                    className="mobile-more-sheet-item"
+                    style={{ minHeight: 44, padding: 0, textAlign: 'right' }}
+                    disabled={revertMutation.isPending}
+                    onClick={() => handleRevert(rev)}
+                  >
+                    이 시점으로 복원
+                  </button>
+                </div>
+              ))
+            )}
+          </MobileCollapsible>
+
+          <MobileCollapsible title="수정 이력" className="mobile-section-card">
+            {auditLogsQuery.isLoading ? (
+              <div className="mobile-field-row">
+                <span className="mobile-field-label">상태</span>
+                <span className="mobile-field-value">불러오는 중</span>
+              </div>
+            ) : auditLogs.length === 0 ? (
+              <div className="mobile-field-row">
+                <span className="mobile-field-label">이력</span>
+                <span className="mobile-field-value mobile-field-value-empty">-</span>
+              </div>
+            ) : (
+              auditLogs.slice(0, 8).map((entry, index) => (
+                <div
+                  key={`${entry.revisionNo}-${entry.field}-${entry.changedAt}-${index}`}
+                  className="mobile-field-row"
+                >
+                  <span className="mobile-field-label">rev {entry.revisionNo}</span>
+                  <span className="mobile-field-value">
+                    {entry.field} · {entry.actorName ?? '시스템'}
+                  </span>
+                </div>
+              ))
+            )}
+          </MobileCollapsible>
+        </>
+      ) : null}
 
       {/*
         V20 신규 필드 표시 카드 — 배송주소 / 감리주소 / 프로젝트명 / 인수자 번호 / 입금예정일
@@ -1416,37 +1793,39 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       */}
       <Card padding={4} shadow="sm" style={{ marginTop: 16 }}>
         <h4 style={{ marginTop: 0 }}>배송 · 정산 정보 (V20)</h4>
+        <MobileCollapsible title="배송 · 정산 정보">
+        <div className="detail-section-title mobile-only">배송 · 정산 정보</div>
         <div className="detail-grid">
-          <div data-testid="slip-detail-delivery-address">
+          <DetailGridItem value={slip.deliveryAddress} testId="slip-detail-delivery-address">
             <span className="detail-label">배송주소</span>
             <span className="detail-value">{slip.deliveryAddress ?? '—'}</span>
-          </div>
-          <div data-testid="slip-detail-supervision-address">
+          </DetailGridItem>
+          <DetailGridItem value={slip.supervisionAddress} testId="slip-detail-supervision-address">
             <span className="detail-label">감리주소</span>
             <span className="detail-value">{slip.supervisionAddress ?? '—'}</span>
-          </div>
-          <div data-testid="slip-detail-project-name">
+          </DetailGridItem>
+          <DetailGridItem value={slip.projectName} testId="slip-detail-project-name">
             <span className="detail-label">프로젝트명</span>
             <span className="detail-value">{slip.projectName ?? '—'}</span>
-          </div>
-          <div data-testid="slip-detail-recipient-phone">
+          </DetailGridItem>
+          <DetailGridItem value={slip.recipientPhone} testId="slip-detail-recipient-phone">
             <span className="detail-label">인수자 번호</span>
             <span className="detail-value">{slip.recipientPhone ?? '—'}</span>
-          </div>
-          <div data-testid="slip-detail-payment-due-date">
+          </DetailGridItem>
+          <DetailGridItem value={slip.paymentDueDate} testId="slip-detail-payment-due-date">
             <span className="detail-label">입금예정일</span>
             <span className="detail-value">{slip.paymentDueDate ?? '—'}</span>
-          </div>
-          <div data-testid="slip-detail-business-number">
+          </DetailGridItem>
+          <DetailGridItem value={slip.businessNumber} testId="slip-detail-business-number">
             <span className="detail-label">사업자번호</span>
             <span className="detail-value">{slip.businessNumber ?? '—'}</span>
-          </div>
-          <div data-testid="slip-detail-printed">
+          </DetailGridItem>
+          <DetailGridItem value={slip.printed == null ? null : slip.printed} testId="slip-detail-printed">
             <span className="detail-label">인쇄 여부</span>
             <span className="detail-value">
               {slip.printed == null ? '—' : slip.printed ? '인쇄됨' : '미인쇄'}
             </span>
-          </div>
+          </DetailGridItem>
           {mode === 'INBOUND' ? (
             <div data-testid="slip-detail-inspection-status">
               <span className="detail-label">검수 상태</span>
@@ -1458,6 +1837,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </div>
           ) : null}
         </div>
+        </MobileCollapsible>
       </Card>
 
       {/*
@@ -1467,6 +1847,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       */}
       {isOutbound ? (
         <Card padding={4} shadow="sm" style={{ marginTop: 16 }}>
+          <MobileCollapsible title="기사 정보">
           <div
             style={{
               display: 'flex',
@@ -1538,14 +1919,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </div>
           ) : (
             <div className="detail-grid">
-              <div>
+              <DetailGridItem value={slip.driverName}>
                 <span className="detail-label">기사명</span>
                 <span className="detail-value">{slip.driverName ?? '-'}</span>
-              </div>
-              <div>
+              </DetailGridItem>
+              <DetailGridItem value={slip.driverPhone}>
                 <span className="detail-label">기사 연락처</span>
                 <span className="detail-value">{slip.driverPhone ?? '-'}</span>
-              </div>
+              </DetailGridItem>
             </div>
           )}
           {driverMutation.isError ? (
@@ -1553,10 +1934,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               기사 정보 저장에 실패했습니다.
             </div>
           ) : null}
+          </MobileCollapsible>
         </Card>
       ) : null}
 
-      <h4 style={{ marginTop: 24 }}>전표 라인</h4>
+      <h4 className="detail-section-title detail-mobile-hide" style={{ marginTop: 24 }}>전표 라인</h4>
 
       {/*
         Phase 2.6d: 재고조회 툴바 — 체크박스 다중선택 + "선택 품목 재고조회" 버튼.
@@ -1644,6 +2026,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </p>
       )}
 
+      <div className="slip-line-table-scroll desktop-only">
       <table className="slip-line-table">
         <thead>
           <tr>
@@ -1728,6 +2111,80 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           )}
         </tbody>
       </table>
+      </div>
+
+      <div className="mobile-item-list" data-testid="slip-detail-mobile-lines">
+        {slip.lines.length === 0 ? (
+          <div className="mobile-item-card">
+            <div className="mobile-item-total-row">
+              <span className="mobile-item-total-label">라인</span>
+              <span className="mobile-item-total-value">라인이 없습니다.</span>
+            </div>
+          </div>
+        ) : (
+          slip.lines.map((l, idx) => {
+            const selected = selectedLineId === l.id
+            const checked = checkedLineIds.has(l.id)
+            const { totalIncl, unitWithVat } = slipLineAmounts(l)
+            return (
+              <div key={l.id} className="mobile-item-card">
+                <div className="mobile-item-check-wrap">
+                  <input
+                    className="mobile-item-check"
+                    type="checkbox"
+                    aria-label={`${l.modelName ?? `라인 ${idx + 1}`} 재고조회 선택`}
+                    checked={checked}
+                    onChange={() => handleLineCheckToggle(l.id)}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="mobile-item-card-header">
+                      <button
+                        type="button"
+                        className="slip-line-card-no"
+                        aria-pressed={selected}
+                        aria-label={`라인 ${idx + 1} 선택`}
+                        onClick={() => setSelectedLineId(selected ? null : l.id)}
+                      >
+                        #{idx + 1}
+                      </button>
+                      <div className="mobile-item-name">
+                        {l.productName ?? l.modelName ?? '-'}
+                      </div>
+                    </div>
+                    {l.modelName ? (
+                      <div className="mobile-item-model">{l.modelName}</div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mobile-item-divider" />
+
+                <div className="mobile-item-metrics">
+                  <div className="mobile-item-metric">
+                    <span className="mobile-item-metric-label">수량</span>
+                    <span className="mobile-item-metric-value">
+                      {l.quantity.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="mobile-item-metric">
+                    <span className="mobile-item-metric-label">단가(VAT포함)</span>
+                    <span className="mobile-item-metric-value">
+                      {unitWithVat.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mobile-item-total-row">
+                  <span className="mobile-item-total-label">합계(VAT포함)</span>
+                  <span className="mobile-item-total-value">
+                    {totalIncl.toLocaleString()}원
+                  </span>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
 
       {/* Phase 2.6d: 재고조회 모달 */}
       <InventoryLookupModal
@@ -1918,6 +2375,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       */}
       {possibleActions.includes('reject') ? (
         <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
+          <MobileCollapsible title="반려 사유">
           <h4 style={{ marginTop: 0 }}>반려 사유</h4>
           <input
             type="text"
@@ -1944,12 +2402,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               {!canAccess('slip.reject', 'update') ? ' (권한 부족)' : ''}
             </Button>
           </div>
+          </MobileCollapsible>
         </Card>
       ) : null}
 
       {/*
         하단 액션 버튼 (사용자 명시) — 전표 복사 / 삭제 (경고창 필수) / 완료 (다음 단계).
       */}
+      {!isMobile ? (
       <div className="slip-detail-footer-actions" role="toolbar" aria-label="전표 액션">
         <Button
           variant="secondary"
@@ -2003,6 +2463,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </Button>
         )}
       </div>
+      ) : null}
 
       {errorMessage ? (
         <div className="error-banner" role="alert" style={{ marginTop: 12 }}>
@@ -2197,6 +2658,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </label>
 
         <div className="purchase-edit-lines" data-testid="purchase-slip-edit-lines">
+          <div className="slip-line-table-scroll">
           <table className="slip-line-table">
             <thead>
               <tr>
@@ -2274,6 +2736,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </Modal>
 
@@ -2451,6 +2914,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </label>
 
         <div className="sales-edit-lines" data-testid="sales-slip-edit-lines">
+          <div className="slip-line-table-scroll">
           <table className="slip-line-table">
             <thead>
               <tr>
@@ -2528,6 +2992,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </Modal>
 

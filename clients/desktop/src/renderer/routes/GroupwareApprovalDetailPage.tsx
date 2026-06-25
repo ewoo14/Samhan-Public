@@ -39,8 +39,11 @@ import {
 import { getApprovalTemplate, type ApprovalTemplateField } from '../api/groupwareApprovalTemplate'
 import { GroupwareApprovalCollaborationPanel } from '../components/collab/GroupwareApprovalCollaborationPanel'
 import { DocumentReferencePicker, type DocumentReferenceValue } from '../components/groupware/DocumentReferencePicker'
+import { MobileActionSheet } from '../components/common/MobileActionSheet'
+import { MobileCollapsible } from '../components/common/MobileCollapsible'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_VARIANT: Record<ApprovalStatus, 'neutral' | 'brand' | 'success' | 'warning' | 'danger'> = {
   PENDING: 'neutral',
@@ -165,15 +168,33 @@ function canSubmitReference(draft: DocumentReferenceValue): boolean {
   return Boolean(draft.refDocNo?.trim())
 }
 
+function approvalStatusBadgeStyle(status: ApprovalStatus) {
+  switch (status) {
+    case 'APPROVED':
+      return { background: '#D1FAE5', color: '#065F46' }
+    case 'REJECTED':
+      return { background: '#FEE2E2', color: '#991B1B' }
+    case 'WITHDRAWN':
+      return { background: '#FEF3C7', color: '#92400E' }
+    case 'IN_PROGRESS':
+      return { background: '#EDE9FE', color: '#5B21B6' }
+    case 'PENDING':
+    default:
+      return { background: '#F3F4F6', color: '#4B5563' }
+  }
+}
+
 export function GroupwareApprovalDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
+  const isMobile = useIsMobile()
   const params = useParams<{ id: string }>()
   const approvalId = params['id']!
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [referenceFormOpen, setReferenceFormOpen] = useState(false)
   const [referenceDraft, setReferenceDraft] = useState<DocumentReferenceValue>(() => emptyReferenceDraft())
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
 
   const query = useQuery({
     queryKey: ['groupwareApproval', approvalId],
@@ -336,7 +357,58 @@ export function GroupwareApprovalDetailPage() {
 
   return (
     <>
+      {isMobile ? (
+        <>
+          <div className="mobile-summary-card" data-testid="groupware-approval-mobile-summary">
+            <div className="mobile-summary-card-header">
+              <span className="mobile-summary-doc-no">{approval.title}</span>
+              <span className="mobile-status-badge" style={approvalStatusBadgeStyle(approval.status)}>
+                {APPROVAL_STATUS_LABEL[approval.status]}
+              </span>
+            </div>
+            <div className="mobile-summary-partner">
+              기안자 {displayNameOrFallback(approval.requesterName, '요청자')}
+            </div>
+            <div className="mobile-summary-divider" />
+            <div className="mobile-summary-total-row">
+              <span className="mobile-summary-total-amount">{approval.approvalNo}</span>
+            </div>
+          </div>
+
+          <div className="mobile-action-bar" role="toolbar" aria-label="결재 액션">
+            <button
+              type="button"
+              className="mobile-action-primary"
+              onClick={() => navigate(`/groupware/approvals/${approvalId}/print`)}
+            >
+              인쇄 미리보기
+            </button>
+            <button
+              type="button"
+              className="mobile-action-icon"
+              aria-label="더보기"
+              onClick={() => setMobileMoreOpen(true)}
+            >
+              ···
+            </button>
+            <MobileActionSheet open={mobileMoreOpen} onClose={() => setMobileMoreOpen(false)}>
+                  <button
+                    type="button"
+                    className="mobile-more-sheet-item"
+                    onClick={() => {
+                      setMobileMoreOpen(false)
+                      navigate('/groupware/approvals')
+                    }}
+                  >
+                    목록
+                  </button>
+            </MobileActionSheet>
+          </div>
+        </>
+      ) : null}
+
       <Card>
+        {!isMobile ? (
         <div
           style={{
             display: 'flex',
@@ -367,7 +439,7 @@ export function GroupwareApprovalDetailPage() {
               {approval.title}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div className="detail-action-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button
               type="button"
               variant="secondary"
@@ -384,8 +456,10 @@ export function GroupwareApprovalDetailPage() {
             </Button>
           </div>
         </div>
+        ) : null}
 
         <section style={{ display: 'grid', gap: 16 }}>
+          <MobileCollapsible title="본문 · 세부 필드" defaultOpen className="mobile-section-card">
           <div>
             <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>내용</h4>
             <div
@@ -437,15 +511,52 @@ export function GroupwareApprovalDetailPage() {
               </div>
             </div>
           ) : null}
+          </MobileCollapsible>
 
           <div>
             <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>결재선</h4>
-            <DataTable
-              columns={stepColumns}
-              rows={approval.steps}
-              rowKey={(step) => `${approval.approvalNo}-${step.sequence}`}
-              emptyMessage="결재 단계가 없습니다."
-            />
+            <div className="detail-mobile-hide">
+              <DataTable
+                columns={stepColumns}
+                rows={approval.steps}
+                rowKey={(step) => `${approval.approvalNo}-${step.sequence}`}
+                emptyMessage="결재 단계가 없습니다."
+              />
+            </div>
+            <div className="mobile-item-list" data-testid="groupware-approval-mobile-steps">
+              {approval.steps.length === 0 ? (
+                <div className="mobile-item-card">
+                  <div className="mobile-item-total-row">
+                    <span className="mobile-item-total-label">결재선</span>
+                    <span className="mobile-item-total-value">결재 단계가 없습니다.</span>
+                  </div>
+                </div>
+              ) : (
+                approval.steps.map((step) => (
+                  <div key={`${approval.approvalNo}-mobile-${step.sequence}`} className="mobile-item-card">
+                    <div className="mobile-item-card-header">
+                      <div className="mobile-item-name">
+                        {displayNameOrFallback(step.approverName, `결재자 ${step.sequence + 1}`)}
+                      </div>
+                      <span className="mobile-status-badge" style={approvalStatusBadgeStyle(step.status as ApprovalStatus)}>
+                        {APPROVAL_STEP_STATUS_LABEL[step.status]}
+                      </span>
+                    </div>
+                    <div className="mobile-item-model">순서 {step.sequence + 1}</div>
+                    <div className="mobile-item-divider" />
+                    <div className="mobile-item-total-row">
+                      <span className="mobile-item-total-label">처리일시</span>
+                      <span className="mobile-item-total-value">{formatDateTime(step.decidedAt)}</span>
+                    </div>
+                    {step.reason ? (
+                      <div className="mobile-item-chips">
+                        <span className="mobile-item-chip">{step.reason}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           <div>
@@ -536,7 +647,7 @@ export function GroupwareApprovalDetailPage() {
                   </Button>
                 </div>
                 {referenceFormOpen ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 1fr) auto', gap: 8, alignItems: 'end' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) auto', gap: 8, alignItems: 'end' }}>
                     <DocumentReferencePicker
                       value={referenceDraft}
                       onChange={setReferenceDraft}

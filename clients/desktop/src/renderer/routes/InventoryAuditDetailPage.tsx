@@ -63,6 +63,9 @@ import {
 } from '../components/audit/AuditOverlaySection'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { MobileActionSheet } from '../components/common/MobileActionSheet'
+import { MobileCollapsible } from '../components/common/MobileCollapsible'
 
 const STATUS_VARIANT: Record<
   AuditStatus,
@@ -73,6 +76,7 @@ const STATUS_VARIANT: Record<
   COMPLETED: 'success',
   CANCELLED: 'danger',
 }
+const AUDIT_CANCEL_BUTTON_TEST_ID = 'audit-cancel-button'
 
 /** KRW 정수 (string) → "₩1,234,567" 표시 (음수 ▼). */
 function formatKrw(raw: string | number | null | undefined): string {
@@ -86,12 +90,28 @@ function formatKrw(raw: string | number | null | undefined): string {
   return n < 0 ? `▼ ${formatted}` : formatted
 }
 
+function auditStatusBadgeStyle(status: AuditStatus) {
+  switch (status) {
+    case 'IN_PROGRESS':
+      return { background: '#EDE9FE', color: '#5B21B6' }
+    case 'COMPLETED':
+      return { background: '#D1FAE5', color: '#065F46' }
+    case 'CANCELLED':
+      return { background: '#FEE2E2', color: '#991B1B' }
+    case 'PLANNED':
+    default:
+      return { background: '#F3F4F6', color: '#4B5563' }
+  }
+}
+
 export function InventoryAuditDetailPage() {
   const params = useParams<{ id: string }>()
   const id = params.id ?? ''
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
+  const isMobile = useIsMobile()
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
 
   const detailQuery = useQuery({
     queryKey: ['inventory', 'audit', id],
@@ -169,9 +189,106 @@ export function InventoryAuditDetailPage() {
   const canCreateAuditLine = canAccess('inventory.stock-balance', 'create')
   const auditLogs = Array.isArray(auditQuery.data) ? auditQuery.data : []
   const auditByField = groupAuditLogsByField(auditLogs)
+  const mobilePrimaryAction = audit.status === 'PLANNED' && canTransitionAudit
+    ? {
+        label: startMutation.isPending ? '시작 중...' : '시작',
+        disabled: startMutation.isPending,
+        onClick: () => startMutation.mutate(),
+      }
+    : audit.status === 'IN_PROGRESS' && canTransitionAudit
+      ? {
+          label: completeMutation.isPending ? '완료 중...' : '완료',
+          disabled: completeMutation.isPending,
+          onClick: () => {
+            if (
+              window.confirm(
+                '실사를 완료합니다. 차이 분개가 자동 생성되고 재고가 조정됩니다.',
+              )
+            ) {
+              completeMutation.mutate()
+            }
+          },
+        }
+      : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {isMobile ? (
+        <>
+          <div className="mobile-summary-card" data-testid="audit-mobile-summary">
+            <div className="mobile-summary-card-header">
+              <span className="mobile-summary-doc-no">{audit.auditNo}</span>
+              <span className="mobile-status-badge" style={auditStatusBadgeStyle(audit.status)}>
+                {AUDIT_STATUS_LABEL[audit.status]}
+              </span>
+            </div>
+            <div className="mobile-summary-partner">
+              {audit.warehouseCode} · {audit.warehouseName}
+            </div>
+            <div className="mobile-summary-divider" />
+            <div className="mobile-summary-total-row">
+              <span className="mobile-summary-total-amount">{formatKrw(audit.totalDiffAmount)}</span>
+              <span className="mobile-summary-date">실사일자 {audit.auditDate}</span>
+            </div>
+          </div>
+
+          <div className="mobile-action-bar" role="toolbar" aria-label="재고실사 액션">
+            {mobilePrimaryAction ? (
+              <button
+                type="button"
+                className="mobile-action-primary"
+                disabled={mobilePrimaryAction.disabled}
+                onClick={mobilePrimaryAction.onClick}
+              >
+                {mobilePrimaryAction.label}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="mobile-action-icon"
+              aria-label="더보기"
+              onClick={() => setMobileMoreOpen(true)}
+            >
+              ···
+            </button>
+            <MobileActionSheet open={mobileMoreOpen} onClose={() => setMobileMoreOpen(false)}>
+                  {(audit.status === 'PLANNED' || audit.status === 'IN_PROGRESS') && canTransitionAudit ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item danger"
+                      disabled={cancelMutation.isPending}
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        if (window.confirm('실사를 취소합니다.')) {
+                          cancelMutation.mutate()
+                        }
+                      }}
+                    >
+                      취소
+                    </button>
+                  ) : null}
+                  {audit.status === 'COMPLETED' ? (
+                    <button
+                      type="button"
+                      className="mobile-more-sheet-item"
+                      onClick={() => {
+                        setMobileMoreOpen(false)
+                        navigate('/accounting/journals')
+                      }}
+                    >
+                      차이 자동 분개 보기
+                    </button>
+                  ) : null}
+            </MobileActionSheet>
+          </div>
+
+          <MobileCollapsible title="실사 상세 정보" className="mobile-section-card">
+            <DetailGrid audit={audit} auditByField={auditByField} />
+          </MobileCollapsible>
+        </>
+      ) : null}
+
+      {!isMobile ? (
       <Card>
         <div data-testid="audit-detail-header">
           <div
@@ -208,6 +325,7 @@ export function InventoryAuditDetailPage() {
         </div>
 
         <div
+          className="detail-action-bar"
           style={{
             display: 'flex',
             gap: 8,
@@ -227,7 +345,7 @@ export function InventoryAuditDetailPage() {
               </Button>
               <Button
                 variant="ghost"
-                data-testid="audit-cancel-button"
+                data-testid={!isMobile ? AUDIT_CANCEL_BUTTON_TEST_ID : undefined}
                 loading={cancelMutation.isPending}
                 onClick={() => {
                   if (window.confirm('실사를 취소합니다.')) {
@@ -259,7 +377,7 @@ export function InventoryAuditDetailPage() {
               </Button>
               <Button
                 variant="ghost"
-                data-testid="audit-cancel-button"
+                data-testid={!isMobile ? AUDIT_CANCEL_BUTTON_TEST_ID : undefined}
                 loading={cancelMutation.isPending}
                 onClick={() => {
                   if (window.confirm('진행 중인 실사를 취소합니다.')) {
@@ -296,13 +414,14 @@ export function InventoryAuditDetailPage() {
           </div>
         ) : null}
       </Card>
+      ) : null}
 
       {audit.status === 'IN_PROGRESS' && canCreateAuditLine ? (
         <BarcodeInput audit={audit} onRecorded={invalidate} />
       ) : null}
 
       <Card>
-        <h4 style={{ margin: '0 0 12px' }}>실사 라인</h4>
+        <h4 className="detail-mobile-hide" style={{ margin: '0 0 12px' }}>실사 라인</h4>
         <LinesTable audit={audit} />
       </Card>
     </div>
@@ -317,15 +436,7 @@ interface DetailGridProps {
 
 function DetailGrid({ audit, auditByField }: DetailGridProps) {
   return (
-    <dl
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '120px 1fr 120px 1fr',
-        gap: 8,
-        margin: 0,
-        fontSize: 13,
-      }}
-    >
+    <dl className="audit-detail-meta">
       <dt style={dtStyle}>창고</dt>
       <dd style={ddStyle}>
         {audit.warehouseCode} · {audit.warehouseName}
@@ -420,12 +531,7 @@ function BarcodeInput({ audit, onRecorded }: BarcodeInputProps) {
       <h4 style={{ margin: '0 0 12px' }}>바코드 / 수동 입력</h4>
       <form
         onSubmit={handleSubmit}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 160px auto auto',
-          gap: 8,
-          alignItems: 'end',
-        }}
+        className="audit-barcode-form"
       >
         <FormField
           label="품목코드 / 바코드"
@@ -560,12 +666,58 @@ function LinesTable({ audit }: LinesTableProps) {
 
   return (
     <div data-testid="audit-detail-lines-table">
-      <DataTable
-        columns={columns}
-        rows={audit.lines}
-        rowKey={(l) => l.id}
-        emptyMessage="snapshot 라인이 없습니다."
-      />
+      <div className="detail-mobile-hide">
+        <DataTable
+          columns={columns}
+          rows={audit.lines}
+          rowKey={(l) => l.id}
+          emptyMessage="snapshot 라인이 없습니다."
+        />
+      </div>
+      <div className="mobile-item-list" data-testid="audit-mobile-lines">
+        {audit.lines.length === 0 ? (
+          <div className="mobile-item-card">
+            <div className="mobile-item-total-row">
+              <span className="mobile-item-total-label">라인</span>
+              <span className="mobile-item-total-value">snapshot 라인이 없습니다.</span>
+            </div>
+          </div>
+        ) : (
+          audit.lines.map((line) => (
+            <div key={line.id} className="mobile-item-card">
+              <div className="mobile-item-card-header">
+                <div className="mobile-item-name">{line.productName}</div>
+                <span className="mobile-item-chip">
+                  {line.actualQty === null ? '대기' : line.barcodeScanned ? '스캔' : '수동'}
+                </span>
+              </div>
+              <div className="mobile-item-divider" />
+              <div className="mobile-item-metrics">
+                <div className="mobile-item-metric">
+                  <span className="mobile-item-metric-label">장부</span>
+                  <span className="mobile-item-metric-value">{line.expectedQty.toLocaleString()}</span>
+                </div>
+                <div className="mobile-item-metric">
+                  <span className="mobile-item-metric-label">실사</span>
+                  <span className="mobile-item-metric-value">
+                    {line.actualQty === null ? '—' : line.actualQty.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="mobile-item-total-row">
+                <span className="mobile-item-total-label">차이</span>
+                <span className="mobile-item-total-value">
+                  {line.actualQty === null ? '—' : `${line.diffQty > 0 ? '+' : ''}${line.diffQty.toLocaleString()}`}
+                </span>
+              </div>
+              <div className="mobile-item-chips">
+                <span className="mobile-item-chip">단가 {formatKrw(line.unitCost)}</span>
+                <span className="mobile-item-chip">차이금액 {line.actualQty === null ? '—' : formatKrw(line.diffAmount)}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
