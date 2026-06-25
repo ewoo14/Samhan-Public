@@ -4,7 +4,26 @@
 
 ---
 
-## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬3 DataTable 카드화 완결·머지(PR #598, main `1d195b74`). 다음=슬4 화면별 모바일(폼/모달/상세/와이드보고서, 개발책임자 지정 대기)**)
+## 🔄 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬4a 공용 Modal 풀스크린 완결·머지(PR #599, main `8e0eb84a`). 다음=슬4b 입력 폼 1열(개발책임자 지정 대기)**)
+
+**모바일 슬4a(공용 Modal 모바일 풀스크린) canonical 완주 → PM 자율 머지(개발책임자 위임).** ≤768px 모달 풀스크린, 데스크탑/인쇄 무변동. CSS-only·Flyway 0. 상세=[[mobile-s4a-modal-fullscreen]].
+
+### 완결 요약 (전 모달 풀스크린)
+- 공용 Modal(32화면)+CsvUploadDialog(별도 컴포넌트·④)+자체 inline dialog 3건(EditWarehouse·DepositDetail·InboundInspection lightbox, CSS Module화·⑤+전수)+공용 Tabs 가로스크롤(탭 잘림). 확인 alertdialog=오버플로 가드. 6 module.css @media + 4 TSX className.
+- **듀얼리뷰 진화(각 라운드 라이브 재캡처)**: ③ 공용 Modal → ④ Opus(CsvUploadDialog 누락 적발) → ⑤ Codex(자체 dialog 2건→개발책임자 "2건 포함") → 전수(InboundInspection) → 개발책임자 캡처(탭 잘림). 최종 Codex MERGE-OK.
+- 라이브 QA: M1 거래처상세·M4 CSV·M5 창고편집 100% 풀스크린·M6 탭스크롤(버전이력 도달)·M3 데스크탑 무회귀. CI 30 PASS(mock gate 8m31s)+GitGuardian dev시드 FP. 인라인스샷 PR#599 게시.
+
+### 🔑 교훈 (박제)
+- **라이브 QA가 매 리뷰 라운드 실결함 단독 적발**(CsvUpload·자체dialog·InboundInspection·탭잘림 — 정적리뷰/build/mock 통과분). [[qa-docker-real-test]].
+- **라이브QA=리뷰 라운드 귀속**(구현단계 독립 Task 금지) — 개발책임자 지적. 각 라운드 fix 후 라이브 재캡처가 게이트.
+- **자체 dialog 전수 grep 함정**: `<Modal` 동시사용 파일 제외필터로 누락→과소집계. role=dialog/alertdialog 전수가 정답(전수 3건).
+
+### 🔜 다음 (개발책임자 지정 대기)
+- **슬4b — 입력 폼 1열**(모바일 다열 폼→1열). 후속: 상세 반응형·와이드 회계보고서(슬3 MAJOR 이월)·PWA·네이티브.
+
+---
+
+## 🔄 (이전) 세션 재개 지점 (2026-06-25 — **✅ 모바일 에픽② 슬3 DataTable 카드화 완결·머지(PR #598, main `1d195b74`). 다음=슬4 화면별 모바일(폼/모달/상세/와이드보고서, 개발책임자 지정 대기)**)
 
 **모바일 슬3(공용 DataTable 모바일 카드화) canonical 8단계 완주 → PM 자율 머지(개발책임자 위임).** 공용 DataTable `td data-label` + module.css `@media(max-width:768px)` 카드 → **56개 리스트 화면이 ≤768px 행=카드(라벨-값) 자동 전환**. 데스크탑/인쇄 무변동. CSS-only·FE-only·Flyway 0. 상세=[[mobile-s3-datatable-card]].
 

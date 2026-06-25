@@ -49,3 +49,14 @@ QA agent 가 단위 테스트 + IT 코드만 read 하고 "PASS 가능 예상" �
 **Why:** 직전 모바일 슬1 세션이 Opus 라운드 fix(`5f910b83`) 후 라이브QA를 미실행한 채 핸드오프 → 개발책임자 지적. 리뷰는 코드 정합만 보장하고 운영 파손은 라이브가 단독 적발(컷오프 게이트웨이 stale 이미지·배차 afterCommit revert·견적 force-increment 선례).
 
 **How to apply:** canonical 8단계에서 ④/⑤/재리뷰 each = 리뷰 게시 + **그 상태 라이브 Docker QA 실캡처 동반**. QA 미동반 리뷰 라운드 = 미완(머지 금지). **ScheduleWakeup 재자각 프롬프트에 본 규칙을 상시 박제**하여 매 단계 망각 방지(개발책임자 "ScheduleWakeup 박제" 명시). 관련: [[feedback_canonical_workflow]], [[feedback_autonomous_loop_schedulewakeup]].
+
+## 2026-06-25 추가 정정 — 라이브QA는 "리뷰 라운드 귀속", 구현단계 Task 분리 금지
+
+개발책임자 지적(슬4a): **"라이브 QA가 왜 구현단계에서 진행되나? 리뷰 라운드마다인데?"** — 라이브 QA를 implementation plan 의 **독립 "Task 3 라이브 QA"로 분리해 ③ 구현 직후 1회 돌리는 구조는 오류**.
+
+**올바른 구조:** 라이브 QA는 **각 리뷰 라운드(④ Opus·⑤ Codex·재리뷰)의 일부**(그 라운드 리뷰→fix→**라이브QA**). canonical 의 "QA agent = Docker 라이브QA+스샷"이 5-agent 라운드 안에 있는 이유. 구현(③)은 코드만 산출.
+
+**How to apply:**
+- writing-plans 단계에서 plan 에 "라이브 QA"를 **별도 implementation Task 로 넣지 말 것**. 라이브 QA는 워크플로우의 리뷰 라운드 활동(plan 의 검증 섹션에 "각 리뷰 라운드 동반"으로만 기술).
+- ③ 구현 직후 1회 캡처는 **개발책임자 "스크린샷 보정" 요청 대응의 초기 캡처로만** 허용(검증 본체 아님). 검증=④/⑤/재리뷰 각 라운드 라이브QA.
+- ScheduleWakeup 프롬프트의 ④⑤ 단계에 "그 라운드 fix 후 라이브QA 재캡처" 명시.
