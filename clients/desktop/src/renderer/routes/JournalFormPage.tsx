@@ -22,11 +22,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AccountCodeSelect,
   Button,
   Card,
   Input,
   JournalLineRow,
+  MoneyInput,
   Spinner,
+  type Account,
   type JournalLineDraft,
 } from '@samhan/design-system'
 import {
@@ -35,6 +38,7 @@ import {
   listAccounts,
   type CreateJournalRequest,
 } from '../api/accounting'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 /** 라인 번호 안정성을 위한 row uid (React key — index 사용 시 사라지면 input remount). */
@@ -68,12 +72,98 @@ const today = (): string => {
 const fmt = (n: number): string =>
   n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
+interface MobileJournalLineCardProps {
+  index: number
+  line: DraftLine
+  accounts: Account[]
+  onChange: (patch: Partial<JournalLineDraft>) => void
+  onRemove: () => void
+}
+
+function MobileJournalLineCard({
+  index,
+  line,
+  accounts,
+  onChange,
+  onRemove,
+}: MobileJournalLineCardProps) {
+  return (
+    <div className="mobile-line-card" data-line-index={index}>
+      <div className="mobile-line-card-header">
+        <span className="mobile-line-card-index">{index}</span>
+        <button
+          type="button"
+          className="mobile-line-remove-button"
+          onClick={onRemove}
+          aria-label={`라인 ${index} 삭제`}
+        >
+          삭제
+        </button>
+      </div>
+
+      <div className="mobile-line-field">
+        <label className="mobile-line-field-label">계정과목</label>
+        <AccountCodeSelect
+          value={line.accountCode}
+          onChange={(code) => onChange({ accountCode: code })}
+          accounts={accounts}
+          required
+          ariaLabel={`라인 ${index} 계정과목`}
+        />
+      </div>
+
+      <div className="mobile-line-field">
+        <label className="mobile-line-field-label">차변</label>
+        <MoneyInput
+          value={line.debit}
+          onChange={(n) => onChange({ debit: n })}
+          ariaLabel={`라인 ${index} 차변`}
+        />
+      </div>
+
+      <div className="mobile-line-field">
+        <label className="mobile-line-field-label">대변</label>
+        <MoneyInput
+          value={line.credit}
+          onChange={(n) => onChange({ credit: n })}
+          ariaLabel={`라인 ${index} 대변`}
+        />
+      </div>
+
+      <div className="mobile-line-field">
+        <label className="mobile-line-field-label">거래처</label>
+        <input
+          type="text"
+          className="mobile-line-text-input"
+          value={line.partnerName}
+          onChange={(e) => onChange({ partnerName: e.target.value })}
+          placeholder="거래처"
+          aria-label={`라인 ${index} 거래처`}
+        />
+      </div>
+
+      <div className="mobile-line-field">
+        <label className="mobile-line-field-label">메모</label>
+        <input
+          type="text"
+          className="mobile-line-text-input"
+          value={line.note}
+          onChange={(e) => onChange({ note: e.target.value })}
+          placeholder="메모"
+          aria-label={`라인 ${index} 메모`}
+        />
+      </div>
+    </div>
+  )
+}
+
 export function JournalFormPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const params = useParams<{ id?: string }>()
   const editId = params['id']
   const isEdit = Boolean(editId)
+  const isMobile = useIsMobile()
 
   usePageTitle(isEdit ? '분개 편집' : '분개 작성')
 
@@ -208,6 +298,8 @@ export function JournalFormPage() {
     )
   }
 
+  const accounts = Array.isArray(accountsQuery.data) ? accountsQuery.data : []
+
   return (
     <>
       <div style={{ marginBottom: 16 }}>
@@ -219,6 +311,7 @@ export function JournalFormPage() {
 
       <Card>
         <div
+          className="mobile-form-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: '180px 1fr',
@@ -241,37 +334,54 @@ export function JournalFormPage() {
           />
         </div>
 
-        {/* 라인 헤더 */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '36px 220px 140px 140px 160px 1fr',
-            gap: 8,
-            padding: '8px 0',
-            borderBottom: '2px solid #E5E7EB',
-            fontSize: 12,
-            color: '#6B7280',
-            fontWeight: 600,
-          }}
-        >
-          <div style={{ textAlign: 'center' }}>#</div>
-          <div>계정과목</div>
-          <div style={{ textAlign: 'right' }}>차변</div>
-          <div style={{ textAlign: 'right' }}>대변</div>
-          <div>거래처</div>
-          <div>메모</div>
-        </div>
+        {isMobile ? (
+          <div className="mobile-line-card-list">
+            {lines.map((line, i) => (
+              <MobileJournalLineCard
+                key={line.uid}
+                index={i + 1}
+                line={line}
+                accounts={accounts}
+                onChange={(patch) => updateLine(i, patch)}
+                onRemove={() => removeLine(i)}
+              />
+            ))}
+          </div>
+        ) : (
+          <>
+            {/* 라인 헤더 */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '36px 220px 140px 140px 160px 1fr',
+                gap: 8,
+                padding: '8px 0',
+                borderBottom: '2px solid #E5E7EB',
+                fontSize: 12,
+                color: '#6B7280',
+                fontWeight: 600,
+              }}
+            >
+              <div style={{ textAlign: 'center' }}>#</div>
+              <div>계정과목</div>
+              <div style={{ textAlign: 'right' }}>차변</div>
+              <div style={{ textAlign: 'right' }}>대변</div>
+              <div>거래처</div>
+              <div>메모</div>
+            </div>
 
-        {lines.map((line, i) => (
-          <JournalLineRow
-            key={line.uid}
-            index={i + 1}
-            line={line}
-            accounts={Array.isArray(accountsQuery.data) ? accountsQuery.data : []}
-            onChange={(patch) => updateLine(i, patch)}
-            onRemove={() => removeLine(i)}
-          />
-        ))}
+            {lines.map((line, i) => (
+              <JournalLineRow
+                key={line.uid}
+                index={i + 1}
+                line={line}
+                accounts={accounts}
+                onChange={(patch) => updateLine(i, patch)}
+                onRemove={() => removeLine(i)}
+              />
+            ))}
+          </>
+        )}
 
         <div style={{ marginTop: 12 }}>
           <Button variant="ghost" size="sm" onClick={addLine}>
@@ -280,39 +390,78 @@ export function JournalFormPage() {
         </div>
 
         {/* 합계 표시 */}
-        <div
-          style={{
-            marginTop: 16,
-            padding: '12px 16px',
-            background: '#F9FAFB',
-            borderRadius: 6,
-            display: 'grid',
-            gridTemplateColumns: '36px 220px 140px 140px 1fr',
-            gap: 8,
-            fontSize: 14,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          <div />
-          <div style={{ fontWeight: 600 }}>합계</div>
-          <div style={{ textAlign: 'right', fontWeight: 600 }}>
-            {fmt(totals.debit)}
-          </div>
-          <div style={{ textAlign: 'right', fontWeight: 600 }}>
-            {fmt(totals.credit)}
-          </div>
+        {isMobile ? (
           <div
             style={{
-              fontSize: 13,
-              color: isBalanced ? '#059669' : '#DC2626',
-              fontWeight: 600,
+              marginTop: 16,
+              padding: '12px 16px',
+              background: '#F9FAFB',
+              borderRadius: 6,
+              display: 'grid',
+              gap: 8,
+              fontSize: 14,
+              fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {isBalanced
-              ? '차/대변 일치 ✓'
-              : `차이: ${fmt(totals.diff)} 원`}
+            <div style={{ fontWeight: 700 }}>합계</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: '#6B7280' }}>차변합</span>
+              <strong>{fmt(totals.debit)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: '#6B7280' }}>대변합</span>
+              <strong>{fmt(totals.credit)}</strong>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                color: isBalanced ? '#059669' : '#DC2626',
+                fontWeight: 700,
+              }}
+            >
+              <span>차이</span>
+              <span>
+                {isBalanced ? '차/대변 일치 ✓' : `${fmt(totals.diff)} 원`}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 16,
+              padding: '12px 16px',
+              background: '#F9FAFB',
+              borderRadius: 6,
+              display: 'grid',
+              gridTemplateColumns: '36px 220px 140px 140px 1fr',
+              gap: 8,
+              fontSize: 14,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <div />
+            <div style={{ fontWeight: 600 }}>합계</div>
+            <div style={{ textAlign: 'right', fontWeight: 600 }}>
+              {fmt(totals.debit)}
+            </div>
+            <div style={{ textAlign: 'right', fontWeight: 600 }}>
+              {fmt(totals.credit)}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: isBalanced ? '#059669' : '#DC2626',
+                fontWeight: 600,
+              }}
+            >
+              {isBalanced
+                ? '차/대변 일치 ✓'
+                : `차이: ${fmt(totals.diff)} 원`}
+            </div>
+          </div>
+        )}
       </Card>
 
       {topError ? (

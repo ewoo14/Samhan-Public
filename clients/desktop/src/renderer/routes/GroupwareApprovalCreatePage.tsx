@@ -292,7 +292,10 @@ export function GroupwareApprovalCreatePage() {
       </div>
 
       <fieldset disabled={!canWrite || createMutation.isPending} style={{ border: 0, padding: 0, margin: 0 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(360px, 1fr)', gap: 16 }}>
+        <div
+          className="mobile-form-grid"
+          style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(360px, 1fr)', gap: 16 }}
+        >
           <section style={{ display: 'grid', gap: 12 }}>
             <Select
               label="결재 유형"
@@ -422,9 +425,10 @@ export function GroupwareApprovalCreatePage() {
               hasReferenceChipValue(ref) ? null : (
                 <div
                   key={`${ref.refDocType}-${index}`}
+                  className="mobile-form-grid"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(420px, 1fr)',
+                    gridTemplateColumns: 'minmax(min(420px, 100%), 1fr)',
                     gap: 8,
                     alignItems: 'end',
                     padding: 8,
