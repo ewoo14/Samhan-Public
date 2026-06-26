@@ -7,10 +7,18 @@ const authProvider = {
   clearSession: vi.fn(),
 }
 
+const pushRegistration = {
+  registerPush: vi.fn(),
+  unregisterPush: vi.fn(),
+}
+
 vi.mock('../auth/authProvider', () => ({
   getAuthProvider: () => authProvider,
   isElectronPlatform: false,
+  isCapacitorPlatform: true,
 }))
+
+vi.mock('../push/pushRegistration', () => pushRegistration)
 
 vi.mock('../api/mock', () => ({
   isMockMode: () => false,
@@ -22,9 +30,20 @@ vi.mock('../api/mock', () => ({
   },
 }))
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
+}
+
 describe('session store authProvider 배선', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.resetModules()
     const { useSessionStore } = await import('./session')
     useSessionStore.setState({ auth: null, bootstrapped: false })
   })
@@ -53,6 +72,8 @@ describe('session store authProvider 배선', () => {
   it('setAuth 와 logout 은 provider 를 경유하고 렌더러 캐시를 갱신한다', async () => {
     authProvider.establishSession.mockResolvedValue(undefined)
     authProvider.clearSession.mockResolvedValue(undefined)
+    pushRegistration.registerPush.mockResolvedValue(undefined)
+    pushRegistration.unregisterPush.mockResolvedValue(undefined)
     const login: LoginResponse = {
       token: 'jwt',
       userId: 'u-2',
@@ -66,9 +87,60 @@ describe('session store authProvider 배선', () => {
     expect(authProvider.establishSession).toHaveBeenCalledWith(login)
     expect(useSessionStore.getState().auth?.token).toBe('')
     expect(useSessionStore.getState().auth?.fullName).toBe('개발책임자')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(pushRegistration.registerPush).toHaveBeenCalledTimes(1)
 
     await useSessionStore.getState().logout()
+    expect(pushRegistration.unregisterPush).toHaveBeenCalledTimes(1)
     expect(authProvider.clearSession).toHaveBeenCalledTimes(1)
     expect(useSessionStore.getState().auth).toBeNull()
+  })
+
+  it('logout waits for native push unregister before clearing the auth provider session', async () => {
+    const unregister = createDeferred<void>()
+    pushRegistration.unregisterPush.mockReturnValueOnce(unregister.promise)
+    authProvider.clearSession.mockResolvedValue(undefined)
+    const { useSessionStore } = await import('./session')
+
+    const logout = useSessionStore.getState().logout().then(() => 'logged-out')
+    const beforeUnregisterDone = await Promise.race([
+      logout,
+      new Promise((resolve) => setTimeout(() => resolve('pending'), 0)),
+    ])
+
+    expect(beforeUnregisterDone).toBe('pending')
+    expect(pushRegistration.unregisterPush).toHaveBeenCalledTimes(1)
+    expect(authProvider.clearSession).not.toHaveBeenCalled()
+
+    unregister.resolve()
+    await expect(logout).resolves.toBe('logged-out')
+
+    expect(authProvider.clearSession).toHaveBeenCalledTimes(1)
+    expect(authProvider.clearSession.mock.invocationCallOrder[0]).toBeGreaterThan(
+      pushRegistration.unregisterPush.mock.invocationCallOrder[0] ?? 0,
+    )
+  })
+
+  it('setAuth resolves before native push registration settles', async () => {
+    authProvider.establishSession.mockResolvedValue(undefined)
+    pushRegistration.registerPush.mockReturnValue(new Promise(() => undefined))
+    const login: LoginResponse = {
+      token: 'jwt',
+      userId: 'u-3',
+      role: 'MASTER',
+      displayName: 'Push User',
+      groups: [],
+    }
+    const { useSessionStore } = await import('./session')
+
+    const result = await Promise.race([
+      useSessionStore.getState().setAuth(login).then(() => 'resolved'),
+      new Promise((resolve) => setTimeout(() => resolve('blocked'), 10)),
+    ])
+
+    expect(result).toBe('resolved')
+    expect(useSessionStore.getState().auth?.fullName).toBe('Push User')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(pushRegistration.registerPush).toHaveBeenCalledTimes(1)
   })
 })
