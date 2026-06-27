@@ -5059,7 +5059,200 @@ button {
   .stm-page { width: auto; margin: 0; }
 }
 
+.codef-import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.codef-import-title {
+  margin: 0;
+  color: var(--color-neutral-900);
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1.35;
+}
+
+.codef-import-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.codef-import-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.codef-import-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.codef-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.codef-scope-list {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 8px;
+  background: var(--color-neutral-0);
+}
+
+.codef-scope-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--color-neutral-800);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+.codef-scope-list__header strong {
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+.codef-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.codef-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 40px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--color-neutral-800);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.codef-checkbox-row:hover {
+  background: var(--color-neutral-50);
+}
+
+.codef-checkbox-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  accent-color: var(--color-brand-600);
+  flex: 0 0 auto;
+}
+
+.codef-checkbox-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.codef-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.codef-import-hint {
+  color: var(--color-neutral-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.codef-import-hint--error {
+  color: var(--state-danger);
+}
+
+.codef-import-result {
+  padding: 10px 12px;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 6px;
+  background: var(--color-neutral-50);
+  font-size: 13px;
+}
+
+.bank-transaction-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 1100;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  border: 1px solid var(--state-success);
+  border-radius: 6px;
+  background: var(--state-success-bg);
+  color: var(--state-success);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1.45;
+}
+
+.bank-transaction-toast--error {
+  border-color: var(--state-danger);
+  background: var(--state-danger-bg);
+  color: var(--state-danger);
+}
+
 @media (max-width: 768px) {
+  .bank-transaction-table > div,
+  .bank-transaction-table > div > div {
+    overflow: visible;
+  }
+
+  .bank-transaction-table td[data-label='거래처 매칭'][data-mobile-priority='secondary'] {
+    grid-column: 1 / -1;
+    overflow: visible;
+    padding-top: 8px;
+  }
+
+  .bank-transaction-table td[data-label='거래처 매칭'][data-mobile-priority='secondary'] > * {
+    width: 100%;
+    overflow: visible;
+  }
+
+  .bank-transaction-partner-match {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .codef-import-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .codef-import-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .codef-import-actions > button {
+    min-width: 0;
+  }
+
+  .codef-scope-grid {
+    grid-template-columns: 1fr;
+  }
+
   .mobile-filter-grid {
     grid-template-columns: 1fr !important;
     gap: 8px !important;
