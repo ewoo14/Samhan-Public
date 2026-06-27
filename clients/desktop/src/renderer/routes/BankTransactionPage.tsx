@@ -19,13 +19,10 @@ import {
   BANK_TXN_SOURCE_LABEL,
   BANK_TXN_TYPE_LABEL,
   clearBankTransactionMatch,
-  importBankTransactionsCsv,
   listBankTransactions,
   matchBankTransactionPartner,
   type BankMatchStatus,
-  type BankTransactionImportResult,
   type BankTransactionRow,
-  type ImportBankTransactionsMapping,
 } from '../api/accounting'
 import {
   importCodefTransactions,
@@ -48,11 +45,9 @@ const STATUS_TABS: Array<{ key: StatusTab; label: string }> = [
 
 const SOURCE_TABS: Array<{ key: SourceTab; label: string; testId: string }> = [
   { key: 'ALL', label: '전체', testId: 'codef-tab-ALL' },
-  { key: 'CSV_IMPORT', label: 'CSV', testId: 'codef-tab-CSV_IMPORT' },
-  { key: 'KFTC', label: 'KFTC', testId: 'codef-tab-KFTC' },
-  { key: 'CODEF_BANK', label: 'CODEF 계좌', testId: 'codef-tab-CODEF_BANK' },
-  { key: 'CODEF_CARD', label: 'CODEF 카드', testId: 'codef-tab-CODEF_CARD' },
-  { key: 'CODEF_LOAN', label: 'CODEF 대출', testId: 'codef-tab-CODEF_LOAN' },
+  { key: 'CODEF_BANK', label: '계좌', testId: 'codef-tab-CODEF_BANK' },
+  { key: 'CODEF_CARD', label: '카드', testId: 'codef-tab-CODEF_CARD' },
+  { key: 'CODEF_LOAN', label: '대출', testId: 'codef-tab-CODEF_LOAN' },
 ]
 
 const SOURCE_TAB_ITEMS: TabItem[] = SOURCE_TABS.map((tab) => ({
@@ -136,21 +131,6 @@ function partnerDisplay(row: BankTransactionRow): string {
   return parts.length > 0 ? parts.join(' · ') : '—'
 }
 
-function initialMapping(): ImportBankTransactionsMapping {
-  return {
-    bankAccountLabel: '국민 123456-78-901234',
-    dateColumn: '거래일시',
-    depositColumn: '입금액',
-    withdrawalColumn: '출금액',
-    balanceColumn: '잔액',
-    descriptionColumn: '적요',
-    counterpartyColumn: '상대',
-    counterpartyAccountColumn: '',
-    externalRefColumn: '',
-    headerRow: true,
-  }
-}
-
 function initialCodefImportForm() {
   return {
     from: monthStartIso(),
@@ -185,7 +165,7 @@ function hasRequiredCodefRef(form: ReturnType<typeof initialCodefImportForm>): b
 }
 
 export function BankTransactionPage() {
-  usePageTitle('입출금 매칭', 'CSV/CODEF import')
+  usePageTitle('입출금 내역', '거래내역 가져오기')
 
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
@@ -199,10 +179,7 @@ export function BankTransactionPage() {
     bankAccountLabel: '',
   })
   const [queryFilters, setQueryFilters] = useState(filters)
-  const [mapping, setMapping] = useState<ImportBankTransactionsMapping>(() => initialMapping())
   const [codefForm, setCodefForm] = useState(() => initialCodefImportForm())
-  const [file, setFile] = useState<File | null>(null)
-  const [result, setResult] = useState<BankTransactionImportResult | null>(null)
   const [codefResult, setCodefResult] = useState<CodefImportResponse | null>(null)
   const [toast, setToast] = useState<{ type: 'error' | 'success'; message: string } | null>(null)
 
@@ -229,18 +206,6 @@ export function BankTransactionPage() {
     }),
   })
 
-  const importMutation = useMutation({
-    mutationFn: () => {
-      if (!file) throw new Error('CSV 파일을 선택하세요.')
-      return importBankTransactionsCsv(file, mapping)
-    },
-    onSuccess: async (data) => {
-      setResult(data)
-      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
-    },
-    onError: () => setToast({ type: 'error', message: '통장 CSV import 중 오류가 발생했습니다.' }),
-  })
-
   const codefImportMutation = useMutation({
     mutationFn: () => importCodefTransactions({
       type: codefForm.type,
@@ -259,10 +224,10 @@ export function BankTransactionPage() {
     }),
     onSuccess: async (data) => {
       setCodefResult(data)
-      setToast({ type: 'success', message: `CODEF ${CODEF_IMPORT_TYPE_LABEL[codefForm.type]} import 완료 · ${codefSummary(data)}` })
+      setToast({ type: 'success', message: `${CODEF_IMPORT_TYPE_LABEL[codefForm.type]} 거래내역 가져오기 완료 · ${codefSummary(data)}` })
       await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-transactions'] })
     },
-    onError: () => setToast({ type: 'error', message: 'CODEF 거래내역 import 중 오류가 발생했습니다.' }),
+    onError: () => setToast({ type: 'error', message: '거래내역 가져오기 중 오류가 발생했습니다.' }),
   })
 
   const matchPartnerMutation = useMutation({
@@ -460,14 +425,6 @@ export function BankTransactionPage() {
     return [...baseColumns, ...sourceSpecificColumns, ...trailingColumns]
   }, [activeSourceTab, canUpdate, clearPartnerMutation, matchPartnerMutation])
 
-  const canImport = canCreate
-    && Boolean(file)
-    && Boolean(mapping.bankAccountLabel.trim())
-    && Boolean(mapping.dateColumn.trim())
-    && Boolean(mapping.descriptionColumn.trim())
-    && (Boolean(mapping.depositColumn?.trim()) || Boolean(mapping.withdrawalColumn?.trim()))
-    && !importMutation.isPending
-
   const canImportCodef = canCreate
     && Boolean(codefForm.from)
     && Boolean(codefForm.to)
@@ -479,7 +436,7 @@ export function BankTransactionPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>입출금 매칭</h3>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>입출금 내역</h3>
           <div style={{ marginTop: 4, fontSize: 13, color: 'var(--color-neutral-500)' }}>
             입금 {formatKrw(totalDeposit)} · 출금 {formatKrw(totalWithdrawal)} · {rows.length}건
           </div>
@@ -508,9 +465,9 @@ export function BankTransactionPage() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
           <div>
-            <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>CODEF 거래내역 가져오기</h4>
+            <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>거래내역 가져오기</h4>
             <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-neutral-500)' }}>
-              계좌·카드·대출 거래를 모의 조회로 가져와 입출금 매칭 목록에 적재합니다.
+              계좌·카드·대출 거래를 모의 조회로 가져와 입출금 내역 목록에 적재합니다.
             </div>
           </div>
           <div className="mobile-filter-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(130px, 1fr)) repeat(3, minmax(150px, 1.2fr)) auto', gap: 10, alignItems: 'end' }}>
@@ -576,7 +533,7 @@ export function BankTransactionPage() {
               onClick={() => codefImportMutation.mutate()}
               data-testid="codef-import-button"
             >
-              {codefImportMutation.isPending ? '가져오는 중' : 'CODEF 가져오기'}
+              {codefImportMutation.isPending ? '가져오는 중' : '가져오기'}
             </Button>
           </div>
           {codefResult ? (
@@ -596,91 +553,6 @@ export function BankTransactionPage() {
           ) : null}
         </div>
 
-        <div className="mobile-filter-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(118px, 1fr)) auto', gap: 10, alignItems: 'end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            CSV 파일
-            <Input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              data-testid="bank-transaction-file"
-            />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            은행계좌
-            <Input
-              value={mapping.bankAccountLabel}
-              onChange={(event) => setMapping((prev) => ({ ...prev, bankAccountLabel: event.target.value }))}
-            />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            일자 컬럼
-            <Input value={mapping.dateColumn} onChange={(event) => setMapping((prev) => ({ ...prev, dateColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            입금 컬럼
-            <Input value={mapping.depositColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, depositColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            출금 컬럼
-            <Input value={mapping.withdrawalColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, withdrawalColumn: event.target.value }))} />
-          </label>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!canImport}
-            onClick={() => importMutation.mutate()}
-            data-testid="bank-transaction-import"
-          >
-            {importMutation.isPending ? '가져오는 중' : '가져오기'}
-          </Button>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            잔액 컬럼
-            <Input value={mapping.balanceColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, balanceColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            적요 컬럼
-            <Input value={mapping.descriptionColumn} onChange={(event) => setMapping((prev) => ({ ...prev, descriptionColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            상대 컬럼
-            <Input value={mapping.counterpartyColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, counterpartyColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            상대계좌 컬럼
-            <Input value={mapping.counterpartyAccountColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, counterpartyAccountColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            외부참조 컬럼
-            <Input value={mapping.externalRefColumn ?? ''} onChange={(event) => setMapping((prev) => ({ ...prev, externalRefColumn: event.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            헤더
-            <Select
-              value={mapping.headerRow ? 'true' : 'false'}
-              onChange={(event) => setMapping((prev) => ({ ...prev, headerRow: event.target.value === 'true' }))}
-            >
-              <option value="true">있음</option>
-              <option value="false">없음</option>
-            </Select>
-          </label>
-        </div>
-
-        {result ? (
-          <div
-            data-testid="bank-transaction-import-result"
-            style={{
-              marginTop: 12,
-              padding: '10px 12px',
-              border: '1px solid var(--color-neutral-200)',
-              borderRadius: 6,
-              background: 'var(--color-neutral-50)',
-              fontSize: 13,
-            }}
-          >
-            전체 {result.totalRows}건 · 적재 {result.importedCount}건 · 중복 skip {result.duplicateSkippedCount}건
-          </div>
-        ) : null}
       </Card>
 
       <Card style={{ padding: 16 }}>
