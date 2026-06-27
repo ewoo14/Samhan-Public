@@ -26,6 +26,45 @@ public class CodefClientImpl implements CodefClient {
     private final CodefProperties properties;
 
     @Override
+    public List<AccountInfo> listBankAccounts(String connectedId, String submitMethod) {
+        String effectiveMethod = effectiveMethod(submitMethod);
+        if ("DRY_RUN".equalsIgnoreCase(effectiveMethod)) {
+            return listDryRunBankAccounts();
+        }
+        if ("CODEF".equalsIgnoreCase(effectiveMethod)) {
+            return listCodefBankAccounts();
+        }
+        log.warn("[BC3] 알 수 없는 submit-method={} — DRY_RUN 목록으로 fallback", effectiveMethod);
+        return listDryRunBankAccounts();
+    }
+
+    @Override
+    public List<CardInfo> listCards(String connectedId, String submitMethod) {
+        String effectiveMethod = effectiveMethod(submitMethod);
+        if ("DRY_RUN".equalsIgnoreCase(effectiveMethod)) {
+            return listDryRunCards();
+        }
+        if ("CODEF".equalsIgnoreCase(effectiveMethod)) {
+            return listCodefCards();
+        }
+        log.warn("[BC3] 알 수 없는 submit-method={} — DRY_RUN 목록으로 fallback", effectiveMethod);
+        return listDryRunCards();
+    }
+
+    @Override
+    public List<LoanInfo> listLoans(String connectedId, String submitMethod) {
+        String effectiveMethod = effectiveMethod(submitMethod);
+        if ("DRY_RUN".equalsIgnoreCase(effectiveMethod)) {
+            return listDryRunLoans();
+        }
+        if ("CODEF".equalsIgnoreCase(effectiveMethod)) {
+            return listCodefLoans();
+        }
+        log.warn("[BC3] 알 수 없는 submit-method={} — DRY_RUN 목록으로 fallback", effectiveMethod);
+        return listDryRunLoans();
+    }
+
+    @Override
     public List<CodefTxn> fetchBankTransactions(LocalDate from, LocalDate to, String accountRef, String submitMethod) {
         String effectiveMethod = effectiveMethod(submitMethod);
         if ("DRY_RUN".equalsIgnoreCase(effectiveMethod)) {
@@ -85,6 +124,33 @@ public class CodefClientImpl implements CodefClient {
                 new CodefTxn("알수없는입금자", BankTxnType.DEPOSIT, new BigDecimal("99000.00"),
                         baseDate.plusDays(2), "090000", account, "미상 입금",
                         "CODEF-BANK-" + baseDate.plusDays(2) + "-001", null, null)
+        );
+    }
+
+    /** DRY_RUN 은행계좌 목록 mock 4건. */
+    private List<AccountInfo> listDryRunBankAccounts() {
+        return List.of(
+                new AccountInfo("국민 123456-78-901234", "국민 주거래 계좌", "국민은행", "123456-78-901234"),
+                new AccountInfo("신한 987654-32-109876", "신한 운임 정산 계좌", "신한은행", "987654-32-109876"),
+                new AccountInfo("우리 222222-33-444444", "우리 세금계산서 입금 계좌", "우리은행", "222222-33-444444"),
+                new AccountInfo("하나 555555-66-777777", "하나 예비 계좌", "하나은행", "555555-66-777777")
+        );
+    }
+
+    /** DRY_RUN 카드 목록 mock 3건. */
+    private List<CardInfo> listDryRunCards() {
+        return List.of(
+                new CardInfo("삼한 법인카드 1111", "삼한 법인카드 주유", "국민카드", "****-****-****-1111"),
+                new CardInfo("삼한 법인카드 2222", "삼한 법인카드 물류", "신한카드", "****-****-****-2222"),
+                new CardInfo("삼한 법인카드 3333", "삼한 법인카드 일반", "현대카드", "****-****-****-3333")
+        );
+    }
+
+    /** DRY_RUN 대출 목록 mock 2건. */
+    private List<LoanInfo> listDryRunLoans() {
+        return List.of(
+                new LoanInfo("기업운전자금대출-001", "운전자금 대출", "국민은행", "기업운전자금"),
+                new LoanInfo("시설자금대출-002", "시설자금 대출", "신한은행", "시설자금")
         );
     }
 
@@ -162,7 +228,7 @@ public class CodefClientImpl implements CodefClient {
         validateCredentials();
         log.warn("[BC1] CODEF 은행 실 API 호출 미구현 — Phase 11/키발급 후 구현. from={} to={}", from, to);
         throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
-                "CODEF 은행 실 API 호출은 Phase 11/키발급 후 구현 예정입니다.");
+                "금융기관 직접 연동 기능은 현재 준비 중입니다. 관리자에게 문의하세요.");
     }
 
     /** CODEF 카드 실 API stub — Phase 11 계약·키 발급 후 구현. */
@@ -170,7 +236,7 @@ public class CodefClientImpl implements CodefClient {
         validateCredentials();
         log.warn("[BC1] CODEF 카드 실 API 호출 미구현 — Phase 11/키발급 후 구현. from={} to={}", from, to);
         throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
-                "CODEF 카드 실 API 호출은 Phase 11/키발급 후 구현 예정입니다.");
+                "금융기관 직접 연동 기능은 현재 준비 중입니다. 관리자에게 문의하세요.");
     }
 
     /** CODEF 대출 실 API stub — Phase 11 계약·키 발급 후 구현. */
@@ -178,7 +244,28 @@ public class CodefClientImpl implements CodefClient {
         validateCredentials();
         log.warn("[BC1] CODEF 대출 실 API 호출 미구현 — Phase 11/키발급 후 구현. from={} to={}", from, to);
         throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
-                "CODEF 대출 실 API 호출은 Phase 11/키발급 후 구현 예정입니다.");
+                "금융기관 직접 연동 기능은 현재 준비 중입니다. 관리자에게 문의하세요.");
+    }
+
+    /** 실 은행계좌 목록 API stub — Phase 11 계약·키 발급 후 구현. */
+    private List<AccountInfo> listCodefBankAccounts() {
+        validateCredentials();
+        throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
+                "금융기관 직접 연동 기능은 현재 준비 중입니다. 관리자에게 문의하세요.");
+    }
+
+    /** 실 카드 목록 API stub — Phase 11 계약·키 발급 후 구현. */
+    private List<CardInfo> listCodefCards() {
+        validateCredentials();
+        throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
+                "금융기관 직접 연동 기능은 현재 준비 중입니다. 관리자에게 문의하세요.");
+    }
+
+    /** 실 대출 목록 API stub — Phase 11 계약·키 발급 후 구현. */
+    private List<LoanInfo> listCodefLoans() {
+        validateCredentials();
+        throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
+                "금융기관 직접 연동 기능은 현재 준비 중입니다. 관리자에게 문의하세요.");
     }
 
     private void validateCredentials() {
@@ -190,11 +277,11 @@ public class CodefClientImpl implements CodefClient {
     private void requireCredential(String value, String name) {
         if (!hasText(value)) {
             throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
-                    name + " 미설정 — codef.* 환경변수를 확인하세요");
+                    "금융기관 연동 설정이 완료되지 않았습니다. 관리자에게 문의하세요.");
         }
         if (isPlaceholderKey(value)) {
             throw new BusinessException(ErrorCode.CODEF_SUBMIT_FAILED,
-                    name + " 가 placeholder 입니다. CODEF 실 키 설정 필요.");
+                    "금융기관 연동 설정 값이 올바르지 않습니다. 관리자에게 문의하세요.");
         }
     }
 

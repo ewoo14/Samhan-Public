@@ -1,5 +1,8 @@
 package com.samhanair.logis.accounting.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.common.dto.ApiResponse;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.common.http.HttpHeaderConstants;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -8,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,9 +29,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <ul>
  *   <li>X-User-Id 존재 시 인증 성립 — X-User-Role 부재여도 허용.</li>
  *   <li>X-User-Groups 존재 시 각 UUID 에 대해 {@code GROUP_<uuid>} authority 추가.</li>
+ *   <li>{@code /accounting/codef/} 하위 경로는 X-User-Id 가 없으면 명시적으로 401 을 반환한다.</li>
  * </ul>
  */
 public class HeaderAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final String UNAUTHORIZED_MESSAGE = "인증 정보가 올바르지 않습니다";
+
+    private final ObjectMapper objectMapper;
+
+    public HeaderAuthenticationFilter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -39,7 +52,17 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
         boolean hasPartialIdentity = (groups != null && !groups.isBlank())
                 || request.getHeader(HttpHeaderConstants.IS_SYSTEM_MASTER_HEADER) != null;
         if ((userId == null || userId.isBlank()) && hasPartialIdentity) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            writeUnauthorized(response);
+            return;
+        }
+        if ((userId == null || userId.isBlank()) && request.getRequestURI().startsWith("/accounting/codef/")) {
+            writeUnauthorized(response);
+            return;
+        }
+        if (userId != null && !userId.isBlank()
+                && request.getRequestURI().startsWith("/accounting/codef/")
+                && !isUuid(userId)) {
+            writeUnauthorized(response);
             return;
         }
 
@@ -60,5 +83,22 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
         }
 
         chain.doFilter(request, response);
+    }
+
+    private boolean isUuid(String value) {
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    private void writeUnauthorized(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("application/json");
+        objectMapper.writeValue(response.getWriter(),
+                ApiResponse.fail(ErrorCode.UNAUTHORIZED, UNAUTHORIZED_MESSAGE));
     }
 }
