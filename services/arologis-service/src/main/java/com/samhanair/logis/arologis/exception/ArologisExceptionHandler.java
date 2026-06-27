@@ -60,18 +60,15 @@ public class ArologisExceptionHandler {
     }
 
     /**
-     * multipart 필수 파트({@code files} 등) 누락 → 400 INVALID_INPUT.
+     * multipart 필수 파일 누락 → 400 INVALID_INPUT.
      *
-     * <p>운송사 실배차 비교({@code POST /admin/arologis/dispatch/reconcile}) 가 {@code files}
-     * 파트 없이 호출되면 Spring 이 {@link MissingServletRequestPartException} 을 던진다. 전용
-     * 핸들러가 없으면 catch-all {@link #handleUnknown} 로 떨어져 500 이 반환되던 결함을 수정한다
-     * (QA defect — 필수 파트 누락 시 400 기대).
+     * <p>Spring 이 제공하는 raw part name({@code files}, {@code file} 등)은 응답에 노출하지 않는다.
      */
     @ExceptionHandler(MissingServletRequestPartException.class)
     public ResponseEntity<ApiResponse<Void>> handleMissingPart(MissingServletRequestPartException ex) {
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
                 .body(ApiResponse.fail(ErrorCode.INVALID_INPUT,
-                        "필수 업로드 파트가 누락되었습니다: " + ex.getRequestPartName()));
+                        "필수 업로드 파일이 누락되었습니다."));
     }
 
     /**
@@ -83,17 +80,13 @@ public class ArologisExceptionHandler {
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiResponse<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
-                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT,
-                        "필수 요청 파라미터가 누락되었습니다: " + ex.getParameterName()));
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, "필수 요청 파라미터가 누락되었습니다."));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        String name = ex.getName();
-        String value = String.valueOf(ex.getValue());
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getHttpStatus())
-                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT,
-                        "잘못된 파라미터 값: " + name + "=" + value));
+                .body(ApiResponse.fail(ErrorCode.INVALID_INPUT, "요청 파라미터 형식이 올바르지 않습니다."));
     }
 
     @ExceptionHandler(IllegalStateException.class)
@@ -112,6 +105,6 @@ public class ArologisExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex) {
         log.error("Unhandled exception in arologis-service", ex);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.getHttpStatus())
-                .body(ApiResponse.fail(ErrorCode.INTERNAL_ERROR, ex.getMessage()));
+                .body(ApiResponse.fail(ErrorCode.INTERNAL_ERROR, "서버 내부 오류가 발생했습니다."));
     }
 }
