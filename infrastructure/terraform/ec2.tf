@@ -1,5 +1,5 @@
 ################################################################################
-# ec2.tf — m5.xlarge EC2 인스턴스 (14 service docker-compose)
+# ec2.tf — m5.xlarge EC2 인스턴스 (17 service docker-compose)
 #
 # 구성:
 #   - 인스턴스: m5.xlarge (4 vCPU + 16 GB RAM)
@@ -39,12 +39,12 @@ resource "aws_instance" "app" {
   monitoring = true
 
   user_data = base64encode(templatefile("${path.module}/templates/user_data.sh", {
-    project_name = var.project_name
-    environment  = var.environment
-    aws_region   = var.aws_region
-    rds_endpoint = aws_db_instance.main.address
-    rds_password = var.rds_password
-    rds_username = var.rds_username
+    project_name           = var.project_name
+    environment            = var.environment
+    aws_region             = var.aws_region
+    rds_endpoint           = aws_db_instance.main.address
+    rds_username           = var.rds_username
+    rds_password_secret_id = aws_secretsmanager_secret.db_password.name
   }))
 
   tags = {
@@ -54,24 +54,26 @@ resource "aws_instance" "app" {
 
   lifecycle {
     # AMI ID 업데이트 시 replace 방지 (명시적 destroy 필요)
-    ignore_changes = [ami, user_data]
+    ignore_changes = [ami]
   }
 
-  depends_on = [aws_db_instance.main]
-}
-
-# ─── Elastic IP (EC2 고정 IP — Auto Recovery 후에도 IP 유지) ─────────────────
-
-resource "aws_eip" "app" {
-  instance = aws_instance.app.id
-  domain   = "vpc"
-
-  tags = {
-    Name = "${local.name_prefix}-app-eip"
-  }
+  depends_on = [
+    aws_db_instance.main,
+    aws_secretsmanager_secret_version.db_password,
+    aws_s3_object.init_rds,
+    aws_s3_object.compose,
+    aws_iam_instance_profile.ec2_profile,
+    aws_iam_role_policy_attachment.ec2_s3,
+    aws_iam_role_policy_attachment.ec2_secrets,
+    aws_iam_role_policy_attachment.ec2_cloudwatch,
+    aws_iam_role_policy_attachment.ec2_ssm,
+    aws_iam_role_policy_attachment.ec2_ecr
+  ]
 }
 
 # ─── ALB (Application Load Balancer) ─────────────────────────────────────────
+# EIP 제거: EC2 는 private subnet 배치 + ALB 전면 아키텍처 — 퍼블릭 IP 직접 노출 불필요.
+# EC2 아웃바운드(ECR pull / S3 / Secrets Manager) 는 NAT Gateway 경유.
 
 resource "aws_lb" "main" {
   name               = "${local.name_prefix}-alb"
@@ -84,7 +86,7 @@ resource "aws_lb" "main" {
   enable_http2               = true
 
   access_logs {
-    bucket  = var.s3_logs_bucket
+    bucket  = aws_s3_bucket.logs.id
     prefix  = "alb-logs"
     enabled = true
   }
@@ -92,6 +94,8 @@ resource "aws_lb" "main" {
   tags = {
     Name = "${local.name_prefix}-alb"
   }
+
+  depends_on = [aws_s3_bucket_policy.logs]
 }
 
 # ─── ALB Target Group ─────────────────────────────────────────────────────────
@@ -129,7 +133,7 @@ resource "aws_lb_target_group_attachment" "app" {
 
 resource "aws_acm_certificate" "main" {
   domain_name               = var.domain_name
-  subject_alternative_names = ["*.${var.domain_name}"]
+  subject_alternative_names = ["*.${var.domain_name}", "*.arologis.${var.domain_name}"]
   validation_method         = "DNS"
 
   lifecycle {
@@ -148,12 +152,14 @@ resource "aws_lb_listener" "https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = aws_acm_certificate.main.arn
+  certificate_arn   = aws_acm_certificate_validation.main.certificate_arn
 
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
+
+  depends_on = [aws_acm_certificate_validation.main]
 }
 
 resource "aws_lb_listener" "http_redirect" {
@@ -174,19 +180,19 @@ resource "aws_lb_listener" "http_redirect" {
 # ─── EC2 Auto Recovery (CloudWatch Alarm) ────────────────────────────────────
 
 resource "aws_cloudwatch_metric_alarm" "ec2_auto_recovery" {
-  alarm_name          = "${local.name_prefix}-ec2-auto-recovery"
-  alarm_description   = "EC2 시스템 상태 실패 감지 시 자동 복구 (Tier 1)"
-  namespace           = "AWS/EC2"
-  metric_name         = "StatusCheckFailed_System"
+  alarm_name        = "${local.name_prefix}-ec2-auto-recovery"
+  alarm_description = "EC2 시스템 상태 실패 감지 시 자동 복구 (Tier 1)"
+  namespace         = "AWS/EC2"
+  metric_name       = "StatusCheckFailed_System"
   dimensions = {
     InstanceId = aws_instance.app.id
   }
-  comparison_operator       = "GreaterThanOrEqualToThreshold"
-  evaluation_periods        = 2
-  period                    = 60
-  statistic                 = "Maximum"
-  threshold                 = 1
-  treat_missing_data        = "notBreaching"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
 
   # Auto Recovery 액션 (EC2 SystemStatusCheckFailed → recover)
   alarm_actions = [
@@ -206,9 +212,9 @@ output "ec2_instance_id" {
   value       = aws_instance.app.id
 }
 
-output "ec2_public_ip" {
-  description = "EC2 Elastic IP"
-  value       = aws_eip.app.public_ip
+output "ec2_private_ip" {
+  description = "EC2 Private IP (private subnet — 외부 직접 접근 불가, SSM Session Manager 또는 ALB 경유)"
+  value       = aws_instance.app.private_ip
 }
 
 output "alb_dns_name" {

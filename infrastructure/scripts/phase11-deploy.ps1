@@ -34,8 +34,13 @@ param(
     [string]$TerraformDir = "infrastructure\terraform",
     [string]$TfVarsFile = "terraform.tfvars",
     [string]$RdsEndpoint = "",
-    [string]$EC2PublicIp = "",
-    [switch]$DryRun  # DryRun 모드: 실 AWS 자원 생성 없이 plan만
+    [string]$RdsUsername = "samhan",
+    [string]$DbPasswordSecretId = "samhan/production/db-password",
+    [string]$AwsRegion = "ap-northeast-2",
+    [string]$AlbDnsName = "",
+    [string]$InstanceId = "",
+    [switch]$VerifyRdsDatabases,
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
@@ -85,6 +90,109 @@ function Test-AwsCliInstalled {
         exit 1
     }
     Write-Phase11Log "INFO" "AWS CLI 설치 확인 OK"
+}
+
+function Get-ExpectedRdsDatabases {
+    return @(
+        "auth_db",
+        "user_db",
+        "product_db",
+        "inventory_db",
+        "slip_db",
+        "accounting_db",
+        "partner_auth_db",
+        "dc_config_db",
+        "partner_order_db",
+        "partner_db",
+        "groupware_db",
+        "notification_db",
+        "dashboard_db",
+        "arologis_db",
+        "migration_db"
+    )
+}
+
+function Get-SecretString {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SecretId
+    )
+
+    Test-AwsCliInstalled
+    $value = aws secretsmanager get-secret-value `
+        --secret-id $SecretId `
+        --query SecretString `
+        --output text `
+        --region $AwsRegion
+
+    if ($LASTEXITCODE -ne 0 -or -not $value) {
+        Write-Phase11Log "ERROR" "Secrets Manager 조회 실패: $SecretId"
+        exit 1
+    }
+
+    return $value
+}
+
+function Test-RdsDatabasesExist {
+    Write-Phase11Log "INFO" "RDS 15 DB 존재 검증 시작"
+
+    if ($DryRun) {
+        Write-Phase11Log "WARN" "DryRun 모드에서는 실제 RDS 접속/DB 존재 검증을 수행하지 않습니다."
+        return
+    }
+
+    if (-not $RdsEndpoint) {
+        $script:RdsEndpoint = Read-Host "RDS endpoint 를 입력하세요 (terraform output -raw rds_endpoint)"
+    }
+
+    $psql = Get-Command psql -ErrorAction SilentlyContinue
+    if (-not $psql) {
+        Write-Phase11Log "ERROR" "psql 이 설치되지 않았습니다. RDS 15 DB 검증은 PostgreSQL client 가 필요합니다."
+        exit 1
+    }
+
+    $expected = Get-ExpectedRdsDatabases
+    $quoted = ($expected | ForEach-Object { "'$_'" }) -join ","
+    $query = "SELECT datname FROM pg_database WHERE datname IN ($quoted) ORDER BY datname;"
+
+    $previousPgPassword = $env:PGPASSWORD
+    try {
+        if ($env:SAMHAN_DB_PASSWORD) {
+            $env:PGPASSWORD = $env:SAMHAN_DB_PASSWORD
+        } else {
+            $env:PGPASSWORD = Get-SecretString -SecretId $DbPasswordSecretId
+        }
+
+        $actual = & $psql.Path `
+            -h $RdsEndpoint `
+            -U $RdsUsername `
+            -d postgres `
+            -At `
+            -c $query
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Phase11Log "ERROR" "RDS DB 목록 조회 실패"
+            exit 1
+        }
+
+        $actualSet = @{}
+        foreach ($db in $actual) {
+            if ($db) {
+                $actualSet[$db.Trim()] = $true
+            }
+        }
+
+        $missing = @($expected | Where-Object { -not $actualSet.ContainsKey($_) })
+        if ($missing.Count -gt 0) {
+            Write-Phase11Log "ERROR" "RDS 누락 DB: $($missing -join ', ')"
+            exit 1
+        }
+
+        Write-Phase11Log "OK" "RDS 15 DB 존재 검증 PASS: $($expected -join ', ')"
+    }
+    finally {
+        $env:PGPASSWORD = $previousPgPassword
+    }
 }
 
 # ─── Action: plan ─────────────────────────────────────────────────────────────
@@ -167,19 +275,14 @@ function Invoke-DbMigration {
         $RdsEndpoint = Read-Host "RDS endpoint 를 입력하세요 (terraform output rds_endpoint)"
     }
 
-    Confirm-Action "RDS($RdsEndpoint) 에 14 DB 를 생성하고 데이터를 마이그레이션합니다."
+    Confirm-Action ("RDS({0}) 에 15 DB 를 생성하고 데이터를 마이그레이션합니다." -f $RdsEndpoint)
 
-    $databases = @(
-        "auth_db", "user_db", "product_db", "inventory_db", "slip_db",
-        "accounting_db", "logging_db", "partner_db", "partner_auth_db",
-        "dc_config_db", "partner_order_db", "notification_db",
-        "groupware_db", "dashboard_db", "arologis_db"
-    )
+    # 17 service 대응 15 DB (logging-service = ES/RabbitMQ 전용, logging_db 제외)
+    $databases = Get-ExpectedRdsDatabases
 
-    Write-Phase11Log "INFO" "14 DB 생성 (RDS 초기화)"
+    Write-Phase11Log "INFO" "15 DB 생성 (RDS 초기화 — infrastructure/terraform/templates/init-rds.sql 참조)"
     foreach ($db in $databases) {
         Write-Phase11Log "INFO" "DB 생성: $db"
-        # psql -h $RdsEndpoint -U samhan -d samhanlogis -c "CREATE DATABASE IF NOT EXISTS $db;"
         # 실 실행 시 주석 해제
         Write-Phase11Log "INFO" "[DRY-RUN] CREATE DATABASE $db (실 실행 생략)"
     }
@@ -202,14 +305,14 @@ function Invoke-DnsCutover {
     # Samhan Public 본진 subdomain
     $subdomains = @("api", "app", "order", "sign", "chat", "files", "monitor", "quote")
     foreach ($sub in $subdomains) {
-        Write-Phase11Log "INFO" "DNS record 확인: $sub.samhan-air.com → ALB"
+        Write-Phase11Log "INFO" "DNS record 확인: $($sub).samhan-air.com → ALB"
         # nslookup "$sub.samhan-air.com" 8.8.8.8
     }
 
     # 아로로지스 (spec 2026-05-14 분리) — 별도 subdomain 3개
     $arologisSubdomains = @("api.arologis", "app.arologis", "mobile.arologis")
     foreach ($sub in $arologisSubdomains) {
-        Write-Phase11Log "INFO" "DNS record 확인: $sub.samhan-air.com → ALB (아로로지스)"
+        Write-Phase11Log "INFO" "DNS record 확인: $($sub).samhan-air.com → ALB (아로로지스)"
         # nslookup "$sub.samhan-air.com" 8.8.8.8
     }
 
@@ -224,7 +327,7 @@ function Invoke-HealthCheck {
     Write-Phase11Log "INFO" "=== Health Check 시작 ==="
 
     # 아로로지스 분리 (spec 2026-05-14, plan DO6):
-    #   - api.samhan-air.com         : Samhan Public 14 service 통합 (api-gateway:8080)
+    #   - api.samhan-air.com         : Samhan Public 17 service 통합 (api-gateway:8080)
     #   - api.arologis.samhan-air.com: 아로로지스 단독 (arologis-service:8097, gateway 우회)
     #   - app/mobile.arologis        : 정적 페이지 (200 응답만 확인)
     $endpoints = @(
@@ -235,9 +338,14 @@ function Invoke-HealthCheck {
         "https://mobile.arologis.samhan-air.com/"
     )
 
-    if ($EC2PublicIp) {
-        $endpoints += "http://$EC2PublicIp:8080/actuator/health"
-        $endpoints += "http://$EC2PublicIp:8097/actuator/health"   # arologis-service direct
+    if ($AlbDnsName) {
+        Write-Phase11Log "INFO" "ALB DNS HTTPS 임시 검증: https://$AlbDnsName/actuator/health (인증서 hostname mismatch 때문에 curl.exe -k 사용)"
+        try {
+            curl.exe -k -fs "https://$AlbDnsName/actuator/health" | Out-Null
+            Write-Phase11Log "OK" "PASS: https://$AlbDnsName/actuator/health"
+        } catch {
+            Write-Phase11Log "WARN" "FAIL: https://$AlbDnsName/actuator/health — $($_.Exception.Message)"
+        }
     }
 
     foreach ($url in $endpoints) {
@@ -254,7 +362,16 @@ function Invoke-HealthCheck {
         }
     }
 
-    Write-Phase11Log "INFO" "14 service 전체 health check 는 CUTOVER-CHECKLIST.md 참조"
+    Write-Phase11Log "INFO" "17 service 전체 포트 검증은 EC2 SSM Session Manager 내부 localhost curl 로 수행합니다."
+    if ($InstanceId) {
+        Write-Phase11Log "INFO" "SSM 접속: aws ssm start-session --target $InstanceId --region ap-northeast-2"
+    }
+    Write-Phase11Log "INFO" "SSM 내부 실행 포트: 8761 8080 8081 8082 8083 8084 8085 8086 8087 8088 8089 8091 8092 8093 8094 8095 8097"
+    Write-Phase11Log "INFO" "RDS 15 DB 실검증은 -VerifyRdsDatabases 옵션 사용 시 psql 로 수행합니다. DryRun 에서는 실제 DB 검증을 생략합니다."
+
+    if ($VerifyRdsDatabases) {
+        Test-RdsDatabasesExist
+    }
 }
 
 # ─── 메인 실행 ────────────────────────────────────────────────────────────────

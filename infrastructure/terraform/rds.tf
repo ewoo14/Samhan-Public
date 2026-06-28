@@ -7,7 +7,7 @@
 #   - 스토리지: gp3 100 GB
 #   - Multi-AZ: false (비용 최적화 — 사용자 결정 2026-05-08)
 #   - Automated Backup: retention 7일 (무료 — ✅ 적용)
-#   - 14 DB schema 분리 (각 service 별 별도 database)
+#   - 15 DB schema 분리 (logging_db 제외, 각 service 별 별도 database + migration_db)
 #   - Private Subnet 배치 (EC2 SG 에서만 접근)
 ################################################################################
 
@@ -28,10 +28,10 @@ resource "aws_db_parameter_group" "main" {
   name   = "${local.name_prefix}-pg15-params"
   family = "postgres15"
 
-  # 14 service 동시 연결 최적화
+  # 17 service 동시 연결 최적화 (17 × Hikari default 10 = 170, +RabbitMQ/ES 여유 포함)
   parameter {
     name  = "max_connections"
-    value = "200"
+    value = "300"
   }
 
   # 로그 설정 (슬로우 쿼리 감지)
@@ -69,6 +69,20 @@ resource "aws_db_parameter_group" "main" {
 
 # ─── RDS Instance ──────────────────────────────────────────────────────────────
 
+resource "aws_secretsmanager_secret" "db_password" {
+  name        = "samhan/production/db-password"
+  description = "SamhanLogis production RDS master password (EC2 user_data 조회용 samhan/* 표준 시크릿)"
+
+  tags = {
+    Name = "${local.name_prefix}-db-password"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "db_password" {
+  secret_id     = aws_secretsmanager_secret.db_password.id
+  secret_string = var.rds_password
+}
+
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-rds"
 
@@ -96,8 +110,8 @@ resource "aws_db_instance" "main" {
 
   # ── 백업 설정 (✅ RDS automated backup retention 7일 — 무료) ──────────────
   backup_retention_period = var.rds_backup_retention_days
-  backup_window           = "18:00-19:00"  # UTC 18:00 = KST 03:00 (저트래픽 구간)
-  maintenance_window      = "sun:19:00-sun:20:00"  # UTC 일 19:00 = KST 월 04:00
+  backup_window           = "18:00-19:00"         # UTC 18:00 = KST 03:00 (저트래픽 구간)
+  maintenance_window      = "sun:19:00-sun:20:00" # UTC 일 19:00 = KST 월 04:00
 
   # ── Single-AZ (사용자 결정 — Multi-AZ 보류) ───────────────────────────────
   multi_az = false
@@ -147,10 +161,10 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
-# ─── 14 service DB 초기화 스크립트 (RDS Event 기반) ─────────────────────────
-# 실제 DB 생성은 EC2 user_data 또는 별도 마이그레이션 스크립트로 수행.
-# Terraform 에서는 RDS 엔드포인트만 관리하고
-# DB schema 생성은 Flyway 자동 마이그레이션 위임.
+# ─── 17 service DB 초기화 (user_data.sh 내 init-rds.sql 실행 위임) ──────────
+# EC2 user_data 최초 부팅 시 templates/init-rds.sql 을 실행하여 15개 DB 생성.
+# 이후 각 서비스 Flyway 마이그레이션이 각 DB schema 를 자동 구성.
+# Terraform 에서는 RDS 엔드포인트만 관리 (DB/schema 는 init-rds.sql + Flyway 위임).
 
 # ─── Outputs ──────────────────────────────────────────────────────────────────
 
@@ -168,4 +182,10 @@ output "rds_port" {
 output "rds_db_name" {
   description = "RDS 기본 DB 이름"
   value       = aws_db_instance.main.db_name
+}
+
+output "rds_db_password_secret_arn" {
+  description = "RDS master password Secrets Manager secret ARN (samhan/production/db-password)"
+  value       = aws_secretsmanager_secret.db_password.arn
+  sensitive   = true
 }

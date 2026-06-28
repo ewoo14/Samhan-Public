@@ -60,12 +60,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "attachments" {
     status = "Enabled"
 
     filter {
-      prefix = ""  # 모든 객체에 적용
+      prefix = "" # 모든 객체에 적용
     }
 
     transition {
       days          = 180
-      storage_class = "GLACIER_IR"  # Glacier Instant Retrieval — 즉시 복구 가능
+      storage_class = "GLACIER_IR" # Glacier Instant Retrieval — 즉시 복구 가능
     }
 
     noncurrent_version_transition {
@@ -90,6 +90,22 @@ resource "aws_s3_bucket_cors_configuration" "attachments" {
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
   }
+}
+
+# EC2 user_data 최초 기동에 필요한 배포 산출물.
+# Terraform apply 단계에서 첨부 버킷에 먼저 업로드되어야 EC2 첫 부팅이 fail-fast 되지 않는다.
+resource "aws_s3_object" "init_rds" {
+  bucket = aws_s3_bucket.attachments.id
+  key    = "deploy/init-rds.sql"
+  source = "${path.module}/templates/init-rds.sql"
+  etag   = filemd5("${path.module}/templates/init-rds.sql")
+}
+
+resource "aws_s3_object" "compose" {
+  bucket = aws_s3_bucket.attachments.id
+  key    = "deploy/docker-compose.prod.yml"
+  source = "${path.module}/../docker-compose.prod.yml"
+  etag   = filemd5("${path.module}/../docker-compose.prod.yml")
 }
 
 # ─── samhan-logs ─────────────────────────────────────────────────────────────
@@ -138,7 +154,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs" {
     status = "Enabled"
 
     filter {
-      prefix = ""  # 모든 객체에 적용
+      prefix = "" # 모든 객체에 적용
     }
 
     expiration {
@@ -160,7 +176,7 @@ resource "aws_s3_bucket_policy" "logs" {
     Statement = [
       {
         Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::600734575887:root" }  # ap-northeast-2 ALB 계정
+        Principal = { AWS = "arn:aws:iam::600734575887:root" } # ap-northeast-2 ALB 계정
         Action    = "s3:PutObject"
         Resource  = "${aws_s3_bucket.logs.arn}/alb-logs/*"
       },

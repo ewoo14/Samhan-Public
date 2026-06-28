@@ -51,7 +51,7 @@ variable "availability_zones" {
 # ─── EC2 ─────────────────────────────────────────────────────────────────────
 
 variable "ec2_instance_type" {
-  description = "EC2 인스턴스 타입 (14 service docker-compose)"
+  description = "EC2 인스턴스 타입 (17 service docker-compose + RabbitMQ + Elasticsearch)"
   type        = string
   default     = "m5.xlarge"
 }
@@ -60,7 +60,7 @@ variable "ec2_ami_id" {
   description = "EC2 AMI ID (Amazon Linux 2023)"
   type        = string
   # ap-northeast-2 Amazon Linux 2023 최신 AMI — 실 배포 전 확인 필요
-  default     = "ami-0c9c942bd7bf113a2"
+  default = "ami-0c9c942bd7bf113a2"
 }
 
 variable "ec2_volume_size" {
@@ -70,16 +70,10 @@ variable "ec2_volume_size" {
 }
 
 variable "ec2_key_pair_name" {
-  description = "EC2 SSH 키페어 이름"
+  description = "선택 EC2 키페어 이름. 기본 운영 접속은 SSM Session Manager 이므로 null 권장."
   type        = string
-  default     = "samhanlogis-prod-key"
-}
-
-variable "allowed_ssh_cidr" {
-  description = "SSH 허용 CIDR (운영자 IP)"
-  type        = string
-  default     = "0.0.0.0/0"
-  # 실 운영 시 운영자 고정 IP 로 제한할 것
+  default     = null
+  nullable    = true
 }
 
 # ─── RDS ─────────────────────────────────────────────────────────────────────
@@ -116,10 +110,9 @@ variable "rds_username" {
 }
 
 variable "rds_password" {
-  description = "RDS 마스터 비밀번호 (Secrets Manager 관리 권장)"
+  description = "RDS 마스터 비밀번호. samhan/production/db-password Secrets Manager 시크릿과 RDS password 에 동일 값으로 주입."
   type        = string
   sensitive   = true
-  # terraform.tfvars 에서 주입 — 절대 하드코딩 금지
 }
 
 variable "rds_backup_retention_days" {
