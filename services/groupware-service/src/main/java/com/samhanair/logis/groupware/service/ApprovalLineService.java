@@ -1,17 +1,22 @@
 package com.samhanair.logis.groupware.service;
 
 import com.samhanair.logis.approval.ApprovalStatus;
+import com.samhanair.logis.approval.StepType;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.groupware.client.GroupwareApprovalLineConfigClient;
 import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
+import com.samhanair.logis.groupware.domain.ResolvedRole;
 import com.samhanair.logis.groupware.dto.ApprovalLineAdminResponse;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;
 import com.samhanair.logis.groupware.repository.ApprovalLineRepository;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -37,44 +42,120 @@ public class ApprovalLineService {
     private final UserClient userClient;
     private final ApprovalNumberService approvalNumberService;
     private final ApprovalTemplateService approvalTemplateService;
+    private final GroupwareApprovalLineConfigClient configClient;
 
     /**
      * 신규 결재선 생성 + chain 등록. 요청자 본인 차단 / 결재자 0명 차단 / 사용자 미존재 차단 가드.
      *
+     * <p>요청자는 {@code req.requesterId()} 를 그대로 신뢰한다. <b>HTTP endpoint 에서 직접 호출 금지.</b>
+     * 본문의 requesterId 를 신뢰하므로 identity spoofing 위험이 있다. HTTP 요청 처리 시에는 반드시
+     * {@link #createWithActor(ApprovalLineCreateRequest, UUID)} 를 사용한다.
+     *
+     * <p>허용 사용처: IT 테스트, 내부 배치/시드 호출.
+     *
      * @param req 결재선 생성 요청
+     * @return 영속화된 결재선
+     * @deprecated HTTP 미사용. 헤더 기반 신원이 필요한 경우
+     *             {@link #createWithActor(ApprovalLineCreateRequest, UUID)} 사용.
+     *             IT 테스트·내부 호출에서만 허용.
+     */
+    @Deprecated
+    @Transactional
+    public ApprovalLine create(ApprovalLineCreateRequest req) {
+        return createInternal(req, req.requesterId());
+    }
+
+    /**
+     * 신규 결재선 생성 + chain 등록 — 게이트웨이 주입 헤더 신원 기반.
+     *
+     * <p>컨트롤러가 {@code X-User-Id} 헤더에서 읽은 {@code actorRequesterId} 를 사용하며
+     * {@code req.requesterId()} 는 무시한다. identity spoofing 방지
+     * ({@code feedback_identity_header_authz_antipattern}).
+     *
+     * @param req              결재선 생성 요청 (requesterId 본문 필드는 무시됨)
+     * @param actorRequesterId 게이트웨이 주입 {@code X-User-Id} 헤더 값
      * @return 영속화된 결재선
      */
     @Transactional
-    public ApprovalLine create(ApprovalLineCreateRequest req) {
-        if (req.approverIds() == null || req.approverIds().isEmpty()) {
+    public ApprovalLine createWithActor(ApprovalLineCreateRequest req, UUID actorRequesterId) {
+        return createInternal(req, actorRequesterId);
+    }
+
+    private ApprovalLine createInternal(ApprovalLineCreateRequest req, UUID requesterId) {
+        List<UUID> overrideApproverIds = safeApproverIds(req.approverIds());
+        String documentType = documentTypeFor(req.templateId());
+        GroupwareApprovalLineConfigClient.ConfigLine configLine =
+                documentType == null ? GroupwareApprovalLineConfigClient.ConfigLine.unconfigured()
+                        : configClient.fetchRoles(documentType);
+        if (!configLine.configured() && overrideApproverIds.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "결재자 1명 이상 필요");
         }
         // Phase 9 W3 — BE backlog #4 채택. 요청자 + 결재자 N 명을 1회 bulk RPC 로 검증
         // (이전: 직렬 N+1 RPC, 현재: 1 RPC + cache hit 기대).
-        validateApproverChain(req.requesterId(), req.approverIds());
-        List<UUID> idsToVerify = new ArrayList<>();
-        idsToVerify.add(req.requesterId());
-        idsToVerify.addAll(req.approverIds());
+        validateApproverChain(requesterId, overrideApproverIds);
+        List<UUID> idsToVerify = userIdsToVerify(requesterId, overrideApproverIds, configLine.roles());
         Map<UUID, Boolean> existsMap = userClient.verifyBulk(idsToVerify);
-        if (!Boolean.TRUE.equals(existsMap.get(req.requesterId()))) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "요청자 미존재: " + req.requesterId());
+        if (!Boolean.TRUE.equals(existsMap.get(requesterId))) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "요청자 미존재: " + requesterId);
         }
-        for (UUID approverId : req.approverIds()) {
+        for (UUID approverId : idsToVerify) {
             if (!Boolean.TRUE.equals(existsMap.get(approverId))) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "결재자 미존재: " + approverId);
             }
         }
         ApprovalLine line = ApprovalLine.open(
-                approvalNumberService.next(), req.requesterId(), req.title(), req.content());
+                approvalNumberService.next(), requesterId, req.title(), req.content());
+        if (documentType != null) {
+            line.linkGroupwareDocument(documentType, req.templateId());
+        }
         if (req.templateId() != null) {
             Map<String, String> normalized =
                     approvalTemplateService.validateFieldValues(req.templateId(), req.fieldValues());
             line.applyTemplateValues(req.templateId(), approvalTemplateService.writeFieldValues(normalized));
         }
-        for (UUID approverId : req.approverIds()) {
-            line.appendStep(approverId);
+        try {
+            if (configLine.configured()) {
+                line.instantiateFromRoles(configLine.roles());
+                for (UUID approverId : overrideApproverIds) {
+                    line.appendStep(approverId);
+                }
+            } else {
+                for (UUID approverId : overrideApproverIds) {
+                    line.appendStep(approverId);
+                }
+            }
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, ex.getMessage());
         }
         return repository.save(line);
+    }
+
+    private List<UUID> userIdsToVerify(UUID requesterId, List<UUID> overrideApproverIds,
+                                       List<ResolvedRole> roles) {
+        List<UUID> idsToVerify = new ArrayList<>();
+        idsToVerify.add(requesterId);
+        idsToVerify.addAll(overrideApproverIds);
+        roles.stream()
+                .filter(role -> role.stepType() == StepType.USER && role.approverUserId() != null)
+                .sorted(Comparator.comparingInt(ResolvedRole::sequence))
+                .map(ResolvedRole::approverUserId)
+                .forEach(idsToVerify::add);
+        return idsToVerify.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private List<UUID> safeApproverIds(List<UUID> approverIds) {
+        return approverIds == null ? List.of() : List.copyOf(approverIds);
+    }
+
+    private String documentTypeFor(UUID templateId) {
+        String code = approvalTemplateService.findTemplateCodeOrNull(templateId);
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+        return "GROUPWARE_" + code.trim();
     }
 
     /** 단건 조회. 미존재 시 404. */
@@ -125,8 +206,17 @@ public class ApprovalLineService {
         Set<UUID> ids = new LinkedHashSet<>();
         for (ApprovalLine line : lines) {
             ids.add(line.getRequesterId());
-            line.getStepsView().forEach(step -> ids.add(step.getApproverUserId()));
+            line.getStepsView().forEach(step -> {
+                if (step.getApproverUserId() != null) {
+                    ids.add(step.getApproverUserId());
+                }
+                // GROUP 단계 실처리자(approve 시 기록된 approvedByUserId) 표시명도 수집한다.
+                if (step.getApprovedByUserId() != null) {
+                    ids.add(step.getApprovedByUserId());
+                }
+            });
         }
+        ids.removeIf(Objects::isNull);
         if (ids.isEmpty()) {
             return Map.of();
         }
@@ -149,7 +239,11 @@ public class ApprovalLineService {
         }
     }
 
-    /** 결재자 승인 처리 — chain 의 현재 step 결재자만 호출 허용. */
+    /**
+     * 결재자 승인 처리 — USER 전용 경로. chain 의 현재 step 결재자만 호출 허용.
+     *
+     * <p>GROUP 단계가 포함된 결재선에서는 {@link #approve(UUID, UUID, Set)} 를 사용한다.
+     */
     @Transactional
     public ApprovalLine approve(UUID approvalId, UUID approverId) {
         ApprovalLine line = findById(approvalId);
@@ -161,12 +255,58 @@ public class ApprovalLineService {
         return line;
     }
 
-    /** 결재자 반려 처리. */
+    /**
+     * 결재자 승인 처리 — GROUP 단계 컨텍스트를 포함한 경로.
+     *
+     * <p>게이트웨이 주입 {@code X-User-Groups} 헤더의 그룹 UUID 집합을 함께 전달하면
+     * GROUP 단계의 멤버십 검증이 정상 동작한다.
+     *
+     * @param approvalId    결재선 UUID
+     * @param actorUserId   게이트웨이 주입 {@code X-User-Id} 헤더 값
+     * @param actorGroupIds 게이트웨이 주입 {@code X-User-Groups} 헤더의 UUID 집합
+     * @return 승인 처리된 결재선
+     */
+    @Transactional
+    public ApprovalLine approve(UUID approvalId, UUID actorUserId, Set<UUID> actorGroupIds) {
+        ApprovalLine line = findById(approvalId);
+        try {
+            line.approve(actorUserId, actorGroupIds == null ? Set.of() : actorGroupIds, Set.of());
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
+        }
+        return line;
+    }
+
+    /**
+     * 결재자 반려 처리 — USER 전용 경로.
+     *
+     * <p>GROUP 단계가 포함된 결재선에서는 {@link #reject(UUID, UUID, Set, String)} 를 사용한다.
+     */
     @Transactional
     public ApprovalLine reject(UUID approvalId, UUID approverId, String reason) {
         ApprovalLine line = findById(approvalId);
         try {
             line.reject(approverId, reason);
+        } catch (IllegalStateException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
+        }
+        return line;
+    }
+
+    /**
+     * 결재자 반려 처리 — GROUP 단계 컨텍스트를 포함한 경로.
+     *
+     * @param approvalId    결재선 UUID
+     * @param actorUserId   게이트웨이 주입 {@code X-User-Id} 헤더 값
+     * @param actorGroupIds 게이트웨이 주입 {@code X-User-Groups} 헤더의 UUID 집합
+     * @param reason        반려 사유
+     * @return 반려 처리된 결재선
+     */
+    @Transactional
+    public ApprovalLine reject(UUID approvalId, UUID actorUserId, Set<UUID> actorGroupIds, String reason) {
+        ApprovalLine line = findById(approvalId);
+        try {
+            line.reject(actorUserId, reason, actorGroupIds == null ? Set.of() : actorGroupIds, Set.of());
         } catch (IllegalStateException ex) {
             throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
         }

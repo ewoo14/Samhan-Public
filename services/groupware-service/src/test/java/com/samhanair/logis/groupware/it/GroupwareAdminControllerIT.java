@@ -10,7 +10,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.samhanair.logis.approval.ApprovalStatus;
 import com.samhanair.logis.groupware.GroupwareServiceApplication;
+import com.samhanair.logis.groupware.client.GroupwareApprovalLineConfigClient;
 import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
 import com.samhanair.logis.groupware.dto.ApprovalDecisionRequest;
@@ -76,6 +78,12 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
     private UserClient userClient;
     @MockBean
     private DynamicPermissionClient dynamicPermissionClient;
+    /**
+     * Eureka 미가용 환경에서 실 RestClient 호출을 차단한다
+     * ({@code feedback_it_mockbean_external_clients}).
+     */
+    @MockBean
+    private GroupwareApprovalLineConfigClient configClient;
 
     @BeforeEach
     void cleanup() {
@@ -86,6 +94,9 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
                         org.mockito.ArgumentMatchers.any(PermissionAction.class)))
                 .thenReturn(true);
         lenient().when(userClient.exists(any())).thenReturn(true);
+        // Eureka 미가용 환경 — 실 auth-service RestClient 호출을 차단하고 미설정 상태로 반환한다.
+        lenient().when(configClient.fetchRoles(any()))
+                .thenReturn(GroupwareApprovalLineConfigClient.ConfigLine.unconfigured());
         // Phase 9 W3 — bulk verify 채택. 모든 입력 ID 를 true 매핑하여 통과시킨다.
         lenient().when(userClient.verifyBulk(anyList())).thenAnswer(inv -> {
             java.util.List<java.util.UUID> ids = inv.getArgument(0);
@@ -103,27 +114,38 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
 
     @Test
     void create_approval_returns_201() throws Exception {
-        UUID requester = UUID.randomUUID();
+        // P1-2 fix: requesterId 는 헤더 X-User-Id(MANAGER_ACCOUNT_ID) 에서 읽음.
+        // 본문 requester UUID 는 무시되므로 이름 조회 mock 을 헤더 UUID 기준으로 구성한다.
+        UUID managerActorUuid = UUID.fromString(MANAGER_ACCOUNT_ID);
+        UUID forgedRequesterId = differentUuid(managerActorUuid);
         UUID approver1 = UUID.randomUUID();
         UUID approver2 = UUID.randomUUID();
         lenient().when(userClient.resolveDisplayNames(anyList())).thenReturn(java.util.Map.of(
-                requester, "요청자",
+                managerActorUuid, "요청자",
                 approver1, "1차결재자",
                 approver2, "2차결재자"));
         ApprovalLineCreateRequest req = new ApprovalLineCreateRequest(
-                requester, "휴가 신청", "연차 1일",
+                forgedRequesterId, "휴가 신청", "연차 1일",
                 List.of(approver1, approver2));
-        mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/approvals")
+        MvcResult created = mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/approvals")
                         .header("X-User-Id", MANAGER_ACCOUNT_ID)
                         .header("X-User-Role", "MANAGER")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.status").value("PENDING"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.requesterId").value(MANAGER_ACCOUNT_ID))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.requesterName").value("요청자"))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.steps.length()").value(2))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.steps[0].approverName").value("1차결재자"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data.steps[1].approverName").value("2차결재자"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.steps[1].approverName").value("2차결재자"))
+                .andReturn();
+        String approvalId = objectMapper.readTree(
+                        created.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .path("data").path("approvalId").asText();
+        ApprovalLine persisted = approvalLineRepository.findById(UUID.fromString(approvalId)).orElseThrow();
+        assertThat(persisted.getRequesterId()).isEqualTo(managerActorUuid);
+        assertThat(persisted.getRequesterId()).isNotEqualTo(forgedRequesterId);
     }
 
     @Test
@@ -147,10 +169,11 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
 
     @Test
     void create_approval_rejects_duplicate_approver_ids() throws Exception {
-        UUID requester = UUID.randomUUID();
+        // P1-2 fix: requesterId 는 헤더 MANAGER_ACCOUNT_ID. approver 는 별도 UUID(자기 자신 아님).
+        UUID managerActorUuid = UUID.fromString(MANAGER_ACCOUNT_ID);
         UUID approver = UUID.randomUUID();
         ApprovalLineCreateRequest req = new ApprovalLineCreateRequest(
-                requester, "중복 결재자 case", null, List.of(approver, approver));
+                managerActorUuid, "중복 결재자 case", null, List.of(approver, approver));
 
         mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/approvals")
                         .header("X-User-Id", MANAGER_ACCOUNT_ID)
@@ -192,11 +215,14 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
 
     @Test
     void approve_first_step_returns_200_in_progress() throws Exception {
-        UUID requester = UUID.randomUUID();
+        // P1-2 fix: requesterId 는 create 헤더 X-User-Id 에서 읽고, actorId 는 approve 헤더에서 읽는다.
+        // create: X-User-Id=MANAGER_ACCOUNT_ID → requesterId. approver1 은 다른 랜덤 UUID.
+        // approve: X-User-Id=approver1.toString() → actorId. 본문 approverId 는 무시.
+        UUID managerActorUuid = UUID.fromString(MANAGER_ACCOUNT_ID);
         UUID approver1 = UUID.randomUUID();
         UUID approver2 = UUID.randomUUID();
         ApprovalLineCreateRequest createReq = new ApprovalLineCreateRequest(
-                requester, "결재 진행 case", null, List.of(approver1, approver2));
+                managerActorUuid, "결재 진행 case", null, List.of(approver1, approver2));
         MvcResult created = mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/approvals")
                         .header("X-User-Id", MANAGER_ACCOUNT_ID)
                         .header("X-User-Role", "MANAGER")
@@ -204,42 +230,84 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(createReq)))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andReturn();
-        String approvalId = objectMapper.readTree(created.getResponse().getContentAsString())
+        String approvalId = objectMapper.readTree(
+                        created.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
                 .path("data").path("approvalId").asText();
 
-        ApprovalDecisionRequest decision = new ApprovalDecisionRequest(approver1, null);
+        // approver1 이 approve — X-User-Id 헤더에 approver1 UUID 를 직접 전달
+        UUID forgedApproverId = differentUuid(approver1);
+        ApprovalDecisionRequest decision = new ApprovalDecisionRequest(forgedApproverId, null);
         mockMvc.perform(MockMvcRequestBuilders.put("/admin/groupware/approvals/" + approvalId + "/approve")
-                        .header("X-User-Id", MANAGER_ACCOUNT_ID)
+                        .header("X-User-Id", approver1.toString())
                         .header("X-User-Role", "MANAGER")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(decision)))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.status").value("IN_PROGRESS"));
+        ApprovalLine persisted = approvalLineRepository.findById(UUID.fromString(approvalId)).orElseThrow();
+        assertThat(persisted.getStepsView().get(0).getApprovedByUserId()).isEqualTo(approver1);
+        assertThat(persisted.getStepsView().get(0).getApprovedByUserId()).isNotEqualTo(forgedApproverId);
     }
 
     @Test
     void reject_first_step_returns_200_rejected() throws Exception {
-        UUID requester = UUID.randomUUID();
+        // P1-2 fix: requesterId 는 create 헤더, actorId 는 reject 헤더에서 읽는다.
+        UUID managerActorUuid = UUID.fromString(MANAGER_ACCOUNT_ID);
         UUID approver1 = UUID.randomUUID();
         ApprovalLineCreateRequest createReq = new ApprovalLineCreateRequest(
-                requester, "반려 case", null, List.of(approver1));
+                managerActorUuid, "반려 case", null, List.of(approver1));
         MvcResult created = mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/approvals")
                         .header("X-User-Id", MANAGER_ACCOUNT_ID)
                         .header("X-User-Role", "MANAGER")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createReq)))
                 .andReturn();
-        String approvalId = objectMapper.readTree(created.getResponse().getContentAsString())
+        String approvalId = objectMapper.readTree(
+                        created.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
                 .path("data").path("approvalId").asText();
 
-        ApprovalDecisionRequest decision = new ApprovalDecisionRequest(approver1, "사유 부족");
+        // approver1 이 reject — X-User-Id 헤더에 approver1 UUID 를 직접 전달
+        UUID forgedApproverId = differentUuid(approver1);
+        ApprovalDecisionRequest decision = new ApprovalDecisionRequest(forgedApproverId, "사유 부족");
         mockMvc.perform(MockMvcRequestBuilders.put("/admin/groupware/approvals/" + approvalId + "/reject")
-                        .header("X-User-Id", MANAGER_ACCOUNT_ID)
+                        .header("X-User-Id", approver1.toString())
                         .header("X-User-Role", "MANAGER")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(decision)))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.status").value("REJECTED"));
+        ApprovalLine persisted = approvalLineRepository.findById(UUID.fromString(approvalId)).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(ApprovalStatus.REJECTED);
+        assertThat(persisted.getStepsView().get(0).getApprovedByUserId()).isEqualTo(approver1);
+        assertThat(persisted.getStepsView().get(0).getApprovedByUserId()).isNotEqualTo(forgedApproverId);
+    }
+
+    /**
+     * templateId 없음 + approverIds 빈 리스트 → config 미설정 + 수동 결재자 0 → 400 INVALID_INPUT.
+     *
+     * <p>HTTP 레이어를 통해 {@link ApprovalLineService#createWithActor} 경로가
+     * 결재자 부재를 올바르게 거부하는지 계약 단언한다.
+     */
+    @Test
+    void create_approval_with_no_template_and_empty_approvers_returns_400() throws Exception {
+        // configClient 는 unconfigured 반환 (setUp stub). approverIds = 빈 리스트.
+        ApprovalLineCreateRequest req = new ApprovalLineCreateRequest(
+                UUID.fromString(MANAGER_ACCOUNT_ID), "결재자 없음 테스트", null, List.of());
+        mockMvc.perform(MockMvcRequestBuilders.post("/admin/groupware/approvals")
+                        .header("X-User-Id", MANAGER_ACCOUNT_ID)
+                        .header("X-User-Role", "MANAGER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest());
+    }
+
+    /** 신원 위조 회귀 테스트용으로 기준 actor 와 다른 UUID 를 만든다. */
+    private static UUID differentUuid(UUID baseline) {
+        UUID candidate = UUID.randomUUID();
+        while (candidate.equals(baseline)) {
+            candidate = UUID.randomUUID();
+        }
+        return candidate;
     }
 
     @Test

@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.MappedSuperclass;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,8 +19,12 @@ import lombok.NoArgsConstructor;
  * 부모 결재선으로의 {@code @ManyToOne} 역참조·{@code @Id} 는 소비 서비스 concrete @Entity 가 소유한다
  * (Hibernate 가 @MappedSuperclass 의 per-service 관계 타입을 매핑하지 못하므로).
  *
- * <p>결재자 식별은 {@link StepType} 으로 분기한다 — A1 은 {@link StepType#USER}(approverUserId)만
- * 실배선하고, GROUP(approverGroupId/requiredPageCode)·CREATOR 는 컬럼만 nullable 로 선반영한다.
+ * <p>결재자 식별은 {@link StepType} 으로 분기한다.
+ * <ul>
+ *   <li>{@link StepType#USER} — {@code approverUserId} 사원 UUID 일치 여부로 판정.</li>
+ *   <li>{@link StepType#GROUP} — actor 가 {@code approverGroupId} 그룹의 멤버인지(groupMatch)로만 판정.
+ *       {@code requiredPageCode} 는 표시/설정 저장용이며 approve/reject 권한 판정에는 사용하지 않는다.</li>
+ * </ul>
  */
 @Getter
 @MappedSuperclass
@@ -85,11 +90,53 @@ public abstract class ApprovalStepBase extends BaseEntity {
         this.status = ApprovalStepStatus.PENDING;
     }
 
-    /** 액터가 본 단계의 결재 권한자인지(A1=USER 모드 동일성). GROUP/CREATOR 는 A2/A4. */
+    /**
+     * GROUP 모드 단계 초기화 — 권한그룹 식별자는 필수.
+     *
+     * <p>{@code requiredPageCode} 는 관리 화면 표시 및 설정 저장용 보조 정보이며
+     * approve/reject 결재 권한 판정에는 사용하지 않는다.
+     */
+    protected void initGroupStep(UUID approverGroupId, String requiredPageCode, int sequence) {
+        if (approverGroupId == null) {
+            throw new IllegalArgumentException("approverGroupId 필수");
+        }
+        this.stepType = StepType.GROUP;
+        this.approverGroupId = approverGroupId;
+        this.requiredPageCode = blankToNull(requiredPageCode);
+        this.sequence = sequence;
+        this.status = ApprovalStepStatus.PENDING;
+    }
+
+    /** 액터가 본 단계의 결재 권한자인지. 기존 USER 전용 호출은 source 호환을 위해 유지한다. */
     boolean matchesActor(UUID actorUserId) {
-        return this.stepType == StepType.USER
-                && this.approverUserId != null
-                && this.approverUserId.equals(actorUserId);
+        return matchesActor(actorUserId, Set.of(), Set.of());
+    }
+
+    /**
+     * 액터가 본 단계의 결재 권한자인지.
+     *
+     * <p>{@link StepType#GROUP} 판정은 그룹 멤버십(groupMatch)만 사용한다.
+     * {@code requiredPageCode} 는 표시/설정 저장용이므로 approve/reject 판정에 사용하지 않는다
+     * — page-code 단독 일치로 결재권이 부여되는 특권 상승을 방지한다.
+     *
+     * @param actorUserId    수행자 user UUID
+     * @param actorGroupIds  수행자의 활성 그룹 UUID 집합 (게이트웨이 주입 {@code X-User-Groups})
+     * @param actorPageCodes reserved — 현재 판정 미사용
+     */
+    boolean matchesActor(UUID actorUserId, Set<UUID> actorGroupIds, Set<String> actorPageCodes) {
+        if (actorUserId == null) {
+            return false;
+        }
+        if (this.stepType == StepType.USER) {
+            return this.approverUserId != null && this.approverUserId.equals(actorUserId);
+        }
+        if (this.stepType != StepType.GROUP) {
+            return false;
+        }
+        // GROUP 판정 = 그룹 멤버십(groupMatch)만 사용. pageMatch 는 특권 상승 위험으로 제외.
+        Set<UUID> safeGroupIds = actorGroupIds == null ? Set.of() : actorGroupIds;
+        boolean groupMatch = this.approverGroupId != null && safeGroupIds.contains(this.approverGroupId);
+        return groupMatch;
     }
 
     /** 본 단계 승인. 호출 흐름은 {@link ApprovalLineBase#approve(UUID)} 가 보장. */
@@ -113,5 +160,9 @@ public abstract class ApprovalStepBase extends BaseEntity {
         if (this.status != ApprovalStepStatus.PENDING) {
             throw new IllegalStateException("이미 처리된 결재 단계입니다: " + this.status);
         }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }
