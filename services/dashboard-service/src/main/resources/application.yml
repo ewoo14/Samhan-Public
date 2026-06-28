@@ -5,6 +5,10 @@ server:
 spring:
   application:
     name: dashboard-service
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 8MB
   datasource:
     # 시크릿 placeholder — DB 자격증명은 반드시 환경변수로 주입.
     # default 값은 로컬 docker-compose 와의 호환을 위한 자리 표시자이며 실제 환경에서는 override 필수.
@@ -79,6 +83,14 @@ app:
   # 운영 / staging 데이터 오염 방지 — default false. KPI 135 + 실시간재고 200 + 매출집계 150 + MV refresh.
   dashboard:
     seed-test-data: ${SAMHAN_DASHBOARD_SEED_TEST_DATA:false}
+  notice:
+    minio:
+      enabled: ${SAMHAN_NOTICE_MINIO_ENABLED:false}
+      endpoint: ${SAMHAN_NOTICE_MINIO_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
+      access-key: ${SAMHAN_NOTICE_MINIO_ACCESS_KEY:${MINIO_ROOT_USER:samhan}}
+      secret-key: ${SAMHAN_NOTICE_MINIO_SECRET_KEY:${MINIO_ROOT_PASSWORD:}}
+      bucket: ${SAMHAN_NOTICE_MINIO_BUCKET:samhan-attachments}
+      presigned-expiry-seconds: ${SAMHAN_NOTICE_MINIO_PRESIGNED_EXPIRY:300}
 
 management:
   endpoints:
