@@ -1,5 +1,6 @@
 package com.samhanair.logis.dashboard.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.samhanair.logis.dashboard.domain.AppClientType;
 import com.samhanair.logis.dashboard.domain.AppRelease;
 import com.samhanair.logis.dashboard.domain.AppReleaseForceLevel;
@@ -14,7 +15,9 @@ public record AppReleaseResponse(
         AppReleaseForceLevel forceLevel,
         String releaseNotes,
         LocalDateTime releasedAt,
-        String minSupportedVersion
+        String minSupportedVersion,
+        @JsonProperty("isPublished")
+        boolean isPublished
 ) {
 
     /** entity 를 admin 응답 DTO 로 변환한다. */
@@ -26,6 +29,7 @@ public record AppReleaseResponse(
                 release.getForceLevel(),
                 release.getReleaseNotes(),
                 release.getReleasedAt(),
-                release.getMinSupportedVersion());
+                release.getMinSupportedVersion(),
+                release.isPublished());
     }
 }
