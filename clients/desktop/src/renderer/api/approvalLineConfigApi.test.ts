@@ -210,6 +210,17 @@ describe('approvalLineConfigApi contract', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/auth/admin/approval-line-configs/groups')
   })
 
+  it('approval-line groups 조회 실패 시 permission-groups 로 그룹명 lookup 을 fallback 한다', async () => {
+    vi.mocked(apiClient.get)
+      .mockRejectedValueOnce(new Error('approval-line groups unavailable'))
+      .mockResolvedValueOnce({ data: { data: [{ id: 'g2', name: '회계팀' }] } })
+
+    await expect(fetchApprovalLineGroups()).resolves.toEqual([{ id: 'g2', name: '회계팀' }])
+
+    expect(apiClient.get).toHaveBeenNthCalledWith(1, '/auth/admin/approval-line-configs/groups')
+    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/auth/admin/permission-groups')
+  })
+
   it('PUT /approval-line-configs/{id}/label 에 라벨 payload 를 전송한다', async () => {
     const row = {
       id: 'r-out',

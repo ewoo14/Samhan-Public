@@ -4,13 +4,16 @@
  * config 페이지(/admin/approval-line-config)는 PermissionGuard(admin.approval-line-config) +
  * standalone QA-env 실 게이트웨이 admin 403 한계([[local-stack-qa-gotchas]]) → mock 모드 MASTER 로
  * FE 컴포넌트 UI 캡처(실 백엔드 아님 — 명시). 동적 doc-type: 전표 3종 + 그룹웨어 활성 템플릿.
+ *
+ * P1-D: -real-qa 접미사 제거 → mock 모드 CI 게이트 포함.
+ * mock 시드 V75 정합: 지출결의서 = 부서장(매니저 그룹) + 대표(user-001 김미선).
  */
 import * as path from 'path'
 import * as fs from 'fs'
 import { fileURLToPath } from 'url'
 import { test, expect, type Page } from '@playwright/test'
 
-const BASE = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5175'
+const BASE = process.env['AUDIT_BASE_URL'] ?? 'http://127.0.0.1:5173'
 const _dirname = path.dirname(fileURLToPath(import.meta.url))
 const DIR = path.resolve(_dirname, '../../../../docs/qa/groupware-approval-line-config-s4b')
 fs.mkdirSync(DIR, { recursive: true })
@@ -39,8 +42,14 @@ test('S4b: 결재라인 설정 동적 doc-type (전표+그룹웨어 종류)', as
   expect(optionLabels.some((t) => t.includes('판매전표'))).toBeTruthy()
   expect(optionLabels.some((t) => t.includes('지출결의서') || t.includes('휴가신청서'))).toBeTruthy()
 
-  // 그룹웨어 종류 선택 → 그 종류의 기본 결재라인 설정 영역
+  // 그룹웨어 종류 선택 → V75 seed: 부서장(매니저 그룹) / 대표(user-001)
   await select.selectOption('GROUPWARE_EXPENSE_REPORT')
   await page.waitForTimeout(1500)
+  await expect(page.getByText('부서장').first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('매니저').first()).toBeVisible({ timeout: 10_000 })
   await cap(page, 'config-groupware-expense-report')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.waitForTimeout(700)
+  await cap(page, 'config-groupware-expense-report-mobile')
 })

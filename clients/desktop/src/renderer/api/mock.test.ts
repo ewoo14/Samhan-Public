@@ -32,8 +32,7 @@ describe('mock approval-line-config contract', () => {
     }) as MockEnvelope<Array<{ sequence: number; label: string; userId: string; displayName: string }>>
 
     expect(resolved.data).toEqual([
-      { sequence: 1, label: '검토자', userId: 'user-002', displayName: '이정훈' },
-      { sequence: 2, label: '승인자', userId: 'user-005', displayName: '홍지수' },
+      { sequence: 2, label: '대표', userId: 'user-008', displayName: '정매니저' },
     ])
   })
 
@@ -44,6 +43,45 @@ describe('mock approval-line-config contract', () => {
     }) as MockEnvelope<unknown[]>
 
     expect(resolved.data).toEqual([])
+  })
+
+  it('GROUPWARE 결재 생성은 config 단계 뒤에 override 결재자를 추가한다', () => {
+    const created = mockRequest({
+      method: 'POST',
+      url: '/admin/groupware/approvals',
+      data: {
+        requesterId: 'user-003',
+        title: `A2-G2 mock ${Date.now()}`,
+        content: '본문',
+        templateId: '77777777-dddd-4ddd-8ddd-000000000001',
+        fieldValues: {
+          expenseItem: '테스트',
+          amount: '1000',
+          accountCode: '소모품비',
+          expenseDate: '2026-06-29',
+        },
+        approverIds: ['00000000-0000-0000-0000-000000010004'],
+      },
+    }) as MockEnvelope<{ steps: Array<Record<string, unknown>> }>
+
+    expect(created.data.steps.map((step) => step.stepType)).toEqual(['USER', 'GROUP', 'USER', 'USER'])
+    expect(created.data.steps[0]).toMatchObject({
+      approverId: 'user-003',
+      stepType: 'USER',
+    })
+    expect(created.data.steps[1]).toMatchObject({
+      approverGroupId: '00000000-0000-0000-0000-000000000101',
+      approverName: null,
+    })
+    expect(created.data.steps[2]).toMatchObject({
+      approverId: 'user-008',
+      approverName: '정매니저',
+    })
+    expect(created.data.steps[2]?.approverId).not.toBe(created.data.steps[0]?.approverId)
+    expect(created.data.steps[3]).toMatchObject({
+      approverId: '00000000-0000-0000-0000-000000010004',
+      approverName: '박배차',
+    })
   })
 
   it('GROUPWARE 문서의 sequence 0 GROUP 단계는 삭제할 수 있다', () => {

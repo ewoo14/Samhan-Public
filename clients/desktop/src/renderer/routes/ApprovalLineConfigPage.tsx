@@ -16,9 +16,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AsyncAutocomplete, Button, Card, DragHandle, Modal, Select, Spinner, TagChip } from '@samhan/design-system'
+import { AsyncAutocomplete, Button, Card, DragHandle, Input, Modal, Select, Spinner, TagChip } from '@samhan/design-system'
 import {
   DOC_TYPES,
+  STEP_TYPE_LABEL,
   addApprovalLineApprover,
   addApprovalLineStep,
   deleteApprovalLineStep,
@@ -47,6 +48,7 @@ const FALLBACK_CONFIGURABLE_DOC_TYPES: ConfigurableDocType[] = DOC_TYPES.map((ty
   ...type,
   kind: 'SLIP',
 }))
+
 
 export function resolveApprovalLineDocTypeSelection(current: string, docTypes: ConfigurableDocType[]): string {
   if (docTypes.some((type) => type.value === current)) return current
@@ -435,8 +437,8 @@ export function ApprovalLineConfigPage() {
 
         {!rolesQuery.isLoading && !rolesQuery.isError ? (
           <>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 12, borderBottom: '1px solid var(--color-neutral-200)' }}>
-              <input
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: 12, borderBottom: '1px solid var(--color-neutral-200)' }}>
+              <Input
                 type="text"
                 value={newStepLabel}
                 onChange={(event) => setNewStepLabel(event.target.value)}
@@ -449,12 +451,10 @@ export function ApprovalLineConfigPage() {
                 aria-label="새 결재 단계 라벨"
                 data-testid="approval-line-new-step-label"
                 disabled={addStepMutation.isPending}
+                inputSize="sm"
+                fullWidth={false}
                 style={{
-                  width: 220,
-                  padding: '7px 9px',
-                  border: '1px solid var(--color-neutral-300)',
-                  borderRadius: 4,
-                  fontSize: 13,
+                  width: 'min(220px, 100%)',
                 }}
               />
               <Button
@@ -482,47 +482,49 @@ export function ApprovalLineConfigPage() {
                 items={roles.map((r) => r.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <table data-testid="approval-line-role-table" style={tableStyle}>
-                  <colgroup>
-                    <col style={dragColumnStyle} />
-                    <col style={sequenceColumnStyle} />
-                    <col style={roleColumnStyle} />
-                    <col style={groupColumnStyle} />
-                    <col style={requiredColumnStyle} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th style={dragHeadCellStyle} aria-label="드래그 핸들" />
-                      <th style={sequenceHeadCellStyle}>순서</th>
-                      <th style={roleHeadCellStyle}>역할</th>
-                      <th style={groupHeadCellStyle}>결재자</th>
-                      <th style={requiredHeadCellStyle}>필수</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roles.map((role) => (
-                      <SortableApprovalRoleRow
-                        key={role.id}
-                        role={role}
-                        saving={pendingRoleIds.has(role.id)}
-                        searchApproverOptions={searchApproverOptions}
-                        onRequiredChange={(required) =>
-                          updateMutation.mutate({ id: role.id, required })}
-                        onAddApprover={(option) =>
-                          addApproverMutation.mutate({ roleId: role.id, option })}
-                        onRemoveApprover={(approverId) => {
-                          // 낙관 add 진행 중(pending-* id)인 칩 제거 시 비-UUID 로 DELETE → 400 회피.
-                          // 서버 응답 도착(onSuccess)으로 실 id 치환된 뒤에만 삭제 허용.
-                          if (approverId.startsWith('pending-')) return
-                          removeApproverMutation.mutate({ roleId: role.id, approverId })
-                        }}
-                        onRename={(label) =>
-                          renameMutation.mutate({ id: role.id, label })}
-                        onDeleteStep={() => setDeleteTarget(role)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{ overflowX: 'auto' }}>
+                  <table data-testid="approval-line-role-table" style={tableStyle}>
+                    <colgroup>
+                      <col style={dragColumnStyle} />
+                      <col style={sequenceColumnStyle} />
+                      <col style={roleColumnStyle} />
+                      <col style={groupColumnStyle} />
+                      <col style={requiredColumnStyle} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={dragHeadCellStyle} aria-label="드래그 핸들" />
+                        <th style={sequenceHeadCellStyle}>순서</th>
+                        <th style={roleHeadCellStyle}>역할</th>
+                        <th style={groupHeadCellStyle}>결재자</th>
+                        <th style={requiredHeadCellStyle}>필수</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roles.map((role) => (
+                        <SortableApprovalRoleRow
+                          key={role.id}
+                          role={role}
+                          saving={pendingRoleIds.has(role.id)}
+                          searchApproverOptions={searchApproverOptions}
+                          onRequiredChange={(required) =>
+                            updateMutation.mutate({ id: role.id, required })}
+                          onAddApprover={(option) =>
+                            addApproverMutation.mutate({ roleId: role.id, option })}
+                          onRemoveApprover={(approverId) => {
+                            // 낙관 add 진행 중(pending-* id)인 칩 제거 시 비-UUID 로 DELETE → 400 회피.
+                            // 서버 응답 도착(onSuccess)으로 실 id 치환된 뒤에만 삭제 허용.
+                            if (approverId.startsWith('pending-')) return
+                            removeApproverMutation.mutate({ roleId: role.id, approverId })
+                          }}
+                          onRename={(label) =>
+                            renameMutation.mutate({ id: role.id, label })}
+                          onDeleteStep={() => setDeleteTarget(role)}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </SortableContext>
             </DndContext>
           </>
@@ -701,32 +703,38 @@ function SortableApprovalRoleRow({
       <td style={roleBodyCellStyle}>
         {isCreator ? (
           // CREATOR 라벨은 정적 텍스트 (편집 불가)
-          <strong data-testid={`approval-role-label-static-${role.id}`}>{role.label}</strong>
+          <div style={{ display: 'grid', gap: 2 }}>
+            <strong data-testid={`approval-role-label-static-${role.id}`}>{role.label}</strong>
+            <span style={stepTypeTextStyle}>{STEP_TYPE_LABEL[role.stepType]}</span>
+          </div>
         ) : (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <ApprovalRoleLabelInput
-              role={role}
-              saving={saving}
-              onRename={onRename}
-            />
-            <button
-              type="button"
-              onClick={onDeleteStep}
-              disabled={saving}
-              aria-label={`${role.label} 단계 삭제`}
-              title="단계 삭제"
-              data-testid={`approval-role-delete-${role.id}`}
-              style={deleteStepButtonStyle}
-            >
-              ×
-            </button>
+          <div style={{ display: 'grid', gap: 2 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <ApprovalRoleLabelInput
+                role={role}
+                saving={saving}
+                onRename={onRename}
+              />
+              <button
+                type="button"
+                onClick={onDeleteStep}
+                disabled={saving}
+                aria-label={`${role.label} 단계 삭제`}
+                title="단계 삭제"
+                data-testid={`approval-role-delete-${role.id}`}
+                style={deleteStepButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+            <span style={stepTypeTextStyle}>{STEP_TYPE_LABEL[role.stepType]}</span>
           </div>
         )}
       </td>
       <td style={groupBodyCellStyle}>
         {isCreator ? (
           <span data-testid="approval-line-creator-auto" style={{ color: 'var(--color-neutral-500)' }}>
-            전표 작성자 자동
+            작성자 자동
           </span>
         ) : (
           <ApprovalRoleApproverChips
@@ -739,7 +747,7 @@ function SortableApprovalRoleRow({
         )}
       </td>
       <td style={requiredBodyCellStyle}>
-        <input
+        <Input
           type="checkbox"
           checked={role.required}
           disabled={isCreator || saving}
@@ -749,6 +757,9 @@ function SortableApprovalRoleRow({
           }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
+          inputSize="sm"
+          fullWidth={false}
+          style={{ width: 16, height: 16, padding: 0 }}
         />
       </td>
     </tr>
@@ -844,7 +855,7 @@ function ApprovalRoleLabelInput({
 
   if (editing) {
     return (
-      <input
+      <Input
         ref={inputRef}
         type="text"
         value={inputValue}
@@ -862,13 +873,10 @@ function ApprovalRoleLabelInput({
         aria-label={`${role.label} 라벨 편집`}
         data-testid={`approval-role-label-input-${role.id}`}
         disabled={saving}
+        inputSize="sm"
+        fullWidth={false}
         style={{
-          fontSize: 13,
           fontWeight: 700,
-          border: '1px solid var(--color-primary-400)',
-          borderRadius: 4,
-          padding: '2px 6px',
-          outline: 'none',
           minWidth: 80,
         }}
       />
@@ -927,11 +935,12 @@ export function ApprovalRoleRow({
       <td style={bodyCellStyle}>{role.sequence + 1}</td>
       <td style={bodyCellStyle}>
         <strong>{role.label}</strong>
+        <span style={stepTypeTextStyle}> {STEP_TYPE_LABEL[role.stepType]}</span>
       </td>
       <td style={bodyCellStyle}>
         {isCreator ? (
           <span data-testid="approval-line-creator-auto" style={{ color: 'var(--color-neutral-500)' }}>
-            전표 작성자 자동
+            작성자 자동
           </span>
         ) : (
           <div>
@@ -952,7 +961,7 @@ export function ApprovalRoleRow({
         )}
       </td>
       <td style={bodyCellStyle}>
-        <input
+        <Input
           type="checkbox"
           checked={role.required}
           disabled={isCreator || saving}
@@ -962,6 +971,9 @@ export function ApprovalRoleRow({
           }}
           aria-label={`${role.label} 필수`}
           data-testid={`approval-role-required-${role.label}`}
+          inputSize="sm"
+          fullWidth={false}
+          style={{ width: 16, height: 16, padding: 0 }}
         />
       </td>
     </tr>
@@ -1164,6 +1176,7 @@ export function areApprovalRoleOrdersEqual(left: string[], right: string[]): boo
 
 const tableStyle: React.CSSProperties = {
   width: '100%',
+  minWidth: 760,
   tableLayout: 'fixed',
   borderCollapse: 'collapse',
 }
@@ -1212,6 +1225,12 @@ const approverTypeBadgeStyle: React.CSSProperties = {
   borderRadius: 4,
   background: 'var(--color-neutral-100)',
   color: 'var(--color-neutral-600)',
+  fontSize: 11,
+  fontWeight: 700,
+}
+
+const stepTypeTextStyle: React.CSSProperties = {
+  color: 'var(--color-neutral-500)',
   fontSize: 11,
   fontWeight: 700,
 }

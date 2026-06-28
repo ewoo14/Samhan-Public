@@ -12,6 +12,7 @@ import {
   Button,
   Card,
   DataTable,
+  FormField,
   Spinner,
   type DataTableColumn,
 } from '@samhan/design-system'
@@ -32,11 +33,15 @@ import {
   APPROVAL_STATUS_LABEL,
   APPROVAL_STEP_STATUS_LABEL,
   getGroupwareApproval,
+  resolveApprovalStepDisplayName,
+  resolveApprovalStepTypeLabel,
   type ApprovalLineAdminResponse,
   type ApprovalStatus,
   type ApprovalStepView,
 } from '../api/groupwareApproval'
-import { getApprovalTemplate, type ApprovalTemplateField } from '../api/groupwareApprovalTemplate'
+// P1-C: fetchApprovalLineGroups(/auth/admin/approval-line-configs/groups) 제거 — 비-admin 페이지에서 admin 호출 차단.
+// ApprovalStepView.approverGroupId → resolveApprovalStepDisplayName 에서 '권한그룹' 폴백으로 처리.
+import { findActiveApprovalTemplate, type ApprovalTemplateField } from '../api/groupwareApprovalTemplate'
 import { GroupwareApprovalCollaborationPanel } from '../components/collab/GroupwareApprovalCollaborationPanel'
 import { DocumentReferencePicker, type DocumentReferenceValue } from '../components/groupware/DocumentReferencePicker'
 import { MobileActionSheet } from '../components/common/MobileActionSheet'
@@ -204,7 +209,7 @@ export function GroupwareApprovalDetailPage() {
 
   const templateQuery = useQuery({
     queryKey: ['groupwareApprovalTemplate', query.data?.templateId],
-    queryFn: () => getApprovalTemplate(query.data!.templateId!),
+    queryFn: () => findActiveApprovalTemplate(query.data!.templateId!),
     enabled: Boolean(query.data?.templateId),
     retry: 1,
   })
@@ -216,6 +221,11 @@ export function GroupwareApprovalDetailPage() {
   })
 
   usePageTitle('결재 상세', query.data?.approvalNo)
+
+  // P1-C: admin /auth/admin/approval-line-configs/groups 제거.
+  // GROUP 단계는 resolveApprovalStepDisplayName 내 '권한그룹' 폴백으로 표시.
+  const groupNameById = useMemo(() => new Map<string, string>(), [])
+  const requesterIdForSteps = query.data?.requesterId ?? ''
 
   const stepColumns: DataTableColumn<ApprovalStepView>[] = useMemo(() => [
     {
@@ -229,9 +239,14 @@ export function GroupwareApprovalDetailPage() {
       key: 'approver',
       header: '결재자',
       render: (step) => (
-        <span style={{ fontWeight: 600 }}>
-          {displayNameOrFallback(step.approverName, `결재자 ${step.sequence + 1}`)}
-        </span>
+        <div style={{ display: 'grid', gap: 2 }}>
+          <span style={{ fontWeight: 600 }}>
+            {resolveApprovalStepDisplayName(step, groupNameById)}
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>
+            {resolveApprovalStepTypeLabel(step, requesterIdForSteps)}
+          </span>
+        </div>
       ),
     },
     {
@@ -259,7 +274,7 @@ export function GroupwareApprovalDetailPage() {
       header: '사유',
       render: (step) => step.reason || '-',
     },
-  ], [])
+  ], [groupNameById, requesterIdForSteps])
 
   // 첨부 mutation 은 hook 이므로 조기 return(로딩/에러) 보다 위에 선언해야 한다
   // (early return 뒤 hook 선언 시 "Rendered more hooks than during the previous render" 크래시).
@@ -536,13 +551,15 @@ export function GroupwareApprovalDetailPage() {
                   <div key={`${approval.approvalNo}-mobile-${step.sequence}`} className="mobile-item-card">
                     <div className="mobile-item-card-header">
                       <div className="mobile-item-name">
-                        {displayNameOrFallback(step.approverName, `결재자 ${step.sequence + 1}`)}
+                        {resolveApprovalStepDisplayName(step, groupNameById)}
                       </div>
                       <span className="mobile-status-badge" style={approvalStatusBadgeStyle(step.status as ApprovalStatus)}>
                         {APPROVAL_STEP_STATUS_LABEL[step.status]}
                       </span>
                     </div>
-                    <div className="mobile-item-model">순서 {step.sequence + 1}</div>
+                    <div className="mobile-item-model">
+                      순서 {step.sequence + 1} · {resolveApprovalStepTypeLabel(step, approval.requesterId)}
+                    </div>
                     <div className="mobile-item-divider" />
                     <div className="mobile-item-total-row">
                       <span className="mobile-item-total-label">처리일시</span>
@@ -664,15 +681,21 @@ export function GroupwareApprovalDetailPage() {
                     </Button>
                   </div>
                 ) : null}
-                <input
-                  type="file"
-                  aria-label="결재 첨부 파일"
-                  multiple
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files ?? [])
-                    if (files.length > 0) uploadFileMutation.mutate(files)
-                    event.currentTarget.value = ''
-                  }}
+                <FormField
+                  label="파일 첨부"
+                  render={({ id, ariaDescribedBy }) => (
+                    <input
+                      id={id}
+                      type="file"
+                      multiple
+                      aria-describedby={ariaDescribedBy}
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files ?? [])
+                        if (files.length > 0) uploadFileMutation.mutate(files)
+                        event.currentTarget.value = ''
+                      }}
+                    />
+                  )}
                 />
               </div>
             ) : null}

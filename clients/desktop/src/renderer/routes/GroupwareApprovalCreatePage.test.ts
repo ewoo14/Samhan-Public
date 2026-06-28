@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   addApproverOption,
+  buildGroupwareApprovalDocumentType,
+  getApprovalLinePreviewStatus,
   loadDefaultApproverOptions,
   mapDefaultApproversToApproverOptions,
   removeApproverAt,
   shouldApplyDefaultApproverPrefill,
+  shouldRequireManualApprover,
 } from './GroupwareApprovalCreatePage'
-import type { ApprovalLineDefaultApprover } from '../api/approvalLineConfigApi'
+import type { ApprovalLineDefaultApprover, ApprovalLineStructure } from '../api/approvalLineConfigApi'
 import type { ApproverOption } from '../api/groupwareApprovalApprover'
 
 describe('GroupwareApprovalCreatePage default approver prefill', () => {
@@ -33,6 +36,28 @@ describe('GroupwareApprovalCreatePage default approver prefill', () => {
     ])
 
     expect(fetcher).toHaveBeenCalledWith('GROUPWARE_EXPENSE_REPORT')
+  })
+
+  it('템플릿 code 는 GROUPWARE_ documentType 으로 변환한다', () => {
+    expect(buildGroupwareApprovalDocumentType('EXPENSE_REPORT')).toBe('GROUPWARE_EXPENSE_REPORT')
+    expect(buildGroupwareApprovalDocumentType('  LEAVE_REQUEST  ')).toBe('GROUPWARE_LEAVE_REQUEST')
+    expect(buildGroupwareApprovalDocumentType('')).toBeNull()
+  })
+
+  it('config 결재선이 있으면 수동 결재자 없이 생성 가능하고 override 만 approverIds 로 보낸다', () => {
+    expect(shouldRequireManualApprover('EXPENSE_REPORT', false, configuredRoles)).toBe(false)
+    expect(shouldRequireManualApprover('EXPENSE_REPORT', false, creatorOnlyRoles)).toBe(true)
+    expect(shouldRequireManualApprover('LEAVE_REQUEST', false, [])).toBe(true)
+    expect(shouldRequireManualApprover('LEAVE_REQUEST', true, [])).toBe(true)
+    expect(shouldRequireManualApprover('', false, [])).toBe(true)
+  })
+
+  it('config 결재선 미리보기 상태 문구를 계산한다', () => {
+    expect(getApprovalLinePreviewStatus('', false, [])).toBe('결재 유형을 먼저 선택하세요.')
+    expect(getApprovalLinePreviewStatus('EXPENSE_REPORT', true, [])).toBe('결재선을 불러오는 중입니다.')
+    expect(getApprovalLinePreviewStatus('LEAVE_REQUEST', false, [])).toBe('설정된 결재선이 없습니다. 수동으로 결재자를 추가하세요.')
+    expect(getApprovalLinePreviewStatus('EXPENSE_REPORT', false, creatorOnlyRoles)).toBe('작성자 단독 결재선입니다. 수동으로 결재자를 추가하세요.')
+    expect(getApprovalLinePreviewStatus('EXPENSE_REPORT', false, configuredRoles)).toBe('중앙 결재라인 설정이 적용됩니다.')
   })
 
   it('템플릿 미선택 또는 조회 실패 시 빈 결재선으로 교체한다', async () => {
@@ -68,3 +93,14 @@ describe('GroupwareApprovalCreatePage default approver prefill', () => {
     expect(shouldApplyDefaultApproverPrefill(3, 3, true)).toBe(false)
   })
 })
+
+// V75 구조 기준 — ApprovalLineStructure(비-admin /structure endpoint 형식)
+const configuredRoles: ApprovalLineStructure[] = [
+  { sequence: 0, label: '작성자', stepType: 'CREATOR', actionKey: null },
+  { sequence: 1, label: '부서장', stepType: 'GROUP', actionKey: 'groupware.approvals' },
+  { sequence: 2, label: '대표', stepType: 'USER', actionKey: null },
+]
+
+const creatorOnlyRoles: ApprovalLineStructure[] = [
+  { sequence: 0, label: '작성자', stepType: 'CREATOR', actionKey: null },
+]

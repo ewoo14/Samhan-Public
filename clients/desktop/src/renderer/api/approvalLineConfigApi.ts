@@ -2,6 +2,16 @@ import { apiClient, type ApiEnvelope } from './client'
 
 export type StepType = 'CREATOR' | 'GROUP' | 'USER'
 
+/**
+ * StepType 한국어 라벨 단일 소스.
+ * ApprovalLineConfigPage / GroupwareApprovalCreatePage 에서 import 해 로컬 중복 제거.
+ */
+export const STEP_TYPE_LABEL: Record<StepType, string> = {
+  CREATOR: '작성자',
+  USER: '직접지정',
+  GROUP: '권한그룹',
+}
+
 export interface ApprovalLineRole {
   id: string
   sequence: number
@@ -114,10 +124,17 @@ export async function fetchDefaultApprovers(documentType: string): Promise<Appro
 }
 
 export async function fetchApprovalLineGroups(): Promise<ApprovalLineGroupOption[]> {
-  const res = await apiClient.get<ApiEnvelope<ApprovalLineGroupOption[]>>(
-    '/auth/admin/approval-line-configs/groups',
-  )
-  return res.data.data ?? []
+  try {
+    const res = await apiClient.get<ApiEnvelope<ApprovalLineGroupOption[]>>(
+      '/auth/admin/approval-line-configs/groups',
+    )
+    return res.data.data ?? []
+  } catch {
+    const res = await apiClient.get<ApiEnvelope<ApprovalLineGroupOption[]>>(
+      '/auth/admin/permission-groups',
+    )
+    return (res.data.data ?? []).map((group) => ({ id: group.id, name: group.name }))
+  }
 }
 
 export async function updateApprovalLineRole(

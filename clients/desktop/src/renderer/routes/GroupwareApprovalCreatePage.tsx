@@ -28,8 +28,11 @@ import {
   type ApprovalTemplate,
 } from '../api/groupwareApprovalTemplate'
 import {
+  fetchApprovalLineStructure,
   fetchDefaultApprovers,
+  STEP_TYPE_LABEL,
   type ApprovalLineDefaultApprover,
+  type ApprovalLineStructure,
 } from '../api/approvalLineConfigApi'
 import { DynamicApprovalFieldInput } from '../components/groupware/DynamicApprovalFieldInput'
 import { DocumentReferencePicker, type DocumentReferenceValue } from '../components/groupware/DocumentReferencePicker'
@@ -109,13 +112,43 @@ export function mapDefaultApproversToApproverOptions(defaultApprovers: ApprovalL
     }))
 }
 
+export function buildGroupwareApprovalDocumentType(templateCode: string | null | undefined): string | null {
+  const code = templateCode?.trim()
+  return code ? `GROUPWARE_${code}` : null
+}
+
+export function shouldRequireManualApprover(
+  templateCode: string | null | undefined,
+  loadingConfig: boolean,
+  configRoles: ApprovalLineStructure[],
+): boolean {
+  if (!templateCode?.trim()) return true
+  if (loadingConfig) return true
+  return !configRoles.some((role) => role.stepType !== 'CREATOR')
+}
+
+export function getApprovalLinePreviewStatus(
+  templateCode: string | null | undefined,
+  loadingConfig: boolean,
+  configRoles: ApprovalLineStructure[],
+): string {
+  if (!templateCode?.trim()) return '결재 유형을 먼저 선택하세요.'
+  if (loadingConfig) return '결재선을 불러오는 중입니다.'
+  if (configRoles.length === 0) return '설정된 결재선이 없습니다. 수동으로 결재자를 추가하세요.'
+  if (!configRoles.some((role) => role.stepType !== 'CREATOR')) {
+    return '작성자 단독 결재선입니다. 수동으로 결재자를 추가하세요.'
+  }
+  return '중앙 결재라인 설정이 적용됩니다.'
+}
+
 export async function loadDefaultApproverOptions(
   templateCode: string | null | undefined,
   fetcher: (documentType: string) => Promise<ApprovalLineDefaultApprover[]> = fetchDefaultApprovers,
 ): Promise<ApproverOption[]> {
-  if (!templateCode) return []
+  const documentType = buildGroupwareApprovalDocumentType(templateCode)
+  if (!documentType) return []
   try {
-    const defaultApprovers = await fetcher(`GROUPWARE_${templateCode}`)
+    const defaultApprovers = await fetcher(documentType)
     return mapDefaultApproversToApproverOptions(defaultApprovers)
   } catch {
     return []
@@ -138,6 +171,88 @@ export function addApproverOption(current: ApproverOption[], item: ApproverOptio
 
 export function removeApproverAt(current: ApproverOption[], index: number): ApproverOption[] {
   return current.filter((_, itemIndex) => itemIndex !== index)
+}
+
+/**
+ * 중앙 결재선 구조 미리보기.
+ *
+ * P1-A/C 수정: 비-admin GET /auth/approval-line-configs/{type}/structure 결과(`ApprovalLineStructure[]`)를
+ * 사용한다. 구조 DTO 에는 결재자 이름·그룹 UUID 가 없으므로 결재 단계 라벨·유형만 표시한다.
+ * 그룹명은 구조 endpoint 가 제공하지 않으며 비-admin 그룹 lookup endpoint 도 없어 생략 처리.
+ *
+ * P2: statusText 이중 렌더 제거(헤더에 1회만), overflowX:auto(모바일 390px 가로 넘침 방지).
+ */
+function ApprovalLineInstancePreview({
+  roles,
+  loading,
+  error,
+  statusText,
+}: {
+  roles: ApprovalLineStructure[]
+  loading: boolean
+  error: boolean
+  statusText: string
+}) {
+  return (
+    <section
+      data-testid="groupware-approval-line-preview"
+      style={{
+        marginTop: 16,
+        display: 'grid',
+        gap: 10,
+        padding: 12,
+        border: '1px solid var(--color-neutral-200)',
+        borderRadius: 6,
+        background: 'var(--color-neutral-50)',
+        overflowX: 'auto',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <h4 style={{ margin: 0, fontSize: 14 }}>기본 결재선</h4>
+        <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>{statusText}</span>
+      </div>
+      {error ? (
+        <p role="alert" style={{ margin: 0, color: 'var(--color-warning-700)', fontSize: 13 }}>
+          중앙 결재선 정보를 불러오지 못했습니다. 수동 결재선으로 작성할 수 있습니다.
+        </p>
+      ) : null}
+      {loading ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-neutral-500)' }}>
+          <Spinner size="sm" />
+          <span>결재선을 확인하는 중...</span>
+        </div>
+      ) : roles.length > 0 ? (
+        <div className="mobile-item-list" style={{ display: 'grid', gap: 8 }}>
+          {roles.map((role) => (
+            <div
+              key={role.sequence}
+              data-testid="groupware-approval-line-preview-step"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr',
+                gap: 8,
+                alignItems: 'center',
+                padding: '8px 10px',
+                border: '1px solid var(--color-neutral-200)',
+                borderRadius: 4,
+                background: 'var(--color-neutral-0)',
+                fontSize: 13,
+              }}
+            >
+              <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{role.sequence + 1}</strong>
+              <span>
+                <span style={{ fontSize: 11, color: 'var(--color-neutral-500)', marginRight: 6 }}>
+                  {STEP_TYPE_LABEL[role.stepType]}
+                </span>
+                <strong>{role.label}</strong>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {/* statusText 이중 렌더 제거: roles.length === 0 시 헤더의 statusText 로 충분 */}
+    </section>
+  )
 }
 
 function referenceChipValue(ref: ReferenceDraft): string {
@@ -174,15 +289,50 @@ export function GroupwareApprovalCreatePage() {
   const templates = Array.isArray(templatesQuery.data) ? templatesQuery.data : []
   const selectedTemplate: ApprovalTemplate | undefined = templates.find((template) => template.id === templateId)
   const selectedTemplateCode = selectedTemplate?.code ?? ''
+  const selectedDocumentType = buildGroupwareApprovalDocumentType(selectedTemplateCode)
   const sortedFields = useMemo(
     () => selectedTemplate ? [...selectedTemplate.fields].sort((a, b) => a.displayOrder - b.displayOrder) : [],
     [selectedTemplate],
+  )
+
+  /**
+   * P1-A 수정: 비-admin GET /auth/approval-line-configs/{type}/structure 사용.
+   * 기존 fetchApprovalLineRoles(/auth/admin/approval-line-configs?documentType=) → 403 해소.
+   */
+  const approvalLineStructureQuery = useQuery({
+    queryKey: ['groupwareApprovalCreate', 'approval-line-structure', selectedDocumentType],
+    queryFn: () => fetchApprovalLineStructure(selectedDocumentType!),
+    enabled: Boolean(selectedDocumentType),
+    retry: 1,
+  })
+
+  // P1-A: fetchApprovalLineGroups(/auth/admin/approval-line-configs/groups) 제거.
+  // 구조 endpoint 는 그룹 UUID/이름을 포함하지 않으며 비-admin 그룹 lookup endpoint 없음.
+
+  const configRoles = useMemo(
+    () => [...(approvalLineStructureQuery.data ?? [])].sort((a, b) => a.sequence - b.sequence),
+    [approvalLineStructureQuery.data],
+  )
+  const requireManualApprover = shouldRequireManualApprover(
+    selectedTemplateCode,
+    approvalLineStructureQuery.isLoading,
+    configRoles,
+  )
+  const approvalLinePreviewStatus = getApprovalLinePreviewStatus(
+    selectedTemplateCode,
+    approvalLineStructureQuery.isLoading,
+    configRoles,
   )
 
   useEffect(() => {
     let cancelled = false
     const capturedEditVersion = approverEditVersionRef.current
     setApprovers([])
+    if (configRoles.length > 0 || approvalLineStructureQuery.isLoading || approvalLineStructureQuery.isError) {
+      return () => {
+        cancelled = true
+      }
+    }
     void loadDefaultApproverOptions(selectedTemplateCode).then((defaultApprovers) => {
       if (shouldApplyDefaultApproverPrefill(
         capturedEditVersion,
@@ -195,7 +345,7 @@ export function GroupwareApprovalCreatePage() {
     return () => {
       cancelled = true
     }
-  }, [selectedTemplateCode])
+  }, [selectedTemplateCode, approvalLineStructureQuery.isLoading, approvalLineStructureQuery.isError, configRoles.length])
 
   const approverIds = approvers.map((approver) => approver.userId)
   const missingRequired = sortedFields.some((field) =>
@@ -206,7 +356,13 @@ export function GroupwareApprovalCreatePage() {
       ? !ref.refPartnerCode?.trim() || !ref.refPartnerName?.trim() || !ref.refPeriod?.trim()
       : !ref.refDocNo?.trim(),
   )
-  const invalid = !canWrite || !templateId || !title.trim() || approverIds.length === 0 || missingRequired || invalidReferences
+  const invalid = !canWrite
+    || !templateId
+    || approvalLineStructureQuery.isLoading
+    || !title.trim()
+    || (requireManualApprover && approverIds.length === 0)
+    || missingRequired
+    || invalidReferences
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -364,15 +520,17 @@ export function GroupwareApprovalCreatePage() {
                   </span>
                 )}
                 listboxLabel="결재자 검색 결과"
-                label="결재선"
+                label={requireManualApprover ? '결재선' : '추가 결재자'}
                 ariaLabel="결재자 이름 검색"
                 inputTestId="approver-search-input"
                 placeholder="결재자 이름 검색"
                 minChars={2}
-                required
+                required={requireManualApprover}
               />
               <p style={{ margin: 0, fontSize: 12, color: 'var(--color-neutral-500)' }}>
-                사원 이름을 검색해 결재 순서대로 추가합니다.
+                {requireManualApprover
+                  ? '설정된 결재선이 없는 유형입니다. 사원 이름을 검색해 결재 순서대로 추가합니다.'
+                  : '중앙 결재선 뒤에 추가할 결재자가 있을 때만 사원 이름을 검색해 추가합니다.'}
               </p>
               {approvers.length > 0 ? (
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -409,6 +567,13 @@ export function GroupwareApprovalCreatePage() {
             )}
           </section>
         </div>
+
+        <ApprovalLineInstancePreview
+          roles={configRoles}
+          loading={approvalLineStructureQuery.isLoading}
+          error={approvalLineStructureQuery.isError}
+          statusText={approvalLinePreviewStatus}
+        />
 
         <section style={{ marginTop: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
