@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -50,6 +51,7 @@ public class PartnerBlockClient {
     private final InternalAuthProperties internalAuthProperties;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public PartnerBlockClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
                               InternalAuthProperties internalAuthProperties,
                               ObjectMapper objectMapper) {
@@ -57,9 +59,19 @@ public class PartnerBlockClient {
         rf.setConnectTimeout((int) Duration.ofSeconds(2).toMillis());
         rf.setReadTimeout((int) Duration.ofSeconds(3).toMillis());
         this.restClient = builder
-                .baseUrl(PARTNER_SERVICE_BASE)
                 .requestFactory(rf)
                 .build();
+        this.internalAuthProperties = internalAuthProperties;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 테스트 전용 생성자 — MockRestServiceServer binding 된 RestClient 를 직접 주입한다.
+     */
+    PartnerBlockClient(RestClient restClient,
+                       InternalAuthProperties internalAuthProperties,
+                       ObjectMapper objectMapper) {
+        this.restClient = restClient;
         this.internalAuthProperties = internalAuthProperties;
         this.objectMapper = objectMapper;
     }
@@ -77,10 +89,8 @@ public class PartnerBlockClient {
         }
         try {
             String body = restClient.get()
-                    .uri(uriBuilder -> uriBuilder.path("/api/v1/partners/admin/blocks")
-                            .queryParam("page", 0)
-                            .queryParam("size", BULK_PAGE_SIZE)
-                            .build())
+                    .uri(PARTNER_SERVICE_BASE + "/internal/partners/admin/blocks?page=0&size={size}",
+                            BULK_PAGE_SIZE)
                     .header(INTERNAL_TOKEN_HEADER, token)
                     .retrieve()
                     .body(String.class);
