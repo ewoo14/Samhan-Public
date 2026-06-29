@@ -1,0 +1,90 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-neutral-900);
+}
+
+.subtitle {
+  margin: var(--space-1, 6px) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-600);
+}
+
+/* 자격 입력 그리드(FormGrid) 상단 여백 — 구분/기관/로그인 그리드와 분리 */
+.credentials {
+  margin-top: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-neutral-900);
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* 페이지 레벨 상태 배너(등록/검증 결과 토스트) — design-system Badge 와 별개의 인라인 알림 */
+.toast {
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.toastSuccess {
+  color: var(--state-success);
+  background: var(--state-success-bg);
+}
+
+.toastError {
+  color: var(--state-danger);
+  background: var(--state-danger-bg);
+}
+
+@media (max-width: 768px) {
+  .actions,
+  .buttonRow {
+    flex-direction: column;
+  }
+
+  .actions button,
+  .buttonRow button {
+    width: 100%;
+  }
+}
