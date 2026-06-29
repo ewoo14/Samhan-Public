@@ -1,7 +1,30 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-29 (집PC 세션 4 — #668 머지 완료: aborted-tx catch 제거·순차 듀얼 0수렴). 다음 세션 첫 읽기 파일.
+> 갱신: 2026-06-30 새벽 (자율 세션 — CODEF Task6/Task7 + #531잔여 머지 3건, 협업 에픽 설계 중). **맨 위 "🌙 2026-06-30 새벽" 절을 먼저 읽을 것.** 다음 세션 첫 읽기 파일.
+
+---
+
+## 🌙 2026-06-30 새벽 자율 세션 — CODEF 완결 + 협업 에픽 (개발책임자 "권장방향 진행, 오전 확정")
+
+> 개발책임자 위임: "협업 슬라이스까지 워크플로우 준수 모두 완료, PM 자율" + "권장방향으로 진행하고 오전에 모두 보고·수정방향 확정"(새벽 결정 불가). **본 절이 최신.**
+
+### ✅ 머지 3건 (오늘 밤)
+- **#669**(`f540b252`): #531 잔여 검증 + dashboard AccountingClient 실 동작·요청계약 테스트 보강.
+- **#670**(`8246d2c9`): **CODEF Task 6 — easyCodef 실 SDK**(EasyCodefClientImpl + Factory). 순차 듀얼리뷰 0수렴(Opus 5-agent×2 + Codex×2 + Opus BE 재확인). **실 CODEF 샌드박스 라이브 QA**(createAccount ACTIVE·listCards=3·listBankAccounts=10). 라이브 QA가 CODEF-mode 파손 버그(`organizationCode` — 목록 항상 빈)를 단독 적발→Opus fix. 증적 `docs/qa/codef-task6/`. (본 세션 `.env` 샌드박스 자격 보유.)
+- **#671**(`0bebb587`): **CODEF Task 7 — FE 금융연동 페이지**(CodefConnectionPage, MASTER, page-code accounting.bank-matching). 7라운드 듀얼리뷰 0수렴(Opus×3 + Codex×3). Design BLOCKING(Badge/FormGrid 자체재구현)→Opus fix. **Codex 라운드2가 loginType=ID_PASSWORD 실등록 실패 위험 단독 적발**→CODEF raw 코드(5/0/1) fix. 데스크톱+모바일 라이브 QA 8컷 `docs/qa/codef-task7/`.
+
+### ⚠️ 오전 개발책임자 확정 필요 (CODEF cutover 파라미터 — **코드 결함 아님**)
+1. **loginType 코드↔방식 매핑**: 현 `5`=마이데이터(기본, Task6 검증값)/`0`=공동인증서/`1`=아이디·비밀번호. `0`/`1`은 CODEF 문서/샌드박스 businessType별 확정 필요.
+2. **credentials key명**: 현 `{id,password}`. loginType 0/1 실사용 시 CODEF가 `loginId`/`loginPw` 등 기대하면 조정(Task6=마이데이터선 credential 미사용으로 미검).
+→ FE 구조/플러밍 정합. 실 CODEF 파라미터는 샌드박스 cutover서 확정.
+
+### 🔧 워크플로우 메모리 보강 (#670 위반 박제, `18c4a421d`)
+#670서 Codex 라운드2·Opus 수렴재확인을 **실행 후 미게시**(PM 종합에 흡수) → 개발책임자 지적 → 소급 게시 + `feedback_canonical_workflow.md` PREFLIGHT #6/머지게이트에 **"실행 라운드 수 = PR 게시 라운드 수 1:1 대조"** 박제.
+
+### 🚧 다음 — 협업 에픽(#16) + 단가인상 에픽(#17) [둘 다 오전 확정 후 착수 권장]
+- **협업 에픽(실시간 필드-레벨)**: §7 collab+presence는 이미 완결 → "실시간 필드-레벨"은 신규 설계. 현 협업/presence 정찰 후 **권장방향 설계 proposal 작성 → 오전 확정 후 착수**(major 아키텍처라 guess-build·머지 회피).
+- **단가인상 에픽(#17)**: 개발책임자 상세 스펙(2회). **변동 전/후를 별도 카테고리로 분리**('홈멀티(변동 전)'·'홈멀티(변동 후)' 등), 종합견적서·주문서 웹은 현 코드대로 전 카테고리 데이터 로드 + **렌더 시점 '인상 전/후' 옵션으로 변형 카테고리 선택**, 주문서는 카테고리별 변동날짜(KST) 자동전환. 협업 이후 착수.
 
 ---
 
