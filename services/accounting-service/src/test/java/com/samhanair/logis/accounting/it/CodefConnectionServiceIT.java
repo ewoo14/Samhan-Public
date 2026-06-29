@@ -86,6 +86,10 @@ class CodefConnectionServiceIT extends AbstractPostgresIT {
         ArgumentCaptor<CodefRegisterCommand> captor = ArgumentCaptor.forClass(CodefRegisterCommand.class);
         verify(easyCodefClient, org.mockito.Mockito.times(2)).registerInstitution(captor.capture());
         assertThat(captor.getAllValues().get(1).connectedId()).isEqualTo("conn-001");
+
+        // 등록은 lockRegistration() 직렬화 + 기존 row in-place 갱신이므로 두 번째 등록이 새 row 를
+        // INSERT 하지 않는다 → uq_codef_connection_single_active 위반 미발생(saveConnection catch 불필요 박제).
+        assertThat(connectionRepository.findAll()).hasSize(1);
     }
 
     @Test
@@ -104,6 +108,24 @@ class CodefConnectionServiceIT extends AbstractPostgresIT {
     void registerInstitution_rejectsSuccessfulResultWithoutConnectedId() {
         when(easyCodefClient.registerInstitution(any()))
                 .thenReturn(new CodefRegisterResult(null, "ACTIVE", "connectedId missing"));
+
+        assertThatThrownBy(() -> service.registerInstitution(
+                new CodefRegisterCommand(null, "BANK", "0004", "1", Map.of("id", "u"))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("CODEF 연결 등록이 필요합니다. 먼저 금융기관을 등록하세요.");
+
+        assertThat(connectionRepository.findAll()).isEmpty();
+        assertThat(institutionRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CODEF가 connectedId 없이 추가인증(ADDITIONAL_AUTH) 상태를 반환해도 ACTIVE 연결을 저장하지 않고 오류 처리한다")
+    void registerInstitution_rejectsAdditionalAuthResultWithoutConnectedId() {
+        // 본 슬라이스는 완전 2FA 플로우 스코프 외(설계 §7) — connectedId 없는 ADDITIONAL_AUTH 는
+        // 사용 가능한 connection 으로 저장할 수 없으므로 거부한다. 2FA 2-way 플로우(ADDITIONAL_AUTH
+        // 를 pending 중간상태로 보존)는 후속 슬라이스에서 본 단언을 갱신한다.
+        when(easyCodefClient.registerInstitution(any()))
+                .thenReturn(new CodefRegisterResult(null, "ADDITIONAL_AUTH", "추가 인증 필요"));
 
         assertThatThrownBy(() -> service.registerInstitution(
                 new CodefRegisterCommand(null, "BANK", "0004", "1", Map.of("id", "u"))))
