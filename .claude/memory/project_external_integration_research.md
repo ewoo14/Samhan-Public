@@ -1,11 +1,16 @@
 ---
 name: external-integration-research
-description: 외부 연동 — 전자(세금)계산서 = 홈택스 일괄 엑셀(✅ 이미 구현·머지됨, 직접/ASP 불요) + 법인계좌 입출금 실시간 연동(진행 중). 개발책임자 2026-06-17
+description: 외부 연동 — 전자(세금)계산서 = 홈택스 일괄 엑셀(✅ 이미 구현·머지됨, 직접/ASP 불요) + 금융데이터(계좌·카드·대출) = 🚩2026-06-29 개발책임자 "전부 CODEF" 결정(하이브리드 폐기, 오픈뱅킹/KFTC 비채택). CODEF 데모·샌드박스 키 발급됨(gitignored .env)
 metadata:
   type: project
 ---
 
 2026-06-17 개발책임자 딥리서치 요청(우리 = 하루 수백건 발급 고물량 사업자).
+
+## 🚩🚩 2026-06-29 개발책임자 결정 — "전부 CODEF로 가는거야" (하이브리드 승계·폐기)
+**금융데이터(계좌 입출금·카드·대출) 전부 CODEF 채널로 통일.** 2026-06-17 하이브리드 결정(계좌=오픈뱅킹/KFTC, 카드=CODEF)을 **승계·폐기** — 오픈뱅킹 이용기관 자격(금융보안원 보안점검 수개월) 부담 회피, CODEF 단일 채널. 코드 현실(`CodefClient` 가 이미 은행+카드+대출 6메서드 보유)이 본 결정과 정합. **KFTC/오픈뱅킹(`KftcClient` shell)은 비채택(MOOT)** — 제거/유지 여부는 실연동 슬라이스에서 판단.
+- **CODEF 자격증명 발급(개발책임자 제공 2026-06-29)**: 데모 + 샌드박스 client_id/secret + RSA public_key. **저장=gitignored `services/accounting-service/.env` 단독**(메모리·git 비포함, 프로덕션=AWS Secrets Manager). 현 `CODEF_SUBMIT_METHOD=DRY_RUN` 유지(실 API 미활성).
+- **실연동 잔여(Phase 11 신규 에픽)**: ①CODEF 계정등록(connectedId) + RSA 자격 암호화 플로우 ②`CodefClientImpl` stub → 실 CODEF API 호출(샌드박스 우선) ③샌드박스 base-url 확정(데모/정식=api.codef.io) ④회계 자동화 확장 후보=홈택스 전자세금계산서 통합 조회·현금영수증·사업자등록상태(CODEF public 상품, 미배선). 조사 보고 = 본 세션 2026-06-29.
 
 ## 전자(세금)계산서 발급 — 자체 vs ASP (완료)
 **결론: 고물량이어도 ASP(발급대행) 권고**(총비용+리스크). 자체 직접발급은 제도적 가능하나 ① 국세청 표준인증+시스템사업자 등록(고시 2023-17호) ② 공동인증서 전자서명(PKI) 구현=핵심난관 ③ 익일 전송 의무 ④ 가산세(지연 0.3%/미전송 0.5% 공급가액) 책임을 전부 자체부담. ASP=공개 200~220원/건(국세청 전송 포함, 고물량 대량계약 <50원/건 추정·실견정 필요), Java API 즉시 연동(바로빌 등). 정정: 스마트빌=비즈니스온(더존 아님), 더존=Bill36524. 상세 `docs/research/2026-06-17-etax-invoice-nts-vs-asp.md`. 우리 시스템은 이미 세금계산서 문서 생성/출력 보유([[project_company_config_menu]]).
