@@ -79,9 +79,14 @@ import {
   type SlipEditRequestType,
 } from '../api/slipEditRequest'
 import { SlipCollaborationPanel } from '../components/collab/SlipCollaborationPanel'
+import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipInput'
 import { MobileActionSheet } from '../components/common/MobileActionSheet'
 import { MobileCollapsible } from '../components/common/MobileCollapsible'
 import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
+import {
+  createDocCoeditProvider,
+  type DocCoeditProvider,
+} from '../realtime/createCoeditProvider'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -269,6 +274,48 @@ function toPurchaseEditLines(slip: SlipDetail): PurchaseEditLine[] {
   }))
 }
 
+function coeditHeaderValues(slip: SlipDetail, mode: SlipType): Record<string, string> {
+  return {
+    partnerName: slip.partnerName ?? '',
+    partnerCode: slip.partnerCode ?? '',
+    businessNumber: slip.businessNumber ?? '',
+    memo: slip.memo ?? '',
+    deliveryAddress: slip.deliveryAddress ?? '',
+    supervisionAddress: mode === 'OUTBOUND' ? slip.supervisionAddress ?? '' : '',
+    projectName: slip.projectName ?? '',
+    recipientPhone: slip.recipientPhone ?? '',
+    paymentDueDate: slip.paymentDueDate ?? '',
+  }
+}
+
+function seedSlipCoeditProvider(provider: DocCoeditProvider, slip: SlipDetail, mode: SlipType) {
+  for (const [fieldName, value] of Object.entries(coeditHeaderValues(slip, mode))) {
+    provider.setHeaderValue(fieldName, value)
+  }
+  provider.replaceItems(toPurchaseEditLines(slip))
+}
+
+function coeditLinesToEditLines(
+  provider: DocCoeditProvider,
+  current: PurchaseEditLine[],
+): PurchaseEditLine[] {
+  return provider.items.toArray().map((_, index) => {
+    const previous = current[index]
+    const quantityValue = provider.getItemValue(index, 'quantity')
+    return {
+      key: previous?.key ?? createEditLineKey(),
+      productId: provider.getItemValue(index, 'productId') || previous?.productId || '',
+      productName: provider.getItemValue(index, 'productName'),
+      modelName: provider.getItemValue(index, 'modelName'),
+      specification: provider.getItemValue(index, 'specification'),
+      // 타이핑 coedit 값은 Y.Doc 직접 사용(`|| previous` 폴백 제거) — 빈 문자열로 지울 수 있게(리뷰 FE B-1: 폴백이 ''를 falsy 처리해 숫자 셀 clear 불가). productId 는 선택기반(타이핑 아님)이라 폴백 유지.
+      quantity: Number(quantityValue || 0),
+      unitPrice: provider.getItemValue(index, 'unitPrice'),
+      note: provider.getItemValue(index, 'note'),
+    }
+  })
+}
+
 /**
  * "2026-05-04T14:32:18+09:00" → "14:32" — Designer print-spec.md § 3.4.
  */
@@ -397,6 +444,9 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const purchaseReloadSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // §7 협업 수정완료: 확정/완료 전표도 물리 종결 전이면 overlay 필드 편집 가능.
   const [collabEditMode, setCollabEditMode] = useState(false)
+  const [slipFormCoeditProvider, setSlipFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
+  // coedit provider 로딩 중 여부 — 로딩 중에만 입력/저장 잠금(이중소스 방지). 로드 실패(provider=null) 시엔 비-coedit 평문 편집·저장 허용(콜랩 서버 다운 시 영구잠금 회귀 방지, 리뷰 Opus 라운드2 BLOCKING).
+  const [slipFormCoeditPending, setSlipFormCoeditPending] = useState(false)
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -809,6 +859,73 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       }
     }
   }, [])
+
+  useEffect(() => {
+    const slipData = detailQuery.data
+    const enabled = !!slipData && (salesEditOpen || purchaseEditOpen)
+    if (!id || !enabled || !slipData) {
+      setSlipFormCoeditProvider(null)
+      setSlipFormCoeditPending(false)
+      return undefined
+    }
+
+    let disposed = false
+    setSlipFormCoeditPending(true)
+    let provider: DocCoeditProvider | null = null
+    let unsubscribeDoc: (() => void) | null = null
+
+    const applyProviderState = (nextProvider: DocCoeditProvider) => {
+      if (mode === 'OUTBOUND') {
+        setSalesPartnerName(nextProvider.getHeaderValue('partnerName'))
+        setSalesPartnerCode(nextProvider.getHeaderValue('partnerCode'))
+        setSalesBusinessNumber(nextProvider.getHeaderValue('businessNumber'))
+        setSalesMemo(nextProvider.getHeaderValue('memo'))
+        setSalesDeliveryAddress(nextProvider.getHeaderValue('deliveryAddress'))
+        setSalesSupervisionAddress(nextProvider.getHeaderValue('supervisionAddress'))
+        setSalesProjectName(nextProvider.getHeaderValue('projectName'))
+        setSalesRecipientPhone(nextProvider.getHeaderValue('recipientPhone'))
+        setSalesPaymentDueDate(nextProvider.getHeaderValue('paymentDueDate'))
+        setSalesEditLines((prev) => coeditLinesToEditLines(nextProvider, prev))
+        return
+      }
+      setPurchasePartnerName(nextProvider.getHeaderValue('partnerName'))
+      setPurchasePartnerCode(nextProvider.getHeaderValue('partnerCode'))
+      setPurchaseBusinessNumber(nextProvider.getHeaderValue('businessNumber'))
+      setPurchaseMemo(nextProvider.getHeaderValue('memo'))
+      setPurchaseDeliveryAddress(nextProvider.getHeaderValue('deliveryAddress'))
+      setPurchaseProjectName(nextProvider.getHeaderValue('projectName'))
+      setPurchaseRecipientPhone(nextProvider.getHeaderValue('recipientPhone'))
+      setPurchasePaymentDueDate(nextProvider.getHeaderValue('paymentDueDate'))
+      setPurchaseEditLines((prev) => coeditLinesToEditLines(nextProvider, prev))
+    }
+
+    void createDocCoeditProvider({ slipId: id }).then((nextProvider) => {
+      if (disposed) {
+        nextProvider.destroy()
+        return
+      }
+      provider = nextProvider
+      if (nextProvider.isEmpty()) seedSlipCoeditProvider(nextProvider, slipData, mode)
+      applyProviderState(nextProvider)
+      unsubscribeDoc = nextProvider.subscribeDoc(() => applyProviderState(nextProvider))
+      setSlipFormCoeditProvider(nextProvider)
+      setSlipFormCoeditPending(false)
+    }).catch(() => {
+      // 로드 실패 — provider 는 null 유지하되 pending 해제 → 입력/저장이 비-coedit 평문 모드로 복귀(영구잠금 방지).
+      if (!disposed) {
+        setSlipFormCoeditProvider(null)
+        setSlipFormCoeditPending(false)
+      }
+    })
+
+    return () => {
+      disposed = true
+      unsubscribeDoc?.()
+      provider?.destroy()
+      setSlipFormCoeditProvider(null)
+      setSlipFormCoeditPending(false)
+    }
+  }, [detailQuery.data, id, mode, purchaseEditOpen, salesEditOpen])
 
   if (!id) return null
 
@@ -2524,7 +2641,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               type="button"
               variant="primary"
               loading={purchaseUpdateMutation.isPending}
-              disabled={purchaseUpdateMutation.isPending || purchaseEditLines.length === 0}
+              disabled={purchaseUpdateMutation.isPending || slipFormCoeditPending || purchaseEditLines.length === 0}
               data-testid="purchase-slip-edit-submit"
               onClick={() => {
                 purchaseUpdateMutation.mutate({
@@ -2583,65 +2700,72 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">거래처</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.partnerName"
               value={purchasePartnerName}
-              onChange={(e) => setPurchasePartnerName(e.target.value)}
+              onValueChange={setPurchasePartnerName}
               aria-label="거래처"
             />
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">거래처코드</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.partnerCode"
               value={purchasePartnerCode}
-              onChange={(e) => setPurchasePartnerCode(e.target.value)}
+              onValueChange={setPurchasePartnerCode}
               aria-label="거래처코드"
             />
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">사업자번호</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.businessNumber"
               value={purchaseBusinessNumber}
-              onChange={(e) => setPurchaseBusinessNumber(e.target.value)}
+              onValueChange={setPurchaseBusinessNumber}
               aria-label="사업자번호"
             />
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">배송주소</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.deliveryAddress"
               value={purchaseDeliveryAddress}
-              onChange={(e) => setPurchaseDeliveryAddress(e.target.value)}
+              onValueChange={setPurchaseDeliveryAddress}
               aria-label="배송주소"
             />
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">프로젝트명</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.projectName"
               value={purchaseProjectName}
-              onChange={(e) => setPurchaseProjectName(e.target.value)}
+              onValueChange={setPurchaseProjectName}
               aria-label="프로젝트명"
             />
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">인수자 번호</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.recipientPhone"
               value={purchaseRecipientPhone}
-              onChange={(e) => setPurchaseRecipientPhone(e.target.value)}
+              onValueChange={setPurchaseRecipientPhone}
               aria-label="인수자 번호"
             />
           </label>
           <label className="purchase-edit-field">
             <span className="detail-label">입금예정일</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.paymentDueDate"
               type="date"
               value={purchasePaymentDueDate}
-              onChange={(e) => setPurchasePaymentDueDate(e.target.value)}
+              onValueChange={setPurchasePaymentDueDate}
               aria-label="입금예정일"
             />
           </label>
@@ -2649,10 +2773,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
         <label className="purchase-edit-field purchase-edit-memo">
           <span className="detail-label">적요</span>
-          <Input
-            inputSize="sm"
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.memo"
             value={purchaseMemo}
-            onChange={(e) => setPurchaseMemo(e.target.value)}
+            onValueChange={setPurchaseMemo}
             aria-label="적요"
           />
         </label>
@@ -2675,46 +2800,51 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               {purchaseEditLines.map((line, index) => (
                 <tr key={line.key}>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.productName`}
                       value={line.productName ?? ''}
-                      onChange={(e) => updatePurchaseLine(index, { productName: e.target.value })}
+                      onValueChange={(value) => updatePurchaseLine(index, { productName: value })}
                       aria-label={`품목 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.modelName`}
                       value={line.modelName ?? ''}
-                      onChange={(e) => updatePurchaseLine(index, { modelName: e.target.value })}
+                      onValueChange={(value) => updatePurchaseLine(index, { modelName: value })}
                       aria-label={`모델명 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.specification`}
                       value={line.specification ?? ''}
-                      onChange={(e) => updatePurchaseLine(index, { specification: e.target.value })}
+                      onValueChange={(value) => updatePurchaseLine(index, { specification: value })}
                       aria-label={`규격 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.quantity`}
                       type="number"
                       min={1}
                       value={String(line.quantity)}
-                      onChange={(e) => updatePurchaseLine(index, { quantity: Number(e.target.value) })}
+                      onValueChange={(value) => updatePurchaseLine(index, { quantity: Number(value) })}
                       aria-label={`수량 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.unitPrice`}
                       type="number"
                       min={0}
                       value={String(line.unitPrice)}
-                      onChange={(e) => updatePurchaseLine(index, { unitPrice: e.target.value })}
+                      onValueChange={(value) => updatePurchaseLine(index, { unitPrice: value })}
                       aria-label={`단가 ${index + 1}`}
                     />
                   </td>
@@ -2770,7 +2900,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               type="button"
               variant="primary"
               loading={salesUpdateMutation.isPending}
-              disabled={salesUpdateMutation.isPending || salesEditLines.length === 0}
+              disabled={salesUpdateMutation.isPending || slipFormCoeditPending || salesEditLines.length === 0}
               data-testid="sales-slip-edit-save"
               onClick={() => {
                 salesUpdateMutation.mutate({
@@ -2830,74 +2960,82 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">거래처</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.partnerName"
               value={salesPartnerName}
-              onChange={(e) => setSalesPartnerName(e.target.value)}
+              onValueChange={setSalesPartnerName}
               aria-label="거래처"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">거래처코드</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.partnerCode"
               value={salesPartnerCode}
-              onChange={(e) => setSalesPartnerCode(e.target.value)}
+              onValueChange={setSalesPartnerCode}
               aria-label="거래처코드"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">사업자번호</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.businessNumber"
               value={salesBusinessNumber}
-              onChange={(e) => setSalesBusinessNumber(e.target.value)}
+              onValueChange={setSalesBusinessNumber}
               aria-label="사업자번호"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">배송주소</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.deliveryAddress"
               value={salesDeliveryAddress}
-              onChange={(e) => setSalesDeliveryAddress(e.target.value)}
+              onValueChange={setSalesDeliveryAddress}
               aria-label="배송주소"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">감리주소</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.supervisionAddress"
               value={salesSupervisionAddress}
-              onChange={(e) => setSalesSupervisionAddress(e.target.value)}
+              onValueChange={setSalesSupervisionAddress}
               aria-label="감리주소"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">프로젝트명</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.projectName"
               value={salesProjectName}
-              onChange={(e) => setSalesProjectName(e.target.value)}
+              onValueChange={setSalesProjectName}
               aria-label="프로젝트명"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">인수자 번호</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.recipientPhone"
               value={salesRecipientPhone}
-              onChange={(e) => setSalesRecipientPhone(e.target.value)}
+              onValueChange={setSalesRecipientPhone}
               aria-label="인수자 번호"
             />
           </label>
           <label className="sales-edit-field">
             <span className="detail-label">입금예정일</span>
-            <Input
-              inputSize="sm"
+            <CollaborativeSlipInput
+              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+              fieldPath="header.paymentDueDate"
               type="date"
               value={salesPaymentDueDate}
-              onChange={(e) => setSalesPaymentDueDate(e.target.value)}
+              onValueChange={setSalesPaymentDueDate}
               aria-label="입금예정일"
             />
           </label>
@@ -2905,10 +3043,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
         <label className="sales-edit-field sales-edit-memo">
           <span className="detail-label">적요</span>
-          <Input
-            inputSize="sm"
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.memo"
             value={salesMemo}
-            onChange={(e) => setSalesMemo(e.target.value)}
+            onValueChange={setSalesMemo}
             aria-label="적요"
           />
         </label>
@@ -2931,46 +3070,51 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               {salesEditLines.map((line, index) => (
                 <tr key={line.key}>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.productName`}
                       value={line.productName ?? ''}
-                      onChange={(e) => updateSalesLine(index, { productName: e.target.value })}
+                      onValueChange={(value) => updateSalesLine(index, { productName: value })}
                       aria-label={`품목 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.modelName`}
                       value={line.modelName ?? ''}
-                      onChange={(e) => updateSalesLine(index, { modelName: e.target.value })}
+                      onValueChange={(value) => updateSalesLine(index, { modelName: value })}
                       aria-label={`모델명 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.specification`}
                       value={line.specification ?? ''}
-                      onChange={(e) => updateSalesLine(index, { specification: e.target.value })}
+                      onValueChange={(value) => updateSalesLine(index, { specification: value })}
                       aria-label={`규격 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.quantity`}
                       type="number"
                       min={1}
                       value={String(line.quantity)}
-                      onChange={(e) => updateSalesLine(index, { quantity: Number(e.target.value) })}
+                      onValueChange={(value) => updateSalesLine(index, { quantity: Number(value) })}
                       aria-label={`수량 ${index + 1}`}
                     />
                   </td>
                   <td>
-                    <Input
-                      inputSize="sm"
+                    <CollaborativeSlipInput
+                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                      fieldPath={`items.${index}.unitPrice`}
                       type="number"
                       min={0}
                       value={String(line.unitPrice)}
-                      onChange={(e) => updateSalesLine(index, { unitPrice: e.target.value })}
+                      onValueChange={(value) => updateSalesLine(index, { unitPrice: value })}
                       aria-label={`단가 ${index + 1}`}
                     />
                   </td>
@@ -3256,7 +3400,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   }
 
   function removePurchaseLine(index: number) {
-    setPurchaseEditLines((prev) => prev.filter((_, i) => i !== index))
+    setPurchaseEditLines((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      slipFormCoeditProvider?.replaceItems(next)
+      return next
+    })
   }
 
   // SP-08-6-2: 매출 수정 라인 헬퍼
@@ -3267,6 +3415,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   }
 
   function removeSalesLine(index: number) {
-    setSalesEditLines((prev) => prev.filter((_, i) => i !== index))
+    setSalesEditLines((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      slipFormCoeditProvider?.replaceItems(next)
+      return next
+    })
   }
 }
