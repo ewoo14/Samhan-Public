@@ -1,7 +1,34 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-29 (자율 세션 2 — RestClient 계약테스트·auth파손·CODEF). 다음 세션 첫 읽기 파일.
+> 갱신: 2026-06-29 (자율 세션 3 — CODEF 실연동 에픽 + README ER + 0수렴 무결성 정정). 다음 세션(집PC) 첫 읽기 파일.
+
+---
+
+## 🔄 2026-06-29 세션 3 — CODEF 실연동 에픽 (집PC 재개 지점)
+
+> 6시 퇴근 종료. 집PC 재개 — **이 절을 먼저 읽을 것.**
+
+### 완료
+- **#666 머지**: README 최상단 프로젝트 구조(17 BE+8 client+6 shared) + **DB ER 다이어그램**(15 service-DB Mermaid + cross-service flowchart). (samhan-public-overview.html ER 동기화는 후속 — 미완.)
+- **CODEF 에픽 기획 완료**(main 반영): brainstorming → 설계 `docs/superpowers/specs/2026-06-29-codef-connectedid-registration-design.md` → 계획 `docs/superpowers/plans/2026-06-29-codef-connectedid-registration.md` (7 task). 결정: 회사 1개 connectedId·easyCodef SDK·자격 무저장·경계=등록+목록검증(거래내역 fetch는 다음 epic).
+- **#667 머지**(`dd0d6ac9`): CODEF **BE 슬라이스 1**(Task 1~5) — easyCodef SDK 1.0.6 의존성 + EasyCodefClient 인터페이스 + Flyway V47(codef_connection·codef_registered_institution, 자격 무저장) + CodefConnectionService/Controller(MASTER) + CodefClientImpl CODEF분기 배선. 순차 듀얼리뷰가 실결함 4건 적발(Opus ci.yml / Codex connection 정합성 3: 동시성 advisory lock·null connectedId throw·status ACTIVE 필터).
+
+### 🚧 진행중 — #668 (집PC 즉시 처리)
+- **#668 OPEN**(브랜치 `fix/codef-connection-catch-status-filter`): #667 **0수렴 단축**을 개발책임자가 적발 → 소급 0수렴 재리뷰 수행 → `saveConnection()` catch status 무필터 결함 fix. **그러나 Codex 라운드가 더 깊은 BLOCKING 적발**:
+  - **`saveConnection()` catch가 같은 @Transactional 안에서 unique 위반 후 재조회 → PostgreSQL aborted-tx 로 무효**(원래 #667부터 잠재). advisory lock 직렬화로 실 트리거는 dead-ish 이나 복구로직 깨짐.
+  - **→ 0수렴 미달. #668 머지 보류.** 집PC: **catch 제거(권장 — advisory lock 이 직렬화)** 또는 REQUIRES_NEW/ON CONFLICT → **fresh 순차 듀얼 0수렴 후 머지.** (#668 코멘트에 상세)
+
+### 다음 (CODEF 완결 → 그 다음)
+- **슬라이스 2**(브랜치 `feat/codef-easycodef-sdk-impl` 생성됨, **구현 0** — 무결성 점검에 우선순위 양보): EasyCodefClientImpl 실 SDK. **easyCodef API 확인됨**: `io.codef.api:easycodef-java:1.0.6`, `new EasyCodef()`+`setClientInfoForDemo/setPublicKey`, `createAccount(EasyCodefServiceType.SANDBOX, HashMap)`, `requestProduct(url, type, map)`, 응답 `result.code`="CF-00000". 샌드박스 `https://development.codef.io` `/v1/account/create`(countryCode=KR·businessType BK/CD·clientType=P·organization·loginType·password[SDK RSA]), **fixed-response**. → **반드시 실 Docker 라이브 QA**(standalone 기동+샌드박스 호출+실 캡처 docs/qa/ — 개발책임자 명시).
+- **슬라이스 3**: FE 회계 설정 "CODEF 금융연동" 페이지.
+- **CODEF 전부 완료 후** → **라이브 필드-레벨 협업 에픽**(개발책임자 요청): 현재 협업=presence(보는 사람)+커밋기반 수정완료. 구글 워크스페이스식 **실시간 필드 클릭/값 편집 가시화는 미구현** → brainstorming 신규 에픽.
+
+### ⚠️ 이번 세션 프로세스 교훈 (집PC 엄수)
+- **0수렴 단축 금지**: fix 후 반드시 **fresh 순차 듀얼 라운드(Opus 에이전트 + codex exec) 재실행** 후에만 머지. CI-green+코드리드로 "0수렴 선언" 금지(개발책임자 2회 적발 — Docker QA·0수렴 둘 다).
+- **실 Docker 라이브 QA**: 실 상호작용 슬라이스는 standalone 기동+실 캡처. CI Testcontainers 만으로 "라이브 QA" 라 칭하지 말 것.
+- **Codex MCP 세션한계**(-32000): `codex exec --sandbox <ro/ww> --model gpt-5.5 -c model_reasoning_effort=high "<프롬프트>" </dev/null`(리다이렉트 필수) 우회. 새 세션 시작 시 MCP 자동 회복.
+- **CODEF 키 노출**: 데모·샌드박스 키가 채팅 노출됨 → **회전 검토**(gitignored .env 만 보관, 커밋·메모리 비포함 유지).
 
 ---
 
