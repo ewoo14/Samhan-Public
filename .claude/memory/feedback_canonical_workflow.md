@@ -7,6 +7,16 @@ metadata:
 
 🚨 2026-06-23 신설 · **2026-06-24 개발책임자 재확정·완성(영구박제)**. **본 파일이 슬라이스/PR 워크플로우의 유일한 진실원이다.** 과거·경쟁 워크플로우 메모리(team-lead 승인체인 github-pr-workflow · multi-agent-team-pattern · integrated-pr-pattern · dual-5agent-review · per-round-live-qa · review-posting-and-zero-skip · pm-auto-continuous · temp-multimodel-workflow · tm-led-agent-discussion · pr-qa-screenshots · early-pr-docker-qa · pr-ci-monitoring · post-each-review-round-distinctly · rereview-converge-after-fix · tm-pr-comment-pre-merge-gate · user-merge-authority 등)는 **전부 본 파일로 통합·폐기**했다. 다른 워크플로우와 헷갈리지 말 것 — **이 순서를 토씨까지 따른다.**
 
+## 🚨 라운드 PREFLIGHT (반복 위반 박제 — 2026-06-29 개발책임자 "매 세션 지적해야 하나" 다회 지적 종식용)
+매 슬라이스/라운드 진입 전 본 게이트 1~6 을 명시 자각·통과하지 않으면 진행 금지. (과거 세션서 아래가 반복 위반됨)
+1. **조기 PR 먼저** — 브랜치 + PR 을 **Codex 구현 디스패치 이전**에 개설(빈 seed 커밋 허용). 🚫 PR 없이 구현 디스패치 = 위반.
+2. **양쪽 다 5-agent** — Opus 라운드 = FE/BE/Design/DevOps/QA 5인. **Codex 라운드도 동일 5인 전원.** 🚫 단일 Codex 리뷰 = 위반.
+3. **라운드마다 라이브 QA** — 각 라운드(Opus·Codex)는 fix 후 라이브 실 QA + 단계별 스샷을 그 라운드 코멘트에 인라인. 🚫 Codex 라운드 QA 누락 = 위반.
+4. **fix 주체 = 그 라운드 주체 직접** — **Opus 라운드 fix = Opus 직접 Edit**(Codex 위임 금지). **Codex 라운드 fix = Codex.** 🚫 'OPUS 구현 금지'는 **2단계 초기구현 한정**(=Codex 구현)이며 **리뷰 라운드 fix 에는 적용 안 됨**. 🚫 Opus 라운드 fix 를 Codex 에 위임 = 위반.
+5. **라운드 완결 후 다음** — review→fix→**QA 완료까지** 끝낸 뒤에야 다음 라운드. 🚫 QA 전 다음 라운드 진입 = 위반.
+6. **즉시 독립 게시 · 듀얼리뷰 순차 · 0수렴까지 · 단축금지 · 매 단계 ScheduleWakeup 재자각.**
+→ 세션 시작 + 매 라운드 진입 시 본 1~6 자각. 개발책임자 동일 지적 반복 종식이 본 절의 목적.
+
 ## 표준 순서 (슬라이스/PR 1건)
 1. **Claude(Opus) 기획 + PR 개설** — 스펙/플랜 수립, 브랜치, **조기 PR**(구현 누적 전 PR 먼저).
 2. **Codex 개발 + 개발사항 리뷰 게시** — Codex 가 구현(**Claude 가 commit 대행, Codex git 금지**), 자기 개발사항 리뷰를 PR 에 게시.
