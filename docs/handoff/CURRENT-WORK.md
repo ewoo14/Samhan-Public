@@ -1,7 +1,7 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-30 새벽 (자율 세션 — 머지 4건: #531잔여(#669)·CODEF Task6(#670)/Task7(#671)·협업 코-에디팅 토대 S1(#673); 협업 S2 전표 전체 폼 착수). **맨 위 "🌙 2026-06-30 새벽" 절을 먼저 읽을 것.** 다음 세션 첫 읽기 파일.
+> 갱신: 2026-06-30 새벽 (자율 세션 — 머지 6건: #531잔여(#669)·CODEF Task6(#670)/Task7(#671)·협업 코-에디팅 토대 S1(#673)·전표 전체 폼 S2a(#674); 협업 S2b 착수). **맨 위 "🌙 2026-06-30 새벽" 절을 먼저 읽을 것.** 다음 세션 첫 읽기 파일.
 
 ---
 
@@ -25,7 +25,9 @@
 ### 🚧 진행/다음 — 협업 코-에디팅 에픽(#16) + 단가인상(#17)
 **협업 = 구글 독스/시트식 라이브 코-에디팅**(개발책임자 2026-06-30 명확화·정정 다수). soft-lock 접근(#672)은 **draft 파킹**(피벗 — 락 아닌 낙관적 라이브 머지). 목표 = 각 전표/문서 **전 범위(모든 헤더 필드+품목 셀)** 라이브 커서·셀 셀렉트·실시간 편집 + **A~D**: ①단일색상(presence=coedit=audit, BE PresenceColor 단일소스) ②상태의존 카운트(판매전표=작성완료·창고이관 後 수정카운트 증가, 前은 편집O·카운트X) ③로그=첫 작성 이후 항상 ④레드라인 재귀(카운트 증가 상태 편집=기존값 취소선+바로 위 수정값을 사용자색+라벨, 수정의 수정도 스택). 6문서(slip·견적·배차·회계전표·주문·그룹웨어결재) 롤아웃.
 - ✅ **S1 머지(#673, `886906b33`)**: Yjs 코-에디팅 **토대**(provider·SSE relay·awareness·CollaborativeTextField·mirror-div 커서). slip 협업 메모 1필드. Opus×5·Codex×5 0수렴(payload DoS·IME·resync/retry·caret·권한 VIEW→CREATE·Yjs snapshot 무결성·커서 UI 실결함 다수 해소). 설계 `docs/superpowers/specs/2026-06-30-live-coediting-design.md`.
-- 🔄 **S2(대형, 착수)**: slip 전표 **전체 폼** Yjs 바인딩(헤더 Y.Map+품목 Y.Array<Y.Map>)+문서전역 awareness+A~D. sub-slice: **S2a**=전체폼 바인딩+awareness+단일색상 / S2b=즉시적용+문서전역 audit/version 로그(revision/audit·SlipVersionHistoryPanel 연동) / S2c=상태의존 카운트 / S2d=레드라인 재귀 UI. coedit relay shared 공용화.
+- ✅ **S2a 머지(#674, `fcdbb6bea`)**: slip 전표 **전체 폼** Yjs 바인딩(헤더 `Y.Map`/자유텍스트 `Y.Text` + 품목 `Y.Array<Y.Map>`) + 문서전역 awareness(필드/셀 라이브 커서) + **단일색상(A 달성** — `presenceColor.ts`=BE `PresenceColor.fromUserId` 일치, presence=coedit). Opus×3·Codex×2 0수렴(숫자셀 clear·품목셀 배지 높이·**provider 영구잠금 회귀** 해소). CollaborativeSlipInput·createDocCoeditProvider.
+- 🔄 **S2b(착수)**: 즉시 적용 + 문서전역 audit/version 로그(첫 작성부터, 기존 SlipRevision/CollabRevision·SlipVersionHistoryPanel 연동). 다음 **S2c**=상태의존 카운트(작성완료·창고이관 後) / **S2d**=레드라인 재귀(취소선+사용자색+라벨, 수정의 수정도 스택). coedit relay shared 공용화.
+- ⏳ NB polish(S2a 이연): removeLine setState 사이드이펙트 분리·onValueChange useCallback·Y.Text applyDelta(문자 CRDT).
 - ⏳ **S3+**: 6문서 각 동일 모델 전범위 롤아웃.
 - ⏳ **#17 단가인상**: 변동 전/후 별도 카테고리 분리·렌더 시점 '인상 전/후' 옵션·주문서 카테고리별 변동날짜(KST) 자동전환. 협업 이후.
 > 정직: 협업 전범위 라이브 코-에디팅 = 대형 다슬라이스(계산·검증·상태·영속·레드라인 UI). S1 토대 수렴만 Opus×5·Codex×5(10라운드). S2~ + 6문서 + #17 = 상당 잔여 — 야간 최대 진척, 오전 종합 검토·확정.
