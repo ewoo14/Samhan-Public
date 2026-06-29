@@ -4,7 +4,7 @@
  * 댓글, 수정완료 이력, 기존 버전 이력을 한 화면에 모아 보여준다. UUID 는 API key/path 에만 쓰고,
  * 화면에는 작성자/수정자 실명과 전표번호/내용만 표시한다.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Button, Card, Input } from '@samhan/design-system'
@@ -22,6 +22,7 @@ import { SlipCollabRealtimeClient } from '../../realtime/SlipCollabRealtimeClien
 import { usePermissions } from '../../hooks/usePermissions'
 import { usePresence } from '../../hooks/usePresence'
 import { SlipVersionHistoryPanel } from '../audit/SlipVersionHistoryPanel'
+import { CollaborativeTextField } from './CollaborativeTextField'
 import { PresenceIndicator } from './PresenceIndicator'
 
 export interface SlipCollaborationPanelProps {
@@ -50,6 +51,8 @@ export const OVERLAY_FIELD_OPTIONS = [
   { value: 'collectTerm', label: '회수 조건' },
   { value: 'agreeTerm', label: '약정 조건' },
 ] as const
+
+const EMPTY_CURRENT_VALUES: Record<string, string | null | undefined> = {}
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '-'
@@ -126,7 +129,7 @@ function isCollabEvent(eventName: string): boolean {
 
 export function SlipCollaborationPanel({
   slipId,
-  currentValues = {},
+  currentValues = EMPTY_CURRENT_VALUES,
   editMode = false,
   onEditModeChange,
   onCommitted,
@@ -138,6 +141,7 @@ export function SlipCollaborationPanel({
   const [editReason, setEditReason] = useState('')
   const [editNotice, setEditNotice] = useState<string | null>(null)
   const [commitError, setCommitError] = useState<string | null>(null)
+  const editModeInitializedRef = useRef(false)
   const presenceEntries = usePresence({ entityId: slipId, enabled: !!slipId })
 
   const commentQueryKey = useMemo(() => ['slipCollabComments', slipId] as const, [slipId])
@@ -161,7 +165,12 @@ export function SlipCollaborationPanel({
   })
 
   useEffect(() => {
-    if (!editMode) return
+    if (!editMode) {
+      editModeInitializedRef.current = false
+      return
+    }
+    if (editModeInitializedRef.current) return
+    editModeInitializedRef.current = true
     const next: Record<string, string> = {}
     for (const option of OVERLAY_FIELD_OPTIONS) {
       next[option.value] = valueForEdit(currentValues[option.value])
@@ -265,6 +274,16 @@ export function SlipCollaborationPanel({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
           <h4 style={{ margin: 0 }}>협업</h4>
           <PresenceIndicator entries={presenceEntries} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <CollaborativeTextField
+            slipId={slipId}
+            fieldName="memo"
+            label="협업 메모"
+            rows={4}
+            readOnly={!canWriteComments}
+          />
         </div>
 
         <div className="detail-grid" style={{ alignItems: 'start' }}>
