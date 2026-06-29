@@ -1,7 +1,7 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-29 (자율 세션 3 — CODEF 실연동 에픽 + README ER + 0수렴 무결성 정정). 다음 세션(집PC) 첫 읽기 파일.
+> 갱신: 2026-06-29 (집PC 세션 4 — #668 머지 완료: aborted-tx catch 제거·순차 듀얼 0수렴). 다음 세션 첫 읽기 파일.
 
 ---
 
@@ -14,12 +14,13 @@
 - **CODEF 에픽 기획 완료**(main 반영): brainstorming → 설계 `docs/superpowers/specs/2026-06-29-codef-connectedid-registration-design.md` → 계획 `docs/superpowers/plans/2026-06-29-codef-connectedid-registration.md` (7 task). 결정: 회사 1개 connectedId·easyCodef SDK·자격 무저장·경계=등록+목록검증(거래내역 fetch는 다음 epic).
 - **#667 머지**(`dd0d6ac9`): CODEF **BE 슬라이스 1**(Task 1~5) — easyCodef SDK 1.0.6 의존성 + EasyCodefClient 인터페이스 + Flyway V47(codef_connection·codef_registered_institution, 자격 무저장) + CodefConnectionService/Controller(MASTER) + CodefClientImpl CODEF분기 배선. 순차 듀얼리뷰가 실결함 4건 적발(Opus ci.yml / Codex connection 정합성 3: 동시성 advisory lock·null connectedId throw·status ACTIVE 필터).
 
-### 🚧 진행중 — #668 (집PC 즉시 처리)
-- **#668 OPEN**(브랜치 `fix/codef-connection-catch-status-filter`): #667 **0수렴 단축**을 개발책임자가 적발 → 소급 0수렴 재리뷰 수행 → `saveConnection()` catch status 무필터 결함 fix. **그러나 Codex 라운드가 더 깊은 BLOCKING 적발**:
-  - **`saveConnection()` catch가 같은 @Transactional 안에서 unique 위반 후 재조회 → PostgreSQL aborted-tx 로 무효**(원래 #667부터 잠재). advisory lock 직렬화로 실 트리거는 dead-ish 이나 복구로직 깨짐.
-  - **→ 0수렴 미달. #668 머지 보류.** 집PC: **catch 제거(권장 — advisory lock 이 직렬화)** 또는 REQUIRES_NEW/ON CONFLICT → **fresh 순차 듀얼 0수렴 후 머지.** (#668 코멘트에 상세)
+### ✅ #668 머지 완료 (집PC 세션 4, `a6e7a2aec`)
+- #667 **0수렴 단축** 적발 → 소급 재리뷰 중 Codex 가 BLOCKING(`saveConnection()` 의 같은 @Transactional 안 catch 후 재조회 → PostgreSQL **aborted-tx** 복구 무효) 적발 → #668 머지 보류였음.
+- **집PC fix(Opus 직접)**: 깨진 catch 제거 — advisory lock(`pg_advisory_xact_lock`)이 등록을 직렬화 + 기존 row in-place 갱신하므로 동시 INSERT 경합 없는 **도달 불가 dead 코드**였음. 위반은 그대로 전파(정직한 에러). 직렬화·in-place 불변을 주석·IT 단언(`findAll().hasSize(1)`)에 박제.
+- **fresh 순차 듀얼리뷰 0수렴**(Opus 5-agent 5차원 0 + Codex gpt-5.5 0, 양쪽 새 fix 없음). family sweep clean(다른 DIV catch 는 REQUIRES_NEW 격리/skip/rethrow). QA: fresh PG V47 제약 실증(unique·CHECK 실 위반 캡처)+실 PG IT 12건(0 skip/fail). CI 전 잡 green. 교훈 [[feedback_aborted_tx_after_div_catch]]. 머지는 하네스 게이트로 개발책임자 명시 승인 후 진행.
 
 ### 다음 (CODEF 완결 → 그 다음)
+> ⚠️ **집PC 제약**: `services/accounting-service/.env`(샌드박스 자격)가 집PC 에 **없음** → **슬라이스 2(Task6 실 SDK)의 의무 라이브 QA(샌드박스 호출)는 집PC 불가 → 회사PC 과제**. 집PC 진행 가능 = **슬라이스 3(Task7 FE, mock 기반 QA — 자격 무관)**. Task7 은 BE 엔드포인트(#667 기머지)에 의존하며 Task6(실 SDK)와 독립 진행 가능.
 - **슬라이스 2**(브랜치 `feat/codef-easycodef-sdk-impl` 생성됨, **구현 0** — 무결성 점검에 우선순위 양보): EasyCodefClientImpl 실 SDK. **easyCodef API 확인됨**: `io.codef.api:easycodef-java:1.0.6`, `new EasyCodef()`+`setClientInfoForDemo/setPublicKey`, `createAccount(EasyCodefServiceType.SANDBOX, HashMap)`, `requestProduct(url, type, map)`, 응답 `result.code`="CF-00000". 샌드박스 `https://development.codef.io` `/v1/account/create`(countryCode=KR·businessType BK/CD·clientType=P·organization·loginType·password[SDK RSA]), **fixed-response**. → **반드시 실 Docker 라이브 QA**(standalone 기동+샌드박스 호출+실 캡처 docs/qa/ — 개발책임자 명시).
 - **슬라이스 3**: FE 회계 설정 "CODEF 금융연동" 페이지.
 - **CODEF 전부 완료 후** → **라이브 필드-레벨 협업 에픽**(개발책임자 요청): 현재 협업=presence(보는 사람)+커밋기반 수정완료. 구글 워크스페이스식 **실시간 필드 클릭/값 편집 가시화는 미구현** → brainstorming 신규 에픽.
