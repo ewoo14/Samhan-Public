@@ -66,6 +66,11 @@ export interface DocCoeditProvider {
   setHeaderValue: (fieldName: string, value: string) => void
   getItemValue: (index: number, cellName: string) => string
   setItemValue: (index: number, cellName: string, value: string) => void
+  getItemIndexById: (lineId: string) => number
+  getItemValueById: (lineId: string, cellName: string) => string
+  setItemValueById: (lineId: string, cellName: string, value: string) => void
+  addItem: (seed?: Record<string, unknown>) => string
+  removeItem: (lineId: string) => void
   replaceItems: (rows: object[]) => void
   isEmpty: () => boolean
   subscribeDoc: (listener: () => void) => () => void
@@ -422,6 +427,38 @@ function stringifyYValue(value: unknown): string {
   return String(value)
 }
 
+// ── 라인 안정키(lineId) 규약 ───────────────────────────────────────────────
+// coedit 라인 항목은 위치(index) 대신 불변 lineId 로 식별한다.
+// ⚠️ lineId 는 (1) 비어있지 않고 (2) 순수 숫자문자열(/^\d+$/)이 아니어야 한다 —
+//    CollaborativeSlipInput 이 fieldPath `items.{seg}.{cell}` 의 seg 가 숫자면 기존 index API,
+//    아니면 lineId(byId) API 로 분기하므로 순수 숫자 lineId 는 index 로 오라우팅된다.
+//    generateLineId()(UUID/`line-` 접두)는 이 규약을 보장한다. slA1b 에서 서버 line.id 를
+//    lineId 로 시드할 때 그 id 가 정수형이면 반드시 비숫자 형태(예: `sl-${id}`)로 래핑할 것.
+//    (듀얼리뷰 slA1: FE/Codex 공통 지적 — 숫자 seed → index 오라우팅 함정.)
+const LINE_ID_FIELD = 'lineId'
+
+function readLineId(map: Y.Map<unknown>): string {
+  const value = map.get(LINE_ID_FIELD)
+  return typeof value === 'string' ? value : ''
+}
+
+/** 라인 안정키 생성 - Electron 렌더러/jsdom 모두 crypto.randomUUID 우선, 미가용 시 폴백. */
+function generateLineId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return `line-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function findItemIndexById(items: Y.Array<Y.Map<unknown>>, lineId: string): number {
+  // 빈/falsy lineId 는 유효한 라인키가 아니다 — lineId 미보유 legacy row(readLineId→'')와
+  // 우발 매칭을 차단(setItemValueById('')/removeItem('')가 첫 구행을 오손하는 사고 방지, 리뷰 Codex MEDIUM).
+  if (!lineId) return -1
+  for (let i = 0; i < items.length; i += 1) {
+    if (readLineId(items.get(i)) === lineId) return i
+  }
+  return -1
+}
+
 function ensureItemMap(items: Y.Array<Y.Map<unknown>>, index: number): Y.Map<unknown> {
   while (items.length <= index) {
     items.push([new Y.Map<unknown>()])
@@ -636,14 +673,53 @@ export async function createDocCoeditProvider(
     setItemValue: (index: number, cellName: string, value: string) => {
       ensureItemMap(items, index).set(cellName, value)
     },
+    getItemIndexById: (lineId: string) => findItemIndexById(items, lineId),
+    getItemValueById: (lineId: string, cellName: string) => {
+      const index = findItemIndexById(items, lineId)
+      return index < 0 ? '' : stringifyYValue(items.get(index)?.get(cellName))
+    },
+    setItemValueById: (lineId: string, cellName: string, value: string) => {
+      const index = findItemIndexById(items, lineId)
+      if (index < 0) return // 원격 라인 삭제 경합은 멱등 no-op으로 처리한다.
+      items.get(index).set(cellName, value)
+    },
+    addItem: (seed?: Record<string, unknown>) => {
+      const lineId = generateLineId()
+      doc.transact(() => {
+        const map = new Y.Map<unknown>()
+        map.set(LINE_ID_FIELD, lineId)
+        if (seed) {
+          for (const [key, value] of Object.entries(seed)) {
+            if (key === LINE_ID_FIELD) continue
+            map.set(key, value == null ? '' : String(value))
+          }
+        }
+        items.push([map])
+      })
+      return lineId
+    },
+    removeItem: (lineId: string) => {
+      doc.transact(() => {
+        const index = findItemIndexById(items, lineId)
+        if (index >= 0) items.delete(index, 1)
+      })
+    },
     replaceItems: (rows: object[]) => {
       doc.transact(() => {
         if (items.length > 0) items.delete(0, items.length)
         const nextRows = rows.map((row) => {
           const map = new Y.Map<unknown>()
+          let lineIdSet = false
           for (const [key, value] of Object.entries(row)) {
-            map.set(key, value == null ? '' : String(value))
+            if (key === LINE_ID_FIELD) {
+              const seeded = value == null || value === '' ? generateLineId() : String(value)
+              map.set(LINE_ID_FIELD, seeded)
+              lineIdSet = true
+            } else {
+              map.set(key, value == null ? '' : String(value))
+            }
           }
+          if (!lineIdSet) map.set(LINE_ID_FIELD, generateLineId())
           return map
         })
         if (nextRows.length > 0) items.push(nextRows)

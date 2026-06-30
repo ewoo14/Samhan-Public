@@ -405,3 +405,161 @@ describe('createDocCoeditProvider', () => {
     provider.destroy()
   })
 })
+describe('createDocCoeditProvider lineId APIs', () => {
+  it('adds an item with a stable lineId and stringifies seed cells', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+
+    const lineId = provider.addItem({ productName: 'paper', quantity: 3, nullable: null })
+
+    expect(lineId).toBeTruthy()
+    expect(provider.items.length).toBe(1)
+    expect(provider.getItemIndexById(lineId)).toBe(0)
+    expect(provider.getItemValueById(lineId, 'productName')).toBe('paper')
+    expect(provider.getItemValueById(lineId, 'quantity')).toBe('3')
+    expect(provider.getItemValueById(lineId, 'nullable')).toBe('')
+    expect(provider.getItemValueById(lineId, 'lineId')).toBe(lineId)
+    provider.destroy()
+  })
+
+  it('reads and writes line cells by lineId and no-ops missing lineIds', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+    const lineId = provider.addItem({ quantity: 1 })
+
+    provider.setItemValueById(lineId, 'quantity', '5')
+    provider.setItemValueById('missing-line', 'quantity', '9')
+
+    expect(provider.getItemValueById(lineId, 'quantity')).toBe('5')
+    expect(provider.getItemValueById('missing-line', 'quantity')).toBe('')
+    expect(provider.items.length).toBe(1)
+    provider.destroy()
+  })
+
+  it('removes items by lineId and treats missing lineIds as idempotent no-ops', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+    const first = provider.addItem({ productName: 'A' })
+    const second = provider.addItem({ productName: 'B' })
+
+    provider.removeItem(first)
+    provider.removeItem('missing-line')
+
+    expect(provider.items.length).toBe(1)
+    expect(provider.getItemIndexById(first)).toBe(-1)
+    expect(provider.getItemIndexById(second)).toBe(0)
+    expect(provider.getItemValueById(second, 'productName')).toBe('B')
+    provider.destroy()
+  })
+
+  it('replaceItems preserves seeded lineIds, generates missing lineIds, and keeps index APIs unchanged', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+
+    provider.replaceItems([
+      { lineId: 'seed-line-1', productName: 'A', quantity: 1 },
+      { productName: 'B', quantity: 2 },
+      { lineId: '', productName: 'C', quantity: 3 },
+    ])
+
+    const generatedSecond = provider.items.get(1).get('lineId')
+    const generatedThird = provider.items.get(2).get('lineId')
+    expect(provider.items.length).toBe(3)
+    expect(provider.getItemIndexById('seed-line-1')).toBe(0)
+    expect(provider.getItemValueById('seed-line-1', 'productName')).toBe('A')
+    expect(typeof generatedSecond).toBe('string')
+    expect(generatedSecond).not.toBe('')
+    expect(typeof generatedThird).toBe('string')
+    expect(generatedThird).not.toBe('')
+    expect(provider.getItemValue(0, 'productName')).toBe('A')
+    expect(provider.getItemValue(1, 'quantity')).toBe('2')
+    provider.setItemValue(1, 'quantity', '7')
+    expect(provider.getItemValue(1, 'quantity')).toBe('7')
+    provider.destroy()
+  })
+
+  it('treats empty lineId as no match — never touches legacy lineId-less rows', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+    // lineId 미보유 legacy row 모사(replaceItems 는 lineId 를 자동부여하므로 직접 push).
+    const legacy = new Y.Map<unknown>()
+    legacy.set('productName', 'LEGACY')
+    provider.items.push([legacy])
+
+    expect(provider.getItemIndexById('')).toBe(-1)
+    expect(provider.getItemValueById('', 'productName')).toBe('')
+    provider.setItemValueById('', 'productName', 'HACKED')
+    provider.removeItem('')
+
+    expect(provider.items.length).toBe(1)
+    expect(provider.items.get(0).get('productName')).toBe('LEGACY')
+    provider.destroy()
+  })
+
+  it('addItem ignores a caller-supplied lineId in seed and assigns a generated one', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+    const lineId = provider.addItem({ lineId: 'manual-override', productName: 'X' })
+
+    expect(lineId).not.toBe('manual-override')
+    expect(provider.getItemIndexById('manual-override')).toBe(-1)
+    expect(provider.getItemIndexById(lineId)).toBe(0)
+    expect(provider.getItemValueById(lineId, 'productName')).toBe('X')
+    provider.destroy()
+  })
+
+  it('removeItem is idempotent on an already-removed lineId (no negative length)', async () => {
+    const provider = await createDocCoeditProvider({
+      documentId: 'doc-1',
+      basePath: '/slips/doc-1',
+      initialUpdates: async () => ({ updates: [] }),
+      postUpdate: vi.fn(),
+      postAwareness: vi.fn(),
+      subscribe: () => ({ abort: vi.fn() }),
+    })
+    const lineId = provider.addItem({ productName: 'A' })
+
+    provider.removeItem(lineId)
+    provider.removeItem(lineId)
+
+    expect(provider.items.length).toBe(0)
+    expect(provider.getItemIndexById(lineId)).toBe(-1)
+    provider.destroy()
+  })
+})
