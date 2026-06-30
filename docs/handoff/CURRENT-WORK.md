@@ -1,7 +1,7 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0(#680)·S3-1 주문 메모 coedit(#681 squash `04e2ff205`) 머지(2026-06-30, 5라운드 듀얼리뷰 0수렴)** — **다음 = S3-2 견적 coedit**(→회계→결재→배차). 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
+> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **2/4 문서 완료**(주문·견적), **다음 = S3-3 회계 coedit**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 > 🏠 **2026-06-30 회사PC 야간 세션 종료 → 집PC 재개**. 회사PC 세션의 ScheduleWakeup·실행 중 Explore(S3-1 정찰) 발화 시 **무시**(집PC가 진실원, 중복 작업 금지). 집PC 절차: `git pull`(main `5844124f` — S2d-2·S3-0 머지·메모리·핸드오프 포함) → `.\scripts\sync-claude-memory.ps1` → 본 파일 정독.
 
@@ -11,11 +11,16 @@
 - 검증: CI green(Desktop Playwright mock 회귀 hard gate 포함) · vitest collab 19/19 · `PartnerOrderCollabIT` 15/15(Testcontainers PG16.14) · sp-d4 T04 20/20(실 렌더·pageerror 0) · 게이트웨이:8080 실 HTTP relay round-trip · dev-report. 스샷 `docs/qa/coedit-s3-1-partner-order/`.
 - 📌 비블로킹 후속: `CollaborativeTextField` `aria-describedby` ready-dangling a11y sweep.
 
-### 🔜 다음 = S3-2 (견적 coedit)
+### 🔜 S3-2 견적 coedit 머지(#682 `f93a2cd89`, 2026-07-01) — 다음 = S3-3 회계 coedit
 협업 S3 롤아웃 2번. 순서: **견적 → 회계 → 결재 → 배차**(각 1차=단일 메모 저위험 / 2차=폼 셀). 공유 `CollabCoeditService` delegate + FE `createCoeditProvider(basePath=/{도메인}/{id})` 배선(S3-1 패턴 복제). 워크플로: 정찰→spec→writing-plans→조기PR(base=main)→구현(**codex exec --sandbox danger-full-access 집PC 작동 확인됨**, Claude commit 대행)→개발사항 즉시게시→순차 듀얼리뷰 0수렴(라운드마다 라이브QA+스샷)→PM종합→CI green→squash머지.
 - ⚠️ 견적 정찰 포인트: 견적 실체=`clients/web/estimate-app`(~95% 구현, [[quotation-estimate-app-state]]) + 데스크톱 `EstimateFormPage`/`QuoteView` 별개 → coedit 대상 화면/basePath 확정 필요. slip-service 동거 + EstimateRevision 영향.
 - 협업 6문서(slip·주문 ✅ / 견적·회계·결재·배차 잔여) 종결 후 → **#17 단가인상** 등 지시 에픽.
 - 💰 별도 vendor 트랙(개발책임자 진행 중 결정): ❌CODEF(고비용)·❌전자세금계산서발급(엑셀→홈택스 수동) / ✅계좌·법인카드지출=**바로빌**(계좌 24h 3천·카드 3천·당일 계좌가능) / 가맹점 카드매출(오프라인 단말기 키인=VAN)=**당일은 VAN사 포털·API(KICC 이지샵 등)/키인 시 전산 직접입력, T+1 대사=여신협회 무료포털**(여신협회 Open API=계약·비공개·이용기관모델→비효율). 핸드오프 과거 "팝빌 단가"는 실제 **바로빌** 수치(정정). 미확정: 실 계좌/카드 개수·VAN사명. 트랙 착수 시 docs/research 정식 편입.
+
+### 추가 지시 에픽 (재스캔, 2026-07-01 — 개발책임자 "더 지시한 에픽 확인 요망")
+> 근본원인: HOME(~/.claude/.../memory 139) ↔ repo(.claude/memory 125) 비동기 + MEMORY.md 인덱스 미갱신 → #17류 누락 재발. **메모리 동기화/인덱싱 정비 + 누락 에픽 메모리 신설 권고.** 상세 scratchpad/missed-epics-rescan.md(세션 한정)→정식 이관 필요.
+- **대부분 이미 구현 완료(추적만 누락):** 백오피스 앱화(PWA+네이티브+생체+FCM #624~638)·출고전표 컷오프(#594)·M상N하 배송일정(#595)·개발메뉴 task#28(#654~656)·GAS 15앱 — 전용 메모리 부재.
+- **진짜 미착수 신규작업:** (1) #17 단가변동(종합견적서+주문서 — 변동 전/후 카테고리 분리·렌더 '인상 전/후' 옵션·주문서 카테고리별 변동날짜 KST 자동전환) (2) GAS 이관 잔여: 주문서 인식 GAS-직접 전송(OCR 제거 후 미대체=주문 intake 공백)·배송지 지오코딩·거래처 bulk-upload·파리티갭(배차안내 멀티날짜·내일자전표 J-System·미배차 세분류·거래명세서 인감·알리고 실연동)·신규 6앱 검토 (3) 삼한이 마스코트 전체 적용(컴포넌트 완성, 적용범위 확인) (4) 보안: 이카운트 API키 git 히스토리 회전.
 
 ---
 
