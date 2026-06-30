@@ -20,7 +20,8 @@
 ### 🆕 #17 단가변동 진행 (2026-07-01 야간 자율 — #16 종결 직후 착수)
 신규 기능 에픽(인프라 60~70% 기존 — 통합·설정화). spec `docs/superpowers/specs/2026-07-01-price-change-epic-design.md`(결정 D1~D6 권장방향 박제 — **가격 정책이라 오전 개발책임자 확인 요청**, 특히 D3 렌더 기본값·D5 견적↔주문 일관성).
 - ✅ **S1 BE 가격모델 머지**(#686 squash `220282900`): product-service `price_change_schedule`(카테고리별 변동일 config, BaseEntity 7+soft delete, V22 fresh-probe, 내부 endpoint, IT). 듀얼리뷰가 401 표준 정정(Opus 403 오판 차단). dev-report `2026-07-01-price-change-s1-model.md`.
-- 🔜 **S2 견적 렌더 토글**(estimate-app index.ejs chk*Inc 가 신규 endpoint 소비, D3) → S3 주문 자동전환(order-app PRICE_INC_DATE 제거·no-op 해소, D4) → S4 관리UI → S5 일관성(D5).
+- ✅ **S2 견적 렌더 배선 머지**(#687 `a6edadf3e`, D3=a 데이터배선·렌더불변·jest96/96) → 🔜 **S3 주문 자동전환**(order-app, D4) → S4 관리UI → S5 일관성(D5). dev-report s1/s2.
+- ⚠️ **S3 주의(Codex 확인)**: order-app 은 estimate-app Node bootstrap **비공유** → 정적 `PRICE_INC_DATE` + partner-order-service `BootstrapService`(incPriceMap no-op) 경로라 **별도 배선** 필요(estimate S2 db-catalog fetcher 재사용 불가).
 - ⚠️ 정찰 핵심: order-app `*_INC`=현행 카탈로그(DB-mode no-op)·전후 의미 불일치(estimate 기본후/order 기본전)·변동일 3중 하드코딩·findApplicableLatest 死코드 → 통합 대상.
 
 ### 추가 지시 에픽 (재스캔, 2026-07-01 — 개발책임자 "더 지시한 에픽 확인 요망")
