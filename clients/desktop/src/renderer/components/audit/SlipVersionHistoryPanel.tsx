@@ -17,8 +17,10 @@ import {
   listRevisions,
   restoreRevision,
   type SlipRevision,
+  type SlipRevisionFieldChange,
   type SlipRevisionType,
 } from '../../api/slipRevision'
+import { presenceColorToHex } from '../../utils/presenceColor'
 
 export interface SlipVersionHistoryPanelProps {
   /** 전표 UUID — react-query 키 + API path 전용 (화면 노출 X). */
@@ -61,6 +63,69 @@ function formatChangeSummary(rev: SlipRevision): string {
   return `헤더 ${headerChanged} · 라인 +${lineAdded}/-${lineRemoved}/~${lineModified}`
 }
 
+function formatDiffValue(value: string | null | undefined): string {
+  if (value == null || value === '') return '비움'
+  return value
+}
+
+function fieldPathTestId(fieldPath: string): string {
+  return fieldPath.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function renderFieldChange(change: SlipRevisionFieldChange) {
+  const actorColor = presenceColorToHex(change.actorColor)
+  return (
+    <div
+      key={change.fieldPath}
+      data-testid={`slip-version-history-change-${fieldPathTestId(change.fieldPath)}`}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'auto minmax(0, 1fr)',
+        columnGap: 8,
+        rowGap: 2,
+        alignItems: 'start',
+        fontSize: 12,
+        color: 'var(--color-neutral-700)',
+      }}
+    >
+      <span
+        data-testid="slip-version-history-change-color"
+        aria-hidden="true"
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 999,
+          marginTop: 5,
+          background: actorColor,
+          boxShadow: `0 0 0 2px ${actorColor}22`,
+        }}
+      />
+      <span style={{ minWidth: 0 }}>
+        {change.actorName ? (
+          <strong style={{ color: actorColor, marginRight: 6 }}>{change.actorName}</strong>
+        ) : null}
+        <strong>{change.label}</strong>
+        <span
+          style={{
+            marginLeft: 8,
+            color: 'var(--color-neutral-500)',
+            textDecoration: 'line-through',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {formatDiffValue(change.beforeValue)}
+        </span>
+        <span aria-hidden="true" style={{ margin: '0 6px', color: 'var(--color-neutral-400)' }}>
+          →
+        </span>
+        <span style={{ color: actorColor, fontWeight: 700, overflowWrap: 'anywhere' }}>
+          {formatDiffValue(change.afterValue)}
+        </span>
+      </span>
+    </div>
+  )
+}
+
 /**
  * 전표 상세 화면용 버전이력 패널. AuditOverlay 인접에 배치한다.
  */
@@ -85,7 +150,7 @@ export function SlipVersionHistoryPanel({ slipId }: SlipVersionHistoryPanelProps
       void queryClient.invalidateQueries({ queryKey: ['slipRevisions', slipId] })
       setToast({
         kind: 'success',
-        text: `rev ${revisionNo} 시점으로 전표를 복원했습니다.`,
+        text: `버전 ${revisionNo} 시점으로 전표를 복원했습니다.`,
       })
     },
     onError: () => {
@@ -188,6 +253,7 @@ export function SlipVersionHistoryPanel({ slipId }: SlipVersionHistoryPanelProps
             const meta = REVISION_TYPE_META[rev.revisionType]
             // 가장 최근 revision(목록 첫 항목) 은 현재 상태이므로 복원 버튼을 노출하지 않는다.
             const isLatest = rev.revisionNo === revisions[0]?.revisionNo
+            const fieldChanges = Array.isArray(rev.fieldChanges) ? rev.fieldChanges : []
             return (
               <li
                 key={rev.revisionNo}
@@ -208,10 +274,10 @@ export function SlipVersionHistoryPanel({ slipId }: SlipVersionHistoryPanelProps
                     <Badge variant={meta.variant}>
                       {meta.label}
                       {rev.revisionType === 'RESTORE' && rev.sourceRevisionNo != null
-                        ? ` (rev ${rev.sourceRevisionNo})`
+                        ? ` (버전 ${rev.sourceRevisionNo})`
                         : ''}
                     </Badge>
-                    <span style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: rev.actorColor ? presenceColorToHex(rev.actorColor) : 'var(--color-neutral-600)' }}>
                       {rev.actorName}
                     </span>
                     <span style={{ fontSize: 12, color: 'var(--color-neutral-500)' }}>
@@ -221,6 +287,19 @@ export function SlipVersionHistoryPanel({ slipId }: SlipVersionHistoryPanelProps
                   <span style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
                     {formatChangeSummary(rev)}
                   </span>
+                  {fieldChanges.length > 0 ? (
+                    <div
+                      data-testid={`slip-version-history-changes-${rev.revisionNo}`}
+                      style={{
+                        display: 'grid',
+                        gap: 4,
+                        marginTop: 4,
+                        paddingLeft: 2,
+                      }}
+                    >
+                      {fieldChanges.map(renderFieldChange)}
+                    </div>
+                  ) : null}
                 </div>
                 {!isLatest ? (
                   <Button
@@ -271,7 +350,7 @@ export function SlipVersionHistoryPanel({ slipId }: SlipVersionHistoryPanelProps
       >
         <p style={{ margin: 0, fontSize: 14 }}>
           {restoreTarget
-            ? `rev ${restoreTarget.revisionNo} 시점으로 전표를 복원합니다. 현재 내용은 새 버전으로 대체됩니다.`
+            ? `버전 ${restoreTarget.revisionNo} 시점으로 전표를 복원합니다. 현재 내용은 새 버전으로 대체됩니다.`
             : ''}
         </p>
       </Modal>

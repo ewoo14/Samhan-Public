@@ -18,6 +18,9 @@ import com.samhanair.logis.slip.revision.domain.SlipSnapshot;
 import com.samhanair.logis.slip.revision.repository.SlipRevisionRepository;
 import com.samhanair.logis.slip.revision.web.dto.SlipRevisionResponse;
 import com.samhanair.logis.slip.revision.web.dto.SlipRevisionResponse.ChangeSummary;
+import com.samhanair.logis.shared.realtime.presence.PresenceColor;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -318,6 +321,23 @@ class SlipRevisionServiceTest {
     }
 
     @Test
+    @DisplayName("summarize: 동일 productId 복수 행 중 1건 삭제도 removed 로 집계한다")
+    void summarizeCountsRemovedDuplicateProductLineByOccurrence() {
+        UUID p = UUID.randomUUID();
+        SlipSnapshot prev = snapshot("memo", List.of(
+                line(p, 1, "1000"),
+                line(p, 2, "1000")));
+        SlipSnapshot cur = snapshot("memo", List.of(
+                line(p, 1, "1000")));
+
+        ChangeSummary summary = service.summarize(prev, cur);
+
+        assertThat(summary.lineAdded()).isZero();
+        assertThat(summary.lineRemoved()).isEqualTo(1);
+        assertThat(summary.lineModified()).isZero();
+    }
+
+    @Test
     @DisplayName("listWithSummary: 최신 우선 정렬 + 각 항목이 직전 revisionNo 대비 changeSummary 를 가지며 "
             + "actorId 는 노출하지 않는다")
     void listWithSummaryBuildsAdjacentSummariesNewestFirst() {
@@ -364,5 +384,159 @@ class SlipRevisionServiceTest {
         assertThat(java.util.Arrays.stream(SlipRevisionResponse.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName))
                 .doesNotContain("actorId");
+    }
+
+    @Test
+    @DisplayName("listWithSummary: 직전 revision 대비 헤더 필드와 품목 셀 변경 목록을 actor 색상과 함께 노출한다")
+    void listWithSummaryExposesFieldLevelChangesWithPresenceColor() throws Exception {
+        UUID slipId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID editorId = UUID.fromString("20000000-0000-0000-0000-000000000001");
+
+        SlipRevision rev1 = SlipRevision.of(slipId, 1, SlipRevisionType.CREATE, null,
+                "2026/05/29-3", LocalDate.of(2026, 5, 29),
+                snapshot("원본 메모", List.of(line(productId, 1, "1000"))),
+                UUID.randomUUID(), "작성자", null);
+        SlipRevision rev2 = SlipRevision.of(slipId, 2, SlipRevisionType.EDIT, null,
+                "2026/05/29-3", LocalDate.of(2026, 5, 29),
+                snapshot("수정 메모", List.of(line(productId, 3, "1000"))),
+                editorId, "김영업", null);
+
+        when(repository.findBySlipIdOrderByRevisionNoDesc(slipId))
+                .thenReturn(List.of(rev2, rev1));
+
+        List<SlipRevisionResponse> result = service.listWithSummary(slipId);
+
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JsonNode rev2Json = mapper.valueToTree(result.get(0));
+        JsonNode fieldChanges = rev2Json.get("fieldChanges");
+        assertThat(fieldChanges).isNotNull();
+        JsonNode memoChange = findChange(fieldChanges, "header.memo");
+        JsonNode quantityChange = findChange(fieldChanges, "lines[0].quantity");
+        assertThat(memoChange).isNotNull();
+        assertThat(memoChange.get("label").asText()).isEqualTo("메모");
+        assertThat(memoChange.get("beforeValue").asText()).isEqualTo("원본 메모");
+        assertThat(memoChange.get("afterValue").asText()).isEqualTo("수정 메모");
+        assertThat(memoChange.get("actorName").asText()).isEqualTo("김영업");
+        assertThat(memoChange.get("actorColor").asText())
+                .isEqualTo(PresenceColor.fromUserId(editorId.toString()).hex());
+        assertThat(quantityChange).isNotNull();
+        assertThat(quantityChange.get("label").asText()).isEqualTo("품목 1행 수량");
+        assertThat(quantityChange.get("beforeValue").asText()).isEqualTo("1");
+        assertThat(quantityChange.get("afterValue").asText()).isEqualTo("3");
+        assertThat(rev2Json.has("actorId")).isFalse();
+    }
+
+    @Test
+    @DisplayName("listWithSummary: 동일 productId 복수 행은 등장 순서로 매칭해 두 번째 행 변경을 정확히 귀속한다")
+    void listWithSummaryMatchesDuplicateProductLinesByOccurrence() {
+        UUID slipId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID editorId = UUID.fromString("20000000-0000-0000-0000-000000000002");
+
+        SlipRevision rev1 = SlipRevision.of(slipId, 1, SlipRevisionType.CREATE, null,
+                "2026/05/29-3", LocalDate.of(2026, 5, 29),
+                snapshot("memo", List.of(
+                        line(productId, 1, "1000"),
+                        line(productId, 2, "1000"))),
+                UUID.randomUUID(), "작성자", null);
+        SlipRevision rev2 = SlipRevision.of(slipId, 2, SlipRevisionType.EDIT, null,
+                "2026/05/29-3", LocalDate.of(2026, 5, 29),
+                snapshot("memo", List.of(
+                        line(productId, 1, "1000"),
+                        line(productId, 3, "1000"))),
+                editorId, "김영업", null);
+
+        when(repository.findBySlipIdOrderByRevisionNoDesc(slipId))
+                .thenReturn(List.of(rev2, rev1));
+
+        List<SlipRevisionResponse> result = service.listWithSummary(slipId);
+
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JsonNode fieldChanges = mapper.valueToTree(result.get(0)).get("fieldChanges");
+        JsonNode firstRowQuantity = findChange(fieldChanges, "lines[0].quantity");
+        JsonNode secondRowQuantity = findChange(fieldChanges, "lines[1].quantity");
+        assertThat(firstRowQuantity).isNull();
+        assertThat(secondRowQuantity).isNotNull();
+        assertThat(secondRowQuantity.get("beforeValue").asText()).isEqualTo("2");
+        assertThat(secondRowQuantity.get("afterValue").asText()).isEqualTo("3");
+    }
+
+    @Test
+    @DisplayName("listWithSummary: productId 기준 신규 라인은 null→value fieldChanges 로 노출한다")
+    void listWithSummaryExposesAddedLineFieldChanges() {
+        UUID added = UUID.randomUUID();
+        JsonNode fieldChanges = fieldChangesFor(
+                List.of(),
+                List.of(line(added, 2, "1000")));
+
+        JsonNode quantity = findChange(fieldChanges, "lines[0].quantity");
+        assertThat(quantity).isNotNull();
+        assertThat(quantity.get("beforeValue").isNull()).isTrue();
+        assertThat(quantity.get("afterValue").asText()).isEqualTo("2");
+    }
+
+    @Test
+    @DisplayName("listWithSummary: productId 기준 삭제 라인은 value→null fieldChanges 로 노출한다")
+    void listWithSummaryExposesRemovedLineFieldChanges() {
+        UUID removed = UUID.randomUUID();
+        JsonNode fieldChanges = fieldChangesFor(
+                List.of(line(removed, 4, "1000")),
+                List.of());
+
+        JsonNode quantity = findChange(fieldChanges, "lines.removed[0].quantity");
+        assertThat(quantity).isNotNull();
+        assertThat(quantity.get("beforeValue").asText()).isEqualTo("4");
+        assertThat(quantity.get("afterValue").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("listWithSummary: 라인 재정렬은 productId 로 매칭해 수정 fieldChanges 를 만들지 않는다")
+    void listWithSummaryDoesNotTreatReorderedLinesAsModified() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        JsonNode fieldChanges = fieldChangesFor(
+                List.of(line(first, 1, "1000"), line(second, 2, "1000")),
+                List.of(line(second, 2, "1000"), line(first, 1, "1000")));
+
+        assertThat(fieldChanges).isEmpty();
+    }
+
+    @Test
+    @DisplayName("summarize: productId null 라인은 매칭하지 않고 added/removed 로만 집계한다")
+    void summarizeCountsNullProductIdLinesAsAddedAndRemovedOnly() {
+        SlipSnapshot prev = snapshot("memo", List.of(line(null, 1, "1000")));
+        SlipSnapshot cur = snapshot("memo", List.of(line(null, 1, "1000")));
+
+        ChangeSummary summary = service.summarize(prev, cur);
+
+        assertThat(summary.lineAdded()).isEqualTo(1);
+        assertThat(summary.lineRemoved()).isEqualTo(1);
+        assertThat(summary.lineModified()).isZero();
+    }
+
+    private JsonNode fieldChangesFor(List<SlipSnapshot.Line> prevLines,
+                                     List<SlipSnapshot.Line> curLines) {
+        UUID slipId = UUID.randomUUID();
+        SlipRevision rev1 = SlipRevision.of(slipId, 1, SlipRevisionType.CREATE, null,
+                "2026/05/29-3", LocalDate.of(2026, 5, 29),
+                snapshot("memo", prevLines), UUID.randomUUID(), "작성자", null);
+        SlipRevision rev2 = SlipRevision.of(slipId, 2, SlipRevisionType.EDIT, null,
+                "2026/05/29-3", LocalDate.of(2026, 5, 29),
+                snapshot("memo", curLines), UUID.randomUUID(), "김영업", null);
+        when(repository.findBySlipIdOrderByRevisionNoDesc(slipId))
+                .thenReturn(List.of(rev2, rev1));
+
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        return mapper.valueToTree(service.listWithSummary(slipId).get(0)).get("fieldChanges");
+    }
+
+    private JsonNode findChange(JsonNode changes, String fieldPath) {
+        for (JsonNode change : changes) {
+            if (fieldPath.equals(change.get("fieldPath").asText())) {
+                return change;
+            }
+        }
+        return null;
     }
 }

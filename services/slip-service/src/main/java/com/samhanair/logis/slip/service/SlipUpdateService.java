@@ -6,6 +6,8 @@ import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.repository.SlipRepository;
+import com.samhanair.logis.slip.revision.domain.SlipRevisionType;
+import com.samhanair.logis.slip.revision.service.SlipRevisionService;
 import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
 import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
 import jakarta.persistence.OptimisticLockException;
@@ -33,6 +35,7 @@ public class SlipUpdateService {
 
     private final SlipRepository slipRepository;
     private final SlipAuditLogService auditLogService;
+    private final SlipRevisionService slipRevisionService;
 
     /**
      * 매입 전표 헤더와 라인을 전체 교체한다.
@@ -79,6 +82,8 @@ public class SlipUpdateService {
             // after 는 saveAndFlush 결과 기준으로 캡처하여 ordering 명확화
             String after = summarize(saved);
             if (!Objects.equals(before, after)) {
+                // 버전 스냅샷은 audit revisionCount 증가와 독립 기록해 기존 PUT 응답 version 계약을 보존한다.
+                slipRevisionService.capture(saved, SlipRevisionType.EDIT, null, actorId, actorName, null);
                 auditLogService.recordBatch(saved.getId(), actorId, actorName, null,
                         List.of(new SlipAuditLogService.ChangeEntry("SLIP_EDIT", before, after)));
             }
@@ -149,13 +154,14 @@ public class SlipUpdateService {
     }
 
     private String summarize(Slip slip) {
-        return "partnerName=%s|partnerCode=%s|memo=%s|businessNumber=%s|deliveryAddress=%s|projectName=%s|recipientPhone=%s|paymentDueDate=%s|lines=%s"
+        return "partnerName=%s|partnerCode=%s|memo=%s|businessNumber=%s|deliveryAddress=%s|supervisionAddress=%s|projectName=%s|recipientPhone=%s|paymentDueDate=%s|lines=%s"
                 .formatted(
                         nullToEmpty(slip.getPartnerName()),
                         nullToEmpty(slip.getPartnerCode()),
                         nullToEmpty(slip.getMemo()),
                         nullToEmpty(slip.getBusinessNumber()),
                         nullToEmpty(slip.getDeliveryAddress()),
+                        nullToEmpty(slip.getSupervisionAddress()),
                         nullToEmpty(slip.getProjectName()),
                         nullToEmpty(slip.getRecipientPhone()),
                         toText(slip.getPaymentDueDate()),
@@ -165,11 +171,14 @@ public class SlipUpdateService {
     private String summarizeLines(List<SlipLine> lines) {
         // String.join 으로 "a,b,c" 형식 — "[a, b, c]" toString() 혼용 방지
         return String.join(",", lines.stream()
-                .map(line -> "%s/%s/%d/%s".formatted(
+                .map(line -> "%s/%s/%s/%s/%d/%s/%s".formatted(
+                        line.getProductId() == null ? "" : line.getProductId().toString(),
                         nullToEmpty(line.getModelName()),
                         nullToEmpty(line.getProductName()),
+                        nullToEmpty(line.getSpecification()),
                         line.getQuantity(),
-                        normalize(line.getUnitPrice())))
+                        normalize(line.getUnitPrice()),
+                        nullToEmpty(line.getNote())))
                 .toList());
     }
 

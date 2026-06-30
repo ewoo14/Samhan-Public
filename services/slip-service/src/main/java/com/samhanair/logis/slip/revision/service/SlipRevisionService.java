@@ -9,8 +9,15 @@ import com.samhanair.logis.slip.revision.domain.SlipSnapshot;
 import com.samhanair.logis.slip.revision.repository.SlipRevisionRepository;
 import com.samhanair.logis.slip.revision.web.dto.SlipRevisionResponse;
 import com.samhanair.logis.slip.revision.web.dto.SlipRevisionResponse.ChangeSummary;
+import com.samhanair.logis.slip.revision.web.dto.SlipRevisionResponse.FieldChange;
+import com.samhanair.logis.shared.realtime.presence.PresenceColor;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +42,50 @@ import org.springframework.transaction.annotation.Transactional;
 public class SlipRevisionService {
 
     private final SlipRevisionRepository repository;
+    private static final java.util.regex.Pattern UUID_PATTERN = java.util.regex.Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
+    private record HeaderField(String path, String label, java.util.function.Function<SlipSnapshot, Object> reader) {
+    }
+
+    private record LineField(String name, String label, java.util.function.Function<SlipSnapshot.Line, Object> reader) {
+    }
+
+    private static final List<HeaderField> HEADER_FIELDS = List.of(
+            new HeaderField("header.slipNo", "전표번호", SlipSnapshot::slipNo),
+            new HeaderField("header.slipDate", "전표일자", SlipSnapshot::slipDate),
+            new HeaderField("header.partnerName", "거래처명", SlipSnapshot::partnerName),
+            new HeaderField("header.partnerCode", "거래처코드", SlipSnapshot::partnerCode),
+            new HeaderField("header.businessNumber", "사업자번호", SlipSnapshot::businessNumber),
+            new HeaderField("header.memo", "메모", SlipSnapshot::memo),
+            new HeaderField("header.deliveryTag", "배송태그", SlipSnapshot::deliveryTag),
+            new HeaderField("header.deliveryAddress", "배송주소", SlipSnapshot::deliveryAddress),
+            new HeaderField("header.supervisionAddress", "감리주소", SlipSnapshot::supervisionAddress),
+            new HeaderField("header.projectName", "프로젝트명", SlipSnapshot::projectName),
+            new HeaderField("header.recipientPhone", "인수자 번호", SlipSnapshot::recipientPhone),
+            new HeaderField("header.paymentDueDate", "입금예정일", SlipSnapshot::paymentDueDate),
+            new HeaderField("header.destinationWarehouseName", "도착지 창고", SlipSnapshot::destinationWarehouseName),
+            new HeaderField("header.shippingAddress", "배송지", SlipSnapshot::shippingAddress),
+            new HeaderField("header.inspectionAddress", "검수지", SlipSnapshot::inspectionAddress),
+            new HeaderField("header.receiverPhone", "수령자 연락처", SlipSnapshot::receiverPhone),
+            new HeaderField("header.customerTel", "거래처 연락처", SlipSnapshot::customerTel),
+            new HeaderField("header.customerAddress", "거래처 주소", SlipSnapshot::customerAddress),
+            new HeaderField("header.customerRepresentative", "거래처 대표자", SlipSnapshot::customerRepresentative),
+            new HeaderField("header.paymentDueLabel", "결제 만기", SlipSnapshot::paymentDueLabel),
+            new HeaderField("header.discountInfo", "할인 정보", SlipSnapshot::discountInfo),
+            new HeaderField("header.collectTerm", "회수 조건", SlipSnapshot::collectTerm),
+            new HeaderField("header.agreeTerm", "약정 조건", SlipSnapshot::agreeTerm)
+    );
+
+    private static final List<LineField> LINE_FIELDS = List.of(
+            new LineField("productName", "품목명", SlipSnapshot.Line::productName),
+            new LineField("modelName", "모델명", SlipSnapshot.Line::modelName),
+            new LineField("specification", "규격", SlipSnapshot.Line::specification),
+            new LineField("quantity", "수량", SlipSnapshot.Line::quantity),
+            new LineField("unitPrice", "단가", SlipSnapshot.Line::unitPrice),
+            new LineField("lineTotal", "합계", SlipSnapshot.Line::lineTotal),
+            new LineField("note", "비고", SlipSnapshot.Line::note)
+    );
 
     /**
      * 현 전표 상태를 버전 스냅샷 1건으로 캡처해 영속화한다.
@@ -164,15 +215,19 @@ public class SlipRevisionService {
         for (SlipRevision revision : revisions) {
             SlipSnapshot cur = revision.getSnapshot();
             ChangeSummary summary = summarize(prev, cur);
+            String actorColor = resolveActorColor(revision);
+            String actorName = safeActorName(revision.getActorName());
             responses.add(new SlipRevisionResponse(
                     revision.getRevisionNo(),
                     revision.getRevisionType() == null ? null : revision.getRevisionType().name(),
                     revision.getSourceRevisionNo(),
                     revision.getSlipNo(),
                     revision.getSlipDate(),
-                    revision.getActorName(),
+                    actorName,
+                    actorColor,
                     revision.getCreatedAt(),
-                    summary));
+                    summary,
+                    fieldChanges(prev, cur, actorName, actorColor, revision.getCreatedAt())));
             prev = cur;
         }
         // 응답은 최신(revisionNo 내림차순) 우선으로 뒤집는다
@@ -211,19 +266,8 @@ public class SlipRevisionService {
 
         int headerChanged = countHeaderChanges(prev, cur);
 
-        // productId 기준 매칭 맵 (null productId 는 added/removed 로만 잡히도록 맵 제외)
-        Map<UUID, SlipSnapshot.Line> prevById = new LinkedHashMap<>();
-        for (SlipSnapshot.Line line : prevLines) {
-            if (line.productId() != null) {
-                prevById.put(line.productId(), line);
-            }
-        }
-        Map<UUID, SlipSnapshot.Line> curById = new LinkedHashMap<>();
-        for (SlipSnapshot.Line line : curLines) {
-            if (line.productId() != null) {
-                curById.put(line.productId(), line);
-            }
-        }
+        // productId 기준 매칭. 동일 productId 복수 행은 등장 순서대로 매칭해 덮어쓰기 오귀속을 방지한다.
+        Map<UUID, Deque<SlipSnapshot.Line>> prevById = lineQueuesByProductId(prevLines);
 
         int lineAdded = 0;
         int lineRemoved = 0;
@@ -241,18 +285,20 @@ public class SlipRevisionService {
             }
         }
 
-        for (Map.Entry<UUID, SlipSnapshot.Line> entry : curById.entrySet()) {
-            SlipSnapshot.Line prevLine = prevById.get(entry.getKey());
+        for (SlipSnapshot.Line curLine : curLines) {
+            if (curLine.productId() == null) {
+                continue;
+            }
+            Deque<SlipSnapshot.Line> prevMatches = prevById.get(curLine.productId());
+            SlipSnapshot.Line prevLine = prevMatches == null ? null : prevMatches.pollFirst();
             if (prevLine == null) {
                 lineAdded++;
-            } else if (lineDiffers(prevLine, entry.getValue())) {
+            } else if (lineDiffers(prevLine, curLine)) {
                 lineModified++;
             }
         }
-        for (UUID prevKey : prevById.keySet()) {
-            if (!curById.containsKey(prevKey)) {
-                lineRemoved++;
-            }
+        for (Deque<SlipSnapshot.Line> remaining : prevById.values()) {
+            lineRemoved += remaining.size();
         }
 
         return new ChangeSummary(headerChanged, lineAdded, lineRemoved, lineModified);
@@ -369,5 +415,132 @@ public class SlipRevisionService {
             return a == b;
         }
         return a.compareTo(b) == 0;
+    }
+
+    /**
+     * 직전 스냅샷 대비 사용자 표시 가능한 필드/품목 셀 변경 목록을 만든다.
+     *
+     * <p>UUID 계열 식별자(partnerId/productId/warehouseId)는 복원 내부값이므로 응답에서 제외한다.
+     * 라인은 {@code productId} 기준으로 매칭해 셀 변경을 표시한다 — row index 기준 비교는 행
+     * 삽입/삭제 시 엉뚱한 셀끼리 비교돼 잘못된 변경자 귀속(오정보)을 만든다(리뷰 BE B-1).
+     */
+    private List<FieldChange> fieldChanges(SlipSnapshot prev, SlipSnapshot cur,
+                                           String actorName, String actorColor,
+                                           LocalDateTime changedAt) {
+        List<FieldChange> changes = new ArrayList<>();
+        for (HeaderField field : HEADER_FIELDS) {
+            Object before = prev == null ? null : field.reader().apply(prev);
+            Object after = cur == null ? null : field.reader().apply(cur);
+            addChange(changes, field.path(), field.label(), before, after, actorName, actorColor, changedAt);
+        }
+
+        List<SlipSnapshot.Line> prevLines = prev == null || prev.lines() == null ? List.of() : prev.lines();
+        List<SlipSnapshot.Line> curLines = cur == null || cur.lines() == null ? List.of() : cur.lines();
+
+        // 품목 라인을 productId 기준으로 매칭(summarize 와 동일). matched 쌍만 셀 diff, 미매칭은 추가/삭제.
+        Map<UUID, Deque<SlipSnapshot.Line>> prevById = lineQueuesByProductId(prevLines);
+        // cur 순서 유지 — productId 매칭되면 그 prev 라인과 셀 diff(remove 로 소진), 미매칭(또는 null)이면 행 추가
+        for (int i = 0; i < curLines.size(); i++) {
+            SlipSnapshot.Line curLine = curLines.get(i);
+            Deque<SlipSnapshot.Line> prevMatches =
+                    curLine.productId() == null ? null : prevById.get(curLine.productId());
+            SlipSnapshot.Line prevLine = prevMatches == null ? null : prevMatches.pollFirst();
+            // 라벨은 현재 행 위치(i) 기준 — 매칭은 productId 로 정확히 하되 표시는 현재 위치(기존 계약).
+            String label = "품목 " + (i + 1) + "행";
+            for (LineField field : LINE_FIELDS) {
+                Object before = prevLine == null ? null : field.reader().apply(prevLine);
+                Object after = field.reader().apply(curLine);
+                addChange(changes, "lines[" + i + "]." + field.name(),
+                        label + " " + field.label(), before, after, actorName, actorColor, changedAt);
+            }
+        }
+        // prevById 에 남은 라인 = cur 에서 삭제됨(productId null prev 라인도 매칭 불가 → 삭제) → value→null
+        int removedIdx = 0;
+        for (SlipSnapshot.Line prevLine : prevLines) {
+            Deque<SlipSnapshot.Line> remaining =
+                    prevLine.productId() == null ? null : prevById.get(prevLine.productId());
+            boolean removed = prevLine.productId() == null
+                    || (remaining != null && remaining.removeFirstOccurrence(prevLine));
+            if (!removed) {
+                continue;
+            }
+            String label = lineLabel(prevLine, -1) + " (삭제)";
+            for (LineField field : LINE_FIELDS) {
+                addChange(changes, "lines.removed[" + removedIdx + "]." + field.name(),
+                        label + " " + field.label(), field.reader().apply(prevLine), null,
+                        actorName, actorColor, changedAt);
+            }
+            removedIdx++;
+        }
+        return changes;
+    }
+
+    private Map<UUID, Deque<SlipSnapshot.Line>> lineQueuesByProductId(List<SlipSnapshot.Line> lines) {
+        Map<UUID, Deque<SlipSnapshot.Line>> byId = new LinkedHashMap<>();
+        for (SlipSnapshot.Line line : lines) {
+            if (line.productId() != null) {
+                byId.computeIfAbsent(line.productId(), ignored -> new ArrayDeque<>()).addLast(line);
+            }
+        }
+        return byId;
+    }
+
+    /**
+     * 품목 라인 표시 라벨 — productName 있으면 "품목 {productName}", 없으면 "품목 {n}행"(추가/매칭) 또는 "품목"(삭제).
+     */
+    private String lineLabel(SlipSnapshot.Line line, int displayIndex) {
+        String productName = line.productName();
+        if (productName != null && !productName.isBlank()) {
+            return "품목 " + productName;
+        }
+        return displayIndex >= 0 ? "품목 " + (displayIndex + 1) + "행" : "품목";
+    }
+
+    private void addChange(List<FieldChange> changes, String fieldPath, String label,
+                           Object before, Object after, String actorName, String actorColor,
+                           LocalDateTime changedAt) {
+        if (valueEquals(before, after)) {
+            return;
+        }
+        changes.add(new FieldChange(fieldPath, label, formatValue(before), formatValue(after),
+                actorName, actorColor, changedAt));
+    }
+
+    private boolean valueEquals(Object before, Object after) {
+        if (before instanceof BigDecimal a && after instanceof BigDecimal b) {
+            return bigDecimalEquals(a, b);
+        }
+        return Objects.equals(before, after);
+    }
+
+    private String formatValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal.stripTrailingZeros().toPlainString();
+        }
+        if (value instanceof LocalDate date) {
+            return date.toString();
+        }
+        return String.valueOf(value);
+    }
+
+    private String resolveActorColor(SlipRevision revision) {
+        if (revision.getActorColor() != null && !revision.getActorColor().isBlank()) {
+            return revision.getActorColor();
+        }
+        if (revision.getActorId() == null) {
+            return null;
+        }
+        return PresenceColor.fromUserId(revision.getActorId().toString()).hex();
+    }
+
+    private String safeActorName(String actorName) {
+        if (actorName == null || actorName.isBlank()) {
+            return null;
+        }
+        String trimmed = actorName.trim();
+        return UUID_PATTERN.matcher(trimmed).matches() ? null : trimmed;
     }
 }

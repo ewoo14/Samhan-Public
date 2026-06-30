@@ -252,6 +252,189 @@ class SlipUpdateIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("S2b: 매입 direct PUT 저장은 EDIT revision 을 추가하고 헤더/품목 셀 diff 를 버전 이력에 노출한다")
+    void testUpdateAppendsRevisionFieldChanges() throws Exception {
+        String id = createSlip("INBOUND", "SP0852-diff-before");
+        MvcResult detail = mockMvc.perform(get(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_ROLE_HEADER, "MASTER"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode data = objectMapper.readTree(detail.getResponse().getContentAsString()).path("data");
+        String updatedAt = data.path("updatedAt").asText();
+        String productId = data.path("lines").get(0).path("productId").asText();
+        Map<String, Object> body = updateBody(updatedAt, "SP0852-diff-after", 7, "135000");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> firstLine = (Map<String, Object>) ((List<?>) body.get("lines")).get(0);
+        firstLine.put("productId", productId);
+
+        mockMvc.perform(put(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "창고담당자")
+                        .header(USER_ROLE_HEADER, "MASTER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+
+        MvcResult revisions = mockMvc.perform(get("/slips/{id}/revisions", UUID.fromString(id))
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "감사자")
+                        .header(USER_ROLE_HEADER, "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].revisionNo").value(2))
+                .andExpect(jsonPath("$.data[0].revisionType").value("EDIT"))
+                .andExpect(jsonPath("$.data[0].actorName").value("창고담당자"))
+                .andReturn();
+
+        JsonNode latest = objectMapper.readTree(revisions.getResponse().getContentAsByteArray())
+                .path("data").get(0);
+        assertThat(latest.has("actorId")).isFalse();
+        assertThat(latest.path("fieldChanges")).isNotEmpty();
+        assertThat(latest.path("fieldChanges").toString()).contains("\"fieldPath\":\"header.partnerName\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"beforeValue\":\"SP0852-diff-before\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"afterValue\":\"SP0852-diff-after\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"fieldPath\":\"lines[0].quantity\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"beforeValue\":\"3\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"afterValue\":\"7\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"fieldPath\":\"lines[0].specification\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"afterValue\":\"A형\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"fieldPath\":\"lines[0].note\"");
+        assertThat(latest.path("fieldChanges").toString()).contains("\"afterValue\":\"수정 라인\"");
+    }
+
+    @Test
+    @DisplayName("S2b: 매입 라인 표시값이 같고 productId만 교체돼도 EDIT revision 을 캡처한다")
+    void testUpdateProductIdOnlySwapAppendsRevision() throws Exception {
+        String id = createSlip("INBOUND", "SP0852-product-swap");
+        MvcResult detail = mockMvc.perform(get(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_ROLE_HEADER, "MASTER"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode data = objectMapper.readTree(detail.getResponse().getContentAsByteArray()).path("data");
+        String originalProductId = data.path("lines").get(0).path("productId").asText();
+        String replacementProductId = UUID.randomUUID().toString();
+        while (replacementProductId.equals(originalProductId)) {
+            replacementProductId = UUID.randomUUID().toString();
+        }
+
+        mockMvc.perform(put(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "창고담당자")
+                        .header(USER_ROLE_HEADER, "MASTER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                visiblePreservingUpdateBody(data, replacementProductId))))
+                .andExpect(status().isOk());
+
+        MvcResult revisions = mockMvc.perform(get("/slips/{id}/revisions", UUID.fromString(id))
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "감사자")
+                        .header(USER_ROLE_HEADER, "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].revisionNo").value(2))
+                .andExpect(jsonPath("$.data[0].revisionType").value("EDIT"))
+                .andExpect(jsonPath("$.data[0].changeSummary.headerChanged").value(0))
+                .andExpect(jsonPath("$.data[0].changeSummary.lineAdded").value(1))
+                .andExpect(jsonPath("$.data[0].changeSummary.lineRemoved").value(1))
+                .andExpect(jsonPath("$.data[0].changeSummary.lineModified").value(0))
+                .andReturn();
+
+        JsonNode latest = objectMapper.readTree(revisions.getResponse().getContentAsByteArray())
+                .path("data").get(0);
+        assertThat(latest.has("actorId")).isFalse();
+        assertThat(latest.path("fieldChanges")).isNotEmpty();
+        assertThat(latest.path("fieldChanges").toString())
+                .contains("\"fieldPath\":\"lines[0].productName\"")
+                .contains("\"fieldPath\":\"lines.removed[0].productName\"")
+                .doesNotContain(originalProductId)
+                .doesNotContain(replacementProductId);
+    }
+
+    @Test
+    @DisplayName("S2b: 매입 감리주소만 수정해도 EDIT revision 과 header.supervisionAddress diff 를 남긴다")
+    void testUpdateSupervisionAddressOnlyAppendsRevisionFieldChange() throws Exception {
+        String id = createSlip("INBOUND", "SP0852-supervision-only");
+
+        MvcResult initialDetail = mockMvc.perform(get(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_ROLE_HEADER, "MASTER"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode initialData = objectMapper.readTree(initialDetail.getResponse().getContentAsByteArray()).path("data");
+        String productId = initialData.path("lines").get(0).path("productId").asText();
+
+        Map<String, Object> baseline = updateBody(
+                initialData.path("updatedAt").asText(), "SP0852-supervision-only", 3, "120000");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> baselineLine = (Map<String, Object>) ((List<?>) baseline.get("lines")).get(0);
+        baselineLine.put("productId", productId);
+
+        mockMvc.perform(put(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "창고담당자")
+                        .header(USER_ROLE_HEADER, "MASTER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(baseline)))
+                .andExpect(status().isOk());
+
+        MvcResult detail = mockMvc.perform(get(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_ROLE_HEADER, "MASTER"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode data = objectMapper.readTree(detail.getResponse().getContentAsByteArray()).path("data");
+        JsonNode originalLine = data.path("lines").get(0);
+
+        Map<String, Object> line = new HashMap<>();
+        line.put("productId", originalLine.path("productId").asText());
+        line.put("productName", originalLine.path("productName").asText(null));
+        line.put("modelName", originalLine.path("modelName").asText(null));
+        line.put("specification", originalLine.path("specification").asText(null));
+        line.put("quantity", originalLine.path("quantity").asInt());
+        line.put("unitPrice", originalLine.path("unitPrice").decimalValue());
+        line.put("note", originalLine.path("note").asText(null));
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("updatedAt", data.path("updatedAt").asText());
+        body.put("partnerName", data.path("partnerName").asText(null));
+        body.put("partnerCode", data.path("partnerCode").asText(null));
+        body.put("memo", data.path("memo").asText(null));
+        body.put("businessNumber", data.path("businessNumber").asText(null));
+        body.put("deliveryAddress", data.path("deliveryAddress").asText(null));
+        body.put("supervisionAddress", "서울 중구 감리주소 단독 변경");
+        body.put("projectName", data.path("projectName").asText(null));
+        body.put("recipientPhone", data.path("recipientPhone").asText(null));
+        body.put("paymentDueDate", data.path("paymentDueDate").asText(null));
+        body.put("lines", List.of(line));
+
+        mockMvc.perform(put(SLIPS_PATH + "/" + id)
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "창고담당자")
+                        .header(USER_ROLE_HEADER, "MASTER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+
+        MvcResult revisions = mockMvc.perform(get("/slips/{id}/revisions", UUID.fromString(id))
+                        .header(USER_ID_HEADER, TEST_USER_ID.toString())
+                        .header(USER_NAME_HEADER, "감사자")
+                        .header(USER_ROLE_HEADER, "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].revisionNo").value(3))
+                .andExpect(jsonPath("$.data[0].revisionType").value("EDIT"))
+                .andReturn();
+
+        JsonNode latest = objectMapper.readTree(revisions.getResponse().getContentAsByteArray())
+                .path("data").get(0);
+        assertThat(latest.path("fieldChanges").size()).isEqualTo(1);
+        assertThat(latest.path("fieldChanges").toString())
+                .contains("\"fieldPath\":\"header.supervisionAddress\"");
+        assertThat(latest.path("fieldChanges").toString())
+                .contains("\"afterValue\":\"서울 중구 감리주소 단독 변경\"");
+    }
+
+    @Test
     @DisplayName("U1: OUTBOUND 전표는 매입 direct PUT endpoint에서 403을 반환한다")
     void testUpdateNonInboundForbidden() throws Exception {
         String id = createSlip("OUTBOUND", "SP0852-출고전표");
@@ -349,6 +532,32 @@ class SlipUpdateIT extends AbstractPostgresIT {
         body.put("projectName", "매입 수정 프로젝트");
         body.put("recipientPhone", "010-5555-5252");
         body.put("paymentDueDate", TODAY.plusDays(30).toString());
+        body.put("lines", List.of(line));
+        return body;
+    }
+
+    private Map<String, Object> visiblePreservingUpdateBody(JsonNode data, String replacementProductId) {
+        JsonNode originalLine = data.path("lines").get(0);
+        Map<String, Object> line = new HashMap<>();
+        line.put("productId", replacementProductId);
+        line.put("productName", originalLine.path("productName").asText(null));
+        line.put("modelName", originalLine.path("modelName").asText(null));
+        line.put("specification", originalLine.path("specification").asText(null));
+        line.put("quantity", originalLine.path("quantity").asInt());
+        line.put("unitPrice", originalLine.path("unitPrice").decimalValue());
+        line.put("note", originalLine.path("note").asText(null));
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("updatedAt", data.path("updatedAt").asText());
+        body.put("partnerName", data.path("partnerName").asText(null));
+        body.put("partnerCode", data.path("partnerCode").asText(null));
+        body.put("memo", data.path("memo").asText(null));
+        body.put("businessNumber", data.path("businessNumber").asText(null));
+        body.put("deliveryAddress", data.path("deliveryAddress").asText(null));
+        body.put("supervisionAddress", data.path("supervisionAddress").asText(null));
+        body.put("projectName", data.path("projectName").asText(null));
+        body.put("recipientPhone", data.path("recipientPhone").asText(null));
+        body.put("paymentDueDate", data.path("paymentDueDate").asText(null));
         body.put("lines", List.of(line));
         return body;
     }
