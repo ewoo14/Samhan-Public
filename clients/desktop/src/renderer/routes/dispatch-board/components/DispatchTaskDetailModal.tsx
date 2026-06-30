@@ -51,6 +51,7 @@ import { DispatchCollabRealtimeClient } from '../../../realtime/DispatchCollabRe
 import { DispatchPresenceClient } from '../../../realtime/createPresenceClient'
 import { usePresence } from '../../../hooks/usePresence'
 import { PresenceIndicator } from '../../../components/collab/PresenceIndicator'
+import { CollaborativeTextField } from '../../../components/collab/CollaborativeTextField'
 import { usePermissions } from '../../../hooks/usePermissions'
 import {
   dispatchTaskQueryKey,
@@ -262,6 +263,10 @@ export function DispatchTaskDetailModal({
   const manualCompleteMutation = useMarkManualDispatchCompleteMutation(task.id)
   const startRedispatchMutation = useStartRedispatchMutation(task.id)
   const editQueryKey = useMemo(() => ['dispatchCollabEdits', task.id] as const, [task.id])
+  const collabBasePath = useMemo(
+    () => `/admin/dispatch-tasks/${encodeURIComponent(task.id)}`,
+    [task.id],
+  )
   const matchedDriverFormErrors = validateMatchedDriverForm(matchedDriverForm)
   const hasMatchedDriverFormErrors =
     Object.keys(matchedDriverFormErrors).length > 0
@@ -777,6 +782,28 @@ export function DispatchTaskDetailModal({
               <strong>배차 불가 사유:</strong> {task.failureReason}
             </div>
           ) : null}
+
+          <section
+            aria-label="협업 메모"
+            style={{
+              borderTop: '1px solid var(--color-neutral-200)',
+              paddingTop: 12,
+              display: 'grid',
+              gap: 4,
+            }}
+          >
+            <CollaborativeTextField
+              documentId={task.id}
+              basePath={collabBasePath}
+              fieldName="memo"
+              label="협업 메모"
+              rows={4}
+              readOnly={!canAccess('dispatch.board', 'update')}
+            />
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-neutral-500)' }}>
+              팀 내 실시간 공유 메모입니다. 배차 “비고”(저장 항목)와는 별개로 보관됩니다.
+            </p>
+          </section>
 
           <section
             data-testid="dispatch-collab-edit-section"
