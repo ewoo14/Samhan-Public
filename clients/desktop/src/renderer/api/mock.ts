@@ -3474,6 +3474,38 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(list)
   }
 
+  // S2d-1: GET /api/v1/slips/{slipId}/redline — 저장 revision 기반 셀 레드라인.
+  const redlineGetMatch = url.match(/\/slips\/([^/?]+)\/redline(\?.*)?$/)
+  if (method === 'GET' && redlineGetMatch) {
+    const slipId = redlineGetMatch[1]!
+    if (slipId === 'slip-006' || slipId === 'slip-007') {
+      return envelope({
+        anchored: true,
+        fields: [
+          {
+            fieldPath: 'header.memo',
+            label: '메모',
+            layers: [
+              { value: '임계 통과 원본 메모', actorName: null, actorColor: null, changedAt: null },
+              { value: '1차 수정 메모', actorName: '김영업', actorColor: '#DB2777', changedAt: '2026-06-30T09:15:00' },
+              { value: '2차 수정 메모', actorName: '박관리', actorColor: '#2563EB', changedAt: '2026-06-30T10:20:00' },
+            ],
+          },
+          {
+            fieldPath: 'header.shippingAddress',
+            label: '배송지',
+            layers: [
+              { value: '서울 강남구 (확정 시점)', actorName: null, actorColor: null, changedAt: null },
+              { value: '서울 서초구 (수정)', actorName: '김영업', actorColor: '#DB2777', changedAt: '2026-06-30T09:20:00' },
+            ],
+          },
+          // S2d-1: 라인 셀(lines[*])은 redline 비대상(헤더 한정). 라인 redline 은 S2d-1b 후속.
+        ],
+      })
+    }
+    return envelope({ anchored: false, fields: [] })
+  }
+
   // Phase 2.1: POST /api/v1/slips/{slipId}/revisions/{revisionNo}/restore — 특정 시점 복원.
   // restore POST 가 revisions GET 보다 먼저 (더 구체적인 path) 매칭되어야 함.
   const revisionRestoreMatch = url.match(/\/slips\/([^/?]+)\/revisions\/(\d+)\/restore$/)

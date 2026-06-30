@@ -23,7 +23,7 @@
  * UUID 비공개 가드: id 는 path param 으로만 사용. 화면 표시 영역에는 노출 X.
  * dispatcher.userId / inspector.userId 도 화면 미노출 (이름만 표시).
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   useMutation,
@@ -72,6 +72,8 @@ import {
   revertToRevision,
   type SlipAuditLogEntry,
 } from '../api/slipAudit'
+import { getRedline, type SlipFieldRedline, type SlipRedlineLayer } from '../api/slipRedline'
+import { RedlineCell } from '../components/audit/RedlineCell'
 import {
   createSlipEditRequest,
   SLIP_EDIT_REQUEST_STATUS_LABEL,
@@ -109,6 +111,11 @@ function memoWithoutTagPrefix(
     }
   }
   return memo
+}
+
+function deliveryTagLabel(value: string | null | undefined): string | null {
+  if (!value) return null
+  return (OUTBOUND_DELIVERY_TAG_LABELS as Record<string, string>)[value] ?? value
 }
 
 function isEmptyDetailValue(value: unknown): boolean {
@@ -463,6 +470,37 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     enabled: !!id,
   })
 
+  const redlineQuery = useQuery({
+    queryKey: ['slipRedline', id],
+    queryFn: () => getRedline(id),
+    enabled: !!id,
+  })
+
+  const redlineByField = useMemo(() => {
+    const map = new Map<string, SlipFieldRedline>()
+    if (redlineQuery.data?.anchored) {
+      for (const field of redlineQuery.data.fields) {
+        if (field.layers.length >= 2) {
+          map.set(field.fieldPath, field)
+        }
+      }
+    }
+    return map
+  }, [redlineQuery.data])
+
+  const renderRedlineCell = (
+    fieldPath: string,
+    fallback: ReactNode,
+    mapValue?: (value: string | null) => string | null,
+  ) => {
+    const field = redlineByField.get(fieldPath)
+    if (!field) return fallback
+    const layers: SlipRedlineLayer[] = mapValue
+      ? field.layers.map((layer) => ({ ...layer, value: mapValue(layer.value) }))
+      : field.layers
+    return <RedlineCell layers={layers} />
+  }
+
   // Phase 2.6d: 전표 id 변경 시 재고조회 체크 상태 초기화 (P1-1)
   useEffect(() => {
     setCheckedLineIds(new Set())
@@ -480,6 +518,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       // PR-H2: slip:edit event → audit-logs 재조회 (수정 횟수 + overlay 갱신)
       if (evt.event === 'slip:edit' || evt.event === 'message') {
         void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+        void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
       }
       // Phase 2.1 Task 6: slip:restored / slip:edit / slip:reverted → 버전이력 재조회.
       // (전표 본체 ['slip', id] 는 위에서 이미 무효화 — 여기서는 버전이력만 추가)
@@ -490,6 +529,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         || evt.event === 'message'
       ) {
         void queryClient.invalidateQueries({ queryKey: ['slipRevisions', id] })
+        void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
       }
       // PR-H3: 수정/삭제 요청 결정 SSE — 작성자에게 toast + latestEditRequest 갱신.
       if (evt.event === 'slip:edit-request:decided') {
@@ -559,6 +599,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['slip', id] })
       void queryClient.invalidateQueries({ queryKey: ['slips'] })
+      // S2d-1 NB6: 임계 전이(send/inspect)가 redline anchor 를 세팅하므로 redline 도 갱신한다.
+      void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
       setRejectReason('')
     },
   })
@@ -580,6 +622,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       await queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
       await queryClient.invalidateQueries({ queryKey: ['slips'] })
       await queryClient.invalidateQueries({ queryKey: ['slips', 'query', 'OUTBOUND'] })
+      // S2d-1 NB6: 매출 PUT 수정(헤더 변경 포함)이 redline 갱신 트리거.
+      await queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
@@ -608,6 +652,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       await queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
       await queryClient.invalidateQueries({ queryKey: ['slips'] })
       await queryClient.invalidateQueries({ queryKey: ['slips', 'query', 'INBOUND'] })
+      // S2d-1 NB6: 매입 PUT 수정(헤더 변경 포함)이 redline 갱신 트리거.
+      await queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
@@ -1760,18 +1806,24 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         <div className="detail-grid">
           <div>
             <span className="detail-label">거래처</span>
-            <span className="detail-value">{slip.partnerName ?? '-'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.partnerName', slip.partnerName ?? '-')}
+            </span>
           </div>
           <div>
             <span className="detail-label">일자</span>
-            <span className="detail-value">{slip.slipDate}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.slipDate', slip.slipDate)}
+            </span>
           </div>
           <div>
             <span className="detail-label">배송 태그</span>
             <span className="detail-value">
-              {slip.deliveryTag
-                ? ((OUTBOUND_DELIVERY_TAG_LABELS as Record<string, string>)[slip.deliveryTag] ?? slip.deliveryTag)
-                : '-'}
+              {renderRedlineCell(
+                'header.deliveryTag',
+                slip.deliveryTag ? deliveryTagLabel(slip.deliveryTag) : '-',
+                deliveryTagLabel,
+              )}
             </span>
           </div>
           {/*
@@ -1791,20 +1843,17 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           <div data-testid="slip-detail-audit-overlay-memo">
             <span className="detail-label">메모</span>
             <span className="detail-value">
-              {/*
-                레거시 전표의 "[지방] …" 접두는 제거한다 (memoWithoutTagPrefix).
-                deliveryScheduleLabel 은 위 별도 행으로 분리하여 이중 표시를 방지한다.
-              */}
-              <AuditOverlay
-                field="memo"
-                currentValue={memoWithoutTagPrefix(
-                  slip.memo,
-                  slip.deliveryTag
-                    ? ((OUTBOUND_DELIVERY_TAG_LABELS as Record<string, string>)[slip.deliveryTag] ?? slip.deliveryTag)
-                    : null,
-                )}
-                history={auditByField['memo'] ?? []}
-              />
+              {renderRedlineCell(
+                'header.memo',
+                <AuditOverlay
+                  field="memo"
+                  currentValue={memoWithoutTagPrefix(
+                    slip.memo,
+                    deliveryTagLabel(slip.deliveryTag),
+                  )}
+                  history={auditByField['memo'] ?? []}
+                />,
+              )}
             </span>
           </div>
           {/* PR-H2: 배송지 audit overlay (출고전표만 의미 있음) */}
@@ -1812,11 +1861,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             <div data-testid="slip-detail-audit-overlay-shippingAddress">
               <span className="detail-label">배송지</span>
               <span className="detail-value">
-                <AuditOverlay
-                  field="shippingAddress"
-                  currentValue={slip.shippingAddress}
-                  history={auditByField['shippingAddress'] ?? []}
-                />
+                {renderRedlineCell(
+                  'header.shippingAddress',
+                  <AuditOverlay
+                    field="shippingAddress"
+                    currentValue={slip.shippingAddress}
+                    history={auditByField['shippingAddress'] ?? []}
+                  />,
+                )}
               </span>
             </div>
           ) : null}
@@ -1833,6 +1885,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             onCommitted={() => {
               void queryClient.invalidateQueries({ queryKey: ['slip', id] })
               void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+              void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
             }}
           />
         </MobileCollapsible>
@@ -1845,6 +1898,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           onCommitted={() => {
             void queryClient.invalidateQueries({ queryKey: ['slip', id] })
             void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+            void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
           }}
         />
       )}
@@ -1915,27 +1969,39 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         <div className="detail-grid">
           <DetailGridItem value={slip.deliveryAddress} testId="slip-detail-delivery-address">
             <span className="detail-label">배송주소</span>
-            <span className="detail-value">{slip.deliveryAddress ?? '—'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.deliveryAddress', slip.deliveryAddress ?? '—')}
+            </span>
           </DetailGridItem>
           <DetailGridItem value={slip.supervisionAddress} testId="slip-detail-supervision-address">
             <span className="detail-label">감리주소</span>
-            <span className="detail-value">{slip.supervisionAddress ?? '—'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.supervisionAddress', slip.supervisionAddress ?? '—')}
+            </span>
           </DetailGridItem>
           <DetailGridItem value={slip.projectName} testId="slip-detail-project-name">
             <span className="detail-label">프로젝트명</span>
-            <span className="detail-value">{slip.projectName ?? '—'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.projectName', slip.projectName ?? '—')}
+            </span>
           </DetailGridItem>
           <DetailGridItem value={slip.recipientPhone} testId="slip-detail-recipient-phone">
             <span className="detail-label">인수자 번호</span>
-            <span className="detail-value">{slip.recipientPhone ?? '—'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.recipientPhone', slip.recipientPhone ?? '—')}
+            </span>
           </DetailGridItem>
           <DetailGridItem value={slip.paymentDueDate} testId="slip-detail-payment-due-date">
             <span className="detail-label">입금예정일</span>
-            <span className="detail-value">{slip.paymentDueDate ?? '—'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.paymentDueDate', slip.paymentDueDate ?? '—')}
+            </span>
           </DetailGridItem>
           <DetailGridItem value={slip.businessNumber} testId="slip-detail-business-number">
             <span className="detail-label">사업자번호</span>
-            <span className="detail-value">{slip.businessNumber ?? '—'}</span>
+            <span className="detail-value">
+              {renderRedlineCell('header.businessNumber', slip.businessNumber ?? '—')}
+            </span>
           </DetailGridItem>
           <DetailGridItem value={slip.printed == null ? null : slip.printed} testId="slip-detail-printed">
             <span className="detail-label">인쇄 여부</span>
@@ -2214,6 +2280,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                       {idx + 1}
                     </button>
                   </td>
+                  {/* S2d-1: 라인 셀은 redline 비대상(헤더 한정). 라인 셀 레드라인(productId 안정키 + 단가/합계 VAT 정합값)은 S2d-1b 후속 — 라인 fieldPath 행인덱스 누적 버그(BE) + 단가/합계 snapshot VAT 제외 불일치(FE/Design) 해소 필요. */}
                   <td className="col-model">{l.modelName ?? '-'}</td>
                   <td className="col-product">{l.productName ?? '-'}</td>
                   <td className="col-spec">{l.specification ?? '-'}</td>
@@ -2265,6 +2332,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                         #{idx + 1}
                       </button>
                       <div className="mobile-item-name">
+                        {/* S2d-1: 라인 셀 redline 비대상(헤더 한정, S2d-1b 후속) */}
                         {l.productName ?? l.modelName ?? '-'}
                       </div>
                     </div>
