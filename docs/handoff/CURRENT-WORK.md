@@ -7,9 +7,9 @@
 
 ### 🔜 집PC 즉시 재개 = S3-1 (주문 partner-order coedit, slip 패턴 1:1)
 협업 S3 문서별 롤아웃 1번. **1차 = 단일 협업 메모 필드(저위험)부터**, 2차(폼 전체 셀)는 후속 분리.
-- **정찰 먼저**(회사PC 정찰 미완): slip 메모 coedit 원본(`SlipCollabController` coedit 3엔드포인트 + `SlipCollaborationPanel` 메모 `CollaborativeTextField` + `slipCollab.ts` coedit 함수) ↔ partner-order 대응부(`PartnerOrderCollabController`·`partnerOrderCollab.ts`·`PartnerOrderCollabRealtimeClient.ts`·`SalesPartnerOrderDetailPage` 편집폼) 대조. Explore 권장.
-- **구현 범위**: ①BE `PartnerOrderCollabController`에 coedit 3엔드포인트(GET `/partner-orders/{id}/collab/coedit`+`/update`+`/awareness`, 공유 `CollabCoeditService` delegate, partner-order page-code) ②FE `partnerOrderCollab.ts` coedit 함수(`makeCoeditApi`) ③`SalesPartnerOrderDetailPage` 편집폼에 메모 `CollaborativeTextField`(basePath=`/partner-orders/{id}`) 배선.
-- **워크플로**: brainstorm spec(자율승인)→writing-plans→조기PR(base=main)→**구현**(⚠️codex exec는 회사PC 환경에서 fork에러·heap고갈·MCP끊김 [[codex-mcp-session-limit]] — 집PC는 `codex exec --help` 확인 후 정상이면 codex[sub-agent 금지 단일프롬프트], 아니면 Agent)→commit 대행→개발사항 즉시게시→순차 듀얼리뷰 0수렴→라이브QA(주문 2세션 메모 동시타이핑 또는 standalone relay round-trip 실증, 가짜 금지)→PM종합→CI green→squash머지.
+- ✅ **정찰 완료 + spec 작성됨**: `docs/superpowers/specs/2026-06-30-coedit-s3-1-partner-order-design.md`(slip 원본 file:line 매핑·BE coedit 3엔드포인트[`resolveOrderId` UUID 키·page-code read=sales.partner-order.list/write=sales.partner-order.edit·DTO 3종 로컬미러]·FE 메모 `CollaborativeTextField` 배선[basePath=`/partner-orders/{encodeURIComponent(orderId)}`]·리스크 C4[orderId=주문번호 path형·게이트웨이 풀패스·coedit메모≠도메인요청사항] 전부 박제). **빈 자동주입 가능(신규 @Bean 불요)·Flyway 0.**
+- **집PC는 writing-plans부터** 시작(정찰 재실행 불요). 구현 범위 요약: ①BE `PartnerOrderCollabController`에 `CollabCoeditService` 주입 + coedit 3엔드포인트(`resolveOrderId` 키) + DTO 3종 ②FE `PartnerOrderCollaborationPanel`에 메모 `CollaborativeTextField` 추가(basePath 내부구성, `partnerOrderCollab.ts` 신규함수 불요).
+- **워크플로**: ~~spec~~(완료)→**writing-plans**→조기PR(base=main)→**구현**(⚠️codex exec 회사PC 환경 fork에러·heap고갈·MCP끊김 [[codex-mcp-session-limit]] — 집PC는 `codex exec --help` 확인 후 정상이면 codex[sub-agent 금지 단일프롬프트], 아니면 Agent)→commit 대행→개발사항 즉시게시→순차 듀얼리뷰 0수렴→라이브QA(주문 2세션 메모 동시타이핑 또는 partner-order standalone relay round-trip 실증, 가짜 금지)→PM종합→CI green→squash머지.
 - **이후 순서**: 견적(slip-service 동거+EstimateRevision)→회계→결재→배차 → 협업 에픽 종결 → #17 단가인상 등 지시 에픽.
 
 ---
