@@ -1,7 +1,7 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **다음 = S2c**(상태의존 카운트, 룰 확정 — 아래 "✅ 회사PC 재개 완료" 줄 참조). **⚠️ 개발책임자 확정 대기 3건**(CODEF cutover 파라미터·셀 문자캐럿·협업 A~D 세부)은 아래 "⚠️ 오전 개발책임자 확정 대기" 절. 다음 세션 첫 읽기 파일.
+> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c(#676) 머지** squash `b237e76b`(상태의존 수정 카운트). **다음 = S2d**(레드라인 재귀). **⚠️ 개발책임자 확정 대기 3건**(CODEF cutover 파라미터·셀 문자캐럿·협업 A~D 세부)은 아래 "⚠️ 오전 개발책임자 확정 대기" 절. 다음 세션 첫 읽기 파일.
 
 ---
 
@@ -27,7 +27,8 @@
 - ✅ **S1 머지(#673, `886906b33`)**: Yjs 코-에디팅 **토대**(provider·SSE relay·awareness·CollaborativeTextField·mirror-div 커서). slip 협업 메모 1필드. Opus×5·Codex×5 0수렴(payload DoS·IME·resync/retry·caret·권한 VIEW→CREATE·Yjs snapshot 무결성·커서 UI 실결함 다수 해소). 설계 `docs/superpowers/specs/2026-06-30-live-coediting-design.md`.
 - ✅ **S2a 머지(#674, `fcdbb6bea`)**: slip 전표 **전체 폼** Yjs 바인딩(헤더 `Y.Map`/자유텍스트 `Y.Text` + 품목 `Y.Array<Y.Map>`) + 문서전역 awareness(필드/셀 라이브 커서) + **단일색상(A 달성** — `presenceColor.ts`=BE `PresenceColor.fromUserId` 일치, presence=coedit). Opus×3·Codex×2 0수렴(숫자셀 clear·품목셀 배지 높이·**provider 영구잠금 회귀** 해소). CollaborativeSlipInput·createDocCoeditProvider.
 - ✅ **S2b 머지(#675, squash `3ea02f1e`, 회사PC 2026-06-30 오전)**: slip 문서전역 수정/버전 로그(첫 작성부터) — 저장 PUT 후 EDIT revision capture + 인접 스냅샷 diff(헤더/품목 셀 `fieldChanges`, **productId Deque 발생순서 매칭**) + SlipVersionHistoryPanel 단일색상 표시. 기존 `slip_revisions` 편입(신규 Flyway 0)·UUID 비노출. **듀얼리뷰 7라운드 0수렴**(Codex개발·Opus×3·Codex×3): capture-trigger 누락 라운드별 1건(spec/note·매입 supervisionAddress·productId) → Opus 라운드3 전수 sweep 계열 종결 → **Codex 라운드3 독립 0수렴**. ⚠️**회사PC 머지게이트 1:1 점검이 Codex 라운드2 실행-후-미게시 자가적발→소급 보완**([[feedback_canonical_workflow]] PREFLIGHT #6, #670 패턴 재발 차단). PM 독립 BE 검증=계열 clean(매입·매출 digest 대칭, capture 호출처 9곳 감사공백 0). 라이브 QA: gradlew slip **597 passed**·**실 Docker slip-service 재빌드 healthy 부팅**·버전이력 라우트 라이브(401)·실DB IT green·CI 28/28.
-> ✅ **회사PC 재개(S2b 마무리) 완료**(2026-06-30 오전). **다음 재개 = S2c**(상태의존 수정 카운트): **판매전표=작성완료·창고이관 後 카운트 증가**(前은 편집O·카운트X) / **다른 전표=작성 이후 카운트** (개발책임자 2026-06-30 명확화 — 룰 확정, 착수 가능; 로그 C는 S2b 완료). 이후 **S2d**(레드라인 재귀: 기존값 취소선+바로 위 수정값 사용자색+라벨, 수정의 수정도 스택) → **S3**(6문서 롤아웃: 견적·배차·회계전표·주문·그룹웨어결재) → #17. coedit relay shared 공용화는 S3 착수 시.
+- ✅ **S2c 머지(#676, squash `b237e76b`, 회사PC 2026-06-30)**: 사용자 노출 "전표수정내역"(editHistoryCount) 상태의존 게이트 — OUTBOUND=창고이관(`inspect()`/COMPLETED)·비-OUTBOUND=결재선(`send()`/SENT) 後 편집만 카운트. revisionCount(audit) 불변, 신규 `revision_count_baseline`(V53) 차감, 기존 임계통과 backfill=0. **듀얼리뷰 5라운드 0수렴**(Codex가 **restore 카운트누락·mock params false-green 2건 단독 적발**→fix, Opus 결함계열 sweep로 collab restoreSnapshot SYSTEM 미카운트 구분 명시). 라이브 QA: 실 DB V53 backfill(COMPLETED→0/DRAFT→null)·gradlew slip 602·FE vitest 401·fresh PG probe. 📌**개발책임자 검토가능(가역)**: ①복원=카운트(user restoreToRevision, 감사revert 일관) ②INBOUND PurchaseQueryPage 컬럼 미노출(forward-compatible). ⚠️**게시규율 재발**: Codex 5-agent 라운드 즉시 미게시→개발책임자 지적→시정([[feedback_canonical_workflow]] PREFLIGHT #6 트리거 강화).
+> ✅ **회사PC 재개 + S2b·S2c 머지 완료**(2026-06-30). **다음 = S2d**(레드라인 재귀: 카운트 증가 상태 편집=기존값 취소선+바로 위 수정값 사용자색+라벨, 수정의 수정도 스택) → **S3**(6문서 롤아웃: 견적·배차·회계전표·주문·그룹웨어결재) → #17. coedit relay shared 공용화는 S3 착수 시.
 > ⚠️ **오전 개발책임자 확정 대기**: (1) **CODEF cutover 파라미터**(loginType 0/1 매핑·credentials key명 — 위 ⚠️절) (2) **단일라인 셀 문자 캐럿 여부**(현재 메모 textarea=문자 캐럿 / 단일라인 입력 셀=셀 강조+라벨까지 — 모든 셀에 문자 캐럿 추가할지, anchor/head 는 이미 awareness 전송 중 → S2 polish 가능) (3) 협업 A~D 세부 방향.
 - ⏳ NB polish(S2a 이연): removeLine setState 사이드이펙트 분리·onValueChange useCallback·Y.Text applyDelta(문자 CRDT).
 - ⏳ **S3+**: 6문서 각 동일 모델 전범위 롤아웃.
