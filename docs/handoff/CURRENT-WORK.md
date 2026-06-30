@@ -3,6 +3,15 @@
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0 공용화 토대 머지(#680 `3a8e8882`)** — 다음 = **S3-1~ 문서별 롤아웃**(주문→견적→회계→결재→배차). **🌙 야간 자율(내일 오전까지·답변불가·권장방향).** **⚠️ 개발책임자 확정 대기 3건**(CODEF cutover 파라미터·셀 문자캐럿·협업 A~D 세부)은 아래 "⚠️ 오전 개발책임자 확정 대기" 절. 다음 세션 첫 읽기 파일.
 
+> 🏠 **2026-06-30 회사PC 야간 세션 종료 → 집PC 재개**. 회사PC 세션의 ScheduleWakeup·실행 중 Explore(S3-1 정찰) 발화 시 **무시**(집PC가 진실원, 중복 작업 금지). 집PC 절차: `git pull`(main `5844124f` — S2d-2·S3-0 머지·메모리·핸드오프 포함) → `.\scripts\sync-claude-memory.ps1` → 본 파일 정독.
+
+### 🔜 집PC 즉시 재개 = S3-1 (주문 partner-order coedit, slip 패턴 1:1)
+협업 S3 문서별 롤아웃 1번. **1차 = 단일 협업 메모 필드(저위험)부터**, 2차(폼 전체 셀)는 후속 분리.
+- **정찰 먼저**(회사PC 정찰 미완): slip 메모 coedit 원본(`SlipCollabController` coedit 3엔드포인트 + `SlipCollaborationPanel` 메모 `CollaborativeTextField` + `slipCollab.ts` coedit 함수) ↔ partner-order 대응부(`PartnerOrderCollabController`·`partnerOrderCollab.ts`·`PartnerOrderCollabRealtimeClient.ts`·`SalesPartnerOrderDetailPage` 편집폼) 대조. Explore 권장.
+- **구현 범위**: ①BE `PartnerOrderCollabController`에 coedit 3엔드포인트(GET `/partner-orders/{id}/collab/coedit`+`/update`+`/awareness`, 공유 `CollabCoeditService` delegate, partner-order page-code) ②FE `partnerOrderCollab.ts` coedit 함수(`makeCoeditApi`) ③`SalesPartnerOrderDetailPage` 편집폼에 메모 `CollaborativeTextField`(basePath=`/partner-orders/{id}`) 배선.
+- **워크플로**: brainstorm spec(자율승인)→writing-plans→조기PR(base=main)→**구현**(⚠️codex exec는 회사PC 환경에서 fork에러·heap고갈·MCP끊김 [[codex-mcp-session-limit]] — 집PC는 `codex exec --help` 확인 후 정상이면 codex[sub-agent 금지 단일프롬프트], 아니면 Agent)→commit 대행→개발사항 즉시게시→순차 듀얼리뷰 0수렴→라이브QA(주문 2세션 메모 동시타이핑 또는 standalone relay round-trip 실증, 가짜 금지)→PM종합→CI green→squash머지.
+- **이후 순서**: 견적(slip-service 동거+EstimateRevision)→회계→결재→배차 → 협업 에픽 종결 → #17 단가인상 등 지시 에픽.
+
 ---
 
 ## 🌙 2026-06-30 새벽 자율 세션 — CODEF 완결 + 협업 에픽 (개발책임자 "권장방향 진행, 오전 확정")
