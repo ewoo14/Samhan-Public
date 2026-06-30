@@ -1,16 +1,21 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0 공용화 토대 머지(#680 `3a8e8882`)** — 다음 = **S3-1~ 문서별 롤아웃**(주문→견적→회계→결재→배차). **🌙 야간 자율(내일 오전까지·답변불가·권장방향).** **⚠️ 개발책임자 확정 대기 3건**(CODEF cutover 파라미터·셀 문자캐럿·협업 A~D 세부)은 아래 "⚠️ 오전 개발책임자 확정 대기" 절. 다음 세션 첫 읽기 파일.
+> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0(#680)·S3-1 주문 메모 coedit(#681 squash `04e2ff205`) 머지(2026-06-30, 5라운드 듀얼리뷰 0수렴)** — **다음 = S3-2 견적 coedit**(→회계→결재→배차). 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 > 🏠 **2026-06-30 회사PC 야간 세션 종료 → 집PC 재개**. 회사PC 세션의 ScheduleWakeup·실행 중 Explore(S3-1 정찰) 발화 시 **무시**(집PC가 진실원, 중복 작업 금지). 집PC 절차: `git pull`(main `5844124f` — S2d-2·S3-0 머지·메모리·핸드오프 포함) → `.\scripts\sync-claude-memory.ps1` → 본 파일 정독.
 
-### 🔜 집PC 즉시 재개 = S3-1 (주문 partner-order coedit, slip 패턴 1:1)
-협업 S3 문서별 롤아웃 1번. **1차 = 단일 협업 메모 필드(저위험)부터**, 2차(폼 전체 셀)는 후속 분리.
-- ✅ **정찰 완료 + spec 작성됨**: `docs/superpowers/specs/2026-06-30-coedit-s3-1-partner-order-design.md`(slip 원본 file:line 매핑·BE coedit 3엔드포인트[`resolveOrderId` UUID 키·page-code read=sales.partner-order.list/write=sales.partner-order.edit·DTO 3종 로컬미러]·FE 메모 `CollaborativeTextField` 배선[basePath=`/partner-orders/{encodeURIComponent(orderId)}`]·리스크 C4[orderId=주문번호 path형·게이트웨이 풀패스·coedit메모≠도메인요청사항] 전부 박제). **빈 자동주입 가능(신규 @Bean 불요)·Flyway 0.**
-- **집PC는 writing-plans부터** 시작(정찰 재실행 불요). 구현 범위 요약: ①BE `PartnerOrderCollabController`에 `CollabCoeditService` 주입 + coedit 3엔드포인트(`resolveOrderId` 키) + DTO 3종 ②FE `PartnerOrderCollaborationPanel`에 메모 `CollaborativeTextField` 추가(basePath 내부구성, `partnerOrderCollab.ts` 신규함수 불요).
-- **워크플로**: ~~spec~~(완료)→**writing-plans**→조기PR(base=main)→**구현**(⚠️codex exec 회사PC 환경 fork에러·heap고갈·MCP끊김 [[codex-mcp-session-limit]] — 집PC는 `codex exec --help` 확인 후 정상이면 codex[sub-agent 금지 단일프롬프트], 아니면 Agent)→commit 대행→개발사항 즉시게시→순차 듀얼리뷰 0수렴→라이브QA(주문 2세션 메모 동시타이핑 또는 partner-order standalone relay round-trip 실증, 가짜 금지)→PM종합→CI green→squash머지.
-- **이후 순서**: 견적(slip-service 동거+EstimateRevision)→회계→결재→배차 → 협업 에픽 종결 → #17 단가인상 등 지시 에픽.
+### ✅ S3-1 (주문 partner-order 메모 coedit) — 머지 완료 (PR #681, squash `04e2ff205`, 2026-06-30)
+협업 S3 문서별 롤아웃 1번 완결. slip 패턴 1:1 — BE `PartnerOrderCollabController` coedit 3엔드포인트(`resolveOrderId` UUID 키 · read=`sales.partner-order.list`/write=`sales.partner-order.edit` · DTO 3종 로컬미러 · `CollabCoeditService` 자동주입) + FE `PartnerOrderCollaborationPanel` '협업 메모' `CollaborativeTextField` 1필드(basePath=`/partner-orders/{enc(orderId)}`). Flyway 0. 1차=메모 단일필드, **2차(폼 전체 셀)=S3-1b 후속**.
+- **5라운드 듀얼리뷰 0수렴**: Opus 6 fix(T04 pageerror 회귀=mock.ts coedit 핸들러 누락+id='new' 오마운트→`collabCurrentValues` orderNumber 게이트 / `CollaborativeTextField` `.catch` / IT VIEW403·null400 / 보조설명) ↔ **Codex 1 HIGH**(provider 미준비·실패 시 입력잠금+`role=alert`로 저장-안-됨 데이터유실 차단 — `providerStatus` 게이트) → Round C(Opus FE+Design 0)·Round D(Codex 0). **듀얼리뷰가 단일모델 silent degrade 누락을 차단한 사례.**
+- 검증: CI green(Desktop Playwright mock 회귀 hard gate 포함) · vitest collab 19/19 · `PartnerOrderCollabIT` 15/15(Testcontainers PG16.14) · sp-d4 T04 20/20(실 렌더·pageerror 0) · 게이트웨이:8080 실 HTTP relay round-trip · dev-report. 스샷 `docs/qa/coedit-s3-1-partner-order/`.
+- 📌 비블로킹 후속: `CollaborativeTextField` `aria-describedby` ready-dangling a11y sweep.
+
+### 🔜 다음 = S3-2 (견적 coedit)
+협업 S3 롤아웃 2번. 순서: **견적 → 회계 → 결재 → 배차**(각 1차=단일 메모 저위험 / 2차=폼 셀). 공유 `CollabCoeditService` delegate + FE `createCoeditProvider(basePath=/{도메인}/{id})` 배선(S3-1 패턴 복제). 워크플로: 정찰→spec→writing-plans→조기PR(base=main)→구현(**codex exec --sandbox danger-full-access 집PC 작동 확인됨**, Claude commit 대행)→개발사항 즉시게시→순차 듀얼리뷰 0수렴(라운드마다 라이브QA+스샷)→PM종합→CI green→squash머지.
+- ⚠️ 견적 정찰 포인트: 견적 실체=`clients/web/estimate-app`(~95% 구현, [[quotation-estimate-app-state]]) + 데스크톱 `EstimateFormPage`/`QuoteView` 별개 → coedit 대상 화면/basePath 확정 필요. slip-service 동거 + EstimateRevision 영향.
+- 협업 6문서(slip·주문 ✅ / 견적·회계·결재·배차 잔여) 종결 후 → **#17 단가인상** 등 지시 에픽.
+- 💰 별도 vendor 트랙(개발책임자 진행 중 결정): ❌CODEF(고비용)·❌전자세금계산서발급(엑셀→홈택스 수동) / ✅계좌·법인카드지출=**바로빌**(계좌 24h 3천·카드 3천·당일 계좌가능) / 가맹점 카드매출(오프라인 단말기 키인=VAN)=**당일은 VAN사 포털·API(KICC 이지샵 등)/키인 시 전산 직접입력, T+1 대사=여신협회 무료포털**(여신협회 Open API=계약·비공개·이용기관모델→비효율). 핸드오프 과거 "팝빌 단가"는 실제 **바로빌** 수치(정정). 미확정: 실 계좌/카드 개수·VAN사명. 트랙 착수 시 docs/research 정식 편입.
 
 ---
 
