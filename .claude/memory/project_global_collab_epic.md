@@ -29,7 +29,7 @@ metadata:
 
 ## #16 라이브 코-에디팅 (live coedit) — ⚠️ 1차(메모 단일필드)만 완료·**full-form(전표 전체) 미완** (2026-07-01)
 
-> 🔴 **정정(2026-07-01 개발책임자)**: 원 지시 = **전표 폼 전체**(판매전표처럼 모든 필드+품목 라인 실시간 동시편집). 아래는 **'협업 메모' 단일필드(1차)** 6문서 머지분일 뿐 — full-form 미완. **"에픽 종결" 선언은 성급(철회).** full-form = **판매전표 레퍼런스부터 진행 중**(메모 인프라 CollabCoeditService relay 재사용·FE 전체폼 Y.Doc 바인딩 추가). [[feedback_epic_scope_no_narrowing]]
+> 🔴 **정정(2026-07-01 개발책임자)**: 원 지시 = **전표 폼 전체**(판매전표처럼 모든 필드+품목 라인 실시간 동시편집). 아래는 **'협업 메모' 단일필드(1차)** 6문서 머지분일 뿐 — full-form 미완. **"에픽 종결" 선언은 성급(철회).** full-form 정밀 현황(정찰 acf36aaa, 2026-07-01): **판매전표(slip)는 이미 full-form ✅**(S2a #674 `fcdbb6bea` — `createDocCoeditProvider` Y.Map헤더+Y.Array품목라인 + `CollaborativeSlipInput` 셀바인딩, 수정모달). **5문서(주문·견적·회계·결재·배차 #681~#685)만 메모 단일필드 → full-form 롤아웃 필요**(slip 패턴 재사용·BE relay 도메인무관 그대로). 개발책임자 결정: **병행**(트랙B 5문서 롤아웃 + 트랙A slip 하드닝[라인 add/reorder CRDT·셀 char-CRDT]) / **저장 충돌 정합(낙관락↔라이브 동시편집)=후속 슬라이스**. [[feedback_epic_scope_no_narrowing]]
 
 §7 수정완료(async 1-인)와 **별개 추가 레이어** — `CollabCoeditService`(shared collab-core, in-memory base64 relay + SSE awareness) 기반 **실시간 동시편집** 필드(FE `CollaborativeTextField` '협업 메모'). 패턴: BE `{Doc}CollabController` coedit 3엔드포인트(`GET /coedit`·`POST /coedit/update`·`POST /coedit/awareness`; `@RequirePermission`; DTO 3종 로컬미러; CollabCoeditService 자동주입=`@ConditionalOnBean(RealtimeBroker)`) + FE 패널/모달 `CollaborativeTextField`(basePath=`/{도메인}/{enc(id)}`, fieldName="memo"). coedit relay=**in-memory·비영속·상태가드 무관**(사이드채널, 영속 필드와 별개). 슬라이스:
 - **S3-1 주문**(PartnerOrder, #681 `04e2ff205`): resolveOrderId UUID 키, 5라운드 0수렴, Codex가 provider 실패 silent degrade(저장-안-됨 입력가능) 입력잠금+role=alert 단독 적발.
