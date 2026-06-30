@@ -17,6 +17,12 @@
 - 협업 6문서(slip·주문 ✅ / 견적·회계·결재·배차 잔여) 종결 후 → **#17 단가인상** 등 지시 에픽.
 - 💰 별도 vendor 트랙(개발책임자 진행 중 결정): ❌CODEF(고비용)·❌전자세금계산서발급(엑셀→홈택스 수동) / ✅계좌·법인카드지출=**바로빌**(계좌 24h 3천·카드 3천·당일 계좌가능) / 가맹점 카드매출(오프라인 단말기 키인=VAN)=**당일은 VAN사 포털·API(KICC 이지샵 등)/키인 시 전산 직접입력, T+1 대사=여신협회 무료포털**(여신협회 Open API=계약·비공개·이용기관모델→비효율). 핸드오프 과거 "팝빌 단가"는 실제 **바로빌** 수치(정정). 미확정: 실 계좌/카드 개수·VAN사명. 트랙 착수 시 docs/research 정식 편입.
 
+### 🆕 #17 단가변동 진행 (2026-07-01 야간 자율 — #16 종결 직후 착수)
+신규 기능 에픽(인프라 60~70% 기존 — 통합·설정화). spec `docs/superpowers/specs/2026-07-01-price-change-epic-design.md`(결정 D1~D6 권장방향 박제 — **가격 정책이라 오전 개발책임자 확인 요청**, 특히 D3 렌더 기본값·D5 견적↔주문 일관성).
+- ✅ **S1 BE 가격모델 머지**(#686 squash `220282900`): product-service `price_change_schedule`(카테고리별 변동일 config, BaseEntity 7+soft delete, V22 fresh-probe, 내부 endpoint, IT). 듀얼리뷰가 401 표준 정정(Opus 403 오판 차단). dev-report `2026-07-01-price-change-s1-model.md`.
+- 🔜 **S2 견적 렌더 토글**(estimate-app index.ejs chk*Inc 가 신규 endpoint 소비, D3) → S3 주문 자동전환(order-app PRICE_INC_DATE 제거·no-op 해소, D4) → S4 관리UI → S5 일관성(D5).
+- ⚠️ 정찰 핵심: order-app `*_INC`=현행 카탈로그(DB-mode no-op)·전후 의미 불일치(estimate 기본후/order 기본전)·변동일 3중 하드코딩·findApplicableLatest 死코드 → 통합 대상.
+
 ### 추가 지시 에픽 (재스캔, 2026-07-01 — 개발책임자 "더 지시한 에픽 확인 요망")
 > 근본원인: HOME(~/.claude/.../memory 139) ↔ repo(.claude/memory 125) 비동기 + MEMORY.md 인덱스 미갱신 → #17류 누락 재발. **메모리 동기화/인덱싱 정비 + 누락 에픽 메모리 신설 권고.** 상세 scratchpad/missed-epics-rescan.md(세션 한정)→정식 이관 필요.
 - **대부분 이미 구현 완료(추적만 누락):** 백오피스 앱화(PWA+네이티브+생체+FCM #624~638)·출고전표 컷오프(#594)·M상N하 배송일정(#595)·개발메뉴 task#28(#654~656)·GAS 15앱 — 전용 메모리 부재.
