@@ -1,7 +1,7 @@
 # 현재 작업 핸드오프 노트
 
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
-> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **4/4 문서 완료**(주문·견적·회계·결재), **다음 = S3-5 배차 coedit(#16 마지막)**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
+> 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 #16 종결**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 > 🏠 **2026-06-30 회사PC 야간 세션 종료 → 집PC 재개**. 회사PC 세션의 ScheduleWakeup·실행 중 Explore(S3-1 정찰) 발화 시 **무시**(집PC가 진실원, 중복 작업 금지). 집PC 절차: `git pull`(main `5844124f` — S2d-2·S3-0 머지·메모리·핸드오프 포함) → `.\scripts\sync-claude-memory.ps1` → 본 파일 정독.
 
@@ -11,7 +11,7 @@
 - 검증: CI green(Desktop Playwright mock 회귀 hard gate 포함) · vitest collab 19/19 · `PartnerOrderCollabIT` 15/15(Testcontainers PG16.14) · sp-d4 T04 20/20(실 렌더·pageerror 0) · 게이트웨이:8080 실 HTTP relay round-trip · dev-report. 스샷 `docs/qa/coedit-s3-1-partner-order/`.
 - 📌 비블로킹 후속: `CollaborativeTextField` `aria-describedby` ready-dangling a11y sweep.
 
-### 🔜 S3-2 견적·S3-3 회계(#683)·S3-4 결재(#684 `0e439e079`) coedit 머지 — 다음 = S3-5 배차 coedit(#16 마지막)
+### 🔜 S3-2~S3-5(견적·회계·결재·배차, #682~#685 squash `970b28f1a`) coedit 머지 — #16 라이브 coedit 에픽 종결(6문서) → 다음 = #17 단가변동
 협업 S3 롤아웃 2번. 순서: **견적 → 회계 → 결재 → 배차**(각 1차=단일 메모 저위험 / 2차=폼 셀). 공유 `CollabCoeditService` delegate + FE `createCoeditProvider(basePath=/{도메인}/{id})` 배선(S3-1 패턴 복제). 워크플로: 정찰→spec→writing-plans→조기PR(base=main)→구현(**codex exec --sandbox danger-full-access 집PC 작동 확인됨**, Claude commit 대행)→개발사항 즉시게시→순차 듀얼리뷰 0수렴(라운드마다 라이브QA+스샷)→PM종합→CI green→squash머지.
 - ⚠️ 견적 정찰 포인트: 견적 실체=`clients/web/estimate-app`(~95% 구현, [[quotation-estimate-app-state]]) + 데스크톱 `EstimateFormPage`/`QuoteView` 별개 → coedit 대상 화면/basePath 확정 필요. slip-service 동거 + EstimateRevision 영향.
 - 협업 6문서(slip·주문 ✅ / 견적·회계·결재·배차 잔여) 종결 후 → **#17 단가인상** 등 지시 에픽.
