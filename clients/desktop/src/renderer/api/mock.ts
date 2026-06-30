@@ -1711,6 +1711,9 @@ const SAMPLE_LINES = [
     quantity: 2,
     unitPrice: '1850000',
     lineTotal: '3700000',
+    unitPriceWithVat: '2035000',
+    supplyAmount: '3700000',
+    vatAmount: '370000',
     note: null,
   },
   {
@@ -3499,7 +3502,30 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               { value: '서울 서초구 (수정)', actorName: '김영업', actorColor: '#DB2777', changedAt: '2026-06-30T09:20:00' },
             ],
           },
-          // S2d-1: 라인 셀(lines[*])은 redline 비대상(헤더 한정). 라인 redline 은 S2d-1b 후속.
+          {
+            fieldPath: 'lines[0].quantity',
+            label: '수량',
+            layers: [
+              { value: '1', actorName: null, actorColor: null, changedAt: null },
+              { value: '2', actorName: '김영업', actorColor: '#DB2777', changedAt: '2026-06-30T09:25:00' },
+            ],
+          },
+          {
+            fieldPath: 'lines[0].unitPrice',
+            label: '단가',
+            layers: [
+              { value: '1815000', actorName: null, actorColor: null, changedAt: null },
+              { value: '2035000', actorName: '김영업', actorColor: '#DB2777', changedAt: '2026-06-30T09:25:00' },
+            ],
+          },
+          {
+            fieldPath: 'lines[0].lineTotal',
+            label: '합계',
+            layers: [
+              { value: '1815000', actorName: null, actorColor: null, changedAt: null },
+              { value: '4070000', actorName: '김영업', actorColor: '#DB2777', changedAt: '2026-06-30T09:25:00' },
+            ],
+          },
         ],
       })
     }
