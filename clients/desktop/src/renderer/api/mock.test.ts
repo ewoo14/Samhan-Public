@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AxiosRequestConfig } from 'axios'
 import { getMockResponse } from './mock'
 import type { MonthlyIncomeStatementResponse } from './accounting'
+import { querySlips } from './slip'
 
 type MockEnvelope<T> = {
   success: boolean
@@ -23,6 +24,10 @@ function mockRequest(config: AxiosRequestConfig): unknown {
 function amount(raw: string | number): number {
   return typeof raw === 'number' ? raw : Number(raw)
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('mock approval-line-config contract', () => {
   it('GROUPWARE 기본 결재자 resolve 는 USER 결재자만 sequence 순으로 반환한다', () => {
@@ -170,6 +175,61 @@ describe('mock monthly income statement contract', () => {
     expect(amount(nonOperatingSubtotal?.difference ?? 0)).toBe(
       amount(nonOperatingSubtotal?.annualTotal ?? 0) - amount(nonOperatingSubtotal?.priorYearTotal ?? 0),
     )
+  })
+})
+
+describe('mock slip query edit history contract', () => {
+  it('판매/구매조회 mock 은 querySlips params 경로로 상태의존 전표수정내역 카운트 룰을 반영한다', async () => {
+    vi.stubEnv('VITE_MOCK_MODE', '1')
+    const baseOptions = {
+      dateFrom: '2026-05-01',
+      dateTo: '2026-05-31',
+      page: 0,
+      size: 50,
+    } as const
+
+    const outbound = await querySlips({ ...baseOptions, slipType: 'OUTBOUND' })
+    const inbound = await querySlips({ ...baseOptions, slipType: 'INBOUND' })
+    const inboundPage = await querySlips({ ...baseOptions, slipType: 'INBOUND', page: 1, size: 3 })
+    const searched = await querySlips({
+      ...baseOptions,
+      slipType: 'OUTBOUND',
+      searchSlipNo: '2026/05/10-1',
+    })
+
+    for (const row of outbound.content) {
+      if (['DRAFT', 'SAVED', 'SENT', 'ACCEPTED', 'PROCESSING', 'INSPECTING', 'REJECTED', 'CANCELED'].includes(row.status)) {
+        expect(row.editHistoryCount).toBe(0)
+      }
+    }
+    for (const row of inbound.content) {
+      if (['DRAFT', 'SAVED', 'REJECTED', 'CANCELED'].includes(row.status)) {
+        expect(row.editHistoryCount).toBe(0)
+      }
+    }
+
+    // 양방향 잠금(false-green 방지): 빈 결과 공허통과 차단 + 임계통과 행은 편집 시 N건 표시 가능해야 한다.
+    // (전 행을 0 으로 만들면 'N건' 렌더 경로 mock 이 소실되는데 단방향 단언만으론 green 통과 — N1 보강)
+    expect(outbound.content.length).toBeGreaterThan(0)
+    expect(inbound.content.length).toBeGreaterThan(0)
+    expect(
+      outbound.content.some(
+        (row) =>
+          ['COMPLETED', 'SHIPPING', 'DELIVERED', 'CONFIRMED'].includes(row.status) && row.editHistoryCount > 0,
+      ),
+    ).toBe(true)
+    expect(
+      inbound.content.some(
+        (row) =>
+          ['SENT', 'ACCEPTED', 'PROCESSING', 'INSPECTING', 'COMPLETED', 'SHIPPING', 'DELIVERED', 'CONFIRMED'].includes(
+            row.status,
+          ) && row.editHistoryCount > 0,
+      ),
+    ).toBe(true)
+    expect(inboundPage.number).toBe(1)
+    expect(inboundPage.size).toBe(3)
+    expect(inboundPage.content).toHaveLength(3)
+    expect(searched.content.map((row) => row.slipNo)).toEqual(['2026/05/10-1'])
   })
 })
 

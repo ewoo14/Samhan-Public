@@ -3895,7 +3895,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // GET /slips/{id} (단건 상세) — UUID-like 또는 'slip-001' 패턴
   const slipDetailMatch = url.match(/\/slips\/([^/?]+)$/)
-  if (method === 'GET' && slipDetailMatch && !url.includes('lookup-product') && !url.includes('/slips/edit-requests') && !url.match(/\/slips\/cleanup/) && !url.includes('compensation-failures')) {
+  if (method === 'GET' && slipDetailMatch && !url.includes('/slips/query') && !url.includes('lookup-product') && !url.includes('/slips/edit-requests') && !url.match(/\/slips\/cleanup/) && !url.includes('compensation-failures')) {
     const id = slipDetailMatch[1]!
     const found = MOCK_SLIPS.find((s) => s.id === id) ?? MOCK_SLIPS[0]!
     return envelope({
@@ -3981,12 +3981,30 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // GET /slips/query — 신규 필드 포함 10+ rows (페이지네이션 검증용)
   // ============================================================================
   if (method === 'GET' && url.includes('/slips/query')) {
-    const slipTypeMatch = url.match(/[?&]slipType=([^&]+)/)
-    const slipType = slipTypeMatch?.[1]
-    const pageMatch = url.match(/[?&]page=(\d+)/)
-    const pageNo = parseInt(pageMatch?.[1] ?? '0', 10)
-    const sizeMatch = url.match(/[?&]size=(\d+)/)
-    const pageSize = parseInt(sizeMatch?.[1] ?? '50', 10)
+    const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+    const configParams = config.params
+    const readQueryParam = (key: string): string | undefined => {
+      if (configParams instanceof URLSearchParams) {
+        return configParams.get(key) ?? urlObj.searchParams.get(key) ?? undefined
+      }
+      const value = (configParams as Record<string, unknown> | undefined)?.[key]
+      if (Array.isArray(value)) {
+        return value[0] == null ? undefined : String(value[0])
+      }
+      if (value != null) {
+        return String(value)
+      }
+      return urlObj.searchParams.get(key) ?? undefined
+    }
+    const slipType = readQueryParam('slipType')
+    const pageNo = parseInt(readQueryParam('page') ?? '0', 10)
+    const pageSize = parseInt(readQueryParam('size') ?? '50', 10)
+    const searchPartnerName = readQueryParam('searchPartnerName')?.toLowerCase()
+    const searchPartnerCode = readQueryParam('searchPartnerCode')?.toLowerCase()
+    const searchBusinessNumber = readQueryParam('searchBusinessNumber')?.toLowerCase()
+    const searchSlipNo = readQueryParam('searchSlipNo')?.toLowerCase()
+    const searchProjectName = readQueryParam('searchProjectName')?.toLowerCase()
+    const searchDeliveryAddress = readQueryParam('searchDeliveryAddress')?.toLowerCase()
 
     /** 판매(OUTBOUND) 조회 12건 mock rows */
     const OUTBOUND_QUERY_ROWS = [
@@ -4034,7 +4052,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         supervisionAddress: '인천 연수구 송도 B빌딩', projectName: '송도 국제도시 HVAC',
         recipientPhone: '032-555-7777', paymentDueDate: null,
         printed: false, memo: null, totalAmount: 12600000, totalQuantity: 8,
-        salesPersonName: '오병승', editHistoryCount: 3,
+        salesPersonName: '오병승', editHistoryCount: 0,
         deliveryTag: 'REGION', deliveryTagLabel: '지방',
         sourceWarehouseId: '11111111-1111-1111-1111-000000000002', destinationWarehouseId: null,
       },
@@ -4106,7 +4124,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         supervisionAddress: '창원공장 C동', projectName: '창원 스팀터빈 보조냉각',
         recipientPhone: '055-999-1111', paymentDueDate: '2026-06-30',
         printed: false, memo: '특수 사양 주의', totalAmount: 15400000, totalQuantity: 7,
-        salesPersonName: '오병승', editHistoryCount: 5,
+        salesPersonName: '오병승', editHistoryCount: 0,
         deliveryTag: 'REGION', deliveryTagLabel: '지방',
         sourceWarehouseId: '11111111-1111-1111-1111-000000000002', destinationWarehouseId: null,
       },
@@ -4130,7 +4148,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         supervisionAddress: '울산공장 A라인', projectName: '울산 석화단지 냉동 증설',
         recipientPhone: '052-444-5555', paymentDueDate: '2026-06-15',
         printed: false, memo: '야간 배송 가능', totalAmount: 5600000, totalQuantity: 4,
-        salesPersonName: '이정훈', editHistoryCount: 1,
+        salesPersonName: '이정훈', editHistoryCount: 0,
         deliveryTag: 'STACK', deliveryTagLabel: '야적',
         sourceWarehouseId: '11111111-1111-1111-1111-000000000001', destinationWarehouseId: null,
       },
@@ -4211,7 +4229,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
         printed: true, memo: null, totalAmount: 6300000, totalQuantity: 5,
-        salesPersonName: '오병승', editHistoryCount: 1,
+        salesPersonName: '오병승', editHistoryCount: 0,
         deliveryTag: null, deliveryTagLabel: null,
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000002',
       },
@@ -4266,17 +4284,28 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         deliveryAddress: null, supervisionAddress: null, projectName: null,
         recipientPhone: null, paymentDueDate: '2026-05-31',
         printed: false, memo: '회차 + 추가 구매 혼합', totalAmount: 2640000, totalQuantity: 2,
-        salesPersonName: '이정훈', editHistoryCount: 1,
+        salesPersonName: '이정훈', editHistoryCount: 0,
         deliveryTag: 'RETURN_TRIP', deliveryTagLabel: '회차',
         sourceWarehouseId: null, destinationWarehouseId: '11111111-1111-1111-1111-000000000002',
       },
     ]
 
-    const allRows = slipType === 'OUTBOUND'
+    const typeRows = slipType === 'OUTBOUND'
       ? OUTBOUND_QUERY_ROWS
       : slipType === 'INBOUND'
         ? INBOUND_QUERY_ROWS
         : [...OUTBOUND_QUERY_ROWS, ...INBOUND_QUERY_ROWS]
+
+    const includes = (value: string | null | undefined, keyword: string | undefined) =>
+      !keyword || (value ?? '').toLowerCase().includes(keyword)
+    const allRows = typeRows.filter((row) =>
+      includes(row.partnerName, searchPartnerName)
+      && includes(row.partnerCode, searchPartnerCode)
+      && includes(row.businessNumber, searchBusinessNumber)
+      && includes(row.slipNo, searchSlipNo)
+      && includes(row.projectName, searchProjectName)
+      && includes(row.deliveryAddress, searchDeliveryAddress),
+    )
 
     const start = pageNo * pageSize
     const pageContent = allRows.slice(start, start + pageSize)
