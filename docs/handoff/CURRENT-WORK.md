@@ -4,6 +4,27 @@
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 **메모 단일필드(1차)만** 머지 — ⚠️**full-form(전표 전체)=원 지시·미완**(정정 [[feedback_epic_scope_no_narrowing]]). **현 우선순위=협업 full-form **롤아웃**(정찰 acf36aaa: slip 판매전표는 **이미 full-form ✅** S2a #674 `fcdbb6bea`[createDocCoeditProvider Y.Map헤더+Y.Array품목라인+CollaborativeSlipInput 셀바인딩, 수정모달] — **5문서 중 주문 full-form ✅(#689 `75a967d15`, BLOCKING 2[awareness 블리드·stale corruption] fix·듀얼리뷰 양방향정정·2/6 완료) — 견적·회계·결재·배차 잔여 메모→full-form 이식**. 개발책임자 결정: **트랙B 5문서 롤아웃 + 트랙A slip 하드닝 + 트랙B 롤아웃 병행, 저장충돌=후속). **〔진행 2026-07-01 PM〕** 트랙A **slA1(공유 provider 라인 lineId+add/remove/byId CRDT infra) ✅머지 `1d0d27a81`**(#690, Opus FE+Codex 듀얼리뷰 0수렴, backward-compat 60테스트). **회계 정찰**: 회계 full-form은 ❌BE 수정 PUT 부재(신설 필요)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위. **전략=사용자 1순위 '더 많은 문서 full-form' → 트랙B 롤아웃 우선**(slA1 infra가 line-CRDT 직접제공 → slA1b 는 hard 전제 아님; 회계/견적이 infra 직접사용 가능). 견적·결재·배차 **fit 정찰 병렬 진행** → 최저난도부터 롤아웃. slA1b(slip 라인 add/remove 소비자, 라이브 모달 retrofit 고위험)·slA1c(dnd-kit reorder)·slA2(셀 char-CRDT)=후순위 enhancement). **〔2026-07-01 PM 최신〕 견적 full-form ✅머지 #691 `d36d6c7cf`(slip·주문·견적 3/6) — 개발책임자 "PR 워크플로우 재준수+세션 위반 전수 보완" 지시로 #691은 정식 5-agent 듀얼·0수렴·라이브 실QA(2세션 SSE 양방향 반영 PASS·-sse-reflected 실캡처)·PM종합 전부 이행. 라이브 QA가 결함 3건 적발: ①applySnapshot corrupt-update 브릭(공유 coedit infra·하드닝 fix PR 착수) ②EstimateRealtimeClient/createAuditApi 경로 `/api/v1/estimates`→`/slips/estimates` 누락(404/500). 다음=①applySnapshot 하드닝 PR ②경로 fix PR ③**세션 소급 sweep**(#690→#689→#686/687→#682-685 각 5-agent+라이브QA 소급) ④결재→회계(BE)→배차 롤아웃. #17 단가변동 보류**. 〔과거 "#16 종결" 표기 철회〕**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 ---
+## 🏠 집PC 세션 종료 (2026-07-02) → 회사PC 재개 (본 절이 최신)
+
+**개발책임자 결정**: 회계전표 **원장(Journal 계정/차변/대변)은 수정 금지**(감사 무결성, 정정=reverse 후 신규) → **슬1(#697 Journal PUT) 폐기 확정**. **입금보고서 등 비-원장 회계 문서가 편집/coedit 대상**으로 이관.
+
+### ✅ 회계 슬1/BE — PR #697 = **폐기**(원장 수정 금지) + 감사·보완 완료 → **close 대기**
+- 스코프였던 `PUT /accounting/journals/{id}` DRAFT 수정 = 원장 수정 금지로 **불필요 → 폐기**. main 무오염(미머지)이라 revert 불요. **개발책임자 승인 후 PR close + 브랜치 정리**(`feat/accounting-journal-draft-update` 원격 보존 중, 커밋 `c909c055`).
+- **워크플로우 규율 완주 입증**(개발책임자 "감사 보완 요청" 이행): 순차 듀얼 **3사이클 완전체** — Opus R1(6)+CodexR1(2)+OpusR2(2)+CodexR2(1)+**Opus R3 5-agent clean**+**Codex R3 대칭(symmetry complete)**. blocking **11건** 전부 mock/IT-green 뚫고 fresh 재검·실 재현 적발. 각 라운드 즉시 게시(실행=게시 1:1). ⚠️R3 2-agent 축소를 자가지적→개발책임자 보완요청→5-agent 완성. PR #697 코멘트에 전 라운드 실적.
+- **회계 무결성 통찰**(폐기됐으나 가치): 원장 라이브 동시편집 리스크(낙관락 라인편집 no-op·partnerId A4오염·soft-delete importer 42P10/restore CTE)가 정확히 개발책임자가 "원장 수정 금지"로 차단한 위험. `linesRevision`(FORCE_INCREMENT 커밋직전증분→응답 stale 회피) 등 기법 = dev-report(브랜치, close 시 소멸).
+
+### 🔜 회사PC 재개 = **입금보고서 에픽** (개발책임자 목표, brainstorming 착수 대기)
+개발책임자 업무 흐름(이카운트 방식): **계좌 입출금내역 선택 → 입금보고서 작성 → 입출금내역+거래처(사업자) 매칭 → 거래처 원장 반영**(수금/미수금 회수).
+- **정찰 결과**(2026-07-02): 이 라이브 흐름은 **대부분 미구축**. 현재 3개 단절된 섬 — ①`BankTransaction`(계좌내역, 행별 매칭까지·`markReflected` dead code) ②`CashReceipt`(입금보고서, **MIG 적재 전용·수기 작성 전무**·CashReceiptController 부재·MANUAL_RECEIPT enum만) ③`DepositMatch`(KFTC DRY_RUN mock·FE 없음). 동작 유일구간=MIG 과거데이터→Mig9 admin 배치→원장(라이브 아님).
+- **구축 필요**(대형 신규): BE(BankTransaction→CashReceipt 생성·CashReceipt 수기 CRUD·markReflected 라이브 승격) + FE(BankTransactionPage 다중선택+입금보고서 작성 액션·입금보고서 작성폼/목록[목업 `docs/design/mig-14-admin-ui/02_cash_receipt_list_mock.md` 有]).
+- **착수**: brainstorming(요구·설계 탐색) → 슬라이스 분해 → 캐논 8단계. 개발책임자 착수 지시 대기.
+
+### 📌 교훈 (메모리 박제)
+- **무결성 민감 도메인(회계 원장 등)은 정책[편집 가부] 착수 전 개발책임자 확인** — 야간 권장방향(D-ACC-03 원장 동시편집) 진행이 슬1 폐기 낭비 초래. → [[project_accounting_ledger_edit_policy]]
+- **후속 라운드도 5-agent 완주 + Codex 대칭**(축소 금지) — R3 2-agent 축소가 감사 지적. → [[feedback_canonical_workflow]]
+### 📌 백로그: TaxInvoiceService/MonthEndCloseService UUID 노출 · Journal/TaxInvoice `requireDraft` 조사("교체은") 형제 공통(PR #697 밖).
+
+---
 ## 🔴 최우선 재개 블록 (2026-07-01 오후 — 회사PC 인계)
 **개발책임자 지시**: ①"PR 워크플로우 재확인·재준수" ②"이번 세션 위반 워크플로우 전수 보완" ③"위반하지 말고 잘해"(재지시 예고) ④"보완 끝나면 세션종료→회사PC 재개". → 이번 세션 머지 8 PR(#682-687·689·690)이 **5-agent 단축 위반**임을 감사·인정 → 소급 보완 진행.
 
