@@ -9,7 +9,8 @@
 
 ### 🆕 [세션 2026-07-01 오후] 자율 진행 — 트랙 순서 [1]경로fix→[2]소급재검증→[3]하드닝→[4]결재 (개발책임자 지정)
 - ✅ **[1] 경로 fix = PR #694 머지**(`924085b4`, Option A vestigial 제거). 표준 8단계 워크플로우 완전 이행(조기PR→Codex개발→Opus 5-agent→Codex 5-agent→0수렴→PM종합→CI green 28/28→squash). **순차 듀얼리뷰 성과 실증**: Opus 4 nit ↔ Codex dead invalidate 2곳 단독 ↔ Codex 수렴 docs 3건.
-- ⏭️ **다음 = [2] 소급 sweep 8PR(#682-687·689·690) 재검증** — 위 항목 1이 "✅✅ 완결" 주장하나 프로젝트 '완결' 조기선언 재발 이력 → 정식 5-agent+라이브QA로 실제 됐는지 감사. → [3] coedit 하드닝 v2(항목 3) → [4] 결재 full-form 롤아웃(항목 4).
+- ✅ **[2] 소급 sweep 8PR 재검증 완료(2026-07-01 read-only 감사) = PASS (실효적·정직, 조기선언 아님)**. 근거: (a)#682-685 전부 Opus 5-agent+Codex 5-agent+라이브QA+PM종합 완전 구조 (b)**#689→#693 소급이 실HIGH 다수 적발→#693이 정식 듀얼+라이브QA PASS로 fix**(소급 실효성 결정적) (c)#690 QA=정직 disposition(순수 infra·UI소비자 없음→#691/#692가 provider 실 exercise·slA1b가 소비자QA)+소급 MED 2건 적발·라우팅 (d)#686/687=BE/estimate-app QA경량 적정. **잔여 소급 위반 0.** 소급 라우팅 follow-up(awareness corrupt 내성·byId 원격삭제·relay prune)=[3] 하드닝 v2/slA1b 소관.
+- ⏭️ **다음 = [3] coedit 하드닝 v2**(awareness safeApplyAwareness·BE relay corrupt prune·byId 원격삭제 피드백) → [4] 결재 full-form 롤아웃.
 - 📌 별건: 여신금융협회 카드매출 Open API 이용약관 검토 완료(직접 등록 삼한 구조적 불가·KICC/ASP 경유) → [[external-integration-research]] 메모리 박제(`01a3844e`).
 
 ### ✅ 완료 (정식 5-agent 양쪽 듀얼·0수렴·라이브 실QA 이행)
