@@ -83,13 +83,6 @@ vi.mock('../api/estimateApi', () => ({
   sendEstimate: mocks.sendEstimate,
 }))
 
-vi.mock('../api/createAuditApi', () => ({
-  estimateAuditApi: {
-    listAuditLogs: vi.fn(() => Promise.resolve([])),
-    revertToRevision: vi.fn(),
-  },
-}))
-
 vi.mock('../api/sales', () => ({
   searchPartners: mocks.searchPartners,
 }))
@@ -103,16 +96,6 @@ vi.mock('../api/slip', () => ({
     commissioningHours: 0,
   }),
   toApiBundleSetOptions: () => undefined,
-}))
-
-vi.mock('../realtime/EstimateRealtimeClient', () => ({
-  EstimateRealtimeClient: {
-    subscribe: vi.fn(() => ({ abort: vi.fn() })),
-  },
-}))
-
-vi.mock('../components/audit/AuditOverlaySection', () => ({
-  AuditRevisionBadge: () => <div data-testid="estimate-audit-badge" />,
 }))
 
 vi.mock('./components/LineLookupReferenceModal', () => ({
