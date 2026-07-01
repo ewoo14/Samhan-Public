@@ -3,6 +3,28 @@
 > 회사 PC 첫 세션 시작 시 본 파일만 읽으면 즉시 컨텍스트 복원 가능.
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 **메모 단일필드(1차)만** 머지 — ⚠️**full-form(전표 전체)=원 지시·미완**(정정 [[feedback_epic_scope_no_narrowing]]). **현 우선순위=협업 full-form **롤아웃**(정찰 acf36aaa: slip 판매전표는 **이미 full-form ✅** S2a #674 `fcdbb6bea`[createDocCoeditProvider Y.Map헤더+Y.Array품목라인+CollaborativeSlipInput 셀바인딩, 수정모달] — **5문서 중 주문 full-form ✅(#689 `75a967d15`, BLOCKING 2[awareness 블리드·stale corruption] fix·듀얼리뷰 양방향정정·2/6 완료) — 견적·회계·결재·배차 잔여 메모→full-form 이식**. 개발책임자 결정: **트랙B 5문서 롤아웃 + 트랙A slip 하드닝 + 트랙B 롤아웃 병행, 저장충돌=후속). **〔진행 2026-07-01 PM〕** 트랙A **slA1(공유 provider 라인 lineId+add/remove/byId CRDT infra) ✅머지 `1d0d27a81`**(#690, Opus FE+Codex 듀얼리뷰 0수렴, backward-compat 60테스트). **회계 정찰**: 회계 full-form은 ❌BE 수정 PUT 부재(신설 필요)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위. **전략=사용자 1순위 '더 많은 문서 full-form' → 트랙B 롤아웃 우선**(slA1 infra가 line-CRDT 직접제공 → slA1b 는 hard 전제 아님; 회계/견적이 infra 직접사용 가능). 견적·결재·배차 **fit 정찰 병렬 진행** → 최저난도부터 롤아웃. slA1b(slip 라인 add/remove 소비자, 라이브 모달 retrofit 고위험)·slA1c(dnd-kit reorder)·slA2(셀 char-CRDT)=후순위 enhancement). **〔2026-07-01 PM 최신〕 견적 full-form ✅머지 #691 `d36d6c7cf`(slip·주문·견적 3/6) — 개발책임자 "PR 워크플로우 재준수+세션 위반 전수 보완" 지시로 #691은 정식 5-agent 듀얼·0수렴·라이브 실QA(2세션 SSE 양방향 반영 PASS·-sse-reflected 실캡처)·PM종합 전부 이행. 라이브 QA가 결함 3건 적발: ①applySnapshot corrupt-update 브릭(공유 coedit infra·하드닝 fix PR 착수) ②EstimateRealtimeClient/createAuditApi 경로 `/api/v1/estimates`→`/slips/estimates` 누락(404/500). 다음=①applySnapshot 하드닝 PR ②경로 fix PR ③**세션 소급 sweep**(#690→#689→#686/687→#682-685 각 5-agent+라이브QA 소급) ④결재→회계(BE)→배차 롤아웃. #17 단가변동 보류**. 〔과거 "#16 종결" 표기 철회〕**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
+---
+## 🔴 최우선 재개 블록 (2026-07-01 오후 — 회사PC 인계)
+**개발책임자 지시**: ①"PR 워크플로우 재확인·재준수" ②"이번 세션 위반 워크플로우 전수 보완" ③"위반하지 말고 잘해"(재지시 예고) ④"보완 끝나면 세션종료→회사PC 재개". → 이번 세션 머지 8 PR(#682-687·689·690)이 **5-agent 단축 위반**임을 감사·인정 → 소급 보완 진행.
+
+### ✅ 완료 (정식 5-agent 양쪽 듀얼·0수렴·라이브 실QA 이행)
+- **#691 견적 full-form** 머지 `d36d6c7cf` — slip·주문·견적 **3/6**. 라이브 2세션 SSE 양방향 반영 PASS(`-sse-reflected` 실캡처 docs/qa/coedit-fullform-estimate/). 초기 not-reflected=fallback 견적 데이터 오염 규명.
+- **#692 coedit applySnapshot 내성** 머지 `9741ee889` — corrupt update 1건이 문서 coedit **영구 브릭**하던 결함 수정(safeApplyUpdate try/catch skip, applySnapshot·SSE·applyRemoteUpdate 전부). 라이브 QA로 브릭됐던 견적 정상 진입 실증(docs/qa/coedit-applysnapshot-692/).
+
+### ⏳ 잔여 보완 (회사PC 이어받기 — 각 정식 5-agent 양쪽+라이브QA+라운드 즉시 게시+0수렴+PM종합)
+1. **세션 소급 sweep**(위험/라이브 순): **#690(slA1)→#689(주문)→#686/687(#17 가격)→#682-685(메모 coedit 4)**. 각 5-agent 리뷰+라이브 QA 소급 실행·해당 PR 게시, 결함시 follow-up fix PR. ※coedit PR들은 공유 infra를 #691 5-agent+#692 하드닝이 이미 커버 — 소급은 각 PR 고유 표면 중심.
+2. **경로 fix PR**(pre-existing·#691 QA 적발): `createAuditApi.ts` estimate audit `/api/v1/estimates/{id}/audit-logs`·`/revert` + EstimateRealtimeClient realtime → `/api/v1/slips/estimates/...`(`/slips` 누락 404/500). ⚠️도메인 라우팅 확인 필수(AccountingRealtimeClient는 `/accounting/` 무-prefix 등 도메인별 상이 — 게이트웨이 라우팅 대조 후 정확 수정, 무작정 치환 금지).
+3. **BE relay corrupt prune/압축** follow-up(낮은 우선): CollabCoeditService(shared/collab-core)가 corrupt-but-base64 를 영구저장→resync마다 warn·슬롯 잠식. Y.mergeUpdates 압축+corrupt prune 설계. dev 견적 829e012a 오염=서비스 재기동 시 소멸.
+4. **이후 롤아웃**(소급 완료 후, full-form 5/6 목표): **결재**(본문 title/content/동적필드 coedit·저장=commitGroupwareApprovalCollabEdit changeSet·content 멀티라인 어댑터·SELECT 폴백·items[] 미사용) → **회계**(BE update 엔드포인트 신설+차/대변 균형+slA1 라인CRDT=큰 슬) → **배차**(full-form 저가치=자유편집 memo뿐→개발책임자 확인).
+
+### 📌 개발책임자 결정 기록
+- **단말기 승인 = KICC 확정** (향후 결제/단말 VAN 연동 기준) → [[project_terminal_kicc]].
+- #17 단가변동(#688 draft, BootstrapService hasProductData BLOCKING) = 보완 후 재개.
+
+### 🚫 워크플로우 불변 ([[feedback_canonical_workflow]] 토씨 준수)
+Opus 기획+조기PR → Codex 개발 → **Opus 5-agent(FE/BE/Design/DevOps/QA)+Opus fix+TM게시 ↔ Codex 5-agent+Codex fix+TM게시** 0수렴 → PM 종합 게시 → CI green → PM 머지. 단축금지(트리비얼도)·순차·각 라운드 즉시 독립 게시·라이브 실QA(가짜금지)·5문서 full-form 전 '종결' 금지.
+---
+
 > 🏠 **2026-06-30 회사PC 야간 세션 종료 → 집PC 재개**. 회사PC 세션의 ScheduleWakeup·실행 중 Explore(S3-1 정찰) 발화 시 **무시**(집PC가 진실원, 중복 작업 금지). 집PC 절차: `git pull`(main `5844124f` — S2d-2·S3-0 머지·메모리·핸드오프 포함) → `.\scripts\sync-claude-memory.ps1` → 본 파일 정독.
 
 ### ✅ S3-1 (주문 partner-order 메모 coedit) — 머지 완료 (PR #681, squash `04e2ff205`, 2026-06-30)
