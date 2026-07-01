@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, HTMLAttributes } from 'react'
 import { Input } from '@samhan/design-system'
 import {
   EDIT_HIGHLIGHT_MS,
@@ -52,9 +52,21 @@ export interface CollaborativeSlipInputProps {
   min?: number
   maxLength?: number
   inputSize?: 'sm' | 'md' | 'lg'
+  label?: string
+  required?: boolean
+  /** 입력 힌트(plain input placeholder 회귀 복원) */
+  placeholder?: string
+  /** 모바일 숫자 키패드 힌트(수량/단가 회귀 복원) */
+  inputMode?: HTMLAttributes<HTMLInputElement>['inputMode']
+  /** 검증 에러 메시지 — 있으면 Input 빨강 테두리(lookupError 회귀 복원) */
+  error?: string
+  /** 내부 input 스타일(수량/단가 우측정렬 tabular-nums 회귀 복원) */
+  inputStyle?: CSSProperties
   readOnly?: boolean
+  onBlur?: () => void
   /** coedit provider 로딩 중 — 로딩 중에만 입력 잠금(이중소스 방지). 로드 실패(provider=null) 시엔 false 라 평문 편집 허용. */
   coeditPending?: boolean
+  'data-testid'?: string
   'aria-label': string
 }
 
@@ -67,8 +79,16 @@ export function CollaborativeSlipInput({
   min,
   maxLength,
   inputSize = 'sm',
+  label,
+  required,
+  placeholder,
+  inputMode,
+  error,
+  inputStyle,
   readOnly,
+  onBlur,
   coeditPending,
+  'data-testid': dataTestId,
   'aria-label': ariaLabel,
 }: CollaborativeSlipInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -168,7 +188,8 @@ export function CollaborativeSlipInput({
             bottom: 'calc(100% + 2px)',
             left: 0,
             zIndex: 2,
-            maxWidth: 140,
+            // 좁은 셀(수량 80px 등)에서 배지가 인접 셀로 넘치지 않게 셀 폭으로 캡(리뷰 Design).
+            maxWidth: 'min(140px, 100%)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -191,13 +212,25 @@ export function CollaborativeSlipInput({
         type={type}
         min={min}
         maxLength={maxLength}
+        label={label}
+        required={required}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        error={error}
+        style={inputStyle}
         readOnly={effectiveReadOnly}
         value={value}
         aria-label={ariaLabel}
+        data-testid={dataTestId}
         onFocus={updateCursor}
         onClick={updateCursor}
         onKeyUp={updateCursor}
         onSelect={updateCursor}
+        onBlur={() => {
+          updateCursor()
+          // read-only(잠금/coeditPending) 상태에선 lookup 등 onBlur 부작용 미발생(리뷰 LOW).
+          if (!effectiveReadOnly) onBlur?.()
+        }}
         onChange={(event) => {
           if (effectiveReadOnly) return
           const nextValue = event.target.value
