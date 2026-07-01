@@ -120,6 +120,21 @@ function safeApplyUpdate(doc: Y.Doc, update: string, origin: unknown, logPrefix:
   }
 }
 
+/** corrupt/비-Yjs awareness update 를 커서 표시 파손 없이 건너뛰기 위한 안전 적용(awareness-side #692 미러). */
+function safeApplyAwareness(awareness: Awareness, encoded: string, origin: unknown, logPrefix: string): boolean {
+  const previousStates = new Map(awareness.states)
+  const previousMeta = new Map(awareness.meta)
+  try {
+    applyAwarenessUpdate(awareness, decodeBase64Update(encoded), origin)
+    return true
+  } catch (err) {
+    awareness.states = previousStates
+    awareness.meta = previousMeta
+    console.warn(`${logPrefix} corrupt coedit awareness 건너뜀`, err)
+    return false
+  }
+}
+
 function isCoeditPayload(value: unknown, key: 'update' | 'awareness'): value is Record<typeof key, string> {
   return typeof value === 'object'
     && value !== null
@@ -309,7 +324,7 @@ export async function createCoeditProvider(options: CreateCoeditProviderOptions)
       return
     }
     if (event.event === 'coedit:awareness' && isCoeditPayload(event.data, 'awareness')) {
-      applyAwarenessUpdate(awareness, decodeBase64Update(event.data.awareness), REMOTE_ORIGIN)
+      safeApplyAwareness(awareness, event.data.awareness, REMOTE_ORIGIN, '[coedit]')
     }
   })
 
@@ -355,7 +370,7 @@ export async function createCoeditProvider(options: CreateCoeditProviderOptions)
       safeApplyUpdate(doc, update, REMOTE_ORIGIN, '[coedit]')
     },
     applyRemoteAwareness: (encodedAwareness: string) => {
-      applyAwarenessUpdate(awareness, decodeBase64Update(encodedAwareness), REMOTE_ORIGIN)
+      safeApplyAwareness(awareness, encodedAwareness, REMOTE_ORIGIN, '[coedit]')
     },
     setLocalCursor: (anchor: number, head: number) => {
       awareness.setLocalStateField('cursor', { fieldName: options.fieldName, anchor, head })
@@ -599,7 +614,7 @@ export async function createDocCoeditProvider(
       return
     }
     if (event.event === 'coedit:awareness' && isCoeditPayload(event.data, 'awareness')) {
-      applyAwarenessUpdate(awareness, decodeBase64Update(event.data.awareness), REMOTE_ORIGIN)
+      safeApplyAwareness(awareness, event.data.awareness, REMOTE_ORIGIN, '[doc-coedit]')
     }
   })
   const cleanupFailedInitialization = () => {
@@ -634,7 +649,7 @@ export async function createDocCoeditProvider(
       safeApplyUpdate(doc, update, REMOTE_ORIGIN, '[doc-coedit]')
     },
     applyRemoteAwareness: (encodedAwareness: string) => {
-      applyAwarenessUpdate(awareness, decodeBase64Update(encodedAwareness), REMOTE_ORIGIN)
+      safeApplyAwareness(awareness, encodedAwareness, REMOTE_ORIGIN, '[doc-coedit]')
     },
     setLocalCursor: (fieldPath: string, anchor = 0, head = anchor) => {
       awareness.setLocalStateField('cursor', { fieldPath, anchor, head })
