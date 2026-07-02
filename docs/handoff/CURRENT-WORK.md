@@ -51,7 +51,9 @@
     - ✅ **owed(P1) GUI 스샷 backfill 완료**(`a22711c5`, 2026-07-03): 2세션 real-qa(`e2-live-sync-dispatch-real-qa`: 세션B 그룹추가→세션A **무새로고침 SSE 반영**) 실 GUI 3장 `docs/qa/e2-live-sync-dispatch/gui-*` + PR #699 게시. 실 게이트웨이 :8080·mock OFF·dev_master.
     - **비차단 follow-up 4**(dev-report): 동시편집 충돌 UX(드래그/메모편집중 원격refetch)·FE 모달토글 재구독·slip publish IT gate·gateway route IT.
     - **task5** 배차 전표확인=판매전표 미리보기=Plan C 분리(별도 소형).
-- [ ] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
+- [~] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
+    - ✅ **E1-a(A+C) 머지 `68c7ff423`(#701, 2026-07-03)**: 협업/수정·버전이력 폼 최하단 + presence 문서 상단 리프트·확대(PresenceIndicator size md/lg 하위호환+루트 flexWrap). 순차 듀얼리뷰 0수렴(Opus R1 BLOCKING spec 스코프·HIGH usePresence 게이팅/헤더 flexWrap → Codex 라운드 flexWrap → Opus 재검). CI 28/28·라이브 GUI QA(desktop/mobile). dev-report `2026-07-03-e1a-slip-detail-layout-presence.md`.
+    - [ ] **E1-b(B) 잔여**: 품목행 모달→상세 인라인 편집. 정찰完(M~L·매입/매출 이중·coedit provider 게이팅·read-only↔편집 컬럼 스왑·3진입점·playwright testid 갱신). task5 이후.
 - [ ] **task5** 배차 전표확인 판매전표 미리보기.
 - [ ] **E3** 입금보고서 에픽(brainstorming→spec→슬라이스→캐논). E2 이후, born-live(E2 인프라 소비).
 - 📌 무결성/정책 민감건은 착수 전 개발책임자 확인([[feedback_integrity_domain_policy_preconfirm]]). 매 단계 ScheduleWakeup 재자각·라운드 1:1 게시·라이브 실QA.
