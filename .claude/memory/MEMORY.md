@@ -1,127 +1,130 @@
-- [🚨 표준 워크플로우 (유일 진실원)](feedback_canonical_workflow.md) — Opus 기획+조기PR → Codex 개발+리뷰게시 → (Opus 5-agent[FE/BE/Design/DevOps/QA·QA=Docker라이브QA+단계별스샷]+Opus fix+TM통합게시 ↔ Codex 5-agent+Codex fix+TM통합게시) error/skip/backlog **0수렴까지** → **PM 종합 리뷰 게시(머지 전)** → CI green → PM 머지. 🚫순차(병렬금지)·단축금지·각 라운드 즉시 독립게시·fix후 0수렴 재리뷰(CI-green만 머지금지)·스샷=단계별 여러장(한장 금지)·미준수 PR 소급보완·매 단계 ScheduleWakeup. **과거 워크플로우 전부 본 파일로 통합·폐기(github-pr·user-merge·tm-gate·post-each·rereview 등) — 본 파일만** (2026-06-23~24 개발책임자 영구박제)
-- [야간/장시간 자율 ScheduleWakeup 재자각](feedback_autonomous_loop_schedulewakeup.md) — 워크플로우 매 단계(또는 1~2단계 묶음) 완료 후 다음 단계 ScheduleWakeup 예약·재자각·턴 종료(연속 mega-턴 금지). 사용자 부재뿐 아니라 활성 중에도·전 PC 적용 (2026-06-24 개발책임자)
-- [🚨 도구 호출은 실제 invocation으로](feedback_emit_real_tool_calls.md) — 도구 호출을 산문/들여쓴 텍스트로 적으면 실행 안 되고 화면 노출만(루프 안 걸림). 진짜 함수 호출로만 발행 + 호출 후 결과 확인. ScheduleWakeup 단독 발행 시 자주 실수 (2026-06-24 개발책임자 3회 지적)
-- [Codex 권한은 새 세션부터 적용](feedback_codex_permission_new_session.md) — `mcp__codex__codex`/`-reply` allow 추가는 세션 시작 시 로드 → 추가한 세션엔 미적용, **새 세션부터 자동허용**. 진행 중 권한 프롬프트 반복 시 무리한 재시도(중단 유발) 말고 권한 추가 후 새 세션 인계 (2026-06-26 슬12a)
-- [Project Overview](project_overview.md) — SamhanLogis MSA platform: 14 services, Spring Boot 3 / Java 17, PostgreSQL service-per-DB, 33-week roadmap
-- [Phase 10 = arologis-service / Phase 11 = AWS migration (renumber)](project_arologis_phase10.md) — 2026-05-07 사용자 결정, 모바일 어플 RN Expo mobile-staff 패턴 일관, 외부 vendor = 인성데이타 퀵프로그램
-- [Phase 11 AWS 단일 환경 + 자동 복구](project_phase11_aws.md) — Seoul, m5.xlarge + db.t3.medium + RDS auto backup + EC2 Auto Recovery + Health Check Lambda. 월 ₩405K. **IaC=#660 머지(17서비스 현행화·CUTOVER.md 런북)+회사PC terraform validate/plan 실증(2026-06-29). 실 이식=수동18항목 대기**
-- [User Role](user_role.md) — 개발책임자 역할; Claude는 PM으로서 팀 에이전트를 병렬 디스패치
-- [사용자 호칭 규칙](feedback_user_title.md) — 사용자는 "개발책임자"; "대표"는 회사 실제 대표(김미선)에게만 사용
-- [아로로지스 독립 분리](project_arologis_independent.md) — 2026-05-14 결정, Samhan Public 마이크로서비스 → 독립 운영 단위 (monorepo 유지, build/배포만 분리, 자체 auth, 휴대번호 passwordless)
-- [아로로지스 명칭 규칙](feedback_arologis_name.md) — 한국어 표기 "아로로지스" 정식, "아로로지" 단축형 금지 (2026-05-14)
-- [Samhan Public 명칭 규칙](feedback_samhan_public_name.md) — 외부 호칭 = "Samhan Public" / "삼한 퍼블릭", SamhanLogis 는 폴더명일 뿐 (2026-05-14)
-- [아로로지스 분리 자율 진행 권한](feedback_arologis_extract_autopilot.md) — 본 작업은 머지 요청 외 모든 단계 자율 (TM/PR/CI/GitGuardian/5-team 검토 자동, 2026-05-14)
-- [Build Conventions](project_build_conventions.md) — Gradle multi-project, Java 17, BaseEntity 7 audit fields mandatory, Soft Delete only
-- [Domain Strategy](project_domain_strategy.md) — samhan-air.com subdomains: app/api/order/sign/chat/files/monitor
-- [Korean Audit Standard](project_korean_accounting.md) — 한국 일반기업회계기준 표준 계정과목 코드 (100/200/300/400/500/800/900) seed data required
-- [이카운트 이관 자료 네이티브 편입](project_ecount_native_fold.md) — 이관 자료 별도 메뉴/저장(silo) 금지, 시드로 네이티브 편입+"회계 관리자" 폐기 에픽. 현금=이미 분개장 편입(중복 silo만 폐기), 주문=미편입 G1. 정찰 완료→spec→슬라이스, D1~D4 결정 대기 (2026-06-19)
-- [Dev Environment](project_dev_environment.md) — JDK 17 / Gradle 8.10.2 / Docker; locations, env vars, common commands
-- [Korean Path JDK Trap](feedback_korean_path_jdk.md) — `gradle test` fails when project sits under 한글 path on JDK 17; use `assemble` locally, or move/upgrade
-- [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — 모든 git commit·PR·Issue + 사용자 대면 보고·대화·설명 한국어 필수 (prefix·trailer만 예외, 2026-06-29 보고 narration 확장)
-- [문서 동기화 의무](feedback_continuous_docs_sync.md) — 매 작업 PR 에 README + ROADMAP + DECISIONS + 각 client/service README + dev-report 갱신 의무 포함, 별도 docs PR 금지 (PR #80/#85 패턴 폐기)
-- [samhan-public-overview.html 동기화 의무](feedback_samhan_public_overview_sync.md) — 2026-05-20. docs/samhan-public-overview.html (GitHub Pages 호스팅) 도 항시 동기화. nav-badge + progress 표 + callout 갱신 (사용자 명시 "항시 업데이트 요망")
-- [QA Docker 실서버 테스트 의무](feedback_qa_docker_real_test.md) — 2026-05-20 재강조. QA agent 는 반드시 Docker 통해 실서버 (Testcontainers Postgres) 에서 테스트 완료. code read 만 PASS 절대 금지. Docker 미가용 시 P2 이상 defect 명시 + Linux CI 결과 fetch 첨부 의무
-- [권한 enforcement 실 HTTP 회귀 테스트 의무](feedback_enforcement_real_http_test.md) — 2026-05-29 PR #316 회고. 권한 IT 가 DynamicPermissionClient @MockBean 으로 권한 경로 mock 시 endpoint 계약 변경이 CI green 으로 위장(false-green). role-form/account-form 양식 변경은 MockRestServiceServer/Testcontainers 실 HTTP 회귀 테스트 필수. 사이클 N=2 BE cross-check 가 운영 lockout 단독 적발.
-- [인쇄 양식 디자인 반복 정정](feedback_print_design_iteration.md) — 인쇄 양식은 단번 완성 가정 금지, 사용자 이미지 → mock → Edge 캡처 → CSS-only 미세 조정 3~5회 iteration (PR #21 회고)
-- [gradlew 실행 권한](feedback_gradlew_exec_bit.md) — Windows 커밋 시 `git update-index --chmod=+x gradlew` 필수 (Linux CI Permission denied 방지)
-- [agent origin/main 동기화 의무](feedback_agent_origin_main_sync.md) — background agent 작업 시작 직후 git fetch + git log origin/main 검증 의무 (3건 stale 회고)
-- [PM 통합 풀빌드 가드](feedback_pm_integration_build_check.md) — 4-team 결과물 팀별 PR 발행 전 BE+QA 사전 컴파일 검증 + Docker 가용 IT + Layer 4 도메인 메서드 의미 정렬 (PR #16/17/21 회고)
-- [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — Windows + Docker Desktop 환경에서 npipe 한계로 IT skip 가능; DOCKER_HOST=tcp://localhost:2375 우회 권장
-- [IT 외부 RestClient @MockBean 의무](feedback_it_mockbean_external_clients.md) — SpringBootTest IT 의 모든 외부 client (ProductClient/InventoryClient 등) @MockBean 격리 + lenient setup. 누락 시 Eureka 비활성 → 500 (PR #17 회고)
-- [UUID 사용자 비공개 원칙](feedback_uuid_no_user_visibility.md) — 모든 클라이언트 화면에서 UUID 노출 금지. 비즈니스 식별자 (슬립번호/창고 코드/모델명/거래처명) 만 사용자 노출 (PR #18 회고)
-- [함수 단위 문서화 3-layer](feedback_function_documentation.md) — 모든 슬라이스에 (1) 한국어 Javadoc 의무, (2) springdoc-openapi 자동 생성, (3) docs/dev-reports/<slice>.md 누적 의무
-- [PowerShell UTF-8 트랩](feedback_powershell_utf8_writes.md) — body-file 은 Write/Edit/heredoc 만 사용. PowerShell `Set-Content` 기본값 UTF-16 LE BOM → 한글 깨짐
-- [Bash 커밋 메시지 = -F 파일](feedback_bash_commit_message_file.md) — Bash 도구에서 `@'...'@` here-string 금지(제목 `@`로 깨짐). 멀티라인 커밋 = Write→`git commit -F 파일` (PR #474 회고)
-- [권한 표기 풀네임](feedback_role_naming_full.md) — PR/Issue/문서에서 Role 표기는 풀네임 (MASTER/MANAGER/...). M/M/D 약어 금지
-- [Monitor 도구 자동 사용](feedback_monitor_no_permission.md) — Monitor/CI watch 사용자 허락 없이 즉시 시작, confirm/announce 불필요
-- [PR 머지/close 시 Issue 자동 close](feedback_issue_close_after_pr.md) — PR 발행 시 `연관 Issue: #N` 명시 의무, 머지/close 후 연관 Issue 즉시 close (v4 회고)
-- [GitGuardian = PM 자동 false positive 처리](feedback_gitguardian_false_positive.md) — 2026-05-11 갱신 — PM 자동 판정 후 머지, 사용자 dashboard 위임 X
-- [SP-08 legacy GAS DB/API parity](project_sp_08_legacy_gas_parity.md) — 2026-05-16~ 전메뉴 GAS 동등 기능 우리 DB/API 잠금, raw read-only snapshot, Notion runtime zero, 자격 비공개 가드. **GAS 원본=`tools/legacy-gas/`, 라이브 추출=Drive 커넥터 +json export(base64)**. 재검증 PR #434(15구현·3부분, 이카운트키 회전 미완, 시트→DB 전환 후속, 2026-06-09)
-- [PR 제목 `[FEAT]`/`[FIX]` 대괄호+대문자](feedback_pr_title_caps_bracket.md) — 2026-05-16 신규. `[codex]` 대신 모든 PR 제목 `[FEAT]`/`[FIX]`/`[CHORE]` 등 대괄호+대문자 prefix (PR #211 머지 후 사용자 명시)
-- [Codex CLI MCP 서버 사용](feedback_codex_plugin_setup.md) — 2026-05-17 사용자 정정 / 2026-05-20 갱신. **`mcp__codex__codex` MCP 도구 사용** (Plugin 폐기). **review + fix 모두 `sandbox: "workspace-write"`** (사용자 명시 — read-only → workspace-write 통일). 5 agents 병렬 호출 가능 → cross-check 가시화.
-- [Codex MCP 세션 한정 한계](feedback_codex_mcp_session_limit.md) — 2026-05-20 (PR #271 MIG-3 회고). `MCP error -32000: Connection closed` 후 ToolSearch no match → **본 세션 한정**. MCP 서버는 정상. 회복 = **새 세션 시작** (자동 해소) 또는 `codex exec` Bash 우회 또는 Agent 대체 (환경 한계 예외 [[temp-multimodel-workflow]]).
-- [Codex 모델 자동 전환](feedback_codex_model_auto_switch.md) — 2026-05-17 신규. Default spark+medium (fast). 보안/migration/architecture/race/incident/AWS sizing/vendor 시나리오 진입 시 PM 이 `--model gpt-5.5 --effort high/xhigh` 자동 override.
-- [Codex 디스패치 — Claude commit 대행 + approval-policy never](feedback_codex_sandbox_git.md) — 2026-05-28. workspace-write 샌드박스가 `.git/objects` 쓰기 거부 → Codex git 실패 → 승인 팝업. 해법: `approval-policy:"never"` + Codex git 금지(파일만 수정) + Claude commit 대행. `gpt-5.2-codex` 미지원(ChatGPT 계정) → model 생략 + `config:{model_reasoning_effort:"high"}`.
-- [이카운트 품목 신원 규칙 (MIG-2 의무)](project_ecount_product_identity_rule.md) — 2026-05-19. 품목코드 ≠ 품목명 + 동일 품목명 row 가 여러 개일 때 품목관계 매핑으로 같은 품목 판정. MIG-2 진행 시 staging.ecount_item_raw + staging.ecount_item_relation_raw join 으로 deduplicate.
-- [주문 상태 모델 업무용어 매핑](project_partner_order_status_model.md) — 2026-05-30 개발책임자 확정. 진행중=DRAFT / 완료=CONFIRMED(출고전표 전환 시) / 보류=ON_HOLD(✅**구현완료 PR #324** Phase 2.5 — hold/release 409 가드+리스트 상태필터; 메모리 "(미구현)" stale 정정 2026-06-23). 리스트 기본필터=진행중. RESTORE 복원=CONFIRMING·CANCELED만 409(제외목록 방식).
-- [주문→출고전표 전환 — 구현 완결+정책 확정](project_order_slip_conversion.md) — 2.6a/2.6b 구현 완료 확인(2026-06-07 정찰), 개발책임자 정책 4건(독립 추적/같은 거래처만/선택·병기/예약 모델) 현행 확정
-- [🚨 가짜 데이터·목업·시뮬레이션 영구 배제](feedback_no_fake_data_ever.md) — 2026-05-30 개발책임자 강력 지시. 모든 진행에서 실데이터·실서버·실화면·실측정만. QA 스크린샷=실 캡처만(PIL 합성/VITE_MOCK_MODE fixture 화면 금지). 실연동 불가 시 "캡처 불가+사유" 정직 보고(가짜 생성 금지). Playwright mock 은 FE 단위테스트 한정, 실QA로 포장 금지. (PR #324 PIL 합성 위반 회고)
-- [로컬 Docker 스택 + 데스크톱 실 QA 함정](project_local_stack_qa_gotchas.md) — 2026-05-30 PR #320 회고. launch 스크립트는 jar 만 빌드(이미지 stale 가능 → `docker compose build <svc>` 재빌드). 게이트웨이 격차(/api/v1/partners StripPrefix vs 풀패스, /auth/** JwtAuthentication 미적용, X-User-Name 미주입→principal=UUID). Playwright route() :포트 직접 프록시 브리지 + DS Modal data-testid 미전달(role=dialog). react-query invalidate 누락 stale.
-- [재고조회 모달 (Phase 2.6d)](project_inventory_lookup_modal_2_6d.md) — 2026-05-31. ✅**구현완료**(InventoryLookupModal.tsx, 검증 2026-06-23). 주문/판매/구매 상세 품목→창고별 재고 모달, 0수량 숨김+토글, 가용/실/예약
-- [seeder product UUID 3-DB 정합](project_seed_product_uuid_catalog.md) — 2026-05-31 머지 #327. 4 seeder product key=실 modelName 결정적 UUID 통일 + product seeder @UuidGenerator 버그→jdbcTemplate native INSERT. cross-service QA 토대
-- [시리얼 인스턴스 재고 모델](project_serial_inventory_model.md) — 2026-05-31. 품목코드(그룹)→UUID(시리얼 PK). 카테고리로 개별시리얼/batch. 입고 구매·차용=생성/반품·회차=역FIFO 회수, 판매=FIFO 소진. 신규 대형 Phase spec(S1~S4)
-- [전표/주문번호 표준 = 슬래시 YYYY/MM/DD-{번호}](feedback_slip_order_number_format.md) — 2026-05-31 개발책임자 정정(D2 #334). 화면/저장/본문 전부 슬래시. 하이픈은 URL 경로 세그먼트만(게이트웨이 %2F 차단) → 공용 utils/orderNo.ts toOrderPathId 재사용. PartnerOrderIdResolver 양용. mock 미검출→경로번호 신규화면 Docker 실QA 필수
-- [CI 테스트 필터 allowlist false-green](feedback_ci_test_filter_false_green.md) — 2026-06-01(S2 #338). ci.yml slip 잡이 패키지 allowlist `--tests` 라 누락 패키지(slip.attachment.* 등) 미실행→상시 실패 테스트도 CI green. 신규 slip 테스트 패키지는 ci.yml 필터에 등재 필수(slip.it.* 는 자동커버). CI green≠전 통과. date-bomb(하드코딩 월범위) 테스트도 동반 점검
-- [in-process mock 3원칙 + page.route no-op](feedback_inprocess_mock_principles.md) — 2026-06-04(B/C 재게이트). VITE_MOCK_MODE=브라우저 axios adapter→page.route no-op·테스트별 재seed. 핸들러 3원칙: ①parseMockBody(객체 직파싱 throw) ②성공도 non-null envelope(null=미매칭 fallthrough 블랭크) ③blob 소비자엔 new Blob. design-system DataTable/Modal testid 미forward.
-- [@PreAuthorize 마이그레이션 교훈](feedback_preauth_migration_lessons.md) — 2026-06-04(M1 #382). 실 어노 94건(grep javadoc 부풀림 주의, Internal 34 유지). 부서게이트=@RequireDepartment(HrAuthorizationHelper 동일빈) **opt-in 필수**(@ConditionalOnProperty — 빈 존재만으로 무관 서비스 CI 회귀, @annotation 단독). CI/로컬 실행이 정적 dual리뷰 false-green 차단(IT 컨텍스트 로드 실패=미실행인데 APPROVE). 계약 바뀐 차원만 실-HTTP.
-- [desktop 타입검증 = npm run typecheck](feedback_desktop_typecheck_command.md) — raw tsc 말고 npm run typecheck(tsconfig.node+web)로 검증해야 CI Frontend Desktop(TS2367 류) 회귀 방지 (PR #386 회고)
-- [PM 권한코드 전권 자율](feedback_pm_permission_autonomy.md) — 2026-06-05 개발책임자 전권 위임. 권한(RBAC/권한그룹/위임/마이그레이션/매트릭스/seed) 코드는 PM 이 머지까지 자율. 단 PR 워크플로우(dual review·N=2·Codex 구현·CI green·Docker 실QA·조기PR·백로그금지) 자율 엄격 적용+자가 지적 의무. 멈춤=신규 업무규칙/정책(widening 수용 등)만 개발책임자 확인
-- [FE 가드 제거는 전체 mock suite 필수](feedback_fe_guard_removal_contract_tests.md) — 2026-06-06(C2a #402). RoleGuard 제거 시 구 가드 UX 박제(메시지 단언)+소스계약 박제(routes/index.tsx 정규식/상수)가 여러 슬라이스에 흩어져 깨짐. 핵심 스펙만 불충분, 전체 suite 필수. 접근차단 보존 확인 후 PermissionGuard 단언으로 계약 갱신
-- [Playwright 로컬 버전 skew](feedback_playwright_local_version_skew.md) — 2026-06-06. npx 전역(1.60)≠설치본(1.59) → "did not expect test.describe()". 로컬 node_modules/.bin/playwright 직접 호출 또는 npm ci(desktop package-lock 추적), desktop cwd 필수. ANSI stderr=NativeCommandError 오인 주의
-- [권한그룹 C2 widening=Option A 수용](feedback_pgc_c2_widening_option_a.md) — 2026-06-06 개발책임자. FE RoleGuard 가 seed 보다 제한적이어도 seed 진실원 수용(BE 이미 열림, FE↔BE 정합). D-PGC-01, #387/D-PAM-05 연장
-- [FE canAccess page-code는 BE @RequirePermission 정확 일치](feedback_fe_canaccess_pagecode_be_match.md) — 2026-06-06(C2/C5). role→canAccess 이관 시 page-code=실제 BE 엔드포인트 @RequirePermission(테마틱 금지), action 정확, FE>BE 불일치(seed>BE가드) 시 이관말고 유지, 버튼 canAccess 가드 동반, mock seed 정확. dual review 의무
-- [결함 fix 계열 단위 전수 sweep](feedback_defect_family_sweep_fix.md) — 리뷰 지적 1건=동일 패턴 전수 grep 의무, page-code 전환 4종 원자 체크리스트(BE대조→FE전환→mock 동기화→spec 박제), mock 누락=silent regression (PR #417 사이클3 회고, 2026-06-07)
-- [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — detached stdin 으로 codex exec 실행 시 무한 hang, </dev/null 리다이렉트 필수 (2026-06-07)
-- [PM-Codex 진행 검증 의무](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시 검증 + 주기 상태 보고, 침묵 구간 금지 (2026-06-07)
-- [detached codex 변경 안정화 후 판단](feedback_codex_detached_write_settle.md) — nohup& codex 직후 git status 빈 것=미수행 단정 금지(쓰는 중), 작업트리 안정화 폴링+diff 검증 후 판단, 중복 재디스패치 방지 (2026-06-12 #471)
-- [PM 10분 주기 진행 보고](feedback_pm_10min_status_report.md) — 작업 중 10분당 1회 상태표 보고 의무, /loop 10m 가동 (2026-06-07)
-- [lookup 3종 시드 소스](project_lookup_seed_source.md) — material/odu/branch 시드 = legacy Google Sheet `1RJqO3jT...` 3탭(싱글자재가격/추천실외기/분기계산). ✅ PR #425 머지(sync 확장, SA key=C:\dev\samhan-homepage-*.json, 실QA 28/32/6)
-- [standalone-boot 실 QA](feedback_standalone_boot_real_qa.md) — Testcontainers IT 가 Windows 로컬 skip 시 서비스 jar standalone 부팅(docker Postgres+실 외부소스)으로 실 QA, 2차 sync idempotency 실증 (PR #425)
-- [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 폴더 rename 시 desktop/arologis-desktop 의 @samhan/design-system file: junction 이 구경로로 깨짐 → npm install 복구 (web/mobile 면역, 2026-06-08)
-- [arologis-desktop 백오피스](project_arologis_desktop_backoffice.md) — 행정직원 전용 백오피스 **완결**(인사B/간이회계C/권한A/6롤/표준차트). 표준계정과목 101개+자본EQUITY+활성상태관리(page-code accounts 분리, 마스터·회계사원), 부서=대표실/행정팀/회계팀 (PR #433, 2026-06-09)
-- [변경 모듈 전체 test 완주 후 push](feedback_changed_module_full_test_before_push.md) — 신규 IT 타깃 실행만으로 push 금지, 기존 mock 단위테스트 구 패턴 스텁이 CI 에서만 깨짐 (PR #424 회고, 2026-06-08)
-- [enum 확장 = CHECK 제약 마이그레이션 동반](feedback_enum_expansion_check_constraint.md) — 영속 enum 값 추가 시 DB CHECK(IN 목록) 마이그레이션 필수, enum/시드 green 이어도 실 INSERT 거부. 정적 review 통과·실 QA 적발 (PR #432, 2026-06-08)
-- [FE 옵션 타입 = BE DTO 타입 정확 일치](feedback_fe_option_type_matches_be_dto.md) — boolean vs String variant 불일치는 Jackson 강제변환→silent no-op. 이름만 대조 말고 타입+실 매칭처까지. 세트 전개 에픽 PR-3b 완결(panelShape360, #439, 2026-06-09)
-- [실서버 점검 = 실사용자 UI 캡처](feedback_real_server_check_screenshot.md) — 실서버 점검/QA 시 PR 에 API JSON 아닌 실사용자 데스크톱 화면 캡처(실 게이트웨이 :8080+실 로그인 dev_master, VITE_MOCK_MODE 끔). UI 없으면 그 기능이 보이는 사용자 화면으로 대체 (2026-06-09)
-- [전산=이카운트 대체, GAS는 export원](project_replaces_ecount_gas_was_exporter.md) — 우리 전산이 eCount 대체. GAS가 eCount로 보내던 데이터(공급/부가세 분해·단가VAT포함·규격 등)를 우리가 자체 소유·계산·표시. GAS 참조 시 "eCount 매핑" 아닌 1급 도메인 설계 (2026-06-09)
-- [옵션C 폐기 — 외부 4종 전면 DB 치환](project_sheets_to_db_full_migration.md) — Notion/Google Sheets/이카운트/엑셀 전부 우리 DB 데이터로 치환(노션 페이지 데이터도 시드 DB 이식+통신호환). 옵션C(시트 그대로) 폐기. 실행순서=종합견적서 완결 먼저 (2026-06-09)
-- [P0-B 인증=X-Internal-Token / DC 통합키=partnerCode(=bizno digits)](project_estimate_auth_dc_key_decisions.md) — 2026-06-10 개발책임자 결정 ②③. estimate-app 발행=/internal/slips/from-estimate 내부 토큰, partnerCode 는 사업자번호 '-' 제외 동일값(매핑 불요)
-- [품목 노출구분+시트순서 / 메뉴 5대분류](project_item_exposure_and_menu_5cat.md) — 2026-06-10 개발책임자. 견적/주문 노출=usageScope(시트자동+품목별 수동토글), 시트 row 순서 보존(displayOrder). 좌측메뉴 판매/구매/회계/그룹웨어/인사 5분류+배차·창고운영 별도
-- [출고전표 양식 1:1 + 전자서명 배치 + 사원 서명 등록](project_slip_shipout_print_form.md) — 2026-06-10 개발책임자. 출력/조회(창고·기사·인수자) 시 샘플 양식 무변동 재현, 용달기사·인수자 전자서명 양식 내 정확 배치, 사원등록 메뉴 서명 등록(결재란 스탬프), 품목 수에 따라 길이 가변(A4 다페이지). 샘플원본=.claude/tmp(비커밋), mock v1 근접일치
-- [공급자·은행계좌 회계 설정 메뉴](project_company_config_menu.md) — 2026-06-10. 거래명세서+세금계산서 공용 공급자정보/입금계좌/인감 설정 (회계 메뉴, env 주입·COMPANY 상수 대체). accounting-service company-profile + FE 설정화면
-- [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 2026-06-11 개발책임자. 한글 "슬립"(slip 음차) 금지 "전표" 사용. 영문 식별자(slipId/slipNo/Slip)는 별개. 기존 895회/250파일 점진 치환·신규는 처음부터 전표
-- [코멘트 용어 — 협업 코멘트 금지](feedback_comment_not_collab_comment.md) — 2026-06-12 개발책임자. 사용자 노출 라벨은 "협업 코멘트" 금지 "코멘트". 영문 식별자(CollabComment/collab-core)는 유지
-- [§7 전역 협업 에픽](project_global_collab_epic.md) — 수정완료(1-인) 모델(제안/수락 아님)+collab-core 공유모듈+문서별 롤아웃. 알림=기여자+다음결재자(username→UUID resolve). **slip·회계·주문·견적·배차 5문서 머지 완료**(PR #474/#475/#476/#477/#478). 다음=그룹웨어 결재. presence=후속. 라이브 QA 가 IT-가림 운영파손 단독 적발 사례(견적 force-increment·배차 afterCommit revert)
-- [KST(Asia/Seoul) 전역 표준화](project_kst_timezone_standard.md) — 2026-06-14 개발책임자. 시스템 전역(DB 포함) KST. **dev 머지 완료 PR #479**(postgres `-c timezone`=GUC 핵심 + JVM `-Duser.timezone` + 인프라/EC2, 실서버 KST 검증). Phase11 prod cutover 후속(prod compose TZ/RDS 세션/기존데이터) 문서화
-- [야간 위임 = 라이브 Docker 실QA 캡처 미루지 말 것](feedback_overnight_live_capture.md) — 2026-06-12 개발책임자 지적. 야간 위임 시 서비스 재빌드(docker compose up --build)해서라도 라이브 실서버 캡처 진행. "스택 안전" deferral 금지. CI IT 로 라이브 캡처 대체 금지
-- [X-User-Name 헤더 charset + FilterRegistrationBean MockMvc 함정](feedback_x_user_name_header_charset_mockmvc.md) — 2026-06-12 PR #464. 게이트웨이 URLEncode X-User-Name → Tomcat ISO-8859-1 헤더 디코딩으로 0xED(터) 모지바케 → 공용 charset-repair 필터. FilterRegistrationBean 필터는 @AutoConfigureMockMvc 미적용 → 컨트롤러 IT 는 평문(디코딩된 값) 전달, 디코딩은 단위테스트+라이브 캡처 분담
-- [identity 헤더 인가 안티패턴 — 게이트웨이 단일 권위 주입](feedback_identity_header_authz_antipattern.md) — 2026-06-12 PR #466/#468. 게이트웨이 미주입(C5-4) identity 헤더를 downstream 이 신뢰→fail-open/위조 통과(3종: 무strip 공개라우트·stale fail-open·client-trusted self-scope). 유일 신뢰원=게이트웨이 claim remove-then-set, 공개=strip-only, downstream=fail-CLOSED, INBOUND_IDENTITY_HEADERS 단일목록 편입
-- [마이그레이션 변경은 fresh Postgres probe 검증](feedback_migration_fresh_postgres_probe.md) — 2026-06-12 PR #470. Windows 로컬 Testcontainers IT skip 이 V41 matrix CHECK 괄호초과 syntax error 가림(gradlew test BUILD SUCCESSFUL인데 CI 적색). 마이그 추가/수정 시 fresh Postgres probe(DROP/CREATE DB 분리 + 대상테이블 seed + `cat VXX.sql | psql ON_ERROR_STOP`)로 push 전 직접 적용 검증
-- [개발책임자 결정은 진행 중 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 2026-06-12 PR #471. 슬라이스 중 개발책임자 결정·지시·정정을 그때그때 해당 PR에 "📌 개발책임자 결정 기록" 리뷰 코멘트로 누적 게시. 채팅에만 두지 말 것
-- [사양 sync 회귀 = 실 DB 전수 분포 검사](feedback_spec_sync_full_db_distribution_check.md) — 2026-06-15 PR #487. headerCells 가드 제거→비사양 탭이 사양보유 제품 재처리→soft-delete 가 매핑 사양 전부 nuke(싱글 276/276 0사양). IT 단일 홈 픽스처는 탭 간 nuke 미검(false-green). 사양/시드 sync 변경 후 카테고리별 0-사양 제품 수 전수 query 필수. 연속 sync 금지(경합 손상)→재기동 후 1회 검증. SA키=컨테이너 `/etc/samhan/sa-key.json` 주입
-- [self-invocation @Transactional 우회](feedback_self_invocation_transactional_bypass.md) — 2026-06-16 PR #489. syncAll(@Transactional 아님)이 this.syncComponentTab self-invocation→프록시 우회→@Transactional 미적용→pessimistic 락 TransactionRequiredException→구성품 sync 실패(HTTP만). IT 클래스-@Transactional 가 가림(IT green≠운영). @Lazy self-reference→self.method() 프록시 경유. 트랜잭션 의존은 HTTP 실경로 검증
-- [catch DIV 후 같은 tx 재조회 = aborted-tx 무효](feedback_aborted_tx_after_div_catch.md) — 2026-06-29 #668. PostgreSQL 제약위반=tx abort→같은 tx 재조회 "current transaction is aborted" 실패. REQUIRES_NEW 격리 또는 (직렬화 시) catch 제거·전파. Codex 순차 듀얼 단독 적발(CI green·단위 미검출)
-- [다중 추가 입력 = 칩(캡슐) 통일](feedback_chip_ui_multi_input.md) — 2026-06-14 개발책임자. 결재자/첨부/태그 등 다중 추가 입력은 design-system TagChip+AsyncAutocomplete 칩(label:value+제거). 품목 라인(수량/단가/금액 표)은 제외. §7 그룹웨어 결재 PR #480 적용
-- [§7 전역 협업 에픽 완결(6문서)](project_global_collab_epic.md) — 2026-06-14 PR #480 머지. slip·회계·주문·견적·배차·그룹웨어 결재 6문서 collab 완결. 다음 에픽=문서/전표 미리보기 표준화(PrintLayout 결재문서 형식·출고전표 기존)+회계 메뉴 갭 13
-- [🔴 #16 라이브 coedit = 메모 1차만·full-form 미완(정정)](feedback_epic_scope_no_narrowing.md) — 2026-07-01 개발책임자 정정. 라이브 coedit 원 지시=전표 폼 전체(판매전표처럼 필드+품목라인 동시편집)인데 '협업 메모' 단일필드(1차)만 6문서(#680~#685) 머지하고 '종결' 선언=**스코프 축소 오류**. full-form=판매전표 레퍼런스부터 진행. 에픽 스코프 임의축소·부분완료 종결선언 금지. #17 단가변동(S1#686·S2#687 머지·S3#688 보류)은 협업 full-form 후
-- [미리보기 표준화 방향](project_print_preview_standardization.md) — 2026-06-14~15. 전표=전표양식(입고=출고통일 A4)/견적=GAS 종합견적서/결재문서=PrintLayout골격. **슬1 #481·슬2 #483(그룹웨어 결재문서 ApprovalDocView)·Phase2 전표번호0제거 #482(회계전표+세금계산서 포함, 개발책임자 확정)·vitest #484** 머지 완료. 다음=종합견적서 에픽이라 했으나 **종합견적서는 estimate-app으로 이미 ~95% 구현됨**([[quotation-estimate-app-state]] 정정). 실제 다음=품목 등록/관리 고도화
-- [종합견적서 실체 = estimate-app (~95% 구현)](project_quotation_estimate_app_state.md) — 2026-06-15 정정. clients/web/estimate-app(GAS 1:1 이식, BundleExpander·PriceCalculationService·dc-config·QuoteSnapshot). 데스크톱 EstimateFormPage/QuoteView 별개(둘 다 유지). 야간 '처음부터 구축' 스코핑 오류. ✅**G1(카탈로그)·G2(거래처) DB전환 해소**(CATALOG_SOURCE=db 기본+BE 엔드포인트+실HTTP IT 풀체인 머지; 프로덕션 render.yaml override만 Phase 11; 메모리 "잔여 갭" stale 정정 2026-06-23)
-- [품목 등록/관리 고도화 에픽](project_product_master_registration.md) — 2026-06-15 개발책임자. 종류 3구분(일반/세트/세트구성품)·세트구성품 부모세트 자동완성 필수·상품/비상품(재고게이트 3지점)·자동완성 방향키 전역(design-system AsyncAutocomplete). 착수=이거 먼저(G1+G2 다음)
-- [estimate-app 사양 데이터 소스](project_estimate_spec_data_sources.md) — 2026-06-15 #3 정찰. 사양맵(SPEC_DETAIL_MAP/getSpecDetailMap_)은 마지막 시트 소스(카탈로그는 #30 DB전환). ProductSpec는 부모 카탈로그 탭(홈/싱글세트/상업멀티)만 적재→구성품 사양 가용성: 상업멀티 266/266, 싱글 실내/외 0(물리치수만 세트spec 보유). 성능 합성 금지
-- [에픽 #18 완결 (다중노출+카테고리순서+구성품정렬)](../../docs/dev-reports/2026-06-17-product-set-component-reorder.md) — 2026-06-17. 슬1 #494(M:N 노출+순서) + 슬2 #495(세트 구성품 드래그 정렬 D-PCE-08 + display-orders 부분요청 가드 재도입 D-PCE-09) 머지로 에픽 완결. 구성품 정렬=종류순+종류내 기본먼저 구조고정+같은종류 비기본 드래그(per-SET), BE replaceComponents 정규화 서버 단일진실원. 다음=G1 카탈로그 DB승격(무정책)·멀티 동적가격#19(정책gate)
-- [real-qa 실행법 + 스펙 false-RED](feedback_realqa_run_and_false_red.md) — 2026-06-17 PR #495. real-qa=렌더러 vite mock off + VITE_API_BASE_URL=:8080 + AUDIT_BASE_URL + node_modules/.bin/playwright real-qa config(webServer 없음 수동기동). 🪤 행 첫 토큰=DragHandle 글리프 ⠿ 추출 false-RED(스펙 실패도 스펙버그—실 DOM/스샷 교차확인), 헤드리스 키보드 드래그 flaky→마우스. 가드 모수=FE 전송 모수 집합 동일. jq 미설치/한글 model_code Git Bash UTF-8 깨짐→docker cp+--data-binary
-- [기초품목↔견적품목 분리 에픽](project_basic_vs_estimate_item_separation.md) — 2026-06-17 개발책임자. 판넬 등 카테고리별 SKU/단가/번들=판매 도메인 → 기초품목 관리(물리 SKU 마스터)↔견적품목 관리(판매 카탈로그, 신규 메뉴) 분리. 견적품목=기초품목 등록분만 선택추가(D-IES-03), 세트구성(bundle_component)·#494노출·#495정렬·옵션·변동DC 소관(D-IES-04). #494/#495 견적품목 귀속(폐기X). ✅**에픽 완결**(슬1 #496+슬2/3 + 백로그 #511 머지, 검증 2026-06-23 — "슬3 재배치" stale 정정). 잔여=없음(멀티가격#19=MOOT — 상업멀티 구성품 개별라인/싱글 동적재배분 모델 이미 의도대로 구현, 정책결정 불요·코드대조 검증 2026-06-23)
-- [외부 연동 딥리서치 (전자세금계산서·법인계좌)](project_external_integration_research.md) — 2026-06-17 개발책임자. 전자(세금)계산서=고물량도 **ASP 권고**(자체발급은 표준인증+PKI 전자서명+익일전송+가산세 부담; ASP 200~220원/건·대량 <50원 추정·Java 즉시연동). 스마트빌=비즈니스온(더존 아님). 법인계좌 입출금 실시간 연동 리서치 진행 중. 상세 docs/research/2026-06-17-etax-invoice-nts-vs-asp.md
-- [수식 빌더 에픽 ✅ 완료](project_formula_builder_epic.md) — 2026-06-18~19. 하드코딩 수식→설정 계산. F1 분류+고정DC%(#499), F6 주문서(#501), G1 specDetailMap DB(#502), Phase1 estimate_configs 가격파라미터(#503), F1.5 품목 attribute(#504), F3 옵션 default DB+설정UI(#505), F4 옵션 자동매칭 attribute+isDefault+regex fallback(#506). **✅ 개발책임자 에픽 완료 선언(2026-06-19)** — F5 미구현(주 목표 Phase1/F3 기달성, 잔여 classifyRemoteType variant·반올림=저가치). 다음=기초품목↔견적품목 분리·외부연동·G2 등 개발책임자 지정 대기
-- [stacked PR CI false-green](feedback_stacked_pr_ci_false_green.md) — 2026-06-18. stacked PR(base=feat/...)은 ci.yml branches:[main]이라 BE 빌드/JUnit 미트리거. base 머지 후 base=main 재생성(--delete-branch 시 auto-close→gh pr create, gh pr edit --base는 read:org scope 부족)
-- [적용된 Flyway 마이그 불변](feedback_applied_migration_immutable.md) — 2026-06-19 PR #506. 적용된 V*.sql 주석조차 수정 금지(checksum mismatch→기존 DB 기동 crash). CI fresh-DB 미검출, 라이브 재빌드(기존 DB)가 단독 적발. 문서갱신은 비-마이그 파일에
-- [RestClient 계약테스트 false-green](feedback_restclient_contract_test_false_green.md) — 2026-06-20 감사#531+#533. 서비스간 RestClient 계약테스트는 다운스트림 선검증 필수. ~41 client 중 실HTTP 계약테스트 11개뿐→@MockBean 우회/fabricated stub=계약변경 CI green 위장(false-green), 미존재 엔드포인트 호출=실 런타임 버그(#533 inventory→slip /slips/outbound→DPS 상시실패). 작성전 4체크(controller 실재·DTO 실필드·passthrough·상태코드 의미). 배치1~4 H/M 보강(#532/534/535/536/537)
-- [collab presence 4문서 롤아웃](project_global_collab_epic.md) — 2026-06-20 PR #545 머지. §7 presence MVP(슬립 #515) 후속 → 회계/주문/견적/그룹웨어 결재 4문서 additive 배선(슬립 SlipCollabController 1:1 복제, 신규 권한/시드/Flyway 0). 듀얼리뷰 blocking 0 + 라이브 Docker 2세션 QA 4/4. **배차 presence=✅머지 PR #546**(상세 모달 동시접속자, 라이브 QA; "PR2 미완" stale 정정 2026-06-23) → §7 collab+presence 전 문서 완결
-- [real-qa 프록시 글롭 + resourceType](feedback_realqa_proxy_glob_resourcetype.md) — 2026-06-20 PR #545. real-qa Playwright page.route 는 백엔드만 좁게(`**/api/v1/**`·`**/collab/**`) + resourceType(xhr/fetch) 가드. 넓은 글롭(`**/accounting/**`)은 앱 lazy 청크(/routes/accounting/*.tsx)까지 가로채→404→#root 백지. /collab/stream=abort, networkidle 금지(SSE busy)→indicator 가시성 대기. 렌더러=config+VITE_API_BASE_URL
-- [codex config.toml NUL 손상](feedback_codex_config_nul_corruption.md) — 2026-06-20. codex MCP+exec 동시 실패 시 ~/.codex/config.toml NUL(0x00) 손상 의심(세션한정 오인 말 것). 백업 후 최소 config + `model="gpt-5.5"` 명시(기본 gpt-5.3-codex=ChatGPT 계정 미지원 400). auth.json 정상=재로그인 불요. exec는 복구 즉시 작동
-- [MockMvc getContentAsString charset](feedback_mockmvc_getcontentasstring_charset.md) — 2026-06-20 PR #544. MockMvc IT 한글 응답 단언 시 `getContentAsString()`(인자없음)=ISO-8859-1 로 읽어 한글 깨짐→false-RED(서비스 정상인데 테스트 실패, CI mojibake). `getContentAsString(StandardCharsets.UTF_8)` 사용
-- [A2 전 전표 명시 결재 enforcement 에픽](project_approval_enforcement_epic.md) — 2026-06-22 야간. 결재라인 결재자(그룹∪개인)를 전표 처리 액션 권한게이트로 강제(B게이트). **출고#556·입고#558·주문#559 3전표 완료**(9 PR). 패턴: auth /authorize generic ← 서비스 ApprovalLineAuthorizeClient(@Autowired·DI가드·MockRestServiceServer) → 액션직전 게이트(opt-in·configured&&!allowed→403)·V## 멱등시드·@MockBean(configured=false). **잔여 회계/견적/배차/그룹웨어=B게이트 POOR→명시 결재 chain 모델 신규설계 필요**(개발책임자 지정 대기, 재정찰 불요)
-- [검수완료→배차발송 에픽 ✅완결](project_dispatch_on_inspect_epic.md) — 2026-06-24. 검수완료→배차 발송(아로로지스/타배송사 SMS·인쇄). 견적 제외. **슬1#590**(검수게이트)+**슬2#591**(external_carrier 마스터 — 단일 page-code dispatch.external-carriers 7-action account-mode+V66 4-table seed)+**슬3#592**(SMS — external_dispatch V50[FK]+기사별묶음+PESSIMISTIC row lock)+**슬4#593**(인쇄 PRINT/BOTH — 채널분기 sent=PRINT||sendSms+print-data N+1회피+A4 PrintLayout colgroup+window.print). Flyway/권한 신규=슬2(V49/V69)·슬3(V50) 외 슬4는 0(V50 재사용). **교훈**: account-mode 단일 page-code+V66seed / PATCH 클리어 3곳정합 / GG false positive(dev_p05_pass!) / **다중생성자 부팅실패(테스트전용 생성자 @Autowired 누락→IT @MockBean·직접new 가림→라이브 단독적발)** / 미머지 마이그 수정+로컬 checksum 재정합 / 동시발송 PESSIMISTIC row lock / SMS FAILED HTTP200 거짓양성 res.status 분기 / **real-qa 디렉토리 `-real-qa` 접미사 필수(testIgnore→CI mock잡 제외, 누락시 ECONNREFUSED·라이브 CI 적발)** / window.print 헤드리스 캡처불가→emulateMedia print. **다음 에픽=개발책임자 지정 대기.** D1~D7
-- [판매전표 명칭](project_sales_slip_naming.md) — 2026-06-22 PR #560(슬1). 출고 SLIP_OUTBOUND 사용자 노출명="판매전표"(작업지시서/출고전표 표기 통일, 판매/주문/견적/대시보드). 기술키·groupware enum·입고전표 불변. OutboundView(금액 단 출고전표=거래명세서 중복) 폐기→DispatchView 작업지시서 단일. 상위 에픽=[동적 결재라인+설정=결재란 진실원](../../docs/superpowers/specs/2026-06-22-dynamic-approval-line-config-rendering-design.md): **슬1 #560+슬2 #561+슬3 #562 머지(3/5)**. 슬2=단계 동적 추가/삭제+enforced/seedManaged+삭제 경고모달+V65 출고자/검수자(action_key=NULL 추가단계=표시·서명용). 슬3=비-admin 구조 read 엔드포인트(/auth/approval-line-configs/{docType}/structure 인증만)+DispatchView 설정기반 렌더+DispatchDocument 공유(print-renderer 통일·금액/출고인 제거)+미리보기. **슬4=그룹웨어 문서종류별 결재라인. 슬4a#563·슬4b#564·슬4c#565 전부 머지**(BE: GROUPWARE_<code> 수용·default-approvers/active 엔드포인트 / FE: 설정 동적 doc-type 셀렉터·생성 프리필+override edit-version race가드. Option A·자동채우+override·USER v1·enforcement 없음). **2026-06-22 세션종료→집PC 재개**. 개발책임자 스코프=그룹웨어(완료)+입고전표(별도, 회계는 결재개념 신설 업무결정). 🏠다음=슬4d 입고전표 결재란 렌더(SLIP_INBOUND config 기존·InboundView에 슬3 DispatchDocument 패턴)·슬5 메뉴↔권한설정 정합+동작 검증. config admin-게이트 QA 우회=mock `?mockRole=MASTER&mockPerms=base64`. 🔑교훈: 신규 /auth/** 인증 엔드포인트=게이트웨이 라우트(JwtAuthentication) 동반필수+route계약IT([[identity-header-authz-antipattern]]), auth직접 비인증=403/게이트웨이=401, Testcontainers Windows skip→Codex 로컬 false-PASS→CI Linux 적발([[testcontainers-windows-docker]]). config 페이지 라이브QA=admin 403 차단→IT 증명
-- [정찰 grep false-negative](feedback_recon_grep_false_negative.md) — 2026-06-23 후속3. "문자열 grep 0매치=기능 미배선" 오판 금지(grep 부재≠기능 부재). 핸드오프 "arologis 5 page-code 미배선(0파일)"=오판(5페이지 전부 존재·머지, page-code 없던 이유=FE가 롤로 게이팅). 실 파일/라우트 존부로 검증. 메모리 "완결"↔정찰 "미존재" 충돌 시 둘 다 의심하고 파일시스템 규명. 라이브 결과 해석도 코드검증([[per-round-live-qa]])
-- [JPA JOIN FETCH 카르테시안 중복 de-dup](feedback_jpa_joinfetch_cartesian_dedup.md) — 2026-06-23 회계 슬B. 컬렉션 JOIN FETCH + root 부모당 다행(분개 다중 현금성 라인)이면 fetch 컬렉션 카르테시안 중복(SELECT DISTINCT는 root만 de-dup). getChildren() id-distinct 필수. IT(단일행 픽스처)·정적 3중리뷰·바이트코드 통과한 버그를 per-round 라이브 QA(다행 실데이터)만 적발 → reconciled=False. 다행 케이스 IT 시드 필수
-- [회계 보고서 표시 규약](feedback_accounting_report_display_conventions.md) — 2026-06-23 개발책임자 라이브 지적(#574). 음수='-X' 빨강(괄호/△ 금지), 계정명에 코드 prefix 금지(별도 코드열만, 시드는 code/name 분리), 0='—'(eCount 관행), 비용섹션 증감 색상 중립. 신규 회계 슬라이스 처음부터 적용. 화면 QA가 표시결함 적발 채널
-- [회계 G/H 도메인 결정](project_accounting_gh_decisions.md) — 2026-06-23. G 채권채무=받을어음(어음)+수금계획 전부, H 입출금매칭=BankTransaction 소스무관 설계로 통장 CSV import MVP 먼저→KFTC 오픈뱅킹 후속. A~F와 달리 신규 쓰기 도메인(Flyway+엔티티+입력UI). spec 선행
-- [모바일 에픽② 슬1 Foundation ✅완결](../../docs/handoff/CURRENT-WORK.md) — 2026-06-25 PR #596 머지(main 2a950822). 데스크탑→웹 Dual-mode 인증(Electron IPC Bearer 무회귀/Web httpOnly 쿠키 SameSite=Lax)+웹 배포 골격(vite.web.config·라우터 분기·게이트웨이 쿠키 fallback·CORS). Flyway 0. **듀얼리뷰+라이브QA가 각각 BLOCKING 단독 적발**: 웹 리로드루프(라이브QA·401 인터셉터 부팅 /auth/me 401 풀리로드→인증프로브 skip)·Electron 쿠키 logout 우회(Codex·withCredentials 웹전용)·mock gate 30분 타임아웃(CI·라우터 런타임감지→빌드타임 VITE_PLATFORM). 다음=슬2 반응형 셸(drawer/하단탭·테이블 카드화) 또는 ③버전에픽(개발책임자 지정). 모바일 최종=iOS/Android 하이브리드 WebView
-- [플랫폼 분기=빌드타임 플래그 + mock gate 검증](feedback_platform_branch_build_time_flag.md) — 2026-06-25 PR #596. 라우터/배포 분기는 런타임 감지(window.samhanAuth) 대신 빌드타임 `VITE_PLATFORM==='web'`(mock/dev 렌더러는 브라우저지만 Electron emulate→해시라우팅). 인증 provider 선택만 런타임 유지. 신규 라우팅/플랫폼 분기는 mock gate(Desktop Playwright) 필수 검증(unit/build 미검출, 해시 spec 실패+retry→30분 타임아웃)
-- [모바일 에픽② 슬4a 공용 Modal 풀스크린 ✅완결](project_mobile_s4a_modal_fullscreen.md) — 2026-06-25 PR #599 머지(main 8e0eb84a). 공용 Modal(32)+CsvUploadDialog+자체 inline dialog 3건(CSS Module화)+공용 Tabs 가로스크롤 = 전 모달 ≤768px 풀스크린·데스크탑 무변동. 라이브QA가 매 리뷰라운드 실결함 단독적발(④CsvUpload·⑤2dialog·전수InboundInspection·탭잘림). 라이브QA=리뷰라운드귀속(구현단계Task 금지)·자체dialog 전수 grep 함정(role=dialog/alertdialog 전수). 다음=슬4b 폼1열
-- [모바일 에픽② 슬3 DataTable 카드화 ✅완결](project_mobile_s3_datatable_card.md) — 2026-06-25 PR #598 머지(main 1d195b74). 공용 DataTable td data-label + module.css @media(max-width:768px) 카드 → 56 리스트화면 ≤768px 행=카드(라벨-값) 자동전환·데스크탑/인쇄 무변동·CSS-only. 듀얼리뷰 0수렴(④Opus MINOR 긴값줄바꿈·⑤Codex MINOR 액션셀정렬+MAJOR 와이드래퍼=라이브QA로 슬4재분류[클립≠스크롤]). **라이브QA가 정적 MAJOR 교정** 재입증. (legacy)개발용어 제거 동반. 슬2(반응형셸 Drawer #597 f2ecd6fc)→슬3. 다음=슬4 폼/모달/상세/와이드보고서. 전메뉴 완료=슬4~5+PWA/네이티브(슬3=리스트 한축)
-- [PM 자율 머지 위임](feedback_pm_auto_merge_authority.md) — 2026-06-25. 개발책임자 "PM 판단 하 자동 머지 가능". 게이트(0수렴·CI green·mock gate·라이브QA) 충족 시 매 승인요청 없이 PM 자율 머지(draft해제→squash). main 직접 docs/memory push는 별개 가드(머지위임≠push위임)
-- [반응형 Drawer 오프스크린 a11y](feedback_responsive_drawer_offscreen_a11y.md) — 2026-06-25 PR #597. 슬라이드 Drawer 닫힘=transform-only면 오프스크린 nav가 Tab순서·스크린리더 잔존(a11y회귀). visibility:hidden+transition delay(transform .25s, visibility 0s linear .25s)로 제거+슬라이드 보존. aria-modal은 focus trap/inert 동반
-- [회계 원장 수정금지·입금보고서가 편집대상](project_accounting_ledger_edit_policy.md) — 2026-07-02 개발책임자. 원장(Journal 계정/차변/대변) 수정금지(정정=reverse후신규)·원장 coedit=협업메모만. **입금보고서 등 비-원장 회계문서가 편집/coedit 대상**. 입금보고서=CashReceipt(계좌내역→작성→거래처매칭→원장반영, 라이브 대부분 미구축=대형 신규에픽·brainstorming 대기). 슬1(#697 Journal PUT full-form)=폐기·close대기(감사·보완 완료)
-- [무결성 도메인 정책은 착수전 확인](feedback_integrity_domain_policy_preconfirm.md) — 2026-07-02 슬1#697 폐기 회고. 무결성 민감 도메인(회계원장·감사·권한 widening) 편집가부 정책은 코드 착수전 개발책임자 확인. 야간 권장방향(D-ACC-03 원장동시편집 허용) 진행→"원장 수정금지" 확정→슬1 폐기 낭비. [[feedback_epic_scope_no_narrowing]] 스코프축소금지와 균형. 감사보완=후속라운드도 5-agent 완주+Codex 대칭(축소금지, R3 2-agent 축소가 감사지적)
+# 🚨 워크플로우 규율 (매 작업 최우선 — 상세는 각 토픽파일)
+- [🚨 표준 워크플로우 유일 진실원](feedback_canonical_workflow.md) — Opus 기획+조기PR → Codex 개발+게시 → (Opus 5-agent[FE/BE/Design/DevOps/QA·QA=Docker라이브QA+단계별스샷]+fix+게시 ↔ Codex 5-agent+fix+게시) 0수렴까지 → PM 종합(머지전) → CI green → 머지. 🚫순차(병렬금지)·단축금지·라운드 즉시게시·fix후 재리뷰·미준수 소급보완·매단계 ScheduleWakeup
+- [🚨 리뷰 5-agent 필수·단축금지·순차](feedback_review_5agent_no_shortcut_strict.md) — 매 리뷰=5차원 전부(Design N/A금지)·수렴/재검도 full·Opus 완료+게시 후에만 Codex(병렬금지)·실행=게시 1:1 (2026-07-02 #699 회고)
+- [🚨 라이브QA 매 라운드 GUI 스샷](feedback_live_qa_every_round_screenshots.md) — Docker 실서버+실 GUI 스크린샷(단계별) 매 리뷰 라운드마다. 끝1회·SSE/API 텍스트로 GUI스샷 대체 금지. dev_master=dev_p05_pass! (2026-07-02)
+- [🚨 PM 직접구현 금지](feedback_pm_no_direct_implementation.md) — 구현=Codex, PM=기획·리뷰·commit대행·머지만. infra오류도 PM직접구현 대체 금지 (2026-07-02)
+- [🚨 가짜 데이터·목업 영구 배제](feedback_no_fake_data_ever.md) — 실데이터·실서버·실화면·실측정만. QA스샷=실캡처만(합성/fixture 금지). 불가 시 정직 보고
+- [🚨 도구 호출은 실제 invocation](feedback_emit_real_tool_calls.md) — 도구 호출을 텍스트로 적으면 미실행. 진짜 함수 호출+결과 확인. ScheduleWakeup 단독발행 시 실수 잦음
+- [야간/장시간 ScheduleWakeup 재자각](feedback_autonomous_loop_schedulewakeup.md) — 매 단계(1~2묶음) 완료 후 다음 단계 예약·재자각·턴종료(연속 mega턴 금지). 부재/활성 무관
+- [PR OPEN(≠DRAFT)](feedback_pr_open_not_draft.md) — 조기PR 포함 draft 금지, --draft 쓰지말것 (2026-07-02)
+- [PM 자율 머지 위임](feedback_pm_auto_merge_authority.md) — 게이트(0수렴·CI green·mock gate·라이브QA) 충족 시 PM 자율 머지. main 직접 docs/memory push는 별개 가드
+- [PM 권한코드 전권 자율](feedback_pm_permission_autonomy.md) — 권한 코드는 PM 머지까지 자율. 워크플로우 엄격+자가지적. 신규 업무규칙/정책만 개발책임자 확인
+- [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md) — 회계원장·감사·권한 편집가부 정책은 착수 전 개발책임자 확인 (2026-07-02)
+- [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
+- [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지 ([[feedback_pm_10min_status_report]])
+
+# 커밋/PR/문서 규약
+- [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
+- [PR 제목 [FEAT]/[FIX] 대괄호+대문자](feedback_pr_title_caps_bracket.md)
+- [권한 표기 풀네임](feedback_role_naming_full.md) — MASTER/MANAGER 풀네임, 약어 금지
+- [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 한글 "전표"(슬립 금지), 영문 slipId는 별개
+- [코멘트 용어 — 협업 코멘트 금지](feedback_comment_not_collab_comment.md) — 라벨 "코멘트", 영문 CollabComment 유지
+- [UUID 사용자 비공개](feedback_uuid_no_user_visibility.md) — 화면 UUID 금지, 비즈니스 식별자만
+- [문서 동기화 의무](feedback_continuous_docs_sync.md) — 매 PR에 README+ROADMAP+DECISIONS+각 README+dev-report, 별도 docs PR 금지
+- [overview.html 동기화](feedback_samhan_public_overview_sync.md) — docs/samhan-public-overview.html 항시 동기화
+- [함수 문서화 3-layer](feedback_function_documentation.md) — 한국어 Javadoc+springdoc+dev-reports 누적
+- [Issue 자동 close](feedback_issue_close_after_pr.md) — PR에 `연관 Issue: #N`, 머지/close 후 즉시 close
+- [GitGuardian PM 자동 처리](feedback_gitguardian_false_positive.md) — PM 자동 판정 후 머지
+- [Monitor 자동 사용](feedback_monitor_no_permission.md) — CI watch 허락없이 즉시
+
+# 개발환경/빌드 함정
+- [Dev Environment](project_dev_environment.md) · [Build Conventions](project_build_conventions.md) — JDK17/Gradle/Docker, BaseEntity 7 audit+Soft Delete only
+- [Korean Path JDK Trap](feedback_korean_path_jdk.md) — 한글경로 gradle test 실패→assemble
+- [gradlew 실행권한](feedback_gradlew_exec_bit.md) — `git update-index --chmod=+x gradlew`
+- [PowerShell UTF-8 트랩](feedback_powershell_utf8_writes.md) — body-file=Write/Edit/heredoc만, Set-Content 금지
+- [Bash 커밋=−F 파일](feedback_bash_commit_message_file.md) — @'...'@ here-string 금지, Write→git commit -F
+- [desktop 타입검증=npm run typecheck](feedback_desktop_typecheck_command.md)
+- [Playwright 로컬 버전 skew](feedback_playwright_local_version_skew.md) — node_modules/.bin 직접·desktop cwd
+- [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 rename 시 design-system junction 깨짐→npm install
+- [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — npipe skip 가능, DOCKER_HOST tcp 우회
+- [로컬 스택+데스크톱 실QA 함정](project_local_stack_qa_gotchas.md) — launch=jar만 빌드(이미지 stale→`up -d --build <svc>`)·게이트웨이 격차·react-query invalidate stale
+- [standalone-boot 실QA](feedback_standalone_boot_real_qa.md) — Windows IT skip 시 jar standalone+docker PG
+
+# QA/테스트 규율
+- [QA Docker 실서버 의무](feedback_qa_docker_real_test.md) — 실서버 테스트, code read PASS 금지, 미가용시 P2+CI fetch
+- [실서버 점검=실사용자 UI 캡처](feedback_real_server_check_screenshot.md) — API JSON 아닌 실 데스크톱 화면(:8080·dev_master·mock OFF)
+- [야간=라이브 Docker 캡처 미루지말것](feedback_overnight_live_capture.md) — 재빌드해서라도 라이브 캡처, CI IT 대체 금지
+- [변경 모듈 전체 test 후 push](feedback_changed_module_full_test_before_push.md) — 타깃만 실행 push 금지
+- [CI 테스트 필터 allowlist false-green](feedback_ci_test_filter_false_green.md) — ci.yml `--tests` allowlist 누락 패키지 미실행. 신규 패키지 등재 필수
+- [stacked PR CI false-green](feedback_stacked_pr_ci_false_green.md) — base=feat/… BE 미트리거, base 머지 후 base=main 재생성
+- [RestClient 계약테스트 false-green](feedback_restclient_contract_test_false_green.md) — 다운스트림 선검증, @MockBean 우회 금지, 4체크
+- [권한 enforcement 실HTTP 회귀](feedback_enforcement_real_http_test.md) — @MockBean mock 시 false-green, MockRestServiceServer/실HTTP
+- [IT 외부 RestClient @MockBean 의무](feedback_it_mockbean_external_clients.md) — 누락시 Eureka 비활성 500
+- [PM 통합 풀빌드 가드](feedback_pm_integration_build_check.md) — 팀별 PR 전 BE+QA 컴파일·IT·의미정렬
+- [결함 fix 계열 전수 sweep](feedback_defect_family_sweep_fix.md) — 지적 1건=동일패턴 전수 grep
+- [마이그 fresh Postgres probe](feedback_migration_fresh_postgres_probe.md) — Windows skip 가림, DROP/CREATE+psql ON_ERROR_STOP
+- [적용된 Flyway 마이그 불변](feedback_applied_migration_immutable.md) — 주석조차 수정금지(checksum), 신규 V만
+- [enum 확장=CHECK 제약 마이그](feedback_enum_expansion_check_constraint.md)
+- [self-invocation @Transactional 우회](feedback_self_invocation_transactional_bypass.md) — this.method 프록시우회, @Lazy self, HTTP 실경로 검증
+- [catch DIV 후 같은 tx 재조회=aborted](feedback_aborted_tx_after_div_catch.md) — REQUIRES_NEW 격리 or catch제거
+- [JPA JOIN FETCH 카르테시안 dedup](feedback_jpa_joinfetch_cartesian_dedup.md) — 다행 컬렉션 fetch 중복, id-distinct+다행 IT시드
+- [MockMvc getContentAsString charset](feedback_mockmvc_getcontentasstring_charset.md) — 인자없으면 ISO-8859-1 깨짐, UTF_8 명시
+- [X-User-Name charset+FilterRegistrationBean MockMvc](feedback_x_user_name_header_charset_mockmvc.md)
+- [real-qa 실행법+스펙 false-RED](feedback_realqa_run_and_false_red.md) — mock off+:8080+config(webServer 없음), DragHandle 글리프 false-RED
+- [real-qa 프록시 글롭+resourceType](feedback_realqa_proxy_glob_resourcetype.md) — 백엔드만 좁게+xhr/fetch, /collab/stream abort, networkidle 금지
+- [real-qa 디렉토리 -real-qa 접미사](project_dispatch_on_inspect_epic.md) — 누락시 CI mock잡 미제외→ECONNREFUSED
+- [정찰 grep false-negative](feedback_recon_grep_false_negative.md) — grep 0매치≠기능부재, 실 파일/라우트로 검증
+
+# Codex
+- [Codex MCP 서버 사용](feedback_codex_plugin_setup.md) — mcp__codex__codex, sandbox workspace-write, 5 agents 병렬
+- [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, model 생략+effort high
+- [Codex 모델 자동 전환](feedback_codex_model_auto_switch.md) — 기본 spark+medium, 보안/migration/race 등 gpt-5.5 high
+- [Codex 권한 새 세션부터](feedback_codex_permission_new_session.md) — allow 추가는 새 세션부터, 진행중 무리한 재시도 금지
+- [Codex MCP 세션 한정 한계](feedback_codex_mcp_session_limit.md) — -32000 후 새 세션·codex exec·Agent 대체
+- [codex config.toml NUL 손상](feedback_codex_config_nul_corruption.md) — 최소 config+model="gpt-5.5"
+- [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — </dev/null 필수
+- [detached codex 안정화 후 판단](feedback_codex_detached_write_settle.md) — git status 빈것≠미수행, 폴링+diff
+- [agent origin/main 동기화](feedback_agent_origin_main_sync.md) — background agent 시작직후 git fetch+log 검증
+
+# 프로젝트 컨텍스트
+- [User Role](user_role.md) · [사용자 호칭](feedback_user_title.md) — 개발책임자, "대표"=김미선만
+- [Project Overview](project_overview.md) — 14 service MSA, Spring Boot 3/Java 17, PG service-per-DB
+- [Phase 10 arologis / Phase 11 AWS](project_arologis_phase10.md) · [Phase 11 AWS](project_phase11_aws.md) — 월₩405K, IaC #660, 실이식 수동18항목 대기
+- [아로로지스 독립분리](project_arologis_independent.md) · [명칭](feedback_arologis_name.md) · [자율권한](feedback_arologis_extract_autopilot.md)
+- [Samhan Public 명칭](feedback_samhan_public_name.md) · [Domain Strategy](project_domain_strategy.md)
+- [Korean Audit Standard](project_korean_accounting.md) — 표준 계정과목 코드 시드
+- [SP-08 legacy GAS parity](project_sp_08_legacy_gas_parity.md) — 전메뉴 GAS 동등, tools/legacy-gas/, #434
+- [옵션C 폐기—외부4종 DB 치환](project_sheets_to_db_full_migration.md) · [전산=이카운트 대체·GAS=export원](project_replaces_ecount_gas_was_exporter.md)
+- [이카운트 네이티브 편입](project_ecount_native_fold.md) · [이카운트 품목 신원규칙](project_ecount_product_identity_rule.md)
+- [외부연동 딥리서치](project_external_integration_research.md) — 전자세금계산서 ASP 권고(바로빌), 법인계좌 리서치
+- [KST 전역 표준화](project_kst_timezone_standard.md) — #479 dev, Phase11 prod cutover 후속
+- [메뉴 5대분류+품목 노출구분](project_item_exposure_and_menu_5cat.md) — 판매/구매/회계/그룹웨어/인사+배차·창고, usageScope+displayOrder
+
+# 도메인 결정/에픽 상태
+- [주문 상태 모델](project_partner_order_status_model.md) — 진행중DRAFT/완료CONFIRMED/보류ON_HOLD(#324)
+- [주문→출고전표 전환](project_order_slip_conversion.md) · [전표/주문번호=슬래시 YYYY/MM/DD-N](feedback_slip_order_number_format.md)
+- [시리얼 인스턴스 재고](project_serial_inventory_model.md) · [재고조회 모달 2.6d](project_inventory_lookup_modal_2_6d.md) ✅
+- [seeder product UUID 3-DB 정합](project_seed_product_uuid_catalog.md) · [lookup 3종 시드](project_lookup_seed_source.md) #425
+- [출고전표 양식 1:1+전자서명](project_slip_shipout_print_form.md) · [공급자·은행계좌 회계설정](project_company_config_menu.md)
+- [판매전표 명칭](project_sales_slip_naming.md) — 출고 SLIP_OUTBOUND=판매전표, 동적 결재라인 #560~565(그룹웨어 완료)
+- [P0-B 인증·DC키 결정](project_estimate_auth_dc_key_decisions.md) — X-Internal-Token, partnerCode=bizno digits
+- [종합견적서=estimate-app ~95%](project_quotation_estimate_app_state.md) — G1/G2 DB전환 해소
+- [estimate-app 사양 소스](project_estimate_spec_data_sources.md) — 사양맵=시트, 성능 합성금지
+- [기초품목↔견적품목 분리 ✅](project_basic_vs_estimate_item_separation.md) — #496 완결, 멀티가격#19 MOOT
+- [품목 등록/관리 고도화](project_product_master_registration.md) — 3구분·세트구성품 자동완성·상품/비상품
+- [에픽#18 다중노출+구성품정렬 ✅](../../docs/dev-reports/2026-06-17-product-set-component-reorder.md) — #494/#495
+- [수식 빌더 에픽 ✅](project_formula_builder_epic.md) — #499~506, 개발책임자 완료선언
+- [§7 전역 협업 에픽 ✅6문서](project_global_collab_epic.md) — slip·회계·주문·견적·배차·그룹웨어 collab+presence 완결(#480/#545/#546)
+- [미리보기 표준화](project_print_preview_standardization.md) — 전표양식/견적GAS/결재 PrintLayout, #481~484
+- [A2 명시 결재 enforcement](project_approval_enforcement_epic.md) — 출고#556·입고#558·주문#559, 회계/견적/배차/그룹웨어=신규설계 필요
+- [검수완료→배차발송 ✅](project_dispatch_on_inspect_epic.md) — #590~593, external_carrier·SMS·인쇄. 다중생성자 부팅실패·real-qa 접미사 교훈
+- [회계 G/H 도메인 결정](project_accounting_gh_decisions.md) — 받을어음+수금계획, H=BankTransaction CSV MVP→KFTC
+- [회계 보고서 표시 규약](feedback_accounting_report_display_conventions.md) — 음수 '-X'빨강, 0='—', 코드 prefix 금지
+- [회계 원장 수정금지·입금보고서 에픽](project_accounting_ledger_edit_policy.md) — Journal 수정금지(역분개), CashReceipt 입금보고서 편집대상, #697 폐기 (2026-07-02)
+- [arologis-desktop 백오피스 ✅](project_arologis_desktop_backoffice.md) — 인사/간이회계/권한, #433
+- [모바일 에픽② 슬1 Foundation ✅](../../docs/handoff/CURRENT-WORK.md) — #596 Dual-mode 인증
+- [플랫폼 분기=빌드타임 플래그](feedback_platform_branch_build_time_flag.md) — VITE_PLATFORM, mock gate 검증
+- [모바일 슬3 DataTable 카드화 ✅](project_mobile_s3_datatable_card.md) #598 · [슬4a Modal 풀스크린 ✅](project_mobile_s4a_modal_fullscreen.md) #599
+- [반응형 Drawer 오프스크린 a11y](feedback_responsive_drawer_offscreen_a11y.md) — visibility:hidden+delay
+
+# FE/UI 규약
+- [인쇄 양식 반복 정정](feedback_print_design_iteration.md) — 단번완성 금지, mock→캡처→CSS 3~5회
+- [다중 추가 입력=칩](feedback_chip_ui_multi_input.md) — TagChip+AsyncAutocomplete, 품목라인 제외
+- [FE canAccess page-code=BE @RequirePermission 일치](feedback_fe_canaccess_pagecode_be_match.md)
+- [FE 가드 제거=전체 mock suite](feedback_fe_guard_removal_contract_tests.md)
+- [권한그룹 C2 widening=Option A](feedback_pgc_c2_widening_option_a.md) — seed 진실원
+- [FE 옵션 타입=BE DTO 정확일치](feedback_fe_option_type_matches_be_dto.md) — boolean vs String silent no-op
+- [in-process mock 3원칙+page.route no-op](feedback_inprocess_mock_principles.md)
+- [사양 sync=실DB 전수 분포검사](feedback_spec_sync_full_db_distribution_check.md) — 카테고리별 0-사양 query, 연속 sync 금지
+- [@PreAuthorize 마이그 교훈](feedback_preauth_migration_lessons.md) — @RequireDepartment opt-in, 계약변경 차원만 실HTTP
+- [identity 헤더 인가 안티패턴](feedback_identity_header_authz_antipattern.md) — 게이트웨이 단일권위, downstream fail-CLOSED
