@@ -22,13 +22,14 @@
 - **S3 통장→입금보고서(①)**: `markReflected` 라이브 승격 + N건 선택 생성 + `matched_journal_id`/bank link. 규모 中.
 - **S4 FE(④)**: `CashReceiptListPage`+작성폼+디테일+coedit(born-live) + BankTransactionPage 다중선택 벌크액션 + 금액포맷 규약 수렴 + `api/accounting.ts` client. 규모 中.
 
-## 🔑 개발책임자 morning 결정 (권장방향 병기)
-1. **[선결] CashReceipt 상태 라이프사이클** — 권장: `DRAFT→CONFIRMED→CANCELLED`(CONFIRMED 시 POSTED 분개 생성, coedit=DRAFT, CANCELLED=역분개). lock/coedit/분개 타이밍 모두 의존.
-2. **[🔴 무결성 선확인] ③ POSTED 분개 계정과목 매핑** — 권장: 차 보통예금(103)/대 외상매출금(110) 회수 고정 + Mig9(명칭 lookup)·DepositMatch(코드 103/110) **단일화**. 선수금·기타 대변 허용 여부·자동 vs 수동 게시·수정 시 역분개 재게시 = **개발책임자 확정 필수**([[feedback_integrity_domain_policy_preconfirm]]).
-3. **① 통장→입금보고서 카디널리티** — 권장: 통장 N건→입금보고서 1건(합산) 허용 + 1:1. `markReflected` 타이밍=분개 게시 시(journalId 확보 후). 생성 전 거래처 매칭 강제.
-4. **② 수기 편집 정책** — 권장: 입금보고서=coedit 자유편집(원장 아님) + soft delete. 채번 포맷·`external_ref` 수기 규칙 확정.
-5. **④ FE 다중선택 UX** — 권장: 신규 `CashReceiptListPage` + BankTransactionPage 체크박스열(DataTable selection 신설 or 인페이지)→"입금보고서 생성" 벌크. 금액 `-1,234` 빨강·0 `—`([[feedback_accounting_report_display_conventions]], 현 FE 포맷터 3종 불일치 수렴).
+## 🔑 개발책임자 결정 (2026-07-03 확정 — ✅ E3 착수 게이트 해제)
+1. ✅ **CashReceipt 상태 라이프사이클** = `DRAFT→CONFIRMED→CANCELLED`. CONFIRMED 시 POSTED 분개 생성, coedit 편집=DRAFT 한정, CANCELLED=역분개.
+2. ✅ **[무결성 preconfirm 완료] ③ POSTED 분개 계정과목 매핑** = **기본값 차 보통예금(103)/대 외상매출금(110), 단 사용자 변경 가능**. 입금보고서=편집대상이므로 **계정도 override 가능** → CashReceipt 에 debit/credit 계정 필드(기본값+편집), POSTED 분개는 선택 계정 사용. Mig9(명칭 lookup)·DepositMatch(코드 103/110) **단일화**. 게시=상태전이 종속(CONFIRMED→자동 POSTED, 수정→역분개 재게시).
+3. 🟡 **① 통장→입금보고서 카디널리티**(권장방향 진행) — 통장 N건→입금보고서 1건(합산) 허용 + 1:1. `markReflected`=분개 게시 시(journalId 확보 후). 생성 전 거래처 매칭 강제.
+4. 🟡 **② 수기 편집 정책**(권장방향 진행) — 입금보고서=coedit 자유편집(원장 아님) + soft delete. 채번 포맷·`external_ref` 수기 규칙.
+5. 🟡 **④ FE 다중선택 UX**(권장방향 진행) — 신규 `CashReceiptListPage` + BankTransactionPage 체크박스열→"입금보고서 생성" 벌크. 금액 `-1,234` 빨강·0 `—`([[feedback_accounting_report_display_conventions]]).
 
 ## Self-Review / 주의
-- **구현 착수 전 개발책임자 brainstorming + ③ 무결성 preconfirm 필수** — 본 문서는 준비물, PR 미개설.
+- ✅ **③ 무결성 preconfirm 완료·상태 lifecycle 확정 → S0 확정, S1(CashReceipt 도메인) 캐논 착수 가능.** 3~5 는 권장방향 진행(필요 시 리뷰 라운드 중 개발책임자 확인).
+- 워크플로우 정책(2026-07-03 확정): GUI 변경 라운드만 라이브 캡처, BE/mock-only·재검·데이터불가 라운드는 정직 disposition.
 - 적용 마이그 불변(V48+ 신규만)·enum CHECK(kind 는 CHECK 없어 불요)·PageCode FE↔BE 일치·born-live 4번째 온보딩 반복패턴·역분개 정책 재사용.
