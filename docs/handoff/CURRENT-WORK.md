@@ -25,8 +25,8 @@
 7. **[버그] 종합견적서·주문서 여는 메뉴 클릭해도 안 열림** → ✅ **진단완료·fix 진행중**. 근본원인=데스크톱 main `legacy:open-external`(`main/index.ts:80-85`)가 `https://`만 허용하는데 dev URL=`http://localhost:5183/5180` → 매 클릭 throw→렌더러가 삼킴→"무반응"(회귀: `891511d3`가드↔`b4e80707` http로컬 전환). fix=prod https 유지+dev localhost/127.0.0.1 http 허용(`isAllowedExternalUrl` 순수함수 추출·테스트9), SalesSubNav 웹빌드 window.open 폴백. 브랜치 `fix/desktop-external-app-open-http-localhost`.
 8. **착수 순서 = 버그 fix 먼저 → E2 spec** ✅확정.
 
-### 🗂️ 실행 큐 (누락금지 체크리스트 — 완료 시 취소선 대신 ✅)
-- [ ] **버그 fix** (진행중): 조기PR→Codex개발/리뷰→Opus 5-agent→Codex 5-agent→0수렴→PM종합→CI green→머지. (E1과 별개)
+### 🗂️ 실행 큐 (누락금지 체크리스트 — 완료 시 ✅)
+- [x] ✅ **버그 fix = PR #698 머지**(squash `264fb88a`, 2026-07-02). external-url.ts isAllowedExternalUrl 순수함수(prod https·dev http loopback hostname 완전일치)·SalesSubNav window.open 폴백·test 12. 캐논 8단계: Opus 5-agent 0blocking(FE/BE보안/Design N/A/DevOps QA)+fix2(위험스킴 테스트·tsconfig exclude)→Codex gpt-5.5/high 0수렴→CI **28/28**(Desktop Playwright hard gate 포함)→squash. 라이브=Electron GUI 구동도구 부재로 정직 disposition(단위테스트가 정확 실패지점 잠금).
 - [ ] **E2** 전역 라이브동기화(공유헬퍼+배차 파일럿): brainstorming→spec→plan→캐논 8단계. 파일럿 검증 후 도메인 점진 롤아웃(데스크탑+모바일 WebView 검증 포함).
 - [ ] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
 - [ ] **task5** 배차 전표확인 판매전표 미리보기.
