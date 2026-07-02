@@ -8,6 +8,16 @@
 
 > 개발책임자 명시: **"내가 지시한 내용 모두 상세히 기록해 놓고 추후 누락없이 진행."** 아래 8개 지시 항목이 이번 세션 접수 전량. 각 항목 상태·확정 결정 병기. 착수 순서 = **버그 → E2 → (E1·task5 병렬/순차) → E3**.
 
+### 🚨🚨 워크플로우 규율 — 이 세션 반복 위반 시정 (새 세션·긴 세션 반드시 준수, 단축 절대금지)
+> 개발책임자 2026-07-02 다수 지적. **매 단계 이 블록 재확인하며 진행.** 상세=[[feedback_review_5agent_no_shortcut_strict]]·[[feedback_live_qa_every_round_screenshots]]·[[feedback_pm_no_direct_implementation]]·[[feedback_pr_open_not_draft]]·[[feedback_canonical_workflow]].
+> 1. **PM 직접 구현 금지** — 구현은 **Codex**(mcp__codex__codex danger-full-access, gpt-5.5/high), PM=기획·리뷰(Opus 5-agent)·commit 대행·종합·머지만. infra 오류 시도 PM 직접구현 대체 금지.
+> 2. **매 리뷰 라운드 = full 5-agent**(FE/BE/Design/DevOps/QA 전부). Design "N/A disposition" 금지·3-agent 축소 금지·수렴/재검도 full. 단축 절대금지(트리비얼도).
+> 3. **순차 듀얼리뷰(병렬 금지)** — Opus 라운드 **완료+PR 게시** 후에만 Codex 라운드. Opus↔Codex 동시 실행 금지.
+> 4. **라이브 QA = 매 리뷰 라운드마다 Docker 실서버 + 실 GUI 스크린샷**(단계별 여러 장). 끝 1회 deferral 금지·SSE/API 텍스트로 GUI 스샷 대체 금지. dev_master=`dev_p05_pass!`(DEV-SEED). slip 등 재빌드=`docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.local-all.yml up -d --build <svc>`.
+> 5. **실행 라운드 = PR 게시 1:1** — Codex 개발/각 리뷰 라운드/fix 즉시 게시. 건너뛰기 금지.
+> 6. **PR = OPEN**(draft 금지). **fix 후 반드시 full 재리뷰**(CI-green만으로 0수렴 선언 금지). **error/skip/backlog 0수렴 + CI green + 실 GUI 라이브QA** 전부 충족해야 PM 종합→머지.
+> 7. 매 단계 **ScheduleWakeup 자각**(연속 mega-턴 금지).
+
 ### 📥 접수 지시 전량 (2026-07-02)
 1. **집PC 진행분 이어서 진행** — 최신 핸드오프(`09a58362`) 기준. ✅ 컨텍스트 회복 완료.
 2. **PR #697 close + 브랜치 정리** (회계 원장 수정금지로 폐기 확정). ✅ **완료** — close + 원격 `feat/accounting-journal-draft-update` 삭제.
@@ -27,7 +37,11 @@
 
 ### 🗂️ 실행 큐 (누락금지 체크리스트 — 완료 시 ✅)
 - [x] ✅ **버그 fix = PR #698 머지**(squash `264fb88a`, 2026-07-02). external-url.ts isAllowedExternalUrl 순수함수(prod https·dev http loopback hostname 완전일치)·SalesSubNav window.open 폴백·test 12. 캐논 8단계: Opus 5-agent 0blocking(FE/BE보안/Design N/A/DevOps QA)+fix2(위험스킴 테스트·tsconfig exclude)→Codex gpt-5.5/high 0수렴→CI **28/28**(Desktop Playwright hard gate 포함)→squash. 라이브=Electron GUI 구동도구 부재로 정직 disposition(단위테스트가 정확 실패지점 잠금).
-- [~] **E2** 전역 라이브동기화(공유헬퍼+배차 파일럿): ✅brainstorming→**spec 머지 `1b52033b`**(2기둥·배차 파일럿·D-E2-01 하위그룹 삭제 스코프)→**Plan A 작성**(`docs/superpowers/plans/2026-07-02-e2-live-collection-sync-dispatch-pilot.md`, 기둥1 라이브동기화 6Task 완전코드). **다음=구현 착수**(브랜치 feat/e2-live-collection-sync-dispatch, Task1 공유 CollectionRealtimePublisher부터 캐논 8단계). 기둥2 취소선삭제=Plan B·task5 전표확인미리보기=Plan C 분리.
+- [~] **E2** 전역 라이브동기화: ✅spec `1b52033b`·Plan A→**✅기둥1(라이브 컬렉션 동기화) 머지 `a6b1a4b1`(#699, 2026-07-02)**. 공유 `CollectionRealtimePublisher`(afterCommit)+배차 SSE 채널/컨트롤러(dispatch.board VIEW)+10 mutating 서비스 발화+FE `useCollectionRealtime`(다중키) 목록·보드 구독. **순차 5-agent 듀얼리뷰 11 blocking 적발·수정**(발화누락 sweep 8·보드/이력 미구독·외부발송·CI false-green[realtime-abstraction test 미등재→등재+skipped=0 gate]). **라이브 QA 실 SSE round-trip 캡처**(게이트웨이 :8080 구독→createTask 201→`dispatch:board:changed` CREATED 실수신, docs/qa/e2-live-sync-dispatch/). CI 33/33. dev-report `2026-07-02-e2-live-sync-dispatch-pilot.md`.
+    - **다음(E2 잔여)** = **기둥2 취소선 삭제+복원(Plan B)**: @SQLRestriction 우회 목록 쿼리+DTO 삭제메타(deletedByName resolve·UUID 비노출)+FE 취소선(영구)+복원. 배차 파일럿 삭제대상=하위 그룹/전표매핑 soft-delete(D-E2-01). → 이후 도메인 롤아웃(판매전표·주문·견적·거래처·재고·회계 목록).
+    - ⚠️ **owed(P1) GUI 스크린샷 라이브 QA backfill**: #699 라이브 QA를 **SSE round-trip 텍스트 캡처**로만 함(실 이벤트 수신 실증은 됐으나 **실사용자 화면 스크린샷 미충족**, 개발책임자 지적). → 배차현황 목록 2세션 라이브 갱신 **실 GUI 스샷** backfill 필요([[feedback_live_qa_every_round_screenshots]]). 웹 렌더러(mock OFF·VITE_API_BASE_URL=:8080) 브라우저 기동 or Electron. **기둥2부터는 매 라운드 GUI 스샷 준수.**
+    - **비차단 follow-up 4**(dev-report): 동시편집 충돌 UX(드래그/메모편집중 원격refetch)·FE 모달토글 재구독·slip publish IT gate·gateway route IT.
+    - **task5** 배차 전표확인=판매전표 미리보기=Plan C 분리(별도 소형).
 - [ ] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
 - [ ] **task5** 배차 전표확인 판매전표 미리보기.
 - [ ] **E3** 입금보고서 에픽(brainstorming→spec→슬라이스→캐논). E2 이후, born-live(E2 인프라 소비).
