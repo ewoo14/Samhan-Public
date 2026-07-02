@@ -19,23 +19,32 @@
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useQueryClient } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
+import { Badge, Button } from '@samhan/design-system'
 import {
   DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_LABEL,
   DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_TONE,
   DISPATCH_TASK_STATUS_TONE,
   MATCHED_DRIVER_SOURCE_LABEL,
   formatDispatchVehicleGroupLabel,
+  isEditableStatus,
   type DispatchTaskStatus,
   type DispatchVehicleGroupResponse,
   type DispatchVehicleGroupSlipResponse,
   type MatchedDriverResponse,
 } from '../../../api/dispatchTask'
+import {
+  DELETED_ROW_TEXT_STYLE,
+  activeSlipRows,
+  deletedBadgeAriaLabel,
+  deletedBadgeLabel,
+} from '../dispatchDeletedRow'
+import { serverErrorMessage } from '../dispatchErrorMessage'
 import {
   type SlipBoardResponse,
 } from '../../../api/dispatchBoard'
@@ -46,9 +55,12 @@ import {
   useAssignSlipToGroupMutation,
   useDeleteVehicleGroupMutation,
   useRemoveSlipFromGroupMutation,
+  useRestoreSlipFromGroupMutation,
+  useRestoreVehicleGroupMutation,
 } from '../hooks/useDispatchTask'
 import { DISPATCH_BOARD_QUERY_KEY } from '../hooks/useUnDispatchedSlipsQuery'
 import type { DispatchGroupSlipDragData } from '../DispatchBoardPage'
+import { usePermissions } from '../../../hooks/usePermissions'
 
 interface VehicleGroupCardProps {
   taskId: string | null
@@ -78,18 +90,33 @@ export function VehicleGroupCard({
   const deleteMutation = useDeleteVehicleGroupMutation(taskId)
   const assignMutation = useAssignSlipToGroupMutation(taskId)
   const removeSlipMutation = useRemoveSlipFromGroupMutation(taskId)
+  const restoreGroupMutation = useRestoreVehicleGroupMutation(taskId)
+  const restoreSlipMutation = useRestoreSlipFromGroupMutation(taskId)
   const queryClient = useQueryClient()
+  const { canAccess } = usePermissions()
   const slipNoInputRef = useRef<HTMLInputElement | null>(null)
   const [slipNoError, setSlipNoError] = useState<string | null>(null)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
 
-  const slipIdsSorted = group.slips.map((s) => s.slipId)
+  const groupDeleted = group.isDeleted === true
+  // 게이팅/카운트/정렬은 활성 행 기준 — 삭제행(취소선)은 영구 잔존하므로 length 직접 사용 금지.
+  const activeRows = activeSlipRows(group)
+  const sortableRowIds = activeRows.map((row) => row.id)
   const vehicleLabel = formatDispatchVehicleGroupLabel(group)
   const duplicateSlipIdSet = useMemo(() => new Set(duplicateSlipIds), [duplicateSlipIds])
   const statusTone = DISPATCH_TASK_STATUS_TONE[taskStatus]
   const groupDispatchStatus = group.dispatchStatus ?? 'PENDING'
   const groupStatusTone = DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_TONE[groupDispatchStatus]
   const groupDispatched = groupDispatchStatus === 'DISPATCHED'
-  const canMutateGroup = canEdit && !groupDispatched
+  const canMutateGroup = canEdit && !groupDispatched && !groupDeleted
+  // 복원은 BE requireDraftTask 와 동일하게 DRAFT 한정 — 비-DRAFT 에서 노출하면 항상 409.
+  const canRestore =
+    !!taskId &&
+    canEdit &&
+    isEditableStatus(taskStatus) &&
+    canAccess('dispatch.board', 'restore')
+  // 결함계열 일관 — 발송(DISPATCHED) 그룹은 복원 불가(BE restoreVehicleGroup 409 동형).
+  const canRestoreGroup = groupDeleted && !groupDispatched && canRestore
   const { setNodeRef, isOver } = useDroppable({
     id: `group:${group.id}`,
     data: { type: 'group', groupId: group.id },
@@ -151,6 +178,7 @@ export function VehicleGroupCard({
         style={{
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap',
           gap: 8,
           padding: '8px 12px',
           borderBottom: '1px solid var(--color-neutral-100)',
@@ -162,21 +190,29 @@ export function VehicleGroupCard({
         <input
           type="checkbox"
           checked={selected}
-          disabled={!canMutateGroup || group.slips.length === 0}
+          disabled={!canMutateGroup || activeRows.length === 0}
           onChange={(event) => onSelectedChange(event.currentTarget.checked)}
           data-testid={`dispatch-board-vehicle-group-${group.sequence}-select`}
           aria-label={`${vehicleLabel} #${group.sequence} 선택 전송 대상`}
           style={{ width: 16, height: 16 }}
         />
         <span aria-hidden="true" style={{ fontSize: 16 }}>🚚</span>
-        <span style={{ fontWeight: 600, fontSize: 13, color: statusTone.color }}>
+        <span
+          data-testid={`dispatch-board-vehicle-group-${group.sequence}-deleted-label`}
+          style={{
+            fontWeight: 600,
+            fontSize: 13,
+            color: statusTone.color,
+            ...(groupDeleted ? DELETED_ROW_TEXT_STYLE : null),
+          }}
+        >
           {vehicleLabel} #{group.sequence}
         </span>
         <span
           style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}
           data-testid={`dispatch-board-vehicle-group-${group.sequence}-count`}
         >
-          ({group.slips.length}건)
+          ({activeRows.length}건)
         </span>
         <span
           data-testid={`dispatch-board-vehicle-group-${group.sequence}-dispatch-status`}
@@ -193,7 +229,24 @@ export function VehicleGroupCard({
         >
           {DISPATCH_VEHICLE_GROUP_DISPATCH_STATUS_LABEL[groupDispatchStatus]}
         </span>
-        {matchedDriver ? (
+        {groupDeleted ? (
+          <Badge
+            variant="neutral"
+            title={deletedBadgeAriaLabel(group.deletedByName, group.deletedAt)}
+            aria-label={deletedBadgeAriaLabel(group.deletedByName, group.deletedAt)}
+            data-testid={`dispatch-board-vehicle-group-${group.sequence}-deleted-badge`}
+            style={{
+              maxWidth: 160,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {deletedBadgeLabel(group.deletedByName)}
+          </Badge>
+        ) : null}
+        {matchedDriver && !groupDeleted ? (
           <span
             data-testid={`dispatch-board-vehicle-group-${group.sequence}-driver`}
             style={{
@@ -206,15 +259,17 @@ export function VehicleGroupCard({
             기사 {matchedDriver.driverName} ({matchedDriverLabel}){' '}
             {matchedDriver.driverPhoneNumber?.trim() || '-'} · {matchedDriver.vehiclePlateNumber?.trim() || '-'}
           </span>
-        ) : (
+        ) : null}
+        {/* 삭제 그룹에서는 죽은 어포던스인 × 를 렌더하지 않는다 — 유일 액션은 [복원]. */}
+        {!matchedDriver && !groupDeleted ? (
           <button
             type="button"
-            disabled={!canMutateGroup || group.slips.length > 0 || deleteMutation.isPending}
+            disabled={!canMutateGroup || activeRows.length > 0 || deleteMutation.isPending}
             onClick={() => deleteMutation.mutate(group.id)}
             data-testid={`dispatch-board-vehicle-group-${group.sequence}-delete`}
             aria-label={`${vehicleLabel} #${group.sequence} 그룹 삭제`}
             title={
-              group.slips.length > 0
+              activeRows.length > 0
                 ? '전표가 남아있으면 삭제할 수 없습니다'
                 : '빈 그룹 삭제'
             }
@@ -223,9 +278,9 @@ export function VehicleGroupCard({
               background: 'transparent',
               border: 'none',
               cursor:
-                canMutateGroup && group.slips.length === 0 ? 'pointer' : 'not-allowed',
+                canMutateGroup && activeRows.length === 0 ? 'pointer' : 'not-allowed',
               color:
-                canMutateGroup && group.slips.length === 0
+                canMutateGroup && activeRows.length === 0
                   ? 'var(--color-danger-500)'
                   : 'var(--color-neutral-300)',
               fontSize: 16,
@@ -234,7 +289,31 @@ export function VehicleGroupCard({
           >
             ×
           </button>
-        )}
+        ) : null}
+        {canRestoreGroup ? (
+          <span style={{ marginLeft: 'auto' }}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={restoreGroupMutation.isPending}
+              loading={restoreGroupMutation.isPending}
+              onClick={() =>
+                restoreGroupMutation.mutate(group.id, {
+                  onSuccess: () => setRestoreError(null),
+                  onError: (error) =>
+                    setRestoreError(
+                      serverErrorMessage(error) ?? '복원에 실패했습니다. 배차 상태를 확인하세요.',
+                    ),
+                })
+              }
+              data-testid={`dispatch-board-vehicle-group-${group.sequence}-restore`}
+              aria-label={`${vehicleLabel} #${group.sequence} 그룹 복원`}
+            >
+              복원
+            </Button>
+          </span>
+        ) : null}
       </header>
 
       <div style={{ padding: 8, background: 'var(--color-neutral-0)' }}>
@@ -302,6 +381,23 @@ export function VehicleGroupCard({
             {slipNoError}
           </div>
         ) : null}
+        {restoreError ? (
+          <div
+            role="alert"
+            data-testid={`dispatch-board-vehicle-group-${group.sequence}-restore-error`}
+            style={{
+              marginBottom: 8,
+              padding: 6,
+              border: '1px solid var(--color-danger-200, #FECACA)',
+              borderRadius: 4,
+              background: 'var(--color-danger-50, #FEF2F2)',
+              color: 'var(--color-danger-700, #B91C1C)',
+              fontSize: 12,
+            }}
+          >
+            {restoreError}
+          </div>
+        ) : null}
         {group.slips.length === 0 ? (
           <div
             style={{
@@ -316,7 +412,7 @@ export function VehicleGroupCard({
             여기로 출고전표를 드래그하세요
           </div>
         ) : (
-          <SortableContext items={slipIdsSorted} strategy={verticalListSortingStrategy}>
+          <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
             <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
               {group.slips.map((row) => (
                 <SortableSlipRow
@@ -324,13 +420,28 @@ export function VehicleGroupCard({
                   groupId={group.id}
                   row={row}
                   canEdit={canMutateGroup}
-                  isDuplicate={duplicateSlipIdSet.has(row.slipId)}
+                  canRestore={!groupDeleted && !groupDispatched && canRestore}
+                  restorePending={restoreSlipMutation.isPending}
+                  isDuplicate={row.isDeleted !== true && duplicateSlipIdSet.has(row.slipId)}
                   onOpenDetail={() => onOpenSlipDetail(row.slipId)}
                   onRemove={() =>
                     removeSlipMutation.mutate({
                       groupId: group.id,
                       slipId: row.slipId,
                     })
+                  }
+                  onRestore={() =>
+                    restoreSlipMutation.mutate(
+                      { groupId: group.id, slipId: row.slipId, mappingId: row.id },
+                      {
+                        onSuccess: () => setRestoreError(null),
+                        onError: (error) =>
+                          setRestoreError(
+                            serverErrorMessage(error) ??
+                              '복원에 실패했습니다. 전표/그룹 상태를 확인하세요.',
+                          ),
+                      },
+                    )
                   }
                 />
               ))}
@@ -351,17 +462,25 @@ function SortableSlipRow({
   groupId,
   row,
   canEdit,
+  canRestore,
+  restorePending,
   isDuplicate,
   onOpenDetail,
   onRemove,
+  onRestore,
 }: {
   groupId: string
   row: DispatchVehicleGroupSlipResponse
   canEdit: boolean
+  canRestore: boolean
+  restorePending: boolean
   isDuplicate: boolean
   onOpenDetail: () => void
   onRemove: () => void
+  onRestore: () => void
 }) {
+  const rowDeleted = row.isDeleted === true
+  const canMutateRow = canEdit && !rowDeleted
   const dragData: DispatchGroupSlipDragData = {
     type: 'group-slip',
     groupId,
@@ -375,9 +494,11 @@ function SortableSlipRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: row.slipId, data: dragData })
+  // sortable id 는 매핑 UUID(row.id) — slipId 를 쓰면 "제거 후 같은 전표 재추가" 시 취소선
+  // 행과 활성 행의 id 가 충돌해 dnd-kit 정렬이 오동작한다. reorder 계약은 dragData.slipId 사용.
+  } = useSortable({ id: row.id, data: dragData, disabled: !canMutateRow })
 
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
@@ -415,13 +536,13 @@ function SortableSlipRow({
         type="button"
         {...listeners}
         {...attributes}
-        disabled={!canEdit}
+        disabled={!canMutateRow}
         aria-label={`정차 ${row.sequence} ${row.slip.slipNo} ${row.slip.partnerName} 드래그`}
-        title={canEdit ? '드래그로 순서 변경' : '편집 불가'}
+        title={canMutateRow ? '드래그로 순서 변경' : '편집 불가'}
         style={{
           background: 'transparent',
           border: 'none',
-          cursor: canEdit ? 'grab' : 'not-allowed',
+          cursor: canMutateRow ? 'grab' : 'not-allowed',
           padding: 0,
           color: 'var(--color-neutral-500)',
         }}
@@ -432,13 +553,15 @@ function SortableSlipRow({
       <button
         type="button"
         onClick={onOpenDetail}
+        disabled={rowDeleted}
         style={{
           flex: 1,
+          minWidth: 0,
           textAlign: 'left',
           background: 'transparent',
           border: 'none',
           padding: 0,
-          cursor: 'pointer',
+          cursor: rowDeleted ? 'default' : 'pointer',
           fontSize: 12,
           color: 'var(--color-neutral-800)',
         }}
@@ -454,26 +577,77 @@ function SortableSlipRow({
             ⚠
           </span>
         ) : null}
-        <span style={{ fontWeight: 600, marginRight: 6 }}>{row.slip.slipNo}</span>
-        <span>{row.slip.partnerName}</span>
+        <span
+          data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-deleted-label`}
+          style={{
+            fontWeight: 600,
+            marginRight: 6,
+            ...(rowDeleted ? DELETED_ROW_TEXT_STYLE : null),
+          }}
+        >
+          {row.slip.slipNo}
+        </span>
+        <span
+          style={{
+            minWidth: 0,
+            overflowWrap: 'anywhere',
+            ...(rowDeleted ? DELETED_ROW_TEXT_STYLE : null),
+          }}
+        >
+          {row.slip.partnerName}
+        </span>
       </button>
-      <button
-        type="button"
-        onClick={onRemove}
-        disabled={!canEdit}
-        aria-label={`정차 ${row.sequence} ${row.slip.slipNo} 그룹에서 제거`}
-        data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-remove`}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          color: canEdit ? 'var(--color-danger-500)' : 'var(--color-neutral-300)',
-          cursor: canEdit ? 'pointer' : 'not-allowed',
-          fontSize: 14,
-          padding: 4,
-        }}
-      >
-        ×
-      </button>
+      {rowDeleted ? (
+        <Badge
+          variant="neutral"
+          title={deletedBadgeAriaLabel(row.deletedByName, row.deletedAt)}
+          aria-label={deletedBadgeAriaLabel(row.deletedByName, row.deletedAt)}
+          data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-deleted-badge`}
+          style={{
+            maxWidth: 160,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {deletedBadgeLabel(row.deletedByName)}
+        </Badge>
+      ) : null}
+      {rowDeleted && canRestore ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={restorePending}
+          loading={restorePending}
+          onClick={onRestore}
+          data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-restore`}
+          aria-label={`정차 ${row.sequence} ${row.slip.slipNo} 복원`}
+        >
+          복원
+        </Button>
+      ) : null}
+      {/* 삭제행에서는 죽은 어포던스인 × 를 렌더하지 않는다 — 유일 액션은 [복원]. */}
+      {!rowDeleted ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={!canMutateRow}
+          aria-label={`정차 ${row.sequence} ${row.slip.slipNo} 그룹에서 제거`}
+          data-testid={`dispatch-board-group-slip-${row.slip.slipNo}-remove`}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: canMutateRow ? 'var(--color-danger-500)' : 'var(--color-neutral-300)',
+            cursor: canMutateRow ? 'pointer' : 'not-allowed',
+            fontSize: 14,
+            padding: 4,
+          }}
+        >
+          ×
+        </button>
+      ) : null}
     </li>
   )
 }

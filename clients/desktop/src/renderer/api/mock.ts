@@ -8491,7 +8491,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       return mockError(400, 'INVALID_INPUT', '허용되지 않은 차종/톤수 조합')
     }
 
-    const sequence = task.vehicleGroups.length + 1
+    const sequence = nextMockDispatchVehicleGroupSequence(task)
     const vehicleType = mockDeriveLegacyVehicleType(vehicleBodyType, tonnage)
     const created: DispatchVehicleGroupResponse = {
       id: `33333333-dddd-4ddd-8ddd-${String(mockDispatchVehicleGroupCreateSequence++).padStart(12, '0')}`,
@@ -8503,6 +8503,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       tonnageDisplay: tonnage ? DISPATCH_TONNAGE_LABEL[tonnage] : null,
       dispatchStatus: 'PENDING',
       sequence,
+      isDeleted: false,
+      deletedAt: null,
+      deletedByName: null,
       slips: [],
     }
     task.vehicleGroups.push(created)
@@ -8519,7 +8522,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const groupId = decodeURIComponent(assignDispatchSlipMatch[2]!)
     const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
     const group = task?.vehicleGroups.find((item) => item.id === groupId)
-    if (!task || !group) {
+    if (!task || !group || group.isDeleted) {
+      // 삭제(취소선) 그룹은 BE @SQLRestriction 으로 보이지 않으므로 404 동형.
       return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
     }
     if (group.dispatchStatus === 'DISPATCHED') {
@@ -8540,6 +8544,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       id: `44444444-dddd-4ddd-8ddd-${String(Date.now()).slice(-12)}`,
       slipId,
       sequence: group.slips.length + 1,
+      isDeleted: false,
+      deletedAt: null,
+      deletedByName: null,
       slip: {
         slipNo: source.slipNo,
         partnerCode: source.partnerCode,
@@ -8550,8 +8557,197 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       },
     }
     group.slips.push(created)
+    // 실서버는 매 GET read-time 정렬(활성 먼저+삭제행 뒤)이므로 신규 활성행이 취소선 위로 오도록 동형.
+    sortMockDispatchDeletedRows(task)
     refreshMockDuplicateSlipIds(task)
     return envelope(created)
+  }
+
+  const restoreDispatchVehicleGroupMatch = url.match(
+    /\/admin\/dispatch-tasks\/([^/?]+)\/vehicle-groups\/([^/?]+)\/restore(?:\?.*)?$/,
+  )
+  if (method === 'POST' && restoreDispatchVehicleGroupMatch) {
+    const denied =
+      mockRequirePermission('dispatch.board', 'restore') ??
+      mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const taskId = decodeURIComponent(restoreDispatchVehicleGroupMatch[1]!)
+    const groupId = decodeURIComponent(restoreDispatchVehicleGroupMatch[2]!)
+    const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
+    const group = task?.vehicleGroups.find((item) => item.id === groupId)
+    if (!task || !group) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
+    }
+    // BE isDispatchPending 동형 — 발송(부분발송 포함) 그룹은 복원 불가.
+    if ((group.dispatchStatus ?? 'PENDING') !== 'PENDING') {
+      return mockError(409, 'CONFLICT', '이미 발송된 차량 그룹은 복원할 수 없습니다.')
+    }
+    // BE requireDraftTask 동형 — 비-DRAFT 복원은 409.
+    if (task.status !== 'DRAFT') {
+      return mockError(409, 'CONFLICT', `배차 작업 편집은 DRAFT 상태에서만 가능합니다 — 현재=${task.status}`)
+    }
+    restoreMockDispatchVehicleGroup(group)
+    sortMockDispatchDeletedRows(task)
+    refreshMockDuplicateSlipIds(task)
+    syncMockDispatchTaskSummary(task)
+    return envelope(null)
+  }
+
+  const deleteDispatchVehicleGroupMatch = url.match(
+    /\/admin\/dispatch-tasks\/([^/?]+)\/vehicle-groups\/([^/?]+)(?:\?.*)?$/,
+  )
+  if (method === 'DELETE' && deleteDispatchVehicleGroupMatch) {
+    const denied = mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const taskId = decodeURIComponent(deleteDispatchVehicleGroupMatch[1]!)
+    const groupId = decodeURIComponent(deleteDispatchVehicleGroupMatch[2]!)
+    const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
+    const group = task?.vehicleGroups.find((item) => item.id === groupId)
+    if (!task || !group) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
+    }
+    if (group.isDeleted) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
+    }
+    // BE removeVehicleGroup 동형 — 부분발송 후 DRAFT 에 남은 발송완료 그룹도 삭제 불가.
+    if ((group.dispatchStatus ?? 'PENDING') !== 'PENDING') {
+      return mockError(409, 'CONFLICT', '이미 발송된 차량 그룹은 삭제할 수 없습니다.')
+    }
+    if (task.status !== 'DRAFT') {
+      return mockError(409, 'CONFLICT', `배차 작업 편집은 DRAFT 상태에서만 가능합니다 — 현재=${task.status}`)
+    }
+    markMockDispatchVehicleGroupDeleted(group, mockDispatchDeletedByName(config))
+    sortMockDispatchDeletedRows(task)
+    refreshMockDuplicateSlipIds(task)
+    syncMockDispatchTaskSummary(task)
+    return envelope(null)
+  }
+
+  const restoreDispatchGroupSlipMatch = url.match(
+    /\/admin\/dispatch-tasks\/([^/?]+)\/vehicle-groups\/([^/?]+)\/slips\/([^/?]+)\/restore(?:\?.*)?$/,
+  )
+  if (method === 'POST' && restoreDispatchGroupSlipMatch) {
+    const denied =
+      mockRequirePermission('dispatch.board', 'restore') ??
+      mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const taskId = decodeURIComponent(restoreDispatchGroupSlipMatch[1]!)
+    const groupId = decodeURIComponent(restoreDispatchGroupSlipMatch[2]!)
+    const slipId = decodeURIComponent(restoreDispatchGroupSlipMatch[3]!)
+    // 같은 (그룹,전표)에 삭제 tombstone 이 여러 건이면 상세가 행별 mappingId 로 특정 행을 지정한다.
+    const mappingId = new URLSearchParams(
+      url.includes('?') ? url.slice(url.indexOf('?') + 1) : '',
+    ).get('mappingId')
+    const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
+    const group = task?.vehicleGroups.find((item) => item.id === groupId)
+    if (!task || !group) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 전표 매핑이 존재하지 않습니다.')
+    }
+    const deletedCandidates = group.slips.filter((item) => item.slipId === slipId && item.isDeleted)
+    if (!mappingId && deletedCandidates.length > 1) {
+      return mockError(409, 'CONFLICT', '삭제된 전표 매핑이 여러 건입니다. 상세 행의 복원 버튼으로 복원하세요.')
+    }
+    const row = mappingId
+      ? group.slips.find((item) => item.id === mappingId && item.slipId === slipId)
+      : (deletedCandidates[0] ?? group.slips.find((item) => item.slipId === slipId))
+    if (!row) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 전표 매핑이 존재하지 않습니다.')
+    }
+    if (group.isDeleted) {
+      return mockError(409, 'CONFLICT', '삭제된 차량 그룹 안의 전표는 그룹 복원 후 복원하세요.')
+    }
+    // BE isDispatchPending 동형 — 발송(부분발송 포함)된 그룹의 전표는 복원 불가(실 BE 409).
+    if ((group.dispatchStatus ?? 'PENDING') !== 'PENDING') {
+      return mockError(409, 'CONFLICT', '이미 발송된 차량 그룹의 전표는 복원할 수 없습니다.')
+    }
+    // BE requireDraftTask 동형 — 비-DRAFT 복원은 409.
+    if (task.status !== 'DRAFT') {
+      return mockError(409, 'CONFLICT', `배차 작업 편집은 DRAFT 상태에서만 가능합니다 — 현재=${task.status}`)
+    }
+    // BE 활성 중복 가드 동형 — 취소선 기간 중 같은 전표가 재배정되어 활성 매핑이 있으면 409.
+    const activeElsewhere = MOCK_DISPATCH_TASK_DETAILS.some((t) =>
+      t.vehicleGroups.some((g) =>
+        g.slips.some((r) => r.slipId === slipId && r.isDeleted !== true && r.id !== row.id)))
+    if (activeElsewhere) {
+      return mockError(409, 'CONFLICT', '이미 활성 배차 매핑이 있는 전표입니다 — 기존 매핑을 제거한 뒤 복원하세요.')
+    }
+    if (row.slip.dispatchStatus && row.slip.dispatchStatus !== 'UNDISPATCHED') {
+      return mockError(409, 'CONFLICT', `미배차 전표만 복원할 수 있습니다: ${row.slip.dispatchStatus}`)
+    }
+    restoreMockDispatchGroupSlip(row)
+    sortMockDispatchDeletedRows(task)
+    refreshMockDuplicateSlipIds(task)
+    syncMockDispatchTaskSummary(task)
+    return envelope(null)
+  }
+
+  const deleteDispatchGroupSlipMatch = url.match(
+    /\/admin\/dispatch-tasks\/([^/?]+)\/vehicle-groups\/([^/?]+)\/slips\/([^/?]+)(?:\?.*)?$/,
+  )
+  if (method === 'DELETE' && deleteDispatchGroupSlipMatch) {
+    const denied = mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const taskId = decodeURIComponent(deleteDispatchGroupSlipMatch[1]!)
+    const groupId = decodeURIComponent(deleteDispatchGroupSlipMatch[2]!)
+    const slipId = decodeURIComponent(deleteDispatchGroupSlipMatch[3]!)
+    const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
+    const group = task?.vehicleGroups.find((item) => item.id === groupId)
+    if (!task || !group || group.isDeleted) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 전표 매핑이 존재하지 않습니다.')
+    }
+    if ((group.dispatchStatus ?? 'PENDING') !== 'PENDING') {
+      return mockError(409, 'CONFLICT', '이미 발송된 차량 그룹의 전표는 제거할 수 없습니다.')
+    }
+    if (task.status !== 'DRAFT') {
+      return mockError(409, 'CONFLICT', `배차 작업 편집은 DRAFT 상태에서만 가능합니다 — 현재=${task.status}`)
+    }
+    const row = group.slips.find((item) => item.slipId === slipId && item.isDeleted !== true)
+    if (!row) {
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 전표 매핑이 존재하지 않습니다.')
+    }
+    markMockDispatchGroupSlipDeleted(row, mockDispatchDeletedByName(config))
+    sortMockDispatchDeletedRows(task)
+    refreshMockDuplicateSlipIds(task)
+    syncMockDispatchTaskSummary(task)
+    return envelope(null)
+  }
+
+  // PUT /admin/dispatch-tasks/{taskId}/vehicle-groups/{groupId}/slips/order — 그룹 내 순서 재정렬.
+  // BE reorderSlips 동형: 활성 매핑만 대상, 목록에 없는 slipId = 400 (삭제행이 섞이면 그대로 재현).
+  const reorderDispatchGroupSlipsMatch = url.match(
+    /\/admin\/dispatch-tasks\/([^/?]+)\/vehicle-groups\/([^/?]+)\/slips\/order(?:\?.*)?$/,
+  )
+  if (method === 'PUT' && reorderDispatchGroupSlipsMatch) {
+    const denied = mockRequirePermission('dispatch.board', 'update')
+    if (denied) return denied
+    const taskId = decodeURIComponent(reorderDispatchGroupSlipsMatch[1]!)
+    const groupId = decodeURIComponent(reorderDispatchGroupSlipsMatch[2]!)
+    const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
+    const group = task?.vehicleGroups.find((item) => item.id === groupId)
+    if (!task || !group || group.isDeleted) {
+      // 실 BE findGroupOrThrow(@SQLRestriction is_deleted=false) 동형 — 삭제 그룹은 404.
+      return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
+    }
+    if ((group.dispatchStatus ?? 'PENDING') !== 'PENDING') {
+      return mockError(409, 'CONFLICT', '이미 발송된 차량 그룹의 전표 순서는 변경할 수 없습니다.')
+    }
+    if (task.status !== 'DRAFT') {
+      return mockError(409, 'CONFLICT', `배차 작업 편집은 DRAFT 상태에서만 가능합니다 — 현재=${task.status}`)
+    }
+    const body = parseMockBody(config) as { orderedSlipIds?: string[] }
+    const orderedSlipIds = Array.isArray(body.orderedSlipIds) ? body.orderedSlipIds : []
+    const activeRows = new Map(
+      group.slips.filter((r) => r.isDeleted !== true).map((r) => [r.slipId, r] as const))
+    for (const [index, orderedSlipId] of orderedSlipIds.entries()) {
+      const target = activeRows.get(orderedSlipId)
+      if (!target) {
+        return mockError(400, 'INVALID_INPUT', `재정렬에 포함된 slip 이 그룹에 존재하지 않습니다: ${orderedSlipId}`)
+      }
+      target.sequence = index + 1
+    }
+    group.slips.sort((a, b) =>
+      (a.isDeleted === true ? 1 : 0) - (b.isDeleted === true ? 1 : 0) || a.sequence - b.sequence)
+    return envelope(null)
   }
 
   const dispatchTaskSendMatch = url.match(/\/admin\/dispatch-tasks\/([^/?]+)\/dispatch(?:\?.*)?$/)
@@ -8566,26 +8762,27 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const body = parseMockBody(config) as { groupIds?: string[] }
     const groupIds = Array.isArray(body.groupIds) ? body.groupIds : undefined
     window.__SAMHAN_MOCK_LAST_DISPATCH_BODY__ = groupIds ? { groupIds } : {}
+    const activeGroups = task.vehicleGroups.filter((group) => group.isDeleted !== true)
     // Round C P1-2 BE parity — 발송 이력이 있는 task 의 추가 부분발송 명시 차단 (D-DMR-06).
-    if (task.vehicleGroups.some((group) => group.dispatchStatus !== 'PENDING')) {
+    if (activeGroups.some((group) => group.dispatchStatus !== 'PENDING')) {
       return mockError(409, 'CONFLICT', '이미 아로로지스로 발송된 배차입니다 — 수정하려면 [재배차 시작] 후 전체 재발송하세요')
     }
     if (task.status !== 'DRAFT') {
       return mockError(409, 'CONFLICT', `발송 가능한 미발송 차량 그룹이 없습니다 — 현재=${task.status}`)
     }
-    const targetGroupIds = new Set(groupIds ?? task.vehicleGroups.map((group) => group.id))
-    const targetGroups = task.vehicleGroups
+    const targetGroupIds = new Set(groupIds ?? activeGroups.map((group) => group.id))
+    const targetGroups = activeGroups
       .filter((group) => targetGroupIds.has(group.id) && group.dispatchStatus === 'PENDING')
     if (targetGroups.length === 0) {
       return mockError(400, 'INVALID_INPUT', '발송할 미발송 차량 그룹이 없습니다.')
     }
     targetGroups.forEach((group) => {
       group.dispatchStatus = 'DISPATCHED'
-      group.slips.forEach((row) => {
+      group.slips.filter((row) => row.isDeleted !== true).forEach((row) => {
         row.slip.dispatchStatus = 'DISPATCHING'
       })
     })
-    task.status = task.vehicleGroups.every((group) => group.dispatchStatus === 'DISPATCHED')
+    task.status = activeGroups.every((group) => group.dispatchStatus === 'DISPATCHED')
       ? 'DISPATCHING'
       : 'DRAFT'
     refreshMockDuplicateSlipIds(task)
@@ -9559,7 +9756,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const groupId = decodeURIComponent(setMatchedDriverMatch[2]!)
     const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
     const group = task?.vehicleGroups.find((item) => item.id === groupId)
-    if (!task || !group) {
+    if (!task || !group || group.isDeleted) {
+      // 실 BE findByIdAndIsDeletedFalse 동형 — 삭제 그룹은 404.
       return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
     }
     if (task.status !== 'DRAFT' && task.status !== 'DISPATCHING' && task.status !== 'DISPATCHED') {
@@ -9608,7 +9806,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const groupId = decodeURIComponent(manualDispatchCompleteMatch[2]!)
     const task = MOCK_DISPATCH_TASK_DETAILS.find((item) => item.id === taskId)
     const group = task?.vehicleGroups.find((item) => item.id === groupId)
-    if (!task || !group) {
+    if (!task || !group || group.isDeleted) {
+      // 실 BE findByIdAndIsDeletedFalse 동형 — 삭제 그룹은 404.
       return mockError(404, 'NOT_FOUND', 'DispatchTask 차량 그룹이 존재하지 않습니다.')
     }
     if (task.status !== 'DRAFT' && task.status !== 'DISPATCHING') {
@@ -13776,13 +13975,131 @@ function mockDeriveLegacyVehicleType(
 
 function refreshMockDuplicateSlipIds(task: DispatchTaskResponse): DispatchTaskResponse {
   const counts = new Map<string, number>()
+  ensureMockDispatchDeletedMeta(task)
   for (const row of task.vehicleGroups.flatMap((group) => group.slips)) {
+    if (row.isDeleted) continue
     counts.set(row.slipId, (counts.get(row.slipId) ?? 0) + 1)
   }
   task.duplicateSlipIds = [...counts.entries()]
     .filter(([, count]) => count > 1)
     .map(([slipId]) => slipId)
   return task
+}
+
+function ensureMockDispatchDeletedMeta(task: DispatchTaskResponse): DispatchTaskResponse {
+  task.vehicleGroups.forEach((group) => {
+    group.isDeleted = group.isDeleted ?? false
+    group.deletedAt = group.deletedAt ?? null
+    group.deletedByName = group.deletedByName ?? null
+    group.slips.forEach((row) => {
+      row.isDeleted = row.isDeleted ?? false
+      row.deletedAt = row.deletedAt ?? null
+      row.deletedByName = row.deletedByName ?? null
+    })
+  })
+  return task
+}
+
+function mockDispatchDeletedByName(config: AxiosRequestConfig): string | null {
+  const raw = readMockHeader(config, 'X-User-Name').trim()
+  if (!raw) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    ? null
+    : raw
+}
+
+function markMockDispatchGroupSlipDeleted(
+  row: DispatchVehicleGroupSlipResponse,
+  deletedByName: string | null,
+  deletedAt = new Date().toISOString(),
+): void {
+  row.isDeleted = true
+  row.deletedAt = deletedAt
+  row.deletedByName = deletedByName
+}
+
+function restoreMockDispatchGroupSlip(row: DispatchVehicleGroupSlipResponse): void {
+  row.isDeleted = false
+  row.deletedAt = null
+  row.deletedByName = null
+}
+
+export function isMockDispatchGroupSlipRestorable(
+  row: DispatchVehicleGroupSlipResponse,
+  activeElsewhere: boolean,
+): boolean {
+  return !activeElsewhere && row.slip.dispatchStatus === 'UNDISPATCHED'
+}
+
+function markMockDispatchVehicleGroupDeleted(
+  group: DispatchVehicleGroupResponse,
+  deletedByName: string | null,
+): void {
+  const deletedAt = new Date().toISOString()
+  group.isDeleted = true
+  group.deletedAt = deletedAt
+  group.deletedByName = deletedByName
+  group.slips.forEach((row) => {
+    if (!row.isDeleted) markMockDispatchGroupSlipDeleted(row, deletedByName, deletedAt)
+  })
+}
+
+function restoreMockDispatchVehicleGroup(group: DispatchVehicleGroupResponse): void {
+  // BE restoreVehicleGroup 멱등 동형 — 이미 활성 그룹이면 no-op(무관 tombstone 스윕 방지).
+  if (group.isDeleted !== true) return
+  // BE cascade 동형 — 그룹 삭제 시 주입된 공유 deletedAt 등호 매칭 행만 함께 복원한다
+  // (같은 사용자가 개별 삭제한 행은 deletedAt 이 달라 잔존). 취소선 기간 중 다른 그룹에
+  // 재배정되어 활성 매핑이 있는 전표도 이중 배차 방지를 위해 복원에서 제외.
+  const task = MOCK_DISPATCH_TASK_DETAILS.find((item) =>
+    item.vehicleGroups.some((candidate) => candidate.id === group.id))
+  if (task?.vehicleGroups.some((candidate) =>
+    candidate.id !== group.id && candidate.isDeleted !== true && candidate.sequence === group.sequence)) {
+    group.sequence = nextMockDispatchVehicleGroupSequence(task)
+  }
+  const cascadeDeletedAt = group.deletedAt
+  group.isDeleted = false
+  group.deletedAt = null
+  group.deletedByName = null
+  group.slips.forEach((row) => {
+    if (!row.isDeleted) return
+    if (cascadeDeletedAt !== null && row.deletedAt !== cascadeDeletedAt) return
+    const activeElsewhere = MOCK_DISPATCH_TASK_DETAILS.some((t) =>
+      t.vehicleGroups.some((g) =>
+        g.slips.some((r) => r.slipId === row.slipId && r.isDeleted !== true && r.id !== row.id)))
+    if (!isMockDispatchGroupSlipRestorable(row, activeElsewhere)) return
+    restoreMockDispatchGroupSlip(row)
+  })
+}
+
+function nextMockDispatchVehicleGroupSequence(task: DispatchTaskResponse): number {
+  return Math.max(
+    0,
+    ...task.vehicleGroups
+      .filter((group) => group.isDeleted !== true)
+      .map((group) => group.sequence),
+  ) + 1
+}
+
+/**
+ * 삭제행 정렬 — BE read model(sortGroups/sortMappings) 동형: 활성(sequence 순) 우선,
+ * 삭제행(deletedAt 순)은 뒤로. mark/restore 후 호출해 mock QA 화면 배치를 실서버와 일치시킨다.
+ */
+function sortMockDispatchDeletedRows(task: DispatchTaskResponse): void {
+  const deletedRank = (isDeleted: boolean | null | undefined) => (isDeleted === true ? 1 : 0)
+  task.vehicleGroups.sort((a, b) =>
+    deletedRank(a.isDeleted) - deletedRank(b.isDeleted)
+      || (a.isDeleted === true
+        ? (a.deletedAt ?? '').localeCompare(b.deletedAt ?? '')
+        : 0)
+      || a.sequence - b.sequence)
+  task.vehicleGroups.forEach((group) => {
+    group.slips.sort((a, b) =>
+      deletedRank(a.isDeleted) - deletedRank(b.isDeleted)
+        || (a.isDeleted === true
+          ? (a.deletedAt ?? '').localeCompare(b.deletedAt ?? '')
+          : 0)
+        || a.sequence - b.sequence)
+  })
 }
 
 /**
@@ -13796,10 +14113,17 @@ function refreshMockDuplicateSlipIds(task: DispatchTaskResponse): DispatchTaskRe
 function syncMockDispatchTaskSummary(task: DispatchTaskResponse): void {
   const summary = MOCK_DISPATCH_TASK_SUMMARIES.find((row) => row.taskCode === task.taskCode)
   if (!summary) return
+  const activeGroups = task.vehicleGroups.filter((group) => group.isDeleted !== true)
+  const activeSlips = activeGroups.flatMap((group) =>
+    group.slips.filter((row) => row.isDeleted !== true))
+  const partnerNames = Array.from(new Set(activeSlips.map((row) => row.slip.partnerName)))
+  const head = partnerNames.slice(0, 3).join(', ')
+  const rest = partnerNames.length - 3
   summary.status = task.status
   summary.arologisDispatchId = task.arologisDispatchId
-  summary.vehicleGroupCount = task.vehicleGroups.length
-  summary.slipCount = task.vehicleGroups.reduce((sum, group) => sum + group.slips.length, 0)
+  summary.vehicleGroupCount = activeGroups.length
+  summary.slipCount = activeSlips.length
+  summary.partnerNames = rest > 0 ? `${head} +${rest}` : head
   summary.driverCount = task.matchedDrivers.length
 }
 
@@ -13999,7 +14323,8 @@ const MOCK_DISPATCH_TASK_DETAILS: DispatchTaskResponse[] = [
 ]
 
 const MOCK_DISPATCH_TASK_SUMMARIES: DispatchTaskSummaryResponse[] = MOCK_DISPATCH_TASK_DETAILS.map((task) => {
-  const slips = task.vehicleGroups.flatMap((group) => group.slips)
+  const activeGroups = task.vehicleGroups.filter((group) => group.isDeleted !== true)
+  const slips = activeGroups.flatMap((group) => group.slips.filter((row) => row.isDeleted !== true))
   const partnerNames = Array.from(new Set(slips.map((row) => row.slip.partnerName)))
   const head = partnerNames.slice(0, 3).join(', ')
   const rest = partnerNames.length - 3
@@ -14008,7 +14333,7 @@ const MOCK_DISPATCH_TASK_SUMMARIES: DispatchTaskSummaryResponse[] = MOCK_DISPATC
     taskCode: task.taskCode,
     dispatchDate: task.dispatchDate,
     status: task.status,
-    vehicleGroupCount: task.vehicleGroups.length,
+    vehicleGroupCount: activeGroups.length,
     slipCount: slips.length,
     partnerNames: rest > 0 ? `${head} +${rest}` : head,
     driverCount: task.matchedDrivers.length,
@@ -15289,6 +15614,8 @@ const MOCK_ACTION_ONLY_PAGES: Record<string, string[]> = {
   'sales.partner-order.convert': ['CREATE'],
   'products.sync': ['CREATE'],
   'dispatch.external-carriers': ['CREATE', 'UPDATE', 'DELETE', 'RESTORE'],
+  // V78: dispatch.board 는 MANAGER/DISPATCH 에도 RESTORE 부여(취소선 복원). DOWNLOAD/PRINT 없음.
+  'dispatch.board': ['CREATE', 'UPDATE', 'DELETE', 'RESTORE'],
 }
 
 /**

@@ -57,6 +57,9 @@ public class DispatchVehicleGroup extends BaseEntity {
     private DispatchVehicleGroupDispatchStatus dispatchStatus =
             DispatchVehicleGroupDispatchStatus.PENDING;
 
+    @Column(name = "deleted_by_name", length = 100)
+    private String deletedByName;
+
     private DispatchVehicleGroup(
             UUID dispatchTaskId,
             int sequence,
@@ -123,6 +126,37 @@ public class DispatchVehicleGroup extends BaseEntity {
                     "DISPATCHED 만 PENDING 으로 되돌릴 수 있습니다 — 현재=" + this.dispatchStatus);
         }
         this.dispatchStatus = DispatchVehicleGroupDispatchStatus.PENDING;
+    }
+
+    /**
+     * 복원 시 활성 sequence 와 충돌하면 말번으로 재부여한다.
+     *
+     * <p>{@code (dispatch_task_id, sequence)} 활성 partial unique — 삭제 후 추가된 그룹이
+     * 빈 sequence 를 재사용했을 수 있다.
+     */
+    public void reassignSequence(int sequence) {
+        if (sequence <= 0) {
+            throw new IllegalArgumentException("sequence 는 1 이상");
+        }
+        this.sequence = sequence;
+    }
+
+    /** 삭제자 표시명을 함께 저장하는 soft-delete helper. */
+    public void markDeletedWithName(String userId, String actorName) {
+        markDeleted(userId);
+        this.deletedByName = actorName;
+    }
+
+    /** 삭제자 표시명 + 공유 삭제 시각(cascade 등호 매칭 기준)을 저장하는 soft-delete helper. */
+    public void markDeletedWithName(String userId, String actorName, java.time.LocalDateTime deletedAt) {
+        markDeleted(userId, deletedAt);
+        this.deletedByName = actorName;
+    }
+
+    /** soft-delete 복원과 함께 삭제자 표시명도 비운다. */
+    public void markRestoredWithNameCleared() {
+        markRestored();
+        this.deletedByName = null;
     }
 
     /**

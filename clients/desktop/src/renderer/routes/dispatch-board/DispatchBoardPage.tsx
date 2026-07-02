@@ -45,6 +45,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { usePermissions } from '../../hooks/usePermissions'
 import { UnDispatchedSlipList } from './components/UnDispatchedSlipList'
 import { VehicleGroupColumn } from './components/VehicleGroupColumn'
+import { activeSlipRows } from './dispatchDeletedRow'
 import { SlipDetailModal } from './components/SlipDetailModal'
 import { todayIsoSeoul } from '../../api/dispatchBoard'
 import {
@@ -65,6 +66,20 @@ function initialDispatchTaskIdFromLocation(): string | null {
   const params = new URLSearchParams(hashQuery ?? window.location.search)
   const taskId = params.get('taskId')
   return taskId && taskId.trim() ? taskId.trim() : null
+}
+
+/**
+ * 미배차 전표를 차량 그룹에 신규 배정할 수 있는 drop 대상인지 판정한다.
+ *
+ * <p>삭제(취소선) 그룹은 BE `@SQLRestriction` 으로 존재하지 않는 것과 같아, 잔존 취소선 행 위에
+ * 드롭해도 배정을 발화하지 않는다(가드 누락 시 실서버 404 silent 실패·mock 은 삭제그룹 내 활성행
+ * 생성). 발송 완료(DISPATCHED) 그룹도 제외한다.
+ */
+export function canAssignSlipToGroupTarget(
+  targetGroup: { dispatchStatus?: string | null; isDeleted?: boolean } | null | undefined,
+): boolean {
+  if (!targetGroup || targetGroup.isDeleted === true) return false
+  return targetGroup.dispatchStatus !== 'DISPATCHED'
 }
 
 /**
@@ -165,7 +180,7 @@ export default function DispatchBoardPage() {
         overData.type === 'group' ? overData.groupId : overData.groupId
       if (!groupId) return
       const targetGroup = task.vehicleGroups.find((group) => group.id === groupId)
-      if (!targetGroup || targetGroup.dispatchStatus === 'DISPATCHED') return
+      if (!canAssignSlipToGroupTarget(targetGroup)) return
       assignMutation.mutate({ groupId, slipId: activeData.slipId })
       return
     }
@@ -178,7 +193,9 @@ export default function DispatchBoardPage() {
       }
       const group = task.vehicleGroups.find((g) => g.id === activeData.groupId)
       if (!group) return
-      const currentIds = group.slips.map((s) => s.slipId)
+      // 삭제행(취소선)은 정렬 대상이 아니다 — BE reorderSlips 는 활성 매핑만 조회하므로 삭제행
+      // slipId 가 섞이면 그룹 전체 드래그 정렬이 400 으로 실패한다.
+      const currentIds = activeSlipRows(group).map((s) => s.slipId)
       const oldIndex = currentIds.indexOf(activeData.slipId)
       const newIndex = currentIds.indexOf(overData.slipId)
       if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return

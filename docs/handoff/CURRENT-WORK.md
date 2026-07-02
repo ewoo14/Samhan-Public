@@ -8,6 +8,15 @@
 
 > 개발책임자 명시: **"내가 지시한 내용 모두 상세히 기록해 놓고 추후 누락없이 진행."** 아래 8개 지시 항목이 이번 세션 접수 전량. 각 항목 상태·확정 결정 병기. 착수 순서 = **버그 → E2 → (E1·task5 병렬/순차) → E3**.
 
+### ⛔ 2026-07-02 오후 세션 종료(개발책임자 지시) → 새 세션 재개: E2 기둥2 **PR #700 듀얼리뷰 1사이클 완료 — Opus 재검 라운드부터**
+> **PR #700**(OPEN, base=main) 커밋 7: BE Task1-4(`ee56ee88`)+핸드오프(`cb74bfd0`)+FE Task5(`1a5caa64`)+**Opus 5-agent 라운드1 fix 37건**(`64760095`)+라이브QA(`7a518619`)+**Codex 5-agent 라운드 fix 9건**(`138f3ce3`)+스샷 클로즈업 재캡처(`22a19e84`). **게시 4건**(Codex 개발×2·Opus 라운드1·Codex 라운드 — 실행=게시 1:1 ✓).
+> **새 세션 재개 순서** (모두 순차 — **병행 금지**, 개발책임자 2026-07-02 재지적):
+> 1. **Opus 재검 라운드**(full 5-agent): Codex fix 9건(sequence max+1·tombstone 중복 409·aria-label·V78 materialize IT·스펙 스코프) 포함 `git diff main...HEAD` 최종 상태 재검 → fix 있으면 Opus 직접+게시 → **양쪽 0 반환까지 Opus↔Codex 반복**(Codex: 새 세션에서 `claude mcp list` 확인 후 mcp__codex__codex, 미회복 시 codex exec 우회).
+> 2. 0수렴 → **PM 종합 게시** → `gh pr checks 700` CI green(22a19e84 기준) 확인 → 머지 게이트 체크리스트(실행=게시 1:1 대조 포함) → **squash 머지**.
+> 3. 머지 전 docs 동기화 커밋: README/ROADMAP/DECISIONS(D-E2-01 계열)/dev-report(`2026-07-02-e2-strikethrough-delete-dispatch.md` 신설)/overview.html + 핸드오프.
+> ⚠️ **세션 교훈(메모리 박제)**: ①PR 스샷 인라인=**full 커밋 SHA 고정 URL**(브랜치 URL+push직후 게시=camo 하양 캐시 — `feedback_pr_screenshot_sha_pinned_urls`) ②스샷=**카드 클로즈업**(풀페이지 7장="전부 똑같은 컷" 지적) ③**한 번에 한 작업**(Codex 라운드 중 QA 스펙 병행 수정 지적).
+> 환경: Docker 스택 healthy(slip=Codex fix 재빌드본·auth V78 적용), 렌더러 vite :5175 는 세션 종료로 소멸 — QA 재실행 시 `cd clients/desktop && VITE_API_BASE_URL=http://localhost:8080 node_modules/.bin/vite dev --config vite.renderer.dev.config.ts`(PWA stub alias 적용됨). QA 시드: 실전표 `2026/06/24-902`=검수완료 전이(풀 노출용), 오늘 DRAFT 잔재 그룹 정리됨. 라이브QA 스펙=`playwright/e2-strikethrough-dispatch-real-qa/`(1 passed).
+
 ### 🚨🚨 워크플로우 규율 — 이 세션 반복 위반 시정 (새 세션·긴 세션 반드시 준수, 단축 절대금지)
 > 개발책임자 2026-07-02 다수 지적. **매 단계 이 블록 재확인하며 진행.** 상세=[[feedback_review_5agent_no_shortcut_strict]]·[[feedback_live_qa_every_round_screenshots]]·[[feedback_pm_no_direct_implementation]]·[[feedback_pr_open_not_draft]]·[[feedback_canonical_workflow]].
 > 1. **PM 직접 구현 금지** — 구현은 **Codex**(mcp__codex__codex danger-full-access, gpt-5.5/high), PM=기획·리뷰(Opus 5-agent)·commit 대행·종합·머지만. infra 오류 시도 PM 직접구현 대체 금지.
