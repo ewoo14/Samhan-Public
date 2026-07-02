@@ -459,6 +459,22 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [purchasePaymentDueDate, setPurchasePaymentDueDate] = useState('')
   const [purchaseEditLines, setPurchaseEditLines] = useState<PurchaseEditLine[]>([])
   const purchaseReloadSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 매출 인라인 편집 폼 — 진입 시 뷰 스크롤+포커스용 ref (구 모달 즉시노출/auto-focus 대체).
+  const salesEditFormRef = useRef<HTMLElement>(null)
+  // 매출 인라인 편집 진입 시: read-only 라인 선택/체크 초기화(숨긴 툴바 잔존상태 방지) + 폼으로 스크롤 + 첫 입력 포커스.
+  // 인라인 폼이 전표라인 자리(fold 아래) 렌더라 스크롤 없으면 편집 진입을 인지 못함(리뷰 R1 Design/FE BLOCKING·DevOps).
+  useEffect(() => {
+    if (!(salesEditOpen && mode === 'OUTBOUND')) return
+    setSelectedLineId(null)
+    setCheckedLineIds(new Set())
+    const el = salesEditFormRef.current
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // readonly(판매번호)·disabled 는 건너뛰고 첫 편집 가능 필드에 포커스(Codex 라운드 MED).
+    el.querySelector<HTMLElement>(
+      'input:not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]',
+    )?.focus?.()
+  }, [salesEditOpen, mode])
   // §7 협업 수정완료: 확정/완료 전표도 물리 종결 전이면 overlay 필드 편집 가능.
   const [collabEditMode, setCollabEditMode] = useState(false)
   const [slipFormCoeditProvider, setSlipFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
@@ -1288,6 +1304,276 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     navigate(`/purchases/${id}/print/purchase`)
   }
 
+  const handleSalesEditSave = () => {
+    salesUpdateMutation.mutate({
+      updatedAt: salesUpdatedAt ?? slip.updatedAt,
+      partnerName: salesPartnerName.trim() || null,
+      partnerCode: salesPartnerCode.trim() || null,
+      businessNumber: salesBusinessNumber.trim() || null,
+      memo: salesMemo.trim() || null,
+      deliveryAddress: salesDeliveryAddress.trim() || null,
+      supervisionAddress: salesSupervisionAddress.trim() || null,
+      projectName: salesProjectName.trim() || null,
+      recipientPhone: salesRecipientPhone.trim() || null,
+      paymentDueDate: salesPaymentDueDate || null,
+      lines: salesEditLines.map((line) => ({
+        productId: line.productId,
+        productName: line.productName?.trim() || undefined,
+        modelName: line.modelName?.trim() || undefined,
+        specification: line.specification?.trim() || undefined,
+        quantity: Number(line.quantity),
+        unitPrice: String(line.unitPrice || '0'),
+        note: line.note?.trim() || undefined,
+      })),
+    })
+  }
+
+  /*
+    E1-b-1: 매출 전표 수정은 상세 라인 영역에서 인라인으로 렌더한다.
+    기존 모달의 payload/충돌/라인 coedit 계약은 그대로 유지하고 shell 만 제거한다.
+  */
+  const salesEditInlineForm = (
+    <section
+      ref={salesEditFormRef}
+      className="sales-edit-inline"
+      aria-label="매출 전표 수정"
+      data-testid="sales-slip-edit-modal"
+    >
+      <div className="sales-edit-inline-header">
+        <h4 className="detail-section-title">매출 전표 수정</h4>
+        <div className="sales-edit-inline-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setSalesEditOpen(false)}
+            disabled={salesUpdateMutation.isPending}
+            data-testid="sales-slip-edit-cancel"
+          >
+            취소
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            loading={salesUpdateMutation.isPending}
+            disabled={salesUpdateMutation.isPending || slipFormCoeditPending || salesEditLines.length === 0}
+            data-testid="sales-slip-edit-save"
+            onClick={handleSalesEditSave}
+          >
+            저장
+          </Button>
+        </div>
+      </div>
+
+      {salesConflictMessage ? (
+        <div className="error-banner" role="alert" data-testid="sales-slip-edit-conflict-banner">
+          <strong>{salesConflictMessage}</strong>
+          {salesIsConflict ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-testid="sales-slip-edit-reload"
+              onClick={() => void handleSalesConflictReload()}
+            >
+              최신 내용 불러오기
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {salesReloadSuccessMessage ? (
+        <div role="status" data-testid="sales-slip-edit-reload-success" className="success-banner">
+          {salesReloadSuccessMessage}
+        </div>
+      ) : null}
+
+      <div className="detail-grid" data-testid="sales-slip-edit-form">
+        <label className="sales-edit-field">
+          <span className="detail-label">판매번호</span>
+          <Input inputSize="sm" readOnly value={slip.slipNo} aria-label="판매번호" />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">거래처</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.partnerName"
+            value={salesPartnerName}
+            onValueChange={setSalesPartnerName}
+            aria-label="거래처"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">거래처코드</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.partnerCode"
+            value={salesPartnerCode}
+            onValueChange={setSalesPartnerCode}
+            aria-label="거래처코드"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">사업자번호</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.businessNumber"
+            value={salesBusinessNumber}
+            onValueChange={setSalesBusinessNumber}
+            aria-label="사업자번호"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">배송주소</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.deliveryAddress"
+            value={salesDeliveryAddress}
+            onValueChange={setSalesDeliveryAddress}
+            aria-label="배송주소"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">감리주소</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.supervisionAddress"
+            value={salesSupervisionAddress}
+            onValueChange={setSalesSupervisionAddress}
+            aria-label="감리주소"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">프로젝트명</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.projectName"
+            value={salesProjectName}
+            onValueChange={setSalesProjectName}
+            aria-label="프로젝트명"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">인수자 번호</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.recipientPhone"
+            value={salesRecipientPhone}
+            onValueChange={setSalesRecipientPhone}
+            aria-label="인수자 번호"
+          />
+        </label>
+        <label className="sales-edit-field">
+          <span className="detail-label">입금예정일</span>
+          <CollaborativeSlipInput
+            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+            fieldPath="header.paymentDueDate"
+            type="date"
+            value={salesPaymentDueDate}
+            onValueChange={setSalesPaymentDueDate}
+            aria-label="입금예정일"
+          />
+        </label>
+      </div>
+
+      <label className="sales-edit-field sales-edit-memo">
+        <span className="detail-label">적요</span>
+        <CollaborativeSlipInput
+          provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+          fieldPath="header.memo"
+          value={salesMemo}
+          onValueChange={setSalesMemo}
+          aria-label="적요"
+        />
+      </label>
+
+      <div className="sales-edit-lines" data-testid="sales-slip-edit-lines">
+        <div className="slip-line-table-scroll">
+        <table className="slip-line-table">
+          <thead>
+            <tr>
+              <th>품목</th>
+              <th>모델명</th>
+              <th>규격</th>
+              <th>수량</th>
+              <th>단가(VAT제외)</th>
+              <th>합계(VAT제외)</th>
+              <th aria-label="행 삭제" />
+            </tr>
+          </thead>
+          <tbody>
+            {salesEditLines.map((line, index) => (
+              <tr key={line.key}>
+                <td>
+                  <CollaborativeSlipInput
+                    provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                    fieldPath={`items.${index}.productName`}
+                    value={line.productName ?? ''}
+                    onValueChange={(value) => updateSalesLine(index, { productName: value })}
+                    aria-label={`품목 ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <CollaborativeSlipInput
+                    provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                    fieldPath={`items.${index}.modelName`}
+                    value={line.modelName ?? ''}
+                    onValueChange={(value) => updateSalesLine(index, { modelName: value })}
+                    aria-label={`모델명 ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <CollaborativeSlipInput
+                    provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                    fieldPath={`items.${index}.specification`}
+                    value={line.specification ?? ''}
+                    onValueChange={(value) => updateSalesLine(index, { specification: value })}
+                    aria-label={`규격 ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <CollaborativeSlipInput
+                    provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                    fieldPath={`items.${index}.quantity`}
+                    type="number"
+                    min={1}
+                    value={String(line.quantity)}
+                    onValueChange={(value) => updateSalesLine(index, { quantity: Number(value) })}
+                    aria-label={`수량 ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <CollaborativeSlipInput
+                    provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
+                    fieldPath={`items.${index}.unitPrice`}
+                    type="number"
+                    min={0}
+                    value={String(line.unitPrice)}
+                    onValueChange={(value) => updateSalesLine(index, { unitPrice: value })}
+                    aria-label={`단가(VAT제외) ${index + 1}`}
+                  />
+                </td>
+                <td className="td-right">
+                  {(Number(line.quantity) * Number(line.unitPrice || 0)).toLocaleString('ko-KR')}원
+                </td>
+                <td>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`${index + 1}번 행 삭제`}
+                    onClick={() => removeSalesLine(index)}
+                  >
+                    ×
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+  )
+
   return (
     <>
       <div
@@ -2057,6 +2343,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </Card>
       ) : null}
 
+      {/* 매출 인라인 편집 중에는 read-only 전용 툴바(재고조회·선택라인 행삭제 등)를 숨긴다 —
+          행삭제는 인라인 draft 를 우회해 즉시 BE DELETE 라 stale draft→저장 시 409("다른 사용자") 오인
+          위험(리뷰 라운드1 Design/FE BLOCKING). 편집 시 라인 삭제는 인라인 표의 행별 × 사용. */}
+      {!(salesEditOpen && mode === 'OUTBOUND') ? (
+        <>
       <h4 className="detail-section-title detail-mobile-hide" style={{ marginTop: 24 }}>전표 라인</h4>
 
       {/*
@@ -2144,166 +2435,174 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           좌측 번호를 클릭하면 해당 라인을 선택할 수 있습니다 (순서 수정 / 추가 / 삭제).
         </p>
       )}
+        </>
+      ) : null}
 
-      <div className="slip-line-table-scroll desktop-only">
-      <table className="slip-line-table">
-        <thead>
-          <tr>
-            {/* Phase 2.6d: 재고조회 체크박스 컬럼 */}
-            <th className="col-no" style={{ width: 28, textAlign: 'center' }}>
-              <input
-                type="checkbox"
-                aria-label="전체 선택"
-                checked={
-                  slip.lines.length > 0 &&
-                  slip.lines.every((l) => checkedLineIds.has(l.id))
-                }
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setCheckedLineIds(new Set(slip.lines.map((l) => l.id)))
-                  } else {
-                    setCheckedLineIds(new Set())
-                  }
-                }}
-              />
-            </th>
-            <th className="col-no">#</th>
-            <th className="col-model">모델명</th>
-            <th className="col-product">품목명</th>
-            <th className="col-spec">규격</th>
-            <th className="col-qty">수량</th>
-            <th className="col-price">단가(VAT포함)</th>
-            <th className="col-supply">공급가액</th>
-            <th className="col-vat">부가세</th>
-            <th className="col-total">합계(VAT포함)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {slip.lines.length === 0 ? (
-            <tr>
-              <td colSpan={10} className="slip-line-empty">라인이 없습니다.</td>
-            </tr>
-          ) : (
-            slip.lines.map((l, idx) => {
-              const selected = selectedLineId === l.id
-              const checked = checkedLineIds.has(l.id)
-              // 단가 부가세포함 전환: unitPriceWithVat 있으면 VAT포함 단가/공급가액/부가세 표시.
-              // legacy(없음) 는 unitPrice 를 공급단가로 보고 동일 방식 분해.
-              const supplyVal = l.supplyAmount != null ? Number(l.supplyAmount) : Number(l.lineTotal)
-              const vatVal = l.vatAmount != null ? Number(l.vatAmount) : Math.round(supplyVal * 0.1)
-              const unitWithVatVal = l.unitPriceWithVat != null
-                ? Number(l.unitPriceWithVat) : Number(l.unitPrice)
-              const totalInclVal = supplyVal + vatVal
-              return (
-                <tr key={l.id} className={selected ? 'is-selected' : undefined}>
-                  {/* Phase 2.6d: 재고조회 체크박스 */}
-                  <td style={{ textAlign: 'center', paddingLeft: 4 }}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${l.modelName ?? `라인 ${idx + 1}`} 재고조회 선택`}
-                      checked={checked}
-                      onChange={() => handleLineCheckToggle(l.id)}
-                    />
-                  </td>
-                  <td className="col-no">
-                    <button
-                      type="button"
-                      className={`slip-line-no-btn${selected ? ' is-selected' : ''}`}
-                      aria-pressed={selected}
-                      aria-label={`라인 ${idx + 1} 선택`}
-                      onClick={() => setSelectedLineId(selected ? null : l.id)}
-                    >
-                      {idx + 1}
-                    </button>
-                  </td>
-                  <td className="col-model">{renderRedlineCell(`lines[${idx}].modelName`, l.modelName ?? '-')}</td>
-                  <td className="col-product">{renderRedlineCell(`lines[${idx}].productName`, l.productName ?? '-')}</td>
-                  <td className="col-spec">{renderRedlineCell(`lines[${idx}].specification`, l.specification ?? '-')}</td>
-                  <td className="col-qty">{renderRedlineCell(`lines[${idx}].quantity`, l.quantity.toLocaleString(), formatNumber)}</td>
-                  <td className="col-price">{renderRedlineCell(`lines[${idx}].unitPrice`, unitWithVatVal.toLocaleString(), formatNumber)}</td>
-                  <td className="col-supply">{supplyVal.toLocaleString()}</td>
-                  <td className="col-vat">{vatVal.toLocaleString()}</td>
-                  <td className="col-total">{renderRedlineCell(`lines[${idx}].lineTotal`, totalInclVal.toLocaleString(), formatNumber)}</td>
-                </tr>
-              )
-            })
-          )}
-        </tbody>
-      </table>
-      </div>
-
-      <div className="mobile-item-list" data-testid="slip-detail-mobile-lines">
-        {slip.lines.length === 0 ? (
-          <div className="mobile-item-card">
-            <div className="mobile-item-total-row">
-              <span className="mobile-item-total-label">라인</span>
-              <span className="mobile-item-total-value">라인이 없습니다.</span>
-            </div>
-          </div>
-        ) : (
-          slip.lines.map((l, idx) => {
-            const selected = selectedLineId === l.id
-            const checked = checkedLineIds.has(l.id)
-            const { totalIncl, unitWithVat } = slipLineAmounts(l)
-            return (
-              <div key={l.id} className="mobile-item-card">
-                <div className="mobile-item-check-wrap">
+      {salesEditOpen && mode === 'OUTBOUND' ? (
+        salesEditInlineForm
+      ) : (
+        <>
+          <div className="slip-line-table-scroll desktop-only">
+          <table className="slip-line-table">
+            <thead>
+              <tr>
+                {/* Phase 2.6d: 재고조회 체크박스 컬럼 */}
+                <th className="col-no" style={{ width: 28, textAlign: 'center' }}>
                   <input
-                    className="mobile-item-check"
                     type="checkbox"
-                    aria-label={`${l.modelName ?? `라인 ${idx + 1}`} 재고조회 선택`}
-                    checked={checked}
-                    onChange={() => handleLineCheckToggle(l.id)}
+                    aria-label="전체 선택"
+                    checked={
+                      slip.lines.length > 0 &&
+                      slip.lines.every((l) => checkedLineIds.has(l.id))
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setCheckedLineIds(new Set(slip.lines.map((l) => l.id)))
+                      } else {
+                        setCheckedLineIds(new Set())
+                      }
+                    }}
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="mobile-item-card-header">
-                      <button
-                        type="button"
-                        className="slip-line-card-no"
-                        aria-pressed={selected}
-                        aria-label={`라인 ${idx + 1} 선택`}
-                        onClick={() => setSelectedLineId(selected ? null : l.id)}
-                      >
-                        #{idx + 1}
-                      </button>
-                      <div className="mobile-item-name">
-                        {renderRedlineCell(`lines[${idx}].productName`, l.productName ?? l.modelName ?? '-')}
-                      </div>
-                    </div>
-                    {l.modelName ? (
-                      <div className="mobile-item-model">{l.modelName}</div>
-                    ) : null}
-                  </div>
-                </div>
+                </th>
+                <th className="col-no">#</th>
+                <th className="col-model">모델명</th>
+                <th className="col-product">품목명</th>
+                <th className="col-spec">규격</th>
+                <th className="col-qty">수량</th>
+                <th className="col-price">단가(VAT포함)</th>
+                <th className="col-supply">공급가액</th>
+                <th className="col-vat">부가세</th>
+                <th className="col-total">합계(VAT포함)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slip.lines.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="slip-line-empty">라인이 없습니다.</td>
+                </tr>
+              ) : (
+                slip.lines.map((l, idx) => {
+                  const selected = selectedLineId === l.id
+                  const checked = checkedLineIds.has(l.id)
+                  // 단가 부가세포함 전환: unitPriceWithVat 있으면 VAT포함 단가/공급가액/부가세 표시.
+                  // legacy(없음) 는 unitPrice 를 공급단가로 보고 동일 방식 분해.
+                  const supplyVal = l.supplyAmount != null ? Number(l.supplyAmount) : Number(l.lineTotal)
+                  const vatVal = l.vatAmount != null ? Number(l.vatAmount) : Math.round(supplyVal * 0.1)
+                  const unitWithVatVal = l.unitPriceWithVat != null
+                    ? Number(l.unitPriceWithVat) : Number(l.unitPrice)
+                  const totalInclVal = supplyVal + vatVal
+                  return (
+                    <tr key={l.id} className={selected ? 'is-selected' : undefined}>
+                      {/* Phase 2.6d: 재고조회 체크박스 */}
+                      <td style={{ textAlign: 'center', paddingLeft: 4 }}>
+                        <input
+                          type="checkbox"
+                          aria-label={`${l.modelName ?? `라인 ${idx + 1}`} 재고조회 선택`}
+                          checked={checked}
+                          onChange={() => handleLineCheckToggle(l.id)}
+                        />
+                      </td>
+                      <td className="col-no">
+                        <button
+                          type="button"
+                          className={`slip-line-no-btn${selected ? ' is-selected' : ''}`}
+                          aria-pressed={selected}
+                          aria-label={`라인 ${idx + 1} 선택`}
+                          onClick={() => setSelectedLineId(selected ? null : l.id)}
+                        >
+                          {idx + 1}
+                        </button>
+                      </td>
+                      <td className="col-model">{renderRedlineCell(`lines[${idx}].modelName`, l.modelName ?? '-')}</td>
+                      <td className="col-product">{renderRedlineCell(`lines[${idx}].productName`, l.productName ?? '-')}</td>
+                      <td className="col-spec">{renderRedlineCell(`lines[${idx}].specification`, l.specification ?? '-')}</td>
+                      <td className="col-qty">{renderRedlineCell(`lines[${idx}].quantity`, l.quantity.toLocaleString(), formatNumber)}</td>
+                      <td className="col-price">{renderRedlineCell(`lines[${idx}].unitPrice`, unitWithVatVal.toLocaleString(), formatNumber)}</td>
+                      <td className="col-supply">{supplyVal.toLocaleString()}</td>
+                      <td className="col-vat">{vatVal.toLocaleString()}</td>
+                      <td className="col-total">{renderRedlineCell(`lines[${idx}].lineTotal`, totalInclVal.toLocaleString(), formatNumber)}</td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+          </div>
 
-                <div className="mobile-item-divider" />
-
-                <div className="mobile-item-metrics">
-                  <div className="mobile-item-metric">
-                    <span className="mobile-item-metric-label">수량</span>
-                    <span className="mobile-item-metric-value">
-                      {l.quantity.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="mobile-item-metric">
-                    <span className="mobile-item-metric-label">단가(VAT포함)</span>
-                    <span className="mobile-item-metric-value">
-                      {unitWithVat.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
+          <div className="mobile-item-list" data-testid="slip-detail-mobile-lines">
+            {slip.lines.length === 0 ? (
+              <div className="mobile-item-card">
                 <div className="mobile-item-total-row">
-                  <span className="mobile-item-total-label">합계(VAT포함)</span>
-                  <span className="mobile-item-total-value">
-                    {totalIncl.toLocaleString()}원
-                  </span>
+                  <span className="mobile-item-total-label">라인</span>
+                  <span className="mobile-item-total-value">라인이 없습니다.</span>
                 </div>
               </div>
-            )
-          })
-        )}
-      </div>
+            ) : (
+              slip.lines.map((l, idx) => {
+                const selected = selectedLineId === l.id
+                const checked = checkedLineIds.has(l.id)
+                const { totalIncl, unitWithVat } = slipLineAmounts(l)
+                return (
+                  <div key={l.id} className="mobile-item-card">
+                    <div className="mobile-item-check-wrap">
+                      <input
+                        className="mobile-item-check"
+                        type="checkbox"
+                        aria-label={`${l.modelName ?? `라인 ${idx + 1}`} 재고조회 선택`}
+                        checked={checked}
+                        onChange={() => handleLineCheckToggle(l.id)}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="mobile-item-card-header">
+                          <button
+                            type="button"
+                            className="slip-line-card-no"
+                            aria-pressed={selected}
+                            aria-label={`라인 ${idx + 1} 선택`}
+                            onClick={() => setSelectedLineId(selected ? null : l.id)}
+                          >
+                            #{idx + 1}
+                          </button>
+                          <div className="mobile-item-name">
+                            {renderRedlineCell(`lines[${idx}].productName`, l.productName ?? l.modelName ?? '-')}
+                          </div>
+                        </div>
+                        {l.modelName ? (
+                          <div className="mobile-item-model">{l.modelName}</div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mobile-item-divider" />
+
+                    <div className="mobile-item-metrics">
+                      <div className="mobile-item-metric">
+                        <span className="mobile-item-metric-label">수량</span>
+                        <span className="mobile-item-metric-value">
+                          {l.quantity.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="mobile-item-metric">
+                        <span className="mobile-item-metric-label">단가(VAT포함)</span>
+                        <span className="mobile-item-metric-value">
+                          {unitWithVat.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mobile-item-total-row">
+                      <span className="mobile-item-total-label">합계(VAT포함)</span>
+                      <span className="mobile-item-total-value">
+                        {totalIncl.toLocaleString()}원
+                      </span>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </>
+      )}
 
       {/* Phase 2.6d: 재고조회 모달 */}
       <InventoryLookupModal
@@ -2944,276 +3243,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                       size="sm"
                       aria-label={`${index + 1}번 행 삭제`}
                       onClick={() => removePurchaseLine(index)}
-                    >
-                      ×
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      </Modal>
-
-      {/*
-        SP-08-6-2: 매출 전표 direct PUT 수정 modal.
-        - OUTBOUND + SALES/MANAGER/MASTER + DRAFT/SAVED 상태에서만 버튼 노출.
-        - 409 충돌 시 "최신 내용 불러오기" 배너.
-        - UUID 비공개 가드: slipNo 만 표시 (id 미노출).
-      */}
-      <Modal
-        open={salesEditOpen}
-        onClose={() => {
-          if (salesUpdateMutation.isPending) return
-          setSalesEditOpen(false)
-        }}
-        title="매출 전표 수정"
-        size="xl"
-        data-testid="sales-slip-edit-modal"
-        footer={(
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setSalesEditOpen(false)}
-              disabled={salesUpdateMutation.isPending}
-              data-testid="sales-slip-edit-cancel"
-            >
-              취소
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              loading={salesUpdateMutation.isPending}
-              disabled={salesUpdateMutation.isPending || slipFormCoeditPending || salesEditLines.length === 0}
-              data-testid="sales-slip-edit-save"
-              onClick={() => {
-                salesUpdateMutation.mutate({
-                  updatedAt: salesUpdatedAt ?? slip.updatedAt,
-                  partnerName: salesPartnerName.trim() || null,
-                  partnerCode: salesPartnerCode.trim() || null,
-                  businessNumber: salesBusinessNumber.trim() || null,
-                  memo: salesMemo.trim() || null,
-                  deliveryAddress: salesDeliveryAddress.trim() || null,
-                  supervisionAddress: salesSupervisionAddress.trim() || null,
-                  projectName: salesProjectName.trim() || null,
-                  recipientPhone: salesRecipientPhone.trim() || null,
-                  paymentDueDate: salesPaymentDueDate || null,
-                  lines: salesEditLines.map((line) => ({
-                    productId: line.productId,
-                    productName: line.productName?.trim() || undefined,
-                    modelName: line.modelName?.trim() || undefined,
-                    specification: line.specification?.trim() || undefined,
-                    quantity: Number(line.quantity),
-                    unitPrice: String(line.unitPrice || '0'),
-                    note: line.note?.trim() || undefined,
-                  })),
-                })
-              }}
-            >
-              저장
-            </Button>
-          </>
-        )}
-      >
-        {salesConflictMessage ? (
-          <div className="error-banner" role="alert" data-testid="sales-slip-edit-conflict-banner">
-            <strong>{salesConflictMessage}</strong>
-            {salesIsConflict ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                data-testid="sales-slip-edit-reload"
-                onClick={() => void handleSalesConflictReload()}
-              >
-                최신 내용 불러오기
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-        {salesReloadSuccessMessage ? (
-          <div role="status" data-testid="sales-slip-edit-reload-success" className="success-banner">
-            {salesReloadSuccessMessage}
-          </div>
-        ) : null}
-
-        <div className="detail-grid" data-testid="sales-slip-edit-form">
-          <label className="sales-edit-field">
-            <span className="detail-label">판매번호</span>
-            <Input inputSize="sm" readOnly value={slip.slipNo} aria-label="판매번호" />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">거래처</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.partnerName"
-              value={salesPartnerName}
-              onValueChange={setSalesPartnerName}
-              aria-label="거래처"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">거래처코드</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.partnerCode"
-              value={salesPartnerCode}
-              onValueChange={setSalesPartnerCode}
-              aria-label="거래처코드"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">사업자번호</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.businessNumber"
-              value={salesBusinessNumber}
-              onValueChange={setSalesBusinessNumber}
-              aria-label="사업자번호"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">배송주소</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.deliveryAddress"
-              value={salesDeliveryAddress}
-              onValueChange={setSalesDeliveryAddress}
-              aria-label="배송주소"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">감리주소</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.supervisionAddress"
-              value={salesSupervisionAddress}
-              onValueChange={setSalesSupervisionAddress}
-              aria-label="감리주소"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">프로젝트명</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.projectName"
-              value={salesProjectName}
-              onValueChange={setSalesProjectName}
-              aria-label="프로젝트명"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">인수자 번호</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.recipientPhone"
-              value={salesRecipientPhone}
-              onValueChange={setSalesRecipientPhone}
-              aria-label="인수자 번호"
-            />
-          </label>
-          <label className="sales-edit-field">
-            <span className="detail-label">입금예정일</span>
-            <CollaborativeSlipInput
-              provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-              fieldPath="header.paymentDueDate"
-              type="date"
-              value={salesPaymentDueDate}
-              onValueChange={setSalesPaymentDueDate}
-              aria-label="입금예정일"
-            />
-          </label>
-        </div>
-
-        <label className="sales-edit-field sales-edit-memo">
-          <span className="detail-label">적요</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.memo"
-            value={salesMemo}
-            onValueChange={setSalesMemo}
-            aria-label="적요"
-          />
-        </label>
-
-        <div className="sales-edit-lines" data-testid="sales-slip-edit-lines">
-          <div className="slip-line-table-scroll">
-          <table className="slip-line-table">
-            <thead>
-              <tr>
-                <th>품목</th>
-                <th>모델명</th>
-                <th>규격</th>
-                <th>수량</th>
-                <th>단가</th>
-                <th>합계</th>
-                <th aria-label="행 삭제" />
-              </tr>
-            </thead>
-            <tbody>
-              {salesEditLines.map((line, index) => (
-                <tr key={line.key}>
-                  <td>
-                    <CollaborativeSlipInput
-                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-                      fieldPath={`items.${index}.productName`}
-                      value={line.productName ?? ''}
-                      onValueChange={(value) => updateSalesLine(index, { productName: value })}
-                      aria-label={`품목 ${index + 1}`}
-                    />
-                  </td>
-                  <td>
-                    <CollaborativeSlipInput
-                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-                      fieldPath={`items.${index}.modelName`}
-                      value={line.modelName ?? ''}
-                      onValueChange={(value) => updateSalesLine(index, { modelName: value })}
-                      aria-label={`모델명 ${index + 1}`}
-                    />
-                  </td>
-                  <td>
-                    <CollaborativeSlipInput
-                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-                      fieldPath={`items.${index}.specification`}
-                      value={line.specification ?? ''}
-                      onValueChange={(value) => updateSalesLine(index, { specification: value })}
-                      aria-label={`규격 ${index + 1}`}
-                    />
-                  </td>
-                  <td>
-                    <CollaborativeSlipInput
-                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-                      fieldPath={`items.${index}.quantity`}
-                      type="number"
-                      min={1}
-                      value={String(line.quantity)}
-                      onValueChange={(value) => updateSalesLine(index, { quantity: Number(value) })}
-                      aria-label={`수량 ${index + 1}`}
-                    />
-                  </td>
-                  <td>
-                    <CollaborativeSlipInput
-                      provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-                      fieldPath={`items.${index}.unitPrice`}
-                      type="number"
-                      min={0}
-                      value={String(line.unitPrice)}
-                      onValueChange={(value) => updateSalesLine(index, { unitPrice: value })}
-                      aria-label={`단가 ${index + 1}`}
-                    />
-                  </td>
-                  <td className="td-right">
-                    {(Number(line.quantity) * Number(line.unitPrice || 0)).toLocaleString('ko-KR')}원
-                  </td>
-                  <td>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`${index + 1}번 행 삭제`}
-                      onClick={() => removeSalesLine(index)}
                     >
                       ×
                     </Button>
