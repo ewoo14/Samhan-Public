@@ -27,7 +27,7 @@
 
 ### 🗂️ 실행 큐 (누락금지 체크리스트 — 완료 시 ✅)
 - [x] ✅ **버그 fix = PR #698 머지**(squash `264fb88a`, 2026-07-02). external-url.ts isAllowedExternalUrl 순수함수(prod https·dev http loopback hostname 완전일치)·SalesSubNav window.open 폴백·test 12. 캐논 8단계: Opus 5-agent 0blocking(FE/BE보안/Design N/A/DevOps QA)+fix2(위험스킴 테스트·tsconfig exclude)→Codex gpt-5.5/high 0수렴→CI **28/28**(Desktop Playwright hard gate 포함)→squash. 라이브=Electron GUI 구동도구 부재로 정직 disposition(단위테스트가 정확 실패지점 잠금).
-- [ ] **E2** 전역 라이브동기화(공유헬퍼+배차 파일럿): brainstorming→spec→plan→캐논 8단계. 파일럿 검증 후 도메인 점진 롤아웃(데스크탑+모바일 WebView 검증 포함).
+- [~] **E2** 전역 라이브동기화(공유헬퍼+배차 파일럿): ✅brainstorming→**spec 머지 `1b52033b`**(2기둥·배차 파일럿·D-E2-01 하위그룹 삭제 스코프)→**Plan A 작성**(`docs/superpowers/plans/2026-07-02-e2-live-collection-sync-dispatch-pilot.md`, 기둥1 라이브동기화 6Task 완전코드). **다음=구현 착수**(브랜치 feat/e2-live-collection-sync-dispatch, Task1 공유 CollectionRealtimePublisher부터 캐논 8단계). 기둥2 취소선삭제=Plan B·task5 전표확인미리보기=Plan C 분리.
 - [ ] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
 - [ ] **task5** 배차 전표확인 판매전표 미리보기.
 - [ ] **E3** 입금보고서 에픽(brainstorming→spec→슬라이스→캐논). E2 이후, born-live(E2 인프라 소비).
