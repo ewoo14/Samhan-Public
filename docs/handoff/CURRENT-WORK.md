@@ -54,7 +54,7 @@
 - [~] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
     - ✅ **E1-a(A+C) 머지 `68c7ff423`(#701, 2026-07-03)**: 협업/수정·버전이력 폼 최하단 + presence 문서 상단 리프트·확대(PresenceIndicator size md/lg 하위호환+루트 flexWrap). 순차 듀얼리뷰 0수렴(Opus R1 BLOCKING spec 스코프·HIGH usePresence 게이팅/헤더 flexWrap → Codex 라운드 flexWrap → Opus 재검). CI 28/28·라이브 GUI QA(desktop/mobile). dev-report `2026-07-03-e1a-slip-detail-layout-presence.md`.
     - [ ] **E1-b(B) 잔여**: 품목행 모달→상세 인라인 편집. 정찰完(M~L·매입/매출 이중·coedit provider 게이팅·read-only↔편집 컬럼 스왑·3진입점·playwright testid 갱신). task5 이후.
-- [ ] **task5** 배차 전표확인 판매전표 미리보기.
+- [x] ✅ **task5 배차 전표확인=판매전표 미리보기 머지 `68776aef0`(#702, 2026-07-03)**: SlipDetailModal 본문을 텍스트요약→`DispatchDocument`(판매전표 문서, 재사용) + 배차보드 전용 `GET /admin/dispatch-board/slips/{id}`(dispatch.board VIEW+OUTBOUND-only)로 **DISPATCH 역할 403 근본해소** + Modal xl/1:1(zoom 제거)·세로스크롤. 순차 듀얼리뷰 0수렴(Codex개발→Opus R1[폭/zoom]→Codex 라운드[BE 엔드포인트]→Opus 재검). CI 33/33·라이브 GUI QA(신규 엔드포인트). dev-report `2026-07-03-task5-dispatch-slip-sales-preview.md`. ⚠️**BE `inventory.warehouse` VIEW 권한갭(DISPATCH 출고창고 '-', graceful)=개발책임자 결정(§B)**.
 - [ ] **E3** 입금보고서 에픽(brainstorming→spec→슬라이스→캐논). E2 이후, born-live(E2 인프라 소비).
 - 📌 무결성/정책 민감건은 착수 전 개발책임자 확인([[feedback_integrity_domain_policy_preconfirm]]). 매 단계 ScheduleWakeup 재자각·라운드 1:1 게시·라이브 실QA.
 
@@ -263,6 +263,7 @@ PR #660 은 **이미 머지됨** (`579835ef`, 2026-06-28 ewoo14). 집 PC 미설�
 - **OCR → GAS-direct 주문서 전송** — OCR 삭제(#658) 후속, 레거시 GAS 패턴 재사용.
 - **결재 self-accept 정책** — 제안자=결정자 분리 강제 여부(신규 업무규칙).
 - **슬립 soft-delete 복원 정책** — full vs 부분 restore.
+- **[task5 후속] DISPATCH 역할 `inventory.warehouse` VIEW 권한** — 배차 전표확인(판매전표 미리보기)의 "출고창고"가 DISPATCH 계정엔 '-'(graceful, MASTER/MANAGER 정상). (a)DISPATCH 에 VIEW 부여(auth V79 1행) / (b)`SlipDetailResponse` 에 창고명 embed(권한 의존 제거) / (c)현행 유지. 배차 담당자의 판매전표 미리보기 사용 여부 + 창고 노출 정책 = 업무규칙 결정. #702 머지됨(비차단, 결정 시 후속).
 
 ### C. 후속/minor (비차단, 착수 전 코드 재확인)
 - **세금계산서 FE 다운로드 wiring 점검** — BE 완비(엑셀/홈택스), FE 연결만 확인.
