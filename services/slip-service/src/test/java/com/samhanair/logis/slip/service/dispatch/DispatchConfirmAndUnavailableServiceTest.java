@@ -3,12 +3,15 @@ package com.samhanair.logis.slip.service.dispatch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import com.samhanair.logis.slip.client.NotificationClient;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.dispatch.DispatchTask;
@@ -25,10 +28,12 @@ import com.samhanair.logis.slip.repository.dispatch.DispatchTaskRepository;
 import com.samhanair.logis.slip.repository.dispatch.DispatchVehicleGroupRepository;
 import com.samhanair.logis.slip.repository.dispatch.DispatchVehicleGroupSlipRepository;
 import com.samhanair.logis.slip.repository.dispatch.MatchedDriverRepository;
+import com.samhanair.logis.slip.realtime.DispatchBoardRealtime;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -50,6 +55,7 @@ class DispatchConfirmAndUnavailableServiceTest {
     @Mock SlipRepository slipRepo;
     @Mock MatchedDriverRepository matchedRepo;
     @Mock NotificationClient notificationClient;
+    @Mock CollectionRealtimePublisher collectionPublisher;
 
     @InjectMocks DispatchTaskConfirmService confirmSvc;
 
@@ -170,6 +176,52 @@ class DispatchConfirmAndUnavailableServiceTest {
         assertThat(existing.getDriverSource()).isEqualTo(MatchedDriverSource.AROLOGIS);
         assertThat(existing.getVehiclePlateNumber()).isEqualTo("12A3456");
         verify(matchedRepo).save(existing);
+    }
+
+    @Test
+    void confirm_partial_match_publishes_board_change_even_before_task_completed() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        UUID sentGroupId = UUID.randomUUID();
+        UUID pendingGroupId = UUID.randomUUID();
+        UUID slipId = UUID.randomUUID();
+
+        DispatchTask task = DispatchTask.create("2026/05/14-PARTIAL-CONFIRM", LocalDate.now());
+        setId(task, taskId);
+        task.markDispatching();
+
+        DispatchVehicleGroup sentGroup = DispatchVehicleGroup.create(taskId, 1, DispatchVehicleType.TONNAGE_1);
+        setId(sentGroup, sentGroupId);
+        sentGroup.markDispatched();
+        DispatchVehicleGroup pendingGroup = DispatchVehicleGroup.create(taskId, 2, DispatchVehicleType.TONNAGE_1);
+        setId(pendingGroup, pendingGroupId);
+
+        DispatchVehicleGroupSlip mapping = DispatchVehicleGroupSlip.create(sentGroupId, slipId, 1);
+        Slip slip = org.mockito.Mockito.mock(Slip.class);
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(groupRepo.findByDispatchTaskIdAndIsDeletedFalseOrderBySequenceAsc(taskId))
+                .thenReturn(List.of(sentGroup, pendingGroup));
+        when(slipMapRepo.findByVehicleGroupIdAndIsDeletedFalseOrderBySequenceAsc(sentGroupId))
+                .thenReturn(List.of(mapping));
+        when(slipRepo.findById(slipId)).thenReturn(Optional.of(slip));
+        when(matchedRepo.findByVehicleGroupIdAndIsDeletedFalse(sentGroupId)).thenReturn(Optional.empty());
+
+        DispatchTaskConfirmRequest req = new DispatchTaskConfirmRequest(
+                UUID.randomUUID(),
+                List.of(new DispatchTaskConfirmRequest.MatchedDriverPayload(
+                        1, "TONNAGE_1", "D-PARTIAL", "부분확정기사",
+                        "010-0000-0001", MatchedDriverSource.AROLOGIS, "12가3456")),
+                Instant.now());
+
+        confirmSvc.confirm(taskId, req);
+
+        assertThat(task.getStatus()).isEqualTo(DispatchTaskStatus.DISPATCHING);
+        verify(matchedRepo).save(any(MatchedDriver.class));
+        verify(slip).markDispatchConfirmed();
+        verify(collectionPublisher).publishChange(
+                eq(DispatchBoardRealtime.CHANNEL_ID),
+                eq(DispatchBoardRealtime.EVENT_CHANGED),
+                argThat(payload -> hasChangeType(payload, "STATUS_CHANGED")));
     }
 
     @Test
@@ -294,7 +346,7 @@ class DispatchConfirmAndUnavailableServiceTest {
     @Test
     void unavailable_marks_FAILED_and_returns_slip_to_UNDISPATCHED() throws Exception {
         DispatchTaskUnavailableService unavailSvc = new DispatchTaskUnavailableService(
-                taskRepo, groupRepo, slipMapRepo, slipRepo, notificationClient);
+                taskRepo, groupRepo, slipMapRepo, slipRepo, notificationClient, collectionPublisher);
 
         UUID taskId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
@@ -325,12 +377,13 @@ class DispatchConfirmAndUnavailableServiceTest {
         assertThat(task.getStatus()).isEqualTo(DispatchTaskStatus.FAILED);
         assertThat(task.getFailureReason()).isEqualTo("가용 기사 0명");
         verify(slip).markDispatchReleased();
+        verifyBoardStatusChanged();
     }
 
     @Test
     void unavailable_empty_failedGroups_targets_all_groups() throws Exception {
         DispatchTaskUnavailableService unavailSvc = new DispatchTaskUnavailableService(
-                taskRepo, groupRepo, slipMapRepo, slipRepo, notificationClient);
+                taskRepo, groupRepo, slipMapRepo, slipRepo, notificationClient, collectionPublisher);
 
         UUID taskId = UUID.randomUUID();
         UUID g1Id = UUID.randomUUID();
@@ -363,5 +416,16 @@ class DispatchConfirmAndUnavailableServiceTest {
         Field f = entity.getClass().getDeclaredField("id");
         f.setAccessible(true);
         f.set(entity, id);
+    }
+
+    private static boolean hasChangeType(Map<String, Object> payload, String expected) {
+        return expected.equals(payload.get("changeType"));
+    }
+
+    private void verifyBoardStatusChanged() {
+        verify(collectionPublisher).publishChange(
+                eq(DispatchBoardRealtime.CHANNEL_ID),
+                eq(DispatchBoardRealtime.EVENT_CHANGED),
+                argThat(payload -> hasChangeType(payload, "STATUS_CHANGED")));
     }
 }

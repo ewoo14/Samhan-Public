@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { QueryKey } from '@tanstack/react-query'
 import {
   Badge,
   Button,
@@ -15,10 +16,13 @@ import {
 } from '../../api/dispatchTask'
 import { offsetIsoSeoul, todayIsoSeoul } from '../../api/dispatchBoard'
 import {
+  dispatchTaskQueryKey,
   useDispatchTaskQuery,
   useDispatchTasksQuery,
 } from './hooks/useDispatchTask'
 import { DispatchTaskDetailModal } from './components/DispatchTaskDetailModal'
+import { DispatchTaskRealtimeClient } from '../../realtime/DispatchTaskRealtimeClient'
+import { useCollectionRealtime } from '../../realtime/useCollectionRealtime'
 
 const PAGE_SIZE = 20
 
@@ -50,6 +54,15 @@ export function DispatchHistoryPage() {
     page,
     size: PAGE_SIZE,
   })
+  // 열린 상세 모달도 board SSE 변경 시 stale 로 남지 않게 함께 무효화한다.
+  const realtimeQueryKeys = useMemo<QueryKey[]>(
+    () => [
+      ...(selectedDetailKey ? [dispatchTaskQueryKey(selectedDetailKey)] : []),
+      ['dispatchTasks'],
+    ],
+    [selectedDetailKey],
+  )
+  useCollectionRealtime(DispatchTaskRealtimeClient, 'board', realtimeQueryKeys)
   const detailQuery = useDispatchTaskQuery(selectedDetailKey)
 
   const columns: DataTableColumn<DispatchTaskSummaryResponse>[] = useMemo(
