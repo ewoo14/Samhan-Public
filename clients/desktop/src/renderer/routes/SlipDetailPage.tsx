@@ -82,6 +82,7 @@ import {
 } from '../api/slipEditRequest'
 import { SlipCollaborationPanel } from '../components/collab/SlipCollaborationPanel'
 import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipInput'
+import { PresenceIndicator } from '../components/collab/PresenceIndicator'
 import { MobileActionSheet } from '../components/common/MobileActionSheet'
 import { MobileCollapsible } from '../components/common/MobileCollapsible'
 import { SlipRealtimeClient } from '../realtime/SlipRealtimeClient'
@@ -92,6 +93,7 @@ import {
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePresence } from '../hooks/usePresence'
 import { OUTBOUND_DELIVERY_TAG_LABELS } from '../api/slipCutoff'
 
 const SLIP_HEADER_TEXT_FIELDS = new Set(['memo', 'deliveryAddress', 'supervisionAddress', 'projectName'])
@@ -469,6 +471,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     enabled: !!id,
   })
   const { refetch: refetchDetail } = detailQuery
+  // presence(보는 사람) — detailQuery 성공(조회권한+존재) 이후에만 join.
+  // enabled 가 !!id 뿐이면 로딩/에러(404/403) 상태에서도 join+heartbeat 유지되어
+  // 본인은 화면서 못 보는데 동료 목록엔 "보는 중"으로 잡힘(리뷰 라운드1 FE HIGH/BE LOW).
+  const presenceEntries = usePresence({ entityId: id, enabled: !!id && !!detailQuery.data })
 
   // PR-H2: audit log 백필 — useQuery cache 키 ['slipAuditLogs', id]
   // SSE "slip:edit" event 수신 시 함께 invalidate.
@@ -1289,10 +1295,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          rowGap: 8,
           marginBottom: 16,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 8, gap: 12 }}>
           <SlipNumberDisplay slipDate={slip.slipDate} seqNo={slip.seqNo} size="lg" />
           {/* PR-H2: 수정 횟수 표시 — auditLogs distinct revisionNo 개수 */}
           <span
@@ -1312,6 +1320,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           >
             수정 {revisionCount}회
           </span>
+          <PresenceIndicator entries={presenceEntries} size="lg" />
         </div>
         {!isMobile ? (
         <div className="detail-action-bar">
@@ -1883,90 +1892,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           ) : null}
         </div>
       </Card>
-
-      {isMobile ? (
-        <MobileCollapsible title="협업 · 코멘트" defaultOpen>
-          <SlipCollaborationPanel
-            slipId={id}
-            basePath={slipCollabBasePath}
-            currentValues={collabEditValues}
-            editMode={collabEditMode}
-            onEditModeChange={setCollabEditMode}
-            onCommitted={() => {
-              void queryClient.invalidateQueries({ queryKey: ['slip', id] })
-              void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
-              void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
-            }}
-          />
-        </MobileCollapsible>
-      ) : (
-        <SlipCollaborationPanel
-          slipId={id}
-          basePath={slipCollabBasePath}
-          currentValues={collabEditValues}
-          editMode={collabEditMode}
-          onEditModeChange={setCollabEditMode}
-          onCommitted={() => {
-            void queryClient.invalidateQueries({ queryKey: ['slip', id] })
-            void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
-            void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
-          }}
-        />
-      )}
-
-      {isMobile ? (
-        <>
-          <MobileCollapsible title="버전 이력" className="mobile-section-card">
-            {revertCandidates.length === 0 ? (
-              <div className="mobile-field-row">
-                <span className="mobile-field-label">복원</span>
-                <span className="mobile-field-value mobile-field-value-empty">-</span>
-              </div>
-            ) : (
-              revertCandidates.map((rev) => (
-                <div key={rev} className="mobile-field-row">
-                  <span className="mobile-field-label">revision #{rev}</span>
-                  <button
-                    type="button"
-                    className="mobile-more-sheet-item"
-                    style={{ minHeight: 44, padding: 0, textAlign: 'right' }}
-                    disabled={revertMutation.isPending}
-                    onClick={() => handleRevert(rev)}
-                  >
-                    이 시점으로 복원
-                  </button>
-                </div>
-              ))
-            )}
-          </MobileCollapsible>
-
-          <MobileCollapsible title="수정 이력" className="mobile-section-card">
-            {auditLogsQuery.isLoading ? (
-              <div className="mobile-field-row">
-                <span className="mobile-field-label">상태</span>
-                <span className="mobile-field-value">불러오는 중</span>
-              </div>
-            ) : auditLogs.length === 0 ? (
-              <div className="mobile-field-row">
-                <span className="mobile-field-label">이력</span>
-                <span className="mobile-field-value mobile-field-value-empty">-</span>
-              </div>
-            ) : (
-              auditLogs.slice(0, 8).map((entry, index) => (
-                <div
-                  key={`${entry.revisionNo}-${entry.field}-${entry.changedAt}-${index}`}
-                  className="mobile-field-row"
-                >
-                  <span className="mobile-field-label">rev {entry.revisionNo}</span>
-                  <span className="mobile-field-value">
-                    {entry.field} · {entry.actorName ?? '시스템'}
-                  </span>
-                </div>
-              ))
-            )}
-          </MobileCollapsible>
-        </>
-      ) : null}
 
       {/*
         V20 신규 필드 표시 카드 — 배송주소 / 감리주소 / 프로젝트명 / 인수자 번호 / 입금예정일
@@ -2598,6 +2523,90 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </div>
           </MobileCollapsible>
         </Card>
+      ) : null}
+
+      {isMobile ? (
+        <MobileCollapsible title="협업 · 코멘트" defaultOpen>
+          <SlipCollaborationPanel
+            slipId={id}
+            basePath={slipCollabBasePath}
+            currentValues={collabEditValues}
+            editMode={collabEditMode}
+            onEditModeChange={setCollabEditMode}
+            onCommitted={() => {
+              void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+              void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+              void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
+            }}
+          />
+        </MobileCollapsible>
+      ) : (
+        <SlipCollaborationPanel
+          slipId={id}
+          basePath={slipCollabBasePath}
+          currentValues={collabEditValues}
+          editMode={collabEditMode}
+          onEditModeChange={setCollabEditMode}
+          onCommitted={() => {
+            void queryClient.invalidateQueries({ queryKey: ['slip', id] })
+            void queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
+            void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
+          }}
+        />
+      )}
+
+      {isMobile ? (
+        <>
+          <MobileCollapsible title="버전 이력" className="mobile-section-card">
+            {revertCandidates.length === 0 ? (
+              <div className="mobile-field-row">
+                <span className="mobile-field-label">복원</span>
+                <span className="mobile-field-value mobile-field-value-empty">-</span>
+              </div>
+            ) : (
+              revertCandidates.map((rev) => (
+                <div key={rev} className="mobile-field-row">
+                  <span className="mobile-field-label">revision #{rev}</span>
+                  <button
+                    type="button"
+                    className="mobile-more-sheet-item"
+                    style={{ minHeight: 44, padding: 0, textAlign: 'right' }}
+                    disabled={revertMutation.isPending}
+                    onClick={() => handleRevert(rev)}
+                  >
+                    이 시점으로 복원
+                  </button>
+                </div>
+              ))
+            )}
+          </MobileCollapsible>
+
+          <MobileCollapsible title="수정 이력" className="mobile-section-card">
+            {auditLogsQuery.isLoading ? (
+              <div className="mobile-field-row">
+                <span className="mobile-field-label">상태</span>
+                <span className="mobile-field-value">불러오는 중</span>
+              </div>
+            ) : auditLogs.length === 0 ? (
+              <div className="mobile-field-row">
+                <span className="mobile-field-label">이력</span>
+                <span className="mobile-field-value mobile-field-value-empty">-</span>
+              </div>
+            ) : (
+              auditLogs.slice(0, 8).map((entry, index) => (
+                <div
+                  key={`${entry.revisionNo}-${entry.field}-${entry.changedAt}-${index}`}
+                  className="mobile-field-row"
+                >
+                  <span className="mobile-field-label">rev {entry.revisionNo}</span>
+                  <span className="mobile-field-value">
+                    {entry.field} · {entry.actorName ?? '시스템'}
+                  </span>
+                </div>
+              ))
+            )}
+          </MobileCollapsible>
+        </>
       ) : null}
 
       {/*
