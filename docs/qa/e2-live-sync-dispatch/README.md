@@ -35,3 +35,12 @@ data:{"changeType":"CREATED"}                                # ← createTask af
 ## 환경
 - Docker: slip-service(새 jar `--build` 재빌드, healthy) · api-gateway · eureka · postgres 전부 healthy.
 - 실 게이트웨이 :8080, dev_master(MASTER) 실 로그인, mock OFF.
+
+## GUI 스크린샷 라이브 QA backfill 시도 (2026-07-02, 정직 기록)
+개발책임자 지적(SSE 텍스트≠실 UI 스샷)에 따라 브라우저 GUI 캡처를 시도했으나 **웹-서빙 QA 경로의 연쇄 환경 벽으로 미완료**(가짜 스샷 생성 금지 [[feedback_no_fake_data_ever]] — 아래 정직 기록):
+1. ✅ 웹 렌더러 빌드(dist/web) + 로그인 화면 실 렌더 확인(스샷 캡처).
+2. ✅ same-origin proxy(vite preview.proxy → :8080)로 **인증 세션 확립 실증**(`/auth/login` 200, `/auth/me` 200) — 크로스오리진 httpOnly 쿠키 문제 해결.
+3. ❌ **앱 부트 크래시**: 로그인 후 앱 셸은 마운트되나, **활성 공지 컴포넌트가 undefined 데이터에 `.find` 호출→useMemo 렌더 예외**로 #root 비워짐(`[app-notice] ... Cannot read properties of undefined (reading 'find')`). QA 웹-서빙에서 일부 부트 엔드포인트 응답형 불일치가 트리거. 이로 인해 배차현황 화면까지 도달 못 함.
+- **근본 제약**: 실 사용자 surface 는 Electron 데스크톱(브라우저 자동화 도구로 구동 불가), 웹 빌드는 프로덕션 same-origin 서빙 전제라 QA 단독 브라우저 캡처가 환경적으로 어려움.
+- **owed(P1)**: 배차현황 목록 2세션 라이브 갱신 실 GUI 스샷 = **Electron 앱 or 프로덕션-parity 웹 배포에서 후속 캡처 필요**. SSE round-trip(위)이 서버→클라이언트 전달 메커니즘은 실증함.
+- 📌 **부수 발견(저위험 앱 방어코딩 갭)**: 활성 공지 부트 컴포넌트가 데이터 undefined 시 guard 없이 `.find`→크래시. 공지 API 오류/빈응답 시 앱 블랭크 위험 → optional chaining/기본배열 guard 권장(별건 백로그).
