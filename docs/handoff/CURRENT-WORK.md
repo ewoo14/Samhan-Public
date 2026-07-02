@@ -53,7 +53,8 @@
     - **task5** 배차 전표확인=판매전표 미리보기=Plan C 분리(별도 소형).
 - [~] **E1** 전표 상세 정비(A 최하단·B 인라인편집·C presence 상단확대): 각 캐논 8단계. 병렬 가능.
     - ✅ **E1-a(A+C) 머지 `68c7ff423`(#701, 2026-07-03)**: 협업/수정·버전이력 폼 최하단 + presence 문서 상단 리프트·확대(PresenceIndicator size md/lg 하위호환+루트 flexWrap). 순차 듀얼리뷰 0수렴(Opus R1 BLOCKING spec 스코프·HIGH usePresence 게이팅/헤더 flexWrap → Codex 라운드 flexWrap → Opus 재검). CI 28/28·라이브 GUI QA(desktop/mobile). dev-report `2026-07-03-e1a-slip-detail-layout-presence.md`.
-    - [ ] **E1-b(B) 잔여**: 품목행 모달→상세 인라인 편집. 정찰完(M~L·매입/매출 이중·coedit provider 게이팅·read-only↔편집 컬럼 스왑·3진입점·playwright testid 갱신). task5 이후.
+    - [~] **E1-b(B) 인라인 편집**: 매출/매입 분할(회귀표면 넓어 정찰 권고). ✅ **E1-b-1(매출) 머지 `3a9a38848`(#703, 2026-07-03)** — 매출 편집 모달→상세 인라인·편집중 read-only 툴바 숨김(행삭제 draft 우회 방지·데이터무결성)·auto-scroll+brand accent 편집중 신호·단가/합계 VAT제외 라벨·coedit 2세션 SSE 보존. 0수렴(Opus R1 BLOCKING2/HIGH2 직접fix→Codex 라운드 MED2→Opus 재검 4차원0). dev-report `2026-07-03-e1b-1-sales-slip-inline-edit.md`.
+      - [ ] **E1-b-2(매입 INBOUND) 잔여**: E1-b-1 확립 패턴 복제(매입 near-identical 병렬 — purchaseEditOpen Modal→인라인). VAT컬럼 권장방향·모바일 편집 카드화(pre-existing 모달 한계)=개발책임자 결정(§B).
 - [x] ✅ **task5 배차 전표확인=판매전표 미리보기 머지 `68776aef0`(#702, 2026-07-03)**: SlipDetailModal 본문을 텍스트요약→`DispatchDocument`(판매전표 문서, 재사용) + 배차보드 전용 `GET /admin/dispatch-board/slips/{id}`(dispatch.board VIEW+OUTBOUND-only)로 **DISPATCH 역할 403 근본해소** + Modal xl/1:1(zoom 제거)·세로스크롤. 순차 듀얼리뷰 0수렴(Codex개발→Opus R1[폭/zoom]→Codex 라운드[BE 엔드포인트]→Opus 재검). CI 33/33·라이브 GUI QA(신규 엔드포인트). dev-report `2026-07-03-task5-dispatch-slip-sales-preview.md`. ⚠️**BE `inventory.warehouse` VIEW 권한갭(DISPATCH 출고창고 '-', graceful)=개발책임자 결정(§B)**.
 - [ ] **E3** 입금보고서 에픽(brainstorming→spec→슬라이스→캐논). E2 이후, born-live(E2 인프라 소비).
 - 📌 무결성/정책 민감건은 착수 전 개발책임자 확인([[feedback_integrity_domain_policy_preconfirm]]). 매 단계 ScheduleWakeup 재자각·라운드 1:1 게시·라이브 실QA.
