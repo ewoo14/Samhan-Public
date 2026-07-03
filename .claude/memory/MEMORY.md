@@ -1,4 +1,4 @@
-# 🚨 워크플로우 규율 (매 작업 최우선 — 상세는 각 토픽파일)
+﻿# 🚨 워크플로우 규율 (매 작업 최우선 — 상세는 각 토픽파일)
 - [🚨 표준 워크플로우 유일 진실원](feedback_canonical_workflow.md) — Opus 기획+조기PR → Codex 개발+게시 → (Opus 5-agent[FE/BE/Design/DevOps/QA·QA=Docker라이브QA+단계별스샷]+fix+게시 ↔ Codex 5-agent+fix+게시) 0수렴까지 → PM 종합(머지전) → CI green → 머지. 🚫순차(병렬금지)·단축금지·라운드 즉시게시·fix후 재리뷰·미준수 소급보완·매단계 ScheduleWakeup
 - [🚨 리뷰 5-agent 필수·단축금지·순차](feedback_review_5agent_no_shortcut_strict.md) — 매 리뷰=5차원 전부(Design N/A금지)·수렴/재검도 full·Opus 완료+게시 후에만 Codex(병렬금지)·실행=게시 1:1 (2026-07-02 #699 회고)
 - [🚨 라이브QA 매 라운드 GUI 스샷](feedback_live_qa_every_round_screenshots.md) — Docker 실서버+실 GUI 스크린샷(단계별) 매 리뷰 라운드마다. 끝1회·SSE/API 텍스트로 GUI스샷 대체 금지. dev_master=dev_p05_pass! (2026-07-02)
@@ -37,7 +37,7 @@
 - [desktop 타입검증=npm run typecheck](feedback_desktop_typecheck_command.md)
 - [Playwright 로컬 버전 skew](feedback_playwright_local_version_skew.md) — node_modules/.bin 직접·desktop cwd
 - [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 rename 시 design-system junction 깨짐→npm install
-- [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — npipe skip 가능, DOCKER_HOST tcp 우회
+- [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — npipe skip 가능. 우회=dockerDesktopLinuxEngine npipe+~/.docker-java.properties api.version=1.44(2026-07-03 실증) or DOCKER_HOST tcp
 - [로컬 스택+데스크톱 실QA 함정](project_local_stack_qa_gotchas.md) — launch=jar만 빌드(이미지 stale→`up -d --build <svc>`)·게이트웨이 격차·react-query invalidate stale
 - [standalone-boot 실QA](feedback_standalone_boot_real_qa.md) — Windows IT skip 시 jar standalone+docker PG
 
@@ -54,7 +54,7 @@
 - [PM 통합 풀빌드 가드](feedback_pm_integration_build_check.md) — 팀별 PR 전 BE+QA 컴파일·IT·의미정렬
 - [결함 fix 계열 전수 sweep](feedback_defect_family_sweep_fix.md) — 지적 1건=동일패턴 전수 grep
 - [마이그 fresh Postgres probe](feedback_migration_fresh_postgres_probe.md) — Windows skip 가림, DROP/CREATE+psql ON_ERROR_STOP
-- [적용된 Flyway 마이그 불변](feedback_applied_migration_immutable.md) — 주석조차 수정금지(checksum), 신규 V만
+- [적용된 Flyway 마이그 불변](feedback_applied_migration_immutable.md) — 주석조차 수정금지(checksum), 신규 V만. 로컬 재적용=해당 버전 이후 전부(out-of-order crash 실측)
 - [enum 확장=CHECK 제약 마이그](feedback_enum_expansion_check_constraint.md)
 - [self-invocation @Transactional 우회](feedback_self_invocation_transactional_bypass.md) — this.method 프록시우회, @Lazy self, HTTP 실경로 검증
 - [catch DIV 후 같은 tx 재조회=aborted](feedback_aborted_tx_after_div_catch.md) — REQUIRES_NEW 격리 or catch제거

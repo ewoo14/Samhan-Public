@@ -39,6 +39,16 @@ docker info  # 정상 응답 확인
 
 **보안 주의**: tcp://localhost:2375 는 인증 없음. **로컬 개발 환경에서만** 사용. 회사 LAN 노출 금지.
 
+**🆕 2026-07-03 회사PC 실증 우회 (tcp 미노출 환경 — 권장)**: Docker Desktop 29.x 가 구 docker-java 클라이언트의 낮은 API 버전 협상을 **400 으로 거부**하는 것이 skip 의 근본 원인(기본 npipe `docker_engine` 경유). 다음 2개로 해소 — PR #710 에서 accounting 실 IT 1064건 로컬 완주(349 skip→2):
+```powershell
+# 1회: docker-java 가 보낼 API 버전 고정
+Set-Content -Path "$env:USERPROFILE\.docker-java.properties" -Value "api.version=1.44" -Encoding ascii
+# 매 실행: Linux 엔진 전용 파이프 사용
+$env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
+.\gradlew.bat :services:<svc>:test
+```
+tcp:2375 노출 불필요·Docker Desktop 설정 변경 불필요. (tcp 방식이 이미 켜져 있으면 기존 절차도 유효.)
+
 **대안 (복잡, 비추천)**: `~/.testcontainers.properties` 에 `docker.host=npipe:////./pipe/docker_engine` 명시. 하지만 Testcontainers 버전마다 동작 다름.
 
 **관련 메모리**: `feedback_pm_integration_build_check.md` Layer 2 (Docker 가용 IT 실행). 본 메모리는 그 Layer 2 가 PM 환경에서 강제될 수 있도록 하는 **세팅 가드**.
