@@ -18,6 +18,8 @@ import com.samhanair.logis.accounting.client.ETaxClient;
 import com.samhanair.logis.accounting.client.KftcClient;
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.PartnerSummary;
+import com.samhanair.logis.accounting.domain.CashReceipt;
+import com.samhanair.logis.accounting.service.Mig9AgingSnapshotRefreshService;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -37,6 +39,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** CashReceipt 수기 CRUD + 상태 라이프사이클 IT. */
@@ -54,12 +57,15 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private EntityManager entityManager;
+    @Autowired private Mig9AgingSnapshotRefreshService agingSnapshotRefreshService;
 
     @MockBean private ETaxClient eTaxClient;
     @MockBean private KftcClient kftcClient;
     @MockBean private PartnerLookupClient partnerLookupClient;
     @MockBean private ApprovalLineAuthorizeClient approvalLineAuthorizeClient;
     @MockBean(classes = DynamicPermissionClient.class) private DynamicPermissionClient dynamicPermissionClient;
+    // Mig9AgingSnapshotRefreshService 는 내부 로직이므로 mock 금지 — mock 은 afterCommit×NOT_SUPPORTED
+    // 트랜잭션 시맨틱스(과거 NEVER 충돌로 라이브 100% 실패)를 우회해 false-green 을 만든다.
 
     @BeforeEach
     void setUpExternalClients() {
@@ -88,7 +94,7 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.kind").value("MANUAL_RECEIPT"))
-                .andExpect(jsonPath("$.data.debitAccountCode").value("103"))
+                .andExpect(jsonPath("$.data.debitAccountCode").value("102"))
                 .andExpect(jsonPath("$.data.creditAccountCode").value("110"))
                 .andExpect(jsonPath("$.data.journalId").doesNotExist())
                 .andExpect(jsonPath("$.data.journalNo").doesNotExist())
@@ -102,7 +108,7 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
                 .andReturn();
 
         com.fasterxml.jackson.databind.JsonNode createdData =
-                objectMapper.readTree(created.getResponse().getContentAsString()).get("data");
+                objectMapper.readTree(created.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).get("data");
         String receiptId = createdData.get("id").asText();
 
         mockMvc.perform(get(BASE_URL + "/{id}", receiptId)
@@ -146,30 +152,425 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
                         .header("X-User-Role", "ACCOUNTANT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
-                .andExpect(jsonPath("$.data.journalId").doesNotExist());
+                .andExpect(jsonPath("$.data.journalId").doesNotExist())
+                .andExpect(jsonPath("$.data.journalNo").isNotEmpty());
 
         mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
                         .header("X-User-Id", ACCOUNTANT_ID)
                         .header("X-User-Role", "ACCOUNTANT")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateBody("122000"))))
-                .andExpect(status().isConflict());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.amount").value(122000))
+                .andExpect(jsonPath("$.data.journalNo").isNotEmpty());
 
-        Map<String, Object> invalidAccountBody = updateBody("122000");
+        // 미존재 계정 = 404 (requireLeafAccount NOT_FOUND — S1 create 경로와 동일 계약).
+        UUID journalBeforeInvalid = receiptJournalId(receiptId);
+        Map<String, Object> invalidAccountBody = updateBody("123000");
         invalidAccountBody.put("debitAccountCode", "999999");
         mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
                         .header("X-User-Id", ACCOUNTANT_ID)
                         .header("X-User-Role", "ACCOUNTANT")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidAccountBody)))
-                .andExpect(status().isConflict());
+                .andExpect(status().isNotFound());
+
+        // 비-leaf 계정('100' 자산 그룹) = 400.
+        Map<String, Object> nonLeafAccountBody = updateBody("123000");
+        nonLeafAccountBody.put("debitAccountCode", "100");
+        mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(nonLeafAccountBody)))
+                .andExpect(status().isBadRequest());
+
+        // 실패한 수정은 원장 무손상 — 계정검증이 mutation/역분개보다 선행함을 회귀로 고정.
+        org.assertj.core.api.Assertions.assertThat(receiptJournalId(receiptId)).isEqualTo(journalBeforeInvalid);
+        org.assertj.core.api.Assertions.assertThat(journal(journalBeforeInvalid).get("status")).isEqualTo("POSTED");
 
         mockMvc.perform(post(BASE_URL + "/{id}/cancel", receiptId)
                         .header("X-User-Id", ACCOUNTANT_ID)
                         .header("X-User-Role", "ACCOUNTANT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"))
-                .andExpect(jsonPath("$.data.journalId").doesNotExist());
+                .andExpect(jsonPath("$.data.journalId").doesNotExist())
+                .andExpect(jsonPath("$.data.reverseJournalNo").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("확정은 POSTED 분개를 생성하고 기본/override 계정을 라인에 반영한다")
+    void confirmCreatesPostedJournalWithDefaultAndOverrideAccounts() throws Exception {
+        MvcResult defaultReceipt = createReceipt(createBody("61000"));
+        String defaultReceiptId = data(defaultReceipt).get("id").asText();
+        String defaultSlipNo = data(defaultReceipt).get("slipNo").asText();
+
+        MvcResult confirmed = mockMvc.perform(post(BASE_URL + "/{id}/confirm", defaultReceiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.journalNo").isNotEmpty())
+                .andExpect(jsonPath("$.data.journalId").doesNotExist())
+                .andReturn();
+        String journalNo = data(confirmed).get("journalNo").asText();
+        UUID journalId = receiptJournalId(defaultReceiptId);
+
+        Map<String, Object> journal = journal(journalId);
+        org.assertj.core.api.Assertions.assertThat(journal.get("journal_no")).isEqualTo(journalNo);
+        org.assertj.core.api.Assertions.assertThat(journal.get("status")).isEqualTo("POSTED");
+        org.assertj.core.api.Assertions.assertThat(journal.get("source_type")).isEqualTo("CASH_RECEIPT");
+        // X-User-Id actor 가 분개 posted_by 로 전파된다.
+        org.assertj.core.api.Assertions.assertThat(journal.get("posted_by")).isEqualTo(ACCOUNTANT_ID);
+        org.assertj.core.api.Assertions.assertThat(journal.get("description").toString())
+                .contains("입금보고서 확정", defaultSlipNo, "삼한입금상사");
+        assertJournalLines(journalId, "102", "110", new BigDecimal("61000.00"));
+
+        Map<String, Object> overrideBody = createBody("62000");
+        overrideBody.put("debitAccountCode", "102");
+        overrideBody.put("creditAccountCode", "110");
+        MvcResult overrideReceipt = createReceipt(overrideBody);
+        String overrideReceiptId = data(overrideReceipt).get("id").asText();
+
+        mockMvc.perform(post(BASE_URL + "/{id}/confirm", overrideReceiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.journalNo").isNotEmpty());
+
+        assertJournalLines(receiptJournalId(overrideReceiptId), "102", "110", new BigDecimal("62000.00"));
+    }
+
+    @Test
+    @DisplayName("취소는 원분개를 REVERSED 처리하고 차대 swap 역분개 번호를 응답한다")
+    void cancelCreatesReversalAndExposesReverseJournalNo() throws Exception {
+        MvcResult created = createReceipt(createBody("63000"));
+        String receiptId = data(created).get("id").asText();
+        mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk());
+        UUID originalJournalId = receiptJournalId(receiptId);
+
+        MvcResult cancelled = mockMvc.perform(post(BASE_URL + "/{id}/cancel", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.reverseJournalNo").isNotEmpty())
+                .andExpect(jsonPath("$.data.journalId").doesNotExist())
+                .andReturn();
+
+        UUID reverseJournalId = receiptReverseJournalId(receiptId);
+        org.assertj.core.api.Assertions.assertThat(reverseJournalId).isNotNull();
+        Map<String, Object> original = journal(originalJournalId);
+        Map<String, Object> reversal = journal(reverseJournalId);
+        org.assertj.core.api.Assertions.assertThat(original.get("status")).isEqualTo("REVERSED");
+        org.assertj.core.api.Assertions.assertThat(original.get("reversed_journal_id")).isEqualTo(reverseJournalId);
+        org.assertj.core.api.Assertions.assertThat(reversal.get("status")).isEqualTo("POSTED");
+        org.assertj.core.api.Assertions.assertThat(reversal.get("journal_no"))
+                .isEqualTo(data(cancelled).get("reverseJournalNo").asText());
+        assertReversalLines(reverseJournalId, "102", "110", new BigDecimal("63000.00"));
+    }
+
+    @Test
+    @DisplayName("CONFIRMED PATCH는 기존 분개 역분개 후 새 POSTED 분개로 교체한다")
+    void confirmedPatchReversesExistingJournalAndReposts() throws Exception {
+        MvcResult created = createReceipt(createBody("64000"));
+        String receiptId = data(created).get("id").asText();
+        mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk());
+        UUID oldJournalId = receiptJournalId(receiptId);
+
+        MvcResult patched = mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody("65000"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.amount").value(65000))
+                .andExpect(jsonPath("$.data.debitAccountCode").value("102"))
+                .andExpect(jsonPath("$.data.journalNo").isNotEmpty())
+                .andReturn();
+
+        UUID newJournalId = receiptJournalId(receiptId);
+        org.assertj.core.api.Assertions.assertThat(newJournalId).isNotEqualTo(oldJournalId);
+        org.assertj.core.api.Assertions.assertThat(journal(oldJournalId).get("status")).isEqualTo("REVERSED");
+        org.assertj.core.api.Assertions.assertThat(journal(newJournalId).get("status")).isEqualTo("POSTED");
+        org.assertj.core.api.Assertions.assertThat(journal(newJournalId).get("journal_no"))
+                .isEqualTo(data(patched).get("journalNo").asText());
+        // 재게시 적요는 최초 확정과 구분된다 (감사 추적성).
+        org.assertj.core.api.Assertions.assertThat(journal(newJournalId).get("description").toString())
+                .contains("입금보고서 수정 재게시");
+        assertJournalLines(newJournalId, "102", "110", new BigDecimal("65000.00"));
+
+        // 무변경 PATCH = 역분개+재게시 생략 (원장 노이즈 차단) — journalId 가 그대로다.
+        mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody("65000"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"));
+        org.assertj.core.api.Assertions.assertThat(receiptJournalId(receiptId)).isEqualTo(newJournalId);
+        org.assertj.core.api.Assertions.assertThat(journal(newJournalId).get("status")).isEqualTo("POSTED");
+
+        // 연쇄 수정 — 2번째 PATCH 는 1번째 재게시 분개(원분개 아님)를 역분개한다.
+        mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody("65500"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.amount").value(65500));
+        UUID thirdJournalId = receiptJournalId(receiptId);
+        org.assertj.core.api.Assertions.assertThat(thirdJournalId).isNotEqualTo(newJournalId);
+        org.assertj.core.api.Assertions.assertThat(journal(newJournalId).get("status")).isEqualTo("REVERSED");
+        org.assertj.core.api.Assertions.assertThat(journal(newJournalId).get("reversed_journal_id")).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(journal(thirdJournalId).get("status")).isEqualTo("POSTED");
+        assertJournalLines(thirdJournalId, "102", "110", new BigDecimal("65500.00"));
+
+        // 수정 후 취소 — 마지막 재게시 분개가 역분개된다.
+        mockMvc.perform(post(BASE_URL + "/{id}/cancel", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reverseJournalNo").isNotEmpty());
+        org.assertj.core.api.Assertions.assertThat(journal(thirdJournalId).get("status")).isEqualTo("REVERSED");
+        org.assertj.core.api.Assertions.assertThat(receiptReverseJournalId(receiptId)).isNotNull();
+
+        mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody("66000"))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("CONFIRMED journalId null MIG 행은 취소 상태전이만, 수정은 신규 분개 게시를 수행한다")
+    void confirmedMigRowsWithoutJournalIdCanCancelOrPatch() throws Exception {
+        UUID cancelOnlyId = insertConfirmedMigReceipt("MIG-S2-CANCEL", "MIG:S2:CANCEL", "67000");
+        mockMvc.perform(post(BASE_URL + "/{id}/cancel", cancelOnlyId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.journalNo").doesNotExist())
+                .andExpect(jsonPath("$.data.reverseJournalNo").doesNotExist());
+        org.assertj.core.api.Assertions.assertThat(receiptReverseJournalId(cancelOnlyId.toString())).isNull();
+
+        UUID patchId = insertConfirmedMigReceipt("MIG-S2-PATCH", "MIG:S2:PATCH", "68000");
+        mockMvc.perform(patch(BASE_URL + "/{id}", patchId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody("69000"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.amount").value(69000))
+                .andExpect(jsonPath("$.data.journalNo").isNotEmpty());
+        assertJournalLines(receiptJournalId(patchId.toString()), "102", "110", new BigDecimal("69000.00"));
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("확정 커밋 후 afterCommit이 실 빈으로 partner_aging_snapshot을 실제 갱신한다")
+    void confirmRefreshesAgingSnapshotAfterCommit() throws Exception {
+        // 실 커밋(NOT_SUPPORTED) + 실 빈 — @MockBean 이면 NEVER/NOT_SUPPORTED 트랜잭션 프록시가
+        // 우회되어 afterCommit 실행 가능성이 검증되지 않는다(과거 NEVER 충돌 false-green).
+        agingSnapshotRefreshService.refresh();
+        java.time.OffsetDateTime refreshedBefore = jdbcTemplate.queryForObject(
+                "SELECT MAX(last_refreshed_at) FROM partner_aging_snapshot", java.time.OffsetDateTime.class);
+        String receiptId = null;
+        try {
+            MvcResult created = createReceipt(createBody("69100"));
+            receiptId = data(created).get("id").asText();
+
+            mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                            .header("X-User-Id", ACCOUNTANT_ID)
+                            .header("X-User-Role", "ACCOUNTANT"))
+                    .andExpect(status().isOk());
+
+            // refresh 성공 = MV timestamp 전진 + 확정 분개(차 102/대 110)가 net 에 실반영.
+            java.time.OffsetDateTime refreshedAfter = jdbcTemplate.queryForObject(
+                    "SELECT MAX(last_refreshed_at) FROM partner_aging_snapshot", java.time.OffsetDateTime.class);
+            org.assertj.core.api.Assertions.assertThat(refreshedAfter).isNotNull();
+            if (refreshedBefore != null) {
+                org.assertj.core.api.Assertions.assertThat(refreshedAfter).isAfter(refreshedBefore);
+            }
+            Map<String, Object> agingRow = jdbcTemplate.queryForMap(
+                    "SELECT net_cash, net_receivable FROM partner_aging_snapshot WHERE partner_id = ?",
+                    PARTNER_ID);
+            org.assertj.core.api.Assertions.assertThat((BigDecimal) agingRow.get("net_cash"))
+                    .isEqualByComparingTo(new BigDecimal("69100"));
+            org.assertj.core.api.Assertions.assertThat((BigDecimal) agingRow.get("net_receivable"))
+                    .isEqualByComparingTo(new BigDecimal("-69100"));
+        } finally {
+            cleanupCommittedReceiptAndRefreshAging(receiptId);
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("취소 afterCommit refresh는 V52 POSTED+REVERSED MV에서 입금보고서 net을 baseline으로 되돌린다")
+    void cancelRefreshesAgingSnapshotBackToBaseline() throws Exception {
+        agingSnapshotRefreshService.refresh();
+        Map<String, BigDecimal> baseline = agingNetForPartner(PARTNER_ID);
+        String receiptId = null;
+        try {
+            MvcResult created = createReceipt(createBody("69200"));
+            receiptId = data(created).get("id").asText();
+            mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                            .header("X-User-Id", ACCOUNTANT_ID)
+                            .header("X-User-Role", "ACCOUNTANT"))
+                    .andExpect(status().isOk());
+            Map<String, BigDecimal> afterConfirm = agingNetForPartner(PARTNER_ID);
+            org.assertj.core.api.Assertions.assertThat(afterConfirm.get("net_cash"))
+                    .isEqualByComparingTo(baseline.get("net_cash").add(new BigDecimal("69200")));
+
+            mockMvc.perform(post(BASE_URL + "/{id}/cancel", receiptId)
+                            .header("X-User-Id", ACCOUNTANT_ID)
+                            .header("X-User-Role", "ACCOUNTANT"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.reverseJournalNo").isNotEmpty());
+
+            Map<String, BigDecimal> afterCancel = agingNetForPartner(PARTNER_ID);
+            org.assertj.core.api.Assertions.assertThat(afterCancel.get("net_cash"))
+                    .isEqualByComparingTo(baseline.get("net_cash"));
+            org.assertj.core.api.Assertions.assertThat(afterCancel.get("net_receivable"))
+                    .isEqualByComparingTo(baseline.get("net_receivable"));
+        } finally {
+            cleanupCommittedReceiptAndRefreshAging(receiptId);
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("CONFIRMED PATCH afterCommit refresh는 역분개+재게시 후 최종 금액만 aging net에 남긴다")
+    void confirmedPatchRefreshesAgingSnapshotToFinalDelta() throws Exception {
+        agingSnapshotRefreshService.refresh();
+        Map<String, BigDecimal> baseline = agingNetForPartner(PARTNER_ID);
+        String receiptId = null;
+        try {
+            MvcResult created = createReceipt(createBody("69300"));
+            receiptId = data(created).get("id").asText();
+            mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                            .header("X-User-Id", ACCOUNTANT_ID)
+                            .header("X-User-Role", "ACCOUNTANT"))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(patch(BASE_URL + "/{id}", receiptId)
+                            .header("X-User-Id", ACCOUNTANT_ID)
+                            .header("X-User-Role", "ACCOUNTANT")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(updateBody("69400"))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.amount").value(69400));
+
+            Map<String, BigDecimal> afterPatch = agingNetForPartner(PARTNER_ID);
+            org.assertj.core.api.Assertions.assertThat(afterPatch.get("net_cash"))
+                    .isEqualByComparingTo(baseline.get("net_cash").add(new BigDecimal("69400")));
+            org.assertj.core.api.Assertions.assertThat(afterPatch.get("net_receivable"))
+                    .isEqualByComparingTo(baseline.get("net_receivable").subtract(new BigDecimal("69400")));
+        } finally {
+            cleanupCommittedReceiptAndRefreshAging(receiptId);
+        }
+    }
+
+    @Test
+    @DisplayName("마감된 회계 기간 일자의 확정/수정은 409로 차단된다")
+    void confirmAndPatchBlockedForClosedPeriod() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO accounting_periods (
+                    id, period_type, period_date, status, total_sales, total_purchase, total_expense,
+                    locked_slip_count, version, created_at, created_by, is_deleted
+                ) VALUES (gen_random_uuid(), 'MONTHLY', '2026-06-01', 'CLOSED', 0, 0, 0, 0, 0, NOW(), 'IT', FALSE)
+                """);
+
+        Map<String, Object> closedBody = createBody("71000");
+        closedBody.put("transactionDate", "2026-06-15");
+        MvcResult created = createReceipt(closedBody);
+        String receiptId = data(created).get("id").asText();
+
+        mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isConflict());
+        // 409 조기 종료 경로는 flush 유발 쿼리가 없어 pending INSERT 를 raw JDBC 가 못 본다 — 명시 flush.
+        entityManager.flush();
+        org.assertj.core.api.Assertions.assertThat(receiptJournalId(receiptId)).isNull();
+
+        // 열린 기간(오늘) 확정 후 마감 월 일자로 PATCH — 재게시도 동일 가드.
+        MvcResult openCreated = createReceipt(createBody("72000"));
+        String openReceiptId = data(openCreated).get("id").asText();
+        mockMvc.perform(post(BASE_URL + "/{id}/confirm", openReceiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk());
+        UUID journalBefore = receiptJournalId(openReceiptId);
+
+        Map<String, Object> patchToClosed = updateBody("72500");
+        patchToClosed.put("transactionDate", "2026-06-15");
+        mockMvc.perform(patch(BASE_URL + "/{id}", openReceiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(patchToClosed)))
+                .andExpect(status().isConflict());
+        org.assertj.core.api.Assertions.assertThat(receiptJournalId(openReceiptId)).isEqualTo(journalBefore);
+        org.assertj.core.api.Assertions.assertThat(journal(journalBefore).get("status")).isEqualTo("POSTED");
+    }
+
+    @Test
+    @DisplayName("입금보고서 자동 분개는 원장 직접 역분개가 409로 차단된다 (원천 문서 경유 강제)")
+    void cashReceiptJournalCannotBeReversedDirectly() throws Exception {
+        MvcResult created = createReceipt(createBody("73000"));
+        String receiptId = data(created).get("id").asText();
+        mockMvc.perform(post(BASE_URL + "/{id}/confirm", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk());
+        UUID journalId = receiptJournalId(receiptId);
+
+        mockMvc.perform(post("/accounting/journals/{id}/reverse", journalId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isConflict());
+        org.assertj.core.api.Assertions.assertThat(journal(journalId).get("status")).isEqualTo("POSTED");
+
+        // 원천 문서 경유 취소는 정상 동작 유지.
+        mockMvc.perform(post(BASE_URL + "/{id}/cancel", receiptId)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reverseJournalNo").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("memo 495자 이상 생성은 400 — 역분개 prefix 여유(494자)를 입력 단계에서 강제한다")
+    void memoLongerThan494IsRejected() throws Exception {
+        Map<String, Object> body = createBody("74000");
+        body.put("memo", "가".repeat(495));
+        mockMvc.perform(post(BASE_URL)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest());
+
+        Map<String, Object> boundary = createBody("74100");
+        boundary.put("memo", "가".repeat(494));
+        mockMvc.perform(post(BASE_URL)
+                        .header("X-User-Id", ACCOUNTANT_ID)
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(boundary)))
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -193,7 +594,7 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(createBody("30000"))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        String receiptId = objectMapper.readTree(created.getResponse().getContentAsString())
+        String receiptId = objectMapper.readTree(created.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
                 .get("data").get("id").asText();
 
         mockMvc.perform(delete(BASE_URL + "/{id}", receiptId)
@@ -219,7 +620,7 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
                         .content(objectMapper.writeValueAsString(createBody("40000"))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        String receiptId = objectMapper.readTree(draft.getResponse().getContentAsString())
+        String receiptId = objectMapper.readTree(draft.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
                 .get("data").get("id").asText();
 
         mockMvc.perform(post(BASE_URL + "/{id}/cancel", receiptId)
@@ -375,16 +776,58 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
         org.assertj.core.api.Assertions.assertThat(columnCount).isOne();
     }
 
+    @Test
+    @DisplayName("V50 fresh DB에는 CashReceipt reverse_journal_id 컬럼이 존재한다")
+    void v50MigrationAddsReverseJournalColumn() {
+        Integer columnCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                  FROM information_schema.columns
+                 WHERE table_name = 'cash_receipts'
+                   AND column_name = 'reverse_journal_id'
+                   AND data_type = 'uuid'
+                """,
+                Integer.class);
+
+        org.assertj.core.api.Assertions.assertThat(columnCount).isOne();
+    }
+
+    @Test
+    @DisplayName("V51 fresh DB의 기본 차변 계정 DEFAULT는 102(보통예금)다")
+    void v51MigrationSetsDebitAccountDefault102() {
+        String columnDefault = jdbcTemplate.queryForObject(
+                """
+                SELECT column_default
+                  FROM information_schema.columns
+                 WHERE table_name = 'cash_receipts'
+                   AND column_name = 'debit_account_code'
+                """,
+                String.class);
+
+        org.assertj.core.api.Assertions.assertThat(columnDefault).contains("'102'");
+    }
+
+    /** partner_aging_snapshot 이 jl.partner_id 기준 집계이므로 라인 partner 전파를 회귀로 고정한다. */
+    private static void assertLinesCarryPartner(List<Map<String, Object>> lines) {
+        for (Map<String, Object> line : lines) {
+            org.assertj.core.api.Assertions.assertThat(line.get("partner_id")).isEqualTo(PARTNER_ID);
+        }
+    }
+
     private String createCashReceipt(String amount) throws Exception {
-        MvcResult result = mockMvc.perform(post(BASE_URL)
+        MvcResult result = createReceipt(createBody(amount));
+        return objectMapper.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                .get("data").get("slipNo").asText();
+    }
+
+    private MvcResult createReceipt(Map<String, Object> body) throws Exception {
+        return mockMvc.perform(post(BASE_URL)
                         .header("X-User-Id", ACCOUNTANT_ID)
                         .header("X-User-Role", "ACCOUNTANT")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createBody(amount))))
+                        .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString())
-                .get("data").get("slipNo").asText();
     }
 
     private Map<String, Object> createBody(String amount) {
@@ -402,5 +845,161 @@ class CashReceiptControllerIT extends AbstractPostgresIT {
         body.put("debitAccountCode", "102");
         body.put("creditAccountCode", "110");
         return body;
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode data(MvcResult result) throws Exception {
+        return objectMapper.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).get("data");
+    }
+
+    private UUID receiptJournalId(String receiptId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT journal_id FROM cash_receipts WHERE id = ?::uuid",
+                UUID.class,
+                receiptId);
+    }
+
+    private UUID receiptReverseJournalId(String receiptId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT reverse_journal_id FROM cash_receipts WHERE id = ?::uuid",
+                UUID.class,
+                receiptId);
+    }
+
+    private Map<String, Object> journal(UUID journalId) {
+        return jdbcTemplate.queryForMap(
+                """
+                SELECT id, journal_no, status, source_type, source_ref_id, reversed_journal_id, description,
+                       posted_by
+                  FROM journals
+                 WHERE id = ?::uuid
+                """,
+                journalId.toString());
+    }
+
+    private Map<String, BigDecimal> agingNetForPartner(UUID partnerId) {
+        return jdbcTemplate.queryForMap(
+                """
+                SELECT COALESCE(SUM(net_cash), 0) AS net_cash,
+                       COALESCE(SUM(net_receivable), 0) AS net_receivable
+                  FROM partner_aging_snapshot
+                 WHERE partner_id = ?::uuid
+                """,
+                partnerId.toString()).entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> (BigDecimal) entry.getValue()));
+    }
+
+    private void cleanupCommittedReceiptAndRefreshAging(String receiptId) {
+        if (receiptId == null) {
+            return;
+        }
+        List<UUID> journalIds = jdbcTemplate.queryForList(
+                """
+                WITH direct_journals AS (
+                    SELECT id
+                      FROM journals
+                     WHERE source_type = 'CASH_RECEIPT'
+                       AND source_ref_id = ?::uuid
+                    UNION
+                    SELECT journal_id
+                      FROM cash_receipts
+                     WHERE id = ?::uuid
+                       AND journal_id IS NOT NULL
+                    UNION
+                    SELECT reverse_journal_id
+                      FROM cash_receipts
+                     WHERE id = ?::uuid
+                       AND reverse_journal_id IS NOT NULL
+                ),
+                all_journals AS (
+                    SELECT id FROM direct_journals
+                    UNION
+                    SELECT j.id
+                      FROM journals j
+                     WHERE j.source_type = 'CASH_RECEIPT'
+                       AND j.source_ref_id IN (SELECT id FROM direct_journals)
+                )
+                SELECT id FROM all_journals
+                """,
+                UUID.class,
+                receiptId,
+                receiptId,
+                receiptId);
+        for (UUID journalId : journalIds) {
+            jdbcTemplate.update("DELETE FROM journal_lines WHERE journal_id = ?", journalId);
+        }
+        for (UUID journalId : journalIds) {
+            jdbcTemplate.update("DELETE FROM journals WHERE id = ?", journalId);
+        }
+        jdbcTemplate.update("DELETE FROM cash_receipts WHERE id = ?::uuid", receiptId);
+        agingSnapshotRefreshService.refresh();
+    }
+
+    private List<Map<String, Object>> journalLines(UUID journalId) {
+        return jdbcTemplate.queryForList(
+                """
+                SELECT line_no, account_code, debit_amount, credit_amount, partner_id
+                  FROM journal_lines
+                 WHERE journal_id = ?::uuid
+                 ORDER BY line_no
+                """,
+                journalId.toString());
+    }
+
+    private void assertJournalLines(UUID journalId, String debitAccount, String creditAccount, BigDecimal amount) {
+        List<Map<String, Object>> lines = journalLines(journalId);
+        org.assertj.core.api.Assertions.assertThat(lines).hasSize(2);
+        org.assertj.core.api.Assertions.assertThat(lines.get(0).get("account_code")).isEqualTo(debitAccount);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(0).get("debit_amount"))
+                .isEqualByComparingTo(amount);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(0).get("credit_amount"))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        org.assertj.core.api.Assertions.assertThat(lines.get(1).get("account_code")).isEqualTo(creditAccount);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(1).get("debit_amount"))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(1).get("credit_amount"))
+                .isEqualByComparingTo(amount);
+        assertLinesCarryPartner(lines);
+    }
+
+    private void assertReversalLines(UUID journalId, String debitAccount, String creditAccount, BigDecimal amount) {
+        List<Map<String, Object>> lines = journalLines(journalId);
+        org.assertj.core.api.Assertions.assertThat(lines).hasSize(2);
+        org.assertj.core.api.Assertions.assertThat(lines.get(0).get("account_code")).isEqualTo(debitAccount);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(0).get("debit_amount"))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(0).get("credit_amount"))
+                .isEqualByComparingTo(amount);
+        org.assertj.core.api.Assertions.assertThat(lines.get(1).get("account_code")).isEqualTo(creditAccount);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(1).get("debit_amount"))
+                .isEqualByComparingTo(amount);
+        org.assertj.core.api.Assertions.assertThat((BigDecimal) lines.get(1).get("credit_amount"))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertLinesCarryPartner(lines);
+    }
+
+    private UUID insertConfirmedMigReceipt(String slipNo, String externalRef, String amount) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO cash_receipts (
+                    id, slip_no, partner_id, amount, transaction_date, kind, status,
+                    debit_account_code, credit_account_code, memo, journal_id, external_ref,
+                    version, created_at, created_by, is_deleted
+                )
+                VALUES (
+                    ?::uuid, ?, ?::uuid, ?, '2026-07-03', 'DEPOSIT_REPORT', 'CONFIRMED',
+                    ?, ?, 'MIG 미게시 입금보고서', NULL, ?, 0, NOW(), 'mig-test', FALSE
+                )
+                """,
+                id.toString(),
+                slipNo,
+                PARTNER_ID.toString(),
+                new BigDecimal(amount),
+                CashReceipt.DEFAULT_DEBIT_ACCOUNT_CODE,
+                CashReceipt.DEFAULT_CREDIT_ACCOUNT_CODE,
+                externalRef);
+        return id;
     }
 }

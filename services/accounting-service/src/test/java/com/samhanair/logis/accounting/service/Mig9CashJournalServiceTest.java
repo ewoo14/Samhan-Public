@@ -8,19 +8,34 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.samhanair.logis.accounting.client.KftcClient;
+import com.samhanair.logis.accounting.client.KftcDepositRecord;
+import com.samhanair.logis.accounting.client.PartnerLookupClient;
+import com.samhanair.logis.accounting.client.PartnerSummary;
+import com.samhanair.logis.accounting.domain.CashReceipt;
+import com.samhanair.logis.accounting.domain.Journal;
+import com.samhanair.logis.accounting.domain.TaxInvoice;
+import com.samhanair.logis.accounting.domain.TaxInvoiceLine;
+import com.samhanair.logis.accounting.repository.JournalRepository;
+import com.samhanair.logis.accounting.repository.TaxInvoiceRepository;
+import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.common.ecount.EcountMig9JournalResult;
 import com.samhanair.logis.common.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.PageImpl;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
@@ -43,6 +58,14 @@ class Mig9CashJournalServiceTest {
         lenient().when(jdbcTemplate.queryForObject(contains("chart_of_accounts"), any(SqlParameterSource.class), eq(String.class)))
                 .thenAnswer(invocation -> {
                     SqlParameterSource params = invocation.getArgument(1);
+                    if (params.hasValue("code")) {
+                        String code = (String) params.getValue("code");
+                        return switch (code) {
+                            case "102" -> "102";
+                            case "110" -> "110";
+                            default -> throw new EmptyResultDataAccessException(1);
+                        };
+                    }
                     String name = (String) params.getValue("name");
                     return switch (name) {
                         case "지급수수료" -> "831";
@@ -51,8 +74,9 @@ class Mig9CashJournalServiceTest {
                         default -> throw new EmptyResultDataAccessException(1);
                     };
                 });
-        lenient().when(jdbcTemplate.queryForObject(contains("INSERT INTO journals"), any(SqlParameterSource.class), eq(UUID.class)))
-                .thenReturn(journalId());
+        lenient().when(jdbcTemplate.<UUID>query(contains("INSERT INTO journals"), any(SqlParameterSource.class),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any()))
+                .thenReturn(List.of(journalId()));
         lenient().when(jdbcTemplate.update(anyString(), any(SqlParameterSource.class))).thenReturn(1);
     }
 
@@ -136,7 +160,25 @@ class Mig9CashJournalServiceTest {
 
         assertThat(result.cashReceiptJournalsCreated()).isEqualTo(1);
         assertThat(journalParams().getValue("sourceType")).isEqualTo("CASH_RECEIPT");
-        assertThat(lineParams()).extracting(p -> p.getValue("accountCode")).containsExactly("102", "110");
+        assertThat(lineParams()).extracting(p -> p.getValue("accountCode"))
+                .containsExactly(
+                        CashReceipt.DEFAULT_DEBIT_ACCOUNT_CODE,
+                        CashReceipt.DEFAULT_CREDIT_ACCOUNT_CODE);
+    }
+
+    @Test
+    void receipt_기본_계정_코드가_없으면_MIG9_DEFAULT_ACCOUNT_MISSING_reject() {
+        receipts(row(1, "CR-001", "REF-CR-001", new BigDecimal("1000"), null));
+        when(jdbcTemplate.queryForObject(contains("chart_of_accounts"), any(SqlParameterSource.class), eq(String.class)))
+                .thenThrow(new EmptyResultDataAccessException(1));
+
+        EcountMig9JournalResult result = service.generateFromReceipts(500, "tester");
+
+        assertThat(result.rejected()).isEqualTo(1);
+        assertThat(result.samples()).extracting(EcountMig9JournalResult.Sample::code)
+                .containsExactly("MIG9_DEFAULT_ACCOUNT_MISSING");
+        assertThat(result.samples().get(0).message())
+                .contains("보통예금(102)/외상매출금(110)");
     }
 
     @Test
@@ -146,9 +188,71 @@ class Mig9CashJournalServiceTest {
         service.generateFromReceipts(500, "tester");
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).query(sql.capture(), any(SqlParameterSource.class),
+        verify(jdbcTemplate, org.mockito.Mockito.atLeastOnce()).query(sql.capture(), any(SqlParameterSource.class),
                 org.mockito.ArgumentMatchers.<RowMapper<Mig9CashJournalService.CashRow>>any());
-        assertThat(sql.getValue()).contains("kind = 'DEPOSIT_REPORT'");
+        String pendingSql = sql.getAllValues().stream()
+                .filter(value -> value.contains("FROM cash_receipts"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(pendingSql).contains("kind = 'DEPOSIT_REPORT'");
+        // 라이브 취소(CANCELLED, journal_id null) 행에 유령 POSTED 분개가 생기지 않도록 CONFIRMED 만 대상.
+        assertThat(pendingSql).contains("status = 'CONFIRMED'");
+    }
+
+    @Test
+    void receipt_link는_journal_id가_비어있는_행에만_기록한다() {
+        receipts(row(4, "CR-LINK", "REF-CR-LINK", new BigDecimal("3000"), null));
+
+        service.generateFromReceipts(500, "tester");
+
+        ArgumentCaptor<String> updateSql = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate, org.mockito.Mockito.atLeastOnce())
+                .update(updateSql.capture(), any(SqlParameterSource.class));
+        String linkSql = updateSql.getAllValues().stream()
+                .filter(value -> value.contains("UPDATE cash_receipts"))
+                .findFirst()
+                .orElseThrow();
+        // 라이브 confirm/PATCH 와의 레이스에서 last-write-wins 고아 분개를 차단하는 SQL 가드.
+        assertThat(linkSql).contains("journal_id IS NULL");
+        assertThat(linkSql).contains("version = version + 1");
+    }
+
+    @Test
+    void receipt_link가_0건이면_생성한_journal을_보상삭제하고_skip한다() {
+        receipts(row(4, "CR-LINK-RACE", "REF-CR-LINK-RACE", new BigDecimal("3000"), null));
+        when(jdbcTemplate.update(contains("UPDATE cash_receipts"), any(SqlParameterSource.class)))
+                .thenReturn(0);
+
+        EcountMig9JournalResult result = service.generateFromReceipts(500, "tester");
+
+        assertThat(result.cashReceiptJournalsCreated()).isZero();
+        assertThat(result.skipped()).isEqualTo(1);
+        InOrder inOrder = org.mockito.Mockito.inOrder(jdbcTemplate);
+        ArgumentCaptor<SqlParameterSource> lineDeleteParams = ArgumentCaptor.forClass(SqlParameterSource.class);
+        ArgumentCaptor<SqlParameterSource> journalDeleteParams = ArgumentCaptor.forClass(SqlParameterSource.class);
+        inOrder.verify(jdbcTemplate).update(contains("DELETE FROM journal_lines"), lineDeleteParams.capture());
+        inOrder.verify(jdbcTemplate).update(contains("DELETE FROM journals"), journalDeleteParams.capture());
+        assertThat(lineDeleteParams.getValue().getValue("journalId")).isEqualTo(journalId());
+        assertThat(journalDeleteParams.getValue().getValue("journalId")).isEqualTo(journalId());
+    }
+
+    @Test
+    void disbursement_link가_0건이면_생성한_journal을_보상삭제하고_skip한다() {
+        disbursements(row(4, "CD-LINK-RACE", "REF-CD-LINK-RACE", new BigDecimal("3000"), null));
+        when(jdbcTemplate.update(contains("UPDATE cash_disbursements"), any(SqlParameterSource.class)))
+                .thenReturn(0);
+
+        EcountMig9JournalResult result = service.generateFromDisbursements(500, "tester");
+
+        assertThat(result.cashDisbursementJournalsCreated()).isZero();
+        assertThat(result.skipped()).isEqualTo(1);
+        InOrder inOrder = org.mockito.Mockito.inOrder(jdbcTemplate);
+        ArgumentCaptor<SqlParameterSource> lineDeleteParams = ArgumentCaptor.forClass(SqlParameterSource.class);
+        ArgumentCaptor<SqlParameterSource> journalDeleteParams = ArgumentCaptor.forClass(SqlParameterSource.class);
+        inOrder.verify(jdbcTemplate).update(contains("DELETE FROM journal_lines"), lineDeleteParams.capture());
+        inOrder.verify(jdbcTemplate).update(contains("DELETE FROM journals"), journalDeleteParams.capture());
+        assertThat(lineDeleteParams.getValue().getValue("journalId")).isEqualTo(journalId());
+        assertThat(journalDeleteParams.getValue().getValue("journalId")).isEqualTo(journalId());
     }
 
     @Test
@@ -194,9 +298,10 @@ class Mig9CashJournalServiceTest {
     }
 
     @Test
-    void source_type_ref_unique_충돌은_MIG9_JOURNAL_DUPLICATE_reject() {
+    void source_type_ref_unique_충돌은_DuplicateKeyException을_그대로_전파한다() {
         disbursements(row(1, "CD-001", "REF-CD-001", new BigDecimal("1000"), null));
-        when(jdbcTemplate.queryForObject(contains("INSERT INTO journals"), any(SqlParameterSource.class), eq(UUID.class)))
+        when(jdbcTemplate.<UUID>query(contains("INSERT INTO journals"), any(SqlParameterSource.class),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any()))
                 .thenThrow(new DuplicateKeyException(
                         "duplicate key value violates unique constraint \"journals_source_type_ref_uk\""));
 
@@ -209,9 +314,10 @@ class Mig9CashJournalServiceTest {
         disbursements(
                 row(1, "CD-DUP", "REF-DUP", new BigDecimal("1000"), null),
                 row(2, "CD-NEXT", "REF-NEXT", new BigDecimal("2000"), null));
-        when(jdbcTemplate.queryForObject(contains("INSERT INTO journals"), any(SqlParameterSource.class), eq(UUID.class)))
-                .thenReturn(null)
-                .thenReturn(journalId());
+        when(jdbcTemplate.<UUID>query(contains("INSERT INTO journals"), any(SqlParameterSource.class),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any()))
+                .thenReturn(List.of())
+                .thenReturn(List.of(journalId()));
 
         EcountMig9JournalResult result = service.generateFromDisbursements(500, "tester");
 
@@ -226,7 +332,8 @@ class Mig9CashJournalServiceTest {
     @Test
     void 알수없는_DuplicateKeyException은_그대로_던진다() {
         disbursements(row(1, "CD-001", "REF-CD-001", new BigDecimal("1000"), null));
-        when(jdbcTemplate.queryForObject(contains("INSERT INTO journals"), any(SqlParameterSource.class), eq(UUID.class)))
+        when(jdbcTemplate.<UUID>query(contains("INSERT INTO journals"), any(SqlParameterSource.class),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any()))
                 .thenThrow(new DuplicateKeyException("other_unique"));
 
         assertThatThrownBy(() -> service.generateFromDisbursements(500, "tester"))
@@ -264,6 +371,68 @@ class Mig9CashJournalServiceTest {
         assertThat(params.getValue().getValue("journalId")).isEqualTo(journalId());
     }
 
+    @Test
+    void DepositMatchService_분개_DRAFT도_CashReceipt_기본_입금계정을_사용한다() {
+        KftcClient kftcClient = mock(KftcClient.class);
+        PartnerLookupClient partnerLookupClient = mock(PartnerLookupClient.class);
+        TaxInvoiceRepository taxInvoiceRepository = mock(TaxInvoiceRepository.class);
+        JournalRepository journalRepository = mock(JournalRepository.class);
+        JournalNumberService journalNumberService = mock(JournalNumberService.class);
+        DepositMatchAuditRecorder auditRecorder = mock(DepositMatchAuditRecorder.class);
+        DynamicPermissionClient dynamicPermissionClient = mock(DynamicPermissionClient.class);
+        DepositMatchService depositMatchService = new DepositMatchService(
+                kftcClient,
+                partnerLookupClient,
+                taxInvoiceRepository,
+                journalRepository,
+                journalNumberService,
+                auditRecorder,
+                dynamicPermissionClient);
+        UUID partnerId = partnerId();
+        TaxInvoice invoice = TaxInvoice.create(
+                partnerId, "1234567890", "삼한입금상사", "서울",
+                LocalDate.of(2026, 7, 3), "입금 매칭");
+        invoice.addLine(TaxInvoiceLine.createWithAmounts(
+                invoice, 1, "운송료", null, null,
+                BigDecimal.ONE, new BigDecimal("10000"),
+                new BigDecimal("10000"), new BigDecimal("1000"), null));
+        invoice.issue("TI-001", "tester");
+
+        when(kftcClient.fetchDeposits(any(), any(), anyString(), anyString()))
+                .thenReturn(List.of(new KftcDepositRecord(
+                        "P-CR-001",
+                        new BigDecimal("11000.00"),
+                        LocalDate.of(2026, 7, 3),
+                        "120000",
+                        "***-****-1234",
+                        "입금",
+                        "TX-001")));
+        when(partnerLookupClient.findByPartnerCode("P-CR-001"))
+                .thenReturn(Optional.of(new PartnerSummary(
+                        partnerId, "P-CR-001", "삼한입금상사", "123-45-67890", "서울")));
+        when(taxInvoiceRepository.findByFiltersWithType(any(), any(), any(), any(), eq(partnerId), any()))
+                .thenReturn(new PageImpl<>(List.of(invoice)));
+        when(journalNumberService.next(LocalDate.of(2026, 7, 3))).thenReturn("2026/07/03-1");
+        when(journalRepository.save(any(Journal.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<DepositMatchResult> results = depositMatchService.fetchAndMatch(
+                LocalDate.of(2026, 7, 3),
+                LocalDate.of(2026, 7, 3),
+                "088000000000000000000001",
+                "DRY_RUN",
+                partnerId,
+                null);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).status()).isEqualTo(DepositMatchStatus.MATCHED);
+        ArgumentCaptor<Journal> journal = ArgumentCaptor.forClass(Journal.class);
+        verify(journalRepository).save(journal.capture());
+        assertThat(journal.getValue().getLines()).extracting(line -> line.getAccountCode())
+                .containsExactly(
+                        CashReceipt.DEFAULT_DEBIT_ACCOUNT_CODE,
+                        CashReceipt.DEFAULT_CREDIT_ACCOUNT_CODE);
+    }
+
     private void disbursements(Mig9CashJournalService.CashRow... rows) {
         when(jdbcTemplate.<Mig9CashJournalService.CashRow>query(
                 contains("FROM cash_disbursements"),
@@ -287,14 +456,19 @@ class Mig9CashJournalServiceTest {
     private List<SqlParameterSource> journalParams(int times) {
         ArgumentCaptor<SqlParameterSource> params = ArgumentCaptor.forClass(SqlParameterSource.class);
         verify(jdbcTemplate, org.mockito.Mockito.times(times))
-                .queryForObject(contains("INSERT INTO journals"), params.capture(), eq(UUID.class));
+                .query(contains("INSERT INTO journals"), params.capture(),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any());
         return params.getAllValues();
     }
 
     private List<String> journalSql(int times) {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate, org.mockito.Mockito.times(times))
-                .queryForObject(sql.capture(), any(SqlParameterSource.class), eq(UUID.class));
+                .query(contains("INSERT INTO journals"), any(SqlParameterSource.class),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any());
+        verify(jdbcTemplate, org.mockito.Mockito.atLeast(times))
+                .query(sql.capture(), any(SqlParameterSource.class),
+                        org.mockito.ArgumentMatchers.<RowMapper<UUID>>any());
         return sql.getAllValues().stream()
                 .filter(value -> value.contains("INSERT INTO journals"))
                 .toList();

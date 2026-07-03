@@ -7,6 +7,7 @@
  * - 액션:
  *   * DRAFT  → "확정" (POSTED 로 전환), "편집" (FormPage edit), "취소"
  *   * POSTED → "역분개" (사유 입력 후 REVERSED 전환)
+ *   * POSTED + CASH_RECEIPT → 원장 직접 역분개 차단, 입금보고서 취소/수정 경유 안내
  *   * REVERSED → 액션 없음 (읽기 전용)
  *
  * 권한:
@@ -53,6 +54,12 @@ const JOURNAL_STATUS_LABEL: Record<string, string> = {
   POSTED: '확정',
   REVERSED: '역분개',
 }
+
+const CASH_RECEIPT_REVERSE_NOTICE =
+  '이 분개는 입금보고서에서 자동 생성되었습니다. 원천 입금보고서 취소/수정 시 역분개가 자동 게시됩니다. (입금보고서 관리 화면 준비 중)'
+
+const CASH_RECEIPT_REVERSE_CAPTION =
+  '입금보고서 자동 분개는 원천 입금보고서 취소/수정 시 역분개가 자동 게시됩니다.'
 
 function journalStatusBadgeStyle(status: string) {
   switch (status) {
@@ -145,6 +152,9 @@ export function JournalDetailPage() {
   const journal = query.data
   const isDraft = journal.status === 'DRAFT'
   const isPosted = journal.status === 'POSTED'
+  const isCashReceiptJournal = journal.sourceType === 'CASH_RECEIPT'
+  const canReversePostedJournal = isPosted && !isCashReceiptJournal
+  const showCashReceiptReverseNotice = isPosted && isCashReceiptJournal
   // `/accounting/journals/:id/edit` 는 DRAFT 를 hydrate 하지만 저장은 현재도 POST /accounting/journals(CREATE) 를 호출한다.
   const canOpenDraftCreateShell = canAccess('accounting.journals', 'create')
   const canUpdateJournal = canAccess('accounting.journals', 'update')
@@ -216,12 +226,18 @@ export function JournalDetailPage() {
         onClick: handlePost,
         disabled: postMutation.isPending,
       }
-    : isPosted && canUpdateJournal
+    : canReversePostedJournal && canUpdateJournal
       ? {
           label: reverseMutation.isPending ? '역분개 중...' : '역분개',
           onClick: handleReverse,
           disabled: reverseMutation.isPending,
         }
+      : isPosted && isCashReceiptJournal && canUpdateJournal
+        ? {
+            label: '입금보고서에서 처리',
+            onClick: () => undefined,
+            disabled: true,
+          }
       : null
 
   return (
@@ -241,6 +257,11 @@ export function JournalDetailPage() {
               <span className="mobile-summary-total-amount">{fmtKrw(journal.totalDebit)}원</span>
               <span className="mobile-summary-date">일자 {journal.journalDate}</span>
             </div>
+            {showCashReceiptReverseNotice ? (
+              <div style={{ marginTop: 10, fontSize: 12, color: '#92400E' }}>
+                {CASH_RECEIPT_REVERSE_CAPTION}
+              </div>
+            ) : null}
           </div>
 
           <div className="mobile-action-bar" role="toolbar" aria-label="분개 액션">
@@ -356,6 +377,11 @@ export function JournalDetailPage() {
                 <strong>역분개 사유</strong>: {journal.reverseReason}
               </div>
             ) : null}
+            {showCashReceiptReverseNotice ? (
+              <div style={{ marginTop: 8, fontSize: 13, color: '#92400E' }}>
+                {CASH_RECEIPT_REVERSE_CAPTION}
+              </div>
+            ) : null}
           </div>
 
           <div className="detail-action-bar" style={{ display: 'flex', gap: 8 }}>
@@ -387,13 +413,22 @@ export function JournalDetailPage() {
                 {postMutation.isPending ? '확정 중...' : '확정'}
               </Button>
             ) : null}
-            {isPosted && canUpdateJournal ? (
+            {canReversePostedJournal && canUpdateJournal ? (
               <Button
                 variant="ghost"
                 onClick={handleReverse}
                 disabled={reverseMutation.isPending}
               >
                 {reverseMutation.isPending ? '역분개 중...' : '역분개'}
+              </Button>
+            ) : null}
+            {isPosted && isCashReceiptJournal && canUpdateJournal ? (
+              <Button
+                variant="ghost"
+                disabled
+                title={CASH_RECEIPT_REVERSE_NOTICE}
+              >
+                입금보고서에서 처리
               </Button>
             ) : null}
           </div>

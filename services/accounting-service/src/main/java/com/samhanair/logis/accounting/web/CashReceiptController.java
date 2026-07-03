@@ -9,6 +9,7 @@ import com.samhanair.logis.common.dto.ApiResponse;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -83,31 +84,60 @@ public class CashReceiptController {
         return ApiResponse.ok(service.getOne(id));
     }
 
-    /** DRAFT 입금보고서 수정 — id 는 path 용 UUID, 화면 표시는 slipNo/거래처명. */
-    @Operation(summary = "입금보고서 DRAFT 수정",
-            description = "id 는 mutation path 용 UUID. CONFIRMED/CANCELLED 상태는 거부한다")
+    /** 입금보고서 수정 — DRAFT 는 단순 수정, CONFIRMED 는 역분개 후 재게시. */
+    @Operation(summary = "입금보고서 수정",
+            description = "DRAFT는 필드만 수정하고, CONFIRMED는 기존 분개를 역분개한 뒤 새 POSTED 분개를 게시한다"
+                    + " (분개 미연결 CONFIRMED[MIG 미게시]는 역분개 없이 신규 게시, 무변경 요청은 재게시 생략,"
+                    + " 마감 기간 일자는 409). 성공 응답은 journalNo/reverseJournalNo 문자열만 노출한다. CANCELLED는 거부한다")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "입력 검증 실패 또는 비-leaf 계정"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "입금보고서, 계정 또는 연결 분개 미존재"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "CANCELLED 상태, 마감 기간, 또는 역분개 불가 상태"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "거래처 조회/매칭 실패")
+    })
     @PatchMapping("/{id:[0-9a-fA-F-]{36}}")
     @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
-    public ApiResponse<CashReceiptResponse> updateDraft(
+    public ApiResponse<CashReceiptResponse> update(
             @PathVariable UUID id,
-            @Valid @RequestBody CashReceiptRequest request) {
-        return ApiResponse.ok(service.updateDraft(id, request));
+            @Valid @RequestBody CashReceiptRequest request,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(service.update(id, request, callerOrSystem(callerHeader)));
     }
 
     /** DRAFT → CONFIRMED — id 는 path 용 UUID, 화면 표시는 slipNo/거래처명. */
-    @Operation(summary = "입금보고서 확정", description = "id 는 mutation path 용 UUID. 분개 생성은 S2 범위다")
+    @Operation(summary = "입금보고서 확정",
+            description = "DRAFT 입금보고서를 CONFIRMED로 전환하고 선택 계정 기준 POSTED 분개를 자동 게시한다."
+                    + " 성공 응답은 journalNo 문자열만 노출하며, 마감된 회계 기간 일자는 409")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "확정 성공 — CONFIRMED 및 journalNo 반환"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "비-leaf 계정 — 확정 시점 재검증"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "입금보고서 또는 계정 미존재"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "DRAFT가 아니거나 이미 분개 연결 또는 마감 기간")
+    })
     @PostMapping("/{id:[0-9a-fA-F-]{36}}/confirm")
     @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
-    public ApiResponse<CashReceiptResponse> confirm(@PathVariable UUID id) {
-        return ApiResponse.ok(service.confirm(id));
+    public ApiResponse<CashReceiptResponse> confirm(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(service.confirm(id, callerOrSystem(callerHeader)));
     }
 
     /** CONFIRMED → CANCELLED — id 는 path 용 UUID, 화면 표시는 slipNo/거래처명. */
-    @Operation(summary = "입금보고서 취소", description = "id 는 mutation path 용 UUID. 역분개는 S2 범위다")
+    @Operation(summary = "입금보고서 취소",
+            description = "CONFIRMED 입금보고서를 CANCELLED로 전환하고 연결된 원분개가 있으면 역분개를 자동 게시한다."
+                    + " 성공 응답은 reverseJournalNo 문자열만 노출한다")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "취소 성공 — CANCELLED 및 reverseJournalNo 반환(원분개가 있을 때)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "입금보고서 또는 연결 분개 미존재"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "CONFIRMED가 아니거나 역분개 불가 상태")
+    })
     @PostMapping("/{id:[0-9a-fA-F-]{36}}/cancel")
     @RequirePermission(page = PAGE_CODE, action = PermissionAction.UPDATE)
-    public ApiResponse<CashReceiptResponse> cancel(@PathVariable UUID id) {
-        return ApiResponse.ok(service.cancel(id));
+    public ApiResponse<CashReceiptResponse> cancel(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        return ApiResponse.ok(service.cancel(id, callerOrSystem(callerHeader)));
     }
 
     /** DRAFT 입금보고서 soft-delete — id 는 path 용 UUID, 화면 표시는 slipNo/거래처명. */

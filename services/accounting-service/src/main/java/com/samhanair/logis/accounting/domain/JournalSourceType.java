@@ -21,6 +21,12 @@ public enum JournalSourceType {
     /** MIG-9 지출결의서 CashDisbursement 에서 자동 생성된 분개. */
     CASH_DISBURSEMENT,
 
-    /** MIG-9 입금보고서 CashReceipt 에서 자동 생성된 분개. */
+    /**
+     * 입금보고서 CashReceipt 에서 자동 생성된 분개.
+     *
+     * <p>라이브 게시(confirm/updateConfirmed)는 {@code sourceRefId=CashReceipt UUID}. MIG-9 배치 게시분은
+     * {@code source_ref} 문자열만 사용하고 {@code sourceRefId} 는 비운다. 취소/수정의 자동 역분개는
+     * {@code sourceRefId=원분개 UUID}.
+     */
     CASH_RECEIPT
 }

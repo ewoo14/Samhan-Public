@@ -1,5 +1,6 @@
 package com.samhanair.logis.accounting.service;
 
+import com.samhanair.logis.accounting.domain.CashReceipt;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.common.ecount.EcountCsvSupport;
 import com.samhanair.logis.common.ecount.EcountMig9JournalResult;
@@ -10,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.RowMapper;
@@ -22,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** MIG-9 — MIG-7 CashDisbursement/CashReceipt 를 POSTED Journal 로 자동 생성한다. */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class Mig9CashJournalService {
 
@@ -32,7 +35,6 @@ public class Mig9CashJournalService {
 
     private static final String ACCOUNT_EXPENSE = "지급수수료";
     private static final String ACCOUNT_CASH = "보통예금";
-    private static final String ACCOUNT_RECEIVABLE = "외상매출금";
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     @Autowired(required = false)
@@ -88,7 +90,13 @@ public class Mig9CashJournalService {
             }
             insertLine(journalId, 1, expenseCode, row.amount(), BigDecimal.ZERO, row.partnerId(), row.memo(), actor);
             insertLine(journalId, 2, cashCode, BigDecimal.ZERO, row.amount(), row.partnerId(), row.memo(), actor);
-            linkCash("cash_disbursements", row.id(), journalId, actor);
+            if (!linkCash("cash_disbursements", row.id(), journalId, actor)) {
+                log.warn("MIG-9 CashDisbursement journal link race — compensating orphan journal. cashId={}, journalId={}",
+                        row.id(), journalId);
+                deleteGeneratedJournal(journalId);
+                result.skipped();
+                return;
+            }
             result.cashDisbursementCreated();
         } catch (EmptyResultDataAccessException ex) {
             reject(row, ErrorCode.MIG9_DEFAULT_ACCOUNT_MISSING,
@@ -104,19 +112,28 @@ public class Mig9CashJournalService {
             return;
         }
         try {
-            String cashCode = lookupAccountCode(ACCOUNT_CASH);
-            String receivableCode = lookupAccountCode(ACCOUNT_RECEIVABLE);
+            String cashCode = requireAccountCode(CashReceipt.DEFAULT_DEBIT_ACCOUNT_CODE);
+            String receivableCode = requireAccountCode(CashReceipt.DEFAULT_CREDIT_ACCOUNT_CODE);
             UUID journalId = insertJournal(row, JournalSourceType.CASH_RECEIPT, actor);
             if (skipDuplicateSource(journalId, result)) {
                 return;
             }
-            insertLine(journalId, 1, cashCode, row.amount(), BigDecimal.ZERO, row.partnerId(), row.memo(), actor);
-            insertLine(journalId, 2, receivableCode, BigDecimal.ZERO, row.amount(), row.partnerId(), row.memo(), actor);
-            linkCash("cash_receipts", row.id(), journalId, actor);
+            insertLine(journalId, 1, cashCode,
+                    row.amount(), BigDecimal.ZERO, row.partnerId(), row.memo(), actor);
+            insertLine(journalId, 2, receivableCode,
+                    BigDecimal.ZERO, row.amount(), row.partnerId(), row.memo(), actor);
+            if (!linkCash("cash_receipts", row.id(), journalId, actor)) {
+                log.warn("MIG-9 CashReceipt journal link race — compensating orphan journal. cashId={}, journalId={}",
+                        row.id(), journalId);
+                deleteGeneratedJournal(journalId);
+                result.skipped();
+                return;
+            }
             result.cashReceiptCreated();
         } catch (EmptyResultDataAccessException ex) {
             reject(row, ErrorCode.MIG9_DEFAULT_ACCOUNT_MISSING,
-                    "MIG-9 기본 계정 조회 실패: 보통예금/외상매출금", result);
+                    "MIG-9 기본 계정 조회 실패: 보통예금(" + CashReceipt.DEFAULT_DEBIT_ACCOUNT_CODE
+                            + ")/외상매출금(" + CashReceipt.DEFAULT_CREDIT_ACCOUNT_CODE + ")", result);
         }
     }
 
@@ -153,12 +170,23 @@ public class Mig9CashJournalService {
                    AND is_leaf = TRUE
                    AND is_deleted = FALSE
                  ORDER BY code
-                 LIMIT 1
+                LIMIT 1
                 """, new MapSqlParameterSource("name", accountName), String.class);
     }
 
-    private UUID insertJournal(CashRow row, JournalSourceType sourceType, String actor) {
+    private String requireAccountCode(String accountCode) {
         return jdbcTemplate.queryForObject("""
+                SELECT code
+                  FROM chart_of_accounts
+                 WHERE code = :code
+                   AND is_leaf = TRUE
+                   AND is_deleted = FALSE
+                 LIMIT 1
+                """, new MapSqlParameterSource("code", accountCode), String.class);
+    }
+
+    private UUID insertJournal(CashRow row, JournalSourceType sourceType, String actor) {
+        List<UUID> ids = jdbcTemplate.query("""
                 INSERT INTO journals (
                     id, journal_no, journal_date, description, source_type, source_ref,
                     status, posted_at, posted_by, version, created_at, created_by, is_deleted
@@ -175,7 +203,8 @@ public class Mig9CashJournalService {
                 .addValue("description", row.memo())
                 .addValue("sourceType", sourceType.name())
                 .addValue("sourceRef", row.externalRef())
-                .addValue("actor", actor), UUID.class);
+                .addValue("actor", actor), (rs, rowNum) -> rs.getObject("id", UUID.class));
+        return ids.stream().findFirst().orElse(null);
     }
 
     private void insertLine(UUID journalId, int lineNo, String accountCode,
@@ -201,23 +230,42 @@ public class Mig9CashJournalService {
                 .addValue("actor", actor));
     }
 
-    private void linkCash(String tableName, UUID cashId, UUID journalId, String actor) {
-        jdbcTemplate.update("""
+    private boolean linkCash(String tableName, UUID cashId, UUID journalId, String actor) {
+        // journal_id IS NULL 가드 — 라이브 confirm/PATCH(E3 S2)가 배치와 동시에 같은 행에 분개를
+        // 링크하는 레이스에서 last-write-wins 로 분개가 고아화되는 것을 차단한다 (@Version 은 raw
+        // UPDATE 를 타지 않으므로 SQL 레벨로 방어).
+        int updated = jdbcTemplate.update("""
                 UPDATE %s
                    SET journal_id = :journalId,
                        modified_at = NOW(),
-                       modified_by = :actor
+                       modified_by = :actor,
+                       version = version + 1
                  WHERE id = :cashId
                    AND is_deleted = FALSE
+                   AND journal_id IS NULL
                 """.formatted(tableName), new MapSqlParameterSource()
                 .addValue("journalId", journalId)
                 .addValue("actor", actor)
                 .addValue("cashId", cashId));
+        return updated == 1;
+    }
+
+    /**
+     * 같은 REQUIRES_NEW tx 내 미커밋 orphan 보상 — 커밋된 분개에 사용 금지(원장 불변).
+     */
+    private void deleteGeneratedJournal(UUID journalId) {
+        jdbcTemplate.update("DELETE FROM journal_lines WHERE journal_id = :journalId",
+                new MapSqlParameterSource("journalId", journalId));
+        jdbcTemplate.update("DELETE FROM journals WHERE id = :journalId",
+                new MapSqlParameterSource("journalId", journalId));
     }
 
     private List<CashRow> pendingRows(String tableName, int batchSize) {
+        // cash_receipts 는 E3 S2 라이브 취소(CANCELLED)가 가능하므로 CONFIRMED 만 배치 대상 —
+        // journal_id NULL 인 CANCELLED 행(라이브 취소된 MIG 행)에 유령 POSTED 분개가 생기는 것을 차단.
         String receiptKindFilter = "cash_receipts".equals(tableName)
                 ? "                   AND kind = 'DEPOSIT_REPORT'\n"
+                        + "                   AND status = 'CONFIRMED'\n"
                 : "";
         return jdbcTemplate.query("""
                 SELECT ROW_NUMBER() OVER (ORDER BY transaction_date, slip_no, id) AS source_row_no,

@@ -126,20 +126,26 @@ public class JournalService {
      * <p>부수효과 (단일 트랜잭션):
      * <ol>
      *   <li>원분개 status REVERSED + reversedJournalId = 신규 Journal UUID</li>
-     *   <li>신규 Journal: 동일 journalDate / description "[역분개] {원 description}" / sourceType MANUAL /
+     *   <li>신규 Journal: 동일 journalDate / description "[역분개] {원 전표번호} {원 description}" / sourceType MANUAL /
      *       sourceRefId = 원분개 UUID / 라인 차/대 swap / status POSTED</li>
      * </ol>
      *
      * @param id 원분개 UUID
      * @param actorUserId 역분개 게시자 user-id
      * @return 신규 역분개 단건 (원분개 ID 는 reversedJournalId 로 추적)
+     * @throws BusinessException(CONFLICT) 입금보고서 자동 분개(CASH_RECEIPT)를 직접 역분개 시도
      */
     public JournalDetailResponse reverse(UUID id, String actorUserId) {
         Journal original = findOrThrow(id);
+        // 입금보고서 분개를 원장에서 직접 역분개하면 CashReceipt 는 CONFIRMED 로 남은 채
+        // cancel/수정의 autoReverse 가 영구 409 (REVERSED 재역분개 불가) — 원천 문서 경유를 강제한다.
+        if (original.getSourceType() == JournalSourceType.CASH_RECEIPT) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "입금보고서 자동 분개는 원장에서 직접 역분개할 수 없습니다 — 입금보고서 취소/수정으로 처리하세요");
+        }
         // 원분개 상태 검증은 markReversed 안에서.
         String reverseNo = journalNumberService.next(original.getJournalDate());
-        String reverseDesc = "[역분개] "
-                + (original.getDescription() == null ? original.getJournalNo() : original.getDescription());
+        String reverseDesc = reversalDescription(original);
         Journal reversal = Journal.create(reverseNo, original.getJournalDate(), reverseDesc,
                 JournalSourceType.MANUAL, original.getId());
 
@@ -149,7 +155,7 @@ public class JournalService {
                     origLine.getCreditAmount(),  // swap
                     origLine.getDebitAmount(),   // swap
                     origLine.getPartnerId(),
-                    "[역분개] " + (origLine.getMemo() == null ? "" : origLine.getMemo()));
+                    clampReversalMemo(origLine.getMemo()));
             reversal.addLine(swapped);
         }
         reversal.post(actorUserId);
@@ -203,8 +209,7 @@ public class JournalService {
     public Journal autoReverse(UUID originalJournalId, String actorUserId) {
         Journal original = findOrThrow(originalJournalId);
         String reverseNo = journalNumberService.next(original.getJournalDate());
-        String reverseDesc = "[역분개] "
-                + (original.getDescription() == null ? original.getJournalNo() : original.getDescription());
+        String reverseDesc = reversalDescription(original);
         Journal reversal = Journal.create(reverseNo, original.getJournalDate(), reverseDesc,
                 original.getSourceType(), original.getId());
         int lineNo = 1;
@@ -213,7 +218,7 @@ public class JournalService {
                     origLine.getCreditAmount(),
                     origLine.getDebitAmount(),
                     origLine.getPartnerId(),
-                    "[역분개] " + (origLine.getMemo() == null ? "" : origLine.getMemo()));
+                    clampReversalMemo(origLine.getMemo()));
             reversal.addLine(swapped);
         }
         reversal.post(actorUserId);
@@ -221,6 +226,22 @@ public class JournalService {
         original.markReversed();
         original.linkReversal(saved.getId());
         return saved;
+    }
+
+    /**
+     * 역분개 라인 memo — "[역분개] " prefix 6자를 더해도 {@link JournalLine} 의 500자 한도를
+     * 넘지 않게 클램프. 원 memo 가 495자 이상이면 prefix 때문에 역분개 생성이
+     * IllegalArgumentException 으로 막혀 원천 문서(입금보고서 등)가 영구 취소불능이 되는 것을 방지.
+     */
+    private static String clampReversalMemo(String originalMemo) {
+        String memo = "[역분개] " + (originalMemo == null ? "" : originalMemo);
+        return memo.length() > 500 ? memo.substring(0, 500) : memo;
+    }
+
+    private static String reversalDescription(Journal original) {
+        String description = "[역분개] " + original.getJournalNo()
+                + (original.getDescription() == null ? "" : " " + original.getDescription());
+        return description.length() > 500 ? description.substring(0, 500) : description;
     }
 
     /**
