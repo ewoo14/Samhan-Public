@@ -17,3 +17,5 @@ metadata:
 6. **컨텍스트에 항상 유지** — 본 규칙을 세션 내내 상기.
 
 **Why**: PM 직접구현·focused 재검·병렬 리뷰·PM 종합 조기선언·게시 누락 등 반복 위반이 개발책임자에 연속 적발됨. 순차 5-agent 듀얼리뷰가 실 blocking(#699서 11건) 적발의 핵심. [[feedback_canonical_workflow]] [[feedback_pm_no_direct_implementation]] [[feedback_pr_open_not_draft]]
+
+**2026-07-03 #710 위반 4종 박제(개발책임자 "리뷰 게시 위반. 워크플로우 다시 학습" 지적 → 소급 보완)**: ①**Opus 라운드 fix 를 Codex 위임 금지 절대** — 개발책임자의 "Codex 가 실제 fix 하는지 확인" 같은 *검증 질문*을 규칙 변경으로 추측 해석 금지(규칙 변경=명시 지시만) ②**게시 트리거 = 리뷰 수합 완료 직후, fix 착수보다 먼저** — "리뷰+fix 후 통합 게시" 아님. 리뷰 게시 → fix → fix+QA 게시 순 ③**모든 라운드 코멘트에 라이브 QA 스샷 단계별 인라인**(Codex 라운드 텍스트-only = 위반) ④**마지막 fix(1줄이라도) 후에도 full 5-agent 순차 재검** — PM 단독 diff 검증으로 0수렴 선언 금지.

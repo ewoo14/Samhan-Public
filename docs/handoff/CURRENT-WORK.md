@@ -4,7 +4,29 @@
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 **메모 단일필드(1차)만** 머지 — ⚠️**full-form(전표 전체)=원 지시·미완**(정정 [[feedback_epic_scope_no_narrowing]]). **현 우선순위=협업 full-form **롤아웃**(정찰 acf36aaa: slip 판매전표는 **이미 full-form ✅** S2a #674 `fcdbb6bea`[createDocCoeditProvider Y.Map헤더+Y.Array품목라인+CollaborativeSlipInput 셀바인딩, 수정모달] — **5문서 중 주문 full-form ✅(#689 `75a967d15`, BLOCKING 2[awareness 블리드·stale corruption] fix·듀얼리뷰 양방향정정·2/6 완료) — 견적·회계·결재·배차 잔여 메모→full-form 이식**. 개발책임자 결정: **트랙B 5문서 롤아웃 + 트랙A slip 하드닝 + 트랙B 롤아웃 병행, 저장충돌=후속). **〔진행 2026-07-01 PM〕** 트랙A **slA1(공유 provider 라인 lineId+add/remove/byId CRDT infra) ✅머지 `1d0d27a81`**(#690, Opus FE+Codex 듀얼리뷰 0수렴, backward-compat 60테스트). **회계 정찰**: 회계 full-form은 ❌BE 수정 PUT 부재(신설 필요)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위. **전략=사용자 1순위 '더 많은 문서 full-form' → 트랙B 롤아웃 우선**(slA1 infra가 line-CRDT 직접제공 → slA1b 는 hard 전제 아님; 회계/견적이 infra 직접사용 가능). 견적·결재·배차 **fit 정찰 병렬 진행** → 최저난도부터 롤아웃. slA1b(slip 라인 add/remove 소비자, 라이브 모달 retrofit 고위험)·slA1c(dnd-kit reorder)·slA2(셀 char-CRDT)=후순위 enhancement). **〔2026-07-01 PM 최신〕 견적 full-form ✅머지 #691 `d36d6c7cf`(slip·주문·견적 3/6) — 개발책임자 "PR 워크플로우 재준수+세션 위반 전수 보완" 지시로 #691은 정식 5-agent 듀얼·0수렴·라이브 실QA(2세션 SSE 양방향 반영 PASS·-sse-reflected 실캡처)·PM종합 전부 이행. 라이브 QA가 결함 3건 적발: ①applySnapshot corrupt-update 브릭(공유 coedit infra·하드닝 fix PR 착수) ②EstimateRealtimeClient/createAuditApi 경로 `/api/v1/estimates`→`/slips/estimates` 누락(404/500). 다음=①applySnapshot 하드닝 PR ②경로 fix PR ③**세션 소급 sweep**(#690→#689→#686/687→#682-685 각 5-agent+라이브QA 소급) ④결재→회계(BE)→배차 롤아웃. #17 단가변동 보류**. 〔과거 "#16 종결" 표기 철회〕**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 ---
-## 🟢 2026-07-02 회사PC remote-control 세션 — 개발책임자 지시 전수 기록 (본 절이 최신 · 누락금지 진실원)
+## ⛔ 2026-07-03 회사PC 세션 종료 → 🏠 집PC 즉시 재개 (본 절이 최신 진실원)
+
+> 개발책임자 "여기까지 하고 세션 종료, 집PC에서 바로 이어서". 집PC 절차: `git pull` → `.\scripts\sync-claude-memory.ps1` → 본 절 정독 → 아래 재개 지점부터. **워크플로우 절대 엄수(단축·추측 금지)·매 라운드 리뷰 수합 즉시 게시(fix 착수 전)·모든 라운드 스샷 인라인·Opus 라운드 fix=Opus 직접·마지막 fix 도 full 재검** — 금일 위반 4건 자인·박제([[feedback_review_5agent_no_shortcut_strict]] 갱신분).
+
+### ✅ 금일 완료
+- **E3 S2 머지 `1ee2f00c`(#710)**: 확정→POSTED 분개·취소/수정→역분개·**계정 102 정정**(103=당좌예금 오기)·**V52+리포트 17쿼리+시산표 POSTED+REVERSED 전층 상쇄**·마감가드·reverse 가드. 순차 듀얼 5라운드 0수렴·BE 1064 실IT(🔑**Testcontainers 회사PC 우회 확보**: `$env:DOCKER_HOST="npipe:////./pipe/dockerDesktopLinuxEngine"`+`~/.docker-java.properties`(api.version=1.44) — 집PC는 원래 잘 됨)·라이브 aging 상쇄 실증·dev-report `2026-07-03-e3-s2-cash-receipt-journal-posting.md`(D-E3-02~05).
+- **dev DB J- 시드 중복 정리**(개발책임자 승인): 구 5/12 시더 산물 50분개+130라인 삭제 — 분개장 "열 안 맞음(중복)" 해소, GUI 실증 캡처 #711 에 게시.
+- **위반 4건 자인+소급 보완**: #710 에 자인 게시 → 소급 Opus full 5-agent 재검(BE가 HIGH: 시산표 잔존/linkCash 역레이스 적발) → fix 는 PR #712 로 분리.
+
+### 🔄 진행 중 PR 2건 (병렬 — 회사PC 는 worktree `C:\dev\Samhan-Public-wt711`=#711 전용/메인 트리=#712 전용이었음. 집PC 는 필요 시 자체 worktree 생성)
+- **PR #712** (fix/mig9-linkcash-status-and-posted-comment-sweep, HEAD `9bf53331`): 소급 재검 fix — linkCash TOCTOU status 가드+**version CAS**(Codex 강화)+42703 해소(version bump receipts 한정 — disbursements 는 version 컬럼 없음!)+**Mig9CashJournalLinkIT 신설**(실 PG 스키마 고정, ci.yml 등재)+스테일 문서 36곳. 게시: Opus 리뷰→Opus fix→Codex 라운드(각 1:1). 검증 1066 실IT 0fail. **다음=①Opus full 재검**(Codex version CAS fix 재검 — 회사PC 에이전트가 돌던 중 세션 종료로 소실, 집PC 에서 재실행: version CAS 정합·CashRow projection·LinkIT 견고화 검증) **→0수렴→PM종합→CI→머지**.
+- **PR #711** (fix/journal-detail-line-column-widths, HEAD `8faa262c`): 분개 상세 열 정비 — **개발책임자 실화면 재지적 2건 반영 완료**: ①열 순서 `#|계정과목|거래처(260)|차변|대변|메모`(거래처를 차변 왼쪽으로 — 원 지시 오독 정정) ②**합계=DataTable 마지막 행 편입**(div-grid 미러 폐기 — 구조 정렬 보장, edge ≤2px 수치 단언)+모바일 합계 카드. 게시: Opus 리뷰→fix+QA 스샷→Codex 라운드+최종 fix 스샷(각 1:1, 캡처 3장 SHA-pinned). **다음=①fresh Codex 재검**(최종 fix 재검 — 프롬프트 초안 `scratchpad/codex-711-recheck.txt` 요지: sentinel 행 정합·모바일 카드·CSS 제거 파급·real-qa 실효. 세션 종료로 미디스패치) **→0수렴→PM종합→CI green 확인→머지**. 라이브 QA 재실행법: worktree(또는 브랜치 checkout)에서 vite(`$env:VITE_API_BASE_URL="http://localhost:8080"; cd clients/desktop; node_modules/.bin/vite dev --config vite.renderer.dev.config.ts`, ⚠️fresh 트리는 `clients/web/design-system` `npm install`+`npm run build` 선행 — file: 의존 dist 함정)+`playwright test --config playwright/journal-detail-column-widths-real-qa/playwright.config.ts`.
+- **머지 후 공통**: ②#710 소급 **Codex 대칭 재검**(최종 main 대상, fresh) → 소급 완결 선언 게시 ③회사PC worktree 정리(`git worktree remove C:\dev\Samhan-Public-wt711` — 회사PC 에서만).
+
+### ⚠️ 개발책임자 회신 대기 (비차단)
+①gross(total_*) 유효발생분 축소 여부(현=원장 유량) ②거래처 열 BE enrich(`JournalLineResponse` partnerName/accountName 미전송 — #711 확대 효익의 전제, 별도 슬라이스 제안) ③#688 단가변동 DRAFT 방향(재개/close/유지).
+
+### 📌 이후 순번
+#711·#712 머지+소급 완결 → **E3 S3(통장연계: markReflected 라이브 승격·BankTransaction N건→입금보고서 생성·매칭 강제)** → S4(FE). backlog 는 S2 dev-report 참조.
+- 환경 참고: 로컬 스택=S2 최종 반영(accounting V52·auth V79/V80·partner 재빌드 완료). vite/에이전트/codex exec 는 세션 종료로 전부 소멸 — 재실행 필요한 것만 위에 명기.
+
+---
+## 🟢 2026-07-02 회사PC remote-control 세션 — 개발책임자 지시 전수 기록 (구 절)
 
 > 개발책임자 명시: **"내가 지시한 내용 모두 상세히 기록해 놓고 추후 누락없이 진행."** 아래 8개 지시 항목이 이번 세션 접수 전량. 각 항목 상태·확정 결정 병기. 착수 순서 = **버그 → E2 → (E1·task5 병렬/순차) → E3**.
 
