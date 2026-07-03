@@ -49,6 +49,9 @@ const fmtKrw = (raw: string): string => {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
+/** 합계 행 sentinel id — 실 라인 UUID 와 충돌하지 않는 로컬 표식(화면 미노출). */
+const TOTAL_ROW_ID = '__journal_total__'
+
 const JOURNAL_STATUS_LABEL: Record<string, string> = {
   DRAFT: '작성중',
   POSTED: '확정',
@@ -71,6 +74,15 @@ function journalStatusBadgeStyle(status: string) {
     default:
       return { background: '#F3F4F6', color: '#4B5563' }
   }
+}
+
+function JournalCellEllipsis({ value }: { value: string }) {
+  const hasTitle = value !== '—' && value !== ''
+  return (
+    <span className="journal-cell-ellipsis" title={hasTitle ? value : undefined}>
+      {value}
+    </span>
+  )
 }
 
 export function JournalDetailPage() {
@@ -171,6 +183,27 @@ export function JournalDetailPage() {
     })),
   }
 
+  // 합계는 별도 div-grid 근사가 아니라 테이블 마지막 행으로 편입한다 — table-layout 과 무관하게
+  // 열 정렬을 테이블 자체가 구조적으로 보장(개발책임자 "합계열이 위 열과 안 맞음" 재지적 해소).
+  const isTotalRow = (l: JournalLine) => l.id === TOTAL_ROW_ID
+  const tableRows: JournalLine[] = journal.lines.length === 0
+    ? []
+    : [
+        ...journal.lines,
+        {
+          id: TOTAL_ROW_ID,
+          lineNo: 0,
+          accountCode: '',
+          accountName: null,
+          debit: journal.totalDebit,
+          credit: journal.totalCredit,
+          partnerName: null,
+          note: null,
+          memo: null,
+        },
+      ]
+
+  // 열 순서 — 개발책임자 지시: 거래처를 차변 왼쪽으로 이동(+너비 확대). 금액(차/대)은 우측 블록.
   const columns: DataTableColumn<JournalLine>[] = [
     {
       key: 'lineNo',
@@ -178,45 +211,48 @@ export function JournalDetailPage() {
       width: '40px',
       align: 'center',
       // lineNo 는 BE 1-based(JournalService lineNo=1..) — 협업 패널 라인 라벨과 일관되게 그대로 표기.
-      render: (l) => l.lineNo,
+      render: (l) => (isTotalRow(l) ? '' : l.lineNo),
     },
     {
       key: 'accountCode',
       header: '계정과목',
-      width: '220px',
-      render: (l) => (
-        <span>
-          <span style={{ color: '#6B7280', marginRight: 8, fontVariantNumeric: 'tabular-nums' }}>
-            {l.accountCode}
+      width: '160px',
+      render: (l) =>
+        isTotalRow(l) ? (
+          <span style={{ fontWeight: 600 }}>합계</span>
+        ) : (
+          <span className="journal-account-cell">
+            <span className="journal-account-code">
+              {l.accountCode}
+            </span>
+            <JournalCellEllipsis value={l.accountName ?? '—'} />
           </span>
-          {l.accountName ?? ''}
-        </span>
-      ),
-    },
-    {
-      key: 'debit',
-      header: '차변',
-      width: '140px',
-      align: 'right',
-      render: (l) => fmtKrw(l.debit),
-    },
-    {
-      key: 'credit',
-      header: '대변',
-      width: '140px',
-      align: 'right',
-      render: (l) => fmtKrw(l.credit),
+        ),
     },
     {
       key: 'partnerName',
       header: '거래처',
-      width: '180px',
-      render: (l) => l.partnerName ?? '—',
+      width: '260px',
+      render: (l) => (isTotalRow(l) ? '' : <JournalCellEllipsis value={l.partnerName ?? '—'} />),
+    },
+    {
+      key: 'debit',
+      header: '차변',
+      width: '110px',
+      align: 'right',
+      render: (l) => (isTotalRow(l) ? <strong>{fmtKrw(l.debit)}</strong> : fmtKrw(l.debit)),
+    },
+    {
+      key: 'credit',
+      header: '대변',
+      width: '110px',
+      align: 'right',
+      render: (l) => (isTotalRow(l) ? <strong>{fmtKrw(l.credit)}</strong> : fmtKrw(l.credit)),
     },
     {
       key: 'note',
       header: '메모',
-      render: (l) => l.memo ?? l.note ?? '—',
+      render: (l) => (isTotalRow(l) ? '' : <JournalCellEllipsis value={l.memo ?? l.note ?? '—'} />),
     },
   ]
 
@@ -438,8 +474,10 @@ export function JournalDetailPage() {
         <div className="detail-mobile-hide">
           <DataTable
             columns={columns}
-            rows={journal.lines}
+            rows={tableRows}
             rowKey={(l) => l.id}
+            rowClassName={(l) => (isTotalRow(l) ? 'journal-total-row' : undefined)}
+            tableLayout="fixed"
             emptyMessage="라인이 없습니다."
           />
         </div>
@@ -457,7 +495,7 @@ export function JournalDetailPage() {
               <div key={line.id} className="mobile-item-card">
                 <div className="mobile-item-card-header">
                   <div className="mobile-item-name">
-                    {line.accountName ?? '계정과목'}
+                    {line.accountName ?? '—'}
                   </div>
                 </div>
                 <div className="mobile-item-model">{line.accountCode}</div>
@@ -481,27 +519,29 @@ export function JournalDetailPage() {
           )}
         </div>
 
-        {/* 합계 */}
-        <div
-          className="journal-totals"
-          style={{
-            marginTop: 16,
-            padding: '12px 16px',
-            background: '#F9FAFB',
-            borderRadius: 6,
-            fontSize: 14,
-          }}
-        >
-          <div />
-          <div style={{ fontWeight: 600 }}>합계</div>
-          <div style={{ textAlign: 'right', fontWeight: 600 }}>
-            {fmtKrw(journal.totalDebit)}
+        {/* 합계는 라인 테이블 마지막 행(journal-total-row)으로 렌더 — 모바일 카드 합계는 별도 표기.
+            차변/대변을 결합 문자열("X / Y")로 렌더하면 10자리 금액에서 개행/절단 위험(Opus 재검 HIGH) —
+            라인 카드가 쓰는 2열 grid(mobile-item-metrics) 패턴을 그대로 재사용해 분리 렌더한다. */}
+        {journal.lines.length > 0 ? (
+          <div className="mobile-item-list" data-testid="journal-mobile-total">
+            <div className="mobile-item-card">
+              <div className="mobile-item-card-header">
+                <div className="mobile-item-name">합계</div>
+              </div>
+              <div className="mobile-item-divider" />
+              <div className="mobile-item-metrics">
+                <div className="mobile-item-metric">
+                  <span className="mobile-item-metric-label">차변</span>
+                  <span className="mobile-item-metric-value">{fmtKrw(journal.totalDebit)}</span>
+                </div>
+                <div className="mobile-item-metric">
+                  <span className="mobile-item-metric-label">대변</span>
+                  <span className="mobile-item-metric-value">{fmtKrw(journal.totalCredit)}</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div style={{ textAlign: 'right', fontWeight: 600 }}>
-            {fmtKrw(journal.totalCredit)}
-          </div>
-          <div />
-        </div>
+        ) : null}
       </Card>
 
       {isMobile ? (

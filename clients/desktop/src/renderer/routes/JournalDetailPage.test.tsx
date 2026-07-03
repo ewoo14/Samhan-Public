@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { Journal } from '../api/accounting'
@@ -18,15 +18,40 @@ vi.mock('@samhan/design-system', () => ({
     <button {...props}>{children}</button>
   ),
   Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
-  DataTable: ({ rows, columns, emptyMessage }: any) => (
+  DataTable: ({ rows, columns, emptyMessage, rowKey, rowClassName, tableLayout }: any) => (
     <table>
+      <colgroup>
+        {columns.map((column: any) => (
+          <col key={column.key} style={column.width ? { width: column.width } : undefined} />
+        ))}
+      </colgroup>
+      <thead>
+        <tr>
+          {columns.map((column: any) => (
+            <th
+              key={column.key}
+              style={column.width ? { width: column.width } : undefined}
+              data-align={column.headerAlign ?? column.align ?? 'left'}
+              data-table-layout={tableLayout}
+            >
+              {column.header}
+            </th>
+          ))}
+        </tr>
+      </thead>
       <tbody>
         {rows.length === 0 ? (
-          <tr><td>{emptyMessage}</td></tr>
+          <tr><td colSpan={columns.length}>{emptyMessage}</td></tr>
         ) : rows.map((row: any) => (
-          <tr key={row.id}>
+          <tr key={rowKey ? rowKey(row) : row.id} className={rowClassName?.(row)}>
             {columns.map((column: any) => (
-              <td key={column.key}>{column.render ? column.render(row) : row[column.key]}</td>
+              <td
+                key={column.key}
+                data-label={column.header}
+                data-align={column.align ?? 'left'}
+              >
+                {column.render ? column.render(row) : row[column.key]}
+              </td>
             ))}
           </tr>
         ))}
@@ -153,5 +178,170 @@ describe('JournalDetailPage 역분개 액션 가드', () => {
     const reverseButton = await screen.findByRole('button', { name: '역분개' })
     expect((reverseButton as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByRole('button', { name: '입금보고서에서 처리' })).toBeNull()
+  })
+})
+
+describe('JournalDetailPage 라인 테이블', () => {
+  it('데스크톱 라인 테이블 헤더와 합계행을 고정 순서로 렌더한다', async () => {
+    const view = renderPage(makeJournal({
+      totalDebit: '1000',
+      totalCredit: '1000',
+    }))
+
+    await screen.findByText('2026/07/03-1')
+
+    const table = view.container.querySelector('table')
+    expect(table).not.toBeNull()
+    const headers = Array.from(table!.querySelectorAll('thead th')).map((th) => th.textContent)
+    expect(headers).toEqual(['#', '계정과목', '거래처', '차변', '대변', '메모'])
+
+    const bodyRows = table!.querySelectorAll('tbody tr')
+    // 라인 2건(픽스처) + 합계행 1건 = 3행 — 합계 sentinel 만 남고 라인이 누락되는 회귀도 잡아낸다.
+    expect(bodyRows.length).toBe(3)
+
+    // 값-라벨 배정(열 교체 swap) 회귀 고정(Opus 재검 MED) — 비대칭 픽스처(line-1 차변만·line-2
+    // 대변만)로 차변/대변 셀이 각각 올바른 열에 배정됐는지 직접 단언한다.
+    const line1Cells = bodyRows.item(0).querySelectorAll('td')
+    expect(line1Cells.item(3).textContent).toBe('1,000')
+    expect(line1Cells.item(4).textContent).toBe('—')
+    const line2Cells = bodyRows.item(1).querySelectorAll('td')
+    expect(line2Cells.item(3).textContent).toBe('—')
+    expect(line2Cells.item(4).textContent).toBe('1,000')
+
+    const totalRow = bodyRows.item(bodyRows.length - 1)
+    const totalCells = totalRow.querySelectorAll('td')
+    expect(totalRow.classList.contains('journal-total-row')).toBe(true)
+    expect(within(totalRow as HTMLElement).getByText('합계')).not.toBeNull()
+    expect(totalCells.item(3).textContent).toBe('1,000')
+    expect(totalCells.item(4).textContent).toBe('1,000')
+  })
+
+  it('라인 0건 분개는 합계행 없이 테이블 emptyMessage 를 렌더한다', async () => {
+    const view = renderPage(makeJournal({
+      totalDebit: '0',
+      totalCredit: '0',
+      lines: [],
+    }))
+
+    await screen.findByText('2026/07/03-1')
+
+    const table = view.container.querySelector('table')
+    expect(table).not.toBeNull()
+    expect(table!.querySelector('.journal-total-row')).toBeNull()
+    expect(within(table as HTMLElement).getByText('라인이 없습니다.')).not.toBeNull()
+  })
+
+  it('셀 말줄임 title 은 실제 값에만 부여하고 빈 값 표시는 제외한다', async () => {
+    const view = renderPage(makeJournal({
+      lines: [
+        {
+          id: 'line-empty',
+          lineNo: 1,
+          accountCode: '102',
+          accountName: null,
+          debit: '1000',
+          credit: '0',
+          partnerName: '',
+          note: null,
+          memo: '',
+        },
+        {
+          id: 'line-value',
+          lineNo: 2,
+          accountCode: '110',
+          accountName: '외상매출금',
+          debit: '0',
+          credit: '1000',
+          partnerName: '테스트 거래처',
+          note: '긴 메모',
+          memo: '긴 메모',
+        },
+      ],
+    }))
+
+    await screen.findByText('2026/07/03-1')
+
+    const table = view.container.querySelector('table')
+    expect(table).not.toBeNull()
+    const bodyRows = table!.querySelectorAll('tbody tr')
+
+    const ellipsisCells = Array.from(
+      view.container.querySelectorAll<HTMLElement>('.journal-cell-ellipsis'),
+    )
+    const emptyDisplay = ellipsisCells.find((cell) => cell.textContent === '—')
+    // 거래처 컬럼 명시 스코프(행 인덱스 0=line-empty + data-label, Opus 재검 nit) — 메모(note)
+    // 컬럼도 동일 라인에서 빈 문자열('')을 렌더해 textContent 전역 검색은 어느 셀을 잡았는지
+    // 모호(디버깅 불명확) — 실패 시 즉시 대상 셀을 특정할 수 있도록 명시 스코프한다.
+    const blankDisplay = bodyRows.item(0).querySelector<HTMLElement>(
+      'td[data-label="거래처"] .journal-cell-ellipsis',
+    )
+    const valueDisplay = ellipsisCells.find((cell) => cell.textContent === '외상매출금')
+
+    expect(emptyDisplay?.getAttribute('title')).toBeNull()
+    expect(blankDisplay?.textContent).toBe('')
+    expect(blankDisplay?.getAttribute('title')).toBeNull()
+    expect(valueDisplay?.getAttribute('title')).toBe('외상매출금')
+  })
+})
+
+describe('JournalDetailPage 모바일 합계 카드', () => {
+  it('모바일 라인 카드의 계정명이 없으면 데스크톱과 같은 빈 값 표시를 렌더한다', async () => {
+    mocks.isMobile.mockReturnValue(true)
+    renderPage(makeJournal({
+      lines: [
+        {
+          id: 'line-empty-account',
+          lineNo: 1,
+          accountCode: '102',
+          accountName: null,
+          debit: '1000',
+          credit: '0',
+          partnerName: '테스트 거래처',
+          note: '메모',
+          memo: '메모',
+        },
+      ],
+    }))
+
+    await screen.findByText('2026/07/03-1')
+
+    const lines = screen.getByTestId('journal-mobile-lines')
+    const firstCard = lines.querySelector<HTMLElement>('.mobile-item-card')
+    const accountName = firstCard?.querySelector<HTMLElement>('.mobile-item-name')
+    expect(firstCard).not.toBeNull()
+    expect(accountName?.textContent).toBe('—')
+    expect(within(firstCard!).queryByText('계정과목')).toBeNull()
+  })
+
+  it('라인 0건이면 모바일 합계 카드를 렌더하지 않는다', async () => {
+    mocks.isMobile.mockReturnValue(true)
+    renderPage(makeJournal({
+      totalDebit: '0',
+      totalCredit: '0',
+      lines: [],
+    }))
+
+    await screen.findByText('2026/07/03-1')
+
+    expect(screen.queryByTestId('journal-mobile-total')).toBeNull()
+    expect(screen.queryByText('합계')).toBeNull()
+  })
+
+  it('라인 1건 이상이면 합계 카드에 차변/대변을 분리된 값으로 렌더한다(결합 문자열 폐기)', async () => {
+    mocks.isMobile.mockReturnValue(true)
+    renderPage(makeJournal({
+      totalDebit: '1207338853',
+      totalCredit: '1207338853',
+    }))
+
+    await screen.findByText('2026/07/03-1')
+
+    const totalCard = screen.getByTestId('journal-mobile-total')
+    expect(within(totalCard).getByText('합계')).not.toBeNull()
+    expect(within(totalCard).getByText('차변')).not.toBeNull()
+    expect(within(totalCard).getByText('대변')).not.toBeNull()
+    // 차변/대변이 각자 별개 노드에 렌더 — 10자리 금액 결합 문자열("X / Y")은 더 이상 존재하지 않는다.
+    expect(within(totalCard).getAllByText('1,207,338,853')).toHaveLength(2)
+    expect(within(totalCard).queryByText('1,207,338,853 / 1,207,338,853')).toBeNull()
   })
 })
