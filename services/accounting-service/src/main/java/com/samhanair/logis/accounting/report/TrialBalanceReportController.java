@@ -57,7 +57,7 @@ public class TrialBalanceReportController {
      */
     @Operation(
             summary = "시산표 조회 (보고서 별칭)",
-            description = "POSTED 분개 기준 시산표. " +
+            description = "POSTED+REVERSED(보상쌍 상쇄) 분개 기준 시산표. " +
                     "기존 /accounting/balances 와 동일한 결과, summary 필드 추가.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
@@ -82,7 +82,7 @@ public class TrialBalanceReportController {
     /**
      * 합계잔액시산표 조회.
      *
-     * <p>이월잔액은 {@code from - 1일} 까지의 POSTED 누적 집계로 산출하고,
+     * <p>이월잔액은 {@code from - 1일} 까지의 POSTED+REVERSED(보상쌍 상쇄) 누적 집계로 산출하고,
      * 기간 합계는 {@code from/to} 임의기간의 차변/대변 합계를 사용한다.
      * {@code granularity} 는 FE 일/월/기간 토글 상태를 보존하는 파라미터이며 집계 범위는
      * 항상 명시된 {@code from/to} 를 따른다.
