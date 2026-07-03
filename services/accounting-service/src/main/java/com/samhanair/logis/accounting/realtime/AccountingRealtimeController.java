@@ -21,9 +21,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  *   <li>{@code GET /accounting/tax-invoices/{id}/realtime}</li>
  *   <li>{@code GET /accounting/journals/{id}/realtime}</li>
  *   <li>{@code GET /accounting/closings/{id}/realtime}</li>
+ *   <li>{@code GET /accounting/cash-receipts/{id}/realtime}</li>
  * </ul>
  *
- * <p>shared:realtime-abstraction 의 {@link RealtimeBroker} 위임 — entity UUID 단위 구독.
+ * <p>shared:realtime-abstraction 의 {@link RealtimeBroker} 위임 — 내부 entity UUID 단위 구독.
  *
  * <p><b>권한</b>: 세금계산서/분개는 ACCOUNTANT / MASTER, 마감 구독은
  * ACCOUNTANT / MANAGER / MASTER (MANAGER 조회 전용).
@@ -75,6 +76,15 @@ public class AccountingRealtimeController {
     @GetMapping(path = "/closings/{id}/realtime", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequirePermission(page = "accounting.period-close", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     public SseEmitter subscribeClosing(@PathVariable UUID id) {
+        return broker.subscribe(id);
+    }
+
+    /** 입금보고서 SSE 구독. */
+    @Operation(summary = "입금보고서 실시간 SSE 구독",
+            description = "text/event-stream. 30s heartbeat keep-alive. event: accounting:edit / accounting:edit-request:*")
+    @GetMapping(path = "/cash-receipts/{id:[0-9a-fA-F-]{36}}/realtime", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(page = "accounting.cash-receipts", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
+    public SseEmitter subscribeCashReceipt(@PathVariable UUID id) {
         return broker.subscribe(id);
     }
 }
