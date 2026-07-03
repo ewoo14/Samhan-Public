@@ -31,3 +31,9 @@ real-qa config(`clients/desktop/playwright.real-qa.config.ts`)엔 **webServer �
 **교훈**: "라우트/플랫폼이 끊겼다" 결론 전에 — (a) FE 실호출 URL 정확 재현(접두 임의 추가 X), (b) 한글 쿼리 URL-인코딩, (c) `q` 없는 호출로 200·데이터 유무 먼저 확인. 플랫폼 변경 escalation 전 자기 QA 도구부터 의심. (Opus 리뷰의 진짜 BLOCKING=거래처 UUID 비공개 의존은 별개로 유효 → partnerCode 재설계로 해소.)
 
 관련: [[temp-multimodel-workflow]] [[qa-docker-real-test]] [[real-server-check-screenshot]] [[local-stack-qa-gotchas]] [[uuid-no-user-visibility]].
+
+## 🪤 고아 renderer dev 서버 = false-RED/가짜 증적 원천 (2026-07-03 #711 실측)
+집PC 에 이전 세션 잔재 vite dev 서버 4개(:5175/:5176/:5177/:5180)가 **구버전 코드(브랜치 이전 상태)를 계속 서빙** 중이었음 — 그 포트로 real-qa 를 돌리면 최신 fix 와 무관한 실패(구 컬럼 순서 등)가 나오고, 반대로 구 코드 화면을 최신 증적으로 오인할 수도 있음.
+- **매 라운드 신규 포트 + `--strictPort`** 로 기동(점유 시 즉시 실패 → 고아 감지), 검증 종료 시 kill.
+- 세션 시작/종료 시 `Get-NetTCPConnection -LocalPort 51xx` 로 고아 node 리스너 점검·정리.
+- 증적 캡처 전 "서빙 코드 = 검증 대상 HEAD" 대조(컬럼 순서 등 마커 확인) — 에이전트가 이 불일치로 원인 오진하지 않게 프롬프트에 명시.

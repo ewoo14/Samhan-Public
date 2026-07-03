@@ -61,14 +61,14 @@
 - [JPA JOIN FETCH 카르테시안 dedup](feedback_jpa_joinfetch_cartesian_dedup.md) — 다행 컬렉션 fetch 중복, id-distinct+다행 IT시드
 - [MockMvc getContentAsString charset](feedback_mockmvc_getcontentasstring_charset.md) — 인자없으면 ISO-8859-1 깨짐, UTF_8 명시
 - [X-User-Name charset+FilterRegistrationBean MockMvc](feedback_x_user_name_header_charset_mockmvc.md)
-- [real-qa 실행법+스펙 false-RED](feedback_realqa_run_and_false_red.md) — mock off+:8080+config(webServer 없음), DragHandle 글리프 false-RED
+- [real-qa 실행법+스펙 false-RED](feedback_realqa_run_and_false_red.md) — mock off+:8080+config(webServer 없음), DragHandle 글리프 false-RED. 고아 vite(구코드 서빙)=false-RED 원천→신규포트+--strictPort+정리(2026-07-03)
 - [real-qa 프록시 글롭+resourceType](feedback_realqa_proxy_glob_resourcetype.md) — 백엔드만 좁게+xhr/fetch, /collab/stream abort, networkidle 금지
 - [real-qa 디렉토리 -real-qa 접미사](project_dispatch_on_inspect_epic.md) — 누락시 CI mock잡 미제외→ECONNREFUSED
 - [정찰 grep false-negative](feedback_recon_grep_false_negative.md) — grep 0매치≠기능부재, 실 파일/라우트로 검증
 
 # Codex
 - [Codex MCP 서버 사용](feedback_codex_plugin_setup.md) — mcp__codex__codex, sandbox workspace-write, 5 agents 병렬
-- [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, model 생략+effort high
+- [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, model 생략+effort high. 집PC codex exec: rev-parse 차단(git show 로 검증)·workspace-write 쓰기차단→fix=danger-full-access+사후 git diff 대조(2026-07-03)
 - [Codex 모델 자동 전환](feedback_codex_model_auto_switch.md) — 기본 spark+medium, 보안/migration/race 등 gpt-5.5 high
 - [Codex 권한 새 세션부터](feedback_codex_permission_new_session.md) — allow 추가는 새 세션부터, 진행중 무리한 재시도 금지
 - [Codex MCP 세션 한정 한계](feedback_codex_mcp_session_limit.md) — -32000 후 새 세션·codex exec·Agent 대체
