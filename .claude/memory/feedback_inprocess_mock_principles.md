@@ -21,6 +21,10 @@
 - **신규 핸들러 추가 전**: 해당 경로에 `page.route`/`mockApiJson` 쓰는 spec 있는지 grep. 있으면 (a) 핸들러 미추가(page.route 소유 유지) or (b) spec 을 in-process 로 이관.
 - **mock.ts 변경 검증 = 타깃 spec 아닌 풀 Playwright 스위트**(`npx playwright test` 전량). 타깃 실행은 fallthrough→intercept flip 을 못 봄.
 
+## mock-only 필드 주입 = false-green (2026-07-05 #730)
+
+**mock 응답에만 있고 live BE 응답엔 없는 필드로 UI 경로를 활성화하면 false-green**. mock 테스트는 통과하지만 real 에선 그 경로가 영원히 미발생. **실측**: #730 이 journal→cashReceipt 링크를 mock CASH_RECEIPT journal 의 `sourceRefId`(mock 전용 합성)로 활성화 → mock 링크 동작·live `JournalDetailResponse` 엔 필드 없어 항상 disabled(Codex 재검 적발). → **UI 활성 조건은 live BE DTO 에 실재하는 필드로만**(예: `journal.sourceType` = 실 enum). mock 에 합성 필드 추가 전 BE 응답 DTO 대조.
+
 ## 재게이트 패턴 (동반)
 
 - RoleGuard 역할 cross-check → goto 뒤 `page.reload()` (hash 네비는 mockRole 세션 재설정 안 함).
