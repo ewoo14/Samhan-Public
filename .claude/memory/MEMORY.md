@@ -49,6 +49,7 @@
 - [야간=라이브 Docker 캡처 미루지말것](feedback_overnight_live_capture.md) — 재빌드해서라도 라이브 캡처, CI IT 대체 금지
 - [변경 모듈 전체 test 후 push](feedback_changed_module_full_test_before_push.md) — 타깃만 실행 push 금지
 - [CI 테스트 필터 allowlist false-green](feedback_ci_test_filter_false_green.md) — ci.yml `--tests` allowlist 누락 패키지 미실행. 신규 패키지 등재 필수
+- [gradle test 캐시 false-green](feedback_gradle_test_cache_false_green.md) — UP-TO-DATE/FROM-CACHE=미실행, 검증은 --rerun-tasks --no-build-cache 로 genuine 강제
 - [stacked PR CI false-green](feedback_stacked_pr_ci_false_green.md) — base=feat/… BE 미트리거, base 머지 후 base=main 재생성
 - [RestClient 계약테스트 false-green](feedback_restclient_contract_test_false_green.md) — 다운스트림 선검증, @MockBean 우회 금지, 4체크
 - [권한 enforcement 실HTTP 회귀](feedback_enforcement_real_http_test.md) — @MockBean mock 시 false-green, MockRestServiceServer/실HTTP

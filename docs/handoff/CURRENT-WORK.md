@@ -4,11 +4,11 @@
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 **메모 단일필드(1차)만** 머지 — ⚠️**full-form(전표 전체)=원 지시·미완**(정정 [[feedback_epic_scope_no_narrowing]]). **현 우선순위=협업 full-form **롤아웃**(정찰 acf36aaa: slip 판매전표는 **이미 full-form ✅** S2a #674 `fcdbb6bea`[createDocCoeditProvider Y.Map헤더+Y.Array품목라인+CollaborativeSlipInput 셀바인딩, 수정모달] — **5문서 중 주문 full-form ✅(#689 `75a967d15`, BLOCKING 2[awareness 블리드·stale corruption] fix·듀얼리뷰 양방향정정·2/6 완료) — 견적·회계·결재·배차 잔여 메모→full-form 이식**. 개발책임자 결정: **트랙B 5문서 롤아웃 + 트랙A slip 하드닝 + 트랙B 롤아웃 병행, 저장충돌=후속). **〔진행 2026-07-01 PM〕** 트랙A **slA1(공유 provider 라인 lineId+add/remove/byId CRDT infra) ✅머지 `1d0d27a81`**(#690, Opus FE+Codex 듀얼리뷰 0수렴, backward-compat 60테스트). **회계 정찰**: 회계 full-form은 ❌BE 수정 PUT 부재(신설 필요)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위. **전략=사용자 1순위 '더 많은 문서 full-form' → 트랙B 롤아웃 우선**(slA1 infra가 line-CRDT 직접제공 → slA1b 는 hard 전제 아님; 회계/견적이 infra 직접사용 가능). 견적·결재·배차 **fit 정찰 병렬 진행** → 최저난도부터 롤아웃. slA1b(slip 라인 add/remove 소비자, 라이브 모달 retrofit 고위험)·slA1c(dnd-kit reorder)·slA2(셀 char-CRDT)=후순위 enhancement). **〔2026-07-01 PM 최신〕 견적 full-form ✅머지 #691 `d36d6c7cf`(slip·주문·견적 3/6) — 개발책임자 "PR 워크플로우 재준수+세션 위반 전수 보완" 지시로 #691은 정식 5-agent 듀얼·0수렴·라이브 실QA(2세션 SSE 양방향 반영 PASS·-sse-reflected 실캡처)·PM종합 전부 이행. 라이브 QA가 결함 3건 적발: ①applySnapshot corrupt-update 브릭(공유 coedit infra·하드닝 fix PR 착수) ②EstimateRealtimeClient/createAuditApi 경로 `/api/v1/estimates`→`/slips/estimates` 누락(404/500). 다음=①applySnapshot 하드닝 PR ②경로 fix PR ③**세션 소급 sweep**(#690→#689→#686/687→#682-685 각 5-agent+라이브QA 소급) ④결재→회계(BE)→배차 롤아웃. #17 단가변동 보류**. 〔과거 "#16 종결" 표기 철회〕**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 ---
-## ⛔ 2026-07-04 오후 세션 종료 — 다음 세션 즉시 재개 지점 (본 절이 최신 진실원)
+## ✅ 2026-07-04 세션 — PR #726 머지 완료 (다음 재개 = E3 S4)
 
-> 개발책임자 "세션 종료 요망"(14:5x). **PR #726(이슈 #722) Codex 개발 산출물이 uncommitted 상태로 작업 트리에 존재** — 브랜치 `feat/bank-card-admin-filter`. 오늘 머지 3건(#719·#718·#724)은 하단 절 참조.
+> **PR #726(이슈 #722) 머지 완료** squash `5ed2109ff`. 재개 세션이 uncommitted Codex 산출물 수합→순차 듀얼 캐논(Opus 5-agent+fix ↔ Codex+fix)→**양쪽 0수렴**→PM종합→CI 30/30→PM 자율 머지 완주. 오늘 총 머지 4건(#719·#718·#724·#726). dev-report `2026-07-04-bank-card-admin-filter.md`. 아래 1~4·게시규율은 실행 완료분 기록(다음 세션 재개점=E3 S4, 최하단 순번).
 
-### 🔄 재개 지점 — PR #726 (계좌/카드 관리+필터 모달+'거래처' 컬럼, 이슈 #722)
+### ✅ #726 완료 요약 — 계좌/카드 관리+소스인식 필터 모달+'거래처' name-only · 📌 개발책임자 결정 M1 ACCOUNTANT 조회전용 유지 (아래 1~4=실행된 절차 기록)
 1. **산출물 수합**: 작업 트리 수정 20+신규 12 파일(BankCardAdminPage·BankTransactionFilterModalModel+test·UserBankTxnFilter 도메인/리포/서비스·preferences/labels DTO·**V54**(accounting)·**V81**(auth 권한 시드)+AuthFlywayV81SeedIT·BankTransactionPage/AppLayout/PermissionMatrix/index/mock 수정). Codex(exec, 12:53 시작)가 종료 시점 검증 단계 — 완료 보고 유실 가능 → **[[feedback_codex_detached_write_settle]]: git status 안정(쓰기 멎음) 확인 후 수합**.
 2. 검증: `./gradlew :services:accounting-service:test :services:auth-service:test` + `cd clients/desktop && npm run typecheck && npx vitest run`
 3. 커밋(파일 명시 나열 — **잔재 제외**: groupwareApproval.test.ts·clients/desktop/docs/·iotxn*·coedit* 등 기존 untracked) → push → **SHA 확보 후** 개발 게시(#726, UTF-8 파일 경유+게시 후 mojibake 검사)
@@ -18,8 +18,8 @@
 ### 게시 규율 (오늘 감사 반영 — 재개 세션 필수)
 커밋→SHA 확보→게시(추정 기입 금지) · 게시/PATCH=UTF-8 파일 경유만+직후 mojibake 검사 · 캡처=게시 시점 커밋+인라인 · 경량 확인도 별도 게시 · 기본 라이브 동반 · **리뷰 fix=현재 PR 내 처리**(분리=타 서비스/슬라이스만 — 개발책임자 지시)
 
-### 이후 순번
-#726 완주 → **E3 S4**(FE — S4 인지 4건은 S3 dev-report) → #720(월마감 fix)·#713·#723·#725 backlog. 회신 대기: gross(total_*)·#688.
+### 🔜 다음 재개 지점 = E3 S4 (입금보고서 FE)
+**E3 S4**(FE 입금보고서 목록/작성폼·BankTransactionPage 다중선택→입금보고서 생성 액션·coedit·목업 `docs/design/mig-14-admin-ui/02_cash_receipt_list_mock.md`) — S4 인지 4건은 S3 dev-report(`2026-07-04-e3-s3-bank-linked-cash-receipt.md`: kind 라벨 소비·BANK_LINKED PATCH 버튼 비활성·transactionDate 프리필·mock 문서 기준). **#726 머지로 입출금내역 화면 접점 정리됨.** → #720(월마감 fix)·#713(분개 라인 BE enrich)·#723(S1 권한 매트릭스)·#725(타 서비스 IllegalState) backlog. 회신 대기: gross(total_*) 축소·#688 단가변동.
 
 ---
 ## ✅ 2026-07-04 집PC 야간~아침 자율 세션 — #719·#718 머지·E3 S3 완결
