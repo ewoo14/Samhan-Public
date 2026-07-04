@@ -4,7 +4,27 @@
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 **메모 단일필드(1차)만** 머지 — ⚠️**full-form(전표 전체)=원 지시·미완**(정정 [[feedback_epic_scope_no_narrowing]]). **현 우선순위=협업 full-form **롤아웃**(정찰 acf36aaa: slip 판매전표는 **이미 full-form ✅** S2a #674 `fcdbb6bea`[createDocCoeditProvider Y.Map헤더+Y.Array품목라인+CollaborativeSlipInput 셀바인딩, 수정모달] — **5문서 중 주문 full-form ✅(#689 `75a967d15`, BLOCKING 2[awareness 블리드·stale corruption] fix·듀얼리뷰 양방향정정·2/6 완료) — 견적·회계·결재·배차 잔여 메모→full-form 이식**. 개발책임자 결정: **트랙B 5문서 롤아웃 + 트랙A slip 하드닝 + 트랙B 롤아웃 병행, 저장충돌=후속). **〔진행 2026-07-01 PM〕** 트랙A **slA1(공유 provider 라인 lineId+add/remove/byId CRDT infra) ✅머지 `1d0d27a81`**(#690, Opus FE+Codex 듀얼리뷰 0수렴, backward-compat 60테스트). **회계 정찰**: 회계 full-form은 ❌BE 수정 PUT 부재(신설 필요)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위. **전략=사용자 1순위 '더 많은 문서 full-form' → 트랙B 롤아웃 우선**(slA1 infra가 line-CRDT 직접제공 → slA1b 는 hard 전제 아님; 회계/견적이 infra 직접사용 가능). 견적·결재·배차 **fit 정찰 병렬 진행** → 최저난도부터 롤아웃. slA1b(slip 라인 add/remove 소비자, 라이브 모달 retrofit 고위험)·slA1c(dnd-kit reorder)·slA2(셀 char-CRDT)=후순위 enhancement). **〔2026-07-01 PM 최신〕 견적 full-form ✅머지 #691 `d36d6c7cf`(slip·주문·견적 3/6) — 개발책임자 "PR 워크플로우 재준수+세션 위반 전수 보완" 지시로 #691은 정식 5-agent 듀얼·0수렴·라이브 실QA(2세션 SSE 양방향 반영 PASS·-sse-reflected 실캡처)·PM종합 전부 이행. 라이브 QA가 결함 3건 적발: ①applySnapshot corrupt-update 브릭(공유 coedit infra·하드닝 fix PR 착수) ②EstimateRealtimeClient/createAuditApi 경로 `/api/v1/estimates`→`/slips/estimates` 누락(404/500). 다음=①applySnapshot 하드닝 PR ②경로 fix PR ③**세션 소급 sweep**(#690→#689→#686/687→#682-685 각 5-agent+라이브QA 소급) ④결재→회계(BE)→배차 롤아웃. #17 단가변동 보류**. 〔과거 "#16 종결" 표기 철회〕**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 ---
-## ✅ 2026-07-03 집PC 재개 세션 완료 — #711·#712 머지·#710 소급 완결 (본 절이 최신 진실원)
+## ✅ 2026-07-04 집PC 야간~아침 자율 세션 — #719·#718 머지·E3 S3 완결 (본 절이 최신 진실원)
+
+> 야간 위임("미완결 슬라이스 전부 주행·워크플로우 절대 준수") 완주. 라운드 1:1 게시·매 라운드 라이브 실QA·마지막 fix full 재검 전부 이행. 감사 대장 `scratchpad/audit-ledger.md`(세션 스크래치) 유지.
+
+### ✅ 완료
+- **PR #719 머지**: 마감기간 원분개 역분개 가드(A안 409 — 결정 4877750770). 📌**세금계산서도 동일 차단**(결정 4879355985 — 리뷰 BE HIGH 가 "결정문 밖 조용한 파급+문서화 예외 철회" 적발 후 공식 승인). FE 파급 동시 해소 = **공용 `apiError.ts` 승격**(상세+편집+accounting.ts 통합 — raw axios 메시지 계열 3곳 sweep). 순차 듀얼 3회전·fix 4회 0수렴·라이브 2-tab 결정적 실증(캡처 14장). dev-report `2026-07-04-closed-period-reverse-guard.md`. **파생 이슈 #720**: 월마감 실행 100% 실패(slip `/slips/lock-by-period` 가 internal prefix 밖 → 403→409 — QA 라이브가 적발한 사전결함·별도 fix PR 대상).
+- **PR #718 머지 — E3 S3 통장연계 완결**: BankTransaction N건(자연키 튜플)→BANK_LINKED 입금보고서 합산 생성·확정·원자 승격(V53 FK+kind CHECK·취소 원복·PATCH 409·cashReceiptSlipNo projection). 📌결정 전건 확정: Q1~Q3(#717)·Q4 BANK_LINKED/Q5 102(4879957000)·**권한 UPDATE 상향**(4879892250 — 리뷰가 CREATE 단일로 confirm 등가 AOP 우회 적발→승인). **리뷰 체인 2단 심화 적발**: Opus(lost-update — 더티체킹 STALE 재기록)→fix→Codex(WHERE 매칭 불변식 재확인 누락)→fix2(원자 재확인+RED→GREEN). E2E 라이브 캡처 6장·결정적 인터리빙 IT 2종·모듈 전체 5회 0 fail. dev-report `2026-07-04-e3-s3-bank-linked-cash-receipt.md`. **파생 이슈 #723**(S1 부채 — 잔여 6 endpoint 권한 매트릭스).
+- **아침 점검 대응**: 캡처 실물 21장 검증·대표 전송. **자가 보완 2건**: #719 재검2 캡처 커밋 누락→`41a675dc7` 소급, 게시 인라인 이미지 미첨부→양 PR SHA-pinned 소급(4879901931/4879902012). 교훈 = QA 캡처는 라운드 게시 시점에 커밋+인라인까지가 완결.
+
+### 🔄 진행 중 — 개발책임자 아침 지시 2건
+- **PR #724(이슈 #721) 진행**: 사용자 노출 메시지 enum 원어(DRAFT/ISSUED 등) 한국어화 — BE 상태 라벨 SSOT(displayName)+28곳 치환+MatchStatus '회계반영'→'반영'. spec `2026-07-04-user-facing-enum-labels.md`(도메인별 라벨=기존 FE 화면 라벨 채택). 조기 PR 개설·**Codex 개발 실행 중** → 순차 듀얼 캐논.
+- **이슈 #722 대기**: 계좌/카드 관리 메뉴 신설(📌결정: **CODEF 등록기관 관리 확장**·위치=입출금내역 관리 바로 위)+필터 '계좌'/'카드' 버튼→모달 체크박스(📌**별도 필터 설정 신설**·사용자별 기본값)+용어('반영'·'거래처' 컬럼=거래처명만·검색). 정찰 완료(계좌 목록=CODEF 라이브·자체 마스터 없음·저장=user_codef_import_scope 선례) — spec 작성 → 캐논.
+
+### ⚠️ 개발책임자 회신 대기 (기존분)
+① gross(total_*) 축소 여부 ② #713(분개 라인 BE enrich — 회신 시 착수) ③ #688 단가변동 방향
+
+### 📌 이후 순번
+① #724 완주 ② #722 spec→캐논 ③ #720 월마감 fix PR ④ E3 S4(FE — S4 인지 4건: kind 라벨 소비·BANK_LINKED PATCH 버튼 비활성·transactionDate 프리필·mock 문서 기준) ⑤ #723·#714·#715 backlog. 환경: 로컬 스택 accounting=S3 브랜치 빌드(main 동일)·wt-s3 정리 완료.
+
+---
+## ⛔ (구 절) 2026-07-03 집PC 재개 세션 완료 — #711·#712 머지·#710 소급 완결
 
 > 집PC 재개 절차(pull→메모리 sync→핸드오프 정독) 후 회사PC 재개 지점 2건을 캐논 그대로 완주. 라운드 1:1 게시·매 라운드 라이브 실QA·마지막 fix full 재검 전부 이행.
 
