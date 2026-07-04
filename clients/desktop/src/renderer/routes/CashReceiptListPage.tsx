@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Badge, Button, Input, Select, type BadgeVariant, type DataTableColumn } from '@samhan/design-system'
+import { Badge, Button, Input, Select, type DataTableColumn } from '@samhan/design-system'
 import { FilterChipBar, type FilterChip } from '../components/FilterChipBar'
 import {
   listCashReceipts,
@@ -10,6 +11,7 @@ import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import {
   CASH_RECEIPT_KIND_OPTIONS,
+  KIND_TONE,
   cashReceiptKindLabel,
   formatCashReceiptAmount,
   formatCashReceiptDate,
@@ -35,15 +37,6 @@ const INITIAL_FILTERS: CashReceiptFilterState = {
   kind: '',
   from: '',
   to: '',
-}
-
-// kind 유형별 배지 톤. design-system 팔레트에 중립 informational 톤(info)이 없어 3종을
-// 색으로 구분하려면 상태 톤 중 하나가 필요 — BANK_LINKED(자동 대사)에 success 배정.
-// 승인 상태가 아닌 '유형' 구분 용도이며 라벨 텍스트가 주 구분자다.
-const KIND_TONE: Record<string, BadgeVariant> = {
-  DEPOSIT_REPORT: 'brand',
-  MANUAL_RECEIPT: 'neutral',
-  BANK_LINKED: 'success',
 }
 
 const skeletonRows: CashReceiptRow[] = Array.from({ length: 8 }, (_, index) => ({
@@ -86,10 +79,12 @@ function amountStyle(row: CashReceiptRow) {
 }
 
 export function CashReceiptListPage() {
+  const navigate = useNavigate()
   usePageTitle('입금보고서')
 
   const { canAccess } = usePermissions()
   const canView = canAccess(PAGE_CODE, 'view')
+  const canCreate = canAccess(PAGE_CODE, 'create')
   const [page, setPage] = useState(0)
   const [filters, setFilters] = useState<CashReceiptFilterState>(INITIAL_FILTERS)
   const [applied, setApplied] = useState<CashReceiptFilterState>(INITIAL_FILTERS)
@@ -154,10 +149,13 @@ export function CashReceiptListPage() {
         width: '170px',
         mobilePriority: 'primary',
         render: (row) => isSkeletonRow(row) ? <SkeletonCell width={120} /> : (
-          // S4a 는 목록 전용 — 전표번호 상세 링크는 상세 페이지(S4b) 도입 시 배선한다.
-          <span style={{ fontWeight: 700 }} data-testid={`cash-receipt-slip-${row.slipNo}`}>
+          <Link
+            to={`/accounting/admin/cash-receipts/${row.id}`}
+            style={{ fontWeight: 700, color: 'var(--color-brand-700)', textDecoration: 'none' }}
+            data-testid={`cash-receipt-slip-${row.slipNo}`}
+          >
             {row.slipNo}
-          </span>
+          </Link>
         ),
       },
       {
@@ -232,6 +230,16 @@ export function CashReceiptListPage() {
         >
           새로고침
         </Button>
+        {canCreate ? (
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/accounting/admin/cash-receipts/new')}
+          >
+            신규 작성
+          </Button>
+        ) : null}
       </div>
 
       <div style={filterBarStyle} data-testid="cash-receipt-filters">

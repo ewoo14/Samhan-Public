@@ -67,6 +67,10 @@ export interface Journal {
   status: JournalStatus
   /** 분개 출처. CASH_RECEIPT는 원천 입금보고서에서만 취소/수정한다. */
   sourceType: string
+  /** 출처 참조 UUID — CASH_RECEIPT 라이브 게시분은 CashReceipt UUID. 라우팅 전용, 화면 미노출. */
+  sourceRefId?: string | null
+  /** CASH_RECEIPT 원천 입금보고서 UUID. BE 별칭 호환용, 화면 미노출. */
+  cashReceiptId?: string | null
   /** 적요 (분개 헤더 메모). */
   description: string | null
   /** 차변 합계 (KRW 정수, string). 라인 합산 결과를 BE 가 캐시. */
@@ -120,12 +124,18 @@ function normalizeJournalLine(line: RawJournalLine): JournalLine {
 }
 
 export function normalizeJournal(raw: RawJournal): Journal {
+  const sourceRefId = raw.sourceRefId == null ? null : String(raw.sourceRefId)
+  const cashReceiptId = raw.cashReceiptId == null
+    ? sourceRefId
+    : String(raw.cashReceiptId)
   return {
     id: String(raw.id ?? ''),
     journalNo: String(raw.journalNo ?? ''),
     journalDate: String(raw.journalDate ?? ''),
     status: raw.status as JournalStatus,
     sourceType: String(raw.sourceType ?? 'MANUAL'),
+    sourceRefId,
+    cashReceiptId,
     description: raw.description ?? null,
     totalDebit: amountText(raw.totalDebit),
     totalCredit: amountText(raw.totalCredit),
@@ -1983,6 +1993,17 @@ export interface CashReceiptRow {
   creditAccountCode?: string | null
 }
 
+export interface CashReceiptRequest {
+  partnerCode?: string
+  bizNo?: string
+  partnerName?: string
+  amount: string
+  transactionDate: string
+  memo?: string
+  debitAccountCode?: string
+  creditAccountCode?: string
+}
+
 export interface ListCashReceiptsOptions {
   partnerName?: string
   slipNo?: string
@@ -2013,6 +2034,92 @@ export async function listCashReceipts(
     { params },
   )
   return res.data.data
+}
+
+export async function createCashReceipt(
+  body: CashReceiptRequest,
+): Promise<CashReceiptRow> {
+  try {
+    const res = await apiClient.post<ApiEnvelope<CashReceiptRow>>(
+      '/accounting/cash-receipts',
+      body,
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) throw new Error(message)
+    throw err
+  }
+}
+
+export async function getCashReceipt(id: string): Promise<CashReceiptRow> {
+  try {
+    const res = await apiClient.get<ApiEnvelope<CashReceiptRow>>(
+      `/accounting/cash-receipts/${id}`,
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) throw new Error(message)
+    throw err
+  }
+}
+
+export async function updateCashReceipt(
+  id: string,
+  body: CashReceiptRequest,
+): Promise<CashReceiptRow> {
+  try {
+    const res = await apiClient.patch<ApiEnvelope<CashReceiptRow>>(
+      `/accounting/cash-receipts/${id}`,
+      body,
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) throw new Error(message)
+    throw err
+  }
+}
+
+export async function confirmCashReceipt(id: string): Promise<CashReceiptRow> {
+  try {
+    const res = await apiClient.post<ApiEnvelope<CashReceiptRow>>(
+      `/accounting/cash-receipts/${id}/confirm`,
+      {},
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) throw new Error(message)
+    throw err
+  }
+}
+
+export async function cancelCashReceipt(id: string): Promise<CashReceiptRow> {
+  try {
+    const res = await apiClient.post<ApiEnvelope<CashReceiptRow>>(
+      `/accounting/cash-receipts/${id}/cancel`,
+      {},
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) throw new Error(message)
+    throw err
+  }
+}
+
+export async function deleteCashReceipt(id: string): Promise<void> {
+  try {
+    await apiClient.delete<ApiEnvelope<null>>(
+      `/accounting/cash-receipts/${id}`,
+    )
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) throw new Error(message)
+    throw err
+  }
 }
 
 // --------------------------------------------------------------------------
