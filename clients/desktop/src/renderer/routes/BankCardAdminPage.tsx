@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Badge,
@@ -17,14 +17,17 @@ import {
   listCodefConnectionLoans,
   listCodefRegisteredInstitutions,
   registerCodefInstitution,
+  unregisterCodefInstitution,
   type CodefAccountItem,
   type CodefCardItem,
   type CodefConnectionBusinessType,
   type CodefLoanItem,
   type RegisteredInstitutionResponse,
 } from '../api/codefConnectionApi'
+import { codefOrganizationName, codefOrganizationsByBusinessType } from './codefOrganizations'
 import { usePageTitle } from '../hooks/usePageTitle'
-import styles from './CodefConnectionPage.module.css'
+import { usePermissions } from '../hooks/usePermissions'
+import styles from './BankCardAdminPage.module.css'
 
 type ResultMode = 'ACCOUNTS' | 'CARDS' | 'LOANS'
 type Toast = { type: 'success' | 'error'; message: string } | null
@@ -54,19 +57,6 @@ const BUSINESS_TYPE_LABEL: Record<CodefConnectionBusinessType, string> = {
   BANK: '은행',
   CARD: '카드',
   LOAN: '대출',
-}
-
-const ORGANIZATION_LABEL: Record<string, string> = {
-  '0004': '국민은행',
-  '088': '신한은행',
-  '081': '하나은행',
-  '020': '우리은행',
-  '0301': '신한카드',
-  '0302': '국민카드',
-}
-
-function organizationName(code: string): string {
-  return ORGANIZATION_LABEL[code] ?? code
 }
 
 function formatDateTime(value: string | null): string {
@@ -113,17 +103,26 @@ function resultModeLabel(mode: ResultMode | null): string {
   }
 }
 
-export function CodefConnectionPage() {
-  usePageTitle('CODEF 금융연동')
+export function BankCardAdminPage() {
+  usePageTitle('계좌/카드 관리')
 
   const queryClient = useQueryClient()
+  const { canAccess } = usePermissions()
+  const canCreate = canAccess('accounting.bank-card-admin', 'create')
+  const canDelete = canAccess('accounting.bank-card-admin', 'delete')
   const [form, setForm] = useState<RegisterForm>(EMPTY_FORM)
   const [toast, setToast] = useState<Toast>(null)
   const [resultMode, setResultMode] = useState<ResultMode | null>(null)
   const [results, setResults] = useState<ResultRow[]>([])
 
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
   const institutionsQuery = useQuery({
-    queryKey: ['accounting', 'codef-connection', 'institutions'],
+    queryKey: ['accounting', 'bank-card-admin', 'institutions'],
     queryFn: listCodefRegisteredInstitutions,
   })
 
@@ -132,10 +131,23 @@ export function CodefConnectionPage() {
     onSuccess: async () => {
       setForm(EMPTY_FORM)
       setToast({ type: 'success', message: '금융기관 등록을 완료했습니다.' })
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-card-admin', 'institutions'] })
       await queryClient.invalidateQueries({ queryKey: ['accounting', 'codef-connection', 'institutions'] })
     },
     onError: () => {
       setToast({ type: 'error', message: '금융기관 등록에 실패했습니다. 입력값과 권한을 확인해 주세요.' })
+    },
+  })
+
+  const unregisterMutation = useMutation({
+    mutationFn: unregisterCodefInstitution,
+    onSuccess: async () => {
+      setToast({ type: 'success', message: '금융기관 등록을 해제했습니다.' })
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'bank-card-admin', 'institutions'] })
+      await queryClient.invalidateQueries({ queryKey: ['accounting', 'codef-connection', 'institutions'] })
+    },
+    onError: () => {
+      setToast({ type: 'error', message: '금융기관 등록 해제에 실패했습니다.' })
     },
   })
 
@@ -165,7 +177,7 @@ export function CodefConnectionPage() {
       header: '기관',
       width: '160px',
       mobilePriority: 'primary',
-      render: (row) => organizationName(row.organizationCode),
+      render: (row) => codefOrganizationName(row.organizationCode),
     },
     {
       key: 'businessType',
@@ -188,7 +200,28 @@ export function CodefConnectionPage() {
       mobilePriority: 'hidden',
       render: (row) => formatDateTime(row.registeredAt),
     },
-  ], [])
+    {
+      key: 'actions',
+      header: '관리',
+      width: '96px',
+      mobilePriority: 'secondary',
+      render: (row) => (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={!canDelete || unregisterMutation.isPending}
+          onClick={() => unregisterMutation.mutate({
+            businessType: row.businessType,
+            organizationCode: row.organizationCode,
+          })}
+          data-testid={`bank-card-admin-unregister-${row.businessType}-${row.organizationCode}`}
+        >
+          해제
+        </Button>
+      ),
+    },
+  ], [canDelete, unregisterMutation])
 
   const resultColumns = useMemo<DataTableColumn<ResultRow>[]>(() => [
     {
@@ -249,8 +282,8 @@ export function CodefConnectionPage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <div>
-          <h3 className={styles.title}>CODEF 금융연동</h3>
-          <p className={styles.subtitle}>등록한 기관의 계좌·카드·대출 정보를 검증 조회합니다.</p>
+          <h3 className={styles.title}>계좌/카드 관리</h3>
+          <p className={styles.subtitle}>입출금 내역에 사용할 CODEF 금융기관을 등록하고 해제합니다.</p>
         </div>
         {institutionsQuery.isFetching || verifyMutation.isPending ? <Spinner size="sm" /> : null}
       </div>
@@ -274,7 +307,7 @@ export function CodefConnectionPage() {
               label="구분"
               required
               value={form.businessType}
-              data-testid="codef-connection-business-type"
+              data-testid="bank-card-admin-business-type"
               onChange={(event) => updateForm('businessType', event.target.value as CodefConnectionBusinessType)}
             >
               <option value="BANK">은행</option>
@@ -286,15 +319,15 @@ export function CodefConnectionPage() {
               required
               value={form.organization}
               placeholder="예: 0004"
-              list="codef-organization-options"
-              data-testid="codef-connection-organization"
+              list="bank-card-admin-organization-options"
+              data-testid="bank-card-admin-organization"
               onChange={(event) => updateForm('organization', event.target.value)}
             />
             <Select
               label="로그인 방식"
               required
               value={form.loginType}
-              data-testid="codef-connection-login-type"
+              data-testid="bank-card-admin-login-type"
               onChange={(event) => updateForm('loginType', event.target.value)}
             >
               <option value="5">마이데이터</option>
@@ -302,13 +335,10 @@ export function CodefConnectionPage() {
               <option value="1">아이디/비밀번호</option>
             </Select>
           </FormGrid>
-          <datalist id="codef-organization-options">
-            <option value="0004">국민은행</option>
-            <option value="088">신한은행</option>
-            <option value="081">하나은행</option>
-            <option value="020">우리은행</option>
-            <option value="0301">신한카드</option>
-            <option value="0302">국민카드</option>
+          <datalist id="bank-card-admin-organization-options">
+            {codefOrganizationsByBusinessType(form.businessType).map((org) => (
+              <option key={org.code} value={org.code}>{org.name}</option>
+            ))}
           </datalist>
           <FormGrid columns={2} className={styles.credentials}>
             <Input
@@ -316,7 +346,7 @@ export function CodefConnectionPage() {
               required
               autoComplete="off"
               value={form.loginId}
-              data-testid="codef-connection-credential-id"
+              data-testid="bank-card-admin-credential-id"
               onChange={(event) => updateForm('loginId', event.target.value)}
             />
             <Input
@@ -325,7 +355,7 @@ export function CodefConnectionPage() {
               required
               autoComplete="new-password"
               value={form.password}
-              data-testid="codef-connection-credential-password"
+              data-testid="bank-card-admin-credential-password"
               onChange={(event) => updateForm('password', event.target.value)}
             />
           </FormGrid>
@@ -334,7 +364,8 @@ export function CodefConnectionPage() {
               type="submit"
               variant="primary"
               loading={registerMutation.isPending}
-              data-testid="codef-connection-register-button"
+              disabled={!canCreate}
+              data-testid="bank-card-admin-register-button"
             >
               등록
             </Button>
@@ -351,7 +382,7 @@ export function CodefConnectionPage() {
               variant="secondary"
               onClick={() => verifyMutation.mutate('ACCOUNTS')}
               loading={verifyMutation.isPending && verifyMutation.variables === 'ACCOUNTS'}
-              data-testid="codef-connection-list-accounts"
+              data-testid="bank-card-admin-list-accounts"
             >
               계좌 조회
             </Button>
@@ -360,22 +391,22 @@ export function CodefConnectionPage() {
               variant="secondary"
               onClick={() => verifyMutation.mutate('CARDS')}
               loading={verifyMutation.isPending && verifyMutation.variables === 'CARDS'}
-              data-testid="codef-connection-list-cards"
+              data-testid="bank-card-admin-list-cards"
             >
               카드 조회
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant="secondary"
               onClick={() => verifyMutation.mutate('LOANS')}
               loading={verifyMutation.isPending && verifyMutation.variables === 'LOANS'}
-              data-testid="codef-connection-list-loans"
+              data-testid="bank-card-admin-list-loans"
             >
               대출 조회
             </Button>
           </div>
         </div>
-        <div data-testid="codef-connection-institution-table">
+        <div data-testid="bank-card-admin-institution-table">
           <DataTable<RegisteredInstitutionResponse>
             columns={institutionColumns}
             rows={institutionsQuery.data ?? []}
@@ -390,7 +421,7 @@ export function CodefConnectionPage() {
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>{resultModeLabel(resultMode)}</h4>
         </div>
-        <div data-testid="codef-connection-result-table">
+        <div data-testid="bank-card-admin-result-table">
           <DataTable<ResultRow>
             columns={resultColumns}
             rows={results}

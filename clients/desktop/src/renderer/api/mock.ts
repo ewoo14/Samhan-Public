@@ -5709,7 +5709,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   }
 
   if (method === 'POST' && url.includes('/accounting/codef/connection/institutions')) {
-    const denied = mockRequirePermission('accounting.bank-matching', 'create')
+    const denied = mockRequirePermission('accounting.bank-card-admin', 'create')
     if (denied) return denied
     const body = parseMockBody(config)
     const businessType = String(body['businessType'] ?? 'BANK') as MockCodefRegisteredInstitution['businessType']
@@ -5741,26 +5741,45 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return { __mockStatus: 201, body: envelope(row) }
   }
 
+  if (method === 'PATCH' && url.includes('/accounting/codef/connection/institutions/unregister')) {
+    const denied = mockRequirePermission('accounting.bank-card-admin', 'delete')
+    if (denied) return denied
+    const body = parseMockBody(config)
+    const businessType = String(body['businessType'] ?? '').trim()
+    const organizationCode = String(body['organizationCode'] ?? '').trim()
+    if (!businessType || !organizationCode) {
+      return mockError(400, 'INVALID_INPUT', '업무 구분과 기관 코드는 필수입니다.')
+    }
+    const target = MOCK_CODEF_REGISTERED_INSTITUTIONS.find((item) =>
+      item.businessType === businessType && item.organizationCode === organizationCode)
+    if (!target) {
+      return mockError(404, 'NOT_FOUND', '등록된 CODEF 기관을 찾을 수 없습니다.')
+    }
+    MOCK_CODEF_REGISTERED_INSTITUTIONS = MOCK_CODEF_REGISTERED_INSTITUTIONS.filter((item) =>
+      !(item.businessType === businessType && item.organizationCode === organizationCode))
+    return envelope(target)
+  }
+
   if (method === 'GET' && url.includes('/accounting/codef/connection/institutions')) {
-    const denied = mockRequirePermission('accounting.bank-matching', 'view')
+    const denied = mockRequirePermission('accounting.bank-card-admin', 'view')
     if (denied) return denied
     return envelope({ institutions: MOCK_CODEF_REGISTERED_INSTITUTIONS })
   }
 
   if (method === 'GET' && url.includes('/accounting/codef/connection/accounts')) {
-    const denied = mockRequirePermission('accounting.bank-matching', 'view')
+    const denied = mockRequirePermission('accounting.bank-card-admin', 'view')
     if (denied) return denied
     return envelope({ accounts: MOCK_CODEF_BANK_ACCOUNTS })
   }
 
   if (method === 'GET' && url.includes('/accounting/codef/connection/cards')) {
-    const denied = mockRequirePermission('accounting.bank-matching', 'view')
+    const denied = mockRequirePermission('accounting.bank-card-admin', 'view')
     if (denied) return denied
     return envelope({ cards: MOCK_CODEF_CARDS })
   }
 
   if (method === 'GET' && url.includes('/accounting/codef/connection/loans')) {
-    const denied = mockRequirePermission('accounting.bank-matching', 'view')
+    const denied = mockRequirePermission('accounting.bank-card-admin', 'view')
     if (denied) return denied
     return envelope({ loans: MOCK_CODEF_LOANS })
   }
@@ -5887,17 +5906,59 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  if (method === 'GET' && url.includes('/accounting/bank-transactions/filter-preferences')) {
+    const denied = mockRequirePermission('accounting.bank-matching', 'view')
+    if (denied) return denied
+    const userId = readMockHeader(config, 'X-User-Id') || MOCK_AUTH.userId
+    return envelope(MOCK_BANK_TRANSACTION_FILTER_PREFERENCES[userId] ?? { accountLabels: [], cardLabels: [] })
+  }
+
+  if (method === 'PUT' && url.includes('/accounting/bank-transactions/filter-preferences')) {
+    const denied = mockRequirePermission('accounting.bank-matching', 'update')
+    if (denied) return denied
+    const userId = readMockHeader(config, 'X-User-Id') || MOCK_AUTH.userId
+    const body = parseMockBody(config)
+    const saved = {
+      accountLabels: normalizeMockRefs(body['accountLabels'] as string[] | null | undefined),
+      cardLabels: normalizeMockRefs(body['cardLabels'] as string[] | null | undefined),
+    }
+    MOCK_BANK_TRANSACTION_FILTER_PREFERENCES[userId] = saved
+    return envelope(saved)
+  }
+
+  if (method === 'GET' && url.includes('/accounting/bank-transactions/filter-labels')) {
+    const denied = mockRequirePermission('accounting.bank-matching', 'view')
+    if (denied) return denied
+    return envelope({
+      accountLabels: distinctMockBankTransactionLabels(['CSV_IMPORT', 'CODEF_BANK']),
+      cardLabels: distinctMockBankTransactionLabels(['CODEF_CARD']),
+    })
+  }
+
 
   if (method === 'GET' && url.includes('/accounting/bank-transactions')) {
     const statusFilter = String(config.params?.['matchStatus'] ?? '')
     const from = String(config.params?.['from'] ?? '')
     const to = String(config.params?.['to'] ?? '')
-    const bankAccountLabel = String(config.params?.['bankAccountLabel'] ?? '').trim()
+    const accountLabels = normalizeMockRefs(readMockParamList(config.params?.['accountLabels']))
+    const cardLabels = normalizeMockRefs(readMockParamList(config.params?.['cardLabels']))
+    // 소스 인식 필터(BE 와 동일): 계좌 label→계좌 소스행, 카드 label→카드 소스행, 그 외(대출/KFTC)는 면제.
+    const accountSources = ['CSV_IMPORT', 'CODEF_BANK']
+    const cardSources = ['CODEF_CARD']
     const rows = MOCK_BANK_TRANSACTIONS
       .filter((row) => !statusFilter || row.matchStatus === statusFilter)
       .filter((row) => !from || row.transactedAt.slice(0, 10) >= from)
       .filter((row) => !to || row.transactedAt.slice(0, 10) <= to)
-      .filter((row) => !bankAccountLabel || row.bankAccountLabel.includes(bankAccountLabel))
+      .filter((row) => {
+        if (accountLabels.length === 0 && cardLabels.length === 0) return true
+        if (accountSources.includes(row.source)) {
+          return accountLabels.length === 0 || accountLabels.includes(row.bankAccountLabel)
+        }
+        if (cardSources.includes(row.source)) {
+          return cardLabels.length === 0 || cardLabels.includes(row.bankAccountLabel)
+        }
+        return true
+      })
       .sort((a, b) => b.transactedAt.localeCompare(a.transactedAt))
     return envelope(rows)
   }
@@ -15181,6 +15242,7 @@ const MOCK_CODEF_LOANS = [
 
 let MOCK_CODEF_IMPORT_SCOPES: Record<string, MockCodefScope> = {}
 let MOCK_CODEF_REGISTERED_INSTITUTIONS: MockCodefRegisteredInstitution[] = []
+let MOCK_BANK_TRANSACTION_FILTER_PREFERENCES: Record<string, { accountLabels: string[]; cardLabels: string[] }> = {}
 
 function mockCodefOrganizationName(organizationCode: string): string {
   const names: Record<string, string> = {
@@ -15203,6 +15265,22 @@ function mockCodefAccountIdentifier(businessType: MockCodefRegisteredInstitution
 function normalizeMockRefs(refs: string[] | null | undefined): string[] {
   if (!Array.isArray(refs)) return []
   return Array.from(new Set(refs.map((ref) => String(ref).trim()).filter(Boolean)))
+}
+
+function readMockParamList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item))
+  if (typeof value === 'string') return [value]
+  return []
+}
+
+function distinctMockBankTransactionLabels(sources: MockBankTransactionRow['source'][]): string[] {
+  const sourceSet = new Set(sources)
+  return Array.from(new Set(
+    MOCK_BANK_TRANSACTIONS
+      .filter((row) => sourceSet.has(row.source))
+      .map((row) => row.bankAccountLabel.trim())
+      .filter(Boolean),
+  )).sort((a, b) => a.localeCompare(b, 'ko-KR'))
 }
 
 function resolveMockCodefRefs(
@@ -15593,6 +15671,7 @@ const SP_D1_PAGES = [
   'accounting.balances',
   'accounting.reports',
   'accounting.receivables',
+  'accounting.bank-card-admin',
   'accounting.bank-matching',
   'accounting.period-close',
   'accounting.statement-batch',
@@ -15743,7 +15822,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'inbound.inspection', 'dispatch.board', 'dispatch.external-carriers',
     // SP-D2 회계 7개 — MANAGER: view 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
-    'accounting.reports', 'accounting.receivables', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
+    'accounting.reports', 'accounting.receivables', 'accounting.bank-card-admin', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
     // V37 supplier-profiles — MANAGER: view/edit 허용
     'accounting.supplier-profiles',
@@ -15827,7 +15906,7 @@ const SP_D1_DEFAULT_VIEW: Record<string, readonly string[]> = {
     'purchases.slip.list', 'sales.slip.list',
     // SP-D2 회계 7개 — ACCOUNTANT: view + edit 허용
     'accounting.accounts', 'accounting.journals', 'accounting.balances',
-    'accounting.reports', 'accounting.receivables', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
+    'accounting.reports', 'accounting.receivables', 'accounting.bank-card-admin', 'accounting.bank-matching', 'accounting.period-close', 'accounting.statement-batch',
     'accounting.partner-ledger',
     // V37 supplier-profiles — ACCOUNTANT: view only
     'accounting.supplier-profiles',
@@ -15920,7 +15999,7 @@ const SP_D1_DEFAULT_EDIT: Record<string, readonly string[]> = {
     'accounting.tax-invoice.batch-issue', 'accounting.tax-invoice.inbound',
     'accounting.sales-slip.list', 'accounting.purchase-slip.list',
     'accounting.daily-closing.run',
-    'accounting.receivables', 'accounting.bank-matching',
+    'accounting.receivables', 'accounting.bank-card-admin', 'accounting.bank-matching',
     // V37 supplier-profiles — MANAGER: view/edit 허용
     'accounting.supplier-profiles',
     // SP-D1 — MANAGER: edit 미허용 (view 전용)

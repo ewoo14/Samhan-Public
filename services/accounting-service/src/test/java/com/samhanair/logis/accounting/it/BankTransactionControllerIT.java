@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -128,11 +129,144 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("계좌 필터는 계좌 소스행에만 IN 적용하고 카드/대출 소스는 면제로 유지한다")
+    void list_filtersAccountLabelsSourceAware() throws Exception {
+        insertNative("DEPOSIT", "CSV_IMPORT", "UNREFLECTED", "1000.00", "multi-a-001", "국민 111");
+        insertNative("DEPOSIT", "CODEF_BANK", "UNREFLECTED", "2000.00", "multi-b-001", "신한 222");
+        insertNative("DEPOSIT", "CSV_IMPORT", "UNREFLECTED", "3000.00", "multi-c-001", "농협 333");
+        insertNative("DEPOSIT", "CODEF_CARD", "UNREFLECTED", "4000.00", "multi-d-001", "법인카드 A");
+        insertNative("WITHDRAWAL", "CODEF_LOAN", "UNREFLECTED", "5000.00", "multi-e-001", "우리 대출");
+
+        // 계좌 부분선택: 계좌 소스는 선택 label 만(농협 제외), 카드/대출 소스는 필터 면제로 유지.
+        mockMvc.perform(get(BASE_URL)
+                        .param("accountLabels", "국민 111", "신한 222")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(4))
+                .andExpect(jsonPath("$.data[*].bankAccountLabel")
+                        .value(org.hamcrest.Matchers.containsInAnyOrder(
+                                "국민 111", "신한 222", "법인카드 A", "우리 대출")));
+    }
+
+    @Test
+    @DisplayName("카드 필터는 카드 소스행에만 IN 적용하고 계좌/대출 소스는 면제로 유지한다")
+    void list_filtersCardLabelsSourceAware() throws Exception {
+        insertNative("DEPOSIT", "CSV_IMPORT", "UNREFLECTED", "1000.00", "card-a-001", "국민 111");
+        insertNative("DEPOSIT", "CODEF_CARD", "UNREFLECTED", "2000.00", "card-b-001", "법인카드 A");
+        insertNative("DEPOSIT", "CODEF_CARD", "UNREFLECTED", "3000.00", "card-c-001", "법인카드 B");
+        insertNative("WITHDRAWAL", "CODEF_LOAN", "UNREFLECTED", "4000.00", "card-d-001", "우리 대출");
+
+        // 카드 부분선택: 카드 소스는 선택 label 만(법인카드 B 제외), 계좌/대출 소스는 면제로 유지.
+        mockMvc.perform(get(BASE_URL)
+                        .param("cardLabels", "법인카드 A")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[*].bankAccountLabel")
+                        .value(org.hamcrest.Matchers.containsInAnyOrder(
+                                "국민 111", "법인카드 A", "우리 대출")));
+    }
+
+    @Test
+    @DisplayName("필터 설정은 X-User-Id 별로 저장/복원하고 UUID 를 응답하지 않는다")
+    void filterPreferences_areStoredPerUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        mockMvc.perform(get(BASE_URL + "/filter-preferences")
+                        .header("X-User-Id", userId.toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountLabels.length()").value(0))
+                .andExpect(jsonPath("$.data.cardLabels.length()").value(0))
+                .andExpect(jsonPath("$.data.id").doesNotExist())
+                .andExpect(jsonPath("$.data.userId").doesNotExist());
+
+        mockMvc.perform(put(BASE_URL + "/filter-preferences")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "accountLabels": ["국민 111", "신한 222", "국민 111"],
+                                  "cardLabels": ["법인카드 A"]
+                                }
+                                """)
+                        .header("X-User-Id", userId.toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountLabels[0]").value("국민 111"))
+                .andExpect(jsonPath("$.data.accountLabels[1]").value("신한 222"))
+                .andExpect(jsonPath("$.data.accountLabels.length()").value(2))
+                .andExpect(jsonPath("$.data.cardLabels[0]").value("법인카드 A"));
+
+        mockMvc.perform(get(BASE_URL + "/filter-preferences")
+                        .header("X-User-Id", userId.toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountLabels.length()").value(2))
+                .andExpect(jsonPath("$.data.cardLabels[0]").value("법인카드 A"));
+
+        mockMvc.perform(get(BASE_URL + "/filter-preferences")
+                        .header("X-User-Id", otherUserId.toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountLabels.length()").value(0))
+                .andExpect(jsonPath("$.data.cardLabels.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("필터 label 목록은 soft-delete 행을 제외하고 계좌/카드 label 을 분리한다")
+    void filterLabels_excludeSoftDeletedRows() throws Exception {
+        insertNative("DEPOSIT", "CSV_IMPORT", "UNREFLECTED", "1000.00", "label-bank-001", "CSV 국민");
+        insertNative("WITHDRAWAL", "CODEF_CARD", "UNREFLECTED", "2000.00", "label-card-001", "법인카드 A");
+        jdbcTemplate.update("""
+                INSERT INTO bank_transaction (
+                    id, transacted_at, txn_type, amount, description, bank_account_label,
+                    source, external_ref, match_status, created_at, created_by, deleted_at, deleted_by, is_deleted
+                ) VALUES (
+                    ?, TIMESTAMP '2026-06-23 09:20:00', 'DEPOSIT', 3000.00, '삭제 label',
+                    '삭제 계좌', 'CSV_IMPORT', 'label-deleted-001', 'UNREFLECTED',
+                    NOW(), 'it', NOW(), 'it', TRUE
+                )
+                """, UUID.randomUUID());
+
+        mockMvc.perform(get(BASE_URL + "/filter-labels")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountLabels")
+                        .value(org.hamcrest.Matchers.hasItem("CSV 국민")))
+                .andExpect(jsonPath("$.data.cardLabels")
+                        .value(org.hamcrest.Matchers.hasItem("법인카드 A")))
+                .andExpect(jsonPath("$.data.accountLabels")
+                        .value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("삭제 계좌"))));
+    }
+
+    @Test
     @DisplayName("RequirePermission: accounting.bank-matching CREATE deny 시 import 403")
     void importCsv_requiresCreatePermission() throws Exception {
         denyRequirePermission("accounting.bank-matching", PermissionAction.CREATE);
 
         importCsv(ms949Csv())
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("RequirePermission: accounting.bank-matching UPDATE deny 시 필터 설정 저장 403")
+    void updateFilterPreferences_requiresUpdatePermission() throws Exception {
+        denyRequirePermission("accounting.bank-matching", PermissionAction.UPDATE);
+
+        mockMvc.perform(put(BASE_URL + "/filter-preferences")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "accountLabels": ["국민 111"],
+                                  "cardLabels": []
+                                }
+                                """)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
                 .andExpect(status().isForbidden());
     }
 
@@ -426,14 +560,19 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
     }
 
     private void insertNative(String txnType, String source, String matchStatus, String amount, String externalRef) {
+        insertNative(txnType, source, matchStatus, amount, externalRef, "국민 123-456");
+    }
+
+    private void insertNative(String txnType, String source, String matchStatus, String amount, String externalRef,
+                              String bankAccountLabel) {
         jdbcTemplate.update("""
                 INSERT INTO bank_transaction (
                     id, transacted_at, txn_type, amount, description, bank_account_label,
                     source, external_ref, match_status, created_at, created_by, is_deleted
                 ) VALUES (
-                    ?, TIMESTAMP '2026-06-23 09:00:00', ?, ?::numeric, 'bad', '국민 123-456',
+                    ?, TIMESTAMP '2026-06-23 09:00:00', ?, ?::numeric, 'bad', ?,
                     ?, ?, ?, NOW(), 'it', FALSE
                 )
-                """, UUID.randomUUID(), txnType, amount, source, externalRef, matchStatus);
+                """, UUID.randomUUID(), txnType, amount, bankAccountLabel, source, externalRef, matchStatus);
     }
 }

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -143,11 +144,116 @@ class CodefConnectionControllerIT extends AbstractPostgresIT {
     void registerInstitution_deniedByRequirePermission() throws Exception {
         when(dynamicPermissionClient.check(
                         org.mockito.ArgumentMatchers.any(UUID.class),
-                        org.mockito.ArgumentMatchers.eq("accounting.bank-matching"),
+                        org.mockito.ArgumentMatchers.eq("accounting.bank-card-admin"),
                         org.mockito.ArgumentMatchers.eq(PermissionAction.CREATE)))
                 .thenReturn(false);
 
         registerBank().andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("등록기관 해제는 accounting.bank-card-admin DELETE 권한으로 soft-delete 한다")
+    void unregisterInstitution_softDeletesByBusinessNaturalKey() throws Exception {
+        when(easyCodefClient.registerInstitution(any()))
+                .thenReturn(new CodefRegisterResult("conn-unregister", "ACTIVE", "등록 완료"));
+        registerBank().andExpect(status().isCreated());
+
+        mockMvc.perform(patch(BASE_URL + "/institutions/unregister")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "businessType": "BANK",
+                                  "organizationCode": "0004"
+                                }
+                                """)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.organizationCode").value("0004"))
+                .andExpect(jsonPath("$.data.businessType").value("BANK"));
+
+        Integer activeCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM codef_registered_institution
+                 WHERE business_type = 'BANK'
+                   AND organization_code = '0004'
+                   AND is_deleted = FALSE
+                """, Integer.class);
+        assertThat(activeCount).isZero();
+    }
+
+    @Test
+    @DisplayName("ERROR 상태 연결도 등록기관 목록 조회와 해제를 200으로 처리한다")
+    void registeredInstitutionEndpoints_workWithErrorConnection() throws Exception {
+        when(easyCodefClient.registerInstitution(any()))
+                .thenReturn(new CodefRegisterResult("conn-error", "ERROR", "등록 실패"));
+        registerBank().andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("ERROR"));
+
+        mockMvc.perform(withActor(get(BASE_URL + "/institutions")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.institutions.length()").value(1))
+                .andExpect(jsonPath("$.data.institutions[0].organizationCode").value("0004"))
+                .andExpect(jsonPath("$.data.institutions[0].status").value("ERROR"));
+
+        mockMvc.perform(patch(BASE_URL + "/institutions/unregister")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "businessType": "BANK",
+                                  "organizationCode": "0004"
+                                }
+                                """)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.organizationCode").value("0004"))
+                .andExpect(jsonPath("$.data.status").value("ERROR"));
+    }
+
+    @Test
+    @DisplayName("동일 기관 재등록은 활성 중복행을 만들지 않고 1건만 유지한다(멱등)")
+    void registerInstitution_isIdempotentByNaturalKey() throws Exception {
+        when(easyCodefClient.registerInstitution(any()))
+                .thenReturn(new CodefRegisterResult("conn-idem", "ACTIVE", "등록 완료"));
+        registerBank().andExpect(status().isCreated());
+        registerBank().andExpect(status().isCreated());
+
+        mockMvc.perform(withActor(get(BASE_URL + "/institutions")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.institutions.length()").value(1))
+                .andExpect(jsonPath("$.data.institutions[0].organizationCode").value("0004"));
+
+        Integer activeCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM codef_registered_institution
+                 WHERE business_type = 'BANK'
+                   AND organization_code = '0004'
+                   AND is_deleted = FALSE
+                """, Integer.class);
+        assertThat(activeCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("권한 없는 기관 해제 요청은 403으로 차단한다")
+    void unregisterInstitution_deniedByRequirePermission() throws Exception {
+        when(dynamicPermissionClient.check(
+                        org.mockito.ArgumentMatchers.any(UUID.class),
+                        org.mockito.ArgumentMatchers.eq("accounting.bank-card-admin"),
+                        org.mockito.ArgumentMatchers.eq(PermissionAction.DELETE)))
+                .thenReturn(false);
+
+        mockMvc.perform(patch(BASE_URL + "/institutions/unregister")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "businessType": "BANK",
+                                  "organizationCode": "0004"
+                                }
+                                """)
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isForbidden());
     }
 
     private org.springframework.test.web.servlet.ResultActions registerBank() throws Exception {

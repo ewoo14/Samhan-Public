@@ -96,6 +96,38 @@ public class CodefRegisteredInstitution extends BaseEntity {
         return institution;
     }
 
+    /**
+     * 이미 등록된 기관을 동일 자연키로 재등록(멱등)한다.
+     *
+     * <p>같은 (connection, businessType, organizationCode) 재등록 시 활성 중복행을 만들지 않고
+     * 기존 행의 상태·등록/검증 시각만 갱신한다. ACTIVE가 아닌 재등록은 성공 검증 시각을 초기화해
+     * 과거 성공 상태가 현재 등록 상태로 오인되지 않게 한다. 자연키 기반 해제(unregister)의 대상 모호성을 원천 차단한다.
+     *
+     * @param status 등록 상태
+     * @return {@code this}
+     */
+    public CodefRegisteredInstitution reregister(CodefInstitutionStatus status) {
+        this.status = status == null ? CodefInstitutionStatus.ERROR : status;
+        this.registeredAt = LocalDateTime.now();
+        if (this.status == CodefInstitutionStatus.ACTIVE) {
+            this.lastVerifiedAt = this.registeredAt;
+        } else {
+            this.lastVerifiedAt = null;
+        }
+        return this;
+    }
+
+    /**
+     * 등록 기관을 soft-delete 한다.
+     *
+     * @param actor 해제 수행자 식별자
+     * @return {@code this}
+     */
+    public CodefRegisteredInstitution unregister(String actor) {
+        markDeleted(actor == null || actor.isBlank() ? "SYSTEM" : actor.trim());
+        return this;
+    }
+
     private static String requireText(String value, String message) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(message);

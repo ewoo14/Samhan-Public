@@ -11,6 +11,7 @@ import com.samhanair.logis.accounting.domain.MatchStatus;
 import com.samhanair.logis.accounting.repository.BankTransactionRepository;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportMapping;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportResult;
+import com.samhanair.logis.accounting.web.dto.BankTransactionFilterLabelsResponse;
 import com.samhanair.logis.accounting.web.dto.BankTransactionMatchPartnerClearRequest;
 import com.samhanair.logis.accounting.web.dto.BankTransactionMatchPartnerRequest;
 import com.samhanair.logis.accounting.web.dto.BankTransactionResponse;
@@ -67,6 +68,15 @@ public class BankTransactionService {
             DateTimeFormatter.ofPattern("yyyyMMdd HHmmss"),
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
     };
+
+    /** 계좌 필터가 적용되는 소스(계좌 label 조회 대상 findDistinctAccountLabels 와 일치). */
+    private static final List<BankTxnSource> ACCOUNT_SOURCES =
+            List.of(BankTxnSource.CSV_IMPORT, BankTxnSource.CODEF_BANK);
+    /** 카드 필터가 적용되는 소스(findDistinctCardLabels 와 일치). */
+    private static final List<BankTxnSource> CARD_SOURCES = List.of(BankTxnSource.CODEF_CARD);
+    /** label 필터 대상 소스 전체. 이 목록 밖 소스(대출/KFTC)는 필터에서 면제해 항상 포함한다. */
+    private static final List<BankTxnSource> FILTERABLE_SOURCES =
+            List.of(BankTxnSource.CSV_IMPORT, BankTxnSource.CODEF_BANK, BankTxnSource.CODEF_CARD);
     private static final DateTimeFormatter[] DATE_FORMATTERS = {
             DateTimeFormatter.ISO_LOCAL_DATE,
             DateTimeFormatter.ofPattern("yyyy.MM.dd"),
@@ -138,10 +148,37 @@ public class BankTransactionService {
     @Transactional(readOnly = true)
     public List<BankTransactionResponse> list(MatchStatus matchStatus, LocalDate from, LocalDate to,
                                               String bankAccountLabel) {
+        // 하위호환: 단일 label 은 계좌 필터로 간주한다.
+        return list(matchStatus, from, to,
+                bankAccountLabel == null ? List.of() : List.of(bankAccountLabel),
+                List.of());
+    }
+
+    /**
+     * 통장 거래 목록을 소스 인식 필터로 조회한다.
+     *
+     * <p>계좌 label 은 계좌 소스행(CSV/CODEF_BANK)에만, 카드 label 은 카드 소스행(CODEF_CARD)에만 적용하고,
+     * 필터 UI 가 없는 소스(대출/KFTC)는 항상 포함한다. 빈 목록은 해당 소스 전체 선택을 의미한다.
+     *
+     * @param matchStatus 매칭 상태 탭 필터
+     * @param from 거래일 시작일
+     * @param to 거래일 종료일
+     * @param accountLabels 계좌 표시명 다중 선택(빈 목록=계좌 전체)
+     * @param cardLabels 카드 표시명 다중 선택(빈 목록=카드 전체)
+     * @return 거래일 역순 목록
+     */
+    @Transactional(readOnly = true)
+    public List<BankTransactionResponse> list(MatchStatus matchStatus, LocalDate from, LocalDate to,
+                                              List<String> accountLabels, List<String> cardLabels) {
         if (from != null && to != null && to.isBefore(from)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "to 는 from 이후여야 합니다.");
         }
-        Specification<BankTransaction> spec = bankTransactionSpec(matchStatus, from, to, bankAccountLabel);
+        Specification<BankTransaction> spec = bankTransactionSpec(
+                matchStatus,
+                from,
+                to,
+                normalizeLabels(null, accountLabels),
+                normalizeLabels(null, cardLabels));
         List<BankTransaction> rows = repository.findAll(
                 spec,
                 Sort.by(Sort.Order.desc("transactedAt"), Sort.Order.desc("createdAt")));
@@ -153,6 +190,14 @@ public class BankTransactionService {
                         displayOfPartner(row, partners),
                         cashReceiptSlipNos.get(row.getId())))
                 .toList();
+    }
+
+    /** 필터 모달에 표시할 계좌/카드 label 목록을 조회한다. */
+    @Transactional(readOnly = true)
+    public BankTransactionFilterLabelsResponse filterLabels() {
+        return new BankTransactionFilterLabelsResponse(
+                normalizeLabels(null, repository.findDistinctAccountLabels()),
+                normalizeLabels(null, repository.findDistinctCardLabels()));
     }
 
     /**
@@ -247,7 +292,7 @@ public class BankTransactionService {
     }
 
     private Specification<BankTransaction> bankTransactionSpec(MatchStatus matchStatus, LocalDate from, LocalDate to,
-                                                               String bankAccountLabel) {
+                                                               List<String> accountLabels, List<String> cardLabels) {
         return (root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
             if (matchStatus != null) {
@@ -259,11 +304,38 @@ public class BankTransactionService {
             if (to != null) {
                 predicates.add(cb.lessThan(root.get("transactedAt"), to.plusDays(1).atStartOfDay()));
             }
-            if (hasText(bankAccountLabel)) {
-                predicates.add(cb.equal(root.get("bankAccountLabel"), bankAccountLabel.trim()));
+            if (!accountLabels.isEmpty() || !cardLabels.isEmpty()) {
+                // 소스 인식 필터: 계좌 label 은 계좌 소스행에만, 카드 label 은 카드 소스행에만 적용하고,
+                // 필터 UI 가 없는 소스(대출/KFTC)는 항상 포함해 부분선택 시 소실되지 않게 한다.
+                List<jakarta.persistence.criteria.Predicate> sourceScoped = new ArrayList<>();
+                jakarta.persistence.criteria.Predicate accountSource = root.get("source").in(ACCOUNT_SOURCES);
+                sourceScoped.add(accountLabels.isEmpty()
+                        ? accountSource
+                        : cb.and(accountSource, root.get("bankAccountLabel").in(accountLabels)));
+                jakarta.persistence.criteria.Predicate cardSource = root.get("source").in(CARD_SOURCES);
+                sourceScoped.add(cardLabels.isEmpty()
+                        ? cardSource
+                        : cb.and(cardSource, root.get("bankAccountLabel").in(cardLabels)));
+                sourceScoped.add(cb.not(root.get("source").in(FILTERABLE_SOURCES)));
+                predicates.add(cb.or(sourceScoped.toArray(jakarta.persistence.criteria.Predicate[]::new)));
             }
             return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
         };
+    }
+
+    private static List<String> normalizeLabels(String singleLabel, List<String> labels) {
+        java.util.LinkedHashSet<String> normalized = new java.util.LinkedHashSet<>();
+        if (hasText(singleLabel)) {
+            normalized.add(singleLabel.trim());
+        }
+        if (labels != null) {
+            for (String label : labels) {
+                if (hasText(label)) {
+                    normalized.add(label.trim());
+                }
+            }
+        }
+        return List.copyOf(normalized);
     }
 
     private BankTransaction toTransaction(String[] row, ColumnResolver resolver, String bankAccountLabel,
