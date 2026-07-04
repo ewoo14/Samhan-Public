@@ -15,6 +15,12 @@
 2. **성공 응답도 non-null `envelope(...)`**. `getMockResponse` 가 null 이면 어댑터(`client.ts:48 if (mock !== null)`)가 **"미매칭"으로 보고 실 HTTP fallthrough → 네트워크 에러 → 페이지 블랭크**. 204 라도 null 금지 → `envelope({ deleted: true })`.
 3. **`responseType:'blob'` 소비자엔 실제 `Blob` 반환**. `res.data as Blob` 사용처에 string 반환 시 `triggerDownload`/`URL.createObjectURL` 실패(다운로드 이벤트 미발생). → `new Blob([csv], { type: 'text/csv;charset=utf-8' })`.
 
+## 신규 in-process 핸들러 = 기존 page.route spec 우회 회귀 (2026-07-05 #728 CI red)
+
+원칙2의 **역**: 미핸들 경로는 null→실 HTTP fallthrough → 그 경로의 `page.route` spec 이 동작한다. 그런데 그 경로에 **신규 in-process 핸들러를 추가하면 fallthrough 가 끊겨 page.route 가 무력화** → 해당 spec 이 자기 픽스처 대신 in-process 데이터를 받아 **조용히 실패**(빈 페이지/candidates 불일치). #728 이 `mock.ts` 에 `/accounting/orders` 핸들러 추가 → `mig-14-order-admin.spec`(page.route 픽스처 ORD-2026-0001 의존)이 우회당해 hard-gate CI red(5-agent 리뷰+Codex 순차 전부 통과·타깃 spec 만 실행해 놓침, **풀 551 스위트 돌린 CI 만 적발**).
+- **신규 핸들러 추가 전**: 해당 경로에 `page.route`/`mockApiJson` 쓰는 spec 있는지 grep. 있으면 (a) 핸들러 미추가(page.route 소유 유지) or (b) spec 을 in-process 로 이관.
+- **mock.ts 변경 검증 = 타깃 spec 아닌 풀 Playwright 스위트**(`npx playwright test` 전량). 타깃 실행은 fallthrough→intercept flip 을 못 봄.
+
 ## 재게이트 패턴 (동반)
 
 - RoleGuard 역할 cross-check → goto 뒤 `page.reload()` (hash 네비는 mockRole 세션 재설정 안 함).

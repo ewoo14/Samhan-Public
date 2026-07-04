@@ -4,6 +4,18 @@
 > 갱신: 2026-06-30 오전 (**회사PC 재개 세션** — 집PC 인계 완료, **협업 S2b(#675) 머지** squash `3ea02f1e`: Codex 라운드3 0수렴·1:1 라운드 소급보완·실 Docker 라이브 QA). **협업 S2c·S2d-1·S2d-1b·S2d-2(#679 `27c686b7`) 머지**(상태의존 카운트 · 헤더+라인 셀 레드라인 · **라이브 변경 하이라이트** — S2d 계열 완료). **S3-0/S3-1(#681)·S3-2 견적(#682 `f93a2cd89`) coedit 머지(2026-07-01)** — #16 협업 **라이브 coedit 6문서 **메모 단일필드(1차)만** 머지 — ⚠️**full-form(전표 전체)=원 지시·미완**(정정 [[feedback_epic_scope_no_narrowing]]). **현 우선순위=협업 full-form **롤아웃**(정찰 acf36aaa: slip 판매전표는 **이미 full-form ✅** S2a #674 `fcdbb6bea`[createDocCoeditProvider Y.Map헤더+Y.Array품목라인+CollaborativeSlipInput 셀바인딩, 수정모달] — **5문서 중 주문 full-form ✅(#689 `75a967d15`, BLOCKING 2[awareness 블리드·stale corruption] fix·듀얼리뷰 양방향정정·2/6 완료) — 견적·회계·결재·배차 잔여 메모→full-form 이식**. 개발책임자 결정: **트랙B 5문서 롤아웃 + 트랙A slip 하드닝 + 트랙B 롤아웃 병행, 저장충돌=후속). **〔진행 2026-07-01 PM〕** 트랙A **slA1(공유 provider 라인 lineId+add/remove/byId CRDT infra) ✅머지 `1d0d27a81`**(#690, Opus FE+Codex 듀얼리뷰 0수렴, backward-compat 60테스트). **회계 정찰**: 회계 full-form은 ❌BE 수정 PUT 부재(신설 필요)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위. **전략=사용자 1순위 '더 많은 문서 full-form' → 트랙B 롤아웃 우선**(slA1 infra가 line-CRDT 직접제공 → slA1b 는 hard 전제 아님; 회계/견적이 infra 직접사용 가능). 견적·결재·배차 **fit 정찰 병렬 진행** → 최저난도부터 롤아웃. slA1b(slip 라인 add/remove 소비자, 라이브 모달 retrofit 고위험)·slA1c(dnd-kit reorder)·slA2(셀 char-CRDT)=후순위 enhancement). **〔2026-07-01 PM 최신〕 견적 full-form ✅머지 #691 `d36d6c7cf`(slip·주문·견적 3/6) — 개발책임자 "PR 워크플로우 재준수+세션 위반 전수 보완" 지시로 #691은 정식 5-agent 듀얼·0수렴·라이브 실QA(2세션 SSE 양방향 반영 PASS·-sse-reflected 실캡처)·PM종합 전부 이행. 라이브 QA가 결함 3건 적발: ①applySnapshot corrupt-update 브릭(공유 coedit infra·하드닝 fix PR 착수) ②EstimateRealtimeClient/createAuditApi 경로 `/api/v1/estimates`→`/slips/estimates` 누락(404/500). 다음=①applySnapshot 하드닝 PR ②경로 fix PR ③**세션 소급 sweep**(#690→#689→#686/687→#682-685 각 5-agent+라이브QA 소급) ④결재→회계(BE)→배차 롤아웃. #17 단가변동 보류**. 〔과거 "#16 종결" 표기 철회〕**(slip·주문·견적·회계·결재·배차, #680~#685, 2026-07-01), **다음 = #17 단가변동**(→결재→배차). ⚠️개발책임자 '더 지시한 에픽' 재스캔 결과 = 하단 '추가 지시 에픽(재스캔)' 절. 별도 트랙: 금융연동 vendor(바로빌 권고). 본 파일 = 다음 세션 첫 읽기.
 
 ---
+## ✅ 2026-07-05 세션 — PR #728 머지 완료 (다음 재개 = E3 S4b)
+
+> **PR #728 머지** squash `08e3ddca9`. #727 소급 5-agent+Codex 리뷰 findings 종합 fix — %2F 정규화(FE `toOrderPathId`↔BE 정규화 **8쌍 전수**: 첨부·인수자/기사서명·매출/매입확정·수금계획·주문조회·견적·partner-order)·재고실사 채번 동시성(`InventoryAuditNumberSequence`+PESSIMISTIC_WRITE·V21)·형식가드/동시성/마이그 회귀 IT·off-by-one 가드·서명 중복 revert·락 타이밍. **캐논 전면 준수**(Opus R1/R2 5-agent ↔ Codex 순차·0수렴·PM종합·CI 30/30). dev-report `2026-07-05-doc-number-slash-followup.md`.
+>
+> **리뷰 체인 실적발**(정식 리뷰 가치 실증): 주문 mock shape·off-by-one·`ReceivablesPermissionEnforcementIT` 404 회귀·공개첨부 BE 404·**mig-14 page.route 우회 CI red**(fix2d=mock.ts `/accounting/orders` in-process 핸들러 제거). 교훈 박제 [[feedback_inprocess_mock_principles]] 보강(**신규 in-process 핸들러가 기존 page.route spec 우회** → mock.ts 변경=풀 551 스위트 필요·타깃 spec 만으론 놓침).
+>
+> **별건 #729**(게이트웨이 도달성·pre-existing·main 실증): desktop 서명 `/public/` prefix(→`/api/public/`)·매출/매입 `/admin/sales-slips` 라우트 부재 → 게이트웨이 404. admin-slip 라우팅(게이트웨이 라우트 추가 vs 컨트롤러 `/accounting/admin/` 이동)은 **개발책임자 결정 대기**.
+>
+> **다음 재개 = E3 S4b**(입금보고서 작성폼) — S3 dev-report(`2026-07-04-e3-s3-bank-linked-cash-receipt.md`)+현행 BankTransactionPage 로 정밀 스코핑→조기 PR→캐논. demo-mock-mode 주문 핸들러(mig-14 → in-process mock 이관)도 후속 슬라이스 후보.
+
+---
+
 ## ✅ 2026-07-04 세션 — PR #726 머지 완료 (다음 재개 = E3 S4)
 
 > **PR #726(이슈 #722) 머지 완료** squash `5ed2109ff`. 재개 세션이 uncommitted Codex 산출물 수합→순차 듀얼 캐논(Opus 5-agent+fix ↔ Codex+fix)→**양쪽 0수렴**→PM종합→CI 30/30→PM 자율 머지 완주. 오늘 총 머지 4건(#719·#718·#724·#726). dev-report `2026-07-04-bank-card-admin-filter.md`. 아래 1~4·게시규율은 실행 완료분 기록(다음 세션 재개점=E3 S4, 최하단 순번).
