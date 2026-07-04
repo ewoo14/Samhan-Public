@@ -12,7 +12,7 @@
  *
  * UUID 비공개 가드:
  * - `Journal.id` / `JournalLine.id` UUID 는 path param 으로만 사용. 화면 표시 X
- * - 사용자에게 노출되는 식별자는 `journalNo` (예: `JV-2026/05-001`) 와
+ * - 사용자에게 노출되는 식별자는 `journalNo` (예: `2026/05/08-1`) 와
  *   `account.code` (4자리 숫자)
  */
 import {
@@ -24,6 +24,7 @@ import type { Account, JournalStatus } from '@samhan/design-system'
 import { extractApiErrorResponseMessage } from './apiError'
 
 export type { Account } from '@samhan/design-system'
+export type Page<T> = PageResponse<T>
 
 /**
  * 분개 라인 단건 (BE `JournalLineResponse`).
@@ -57,7 +58,7 @@ export interface JournalLine {
 export interface Journal {
   /** 분개 UUID — 화면 미노출. */
   id: string
-  /** 사람이 읽는 분개번호 (예: `JV-2026/05-001`). */
+  /** 사람이 읽는 분개번호 (예: `2026/05/08-1`). */
   journalNo: string
   /** 분개 일자 (YYYY-MM-DD). */
   journalDate: string
@@ -1281,7 +1282,7 @@ export const DAILY_CLOSING_STATUS_LABEL: Record<'LOCKED' | 'OPEN', string> = {
 export interface GeneralLedgerLine {
   /** 분개 일자 (YYYY-MM-DD) — BE 필드명 `date`. */
   date: string
-  /** 사용자 노출 분개번호 (예: JV-2026/05-001). */
+  /** 사용자 노출 분개번호 (예: 2026/05/08-1). */
   journalNo: string
   /** 계정 코드. */
   accountCode: string
@@ -1922,8 +1923,11 @@ export async function updateCollectionPlanStatus(
   planNo: string,
   status: PlanStatus,
 ): Promise<CollectionPlanRow> {
+  // planNo 는 슬래시 표준(yyyy/MM/dd-N) — encodeURIComponent 로 %2F 인코딩하면 게이트웨이
+  // StrictHttpFirewall 이 차단하므로, 슬래시를 경로 구분자로 두어 BE overload
+  // /{year}/{month}/{daySeq}/status 로 매핑한다. (feedback_slip_order_number_format %2F 함정)
   const res = await apiClient.patch<ApiEnvelope<CollectionPlanRow>>(
-    `/accounting/collection-plans/${encodeURIComponent(planNo)}/status`,
+    `/accounting/collection-plans/${planNo}/status`,
     { status },
   )
   return res.data.data
@@ -1946,6 +1950,65 @@ export async function getCollectionPlanForecast(
   const res = await apiClient.get<ApiEnvelope<CollectionPlanForecast>>(
     '/accounting/collection-plans/forecast',
     { params: { from, to } },
+  )
+  return res.data.data
+}
+
+// --------------------------------------------------------------------------
+// 입금보고서 목록 API — E3 S4a
+// --------------------------------------------------------------------------
+
+export type CashReceiptKind = 'DEPOSIT_REPORT' | 'MANUAL_RECEIPT' | 'BANK_LINKED'
+
+export type CashReceiptStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED'
+
+export interface CashReceiptRow {
+  /** mutation/detail path 전용 UUID. 화면에는 렌더링하지 않는다. */
+  id?: string | null
+  slipNo: string
+  partnerCode?: string | null
+  bizNo?: string | null
+  partnerName: string
+  amount: string | number
+  transactionDate: string
+  kind: CashReceiptKind | string
+  status: CashReceiptStatus | string
+  memo?: string | null
+  journalNo?: string | null
+  reverseJournalNo?: string | null
+  externalRef?: string | null
+  debitAccountCode?: string | null
+  creditAccountCode?: string | null
+}
+
+export interface ListCashReceiptsOptions {
+  partnerName?: string
+  slipNo?: string
+  kind?: CashReceiptKind | string
+  from?: string
+  to?: string
+  status?: CashReceiptStatus | string
+  page?: number
+  size?: number
+}
+
+export async function listCashReceipts(
+  options: ListCashReceiptsOptions = {},
+): Promise<Page<CashReceiptRow>> {
+  const params: Record<string, string | number> = {
+    page: options.page ?? 0,
+    size: options.size ?? 20,
+  }
+  if (options.partnerName) params['partnerName'] = options.partnerName
+  if (options.slipNo) params['slipNo'] = options.slipNo
+  if (options.kind) params['kind'] = options.kind
+  if (options.from) params['from'] = options.from
+  if (options.to) params['to'] = options.to
+  if (options.status) params['status'] = options.status
+
+  const res = await apiClient.get<ApiEnvelope<Page<CashReceiptRow>>>(
+    '/accounting/cash-receipts',
+    { params },
   )
   return res.data.data
 }
