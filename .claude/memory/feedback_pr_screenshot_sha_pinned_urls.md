@@ -7,6 +7,12 @@ metadata:
   originSessionId: 4e351f20-d917-4c50-b83e-9d751404530f
 ---
 
+## 🚨 최우선: SendUserFile(사용자 전송) ≠ PR 인라인 — 둘 다 매 라운드 필수 (2026-07-05 개발책임자 반복 지적)
+
+라이브 QA 스샷은 **두 곳 모두**에 올려야 완결: ①`SendUserFile`로 사용자(채팅) 인라인, ②**PR 코멘트에 SHA-pinned raw URL 로 인라인 박기**. `SendUserFile` 만 하고 PR 인라인을 빠뜨리는 실수를 **반복**함("계속 잊는것 같아"). PR 인라인이 없으면 리뷰 근거가 PR에 남지 않아 개발책임자가 PR만 봐선 검증 불가. **매 리뷰 라운드 QA 스샷 = SendUserFile + docs/qa 커밋 + SHA-pinned PR 인라인 게시(+curl 200) 3스텝을 한 세트로 항상 실행.**
+
+---
+
 PR #700(E2 기둥2)에서 라이브 QA 스샷 7장을 `raw.githubusercontent.com/<repo>/<브랜치명>/...` URL 로 push 직후 코멘트에 인라인 → 개발책임자 화면에서 **전부 하얀 빈 이미지**. 커밋 blob·raw 서빙은 정상(바이트 일치 실증)이었고, 원인은 **GitHub camo 프록시가 게시 시점(raw CDN 전파 전)의 빈 응답을 캐시**한 것.
 
 **Why:** GitHub 는 코멘트 이미지를 camo.githubusercontent.com 으로 프록시하고 첫 fetch 결과를 캐시한다. push 직후엔 raw CDN 미전파로 빈 응답일 수 있어, 그 "하양"이 캐시에 박힌다. 스샷이 안 보이면 리뷰 게시 자체가 안 된 것처럼 보여 신뢰를 깨뜨린다.
