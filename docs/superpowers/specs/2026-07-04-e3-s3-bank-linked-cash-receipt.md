@@ -1,6 +1,6 @@
 # E3 S3 — 통장연계 입금보고서 (BankTransaction N건 → CashReceipt 1건) spec
 
-> 2026-07-04 집PC 정찰 기반. 상태: **설계 결정 5건 개발책임자 확인 대기**(이슈 #717) — 확정 즉시 조기 PR·캐논 8단계 착수.
+> 2026-07-04 집PC 정찰 기반. 상태: **결정 반영·구현 착수**(이슈 #717 결정 기록 4877750879) — Q1~Q3 개발책임자 확정(이슈 #717), Q4(BANK_LINKED)/Q5(102 유지)도 확정(2026-07-04 채팅 선택 UI — PR #718 코멘트 4879957000, 구현·리뷰 2회전 무이의 경과 후 공식 승인).
 > 정찰 근거: main `c704e7f3e`. 설계문서(2026-07-03-e3-deposit-report-epic-design-exploration.md)의 stale 2건 정정 포함(실제 head V52·계정 102·`cash_receipts_kind_ck` 는 V48에 이미 존재 — 신규 kind 는 ALTER 마이그 필수).
 
 ## 스코프 (핸드오프 확정)
@@ -9,6 +9,17 @@
 - 통장거래 N건 선택 → 입금보고서 1건 생성(금액 합산): **생성 전 거래처 매칭 강제**(N건 전부 동일 partner 매칭 완료 전제), **journalId 확보 후(=confirm 게시 후) reflected 처리** — 단일 트랜잭션
 - 1:1(N=1)도 동일 경로 허용
 - FE(목록 다중선택·작성폼)는 S4 — 단 BE 계약은 S4 를 견디게 설계
+- **(결정 반영) BANK_LINKED 입금보고서 라이프사이클 정책(PM 기본값 — PR 게시로 기록)**: ①**취소 시 링크 원복** — 역분개 게시 후 연결 통장거래를 UNREFLECTED 로 되돌리고 matched_journal_id/cash_receipt_id 클리어(거래 재사용 가능) ②**CONFIRMED PATCH(수정 재게시) 금지(409)** — 합산 금액/거래처가 통장거래와 정합 깨짐 방지, 정정은 취소 후 재생성 유도
+
+## 결정 확정 (이슈 #717 — 2026-07-04)
+
+| # | 결정 | 상태 |
+|---|---|---|
+| Q1 | N건 식별 = **자연키 4-키 튜플 배열**(UUID 비노출 유지) | ✅ 확정 |
+| Q2 | 링크 = **명시 FK `bank_transactions.cash_receipt_id`**(N→1, V53) | ✅ 확정 |
+| Q3 | 집계 일자 = **작성 시 사용자 지정(기본=최신 거래일) + 마감월 409** | ✅ 확정 |
+| Q4 | kind = **BANK_LINKED 신설**(+`cash_receipts_kind_ck` ALTER, V53) | ✅ 확정(4879957000) |
+| Q5 | 기본 차변 = **102 유지** | ✅ 확정(4879957000) |
 
 ## 현황 지도 (정찰 요약)
 
@@ -44,7 +55,9 @@
 7. aging refresh 는 confirm 재사용으로 afterCommit 자동 상속(자체 경로 신설 금지 — CONCURRENTLY 트랜잭션 내 호출 불가)
 8. markReflected 멱등이 **덮어쓰기 허용** — UNREFLECTED 선별만 승격(재사용 방지 가드)
 9. soft-delete: 대상 조회 자동 제외 — 생성 후 통장거래 삭제 시 dangling 은 Q2 명시 FK 로 완화
-10. page-code 경계: 생성 endpoint 는 두 도메인에 걸침 — `accounting.cash-receipts` CREATE 로 통일 제안(통장 조회는 자체 VIEW 로 이미 보호)
+10. page-code 경계: 생성 endpoint 는 두 도메인에 걸치며 확정+원장 게시(confirm) 경계까지 포함하므로 `accounting.cash-receipts` UPDATE 로 통일한다(통장 조회는 자체 VIEW 로 이미 보호) — PR #718 리뷰 HIGH-2 교정, 개발책임자 확정(코멘트 4879892250).
+
+S4 메모: 통장연계 입금보고서 생성 버튼 노출 조건은 `canAccess('accounting.cash-receipts', 'update')` 이다.
 
 ## 이후
 
