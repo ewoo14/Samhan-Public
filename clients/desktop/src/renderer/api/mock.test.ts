@@ -32,6 +32,8 @@ const DOCUMENT_NO_KEY_SET = new Set([
   'purchaseSlipNo',
   'linkedSlipNo',
   'sourceSlipNo',
+  'planNo',
+  'auditNo',
   'refSlipNo',
   'voucherNo',
   'documentNo',
@@ -1036,17 +1038,19 @@ describe('mock collection plan contract', () => {
     }) as MockEnvelope<{ planNo: string; status: string }>
 
     expect(created.data.status).toBe('PLANNED')
+    expect(created.data.planNo).toMatch(/^\d{4}\/\d{2}\/\d{2}-[1-9]\d*$/)
+    expect(created.data.planNo.startsWith('CP-')).toBe(false)
 
     const overdue = mockRequest({
       method: 'PATCH',
-      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      url: `/accounting/collection-plans/${created.data.planNo.replace(/\//g, '-')}/status`,
       data: { status: 'OVERDUE' },
     }) as MockEnvelope<{ status: string }>
     expect(overdue.data.status).toBe('OVERDUE')
 
     const reverse = mockRequest({
       method: 'PATCH',
-      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      url: `/accounting/collection-plans/${created.data.planNo.replace(/\//g, '-')}/status`,
       data: { status: 'PLANNED' },
     }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
 
@@ -1055,13 +1059,13 @@ describe('mock collection plan contract', () => {
 
     mockRequest({
       method: 'PATCH',
-      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      url: `/accounting/collection-plans/${created.data.planNo.replace(/\//g, '-')}/status`,
       data: { status: 'COLLECTED' },
     })
 
     const doubleCollect = mockRequest({
       method: 'PATCH',
-      url: `/accounting/collection-plans/${encodeURIComponent(created.data.planNo)}/status`,
+      url: `/accounting/collection-plans/${created.data.planNo.replace(/\//g, '-')}/status`,
       data: { status: 'COLLECTED' },
     }) as { __mockStatus: number; body: MockEnvelope<null> & { code: string } }
 
@@ -1088,6 +1092,40 @@ describe('mock collection plan contract', () => {
 
     expect(forecast.data.months.map((row) => row.month)).toEqual(['2026-07', '2026-08'])
     expect(Number(forecast.data.totalAmount)).toBeGreaterThan(0)
+  })
+})
+
+describe('mock public driver signature contract', () => {
+  it('POST /public/batches/{token}/slips/{slipNo}/driver-signature accepts hyphen slip path id', () => {
+    const signed = mockRequest({
+      method: 'POST',
+      url: '/public/batches/mock-token/slips/2026-05-04-2/driver-signature',
+      data: {
+        signaturePngBase64: 'data:image/png;base64,AAAA',
+        clientHash: 'driver-hash',
+      },
+    }) as MockEnvelope<{ driverSignedAt: string; driverSignatureHash: string }>
+
+    expect(signed.data.driverSignedAt).toEqual(expect.any(String))
+    expect(signed.data.driverSignatureHash).toBe('driver-hash')
+  })
+})
+
+describe('mock inventory audit contract', () => {
+  it('GET /inventory/audits returns slash auditNo without legacy AU prefix', () => {
+    const page = mockRequest({
+      method: 'GET',
+      url: '/inventory/audits',
+      params: { page: 0, size: 20 },
+    }) as MockEnvelope<{
+      content: Array<{ auditNo: string }>
+    }>
+
+    expect(page.data.content.length).toBeGreaterThan(0)
+    for (const row of page.data.content) {
+      expect(row.auditNo).toMatch(/^\d{4}\/\d{2}\/\d{2}-[1-9]\d*$/)
+      expect(row.auditNo.startsWith('AU-')).toBe(false)
+    }
   })
 })
 

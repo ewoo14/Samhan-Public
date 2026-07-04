@@ -8,12 +8,14 @@ import com.samhanair.logis.inventory.client.ProductSummary;
 import com.samhanair.logis.inventory.domain.AuditStatus;
 import com.samhanair.logis.inventory.domain.InventoryAudit;
 import com.samhanair.logis.inventory.domain.InventoryAuditLine;
+import com.samhanair.logis.inventory.domain.InventoryAuditNumberSequence;
 import com.samhanair.logis.inventory.domain.MovementType;
 import com.samhanair.logis.inventory.domain.StockBalance;
 import com.samhanair.logis.inventory.domain.StockLot;
 import com.samhanair.logis.inventory.domain.StockMovement;
 import com.samhanair.logis.inventory.domain.Warehouse;
 import com.samhanair.logis.inventory.repository.InventoryAuditLineRepository;
+import com.samhanair.logis.inventory.repository.InventoryAuditNumberSequenceRepository;
 import com.samhanair.logis.inventory.repository.InventoryAuditRepository;
 import com.samhanair.logis.inventory.repository.StockBalanceRepository;
 import com.samhanair.logis.inventory.repository.StockLotRepository;
@@ -30,6 +32,7 @@ import com.samhanair.logis.shared.realtime.lock.EditLockGuard;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +79,7 @@ public class InventoryAuditService {
     private static final DateTimeFormatter NO_DATE_FMT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     private final InventoryAuditRepository auditRepository;
+    private final InventoryAuditNumberSequenceRepository auditNumberSequenceRepository;
     private final InventoryAuditLineRepository auditLineRepository;
     private final WarehouseRepository warehouseRepository;
     private final StockBalanceRepository stockBalanceRepository;
@@ -106,9 +110,6 @@ public class InventoryAuditService {
     public AuditDetailResponse create(CreateAuditRequest req, String requesterId) {
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
 
-        String auditNo = nextAuditNo(LocalDate.now());
-        InventoryAudit audit = InventoryAudit.create(auditNo, warehouse, req.auditDate());
-
         // 해당 창고의 모든 활성 stock_balance snapshot
         Page<StockBalance> firstPage = stockBalanceRepository
                 .findAllByWarehouse_IdAndIsDeletedFalse(warehouse.getId(), Pageable.unpaged());
@@ -127,13 +128,20 @@ public class InventoryAuditService {
             }
         }
 
+        List<AuditLineSnapshot> snapshots = new ArrayList<>();
         for (StockBalance balance : balances) {
             ProductSummary product = productMap.get(balance.getProductId());
             String name = product == null ? "(미상)" : product.name();
             BigDecimal unitCost = resolveUnitCost(balance.getProductId(), warehouse.getId(), product);
             int expected = balance.getTotalQty();
+            snapshots.add(new AuditLineSnapshot(balance.getProductId(), name, expected, unitCost));
+        }
+
+        String auditNo = nextAuditNo(LocalDate.now());
+        InventoryAudit audit = InventoryAudit.create(auditNo, warehouse, req.auditDate());
+        for (AuditLineSnapshot snapshot : snapshots) {
             audit.addLine(InventoryAuditLine.snapshot(
-                    audit, balance.getProductId(), name, expected, unitCost));
+                    audit, snapshot.productId(), snapshot.productName(), snapshot.expectedQty(), snapshot.unitCost()));
         }
 
         InventoryAudit saved = auditRepository.save(audit);
@@ -334,15 +342,20 @@ public class InventoryAuditService {
     }
 
     /**
-     * {@code AU-YYYYMMDD-NNN} 채번 — 그날 prefix 의 발행 건수 +1.
+     * {@code yyyy/MM/dd-N} 채번 — 발행일별 시퀀스 row 를 배타 잠금으로 증가.
      *
      * @param date 채번 기준 날짜
      * @return 채번된 auditNo
      */
     String nextAuditNo(LocalDate date) {
-        String prefix = date.format(NO_DATE_FMT) + "-";
-        long seq = auditRepository.countByAuditNoStartingWith(prefix) + 1;
-        return prefix + seq;
+        InventoryAuditNumberSequence sequence = loadOrCreateLockedSequence(date);
+        return date.format(NO_DATE_FMT) + "-" + sequence.next();
+    }
+
+    private InventoryAuditNumberSequence loadOrCreateLockedSequence(LocalDate auditDate) {
+        auditNumberSequenceRepository.insertIfAbsent(UUID.randomUUID(), auditDate);
+        return auditNumberSequenceRepository.findLockedByAuditDate(auditDate)
+                .orElseThrow(() -> new IllegalStateException("재고 실사번호 시퀀스 생성 실패"));
     }
 
     private void adjustStockForLine(InventoryAudit audit, InventoryAuditLine line, String actorUserId) {
@@ -410,5 +423,8 @@ public class InventoryAuditService {
         return warehouseRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "창고를 찾을 수 없습니다"));
+    }
+
+    private record AuditLineSnapshot(UUID productId, String productName, int expectedQty, BigDecimal unitCost) {
     }
 }
