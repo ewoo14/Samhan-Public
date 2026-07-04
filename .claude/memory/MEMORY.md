@@ -11,7 +11,8 @@
 - [PM 권한코드 전권 자율](feedback_pm_permission_autonomy.md) — 권한 코드는 PM 머지까지 자율. 워크플로우 엄격+자가지적. 신규 업무규칙/정책만 개발책임자 확인
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md) — 회계원장·감사·권한 편집가부 정책은 착수 전 개발책임자 확인 (2026-07-02)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
-- [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지 ([[feedback_pm_10min_status_report]])
+- [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md)
+- [🚨 리뷰 fix=현재 PR 내 처리](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지, 분리=타 서비스/타 슬라이스 범위만 (2026-07-04 #724) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지 ([[feedback_pm_10min_status_report]])
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
