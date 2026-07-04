@@ -1,6 +1,7 @@
 ﻿# 🚨 워크플로우 규율 (매 작업 최우선 — 상세는 각 토픽파일)
 - [🚨 표준 워크플로우 유일 진실원](feedback_canonical_workflow.md) — Opus 기획+조기PR → Codex 개발+게시 → (Opus 5-agent[FE/BE/Design/DevOps/QA·QA=Docker라이브QA+단계별스샷]+fix+게시 ↔ Codex 5-agent+fix+게시) 0수렴까지 → PM 종합(머지전) → CI green → 머지. 🚫순차(병렬금지)·단축금지·라운드 즉시게시·fix후 재리뷰·미준수 소급보완·매단계 ScheduleWakeup
 - [🚨 리뷰 5-agent 필수·단축금지·순차](feedback_review_5agent_no_shortcut_strict.md) — 매 리뷰=5차원 전부(Design N/A금지)·수렴/재검도 full·Opus 완료+게시 후에만 Codex(병렬금지)·실행=게시 1:1 (2026-07-02 #699 회고)
+- [🚨 범위 점증 시 리뷰 재가동](feedback_expanded_scope_reinstate_review.md) — mechanical fix→BE/마이그/다서비스로 커지면 자체 검증(grep/probe/CI)으로 갈음 말고 정식 5-agent+Codex 리뷰+게시 재가동. 미준수=소급 리뷰 (2026-07-04 #727 지적)
 - [🚨 라이브QA 매 라운드 GUI 스샷](feedback_live_qa_every_round_screenshots.md) — Docker 실서버+실 GUI 스크린샷(단계별) 매 리뷰 라운드마다. 끝1회·SSE/API 텍스트로 GUI스샷 대체 금지. dev_master=dev_p05_pass! (2026-07-02)
 - [🚨 PM 직접구현 금지](feedback_pm_no_direct_implementation.md) — 구현=Codex, PM=기획·리뷰·commit대행·머지만. infra오류도 PM직접구현 대체 금지 (2026-07-02)
 - [🚨 가짜 데이터·목업 영구 배제](feedback_no_fake_data_ever.md) — 실데이터·실서버·실화면·실측정만. QA스샷=실캡처만(합성/fixture 금지). 불가 시 정직 보고
@@ -17,6 +18,7 @@
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
 - [PR 스샷 인라인=커밋 SHA 고정 URL](feedback_pr_screenshot_sha_pinned_urls.md) — 브랜치경로+push직후 게시=camo 하양 캐시("모두 하얀 화면"). full SHA 경로+curl 200, 하양이면 PATCH로 URL 치환 (2026-07-02 #700)
+- [스크린샷 항상 사용자 인라인 첨부](feedback_qa_screenshots_inline_to_user.md) — QA 캡처는 SendUserFile(display=render)로 채팅에도 매번. PR SHA-pinned 게시와 병행 (2026-07-04)
 - [PR 제목 [FEAT]/[FIX] 대괄호+대문자](feedback_pr_title_caps_bracket.md)
 - [권한 표기 풀네임](feedback_role_naming_full.md) — MASTER/MANAGER 풀네임, 약어 금지
 - [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 한글 "전표"(슬립 금지), 영문 slipId는 별개
@@ -56,6 +58,7 @@
 - [IT 외부 RestClient @MockBean 의무](feedback_it_mockbean_external_clients.md) — 누락시 Eureka 비활성 500
 - [PM 통합 풀빌드 가드](feedback_pm_integration_build_check.md) — 팀별 PR 전 BE+QA 컴파일·IT·의미정렬
 - [결함 fix 계열 전수 sweep](feedback_defect_family_sweep_fix.md) — 지적 1건=동일패턴 전수 grep
+- [mock/시드 값 형식도 BE parity](feedback_mock_value_format_be_parity.md) — 전표/분개번호=슬래시 yyyy/MM/dd-N. 리뷰가 필드만 보고 값 형식 놓침(#727 개발책임자 적발). 형식 가드 테스트 (2026-07-04)
 - [마이그 fresh Postgres probe](feedback_migration_fresh_postgres_probe.md) — Windows skip 가림, DROP/CREATE+psql ON_ERROR_STOP
 - [적용된 Flyway 마이그 불변](feedback_applied_migration_immutable.md) — 주석조차 수정금지(checksum), 신규 V만. 로컬 재적용=해당 버전 이후 전부(out-of-order crash 실측)
 - [enum 확장=CHECK 제약 마이그](feedback_enum_expansion_check_constraint.md)
