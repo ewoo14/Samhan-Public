@@ -142,6 +142,8 @@ class SalesAccountingSlipServiceTest {
         assertThatThrownBy(() -> service.createDraft(req, "actor-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("잔여를 초과")
+                .hasMessageContaining("전표=")
+                .hasMessageNotContaining("slip=")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.SAS_OVER_ALLOCATION));
     }
@@ -266,6 +268,9 @@ class SalesAccountingSlipServiceTest {
 
         assertThatThrownBy(slip::recalcTotals)
                 .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("라인 합계")
+                .hasMessageNotContaining("line_total")
+                .hasMessageNotContaining("allocation")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.SAS_LINE_AMOUNT_MISMATCH));
     }
@@ -290,7 +295,9 @@ class SalesAccountingSlipServiceTest {
         assertThatThrownBy(() -> service.createDraft(req, "actor-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("확정")
-                .hasMessageNotContaining("CONFIRMED");
+                .hasMessageContaining("전표=")
+                .hasMessageNotContaining("CONFIRMED")
+                .hasMessageNotContaining("slip=");
     }
 
     @Test
@@ -314,6 +321,8 @@ class SalesAccountingSlipServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("출고")
                 .hasMessageNotContaining("OUTBOUND")
+                .hasMessageNotContaining("source")
+                .hasMessageNotContaining("type")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.SAS_SOURCE_SLIP_TYPE_MISMATCH));
     }

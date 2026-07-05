@@ -44,7 +44,7 @@ public class PurchaseAccountingSlipCreateAttemptService {
         for (LineRequest lr : req.lines()) {
             if (lr.allocations() == null || lr.allocations().isEmpty()) {
                 throw new BusinessException(ErrorCode.SAS_LINE_AMOUNT_MISMATCH,
-                        "매입전표 line allocation 이 비어 있습니다");
+                        "매입전표 라인 배분이 비어 있습니다");
             }
             lineNo++;
             VatCalculator.Result vat = VatCalculator.split(lr.qty(), lr.unitPrice(), req.taxType());
@@ -73,18 +73,20 @@ public class PurchaseAccountingSlipCreateAttemptService {
         SlipLineSnapshot src = slipServiceClient.getSlipLine(ar.sourceLineId());
         if (!"INBOUND".equals(src.slipType())) {
             throw new BusinessException(ErrorCode.SAS_SOURCE_SLIP_TYPE_MISMATCH,
-                    "매입전표는 입고전표만 source 가능 (slip="
-                            + src.slipNo() + " type=" + slipTypeDisplayName(src.slipType()) + ")");
+                    "매입전표는 입고전표만 원천으로 사용할 수 있습니다 (전표="
+                            + src.slipNo() + ", 유형=" + slipTypeDisplayName(src.slipType()) + ")");
         }
         if (!"CONFIRMED".equals(src.slipStatus())) {
             throw new BusinessException(ErrorCode.SAS_SOURCE_SLIP_NOT_CONFIRMED,
-                    "(slip=" + src.slipNo() + " 상태=" + slipStatusDisplayName(src.slipStatus()) + ", 확정 요구)");
+                    "원천 전표가 확정 상태가 아닙니다 (전표="
+                            + src.slipNo() + ", 상태=" + slipStatusDisplayName(src.slipStatus()) + ")");
         }
         BigDecimal already = allocationRepository.sumAllocatedAmountBySourceLineId(ar.sourceLineId());
         BigDecimal next = already.add(ar.allocatedAmount());
         if (next.compareTo(src.lineTotal()) > 0) {
             throw new BusinessException(ErrorCode.SAS_OVER_ALLOCATION,
-                    "(slip=" + src.slipNo() + " 잔여를 초과: 요청=" + ar.allocatedAmount()
+                    "할당 금액이 원천 전표 잔여를 초과합니다 (전표=" + src.slipNo()
+                            + ", 요청=" + ar.allocatedAmount()
                             + ", 잔여=" + src.lineTotal().subtract(already) + ")");
         }
     }
