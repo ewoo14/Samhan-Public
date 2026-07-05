@@ -101,6 +101,7 @@
 # 도메인 결정/에픽 상태
 - [주문 상태 모델](project_partner_order_status_model.md) — 진행중DRAFT/완료CONFIRMED/보류ON_HOLD(#324)
 - [주문→출고전표 전환](project_order_slip_conversion.md) · [전표/주문번호=슬래시 YYYY/MM/DD-N](feedback_slip_order_number_format.md)
+- [주문서 UI: 웹만 GAS·데스크탑+모바일 표준통일](project_order_form_ui_web_gas_desktop_standard.md) — GAS 방식 프론트=웹 주문서 전용, 데스크탑·모바일 주문서는 타 메뉴와 동일 design-system UI (2026-07-05)
 - [시리얼 인스턴스 재고](project_serial_inventory_model.md) · [재고조회 모달 2.6d](project_inventory_lookup_modal_2_6d.md) ✅
 - [seeder product UUID 3-DB 정합](project_seed_product_uuid_catalog.md) · [lookup 3종 시드](project_lookup_seed_source.md) #425
 - [출고전표 양식 1:1+전자서명](project_slip_shipout_print_form.md) · [공급자·은행계좌 회계설정](project_company_config_menu.md)
