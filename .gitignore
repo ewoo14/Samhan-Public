@@ -65,6 +65,15 @@ test-results/
 docs/qa/**/_results.json
 **/.diag-*.cjs
 **/.diag-*.mjs
+# 로컬 세션 QA 아티팩트 — CI testIgnore 대상·커밋 대상 아님 (git status 정리, 2026-07-05 개발책임자 요청)
+clients/desktop/playwright/manual/
+clients/desktop/playwright/coedit-s3-1-live/
+clients/desktop/playwright/coedit-s3-3-accounting/
+clients/desktop/playwright/dispatch-collab-real-qa/
+clients/desktop/playwright/n1b-native-qa/
+clients/desktop/playwright/n3b-fcm-push-real-qa/
+clients/desktop/iotxn-*.config.ts
+clients/desktop/docs/
 
 # ----- Misc -----
 *.tmp
