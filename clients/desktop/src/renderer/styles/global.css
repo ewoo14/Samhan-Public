@@ -4931,6 +4931,7 @@ button {
   background: var(--color-danger-50);
   color: var(--color-danger-800);
   font-size: var(--font-size-sm, 14px);
+  font-weight: 600;
 }
 
 .danger-text {
@@ -5317,6 +5318,31 @@ button {
   border-color: var(--state-danger);
   background: var(--state-danger-bg);
   color: var(--state-danger);
+}
+
+.bank-transaction-select-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bank-transaction-select-cell input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand-600);
+  flex: 0 0 auto;
+}
+
+.bank-transaction-blocking-warning {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--color-danger-300);
+  border-radius: 6px;
+  background: var(--color-danger-50);
+  color: var(--color-danger-800);
+  font-weight: 700;
 }
 
 @media (max-width: 768px) {
