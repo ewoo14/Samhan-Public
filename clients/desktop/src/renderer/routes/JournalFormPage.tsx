@@ -23,6 +23,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AccountCodeSelect,
+  AsyncAutocomplete,
   Button,
   Card,
   Input,
@@ -36,7 +37,9 @@ import {
   createJournal,
   getJournal,
   listAccounts,
+  searchJournalPartners,
   type CreateJournalRequest,
+  type JournalPartnerOption,
 } from '../api/accounting'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -55,6 +58,7 @@ const emptyLine = (): DraftLine => ({
   accountCode: '',
   debit: 0,
   credit: 0,
+  partnerId: null,
   partnerName: '',
   note: '',
 })
@@ -80,6 +84,51 @@ interface MobileJournalLineCardProps {
   accounts: Account[]
   onChange: (patch: Partial<JournalLineDraft>) => void
   onRemove: () => void
+}
+
+interface JournalPartnerPickerProps {
+  index: number
+  line: DraftLine
+  onChange: (patch: Partial<JournalLineDraft>) => void
+}
+
+function JournalPartnerPicker({ index, line, onChange }: JournalPartnerPickerProps) {
+  const selected: JournalPartnerOption | null = line.partnerId || line.partnerName
+    ? {
+        partnerId: line.partnerId ?? `legacy-name:${line.partnerName}`,
+        partnerCode: '',
+        name: line.partnerName,
+        bizNo: null,
+      }
+    : null
+
+  return (
+    <AsyncAutocomplete<JournalPartnerOption>
+      value={selected}
+      onChange={(partner) => onChange({
+        partnerId: partner?.partnerId ?? null,
+        partnerName: partner?.name ?? '',
+      })}
+      search={searchJournalPartners}
+      getKey={(partner) => partner.partnerId}
+      getInputLabel={(partner) => partner.name}
+      matchExact={(partner, trimmed) =>
+        partner.name.toLowerCase() === trimmed.toLowerCase()
+          || partner.partnerCode.toLowerCase() === trimmed.toLowerCase()
+          || (partner.bizNo ?? '').toLowerCase() === trimmed.toLowerCase()}
+      renderOption={(partner) => (
+        <>
+          <span>{partner.name}</span>
+          {partner.partnerCode ? <span> · {partner.partnerCode}</span> : null}
+          {partner.bizNo ? <span> · {partner.bizNo}</span> : null}
+        </>
+      )}
+      listboxLabel={`라인 ${index} 거래처 목록`}
+      ariaLabel={`라인 ${index} 거래처`}
+      placeholder="거래처명 또는 코드"
+      minChars={1}
+    />
+  )
 }
 
 function MobileJournalLineCard({
@@ -116,13 +165,10 @@ function MobileJournalLineCard({
 
       <div className="mobile-line-field">
         <label className="mobile-line-field-label">거래처</label>
-        <input
-          type="text"
-          className="mobile-line-text-input"
-          value={line.partnerName}
-          onChange={(e) => onChange({ partnerName: e.target.value })}
-          placeholder="거래처"
-          aria-label={`라인 ${index} 거래처`}
+        <JournalPartnerPicker
+          index={index}
+          line={line}
+          onChange={onChange}
         />
       </div>
 
@@ -200,11 +246,59 @@ export function JournalFormPage() {
         accountCode: l.accountCode,
         debit: Number.parseInt(l.debit, 10) || 0,
         credit: Number.parseInt(l.credit, 10) || 0,
+        partnerId: null,
         partnerName: l.partnerName ?? '',
         note: l.memo ?? l.note ?? '',
       })),
     )
   }, [isEdit, journalQuery.data])
+
+  // 편집 응답은 UUID 비공개 정책상 partnerId 없이 partnerName 만 온다.
+  // 저장 시 무경고로 거래처가 빠지지 않도록 이름 정확 검색으로 내부 partnerId 를 복원한다.
+  useEffect(() => {
+    if (!isEdit) return
+    const unresolved = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => !line.partnerId && line.partnerName.trim())
+    if (unresolved.length === 0) return
+
+    let cancelled = false
+    void Promise.all(
+      unresolved.map(async ({ line, index }) => {
+        const name = line.partnerName.trim()
+        try {
+          const matches = await searchJournalPartners(name)
+          const exact = matches.find(
+            (partner) => partner.name.trim().toLowerCase() === name.toLowerCase(),
+          )
+          return exact ? { index, name, partnerId: exact.partnerId } : null
+        } catch {
+          return null
+        }
+      }),
+    ).then((resolved) => {
+      if (cancelled) return
+      const byIndex = new Map(
+        resolved
+          .filter((item): item is { index: number; name: string; partnerId: string } => Boolean(item))
+          .map((item) => [item.index, item]),
+      )
+      if (byIndex.size === 0) return
+      setLines((prev) =>
+        prev.map((line, index) => {
+          const resolvedLine = byIndex.get(index)
+          if (!resolvedLine || line.partnerId || line.partnerName.trim() !== resolvedLine.name) {
+            return line
+          }
+          return { ...line, partnerId: resolvedLine.partnerId }
+        }),
+      )
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isEdit, lines])
 
   const totals = useMemo(() => {
     const debit = lines.reduce((sum, l) => sum + l.debit, 0)
@@ -262,6 +356,10 @@ export function JournalFormPage() {
         )
         return
       }
+      if (l.partnerName.trim() && !l.partnerId) {
+        setTopError(`라인 "${l.accountCode}" 거래처를 다시 선택하세요.`)
+        return
+      }
     }
     if (totals.diff !== 0) {
       setTopError(
@@ -275,10 +373,10 @@ export function JournalFormPage() {
       description: description.trim() || undefined,
       lines: meaningfulLines.map((l) => ({
         accountCode: l.accountCode,
-        debit: String(l.debit),
-        credit: String(l.credit),
-        partnerName: l.partnerName.trim() || undefined,
-        note: l.note.trim() || undefined,
+        debitAmount: String(l.debit),
+        creditAmount: String(l.credit),
+        partnerId: l.partnerId ?? null,
+        memo: l.note.trim() || undefined,
       })),
     }
     createMutation.mutate(body)
@@ -383,6 +481,13 @@ export function JournalFormPage() {
                   accounts={accounts}
                   onChange={(patch) => updateLine(i, patch)}
                   onRemove={() => removeLine(i)}
+                  renderPartnerField={() => (
+                    <JournalPartnerPicker
+                      index={i + 1}
+                      line={line}
+                      onChange={(patch) => updateLine(i, patch)}
+                    />
+                  )}
                 />
               ))}
 
