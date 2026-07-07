@@ -50,7 +50,9 @@ public class DispatchMatchedDriverManualService {
      */
     public DispatchTaskDetailResponse setMatchedDriver(UUID taskId, UUID groupId, SetMatchedDriverRequest req) {
         DispatchTask task = findTask(taskId);
-        DispatchVehicleGroup group = findGroup(taskId, groupId);
+        // findGroup 은 task 소속 group 존재를 404 로 검증하는 side-effect 로만 필요(반환값 미사용).
+        // #725 서비스 wrapper 제거로 group 지역변수가 미사용이 되어 할당을 폐기한다(경고 해소).
+        findGroup(taskId, groupId);
         requireMatchedDriverRecordable(task);
         MatchedDriverSource driverSource = req.driverSource();
         if (driverSource == MatchedDriverSource.AROLOGIS) {
@@ -134,17 +136,15 @@ public class DispatchMatchedDriverManualService {
         if (!allGroupsCompleted) {
             return;
         }
-        try {
-            if (task.getStatus() == DispatchTaskStatus.DRAFT) {
-                task.markDispatching();
-            }
-            if (task.getStatus() == DispatchTaskStatus.DISPATCHING) {
-                task.markDispatched(task.getArologisDispatchId());
-            }
-            taskRepo.save(task);
-        } catch (IllegalStateException ex) {
-            throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
+        // markDispatching()/markDispatched() 는 상태 위반 시 BusinessException(CONFLICT) 을 직접
+        // 던진다 (#725) — 위 pre-check 로 정상 흐름에서는 도달하지 않는 방어적 가드다.
+        if (task.getStatus() == DispatchTaskStatus.DRAFT) {
+            task.markDispatching();
         }
+        if (task.getStatus() == DispatchTaskStatus.DISPATCHING) {
+            task.markDispatched(task.getArologisDispatchId());
+        }
+        taskRepo.save(task);
     }
 
     private static String normalize(String value) {
@@ -182,7 +182,8 @@ public class DispatchMatchedDriverManualService {
                 || task.getStatus() == DispatchTaskStatus.DISPATCHED;
         if (!recordableTask) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "기사/차량 기록은 작성/발송/완료 상태의 배차 작업에서만 가능합니다 — 현재=" + task.getStatus());
+                    "기사/차량 기록은 작성/발송/완료 상태의 배차 작업에서만 가능합니다 — 현재="
+                            + task.getStatus().getDisplayName());
         }
     }
 
@@ -191,7 +192,8 @@ public class DispatchMatchedDriverManualService {
                 || task.getStatus() == DispatchTaskStatus.DISPATCHING;
         if (!editableTask) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "수동기입은 작성 중이거나 일부 발송 중인 배차 작업에서만 가능합니다 — 현재=" + task.getStatus());
+                    "수동기입은 작성 중이거나 일부 발송 중인 배차 작업에서만 가능합니다 — 현재="
+                            + task.getStatus().getDisplayName());
         }
         if (!group.isDispatchPending()) {
             throw new BusinessException(ErrorCode.CONFLICT,

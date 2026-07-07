@@ -161,7 +161,7 @@ public class DispatchTaskService {
                         "slip 이 존재하지 않습니다: " + slipId));
         if (slip.getDispatchStatus() != SlipDispatchStatus.UNDISPATCHED) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "미배차 전표만 배차 그룹에 추가할 수 있습니다: " + slip.getDispatchStatus());
+                    "미배차 전표만 배차 그룹에 추가할 수 있습니다: " + slip.getDispatchStatus().getDisplayName());
         }
         for (DispatchVehicleGroupSlip existing : slipMapRepo.findBySlipIdAndIsDeletedFalse(slipId)) {
             if (existing.getVehicleGroupId().equals(vehicleGroupId)) {
@@ -350,7 +350,7 @@ public class DispatchTaskService {
                         "slip 이 존재하지 않습니다: " + slipId));
         if (slip.getDispatchStatus() != SlipDispatchStatus.UNDISPATCHED) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "미배차 전표만 복원할 수 있습니다: " + slip.getDispatchStatus());
+                    "미배차 전표만 복원할 수 있습니다: " + slip.getDispatchStatus().getDisplayName());
         }
         String actorName = resolveActorName(callerName);
         mapping.markRestoredWithNameCleared();
@@ -446,6 +446,11 @@ public class DispatchTaskService {
      * <p>D-LOAD-04 fix5: 기존 first-missing probe 는 병렬 DRAFT 생성 시 같은 빈 번호를 동시에
      * 발견할 수 있다. 같은 일자 prefix 에 transaction advisory lock 을 잡은 뒤 probe 를 수행해
      * 번호 선택과 INSERT 를 {@link #createTask(LocalDate)} 트랜잭션 안에서 직렬화한다.
+     *
+     * <p>#725 판정: 아래 {@link IllegalStateException} 은 하루 {@code MAX_DAILY_COUNTER}(99,999)건의
+     * 배차 작업 채번 소진이라는 내부 불변식(프로그래밍/용량 방어) 위반이며 사용자 액션으로 유발되는
+     * 상태전이 위반이 아니다 — 정상 운영 중 사용자가 하루에 이 건수만큼 배차를 생성하는 것은
+     * 사실상 불가능하므로 BusinessException 승격 대상에서 제외하고 genuine 500 을 유지한다.
      */
     private String generateTaskCode(LocalDate date) {
         String prefix = date.format(java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"));
@@ -480,7 +485,8 @@ public class DispatchTaskService {
         DispatchTask task = findTaskOrThrow(id);
         if (task.getStatus() != DispatchTaskStatus.DRAFT) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "배차 작업 편집은 DRAFT 상태에서만 가능합니다 — 현재=" + task.getStatus());
+                    "배차 작업 편집은 " + DispatchTaskStatus.DRAFT.getDisplayName()
+                            + " 상태에서만 가능합니다 — 현재=" + task.getStatus().getDisplayName());
         }
         return task;
     }
