@@ -13,9 +13,9 @@
  * <p>컬럼: 견적번호 / 거래처 코드 / 거래처 / 유효기간 / 합계 / 상태.
  * UUID 비공개 가드 — id 컬럼 미포함, 사용자 노출은 estimateNo + partnerName 만.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
   Badge,
   Button,
@@ -26,13 +26,21 @@ import {
 import {
   ESTIMATE_STATUS_LABEL,
   listEstimates,
+  restoreEstimate,
   type EstimateStatus,
   type EstimateSummary,
 } from '../api/estimateApi'
+import { extractApiErrorResponseMessage } from '../api/apiError'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { EstimateListRealtimeClient } from '../realtime/EstimateListRealtimeClient'
+import { useCollectionRealtime } from '../realtime/useCollectionRealtime'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
 import styles from '../components/sales/sales.module.css'
+import {
+  deletedBadgeAriaLabel,
+  deletedBadgeLabel,
+} from './admin/partnerDeletedRow'
 
 const STATUS_OPTIONS: Array<{ value: EstimateStatus | ''; label: string }> = [
   { value: '', label: '전체' },
@@ -51,6 +59,13 @@ const STATUS_VARIANT: Record<EstimateStatus, 'neutral' | 'brand' | 'success' | '
   QUOTE_CONVERTED: 'warning',
 }
 
+const ESTIMATE_LIST_REALTIME_KEYS: QueryKey[] = [['estimates', 'list']]
+
+const DELETED_ROW_TEXT_STYLE: CSSProperties = {
+  textDecoration: 'line-through',
+  color: 'var(--color-neutral-600)',
+}
+
 const fmtKrw = (raw: string): string => {
   const n = Number.parseFloat(raw)
   if (!Number.isFinite(n)) return raw
@@ -59,6 +74,7 @@ const fmtKrw = (raw: string): string => {
 
 export function EstimateListPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
 
   usePageTitle('견적서 관리')
@@ -67,6 +83,9 @@ export function EstimateListPage() {
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [partnerKeyword, setPartnerKeyword] = useState<string>('')
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+
+  useCollectionRealtime(EstimateListRealtimeClient, 'list', ESTIMATE_LIST_REALTIME_KEYS)
 
   const query = useQuery({
     queryKey: ['estimates', 'list', statusFilter, startDate, endDate],
@@ -78,6 +97,19 @@ export function EstimateListPage() {
         ...(startDate ? { startDate } : {}),
         ...(endDate ? { endDate } : {}),
       }),
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: restoreEstimate,
+    onSuccess: async () => {
+      setRestoreError(null)
+      await queryClient.invalidateQueries({ queryKey: ['estimates', 'list'] })
+    },
+    onError: (error) =>
+      setRestoreError(
+        extractApiErrorResponseMessage(error)
+          ?? '복원에 실패했습니다. 견적서 상태 또는 권한을 확인하세요.',
+      ),
   })
 
   const filteredRows = useMemo(() => {
@@ -94,9 +126,37 @@ export function EstimateListPage() {
       width: '180px',
       mobilePriority: 'primary',
       render: (row) => (
-        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
-          {row.estimateNo}
-        </span>
+        <>
+          <span
+            data-testid={`estimate-list-row-${row.id}-number`}
+            style={{
+              fontVariantNumeric: 'tabular-nums',
+              fontWeight: 500,
+              ...(row.isDeleted ? DELETED_ROW_TEXT_STYLE : {}),
+            }}
+          >
+            {row.estimateNo}
+          </span>
+          {row.isDeleted ? (
+            <Badge
+              variant="neutral"
+              title={deletedBadgeAriaLabel(row.deletedByName, row.deletedAt)}
+              aria-label={deletedBadgeAriaLabel(row.deletedByName, row.deletedAt)}
+              data-testid={`estimate-list-row-${row.id}-deleted-badge`}
+              style={{
+                marginLeft: 8,
+                maxWidth: 160,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                verticalAlign: 'middle',
+              }}
+            >
+              {deletedBadgeLabel(row.deletedByName)}
+            </Badge>
+          ) : null}
+        </>
       ),
     },
     {
@@ -105,7 +165,12 @@ export function EstimateListPage() {
       width: '140px',
       mobilePriority: 'hidden',
       render: (row) => (
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span
+          style={{
+            fontVariantNumeric: 'tabular-nums',
+            ...(row.isDeleted ? DELETED_ROW_TEXT_STYLE : {}),
+          }}
+        >
           {row.partnerBusinessNo ? row.partnerBusinessNo.replace(/\D/g, '') : '—'}
         </span>
       ),
@@ -114,25 +179,38 @@ export function EstimateListPage() {
       key: 'partnerName',
       header: '거래처',
       mobilePriority: 'secondary',
-      render: (row) => row.partnerName,
+      render: (row) => (
+        <span style={row.isDeleted ? DELETED_ROW_TEXT_STYLE : undefined}>
+          {row.partnerName}
+        </span>
+      ),
     },
     {
       key: 'estimateDate',
       header: '작성일',
       width: '110px',
       mobilePriority: 'hidden',
+      render: (row) => (
+        <span style={row.isDeleted ? DELETED_ROW_TEXT_STYLE : undefined}>
+          {row.estimateDate}
+        </span>
+      ),
     },
     {
       key: 'validUntil',
       header: '유효기간',
       width: '120px',
       mobilePriority: 'secondary',
-      render: (row) =>
-        row.validUntil ? (
-          <span>{row.validUntil}</span>
-        ) : (
-          <span style={{ color: '#9CA3AF' }}>—</span>
-        ),
+      render: (row) => (
+        <span
+          style={{
+            ...(row.validUntil ? {} : { color: '#9CA3AF' }),
+            ...(row.isDeleted ? DELETED_ROW_TEXT_STYLE : {}),
+          }}
+        >
+          {row.validUntil ?? '—'}
+        </span>
+      ),
     },
     {
       key: 'totalAmount',
@@ -141,7 +219,12 @@ export function EstimateListPage() {
       align: 'right',
       mobilePriority: 'secondary',
       render: (row) => (
-        <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <strong
+          style={{
+            fontVariantNumeric: 'tabular-nums',
+            ...(row.isDeleted ? DELETED_ROW_TEXT_STYLE : {}),
+          }}
+        >
           {fmtKrw(row.totalAmount)}
         </strong>
       ),
@@ -152,10 +235,38 @@ export function EstimateListPage() {
       width: '120px',
       mobilePriority: 'secondary',
       render: (row) => (
-        <Badge variant={STATUS_VARIANT[row.status]}>
-          {ESTIMATE_STATUS_LABEL[row.status]}
+        <Badge
+          variant={row.isDeleted ? 'neutral' : STATUS_VARIANT[row.status]}
+          aria-label={row.isDeleted ? `삭제됨, 기존 견적 상태 ${ESTIMATE_STATUS_LABEL[row.status]}` : undefined}
+        >
+          {row.isDeleted ? '삭제됨' : ESTIMATE_STATUS_LABEL[row.status]}
         </Badge>
       ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: '96px',
+      align: 'right',
+      mobilePriority: 'secondary',
+      render: (row) =>
+        row.isDeleted && canAccess('estimates.list', 'restore') ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={restoreMutation.isPending && restoreMutation.variables === row.id}
+            disabled={restoreMutation.isPending}
+            onClick={(event) => {
+              event.stopPropagation()
+              restoreMutation.mutate(row.id)
+            }}
+            data-testid={`estimate-list-row-${row.id}-restore`}
+            aria-label={`${row.estimateNo} 견적서 복원`}
+          >
+            복원
+          </Button>
+        ) : null,
     },
   ]
 
@@ -197,7 +308,7 @@ export function EstimateListPage() {
         >
           <h3 style={{ margin: 0 }}>
             견적서 관리{' '}
-            <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginLeft: 8 }}>
               전체 {query.data?.totalElements ?? 0}건
             </span>
           </h3>
@@ -274,19 +385,40 @@ export function EstimateListPage() {
           />
         </div>
 
+        {restoreError ? (
+          <div
+            className="error-banner"
+            role="alert"
+            data-testid="estimate-list-restore-error"
+            style={{ marginBottom: 12, padding: 12, color: 'var(--color-danger-700, #991B1B)' }}
+          >
+            {restoreError}
+          </div>
+        ) : null}
+
         <div data-testid="estimate-list-table">
           <DataTable
             columns={columns}
             rows={filteredRows}
             loading={query.isLoading}
-            rowKey={(r) => r.id}
-            onRowClick={(r) => navigate(`/sales/estimates/${r.id}`)}
+            rowKey={(r) => `${r.id}:${r.isDeleted ? 'D' : 'A'}`}
+            rowTestId={(r) => `estimate-list-row-${r.id}`}
+            rowClickable={(r) => r.isDeleted !== true}
+            rowClassName={(r) => (r.isDeleted ? styles['partnerOrderRowDeleted'] : undefined)}
+            onRowClick={(r) => {
+              if (r.isDeleted === true) return
+              navigate(`/sales/estimates/${r.id}`)
+            }}
             emptyMessage="등록된 견적서가 없습니다."
           />
         </div>
 
         {query.isError ? (
-          <div className="error-banner" role="alert" style={{ marginTop: 16 }}>
+          <div
+            className="error-banner"
+            role="alert"
+            style={{ marginTop: 16, color: 'var(--color-danger-700, #991B1B)' }}
+          >
             견적서 목록을 불러오지 못했습니다. slip-service 의 estimate endpoint
             (`/slips/estimates`) 가 가동 중인지 확인하세요.
           </div>

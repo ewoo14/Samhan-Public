@@ -3631,6 +3631,68 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   //   끼어 잡히지 않아 충돌 없다.
   // ==========================================================================
 
+  // GET /api/v1/slips/estimates — 견적 목록(Page). E2 삭제행 포함.
+  const estimateListMatch = url.match(/\/slips\/estimates(?:\?.*)?$/)
+  if (method === 'GET' && estimateListMatch) {
+    const params = new URL(url.startsWith('http') ? url : `http://mock${url}`).searchParams
+    const statusParam = params.get('status') ?? (config.params?.['status'] as string | undefined)
+    const startDate = params.get('startDate') ?? (config.params?.['startDate'] as string | undefined)
+    const endDate = params.get('endDate') ?? (config.params?.['endDate'] as string | undefined)
+    const page = Number(params.get('page') ?? config.params?.['page'] ?? 0)
+    const size = Number(params.get('size') ?? config.params?.['size'] ?? 20)
+    const rows = MOCK_ESTIMATES
+      .map(mockEstimateSummary)
+      .filter((row) => !statusParam || row.status === statusParam)
+      .filter((row) => !startDate || row.estimateDate >= startDate)
+      .filter((row) => !endDate || row.estimateDate <= endDate)
+      .sort((a, b) => {
+        if (a.isDeleted !== b.isDeleted) return a.isDeleted ? 1 : -1
+        const dateCompare = b.estimateDate.localeCompare(a.estimateDate)
+        if (dateCompare !== 0) return dateCompare
+        return b.seqNo - a.seqNo
+      })
+    const pageContent = rows.slice(page * size, (page + 1) * size)
+    return envelope({
+      content: pageContent,
+      totalElements: rows.length,
+      totalPages: Math.ceil(rows.length / size) || 1,
+      number: page,
+      size,
+      first: page === 0,
+      last: (page + 1) * size >= rows.length,
+    })
+  }
+
+  // DELETE /api/v1/slips/estimates/{id} — 견적 목록 soft-delete.
+  const estimateDeleteMatch = url.match(/\/slips\/estimates\/([^/?]+)$/)
+  if (method === 'DELETE' && estimateDeleteMatch) {
+    const denied = mockRequirePermission('estimates.list', 'delete')
+    if (denied) return denied
+    const id = decodeURIComponent(estimateDeleteMatch[1]!)
+    const row = MOCK_ESTIMATES.find((item) => item.id === id)
+    if (!row) return mockError(404, 'NOT_FOUND', '견적서를 찾을 수 없습니다')
+    const mutable = row as Record<string, unknown>
+    mutable['isDeleted'] = true
+    mutable['deletedAt'] = new Date().toISOString()
+    mutable['deletedByName'] = MOCK_AUTH.fullName
+    return envelope(null)
+  }
+
+  // POST /api/v1/slips/estimates/{id}/restore — 견적 목록 soft-delete 복원.
+  const estimateListRestoreMatch = url.match(/\/slips\/estimates\/([^/?]+)\/restore$/)
+  if (method === 'POST' && estimateListRestoreMatch) {
+    const denied = mockRequirePermission('estimates.list', 'restore')
+    if (denied) return denied
+    const id = decodeURIComponent(estimateListRestoreMatch[1]!)
+    const row = MOCK_ESTIMATES.find((item) => item.id === id)
+    if (!row) return mockError(404, 'NOT_FOUND', '견적서를 찾을 수 없습니다')
+    const mutable = row as Record<string, unknown>
+    mutable['isDeleted'] = false
+    mutable['deletedAt'] = null
+    mutable['deletedByName'] = null
+    return envelope(getMutableEstimateDetail(id))
+  }
+
   // POST /api/v1/slips/estimates/{id}/revisions/{n}/restore — 특정 시점 복원.
   const estimateRestoreMatch = url.match(/\/slips\/estimates\/([^/?]+)\/revisions\/(\d+)\/restore$/)
   if (method === 'POST' && estimateRestoreMatch) {
@@ -15201,7 +15263,66 @@ const MOCK_ESTIMATES = [
     note: '대박빌딩 신축 — 채택 → 출고 진행',
     lines: SAMPLE_LINES,
   },
+  // MED-1(#759 STEP4 fix): 삭제행 취소선/배지/복원버튼 GUI 도달용 시드(주문 DELETED_DRAFT_ROW·
+  // 거래처 P-DELETED-004 선례 정합). isDeleted/deletedAt/deletedByName 은 mockEstimateSummary 가
+  // Record<string, unknown> 캐스팅으로 읽으므로 기본 shape 밖 추가 필드로 부여한다.
+  {
+    id: 'est-004',
+    estimateNumber: '2026/05/20-3',
+    estimateDate: '2026-05-20',
+    expirationDate: '2026-06-19',
+    status: 'DRAFT' as const,
+    partnerCode: '6789012345',
+    partnerName: '한울설비',
+    totalAmount: '1250000',
+    createdByName: '오병승',
+    note: '삭제행 취소선/복원 QA 시나리오 — soft delete 이후 상태',
+    lines: SAMPLE_LINES,
+    isDeleted: true,
+    deletedAt: '2026-05-21T09:40:00',
+    deletedByName: '오병승',
+  },
 ]
+
+function mockEstimateSummary(row: (typeof MOCK_ESTIMATES)[number]) {
+  const mutable = row as Record<string, unknown>
+  const totalAmount = String(row.totalAmount ?? '0')
+  const amountNumber = Number(totalAmount)
+  const totalSupply = Number.isFinite(amountNumber)
+    ? String(Math.round(amountNumber / 1.1))
+    : totalAmount
+  const totalVat = Number.isFinite(amountNumber)
+    ? String(amountNumber - Number(totalSupply))
+    : '0'
+  const legacyStatus = String(row.status)
+  const status = legacyStatus.startsWith('QUOTE_')
+    ? legacyStatus as EstimateStatusMock
+    : (`QUOTE_${legacyStatus}` as EstimateStatusMock)
+  const seqNo = Number.parseInt(String(row.estimateNumber).split('-').at(-1) ?? '1', 10)
+  return {
+    id: row.id,
+    estimateNo: row.estimateNumber,
+    estimateDate: row.estimateDate,
+    seqNo: Number.isFinite(seqNo) ? seqNo : 1,
+    status,
+    partnerId: `partner-${row.partnerCode}`,
+    partnerName: row.partnerName,
+    partnerBusinessNo: row.partnerCode,
+    validUntil: row.expirationDate,
+    totalSupply,
+    totalVat,
+    totalAmount,
+    convertedSlipId: null,
+    sentAt: status === 'QUOTE_SENT' ? `${row.estimateDate}T10:00:00` : null,
+    acceptedAt: status === 'QUOTE_ACCEPTED' ? `${row.estimateDate}T10:00:00` : null,
+    convertedAt: status === 'QUOTE_CONVERTED' ? `${row.estimateDate}T10:00:00` : null,
+    requesterId: null,
+    version: 0,
+    isDeleted: Boolean(mutable['isDeleted']),
+    deletedAt: (mutable['deletedAt'] as string | null | undefined) ?? null,
+    deletedByName: (mutable['deletedByName'] as string | null | undefined) ?? null,
+  }
+}
 
 /**
  * 견적서 상세 (`/api/v1/slips/estimates/{id}`) 응답 — BE {@code EstimateDetailResponse} shape.
@@ -15273,6 +15394,9 @@ function buildMockEstimateDetail(id: string) {
     rejectedAt: null,
     requesterId: null,
     version: 2,
+    isDeleted: false,
+    deletedAt: null,
+    deletedByName: null,
     memo: isAccepted ? '대박빌딩 신축 — 채택' : '시스템에어컨 4Way 4HP 2EA 견적',
     lines: MOCK_ESTIMATE_DETAIL_LINES,
   }
@@ -16465,6 +16589,12 @@ const MOCK_ACTION_ONLY_PAGES: Record<string, string[]> = {
   'partners.delete': ['DELETE', 'RESTORE'],
   // V83(E2 주문 롤아웃): sales.partner-order.list 는 MASTER/MANAGER/SALES 에 RESTORE 부여(취소선 복원).
   'sales.partner-order.list': ['CREATE', 'UPDATE', 'DELETE', 'RESTORE'],
+  // V85(E2 견적 롤아웃, #759 STEP4 HIGH-2 fix): estimates.list 는 sales.partner-order.list 와
+  // 동일하게 MASTER/MANAGER/SALES 에 RESTORE 부여(취소선 복원). 누락 시 fallback 경로
+  // (accountMatrix restore: page === 'sales.slip.list'만 하드코딩·/permissions/my 의
+  // cell.pageCode === 'sales.slip.list'만 하드코딩)에 estimates.list 가 걸리지 않아
+  // mock 모드 MANAGER/SALES 의 canAccess('estimates.list','restore') 가 항상 false 였다.
+  'estimates.list': ['CREATE', 'UPDATE', 'DELETE', 'RESTORE'],
 }
 
 /**
@@ -16876,7 +17006,7 @@ const emptyMockActionMatrix = (): MockActionMatrix => ({
 
 const mockActionMatrixFromRole = (role: string, page: string): MockActionMatrix => {
   const cell = _mockPermissionCells.find((c) => c.roleCode === role && c.pageCode === page)
-  const canRestore = ['sales.partner-order.list', 'dispatch.board', 'sales.slip.list'].includes(page)
+  const canRestore = ['sales.partner-order.list', 'dispatch.board', 'sales.slip.list', 'estimates.list'].includes(page)
     ? cell?.edit ?? false
     : false
   return {

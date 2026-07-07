@@ -1,9 +1,13 @@
 package com.samhanair.logis.slip.estimate.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -22,9 +26,12 @@ import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.client.WarehouseInternalClient;
+import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import com.samhanair.logis.slip.it.AbstractPostgresIT;
+import com.samhanair.logis.slip.realtime.EstimateListRealtime;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -40,7 +47,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,6 +82,12 @@ class EstimateControllerIT extends AbstractPostgresIT {
     private MockMvc mockMvc;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private EntityManager entityManager;
+    @SpyBean
+    private CollectionRealtimePublisher collectionRealtimePublisher;
 
     /** 외부 RestClient — 모두 MockBean 격리 (Eureka 비활성 시 500 방지). */
     @MockBean
@@ -277,6 +292,228 @@ class EstimateControllerIT extends AbstractPostgresIT {
                         .header("X-User-Role", "SALES"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content").isArray());
+    }
+
+    @Test
+    @DisplayName("견적 삭제 후 목록은 삭제 메타를 포함하고 복원은 활성행으로 되돌린다")
+    void delete_listIncludesDeletedMetadata_andRestoreReactivates() throws Exception {
+        MvcResult created = mockMvc.perform(post("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .header("X-User-Name", "작성자")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String id = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        mockMvc.perform(delete("/slips/estimates/{id}", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .header("X-User-Name", "이운영"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .param("size", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].id").value(id))
+                .andExpect(jsonPath("$.data.content[0].isDeleted").value(true))
+                .andExpect(jsonPath("$.data.content[0].deletedByName").value("이운영"))
+                .andExpect(jsonPath("$.data.content[0].deletedAt").exists());
+
+        mockMvc.perform(post("/slips/estimates/{id}/restore", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(id))
+                .andExpect(jsonPath("$.data.isDeleted").value(false))
+                .andExpect(jsonPath("$.data.deletedByName").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("견적 목록 status 필터는 native enum name 문자열로 QUOTE_CONVERTED를 조회한다")
+    void list_statusFilterConverted_returnsConvertedRows() throws Exception {
+        MvcResult created = mockMvc.perform(post("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String id = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+        mockMvc.perform(post("/slips/estimates/{id}/convert", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .param("status", "QUOTE_CONVERTED")
+                        .param("size", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].id").value(id))
+                .andExpect(jsonPath("$.data.content[0].status").value("QUOTE_CONVERTED"));
+    }
+
+    @Test
+    @DisplayName("삭제 견적 복원 시 같은 견적번호 활성행이 있으면 409를 반환한다")
+    void restore_whenActiveEstimateReusesNumber_returns409() throws Exception {
+        MvcResult created = mockMvc.perform(post("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        var data = objectMapper.readTree(created.getResponse().getContentAsString()).get("data");
+        String id = data.get("id").asText();
+        String estimateNo = data.get("estimateNo").asText();
+
+        mockMvc.perform(delete("/slips/estimates/{id}", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .header("X-User-Name", "이운영"))
+                .andExpect(status().isOk());
+        entityManager.flush();
+        jdbcTemplate.update("""
+                INSERT INTO estimates
+                    (id, estimate_no, estimate_date, seq_no, status,
+                     total_supply, total_vat, total_amount, requester_id, version,
+                     created_at, created_by, is_deleted)
+                VALUES
+                    (?::uuid, ?, DATE '2026-05-11', 99, 'QUOTE_DRAFT',
+                     0, 0, 0, ?, 0,
+                     NOW(), ?, FALSE)
+                """,
+                UUID.randomUUID().toString(), estimateNo, SALES_ACCOUNT_ID, SALES_ACCOUNT_ID);
+
+        mockMvc.perform(post("/slips/estimates/{id}/restore", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("견적 삭제와 복원은 견적 목록 realtime 변경 이벤트를 발화한다")
+    void deleteAndRestore_publishEstimateListChanged() throws Exception {
+        MvcResult created = mockMvc.perform(post("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String id = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        mockMvc.perform(delete("/slips/estimates/{id}", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .header("X-User-Name", "이운영"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/slips/estimates/{id}/restore", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID))
+                .andExpect(status().isOk());
+
+        verify(collectionRealtimePublisher).publishChange(
+                eq(EstimateListRealtime.CHANNEL_ID),
+                eq(EstimateListRealtime.EVENT_CHANGED),
+                ArgumentMatchers.<Map<String, Object>>argThat(
+                        payload -> "DELETED".equals(payload.get("changeType"))));
+        verify(collectionRealtimePublisher).publishChange(
+                eq(EstimateListRealtime.CHANNEL_ID),
+                eq(EstimateListRealtime.EVENT_CHANGED),
+                ArgumentMatchers.<Map<String, Object>>argThat(
+                        payload -> "RESTORED".equals(payload.get("changeType"))));
+    }
+
+    /**
+     * CONVERTED 견적 delete→restore 회귀 (PR #759 STEP4 적대검증 M2, 2026-07-07).
+     *
+     * <p>개발책임자 결정 — "CONVERTED 견적도 삭제 가능(상태 무관, 목록 tombstone 처리이며
+     * {@code converted_slip_id}/전표 원장은 건드리지 않는다)"
+     * ({@link com.samhanair.logis.slip.estimate.service.EstimateService#delete} Javadoc) 이
+     * 안전함을 값 검증으로 고정한다.
+     * {@link com.samhanair.logis.slip.estimate.service.EstimateService#delete}/{@link
+     * com.samhanair.logis.slip.estimate.service.EstimateService#restore} 는
+     * {@code slipConverter}({@code EstimateToSlipConverter})나
+     * {@code SlipRepository} 를 전혀 참조하지 않고, {@code converted_slip_id} 는 logical FK
+     * ({@code V13__add_estimate.sql} — {@code REFERENCES} 미선언)이므로 물리적 cascade 경로 자체가
+     * 없다 — 이 테스트는 그 무연쇄성을 코드 리뷰가 아닌 실행 값으로 고정한다.
+     *
+     * <p>검증 순서: 생성 → convert(CONVERTED 전이 + Slip(OUTBOUND DRAFT) 실제 발행) → 변환 직후
+     * Slip 행 스냅샷 캡처 → delete(상태 무관 허용) → 목록 includeDeleted 에 삭제행으로 노출되면서
+     * status/convertedSlipId 보존 → restore → status/convertedSlipId 보존 + Slip 행이 스냅샷과
+     * 완전 동일(is_deleted/status/version/deleted_at/modified_at 전부 무변화).
+     */
+    @Test
+    @DisplayName("CONVERTED 견적 삭제→복원은 상태무관 허용되며 status/convertedSlipId 보존 + Slip 테이블 무연쇄")
+    void deleteAndRestore_convertedEstimate_preservesStatusAndSlipTableUntouched() throws Exception {
+        // 1) 생성 → 즉시 변환 (DRAFT → CONVERTED). productClient 등 외부 RestClient 만 MockBean 이고
+        //    SlipRepository/OutboundCutoffGuard/SlipNumberService 는 실 빈 + 실 DB 이므로 Slip(OUTBOUND
+        //    DRAFT) 이 slips 테이블에 실제로 발행된다.
+        MvcResult created = mockMvc.perform(post("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .header("X-User-Name", "작성자")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String id = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        MvcResult converted = mockMvc.perform(post("/slips/estimates/{id}/convert", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("QUOTE_CONVERTED"))
+                .andExpect(jsonPath("$.data.convertedSlipId").isNotEmpty())
+                .andReturn();
+        String convertedSlipId = objectMapper.readTree(converted.getResponse().getContentAsString())
+                .get("data").get("convertedSlipId").asText();
+        assertThat(convertedSlipId).isNotBlank();
+
+        // 변환 직후 Slip 행 스냅샷 — delete/restore 전체에 걸쳐 이 값과 계속 동일해야 "무연쇄".
+        // (entityManager.flush() 로 convert() 가 영속화한 Slip 을 물리 INSERT 로 내보낸 뒤 조회 —
+        //  restore_whenActiveEstimateReusesNumber_returns409 와 동일한 flush+raw SQL 조합 패턴.)
+        entityManager.flush();
+        Map<String, Object> slipSnapshotBeforeDelete = jdbcTemplate.queryForMap(
+                "SELECT is_deleted, status, version, deleted_at, modified_at FROM slips WHERE id = ?::uuid",
+                convertedSlipId);
+
+        // 2) delete — CONVERTED 도 삭제 허용(상태 무관). 출고전표 원장 미접촉이 정책.
+        mockMvc.perform(delete("/slips/estimates/{id}", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .header("X-User-Name", "이운영"))
+                .andExpect(status().isOk());
+
+        // 3) 목록 includeDeleted 노출 — 삭제행이면서 CONVERTED 상태/convertedSlipId 를 그대로 보존.
+        mockMvc.perform(get("/slips/estimates")
+                        .header("X-User-Id", SALES_ACCOUNT_ID)
+                        .param("size", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].id").value(id))
+                .andExpect(jsonPath("$.data.content[0].isDeleted").value(true))
+                .andExpect(jsonPath("$.data.content[0].status").value("QUOTE_CONVERTED"))
+                .andExpect(jsonPath("$.data.content[0].convertedSlipId").value(convertedSlipId))
+                .andExpect(jsonPath("$.data.content[0].deletedByName").value("이운영"));
+
+        entityManager.flush();
+        Map<String, Object> slipSnapshotAfterDelete = jdbcTemplate.queryForMap(
+                "SELECT is_deleted, status, version, deleted_at, modified_at FROM slips WHERE id = ?::uuid",
+                convertedSlipId);
+        assertThat(slipSnapshotAfterDelete).isEqualTo(slipSnapshotBeforeDelete);
+
+        // 4) restore — status/convertedSlipId 보존 확인.
+        mockMvc.perform(post("/slips/estimates/{id}/restore", id)
+                        .header("X-User-Id", SALES_ACCOUNT_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(id))
+                .andExpect(jsonPath("$.data.isDeleted").value(false))
+                .andExpect(jsonPath("$.data.status").value("QUOTE_CONVERTED"))
+                .andExpect(jsonPath("$.data.convertedSlipId").value(convertedSlipId))
+                .andExpect(jsonPath("$.data.deletedByName").doesNotExist());
+
+        // Slip 테이블 무연쇄 — restore 이후에도 변환 직후 스냅샷과 완전히 동일(행 자체를 전혀 건드리지
+        // 않음: is_deleted/status/version/deleted_at/modified_at 전부 무변화).
+        entityManager.flush();
+        Map<String, Object> slipSnapshotAfterRestore = jdbcTemplate.queryForMap(
+                "SELECT is_deleted, status, version, deleted_at, modified_at FROM slips WHERE id = ?::uuid",
+                convertedSlipId);
+        assertThat(slipSnapshotAfterRestore).isEqualTo(slipSnapshotBeforeDelete);
     }
 
     /**
