@@ -1,13 +1,26 @@
 /**
  * #711 분개 상세 라인 테이블 열 재배분 — 실서버 GUI 실증 (mock OFF).
+ * #714 후속 — 1024px(앱 minWidth) 열 압축 회귀 방지 케이스 추가.
  *
  * 캡처(docs/qa/journal-detail-column-widths/screenshots/):
  *  01 분개 상세 전폭 — 차변 좌측 당김·거래처 확대·합계 행 정렬(HIGH fix 검증)
  *  02 라인 테이블+합계 클로즈업 — 차/대 합계가 각 열 아래 정렬
  *  03 분개장 목록(역분개 필터) — 구 J- 형식 시드 정리 후 중복 부재 실증
+ *  04 1024px(minWidth) 열 압축 회귀 방지(전) — 전 열 spec 폭 유지 실측(#714)
+ *  05 1024px(minWidth) 메모 값 셀 가로 스크롤 후 뷰포트 진입(#714)
  *  01(mobile) 모바일 합계 카드 클로즈업 — 차변/대변 분리 렌더(결합 문자열 개행 위험 해소, Opus 재검 HIGH fix)
  *
- * 정상 실행 기대값 = 2 passed + 2 skipped (project 상호배타 skip — 데스크톱 전용/모바일 전용 테스트가 서로 다른 project 를 skip).
+ * #714 — 분개 상세 라인 테이블은 원래 메모 열이 width 미지정(auto 잔여폭)이라 좁은 폭에서
+ * 급격히 압축됐다(#711 QA 라운드 실측: 1024px 서 20px, 헤더 "메"만 가시·값 완전 비가시). 후속
+ * 수정(PR #737)이 메모 열에도 명시 고정폭(180px)을 부여 + JournalDetailPage 로컬 wrapper
+ * (global.css `.journal-detail-table-scroll` overflow-x:auto + `.journal-detail-line-table`
+ * min-width:860px)를 추가해 컨테이너가 열 합(860px)보다 좁아지면 압축 대신 가로 스크롤로 전환되게
+ * 했다 — 아래 1024px 케이스가 이 상태를 실측으로 고정한다(회귀 시 즉시 RED).
+ *
+ * 정상 실행 기대값 = 3 passed + 3 skipped (project 상호배타 skip — 데스크톱 전용 2건(1440px 재배분+
+ * 1024px 회귀 가드)·모바일 전용 1건이 서로 다른 project 를 skip). #714 케이스는 별도 project 를
+ * 추가하지 않고 데스크톱 project 안에서 `page.setViewportSize`로 1024px 로 축소해 검증한다(기존
+ * 2-project 매트릭스·스크린샷 넘버링 보존, 최소 파급).
  */
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import * as path from 'path'
@@ -199,6 +212,30 @@ async function expectHeaderWidth(header: Locator, expected: number, label: strin
 }
 
 /**
+ * #714 정정 — 1440px(넓은 뷰포트) 처럼 컨테이너(table 실폭)가 열 spec 폭 합(860px)보다 넓은 경우,
+ * DataTable 의 `.table{width:100%}` + `table-layout:fixed` + colgroup 전 열 명시폭 조합은 CSS2.1
+ * fixed-layout 알고리즘상 초과분을 spec 폭 비례로 전 열에 배분한다(Chromium 실측 확인 — 1440px
+ * 기준 스케일 ×1.2977: 계정과목 160→~207·거래처 260→~337·메모 180→~233). exact 폭 대신 "기준 열
+ * (메모) 대비 spec 비율"이 보존됐는지를 단언한다 — 실제 스케일팩터(뷰포트 실폭·폰트·스크롤바 등에
+ * 의존)를 몰라도 fixed-layout 알고리즘의 정의상 항상 성립해 안정적이다.
+ */
+async function expectHeaderWidthRatio(
+  header: Locator,
+  referenceWidth: number,
+  specWidth: number,
+  specReferenceWidth: number,
+  label: string,
+): Promise<void> {
+  const box = await header.boundingBox()
+  expect(box, `${label}: header bounding box`).toBeTruthy()
+  const expectedWidth = specWidth * (referenceWidth / specReferenceWidth)
+  expect(
+    Math.abs(box!.width - expectedWidth),
+    `${label}: header width(실측 ${box!.width}px) vs 비례배분 기대폭(${expectedWidth.toFixed(1)}px, spec 비율 ${specWidth}/${specReferenceWidth})`,
+  ).toBeLessThanOrEqual(3)
+}
+
+/**
  * lineNo(# 열) 로 tbody 행 인덱스를 찾는다 — 테스트가 별도 fetch 로 얻은 라인 배열과 화면 렌더
  * 순서가 반드시 일치한다는 가정(JPA `@OneToMany lines` 에 `@OrderBy` 부재) 없이, 렌더된 DOM
  * 자체에서 lineNo 텍스트로 직접 매칭한다.
@@ -285,10 +322,38 @@ test('데스크톱 열 재배분 실증 — 폭·합계행·금액 정렬·J- �
   const table = page.locator('table').first()
   const headers = table.locator('thead th')
   await expect(headers).toHaveText(['#', '계정과목', '거래처', '차변', '대변', '메모'])
-  await expectHeaderWidth(headers.nth(1), 160, '계정과목')
-  await expectHeaderWidth(headers.nth(2), 260, '거래처')
-  await expectHeaderWidth(headers.nth(3), 110, '차변')
-  await expectHeaderWidth(headers.nth(4), 110, '대변')
+  // #714 정정 — 1440px(넓은 뷰포트) 에서 exact spec 폭 단언은 구조적으로 항상 FAIL 한다: 테이블
+  // 실폭(1440px 뷰포트의 실 콘텐츠 영역, 실측 clientWidth~1118px)이 열 spec 합(860px)보다 넓으면
+  // fixed-layout 알고리즘이 초과분을 전 열에 spec 비례로 배분한다(정상 반응형 동작 — 넓은 뷰포트는
+  // 비례확대로 전폭을 채우고, 반대로 컨테이너가 spec 합보다 좁은 1024px/앱 minWidth 는 열이 spec
+  // 폭을 유지한 채 가로 스크롤로 전환된다: 아래 별도 테스트가 그 경우를 정확히 담당, 여기선 무변경).
+  // exact 폭 대신 "메모 열 대비 spec 비율 보존"을 단언한다.
+  const memoHeaderBox = await headers.nth(5).boundingBox()
+  expect(memoHeaderBox, '메모(1440px): header bounding box').toBeTruthy()
+  await expectHeaderWidthRatio(headers.nth(1), memoHeaderBox!.width, 160, 180, '계정과목(1440px)')
+  await expectHeaderWidthRatio(headers.nth(2), memoHeaderBox!.width, 260, 180, '거래처(1440px)')
+  await expectHeaderWidthRatio(headers.nth(3), memoHeaderBox!.width, 110, 180, '차변(1440px)')
+  await expectHeaderWidthRatio(headers.nth(4), memoHeaderBox!.width, 110, 180, '대변(1440px)')
+  // #714 회귀 가드(존치) — 메모 열은 과거 width 미지정(auto 잔여폭)이라 좁은 폭에서 압축(1024px
+  // 실측 20px)됐던 이력이 있다(#711 QA 라운드). 1440px 는 비례확대만 발생하고 압축은 없으므로
+  // 여기서는 절대 하한(spec 180px 이상 = 압축 아님)만 단언한다 — exact 폭 회귀 재발은 아래 1024px
+  // 전용 테스트가 정확히 담당한다(무변경).
+  expect(
+    memoHeaderBox!.width,
+    `메모(1440px): 비례확대 하한 미달(실측 ${memoHeaderBox!.width}px, spec 180px 미만=압축 의심)`,
+  ).toBeGreaterThanOrEqual(180)
+  // 1440px(넓은 뷰포트) = 컨테이너가 열 spec 합(860px)보다 넓어 비례확대로 100% 채워야 정상 — 가로
+  // 스크롤이 발생하면 비례확대가 미동작(회귀)했다는 뜻이다(1024px/minWidth 의 스크롤 발생과는 반대
+  // 의미 — 아래 별도 테스트가 그 경우를 담당).
+  const scrollContainerAt1440 = page.locator('.journal-detail-table-scroll')
+  const scrollMetricsAt1440 = await scrollContainerAt1440.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }))
+  expect(
+    Math.abs(scrollMetricsAt1440.scrollWidth - scrollMetricsAt1440.clientWidth),
+    `1440px: 가로 스크롤 발생(비례확대 미동작 의심) — scrollWidth(${scrollMetricsAt1440.scrollWidth}) vs clientWidth(${scrollMetricsAt1440.clientWidth})`,
+  ).toBeLessThanOrEqual(2)
   await expect(headers.nth(2)).toHaveText('거래처')
   await expect(headers.nth(3)).toHaveText('차변')
   await expect(headers.nth(4)).toHaveText('대변')
@@ -393,6 +458,72 @@ test('데스크톱 열 재배분 실증 — 폭·합계행·금액 정렬·J- �
   await expect(page.locator('table').first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText(/^J-2026-/)).toHaveCount(0)
   await captureElement(page, page.locator('table').first(), 'journal-list-no-duplicate-seeds')
+})
+
+test('#714 1024px(앱 minWidth) 열 압축 회귀 방지 — 전 열 spec 폭 유지 + 가로 스크롤로 메모 값 접근', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('mobile'), '데스크톱 전용 단언 — 앱 minWidth(Electron main/index.ts)는 데스크톱 셸 전용 개념')
+
+  const login = await realLogin(page, 'dev_master')
+  await installAuthStub(page, login)
+
+  const target = await findReversedJournalWithLines(page, login.token)
+  expect(target, '전제 데이터 없음: REVERSED 상태이면서 라인 2건 이상인 분개가 필요').toBeTruthy()
+
+  // #714 실측 지점 — Electron BrowserWindow minWidth=1024(main/index.ts) = 앱 공식 최소 지원폭.
+  // 사이드바(240px 고정)+본문/카드 패딩을 뺀 실 콘텐츠 폭은 열 합(860px)보다 좁아 가로 스크롤이
+  // 반드시 발동해야 한다 — #711 QA 라운드 당시엔 메모 열이 width 미지정이라 이 폭에서 20px
+  // ("메"만 가시·값 완전 비가시)로 압축됐었다(이슈 #714 실측 표).
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto(`${BASE_URL}/#/accounting/journals/${target!.id}`)
+  await expect(page.getByText(target!.journalNo).first()).toBeVisible({ timeout: 30_000 })
+
+  const table = page.locator('table').first()
+  const headers = table.locator('thead th')
+  await expect(headers).toHaveText(['#', '계정과목', '거래처', '차변', '대변', '메모'])
+
+  // 전 열 spec 폭 유지 단언(#714 회귀 가드 핵심) — table-layout:fixed + 전 열 명시폭 조합이면
+  // 컨테이너가 좁아도 열이 비례 압축되지 않고 테이블 자체가 가로로 넘쳐야 정상(압축=회귀 재발).
+  await expectHeaderWidth(headers.nth(0), 40, '#(1024px)')
+  await expectHeaderWidth(headers.nth(1), 160, '계정과목(1024px)')
+  await expectHeaderWidth(headers.nth(2), 260, '거래처(1024px)')
+  await expectHeaderWidth(headers.nth(3), 110, '차변(1024px)')
+  await expectHeaderWidth(headers.nth(4), 110, '대변(1024px)')
+  const memoHeaderBox = await headers.nth(5).boundingBox()
+  expect(memoHeaderBox, '메모(1024px): header bounding box').toBeTruthy()
+  expect(
+    memoHeaderBox!.width,
+    `메모 열이 최소 가독폭(160px) 미만으로 압축됨(실측 ${memoHeaderBox?.width}px) — #714 회귀`,
+  ).toBeGreaterThanOrEqual(160)
+
+  // 가로 스크롤 컨테이너(JournalDetailPage 로컬 wrapper, global.css `.journal-detail-table-scroll`)
+  // 실동작 확인 — 컨테이너가 열 합(860px)보다 좁을 때 압축 대신 스크롤로 전환되는지가 #714 fix 의 핵심.
+  const scrollContainer = page.locator('.journal-detail-table-scroll')
+  await expect(scrollContainer).toHaveCount(1)
+  const scrollMetrics = await scrollContainer.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }))
+  expect(
+    scrollMetrics.scrollWidth,
+    `가로 스크롤 미동작 — scrollWidth(${scrollMetrics.scrollWidth}) <= clientWidth(${scrollMetrics.clientWidth})`,
+  ).toBeGreaterThan(scrollMetrics.clientWidth)
+
+  await capture(page, 'journal-detail-1024-minwidth-columns-precompressed')
+
+  // 실제 가로 스크롤 후 메모 값 셀이 온전한 폭으로 보이고 뷰포트 안에 들어오는지(헤더만 폭을
+  // 유지하고 값 셀이 별도로 무너지는 회귀·스크롤이 시각적으로 안 먹는 회귀까지 차단) — 컨테이너를
+  // 끝까지 스크롤해 메모 열을 뷰포트 안으로 이동시킨다.
+  await scrollContainer.evaluate((el) => { el.scrollLeft = el.scrollWidth })
+  const firstMemoCell = table.locator('tbody tr').first().locator('td').last()
+  const memoCellBox = await firstMemoCell.boundingBox()
+  expect(memoCellBox, '메모 값 셀(1024px, 스크롤 후) bounding box').toBeTruthy()
+  expect(
+    memoCellBox!.width,
+    `메모 값 셀이 압축되어 값 접근 불가(실측 ${memoCellBox?.width}px) — #714 회귀`,
+  ).toBeGreaterThanOrEqual(160)
+  await expect(firstMemoCell).toBeInViewport()
+
+  await capture(page, 'journal-detail-1024-minwidth-memo-scrolled-into-view')
 })
 
 test('모바일 합계 카드 실증 — 390px 카드 라벨+차대변 분리 값 노출(결합 문자열 폐기)', async ({ page }, testInfo) => {
