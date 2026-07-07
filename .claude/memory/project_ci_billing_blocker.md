@@ -28,3 +28,7 @@ GitHub 설정 → **Billing & plans** → 결제수단 갱신 / spending limit �
 
 ## 복구 후
 빌링 정상화 시 각 대기 PR CI 재실행(빈 커밋 or rerun)→green 확인→머지.
+
+## 2026-07-07 후속 — Codex(ChatGPT) 사용량 한도 (STEP4 블로커)
+`mcp__codex__codex` 호출이 **"You've hit your usage limit ... try again at Jul 11th 2026"** 로 차단(계정 레벨, codex exec도 동일 계정=동일 차단). 캐논 STEP4(Codex 5-agent 순차 듀얼리뷰) 불가.
+**개발책임자 결정(2026-07-07)**: **Opus 독립 적대검증으로 STEP4 대체** — Codex 대신 별도 Opus 5-agent를 "적대적 refute 관점"(각 fix를 깨뜨려 시도·의심 기본)으로 실행해 STEP4 갈음. **정식 승인 대체이며 단축 아님**. PR·dev-report에 "STEP4=Opus 적대검증(Codex 한도 대체, 개발책임자 승인)" 명시. Codex 복구(Jul 11) 후 여력되면 소급 Codex 재검 가능(선택). [[feedback_canonical_workflow]] [[feedback_review_5agent_no_shortcut_strict]]
