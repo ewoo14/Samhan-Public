@@ -4,22 +4,30 @@
 
 ---
 
-## ✅ 2026-07-08 (회사PC 이어받기) — #17 S4b 캐논 완주·머지 `ac7759470`(#776) → 다음 TODO 순차 (SONNET 대체·PM 자율)
+## ✅ 2026-07-08~09 (회사PC 이어받기) — #17 **S4b·S3** 캐논 완주·머지 (`ac7759470`·`0bd3ac252`) → 다음 TODO 순차 (SONNET 대체·PM 자율)
 
-> **다음 세션 첫 읽기 = 본 절.** 회사PC가 집PC #775 인계(#729·#771·S4a) 이어받아 **#17 단가변동 S4b 완주**. 운영모드 = **SONNET 대체**(Sonnet 5 서브에이전트 = 구현·5-agent 리뷰·라이브 QA / Opus(PM) = STEP4 독립 적대검증·점검·commit대행·머지 — Codex Jul11 한도). [[feedback_sonnet_substitution_when_codex_unavailable]]
+> **다음 세션 첫 읽기 = 본 절.** 회사PC가 집PC #775 인계(#729·#771·S4a) 이어받아 **#17 단가변동 S4b(#776)·S3(#688) 2슬라이스 완주·머지**. 운영모드 = **SONNET 대체**(Sonnet 5 서브에이전트 = 구현·5-agent 리뷰·라이브 QA / Opus(PM) = STEP4 독립 적대검증·점검·commit대행·머지 — Codex Jul11 한도). [[feedback_sonnet_substitution_when_codex_unavailable]]
 
 ### S4b (#776 `ac7759470`) — 순수 FE, "인상 전 단가" 기본값 배선
 - **estimate-app**: `priceDefaultVariant()` 신설 + 체크박스 3종 초기값·**리셋** config화(전환 계산 무변경). **desktop**: `EstimatePricingConfigPage` "카테고리별 단가변동" 자립 섹션 + admin GET/PUT + mock V86 parity. product-service·BE 무변경(S4a 완료).
 - **개발책임자 결정**: **H1 옵션A**(ACCOUNTANT가 V86 권한 보유하나 페이지 게이트 `sales.estimate-config`로 도달 불가 → PermissionGuard `pageCode` 배열 OR 확장으로 `products.price-schedule` OR 진입 허용·estimateConfig 폼은 sales.estimate-config 보유자만·ACCOUNTANT=단가변동 섹션만). Q5/Q7(MANAGER+ACCOUNTANT view+update).
 - **캐논 완주**: R1 5-agent→fix `eeb4b79f3`→R2 5-agent(**재검이 R1 fix 유발 Design AA 회귀 포착** — `var(--color-warning-700,#b45309)`가 실제 #B47A1F 렌더로 AA 5.02→3.66 회귀·단축금지 실증)→R2-fix `70b234776`→STEP4 Opus 독립 적대검증(코드0+실스택)→라이브 QA 10캡처 전건 PASS(mock OFF·fresh jar·**ACCOUNTANT 옵션A·estimate-app 체크박스 E2E**)→CI 32/32→PM 9-게이트→자율머지. dev-report `2026-07-08-17-s4b-price-variant-config.md`. 교훈 박제 [[feedback_css_var_token_not_fallback]].
 
+### S3 (#688 `0bd3ac252`) — 🔴 돈 로직, 주문서 카테고리별 변동일 자동전환 (Model B)
+- **재개 배경**: 06-30 구현·07-01 보류(협업 우선)됐다가 **D5=Model B 확정**으로 재개. 브랜치 **129 커밋 stale** → main 리셋 + S3 cherry-pick(0충돌·컴파일) + force-push로 PR #688 되살림.
+- **Model B**: order-app `due < 변동일 → *_INC(인상 전=priceBaseline)` / `due >= 변동일 → base(인상 후)`. KST 문자열 사전식 비교(new Date 금지)·fallback 키결측=후. `BootstrapService.incPriceMap()` 입력을 `priceBaseline()`로 전환.
+- **캐논 완주**: 블로커fix(`hasProductData` 실버그=빈 catalog가 부가메타로 "데이터 있음" 오판→빈배열 캐싱이 fallback 영구 override·genuine 재현·`@Column 32→30`)→R1 5-agent+fix `1707c6338`(BE-2 개별 try-catch로 catalog 보존·Design 최소 고지·테스트 3)→**R2 5-agent 0수렴**(mutation test/RED-flip로 Model B 정확성·회귀 포착력 실증)→STEP4 Opus 독립(incActive 5사이트 직접 정독)→**미래일 라이브 QA 전/후 실증**(due 07-09→**700,000(전)**/08-15→**900,000(후)**·화면=API=DB SQL 100% 일치·투명 QA_R2_SEED 롤백)→CI 32/32→머지. dev-report `2026-07-09-price-change-s3-order-switch.md`.
+- **개발책임자 결정**: D5=Model B · **evict staleness=옵션 A**(bootstrap 캐시 TTL 없음·admin 변동일 수정 시 **재기동 SOP**·후속 이슈 **#777**).
+- **known limitations(문서화·#777)**: 구성품(exposure-gap→SINGLE_PARTS_INC 상시 빈맵→항상 후·데이터로 해결불가)·oldProducts(범위 외)·useK2=true 분기 GUI 미실측.
+
 ### QA 환경 메모 (회사PC)
 - 회사PC **background gradle 정상**(killed 아님·집PC와 다름). 스택 최신화 = **jar 재빌드 → docker cp `/app/app.jar` + restart**(product/auth). auth **Flyway V83 체크섬 드리프트**(E2 롤아웃 로컬 잔재) 시 `flyway/flyway:10` 컨테이너로 `repair`(스키마 무손상)→재기동. dev 계정 11종 비번 `dev_p05_pass!`(login_id 키).
 - ⚠️ **dc-config-service가 docker 기본기동 목록에 없음**(estimate-config 상단 폼 BE)→QA가 `up -d dc-config-service` 수동 기동. 기본 포함 여부 개발책임자 판단.
 - ⚠️ **MANAGER `sales.estimate-config` group 권한계 미반영**(legacy V58 role만·pre-existing)→estimateConfig 요율/옵션 폼 현재 MASTER 전용. 옵션A OR-게이트가 무해 커버. MANAGER 폼 편집권 필요 여부 별도 정책.
+- **S3(#688) QA env**: product-service fresh jar·**partner-order-service S3 jar docker cp+restart** 완료(현 컨테이너 반영). ⚠️ **`price_history` baseline(2000-01-01)=dev 0행**(실 Google Sheets 자격 필요)→order-app 가격전환 QA는 투명 seed(`QA_R2_SEED`) 필요. ⚠️ **partner-auth-service(:8091)가 docker 기본기동 목록에 없음**→QA가 기동+테스트 거래처 계정(`bizNo=2118712345`/PIN 1234·명백한 테스트계정·잔존). **evict 없음**→schedule 변경 후 partner-order-service **재기동 필수**(dev-lead A).
 
-### 🔜 다음 TODO (개발책임자 자율 위임 — 갱신 2026-07-08)
-1. **#17 잔여**: **#688**(S3 DRAFT 블로커·~1주 stale rebase·`BootstrapService.hasProductData`·`@Column(32)` vs DB VARCHAR(30)) → **#773**(일마감 단가변동 재계산 토글·대규모·별도 정찰됨).
+### 🔜 다음 TODO (개발책임자 자율 위임 — 갱신 2026-07-09)
+1. **#17 잔여**: ~~#688(S3)✅ 머지 `0bd3ac252`~~ → **#773**(일마감 단가변동 재계산 토글·대규모·별도 정찰됨) · **#777**(#688 후속: bootstrap 캐시 evict-on-write/TTL·priceBaseline exposure-비의존[구성품]·oldProducts 자동전환).
 2. **소형 백로그 결정불요**: **#725 후속 raw enum sweep**(PartnerOrder markOnHold·Slip·Estimate raw enum·EstimateService 500마스킹·중형 다도메인) · **warning 색 토큰 sweep**(`var(--color-warning-700,#b45309)` 안티패턴 5+파일·AA 재계산 동반).
 3. **E3 회계**: #3 journal→cashReceipt 링크(BE cashReceiptId 추가 vs 네비 — 개발책임자 결정 대기) · #18 accounting backlog → **#12 회계 full-form**(대규모·BE update 신설+차/대변+라인 CRDT).
 - ⚠️ **개발책임자 정책/방향 필요**: E3 #3 링크 방향 · MANAGER sales.estimate-config 권한 · dc-config-service 기본기동 · #729 잔여.
