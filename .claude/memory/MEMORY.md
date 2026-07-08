@@ -133,6 +133,7 @@
 
 # FE/UI 규약
 - [인쇄 양식 반복 정정](feedback_print_design_iteration.md) — 단번완성 금지, mock→캡처→CSS 3~5회
+- [CSS var 토큰 fallback 함정](feedback_css_var_token_not_fallback.md) — `var(--token,#fallback)`는 토큰 정의 시 토큰값 렌더(fallback 아님) → "토큰화=값 불변"은 실제값==fallback만·대비 재계산 필수 (2026-07-08 #776 AA 회귀·R2 포착)
 - [다중 추가 입력=칩](feedback_chip_ui_multi_input.md) — TagChip+AsyncAutocomplete, 품목라인 제외
 - [FE canAccess page-code=BE @RequirePermission 일치](feedback_fe_canaccess_pagecode_be_match.md)
 - [FE 가드 제거=전체 mock suite](feedback_fe_guard_removal_contract_tests.md)

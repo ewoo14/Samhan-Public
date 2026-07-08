@@ -4,6 +4,28 @@
 
 ---
 
+## ✅ 2026-07-08 (회사PC 이어받기) — #17 S4b 캐논 완주·머지 `ac7759470`(#776) → 다음 TODO 순차 (SONNET 대체·PM 자율)
+
+> **다음 세션 첫 읽기 = 본 절.** 회사PC가 집PC #775 인계(#729·#771·S4a) 이어받아 **#17 단가변동 S4b 완주**. 운영모드 = **SONNET 대체**(Sonnet 5 서브에이전트 = 구현·5-agent 리뷰·라이브 QA / Opus(PM) = STEP4 독립 적대검증·점검·commit대행·머지 — Codex Jul11 한도). [[feedback_sonnet_substitution_when_codex_unavailable]]
+
+### S4b (#776 `ac7759470`) — 순수 FE, "인상 전 단가" 기본값 배선
+- **estimate-app**: `priceDefaultVariant()` 신설 + 체크박스 3종 초기값·**리셋** config화(전환 계산 무변경). **desktop**: `EstimatePricingConfigPage` "카테고리별 단가변동" 자립 섹션 + admin GET/PUT + mock V86 parity. product-service·BE 무변경(S4a 완료).
+- **개발책임자 결정**: **H1 옵션A**(ACCOUNTANT가 V86 권한 보유하나 페이지 게이트 `sales.estimate-config`로 도달 불가 → PermissionGuard `pageCode` 배열 OR 확장으로 `products.price-schedule` OR 진입 허용·estimateConfig 폼은 sales.estimate-config 보유자만·ACCOUNTANT=단가변동 섹션만). Q5/Q7(MANAGER+ACCOUNTANT view+update).
+- **캐논 완주**: R1 5-agent→fix `eeb4b79f3`→R2 5-agent(**재검이 R1 fix 유발 Design AA 회귀 포착** — `var(--color-warning-700,#b45309)`가 실제 #B47A1F 렌더로 AA 5.02→3.66 회귀·단축금지 실증)→R2-fix `70b234776`→STEP4 Opus 독립 적대검증(코드0+실스택)→라이브 QA 10캡처 전건 PASS(mock OFF·fresh jar·**ACCOUNTANT 옵션A·estimate-app 체크박스 E2E**)→CI 32/32→PM 9-게이트→자율머지. dev-report `2026-07-08-17-s4b-price-variant-config.md`. 교훈 박제 [[feedback_css_var_token_not_fallback]].
+
+### QA 환경 메모 (회사PC)
+- 회사PC **background gradle 정상**(killed 아님·집PC와 다름). 스택 최신화 = **jar 재빌드 → docker cp `/app/app.jar` + restart**(product/auth). auth **Flyway V83 체크섬 드리프트**(E2 롤아웃 로컬 잔재) 시 `flyway/flyway:10` 컨테이너로 `repair`(스키마 무손상)→재기동. dev 계정 11종 비번 `dev_p05_pass!`(login_id 키).
+- ⚠️ **dc-config-service가 docker 기본기동 목록에 없음**(estimate-config 상단 폼 BE)→QA가 `up -d dc-config-service` 수동 기동. 기본 포함 여부 개발책임자 판단.
+- ⚠️ **MANAGER `sales.estimate-config` group 권한계 미반영**(legacy V58 role만·pre-existing)→estimateConfig 요율/옵션 폼 현재 MASTER 전용. 옵션A OR-게이트가 무해 커버. MANAGER 폼 편집권 필요 여부 별도 정책.
+
+### 🔜 다음 TODO (개발책임자 자율 위임 — 갱신 2026-07-08)
+1. **#17 잔여**: **#688**(S3 DRAFT 블로커·~1주 stale rebase·`BootstrapService.hasProductData`·`@Column(32)` vs DB VARCHAR(30)) → **#773**(일마감 단가변동 재계산 토글·대규모·별도 정찰됨).
+2. **소형 백로그 결정불요**: **#725 후속 raw enum sweep**(PartnerOrder markOnHold·Slip·Estimate raw enum·EstimateService 500마스킹·중형 다도메인) · **warning 색 토큰 sweep**(`var(--color-warning-700,#b45309)` 안티패턴 5+파일·AA 재계산 동반).
+3. **E3 회계**: #3 journal→cashReceipt 링크(BE cashReceiptId 추가 vs 네비 — 개발책임자 결정 대기) · #18 accounting backlog → **#12 회계 full-form**(대규모·BE update 신설+차/대변+라인 CRDT).
+- ⚠️ **개발책임자 정책/방향 필요**: E3 #3 링크 방향 · MANAGER sales.estimate-config 권한 · dc-config-service 기본기동 · #729 잔여.
+
+---
+
 ## ✅ 2026-07-08 (오후~) — #729·#771·#17 S4a 3-PR 캐논 완주·머지 → 다음 = S4b (Sonnet 구현 + Opus STEP4 모드)
 
 > **다음 세션(집PC) 첫 읽기 = 본 절.** 운영모드: **Sonnet 5 서브에이전트 = 구현·정찰·5-agent 리뷰·라이브 QA / Opus = PM 판단·STEP4 독립 적대검증·commit 대행·머지.** Codex Jul11 한도 → STEP4가 Codex 라운드 + 개발책임자 승인 대체. (Sonnet=중형이라 Opus 점검 필수·토큰 절약.)
