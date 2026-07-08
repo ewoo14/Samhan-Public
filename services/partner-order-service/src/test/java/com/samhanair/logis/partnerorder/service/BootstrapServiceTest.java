@@ -21,6 +21,7 @@ import com.samhanair.logis.partnerorder.web.dto.BootstrapResponse;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.lang.reflect.Field;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,6 +73,8 @@ class BootstrapServiceTest {
                 .thenReturn(List.of());
         lenient().when(estimateCatalogClient.priceBaseline())
                 .thenReturn(List.of());
+        lenient().when(estimateCatalogClient.priceChangeSchedule())
+                .thenReturn(Map.of());
     }
 
     private void setField(String name, Object value) throws Exception {
@@ -203,6 +206,17 @@ class BootstrapServiceTest {
                 .thenReturn(List.of(
                         Map.of("name", "D7", "price", new BigDecimal("43000")),
                         Map.of("name", "D8", "price", new BigDecimal("51000"))));
+        when(estimateCatalogClient.priceBaseline())
+                .thenReturn(List.of(
+                        baselineRow("HM-1", "HOME_MULTI", "440000", "111000"),
+                        baselineRow("CM-1", "COMMERCIAL_MULTI", "320000", "222000"),
+                        baselineRow("SS-1", "SINGLE_SET", "1100000", "900000"),
+                        baselineRow("PANEL-1", "SINGLE_SET", "65000", "50000")));
+        when(estimateCatalogClient.priceChangeSchedule())
+                .thenReturn(Map.of(
+                        "homemulti", LocalDate.of(2026, 4, 1),
+                        "singleSets", LocalDate.of(2026, 4, 1),
+                        "commercialMulti", LocalDate.of(2026, 5, 1)));
         when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of(
                 makeCacheRow("config", "{\"vatRate\":0.1,\"homeDiscount\":0.45}")));
 
@@ -269,18 +283,127 @@ class BootstrapServiceTest {
         assertThat(commercialPart).containsEntry("price", new BigDecimal("88000"));
 
         // then — 자재가격/단가인상은 배열이 아니라 legacy 객체맵이다.
-        // order-app INC 맵은 인상 후 catalog 값이어야 하며, price-baseline(인상 전)은 estimate-app 전용이다.
+        // 모델 B: base catalog 는 인상 후를 유지하고, INC 맵은 price-baseline(인상 전) 값이다.
+        // baseline 이 없는 모델은 INC 에 넣지 않아 FE 가 base(후)를 유지하게 한다.
         assertThat(payloads.get("singleMatPrices"))
                 .isEqualTo(Map.of("D7", new BigDecimal("43000"), "D8", new BigDecimal("51000")));
-        assertThat(payloads.get("homeInc")).isEqualTo(Map.of("HM-1", new BigDecimal("456000")));
-        assertThat(payloads.get("commInc")).isEqualTo(Map.of("CM-1", new BigDecimal("333000")));
-        assertThat(payloads.get("singleInc")).isEqualTo(Map.of("SS-1", new BigDecimal("1000000")));
-        assertThat(payloads.get("singlePartsInc")).isEqualTo(Map.of("PANEL-1", new BigDecimal("55000")));
-        verify(estimateCatalogClient, never()).priceBaseline();
+        assertThat(payloads.get("homeInc")).isEqualTo(Map.of("HM-1", new BigDecimal("440000")));
+        assertThat(payloads.get("commInc")).isEqualTo(Map.of("CM-1", new BigDecimal("320000")));
+        assertThat(payloads.get("singleInc")).isEqualTo(Map.of("SS-1", new BigDecimal("900000")));
+        assertThat(payloads.get("singlePartsInc")).isEqualTo(Map.of("PANEL-1", new BigDecimal("50000")));
+        assertThat(payloads.get("priceChangeSchedule")).isEqualTo(Map.of(
+                "homemulti", LocalDate.of(2026, 4, 1),
+                "singleSets", LocalDate.of(2026, 4, 1),
+                "commercialMulti", LocalDate.of(2026, 5, 1)));
+        verify(estimateCatalogClient).priceBaseline();
+        verify(estimateCatalogClient).priceChangeSchedule();
 
         @SuppressWarnings("unchecked")
         Map<String, Object> configMap = (Map<String, Object>) payloads.get("config");
         assertThat(configMap).containsKey("vatRate").doesNotContainKey("homeDiscount");
+    }
+
+    @Test
+    void fetch_catalog가_모두_비어있고_priceChangeSchedule만_존재해도_product_db_변환을_사용하지_않는다() throws Exception {
+        // given — 관리자가 스케줄만 선(先)세팅하고 상품 catalog 는 아직 비어있는 상태(현실적 시나리오:
+        // product-service 카탈로그 등록 전에 단가변동 스케줄부터 구성). 시트도 비활성화해 V2 seed
+        // fallback 경로만 검증한다.
+        setField("sheetPrefetchEnabled", false);
+        when(estimateCatalogClient.priceChangeSchedule())
+                .thenReturn(Map.of("homemulti", LocalDate.of(2026, 4, 1)));
+        when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of(
+                makeCacheRow("homemulti", "[[\"seed-row\"]]")));
+
+        // when
+        bootstrapService.prefetch();
+        BootstrapResponse response = bootstrapService.fetch();
+
+        // then — hasProductData 가 schedule 존재만으로 true 오판되면 productCatalogCache 에
+        // homemulti=[] 가 캐싱되어 seed 값을 영구 override 했을 것이다. 회귀 fix 후에는 seed 값 유지.
+        assertThat(response.payloads().get("homemulti")).isEqualTo(List.of(List.of("seed-row")));
+    }
+
+    @Test
+    void fetch_catalog가_모두_비어있고_priceBaseline만_존재해도_product_db_변환을_사용하지_않는다() throws Exception {
+        // given — priceChangeSchedule 과 동일 결함 패턴: 구형/폐기 모델의 historical baseline 행만
+        // 남아있고 실 catalog 는 비어있는 경우도 hasProductData 를 오판시키지 않아야 한다.
+        setField("sheetPrefetchEnabled", false);
+        when(estimateCatalogClient.priceBaseline())
+                .thenReturn(List.of(baselineRow("OLD-1", "LEGACY", "100000", "90000")));
+        when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of(
+                makeCacheRow("homemulti", "[[\"seed-row\"]]")));
+
+        // when
+        bootstrapService.prefetch();
+        BootstrapResponse response = bootstrapService.fetch();
+
+        // then
+        assertThat(response.payloads().get("homemulti")).isEqualTo(List.of(List.of("seed-row")));
+    }
+
+    @Test
+    void fetch_priceChangeSchedule_예외발생시에도_catalog_7종_payload는_보존된다() throws Exception {
+        // given — BE-2 (#688 S3 R1 리뷰): priceChangeSchedule() 이 실패해도 이미 조회에 성공한
+        // catalog 7종(homemulti~materialPrices)은 loadProductCatalogPayloadsSafely() 의 catch-all
+        // 에 휩쓸려 Map.of() 로 폐기되지 않고, priceChangeSchedule 만 빈 Map 으로 fallback 해야 한다.
+        // (fix 전에는 이 예외가 loadProductCatalogPayloads() 밖으로 전파되어 catalog 7종까지
+        // 통째로 사라졌다 — hasProductData 오판 버그(#688)와 동형의 회귀.)
+        setField("sheetPrefetchEnabled", false);
+        when(estimateCatalogClient.catalog(EstimateCategory.HOME_MULTI, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(catalogRow(
+                        "홈 실내기", "HM-1", "EA", "123000", "456000",
+                        "실내기", "4WAY", "소형", true, null, null, false,
+                        null, null, null)));
+        when(estimateCatalogClient.priceChangeSchedule())
+                .thenThrow(new RuntimeException("product-service price-change-schedule 5xx"));
+        when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of());
+
+        // when
+        BootstrapResponse response = bootstrapService.fetch();
+
+        // then — homemulti catalog 는 정상 변환되어 그대로 반환되고 (Map.of() 로 폐기되지 않음),
+        // priceChangeSchedule 만 빈 Map 으로 fallback 한다.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> home = (List<Map<String, Object>>) response.payloads().get("homemulti");
+        assertThat(home).hasSize(1);
+        assertThat(home.get(0)).containsEntry("model", "HM-1");
+        assertThat(response.payloads().get("priceChangeSchedule")).isEqualTo(Map.of());
+    }
+
+    @Test
+    void fetch_priceBaseline_가격이_0또는_null이면_incPriceMap에서_제외된다() throws Exception {
+        // given — QA-4: baseline row 자체는 존재하나 releasePrice/deliveryPrice 가 0 또는 null 인
+        // 경우 incPriceMap 의 price<=0 guard(BootstrapService.incPriceMap 내부)로 제외되어야 한다.
+        // homeInc 는 releasePrice, singleInc 는 deliveryPrice 를 priceKey 로 사용하므로 두 키 모두
+        // 0/null 조합을 검증한다.
+        setField("sheetPrefetchEnabled", false);
+        when(estimateCatalogClient.catalog(EstimateCategory.HOME_MULTI, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(
+                        catalogRow("0원 베이스라인", "HM-ZERO-BASE", "EA", "100000", "200000",
+                                "실내기", "4WAY", "소형", true, null, null, false,
+                                null, null, null),
+                        catalogRow("null 베이스라인", "HM-NULL-BASE", "EA", "100000", "200000",
+                                "실내기", "4WAY", "소형", true, null, null, false,
+                                null, null, null)));
+        when(estimateCatalogClient.catalog(EstimateCategory.SINGLE_SET, UsageScope.PARTNER_ORDER))
+                .thenReturn(List.of(catalogRow(
+                        "싱글 0원 베이스라인", "SS-ZERO-BASE", "SET", "1000000", "1200000",
+                        "4w", "premium", null, false, "D7", null, false,
+                        null, null, null)));
+        when(estimateCatalogClient.priceBaseline())
+                .thenReturn(List.of(
+                        baselineRow("HM-ZERO-BASE", "HOME_MULTI", "0", "90000"),
+                        baselineRow("HM-NULL-BASE", "HOME_MULTI", null, "90000"),
+                        baselineRow("SS-ZERO-BASE", "SINGLE_SET", "1100000", "0")));
+        when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of());
+
+        // when
+        BootstrapResponse response = bootstrapService.fetch();
+
+        // then — releasePrice(homeInc) / deliveryPrice(singleInc) 모두 0 또는 null 이면 제외되어
+        // 두 INC 맵 모두 빈 상태로 반환된다.
+        assertThat(response.payloads().get("homeInc")).isEqualTo(Map.of());
+        assertThat(response.payloads().get("singleInc")).isEqualTo(Map.of());
     }
 
     private BootstrapCacheConfig makeCacheRow(String key, String json) {
@@ -344,6 +467,19 @@ class BootstrapServiceTest {
         row.put("variant", variant);
         row.put("isDefault", isDefault);
         row.put("specText", specText);
+        return row;
+    }
+
+    private static Map<String, Object> baselineRow(
+            String modelCode,
+            String estimateCategory,
+            String releasePrice,
+            String deliveryPrice) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("modelCode", modelCode);
+        row.put("estimateCategory", estimateCategory);
+        row.put("releasePrice", bd(releasePrice));
+        row.put("deliveryPrice", bd(deliveryPrice));
         return row;
     }
 

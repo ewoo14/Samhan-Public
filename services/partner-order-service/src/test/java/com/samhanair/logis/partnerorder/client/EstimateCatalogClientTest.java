@@ -1,13 +1,18 @@
 package com.samhanair.logis.partnerorder.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.InternalAuthProperties;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,7 +65,7 @@ class EstimateCatalogClientTest {
     }
 
     @Test
-    void components_materialPrices_priceBaseline_모두_data를_언랩한다() {
+    void components_materialPrices_priceBaseline_priceChangeSchedule_모두_data를_언랩한다() {
         server.expect(once(), requestTo("http://product-service/products/internal/estimate-catalog/components"
                         + "?category=SINGLE_SET"))
                 .andExpect(method(HttpMethod.GET))
@@ -80,6 +85,12 @@ class EstimateCatalogClientTest {
                 .andRespond(withSuccess("""
                         {"data":[{"modelCode":"HM-1","estimateCategory":"HOME_MULTI","releasePrice":470000}]}
                         """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo("http://product-service/products/internal/price-change-schedule"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withSuccess("""
+                        {"data":{"homemulti":"2026-04-01","singleSets":"2026-05-01"}}
+                        """, MediaType.APPLICATION_JSON));
 
         assertThat(client.components(EstimateCategory.SINGLE_SET).get(0))
                 .containsEntry("componentModelCode", "PANEL-1");
@@ -88,6 +99,27 @@ class EstimateCatalogClientTest {
         assertThat(client.priceBaseline().get(0))
                 .containsEntry("modelCode", "HM-1")
                 .containsEntry("releasePrice", 470000);
+        assertThat(client.priceChangeSchedule())
+                .isEqualTo(Map.of(
+                        "homemulti", LocalDate.of(2026, 4, 1),
+                        "singleSets", LocalDate.of(2026, 5, 1)));
+        server.verify();
+    }
+
+    @Test
+    void priceChangeSchedule_5xx_응답이면_BusinessException_INTERNAL_ERROR로_매핑한다() {
+        // QA-6 (#688 S3 R1 리뷰) — product-service price-change-schedule 이 5xx 를 반환하면
+        // BootstrapService.loadProductCatalogPayloads() 의 개별 try-catch(BE-2)가 잡을 수 있도록
+        // BusinessException(ErrorCode.INTERNAL_ERROR) 로 매핑되어야 한다.
+        server.expect(once(), requestTo("http://product-service/products/internal/price-change-schedule"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withServerError());
+
+        assertThatThrownBy(() -> client.priceChangeSchedule())
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INTERNAL_ERROR));
         server.verify();
     }
 }
