@@ -4,6 +4,17 @@
 
 ---
 
+## 🔴 2026-07-11 (집PC 새벽 자율·2차) — #779 5-agent 완료·**P1 개발책임자 설계결정 에스컬레이션**·PR #780 HOLD
+
+> **개발책임자 복귀/다음 세션 첫 읽기.** #777 item2 머지 후 이어 착수한 #779가 P1 설계결정 지점 도달.
+
+- **#779**(order-app 상업 그리드 3 fix · PR **#780** OPEN·**머지 HOLD**): Codex 구현(P1/P2/P3 `faac6994d`) + Opus 5-agent(FE/BE/Design/DevOps/QA) 완료.
+  - **🛑 P1 = 개발책임자 설계결정 필요**(에스컬레이션 게시 #779 #issuecomment-4939033521): P1(`buildCommSetIndex` `window.COMM_PARTS`→`COMM_PARTS`) fix 자체는 정확하나, 죽어있던 `renderCommSetParts`(SET 하위행 렌더)를 처음 활성화 → **rowspan 그리드 붕괴(FE 실 Chromium Playwright 재현·좌표 실측) + 모바일 셀 4vs8(데이터 무관 결정적)** 노출. 정공법 = rowspan 엔진 재작업(A 2-pass 재계산 / B 삽입후 rowSpan 증분 / C 접기·펼치기 UX) + 모바일 SET하위행 표현 + 밀도(상시 vs q>0). 뒤 둘=설계판단(사전선언 에스컬레이션 밸브). **방향 수령 후 Codex 구현→실스택 라이브QA(붕괴 수복 실증)→0수렴→머지.**
+  - **P3 = decision-free genuine**(주문정보 "취소"→미리보기 stale 합계 fix)·**분리 즉시 머지 가능**(개발책임자 옵션 제시). **P2 = #commTotal 위생·무증상**(`tfoot{display:none!important}` 129행 선존재로 배지 원래 미표시).
+- **P1 결정 대기 중 다음 자율 후보(결정불요)**: warning 색 토큰 sweep(`var(--color-warning-700,#b45309)` AA)·raw enum sweep. #779는 P1 방향 수령 후 재개.
+
+---
+
 ## ✅ 2026-07-11 (집PC 새벽 자율) — #17 #777 **item2** 캐논 완주·머지 (`3f71d139e`, PR #778) → 다음 = #779 / 결정불요 백로그
 
 > **다음 세션 첫 읽기 = 본 절.** 집PC 새벽 자율(개발책임자 부재·"PM 자율 진행" 지시). **Codex 회복 → SONNET 대체 해제·표준 Opus+Codex 듀얼리뷰 복귀.**
