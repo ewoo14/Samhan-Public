@@ -72,8 +72,17 @@ clients/desktop/playwright/coedit-s3-3-accounting/
 clients/desktop/playwright/dispatch-collab-real-qa/
 clients/desktop/playwright/n1b-native-qa/
 clients/desktop/playwright/n3b-fcm-push-real-qa/
+clients/desktop/playwright/e2-partner-list-real-qa/
 clients/desktop/iotxn-*.config.ts
 clients/desktop/docs/
+
+# 병합 PR(#760/#761/#714) 선행 브랜치(#756/#755/#711) 잔재 QA 스샷 — 실 증적은
+# docs/qa/*-retro/·714-journal-detail-1024px/·e2-rollout-* 에 이미 커밋됨. 로컬 중복 고아
+# (재캡처 가능·커밋 대상 아님). 물리 삭제는 개발책임자 확인 후. (2026-07-11 집PC 정리)
+docs/qa/e2-partner-list/gui-*.png
+docs/qa/e3-s4d-coedit/asis-broken/
+docs/qa/e3-s4d-coedit/fixed-*.png
+docs/qa/journal-detail-column-widths/screenshots/*-1024-minwidth-*.png
 
 # ----- Misc -----
 *.tmp
