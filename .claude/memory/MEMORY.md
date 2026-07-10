@@ -44,6 +44,7 @@
 - [PR 게시 인코딩 — 파이프 mojibake](feedback_gh_comment_utf8_pipe_mojibake.md) — 게시/PATCH=UTF-8 파일 경유만·직후 자가 검사 의무 (2026-07-04 #724) — body-file=Write/Edit/heredoc만, Set-Content 금지
 - [Bash 커밋=−F 파일](feedback_bash_commit_message_file.md) — @'...'@ here-string 금지, Write→git commit -F
 - [desktop 타입검증=npm run typecheck](feedback_desktop_typecheck_command.md)
+- [order-app CI=tsc typecheck·vitest≠tsc](feedback_order_app_typecheck_not_vitest.md) — vitest만 로컬 실행 시 타입에러 미포착·CI red, 로컬 npm run typecheck 의무 (2026-07-11 #778)
 - [Playwright 로컬 버전 skew](feedback_playwright_local_version_skew.md) — node_modules/.bin 직접·desktop cwd
 - [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 rename 시 design-system junction 깨짐→npm install
 - [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — npipe skip 가능. 우회=dockerDesktopLinuxEngine npipe+~/.docker-java.properties api.version=1.44(2026-07-03 실증) or DOCKER_HOST tcp

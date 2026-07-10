@@ -4,6 +4,26 @@
 
 ---
 
+## ✅ 2026-07-11 (집PC 새벽 자율) — #17 #777 **item2** 캐논 완주·머지 (`3f71d139e`, PR #778) → 다음 = #779 / 결정불요 백로그
+
+> **다음 세션 첫 읽기 = 본 절.** 집PC 새벽 자율(개발책임자 부재·"PM 자율 진행" 지시). **Codex 회복 → SONNET 대체 해제·표준 Opus+Codex 듀얼리뷰 복귀.**
+
+### 완주·머지 (PR #778 squash `3f71d139e`) — #777 item2 구성품 단가 자동전환
+- **내용**: S3(#688)에서 구성품(싱글/상업)만 미적용이던 자동전환을 **priceBaseline() exposure-비의존 전환**으로 완성. product-service `priceBaseline()` 추가 emit(exposure 미커버 baseline=estimateCategory null) · partner-order `commPartsInc`+`incPriceMapFirstDecimal`(출고가 우선)+`defaultPayload` map/list 계약+CACHE_KEYS 18종 · order-app `commPartUnitPrice()` 공유 헬퍼로 상업 구성품 4사이트 게이트 단일화.
+- **캐논 완주**: Codex 구현 → **Opus 5-agent**(HIGH H1=상업 구성품 라이브 표 4사이트 중 2곳 게이트 누락→FE+Design 확증→헬퍼 fix) → **Codex 5-agent**(MEDIUM defaultPayload `[]`→`{}` 계약 family fix) → **0수렴**(Codex "0 findings 수렴") → 라이브 QA(due 변동일 전 500k/후 700k·화면=API=DB 100%·투명시드 롤백) → CI green → PM 자율 머지. dev-report `2026-07-11-price-change-777-item2-component-autoswitch.md`.
+- **교훈 박제**: [[feedback_order_app_typecheck_not_vitest]] — order-app CI=`tsc`(typecheck) 포함, vitest는 tsc 미실행 → 로컬 `npm run typecheck` 의무(noUncheckedIndexedAccess TS2532를 CI가 적발·소급 fix `b7e29ca8a`).
+
+### 🔜 다음 TODO (개발책임자 자율 위임 — 갱신 2026-07-11)
+1. **#779**(신규·본 QA 발견·결정불요): order-app 상업 세트 구성품 그리드 3종 레거시 결함 — ①`buildCommSetIndex()` `window.COMM_PARTS` 오참조 → 상업 구성품 그리드 하위행 **미렌더**(item2 그리드 표시가 이 P1로 gated·가격계산/제출은 정상) ②`fixFootersForMobile` `#commTotal` 파괴 ③미리보기 재표시 합계 stale. 전부 `13ce6f89e` 유래·#778 무관. **다음 자율 슬라이스 1순위 후보.**
+2. **#777 잔여(개발책임자 결정 필요)**: **item1** 캐시 evict/TTL(evict-on-write 이벤트/webhook vs 유계 TTL) · **item3** oldProducts baseline 데이터소스(구형 인상전/후 시트 도입 vs admin수동 vs 인상미적용 확정·돈로직/무결성).
+3. **#773**(대규모·일마감 재계산 토글·마감/무결성 정책 — 개발책임자 확인 필요).
+4. 소형 백로그(결정불요): warning 색 토큰 sweep(`var(--color-warning-700,#b45309)` AA 재계산)·raw enum sweep(#725 잔여).
+
+### 미커밋 정리 (세션 시작 시)
+미추적 QA 고아 18항목(#760/#761/#714 선행브랜치 잔재)→`.gitignore` 무시 커밋 `9bf8b6043`(비파괴·git clean은 안전분류기 차단). **물리 삭제는 개발책임자 확인 후**(실 증적은 병합PR에 이미 커밋됨).
+
+---
+
 ## ✅ 2026-07-08~09 (회사PC 이어받기) — #17 **S4b·S3** 캐논 완주·머지 (`ac7759470`·`0bd3ac252`) → 다음 TODO 순차 (SONNET 대체·PM 자율)
 
 > **다음 세션 첫 읽기 = 본 절.** 회사PC가 집PC #775 인계(#729·#771·S4a) 이어받아 **#17 단가변동 S4b(#776)·S3(#688) 2슬라이스 완주·머지**. 운영모드 = **SONNET 대체**(Sonnet 5 서브에이전트 = 구현·5-agent 리뷰·라이브 QA / Opus(PM) = STEP4 독립 적대검증·점검·commit대행·머지 — Codex Jul11 한도). [[feedback_sonnet_substitution_when_codex_unavailable]]
