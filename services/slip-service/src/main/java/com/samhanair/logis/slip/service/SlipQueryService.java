@@ -106,8 +106,8 @@ public class SlipQueryService {
             for (DeliveryTag tag : deliveryTags) {
                 if (tag.getDirection() != slipType) {
                     throw new BusinessException(ErrorCode.INVALID_INPUT,
-                            "deliveryTag=" + tag.name() + " 는 " + tag.getDirection().name()
-                                    + " 전표 전용입니다. slipType=" + slipType.name() + " 와 정합되지 않습니다.");
+                            "'" + tag.getKoreanLabel() + "' 배송 태그는 "
+                                    + slipType.getDisplayName() + "와 정합되지 않습니다.");
                 }
             }
         }

@@ -627,7 +627,8 @@ public class Slip extends BaseEntity {
      * @param memo 메모 (선택)
      * @param requesterId 요청자 user-id (필수)
      * @return DRAFT 상태의 신규 출고전표
-     * @throws IllegalArgumentException sourceWarehouseId 가 null 이거나 deliveryTag 의 direction 이 INBOUND 일 때
+     * @throws IllegalArgumentException sourceWarehouseId 가 null 일 때
+     * @throws com.samhanair.logis.common.exception.BusinessException (INVALID_INPUT) deliveryTag 의 direction 이 INBOUND 일 때
      */
     public static Slip createOutbound(String slipNo, LocalDate slipDate, int seqNo,
                                       UUID sourceWarehouseId, UUID destinationWarehouseId,
@@ -655,7 +656,8 @@ public class Slip extends BaseEntity {
      * @param memo 메모 (선택)
      * @param requesterId 요청자 user-id (필수)
      * @return DRAFT 상태의 신규 입고전표
-     * @throws IllegalArgumentException destinationWarehouseId 가 null 이거나 deliveryTag 의 direction 이 OUTBOUND 일 때
+     * @throws IllegalArgumentException destinationWarehouseId 가 null 일 때
+     * @throws com.samhanair.logis.common.exception.BusinessException (INVALID_INPUT) deliveryTag 의 direction 이 OUTBOUND 일 때
      */
     public static Slip createInbound(String slipNo, LocalDate slipDate, int seqNo,
                                      UUID destinationWarehouseId,
@@ -672,9 +674,9 @@ public class Slip extends BaseEntity {
 
     private static void validateTagDirection(DeliveryTag tag, SlipType slipType) {
         if (tag != null && tag.getDirection() != slipType) {
-            throw new IllegalArgumentException(
-                    "배송 태그 " + tag.name() + "(" + tag.getDirection() + ") 는 "
-                            + slipType + " 전표에 사용할 수 없습니다");
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "'" + tag.getKoreanLabel() + "' 배송 태그는 "
+                            + slipType.getDisplayName() + "에 사용할 수 없습니다");
         }
     }
 
@@ -839,13 +841,13 @@ public class Slip extends BaseEntity {
      * @param driverName 배송 기사명 (null 이면 보존, 빈 문자열은 그대로 저장)
      * @param driverPhone 배송 기사 연락처 (null 이면 보존)
      * @throws BusinessException(CONFLICT) 현재 상태가 DRAFT/SAVED 가 아닐 때
-     * @throws IllegalArgumentException deliveryTag 의 direction 이 slipType 과 불일치
+     * @throws com.samhanair.logis.common.exception.BusinessException (CONFLICT 수정불가 상태 / INVALID_INPUT deliveryTag 의 direction 이 slipType 과 불일치)
      */
     public void editHeader(UUID partnerId, String partnerName, DeliveryTag deliveryTag, String memo,
                            String driverName, String driverPhone) {
         if (!EDITABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "수정 가능한 상태가 아닙니다: " + this.status);
+                    "수정 가능한 상태가 아닙니다: " + this.status.getDisplayName());
         }
         if (deliveryTag != null) {
             validateTagDirection(deliveryTag, this.slipType);
@@ -1079,7 +1081,7 @@ public class Slip extends BaseEntity {
                 && this.status != SlipStatus.ACCEPTED
                 && this.status != SlipStatus.INSPECTING) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "반려 가능한 상태가 아닙니다: " + this.status);
+                    "반려 가능한 상태가 아닙니다: " + this.status.getDisplayName());
         }
         requireNotLocked();
         this.status = SlipStatus.REJECTED;
@@ -1113,7 +1115,7 @@ public class Slip extends BaseEntity {
         }
         if (!CANCELABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "취소 가능한 상태가 아닙니다: " + this.status);
+                    "취소 가능한 상태가 아닙니다: " + this.status.getDisplayName());
         }
         requireNotLocked();
         this.status = SlipStatus.CANCELED;
@@ -1300,8 +1302,8 @@ public class Slip extends BaseEntity {
                                 SignatureSource source) {
         if (!SIGNABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "서명 가능한 단계가 아닙니다 (현재: " + this.status
-                            + ", 필요: INSPECTING/COMPLETED/SHIPPING)");
+                    "서명 가능한 단계가 아닙니다 (현재: " + this.status.getDisplayName()
+                            + ", 필요: 검수중/처리완료/배송중)");
         }
         if (signerName == null || signerName.isBlank()) {
             throw new IllegalArgumentException("signerName 은 필수입니다");
@@ -1422,8 +1424,8 @@ public class Slip extends BaseEntity {
                                       SignatureSource source) {
         if (!SIGNABLE_STATUSES.contains(this.status)) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "기사 서명 가능한 단계가 아닙니다 (현재: " + this.status
-                            + ", 필요: INSPECTING/COMPLETED/SHIPPING)");
+                    "기사 서명 가능한 단계가 아닙니다 (현재: " + this.status.getDisplayName()
+                            + ", 필요: 검수중/처리완료/배송중)");
         }
         if (png == null || png.length == 0) {
             throw new IllegalArgumentException("driverSignaturePng 은 필수입니다");
@@ -1484,12 +1486,12 @@ public class Slip extends BaseEntity {
 
     /**
      * 발행 출처 메타데이터 일괄 설정 — SlipPublishService 가 신규 슬립 생성 후 호출.
-     * 본 메서드는 1회성 setter (재호출 시 IllegalStateException) — 출처는 발행 시점에 확정.
+     * 본 메서드는 1회성 setter (재호출 시 BusinessException(CONFLICT)) — 출처는 발행 시점에 확정.
      *
      * @param sourceType 출처 유형 (필수)
      * @param sourceId 비즈니스 식별자 (estimate/order 인 경우 필수, MANUAL 이면 null 허용)
      * @param idempotencyKey 호출자 발급 키 (선택, null 이면 idempotency 보호 없이 일반 슬립으로 저장)
-     * @throws IllegalStateException 이미 sourceType 이 설정되어 있고 MANUAL 이 아닐 때
+     * @throws com.samhanair.logis.common.exception.BusinessException (CONFLICT) 이미 sourceType 이 설정되어 있고 MANUAL 이 아닐 때
      * @throws IllegalArgumentException sourceType 이 null 일 때
      */
     public void assignPublishSource(SlipSourceType sourceType, String sourceId, String idempotencyKey) {
@@ -1497,8 +1499,8 @@ public class Slip extends BaseEntity {
             throw new IllegalArgumentException("sourceType 은 필수입니다");
         }
         if (this.sourceType != null && this.sourceType != SlipSourceType.MANUAL) {
-            throw new IllegalStateException(
-                    "이미 발행 출처가 설정된 슬립입니다: " + this.sourceType);
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "이미 발행 출처가 설정된 슬립입니다: " + this.sourceType.getDisplayName());
         }
         this.sourceType = sourceType;
         this.sourceId = sourceId;
@@ -1685,14 +1687,15 @@ public class Slip extends BaseEntity {
     public void requireEditable() {
         if (!isEditable()) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "라인 수정 가능한 상태가 아닙니다: " + this.status);
+                    "라인 수정 가능한 상태가 아닙니다: " + this.status.getDisplayName());
         }
     }
 
     private void requireStatus(SlipStatus expected) {
         if (this.status != expected) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "전이 가능한 상태가 아닙니다: 현재 " + this.status + ", 필요 " + expected);
+                    "전이 가능한 상태가 아닙니다: 현재 " + this.status.getDisplayName()
+                            + ", 필요 " + expected.getDisplayName());
         }
     }
 
@@ -1886,7 +1889,7 @@ public class Slip extends BaseEntity {
     public void markDispatchPending() {
         if (this.dispatchStatus == com.samhanair.logis.slip.domain.dispatch.SlipDispatchStatus.DISPATCHED) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "이미 DISPATCHED 인 slip 은 다시 DISPATCHING 으로 전이할 수 없습니다.");
+                    "이미 " + this.dispatchStatus.getDisplayName() + " 상태인 전표는 다시 배차 발송할 수 없습니다.");
         }
         this.dispatchStatus = com.samhanair.logis.slip.domain.dispatch.SlipDispatchStatus.DISPATCHING;
     }
@@ -1904,7 +1907,7 @@ public class Slip extends BaseEntity {
     public void markDispatchReleased() {
         if (this.dispatchStatus == com.samhanair.logis.slip.domain.dispatch.SlipDispatchStatus.DISPATCHED) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "이미 DISPATCHED 인 slip 은 UNDISPATCHED 로 복귀할 수 없습니다.");
+                    "이미 " + this.dispatchStatus.getDisplayName() + " 상태인 전표는 미배차 상태로 복귀할 수 없습니다.");
         }
         this.dispatchStatus = com.samhanair.logis.slip.domain.dispatch.SlipDispatchStatus.UNDISPATCHED;
     }
@@ -1918,7 +1921,7 @@ public class Slip extends BaseEntity {
     public void markDispatchedExternally() {
         if (this.dispatchStatus != com.samhanair.logis.slip.domain.dispatch.SlipDispatchStatus.UNDISPATCHED) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "UNDISPATCHED 상태의 slip 만 타배송사 발송 완료로 전이할 수 있습니다.");
+                    "미배차 상태의 전표만 타배송사 발송 완료로 전이할 수 있습니다.");
         }
         this.dispatchStatus = com.samhanair.logis.slip.domain.dispatch.SlipDispatchStatus.DISPATCHED;
     }
