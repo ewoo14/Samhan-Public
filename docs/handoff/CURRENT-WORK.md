@@ -4,7 +4,7 @@
 
 ---
 
-## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **4-PR 머지**·#779/#777 완결
+## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **5-PR 머지**·#779/#777 완결·warning-AA(#784)
 
 > **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→전부 반영·머지 완료. 미착수 결정불요 백로그만 남음.
 
@@ -18,12 +18,14 @@
 - **#780 #779-P1** (`47531613a`): 상업 SET 구성품 그리드 렌더 복구(rowspan B·라이브 QA **24/24** 픽셀 실측 시프트0). P2=무증상(tfoot display:none 선존재) 문서화.
 - **#783 #777-item1** (`610f562a7`): bootstrap 캐시 **유계 staleness** — `BootstrapCacheRefreshScheduler`(스케줄 evictAll→prefetch→evictSpringBootstrapCache)로 관리자 변동일/단가 재기동 없이 기본10분 내 반영. **BE 5-agent가 @Cacheable-TTL 접근의 내부캐시 미갱신 BLOCKER 포착→스케줄 refresh 재설계·Codex가 refresh window race 포착→3단계 fix**(단축금지 정당성 실증).
 - **#779 완결**(P1+P3) · **#777 완결**(item1 #783·item2 #778·item3 ⓒ)·close.
+- **#784 warning 토큰 AA sweep** (`c288bedef`): 텍스트 warning 토큰 `-700/-600/-500`→`-800` 13파일 20건(#776 후속·AA 3.66→5.35·[[feedback_css_var_token_not_fallback]]). **개발책임자 strict 라이브QA 지시**(2026-07-11) → desktop A/B/C(Aligo배너·권한매트릭스·입고검수 DiffBadge▲/정상수량) before/after 실 GUI(입고검수 실시드→투명롤백). arologis D/E는 **선존재 크래시(#785 분리)**로 렌더 차단→계산-AA 커버(개발책임자 승인). Opus+Codex 5-agent 0수렴·CI 25잡 green.
 
 ### 🔜 잔여 (전부 미착수·결정불요/후속)
-1. 결정불요 백로그: **warning 색 토큰 AA sweep**(`var(--color-warning-700,#b45309)` 안티패턴) · **raw enum sweep**(#725 잔여).
-2. **#782** (#779 P1 QA 발견): 구성품 defaultQty ×N 미표시(BE componentRows·주문수량 영향 조사) · set-part 시각폴리시 · discoverability.
-3. **#773** (일마감 단가변동 재계산 토글·대규모·마감/무결성 정책 — 개발책임자 확인).
-4. E3 회계(#3 journal→cashReceipt 링크·#12 회계 full-form) 등 기존 백로그.
+1. **#785** (arologis DispatchDetailPage `NotifyResultSection` undefined.length 크래시 + `/api/arologis`↔`/admin/arologis` 라우팅 미스매치 — #784 strict QA 발견). arologis-desktop real-qa 하네스는 `clients/arologis-desktop/vite.renderer.dev.config.ts`(프록시 rewrite)+`clients/desktop/playwright/arologis-warning-aa-real-qa/`(desktop playwright로 구동·admin/admin1234)로 구축됨.
+2. 결정불요 백로그: **raw enum sweep**(#725 잔여) · warning AA 후속(**SeverityBadge 3종 패밀리** CR 2.12·다크모드 latent·AuditOverlaySection fallback).
+3. **#782** (#779 P1 QA 발견): 구성품 defaultQty ×N 미표시 · set-part 시각폴리시 · discoverability.
+4. **#773** (일마감 단가변동 재계산 토글·대규모·마감/무결성 정책 — 개발책임자 확인).
+5. E3 회계(#3 journal→cashReceipt 링크·#12 회계 full-form) 등 기존 백로그.
 
 ---
 

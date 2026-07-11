@@ -77,6 +77,7 @@
 - [real-qa 실행법+스펙 false-RED](feedback_realqa_run_and_false_red.md) — mock off+:8080+config(webServer 없음), DragHandle 글리프 false-RED. 고아 vite(구코드 서빙)=false-RED 원천→신규포트+--strictPort+정리(2026-07-03)
 - [real-qa 프록시 글롭+resourceType](feedback_realqa_proxy_glob_resourcetype.md) — 백엔드만 좁게+xhr/fetch, /collab/stream abort, networkidle 금지
 - [real-qa 디렉토리 -real-qa 접미사](project_dispatch_on_inspect_epic.md) — 누락시 CI mock잡 미제외→ECONNREFUSED
+- [arologis-desktop standalone QA 하네스](feedback_arologis_desktop_standalone_qa_harness.md) — 브라우저 렌더러 vite config+프록시 rewrite(`/api/arologis`→`/admin/arologis`)·`VITE_AROLOGIS_API_BASE=''`·admin/admin1234·desktop playwright로 구동(@playwright/test 미설치)·DispatchDetailPage 크래시=#785 (2026-07-11 #784)
 - [정찰 grep false-negative](feedback_recon_grep_false_negative.md) — grep 0매치≠기능부재, 실 파일/라우트로 검증
 
 # Codex
