@@ -4,6 +4,28 @@
 
 ---
 
+## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·#779 완결(P1+P3 머지)·#777 item1(TTL) 잔여
+
+> **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→반영 완료.
+
+### 개발책임자 결정 (2026-07-11)
+- **#779 P1** = B(rowSpan 증분)/수량>0/모바일 4셀 미러 · **P3** = 분리 즉시 머지.
+- **#777 item1** = 유계 TTL · **item3** = ⓒ 구형 인상 미적용 확정.
+
+### 완결·머지 (이번 세션 3-PR·전부 표준 캐논)
+- **#778 item2** (`3f71d139e`): 구성품 카테고리별 단가 자동전환(priceBaseline exposure-비의존).
+- **#781 #779-P3** (`b33125afd`): 취소→미리보기 stale 합계·group-top fix(라이브 QA 전/후 대조).
+- **#780 #779-P1** (`47531613a`): 상업 SET 구성품 그리드 렌더 복구(rowspan B·수량>0·모바일 미러·라이브 QA **24/24** 픽셀 실측 시프트0·구성품 단가전환 item2 통합). P2=무증상(tfoot display:none 선존재) 문서화.
+- **#779 완결**(P1+P3). 후속 **#782**(defaultQty ×2 미표시[BE componentRows·주문수량 영향 조사]·set-part 시각폴리시·discoverability).
+
+### 🔜 잔여
+1. **#777 item1 (유계 TTL)** — bootstrap `@Cacheable("bootstrap")` 무TTL(ConcurrentMapCacheManager) → **유계 TTL**(Caffeine expireAfterWrite 또는 스케줄 @CacheEvict). partner-order-service. **다음 착수.**
+2. **#777 item3 (ⓒ)** = 코드 무변경·구형 인상 미적용 확정·문서화 종결.
+3. 결정불요 백로그: warning 색 토큰 AA sweep · raw enum sweep.
+4. #782(#779 P1 후속) · #773(일마감 재계산·대규모·정책).
+
+---
+
 ## 🔴 2026-07-11 (집PC 새벽 자율·2차) — #779 5-agent 완료·**P1 개발책임자 설계결정 에스컬레이션**·PR #780 HOLD
 
 > **개발책임자 복귀/다음 세션 첫 읽기.** #777 item2 머지 후 이어 착수한 #779가 P1 설계결정 지점 도달.
