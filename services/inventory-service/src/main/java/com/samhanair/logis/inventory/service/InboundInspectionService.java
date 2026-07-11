@@ -27,6 +27,7 @@ import com.samhanair.logis.inventory.web.dto.InboundInspectionRequest;
 import com.samhanair.logis.inventory.web.dto.InboundInspectionSummaryResponse;
 import jakarta.persistence.OptimisticLockException;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -72,8 +73,27 @@ import org.springframework.transaction.annotation.Transactional;
 public class InboundInspectionService {
 
     /** 검수 허용 슬립 상태 집합. */
-    private static final Set<String> INSPECTABLE_STATUSES =
-            Set.of("SAVED", "CONFIRMED", "COMPLETED", "PROCESSING", "INSPECTING");
+    private static final List<String> INSPECTABLE_STATUS_ORDER =
+            List.of("SAVED", "CONFIRMED", "COMPLETED", "PROCESSING", "INSPECTING");
+    private static final Set<String> INSPECTABLE_STATUSES = Set.copyOf(INSPECTABLE_STATUS_ORDER);
+    /**
+     * slip-service {@code SlipStatus.displayName} 의 로컬 사본(MSA 경계상 enum 직접 공유 불가·SlipDetail 은
+     * status 를 raw 문자열로만 내려줌). ⚠️ slip-service {@code SlipStatus} 라벨 변경/추가 시 본 맵 동기화 필요.
+     * 근본 해소는 SlipDetail 에 statusDisplayName 필드 추가(계약 변경·별도 후속).
+     */
+    private static final Map<String, String> SLIP_STATUS_DISPLAY_NAMES = Map.ofEntries(
+            Map.entry("DRAFT", "작성중"),
+            Map.entry("SAVED", "저장완료"),
+            Map.entry("SENT", "전송완료"),
+            Map.entry("ACCEPTED", "수락"),
+            Map.entry("PROCESSING", "처리중"),
+            Map.entry("INSPECTING", "검수중"),
+            Map.entry("COMPLETED", "처리완료"),
+            Map.entry("SHIPPING", "배송중"),
+            Map.entry("DELIVERED", "배송완료"),
+            Map.entry("CONFIRMED", "확정"),
+            Map.entry("REJECTED", "반려"),
+            Map.entry("CANCELED", "취소"));
     private static final String PRODUCT_TYPE_BUNDLE = "BUNDLE";
 
     private final InboundInspectionRepository inspectionRepository;
@@ -292,12 +312,12 @@ public class InboundInspectionService {
     private InboundInspection createInspectionFromSlipDetail(UUID slipId, SlipDetail slipDetail) {
         if (!"INBOUND".equals(slipDetail.slipType())) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "입고전표(INBOUND)만 검수 가능합니다: slipType=" + slipDetail.slipType());
+                    "입고전표만 검수 가능합니다 (해당 전표는 검수 대상이 아닙니다)");
         }
         if (slipDetail.status() == null || !INSPECTABLE_STATUSES.contains(slipDetail.status())) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "검수 가능한 슬립 상태가 아닙니다: status=" + slipDetail.status()
-                            + " (허용: " + INSPECTABLE_STATUSES + ")");
+                    "검수 가능한 슬립 상태가 아닙니다: 현재 " + slipStatusDisplayName(slipDetail.status())
+                            + " (허용: " + inspectableStatusDisplayNames() + ")");
         }
 
         InboundInspection inspection = InboundInspection.create(slipId, slipDetail.slipNo());
@@ -350,6 +370,19 @@ public class InboundInspectionService {
 
     private boolean isInventoryExcluded(ProductSummary product) {
         return !product.goods() || PRODUCT_TYPE_BUNDLE.equals(product.productType());
+    }
+
+    private static String slipStatusDisplayName(String status) {
+        if (status == null) {
+            return "미지정";
+        }
+        return SLIP_STATUS_DISPLAY_NAMES.getOrDefault(status, status);
+    }
+
+    private static String inspectableStatusDisplayNames() {
+        return INSPECTABLE_STATUS_ORDER.stream()
+                .map(InboundInspectionService::slipStatusDisplayName)
+                .collect(Collectors.joining(", "));
     }
 
     /**
