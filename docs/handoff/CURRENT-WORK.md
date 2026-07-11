@@ -4,25 +4,26 @@
 
 ---
 
-## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·#779 완결(P1+P3 머지)·#777 item1(TTL) 잔여
+## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **4-PR 머지**·#779/#777 완결
 
-> **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→반영 완료.
+> **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→전부 반영·머지 완료. 미착수 결정불요 백로그만 남음.
 
-### 개발책임자 결정 (2026-07-11)
+### 개발책임자 결정 (2026-07-11) — 전부 반영·머지
 - **#779 P1** = B(rowSpan 증분)/수량>0/모바일 4셀 미러 · **P3** = 분리 즉시 머지.
-- **#777 item1** = 유계 TTL · **item3** = ⓒ 구형 인상 미적용 확정.
+- **#777 item1** = 유계 staleness · **item3** = ⓒ 구형 인상 미적용 확정.
 
-### 완결·머지 (이번 세션 3-PR·전부 표준 캐논)
+### 완결·머지 (이번 세션 4-PR·전부 표준 Opus+Codex 캐논)
 - **#778 item2** (`3f71d139e`): 구성품 카테고리별 단가 자동전환(priceBaseline exposure-비의존).
 - **#781 #779-P3** (`b33125afd`): 취소→미리보기 stale 합계·group-top fix(라이브 QA 전/후 대조).
-- **#780 #779-P1** (`47531613a`): 상업 SET 구성품 그리드 렌더 복구(rowspan B·수량>0·모바일 미러·라이브 QA **24/24** 픽셀 실측 시프트0·구성품 단가전환 item2 통합). P2=무증상(tfoot display:none 선존재) 문서화.
-- **#779 완결**(P1+P3). 후속 **#782**(defaultQty ×2 미표시[BE componentRows·주문수량 영향 조사]·set-part 시각폴리시·discoverability).
+- **#780 #779-P1** (`47531613a`): 상업 SET 구성품 그리드 렌더 복구(rowspan B·라이브 QA **24/24** 픽셀 실측 시프트0). P2=무증상(tfoot display:none 선존재) 문서화.
+- **#783 #777-item1** (`610f562a7`): bootstrap 캐시 **유계 staleness** — `BootstrapCacheRefreshScheduler`(스케줄 evictAll→prefetch→evictSpringBootstrapCache)로 관리자 변동일/단가 재기동 없이 기본10분 내 반영. **BE 5-agent가 @Cacheable-TTL 접근의 내부캐시 미갱신 BLOCKER 포착→스케줄 refresh 재설계·Codex가 refresh window race 포착→3단계 fix**(단축금지 정당성 실증).
+- **#779 완결**(P1+P3) · **#777 완결**(item1 #783·item2 #778·item3 ⓒ)·close.
 
-### 🔜 잔여
-1. **#777 item1 (유계 TTL)** — bootstrap `@Cacheable("bootstrap")` 무TTL(ConcurrentMapCacheManager) → **유계 TTL**(Caffeine expireAfterWrite 또는 스케줄 @CacheEvict). partner-order-service. **다음 착수.**
-2. **#777 item3 (ⓒ)** = 코드 무변경·구형 인상 미적용 확정·문서화 종결.
-3. 결정불요 백로그: warning 색 토큰 AA sweep · raw enum sweep.
-4. #782(#779 P1 후속) · #773(일마감 재계산·대규모·정책).
+### 🔜 잔여 (전부 미착수·결정불요/후속)
+1. 결정불요 백로그: **warning 색 토큰 AA sweep**(`var(--color-warning-700,#b45309)` 안티패턴) · **raw enum sweep**(#725 잔여).
+2. **#782** (#779 P1 QA 발견): 구성품 defaultQty ×N 미표시(BE componentRows·주문수량 영향 조사) · set-part 시각폴리시 · discoverability.
+3. **#773** (일마감 단가변동 재계산 토글·대규모·마감/무결성 정책 — 개발책임자 확인).
+4. E3 회계(#3 journal→cashReceipt 링크·#12 회계 full-form) 등 기존 백로그.
 
 ---
 
