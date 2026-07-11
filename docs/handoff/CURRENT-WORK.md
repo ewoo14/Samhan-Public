@@ -4,6 +4,31 @@
 
 ---
 
+## ✅ 2026-07-12 (집PC 야간 자율) — **결정불요 백로그 전부 완주**·세션 누계 **17-PR 머지**
+
+> **개발책임자 복귀 첫 읽기.** "자는 동안 잔여 처리(워크플로우 단축 금지)" 지시로 야간 자율. **결정불요 항목 전부 완료·머지.** 남은 건 전부 **결정/스코프 필요**(아래 🔴).
+
+### 야간 완주·머지 (표준 캐논 엄수 — 5-agent+Codex 적대+실QA+0수렴+dev-report+CI)
+- **#790 인쇄라벨 SSOT**(`d81e12a77`) · **#791 EditLockGuard displayName**(`b5c522336`) · **#792 approval/collab 상태메시지**(`78834726e`) — #787 raw-enum 계열 완결.
+- **#793 Slip 출고/입고전표 창고 필수화 + Tier2 500 마스킹 해소**(`0f7dd1282`): 개발책임자 결정 A(항상 창고). createOutbound/createInbound IllegalArg→BusinessException 400. 모바일 현장주문 창고=도메인 enforce(CreateSlipRequest 일관·필드명 노출 회피). #789 revert 잔재 종결.
+- **#794 UUID 비공개 hygiene**(`7b6eb3d19`): 예외응답 UUID 노출(71파일/133스팟)을 **개발책임자 Approach B**(공유 ExceptionMessageSanitizer 응답시점 scrub·14핸들러+7직접반환)+혼합메시지 16곳 편집으로. 실HTTP 3서비스 실증.
+- **#795 SeverityBadge+알림벨 뱃지 AA**(`9f4079d34`): 흰텍스트 solid bg 3+1종 CR≥4.5(neutral-600/warning-800/danger-700). 라이브 before/after 캡처. #784 후속.
+- **#796 #782 part1 구성품 defaultQty 주문정합 HIGH**(`ded140f01`): componentRows 미매핑→표시+**제출 수량 ×1**(구성품 2개필요→1개 주문). BE qty 매핑+단품 explodeSetParts 곱+정수 정규화(소수 footgun). 라이브 제출 payload qty=6 실증.
+- **#797 #782 part2 .set-part 시각폴리시**(`95757df50`): 상업 SET 구성품 하위행 연한배경+이름 muted+들여쓰기(숫자 강조 판독). 라이브 before/after.
+
+### 정정·정리
+- **E3 = 입금보고서 에픽·이미 완료**(오기 정정). "실시간 메뉴 반응형" 에픽 부재(실시간=S4d coedit·반응형=S4 폼).
+- **OutboxStatus 무이슈**(내부 스케줄러 sentinel·HTTP 미노출).
+
+### 🔴 남은 백로그 = 전부 결정/스코프 필요 (자율 진행 안 함)
+- **#782 part3**(discoverability·LOW): 부모 SET행 구성품 신호(쉐브런/라벨) — **밀도우선 선호와 트레이드오프**(이슈도 "밀도 요구엔 부합" 명시). UX 판단 필요.
+- **#773**(일마감 단가변동 재계산·대규모): **마감/무결성 정책 결정**.
+- **#3**(journal→cashReceipt 링크): **방식 결정**(BE cashReceiptId 추가 vs 현 네비).
+- **#12**(회계 full-form·대규모 에픽): **스코프 결정**(BE update 신설+차/대변+라인 CRDT).
+- (버그·별건) **알림 게이트웨이 500**(#795 QA 발견): NotificationCenterController가 X-User-Role 필수인데 PR #415가 게이트웨이 주입 제거 → 알림내역/벨 게이트웨이 경유 500. 백엔드 계약 fix 필요.
+
+---
+
 ## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **11-PR 머지**·#779/#777 완결·warning-AA(#784)·**#787 raw-enum/마스킹/라벨 계열 전체 완료**(#786·#788·#789·#790·#791·#792)
 
 > **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→전부 반영·머지 완료. 미착수 결정불요 백로그만 남음.
