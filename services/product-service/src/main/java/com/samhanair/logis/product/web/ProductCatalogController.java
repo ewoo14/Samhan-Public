@@ -31,6 +31,7 @@ import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.security.permission.RequirePermission;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -330,13 +331,9 @@ public class ProductCatalogController {
     @RequirePermission(page = "products.admin", action = PermissionAction.CREATE)
     public ResponseEntity<ProductSpecResponse> addSpec(@PathVariable @NotBlank String modelCode,
                                                        @Valid @RequestBody SpecCreateRequest req) {
-        try {
-            ProductSpec saved = specService.addSpec(modelCode, req.specKey(), req.specValue(),
-                    req.unit(), req.displayOrder());
-            return ResponseEntity.status(HttpStatus.CREATED).body(ProductSpecResponse.from(saved));
-        } catch (IllegalStateException dup) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
-        }
+        ProductSpec saved = specService.addSpec(modelCode, req.specKey(), req.specValue(),
+                req.unit(), req.displayOrder());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ProductSpecResponse.from(saved));
     }
 
     @PatchMapping("/products/{modelCode}/specs/{specId}")
@@ -464,7 +461,8 @@ public class ProductCatalogController {
 
     // UsageChangeRequest 는 PR-B 에서 UpdateProductUsageRequest 로 대체됨.
 
-    public record SpecCreateRequest(@NotBlank String specKey, String specValue, String unit, Integer displayOrder) {}
+    public record SpecCreateRequest(@NotBlank String specKey, @NotNull String specValue,
+                                    String unit, Integer displayOrder) {}
 
     public record SpecEditRequest(String specValue, String unit) {}
 
