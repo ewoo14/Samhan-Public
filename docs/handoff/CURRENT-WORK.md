@@ -4,7 +4,7 @@
 
 ---
 
-## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **7-PR 머지**·#779/#777 완결·warning-AA(#784)·raw-enum(#786·#788)
+## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **11-PR 머지**·#779/#777 완결·warning-AA(#784)·**#787 raw-enum/마스킹/라벨 계열 전체 완료**(#786·#788·#789·#790·#791·#792)
 
 > **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→전부 반영·머지 완료. 미착수 결정불요 백로그만 남음.
 
@@ -24,8 +24,17 @@
 
 - **#789 #787 Tier2 500 마스킹 승격** (`61cb3a877`): IllegalState/IllegalArg→BusinessException(400/409) 8곳(inventory InventoryAuditService·product ProductSpecService/EstimateCatalog·auth DynamicPermissionService/ApprovalLineConfig·slip DispatchTaskBoardQueryService). Slip null-warehouse는 **모바일 계약 충돌(현장주문 sourceWarehouseId 생략가능 vs createOutbound 요구)로 revert·결정 후속**. 2562 tests 0-fail.
 
-### 🔜 잔여 (개발책임자 "모두 완주" 지시 2026-07-11 — 순차 진행 중)
-- **#787 잔여 PR 그룹**: PR-2 DefaultEditLockGuard(shared·option B) · PR-3 PartnerOrderPrintService(SSOT 진행중/완료·결정됨) · PR-4/5 UUID sweep(70파일·결정됨) · **Slip null-warehouse(모바일 warehouse 필수 여부 결정 대기)**
+### ✅ 추가 완주·머지 (#787 raw-enum/마스킹/라벨 계열 **전체 완료** — 이번 세션 누계 11-PR)
+- **#790 인쇄라벨 SSOT** (`d81e12a77`): PartnerOrderPrintService statusLabel switch→getDisplayName(진행중/완료). **Design P1(대외문서 "완료"=배송완료 오인) 에스컬레이션→개발책임자 SSOT 유지 확정**. 실 print HTML 렌더 QA 3종(완료/진행중·레이아웃 정상).
+- **#791 EditLockGuard displayName** (`b5c522336`): shared DefaultEditLockGuard raw enum 누출→EditLockPolicy.displayName(opt-in fn)·11정책 배선·DispatchDerivedStatus SSOT 신설(**Design "배차중"→"배송중" SSOT 정합**)·EditRequestRecord(F1). 실HTTP+라이브 standalone curl 실증.
+- **#792 approval/collab 상태메시지** (`78834726e`): approval-core/collab-core raw enum 누출 5곳→displayName SSOT 3종 신설(대기/진행중/승인/반려/회수·제안/수락/반려/철회). **BE 직렬화 무영향 실증**(@Enumerated STRING·SSE .name()). #791 sweep가 포착한 F2/F3.
+
+### 🔜 잔여 (개발책임자 "모두 완주" 지시 — 우선순위/결정 확인 중)
+- **UUID interpolation sweep** (70파일·결정됨: 전체 sweep). 대규모·UUID vs 비즈니스식별자 구분 필요. 미착수.
+- **Slip null-warehouse**(#789 revert로 드러남): 모바일 현장주문 sourceWarehouseId 필수 여부 — **결정 대기**.
+- **OutboxStatus:121**(partner-order SlipPublishOutbox raw 누출·#792 BE 발견) — 소규모 후속.
+- **SeverityBadge AA 3종**(CR 2.12·다크모드 latent) · **#782**(order-app 구성품 defaultQty) — 자율.
+- **#773**(일마감 단가변동 재계산·마감/무결성 정책) · **E3 회계**(#3 journal→cashReceipt·#12 full-form 에픽) — **정책/스코프 결정 필요**.
 ### 🔜 잔여 (전부 미착수·결정불요/후속)
 1. **#785** (arologis DispatchDetailPage `NotifyResultSection` undefined.length 크래시 + `/api/arologis`↔`/admin/arologis` 라우팅 미스매치 — #784 strict QA 발견). arologis-desktop real-qa 하네스는 `clients/arologis-desktop/vite.renderer.dev.config.ts`(프록시 rewrite)+`clients/desktop/playwright/arologis-warning-aa-real-qa/`(desktop playwright로 구동·admin/admin1234)로 구축됨.
 2. **#787** (raw enum sweep 확장 — 타 서비스 inventory/partner/notification[SSOT 4개]·Tier2 non-enum 500·PartnerOrderPrintService 인쇄라벨[design intent]·UUID interpolation·#786 후속) · warning AA 후속(**SeverityBadge 3종 패밀리** CR 2.12·다크모드 latent·AuditOverlaySection fallback).
