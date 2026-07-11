@@ -34,7 +34,8 @@
 - **Slip null-warehouse**(#789 revert로 드러남): 모바일 현장주문 sourceWarehouseId 필수 여부 — **결정 대기**.
 - **OutboxStatus:121**(partner-order SlipPublishOutbox raw 누출·#792 BE 발견) — 소규모 후속.
 - **SeverityBadge AA 3종**(CR 2.12·다크모드 latent) · **#782**(order-app 구성품 defaultQty) — 자율.
-- **#773**(일마감 단가변동 재계산·마감/무결성 정책) · **E3 회계**(#3 journal→cashReceipt·#12 full-form 에픽) — **정책/스코프 결정 필요**.
+- **#773**(일마감 단가변동 재계산·마감/무결성 정책) — **정책 결정 필요**.
+- ⚠️ **E3 오기 정정(2026-07-12)**: E3=입금보고서 에픽은 **이미 완료**(S1 도메인·S2 분개역분개[D-E3-02~05]·S3 통장·S4a~d FE[S4d 실시간 coedit]·#723 권한매트릭스 전부 머지). "E3 회계 에픽 미결정"으로 적었던 잔여는 실제로 E3 아님 → **#3**(journal→cashReceipt 링크·소규모·방식 결정대기: BE cashReceiptId 추가 vs 네비) + **#12**(회계 full-form·별개 대규모 에픽). 개발책임자 확인 2026-07-12.
 ### 🔜 잔여 (전부 미착수·결정불요/후속)
 1. **#785** (arologis DispatchDetailPage `NotifyResultSection` undefined.length 크래시 + `/api/arologis`↔`/admin/arologis` 라우팅 미스매치 — #784 strict QA 발견). arologis-desktop real-qa 하네스는 `clients/arologis-desktop/vite.renderer.dev.config.ts`(프록시 rewrite)+`clients/desktop/playwright/arologis-warning-aa-real-qa/`(desktop playwright로 구동·admin/admin1234)로 구축됨.
 2. **#787** (raw enum sweep 확장 — 타 서비스 inventory/partner/notification[SSOT 4개]·Tier2 non-enum 500·PartnerOrderPrintService 인쇄라벨[design intent]·UUID interpolation·#786 후속) · warning AA 후속(**SeverityBadge 3종 패밀리** CR 2.12·다크모드 latent·AuditOverlaySection fallback).
