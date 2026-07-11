@@ -4,7 +4,7 @@
 
 ---
 
-## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **6-PR 머지**·#779/#777 완결·warning-AA(#784)·raw-enum(#786)
+## ✅ 2026-07-11 (집PC·3차) — 개발책임자 4결정 반영·이번 세션 **7-PR 머지**·#779/#777 완결·warning-AA(#784)·raw-enum(#786·#788)
 
 > **다음 세션 첫 읽기.** 개발책임자 복귀→결정 수령→전부 반영·머지 완료. 미착수 결정불요 백로그만 남음.
 
@@ -20,6 +20,7 @@
 - **#779 완결**(P1+P3) · **#777 완결**(item1 #783·item2 #778·item3 ⓒ)·close.
 - **#784 warning 토큰 AA sweep** (`c288bedef`): 텍스트 warning 토큰 `-700/-600/-500`→`-800` 13파일 20건(#776 후속·AA 3.66→5.35·[[feedback_css_var_token_not_fallback]]). **개발책임자 strict 라이브QA 지시**(2026-07-11) → desktop A/B/C(Aligo배너·권한매트릭스·입고검수 DiffBadge▲/정상수량) before/after 실 GUI(입고검수 실시드→투명롤백). arologis D/E는 **선존재 크래시(#785 분리)**로 렌더 차단→계산-AA 커버(개발책임자 승인). Opus+Codex 5-agent 0수렴·CI 25잡 green.
 - **#786 #725 후속 raw enum sweep** (`38ca35945`): slip·partner-order 사용자노출 예외메시지 raw enum→displayName SSOT + **Tier0 genuine 500 마스킹 2건 승격**(validateTagDirection/assignPublishSource 500→400/409). PartnerOrderStatus displayName SSOT 신설(FE parity). **Codex 적대 재검증(R1→R3)이 초기 recon 대폭 누락분(dispatch 하위패키지·`+ s` 로컬변수·editrequest 서비스)을 3패스 포착→전부 fix→genuine 0수렴**(단축금지 실증·[[feedback_defect_family_sweep_fix]]). 라이브 probe(500→400+한국어 실증)·slip 1217+partner-order 360 tests 0-fail·CI 31 green. 후속 **#787**.
+- **#788 #787 raw enum 확장** (`4f342e3c2`): inventory/partner/partner-auth/notification 4서비스 예외메시지 raw enum→displayName SSOT + **신규 SSOT 4개**(StockInstanceStatus·PartnerStatus×2·NotificationStatus). Tier0 masking 없음(전부 핸들러). **정찰을 #786 교훈으로 처음부터 exhaustive**(bare var+getStatus()+하위패키지)해 재수렴 1패스로 단축. 1112 tests 0-fail·CI 27 green. **#787 OPEN 유지**(잔여: DefaultEditLockGuard[shared·HIGH·QA 발견]·Tier2 non-enum 500·PartnerOrderPrintService 인쇄라벨·UUID·파일전체 슬립 sweep).
 
 ### 🔜 잔여 (전부 미착수·결정불요/후속)
 1. **#785** (arologis DispatchDetailPage `NotifyResultSection` undefined.length 크래시 + `/api/arologis`↔`/admin/arologis` 라우팅 미스매치 — #784 strict QA 발견). arologis-desktop real-qa 하네스는 `clients/arologis-desktop/vite.renderer.dev.config.ts`(프록시 rewrite)+`clients/desktop/playwright/arologis-warning-aa-real-qa/`(desktop playwright로 구동·admin/admin1234)로 구축됨.
