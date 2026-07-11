@@ -29,6 +29,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 /**
  * BootstrapService 단위 테스트 — PR-D Part 1 시트 prefetch + V2 seed fallback 2 시나리오.
@@ -39,7 +41,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *   <li>prefetch_시트실패 — sheet read 예외 → V2 seed payload 그대로 반환 (graceful fallback)</li>
  * </ul>
  */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class BootstrapServiceTest {
 
     @Mock
@@ -218,14 +220,14 @@ class BootstrapServiceTest {
         when(estimateCatalogClient.components(EstimateCategory.SINGLE_SET))
                 .thenReturn(List.of(componentRow(
                         "SS-1", "PANEL-1", "싱글 판넬", "EA",
-                        "55000", "66000", "PANEL", "기본", true, "판넬 규격"),
+                        "55000", "66000", "PANEL", "기본", true, "2", "판넬 규격"),
                         componentRow(
                                 "SS-1", "PANEL-NULL", "싱글 null 판넬", "EA",
                                 null, "66000", "PANEL", "선택", false, "판넬 규격")));
         when(estimateCatalogClient.components(EstimateCategory.COMMERCIAL_MULTI))
                 .thenReturn(List.of(componentRow(
                         "CM-1", "COMM-PART-1", "상업 구성품", "EA",
-                        "77000", "88000", "OUTDOOR", "선택", false, "상업 구성 규격"),
+                        "77000", "88000", "OUTDOOR", "선택", false, "3", "상업 구성 규격"),
                         componentRow(
                                 "CM-1", "COMM-PART-2", "상업 구성품2", "EA",
                                 "80000", "90000", "OUTDOOR", "선택", false, "상업 구성 규격2")));
@@ -303,13 +305,19 @@ class BootstrapServiceTest {
                 .containsEntry("model", "PANEL-1")
                 .containsEntry("name", "싱글 판넬")
                 .containsEntry("price", new BigDecimal("55000"))
+                .containsEntry("qty", new BigDecimal("2"))
                 .containsEntry("kind", "PANEL")
                 .containsEntry("isDefault", true)
                 .containsEntry("feat", "기본")
                 .containsEntry("spec", "판넬 규격");
         @SuppressWarnings("unchecked")
-        Map<String, Object> commercialPart = ((List<Map<String, Object>>) payloads.get("commercialParts")).get(0);
-        assertThat(commercialPart).containsEntry("price", new BigDecimal("88000"));
+        List<Map<String, Object>> commercialParts = (List<Map<String, Object>>) payloads.get("commercialParts");
+        Map<String, Object> commercialPart = commercialParts.get(0);
+        assertThat(commercialPart)
+                .containsEntry("price", new BigDecimal("88000"))
+                .containsEntry("qty", new BigDecimal("3"));
+        assertThat(commercialParts.get(1))
+                .containsEntry("qty", BigDecimal.ONE);
 
         // then — 자재가격/단가인상은 배열이 아니라 legacy 객체맵이다.
         // 모델 B: base catalog 는 인상 후를 유지하고, INC 맵은 price-baseline(인상 전) 값이다.
@@ -458,6 +466,32 @@ class BootstrapServiceTest {
         assertThat(response.payloads().get("commPartsInc")).isEqualTo(Map.of());
     }
 
+    @Test
+    void fetch_구성품_defaultQty_소수는_orderApp_payload에서_정수화하고_warn을_남긴다(
+            CapturedOutput output) throws Exception {
+        // given — order-app payload qty 는 정수 계약(FE parseInt/regex 소비)이므로 소수 defaultQty 는
+        // payload 생성 경계에서 정수화해야 한다. BundleExpander 도메인 로직은 이 변환 경로를 타지 않는다.
+        setField("sheetPrefetchEnabled", false);
+        when(estimateCatalogClient.components(EstimateCategory.COMMERCIAL_MULTI))
+                .thenReturn(List.of(componentRow(
+                        "CM-DECIMAL", "COMM-PART-DECIMAL", "상업 소수 구성품", "EA",
+                        "77000", "88000", "OUTDOOR", "선택", false, "2.50", "상업 소수 규격")));
+        when(cacheRepository.findAllByOrderByCacheKeyAsc()).thenReturn(List.of());
+
+        // when
+        BootstrapResponse response = bootstrapService.fetch();
+
+        // then
+        @SuppressWarnings("unchecked")
+        Map<String, Object> commercialPart = ((List<Map<String, Object>>) response.payloads()
+                .get("commercialParts")).get(0);
+        assertThat(commercialPart).containsEntry("qty", new BigDecimal("3"));
+        assertThat(output).contains("[BootstrapService] 구성품 defaultQty 소수 감지(order-app 정수화)")
+                .contains("setModel=CM-DECIMAL")
+                .contains("model=COMM-PART-DECIMAL")
+                .contains("defaultQty=2.50");
+    }
+
     private BootstrapCacheConfig makeCacheRow(String key, String json) {
         return BootstrapCacheConfig.of(key, json);
     }
@@ -508,6 +542,22 @@ class BootstrapServiceTest {
             String variant,
             Boolean isDefault,
             String specText) {
+        return componentRow(setModelCode, componentModelCode, name, unit, deliveryPrice, releasePrice,
+                kind, variant, isDefault, null, specText);
+    }
+
+    private static Map<String, Object> componentRow(
+            String setModelCode,
+            String componentModelCode,
+            String name,
+            String unit,
+            String deliveryPrice,
+            String releasePrice,
+            String kind,
+            String variant,
+            Boolean isDefault,
+            String defaultQty,
+            String specText) {
         Map<String, Object> row = new java.util.LinkedHashMap<>();
         row.put("setModelCode", setModelCode);
         row.put("componentModelCode", componentModelCode);
@@ -518,6 +568,7 @@ class BootstrapServiceTest {
         row.put("kind", kind);
         row.put("variant", variant);
         row.put("isDefault", isDefault);
+        row.put("defaultQty", bd(defaultQty));
         row.put("specText", specText);
         return row;
     }

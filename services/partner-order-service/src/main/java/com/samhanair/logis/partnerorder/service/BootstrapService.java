@@ -458,11 +458,26 @@ public class BootstrapService {
                     out.put("price", price);
                     out.put("kind", row.get("kind"));
                     out.put("isDefault", bool(row.get("isDefault")));
+                    out.put("qty", defaultComponentQty(row));
                     out.put("feat", row.get("variant"));
                     out.put("spec", row.get("specText"));
                     return out;
                 })
                 .toList();
+    }
+
+    private BigDecimal defaultComponentQty(Map<String, Object> row) {
+        BigDecimal qty = decimal(row.get("defaultQty"));
+        if (qty == null) {
+            return BigDecimal.ONE;
+        }
+        // order-app payload qty는 정수 계약(FE parseInt/regex 소비)이다. BundleExpander 도메인 로직은
+        // 소수 defaultQty를 별도 경로로 사용하므로, 여기서는 order-app 페이로드만 정수화한다.
+        if (qty.stripTrailingZeros().scale() > 0) {
+            log.warn("[BootstrapService] 구성품 defaultQty 소수 감지(order-app 정수화): setModel={}, model={}, defaultQty={}",
+                    row.get("setModelCode"), row.get("componentModelCode"), qty);
+        }
+        return qty.setScale(0, java.math.RoundingMode.HALF_UP);
     }
 
     private Map<String, Object> materialPriceMap(List<Map<String, Object>> rows) {
