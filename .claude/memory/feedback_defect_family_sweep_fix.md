@@ -15,5 +15,6 @@ metadata:
 1. 리뷰 지적 1건 접수 시 fix 전에 동일 패턴 전수 grep 실행 → 발견 전량을 처분표(이관/제거/유지+사유)로 박제 후 일괄 fix.
 2. **page-code 전환 4종 원자 체크리스트** (하나라도 빠지면 미완): ① BE @RequirePermission 실코드 대조 → ② FE canAccess 전환 → ③ **mock 카탈로그(SP_D1_PAGES + role grant) 동기화** → ④ Playwright 계약 단언 현행화/박제. 특히 ③ 은 누락 시 mock suite 가 못 잡는 silent regression (계약 단언 부재 시 426 green 으로 위장) — 신규 page-code 사용 즉시 mock grep 확인.
 3. 사이클 종료 단언은 "발견 인스턴스 검증" 이 아니라 "전수 grep 잔존 0 직접 단언" 으로.
+4. **정찰(recon) 단계도 전수여야 함** (2026-07-11 #786 raw enum sweep 회고): 정찰이 "알려진/지정 스코프 나열"로 끝나면 **하위패키지·`+ <enum-local-var>`(필드명 아닌 `s` 같은 로컬)·모든 예외생성부**를 놓쳐, Codex 적대 재검증이 3+패스에 걸쳐 잔여를 순차 포착(rework 급증·머지 지연). 예: raw enum-in-메시지 sweep은 특정 파일 나열이 아니라 `+ <var>`(method-call 아닌 bare 변수/필드) interpolation을 **전 패키지 전수 grep 후 각 var 타입(enum/String/int) 판별**. 정찰 산출물에 "grep 패턴·전수 범위·타입판별"을 명시.
 
-[[fe-canaccess-pagecode-be-match]] [[inprocess-mock-principles]] [[no-backlog-strict]] 연계.
+[[fe-canaccess-pagecode-be-match]] [[inprocess-mock-principles]] [[no-backlog-strict]] [[recon-grep-false-negative]] 연계.
