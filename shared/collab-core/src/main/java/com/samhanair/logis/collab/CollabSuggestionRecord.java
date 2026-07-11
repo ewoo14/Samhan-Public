@@ -103,7 +103,7 @@ public abstract class CollabSuggestionRecord extends BaseEntity {
         this.decidedAt = Instant.now();
     }
 
-    /** 제안 거절 (PROPOSED → REJECTED). reason 은 거절 사유로 보존한다. */
+    /** 제안 반려 (PROPOSED → REJECTED). reason 은 반려 사유로 보존한다. */
     public void reject(UUID deciderId, String deciderName, String reason) {
         requireProposed();
         requireDecider(deciderId, deciderName);
@@ -125,7 +125,7 @@ public abstract class CollabSuggestionRecord extends BaseEntity {
     private void requireProposed() {
         if (this.status != CollabSuggestionStatus.PROPOSED) {
             throw new BusinessException(ErrorCode.CONFLICT,
-                    "이미 종결된 제안입니다: " + this.status);
+                    "이미 종결된 제안입니다: " + this.status.getDisplayName());
         }
     }
 
