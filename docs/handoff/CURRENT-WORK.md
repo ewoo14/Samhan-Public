@@ -20,11 +20,11 @@
 - **E3 = 입금보고서 에픽·이미 완료**(오기 정정). "실시간 메뉴 반응형" 에픽 부재(실시간=S4d coedit·반응형=S4 폼).
 - **OutboxStatus 무이슈**(내부 스케줄러 sentinel·HTTP 미노출).
 
-### 🔴 남은 백로그 = 전부 결정/스코프 필요 (자율 진행 안 함)
-- **#782 part3**(discoverability·LOW): 부모 SET행 구성품 신호(쉐브런/라벨) — **밀도우선 선호와 트레이드오프**(이슈도 "밀도 요구엔 부합" 명시). UX 판단 필요.
-- **#773**(일마감 단가변동 재계산·대규모): **마감/무결성 정책 결정**.
-- **#3**(journal→cashReceipt 링크): **방식 결정**(BE cashReceiptId 추가 vs 현 네비).
-- **#12**(회계 full-form·대규모 에픽): **스코프 결정**(BE update 신설+차/대변+라인 CRDT).
+### 🔴 남은 백로그 (2026-07-12 "위 순서대로 진행" 처리 경과)
+- ✅ **#782 완결 close**(part1 #796·part2 #797·part3 #798 SET 마커·개발책임자 서브틀 마커 결정).
+- 🟢 **#773 스펙 확정**(`docs/specs/773-...`): D1=ⓐ 할인율 재검증·D5+D6=주문/전표 계층·D3=price_history+실시드. **S1~S4 구현은 별도 집중 세션**(실 Google Sheets 자격·다서비스 신설 대규모). 개발책임자 "스펙 확정으로 두고 #3·#12 먼저" 결정.
+- ✅ **#3(journal→cashReceipt 링크) = 이미 완료**(stale 정정): 정방향 cash_receipts.journal_id·역방향 JournalDetailResponse.cashReceiptSlipNo(PR #744)·역분개 딥링크 Journal.cash_receipt_id 전용 컬럼(PR #772). "방식 결정대기"는 이미 cashReceiptId 추가 방식으로 채택·구현됨.
+- 🟡 **#12 = 회계 full-form coedit**(§7/#16 협업 에픽 회계전표 편): 현재 **메모 단일필드 협업만**(S3-3 #683) 머지, **full-form(필드+라인 동시편집) 미완**. dev-report 규정 "**BE 수정 PUT 부재(신설)+차/대변 균형+라인 add/remove 본질 → 최대규모·후순위**". **스코프 결정 필요**.
 - (버그·별건) **알림 게이트웨이 500**(#795 QA 발견): NotificationCenterController가 X-User-Role 필수인데 PR #415가 게이트웨이 주입 제거 → 알림내역/벨 게이트웨이 경유 500. 백엔드 계약 fix 필요.
 
 ---
