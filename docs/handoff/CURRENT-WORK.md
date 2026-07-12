@@ -4,6 +4,21 @@
 
 ---
 
+## ✅ 2026-07-12 (집PC·이어서) — **알림 role 헤더 상수 위생 캐논 완주·머지**(#801 `9a72e272e`) → 다음 = #773 S2(단, S1 본체 선결)
+
+> **다음 세션 첫 읽기.** 직전 세션 미커밋 WIP(알림 role 헤더 상수화·핸드오프 5분뒤 생성)를 개발책임자 결정("알림 위생 정식 캐논 후 S2")대로 **표준 캐논 완주·머지**. Codex 복구 확인(MCP는 hang·`codex exec` CLI로 우회).
+
+### #801 완주 (Opus+Codex 듀얼 5-agent·라이브 QA·CI green·PM 자율머지)
+- **내용**: #799 후속 위생. `NotificationCenterController` 3곳 + `DispatchSmsSaveHistoryController` 4곳 `@RequestHeader("X-User-Role")` 리터럴 → `HttpHeaderConstants.CALLER_ROLE_HEADER`(값 동일·required=false·**동작 무변경**) + 예외 메시지 마침표 일관성(13서비스 정합) + null-role acknowledge/헤더누락 400 테스트 커버.
+- **캐논**: Opus 5-agent(BE HIGH=DispatchSms family sweep·Design MINOR=마침표 채택 / **dead-param 기각**=PermissionAspect 리플렉션 소비 검증) → fix `cda2999cf` → **Codex 적대(gpt-5.5·`codex exec`·`javap`로 annotation 인라인 실증·PermissionAspect 직접검증) A~D 독립동의·5차원 0** → 0수렴 → 라이브 QA(신 jar 재배포·**3 endpoint 전부 GREEN**·게이트웨이 200·publish→my 실데이터·acknowledge readAt·GUI 벨 스샷 2장·투명 시드 롤백) → CI 26잡+QA E2E green → 머지.
+- **교훈**: ① `mcp__codex__codex` 이 PC서 30분 hang abort([[feedback_codex_mcp_session_limit]]) → **`codex exec -s danger-full-access -C <dir> "$(cat prompt)" </dev/null` 백그라운드+폴링**이 genuine(부분출력 관찰·실제 gradle 실행까지). ② codex config effort "max"는 0.130.0서 미인식→none 폴백(재수렴 시 high 교정 요). ③ 직접포트 400 재현 불가(HeaderAuthenticationFilter 401 선행)—400핸들러는 unit 계약 고정.
+
+### 🔴 남은 백로그 (갱신)
+- **#773 S2 착수 전 선결 규명(정찰 완료)**: 핸드오프가 "다음=S2"라 했으나, 스펙(`docs/specs/773-...`) 정독 결과 **S2(재검증 엔진) 전에 S1 본체(회계 라인 텍스트 itemName/productCode→productId 매핑 플러밍)가 미완**. S1a(#800)는 price_history 시더+정가 endpoint만. **핵심 blocker=referent 갭**: 마감 집계 문서(`TaxInvoiceLine`·`SalesAccountingSlipLine`)에 **productId 미보존**(텍스트만)→시점정가 join 불가. 해소 방식(productId 플러밍 vs 텍스트 매칭 endpoint)=**설계 결정 필요**·다서비스(accounting/tax-invoice)·대규모. **개발책임자 방향 필요.**
+- **#12 최종확인 1점**·**알림 옵션 C**(role→group 타깃)=기존 유지.
+
+---
+
 ## ✅ 2026-07-12 (집PC) — **"위 순서대로 진행" 5항목 전부 처리**·세션 누계 **19-PR 머지**
 
 > **개발책임자 복귀 첫 읽기.** 야간 자율(17PR)에 이어 "위 순서대로 진행"(#782p3·#773·#3·#12·알림500) 완료. **남은 건 #773 S1~S4 구현(스펙 확정·별도 세션)뿐.**
