@@ -16,7 +16,7 @@
 5. ✅ **알림 게이트웨이 500 fix**(#799 `aae3d581c`): NotificationCenterController X-User-Role required=false+null-safe(#415 게이트웨이 role 제거 계약 정렬). 라이브 500→200 실증. role 브로드캐스트 노출 복원=옵션 C(group 타깃) 별건 후속.
 
 ### 🔴 남은 백로그
-- **#773 S1~S4 구현**(스펙 확정·별도 집중 세션): S1 referent 인프라(실 단가시트 sync+주문/전표 감사경로)→S2 재검증 엔진→S3 결과표현→S4 FE 토글.
+- **#773 구현 진행 중**: ✅ **S1a 완료(#800 `550dfe283`)** — dev price_history 시더(0→200행 라이브 실증)+시점별 정가 endpoint. **다음 = S2(재검증 엔진**: OUTBOUND SlipLine 기간집계→productId 카테고리+시점정가+dc-config→기대할인 vs 실할인→확인 플래그·legacy Code.js:661-735 포팅). 잔여 S1b(카테고리 정규화)·S1c(구성품 baseline)·**S1d(실 시트 sync·Google 자격 필요·격리 운영)**·S3(결과표현 read-time)·S4(FE 토글).
 - **#12 최종확인 1점**(개발책임자): 입금보고서로 종결 close vs 원장 정책 예외승인.
 - **알림 옵션 C**(role→group 타깃 재설계): 별건·정식 리뷰 트랙.
 
