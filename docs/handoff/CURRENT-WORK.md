@@ -4,6 +4,27 @@
 
 ---
 
+## ✅ 2026-07-13 (집PC 새벽~) 세션 종료 — 6-PR 머지·#787종결·#12종결·#773 S2a까지
+
+> **다음 세션 첫 읽기.** 개발책임자 "순차+새벽 자율" 지시로 결정불요 백로그 완주 + 방향 수령 후 #773 S2 착수. **다음 = #773 S2b(재검증 엔진 본체).**
+
+### 이번 세션 머지 (6-PR)
+- **#801** 알림 role 헤더 상수 위생 · **#802** #773 S1b 라벨→productId 매핑 · **#803** #785 arologis 배차상세 크래시(family sweep 3중) · **#805** #773 S1c 고정dc referent · **#806** #773 S2a referent 조회 배선+bulk 부분성공.
+- **종결**: #787 위생 sweep(stale·#788/#789/#790/#794로 기완료·코드0) · #12 회계 full-form(개발책임자 "입금보고서로 종결" 결정·spec 박제).
+- **별건 개설**: #804(arologis 배차상세 FE-BE DTO 전면 불일치·SP-10-2 계약·#785 리뷰 발견).
+
+### #773 S2 진행 (개발책임자 결정: S2a+b+c 순차 완주)
+- 정찰 2축 완료·스펙 §6 박제: **read-time 감사(마감금액 불변·무결성 안전)**·on-the-fly DTO(신규테이블0)·분할 S2a→S2b→S2c.
+- **S2a ✅ 머지**(#806 `cb94ad7a5`): accounting ProductClient S1a(applicablePrices)/S1c(fixedDiscountRates) bulk 조회 + product bulk **부분성공 계약**(결측 생략·단건404 유지·개발책임자 결정)+soft-delete 정합(Codex 적대 포착·재fix). Opus+Codex 듀얼이 계약결함 2건(전체404·soft-delete 비대칭) 순차 포착.
+- **🔴 다음 = S2b**(재검증 엔진 본체): `MonthEndCloseService.getTaxInvoiceDailyDetail` per-line itemName[spec]→resolveByLabel(S1b)→productId→(applicablePrices+fixedDiscountRates)→기대(expectRate) vs 실(actualRate=**supplyAmount/quantity** 유효단가·분모=출고가)→`확인` 플래그. 레거시 Code.js:668-735 **단품 분기** 포팅(운임/구형50%/액세서리 납품가일치/멀티 고정dc·round(rate×100) 정수%동등·정수원완전일치). 부분성공 계약 소비(결측=재검증 대상외·keySet 차집합). **S1.5(세트 riUsage·거래처 약정DC)·S3(검증결과 영속)은 범위 밖.** read-time이라 무결성 안전·게이트 불요. → **S2c**(DailyProductLine 필드확장+totalDiscount 실계산).
+- **주의 유의값**: fixedDc percent(45.00)·**재×100 금지**·null(미설정)≠생략(미존재)·isBeforeHike=asOf 로딩계층 흡수(판정 토글 아님)·isMultiApplied===false=구형/액세서리/멀티만 스킵.
+
+### 🔴 기타 남은 백로그 (개발책임자 방향/자격)
+- **#773**: S2b·S2c(위) · **S1.5**(dc-config 약정DC·다서비스) · **S1d**(구형baseline+실시트sync·**Google 자격·격리**).
+- **#804** FE-BE DTO(SP-10-2 계약) · 알림 옵션C.
+
+---
+
 ## 🌙 2026-07-12 (집PC 새벽 자율) — 순차 진행 中: #785 완주·머지(#803 `598210624`) → #787 위생 착수
 
 > **개발책임자 "순차 진행+새벽 자율" 지시.** 결정불요 백로그 순차 완주 중. 세션 누계 **4-PR 머지**(#801 알림위생·#802 S1b·#803 #785·+핸드오프/spec).

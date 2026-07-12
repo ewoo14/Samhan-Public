@@ -176,7 +176,7 @@ D1(재계산 의미)이 스펙 전체를 좌우하므로 **§2 결정, 특히 D1
 - **게이트**: `isMultiApplied===false`=구형/액세서리/멀티만 스킵. `isBeforeHike`=판정식 토글 아님·**S1a 시점정가 asOf(인상전/후) 로딩계층 흡수**.
 
 ### 6.3 분할 (PM 제안·개발책임자 확인)
-- **S2a**: accounting `ProductClient`에 S1a(applicable)·S1c(fixed-discount) 호출 메서드 + record 2종 + `ProductClientTest` 확장. **독립·작음·순수 조회 배선**(IT @MockBean 격리). money-logic 무개입.
+- **S2a** ✅ (#806 `cb94ad7a5`): accounting `ProductClient`에 S1a(applicablePrices)·S1c(fixedDiscountRates) bulk 호출 + `ApplicablePrice` record. **+ product bulk 부분성공 계약**(결측 productId 전체404→Map 생략·단건404 유지·개발책임자 결정) **+ soft-delete 정합**(applicable-bulk Product 게이트·fixed-discount 대칭·Codex 적대 포착). 완료.
 - **S2b**: `getTaxInvoiceDailyDetail` 재검증 엔진 — per-line itemName[spec]→resolveByLabel→productId→(applicable release/delivery + fixedDiscountRate)→기대(expectRate) vs 실(actualRate=supplyAmount/quantity)→`확인`. NOT_FOUND/AMBIGUOUS 사유 보존. **read-time 감사·마감금액 불변(무결성 안전)**. S2a 선행.
 - **S2c**: `DailyProductLine` 필드 확장(expectedRate/actualRate/releasePrice/deliveryPrice/확인) + totalDiscount 실계산 + controller passthrough + IT. S2b 선행.
 - **범위 밖**: S1.5(세트 riUsage·거래처 약정DC)·S3(검증결과 영속). D1=ⓐ read-time이라 S2 전체 무결성 안전(마감 금액 불변경).
