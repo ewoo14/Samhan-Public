@@ -127,8 +127,8 @@ D1(재계산 의미)이 스펙 전체를 좌우하므로 **§2 결정, 특히 D1
 | 슬 | 범위 | 비고 |
 |---|---|---|
 | **S1a** ✅ | price_history 시더 + productId→시점정가 endpoint (#800) | 완료 |
-| **S1b** | **품목명[규격] 라벨 → productId 매핑 endpoint** (accounting→product) | 토큰 정규화(`extractModelToken_` 포팅)+4단 fallback(코드→modelName→alias→LIKE)+다의성(409)/미매칭(404) 리포팅. **S2 최소 선결**. 순수 조회·무결성 무관 |
-| **S1c** | 납품가·고정dc referent 소스 | `확인` 판정 3종값 중 정가 외 2종. product/dc-config 매핑. **레거시 정합 필수** |
+| **S1b** ✅ | **품목명[규격] 라벨 → productId 매핑 endpoint** (accounting→product·#802 `62cc42d59`) | 토큰 정규화+4단 fallback+다의성/미매칭. 완료 |
+| **S1c** | 납품가·고정dc referent 소스 | `확인` 판정 3종값 중 정가 외 2종. **둘 다 product**(dc-config 아님). 납품가=S1a 완비·고정dc=선결. 순수조회·무결성무관 |
 | **S1d** | 구형(OLD) baseline + 실 시트 sync | #777 잔여·Google 자격·격리 운영 |
 | **S1.5** | dc-config 검증 노출 + 이카운트 거래처코드→partnerId + 역-BundleExpander 세트 매처 | 세트/약정DC 확인 로직 |
 
@@ -146,3 +146,14 @@ D1(재계산 의미)이 스펙 전체를 좌우하므로 **§2 결정, 특히 D1
 - **실 라벨 근거 확보**: `tools/legacy-gas/계산서일괄등록양식 생성/계산서 발행용.xlsx` sheet1에서 실 삼한 HVAC 라벨 **267개 unique** 추출(총 791 매치). 형식 = `<모델코드12자> [<설명>] [<옵션>]`(예 `AC023CN1DBC1 [CN냉전 실내기]`·`AJ040RXH4BC1 (RX냉방기)`). 규격표기 = 대괄호[] 252·소괄호() 43·무괄호 11. **매칭 키 = 선두 모델코드 토큰**(공백 전·`extractModelToken_` 정규식 `(AC|AP|AR|AF|AM|AJ|AXJ|PC|AWR|ARR)[A-Z0-9\-]{4,}`과 정확 일치), 대괄호 설명은 표시용·매칭 무관.
 - **S1b 범위**: accounting 회계 라인 텍스트(`품목명[규격]` 라벨) → **모델코드 토큰 추출** → product-service 조회(modelName/modelCode exact → alias → LIKE 4단 fallback) → productId. 다의성(409)/미매칭(404) 구조화 리포팅. **순수 조회·무결성 무관·결정불요.**
 - **genuine 검증 = IT 픽스처**: 실 라벨 267개(합성 아님·실 레거시 데이터)를 테스트 리소스화 → 토큰 추출·fallback·다의성 매퍼를 unit/IT로 검증. **라이브 라벨→productId hit 실증은 S1d(실 카탈로그) 후로 유예**(dev product_db=삼성 유통품이라 AC… 모델코드 매칭 대상 부재 — 명시적 유예·합성 시드 금지).
+
+### 5.7 S1c 심화 정찰 (2026-07-12) — 납품가·고정dc referent 소스 규명·착수 판정
+
+> S1b 머지 후 순차 착수 판단. **결과: S1c=순수조회·무결성무관→개발책임자 정책 게이트 불요.** (스펙 §1:44 "price_history dev 0행"·§0/§1:122 "price_history 정가만" 전제 2개는 **S1a #800으로 stale**·정정.)
+
+- **납품가(deliveryPrice) = 완비(S1a 재사용·신규작업 0)**: `PriceHistory.deliveryPrice`(product `PriceHistory.java:52-53` NOT NULL) + S1a `/products/internal/price-history/applicable(-bulk)`가 **release/delivery 둘 다** 반환(`PriceHistoryInternalController:91-101`·productId+asOf). dev price_history에 delivery 실값 존재(`PriceHistorySeeder`가 `Product.deliveryPrice` 시드·합성값이나 판정 로직 검증 충분). 레거시 `확인=(단가===납품가)`(Code.js:680,688,707).
+- **고정dc(fixedDc) = product 품목별(dc-config 아님)·선결 2건**: `Product.fixedDiscountRate`(`Product.java:112-114` NUMERIC(5,2)·품목별·"행별 고정DC L열"). 레거시 MULTI `expectRate=round(_fixedDc*100)`(Code.js:721-722). **⚠️ 스케일 파리티**: 레거시=분수(0.45)·×100 / 현대=이미 percent(45.00) 저장(V20 마이그 ×100·CHECK 0~100) → 재검증 비교 시 현대값은 이미 `expectRate` 공간(×100 재적용 금지). **선결**: ① dev 시드 NULL(🚨 `HvacProductSeeder` INSERT에 `fixed_discount_rate` 없음·전 100제품 NULL) → 시드 주입 ② productId 키 고정dc 조회 경로 부재(`ProductSummaryResponse`=출고가만·EstimateCatalog=modelCode 키) → 신규 internal endpoint.
+- **dc-config = S1c 범위 밖 = S1.5**: `DcConfig`(Partner 1:1·거래처별 홈/상업멀티 rate + 정액 6종)는 레거시 `discInfo`(거래처 약정DC)=S1.5. S1c(품목별 납품가/고정dc)와 별개. (dc-config dev 시더 전무=S1.5 별도 blocker.)
+- **dev 데이터 blocker(S1b식)**: dev=삼성 유통품이라 실 삼한 납품가/고정dc 부재 → 납품가는 합성값 존재·고정dc는 NULL. **genuine=IT 픽스처 / 라이브 전량 hit=S1d 유예**(S1b 선례 동일).
+
+> **PM 판정**: S1c **착수 가능·순수조회**. 범위 = **고정dc productId 조회 internal endpoint 신설 + dev 시드(fixed_discount_rate) + 스케일 파리티 가드**(납품가는 S1a 완비·무작업). money-logic 계산/무결성 개입 없음(값 조회만·`확인` 판정은 S2). IT 픽스처 genuine·라이브 부분 실증(납품가 synthetic·고정dc 시드).
