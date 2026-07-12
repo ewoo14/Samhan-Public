@@ -4,6 +4,21 @@
 
 ---
 
+## ✅ 2026-07-12 (집PC·이어서2) — **#773 S1b 라벨→productId 매핑 캐논 완주·머지**(#802 `62cc42d59`) → 다음 = S1c/S1.5 or S2
+
+> **다음 세션 첫 읽기.** #801 알림 위생 후 개발책임자 결정(D5=텍스트매칭·S1b부터·ⓑ IT픽스처)으로 S1b 완주. **S1 심화 정찰이 착수 전 데이터 blocker 조기 포착이 핵심 수확.**
+
+### #773 S1b 완주 (Codex 구현 + Opus/Codex 듀얼 5-agent + 라이브 스모크 + Swagger GUI)
+- **내용**: 회계 라인 `품목명[규격]` 라벨 → 모델코드 토큰(`ModelTokenExtractor`=Code.js:161-174 포팅) → product-service `/lookup-by-label`(3단 fallback: catalogExposedModelCode exact→alias→LIKE) → productId. accounting `ProductClient.resolveByLabel`(사유보존 result).
+- **캐논**: 3+1 정찰(회계라인 productId 전무·product 조회자산·레거시 매칭·배선지점) → 조기 PR → Codex 구현 → **Opus 5-agent HIGH 포착**(modelCode=null 정상매칭[modelName fallback 레거시 제품]을 accounting이 500 오분류·BE+QA+Design 3렌즈 수렴·**Codex 놓침**→단축금지 정당성) → fix(`ProductLabelMatch` 사유보존 result·modelCode null 허용·404/409 사유보존) → Codex 적대(A~D 독립동의·5차원 0) → 0수렴 → **라이브 스모크 4상태 + Swagger UI GUI 3장**(`AR09TXEAAWKNEU-04`→200·modelCode=null 시각 실증) → CI 27 green → 머지.
+- **교훈**: ① **S1 심화 정찰이 dev 데이터 세계 불일치를 조기 포착**(dev=삼성유통품 model_code NULL·레거시 AC모델코드 0) → 합성 시드 강행 회피·실 계산서 xlsx 라벨 267 IT 픽스처 + 라이브는 dev modelName 우연 토큰부합으로 부분 실증·전량 hit는 S1d 유예. ② **순수 internal endpoint도 GUI 스샷 의무**(개발책임자 지적)→Swagger UI로 시각 실증(curl 텍스트 불가).
+
+### 🔴 남은 백로그 (#773 후속 — 스펙 §5.4)
+- **S1c**: 납품가·고정dc referent 소스(`확인` 판정 3종값 중 정가 외 2종·레거시 정합). **S1.5**: dc-config 검증+이카운트 거래처코드→partnerId+역-BundleExpander 세트 매처. **S1d**: 구형 baseline+실 시트 sync(Google 자격·격리). **S2**: 재검증 엔진(문서집계→매핑[S1b 완료]→시점정가→기대할인→`확인` 플래그·legacy Code.js:668-735 포팅).
+- **비-#773**: #12 최종확인 1점 · 알림 옵션 C(role→group).
+
+---
+
 ## ✅ 2026-07-12 (집PC·이어서) — **알림 role 헤더 상수 위생 캐논 완주·머지**(#801 `9a72e272e`) → 다음 = #773 S2(단, S1 본체 선결)
 
 > **다음 세션 첫 읽기.** 직전 세션 미커밋 WIP(알림 role 헤더 상수화·핸드오프 5분뒤 생성)를 개발책임자 결정("알림 위생 정식 캐논 후 S2")대로 **표준 캐논 완주·머지**. Codex 복구 확인(MCP는 hang·`codex exec` CLI로 우회).
