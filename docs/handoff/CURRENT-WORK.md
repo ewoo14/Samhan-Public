@@ -4,6 +4,22 @@
 
 ---
 
+## 🌙 2026-07-12 (집PC 새벽 자율) — 순차 진행 中: #785 완주·머지(#803 `598210624`) → #787 위생 착수
+
+> **개발책임자 "순차 진행+새벽 자율" 지시.** 결정불요 백로그 순차 완주 중. 세션 누계 **4-PR 머지**(#801 알림위생·#802 S1b·#803 #785·+핸드오프/spec).
+
+### #785 arologis 배차상세 크래시 완주 (#803 `598210624`)
+- NotifyResultSection/InsungLbsPanel/dispatch.vehicles undefined-guard(**family sweep**: notifyResults·gpsSources·vehicles 3필드) + VehicleMatchStatusBadge BE 6값(DEPARTED/CANCELLED) 정합·degrade "상태 확인 필요"(raw 제거) + arologis-service NoResourceFoundException→404.
+- **캐논**: Codex 구현 → Opus 5-agent(gpsSources family+enum·FE+QA+Design 수렴) → fix → **Codex 적대가 dispatch.vehicles 무가드 추가 포착**→재fix→family 완전성 grep 0확인 0수렴 → 라이브 QA(crash→정상렌더 GUI + BE 404 curl) → CI 36체크 green.
+- **별건 개설 #804**: FE-BE DTO 전면 불일치(matchStatus/notifyResults/gpsSources 등 BE DispatchDetailResponse와 필드명 미정합·실서버서 배지 "대기중" 고정·placeholder 렌더). SP-10-2 계약 재정렬 대형·크래시 아님. 라우팅 미스매치는 vite rewrite 기존재(무관).
+
+### 🔴 순차 남은 백로그
+- **#787 위생 sweep 착수 중**(결정불요): ①타서비스 raw enum→displayName(inventory/partner/partner-auth/notification·정찰 中) ②Tier2 non-enum 500(inventory/product/auth·계약변경) ③인쇄라벨(**design 확인 필요**)·UUID sweep. ①부터 슬라이스.
+- **#773 S1c**(납품가/고정dc referent·money-logic·**무결성 도메인 착수전 개발책임자 정책 게이트**) · S1.5 · S1d(Google자격) · S2 · S3 · S4.
+- #12 최종확인 · 알림 옵션C.
+
+---
+
 ## ✅ 2026-07-12 (집PC·이어서2) — **#773 S1b 라벨→productId 매핑 캐논 완주·머지**(#802 `62cc42d59`) → 다음 = S1c/S1.5 or S2
 
 > **다음 세션 첫 읽기.** #801 알림 위생 후 개발책임자 결정(D5=텍스트매칭·S1b부터·ⓑ IT픽스처)으로 S1b 완주. **S1 심화 정찰이 착수 전 데이터 blocker 조기 포착이 핵심 수확.**
