@@ -220,6 +220,27 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("GET /notifications/my — X-User-Role 없이 target_user_id 매칭 row만 조회")
+    void findMyUnread_withoutRoleHeader_includesOnlyUserIdMatch() throws Exception {
+        repository.save(NotificationCenter.publish(
+                "MESSENGER", NotificationSeverity.INFO,
+                "개인 알림", null,
+                null, masterUserId,
+                "groupware-service", "msg-user", null));
+        repository.save(NotificationCenter.publish(
+                "SAFETY_STOCK", NotificationSeverity.WARNING,
+                "MASTER 브로드캐스트", null,
+                List.of("MASTER"), null,
+                "inventory-service", "role-broadcast", null));
+
+        mockMvc.perform(get("/notifications/my")
+                        .header("X-User-Id", masterUserId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.data[0].title").value("개인 알림"));
+    }
+
+    @Test
     @DisplayName("POST /notifications/{id}/acknowledge — read_at 설정 + 두 번째 호출 idempotent")
     void acknowledge_idempotent() throws Exception {
         NotificationCenter saved = repository.save(NotificationCenter.publish(
@@ -241,6 +262,29 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("POST /notifications/{id}/acknowledge without X-User-Role allows only user target")
+    void acknowledge_withoutRoleHeader_allowsOnlyUserIdTarget() throws Exception {
+        NotificationCenter userTarget = repository.save(NotificationCenter.publish(
+                "MESSENGER", NotificationSeverity.INFO,
+                "personal ack", null,
+                null, masterUserId,
+                "groupware-service", "msg-user-ack", null));
+        NotificationCenter roleBroadcast = repository.save(NotificationCenter.publish(
+                "SAFETY_STOCK", NotificationSeverity.WARNING,
+                "role broadcast ack", null,
+                List.of("MASTER"), null,
+                "inventory-service", "role-ack", null));
+
+        mockMvc.perform(post("/notifications/{id}/acknowledge", userTarget.getId())
+                        .header("X-User-Id", masterUserId.toString()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/notifications/{id}/acknowledge", roleBroadcast.getId())
+                        .header("X-User-Id", masterUserId.toString()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("GET /notifications/history — Pageable 적용 + page response")
     void findMyHistory_pagedResponse() throws Exception {
         for (int i = 0; i < 5; i++) {
@@ -258,5 +302,28 @@ class NotificationCenterControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(5))
                 .andExpect(jsonPath("$.data.content", Matchers.hasSize(3)));
+    }
+
+    @Test
+    @DisplayName("GET /notifications/history without X-User-Role returns only user target")
+    void findMyHistory_withoutRoleHeader_includesOnlyUserIdMatch() throws Exception {
+        repository.save(NotificationCenter.publish(
+                "MESSENGER", NotificationSeverity.INFO,
+                "personal history", null,
+                null, masterUserId,
+                "groupware-service", "msg-user-history", null));
+        repository.save(NotificationCenter.publish(
+                "SAFETY_STOCK", NotificationSeverity.WARNING,
+                "role broadcast history", null,
+                List.of("MASTER"), null,
+                "inventory-service", "role-history", null));
+
+        mockMvc.perform(get("/notifications/history")
+                        .header("X-User-Id", masterUserId.toString())
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content", Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.data.content[0].title").value("personal history"));
     }
 }
