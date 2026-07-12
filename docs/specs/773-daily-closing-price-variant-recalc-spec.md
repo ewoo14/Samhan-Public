@@ -128,7 +128,7 @@ D1(재계산 의미)이 스펙 전체를 좌우하므로 **§2 결정, 특히 D1
 |---|---|---|
 | **S1a** ✅ | price_history 시더 + productId→시점정가 endpoint (#800) | 완료 |
 | **S1b** ✅ | **품목명[규격] 라벨 → productId 매핑 endpoint** (accounting→product·#802 `62cc42d59`) | 토큰 정규화+4단 fallback+다의성/미매칭. 완료 |
-| **S1c** | 납품가·고정dc referent 소스 | `확인` 판정 3종값 중 정가 외 2종. **둘 다 product**(dc-config 아님). 납품가=S1a 완비·고정dc=선결. 순수조회·무결성무관 |
+| **S1c** ✅ | 납품가·고정dc referent 소스 (#805 `441164d36`) | 고정dc `/fixed-discount-rate(-bulk)` endpoint + HvacSeeder 시드(percent 45/35/null). 납품가=S1a 완비. 순수조회. 완료 |
 | **S1d** | 구형(OLD) baseline + 실 시트 sync | #777 잔여·Google 자격·격리 운영 |
 | **S1.5** | dc-config 검증 노출 + 이카운트 거래처코드→partnerId + 역-BundleExpander 세트 매처 | 세트/약정DC 확인 로직 |
 

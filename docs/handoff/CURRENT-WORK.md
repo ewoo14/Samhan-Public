@@ -13,10 +13,14 @@
 - **캐논**: Codex 구현 → Opus 5-agent(gpsSources family+enum·FE+QA+Design 수렴) → fix → **Codex 적대가 dispatch.vehicles 무가드 추가 포착**→재fix→family 완전성 grep 0확인 0수렴 → 라이브 QA(crash→정상렌더 GUI + BE 404 curl) → CI 36체크 green.
 - **별건 개설 #804**: FE-BE DTO 전면 불일치(matchStatus/notifyResults/gpsSources 등 BE DispatchDetailResponse와 필드명 미정합·실서버서 배지 "대기중" 고정·placeholder 렌더). SP-10-2 계약 재정렬 대형·크래시 아님. 라우팅 미스매치는 vite rewrite 기존재(무관).
 
-### 🔴 순차 남은 백로그
-- **#787 위생 sweep 착수 중**(결정불요): ①타서비스 raw enum→displayName(inventory/partner/partner-auth/notification·정찰 中) ②Tier2 non-enum 500(inventory/product/auth·계약변경) ③인쇄라벨(**design 확인 필요**)·UUID sweep. ①부터 슬라이스.
-- **#773 S1c**(납품가/고정dc referent·money-logic·**무결성 도메인 착수전 개발책임자 정책 게이트**) · S1.5 · S1d(Google자격) · S2 · S3 · S4.
-- #12 최종확인 · 알림 옵션C.
+### ✅ 순차 완주 (2026-07-13 새벽)
+- **#787 위생 sweep = 종결**(코드 무작업): 정찰 결과 ①타서비스 raw enum ②Tier2 500 ③인쇄라벨·UUID **전부 후속 PR(#788/#789/#790/#794)로 이미 완료**된 stale 이슈 → close(중복 재작업 방지).
+- **#773 S1c ✅ 머지**(#805 `441164d36`): 고정dc(fixedDiscountRate) `/products/internal/fixed-discount-rate(-bulk)` endpoint + HvacSeeder 시드(percent 45/35/null·INSERT 47정합 BE+Codex 이중). 납품가=S1a 완비. **정찰이 순수조회·무결성무관 판정→게이트 불요**. 캐논: Opus 5-agent(QA HIGH=재시드skip 함정 포착)+Codex 적대 0수렴+라이브QA(endpoint 4상태+Swagger GUI 3장). ⚠️**percent 라이브 미실증**=파괴적 DELETE auto-classifier 차단(정당)→IT 8케이스 갈음(정직 기록).
+
+### 🔴 남은 백로그 (개발책임자 방향 필요)
+- **#773 후속**: **S1.5**(dc-config 약정DC·이카운트 거래처코드→partnerId·역-BundleExpander 세트매처) · **S1d**(구형baseline+실시트sync·**Google 자격·격리**) · **S2**(재검증엔진 본체·문서집계→매핑[S1b]→시점정가[S1a]+고정dc[S1c]+납품가[S1a]→기대할인 vs 실할인→`확인`·Code.js:668-735 포팅·**대형**) · S3 · S4. **전부 대형or자격필요→방향 확인 필요.**
+- **#804** FE-BE DTO 계약(SP-10-2·arologis 배차상세) · #12 최종확인 · 알림 옵션C.
+- **세션 누계 5-PR 머지**(#801 알림위생·#802 S1b·#803 #785·#805 S1c) + #787 종결.
 
 ---
 
