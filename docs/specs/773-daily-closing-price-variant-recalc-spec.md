@@ -157,3 +157,28 @@ D1(재계산 의미)이 스펙 전체를 좌우하므로 **§2 결정, 특히 D1
 - **dev 데이터 blocker(S1b식)**: dev=삼성 유통품이라 실 삼한 납품가/고정dc 부재 → 납품가는 합성값 존재·고정dc는 NULL. **genuine=IT 픽스처 / 라이브 전량 hit=S1d 유예**(S1b 선례 동일).
 
 > **PM 판정**: S1c **착수 가능·순수조회**. 범위 = **고정dc productId 조회 internal endpoint 신설 + dev 시드(fixed_discount_rate) + 스케일 파리티 가드**(납품가는 S1a 완비·무작업). money-logic 계산/무결성 개입 없음(값 조회만·`확인` 판정은 S2). IT 픽스처 genuine·라이브 부분 실증(납품가 synthetic·고정dc 시드).
+
+## 6. S2 착수 정찰 (2026-07-13·2축) — 재검증 엔진 통합지점 + 레거시 확인로직 + 분할
+
+> 개발책임자 결정(2026-07-13)="#773 S2 재검증 엔진 착수". referent(S1a/b/c) 완비 후 본체. 2축 정찰(accounting 통합지점·레거시 Code.js:668-735).
+
+### 6.1 통합지점 (accounting)
+- **진입점 = `MonthEndCloseService.getTaxInvoiceDailyDetail`(:194-257·read-time 조회 시점·마감 실행 아님)**. endpoint `GET /accounting/closings/daily?date&kind&sourceKind`(재사용·partnerCode 축 없음=전 거래처). asOf(S1a)=date.
+- **결과 표현 = on-the-fly**(D1=ⓐ 정합·마감금액 불변). `daily_closings`는 합계+잠금만·라인 detail 테이블 부재 → 재검증 `확인`/기대/실/출고가는 **`DailyProductLine` DTO 확장(신규 필드)**. **신규 엔티티/테이블 불필요**(검증결과 영속=S3 조건부·범위 밖).
+- **referent 배선**: S1b `ProductClient.resolveByLabel` 완료(javadoc이 "S2" 지목). **S1a(applicable[-bulk])·S1c(fixed-discount-rate[-bulk]) 호출 메서드는 accounting ProductClient에 신설 필요**(2 메서드 + wire record 2종).
+- **🚨 per-line 관건**: 현 `byModel`이 itemName 키로 집계하며 **unitPrice 소실**. 실할인율 = `supplyAmount/quantity`(유효단가)로 도출 → `actualRate=round((1−(supplyAmount/quantity)/release)×100)`(byModel 구조 자연 정합). **actualRate 분모=출고가(release)**(납품가 아님).
+- 중복 없음(accounting 재검증/확인/할인율 엔진 부재·totalDiscount placeholder ZERO). 규모 **중(中)**.
+
+### 6.2 레거시 확인로직 (Code.js:668-735) — S2 커버 vs S1.5 경계
+- **실 산식**(:551-561): `rate=1−(unit/price)`·분모=출고가·`money_to_int_` 정수화. `_deliveryPrice`=납품가(없으면 출고가 폴백)·`_fixedDc`=고정dc(**0도 유효값·null과 구분**).
+- **S2 커버(순수 S1 referent)**: 운임/절삭(true)·구형 AM/NJ/NS/AVX(`round(rate×100)===50`)·구형기타/액세서리(`unit===납품가`)·멀티 고정dc(`round(rate×100)===round(fixedDc×100)`)·멀티 약정無 폴백(`===45`)·싱글부속(본체無)/싱글기타/기타(true). 정수%동등·정수원완전일치 2형.
+- **S1.5 대기(범위 밖)**: 싱글 본체 INDOOR/OUTDOOR/SUB_INDOOR(riUsage 세트 완전일치=역-BundleExpander)·멀티 거래처 commRate/homeRate(노션 약정DC·partnerId 축).
+- **게이트**: `isMultiApplied===false`=구형/액세서리/멀티만 스킵. `isBeforeHike`=판정식 토글 아님·**S1a 시점정가 asOf(인상전/후) 로딩계층 흡수**.
+
+### 6.3 분할 (PM 제안·개발책임자 확인)
+- **S2a**: accounting `ProductClient`에 S1a(applicable)·S1c(fixed-discount) 호출 메서드 + record 2종 + `ProductClientTest` 확장. **독립·작음·순수 조회 배선**(IT @MockBean 격리). money-logic 무개입.
+- **S2b**: `getTaxInvoiceDailyDetail` 재검증 엔진 — per-line itemName[spec]→resolveByLabel→productId→(applicable release/delivery + fixedDiscountRate)→기대(expectRate) vs 실(actualRate=supplyAmount/quantity)→`확인`. NOT_FOUND/AMBIGUOUS 사유 보존. **read-time 감사·마감금액 불변(무결성 안전)**. S2a 선행.
+- **S2c**: `DailyProductLine` 필드 확장(expectedRate/actualRate/releasePrice/deliveryPrice/확인) + totalDiscount 실계산 + controller passthrough + IT. S2b 선행.
+- **범위 밖**: S1.5(세트 riUsage·거래처 약정DC)·S3(검증결과 영속). D1=ⓐ read-time이라 S2 전체 무결성 안전(마감 금액 불변경).
+
+> **PM 권고**: S2a→S2b→S2c 순차 슬라이스(각 조기PR·캐논). S2a는 순수 조회 배선(무결성무관·결정불요)으로 즉시. S2b가 실판정 로직(레거시 포팅)이나 read-time 감사라 마감 불변·개발책임자 정책 게이트 불요.
