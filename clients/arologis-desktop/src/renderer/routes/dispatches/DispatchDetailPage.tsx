@@ -98,9 +98,12 @@ export interface VehicleDetail {
    */
   vendorOrderId: string | null
   /** 알림 발송 결과 목록 */
-  notifyResults: NotifyResult[]
-  /** GPS 소스 목록 */
-  gpsSources: GpsSource[]
+  notifyResults?: NotifyResult[]
+  /**
+   * GPS 소스 목록.
+   * BE 필드 누락 가능 — optional. notifyResults 와 동일 방어 패턴 (#785 family sweep).
+   */
+  gpsSources?: GpsSource[]
 }
 
 /** BE dispatch 상세 DTO */
@@ -255,11 +258,13 @@ function formatSentAt(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 interface NotifyResultSectionProps {
-  notifyResults: NotifyResult[]
+  notifyResults?: NotifyResult[]
 }
 
 function NotifyResultSection({ notifyResults }: NotifyResultSectionProps): JSX.Element | null {
-  if (notifyResults.length === 0) return null
+  const rows = notifyResults ?? []
+
+  if (rows.length === 0) return null
 
   return (
     <div
@@ -279,7 +284,7 @@ function NotifyResultSection({ notifyResults }: NotifyResultSectionProps): JSX.E
       >
         알림 발송 결과
       </div>
-      {notifyResults.map((result) => {
+      {rows.map((result) => {
         const rowBg =
           result.status === 'FAILED'
             ? 'var(--color-danger-50)'
@@ -457,7 +462,7 @@ function VehicleRow({ vehicle }: VehicleRowProps): JSX.Element {
       {showGpsPanel && vehicle.driverCode && (
         <InsungLbsPanel
           driverCode={vehicle.driverCode}
-          gpsSources={vehicle.gpsSources}
+          gpsSources={vehicle.gpsSources ?? []}
         />
       )}
 
@@ -533,6 +538,10 @@ export function DispatchDetailPage({ dispatch, loadError = false }: DispatchDeta
     )
   }
 
+  // BE 필드 누락 방어 — notifyResults/gpsSources 와 동일 패턴 (#785 family sweep).
+  // DispatchDetail.vehicles 는 타입상 required 이나 런타임 누락 대비 가드.
+  const vehicles = dispatch.vehicles ?? []
+
   return (
     <div
       data-testid="dispatch-detail-page"
@@ -554,13 +563,13 @@ export function DispatchDetailPage({ dispatch, loadError = false }: DispatchDeta
           }}
         >
           {dispatch.dispatchDate} · {dispatch.dispatchTypeLabel} · 차량{' '}
-          {dispatch.vehicles.length}대
+          {vehicles.length}대
         </p>
       </div>
 
       {/* 차량 목록 */}
       <div>
-        {dispatch.vehicles.map((vehicle) => (
+        {vehicles.map((vehicle) => (
           <VehicleRow key={vehicle.sequence} vehicle={vehicle} />
         ))}
       </div>
