@@ -114,6 +114,70 @@ public class ProductClient {
         return summaries;
     }
 
+    /**
+     * 회계 라벨을 product-service internal endpoint 로 해소한다.
+     *
+     * <p>일마감 재검증은 미매칭/중복매칭 자체도 리포트 대상이므로 404/409 는 예외 대신
+     * {@link ProductLabelMatch.Status#NOT_FOUND}/{@link ProductLabelMatch.Status#AMBIGUOUS} 로
+     * 사유를 보존해 반환한다. 그 외 4xx/5xx 및 네트워크 오류는 기존 lookup 과 동일하게
+     * BusinessException 으로 전파한다.
+     *
+     * <p>반환값은 항상 non-null 이며 매칭 여부는 {@link ProductLabelMatch#status()} 로 판정한다.
+     * {@code modelCode} 는 레거시 제품(모델코드 미부여) 매칭 시 null 일 수 있어 포맷 오류 판정
+     * 대상이 아니다 — {@code productId} 누락만 진짜 응답 포맷 오류로 취급한다.
+     *
+     * @param label 품목명[규격] 회계 라벨
+     * @return 사유 보존 매칭 result (MATCHED/NOT_FOUND/AMBIGUOUS, 항상 non-null)
+     */
+    @SuppressWarnings("unchecked")
+    public ProductLabelMatch resolveByLabel(String label) {
+        Map<String, Object> body = Map.of("label", label == null ? "" : label);
+
+        Map<String, Object> envelope;
+        try {
+            envelope = restClient.post()
+                    .uri("/products/internal/lookup-by-label")
+                    .header(INTERNAL_TOKEN_HEADER, requireToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .onStatus(status -> status.value() == 404 || status.value() == 409, (req, res) -> {
+                        throw new LabelNotResolvedException(res.getStatusCode().value());
+                    })
+                    .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INVALID_INPUT,
+                                "라벨 제품 조회 요청 오류: " + res.getStatusCode());
+                    })
+                    .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                                "product-service 호출 실패: " + res.getStatusCode());
+                    })
+                    .body(new ParameterizedTypeReference<>() {});
+        } catch (LabelNotResolvedException ex) {
+            log.info("ProductClient label lookup unmatched status={} label={}", ex.status, label);
+            return ex.status == 404 ? ProductLabelMatch.notFound() : ProductLabelMatch.ambiguous();
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("ProductClient resolveByLabel failed: {}", ex.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "product-service 호출 실패", ex);
+        }
+
+        Object data = envelope == null ? null : envelope.get("data");
+        if (!(data instanceof Map<?, ?> rawMap)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "product-service 응답 포맷 오류 (data 누락)");
+        }
+        ProductLabelResponse response = objectMapper.convertValue(rawMap, ProductLabelResponse.class);
+        if (response.id() == null) {
+            // modelCode 는 레거시 제품(모델코드 미부여) 매칭 시 null 이 정상이므로 검증 대상에서 제외한다.
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "product-service 응답 포맷 오류 (productId 누락)");
+        }
+        return ProductLabelMatch.matched(response.id(), response.modelCode());
+    }
+
     private String requireToken() {
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
@@ -121,5 +185,16 @@ public class ProductClient {
                     "app.security.internal.token 미설정");
         }
         return token;
+    }
+
+    private record ProductLabelResponse(UUID id, String modelCode) {
+    }
+
+    private static class LabelNotResolvedException extends RuntimeException {
+        private final int status;
+
+        private LabelNotResolvedException(int status) {
+            this.status = status;
+        }
     }
 }
