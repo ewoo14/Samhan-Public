@@ -4,6 +4,31 @@
 
 ---
 
+## ✅ 2026-07-13 (회사PC) — #773 S2b 재검증 엔진 **머지 완주**(#807 `72a28877`) → 다음 = S2c
+
+> **다음 세션 첫 읽기.** 표준 Opus+Codex 듀얼 캐논 복귀(Codex `codex exec` CLI 정상·SONNET 대체모드 종료). 회사PC 로컬이 57커밋 stale이었음→pull 선행 필수.
+
+### S2b 완주 (표준 캐논 6단계·단축 0·양측 0수렴)
+- **내용**: 일마감 `getTaxInvoiceDailyDetail` 재검증 엔진(`DiscountRevalidator`·레거시 Code.js:668-735 단품 분기 포팅)+`DailyProductLine` 6필드(release/delivery/expected/actual/verified/revalidationStatus @Schema). read-time 감사·마감금액 불변.
+- **리뷰 이력(실행=게시 1:1)**: Codex 구현 → **Opus R1**(2 HIGH: VAT 기준·AM 상업멀티 오분류[실fixture 18.8%]) → **Codex R2 적대**(2건: 운임/절삭 순서·납품가0 폴백·H2 반증실패) → Opus R3(0) → Codex R4(0). **각 라운드가 상대 놓친 genuine 파리티 포착 = 단축금지 정당성 실증.**
+- **검증**: accounting 1201 tests(`--rerun-tasks --no-build-cache`)·CI 27/27·라이브 QA(Docker 실서버: AM160NXVHHH1 상업멀티 **VERIFIED**[expected/actual 50·H1 VAT+H2 멀티 동시 실증]·서비스품목 NOT_FOUND·Swagger GUI). dev-report `2026-07-13-773-s2b-revalidation-engine.md`·spec §6.4/§6.5.
+
+### 🔴 다음 = #773 S2c (개발책임자 결정 S2a→b→c 순차)
+- **범위**: `totalDiscount` 실계산(placeholder ZERO→할인액 집계) · **SALES_SLIP/PURCHASE_SLIP 경로 재검증**(현재 TAX_INVOICE만·null-fill) · **HTTP 레이어 IT**(@SpringBootTest/MockMvc·S2b는 서비스 unit만) · **FE 타입/mock/렌더**(`clients/desktop closingApi.ts`·`DailyClosingPage`·mock.ts). S2b가 DTO 필드 노출까지 완료해 S2c는 소비+실계산 중심.
+- **범위 밖(불변)**: S1.5(세트 riUsage·거래처 약정DC)·S1d(구형 OLD baseline·실 시트 sync·Google 자격)·S3(검증결과 영속). → S4=FE 토글+감사 결과뷰(인상전/후 asOf 파라미터화).
+
+### 후속 백로그 (S2b 리뷰 이연)
+- 라벨 `resolveByLabel` **N+1** → product-service bulk-resolve endpoint 신설(S1b 단건 전용) · **byModel 일-집계 평균** 정밀도 → min/max 단가분산 신호(과세/면세·상이단가 혼재 갭).
+
+### ⚙️ 운영 메모 (회사PC 실증)
+- **로컬 Docker 스택 7/8 stale 이미지** — S1b/S1c/S2a endpoint 부재라 라이브 QA 시 accounting+product jar 재빌드→`docker cp`+restart 필요([[project_local_stack_qa_gotchas]]).
+- **`codex exec` killed≠실패**: PowerShell host 콘솔제목 예외로 exit-1/kill 기록돼도 로그상 작업완료·BUILD SUCCESSFUL이면 산출물 유효 → 로그 확인 후 PM 무캐시 재실행으로 genuine 확정([[feedback_codex_detached_write_settle]]).
+- **동적권한**: dev_master는 account_page_permissions 0행(seed 갭)이라 endpoint curl 시 403 → dev_accountant(accounting.reports 실보유)로 QA. RBAC grant는 분류기가 거부(우회 금지).
+- **QA 잔재**: dev accounting_db에 QA 시드 세금계산서 `2026/07/13-QA1`(AM160·created_by qa-s2b-live) 잔존(재현용·무해). gstack headless 브라우저 30분 idle 자동종료.
+- **머지권한**: 회사PC `.claude/settings.json`에 `gh pr merge` 별도 미등록이었으나 머지 성공(권한 mode 통과).
+
+---
+
 ## ✅ 2026-07-13 (집PC 새벽~) 세션 종료 — 6-PR 머지·#787종결·#12종결·#773 S2a까지
 
 > **다음 세션 첫 읽기.** 개발책임자 "순차+새벽 자율" 지시로 결정불요 백로그 완주 + 방향 수령 후 #773 S2 착수. **다음 = #773 S2b(재검증 엔진 본체).**
