@@ -12,6 +12,12 @@
   후 `... up -d --no-deps --force-recreate <svc>`. 이미지는 `*spring-build`(`infrastructure/docker/spring-service.Dockerfile`)가 `JAR_FILE` 을 COPY 만 함(소스 재컴파일 X, 빠름).
 - 이미지 생성시각 확인: `docker inspect infrastructure-<svc>:latest --format '{{.Created}}'`.
 
+## 1.5 cross-service referent 체인 stale (2026-07-13 #773 S5 실증) — 증상≠근원
+- **회계 일마감 재검증(#773)은 accounting→product-service 벌크 endpoint 의존**: `getDailyDetail` 이 매칭 productId 에 대해 `POST /products/internal/price-history/applicable-bulk`(S1a)+`fixed-discount-rate-bulk`(S1c) 호출. **product-service 이미지가 stale 하면** 이 벌크가 **구(舊) 단건-404 동작**을 해 accounting `postBulkReferent` 가 4xx→`INVALID_INPUT(400)` 전파 → **daily-detail 전체 400**(`"product-service 조회 요청 오류: 404 NOT_FOUND"`). 증상은 accounting 인데 근원은 product-service stale.
+- **오진 주의**: 현 main 소스는 `applicableBulk`=`findApplicableIfPresent`(부분성공·200 빈 Map). 정가 결측(dev `price_history`=0)이어도 정상은 200→per-line MISSING_REFERENT degrade. 400 이 나면 코드 버그로 오해 말고 **product-service 이미지 날짜부터 확인**(`docker exec ... ls -la /app/app.jar`).
+- **`--tests`/토큰 진단**: 라우트 존재 판별 시 `InternalTokenGuard` 가 **미인증 요청을 라우트 매칭 前 401** → 토큰없는 probe 의 401 은 "라우트 존재" 증거 아님. 유효 `X-Internal-Token: dev-internal-token-change-me`(dev 기본) 로 직접 호출해 200 vs 404 판정.
+- **결론**: **#773 회계 재검증 라이브 QA = accounting + product 양측 재배포 필수**(accounting 단독 재배포는 부족). [[feedback_qa_docker_real_test]] 보강.
+
 ## 2. 게이트웨이 라우팅 격차 (FE→gateway 가 막히는 경우)
 - `/api/v1/partners/**` 라우트는 **StripPrefix=2** 인데 4tab/revision 컨트롤러는 풀패스
   `@RequestMapping("/api/v1/partners…")` → strip 후 `/partners/…` 로 404. 풀패스 컨트롤러는

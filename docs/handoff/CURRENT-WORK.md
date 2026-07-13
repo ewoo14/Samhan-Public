@@ -4,7 +4,25 @@
 
 ---
 
-## 🔴 2026-07-13 (회사PC) — #773 S5 매입 노출+modelName **진행 중(미머지·PR #812)** → 다음 세션 재개
+## ✅ 2026-07-13 (집PC 이어받기) — #773 S5 매입 노출+modelName **머지 완주**(#812 `949bba767`)
+
+> **다음 세션 첫 읽기.** 회사PC 가 남긴 S5(PR #812·Opus R1+fix 까지·미머지)를 집PC 가 이어받아 **라이브 QA·Codex 적대검증·0수렴·머지** 완결. 표준 캐논 4라운드 양측 0수렴.
+
+### S5 완주 (표준 캐논·양측 0수렴·PM 자율머지)
+- **라운드**(실행=게시 1:1): R1 Opus 5-agent+fix+**라이브 QA**(#issuecomment-4957093034) → R2 Codex 적대검증+fix(0 blocking·genuine 3: accounting ModelTokenExtractorTest 신설·매입 verified=false 커버·확인셀 nowrap/a11y·4957256012) → R3 Opus 5-agent 수렴(**전차원 0 blocking**+위생·4957482406) → R4 Codex 최종(0 new blocking·4957506182). PM 종합 9-게이트(4957560191).
+- **내용**: BE `extractModelTokenOrNull`(표시 전용·실 모델코드만)→`DailyProductLine.modelName` 채움(3소스 공유·재검증 산식 byte-for-byte 무변경·마감금액 불변) · FE 모델 컬럼 재도입·게이팅 `!=='ALL'`(SALES+PURCHASE)·PURCHASE 참고 배너(role=note·AA 5.35)·확인 '참고' 마커(nowrap/aria-label/title).
+- **검증**: ModelTokenExtractorTest 8/8·DailyClosingRevalidationIT 4/4(modelName 단언 추가)·DailyClosingDetailServiceTest 8/8·accounting 1215·desktop 691·CI 30 green(GitGuardian=dev QA 비번 `dev_p05_pass!` false-positive·main 미보호 비차단·PM 판정). 라이브: mock OFF·실 :8080·모델 컬럼 실토큰(AR09TXEAAWKNEU-04)+매입 참고 배너 실 GUI 5장(`docs/qa/773-s5-purchase-render-modelname/`).
+- **⚙️ 부수 성과**: 라이브 QA 중 daily-detail 400 근본원인=**stale product-service 이미지**(구 applicable-bulk 단건-404·증상은 accounting 이나 근원은 product) 규명·재배포로 해소(현 main 코드 무결·프로덕션 리스크 없음). **#773 QA=product+accounting 양측 재배포 필수** 박제([[project_local_stack_qa_gotchas]] §1.5).
+- **⚙️ 환경(집PC)**: mcp__codex__codex hang·conhost 정리 denied → **codex exec `-s read-only`(리뷰)/`danger-full-access`(fix)+프롬프트 인라인 diff**(파일읽기 크래시 회피)로 genuine 확보. dev 회계 DB=최소 시드(sales/purchase 슬립 **0행**·tax 13건 전부 운임/서비스)→모델 컬럼 실증=**투명 QA 시드**(05-03 세금계산서 라인 item_name 일시 실모델 라벨→캡처→즉시 원복).
+
+### 🔴 다음 = #773 잔여 (전부 개발책임자 방향 필요)
+- **S3**(검증결과 영속): spec 상 조건부·범위 밖(on-the-fly 충분 판정)·영속=신규테이블+편집정책(무결성도메인) 선확인 필요.
+- **S1.5**(dc-config 약정DC·이카운트 거래처코드→partnerId·역-BundleExpander 세트매처·다서비스) · **S1d**(구형 baseline+실 시트 sync·**Google 자격·격리**) · **totalDiscount 실계산**('총 할인' 정의 정책성·현 placeholder ZERO).
+- **비-#773**: **#804** FE-BE DTO(SP-10-2·arologis 배차상세) · **#809** 전표 품목 단가 기억 · **#810** 입금자명 거래처 매핑 · 알림 옵션C.
+
+---
+
+## 🔴 2026-07-13 (회사PC) — #773 S5 매입 노출+modelName **진행 중(미머지·PR #812)** → (집PC 이어받아 머지 완료·위 절)
 
 > **다음 세션 첫 읽기.** S5 는 **Opus R1 리뷰+fix 까지 완료·검증(전 테스트 green)**, 커밋 `9f1eb98f`. 세션 정리로 **라이브 QA·Codex 적대검증·0수렴·머지 미완**. 개발책임자 결정 이행: ① 매입=표+참고용 배너/배지 ② modelName BE 채움(모델 컬럼 재도입).
 
