@@ -2,7 +2,9 @@ package com.samhanair.logis.accounting.service;
 
 import com.samhanair.logis.accounting.client.PartnerLookupClient;
 import com.samhanair.logis.accounting.client.PartnerSummary;
+import com.samhanair.logis.accounting.client.ApplicablePrice;
 import com.samhanair.logis.accounting.client.ProductClient;
+import com.samhanair.logis.accounting.client.ProductLabelMatch;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.domain.AccountingPeriod;
 import com.samhanair.logis.accounting.domain.DailyClosingKind;
@@ -35,6 +37,7 @@ import com.samhanair.logis.accounting.web.dto.DailyClosingDetailResponse.DailyTa
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -79,6 +82,7 @@ public class MonthEndCloseService {
     private final SlipServiceClient slipServiceClient;
     private final TaxInvoiceRepository taxInvoiceRepository;
     private final ProductClient productClient;
+    private final DiscountRevalidator discountRevalidator;
     private final PartnerLookupClient partnerLookupClient;
     private final SalesAccountingSlipRepository salesAccountingSlipRepository;
     private final PurchaseAccountingSlipRepository purchaseAccountingSlipRepository;
@@ -227,22 +231,47 @@ public class MonthEndCloseService {
                 ModelAccumulator acc = byModel.computeIfAbsent(key, k -> new ModelAccumulator());
                 acc.quantity = acc.quantity.add(line.getQuantity());
                 acc.supplyAmount = acc.supplyAmount.add(line.getSupplyAmount());
+                acc.vatAmount = acc.vatAmount.add(line.getVatAmount());
             }
         }
 
-        // product-service lookup — 본 단계는 itemName 키 보존, modelName 은 캡처 시점 spec/null
-        // (product-service 가 itemName 기반 검색 endpoint 제공 시 본 메서드로 modelName 보강)
-        // productClient 의 lookup 은 UUID 기반 — itemName 기반 미지원이므로 placeholder 호출 회피.
-        // 본 객체 instance 가 빈 결과 일 때 productClient 를 호출하면 INVALID_INPUT 던지므로 분기.
-        ensureProductClientReachable();
+        Map<String, ProductLabelMatch> labelMatches = resolveProductLabels(byModel.keySet().stream().toList());
+        List<UUID> matchedProductIds = labelMatches.values().stream()
+                .filter(ProductLabelMatch::isMatched)
+                .map(ProductLabelMatch::productId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))
+                .stream()
+                .toList();
+        Map<UUID, ApplicablePrice> pricesByProductId = loadApplicablePrices(matchedProductIds, date);
+        Map<UUID, BigDecimal> fixedRatesByProductId = loadFixedDiscountRates(matchedProductIds);
 
         List<DailyProductLine> products = new ArrayList<>(byModel.size());
         for (Map.Entry<String, ModelAccumulator> e : byModel.entrySet()) {
+            ProductLabelMatch labelMatch = labelMatches.getOrDefault(e.getKey(), ProductLabelMatch.notFound());
+            UUID productId = labelMatch.productId();
+            ApplicablePrice price = labelMatch.isMatched() ? pricesByProductId.get(productId) : null;
+            // fixedDc key 누락은 미설정(멀티 45 폴백)으로 처리한다. price key 누락도 엔진에 넘겨
+            // 일반 품목은 MISSING_REFERENT, 운임/절삭은 레거시처럼 referent 무관 VERIFIED 로 판정한다.
+            DiscountRevalidator.Revalidation revalidation = discountRevalidator.revalidate(
+                    e.getKey(),
+                    ModelTokenExtractor.extractModelToken(e.getKey()),
+                    e.getValue().effectiveUnitPrice(),
+                    price == null ? null : price.release(),
+                    price == null ? null : price.delivery(),
+                    labelMatch.isMatched() ? fixedRatesByProductId.get(productId) : null,
+                    labelMatch.status());
             products.add(new DailyProductLine(
                     e.getKey(),
                     null,
                     e.getValue().quantity,
-                    e.getValue().supplyAmount));
+                    e.getValue().supplyAmount,
+                    revalidation.releasePrice(),
+                    revalidation.deliveryPrice(),
+                    revalidation.expectedRate(),
+                    revalidation.actualRate(),
+                    revalidation.verified(),
+                    revalidation.status().name()));
         }
 
         return new DailyClosingDetailResponse(
@@ -285,7 +314,6 @@ public class MonthEndCloseService {
                 accumulateProduct(byModel, line.getProductName(), line.getQty(), line.getSupplyAmount());
             }
         }
-        ensureProductClientReachable();
         return new DailyClosingDetailResponse(date, slips.size(), totalSupply, totalVat, totalAmount,
                 BigDecimal.ZERO, rows, toProductLines(byModel));
     }
@@ -319,7 +347,6 @@ public class MonthEndCloseService {
                 accumulateProduct(byModel, line.getProductName(), line.getQty(), line.getSupplyAmount());
             }
         }
-        ensureProductClientReachable();
         return new DailyClosingDetailResponse(date, slips.size(), totalSupply, totalVat, totalAmount,
                 BigDecimal.ZERO, rows, toProductLines(byModel));
     }
@@ -367,9 +394,54 @@ public class MonthEndCloseService {
                     e.getKey(),
                     null,
                     e.getValue().quantity,
-                    e.getValue().supplyAmount));
+                    e.getValue().supplyAmount,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null));
         }
         return products;
+    }
+
+    private Map<String, ProductLabelMatch> resolveProductLabels(List<String> labels) {
+        Map<String, ProductLabelMatch> matches = new LinkedHashMap<>();
+        for (String label : labels) {
+            matches.put(label, productClient.resolveByLabel(label));
+        }
+        return matches;
+    }
+
+    private Map<UUID, ApplicablePrice> loadApplicablePrices(List<UUID> productIds, LocalDate asOf) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, ApplicablePrice> result = new LinkedHashMap<>();
+        for (List<UUID> chunk : chunks(productIds)) {
+            result.putAll(productClient.applicablePrices(chunk, asOf));
+        }
+        return result;
+    }
+
+    private Map<UUID, BigDecimal> loadFixedDiscountRates(List<UUID> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (List<UUID> chunk : chunks(productIds)) {
+            result.putAll(productClient.fixedDiscountRates(chunk));
+        }
+        return result;
+    }
+
+    private static List<List<UUID>> chunks(List<UUID> productIds) {
+        List<List<UUID>> chunks = new ArrayList<>();
+        for (int start = 0; start < productIds.size(); start += ProductClient.REFERENT_BATCH_MAX) {
+            int end = Math.min(start + ProductClient.REFERENT_BATCH_MAX, productIds.size());
+            chunks.add(productIds.subList(start, end));
+        }
+        return chunks;
     }
 
     private Map<UUID, PartnerSummary> resolvePartners(List<UUID> partnerIds) {
@@ -405,19 +477,23 @@ public class MonthEndCloseService {
         });
     }
 
-    /** product-service 도달 가능 여부 — 본 슬라이스는 explicit lookup 호출 없이 health placeholder. */
-    private void ensureProductClientReachable() {
-        // ProductClient 는 IT @MockBean 격리 — 실 호출 X. 인스턴스 보장만 (NPE 가드).
-        if (productClient == null) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    "product-service client 가 주입되지 않았습니다");
-        }
-    }
-
     /** 모델별 누적 헬퍼. */
     private static final class ModelAccumulator {
         BigDecimal quantity = BigDecimal.ZERO;
         BigDecimal supplyAmount = BigDecimal.ZERO;
+        BigDecimal vatAmount = BigDecimal.ZERO;
+
+        /**
+         * VAT 포함 유효단가 = (공급가액 + 세액) / 수량. 레거시 확인 산식의 단가(VAT포함)와 동일 기준
+         * (재검증 엔진의 출고가 대비 할인율이 레거시와 파리티를 유지하도록 VAT 포함으로 산출).
+         * 수량 0 이면 null(판정 불가).
+         */
+        BigDecimal effectiveUnitPrice() {
+            if (quantity == null || quantity.compareTo(BigDecimal.ZERO) == 0) {
+                return null;
+            }
+            return supplyAmount.add(vatAmount).divide(quantity, 10, RoundingMode.HALF_UP);
+        }
     }
 
     /**
