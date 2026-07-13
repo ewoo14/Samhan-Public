@@ -29,6 +29,13 @@ export type PeriodType = 'DAILY' | 'MONTHLY'
 export type PeriodStatus = 'OPEN' | 'CLOSED'
 export type DailyClosingKind = 'SALES' | 'PURCHASE'
 export type DailyClosingSourceKind = 'TAX_INVOICE' | 'SALES_SLIP' | 'PURCHASE_SLIP'
+export type DailyProductRevalidationStatus =
+  | 'VERIFIED'
+  | 'NOT_FOUND'
+  | 'AMBIGUOUS'
+  | 'MISSING_REFERENT'
+  | 'NOT_MEASURABLE'
+  | 'OUT_OF_SCOPE'
 
 /**
  * 마감 단건 응답 — BE `AccountingPeriodResponse` record.
@@ -162,12 +169,24 @@ export interface DailyTaxInvoiceRow {
 export interface DailyProductLine {
   /** 품명 — product-service 마스터 lookup. */
   productName: string
-  /** 모델명. */
-  modelName: string
-  /** 수량 (BigDecimal — string). */
-  quantity: string
-  /** 공급가액 합. */
-  supplyAmount: string
+  /** 모델명 — BE 는 현재 항상 null 반환(S4 보강 예정). */
+  modelName: string | null
+  /** 수량 (BigDecimal → Jackson 기본 JSON number). */
+  quantity: number
+  /** 공급가액 합 (BigDecimal → JSON number). */
+  supplyAmount: number
+  /** 적용 출고가 (BigDecimal → JSON number). 미매칭/정가결측 시 null. */
+  releasePrice: number | null
+  /** 적용 납품가 (BigDecimal → JSON number). 미매칭/정가결측 시 null. */
+  deliveryPrice: number | null
+  /** 기대 할인율(정수 %). */
+  expectedRate: number | null
+  /** 실제 할인율(정수 %). */
+  actualRate: number | null
+  /** 재검증 확인 판정. */
+  verified: boolean | null
+  /** 재검증 사유. */
+  revalidationStatus: DailyProductRevalidationStatus | null
 }
 
 /**

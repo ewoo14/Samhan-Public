@@ -267,3 +267,50 @@ record DailyProductLine(String productName, String modelName, BigDecimal quantit
 - **판정불가 status 신설**: qty=0 유효단가 산출 불가 → `NOT_MEASURABLE`(verified=null·판정실패 false 와 구분). MISSING_REFERENT 게이트는 출고가 결측만(fixedDc 결측=45 폴백). @Schema 6필드·enum 노출.
 - **이연(리뷰어 non-blocking)**: HTTP 레이어 IT=S2c(controller passthrough 동반)·라벨 resolveByLabel N+1 bulk endpoint=후속·FE 타입/mock parity=S2c/S4(FE 미렌더). 서비스 레벨 @Spy 엔진+전 status IT로 로직 커버.
 - **Codex 적대검증 R2**: 하단 진행(순차·0수렴까지).
+
+---
+
+## 6.6 S2c 엔지니어링 스펙 (2026-07-13 · 회사PC 순차) — SALES/PURCHASE 재검증 + HTTP IT + FE parity
+
+> S2b(#807 `72a28877`) 머지로 엔진·TAX_INVOICE 배선·DTO 6필드 완비. S2c = 나머지 소비·커버리지·계약 정합. PM 자율(read-time·정책 게이트 불요), 단 totalDiscount 정의만 개발책임자 확인 대상(하단).
+
+### 6.6.0 스코프 (PM 결정)
+1. **SALES_SLIP/PURCHASE_SLIP 재검증** — 현재 `getSalesSlipDailyDetail`/`getPurchaseSlipDailyDetail`는 `toProductLines`(신규필드 null-fill). S2b 재검증을 이 2경로에도 적용.
+2. **재검증 배선 공유 리팩터** — `getTaxInvoiceDailyDetail` 인라인 배선(라벨해소→벌크 referent→그룹 재검증→DailyProductLine)을 private 헬퍼 `revalidateProductLines(Map<String,ModelAccumulator> byModel, LocalDate asOf)` 로 추출. 3경로 공용.
+3. **`accumulateProduct` + vatAmount** — SALES/PURCHASE 라인도 `line.getVatAmount()` 누적(SalesAccountingSlipLine/PurchaseAccountingSlipLine 둘 다 `vatAmount` 보유·확인). effectiveUnitPrice=(공급+세액)/수량 파리티 유지.
+4. **HTTP 레이어 IT** — @SpringBootTest/@AutoConfigureMockMvc(AbstractPostgresIT)·@MockBean ProductClient. TAX_INVOICE(+SALES_SLIP) 세금계산서/전표 시드·GET /accounting/closings/daily 로 재검증 필드 직렬화+권한 게이트 검증(S2b 리뷰 커버 갭 해소).
+5. **FE 타입/mock parity** — `clients/desktop/api/closingApi.ts` `DailyProductLine` +6 nullable 필드(release/delivery: `string|null`·expected/actual: `number|null`·verified: `boolean|null`·revalidationStatus: literal union `'VERIFIED'|'NOT_FOUND'|'AMBIGUOUS'|'MISSING_REFERENT'|'NOT_MEASURABLE'|'OUT_OF_SCOPE'|null`). `mock.ts` fixture productSummaries에 6필드 BE-parity 값. **렌더 없음**(DailyClosingPage 미렌더=S4). typecheck 통과.
+
+### 6.6.1 🟡 totalDiscount = 이연 (개발책임자 '총 할인' 정의 확인)
+- 스펙 초안이 S2c에 "totalDiscount 실계산"을 뒀으나 정의가 **정책성**이라 이연·placeholder ZERO 유지·PR에 결정 요청 게시:
+  - **대상 그룹**: 재검증된 제품 그룹만? 운임/절삭·기본 서비스품목은 "출고가 대비 할인" 무의미 → 제외 여부.
+  - **산식**: revalidation 기반 `Σ(releasePrice×수량 − (공급가액+세액))`(출고가 대비 gross)? 아니면 journal 할인계정 기반?(현 서비스에 할인계정/메모 개념 부재 확인 → journal 기반 불가) · overcharge(음수) 허용?
+  - **VAT 기준**: 출고가 gross 기준(rate 산식 정합).
+  - FE 미렌더라 긴급도 낮음. → **개발책임자 정의 확정 후 별도 처리**(S2c 또는 후속). read-time·비-원장이라 무결성 무관.
+
+### 6.6.2 파리티/주의
+- SALES/PURCHASE 라벨 = `productName`(productCode="MIG4" 하드코딩·조인키 무용 §5.1). resolveByLabel(productName).
+- `toProductLines`(현행)는 리팩터 후 미사용 시 제거. 엔진·referent 계약은 S2b 그대로(무변경).
+- dev 데이터: `sales_accounting_slip_lines` 0행(§5.5)→SALES/PURCHASE 라이브 QA 불가(IT genuine·라이브는 TAX_INVOICE AM160 유지·정직 기록).
+
+### 6.6.3 테스트
+- 서비스 단위(`DailyClosingDetailServiceTest`): SALES_SLIP/PURCHASE_SLIP 경로 @Mock ProductClient로 재검증 필드 population·accumulateProduct vatAmount.
+- **HTTP IT 신규**(`DailyClosingRevalidationIT`): MockMvc 3소스(TAX_INVOICE·SALES_SLIP·PURCHASE_SLIP) 재검증 6필드 직렬화·@MockBean 격리·권한(accounting.reports). PURCHASE_SLIP 케이스는 `kind=PURCHASE` 동반(§6.6.6 계약).
+- FE typecheck(`npm run typecheck`). genuine `--rerun-tasks --no-build-cache`.
+
+### 6.6.4 캐논
+조기 PR(연관 #773) → Codex 구현 → Opus 5-agent+STEP/Codex 적대 순차 0수렴 → 라이브 QA(TAX_INVOICE 재검증 회귀·Swagger) → dev-report → 머지.
+
+### 6.6.5 R1 리뷰 disposition (2026-07-13 · Opus 5-agent[FE/BE/Design/DevOps]+BE심층)
+- **0 blocker.** 리팩터 byte-for-byte 무변경(BE 확인)·SALES/PURCHASE 배선/vatAmount 정합·신규 IT genuine(CI 아티팩트 실증)·@MockBean 완전·마이그 무변경.
+- **[fix] FE 타입 실직렬화 정합**: `DailyProductLine`의 releasePrice/deliveryPrice/quantity/supplyAmount는 BigDecimal→**JSON number**(라이브 실 응답 실측 확증·Jackson 기본)라 `string`→`number`, modelName→`string|null`. mock을 엔진 정합(AM 상업멀티 45%)·합계 정합·숫자화. (부모 DailyClosingDetail totals=렌더되어 스코프 밖·유지.)
+- **[flag] PURCHASE(매입) 재검증 의미론**: release/delivery/fixedDc referent 는 삼한 **판매(출고)** 기준이라, 매입전표/매입 세금계산서 재검증의 verified/expectedRate 는 **참고용**(정식 매입단가 감사 아님). pre-existing(S2b TAX_INVOICE PURCHASE)·3경로 일관. DTO Javadoc 캐벗 추가·**S4 렌더 전 개발책임자 확정 대상**(매입 노출 방식·별도 매입 referent 여부).
+- **개발책임자 확인 2건(비차단·read-time)**: ① totalDiscount '총 할인' 정의(§6.6.1) ② PURCHASE 재검증 노출.
+- **[정보·수용]** IT productSummaries 인덱스 순서(byModel LinkedHashMap·소량 same-tx 삽입순·CI 통과·기존 코드베이스 패턴)·N+1 라벨(S2b 기이연 파급).
+- Codex 적대검증 R2 순차 진행.
+
+### 6.6.6 R2 Codex 적대검증 disposition (2026-07-13 · Codex 5-agent genuine `mcp__codex__codex`)
+- **blocking 0.** R1 fix 전건 반증 실패(=견고 확정): 리팩터 byte-for-byte·VAT 파리티((supply+vat)/qty)·FE `number` 타입·PURCHASE Javadoc 캐벗·부모 totals 분리 모두 정합.
+- **[fix·QA] PURCHASE_SLIP HTTP IT 부재**(Codex 유일 Low 지적) → **수용·수정**: `DailyClosingRevalidationIT`에 `purchaseSlipDailyDetailExposesRevalidationFields` + `seedPostedPurchaseSlip` 추가로 §6.6.3 "MockMvc 3소스" 정식 충족. AM160NXVHHH1 상업멀티 45% VERIFIED·6필드 직렬화 검증.
+- **[genuine 부수확·계약]** HTTP IT 가 실 HTTP 스택(컨트롤러 enum 바인딩·`@RequirePermission` 게이트·JSON 직렬화·실 DB 왕복)을 관통 검증. 특히 컨트롤러의 **`kind` 기본값 바인딩** 계약 고정: 클라이언트가 `sourceKind=PURCHASE_SLIP` 만 보내고 `kind` 를 생략하면 기본 `kind=SALES` 로 resolve → `validateKindSourceMatch(SALES, PURCHASE_SLIP)` → **400**. 그래서 IT 는 `.param("kind","PURCHASE")` 동반. 서비스 단위테스트는 3-arg `getDailyDetail(DATE, PURCHASE, PURCHASE_SLIP)` 에 정합쌍을 명시 전달하므로 `validateKindSourceMatch` 는 통과(우회 아님)하나 컨트롤러 바인딩·직렬화·권한 계층은 미검증 → HTTP IT 가 그 계층을 genuine 커버(false-green 방지). 계약 자체는 정상(버그 아님). FE 소비처(`DailyClosingPage.tsx` compatibleSource remap)는 PURCHASE_SLIP 조회 시 항상 kind=PURCHASE 동반 → 실앱 400 회귀 없음(R3 확증).
+- genuine `:services:accounting-service:test --rerun-tasks --no-build-cache` 재실행(신규 IT 4/4·전체 그린) → 0수렴.
