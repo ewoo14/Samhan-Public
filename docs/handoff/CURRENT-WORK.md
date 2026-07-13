@@ -4,7 +4,25 @@
 
 ---
 
-## ✅ 2026-07-13 (회사PC) — #773 S2c 전표(SALES/PURCHASE) 재검증 **머지 완주**(#808 `d5ba9a45`) → 다음 = S3
+## ✅ 2026-07-13 (회사PC) — #773 S4 일마감 재검증 FE 렌더 **머지 완주**(#811 `8fec255e`) → 다음 = 개발책임자 방향
+
+> **다음 세션 첫 읽기.** 표준 Opus+Codex 듀얼 캐논·양측 0수렴·라이브 QA 실데이터. 개발책임자 결정 이행: ① totalDiscount=GAS대로(총액 미도입) ② PURCHASE=매출만 렌더(매입 제외).
+
+### S4 완주 (표준 캐논·양측 0수렴·genuine 라이브)
+- **내용**: `DailyClosingPage` Daily Detail 에 **모델별 재검증 2nd DataTable**(품명·수량·공급가·출고가·납품가·기대율·할인율·확인 배지·사유) 추가. `closingKind==='SALES'` 게이팅(매입 제외). BE 무변경(순수 FE·S2b/S2c가 productSummaries 6필드 이미 노출·FE 0 렌더가 갭이었음).
+- **리뷰(실행=게시 1:1)**: R1 **Opus 5-agent**(genuine 4결함: 🔴Design HIGH 사유='확인' 자기모순[verified=false도 status=VERIFIED]·🔴DevOps P0 픽스처 문서번호형식 CI RED·🟠MED 새니티캡션·QA MED×2 배지마스킹/BE-불가능픽스처)+fix → **Codex R2 적대검증**(blocking 0·유일 genuine ALL 상세호출 억제 단언 fix·모델컬럼 disposition) → 양측 0수렴.
+- **라이브 QA**: Docker 실서버(mock OFF·dev_accountant·**2026-05-19 SALES_SLIP 239전표 실데이터**) → 모델별 재검증 실 GUI(불일치 행 사유 '—'=HIGH fix 라이브 확증·판정불가/불일치 배지·할인율%). `docs/qa/773-s4-daily-closing-render/`.
+- **검증**: desktop **691 tests**·mock.test.ts 51/51·typecheck exit 0·CI 전 체크 green. dev-report `2026-07-13-773-s4-daily-closing-render.md`·spec §6.7.
+- **⚙️ 환경 교훈**: codex exec 파일읽기 PowerShell 스폰이 desktop heap 고갈(0xC0000142)로 반복 killed → **conhost 정리(Stop-Process·22→6) + 리뷰 diff 인라인 제공**(shell 불필요)로 genuine 확보. 웹 real-qa=**BrowserRouter 실경로**(`/accounting/daily-closings`·해시 아님)·`vite --config vite.web.config.ts --port 5199 --strictPort`(mock OFF)·dev_accountant(page+reports 권한).
+
+### 🔴 다음 = #773 개발책임자 방향 (S3·매입노출·백로그)
+- **S3(검증결과 영속)**: spec §6 "조건부·범위 밖"(on-the-fly 충분 판정)·영속=신규 테이블+편집정책(무결성도메인) 선확인 필요.
+- **매입(PURCHASE) 재검증 노출**·**modelName BE 채움**(모델 컬럼 재도입)·**totalDiscount 정의**(GAS엔 부재)는 개발책임자 확정 시.
+- **후속 백로그**: #809(전표 품목 단가 기억)·#810(입금자명 거래처 매핑)·라벨 resolveByLabel N+1 bulk endpoint·할인율 히트맵(dc-45~49 GAS 시그니처·선택).
+
+---
+
+## ✅ 2026-07-13 (회사PC) — #773 S2c 전표(SALES/PURCHASE) 재검증 **머지 완주**(#808 `d5ba9a45`)
 
 > **다음 세션 첫 읽기.** 표준 Opus+Codex 듀얼 캐논·단축 0·양측 0수렴. 개발책임자 지시로 **Opus 재수렴**까지 포함(5라운드). Codex `codex exec` 정상(shell 최소화 지시로 DLL 0).
 
