@@ -4,6 +4,22 @@
 
 ---
 
+## ✅ 2026-07-13 (집PC·자율) — #773 후속 resolveByLabel N+1→벌크 **머지 완주**(#813 `f9abddd4a`)
+
+> **다음 세션 첫 읽기.** S5 머지 후 개발책임자 "자율 진행" 지시로 결정불요 기술개선 착수. **🚨 워크플로우 위반+정정 박제**: 구현을 backend 서브에이전트로 대체하며 캐논 2단계(Codex 개발 리뷰)를 건너뛰고 Opus 5-agent 로 직행 → 개발책임자 지적 → 소급 보완.
+
+### 완주 (표준 캐논·소급 2단계 포함·양측 0수렴)
+- **내용**: 일마감 재검증 라벨 해소 N+1 순차 HTTP → product-service 벌크 endpoint 1회. product `lookupSummaryByLabelBulk`(resolveLabel 공유=단건 parity)·`/lookup-by-label-bulk`·DTO 2 / accounting `resolveByLabelBulk`(completeness·MSA 문자열계약)·`resolveProductLabels` 청킹. 순수 배치화·판정/마감금액 무변경.
+- **라운드**(실행=게시 1:1): 구현(서브에이전트)+Opus STEP4 → **소급 Codex 개발 리뷰(2단계)** = Opus 5-agent 가 놓친 **HIGH blank-token parity·MED completeness 포착**(2단계 정당성 실증) → Codex fix(6건) → Opus 5-agent 수렴(전차원 0·mutation testing) → Codex 적대검증(0) → **양측 0수렴**(`362059d4c`). PM 종합 9-게이트·CI 31 green.
+- **라이브 QA**: product+accounting 양측 재배포·일마감 상세 2026-05-03 parity 렌더(스샷 2장·`docs/qa/773-resolvebylabel-bulk/`)·N+1→1 실증(accounting per-label 로그 0·단위 times 6→1). ⚠️ product actuator metrics/loggers dev 500/404(positive per-URI 카운트 미가용·정직 기록).
+- **🚨 교훈 박제**([[feedback_sonnet_substitution_when_codex_unavailable]] §대체 발동 조건): codex exec danger-full-access **쓰기 정상**(크래시=파일탐색 한정·인라인 스펙 시 OK)·**미검증 단정으로 2단계 스킵 금지**·codex 실제 시도부터.
+
+### 🔴 다음 = 결정불요 백로그 / 개발책임자 방향
+- **결정불요 후보**: #804(arologis 배차상세 FE-BE DTO 정렬·SP-10-2·**대형**·decision-freeness 정찰 필요) · byModel min/max 단가분산 신호(S2b 이연·설계판단 여지).
+- **방향/자격 필요(자율 제외)**: #773 S3(무결성 편집정책 선확인)·S1.5(다서비스·large)·S1d(Google 자격)·totalDiscount 정의·#809/#810(spec 미확정)·알림 옵션C(설계).
+
+---
+
 ## ✅ 2026-07-13 (집PC 이어받기) — #773 S5 매입 노출+modelName **머지 완주**(#812 `949bba767`)
 
 > **다음 세션 첫 읽기.** 회사PC 가 남긴 S5(PR #812·Opus R1+fix 까지·미머지)를 집PC 가 이어받아 **라이브 QA·Codex 적대검증·0수렴·머지** 완결. 표준 캐논 4라운드 양측 0수렴.
