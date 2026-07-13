@@ -4,9 +4,30 @@
 
 ---
 
-## ✅ 2026-07-13 (회사PC) — #773 S2b 재검증 엔진 **머지 완주**(#807 `72a28877`) → 다음 = S2c
+## ✅ 2026-07-13 (회사PC) — #773 S2c 전표(SALES/PURCHASE) 재검증 **머지 완주**(#808 `d5ba9a45`) → 다음 = S3
 
-> **다음 세션 첫 읽기.** 표준 Opus+Codex 듀얼 캐논 복귀(Codex `codex exec` CLI 정상·SONNET 대체모드 종료). 회사PC 로컬이 57커밋 stale이었음→pull 선행 필수.
+> **다음 세션 첫 읽기.** 표준 Opus+Codex 듀얼 캐논·단축 0·양측 0수렴. 개발책임자 지시로 **Opus 재수렴**까지 포함(5라운드). Codex `codex exec` 정상(shell 최소화 지시로 DLL 0).
+
+### S2c 완주 (표준 캐논·5라운드 0수렴)
+- **내용**: `MonthEndCloseService.revalidateProductLines` 헬퍼 추출(TAX_INVOICE 인라인→**3경로 공유**) → **SALES_SLIP/PURCHASE_SLIP 전표경로 재검증 확장**(S2b는 TAX만). `accumulateProduct` vatAmount 누적→effectiveUnit=(공급+세액)/수량 VAT포함 파리티. 신규 `DailyClosingRevalidationIT`(@SpringBootTest+MockMvc+Testcontainers·3소스 6필드+403). FE `closingApi.ts` 타입(number/nullable·revalidationStatus union)·mock.ts 엔진정합.
+- **리뷰 5라운드(실행=게시 1:1)**: R1 Opus 5-agent(HIGH FE타입 string→number 실직렬화 실측 fix·MED mock 엔진정합) → **R2 Codex 적대**(유일 Low: PURCHASE HTTP IT 부재→수정) → R3 Codex 수렴 0 → **Opus 재수렴 5-agent**(개발책임자 지시·5차원 0 blocking + doc-accuracy 2정정: §6.6.6 "단위테스트 계약 우회" 부정확·DTO §6.6.5 교차참조) → R4 Codex terminal 0. **양측 0수렴.**
+- **검증**: accounting **1207 tests**(`--rerun-tasks --no-build-cache`·0 fail)·CI 31체크 green(신규 PURCHASE IT **CI 로그 실행 실증 0.021s**)·라이브 QA=R1 authoritative(TAX AM160 VERIFIED·release 11,572,000·number 직렬화)+SALES/PURCHASE genuine IT(dev 0행). dev-report `2026-07-13-773-s2c-slip-revalidation.md`·spec §6.6.
+- **genuine 부수확**: PURCHASE_SLIP=`kind=PURCHASE` 필수(`validateKindSourceMatch`·SALES 기본 조합 400). FE `DailyClosingPage` compatibleSource가 항상 kind 동반→실앱 회귀 없음(R3 확증).
+
+### 🔴 다음 = #773 S3 (검증결과 영속) or 개발책임자 방향
+- **S3**: 단가변동 확인 상태 영속(저장·재조회). **S4**: FE 렌더(재검증 컬럼·매입 노출방식 개발책임자 확정 후)·totalDiscount 실계산(현재 placeholder ZERO).
+- **개발책임자 확인 2건(S4 착수 전·비차단)**: ① totalDiscount '총 할인' 정의 ② PURCHASE 재검증 노출 방식(참고용 semantics).
+- **범위 밖(불변)**: S1.5(세트 riUsage·약정DC)·S1d(구형 baseline·실시트sync·Google 자격).
+
+### 후속 백로그
+- **#809** 전표 품목 단가 기억(거래처+품목 이전 수동단가 자동입력) · **#810** 입금자명 거래처 매핑 기억+설정화면 (둘 다 개발책임자 발의·우선순위 대기).
+- 라벨 `resolveByLabel` N+1 bulk endpoint · byModel min/max 단가분산 신호.
+
+---
+
+## ✅ 2026-07-13 (회사PC) — #773 S2b 재검증 엔진 **머지 완주**(#807 `72a28877`)
+
+> 표준 Opus+Codex 듀얼 캐논 복귀(Codex `codex exec` CLI 정상·SONNET 대체모드 종료). 회사PC 로컬이 57커밋 stale이었음→pull 선행 필수.
 
 ### S2b 완주 (표준 캐논 6단계·단축 0·양측 0수렴)
 - **내용**: 일마감 `getTaxInvoiceDailyDetail` 재검증 엔진(`DiscountRevalidator`·레거시 Code.js:668-735 단품 분기 포팅)+`DailyProductLine` 6필드(release/delivery/expected/actual/verified/revalidationStatus @Schema). read-time 감사·마감금액 불변.
