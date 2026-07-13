@@ -4,7 +4,26 @@
 
 ---
 
-## ✅ 2026-07-13 (회사PC) — #773 S4 일마감 재검증 FE 렌더 **머지 완주**(#811 `8fec255e`) → 다음 = 개발책임자 방향
+## 🔴 2026-07-13 (회사PC) — #773 S5 매입 노출+modelName **진행 중(미머지·PR #812)** → 다음 세션 재개
+
+> **다음 세션 첫 읽기.** S5 는 **Opus R1 리뷰+fix 까지 완료·검증(전 테스트 green)**, 커밋 `9f1eb98f`. 세션 정리로 **라이브 QA·Codex 적대검증·0수렴·머지 미완**. 개발책임자 결정 이행: ① 매입=표+참고용 배너/배지 ② modelName BE 채움(모델 컬럼 재도입).
+
+### S5 진행 상태 (PR #812 OPEN·브랜치 `feat/773-s5-purchase-render-modelname` HEAD `9f1eb98f`)
+- **완료**: Opus 기획+조기 PR(#812)·Codex 구현(`d51f37a5`)·**Opus 5-agent 리뷰+fix**(`9f1eb98f`·genuine 다수 포착).
+  - 내용: BE `MonthEndCloseService.revalidateProductLines` modelName=`ModelTokenExtractor.extractModelTokenOrNull`(실 모델코드만·미매치/blank null) · FE `DailyClosingPage` 게이팅 `closingKind!=='ALL'`(SALES+PURCHASE)·PURCHASE 참고 배너(실 DS 토큰 `--color-warning-*`+집계 캐비엇)·확인 '참고' 마커·모델 컬럼 재도입 · mock/JSDoc modelName parity · BE-faithful test.
+  - **검증 green**: vitest DailyClosingPage 3/3·mock.test.ts 51/51·typecheck exit 0·BE compileJava exit 0·**전체 desktop 691/691·BE accounting 1207·0-fail**(modelName 회귀 0). Opus R1 게시 `PR#812 issuecomment`.
+- **🔴 미완(다음 세션 순차)**:
+  1. **라이브 QA**: `773-s5-...-real-qa/773-s5-real-qa.spec.ts` **작성완료·미실행**. 실행법: `cd clients/desktop && VITE_API_BASE_URL=http://localhost:8080 npx vite --config vite.web.config.ts --port 5199 --strictPort`(mock OFF·백그라운드) → `AUDIT_BASE_URL=http://localhost:5199 node_modules/.bin/playwright test --config=playwright.real-qa.config.ts playwright/773-s5-purchase-render-real-qa/*.spec.ts`. **modelName 실값 캡처는 accounting jar 재배포 선행**(`./gradlew :services:accounting-service:bootJar` → `docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.local-all.yml up -d --build accounting-service`). PURCHASE 참고배너는 FE-only(vite)라 재배포 없이 캡처 가능(dev 매입 0행이나 배너=데이터 무관). SALES modelName=dev SALES_SLIP 2026-05-19(239전표).
+  2. **Codex 5-agent 적대검증**: 인라인 우회(diff 프롬프트 인라인)+conhost 정리 필수(`Stop-Process conhost`·22→6). codex exec 파일읽기 PowerShell 스폰이 desktop heap 고갈로 반복 killed → **리뷰 diff 인라인 제공**으로 genuine 확보(S4 실증).
+  3. **0수렴 → PM 종합 9-게이트 → CI green → PM 자율 머지 → 핸드오프.**
+
+### ⚙️ 환경 교훈 (다음 세션 필수)
+- **codex DLL 우회**: codex exec 가 파일읽기/rg 를 PowerShell 로 스폰 → desktop heap 고갈(0xC0000142) 반복 killed. **①conhost 정리(`Get-Process conhost|Stop-Process -Force`·22→6) ②리뷰는 diff/파일을 프롬프트에 인라인 제공(shell 불필요)**. 구현은 conhost 정리 후 codex exec 가능(S5 구현 DLL 0).
+- **웹 real-qa = BrowserRouter 실경로**(`/accounting/daily-closings`·해시 아님)·vite `--port 5199 --strictPort`·mock OFF·dev_accountant(page+reports 권한 보유·dev_master 는 reports 403).
+
+---
+
+## ✅ 2026-07-13 (회사PC) — #773 S4 일마감 재검증 FE 렌더 **머지 완주**(#811 `8fec255e`)
 
 > **다음 세션 첫 읽기.** 표준 Opus+Codex 듀얼 캐논·양측 0수렴·라이브 QA 실데이터. 개발책임자 결정 이행: ① totalDiscount=GAS대로(총액 미도입) ② PURCHASE=매출만 렌더(매입 제외).
 
