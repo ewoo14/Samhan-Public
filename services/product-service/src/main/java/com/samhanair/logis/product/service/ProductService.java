@@ -24,6 +24,7 @@ import com.samhanair.logis.product.repository.ProductRepository;
 import com.samhanair.logis.product.repository.ProductSpecRepository;
 import com.samhanair.logis.product.web.dto.BundleIntegrityResponse;
 import com.samhanair.logis.product.web.dto.CreateProductRequest;
+import com.samhanair.logis.product.web.dto.LabelResolutionResult;
 import com.samhanair.logis.product.web.dto.ProductResponse;
 import com.samhanair.logis.product.web.dto.ProductSummaryResponse;
 import com.samhanair.logis.product.web.dto.ProductItemKind;
@@ -63,7 +64,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ProductService {
 
-    private static final int LOOKUP_MAX = 100;
+    public static final int LOOKUP_MAX = 100;
 
     private final ProductRepository productRepository;
     private final ProductSpecRepository productSpecRepository;
@@ -220,10 +221,12 @@ public class ProductService {
     /**
      * 회계 라벨({@code 품목명[규격]})에서 모델 토큰을 추출해 제품 요약을 조회한다.
      *
-     * <p>#773 S1b accounting 일마감 재검증 전용 service-to-service 경로다. 4단 fallback 으로 판정한다:
-     * 1차 {@code model_code} exact, 2차 {@code model_name} exact(카탈로그 노출 모델코드 fallback,
-     * {@link com.samhanair.logis.product.repository.ProductRepository#findByCatalogExposedModelCodeAndIsDeletedFalse}),
-     * 3차 product_aliases 의 exact alias, 4차 기존 제품 검색 LIKE 결과의 단건성.
+     * <p>#773 S1b accounting 일마감 재검증 전용 service-to-service 경로였으나, #773 후속 벌크 전환 이후
+     * 프로덕션 미호출 경로다. 단건/벌크 parity 앵커, 운영 디버깅, 향후 단건 internal 소비 대비용으로
+     * 유지한다. {@link #resolveLabel(String)}
+     * 3단 fallback(model_code/model_name exact→alias exact→LIKE 단건성) 판정을
+     * {@link #lookupSummaryByLabelBulk(List)} 벌크와 공유하며, 단건은 그 판정을 예외로 변환한다
+     * (#773 후속 슬라이스 — N+1 HTTP 제거를 위한 리팩터. 판정 로직 자체는 변경 없음).
      *
      * @param label 회계 라인 품목 라벨
      * @return 매칭된 ProductSummaryResponse
@@ -233,19 +236,124 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public ProductSummaryResponse lookupSummaryByLabel(String label) {
+        LabelResolution resolution = resolveLabel(label);
+        return switch (resolution.status()) {
+            case BLANK_TOKEN -> throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "라벨에서 모델코드를 추출할 수 없습니다");
+            case NOT_FOUND -> throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "라벨에 해당하는 제품이 없습니다");
+            case AMBIGUOUS -> throw new BusinessException(ErrorCode.CONFLICT,
+                    "라벨 모델코드 중복 매칭: " + resolution.token());
+            case MATCHED -> ProductSummaryResponse.from(resolution.product());
+        };
+    }
+
+    /**
+     * 회계 라벨 목록을 일괄 해석한다 (#773 후속 — accounting N+1 HTTP 제거).
+     *
+     * <p>{@link #lookupSummaryByLabel(String)} 단건과 완전히 동일한 {@link #resolveLabel(String)}
+     * 판정 로직을 라벨마다 재사용하되, 미매칭/다의성을 예외로 던지는 대신
+     * {@link LabelResolutionResult#status()} 로 보존해 부분 성공(partial success) 계약을 따른다 —
+     * 기존 {@code applicable-bulk}/{@code fixed-discount-rate-bulk} 와 동일 철학이다. blank
+     * 토큰(추출 실패)은 단건과 동일하게 배치 전체 {@code INVALID_INPUT} 으로 실패한다
+     * (순수 배치화 parity).
+     *
+     * <p>단건과 판정 로직을 100% 공유하므로 동일 라벨에 대해 단건/벌크 결과가 항상 일치한다(parity).
+     *
+     * @param labels 조회할 라벨(품목명[규격]) 목록. null/빈 목록은 외부 조회 없이 빈 Map 반환
+     * @return 라벨 → 해석 결과(Map). 입력 라벨 전부가 키로 포함된다(중복 라벨은 1개 키로 합쳐짐,
+     *         키 조회 순서는 최초 등장 순서를 보존한다)
+     * @throws BusinessException(INVALID_INPUT) 목록 크기가 {@link #LOOKUP_MAX} 초과
+     */
+    @Transactional(readOnly = true)
+    public Map<String, LabelResolutionResult> lookupSummaryByLabelBulk(List<String> labels) {
+        if (labels == null || labels.isEmpty()) {
+            return Map.of();
+        }
+        if (labels.size() > LOOKUP_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "한 번에 조회할 수 있는 최대 라벨 수는 " + LOOKUP_MAX + "건입니다");
+        }
+        Map<String, LabelResolutionResult> results = new LinkedHashMap<>();
+        for (String label : labels) {
+            String key = label == null ? "" : label;
+            results.computeIfAbsent(key, k -> {
+                LabelResolution resolution = resolveLabel(k);
+                if (resolution.status() == LabelMatchStatus.BLANK_TOKEN) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT,
+                            "라벨에서 모델코드를 추출할 수 없습니다: " + k);
+                }
+                return toLabelResolutionResult(resolution);
+            });
+        }
+        return results;
+    }
+
+    /**
+     * 회계 라벨 1건을 3단 fallback(catalogExposedModelCode→alias→unique-LIKE)으로 해석한다.
+     *
+     * <p>{@link #lookupSummaryByLabel(String)} 단건(throw 기반)과 {@link #lookupSummaryByLabelBulk(List)}
+     * 벌크(부분 성공 기반)가 공유하는 내부 판정 로직이다 — 두 소비 방식이 항상 같은 판정 결과에서
+     * 분기하게 해 parity 를 구조적으로 보장한다(단건 throw ↔ 벌크 status 는 이 메서드 호출 이후에만
+     * 갈라진다).
+     *
+     * @param label 원본 회계 라벨
+     * @return 상태 보존 해석 result. {@code BLANK_TOKEN} 은 토큰 추출 실패, {@code AMBIGUOUS} 는
+     *         LIKE 후보 2건 이상, 그 외는 {@code NOT_FOUND}/{@code MATCHED}
+     */
+    private LabelResolution resolveLabel(String label) {
         String token = ModelTokenExtractor.extractModelToken(label);
         if (token.isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "라벨에서 모델코드를 추출할 수 없습니다");
+            return new LabelResolution(LabelMatchStatus.BLANK_TOKEN, null, token);
         }
-
-        return productRepository.findByCatalogExposedModelCodeAndIsDeletedFalse(token)
+        Optional<Product> exact = productRepository.findByCatalogExposedModelCodeAndIsDeletedFalse(token)
                 .or(() -> productAliasRepository.findByAliasCodeAndIsDeletedFalse(token)
-                        .map(alias -> alias.getMainProduct()))
-                .or(() -> findUniqueLikeMatchByLabelToken(token))
-                .map(ProductSummaryResponse::from)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "라벨에 해당하는 제품이 없습니다"));
+                        .map(alias -> alias.getMainProduct()));
+        if (exact.isPresent()) {
+            return new LabelResolution(LabelMatchStatus.MATCHED, exact.get(), token);
+        }
+        Page<Product> page = productRepository.search(null, null, escapeLikeWildcards(token),
+                null, null, null, PageRequest.of(0, 2));
+        List<Product> rows = page.getContent();
+        if (rows.size() > 1) {
+            return new LabelResolution(LabelMatchStatus.AMBIGUOUS, null, token);
+        }
+        return rows.stream().findFirst()
+                .map(p -> new LabelResolution(LabelMatchStatus.MATCHED, p, token))
+                .orElseGet(() -> new LabelResolution(LabelMatchStatus.NOT_FOUND, null, token));
+    }
+
+    /** {@link #resolveLabel(String)} 내부 판정을 벌크 응답 DTO 로 변환한다. */
+    private static LabelResolutionResult toLabelResolutionResult(LabelResolution resolution) {
+        return switch (resolution.status()) {
+            case MATCHED -> new LabelResolutionResult(LabelResolutionResult.MATCHED,
+                    resolution.product().getId(), resolution.product().getModelCode());
+            case AMBIGUOUS -> new LabelResolutionResult(LabelResolutionResult.AMBIGUOUS, null, null);
+            case NOT_FOUND -> new LabelResolutionResult(LabelResolutionResult.NOT_FOUND, null, null);
+            case BLANK_TOKEN -> throw new IllegalStateException("BLANK_TOKEN is handled before bulk conversion");
+        };
+    }
+
+    /** #773 라벨 해석 내부 판정 상태 — {@link #lookupSummaryByLabel(String)} 단건/벌크가 공유. */
+    private enum LabelMatchStatus {
+        /** 정확히 1건 매칭. */
+        MATCHED,
+        /** 매칭 제품이 없음. */
+        NOT_FOUND,
+        /** LIKE 후보 2건 이상으로 다의성. */
+        AMBIGUOUS,
+        /** {@link ModelTokenExtractor#extractModelToken(String)} 결과가 blank — 토큰 추출 실패. */
+        BLANK_TOKEN
+    }
+
+    /**
+     * #773 라벨 해석 내부 result — {@link #resolveLabel(String)} 반환값.
+     *
+     * @param status 판정 상태
+     * @param product status=MATCHED 일 때만 non-null
+     * @param token 추출된 모델 토큰 (다의성/미매칭 오류 메시지 재사용 목적으로 보존)
+     */
+    private record LabelResolution(LabelMatchStatus status, Product product, String token) {
     }
 
     /**
@@ -780,16 +888,6 @@ public class ProductService {
 
     private String escape(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private Optional<Product> findUniqueLikeMatchByLabelToken(String token) {
-        Page<Product> page = productRepository.search(null, null, escapeLikeWildcards(token),
-                null, null, null, PageRequest.of(0, 2));
-        List<Product> rows = page.getContent();
-        if (rows.size() > 1) {
-            throw new BusinessException(ErrorCode.CONFLICT, "라벨 모델코드 중복 매칭: " + token);
-        }
-        return rows.stream().findFirst();
     }
 
     /**
