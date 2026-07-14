@@ -95,6 +95,7 @@ tempit_raw.json
 
 # ----- 머신-로컬 설정 (커밋 금지 — PC별 상이) -----
 .mcp.json
+.codex/
 
 # ----- pnpm 미사용 (clients 는 npm — package-lock.json) -----
 pnpm-lock.yaml
@@ -118,7 +119,8 @@ tessdata/
 
 # ----- Electron / 빌드 산출물 -----
 release/
-clients/desktop/release2/
+**/release2/
+**/release-codex-review/
 clients/desktop/legacy-assets/estimate/*.html
 
 # ----- Claude / Agent local state -----
