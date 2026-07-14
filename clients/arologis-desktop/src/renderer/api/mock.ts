@@ -63,6 +63,70 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     return envelope(clonePermissionMap(permissionFixtures[role] ?? {}))
   }
 
+  // 배차 상세(GET /admin/arologis/dispatches/{id}) 와 동일한 depth 의 형제 라우트.
+  // detailMatch 정규식은 단일 세그먼트만 구분하므로, 아래 예약어는 상세 mock 에서
+  // 제외해 실제 형제 endpoint 응답(각각 별도 mock 또는 실 API 위임)을 가리지 않는다.
+  const RESERVED_DISPATCH_SEGMENTS = new Set(['pre-classify', 'unassigned', 'regional', 'history'])
+
+  const detailMatch = url.match(/^\/admin\/arologis\/dispatches\/([^/]+)$/)
+  if (method === 'get' && detailMatch && !RESERVED_DISPATCH_SEGMENTS.has(detailMatch[1] ?? '')) {
+    const dispatchId = decodeURIComponent(detailMatch[1] ?? 'mock-dispatch')
+    return envelope({
+      dispatchId,
+      dispatchDate: '2026-07-14',
+      dispatchType: 'EXPRESS',
+      sandboxMode: true,
+      vehicles: [
+        {
+          sequence: 1,
+          tonnage: 'TONNAGE_1',
+          label: '상일+초월',
+          assignedDriverCode: 'INSUNG-001',
+          matchSource: 'EXTERNAL_INSUNG_QUICK',
+          externalRefId: 'EXT-MOCK-001',
+          vendorOrderId: 'INSUNG-ORDER-MOCK-001',
+          status: 'ASSIGNED',
+          gpsSources: [
+            {
+              source: 'EXTERNAL_INSUNG_LBS',
+              latitude: 37.1000000,
+              longitude: 127.1000000,
+              lastReceivedAt: '2026-07-14T09:00:00',
+              active: false,
+            },
+            {
+              source: 'APP_GPS_ACTIVE',
+              latitude: 37.2000000,
+              longitude: 127.2000000,
+              lastReceivedAt: new Date().toISOString(),
+              active: true,
+            },
+          ],
+          stops: [
+            {
+              sequence: 1,
+              rawText: '-인천 남동구 구월동(에스엠하나공조-214)',
+              parsedAddress: '인천 남동구 구월동',
+              parsedPartnerName: '에스엠하나공조',
+              parsedKakaoSeq: 214,
+              parsedPartnerCode: 'P-2026-0001',
+              notes: null,
+              status: 'PENDING',
+            },
+          ],
+        },
+      ],
+    })
+  }
+
+  const manualLocationMatch = url.match(/^\/admin\/arologis\/dispatches\/([^/]+)\/vehicles\/(\d+)\/manual-location$/)
+  if (method === 'post' && manualLocationMatch) {
+    return envelope({
+      sequence: manualLocationMatch[2] ?? '',
+      source: 'MANUAL',
+    })
+  }
+
   return null
 }
 
