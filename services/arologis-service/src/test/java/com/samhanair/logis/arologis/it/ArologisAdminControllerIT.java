@@ -6,18 +6,26 @@ import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.arologis.ArologisServiceApplication;
-import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.arologis.client.NotificationClient;
 import com.samhanair.logis.arologis.client.PartnerClient;
 import com.samhanair.logis.arologis.client.SlipClient;
 import com.samhanair.logis.arologis.client.SlipServiceClient;
 import com.samhanair.logis.arologis.client.SlipServiceClient.OutboundSlipSummary;
+import com.samhanair.logis.arologis.domain.Dispatch;
+import com.samhanair.logis.arologis.domain.DispatchType;
+import com.samhanair.logis.arologis.domain.MatchSource;
+import com.samhanair.logis.arologis.domain.StopStatus;
+import com.samhanair.logis.arologis.domain.Vehicle;
+import com.samhanair.logis.arologis.domain.VehicleStop;
+import com.samhanair.logis.arologis.domain.VehicleTonnage;
 import com.samhanair.logis.arologis.repository.DispatchRepository;
 import com.samhanair.logis.arologis.repository.DriverLocationRepository;
 import com.samhanair.logis.arologis.repository.DriverRepository;
 import com.samhanair.logis.arologis.repository.SignatureRepository;
 import com.samhanair.logis.arologis.repository.VehicleRepository;
 import com.samhanair.logis.arologis.repository.VehicleStopRepository;
+import com.samhanair.logis.security.permission.DynamicPermissionClient;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,12 +35,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 /**
- * Admin endpoint 시나리오 (9 case) — Phase 10 W10-1.
+ * Admin endpoint 시나리오 (13 case) — Phase 10 W10-1 + 후속 확장.
  *
  * <ol>
  *   <li>parse-kakao 정상 (사용자 카톡 예시 입력 → 13 차량 응답)</li>
@@ -44,10 +53,16 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  *   <li>assign-driver 미존재 driver → 404</li>
  *   <li>stop status 갱신 미존재 → 404</li>
  *   <li>drivers list 정상 → 200</li>
+ *   <li>dispatches/{id} GET → sandboxMode·vendorOrderId 직렬화 (계약 정합 #804)</li>
+ *   <li>… PR-E1/후속 시나리오 (총 13 tests, 대표 목록)</li>
  * </ol>
+ *
+ * <p>sandbox-mode 는 {@code @TestPropertySource} 로 true 고정 — 향후 전역 test 프로파일이
+ * false 로 바꿔도 본 IT 의 sandboxMode 기대값이 깨지지 않도록 명시 고정한다.
  */
 @SpringBootTest(classes = ArologisServiceApplication.class)
 @AutoConfigureMockMvc
+@TestPropertySource(properties = "samhan.arologis.matcher.insung-quick.sandbox-mode=true")
 class ArologisAdminControllerIT extends AbstractPostgresIT {
 
     private static final String ADMIN_ACCOUNT_ID = "10000000-0000-0000-0000-000000000401";
@@ -162,6 +177,37 @@ class ArologisAdminControllerIT extends AbstractPostgresIT {
                         .header("X-User-Id", ADMIN_ACCOUNT_ID)
                         .header("X-User-Role", "AROLOGIS_MANAGER"))
                 .andExpect(MockMvcResultMatchers.status().isNotFound());
+    }
+
+    @Test
+    void find_dispatch_returns_sandboxMode_and_vendorOrderId() throws Exception {
+        Dispatch dispatch = dispatchRepository.save(
+                Dispatch.of(LocalDate.of(2026, 7, 14), DispatchType.EXPRESS, "804 detail"));
+        Vehicle vehicle = vehicleRepository.save(
+                Vehicle.of(dispatch.getId(), 1, VehicleTonnage.TONNAGE_1, "상일+초월"));
+        // matchSource=EXTERNAL_INSUNG_QUICK 배정 — FE INSUNG pill 게이팅 계약을 e2e 자동 고정(F1-QA).
+        vehicle.assignDriver(UUID.randomUUID(), MatchSource.EXTERNAL_INSUNG_QUICK, "EXT-REF-804");
+        vehicle.updateVendorOrderId("INSUNG-ORDER-804");
+        vehicleRepository.save(vehicle);
+        stopRepository.save(VehicleStop.of(
+                vehicle.getId(),
+                1,
+                "-인천 남동구 구월동(에스엠하나공조-214)",
+                "인천 남동구 구월동",
+                "에스엠하나공조",
+                214L,
+                null,
+                StopStatus.PENDING));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/admin/arologis/dispatches/" + dispatch.getId())
+                        .header("X-User-Id", ADMIN_ACCOUNT_ID)
+                        .header("X-User-Role", "AROLOGIS_MANAGER"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.sandboxMode").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.vehicles[0].vendorOrderId")
+                        .value("INSUNG-ORDER-804"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.vehicles[0].matchSource")
+                        .value("EXTERNAL_INSUNG_QUICK"));
     }
 
     @Test

@@ -73,10 +73,8 @@ export interface NotifyResult {
   errorCode: string | null
 }
 
-/** BE vehicle DTO (SP-10-2 Flyway V13 vendor_order_id 컬럼 추가) */
+/** 배차 상세 화면 vehicle 뷰모델 (BE vehicleId UUID 비공개) */
 export interface VehicleDetail {
-  /** 내부 UUID — 사용자 노출 X */
-  id: string
   /** 차량 순번 (사용자 노출) */
   sequence: number
   /** 톤수 라벨 */
@@ -87,6 +85,8 @@ export interface VehicleDetail {
   stopCount: number
   /** 매칭 상태 */
   matchStatus: VehicleMatchStatus
+  /** 매칭 소스 — EXTERNAL_INSUNG_QUICK 일 때만 인성 vendor UI 를 표시한다. */
+  matchSource: string | null
   /**
    * 기사 코드 — INSUNG-{vendorDriverId} 형식.
    * UUID driverId 는 노출 금지.
@@ -413,7 +413,9 @@ interface VehicleRowProps {
 
 function VehicleRow({ vehicle }: VehicleRowProps): JSX.Element {
   const showGpsPanel =
-    vehicle.matchStatus === 'ASSIGNED' || vehicle.matchStatus === 'DELIVERED'
+    (vehicle.matchStatus === 'ASSIGNED' || vehicle.matchStatus === 'DELIVERED') &&
+    Boolean(vehicle.driverCode) &&
+    (vehicle.gpsSources?.length ?? 0) > 0
 
   return (
     <div
@@ -446,13 +448,16 @@ function VehicleRow({ vehicle }: VehicleRowProps): JSX.Element {
               color:      'var(--color-neutral-500)',
             }}
           >
-            {vehicle.tonnageLabel} · {vehicle.routeLabel} (정차 {vehicle.stopCount})
+            {vehicle.routeLabel
+              ? `${vehicle.tonnageLabel} · ${vehicle.routeLabel} (정차 ${vehicle.stopCount})`
+              : `${vehicle.tonnageLabel} (정차 ${vehicle.stopCount})`}
           </span>
         </div>
 
         {/* FE-1 + FE-4: VehicleMatchStatusBadge with vendorOrderId tooltip */}
         <VehicleMatchStatusBadge
           status={vehicle.matchStatus}
+          matchSource={vehicle.matchSource ?? undefined}
           driverCode={vehicle.driverCode ?? undefined}
           vendorOrderId={vehicle.vendorOrderId ?? undefined}
         />
@@ -462,7 +467,7 @@ function VehicleRow({ vehicle }: VehicleRowProps): JSX.Element {
       {showGpsPanel && vehicle.driverCode && (
         <InsungLbsPanel
           driverCode={vehicle.driverCode}
-          gpsSources={vehicle.gpsSources ?? []}
+          gpsSources={vehicle.gpsSources}
         />
       )}
 
