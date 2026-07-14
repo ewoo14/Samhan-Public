@@ -47,6 +47,7 @@
 - [order-app CI=tsc typecheck·vitest≠tsc](feedback_order_app_typecheck_not_vitest.md) — vitest만 로컬 실행 시 타입에러 미포착·CI red, 로컬 npm run typecheck 의무 (2026-07-11 #778)
 - [Playwright 로컬 버전 skew](feedback_playwright_local_version_skew.md) — node_modules/.bin 직접·desktop cwd
 - [rename file: junction 함정](feedback_rename_filedep_junction.md) — 루트 rename 시 design-system junction 깨짐→npm install
+- [Electron 패키지 함정](feedback_electron_packaging_gotchas.md) — build:win: design-system prod→devDep(asar 크래시)·preload ESM+sandbox=white screen(sandbox:false or CJS)·winCodeSign --dir·app.asar 잠금·CDP 검증
 - [Testcontainers Windows Docker](feedback_testcontainers_windows_docker.md) — npipe skip 가능. 우회=dockerDesktopLinuxEngine npipe+~/.docker-java.properties api.version=1.44(2026-07-03 실증) or DOCKER_HOST tcp
 - [로컬 스택+데스크톱 실QA 함정](project_local_stack_qa_gotchas.md) — launch=jar만 빌드(이미지 stale→`up -d --build <svc>`)·게이트웨이 격차·react-query invalidate stale
 - [standalone-boot 실QA](feedback_standalone_boot_real_qa.md) — Windows IT skip 시 jar standalone+docker PG

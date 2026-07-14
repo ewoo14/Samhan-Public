@@ -4,6 +4,26 @@
 
 ---
 
+## ✅ 2026-07-14 (집PC·이어받기) — #804 arologis 배차 상세 FE-BE 계약 정합 **머지 완주**(#814 `b9489922`)
+
+> **다음 세션 첫 읽기.** 표준 캐논 4라운드 양측 0수렴. 무매핑 캐스팅으로 placeholder만 렌더되던 배차 상세를 BE additive + FE 어댑터로 정합.
+
+### #804 완주 (Approach A·양측 0수렴 4라운드)
+- **내용**: BE `DispatchDetailResponse` additive(sandboxMode·vendorOrderId, externalRefId 유지) + 신규 FE `api/arologisDispatchDetail.ts` 어댑터(raw wire 1:1 + enum→라벨·route/stopCount 파생·status→matchStatus·**matchSource 게이팅**·notify/gps undefined). 라우트 무매핑 캐스팅 제거·경로 `/api/arologis`→`/admin/arologis`(sibling 정합 FIX)·`VehicleDetail.id` 제거(UUID 비공개). `VehicleMatchStatusBadge` INSUNG pill/vendorOrderId 툴팁/인성 aria/**MATCHING 서브텍스트**를 `matchSource==='EXTERNAL_INSUNG_QUICK'`에만 gate. GPS/알림 백엔드 미구현 이연.
+- **리뷰(실행=게시 1:1)**: R1 Opus 5-agent(routeLabel 고아·deprecated 톤수·QA프록시 갭·@Schema 슬립→전표) → R2 Codex 적대(**HIGH matchSource 오표시**: 비-인성 배정이 INSUNG pill) → R3 Opus 재수렴(**MEDIUM MATCHING 서브텍스트 디펙트-패밀리·MEDIUM matchSource 계약 auto-guard 부재**·톤수 BE"UI노출금지" 정렬·DELIVERED AA) → R4 Codex 0 new. 각 라운드 상대 놓친 genuine 포착=단축금지 실증.
+- **검증**: FE typecheck·vitest 37/37·BE genuine(`--rerun-tasks --no-build-cache`·DispatchDetailResponseTest 2·ArologisAdminControllerIT 13·미스킵·0-fail)·라이브 QA 실서버 :8097(스샷 01~04·SHA-pinned). dev-report `2026-07-14-804-arologis-dispatch-detail-contract.md`·spec `804-...`.
+- **후속**: #815(FE-2 GPS 백엔드)·#816(FE-3 알림 백엔드) 생성. 제품확인 3(**전자서명=Signature 범용 POD 확인→무변경 정답**·sandbox 배너 문구·deprecated 레거시 톤수 '기타').
+- **⚙️ 교훈**: (1) **arologis 브라우저 standalone QA**=gstack browse + `window.arologisAuth` shim 주입(Electron IPC 브리지 부재 대체·login 전 `$B js`) + `/admin/arologis` proxy passthrough(#804서 추가)([[feedback_arologis_desktop_standalone_qa_harness]] 갱신). browse 데몬 idle-restart→전 플로우 1세션+긴 대기. (2) 머지 시 하네스 분류기가 에이전트-PR 자동머지 차단→개발책임자 `.claude/settings.json`(gitignore·로컬)에 `Bash(gh pr merge:*)` 추가로 해소.
+
+### 🔴 별건 처리 대기 (개발책임자 지시 중)
+- **`fix/desktop-packaging-preload`**(eae52ba6·원격 push·**미머지·캐논 리뷰 미진행**): 데스크톱 패키지 앱 white-screen 근본수정(preload ESM/sandbox:false + design-system prod→devDep). 실 제품 버그(패키지 빌드 design-system 파손으로 지금껏 미실행). **정식 PR화 + sandbox:false vs CJS(.cjs) preload 검토 필요.** ([[feedback_electron_packaging_gotchas]])
+- release2/(301MB 테스트 exe·gitignore 처리 완료)·바탕화면 바로가기 존재.
+
+### 🔴 다음 = 후속 백로그
+- **#815/#816**(#804 이연 GPS/알림 백엔드) · **#809/#810**(spec 미확정) · **#773 잔여**(S3 무결성편집정책·S1.5 다서비스·S1d Google자격·totalDiscount 정의) · byModel min/max 신호 · 알림 옵션C.
+
+---
+
 ## ✅ 2026-07-13 (집PC·자율) — #773 후속 resolveByLabel N+1→벌크 **머지 완주**(#813 `f9abddd4a`)
 
 > **다음 세션 첫 읽기.** S5 머지 후 개발책임자 "자율 진행" 지시로 결정불요 기술개선 착수. **🚨 워크플로우 위반+정정 박제**: 구현을 backend 서브에이전트로 대체하며 캐논 2단계(Codex 개발 리뷰)를 건너뛰고 Opus 5-agent 로 직행 → 개발책임자 지적 → 소급 보완.

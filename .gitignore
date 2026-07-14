@@ -118,6 +118,7 @@ tessdata/
 
 # ----- Electron / 빌드 산출물 -----
 release/
+clients/desktop/release2/
 clients/desktop/legacy-assets/estimate/*.html
 
 # ----- Claude / Agent local state -----
