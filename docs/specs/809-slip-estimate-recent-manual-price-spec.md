@@ -17,7 +17,7 @@
 | # | 결정 | PM 권고 | 근거 |
 |---|---|---|---|
 | ① | **대상 범위** | **전표(출고/입고) + 견적** (주문 제외) | 이슈 의도="전표·견적". 주문은 이미 DcConfig 규칙가라 "최근 수동단가" 개념과 상충(규칙 vs 기억) → 주문은 현행 유지 |
-| ② | **저장소 위치** | **slip-service 신규 테이블 `partner_product_price_memory`** + internal endpoint. 견적은 client 로 slip-service 조회/upsert | 전표=slip-service 주경로. 견적 BE 저장소 정찰 필요(현 estimate-app=client). 축(partnerId,productId) 공유 store 1곳 |
+| ② | **저장소 위치** | **slip-service 신규 테이블 `partner_product_price_memory`** + endpoint | ✅ **정찰 해소(2026-07-15)**: 견적도 slip-service 영속(`slip/estimate/domain/EstimateLine`·`Estimate`). 전표+견적 **둘 다 slip-service** → **cross-service 불필요**·양쪽 라인저장서 upsert/read. 단일 store |
 | ③ | **"확정"(upsert) 시점** | **라인 저장(POST/PUT slip/estimate line)** 시 upsert | 마감/결재는 늦음. 저장=이 거래처+품목의 단가 확정 신호 |
 | ④ | **source/우선순위** | **저장된 라인 단가(effective) 기억**(source 태그). 조회 시 최근단가>정가 폴백·**사용자 override 항상 우선**(override 시 다음 저장서 갱신) | "마지막 사용 단가" 재현이 실용적. 순수 "수동 편집만" 구분은 FE 플래그 필요(복잡) → effective 단가로 단순화(단, 개발책임자 "수동만" 원하면 FE isManuallyEdited 플래그 추가) |
 | ⑤ | **VAT 기준** | 라인 `unitPrice` 기존 관례 그대로(공급가 기준·SlipLine 규약) | 라인과 동일 basis 유지(포함/제외 혼선 방지) |
