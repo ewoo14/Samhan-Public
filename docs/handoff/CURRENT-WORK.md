@@ -4,6 +4,25 @@
 
 ---
 
+## ✅ 2026-07-14 (집PC·이어받기) — #817 데스크톱 white-screen **머지 완주**(`553b3933`) + #815 기획완료
+
+> **다음 세션 첫 읽기.** #804 세션 핫픽스(desktop white-screen)를 정식 캐논화·머지. 후속 백로그 #815 기획(정찰+개발책임자 결정) 완료 → 구현만 남음. **집PC에서 이어서 진행 예정**.
+
+### #817 완주 (캐논 듀얼·순차·0수렴)
+- **근본수정**: 패키지 앱(build:win) white screen — preload ESM(.mjs)+sandbox:true 부정합 → **CJS(.cjs)+sandbox:true 복원**(#748 하드닝 유지·preload는 contextBridge/ipcRenderer만 써서 샌드박스 CJS 충분) + design-system prod→devDep(asar 크래시) + webviewTag:false(死 webview 공격면 차단).
+- **리뷰**(실행=게시 1:1): Opus 5-agent R1(BLOCKING 실 GUI QA GAP1/2·MEDIUM sandbox=#748 되돌림) → Codex 적대 R1(**HIGH arologis 동일패턴 스윕**·MEDIUM webviewTag·LOW 가드 정규식) → PM 독립검증 → **0수렴**. PM 종합 9-게이트·CI 36 green.
+- **결함-패밀리 sweep**: arologis-desktop도 동형 CJS 전환(Electron 클라이언트 2/2 완결·`.mjs`/prod-dep 잔존 0).
+- **실 GUI QA**(패키지 exe·실 :8080): desktop 로그인→대시보드(samhanAuth object·token MASTER)·arologis 로그인 렌더(arologisAuth object). 스샷 `docs/qa/817-desktop-preload-cjs/`(01~03).
+- **회귀 가드**: `src/main/packaging-invariants.test.ts`(양쪽 6/6·주석strip+빌드산출물 검사). dev-report `2026-07-14-817-desktop-preload-cjs.md`.
+- **⚙️ 교훈**([[feedback_electron_packaging_gotchas]] 갱신): CJS+sandbox:true 정식 채택 · CDP `captureScreenshot`는 hidden 윈도우서 hang → `--disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-gpu`로 해소 · dev_master / `dev_p05_pass!`. (이전 "별건 처리 대기 fix/desktop-packaging-preload" 해소됨.)
+
+### 🟡 다음 = 백로그 #815→#816→#809/#810→#773 (개발책임자 "1,2,3,4 순차")
+- **#815 GPS 백엔드 = 기획완료·구현대기**: spec `docs/specs/815-arologis-gps-multisource-backend-spec.md`(정찰+결정 박제·바로 착수 가능). **개발책임자 결정**: ①Insung=배송시각 스냅샷 노출(`signatures`·stale 표시·active는 실시간 APP_GPS 우선) ②MANUAL=관리자 수동입력 신설(POST manual-location). 작업 7항목(DTO·repo read·Insung 수집·토큰↔enum 매핑·active 산정 priority+stale 60s·MANUAL 엔드포인트·조립 배선). 착수 시 **MANUAL FE UI 범위만 재확인**.
+- **#816 알림 백엔드**(#804 이연·cross-service)·**#809/#810**(spec 미확정)·**#773 잔여**(S3 무결성편집·totalDiscount·S1.5·S1d Google자격).
+- 집PC 최신 테스트 exe(gitignore): `clients/desktop/release2/win-unpacked/`·`clients/arologis-desktop/release2/win-unpacked/`.
+
+---
+
 ## ✅ 2026-07-14 (집PC·이어받기) — #804 arologis 배차 상세 FE-BE 계약 정합 **머지 완주**(#814 `b9489922`)
 
 > **다음 세션 첫 읽기.** 표준 캐논 4라운드 양측 0수렴. 무매핑 캐스팅으로 placeholder만 렌더되던 배차 상세를 BE additive + FE 어댑터로 정합.
