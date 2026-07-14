@@ -24,7 +24,9 @@
 - **arologis-desktop 라이브 GUI**: vite.renderer.dev.config.ts(포트 점유 시 5292 등 대체·strictPort)+window.arologisAuth shim+clients/desktop playwright.
 
 ### 🔴 다음 = 백로그 (개발책임자 "1,2,3,4 순차"의 3번~)
-- **#809/#810**(전표 품목 단가 기억·입금자명 거래처 매핑·**spec 미확정**·발의만) · **#773 잔여**(S3 무결성편집·S1.5 다서비스·S1d Google자격·totalDiscount) · byModel min/max 신호 · **#816 후속**: DELAYED 실배선+실 insung-talk/aligo 벤더 발송(W10-2).
+- **#809/#810 ✅ spec 작성완료·PM 권고 결정 게시**(야간 자율·`docs/specs/809-...`·`810-...`·이슈 코멘트) — **가격/회계 민감 도메인이라 자율 구현 대신 개발책임자 결정 확정 후 착수**. #809 6결정(범위/저장소/확정시점/source/VAT/식별키)·#810 6결정(정규화/자동적용/학습/동명이인/KFTC우선/권한감사). **morning 확정 시 즉시 캐논 착수.**
+- **#773 잔여**(S3 무결성편집[preconfirm]·S1.5 다서비스·S1d Google자격·totalDiscount 정의) · byModel min/max 신호 · **#816 후속**: DELAYED 실배선+실 insung-talk/aligo 벤더 발송(W10-2).
+- **야간 자율 누계**: #815·#816 머지 완주 + #809·#810 spec 준비(구현 대기). 잔여 전부 개발책임자 결정/자격 필요 → morning 확정 대기.
 
 ---
 
