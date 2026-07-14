@@ -4,6 +4,24 @@
 
 ---
 
+## ✅ 2026-07-14 (집PC·이어받기) — #815 arologis GPS 멀티소스 백엔드 + MANUAL 수동입력 **머지 완주**(#818 `0e4b97bb5`)
+
+> **다음 세션 첫 읽기.** #817/#804 이후 개발책임자 "1,2,3,4 순차"(#815→#816→#809/#810→#773)의 **1번 완주**. 착수 시 개발책임자 결정 = MANUAL FE 폼 **이번 슬라이스 포함**. 표준 캐논 R1~R5 양측 0수렴. **환경 특이: 개발책임자 지시로 Codex=`codex exec`→`mcp__codex__codex` 전환**(집PC MCP hang 이력 있었으나 이번엔 정상 작동).
+
+### #815 완주 (표준 캐논·양측 0수렴·PM 자율머지)
+- **내용**: BE `DispatchDetailResponse.VehicleDetail.gpsSources` 실데이터 조립(`GpsSourceAssembler`·driver_locations APP_GPS/MANUAL + signatures Insung LBS·**DISTINCT ON (driver_id,source)** 네이티브 쿼리+**V23 인덱스**·config priority+stale 60s active·Clock 주입). MANUAL 관리자 수동입력 `POST /admin/arologis/dispatches/{id}/vehicles/{seq}/manual-location`(미배정 400·UUID 미노출). FE GPS 패널 게이트 원복 + arologis-desktop **관리자 수동 위치 입력 폼**(design-system Input/Button) + refetch stale-while-revalidate.
+- **개발책임자 결정 이행**: ① Insung=배송시각 스냅샷 노출(stale·실시간 APP_GPS 우선) ② MANUAL BE+FE 폼 신설. 설계 정정: 엔드포인트 `/vehicles/{vehicleId}`→`/dispatches/{id}/vehicles/{seq}/...`(UUID 비공개).
+- **라운드**(실행=게시 1:1): 구현(codex exec)+**MCP Codex 인수검증** → R1 Opus 5-agent(6 genuine: rank회귀 원복·DS컴포넌트·페이지blank·무한정쿼리·mock잠식·isStale)+fix+**라이브QA** → R2 Codex 적대(2: 응답UUID·requestSeqRef) → R3 Opus 재수렴(1: **stale-closure 하이재킹** latestDispatchCodeRef) → **R4 Codex terminal 0 → R5 Opus terminal 0**. PM 종합 9-게이트.
+- **검증**: BE **561**·FE **49**(--rerun-tasks/typecheck+vitest)·CI **10/10**. 라이브: 실서버 :8097 재배포·V23·투명 시드→gpsSources active/stale 실증(Insung stale→APP_GPS active)·MANUAL 200/400/404·실 GUI 스샷 `docs/qa/815-arologis-gps-multisource/`(01~05). dev-report `2026-07-14-815-...`·spec `815-...`.
+- **⚙️ 교훈**: (1) **MCP Codex 정상 작동**(이번 세션·danger-full-access·effort high) — 이전 hang 이력과 달리 R2/R4 terminal 모두 응답. (2) **5-agent 다중 렌즈 가치 실증**: FE 에이전트가 "rank OK" 판정한 것을 Design 이 spec 대조로 회귀 포착 / DevOps 가 무한정 쿼리 단독 포착 / R3 FE 가 stale-closure(R1 activeCodeRef·R2 requestSeqRef 미커버) 포착. (3) arologis-desktop 라이브 GUI=**vite.renderer.dev.config.ts**(:5291·proxy→:8097)+window.arologisAuth shim+clients/desktop playwright(@playwright 미설치)로 캡처. (4) docs-only 커밋도 arologis-ci 재트리거 → CI 재대기.
+- **비차단 P3(후속 권장)**: `routes/index.tsx` 전용 async 레이스 회귀 테스트(fake-timer) 부재 — 정적 추적+49 green 안전.
+
+### 🔴 다음 = 백로그 #816→#809/#810→#773 (개발책임자 "1,2,3,4 순차"의 2번~)
+- **#816 알림 백엔드**(#804 이연·cross-service·FE-3) — 다음 순차 대상.
+- **#809/#810**(spec 미확정) · **#773 잔여**(S3 무결성편집정책·S1.5 다서비스·S1d Google자격·totalDiscount 정의) · byModel min/max 신호.
+
+---
+
 ## ✅ 2026-07-14 (집PC·이어받기) — #817 데스크톱 white-screen **머지 완주**(`553b3933`) + #815 기획완료
 
 > **다음 세션 첫 읽기.** #804 세션 핫픽스(desktop white-screen)를 정식 캐논화·머지. 후속 백로그 #815 기획(정찰+개발책임자 결정) 완료 → 구현만 남음. **집PC에서 이어서 진행 예정**.
