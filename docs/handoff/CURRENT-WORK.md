@@ -4,6 +4,30 @@
 
 ---
 
+## ✅ 2026-07-15 (집PC 야간 자율) — #816 배차 상세 알림 발송이력 백엔드 **머지 완주**(#819 `b3834888a`)
+
+> **다음 세션 첫 읽기.** 개발책임자 "1,2,3,4 순차"의 2번(#816). 야간 자율("오전 답변 전까지 끊김없이·워크플로우 엄수·비단축"). **핵심 교훈: R1 리뷰가 승인된 설계(③-A)의 구조적 비기능성을 포착 → 개발책임자 ③-B 재설계 → 전면 재구현.**
+
+### #816 ③-B 완주 (표준 캐논·양측 0수렴·PM 자율머지)
+- **③-A→③-B 전환**: 초기 A/A/A(arologis 로컬 이력 기록만) 구현 후 R1 5-agent가 **구조 결함 포착** — recording이 `appUserId!=null` 게이트인데 실 드라이버 appUserId 항상 null(Mock/Insung matcher·updateAppInstalled 호출자 0) → **모든 실경로 0 레코드=비기능**. 기록할 실 알림 부재(insung-talk/aligo 벤더 발송 W10-2 이연). → 개발책임자 **③-B(실 발송 확장)** 결정.
+- **③-B 내용**: `autoMatch` 매칭 시 **실 aligo SMS 발송**(`NotificationClient.sendDispatchSms`·notification-service 기존 `POST /internal/notifications/send`·EXTERNAL_PHONE/SMS·기존 AligoSmsAdapter). appUserId 게이트 제거(phone 기반 전 기사). `DispatchNotification`(BaseEntity·V24·CHECK+FK) 로컬 기록 + `DispatchNotificationRecorder`(**REQUIRES_NEW+fail-soft**·배치 격리) + assembler(dispatchId 1회·채널별 최신 dedup) + `notifyResults` 노출. **notification-service 무변경**(설계 A).
+- **리뷰 라운드**(실행=게시 1:1·비단축): Codex 구현(③-A)→**R1 Opus 5-agent(구조결함)**→Codex 재구현(③-B)→**R1' Opus 5-agent 재리뷰(범위 재설정·다수 genuine: recorder 허상[@UuidGenerator flush-at-commit]·raw enum SMS·DELAYED 도달불가·stub-success·config·AA·errorCode 한글)**+fix→**Codex 적대(phone-log echo 1 fix)**→**Opus terminal(0)→Codex terminal(0)**·양측 0수렴.
+- **검증**: BE **577**·FE **51**(--rerun-tasks/typecheck+vitest)·CI **36 green**·라이브 QA(배차 146760e8 autoMatch 실경로→NotifyResultSection "Aligo SMS·발송 성공·010-XXXX-0000" 실 GUI·`docs/qa/816-...`). dev-report·spec(③-B 전환)·design-doc 정정.
+
+### ⚠️ 정직 한계 (박제·W10-2 후속)
+- **DELAYED 현 도달불가**: notification-service W3=1회 시도(`NotificationGatewayResult.failure` retryable=false)·재시도 스케줄러/FE 폴링 0 → SMS 채널 SENT/FAILED만. DELAYED 매핑=예약 dead-path·FE copy "응답 대기 중"으로 완화.
+- **dev 'SUCCESS'=stub**: 로컬 arologis skeleton=false(compose)이나 notification-service Aligo creds blank → `AligoSmsAdapter.isPlaceholder`가 **미발송 stub SUCCESS**. 라이브 QA "성공"은 **경로/렌더 실증**이며 실 문자 전달 아님(레코드는 실 autoMatch 실데이터). 실 전달 검증=실 Aligo creds 주입 시.
+
+### ⚙️ 환경 교훈
+- **야간 자율**: 매 단계 백그라운드(codex exec/Agent) 완료 통지로 재호출·ScheduleWakeup fallback 하트비트로 연속성(끊김 방지)·mega턴 지양.
+- **Codex**: MCP(#815 R2/R4 정상)·**codex exec 백그라운드**(야간 robust·동기블록 회피)로 구현/적대 병행. FIX 시 죽은메서드 제거가 16 IT stub 캐스케이드(P3치고 churn 大이나 기계적·유지).
+- **arologis-desktop 라이브 GUI**: vite.renderer.dev.config.ts(포트 점유 시 5292 등 대체·strictPort)+window.arologisAuth shim+clients/desktop playwright.
+
+### 🔴 다음 = 백로그 (개발책임자 "1,2,3,4 순차"의 3번~)
+- **#809/#810**(전표 품목 단가 기억·입금자명 거래처 매핑·**spec 미확정**·발의만) · **#773 잔여**(S3 무결성편집·S1.5 다서비스·S1d Google자격·totalDiscount) · byModel min/max 신호 · **#816 후속**: DELAYED 실배선+실 insung-talk/aligo 벤더 발송(W10-2).
+
+---
+
 ## ✅ 2026-07-14 (집PC·이어받기) — #815 arologis GPS 멀티소스 백엔드 + MANUAL 수동입력 **머지 완주**(#818 `0e4b97bb5`)
 
 > **다음 세션 첫 읽기.** #817/#804 이후 개발책임자 "1,2,3,4 순차"(#815→#816→#809/#810→#773)의 **1번 완주**. 착수 시 개발책임자 결정 = MANUAL FE 폼 **이번 슬라이스 포함**. 표준 캐논 R1~R5 양측 0수렴. **환경 특이: 개발책임자 지시로 Codex=`codex exec`→`mcp__codex__codex` 전환**(집PC MCP hang 이력 있었으나 이번엔 정상 작동).
