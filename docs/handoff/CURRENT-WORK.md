@@ -4,6 +4,65 @@
 
 ---
 
+## 🔄 2026-07-15 (집PC) — #809 **Codex 적대 3/5 지점에서 세션 재시작** (codex CLI 업그레이드 반영용)
+
+> **다음 세션 첫 읽기(최우선).** 재시작 사유 = **codex CLI 버전 불일치**. 개발책임자 지시로 `~/.codex/config.toml` 이 `model = "gpt-5.6-sol"` 로 갱신됐는데 MCP 가 쓰는 npm 전역 codex 가 **0.131.0 구버전**이라 `400 The 'gpt-5.6-sol' model requires a newer version of Codex` 로 전 호출 차단. **`npm i -g @openai/codex@latest` 로 0.144.4 업그레이드 완료**했으나 **MCP 서버가 구버전 프로세스로 상주** → 재시작 필요. (⚠️ codex.exe kill 금지 — MCP vendor 공유 종료됨 → [[feedback_codex_kill_shares_mcp_vendor]])
+
+### 상태 (전부 디스크/git/PR 보존)
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `85c5c435a`** · PR **#820 OPEN** · base=main
+- **검증 green**(PM 독립·genuine `--rerun-tasks --no-build-cache`): slip-service **1241** / partner-service **314** / desktop typecheck+vitest **708** — 전부 0 fail 0 skip
+- **라이브 QA R2 7/7 PASS**(`docs/qa/809-partner-product-price-memory/r2/` 스샷 13장 + qa-report) — 견적 DOA 해소·BUNDLE_SET·거래처 변경 재조회·최근가 마커·수정경로 ×1.1·전표 회귀 없음 전부 실증. DB 실측 3행.
+
+### 🔴 재개 지점 = Codex 적대 **DevOps·QA 2개 차원 미실행**
+캐논상 Codex 도 5-agent 필수. BE/FE/Design 3개만 완료(config 갱신 직전 통과). **"substance 커버"로 무마 금지** → [[feedback_codex_rescue_unreliable_use_mcp]]
+1. `ToolSearch select:mcp__codex__codex,mcp__codex__codex-reply` → 재등록 확인
+2. **연결 테스트**(모델/effort 1줄 확인) → `gpt-5.6-sol` 정상 응답하면 진행. 여전히 400 이면 config.toml 모델을 개발책임자와 재협의
+3. **DevOps·QA 적대 디스패치**(프롬프트 재사용: 아래 R3 게시 코멘트에 각 차원 초점 정리됨)
+
+### 🔴 R3 Codex 적대 findings (fix 대기) — PR #820 [issuecomment-4977100576](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977100576)
+**BLOCKING 2 · HIGH 7 · MEDIUM 5 · LOW 1.** R1 Opus 5-agent 가 놓친 genuine 다수 = 적대 검증 가치 실증.
+- **CB-1 (BLOCKING·데이터 손실)** 편집 모드 기존 견적 라인이 `priceSource: null` 로 hydrate 돼 **자동채움 라인으로 오인** → 거래처 변경 시 **저장된 단가가 덮임**. `EstimateFormPage.tsx:121`
+- **CB-2 (BLOCKING)** 견적 최근가 응답에 **현재 거래처 stale 가드 부재**(전표엔 있음·비대칭) → A 응답이 B 라인에 채워짐. `:521`
+- **CH-1 (HIGH·가격왜곡)** **legacy 복사 9.1% 과소** — `unitPriceWithVat=null`(V12 backfill 없음) → `?? unitPrice`(공급단가)를 `priceVatInclusive:true` 로 전송 → 100,000 → 90,909. R1 M-2 fix 의 역효과. `slip.ts:676`
+- **CH-2 (HIGH·결정④ 위배)** 동시 저장 시 **afterCommit flush 순서로 "마지막 저장"이 뒤집힘** → `DO UPDATE ... WHERE existing.modified_at <= :eventTs` guard 필요
+- **CH-3~5 (HIGH·FE)** coedit provider 가드 없는 write(R1 M-4 fix 불완전) · 전표 재조회 **catch 경로** 가드 부재 · 원격 coedit 단가가 `USER` 미승격 → 마커 거짓 + 재조회가 덮음
+- **CH-6~7 (HIGH·Design)** 마커가 "거래처 전용 과거가" 의미 전달 부족 + `title` 뿐이라 키보드/터치 a11y 미연결·miss 무표시 / **결정 ④ UX 충돌 판정**(CATALOG 라인이 거래처 변경 시 말없이 바뀜)
+- **MEDIUM 5**: afterCommit REQUIRES_NEW 커넥션 대기 · **mock 모드 #809 전 경로 死**(R1 H-4 fix 불완전 — mock 이 구 wire) · UUID 쿼리스트링 노출 정책 미확정 · **QA 리포트 PASS 과장 + "미해소 4건/6건" 자기모순** · 문서 동기화(README/ROADMAP/overview 0건)
+- **LOW**: `@Schema` 가 source 를 "LINE_SAVE" 로만 설명(실제 `BUNDLE_SET` 도 반환)
+- **적대 반증 실패(clean 유지)**: 동일 (partner,product) 중복 라인 dedupe · 수정 PUT ×1.1 · revive audit · 주문 제외 · 문서-코드 대체로 일치
+
+### 이번 세션 완료분 (참고)
+- Codex MCP 복구 → #809 구현 인수 → **PM 게이트 BLOCKING 4건**(IT 48 fail·CI allowlist false-green·**fail-soft 역전**·**실 DB 검증 0**) 포착·fix
+- **R1 Opus 5-agent**(BLOCKING 4·HIGH 6·MEDIUM 11·LOW 8) + **개발책임자 결정 4건**(①VAT 포함 승인+spec 정정 ②BUNDLE 구성품 제외+세트 parent 기억 ③'최근가' 마커 ④수정·복사 전부 배선) → **29건 전부 fix** → R2 게시 + 라이브 QA 7/7
+- 게시: [Codex개발+PM게이트](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976246801) · [R1](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976479928) · [개발책임자 결정](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976498183) · [R2](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976926587) · [R3](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977100576)
+
+### 🔴 개발책임자 신규 지시 (2026-07-15·#809 완주 후 순차) — TODO 등록됨
+1. **레거시 GAS 통합 점검** — 현 메뉴가 레거시 기능 계승 맞는지·실시간 메뉴/상세변동 반영 맞는지 전수 재검증. **레거시 코드를 신규로 다시 받아** 재검증(`tools/legacy-gas/` 갱신). **OCR 제외**(구글 드라이브 사용 예정 — 에어디자이너·제이시스템 전용 주문서 처리)
+2. **'주문서 관리' + '주문서 관리(이관)' → '주문서 관리' 하나로 통합** (사용자 혼동)
+3. **전역 입력 UX** — 모든 메뉴에서 거래처명·전표번호·**품목 등 모든 데이터** 자동완성(방향키 선택) + 미완성 입력 시 **모달 리스트 선택(복수선택 → 캡슐 누적·개별 삭제, 이카운트 방식)**. 🔴 **단 단수 강제 필드 구분 필수**(판매전표 거래처는 단수여야 회계 반영됨)
+4. **품목행에 공급가액·부가세 열 추가** — 단가/합계 기반 **자동계산 우선**, **단 편집 가능**. 🔴 착수 전 확정: 편집 시 역산 방향·`공급가액+부가세=합계` 강제 여부·면세/영세 대응(현 도메인 VAT 10% 고정)
+
+### 📋 단수 필드 전수 조사 완료 (전역 입력 UX 에픽 정찰 산출)
+**핵심 결론 3가지**:
+1. **단수 규칙은 이미 코드에 인코딩돼 있다** — 회계 체인이 뒤로 갈수록 조여짐(판매전표 `partner_id` nullable → 매출전표·세금계산서·입금보고서 **NOT NULL** → 일마감 **`UNIQUE(closing_date, partner_id, closing_kind, source_kind)`** = 거래처가 집계 UNIQUE 키). 주문 병합(N주문→1전표)조차 `"병합은 같은 거래처 주문만 가능합니다"` 409 + 테스트로 잠김. **에픽 = 새 규칙 제정이 아니라 기존 규칙을 UI 로 끌어올리는 일**
+2. **진짜 위험은 복수 입력이 아니라 미선택 저장** — `slips.partner_id` nullable + `@NotNull` 없음 + FE 필수검증 없음 → 거래처 없는 전표가 CONFIRMED 까지 간 뒤 **회계 전환이 조용히 실패**(#809 최근단가·세금계산서 발행도 동반 사멸)
+3. **패턴**: 복수 선택은 **원천 문서**(주문/통장거래/전표)에만, **귀속 키**(거래처·계정·창고)는 **항상 단수**, 묶을 때는 **동일성 검증 후 1개로 수렴**
+- 단수 강제: 전표/견적 거래처·출고/입고창고·배송태그·라인 품목 · 분개 계정과목/거래처 · 입금보고서 거래처+차/대 계정 · 일마감 거래처 · 세금계산서 거래처 · **재고이동 출발/도착창고**(`CHECK (source <> destination)`) · 재고 (품목,창고) 쌍(`UNIQUE`) · 배차 기사(partial UNIQUE) · 결재 기안자(`updatable=false`) · 사용자 부서(조인테이블 없음=겸직 불가)·팀장(부서당 1명 DB 강제) · **품목 `usageScope`**(`BOTH` 가 이미 조합값 → 칩 적용 시 이중표현 붕괴)
+- 복수 허용·칩 미적용(에픽 우선 후보): **세금계산서 일괄발행 원천 전표**(`List<UUID>`) · **제외 거래처**(CSV TEXT = 칩 규칙이 겨냥하는 안티패턴) · 일정 참석자 · 권한그룹 · 견적 노출 카테고리 · 세트 구성품 · 배송지/담당자
+- ⚠️ **함정**: inventory `Batch*Request` 6종은 **이름만 batch**이고 List 를 안 받음(스칼라+quantity) → 칩 붙이면 오설계
+- 🔴 확정 필요 잔여: 일마감 거래처 **`null`=전체마감** vs 칩 0개 시맨틱 충돌 · 안전재고 창고 `null`=전체 · 통장필터 `[]`=전체/미선택 3-상태 · 자동완성 반환값이 서비스마다 다름(UUID vs partnerCode) · 주문 병합 UX · 쪽지 수신자 1명=1row · 거래처 3택1 대체키
+
+### ✅ 개발책임자 결정 (2026-07-15·단수 조사 후)
+- **전표 거래처 = 필수화(FE+BE 양쪽 차단)** — 기존 null 전표 실상황 조사 선행 후 **별도 슬라이스**. 회계 무결성 도메인
+- **매출전표 배분 거래처 불일치 검증 부재 = 별도 이슈 등록 후 순차** — 원천 전표 거래처가 헤더 거래처와 같은지 **검증 없음**(`SalesAccountingSlipCreateAttemptService:71-92`), `SlipLineSnapshot` 이 partnerId 를 안 실어와 **검증 자체가 불가** → 거래처 A 출고전표를 거래처 B 매출전표에 배분 가능 = **매출 귀속 오류**. 이슈 본문 초안 = `scratchpad/issue-sales-allocation.md`(미등록 — 다음 세션에서 `gh issue create`)
+
+### ⚙️ 환경 교훈 (이번 세션 실증)
+- **gradle test 백그라운드 실행이 `:test` 진입 직후 일관되게 killed**(v3/v4 재현·로그 1568 bytes 동일 지점). **foreground 실행 시 정상**(3m36s~3m50s). 이후 검증은 **foreground** 로.
+- **codex CLI 이중 설치**: PATH npm 전역(`AppData\Roaming\npm\codex.ps1`)과 데스크톱 앱 번들(`AppData\Local\OpenAI\Codex\bin\<hash>\codex.exe`)이 **버전이 다름**(0.131.0 vs 0.144.2). **MCP 는 PATH 쪽**을 씀 → config.toml 모델을 올릴 때 **PATH codex 도 같이 업그레이드**해야 함(`npm i -g @openai/codex@latest`).
+- **MCP tool idle timeout 1800s** — 대형 fix 디스패치가 timeout 으로 abort 돼도 **산출물은 디스크에 남는다**(26파일 확인). `git status` + 안정화(diff 해시 2회 비교)로 완료 판정 후 이어가면 됨.
+
+---
+
 ## 🔄 2026-07-15 (집PC morning) — #809 최근단가 자동채움 **구현 재개 지점**(세션 재시작·MCP 복구 후 이어받기)
 
 > **다음 세션 첫 읽기(최우선).** #809 개발책임자 결정 morning 확정 완료 → Codex 구현 착수 단계. **세션 재시작 사유**: codex-exec 프로세스 종료 시 codex MCP 서버가 세션 도구 레지스트리에서 이탈(인세션 /mcp 재연결로 복구 안 됨·서버 자체는 Connected). 개발책임자 지시 = **Codex는 MCP로 진행**. 재시작하면 `mcp__codex__codex` 재등록됨.
