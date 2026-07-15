@@ -1,7 +1,10 @@
 name: CI
 
-# Arologis has a separate workflow. This workflow covers Samhan Public services
-# and shared modules. Manual workflow_dispatch remains available for full runs.
+# 아로로지스 분리 (spec 2026-05-14, plan DO2):
+#   - `services/arologis-service/**` + `clients/arologis-{desktop,mobile}/**` 변경은
+#     별도 워크플로 `arologis-ci.yml` 에서 처리. 본 워크플로 에서 제외하여 중복 빌드 방지.
+#   - shared/** 변경 시는 양 쪽 (samhan-public + arologis) 모두 재검증 필요 → 양쪽 모두 트리거.
+#   - workflow_dispatch = 수동 트리거 (manual full run 보장).
 on:
   push:
     branches: [main]
@@ -11,7 +14,11 @@ on:
       - 'clients/arologis-mobile/**'
       - '.github/workflows/arologis-ci.yml'
       - '.github/workflows/arologis-deploy.yml'
+      # Grafana 대시보드 JSON 변경만으로 BE 빌드+테스트 재실행 불필요 (SP-D5)
       - 'infrastructure/grafana/**'
+      # 문서 변경만으로 BE 빌드+테스트 재실행 불필요 (audit-slice-3).
+      # docs/migration/** 은 Flyway SQL 이 아닌 마이그레이션 계획 문서이므로 함께 무시 안전.
+      # Flyway SQL 은 각 service 의 src/main/resources/db/migration/ 경로에 있으므로 영향 없음.
       - 'docs/**'
   pull_request:
     branches: [main]
@@ -21,22 +28,26 @@ on:
       - 'clients/arologis-mobile/**'
       - '.github/workflows/arologis-ci.yml'
       - '.github/workflows/arologis-deploy.yml'
+      # Grafana 대시보드 JSON 변경만으로 BE 빌드+테스트 재실행 불필요 (SP-D5)
       - 'infrastructure/grafana/**'
+      # 문서 변경만으로 BE 빌드+테스트 재실행 불필요 (audit-slice-3).
+      # docs/migration/** 은 Flyway SQL 이 아닌 마이그레이션 계획 문서이므로 함께 무시 안전.
+      # Flyway SQL 은 각 service 의 src/main/resources/db/migration/ 경로에 있으므로 영향 없음.
       - 'docs/**'
   workflow_dispatch:
 
 permissions:
   contents: read
-  checks: write
-  pull-requests: write
+  checks: write          # mikepenz/action-junit-report: check run 생성
+  pull-requests: write   # JUnit 결과 PR 코멘트 게시
 
 jobs:
   build-and-test:
-    name: Build and Test (${{ matrix.group.name }})
+    name: 빌드 + 테스트 (${{ matrix.group.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.group.timeout }}
+    timeout-minutes: ${{ matrix.group.timeout }}  # group 별 timeout (slip 60분, 그 외 30분)
     strategy:
-      fail-fast: false
+      fail-fast: false  # 1 group fail 시 다른 group 도 결과 확인
       matrix:
         group:
           - name: shared+auth+gateway
@@ -46,57 +57,74 @@ jobs:
             timeout: 30
             test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
           - name: slip-units
+            # slip-service 단위 + 빠른 client mock 만 (큰 IT 제외)
             timeout: 30
-            # Gradle --tests package filters do not include subpackages automatically.
-            # #809 price memory unit packages are listed explicitly to avoid false-green.
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.attachment.*" --tests "com.samhanair.logis.slip.audit.service.*" --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.comment.service.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.editrequest.service.*" --tests "com.samhanair.logis.slip.estimate.domain.*" --tests "com.samhanair.logis.slip.estimate.revision.*" --tests "com.samhanair.logis.slip.estimate.service.*" --tests "com.samhanair.logis.slip.estimate.web.*" --tests "com.samhanair.logis.slip.price.domain.*" --tests "com.samhanair.logis.slip.price.service.*" --tests "com.samhanair.logis.slip.realtime.*" --tests "com.samhanair.logis.slip.revision.*" --tests "com.samhanair.logis.slip.revision.service.*" --tests "com.samhanair.logis.slip.seed.*" --tests "com.samhanair.logis.slip.service.*" --tests "com.samhanair.logis.slip.service.dispatch.*" --tests "com.samhanair.logis.slip.vendor.*" --tests "com.samhanair.logis.slip.web.*" --tests "com.samhanair.logis.slip.collab.*" --tests "com.samhanair.logis.slip.mobile.dto.*" --tests "com.samhanair.logis.slip.mobile.service.*"'
+            # E2 기둥2: Gradle --tests 패키지 필터는 하위패키지를 자동 커버하지 않으므로(아래 slip-it-core 노트와 동일 원칙) service.dispatch.* 를 명시 등재해 false-green 방지.
+            # #809 price memory 신규 하위패키지 명시 등재 — Gradle --tests 상위패키지 필터 false-green 방지.
+            #   (R1: price.repository.* 는 테스트 클래스 부재 패키지로 판명되어 제거 — 실재는 price.domain/price.service 뿐)
+            # #809 R4-O4: slip.config.* 등재 — 어느 slip job 필터에도 없어 HeaderAuthenticationFilterTest 가
+            #   영구 미실행이던 것 해소 (레포 concrete 테스트 182 vs CI 실행 181 전수 대조로 특정, 차집합이 이 1건뿐).
+            # #809 R4 통합: slip.price.config.* 등재 — R4-B1 AsyncConfig 테스트를 자연 패키지(price.config)로 이동, --tests 는 하위패키지 미포함이라 명시 필요.
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.attachment.*" --tests "com.samhanair.logis.slip.audit.service.*" --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.comment.service.*" --tests "com.samhanair.logis.slip.config.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.editrequest.service.*" --tests "com.samhanair.logis.slip.estimate.domain.*" --tests "com.samhanair.logis.slip.estimate.revision.*" --tests "com.samhanair.logis.slip.estimate.service.*" --tests "com.samhanair.logis.slip.estimate.web.*" --tests "com.samhanair.logis.slip.price.config.*" --tests "com.samhanair.logis.slip.price.domain.*" --tests "com.samhanair.logis.slip.price.service.*" --tests "com.samhanair.logis.slip.realtime.*" --tests "com.samhanair.logis.slip.revision.*" --tests "com.samhanair.logis.slip.revision.service.*" --tests "com.samhanair.logis.slip.seed.*" --tests "com.samhanair.logis.slip.service.*" --tests "com.samhanair.logis.slip.service.dispatch.*" --tests "com.samhanair.logis.slip.vendor.*" --tests "com.samhanair.logis.slip.web.*" --tests "com.samhanair.logis.slip.collab.*" --tests "com.samhanair.logis.slip.mobile.dto.*" --tests "com.samhanair.logis.slip.mobile.service.*"'
+          # W10-5 회고 — slip-it-public + slip-it-core PR matrix 재활성.
+          # 사유: PR #102 V11 CONCURRENTLY 제거 fix 로 idle in transaction deadlock 근본 차단 →
+          # 30분 안에 통과 예상. 보강 회귀 검증은 nightly-slip-it.yml (60분 timeout, 매일 02:00 KST)
+          # 가 main + 활성 feature branch 에 대해 별도로 수행. PR fast-feedback + nightly deep
+          # regression 2-track 패턴 (PR #99 5/6/7차 회고 정착).
           - name: slip-it-public
             timeout: 30
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
           - name: slip-it-core
             timeout: 30
-            # slip.it.* does not automatically include nested packages; keep all IT slices explicit.
+            # slip.it.* 가 slip.it.collab.*/slip.it.cutoff.*/slip.it.schedule.* 를 자동 커버하지 않으므로(Gradle --tests 서브패키지 미포함) 명시 추가로 false-green 영구 제거 (§7 Round C P2 / 컷오프 슬라이스 / V52 배송일정)
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.comment.it.*" --tests "com.samhanair.logis.slip.estimate.it.*" --tests "com.samhanair.logis.slip.estimate.it.collab.*" --tests "com.samhanair.logis.slip.estimate.snapshot.it.*" --tests "com.samhanair.logis.slip.it.*" --tests "com.samhanair.logis.slip.it.collab.*" --tests "com.samhanair.logis.slip.it.cutoff.*" --tests "com.samhanair.logis.slip.it.dispatch.*" --tests "com.samhanair.logis.slip.it.schedule.*" --tests "com.samhanair.logis.slip.repository.dispatch.*" --tests "com.samhanair.logis.slip.dispatch.*"'
           - name: accounting+partner
             timeout: 30
             test-tasks: ':services:accounting-service:test :services:partner-service:test :services:partner-auth-service:test :services:partner-order-service:test :services:dc-config-service:test'
           - name: accounting-codef-it
+            # BC1 CODEF 은행·카드 거래내역 연동 신규 IT 명시 등재.
+            # accounting+partner 전체 테스트에도 포함되지만, 필터 false-green 방지를 위해 좁은 회귀 job 을 별도 유지.
             timeout: 30
             test-tasks: ':services:accounting-service:test --tests "com.samhanair.logis.accounting.it.CodefImportControllerIT" --tests "com.samhanair.logis.accounting.it.CodefAccountSelectionIT" --tests "com.samhanair.logis.accounting.it.CodefConnectionRepositoryIT" --tests "com.samhanair.logis.accounting.it.CodefConnectionServiceIT" --tests "com.samhanair.logis.accounting.it.CodefConnectionControllerIT"'
           - name: accounting-cash-receipt-it
+            # E3 S1~S3 입금보고서 도메인 기반 + #712 MIG-9 linkCash 링크 IT: 신규 IT 명시 등재로 Gradle --tests false-green 방지.
             timeout: 30
             test-tasks: ':services:accounting-service:test --tests "com.samhanair.logis.accounting.it.CashReceiptControllerIT" --tests "com.samhanair.logis.accounting.it.BankDepositReceiptIT" --tests "com.samhanair.logis.accounting.editrequest.lock.AccountingLockPoliciesTest" --tests "com.samhanair.logis.accounting.service.Mig9CashJournalServiceTest" --tests "com.samhanair.logis.accounting.it.Mig9CashJournalLinkIT" :services:auth-service:test --tests "com.samhanair.logis.auth.it.AuthFlywayV80SeedIT"'
+          # 아로로지스 분리 (spec 2026-05-14, plan DO2):
+          #   `:services:arologis-service:test` 는 별도 워크플로 `arologis-ci.yml` 의 backend job
+          #   으로 이관. 본 그룹에서는 제외. Samhan Public 14 service 만 커버.
           - name: phase9-10 (groupware+notification+dashboard)
             timeout: 30
             test-tasks: ':services:groupware-service:test :services:notification-service:test :services:dashboard-service:test'
 
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17 (Temurin)
+      - name: JDK 17 설치 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Gradle 캐시 + Wrapper 검증
+        uses: gradle/actions/setup-gradle@v4   # 5차 fix: v3 cache-restore HTTP 400 회피
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' && github.head_ref != 'main' }}
 
-      - name: Ensure gradlew is executable
+      - name: gradlew 실행 권한 보장 (Windows 커밋 방어)
         run: chmod +x ./gradlew
 
-      - name: Verify Docker availability
+      - name: Docker 가용성 확인 (Testcontainers 용)
         run: |
           docker version
           docker ps
 
-      - name: Assemble all modules
+      # 5차 fix: --no-daemon 제거 — assemble→test 사이 JVM 워밍업 재활용 (52s 절약).
+      - name: assemble (전 모듈)
         run: ./gradlew assemble
 
-      - name: Test (${{ matrix.group.name }})
+      - name: test (${{ matrix.group.name }})
         run: ./gradlew ${{ matrix.group.test-tasks }}
 
       - name: E2 CollectionRealtimePublisherTest skipped=0 hard gate
@@ -239,10 +267,10 @@ jobs:
             exit 1
           fi
 
-      - name: Upload test reports
+      - name: 테스트 리포트 아티팩트 업로드 (실패 포함)
         if: always()
         uses: actions/upload-artifact@v4
-        continue-on-error: true
+        continue-on-error: true  # 스토리지 쿼터 등 업로드 실패가 잡을 red 로 만들지 않도록(테스트 결과만 게이트)
         with:
           name: test-reports-${{ matrix.group.name }}
           path: |
@@ -250,23 +278,25 @@ jobs:
             shared/*/build/reports/tests/test/
           retention-days: 14
 
-      - name: Publish JUnit report
+      - name: JUnit 결과 PR 코멘트로 게시
         if: always() && github.event_name == 'pull_request'
         uses: mikepenz/action-junit-report@v4
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
+          # accounting-codef-it / accounting-cash-receipt-it 는 좁은 IT hard gate 이므로
+          # 필터/skip false-green 을 막기 위해 JUnit 결과가 0건이면 실패시킨다.
           require_tests: ${{ matrix.group.name == 'accounting-codef-it' || matrix.group.name == 'accounting-cash-receipt-it' }}
-          check_name: JUnit test result (${{ matrix.group.name }})
+          check_name: JUnit 테스트 결과 (${{ matrix.group.name }})
 
   notion-zero-guard:
     name: Notion Runtime Zero Guard (SP-08-7)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Check Notion runtime dependencies
+      - name: Notion runtime 의존 zero 정적 검사
         run: |
           chmod +x scripts/check-notion-zero.sh
           bash scripts/check-notion-zero.sh
@@ -276,23 +306,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Check plaintext credential leakage
+      - name: 자격 평문 비공개 정적 검사 (shell guard)
         run: |
           chmod +x scripts/check-credential-plaintext.sh
           bash scripts/check-credential-plaintext.sh
 
+      # Playwright spec hard gate 는 후속 슬라이스 — 본 PR 에서는 shell guard 단독
+      # (SP-08-7 notion-zero-guard 패턴 일관). spec testDir 외부 testMatch 이슈 (No tests found)
+      # 해결은 별도 PR (qa/playwright testDir 확장 또는 spec 이전).
+
   config-audit-guard:
-    name: "Config Audit Guard (downstream URL/port consistency, #745)"
+    name: "Config Audit Guard (다운스트림 URL/포트 정합, #745)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Validate downstream URL/port consistency
+      # SAMHAN_*_SERVICE_URL / samhan.*-service.url 기본 포트가 각 compose 파일의 실 서비스
+      # 포트와 정합하는지 정적 검사 (arologis SlipClient 8084 오배정류 #745 재발 회귀 게이트).
+      # ubuntu-latest 내장 pwsh (PowerShell 7) 사용 — 별도 설치 불필요.
+      - name: 다운스트림 URL/포트 정합 검사 (validate-config-audit.ps1)
         shell: pwsh
         run: ./infrastructure/scripts/validate-config-audit.ps1 -Detailed
 
@@ -305,42 +342,42 @@ jobs:
         working-directory: clients/web/design-system
 
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Node 20 설치
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: clients/web/design-system/package-lock.json
 
-      - name: Install dependencies
+      - name: 의존성 설치
         run: npm ci
 
-      - name: Typecheck build config
+      - name: typecheck (build config)
         run: npx tsc -p tsconfig.build.json --noEmit
 
-      - name: Typecheck dev config
+      - name: typecheck (dev config — stories/tests 포함)
         run: npx tsc -p tsconfig.json --noEmit
 
-      - name: Unit tests
+      - name: 단위 테스트(vitest)
         run: npm test
 
-      - name: Lint
+      - name: lint
         run: npm run lint
-        continue-on-error: true
+        continue-on-error: true   # legacy 코드 사전 존재 오류 허용 — feature 브랜치별 신규 코드 검증은 PR 검토에서
 
-      - name: Vite build
+      - name: vite build
         run: npm run build
 
-      - name: Storybook build
+      - name: storybook 정적 빌드
         run: npm run build-storybook
 
-      - name: Upload Storybook artifact
+      - name: storybook 정적 산출 업로드 (PR 미리보기)
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
-        continue-on-error: true
+        continue-on-error: true  # 스토리지 쿼터 등 업로드 실패가 잡을 red 로 만들지 않도록(테스트 결과만 게이트)
         with:
           name: storybook-static-${{ github.run_number }}
           path: clients/web/design-system/storybook-static
@@ -350,16 +387,16 @@ jobs:
     name: Frontend Desktop (typecheck + lint + build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [frontend-ds]
+    needs: [frontend-ds]   # design-system 빌드 후 desktop (file: dependency)
     defaults:
       run:
         working-directory: clients/desktop
 
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Node 20 설치
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -368,33 +405,33 @@ jobs:
             clients/web/design-system/package-lock.json
             clients/desktop/package-lock.json
 
-      - name: Prebuild design-system file dependency
+      - name: "design-system 사전 빌드 (file: dependency)"
         working-directory: clients/web/design-system
         run: |
           npm ci
           npm run build
 
-      - name: Install desktop dependencies
+      - name: desktop 의존성 설치
         run: npm ci
 
-      - name: Typecheck desktop
+      - name: typecheck (Electron node + web)
         run: npm run typecheck
 
-      - name: Lint
+      - name: lint
         run: npm run lint
 
-      - name: Build Electron app
+      - name: build (electron-vite)
         run: npm run build
 
-      - name: Build renderer web
+      - name: build:web (renderer web)
         run: npm run build:web
 
-      - name: Build Capacitor webview
+      - name: build:capacitor (native webview)
         run: npm run build:capacitor
         env:
           VITE_API_BASE_URL: ''
 
-      - name: Unit tests
+      - name: 단위 테스트(vitest)
         run: npm test
 
   frontend-order-app:
@@ -406,42 +443,42 @@ jobs:
         working-directory: clients/web/order-app
 
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Node 20 설치
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: clients/web/order-app/package-lock.json
 
-      - name: Install order-app dependencies
+      - name: order-app 의존성 설치
         run: npm ci
 
-      - name: Typecheck
+      - name: typecheck (tsc --noEmit)
         run: npm run typecheck
 
-      - name: Unit tests
+      - name: 단위 테스트(vitest)
         run: npm run test
 
-      - name: Vite build
+      - name: vite build
         run: npm run build
 
   frontend-mobile-public:
     name: Frontend Mobile-Public (typecheck + lint + test + build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [frontend-ds]
+    needs: [frontend-ds]   # design-system 빌드 후 mobile-public (file: dependency)
     defaults:
       run:
         working-directory: clients/web/mobile-public
 
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Node 20 설치
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -450,25 +487,25 @@ jobs:
             clients/web/design-system/package-lock.json
             clients/web/mobile-public/package-lock.json
 
-      - name: Prebuild design-system file dependency
+      - name: "design-system 사전 빌드 (file: dependency)"
         working-directory: clients/web/design-system
         run: |
           npm ci
           npm run build
 
-      - name: Install mobile-public dependencies
+      - name: mobile-public 의존성 설치
         run: npm ci
 
-      - name: Typecheck
+      - name: typecheck (tsc --noEmit)
         run: npm run typecheck
 
-      - name: Lint
+      - name: lint
         run: npm run lint
 
-      - name: Unit tests
+      - name: 단위 테스트(vitest)
         run: npm run test
 
-      - name: Vite build
+      - name: vite build
         run: npm run build
 
   frontend-mobile-staff:
@@ -480,51 +517,62 @@ jobs:
         working-directory: clients/mobile-staff
 
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Node 20 설치
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: clients/mobile-staff/package-lock.json
 
-      - name: Install dependencies
+      - name: 의존성 설치
         run: npm ci
 
-      - name: Typecheck
+      - name: typecheck (tsc --noEmit)
         run: npm run typecheck
 
-      - name: Validate app.config.js variants
+      # P1-4 영업 native 앱 (Phase 11+1개월 예정) 빌드 분기 검증.
+      # app.config.js 의 BUILD_ENV / APP_VARIANT 환경변수 분기 및 EAS Build 프로파일 정합 사전 가드.
+      # CI 에서는 BUILD_ENV=development (default) 로 실행하여 로컬 개발 경로 검증.
+      - name: app.config.js 환경변수 분기 점검 (node 직접 실행)
         run: |
           node -e "
             const cfg = require('./app.config.js');
             const expo = cfg.expo;
-            if (!expo.name || !expo.version) { console.error('app.config.js: missing name/version'); process.exit(1); }
-            if (!expo.extra || !expo.extra.buildEnv) { console.error('app.config.js: missing extra.buildEnv'); process.exit(1); }
-            if (!expo.ios || !expo.ios.bundleIdentifier) { console.error('app.config.js: missing ios.bundleIdentifier'); process.exit(1); }
-            if (!expo.android || !expo.android.package) { console.error('app.config.js: missing android.package'); process.exit(1); }
-            console.log('app.config.js validated:', expo.name, 'v' + expo.version, '/', expo.extra.buildEnv);
+            if (!expo.name || !expo.version) { console.error('app.config.js: name/version 누락'); process.exit(1); }
+            if (!expo.extra || !expo.extra.buildEnv) { console.error('app.config.js: extra.buildEnv 누락'); process.exit(1); }
+            if (!expo.ios || !expo.ios.bundleIdentifier) { console.error('app.config.js: ios.bundleIdentifier 누락'); process.exit(1); }
+            if (!expo.android || !expo.android.package) { console.error('app.config.js: android.package 누락'); process.exit(1); }
+            console.log('app.config.js 검증 통과:', expo.name, 'v' + expo.version, '/', expo.extra.buildEnv);
           "
 
-      - name: Expo doctor
+      # W10-3 종합 TM 채택 fix (O-DEVOPS-1) — Expo plugin 정합 사전 가드.
+      # P1-4 보강 — app.config.js 동적 설정 병행 후에도 expo-doctor 플러그인 정합 유지 확인.
+      # continue-on-error = true — graceful guard (asset 부분 누락 / expo-doctor SDK patch 버전 경고 허용).
+      - name: Expo doctor (plugin 정합 점검)
         run: npx expo-doctor
         continue-on-error: true
 
+      # Expo prebuild dry-run — native 코드 생성 가능성 사전 가드 (EAS Build 진입 전 회귀 방지).
+      # P1-4 EAS Build 프로파일 (eas.json) 추가 후 native 디렉토리 생성 경로 이상 없음 확인.
+      # --no-install --clean = node_modules 미변형 + native 디렉토리 임시 생성.
       - name: Expo prebuild dry-run
         run: npx expo prebuild --no-install --clean
         continue-on-error: true
 
-      - name: Validate eas.json syntax
+      # eas.json 구문 유효성 — Phase 11 EAS Build 활성 전 사전 가드.
+      # jq 로 JSON 파싱만 확인 (EAS CLI 미설치 환경에서도 동작).
+      - name: eas.json 구문 검증
         run: |
           if [ -f eas.json ]; then
             node -e "
               const eas = require('./eas.json');
               const profiles = Object.keys(eas.build || {});
-              if (profiles.length === 0) { console.error('eas.json: missing build profiles'); process.exit(1); }
-              console.log('eas.json validated. Profiles:', profiles.join(', '));
+              if (profiles.length === 0) { console.error('eas.json: build 프로파일 없음'); process.exit(1); }
+              console.log('eas.json 검증 통과. 프로파일:', profiles.join(', '));
             "
           else
-            echo 'eas.json not found; skipping.'
+            echo 'eas.json 없음 — skip'
           fi

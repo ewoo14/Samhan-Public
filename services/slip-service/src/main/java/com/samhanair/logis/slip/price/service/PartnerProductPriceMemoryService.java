@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -43,6 +44,16 @@ public class PartnerProductPriceMemoryService {
     public static final String BATCH_SIZE_SUMMARY = "slip_price_memory_batch_size";
     /** Prometheus export: {@code slip_price_memory_upsert_duration_seconds_*}. */
     public static final String UPSERT_DURATION_TIMER = "slip_price_memory_upsert_duration";
+
+    /**
+     * 동시 flush 배치 간 행 잠금 순서를 통일하는 전역 정렬 기준.
+     *
+     * <p>deadlock 회피에는 JVM 내 모든 배치가 같은 비교 규칙을 쓰는 일관성만 필요하므로
+     * UUID 자연 순서(natural ordering)로 충분하다 (PostgreSQL 바이트 순서와 일치할 필요 없음).
+     */
+    private static final Comparator<PartnerProductPriceMemoryCommand> PAIR_LOCK_ORDER =
+            Comparator.comparing(PartnerProductPriceMemoryCommand::partnerId)
+                    .thenComparing(PartnerProductPriceMemoryCommand::productId);
 
     private final PartnerProductPriceMemoryRepository repository;
     private final PartnerProductPriceMemoryBatchRepository batchRepository;
@@ -203,6 +214,15 @@ public class PartnerProductPriceMemoryService {
         }
     }
 
+    /**
+     * command 를 정제·중복제거하고 전역 잠금 순서로 정렬해 반환한다.
+     *
+     * <p>같은 pair 는 문서 라인 순서상 마지막 값이 이긴다 (LinkedHashMap 덮어쓰기 — dedup 은
+     * 정렬 이전에 끝난다). 반환 직전 {@link #PAIR_LOCK_ORDER} 정렬은 두 문서가 같은 pair 집합을
+     * 서로 반대 라인 순서로 담아 동시에 flush 될 때 단일 upsert statement 가 행을 역순으로 잠가
+     * 발생하는 PostgreSQL deadlock(→ fail-soft 배치 통째 유실)을 구조적으로 제거한다.
+     * set-based upsert 결과는 행 순서와 무관하므로 저장 값은 동일하다.
+     */
     private List<PartnerProductPriceMemoryCommand> prepareAndDedupe(
             Collection<PartnerProductPriceMemoryCommand> commands) {
         if (commands == null || commands.isEmpty()) {
@@ -224,7 +244,9 @@ public class PartnerProductPriceMemoryService {
                     normalizeSource(command.source()), actor, rememberedAt);
             byPair.put(new PartnerProductKey(command.partnerId(), command.productId()), prepared);
         }
-        return new ArrayList<>(byPair.values());
+        List<PartnerProductPriceMemoryCommand> deduped = new ArrayList<>(byPair.values());
+        deduped.sort(PAIR_LOCK_ORDER);
+        return deduped;
     }
 
     private String normalizeSource(String source) {

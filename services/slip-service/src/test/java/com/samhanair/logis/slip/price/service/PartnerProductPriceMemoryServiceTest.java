@@ -2,6 +2,7 @@ package com.samhanair.logis.slip.price.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -155,6 +156,72 @@ class PartnerProductPriceMemoryServiceTest {
                 .counter().count()).isEqualTo(2.0);
         assertThat(meterRegistry.get(PartnerProductPriceMemoryService.BATCH_SIZE_SUMMARY)
                 .summary().count()).isEqualTo(1L);
+    }
+
+    @Test
+    void rememberBatch_sortsFlushBatchByPartnerAndProductAfterDedup() {
+        // R4-B2 — flush 배치는 문서 라인 순서가 아니라 (partnerId, productId) 전역 잠금 순서여야 한다.
+        UUID partnerEarly = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID partnerLate = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        UUID productEarly = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+        UUID productLate = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+        when(batchRepository.upsertAll(anyList(), any(LocalDateTime.class))).thenReturn(3);
+
+        // 문서 라인 순서는 정렬 역순 + 같은 pair 중복(마지막 라인 승리가 정렬 후에도 유지되는지 검증).
+        service.rememberBatchAfterCommit(List.of(
+                new PartnerProductPriceMemoryCommand(
+                        partnerLate, productEarly, new BigDecimal("300.00"), "LINE_SAVE", "actor"),
+                new PartnerProductPriceMemoryCommand(
+                        partnerEarly, productLate, new BigDecimal("200.00"), "LINE_SAVE", "actor"),
+                new PartnerProductPriceMemoryCommand(
+                        partnerEarly, productEarly, new BigDecimal("50.00"), "LINE_SAVE", "actor"),
+                new PartnerProductPriceMemoryCommand(
+                        partnerEarly, productEarly, new BigDecimal("100.00"), "LINE_SAVE", "actor")),
+                "lock-order-sort");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(batchRepository).upsertAll(captor.capture(), any(LocalDateTime.class));
+        assertThat(captor.getValue())
+                .extracting(PartnerProductPriceMemoryCommand::partnerId,
+                        PartnerProductPriceMemoryCommand::productId,
+                        PartnerProductPriceMemoryCommand::unitPrice)
+                .containsExactly(
+                        tuple(partnerEarly, productEarly, new BigDecimal("100.00")),
+                        tuple(partnerEarly, productLate, new BigDecimal("200.00")),
+                        tuple(partnerLate, productEarly, new BigDecimal("300.00")));
+    }
+
+    @Test
+    void rememberBatch_crossOrderedDocumentsAcquireLocksInSameGlobalOrder() {
+        // R4-B2 시나리오 — 문서 A=[X,Y], 문서 B=[Y,X] 동시 flush 시 역순 행 잠금 → PG deadlock →
+        // 한쪽 배치 fail-soft 전체 유실. 두 배치가 동일한 전역 순서로 나가면 deadlock 이 구조적으로 소멸한다.
+        UUID partnerId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID productX = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+        UUID productY = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+        when(batchRepository.upsertAll(anyList(), any(LocalDateTime.class))).thenReturn(2);
+
+        service.rememberBatchAfterCommit(List.of(
+                new PartnerProductPriceMemoryCommand(
+                        partnerId, productX, new BigDecimal("1000.00"), "LINE_SAVE", "actor"),
+                new PartnerProductPriceMemoryCommand(
+                        partnerId, productY, new BigDecimal("2000.00"), "LINE_SAVE", "actor")),
+                "doc-a");
+        service.rememberBatchAfterCommit(List.of(
+                new PartnerProductPriceMemoryCommand(
+                        partnerId, productY, new BigDecimal("2000.00"), "LINE_SAVE", "actor"),
+                new PartnerProductPriceMemoryCommand(
+                        partnerId, productX, new BigDecimal("1000.00"), "LINE_SAVE", "actor")),
+                "doc-b");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(batchRepository, times(2)).upsertAll(captor.capture(), any(LocalDateTime.class));
+        List<List<PartnerProductPriceMemoryCommand>> batches = captor.getAllValues();
+        assertThat(batches.get(0)).extracting(PartnerProductPriceMemoryCommand::productId)
+                .containsExactly(productX, productY);
+        assertThat(batches.get(1)).extracting(PartnerProductPriceMemoryCommand::productId)
+                .containsExactly(productX, productY);
     }
 
     @Test

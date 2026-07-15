@@ -413,6 +413,63 @@ aws rds restore-db-instance-to-point-in-time \
 | M-16 | RabbitMQ 운영 비밀번호 Secrets Manager 주입 (`samhan/production/rabbit-password`) | 단계 0-D |
 | M-17 | terraform.tfvars `route53_zone_id` 에 사전 위임된 Hosted Zone ID 입력 | 단계 1 전 |
 | M-18 | AWS S3 access/secret key 실값 수동 주입 (`samhan/production/s3-access-key`, `samhan/production/s3-secret-key`) | 단계 0-D |
+| M-19 | slip-service 가격기억 upsert 실패 prod 감지 배선 (#809 — 로그 CloudWatch 전송 + Logs metric filter 2건 + alarm, 아래 "M-19 상세" 참조) | 단계 3 후 |
+
+### M-19 상세 — 가격기억 upsert 실패 prod 알람 이식 (#809)
+
+dev 로컬 스택은 Prometheus rule `SlipPriceMemoryUpsertFailure`
+(`infrastructure/prometheus/rules/slip-price-memory.yml`) 가 upsert 실패를 감지하지만,
+**prod 에는 Prometheus 컨테이너가 없다** (Phase 11 기결정 — 모니터링 = CloudWatch 일원화).
+가격기억은 fail-soft 보조 기능이라 upsert 가 전멸해도 원 전표/견적 저장은 성공하고
+`/actuator/health` 도 `UP` 을 유지한다 — **아래 배선 전에는 prod 실패가 로그로만 남고
+무한정 미감지될 수 있다.** 대응 절차: `docs/runbooks/slip-price-memory-upsert-failure.md`.
+
+```bash
+# ① [선행] slip-service 컨테이너 로그의 CloudWatch 도달 확인.
+#    현행 docker-compose.prod.yml 은 logging driver 미지정(기본 json-file)이라
+#    로그가 CloudWatch 에 도달하지 않는다. slip-service 서비스에 awslogs 지정
+#    (또는 CloudWatch Agent 파일 수집으로 대체):
+#      logging:
+#        driver: awslogs
+#        options:
+#          awslogs-region: ap-northeast-2
+#          awslogs-group: /samhanlogis/production/docker   # monitoring.tf 기생성
+#          awslogs-stream: slip-service
+
+# ② Logs metric filter 2건 — 패턴은 PartnerProductPriceMemoryService 의 실측 WARN 문자열.
+aws logs put-metric-filter \
+  --log-group-name /samhanlogis/production/docker \
+  --filter-name slip-price-memory-upsert-failed \
+  --filter-pattern '"partner-product price memory batch upsert failed"' \
+  --metric-transformations metricName=SlipPriceMemoryUpsertFailed,metricNamespace=SamhanLogis/Slip,metricValue=1,defaultValue=0 \
+  --region ap-northeast-2
+
+aws logs put-metric-filter \
+  --log-group-name /samhanlogis/production/docker \
+  --filter-name slip-price-memory-queue-rejected \
+  --filter-pattern '"partner-product price memory queue rejected"' \
+  --metric-transformations metricName=SlipPriceMemoryQueueRejected,metricNamespace=SamhanLogis/Slip,metricValue=1,defaultValue=0 \
+  --region ap-northeast-2
+
+# ③ metric alarm — dev Prometheus rule (5분 increase > 0) 과 등가 임계.
+#    SlipPriceMemoryQueueRejected 메트릭에도 동일 형식 알람 1건을 추가한다.
+ALERTS_TOPIC_ARN=$(aws sns list-topics \
+  --query "Topics[?contains(TopicArn,'samhanlogis-production-alerts')].TopicArn" \
+  --output text --region ap-northeast-2)
+aws cloudwatch put-metric-alarm \
+  --alarm-name samhanlogis-production-slip-price-memory-upsert-failure \
+  --namespace SamhanLogis/Slip --metric-name SlipPriceMemoryUpsertFailed \
+  --statistic Sum --period 300 --evaluation-periods 1 \
+  --threshold 0 --comparison-operator GreaterThanThreshold \
+  --treat-missing-data notBreaching \
+  --alarm-actions "${ALERTS_TOPIC_ARN}" \
+  --region ap-northeast-2
+```
+
+> 위 CLI 는 최초 이식용 수동 절차다. 이후 monitoring.tf 에
+> `aws_cloudwatch_log_metric_filter` + `aws_cloudwatch_metric_alarm` 리소스로
+> IaC 화하여 수동 drift 를 제거하는 것을 권장한다 (Terraform 이관 시 위 수동
+> 생성분과 이름 충돌 없도록 import 또는 삭제 후 apply).
 
 ---
 

@@ -73,13 +73,21 @@ jobs:
       matrix:
         branch: ${{ fromJson(needs.discover-branches.outputs.branches) }}
         group:
-          # PR #99 옵션 B 시점 matrix 분할안 그대로 유지.
+          # PR #99 옵션 B 시점 matrix 2분할(slip-it-public/slip-it-core) 구조는 유지하되,
+          # 각 그룹 필터는 PR CI(ci.yml) 동명 잡 미러링을 방침으로 한다 (#809 R4, 연관 Issue #821).
           - name: slip-it-public
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.web.public_.*" --tests "com.samhanair.logis.slip.web.openapi.*"'
+            # #809 R4 (연관 Issue #821): 구 필터 web.public_.*/web.openapi.* 는 PR #99 계획서에서 복사된 뒤
+            # 레포에 존재한 적 없는 유령 패키지(git 전 이력 0건)로, "No tests found for given includes"
+            # nightly 3연속 실패(07-12/07-13/07-14) 원인 — PR CI slip-it-public 필터(delivery.it/publish)로 정렬.
+            # Gradle --tests 는 서브패키지를 자동 포함하지 않으므로 신규 하위 패키지는 ci.yml 과 함께 여기에도 명시한다.
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
           - name: slip-it-core
-            # web.core/web.internal 외 PR CI slip-it-core IT 필터도 nightly deep-regression 등재.
+            # PR CI slip-it-core IT 필터를 nightly deep-regression 에 미러링 등재.
+            # #809 R4 (연관 Issue #821): web.core.*/web.internal.* 도 레포에 존재한 적 없는 유령 패키지(git 전 이력
+            # 0건)로 판명되어 제거 — 나머지 필터가 실 테스트를 매치해 잡 실패 원인은 아니었던 dead token 이며,
+            # 제거 후 필터는 ci.yml 동명 잡과 완전 동일.
             # Gradle --tests 는 서브패키지를 자동 포함하지 않으므로 estimate.it.collab 등 신규 하위 패키지를 명시한다.
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.web.core.*" --tests "com.samhanair.logis.slip.web.internal.*" --tests "com.samhanair.logis.slip.comment.it.*" --tests "com.samhanair.logis.slip.estimate.it.*" --tests "com.samhanair.logis.slip.estimate.it.collab.*" --tests "com.samhanair.logis.slip.estimate.snapshot.it.*" --tests "com.samhanair.logis.slip.it.*" --tests "com.samhanair.logis.slip.it.collab.*" --tests "com.samhanair.logis.slip.it.cutoff.*" --tests "com.samhanair.logis.slip.it.dispatch.*" --tests "com.samhanair.logis.slip.it.schedule.*" --tests "com.samhanair.logis.slip.repository.dispatch.*" --tests "com.samhanair.logis.slip.dispatch.*"'
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.comment.it.*" --tests "com.samhanair.logis.slip.estimate.it.*" --tests "com.samhanair.logis.slip.estimate.it.collab.*" --tests "com.samhanair.logis.slip.estimate.snapshot.it.*" --tests "com.samhanair.logis.slip.it.*" --tests "com.samhanair.logis.slip.it.collab.*" --tests "com.samhanair.logis.slip.it.cutoff.*" --tests "com.samhanair.logis.slip.it.dispatch.*" --tests "com.samhanair.logis.slip.it.schedule.*" --tests "com.samhanair.logis.slip.repository.dispatch.*" --tests "com.samhanair.logis.slip.dispatch.*"'
 
     steps:
       - name: 저장소 체크아웃 (${{ matrix.branch }})
