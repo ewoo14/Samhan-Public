@@ -62,10 +62,66 @@
  *  - 13 [R5-H8]: 모델 lookup 2xx 뒤 단건 price-memory 실응답만 지연 → 중간 저장 disabled /
  *                 0원 POST 없음 → 응답 뒤 정확한 기억단가 적용·저장
  *
- * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r5-postfix/
- * (r4/ 는 pre-fix 상태 증거로 보존 — R4 적대리뷰가 검증한 대상. r2/ 는 superseded 이나 이력 보존)
+ * R6-postfix 강화(2026-07-16, R6 FABLE5 적대 리뷰 fix — 기존 단언 약화 0, 아래 대응쌍 참조):
+ *  - [R6-M9] 구성품 기억행 "전역 카운트" 단언(구 bundleComponentMemoryCount)이 공유 dev 스택의
+ *    타 에이전트 동시 PUT 에 false-RED(12a 라이브 실측: 03:01:02 외부 PUT vs 03:01:04 자기 단언,
+ *    격리 재실행 PASS = 교차 오염 확정). → 판정을 "자기 저장 창구간 delta" 로 좁힌다:
+ *    저장 직전 full-content 스냅샷(단가·source·remembered_at·modified_at·is_deleted — 동일값
+ *    upsert 재기록도 modified/remembered 변화로 포착) → 자기 저장 2xx + 자기 flush 신호
+ *    (parent 기억행 poll) + afterCommit grace 후 스냅샷 equality. 자기 쌍에 대한 단언 강도는
+ *    그대로 exact(≥0 류 완화 없음): 각 reset 직후 '' 구성 검증 + delta == 0. 창구간(수 초) 내
+ *    외부 쓰기는 여전히 RED 지만 메시지의 스냅샷 diff(타임스탬프 포함)로 즉시 판별 가능 —
+ *    이 스펙은 격리 스택을 전제하지 않는다.
+ *  - [R6-L6] 11 의 census 고정 단언(toBe '1926')이 legacy 소진/증감에 영구 false-RED → "≥1 +
+ *    동적 선택" 으로 교체(리뷰 처방). finally 는 estimates 헤더 row_to_json 전체 스냅샷 원복
+ *    (partner_id/partner_business_no/partner_address/valid_until/memo/totals/version/modified_at/
+ *    modified_by)과 활성 라인 값·audit 원복으로 확장 — 단 PUT 의 라인 replace 는 물리 DELETE+
+ *    재생성(EstimateLine orphanRemoval, soft-delete 미발생 실코드 확인)이라 라인 row UUID churn
+ *    은 원복 불가(값·audit 필드만 1:1 원복). estimate_revisions 의 EDIT 행은 감사 이력이라
+ *    의도적으로 남긴다(감사 불변 원칙).
+ *  - [G10] 02/03 의 responses.some(200) 경로 불특정 → 단건 GET /slips/price-memory +
+ *    partnerId/productId 파라미터 + bulk 0건 + 비 2xx 0건까지 특정(기존 generic 단언은 유지).
+ *  - [G6/R5-M4] 배너(role=status aria-live=polite 단일 live region)가 단건 lookup 고지
+ *    '라인 N 판매가|거래처 최근단가 적용' 을 담는 계약 무단언 → 01/02/03 에 단언 + 문구 페이지
+ *    유일성(이중 live region 부재) 단언. [R6-M5] 재조회 시 stale 고지 클리어 — 05/08 말미에
+ *    "강조 해제(USER 입력) 후 배너가 빈 텍스트" 프로브 추가(전표=R6-M5 fix 검증, 견적=회귀 가드).
+ *  - [G7/R5-M5] '단가 변경' 인디케이터 + aria-describedby 체인 무단언 → 05(전표 LineRow)/08(견적
+ *    데스크톱 row) 에 강조행 1행 한정 표시 + row aria-describedby → 실존 id → 텍스트 '단가 변경'
+ *    + 페이지 내 유일성 단언.
+ *  - [G8/R5-H2] 11 의 PUT body 단가 단언이 Number() 강제변환 → 문자열 canonical 형식(typeof
+ *    string + /^\d+(\.\d+)?$/ + exact string) 단언 추가. 무수정 PUT = hydrate canonical
+ *    String(Number(DB값)), 편집→원복 PUT = 입력 문자열 그대로(CollaborativeSlipInput type=text
+ *    무가공 실코드 확인).
+ *  - [G1/R6-H1] 신규 14a(전표·BE 실증 변형: 신규 동일 productId 라인 선순서 PUT)·14b(견적·QA P3
+ *    변형: 세트 head 삭제 + 같은 품목 단품 가격 수정) — two-pass resolver 계약(1-패스 exact 전역
+ *    선매칭 / head exact 전용 / 단품 오귀속 금지 / 사용자 단가 기억 반영) DB·기억행 단언.
+ *    GUI 로는 라인 순서 제어·구성품 단품 바인딩(향후 lookup scope 봉쇄 시 소멸)이 불가/불안정해
+ *    실 게이트웨이 raw API(PUT 계약 표면 그 자체)로 유발하고 판정은 실 DB + 실 GUI 재진입 캡처.
+ *  - [R6-H2] 신규 15 — GUI '전표 복사' 1클릭이 서버측 복사(POST /slips/{id}/duplicate)로 세트
+ *    계보 1:1 승계 + 복사 창구간 기억행 delta 0(구성품 각인·BUNDLE_SET 재기록 없음) + 평면
+ *    POST /slips 0건 단언.
+ *  - [R6-H3] 신규 16a/16b — 버전이력 스냅샷 계보 왕복: 전표/견적 EDIT 후 최초 revision 복원 →
+ *    세트 계보 보존 + 복원·후속 무수정 PUT 전 구간 기억행 delta 0.
+ *
+ * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r6-postfix/
+ * (r5-postfix/ 이하 기존 라운드 디렉토리는 불가침 증거 보존 — 본 스펙 재실행이 덮어쓰지 않도록
+ *  R6 fix 재검증 캡처는 r6-postfix/ 신규 디렉토리에 기록한다. r6/ 는 R6 적대리뷰 자체 증거.)
+ *
+ * ⚠️ R6 커버리지 갭 중 본 라운드 정직 미커버(사유 박제):
+ *  - G3(bulk 부분 실패 failedProductIds): 실서버 단일 트랜잭션에서 부분 실패를 자연 유발할 수
+ *    없고 응답 변조는 가짜 데이터 금지 원칙 위배 — in-process FE mock suite 관할로 남긴다.
+ *  - G4(재조회 in-flight 중 원격 coedit 개입): 2-세션 coedit + ms 단위 타이밍 경합 필요 —
+ *    단일 세션 라이브 스펙으로 결정적 재현 불가(수동 2세션 spec: playwright/manual/ 참조).
+ *  - G5(전표 폼 lookup→price 중간상태): 13 과 동일 hold 기법으로 재현 자체는 가능하나 R6 fix
+ *    검증 필수 범위(H1~H3)에 집중 — 전표 측 저장차단은 lookupLoading→canSubmit FE 단위테스트가
+ *    커버(SlipFormPage.test.tsx). 후속 라운드 승격 후보.
+ *  - G9(coedit 원격 legacy 라인 provenance): 2-세션 필요 — G4 와 동일 사유. R5-H2 정규화 경계
+ *    8종은 FE 단위테스트(EstimateFormPage.coedit.test.tsx) 커버.
+ *  - R6-H3 의 collab 문서모드 복원 2경로: SSE/coedit 세션 구동이 필요해 본 스펙에서 미유발.
+ *    단 스냅샷 record(toSnapshot/restoreFromSnapshot)는 버전이력 복원(16a/16b)과 동일 코드라
+ *    record 차원 계보 왕복은 16 이 커버 — 경로 자체 미유발은 정직 기록.
  */
-import { expect, test, type Page, type Response } from '@playwright/test'
+import { expect, test, type Page, type Request, type Response } from '@playwright/test'
 import * as path from 'path'
 import * as fs from 'fs'
 import { execSync } from 'child_process'
@@ -77,7 +133,8 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5211'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r5-postfix')
+// [R6] 캡처는 r6-postfix/ 신규 디렉토리 — r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/ 불가침(덮어쓰기 금지).
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r6-postfix')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const PARTNER_A = { name: '부산냉난방테크', query: '부산냉난방', id: 'e8ae9c86-afe1-3364-b484-1f5a2bf31313' }
@@ -150,9 +207,40 @@ function trackPriceMemory(page: Page): NetLog {
   return log
 }
 
-async function login(page: Page): Promise<void> {
+/** 로그인 + 렌더러 auth 스텁 설치. [R6] raw API 시나리오(14~16)용으로 LoginResult 를 반환한다. */
+async function login(page: Page): Promise<LoginResult> {
   const l = await realLogin(page, ACCOUNT)
   await installAuthStub(page, l)
+  return l
+}
+
+/** [R6] 실 게이트웨이 raw API 호출 헤더 — 앱과 동일하게 Bearer 토큰만 싣는다(X-User-* 는 게이트웨이 권위 주입). */
+function authHeaders(auth: LoginResult): Record<string, string> {
+  return { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' }
+}
+
+/** [R6] raw API GET — 실 게이트웨이 경유, 2xx 강제 + envelope data 반환. */
+async function apiGet<T>(page: Page, auth: LoginResult, apiPath: string): Promise<T> {
+  const res = await page.request.get(`${API_BASE}${apiPath}`, { headers: authHeaders(auth) })
+  expect(res.ok(), `GET ${apiPath} 실패: HTTP ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy()
+  return ((await res.json()) as { data: T }).data
+}
+
+/** [R6] raw API POST — 실 게이트웨이 경유, 2xx 강제 + envelope data 반환. */
+async function apiPost<T>(page: Page, auth: LoginResult, apiPath: string, body?: unknown): Promise<T> {
+  const res = await page.request.post(`${API_BASE}${apiPath}`, {
+    headers: authHeaders(auth),
+    ...(body === undefined ? {} : { data: body }),
+  })
+  expect(res.ok(), `POST ${apiPath} 실패: HTTP ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy()
+  return ((await res.json()) as { data: T }).data
+}
+
+/** [R6] raw API PUT — 실 게이트웨이 경유, 2xx 강제 + envelope data 반환. */
+async function apiPut<T>(page: Page, auth: LoginResult, apiPath: string, body: unknown): Promise<T> {
+  const res = await page.request.put(`${API_BASE}${apiPath}`, { headers: authHeaders(auth), data: body })
+  expect(res.ok(), `PUT ${apiPath} 실패: HTTP ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy()
+  return ((await res.json()) as { data: T }).data
 }
 
 async function openSlipForm(page: Page): Promise<void> {
@@ -217,7 +305,16 @@ async function expectUnitPriceDigits(page: Page, expected: string, line = 1, msg
     .toBe(Number(expected))
 }
 
-/** 실 Postgres 조회(검증 전용). */
+/**
+ * 실 Postgres 조회(검증 전용).
+ *
+ * ⚠️ [R6] PG boolean 렌더 이원성 — 기대 리터럴 작성 시 캐스트 유무를 반드시 구분할 것:
+ * - `boolean::text` 캐스트(SQL cast 함수 booltext) = **'true' / 'false'** ('t'/'f' 아님!)
+ *   → set_head::text 류 파이프 조립 기대값은 'false|…' 형식 (라이브 psql `SELECT false::text` 실측).
+ * - 캐스트 없는 raw boolean 출력(psql 클라이언트 boolout) = **'t' / 'f'**
+ *   → `SELECT remembered_at > TIMESTAMP …` 처럼 boolean 식을 그대로 SELECT 하면 't' 렌더.
+ * R6 14a/14b 가 'f|…' 기대로 false-RED 났던 근본원인. 헷갈리면 CASE WHEN b THEN 'true' ELSE 'false' END 로 명시.
+ */
 function psql(sql: string, db = 'slip_db'): string {
   return execSync(`docker exec samhan-postgres psql -U samhan -d ${db} -t -A -c "${sql.replace(/"/g, '\\"')}"`, {
     encoding: 'utf-8',
@@ -436,32 +533,139 @@ function memoryRowCount(partnerId: string, productId: string): string {
   )
 }
 
-function bundleComponentMemoryCount(partnerId: string): string {
+/**
+ * [R6-M9] afterCommit 기억 flush 상한 grace(ms). 자기 저장의 비동기 기억 배치는 parent 기억행
+ * poll(양성 신호)로 완료를 확인하지만, 무수정 PUT 처럼 양성 신호가 없는 경로(M8: 편집 경로는
+ * parent 재기록 없음)와 배치 내 후행 쓰기까지 관측 창에 포함하기 위해 2xx 이후 이 시간을 대기한
+ * 뒤 delta 스냅샷을 닫는다(R5 poll 예산 5s 의 절반 — 실측 flush 는 수백 ms).
+ */
+const MEMORY_FLUSH_GRACE_MS = 2500
+
+/**
+ * [R6-M9] (거래처, 품목들) 기억행 full-content 스냅샷 — 값/출처/논리시각/수정시각/삭제 플래그를
+ * 전부 담아 "동일 값 upsert 재기록"(modified_at/remembered_at 변동)까지 delta 로 잡는다.
+ * 전역 카운트 단언 대체물: 자기 저장 창구간 before/after equality 로만 판정해 공유 dev 스택의
+ * 타 트래픽(창구간 밖 기존/이후 행)에 면역이 된다. 자기 쌍 단언 강도는 exact 유지.
+ */
+function memoryPairsSnapshot(partnerId: string, productIds: string[]): string {
   return psql(
-    `SELECT COUNT(*) FROM partner_product_price_memory
+    `SELECT COALESCE(string_agg(
+       product_id::text || '|' || unit_price::text || '|' || source || '|' ||
+       remembered_at::text || '|' || COALESCE(modified_at::text, 'NULL') || '|' || is_deleted::text,
+       ',' ORDER BY product_id::text), '')
+     FROM partner_product_price_memory
      WHERE partner_id='${partnerId}'
-       AND product_id IN (${BUNDLE_COMPONENT_IDS.map((id) => `'${id}'`).join(',')})`.replace(/\s+/g, ' '),
+       AND product_id IN (${productIds.map((id) => `'${id}'`).join(',')})`.replace(/\s+/g, ' '),
+  )
+}
+
+/** [R6-M9] 세트 구성품 2종 쌍의 full-content 스냅샷 (구 bundleComponentMemoryCount 대체). */
+function componentMemorySnapshot(partnerId: string): string {
+  return memoryPairsSnapshot(partnerId, BUNDLE_COMPONENT_IDS)
+}
+
+/** [R6] SQL 리터럴 이스케이프 — row_to_json 스냅샷 원복용(NULL/불리언/숫자/문자열·따옴표 배증). */
+function sqlLit(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+  if (typeof value === 'number') return String(value)
+  return `'${String(value).replace(/'/g, "''")}'`
+}
+
+/** [R6-L6] legacy 견적 원상복구용 행 스냅샷 — 헤더 전체 + 활성 라인 전체(row_to_json). */
+interface LegacyRowSnapshots {
+  header: Record<string, unknown>
+  line: Record<string, unknown>
+}
+
+function snapshotLegacyEstimateRows(estimateId: string): LegacyRowSnapshots {
+  const header = JSON.parse(
+    psql(`SELECT row_to_json(e)::text FROM estimates e WHERE e.id='${estimateId}'`),
+  ) as Record<string, unknown>
+  const line = JSON.parse(
+    psql(
+      `SELECT row_to_json(el)::text FROM estimate_lines el
+       WHERE el.estimate_id='${estimateId}' AND el.is_deleted=false`.replace(/\s+/g, ' '),
+    ),
+  ) as Record<string, unknown>
+  return { header, line }
+}
+
+/**
+ * [R6-L6] legacy 견적 1:1 원복 — PUT 이 건드리는 헤더 필드 전량(partner_id/partner_name/
+ * partner_business_no/partner_address/valid_until/memo/totals 3종/version/modified_at/modified_by)
+ * 과 활성 라인의 값·audit 필드를 사전 스냅샷 값으로 되돌린다. 정확히 이 견적 1건 scope —
+ * 테이블 전체 UPDATE/DELETE 없음. 라인 row 는 PUT replace(물리 DELETE+재생성, EstimateLine
+ * orphanRemoval 실코드 확인)로 UUID 가 바뀌므로 "현재 활성 라인 행"에 원값을 복사하는 방식이며
+ * row UUID churn 자체는 계약상 원복 불가(정직 한계). estimate_revisions 의 EDIT 행은 감사
+ * 이력이라 의도적으로 보존한다.
+ */
+function restoreLegacyEstimateRows(snapshot: LegacyRowSnapshots): void {
+  const h = snapshot.header
+  const l = snapshot.line
+  psql(
+    `UPDATE estimates SET
+       partner_id=${sqlLit(h['partner_id'])},
+       partner_name=${sqlLit(h['partner_name'])},
+       partner_business_no=${sqlLit(h['partner_business_no'])},
+       partner_address=${sqlLit(h['partner_address'])},
+       valid_until=${sqlLit(h['valid_until'])},
+       memo=${sqlLit(h['memo'])},
+       total_supply=${sqlLit(h['total_supply'])},
+       total_vat=${sqlLit(h['total_vat'])},
+       total_amount=${sqlLit(h['total_amount'])},
+       version=${sqlLit(h['version'])},
+       modified_at=${sqlLit(h['modified_at'])},
+       modified_by=${sqlLit(h['modified_by'])}
+     WHERE id=${sqlLit(h['id'])}`.replace(/\s+/g, ' '),
+  )
+  psql(
+    `UPDATE estimate_lines SET
+       product_id=${sqlLit(l['product_id'])},
+       product_name=${sqlLit(l['product_name'])},
+       model_name=${sqlLit(l['model_name'])},
+       specification=${sqlLit(l['specification'])},
+       quantity=${sqlLit(l['quantity'])},
+       unit_price=${sqlLit(l['unit_price'])},
+       unit_price_with_vat=${sqlLit(l['unit_price_with_vat'])},
+       supply_amount=${sqlLit(l['supply_amount'])},
+       vat_amount=${sqlLit(l['vat_amount'])},
+       line_total=${sqlLit(l['line_total'])},
+       note=${sqlLit(l['note'])},
+       created_at=${sqlLit(l['created_at'])},
+       created_by=${sqlLit(l['created_by'])},
+       modified_at=${sqlLit(l['modified_at'])},
+       modified_by=${sqlLit(l['modified_by'])}
+     WHERE estimate_id=${sqlLit(h['id'])} AND is_deleted=false`.replace(/\s+/g, ' '),
   )
 }
 
 test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증', () => {
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     // 재실행 안전성 — "최초 = miss" 를 실제로 만들기 위해 본 스펙이 쓰는 (거래처,품목) 쌍만
     // 좁혀서 정리한다. 무조건부 전체 삭제는 하지 않는다(무관 데이터 보존).
+    // [R6-M9] 공유 dev 스택에서 delete↔count 사이 외부 동시 쓰기가 끼면 1회 판정은 false-RED —
+    // "삭제 후 0" 수렴을 poll(재삭제 포함)로 확인한다(셋업 위생 검사, 제품 단언 아님).
     const partners = [PARTNER_A.id, PARTNER_B.id].map((i) => `'${i}'`).join(',')
     const products = [PRODUCT_X.id, PRODUCT_Y.id, BUNDLE.id, ...BUNDLE_COMPONENT_IDS]
       .map((i) => `'${i}'`)
       .join(',')
-    psql(
-      `DELETE FROM partner_product_price_memory
-       WHERE partner_id IN (${partners}) AND product_id IN (${products})`.replace(/\s+/g, ' '),
-    )
-    const left = psql(
-      `SELECT COUNT(*) FROM partner_product_price_memory
-       WHERE partner_id IN (${partners}) AND product_id IN (${products})`.replace(/\s+/g, ' '),
-    )
-    console.log('[#809 R4] 테스트 대상 쌍 초기화 — 잔여행:', left)
-    expect(left, '테스트 대상 기억행 초기화 실패').toBe('0')
+    await expect
+      .poll(
+        () => {
+          psql(
+            `DELETE FROM partner_product_price_memory
+             WHERE partner_id IN (${partners}) AND product_id IN (${products})`.replace(/\s+/g, ' '),
+          )
+          return psql(
+            `SELECT COUNT(*) FROM partner_product_price_memory
+             WHERE partner_id IN (${partners}) AND product_id IN (${products})`.replace(/\s+/g, ' '),
+          )
+        },
+        { timeout: 10000, intervals: [100, 250, 500, 1000], message: '테스트 대상 기억행 초기화 실패(재삭제 poll 미수렴)' },
+      )
+      .toBe('0')
+    console.log('[#809 R4] 테스트 대상 쌍 초기화 — 잔여행: 0')
   })
 
   test('01 [F/D-miss] 전표 miss → 판매가 채움 · 최근가 마커 없음 → 단가 P 입력 → 저장 → DB 기억행 생성', async ({ browser }) => {
@@ -484,6 +688,15 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     const catalogMarker = catalogMarkers(page).first()
     await expect(catalogMarker, 'miss 라인에 판매가 마커 미표시(R3 fix 회귀)').toBeVisible({ timeout: 10000 })
     await expect(catalogMarker, '판매가 마커 라벨 불일치(D-R4-1)').toHaveText('판매가')
+    // [G6/R5-M4] 단건 lookup 고지는 단일 배너 live region(role=status aria-live=polite) 1곳으로만.
+    const slipBanner = page.getByTestId('slip-price-refresh-banner')
+    await expect(slipBanner, '단건 lookup 고지가 배너 region 에 미표시(R5-M4 회귀)').toHaveText('라인 1 판매가 적용')
+    await expect(slipBanner, '배너 region role=status 계약 회귀').toHaveAttribute('role', 'status')
+    await expect(slipBanner, '배너 region aria-live=polite 계약 회귀').toHaveAttribute('aria-live', 'polite')
+    await expect(
+      page.getByText('라인 1 판매가 적용', { exact: true }),
+      'lookup 고지 문구가 페이지에 1곳(단일 region)이 아님 — 이중 live region 의심(R5-M4 회귀)',
+    ).toHaveCount(1)
     await capture(page, '01-slip-miss-list-price-1200000-catalog-marker-no-recent-marker')
 
     await unitPriceInput(page).fill(PRICE_P)
@@ -525,9 +738,36 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     expect(tooltip, '거래처 최근단가 tooltip 에 저장일 누락').toMatch(
       /이 거래처에 마지막으로 저장된 단가 · \d{4}-\d{2}-\d{2} 저장/,
     )
+    // [G6/R5-M4] hit 고지도 동일 단일 배너 region 으로.
+    await expect(
+      page.getByTestId('slip-price-refresh-banner'),
+      'hit 고지가 배너 region 에 미표시(R5-M4 회귀)',
+    ).toHaveText('라인 1 거래처 최근단가 적용')
+    await expect(
+      page.getByText('라인 1 거래처 최근단가 적용', { exact: true }),
+      'hit 고지 문구가 페이지 1곳(단일 region)이 아님(R5-M4 회귀)',
+    ).toHaveCount(1)
     await capture(page, '03-KEY-slip-autofill-888000-with-recent-marker')
 
     expect(net.responses.some((r) => r.startsWith('200')), 'price-memory 200 미관측').toBeTruthy()
+    // [G10] "어떤 price-memory 200 이든" 통과하던 구멍 봉쇄 — 정확히 이 (A,X) 단건 GET 200 이어야 한다.
+    const singleHitResponses = net.responses.filter(
+      (r) =>
+        r.startsWith('200 GET ')
+        && r.includes('/slips/price-memory?')
+        && !r.includes('/slips/price-memory/bulk')
+        && r.includes(`partnerId=${PARTNER_A.id}`)
+        && r.includes(`productId=${PRODUCT_X.id}`),
+    )
+    expect(singleHitResponses.length, '(A,X) 단건 price-memory GET 200 이 정확히 1건이 아님(G10)').toBe(1)
+    expect(
+      net.responses.filter((r) => r.includes('/slips/price-memory/bulk')).length,
+      '단건 hit 시나리오에서 bulk 호출 발생(G10 — 경로 오배선 의심)',
+    ).toBe(0)
+    expect(
+      net.responses.filter((r) => !/^2\d\d /.test(r)).length,
+      '시나리오 창구간 price-memory 비 2xx 응답 발생(G10)',
+    ).toBe(0)
     console.log('[#809 R4] 02 price-memory 응답:', JSON.stringify(net.responses))
     await ctx.close()
   })
@@ -566,7 +806,34 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     expect(net.calls.some((u) => u.includes(`productId=${PRODUCT_X.id}`)), 'price-memory 요청에 productId 누락(R1 결함 잔존)').toBeTruthy()
     expect(net.responses.some((r) => r.startsWith('200')), 'price-memory 200 미관측').toBeTruthy()
     expect(net.responses.some((r) => r.startsWith('400')), 'price-memory 400 = R1 결함 잔존').toBeFalsy()
+    // [G10 대칭] 견적 단건 lookup 도 (A,X) 파라미터 특정 단건 GET 200 정확히 1건 + bulk 0건.
+    expect(
+      net.responses.filter(
+        (r) =>
+          r.startsWith('200 GET ')
+          && r.includes('/slips/price-memory?')
+          && !r.includes('/slips/price-memory/bulk')
+          && r.includes(`partnerId=${PARTNER_A.id}`)
+          && r.includes(`productId=${PRODUCT_X.id}`),
+      ).length,
+      '견적 (A,X) 단건 price-memory GET 200 이 정확히 1건이 아님(G10 대칭)',
+    ).toBe(1)
+    expect(
+      net.responses.filter((r) => r.includes('/slips/price-memory/bulk')).length,
+      '견적 단건 lookup 시나리오에서 bulk 호출 발생(G10 대칭)',
+    ).toBe(0)
     await expect(recentMarkers(page).first(), '견적 hit 라인 최근가 마커 미표시').toBeVisible({ timeout: 10000 })
+    // [G6/R5-M4] 견적도 단일 배너 region(role=status) 1곳으로 고지.
+    const estAnnounceBanner = page.getByTestId('estimate-price-refresh-banner')
+    await expect(estAnnounceBanner, '견적 hit 고지가 배너 region 에 미표시(R5-M4 회귀)').toHaveText(
+      '라인 1 거래처 최근단가 적용',
+    )
+    await expect(estAnnounceBanner, '견적 배너 role=status 계약 회귀').toHaveAttribute('role', 'status')
+    await expect(estAnnounceBanner, '견적 배너 aria-live=polite 계약 회귀').toHaveAttribute('aria-live', 'polite')
+    await expect(
+      page.getByText('라인 1 거래처 최근단가 적용', { exact: true }),
+      '견적 hit 고지 문구가 페이지 1곳(단일 region)이 아님(R5-M4 회귀)',
+    ).toHaveCount(1)
     await capture(page, '04-KEY-estimate-autofill-888000-productname-filled-recent-marker')
 
     // ⓓ 임시저장이 실제로 되는가 (R1: POST /estimates 요청조차 안 나감)
@@ -609,6 +876,8 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await login(page)
     resetMemoryPair(PARTNER_A.id, BUNDLE.id)
     BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
+    // [R6-M9] 자기 reset 직후 구성 검증(ms 창) — 자기 쌍 단언 강도는 exact 유지.
+    expect(componentMemorySnapshot(PARTNER_A.id), '자체 reset 직후 구성품 기억행 잔존').toBe('')
 
     await openSlipForm(page)
     await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
@@ -619,21 +888,26 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await unitPriceInput(page).fill(PRICE_BUNDLE)
     await expectUnitPriceDigits(page, PRICE_BUNDLE)
     await capture(page, '06-bundle-set-price-1100000-entered')
+    // [R6-M9] 구성품 오염 판정 = 전역 상태가 아니라 "자기 저장 창구간 delta". 저장 직전 스냅샷을
+    // 닫고, 자기 flush 신호(parent 기억행) + afterCommit grace 후 equality 로 판정한다 —
+    // 공유 dev 스택의 창구간 밖 타 트래픽에 면역(격리 가정 없음).
+    const componentsBeforeSave = componentMemorySnapshot(PARTNER_A.id)
     await saveSlipAndWait(page)
 
-    // 세트 parent = BUNDLE_SET 기억행
+    // 세트 parent = BUNDLE_SET 기억행 (자기 저장 배치의 flush 양성 신호를 겸한다)
     await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
     const parent = memoryRow(PARTNER_A.id, BUNDLE.id)
     console.log('[#809 R4] 04 DB 세트 parent 기억행:', parent)
     expect(parent, '세트 parent 기억행이 BUNDLE_SET 로 생성되지 않음').toBe(`${PRICE_BUNDLE}.00|BUNDLE_SET`)
 
-    // 구성품 productId 로는 기억행이 생기면 안 된다(납품가 각인 방지)
-    const compRows = psql(
-      `SELECT COUNT(*) FROM partner_product_price_memory
-       WHERE partner_id='${PARTNER_A.id}' AND product_id IN (${BUNDLE_COMPONENT_IDS.map((i) => `'${i}'`).join(',')})`.replace(/\s+/g, ' '),
-    )
-    console.log('[#809 R4] 04 DB 구성품 기억행 수(0 이어야 함):', compRows)
-    expect(compRows, '구성품 productId 로 기억행이 생성됨 = 납품가 각인 방지 실패').toBe('0')
+    // 구성품 productId 로는 기억행 delta 가 없어야 한다(납품가 각인 방지) — 배치 내 후행 쓰기까지 grace.
+    await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+    const componentsAfterSave = componentMemorySnapshot(PARTNER_A.id)
+    console.log('[#809 R4] 04 구성품 기억 스냅샷 before/after:', componentsBeforeSave, '/', componentsAfterSave)
+    expect(
+      componentsAfterSave,
+      '세트 저장 창구간에 구성품 기억행 생성/갱신 = 납품가 각인 방지 실패(delta 는 diff 참조)',
+    ).toBe(componentsBeforeSave)
 
     // 같은 거래처에 세트 재선택 → 저장단가 자동채움
     await openSlipForm(page)
@@ -741,6 +1015,15 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     const highlighted = page.locator('[role="row"][class*="priceRefreshed"]')
     await expect(highlighted, '변경행 강조가 정확히 1행(값 변경 라인)이 아님').toHaveCount(1)
     await expect(highlighted, '강조 행이 라인1이 아님').toHaveAttribute('data-line-number', '1')
+    // [G7/R5-M5] '단가 변경' 인디케이터 + aria-describedby 체인 — 값이 실제 바뀐 라인1에만.
+    const priceChangeIndicators = page.getByText('단가 변경', { exact: true })
+    await expect(priceChangeIndicators, "'단가 변경' 인디케이터는 변경행 1곳에만 떠야 함(R5-M5 회귀)").toHaveCount(1)
+    const slipDescribedBy = await highlighted.getAttribute('aria-describedby')
+    expect(slipDescribedBy, '변경행 row 에 aria-describedby 미배선(R5-M5 회귀)').toBeTruthy()
+    await expect(
+      page.locator(`[id="${slipDescribedBy}"]`),
+      'aria-describedby 대상 인디케이터 id 실체 부재(체인 단절)',
+    ).toHaveText('단가 변경')
     // 마커 정합: 라인1=거래처 최근단가 · 라인3=판매가(D-R4-1) · 라인2(USER)=마커 없음
     await expect(recentMarkers(page), '최근가 마커는 라인1 1개여야 함').toHaveCount(1)
     await expect(catalogMarkers(page), '판매가 마커는 라인3 1개여야 함').toHaveCount(1)
@@ -751,6 +1034,14 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await highlighted.scrollIntoViewIfNeeded()
     await page.waitForTimeout(300)
     await capture(page, '11-KEY-partner-changed-bulk1-highlight-row1-555000-user-preserved-missY-1440000')
+    // [R6-M5] 재조회 배너 해제 후 stale 단건 고지가 재낭독되면 안 된다 — 마지막 단건 고지는
+    // '라인 3 판매가 적용'(라인3 품목 선택 시점). 라인1에 USER 입력을 넣어 강조/배너를 해제하면
+    // 전표도 재조회 시점에 announcement 를 클리어했어야 하므로 배너는 빈 텍스트여야 한다.
+    await unitPriceInput(page, 1).fill('444444')
+    await expect(
+      page.getByTestId('slip-price-refresh-banner'),
+      '재조회 배너 해제 후 stale 단건 고지 재표출(R6-M5 잔존 — 전표 재조회가 announcement 미클리어)',
+    ).toHaveText('', { timeout: 5000 })
     await ctx.close()
   })
 
@@ -950,11 +1241,26 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     const highlighted = estimateHighlightedRows(page)
     await expect(highlighted, '견적 변경행 강조가 정확히 1행이 아님').toHaveCount(1)
     await expect(highlighted, '견적 강조 행이 라인1이 아님').toHaveAttribute('data-testid', 'estimate-form-line-0')
+    // [G7/R5-M5] 견적 데스크톱도 '단가 변경' 인디케이터 + row aria-describedby 체인 — 변경행 1곳만.
+    const estChangeIndicators = page.getByText('단가 변경', { exact: true })
+    await expect(estChangeIndicators, "견적 '단가 변경' 인디케이터는 변경행 1곳에만(R5-M5 회귀)").toHaveCount(1)
+    const estDescribedBy = await highlighted.getAttribute('aria-describedby')
+    expect(estDescribedBy, '견적 변경행 row 에 aria-describedby 미배선(R5-M5 회귀)').toBeTruthy()
+    await expect(
+      page.locator(`[id="${estDescribedBy}"]`),
+      '견적 aria-describedby 대상 인디케이터 id 실체 부재(체인 단절)',
+    ).toHaveText('단가 변경')
     // 마커 정합: 라인1=거래처 최근단가 · 라인3=판매가 · 라인2(USER)=마커 없음
     await expect(recentMarkers(page), '견적 최근가 마커는 라인1 1개여야 함').toHaveCount(1)
     await expect(catalogMarkers(page), '견적 판매가 마커는 라인3 1개여야 함').toHaveCount(1)
     await estBanner.scrollIntoViewIfNeeded()
     await capture(page, '17-KEY-estimate-partner-changed-to-B-banner-highlight-row1-555000')
+    // [R6-M5 대칭 가드] 견적은 재조회 시 announcement 클리어가 이미 배선돼 있다(:669) — 강조
+    // 해제(USER 입력) 후 배너가 stale 단건 고지('라인 3 판매가 적용')로 되돌아가면 회귀다.
+    await page.getByLabel('라인 1 단가').fill('444444')
+    await expect(estBanner, '견적 재조회 배너 해제 후 stale 단건 고지 재표출(R6-M5 대칭 회귀)').toHaveText('', {
+      timeout: 5000,
+    })
     await page.unroute('**/slips/price-memory/bulk')
     await ctx.close()
   })
@@ -1099,32 +1405,46 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     await login(page)
-    let targetToRestore: LegacyEstimateTarget | null = null
+    let rowsToRestore: LegacyRowSnapshots | null = null
+    let memoryPairToReset: string | null = null
 
     try {
-      const legacyEditableCount = psql(
-        `SELECT COUNT(*) FROM estimates e
-         JOIN estimate_lines el ON el.estimate_id=e.id
-         WHERE e.is_deleted=false AND el.is_deleted=false
-           AND e.status IN ('QUOTE_DRAFT','QUOTE_SENT')
-           AND el.unit_price_with_vat IS NULL`.replace(/\s+/g, ' '),
+      // [R6-L6] census 는 시점 가변값 — 고정 단언(구 toBe '1926')은 legacy 가 1건이라도 정식
+      // 저장되면 스위트 영구 false-RED 를 만든다. "동적 선택이 가능한가(≥1)" 만 단언하고 실측치는
+      // drift 추적용으로 기록한다(선택된 target 자체가 아래 exact 단언들의 대상).
+      const legacyEditableCount = Number(
+        psql(
+          `SELECT COUNT(*) FROM estimates e
+           JOIN estimate_lines el ON el.estimate_id=e.id
+           WHERE e.is_deleted=false AND el.is_deleted=false
+             AND e.status IN ('QUOTE_DRAFT','QUOTE_SENT')
+             AND el.unit_price_with_vat IS NULL`.replace(/\s+/g, ' '),
+        ),
       )
-      console.log('[#809 R5-postfix] 11 편집 가능 legacy 라인 실측:', legacyEditableCount)
-      expect(legacyEditableCount, 'R5 브리프의 편집 가능 legacy 1,926건 실측과 다름').toBe('1926')
+      console.log('[#809 R5-postfix] 11 편집 가능 legacy 라인 실측(R5 기준점 1926, drift 추적):', legacyEditableCount)
+      expect(
+        legacyEditableCount,
+        '편집 가능 legacy 견적 라인이 실 DB 에 1건도 없음 — 동적 선택 불가(시나리오 전제 소진)',
+      ).toBeGreaterThanOrEqual(1)
 
       const target = findLegacyEstimateTarget()
-      targetToRestore = target
       expect(target.status, 'legacy 대상이 편집 가능 상태가 아님').toMatch(/^QUOTE_(DRAFT|SENT)$/)
       expect(target.id, 'legacy estimateId 형식 불일치').toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       )
+      // [R6-L6] finally 1:1 원복용 — 헤더/활성 라인 전체 스냅샷을 어떤 변경보다 먼저 박제.
+      rowsToRestore = snapshotLegacyEstimateRows(target.id)
+      memoryPairToReset = target.productId
       const priceBefore = estimatePriceSnapshot(target.id)
-      const memoryBefore = memorySnapshotForProduct(target.productId)
-      const partnerMemoryBefore = memoryRow(PARTNER_A.id, target.productId)
       expect(priceBefore, 'legacy DB 사전값이 unit_price_with_vat=NULL 계약과 다름').toBe(
         `${target.productId}|${target.unitPrice}|NULL`,
       )
-      expect(partnerMemoryBefore, 'legacy 대상 거래처+품목에 사전 price-memory 가 이미 존재함').toBe('')
+      // [R6-M9 계열] "사전 기억 부재" 를 전역 상태 단언으로 요구하면 공유 스택 잔재(예: 타 라운드
+      // 오염행)에 영구 false-RED — 사전 조건은 자기 reset 으로 직접 구성하고 exact 로 검증한다.
+      resetMemoryPair(PARTNER_A.id, target.productId)
+      const partnerMemoryBefore = memoryRow(PARTNER_A.id, target.productId)
+      expect(partnerMemoryBefore, '자체 reset 직후에도 legacy 대상 (A,품목) 기억행 잔존').toBe('')
+      const memoryBefore = memorySnapshotForProduct(target.productId)
 
       // 정상 coedit provider 연결 중에는 거래처 autocomplete 가 disabled라 legacy partner_id=NULL을
       // 사용자가 복구할 UI가 없다. 앱이 명시적으로 제공·단위검증하는 "provider 생성 실패 → 평문 폼"
@@ -1192,6 +1512,16 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       expect(Number(updateBody?.lines?.[0]?.unitPrice), 'legacy PUT body 가 원 공급단가를 보내지 않음').toBe(
         Number(target.unitPrice),
       )
+      // [G8/R5-H2] Number() 강제변환은 문자열 canonical 형식 훼손(지수표기/로케일 콤마/number 타입
+      // 전송)을 못 잡는다 — wire 는 BigDecimal-string 계약: hydrate canonical = String(Number(DB값)).
+      const untouchedWireUnitPrice = updateBody?.lines?.[0]?.unitPrice
+      expect(typeof untouchedWireUnitPrice, 'legacy PUT 단가가 string 타입이 아님(G8 — DTO string 계약)').toBe('string')
+      expect(String(untouchedWireUnitPrice), 'legacy PUT 단가 문자열이 canonical 숫자 형식이 아님(G8)').toMatch(
+        /^\d+(\.\d+)?$/,
+      )
+      expect(untouchedWireUnitPrice, 'legacy 무수정 PUT 단가가 hydrate canonical 문자열과 다름(G8)').toBe(
+        String(Number(target.unitPrice)),
+      )
       expect(updateBody?.lines?.[0]?.priceVatInclusive, '가격 무수정 legacy 라인을 VAT 포함 입력으로 오판').toBe(false)
 
       // PUT 2xx 뒤 DB 두 단가 필드를 실측한다. priceVatInclusive=false 이므로 원 공급단가는 불변이고
@@ -1252,6 +1582,16 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       expect(Number(editedRestoreBody.lines?.[0]?.unitPrice), '편집→원복 PUT 최종 단가 불일치').toBe(
         Number(target.unitPrice),
       )
+      // [G8/R5-H2] 편집→원복 PUT 도 문자열 canonical — 이 값은 본 테스트가 fill 한 입력 문자열
+      // 그대로여야 한다(CollaborativeSlipInput type=text 무가공 통과 실코드 확인).
+      const editedWireUnitPrice = editedRestoreBody.lines?.[0]?.unitPrice
+      expect(typeof editedWireUnitPrice, '편집→원복 PUT 단가가 string 타입이 아님(G8)').toBe('string')
+      expect(String(editedWireUnitPrice), '편집→원복 PUT 단가 문자열이 canonical 숫자 형식이 아님(G8)').toMatch(
+        /^\d+(\.\d+)?$/,
+      )
+      expect(editedWireUnitPrice, '편집→원복 PUT 단가가 입력 문자열 그대로가 아님(G8 — 중간 가공 발생)').toBe(
+        target.unitPrice,
+      )
       expect(
         editedRestoreBody.lines?.[0]?.priceVatInclusive,
         '실제 가격 편집→원복을 legacy 가격 무수정으로 오판',
@@ -1272,19 +1612,15 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       ).toBe(`${Number(target.unitPrice).toFixed(2)}|LINE_SAVE`)
       await capture(page, '36-KEY-legacy-price-edited-restored-saved-as-vat-inclusive')
     } finally {
-      // 실 legacy 문서를 반복 실행 가능하게 복구한다. 정확히 이 견적 헤더 1건과 방금 생성한
-      // 라인 1건, (거래처, 품목) 기억쌍만 대상으로 하며 테이블 전체 DELETE/광역 정리는 하지 않는다.
-      if (targetToRestore) {
-        psql(
-          `UPDATE estimate_lines
-           SET unit_price=${targetToRestore.unitPrice}, unit_price_with_vat=NULL,
-               supply_amount=${targetToRestore.unitPrice} * quantity,
-               vat_amount=${targetToRestore.unitPrice} * quantity * 0.1,
-               line_total=${targetToRestore.unitPrice} * quantity * 1.1
-           WHERE estimate_id='${targetToRestore.id}' AND is_deleted=false`.replace(/\s+/g, ' '),
-        )
-        psql(`UPDATE estimates SET partner_id=NULL WHERE id='${targetToRestore.id}'`)
-        resetMemoryPair(PARTNER_A.id, targetToRestore.productId)
+      // [R6-L6] 실 legacy 문서 1:1 원복 — 종전 finally 는 라인 가격만 되돌리고 헤더의
+      // partner_business_no/partner_address/modified_at/modified_by/version/totals 를 남겨
+      // 실 legacy 문서에 QA 잔재를 누적시켰다. 사전 row_to_json 전체 스냅샷으로 헤더 전량 +
+      // 활성 라인 값·audit 필드를 원복한다. 정확히 이 견적 1건 scope — 광역 정리 없음.
+      if (rowsToRestore) {
+        restoreLegacyEstimateRows(rowsToRestore)
+      }
+      if (memoryPairToReset) {
+        resetMemoryPair(PARTNER_A.id, memoryPairToReset)
       }
       await ctx.close()
     }
@@ -1297,6 +1633,8 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
     await login(page)
     resetMemoryPair(PARTNER_A.id, BUNDLE.id)
     BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
+    // [R6-M9] 자기 reset 직후 구성 검증(ms 창) — 자기 쌍 단언 강도 exact 유지.
+    expect(componentMemorySnapshot(PARTNER_A.id), '12a 자체 reset 직후 구성품 기억행 잔존').toBe('')
 
     try {
       await openSlipForm(page)
@@ -1306,15 +1644,22 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       await page.waitForTimeout(1200)
       await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '전표 BUNDLE 판매가')
       await unitPriceInput(page).fill(PRICE_BUNDLE)
+      // [R6-M9] 구성품 오염 판정 = 자기 저장 창구간 delta (공유 dev 스택 전제 — 12a 가 R6 라운드에서
+      // 타 차원 에이전트의 동시 PUT 에 정확히 이 지점의 전역 카운트로 false-RED 났던 시나리오다).
+      const componentsBeforePost = componentMemorySnapshot(PARTNER_A.id)
       const slipId = await saveSlipAndWait(page)
       await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
 
       const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
       const expectedSummary = `2|1|2|${componentIds}`
       const lineageBefore = bundleLineageSnapshot('slip_lines', slipId)
       console.log('[#809 R5-postfix] 12a 전표 POST 계보:', lineageBefore)
       expect(bundleLineageSummary('slip_lines', slipId), '전표 POST 세트 메타 불일치').toBe(expectedSummary)
-      expect(bundleComponentMemoryCount(PARTNER_A.id), '전표 POST 구성품 기억행 오염').toBe('0')
+      expect(
+        componentMemorySnapshot(PARTNER_A.id),
+        '전표 POST 창구간 구성품 기억행 delta 발생 = 각인 오염(diff 참조)',
+      ).toBe(componentsBeforePost)
       expect(memoryRowCount(PARTNER_A.id, BUNDLE.id), '전표 POST parent 기억행이 정확히 1건이 아님').toBe('1')
       expect(memoryRow(PARTNER_A.id, BUNDLE.id), '전표 POST parent source/단가 불일치').toBe(
         `${PRICE_BUNDLE}.00|BUNDLE_SET`,
@@ -1326,6 +1671,9 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       await expect(editModal, '전표 BUNDLE 상세 편집 모달 미표시').toBeVisible({ timeout: 20000 })
       await expect(editModal.getByLabel('단가(VAT제외) 1')).toBeVisible()
       await capture(page, '26-slip-bundle-detail-before-nochange-put')
+      // [R6-M9] PUT 창구간 delta — 무수정 PUT 은 parent 재기록조차 없어(R6-M8 현행) flush 양성
+      // 신호가 없으므로 2xx + grace 로 관측 창을 닫는다.
+      const componentsBeforePut = componentMemorySnapshot(PARTNER_A.id)
       const updateResponsePromise = page.waitForResponse(
         (response) => response.request().method() === 'PUT' && response.url().includes(`/slips/${slipId}`),
         { timeout: 30000 },
@@ -1339,7 +1687,11 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
         message: '전표 BUNDLE PUT 후 세트 계보/가격이 POST 직후와 다름',
       }).toBe(lineageBefore)
       expect(bundleLineageSummary('slip_lines', slipId), '전표 PUT 세트 메타 불일치').toBe(expectedSummary)
-      expect(bundleComponentMemoryCount(PARTNER_A.id), '전표 PUT 구성품 기억행 오염(R5-H1 잔존)').toBe('0')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_A.id),
+        '전표 무수정 PUT 창구간 구성품 기억행 delta 발생(R5-H1 잔존, diff 참조)',
+      ).toBe(componentsBeforePut)
       expect(memoryRowCount(PARTNER_A.id, BUNDLE.id), '전표 PUT parent 기억행이 정확히 1건이 아님').toBe('1')
       expect(memoryRow(PARTNER_A.id, BUNDLE.id), '전표 PUT parent BUNDLE_SET 유실').toBe(
         `${PRICE_BUNDLE}.00|BUNDLE_SET`,
@@ -1357,6 +1709,8 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
     await login(page)
     resetMemoryPair(PARTNER_B.id, BUNDLE.id)
     BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_B.id, productId))
+    // [R6-M9] 자기 reset 직후 구성 검증(ms 창).
+    expect(componentMemorySnapshot(PARTNER_B.id), '12b 자체 reset 직후 구성품 기억행 잔존').toBe('')
 
     try {
       await openEstimateForm(page)
@@ -1365,15 +1719,21 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       await fillEstimateModel(page, 1, BUNDLE.model)
       await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '견적 BUNDLE 판매가')
       await unitPriceInput(page).fill(PRICE_BUNDLE)
+      // [R6-M9] POST 창구간 delta 기준점.
+      const componentsBeforePost = componentMemorySnapshot(PARTNER_B.id)
       const estimateId = await saveEstimateDraftAndGetId(page)
       await expectMemoryRowEventually(PARTNER_B.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
 
       const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
       const expectedSummary = `2|1|2|${componentIds}`
       const lineageBefore = bundleLineageSnapshot('estimate_lines', estimateId)
       console.log('[#809 R5-postfix] 12b 견적 POST 계보:', lineageBefore)
       expect(bundleLineageSummary('estimate_lines', estimateId), '견적 POST 세트 메타 불일치').toBe(expectedSummary)
-      expect(bundleComponentMemoryCount(PARTNER_B.id), '견적 POST 구성품 기억행 오염').toBe('0')
+      expect(
+        componentMemorySnapshot(PARTNER_B.id),
+        '견적 POST 창구간 구성품 기억행 delta 발생 = 각인 오염(diff 참조)',
+      ).toBe(componentsBeforePost)
       expect(memoryRowCount(PARTNER_B.id, BUNDLE.id), '견적 POST parent 기억행이 정확히 1건이 아님').toBe('1')
       expect(memoryRow(PARTNER_B.id, BUNDLE.id), '견적 POST parent source/단가 불일치').toBe(
         `${PRICE_BUNDLE}.00|BUNDLE_SET`,
@@ -1385,6 +1745,8 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       await expect(page.getByLabel('라인 2 모델명'), '견적 BUNDLE 구성품 2행 미표시').toBeVisible()
       await expect(saveButton, '견적 BUNDLE 저장 버튼 미활성').toBeEnabled({ timeout: 20000 })
       await capture(page, '28-estimate-bundle-detail-before-nochange-put')
+      // [R6-M9] PUT 창구간 delta — flush 양성 신호 부재 경로라 2xx + grace 로 관측 창을 닫는다.
+      const componentsBeforePut = componentMemorySnapshot(PARTNER_B.id)
       const updateResponsePromise = page.waitForResponse(
         (response) => response.request().method() === 'PUT'
           && response.url().includes(`/slips/estimates/${estimateId}`),
@@ -1399,7 +1761,11 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
         message: '견적 BUNDLE PUT 후 세트 계보/가격이 POST 직후와 다름',
       }).toBe(lineageBefore)
       expect(bundleLineageSummary('estimate_lines', estimateId), '견적 PUT 세트 메타 불일치').toBe(expectedSummary)
-      expect(bundleComponentMemoryCount(PARTNER_B.id), '견적 PUT 구성품 기억행 오염(R5-H1 잔존)').toBe('0')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_B.id),
+        '견적 무수정 PUT 창구간 구성품 기억행 delta 발생(R5-H1 잔존, diff 참조)',
+      ).toBe(componentsBeforePut)
       expect(memoryRowCount(PARTNER_B.id, BUNDLE.id), '견적 PUT parent 기억행이 정확히 1건이 아님').toBe('1')
       expect(memoryRow(PARTNER_B.id, BUNDLE.id), '견적 PUT parent BUNDLE_SET 유실').toBe(
         `${PRICE_BUNDLE}.00|BUNDLE_SET`,
@@ -1510,6 +1876,691 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
     } finally {
       releasePriceResponse()
       await page.unroute('**/slips/price-memory?*')
+      await ctx.close()
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [R6-postfix] R6 적대 fix(H1 two-pass resolver · H2 서버측 전표 복사 · H3 스냅샷 계보)를
+// 잡는 선행 커버 시나리오. GUI 로 유발 불가능/불안정한 계약 표면(라인 순서 제어·구성품 단품
+// 바인딩·버전 복원)은 실 게이트웨이 raw API(앱과 동일 wire 계약·실 Bearer 토큰)로 유발하고,
+// 판정은 실 DB + 실 GUI 재진입 캡처로 한다. 합성 응답/변조 없음.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** [R6] raw wire 형태 — 필요한 필드만 좁게 타입. BigDecimal 은 JSON number 로 온다. */
+interface SlipLineWire {
+  productId: string
+  productName: string | null
+  modelName: string | null
+  specification: string | null
+  quantity: number
+  unitPrice: number | string
+  note: string | null
+  unitPriceWithVat?: number | string | null
+  setHead?: boolean
+  parentSetModel?: string | null
+}
+
+interface SlipDetailWire {
+  id: string
+  updatedAt: string
+  partnerName?: string | null
+  partnerCode?: string | null
+  memo?: string | null
+  businessNumber?: string | null
+  deliveryAddress?: string | null
+  supervisionAddress?: string | null
+  projectName?: string | null
+  recipientPhone?: string | null
+  paymentDueDate?: string | null
+  lines: SlipLineWire[]
+}
+
+interface EstimateLineWire {
+  lineNo: number
+  productId: string
+  productName: string | null
+  modelName: string | null
+  specification: string | null
+  quantity: number
+  unitPrice: number | string
+  unitPriceWithVat: number | string | null
+  note: string | null
+}
+
+interface EstimateDetailWire {
+  id: string
+  partnerId: string | null
+  partnerName: string | null
+  partnerBusinessNo: string | null
+  partnerAddress: string | null
+  validUntil: string | null
+  memo: string | null
+  lines: EstimateLineWire[]
+}
+
+interface RevisionWire {
+  revisionNo: number
+  revisionType: string
+}
+
+/** 전표 라인 mirror — GET 값 verbatim(1-패스 exact fingerprint 성립 조건). */
+function mirrorSlipLine(line: SlipLineWire): Record<string, unknown> {
+  return {
+    productId: line.productId,
+    productName: line.productName,
+    modelName: line.modelName,
+    specification: line.specification,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    note: line.note,
+  }
+}
+
+/** 전표 헤더 mirror — updateSalesHeader 가 null 로 필드를 지우므로 GET 값 전량 왕복. */
+function mirrorSlipHeader(detail: SlipDetailWire): Record<string, unknown> {
+  return {
+    updatedAt: detail.updatedAt,
+    partnerName: detail.partnerName ?? null,
+    partnerCode: detail.partnerCode ?? null,
+    memo: detail.memo ?? null,
+    businessNumber: detail.businessNumber ?? null,
+    deliveryAddress: detail.deliveryAddress ?? null,
+    supervisionAddress: detail.supervisionAddress ?? null,
+    projectName: detail.projectName ?? null,
+    recipientPhone: detail.recipientPhone ?? null,
+    paymentDueDate: detail.paymentDueDate ?? null,
+  }
+}
+
+/** 견적 헤더 mirror — editHeader 가 null 로 필드를 지우므로 GET 값 전량 왕복. */
+function mirrorEstimateHeader(detail: EstimateDetailWire): Record<string, unknown> {
+  return {
+    partnerId: detail.partnerId,
+    partnerName: detail.partnerName,
+    partnerBusinessNo: detail.partnerBusinessNo,
+    partnerAddress: detail.partnerAddress,
+    validUntil: detail.validUntil,
+    memo: detail.memo,
+  }
+}
+
+/** 견적 라인 mirror — 앱과 동일하게 VAT 포함 단가 + priceVatInclusive=true 로 재전송. */
+function mirrorEstimateLine(line: EstimateLineWire): Record<string, unknown> {
+  return {
+    productId: line.productId,
+    productName: line.productName,
+    modelName: line.modelName,
+    specification: line.specification,
+    quantity: line.quantity,
+    unitPrice: line.unitPriceWithVat ?? line.unitPrice,
+    note: line.note,
+    priceVatInclusive: line.unitPriceWithVat != null,
+  }
+}
+
+/** 활성 라인 수 / head 수 스칼라 프로브. */
+function activeLineCount(table: BundleLineTable, ownerId: string): string {
+  const ownerColumn = table === 'slip_lines' ? 'slip_id' : 'estimate_id'
+  return psql(
+    `SELECT COUNT(*) || '|' || COUNT(*) FILTER (WHERE set_head)
+     FROM ${table} WHERE ${ownerColumn}='${ownerId}' AND is_deleted=false`.replace(/\s+/g, ' '),
+  )
+}
+
+/** 최초 revision(스냅샷 계보 왕복 대상)으로 복원 — 목록 실조회 후 최솟값 선택(채번 가정 없음). */
+async function restoreToEarliestRevision(
+  page: Page,
+  auth: LoginResult,
+  revisionsPath: string,
+  restorePathOf: (revisionNo: number) => string,
+): Promise<number> {
+  const revisions = await apiGet<RevisionWire[]>(page, auth, revisionsPath)
+  expect(revisions.length, `버전이력이 2건 이상이어야 복원 검증 가능: ${revisionsPath}`).toBeGreaterThanOrEqual(2)
+  const earliest = revisions.reduce((min, r) => (r.revisionNo < min ? r.revisionNo : min), revisions[0]!.revisionNo)
+  await apiPost(page, auth, restorePathOf(earliest))
+  return earliest
+}
+
+test.describe('#809 R6-postfix — R6-H1/H2/H3 fix 선행 커버(공유 스택 전제 delta 판정)', () => {
+  /**
+   * [G1/R6-H1 — BE 라이브 실증 변형] 전표 PUT 에서 "신규 동일 productId 라인이 요청 앞 순서" 일 때
+   * 종전 per-line greedy 는 신규 라인이 head 계보를 탈취하고 진짜 head 를 평면화해 배분가를
+   * LINE_SAVE 로 각인했다(R6 라이브 CONFIRMED: 신규 qty3 → head 탈취 · memory 88,000 오염 ·
+   * 사용자 123,000 미기억). two-pass 계약 기대: 무수정 mirror 라인이 위치와 무관하게 exact 매칭으로
+   * 자기 계보를 보존하고, 신규 라인은 평문(계보 없음)으로 남아 사용자 단가가 정상 기억된다.
+   *
+   * GUI 는 라인 순서 삽입을 제공하지 않으므로(추가 = append) 실 게이트웨이 raw PUT 계약으로
+   * 유발한다 — 전표 PUT 은 라인 배열 자체가 계약이라 임의 클라이언트가 보낼 수 있는 합법 입력이다.
+   */
+  test('14a [R6-H1·전표] 신규 동일 productId 라인 선순서 PUT — head 탈취 없음 · 사용자 단가 기억 · 구성품 delta 0', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    resetMemoryPair(PARTNER_B.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_B.id, productId))
+    expect(componentMemorySnapshot(PARTNER_B.id), '14a 자체 reset 직후 구성품 기억행 잔존').toBe('')
+
+    try {
+      // 1) 실 GUI 로 세트 전표 생성 (B, 1,100,000) — 12a 와 동일 진입.
+      await openSlipForm(page)
+      await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_B.query)
+      await pickWarehouse(page)
+      await pickAutocomplete(page, '라인 1 품목', '품목 목록', BUNDLE.model)
+      await page.waitForTimeout(1200)
+      await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '14a 세트 miss 판매가(lookup settle)')
+      await unitPriceInput(page).fill(PRICE_BUNDLE)
+      const slipId = await saveSlipAndWait(page)
+      await expectMemoryRowEventually(PARTNER_B.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
+      expect(bundleLineageSummary('slip_lines', slipId), '14a 사전 세트 전개 상태 불일치').toBe(
+        `2|1|2|${componentIds}`,
+      )
+
+      // 2) GET 상세를 verbatim mirror + 신규 동일 productId(head 와 같은 PART-01) 라인을 "맨 앞"에.
+      //    단가 123000(VAT 제외 계약) — R6 BE 라이브 실증과 동일 형태.
+      const detail = await apiGet<SlipDetailWire>(page, auth, `/slips/${slipId}`)
+      const headLine = detail.lines.find((l) => l.setHead === true)
+      expect(headLine, '14a GET 상세에 set head 라인 부재').toBeTruthy()
+      // 신규 라인 수량(3)은 기존 어느 라인과도 달라야 exact 매칭 오염 없이 "신규" 로 판별된다.
+      expect(
+        detail.lines.some((l) => l.quantity === 3),
+        '14a 전제 붕괴 — 기존 라인에 수량 3 존재(신규 라인 수량 충돌)',
+      ).toBeFalsy()
+      const newLinePrice = '123000'
+      const craftedBody = {
+        ...mirrorSlipHeader(detail),
+        lines: [
+          {
+            productId: headLine!.productId,
+            productName: headLine!.productName,
+            modelName: headLine!.modelName,
+            specification: null,
+            quantity: 3,
+            unitPrice: newLinePrice,
+            note: null,
+          },
+          ...detail.lines.map(mirrorSlipLine),
+        ],
+      }
+      // (B, PART-02) 쌍은 이 PUT 으로 절대 변해선 안 된다 — 창구간 delta 기준점(R6-M9 방식).
+      expect(BUNDLE_COMPONENT_IDS, '14a head 품목이 알려진 구성품 집합 밖 — 시드 전제 붕괴').toContain(
+        headLine!.productId,
+      )
+      const otherComponentId = BUNDLE_COMPONENT_IDS.find((id) => id !== headLine!.productId)!
+      const orphanPairBeforePut = memoryPairsSnapshot(PARTNER_B.id, [otherComponentId])
+      await apiPut(page, auth, `/slips/${slipId}/sales`, craftedBody)
+
+      // 3) 계보 판정 — head 는 여전히 "원 head(qty2)" 에만, 신규 qty3 라인은 평문이어야 한다.
+      expect(activeLineCount('slip_lines', slipId), '14a PUT 후 라인 수/head 수 불일치').toBe('3|1')
+      expect(
+        psql(
+          `SELECT quantity FROM slip_lines
+           WHERE slip_id='${slipId}' AND is_deleted=false AND set_head`.replace(/\s+/g, ' '),
+        ),
+        '14a head 계보가 신규 라인에 탈취됨(R6-H1 잔존 — head 는 원 head 라인 수량이어야 함)',
+      ).toBe(String(headLine!.quantity))
+      expect(
+        psql(
+          `SELECT set_head::text || '|' || COALESCE(parent_set_model,'NULL') FROM slip_lines
+           WHERE slip_id='${slipId}' AND is_deleted=false AND quantity=3`.replace(/\s+/g, ' '),
+        ),
+        '14a 신규 동일 productId 라인이 세트 계보를 승계함(R6-H1 잔존)',
+      ).toBe('false|NULL')
+      expect(
+        psql(
+          `SELECT COUNT(*) FROM slip_lines
+           WHERE slip_id='${slipId}' AND is_deleted=false
+             AND parent_set_model='${BUNDLE.model}'`.replace(/\s+/g, ' '),
+        ),
+        '14a 원 구성품 2라인의 세트 계보 소실(평면화)',
+      ).toBe('2')
+
+      // 4) 기억 판정 — 신규 평문 라인의 사용자 단가(123000, VAT 제외 계약 → ×1.1 = 135300)는
+      //    기억되고(침묵 억제 금지 — R6 실증의 "123,000 미기억" 반증), head/PART-02 구성품
+      //    라인은 각인 금지(R6 실증 88,000류 오염값이면 아래 exact 가 즉시 FAIL).
+      await expectMemoryRowEventually(PARTNER_B.id, headLine!.productId, '135300')
+      expect(memoryRow(PARTNER_B.id, headLine!.productId), '14a 신규 평문 라인 기억값 불일치').toBe(
+        '135300.00|LINE_SAVE',
+      )
+      expect(memoryRowCount(PARTNER_B.id, headLine!.productId), '14a (B,PART-01) 기억행 중복').toBe('1')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        memoryPairsSnapshot(PARTNER_B.id, [otherComponentId]),
+        '14a PUT 창구간 비대상 구성품(PART-02) 기억 delta 발생 = 배분가 각인(R6-H1 잔존, diff 참조)',
+      ).toBe(orphanPairBeforePut)
+      expect(memoryRow(PARTNER_B.id, BUNDLE.id), '14a parent BUNDLE_SET 기억 변형').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+      expect(memoryRowCount(PARTNER_B.id, BUNDLE.id), '14a parent 기억행 수 변형').toBe('1')
+
+      // 5) 실 GUI 재진입 캡처 — 세트 표시(원 head) + 신규 평문 라인 공존 화면.
+      await page.goto(`${BASE_URL}/sales/${slipId}`)
+      await page.waitForTimeout(1500)
+      await capture(page, '37-KEY-slip-put-new-same-product-line-first-lineage-preserved')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  /**
+   * [G1/R6-H1 — QA 라이브 실증 변형(P3)] 견적에 세트(head PART-01 + PART-02)와 "같은 품목 단품
+   * 라인(PART-01)" 이 공존할 때, 세트 head 를 삭제하고 단품 가격만 수정해 저장하면 종전에는 단품이
+   * head 로 오귀속되고 사용자 최신 단가(88,000)가 구성품 판정으로 침묵 억제됐다(기억 77,000 고착).
+   * two-pass 계약 기대: head 는 exact 전용이라 어떤 라인에도 승계되지 않고(head 0), PART-02 는
+   * 고아 구성품으로 계보 보존, 단품은 평문 유지 + 88,000 이 정상 기억된다.
+   *
+   * 구성품 단품 라인 바인딩은 GUI lookup 의 scope 미필터(도달성 구멍 — 후속 fix 로 닫힐 수 있음)에
+   * 의존하므로, 구성은 raw POST(by-id 검증 경로)로 안정 유발한다.
+   */
+  test('14b [R6-H1·견적] 세트 head 삭제 + 동일 품목 단품 가격 수정 — head 오귀속 없음 · 88000 기억 · 고아 구성품 보존', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    const SINGLE_COMPONENT_ID = BUNDLE_COMPONENT_IDS[0]! // QA797-PART-01 (세트 head 와 동일 품목)
+    const ORPHAN_COMPONENT_ID = BUNDLE_COMPONENT_IDS[1]! // QA797-PART-02
+    resetMemoryPair(PARTNER_A.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
+    expect(componentMemorySnapshot(PARTNER_A.id), '14b 자체 reset 직후 구성품 기억행 잔존').toBe('')
+
+    try {
+      // 1) 구성 POST — [세트 1,100,000(VAT포함) + PART-01 단품 77,000(VAT포함)] → 서버 전개로
+      //    R6 QA 실증과 동일한 3라인 상태(head PART-01 · PART-02 · 단품 PART-01)를 만든다.
+      const created = await apiPost<EstimateDetailWire>(page, auth, '/slips/estimates', {
+        partnerId: PARTNER_A.id,
+        partnerName: PARTNER_A.name,
+        lines: [
+          { productId: BUNDLE.id, quantity: 1, unitPrice: PRICE_BUNDLE, priceVatInclusive: true },
+          { productId: SINGLE_COMPONENT_ID, quantity: 1, unitPrice: '77000', priceVatInclusive: true },
+        ],
+      })
+      const estimateId = created.id
+      expect(activeLineCount('estimate_lines', estimateId), '14b 구성 POST 라인 수/head 수 불일치').toBe('3|1')
+      expect(
+        psql(
+          `SELECT product_id::text FROM estimate_lines
+           WHERE estimate_id='${estimateId}' AND is_deleted=false AND set_head`.replace(/\s+/g, ' '),
+        ),
+        '14b head 가 PART-01 전개 라인이 아님',
+      ).toBe(SINGLE_COMPONENT_ID)
+      expect(
+        psql(
+          `SELECT set_head::text || '|' || COALESCE(parent_set_model,'NULL') || '|' || unit_price_with_vat::text
+           FROM estimate_lines
+           WHERE estimate_id='${estimateId}' AND is_deleted=false
+             AND product_id='${SINGLE_COMPONENT_ID}' AND parent_set_model IS NULL`.replace(/\s+/g, ' '),
+        ),
+        '14b 단품 PART-01 라인 사전 상태 불일치(평문·77000)',
+      ).toBe('false|NULL|77000.00')
+      await expectMemoryRowEventually(PARTNER_A.id, SINGLE_COMPONENT_ID, '77000')
+      await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      // 실 GUI 사전 상태 캡처(편집 폼 — 3라인 공존).
+      await page.goto(`${BASE_URL}/sales/estimates/${estimateId}/edit`)
+      await expect(page.getByLabel('라인 3 모델명'), '14b 편집 폼 3라인 미표시').toBeVisible({ timeout: 30000 })
+      await capture(page, '38-estimate-mixed-set-single-before-put')
+
+      // 2) head 삭제 + 단품 77,000→88,000 PUT — R6 QA 실증과 동일 형태(라인 배열 계약).
+      const detail = await apiGet<EstimateDetailWire>(page, auth, `/slips/estimates/${estimateId}`)
+      // 구성 순서 결정성: 전개(lineNo 1=head PART-01, 2=PART-02) 뒤 단품 PART-01 = lineNo 3.
+      // lineNo + productId + 77,000 삼중 술어로 head 전개 라인과의 오식별을 배제한다.
+      const orphanLine = detail.lines.find((l) => l.lineNo === 2 && l.productId === ORPHAN_COMPONENT_ID)
+      const singleLine = detail.lines.find(
+        (l) => l.lineNo === 3 && l.productId === SINGLE_COMPONENT_ID && Number(l.unitPriceWithVat) === 77000,
+      )
+      expect(orphanLine, '14b GET 상세 lineNo 2 가 PART-02 가 아님(전개 순서 전제 붕괴)').toBeTruthy()
+      expect(singleLine, '14b GET 상세 lineNo 3 이 77,000 단품 PART-01 이 아님(구성 전제 붕괴)').toBeTruthy()
+      const orphanBeforePut = memoryPairsSnapshot(PARTNER_A.id, [ORPHAN_COMPONENT_ID])
+      await apiPut(page, auth, `/slips/estimates/${estimateId}`, {
+        ...mirrorEstimateHeader(detail),
+        lines: [
+          mirrorEstimateLine(orphanLine!),
+          { ...mirrorEstimateLine(singleLine!), unitPrice: '88000', priceVatInclusive: true },
+        ],
+      })
+
+      // 3) 계보 판정 — head 0(오귀속 금지) · PART-02 고아 계보 보존 · 단품 평문 + 88,000.
+      expect(activeLineCount('estimate_lines', estimateId), '14b PUT 후 라인 수/head 수 불일치').toBe('2|0')
+      expect(
+        psql(
+          `SELECT set_head::text || '|' || COALESCE(parent_set_model,'NULL') FROM estimate_lines
+           WHERE estimate_id='${estimateId}' AND is_deleted=false
+             AND product_id='${ORPHAN_COMPONENT_ID}'`.replace(/\s+/g, ' '),
+        ),
+        '14b PART-02 고아 구성품 계보 소실/오귀속(R6-H1 잔존)',
+      ).toBe(`false|${BUNDLE.model}`)
+      expect(
+        psql(
+          `SELECT set_head::text || '|' || COALESCE(parent_set_model,'NULL') || '|' || unit_price_with_vat::text
+           FROM estimate_lines
+           WHERE estimate_id='${estimateId}' AND is_deleted=false
+             AND product_id='${SINGLE_COMPONENT_ID}'`.replace(/\s+/g, ' '),
+        ),
+        '14b 단품 PART-01 이 head 로 오귀속되거나 값이 어긋남(R6-H1 잔존)',
+      ).toBe('false|NULL|88000.00')
+
+      // 4) 기억 판정 — 사용자 최신 88,000 반영(77,000 고착 = 침묵 억제 잔존이면 FAIL),
+      //    PART-02 는 여전히 기억 없음 + 창구간 delta 0, parent 불변.
+      await expect.poll(
+        () => memoryRow(PARTNER_A.id, SINGLE_COMPONENT_ID),
+        {
+          timeout: 5000,
+          intervals: [25, 50, 100, 250, 500],
+          message: '14b 단품 최신 단가(88,000) 기억 미반영 — 구성품 판정 침묵 억제(R6-H1 잔존)',
+        },
+      ).toBe('88000.00|LINE_SAVE')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        memoryPairsSnapshot(PARTNER_A.id, [ORPHAN_COMPONENT_ID]),
+        '14b PUT 창구간 PART-02 기억 delta 발생(diff 참조)',
+      ).toBe(orphanBeforePut)
+      expect(memoryRow(PARTNER_A.id, BUNDLE.id), '14b parent BUNDLE_SET 기억 변형').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+
+      // 5) 실 GUI 재진입 캡처 — head 없는 2라인 상태.
+      await page.goto(`${BASE_URL}/sales/estimates/${estimateId}/edit`)
+      await expect(page.getByLabel('라인 2 모델명'), '14b PUT 후 편집 폼 2라인 미표시').toBeVisible({ timeout: 30000 })
+      await capture(page, '39-KEY-estimate-head-deleted-single-88000-no-lineage-theft')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  /**
+   * [R6-H2] 전표 복사 1클릭 오염 봉쇄 — 종전 FE duplicateSlip 은 전개된 구성품을 평면 POST /slips
+   * 로 재전송해 계보 소실 + 배분가 LINE_SAVE 각인을 복사할 때마다 재생산했다. fix 계약 기대:
+   * GUI '전표 복사' = 서버측 복사(POST /slips/{id}/duplicate) 정확히 1건 + 평면 POST /slips 0건,
+   * 복사본 계보·가격 verbatim 승계, 복사 창구간 (parent+구성품) 기억 delta 0
+   * (구성품 각인 금지 + BUNDLE_SET 재기록 없음 — SlipDuplicateService 계약).
+   */
+  test('15 [R6-H2·GUI] 전표 복사 — 서버측 duplicate 1건·평면 POST 0건 · 계보 1:1 · 기억 delta 0', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    await login(page)
+    resetMemoryPair(PARTNER_A.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
+    expect(componentMemorySnapshot(PARTNER_A.id), '15 자체 reset 직후 구성품 기억행 잔존').toBe('')
+
+    try {
+      // 1) 원본 세트 전표 생성 (A, 1,100,000).
+      await openSlipForm(page)
+      await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
+      await pickWarehouse(page)
+      await pickAutocomplete(page, '라인 1 품목', '품목 목록', BUNDLE.model)
+      await page.waitForTimeout(1200)
+      await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '15 세트 miss 판매가(lookup settle)')
+      await unitPriceInput(page).fill(PRICE_BUNDLE)
+      const sourceSlipId = await saveSlipAndWait(page)
+      await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
+      const sourceLineage = bundleLineageSnapshot('slip_lines', sourceSlipId)
+      expect(bundleLineageSummary('slip_lines', sourceSlipId), '15 원본 세트 전개 상태 불일치').toBe(
+        `2|1|2|${componentIds}`,
+      )
+
+      await page.goto(`${BASE_URL}/sales/${sourceSlipId}`)
+      await expect(
+        page.getByRole('button', { name: '전표 복사' }),
+        '15 전표 복사 버튼 미표시',
+      ).toBeVisible({ timeout: 30000 })
+      await capture(page, '40-slip-bundle-copy-source-detail')
+
+      // 2) 복사 창구간 네트워크·기억 delta 관측 준비 — window.confirm 은 실 다이얼로그 수락.
+      const memoryBeforeCopy = memoryPairsSnapshot(PARTNER_A.id, [BUNDLE.id, ...BUNDLE_COMPONENT_IDS])
+      const slipPosts: string[] = []
+      const onRequest = (req: Request): void => {
+        if (req.method() === 'POST' && req.url().includes('/slips')) slipPosts.push(req.url())
+      }
+      page.on('request', onRequest)
+      page.once('dialog', (dialog) => {
+        void dialog.accept()
+      })
+      const duplicateResponsePromise = page.waitForResponse(
+        (response) => response.request().method() === 'POST'
+          && response.url().includes(`/slips/${sourceSlipId}/duplicate`),
+        { timeout: 30000 },
+      )
+      await page.getByRole('button', { name: '전표 복사' }).click()
+      const duplicateResponse = await duplicateResponsePromise
+      expect(duplicateResponse.ok(), `15 서버측 복사 실패: HTTP ${duplicateResponse.status()}`).toBeTruthy()
+      const copySlipId = ((await duplicateResponse.json()) as { data?: { id?: string } }).data?.id ?? ''
+      expect(copySlipId, '15 duplicate 응답에 신규 slipId 누락').toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      )
+      await page.waitForURL(`**/sales/${copySlipId}`, { timeout: 30000 })
+      page.off('request', onRequest)
+
+      // 3) wire 계약 — duplicate 정확히 1건, 평면 재전송(POST /slips) 0건(구 결함 경로 봉쇄).
+      const duplicatePosts = slipPosts.filter((u) => u.includes(`/slips/${sourceSlipId}/duplicate`))
+      const flatCreatePosts = slipPosts.filter((u) => /\/slips(\?|$)/.test(u))
+      console.log('[#809 R6-postfix] 15 복사 창구간 POST:', JSON.stringify(slipPosts))
+      expect(duplicatePosts.length, '15 서버측 duplicate 호출이 정확히 1건이 아님').toBe(1)
+      expect(flatCreatePosts.length, '15 평면 POST /slips 재전송 발생 = R6-H2 결함 경로 잔존').toBe(0)
+
+      // 4) 복사본 계보·가격 verbatim + 복사 창구간 기억 delta 0 (BUNDLE_SET 재기록도 금지).
+      expect(bundleLineageSummary('slip_lines', copySlipId), '15 복사본 세트 메타 불일치').toBe(
+        `2|1|2|${componentIds}`,
+      )
+      expect(bundleLineageSnapshot('slip_lines', copySlipId), '15 복사본 계보/가격 verbatim 승계 실패').toBe(
+        sourceLineage,
+      )
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        memoryPairsSnapshot(PARTNER_A.id, [BUNDLE.id, ...BUNDLE_COMPONENT_IDS]),
+        '15 복사 창구간 기억 delta 발생(구성품 각인 또는 BUNDLE_SET 재기록 — diff 참조)',
+      ).toBe(memoryBeforeCopy)
+
+      await page.waitForTimeout(800)
+      await capture(page, '41-KEY-slip-duplicate-lineage-preserved-memory-zero-delta')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  /**
+   * [R6-H3·전표] 버전이력 스냅샷 계보 왕복 — 종전 스냅샷 Line record 에 setHead/parentSetModel 이
+   * 없어 복원 시 평면 재생성 → 이후 무수정 저장 1회에 배분가 오염이 재유입됐다. fix 계약 기대:
+   * fix 이후 만들어진 스냅샷은 계보를 담고, 최초 revision 복원 후에도 세트 계보·가격이 생성 직후와
+   * 동일하며, 복원 전·후 전 구간에서 기억 delta 0 + 복원 후 무수정 mirror PUT 도 무오염.
+   * (collab 문서모드 복원 2경로는 동일 record 를 쓰므로 record 차원 왕복은 본 시나리오가 커버 —
+   *  경로 자체는 SSE 세션 필요로 미유발, 파일 상단 정직 기록 참조.)
+   */
+  test('16a [R6-H3·전표] EDIT 후 최초 revision 복원 — 계보 보존 · 복원/후속 PUT 기억 delta 0', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    resetMemoryPair(PARTNER_B.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_B.id, productId))
+    expect(componentMemorySnapshot(PARTNER_B.id), '16a 자체 reset 직후 구성품 기억행 잔존').toBe('')
+
+    try {
+      // 1) 세트 전표 생성 (B) → 생성 직후 계보 기준선.
+      await openSlipForm(page)
+      await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_B.query)
+      await pickWarehouse(page)
+      await pickAutocomplete(page, '라인 1 품목', '품목 목록', BUNDLE.model)
+      await page.waitForTimeout(1200)
+      await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '16a 세트 miss 판매가(lookup settle)')
+      await unitPriceInput(page).fill(PRICE_BUNDLE)
+      const slipId = await saveSlipAndWait(page)
+      await expectMemoryRowEventually(PARTNER_B.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
+      const expectedSummary = `2|1|2|${componentIds}`
+      const lineageAtCreate = bundleLineageSnapshot('slip_lines', slipId)
+      expect(bundleLineageSummary('slip_lines', slipId), '16a 생성 직후 세트 메타 불일치').toBe(expectedSummary)
+
+      // 2) EDIT revision 생성 — 헤더 memo 만 바꾼 mirror PUT(라인 무수정, 계보 보존 전제).
+      const detailV1 = await apiGet<SlipDetailWire>(page, auth, `/slips/${slipId}`)
+      const componentsBeforeEdit = componentMemorySnapshot(PARTNER_B.id)
+      await apiPut(page, auth, `/slips/${slipId}/sales`, {
+        ...mirrorSlipHeader(detailV1),
+        memo: '[R6-H3] rev2 편집 프로브',
+        lines: detailV1.lines.map(mirrorSlipLine),
+      })
+      expect(bundleLineageSnapshot('slip_lines', slipId), '16a mirror PUT 이 계보/가격을 훼손').toBe(lineageAtCreate)
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_B.id),
+        '16a mirror PUT 창구간 구성품 기억 delta 발생(diff 참조)',
+      ).toBe(componentsBeforeEdit)
+
+      // 3) 최초 revision 복원 — 스냅샷 계보 왕복의 본 판정.
+      const componentsBeforeRestore = componentMemorySnapshot(PARTNER_B.id)
+      const restoredFrom = await restoreToEarliestRevision(
+        page,
+        auth,
+        `/api/v1/slips/${slipId}/revisions`,
+        (revisionNo) => `/api/v1/slips/${slipId}/revisions/${revisionNo}/restore`,
+      )
+      console.log('[#809 R6-postfix] 16a 복원 대상 revision:', restoredFrom)
+      expect(bundleLineageSummary('slip_lines', slipId), '16a 복원 후 세트 메타 소실(R6-H3 잔존)').toBe(
+        expectedSummary,
+      )
+      expect(bundleLineageSnapshot('slip_lines', slipId), '16a 복원 후 계보/가격이 생성 직후와 다름(R6-H3 잔존)').toBe(
+        lineageAtCreate,
+      )
+      const restoredMemo = await apiGet<SlipDetailWire>(page, auth, `/slips/${slipId}`)
+      expect(restoredMemo.memo ?? null, '16a 복원이 헤더(memo)를 되돌리지 않음 — 복원 미적용 의심').toBe(
+        detailV1.memo ?? null,
+      )
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_B.id),
+        '16a 복원 창구간 구성품 기억 delta 발생(diff 참조)',
+      ).toBe(componentsBeforeRestore)
+
+      // 4) 복원 후 무수정 mirror PUT — "복원된 문서의 후속 저장 1회 오염"(H3 2차 피해) 재현 금지.
+      const detailV3 = await apiGet<SlipDetailWire>(page, auth, `/slips/${slipId}`)
+      const componentsBeforeFinalPut = componentMemorySnapshot(PARTNER_B.id)
+      await apiPut(page, auth, `/slips/${slipId}/sales`, {
+        ...mirrorSlipHeader(detailV3),
+        lines: detailV3.lines.map(mirrorSlipLine),
+      })
+      expect(
+        bundleLineageSnapshot('slip_lines', slipId),
+        '16a 복원 후 무수정 PUT 에서 계보/가격 훼손(R6-H1×H3 복합 잔존)',
+      ).toBe(lineageAtCreate)
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_B.id),
+        '16a 복원 후 무수정 PUT 창구간 구성품 기억 delta 발생(diff 참조)',
+      ).toBe(componentsBeforeFinalPut)
+      expect(memoryRow(PARTNER_B.id, BUNDLE.id), '16a parent BUNDLE_SET 기억 변형').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+
+      await page.goto(`${BASE_URL}/sales/${slipId}`)
+      await page.waitForTimeout(1500)
+      await capture(page, '42-KEY-slip-revision-restore-lineage-preserved')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  /** [R6-H3·견적] 16a 와 동일 왕복을 견적 스냅샷(EstimateSnapshot.Line)에 대해 검증. */
+  test('16b [R6-H3·견적] EDIT 후 최초 revision 복원 — 계보 보존 · 복원/후속 PUT 기억 delta 0', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    resetMemoryPair(PARTNER_A.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
+    expect(componentMemorySnapshot(PARTNER_A.id), '16b 자체 reset 직후 구성품 기억행 잔존').toBe('')
+
+    try {
+      // 1) 세트 견적 생성 (A) — GUI 경로(12b 와 동일 진입).
+      await openEstimateForm(page)
+      await pickAutocomplete(page, '거래처 검색', '거래처 목록', PARTNER_A.query)
+      await expect(page.getByLabel('거래처명')).toHaveValue(PARTNER_A.name, { timeout: 15000 })
+      await fillEstimateModel(page, 1, BUNDLE.model)
+      await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '16b 세트 판매가')
+      await unitPriceInput(page).fill(PRICE_BUNDLE)
+      const estimateId = await saveEstimateDraftAndGetId(page)
+      await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
+      const expectedSummary = `2|1|2|${componentIds}`
+      const lineageAtCreate = bundleLineageSnapshot('estimate_lines', estimateId)
+      expect(bundleLineageSummary('estimate_lines', estimateId), '16b 생성 직후 세트 메타 불일치').toBe(
+        expectedSummary,
+      )
+
+      // 2) EDIT revision — memo 만 바꾼 mirror PUT (VAT 포함 단가 왕복, 앱 계약과 동일).
+      const detailV1 = await apiGet<EstimateDetailWire>(page, auth, `/slips/estimates/${estimateId}`)
+      const componentsBeforeEdit = componentMemorySnapshot(PARTNER_A.id)
+      await apiPut(page, auth, `/slips/estimates/${estimateId}`, {
+        ...mirrorEstimateHeader(detailV1),
+        memo: '[R6-H3] rev2 편집 프로브',
+        lines: detailV1.lines.map(mirrorEstimateLine),
+      })
+      expect(bundleLineageSnapshot('estimate_lines', estimateId), '16b mirror PUT 이 계보/가격을 훼손').toBe(
+        lineageAtCreate,
+      )
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_A.id),
+        '16b mirror PUT 창구간 구성품 기억 delta 발생(diff 참조)',
+      ).toBe(componentsBeforeEdit)
+
+      // 3) 최초 revision 복원.
+      const componentsBeforeRestore = componentMemorySnapshot(PARTNER_A.id)
+      const restoredFrom = await restoreToEarliestRevision(
+        page,
+        auth,
+        `/api/v1/slips/estimates/${estimateId}/revisions`,
+        (revisionNo) => `/api/v1/slips/estimates/${estimateId}/revisions/${revisionNo}/restore`,
+      )
+      console.log('[#809 R6-postfix] 16b 복원 대상 revision:', restoredFrom)
+      expect(bundleLineageSummary('estimate_lines', estimateId), '16b 복원 후 세트 메타 소실(R6-H3 잔존)').toBe(
+        expectedSummary,
+      )
+      expect(
+        bundleLineageSnapshot('estimate_lines', estimateId),
+        '16b 복원 후 계보/가격이 생성 직후와 다름(R6-H3 잔존)',
+      ).toBe(lineageAtCreate)
+      const restoredDetail = await apiGet<EstimateDetailWire>(page, auth, `/slips/estimates/${estimateId}`)
+      expect(restoredDetail.memo ?? null, '16b 복원이 헤더(memo)를 되돌리지 않음 — 복원 미적용 의심').toBe(
+        detailV1.memo ?? null,
+      )
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_A.id),
+        '16b 복원 창구간 구성품 기억 delta 발생(diff 참조)',
+      ).toBe(componentsBeforeRestore)
+
+      // 4) 복원 후 무수정 mirror PUT — 후속 저장 1회 오염 금지(H3 2차 피해).
+      const detailV3 = await apiGet<EstimateDetailWire>(page, auth, `/slips/estimates/${estimateId}`)
+      const componentsBeforeFinalPut = componentMemorySnapshot(PARTNER_A.id)
+      await apiPut(page, auth, `/slips/estimates/${estimateId}`, {
+        ...mirrorEstimateHeader(detailV3),
+        lines: detailV3.lines.map(mirrorEstimateLine),
+      })
+      expect(
+        bundleLineageSnapshot('estimate_lines', estimateId),
+        '16b 복원 후 무수정 PUT 에서 계보/가격 훼손(R6-H1×H3 복합 잔존)',
+      ).toBe(lineageAtCreate)
+      await page.waitForTimeout(MEMORY_FLUSH_GRACE_MS)
+      expect(
+        componentMemorySnapshot(PARTNER_A.id),
+        '16b 복원 후 무수정 PUT 창구간 구성품 기억 delta 발생(diff 참조)',
+      ).toBe(componentsBeforeFinalPut)
+      expect(memoryRow(PARTNER_A.id, BUNDLE.id), '16b parent BUNDLE_SET 기억 변형').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+
+      await page.goto(`${BASE_URL}/sales/estimates/${estimateId}/edit`)
+      await expect(page.getByLabel('라인 2 모델명'), '16b 복원 후 편집 폼 2라인 미표시').toBeVisible({ timeout: 30000 })
+      await capture(page, '43-KEY-estimate-revision-restore-lineage-preserved')
+    } finally {
       await ctx.close()
     }
   })

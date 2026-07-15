@@ -137,7 +137,12 @@ R1 findings 29건 전부 처리. Codex 가 `SlipFormPage.test.tsx` 작성 중 **
   실운영 문서가 보통 수십 라인이고 기존 설계 문서의 최대 예상은 20라인이며, 서비스 내부 bulk 표준도
   100건이다. 100은 정상 대량 문서를 막지 않으면서 500행 무제한 입력과 DB lock convoy를 차단한다.
 - 가격기억 트랜잭션 전용 기본값은 `lock_timeout=1s`, `statement_timeout=3s`, transaction timeout=4s다.
-  100행 단일 statement 정상 여유를 주되 보조 기능이 사용자 응답/Hikari를 장기 점유하지 않는 값이다.
+  100행 단일 statement 정상 여유를 주는 값이다. ⚠️ **R5-M1 정정**: 당초 이 절은 "보조 기능이 사용자
+  응답/Hikari를 장기 점유하지 않는 값"이라 기술했으나, 이 4초 상한은 **커넥션 획득 대기를 포함하지
+  않았다** — `TransactionTemplate` timeout 은 커넥션 획득 후에만 적용되므로 풀 고갈 시 worker 는
+  Hikari 기본 30초 획득 대기에서 별도로 고착될 수 있었다(R4 의 1초 lock 실험도 "획득 이후"만 입증).
+  R5 fix 가 Hikari `connection-timeout` 4초를 명시했고 이는 **가격기억 범위를 넘는 slip-service 전역
+  동작 변경**이다 — blast radius 는 R6-M1 로 재지적돼 개발책임자 확인 대기다(아래 R5/R6 절).
 - auth 동기 RestClient는 repo 표준과 같은 connect 2초/read 3초를 적용한다. 권한 4종 OR는 Java
   short-circuit로 바꿔 앞 권한이 true면 나머지 auth 호출을 하지 않는다.
 
@@ -337,6 +342,239 @@ desktop/design-system 카운트는 vitest 결과가 파일로 남지 않아 PM �
   10(R4-D4a 미선택 카피 + R4-D2) 3건 신설 → 10/10 PASS · 실캡처 23장 `r4-postfix/`**
   (Playwright `.last-run.json` = passed 실측).
 
+## R5 — CODEX SOL 5.6 2차 적대검증 (캐논 5단계) · `810a5efd1` · [issuecomment-4982532949](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4982532949)
+
+**22건 (BLOCKING 1 · HIGH 8 · MEDIUM 9 · LOW 4, 중복 병합 후).** 5차원(BE/FE/Design/DevOps/QA)
+전부 실행, R4 fix 자체를 최우선 적대 대상으로 재검했다. fix 는 캐논대로 라운드 모델(CODEX SOL
+5.6)이 4배치로 수행했고 전건 disposition 됐다 —
+[fix 완료 게시 issuecomment-4983603804](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4983603804).
+
+| 차원 | BLOCKING | HIGH | MEDIUM | LOW |
+|---|---|---|---|---|
+| BE | 0 | 1 | 1 | 1 |
+| FE | 0 | **2** | 2 | 0 |
+| Design | 0 | **1** | 2 | 2 |
+| DevOps | **1** | 1 | 4 | 1 |
+| QA | 0 | **3** | 0 | 0 |
+
+| fix 배치 | 커밋 | 범위 |
+|---|---|---|
+| BE·DevOps | `ffc8e49ab` | H1·M1·L1 / H5·M6·M7·M8·M9·L4 |
+| FE·Design | `5e46b1ce4` | **B1**·H2·H3·H4·M2·M3·M4·M5·L2 |
+| QA 커버리지 | `710979e26` | H6·H7·H8 시나리오 신설 — 최초 13 PASS/1 FAIL suite RED 정직 보고 |
+| R5-H6 재설계 | `e178c12cb` | legacy 견적 가격 basis 실증 재설계 → 스위트 14/14 GREEN |
+
+### BLOCKING — R5-B1: PM 의 "검증 green" 보고가 틀렸음 (정정)
+
+PR HEAD `810a5efd1` 의 CI 가 실제로 실패 중이었다 — `EstimateFormPage.coedit.test.tsx:708` 이 저장
+버튼 활성화만 대기해 비동기 hydration 완료를 보장하지 않아, 느린 CI 에서 초기값 `'0'` 을 읽는
+**flaky**(run 29423568108 실측: 1 failed / 739 passed). 🔴 **PM 정직 정정: R4 fix 완료 게시의
+"desktop vitest 740/740" 은 로컬 통과였고, 로컬 통과가 CI green 을 보장하지 않았다 — 그 시점 머지
+게이트 ⑩ 은 미충족이었다.** 이 테스트는 R4-F2 의 회귀 테스트인데 R5-H2 가 밝혔듯 진짜 버그 경로를
+우회하면서 동시에 flaky 였다. fix 후 진짜 게이트에서 확인 — **CI(exact SHA `e178c12cb`/`710979e26`)
+36/36 SUCCESS**.
+
+### HIGH 8건과 fix
+
+- **R5-H1 (HIGH·데이터오염·결정 ② 정면 위배·라이브 CONFIRMED)** — BUNDLE 세트를 **무수정 편집
+  저장**만 해도 update DTO 에서 `setHead`/`parentSetModel` 이 소실돼 BE 가 구성품을 일반 단품으로
+  재생성 → 구성품 배분가가 `LINE_SAVE` 로 기억 오염(전표 `2026/07/15-11`·견적 `2026/07/16-1`
+  라이브 실측 — DB 오염행 4건을 PM 이 psql 로 재확인). R1~R4 전 라운드가 생성(POST) 경로만 검증한
+  **계열 sweep 누락**. fix: **`BundleLineageResolver` 신설 — 설계 (b) 서버측 계보 resolve** 채택.
+  (a)안(FE 가 계보 전송)은 타 클라이언트(모바일·API 직접)에서 동일 오염이 재발하므로 기각 — FE
+  계약 변경 0. 무수정 PUT 후 lineage snapshot 완전 동일·구성품 기억행 0 을 라이브 실증.
+- **R5-H2 (HIGH·가격왜곡)** — R4-F2 의 "미수정 판정"이 **타입 불일치로 양방향 오판**: BE JSON
+  number vs FE string DTO 선언이라 hydrate 값은 runtime number 인데 coedit seed 는 `unitPrice` 만
+  문자열 정규화 → `"10000" !== 10000` 으로 미수정을 수정으로 판정(9.1% 하락 재현), 반대로 값을
+  되돌린 실제 편집은 미수정으로 오판. R4 회귀테스트는 string fixture + coedit 강제 실패로 진짜
+  경로를 우회하고 있었다. fix: 응답 경계 금액 canonical 정규화 + 값 비교 대신 **명시적
+  provenance(`legacyPriceUntouched`)** 보존. 라이브 실증: 무수정 PUT 후 `unit_price=1920000.00`
+  불변·버그가 만들 오판값 `1745455.00` 미발생·기억 `2112000.00`(×1.1 basis) 정확·역방향 되돌림은
+  실제 편집으로 판정.
+- **R5-H3 (HIGH·데이터오염)** — R4-F3 분할 게이트가 lookup **중간 상태 저장**을 허용: 모델 lookup
+  과 가격조회 사이에 거래처가 바뀌면 품목 게이트만 통과해 `productId=Y·unitPrice=0·loading=false`
+  로 저장 가능 → 0원 라인 + 가격기억 0 오염. 기존 테스트가 이 중간 상태를 정상으로 단언해 결함을
+  고정하고 있었다. fix: 품목 바인딩 후 가격이 stale 이면 현재 거래처+새 productId 로 **재resolve**
+  하고 완료까지 busy(`최근단가 확인 중…`) 유지·저장 차단. 라이브 실증: hold 중 강제 click 에도
+  POST 0건, 응답 후 저장 1건·BE 공식 `round(888000/1.1)` 과 DB exact 일치.
+- **R5-H4 (HIGH·a11y)** — R4-D1 의 sweep 이 **전표 `LineRow` 의 `--ink-tertiary` 계열을 누락** —
+  `#8A95A4 on #EFF6FF` = **2.79:1**(행번호·드래그핸들·placeholder·삭제 아이콘). R4 는 이 쌍을
+  "`.selected` 와 동일쌍 = 선재 parity" 로 느슨 분류했으나 #809 강조행이 그 배경을 새로 적용하므로
+  새 인스턴스가 맞다. fix: 5.30:1 상향 + 전수 감사에서 미달 3건 추가 교정(info inset border
+  1.31 · 행 구분선 1.16 · input hover border 1.42) + `LineRow.contrast.test.tsx` 회귀 가드 신설.
+- **R5-H5 (HIGH·false-green)** — 레포 전체 CI union 대조에서 **shared 3모듈 concrete 테스트
+  7클래스가 어느 workflow 에서도 영구 미실행**(approval-core 3 · ecount-io 2 ·
+  notification-publisher 2) — R4-O4 의 sweep 이 slip-service 에 국한됐음이 드러남. fix: test task
+  등재. 실측 approval-core **16** · ecount-io **13** · notification-publisher **4** 전부 0 fail —
+  "오래 미실행이라 깨져 있을 우려"는 기우로 확인.
+- **R5-H6~H8 (HIGH·QA커버리지)** — R4 QA 10/10 PASS 가 위 HIGH 들을 구조적으로 못 잡음이 확정:
+  스펙 전체에 legacy 견적 편집 `PUT /estimates/{id}` 단언 0건(H6 → R4-F2 false-green) · BUNDLE
+  편집 PUT 미검증(H7 → R5-H1 false-green) · 모델 lookup↔가격조회 사이 중간 창 미검사(H8 → R5-H3
+  false-green). fix: 시나리오 11(legacy 무수정/되돌림 가격 basis)·12(BUNDLE 무수정 PUT)·13(lookup
+  중간 상태 저장 차단) 신설 — 최초 배치 13/1 RED 를 정직 보고한 뒤 H6 를 재설계해 14/14 GREEN.
+
+### MEDIUM 9 · LOW 4 처리 요약
+
+| ID | 급 | 요지 | 처리 |
+|---|---|---|---|
+| R5-M1 | M | 4초 tx 상한이 **커넥션 획득 대기 미포함** — `TransactionTemplate` timeout 은 획득 후 적용, 풀 고갈 시 worker 가 Hikari 기본 30초 대기서 고착 → 큐 100 포화 → 연속 거부·유실. R4 의 1초 lock 실험은 "획득 이후"만 입증 | fix — Hikari `connection-timeout` 4초 명시. ⚠️ **slip-service 전역 동작 변경**(가격기억 범위 초과) → R6-M1 재지적·개발책임자 확인 대기 |
+| R5-M2 | M | R4-F5 chunk 후반 실패가 앞 chunk 정상 hit 까지 폐기 → 기존 기억값을 판매가로 덮음 | fix — chunk 별 성공/실패 분리 반환 |
+| R5-M3 | M | mock 가격기억 조회가 `partnerId` 를 안 읽음 → 거래처 격리 회귀를 mock hard gate 가 미포착 | fix — (partnerId, productId) 복합키 + 계약 검증 (→ R6-M3 이 이 fix 의 RFC-4122 강제와 mock 거래처 id 불일치를 재적발) |
+| R5-M4 | M | 칩 `aria-live` 제거(R4-D2) 후 **최초 lookup 결과의 단가 출처가 SR 에 자동 고지되지 않음** | fix — 페이지 단일 status region(sr-only) 1곳에서 lookup 결과 1회 고지 |
+| R5-M5 | M | 변경행 식별이 색상에만 의존 + SR 행별 변경 상태 없음 — R4-D8 수용 근거가 약했음(4px 보더도 색·칩 텍스트는 '변경'을 말하지 않음) | fix — `단가 변경` 아이콘+텍스트 인디케이터 + 행 `aria-describedby` 연결 |
+| R5-M6 | M | R4-O2 env 템플릿 9종이 compose/user_data 실행 경로에 미연결 — 운영자가 바꿔도 기본값 동작 | fix — compose 매핑(라이브 컨테이너 env 9종 주입 실측) |
+| R5-M7 | M | R4-O3 이 만든 M-19 의 전제 오류(`user_data.sh` 는 이미 CloudWatch Agent 로 수집 중) + 실행 불가 절차 | fix — 기존 Agent 경로 기준 재작성 + Terraform metric filter 2·alarm 2 (→ R6-H5 가 전달 신뢰성 전제를 재반박, 재fix 대상) |
+| R5-M8 | M | nightly 실패 Issue 자동생성이 존재하지 않는 label(`ci` 등)로 항상 실패 | fix — 실재 label + 무라벨 선생성 fallback |
+| R5-M9 | M | #821 fix 가 머지 전 한 번도 미실행 + **본 dev-report 의 nightly 문단이 현 diff 와 모순** | **부분 이행** — PR ref `workflow_dispatch` run 29431175485 success 실증. dev-report 정정은 당시 미이행(R6-M7/M10 재지적) → 본 R6 문서 배치가 정정 수행 |
+| R5-L1 | L | R4-B1 명시 빈이 Boot virtual-thread 분기 무력화(현 JDK17+설정 없음이라 inert) | fix — threading 조건 분기 복원 (→ R6-L3 잔여 편차 2건 재지적·현재 inert) |
+| R5-L2 | L | spec 32행이 견적 수정 UI 의 VAT 기준을 실코드와 반대로 기술 — 후속 구현자가 따르면 10% 과대 기록 | fix — spec 정정(`5e46b1ce4`) |
+| R5-L3 | L | 데스크톱 빌드 산출물에 Pretendard woff/woff2 0건 — 미설치 환경은 fallback 폰트 렌더 | #809 무관 선재 → 범위 외(아래 절) |
+| R5-L4 | L | `--tests package.*` 는 text wildcard — "서브패키지 자동 미포함" 레포 주석이 부정확 · `vendor.*` dead token | fix — 주석 정정 + zero-match 토큰 정리 |
+
+### 🔴 PM 정직 정정 3건 (R4·R5 게시에서 잘못 보고했던 것)
+
+1. **"CI green"** — 로컬 740/740 통과 ≠ CI green(R5-B1). R4 fix 완료 게시 시점의 머지 게이트 ⑩ 은
+   미충족이었다. 검증 권위는 exact SHA 의 CI 다.
+2. **R4-F2 도달성 과장** — "estimate_lines 1927/1927 = 100% legacy 라 전부 오염 대상" 게시는
+   과장이었다. **실 legacy 1,926건 전부 `partner_id NULL`** → 가격기억 upsert 가 null-skip →
+   **현 실데이터로는 legacy 오염 경로에 도달 불가**. fix 자체는 유효하다(거래처를 재선택하는 순간
+   경로가 열린다).
+3. **"#809 회귀" 가설 반증** — legacy 견적 저장이 `거래처 정보를 다시 불러올 수 없습니다` 로 막히는
+   것은 **main 도 동일**하다(main hydrate 가 `setPartner` 미호출 → `!partnerIdSnapshot && !partner`
+   로 동일 차단 — 소스 대조 완료). #809 은 차단을 도입한 게 아니라 **오류 메시지만 더 정확하게**
+   바꿨다. 따라서 앱 결함이 아니라 R5-H6 최초 스펙의 기대가 틀렸던 것(main 에서도 불가능한 일을
+   단언) → 거래처 재선택 전제로 재설계해 14/14 GREEN.
+
+### R4 판단 중 R5 가 뒤집은 것
+
+R4-D8 수용 근거(→ R5-M5 fix) · R4-D1 "선재 parity" 분류(→ R5-H4 fix) · R4-O3 "CloudWatch 배선
+부재" 전제(→ R5-M7 재작성) · R4-O4 sweep 범위(slip-service 국한 → R5-H5) · R4 의 nightly "무해한
+dead-weight" 판단(실제 실패 중이었음 — R4 fix 게시에서 기정정).
+
+### R5 가 반증한 것 (R4 fix 무결 확인)
+
+R4-B2 정렬(dedupe 후 정렬·마지막 라인 승리 유지·역순 잠금 반례 없음) · R4-B1(builder 빈은
+back-off 비대상·unqualified `Executor` 주입/`@Async`/`@EnableAsync` 전부 0건) · R4-O1 복원(기능
+diff 는 test-task 1줄뿐 — 단 PM 의 "주석 3줄"은 물리적으로 4줄이었던 경미한 부정확) · #821 필터
+정렬(public 0→11 증가·커버리지 감소 0) · R4-F1(자동채움 판정 지점 통일·잔존 0) · R4-F4(영구 busy
+경로 미발견).
+
+### R5 fix 검증 실측 (PM 독립 genuine `--rerun-tasks --no-build-cache`)
+
+| 대상 | 결과 |
+|---|---|
+| slip-service | **tests=1273 · 0 fail/error/skip** |
+| partner-service | **tests=314 · 0 fail/error/skip** |
+| shared 3모듈 (R5-H5 신규 등재) | approval-core **16** · ecount-io **13** · notification-publisher **4** — 전부 0 fail/error/skip |
+| clients/desktop | typecheck exit 0 · vitest **745 · 0 fail** |
+| design-system | **46 tests · 0 fail** |
+| CI (exact SHA `e178c12cb`) | **36/36 SUCCESS** |
+
+### R5 라이브 QA (Docker 실서버 · mock OFF · 실 GUI)
+
+**14 PASS / 0 FAIL / 0 SKIP** — 단언 약화 0·강화만(`expect(` 104 → 171 · 삭제 0 · 독립 test
+10 → 14). 실캡처 **36장** `docs/qa/809-partner-product-price-memory/r5-postfix/`(기존 `r2/`·`r4/`·
+`r4-postfix/`·`r5/` 무손상). R5-H3 의 지연 재현은 `route.fetch()` 로 실 upstream 응답을 받아
+무변조 hold/전달(합성 0). 테이블 전체 DELETE 0건 — 정리는 정확한 `(partner_id, product_id)`
+교집합만.
+
+R5 시점 정직 미커버: **정상 coedit 연결 상태에선 거래처 autocomplete 가 잠겨 legacy 견적 재선택
+불가** → R5-H6 검증은 coedit 실패 → 평문 폼 fallback 으로 진입(가격·PUT·DB 는 전부 실서버). 정상
+협업 모드의 거래처 재선택 UX 는 잔존 과제로 기록했고 **R6-H6 이 이를 데드락으로 확정**했다.
+legacy `QUOTE_SENT` 실표본 0(현 1,926행 전부 `QUOTE_DRAFT`) · BUNDLE 구성품 가격을 사용자가 직접
+수정하는 경로와 전표 autocomplete 선택의 별도 중간 창은 범위 밖.
+
+## R6 — FABLE5 재수렴 (캐논 6단계) · `e178c12cb` · [issuecomment-4984027656](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4984027656) — 🔴 **0수렴 실패**
+
+**22건 (HIGH 6 · MEDIUM 10 · LOW 6, 중복 병합 후 — 원시 29건).** 5차원 전부 실행, R5 fix 자체를
+최우선 적대 대상으로 재검했다. **머지 불가 판정.**
+
+### 🔴 구조적 패턴 — 6라운드 연속 "fix 가 새 결함을 낳음"
+
+```
+R1 M-2 fix  → R3 CH-1(9.1% 과소) 유발
+R3 CH-1 fix → 계열 sweep 누락 → R4 F2 로 귀환
+R4 F2/F3/D1/D2/D8/O3/O4 fix → R5 가 전부 새 결함/오판으로 적발
+R5 H1/H2/H4/M1/M3/M7 fix    → R6 가 또 전부 새 결함으로 적발
+```
+
+속도보다 충실도 — 각 라운드 fix 가 자기 계열의 전수 sweep 과 "fix 를 되돌리면 fail 하는" 회귀
+가드를 갖추지 못한 것이 근본 원인이다.
+
+### HIGH 6건
+
+- **R6-H1 (라이브 CONFIRMED ×2 변형)** — `BundleLineageResolver` 의 greedy fallback 이 계보를
+  **오귀속**: exact 매칭 실패 시 "첫 미소비 동일 productId" 를 잡아, 신규 단품 라인이 세트 head
+  계보를 탈취하고 진짜 구성품이 평면화된다 → R5-H1 이 막았다던 배분가 오염이 재생산(BE 차원 전표
+  `2026/07/16-23` + QA 차원 견적 변형 — **두 차원 독립 라이브 실측**). 평면화된 구성품은 이후
+  저장마다 재기억되는 **자기강화 루프**. spec invariant("구성품 라인은 기억하지 않는다") 정면 위배.
+- **R6-H2** — **전표 복사**가 동일 오염을 1클릭마다 재생산: `duplicateSlip` 이 전개된 구성품을
+  평면 POST 로 재생성(계보 필드 없음) → 서버 일반 단품 분기가 배분가를 수집. 본 문서 BE 구현 절이
+  "전표 복사" 를 배선 경로로 명시했음에도 R5 sweep 이 놓친 **계열 sweep 누락**.
+- **R6-H3** — 버전이력/collab **복원 4경로**의 스냅샷 `Line` record 에 `setHead`/`parentSetModel`
+  필드가 아예 없어 복원 시 계보 전량 소실 → 이후 무수정 저장 1회면 오염 재유입. 계보-in-스냅샷
+  부재 자체는 선재(#318 계열)이나 memory 오염 결과는 #809 신규.
+- **R6-H4** — R5-H4 의 "전수 감사" 가 실제로는 LineRow 1곳만 교정 — 동일 위반쌍이 **#809 가
+  추가한 다른 3표면에 잔존**(`#BFDBFE on #EFF6FF` ≈ 1.31:1 — R5 가 위반으로 지목해 교정한 정확히
+  그 쌍 · 강조행 구분선 ≈ 1.01:1 은 R5 교정값보다 낮음). Design·FE 두 차원 독립 확인. (정직:
+  중복 단서가 있어 실사용 영향은 제한적이나, R5 스스로 위반으로 규정한 기준이 4표면에 동일 적용돼야
+  한다는 일관성 문제.)
+- **R6-H5** — R5-M7 의 prod 로그 전달 전제가 **AWS 공식 문서와 상충**: collect_list 와일드카드
+  단일 entry 는 "최신 파일만 push" + `{container_id}` 는 지원 변수가 아니라 리터럴 렌더 → 17개
+  컨테이너 혼류에서 slip-service 라인이 유실될 수 있고, `treat_missing_data=notBreaching` 이라
+  alarm 은 영원히 OK = **M-19 가 막으려던 "무한정 미감지" 그대로 재현**. M-19 완료 조건에
+  end-to-end 도달 검사 부재.
+- **R6-H6 (라이브 CONFIRMED · 🔵 개발책임자 확인 대기)** — **정상 coedit 모드에서 legacy 견적
+  1,926건 전부 저장 불가 데드락**: 오류 문구는 "거래처를 다시 선택해 주세요" 인데
+  `PartnerAutocomplete disabled={coeditActive}` 라 지시를 이행할 수 없다. main 도 동일(회귀 아님 —
+  소스 대조)이나, #809 가 non-legacy 는 snapshot hydrate 로 고쳐놓고 legacy 만 남겼고 R5-H6 의
+  보호는 coedit 실패 fallback 에서만 도달 가능하다.
+
+### MEDIUM 10 · LOW 요지
+
+| ID | 요지 | disposition |
+|---|---|---|
+| R6-M1 | **R5-M1 Hikari 4s 전역화의 blast radius 불비례** — `connection-timeout` 명시는 fleet 26모듈 중 slip-service 유일 · slip IT(pool max=3·최중량 582 IT)는 4000 상속인데 auth/accounting IT 는 20000 상향 · 진짜 용량 구멍(**무 timeout in-tx RestClient**)은 미해결. R5 진단은 옳았으나 처방이 범위 초과 | 🔵 개발책임자 확인 |
+| R6-M2 | `DB_CONNECTION_TIMEOUT_MS` 노브가 실행 경로 어디에도 미배선 — 같은 커밋의 R5-M6("compose 명시 매핑 필수") 자기 표준 위반 + 테스트가 resolved 4000 을 단언해 노브/테스트 상호배타 | FIX |
+| R6-M3 | R5-M3 의 mock fix 가 RFC-4122 를 강제하는데 mock 거래처 id 전원이 version-less → mock 모드에서 전 거래처 400 → 조용히 CATALOG 폴백 = **mock 기능 도달성 회귀** | FIX |
+| R6-M4 | **R5-H2 의 coedit 회귀 테스트가 가짜** — 주석과 달리 fixture 가 여전히 문자열이라 fix 이전 코드로도 PASS(PM 실물 대조 확인) | FIX |
+| R6-M5 | `SlipFormPage` 만 재조회 시 `priceLookupAnnouncement` 미클리어(견적엔 있음) → stale 문구 SR 재낭독 — **또 slip/estimate 비대칭**(R4-F1 이 "구조적 차단" 을 주장한 계열) | FIX |
+| R6-M6 | `LineRow.contrast.test.tsx` 가드가 hex 하드코딩이라 토큰 실값 변경 시 영구 green + 단언 쌍이 실제 렌더 쌍과 상이 | FIX |
+| **R6-M7** | **본 dev-report 에 R5 라운드 전체 부재**(`810a5efd1..HEAD` dev-reports 커밋 0건) + nightly 문단이 현 diff 와 모순 + spec 상태줄 "R4 대기" 정지 + 화면 계약에 R5 신설 UI 3요소 미기재. **4개 차원 독립 지적 — PM 오케스트레이션 누락(R4 는 문서 배치를 돌렸으나 R5 는 누락)** | FIX — **본 개정이 그 fix** |
+| R6-M8 | **BUNDLE_SET parent 기억이 생성 시점 1회뿐** — 수정 경로에서 세트 가격을 바꿔도 기억 미갱신(전개 후 문서에 BUNDLE productId 라인이 없어 갱신 경로 부재) → 재선택 시 구값 자동채움 + '거래처 최근단가' 마커. 라이브 실증(1,100,000 → head 1,300,000 PUT → 기억 1,100,000 유지) · **spec 미기재였음**(본 개정으로 각주 명시) | 🔵 개발책임자 확인 |
+| R6-M9 | 라이브 QA 스펙의 전역 카운트 단언이 **공유 스택 동시 사용에 false-RED** — 12a FAIL 원인은 타 차원 에이전트의 동시 PUT → 격리 재실행 PASS 로 교차 오염 확정. **PM 오케스트레이션 결함(라이브 프로브 병렬 실행)** | FIX + PM 규율 개정 |
+| R6-M10 | R5-M9 disposition 중 dispatch 1건만 이행 — scheduled nightly 는 main 의 구 필터로 **6연속 실패(07-09~07-14) 중**인데 기록 0 · "머지 전까지 nightly 붉음" 한계 미고지 | FIX |
+| LOW | `failedProductIds` 두 호출자 미소비·주석 불일치 / 견적 신규 `role="row"` orphan(axe serious) / R5-L1 잔여 편차 2건(바이트코드 실측·현재 inert) / INBOUND direct PUT resolver 회귀 IT 부재 / 변경행 드래그 시 elevation 소실 / 시나리오 11 의 `1926` 고정 단언·헤더 4필드 미원복 / PR body `연관 Issue: #821` 미기재 | FIX |
+
+### R6 가 반증한 것 (R5 fix 무결 확인 — 요약)
+
+R5-H4 교정의 전역 오염 우려 → 무결(`.lineRow.priceRefreshed` 모듈 스코프 한정·전역 토큰 원값
+불변·타 화면 영향 0) · R5-H3 무한 재resolve/레이스/영구 busy → 전부 불성립 · R5-H2 provenance
+흐름 전 경로 clean · R5-M2 분리 반환 정확 · R5-H5 견고(CI 실 실행 로그 대조 — JUnit 632 = 599 +
+33 정확 일치) · slip CI 3그룹 합 1273 = 로컬 1273·skip 0("잡 green ≠ 실행" 우려 수치 기각) ·
+R5-L4(`slip.vendor` 실재 0 → 제거로 커버리지 감소 0) · R5-M6(라이브 컨테이너 env 9종 주입 실측) ·
+R5-M7 리소스 자체(filter 문자열이 실코드 log.warn 리터럴과 정확 일치·terraform validate 통과) ·
+R5-M8(label 실재·무라벨 선생성 건전) · #821(run 29431175485 success 실조회) · **R5 신설 3시나리오는
+fix 를 되돌리면 fail(회귀-살상력 확인 — 단 12 는 R6-H1 범위 밖)** · legacy 무수정 저장 라이브
+무결(오판값 1745455 미발생) · VAT basis·V58·BaseEntity/인가·게이트웨이·Micrometer 라이브·다크모드
+도달 불가 재확인·`판매가` 잔존 0·UUID 화면 노출 0 전부 clean.
+
+### R6 라이브 증거·잔여물
+
+실캡처 **43장** `docs/qa/809-partner-product-price-memory/r6/`(스위트 34 + 적대 프로브 9) — 기존
+캡처 디렉토리 전부 불가침 유지. 스위트 13/14 PASS + 12a 는 교차 오염 false-RED → 격리 재실행
+PASS(실질 14/14, FAIL 원인 = R6-M9). BE 차원 실측이 남긴 라이브 잔여물은 리뷰 게시에 PM 조치
+대상으로 명시됐다 — 오염 기억행은 QA 차원 12a 격리 재실행의 스펙 내장 reset 이 삭제했고, 전표
+`2026/07/16-23`(계보 오귀속 상태)은 잔존한다.
+
+### R6 fix — 🚧 **진행 중** (본 문서 개정 시점 미완)
+
+- 0수렴 실패에 따라 fix = FABLE5(캐논: fix = 그 라운드 진행 모델) 배치들(BE·DevOps·QA·문서)이
+  **동시 진행 중**이다. 본 dev-report/spec 개정이 그중 **문서 배치(R6-M7 대응)** 다.
+- **R6-H6·R6-M1·R6-M8 은 disposition 자체가 "개발책임자 확인"으로 결정 대기다.**
+- 나머지 배치의 fix 결과·검증 실측·라이브 QA 는 이 시점에 확정되지 않았다 — 여기서 결과를 단정하지
+  않는다. **PM 이 fix 완료 후 이 절을 갱신한다.** 완료 후 R7 = CODEX SOL 5.6 재수렴이 예정돼 있다.
+
 ## 정직 한계 (R4 확정 — 알려진 경계와 수용 근거)
 
 1. **의도된 trade-off(기존, R3 채택)**: 가격기억 flush 는 **bounded async** — 저장 직후 짧은
@@ -361,6 +599,8 @@ desktop/design-system 카운트는 vitest 결과가 파일로 남지 않아 PM �
    `aria-describedby` 로 청취 가능하다.
 6. **R4-D8**: 거래처 변경 강조행이 기존 선택행과 시각적으로 유사하다(둘 다 `--surface-selected`).
    수용 근거: 색상 단독 의존이 아님 — 배너 + 4px 좌측 보더 + 마커 칩 텍스트가 병행 전달한다.
+   (⚠️ R5-M5 가 이 수용 근거를 뒤집었다 — 4px 보더도 색이고 칩 텍스트는 '변경'을 말하지 않는다.
+   R5 fix 로 변경행에 `단가 변경` 아이콘+텍스트 인디케이터와 행 `aria-describedby` 연결을 추가했다.)
 7. 🔴 **D-R4-4 는 현재 라이브 GUI 로 도달 불가**: `PartnerAutocomplete`(AsyncAutocomplete)에
    **거래처 해제 어포던스가 없다** — clear 버튼 부재, 빈 입력 blur 는 onChange 미호출("더미
    onChange 금지" 게이트), free-text 불일치는 기존 선택 유지. 따라서 전표
@@ -380,19 +620,65 @@ desktop/design-system 카운트는 vitest 결과가 파일로 남지 않아 PM �
     **검증한 대상(fix 이전 `e7a2ff0d6`)** 의 증거라 보존한다 — 캡처에 마커가 `정가` 로 보이는
     것이 정상이다(D-R4-1 fix 이전 캡처).
 
-## 범위 외로 남긴 것 (후속 후보 — 본 PR 미접촉, 정직 명시)
+## 정직 한계 — R5/R6 신규 확정 (2026-07-16)
+
+1. **로컬 통과 ≠ CI green** — R4 fix 완료 게시의 "desktop vitest 740/740 green" 보고는
+   틀렸다(R5-B1: hydration 미대기 flaky 가 느린 CI 에서만 발현). 검증 권위는 exact SHA 의 CI 다.
+   PM 정정 기록.
+2. **R4-F2 도달성 과장 정정** — "estimate_lines 1927/1927 = 100% legacy 라 전부 오염 대상"은
+   과장이었다. **실 legacy 1,926건 전부 `partner_id NULL`** → 가격기억 upsert 가 null-skip →
+   **현 실데이터로는 legacy 오염 경로에 도달 불가**. fix 는 유효하다(거래처 재선택 시 경로가 열림).
+3. **"#809 회귀" 가설 반증** — legacy 견적 저장 차단은 **main 도 동일**하다(main hydrate 가
+   `setPartner` 미호출 → `!partnerIdSnapshot && !partner` 로 동일 차단 — 소스 대조). #809 은 오류
+   메시지만 더 정확하게 바꿨을 뿐 차단을 도입하지 않았다.
+4. **정상 coedit 모드에서 legacy 견적 1,926건 저장 데드락**(R6-H6·라이브 CONFIRMED) —
+   `PartnerAutocomplete disabled={coeditActive}` 라 오류 문구의 지시("거래처를 다시 선택해
+   주세요")를 이행할 수 없다. main 동등(회귀 아님)이나 #809 이 non-legacy 는 고쳐놓고 legacy 만
+   남겼고, R5-H6 의 provenance 보호는 coedit 실패 fallback 에서만 도달 가능하다. **개발책임자
+   확인 대기.**
+5. **BUNDLE_SET parent 기억은 생성 시점 1회뿐**(R6-M8·라이브 CONFIRMED) — 수정 경로에서 세트
+   가격을 바꿔도 기억이 갱신되지 않아 재선택 시 구값이 자동채움된다. spec 미기재였고 본 개정으로
+   spec 에 각주를 명시했다. 의도/결함 판정은 **개발책임자 확인 대기.**
+6. **Hikari 4s 전역화의 blast radius**(R6-M1) — `connection-timeout` 명시는 fleet 26모듈 중
+   slip-service 유일이며, 진짜 용량 구멍(무 timeout in-tx RestClient)은 미해결이다. **개발책임자
+   확인 대기.**
+7. **라이브 QA 스펙이 공유 스택 동시 사용에 false-RED**(R6-M9) — 시나리오 12a 가 타 차원
+   에이전트의 동시 PUT 으로 FAIL → 격리 재실행 PASS 로 교차 오염 확정. **PM 오케스트레이션
+   결함**(라이브 프로브를 쓰는 차원의 병렬 실행) — 스펙 격리 강화 + PM 규율 개정 대상.
+8. **기존 승계** — 위 R4 절의 ① bounded async trade-off · ② D-R4-2 캡처~커밋 창 · ③ D-R4-3
+   서브-원 드리프트 · ④ 시계 역행 skip 침묵 · ⑤ 저장일 hover title 전용 · ⑦ D-R4-4 GUI 도달
+   불가 · ⑨ 실 브라우저/스크린리더 수동 QA 미수행은 그대로 유효하다(⑥ R4-D8 은 R5-M5 로 수용이
+   철회되고 fix 됐다 — 해당 항목의 주석 참조). 추가로 **legacy `QUOTE_SENT` 실표본 0**(현 1,926행
+   전부 `QUOTE_DRAFT` — R5 정직 보고·R6 재확인)이라 SENT 상태 legacy 경로는 실데이터 검증이
+   불가능했다.
+
+## 범위 외로 남긴 것 (후속 후보 — 정직 명시)
 
 - **R4-Q2**: dev 시드 `TEST-BUNDLE-SET-01` 내부 불정합 — `bundle_component.component_product_code`
   에 product_code 대신 **model명**이 시드돼 구성품 resolve 실패 → `POST /slips` 404 → **이 세트는
   어떤 화면에서도 저장 불가**. dev seeder(product-service) 소관이라 #809 범위 밖. 본 라운드는
   `QA797-SET-01` 로 우회해 세트 경로를 실증했다.
-- **`nightly-slip-it.yml` slip-it-public 그룹의 유령 패키지**: `--tests` 필터가 참조하는
-  `slip.web.public_.*`/`slip.web.openapi.*` 는 현 트리에 부재한다(패키지 선언 grep 0건 실측).
-  문서 배치 추가 실측: **최근 nightly run(2026-07-14)의 slip-it-public job 이 정확히 이 필터로
-  `No tests found for given includes` 실패 중** — 무해한 dead-weight 가 아니라 nightly 를 붉게
-  만들고 있는 pre-existing 결함이다. 본 PR 미접촉 파일이라 범위 외로 남기며 후속 정리가 필요하다.
+- **`nightly-slip-it.yml` slip-it-public 유령 패키지 — ⚠️ 정정: 더 이상 범위 외 아님(#821 을 본
+  PR 에서 fix)**: `--tests` 필터가 참조하던 `slip.web.public_.*`/`slip.web.openapi.*` 는 현 트리에
+  부재했고, 최근 nightly run(2026-07-14)의 slip-it-public job 이 정확히 이 필터로 `No tests found
+  for given includes` 실패 중이었다. 당초 이 항목을 "본 PR 미접촉 파일이라 범위 외" 로 기록했으나
+  이 문장은 **개발책임자 "같이 fix" 결정(#821) 이전에 쓰인 것**으로 현 diff 와 모순됐다(R5-M9·
+  R6-M7 지적). 실제로는 **범위 점증분으로 R4 fix 배치 `d08b1c281` 이 필터를 현 트리 기준으로
+  정렬**했고(연관 Issue #821), R5 fix 배치 `ffc8e49ab` 가 Issue 생성 label fallback(R5-M8)과 실행
+  검증(R5-M9 — PR ref `workflow_dispatch` run 29431175485 success)을 보완했다. 단 **scheduled
+  nightly 는 main 의 구 필터로 계속 실패 중이며 본 PR 머지 전까지 붉은 상태가 유지**된다(R6-M10 —
+  07-09~07-14 6연속 실패 실측).
 - **`estimate-form-coedit-pending`**(`EstimateFormPage.tsx:1490`): R4-D9 와 동일한 조건부 마운트
   `role="status"` 패턴이나 **#809 무관 선재**(협업 에픽 산출 — `git show main` 으로 실증) →
   후속 정리 후보.
 - **`role="alert"` 4곳**(SlipFormPage 2·EstimateFormPage 2)도 조건부 마운트이나 **#809 무관 선재**
   (main 동수 실증) + ARIA 명세상 alert 는 동적 삽입이 표준 발화 경로라 위험도 낮음.
+- **Pretendard 폰트 파일 부재**(R5-L3 · R5 Design 차원 발견): 데스크톱 렌더러에 `@font-face` 선언은
+  있으나 빌드 산출물(`public`/`out/renderer`/`dist/web`)에 woff/woff2 가 0건 — Pretendard 미설치
+  환경에선 Segoe UI/맑은 고딕 fallback 으로 렌더된다. **#809 무관 선재** → 범위 외 이슈 등록 후보.
+- **slip 합계셀 6자리 이상 금액의 2줄 랩 클리핑**(R6 Design 차원 관찰 — 본 문서 배치는 별도 재검증
+  하지 않음): 합계(VAT포함) 셀에서 긴 금액이 줄바꿈되며 잘려 보인다는 관찰. #809 무관 선재 레이아웃
+  이슈로 분류 → 후속 확인 후보.
+- **단가 입력 표기 불일치**(R6 Design 차원 관찰): 전표 LineRow 는 단가를 콤마 포맷으로 표시
+  (`LineRow.tsx:218` `toLocaleString`)하고 견적 폼은 raw 문자열 입력을 그대로 표시한다 — #809
+  이전부터의 화면 간 불일치로 후속 통일 후보.
