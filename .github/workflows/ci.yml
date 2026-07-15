@@ -52,20 +52,20 @@ jobs:
         group:
           - name: shared+auth+gateway
             timeout: 30
-            test-tasks: ':shared:common:test :shared:security:test :shared:collab-core:test :shared:realtime-abstraction:test :shared:user-client-abstraction:test :shared:discovery-abstraction:test :services:eureka-server:test :services:api-gateway:test :services:auth-service:test'
+            test-tasks: ':shared:common:test :shared:security:test :shared:collab-core:test :shared:realtime-abstraction:test :shared:user-client-abstraction:test :shared:discovery-abstraction:test :shared:approval-core:test :shared:ecount-io:test :shared:notification-publisher:test :services:eureka-server:test :services:api-gateway:test :services:auth-service:test'
           - name: user+product+inventory+logging
             timeout: 30
             test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
           - name: slip-units
             # slip-service 단위 + 빠른 client mock 만 (큰 IT 제외)
             timeout: 30
-            # E2 기둥2: Gradle --tests 패키지 필터는 하위패키지를 자동 커버하지 않으므로(아래 slip-it-core 노트와 동일 원칙) service.dispatch.* 를 명시 등재해 false-green 방지.
-            # #809 price memory 신규 하위패키지 명시 등재 — Gradle --tests 상위패키지 필터 false-green 방지.
+            # Gradle --tests 의 * 는 점(.) 경계를 구분하지 않는 text wildcard 이므로 상위 패키지 필터도 하위 패키지를 매치한다.
+            # 하위 패키지 토큰은 CI 커버리지 inventory 를 명시적으로 드러내기 위해 유지하며, 상위 패키지 토큰과 중복 매치될 수 있다.
             #   (R1: price.repository.* 는 테스트 클래스 부재 패키지로 판명되어 제거 — 실재는 price.domain/price.service 뿐)
             # #809 R4-O4: slip.config.* 등재 — 어느 slip job 필터에도 없어 HeaderAuthenticationFilterTest 가
             #   영구 미실행이던 것 해소 (레포 concrete 테스트 182 vs CI 실행 181 전수 대조로 특정, 차집합이 이 1건뿐).
-            # #809 R4 통합: slip.price.config.* 등재 — R4-B1 AsyncConfig 테스트를 자연 패키지(price.config)로 이동, --tests 는 하위패키지 미포함이라 명시 필요.
-            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.attachment.*" --tests "com.samhanair.logis.slip.audit.service.*" --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.comment.service.*" --tests "com.samhanair.logis.slip.config.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.editrequest.service.*" --tests "com.samhanair.logis.slip.estimate.domain.*" --tests "com.samhanair.logis.slip.estimate.revision.*" --tests "com.samhanair.logis.slip.estimate.service.*" --tests "com.samhanair.logis.slip.estimate.web.*" --tests "com.samhanair.logis.slip.price.config.*" --tests "com.samhanair.logis.slip.price.domain.*" --tests "com.samhanair.logis.slip.price.service.*" --tests "com.samhanair.logis.slip.realtime.*" --tests "com.samhanair.logis.slip.revision.*" --tests "com.samhanair.logis.slip.revision.service.*" --tests "com.samhanair.logis.slip.seed.*" --tests "com.samhanair.logis.slip.service.*" --tests "com.samhanair.logis.slip.service.dispatch.*" --tests "com.samhanair.logis.slip.vendor.*" --tests "com.samhanair.logis.slip.web.*" --tests "com.samhanair.logis.slip.collab.*" --tests "com.samhanair.logis.slip.mobile.dto.*" --tests "com.samhanair.logis.slip.mobile.service.*"'
+            # #809 R4 통합: slip.price.config.* 를 coverage inventory 에 명시해 AsyncConfig 테스트의 소속을 고정한다.
+            test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.attachment.*" --tests "com.samhanair.logis.slip.audit.service.*" --tests "com.samhanair.logis.slip.client.*" --tests "com.samhanair.logis.slip.comment.service.*" --tests "com.samhanair.logis.slip.config.*" --tests "com.samhanair.logis.slip.domain.*" --tests "com.samhanair.logis.slip.delivery.domain.*" --tests "com.samhanair.logis.slip.delivery.service.*" --tests "com.samhanair.logis.slip.editrequest.service.*" --tests "com.samhanair.logis.slip.estimate.domain.*" --tests "com.samhanair.logis.slip.estimate.revision.*" --tests "com.samhanair.logis.slip.estimate.service.*" --tests "com.samhanair.logis.slip.estimate.web.*" --tests "com.samhanair.logis.slip.price.config.*" --tests "com.samhanair.logis.slip.price.domain.*" --tests "com.samhanair.logis.slip.price.service.*" --tests "com.samhanair.logis.slip.realtime.*" --tests "com.samhanair.logis.slip.revision.*" --tests "com.samhanair.logis.slip.revision.service.*" --tests "com.samhanair.logis.slip.seed.*" --tests "com.samhanair.logis.slip.service.*" --tests "com.samhanair.logis.slip.service.dispatch.*" --tests "com.samhanair.logis.slip.web.*" --tests "com.samhanair.logis.slip.collab.*" --tests "com.samhanair.logis.slip.mobile.dto.*" --tests "com.samhanair.logis.slip.mobile.service.*"'
           # W10-5 회고 — slip-it-public + slip-it-core PR matrix 재활성.
           # 사유: PR #102 V11 CONCURRENTLY 제거 fix 로 idle in transaction deadlock 근본 차단 →
           # 30분 안에 통과 예상. 보강 회귀 검증은 nightly-slip-it.yml (60분 timeout, 매일 02:00 KST)
@@ -76,7 +76,7 @@ jobs:
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
           - name: slip-it-core
             timeout: 30
-            # slip.it.* 가 slip.it.collab.*/slip.it.cutoff.*/slip.it.schedule.* 를 자동 커버하지 않으므로(Gradle --tests 서브패키지 미포함) 명시 추가로 false-green 영구 제거 (§7 Round C P2 / 컷오프 슬라이스 / V52 배송일정)
+            # Gradle * 는 점(.)도 매치하므로 slip.it.* 와 하위 패키지 토큰은 중복될 수 있다. 하위 토큰은 coverage inventory 가시성을 위해 유지한다.
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.comment.it.*" --tests "com.samhanair.logis.slip.estimate.it.*" --tests "com.samhanair.logis.slip.estimate.it.collab.*" --tests "com.samhanair.logis.slip.estimate.snapshot.it.*" --tests "com.samhanair.logis.slip.it.*" --tests "com.samhanair.logis.slip.it.collab.*" --tests "com.samhanair.logis.slip.it.cutoff.*" --tests "com.samhanair.logis.slip.it.dispatch.*" --tests "com.samhanair.logis.slip.it.schedule.*" --tests "com.samhanair.logis.slip.repository.dispatch.*" --tests "com.samhanair.logis.slip.dispatch.*"'
           - name: accounting+partner
             timeout: 30

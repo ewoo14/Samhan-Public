@@ -19,6 +19,9 @@ import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.client.WarehouseInternalClient;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.estimate.service.EstimateService;
+import com.samhanair.logis.slip.estimate.web.dto.CreateEstimateRequest;
+import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
 import com.samhanair.logis.slip.mobile.dto.MobileQuotationRequest;
 import com.samhanair.logis.slip.mobile.service.MobileQuotationService;
 import com.samhanair.logis.slip.price.config.PartnerProductPriceMemoryProperties;
@@ -31,6 +34,7 @@ import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipService;
+import com.samhanair.logis.slip.service.SalesSlipUpdateService;
 import com.samhanair.logis.slip.service.SlipUpdateService;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
 import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
@@ -48,6 +52,7 @@ import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataAccessException;
@@ -55,6 +60,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
  * #809 거래처+품목 최근 수동단가 기억 실 DB 통합 테스트.
@@ -75,6 +81,12 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     @Autowired
     private SlipUpdateService slipUpdateService;
+
+    @Autowired
+    private SalesSlipUpdateService salesSlipUpdateService;
+
+    @Autowired
+    private EstimateService estimateService;
 
     @Autowired
     private MobileQuotationService mobileQuotationService;
@@ -102,6 +114,10 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     @Autowired
     private PartnerProductPriceMemoryProperties priceMemoryProperties;
+
+    @Autowired
+    @Qualifier("priceMemoryExecutor")
+    private Executor priceMemoryExecutor;
 
     @MockBean
     private ProductClient productClient;
@@ -331,6 +347,119 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     }
 
     @Test
+    void bundleSlipUnchangedSalesPut_keepsLineageAndDoesNotRememberComponents() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-bundle-sales", "세트 매출 PUT 계보 테스트");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            LocalDateTime updateToken = slipRepository.findById(created.id())
+                    .map(slip -> slip.getModifiedAt() == null ? slip.getCreatedAt() : slip.getModifiedAt())
+                    .orElseThrow();
+
+            salesSlipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            updateToken,
+                            created.partnerName(),
+                            created.partnerCode(),
+                            created.memo(),
+                            created.businessNumber(),
+                            created.deliveryAddress(),
+                            created.supervisionAddress(),
+                            created.projectName(),
+                            created.recipientPhone(),
+                            created.paymentDueDate(),
+                            created.lines().stream()
+                                    .map(line -> new SlipUpdateRequest.LineRequest(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(), line.unitPrice(), line.note()))
+                                    .toList()),
+                    UUID.randomUUID(),
+                    "세트 매출 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    @Test
+    void bundleEstimateUnchangedUpdate_keepsLineageAndDoesNotRememberComponents() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = estimateService.create(
+                new CreateEstimateRequest(
+                        LocalDate.of(2026, 7, 16), partnerId, "테스트 거래처", null, null,
+                        LocalDate.of(2026, 8, 15), "세트 견적 PUT 계보 테스트",
+                        List.of(new CreateEstimateRequest.EstimateLineRequest(
+                                bundleProductId, "테스트 세트", "SET-809", null,
+                                1, new BigDecimal("550000.00"), "세트 라인", null, true))),
+                "actor-bundle-estimate", "세트 견적 작성자");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+
+            estimateService.update(
+                    created.id(),
+                    new UpdateEstimateRequest(
+                            created.partnerId(), created.partnerName(), created.partnerBusinessNo(),
+                            created.partnerAddress(), created.validUntil(), created.memo(),
+                            created.lines().stream()
+                                    .map(line -> new UpdateEstimateRequest.EstimateLineUpdate(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(),
+                                            line.unitPriceWithVat() == null
+                                                    ? line.unitPrice() : line.unitPriceWithVat(),
+                                            line.note(), null, line.unitPriceWithVat() != null))
+                                    .toList()),
+                    "actor-bundle-estimate", "세트 견적 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            assertBundleEstimateLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupEstimate(created.id());
+        }
+    }
+
+    @Test
     void afterCommitExecutionInversion_keepsLaterLogicalSave() {
         UUID partnerId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
@@ -492,14 +621,20 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     }
 
     private CreateSlipRequest inboundSlipRequest(UUID partnerId, UUID productId, BigDecimal unitPrice) {
+        return slipRequest(SlipType.INBOUND, partnerId, productId, unitPrice);
+    }
+
+    private CreateSlipRequest slipRequest(
+            SlipType slipType, UUID partnerId, UUID productId, BigDecimal unitPrice) {
+        UUID warehouseId = UUID.randomUUID();
         return new CreateSlipRequest(
-                SlipType.INBOUND,
+                slipType,
                 LocalDate.of(2026, 7, 15),
-                null,
-                UUID.randomUUID(),
+                slipType == SlipType.OUTBOUND ? warehouseId : null,
+                slipType == SlipType.INBOUND ? warehouseId : null,
                 partnerId,
                 "테스트 거래처",
-                DeliveryTag.RETURN_TRIP,
+                slipType == SlipType.OUTBOUND ? DeliveryTag.DAY : DeliveryTag.RETURN_TRIP,
                 "가격기억 fail-soft 검증",
                 null,
                 null,
@@ -587,6 +722,62 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         throw new AssertionError(description + " 5초 내 미완료");
     }
 
+    private void awaitPriceMemoryExecutorIdle() {
+        ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) priceMemoryExecutor;
+        awaitUntil(() -> executor.getActiveCount() == 0
+                        && executor.getThreadPoolExecutor().getQueue().isEmpty(),
+                "가격기억 executor drain");
+    }
+
+    private void assertBundleSlipLineage(
+            UUID slipId, UUID firstComponentId, UUID secondComponentId) {
+        List<BundleLineageRow> rows = jdbcTemplate.query("""
+                SELECT product_id, set_head, parent_set_model
+                  FROM slip_lines
+                 WHERE slip_id = ? AND is_deleted = FALSE
+                 ORDER BY created_at, id
+                """, (rs, rowNum) -> new BundleLineageRow(
+                rs.getObject("product_id", UUID.class),
+                rs.getBoolean("set_head"),
+                rs.getString("parent_set_model")), slipId);
+
+        assertThat(rows).containsExactlyInAnyOrder(
+                new BundleLineageRow(firstComponentId, true, "SET-809"),
+                new BundleLineageRow(secondComponentId, false, "SET-809"));
+    }
+
+    private void assertBundleEstimateLineage(
+            UUID estimateId, UUID firstComponentId, UUID secondComponentId) {
+        List<BundleLineageRow> rows = jdbcTemplate.query("""
+                SELECT product_id, set_head, parent_set_model
+                  FROM estimate_lines
+                 WHERE estimate_id = ? AND is_deleted = FALSE
+                 ORDER BY line_no
+                """, (rs, rowNum) -> new BundleLineageRow(
+                rs.getObject("product_id", UUID.class),
+                rs.getBoolean("set_head"),
+                rs.getString("parent_set_model")), estimateId);
+
+        assertThat(rows).containsExactly(
+                new BundleLineageRow(firstComponentId, true, "SET-809"),
+                new BundleLineageRow(secondComponentId, false, "SET-809"));
+    }
+
+    private void assertOnlyParentBundleMemory(
+            UUID partnerId, UUID bundleProductId, UUID firstComponentId, UUID secondComponentId) {
+        List<UUID> rememberedProductIds = jdbcTemplate.queryForList("""
+                SELECT product_id
+                  FROM partner_product_price_memory
+                 WHERE partner_id = ? AND is_deleted = FALSE
+                 ORDER BY product_id
+                """, UUID.class, partnerId);
+        assertThat(rememberedProductIds).containsExactly(bundleProductId);
+        assertThat(priceMemoryService.find(partnerId, bundleProductId).orElseThrow().source())
+                .isEqualTo(PartnerProductPriceMemory.SOURCE_BUNDLE_SET);
+        assertThat(priceMemoryService.find(partnerId, firstComponentId)).isEmpty();
+        assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+    }
+
     private void cleanupSlip(UUID slipId) {
         jdbcTemplate.update("DELETE FROM slip_audit_logs WHERE slip_id = ?", slipId);
         jdbcTemplate.update("DELETE FROM slip_revisions WHERE slip_id = ?", slipId);
@@ -606,5 +797,8 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     private record RevivedRow(BigDecimal unitPrice, boolean deleted, boolean deletedAtNull,
                               boolean deletedByNull) {
+    }
+
+    private record BundleLineageRow(UUID productId, boolean setHead, String parentSetModel) {
     }
 }

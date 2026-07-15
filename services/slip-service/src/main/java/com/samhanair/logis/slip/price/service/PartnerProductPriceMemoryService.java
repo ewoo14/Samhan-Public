@@ -82,6 +82,8 @@ public class PartnerProductPriceMemoryService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        // Spring transaction timeout 은 Hikari 커넥션 획득 뒤에 시작한다. 획득 전 대기는
+        // spring.datasource.hikari.connection-timeout(기본 4초)이 별도로 제한한다.
         this.transactionTemplate.setTimeout(properties.getTransactionTimeoutSeconds());
         this.transactionTemplate.setName("partner-product-price-memory");
         this.successCounter = Counter.builder(UPSERT_SUCCESS_COUNTER)

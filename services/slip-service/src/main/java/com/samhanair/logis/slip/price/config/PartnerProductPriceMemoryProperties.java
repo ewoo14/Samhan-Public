@@ -16,7 +16,7 @@ public class PartnerProductPriceMemoryProperties {
     /** 최대 100행 단일 upsert 정상 실행 여유를 포함하되 장애는 3초 안에 격리한다. */
     private int statementTimeoutMs = 3_000;
 
-    /** statement timeout 정리 여유 1초를 포함한 REQUIRES_NEW 전체 상한. */
+    /** 커넥션 획득 후 statement timeout 정리 여유 1초를 포함한 트랜잭션 상한. */
     private int transactionTimeoutSeconds = 4;
 
     /** outer connection 반환을 막지 않는 전용 worker 기본 개수. */

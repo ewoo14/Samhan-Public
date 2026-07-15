@@ -21,6 +21,9 @@ spring:
       # 보상 실패 다발(inventory 일시 다운 등) 시 스레드당 2 커넥션 소모 → 기본값(10) 고갈 방지로 상향. (D-SER-22 후속, DevOps P1)
       maximum-pool-size: ${DB_POOL_MAX:20}
       minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # 가격기억 worker 의 TransactionTemplate timeout 은 커넥션 획득 뒤에만 적용된다.
+      # pool 고갈 시 Hikari 기본 30초 대기 대신 4초 안에 fail-soft 경계로 반환한다.
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:4000}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -90,7 +93,8 @@ app:
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
   slip:
     price-memory:
-      # fail-soft 보조 기능이 원 전표/견적 저장과 Hikari pool 을 장기 점유하지 않도록 전용 상한을 둔다.
+      # Hikari 커넥션 획득은 spring.datasource.hikari.connection-timeout(기본 4초), 아래 timeout 은
+      # 획득 후 REQUIRES_NEW 트랜잭션에 각각 적용된다. 둘을 합친 단일 wall-clock 상한은 아니다.
       lock-timeout-ms: ${SAMHAN_PRICE_MEMORY_LOCK_TIMEOUT_MS:1000}
       statement-timeout-ms: ${SAMHAN_PRICE_MEMORY_STATEMENT_TIMEOUT_MS:3000}
       transaction-timeout-seconds: ${SAMHAN_PRICE_MEMORY_TRANSACTION_TIMEOUT_SECONDS:4}

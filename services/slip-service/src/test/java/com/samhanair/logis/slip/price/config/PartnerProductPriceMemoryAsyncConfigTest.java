@@ -2,11 +2,18 @@ package com.samhanair.logis.slip.price.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Method;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnThreading;
 import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguration;
+import org.springframework.boot.autoconfigure.thread.Threading;
+import org.springframework.boot.task.SimpleAsyncTaskExecutorBuilder;
+import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
@@ -15,6 +22,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 class PartnerProductPriceMemoryAsyncConfigTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+            .withInitializer(new ConfigDataApplicationContextInitializer())
             .withConfiguration(AutoConfigurations.of(TaskExecutionAutoConfiguration.class))
             .withUserConfiguration(PartnerProductPriceMemoryAsyncConfig.class);
 
@@ -52,5 +60,28 @@ class PartnerProductPriceMemoryAsyncConfigTest {
             assertThat(executor.getCorePoolSize()).isEqualTo(2);
             assertThat(executor.getMaxPoolSize()).isEqualTo(4);
         });
+    }
+
+    @Test
+    void applicationTaskExecutor_declaresBootEquivalentPlatformAndVirtualThreadBranches()
+            throws NoSuchMethodException {
+        Method platform = PartnerProductPriceMemoryAsyncConfig.class.getDeclaredMethod(
+                "applicationTaskExecutor", ThreadPoolTaskExecutorBuilder.class);
+        Method virtual = PartnerProductPriceMemoryAsyncConfig.class.getDeclaredMethod(
+                "applicationTaskExecutorVirtualThreads", SimpleAsyncTaskExecutorBuilder.class);
+
+        assertThat(platform.getAnnotation(ConditionalOnThreading.class).value())
+                .isEqualTo(Threading.PLATFORM);
+        assertThat(platform.getReturnType()).isEqualTo(ThreadPoolTaskExecutor.class);
+        assertThat(virtual.getAnnotation(ConditionalOnThreading.class).value())
+                .isEqualTo(Threading.VIRTUAL);
+        assertThat(virtual.getReturnType()).isEqualTo(SimpleAsyncTaskExecutor.class);
+    }
+
+    @Test
+    void hikariConnectionAcquisitionWait_isBoundedToFourSeconds() {
+        contextRunner.run(context -> assertThat(context.getEnvironment()
+                .getProperty("spring.datasource.hikari.connection-timeout"))
+                .isEqualTo("4000"));
     }
 }

@@ -6,16 +6,12 @@
 - 조건: `sum(increase(slip_price_memory_upsert_failed_total{job="slip-service"}[5m])) > 0`
 - 영향: 원 전표/견적 저장은 fail-soft 로 성공하지만, 실패한 라인의 최근단가 자동채움은 이전 값 또는 miss 로 남을 수 있다. `/actuator/health` 는 계속 `UP` 일 수 있다.
 
-> ⚠️ **실효 경계 — 이 경보는 dev 로컬 스택 전용이다.**
-> 위 Alert 는 로컬 docker-compose Prometheus rule
-> (`infrastructure/prometheus/rules/slip-price-memory.yml`) 기준이며, **prod(Phase 11
-> AWS) 에는 Prometheus 컨테이너가 없어(모니터링 = CloudWatch 일원화, 기결정) 등가
-> 경보가 아직 배선되지 않았다.** 이식 절차 = `infrastructure/terraform/CUTOVER.md`
-> **M-19** (slip-service 로그 CloudWatch 전송 + Logs metric filter
-> `"partner-product price memory batch upsert failed"` / `"... queue rejected"` +
-> metric alarm). 이식 전 prod 에서는 upsert 가 전멸해도 fail-soft + health `UP`
-> 특성상 **자동 감지 경로가 없어 무한정 미감지될 수 있다** — 본 런북의 metric 기반
-> 확인 절차도 prod 에서는 `docker logs` grep 으로 대체해야 한다.
+> 위 Alert 이름은 dev 로컬 Prometheus rule
+> (`infrastructure/prometheus/rules/slip-price-memory.yml`) 기준이다. prod(Phase 11
+> AWS)는 기존 CloudWatch Agent 가 Docker json-file 로그를
+> `/samhanlogis/production/docker` 로 수집하고, `monitoring.tf` 의 metric filter 2건
+> (`batch upsert failed`, `queue rejected`)과 alarm 2건이 등가 감지를 담당한다.
+> 배포 확인 절차는 `infrastructure/terraform/CUTOVER.md` **M-19**를 따른다.
 
 ## 실제 Prometheus metric 이름
 
@@ -31,8 +27,8 @@ Micrometer meter 이름과 Prometheus export 변환은 `PartnerProductPriceMemor
 ## 1차 확인
 
 1. 실패 시작 시각과 배포/DB 지연 시각을 맞춘다.
-2. `docker logs samhan-slip-service --since 10m 2>&1 | grep "partner-product price memory"` 로 `batch upsert failed` 또는 `queue rejected` 를 구분한다.
-3. Grafana/Prometheus 에서 아래를 확인한다.
+2. 로컬은 `docker logs samhan-slip-service --since 10m 2>&1 | grep "partner-product price memory"`, prod는 `aws logs tail /samhanlogis/production/docker --since 10m --filter-pattern '"partner-product price memory"' --region ap-northeast-2` 로 `batch upsert failed` 또는 `queue rejected` 를 구분한다.
+3. 로컬 Grafana/Prometheus 또는 prod CloudWatch alarm에서 아래를 확인한다.
    - 실패 증가량: `increase(slip_price_memory_upsert_failed_total{job="slip-service"}[5m])`
    - 성공률: `rate(slip_price_memory_upsert_success_total{job="slip-service"}[5m])`
    - 평균 batch: `rate(slip_price_memory_batch_size_sum[5m]) / rate(slip_price_memory_batch_size_count[5m])`

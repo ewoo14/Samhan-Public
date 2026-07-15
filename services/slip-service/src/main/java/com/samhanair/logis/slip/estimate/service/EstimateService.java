@@ -21,6 +21,7 @@ import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.realtime.EstimateListRealtime;
+import com.samhanair.logis.slip.service.BundleLineageResolver;
 import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
@@ -78,20 +79,27 @@ public class EstimateService {
                                  String reqName, String reqModel, String specification, int quantity,
                                  BigDecimal unitPrice, String note, BundleSetOptions setOptions,
                                  boolean priceVatInclusive, String actor,
-                                 List<PartnerProductPriceMemoryCommand> priceMemoryCommands) {
+                                 List<PartnerProductPriceMemoryCommand> priceMemoryCommands,
+                                 BundleLineageResolver bundleLineage) {
         boolean bundle = summary != null && "BUNDLE".equals(summary.productType())
                 && summary.modelCode() != null && !summary.modelCode().isBlank();
         if (!bundle) {
             String productName = reqName != null ? reqName : (summary != null ? summary.name() : null);
             String modelName = reqModel != null ? reqModel : (summary != null ? summary.modelName() : null);
             // 단가 부가세포함: priceVatInclusive 면 라인 단위로 공급가액/부가세 분리.
-            estimate.addLine(priceVatInclusive
+            EstimateLine line = priceVatInclusive
                     ? EstimateLine.createFromVatInclusive(estimate, lineNo, productId, productName, modelName,
                             specification, quantity, unitPrice, note)
                     : EstimateLine.create(estimate, lineNo, productId, productName, modelName,
-                            specification, quantity, unitPrice, note));
-            collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
-                    priceVatInclusive, PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
+                            specification, quantity, unitPrice, note);
+            // PUT 에서는 전개 구성품 productId 가 단품 summary 로 조회된다. 기존 영속 계보를
+            // 서버가 복원한 뒤 구성품은 LINE_SAVE 기억 후보에서 제외한다.
+            bundleLineage.restore(line);
+            estimate.addLine(line);
+            if (!BundleLineageResolver.isBundleComponent(line)) {
+                collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
+                        priceVatInclusive, PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
+            }
             return lineNo + 1;
         }
         collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
@@ -169,12 +177,14 @@ public class EstimateService {
         // 4. 라인 추가 — BUNDLE(세트)면 product-service expand 로 구성품 라인 N개 전개(옵션 A), 아니면 1 라인.
         int lineNo = 1;
         List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
+        BundleLineageResolver bundleLineage = BundleLineageResolver.empty();
         for (CreateEstimateRequest.EstimateLineRequest lineReq : req.lines()) {
             lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                     byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                     lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                     lineReq.note(), lineReq.setOptions(),
-                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId, priceMemoryCommands);
+                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId, priceMemoryCommands,
+                    bundleLineage);
         }
 
         Estimate saved = estimateRepository.save(estimate);
@@ -199,6 +209,7 @@ public class EstimateService {
             // 기존 라인 모두 제거 (orphan removal)
             estimate.requireEditable();
             List<EstimateLine> existing = List.copyOf(estimate.getLines());
+            BundleLineageResolver bundleLineage = BundleLineageResolver.fromEstimateLines(existing);
             for (EstimateLine line : existing) {
                 estimate.removeLine(line);
             }
@@ -221,7 +232,8 @@ public class EstimateService {
                         byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                         lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                         lineReq.note(), lineReq.setOptions(),
-                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), callerId, priceMemoryCommands);
+                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), callerId, priceMemoryCommands,
+                        bundleLineage);
             }
             priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.update");
         }

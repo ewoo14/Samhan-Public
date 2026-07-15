@@ -79,14 +79,14 @@ jobs:
             # #809 R4 (연관 Issue #821): 구 필터 web.public_.*/web.openapi.* 는 PR #99 계획서에서 복사된 뒤
             # 레포에 존재한 적 없는 유령 패키지(git 전 이력 0건)로, "No tests found for given includes"
             # nightly 3연속 실패(07-12/07-13/07-14) 원인 — PR CI slip-it-public 필터(delivery.it/publish)로 정렬.
-            # Gradle --tests 는 서브패키지를 자동 포함하지 않으므로 신규 하위 패키지는 ci.yml 과 함께 여기에도 명시한다.
+            # Gradle * 는 점(.) 경계를 구분하지 않아 하위 패키지도 매치한다. 토큰은 ci.yml 과 동일한 coverage inventory 로 유지한다.
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.delivery.it.*" --tests "com.samhanair.logis.slip.publish.*"'
           - name: slip-it-core
             # PR CI slip-it-core IT 필터를 nightly deep-regression 에 미러링 등재.
             # #809 R4 (연관 Issue #821): web.core.*/web.internal.* 도 레포에 존재한 적 없는 유령 패키지(git 전 이력
             # 0건)로 판명되어 제거 — 나머지 필터가 실 테스트를 매치해 잡 실패 원인은 아니었던 dead token 이며,
             # 제거 후 필터는 ci.yml 동명 잡과 완전 동일.
-            # Gradle --tests 는 서브패키지를 자동 포함하지 않으므로 estimate.it.collab 등 신규 하위 패키지를 명시한다.
+            # Gradle * 는 점(.) 경계를 구분하지 않아 하위 패키지도 매치한다. 명시 토큰은 ci.yml 과의 inventory 대조용이다.
             test-tasks: ':services:slip-service:test --tests "com.samhanair.logis.slip.comment.it.*" --tests "com.samhanair.logis.slip.estimate.it.*" --tests "com.samhanair.logis.slip.estimate.it.collab.*" --tests "com.samhanair.logis.slip.estimate.snapshot.it.*" --tests "com.samhanair.logis.slip.it.*" --tests "com.samhanair.logis.slip.it.collab.*" --tests "com.samhanair.logis.slip.it.cutoff.*" --tests "com.samhanair.logis.slip.it.dispatch.*" --tests "com.samhanair.logis.slip.it.schedule.*" --tests "com.samhanair.logis.slip.repository.dispatch.*" --tests "com.samhanair.logis.slip.dispatch.*"'
 
     steps:
@@ -204,7 +204,12 @@ jobs:
           ISSUE_BODY
 
           sed -i "s|__RUN_URL__|${RUN_URL}|g; s|__DATE_KST__|${DATE_KST}|g" issue-body.md
-          gh issue create \
+          ISSUE_URL=$(gh issue create \
             --title "[nightly] slip-service IT 실패 — ${DATE_KST}" \
-            --label "ci,nightly,slip-service" \
-            --body-file issue-body.md
+            --body-file issue-body.md)
+
+          # Issue 생성 자체가 label drift 때문에 실패하지 않도록 먼저 무라벨로 생성한다.
+          # 아래 label 은 2026-07-16 gh label list 실재 목록 기준이며, 부착 실패는 warning 만 남긴다.
+          if ! gh issue edit "${ISSUE_URL}" --add-label "bug,team:slip,priority:high"; then
+            echo "::warning::nightly Issue 는 생성됐지만 label 부착에 실패했습니다: ${ISSUE_URL}"
+          fi

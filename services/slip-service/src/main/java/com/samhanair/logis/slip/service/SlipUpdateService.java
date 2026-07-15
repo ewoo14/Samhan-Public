@@ -70,8 +70,12 @@ public class SlipUpdateService {
         validateLines(request.lines());
 
         String before = summarize(slip);
+        BundleLineageResolver bundleLineage = BundleLineageResolver.fromSlipLines(slip.getLines());
+        List<SlipLine> replacementLines = request.lines().stream()
+                .map(line -> bundleLineage.restore(toLine(slip, line)))
+                .toList();
         List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
-                slip, request.lines(), actorId == null ? null : actorId.toString());
+                slip, replacementLines, actorId == null ? null : actorId.toString());
         try {
             slip.updateHeader(
                     request.partnerName(),
@@ -83,9 +87,7 @@ public class SlipUpdateService {
                     request.projectName(),
                     request.recipientPhone(),
                     request.paymentDueDate());
-            slip.replaceLines(request.lines().stream()
-                    .map(line -> toLine(slip, line))
-                    .toList(), actorId == null ? null : actorId.toString());
+            slip.replaceLines(replacementLines, actorId == null ? null : actorId.toString());
             Slip saved = slipRepository.saveAndFlush(slip);
             // after 는 saveAndFlush 결과 기준으로 캡처하여 ordering 명확화
             String after = summarize(saved);
@@ -164,22 +166,24 @@ public class SlipUpdateService {
 
     /**
      * 매입 수정 화면 라인 단가는 VAT 제외 공급단가이므로 공용 store 기준인 VAT 포함 단가로 정규화한다.
+     * 서버가 복원한 세트 구성품 계보는 parent 기억을 오염시키지 않도록 후보에서 제외한다.
      */
     private List<PartnerProductPriceMemoryCommand> collectPriceMemory(
-            Slip slip, List<SlipUpdateRequest.LineRequest> lines, String actor) {
+            Slip slip, List<SlipLine> lines, String actor) {
         List<PartnerProductPriceMemoryCommand> commands = new ArrayList<>();
         if (slip.getPartnerId() == null || lines == null) {
             return commands;
         }
-        for (SlipUpdateRequest.LineRequest line : lines) {
-            if (line.productId() == null || line.unitPrice() == null) {
+        for (SlipLine line : lines) {
+            if (BundleLineageResolver.isBundleComponent(line)
+                    || line.getProductId() == null || line.getUnitPrice() == null) {
                 continue;
             }
-            BigDecimal vatInclusive = line.unitPrice()
+            BigDecimal vatInclusive = line.getUnitPrice()
                     .multiply(new BigDecimal("1.1"))
                     .setScale(2, RoundingMode.HALF_UP);
             commands.add(new PartnerProductPriceMemoryCommand(
-                    slip.getPartnerId(), line.productId(), vatInclusive,
+                    slip.getPartnerId(), line.getProductId(), vatInclusive,
                     PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor));
         }
         return commands;
