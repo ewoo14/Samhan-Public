@@ -56,6 +56,9 @@ vi.mock('@samhan/design-system', () => ({
       <button type="button" data-testid="estimate-select-partner-b" disabled={disabled} onClick={() => onChange(mocks.partnerB)}>
         partner-b
       </button>
+      <button type="button" data-testid="estimate-clear-partner" disabled={disabled} onClick={() => onChange(null)}>
+        clear-partner
+      </button>
     </label>
   ),
   Spinner: ({ label }: { label?: string }) => <div role="status">{label}</div>,
@@ -67,6 +70,7 @@ vi.mock('../components/collab/CollaborativeSlipInput', () => ({
     fieldPath: string
     value: string
     onValueChange?: (value: string) => void
+    onDocSyncValueChange?: (value: string) => void
     coeditPending?: boolean
     readOnly?: boolean
     onBlur?: () => void
@@ -80,6 +84,7 @@ vi.mock('../components/collab/CollaborativeSlipInput', () => ({
       data-field-path={props.fieldPath}
       data-provider-present={String(!!props.provider)}
       data-coedit-pending={String(!!props.coeditPending)}
+      data-doc-sync={String(!!props.onDocSyncValueChange)}
       value={props.value}
       disabled={!!props.coeditPending || !!props.readOnly}
       onBlur={props.onBlur}
@@ -319,6 +324,10 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       expect(field.getAttribute('data-provider-present')).toBe('true')
     }
     expect((screen.getByTestId('estimate-partner-autocomplete') as HTMLInputElement).disabled).toBe(true)
+    // R4-F6: 단가 필드만 doc-sync 전용 콜백 배선 — 자동채움 provider write 의 doc-sync 가
+    // pending REMEMBERED/CATALOG 분류를 USER 로 재분류하지 않게 분리한다(타 필드는 기존 경로).
+    expect(screen.getByTestId('estimate-coedit-items-0-unitPrice').getAttribute('data-doc-sync')).toBe('true')
+    expect(screen.getByTestId('estimate-coedit-items-0-modelName').getAttribute('data-doc-sync')).toBe('false')
   })
 
   it('subscribeDoc 원격 업데이트를 React form state 에 반영한다', async () => {
@@ -487,6 +496,8 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     const note = screen.getByRole('note', { name: /이 거래처에 마지막으로 저장된 단가/ })
     expect(note.textContent).toBe('거래처 최근단가')
     expect(estimateUnitPrice().getAttribute('aria-describedby')).toBe(note.id)
+    // R4-D2: 라인 칩에 aria-live 금지 — 라인 N개 flip 시 N회 낭독 폭주(전역 고지는 배너 1곳).
+    expect(note.hasAttribute('aria-live')).toBe(false)
   })
 
   it('CB-1 edit hydrate preserves the persisted price when partner changes', async () => {
@@ -530,6 +541,11 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     fireEvent.blur(estimateModel(1))
     await waitFor(() => expect(estimateUnitPrice(1).value).toBe('44000'))
 
+    // R4-D9: 배너 live region 은 활성 전에도 빈 컨테이너로 선존재해야 SR 낭독이 신뢰된다.
+    const banner = screen.getByTestId('estimate-price-refresh-banner')
+    expect(banner.getAttribute('role')).toBe('status')
+    expect(banner.textContent).toBe('')
+
     fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
 
     await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-session']))
@@ -537,6 +553,9 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(estimateUnitPrice(0).value).toBe('11000')
     expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
     expect(screen.getByText(/거래처 변경으로 최근단가 재적용/)).not.toBeNull()
+    // R4-D9: 동일 DOM 노드 유지(재마운트 아님) + 텍스트만 토글.
+    expect(screen.getByTestId('estimate-price-refresh-banner')).toBe(banner)
+    expect(banner.textContent).toContain('거래처 변경으로 최근단가 재적용')
   })
 
   it('estimate_ignoresStaleMemoryResponse', async () => {
@@ -560,8 +579,227 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       await pending.promise
     })
 
+    // 가격 3필드는 stale 게이트로 폐기(기존 단언 유지) — 이전 거래처(A) 기억단가 미적용.
     expect(estimateUnitPrice().value).toBe('0')
     expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('')
+    // R4-F3: 품목 바인딩(lookup 결과)은 보존 — 기존에는 통째 폐기돼 productId 미설정으로
+    // 저장이 사유 없이 차단됐다.
+    expect((screen.getByTestId('estimate-coedit-items-0-productName') as HTMLInputElement).value).toBe('스테일 제품')
+
+    fireEvent.click(screen.getByTestId('estimate-form-save-button'))
+    await waitFor(() => expect(mocks.createEstimate).toHaveBeenCalledTimes(1))
+    expect(mocks.createEstimate).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: mocks.partnerB.id,
+      lines: [expect.objectContaining({ productId: 'product-stale', unitPrice: '0' })],
+    }))
+  })
+
+  // R4-F1: 견적도 전표와 동일 semantics — 자동채움(REMEMBERED/CATALOG) 라인의 품목 교체 시
+  // 이전 품목 단가·마커를 승계하지 않고 새 품목 기준 재채움(판매가 + 가격기억 재조회).
+  it('estimate_productSwap_refillsAutoPriceAndMarker', async () => {
+    mocks.lookupProductByModelName
+      .mockResolvedValueOnce({
+        productId: 'product-x',
+        productName: '제품 X',
+        productType: 'SINGLE',
+        sellingPrice: '30000',
+      })
+      .mockResolvedValueOnce({
+        productId: 'product-y',
+        productName: '제품 Y',
+        productType: 'SINGLE',
+        sellingPrice: '55000',
+      })
+    mocks.getPriceMemory
+      .mockResolvedValueOnce({ unitPrice: 88000, source: 'LINE_SAVE', updatedAt: '2026-07-01T09:00:00' })
+      .mockResolvedValueOnce(null)
+    renderPage('/sales/estimates/new')
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-X' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('88000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
+
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-Y' } })
+    fireEvent.blur(estimateModel())
+
+    // 품목 교체 시 새 품목으로 가격기억 재조회 — X의 88000/저장일이 Y로 승계되지 않는다.
+    await waitFor(() => expect(mocks.getPriceMemory).toHaveBeenCalledWith(mocks.partnerA.id, 'product-y'))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('55000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('CATALOG')
+    expect((screen.getByTestId('estimate-coedit-items-0-productName') as HTMLInputElement).value).toBe('제품 Y')
+    // D-R4-1: miss 마커 라벨 = '판매가'(제품 등록 화면 sellingPrice 라벨) — '정가' 금지.
+    expect(screen.getByRole('note', { name: /판매가를 적용했습니다/ }).textContent).toBe('판매가')
+    expect(screen.queryByRole('note', { name: /마지막으로 저장된 단가/ })).toBeNull()
+  })
+
+  // R4-D4(a): 거래처 미선택 CATALOG 마커는 거래처를 단정하지 않는 카피로 분기 —
+  // "이 거래처에 저장된 최근단가가 없어 …" 는 거래처 선택 상태 전용.
+  it('estimate_noPartner_catalogMarkerDoesNotClaimPartnerCopy', async () => {
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-new',
+      productName: '신규 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    renderPage('/sales/estimates/new')
+
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-NEW' } })
+    fireEvent.blur(estimateModel())
+
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('33000'))
+    expect(mocks.getPriceMemory).not.toHaveBeenCalled()
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('CATALOG')
+    // getByRole name(string) = 접근명 전체 일치 — 거래처 단정 카피였다면 매칭되지 않는다.
+    const note = screen.getByRole('note', { name: '판매가를 적용했습니다' })
+    expect(note.textContent).toBe('판매가')
+    expect(note.getAttribute('aria-label')).not.toContain('거래처')
+    expect(estimateUnitPrice().getAttribute('aria-describedby')).toBe(note.id)
+  })
+
+  // R4-D4(b)·D-R4-4: 거래처 해제 시 단가값 유지 + 마커(저장일 포함)만 해제. priceSource state 는
+  // 유지해 거래처 재선택 시 재조회 대상 자격을 보존한다.
+  it('estimate_partnerCleared_keepsPriceAndReleasesMarkerOnly', async () => {
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-new',
+      productName: '신규 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockResolvedValue({
+      unitPrice: 88000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage('/sales/estimates/new')
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-NEW' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('88000'))
+    expect(screen.getByRole('note', { name: /이 거래처에 마지막으로 저장된 단가/ })).not.toBeNull()
+
+    fireEvent.click(screen.getByTestId('estimate-clear-partner'))
+
+    // 단가값 유지(판매가 33000 으로 되돌리지 않음) + 마커/저장일 해제 + 상태 보존
+    expect(estimateUnitPrice().value).toBe('88000')
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(estimateUnitPrice().hasAttribute('aria-describedby')).toBe(false)
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
+
+    // 거래처 재선택 시 자동 라인 재조회 자격 보존 — miss 면 판매가 마커로 격리
+    mocks.getPriceMemories.mockResolvedValueOnce([])
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-new']))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('33000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('CATALOG')
+    expect(screen.getByRole('note', { name: '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다' }).textContent).toBe('판매가')
+  })
+
+  // R4-F2: legacy(unitPriceWithVat=null) 라인 편집-저장 시 원 공급단가 + priceVatInclusive=false —
+  // BE 의 /1.1 재분리로 인한 약 9.1% 단가 하락·가격기억 오염 방지(전표 복사와 동일 semantics).
+  it('estimate_legacyLine_unmodifiedSave_keepsSupplyPriceVatExclusive', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate({
+      lines: [{ ...makeEstimate().lines[0], unitPriceWithVat: null, unitPrice: '10000' }],
+    }))
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    renderPage()
+    await waitFor(() => expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false))
+    expect(estimateUnitPrice().value).toBe('10000')
+
+    fireEvent.click(screen.getByTestId('estimate-form-save-button'))
+
+    await waitFor(() => expect(mocks.updateEstimate).toHaveBeenCalledTimes(1))
+    expect(mocks.updateEstimate).toHaveBeenCalledWith('estimate-1', expect.objectContaining({
+      lines: [expect.objectContaining({
+        unitPrice: '10000',
+        priceVatInclusive: false,
+      })],
+    }))
+  })
+
+  it('estimate_legacyLine_userEditedSave_sendsVatInclusive', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate({
+      lines: [{ ...makeEstimate().lines[0], unitPriceWithVat: null, unitPrice: '10000' }],
+    }))
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    renderPage()
+    await waitFor(() => expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false))
+
+    // 사용자가 단가를 수정하면 '단가(VAT포함)' 입력 semantics — 기존대로 VAT 포함 전송.
+    fireEvent.change(estimateUnitPrice(), { target: { value: '99000' } })
+    fireEvent.click(screen.getByTestId('estimate-form-save-button'))
+
+    await waitFor(() => expect(mocks.updateEstimate).toHaveBeenCalledTimes(1))
+    expect(mocks.updateEstimate).toHaveBeenCalledWith('estimate-1', expect.objectContaining({
+      lines: [expect.objectContaining({
+        unitPrice: '99000',
+        priceVatInclusive: true,
+      })],
+    }))
+  })
+
+  // R4-F4: 거래처 변경 최근단가 재조회 in-flight 동안 저장/발송 차단 + busy 단서 —
+  // 이전 거래처 단가가 새 partnerId 로 저장돼 가격기억이 교차 오염되는 것을 방지.
+  it('estimate_partnerSwitch_blocksSaveWhileRefreshInFlight', async () => {
+    const pendingBulk = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-busy',
+      productName: 'busy 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockResolvedValue({
+      unitPrice: 44000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    mocks.getPriceMemories.mockReturnValueOnce(pendingBulk.promise)
+    renderPage('/sales/estimates/new')
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-BUSY' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('44000'))
+
+    // R4-D9 계열 sweep: busy live region 도 배너와 동일하게 활성 전부터 빈 컨테이너로
+    // 선존재해야 SR 낭독이 신뢰된다(조건부 마운트 금지). 저장 버튼 enabled 대기로
+    // lookupLoading 완전 해제(= priceResolutionBusy false)를 보장한 뒤 단언한다.
+    await waitFor(() =>
+      expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false),
+    )
+    const busyNote = screen.getByTestId('estimate-form-price-refresh-busy')
+    expect(busyNote.getAttribute('role')).toBe('status')
+    expect(busyNote.getAttribute('aria-live')).toBe('polite')
+    expect(busyNote.textContent).toBe('')
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-busy']))
+
+    // 동일 DOM 노드 유지(재마운트 아님) + 텍스트만 토글.
+    expect(screen.getByTestId('estimate-form-price-refresh-busy')).toBe(busyNote)
+    expect(busyNote.textContent).toContain('최근단가 확인 중')
+    const saveButton = screen.getByTestId('estimate-form-save-button') as HTMLButtonElement
+    expect(saveButton.disabled).toBe(true)
+    fireEvent.click(saveButton)
+    expect(mocks.createEstimate).not.toHaveBeenCalled()
+
+    await act(async () => {
+      pendingBulk.resolve([{
+        productId: 'product-busy',
+        unitPrice: 99000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-11T09:00:00',
+      }])
+      await pendingBulk.promise
+    })
+
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('99000'))
+    // 완료 후에도 live region 은 상시 마운트 유지 — 텍스트만 소거된다.
+    expect(screen.getByTestId('estimate-form-price-refresh-busy')).toBe(busyNote)
+    expect(busyNote.textContent).toBe('')
+    expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('estimate_preservesUserOverride in both provider and UI', async () => {

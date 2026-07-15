@@ -81,6 +81,7 @@ vi.mock('@samhan/design-system', () => ({
         data-testid={`line-${lineNo}`}
         data-product-id={props.line.productId ?? ''}
         data-price-source={props.line.priceSource ?? ''}
+        data-partner-selected={String(props.partnerSelected ?? '')}
       >
         {props.modelCell}
         <span data-testid={`product-name-${lineNo}`}>{props.line.productName}</span>
@@ -410,7 +411,11 @@ describe('SlipFormPage price memory autofill', () => {
     expect(harness.getPriceMemories).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(unitPrice(1).value).toBe('200000'))
     expect(unitPrice(2).value).toBe('7777')
-    expect(screen.getByRole('status').textContent).toContain('거래처 변경으로 최근단가 재적용')
+    // R4 수렴 fix: 상시 마운트 live region 이 2곳(재적용 배너 + busy 단서)이라 role=status
+    // 단수 조회는 모호 — 배너 testid 로 대상을 고정하되 role=status a11y 계약 단언은 유지한다.
+    const refreshBanner = screen.getByTestId('slip-price-refresh-banner')
+    expect(refreshBanner.getAttribute('role')).toBe('status')
+    expect(refreshBanner.textContent).toContain('거래처 변경으로 최근단가 재적용')
     expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
   })
 
@@ -525,6 +530,139 @@ describe('SlipFormPage price memory autofill', () => {
     expect(unitPrice().value).toBe('7777')
     expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('USER')
     expect(screen.queryByText(/거래처 변경으로 최근단가 재적용/)).toBeNull()
+  })
+
+  // R4-F1: REMEMBERED 자동채움 라인이 다른 품목으로 교체되면 단가·마커를 새 품목 기준으로
+  // 재채움(가격기억 재조회) — 견적과 공유 헬퍼(shouldAutoFillPrice) semantics 고정.
+  it('re-fills price and marker via memory re-lookup when a remembered line switches product', async () => {
+    harness.getPriceMemory
+      .mockResolvedValueOnce({
+        unitPrice: 88000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-10T09:00:00',
+      })
+      .mockResolvedValueOnce(null)
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('88000'))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+
+    fireEvent.click(screen.getByTestId('select-product-b-1'))
+
+    await waitFor(() =>
+      expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productB.id),
+    )
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productB.sellingPrice))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('CATALOG')
+  })
+
+  // R4-D4(b)·D-R4-4: 거래처 해제 시 단가값은 유지하고 마커만 해제(LineRow 에 partnerSelected=false
+  // 전달). priceSource state 는 REMEMBERED 로 유지해 거래처 재선택 시 재조회 대상 자격을 보존한다.
+  it('keeps the remembered unit price and only releases the marker when the partner is cleared', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 100000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('100000'))
+    expect(screen.getByTestId('line-1').getAttribute('data-partner-selected')).toBe('true')
+
+    fireEvent.click(screen.getByTestId('clear-partner'))
+
+    // 단가값 유지(판매가로 되돌리지 않음) + 마커 해제 신호 + 상태 보존
+    await waitFor(() =>
+      expect(screen.getByTestId('line-1').getAttribute('data-partner-selected')).toBe('false'),
+    )
+    expect(unitPrice().value).toBe('100000')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+
+    // 거래처 재선택 시 자동 라인 재조회 자격 보존 — 새 거래처 기준 bulk 재조회 + miss 시 판매가 격리
+    await selectPartnerB()
+    await waitFor(() =>
+      expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]),
+    )
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('CATALOG')
+  })
+
+  // R4-D9: 배너 live region 은 빈 컨테이너로 상시 마운트되고 텍스트만 토글 — 내용과 함께
+  // 조건부 마운트하면 일부 SR 이 낭독하지 않는다. 동일 DOM 노드 유지(재마운트 아님)까지 고정.
+  it('keeps the price refresh banner live region mounted before and after activation', async () => {
+    harness.getPriceMemories.mockResolvedValueOnce([{
+      productId: harness.productA.id,
+      unitPrice: 200000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }])
+    renderPage()
+
+    const banner = screen.getByTestId('slip-price-refresh-banner')
+    expect(banner.getAttribute('role')).toBe('status')
+    expect(banner.getAttribute('aria-live')).toBe('polite')
+    expect(banner.textContent).toBe('')
+
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    await selectPartnerB()
+    await waitFor(() => expect(unitPrice().value).toBe('200000'))
+
+    expect(screen.getByTestId('slip-price-refresh-banner')).toBe(banner)
+    expect(banner.textContent).toContain('거래처 변경으로 최근단가 재적용')
+  })
+
+  // R4-F4: 거래처 변경 최근단가 재조회 in-flight 동안 저장 차단 + busy 단서 —
+  // 이전 거래처 단가가 새 partnerId 로 저장돼 가격기억이 교차 오염되는 것을 방지.
+  it('blocks submit and shows a busy note while the partner price refresh is in flight', async () => {
+    const pending = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    harness.getPriceMemories.mockReturnValueOnce(pending.promise)
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-warehouse'))
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(false),
+    )
+
+    // R4-D9 계열 sweep: busy live region 도 배너와 동일하게 활성 전부터 빈 컨테이너로
+    // 선존재해야 SR 낭독이 신뢰된다(조건부 마운트 금지).
+    const busyNote = screen.getByTestId('slip-form-price-refresh-busy')
+    expect(busyNote.getAttribute('role')).toBe('status')
+    expect(busyNote.getAttribute('aria-live')).toBe('polite')
+    expect(busyNote.textContent).toBe('')
+
+    await selectPartnerB()
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledTimes(1))
+
+    // 동일 DOM 노드 유지(재마운트 아님) + 텍스트만 토글.
+    expect(screen.getByTestId('slip-form-price-refresh-busy')).toBe(busyNote)
+    expect(busyNote.textContent).toContain('최근단가 확인 중')
+    const saveButton = screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
+    expect(saveButton.disabled).toBe(true)
+    fireEvent.click(saveButton)
+    expect(harness.createSlip).not.toHaveBeenCalled()
+
+    await act(async () => {
+      pending.resolve([{
+        productId: harness.productA.id,
+        unitPrice: 222000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-11T09:00:00',
+      }])
+      await pending.promise
+    })
+
+    await waitFor(() => expect(unitPrice().value).toBe('222000'))
+    // 완료 후에도 live region 은 상시 마운트 유지 — 텍스트만 소거된다.
+    expect(screen.getByTestId('slip-form-price-refresh-busy')).toBe(busyNote)
+    expect(busyNote.textContent).toBe('')
+    expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('SlipFormPage_submit_sendsVatInclusivePriceExactly', async () => {

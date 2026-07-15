@@ -2,7 +2,7 @@
  * vite.809-realqa.config.ts — #809 R4 라이브 QA 전용 renderer 설정.
  *
  * 왜 필요한가: `@samhan/design-system` 패키지는 exports 가 `dist/` 를 가리키는데, 이 dist 는
- * 로컬 빌드 산출물이라 브랜치 코드(R3 fix 의 LineRow '거래처 최근단가'/'정가' 마커,
+ * 로컬 빌드 산출물이라 브랜치 코드(R3 fix 의 LineRow '거래처 최근단가'/'판매가' 마커,
  * priceRefreshed 강조)보다 오래될 수 있다(R4 실측: dist=07-08, R3 fix=07-15 → 마커 문자열 0건).
  * 공유 산출물(dist) 재빌드 대신 — 동시 리뷰 에이전트와의 빌드 경합을 피하기 위해 —
  * 본 QA 하네스에서만 design-system 을 **소스로 alias** 해 현 브랜치 코드를 그대로 서빙한다.

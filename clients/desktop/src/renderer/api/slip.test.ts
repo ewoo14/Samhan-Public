@@ -94,4 +94,56 @@ describe('slip price contract', () => {
       productIds: [hit.productId, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'],
     })
   })
+
+  // R4-F5: 고유 품목 101개↑ 에서 throw → 전 라인 조용히 CATALOG 강등되던 결함의 회귀 가드.
+  it('bulk lookup chunks 101+ unique productIds into sequential 100-size calls', async () => {
+    const ids = Array.from({ length: 150 }, (_, i) => `product-${String(i).padStart(3, '0')}`)
+    const hitFirstChunk = {
+      productId: 'product-000',
+      unitPrice: 1000,
+      source: 'LINE_SAVE',
+      updatedAt: '2099-01-01T09:00:00',
+    }
+    const hitSecondChunk = {
+      productId: 'product-149',
+      unitPrice: 2000,
+      source: 'LINE_SAVE',
+      updatedAt: '2099-01-02T09:00:00',
+    }
+    apiClientMock.post
+      .mockResolvedValueOnce({ data: { data: [hitFirstChunk] } })
+      .mockResolvedValueOnce({ data: { data: [hitSecondChunk] } })
+
+    await expect(getPriceMemories('partner-1', ids)).resolves.toEqual([
+      hitFirstChunk,
+      hitSecondChunk,
+    ])
+
+    expect(apiClientMock.post).toHaveBeenCalledTimes(2)
+    expect(apiClientMock.post).toHaveBeenNthCalledWith(1, '/slips/price-memory/bulk', {
+      partnerId: 'partner-1',
+      productIds: ids.slice(0, 100),
+    })
+    expect(apiClientMock.post).toHaveBeenNthCalledWith(2, '/slips/price-memory/bulk', {
+      partnerId: 'partner-1',
+      productIds: ids.slice(100),
+    })
+  })
+
+  it('bulk lookup rejects when any chunk call fails so callers fall back uniformly', async () => {
+    // 부분 실패 시 반쪽 결과를 돌려주지 않고 throw — 호출자 catch(판매가 fallback) 일관 처리.
+    // 사용자(USER) 단가 라인은 재조회 후보에서 제외되므로 어떤 경우에도 불가침(R4-F5).
+    const ids = Array.from({ length: 101 }, (_, i) => `product-${i}`)
+    apiClientMock.post
+      .mockResolvedValueOnce({ data: { data: [] } })
+      .mockRejectedValueOnce(new Error('bulk chunk failed'))
+
+    await expect(getPriceMemories('partner-1', ids)).rejects.toThrow('bulk chunk failed')
+    expect(apiClientMock.post).toHaveBeenCalledTimes(2)
+  })
+
+  it('bulk lookup still rejects an empty productIds list', async () => {
+    await expect(getPriceMemories('partner-1', [])).rejects.toThrow(/at least 1 unique/)
+    expect(apiClientMock.post).not.toHaveBeenCalled()
+  })
 })

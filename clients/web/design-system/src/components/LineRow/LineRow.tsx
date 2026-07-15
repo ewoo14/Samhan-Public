@@ -75,7 +75,7 @@ export interface LineDraft {
   unitPrice: string
   /** 단가 출처 — USER 는 거래처 변경 시 보존, REMEMBERED 는 '최근가' 마커 표시. */
   priceSource?: 'REMEMBERED' | 'CATALOG' | 'USER' | null
-  /** 정가 fallback 값 — 거래처 변경 재조회 miss 시 사용. */
+  /** 판매가(catalog) fallback 값 — 거래처 변경 재조회 miss 시 사용. */
   catalogUnitPrice?: string | null
   /** 최근 단가 저장 시각 — tooltip 전용. */
   priceMemoryUpdatedAt?: string | null
@@ -140,6 +140,15 @@ export interface LineRowProps {
    * 미지정(기본) 시 기존 동작(합계=수량×단가, VAT 미분해) — 견적 등 비전환 화면 호환.
    */
   vatInclusive?: boolean
+  /**
+   * 거래처 선택 여부 (#809 R4 D-R4-1·D-R4-4).
+   *
+   * - `false` 시 CATALOG 마커 설명이 거래처를 단정하지 않는다("판매가를 적용했습니다").
+   * - `false` 시 REMEMBERED 마커는 렌더하지 않는다 — 거래처 해제 시 단가값은 유지하되
+   *   마커(저장일 포함)만 해제(D-R4-4). 상태(priceSource)는 호출자가 유지해 재선택 시 재조회 가능.
+   * - 미지정(기본 `true`) 시 기존 동작 유지 (backward compatible).
+   */
+  partnerSelected?: boolean
 }
 
 /**
@@ -190,6 +199,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
     style,
     modelCell,
     vatInclusive = false,
+    partnerSelected = true,
   },
   ref,
 ) {
@@ -205,15 +215,23 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
   const sumDisplay = computeLineSum(line.quantity, line.unitPrice)
   const vatBreakdown = vatInclusive ? computeVatBreakdown(line.quantity, line.unitPrice) : null
   const priceDisplay = line.unitPrice ? Number(line.unitPrice).toLocaleString() : '0'
+  // D-R4-1: 자동채움 값의 실체는 제품 등록 화면의 '판매가'(sellingPrice) — '정가' 라벨은
+  // 기존 용어체계에서 출고가(releasePrice) 계열 별칭이라 오도되므로 사용 금지.
+  // D-R4-4: 거래처 미선택(partnerSelected=false) 시 REMEMBERED 마커는 해제(단가값은 호출자가 유지),
+  // CATALOG 설명은 거래처를 단정하지 않는 카피로 분기.
   const priceStatus = line.priceSource === 'REMEMBERED'
-    ? '거래처 최근단가'
+    ? (partnerSelected ? '거래처 최근단가' : null)
     : line.priceSource === 'CATALOG'
-      ? '정가'
+      ? '판매가'
       : null
   const priceStatusDescription = line.priceSource === 'REMEMBERED'
-    ? `이 거래처에 마지막으로 저장된 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+    ? (partnerSelected
+        ? `이 거래처에 마지막으로 저장된 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+        : null)
     : line.priceSource === 'CATALOG'
-      ? '이 거래처에 저장된 최근단가가 없어 정가를 적용했습니다'
+      ? (partnerSelected
+          ? '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다'
+          : '판매가를 적용했습니다')
       : null
 
   const rowClass = [
@@ -352,11 +370,13 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
               aria-label={`라인 ${lineNumber} 단가`}
               aria-describedby={priceStatusDescription ? priceStatusId : undefined}
             />
+            {/* R4-D2: 라인별 aria-live 금지 — 라인 N개 flip 시 N회 낭독 폭주. 비동기 재적용의
+                전역 고지는 페이지 배너(role="status") 1곳이 담당하고, 포커스 시 전달은
+                aria-describedby 체인으로 충분하다(spec 40행). */}
             {priceStatus && priceStatusDescription ? (
               <span
                 id={priceStatusId}
                 role="note"
-                aria-live="polite"
                 aria-label={priceStatusDescription}
                 className={styles['priceMemoryNote']}
                 title={priceStatusDescription}

@@ -206,7 +206,12 @@
   min-width: 0;
 }
 
-.priceInputWrap .input {
+/*
+ * R4-D6: 단가 input 축소(22px)는 마커 칩이 실제로 렌더된 행에만 적용한다 — 마커 없는 행이
+ * 동행 다른 input(28px)과 상시 높이 불일치가 되는 것을 방지. (Electron 33 = Chromium 130,
+ * :has() 지원. 40px 행높이에 22 + 1(gap) + ~14(11px 칩) = ~37px 수용.)
+ */
+.priceInputWrap:has(.priceMemoryNote) .input {
   height: 22px;
 }
 
@@ -217,7 +222,8 @@
   border-radius: 999px;
   background: var(--action-brand-subtle);
   color: var(--action-brand);
-  font-size: 10px;
+  /* R4-D7: DS 배지 sm 선례(11px) 토큰 인용 — 10px 하드코딩은 스케일 이탈. */
+  font-size: var(--badge-channel-font-size-sm, 11px);
   font-weight: 600;
   line-height: 1.1;
   white-space: nowrap;

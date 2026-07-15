@@ -493,25 +493,37 @@ export async function getPriceMemory(
   return res.data.data
 }
 
+/** BE bulk 계약 상한 — 1회 호출당 고유 productId 최대 개수 (BE 는 요청당 100개 제한). */
+const PRICE_MEMORY_BULK_CHUNK_SIZE = 100
+
 /**
  * 거래처+복수 품목 최근 수동단가 bulk 조회.
  *
  * 거래처 변경처럼 여러 자동채움 라인을 동시에 갱신할 때만 사용한다. BE 계약상 hit 항목만
- * 반환하며 전체 miss 도 200 + 빈 배열이다. productIds 는 중복 제거 후 1~100개여야 한다.
+ * 반환하며 전체 miss 도 200 + 빈 배열이다. productIds 는 중복 제거 후 1개 이상이어야 하고,
+ * BE 상한(100개) 초과분은 100개 단위 chunk 순차 호출로 합산한다 — 고유 품목 101개↑에서
+ * throw 되어 전 라인이 조용히 판매가(CATALOG) 강등되는 것을 방지(R4-F5).
+ * chunk 중 하나라도 실패하면 그대로 throw — 호출자 catch(판매가 fallback)로 일관 처리되며,
+ * 사용자(USER) 단가는 재조회 후보에서 애초에 제외되므로 불가침이다.
  */
 export async function getPriceMemories(
   partnerId: string,
   productIds: string[],
 ): Promise<BulkPriceMemoryResult[]> {
   const uniqueProductIds = [...new Set(productIds)]
-  if (uniqueProductIds.length === 0 || uniqueProductIds.length > 100) {
-    throw new Error('price memory bulk productIds must contain 1 to 100 unique items')
+  if (uniqueProductIds.length === 0) {
+    throw new Error('price memory bulk productIds must contain at least 1 unique item')
   }
-  const res = await apiClient.post<ApiEnvelope<BulkPriceMemoryResult[]>>(
-    '/slips/price-memory/bulk',
-    { partnerId, productIds: uniqueProductIds },
-  )
-  return res.data.data
+  const results: BulkPriceMemoryResult[] = []
+  for (let start = 0; start < uniqueProductIds.length; start += PRICE_MEMORY_BULK_CHUNK_SIZE) {
+    const chunk = uniqueProductIds.slice(start, start + PRICE_MEMORY_BULK_CHUNK_SIZE)
+    const res = await apiClient.post<ApiEnvelope<BulkPriceMemoryResult[]>>(
+      '/slips/price-memory/bulk',
+      { partnerId, productIds: chunk },
+    )
+    results.push(...(res.data.data ?? []))
+  }
+  return results
 }
 
 /**

@@ -19,7 +19,11 @@ function line(priceSource: LineDraft['priceSource']): LineDraft {
   }
 }
 
-function renderRow(priceSource: LineDraft['priceSource'], priceRefreshChanged = false) {
+function renderRow(
+  priceSource: LineDraft['priceSource'],
+  priceRefreshChanged = false,
+  partnerSelected?: boolean,
+) {
   return render(
     <div role="table">
       <LineRow
@@ -34,6 +38,7 @@ function renderRow(priceSource: LineDraft['priceSource'], priceRefreshChanged = 
         onUnitPriceChange={vi.fn()}
         onDelete={vi.fn()}
         dragHandleProps={{}}
+        {...(partnerSelected === undefined ? {} : { partnerSelected })}
       />
     </div>,
   )
@@ -52,14 +57,44 @@ describe('LineRow price source marker', () => {
     expect(screen.getByRole('row').className).toContain('priceRefreshed')
   })
 
-  it('CATALOG exposes an explicit 정가 miss state and description', () => {
+  // D-R4-1: 자동채움 실체 = 제품 등록 화면 '판매가'(sellingPrice) — '정가' 라벨 금지(출고가 별칭 오도).
+  it('CATALOG exposes an explicit 판매가 miss state and description', () => {
     renderRow('CATALOG')
 
     const note = screen.getByRole('note', {
-      name: '이 거래처에 저장된 최근단가가 없어 정가를 적용했습니다',
+      name: '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다',
     })
-    expect(note.textContent).toBe('정가')
+    expect(note.textContent).toBe('판매가')
     expect(screen.getByLabelText('라인 1 단가').getAttribute('aria-describedby')).toBe(note.id)
+  })
+
+  // R4-D2: 라인별 aria-live 는 라인 N개 flip 시 N회 낭독 폭주 — 칩에서 제거(배너 1곳이 전역 고지).
+  it.each(['REMEMBERED', 'CATALOG'] as const)('%s marker never carries aria-live (R4-D2)', (source) => {
+    renderRow(source)
+
+    expect(screen.getByRole('note').hasAttribute('aria-live')).toBe(false)
+  })
+
+  // R4-D4(a): 거래처 미선택이면 CATALOG 설명이 거래처를 단정하지 않는다.
+  it('CATALOG without a partner does not claim partner-specific copy', () => {
+    renderRow('CATALOG', false, false)
+
+    const note = screen.getByRole('note', { name: '판매가를 적용했습니다' })
+    expect(note.textContent).toBe('판매가')
+    expect(note.getAttribute('title')).toBe('판매가를 적용했습니다')
+    expect(note.getAttribute('aria-label')).not.toContain('거래처')
+    expect(screen.getByLabelText('라인 1 단가').getAttribute('aria-describedby')).toBe(note.id)
+  })
+
+  // R4-D4(b)·D-R4-4: 거래처 해제 시 마커(저장일 포함)만 해제 — 단가값 유지는 호출자(state) 책임.
+  it('REMEMBERED without a partner hides the marker and keeps the unit price rendering', () => {
+    renderRow('REMEMBERED', false, false)
+
+    expect(screen.queryByRole('note')).toBeNull()
+    const priceInput = screen.getByLabelText('라인 1 단가') as HTMLInputElement
+    expect(priceInput.hasAttribute('aria-describedby')).toBe(false)
+    // 단가값 유지 — locale 무관 숫자만 비교(toLocaleString 천단위 구분자 회피).
+    expect(priceInput.value.replace(/[^0-9]/g, '')).toBe('123000')
   })
 
   it.each(['USER', null] as const)('%s does not claim an automatic price source', (source) => {

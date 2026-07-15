@@ -82,6 +82,7 @@ import {
   scheduleLabel,
 } from '../utils/deliverySchedule'
 import { toLocalDateISO } from '../utils/dateUtils'
+import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { searchPartners as searchPartnersApi } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -139,14 +140,13 @@ const calcVatInclusiveLine = (
   return { incl, supply, vat: incl - supply }
 }
 
-const isAutoPriceSource = (source: LineDraft['priceSource']): boolean =>
-  source === 'CATALOG' || source === 'REMEMBERED'
-
 function SlipMobileLineCard(props: {
   line: LineDraft
   lineNumber: number
   selected: boolean
   canDelete: boolean
+  /** 거래처 선택 여부 (R4-D4) — 미선택 시 CATALOG 카피 분기 + REMEMBERED 마커 해제(D-R4-4). */
+  partnerSelected: boolean
   onSelect: (selected: boolean) => void
   onSpecificationChange: (value: string) => void
   onQuantityChange: (value: string) => void
@@ -160,15 +160,21 @@ function SlipMobileLineCard(props: {
     props.line.unitPrice,
   )
   const priceStatusId = `slip-mobile-price-status-${props.line.id}`
+  // D-R4-1: 자동채움 실체 = 제품 등록 화면 '판매가'(sellingPrice) — '정가' 라벨 금지(출고가 별칭 오도).
+  // D-R4-4: 거래처 해제 시 단가값은 유지하고 마커(저장일 포함)만 해제 — LineRow(데스크탑)와 동일 분기.
   const priceStatus = props.line.priceSource === 'REMEMBERED'
-    ? '거래처 최근단가'
+    ? (props.partnerSelected ? '거래처 최근단가' : null)
     : props.line.priceSource === 'CATALOG'
-      ? '정가'
+      ? '판매가'
       : null
   const priceStatusDescription = props.line.priceSource === 'REMEMBERED'
-    ? `이 거래처에 마지막으로 저장된 단가${props.line.priceMemoryUpdatedAt ? ` · ${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+    ? (props.partnerSelected
+        ? `이 거래처에 마지막으로 저장된 단가${props.line.priceMemoryUpdatedAt ? ` · ${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+        : null)
     : props.line.priceSource === 'CATALOG'
-      ? '이 거래처에 저장된 최근단가가 없어 정가를 적용했습니다'
+      ? (props.partnerSelected
+          ? '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다'
+          : '판매가를 적용했습니다')
       : null
 
   return (
@@ -251,11 +257,12 @@ function SlipMobileLineCard(props: {
           aria-label={`라인 ${props.lineNumber} 단가`}
           aria-describedby={priceStatusDescription ? priceStatusId : undefined}
         />
+        {/* R4-D2: 라인별 aria-live 제거 — 전역 고지는 배너(role="status") 1곳, 포커스 시 전달은
+            aria-describedby 체인이 담당. */}
         {priceStatus && priceStatusDescription ? (
           <span
             id={priceStatusId}
             role="note"
-            aria-live="polite"
             aria-label={priceStatusDescription}
             title={priceStatusDescription}
             className="price-source-note"
@@ -294,6 +301,8 @@ function SortableLineRow(props: {
   lineNumber: number
   selected: boolean
   canDelete: boolean
+  /** 거래처 선택 여부 (R4-D4) — LineRow 마커 카피 분기/해제에 전달. */
+  partnerSelected: boolean
   onSelect: (s: boolean) => void
   onModelNameChange: (v: string) => void
   onModelNameBlur: (v: string) => void
@@ -334,6 +343,7 @@ function SortableLineRow(props: {
         line={props.line}
         selected={props.selected}
         canDelete={props.canDelete}
+        partnerSelected={props.partnerSelected}
         onSelect={props.onSelect}
         onModelNameChange={props.onModelNameChange}
         onModelNameBlur={props.onModelNameBlur}
@@ -456,9 +466,8 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     const productId = product?.id ?? null
     const fallbackUnitPrice =
       product?.sellingPrice != null ? String(product.sellingPrice) : line.unitPrice
-    const shouldAutoFill =
-      line.priceSource !== 'USER' &&
-      (!line.unitPrice || line.unitPrice === '0' || line.priceSource === 'CATALOG' || line.priceSource === 'REMEMBERED')
+    // 자동채움 판정은 견적과 공용 헬퍼(shouldAutoFillPrice) — 비대칭 재발 구조 차단(R4-F1).
+    const shouldAutoFill = shouldAutoFillPrice(line.priceSource, line.unitPrice)
     const nextUnitPrice = shouldAutoFill ? fallbackUnitPrice : line.unitPrice
     const partnerId = selectedPartner?.id
     updateLine(line.id, {
@@ -499,7 +508,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         }),
       )
     } catch {
-      // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 정가 fallback 유지.
+      // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 판매가(catalog) fallback 유지.
       setLines((currentLines) =>
         currentLines.map((current) =>
           current.id === line.id
@@ -810,7 +819,15 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     (l) => l.productId && Number(l.quantity) > 0,
   ).length
   const requiredWh = isOutbound ? sourceWh : destWh
-  const canSubmit = !!requiredWh && validLineCount > 0 && !mutation.isPending
+  // 거래처 변경 최근단가 재조회/가격기억 조회가 in-flight 인 동안 저장하면 이전 거래처
+  // 단가가 새 거래처(partnerId)로 전송되어 가격기억이 교차 오염된다 — 저장 차단(R4-F4).
+  const priceResolutionBusy = lines.some((l) => l.lookupLoading)
+  // R4-D4: 마커 카피 분기/해제 기준 — 가격기억 조회가 실제 가능한 상태(UUID 보유 거래처 선택)와 일치.
+  const partnerSelected = Boolean(selectedPartner?.id)
+  // R4-D9: 배너 live region 은 상시 마운트 — 내용과 함께 조건부 마운트하면 일부 SR 이 미낭독.
+  const priceRefreshNoticeActive = lines.some((line) => line.priceRefreshChanged)
+  const canSubmit =
+    !!requiredWh && validLineCount > 0 && !mutation.isPending && !priceResolutionBusy
 
   // ── Header 체크박스 상태 ────────────────────────────────
 
@@ -891,11 +908,18 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
           )}
         </div>
 
-        {lines.some((line) => line.priceRefreshChanged) ? (
-          <div className="price-memory-refresh-banner" role="status" aria-live="polite">
-            거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.
-          </div>
-        ) : null}
+        {/* R4-D9: live region 은 빈 컨테이너로 상시 렌더하고 텍스트만 토글 — ARIA 관행상
+            live region 이 선존재해야 SR 낭독이 신뢰된다. 비활성 시 class 미부여로 시각 0px. */}
+        <div
+          className={priceRefreshNoticeActive ? 'price-memory-refresh-banner' : undefined}
+          role="status"
+          aria-live="polite"
+          data-testid="slip-price-refresh-banner"
+        >
+          {priceRefreshNoticeActive
+            ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
+            : null}
+        </div>
 
         {/*
           AC-3: 거래처 선택은 PartnerAutocomplete 단일 경로.
@@ -1217,6 +1241,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                   lineNumber={idx + 1}
                   selected={selectedIds.has(line.id)}
                   canDelete={lines.length > 1}
+                  partnerSelected={partnerSelected}
                   onSelect={(s) => toggleSelect(line.id, s)}
                   onSpecificationChange={(v) => updateLine(line.id, { specification: v })}
                   onQuantityChange={(v) => updateLine(line.id, { quantity: v })}
@@ -1294,6 +1319,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                       lineNumber={idx + 1}
                       selected={selectedIds.has(line.id)}
                       canDelete={lines.length > 1}
+                      partnerSelected={partnerSelected}
                       onSelect={(s) => toggleSelect(line.id, s)}
                       onModelNameChange={(v) => updateLine(line.id, { modelName: v })}
                       onModelNameBlur={(v) => void handleModelNameBlur(line.id, v)}
@@ -1375,6 +1401,23 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         ) : null}
 
         <div className="sfp-submit-bar">
+          {/* 재조회 in-flight busy 단서 — 견적 폼과 대칭 문구(R4-F4).
+              R4-D9 계열 sweep: live region 은 빈 span 으로 상시 렌더하고 텍스트만 토글 —
+              ARIA 관행상 live region 이 선존재해야 SR 낭독이 신뢰된다. 비활성 시 스타일
+              미부여 빈 인라인 span = 시각 0px (flex-end 정렬이라 gap 슬롯도 우측 그룹에
+              가시 영향 없음). */}
+          <span
+            role="status"
+            aria-live="polite"
+            data-testid="slip-form-price-refresh-busy"
+            style={
+              priceResolutionBusy
+                ? { fontSize: 12, color: 'var(--ink-secondary, #5C6773)', alignSelf: 'center' }
+                : undefined
+            }
+          >
+            {priceResolutionBusy ? '최근단가 확인 중…' : null}
+          </span>
           <Button variant="ghost" onClick={() => navigate(listPath)}>
             취소
           </Button>
