@@ -4,6 +4,17 @@
 
 ---
 
+## 🚨 2026-07-15 (집PC) — 표준 워크플로우 전면 개편 (개발책임자 지시 · 전 세션 엄수)
+
+> **구 워크플로우 전부 삭제·폐기.** 유일 진실원 = [.claude/memory/feedback_canonical_workflow.md](../../.claude/memory/feedback_canonical_workflow.md) (CLAUDE.md §4 병기). 이후 모든 슬라이스(진행 중 #809·대기 #810 포함)는 새 캐논으로 진행 — 아래 #809 재개 절의 "R4 Opus 5-agent"는 새 캐논의 **FABLE5 5-agents(이상) 적대검증 라운드**로, "Codex 적대"는 **CODEX SOL 5.6 라운드**로 읽는다.
+
+- **새 파이프라인**: OPUS 4.8 기획(기획 단계 조기 PR 개설+기획 리뷰 게시) → CODEX SOL 5.6 기획검수(게시) → CODEX LUNA 5.6 구현(게시) → FABLE5 5-agents(이상) 적대리뷰·라이브QA·fix·검증(게시) → CODEX SOL 5.6 5-agents(이상) 동일(게시) → 두 검증 **0수렴까지 반복** → PM 종합(게시)·CI green·머지. **엄수·단축금지·순차·모든 단계 리뷰 게시(실행=게시 1:1)·라이브QA 스크린샷 다수 필수.**
+- **codex 모델 ID 실측**(집PC): `gpt-5.6-sol`(기획검수/적대리뷰)·`gpt-5.6-luna`(구현) 정상 응답 — 디스패치마다 명시(config 기본값 의존 금지). 모델 부재 시 임의 대체 금지(개발책임자 선확인·구 Sonnet 대체 모드 폐기).
+- **삭제 메모리 4파일**(유효 규율은 캐논에 흡수): `feedback_review_5agent_no_shortcut_strict` · `feedback_workflow_discipline_root_cause` · `feedback_sonnet_substitution_when_codex_unavailable` · `feedback_codex_model_auto_switch`. sync 스크립트에 **prune(삭제 전파)** 추가.
+- **🔴 회사PC 필수 1회**: `git pull` 후 `.\scripts\sync-claude-memory.ps1` 실행(삭제 4파일+홈 stale 구 워크플로우 잔존 파일 자동 제거). 로컬 `~/.claude/agents/` 7종 frontmatter 도 `model: fable` 로 갱신 권장(집PC 완료 — 캐논의 "디스패치 시 model 명시" 규칙이 1차 방어).
+
+---
+
 ## 🔄 2026-07-15 (집PC 저녁) — #809 **R3 완주+30건 fix 완료 · R4 착수 지점**에서 세션 정리 (집PC 재개 예정)
 
 > **다음 세션 첫 읽기(최우선).** codex CLI 0.144.4 업그레이드 + 세션 재시작으로 **`gpt-5.6-sol` 400 차단 해소 확인**(연결 테스트 통과). 그 뒤 R3 완주 → 30건 fix → 검증 green → push 까지 완료. **R4 는 디스패치했으나 세션 정리로 유실 → 재디스패치 필요.**

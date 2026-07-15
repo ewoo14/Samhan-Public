@@ -13,4 +13,4 @@ PR 진행 중 범위가 mechanical fix(mock 데이터 등)를 넘어 **substanti
 **How to apply:**
 - 범위가 커질 때마다 "이건 mechanical인가 substantive인가" 자문 → BE 로직·마이그·계약·다서비스면 즉시 5-agent+Codex 리뷰 라운드 재가동 + PR 게시.
 - Codex 구현 디스패치 ≠ 리뷰. 구현 후 별도 리뷰 라운드 필수.
-- 미준수 발각 시 **소급 리뷰**(머지 후라도 5-agent+Codex 재실행·PR 게시·결함 시 후속 PR). → [[feedback_review_5agent_no_shortcut_strict]] · [[feedback_post_devlead_decisions_to_pr]] · [[feedback_fix_in_current_pr_no_split]]
+- 미준수 발각 시 **소급 리뷰**(머지 후라도 FABLE5+CODEX SOL 5.6 재실행·PR 게시·결함 시 후속 PR). → [[feedback_canonical_workflow]] · [[feedback_post_devlead_decisions_to_pr]] · [[feedback_fix_in_current_pr_no_split]]
