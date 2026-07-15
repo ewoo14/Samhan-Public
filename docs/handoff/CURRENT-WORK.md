@@ -4,14 +4,77 @@
 
 ---
 
-## 🔴 2026-07-16 (야간 자율) — #809 **R4·R5 완주 · R6 fix 진행 중 · 0수렴 실패**
+## 🟢 2026-07-16 (집PC 야간 완주) — #809 **R4~R7 완주 · lineId 계약으로 근본원인 해소 · R8 착수 지점**
 
-> **다음 세션 첫 읽기(최우선).** 개발책임자 야간 지시: "PM이 다음 슬라이스 지정 및 오전까지 멈춤없이 계속 진행. 답변불가".
+> **다음 세션(회사PC) 첫 읽기(최우선).** 개발책임자 지시: **"R8 은 회사PC에서부터 진행"**.
+
+### 🔴 재개 지점 = **R8 = FABLE5 5차원 full 라운드 재시작**
+**범위 점증(lineId 계약 도입) → [[feedback_expanded_scope_reinstate_review]] 에 따라 리뷰 재가동 필수.**
+- R8(FABLE5 5차원) → fix → R9(CODEX SOL 5.6 5차원) → **양측 0수렴** → PM 종합 10-게이트 → 머지
+- **예상 2라운드** — 근본원인이 제거돼 이전처럼 "fix 가 새 결함을 낳는" 구조가 끊겼음
 
 ### 상태
-- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `e178c12cb`** · **PR #820 OPEN**·base=main
-- **CI 36/36 SUCCESS**(on `e178c12cb`) · 라이브 QA **14/14** · slip **1273** · partner 314 · approval-core 16 · ecount-io 13 · notification-publisher 4 · desktop **745** · DS **46** — 전부 0 fail/error/skip
-- **🔴 머지 불가** — R6 가 HIGH 6 · MEDIUM 10 을 냄
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `34f978ec9`** · **PR #820 OPEN**·base=main
+- **CI 36/36 SUCCESS**(on `34f978ec9`) · slip-service **1298** · partner 314 · approval-core 16 · ecount-io 13 · notification-publisher 4 · desktop **749** · DS **49** — 전부 0 fail/error/skip
+- 라이브 QA **19/19**(직전 HEAD `90a2c6ed9` 기준 · 스샷 41장 `r6-postfix/`)
+
+### 🔑 이번 세션의 핵심 — **7라운드 미수렴의 근본원인 제거**
+```
+update 계약이 라인 안정 ID 없이 전 라인을 통째 교체
+  → 서버가 "신규 라인"과 "수정된 기존 라인"을 구분 불가
+  → 버려진 세트 계보를 fingerprint 휴리스틱으로 되찾으려는 모든 시도가 반례에 붕괴
+     R5 greedy(라이브 CONFIRMED 오귀속) → R6 2-패스(R7 이 BLOCKING+반례 probe 로 붕괴)
+  → 개발책임자 결정: lineId 왕복 계약 도입 → 계보를 애초에 버리지 않음
+```
+- `BundleLineageResolver` = **136줄 · 휴리스틱 잔존 0**(Comparator/distance/tie/FallbackCandidate 전부 0 — PM grep 확인)
+- `lineId==null`·미전송 → **신규 평면 라인. 폴백 없음**(폴백을 남기면 같은 결함 재발)
+- 타 문서 ID·중복 → **400**(403 아닌 이유: 문서 존재 oracle 노출 회피)
+- 견적 `EstimateLineResponse` 에 `setHead`/`parentSetModel` 노출 추가(전표엔 있던 비대칭 해소)
+- R7 반례가 테스트 이름에 잠김: `modifiedSetHead_quantityOnly_stillPreservesLineageByLineId` · `sameProductComponentAndPlainLine_keepTheirOwnLineageRegardlessOfRequestOrder` · `swappingRequestOrder_doesNotChangeLineageAssignment` · IT `lineIdFromAnotherSlip_isRejectedAsBadRequestBeforeReplacement`
+
+### 🔴 R8 fix 대상 (R7 이 냈으나 **미fix** — 이미 진단 완료)
+| ID | 내용 |
+|---|---|
+| **R7-BE-3** [HIGH·CONFIRMED] | `SlipSnapshot` 이 **`driver`·`unloadDate` 누락** — `SlipService.editDriver:403` 이 *"toSnapshot 필드"* 라 **명시**하는데 record 에 없음. 라이브 실측: **활성 revision 2,028건 전부 그 키 0건**, `unload_date` 보유 활성 전표 7건. point-in-time 복원이 현재 값을 남김 |
+| **R7-FE** [MEDIUM] | **duplicate mock 이 권한 검사 없음** → 생성 권한 없는 역할도 복사 성공(실 BE 는 403). `mockRequirePermission()` 존재하나 duplicate 분기서 미호출 |
+| **R7-FE** [MEDIUM] | **duplicate mock/test 가 세트 계보 미검증** → 전역 `SAMPLE_LINES` 반환 + `lines.length>0` 만 확인 → **H2 원결함이 mock gate 통과**. `__mockStatus:201` 도 미반영 |
+| **R7-FE** [MEDIUM] | **거래처 해제 시 두 폼 모두 stale 안내 계속 낭독** — R6-M5 는 **재선택 refresh 시작에서만** 비움. 해제 분기엔 setter 없음(**또 slip/estimate 비대칭**) |
+| **R7-FE** [LOW·CONFIRMED] | **mock UUID regex 가 GET 실 wire 보다 엄격** — `partnerId=1-1-1-1-1` → 실 API **204** / mock **400**(JDK17 `UUID.fromString` 축약형 수용). POST bulk 는 Jackson 이 canonical 36자만 수용해 현 regex 와 일치 → **GET/POST 검증 분리 필요** |
+| **R7-FE** [LOW] | R6-M4 의 "양방향 실증"이 **fixture 계층 차이**였음(PM 게시 정정 완료) — API 경계 테스트와 페이지 테스트의 책임 분리 필요 |
+
+### 🔵 개발책임자 확인 **대기 3건** (머지 게이트를 막음 — R8 fix 에 함께 넣으려면 답 필요)
+1. **R6-H6** 정상 coedit 모드에서 **legacy 견적 1,926건 저장 데드락**(`PartnerAutocomplete disabled={coeditActive}` 인데 "거래처를 다시 선택해 주세요"). **main 도 동일 = #809 회귀 아님**. 이 PR 에서 고칠지 / 별도 이슈 / 오류 문구만 정정.
+2. **R6-M1** Hikari `connection-timeout` **4s 전역화**(fleet **26모듈 중 slip-service 유일**). R5 진단은 옳았으나 처방이 범위 초과. 권고 = 가격기억 전용 DataSource 격리 후 전역 30s 복원.
+3. **R6-M8** **BUNDLE_SET parent 기억이 생성 시점 1회뿐**(수정 경로 미갱신 → 재선택 시 구값). ※ **lineId 계약 도입으로 재검토 가능해짐**.
+
+### 📮 이번 세션 게시 (PR #820)
+[R4 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980286625) · [D-R4 결정 4건](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980376041) · [R4 fix](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4981726892) · [R5 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4982532949) · [R5 fix](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4983603804) · [R6 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4984027656) · [R6 fix](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4985345956) · [R7 + lineId 결정](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4985570977)
+
+### 📌 개발책임자 결정 (누적)
+- **D-R3-1~4**(R3) · **D-R4-1** `정가`→**`판매가`** · **D-R4-2** 최신성 권위=`remembered_at` 캡처 시각 유지 · **D-R4-3** 서브-원 드리프트 수용 · **D-R4-4** 거래처 해제 시 단가 유지+마커만 해제
+- **범위 외 결함 = PM 자율 이슈 등록 후 보고** → [[feedback_fix_in_current_pr_no_split]] 박제. 선례 **#821**·**#822**
+- **#821**(nightly 유령 필터) = "유지 + #820 에서 같이 fix" → 완료
+- **#822**(견적 revision 복원 시 `unitPriceWithVat` 소실) = PM 이 "범위 외" 등록 → **라이브 실측이 근거를 뒤집어 범위 내로 정정**([이슈 코멘트](https://github.com/ewoo14/Samhan-Public/issues/822#issuecomment-4984944601)) → #820 에서 fix 완료·머지 시 close
+- **lineId 왕복 계약 도입**(2026-07-16) — 위 §핵심 참조
+
+### 🔴 PM 자기 지적 (전부 PR 게시됨 — 반복 방지용)
+1. **로컬 통과 ≠ CI green** — R4 fix 게시에서 로컬 740/740 을 근거로 green 보고했으나 CI 는 red(flaky).
+2. **R4-F2 도달성 과장** — "legacy 1927/1927 전부 오염 대상" 은 과장. 실 legacy **1,926건 전부 `partner_id NULL`** → upsert null-skip → **현 실데이터로 도달 불가**.
+3. **"#809 회귀" 가설 반증** — legacy 저장 차단은 **main 도 동일**(main hydrate 가 `setPartner` 미호출).
+4. **R5 문서 배치 누락** — R4 는 돌렸는데 R5 는 안 돌려 dev-report 가 R5 와 모순. **4개 차원 독립 지적**.
+5. **라이브 프로브 병렬 실행** — BE·QA 가 같은 DB 동시 쓰기 → QA false-RED. → [[feedback_parallel_agent_gradle_shared_tree_contention]] **3변종** 박제.
+6. **스펙 리터럴 false-RED** — `'f|NULL'` 이 틀림(PG `boolean::text` = `true`/`false`). ⚠️ 단 **캐스트 없는 raw boolean 은 `t`/`f`** 라 일괄 치환은 새 false-RED 를 만듦(에이전트가 막음).
+7. **R6-M4 "양방향 실증" 오보** — `String()` 만 무력화한 실증은 **fixture 계층 차이**였음(R7-FE 가 적발).
+8. **R6 리뷰 총계 오기** — LOW 를 6 이라 썼으나 실제 L1~L7 = 7개.
+
+### ⚙️ 🔴 회사PC 착수 시 필수 (이 세션에서 실증된 함정)
+- 🔴 **Docker 이미지·design-system dist 는 git 으로 안 따라온다.** 이 세션 시작 시 slip-service 가 **07-11 빌드**(V58 미적용·테이블 부재)였고 dist 는 **07-08**(stale → desktop typecheck **31건 false-RED**). **다른 PC 의 "준비 완료" 를 믿지 말 것.**
+- 재배포: `.\gradlew :services:slip-service:bootJar -x test` → `docker compose -p infrastructure --project-directory <repo>/infrastructure -f docker-compose.yml -f docker-compose.local-all.yml -f docker-compose.slip-port-override.yml build|up -d --no-deps --force-recreate slip-service`
+- **host influxd 가 8086 점유** → slip-service 호스트 포트 **18086**(커밋된 `docker-compose.slip-port-override.yml`)
+- **design-system dist 재빌드**: `cd clients/web/design-system && npm run build` (**desktop typecheck 전 필수**)
+- **codex**: `~/.codex/config.toml` 기본 model=`gpt-5.5` → **디스패치마다 명시**. 이 세션 실측: `gpt-5.6-sol` ✅ · `gpt-5.6-luna` ✅
+- **gradle test 는 foreground**(백그라운드 killed) · PowerShell `Select-Object -First N` 파이프 조기종료가 **exit 255 오탐**(무시하고 XML 집계로 판정)
+- **라이브 QA 하네스**: `playwright/809-price-memory-real-qa/vite.809-realqa.config.ts`(design-system **소스 alias** — dist 신선도 비의존). 스샷 경로는 라운드별 신규 디렉토리로(`r6-postfix/` 까지 사용됨 — **r2~r6-postfix 전부 불가침**)
 
 ### 완주 라운드 (전부 PR 게시됨)
 | 라운드 | 결과 | 게시 |
