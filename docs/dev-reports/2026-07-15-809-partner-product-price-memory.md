@@ -30,7 +30,12 @@
 - 품목 선택 시 `(partnerId, productId)` 기억단가를 조회하고, hit 시 기억값, miss 시 catalog 정가를 채운다.
 - `priceSource` 상태(`REMEMBERED`/`CATALOG`/`USER`)로 사용자 override 와 자동채움 값을 구분한다.
 - 거래처 변경 시 자동채움 라인만 새 거래처 기준으로 재조회하고, 사용자 override 라인은 보존한다.
-- 기억단가 hit 라인은 단가 셀에 `role="note"` 의 `최근가` 마커와 저장일 tooltip 을 표시한다.
+- 기억단가 hit 라인은 단가 셀에 `role="note"`의 `거래처 최근단가` 마커와 원 문서 저장일 tooltip을
+  표시한다. miss는 `정가`로 명시하고 input `aria-describedby`, `aria-live="polite"`를 연결한다.
+- 거래처 변경으로 실제 단가가 바뀐 행을 강조하고 `거래처 변경으로 최근단가 재적용 · 변경된 행을
+  확인해 주세요.` 상태 배너를 표시한다.
+- 거래처 변경 N개 라인은 `POST /slips/price-memory/bulk` 1회로 조회하고 hit-only 응답에서 생략된
+  productId를 정가 miss로 매핑한다. 모델 blur/단일 품목 선택은 호환 단건 GET을 유지한다.
 - 견적 모델명 lookup 은 BE wire 계약(`id`, `name`)을 명시 변환해 `productId`, `productName` 으로 매핑한다.
 
 ## 검증 포인트
@@ -153,8 +158,12 @@ Prometheus `rule_files`에 `infrastructure/prometheus/rules/slip-price-memory.ym
 
 ### 정책·마이그레이션·배포 문구
 
-- D-R3-1: UUID는 화면 표시만 금지하며 API query/body는 유지한다.
-- D-R3-3: soft-delete 거래처/품목이 연결된 기존 문서에서도 가격기억을 반환한다. 외부 생존 조회는 없다.
+- D-R3-1: UUID는 화면 표시만 금지하며 API query/body는 유지한다. DevTools Network는 사용자 화면이
+  아니고 기존 `GET /slips/{id}`도 UUID URL을 사용한다. bulk POST는 UUID 은닉이 아니라 최대 100개
+  UUID의 URL 길이 제약 때문에 선택했다.
+- D-R3-3: soft-delete 거래처/품목이 연결된 기존 문서에서도 가격기억을 반환한다. UI 검색은 삭제
+  엔티티를 신규 선택지에서 제외하지만 기존 문서 편집에는 단가 보존이 필요하며, 외부 생존 조회는
+  CH-8 호출 증폭을 재발시키므로 추가하지 않는다.
 - CL-1: source schema를 `LINE_SAVE | BUNDLE_SET`으로 정정했다.
 - CM-6: 아직 미머지인 V58의 `CREATE TABLE IF NOT EXISTS`를 제거하여 drift 배포가 실패하게 했다.
   **이미 구 V58을 적용한 로컬 dev DB는 checksum mismatch와 `remembered_at` 컬럼 부재가 함께 발생한다.
@@ -176,3 +185,35 @@ Prometheus `rule_files`에 `infrastructure/prometheus/rules/slip-price-memory.ym
 | Prometheus v2.55.1 `promtool check config` | config valid, rule file 1개·rule 1개 SUCCESS |
 
 PM의 최종 genuine `--rerun-tasks --no-build-cache` 전체 회귀는 별도 수행한다.
+
+## R3 FE 및 마지막 QA/테스트 보완
+
+- PM 독립 FE 검증: desktop typecheck exit 0, desktop Vitest **104 files / 726 tests / 0 fail**,
+  design-system **11 files / 41 tests / 0 fail** (`9ff6387f1`).
+- 구매 PUT은 공급단가 `135000.00` 저장 후 가격기억 `148500.00`, non-legacy 복사는 VAT 포함
+  `321000.00` 저장/조회 동일, 모바일 견적은 공급단가 `500000.00` 저장 후 가격기억 `550000.00`을
+  실 PostgreSQL async flush 뒤 정확히 비교하는 IT를 추가했다.
+- 같은 문서의 동일 pair는 마지막 라인 P2만 남고 set-based upsert가 1회 호출되는지 검증했다.
+  `putIfAbsent()` mutation이면 P1이 남아 실패하고, dedupe 제거 mutation이면 실 PostgreSQL의
+  `ON CONFLICT DO UPDATE cannot affect row a second time` 위험이 다시 노출된다.
+- 주문 저장은 `PartnerProductPriceMemoryService` 무호출을 음성 테스트로 잠갔다. 외부 거래처/품목이
+  soft-delete된 것으로 간주되는 orphan UUID도 활성 memory row를 반환하는 D-R3-3 의도 테스트를 추가했다.
+- R2 라이브 QA는 견적 POST 500도 통과할 수 있는 CB-3 false-green이 확인되어 리포트 상단에
+  **superseded** 정정 이력을 남겼다. 경화 스펙은 POST 2xx 응답 ID, 해당 ID의
+  `unit_price_with_vat=P`, memory `unit_price=P`, 5초 유한 async 폴링을 사용한다.
+- 경화한 라이브 스펙은 V58 로컬 DB 재생성 및 slip-service 재배포가 선행돼야 하므로 이번 배치에서
+  실행하지 않았다. R4 라이브 QA 결과가 최종 증거다.
+
+### 마지막 배치 선별 검증
+
+| 검증 | 결과 |
+|---|---|
+| `:services:slip-service:compileTestJava --no-daemon` | **BUILD SUCCESSFUL** |
+| `PartnerProductPriceMemoryServiceTest` + `MobilePartnerOrderServiceTest` | **BUILD SUCCESSFUL** — CM-9/CL-2 포함 |
+| 신규 실 PostgreSQL IT 4건 | **4 passed** — 구매 PUT·복사·모바일 견적·soft-delete 편집 정책 |
+| hardened Playwright spec 단일 파일 TypeScript 검사 | exit 0 |
+| live Playwright | **미실행(의도)** — V58 DB 재생성·서비스 재배포 뒤 R4에서 수행 |
+
+구매 PUT IT 첫 선별 실행은 create 응답 token 대신 DB 최신 `modifiedAt`이 필요한 기존 낙관적 잠금
+fixture 계약 때문에 1회 실패했다. 기존 `SlipUpdateIT`와 동일하게 최신 token을 다시 읽도록 테스트를
+교정한 뒤 해당 실 PostgreSQL IT가 통과했다. production 변경이나 production 결함은 아니었다.

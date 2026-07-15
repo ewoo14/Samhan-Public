@@ -3,10 +3,12 @@ package com.samhanair.logis.slip.price.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -152,6 +155,66 @@ class PartnerProductPriceMemoryServiceTest {
                 .counter().count()).isEqualTo(2.0);
         assertThat(meterRegistry.get(PartnerProductPriceMemoryService.BATCH_SIZE_SUMMARY)
                 .summary().count()).isEqualTo(1L);
+    }
+
+    @Test
+    void rememberBatchAfterCommit_samePairUsesLastLineInDocumentOrder() {
+        UUID partnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        PartnerProductPriceMemoryCommand firstLine = new PartnerProductPriceMemoryCommand(
+                partnerId, productId, new BigDecimal("1000.00"), "LINE_SAVE", "actor");
+        PartnerProductPriceMemoryCommand lastLine = new PartnerProductPriceMemoryCommand(
+                partnerId, productId, new BigDecimal("2000.00"), "LINE_SAVE", "actor");
+        when(batchRepository.upsertAll(anyList(), any(LocalDateTime.class))).thenReturn(1);
+
+        service.rememberBatchAfterCommit(List.of(firstLine, lastLine), "same-pair-last-wins");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(batchRepository, times(1)).upsertAll(captor.capture(), any(LocalDateTime.class));
+        assertThat(captor.getValue()).singleElement().satisfies(command -> {
+            assertThat(command.partnerId()).isEqualTo(partnerId);
+            assertThat(command.productId()).isEqualTo(productId);
+            assertThat(command.unitPrice()).isEqualByComparingTo("2000.00");
+        });
+    }
+
+    @Test
+    void rememberBatchAfterCommit_nullCommandIsIgnored() {
+        service.rememberBatchAfterCommit(Collections.singletonList(null), "null-command");
+
+        verify(batchRepository, never()).applyTransactionTimeouts(anyInt(), anyInt());
+        verify(batchRepository, never()).upsertAll(anyList(), any(LocalDateTime.class));
+        assertThat(queuedTasks).isEmpty();
+    }
+
+    @Test
+    void rememberBatchAfterCommit_blankActorUsesSystemActor() {
+        PartnerProductPriceMemoryCommand command = new PartnerProductPriceMemoryCommand(
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("3000.00"), "LINE_SAVE", "  ");
+        when(batchRepository.upsertAll(anyList(), any(LocalDateTime.class))).thenReturn(1);
+
+        service.rememberBatchAfterCommit(List.of(command), "blank-actor");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(batchRepository).upsertAll(captor.capture(), any(LocalDateTime.class));
+        assertThat(captor.getValue()).singleElement()
+                .extracting(PartnerProductPriceMemoryCommand::actor)
+                .isEqualTo("system");
+    }
+
+    @Test
+    void rememberBatchAfterCommit_withoutSynchronizationFlushesImmediately() {
+        PartnerProductPriceMemoryCommand command = new PartnerProductPriceMemoryCommand(
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("4000.00"), "LINE_SAVE", "actor");
+        when(batchRepository.upsertAll(anyList(), any(LocalDateTime.class))).thenReturn(1);
+
+        assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
+        service.rememberBatchAfterCommit(List.of(command), "no-synchronization");
+
+        verify(batchRepository).upsertAll(anyList(), any(LocalDateTime.class));
+        assertThat(queuedTasks).isEmpty();
     }
 
     @Test

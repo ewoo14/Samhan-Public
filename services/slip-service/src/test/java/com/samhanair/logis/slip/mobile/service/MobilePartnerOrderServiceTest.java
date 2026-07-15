@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
@@ -15,6 +16,7 @@ import com.samhanair.logis.slip.client.ProductSummary;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.mobile.dto.MobilePartnerOrderRequest;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipNumberService;
 import com.samhanair.logis.slip.service.cutoff.OutboundCutoffGuard;
@@ -41,6 +43,8 @@ class MobilePartnerOrderServiceTest {
     @Mock private PartnerInternalClient partnerInternalClient;
     @Mock private OutboundCutoffGuard cutoffGuard;
     @Mock private Clock clock;
+    /** 결정 ① 음성 가드: 향후 주문 서비스에 가격기억 의존성이 추가되면 @InjectMocks가 주입한다. */
+    @Mock private PartnerProductPriceMemoryService priceMemoryService;
 
     @InjectMocks private MobilePartnerOrderService service;
 
@@ -89,5 +93,35 @@ class MobilePartnerOrderServiceTest {
 
         verify(cutoffGuard, never()).assertWithinCutoff(any(), any());
         verify(slipRepository, never()).save(any(Slip.class));
+    }
+
+    @Test
+    void mobilePartnerOrder_doesNotWritePartnerProductPriceMemory() {
+        UUID sourceWarehouseId = UUID.randomUUID();
+        when(partnerInternalClient.verifyPartnerCode("P-001"))
+                .thenReturn(PartnerInternalClient.PartnerVerifyResult.found(Optional.of(partnerId)));
+        when(productClient.lookup(List.of(productId))).thenReturn(List.of(
+                new ProductSummary(productId, "에어컨", "AC-1", UUID.randomUUID(),
+                        new BigDecimal("1000.00"), "ACTIVE")));
+        when(slipNumberService.next(LocalDate.of(2026, 7, 11), SlipType.OUTBOUND))
+                .thenReturn("2026/07/11-2");
+        when(slipNumberService.extractSeqNo("2026/07/11-2")).thenReturn(2);
+        when(slipRepository.save(any(Slip.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MobilePartnerOrderRequest request = new MobilePartnerOrderRequest(
+                "P-001",
+                LocalDate.of(2026, 7, 11),
+                sourceWarehouseId,
+                "서울시 중구",
+                "010-0000-0000",
+                "주문은 가격기억 제외",
+                List.of(new MobilePartnerOrderRequest.MobileOrderLineRequest(
+                        productId, "에어컨", "AC-1", "EA", 1,
+                        new BigDecimal("777000.00"), null)));
+
+        service.createOrder(request, "sales-1");
+
+        verify(slipRepository).save(any(Slip.class));
+        verifyNoInteractions(priceMemoryService);
     }
 }

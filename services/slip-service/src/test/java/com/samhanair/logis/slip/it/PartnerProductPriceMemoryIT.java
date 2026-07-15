@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
@@ -18,6 +19,8 @@ import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.client.WarehouseInternalClient;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.mobile.dto.MobileQuotationRequest;
+import com.samhanair.logis.slip.mobile.service.MobileQuotationService;
 import com.samhanair.logis.slip.price.config.PartnerProductPriceMemoryProperties;
 import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
 import com.samhanair.logis.slip.price.repository.PartnerProductPriceMemoryBatchRepository;
@@ -28,7 +31,9 @@ import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipService;
+import com.samhanair.logis.slip.service.SlipUpdateService;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
+import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -67,6 +72,12 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     @Autowired
     private SlipService slipService;
+
+    @Autowired
+    private SlipUpdateService slipUpdateService;
+
+    @Autowired
+    private MobileQuotationService mobileQuotationService;
 
     @Autowired
     private SlipRepository slipRepository;
@@ -359,6 +370,116 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         assertThat(found.updatedAt()).isEqualTo(LocalDateTime.of(2026, 7, 15, 10, 1));
     }
 
+    @Test
+    void purchasePut_remembersVatInclusivePriceAfterMultiply() {
+        UUID partnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        BigDecimal supplyPrice = new BigDecimal("135000.00");
+        BigDecimal expectedVatInclusivePrice = new BigDecimal("148500.00");
+        var created = slipService.create(
+                inboundSlipRequest(partnerId, productId, new BigDecimal("120000.00")),
+                "actor-purchase-create", "구매 PUT 가격기억 준비");
+        var currentSlip = slipRepository.findById(created.id()).orElseThrow();
+        LocalDateTime updateToken = currentSlip.getModifiedAt() == null
+                ? currentSlip.getCreatedAt()
+                : currentSlip.getModifiedAt();
+
+        try {
+            var updated = slipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            updateToken,
+                            "테스트 거래처",
+                            "P-809-PUT",
+                            "구매 PUT VAT 포함 가격기억",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            List.of(new SlipUpdateRequest.LineRequest(
+                                    productId, "테스트 품목", "MODEL-809", null,
+                                    1, supplyPrice, "구매 수정 라인"))),
+                    UUID.randomUUID(),
+                    "구매 수정자");
+
+            assertThat(updated.lines()).singleElement().satisfies(line ->
+                    assertThat(line.unitPrice()).isEqualByComparingTo(supplyPrice));
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemoryValue(
+                    partnerId, productId, expectedVatInclusivePrice);
+            assertThat(memory.unitPrice()).isEqualByComparingTo(expectedVatInclusivePrice);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    @Test
+    void duplicateSlip_roundTripsNonLegacyVatInclusivePrice() {
+        UUID partnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        BigDecimal copiedVatInclusivePrice = new BigDecimal("321000.00");
+
+        // desktop duplicateSlip 이 non-legacy 행에 보내는 BE 계약: 원 VAT 포함값 + priceVatInclusive=true.
+        var duplicated = slipService.create(
+                inboundSlipRequest(partnerId, productId, copiedVatInclusivePrice),
+                "actor-duplicate", "전표 복사 VAT 포함 라운드트립");
+        try {
+            assertThat(duplicated.lines()).singleElement().satisfies(line ->
+                    assertThat(line.unitPriceWithVat()).isEqualByComparingTo(copiedVatInclusivePrice));
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemoryValue(
+                    partnerId, productId, copiedVatInclusivePrice);
+            assertThat(memory.unitPrice()).isEqualByComparingTo(copiedVatInclusivePrice);
+        } finally {
+            cleanupSlip(duplicated.id());
+        }
+    }
+
+    @Test
+    void mobileQuotation_remembersVatInclusivePrice() {
+        UUID partnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        BigDecimal mobileSupplyPrice = new BigDecimal("500000.00");
+        BigDecimal expectedVatInclusivePrice = new BigDecimal("550000.00");
+        when(partnerInternalClient.verifyPartnerCode("P-809-MOBILE"))
+                .thenReturn(PartnerInternalClient.PartnerVerifyResult.found(Optional.of(partnerId)));
+
+        var quotation = mobileQuotationService.createQuotation(
+                new MobileQuotationRequest(
+                        "P-809-MOBILE",
+                        LocalDate.of(2026, 7, 15),
+                        LocalDate.of(2026, 8, 14),
+                        "모바일 견적 VAT 포함 가격기억",
+                        List.of(new MobileQuotationRequest.MobileQuotationLineRequest(
+                                productId, "테스트 품목", "MODEL-809", null,
+                                1, mobileSupplyPrice, "모바일 견적 라인"))),
+                "actor-mobile");
+        try {
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemoryValue(
+                    partnerId, productId, expectedVatInclusivePrice);
+            assertThat(memory.unitPrice()).isEqualByComparingTo(expectedVatInclusivePrice);
+        } finally {
+            cleanupEstimate(quotation.id());
+        }
+    }
+
+    @Test
+    void softDeletedPartnerOrProduct_stillReturnsMemoryForDocumentEditing() {
+        UUID softDeletedPartnerId = UUID.randomUUID();
+        UUID softDeletedProductId = UUID.randomUUID();
+        BigDecimal rememberedPrice = new BigDecimal("777000.00");
+
+        // 거래처/품목의 soft-delete 상태는 각 외부 서비스 소관이다. 가격기억 조회는 생존 확인 RPC나
+        // FK join 없이 활성 memory row 자체를 반환해야 기존 전표·견적 편집 단가가 보존된다(D-R3-3).
+        priceMemoryService.remember(
+                softDeletedPartnerId, softDeletedProductId, rememberedPrice, "document-editor");
+
+        PartnerProductPriceMemoryResponse found = priceMemoryService.find(
+                softDeletedPartnerId, softDeletedProductId).orElseThrow();
+        assertThat(found.unitPrice()).isEqualByComparingTo(rememberedPrice);
+        verifyNoInteractions(productClient, partnerInternalClient);
+    }
+
     private ProductSummary product(UUID productId) {
         return new ProductSummary(productId, "테스트 품목", "MODEL-809", "P-809",
                 UUID.randomUUID(), new BigDecimal("110000.00"), "ACTIVE", false);
@@ -441,6 +562,15 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         return priceMemoryService.find(partnerId, productId).orElseThrow();
     }
 
+    private PartnerProductPriceMemoryResponse awaitPriceMemoryValue(
+            UUID partnerId, UUID productId, BigDecimal expectedPrice) {
+        awaitUntil(() -> priceMemoryService.find(partnerId, productId)
+                        .map(memory -> memory.unitPrice().compareTo(expectedPrice) == 0)
+                        .orElse(false),
+                "가격기억 비동기 저장값 " + expectedPrice.toPlainString());
+        return priceMemoryService.find(partnerId, productId).orElseThrow();
+    }
+
     private void awaitUntil(BooleanSupplier condition, String description) {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
         while (System.nanoTime() < deadline) {
@@ -458,9 +588,16 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     }
 
     private void cleanupSlip(UUID slipId) {
+        jdbcTemplate.update("DELETE FROM slip_audit_logs WHERE slip_id = ?", slipId);
         jdbcTemplate.update("DELETE FROM slip_revisions WHERE slip_id = ?", slipId);
         jdbcTemplate.update("DELETE FROM slip_lines WHERE slip_id = ?", slipId);
         jdbcTemplate.update("DELETE FROM slips WHERE id = ?", slipId);
+    }
+
+    private void cleanupEstimate(UUID estimateId) {
+        jdbcTemplate.update("DELETE FROM estimate_revisions WHERE estimate_id = ?", estimateId);
+        jdbcTemplate.update("DELETE FROM estimate_lines WHERE estimate_id = ?", estimateId);
+        jdbcTemplate.update("DELETE FROM estimates WHERE id = ?", estimateId);
     }
 
     private record PriceMemoryRow(BigDecimal unitPrice, String createdBy, String modifiedBy,

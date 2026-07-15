@@ -101,15 +101,6 @@ function trackPriceMemory(page: Page): NetLog {
   return log
 }
 
-/** POST /estimates 요청이 실제로 나갔는지 관측(R1 은 요청조차 안 나갔음). */
-function trackEstimatePost(page: Page): string[] {
-  const posts: string[] = []
-  page.on('request', (req) => {
-    if (req.method() === 'POST' && /\/estimates(\?|$)/.test(req.url())) posts.push(req.url())
-  })
-  return posts
-}
-
 async function login(page: Page): Promise<void> {
   const l = await realLogin(page, ACCOUNT)
   await installAuthStub(page, l)
@@ -164,14 +155,17 @@ async function pickWarehouse(page: Page): Promise<void> {
 
 const unitPriceInput = (page: Page, line = 1) => page.getByLabel(`라인 ${line} 단가`)
 
-/** 단가 실측값 — 천단위 콤마 포맷과 무관하게 "어떤 값이 채워졌나" 판정. */
+/** 단가 실측값 — 천단위 콤마만 제거한다. 부호와 소수점은 값의 일부로 보존한다. */
 async function expectUnitPriceDigits(page: Page, expected: string, line = 1, msg = ''): Promise<void> {
   await expect
-    .poll(async () => ((await unitPriceInput(page, line).inputValue()) || '').replace(/[^0-9]/g, ''), {
+    .poll(async () => {
+      const normalized = ((await unitPriceInput(page, line).inputValue()) || '').trim().replace(/,/g, '')
+      return /^-?\d+(?:\.\d+)?$/.test(normalized) ? Number(normalized) : Number.NaN
+    }, {
       timeout: 15000,
       message: `${msg || '단가 자동채움'} 기대값 ${expected}`,
     })
-    .toBe(expected)
+    .toBe(Number(expected))
 }
 
 /** 실 Postgres 조회(검증 전용). */
@@ -188,13 +182,75 @@ function memoryRow(partnerId: string, productId: string): string {
   )
 }
 
-/** '최근가' 마커 개수 — hit 라인에만 떠야 한다. */
-const recentMarkers = (page: Page) => page.getByText('최근가', { exact: true })
+function resetMemoryPair(partnerId: string, productId: string): void {
+  psql(
+    `DELETE FROM partner_product_price_memory
+     WHERE partner_id='${partnerId}' AND product_id='${productId}'`.replace(/\s+/g, ' '),
+  )
+}
 
-async function saveSlipAndWait(page: Page): Promise<void> {
+function seedMemoryRow(partnerId: string, productId: string, unitPrice: string, source = 'LINE_SAVE'): void {
+  resetMemoryPair(partnerId, productId)
+  psql(
+    `INSERT INTO partner_product_price_memory
+       (id, partner_id, product_id, unit_price, source, remembered_at,
+        created_at, created_by, is_deleted)
+     VALUES
+       (gen_random_uuid(), '${partnerId}', '${productId}', ${unitPrice}, '${source}',
+        TIMESTAMP '2000-01-01 00:00:00', CURRENT_TIMESTAMP, 'qa-r4', FALSE)`.replace(/\s+/g, ' '),
+  )
+}
+
+async function expectMemoryRowEventually(
+  partnerId: string,
+  productId: string,
+  unitPrice: string,
+  source = 'LINE_SAVE',
+): Promise<void> {
+  await expect.poll(
+    () => memoryRow(partnerId, productId),
+    {
+      timeout: 5000,
+      intervals: [25, 50, 100, 250, 500],
+      message: `bounded async 가격기억 flush 미완료: partner=${partnerId}, product=${productId}, price=${unitPrice}`,
+    },
+  ).toBe(`${unitPrice}.00|${source}`)
+}
+
+async function saveEstimateDraftAndGetId(page: Page): Promise<string> {
+  const responsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && /\/estimates(\?|$)/.test(response.url()),
+    { timeout: 30000 },
+  )
+  await page.getByRole('button', { name: '임시저장' }).click()
+  const response = await responsePromise
+  expect(response.ok(), `POST /estimates 저장 실패: HTTP ${response.status()}`).toBeTruthy()
+  const body = await response.json()
+  const estimateId = body?.data?.id
+  expect(estimateId, 'POST /estimates 2xx 응답에 신규 estimateId 누락').toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  )
+  return estimateId
+}
+
+/** '거래처 최근단가' 마커 개수 — hit 라인에만 떠야 한다. */
+const recentMarkers = (page: Page) => page.getByText('거래처 최근단가', { exact: true })
+
+async function saveSlipAndWait(page: Page): Promise<string> {
+  const responsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && /\/slips(\?|$)/.test(response.url()),
+    { timeout: 30000 },
+  )
   await page.getByRole('button', { name: '저장' }).click()
+  const response = await responsePromise
+  expect(response.ok(), `POST /slips 저장 실패: HTTP ${response.status()}`).toBeTruthy()
+  const body = await response.json()
+  const slipId = body?.data?.id
+  expect(slipId, 'POST /slips 2xx 응답에 신규 slipId 누락').toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  )
   await page.waitForURL('**/sales', { timeout: 30000 })
-  await page.waitForTimeout(1500)
+  return slipId
 }
 
 test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
@@ -222,6 +278,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const page = await ctx.newPage()
     const net = trackPriceMemory(page)
     await login(page)
+    resetMemoryPair(PARTNER_A.id, PRODUCT_X.id)
 
     await openSlipForm(page)
     await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
@@ -242,6 +299,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await saveSlipAndWait(page)
     console.log('[#809 R2] 01 price-memory 호출:', JSON.stringify(net.responses))
 
+    await expectMemoryRowEventually(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
     const row = memoryRow(PARTNER_A.id, PRODUCT_X.id)
     console.log('[#809 R2] 01 DB 기억행 (A,X):', row)
     expect(row, 'DB 기억행 미생성 = WRITE 훅 죽음').toBe(`${PRICE_P}.00|LINE_SAVE`)
@@ -253,6 +311,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const page = await ctx.newPage()
     const net = trackPriceMemory(page)
     await login(page)
+    seedMemoryRow(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
 
     await openSlipForm(page)
     await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
@@ -266,7 +325,9 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await expect(marker, 'hit 라인에 최근가 마커 미표시').toBeVisible({ timeout: 10000 })
     const tooltip = await marker.getAttribute('title')
     console.log('[#809 R2] 02 최근가 tooltip:', tooltip)
-    expect(tooltip, '최근가 tooltip 에 저장일 누락').toMatch(/최근 단가 · \d{4}-\d{2}-\d{2} 저장/)
+    expect(tooltip, '거래처 최근단가 tooltip 에 저장일 누락').toMatch(
+      /이 거래처에 마지막으로 저장된 단가 · \d{4}-\d{2}-\d{2} 저장/,
+    )
     await capture(page, '03-KEY-slip-autofill-888000-with-recent-marker')
 
     expect(net.responses.some((r) => r.startsWith('200')), 'price-memory 200 미관측').toBeTruthy()
@@ -278,8 +339,9 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     const net = trackPriceMemory(page)
-    const posts = trackEstimatePost(page)
     await login(page)
+    // 이 테스트가 직접 만든 sentinel row만 읽는다. 저장 훅이 죽으면 remembered_at이 2000년에 머문다.
+    seedMemoryRow(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
 
     await page.goto(`${BASE_URL}/sales/estimates/new`)
     await expect(page.getByRole('combobox', { name: '거래처 검색' })).toBeVisible({ timeout: 30000 })
@@ -313,21 +375,34 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     // ⓓ 임시저장이 실제로 되는가 (R1: POST /estimates 요청조차 안 나감)
     await page.getByLabel('라인 1 수량').fill('2')
     await page.waitForTimeout(300)
-    await page.getByRole('button', { name: '임시저장' }).click()
-    await page.waitForTimeout(3000)
-    console.log('[#809 R2] 03 POST /estimates 관측:', JSON.stringify(posts))
+    const estimateId = await saveEstimateDraftAndGetId(page)
+    console.log('[#809 R4] 03 POST /estimates 신규 ID:', estimateId)
     await capture(page, '05-estimate-saved-after-draft-save')
-    expect(posts.length, 'POST /estimates 요청 자체가 안 나감 = R1 BLOCKING-1 잔존').toBeGreaterThan(0)
 
-    // DB: 견적 라인 + productId 각인 확인
+    // DB: 반드시 방금 2xx 응답에서 회수한 estimateId의 권위 VAT 포함 단가를 확인한다.
     const line = psql(
-      `SELECT el.product_id || '|' || el.unit_price FROM estimate_lines el
+      `SELECT el.product_id || '|' || el.unit_price_with_vat FROM estimate_lines el
        JOIN estimates e ON e.id = el.estimate_id
-       WHERE el.product_id='${PRODUCT_X.id}' AND e.is_deleted=false
-       ORDER BY el.created_at DESC LIMIT 1`.replace(/\s+/g, ' '),
+       WHERE e.id='${estimateId}' AND el.product_id='${PRODUCT_X.id}'
+         AND e.is_deleted=false AND el.is_deleted=false`.replace(/\s+/g, ' '),
     )
-    console.log('[#809 R2] 03 DB 견적라인 (product_id|unit_price):', line)
-    expect(line, '견적 라인 DB 미생성 = 저장 경로 미동작').toContain(PRODUCT_X.id)
+    console.log('[#809 R4] 03 DB 신규 견적라인 (product_id|unit_price_with_vat):', line)
+    expect(line, '신규 견적 라인의 VAT 포함 단가가 P와 다름').toBe(`${PRODUCT_X.id}|${PRICE_P}.00`)
+    await expect.poll(
+      () => psql(
+        `SELECT remembered_at > TIMESTAMP '2000-01-01 00:00:00'
+         FROM partner_product_price_memory
+         WHERE partner_id='${PARTNER_A.id}' AND product_id='${PRODUCT_X.id}'
+           AND unit_price=${PRICE_P} AND source='LINE_SAVE' AND is_deleted=false`.replace(/\s+/g, ' '),
+      ),
+      {
+        timeout: 5000,
+        intervals: [25, 50, 100, 250, 500],
+        message: '견적 저장 후 bounded async 가격기억 flush가 sentinel row를 갱신하지 않음',
+      },
+    ).toBe('t')
+    expect(memoryRow(PARTNER_A.id, PRODUCT_X.id), '견적 저장 가격기억이 P와 다름')
+      .toBe(`${PRICE_P}.00|LINE_SAVE`)
     await ctx.close()
   })
 
@@ -335,6 +410,8 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     await login(page)
+    resetMemoryPair(PARTNER_A.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
 
     await openSlipForm(page)
     await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
@@ -348,6 +425,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await saveSlipAndWait(page)
 
     // 세트 parent = BUNDLE_SET 기억행
+    await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
     const parent = memoryRow(PARTNER_A.id, BUNDLE.id)
     console.log('[#809 R2] 04 DB 세트 parent 기억행:', parent)
     expect(parent, '세트 parent 기억행이 BUNDLE_SET 로 생성되지 않음').toBe(`${PRICE_BUNDLE}.00|BUNDLE_SET`)
@@ -376,6 +454,8 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     await login(page)
+    seedMemoryRow(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
+    resetMemoryPair(PARTNER_B.id, PRODUCT_X.id)
 
     // 사전: (거래처B, 품목X) 기억 = 555000 을 실 GUI 저장으로 만든다(격리 재확인 겸용)
     await openSlipForm(page)
@@ -388,7 +468,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await capture(page, '08-partnerB-isolated-list-price-1470700')
     await unitPriceInput(page).fill(PRICE_B)
     await saveSlipAndWait(page)
-    expect(memoryRow(PARTNER_B.id, PRODUCT_X.id), '(B,X) 기억행 미생성').toBe(`${PRICE_B}.00|LINE_SAVE`)
+    await expectMemoryRowEventually(PARTNER_B.id, PRODUCT_X.id, PRICE_B)
 
     // 본 시나리오 — 거래처A 에서 시작
     await openSlipForm(page)
@@ -420,6 +500,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     await login(page)
+    resetMemoryPair(PARTNER_A.id, PRODUCT_X.id)
 
     // 수정 대상 전표 생성(거래처A + 품목X)
     await openSlipForm(page)
@@ -427,14 +508,8 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await pickWarehouse(page)
     await pickAutocomplete(page, '라인 1 품목', '품목 목록', PRODUCT_X.model)
     await page.waitForTimeout(1200)
-    await saveSlipAndWait(page)
-
-    const slipId = psql(
-      `SELECT id FROM slips WHERE partner_id='${PARTNER_A.id}' AND slip_type='OUTBOUND'
-         AND is_deleted=false ORDER BY created_at DESC LIMIT 1`.replace(/\s+/g, ' '),
-    )
+    const slipId = await saveSlipAndWait(page)
     console.log('[#809 R2] 06 수정 대상 전표:', slipId)
-    expect(slipId, '수정 대상 전표 미생성').toMatch(/^[0-9a-f-]{36}$/)
 
     await page.goto(`${BASE_URL}/sales/${slipId}`)
     await page.getByTestId('sales-slip-edit-button').click()
@@ -447,10 +522,16 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await priceCell.fill(EDIT_Q_EXCL_VAT)
     await page.waitForTimeout(300)
     await capture(page, '11-slip-detail-edit-unit-price-500000-vat-excluded')
+    const updateResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === 'PUT' && response.url().includes(`/slips/${slipId}`),
+      { timeout: 30000 },
+    )
     await page.getByTestId('sales-slip-edit-save').click()
-    await page.waitForTimeout(3500)
+    const updateResponse = await updateResponsePromise
+    expect(updateResponse.ok(), `PUT /slips/${slipId} 수정 실패: HTTP ${updateResponse.status()}`).toBeTruthy()
 
     // DB: ×1.1 정규화 확인
+    await expectMemoryRowEventually(PARTNER_A.id, PRODUCT_X.id, EDIT_Q_INCL_VAT)
     const row = memoryRow(PARTNER_A.id, PRODUCT_X.id)
     console.log('[#809 R2] 06 수정 후 DB 기억행 (A,X):', row, `— 기대 ${EDIT_Q_INCL_VAT}.00`)
     expect(row, '수정경로 기억 미반영 또는 ×1.1 정규화 오류').toBe(`${EDIT_Q_INCL_VAT}.00|LINE_SAVE`)
@@ -476,8 +557,8 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const page = await ctx.newPage()
     await login(page)
 
-    // 사전: (A,X) 기억 = 550000 (직전 테스트 결과)
-    expect(memoryRow(PARTNER_A.id, PRODUCT_X.id), '사전 조건 (A,X)=550000').toBe(`${EDIT_Q_INCL_VAT}.00|LINE_SAVE`)
+    // 사전 조건은 직전 테스트 산출물을 재사용하지 않고 이 테스트가 직접 만든다.
+    seedMemoryRow(PARTNER_A.id, PRODUCT_X.id, EDIT_Q_INCL_VAT)
 
     await openSlipForm(page)
     await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
@@ -494,6 +575,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
 
     // upsert 단일행 — 저장해도 (A,X) 행은 1건이어야 한다
     await saveSlipAndWait(page)
+    await expectMemoryRowEventually(PARTNER_A.id, PRODUCT_X.id, '123456')
     const rows = psql(
       `SELECT COUNT(*) FROM partner_product_price_memory
        WHERE partner_id='${PARTNER_A.id}' AND product_id='${PRODUCT_X.id}'`.replace(/\s+/g, ' '),

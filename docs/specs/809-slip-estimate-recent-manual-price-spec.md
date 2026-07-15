@@ -1,6 +1,6 @@
 # #809 - 전표/견적 (거래처+품목) 최근 수동단가 자동채움
 
-- **상태**: 구현 및 R3 BE 리뷰 보완 진행
+- **상태**: R3 BE/FE 구현 완료 · R4 라이브 QA 재검증 대기
 - **대상**: 전표(출고/입고) + 견적. 주문(partner-order)은 범위 밖이며 기존 DcConfig 규칙가를 유지한다.
 - **저장소**: `slip-service` 단일 테이블 `partner_product_price_memory`
 
@@ -35,8 +35,12 @@
 
 - 브라우저 호출용 일반 endpoint `GET /slips/price-memory?partnerId={uuid}&productId={uuid}` 를 사용한다. `/internal` endpoint 는 사용하지 않는다.
 - 권한은 전표 생성/수정 또는 견적 생성/수정 권한 중 하나를 요구한다.
-- 조회 hit 시 기억단가를 자동채움하고 `최근가` 마커를 표시한다. miss 또는 조회 실패 시 catalog 정가로 폴백한다.
+- 조회 hit 시 기억단가를 자동채움하고 `거래처 최근단가` 마커를 표시한다. miss 또는 조회 실패 시
+  catalog 정가로 폴백하고 `정가` 상태를 표시한다. 단가 input은 마커를 `aria-describedby`로 참조하며,
+  비동기 재적용은 `aria-live="polite"` 상태 메시지로 고지한다.
 - 거래처 변경 시 자동채움 라인만 새 거래처 기준으로 재조회한다. 사용자 override 라인은 보존한다.
+- 거래처 변경으로 실제 단가가 바뀐 행을 강조하고 `거래처 변경으로 최근단가 재적용 · 변경된 행을
+  확인해 주세요.` 배너를 표시한다.
 
 ### R3 bulk wire 계약
 
@@ -65,9 +69,13 @@
 
 ## R3 확정 정책
 
-- D-R3-1: UUID 는 사용자 **화면 표시만 금지**한다. query string/API payload 사용은 유지한다.
+- D-R3-1: UUID 는 사용자 **화면 표시만 금지**한다. DevTools Network 탭은 사용자 화면이 아니며 기존
+  `GET /slips/{id}` 등도 내부 UUID URL을 사용하므로 query string/API payload 사용은 유지한다.
+  bulk POST 선택은 UUID 회피가 아니라 최대 100개 UUID의 순수 URL 길이 제약 때문이다.
 - D-R3-3: soft-delete 된 거래처/품목이 연결된 기존 문서를 편집할 때도 활성 가격기억 row 를 반환한다.
-  거래처/품목 생존 확인 외부 호출은 추가하지 않는다.
+  UI 검색은 삭제 엔티티를 제외해 신규 라인에서 도달할 수 없지만, 기존 문서 편집에서 기억값을
+  숨기면 저장 단가가 훼손된다. 거래처/품목 생존 확인 외부 호출은 CH-8 호출 증폭을 재발시키므로
+  추가하지 않는다.
 - D-R3-4: bulk endpoint + 권한 OR short-circuit + auth connect/read timeout 을 함께 적용한다.
 
 ## 테스트 기준
@@ -75,3 +83,11 @@
 - 실 Postgres IT 로 V58 migration, unique 제약, upsert 충돌 갱신, soft-delete revive, VAT 포함 라운드트립을 검증한다.
 - 원 전표/견적 트랜잭션 롤백 시 가격기억 row 가 남지 않아야 한다.
 - 가격기억 flush 실패는 fail-soft 로 처리되어 전표/견적 저장을 깨지 않아야 한다.
+- 구매 PUT, non-legacy 전표 복사 payload, 모바일 견적의 `(저장 VAT 포함 P → 조회 P)`를 경로별로
+  검증한다. 주문 저장은 가격기억 서비스를 호출하지 않는 음성 계약으로 잠근다.
+- 한 문서에 같은 `(partnerId, productId)`가 여러 번 나오면 문서 순서상 마지막 라인의 단가가 이긴다.
+  이는 단일 PostgreSQL `INSERT ... ON CONFLICT` statement에 중복 키가 들어가는 하드 오류를 막는
+  load-bearing dedupe 계약이다.
+- 라이브 QA는 POST 2xx 응답에서 신규 문서 ID를 회수해 그 ID만 DB 대조하고, bounded async flush는
+  5초 유한 폴링으로 정확한 P를 기다린다. timeout은 명시적으로 실패하며 선행 테스트 데이터에
+  의존하지 않는다.
