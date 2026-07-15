@@ -4,6 +4,63 @@
 
 ---
 
+## 🔴 2026-07-16 (야간 자율) — #809 **R4·R5 완주 · R6 fix 진행 중 · 0수렴 실패**
+
+> **다음 세션 첫 읽기(최우선).** 개발책임자 야간 지시: "PM이 다음 슬라이스 지정 및 오전까지 멈춤없이 계속 진행. 답변불가".
+
+### 상태
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `e178c12cb`** · **PR #820 OPEN**·base=main
+- **CI 36/36 SUCCESS**(on `e178c12cb`) · 라이브 QA **14/14** · slip **1273** · partner 314 · approval-core 16 · ecount-io 13 · notification-publisher 4 · desktop **745** · DS **46** — 전부 0 fail/error/skip
+- **🔴 머지 불가** — R6 가 HIGH 6 · MEDIUM 10 을 냄
+
+### 완주 라운드 (전부 PR 게시됨)
+| 라운드 | 결과 | 게시 |
+|---|---|---|
+| R4 FABLE5 | 27건(HIGH 4·M 9·L 14) → 전건 fix | [리뷰 4980286625](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980286625) · [결정 4980376041](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980376041) · [fix 4981726892](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4981726892) |
+| R5 CODEX SOL 5.6 | 22건(**BLOCKING 1**·H 8·M 9·L 4) → 전건 fix | [리뷰 4982532949](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4982532949) · [fix 4983603804](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4983603804) |
+| **R6 FABLE5 재수렴** | **22건(HIGH 6·M 10·L 6) · 0수렴 실패** | [리뷰 4984027656](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4984027656) |
+
+### 🔴 재개 지점 = **R6 fix 4배치 진행 중** (BE ∥ DevOps ∥ QA ∥ 문서) → **2차 = FE+Design 병합 미착수**
+- **1차 배치 담당**: BE(H1 two-pass resolver·H2 BE 복사 endpoint·H3 스냅샷 계보·M2·L3·L4) · DevOps(H5 M-19 도달검사·M2 infra·M10 #821 코멘트·L7 PR body) · QA(M9 스펙 격리·L6·G1/G6/G7/G8/G10 갭) · 문서(dev-report R5+R6 절·spec 화면계약 3요소)
+- **🔴 2차 배치(미착수) = FE+Design 병합** — `clients/**` 전부. 담당: **H2 FE 측**(BE endpoint 계약 수신 후 `duplicateSlip` 배선) · **H4**(대비 3표면: `EstimateFormPage.tsx:1321,1318` · `global.css:77`) · **M3**(mock UUID 완화 or MOCK_ADMIN_PARTNERS RFC-4122 승격) · **M4**(coedit 테스트 fixture 를 number 로 — 현재 가짜) · **M5**(slip `refreshAutoPricesForPartner` 첫 줄에 `setPriceLookupAnnouncement('')` 1줄) · **M6**(contrast 가드가 tokens.css 파싱해 실값 결선) · **L1**(failedProductIds 주석) · **L2**(role=row orphan) · **L5**(H4 override 부작용)
+- 이후: PM genuine 검증 → 재배포 → 라이브 QA 재실행 → 커밋/푸시 → **R6 fix 게시** → **R7 = CODEX SOL 5.6 재수렴**
+
+### 🔵 개발책임자 확인 대기 3건 (R6 리뷰 §확인요청)
+1. **R6-H6** 정상 coedit 모드 legacy 견적 **1,926건 저장 데드락**(`PartnerAutocomplete disabled={coeditActive}` 인데 "거래처를 다시 선택해 주세요") — **main 도 동일 = #809 회귀 아님**. 이 PR 에서 고칠지/별도 이슈로 이관할지.
+2. **R6-M1** Hikari `connection-timeout` **4s 전역화 유지 여부** — fleet 26모듈 중 slip-service 유일. 진단은 옳았으나 처방이 범위 초과. 권고=가격기억 전용 DataSource 격리 후 전역 30s 복원.
+3. **R6-M8** BUNDLE_SET parent 기억이 **생성 시점 1회뿐**(수정 경로 미갱신 → 재선택 시 구값) — 의도 확정+spec 명시 vs 결함 처리.
+
+### 🔴 이 PR 의 구조적 패턴 (개발책임자 보고 필요)
+```
+R1 M-2 fix  → R3 CH-1(9.1% 과소) 유발
+R3 CH-1 fix → 계열 sweep 누락 → R4 F2 로 귀환
+R4 fix 7종  → R5 가 전부 새 결함/오판으로 적발
+R5 fix 6종  → R6 가 또 전부 새 결함으로 적발
+```
+**6라운드 연속 "fix 가 새 결함을 낳음".** 특히 R5-H1 의 `BundleLineageResolver` 는 **버려진 정보(계보)를 fingerprint 휴리스틱으로 되찾으려는 설계**라 BE·QA 두 차원이 독립적으로 깨뜨렸음(greedy 오귀속·자기강화 루프). **근본 해법은 update 계약에 라인 안정 ID 를 실어 계보를 버리지 않는 것**일 수 있음 — 아키텍처 결정이라 개발책임자 판단 필요.
+
+### 📌 개발책임자 결정 (누적)
+- **D-R3-1~4**(R3) · **D-R4-1** `정가`→**`판매가`** · **D-R4-2** 최신성 권위=`remembered_at` 캡처 시각 유지 · **D-R4-3** 서브-원 드리프트 수용 · **D-R4-4** 거래처 해제 시 단가 유지+마커만 해제
+- **범위 외 결함 = PM 자율 이슈 등록 후 보고** (2026-07-15 확정 → [[feedback_fix_in_current_pr_no_split]] 박제) · 선례 **#821**
+- **#821**(nightly 유령 필터 3연속 실패) = **"유지 + #820 에서 같이 fix"** → 범위 점증분으로 R5/R6 검증 대상
+
+### 🔴 PM 자기 지적 (정직 기록 — 전부 PR 게시됨)
+1. **"CI green" 오보** — R4 fix 게시에서 로컬 740/740 을 근거로 green 보고했으나 CI 는 red(flaky). **로컬 통과 ≠ CI green.**
+2. **R4-F2 도달성 과장** — "legacy 1927/1927 전부 오염 대상" 은 과장. 실 legacy **1,926건 전부 `partner_id NULL`** → upsert null-skip → **현 실데이터로는 도달 불가**.
+3. **"#809 회귀" 가설 반증** — legacy 저장 차단은 main 도 동일. #809 은 메시지만 정확히 바꿈.
+4. **R5 문서 배치 누락** — R4 는 돌렸는데 R5 는 안 돌려 dev-report 가 R5 와 모순. **4개 차원이 독립 지적**.
+5. **라이브 프로브 병렬 실행** — BE·QA 차원이 같은 DB 동시 쓰기 → QA 12a false-RED. → [[feedback_parallel_agent_gradle_shared_tree_contention]] **3변종**으로 박제.
+
+### ⚙️ 이 PC 환경 (DESKTOP-8SO2GTL · `C:\Users\user`) — 세션 시작 시 실측한 것
+- 🔴 **Docker 이미지·design-system dist 는 git 으로 안 따라온다** — 세션 시작 시 slip-service 가 **07-11 빌드**(V58 미적용·테이블 부재)였고 dist 는 **07-08**(stale → desktop typecheck 31건 false-RED). **다른 PC 의 "준비 완료" 를 믿지 말 것.**
+- 재배포: `.\gradlew :services:slip-service:bootJar -x test` → `docker compose -p infrastructure --project-directory <repo>/infrastructure -f docker-compose.yml -f docker-compose.local-all.yml -f docker-compose.slip-port-override.yml build|up -d --no-deps --force-recreate slip-service`
+- **호스트 influxd 가 8086 점유** → slip-service 호스트 포트 **18086**(커밋된 `docker-compose.slip-port-override.yml`)
+- design-system dist 재빌드: `cd clients/web/design-system && npm run build` (**desktop typecheck 전 필수**)
+- codex CLI **0.144.4** · `~/.codex/config.toml` 기본 model=`gpt-5.5` → **디스패치마다 `gpt-5.6-sol` 명시**(정상 응답 확인)
+- gradle test 는 **foreground**(백그라운드 killed) · `Select-Object -First N` 파이프 조기종료가 **exit 255 오탐**을 만듦(무시하고 XML 집계로 판정)
+
+---
+
 ## 🚨 2026-07-15 (집PC) — 표준 워크플로우 전면 개편 (개발책임자 지시 · 전 세션 엄수)
 
 > **구 워크플로우 전부 삭제·폐기.** 유일 진실원 = [.claude/memory/feedback_canonical_workflow.md](../../.claude/memory/feedback_canonical_workflow.md) (CLAUDE.md §4 병기). 이후 모든 슬라이스(진행 중 #809·대기 #810 포함)는 새 캐논으로 진행 — 아래 #809 재개 절의 "R4 Opus 5-agent"는 새 캐논의 **FABLE5 5-agents(이상) 적대검증 라운드**로, "Codex 적대"는 **CODEX SOL 5.6 라운드**로 읽는다.

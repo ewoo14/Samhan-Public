@@ -57,7 +57,7 @@
 - [변경 모듈 전체 test 후 push](feedback_changed_module_full_test_before_push.md) — 타깃만 실행 push 금지
 - [CI 테스트 필터 allowlist false-green](feedback_ci_test_filter_false_green.md) — ci.yml `--tests` allowlist 누락 패키지 미실행. 신규 패키지 등재 필수
 - [gradle test 캐시 false-green](feedback_gradle_test_cache_false_green.md) — UP-TO-DATE/FROM-CACHE=미실행, 검증은 --rerun-tasks --no-build-cache 로 genuine 강제
-- [병렬 에이전트 gradle 공유트리 경합](feedback_parallel_agent_gradle_shared_tree_contention.md) — 동시 리뷰/QA 에이전트가 같은 트리서 gradle 실행 시 build 경합→transient false-fail(DI/XML소실)·PR결함 아님. 권위=CI on exact SHA·직렬 or 격리 worktree (2026-07-09 #688 R2)
+- [🚨 병렬 에이전트 공유자원 경합 3변종](feedback_parallel_agent_gradle_shared_tree_contention.md) — ①gradle 트리(build 경합→transient false-fail·권위=CI on exact SHA) ②git checkout(잘못된 SHA 산출물→QA 결론 오염) ③**공유 라이브 DB 쓰기**(타 차원 프로브가 QA 단언 오염→false-RED, 반대로 진짜 결함 무마 위험도 대칭). **라이브 쓰기 차원은 직렬화·읽기만 병렬**·차원별 전용 거래처/품목·스펙 단언은 자기 창구간 diff(전역 카운트 금지)·라이브 FAIL 은 단독 재실행 재현 후 확정 (2026-07-09 #688 · 2026-07-12 #796 · **2026-07-16 #809 R6**)
 - [stacked PR CI false-green](feedback_stacked_pr_ci_false_green.md) — base=feat/… BE 미트리거, base 머지 후 base=main 재생성
 - [RestClient 계약테스트 false-green](feedback_restclient_contract_test_false_green.md) — 다운스트림 선검증, @MockBean 우회 금지, 4체크
 - [권한 enforcement 실HTTP 회귀](feedback_enforcement_real_http_test.md) — @MockBean mock 시 false-green, MockRestServiceServer/실HTTP
