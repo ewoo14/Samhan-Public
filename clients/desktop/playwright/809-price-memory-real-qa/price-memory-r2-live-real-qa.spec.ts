@@ -13,16 +13,25 @@
  * 전표 생성 자체가 403 이다(R1 INFO-1, #809 회귀 아님). 본 QA 는 `sales.slip.create` +
  * `purchases.slip.edit` 전권인 "매니저" 그룹 계정 `dev_manager` 로 수행한다.
  *
- * 실 시드(실 DB 조회로 확인):
- *  - 거래처A 한울냉열시스템 (44f0cfc1-…-04ad5fa70922)
- *  - 거래처B 국민건강보험공단종로지사 (dba5051b-…-2a162e0f4367) — 검색어 유일매치용
- *  - 품목X AJ030MXHNBC1 / 실외기_3HP 단배관 (a046f235-…-e2d533e1ff08) 정가 1,470,700
- *  - 품목Y AJ040MXHNBC1 / 실외기_4HP 단배관 (3612c28e-…-26367a8d3e3c) 정가 1,731,400
- *  - 세트 AC023CS1DBC1SY / 무풍 1way 냉방전용 (b63f676c-…-68d3d2c8d293) 정가 1,204,500
- *    · 기본 구성품 4종(INDOOR 21dec2cc / OUTDOOR 8015b3da / REMOTE 8f0becf3 / PANEL 3325f787)
+ * 실 시드(R4 당일 실 DB + 실 게이트웨이 API 로 재확인 — R2 당시 시드는 스택 재시드로 전량 소멸):
+ *  - 거래처A 부산냉난방테크 (e8ae9c86-…-1f5a2bf31313) — /admin/partners/search?q=부산냉난방 total=1 실측
+ *  - 거래처B 전주에어시스템 (1021fcf7-…-6518ab4c27c9) — q=전주에어 total=1 실측
+ *  - 품목X AC200CNCDEH-77 / 삼성 천장형 4톤 (a6992eb0-…-7accfe06288c) 정가 1,200,000
+ *  - 품목Y AC300CNCDEH-78 / 삼성 천장형 5톤 (841e6a99-…-5227de864a62) 정가 1,440,000
+ *  - 세트 QA797-SET-01 / QA797 상업 시각폴리시 테스트 (1ea24f99-…-be1901284769) 정가 1,000,000
+ *    · 기본 구성품 2종(PART-01 7de11ab7 기본2개 / PART-02 ed278526 기본1개) — POST /slips 201 실측
+ *    ⚠️ 다른 세트 TEST-BUNDLE-SET-01 은 시드 결함(bundle_component.component_product_code 에
+ *      product_code 아닌 model명이 시드됨 → 구성품 resolve 실패)으로 저장 자체가 404 라 사용 불가
+ *      (#809 무관 — pre-existing expand 경로 · 재시드 산물).
  *
- * 시나리오: A 견적 자동채움 · B BUNDLE_SET · C 거래처 변경 재조회 · D 최근가 마커 ·
- *          E 수정경로 ×1.1 정규화 · F 전표 회귀
+ * 시나리오: A 견적 자동채움 · B BUNDLE_SET · C 거래처 변경 재조회(bulk 1회 + 배너 + 변경행 강조) ·
+ *          D 최근가/정가 마커 · E 수정경로 ×1.1 정규화 · F 전표 회귀
+ *
+ * R4 강화(적대 검토 — 기존 단언 약화 없음, 추가만):
+ *  - 01: miss 라인 '정가' 마커 표시 + USER 전환 시 마커 소멸 (R3 fix 신규 UI)
+ *  - 05: 거래처 변경 창구간 POST /slips/price-memory/bulk 정확히 1건 · 단건 GET 0건 ·
+ *        bulk body 에 자동채움 2라인(X,Y) 동시 적재 · 배너 표시 · 값 변경행(라인1)만 강조 (D-R3-2/D-R3-4)
+ *  - 07: USER 라인 정가 마커도 부재 확인
  * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r4/ (r2/ 는 superseded 이나 이력 보존)
  */
 import { expect, test, type Page } from '@playwright/test'
@@ -40,16 +49,14 @@ const ACCOUNT = 'dev_manager'
 const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r4')
 fs.mkdirSync(SHOTS, { recursive: true })
 
-const PARTNER_A = { name: '한울냉열시스템', query: '한울냉열', id: '44f0cfc1-4a5f-4206-85cd-04ad5fa70922' }
-const PARTNER_B = { name: '국민건강보험공단종로지사', query: '국민건강보험공단종로', id: 'dba5051b-6f22-4ae0-8277-2a162e0f4367' }
-const PRODUCT_X = { model: 'AJ030MXHNBC1', name: '실외기_3HP 단배관', listPrice: '1470700', id: 'a046f235-6d7d-49a5-b321-e2d533e1ff08' }
-const PRODUCT_Y = { model: 'AJ040MXHNBC1', listPrice: '1731400', id: '3612c28e-be0d-4b50-b774-26367a8d3e3c' }
-const BUNDLE = { model: 'AC023CS1DBC1SY', listPrice: '1204500', id: 'b63f676c-cf19-4b56-926f-68d3d2c8d293' }
+const PARTNER_A = { name: '부산냉난방테크', query: '부산냉난방', id: 'e8ae9c86-afe1-3364-b484-1f5a2bf31313' }
+const PARTNER_B = { name: '전주에어시스템', query: '전주에어', id: '1021fcf7-f63d-3fcd-9769-6518ab4c27c9' }
+const PRODUCT_X = { model: 'AC200CNCDEH-77', name: '삼성 천장형 4톤', listPrice: '1200000', id: 'a6992eb0-81fc-3b3d-957b-7accfe06288c' }
+const PRODUCT_Y = { model: 'AC300CNCDEH-78', listPrice: '1440000', id: '841e6a99-06fe-3252-8a4f-5227de864a62' }
+const BUNDLE = { model: 'QA797-SET-01', listPrice: '1000000', id: '1ea24f99-631f-4e19-937f-be1901284769' }
 const BUNDLE_COMPONENT_IDS = [
-  '21dec2cc-6b6f-49d7-9c13-fc56f3b7177c',
-  '8015b3da-e89e-4af1-9cd2-9bc8cc71ef93',
-  '8f0becf3-82d9-4a6b-9c86-30ce497e0f3d',
-  '3325f787-e84b-4ce0-9adf-e64284a7ef5d',
+  '7de11ab7-e70c-421e-80a4-7c6b51a2c6e9', // QA797-PART-01 (기본 2개)
+  'ed278526-0e16-427d-8a92-2ca06164254a', // QA797-PART-02 (기본 1개)
 ]
 
 /** 라운드 고유값 — 정가/직전 라운드 값과 명백히 구분되는 단가. */
@@ -91,16 +98,21 @@ async function installAuthStub(page: Page, login: LoginResult): Promise<void> {
   )
 }
 
-interface NetLog { calls: string[]; responses: string[] }
+interface NetLog { calls: string[]; responses: string[]; bulkBodies: string[] }
 
-/** price-memory 호출/응답을 실제로 관측한다(경로 렌더 ≠ 기능 동작 구분용). */
+/** price-memory 호출/응답을 실제로 관측한다(경로 렌더 ≠ 기능 동작 구분용). bulk 는 body 도 기록. */
 function trackPriceMemory(page: Page): NetLog {
-  const log: NetLog = { calls: [], responses: [] }
+  const log: NetLog = { calls: [], responses: [], bulkBodies: [] }
   page.on('request', (req) => {
-    if (req.url().includes('/slips/price-memory')) log.calls.push(req.url())
+    if (req.url().includes('/slips/price-memory')) {
+      log.calls.push(`${req.method()} ${req.url()}`)
+      if (req.url().includes('/slips/price-memory/bulk')) log.bulkBodies.push(req.postData() ?? '')
+    }
   })
   page.on('response', (res) => {
-    if (res.url().includes('/slips/price-memory')) log.responses.push(`${res.status()} ${res.url()}`)
+    if (res.url().includes('/slips/price-memory')) {
+      log.responses.push(`${res.status()} ${res.request().method()} ${res.url()}`)
+    }
   })
   return log
 }
@@ -240,6 +252,13 @@ async function saveEstimateDraftAndGetId(page: Page): Promise<string> {
 /** '거래처 최근단가' 마커 개수 — hit 라인에만 떠야 한다. */
 const recentMarkers = (page: Page) => page.getByText('거래처 최근단가', { exact: true })
 
+/**
+ * '정가' 마커 — miss 자동채움(CATALOG) 라인에만 떠야 한다(R3 fix 신규 UI).
+ * role=note + aria-label(설명 문구)로 좁혀 페이지 내 다른 '정가' 문자열 오탐을 배제한다.
+ */
+const catalogMarkers = (page: Page) =>
+  page.getByRole('note', { name: '이 거래처에 저장된 최근단가가 없어 정가를 적용했습니다' })
+
 async function saveSlipAndWait(page: Page): Promise<string> {
   const responsePromise = page.waitForResponse(
     (response) => response.request().method() === 'POST' && /\/slips(\?|$)/.test(response.url()),
@@ -293,11 +312,17 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     // miss → 정가 fallback + 마커 없음(D: miss 라인엔 최근가 마커가 뜨면 안 된다)
     await expectUnitPriceDigits(page, PRODUCT_X.listPrice, 1, 'miss 정가 fallback')
     await expect(recentMarkers(page), 'miss 라인에 최근가 마커가 뜨면 안 됨').toHaveCount(0)
-    await capture(page, '01-slip-miss-list-price-1470700-no-recent-marker')
+    // R3 fix 신규 UI: miss 라인엔 '정가' 마커가 떠야 한다(자동채움 근거 노출)
+    const catalogMarker = catalogMarkers(page).first()
+    await expect(catalogMarker, 'miss 라인에 정가 마커 미표시(R3 fix 회귀)').toBeVisible({ timeout: 10000 })
+    await expect(catalogMarker, '정가 마커 라벨 불일치').toHaveText('정가')
+    await capture(page, '01-slip-miss-list-price-1200000-catalog-marker-no-recent-marker')
 
     await unitPriceInput(page).fill(PRICE_P)
     await page.getByLabel('라인 1 수량').fill('2')
     await expectUnitPriceDigits(page, PRICE_P)
+    // 수동입력(USER 전환) 순간 정가 마커는 사라져야 한다 — 근거 아닌 라벨 잔존 방지
+    await expect(catalogMarkers(page), 'USER 전환 후에도 정가 마커 잔존').toHaveCount(0)
     await capture(page, '02-slip-manual-price-888000-entered')
 
     await saveSlipAndWait(page)
@@ -454,12 +479,17 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     await ctx.close()
   })
 
-  test('05 [C] 🔴 거래처 변경 재조회 — 자동채움 라인은 재적용 · 사용자 입력 라인은 보존', async ({ browser }) => {
+  test('05 [C] 🔴 거래처 변경 재조회 — bulk 1회(D-R3-4) · 배너+변경행 강조(D-R3-2) · 사용자 입력 보존', async ({ browser }) => {
+    test.slow() // R4 강화: 사전 전표 저장 + 3라인 구성 + 네트워크/배너/강조 단언 — 기본 60s 한도 3배
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
+    const net = trackPriceMemory(page)
     await login(page)
     seedMemoryRow(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
     resetMemoryPair(PARTNER_B.id, PRODUCT_X.id)
+    // 라인3(자동채움 Y)은 (A,Y)/(B,Y) 모두 miss 여야 한다 — bulk 부분 hit 계약의 대조군
+    resetMemoryPair(PARTNER_A.id, PRODUCT_Y.id)
+    resetMemoryPair(PARTNER_B.id, PRODUCT_Y.id)
 
     // 사전: (거래처B, 품목X) 기억 = 555000 을 실 GUI 저장으로 만든다(격리 재확인 겸용)
     await openSlipForm(page)
@@ -469,7 +499,7 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     await page.waitForTimeout(1200)
     // 거래처별 격리 — B 는 A 의 888000 이 아니라 정가여야 한다
     await expectUnitPriceDigits(page, PRODUCT_X.listPrice, 1, '거래처B 격리(정가)')
-    await capture(page, '08-partnerB-isolated-list-price-1470700')
+    await capture(page, '08-partnerB-isolated-list-price-1200000')
     await unitPriceInput(page).fill(PRICE_B)
     await saveSlipAndWait(page)
     await expectMemoryRowEventually(PARTNER_B.id, PRODUCT_X.id, PRICE_B)
@@ -489,14 +519,61 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     await page.waitForTimeout(1000)
     await unitPriceInput(page, 2).fill(PRICE_USER_LINE)
     await expectUnitPriceDigits(page, PRICE_USER_LINE, 2, '라인2 사용자 입력')
-    await capture(page, '09-before-partner-change-A-888000-user-111111')
 
-    // 거래처를 B 로 변경 → 라인1 은 B 기준 재조회, 라인2(USER)는 보존
+    // 라인3 = 자동채움 두 번째 라인(Y, (A,Y) miss → 정가) — bulk 가 자동 라인 N개를 1요청에 실어야 한다
+    await page.getByRole('button', { name: '+ 라인 추가' }).click()
+    await page.waitForTimeout(400)
+    await pickAutocomplete(page, '라인 3 품목', '품목 목록', PRODUCT_Y.model)
+    await page.waitForTimeout(1000)
+    await expectUnitPriceDigits(page, PRODUCT_Y.listPrice, 3, '라인3 (A,Y) miss 정가')
+    await capture(page, '09-before-partner-change-A-888000-user-111111-autoY-1440000')
+
+    // 거래처를 B 로 변경 → 자동 라인(1·3)은 bulk 1회로 재조회, 라인2(USER)는 보존
+    const callsBefore = net.calls.length
+    const responsesBefore = net.responses.length
     await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_B.query)
     await page.waitForTimeout(2500)
     await expectUnitPriceDigits(page, PRICE_B, 1, '거래처 변경 후 B 기준 재조회')
     await expectUnitPriceDigits(page, PRICE_USER_LINE, 2, '사용자 입력 라인 보존')
-    await capture(page, '10-KEY-partner-changed-to-B-refetched-555000-user-line-preserved')
+    await expectUnitPriceDigits(page, PRODUCT_Y.listPrice, 3, '라인3 (B,Y) miss — 정가 유지')
+
+    // D-R3-4: 거래처 변경 창구간 네트워크 = bulk POST 정확히 1건 · 라인별 단건 GET 0건
+    const windowCalls = net.calls.slice(callsBefore)
+    const windowResponses = net.responses.slice(responsesBefore)
+    console.log('[#809 R4] 05 거래처 변경 창구간 price-memory 호출:', JSON.stringify(windowCalls))
+    console.log('[#809 R4] 05 거래처 변경 창구간 price-memory 응답:', JSON.stringify(windowResponses))
+    const bulkCalls = windowCalls.filter((u) => u.includes('/slips/price-memory/bulk'))
+    const singleCalls = windowCalls.filter((u) => !u.includes('/slips/price-memory/bulk'))
+    expect(bulkCalls.length, '거래처 변경 시 bulk 호출이 정확히 1건이 아님(D-R3-4 회귀)').toBe(1)
+    expect(singleCalls.length, '거래처 변경 시 라인별 단건 GET 발생(D-R3-4 회귀)').toBe(0)
+    expect(
+      windowResponses.some((r) => r.startsWith('200') && r.includes('/slips/price-memory/bulk')),
+      'bulk 200 미관측',
+    ).toBeTruthy()
+    const bulkBody = JSON.parse(net.bulkBodies[net.bulkBodies.length - 1] ?? '{}') as {
+      partnerId?: string
+      productIds?: string[]
+    }
+    expect(bulkBody.partnerId, 'bulk 요청 partnerId 가 변경된 거래처B 가 아님').toBe(PARTNER_B.id)
+    expect(
+      [...(bulkBody.productIds ?? [])].sort(),
+      'bulk productIds 에 자동채움 2라인(X,Y)이 한 요청으로 실리지 않음',
+    ).toEqual([PRODUCT_X.id, PRODUCT_Y.id].sort())
+
+    // D-R3-2: 배너 + 변경행 강조 — 값이 실제 바뀐 라인1만 강조돼야 한다
+    const banner = page.getByRole('status').filter({ hasText: '거래처 변경으로 최근단가 재적용' })
+    await expect(banner, '거래처 변경 배너 미표시(D-R3-2 회귀)').toBeVisible({ timeout: 10000 })
+    const highlighted = page.locator('[role="row"][class*="priceRefreshed"]')
+    await expect(highlighted, '변경행 강조가 정확히 1행(값 변경 라인)이 아님').toHaveCount(1)
+    await expect(highlighted, '강조 행이 라인1이 아님').toHaveAttribute('data-line-number', '1')
+    // 마커 정합: 라인1=거래처 최근단가 · 라인3=정가 · 라인2(USER)=마커 없음
+    await expect(recentMarkers(page), '최근가 마커는 라인1 1개여야 함').toHaveCount(1)
+    await expect(catalogMarkers(page), '정가 마커는 라인3 1개여야 함').toHaveCount(1)
+    await banner.scrollIntoViewIfNeeded()
+    await capture(page, '10-KEY-partner-changed-to-B-refresh-banner-visible')
+    await highlighted.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
+    await capture(page, '11-KEY-partner-changed-bulk1-highlight-row1-555000-user-preserved-missY-1440000')
     await ctx.close()
   })
 
@@ -525,7 +602,7 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     await priceCell.scrollIntoViewIfNeeded()
     await priceCell.fill(EDIT_Q_EXCL_VAT)
     await page.waitForTimeout(300)
-    await capture(page, '11-slip-detail-edit-unit-price-500000-vat-excluded')
+    await capture(page, '12-slip-detail-edit-unit-price-500000-vat-excluded')
     const updateResponsePromise = page.waitForResponse(
       (response) => response.request().method() === 'PUT' && response.url().includes(`/slips/${slipId}`),
       { timeout: 30000 },
@@ -547,7 +624,7 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     await pickAutocomplete(page, '라인 1 품목', '품목 목록', PRODUCT_X.model)
     await page.waitForTimeout(1200)
     await expectUnitPriceDigits(page, EDIT_Q_INCL_VAT, 1, '수정경로 반영 자동채움')
-    await capture(page, '12-KEY-new-slip-autofill-550000-after-edit-path')
+    await capture(page, '13-KEY-new-slip-autofill-550000-after-edit-path')
     await ctx.close()
   })
 
@@ -572,10 +649,11 @@ test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', 
     await pickAutocomplete(page, '라인 1 품목', '품목 목록', PRODUCT_X.model)
     await page.waitForTimeout(1500)
 
-    // 기억단가(550000)도 정가(1470700)도 아닌 사용자 선입력값이 보존돼야 한다
+    // 기억단가(550000)도 정가(1200000)도 아닌 사용자 선입력값이 보존돼야 한다
     await expectUnitPriceDigits(page, '123456', 1, 'override 보존')
     await expect(recentMarkers(page), 'USER 라인에 최근가 마커가 뜨면 안 됨').toHaveCount(0)
-    await capture(page, '13-override-preserved-123456-no-marker')
+    await expect(catalogMarkers(page), 'USER 라인에 정가 마커가 뜨면 안 됨').toHaveCount(0)
+    await capture(page, '14-override-preserved-123456-no-marker')
 
     // upsert 단일행 — 저장해도 (A,X) 행은 1건이어야 한다
     await saveSlipAndWait(page)
