@@ -73,6 +73,12 @@ export interface LineDraft {
   quantity: string
   /** 단가 (string — PriceField 호환). */
   unitPrice: string
+  /** 단가 출처 — USER 는 거래처 변경 시 보존, REMEMBERED 는 '최근가' 마커 표시. */
+  priceSource?: 'REMEMBERED' | 'CATALOG' | 'USER' | null
+  /** 정가 fallback 값 — 거래처 변경 재조회 miss 시 사용. */
+  catalogUnitPrice?: string | null
+  /** 최근 단가 저장 시각 — tooltip 전용. */
+  priceMemoryUpdatedAt?: string | null
   /** lookup 실패 메시지. */
   lookupError: string | null
   /** lookup 진행 중 — 우측 spinner 표시. */
@@ -318,18 +324,29 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
 
         {/* 8. 단가 */}
         <div className={`${styles['cell']} ${styles['cellPrice']}`}>
-          <input
-            id={priceId}
-            type="text"
-            inputMode="numeric"
-            className={`${styles['input']} ${styles['numInput']}`}
-            value={priceDisplay}
-            onChange={(e) => {
-              const numeric = e.target.value.replace(/[^0-9]/g, '')
-              onUnitPriceChange(numeric)
-            }}
-            aria-label={`라인 ${lineNumber} 단가`}
-          />
+          <span className={styles['priceInputWrap']}>
+            <input
+              id={priceId}
+              type="text"
+              inputMode="numeric"
+              className={`${styles['input']} ${styles['numInput']}`}
+              value={priceDisplay}
+              onChange={(e) => {
+                const numeric = e.target.value.replace(/[^0-9]/g, '')
+                onUnitPriceChange(numeric)
+              }}
+              aria-label={`라인 ${lineNumber} 단가`}
+            />
+            {line.priceSource === 'REMEMBERED' ? (
+              <span
+                role="note"
+                className={styles['priceMemoryNote']}
+                title={`최근 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
+              >
+                최근가
+              </span>
+            ) : null}
+          </span>
         </div>
 
         {/* 9. 합계 (read-only computed) — vatInclusive 면 합계(VAT포함)+공급/부가세 분해 */}

@@ -10,6 +10,7 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
+import com.samhanair.logis.security.permission.PermissionGuardMetrics;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
@@ -37,6 +38,7 @@ class SlipControllerPriceMemoryTest {
     @Mock private SlipExcelExportService slipExcelExportService;
     @Mock private PartnerProductPriceMemoryService priceMemoryService;
     @Mock private DynamicPermissionClient dynamicPermissionClient;
+    @Mock private PermissionGuardMetrics permissionGuardMetrics;
 
     @InjectMocks private SlipController controller;
 
@@ -52,7 +54,7 @@ class SlipControllerPriceMemoryTest {
                         new BigDecimal("123456.00"), "LINE_SAVE", LocalDateTime.of(2026, 7, 15, 10, 0))));
 
         ResponseEntity<ApiResponse<PartnerProductPriceMemoryResponse>> response =
-                controller.getPriceMemory(partnerId, productId, accountId.toString());
+                controller.getPriceMemory(partnerId, productId, accountId.toString(), "SALES");
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isNotNull();
@@ -69,7 +71,7 @@ class SlipControllerPriceMemoryTest {
         when(priceMemoryService.find(partnerId, productId)).thenReturn(Optional.empty());
 
         ResponseEntity<ApiResponse<PartnerProductPriceMemoryResponse>> response =
-                controller.getPriceMemory(partnerId, productId, accountId.toString());
+                controller.getPriceMemory(partnerId, productId, accountId.toString(), "SALES");
 
         assertThat(response.getStatusCode().value()).isEqualTo(204);
     }
@@ -81,9 +83,33 @@ class SlipControllerPriceMemoryTest {
                 .thenReturn(false);
         when(dynamicPermissionClient.check(eq(accountId), eq("purchases.slip.edit"), eq(PermissionAction.UPDATE)))
                 .thenReturn(false);
+        when(dynamicPermissionClient.check(eq(accountId), eq("estimates.list"), eq(PermissionAction.CREATE)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.check(eq(accountId), eq("estimates.list"), eq(PermissionAction.UPDATE)))
+                .thenReturn(false);
 
-        assertThatThrownBy(() -> controller.getPriceMemory(UUID.randomUUID(), UUID.randomUUID(), accountId.toString()))
+        assertThatThrownBy(() -> controller.getPriceMemory(
+                UUID.randomUUID(), UUID.randomUUID(), accountId.toString(), "SALES"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test
+    void getPriceMemory_withEstimateCreatePermission_returnsNoContent() {
+        UUID accountId = UUID.randomUUID();
+        UUID partnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        when(dynamicPermissionClient.check(eq(accountId), eq("sales.slip.create"), eq(PermissionAction.CREATE)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.check(eq(accountId), eq("purchases.slip.edit"), eq(PermissionAction.UPDATE)))
+                .thenReturn(false);
+        when(dynamicPermissionClient.check(eq(accountId), eq("estimates.list"), eq(PermissionAction.CREATE)))
+                .thenReturn(true);
+        when(priceMemoryService.find(partnerId, productId)).thenReturn(Optional.empty());
+
+        ResponseEntity<ApiResponse<PartnerProductPriceMemoryResponse>> response =
+                controller.getPriceMemory(partnerId, productId, accountId.toString(), "SALES");
+
+        assertThat(response.getStatusCode().value()).isEqualTo(204);
     }
 }

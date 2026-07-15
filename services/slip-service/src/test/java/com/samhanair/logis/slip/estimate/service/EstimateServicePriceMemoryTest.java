@@ -1,5 +1,6 @@
 package com.samhanair.logis.slip.estimate.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,7 @@ import com.samhanair.logis.slip.estimate.repository.EstimateRepository;
 import com.samhanair.logis.slip.estimate.revision.service.EstimateRevisionService;
 import com.samhanair.logis.slip.estimate.web.dto.CreateEstimateRequest;
 import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -66,8 +69,13 @@ class EstimateServicePriceMemoryTest {
                         new BigDecimal("88000.00"), null, null, true))),
                 "user-1", "홍길동");
 
-        verify(priceMemoryService).remember(
-                eq(partnerId), eq(productId), eq(new BigDecimal("88000.00")), eq("user-1"));
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceMemoryService).rememberBatchAfterCommit(captor.capture(), eq("estimate.create"));
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).partnerId()).isEqualTo(partnerId);
+        assertThat(captor.getValue().get(0).productId()).isEqualTo(productId);
+        assertThat(captor.getValue().get(0).unitPrice()).isEqualByComparingTo("88000.00");
+        assertThat(captor.getValue().get(0).source()).isEqualTo("LINE_SAVE");
     }
 
     @Test
@@ -85,7 +93,12 @@ class EstimateServicePriceMemoryTest {
                         new BigDecimal("99000.00"), null, null, true))),
                 "user-2", "김매니저");
 
-        verify(priceMemoryService).remember(
-                eq(partnerId), eq(productId), eq(new BigDecimal("99000.00")), eq("user-2"));
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceMemoryService).rememberBatchAfterCommit(captor.capture(), eq("estimate.update"));
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).partnerId()).isEqualTo(partnerId);
+        assertThat(captor.getValue().get(0).productId()).isEqualTo(productId);
+        assertThat(captor.getValue().get(0).unitPrice()).isEqualByComparingTo("99000.00");
+        assertThat(captor.getValue().get(0).source()).isEqualTo("LINE_SAVE");
     }
 }

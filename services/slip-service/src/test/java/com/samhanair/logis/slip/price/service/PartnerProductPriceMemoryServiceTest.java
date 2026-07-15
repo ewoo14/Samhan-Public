@@ -8,23 +8,35 @@ import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
 import com.samhanair.logis.slip.price.repository.PartnerProductPriceMemoryRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /** PartnerProductPriceMemoryService — 최근 단가 조회/저장 계약 테스트. */
 @ExtendWith(MockitoExtension.class)
 class PartnerProductPriceMemoryServiceTest {
 
     @Mock private PartnerProductPriceMemoryRepository repository;
+    @Mock private PlatformTransactionManager transactionManager;
 
-    @InjectMocks private PartnerProductPriceMemoryService service;
+    private PartnerProductPriceMemoryService service;
+
+    @BeforeEach
+    void setUp() {
+        Clock clock = Clock.fixed(Instant.parse("2026-07-15T01:00:00Z"), ZoneId.of("Asia/Seoul"));
+        service = new PartnerProductPriceMemoryService(repository, clock, transactionManager, new SimpleMeterRegistry());
+    }
 
     @Test
     void find_returnsVatInclusiveInputPriceWithoutTransforming() {

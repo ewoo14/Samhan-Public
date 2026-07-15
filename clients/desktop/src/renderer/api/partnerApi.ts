@@ -497,7 +497,7 @@ export const MOCK_PARTNER_FULL: PartnerFullResponse = {
  * admin-service `PartnerSummaryResponse` 매핑 타입 (AC-3 FE 전용).
  *
  * <p>BE `GET /admin/partners/search` 응답의 `items` 배열 원소.
- * `id` (UUID) 는 BE 응답에 없거나 노출 금지 — partnerCode/name 이 식별자.
+ * `partnerId` UUID 는 BE 응답에 포함되지만 화면 표시 금지 — hidden state/API payload 전용.
  */
 interface PartnerSummaryResponse {
   /** 내부 partnerId UUID — 화면 표시 금지, API payload 전용. */
@@ -524,7 +524,7 @@ interface AdminPartnerListResponse {
  * <p>admin-service 의 `AdminPartnerController.search` 로 라우팅.
  * `q` 파라미터로 partnerCode/name/bizNo/phone LIKE 검색.
  *
- * UUID 비공개 가드: 응답에 UUID 없음. partnerCode/name 이 사용자 표시 식별자.
+ * UUID 비공개 가드: partnerId 는 화면 표시 없이 payload 전용으로만 사용한다.
  *
  * @param q 검색어 (거래처명·코드·사업자번호·전화 부분 입력)
  * @returns `PartnerOption[]` — 실패 시 빈 배열 (graceful degradation)

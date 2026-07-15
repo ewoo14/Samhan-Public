@@ -186,6 +186,23 @@
   font-feature-settings: 'tnum' 1;
 }
 
+.priceInputWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.priceMemoryNote {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-secondary, #5C6773);
+  white-space: nowrap;
+}
+
 .modelSpinner {
   position: absolute;
   right: 8px;

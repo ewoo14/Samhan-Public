@@ -489,6 +489,7 @@ function mockRequirePermission(pageCode: string, action: MockPermissionAction): 
 
 function normalizeAdminPartner(row: Record<string, unknown>) {
   return {
+    partnerId: String(row['id'] ?? row['partnerId'] ?? ''),
     partnerCode: String(row['partnerCode'] ?? ''),
     name: String(row['name'] ?? row['partnerName'] ?? ''),
     bizNo: String(row['bizNo'] ?? row['businessNumber'] ?? ''),
@@ -504,7 +505,6 @@ function normalizeAdminPartner(row: Record<string, unknown>) {
 
 function normalizeAccountingPartner(row: Record<string, unknown>) {
   return {
-    partnerId: String(row['id'] ?? row['partnerId'] ?? ''),
     ...normalizeAdminPartner(row),
   }
 }
@@ -15376,7 +15376,7 @@ function mockEstimateSummary(row: (typeof MOCK_ESTIMATES)[number]) {
     estimateDate: row.estimateDate,
     seqNo: Number.isFinite(seqNo) ? seqNo : 1,
     status,
-    partnerId: `partner-${row.partnerCode}`,
+    partnerId: String((row as Record<string, unknown>)['partnerId'] ?? row.id ?? '00000000-0000-0000-0000-000000000809'),
     partnerName: row.partnerName,
     partnerBusinessNo: row.partnerCode,
     validUntil: row.expirationDate,

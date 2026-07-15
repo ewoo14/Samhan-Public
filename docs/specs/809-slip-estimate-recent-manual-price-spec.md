@@ -1,36 +1,45 @@
-# #809 — 전표/견적 품목 추가 시 (거래처+품목) 최근 수동단가 자동채움
+# #809 - 전표/견적 (거래처+품목) 최근 수동단가 자동채움
 
-- **상태**: **구현 착수** — 개발책임자 결정 ①~⑥ **morning 확정**(2026-07-15·명확화 후 전부 PM 권고 수렴·PR #820 감사기록 issuecomment-4975169714). 정찰 완비.
-- **연관**: 이슈 #809(개발책임자 요청·현재코드 분석 포함)·`slip-service`·`dc-config-service`·`clients/desktop`
-- **민감도**: 🔴 **가격(단가) 도메인** — 실 전표/견적 단가에 영향. 자율 구현보다 개발책임자 결정 확정 후 착수 권장([[feedback_integrity_domain_policy_preconfirm]] 인접·#816 ③-A 교훈).
+- **상태**: 구현 및 R1 리뷰 보완 진행
+- **대상**: 전표(출고/입고) + 견적. 주문(partner-order)은 범위 밖이며 기존 DcConfig 규칙가를 유지한다.
+- **저장소**: `slip-service` 단일 테이블 `partner_product_price_memory`
 
-## 목표 (이슈 확인)
-전표(출고/입고)·견적에 품목 추가 시 **(거래처+품목) 이전 수동단가를 기억**해 자동채움. 현재는 catalog 정가(`Product.sellingPrice`·거래처 무관)로만 채움.
+## 확정 결정
 
-## 정찰 요약 (이슈 본문 상세)
-- `(partnerId, productId) → 최근단가` 저장/조회 엔티티·endpoint **전무**. 수동 단가는 라인 row 에만 잔존.
-- 유사하나 축 불일치: `PriceHistory`(품목+시행일·거래처축X)·`PartnerPriceDiscount`(거래처 1행 기본할인·품목축X)·`Product.fixedDiscountRate`(품목·거래처X).
-- 주문(partner-order)만 서버가 DcConfig **할인율 규칙**(정가×(1−율)−옵션) 적용 — "과거 수동단가 재현" 아님.
+| # | 항목 | 결정 |
+|---|---|---|
+| ① | 대상 범위 | 전표(출고/입고)와 견적만 적용. 주문은 제외한다. |
+| ② | 저장 위치 | `slip-service` 신규 테이블 `partner_product_price_memory` 에 `(partnerId, productId)` 단위로 저장한다. |
+| ③ | upsert 시점 | 라인 저장 경로에서 후보를 수집하고, 원 전표/견적 트랜잭션 커밋 후 1회 flush 한다. |
+| ④ | source/우선순위 | 저장된 라인 단가(effective)를 기억한다. 사용자 override 는 항상 우선하며 다음 저장 때 기억값을 갱신한다. |
+| ⑤ | VAT 기준 | **VAT 포함 입력단가 기준**으로 저장/반환한다. 즉 `unitPriceWithVat` parity 가 권위값이고, `unitPrice` 는 공급가 파생값이다. |
+| ⑥ | 거래처 키 | `partnerId(UUID)` 를 저장한다. UUID 는 화면 표시 금지이며 hidden state/API payload 전용이다. |
 
-## 🔑 스코프 결정 (개발책임자 확정 필요 — PM 권고 병기)
+### VAT 기준 정정 사유
 
-| # | 결정 | PM 권고 | 근거 |
-|---|---|---|---|
-| ① | **대상 범위** | **전표(출고/입고) + 견적** (주문 제외) | 이슈 의도="전표·견적". 주문은 이미 DcConfig 규칙가라 "최근 수동단가" 개념과 상충(규칙 vs 기억) → 주문은 현행 유지 |
-| ② | **저장소 위치** | **slip-service 신규 테이블 `partner_product_price_memory`** + endpoint | ✅ **정찰 해소(2026-07-15)**: 견적도 slip-service 영속(`slip/estimate/domain/EstimateLine`·`Estimate`). 전표+견적 **둘 다 slip-service** → **cross-service 불필요**·양쪽 라인저장서 upsert/read. 단일 store |
-| ③ | **"확정"(upsert) 시점** | **라인 저장(POST/PUT slip/estimate line)** 시 upsert | 마감/결재는 늦음. 저장=이 거래처+품목의 단가 확정 신호 |
-| ④ | **source/우선순위** | **저장된 라인 단가(effective) 기억**(source 태그). 조회 시 최근단가>정가 폴백·**사용자 override 항상 우선**(override 시 다음 저장서 갱신) | "마지막 사용 단가" 재현이 실용적. 순수 "수동 편집만" 구분은 FE 플래그 필요(복잡) → effective 단가로 단순화(단, 개발책임자 "수동만" 원하면 FE isManuallyEdited 플래그 추가) |
-| ⑤ | **VAT 기준** | 라인 `unitPrice` 기존 관례 그대로(공급가 기준·SlipLine 규약) | 라인과 동일 basis 유지(포함/제외 혼선 방지) |
-| ⑥ | **거래처 식별키** | 내부 **partnerId(UUID)** 저장·FE는 partnerCode→partnerId resolve | UUID 안정키(거래처코드 변경 내성). UUID 비공개 유지 |
+초기 spec 의 공급가 기준 전제는 오류다. 전표와 견적의 품목 입력 필드는 VAT 포함 단가를 사용하므로 공급가 기준으로 저장한 값을 다시 입력 필드에 채우면 재사용마다 약 9.1% 단가가 하락한다. 2026-07-15 개발책임자 승인에 따라 VAT 포함 입력단가를 단일 저장 basis 로 확정한다.
 
-## 구현안 (결정 ①~⑥ 가정·확정 후 조정)
-1. **BE(slip-service)**: `PartnerProductPriceMemory`(BaseEntity·partnerId·productId·unitPrice·source·updatedAt·유니크(partnerId,productId)) + repo + Flyway V+ (slip-service). 라인 저장 서비스(`SlipService.addSlipLinesExpanded`)에서 upsert. `GET /internal/price-memory?partnerId&productId`(단건)·bulk 조회.
-2. **FE(clients/desktop)**: `SlipFormPage`/`EstimateFormPage` 품목 선택 핸들러 — 최근단가 조회 → 있으면 자동채움(정가 대신)·없으면 정가 폴백. override 가능.
-3. **견적 BE 배선**: 견적 라인 저장 경로 확인 후 동일 upsert(또는 slip-service client 경유).
-4. **테스트+라이브 QA**: (partner,item) 저장→재추가 시 최근단가 자동채움 실증(#815/#816 패턴).
+## BUNDLE 정책
 
-## 캐논 워크플로우
-Opus 기획(본 spec) → **개발책임자 ①~⑥ 확정** → 조기 PR → Codex 개발 → Opus 5-agent+fix+라이브QA ↔ Codex 적대 → 0수렴 → PM 종합 → CI → 머지.
+- 구성품 라인은 기억하지 않는다. 구성품 확장 단가는 납품가/배분가일 수 있어 사용자가 거래처와 합의한 판매 단가가 아니다.
+- 세트 parent 품목은 사용자가 입력한 세트 단가를 기억한다.
+- 세트 parent 저장 source 는 `BUNDLE_SET` 이며, 단품 라인 저장 source 는 `LINE_SAVE` 다.
 
-## ⚠️ 착수 전 확인 (야간 자율 미착수 사유)
-가격 도메인 민감 + 결정 ①②④가 동작/아키텍처 분기(범위·저장소·source semantics)라, **개발책임자 확정 후 구현**. 특히 ④(수동만 vs effective)·②(견적 BE 저장소)는 정찰/결정 필요.
+## 화면/경로 범위
+
+- 신규 전표 생성, 전표 라인 추가, 전표 수정(출고/입고 direct PUT), 전표 복사 경로를 모두 배선한다.
+- 견적 생성, 견적 수정, 모바일 견적 생성 경로를 모두 배선한다.
+- 수정 화면은 VAT 제외 단가 입력 UI 이므로 저장소에는 `unitPrice * 1.1` 로 VAT 포함 기준에 맞춰 정규화한다.
+
+## 조회 및 자동채움
+
+- 브라우저 호출용 일반 endpoint `GET /slips/price-memory?partnerId={uuid}&productId={uuid}` 를 사용한다. `/internal` endpoint 는 사용하지 않는다.
+- 권한은 전표 생성/수정 또는 견적 생성/수정 권한 중 하나를 요구한다.
+- 조회 hit 시 기억단가를 자동채움하고 `최근가` 마커를 표시한다. miss 또는 조회 실패 시 catalog 정가로 폴백한다.
+- 거래처 변경 시 자동채움 라인만 새 거래처 기준으로 재조회한다. 사용자 override 라인은 보존한다.
+
+## 테스트 기준
+
+- 실 Postgres IT 로 V58 migration, unique 제약, upsert 충돌 갱신, soft-delete revive, VAT 포함 라운드트립을 검증한다.
+- 원 전표/견적 트랜잭션 롤백 시 가격기억 row 가 남지 않아야 한다.
+- 가격기억 flush 실패는 fail-soft 로 처리되어 전표/견적 저장을 깨지 않아야 한다.

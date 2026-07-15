@@ -5,6 +5,9 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipLine;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.revision.domain.SlipRevisionType;
 import com.samhanair.logis.slip.revision.service.SlipRevisionService;
@@ -12,9 +15,11 @@ import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
 import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -36,6 +41,7 @@ public class SlipUpdateService {
     private final SlipRepository slipRepository;
     private final SlipAuditLogService auditLogService;
     private final SlipRevisionService slipRevisionService;
+    private final PartnerProductPriceMemoryService priceMemoryService;
 
     /**
      * 매입 전표 헤더와 라인을 전체 교체한다.
@@ -64,6 +70,8 @@ public class SlipUpdateService {
         validateLines(request.lines());
 
         String before = summarize(slip);
+        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
+                slip, request.lines(), actorId == null ? null : actorId.toString());
         try {
             slip.updateHeader(
                     request.partnerName(),
@@ -87,6 +95,7 @@ public class SlipUpdateService {
                 auditLogService.recordBatch(saved.getId(), actorId, actorName, null,
                         List.of(new SlipAuditLogService.ChangeEntry("SLIP_EDIT", before, after)));
             }
+            priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.purchaseUpdate");
             return SlipDetailResponse.from(saved);
         } catch (OptimisticLockException | OptimisticLockingFailureException ex) {
             throw optimisticLockConflict();
@@ -151,6 +160,29 @@ public class SlipUpdateService {
                 line.quantity(),
                 line.unitPrice(),
                 line.note());
+    }
+
+    /**
+     * 매입 수정 화면 라인 단가는 VAT 제외 공급단가이므로 공용 store 기준인 VAT 포함 단가로 정규화한다.
+     */
+    private List<PartnerProductPriceMemoryCommand> collectPriceMemory(
+            Slip slip, List<SlipUpdateRequest.LineRequest> lines, String actor) {
+        List<PartnerProductPriceMemoryCommand> commands = new ArrayList<>();
+        if (slip.getPartnerId() == null || lines == null) {
+            return commands;
+        }
+        for (SlipUpdateRequest.LineRequest line : lines) {
+            if (line.productId() == null || line.unitPrice() == null) {
+                continue;
+            }
+            BigDecimal vatInclusive = line.unitPrice()
+                    .multiply(new BigDecimal("1.1"))
+                    .setScale(2, RoundingMode.HALF_UP);
+            commands.add(new PartnerProductPriceMemoryCommand(
+                    slip.getPartnerId(), line.productId(), vatInclusive,
+                    PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor));
+        }
+        return commands;
     }
 
     private String summarize(Slip slip) {

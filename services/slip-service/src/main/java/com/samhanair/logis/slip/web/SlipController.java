@@ -5,6 +5,7 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
 import com.samhanair.logis.security.permission.PermissionAction;
+import com.samhanair.logis.security.permission.PermissionGuardMetrics;
 import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipStatus;
@@ -97,6 +98,8 @@ public class SlipController {
     private static final String SALES_SLIP_CONFIRM_PAGE_CODE = "sales.slip.confirm";
     /** 매출 전표 취소 권한 페이지 코드. */
     private static final String SALES_SLIP_CANCEL_PAGE_CODE = "sales.slip.cancel";
+    /** 견적 작성/수정 권한 페이지 코드. */
+    private static final String ESTIMATES_LIST_PAGE_CODE = "estimates.list";
     /** SP-D3 — 입고 검수 페이지 코드. */
     private static final String INBOUND_INSPECTION_PAGE_CODE = "inbound.inspection";
 
@@ -113,6 +116,7 @@ public class SlipController {
     private final SlipExcelExportService slipExcelExportService;
     private final PartnerProductPriceMemoryService priceMemoryService;
     private final DynamicPermissionClient dynamicPermissionClient;
+    private final PermissionGuardMetrics permissionGuardMetrics;
 
     /**
      * 전표 페이지 조회 — PR-E1 BE-A0 (PR #117) 확장 + deliveryTag 멀티셀렉 필터 신규.
@@ -225,8 +229,9 @@ public class SlipController {
     public ResponseEntity<ApiResponse<PartnerProductPriceMemoryResponse>> getPriceMemory(
             @RequestParam UUID partnerId,
             @RequestParam UUID productId,
-            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
-        checkPriceMemoryReadPermission(callerHeader);
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        checkPriceMemoryReadPermission(callerHeader, role);
         return priceMemoryService.find(partnerId, productId)
                 .map(response -> ResponseEntity.ok(ApiResponse.ok(response)))
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -721,16 +726,21 @@ public class SlipController {
     }
 
     /**
-     * 가격기억 조회는 품목 선택 시 자동채움 보조 API 이므로 전표 생성과 동등한 계정 권한을 요구한다.
-     * OUTBOUND 생성 또는 INBOUND 작성 권한 중 하나가 있으면 통과한다.
+     * 가격기억 조회는 품목 선택 시 자동채움 보조 API 이므로 전표/견적 작성 권한 중 하나를 요구한다.
+     * OUTBOUND 생성, INBOUND 작성, 견적 생성/수정 권한 중 하나가 있으면 통과한다.
      */
-    private void checkPriceMemoryReadPermission(String callerHeader) {
+    private void checkPriceMemoryReadPermission(String callerHeader, String role) {
         UUID accountId = parseAccountId(callerHeader);
         boolean canCreateOutbound = accountId != null && dynamicPermissionClient.check(
                 accountId, SALES_SLIP_CREATE_PAGE_CODE, PermissionAction.CREATE);
         boolean canCreateInbound = accountId != null && dynamicPermissionClient.check(
                 accountId, PURCHASES_SLIP_EDIT_PAGE_CODE, PermissionAction.UPDATE);
-        if (!canCreateOutbound && !canCreateInbound) {
+        boolean canCreateEstimate = accountId != null && (
+                dynamicPermissionClient.check(accountId, ESTIMATES_LIST_PAGE_CODE, PermissionAction.CREATE)
+                        || dynamicPermissionClient.check(accountId, ESTIMATES_LIST_PAGE_CODE, PermissionAction.UPDATE));
+        if (!canCreateOutbound && !canCreateInbound && !canCreateEstimate) {
+            permissionGuardMetrics.incrementDenied(
+                    "slip-service", SALES_SLIP_CREATE_PAGE_CODE, role, PermissionAction.CREATE.name());
             log.warn("[#809] price-memory permission denied accountId={}", accountId);
             throw new BusinessException(ErrorCode.FORBIDDEN, "전표 생성 권한이 없습니다.");
         }

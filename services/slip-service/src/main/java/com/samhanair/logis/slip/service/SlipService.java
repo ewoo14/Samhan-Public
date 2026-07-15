@@ -23,6 +23,8 @@ import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.editrequest.domain.SlipEditRequest;
 import com.samhanair.logis.slip.editrequest.service.SlipEditRequestService;
 import com.samhanair.logis.slip.realtime.SlipRealtimeBroker;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.revision.domain.SlipRevisionType;
@@ -151,7 +153,8 @@ public class SlipService {
                                       String reqName, String reqModel, String specification, int quantity,
                                       java.math.BigDecimal unitPrice, String note,
                                       com.samhanair.logis.slip.estimate.web.dto.BundleSetOptions setOptions,
-                                      boolean priceVatInclusive, String actor) {
+                                      boolean priceVatInclusive, String actor,
+                                      List<PartnerProductPriceMemoryCommand> priceMemoryCommands) {
         boolean bundle = summary != null && "BUNDLE".equals(summary.productType())
                 && summary.modelCode() != null && !summary.modelCode().isBlank();
         if (!bundle) {
@@ -163,9 +166,12 @@ public class SlipService {
                             specification, quantity, unitPrice, note, null)
                     : SlipLine.create(slip, productId, productName, modelName,
                             specification, quantity, unitPrice, note));
-            rememberPrice(slip.getPartnerId(), productId, unitPrice, priceVatInclusive, actor);
+            collectPriceMemory(priceMemoryCommands, slip.getPartnerId(), productId, unitPrice,
+                    priceVatInclusive, PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
             return;
         }
+        collectPriceMemory(priceMemoryCommands, slip.getPartnerId(), productId, unitPrice,
+                priceVatInclusive, PartnerProductPriceMemory.SOURCE_BUNDLE_SET, actor);
         ExpandedLineDto.Options opts = setOptions == null ? null : new ExpandedLineDto.Options(
                 setOptions.remoteOption(), Boolean.TRUE.equals(setOptions.remoteExcluded()),
                 setOptions.panelOption(), setOptions.panelShape360(),
@@ -194,7 +200,6 @@ public class SlipService {
                             compSpec, q, compUnit, note);
             line.assignBundleComponent(summary.modelCode(), el.setHead());
             slip.addLine(line);
-            rememberPrice(slip.getPartnerId(), el.productId(), compUnit, priceVatInclusive, actor);
             added++;
         }
         // 구성품 일부라도 미등록 skip 시 재배분 세트가 일부 silent 손실 → 전부/일부 모두 명시 예외.
@@ -254,11 +259,12 @@ public class SlipService {
 
         // 4. 라인 추가 — 직접 전표생성도 등록품목으로(개발책임자). BUNDLE(세트)면 product-service expand
         //    로 구성품 라인 N개 전개(견적 경로와 동일 단일 엔진), 아니면 1 라인.
+        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new ArrayList<>();
         for (CreateSlipRequest.SlipLineRequest lineReq : req.lines()) {
             addSlipLinesExpanded(slip, lineReq.productId(), byId.get(lineReq.productId()),
                     lineReq.productName(), lineReq.modelName(), lineReq.specification(),
                     lineReq.quantity(), lineReq.unitPrice(), lineReq.note(), lineReq.setOptions(),
-                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId);
+                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId, priceMemoryCommands);
         }
 
         // 5. 배송일정 계산 (지방/야적 태그 시 하차일 N 자동 산출 또는 override 적용)
@@ -320,6 +326,7 @@ public class SlipService {
         // [UUID 비공개 가드] actorName 은 X-User-Name 우선, 없거나 UUID 형태면 null
         slipRevisionService.capture(saved, SlipRevisionType.CREATE, null,
                 parseActorId(requesterId), resolveActorName(requesterName, requesterId), null);
+        priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.create");
         return SlipDetailResponse.from(saved);
     }
 
@@ -776,14 +783,16 @@ public class SlipService {
         ProductSummary summary = productClient.requireExists(req.productId());
         // 에픽 후속 #2 — 기존 전표 라인추가도 create 경로와 동일 전개 엔진 사용.
         // BUNDLE(세트)면 product-service expand 로 구성품 N라인(옵션 반영), 아니면 1라인.
+        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new ArrayList<>();
         applyMutation(() -> addSlipLinesExpanded(slip, req.productId(), summary,
                 req.productName(), req.modelName(), req.specification(),
                 req.quantity(), req.unitPrice(), req.note(), req.setOptions(),
-                Boolean.TRUE.equals(req.priceVatInclusive()), callerId));
+                Boolean.TRUE.equals(req.priceVatInclusive()), callerId, priceMemoryCommands));
         // 권한 재편 Phase 2.1 — 라인 추가도 헤더+라인 전체 버전이력에 잡히도록 EDIT 스냅샷 캡처
         // [UUID 비공개 가드] actorName 은 X-User-Name 우선, 없거나 UUID 형태면 null
         slipRevisionService.capture(slip, SlipRevisionType.EDIT, null,
                 parseActorId(callerId), resolveActorName(callerName, callerId), null);
+        priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.addLine");
         return SlipDetailResponse.from(slip);
     }
 
@@ -1497,20 +1506,17 @@ public class SlipService {
      * 들어온 legacy/null priceVatInclusive 경로는 라인의 {@code unitPriceWithVat} 계산과 동일하게
      * 1.1 배로 정규화한다.
      */
-    private void rememberPrice(UUID partnerId, UUID productId, BigDecimal unitPrice,
-                               boolean priceVatInclusive, String actor) {
+    private void collectPriceMemory(List<PartnerProductPriceMemoryCommand> commands,
+                                    UUID partnerId, UUID productId, BigDecimal unitPrice,
+                                    boolean priceVatInclusive, String source, String actor) {
         if (partnerId == null || productId == null || unitPrice == null) {
             return;
         }
         BigDecimal vatInclusiveUnitPrice = priceVatInclusive
                 ? unitPrice
                 : unitPrice.multiply(new BigDecimal("1.1")).setScale(2, RoundingMode.HALF_UP);
-        try {
-            priceMemoryService.remember(partnerId, productId, vatInclusiveUnitPrice, actor);
-        } catch (RuntimeException ex) {
-            log.warn("partner-product price memory upsert failed during slip save partnerId={} productId={}",
-                    partnerId, productId, ex);
-        }
+        commands.add(new PartnerProductPriceMemoryCommand(
+                partnerId, productId, vatInclusiveUnitPrice, source, actor));
     }
 
     /**

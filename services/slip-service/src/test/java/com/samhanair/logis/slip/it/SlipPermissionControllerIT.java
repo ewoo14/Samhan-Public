@@ -203,14 +203,18 @@ class SlipPermissionControllerIT {
                     eq(ID), eq(endpoint.secondaryPermission().page()), eq(endpoint.secondaryPermission().action())))
                     .thenReturn(false);
         }
+        if ("price memory".equals(endpoint.name())) {
+            when(dynamicPermissionClient.check(eq(ID), eq("estimates.list"), eq(PermissionAction.CREATE)))
+                    .thenReturn(false);
+            when(dynamicPermissionClient.check(eq(ID), eq("estimates.list"), eq(PermissionAction.UPDATE)))
+                    .thenReturn(false);
+        }
         double before = deniedCount(endpoint.page(), endpoint.role(), endpoint.action());
 
         mockMvc.perform(withActor(endpoint.request().get(), endpoint.role()))
                 .andExpect(status().isForbidden());
 
-        if (endpoint.aspectMetric()) {
-            assertThat(deniedCount(endpoint.page(), endpoint.role(), endpoint.action())).isEqualTo(before + 1.0);
-        }
+        assertThat(deniedCount(endpoint.page(), endpoint.role(), endpoint.action())).isEqualTo(before + 1.0);
     }
 
     static Stream<EndpointCase> endpoints() {
@@ -280,13 +284,13 @@ class SlipPermissionControllerIT {
     private static EndpointCase endpoint(
             String name, String page, PermissionAction action, String role,
             Supplier<MockHttpServletRequestBuilder> request) {
-        return new EndpointCase(name, page, action, null, true, role, request);
+        return new EndpointCase(name, page, action, null, role, request);
     }
 
     private static EndpointCase programmaticEndpoint(
             String name, String page, PermissionAction action, PermissionKey secondaryPermission, String role,
             Supplier<MockHttpServletRequestBuilder> request) {
-        return new EndpointCase(name, page, action, secondaryPermission, false, role, request);
+        return new EndpointCase(name, page, action, secondaryPermission, role, request);
     }
 
     private static MockHttpServletRequestBuilder withActor(MockHttpServletRequestBuilder request, String role) {
@@ -311,7 +315,6 @@ class SlipPermissionControllerIT {
             String page,
             PermissionAction action,
             PermissionKey secondaryPermission,
-            boolean aspectMetric,
             String role,
             Supplier<MockHttpServletRequestBuilder> request) {
 

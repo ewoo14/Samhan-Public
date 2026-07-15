@@ -114,6 +114,9 @@ const emptyLine = (): LineDraft => ({
   specification: '', // Slice A 신규 (피드백 #4)
   quantity: '1',
   unitPrice: '0',
+  priceSource: null,
+  catalogUnitPrice: null,
+  priceMemoryUpdatedAt: null,
   lookupError: null,
   lookupLoading: false,
   productType: null,
@@ -229,6 +232,15 @@ function SlipMobileLineCard(props: {
           }}
           aria-label={`라인 ${props.lineNumber} 단가`}
         />
+        {props.line.priceSource === 'REMEMBERED' ? (
+          <span
+            role="note"
+            title={`최근 단가${props.line.priceMemoryUpdatedAt ? ` · ${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
+            style={{ fontSize: 11, color: 'var(--ink-secondary, #5C6773)' }}
+          >
+            최근가
+          </span>
+        ) : null}
       </div>
 
       <div className="mobile-line-field">
@@ -421,40 +433,105 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     const productId = product?.id ?? null
     const fallbackUnitPrice =
       product?.sellingPrice != null ? String(product.sellingPrice) : line.unitPrice
-    const shouldAutoFill = !line.unitPrice || line.unitPrice === '0'
+    const shouldAutoFill =
+      line.priceSource !== 'USER' &&
+      (!line.unitPrice || line.unitPrice === '0' || line.priceSource === 'CATALOG' || line.priceSource === 'REMEMBERED')
     const nextUnitPrice = shouldAutoFill ? fallbackUnitPrice : line.unitPrice
+    const partnerId = selectedPartner?.id
     updateLine(line.id, {
       productId,
       modelName: product?.modelName ?? '',
       productName: product?.productName ?? '',
       unitPrice: nextUnitPrice,
+      priceSource: shouldAutoFill ? 'CATALOG' : line.priceSource,
+      catalogUnitPrice: product?.sellingPrice != null ? String(product.sellingPrice) : line.catalogUnitPrice ?? null,
+      priceMemoryUpdatedAt: null,
       productType: product?.productType ?? null,
       modelCode: product?.modelCode ?? null,
       lookupError: null,
-      lookupLoading: false,
+      lookupLoading: Boolean(partnerId && productId && shouldAutoFill),
     })
-    const partnerId = selectedPartner?.id
     if (!partnerId || !productId || !shouldAutoFill) {
       return
     }
     try {
       const memory = await getPriceMemory(partnerId, productId)
       const remembered = memory?.unitPrice
-      if (!remembered) {
-        return
-      }
+      const resolvedUnitPrice = remembered == null ? fallbackUnitPrice : String(remembered)
       setLines((currentLines) =>
         currentLines.map((current) => {
           if (current.id !== line.id) return current
           if (current.productId !== productId) return current
           if (selectedPartnerIdRef.current !== partnerId) return current
-          if (current.unitPrice !== fallbackUnitPrice) return current
-          return { ...current, unitPrice: String(remembered) }
+          if (current.priceSource === 'USER') return current
+          return {
+            ...current,
+            unitPrice: resolvedUnitPrice,
+            priceSource: remembered == null ? 'CATALOG' : 'REMEMBERED',
+            priceMemoryUpdatedAt: memory?.updatedAt ?? null,
+            lookupLoading: false,
+          }
         }),
       )
     } catch {
       // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 정가 fallback 유지.
+      setLines((currentLines) =>
+        currentLines.map((current) =>
+          current.id === line.id && current.productId === productId
+            ? { ...current, lookupLoading: false }
+            : current,
+        ),
+      )
     }
+  }
+
+  const refreshAutoPricesForPartner = async (partnerId: string) => {
+    const candidates = lines.filter(
+      (line) => line.productId && line.priceSource !== 'USER',
+    )
+    if (candidates.length === 0) return
+    const ids = new Set(candidates.map((line) => line.id))
+    setLines((current) =>
+      current.map((line) =>
+        ids.has(line.id) ? { ...line, lookupLoading: true } : line,
+      ),
+    )
+    await Promise.all(candidates.map(async (line) => {
+      const fallback = line.catalogUnitPrice ?? line.unitPrice
+      try {
+        const memory = await getPriceMemory(partnerId, line.productId!)
+        const remembered = memory?.unitPrice
+        setLines((current) =>
+          current.map((candidate) => {
+            if (candidate.id !== line.id) return candidate
+            if (candidate.productId !== line.productId) return candidate
+            if (selectedPartnerIdRef.current !== partnerId) return candidate
+            if (candidate.priceSource === 'USER') return candidate
+            return {
+              ...candidate,
+              unitPrice: remembered == null ? fallback : String(remembered),
+              priceSource: remembered == null ? 'CATALOG' : 'REMEMBERED',
+              priceMemoryUpdatedAt: memory?.updatedAt ?? null,
+              lookupLoading: false,
+            }
+          }),
+        )
+      } catch {
+        setLines((current) =>
+          current.map((candidate) =>
+            candidate.id === line.id && candidate.productId === line.productId
+              ? {
+                  ...candidate,
+                  unitPrice: fallback,
+                  priceSource: 'CATALOG',
+                  priceMemoryUpdatedAt: null,
+                  lookupLoading: false,
+                }
+              : candidate,
+          ),
+        )
+      }
+    }))
   }
 
   const updateSetOption = (id: string, patch: Partial<BundleSetOptions>) =>
@@ -519,6 +596,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     partner: PartnerOption | null,
   ) => {
     setSelectedPartner(partner)
+    selectedPartnerIdRef.current = partner?.id ?? null
 
     if (!partner) {
       // 선택 해제 — 관련 필드 클리어
@@ -528,6 +606,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
       setCustomerRepresentative('')
       setAutoFillError(null)
       return
+    }
+    if (partner.id) {
+      void refreshAutoPricesForPartner(partner.id)
     }
 
     // 1단계: search summary 즉시 fill
@@ -1084,7 +1165,11 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                   onSelect={(s) => toggleSelect(line.id, s)}
                   onSpecificationChange={(v) => updateLine(line.id, { specification: v })}
                   onQuantityChange={(v) => updateLine(line.id, { quantity: v })}
-                  onUnitPriceChange={(v) => updateLine(line.id, { unitPrice: v })}
+                  onUnitPriceChange={(v) => updateLine(line.id, {
+                    unitPrice: v,
+                    priceSource: 'USER',
+                    priceMemoryUpdatedAt: null,
+                  })}
                   onDelete={() => removeLine(line.id)}
                   modelCell={
                     <ProductAutocomplete
@@ -1157,7 +1242,11 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                       onModelNameBlur={(v) => void handleModelNameBlur(line.id, v)}
                       onSpecificationChange={(v) => updateLine(line.id, { specification: v })}
                       onQuantityChange={(v) => updateLine(line.id, { quantity: v })}
-                      onUnitPriceChange={(v) => updateLine(line.id, { unitPrice: v })}
+                      onUnitPriceChange={(v) => updateLine(line.id, {
+                        unitPrice: v,
+                        priceSource: 'USER',
+                        priceMemoryUpdatedAt: null,
+                      })}
                       onDelete={() => removeLine(line.id)}
                       modelCell={
                         <ProductAutocomplete

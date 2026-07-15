@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   sendEstimate: vi.fn(),
   searchPartners: vi.fn(),
   lookupProductByModelName: vi.fn(),
+  getPriceMemory: vi.fn(),
   createDocCoeditProvider: vi.fn(),
 }))
 
@@ -89,6 +90,7 @@ vi.mock('../api/sales', () => ({
 
 vi.mock('../api/slip', () => ({
   lookupProductByModelName: mocks.lookupProductByModelName,
+  getPriceMemory: mocks.getPriceMemory,
   emptyBundleSetOptions: () => ({
     outdoorUnits: 1,
     indoorUnits: 1,
@@ -121,7 +123,7 @@ function makeEstimate(overrides: Partial<EstimateDetail> = {}): EstimateDetail {
     estimateDate: '2099-07-01',
     seqNo: 1,
     status: 'QUOTE_DRAFT',
-    partnerId: 'partner-1',
+    partnerId: '11111111-1111-1111-1111-111111111111',
     partnerName: '테스트 거래처',
     partnerBusinessNo: '123-45-67890',
     partnerAddress: '서울시 중구',
@@ -219,6 +221,10 @@ function renderPage(initialPath = '/sales/estimates/estimate-1/edit') {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+})
+
+beforeEach(() => {
+  mocks.getPriceMemory.mockResolvedValue(null)
 })
 
 describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
@@ -371,7 +377,8 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
 
     await waitFor(() => expect(mocks.lookupProductByModelName).toHaveBeenCalledWith('LOOKUP-1'))
     expect(provider.setItemValue).toHaveBeenCalledWith(0, 'productName', '조회 제품')
-    expect(provider.setItemValue).toHaveBeenCalledWith(0, 'unitPrice', '11000')
+    // 이미 입력된 단가는 사용자 override 로 보고 provider 에 재전송하지 않는다.
+    expect(provider.setItemValue).not.toHaveBeenCalledWith(0, 'unitPrice', '11000')
     expect(provider.setItemValue).toHaveBeenCalledWith(0, 'productId', 'product-lookup')
   })
 

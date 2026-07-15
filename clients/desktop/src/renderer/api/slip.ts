@@ -405,9 +405,18 @@ export interface ProductLookupResult {
   productType?: string
 }
 
+interface ProductLookupWireResult {
+  id: string
+  modelName: string
+  name: string
+  sellingPrice: string | number | null
+  modelCode?: string | null
+  productType?: string | null
+}
+
 /** 거래처+품목 최근 수동단가 기억 응답 — 단가는 VAT 포함 입력 단가. */
 export interface PriceMemoryResult {
-  unitPrice: string
+  unitPrice: number
   source: string
   updatedAt: string | null
 }
@@ -472,7 +481,6 @@ export async function getPriceMemory(
     '/slips/price-memory',
     {
       params: { partnerId, productId },
-      validateStatus: (status) => (status >= 200 && status < 300) || status === 204,
     },
   )
   if (res.status === 204) return null
@@ -665,8 +673,9 @@ export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
       modelName: l.modelName ?? undefined,
       specification: l.specification ?? undefined,
       quantity: l.quantity,
-      unitPrice: l.unitPrice,
+      unitPrice: l.unitPriceWithVat ?? l.unitPrice,
       note: l.note ?? undefined,
+      priceVatInclusive: true,
     })),
   }
   return createSlip(body)
@@ -683,11 +692,22 @@ export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
 export async function lookupProductByModelName(
   modelName: string,
 ): Promise<ProductLookupResult> {
-  const res = await apiClient.get<ApiEnvelope<ProductLookupResult>>(
+  const res = await apiClient.get<ApiEnvelope<ProductLookupWireResult>>(
     '/slips/lookup-product',
     { params: { modelName } },
   )
-  return res.data.data
+  const data = res.data.data
+  if (!data?.id || !data.name) {
+    throw new Error('product lookup response contract mismatch')
+  }
+  return {
+    productId: data.id,
+    modelName: data.modelName,
+    productName: data.name,
+    sellingPrice: String(data.sellingPrice ?? '0'),
+    modelCode: data.modelCode ?? undefined,
+    productType: data.productType ?? undefined,
+  }
 }
 
 /**

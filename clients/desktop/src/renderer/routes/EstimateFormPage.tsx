@@ -57,6 +57,9 @@ interface DraftLine {
   specification: string
   quantity: string
   unitPrice: string
+  priceSource?: 'REMEMBERED' | 'CATALOG' | 'USER' | null
+  catalogUnitPrice?: string | null
+  priceMemoryUpdatedAt?: string | null
   note: string
   lookupError: string | null
   lookupLoading: boolean
@@ -74,6 +77,9 @@ const emptyLine = (): DraftLine => ({
   specification: '',
   quantity: '1',
   unitPrice: '0',
+  priceSource: null,
+  catalogUnitPrice: null,
+  priceMemoryUpdatedAt: null,
   note: '',
   lookupError: null,
   lookupLoading: false,
@@ -115,6 +121,9 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
         quantity: String(line.quantity),
         // 단가 부가세포함: 폼 단가 입력은 VAT 포함값. 편집 hydrate/coedit seed 모두 같은 값으로 보존.
         unitPrice: line.unitPriceWithVat ?? line.unitPrice,
+        priceSource: null,
+        catalogUnitPrice: null,
+        priceMemoryUpdatedAt: null,
         note: line.note ?? '',
         lookupError: null,
         lookupLoading: false,
@@ -155,6 +164,9 @@ function coeditLinesToDraftLines(provider: DocCoeditProvider, current: DraftLine
       specification: provider.getItemValue(index, 'specification'),
       quantity: provider.getItemValue(index, 'quantity') || '0',
       unitPrice: provider.getItemValue(index, 'unitPrice') || '0',
+      priceSource: previous?.priceSource ?? null,
+      catalogUnitPrice: previous?.catalogUnitPrice ?? null,
+      priceMemoryUpdatedAt: previous?.priceMemoryUpdatedAt ?? null,
       note: previous?.note ?? '',
       // 원격 doc 변경마다 재빌드되므로 진행 중 lookup 상태는 previous 에서 보존(스피너 조기소멸 방지, 리뷰 MED).
       lookupError: previous?.lookupError ?? null,
@@ -268,7 +280,11 @@ function EstimateMobileLineCard(props: {
           coeditPending={props.coeditPending}
           fieldPath={`items.${props.index}.unitPrice`}
           value={props.line.unitPrice}
-          onValueChange={(value) => props.onUpdate({ unitPrice: value })}
+          onValueChange={(value) => props.onUpdate({
+            unitPrice: value,
+            priceSource: 'USER',
+            priceMemoryUpdatedAt: null,
+          })}
           inputSize="sm"
           readOnly={props.isReadOnly}
           type="text"
@@ -276,6 +292,15 @@ function EstimateMobileLineCard(props: {
           inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
           aria-label={`라인 ${lineNumber} 단가`}
         />
+        {props.line.priceSource === 'REMEMBERED' ? (
+          <span
+            role="note"
+            title={`최근 단가${props.line.priceMemoryUpdatedAt ? ` · ${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
+            style={{ fontSize: 11, color: 'var(--ink-secondary, #5C6773)' }}
+          >
+            최근가
+          </span>
+        ) : null}
       </div>
 
       <div className="mobile-line-field">
@@ -438,6 +463,9 @@ export function EstimateFormPage() {
     setPartnerName(p.companyName)
     setPartnerBusinessNo(p.businessRegistrationNumber)
     setPartnerAddress(p.address ?? '')
+    if (p.partnerId && UUID_PATTERN.test(p.partnerId)) {
+      void refreshAutoPricesForPartner(p.partnerId)
+    }
   }
 
   const searchPartnerOptions = async (q: string): Promise<PartnerOption[]> => {
@@ -473,6 +501,56 @@ export function EstimateFormPage() {
     setLines((prev) =>
       prev.map((l, i) => (i === index ? { ...l, ...patch } : l)),
     )
+  }
+
+  const refreshAutoPricesForPartner = async (effectivePartnerId: string) => {
+    const candidates = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.productId && line.priceSource !== 'USER')
+    if (candidates.length === 0) return
+    setLines((prev) =>
+      prev.map((line) =>
+        line.productId && line.priceSource !== 'USER'
+          ? { ...line, lookupLoading: true }
+          : line,
+      ),
+    )
+    await Promise.all(candidates.map(async ({ line, index }) => {
+      const fallback = line.catalogUnitPrice ?? line.unitPrice
+      try {
+        const memory = await getPriceMemory(effectivePartnerId, line.productId!)
+        const remembered = memory?.unitPrice
+        const nextUnitPrice = remembered == null ? fallback : String(remembered)
+        setLines((prev) =>
+          prev.map((current) =>
+            current.uid === line.uid && current.productId === line.productId && current.priceSource !== 'USER'
+              ? {
+                  ...current,
+                  unitPrice: nextUnitPrice,
+                  priceSource: remembered == null ? 'CATALOG' : 'REMEMBERED',
+                  priceMemoryUpdatedAt: memory?.updatedAt ?? null,
+                  lookupLoading: false,
+                }
+              : current,
+          ),
+        )
+        estimateFormCoeditProvider?.setItemValue(index, 'unitPrice', nextUnitPrice)
+      } catch {
+        setLines((prev) =>
+          prev.map((current) =>
+            current.uid === line.uid && current.productId === line.productId && current.priceSource !== 'USER'
+              ? {
+                  ...current,
+                  unitPrice: fallback,
+                  priceSource: 'CATALOG',
+                  priceMemoryUpdatedAt: null,
+                  lookupLoading: false,
+                }
+              : current,
+          ),
+        )
+      }
+    }))
   }
   const updateSetOption = (index: number, patch: Partial<BundleSetOptions>) => {
     setLines((prev) =>
@@ -512,11 +590,15 @@ export function EstimateFormPage() {
             : ''
       const shouldAutoFill = line.unitPrice === '0' || !line.unitPrice
       let nextUnitPrice = shouldAutoFill ? result.sellingPrice : line.unitPrice
+      let nextPriceSource: DraftLine['priceSource'] = shouldAutoFill ? 'CATALOG' : line.priceSource
+      let nextPriceMemoryUpdatedAt: string | null = null
       if (effectivePartnerId && shouldAutoFill) {
         try {
           const memory = await getPriceMemory(effectivePartnerId, result.productId)
-          if (memory?.unitPrice) {
+          if (memory?.unitPrice != null) {
             nextUnitPrice = String(memory.unitPrice)
+            nextPriceSource = 'REMEMBERED'
+            nextPriceMemoryUpdatedAt = memory.updatedAt ?? null
           }
         } catch {
           // 가격기억 조회 실패는 모델 lookup 자체를 실패시키지 않는다. 정가 fallback 유지.
@@ -527,13 +609,16 @@ export function EstimateFormPage() {
           if (current.uid !== line.uid) return current
           if ((current.modelName || '').trim() !== modelName) return current
           const canApplyUnitPrice =
-            !shouldAutoFill || current.unitPrice === line.unitPrice || current.unitPrice === result.sellingPrice
+            shouldAutoFill && current.priceSource !== 'USER'
           return {
             ...current,
             productId: result.productId,
             productName: result.productName,
             productType: result.productType ?? 'SINGLE',
+            catalogUnitPrice: result.sellingPrice,
             unitPrice: canApplyUnitPrice ? nextUnitPrice : current.unitPrice,
+            priceSource: canApplyUnitPrice ? nextPriceSource : current.priceSource,
+            priceMemoryUpdatedAt: canApplyUnitPrice ? nextPriceMemoryUpdatedAt : current.priceMemoryUpdatedAt,
             lookupError: null,
             lookupLoading: false,
           }
@@ -542,7 +627,9 @@ export function EstimateFormPage() {
       if (estimateFormCoeditProvider) {
         try {
           estimateFormCoeditProvider.setItemValue(index, 'productName', result.productName)
-          estimateFormCoeditProvider.setItemValue(index, 'unitPrice', nextUnitPrice)
+          if (shouldAutoFill) {
+            estimateFormCoeditProvider.setItemValue(index, 'unitPrice', nextUnitPrice)
+          }
           estimateFormCoeditProvider.setItemValue(index, 'productId', result.productId)
         } catch {
           // 언마운트 중 provider destroy 가능 — 로컬 state 는 이미 갱신됨. 동기화 실패는 무시(가짜 lookup 오류 방지, 리뷰 LOW).
@@ -598,7 +685,9 @@ export function EstimateFormPage() {
           ? partner.partnerId
           : ''
     if (!effectivePartnerId) {
-      setTopError('거래처를 선택하세요.')
+      setTopError(partnerName.trim()
+        ? '거래처 정보를 다시 불러올 수 없습니다. 거래처를 다시 선택해 주세요.'
+        : '거래처를 선택하세요.')
       return null
     }
     if (!partnerName.trim()) {
@@ -977,19 +1066,34 @@ export function EstimateFormPage() {
                 aria-label={`라인 ${i + 1} 수량`}
                 data-testid={`estimate-form-line-${i}-qty`}
               />
-              <CollaborativeSlipInput
-                provider={estimateFormCoeditProvider}
-                coeditPending={estimateFormCoeditPending}
-                fieldPath={`items.${i}.unitPrice`}
-                type="text"
-                value={line.unitPrice}
-                onValueChange={(value) => updateLine(i, { unitPrice: value })}
-                readOnly={Boolean(isReadOnly)}
-                inputMode="decimal"
-                inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                aria-label={`라인 ${i + 1} 단가`}
-                data-testid={`estimate-form-line-${i}-unit-price`}
-              />
+              <div>
+                <CollaborativeSlipInput
+                  provider={estimateFormCoeditProvider}
+                  coeditPending={estimateFormCoeditPending}
+                  fieldPath={`items.${i}.unitPrice`}
+                  type="text"
+                  value={line.unitPrice}
+                  onValueChange={(value) => updateLine(i, {
+                    unitPrice: value,
+                    priceSource: 'USER',
+                    priceMemoryUpdatedAt: null,
+                  })}
+                  readOnly={Boolean(isReadOnly)}
+                  inputMode="decimal"
+                  inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  aria-label={`라인 ${i + 1} 단가`}
+                  data-testid={`estimate-form-line-${i}-unit-price`}
+                />
+                {line.priceSource === 'REMEMBERED' ? (
+                  <span
+                    role="note"
+                    title={`최근 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
+                    style={{ display: 'block', marginTop: 2, textAlign: 'right', fontSize: 11, color: 'var(--ink-secondary, #5C6773)' }}
+                  >
+                    최근가
+                  </span>
+                ) : null}
+              </div>
               <div
                 style={{
                   textAlign: 'right',

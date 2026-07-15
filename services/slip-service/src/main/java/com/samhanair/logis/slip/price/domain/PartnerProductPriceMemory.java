@@ -54,6 +54,9 @@ public class PartnerProductPriceMemory extends BaseEntity {
     /** 최근 라인 저장 출처. */
     public static final String SOURCE_LINE_SAVE = "LINE_SAVE";
 
+    /** 세트(BUNDLE) 부모 품목 저장 출처. 구성품 납품가는 기억하지 않는다. */
+    public static final String SOURCE_BUNDLE_SET = "BUNDLE_SET";
+
     /** 신규 가격기억 엔티티를 만든다. */
     public static PartnerProductPriceMemory create(
             UUID partnerId, UUID productId, BigDecimal unitPrice, String source) {

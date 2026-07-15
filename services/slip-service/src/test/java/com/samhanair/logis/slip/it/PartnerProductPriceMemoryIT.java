@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
+import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.slip.client.ExpandedLineDto;
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.PartnerInternalClient;
@@ -202,16 +205,68 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     """, Integer.class, partnerId, productId);
             assertThat(memoryRows).isZero();
         } finally {
-            if (createdSlipId != null) {
-                cleanupSlip(createdSlipId);
+            try {
+                jdbcTemplate.execute("ALTER TABLE partner_product_price_memory DROP CONSTRAINT IF EXISTS " + FAIL_CONSTRAINT);
+            } finally {
+                if (createdSlipId != null) {
+                    cleanupSlip(createdSlipId);
+                }
             }
-            jdbcTemplate.execute("ALTER TABLE partner_product_price_memory DROP CONSTRAINT IF EXISTS " + FAIL_CONSTRAINT);
         }
+    }
+
+    @Test
+    void bundleCreate_remembersParentSetPriceOnlyAndSkipsComponents() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID componentProductId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenReturn(List.of(bundle));
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(componentProductId, "COMP-1", "COMP-1", "구성품",
+                        new BigDecimal("1"), new BigDecimal("1000.00"), "COMPONENT", true)));
+
+        var response = slipService.create(
+                inboundSlipRequest(partnerId, bundleProductId, new BigDecimal("550000.00")),
+                "actor-bundle", "세트 기억 테스트");
+        try {
+            PartnerProductPriceMemoryResponse memory = priceMemoryService.find(partnerId, bundleProductId)
+                    .orElseThrow();
+            assertThat(memory.unitPrice()).isEqualByComparingTo("550000.00");
+            assertThat(memory.source()).isEqualTo("BUNDLE_SET");
+            assertThat(priceMemoryService.find(partnerId, componentProductId)).isEmpty();
+        } finally {
+            cleanupSlip(response.id());
+        }
+    }
+
+    @Test
+    void bundleCreateRollback_doesNotLeaveGhostParentPriceMemory() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenReturn(List.of(bundle));
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(null, "MISSING", "MISSING", "미등록",
+                        new BigDecimal("1"), new BigDecimal("1000.00"), "COMPONENT", true)));
+
+        assertThatThrownBy(() -> slipService.create(
+                inboundSlipRequest(partnerId, bundleProductId, new BigDecimal("660000.00")),
+                "actor-rollback", "세트 롤백 테스트"))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(priceMemoryService.find(partnerId, bundleProductId)).isEmpty();
     }
 
     private ProductSummary product(UUID productId) {
         return new ProductSummary(productId, "테스트 품목", "MODEL-809", "P-809",
                 UUID.randomUUID(), new BigDecimal("110000.00"), "ACTIVE", false);
+    }
+
+    private ProductSummary bundleProduct(UUID productId) {
+        return new ProductSummary(productId, "테스트 세트", "SET-809", "SET-809",
+                UUID.randomUUID(), new BigDecimal("550000.00"), "ACTIVE", false,
+                "SET-809", "BUNDLE");
     }
 
     private CreateSlipRequest inboundSlipRequest(UUID partnerId, UUID productId, BigDecimal unitPrice) {

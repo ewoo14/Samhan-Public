@@ -17,6 +17,8 @@ import com.samhanair.logis.slip.estimate.web.dto.CreateEstimateRequest;
 import com.samhanair.logis.slip.estimate.web.dto.EstimateDetailResponse;
 import com.samhanair.logis.slip.estimate.web.dto.EstimateResponse;
 import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.realtime.EstimateListRealtime;
 import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
@@ -75,7 +77,8 @@ public class EstimateService {
     private int addEstimateLines(Estimate estimate, int lineNo, UUID productId, ProductSummary summary,
                                  String reqName, String reqModel, String specification, int quantity,
                                  BigDecimal unitPrice, String note, BundleSetOptions setOptions,
-                                 boolean priceVatInclusive, String actor) {
+                                 boolean priceVatInclusive, String actor,
+                                 List<PartnerProductPriceMemoryCommand> priceMemoryCommands) {
         boolean bundle = summary != null && "BUNDLE".equals(summary.productType())
                 && summary.modelCode() != null && !summary.modelCode().isBlank();
         if (!bundle) {
@@ -87,9 +90,12 @@ public class EstimateService {
                             specification, quantity, unitPrice, note)
                     : EstimateLine.create(estimate, lineNo, productId, productName, modelName,
                             specification, quantity, unitPrice, note));
-            rememberPrice(estimate.getPartnerId(), productId, unitPrice, priceVatInclusive, actor);
+            collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
+                    priceVatInclusive, PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
             return lineNo + 1;
         }
+        collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
+                priceVatInclusive, PartnerProductPriceMemory.SOURCE_BUNDLE_SET, actor);
         ExpandedLineDto.Options opts = setOptions == null ? null : new ExpandedLineDto.Options(
                 setOptions.remoteOption(), Boolean.TRUE.equals(setOptions.remoteExcluded()),
                 setOptions.panelOption(), setOptions.panelShape360(),
@@ -117,7 +123,6 @@ public class EstimateService {
                             el.name(), el.modelName(), compSpec, q, compUnit, note);
             line.assignBundleComponent(summary.modelCode(), el.setHead());
             estimate.addLine(line);
-            rememberPrice(estimate.getPartnerId(), el.productId(), compUnit, priceVatInclusive, actor);
             added++;
         }
         // 구성품 일부라도 미등록(productId null)으로 skip 되면 6:4 재배분된 세트가 일부가 silent 손실되어
@@ -163,18 +168,20 @@ public class EstimateService {
 
         // 4. 라인 추가 — BUNDLE(세트)면 product-service expand 로 구성품 라인 N개 전개(옵션 A), 아니면 1 라인.
         int lineNo = 1;
+        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
         for (CreateEstimateRequest.EstimateLineRequest lineReq : req.lines()) {
             lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                     byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                     lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                     lineReq.note(), lineReq.setOptions(),
-                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId);
+                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId, priceMemoryCommands);
         }
 
         Estimate saved = estimateRepository.save(estimate);
         // 권한 재편 Phase 2.2 Task 2 — 생성 직후 CREATE 스냅샷 1건 캡처 (revision 1)
         estimateRevisionService.capture(saved, EstimateRevisionType.CREATE, null,
                 parseActorId(requesterId), resolveActorName(requesterName, requesterId), null);
+        priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.create");
         publishListChanged("CREATED");
         return EstimateDetailResponse.from(saved);
     }
@@ -208,13 +215,15 @@ public class EstimateService {
             }
 
             int lineNo = 1;
+            List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
             for (UpdateEstimateRequest.EstimateLineUpdate lineReq : req.lines()) {
                 lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                         byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                         lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                         lineReq.note(), lineReq.setOptions(),
-                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), callerId);
+                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), callerId, priceMemoryCommands);
             }
+            priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.update");
         }
 
         // 권한 재편 Phase 2.2 — 헤더/라인 변경 후 EDIT 스냅샷 캡처. 도메인 가드를 통과한 성공 경로에서만 도달한다.
@@ -452,20 +461,17 @@ public class EstimateService {
      * {@code priceVatInclusive=true} 경로에서 화면 입력값을 {@code unitPriceWithVat} 로 보존하므로
      * 같은 값을 저장한다. legacy 공급단가 입력은 1.1 배로 정규화한다.
      */
-    private void rememberPrice(UUID partnerId, UUID productId, BigDecimal unitPrice,
-                               boolean priceVatInclusive, String actor) {
+    private void collectPriceMemory(List<PartnerProductPriceMemoryCommand> commands,
+                                    UUID partnerId, UUID productId, BigDecimal unitPrice,
+                                    boolean priceVatInclusive, String source, String actor) {
         if (partnerId == null || productId == null || unitPrice == null) {
             return;
         }
         BigDecimal vatInclusiveUnitPrice = priceVatInclusive
                 ? unitPrice
                 : unitPrice.multiply(new BigDecimal("1.1")).setScale(2, RoundingMode.HALF_UP);
-        try {
-            priceMemoryService.remember(partnerId, productId, vatInclusiveUnitPrice, actor);
-        } catch (RuntimeException ex) {
-            log.warn("partner-product price memory upsert failed during estimate save partnerId={} productId={}",
-                    partnerId, productId, ex);
-        }
+        commands.add(new PartnerProductPriceMemoryCommand(
+                partnerId, productId, vatInclusiveUnitPrice, source, actor));
     }
 
     /** 견적 목록 변경 발화 (커밋 후). */

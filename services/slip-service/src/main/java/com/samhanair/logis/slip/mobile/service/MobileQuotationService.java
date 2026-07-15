@@ -12,7 +12,13 @@ import com.samhanair.logis.slip.estimate.repository.EstimateRepository;
 import com.samhanair.logis.slip.estimate.service.EstimateNumberService;
 import com.samhanair.logis.slip.estimate.web.dto.EstimateDetailResponse;
 import com.samhanair.logis.slip.mobile.dto.MobileQuotationRequest;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +59,7 @@ public class MobileQuotationService {
     private final EstimateNumberService estimateNumberService;
     private final ProductClient productClient;
     private final PartnerInternalClient partnerInternalClient;
+    private final PartnerProductPriceMemoryService priceMemoryService;
 
     /**
      * 모바일 간소형 견적 발행 — DRAFT 상태로 생성.
@@ -124,6 +131,7 @@ public class MobileQuotationService {
 
         // 6. 라인 추가
         int lineNo = 1;
+        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new ArrayList<>();
         for (MobileQuotationRequest.MobileQuotationLineRequest lineReq : req.lines()) {
             ProductSummary summary = byId.get(lineReq.productId());
             String productName2 = lineReq.productName() != null
@@ -136,9 +144,18 @@ public class MobileQuotationService {
                     estimate, lineNo++, lineReq.productId(),
                     productName2, modelName, lineReq.specification(),
                     lineReq.quantity(), lineReq.unitPrice(), lineReq.note()));
+            if (partnerId != null) {
+                BigDecimal vatInclusive = lineReq.unitPrice()
+                        .multiply(new BigDecimal("1.1"))
+                        .setScale(2, RoundingMode.HALF_UP);
+                priceMemoryCommands.add(new PartnerProductPriceMemoryCommand(
+                        partnerId, lineReq.productId(), vatInclusive,
+                        PartnerProductPriceMemory.SOURCE_LINE_SAVE, requesterId));
+            }
         }
 
         Estimate saved = estimateRepository.save(estimate);
+        priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "mobileQuotation.create");
         return EstimateDetailResponse.from(saved);
     }
 }

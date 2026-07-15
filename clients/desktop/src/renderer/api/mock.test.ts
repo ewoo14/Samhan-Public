@@ -149,7 +149,7 @@ describe('mock 주문 목록 soft-delete parity (#757 STEP4 FE)', () => {
 })
 
 describe('mock manual journal contract', () => {
-  it('GET /admin/partners/search 는 공유 admin 응답에 partnerId 를 노출하지 않는다', () => {
+  it('GET /admin/partners/search exposes partnerId as payload-only UUID', () => {
     const adminSearch = mockRequest({
       method: 'GET',
       url: '/admin/partners/search',
@@ -161,7 +161,11 @@ describe('mock manual journal contract', () => {
       partnerCode: '1234567890',
       name: '엘에이시스템에어',
     })
-    expect(adminSearch.data.items[0]).not.toHaveProperty('partnerId')
+    // partnerId 는 화면 표시 금지, hidden state/API payload 전용 UUID 다.
+    expect(adminSearch.data.items[0]).toHaveProperty('partnerId')
+    expect(adminSearch.data.items[0]?.partnerId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    )
   })
 
   it('POST /accounting/journals 는 BE DTO 필드명으로 라인을 저장하고 partnerId 는 partnerName 으로 enrich 한다', () => {

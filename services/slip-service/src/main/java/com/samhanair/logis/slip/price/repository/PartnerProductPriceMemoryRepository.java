@@ -21,7 +21,7 @@ public interface PartnerProductPriceMemoryRepository extends JpaRepository<Partn
      *
      * <p>soft-delete 된 같은 partner/product row 가 있으면 활성화하면서 단가를 갱신한다.
      */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Modifying
     @Query(value = """
             INSERT INTO partner_product_price_memory
                 (id, partner_id, product_id, unit_price, source,

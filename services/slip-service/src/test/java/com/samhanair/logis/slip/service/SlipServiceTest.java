@@ -27,6 +27,7 @@ import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
 import com.samhanair.logis.slip.web.dto.EditHeaderRequest;
@@ -43,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -815,8 +817,13 @@ class SlipServiceTest {
                         new BigDecimal("123456.00"), null, null, true),
                 "user-1", "홍길동");
 
-        verify(priceMemoryService).remember(
-                eq(partnerId), eq(productId), eq(new BigDecimal("123456.00")), eq("user-1"));
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceMemoryService).rememberBatchAfterCommit(captor.capture(), eq("slip.addLine"));
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).partnerId()).isEqualTo(partnerId);
+        assertThat(captor.getValue().get(0).productId()).isEqualTo(productId);
+        assertThat(captor.getValue().get(0).unitPrice()).isEqualByComparingTo("123456.00");
+        assertThat(captor.getValue().get(0).source()).isEqualTo("LINE_SAVE");
     }
 
     @Test
@@ -832,7 +839,9 @@ class SlipServiceTest {
                         new BigDecimal("123456.00"), null, null, true),
                 "user-1", "홍길동");
 
-        verify(priceMemoryService, never()).remember(any(), any(), any(), anyString());
+        ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceMemoryService).rememberBatchAfterCommit(captor.capture(), eq("slip.addLine"));
+        assertThat(captor.getValue()).isEmpty();
     }
 
     @Test
