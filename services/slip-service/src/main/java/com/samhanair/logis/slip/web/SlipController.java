@@ -15,6 +15,7 @@ import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
 import com.samhanair.logis.slip.service.SlipCleanupService;
+import com.samhanair.logis.slip.service.SlipDuplicateService;
 import com.samhanair.logis.slip.service.SlipExcelExportService;
 import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.web.dto.AddLineRequest;
@@ -113,6 +114,8 @@ public class SlipController {
     private static final String CALLER_NAME_HEADER = "X-User-Name";
 
     private final SlipService slipService;
+    /** R6-H2 — 전표 서버측 복사 (세트 계보 승계 + 구성품 가격기억 제외). */
+    private final SlipDuplicateService slipDuplicateService;
     private final NextDaySlipImageService nextDaySlipImageService;
     private final SlipCleanupService slipCleanupService;
     private final SlipExcelExportService slipExcelExportService;
@@ -299,6 +302,35 @@ public class SlipController {
         // SP-D3 동적 권한 EDIT 가드 — slipType 기반 pageCode 분기
         checkCreatePermission(callerHeader, request.slipType());
         return ApiResponse.ok(slipService.create(request, callerOrSystem(callerHeader), callerName));
+    }
+
+    /**
+     * 전표 서버측 복사 — 원본 헤더 일부 + 라인(세트 계보 포함)을 승계한 신규 DRAFT 전표 생성 (R6-H2).
+     *
+     * <p>FE 평면 재-POST 복사는 세트 계보 소실 + 구성품 배분가 가격기억 각인을 재생산했다.
+     * 본 endpoint 는 서버가 원본 영속 라인에서 직접 복사하며 구성품은 가격기억에서 제외한다.
+     * 권한은 신규 생성과 동일하다 (OUTBOUND=sales.slip.create CREATE / INBOUND=purchases.slip.edit
+     * UPDATE — 원본 slipType 기준).
+     *
+     * @return 201, SlipDetailResponse (복사본, status=DRAFT)
+     */
+    @Operation(summary = "전표 복사", description = "원본 라인·세트 계보를 서버측 승계한 신규 DRAFT 전표 생성. "
+            + "구성품 라인은 가격기억(LINE_SAVE) 대상에서 제외.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "복사 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "생성 권한 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "원본 미존재/삭제"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "OUTBOUND 당일 마감 초과")
+    })
+    @PostMapping("/{id}/duplicate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<SlipDetailResponse> duplicate(
+            @PathVariable UUID id,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+        // 신규 생성과 동일 권한 — 원본 slipType 을 서버에서 조회해 pageCode 분기 (404 우선 처리 포함)
+        checkCreatePermission(callerHeader, resolveSlipType(id));
+        return ApiResponse.ok(slipDuplicateService.duplicate(id, callerOrSystem(callerHeader), callerName));
     }
 
     /**

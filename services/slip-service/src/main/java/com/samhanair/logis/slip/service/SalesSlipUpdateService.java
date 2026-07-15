@@ -78,8 +78,11 @@ public class SalesSlipUpdateService {
         String before = summarize(slip);
         BundleLineageResolver bundleLineage = BundleLineageResolver.fromSlipLines(slip.getLines());
         List<SlipLine> replacementLines = request.lines().stream()
-                .map(line -> bundleLineage.restore(toLine(slip, line)))
+                .map(line -> toLine(slip, line))
                 .toList();
+        // [R6-H1] per-line greedy 는 요청 앞쪽의 수정/신규 라인이 뒤쪽 무수정 라인의 계보(특히
+        // head)를 선소비해 오귀속을 만들었다. 전 라인 선구성 후 2-패스 전역 매칭 1회로 복원한다.
+        bundleLineage.restoreSlipLines(replacementLines);
         List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
                 slip, replacementLines, actorId == null ? null : actorId.toString());
         try {

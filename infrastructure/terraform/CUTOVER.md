@@ -413,7 +413,7 @@ aws rds restore-db-instance-to-point-in-time \
 | M-16 | RabbitMQ 운영 비밀번호 Secrets Manager 주입 (`samhan/production/rabbit-password`) | 단계 0-D |
 | M-17 | terraform.tfvars `route53_zone_id` 에 사전 위임된 Hosted Zone ID 입력 | 단계 1 전 |
 | M-18 | AWS S3 access/secret key 실값 수동 주입 (`samhan/production/s3-access-key`, `samhan/production/s3-secret-key`) | 단계 0-D |
-| M-19 | slip-service 가격기억 fail-soft prod 감지 확인 (#809 — 기존 CloudWatch Agent 수집 + Terraform metric filter 2건/alarm 2건, 아래 "M-19 상세" 참조) | 단계 3 후 |
+| M-19 | slip-service 가격기억 fail-soft prod 감지 확인 (#809 — slip-service awslogs driver 직접 전달(선행 조건) + Terraform metric filter 2건/alarm 2건 + **양성 도달 검사**, 아래 "M-19 상세" 참조) | 단계 3 후 |
 
 ### M-19 상세 — 가격기억 upsert 실패 prod 알람 이식 (#809)
 
@@ -421,27 +421,47 @@ dev 로컬 스택은 Prometheus rule `SlipPriceMemoryUpsertFailure`
 (`infrastructure/prometheus/rules/slip-price-memory.yml`) 가 upsert 실패를 감지하지만,
 **prod 에는 Prometheus 컨테이너가 없다** (Phase 11 기결정 — 모니터링 = CloudWatch 일원화).
 가격기억은 fail-soft 보조 기능이라 upsert 가 전멸해도 원 전표/견적 저장은 성공하고
-`/actuator/health` 도 `UP` 을 유지한다. `user_data.sh` 의 기존 CloudWatch Agent 가
-Docker json-file 로그를 `/samhanlogis/production/docker` 로 수집하며,
+`/actuator/health` 도 `UP` 을 유지한다.
+
+**로그 전달 경로 (R6-H5 재설계)**: slip-service 컨테이너 로그는
+`docker-compose.prod.yml` 의 `awslogs` logging driver 가 log group
+`/samhanlogis/production/docker` 의 stream `slip-service` 로 **직접 전달**한다.
+`user_data.sh` CloudWatch Agent 의 Docker json 와일드카드 tail 은 AWS 공식 문서상
+"Only the latest file is pushed to CloudWatch Logs based on file modification time"
+제약으로 17개 컨테이너 동시 기록에서 slip 라인이 유실될 수 있어 **alarm 원천으로
+쓰지 않는다** (나머지 컨테이너 best-effort 수집 전용, stream `{hostname}/docker-others`).
 `monitoring.tf` 가 WARN 문자열 2종의 metric filter 와 alarm 을 각각 선언한다.
 대응 절차: `docs/runbooks/slip-price-memory-upsert-failure.md`.
 
+> ⚠️ **정직 한계 (2026-07-16)**: 실 EC2 가 아직 없어 본 절차는 AWS 공식 문서
+> (CloudWatch Agent Logs Section / awslogs logging driver) 기반 설계 검증까지만
+> 완료했다. 라이브 end-to-end 실측은 cutover 시 본 M-19 가 최초이며, 아래 ⓪~④ 를
+> 통과하기 전까지 alarm 2건의 실효는 **미확증** 상태로 취급한다.
+
 ```bash
-# ① 기존 CloudWatch Agent 및 Docker json-file 수집 경로 확인.
+# ⓪ 선행 조건 — S3 업로드본 docker-compose.prod.yml 에 slip-service awslogs driver
+#    선언이 포함돼 있는지 확인 (없으면 단계 3-A 의 S3 업로드부터 다시 수행).
+#    awslogs driver 는 컨테이너 시작 시 CreateLogStream 을 호출한다 — log group
+#    선생성(Terraform aws_cloudwatch_log_group.docker)과 EC2 instance role
+#    (iam.tf logs:CreateLogStream/PutLogEvents) 이 전제이며, 둘 중 하나라도 없으면
+#    slip-service 가 기동에 실패한다.
+aws s3 cp s3://samhan-attachments/deploy/docker-compose.prod.yml - \
+  --region ap-northeast-2 | grep -n -A 7 'driver: awslogs'
+docker inspect --format '{{.HostConfig.LogConfig.Type}}' samhan-slip-service
+# 기대값: awslogs (json-file 이면 stale compose — 재다운로드 + up -d 재기동)
+
+# ① CloudWatch Agent 상태 (나머지 16개 컨테이너 best-effort 수집 + user_data 로그).
 sudo systemctl is-active amazon-cloudwatch-agent
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a status
-docker inspect --format '{{.Id}} {{.LogPath}}' samhan-slip-service
-grep -n '/var/lib/docker/containers/\*\*/\*-json.log\|/samhanlogis/production/docker' \
-  /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 
-# ② 최근 log stream 과 slip 가격기억 로그의 CloudWatch 도달 확인.
+# ② slip-service 전용 log stream 존재 + 로그 도달 확인.
 aws logs describe-log-streams \
   --log-group-name /samhanlogis/production/docker \
-  --order-by LastEventTime --descending --max-items 10 \
+  --log-stream-name-prefix slip-service \
   --region ap-northeast-2
 aws logs tail /samhanlogis/production/docker --since 30m \
-  --filter-pattern '"partner-product price memory"' \
-  --region ap-northeast-2
+  --log-stream-names slip-service \
+  --region ap-northeast-2 | head -20
 
 # ③ Terraform 4개 리소스 적용 전후 확인 (filter 2 + alarm 2).
 terraform plan \
@@ -456,11 +476,46 @@ aws logs describe-metric-filters \
 aws cloudwatch describe-alarms \
   --alarm-name-prefix samhanlogis-production-slip-price-memory- \
   --region ap-northeast-2
+
+# ④ 양성 도달 검사 (end-to-end, R6-H5) — 감시 문자열 2종을 인위 echo 로 1회 출력.
+#    실제 upsert 실패를 유발하지 않는 echo 이며, alarm 1회 발화(OK→ALARM→OK)는
+#    로그→metric filter→alarm→SNS 전 체인이 살아 있다는 "의도된 검증 신호"다
+#    (SNS/Slack 수신 확인 겸용 — 수신자에게 사전 공지).
+docker exec samhan-slip-service sh -c \
+  'echo "M-19 synthetic probe: partner-product price memory batch upsert failed (인위 출력 — 실제 실패 아님)" >> /proc/1/fd/1'
+docker exec samhan-slip-service sh -c \
+  'echo "M-19 synthetic probe: partner-product price memory queue rejected (인위 출력 — 실제 실패 아님)" >> /proc/1/fd/1'
+
+# 도달 확인 — 수 초 ~ 1분 내 events 배열에 각 1건 이상 조회돼야 한다.
+START_MS=$(( ($(date +%s) - 900) * 1000 ))
+aws logs filter-log-events \
+  --log-group-name /samhanlogis/production/docker \
+  --log-stream-names slip-service \
+  --filter-pattern '"partner-product price memory batch upsert failed"' \
+  --start-time "$START_MS" --region ap-northeast-2
+aws logs filter-log-events \
+  --log-group-name /samhanlogis/production/docker \
+  --log-stream-names slip-service \
+  --filter-pattern '"partner-product price memory queue rejected"' \
+  --start-time "$START_MS" --region ap-northeast-2
+
+# alarm 발화 확인 — metric period 300s 이므로 5~10분 대기 후 조회.
+aws cloudwatch describe-alarm-history \
+  --alarm-name samhanlogis-production-slip-price-memory-upsert-failure \
+  --history-item-type StateUpdate --max-records 5 --region ap-northeast-2
+aws cloudwatch describe-alarm-history \
+  --alarm-name samhanlogis-production-slip-price-memory-queue-rejected \
+  --history-item-type StateUpdate --max-records 5 --region ap-northeast-2
 ```
 
-완료 조건은 Agent `active`, Docker `LogPath` 가 `*-json.log`, log group 에 최신
-stream 존재, metric filter 2건과 alarm 2건 존재다. WARN 이 최근 30분에 없으면
-`aws logs tail` 결과가 비어 있는 것이 정상이며 인위적 운영 실패를 만들지 않는다.
+완료 조건: ⓪ slip-service `LogConfig.Type` = `awslogs` · ① Agent `active` ·
+② stream `slip-service` 존재 · ③ metric filter 2건 + alarm 2건 존재 ·
+④ **양성 도달 검사** — synthetic 이벤트가 두 filter-pattern 모두에서
+`filter-log-events` 로 조회되고, alarm 2건 모두 `OK→ALARM→OK` 상태 전이 이력이
+남아야 한다. **존재 검사(①~③)만으로는 통과 불가** — ④ 없이는 "매치 0 → alarm
+영원히 OK" 인 구조적 false-negative 를 걸러낼 수 없다 (R6-H5). 운영 중 WARN 이
+없으면 `aws logs tail` 이 비어 있는 것이 정상이며, ④ 통과 후에는 인위 출력을
+반복 생성하지 않는다.
 
 ---
 

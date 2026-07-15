@@ -33,9 +33,20 @@ resource "aws_cloudwatch_log_group" "docker" {
 }
 
 # ─── slip-service 가격기억 fail-soft 감지 (#809, CUTOVER M-19) ────────────────
-# user_data.sh 의 CloudWatch Agent 가 Docker json-file 로그를 위 log group 으로
-# 수집한다. 애플리케이션 WARN 문자열을 메트릭으로 변환해 health=UP 인 조용한
-# 기능 저하도 운영 알람으로 승격한다.
+# 애플리케이션 WARN 문자열을 메트릭으로 변환해 health=UP 인 조용한 기능 저하도
+# 운영 알람으로 승격한다.
+#
+# 로그 원천 (R6-H5 재설계): slip-service 로그는 docker-compose.prod.yml 의 awslogs
+# driver 가 위 docker log group 의 stream "slip-service" 로 직접 전달한다.
+# user_data.sh CloudWatch Agent 의 json 와일드카드 tail 은 AWS 문서상 "최신 수정
+# 파일만 push" 라 17개 컨테이너 동시 기록에서 라인 유실이 가능해 alarm 원천으로
+# 쓰지 않는다 (나머지 컨테이너 best-effort 수집 전용).
+#
+# 잔여 한계 (정직 기록): treat_missing_data=notBreaching 이므로 전달 경로 자체가
+# 끊기면 datapoint 부재로 alarm 이 계속 OK 로 남는다. 보상 통제 = CUTOVER.md M-19 의
+# 양성 도달 검사(인위 감시 문자열 → filter-log-events 도달 + alarm 발화 확인).
+# 상시 전달 heartbeat alarm 은 미구현이며, 실 EC2 부재로 라이브 실측은 cutover 시
+# M-19 에서 최초 수행된다 (2026-07-16 기준 AWS 공식 문서 기반 설계 검증까지 완료).
 
 resource "aws_cloudwatch_log_metric_filter" "slip_price_memory_upsert_failed" {
   name           = "slip-price-memory-upsert-failed"

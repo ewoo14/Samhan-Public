@@ -18,6 +18,7 @@ import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
 import com.samhanair.logis.slip.service.SlipCleanupService;
+import com.samhanair.logis.slip.service.SlipDuplicateService;
 import com.samhanair.logis.slip.service.SlipExcelExportService;
 import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.web.dto.PartnerProductPriceMemoryBulkRequest;
@@ -38,6 +39,8 @@ import org.springframework.http.ResponseEntity;
 class SlipControllerPriceMemoryTest {
 
     @Mock private SlipService slipService;
+    /** R6-H2 — 컨트롤러 생성자 주입 신규 의존성 (본 테스트 시나리오에서는 미사용). */
+    @Mock private SlipDuplicateService slipDuplicateService;
     @Mock private NextDaySlipImageService nextDaySlipImageService;
     @Mock private SlipCleanupService slipCleanupService;
     @Mock private SlipExcelExportService slipExcelExportService;

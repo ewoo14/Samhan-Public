@@ -41,7 +41,11 @@ public class PartnerProductPriceMemoryAsyncConfig {
      * 유일 executor 인 가격기억 전용 4스레드 AbortPolicy 풀을 조용히 잡아, 무관한 비동기 작업이
      * 가격기억 풀에서 거부/경합하는 잠재 트랩이 생긴다.
      *
-     * <p>platform thread 에서는 Boot 와 동일한 {@link ThreadPoolTaskExecutor} 분기를 사용한다.
+     * <p>platform thread 에서는 Boot 와 <b>동등</b>한 {@link ThreadPoolTaskExecutor} 분기를
+     * 제공한다 — 단 완전 동일은 아니다 (R6-L3 바이트코드 실측): Boot 3.3.5 PLATFORM 분기는
+     * deprecated {@code TaskExecutorBuilder} 를 {@code ObjectProvider.getIfUnique()} 로 우선
+     * 조회한 뒤 {@code ThreadPoolTaskExecutorBuilder} 로 fallback 하지만, 본 빈은 신형 builder 만
+     * 직주입한다 (deprecated builder 커스터마이즈 미지원 — 현재 코드베이스에 해당 커스터마이즈 0건).
      */
     @Lazy
     @ConditionalOnThreading(Threading.PLATFORM)
@@ -54,8 +58,10 @@ public class PartnerProductPriceMemoryAsyncConfig {
      * Boot virtual-thread 의미를 보존하는 기본 executor 분기.
      *
      * <p>{@code spring.threads.virtual.enabled=true} 이고 런타임이 virtual thread 를 지원하면
-     * Boot 자동구성과 동일하게 {@link SimpleAsyncTaskExecutor} 를 제공한다. 가격기억 전용 bounded
-     * pool 은 이 분기와 무관하게 platform thread 로 격리한다.
+     * Boot 자동구성과 <b>동등</b>하게 {@link SimpleAsyncTaskExecutor} 를 제공한다 — 단 완전
+     * 동일은 아니다 (R6-L3 바이트코드 실측): Boot 3.3.5 VIRTUAL 분기는 {@code @Lazy} 없이
+     * eager 인 반면 본 빈은 {@code @Lazy} 를 부여한다 (현재 Java 17 + VIRTUAL 비활성이라 inert).
+     * 가격기억 전용 bounded pool 은 이 분기와 무관하게 platform thread 로 격리한다.
      */
     @Lazy
     @ConditionalOnThreading(Threading.VIRTUAL)

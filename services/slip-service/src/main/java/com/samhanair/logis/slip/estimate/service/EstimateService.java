@@ -80,7 +80,7 @@ public class EstimateService {
                                  BigDecimal unitPrice, String note, BundleSetOptions setOptions,
                                  boolean priceVatInclusive, String actor,
                                  List<PartnerProductPriceMemoryCommand> priceMemoryCommands,
-                                 BundleLineageResolver bundleLineage) {
+                                 List<PendingPlainLine> pendingPlainLines) {
         boolean bundle = summary != null && "BUNDLE".equals(summary.productType())
                 && summary.modelCode() != null && !summary.modelCode().isBlank();
         if (!bundle) {
@@ -92,14 +92,12 @@ public class EstimateService {
                             specification, quantity, unitPrice, note)
                     : EstimateLine.create(estimate, lineNo, productId, productName, modelName,
                             specification, quantity, unitPrice, note);
-            // PUT 에서는 전개 구성품 productId 가 단품 summary 로 조회된다. 기존 영속 계보를
-            // 서버가 복원한 뒤 구성품은 LINE_SAVE 기억 후보에서 제외한다.
-            bundleLineage.restore(line);
             estimate.addLine(line);
-            if (!BundleLineageResolver.isBundleComponent(line)) {
-                collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
-                        priceVatInclusive, PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
-            }
+            // [R6-H1] PUT 에서는 전개 구성품 productId 가 단품 summary 로 조회된다. 계보 복원은
+            // per-line greedy 가 아니라 전 라인 선구성 후 2-패스 전역 매칭으로 수행해야 하므로,
+            // LINE_SAVE 기억 수집(복원 결과 의존)과 함께 pendingPlainLines 로 지연한다
+            // — {@link #resolveLineageAndCollectPlainLineMemory}.
+            pendingPlainLines.add(new PendingPlainLine(line, unitPrice, priceVatInclusive));
             return lineNo + 1;
         }
         collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
@@ -177,15 +175,18 @@ public class EstimateService {
         // 4. 라인 추가 — BUNDLE(세트)면 product-service expand 로 구성품 라인 N개 전개(옵션 A), 아니면 1 라인.
         int lineNo = 1;
         List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
-        BundleLineageResolver bundleLineage = BundleLineageResolver.empty();
+        List<PendingPlainLine> pendingPlainLines = new java.util.ArrayList<>();
         for (CreateEstimateRequest.EstimateLineRequest lineReq : req.lines()) {
             lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                     byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                     lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                     lineReq.note(), lineReq.setOptions(),
                     Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId, priceMemoryCommands,
-                    bundleLineage);
+                    pendingPlainLines);
         }
+        // 신규 생성은 승계할 기존 계보가 없다 — 빈 resolver 로 기억 수집만 수행.
+        resolveLineageAndCollectPlainLineMemory(BundleLineageResolver.empty(), pendingPlainLines,
+                estimate.getPartnerId(), requesterId, priceMemoryCommands);
 
         Estimate saved = estimateRepository.save(estimate);
         // 권한 재편 Phase 2.2 Task 2 — 생성 직후 CREATE 스냅샷 1건 캡처 (revision 1)
@@ -227,14 +228,18 @@ public class EstimateService {
 
             int lineNo = 1;
             List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
+            List<PendingPlainLine> pendingPlainLines = new java.util.ArrayList<>();
             for (UpdateEstimateRequest.EstimateLineUpdate lineReq : req.lines()) {
                 lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                         byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                         lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                         lineReq.note(), lineReq.setOptions(),
                         Boolean.TRUE.equals(lineReq.priceVatInclusive()), callerId, priceMemoryCommands,
-                        bundleLineage);
+                        pendingPlainLines);
             }
+            // [R6-H1] 전 라인 구성 완료 후 2-패스 전역 매칭으로 기존 계보 복원 + 비구성품만 기억 수집.
+            resolveLineageAndCollectPlainLineMemory(bundleLineage, pendingPlainLines,
+                    estimate.getPartnerId(), callerId, priceMemoryCommands);
             priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.update");
         }
 
@@ -473,6 +478,42 @@ public class EstimateService {
      * {@code priceVatInclusive=true} 경로에서 화면 입력값을 {@code unitPriceWithVat} 로 보존하므로
      * 같은 값을 저장한다. legacy 공급단가 입력은 1.1 배로 정규화한다.
      */
+    /**
+     * 지연된 일반(비세트전개) 라인 전량에 기존 세트 계보를 2-패스 전역 매칭으로 복원한 뒤,
+     * 복원 결과 비구성품으로 남은 라인만 LINE_SAVE 기억 후보로 수집한다 (R6-H1).
+     *
+     * <p>per-line greedy 복원은 요청 앞쪽의 수정/신규 라인이 뒤쪽 무수정 라인의 계보(특히
+     * head)를 선소비해 오귀속을 만들었다 — 반드시 전 라인 구성 완료 후 1회 호출한다.
+     * 세트 전개 경로에서 직접 계보가 부여된 구성품 라인은 본 대상에 포함하지 않는다.
+     *
+     * @param bundleLineage replace 전 캡처한 기존 라인 계보 (신규 생성은 {@code empty()})
+     * @param pendingPlainLines 비세트전개 경로로 생성된 라인 + 원 요청 단가/부가세포함 여부
+     * @param partnerId 거래처 UUID (null 이면 기억 수집 생략)
+     * @param actor 기억 actor (audit)
+     * @param priceMemoryCommands 수집 대상 command 버킷
+     */
+    private void resolveLineageAndCollectPlainLineMemory(
+            BundleLineageResolver bundleLineage, List<PendingPlainLine> pendingPlainLines,
+            UUID partnerId, String actor, List<PartnerProductPriceMemoryCommand> priceMemoryCommands) {
+        bundleLineage.restoreEstimateLines(pendingPlainLines.stream()
+                .map(PendingPlainLine::line)
+                .toList());
+        for (PendingPlainLine pending : pendingPlainLines) {
+            if (!BundleLineageResolver.isBundleComponent(pending.line())) {
+                collectPriceMemory(priceMemoryCommands, partnerId, pending.line().getProductId(),
+                        pending.unitPrice(), pending.priceVatInclusive(),
+                        PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
+            }
+        }
+    }
+
+    /**
+     * 계보 복원 대기 중인 일반 라인 1건 — 복원 결과에 따라 LINE_SAVE 기억 여부가 갈리므로
+     * 원 요청 단가(부가세포함 여부 포함)를 함께 보존한다.
+     */
+    private record PendingPlainLine(EstimateLine line, BigDecimal unitPrice, boolean priceVatInclusive) {
+    }
+
     private void collectPriceMemory(List<PartnerProductPriceMemoryCommand> commands,
                                     UUID partnerId, UUID productId, BigDecimal unitPrice,
                                     boolean priceVatInclusive, String source, String actor) {

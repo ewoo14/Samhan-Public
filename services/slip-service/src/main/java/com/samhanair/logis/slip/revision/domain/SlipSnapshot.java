@@ -81,6 +81,11 @@ public record SlipSnapshot(
     /**
      * 전표 라인 1건의 스냅샷.
      *
+     * <p>세트 계보 2필드는 R6-H3 신규 — 버전이력/collab 복원 시 세트 구성품이 일반 라인으로
+     * 평면화되어 이후 저장마다 배분가가 가격기억(LINE_SAVE)에 각인되는 오염을 막는다.
+     * 둘 다 nullable 이므로 계보 필드가 없는 <b>구 JSONB 스냅샷도 null 로 안전하게
+     * 역직렬화</b>되며(하위호환), 일반 라인은 {@code NON_NULL} 정책으로 직렬화에서 생략된다.
+     *
      * @param productId 제품 UUID (복원용)
      * @param productName 제품명 스냅샷
      * @param modelName 모델명 스냅샷
@@ -92,6 +97,9 @@ public record SlipSnapshot(
      * @param unitPriceWithVat VAT 포함 단가
      * @param vatAmount 부가세
      * @param supplyAmount 공급가액
+     * @param setHead 세트 전개 그룹 첫 구성품 여부 (R6-H3, head 만 {@code true} — 일반 라인/구
+     *        스냅샷은 null, 복원 시 {@code Boolean.TRUE.equals} 로 판정)
+     * @param parentSetModel 세트 구성품일 때 부모 세트 modelCode (R6-H3 — 일반 라인/구 스냅샷은 null)
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Line(
@@ -105,6 +113,18 @@ public record SlipSnapshot(
             String note,
             BigDecimal unitPriceWithVat,
             BigDecimal vatAmount,
-            BigDecimal supplyAmount) {
+            BigDecimal supplyAmount,
+            Boolean setHead,
+            String parentSetModel) {
+
+        /**
+         * 세트 계보 없는 구 시그니처 호환 생성자 — 기존 호출처(테스트 포함)와 계보 무관 라인 생성용.
+         */
+        public Line(UUID productId, String productName, String modelName, String specification,
+                    int quantity, BigDecimal unitPrice, BigDecimal lineTotal, String note,
+                    BigDecimal unitPriceWithVat, BigDecimal vatAmount, BigDecimal supplyAmount) {
+            this(productId, productName, modelName, specification, quantity, unitPrice, lineTotal,
+                    note, unitPriceWithVat, vatAmount, supplyAmount, null, null);
+        }
     }
 }

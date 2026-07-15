@@ -112,6 +112,25 @@ class SlipRestoreTest {
     }
 
     @Test
+    @DisplayName("[R6-H3] 세트 계보(setHead/parentSetModel)는 toSnapshot→restoreFromSnapshot 왕복에서 보존된다")
+    void restorePreservesBundleLineage() {
+        Slip slip = sampleSlip();
+        slip.getLines().get(0).assignBundleComponent("SET-809", true);
+        slip.getLines().get(1).assignBundleComponent("SET-809", false);
+
+        SlipSnapshot snapshot = slip.toSnapshot();
+        slip.restoreFromSnapshot(snapshot);
+
+        assertThat(activeLineCount(slip)).isEqualTo(2);
+        SlipLine head = slip.getLines().get(0);
+        SlipLine component = slip.getLines().get(1);
+        assertThat(head.isSetHead()).isTrue();
+        assertThat(head.getParentSetModel()).isEqualTo("SET-809");
+        assertThat(component.isSetHead()).isFalse();
+        assertThat(component.getParentSetModel()).isEqualTo("SET-809");
+    }
+
+    @Test
     @DisplayName("deliveryTag 스냅샷이 null 이면 null 로 복원한다 (null 안전)")
     void restoresNullDeliveryTag() {
         Slip slip = sampleSlip();
@@ -194,6 +213,34 @@ class SlipRestoreTest {
         assertThat(restored.getQuantity()).isEqualTo(10);
         // SlipLine.create 가 lineTotal = quantity × unitPrice 로 재계산
         assertThat(restored.getLineTotal()).isEqualByComparingTo("150000.00");
+    }
+
+    @Test
+    @DisplayName("[#822 sweep] VAT 포함 단가 라인은 toSnapshot→restoreFromSnapshot 왕복에서 "
+            + "권위 금액(withVat/vat/공급가액)이 불변이다 — 11의 배수가 아닌 단가")
+    void restorePreservesVatInclusiveAuthoritativeAmounts() {
+        Slip slip = sampleSlip();
+        // 87,999(비 11배수) × 3 = 263,997 → 공급 239,997 / 부가세 24,000 (라인 단위 권위값)
+        slip.addLine(SlipLine.createFromVatInclusive(slip, UUID.randomUUID(), "컴프레서", "CP-9",
+                "380V", 3, new BigDecimal("87999"), "VAT포함 라인", null));
+        SlipLine vatLine = slip.getLines().get(2);
+        assertThat(vatLine.getUnitPriceWithVat()).isEqualByComparingTo("87999.00");
+        assertThat(vatLine.getSupplyAmount()).isEqualByComparingTo("239997");
+        assertThat(vatLine.getVatAmount()).isEqualByComparingTo("24000");
+
+        SlipSnapshot snapshot = slip.toSnapshot();
+        slip.restoreFromSnapshot(snapshot);
+
+        // 결함(수정 전): create 재계산으로 withVat 87,998.90 / vat 23,999.70 드리프트
+        SlipLine restored = slip.getLines().get(2);
+        assertThat(restored.getUnitPriceWithVat()).isEqualByComparingTo("87999.00");
+        assertThat(restored.getVatAmount()).isEqualByComparingTo("24000");
+        assertThat(restored.getSupplyAmount()).isEqualByComparingTo("239997");
+        assertThat(restored.getLineTotal()).isEqualByComparingTo("239997");
+        // 공급 단가 생성 라인은 캡처값 == 재계산값 — 덮어쓰기에도 값 불변 (15,000 × 1.1)
+        SlipLine supplyLine = slip.getLines().get(0);
+        assertThat(supplyLine.getUnitPriceWithVat()).isEqualByComparingTo("16500.00");
+        assertThat(supplyLine.getVatAmount()).isEqualByComparingTo("3000.00");
     }
 
     @Test

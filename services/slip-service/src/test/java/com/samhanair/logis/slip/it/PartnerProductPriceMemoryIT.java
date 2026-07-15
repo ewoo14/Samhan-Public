@@ -85,6 +85,10 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     @Autowired
     private SalesSlipUpdateService salesSlipUpdateService;
 
+    /** R6-H2 — 서버측 전표 복사 (세트 계보 승계 + 구성품 가격기억 제외). */
+    @Autowired
+    private com.samhanair.logis.slip.service.SlipDuplicateService slipDuplicateService;
+
     @Autowired
     private EstimateService estimateService;
 
@@ -459,6 +463,455 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         }
     }
 
+    /**
+     * [R6-H1 BE 변형 회귀] 신규 라인(동일 품목, qty3·123,000)이 요청 맨 앞에 와도 세트 head 를
+     * 탈취하지 못하고, 무수정 재전송된 진짜 구성품이 계보를 보존하며, 구성품 배분가가 아니라
+     * 신규 일반 라인의 단가만 기억되어야 한다.
+     */
+    @Test
+    void bundleSalesPutWithNewLineFirst_doesNotStealHeadOrImprintAllocatedPrice() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-be-variant", "BE 변형 재현");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            LocalDateTime updateToken = slipRepository.findById(created.id())
+                    .map(slip -> slip.getModifiedAt() == null ? slip.getCreatedAt() : slip.getModifiedAt())
+                    .orElseThrow();
+
+            // 신규 라인을 맨 앞에 — 종전 per-line greedy 가 head 를 선소비하던 정확한 배치
+            List<SlipUpdateRequest.LineRequest> putLines = new ArrayList<>();
+            putLines.add(new SlipUpdateRequest.LineRequest(
+                    firstComponentId, "COMP-1", "COMP-1", "실내기",
+                    3, new BigDecimal("123000.00"), "신규 단품"));
+            created.lines().forEach(line -> putLines.add(new SlipUpdateRequest.LineRequest(
+                    line.productId(), line.productName(), line.modelName(),
+                    line.specification(), line.quantity(), line.unitPrice(), line.note())));
+
+            salesSlipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            updateToken,
+                            created.partnerName(),
+                            created.partnerCode(),
+                            created.memo(),
+                            created.businessNumber(),
+                            created.deliveryAddress(),
+                            created.supervisionAddress(),
+                            created.projectName(),
+                            created.recipientPhone(),
+                            created.paymentDueDate(),
+                            putLines),
+                    UUID.randomUUID(),
+                    "BE 변형 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            // 계보: 재전송 구성품이 head/parent 를 그대로 보존, 신규 qty3 라인은 일반 라인
+            int componentQuantity = created.lines().stream()
+                    .filter(line -> firstComponentId.equals(line.productId()))
+                    .findFirst().orElseThrow().quantity();
+            assertThat(lineageQuantityRows(created.id())).containsExactlyInAnyOrder(
+                    new LineageQuantityRow(firstComponentId, componentQuantity, true, "SET-809"),
+                    new LineageQuantityRow(secondComponentId, 1, false, "SET-809"),
+                    new LineageQuantityRow(firstComponentId, 3, false, null));
+
+            // 기억: 신규 일반 라인 123,000×1.1 만 — 구성품 배분가(재전송 라인)가 기억되면
+            // 마지막 command 가 이겨 값이 어긋난다
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemoryValue(
+                    partnerId, firstComponentId, new BigDecimal("135300.00"));
+            assertThat(memory.source()).isEqualTo(PartnerProductPriceMemory.SOURCE_LINE_SAVE);
+            assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+            assertThat(priceMemoryService.find(partnerId, bundleProductId).orElseThrow().source())
+                    .isEqualTo(PartnerProductPriceMemory.SOURCE_BUNDLE_SET);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [R6-H1 QA 변형 회귀] 세트(head+구성품)와 같은 품목 단품(77,000)이 공존하는 견적에서
+     * 세트 head 삭제 + 단품 88,000 수정 시: 단품이 head 로 오귀속되지 않고, 사용자 최신 단가
+     * 88,000 이 기억되어야 한다 (결함에선 77,000 고착 + head 오귀속).
+     */
+    @Test
+    void bundleEstimateHeadDeletedAndStandaloneRepriced_staysPlainAndRemembersLatestPrice() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = estimateService.create(
+                new CreateEstimateRequest(
+                        LocalDate.of(2026, 7, 16), partnerId, "테스트 거래처", null, null,
+                        LocalDate.of(2026, 8, 15), "QA 변형 재현",
+                        List.of(
+                                new CreateEstimateRequest.EstimateLineRequest(
+                                        bundleProductId, "테스트 세트", "SET-809", null,
+                                        1, new BigDecimal("550000.00"), "세트 라인", null, true),
+                                new CreateEstimateRequest.EstimateLineRequest(
+                                        firstComponentId, "COMP-1", "COMP-1", null,
+                                        1, new BigDecimal("77000.00"), "단품 라인", null, true))),
+                "actor-qa-variant", "QA 변형 작성자");
+        try {
+            awaitPriceMemoryValue(partnerId, firstComponentId, new BigDecimal("77000.00"));
+            var componentLine = created.lines().stream()
+                    .filter(line -> secondComponentId.equals(line.productId()))
+                    .findFirst().orElseThrow();
+
+            // 세트 head 미재전송(삭제) + 구성품 재전송 + 단품 77,000→88,000
+            estimateService.update(
+                    created.id(),
+                    new UpdateEstimateRequest(
+                            created.partnerId(), created.partnerName(), created.partnerBusinessNo(),
+                            created.partnerAddress(), created.validUntil(), created.memo(),
+                            List.of(
+                                    new UpdateEstimateRequest.EstimateLineUpdate(
+                                            componentLine.productId(), componentLine.productName(),
+                                            componentLine.modelName(), componentLine.specification(),
+                                            componentLine.quantity(),
+                                            componentLine.unitPriceWithVat() == null
+                                                    ? componentLine.unitPrice()
+                                                    : componentLine.unitPriceWithVat(),
+                                            componentLine.note(), null,
+                                            componentLine.unitPriceWithVat() != null),
+                                    new UpdateEstimateRequest.EstimateLineUpdate(
+                                            firstComponentId, "COMP-1", "COMP-1", null, 1,
+                                            new BigDecimal("88000.00"), "단품 라인", null, true))),
+                    "actor-qa-variant", "QA 변형 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            // 단품이 head 로 오귀속되지 않고 일반 라인으로 남는다 (잔존 구성품 계보는 보존)
+            List<BundleLineageRow> rows = jdbcTemplate.query("""
+                    SELECT product_id, set_head, parent_set_model
+                      FROM estimate_lines
+                     WHERE estimate_id = ? AND is_deleted = FALSE
+                     ORDER BY line_no
+                    """, (rs, rowNum) -> new BundleLineageRow(
+                    rs.getObject("product_id", UUID.class),
+                    rs.getBoolean("set_head"),
+                    rs.getString("parent_set_model")), created.id());
+            assertThat(rows).containsExactly(
+                    new BundleLineageRow(secondComponentId, false, "SET-809"),
+                    new BundleLineageRow(firstComponentId, false, null));
+
+            // 사용자 최신 단가 88,000 이 기억된다 (결함: 77,000 침묵 고착)
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemoryValue(
+                    partnerId, firstComponentId, new BigDecimal("88000.00"));
+            assertThat(memory.source()).isEqualTo(PartnerProductPriceMemory.SOURCE_LINE_SAVE);
+            assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+        } finally {
+            cleanupEstimate(created.id());
+        }
+    }
+
+    /**
+     * [R6-L4 INBOUND 미러 회귀] 매입(INBOUND) direct PUT 무수정 재전송에서도 세트 계보가
+     * 보존되고 구성품이 기억되지 않아야 한다 — addSlipLinesExpanded 는 slipType 비gate.
+     */
+    @Test
+    void bundleSlipUnchangedPurchasePut_keepsLineageAndDoesNotRememberComponents() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = slipService.create(
+                slipRequest(SlipType.INBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-bundle-purchase", "세트 매입 PUT 계보 테스트");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            LocalDateTime updateToken = slipRepository.findById(created.id())
+                    .map(slip -> slip.getModifiedAt() == null ? slip.getCreatedAt() : slip.getModifiedAt())
+                    .orElseThrow();
+
+            slipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            updateToken,
+                            created.partnerName(),
+                            created.partnerCode(),
+                            created.memo(),
+                            created.businessNumber(),
+                            created.deliveryAddress(),
+                            created.supervisionAddress(),
+                            created.projectName(),
+                            created.recipientPhone(),
+                            created.paymentDueDate(),
+                            created.lines().stream()
+                                    .map(line -> new SlipUpdateRequest.LineRequest(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(), line.unitPrice(), line.note()))
+                                    .toList()),
+                    UUID.randomUUID(),
+                    "세트 매입 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [R6-H3 회귀 — 전표] 세트 전표 생성 → 버전이력 복원 → 무수정 재저장 순서에서 계보가
+     * 전 구간 보존되고 구성품 기억이 0건이어야 한다 (결함: 스냅샷에 계보 필드가 없어 복원 시
+     * 평면화 → 이후 저장 1회면 배분가 각인).
+     */
+    @Test
+    void bundleSlipRevisionRestore_preservesLineage_thenUnchangedPutDoesNotImprintComponents() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-restore-slip", "세트 복원 테스트");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+
+            // revision 1(CREATE 스냅샷)로 point-in-time 복원 — 계보 소실 여부 검증 지점
+            var restored = slipService.restoreToRevision(
+                    created.id(), 1, UUID.randomUUID().toString(), "복원 사용자");
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+
+            // 복원 직후 무수정 재저장 — 결함이라면 이 1회로 구성품 배분가가 각인된다
+            LocalDateTime updateToken = slipRepository.findById(created.id())
+                    .map(slip -> slip.getModifiedAt() == null ? slip.getCreatedAt() : slip.getModifiedAt())
+                    .orElseThrow();
+            salesSlipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            updateToken,
+                            restored.partnerName(),
+                            restored.partnerCode(),
+                            restored.memo(),
+                            restored.businessNumber(),
+                            restored.deliveryAddress(),
+                            restored.supervisionAddress(),
+                            restored.projectName(),
+                            restored.recipientPhone(),
+                            restored.paymentDueDate(),
+                            restored.lines().stream()
+                                    .map(line -> new SlipUpdateRequest.LineRequest(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(), line.unitPrice(), line.note()))
+                                    .toList()),
+                    UUID.randomUUID(),
+                    "복원 후 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [R6-H3 회귀 — 견적] 세트 견적 생성 → 버전이력 복원 → 무수정 재저장에서 계보 보존 +
+     * 구성품 기억 0건 (전표 미러 — EstimateSnapshot.Line 계보 필드 회귀 락인).
+     */
+    @Test
+    void bundleEstimateRevisionRestore_preservesLineage_thenUnchangedUpdateDoesNotImprintComponents() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var created = estimateService.create(
+                new CreateEstimateRequest(
+                        LocalDate.of(2026, 7, 16), partnerId, "테스트 거래처", null, null,
+                        LocalDate.of(2026, 8, 15), "세트 견적 복원 테스트",
+                        List.of(new CreateEstimateRequest.EstimateLineRequest(
+                                bundleProductId, "테스트 세트", "SET-809", null,
+                                1, new BigDecimal("550000.00"), "세트 라인", null, true))),
+                "actor-restore-estimate", "세트 견적 복원 작성자");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+
+            var restored = estimateService.restoreToRevision(
+                    created.id(), 1, "actor-restore-estimate", "복원 사용자");
+            assertBundleEstimateLineage(created.id(), firstComponentId, secondComponentId);
+
+            // 복원 직후 무수정 재저장 (#822 fix 후 복원 라인은 unitPriceWithVat 를 보존하므로
+            // VAT 포함 단가+true 로 재전송된다 — null 분기는 legacy 라인 하위호환용으로 유지)
+            estimateService.update(
+                    created.id(),
+                    new UpdateEstimateRequest(
+                            restored.partnerId(), restored.partnerName(), restored.partnerBusinessNo(),
+                            restored.partnerAddress(), restored.validUntil(), restored.memo(),
+                            restored.lines().stream()
+                                    .map(line -> new UpdateEstimateRequest.EstimateLineUpdate(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(),
+                                            line.unitPriceWithVat() == null
+                                                    ? line.unitPrice() : line.unitPriceWithVat(),
+                                            line.note(), null, line.unitPriceWithVat() != null))
+                                    .toList()),
+                    "actor-restore-estimate", "복원 후 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            assertBundleEstimateLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupEstimate(created.id());
+        }
+    }
+
+    /**
+     * [R6-H2 회귀] 서버측 전표 복사가 세트 계보(금액 권위값 포함)를 그대로 승계하고,
+     * 가격기억은 일반 라인만 재각인하며 구성품은 제외해야 한다 (결함: FE 평면 재-POST 복사가
+     * 1클릭마다 구성품 배분가를 각인 + 세트 표시 소실).
+     */
+    @Test
+    void duplicateBundleSlip_serverSideCopy_preservesLineageAndSkipsComponentMemory() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        UUID plainProductId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+
+        var source = slipService.create(
+                slipRequestWithLines(SlipType.OUTBOUND, partnerId, List.of(
+                        new CreateSlipRequest.SlipLineRequest(
+                                bundleProductId, "테스트 세트", "SET-809", null,
+                                1, new BigDecimal("550000.00"), "세트 라인", null, true),
+                        new CreateSlipRequest.SlipLineRequest(
+                                plainProductId, "일반 품목", "PLAIN-809", null,
+                                1, new BigDecimal("99000.00"), "일반 라인", null, true))),
+                "actor-duplicate-src", "복사 원본 작성자");
+        UUID copyId = null;
+        try {
+            awaitPriceMemoryValue(partnerId, plainProductId, new BigDecimal("99000.00"));
+            // 복사 전 일반 품목 기억을 다른 값으로 바꿔, 복사가 서버측에서 재각인함을 구분 검증
+            priceMemoryService.remember(
+                    partnerId, plainProductId, new BigDecimal("111111.00"), "actor-poison");
+
+            var copy = slipDuplicateService.duplicate(
+                    source.id(), UUID.randomUUID().toString(), "복사 실행자");
+            copyId = copy.id();
+            awaitPriceMemoryExecutorIdle();
+
+            assertThat(copy.id()).isNotEqualTo(source.id());
+            assertThat(copy.slipNo()).isNotEqualTo(source.slipNo());
+
+            // 복사본 계보 + 일반 라인 금액 권위값 verbatim 승계
+            assertThat(lineageQuantityRows(copy.id())).containsExactlyInAnyOrder(
+                    new LineageQuantityRow(firstComponentId, 1, true, "SET-809"),
+                    new LineageQuantityRow(secondComponentId, 1, false, "SET-809"),
+                    new LineageQuantityRow(plainProductId, 1, false, null));
+            BigDecimal copiedPlainVatPrice = jdbcTemplate.queryForObject("""
+                    SELECT unit_price_with_vat
+                      FROM slip_lines
+                     WHERE slip_id = ? AND product_id = ? AND is_deleted = FALSE
+                    """, BigDecimal.class, copy.id(), plainProductId);
+            assertThat(copiedPlainVatPrice).isEqualByComparingTo("99000.00");
+
+            // 기억: 일반 라인만 복사값으로 재각인, 구성품 2종 제외, 세트 parent 는 생성 시점
+            // BUNDLE_SET 유지 (복사는 세트 단가 사용자 입력이 없으므로 BUNDLE_SET 미기록)
+            PartnerProductPriceMemoryResponse plainMemory = awaitPriceMemoryValue(
+                    partnerId, plainProductId, new BigDecimal("99000.00"));
+            assertThat(plainMemory.source()).isEqualTo(PartnerProductPriceMemory.SOURCE_LINE_SAVE);
+            assertThat(priceMemoryService.find(partnerId, firstComponentId)).isEmpty();
+            assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+            assertThat(priceMemoryService.find(partnerId, bundleProductId).orElseThrow().source())
+                    .isEqualTo(PartnerProductPriceMemory.SOURCE_BUNDLE_SET);
+        } finally {
+            try {
+                if (copyId != null) {
+                    cleanupSlip(copyId);
+                }
+            } finally {
+                cleanupSlip(source.id());
+            }
+        }
+    }
+
     @Test
     void afterCommitExecutionInversion_keepsLaterLogicalSave() {
         UUID partnerId = UUID.randomUUID();
@@ -626,6 +1079,22 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     private CreateSlipRequest slipRequest(
             SlipType slipType, UUID partnerId, UUID productId, BigDecimal unitPrice) {
+        return slipRequestWithLines(slipType, partnerId,
+                List.of(new CreateSlipRequest.SlipLineRequest(
+                        productId,
+                        "테스트 품목",
+                        "MODEL-809",
+                        null,
+                        1,
+                        unitPrice,
+                        "라인",
+                        null,
+                        true)));
+    }
+
+    /** 라인 배열을 직접 지정하는 생성 요청 — 세트+일반 혼합 전표(R6-H2 복사 회귀) 등에 사용. */
+    private CreateSlipRequest slipRequestWithLines(
+            SlipType slipType, UUID partnerId, List<CreateSlipRequest.SlipLineRequest> lines) {
         UUID warehouseId = UUID.randomUUID();
         return new CreateSlipRequest(
                 slipType,
@@ -656,16 +1125,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                 null,
                 null,
                 null,
-                List.of(new CreateSlipRequest.SlipLineRequest(
-                        productId,
-                        "테스트 품목",
-                        "MODEL-809",
-                        null,
-                        1,
-                        unitPrice,
-                        "라인",
-                        null,
-                        true)));
+                lines);
     }
 
     private void rawInsert(UUID partnerId, UUID productId, BigDecimal unitPrice, String actor) {
@@ -746,6 +1206,23 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                 new BundleLineageRow(secondComponentId, false, "SET-809"));
     }
 
+    /**
+     * 전표 활성 라인의 (품목, 수량, 계보) 행 — 동일 품목이 구성품·일반 라인으로 공존하는
+     * R6-H1/H2 회귀에서 두 행을 수량으로 구분 단언하기 위한 조회.
+     */
+    private List<LineageQuantityRow> lineageQuantityRows(UUID slipId) {
+        return jdbcTemplate.query("""
+                SELECT product_id, quantity, set_head, parent_set_model
+                  FROM slip_lines
+                 WHERE slip_id = ? AND is_deleted = FALSE
+                 ORDER BY created_at, id
+                """, (rs, rowNum) -> new LineageQuantityRow(
+                rs.getObject("product_id", UUID.class),
+                rs.getInt("quantity"),
+                rs.getBoolean("set_head"),
+                rs.getString("parent_set_model")), slipId);
+    }
+
     private void assertBundleEstimateLineage(
             UUID estimateId, UUID firstComponentId, UUID secondComponentId) {
         List<BundleLineageRow> rows = jdbcTemplate.query("""
@@ -800,5 +1277,10 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     }
 
     private record BundleLineageRow(UUID productId, boolean setHead, String parentSetModel) {
+    }
+
+    /** 계보 + 수량 행 — 동일 품목 다행(구성품/일반) 구분 단언용 (R6-H1/H2 회귀). */
+    private record LineageQuantityRow(UUID productId, int quantity, boolean setHead,
+                                      String parentSetModel) {
     }
 }

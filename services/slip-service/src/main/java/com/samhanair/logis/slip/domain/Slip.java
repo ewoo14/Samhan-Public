@@ -1963,7 +1963,10 @@ public class Slip extends BaseEntity {
                         line.getNote(),
                         line.getUnitPriceWithVat(),
                         line.getVatAmount(),
-                        line.getSupplyAmount()))
+                        line.getSupplyAmount(),
+                        // R6-H3 — 세트 계보 캡처. head 만 true, 일반 라인은 null 로 생략(NON_NULL).
+                        line.isSetHead() ? Boolean.TRUE : null,
+                        line.getParentSetModel()))
                 .toList();
         return new SlipSnapshot(
                 this.slipNo,
@@ -2006,6 +2009,11 @@ public class Slip extends BaseEntity {
      * <p>{@code deliveryTag} 는 스냅샷의 enum name 문자열을 {@link DeliveryTag#valueOf(String)} 로
      * 역매핑한다 (null 안전). status / version / revisionCount 등 라이프사이클 메타는 복원 대상이
      * 아니며 — 복원도 신규 RESTORE revision 으로 별도 기록되므로 본 메서드는 헤더/라인 상태만 되돌린다.
+     *
+     * <p>라인 금액 semantics (#822 계열 sweep): 스냅샷 라인의 {@code unitPriceWithVat} 가 non-null
+     * 이면 {@link SlipLine#restoreAuthoritativeAmounts} 로 캡처 시점의 lineTotal/supplyAmount/
+     * vatAmount/unitPriceWithVat 권위값을 그대로 승계한다 — {@link SlipLine#create} 재계산만으로는
+     * VAT 포함 입력 라인에서 반올림 드리프트가 생긴다. null(legacy) 라인은 종전 재계산 유지.
      *
      * <p>마감 lock 가드: {@link #requireNotLocked()} 를 가장 먼저 호출한다 — lock_flag=true 슬립은
      * 복원도 CONFLICT 로 거부한다 (마감 후 매출 정정 차단 정책과 일관). status 기반 마감 정책
@@ -2060,14 +2068,27 @@ public class Slip extends BaseEntity {
         List<SlipSnapshot.Line> snapshotLines = snapshot.lines();
         if (snapshotLines != null) {
             for (SlipSnapshot.Line snapLine : snapshotLines) {
-                this.lines.add(SlipLine.create(this,
+                SlipLine restored = SlipLine.create(this,
                         snapLine.productId(),
                         snapLine.productName(),
                         snapLine.modelName(),
                         snapLine.specification(),
                         snapLine.quantity(),
                         snapLine.unitPrice(),
-                        snapLine.note()));
+                        snapLine.note());
+                // R6-H3 — 스냅샷의 세트 계보 복원. 계보가 없으면(일반 라인/구 스냅샷 null) 평면
+                // 재생성 시 이후 저장에서 구성품 배분가가 가격기억에 각인되는 오염이 재유입된다.
+                if (snapLine.parentSetModel() != null && !snapLine.parentSetModel().isBlank()) {
+                    restored.assignBundleComponent(
+                            snapLine.parentSetModel(), Boolean.TRUE.equals(snapLine.setHead()));
+                }
+                // #822 계열 sweep — 스냅샷 캡처 금액 권위값 승계. create 는 공급단가에서
+                // vat/withVat 를 재계산하므로 VAT 포함 입력 라인(11의 배수가 아닌 단가)에서
+                // 캡처값 대비 반올림 드리프트가 생긴다. legacy(withVat null) 라인은 no-op.
+                restored.restoreAuthoritativeAmounts(snapLine.lineTotal(),
+                        snapLine.supplyAmount(), snapLine.vatAmount(),
+                        snapLine.unitPriceWithVat());
+                this.lines.add(restored);
             }
         }
     }

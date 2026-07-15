@@ -48,6 +48,7 @@ import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
 import com.samhanair.logis.slip.service.SlipCleanupService;
 import com.samhanair.logis.slip.service.SlipCleanupSaveHistoryService;
+import com.samhanair.logis.slip.service.SlipDuplicateService;
 import com.samhanair.logis.slip.service.SlipExcelExportService;
 import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.service.SlipSignatureService;
@@ -129,6 +130,7 @@ class SlipPermissionControllerIT {
 
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private SlipService slipService;
+    @MockBean private SlipDuplicateService slipDuplicateService;
     @MockBean private NextDaySlipImageService nextDaySlipImageService;
     @MockBean private SlipCleanupService slipCleanupService;
     @MockBean private SlipCleanupSaveHistoryService slipCleanupSaveHistoryService;

@@ -79,9 +79,21 @@ class PartnerProductPriceMemoryAsyncConfigTest {
     }
 
     @Test
-    void hikariConnectionAcquisitionWait_isBoundedToFourSeconds() {
+    void hikariConnectionAcquisitionWait_bindsOperatorKnobWithFourSecondDefault() {
+        // [R6-M2] 종전에는 resolved 값 "4000" 리터럴만 단언해, 운영자가 DB_CONNECTION_TIMEOUT_MS
+        // 를 export 하는 순간 테스트가 깨졌다 (노브와 테스트 상호배타). 노브 "바인딩 자체"와
+        // 기본값을 각각 검증해 노브 사용과 양립시킨다.
+        // 1) 노브 배선 — system property 는 OS env 보다 우선 조회되므로 (StandardEnvironment
+        //    property source 순서) 실행 셸의 env export 여부와 무관하게 결정적이다.
+        contextRunner.withSystemProperties("DB_CONNECTION_TIMEOUT_MS=7333")
+                .run(context -> assertThat(context.getEnvironment()
+                        .getProperty("spring.datasource.hikari.connection-timeout"))
+                        .isEqualTo("7333"));
+        // 2) 기본값 4000 — 실행 셸에 노브가 이미 export 되어 있으면 그 값이 기대값이다
+        //    (노브가 이겨야 정상 — 리터럴 고정이 바로 R6-M2 의 결함이었다).
+        String expectedDefault = System.getenv().getOrDefault("DB_CONNECTION_TIMEOUT_MS", "4000");
         contextRunner.run(context -> assertThat(context.getEnvironment()
                 .getProperty("spring.datasource.hikari.connection-timeout"))
-                .isEqualTo("4000"));
+                .isEqualTo(expectedDefault));
     }
 }

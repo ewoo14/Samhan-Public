@@ -68,6 +68,29 @@ class SlipRevisionSnapshotTest {
     }
 
     @Test
+    @DisplayName("[R6-H3] 세트 계보 필드는 round-trip 보존되고, 계보 없는 구 JSON 은 null 로 역직렬화된다")
+    void snapshotLineLineageRoundTripAndLegacyJsonBackwardCompat() throws Exception {
+        UUID productId = UUID.randomUUID();
+        SlipSnapshot.Line headLine = new SlipSnapshot.Line(productId, "실내기", "COMP-1", "220V", 1,
+                new BigDecimal("300000.00"), new BigDecimal("300000.00"), null,
+                new BigDecimal("330000.00"), new BigDecimal("30000.00"), new BigDecimal("300000.00"),
+                Boolean.TRUE, "SET-809");
+
+        String json = objectMapper.writeValueAsString(headLine);
+        SlipSnapshot.Line restored = objectMapper.readValue(json, SlipSnapshot.Line.class);
+        assertThat(restored.setHead()).isTrue();
+        assertThat(restored.parentSetModel()).isEqualTo("SET-809");
+
+        // 구 스냅샷 JSON(계보 필드 자체가 없음) — V58 이전 slip_revisions 행 하위호환
+        String legacyJson = """
+                {"productId":"%s","productName":"펌프","quantity":2,"unitPrice":15000.00}
+                """.formatted(productId);
+        SlipSnapshot.Line legacy = objectMapper.readValue(legacyJson, SlipSnapshot.Line.class);
+        assertThat(legacy.setHead()).isNull();
+        assertThat(legacy.parentSetModel()).isNull();
+    }
+
+    @Test
     @DisplayName("SlipRevision.of 는 RESTORE 스냅샷을 생성하고 source revision 을 보존한다")
     void factoryCreatesRestoreRevision() {
         UUID slipId = UUID.randomUUID();

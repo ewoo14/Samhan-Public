@@ -459,7 +459,13 @@ public class Estimate extends BaseEntity {
                         line.getSupplyAmount(),
                         line.getVatAmount(),
                         line.getLineTotal(),
-                        line.getNote()))
+                        line.getNote(),
+                        // #822 — VAT 포함 단가 권위값 캡처. 누락 시 복원이 공급 semantics 재생성으로
+                        // unit_price_with_vat 를 NULL 화해 legacy provenance 로 오전환된다(16b).
+                        line.getUnitPriceWithVat(),
+                        // R6-H3 — 세트 계보 캡처. head 만 true, 일반 라인은 null 로 생략(NON_NULL).
+                        line.isSetHead() ? Boolean.TRUE : null,
+                        line.getParentSetModel()))
                 .toList();
         return new EstimateSnapshot(
                 this.estimateNo,
@@ -485,6 +491,13 @@ public class Estimate extends BaseEntity {
      * <p>편집 가능 가드: {@link #requireEditable()} 를 가장 먼저 호출한다 — QUOTE_ACCEPTED /
      * QUOTE_CONVERTED / QUOTE_REJECTED 등 잠긴 단계의 견적은 복원도 CONFLICT 로 거부한다
      * (회계 일관성 — 확정 후 매출 정정 차단).
+     *
+     * <p>라인 금액 semantics (#822, 라이브 QA 16b fix): 스냅샷 라인의 {@code unitPriceWithVat} 가
+     * non-null 이면 {@link EstimateLine#createFromVatInclusive} 로 재생성해 VAT 포함 단가
+     * 권위값을 그대로 복원한다 — 같은 (수량, VAT 포함 단가) 입력의 결정적 재계산이므로 캡처 시점의
+     * supplyAmount/vatAmount/lineTotal 과 동일값이 재현된다(반올림 드리프트 없음). null(공급단가
+     * 입력 라인 또는 #822 이전 구 JSONB 스냅샷)이면 종전대로 {@link EstimateLine#create} 공급
+     * semantics 재계산을 유지한다(하위호환).
      *
      * <p>합계는 스냅샷의 totalSupply/totalVat 값을 신뢰하지 않고 {@link #recalculateTotals()} 로
      * 재계산한다 (라인 기준). lineTotal/supplyAmount/vatAmount 는 {@link EstimateLine} 이 생성 시
@@ -524,14 +537,34 @@ public class Estimate extends BaseEntity {
         if (snapshotLines != null) {
             int lineNo = 1;
             for (EstimateSnapshot.Line snapLine : snapshotLines) {
-                this.lines.add(EstimateLine.create(this, lineNo++,
-                        snapLine.productId(),
-                        snapLine.productName(),
-                        snapLine.modelName(),
-                        snapLine.specification(),
-                        snapLine.quantity(),
-                        snapLine.unitPrice(),
-                        snapLine.note()));
+                // #822 — VAT 포함 단가 권위값이 있으면 createFromVatInclusive 로 복원 (전표
+                // SlipSnapshot 이 이미 보유한 필드의 estimate 누락 계열 fix). 공급 단가로
+                // create 하면 unit_price_with_vat 가 NULL 화되어 R5-H6 provenance 규칙상
+                // legacy 입력으로 오전환된다 — 편집 폼이 공급단가를 VAT 포함가로 오표시(16b).
+                EstimateLine restored = snapLine.unitPriceWithVat() != null
+                        ? EstimateLine.createFromVatInclusive(this, lineNo++,
+                                snapLine.productId(),
+                                snapLine.productName(),
+                                snapLine.modelName(),
+                                snapLine.specification(),
+                                snapLine.quantity(),
+                                snapLine.unitPriceWithVat(),
+                                snapLine.note())
+                        : EstimateLine.create(this, lineNo++,
+                                snapLine.productId(),
+                                snapLine.productName(),
+                                snapLine.modelName(),
+                                snapLine.specification(),
+                                snapLine.quantity(),
+                                snapLine.unitPrice(),
+                                snapLine.note());
+                // R6-H3 — 스냅샷의 세트 계보 복원. 계보가 없으면(일반 라인/구 스냅샷 null) 평면
+                // 재생성 시 이후 저장에서 구성품 배분가가 가격기억에 각인되는 오염이 재유입된다.
+                if (snapLine.parentSetModel() != null && !snapLine.parentSetModel().isBlank()) {
+                    restored.assignBundleComponent(
+                            snapLine.parentSetModel(), Boolean.TRUE.equals(snapLine.setHead()));
+                }
+                this.lines.add(restored);
             }
         }
         // 합계는 스냅샷 totalXxx 무시 — 라인 기준 재계산 (라인 recompute 결과 사용)

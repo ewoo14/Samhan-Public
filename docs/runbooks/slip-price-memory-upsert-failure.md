@@ -8,9 +8,14 @@
 
 > 위 Alert 이름은 dev 로컬 Prometheus rule
 > (`infrastructure/prometheus/rules/slip-price-memory.yml`) 기준이다. prod(Phase 11
-> AWS)는 기존 CloudWatch Agent 가 Docker json-file 로그를
-> `/samhanlogis/production/docker` 로 수집하고, `monitoring.tf` 의 metric filter 2건
-> (`batch upsert failed`, `queue rejected`)과 alarm 2건이 등가 감지를 담당한다.
+> AWS)는 slip-service 컨테이너 로그를 `docker-compose.prod.yml` 의 `awslogs` driver 가
+> `/samhanlogis/production/docker` (stream `slip-service`) 로 직접 전달하고,
+> `monitoring.tf` 의 metric filter 2건(`batch upsert failed`, `queue rejected`)과
+> alarm 2건이 등가 감지를 담당하도록 **설계**되어 있다. 단, 실 EC2 부재로 라이브
+> 실측이 아직 없어 — **cutover M-19 의 양성 도달 검사(인위 감시 문자열 → CloudWatch
+> `filter-log-events` 도달 + alarm 발화 확인)를 통과하기 전까지 이 등가성은
+> 미확증이다** (2026-07-16, R6-H5). CloudWatch Agent 의 json 와일드카드 tail 은
+> "최신 수정 파일만 push" 되는 AWS 문서 제약으로 alarm 원천이 아니다.
 > 배포 확인 절차는 `infrastructure/terraform/CUTOVER.md` **M-19**를 따른다.
 
 ## 실제 Prometheus metric 이름
@@ -23,6 +28,20 @@
 | REQUIRES_NEW 지연 | `slip_price_memory_upsert_duration_seconds_count`, `_sum`, `_max` |
 
 Micrometer meter 이름과 Prometheus export 변환은 `PartnerProductPriceMemoryMetricsTest` 가 실제 registry `scrape()` 결과로 잠근다.
+
+## 관련 운영 노브
+
+`SAMHAN_PRICE_MEMORY_*` 9종(lock/statement/tx timeout · async pool/queue)과
+`DB_CONNECTION_TIMEOUT_MS`(Hikari 커넥션 획득 대기 상한, 기본 4000ms)는
+`infrastructure/env-templates/slip-service.env` 에 주석과 함께 정의되어 있고,
+`infrastructure/docker-compose.local-all.yml` · `infrastructure/docker-compose.prod.yml`
+(slip-service environment) · `infrastructure/terraform/templates/user_data.sh`
+(.env.production) 가 명시 매핑한다 (R5-M6 / R6-M2).
+
+`DB_CONNECTION_TIMEOUT_MS` 는 pool 고갈 시 가격기억 worker 가 Hikari 기본 30s 대신
+4s 안에 fail-soft 경계로 반환되도록 하는 노브지만, **가격기억 전용이 아니라
+slip-service 전체 DataSource 에 적용**되므로 상향/하향 시 원 전표/견적 저장 경로
+영향을 함께 검토한다.
 
 ## 1차 확인
 
