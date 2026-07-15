@@ -64,6 +64,7 @@ import {
   type SlipTransitionAction,
   type SlipType,
 } from '../api/slip'
+import { getApiErrorInfo } from '../api/apiError'
 import { type StockBalanceLookupLine } from '../api/inventory'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
 import { invalidateSignature } from '../api/signature'
@@ -835,16 +836,37 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     },
   })
 
-  /** 전표 복사 (DRAFT 신규 생성). 성공 시 신규 전표 상세로 이동. */
+  /**
+   * 전표 복사 (DRAFT 신규 생성) — R6-H2: BE POST /slips/{id}/duplicate 서버 복사.
+   * FE 평면 재-POST 는 세트 계보 소실 + 구성품 배분가 가격기억 각인 결함이 있어 제거.
+   * 성공 시 신규 전표 상세로 이동.
+   */
   const duplicateMutation = useMutation({
     mutationFn: () => {
       if (!detailQuery.data) throw new Error('전표 데이터 없음')
-      return duplicateSlip(detailQuery.data)
+      return duplicateSlip(detailQuery.data.id)
     },
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: ['slips'] })
       const target = created.slipType === 'OUTBOUND' ? 'sales' : 'purchases'
       navigate(`/${target}/${created.id}`)
+    },
+    onError: (error) => {
+      // BE duplicate 계약 에러 3종 — 403 생성 권한 / 404 원본 미존재·삭제 / 409 당일 마감 초과.
+      const { status, data } = getApiErrorInfo(error)
+      if (status === 403) {
+        alert('전표를 복사(생성)할 권한이 없습니다.')
+        return
+      }
+      if (status === 404) {
+        alert('원본 전표를 찾을 수 없습니다. 삭제되었거나 정리된 전표일 수 있습니다.')
+        return
+      }
+      if (status === 409) {
+        alert(data?.message ?? '오늘 출고전표 마감 시간이 지나 복사할 수 없습니다.')
+        return
+      }
+      alert(data?.message ?? '전표 복사에 실패했습니다. 잠시 후 다시 시도해 주세요.')
     },
   })
 

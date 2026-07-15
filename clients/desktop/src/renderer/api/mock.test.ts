@@ -107,7 +107,9 @@ describe('mock price memory contract', () => {
         productId: productA,
       },
     }) as MockEnvelope<{ unitPrice: number; updatedAt: string }>
-    expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00+09:00' })
+    // R6-M3: updatedAt 은 실 wire(LocalDateTime, 오프셋 없음) 형식 — mock 값 형식도 BE parity.
+    expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00' })
+    expect(single.data.updatedAt).not.toMatch(/[+Z]/)
 
     const bulk = mockRequest({
       method: 'POST',
@@ -138,6 +140,77 @@ describe('mock price memory contract', () => {
     const response = mockRequest(config) as { __mockStatus: number; body: { code: string } }
     expect(response.__mockStatus).toBe(400)
     expect(response.body.code).toBe('INVALID_INPUT')
+  })
+
+  it('version-less admin partner ids pass lenient UUID validation and reach the memory row', () => {
+    // R6-M3: 실 BE 는 UUID 타입 바인딩(version/variant 미검증)이라 MOCK_ADMIN_PARTNERS 의
+    // version-less id 도 200/204 다 — RFC-4122 version 강제는 mock 전용 400 을 만들어
+    // 폼이 조용히 CATALOG 폴백하는 mock 회귀(false-green)를 낳았다. 거래처 검색 경로
+    // (엘에이시스템에어 id)로 기억행이 도달하는지까지 함께 가드한다.
+    const adminPartnerId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    const productA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+
+    const single = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: adminPartnerId, productId: productA },
+    }) as MockEnvelope<{ unitPrice: number; updatedAt: string }>
+    expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00' })
+
+    const bulk = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: { partnerId: adminPartnerId, productIds: [productA] },
+    }) as MockEnvelope<Array<{ productId: string; unitPrice: number }>>
+    expect(bulk.data).toEqual([
+      expect.objectContaining({ productId: productA, unitPrice: 2035000 }),
+    ])
+
+    // version-less 여도 canonical hex 8-4-4-4-12 가 아니면 여전히 400 (형태 자체 오류).
+    const malformed = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: 'aaaaaaaa-aaaa-aaaa-aaaa', productId: productA },
+    }) as { __mockStatus: number; body: { code: string } }
+    expect(malformed.__mockStatus).toBe(400)
+    expect(malformed.body.code).toBe('INVALID_INPUT')
+  })
+
+  // R6-H2: 전표 복사 서버 endpoint(POST /slips/{id}/duplicate) mock 이 새 계약을 미러하는지 가드.
+  it('slip duplicate mock mirrors the server-copy contract (new DRAFT + today + verbatim lines)', () => {
+    const now = new Date()
+    const [yyyy, mm, dd] = [
+      String(now.getFullYear()),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ]
+    const response = mockRequest({
+      method: 'POST',
+      url: '/slips/slip-001/duplicate',
+    }) as MockEnvelope<{
+      id: string
+      slipNo: string
+      slipDate: string
+      status: string
+      lines: Array<{ productId: string }>
+    }>
+
+    expect(response.data.id).not.toBe('slip-001')
+    expect(response.data.status).toBe('DRAFT')
+    expect(response.data.slipDate).toBe(`${yyyy}-${mm}-${dd}`)
+    // 전표번호 슬래시 yyyy/MM/dd-N 신규 채번 (feedback_slip_order_number_format)
+    expect(response.data.slipNo).toBe(`${yyyy}/${mm}/${dd}-99`)
+    expect(response.data.lines.length).toBeGreaterThan(0)
+  })
+
+  it('slip duplicate mock returns 404 for a missing source', () => {
+    const response = mockRequest({
+      method: 'POST',
+      url: '/slips/no-such-slip/duplicate',
+    }) as { __mockStatus: number; body: { code: string } }
+
+    expect(response.__mockStatus).toBe(404)
+    expect(response.body.code).toBe('NOT_FOUND')
   })
 
   it('mockEstimateDetail_partnerIdIsUuidAndEnablesPriceMemoryLookup', () => {

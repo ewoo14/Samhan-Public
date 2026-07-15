@@ -430,7 +430,14 @@ export interface BulkPriceMemoryResult extends PriceMemoryResult {
 export interface BulkPriceMemoryLookupResult {
   /** 성공 chunk 에서 반환된 hit. 성공 chunk 의 miss 는 배열에서 생략된다. */
   hits: BulkPriceMemoryResult[]
-  /** 호출 자체가 실패한 chunk 에 포함됐던 productId. 호출자가 이 품목만 catalog fallback 한다. */
+  /**
+   * 호출 자체가 실패한 chunk 에 포함됐던 productId.
+   *
+   * R6-L1 정정: 현재 두 폼 호출자(SlipFormPage/EstimateFormPage 의
+   * refreshAutoPricesForPartner)는 `hits` 만 소비하고 이 배열은 사용하지 않는다 —
+   * 실패 품목도 hit 미포함 품목과 동일하게 판매가(CATALOG) fallback 으로 처리된다.
+   * (miss 와 chunk 실패를 구분해 고지하려는 후속 소비자를 위해 필드는 유지.)
+   */
   failedProductIds: string[]
 }
 
@@ -510,7 +517,8 @@ const PRICE_MEMORY_BULK_CHUNK_SIZE = 100
  * 반환하며 전체 miss 도 200 + 빈 배열이다. productIds 는 중복 제거 후 1개 이상이어야 하고,
  * BE 상한(100개) 초과분은 100개 단위 chunk 순차 호출로 합산한다 — 고유 품목 101개↑에서
  * throw 되어 전 라인이 조용히 판매가(CATALOG) 강등되는 것을 방지(R4-F5).
- * chunk 실패는 해당 productId 만 failedProductIds 로 분리하고 앞선 성공 hit 는 보존한다.
+ * chunk 실패는 해당 productId 만 failedProductIds 로 분리하고 앞선 성공 hit 는 보존한다
+ * (R6-L1: 현재 폼 호출자는 hits 만 소비 — 실패 품목도 miss 와 동일하게 판매가 fallback).
  */
 export async function getPriceMemories(
   partnerId: string,
@@ -703,37 +711,29 @@ export async function removeLine(slipId: string, lineId: string): Promise<void> 
 }
 
 /**
- * 전표 복사 — 기존 전표의 헤더 + 라인을 그대로 복사하여 신규 DRAFT 전표 생성.
- * BE 별도 endpoint 없이 클라이언트에서 createSlip 으로 동등 본문 POST.
+ * 전표 복사 — BE `POST /slips/{id}/duplicate` 1회 호출 (R6-H2 서버 복사 전환).
+ *
+ * 기존 FE 는 전개된 구성품 라인을 평면 본문으로 재-POST 해 세트 계보
+ * (setHead/parentSetModel)가 소실되고 구성품 배분가가 "복사 1클릭"마다 가격기억에
+ * 각인되는 결함이 있었다. 서버 복사 semantics: 헤더는 기존 FE 승계 범위와 동일,
+ * 전표일자=오늘 + 신규 채번 + DRAFT, 라인은 금액 권위값 verbatim + 계보 승계,
+ * 가격기억은 비구성품 라인만 기록, sourceOrderLineId 미승계.
+ *
+ * 요청 body 없음. 응답(201)은 기존 POST /slips 와 동일 스키마(`SlipDetailResponse`) —
+ * lines[].setHead / lines[].parentSetModel 포함으로 복사본 세트 표시 즉시 렌더 가능.
+ *
+ * 에러 코드:
+ * - 403 Forbidden — 생성 권한 없음
+ * - 404 Not Found — 원본 미존재/삭제
+ * - 409 Conflict  — OUTBOUND 당일 마감 초과
+ *
+ * @param sourceId 원본 전표 UUID (path param 전용, 화면 표시 금지)
  */
-export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
-  const body: CreateSlipRequest = {
-    slipType: source.slipType,
-    sourceWarehouseId: source.sourceWarehouseId ?? undefined,
-    destinationWarehouseId: source.destinationWarehouseId ?? undefined,
-    partnerId: source.partnerId ?? undefined,
-    partnerName: source.partnerName ?? undefined,
-    deliveryTag: source.deliveryTag ?? undefined,
-    memo: source.memo ?? undefined,
-    driverName: source.driverName ?? undefined,
-    driverPhone: source.driverPhone ?? undefined,
-    lines: source.lines.map((l) => {
-      // V12 이전 라인은 unitPriceWithVat 이 null 일 수 있다. 이때 unitPrice 는 공급단가이므로
-      // 곱셈/반올림하지 않고 원값 + priceVatInclusive=false 로 보내야 복사 전후 단가가 보존된다.
-      const hasVatInclusivePrice = l.unitPriceWithVat != null
-      return {
-        productId: l.productId,
-        productName: l.productName ?? undefined,
-        modelName: l.modelName ?? undefined,
-        specification: l.specification ?? undefined,
-        quantity: l.quantity,
-        unitPrice: hasVatInclusivePrice ? l.unitPriceWithVat! : l.unitPrice,
-        note: l.note ?? undefined,
-        priceVatInclusive: hasVatInclusivePrice,
-      }
-    }),
-  }
-  return createSlip(body)
+export async function duplicateSlip(sourceId: string): Promise<SlipDetail> {
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>(
+    `/slips/${encodeURIComponent(sourceId)}/duplicate`,
+  )
+  return res.data.data
 }
 
 /**

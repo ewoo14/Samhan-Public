@@ -74,7 +74,9 @@
   border-color: var(--action-brand);
   border-left-width: 4px;
   background: var(--surface-selected);
-  box-shadow: inset 0 0 0 1px var(--state-info-border);
+  /* R6-H4: --state-info-border(#BFDBFE) on --surface-selected(#EFF6FF)=1.31:1 (1.4.11 미달)
+     — LineRow.module.css .priceRefreshed 교정과 1:1 정렬(--action-brand #1E40AF, 8.02:1). */
+  box-shadow: inset 0 0 0 1px var(--action-brand);
 }
 
 /*

@@ -67,7 +67,8 @@ interface DraftLine {
    * legacy(단가 부가세포함 전환 이전, unitPriceWithVat=null) 라인의 원 공급단가 —
    * 편집 hydrate 시 박제. 사용자가 단가를 수정하지 않은 라인은 저장 시
    * priceVatInclusive=false + 이 원값으로 전송해 /1.1 재분리(약 9.1% 하락)와
-   * 가격기억 오염을 막는다(R4-F2, 전표 복사 duplicateSlip 과 동일 semantics).
+   * 가격기억 오염을 막는다(R4-F2 — 전표 복사는 R6-H2 부터 BE 서버 복사
+   * POST /slips/{id}/duplicate 가 동일 원칙을 라인 verbatim 승계로 보장).
    * 신규 라인/VAT포함 저장 라인은 null.
    */
   legacySupplyUnitPrice?: string | null
@@ -172,7 +173,8 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
     ? estimate.lines.map((line) => {
         // legacy(unitPriceWithVat=null) 라인의 unitPrice 는 공급단가다. 값은 그대로 노출하되
         // 원 공급단가를 legacySupplyUnitPrice 에 박제 — 저장 시 미수정 라인만
-        // priceVatInclusive=false 로 원값 전송(R4-F2, slip.ts duplicateSlip 과 동일 패턴).
+        // priceVatInclusive=false 로 원값 전송(R4-F2 — 전표 복사는 R6-H2 부터 BE 서버
+        // 복사가 동일 원칙 보장, FE 재조립 패턴은 제거됨).
         const hasVatInclusivePrice = line.unitPriceWithVat != null
         const canonicalUnitPrice = String(
           hasVatInclusivePrice ? line.unitPriceWithVat : line.unitPrice,
@@ -978,7 +980,8 @@ export function EstimateFormPage() {
     const apiLines: EstimateLineRequest[] = valid.map((l) => {
       // R4-F2: legacy(unitPriceWithVat=null) 라인의 단가는 공급단가다. 사용자가 단가를 수정하지
       // 않았으면(hydrate 원값 그대로) priceVatInclusive=false + 원 공급단가로 전송해 편집-저장 시
-      // /1.1 재분리(약 9.1% 하락)와 가격기억 오염을 막는다 — 전표 복사(duplicateSlip)와 동일 semantics.
+      // /1.1 재분리(약 9.1% 하락)와 가격기억 오염을 막는다 — 전표 복사는 R6-H2 부터
+      // BE 서버 복사(POST /slips/{id}/duplicate)가 동일 원칙을 보장한다.
       // 사용자가 수정한 값은 '단가(VAT포함)' 입력이므로 기존대로 true.
       const keepsLegacySupplyPrice =
         l.legacySupplyUnitPrice != null && l.legacyPriceUntouched === true
@@ -1305,8 +1308,9 @@ export function EstimateFormPage() {
           }
           return (
            <div key={line.uid}>
+            {/* R6-L2: role="row" 는 부모 table/rowgroup 없는 orphan(axe aria-required-parent
+                serious)이라 제거 — aria-describedby 는 전역 attribute 라 role 없이 유효. */}
             <div
-              role="row"
               aria-describedby={line.priceRefreshChanged ? priceChangedStatusId : undefined}
               style={{
                 display: 'grid',
@@ -1315,10 +1319,17 @@ export function EstimateFormPage() {
                 gap: 8,
                 padding: '6px 0',
                 alignItems: 'center',
-                borderBottom: isBundle ? 'none' : '1px solid #F3F4F6',
+                // R6-H4: 강조행 구분선 #F3F4F6 on --surface-selected(#EFF6FF)=1.01:1 —
+                // LineRow.module.css(.priceRefreshed border-bottom-color)와 동일하게
+                // 강조행 한정 --line-focus(#3B82F6, 3.38:1)로 상향. 기본 행은 기존 유지.
+                borderBottom: isBundle
+                  ? 'none'
+                  : `1px solid ${line.priceRefreshChanged ? 'var(--line-focus)' : '#F3F4F6'}`,
                 borderLeft: line.priceRefreshChanged ? '4px solid var(--action-brand)' : '4px solid transparent',
                 background: line.priceRefreshChanged ? 'var(--surface-selected)' : undefined,
-                boxShadow: line.priceRefreshChanged ? 'inset 0 0 0 1px var(--state-info-border)' : undefined,
+                // R6-H4: inset 링 --state-info-border(#BFDBFE) on #EFF6FF=1.31:1 —
+                // LineRow.module.css:202 교정과 1:1 정렬(--action-brand #1E40AF, 8.02:1).
+                boxShadow: line.priceRefreshChanged ? 'inset 0 0 0 1px var(--action-brand)' : undefined,
               }}
               data-testid={`estimate-form-line-${i}`}
               data-price-source={line.priceSource ?? ''}

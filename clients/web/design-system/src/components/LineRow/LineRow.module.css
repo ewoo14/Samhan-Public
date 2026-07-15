@@ -222,6 +222,14 @@
   background: var(--surface-selected-hover);
 }
 
+/*
+ * R6-L5: .priceRefreshed(동일 특이도·후순위 선언)가 .dragging(:47)의 --elev-popover 를
+ * 덮어 변경행 드래그 시 부양 그림자가 소실됨 — 결합 selector 로 inset 링 + 부양 그림자 병기.
+ */
+.lineRow.priceRefreshed.dragging {
+  box-shadow: inset 0 0 0 1px var(--action-brand), var(--elev-popover);
+}
+
 .priceInputWrap {
   display: inline-flex;
   flex-direction: column;

@@ -3217,20 +3217,30 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   }
 
   // 거래처+품목 최근단가 — generic GET /slips/{id} matcher 보다 먼저 처리한다.
-  // updatedAt 은 audit flush 시각이 아니라 원 전표/견적 저장 시각(remembered_at)이다.
+  // updatedAt 은 audit flush 시각이 아니라 원 전표/견적 저장 시각(remembered_at)이며,
+  // 실 wire 는 LocalDateTime(오프셋 없음) 직렬화다 — mock 값 형식도 BE parity(R6-M3).
   const priceMemoryKey = (partnerId: string, productId: string) => `${partnerId}:${productId}`
-  const priceMemoryRows = new Map([
-    ['11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'],
-  ].map(([partnerId]) => [
-    priceMemoryKey(partnerId!, MOCK_PRODUCT_AJ040_ID),
+  // R6-M3 도달성: 같은 사업체(엘에이시스템에어)가 mock 표면별로 다른 UUID 를 쓴다 —
+  // 견적 상세(est-001 partnerId)와 거래처 검색(MOCK_ADMIN_PARTNERS id, 전표/신규견적 폼의
+  // PartnerAutocomplete 경로) 양쪽에서 기억행이 도달 가능해야 폼 시연이 성립한다.
+  const PRICE_MEMORY_PARTNER_IDS = [
+    '11111111-1111-4111-8111-111111111111', // est-001/buildMockEstimateDetail partnerId
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // MOCK_ADMIN_PARTNERS 엘에이시스템에어 id
+  ]
+  const priceMemoryRows = new Map(PRICE_MEMORY_PARTNER_IDS.map((partnerId) => [
+    priceMemoryKey(partnerId, MOCK_PRODUCT_AJ040_ID),
     {
       productId: MOCK_PRODUCT_AJ040_ID,
       unitPrice: 2035000,
       source: 'LINE_SAVE',
-      updatedAt: '2026-05-04T10:30:00+09:00',
+      updatedAt: '2026-05-04T10:30:00',
     },
   ]))
-  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  // R6-M3: 실 BE 는 UUID 타입 바인딩(Jackson/Spring UUID.fromString)이라 version/variant 를
+  // 검증하지 않는다 — RFC-4122 version 강제([1-5]/[89ab])는 실 wire 가 200/204 로 받는
+  // version-less id(MOCK_ADMIN_PARTNERS 전원)를 mock 만 400 으로 거절해 조용한 CATALOG
+  // 폴백을 만든다. Java 관대 파싱과 동일한 canonical hex 8-4-4-4-12 만 검증한다.
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (method === 'POST' && /\/slips\/price-memory\/bulk$/.test(url)) {
     const body = parseMockBody(config)
     const partnerId = body['partnerId']
@@ -4690,6 +4700,50 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       dispatcherFullName: null,
       inspectorFullName: null,
       acceptedByFullName: null,
+      lines: SAMPLE_LINES,
+    })
+  }
+
+  // POST /slips/{id}/duplicate — R6-H2 전표 복사 서버 endpoint mock.
+  // BE 계약: body 없음, 201 + ApiResponse<SlipDetailResponse>(POST /slips 응답과 동일 스키마,
+  // lines[].setHead/parentSetModel 포함). 서버 semantics 미러 — 헤더 승계 + 전표일자=오늘 +
+  // 신규 채번 + DRAFT, 라인은 원본 상세(GET /slips/{id} mock 과 동일 소스)를 verbatim 승계.
+  // 403(생성 권한)/409(OUTBOUND 당일 마감 초과)는 mock 시간 의존 비결정성을 피해
+  // 실 BE 검증 대상으로 남기고 404 만 미러한다.
+  const slipDuplicateMatch = url.match(/\/slips\/([^/?]+)\/duplicate$/)
+  if (method === 'POST' && slipDuplicateMatch) {
+    const sourceId = decodeURIComponent(slipDuplicateMatch[1]!)
+    const source = MOCK_SLIPS.find((s) => s.id === sourceId) as Record<string, unknown> | undefined
+    if (!source || source['isDeleted'] === true) {
+      return mockError(404, 'NOT_FOUND', '원본 전표를 찾을 수 없습니다.')
+    }
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    return envelope({
+      ...source,
+      id: `dup-slip-${Date.now()}`,
+      // 전표번호 슬래시 형식 yyyy/MM/dd-N (feedback_slip_order_number_format) — 신규 채번.
+      slipNo: `${yyyy}/${mm}/${dd}-99`,
+      slipDate: `${yyyy}-${mm}-${dd}`,
+      seqNo: 99,
+      status: 'DRAFT',
+      acceptedBy: null,
+      acceptedAt: null,
+      completedAt: null,
+      confirmedAt: null,
+      updatedAt: now.toISOString(),
+      version: 0,
+      printed: false,
+      dispatcher: null,
+      inspector: null,
+      dispatcherFullName: null,
+      inspectorFullName: null,
+      acceptedByFullName: null,
+      isDeleted: false,
+      deletedAt: null,
+      deletedByName: null,
       lines: SAMPLE_LINES,
     })
   }

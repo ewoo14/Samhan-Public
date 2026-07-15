@@ -546,6 +546,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   }
 
   const refreshAutoPricesForPartner = async (partnerId: string) => {
+    // R6-M5: 재조회 시작 시 단건 안내를 클리어(견적 refreshAutoPricesForPartner 669행과 동일).
+    // 미클리어 시 배너 비활성 폴백이 stale "라인 N … 적용" 문구를 재낭독한다(aria-live 거짓 고지).
+    setPriceLookupAnnouncement('')
     const candidates = lines.filter(
       (line) => line.productId && isAutoPriceSource(line.priceSource),
     )

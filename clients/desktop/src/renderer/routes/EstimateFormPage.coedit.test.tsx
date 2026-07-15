@@ -720,7 +720,10 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
         ...makeEstimate().lines[0],
         unitPriceWithVat: null,
         // BE BigDecimal JSON runtime 은 number — string DTO fixture 로 결함을 우회하지 않는다.
-        unitPrice: '10000',
+        // (R6-M4: R5 커밋이 주석만 남기고 string 을 유지해 가짜 회귀 테스트였던 것을 교정 —
+        //  runtime number 라야 hydrate String() 정규화가 무력화되면 저장 body 의
+        //  unitPrice: '10000' 문자열 단언이 실제 RED 가 된다.)
+        unitPrice: 10000 as unknown as string,
       }],
     }))
     mocks.createDocCoeditProvider.mockResolvedValue(provider)
@@ -747,7 +750,8 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       lines: [{
         ...makeEstimate().lines[0],
         unitPriceWithVat: null,
-        unitPrice: '10000',
+        // R6-M4 계열 sweep: legacy fixture 도 BE BigDecimal JSON runtime(number)과 동일 형상.
+        unitPrice: 10000 as unknown as string,
       }],
     }))
     mocks.createDocCoeditProvider.mockResolvedValue(provider)

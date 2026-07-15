@@ -10,43 +10,7 @@ const apiClientMock = vi.hoisted(() => ({
 
 vi.mock('./client', () => ({ apiClient: apiClientMock }))
 
-import { duplicateSlip, getPriceMemories, type SlipDetail } from './slip'
-
-function sourceWithPrice(unitPriceWithVat: string | null): SlipDetail {
-  return {
-    id: 'slip-source',
-    slipType: 'OUTBOUND',
-    slipNo: '2099/01/01-1',
-    slipDate: '2099-01-01',
-    seqNo: 1,
-    status: 'DRAFT',
-    partnerId: '11111111-1111-1111-1111-111111111111',
-    partnerName: '거래처',
-    sourceWarehouseId: 'warehouse-1',
-    destinationWarehouseId: null,
-    deliveryTag: null,
-    requesterId: null,
-    acceptedBy: null,
-    acceptedAt: null,
-    completedAt: null,
-    confirmedAt: null,
-    updatedAt: '2099-01-01T09:00:00',
-    version: 0,
-    memo: null,
-    lines: [{
-      id: 'line-1',
-      productId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-      productName: '품목',
-      modelName: 'MODEL-1',
-      specification: null,
-      quantity: 1,
-      unitPrice: '100000',
-      unitPriceWithVat,
-      lineTotal: '100000',
-      note: null,
-    }],
-  }
-}
+import { duplicateSlip, getPriceMemories } from './slip'
 
 describe('slip price contract', () => {
   beforeEach(() => {
@@ -54,26 +18,31 @@ describe('slip price contract', () => {
     apiClientMock.post.mockResolvedValue({ data: { data: {} } })
   })
 
-  it('legacy null VAT-inclusive price copy preserves the supply unit price exactly', async () => {
-    await duplicateSlip(sourceWithPrice(null))
+  // R6-H2: 전표 복사는 BE POST /slips/{id}/duplicate 서버 복사로 전환 — FE 가 전개된
+  // 구성품 라인을 평면 본문으로 재-POST 하면 세트 계보(setHead/parentSetModel)가 소실되고
+  // 구성품 배분가가 복사 1클릭마다 가격기억에 각인된다. 구 계약(legacy VAT 분기 재조립)
+  // 테스트 2건은 서버 복사 계약 테스트로 대체.
+  it('duplicates through the BE endpoint without assembling a flat create body', async () => {
+    const created = {
+      id: 'slip-copy',
+      slipType: 'OUTBOUND',
+      status: 'DRAFT',
+      lines: [{ id: 'line-copy-1', setHead: true, parentSetModel: 'SET-HM2WAY' }],
+    }
+    apiClientMock.post.mockResolvedValueOnce({ data: { data: created } })
 
-    expect(apiClientMock.post).toHaveBeenCalledWith('/slips', expect.objectContaining({
-      lines: [expect.objectContaining({
-        unitPrice: '100000',
-        priceVatInclusive: false,
-      })],
-    }))
+    await expect(duplicateSlip('slip-source')).resolves.toBe(created)
+
+    expect(apiClientMock.post).toHaveBeenCalledTimes(1)
+    expect(apiClientMock.post).toHaveBeenCalledWith('/slips/slip-source/duplicate')
+    // 구 결함 경로 회귀 가드 — 평면 POST /slips 재생성 호출이 없어야 한다.
+    expect(apiClientMock.post).not.toHaveBeenCalledWith('/slips', expect.anything())
   })
 
-  it('copy uses the stored VAT-inclusive price when present', async () => {
-    await duplicateSlip(sourceWithPrice('110000'))
+  it('duplicate escapes the source id as a path param', async () => {
+    await duplicateSlip('slip/../escape')
 
-    expect(apiClientMock.post).toHaveBeenCalledWith('/slips', expect.objectContaining({
-      lines: [expect.objectContaining({
-        unitPrice: '110000',
-        priceVatInclusive: true,
-      })],
-    }))
+    expect(apiClientMock.post).toHaveBeenCalledWith('/slips/slip%2F..%2Fescape/duplicate')
   })
 
   it('bulk lookup posts unique productIds and returns partial hits unchanged', async () => {

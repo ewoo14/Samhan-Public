@@ -422,6 +422,37 @@ describe('SlipFormPage price memory autofill', () => {
     expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
   })
 
+  it('clears the stale single-lookup announcement when a partner switch refresh starts', async () => {
+    // R6-M5: slip 폼만 재조회 시작 시 단건 안내를 클리어하지 않아(견적 669행과 비대칭)
+    // 재적용 결과가 동일 단가(priceRefreshChanged=false → 배너 비활성)일 때 region 이
+    // "라인 1 거래처 최근단가 적용" stale 문구로 폴백 — SR 이 이제는 거짓인 문장을 재낭독했다.
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 999000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
+      productId: harness.productA.id,
+      unitPrice: 999000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }], failedProductIds: [] })
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('999000'))
+    const status = screen.getByTestId('slip-price-refresh-banner')
+    expect(status.textContent).toBe('라인 1 거래처 최근단가 적용')
+
+    await selectPartnerB()
+
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
+    await waitFor(() => expect(unitPrice().value).toBe('999000'))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+    // 동일 단가 재적용이라 배너는 비활성 — stale 단건 문구로 폴백하지 않고 빈 텍스트여야 한다.
+    expect(status.textContent).toBe('')
+  })
+
   it('partner change uses one bulk call and maps omitted products to catalog miss', async () => {
     harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
       productId: harness.productA.id,
