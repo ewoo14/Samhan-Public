@@ -27,15 +27,22 @@
 
 - partner-service summary 의 `partnerId` 를 desktop `PartnerOption.id` 로 전달하되 화면에는 표시하지 않는다.
 - 전표 create payload 에 `partnerId` 를 포함한다.
-- 품목 선택 시 `(partnerId, productId)` 기억단가를 조회하고, hit 시 기억값, miss 시 catalog 정가를 채운다.
+- 품목 선택 시 `(partnerId, productId)` 기억단가를 조회하고, hit 시 기억값, miss 시 catalog
+  판매가(`product.sellingPrice`)를 채운다(R4 D-R4-1 로 '정가' 표기 폐지).
 - `priceSource` 상태(`REMEMBERED`/`CATALOG`/`USER`)로 사용자 override 와 자동채움 값을 구분한다.
 - 거래처 변경 시 자동채움 라인만 새 거래처 기준으로 재조회하고, 사용자 override 라인은 보존한다.
 - 기억단가 hit 라인은 단가 셀에 `role="note"`의 `거래처 최근단가` 마커와 원 문서 저장일 tooltip을
-  표시한다. miss는 `정가`로 명시하고 input `aria-describedby`, `aria-live="polite"`를 연결한다.
+  표시한다. miss는 `판매가`로 명시하고(R4 D-R4-1 로 `정가`에서 개칭) input `aria-describedby`를
+  연결한다. 라인 칩의 `aria-live` 는 R4-D2 로 제거 — 비동기 재적용 고지는 상시 마운트 배너
+  (`role="status"`, 텍스트만 토글 — R4-D9) 1곳이 담당한다.
+- 거래처 미선택 시 CATALOG 마커 설명은 거래처를 단정하지 않는 카피(`판매가를 적용했습니다`)로
+  분기하고(R4-D4a), 거래처 해제 시 단가값·`priceSource` 는 유지하되 REMEMBERED 마커(저장일 포함)만
+  해제한다(D-R4-4).
 - 거래처 변경으로 실제 단가가 바뀐 행을 강조하고 `거래처 변경으로 최근단가 재적용 · 변경된 행을
   확인해 주세요.` 상태 배너를 표시한다.
 - 거래처 변경 N개 라인은 `POST /slips/price-memory/bulk` 1회로 조회하고 hit-only 응답에서 생략된
-  productId를 정가 miss로 매핑한다. 모델 blur/단일 품목 선택은 호환 단건 GET을 유지한다.
+  productId를 판매가 miss로 매핑한다. 고유 품목 101개 이상은 BE 계약 상한(100)에 맞춰 100개 단위
+  chunk 순차 호출로 합산한다(R4-F5). 모델 blur/단일 품목 선택은 호환 단건 GET을 유지한다.
 - 견적 모델명 lookup 은 BE wire 계약(`id`, `name`)을 명시 변환해 `productId`, `productName` 으로 매핑한다.
 
 ## 검증 포인트
@@ -217,3 +224,175 @@ PM의 최종 genuine `--rerun-tasks --no-build-cache` 전체 회귀는 별도 �
 구매 PUT IT 첫 선별 실행은 create 응답 token 대신 DB 최신 `modifiedAt`이 필요한 기존 낙관적 잠금
 fixture 계약 때문에 1회 실패했다. 기존 `SlipUpdateIT`와 동일하게 최신 token을 다시 읽도록 테스트를
 교정한 뒤 해당 실 PostgreSQL IT가 통과했다. production 변경이나 production 결함은 아니었다.
+
+## R4 — FABLE5 1차 적대검증 (캐논 4단계) · `e7a2ff0d6` · [issuecomment-4980286625](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980286625)
+
+**27건 (BLOCKING 0 · HIGH 4 · MEDIUM 9 · LOW 14).** 5차원(BE/FE/Design/DevOps/QA) 전부 실행,
+R3(CODEX SOL 5.6) 30건 fix 자체를 적대 대상으로 재검했다. fix 는 캐논대로 라운드 모델(FABLE5)이
+7배치로 수행했다 — 배치별 처리 건수: BE 2 · DevOps 4 · FE 6 · Design 6 · 통합정리 3 · sweep 2 ·
+교차배치 1.
+
+| 차원 | BLOCKING | HIGH | MEDIUM | LOW | 계 |
+|---|---|---|---|---|---|
+| BE | 0 | 0 | 0 | 5 | 5 |
+| FE | 0 | **2** | 2 | 2 | 6 |
+| Design | 0 | **1** | 3 | 5 | 9 |
+| DevOps | 0 | 0 | 3 | 1 | 4 |
+| QA | 0 | **1** | 1 | 1 | 3 |
+
+### HIGH 4건과 fix
+
+- **R4-F1 (HIGH·데이터오염)** — 견적에서 모델명으로 품목을 교체하면 이전 품목의 단가·`REMEMBERED`
+  마커·저장일이 새 품목으로 그대로 승계됐다. 견적의 자동채움 판정이 R3 전표 fix semantics
+  (`CATALOG`/`REMEMBERED` 라인도 재채움)를 누락한 전표/견적 비대칭이 원인 — 마커가 "이 거래처의
+  신품목 최근단가"를 거짓 주장하고, 저장 시 `memory(거래처, 신품목)` 이 오염돼 이후 전 문서로
+  전파된다. fix: 판정을 `clients/desktop/src/renderer/utils/priceSourceRules.ts` 공유 헬퍼
+  (`shouldAutoFillPrice`/`isAutoPriceSource`)로 추출해 `SlipFormPage`/`EstimateFormPage` 가 동일
+  함수를 쓰도록 비대칭 재발을 **구조적으로 차단**했다.
+- **R4-F2 (HIGH·가격왜곡)** — legacy 견적(라인 `unitPriceWithVat` NULL) 편집-저장 시 공급단가가
+  VAT 포함 필드로 hydrate 된 채 `priceVatInclusive:true` 로 재전송돼 **9.1% 하락이 영구화**되고,
+  #809 가 그 하락값을 가격기억으로 upsert 해 거래처의 전 신규 문서로 전파했다. **R4 라이브 DB 실측:
+  `estimate_lines` 1927/1927 = 100% legacy** — 전수 노출. R3 CH-1 이 동일 family 를 전표 복사
+  (`duplicateSlip`)에서만 고치고 견적 편집을 놓친 **계열 sweep 누락**([결함 fix 계열 전수 sweep]
+  위반, pre-existing 이나 오염 전파 경로는 #809 신설이라 범위 내). fix: hydrate 시 원 공급단가를
+  `legacySupplyUnitPrice` 로 박제하고, 저장 시 사용자가 단가를 수정하지 않은 라인
+  (`unitPrice === legacySupplyUnitPrice`)만 `priceVatInclusive:false` 로 전송한다.
+- **R4-D1 (HIGH·a11y)** — 강조행 배경 `--surface-selected`(#EFF6FF) 위 `#6B7280` 라벨 =
+  **4.44:1 로 AA(4.5:1) 미달**. 흰 배경에선 4.83:1 통과라 **#809 의 강조행이 새로 유발한 회귀**
+  (R3 대비 확인 2쌍에 미포함 — 리뷰어가 R3 확정값 재현으로 산식 신뢰를 확보한 뒤 계산, CSS var
+  fallback 함정(#776)도 반영해 토큰 실값 기준). fix: 강조행 한정 `--ink-secondary`(실값 #5C6773)
+  상향 = **5.30:1 PASS** — `global.css` 모바일 카드 라벨 + `EstimateFormPage` 행번호 inline 의
+  2지점(계열 sweep 결과 미달은 이 2지점뿐).
+- **R4-Q1 (HIGH·QA인프라)** — real-qa 렌더러가 **stale design-system dist**(로컬 빌드 07-08,
+  gitignore 산물)를 서빙해 #809 FE 변경분(마커·강조)이 화면에 통째로 부재했다. 마커 단언이 없던
+  구 스펙이었다면 그대로 false-green. 라운드 내 해결: `vite.809-realqa.config.ts` 신설 —
+  design-system 을 **브랜치 소스로 alias**(+ react dedupe)해 dist 재빌드(동시 리뷰 에이전트와의
+  빌드 경합) 없이 현 브랜치 코드를 서빙. R2 라운드의 "dist 에 마커 문자열 부재 — 재구성 불가"
+  미제도 PC 간 dist 차이로 설명·해소됐다.
+
+### 🔴 개발책임자 결정 4건 — [issuecomment-4980376041](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980376041)
+
+4건 모두 PM 권고안 수렴. 결정 전문은 PR 기록과 `migration/decisions/DECISIONS.md` R4 절.
+
+| ID | 결정 | 반영 |
+|---|---|---|
+| **D-R4-1** | 마커 용어 `정가` → **`판매가`** + spec 38-39 정정 | 자동채움 실체 = `product.sellingPrice` = 제품 등록 화면 라벨 "판매가". 기존 용어체계의 '정가'는 출고가 계열 별칭(estimate-app `lib/code.js` 동의어 매핑 실재)이라 오도. spec 자체가 기존 결정과 상충한 사례 → spec 정정 처리 |
+| **D-R4-2** | 최신성 권위 = **`remembered_at` 캡처 시각 유지** | 코드변경 0. 잔존 창은 아래 정직 한계 ② 에 기록 |
+| **D-R4-3** | 서브-원 드리프트 **수용 + 문서화** | 코드변경 0. 아래 정직 한계 ③ 에 기록 |
+| **D-R4-4** | 거래처 해제 시 **단가 유지 + 마커만 해제** | 단가를 판매가로 되돌리지 않음. 도달성 한계는 아래 정직 한계 ⑦ |
+
+### MEDIUM 9 · LOW 14 처리 요약
+
+| ID | 급 | 요지 | 처리 |
+|---|---|---|---|
+| R4-F3 | M | 견적 lookup 결과가 과잉 staleness 게이트로 통째 폐기 — 단가 mid-flight 입력/거래처 변경 시 productId 소실·저장 차단(사유 무표시) | fix — 품목 필드는 uid+modelName+requestId 로만 적용, 가격 3필드(`unitPrice`/`priceSource`/`priceMemoryUpdatedAt`)만 게이트 |
+| R4-F4 | M | 거래처 변경 bulk 재조회 in-flight 중 저장 가능 → 구 거래처 단가가 신 거래처 memory 로 교차 오염 | fix — `lookupLoading` 기반 busy 를 `canSubmit` 게이트에 포함(전표/견적) |
+| R4-D2 | M | 마커 `aria-live` 가 라인마다 부착 → N행 flip 시 낭독 큐 적체(spec 은 배너 1곳만 요구한 spec 초과 구현) | fix — 칩 `aria-live` 전부 제거, 전역 고지=배너 1곳 + `aria-describedby` 유지 |
+| R4-D3 | M | `정가` 용어가 기존 체계와 불일치 | → **D-R4-1** |
+| R4-D4 | M | (a) 거래처 미선택인데 "이 거래처에…" 단정 카피 (b) 거래처 해제 시 마커·기억단가 잔존 | (a) fix — 미선택 시 `판매가를 적용했습니다` 분기 (b) → **D-R4-4** 마커만 해제 |
+| R4-O1 | M | R1 fix 커밋에 `ci.yml` 전면 영문화 + 제도 기억 주석 삭제가 미신고 혼입 | fix — 한국어·주석 복원(기능 diff 0 실증), allowlist 변경만 잔류 |
+| R4-O2 | M | 신규 운영 env 9종(`SAMHAN_PRICE_MEMORY_*` 7 + `SAMHAN_AUTH_*_TIMEOUT_MS` 2)이 env-template 미동기화 — 런북이 안내하는 튜닝 노브가 소스 밖 어디에도 없음 | fix — `infrastructure/env-templates/slip-service.env` 등재 + 런북 상호참조 |
+| R4-O3 | M | upsert 실패 경보가 dev(Prometheus rule) 전용 — prod 는 CloudWatch 일원화(Phase 11 기결정)인데 등가물·이식 계획 부재 → prod 에서 fail-soft+health UP 특성상 무한정 미감지 가능 | fix — 런북에 "dev 로컬 스택 전용" 실효 경계 명시 + `infrastructure/terraform/CUTOVER.md` **M-19**(awslogs 배선 + Logs metric filter 2건 + alarm) 이식 절차 신설 |
+| R4-Q2 | M | dev 시드 `TEST-BUNDLE-SET-01` 내부 불정합으로 이 세트는 저장 자체 불가 | 🔶 범위 외(아래 절) — `QA797-SET-01` 로 우회 실증 |
+| R4-B1 | L | `priceMemoryExecutor` 가 최초 `Executor` 빈이 되며 Boot `applicationTaskExecutor` 자동구성 back-off — 향후 `@Async` 도입 시 무관 작업이 가격기억 전용 4스레드 AbortPolicy 풀을 조용히 점유하는 트랩 | fix — `applicationTaskExecutor`/`taskExecutor` 를 auto-config 동형(`@Lazy` + `ThreadPoolTaskExecutorBuilder`)으로 명시 복원 + `PartnerProductPriceMemoryAsyncConfigTest` 신설 |
+| R4-B2 | L | 다중행 upsert 가 문서 라인 순서로 행 잠금 — 교차 순서 동시 flush 시 PostgreSQL deadlock → fail-soft 배치 통째 유실 | fix — dedupe 후 `(partnerId, productId)` 전역 정렬(`PAIR_LOCK_ORDER`)로 구조적 소멸 + 단위테스트 2건 |
+| R4-B3 | L | `remembered_at` 캡처 시각 vs 실제 커밋 순서 역전 창 | → **D-R4-2**(코드 0) |
+| R4-B4 | L | 서버 시계 역행 시 recency guard 가 조용히 skip | 수용+기록 — 정직 한계 ④ |
+| R4-B5 | L | create(VAT포함)→직접 PUT(공급단가) 교차 경로 서브-원 드리프트 | → **D-R4-3**(코드 0) |
+| R4-D5 | L | 기억 저장일이 hover `title` 전용 | 수용+기록 — 정직 한계 ⑤ |
+| R4-D6 | L | 단가 input 22px 축소가 칩 없는 행까지 일괄 적용 — 동행 28px input 과 상시 높이 불일치 | fix — `:has(.priceMemoryNote)` 조건부화 |
+| R4-D7 | L | 마커 칩 font-size 10px/11px 하드코딩(DS 스케일 이탈) | fix — `--badge-channel-font-size-sm` 토큰 인용(LineRow 칩 + desktop 강조 칩) |
+| R4-D8 | L | 강조행 시각이 기존 선택행과 유사 | 수용+기록 — 정직 한계 ⑥ |
+| R4-D9 | L | 배너 live region 이 내용과 함께 조건부 마운트 — 일부 SR 미낭독 | fix — 빈 `role="status"` 상시 렌더 + 텍스트만 토글(전표/견적) |
+| R4-F5 | L | 고유 품목 101개 이상이면 FE bulk 가 throw → catch 에서 전 라인이 조용히 판매가(CATALOG) 강등 | fix — `getPriceMemories` 100개 단위 chunk 순차 합산 |
+| R4-F6 | L | 자동채움 provider write 의 doc-sync 반영이 pending 분류를 USER 로 덮어 마커 소멸 에지 | fix — `CollaborativeSlipInput` 에 `onDocSyncValueChange` 분리(실입력 부수효과와 격리) |
+| R4-O4 | L | `slip.config.*` 가 어느 CI allowlist 에도 없어 `HeaderAuthenticationFilterTest` 영구 미실행(레포 concrete 182 vs CI 실행 181 전수 대조로 특정한 pre-existing) | fix — `ci.yml` slip-units 필터 등재(+ R4-B1 신규 테스트용 `slip.price.config.*` 도 등재) |
+| R4-Q3 | L | 견적 쪽 거래처 변경 bulk/배너·miss 마커가 라이브 스펙 미커버(전표로만 실증) | fix — 라이브 스펙 시나리오 08~10 신설(아래 라이브 QA) |
+
+적대 반증(무결 확인)도 다수 — `localAutoPriceWritesRef` "같은 값 재입력 USER 승격 누락" 성립 불가,
+`set_config` 동일 커넥션(psql `FOR UPDATE` 12초 잠금 반증 실험), dedup 우회 진입로 0, recency guard
+`<=` 방향 정합, Micrometer `_total_total` 사실무근 등. 전문은 R4 리뷰 게시분.
+
+### R4 fix 검증 실측
+
+| 대상 | 결과 |
+|---|---|
+| slip-service | suites=183 · **tests=1269 · failures=0 · errors=0 · skipped=0** |
+| partner-service | suites=31 · **tests=314 · failures=0 · errors=0 · skipped=0** |
+| design-system | **45 tests · 0 fail** |
+| clients/desktop | typecheck exit 0 · vitest **740 tests · 0 fail** |
+
+PM 독립 genuine 실행(`--rerun-tasks --no-build-cache`). 문서 배치가 slip/partner 수치를
+`build/test-results` XML 재집계로 교차확인했다(2026-07-15 22:13/22:17 산출물, 상기 수치와 일치).
+desktop/design-system 카운트는 vitest 결과가 파일로 남지 않아 PM 실측 보고 수치를 기록한다.
+
+### R4 라이브 QA (Docker 실서버 · mock OFF · `:8080` · 실 GUI)
+
+- 이 PC 의 slip-service 컨테이너가 07-11 빌드(V58 미적용·테이블 부재) stale 이어서 브랜치 코드로
+  재빌드·재배포 후 실측했다(V58 checksum `1743979716`, `remembered_at NOT NULL`, unique 제약 확인).
+- **pre-fix(적대검증이 검증한 대상): 스펙 7 시나리오 7/7 PASS · 실캡처 14장
+  `docs/qa/809-partner-product-price-memory/r4/`** (`e7a2ff0d6` 에 커밋). 스펙은 R3 fix 신규 UI
+  미단언 3항목을 메워 **단언 +17 강화 · 약화 0**(R3 가 적발한 false-green 패턴 부활 0).
+- **post-fix: 시나리오 08(R4-F4 busy/저장차단 + R4-D9 상시 마운트)·09(R4-F1 품목 교체 무승계)·
+  10(R4-D4a 미선택 카피 + R4-D2) 3건 신설 → 10/10 PASS · 실캡처 23장 `r4-postfix/`**
+  (Playwright `.last-run.json` = passed 실측).
+
+## 정직 한계 (R4 확정 — 알려진 경계와 수용 근거)
+
+1. **의도된 trade-off(기존, R3 채택)**: 가격기억 flush 는 **bounded async** — 저장 직후 짧은
+   창에서 이전값/miss 를 볼 수 있고(정상 시 수 ms, 과부하 시 queue 대기만큼), 커밋 직후 프로세스
+   종료 시 해당 작업은 유실될 수 있다(runbook 의 원 라인 기반 backfill 로 복구). 원 전표/견적
+   저장의 fail-soft 가 우선이다. FE 는 서버 결과를 그대로 표시하며 자동재시도는 없다.
+2. **D-R4-2 잔존 창**: `remembered_at` 은 원 트랜잭션 커밋 **前** 애플리케이션 캡처 시각이라 실제
+   커밋 순서와 **ms~수백ms 창에서 역전될 수 있다**. flush 실행 순서 역전은 실 PostgreSQL IT
+   `afterCommitExecutionInversion_keepsLaterLogicalSave` 가 방어를 실증했고, 캡처-커밋 역전이
+   나더라도 두 값 모두 사용자가 실제 입력한 단가라(자동채움은 제안값) 실질 피해는 확인된 바
+   없다. **커밋순서 권위(`clock_timestamp()`/시퀀스)는 미채택** — 동시저장 빈도가 문제되면 재검토.
+3. **D-R4-3 서브-원 드리프트**: VAT포함 100,000 생성 → 라인 공급 90,909 파생 → 공급단가 UI
+   무변경 저장 → 기억값 **99,999.90** 이동(-0.10). **1회 수렴·비복리**(R3 CH-1 의 9.1% 복리와
+   다름)이고 11의 배수 단가에선 발생하지 않는다. 두 저장 basis(VAT포함/공급) 병존의 내재적 반올림
+   한계로 **수용**.
+4. **R4-B4 시계 역행**: 서버 시계가 뒤로 가면 recency guard 가 역행 폭만큼 갱신을 **조용히 skip**
+   한다(statement 자체는 성공이라 success 카운터만 증가·알람 침묵). 수용 근거: 단일 컨테이너 ·
+   `Clock.system(Asia/Seoul)`(`TimeConfig.java`) · KST 는 DST 없음 · 정상 NTP 는 step-back 이 아닌
+   slew 보정.
+5. **R4-D5**: 기억 저장일이 hover `title` 전용이라 키보드/터치의 시각 사용자는 저장일을 확인할 수
+   없다. 수용 근거: 핵심 의미('거래처 전용 과거가')는 마커 라벨 텍스트가 전달하고, 스크린리더는
+   `aria-describedby` 로 청취 가능하다.
+6. **R4-D8**: 거래처 변경 강조행이 기존 선택행과 시각적으로 유사하다(둘 다 `--surface-selected`).
+   수용 근거: 색상 단독 의존이 아님 — 배너 + 4px 좌측 보더 + 마커 칩 텍스트가 병행 전달한다.
+7. 🔴 **D-R4-4 는 현재 라이브 GUI 로 도달 불가**: `PartnerAutocomplete`(AsyncAutocomplete)에
+   **거래처 해제 어포던스가 없다** — clear 버튼 부재, 빈 입력 blur 는 onChange 미호출("더미
+   onChange 금지" 게이트), free-text 불일치는 기존 선택 유지. 따라서 전표
+   `handlePartnerAutocompleteChange(null)`/견적 `handlePartnerOptionChange(null)` 분기는 현재
+   UI 로는 도달 불가한 **방어 코드**다. FE 단위테스트 2건이 커버한다(`SlipFormPage.test.tsx` 해제
+   시 단가 유지·마커 해제 / `LineRow.test.tsx` `partnerSelected=false` 시 REMEMBERED 마커 미렌더).
+   **거래처 해제 UI 도입 여부는 별도 결정 사항**이다.
+8. **R4-F4 라이브 QA 검증 방법론**: 재조회 in-flight 창이 로컬에선 수십 ms 라 실측이 불가능해,
+   견적 시나리오 1건에 한해 `page.route` 로 **실서버 실응답을 그대로 전달하면서 2.5s 지연만
+   주입**했다(응답 내용 변조/합성 없음 — 네트워크 지연 재현). 스펙 주석에 명시돼 있다.
+9. **실 브라우저 스크린리더 수동 QA 미수행** — a11y 항목(R4-D1/D2/D9)의 검증은 자동테스트 +
+   코드/토큰 실값 대비 계산 수준까지다.
+10. **R2 라이브 QA "7/7 PASS" 는 superseded** — R3 QA 가 당시 스펙 자체의 false-green(견적 저장
+    500 이어도 통과 가능·임의 견적 조회·존재만 단언)을 적발해 `r2/qa-report.md` 상단에 정정
+    이력을 남겼다. `r2/` 는 실행 이력으로 보존한다. R4 경화 스펙 재실행이 최종 증거다.
+11. **`r4/`(pre-fix 14장)와 `r4-postfix/`(post-fix 23장)의 구분**: `r4/` 는 R4 적대검증이
+    **검증한 대상(fix 이전 `e7a2ff0d6`)** 의 증거라 보존한다 — 캡처에 마커가 `정가` 로 보이는
+    것이 정상이다(D-R4-1 fix 이전 캡처).
+
+## 범위 외로 남긴 것 (후속 후보 — 본 PR 미접촉, 정직 명시)
+
+- **R4-Q2**: dev 시드 `TEST-BUNDLE-SET-01` 내부 불정합 — `bundle_component.component_product_code`
+  에 product_code 대신 **model명**이 시드돼 구성품 resolve 실패 → `POST /slips` 404 → **이 세트는
+  어떤 화면에서도 저장 불가**. dev seeder(product-service) 소관이라 #809 범위 밖. 본 라운드는
+  `QA797-SET-01` 로 우회해 세트 경로를 실증했다.
+- **`nightly-slip-it.yml` slip-it-public 그룹의 유령 패키지**: `--tests` 필터가 참조하는
+  `slip.web.public_.*`/`slip.web.openapi.*` 는 현 트리에 부재한다(패키지 선언 grep 0건 실측).
+  문서 배치 추가 실측: **최근 nightly run(2026-07-14)의 slip-it-public job 이 정확히 이 필터로
+  `No tests found for given includes` 실패 중** — 무해한 dead-weight 가 아니라 nightly 를 붉게
+  만들고 있는 pre-existing 결함이다. 본 PR 미접촉 파일이라 범위 외로 남기며 후속 정리가 필요하다.
+- **`estimate-form-coedit-pending`**(`EstimateFormPage.tsx:1490`): R4-D9 와 동일한 조건부 마운트
+  `role="status"` 패턴이나 **#809 무관 선재**(협업 에픽 산출 — `git show main` 으로 실증) →
+  후속 정리 후보.
+- **`role="alert"` 4곳**(SlipFormPage 2·EstimateFormPage 2)도 조건부 마운트이나 **#809 무관 선재**
+  (main 동수 실증) + ARIA 명세상 alert 는 동적 삽입이 표준 발화 경로라 위험도 낮음.

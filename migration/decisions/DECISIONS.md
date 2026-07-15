@@ -2985,3 +2985,16 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-R3-4 | 조회 증폭 해소는 단건 유지 + `POST /slips/price-memory/bulk`(1~100, hit-only 배열) + 4종 권한 OR short-circuit + auth RestClient 2초 connect/3초 read timeout 조합으로 확정한다. |
 | D-R3-5 | 최대 라인 수는 전표/견적/모바일 견적 모두 100건이다. 가격기억은 단일 set-based upsert, `remembered_at` recency guard, 1초 lock/3초 statement/4초 transaction timeout을 사용한다. |
 | D-R3-6 | afterCommit REQUIRES_NEW 는 bounded async(core 2/max 4/queue 100)로 outer connection을 먼저 반환한다. durable outbox는 유실 방지는 우수하지만 보조 기능에 worker/table/backfill 운영비가 과도해 미채택한다. queue/DB 실패는 metric 후 fail-soft 한다. |
+
+---
+
+## #809 거래처+품목 최근단가 R4 개발책임자 결정 (2026-07-15, PR #820)
+
+R4(FABLE5 1차 적대검증) 확인요청 4건 확정 — 근거 전문: [PR #820 결정 기록](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980376041). 잔존 경계의 정직 기록은 `docs/dev-reports/2026-07-15-809-partner-product-price-memory.md` "정직 한계" 절.
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-R4-1 | 자동채움 catalog 폴백 마커 용어는 `판매가`다(실체 = `product.sellingPrice` = 제품 등록 화면 기존 라벨). 이 레포 기존 용어체계에서 '정가'는 출고가 계열 별칭(estimate-app `lib/code.js` 동의어 매핑)이라 사용자를 오도하므로 마커/설명/문서에서 `정가` 라벨을 금지한다. `정가` 로 확정돼 있던 spec 38-39 는 spec 자체가 기존 결정과 상충한 경우로 보아 정정한다. |
+| D-R4-2 | 가격기억 최신성 권위는 `remembered_at`(원 전표/견적 트랜잭션의 애플리케이션 캡처 시각)을 유지한다. 커밋순서 권위(`clock_timestamp()`/시퀀스) 재설계는 하지 않는다. 실제 커밋 순서와의 ms~수백ms 역전 창은 dev-report 에 정직 기록한다 — 역전돼도 두 값 모두 사용자 실입력 단가이며, flush 실행 순서 역전은 IT 로 방어돼 있다. |
+| D-R4-3 | 전표 생성(VAT포함 basis)→직접 PUT(공급단가 basis) 교차 경로의 서브-원 드리프트(예: 100,000 → 기억값 99,999.90 · 1회 수렴 · 비복리 · 11의 배수 단가 미발생)는 두 저장 basis 병존의 내재적 반올림 한계로 수용하고 문서화한다. PUT 경로의 `unitPriceWithVat` 우선 계약 확장은 하지 않는다. |
+| D-R4-4 | 거래처 선택 해제 시 라인 단가값은 유지하고 REMEMBERED 마커(저장일 표기 포함)만 해제한다. 단가를 판매가로 되돌리지 않는다 — 사용자가 이미 확인한 입력값을 임의로 변경하지 않는다. 라인 상태(priceSource)는 유지해 거래처 재선택 시 재조회 자격을 보존한다. |
