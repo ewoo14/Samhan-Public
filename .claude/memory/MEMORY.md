@@ -89,6 +89,7 @@
 - [Codex 모델 자동 전환](feedback_codex_model_auto_switch.md) — 기본 spark+medium, 보안/migration/race 등 gpt-5.5 high
 - [Codex 권한 새 세션부터](feedback_codex_permission_new_session.md) — allow 추가는 새 세션부터, 진행중 무리한 재시도 금지
 - [Codex MCP 세션 한정 한계](feedback_codex_mcp_session_limit.md) — -32000 후 새 세션·codex exec·Agent 대체
+- [codex exec kill이 MCP vendor 공유 종료](feedback_codex_kill_shares_mcp_vendor.md) — Name=codex.exe 일괄 kill이 MCP 서버 vendor 바이너리까지 종료→세션 MCP 이탈(인세션 /mcp 재연결 불가·재시작만 확실). exec 특정 PID트리만 종료·mcp-server 제외
 - [codex config.toml NUL 손상](feedback_codex_config_nul_corruption.md) — 최소 config+model="gpt-5.5"
 - [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — </dev/null 필수
 - [detached codex 안정화 후 판단](feedback_codex_detached_write_settle.md) — git status 빈것≠미수행, 폴링+diff

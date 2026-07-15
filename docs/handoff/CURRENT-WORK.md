@@ -4,6 +4,38 @@
 
 ---
 
+## 🔄 2026-07-15 (집PC morning) — #809 최근단가 자동채움 **구현 재개 지점**(세션 재시작·MCP 복구 후 이어받기)
+
+> **다음 세션 첫 읽기(최우선).** #809 개발책임자 결정 morning 확정 완료 → Codex 구현 착수 단계. **세션 재시작 사유**: codex-exec 프로세스 종료 시 codex MCP 서버가 세션 도구 레지스트리에서 이탈(인세션 /mcp 재연결로 복구 안 됨·서버 자체는 Connected). 개발책임자 지시 = **Codex는 MCP로 진행**. 재시작하면 `mcp__codex__codex` 재등록됨.
+
+### 상태 (전부 디스크/git 보존 — 재시작 무관)
+- **브랜치**: `feat/809-partner-product-price-memory`(체크아웃 상태·PR **#820** OPEN). 조기 PR 시드(docs만·코드 0).
+- **결정 확정**(PR #820 issuecomment-4975169714·전부 PM 권고 수렴): ① 전표+견적만(**주문 제외**·주문은 DcConfig 규칙가 유지) ② slip-service 단일 신규테이블 `partner_product_price_memory`(견적도 slip-service 영속→cross-service 불필요) ③ 라인저장 시 upsert ④ **effective(마지막 저장 라인단가) 기억**·override 우선 ⑤ VAT=아래 crux2 ⑥ partnerId(UUID) 키.
+- **codex-exec 참조 stash**: `git stash@{0}`("codex-exec-809-partial-reference"). **중단되어 미완**(신뢰 불가)이나 **partnerId FE 배선 gap을 독립 발견**(아래 crux1). 재구현은 MCP로 fresh, stash는 참조만.
+- **Codex 브리프(gap 반영본)**: `C:\Users\ewoo2\AppData\Local\Temp\claude\C--dev-Samhan-Public\0585cd7a-77aa-4645-8101-ef2a5317eb3a\scratchpad\809-codex-brief.md` (구세션 scratchpad·디스크 존속). 새 세션은 아래 crux로 재작성 가능.
+
+### 🔴 crux1 — partnerId FE 배선 gap (WRITE 기능화 필수)
+- **Explore §5 "PartnerOption carries .id" 부정확**(실코드 확인): design-system `PartnerOption`(`clients/web/design-system/.../PartnerAutocomplete.tsx`)에 **id 필드 없음**. desktop 전표 create 페이로드(`SlipFormPage.tsx` 580-619)도 **partnerId 미전송**(comment 725-727: partnerName denormalize만). → `slip.partnerId`(=`req.partnerId()`·SlipService 236/244) **null** → 전표측 upsert null-skip = **#816형 비기능**.
+- **해소 배선**(codex-exec가 독립 도출·동일): partner-service `PartnerSummaryResponse.partnerId(UUID)` 노출(`from(Partner)`에 `p.getId()`·UUID 비공개 가드=화면표시 금지·payload 전용 Javadoc) → desktop `partnerApi.ts`·design-system `PartnerOption.id?` 배선 → `SlipFormPage.selectedPartner.id` → create 페이로드 `partnerId` 추가. ⚠️부작용: BE 288-294 businessNumber/partnerCode resolve 활성화(dormant→on·fail-soft·신규 전표만·리뷰 검증대상·dev-report 명시). 견적은 partnerId 이미 전송(598).
+
+### 🔴 crux2 — VAT basis 라운드트립 (가격 correctness)
+- 전표 FE `priceVatInclusive:true`(617) → 입력 필드 = **VAT 포함 단가**(BE `createFromVatInclusive` 분리). 기억값 저장·반환 basis = **FE 입력 필드와 동일**해야 사용자 입력 단가 그대로 재현(supply-basis 저장 시 매회 ~10% 왜곡=금지). **전표·견적 store 공유** → 두 입력 basis 일치 검증 필수(estimate priceVatInclusive 취급 trace). 라운드트립 테스트((거래처,품목,단가P) 저장→재조회=P) 필수.
+
+### 정찰 앵커 (재브리핑용)
+- WRITE 훅: `SlipService.addSlipLinesExpanded`(SlipService.java:145-199·단품 160·BUNDLE 구성품 190)·`EstimateService.addEstimateLines`(70-123·80-84/107-114). 둘 다 header→partnerId·productId·unitPrice scope 내. null-guard·fail-soft(#816 `DispatchNotificationRecorder` REQUIRES_NEW 선례)·aborted-tx 회피.
+- upsert 템플릿: `EstimateNumberSequenceRepository` native `INSERT..ON CONFLICT`(단 DO UPDATE). Flyway **V58**. 엔티티=BaseEntity+`@SQLRestriction`. unique(partner_id,product_id).
+- READ 엔드포인트: **사용자 대면(게이트웨이)·/internal 금지**(X-Internal-Token/MASTER은 브라우저 불가). 예 `GET /slips/price-memory?partnerId&productId`·인가=전표 생성과 동일.
+- FE 자동채움: 전표 `SlipFormPage.updateLine` onChange 2경로(1048-1062·1135-1148)·견적 `EstimateFormPage.handleModelLookup`(486-533·504-507). hit=remembered/miss=sellingPrice·override 보존·stale 가드(#815 교훈)·견적 bizno 폴백 시 조회 금지.
+
+### 🟢 다음 (새 세션 순서)
+1. 핸드오프(본 절)+`docs/specs/809-...`+`docs/dev-reports/2026-07-15-809-...` 읽기.
+2. `ToolSearch select:mcp__codex__codex,mcp__codex__codex-reply` → 재등록 확인.
+3. scratchpad 브리프(또는 crux 재작성)로 **mcp__codex__codex 구현 디스패치**(danger-full-access·effort high·git 금지·PM 커밋대행).
+4. git diff 검증 → 커밋 → **Opus 5-agent 리뷰(가격 correctness 엄격)+라이브QA ↔ Codex 적대 0수렴** → PM 종합 9-게이트 → CI → 머지. (#810은 #809 완주 후 순차.)
+- ⚙️ **교훈 박제**: codex-exec 종료 시 `Name=codex.exe` 일괄 kill이 **MCP 서버 공유 vendor 바이너리까지 종료**→세션 MCP 이탈. 특정 exec PID 트리만 종료할 것. → [[feedback_codex_kill_shares_mcp_vendor]]
+
+---
+
 ## ✅ 2026-07-15 (집PC 야간 자율) — #816 배차 상세 알림 발송이력 백엔드 **머지 완주**(#819 `b3834888a`)
 
 > **다음 세션 첫 읽기.** 개발책임자 "1,2,3,4 순차"의 2번(#816). 야간 자율("오전 답변 전까지 끊김없이·워크플로우 엄수·비단축"). **핵심 교훈: R1 리뷰가 승인된 설계(③-A)의 구조적 비기능성을 포착 → 개발책임자 ③-B 재설계 → 전면 재구현.**
