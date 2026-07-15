@@ -22,7 +22,7 @@
  *
  * 본 컴포넌트는 `mode` prop 으로 OUTBOUND / INBOUND 양쪽 화면에서 재사용.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -68,6 +68,7 @@ import {
 } from '../api/inventory'
 import {
   createSlip,
+  getPriceMemory,
   lookupPartnerForAutoFill,
   emptyBundleSetOptions,
   toApiBundleSetOptions,
@@ -352,6 +353,8 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
 
   // AC-3: 거래처 자동완성 선택 상태 (PartnerAutocomplete controlled value)
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null)
+  const selectedPartnerIdRef = useRef<string | null>(null)
+  selectedPartnerIdRef.current = selectedPartner?.id ?? null
 
   // 거래처 snapshot — 자동완성 선택 시 채워짐(폼 미표시, 전표 기록/주소복사용).
   // eCount 12필드 입력 카드는 출고전표 폼 정비로 제거(ioType/timeDate/검수지/결제·할인·약정 등).
@@ -413,6 +416,46 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
 
   const updateLine = (id: string, patch: Partial<LineDraft>) =>
     setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+
+  const applyProductSelection = async (line: LineDraft, product: ProductOption | null) => {
+    const productId = product?.id ?? null
+    const fallbackUnitPrice =
+      product?.sellingPrice != null ? String(product.sellingPrice) : line.unitPrice
+    const shouldAutoFill = !line.unitPrice || line.unitPrice === '0'
+    const nextUnitPrice = shouldAutoFill ? fallbackUnitPrice : line.unitPrice
+    updateLine(line.id, {
+      productId,
+      modelName: product?.modelName ?? '',
+      productName: product?.productName ?? '',
+      unitPrice: nextUnitPrice,
+      productType: product?.productType ?? null,
+      modelCode: product?.modelCode ?? null,
+      lookupError: null,
+      lookupLoading: false,
+    })
+    const partnerId = selectedPartner?.id
+    if (!partnerId || !productId || !shouldAutoFill) {
+      return
+    }
+    try {
+      const memory = await getPriceMemory(partnerId, productId)
+      const remembered = memory?.unitPrice
+      if (!remembered) {
+        return
+      }
+      setLines((currentLines) =>
+        currentLines.map((current) => {
+          if (current.id !== line.id) return current
+          if (current.productId !== productId) return current
+          if (selectedPartnerIdRef.current !== partnerId) return current
+          if (current.unitPrice !== fallbackUnitPrice) return current
+          return { ...current, unitPrice: String(remembered) }
+        }),
+      )
+    } catch {
+      // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 정가 fallback 유지.
+    }
+  }
 
   const updateSetOption = (id: string, patch: Partial<BundleSetOptions>) =>
     setLines((ls) =>
@@ -582,6 +625,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         slipDate: today,
         sourceWarehouseId: sourceWh ?? undefined,
         destinationWarehouseId: destWh ?? undefined,
+        partnerId: selectedPartner?.id || undefined,
         partnerName: partnerName.trim() || undefined,
         deliveryTag: isOutbound ? tag ?? undefined : undefined,
         memo: memo.trim() || undefined,
@@ -1045,21 +1089,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                   modelCell={
                     <ProductAutocomplete
                       value={lineProductValue}
-                      onChange={(p) =>
-                        updateLine(line.id, {
-                          productId: p?.id ?? null,
-                          modelName: p?.modelName ?? '',
-                          productName: p?.productName ?? '',
-                          unitPrice:
-                            p?.sellingPrice != null
-                              ? String(p.sellingPrice)
-                              : line.unitPrice,
-                          productType: p?.productType ?? null,
-                          modelCode: p?.modelCode ?? null,
-                          lookupError: null,
-                          lookupLoading: false,
-                        })
-                      }
+                      onChange={(p) => void applyProductSelection(line, p)}
                       searchProducts={(q) => searchProductsApi(q, { usageScope: 'PARTNER_ORDER' })}
                       label=""
                       ariaLabel={`라인 ${idx + 1} 품목`}
@@ -1132,21 +1162,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                       modelCell={
                         <ProductAutocomplete
                           value={lineProductValue}
-                          onChange={(p) =>
-                            updateLine(line.id, {
-                              productId: p?.id ?? null,
-                              modelName: p?.modelName ?? '',
-                              productName: p?.productName ?? '',
-                              unitPrice:
-                                p?.sellingPrice != null
-                                  ? String(p.sellingPrice)
-                                  : line.unitPrice,
-                              productType: p?.productType ?? null,
-                              modelCode: p?.modelCode ?? null,
-                              lookupError: null,
-                              lookupLoading: false,
-                            })
-                          }
+                          onChange={(p) => void applyProductSelection(line, p)}
                           searchProducts={(q) => searchProductsApi(q, { usageScope: 'PARTNER_ORDER' })}
                           label=""
                           ariaLabel={`라인 ${idx + 1} 품목`}

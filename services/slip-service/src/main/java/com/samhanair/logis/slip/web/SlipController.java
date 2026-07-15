@@ -9,6 +9,8 @@ import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
 import com.samhanair.logis.slip.service.SlipCleanupService;
 import com.samhanair.logis.slip.service.SlipExcelExportService;
@@ -109,6 +111,7 @@ public class SlipController {
     private final NextDaySlipImageService nextDaySlipImageService;
     private final SlipCleanupService slipCleanupService;
     private final SlipExcelExportService slipExcelExportService;
+    private final PartnerProductPriceMemoryService priceMemoryService;
     private final DynamicPermissionClient dynamicPermissionClient;
 
     /**
@@ -207,6 +210,26 @@ public class SlipController {
         }
         List<SlipType> searchTypes = resolveRequestedSearchTypes(visibleTypes, slipType);
         return ApiResponse.ok(slipService.searchBySlipNo(q, limit, searchTypes));
+    }
+
+    /**
+     * 거래처+품목 최근 수동단가 조회.
+     *
+     * <p>브라우저 호출용 사용자 대면 endpoint 이므로 {@code /internal} 이 아니다. partnerId/productId 는
+     * 화면 표시 금지 UUID 이며 hidden state/API payload 전용이다. 응답 단가는 전표/견적 입력 필드와
+     * 동일한 VAT 포함 단가라서 그대로 자동채움한다.
+     */
+    @Operation(summary = "거래처+품목 최근 수동단가 조회",
+            description = "partnerId/productId 기준 최근 저장 라인 단가(VAT 포함 입력단가)를 조회한다. 없으면 204.")
+    @GetMapping("/price-memory")
+    public ResponseEntity<ApiResponse<PartnerProductPriceMemoryResponse>> getPriceMemory(
+            @RequestParam UUID partnerId,
+            @RequestParam UUID productId,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader) {
+        checkPriceMemoryReadPermission(callerHeader);
+        return priceMemoryService.find(partnerId, productId)
+                .map(response -> ResponseEntity.ok(ApiResponse.ok(response)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /**
@@ -695,6 +718,22 @@ public class SlipController {
             return;
         }
         requireAccountPermission(callerHeader, outboundPageCode, outboundAction);
+    }
+
+    /**
+     * 가격기억 조회는 품목 선택 시 자동채움 보조 API 이므로 전표 생성과 동등한 계정 권한을 요구한다.
+     * OUTBOUND 생성 또는 INBOUND 작성 권한 중 하나가 있으면 통과한다.
+     */
+    private void checkPriceMemoryReadPermission(String callerHeader) {
+        UUID accountId = parseAccountId(callerHeader);
+        boolean canCreateOutbound = accountId != null && dynamicPermissionClient.check(
+                accountId, SALES_SLIP_CREATE_PAGE_CODE, PermissionAction.CREATE);
+        boolean canCreateInbound = accountId != null && dynamicPermissionClient.check(
+                accountId, PURCHASES_SLIP_EDIT_PAGE_CODE, PermissionAction.UPDATE);
+        if (!canCreateOutbound && !canCreateInbound) {
+            log.warn("[#809] price-memory permission denied accountId={}", accountId);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "전표 생성 권한이 없습니다.");
+        }
     }
 
     /** 권한 분기 전에 전표 유형을 서버 저장값으로 확정한다. */

@@ -88,6 +88,8 @@ class SlipServiceTest {
     @Mock private com.samhanair.logis.slip.realtime.SlipRealtimeBroker broker;
     /** 보상 감사 로그 — 단위 테스트 격리. */
     @Mock private com.samhanair.logis.slip.service.CompensationAuditWriter compensationAuditWriter;
+    /** #809 가격기억 — 단위 테스트 격리. */
+    @Mock private com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService priceMemoryService;
 
     @InjectMocks private SlipService service;
 
@@ -800,6 +802,37 @@ class SlipServiceTest {
                 eq(slip),
                 eq(com.samhanair.logis.slip.revision.domain.SlipRevisionType.EDIT),
                 eq(null), any(UUID.class), eq("홍길동"), eq(null));
+    }
+
+    @Test
+    void addLine_remembersVatInclusiveInputPriceExactly() {
+        Slip slip = preparedOutbound(SlipStatus.DRAFT, 1, new BigDecimal("10.00"));
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+
+        service.addLine(slipId,
+                new com.samhanair.logis.slip.web.dto.AddLineRequest(
+                        productId, "에어컨", "M-1", null, 2,
+                        new BigDecimal("123456.00"), null, null, true),
+                "user-1", "홍길동");
+
+        verify(priceMemoryService).remember(
+                eq(partnerId), eq(productId), eq(new BigDecimal("123456.00")), eq("user-1"));
+    }
+
+    @Test
+    void addLine_withoutPartnerId_skipsPriceMemory() {
+        Slip slip = Slip.createOutbound("2026/05/04-1", LocalDate.of(2026, 5, 4), 1,
+                sourceWh, destWh, null, "거래처 없음", DeliveryTag.DAY, null, "user-1");
+        ReflectionTestUtils.setField(slip, "id", slipId);
+        when(slipRepository.findById(slipId)).thenReturn(Optional.of(slip));
+
+        service.addLine(slipId,
+                new com.samhanair.logis.slip.web.dto.AddLineRequest(
+                        productId, "에어컨", "M-1", null, 2,
+                        new BigDecimal("123456.00"), null, null, true),
+                "user-1", "홍길동");
+
+        verify(priceMemoryService, never()).remember(any(), any(), any(), anyString());
     }
 
     @Test

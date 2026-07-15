@@ -405,6 +405,13 @@ export interface ProductLookupResult {
   productType?: string
 }
 
+/** 거래처+품목 최근 수동단가 기억 응답 — 단가는 VAT 포함 입력 단가. */
+export interface PriceMemoryResult {
+  unitPrice: string
+  source: string
+  updatedAt: string | null
+}
+
 /**
  * 전표 페이지 조회. 빈 필터 시 전체.
  *
@@ -449,6 +456,26 @@ export async function createSlip(
   body: CreateSlipRequest,
 ): Promise<SlipDetail> {
   const res = await apiClient.post<ApiEnvelope<SlipDetail>>('/slips', body)
+  return res.data.data
+}
+
+/**
+ * 거래처+품목 최근 수동단가 조회.
+ *
+ * partnerId/productId 는 화면 표시 금지 UUID이며 API payload 전용이다. 204/miss 는 null.
+ */
+export async function getPriceMemory(
+  partnerId: string,
+  productId: string,
+): Promise<PriceMemoryResult | null> {
+  const res = await apiClient.get<ApiEnvelope<PriceMemoryResult>>(
+    '/slips/price-memory',
+    {
+      params: { partnerId, productId },
+      validateStatus: (status) => (status >= 200 && status < 300) || status === 204,
+    },
+  )
+  if (res.status === 204) return null
   return res.data.data
 }
 
@@ -598,6 +625,8 @@ export interface AddLineRequest {
   note?: string
   /** 세트 전개 옵션 — BUNDLE 품목 라인 추가 시 전달(BE addSlipLinesExpanded). 에픽 후속 #2. */
   setOptions?: BundleSetOptions
+  /** 단가 부가세포함 여부 — true 면 unitPrice 가 VAT 포함 단가. */
+  priceVatInclusive?: boolean
 }
 
 /**

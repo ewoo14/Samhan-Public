@@ -60,6 +60,8 @@ class SlipServiceLockGuardTest {
     @Mock private SlipEditRequestService editRequestService;
     /** 권한 재편 Phase 2.1 Task 2 — overlay patch 성공 시 capture 호출. mock 격리. */
     @Mock private com.samhanair.logis.slip.revision.service.SlipRevisionService slipRevisionService;
+    /** #809 가격기억 — 단위 테스트 격리. */
+    @Mock private com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService priceMemoryService;
 
     @InjectMocks private SlipService slipService;
 

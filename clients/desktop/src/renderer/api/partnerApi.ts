@@ -500,6 +500,8 @@ export const MOCK_PARTNER_FULL: PartnerFullResponse = {
  * `id` (UUID) 는 BE 응답에 없거나 노출 금지 — partnerCode/name 이 식별자.
  */
 interface PartnerSummaryResponse {
+  /** 내부 partnerId UUID — 화면 표시 금지, API payload 전용. */
+  partnerId?: string | null
   partnerCode: string
   name: string
   bizNo?: string | null
@@ -538,6 +540,7 @@ export async function searchPartners(q: string): Promise<PartnerOption[]> {
     const data = res.data.data
     const items = Array.isArray(data?.items) ? data.items : []
     return items.map((p): PartnerOption => ({
+      id: p.partnerId ?? undefined,
       partnerCode: p.partnerCode ?? '',
       name: p.name ?? '',
       bizNo: p.bizNo ?? undefined,

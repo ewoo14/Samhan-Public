@@ -31,6 +31,7 @@ import {
 import { searchPartners, type PartnerSummary } from '../api/sales'
 import {
   lookupProductByModelName,
+  getPriceMemory,
   emptyBundleSetOptions,
   toApiBundleSetOptions,
 } from '../api/slip'
@@ -44,6 +45,8 @@ import { BundleOptionRow } from './components/BundleOptionRow'
 
 let __lineUidCounter = 0
 const nextLineUid = (): string => `est-line-${++__lineUidCounter}`
+const UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 interface DraftLine {
   uid: string
@@ -431,6 +434,7 @@ export function EstimateFormPage() {
 
   const handleSelectPartner = (p: PartnerSummary) => {
     setPartner(p)
+    setPartnerIdSnapshot(p.partnerId && UUID_PATTERN.test(p.partnerId) ? p.partnerId : '')
     setPartnerName(p.companyName)
     setPartnerBusinessNo(p.businessRegistrationNumber)
     setPartnerAddress(p.address ?? '')
@@ -439,6 +443,7 @@ export function EstimateFormPage() {
   const searchPartnerOptions = async (q: string): Promise<PartnerOption[]> => {
     const rows = await searchPartners(q, 8)
     return rows.map((row) => ({
+      id: row.partnerId ?? undefined,
       partnerCode: row.businessRegistrationNumber,
       name: row.companyName,
       bizNo: row.businessRegistrationNumber,
@@ -449,9 +454,11 @@ export function EstimateFormPage() {
   const handlePartnerOptionChange = (option: PartnerOption | null) => {
     if (!option) {
       setPartner(null)
+      setPartnerIdSnapshot('')
       return
     }
     handleSelectPartner({
+      partnerId: option.id ?? null,
       businessRegistrationNumber: option.bizNo ?? option.partnerCode,
       companyName: option.name,
       representativeName: null,
@@ -497,22 +504,42 @@ export function EstimateFormPage() {
     updateLine(index, { lookupLoading: true, lookupError: null })
     try {
       const result = await lookupProductByModelName(modelName)
-      updateLine(index, {
-        productId: result.productId,
-        productName: result.productName,
-        productType: result.productType ?? 'SINGLE',
-        unitPrice:
-          line.unitPrice === '0' || !line.unitPrice
-            ? result.sellingPrice
-            : line.unitPrice,
-        lookupError: null,
-        lookupLoading: false,
-      })
+      const effectivePartnerId =
+        partnerIdSnapshot && UUID_PATTERN.test(partnerIdSnapshot)
+          ? partnerIdSnapshot
+          : partner?.partnerId && UUID_PATTERN.test(partner.partnerId)
+            ? partner.partnerId
+            : ''
+      const shouldAutoFill = line.unitPrice === '0' || !line.unitPrice
+      let nextUnitPrice = shouldAutoFill ? result.sellingPrice : line.unitPrice
+      if (effectivePartnerId && shouldAutoFill) {
+        try {
+          const memory = await getPriceMemory(effectivePartnerId, result.productId)
+          if (memory?.unitPrice) {
+            nextUnitPrice = String(memory.unitPrice)
+          }
+        } catch {
+          // 가격기억 조회 실패는 모델 lookup 자체를 실패시키지 않는다. 정가 fallback 유지.
+        }
+      }
+      setLines((prev) =>
+        prev.map((current) => {
+          if (current.uid !== line.uid) return current
+          if ((current.modelName || '').trim() !== modelName) return current
+          const canApplyUnitPrice =
+            !shouldAutoFill || current.unitPrice === line.unitPrice || current.unitPrice === result.sellingPrice
+          return {
+            ...current,
+            productId: result.productId,
+            productName: result.productName,
+            productType: result.productType ?? 'SINGLE',
+            unitPrice: canApplyUnitPrice ? nextUnitPrice : current.unitPrice,
+            lookupError: null,
+            lookupLoading: false,
+          }
+        }),
+      )
       if (estimateFormCoeditProvider) {
-        const nextUnitPrice =
-          line.unitPrice === '0' || !line.unitPrice
-            ? result.sellingPrice
-            : line.unitPrice
         try {
           estimateFormCoeditProvider.setItemValue(index, 'productName', result.productName)
           estimateFormCoeditProvider.setItemValue(index, 'unitPrice', nextUnitPrice)
@@ -564,7 +591,13 @@ export function EstimateFormPage() {
 
   const buildBody = (): CreateEstimateRequest | null => {
     setTopError('')
-    if (!partnerIdSnapshot && !partner) {
+    const effectivePartnerId =
+      partnerIdSnapshot && UUID_PATTERN.test(partnerIdSnapshot)
+        ? partnerIdSnapshot
+        : partner?.partnerId && UUID_PATTERN.test(partner.partnerId)
+          ? partner.partnerId
+          : ''
+    if (!effectivePartnerId) {
       setTopError('거래처를 선택하세요.')
       return null
     }
@@ -595,7 +628,7 @@ export function EstimateFormPage() {
     }))
     return {
       estimateDate: estimateDate || undefined,
-      partnerId: partnerIdSnapshot || partner?.businessRegistrationNumber || '',
+      partnerId: effectivePartnerId,
       partnerName: partnerName.trim(),
       partnerBusinessNo: partnerBusinessNo.trim() || undefined,
       partnerAddress: partnerAddress.trim() || undefined,
